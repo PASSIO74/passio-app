@@ -18,6 +18,9 @@
   <link rel="apple-touch-icon" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='gA' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%23ddd6fe'/><stop offset='1' stop-color='%23a78bfa'/></linearGradient></defs><rect width='100' height='100' rx='22' fill='url(%23gA)'/><path d='M24 24 L76 24 L24 76' stroke='%23ffffff' stroke-width='13' stroke-linecap='round' stroke-linejoin='round' fill='none'/><path d='M76 24 L76 76' stroke='%234c1d95' stroke-width='13' stroke-linecap='round' fill='none'/></svg>" />
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='gA' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%23ddd6fe'/><stop offset='1' stop-color='%23a78bfa'/></linearGradient></defs><rect width='100' height='100' rx='22' fill='url(%23gA)'/><path d='M24 24 L76 24 L24 76' stroke='%23ffffff' stroke-width='13' stroke-linecap='round' stroke-linejoin='round' fill='none'/><path d='M76 24 L76 76' stroke='%234c1d95' stroke-width='13' stroke-linecap='round' fill='none'/></svg>" />
 
+  <!-- Supabase SDK -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
   <!-- Leaflet, carte interactive (CDN stable) -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
         integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
@@ -8909,6 +8912,34 @@ function openConversation(convId) {
   c.unread = 0;
   saveConversations();
 
+  // Si conv Supabase : charger les vrais messages temps réel
+  if (c.fromSupabase && typeof supaLoadMessages === "function") {
+    supaLoadMessages(convId).then(msgs => {
+      const bubblesHTML = msgs.map(m => {
+        const cls = m.from === "me" ? "me" : "them";
+        const label = cls === "them" ? `<div style="font-size:10px;color:var(--muted);margin-bottom:2px;">${escapeHtml(m.fromName)}</div>` : "";
+        return `<div>${label}<div class="conv-bubble ${cls}">${escapeHtml(m.text)}</div></div>`;
+      }).join("");
+      const flex = document.getElementById("convThreadFlex");
+      if (flex) {
+        flex.innerHTML = bubblesHTML;
+        const t = document.querySelector(".conv-thread");
+        if (t) t.scrollTop = t.scrollHeight;
+      }
+    });
+    // Abonnement temps réel
+    if (typeof supaSubscribeMessages === "function") {
+      supaSubscribeMessages(convId, msg => {
+        const flex = document.getElementById("convThreadFlex");
+        if (flex) {
+          flex.innerHTML += `<div><div style="font-size:10px;color:var(--muted);margin-bottom:2px;">${escapeHtml(msg.fromName)}</div><div class="conv-bubble them">${escapeHtml(msg.text)}</div></div>`;
+          const t = document.querySelector(".conv-thread");
+          if (t) t.scrollTop = t.scrollHeight;
+        }
+      });
+    }
+  }
+
   const bubblesHTML = c.messages.map(m => {
     const cls = m.from === "me" ? "me" : "them";
     return `<div class="conv-bubble ${cls}">${escapeHtml(m.text)}</div>`;
@@ -8925,7 +8956,9 @@ function openConversation(convId) {
         <div class="msg-passion">${groupPassionEmojis || "✨"} · ${memberCount} membre${memberCount > 1 ? "s" : ""}</div>
       </div>`;
   } else {
-    const u = (state.seed.users || []).find(x => x.id === c.userId) || { name: "Inconnu", avatar: "#7c3aed", profileEmoji: "🙂" };
+    const u = c.fromSupabase
+      ? { name: c.userName || "Passionné", avatar: c.userColor || "#7c3aed", profileEmoji: c.userEmoji || "🙂" }
+      : ((state.seed.users || []).find(x => x.id === c.userId) || { name: "Inconnu", avatar: "#7c3aed", profileEmoji: "🙂" });
     const passion = passionById(c.passion) || { label: c.passion, emoji: "✨" };
     headerHTML = `
       <div class="msg-avatar" style="background:${u.avatar};width:40px;height:40px;font-size:18px;">${u.profileEmoji}</div>
@@ -8934,11 +8967,11 @@ function openConversation(convId) {
         <div class="msg-passion">${passion.emoji} ${escapeHtml(passion.label)}</div>
       </div>
       <div class="conv-actions">
-        <button class="conv-action-btn" onclick="startCall('${convId}', 'voice')" title="Appel audio" aria-label="Appel audio">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6.62 10.79 c1.44 2.83 3.76 5.14 6.59 6.59 l2.2-2.2 c0.27-0.27 0.67-0.36 1.02-0.24 1.12 0.37 2.33 0.57 3.57 0.57 0.55 0 1 0.45 1 1 V20 c0 0.55-0.45 1-1 1 -9.39 0-17-7.61-17-17 0-0.55 0.45-1 1-1 h3.5 c0.55 0 1 0.45 1 1 0 1.25 0.2 2.45 0.57 3.57 0.11 0.35 0.03 0.74-0.25 1.02 z"/></svg>
+        <button class="conv-action-btn" onclick="startCall('${convId}','voice')" title="Appel audio">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02z"/></svg>
         </button>
-        <button class="conv-action-btn" onclick="startCall('${convId}', 'video')" title="Appel vidéo" aria-label="Appel vidéo">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 10.5 V7 c0-0.55-0.45-1-1-1 H4 c-0.55 0-1 0.45-1 1 v10 c0 0.55 0.45 1 1 1 h12 c0.55 0 1-0.45 1-1 v-3.5 l4 4 v-11 l-4 4 z"/></svg>
+        <button class="conv-action-btn" onclick="startCall('${convId}','video')" title="Appel vidéo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>
         </button>
       </div>`;
   }
@@ -8957,7 +8990,6 @@ function openConversation(convId) {
     const inp = document.getElementById("convInput");
     if (inp) inp.focus();
   }, 80);
-
   renderMessages();
 }
 
@@ -9299,12 +9331,15 @@ function sendMessage(convId) {
   c.lastAt = Date.now();
   saveConversations();
   inp.value = "";
-  // Re-render bulles
   const flex = document.getElementById("convThreadFlex");
   if (flex) {
     flex.innerHTML += `<div class="conv-bubble me">${escapeHtml(txt)}</div>`;
     const t = document.querySelector(".conv-thread");
     if (t) t.scrollTop = t.scrollHeight;
+  }
+  // Envoyer dans Supabase si conv réelle
+  if (typeof supaSendMessage === "function") {
+    supaSendMessage(convId, txt).catch(e => console.warn("Msg send error:", e));
   }
   renderMessages();
 }
@@ -10355,6 +10390,7 @@ function publishPost() {
   }
 
   state.userPosts.unshift(post);
+  supaPublishPost(post); // 🔴 Sauvegarde dans Supabase
 
   // Clear form
   $("#postText").value = "";
@@ -11816,12 +11852,12 @@ function renderEverything() {
 
 function initApp() {
   renderEverything();
-  // L'app démarre sur le Fil → activer le marqueur pour le FAB Bobines
   document.body.classList.add("screen-feed-active");
-  // Auto-launch investor demo tour on every page load (after onboarding is done).
-  // Small delay so the feed renders first and the tour overlays feel intentional.
+  // Lancer Supabase : charger les vrais posts/stories/events
+  if (typeof supaInit === "function") supaInit();
+  // Tour investisseur uniquement si jamais vu
   setTimeout(() => {
-    if (state.onboarded && typeof startTour === "function") startTour();
+    if (state.onboarded && !state.tourSeen && typeof startTour === "function") startTour();
   }, 900);
 }
 
@@ -11832,13 +11868,8 @@ function boot() {
   const ll = document.getElementById("logoLanding");
   if (ll) ll.src = LOGO_SRC;
 
-  // Mode démo : à chaque ouverture, on reset l'état pour montrer le parcours complet
-  // (landing → onboarding → app). Cela garantit que chaque démo ressemble à une 1ʳᵉ utilisation.
-  try {
-    localStorage.removeItem(STATE_KEY);
-    localStorage.removeItem("passio_conversations_v1");
-  } catch (e) {}
-
+  // ⚠️ Mode production : on NE reset plus le state à chaque ouverture
+  // Chaque utilisateur garde son profil et son historique
   state = loadState();
 
   // Show landing if never seen (first launch / fresh visit)
@@ -11854,6 +11885,655 @@ function boot() {
     return;
   }
   initApp();
+}
+
+// =====================================================
+// SUPABASE — Toutes fonctionnalités temps réel
+// =====================================================
+const SUPABASE_URL = "https://njkiyoklssvefstljemx.supabase.co";
+const SUPABASE_KEY = "sb_publishable_QS4YHzhxpEQcnZ7M9bJaUA_Ekx45dtB";
+const supa = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+function getMyUserId() {
+  let id = localStorage.getItem("passio_uid");
+  if (!id) { id = "u_" + Math.random().toString(36).slice(2,10); localStorage.setItem("passio_uid", id); }
+  return id;
+}
+const MY_UID = getMyUserId();
+
+// =====================================================
+// PROFIL
+// =====================================================
+async function supaUpsertProfile() {
+  const prof = currentProfile();
+  if (!prof) return;
+  await supa.from("profiles").upsert({
+    id: MY_UID,
+    username: prof.name || "Passionné",
+    emoji: prof.emoji || "✨",
+    color: prof.color || "#8b5cf6",
+    passion_id: prof.passion || null,
+  }, { onConflict: "id" });
+}
+
+async function supaLoadProfile(uid) {
+  const { data } = await supa.from("profiles").select("*").eq("id", uid).single();
+  return data;
+}
+
+// =====================================================
+// POSTS
+// =====================================================
+async function supaPublishPost(post) {
+  await supaUpsertProfile();
+  const { error } = await supa.from("posts").insert({
+    id: post.id,
+    author_id: MY_UID,
+    passion_id: post.passion || null,
+    mood: post.mood || "all",
+    content: post.text || "",
+    media_url: post.image || post.video || null,
+    created_at: new Date(post.createdAt).toISOString(),
+  });
+  if (error) console.warn("Post error:", error.message);
+}
+
+async function supaLoadPosts() {
+  const { data, error } = await supa
+    .from("posts")
+    .select("*, profiles(username,emoji,color,passion_id)")
+    .order("created_at", { ascending: false })
+    .limit(60);
+  if (error || !data) return [];
+  return data.map(r => ({
+    id: r.id, authorId: r.author_id,
+    authorName: r.profiles?.username || "Passionné",
+    authorEmoji: r.profiles?.emoji || "✨",
+    authorColor: r.profiles?.color || "#8b5cf6",
+    passion: r.passion_id || "autre", mood: r.mood || "all",
+    type: "text", text: r.content || "",
+    image: r.media_url || null,
+    createdAt: new Date(r.created_at).getTime(),
+    likes: 0, liked: false, comments: [], fromSupabase: true,
+  }));
+}
+
+// =====================================================
+// LIKES
+// =====================================================
+async function supaToggleLike(postId) {
+  const { data: existing } = await supa.from("post_likes")
+    .select("*").eq("post_id", postId).eq("user_id", MY_UID).single();
+  if (existing) {
+    await supa.from("post_likes").delete().eq("post_id", postId).eq("user_id", MY_UID);
+    return false;
+  } else {
+    await supa.from("post_likes").insert({ post_id: postId, user_id: MY_UID });
+    // Notifier l'auteur
+    const post = (state.seed.posts || []).find(p => p.id === postId);
+    if (post && post.authorId !== MY_UID) {
+      await supaInsertNotif(post.authorId, "like", postId, "a aimé ton post ❤️");
+    }
+    return true;
+  }
+}
+
+async function supaGetLikes(postId) {
+  const { count } = await supa.from("post_likes")
+    .select("*", { count: "exact", head: true }).eq("post_id", postId);
+  return count || 0;
+}
+
+// =====================================================
+// COMMENTAIRES
+// =====================================================
+async function supaAddComment(postId, content) {
+  await supaUpsertProfile();
+  const id = "c_" + uid();
+  await supa.from("post_comments").insert({
+    id, post_id: postId, author_id: MY_UID, content,
+    created_at: new Date().toISOString(),
+  });
+  const post = (state.seed.posts || []).find(p => p.id === postId);
+  if (post && post.authorId !== MY_UID) {
+    await supaInsertNotif(post.authorId, "comment", postId, `a commenté : "${content.slice(0,40)}"`);
+  }
+}
+
+async function supaLoadComments(postId) {
+  const { data } = await supa.from("post_comments")
+    .select("*, profiles(username,emoji,color)")
+    .eq("post_id", postId)
+    .order("created_at", { ascending: true });
+  return (data || []).map(r => ({
+    id: r.id, authorId: r.author_id,
+    authorName: r.profiles?.username || "Passionné",
+    authorEmoji: r.profiles?.emoji || "✨",
+    authorColor: r.profiles?.color || "#8b5cf6",
+    content: r.content,
+    createdAt: new Date(r.created_at).getTime(),
+  }));
+}
+
+// =====================================================
+// STORIES
+// =====================================================
+async function supaPublishStory(story) {
+  await supaUpsertProfile();
+  await supa.from("stories").insert({
+    id: story.id, author_id: MY_UID,
+    passion_id: story.passion || null,
+    content: story.text || story.content || "",
+    emoji: story.emoji || "✨",
+    created_at: new Date().toISOString(),
+  });
+}
+
+async function supaLoadStories() {
+  const since = new Date(Date.now() - 24*3600*1000).toISOString();
+  const { data } = await supa.from("stories")
+    .select("*, profiles(username,emoji,color)")
+    .gte("created_at", since)
+    .order("created_at", { ascending: false }).limit(30);
+  return (data || []).map(r => ({
+    id: r.id, authorId: r.author_id,
+    authorName: r.profiles?.username || "Passionné",
+    authorEmoji: r.profiles?.emoji || "✨",
+    authorColor: r.profiles?.color || "#8b5cf6",
+    passion: r.passion_id, content: r.content || "",
+    emoji: r.emoji || "✨", fromSupabase: true,
+  }));
+}
+
+// =====================================================
+// EVENTS IRL
+// =====================================================
+async function supaPublishEvent(event) {
+  await supaUpsertProfile();
+  const { error } = await supa.from("events").insert({
+    id: event.id || uid(), author_id: MY_UID,
+    title: event.title, passion_id: event.passion || null,
+    lat: event.lat || 46.6, lng: event.lng || 2.5,
+    city: event.city || "", emoji: event.emoji || "📍",
+    description: event.description || "",
+    date_at: event.date ? new Date(event.date).toISOString() : new Date().toISOString(),
+  });
+  if (error) console.warn("Event error:", error.message);
+}
+
+async function supaLoadEvents() {
+  const { data } = await supa.from("events")
+    .select("*").order("created_at", { ascending: false }).limit(60);
+  return (data || []).map(r => ({
+    id: r.id, authorId: r.author_id,
+    title: r.title || "Événement",
+    passion: r.passion_id || "autre",
+    lat: r.lat, lng: r.lng, city: r.city || "",
+    emoji: r.emoji || "📍",
+    description: r.description || "",
+    date: r.date_at ? new Date(r.date_at).getTime() : Date.now(),
+    fromSupabase: true,
+  }));
+}
+
+// =====================================================
+// MESSAGERIE TEMPS RÉEL
+// =====================================================
+let _supaConvChannel = null;
+
+async function supaCreateConversation(withUserId, passionId) {
+  await supaUpsertProfile();
+  const convId = "conv_" + uid();
+  await supa.from("conversations").insert({
+    id: convId, is_group: false,
+    passion_id: passionId || null, created_by: MY_UID,
+  });
+  await supa.from("conv_members").insert([
+    { conv_id: convId, user_id: MY_UID },
+    { conv_id: convId, user_id: withUserId },
+  ]);
+  return convId;
+}
+
+async function supaCreateGroup(groupName, memberIds, passionId) {
+  await supaUpsertProfile();
+  const convId = "grp_" + uid();
+  await supa.from("conversations").insert({
+    id: convId, is_group: true,
+    group_name: groupName, passion_id: passionId || null,
+    created_by: MY_UID,
+  });
+  const members = [...new Set([MY_UID, ...memberIds])].map(uid => ({ conv_id: convId, user_id: uid }));
+  await supa.from("conv_members").insert(members);
+  return convId;
+}
+
+async function supaSendMessage(convId, content) {
+  await supaUpsertProfile();
+  const msgId = "msg_" + uid();
+  const { error } = await supa.from("conv_messages").insert({
+    id: msgId, conv_id: convId,
+    from_id: MY_UID, content,
+    created_at: new Date().toISOString(),
+  });
+  if (error) console.warn("Message error:", error.message);
+  return msgId;
+}
+
+async function supaLoadMessages(convId) {
+  const { data } = await supa.from("conv_messages")
+    .select("*, profiles(username,emoji,color)")
+    .eq("conv_id", convId)
+    .order("created_at", { ascending: true })
+    .limit(100);
+  return (data || []).map(r => ({
+    id: r.id, from: r.from_id === MY_UID ? "me" : r.from_id,
+    fromName: r.profiles?.username || "Passionné",
+    fromEmoji: r.profiles?.emoji || "✨",
+    fromColor: r.profiles?.color || "#8b5cf6",
+    text: r.content,
+    at: new Date(r.created_at).getTime(),
+  }));
+}
+
+async function supaLoadMyConversations() {
+  // Récupérer les conv_ids dont je suis membre
+  const { data: memberships } = await supa.from("conv_members")
+    .select("conv_id").eq("user_id", MY_UID);
+  if (!memberships || !memberships.length) return [];
+  const convIds = memberships.map(m => m.conv_id);
+
+  const { data: convs } = await supa.from("conversations")
+    .select("*").in("id", convIds);
+  if (!convs) return [];
+
+  // Pour chaque conv, récupérer le dernier message
+  const result = [];
+  for (const c of convs) {
+    const { data: lastMsgs } = await supa.from("conv_messages")
+      .select("*, profiles(username,emoji,color)")
+      .eq("conv_id", c.id)
+      .order("created_at", { ascending: false })
+      .limit(1);
+    const last = lastMsgs?.[0];
+
+    // Récupérer les membres
+    const { data: members } = await supa.from("conv_members")
+      .select("user_id, profiles(username,emoji,color)")
+      .eq("conv_id", c.id);
+
+    const otherMember = (members || []).find(m => m.user_id !== MY_UID);
+
+    result.push({
+      id: c.id,
+      isGroup: c.is_group,
+      groupName: c.group_name,
+      passion: c.passion_id || "autre",
+      userId: otherMember?.user_id || "",
+      userEmoji: otherMember?.profiles?.emoji || "✨",
+      userColor: otherMember?.profiles?.color || "#8b5cf6",
+      userName: otherMember?.profiles?.username || "Passionné",
+      userIds: (members || []).map(m => m.user_id),
+      lastAt: last ? new Date(last.created_at).getTime() : new Date(c.created_at).getTime(),
+      unread: 0,
+      messages: last ? [{
+        from: last.from_id === MY_UID ? "me" : last.from_id,
+        text: last.content,
+        at: new Date(last.created_at).getTime(),
+      }] : [],
+      fromSupabase: true,
+    });
+  }
+  return result.sort((a, b) => b.lastAt - a.lastAt);
+}
+
+function supaSubscribeMessages(convId, onMessage) {
+  if (_supaConvChannel) { supa.removeChannel(_supaConvChannel); _supaConvChannel = null; }
+  _supaConvChannel = supa.channel("conv:" + convId)
+    .on("postgres_changes", {
+      event: "INSERT", schema: "public", table: "conv_messages",
+      filter: `conv_id=eq.${convId}`
+    }, async payload => {
+      const r = payload.new;
+      if (r.from_id === MY_UID) return;
+      const { data: prof } = await supa.from("profiles").select("username,emoji,color").eq("id", r.from_id).single();
+      onMessage({
+        id: r.id, from: r.from_id,
+        fromName: prof?.username || "Passionné",
+        fromEmoji: prof?.emoji || "✨",
+        text: r.content,
+        at: new Date(r.created_at).getTime(),
+      });
+    }).subscribe();
+}
+
+// =====================================================
+// FOLLOWS
+// =====================================================
+async function supaFollowUser(targetId) {
+  const { data: existing } = await supa.from("follows")
+    .select("*").eq("follower_id", MY_UID).eq("following_id", targetId).single();
+  if (existing) {
+    await supa.from("follows").delete().eq("follower_id", MY_UID).eq("following_id", targetId);
+    return false;
+  } else {
+    await supa.from("follows").insert({ follower_id: MY_UID, following_id: targetId });
+    await supaInsertNotif(targetId, "follow", MY_UID, "te suit maintenant 👋");
+    return true;
+  }
+}
+
+// =====================================================
+// NOTIFICATIONS
+// =====================================================
+async function supaInsertNotif(toUserId, kind, refId, content) {
+  if (toUserId === MY_UID) return;
+  const prof = currentProfile();
+  await supa.from("notifications").insert({
+    id: "n_" + uid(), user_id: toUserId,
+    kind, from_id: MY_UID, ref_id: refId,
+    content: `${prof?.name || "Quelqu'un"} ${content}`,
+    seen: false,
+    created_at: new Date().toISOString(),
+  });
+}
+
+async function supaLoadMyNotifs() {
+  const { data } = await supa.from("notifications")
+    .select("*").eq("user_id", MY_UID)
+    .order("created_at", { ascending: false }).limit(30);
+  return data || [];
+}
+
+async function supaMarkNotifsRead() {
+  await supa.from("notifications")
+    .update({ seen: true }).eq("user_id", MY_UID).eq("seen", false);
+}
+
+// =====================================================
+// TEMPS RÉEL — abonnements globaux
+// =====================================================
+function supaSubscribe() {
+  // Nouveaux posts
+  supa.channel("realtime:posts")
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "posts" }, async payload => {
+      const r = payload.new;
+      if (r.author_id === MY_UID) return;
+      const { data: prof } = await supa.from("profiles").select("username,emoji,color").eq("id", r.author_id).single();
+      const newPost = {
+        id: r.id, authorId: r.author_id,
+        authorName: prof?.username || "Passionné",
+        authorEmoji: prof?.emoji || "✨",
+        authorColor: prof?.color || "#8b5cf6",
+        passion: r.passion_id || "autre", mood: r.mood || "all",
+        type: "text", text: r.content || "",
+        image: r.media_url || null,
+        createdAt: new Date(r.created_at).getTime(),
+        likes: 0, liked: false, comments: [], fromSupabase: true,
+      };
+      state.seed.posts.unshift(newPost);
+      if (document.querySelector("#screen-feed.active")) renderFeed();
+      toast(`✨ ${newPost.authorName} vient de publier`);
+    }).subscribe();
+
+  // Nouvelles stories
+  supa.channel("realtime:stories")
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "stories" }, async payload => {
+      const r = payload.new;
+      if (r.author_id === MY_UID) return;
+      const { data: prof } = await supa.from("profiles").select("username,emoji,color").eq("id", r.author_id).single();
+      state.seed.stories.unshift({
+        id: r.id, authorId: r.author_id,
+        authorName: prof?.username || "Passionné",
+        authorEmoji: prof?.emoji || "✨",
+        authorColor: prof?.color || "#8b5cf6",
+        passion: r.passion_id, content: r.content || "",
+        emoji: r.emoji || "✨", fromSupabase: true,
+      });
+      renderStories();
+    }).subscribe();
+
+  // Nouvelles notifications pour moi
+  supa.channel("realtime:notifs:" + MY_UID)
+    .on("postgres_changes", {
+      event: "INSERT", schema: "public", table: "notifications",
+      filter: `user_id=eq.${MY_UID}`
+    }, payload => {
+      const n = payload.new;
+      toast(`🔔 ${n.content}`);
+      renderBell();
+    }).subscribe();
+}
+
+// =====================================================
+// INIT COMPLÈTE
+// =====================================================
+async function supaInit() {
+  try {
+    toast("⏳ Connexion en cours…", "info");
+
+    const [supaPosts, supaStories, supaEvents] = await Promise.all([
+      supaLoadPosts(),
+      supaLoadStories(),
+      supaLoadEvents(),
+    ]);
+
+    if (supaPosts.length)   state.seed.posts   = [...supaPosts,   ...(state.seed.posts   || [])];
+    if (supaStories.length) state.seed.stories = [...supaStories, ...(state.seed.stories || [])];
+    if (supaEvents.length)  state.seed.events  = [...supaEvents,  ...(state.seed.events  || [])];
+
+    // Charger les vraies conversations
+    const supaConvs = await supaLoadMyConversations();
+    if (supaConvs.length) {
+      conversationsState = [...supaConvs, ...SEED_CONVERSATIONS];
+    }
+
+    supaSubscribe();
+    await supaUpsertProfile();
+
+    if (document.querySelector("#screen-feed.active")) renderFeed();
+    if (document.querySelector("#screen-messages.active")) renderMessages();
+
+    toast("✅ Connecté en temps réel", "success");
+  } catch(e) {
+    console.warn("Supabase init error:", e);
+  }
+}
+
+boot();
+
+
+// ID unique persistant pour cet utilisateur
+function getMyUserId() {
+  let id = localStorage.getItem("passio_uid");
+  if (!id) { id = "u_" + Math.random().toString(36).slice(2, 10); localStorage.setItem("passio_uid", id); }
+  return id;
+}
+const MY_UID = getMyUserId();
+
+// ---- PROFIL ----
+async function supaUpsertProfile() {
+  const prof = currentProfile();
+  if (!prof) return;
+  await supa.from("profiles").upsert({
+    id: MY_UID,
+    username: prof.name || "Passionné",
+    emoji: prof.emoji || "✨",
+    color: prof.color || "#8b5cf6",
+    passion_id: prof.passion || null,
+  }, { onConflict: "id" });
+}
+
+// ---- POSTS ----
+async function supaPublishPost(post) {
+  const prof = currentProfile();
+  await supaUpsertProfile();
+  const { error } = await supa.from("posts").insert({
+    id: post.id,
+    author_id: MY_UID,
+    passion_id: post.passion || null,
+    mood: post.mood || "all",
+    content: post.text || "",
+    media_url: post.image || post.video || null,
+    created_at: new Date(post.createdAt).toISOString(),
+  });
+  if (error) console.warn("Supabase post error:", error.message);
+}
+
+async function supaLoadPosts() {
+  const { data, error } = await supa
+    .from("posts")
+    .select("*, profiles(username, emoji, color, passion_id)")
+    .order("created_at", { ascending: false })
+    .limit(50);
+  if (error || !data) return [];
+  return data.map(r => ({
+    id: r.id,
+    authorId: r.author_id,
+    authorName: r.profiles?.username || "Passionné",
+    authorEmoji: r.profiles?.emoji || "✨",
+    authorColor: r.profiles?.color || "#8b5cf6",
+    passion: r.passion_id || "autre",
+    mood: r.mood || "all",
+    type: "text",
+    text: r.content || "",
+    image: r.media_url || null,
+    createdAt: new Date(r.created_at).getTime(),
+    likes: 0,
+    liked: false,
+    comments: [],
+    fromSupabase: true,
+  }));
+}
+
+// ---- STORIES ----
+async function supaPublishStory(story) {
+  await supaUpsertProfile();
+  await supa.from("stories").insert({
+    id: story.id,
+    author_id: MY_UID,
+    passion_id: story.passion || null,
+    content: story.text || story.content || "",
+    emoji: story.emoji || "✨",
+    created_at: new Date().toISOString(),
+  });
+}
+
+async function supaLoadStories() {
+  const { data, error } = await supa
+    .from("stories")
+    .select("*, profiles(username, emoji, color)")
+    .order("created_at", { ascending: false })
+    .limit(20);
+  if (error || !data) return [];
+  return data.map(r => ({
+    id: r.id,
+    authorId: r.author_id,
+    authorName: r.profiles?.username || "Passionné",
+    authorEmoji: r.profiles?.emoji || "✨",
+    authorColor: r.profiles?.color || "#8b5cf6",
+    passion: r.passion_id,
+    content: r.content || "",
+    emoji: r.emoji || "✨",
+    fromSupabase: true,
+  }));
+}
+
+// ---- EVENTS IRL ----
+async function supaLoadEvents() {
+  const { data, error } = await supa
+    .from("events")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(50);
+  if (error || !data) return [];
+  return data.map(r => ({
+    id: r.id,
+    authorId: r.author_id,
+    title: r.title || "Événement",
+    passion: r.passion_id || "autre",
+    lat: r.lat,
+    lng: r.lng,
+    city: r.city || "",
+    date: r.date_at ? new Date(r.date_at).getTime() : Date.now(),
+    fromSupabase: true,
+  }));
+}
+
+async function supaPublishEvent(event) {
+  await supaUpsertProfile();
+  await supa.from("events").insert({
+    id: event.id || uid(),
+    author_id: MY_UID,
+    title: event.title,
+    passion_id: event.passion || null,
+    lat: event.lat || 46.6,
+    lng: event.lng || 2.5,
+    city: event.city || "",
+    date_at: event.date ? new Date(event.date).toISOString() : new Date().toISOString(),
+  });
+}
+
+// ---- TEMPS RÉEL — écoute les nouveaux posts ----
+function supaSubscribe() {
+  supa.channel("public:posts")
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "posts" }, payload => {
+      const r = payload.new;
+      // Ne pas réafficher son propre post (déjà dans le feed local)
+      if (r.author_id === MY_UID) return;
+      const newPost = {
+        id: r.id,
+        authorId: r.author_id,
+        authorName: "Passionné",
+        authorEmoji: "✨",
+        authorColor: "#8b5cf6",
+        passion: r.passion_id || "autre",
+        mood: r.mood || "all",
+        type: "text",
+        text: r.content || "",
+        image: r.media_url || null,
+        createdAt: new Date(r.created_at).getTime(),
+        likes: 0, liked: false, comments: [],
+        fromSupabase: true,
+      };
+      // Enrichir avec le profil auteur
+      supa.from("profiles").select("username,emoji,color").eq("id", r.author_id).single()
+        .then(({ data }) => {
+          if (data) {
+            newPost.authorName  = data.username;
+            newPost.authorEmoji = data.emoji;
+            newPost.authorColor = data.color;
+          }
+          state.seed.posts.unshift(newPost);
+          if (document.querySelector("#screen-feed.active")) renderFeed();
+          toast(`✨ Nouveau post de ${newPost.authorName}`);
+        });
+    })
+    .subscribe();
+}
+
+// ---- INIT SUPABASE au démarrage ----
+async function supaInit() {
+  try {
+    // Charger les vrais posts en premier
+    const supaPosts  = await supaLoadPosts();
+    const supaStories = await supaLoadStories();
+    const supaEvents  = await supaLoadEvents();
+
+    // Injecter dans le seed (avant le seed local pour les afficher en tête)
+    if (supaPosts.length)   state.seed.posts   = [...supaPosts,   ...(state.seed.posts   || [])];
+    if (supaStories.length) state.seed.stories = [...supaStories, ...(state.seed.stories || [])];
+    if (supaEvents.length)  state.seed.events  = [...supaEvents,  ...(state.seed.events  || [])];
+
+    // S'abonner aux nouveaux posts en temps réel
+    supaSubscribe();
+
+    // Rafraîchir le feed si déjà visible
+    if (document.querySelector("#screen-feed.active")) renderFeed();
+
+  } catch(e) {
+    console.warn("Supabase init error:", e);
+  }
 }
 
 boot();
