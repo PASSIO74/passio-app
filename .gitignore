@@ -1,0 +1,13 @@
+# Docs et archives — non nécessaires pour l'app web
+*.docx
+*.pptx
+*.zip
+*.url
+
+# Dossiers temporaires
+files_extracted/
+apli_extracted/
+
+# OS
+.DS_Store
+Thumbs.db
