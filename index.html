@@ -8823,11 +8823,13 @@ function renderFeed() {
     .filter(p => p.type !== "vlog");
 
   // Filtre strict par passion — aucune exception
+  console.log("[FEED] selPassions=", selPassions, "posts avant filtre=", posts.length, posts.slice(0,5).map(p=>({id:p.id,passion:p.passion,type:p.type})));
   if (selPassions.length > 0) {
     posts = posts.filter(function(p) {
       return selPassions.indexOf(p.passion) !== -1;
     });
   }
+  console.log("[FEED] posts après filtre=", posts.length, posts.slice(0,5).map(p=>({id:p.id,passion:p.passion})));
 
   // Filtre par mood
   if (mood !== "all") {
