@@ -13210,6 +13210,9 @@ function toggleProfileFilter(passionId) {
   } else {
     state.selectedFeedPassions.push(passionId);
   }
+  // DEBUG
+  var dbg = document.getElementById("feedDebug");
+  if (dbg) dbg.textContent = "toggleProfileFilter appelé: " + passionId + " → state=" + JSON.stringify(state.selectedFeedPassions);
   renderFeed();
 }
 
