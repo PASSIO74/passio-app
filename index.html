@@ -12471,17 +12471,13 @@ function buildReels() {
   const seedReels = getSeedReelPosts();
   const userPosts = allFeedPosts();
 
-  // Filtrer par profils sélectionnés (comme le fil)
-  if (!state.selectedProfileIds) state.selectedProfileIds = [];
-  const selectedIds = state.selectedProfileIds;
-  const selectedPassions = selectedIds.map(function(id) {
-    var p = (state.user.profiles || []).find(function(pr) { return pr.id === id; });
-    return p ? p.passion : null;
-  }).filter(Boolean);
+  // Filtrer par passions sélectionnées (comme le fil)
+  if (!state.selectedFeedPassions) state.selectedFeedPassions = [];
+  const selPassions = state.selectedFeedPassions;
 
   const filterByPassion = function(p) {
-    if (selectedPassions.length === 0) return true;
-    return selectedPassions.indexOf(p.passion) !== -1;
+    if (selPassions.length === 0) return true;
+    return selPassions.indexOf(p.passion) !== -1;
   };
   const filterByMood = function(p) { return mood === "all" ? true : p.mood === mood; };
 
