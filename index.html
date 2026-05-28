@@ -8526,7 +8526,15 @@ async function onbDoAuth() {
             if (prof.passions && prof.passions.length) selectedPassions = prof.passions;
           }
         } catch(e) {}
-        return onbFinish();
+        // Lance l'app directement sans vérification des passions
+        state.onboarded = true;
+        saveState();
+        document.getElementById("onboarding").classList.remove("active");
+        document.getElementById("landing").classList.remove("active");
+        try { renderEverything(); } catch(e) {}
+        document.body.classList.add("screen-feed-active");
+        try { if (typeof supaInit === "function") supaInit(); } catch(e) {}
+        return;
       }
     }
     onbNext();
