@@ -5868,9 +5868,10 @@
     </div>
 
     <div class="landing-cta">
-      <button class="btn primary block" onclick="exitLanding()">Entrer dans la bêta →</button>
-      <div style="text-align:center;margin-top:8px;">
-        <button onclick="skipToApp()" style="font-size: 11px; font-weight: 700; padding: 7px 14px; background: var(--accent); border: none; border-radius: 10px; color: #fff; opacity: 0.75; cursor: pointer;">⚡ Accès direct</button>
+      <button class="btn primary block" onclick="exitLanding()" style="font-size:15px;padding:14px;font-weight:800;">Entrer dans la bêta →</button>
+      <div style="display:flex;gap:8px;margin-top:10px;">
+        <button onclick="exitLandingAsAuth('signin')" class="btn primary block" style="flex:1;font-size:13px;padding:11px;">Se connecter</button>
+        <button onclick="exitLandingAsAuth('signup')" class="btn primary block" style="flex:1;font-size:13px;padding:11px;">Créer un compte</button>
       </div>
     </div>
   </div>
@@ -5899,45 +5900,46 @@
   <div id="onboarding" class="onboarding-shell">
 
     <!-- Step 1: Splash -->
-    <div class="onb-step active" data-onb-step="splash">
-      <div class="onb-logo-big"><img id="logoOnb1" alt="PASSIO" /></div>
-      <div class="onb-title">Bienvenue sur PASSIO</div>
-      <p class="onb-text">Le premier réseau social où tu n'es plus un seul profil,<br />mais la somme de tes passions.</p>
-      <div style="margin-top:16px;padding:14px 18px;background:rgba(139,92,246,0.07);border-left:3px solid #8b5cf6;border-radius:0 12px 12px 0;">
-        <p style="font-size:13px;font-style:italic;color:#1e1b4b;line-height:1.5;margin:0 0 6px;">« C'est la passion avec laquelle tu vis ta vie qui détermine l'ampleur de tes réalisations. »</p>
-        <p style="font-size:11px;color:var(--muted);margin:0;">— Jean-Jacques Rousseau</p>
+    <div class="onb-step active" data-onb-step="splash" style="justify-content:flex-start;padding-top:0;">
+      <!-- Logo + branding -->
+      <div style="width:100%;background:linear-gradient(160deg,#6d28d9 0%,#8b5cf6 60%,#a78bfa 100%);padding:48px 24px 36px;text-align:center;border-radius:0 0 32px 32px;margin-bottom:24px;">
+        <div class="onb-logo-big" style="margin-bottom:12px;"><img id="logoOnb1" alt="PASSIO" style="width:72px;height:72px;border-radius:20px;box-shadow:0 8px 32px rgba(0,0,0,0.25);"/></div>
+        <div style="font-size:28px;font-weight:900;color:#fff;letter-spacing:-0.5px;">PASSIO</div>
+        <div style="font-size:13px;color:rgba(255,255,255,0.8);margin-top:6px;">Le réseau social de tes passions</div>
       </div>
-      <div class="onb-footer">
-        <button class="btn primary block" onclick="onbNext()">Commencer →</button>
+
+      <!-- Onglets Se connecter / Créer un compte -->
+      <div style="padding:0 20px;width:100%;box-sizing:border-box;">
+        <div class="onb-auth-toggle" style="margin-bottom:20px;">
+          <button class="onb-auth-tab active" id="authTabSignin" onclick="switchAuthTab('signin')">Se connecter</button>
+          <button class="onb-auth-tab" id="authTabSignup" onclick="switchAuthTab('signup')">Créer un compte</button>
+        </div>
+
+        <div id="authMsg" class="onb-auth-msg"></div>
+
+        <label class="field">
+          <span>Adresse e-mail</span>
+          <input type="email" class="input" id="authEmail" placeholder="toi@exemple.com" autocomplete="email" style="font-size:15px;"/>
+        </label>
+        <label class="field">
+          <span>Mot de passe</span>
+          <input type="password" class="input" id="authPassword" placeholder="••••••••" autocomplete="current-password" minlength="6" style="font-size:15px;"/>
+        </label>
+        <label class="field" id="authPasswordConfirmWrap" style="display:none;">
+          <span>Confirmer le mot de passe</span>
+          <input type="password" class="input" id="authPasswordConfirm" placeholder="••••••••" autocomplete="new-password" style="font-size:15px;"/>
+        </label>
+
+        <div style="display:flex;flex-direction:column;gap:10px;margin-top:8px;">
+          <button class="btn primary block" id="authSubmitBtn" onclick="onbDoAuth()" style="padding:14px;font-size:15px;font-weight:800;">Se connecter</button>
+          <button class="btn ghost block" onclick="onbSkipAuth()" style="font-size:12px;color:var(--muted);border:none;background:none;padding:8px;">Continuer sans compte →</button>
+        </div>
       </div>
     </div>
 
-    <!-- Step 2: Auth (email + password) -->
-    <div class="onb-step" data-onb-step="auth">
-      <div style="font-size:44px;text-align:center;margin-top:20px;">🔑</div>
-      <div class="onb-title" style="font-size:22px;">Ton compte PASSIO</div>
-      <p class="onb-text">Connecte-toi ou crée un compte pour synchroniser ton profil sur tous tes appareils.</p>
-      <div class="onb-auth-toggle">
-        <button class="onb-auth-tab active" id="authTabSignin" onclick="switchAuthTab('signin')">Se connecter</button>
-        <button class="onb-auth-tab" id="authTabSignup" onclick="switchAuthTab('signup')">Créer un compte</button>
-      </div>
-      <div id="authMsg" class="onb-auth-msg"></div>
-      <label class="field">
-        <span>Adresse e-mail</span>
-        <input type="email" class="input" id="authEmail" placeholder="toi@exemple.com" autocomplete="email" />
-      </label>
-      <label class="field">
-        <span>Mot de passe</span>
-        <input type="password" class="input" id="authPassword" placeholder="••••••••" autocomplete="current-password" minlength="6" />
-      </label>
-      <label class="field" id="authPasswordConfirmWrap" style="display:none;">
-        <span>Confirmer le mot de passe</span>
-        <input type="password" class="input" id="authPasswordConfirm" placeholder="••••••••" autocomplete="new-password" />
-      </label>
-      <div class="onb-footer" style="flex-direction:column;gap:8px;">
-        <button class="btn primary block" id="authSubmitBtn" onclick="onbDoAuth()">Se connecter</button>
-        <button class="btn ghost block" onclick="onbSkipAuth()" style="font-size:12px;opacity:.7;">Continuer sans compte (mode local)</button>
-      </div>
+    <!-- Step 2: Auth (kept as alias, hidden) -->
+    <div class="onb-step" data-onb-step="auth" style="display:none!important;">
+      <div id="authMsg2"></div>
     </div>
 
     <!-- Step 3: Age gate -->
@@ -6018,6 +6020,7 @@
         <button class="btn ghost" onclick="event.stopPropagation();toggleDevPanel();goTo('profiles')">Mon profil</button>
         <button class="btn ghost" onclick="event.stopPropagation();toggleDevPanel();openEditMainProfile()">Modifier le profil</button>
         <button class="btn ghost" onclick="event.stopPropagation();toggleDevPanel();goTo('wallet')">Mon Wallet</button>
+        <button class="btn ghost" onclick="event.stopPropagation();resetOnboarding()" style="font-size:12px;">🔄 Voir l'onboarding</button>
       </div>
     </div>
 
@@ -6285,7 +6288,7 @@
           <div class="section-title" style="margin-top:14px;font-size:13px;">Bilan pratique (optionnel)</div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
             <label class="field"><span>Budget total</span>
-              <input type="text" class="input" id="vlogBudget" placeholder="Ex: 1 200 €" maxlength="40" /></label>
+              <input type="text" class="input" id="vlogBudget" placeholder="Ex: 1 200 💎 Passia" maxlength="40" /></label>
             <label class="field"><span>Transport</span>
               <input type="text" class="input" id="vlogTransport" placeholder="Ex: train + vélo" maxlength="40" /></label>
           </div>
@@ -6389,6 +6392,8 @@
         <!-- Zone résultats / accueil -->
         <div id="aiResults">
           <div id="aiHome">
+
+            <div id="aiHistoryBox" style="display:none;margin-bottom:14px;"></div>
 
             <!-- Section 1 : dans l'app -->
             <div class="ai-home-section-title">Dans PASSIO</div>
@@ -6554,7 +6559,14 @@
         <button class="pill" data-irlfilter="joined">Inscrit</button>
       </div>
 
-      <div id="eventList"></div>
+      <div style="display:flex;align-items:center;gap:8px;padding:4px 0 8px;">
+  <div style="display:flex;align-items:center;gap:6px;flex:1;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:8px 12px;">
+    <span style="font-size:14px;">🔍</span>
+    <input id="irlCitySearch" type="text" placeholder="Rechercher une ville, un événement…" oninput="filterIrlByCity()" style="border:none;background:transparent;font-size:13px;color:var(--text);outline:none;flex:1;"/>
+  </div>
+</div>
+<div id="irlSearchEmpty" style="display:none;text-align:center;padding:24px;color:var(--muted);font-size:13px;">Aucun événement trouvé pour cette recherche.</div>
+<div id="eventList"></div>
     </section>
 
     <!-- ===== SCREEN: MESSAGES / MESSAGERIE ===== -->
@@ -7081,7 +7093,10 @@
     <div class="conv-fp-head" id="convFpHead"></div>
     <div class="conv-fp-thread" id="convFpThread"></div>
     <div class="conv-fp-input">
-      <input type="text" id="convFpInput" placeholder="Écris un message…" />
+      <label class="conv-fp-photo-btn" title="Envoyer une photo" style="display:flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:10px;border:1px solid var(--border);background:var(--bg-card);cursor:pointer;font-size:18px;flex-shrink:0;">
+          <input type="file" id="convFpPhotoFile" accept="image/*" style="display:none" onchange="attachMsgPhoto(this)"/>📷
+        </label>
+        <input type="text" id="convFpInput" placeholder="Écris un message…" />
       <button id="convFpSendBtn">Envoyer</button>
     </div>
   </div>
@@ -7949,7 +7964,7 @@ function goTo(screen) {
   if (screen === "feed")     renderFeed();
   if (screen === "profiles") renderProfilesScreen();
   if (screen === "studio")   renderStudio();
-  if (screen === "explore")  renderExplorer();
+  if (screen === "explore")  { renderExplorer(); setTimeout(renderAiHistory, 50); }
   if (screen === "irl")      renderIRL();
   if (screen === "wallet")   renderWallet();
   if (screen === "messages") renderMessages();
@@ -8285,7 +8300,7 @@ document.addEventListener("click", (e) => {
 
 // ======== ONBOARDING ========
 let onbStepIdx = 0;
-const onbSteps = ["splash", "auth", "age", "name", "passions"];
+const onbSteps = ["splash", "age", "name", "passions"];
 let selectedPassions = [];
 
 function showOnbStep(name) {
@@ -8716,6 +8731,17 @@ function renderFeed() {
   }
 
   renderProfileStrip();
+  // Render profile chips
+  (function() {
+    var chipsEl = document.getElementById("profileFeedChips");
+    if (!chipsEl) return;
+    var profs = state.user.profiles || [];
+    chipsEl.innerHTML = profs.map(function(p) {
+      var isSel = !(state.selectedProfileIds && state.selectedProfileIds.length) || (state.selectedProfileIds||[]).includes(p.id);
+      var btnStyle = 'display:flex;align-items:center;gap:5px;padding:5px 10px;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;border:1.5px solid ' + (isSel ? 'var(--accent)' : 'var(--border)') + ';background:' + (isSel ? 'rgba(139,92,246,0.12)' : 'var(--bg-card)') + ';color:' + (isSel ? 'var(--accent)' : 'var(--muted)') + ';';
+      return '<button onclick="toggleProfileFilter(\'' + p.id + '\')" style="' + btnStyle + '">' + p.emoji + ' ' + escapeHtml(p.name) + '</button>';
+    }).join("") + (profs.length > 1 ? '<button onclick="selectAllProfiles()" style="padding:5px 10px;border-radius:20px;border:1.5px solid var(--border);background:var(--bg-card);font-size:11px;font-weight:600;cursor:pointer;color:var(--muted);white-space:nowrap;">Tous</button>' : "");
+  })();
   renderStories();
 
   if (posts.length === 0) {
@@ -10599,7 +10625,7 @@ const PASSIA_PASSES = [
   {
     id: "pass_annual",
     title: "Pass Passion Annuel",
-    badge: "Économise 30 €",
+    badge: "Économise 30 💎 Passia",
     price: 89.00,
     period: "/ an",
     monthlyPassia: 200, // 2400 sur l'année
@@ -11314,12 +11340,18 @@ function openConversation(convId) {
 function renderConvFpThread(c, displayName) {
   const thread = document.getElementById("convFpThread");
   if (!thread) return;
-  thread.innerHTML = c.messages.map(m => {
+  const msgs = c.messages || [];
+  thread.innerHTML = msgs.map((m, i) => {
     const isMe = m.from === "me";
     const senderName = isMe ? "" : (m.fromName || displayName || "");
+    const isLastMe = isMe && i === msgs.length - 1;
+    const imgHtml = m.img ? `<img src="${m.img}" style="max-width:220px;max-height:200px;border-radius:10px;display:block;margin-bottom:4px;" />` : "";
+    const readReceipt = isLastMe ? `<span style="font-size:9px;color:var(--accent);margin-left:4px;">✓✓ Vu</span>` : "";
+    const timeHtml = m.at ? `<span class="conv-bubble-time">${fmtTime(m.at)}${readReceipt}</span>` : "";
     return `<div class="conv-bubble-wrap ${isMe ? "me" : "them"}">
       ${!isMe && senderName ? `<span class="conv-sender-name">${escapeHtml(senderName)}</span>` : ""}
-      <div class="conv-bubble ${isMe ? "me" : "them"}">${escapeHtml(m.text)}</div>
+      <div class="conv-bubble ${isMe ? "me" : "them"}">${imgHtml}${m.text ? escapeHtml(m.text) : ""}</div>
+      ${timeHtml}
     </div>`;
   }).join("");
   thread.scrollTop = thread.scrollHeight;
@@ -14030,6 +14062,7 @@ function aiGenerateResponse(query) {
 function sendAIQuery(forceQuery) {
   var inp = document.getElementById("aiInput");
   var query = (forceQuery || (inp ? inp.value : "")).trim();
+  if (query && query.trim()) saveAiHistory(query.trim());
   if (!query) return;
   if (inp) inp.value = "";
 
@@ -14690,7 +14723,7 @@ function renderIRL() {
     const priceTag = e.price !== undefined && e.price !== null && e.price !== "" ? `<span class="pill" style="padding:2px 7px;font-size:10px;">${e.price == 0 ? "Gratuit 🎉" : e.price + " 💎 Passia"}</span>` : "";
     const typeTag = e.eventType ? `<span class="pill" style="padding:2px 7px;font-size:10px;">${e.eventType}</span>` : "";
     const spotsTag = e.maxAttendees ? `<span style="font-size:10px;color:var(--muted);">${(e.attendees||[]).length}/${e.maxAttendees} places</span>` : "";
-    return `<div class="event-card" onclick="openEventDetails('${e.id}')">
+    return `<div class="event-card" data-city="${escapeHtml((e.city||'').toLowerCase())}" data-title="${escapeHtml((e.title||'').toLowerCase())}" onclick="openEventDetails('${e.id}')">
       <div style="display:flex;gap:10px;">
         <div class="event-date-block">
           <div class="event-date-day">${d.day}</div>
@@ -16245,6 +16278,124 @@ async function supaInit() {
   } catch(e) { console.warn("supaInit error:", e); }
 }
 
+
+// ===== NOUVELLES FONCTIONNALITÉS =====
+
+// Filtre ville IRL
+function filterIrlByCity() {
+  var q = ((document.getElementById("irlCitySearch")||{}).value||"").trim().toLowerCase();
+  var empty = document.getElementById("irlSearchEmpty");
+  var visible = 0;
+  document.querySelectorAll("#eventList .event-card").forEach(function(card) {
+    var city = (card.getAttribute("data-city")||"").toLowerCase();
+    var title = (card.getAttribute("data-title")||"").toLowerCase();
+    var show = !q || city.includes(q) || title.includes(q);
+    card.style.display = show ? "" : "none";
+    if (show) visible++;
+  });
+  if (empty) empty.style.display = (!q || visible > 0) ? "none" : "block";
+}
+
+// Historique IA
+function getAiHistory() {
+  try { return JSON.parse(localStorage.getItem("passio_ai_history")||"[]"); } catch(e) { return []; }
+}
+function saveAiHistory(q) {
+  var h = getAiHistory().filter(function(x){ return x !== q; });
+  h.unshift(q); h = h.slice(0,5);
+  localStorage.setItem("passio_ai_history", JSON.stringify(h));
+}
+function clearAiHistory() { localStorage.removeItem("passio_ai_history"); }
+function renderAiHistory() {
+  var box = document.getElementById("aiHistoryBox");
+  if (!box) return;
+  var h = getAiHistory();
+  if (!h.length) { box.style.display = "none"; return; }
+  box.style.display = "block";
+  box.innerHTML = "";
+  var title = document.createElement("div");
+  title.style.cssText = "font-size:11px;font-weight:800;color:var(--muted);margin-bottom:8px;text-transform:uppercase;";
+  title.textContent = "🕐 Recherches récentes";
+  box.appendChild(title);
+  var row = document.createElement("div");
+  row.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;";
+  h.forEach(function(q) {
+    var btn = document.createElement("button");
+    btn.className = "pill";
+    btn.style.cssText = "padding:6px 10px;font-size:12px;cursor:pointer;";
+    btn.textContent = q;
+    btn.onclick = function(){ sendAIQuery(q); };
+    row.appendChild(btn);
+  });
+  var clearBtn = document.createElement("button");
+  clearBtn.style.cssText = "font-size:10px;color:var(--muted);background:none;border:none;cursor:pointer;padding:6px;";
+  clearBtn.textContent = "Effacer";
+  clearBtn.onclick = function(){ clearAiHistory(); renderAiHistory(); };
+  row.appendChild(clearBtn);
+  box.appendChild(row);
+}
+
+// Photo dans conversations
+function attachMsgPhoto(input) {
+  var file = input.files && input.files[0];
+  if (!file) return;
+  var fullpage = document.getElementById("conv-fullpage");
+  if (!fullpage) return;
+  var cid = fullpage.getAttribute("data-conv-id");
+  if (!cid) return;
+  var convs = loadConversations();
+  var conv = convs.find(function(c){ return c.id === cid; });
+  if (!conv) return;
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    if (!conv.messages) conv.messages = [];
+    conv.messages.push({ from:"me", text:"", img: e.target.result, at: Date.now() });
+    conv.lastAt = Date.now();
+    saveConversations(convs);
+    renderConvFpThread(conv, conv.userName || conv.name || "Conversation");
+  };
+  reader.readAsDataURL(file);
+}
+
+// Profil chips dans feed
+function toggleProfileFilter(profileId) {
+  if (!state.selectedProfileIds) state.selectedProfileIds = [];
+  var ids = state.selectedProfileIds;
+  var idx = ids.indexOf(profileId);
+  if (idx >= 0) { ids.splice(idx,1); } else { ids.push(profileId); }
+  renderFeed();
+}
+function selectAllProfiles() {
+  state.selectedProfileIds = [];
+  renderFeed();
+}
+
+
+function resetOnboarding() {
+  toggleDevPanel();
+  state.onboarded = false;
+  state.landingSeen = false;
+  saveState();
+  // Cacher l'app, montrer l'onboarding
+  document.body.classList.remove("screen-feed-active");
+  document.getElementById("appShell").classList.remove("active");
+  document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
+  document.getElementById("onboarding").classList.add("active");
+  document.getElementById("landing").classList.remove("active");
+  onbStepIdx = 0;
+  showOnbStep(onbSteps[0]);
+}
+
+function exitLandingAsAuth(mode) {
+  document.getElementById("landing").classList.remove("active");
+  state.landingSeen = true;
+  saveState();
+  document.getElementById("onboarding").classList.add("active");
+  onbStepIdx = 0;
+  showOnbStep(onbSteps[0]);
+  // Pré-sélectionner l'onglet souhaité
+  setTimeout(function() { switchAuthTab(mode); }, 50);
+}
 boot().catch(e => console.error("Boot error:", e));
 </script>
 

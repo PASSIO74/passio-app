@@ -7,6 +7,10 @@
 # Dossiers temporaires
 files_extracted/
 apli_extracted/
+deploy/
+
+# Netlify cache
+.netlify/
 
 # OS
 .DS_Store
