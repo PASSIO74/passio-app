@@ -13270,11 +13270,17 @@ function toggleProfileFilter(passionId) {
   } else {
     state.selectedFeedPassions.push(passionId);
   }
+  saveState();
   renderFeed();
+  // Scroll vers le fil pour montrer le résultat
+  var appMain = document.getElementById("appMain");
+  var banner = document.getElementById("feedFilterBanner");
+  if (appMain && banner) setTimeout(function() { banner.scrollIntoView({ behavior: "smooth", block: "start" }); }, 80);
 }
 
 function selectAllProfiles() {
   state.selectedFeedPassions = [];
+  saveState();
   renderFeed();
 }
 
