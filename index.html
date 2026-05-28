@@ -8815,23 +8815,17 @@ function allFeedPosts() {
 function renderFeed() {
   const list = $("#feedList");
   const mood = state.currentMood;
-  if (!state.selectedProfileIds) state.selectedProfileIds = [];
-  const selectedIds = state.selectedProfileIds;
-
-  // Récupérer les passions des profils sélectionnés
-  const selectedPassions = selectedIds.map(function(id) {
-    var p = (state.user.profiles || []).find(function(pr) { return pr.id === id; });
-    return p ? p.passion : null;
-  }).filter(Boolean);
+  // selectedFeedPassions stores passion IDs directly (e.g. ["musique","photo"])
+  if (!state.selectedFeedPassions) state.selectedFeedPassions = [];
+  const selPassions = state.selectedFeedPassions;
 
   let posts = allFeedPosts()
     .filter(p => p.type !== "vlog");
 
-  // Filtre par profils sélectionnés (par passion)
-  if (selectedPassions.length > 0) {
+  // Filtre strict par passion — aucune exception
+  if (selPassions.length > 0) {
     posts = posts.filter(function(p) {
-      // Toujours montrer si la passion du post correspond à un profil sélectionné
-      return selectedPassions.indexOf(p.passion) !== -1;
+      return selPassions.indexOf(p.passion) !== -1;
     });
   }
 
@@ -8846,14 +8840,13 @@ function renderFeed() {
     var chipsEl = document.getElementById("profileFeedChips");
     if (!chipsEl) return;
     var profs = state.user.profiles || [];
-    var selIds = state.selectedProfileIds || [];
-    var allActive = selIds.length === 0;
+    var allActive = selPassions.length === 0;
     var tousStyle = 'padding:5px 12px;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;border:1.5px solid var(--accent);background:' + (allActive ? 'var(--accent)' : 'transparent') + ';color:' + (allActive ? '#fff' : 'var(--accent)') + ';';
     var tousBtn = '<button onclick="selectAllProfiles()" style="' + tousStyle + '">Tous</button>';
     var profBtns = profs.map(function(p) {
-      var isSel = selIds.includes(p.id);
+      var isSel = selPassions.indexOf(p.passion) !== -1;
       var btnStyle = 'display:flex;align-items:center;gap:5px;padding:5px 10px;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;border:1.5px solid ' + (isSel ? 'var(--accent)' : 'var(--border)') + ';background:' + (isSel ? 'var(--accent)' : 'transparent') + ';color:' + (isSel ? '#fff' : 'var(--muted)') + ';';
-      return '<button onclick="toggleProfileFilter(\'' + p.id + '\')" style="' + btnStyle + '">' + p.emoji + ' ' + escapeHtml(p.name) + '</button>';
+      return '<button onclick="toggleProfileFilter(\'' + p.passion + '\')" style="' + btnStyle + '">' + p.emoji + ' ' + escapeHtml(p.name) + '</button>';
     }).join("");
     chipsEl.innerHTML = tousBtn + profBtns;
   })();
