@@ -8515,15 +8515,7 @@ async function onbDoAuth() {
     if (data?.session?.user) {
       MY_UID = data.session.user.id;
       localStorage.setItem("passio_uid", MY_UID);
-      if (_authMode === "signin") {
-        // Compte existant : même logique que boot() avec session active
-        state.onboarded = true;
-        saveState();
-        try { renderEverything(); } catch(e) {}
-        document.body.classList.add("screen-feed-active");
-        try { supaInit(); } catch(e) {}
-        return;
-      }
+
     }
     onbNext();
   } catch(e) {
