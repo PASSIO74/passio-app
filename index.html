@@ -13241,6 +13241,9 @@ function renderProfileStrip() {
   const profiles = state.user.profiles || [];
   if (profiles.length === 0) { box.innerHTML = ""; return; }
   if (!state.selectedFeedPassions) state.selectedFeedPassions = [];
+  var hasFilter = state.selectedFeedPassions.length > 0;
+  box.classList.toggle("has-filter", hasFilter);
+
   var tilesHTML = profiles.map(function(p) {
     const passion = passionById(p.passion);
     const isSelected = state.selectedFeedPassions.indexOf(p.passion) !== -1;
@@ -13254,7 +13257,7 @@ function renderProfileStrip() {
       ? '<img class="profile-tile-photo" src="' + photoUrl + '" alt="' + label + '" onerror="this.onerror=null;this.src=\'' + fallback + '\'"/><span class="profile-tile-emoji-badge">' + p.emoji + '</span>'
       : p.emoji;
     return '<div class="profile-tile ' + (isSelected ? "active" : "") + '" onclick="toggleProfileFilter(\'' + p.passion + '\')" title="' + label + '">\
-      <div class="profile-tile-avatar" style="' + (isSelected ? '' : 'opacity:0.5;') + '">' + avatarContent + '</div>\
+      <div class="profile-tile-avatar">' + avatarContent + '</div>\
       <div class="profile-tile-label">' + label + '</div>\
     </div>';
   }).join("");
