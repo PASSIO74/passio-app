@@ -13706,16 +13706,15 @@ function publishPost() {
   grantReward(kind);
   if (studioMood === "creation") bumpQuest("publish");
 
-  // Carnet → push CDV ; autres types → push Fil
+  // Navigation immédiate, sauvegarde en arrière-plan
   if (studioType === "vlog") {
-    pushNotification(`📔 Ton carnet <b>${escapeHtml(post.destination || "voyage")}</b> est en ligne`, "📔");
-    saveState();
     goTo("cdv");
+    pushNotification(`📔 Ton carnet <b>${escapeHtml(post.destination || "voyage")}</b> est en ligne`, "📔");
   } else {
-    pushNotification(`✨ Ton post <b>${escapeHtml(passionById(passion).label)}</b> est en ligne`, "✨");
-    saveState();
     goTo("feed");
+    pushNotification(`✨ Ton post <b>${escapeHtml(passionById(passion).label)}</b> est en ligne`, "✨");
   }
+  setTimeout(() => saveState(), 0);
 }
 
 function saveDraft() {
