@@ -8926,7 +8926,20 @@ function renderFeed() {
 
   if (posts.length === 0) {
     list.innerHTML = "";
-    $("#feedEmpty").style.display = "block";
+    var emptyEl = $("#feedEmpty");
+    if (emptyEl) {
+      var emptyTitle = emptyEl.querySelector(".empty-title");
+      var emptyText = emptyEl.querySelector(".empty-text");
+      if (selPassions.length > 0) {
+        var passionNames = selPassions.map(function(pid){ return passionById(pid).label; }).join(" / ");
+        if (emptyTitle) emptyTitle.textContent = "Aucun post en " + passionNames;
+        if (emptyText) emptyText.textContent = "Sois le premier à publier dans cette passion ou sélectionne un autre profil.";
+      } else {
+        if (emptyTitle) emptyTitle.textContent = "Aucun post pour ce mood";
+        if (emptyText) emptyText.textContent = "Change de mood ou crée le premier contenu.";
+      }
+      emptyEl.style.display = "block";
+    }
     return;
   }
   $("#feedEmpty").style.display = "none";
