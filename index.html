@@ -8849,7 +8849,8 @@ function renderFeed() {
     chipsEl.innerHTML =
         (profs.length > 1 ? '<button onclick="selectAllProfiles()" style="display:flex;align-items:center;gap:5px;padding:5px 12px;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;border:1.5px solid ' + (!state.selectedProfileIds || !state.selectedProfileIds.length ? 'var(--accent)' : 'var(--border)') + ';background:' + (!state.selectedProfileIds || !state.selectedProfileIds.length ? 'var(--accent)' : 'var(--bg-card)') + ';color:' + (!state.selectedProfileIds || !state.selectedProfileIds.length ? '#fff' : 'var(--muted)') + ';">Tous</button>' : '') +
         profs.map(function(p) {
-          var isSel = (state.selectedProfileIds||[]).includes(p.id);
+          var noneSelected = !state.selectedProfileIds || state.selectedProfileIds.length === 0;
+          var isSel = !noneSelected && (state.selectedProfileIds||[]).includes(p.id);
           var btnStyle = 'display:flex;align-items:center;gap:5px;padding:5px 12px;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;border:1.5px solid ' + (isSel ? 'var(--accent)' : 'var(--border)') + ';background:' + (isSel ? 'var(--accent)' : 'var(--bg-card)') + ';color:' + (isSel ? '#fff' : 'var(--muted)') + ';';
           return '<button onclick="toggleProfileFilter('' + p.id + '')" style="' + btnStyle + '">' + p.emoji + ' ' + escapeHtml(p.name) + '</button>';
         }).join()");
@@ -13204,12 +13205,13 @@ function renderProfileStrip() {
 
 function toggleProfileFilter(profileId) {
   if (!state.selectedProfileIds) state.selectedProfileIds = [];
-  // Clic sur le profil déjà actif → retour à tout
-  if (state.selectedProfileIds.length === 1 && state.selectedProfileIds[0] === profileId) {
-    state.selectedProfileIds = [];
+  var idx = state.selectedProfileIds.indexOf(profileId);
+  if (idx !== -1) {
+    // Déjà sélectionné → désélectionne
+    state.selectedProfileIds.splice(idx, 1);
   } else {
-    // Sélection exclusive : un seul profil à la fois
-    state.selectedProfileIds = [profileId];
+    // Ajoute à la sélection (multi-passion)
+    state.selectedProfileIds.push(profileId);
     state.user.currentProfileId = profileId;
   }
   renderFeed();
