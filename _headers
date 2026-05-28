@@ -1,0 +1,14 @@
+# sw.js : jamais en cache HTTP → le navigateur vérifie toujours la nouvelle version
+/sw.js
+  Cache-Control: no-store, no-cache, must-revalidate
+
+# manifest.json : idem
+/manifest.json
+  Cache-Control: no-store, no-cache, must-revalidate
+
+# index.html : toujours frais
+/index.html
+  Cache-Control: no-store, no-cache, must-revalidate
+
+/
+  Cache-Control: no-store, no-cache, must-revalidate

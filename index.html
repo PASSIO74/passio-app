@@ -19,6 +19,25 @@
   <link rel="apple-touch-icon" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='gA' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%23ddd6fe'/><stop offset='1' stop-color='%23a78bfa'/></linearGradient></defs><rect width='100' height='100' rx='22' fill='url(%23gA)'/><path d='M24 24 L76 24 L24 76' stroke='%23ffffff' stroke-width='13' stroke-linecap='round' stroke-linejoin='round' fill='none'/><path d='M76 24 L76 76' stroke='%234c1d95' stroke-width='13' stroke-linecap='round' fill='none'/></svg>" />
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='gA' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%23ddd6fe'/><stop offset='1' stop-color='%23a78bfa'/></linearGradient></defs><rect width='100' height='100' rx='22' fill='url(%23gA)'/><path d='M24 24 L76 24 L24 76' stroke='%23ffffff' stroke-width='13' stroke-linecap='round' stroke-linejoin='round' fill='none'/><path d='M76 24 L76 76' stroke='%234c1d95' stroke-width='13' stroke-linecap='round' fill='none'/></svg>" />
 
+  <!-- Capture le prompt natif d'installation le plus tôt possible -->
+  <script>
+    window._pwaPrompt = null;
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      window._pwaPrompt = e;
+      // Si l'overlay est déjà ouvert sur la vue desktop → bascule en mode 1-clic
+      const ov = document.getElementById('pwa-overlay');
+      if (ov && ov.style.display !== 'none') {
+        const btn = document.getElementById('pwa-desktop-install-btn');
+        if (btn) {
+          btn.textContent = '📲  Installer PASSIO';
+          btn.disabled = false;
+          btn.style.opacity = '1';
+        }
+      }
+    });
+  </script>
+
   <!-- Service Worker registration + auto-update -->
   <script>
     if ('serviceWorker' in navigator) {
@@ -31,6 +50,10 @@
           // Quand un nouveau SW prend le contrôle → recharge la page
           navigator.serviceWorker.addEventListener('controllerchange', () => {
             window.location.reload();
+          });
+          // Message SW_UPDATED envoyé par le nouveau SW → recharge
+          navigator.serviceWorker.addEventListener('message', e => {
+            if (e.data && e.data.type === 'SW_UPDATED') window.location.reload();
           });
           // Active le SW en attente immédiatement
           const activate = (sw) => sw && sw.postMessage({ type: 'SKIP_WAITING' });
@@ -5883,68 +5906,92 @@
   <!-- ============ LANDING / PITCH ============ -->
   <div id="landing" class="landing">
 
-    <!-- En-tête -->
     <div class="landing-header">
-      <div style="display:flex;align-items:center;gap:9px;">
+      <div style="display:flex;align-items:center;gap:10px;">
         <div class="landing-logo"><img id="logoLanding" alt="PASSIO" /></div>
-        <div class="brand-name" style="font-size:16px;font-weight:900;">PASSIO</div>
+        <div class="brand-name" style="font-size:15px;">PASSIO</div>
       </div>
       <div class="landing-badge">Beta privée</div>
     </div>
 
-    <!-- Hero -->
     <div class="landing-hero">
       <div class="landing-kicker">Bienvenue</div>
-      <h1 class="landing-title">Le réseau pensé pour<br/><span>tes passions</span></h1>
+      <h1 class="landing-title">Le premier réseau<br/>pensé pour<br/><span>tes passions.</span></h1>
       <p class="landing-subtitle">Crée · Partage · Rencontre</p>
     </div>
 
-    <!-- Grille 3×3 des fonctionnalités -->
-    <div class="landing-grid">
-      <div class="landing-grid-item">
-        <div class="landing-grid-emoji">🌈</div>
-        <div class="landing-grid-label">Multi-profils</div>
+    <div class="landing-pillars">
+      <div class="landing-pillar">
+        <div class="landing-pillar-emoji">🌈</div>
+        <div>
+          <div class="landing-pillar-title">Plusieurs toi, plusieurs passions</div>
+          <div class="landing-pillar-text">Un profil pour chaque univers : skate, lecture, cuisine, photo… Chacun avec son espace et sa communauté.</div>
+        </div>
       </div>
-      <div class="landing-grid-item">
-        <div class="landing-grid-emoji">🎨</div>
-        <div class="landing-grid-label">Fil sur-mesure</div>
+      <div class="landing-pillar">
+        <div class="landing-pillar-emoji">🎨</div>
+        <div>
+          <div class="landing-pillar-title">Choisis ton humeur du moment</div>
+          <div class="landing-pillar-text">Envie d'apprendre, de créer, de te détendre ? Le fil s'adapte à toi, à ton rythme.</div>
+        </div>
       </div>
-      <div class="landing-grid-item">
-        <div class="landing-grid-emoji">🎙️</div>
-        <div class="landing-grid-label">Studio créa</div>
+      <div class="landing-pillar">
+        <div class="landing-pillar-emoji">🎙</div>
+        <div>
+          <div class="landing-pillar-title">Crée tout ce que tu veux</div>
+          <div class="landing-pillar-text">Texte, photo, vidéo, podcast, vidéos courtes, tout est intégré. Pas besoin d'outil externe.</div>
+        </div>
       </div>
-      <div class="landing-grid-item">
-        <div class="landing-grid-emoji">📔</div>
-        <div class="landing-grid-label">Carnets voyage</div>
+      <div class="landing-pillar">
+        <div class="landing-pillar-emoji">📔</div>
+        <div>
+          <div class="landing-pillar-title">Documente tes voyages</div>
+          <div class="landing-pillar-text">Raconte tes périples avec étapes, photos, conseils et carte. Un format unique pour inspirer et organiser.</div>
+        </div>
       </div>
-      <div class="landing-grid-item">
-        <div class="landing-grid-emoji">🤝</div>
-        <div class="landing-grid-label">Events IRL</div>
+      <div class="landing-pillar">
+        <div class="landing-pillar-emoji">🤝</div>
+        <div>
+          <div class="landing-pillar-title">Retrouvez-vous en vrai</div>
+          <div class="landing-pillar-text">Skate jam, atelier céramique, book club, dégustation : retrouve les événements près de chez toi.</div>
+        </div>
       </div>
-      <div class="landing-grid-item">
-        <div class="landing-grid-emoji">💬</div>
-        <div class="landing-grid-label">Messagerie</div>
+      <div class="landing-pillar">
+        <div class="landing-pillar-emoji">💬</div>
+        <div>
+          <div class="landing-pillar-title">Discute avec tes communautés</div>
+          <div class="landing-pillar-text">Conversations privées par passion. Organise une sortie, pose une question, partage entre passionnés.</div>
+        </div>
       </div>
-      <div class="landing-grid-item">
-        <div class="landing-grid-emoji">💎</div>
-        <div class="landing-grid-label">Soutien créa</div>
+      <div class="landing-pillar">
+        <div class="landing-pillar-emoji">💎</div>
+        <div>
+          <div class="landing-pillar-title">Soutiens ceux qui t'inspirent</div>
+          <div class="landing-pillar-text">Envoie des Passia à un créateur, paye un cours en visio, réserve une expérience. L'argent va vraiment à eux.</div>
+        </div>
       </div>
-      <div class="landing-grid-item">
-        <div class="landing-grid-emoji">⛓️</div>
-        <div class="landing-grid-label">Monnaie Passia</div>
+      <div class="landing-pillar">
+        <div class="landing-pillar-emoji">⛓</div>
+        <div>
+          <div class="landing-pillar-title">Grandis avec la communauté</div>
+          <div class="landing-pillar-text">Ton Passia deviendra une vraie monnaie. Plus la communauté grandit, plus elle gagne de valeur.</div>
+        </div>
       </div>
-      <div class="landing-grid-item">
-        <div class="landing-grid-emoji">🛡️</div>
-        <div class="landing-grid-label">Ton rythme</div>
+      <div class="landing-pillar">
+        <div class="landing-pillar-emoji">🛡</div>
+        <div>
+          <div class="landing-pillar-title">Tu décides du rythme</div>
+          <div class="landing-pillar-text">Tu choisis quand et combien de temps tu utilises l'app. Notifications respectueuses, temps maîtrisé, modération bienveillante.</div>
+        </div>
       </div>
     </div>
 
-    <!-- CTA -->
     <div class="landing-cta">
       <div style="display:flex;gap:8px;">
         <button onclick="exitLandingAsAuth('signin')" class="btn primary block" style="flex:1;font-size:15px;padding:14px;font-weight:800;">Se connecter</button>
         <button onclick="exitLandingAsAuth('signup')" class="btn primary block" style="flex:1;font-size:15px;padding:14px;font-weight:800;">Créer un compte</button>
       </div>
+      <button onclick="pwaShowOverlay()" class="btn primary block" style="margin-top:10px;font-size:15px;padding:14px;font-weight:800;">📲 Installer l'application</button>
     </div>
 
   </div>
@@ -16474,60 +16521,72 @@ function exitLandingAsAuth(mode) {
 boot().catch(e => console.error("Boot error:", e));
 
 // ======== PWA INSTALL OVERLAY ========
-let _pwaPrompt = null;
-const _pwaKey  = "passio_pwa_dismissed";
-const _isIOS   = /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
-const _isStandalone = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone;
+const _ua        = navigator.userAgent;
+const _isIOS     = /iphone|ipad|ipod/i.test(_ua) && !window.MSStream;
+const _isAndroid = /android/i.test(_ua);
+const _isSafari  = /^((?!chrome|android).)*safari/i.test(_ua);
+const _isChrome  = /chrome|chromium/i.test(_ua) && !/edge|opr/i.test(_ua);
+const _isEdge    = /edg(e|\/)/i.test(_ua);
+const _isMobile  = _isIOS || _isAndroid;
 
-// Capture le prompt natif Android/Chrome/Edge
-window.addEventListener("beforeinstallprompt", (e) => {
-  e.preventDefault();
-  _pwaPrompt = e;
-});
-
-// Afficher l'overlay dès le chargement (si pas déjà installé)
-window.addEventListener("load", () => {
-  if (_isStandalone) return; // déjà installée → rien
-  const ts = localStorage.getItem(_pwaKey);
-  if (ts && Date.now() - parseInt(ts) < 3 * 86400000) return; // snooze 3 jours
-  setTimeout(pwaShowOverlay, 400);
-});
+function _pwaShowView(id) {
+  ["pwa-view-direct","pwa-view-ios","pwa-view-desktop","pwa-view-android-manual","pwa-view-unsupported"]
+    .forEach(v => { const el = document.getElementById(v); if (el) el.style.display = v===id ? "block" : "none"; });
+}
 
 function pwaShowOverlay() {
-  if (_isStandalone) return;
   const ov = document.getElementById("pwa-overlay");
   if (!ov) return;
-
-  // Injecter le logo au moment de l'affichage
   const lp = document.getElementById("pwaLogoImg");
   if (lp) lp.src = LOGO_SRC;
 
   if (_isIOS) {
-    // iOS : montrer les instructions
-    document.getElementById("pwa-default-view").style.display = "none";
-    document.getElementById("pwa-ios-view").style.display     = "block";
+    _pwaShowView("pwa-view-ios");
+  } else if (_isAndroid) {
+    if (window._pwaPrompt) {
+      _pwaShowView("pwa-view-direct");
+    } else {
+      _pwaShowView("pwa-view-android-manual");
+    }
+  } else {
+    // Desktop : on utilise le prompt s'il est dispo, sinon on attend 3s puis fallback
+    _pwaShowView("pwa-view-desktop");
+    const btn = document.getElementById("pwa-desktop-install-btn");
+    const fallback = document.getElementById("pwa-desktop-fallback");
+    if (window._pwaPrompt) {
+      btn.textContent = "📲  Installer PASSIO";
+      btn.disabled = false;
+      btn.style.opacity = "1";
+    } else {
+      btn.innerHTML = "⏳&nbsp;&nbsp;Préparation…";
+      btn.disabled = true;
+      btn.style.opacity = "0.5";
+      setTimeout(() => {
+        if (window._pwaPrompt) {
+          btn.textContent = "📲  Installer PASSIO";
+          btn.disabled = false;
+          btn.style.opacity = "1";
+        } else {
+          btn.style.display = "none";
+          if (fallback) fallback.style.display = "block";
+        }
+      }, 3000);
+    }
   }
-  // Sur desktop sans prompt : on garde le bouton visible,
-  // le clic détectera si le prompt est dispo ou affichera le hint
   ov.style.display = "flex";
 }
 
 async function pwaInstall() {
-  if (_pwaPrompt) {
-    // Android / Chrome / Edge → prompt natif
+  if (window._pwaPrompt) {
     try {
-      _pwaPrompt.prompt();
-      const { outcome } = await _pwaPrompt.userChoice;
-      _pwaPrompt = null;
+      window._pwaPrompt.prompt();
+      const { outcome } = await window._pwaPrompt.userChoice;
+      window._pwaPrompt = null;
       if (outcome === "accepted") {
         pwaDismiss();
         if (typeof toast === "function") toast("PASSIO installée ! 🎉", "success");
       }
     } catch(e) { /* ignore */ }
-  } else {
-    // Desktop sans prompt (peut arriver si Chrome n'a pas encore déclenché)
-    document.getElementById("pwa-default-view").style.display = "none";
-    document.getElementById("pwa-desktop-view").style.display = "block";
   }
 }
 
@@ -16535,9 +16594,8 @@ function pwaDismiss() {
   const ov = document.getElementById("pwa-overlay");
   if (ov) {
     ov.style.animation = "pwaFadeIn .25s ease reverse both";
-    setTimeout(() => { ov.style.display = "none"; }, 220);
+    setTimeout(() => { ov.style.display = "none"; ov.style.animation = ""; }, 220);
   }
-  localStorage.setItem(_pwaKey, Date.now().toString());
 }
 </script>
 
@@ -16554,32 +16612,79 @@ function pwaDismiss() {
       </div>
     </div>
 
-    <!-- Vue par défaut (Android / Desktop) -->
-    <div id="pwa-default-view">
-      <button class="pwa-btn-install" onclick="pwaInstall()">📲&nbsp;&nbsp;Installer l'application</button>
-      <button class="pwa-btn-skip" onclick="pwaDismiss()">Continuer dans le navigateur</button>
+    <!-- VUE 1 : Android / Chrome / Edge → installation directe 1 clic -->
+    <div id="pwa-view-direct" style="display:none;">
+      <button class="pwa-btn-install" onclick="pwaInstall()">📲&nbsp;&nbsp;Installer PASSIO</button>
+      <button class="pwa-btn-skip" onclick="pwaDismiss()">Plus tard</button>
     </div>
 
-    <!-- Vue iOS -->
-    <div id="pwa-ios-view">
-      <div class="pwa-ios-box">
-        <div class="pwa-ios-row">1️⃣&nbsp; Appuie sur <strong>&nbsp;⬆ Partager&nbsp;</strong> (barre du bas Safari)</div>
-        <div class="pwa-ios-row">2️⃣&nbsp; Sélectionne <strong>&nbsp;"Sur l'écran d'accueil"&nbsp;</strong></div>
-        <div class="pwa-ios-row">3️⃣&nbsp; Appuie sur <strong>&nbsp;Ajouter&nbsp;</strong> — c'est tout !</div>
+    <!-- VUE 2 : iPhone / iPad (iOS Safari) -->
+    <div id="pwa-view-ios" style="display:none;">
+      <div style="background:#f5f3ff;border-radius:16px;padding:16px 14px;margin-bottom:14px;">
+        <div style="font-size:14px;font-weight:800;color:#1e1b4b;margin-bottom:12px;text-align:center;">Installer sur iPhone / iPad</div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+          <div style="font-size:24px;flex-shrink:0;">1️⃣</div>
+          <div style="font-size:13px;color:#374151;">Appuie sur <strong style="color:#6d28d9;">Partager</strong> <span style="font-size:16px;">⬆️</span> en bas de Safari</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div style="font-size:24px;flex-shrink:0;">2️⃣</div>
+          <div style="font-size:13px;color:#374151;">Choisis <strong style="color:#6d28d9;">"Sur l'écran d'accueil"</strong> puis <strong style="color:#6d28d9;">Ajouter</strong></div>
+        </div>
       </div>
-      <button class="pwa-btn-install" onclick="pwaDismiss()">👍&nbsp;&nbsp;OK, j'installe</button>
-      <button class="pwa-btn-skip" onclick="pwaDismiss()">Continuer dans le navigateur</button>
+      <button class="pwa-btn-skip" onclick="pwaDismiss()">Plus tard</button>
     </div>
 
-    <!-- Vue desktop sans prompt natif -->
-    <div id="pwa-desktop-view">
-      <div class="pwa-desktop-hint">
-        Regarde en haut à droite de ton navigateur :<br/>
-        <strong>icône ⊕ → Installer PASSIO</strong><br/>
-        <span style="font-size:12px;color:#9ca3af;">(peut prendre quelques secondes à apparaître)</span>
+    <!-- VUE 3 : Desktop Chrome / Edge → bouton direct si prompt dispo, sinon guide -->
+    <div id="pwa-view-desktop" style="display:none;">
+      <button id="pwa-desktop-install-btn" class="pwa-btn-install" onclick="pwaInstall()" style="opacity:0.5;">
+        ⏳&nbsp;&nbsp;Préparation…
+      </button>
+      <div id="pwa-desktop-fallback" style="display:none;background:#f5f3ff;border-radius:16px;padding:16px 14px;margin-bottom:14px;">
+        <div style="font-size:14px;font-weight:800;color:#1e1b4b;margin-bottom:12px;text-align:center;">Installer via le menu Chrome</div>
+        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:10px;">
+          <div style="font-size:22px;flex-shrink:0;">1️⃣</div>
+          <div style="font-size:13px;color:#374151;">Clique sur les <strong style="color:#6d28d9;">⋮ trois points</strong> en haut à droite de Chrome</div>
+        </div>
+        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:10px;">
+          <div style="font-size:22px;flex-shrink:0;">2️⃣</div>
+          <div style="font-size:13px;color:#374151;">Cherche <strong style="color:#6d28d9;">"Enregistrer et partager"</strong> → <strong style="color:#6d28d9;">"Installer PASSIO"</strong><br/><span style="color:#9ca3af;font-size:12px;">(ou directement "Installer PASSIO" dans le menu)</span></div>
+        </div>
+        <div style="display:flex;align-items:flex-start;gap:10px;">
+          <div style="font-size:22px;flex-shrink:0;">3️⃣</div>
+          <div style="font-size:13px;color:#374151;">Clique sur <strong style="color:#6d28d9;">Installer</strong> dans la fenêtre qui s'ouvre</div>
+        </div>
       </div>
-      <button class="pwa-btn-install" onclick="pwaDismiss()">✓&nbsp;&nbsp;Compris !</button>
+      <button class="pwa-btn-skip" onclick="pwaDismiss()">Plus tard</button>
     </div>
+
+    <!-- VUE 4 : Android sans prompt natif → guide manuel Chrome -->
+    <div id="pwa-view-android-manual" style="display:none;">
+      <div style="background:#f5f3ff;border-radius:16px;padding:16px 14px;margin-bottom:14px;">
+        <div style="font-size:14px;font-weight:800;color:#1e1b4b;margin-bottom:12px;text-align:center;">Installer sur Android</div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+          <div style="font-size:24px;flex-shrink:0;">1️⃣</div>
+          <div style="font-size:13px;color:#374151;">Appuie sur <strong style="color:#6d28d9;">⋮</strong> (les 3 points) en haut à droite de Chrome</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div style="font-size:24px;flex-shrink:0;">2️⃣</div>
+          <div style="font-size:13px;color:#374151;">Choisis <strong style="color:#6d28d9;">"Ajouter à l'écran d'accueil"</strong> puis <strong style="color:#6d28d9;">Ajouter</strong></div>
+        </div>
+      </div>
+      <button class="pwa-btn-skip" onclick="pwaDismiss()">Plus tard</button>
+    </div>
+
+    <!-- VUE 5 : Navigateur non supporté -->
+    <div id="pwa-view-unsupported" style="display:none;">
+      <div style="background:#f5f3ff;border-radius:16px;padding:16px 14px;margin-bottom:14px;text-align:center;">
+        <div style="font-size:14px;font-weight:800;color:#1e1b4b;margin-bottom:8px;">Pour installer PASSIO</div>
+        <div style="font-size:13px;color:#374151;line-height:1.6;">
+          Ouvre cette page dans <strong style="color:#6d28d9;">Chrome</strong> ou <strong style="color:#6d28d9;">Safari</strong><br/>
+          pour pouvoir l'installer sur ton appareil.
+        </div>
+      </div>
+      <button class="pwa-btn-skip" onclick="pwaDismiss()">OK</button>
+    </div>
+
   </div>
 </div>
 
