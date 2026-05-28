@@ -8516,14 +8516,12 @@ async function onbDoAuth() {
       MY_UID = data.session.user.id;
       localStorage.setItem("passio_uid", MY_UID);
       if (_authMode === "signin") {
-        // Compte existant : lance l'app sans onboarding
+        // Compte existant : même logique que boot() avec session active
         state.onboarded = true;
         saveState();
-        document.getElementById("onboarding")?.classList.remove("active");
-        document.getElementById("landing")?.classList.remove("active");
-        document.body.classList.add("screen-feed-active");
         try { renderEverything(); } catch(e) {}
-        try { if (typeof supaInit === "function") supaInit(); } catch(e) {}
+        document.body.classList.add("screen-feed-active");
+        try { supaInit(); } catch(e) {}
         return;
       }
     }
