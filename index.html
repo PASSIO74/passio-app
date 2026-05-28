@@ -13203,14 +13203,14 @@ function renderProfilesScreen() {
 }
 
 function switchToProfile(id) {
-  if (state.user.currentProfileId === id) return;
   state.user.currentProfileId = id;
+  const p = currentProfile();
+  if (p) { state.selectedFeedPassions = [p.passion]; }
   saveState();
   renderTopbar();
   renderProfilesScreen();
   renderFeed();
-  const p = currentProfile();
-  toast(`Profil actif : ${p.emoji} ${passionById(p.passion).label}`, "info");
+  if (p) toast(`Profil actif : ${p.emoji} ${passionById(p.passion).label}`, "info");
 }
 
 function confirmDeleteProfile(profileId, passionLabel) {
