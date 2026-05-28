@@ -8853,8 +8853,9 @@ function renderFeed() {
     var tousBtn = '<button onclick="selectAllProfiles()" style="' + tousStyle + '">Tous</button>';
     var profBtns = profs.map(function(p) {
       var isSel = selPassions.indexOf(p.passion) !== -1;
+      var passionLabel = passionById(p.passion).label || p.passion;
       var btnStyle = 'display:flex;align-items:center;gap:5px;padding:5px 10px;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;border:1.5px solid ' + (isSel ? 'var(--accent)' : 'var(--border)') + ';background:' + (isSel ? 'var(--accent)' : 'transparent') + ';color:' + (isSel ? '#fff' : 'var(--muted)') + ';';
-      return '<button onclick="toggleProfileFilter(\'' + p.passion + '\')" style="' + btnStyle + '">' + p.emoji + ' ' + escapeHtml(p.name) + '</button>';
+      return '<button onclick="toggleProfileFilter(\'' + p.passion + '\')" style="' + btnStyle + '">' + p.emoji + ' ' + escapeHtml(passionLabel) + '</button>';
     }).join("");
     chipsEl.innerHTML = tousBtn + profBtns;
   })();
