@@ -8830,7 +8830,7 @@ function renderFeed() {
   // Filtre par profils sélectionnés (par passion)
   if (selectedPassions.length > 0) {
     posts = posts.filter(function(p) {
-      return selectedPassions.indexOf(p.passion) !== -1 || p._source === "me";
+      return selectedPassions.indexOf(p.passion) !== -1;
     });
   }
 
