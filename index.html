@@ -16549,36 +16549,22 @@ function pwaShowOverlay() {
 
   if (_isIOS) {
     _pwaShowView("pwa-view-ios");
+  } else if (window._pwaPrompt) {
+    _pwaShowView("pwa-view-direct");
   } else if (_isAndroid) {
-    if (window._pwaPrompt) {
-      _pwaShowView("pwa-view-direct");
-    } else {
-      _pwaShowView("pwa-view-android-manual");
-    }
+    _pwaShowView("pwa-view-android-manual");
   } else {
-    // Desktop : on utilise le prompt s'il est dispo, sinon on attend 3s puis fallback
     _pwaShowView("pwa-view-desktop");
     const btn = document.getElementById("pwa-desktop-install-btn");
     const fallback = document.getElementById("pwa-desktop-fallback");
-    if (window._pwaPrompt) {
-      btn.textContent = "📲  Installer PASSIO";
-      btn.disabled = false;
-      btn.style.opacity = "1";
-    } else {
-      btn.innerHTML = "⏳&nbsp;&nbsp;Préparation…";
-      btn.disabled = true;
-      btn.style.opacity = "0.5";
-      setTimeout(() => {
-        if (window._pwaPrompt) {
-          btn.textContent = "📲  Installer PASSIO";
-          btn.disabled = false;
-          btn.style.opacity = "1";
-        } else {
-          btn.style.display = "none";
-          if (fallback) fallback.style.display = "block";
-        }
-      }, 3000);
-    }
+    setTimeout(() => {
+      if (window._pwaPrompt) {
+        _pwaShowView("pwa-view-direct");
+      } else {
+        if (btn) btn.style.display = "none";
+        if (fallback) fallback.style.display = "block";
+      }
+    }, 3000);
   }
   ov.style.display = "flex";
 }
