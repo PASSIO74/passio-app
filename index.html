@@ -13177,9 +13177,10 @@ function renderProfileStrip() {
   if (!state.selectedProfileIds) state.selectedProfileIds = [];
   const selected = state.selectedProfileIds;
 
+  if (!state.selectedFeedPassions) state.selectedFeedPassions = [];
   var tilesHTML = profiles.map(function(p) {
     const passion = passionById(p.passion);
-    const isSelected = selected.indexOf(p.id) !== -1;
+    const isSelected = state.selectedFeedPassions.indexOf(p.passion) !== -1;
     const label = escapeHtml(passion.label);
     const photoId = passion.photo;
     const photoUrl = photoId
@@ -13189,7 +13190,7 @@ function renderProfileStrip() {
     const avatarContent = photoUrl
       ? '<img class="profile-tile-photo" src="' + photoUrl + '" alt="' + label + '" onerror="this.onerror=null;this.src=\'' + fallback + '\'"/><span class="profile-tile-emoji-badge">' + p.emoji + '</span>'
       : p.emoji;
-    return '<div class="profile-tile ' + (isSelected ? "active" : "") + '" onclick="toggleProfileFilter(\'' + p.id + '\')" title="' + label + '">\
+    return '<div class="profile-tile ' + (isSelected ? "active" : "") + '" onclick="toggleProfileFilter(\'' + p.passion + '\')" title="' + label + '">\
       <div class="profile-tile-avatar" style="' + (isSelected ? '' : 'background:' + p.color + ';opacity:0.5;') + '">' + avatarContent + '</div>\
       <div class="profile-tile-label">' + label + '</div>\
     </div>';
