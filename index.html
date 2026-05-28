@@ -16670,15 +16670,13 @@ function pwaDismiss() {
 
 <script>
   // Cache le bouton installer si l'app est déjà installée (mode standalone)
-  (function() {
+  function _updateInstallBtn() {
     const isInstalled = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
-    if (isInstalled) {
-      document.addEventListener('DOMContentLoaded', () => {
-        const btn = document.getElementById('btn-install-app');
-        if (btn) btn.style.display = 'none';
-      });
-    }
-  })();
+    const btn = document.getElementById('btn-install-app');
+    if (btn) btn.style.display = isInstalled ? 'none' : '';
+  }
+  window.addEventListener('load', _updateInstallBtn);
+  window.addEventListener('appinstalled', _updateInstallBtn);
 </script>
 </body>
 </html>
