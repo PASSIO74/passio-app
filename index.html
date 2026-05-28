@@ -6035,11 +6035,11 @@
         </label>
         <label class="field">
           <span>Mot de passe</span>
-          <div style="position:relative;"><button type="button" onclick="togglePwd('authPassword',this)" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:18px;color:var(--muted);padding:0;">👁</button></div>
+          <div style="position:relative;"><input type="password" class="input" id="authPassword" placeholder="••••••••" autocomplete="current-password" minlength="6" style="font-size:15px;padding-right:44px;"/><button type="button" onclick="togglePwd('authPassword',this)" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:18px;color:var(--muted);padding:0;">👁</button></div>
         </label>
         <label class="field" id="authPasswordConfirmWrap" style="display:none;">
           <span>Confirmer le mot de passe</span>
-          <div style="position:relative;"><button type="button" onclick="togglePwd('authPasswordConfirm',this)" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:18px;color:var(--muted);padding:0;">👁</button></div>
+          <div style="position:relative;"><input type="password" class="input" id="authPasswordConfirm" placeholder="••••••••" autocomplete="new-password" style="font-size:15px;padding-right:44px;"/><button type="button" onclick="togglePwd('authPasswordConfirm',this)" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:18px;color:var(--muted);padding:0;">👁</button></div>
         </label>
 
         <div style="display:flex;flex-direction:column;gap:10px;margin-top:8px;">
