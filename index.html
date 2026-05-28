@@ -13236,9 +13236,6 @@ function renderProfileStrip() {
   if (!box) return;
   const profiles = state.user.profiles || [];
   if (profiles.length === 0) { box.innerHTML = ""; return; }
-  if (!state.selectedProfileIds) state.selectedProfileIds = [];
-  const selected = state.selectedProfileIds;
-
   if (!state.selectedFeedPassions) state.selectedFeedPassions = [];
   var tilesHTML = profiles.map(function(p) {
     const passion = passionById(p.passion);
