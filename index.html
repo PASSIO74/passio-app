@@ -6035,11 +6035,11 @@
         </label>
         <label class="field">
           <span>Mot de passe</span>
-          <input type="password" class="input" id="authPassword" placeholder="••••••••" autocomplete="current-password" minlength="6" style="font-size:15px;"/>
+          <div style="position:relative;"><button type="button" onclick="togglePwd('authPassword',this)" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:18px;color:var(--muted);padding:0;">👁</button></div>
         </label>
         <label class="field" id="authPasswordConfirmWrap" style="display:none;">
           <span>Confirmer le mot de passe</span>
-          <input type="password" class="input" id="authPasswordConfirm" placeholder="••••••••" autocomplete="new-password" style="font-size:15px;"/>
+          <div style="position:relative;"><button type="button" onclick="togglePwd('authPasswordConfirm',this)" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:18px;color:var(--muted);padding:0;">👁</button></div>
         </label>
 
         <div style="display:flex;flex-direction:column;gap:10px;margin-top:8px;">
@@ -16566,6 +16566,14 @@ async function pwaInstall() {
       }
     } catch(e) { /* ignore */ }
   }
+}
+
+function togglePwd(id, btn) {
+  const inp = document.getElementById(id);
+  if (!inp) return;
+  const show = inp.type === 'password';
+  inp.type = show ? 'text' : 'password';
+  btn.textContent = show ? '🙈' : '👁';
 }
 
 function pwaDismiss() {
