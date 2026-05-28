@@ -5775,6 +5775,57 @@
     .onb-auth-msg.error { display:block;background:rgba(220,38,38,.1);color:#dc2626;border:1px solid rgba(220,38,38,.25); }
     .onb-auth-msg.success { display:block;background:rgba(139,92,246,.1);color:var(--accent-2);border:1px solid var(--border); }
     .auth-loading { display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:6px; }
+
+    /* ======== PWA INSTALL BANNER ======== */
+    .pwa-card {
+      background: #fff;
+      border-radius: 22px;
+      box-shadow: 0 -2px 40px rgba(109,40,217,0.16), 0 8px 32px rgba(0,0,0,0.10);
+      padding: 16px 16px 14px;
+      border: 1.5px solid rgba(139,92,246,0.12);
+      animation: pwaSlideUp 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+    @keyframes pwaSlideUp {
+      from { transform: translateY(130px); opacity: 0; }
+      to   { transform: translateY(0);    opacity: 1; }
+    }
+    .pwa-card-header { display:flex; align-items:center; gap:12px; margin-bottom:13px; }
+    .pwa-card-icon {
+      width:48px; height:48px; border-radius:13px; flex-shrink:0;
+      background: linear-gradient(135deg,#6d28d9,#a78bfa);
+      display:flex; align-items:center; justify-content:center;
+      font-size:26px; box-shadow:0 4px 14px rgba(109,40,217,0.30);
+    }
+    .pwa-card-title { font-size:15px; font-weight:800; color:#1e0a3c; line-height:1.2; }
+    .pwa-card-sub   { font-size:12px; color:#6b7280; margin-top:3px; }
+    .pwa-dismiss-btn {
+      margin-left:auto; background:none; border:none;
+      font-size:18px; color:#9ca3af; cursor:pointer; padding:4px 6px; line-height:1;
+      flex-shrink:0; border-radius:8px;
+    }
+    .pwa-dismiss-btn:hover { background:rgba(0,0,0,0.05); color:#6b7280; }
+    .pwa-install-btn {
+      width:100%; padding:14px; border:none; border-radius:13px;
+      background: linear-gradient(135deg,#6d28d9,#8b5cf6);
+      color:#fff; font-size:15px; font-weight:800; cursor:pointer;
+      letter-spacing:0.2px; box-shadow:0 4px 14px rgba(109,40,217,0.35);
+      transition: transform .12s, box-shadow .12s;
+    }
+    .pwa-install-btn:active { transform:scale(0.97); box-shadow:0 2px 8px rgba(109,40,217,0.25); }
+    .pwa-ios-steps {
+      background:rgba(109,40,217,0.06); border-radius:13px;
+      padding:12px 14px; margin-bottom:12px;
+    }
+    .pwa-ios-step {
+      display:flex; align-items:center; gap:6px;
+      font-size:13px; color:#374151; padding:5px 0; line-height:1.4;
+    }
+    .pwa-ios-step strong { color:#6d28d9; }
+    .pwa-ios-ok-btn {
+      width:100%; padding:12px; border:none; border-radius:13px;
+      background:rgba(109,40,217,0.10); color:#6d28d9;
+      font-size:14px; font-weight:700; cursor:pointer;
+    }
   </style>
 </head>
 <body>
@@ -16397,7 +16448,104 @@ function exitLandingAsAuth(mode) {
   setTimeout(function() { switchAuthTab(mode); }, 50);
 }
 boot().catch(e => console.error("Boot error:", e));
+
+// ======== PWA INSTALL ========
+let _pwaPrompt = null;
+const _pwaKey = "passio_pwa_dismissed";
+
+// Android / Chrome / Edge : capture l'événement d'installation
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  _pwaPrompt = e;
+  setTimeout(pwaMaybeShow, 1800);
+});
+
+// iOS : l'événement beforeinstallprompt n'existe pas, on détecte au chargement
+window.addEventListener("load", () => {
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
+  if (isIOS && !window.navigator.standalone) {
+    setTimeout(pwaMaybeShow, 1800);
+  }
+});
+
+function pwaMaybeShow() {
+  // Déjà installée en mode standalone → on ne montre rien
+  if (window.matchMedia("(display-mode: standalone)").matches) return;
+  if (window.navigator.standalone) return;
+  // Refusé récemment (7 jours) → silence
+  const ts = localStorage.getItem(_pwaKey);
+  if (ts && Date.now() - parseInt(ts) < 7 * 86400000) return;
+
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
+  const banner = document.getElementById("pwa-banner");
+  if (!banner) return;
+
+  if (_pwaPrompt) {
+    document.getElementById("pwa-android").style.display = "block";
+    document.getElementById("pwa-ios").style.display    = "none";
+    banner.style.display = "block";
+  } else if (isIOS) {
+    document.getElementById("pwa-ios").style.display    = "block";
+    document.getElementById("pwa-android").style.display = "none";
+    banner.style.display = "block";
+  }
+}
+
+async function pwaInstall() {
+  if (!_pwaPrompt) return;
+  try {
+    _pwaPrompt.prompt();
+    const { outcome } = await _pwaPrompt.userChoice;
+    _pwaPrompt = null;
+    pwaDismiss();
+    if (outcome === "accepted") {
+      if (typeof toast === "function") toast("PASSIO installée ! 🎉", "success");
+    }
+  } catch(e) { pwaDismiss(); }
+}
+
+function pwaDismiss() {
+  const banner = document.getElementById("pwa-banner");
+  if (banner) banner.style.display = "none";
+  localStorage.setItem(_pwaKey, Date.now().toString());
+}
 </script>
+
+<!-- ======== PWA INSTALL BANNER ======== -->
+<div id="pwa-banner" style="display:none; position:fixed; bottom:0; left:0; right:0; z-index:99999; padding:0 14px 22px; pointer-events:none;">
+
+  <!-- Android / Chrome / Edge -->
+  <div id="pwa-android" class="pwa-card" style="display:none; pointer-events:all;">
+    <div class="pwa-card-header">
+      <div class="pwa-card-icon">💜</div>
+      <div>
+        <div class="pwa-card-title">Installe PASSIO</div>
+        <div class="pwa-card-sub">Accès rapide depuis ton écran d'accueil</div>
+      </div>
+      <button class="pwa-dismiss-btn" onclick="pwaDismiss()" aria-label="Fermer">✕</button>
+    </div>
+    <button class="pwa-install-btn" onclick="pwaInstall()">📲&nbsp; Installer l'application</button>
+  </div>
+
+  <!-- iOS Safari -->
+  <div id="pwa-ios" class="pwa-card" style="display:none; pointer-events:all;">
+    <div class="pwa-card-header">
+      <div class="pwa-card-icon">💜</div>
+      <div>
+        <div class="pwa-card-title">Installe PASSIO sur ton iPhone</div>
+        <div class="pwa-card-sub">Expérience native, sans App Store</div>
+      </div>
+      <button class="pwa-dismiss-btn" onclick="pwaDismiss()" aria-label="Fermer">✕</button>
+    </div>
+    <div class="pwa-ios-steps">
+      <div class="pwa-ios-step">1️⃣&nbsp;&nbsp;Appuie sur <strong>&nbsp;⎙ Partager&nbsp;</strong> (barre du bas Safari)</div>
+      <div class="pwa-ios-step">2️⃣&nbsp;&nbsp;Sélectionne <strong>&nbsp;"Sur l'écran d'accueil"&nbsp;</strong></div>
+      <div class="pwa-ios-step">3️⃣&nbsp;&nbsp;Appuie sur <strong>&nbsp;Ajouter&nbsp;</strong> — c'est tout !</div>
+    </div>
+    <button class="pwa-ios-ok-btn" onclick="pwaDismiss()">👍&nbsp; OK, je le fais</button>
+  </div>
+
+</div>
 
 </body>
 </html>
