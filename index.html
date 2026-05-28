@@ -19,10 +19,31 @@
   <link rel="apple-touch-icon" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='gA' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%23ddd6fe'/><stop offset='1' stop-color='%23a78bfa'/></linearGradient></defs><rect width='100' height='100' rx='22' fill='url(%23gA)'/><path d='M24 24 L76 24 L24 76' stroke='%23ffffff' stroke-width='13' stroke-linecap='round' stroke-linejoin='round' fill='none'/><path d='M76 24 L76 76' stroke='%234c1d95' stroke-width='13' stroke-linecap='round' fill='none'/></svg>" />
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='gA' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%23ddd6fe'/><stop offset='1' stop-color='%23a78bfa'/></linearGradient></defs><rect width='100' height='100' rx='22' fill='url(%23gA)'/><path d='M24 24 L76 24 L24 76' stroke='%23ffffff' stroke-width='13' stroke-linecap='round' stroke-linejoin='round' fill='none'/><path d='M76 24 L76 76' stroke='%234c1d95' stroke-width='13' stroke-linecap='round' fill='none'/></svg>" />
 
-  <!-- Service Worker registration -->
+  <!-- Service Worker registration + auto-update -->
   <script>
     if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
+      window.addEventListener('load', async () => {
+        try {
+          const reg = await navigator.serviceWorker.register('./sw.js');
+          // Vérifie les mises à jour immédiatement puis toutes les 60s
+          reg.update();
+          setInterval(() => reg.update(), 60000);
+          // Quand un nouveau SW prend le contrôle → recharge la page
+          navigator.serviceWorker.addEventListener('controllerchange', () => {
+            window.location.reload();
+          });
+          // Active le SW en attente immédiatement
+          const activate = (sw) => sw && sw.postMessage({ type: 'SKIP_WAITING' });
+          if (reg.waiting) activate(reg.waiting);
+          reg.addEventListener('updatefound', () => {
+            const n = reg.installing;
+            if (!n) return;
+            n.addEventListener('statechange', () => {
+              if (n.state === 'installed' && navigator.serviceWorker.controller) activate(n);
+            });
+          });
+        } catch(e) {}
+      });
     }
   </script>
 
@@ -3972,15 +3993,16 @@
       inset: 0;
       z-index: 60;
       background:
-        radial-gradient(circle at 15% 10%, rgba(139, 92, 246, 0.45), transparent 50%),
-        radial-gradient(circle at 85% 85%, rgba(109, 40, 217, 0.40), transparent 55%),
+        radial-gradient(circle at 15% 10%, rgba(139, 92, 246, 0.55), transparent 50%),
+        radial-gradient(circle at 85% 15%, rgba(124, 58, 237, 0.48), transparent 55%),
+        radial-gradient(circle at 85% 85%, rgba(139, 92, 246, 0.55), transparent 50%),
+        radial-gradient(circle at 15% 90%, rgba(167, 139, 250, 0.38), transparent 55%),
         #fbf7f1;
       display: none;
       flex-direction: column;
-      overflow: hidden;
-      padding: 16px 16px 20px;
-      justify-content: space-between;
-      gap: 0;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      padding: 20px 20px 30px;
     }
     .landing.active { display: flex; animation: fadeIn 320ms ease-out; }
 
@@ -3988,16 +4010,16 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      flex-shrink: 0;
+      margin-bottom: 8px;
     }
     .landing-logo {
-      width: 36px; height: 36px;
-      border-radius: 11px;
-      padding: 2px;
+      width: 40px; height: 40px;
+      border-radius: 12px;
+      padding: 3px;
       background: #fbf7f1;
       box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.55);
     }
-    .landing-logo img { width: 100%; height: 100%; border-radius: 9px; }
+    .landing-logo img { width: 100%; height: 100%; border-radius: 10px; }
     .landing-badge {
       font-size: 10px;
       font-weight: 800;
@@ -4011,77 +4033,110 @@
     }
 
     .landing-hero {
+      padding: 18px 0 18px;
+      text-align: left;
+    }
+    .landing-title {
+      font-size: 38px;
+      font-weight: 900;
+      line-height: 1.1;
+      letter-spacing: -0.03em;
+      margin: 14px 0 16px;
+      color: #1e1b4b;
       text-align: center;
-      flex-shrink: 0;
-      padding: 10px 0 6px;
+    }
+    .landing-title span { color: #1e1b4b; }
+    .landing-subtitle {
+      font-size: 18px;
+      font-weight: 600;
+      color: #1e1b4b;
+      line-height: 1.4;
+      margin: 0 0 18px;
+      letter-spacing: 0.04em;
+      text-align: center;
     }
     .landing-kicker {
-      font-size: 10px;
+      font-size: 11px;
       font-weight: 800;
       letter-spacing: 0.2em;
       text-transform: uppercase;
       color: #a78bfa;
-      margin-bottom: 4px;
-    }
-    .landing-title {
-      font-size: 26px;
-      font-weight: 900;
-      line-height: 1.15;
-      letter-spacing: -0.02em;
-      margin: 0 0 6px;
-      color: #1e1b4b;
-    }
-    .landing-title span { color: #6d28d9; }
-    .landing-subtitle {
-      font-size: 13px;
-      font-weight: 600;
-      color: #5b21b6;
-      letter-spacing: 0.08em;
-      margin: 0;
     }
 
-    /* Grille features 3×3 */
-    .landing-grid {
+    .landing-numbers {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
-      gap: 7px;
-      flex: 1;
-      align-content: center;
-      margin: 10px 0;
+      gap: 8px;
+      margin: 14px 0 18px;
     }
-    .landing-grid-item {
-      background: rgba(255,255,255,0.62);
-      border: 1px solid rgba(139,92,246,0.14);
+    .landing-num {
+      padding: 12px 8px;
       border-radius: 14px;
-      padding: 10px 6px 9px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 5px;
-      backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px);
+      background: rgba(139, 92, 246, 0.08);
+      border: 1px solid var(--border);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      text-align: center;
     }
-    .landing-grid-emoji {
+    .landing-num-val {
       font-size: 22px;
+      font-weight: 800;
+      background: linear-gradient(135deg, #8b5cf6, #8b5cf6);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
       line-height: 1;
     }
-    .landing-grid-label {
-      font-size: 10px;
+    .landing-num-lbl {
+      font-size: 9px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-top: 4px;
       font-weight: 700;
-      color: #3b0764;
-      text-align: center;
-      line-height: 1.25;
     }
 
-    .landing-cta {
+    .landing-pillars {
+      display: flex;
+      flex-direction: column;
+      gap: 9px;
+      margin: 4px 0 18px;
+    }
+    .landing-pillar {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      padding: 12px 14px;
+      border-radius: 16px;
+      background: rgba(139, 92, 246, 0.07);
+      border: 1px solid var(--border);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+    .landing-pillar-emoji {
+      width: 38px; height: 38px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, rgba(139, 92, 246, 0.25), rgba(139, 92, 246, 0.22));
+      display: flex; align-items: center; justify-content: center;
+      font-size: 20px;
       flex-shrink: 0;
-      padding: 0;
+    }
+    .landing-pillar-title { font-size: 13px; font-weight: 700; margin-bottom: 2px; }
+    .landing-pillar-text  { font-size: 12px; color: var(--muted); line-height: 1.45; }
+
+    .landing-cta {
+      position: sticky;
+      bottom: 0;
+      padding: 14px 0 6px;
+      margin-top: auto;
+      background: transparent;
     }
     .landing-cta .btn {
-      padding: 15px 20px;
-      font-size: 15px;
+      padding: 18px 20px;
+      font-size: 16px;
       font-weight: 800;
-      border-radius: 16px;
+      border-radius: 18px;
+      width: 100%;
     }
     .landing-footnote {
       font-size: 10px;
@@ -4089,10 +4144,6 @@
       text-align: center;
       margin-top: 8px;
     }
-
-    /* Compat - anciens styles pillar inutilisés mais pas supprimés */
-    .landing-pillar-title { font-size: 13px; font-weight: 700; }
-    .landing-pillar-text  { font-size: 12px; color: var(--muted); }
 
     /* ===== Profile strip (quick switch on feed, HERO version) ===== */
     .profile-strip {
@@ -5750,36 +5801,33 @@
       background: rgba(10,0,30,0.72);
       backdrop-filter: blur(6px);
       -webkit-backdrop-filter: blur(6px);
-      display: flex; align-items: flex-end; justify-content: center;
+      display: flex; align-items: center; justify-content: center;
+      padding: 24px;
       animation: pwaFadeIn .3s ease both;
     }
     @keyframes pwaFadeIn { from { opacity:0; } to { opacity:1; } }
     #pwa-sheet {
       background: #fff;
-      width: 100%; max-width: 480px;
-      border-radius: 28px 28px 0 0;
-      padding: 8px 20px 36px;
-      animation: pwaSlideUp .4s cubic-bezier(0.16,1,0.3,1) both;
-      box-shadow: 0 -8px 60px rgba(109,40,217,0.25);
+      width: 100%; max-width: 400px;
+      border-radius: 28px;
+      padding: 28px 24px 28px;
+      animation: pwaPopIn .35s cubic-bezier(0.16,1,0.3,1) both;
+      box-shadow: 0 24px 80px rgba(109,40,217,0.35);
     }
-    @keyframes pwaSlideUp {
-      from { transform: translateY(100%); }
-      to   { transform: translateY(0); }
+    @keyframes pwaPopIn {
+      from { opacity:0; transform: scale(0.88); }
+      to   { opacity:1; transform: scale(1); }
     }
-    .pwa-handle {
-      width: 40px; height: 4px; border-radius: 4px;
-      background: #e5e7eb; margin: 10px auto 24px; display: block;
-    }
+    .pwa-handle { display: none; }
     .pwa-logo-wrap {
       display: flex; align-items: center; gap: 14px; margin-bottom: 18px;
     }
     .pwa-logo-icon {
       width: 62px; height: 62px; border-radius: 16px; flex-shrink: 0;
-      background: linear-gradient(135deg,#6d28d9,#a78bfa);
-      display: flex; align-items: center; justify-content: center;
+      overflow: hidden;
       box-shadow: 0 6px 20px rgba(109,40,217,0.35);
     }
-    .pwa-logo-icon img { width:44px; height:44px; border-radius:11px; }
+    .pwa-logo-icon img { width:62px; height:62px; display:block; border-radius:0; }
     .pwa-app-name  { font-size:22px; font-weight:900; color:#1e0a3c; }
     .pwa-app-desc  { font-size:13px; color:#6b7280; margin-top:2px; }
     .pwa-perks {
@@ -5835,67 +5883,93 @@
   <!-- ============ LANDING / PITCH ============ -->
   <div id="landing" class="landing">
 
-    <!-- En-tête -->
     <div class="landing-header">
-      <div style="display:flex;align-items:center;gap:9px;">
+      <div style="display:flex;align-items:center;gap:10px;">
         <div class="landing-logo"><img id="logoLanding" alt="PASSIO" /></div>
-        <div class="brand-name" style="font-size:16px;font-weight:900;">PASSIO</div>
+        <div>
+          <div class="brand-name" style="font-size:15px;">PASSIO</div>
+        </div>
       </div>
       <div class="landing-badge">Beta privée</div>
     </div>
 
-    <!-- Hero -->
     <div class="landing-hero">
       <div class="landing-kicker">Bienvenue</div>
-      <h1 class="landing-title">Le réseau pensé pour<br/><span>tes passions</span></h1>
+      <h1 class="landing-title">Le premier réseau<br/>pensé pour<br/><span>tes passions.</span></h1>
       <p class="landing-subtitle">Crée · Partage · Rencontre</p>
     </div>
 
-    <!-- Grille 3×3 des fonctionnalités -->
-    <div class="landing-grid">
-      <div class="landing-grid-item">
-        <div class="landing-grid-emoji">🌈</div>
-        <div class="landing-grid-label">Multi-profils</div>
+    <div class="landing-pillars">
+      <div class="landing-pillar">
+        <div class="landing-pillar-emoji">🌈</div>
+        <div>
+          <div class="landing-pillar-title">Plusieurs toi, plusieurs passions</div>
+          <div class="landing-pillar-text">Un profil pour chaque univers : skate, lecture, cuisine, photo… Chacun avec son espace et sa communauté.</div>
+        </div>
       </div>
-      <div class="landing-grid-item">
-        <div class="landing-grid-emoji">🎨</div>
-        <div class="landing-grid-label">Fil sur-mesure</div>
+      <div class="landing-pillar">
+        <div class="landing-pillar-emoji">🎨</div>
+        <div>
+          <div class="landing-pillar-title">Choisis ton humeur du moment</div>
+          <div class="landing-pillar-text">Envie d'apprendre, de créer, de te détendre ? Le fil s'adapte à toi, à ton rythme.</div>
+        </div>
       </div>
-      <div class="landing-grid-item">
-        <div class="landing-grid-emoji">🎙️</div>
-        <div class="landing-grid-label">Studio créa</div>
+      <div class="landing-pillar">
+        <div class="landing-pillar-emoji">🎙</div>
+        <div>
+          <div class="landing-pillar-title">Crée tout ce que tu veux</div>
+          <div class="landing-pillar-text">Texte, photo, vidéo, podcast, vidéos courtes, tout est intégré. Pas besoin d'outil externe.</div>
+        </div>
       </div>
-      <div class="landing-grid-item">
-        <div class="landing-grid-emoji">📔</div>
-        <div class="landing-grid-label">Carnets voyage</div>
+      <div class="landing-pillar">
+        <div class="landing-pillar-emoji">📔</div>
+        <div>
+          <div class="landing-pillar-title">Documente tes voyages</div>
+          <div class="landing-pillar-text">Raconte tes périples avec étapes, photos, conseils et carte. Un format unique pour inspirer et organiser.</div>
+        </div>
       </div>
-      <div class="landing-grid-item">
-        <div class="landing-grid-emoji">🤝</div>
-        <div class="landing-grid-label">Events IRL</div>
+      <div class="landing-pillar">
+        <div class="landing-pillar-emoji">🤝</div>
+        <div>
+          <div class="landing-pillar-title">Retrouvez-vous en vrai</div>
+          <div class="landing-pillar-text">Skate jam, atelier céramique, book club, dégustation : retrouve les événements près de chez toi.</div>
+        </div>
       </div>
-      <div class="landing-grid-item">
-        <div class="landing-grid-emoji">💬</div>
-        <div class="landing-grid-label">Messagerie</div>
+      <div class="landing-pillar">
+        <div class="landing-pillar-emoji">💬</div>
+        <div>
+          <div class="landing-pillar-title">Discute avec tes communautés</div>
+          <div class="landing-pillar-text">Conversations privées par passion. Organise une sortie, pose une question, partage entre passionnés.</div>
+        </div>
       </div>
-      <div class="landing-grid-item">
-        <div class="landing-grid-emoji">💎</div>
-        <div class="landing-grid-label">Soutien créa</div>
+      <div class="landing-pillar">
+        <div class="landing-pillar-emoji">💎</div>
+        <div>
+          <div class="landing-pillar-title">Soutiens ceux qui t'inspirent</div>
+          <div class="landing-pillar-text">Envoie des Passia à un créateur, paye un cours en visio, réserve une expérience. L'argent va vraiment à eux.</div>
+        </div>
       </div>
-      <div class="landing-grid-item">
-        <div class="landing-grid-emoji">⛓️</div>
-        <div class="landing-grid-label">Monnaie Passia</div>
+      <div class="landing-pillar">
+        <div class="landing-pillar-emoji">⛓</div>
+        <div>
+          <div class="landing-pillar-title">Grandis avec la communauté</div>
+          <div class="landing-pillar-text">Ton Passia deviendra une vraie monnaie. Plus la communauté grandit, plus elle gagne de valeur.</div>
+        </div>
       </div>
-      <div class="landing-grid-item">
-        <div class="landing-grid-emoji">🛡️</div>
-        <div class="landing-grid-label">Ton rythme</div>
+      <div class="landing-pillar">
+        <div class="landing-pillar-emoji">🛡</div>
+        <div>
+          <div class="landing-pillar-title">Tu décides du rythme</div>
+          <div class="landing-pillar-text">Tu choisis quand et combien de temps tu utilises l'app. Notifications respectueuses, temps maîtrisé, modération bienveillante.</div>
+        </div>
       </div>
     </div>
 
-    <!-- CTA -->
     <div class="landing-cta">
-      <div style="display:flex;gap:8px;">
-        <button onclick="exitLandingAsAuth('signin')" class="btn primary block" style="flex:1;font-size:15px;padding:14px;font-weight:800;">Se connecter</button>
-        <button onclick="exitLandingAsAuth('signup')" class="btn primary block" style="flex:1;font-size:15px;padding:14px;font-weight:800;">Créer un compte</button>
+      <button class="btn primary block" onclick="exitLanding()" style="font-size:15px;padding:14px;font-weight:800;">Entrer dans la bêta →</button>
+      <div style="display:flex;gap:8px;margin-top:10px;">
+        <button onclick="exitLandingAsAuth('signin')" class="btn primary block" style="flex:1;font-size:13px;padding:11px;">Se connecter</button>
+        <button onclick="exitLandingAsAuth('signup')" class="btn primary block" style="flex:1;font-size:13px;padding:11px;">Créer un compte</button>
       </div>
     </div>
 
@@ -16450,6 +16524,10 @@ function pwaShowOverlay() {
   const ov = document.getElementById("pwa-overlay");
   if (!ov) return;
 
+  // Injecter le logo au moment de l'affichage
+  const lp = document.getElementById("pwaLogoImg");
+  if (lp) lp.src = LOGO_SRC;
+
   if (_isIOS) {
     // iOS : montrer les instructions
     document.getElementById("pwa-default-view").style.display = "none";
@@ -16492,7 +16570,6 @@ function pwaDismiss() {
 <!-- ======== PWA INSTALL OVERLAY ======== -->
 <div id="pwa-overlay" style="display:none;">
   <div id="pwa-sheet">
-    <span class="pwa-handle"></span>
 
     <!-- Logo + nom -->
     <div class="pwa-logo-wrap">
@@ -16501,14 +16578,6 @@ function pwaDismiss() {
         <div class="pwa-app-name">PASSIO</div>
         <div class="pwa-app-desc">Le réseau de tes passions</div>
       </div>
-    </div>
-
-    <!-- Tags -->
-    <div class="pwa-perks">
-      <span class="pwa-perk">📵 Sans pub</span>
-      <span class="pwa-perk">⚡ Rapide</span>
-      <span class="pwa-perk">🔔 Notifs</span>
-      <span class="pwa-perk">📶 Hors-ligne</span>
     </div>
 
     <!-- Vue par défaut (Android / Desktop) -->
