@@ -5983,7 +5983,7 @@
         <button onclick="exitLandingAsAuth('signin')" class="btn primary block" style="flex:1;font-size:15px;padding:14px;font-weight:800;">Se connecter</button>
         <button onclick="exitLandingAsAuth('signup')" class="btn primary block" style="flex:1;font-size:15px;padding:14px;font-weight:800;">Créer un compte</button>
       </div>
-      <button onclick="pwaShowOverlay()" class="btn primary block" style="margin-top:10px;font-size:15px;padding:14px;font-weight:800;">📲 Installer l'application</button>
+      <button id="btn-install-app" onclick="pwaShowOverlay()" class="btn primary block" style="margin-top:10px;font-size:15px;padding:14px;font-weight:800;">📲 Installer l'application</button>
     </div>
 
   </div>
@@ -16667,5 +16667,18 @@ function pwaDismiss() {
   </div>
 </div>
 
+
+<script>
+  // Cache le bouton installer si l'app est déjà installée (mode standalone)
+  (function() {
+    const isInstalled = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+    if (isInstalled) {
+      document.addEventListener('DOMContentLoaded', () => {
+        const btn = document.getElementById('btn-install-app');
+        if (btn) btn.style.display = 'none';
+      });
+    }
+  })();
+</script>
 </body>
 </html>
