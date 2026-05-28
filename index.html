@@ -8515,15 +8515,12 @@ async function onbDoAuth() {
     if (data?.session?.user) {
       MY_UID = data.session.user.id;
       localStorage.setItem("passio_uid", MY_UID);
-      // Si reconnexion (compte existant), tenter de récupérer le profil en base
       if (_authMode === "signin") {
-        try {
-          const { data: prof } = await supa.from("profiles").select("*").eq("id", MY_UID).single();
-          if (prof && state.user) {
-            if (prof.username) state.user.name = state.user.name || prof.username;
-            if (prof.bio) { state.user.general = state.user.general || {}; state.user.general.bio = state.user.general.bio || prof.bio; }
-          }
-        } catch(e) {}
+        // Compte existant → marque onboardé et recharge : boot() lance l'app directement
+        state.onboarded = true;
+        saveState();
+        window.location.reload();
+        return;
       }
     }
     onbNext();
