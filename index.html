@@ -8829,13 +8829,6 @@ function renderFeed() {
     });
   }
 
-  // DEBUG visible — à supprimer après correction
-  (function() {
-    var dbg = document.getElementById("feedDebug");
-    if (!dbg) { dbg = document.createElement("div"); dbg.id = "feedDebug"; dbg.style = "background:#1a1a2e;color:#a0f;font-size:10px;padding:6px 10px;border-radius:8px;margin:4px 10px;word-break:break-all;"; list.parentNode.insertBefore(dbg, list); }
-    var preview = posts.slice(0, 5).map(function(p){ return p.passion + "(" + p.type + ")"; }).join(", ");
-    dbg.textContent = "Filtre actif: [" + selPassions.join(", ") + "] | Posts affichés: " + posts.length + " | Ex: " + preview;
-  })();
 
   // Filtre par mood
   if (mood !== "all") {
