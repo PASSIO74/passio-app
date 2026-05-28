@@ -8829,12 +8829,6 @@ function renderFeed() {
     });
   }
 
-  // DEBUG
-  (function() {
-    var dbg = document.getElementById("feedDebug");
-    if (!dbg) { dbg = document.createElement("div"); dbg.id = "feedDebug"; dbg.style = "position:fixed;bottom:70px;left:0;right:0;background:#000;color:#0f0;font-size:10px;padding:6px 10px;z-index:9999;word-break:break-all;"; document.body.appendChild(dbg); }
-    dbg.textContent = "selPassions=" + JSON.stringify(selPassions) + " | posts=" + posts.length + " | passions: " + posts.slice(0,5).map(function(p){return p.passion+"/"+p.type;}).join(", ");
-  })();
 
 
   // Filtre par mood
