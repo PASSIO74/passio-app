@@ -13155,9 +13155,7 @@ function deleteProfile(profileId) {
   if (state.user.currentProfileId === profileId) {
     state.user.currentProfileId = state.user.profiles[0].id;
   }
-  if (state.selectedProfileIds) {
-    state.selectedProfileIds = state.selectedProfileIds.filter(function(id) { return id !== profileId; });
-  }
+  // selectedFeedPassions ne contient pas d'IDs de profil, rien à nettoyer ici
   saveState();
   closeModal();
   renderProfilesScreen();
