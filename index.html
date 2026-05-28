@@ -6015,7 +6015,7 @@
     <div class="onb-step active" data-onb-step="splash" style="justify-content:flex-start;padding-top:0;">
       <!-- Logo + branding -->
       <div style="width:100%;background:linear-gradient(160deg,#6d28d9 0%,#8b5cf6 60%,#a78bfa 100%);padding:48px 24px 36px;text-align:center;border-radius:0 0 32px 32px;margin-bottom:24px;">
-        <div class="onb-logo-big" style="margin-bottom:12px;display:flex;justify-content:center;"><img id="logoOnb1" alt="PASSIO" style="width:100px;height:100px;border-radius:26px;box-shadow:0 8px 32px rgba(0,0,0,0.25);"/></div>
+        <div class="onb-logo-big" style="margin-bottom:12px;"><img id="logoOnb1" alt="PASSIO" style="width:72px;height:72px;border-radius:20px;box-shadow:0 8px 32px rgba(0,0,0,0.25);"/></div>
         <div style="font-size:28px;font-weight:900;color:#fff;letter-spacing:-0.5px;">PASSIO</div>
         <div style="font-size:13px;color:rgba(255,255,255,0.8);margin-top:6px;">Le réseau social de tes passions</div>
       </div>
@@ -8515,7 +8515,16 @@ async function onbDoAuth() {
     if (data?.session?.user) {
       MY_UID = data.session.user.id;
       localStorage.setItem("passio_uid", MY_UID);
-
+      // Si reconnexion (compte existant), tenter de récupérer le profil en base
+      if (_authMode === "signin") {
+        try {
+          const { data: prof } = await supa.from("profiles").select("*").eq("id", MY_UID).single();
+          if (prof && state.user) {
+            if (prof.username) state.user.name = state.user.name || prof.username;
+            if (prof.bio) { state.user.general = state.user.general || {}; state.user.general.bio = state.user.general.bio || prof.bio; }
+          }
+        } catch(e) {}
+      }
     }
     onbNext();
   } catch(e) {
