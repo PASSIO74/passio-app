@@ -13198,23 +13198,19 @@ function renderProfileStrip() {
   box.innerHTML = tilesHTML;
 }
 
-function toggleProfileFilter(profileId) {
-  if (!state.selectedProfileIds) state.selectedProfileIds = [];
-  var idx = state.selectedProfileIds.indexOf(profileId);
+function toggleProfileFilter(passionId) {
+  if (!state.selectedFeedPassions) state.selectedFeedPassions = [];
+  var idx = state.selectedFeedPassions.indexOf(passionId);
   if (idx !== -1) {
-    state.selectedProfileIds.splice(idx, 1);
+    state.selectedFeedPassions.splice(idx, 1);
   } else {
-    state.selectedProfileIds.push(profileId);
-  }
-  // Aussi mettre le profil actif au dernier sélectionné
-  if (state.selectedProfileIds.length > 0) {
-    state.user.currentProfileId = state.selectedProfileIds[state.selectedProfileIds.length - 1];
+    state.selectedFeedPassions.push(passionId);
   }
   renderFeed();
 }
 
 function selectAllProfiles() {
-  state.selectedProfileIds = [];
+  state.selectedFeedPassions = [];
   renderFeed();
 }
 
