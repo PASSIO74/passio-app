@@ -13175,6 +13175,7 @@ function renderProfileStrip() {
   const selected = state.selectedProfileIds;
 
   if (!state.selectedFeedPassions) state.selectedFeedPassions = [];
+  var anySelected = state.selectedFeedPassions.length > 0;
   var tilesHTML = profiles.map(function(p) {
     const passion = passionById(p.passion);
     const isSelected = state.selectedFeedPassions.indexOf(p.passion) !== -1;
@@ -13187,9 +13188,14 @@ function renderProfileStrip() {
     const avatarContent = photoUrl
       ? '<img class="profile-tile-photo" src="' + photoUrl + '" alt="' + label + '" onerror="this.onerror=null;this.src=\'' + fallback + '\'"/><span class="profile-tile-emoji-badge">' + p.emoji + '</span>'
       : p.emoji;
-    return '<div class="profile-tile ' + (isSelected ? "active" : "") + '" onclick="toggleProfileFilter(\'' + p.passion + '\')" title="' + label + '">\
-      <div class="profile-tile-avatar" style="' + (isSelected ? '' : 'background:' + p.color + ';opacity:0.5;') + '">' + avatarContent + '</div>\
-      <div class="profile-tile-label">' + label + '</div>\
+    // Visuel clair : sélectionné = contour violet vif + pleine opacité ; non sélectionné quand filtre actif = grisé
+    var tileStyle = isSelected
+      ? 'outline:3px solid #8b5cf6;outline-offset:2px;'
+      : (anySelected ? 'opacity:0.4;' : '');
+    var labelStyle = isSelected ? 'color:#8b5cf6;font-weight:800;' : '';
+    return '<div class="profile-tile ' + (isSelected ? "active" : "") + '" onclick="toggleProfileFilter(\'' + p.passion + '\')" title="' + label + '" style="cursor:pointer;' + tileStyle + '">\
+      <div class="profile-tile-avatar">' + avatarContent + '</div>\
+      <div class="profile-tile-label" style="' + labelStyle + '">' + label + '</div>\
     </div>';
   }).join("");
 
