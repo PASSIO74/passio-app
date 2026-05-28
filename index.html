@@ -4192,8 +4192,12 @@
       position: relative;
     }
     .profile-tile:active { transform: scale(0.95); }
+    /* Sans filtre actif : toutes les tuiles à pleine couleur */
     .profile-tile:not(.active) { filter: saturate(0.7) brightness(0.88); }
     .profile-tile:not(.active):hover { filter: saturate(1) brightness(1); }
+    /* Quand un filtre est actif : tuiles non-sélectionnées très grisées */
+    .profile-strip.has-filter .profile-tile:not(.active) { opacity: 0.25; filter: grayscale(1) brightness(0.7); transform: scale(0.92); }
+    .profile-strip.has-filter .profile-tile.active { opacity: 1; filter: none; transform: translateY(-4px) scale(1.04); box-shadow: 0 12px 32px rgba(139,92,246,0.4); }
 
     .profile-tile-avatar {
       width: 72px;
