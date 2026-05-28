@@ -25,16 +25,23 @@
     window.addEventListener('beforeinstallprompt', (e) => {
       e.preventDefault();
       window._pwaPrompt = e;
-      // Si l'overlay est déjà ouvert sur la vue desktop → bascule en mode 1-clic
+
+      // Si l'overlay est déjà ouvert → active le bouton direct
       const ov = document.getElementById('pwa-overlay');
       if (ov && ov.style.display !== 'none') {
         const btn = document.getElementById('pwa-desktop-install-btn');
-        if (btn) {
-          btn.textContent = '📲  Installer PASSIO';
-          btn.disabled = false;
-          btn.style.opacity = '1';
-        }
+        if (btn) { btn.textContent = '📲  Installer PASSIO'; btn.disabled = false; btn.style.opacity = '1'; }
+        return;
       }
+
+      // Affiche automatiquement l'overlay d'installation après 1.5s
+      // sauf si l'utilisateur l'a déjà refusé récemment (72h)
+      const dismissed = localStorage.getItem('pwa_dismissed');
+      if (dismissed && Date.now() - parseInt(dismissed) < 72 * 3600 * 1000) return;
+
+      setTimeout(() => {
+        if (typeof pwaShowOverlay === 'function') pwaShowOverlay();
+      }, 1500);
     });
   </script>
 
