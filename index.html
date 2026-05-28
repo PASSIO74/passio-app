@@ -8830,6 +8830,7 @@ function renderFeed() {
   // Filtre par profils sélectionnés (par passion)
   if (selectedPassions.length > 0) {
     posts = posts.filter(function(p) {
+      // Toujours montrer si la passion du post correspond à un profil sélectionné
       return selectedPassions.indexOf(p.passion) !== -1;
     });
   }
@@ -16477,17 +16478,7 @@ function attachMsgPhoto(input) {
 }
 
 // Profil chips dans feed
-function toggleProfileFilter(profileId) {
-  if (!state.selectedProfileIds) state.selectedProfileIds = [];
-  var ids = state.selectedProfileIds;
-  var idx = ids.indexOf(profileId);
-  if (idx >= 0) { ids.splice(idx,1); } else { ids.push(profileId); }
-  renderFeed();
-}
-function selectAllProfiles() {
-  state.selectedProfileIds = [];
-  renderFeed();
-}
+// toggleProfileFilter et selectAllProfiles définis plus haut
 
 
 function resetOnboarding() {
