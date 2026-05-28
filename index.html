@@ -5744,56 +5744,87 @@
     .onb-auth-msg.success { display:block;background:rgba(139,92,246,.1);color:var(--accent-2);border:1px solid var(--border); }
     .auth-loading { display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:6px; }
 
-    /* ======== PWA INSTALL BANNER ======== */
-    .pwa-card {
+    /* ======== PWA INSTALL OVERLAY ======== */
+    #pwa-overlay {
+      position: fixed; inset: 0; z-index: 99999;
+      background: rgba(10,0,30,0.72);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      display: flex; align-items: flex-end; justify-content: center;
+      animation: pwaFadeIn .3s ease both;
+    }
+    @keyframes pwaFadeIn { from { opacity:0; } to { opacity:1; } }
+    #pwa-sheet {
       background: #fff;
-      border-radius: 22px;
-      box-shadow: 0 -2px 40px rgba(109,40,217,0.16), 0 8px 32px rgba(0,0,0,0.10);
-      padding: 16px 16px 14px;
-      border: 1.5px solid rgba(139,92,246,0.12);
-      animation: pwaSlideUp 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+      width: 100%; max-width: 480px;
+      border-radius: 28px 28px 0 0;
+      padding: 8px 20px 36px;
+      animation: pwaSlideUp .4s cubic-bezier(0.16,1,0.3,1) both;
+      box-shadow: 0 -8px 60px rgba(109,40,217,0.25);
     }
     @keyframes pwaSlideUp {
-      from { transform: translateY(130px); opacity: 0; }
-      to   { transform: translateY(0);    opacity: 1; }
+      from { transform: translateY(100%); }
+      to   { transform: translateY(0); }
     }
-    .pwa-card-header { display:flex; align-items:center; gap:12px; margin-bottom:13px; }
-    .pwa-card-icon {
-      width:48px; height:48px; border-radius:13px; flex-shrink:0;
+    .pwa-handle {
+      width: 40px; height: 4px; border-radius: 4px;
+      background: #e5e7eb; margin: 10px auto 24px; display: block;
+    }
+    .pwa-logo-wrap {
+      display: flex; align-items: center; gap: 14px; margin-bottom: 18px;
+    }
+    .pwa-logo-icon {
+      width: 62px; height: 62px; border-radius: 16px; flex-shrink: 0;
       background: linear-gradient(135deg,#6d28d9,#a78bfa);
-      display:flex; align-items:center; justify-content:center;
-      font-size:26px; box-shadow:0 4px 14px rgba(109,40,217,0.30);
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 6px 20px rgba(109,40,217,0.35);
     }
-    .pwa-card-title { font-size:15px; font-weight:800; color:#1e0a3c; line-height:1.2; }
-    .pwa-card-sub   { font-size:12px; color:#6b7280; margin-top:3px; }
-    .pwa-dismiss-btn {
-      margin-left:auto; background:none; border:none;
-      font-size:18px; color:#9ca3af; cursor:pointer; padding:4px 6px; line-height:1;
-      flex-shrink:0; border-radius:8px;
+    .pwa-logo-icon img { width:44px; height:44px; border-radius:11px; }
+    .pwa-app-name  { font-size:22px; font-weight:900; color:#1e0a3c; }
+    .pwa-app-desc  { font-size:13px; color:#6b7280; margin-top:2px; }
+    .pwa-perks {
+      display: flex; gap: 6px; margin-bottom: 22px; flex-wrap: wrap;
     }
-    .pwa-dismiss-btn:hover { background:rgba(0,0,0,0.05); color:#6b7280; }
-    .pwa-install-btn {
-      width:100%; padding:14px; border:none; border-radius:13px;
+    .pwa-perk {
+      background: rgba(109,40,217,0.07); border-radius: 999px;
+      padding: 5px 12px; font-size: 12px; font-weight: 600; color: #5b21b6;
+    }
+    .pwa-btn-install {
+      width: 100%; padding: 16px; border: none; border-radius: 16px;
       background: linear-gradient(135deg,#6d28d9,#8b5cf6);
-      color:#fff; font-size:15px; font-weight:800; cursor:pointer;
-      letter-spacing:0.2px; box-shadow:0 4px 14px rgba(109,40,217,0.35);
+      color: #fff; font-size: 16px; font-weight: 800; cursor: pointer;
+      box-shadow: 0 6px 20px rgba(109,40,217,0.40);
       transition: transform .12s, box-shadow .12s;
+      margin-bottom: 10px;
     }
-    .pwa-install-btn:active { transform:scale(0.97); box-shadow:0 2px 8px rgba(109,40,217,0.25); }
-    .pwa-ios-steps {
-      background:rgba(109,40,217,0.06); border-radius:13px;
-      padding:12px 14px; margin-bottom:12px;
+    .pwa-btn-install:active { transform: scale(0.97); }
+    .pwa-btn-skip {
+      width: 100%; padding: 12px; border: none; border-radius: 14px;
+      background: none; color: #9ca3af; font-size: 13px; cursor: pointer;
     }
-    .pwa-ios-step {
-      display:flex; align-items:center; gap:6px;
-      font-size:13px; color:#374151; padding:5px 0; line-height:1.4;
+    .pwa-btn-skip:hover { color: #6b7280; }
+    /* Sous-vue iOS */
+    #pwa-ios-view { display:none; }
+    .pwa-ios-box {
+      background: rgba(109,40,217,0.06); border-radius: 16px;
+      padding: 14px 16px; margin-bottom: 14px;
     }
-    .pwa-ios-step strong { color:#6d28d9; }
-    .pwa-ios-ok-btn {
-      width:100%; padding:12px; border:none; border-radius:13px;
-      background:rgba(109,40,217,0.10); color:#6d28d9;
-      font-size:14px; font-weight:700; cursor:pointer;
+    .pwa-ios-row {
+      display: flex; align-items: flex-start; gap: 10px;
+      font-size: 14px; color: #374151; padding: 6px 0; line-height: 1.4;
     }
+    .pwa-ios-row strong { color: #6d28d9; }
+    /* Sous-vue desktop sans prompt */
+    #pwa-desktop-view { display:none; }
+    .pwa-desktop-hint {
+      background: rgba(109,40,217,0.06); border-radius:16px;
+      padding: 14px 16px; margin-bottom:14px; text-align:center;
+      font-size:14px; color:#374151; line-height:1.6;
+    }
+    .pwa-desktop-hint strong { color:#6d28d9; font-size:16px; }
+    /* Compat ancien code */
+    .pwa-card { display:none; }
+    .pwa-ios-step { display:none; }
   </style>
 </head>
 <body>
@@ -15826,6 +15857,8 @@ async function boot() {
   $("#logoOnb1").src = LOGO_SRC;
   const ll = document.getElementById("logoLanding");
   if (ll) ll.src = LOGO_SRC;
+  const lp = document.getElementById("pwaLogoImg");
+  if (lp) lp.src = LOGO_SRC;
 
   state = loadState();
 
@@ -16392,102 +16425,119 @@ function exitLandingAsAuth(mode) {
 }
 boot().catch(e => console.error("Boot error:", e));
 
-// ======== PWA INSTALL ========
+// ======== PWA INSTALL OVERLAY ========
 let _pwaPrompt = null;
-const _pwaKey = "passio_pwa_dismissed";
+const _pwaKey  = "passio_pwa_dismissed";
+const _isIOS   = /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
+const _isStandalone = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone;
 
-// Android / Chrome / Edge : capture l'événement d'installation
+// Capture le prompt natif Android/Chrome/Edge
 window.addEventListener("beforeinstallprompt", (e) => {
   e.preventDefault();
   _pwaPrompt = e;
-  setTimeout(pwaMaybeShow, 1800);
 });
 
-// iOS : l'événement beforeinstallprompt n'existe pas, on détecte au chargement
+// Afficher l'overlay dès le chargement (si pas déjà installé)
 window.addEventListener("load", () => {
-  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
-  if (isIOS && !window.navigator.standalone) {
-    setTimeout(pwaMaybeShow, 1800);
-  }
+  if (_isStandalone) return; // déjà installée → rien
+  const ts = localStorage.getItem(_pwaKey);
+  if (ts && Date.now() - parseInt(ts) < 3 * 86400000) return; // snooze 3 jours
+  setTimeout(pwaShowOverlay, 400);
 });
 
-function pwaMaybeShow() {
-  // Déjà installée en mode standalone → on ne montre rien
-  if (window.matchMedia("(display-mode: standalone)").matches) return;
-  if (window.navigator.standalone) return;
-  // Refusé récemment (7 jours) → silence
-  const ts = localStorage.getItem(_pwaKey);
-  if (ts && Date.now() - parseInt(ts) < 7 * 86400000) return;
+function pwaShowOverlay() {
+  if (_isStandalone) return;
+  const ov = document.getElementById("pwa-overlay");
+  if (!ov) return;
 
-  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
-  const banner = document.getElementById("pwa-banner");
-  if (!banner) return;
-
-  if (_pwaPrompt) {
-    document.getElementById("pwa-android").style.display = "block";
-    document.getElementById("pwa-ios").style.display    = "none";
-    banner.style.display = "block";
-  } else if (isIOS) {
-    document.getElementById("pwa-ios").style.display    = "block";
-    document.getElementById("pwa-android").style.display = "none";
-    banner.style.display = "block";
+  if (_isIOS) {
+    // iOS : montrer les instructions
+    document.getElementById("pwa-default-view").style.display = "none";
+    document.getElementById("pwa-ios-view").style.display     = "block";
   }
+  // Sur desktop sans prompt : on garde le bouton visible,
+  // le clic détectera si le prompt est dispo ou affichera le hint
+  ov.style.display = "flex";
 }
 
 async function pwaInstall() {
-  if (!_pwaPrompt) return;
-  try {
-    _pwaPrompt.prompt();
-    const { outcome } = await _pwaPrompt.userChoice;
-    _pwaPrompt = null;
-    pwaDismiss();
-    if (outcome === "accepted") {
-      if (typeof toast === "function") toast("PASSIO installée ! 🎉", "success");
-    }
-  } catch(e) { pwaDismiss(); }
+  if (_pwaPrompt) {
+    // Android / Chrome / Edge → prompt natif
+    try {
+      _pwaPrompt.prompt();
+      const { outcome } = await _pwaPrompt.userChoice;
+      _pwaPrompt = null;
+      if (outcome === "accepted") {
+        pwaDismiss();
+        if (typeof toast === "function") toast("PASSIO installée ! 🎉", "success");
+      }
+    } catch(e) { /* ignore */ }
+  } else {
+    // Desktop sans prompt (peut arriver si Chrome n'a pas encore déclenché)
+    document.getElementById("pwa-default-view").style.display = "none";
+    document.getElementById("pwa-desktop-view").style.display = "block";
+  }
 }
 
 function pwaDismiss() {
-  const banner = document.getElementById("pwa-banner");
-  if (banner) banner.style.display = "none";
+  const ov = document.getElementById("pwa-overlay");
+  if (ov) {
+    ov.style.animation = "pwaFadeIn .25s ease reverse both";
+    setTimeout(() => { ov.style.display = "none"; }, 220);
+  }
   localStorage.setItem(_pwaKey, Date.now().toString());
 }
 </script>
 
-<!-- ======== PWA INSTALL BANNER ======== -->
-<div id="pwa-banner" style="display:none; position:fixed; bottom:0; left:0; right:0; z-index:99999; padding:0 14px 22px; pointer-events:none;">
+<!-- ======== PWA INSTALL OVERLAY ======== -->
+<div id="pwa-overlay" style="display:none;">
+  <div id="pwa-sheet">
+    <span class="pwa-handle"></span>
 
-  <!-- Android / Chrome / Edge -->
-  <div id="pwa-android" class="pwa-card" style="display:none; pointer-events:all;">
-    <div class="pwa-card-header">
-      <div class="pwa-card-icon">💜</div>
+    <!-- Logo + nom -->
+    <div class="pwa-logo-wrap">
+      <div class="pwa-logo-icon"><img id="pwaLogoImg" alt="PASSIO" /></div>
       <div>
-        <div class="pwa-card-title">Installe PASSIO</div>
-        <div class="pwa-card-sub">Accès rapide depuis ton écran d'accueil</div>
+        <div class="pwa-app-name">PASSIO</div>
+        <div class="pwa-app-desc">Le réseau de tes passions</div>
       </div>
-      <button class="pwa-dismiss-btn" onclick="pwaDismiss()" aria-label="Fermer">✕</button>
     </div>
-    <button class="pwa-install-btn" onclick="pwaInstall()">📲&nbsp; Installer l'application</button>
-  </div>
 
-  <!-- iOS Safari -->
-  <div id="pwa-ios" class="pwa-card" style="display:none; pointer-events:all;">
-    <div class="pwa-card-header">
-      <div class="pwa-card-icon">💜</div>
-      <div>
-        <div class="pwa-card-title">Installe PASSIO sur ton iPhone</div>
-        <div class="pwa-card-sub">Expérience native, sans App Store</div>
+    <!-- Tags -->
+    <div class="pwa-perks">
+      <span class="pwa-perk">📵 Sans pub</span>
+      <span class="pwa-perk">⚡ Rapide</span>
+      <span class="pwa-perk">🔔 Notifs</span>
+      <span class="pwa-perk">📶 Hors-ligne</span>
+    </div>
+
+    <!-- Vue par défaut (Android / Desktop) -->
+    <div id="pwa-default-view">
+      <button class="pwa-btn-install" onclick="pwaInstall()">📲&nbsp;&nbsp;Installer l'application</button>
+      <button class="pwa-btn-skip" onclick="pwaDismiss()">Continuer dans le navigateur</button>
+    </div>
+
+    <!-- Vue iOS -->
+    <div id="pwa-ios-view">
+      <div class="pwa-ios-box">
+        <div class="pwa-ios-row">1️⃣&nbsp; Appuie sur <strong>&nbsp;⬆ Partager&nbsp;</strong> (barre du bas Safari)</div>
+        <div class="pwa-ios-row">2️⃣&nbsp; Sélectionne <strong>&nbsp;"Sur l'écran d'accueil"&nbsp;</strong></div>
+        <div class="pwa-ios-row">3️⃣&nbsp; Appuie sur <strong>&nbsp;Ajouter&nbsp;</strong> — c'est tout !</div>
       </div>
-      <button class="pwa-dismiss-btn" onclick="pwaDismiss()" aria-label="Fermer">✕</button>
+      <button class="pwa-btn-install" onclick="pwaDismiss()">👍&nbsp;&nbsp;OK, j'installe</button>
+      <button class="pwa-btn-skip" onclick="pwaDismiss()">Continuer dans le navigateur</button>
     </div>
-    <div class="pwa-ios-steps">
-      <div class="pwa-ios-step">1️⃣&nbsp;&nbsp;Appuie sur <strong>&nbsp;⎙ Partager&nbsp;</strong> (barre du bas Safari)</div>
-      <div class="pwa-ios-step">2️⃣&nbsp;&nbsp;Sélectionne <strong>&nbsp;"Sur l'écran d'accueil"&nbsp;</strong></div>
-      <div class="pwa-ios-step">3️⃣&nbsp;&nbsp;Appuie sur <strong>&nbsp;Ajouter&nbsp;</strong> — c'est tout !</div>
-    </div>
-    <button class="pwa-ios-ok-btn" onclick="pwaDismiss()">👍&nbsp; OK, je le fais</button>
-  </div>
 
+    <!-- Vue desktop sans prompt natif -->
+    <div id="pwa-desktop-view">
+      <div class="pwa-desktop-hint">
+        Regarde en haut à droite de ton navigateur :<br/>
+        <strong>icône ⊕ → Installer PASSIO</strong><br/>
+        <span style="font-size:12px;color:#9ca3af;">(peut prendre quelques secondes à apparaître)</span>
+      </div>
+      <button class="pwa-btn-install" onclick="pwaDismiss()">✓&nbsp;&nbsp;Compris !</button>
+    </div>
+  </div>
 </div>
 
 </body>
