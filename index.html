@@ -26,8 +26,6 @@
       e.preventDefault();
       window._pwaPrompt = e;
       // Lance l'installation directement après 1.5s (sans overlay)
-      const dismissed = localStorage.getItem('pwa_dismissed');
-      if (dismissed && Date.now() - parseInt(dismissed) < 72 * 3600 * 1000) return;
       setTimeout(() => { if (window._pwaPrompt) window._pwaPrompt.prompt(); }, 1500);
     });
   </script>
