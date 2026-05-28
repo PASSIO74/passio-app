@@ -8865,7 +8865,7 @@ function renderFeed() {
     return;
   }
   $("#feedEmpty").style.display = "none";
-  list.innerHTML = posts.map(renderPostHTML).join("");
+  list.innerHTML = posts.slice(0, 20).map(renderPostHTML).join("");
 }
 
 // Real-photo cover, maps each `cover` variant to an Unsplash HD photo.
