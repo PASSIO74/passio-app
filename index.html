@@ -8963,19 +8963,22 @@ function allFeedPosts() {
 
 function renderFeed() {
   const list = $("#feedList");
-  const mood = state.currentMood;
 
   let posts = allFeedPosts().filter(function(p) { return p.type !== "vlog"; });
 
+  // Filtre passions (multi-sélection) — OU entre les passions sélectionnées
   if (_activeFeedPassions.size > 0) {
     posts = posts.filter(function(p) { return _activeFeedPassions.has(p.passion); });
   }
 
-  if (mood !== "all") {
-    posts = posts.filter(function(p) { return p.mood === mood; });
+  // Filtre moods (multi-sélection) — OU entre les moods sélectionnés
+  if (_activeFeedMoods.size > 0) {
+    posts = posts.filter(function(p) { return _activeFeedMoods.has(p.mood || "all"); });
   }
 
   renderProfileStrip();
+  renderMoodStrip();
+  renderFeedFilterBadge();
   renderStories();
 
   if (posts.length === 0) {
@@ -8984,13 +8987,9 @@ function renderFeed() {
     if (emptyEl) {
       var emptyTitle = emptyEl.querySelector(".empty-title");
       var emptyText = emptyEl.querySelector(".empty-text");
-      if (_activeFeedPassions.size > 0) {
-        if (emptyTitle) emptyTitle.textContent = "Aucun post pour ces passions";
-        if (emptyText) emptyText.textContent = "Sois le premier à publier dans ces passions.";
-      } else {
-        if (emptyTitle) emptyTitle.textContent = "Aucun post pour ce mood";
-        if (emptyText) emptyText.textContent = "Change de mood ou crée le premier contenu.";
-      }
+      var hasAnyFilter = _activeFeedPassions.size > 0 || _activeFeedMoods.size > 0;
+      if (emptyTitle) emptyTitle.textContent = hasAnyFilter ? "Aucun post pour ces filtres" : "Aucun post";
+      if (emptyText) emptyText.textContent = hasAnyFilter ? "Modifie ta sélection ou crée le premier contenu." : "Sois le premier à publier !";
       emptyEl.style.display = "block";
     }
     return;
