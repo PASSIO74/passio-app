@@ -16722,21 +16722,59 @@ function pwaShowOverlay() {
     setTimeout(() => { window.location.href = si; }, 3200);
     return;
 
-  // ═══ CAS 5 : Desktop sans prompt (Firefox PC) → ouvre Chrome automatiquement ═══
-  } else {
+  // ═══ CAS 5 : Safari macOS → guide "Ajouter au Dock" ═══
+  } else if (_isSafari && _isMac) {
+    content.innerHTML = `
+      <div style="background:#f5f3ff;border-radius:16px;padding:16px;margin-bottom:14px;">
+        <div style="font-weight:800;color:#1e1b4b;margin-bottom:12px;text-align:center;">🖥 Installer sur Mac (Safari)</div>
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;">
+          <span style="font-size:26px;">1️⃣</span>
+          <span style="font-size:13px;color:#374151;">Dans Safari, clique sur le menu <strong style="color:#6d28d9;">Fichier</strong></span>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <span style="font-size:26px;">2️⃣</span>
+          <span style="font-size:13px;color:#374151;">Choisis <strong style="color:#6d28d9;">"Ajouter au Dock…"</strong> puis <strong style="color:#6d28d9;">Ajouter</strong></span>
+        </div>
+      </div>
+      <button class="pwa-btn-skip" onclick="pwaDismiss()">Fermer</button>`;
+
+  // ═══ CAS 6 : Firefox Mac → ouvre Safari automatiquement ═══
+  } else if (_isFirefox && _isMac) {
     content.innerHTML = `
       <div style="text-align:center;padding:8px 0 16px;">
-        <div style="font-size:44px;margin-bottom:8px;">💻</div>
-        <div style="font-size:16px;font-weight:800;color:#1e1b4b;margin-bottom:6px;">Ouverture dans Chrome…</div>
-        <div style="font-size:13px;color:#6b7280;margin-bottom:16px;">La popup d'installation va apparaître automatiquement</div>
-        <div class="pwa-spinner" style="margin:0 auto 16px;width:36px;height:36px;border:4px solid #ede9fe;border-top-color:#7c3aed;border-radius:50%;animation:spin 0.8s linear infinite;"></div>
+        <div style="font-size:44px;margin-bottom:8px;">🧭</div>
+        <div style="font-size:16px;font-weight:800;color:#1e1b4b;margin-bottom:6px;">Ouverture dans Safari…</div>
+        <div style="font-size:13px;color:#6b7280;margin-bottom:16px;">Safari va s'ouvrir pour installer PASSIO sur ton Mac</div>
+        <div style="margin:0 auto 16px;width:36px;height:36px;border:4px solid #ede9fe;border-top-color:#7c3aed;border-radius:50%;animation:spin 0.8s linear infinite;"></div>
         <button class="pwa-btn-skip" onclick="pwaDismiss()">Annuler</button>
       </div>`;
     ov.style.display = "flex";
-    // Tente Chrome puis Edge
-    setTimeout(() => { window.location.href = 'googlechrome://navigate?url=' + encodeURIComponent(APP_URL); }, 400);
-    setTimeout(() => { window.location.href = 'microsoft-edge:' + APP_URL; }, 1800);
+    setTimeout(() => { window.location.href = APP_URL.replace('https://', 'x-safari-https://'); }, 500);
     return;
+
+  // ═══ CAS 7 : Firefox Windows → ouvre Edge (pré-installé) ═══
+  } else if (_isFirefox && _isWindows) {
+    content.innerHTML = `
+      <div style="text-align:center;padding:8px 0 16px;">
+        <div style="font-size:44px;margin-bottom:8px;">🌐</div>
+        <div style="font-size:16px;font-weight:800;color:#1e1b4b;margin-bottom:6px;">Ouverture dans Edge…</div>
+        <div style="font-size:13px;color:#6b7280;margin-bottom:16px;">Microsoft Edge va s'ouvrir et installer PASSIO automatiquement</div>
+        <div style="margin:0 auto 16px;width:36px;height:36px;border:4px solid #ede9fe;border-top-color:#0078d4;border-radius:50%;animation:spin 0.8s linear infinite;"></div>
+        <button class="pwa-btn-skip" onclick="pwaDismiss()">Annuler</button>
+      </div>`;
+    ov.style.display = "flex";
+    setTimeout(() => { window.location.href = 'microsoft-edge:' + APP_URL; }, 500);
+    return;
+
+  // ═══ CAS 8 : Autre cas non géré ═══
+  } else {
+    content.innerHTML = `
+      <div style="text-align:center;padding:8px 0 16px;">
+        <div style="font-size:44px;margin-bottom:8px;">📲</div>
+        <div style="font-size:16px;font-weight:800;color:#1e1b4b;margin-bottom:8px;">Installer PASSIO</div>
+        <div style="font-size:13px;color:#6b7280;margin-bottom:16px;">Ouvre ce lien dans <strong>Chrome</strong> ou <strong>Edge</strong> pour installer l'app en 1 clic.</div>
+        <button class="pwa-btn-skip" onclick="pwaDismiss()">Fermer</button>
+      </div>`;
   }
 
   ov.style.display = "flex";
