@@ -16824,13 +16824,13 @@ function pwaShowBannerInstall() {
   var ov = document.getElementById("pwa-overlay");
   var content = document.getElementById("pwa-content");
   if (!ov || !content) return;
-  content.innerHTML = \`
-    <div style="text-align:center;padding:8px 0 16px;">
-      <div style="font-size:44px;margin-bottom:10px;">🔍</div>
-      <div style="font-size:16px;font-weight:800;color:#1e1b4b;margin-bottom:8px;">Installe depuis la barre d'adresse</div>
-      <div style="font-size:13px;color:#6b7280;margin-bottom:16px;">Ton navigateur a déjà proposé l'installation. Clique sur l'icône <strong>📥</strong> ou <strong>⊕</strong> dans la barre d'adresse en haut.</div>
-      <button class="pwa-btn-skip" onclick="pwaDismiss()">Fermer</button>
-    </div>\`;
+  content.innerHTML =
+    '<div style="text-align:center;padding:8px 0 16px;">' +
+    '<div style="font-size:44px;margin-bottom:10px;">🔍</div>' +
+    '<div style="font-size:16px;font-weight:800;color:#1e1b4b;margin-bottom:8px;">Installe depuis la barre d\'adresse</div>' +
+    '<div style="font-size:13px;color:#6b7280;margin-bottom:16px;">Ton navigateur a déjà proposé l\'installation. Clique sur l\'icône <strong>📥</strong> dans la barre d\'adresse en haut pour installer PASSIO.</div>' +
+    '<button class="pwa-btn-skip" onclick="pwaDismiss()">Fermer</button>' +
+    '</div>';
   ov.style.display = "flex";
 }
 
