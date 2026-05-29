@@ -6523,7 +6523,7 @@
           <h3>Explorer par passion</h3>
           <p>Découvre des utilisateurs et des contenus selon ce que tu aimes.</p>
           <div style="display:flex;gap:8px;">
-            <input type="text" class="input" id="explorerSearch" placeholder="🔍 Rechercher une passion ou un créateur…" style="flex:1;" onkeypress="if(event.key==='Enter')filterExplore()"/>
+            <input type="text" class="input" id="explorerSearch" placeholder="🔍 Rechercher une passion ou un utilisateur…" style="flex:1;" oninput="filterExplore()" onkeypress="if(event.key==='Enter')filterExplore()"/>
             <button class="btn primary" onclick="filterExplore()" style="padding:10px 16px;font-size:13px;border-radius:14px;white-space:nowrap;">Rechercher</button>
           </div>
         </div>
