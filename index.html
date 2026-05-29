@@ -13871,7 +13871,7 @@ function publishPost() {
 
   const post = {
     id: uid(),
-    authorId: "me",
+    authorId: (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me",
     profileId: state.user.currentProfileId,
     passion,
     mood: studioMood,
