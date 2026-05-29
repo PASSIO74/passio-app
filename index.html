@@ -9273,20 +9273,25 @@ function sharePost(id) {
 }
 
 function likePost(id) {
-  // Find post (in seed or userPosts)
   let post = state.seed.posts.find(p => p.id === id) || state.userPosts.find(p => p.id === id);
   if (!post) return;
   const liked = state.user.likedPosts.includes(id);
   if (liked) {
     state.user.likedPosts = state.user.likedPosts.filter(x => x !== id);
     post.likes = Math.max(0, (post.likes || 1) - 1);
+    post.liked = false;
   } else {
     state.user.likedPosts.push(id);
     post.likes = (post.likes || 0) + 1;
+    post.liked = true;
     bumpQuest("like");
   }
   saveState();
   renderFeed();
+  // Sync avec Supabase
+  if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
+    supaToggleLike(id);
+  }
 }
 
 // ===== DOC VIEWER, Passia (simple + complet embarqués) =====
