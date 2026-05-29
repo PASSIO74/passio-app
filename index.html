@@ -10918,11 +10918,8 @@ function submitComment(postId) {
 // Mood selector
 $$(".mood-btn").forEach(btn => {
   btn.addEventListener("click", () => {
-    $$(".mood-btn").forEach(b => b.classList.remove("active"));
-    btn.classList.add("active");
-    state.currentMood = btn.getAttribute("data-mood");
-    saveState();
-    renderFeed();
+    var mood = btn.getAttribute("data-mood");
+    toggleMoodFilter(mood);
   });
 });
 
