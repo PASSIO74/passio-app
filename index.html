@@ -55,6 +55,10 @@
       });
 
       window.addEventListener('load', function() {
+        // Afficher le bouton INSTALLER seulement si pas encore installé
+        var btn = document.getElementById('btn-install-app');
+        if (btn) btn.style.display = '';
+
         // ══ iOS Safari : afficher le guide automatiquement après 1.5s ══
         if (_isIOSSafari) {
           setTimeout(function() {
