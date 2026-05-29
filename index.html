@@ -11778,12 +11778,18 @@ function sendMessageFp(convId, displayName) {
   const convs = getConversations();
   const c = convs.find(x => x.id === convId);
   if (!c) return;
-  c.messages.push({ from: "me", text: txt, at: Date.now() });
+  const msgId = "msg_" + uid();
+  c.messages.push({ id: msgId, from: "me", text: txt, at: Date.now() });
   c.lastAt = Date.now();
   saveConversations();
   renderConvFpThread(c, displayName);
   renderMessages();
-  try { if (typeof supaSendMessage === "function") supaSendMessage(convId, txt); } catch(e) {}
+  // Supabase : envoyer avec le même ID pour éviter les doublons
+  if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
+    try {
+      supa.from("conv_messages").insert({ id: msgId, conv_id: convId, from_id: MY_UID, content: txt, created_at: new Date().toISOString() }).then(() => {}).catch(() => {});
+    } catch(e) {}
+  }
 }
 
 function closeConversation() {
