@@ -44,22 +44,35 @@
     window._pwaPrompt = null;
 
     if (!_isStandalone) {
-      // ── Navigateurs compatibles : popup native automatique ──
-      window.addEventListener('beforeinstallprompt', (e) => {
+
+      // ══ ANDROID / DESKTOP compatible ══
+      // Stocke le prompt natif dès qu'il arrive, puis le déclenche automatiquement
+      window.addEventListener('beforeinstallprompt', function(e) {
         e.preventDefault();
-        window._pwaPrompt = e; // Gardé pour le bouton INSTALLER
+        window._pwaPrompt = e;
+        // Déclenchement automatique immédiat (pas besoin de cliquer)
+        try { e.prompt(); } catch(_) {}
       });
 
       window.addEventListener('load', function() {
-        var APP_URL = 'https://passio-app.netlify.app/';
-        // Intent URL Android
-        var _androidChrome  = 'intent://' + APP_URL.replace('https://','') + '#Intent;scheme=https;package=com.android.chrome;end';
-        var _androidEdge    = 'intent://' + APP_URL.replace('https://','') + '#Intent;scheme=https;package=com.microsoft.emmx;end';
-        var _androidSamsung = 'intent://' + APP_URL.replace('https://','') + '#Intent;scheme=https;package=com.sec.android.app.sbrowser;end';
-
-        // Bouton INSTALLER toujours visible (pwaInstall() gère tout au clic)
-        var btn = document.getElementById('btn-install-app');
-        if (btn) btn.style.display = '';
+        // ══ iOS Safari : afficher le guide automatiquement après 1.5s ══
+        if (_isIOSSafari) {
+          setTimeout(function() {
+            if (typeof pwaShowOverlay === 'function') pwaShowOverlay();
+          }, 1500);
+        }
+        // ══ iOS autre navigateur : rediriger vers Safari ══
+        else if (_isIOSOther) {
+          setTimeout(function() {
+            window.location.href = 'https://passio-app.netlify.app/';
+          }, 800);
+        }
+        // ══ Firefox Android : ouvrir Chrome ══
+        else if (_isAndroid && _isFirefox) {
+          setTimeout(function() {
+            window.location.href = 'intent://passio-app.netlify.app/#Intent;scheme=https;package=com.android.chrome;end';
+          }, 600);
+        }
       });
     }
   </script>
