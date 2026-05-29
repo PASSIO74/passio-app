@@ -13533,10 +13533,25 @@ function toggleProfileFilter(passionId) {
   } else {
     _activeFeedPassions.add(passionId);
   }
-  state.currentMood = "all";
-  $$(".mood-btn").forEach(function(b) { b.classList.remove("active"); });
-  var allBtn = document.querySelector(".mood-btn[data-mood='all']");
-  if (allBtn) allBtn.classList.add("active");
+  // Ne reset PAS le mood — les deux filtres sont indépendants
+  saveState();
+  renderFeed();
+  var appMain = document.getElementById("appMain");
+  if (appMain) setTimeout(function() { appMain.scrollTop = 0; }, 60);
+}
+
+function toggleMoodFilter(mood) {
+  if (mood === "all") {
+    // "Tout" = effacer tous les filtres mood
+    _activeFeedMoods = new Set();
+  } else {
+    if (_activeFeedMoods.has(mood)) {
+      _activeFeedMoods.delete(mood);
+    } else {
+      _activeFeedMoods.add(mood);
+    }
+  }
+  state.currentMood = _activeFeedMoods.size === 1 ? [..._activeFeedMoods][0] : "all";
   saveState();
   renderFeed();
   var appMain = document.getElementById("appMain");
@@ -13546,6 +13561,54 @@ function toggleProfileFilter(passionId) {
 function selectAllProfiles() {
   _activeFeedPassions = new Set();
   renderFeed();
+}
+
+function clearAllFeedFilters() {
+  _activeFeedPassions = new Set();
+  _activeFeedMoods = new Set();
+  state.currentMood = "all";
+  saveState();
+  renderFeed();
+  var appMain = document.getElementById("appMain");
+  if (appMain) setTimeout(function() { appMain.scrollTop = 0; }, 60);
+}
+
+function renderMoodStrip() {
+  // Met à jour l'état visuel des boutons mood selon _activeFeedMoods
+  $$(".mood-btn").forEach(function(btn) {
+    var m = btn.getAttribute("data-mood");
+    if (m === "all") {
+      btn.classList.toggle("active", _activeFeedMoods.size === 0);
+    } else {
+      btn.classList.toggle("active", _activeFeedMoods.has(m));
+    }
+  });
+}
+
+function renderFeedFilterBadge() {
+  // Affiche un badge résumant les filtres actifs sous les moods
+  var badge = document.getElementById("feedFilterBadge");
+  if (!badge) return;
+  var parts = [];
+  if (_activeFeedPassions.size > 0) {
+    var passionLabels = [..._activeFeedPassions].map(function(pid) {
+      var p = passionById(pid);
+      return (p ? p.emoji + " " + p.label : pid);
+    });
+    parts.push(passionLabels.join(" · "));
+  }
+  if (_activeFeedMoods.size > 0) {
+    var moodMap = { creation: "🎨 Création", learn: "📚 Learn", chill: "😌 Chill", actu: "📡 Actu", irl: "🤝 IRL" };
+    var moodLabels = [..._activeFeedMoods].map(function(m) { return moodMap[m] || m; });
+    parts.push(moodLabels.join(" · "));
+  }
+  if (parts.length === 0) {
+    badge.style.display = "none";
+    badge.innerHTML = "";
+  } else {
+    badge.style.display = "flex";
+    badge.innerHTML = '<span style="flex:1;font-size:11px;color:var(--accent);font-weight:700;">' + parts.join("  +  ") + '</span><button onclick="clearAllFeedFilters()" style="background:none;border:none;font-size:13px;cursor:pointer;padding:0 4px;color:var(--muted);">✕</button>';
+  }
 }
 
 // ===== Limite profils + paywall =====
