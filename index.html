@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="UTF-8" />
@@ -9179,16 +9179,29 @@ function renderPostHTML(p) {
   </article>`;
 }
 
-function openPost(id) {
+async function openPost(id) {
   const post = state.seed.posts.find(p => p.id === id) || state.userPosts.find(p => p.id === id);
   if (!post) return;
   const page = document.getElementById("postDetailPage");
   const content = document.getElementById("postDetailContent");
   if (!page || !content) return;
 
-  const author = post._source === "me"
+  // Charger les commentaires Supabase si besoin
+  if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
+    try {
+      const supaComments = await supaLoadComments(id);
+      if (supaComments && supaComments.length > 0) {
+        const supaIds = new Set(supaComments.map(c => c.id));
+        const localOnly = (post.comments || []).filter(c => !supaIds.has(c.id) && !c.fromSupabase);
+        post.comments = [...supaComments.map(c => ({ ...c, text: c.content || c.text || "" })), ...localOnly]
+          .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      }
+    } catch(e) {}
+  }
+
+  const author = (post._source === "me" || (typeof MY_UID !== "undefined" && post.authorId === MY_UID))
     ? { name: currentProfile()?.name || state.user.name, profileEmoji: currentProfile()?.emoji || "✨", avatar: currentProfile()?.color || "#8b5cf6" }
-    : userById(post.authorId);
+    : (post.authorName ? { name: post.authorName, profileEmoji: post.authorEmoji || "✨", avatar: post.authorColor || "#8b5cf6" } : userById(post.authorId));
   const passion = passionById(post.passion);
   const liked = state.user.likedPosts.includes(id);
   const moodMap = { creation: "🎨 Création", learn: "📚 Learn", chill: "😌 Chill", irl: "🤝 IRL" };
@@ -16570,21 +16583,55 @@ async function supaInsertNotif(toUserId, kind, refId, content) {
 
 // ---- TEMPS RÉEL — abonnements globaux ----
 function supaSubscribe() {
-  // Nouveaux posts
+  // Nouveaux posts en temps reel
   supa.channel("realtime:posts")
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "posts" }, async payload => {
       const r = payload.new;
       if (r.author_id === MY_UID) return;
       try {
         const { data: prof } = await supa.from("profiles").select("username,emoji,color").eq("id", r.author_id).single();
-        const newPost = { id: r.id, authorId: r.author_id, authorName: prof?.username || "Passionn\u00e9", authorEmoji: prof?.emoji || "\u2728", authorColor: prof?.color || "#8b5cf6", passion: r.passion_id || "autre", mood: r.mood || "all", type: "text", text: r.content || "", image: r.media_url || null, createdAt: new Date(r.created_at).getTime(), likes: 0, liked: false, comments: [], fromSupabase: true };
-        state.seed.posts.unshift(newPost);
-        try { renderFeed(); } catch(e) {}
+        const newPost = { id: r.id, authorId: r.author_id, authorName: prof?.username || "Passionne", authorEmoji: prof?.emoji || "✨", authorColor: prof?.color || "#8b5cf6", passion: r.passion_id || "autre", mood: r.mood || "all", type: "text", text: r.content || "", image: r.media_url || null, createdAt: new Date(r.created_at).getTime(), likes: 0, liked: false, comments: [], fromSupabase: true };
+        if (!state.seed.posts.find(p => p.id === newPost.id)) {
+          state.seed.posts.unshift(newPost);
+          try { renderFeed(); } catch(e) {}
+        }
+      } catch(e) {}
+    })
+    .subscribe();
+
+  // Likes en temps reel
+  supa.channel("realtime:likes")
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "post_likes" }, payload => {
+      const r = payload.new;
+      const post = state.seed.posts.find(p => p.id === r.post_id) || (state.userPosts||[]).find(p => p.id === r.post_id);
+      if (post) { post.likes = (post.likes || 0) + 1; try { renderFeed(); } catch(e) {} }
+    })
+    .on("postgres_changes", { event: "DELETE", schema: "public", table: "post_likes" }, payload => {
+      const r = payload.old;
+      const post = state.seed.posts.find(p => p.id === r.post_id) || (state.userPosts||[]).find(p => p.id === r.post_id);
+      if (post) { post.likes = Math.max(0, (post.likes || 1) - 1); try { renderFeed(); } catch(e) {} }
+    })
+    .subscribe();
+
+  // Commentaires en temps reel
+  supa.channel("realtime:comments")
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "post_comments" }, async payload => {
+      const r = payload.new;
+      if (r.author_id === MY_UID) return;
+      try {
+        const post = state.seed.posts.find(p => p.id === r.post_id) || (state.userPosts||[]).find(p => p.id === r.post_id);
+        if (post) {
+          const { data: prof } = await supa.from("profiles").select("username,emoji").eq("id", r.author_id).single();
+          if (!post.comments) post.comments = [];
+          if (!post.comments.find(c => c.id === r.id)) {
+            post.comments.unshift({ id: r.id, authorId: r.author_id, authorName: prof?.username || "Passionne", authorEmoji: prof?.emoji || "✨", text: r.content || "", content: r.content || "", createdAt: new Date(r.created_at).getTime(), fromSupabase: true });
+          }
+          try { renderFeed(); } catch(e) {}
+        }
       } catch(e) {}
     })
     .subscribe();
 }
-
 // ---- FOLLOW / UNFOLLOW ----
 async function supaFollowUser(targetId) {
   try {
