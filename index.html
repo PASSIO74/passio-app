@@ -8896,19 +8896,14 @@ function allFeedPosts() {
 function renderFeed() {
   const list = $("#feedList");
   const mood = state.currentMood;
-  if (!state.selectedFeedPassions) state.selectedFeedPassions = [];
-  const selPassions = state.selectedFeedPassions;
 
-  let posts = allFeedPosts().filter(p => p.type !== "vlog");
+  // Filtre passion : on utilise la variable globale directe _activeFeedPassion
+  let posts = allFeedPosts().filter(function(p) { return p.type !== "vlog"; });
 
-  // Filtre strict par passion
-  if (selPassions.length > 0) {
-    posts = posts.filter(function(p) {
-      return selPassions.indexOf(p.passion) !== -1;
-    });
+  if (_activeFeedPassion) {
+    posts = posts.filter(function(p) { return p.passion === _activeFeedPassion; });
   }
 
-  // Filtre par mood
   if (mood !== "all") {
     posts = posts.filter(function(p) { return p.mood === mood; });
   }
@@ -8922,10 +8917,10 @@ function renderFeed() {
     if (emptyEl) {
       var emptyTitle = emptyEl.querySelector(".empty-title");
       var emptyText = emptyEl.querySelector(".empty-text");
-      if (selPassions.length > 0) {
-        var passionNames = selPassions.map(function(pid){ return passionById(pid).label; }).join(" / ");
-        if (emptyTitle) emptyTitle.textContent = "Aucun post en " + passionNames;
-        if (emptyText) emptyText.textContent = "Sois le premier à publier dans cette passion ou sélectionne un autre profil.";
+      if (_activeFeedPassion) {
+        var pw = passionById(_activeFeedPassion);
+        if (emptyTitle) emptyTitle.textContent = "Aucun post en " + pw.label;
+        if (emptyText) emptyText.textContent = "Sois le premier à publier dans cette passion.";
       } else {
         if (emptyTitle) emptyTitle.textContent = "Aucun post pour ce mood";
         if (emptyText) emptyText.textContent = "Change de mood ou crée le premier contenu.";
@@ -8934,7 +8929,8 @@ function renderFeed() {
     }
     return;
   }
-  $("#feedEmpty").style.display = "none";
+  var emptyEl2 = $("#feedEmpty");
+  if (emptyEl2) emptyEl2.style.display = "none";
   list.innerHTML = posts.slice(0, 20).map(renderPostHTML).join("");
 }
 
