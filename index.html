@@ -16029,6 +16029,7 @@ function exitLanding() {
     onbStepIdx = 0;
     showOnbStep(onbSteps[0]);
   } else {
+    try { purgeConvDuplicates(); } catch(e) {} // nettoyer les doublons au boot
     try { renderEverything(); } catch(e) {}
     document.body.classList.add("screen-feed-active");
     try { if (typeof supaInit === "function") supaInit(); } catch(e) {}
