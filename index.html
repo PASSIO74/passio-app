@@ -16639,33 +16639,43 @@ function pwaShowOverlay() {
       </div>
       <button class="pwa-btn-skip" onclick="pwaDismiss()">Fermer</button>`;
   } else {
+    // Firefox ou navigateur sans support PWA
     var appUrl = 'https://passio-app.netlify.app/';
     var isAndroid = /android/i.test(navigator.userAgent);
     if (isAndroid) {
-      // Android : intent URL ouvre Chrome directement
-      var intentUrl = 'intent://' + appUrl.replace('https://','') + '#Intent;scheme=https;package=com.android.chrome;end';
+      // Android : essayer Chrome, puis Edge, puis Samsung Internet
+      var chromeIntent = 'intent://' + appUrl.replace('https://','') + '#Intent;scheme=https;package=com.android.chrome;end';
+      var edgeIntent   = 'intent://' + appUrl.replace('https://','') + '#Intent;scheme=https;package=com.microsoft.emmx;end';
+      var samsungIntent= 'intent://' + appUrl.replace('https://','') + '#Intent;scheme=https;package=com.sec.android.app.sbrowser;end';
       content.innerHTML = `
         <div style="text-align:center;padding:8px 0 16px;">
           <div style="font-size:48px;margin-bottom:10px;">🚀</div>
-          <div style="font-size:16px;font-weight:800;color:#1e1b4b;margin-bottom:6px;">Installer PASSIO</div>
-          <div style="font-size:13px;color:#6b7280;margin-bottom:18px;">Chrome va s'ouvrir pour installer l'app</div>
-          <button class="pwa-btn-install" onclick="window.location.href='${intentUrl}'" style="margin-bottom:10px;">
-            📲&nbsp;&nbsp;Ouvrir dans Chrome et installer
+          <div style="font-size:16px;font-weight:800;color:#1e1b4b;margin-bottom:8px;">Installer PASSIO</div>
+          <div style="font-size:12px;color:#6b7280;margin-bottom:16px;">Choisis ton navigateur — la popup d'installation s'ouvrira automatiquement</div>
+          <button class="pwa-btn-install" onclick="window.location.href='${chromeIntent}'" style="margin-bottom:8px;font-size:14px;">
+            <img src="https://www.google.com/chrome/static/images/chrome-logo-m100.svg" style="height:18px;vertical-align:middle;margin-right:6px;" onerror="this.style.display='none'"/>Chrome
+          </button>
+          <button class="pwa-btn-install" onclick="window.location.href='${edgeIntent}'" style="margin-bottom:8px;font-size:14px;background:linear-gradient(135deg,#0078d4,#00a4ef);">
+            🌐&nbsp;&nbsp;Microsoft Edge
+          </button>
+          <button class="pwa-btn-install" onclick="window.location.href='${samsungIntent}'" style="margin-bottom:8px;font-size:14px;background:linear-gradient(135deg,#1428a0,#4472c4);">
+            🌀&nbsp;&nbsp;Samsung Internet
           </button>
           <button class="pwa-btn-skip" onclick="pwaDismiss()">Plus tard</button>
         </div>`;
     } else {
-      // Desktop : copier le lien dans le presse-papier + message
+      // Desktop (Firefox, etc.) : copier le lien, coller dans Chrome/Edge
       content.innerHTML = `
         <div style="text-align:center;padding:8px 0 16px;">
           <div style="font-size:48px;margin-bottom:10px;">💻</div>
           <div style="font-size:16px;font-weight:800;color:#1e1b4b;margin-bottom:6px;">Installer sur PC / Mac</div>
-          <div style="font-size:13px;color:#6b7280;margin-bottom:14px;">Ouvre <strong style="color:#6d28d9;">Google Chrome</strong> et colle ce lien dans la barre d'adresse :</div>
+          <div style="font-size:13px;color:#6b7280;margin-bottom:6px;">Copie ce lien et colle-le dans <strong style="color:#6d28d9;">Chrome</strong> ou <strong style="color:#0078d4;">Edge</strong> :</div>
           <div style="background:#ede9fe;border-radius:10px;padding:10px 12px;font-size:12px;font-weight:700;color:#4c1d95;word-break:break-all;margin-bottom:14px;text-align:left;">${appUrl}</div>
-          <button class="pwa-btn-install" onclick="navigator.clipboard.writeText('${appUrl}').then(()=>{this.textContent='✅ Lien copié !';this.style.background='#16a34a';})" style="margin-bottom:10px;">
+          <button class="pwa-btn-install" onclick="navigator.clipboard.writeText('${appUrl}').then(()=>{this.innerHTML='✅&nbsp;&nbsp;Lien copié !';this.style.background='#16a34a';})">
             📋&nbsp;&nbsp;Copier le lien
           </button>
-          <button class="pwa-btn-skip" onclick="pwaDismiss()">Fermer</button>
+          <div style="font-size:11px;color:#9ca3af;margin-top:10px;">La popup d'installation apparaîtra automatiquement dans Chrome ou Edge</div>
+          <button class="pwa-btn-skip" onclick="pwaDismiss()" style="margin-top:8px;">Fermer</button>
         </div>`;
     }
   }
