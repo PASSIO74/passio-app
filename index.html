@@ -8952,7 +8952,9 @@ function onbFinish() {
 // ======== FEED ========
 function allFeedPosts() {
   const mapped = state.seed.posts.map(p => ({ ...p, _source: "seed" }));
-  const mine = state.userPosts.map(p => ({ ...p, _source: "me" }));
+  // Dédupliquer : ne garder que les userPosts dont l'id n'est pas déjà dans seed.posts (chargés depuis Supabase)
+  const seedIds = new Set(mapped.map(p => p.id));
+  const mine = state.userPosts.filter(p => !seedIds.has(p.id)).map(p => ({ ...p, _source: "me" }));
   return [...mine, ...mapped].sort((a, b) => b.createdAt - a.createdAt);
 }
 
