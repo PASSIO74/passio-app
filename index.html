@@ -7991,14 +7991,16 @@ function defaultState() {
       joinedEvents: [],
       seenStories: [],
       customPassions: [],
+      following: [],
     },
-    seed,              // fake accounts / posts / events / stories / notifs / quests
-    userPosts: [],     // posts published by the user
-    userEvents: [],    // events created by the user
+    seed,                    // fake accounts / posts / events / stories / notifs / quests
+    userPosts: [],           // posts published by the user
+    userEvents: [],          // events created by the user
     transactions: [],
-    notifications: [], // user-specific notifications (seed copied at init)
-    quests: [],        // user-specific quest progress (seed copied at init)
+    notifications: [],       // user-specific notifications (seed copied at init)
+    quests: [],              // user-specific quest progress (seed copied at init)
     currentMood: "all",
+    selectedFeedPassions: [], // passion IDs actifs dans le fil
   };
 }
 
