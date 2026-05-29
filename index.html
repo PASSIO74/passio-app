@@ -13288,12 +13288,12 @@ function renderProfileStrip() {
   const profiles = state.user.profiles || [];
   if (profiles.length === 0) { box.innerHTML = ""; return; }
 
-  var hasFilter = _activeFeedPassion !== null;
+  var hasFilter = _activeFeedPassions.size > 0;
   box.classList.toggle("has-filter", hasFilter);
 
   var tilesHTML = profiles.map(function(p) {
     const passion = passionById(p.passion);
-    const isSelected = _activeFeedPassion === p.passion;
+    const isSelected = _activeFeedPassions.has(p.passion);
     const label = escapeHtml(passion.label);
     const photoId = passion.photo;
     const photoUrl = photoId
