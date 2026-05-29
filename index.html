@@ -11717,6 +11717,36 @@ function openConversation(convId) {
   }, 80);
 
   renderMessages();
+
+  // Charger les vrais messages depuis Supabase + activer le realtime
+  if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
+    supaLoadMessages(convId).then(supaMessages => {
+      if (!supaMessages) return;
+      const convs2 = getConversations();
+      const c2 = convs2.find(x => x.id === convId);
+      if (!c2) return;
+      const supaIds = new Set(supaMessages.map(m => m.id).filter(Boolean));
+      const localOnly = (c2.messages || []).filter(m => !m.id || !supaIds.has(m.id));
+      c2.messages = [...supaMessages, ...localOnly].sort((a, b) => (a.at || 0) - (b.at || 0));
+      saveConversations();
+      renderConvFpThread(c2, displayName);
+    }).catch(() => {});
+
+    // Abonnement realtime pour recevoir les messages en temps réel
+    if (typeof supaSubscribeMessages === "function") {
+      supaSubscribeMessages(convId, function(newMsg) {
+        const convs3 = getConversations();
+        const c3 = convs3.find(x => x.id === convId);
+        if (!c3) return;
+        if (!c3.messages) c3.messages = [];
+        if (!c3.messages.find(m => m.id === newMsg.id)) {
+          c3.messages.push(newMsg);
+          saveConversations();
+          renderConvFpThread(c3, displayName);
+        }
+      });
+    }
+  }
 }
 
 function renderConvFpThread(c, displayName) {
