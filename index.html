@@ -10929,8 +10929,11 @@ function submitComment(postId) {
 // Mood selector
 $$(".mood-btn").forEach(btn => {
   btn.addEventListener("click", () => {
-    var mood = btn.getAttribute("data-mood");
-    toggleMoodFilter(mood);
+    state.currentMood = btn.getAttribute("data-mood") || "all";
+    saveState();
+    renderFeed();
+    var appMain = document.getElementById("appMain");
+    if (appMain) setTimeout(function() { appMain.scrollTop = 0; }, 60);
   });
 });
 
