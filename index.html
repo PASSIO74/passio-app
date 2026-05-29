@@ -16652,7 +16652,17 @@ async function supaInit() {
       supaLoadPosts(), supaLoadStories(), supaLoadEvents(),
       supaLoadNotifications(), supaLoadFollowing(), supaLoadJoinedEvents(),
     ]);
-    if (supaPosts.length) state.seed.posts = [...supaPosts, ...(state.seed.posts || [])];
+    if (supaPosts.length) {
+      // Sync les posts likés depuis Supabase
+      const likedFromSupa = supaPosts.filter(p => p.liked).map(p => p.id);
+      if (likedFromSupa.length) {
+        state.user.likedPosts = [...new Set([...(state.user.likedPosts || []), ...likedFromSupa])];
+      }
+      // Dédupliquer : les posts Supabase remplacent les locaux avec le même id
+      const supaIds = new Set(supaPosts.map(p => p.id));
+      const localOnly = (state.seed.posts || []).filter(p => !supaIds.has(p.id));
+      state.seed.posts = [...supaPosts, ...localOnly];
+    }
     if (supaStories.length) state.seed.stories = [...supaStories, ...(state.seed.stories || [])];
     if (supaEvents.length) state.seed.events = [...supaEvents, ...(state.seed.events || [])];
     // Fusionne les notifications (priorit\u00e9 Supabase si fromSupabase)
