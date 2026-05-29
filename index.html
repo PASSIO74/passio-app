@@ -12544,13 +12544,9 @@ function buildReels() {
   const seedReels = getSeedReelPosts();
   const userPosts = allFeedPosts();
 
-  // Filtrer par passions sélectionnées (comme le fil)
-  if (!state.selectedFeedPassions) state.selectedFeedPassions = [];
-  const selPassions = state.selectedFeedPassions;
-
   const filterByPassion = function(p) {
-    if (selPassions.length === 0) return true;
-    return selPassions.indexOf(p.passion) !== -1;
+    if (!_activeFeedPassion) return true;
+    return p.passion === _activeFeedPassion;
   };
   const filterByMood = function(p) { return mood === "all" ? true : p.mood === mood; };
 
