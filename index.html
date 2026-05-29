@@ -14334,83 +14334,89 @@ function aiGetRelated(query) {
 }
 
 function filterExplore() {
-  const q = (document.getElementById("explorerSearch")?.value || "").toLowerCase().trim();
-  const customs = (state.user.customPassions || []);
-  const allList = [...PASSIONS, ...customs];
-  const createCta = '<div class="passion-tile passion-tile-create" onclick="openCreateCustomPassionFromExplorer()"><div class="passion-tile-emoji">＋</div><div class="passion-tile-label">Créer une passion</div></div>';
+  try {
+    var inp = document.getElementById("explorerSearch");
+    var q = inp ? inp.value.toLowerCase().trim() : "";
+    var allPassionsEl = document.getElementById("allPassions");
+    if (!allPassionsEl) return;
 
-  if (!q) {
+    var customs = state.user.customPassions || [];
+    var allList = PASSIONS.concat(customs);
+    var createCta = '<div class="passion-tile passion-tile-create" onclick="openCreateCustomPassionFromExplorer()"><div class="passion-tile-emoji">＋</div><div class="passion-tile-label">Créer une passion</div></div>';
+
     // Pas de recherche → affichage normal
-    $("#allPassions").innerHTML = allList.map(p => `
-      <div class="passion-tile ${p.custom ? 'passion-custom' : ''}" onclick="openPassionExplorer('${p.id}')">
-        <div class="passion-tile-emoji">${p.emoji}</div>
-        <div class="passion-tile-label">${p.label}</div>
-        ${p.custom ? '<div class="passion-custom-badge">Perso</div>' : ''}
-      </div>`).join("") + createCta;
+    if (!q) {
+      allPassionsEl.innerHTML = allList.map(function(p) {
+        return '<div class="passion-tile' + (p.custom ? ' passion-custom' : '') + '" onclick="openPassionExplorer(\'' + p.id + '\')">' +
+          '<div class="passion-tile-emoji">' + p.emoji + '</div>' +
+          '<div class="passion-tile-label">' + p.label + '</div>' +
+          (p.custom ? '<div class="passion-custom-badge">Perso</div>' : '') +
+          '</div>';
+      }).join("") + createCta;
+      var srOld = document.getElementById("searchResults");
+      if (srOld) srOld.innerHTML = "";
+      return;
+    }
+
+    // Recherche passions
+    var filteredPassions = allList.filter(function(p) {
+      return p.label.toLowerCase().indexOf(q) !== -1;
+    });
+
+    // Recherche utilisateurs
+    var allUsers = state.seed.users || [];
+    var filteredUsers = allUsers.filter(function(u) {
+      var pw = passionById(u.passion);
+      return (u.name || "").toLowerCase().indexOf(q) !== -1
+        || (u.bio || "").toLowerCase().indexOf(q) !== -1
+        || (pw && pw.label.toLowerCase().indexOf(q) !== -1);
+    });
+
+    // Zone résultats
     var sr = document.getElementById("searchResults");
-    if (sr) sr.style.display = "none";
-    return;
-  }
+    if (!sr) {
+      sr = document.createElement("div");
+      sr.id = "searchResults";
+      allPassionsEl.parentNode.insertBefore(sr, allPassionsEl);
+    }
+    allPassionsEl.innerHTML = "";
 
-  // ── Recherche passions ──
-  const filteredPassions = allList.filter(p => p.label.toLowerCase().includes(q) || (p.tags||[]).some(t => t.toLowerCase().includes(q)));
+    var html = "";
 
-  // ── Recherche utilisateurs ──
-  const allUsers = state.seed.users || [];
-  const filteredUsers = allUsers.filter(u => {
-    const passion = passionById(u.passion);
-    return (u.name||"").toLowerCase().includes(q)
-      || (u.bio||"").toLowerCase().includes(q)
-      || (passion && passion.label.toLowerCase().includes(q));
-  });
+    // Passions
+    html += '<div class="section-title" style="margin-top:4px;">🔥 Passions (' + filteredPassions.length + ')</div>';
+    if (filteredPassions.length) {
+      html += '<div class="passion-grid">';
+      filteredPassions.forEach(function(p) {
+        html += '<div class="passion-tile" onclick="openPassionExplorer(\'' + p.id + '\')">' +
+          '<div class="passion-tile-emoji">' + p.emoji + '</div>' +
+          '<div class="passion-tile-label">' + p.label + '</div>' +
+          '</div>';
+      });
+      html += '</div>';
+    } else {
+      html += '<p style="font-size:13px;color:var(--muted);padding:6px 0 12px;">Aucune passion trouvée</p>';
+    }
 
-  // Masquer la grille normale, afficher les résultats
-  $("#allPassions").innerHTML = "";
+    // Utilisateurs
+    html += '<div class="section-title" style="margin-top:16px;">👤 Utilisateurs (' + filteredUsers.length + ')</div>';
+    if (filteredUsers.length) {
+      filteredUsers.forEach(function(u) {
+        var pw = passionById(u.passion);
+        html += '<div class="list-row" onclick="openUserProfile(\'' + u.id + '\')" style="cursor:pointer;">' +
+          '<div class="avatar" style="background:' + (u.avatar || '#8b5cf6') + ';">' + (u.profileEmoji || (u.name||"?")[0]) + '</div>' +
+          '<div class="list-row-body">' +
+            '<div class="list-row-title">' + (u.name || "") + '</div>' +
+            '<div class="list-row-meta">' + (pw ? pw.emoji + ' ' + pw.label : '') + (u.bio ? ' · ' + u.bio : '') + '</div>' +
+          '</div>' +
+          '</div>';
+      });
+    } else {
+      html += '<p style="font-size:13px;color:var(--muted);padding:6px 0;">Aucun utilisateur trouvé</p>';
+    }
 
-  // Zone de résultats
-  var sr = document.getElementById("searchResults");
-  if (!sr) {
-    sr = document.createElement("div");
-    sr.id = "searchResults";
-    $("#allPassions").parentNode.insertBefore(sr, $("#allPassions"));
-  }
-  sr.style.display = "block";
-
-  var html = "";
-
-  // Résultats passions
-  html += '<div class="section-title" style="margin-top:4px;">🔥 Passions (' + filteredPassions.length + ')</div>';
-  if (filteredPassions.length) {
-    html += '<div class="passion-grid">' + filteredPassions.map(p => `
-      <div class="passion-tile ${p.custom ? 'passion-custom' : ''}" onclick="openPassionExplorer('${p.id}')">
-        <div class="passion-tile-emoji">${p.emoji}</div>
-        <div class="passion-tile-label">${p.label}</div>
-      </div>`).join("") + '</div>';
-  } else {
-    html += '<div style="font-size:13px;color:var(--muted);padding:8px 0 12px;">Aucune passion trouvée</div>';
-  }
-
-  // Résultats utilisateurs
-  html += '<div class="section-title" style="margin-top:16px;">👤 Utilisateurs (' + filteredUsers.length + ')</div>';
-  if (filteredUsers.length) {
-    html += filteredUsers.map(u => {
-      const p = passionById(u.passion);
-      return '<div class="list-row" onclick="openUserProfile(\'' + u.id + '\')" style="cursor:pointer;">' +
-        '<div class="avatar" style="background:' + u.avatar + ';">' + (u.profileEmoji || u.name[0]) + '</div>' +
-        '<div class="list-row-body">' +
-          '<div class="list-row-title">' + escapeHtml(u.name) + '</div>' +
-          '<div class="list-row-meta">' + (p ? p.emoji + ' ' + p.label : '') + (u.bio ? ' · ' + escapeHtml(u.bio) : '') + '</div>' +
-        '</div>' +
-        '<button class="btn small" onclick="event.stopPropagation();toggleFollowUser(\'' + u.id + '\',\'' + escapeHtml(u.name) + '\')" style="flex-shrink:0;">' +
-          ((state.user.following||[]).includes(u.id) ? '✓ Suivi' : '➕ Suivre') +
-        '</button>' +
-      '</div>';
-    }).join("");
-  } else {
-    html += '<div style="font-size:13px;color:var(--muted);padding:8px 0;">Aucun utilisateur trouvé</div>';
-  }
-
-  sr.innerHTML = html;
+    sr.innerHTML = html;
+  } catch(e) { console.warn("filterExplore error:", e); }
 }
 
 function openPassionExplorer(pid) {
