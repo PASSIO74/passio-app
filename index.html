@@ -15053,7 +15053,7 @@ function openEventDetails(id) {
   const participantsHtml = atts.slice(0, 12).map(aid => {
     const u = userById(aid) || { name: aid === "me" ? (currentProfile()?.name || "Moi") : "Participant", avatar: "#8b5cf6", profileEmoji: "✨" };
     const firstName = (u.name || "?").split(" ")[0];
-    return `<div class="event-detail-participant">
+    return `<div class="event-detail-participant" style="cursor:pointer;" onclick="openUserProfile('${aid}')">
       <div class="avatar sm" style="background:${u.avatar || "#8b5cf6"};">${u.profileEmoji || "✨"}</div>
       <div class="event-detail-participant-name">${escapeHtml(firstName)}</div>
     </div>`;
