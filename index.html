@@ -13514,10 +13514,15 @@ function renderProfileStrip() {
   box.classList.toggle("has-filter", hasFilter);
 
   var hasPassionFilter = _activeFeedPassions.size > 0;
+  // Compter les posts disponibles par passion (tous moods)
+  var allPostsFlat = allFeedPosts().filter(function(p) { return p.type !== "vlog"; });
+  var postCountByPassion = {};
+  allPostsFlat.forEach(function(p) { postCountByPassion[p.passion] = (postCountByPassion[p.passion] || 0) + 1; });
+
   var tilesHTML = profiles.map(function(p) {
     const passion = passionById(p.passion);
     const isSelected = _activeFeedPassions.has(p.passion);
-    const isDimmed = hasPassionFilter && !isSelected; // grisé si filtre actif et pas sélectionné
+    const isDimmed = hasPassionFilter && !isSelected;
     const label = escapeHtml(passion.label);
     const photoId = passion.photo;
     const photoUrl = photoId
@@ -13527,9 +13532,12 @@ function renderProfileStrip() {
     const avatarContent = photoUrl
       ? '<img class="profile-tile-photo" src="' + photoUrl + '" alt="' + label + '" onerror="this.onerror=null;this.src=\'' + fallback + '\'"/><span class="profile-tile-emoji-badge">' + p.emoji + '</span>'
       : p.emoji;
-    const dimStyle = isDimmed ? 'opacity:0.4;' : '';
-    return '<div class="profile-tile ' + (isSelected ? "active" : "") + '" onclick="toggleProfileFilter(\'' + p.passion + '\')" title="' + label + '" style="' + dimStyle + 'transition:opacity 0.2s;">\
-      <div class="profile-tile-avatar">' + avatarContent + '</div>\
+    const count = postCountByPassion[p.passion] || 0;
+    const countBadge = count > 0
+      ? '<span style="position:absolute;top:-4px;right:-4px;background:var(--accent);color:#fff;font-size:9px;font-weight:800;border-radius:8px;padding:1px 5px;min-width:16px;text-align:center;border:1.5px solid var(--bg);">' + count + '</span>'
+      : '';
+    return '<div class="profile-tile ' + (isSelected ? "active" : "") + '" onclick="toggleProfileFilter(\'' + p.passion + '\')" title="' + label + '" style="opacity:' + (isDimmed ? '0.35' : '1') + ';transition:opacity 0.2s;">\
+      <div class="profile-tile-avatar" style="position:relative;">' + avatarContent + countBadge + '</div>\
       <div class="profile-tile-label">' + label + '</div>\
     </div>';
   }).join("");
