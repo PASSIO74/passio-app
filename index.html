@@ -16324,6 +16324,9 @@ function renderEverything() {
   renderTopbar();
   renderFeed();
   renderBell();
+  // Re-render les écrans déjà ouverts si nécessaire
+  try { if (typeof renderMessages === "function") renderMessages(); } catch(e) {}
+  try { if (typeof renderIRL === "function") renderIRL(); } catch(e) {}
 }
 
 function initApp() {
