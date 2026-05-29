@@ -11257,7 +11257,6 @@ function deduplicateConversations(convs) {
 
 function getConversations() {
   if (conversationsState) return conversationsState;
-  // Initialiser depuis seed (deep clone) + persistance localStorage
   try {
     const saved = localStorage.getItem("passio_conversations_v1");
     if (saved) {
@@ -11270,9 +11269,25 @@ function getConversations() {
 }
 
 function saveConversations() {
+  // Toujours dédupliquer avant de sauvegarder
+  if (conversationsState) conversationsState = deduplicateConversations(conversationsState);
   try {
     localStorage.setItem("passio_conversations_v1", JSON.stringify(conversationsState));
   } catch (e) {}
+}
+
+// Nettoyage forcé des doublons au démarrage
+function purgeConvDuplicates() {
+  try {
+    const saved = localStorage.getItem("passio_conversations_v1");
+    if (!saved) return;
+    const parsed = JSON.parse(saved);
+    const clean = deduplicateConversations(parsed);
+    if (clean.length < parsed.length) {
+      localStorage.setItem("passio_conversations_v1", JSON.stringify(clean));
+      conversationsState = clean;
+    }
+  } catch(e) {}
 }
 
 function fmtMsgTime(ts) {
