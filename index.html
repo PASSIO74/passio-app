@@ -16749,75 +16749,84 @@ function pwaShowOverlay() {
 async function pwaInstall() {
   var APP_URL = 'https://passio-app.netlify.app/';
 
-  // Feedback immédiat pour que l'utilisateur sache que ça réagit
-  if (typeof toast === "function") toast("Installation en cours…", "info");
+  // ── CAS 1 : iOS Safari → guide 2 étapes (seule option Apple) ──
+  if (_isIOSSafari) { pwaShowOverlay(); return; }
 
-  // ── CAS 1 : Prompt natif disponible (Chrome, Edge, Samsung, Opera) ──
-  if (window._pwaPrompt) {
-    try {
-      window._pwaPrompt.prompt();
-      const { outcome } = await window._pwaPrompt.userChoice;
-      window._pwaPrompt = null;
-      if (outcome === "accepted") {
-        if (typeof toast === "function") toast("PASSIO installée ! 🎉", "success");
-        var btn = document.getElementById('btn-install-app');
-        if (btn) btn.style.display = 'none';
-      }
-    } catch(e) { /* ignore */ }
-    return;
-  }
+  // ── CAS 2 : iOS autre navigateur → redirige vers Safari ──
+  if (_isIOSOther) { window.location.href = APP_URL; return; }
 
-  // ── CAS 2 : iOS Safari → guide 2 étapes (seule option Apple) ──
-  if (_isIOSSafari) {
-    pwaShowOverlay();
-    return;
-  }
-
-  // ── CAS 3 : iOS autre navigateur → redirige vers Safari ──
-  if (_isIOSOther) {
-    window.location.href = APP_URL;
-    return;
-  }
-
-  // ── CAS 4 : Firefox Android → ouvre Chrome par intent ──
+  // ── CAS 3 : Firefox Android → ouvre Chrome ──
   if (_isAndroid && _isFirefox) {
     window.location.href = 'intent://' + APP_URL.replace('https://','') + '#Intent;scheme=https;package=com.android.chrome;end';
     return;
   }
 
-  // ── CAS 5 : Firefox Windows → ouvre Edge avec lien cliquable ──
+  // ── CAS 4 : Firefox Windows → ouvre Edge ──
   if (_isFirefox && _isWindows) {
-    var a = document.createElement('a');
-    a.href = 'microsoft-edge:' + APP_URL;
-    a.click();
-    // Fallback : affiche overlay après 1.5s si la redirection n'a pas marché
-    setTimeout(function() { pwaShowOverlay(); }, 1500);
+    window.location.href = 'microsoft-edge:' + APP_URL;
     return;
   }
 
-  // ── CAS 6 : Firefox Mac → ouvre Safari ──
+  // ── CAS 5 : Firefox Mac → ouvre Safari ──
   if (_isFirefox && _isMac) {
-    var a2 = document.createElement('a');
-    a2.href = APP_URL.replace('https://', 'x-safari-https://');
-    a2.click();
-    setTimeout(function() { pwaShowOverlay(); }, 1500);
+    window.location.href = APP_URL.replace('https://', 'x-safari-https://');
     return;
   }
 
-  // ── CAS 7 : Safari Mac → guide Ajouter au Dock (2 étapes, inévitable) ──
-  if (_isSafari && _isMac) {
-    pwaShowOverlay();
-    return;
-  }
+  // ── CAS 6 : Safari Mac → guide Ajouter au Dock ──
+  if (_isSafari && _isMac) { pwaShowOverlay(); return; }
 
-  // ── CAS 8 : Chrome/Edge/compatible MAIS prompt non disponible ──
-  // (utilisateur a déjà refusé, ou déjà installé) → icône dans barre d'adresse
+  // ── CAS 7 : Navigateur compatible (Chrome/Edge/Samsung/Opera) ──
+  // Le prompt peut arriver avec un léger délai : on attend jusqu'à 4s
   if (_supportsPWA) {
-    pwaShowBannerInstall();
+    if (window._pwaPrompt) {
+      // Prompt déjà disponible → déclencher immédiatement
+      try {
+        window._pwaPrompt.prompt();
+        var res = await window._pwaPrompt.userChoice;
+        window._pwaPrompt = null;
+        if (res.outcome === "accepted") {
+          if (typeof toast === "function") toast("PASSIO installée ! 🎉", "success");
+          var b = document.getElementById('btn-install-app');
+          if (b) b.style.display = 'none';
+        }
+      } catch(e) {}
+      return;
+    }
+    // Prompt pas encore arrivé → attendre jusqu'à 4 secondes
+    if (typeof toast === "function") toast("Préparation de l'installation…", "info");
+    var waited = 0;
+    await new Promise(function(resolve) {
+      var iv = setInterval(function() {
+        waited += 250;
+        if (window._pwaPrompt) {
+          clearInterval(iv);
+          resolve();
+        } else if (waited >= 4000) {
+          clearInterval(iv);
+          resolve();
+        }
+      }, 250);
+    });
+    if (window._pwaPrompt) {
+      try {
+        window._pwaPrompt.prompt();
+        var res2 = await window._pwaPrompt.userChoice;
+        window._pwaPrompt = null;
+        if (res2.outcome === "accepted") {
+          if (typeof toast === "function") toast("PASSIO installée ! 🎉", "success");
+          var b2 = document.getElementById('btn-install-app');
+          if (b2) b2.style.display = 'none';
+        }
+      } catch(e) {}
+    } else {
+      // Le prompt n'est toujours pas arrivé → guider vers l'icône navigateur
+      pwaShowBannerInstall();
+    }
     return;
   }
 
-  // ── CAS 9 : Autre ──
+  // ── CAS 8 : Autre navigateur non géré ──
   pwaShowOverlay();
 }
 
