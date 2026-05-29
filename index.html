@@ -16778,7 +16778,7 @@ async function supaLoadMyConversations() {
       const other = (members || []).find(m => m.user_id !== MY_UID);
       result.push({
         id: c.id, isGroup: c.is_group, groupName: c.group_name,
-        passion: c.passion_id || "autre",
+        passion: null,
         userId: other?.user_id || "",
         userEmoji: other?.profiles?.emoji || "✨",
         userColor: other?.profiles?.color || "#8b5cf6",
@@ -16786,11 +16786,19 @@ async function supaLoadMyConversations() {
         userIds: (members || []).map(m => m.user_id),
         lastAt: last ? new Date(last.created_at).getTime() : new Date(c.created_at).getTime(),
         unread: 0,
-        messages: last ? [{ from: last.from_id === MY_UID ? "me" : last.from_id, text: last.content, at: new Date(last.created_at).getTime() }] : [],
+        messages: last ? [{ id: last.id, from: last.from_id === MY_UID ? "me" : last.from_id, text: last.content, at: new Date(last.created_at).getTime() }] : [],
         fromSupabase: true,
       });
     }
-    return result.sort((a,b) => b.lastAt - a.lastAt);
+    // Dédupliquer par userId côté Supabase aussi (garder la conv la plus récente par paire)
+    const seenUsers = {};
+    const deduped = [];
+    for (const c of result.sort((a,b) => b.lastAt - a.lastAt)) {
+      if (c.isGroup) { deduped.push(c); continue; }
+      const key = c.userId || c.id;
+      if (!seenUsers[key]) { seenUsers[key] = true; deduped.push(c); }
+    }
+    return deduped;
   } catch(e) { return []; }
 }
 
