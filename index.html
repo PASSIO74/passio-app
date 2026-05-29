@@ -13583,16 +13583,25 @@ function renderMoodStripSmart(availablePosts) {
   var countByMood = { all: availablePosts.length };
   availablePosts.forEach(function(p) {
     var m = p.mood || "all";
-    countByMood[m] = (countByMood[m] || 0) + 1;
+    if (m !== "irl") countByMood[m] = (countByMood[m] || 0) + 1;
   });
+  var hasPassionFilter = _activeFeedPassions.size > 0;
   $$(".mood-btn").forEach(function(btn) {
     var m = btn.getAttribute("data-mood");
-    var isActive = (m === mood) || (m === "all" && mood === "all");
-    var hasContent = m === "all" ? true : (countByMood[m] || 0) > 0;
+    var isActive = (m === mood);
+    var count = m === "all" ? availablePosts.length : (countByMood[m] || 0);
+    var hasContent = m === "all" ? true : count > 0;
     btn.classList.toggle("active", isActive);
-    // Griser les moods sans contenu dans la sélection courante
-    btn.style.opacity = hasContent ? "1" : "0.35";
-    btn.style.pointerEvents = hasContent ? "" : "none";
+    // Griser les moods sans contenu uniquement quand un filtre passion est actif
+    if (hasPassionFilter) {
+      btn.style.opacity = hasContent ? "1" : "0.25";
+      btn.style.pointerEvents = hasContent ? "" : "none";
+      btn.style.filter = hasContent ? "" : "grayscale(1)";
+    } else {
+      btn.style.opacity = "1";
+      btn.style.pointerEvents = "";
+      btn.style.filter = "";
+    }
   });
 }
 
