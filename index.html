@@ -16690,14 +16690,8 @@ async function pwaInstall() {
     // iOS Safari : guide 2 étapes (seule option possible sur Apple)
     pwaShowOverlay();
   } else {
-    // Autre navigateur : ouvrir directement dans Chrome
-    var appUrl = 'https://passio-app.netlify.app/';
-    var isAndroid = /android/i.test(navigator.userAgent);
-    if (isAndroid) {
-      window.location.href = 'intent://' + appUrl.replace('https://','') + '#Intent;scheme=https;package=com.android.chrome;end';
-    } else {
-      window.open('googlechrome://' + appUrl.replace('https://',''), '_blank') || window.open(appUrl, '_blank');
-    }
+    // Autre navigateur : afficher le guide adapté
+    pwaShowOverlay();
   }
 }
 
