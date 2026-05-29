@@ -10779,33 +10779,76 @@ function deletePost(postId) {
   toast("Post supprimé.");
 }
 
-function openComments(postId) {
-  let post = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
-  if (!post) return;
-
-  const comments = (post.comments || []).map(c => {
-    const cu = userById(c.authorId) || { name: "?", profileEmoji: "👤", avatar: "#64748b" };
-    const cSrc = c.authorId === "me" ? "me" : "seed";
+function _renderCommentsList(allComments) {
+  return allComments.map(c => {
+    let name, emoji, avatarColor, authorId;
+    authorId = c.authorId || "?";
+    // Priorité : infos embarquées (Supabase) > userById
+    if (c.authorName) {
+      name = c.authorName; emoji = c.authorEmoji || "✨"; avatarColor = "#8b5cf6";
+    } else {
+      const cu = userById(authorId) || { name: "?", profileEmoji: "👤", avatar: "#64748b" };
+      name = cu.name; emoji = cu.profileEmoji; avatarColor = cu.avatar;
+    }
+    const cSrc = (authorId === "me" || (typeof MY_UID !== "undefined" && authorId === MY_UID)) ? "me" : "seed";
     return `<div class="comment">
-      <div class="avatar sm" style="background:${cu.avatar};cursor:pointer;" onclick="closeModal();openUserProfile('${c.authorId}','${cSrc}')">${cu.profileEmoji || (cu.name||"?")[0]}</div>
+      <div class="avatar sm" style="background:${avatarColor};cursor:pointer;" onclick="closeModal();openUserProfile('${authorId}','${cSrc}')">${emoji || (name||"?")[0]}</div>
       <div class="comment-body">
-        <div class="comment-author" style="cursor:pointer;" onclick="closeModal();openUserProfile('${c.authorId}','${cSrc}')">${escapeHtml(cu.name)}</div>
-        <div class="comment-text">${escapeHtml(c.text)}</div>
+        <div class="comment-author" style="cursor:pointer;" onclick="closeModal();openUserProfile('${authorId}','${cSrc}')">${escapeHtml(name)}</div>
+        <div class="comment-text">${escapeHtml(c.text || c.content || "")}</div>
         <div class="comment-meta">${fmtTime(c.createdAt)}</div>
       </div>
     </div>`;
   }).join("");
+}
 
+async function openComments(postId) {
+  let post = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
+  if (!post) return;
+
+  // Afficher immédiatement avec les commentaires locaux
+  let localComments = (post.comments || []);
   openModal(`
     <div class="modal-handle"></div>
-    <div class="modal-title">Discussion (${(post.comments||[]).length})</div>
+    <div class="modal-title">Discussion</div>
     <div class="modal-subtitle">Commente pour gagner +3 pts.</div>
     <div id="commentsBox" style="max-height:260px;overflow-y:auto;margin-bottom:12px;">
-      ${comments || '<div class="empty"><div class="empty-icon">💭</div><div class="empty-title">Sois le premier à réagir</div></div>'}
+      ${localComments.length ? _renderCommentsList(localComments) : '<div class="empty"><div class="empty-icon">💭</div><div class="empty-title">Chargement…</div></div>'}
     </div>
     <textarea class="textarea" id="newComment" placeholder="Réponse authentique, pas vide..." maxlength="400" style="min-height:70px;"></textarea>
     <button class="btn primary block" style="margin-top:10px;" onclick="submitComment('${postId}')">Publier · +3 pts</button>
   `);
+
+  // Charger les vrais commentaires Supabase
+  if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
+    try {
+      const supaComments = await supaLoadComments(postId);
+      if (supaComments && supaComments.length >= 0) {
+        // Merge : garder locaux non-Supabase + Supabase
+        const supaIds = supaComments.map(c => c.id);
+        const localOnly = localComments.filter(c => !supaIds.includes(c.id) && !c.fromSupabase);
+        const merged = [...supaComments.map(c => ({ ...c, text: c.content || c.text || "" })), ...localOnly]
+          .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        // Mettre à jour le post local
+        post.comments = merged;
+        const box = document.getElementById("commentsBox");
+        if (box) {
+          box.innerHTML = merged.length
+            ? _renderCommentsList(merged)
+            : '<div class="empty"><div class="empty-icon">💭</div><div class="empty-title">Sois le premier à réagir</div></div>';
+        }
+        // Mettre à jour le titre
+        const title = document.querySelector(".modal-title");
+        if (title) title.textContent = `Discussion (${merged.length})`;
+      }
+    } catch(e) {}
+  } else {
+    // Pas de Supabase : afficher les locaux
+    const box = document.getElementById("commentsBox");
+    if (box && localComments.length === 0) {
+      box.innerHTML = '<div class="empty"><div class="empty-icon">💭</div><div class="empty-title">Sois le premier à réagir</div></div>';
+    }
+  }
 }
 
 function submitComment(postId) {
