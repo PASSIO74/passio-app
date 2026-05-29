@@ -11757,20 +11757,8 @@ function openConversation(convId) {
       renderConvFpThread(c2, displayName);
     }).catch(() => {});
 
-    // Abonnement realtime pour recevoir les messages en temps réel
-    if (typeof supaSubscribeMessages === "function") {
-      supaSubscribeMessages(convId, function(newMsg) {
-        const convs3 = getConversations();
-        const c3 = convs3.find(x => x.id === convId);
-        if (!c3) return;
-        if (!c3.messages) c3.messages = [];
-        if (!c3.messages.find(m => m.id === newMsg.id)) {
-          c3.messages.push(newMsg);
-          saveConversations();
-          renderConvFpThread(c3, displayName);
-        }
-      });
-    }
+    // Le canal global realtime:my_messages dans supaSubscribe() gère la réception
+    // Pas besoin d'un canal supplémentaire par conversation
   }
 }
 
