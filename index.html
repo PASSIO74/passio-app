@@ -6257,12 +6257,6 @@
     <section class="screen active" id="screen-feed">
       <div class="profile-strip" id="profileStrip"></div>
 
-      <!-- Onglets Passions / Abonnements -->
-      <div id="feedTabs" style="display:flex;gap:0;margin:10px 16px 0;border:1.5px solid var(--border);border-radius:14px;overflow:hidden;background:var(--card);">
-        <button id="feedTab-passions" onclick="setFeedTab('passions')" style="flex:1;padding:10px 6px;font-size:13px;font-weight:800;border:none;background:var(--accent);color:#fff;cursor:pointer;transition:all .2s;">🔥 Passions</button>
-        <button id="feedTab-following" onclick="setFeedTab('following')" style="flex:1;padding:10px 6px;font-size:13px;font-weight:700;border:none;background:transparent;color:var(--muted);cursor:pointer;transition:all .2s;">👥 Abonnements</button>
-      </div>
-
       <div class="mood-selector" id="moodSelector">
         <button class="mood-btn active" data-mood="all"><span class="mood-btn-icon"><img src="https://images.unsplash.com/photo-1550745165-9bc0b252726f?w=120&h=120&fit=crop&crop=entropy&auto=format&q=75" alt="Tout" onerror="this.onerror=null;this.src='https://picsum.photos/seed/mood-all/120/120'"/></span>Tout</button>
         <button class="mood-btn" data-mood="creation"><span class="mood-btn-icon"><img src="https://images.unsplash.com/photo-1513519245088-0e12902e5a38?w=120&h=120&fit=crop&crop=entropy&auto=format&q=75" alt="Création" onerror="this.onerror=null;this.src='https://picsum.photos/seed/mood-creation/120/120'"/></span>Création</button>
@@ -7359,7 +7353,6 @@ let state = null;
 const STATE_KEY = "passio_mvp_state_v1";
 // Filtre de passion actif dans le fil — variable globale directe, hors state/localStorage
 let _activeFeedPassions = new Set(); // vide = tout voir, sinon filtre multi-sélection
-let _currentFeedTab = 'passions'; // 'passions' | 'following'
 
 // Default seed (fake users / posts / events), built once at first launch
 function buildSeed() {
@@ -8952,41 +8945,14 @@ function allFeedPosts() {
 
 // Profils sélectionnés pour filtrer le fil (multi-sélection)
 
-function setFeedTab(tab) {
-  _currentFeedTab = tab;
-  var btnPassions  = document.getElementById("feedTab-passions");
-  var btnFollowing = document.getElementById("feedTab-following");
-  if (btnPassions && btnFollowing) {
-    if (tab === 'passions') {
-      btnPassions.style.background  = 'var(--accent)'; btnPassions.style.color  = '#fff'; btnPassions.style.fontWeight = '800';
-      btnFollowing.style.background = 'transparent';   btnFollowing.style.color = 'var(--muted)'; btnFollowing.style.fontWeight = '700';
-    } else {
-      btnFollowing.style.background = 'var(--accent)'; btnFollowing.style.color = '#fff'; btnFollowing.style.fontWeight = '800';
-      btnPassions.style.background  = 'transparent';   btnPassions.style.color  = 'var(--muted)'; btnPassions.style.fontWeight = '700';
-    }
-  }
-  // Masquer/afficher le sélecteur de passions selon l'onglet
-  var strip = document.getElementById("profileStrip");
-  var moodSel = document.getElementById("moodSelector");
-  if (strip) strip.style.display = tab === 'passions' ? '' : 'none';
-  renderFeed();
-}
-
 function renderFeed() {
   const list = $("#feedList");
   const mood = state.currentMood;
 
   let posts = allFeedPosts().filter(function(p) { return p.type !== "vlog"; });
 
-  if (_currentFeedTab === 'following') {
-    // Onglet Abonnements : posts des gens suivis uniquement
-    var following = state.user.following || [];
-    posts = posts.filter(function(p) { return following.includes(p.authorId); });
-  } else {
-    // Onglet Passions : filtre multi-passion normal
-    if (_activeFeedPassions.size > 0) {
-      posts = posts.filter(function(p) { return _activeFeedPassions.has(p.passion); });
-    }
+  if (_activeFeedPassions.size > 0) {
+    posts = posts.filter(function(p) { return _activeFeedPassions.has(p.passion); });
   }
 
   if (mood !== "all") {
@@ -9002,10 +8968,7 @@ function renderFeed() {
     if (emptyEl) {
       var emptyTitle = emptyEl.querySelector(".empty-title");
       var emptyText = emptyEl.querySelector(".empty-text");
-      if (_currentFeedTab === 'following') {
-        if (emptyTitle) emptyTitle.textContent = "Tu ne suis personne encore";
-        if (emptyText) emptyText.textContent = "Explore des profils et clique ➕ Suivre pour voir leurs posts ici.";
-      } else if (_activeFeedPassions.size > 0) {
+      if (_activeFeedPassions.size > 0) {
         if (emptyTitle) emptyTitle.textContent = "Aucun post pour ces passions";
         if (emptyText) emptyText.textContent = "Sois le premier à publier dans ces passions.";
       } else {
@@ -9177,13 +9140,9 @@ function renderPostHTML(p) {
         </div>
         <div class="post-author-meta">${passion.emoji} ${passion.label} · ${fmtTime(p.createdAt)}</div>
       </div>
-      ${p._source === "me"
-        ? `<button class="post-delete-btn" onclick="confirmDeletePost('${p.id}')" aria-label="Supprimer ce post" title="Supprimer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7 H20"/><path d="M9 7 V4 H15 V7"/><path d="M6 7 L7 20 H17 L18 7"/><path d="M10 11 V17"/><path d="M14 11 V17"/></svg></button>`
-        : (() => {
-            var isF = (state.user.following || []).includes(p.authorId);
-            return `<button id="followBtn_${p.authorId}" onclick="toggleFollowUser('${p.authorId}','${escapeHtml(author.name||'')}');renderFeed();" style="font-size:11px;padding:4px 10px;border-radius:20px;border:1.5px solid ${isF?'var(--accent)':'var(--border)'};background:${isF?'var(--accent)':'transparent'};color:${isF?'#fff':'var(--muted)'};cursor:pointer;font-weight:700;line-height:1.4;">${isF?'✓ Suivi':'➕ Suivre'}</button>`;
-          })()
-      }
+      ${p._source === "me" ? `<button class="post-delete-btn" onclick="confirmDeletePost('${p.id}')" aria-label="Supprimer ce post" title="Supprimer">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7 H20"/><path d="M9 7 V4 H15 V7"/><path d="M6 7 L7 20 H17 L18 7"/><path d="M10 11 V17"/><path d="M14 11 V17"/></svg>
+      </button>` : ""}
       <span class="post-mood-tag">${moodMap[p.mood] || ""}</span>
     </div>
 
@@ -11398,7 +11357,7 @@ function openUserProfile(authorId, source) {
     <!-- BOUTONS -->\
     <div style="display:flex;gap:8px;justify-content:center;margin-bottom:16px;">\
       <button class="btn primary" onclick="closeModal();startDirectMessage(\'' + authorId + '\',\'' + escapeHtml(user.name || "Passionné") + '\',\'' + (user.profileEmoji || "✨") + '\',\'' + (user.avatar || "#8b5cf6") + '\')" style="font-size:12px;padding:10px 18px;border-radius:14px;">💬 Message</button>\
-      <button class="btn ' + ((state.user.following||[]).includes(authorId) ? 'primary' : 'ghost') + '" id="followBtn_' + authorId + '" onclick="toggleFollowUser(\'' + authorId + '\',\'' + escapeHtml(user.name || "") + '\');renderFeed();" style="font-size:12px;padding:10px 18px;border-radius:14px;">' + ((state.user.following||[]).includes(authorId) ? '✓ Suivi' : '➕ Suivre') + '</button>\
+      <button class="btn ghost" id="followBtn_' + authorId + '" onclick="toggleFollowUser(\'' + authorId + '\',\'' + escapeHtml(user.name || "") + '\')" style="font-size:12px;padding:10px 18px;border-radius:14px;">➕ Suivre</button>\
     </div>\
     \
     <!-- STATS -->\
