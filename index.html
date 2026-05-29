@@ -11263,51 +11263,19 @@ function fmtMsgTime(ts) {
   return new Date(ts).toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
 }
 
-// Deux niveaux de filtre indépendants :
-// - msgPassionFilter : "all" ou un id de passion
-// - msgReadFilter    : "all", "read" ou "unread"
-let msgPassionFilter = "all";
+// Filtre lu / non lu uniquement (plus de filtre par passion)
 let msgReadFilter = "all";
 
 function renderMessageFilters() {
+  // Plus de tuiles par passion — juste les pills lu/non lu
   const row = $("#msgFilterRow");
+  if (row) row.innerHTML = ""; // vide, on n'affiche plus de filtres passion
   const readRow = $("#msgReadFilterRow");
-  if (!row || !readRow) return;
+  if (!readRow) return;
   const convs = getConversations();
-
-  // ===== Niveau 1 : tuiles passions =====
-  row.className = "msg-filter-tiles";
-  const passionIds = [...new Set(convs.map(c => c.passion))];
-  const totalUnread = convs.reduce((s, c) => s + (c.unread > 0 ? c.unread : 0), 0);
-
-  let html = `<button class="msg-tile ${msgPassionFilter === 'all' ? 'active' : ''}" data-msgpassion="all">
-    <span class="msg-tile-icon">💬</span>
-    <span class="msg-tile-label">Toutes</span>
-    ${totalUnread > 0 ? `<span class="msg-tile-badge">${totalUnread}</span>` : ""}
-  </button>`;
-
-  passionIds.forEach(pid => {
-    const p = passionById(pid) || { label: pid, emoji: "✨" };
-    const passionConvs = convs.filter(c => c.passion === pid);
-    const passionUnread = passionConvs.reduce((s, c) => s + (c.unread > 0 ? c.unread : 0), 0);
-    const isActive = msgPassionFilter === pid;
-    html += `<button class="msg-tile ${isActive ? 'active' : ''}" data-msgpassion="${pid}">
-      <span class="msg-tile-icon">${p.emoji}</span>
-      <span class="msg-tile-label">${escapeHtml(p.label)}</span>
-      ${passionUnread > 0 ? `<span class="msg-tile-badge">${passionUnread}</span>` : ""}
-    </button>`;
-  });
-  row.innerHTML = html;
-
-  // ===== Niveau 2 : pills lu / non lu =====
-  // Restreintes à la passion sélectionnée pour que les compteurs reflètent le contexte
-  const scope = msgPassionFilter === "all"
-    ? convs
-    : convs.filter(c => c.passion === msgPassionFilter);
-  const allCount = scope.length;
-  const unreadCount = scope.filter(c => c.unread > 0).length;
-  const readCount = scope.filter(c => !c.unread || c.unread === 0).length;
-
+  const allCount = convs.length;
+  const unreadCount = convs.filter(c => c.unread > 0).length;
+  const readCount = convs.filter(c => !c.unread || c.unread === 0).length;
   readRow.innerHTML = `
     <button class="msg-readfilter-pill ${msgReadFilter === 'all' ? 'active' : ''}" data-msgread="all">
       Tout <span class="msg-readfilter-count">${allCount}</span>
