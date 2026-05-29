@@ -13551,7 +13551,16 @@ function toggleProfileFilter(passionId) {
   } else {
     _activeFeedPassions.add(passionId);
   }
-  // Ne reset PAS le mood — les deux filtres sont indépendants
+  // Auto-reset le mood si le mood actuel n'a plus de contenu dans la nouvelle sélection
+  var mood = state.currentMood || "all";
+  if (mood !== "all") {
+    var allPostsNow = allFeedPosts().filter(function(p) { return p.type !== "vlog"; });
+    var byPassion = _activeFeedPassions.size > 0
+      ? allPostsNow.filter(function(p) { return _activeFeedPassions.has(p.passion); })
+      : allPostsNow;
+    var hasMoodContent = byPassion.some(function(p) { return (p.mood || "all") === mood; });
+    if (!hasMoodContent) { state.currentMood = "all"; }
+  }
   saveState();
   renderFeed();
   var appMain = document.getElementById("appMain");
