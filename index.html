@@ -13922,7 +13922,7 @@ function renderExplorer() {
   // Suggested creators
   $("#suggestedCreators").innerHTML = state.seed.users.slice(0, 8).map(u => {
     const p = passionById(u.passion);
-    return `<div class="list-row" onclick="toast('Profil de ${escapeHtml(u.name)} (détail bientôt)')">
+    return `<div class="list-row" onclick="openUserProfile('${u.id}')">
       <div class="avatar" style="background:${u.avatar};">${u.profileEmoji || u.name[0]}</div>
       <div class="list-row-body">
         <div class="list-row-title">${escapeHtml(u.name)}</div>
