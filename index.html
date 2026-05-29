@@ -8978,8 +8978,15 @@ function renderFeed() {
 
   let posts = allFeedPosts().filter(function(p) { return p.type !== "vlog"; });
 
-  if (_activeFeedPassions.size > 0) {
-    posts = posts.filter(function(p) { return _activeFeedPassions.has(p.passion); });
+  if (_currentFeedTab === 'following') {
+    // Onglet Abonnements : posts des gens suivis uniquement
+    var following = state.user.following || [];
+    posts = posts.filter(function(p) { return following.includes(p.authorId); });
+  } else {
+    // Onglet Passions : filtre multi-passion normal
+    if (_activeFeedPassions.size > 0) {
+      posts = posts.filter(function(p) { return _activeFeedPassions.has(p.passion); });
+    }
   }
 
   if (mood !== "all") {
