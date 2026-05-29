@@ -13932,26 +13932,7 @@ function renderExplorer() {
     </div>`;
   }).join("");
 
-  // Search
-  $("#explorerSearch").oninput = (e) => {
-    const q = e.target.value.toLowerCase().trim();
-    const customs = (state.user.customPassions || []);
-    const allList = [...PASSIONS, ...customs];
-    const filtered = allList.filter(p => p.label.toLowerCase().includes(q));
-    const createCta = `
-      <div class="passion-tile passion-tile-create" onclick="openCreateCustomPassionFromExplorer()">
-        <div class="passion-tile-emoji">＋</div>
-        <div class="passion-tile-label">Créer une passion</div>
-      </div>
-    `;
-    $("#allPassions").innerHTML = filtered.map(p => `
-      <div class="passion-tile ${p.custom ? 'passion-custom' : ''}" onclick="openPassionExplorer('${p.id}')">
-        <div class="passion-tile-emoji">${p.emoji}</div>
-        <div class="passion-tile-label">${p.label}</div>
-        ${p.custom ? '<div class="passion-custom-badge">Perso</div>' : ''}
-      </div>
-    `).join("") + createCta;
-  };
+  // La recherche est gérée par filterExplore() (oninput sur l'input HTML)
 }
 
 function openCreateCustomPassionFromExplorer() {
