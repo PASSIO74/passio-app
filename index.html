@@ -13506,9 +13506,11 @@ function renderProfileStrip() {
   var hasFilter = _activeFeedPassions.size > 0;
   box.classList.toggle("has-filter", hasFilter);
 
+  var hasPassionFilter = _activeFeedPassions.size > 0;
   var tilesHTML = profiles.map(function(p) {
     const passion = passionById(p.passion);
     const isSelected = _activeFeedPassions.has(p.passion);
+    const isDimmed = hasPassionFilter && !isSelected; // grisé si filtre actif et pas sélectionné
     const label = escapeHtml(passion.label);
     const photoId = passion.photo;
     const photoUrl = photoId
@@ -13518,7 +13520,8 @@ function renderProfileStrip() {
     const avatarContent = photoUrl
       ? '<img class="profile-tile-photo" src="' + photoUrl + '" alt="' + label + '" onerror="this.onerror=null;this.src=\'' + fallback + '\'"/><span class="profile-tile-emoji-badge">' + p.emoji + '</span>'
       : p.emoji;
-    return '<div class="profile-tile ' + (isSelected ? "active" : "") + '" onclick="toggleProfileFilter(\'' + p.passion + '\')" title="' + label + '">\
+    const dimStyle = isDimmed ? 'opacity:0.4;' : '';
+    return '<div class="profile-tile ' + (isSelected ? "active" : "") + '" onclick="toggleProfileFilter(\'' + p.passion + '\')" title="' + label + '" style="' + dimStyle + 'transition:opacity 0.2s;">\
       <div class="profile-tile-avatar">' + avatarContent + '</div>\
       <div class="profile-tile-label">' + label + '</div>\
     </div>';
