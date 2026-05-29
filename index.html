@@ -11558,17 +11558,12 @@ function renderMessages() {
   const list = $("#messageList");
   if (!list) return;
   const convs = getConversations();
-  const seedUsers = state.seed.users || [];
 
-  // (Re)génère les deux niveaux d'onglets, qui dépendent des passions présentes
+  // Génère les pills lu/non lu
   renderMessageFilters();
 
   let filtered = [...convs].sort((a, b) => b.lastAt - a.lastAt);
-  // Niveau 1, passion
-  if (msgPassionFilter !== "all") {
-    filtered = filtered.filter(c => c.passion === msgPassionFilter);
-  }
-  // Niveau 2, état de lecture
+  // Filtre lu/non lu
   if (msgReadFilter === "unread") {
     filtered = filtered.filter(c => c.unread > 0);
   } else if (msgReadFilter === "read") {
@@ -11583,10 +11578,12 @@ function renderMessages() {
   $("#messagesEmpty").style.display = "none";
 
   list.innerHTML = filtered.map(c => {
-    const seedUsers = state.seed.users || [];
-    const u = seedUsers.find(x => x.id === c.userId) || { name: "Inconnu", avatar: "#7c3aed", profileEmoji: "🙂" };
-    const lastMsg = c.messages && c.messages.length ? c.messages[c.messages.length - 1] : { from: "me", text: "Aucun message" };
-    const passion = passionById(c.passion) || { label: c.passion || "autre", emoji: "✨" };
+    const seedUsersArr = state.seed.users || [];
+    const u = seedUsersArr.find(x => x.id === c.userId) || { name: "Inconnu", avatar: "#7c3aed", profileEmoji: "🙂" };
+    const lastMsg = c.messages && c.messages.length ? c.messages[c.messages.length - 1] : null;
+    const previewText = lastMsg
+      ? (lastMsg.from === "me" ? "Toi : " : "") + lastMsg.text
+      : "Démarrer la conversation…";
 
     // Affichage groupe vs conversation simple
     var displayName, displayEmoji, displayAvatar;
@@ -11604,15 +11601,19 @@ function renderMessages() {
       ? `background:url(${c.groupPhoto}) center/cover;font-size:0;`
       : `background:${displayAvatar};`;
 
+    const membresLine = c.isGroup
+      ? `<div class="msg-passion" style="font-size:11px;color:var(--muted);">👥 ${((c.userIds||[]).length || 0)} membres</div>`
+      : "";
+
     return `<div class="msg-card ${c.unread > 0 ? "unread" : ""}" onclick="openConversation('${c.id}')">
       <div class="msg-avatar" style="${avatarStyle}">${(c.isGroup && c.groupPhoto) ? '' : displayEmoji}</div>
       <div class="msg-body">
         <div class="msg-head">
           <span class="msg-name">${escapeHtml(displayName)}</span>
-          <span class="msg-time">${fmtMsgTime(c.lastAt)}</span>
+          <span class="msg-time">${lastMsg ? fmtMsgTime(c.lastAt) : ""}</span>
         </div>
-        <div class="msg-passion">${passion.emoji} ${escapeHtml(passion.label)}${c.isGroup ? ' · ' + ((c.userIds||[]).length || 0) + ' membres' : ''}</div>
-        <div class="msg-preview">${lastMsg.from === "me" ? "Toi : " : ""}${escapeHtml(lastMsg.text)}</div>
+        ${membresLine}
+        <div class="msg-preview ${c.unread > 0 ? 'unread-preview' : ''}">${escapeHtml(previewText)}</div>
       </div>
       ${c.unread > 0 ? `<div class="msg-badge">${c.unread}</div>` : ""}
     </div>`;
