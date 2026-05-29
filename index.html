@@ -16780,8 +16780,10 @@ function pwaShowOverlay() {
 }
 
 async function pwaInstall() {
+  var APP_URL = 'https://passio-app.netlify.app/';
+
+  // ── CAS 1 : Prompt natif disponible (Chrome, Edge, Samsung, Opera) ──
   if (window._pwaPrompt) {
-    // Chrome / Edge / Android : prompt natif direct (1 clic)
     try {
       window._pwaPrompt.prompt();
       const { outcome } = await window._pwaPrompt.userChoice;
@@ -16792,11 +16794,49 @@ async function pwaInstall() {
         if (btn) btn.style.display = 'none';
       }
     } catch(e) { /* ignore */ }
-  } else if (_isIOS) {
-    // iOS Safari : guide 2 étapes (seule option possible sur Apple)
+    return;
+  }
+
+  // ── CAS 2 : iOS Safari → guide 2 étapes (seule option Apple) ──
+  if (_isIOSSafari) {
     pwaShowOverlay();
+    return;
+  }
+
+  // ── CAS 3 : iOS autre navigateur → redirige vers Safari ──
+  if (_isIOSOther) {
+    window.location.href = APP_URL;
+    return;
+  }
+
+  // ── CAS 4 : Firefox Android → ouvre Chrome par intent ──
+  if (_isAndroid && _isFirefox) {
+    window.location.href = 'intent://' + APP_URL.replace('https://','') + '#Intent;scheme=https;package=com.android.chrome;end';
+    return;
+  }
+
+  // ── CAS 5 : Firefox Windows → ouvre Edge directement ──
+  if (_isFirefox && _isWindows) {
+    window.location.href = 'microsoft-edge:' + APP_URL;
+    return;
+  }
+
+  // ── CAS 6 : Firefox Mac → ouvre Safari directement ──
+  if (_isFirefox && _isMac) {
+    window.location.href = APP_URL.replace('https://', 'x-safari-https://');
+    return;
+  }
+
+  // ── CAS 7 : Safari Mac → guide Ajouter au Dock (2 étapes, inévitable) ──
+  if (_isSafari && _isMac) {
+    pwaShowOverlay();
+    return;
+  }
+
+  // ── CAS 8 : Autre → tenter Edge, fallback overlay ──
+  if (_isWindows) {
+    window.location.href = 'microsoft-edge:' + APP_URL;
   } else {
-    // Autre navigateur : afficher le guide adapté
     pwaShowOverlay();
   }
 }
