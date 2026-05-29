@@ -16831,16 +16831,27 @@ async function pwaInstall() {
 }
 
 function pwaShowBannerInstall() {
-  // Le navigateur supporte PWA mais le prompt a déjà été vu/refusé
-  // → l'icône d'installation est dans la barre d'adresse
   var ov = document.getElementById("pwa-overlay");
   var content = document.getElementById("pwa-content");
   if (!ov || !content) return;
+  var lp = document.getElementById("pwaLogoImg");
+  if (lp && typeof LOGO_SRC !== 'undefined') lp.src = LOGO_SRC;
+
+  // Icône adaptée selon le navigateur
+  var icon = _isEdge ? '🟦' : '🟡';
+  var name = _isEdge ? 'Edge' : _isSamsung ? 'Samsung Internet' : 'Chrome';
+  var hint = _isEdge
+    ? 'Regarde en haut à droite dans la barre d\'adresse : clique sur l\'icône <strong style="font-size:16px;">⊕</strong> ou <strong style="font-size:16px;">📥</strong> pour installer PASSIO.'
+    : 'Regarde en haut à droite dans la barre d\'adresse : clique sur l\'icône <strong style="font-size:16px;">⊕</strong> ou <strong style="font-size:16px;">💾</strong> pour installer PASSIO.';
+
   content.innerHTML =
-    '<div style="text-align:center;padding:8px 0 16px;">' +
-    '<div style="font-size:44px;margin-bottom:10px;">🔍</div>' +
-    '<div style="font-size:16px;font-weight:800;color:#1e1b4b;margin-bottom:8px;">Installe depuis la barre d\'adresse</div>' +
-    '<div style="font-size:13px;color:#6b7280;margin-bottom:16px;">Ton navigateur a déjà proposé l\'installation. Clique sur l\'icône <strong>📥</strong> dans la barre d\'adresse en haut pour installer PASSIO.</div>' +
+    '<div style="text-align:center;padding:4px 0 12px;">' +
+    '<div style="font-size:40px;margin-bottom:10px;">' + icon + '</div>' +
+    '<div style="font-size:15px;font-weight:800;color:#1e1b4b;margin-bottom:10px;">Installe via ' + name + '</div>' +
+    '<div style="background:#f5f3ff;border-radius:14px;padding:14px;margin-bottom:14px;text-align:left;font-size:13px;color:#374151;line-height:1.6;">' +
+    hint +
+    '</div>' +
+    '<button class="pwa-btn-install" onclick="pwaDismiss();window.focus();" style="margin-bottom:8px;">✅&nbsp;&nbsp;Compris, je cherche l\'icône</button>' +
     '<button class="pwa-btn-skip" onclick="pwaDismiss()">Fermer</button>' +
     '</div>';
   ov.style.display = "flex";
