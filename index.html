@@ -6522,9 +6522,13 @@
         <div class="explorer-hero">
           <h3>Explorer par passion</h3>
           <p>Découvre des utilisateurs et des contenus selon ce que tu aimes.</p>
-          <div style="display:flex;gap:8px;">
-            <input type="text" class="input" id="explorerSearch" placeholder="🔍 Passion, utilisateur…" style="flex:1;" oninput="filterExplore()" onkeypress="if(event.key==='Enter')filterExplore()"/>
-            <button class="btn primary" onclick="filterExplore()" style="padding:10px 16px;font-size:13px;border-radius:14px;white-space:nowrap;">Rechercher</button>
+          <div style="position:relative;">
+            <div style="display:flex;align-items:center;gap:8px;background:var(--bg-card);border:1.5px solid var(--border);border-radius:14px;padding:10px 14px;">
+              <span style="font-size:15px;">🔍</span>
+              <input type="text" id="explorerSearch" placeholder="Passion, utilisateur…" oninput="filterExplore()" onkeypress="if(event.key==='Enter')filterExplore()" autocomplete="off" style="flex:1;border:none;background:transparent;font-size:14px;color:var(--text);outline:none;"/>
+              <button onclick="filterExplore()" style="background:var(--accent);color:#fff;border:none;border-radius:10px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;">OK</button>
+            </div>
+            <div id="exploreSearchResults" style="display:none;position:absolute;top:calc(100% + 6px);left:0;right:0;background:var(--bg-card);border:1.5px solid var(--border);border-radius:14px;box-shadow:0 18px 48px rgba(30,27,54,0.22);z-index:100;overflow:hidden;max-height:360px;overflow-y:auto;"></div>
           </div>
         </div>
 
