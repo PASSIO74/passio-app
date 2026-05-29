@@ -16834,9 +16834,10 @@ document.addEventListener("click", function(e) {
 // ---- INIT COMPL\u00c8TE ----
 async function supaInit() {
   try {
-    const [supaPosts, supaStories, supaEvents, supaNotifs, supaFollowing, supaJoined] = await Promise.all([
+    const [supaPosts, supaStories, supaEvents, supaNotifs, supaFollowing, supaJoined, supaConvs] = await Promise.all([
       supaLoadPosts(), supaLoadStories(), supaLoadEvents(),
       supaLoadNotifications(), supaLoadFollowing(), supaLoadJoinedEvents(),
+      supaLoadMyConversations(),
     ]);
     if (supaPosts.length) {
       // Sync les posts likés depuis Supabase
