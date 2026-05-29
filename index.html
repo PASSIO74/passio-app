@@ -47,8 +47,7 @@
       // ── Navigateurs compatibles : popup native automatique ──
       window.addEventListener('beforeinstallprompt', (e) => {
         e.preventDefault();
-        window._pwaPrompt = e;
-        try { e.prompt(); } catch(_) {}
+        window._pwaPrompt = e; // Gardé pour le bouton INSTALLER
       });
 
       window.addEventListener('load', function() {
