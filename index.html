@@ -8855,7 +8855,7 @@ function onbFinish() {
     };
   });
   state.user.currentProfileId = state.user.profiles[0].id;
-  state.selectedFeedPassions = [state.user.profiles[0].passion];
+  _activeFeedPassion = state.user.profiles[0].passion;
   state.onboarded = true;
 
   state.user.score += REWARDS.first_login.pts;
