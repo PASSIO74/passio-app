@@ -16749,6 +16749,9 @@ function pwaShowOverlay() {
 async function pwaInstall() {
   var APP_URL = 'https://passio-app.netlify.app/';
 
+  // Feedback immédiat pour que l'utilisateur sache que ça réagit
+  if (typeof toast === "function") toast("Installation en cours…", "info");
+
   // ── CAS 1 : Prompt natif disponible (Chrome, Edge, Samsung, Opera) ──
   if (window._pwaPrompt) {
     try {
