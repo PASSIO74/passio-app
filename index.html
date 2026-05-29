@@ -16309,7 +16309,29 @@ async function supaPublishPost(post) {
 async function supaLoadPosts() {
   try {
     const { data } = await supa.from("posts").select("*, profiles(username,emoji,color)").order("created_at", { ascending: false }).limit(60);
-    return (data || []).map(r => ({ id: r.id, authorId: r.author_id, authorName: r.profiles?.username || "Passionné", authorEmoji: r.profiles?.emoji || "✨", authorColor: r.profiles?.color || "#8b5cf6", passion: r.passion_id || "autre", mood: r.mood || "all", type: "text", text: r.content || "", image: r.media_url || null, createdAt: new Date(r.created_at).getTime(), likes: 0, liked: false, comments: [], fromSupabase: true }));
+    if (!data || !data.length) return [];
+    // Charger tous les likes d'un coup
+    const postIds = data.map(r => r.id);
+    let likesData = [];
+    try {
+      const { data: ld } = await supa.from("post_likes").select("post_id, user_id").in("post_id", postIds);
+      likesData = ld || [];
+    } catch(e) {}
+    return data.map(r => {
+      const postLikes = likesData.filter(l => l.post_id === r.id);
+      return {
+        id: r.id, authorId: r.author_id,
+        authorName: r.profiles?.username || "Passionné",
+        authorEmoji: r.profiles?.emoji || "✨",
+        authorColor: r.profiles?.color || "#8b5cf6",
+        passion: r.passion_id || "autre", mood: r.mood || "all",
+        type: "text", text: r.content || "", image: r.media_url || null,
+        createdAt: new Date(r.created_at).getTime(),
+        likes: postLikes.length,
+        liked: postLikes.some(l => l.user_id === MY_UID),
+        comments: [], fromSupabase: true
+      };
+    });
   } catch(e) { return []; }
 }
 
