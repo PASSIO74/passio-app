@@ -15461,6 +15461,8 @@ function submitEvent() {
   state.user.joinedEvents.push(ev.id);
   grantReward("event_create");
   saveState();
+  // Sync Supabase
+  if (typeof supaPublishEvent === "function") supaPublishEvent(ev);
   closeModal();
   renderIRL();
   toast("🎉 Événement créé !");
