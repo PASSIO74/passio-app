@@ -10814,23 +10814,23 @@ function submitComment(postId) {
   let post = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
   if (!post) return;
   if (!post.comments) post.comments = [];
+  const realAuthorId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
+  const p = currentProfile();
   post.comments.unshift({
-    id: uid(), authorId: "me", text, createdAt: Date.now(),
+    id: uid(), authorId: realAuthorId,
+    authorName: p?.name || state.user.name || "Moi",
+    authorEmoji: p?.emoji || "✨",
+    text, content: text, createdAt: Date.now(),
   });
-  // Also add "me" as a fake user for display
-  state.seed.users.push({
-    id: "me", name: currentProfile()?.name || state.user.name,
-    profileEmoji: currentProfile()?.emoji || "✨",
-    avatar: currentProfile()?.color || "#8b5cf6",
-  });
-  // Dedupe
-  const seen = {};
-  state.seed.users = state.seed.users.filter(u => {
-    if (seen[u.id]) return false;
-    seen[u.id] = true;
-    return true;
-  });
+  // Ensure author is in seed.users for userById()
+  const meEntry = { id: realAuthorId, name: p?.name || state.user.name || "Moi", profileEmoji: p?.emoji || "✨", avatar: p?.color || "#8b5cf6" };
+  state.seed.users = state.seed.users.filter(u => u.id !== realAuthorId);
+  state.seed.users.push(meEntry);
   grantReward("comment");
+  // Sync avec Supabase
+  if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
+    supaAddComment(postId, text);
+  }
   closeModal();
   renderFeed();
 }
