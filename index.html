@@ -6257,6 +6257,12 @@
     <section class="screen active" id="screen-feed">
       <div class="profile-strip" id="profileStrip"></div>
 
+      <!-- Onglets Passions / Abonnements -->
+      <div id="feedTabs" style="display:flex;gap:0;margin:10px 16px 0;border:1.5px solid var(--border);border-radius:14px;overflow:hidden;background:var(--card);">
+        <button id="feedTab-passions" onclick="setFeedTab('passions')" style="flex:1;padding:10px 6px;font-size:13px;font-weight:800;border:none;background:var(--accent);color:#fff;cursor:pointer;transition:all .2s;">🔥 Passions</button>
+        <button id="feedTab-following" onclick="setFeedTab('following')" style="flex:1;padding:10px 6px;font-size:13px;font-weight:700;border:none;background:transparent;color:var(--muted);cursor:pointer;transition:all .2s;">👥 Abonnements</button>
+      </div>
+
       <div class="mood-selector" id="moodSelector">
         <button class="mood-btn active" data-mood="all"><span class="mood-btn-icon"><img src="https://images.unsplash.com/photo-1550745165-9bc0b252726f?w=120&h=120&fit=crop&crop=entropy&auto=format&q=75" alt="Tout" onerror="this.onerror=null;this.src='https://picsum.photos/seed/mood-all/120/120'"/></span>Tout</button>
         <button class="mood-btn" data-mood="creation"><span class="mood-btn-icon"><img src="https://images.unsplash.com/photo-1513519245088-0e12902e5a38?w=120&h=120&fit=crop&crop=entropy&auto=format&q=75" alt="Création" onerror="this.onerror=null;this.src='https://picsum.photos/seed/mood-creation/120/120'"/></span>Création</button>
