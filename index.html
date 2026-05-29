@@ -16898,6 +16898,43 @@ function supaSubscribe() {
     })
     .subscribe();
 
+  // ── Nouvelle conversation créée pour moi (l'autre personne m'ajoute comme membre) ──
+  supa.channel("realtime:conv_members")
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "conv_members" }, async payload => {
+      const r = payload.new;
+      if (!r || r.user_id !== MY_UID) return; // ce n'est pas moi qui suis ajouté
+      const convId = r.conv_id;
+      // Vérifier que je ne l'ai pas déjà
+      const convs = getConversations();
+      if (convs.find(c => c.id === convId)) return;
+      // Charger la conv depuis Supabase
+      try {
+        const { data: convData } = await supa.from("conversations").select("*").eq("id", convId).single();
+        const { data: members } = await supa.from("conv_members")
+          .select("user_id, profiles(username,emoji,color)").eq("conv_id", convId);
+        const other = (members || []).find(m => m.user_id !== MY_UID);
+        const newConv = {
+          id: convId,
+          isGroup: convData?.is_group || false,
+          groupName: convData?.group_name || null,
+          passion: null,
+          userId: other?.user_id || "",
+          userEmoji: other?.profiles?.emoji || "✨",
+          userColor: other?.profiles?.color || "#8b5cf6",
+          userName: other?.profiles?.username || "Passionné",
+          userIds: (members || []).map(m => m.user_id),
+          lastAt: new Date(convData?.created_at || Date.now()).getTime(),
+          unread: 0,
+          messages: [],
+          fromSupabase: true,
+        };
+        conversationsState = deduplicateConversations([newConv, ...getConversations()]);
+        saveConversations();
+        try { renderMessages(); } catch(e) {}
+      } catch(e) {}
+    })
+    .subscribe();
+
   // Nouveaux posts en temps reel
   supa.channel("realtime:posts")
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "posts" }, async payload => {
