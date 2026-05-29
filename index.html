@@ -14948,7 +14948,7 @@ function renderIRL() {
     const atts = (e.attendees || []).slice(0, 4);
     const attAvatars = atts.map(aid => {
       const u = userById(aid) || { avatar: "#64748b", profileEmoji: "?" };
-      return `<div class="avatar sm" style="background:${u.avatar};">${u.profileEmoji}</div>`;
+      return `<div class="avatar sm" style="background:${u.avatar};cursor:pointer;" onclick="openUserProfile('${aid}')">${u.profileEmoji}</div>`;
     }).join("");
     const timeStr = e.time || d.time || "";
     const venue = e.venue ? `· ${e.venue}` : "";
