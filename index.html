@@ -14631,7 +14631,9 @@ document.addEventListener("click", (e) => {
 });
 
 function allEvents() {
-  return [...state.userEvents.map(e => ({ ...e, _mine: true })), ...state.seed.events.map(e => ({ ...e, _mine: false }))]
+  const seedEvIds = new Set((state.seed.events || []).map(e => e.id));
+  const myEvFiltered = (state.userEvents || []).filter(e => !seedEvIds.has(e.id));
+  return [...myEvFiltered.map(e => ({ ...e, _mine: true })), ...(state.seed.events || []).map(e => ({ ...e, _mine: false }))]
     .sort((a, b) => a.date - b.date);
 }
 
