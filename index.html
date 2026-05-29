@@ -8022,6 +8022,8 @@ function loadState() {
     }
     if (typeof parsed.landingSeen === "undefined") parsed.landingSeen = false;
     if (!Array.isArray(parsed.user.customPassions)) parsed.user.customPassions = [];
+    if (!Array.isArray(parsed.user.following)) parsed.user.following = [];
+    if (!Array.isArray(parsed.selectedFeedPassions)) parsed.selectedFeedPassions = [];
     return parsed;
   } catch (e) {
     return defaultState();
