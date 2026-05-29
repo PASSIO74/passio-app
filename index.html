@@ -12595,8 +12595,8 @@ function buildReels() {
   const userPosts = allFeedPosts();
 
   const filterByPassion = function(p) {
-    if (!_activeFeedPassion) return true;
-    return p.passion === _activeFeedPassion;
+    if (_activeFeedPassions.size === 0) return true;
+    return _activeFeedPassions.has(p.passion);
   };
   const filterByMood = function(p) { return mood === "all" ? true : p.mood === mood; };
 
