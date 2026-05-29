@@ -11231,17 +11231,41 @@ const SEED_CONVERSATIONS = [
 
 let conversationsState = null;
 
+function deduplicateConversations(convs) {
+  // Pour les DMs : une seule conv par userId (garder la plus récente, fusionner les messages)
+  var seen = {};
+  var result = [];
+  // Trier par lastAt desc pour traiter le plus récent en premier
+  var sorted = [...convs].sort((a, b) => (b.lastAt || 0) - (a.lastAt || 0));
+  for (var c of sorted) {
+    if (c.isGroup) { result.push(c); continue; }
+    var key = c.userId || c.id;
+    if (!seen[key]) {
+      seen[key] = c;
+      result.push(c);
+    } else {
+      // Fusionner les messages de la conv en double dans la conv principale
+      var main = seen[key];
+      var extraMsgs = (c.messages || []).filter(m => !(main.messages||[]).find(x => x.id === m.id || (x.text === m.text && Math.abs(x.at - m.at) < 2000)));
+      if (extraMsgs.length) {
+        main.messages = [...(main.messages||[]), ...extraMsgs].sort((a,b) => a.at - b.at);
+      }
+    }
+  }
+  return result;
+}
+
 function getConversations() {
   if (conversationsState) return conversationsState;
   // Initialiser depuis seed (deep clone) + persistance localStorage
   try {
     const saved = localStorage.getItem("passio_conversations_v1");
     if (saved) {
-      conversationsState = JSON.parse(saved);
+      conversationsState = deduplicateConversations(JSON.parse(saved));
       return conversationsState;
     }
   } catch (e) {}
-  conversationsState = JSON.parse(JSON.stringify(SEED_CONVERSATIONS));
+  conversationsState = deduplicateConversations(JSON.parse(JSON.stringify(SEED_CONVERSATIONS)));
   return conversationsState;
 }
 
