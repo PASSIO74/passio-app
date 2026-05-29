@@ -8914,22 +8914,6 @@ function renderFeed() {
   renderProfileStrip();
   renderStories();
 
-  // Bandeau filtre actif
-  var banner = document.getElementById("feedFilterBanner");
-  if (banner) {
-    if (selPassions.length > 0) {
-      var labels = selPassions.map(function(pid) {
-        var pw = passionById(pid);
-        return pw.emoji + " " + pw.label;
-      });
-      banner.innerHTML = labels.join(" + ") + ' <span style="opacity:0.7;font-weight:400;">· ' + posts.length + ' post' + (posts.length > 1 ? "s" : "") + '</span>'
-        + ' <button onclick="selectAllProfiles()" style="margin-left:auto;background:rgba(255,255,255,0.15);border:none;color:inherit;border-radius:20px;padding:2px 10px;font-size:12px;cursor:pointer;font-weight:700;">✕ Tout voir</button>';
-      banner.style.cssText = "margin:0 12px 8px;padding:10px 14px;border-radius:14px;font-size:13px;font-weight:700;display:flex;align-items:center;gap:8px;background:linear-gradient(90deg,#7c3aed,#8b5cf6);color:#fff;";
-    } else {
-      banner.style.display = "none";
-    }
-  }
-
   if (posts.length === 0) {
     list.innerHTML = "";
     var emptyEl = $("#feedEmpty");
