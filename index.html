@@ -14342,30 +14342,30 @@ function aiGetRelated(query) {
 function filterExplore() {
   var inp = document.getElementById("explorerSearch");
   var q = (inp ? inp.value : "").toLowerCase().trim();
-  var box = document.getElementById("allPassions");
-  if (!box) return;
+  var resultsBox = document.getElementById("searchResultsBox");
+  var normalContent = document.getElementById("exploreNormalContent");
 
-  var customs = state.user.customPassions || [];
-  var allList = PASSIONS.concat(customs);
+  if (!resultsBox || !normalContent) return;
 
-  // Sans recherche → grille normale
+  // Vide → affichage normal
   if (!q) {
-    var createCta = '<div class="passion-tile passion-tile-create" onclick="openCreateCustomPassionFromExplorer()"><div class="passion-tile-emoji">＋</div><div class="passion-tile-label">Créer une passion</div></div>';
-    box.innerHTML = allList.map(function(p) {
-      return '<div class="passion-tile" onclick="openPassionExplorer(\'' + p.id + '\')">' +
-        '<div class="passion-tile-emoji">' + p.emoji + '</div>' +
-        '<div class="passion-tile-label">' + p.label + '</div>' +
-        '</div>';
-    }).join("") + createCta;
+    resultsBox.style.display = "none";
+    resultsBox.innerHTML = "";
+    normalContent.style.display = "";
     return;
   }
 
-  // Passions correspondantes
+  // Masquer le contenu normal, afficher la zone résultats
+  normalContent.style.display = "none";
+  resultsBox.style.display = "block";
+
+  // Recherche passions
+  var allList = PASSIONS.concat(state.user.customPassions || []);
   var fp = allList.filter(function(p) {
     return p.label.toLowerCase().indexOf(q) !== -1;
   });
 
-  // Utilisateurs correspondants
+  // Recherche utilisateurs
   var fu = (state.seed.users || []).filter(function(u) {
     var pw = passionById(u.passion);
     return (u.name||"").toLowerCase().indexOf(q) !== -1
@@ -14375,37 +14375,37 @@ function filterExplore() {
 
   var html = "";
 
-  // Section passions
-  html += '<div style="font-size:13px;font-weight:800;color:var(--text);margin:8px 0 10px;">🔥 Passions (' + fp.length + ')</div>';
+  // Passions
+  html += '<div class="section-title" style="margin-top:8px;">🔥 Passions (' + fp.length + ')</div>';
   if (fp.length) {
-    html += '<div class="passion-grid">' + fp.map(function(p) {
-      return '<div class="passion-tile" onclick="openPassionExplorer(\'' + p.id + '\')">' +
+    html += '<div class="passion-grid">';
+    fp.forEach(function(p) {
+      html += '<div class="passion-tile" onclick="openPassionExplorer(\'' + p.id + '\')">' +
         '<div class="passion-tile-emoji">' + p.emoji + '</div>' +
-        '<div class="passion-tile-label">' + p.label + '</div>' +
-        '</div>';
-    }).join("") + '</div>';
+        '<div class="passion-tile-label">' + p.label + '</div></div>';
+    });
+    html += '</div>';
   } else {
-    html += '<p style="font-size:13px;color:var(--muted);">Aucune passion trouvée</p>';
+    html += '<p style="font-size:13px;color:var(--muted);padding:6px 0 12px;">Aucune passion trouvée</p>';
   }
 
-  // Section utilisateurs
-  html += '<div style="font-size:13px;font-weight:800;color:var(--text);margin:16px 0 10px;">👤 Utilisateurs (' + fu.length + ')</div>';
+  // Utilisateurs
+  html += '<div class="section-title" style="margin-top:16px;">👤 Utilisateurs (' + fu.length + ')</div>';
   if (fu.length) {
     fu.forEach(function(u) {
       var pw = passionById(u.passion);
-      html += '<div class="list-row" onclick="openUserProfile(\'' + u.id + '\')" style="cursor:pointer;margin-bottom:8px;">' +
+      html += '<div class="list-row" onclick="openUserProfile(\'' + u.id + '\')" style="cursor:pointer;">' +
         '<div class="avatar" style="background:' + (u.avatar||'#8b5cf6') + ';">' + (u.profileEmoji||(u.name||"?")[0]) + '</div>' +
         '<div class="list-row-body">' +
           '<div class="list-row-title">' + (u.name||"") + '</div>' +
           '<div class="list-row-meta">' + (pw ? pw.emoji+' '+pw.label : '') + (u.bio ? ' · '+u.bio : '') + '</div>' +
-        '</div>' +
-        '</div>';
+        '</div></div>';
     });
   } else {
-    html += '<p style="font-size:13px;color:var(--muted);">Aucun utilisateur trouvé</p>';
+    html += '<p style="font-size:13px;color:var(--muted);padding:6px 0;">Aucun utilisateur trouvé</p>';
   }
 
-  box.innerHTML = html;
+  resultsBox.innerHTML = html;
 }
 
 function openPassionExplorer(pid) {
