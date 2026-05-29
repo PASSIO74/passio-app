@@ -16782,15 +16782,22 @@ async function pwaInstall() {
     return;
   }
 
-  // ── CAS 5 : Firefox Windows → ouvre Edge directement ──
+  // ── CAS 5 : Firefox Windows → ouvre Edge avec lien cliquable ──
   if (_isFirefox && _isWindows) {
-    window.location.href = 'microsoft-edge:' + APP_URL;
+    var a = document.createElement('a');
+    a.href = 'microsoft-edge:' + APP_URL;
+    a.click();
+    // Fallback : affiche overlay après 1.5s si la redirection n'a pas marché
+    setTimeout(function() { pwaShowOverlay(); }, 1500);
     return;
   }
 
-  // ── CAS 6 : Firefox Mac → ouvre Safari directement ──
+  // ── CAS 6 : Firefox Mac → ouvre Safari ──
   if (_isFirefox && _isMac) {
-    window.location.href = APP_URL.replace('https://', 'x-safari-https://');
+    var a2 = document.createElement('a');
+    a2.href = APP_URL.replace('https://', 'x-safari-https://');
+    a2.click();
+    setTimeout(function() { pwaShowOverlay(); }, 1500);
     return;
   }
 
@@ -16800,12 +16807,31 @@ async function pwaInstall() {
     return;
   }
 
-  // ── CAS 8 : Autre → tenter Edge, fallback overlay ──
-  if (_isWindows) {
-    window.location.href = 'microsoft-edge:' + APP_URL;
-  } else {
-    pwaShowOverlay();
+  // ── CAS 8 : Chrome/Edge/compatible MAIS prompt non disponible ──
+  // (utilisateur a déjà refusé, ou déjà installé) → icône dans barre d'adresse
+  if (_supportsPWA) {
+    pwaShowBannerInstall();
+    return;
   }
+
+  // ── CAS 9 : Autre ──
+  pwaShowOverlay();
+}
+
+function pwaShowBannerInstall() {
+  // Le navigateur supporte PWA mais le prompt a déjà été vu/refusé
+  // → l'icône d'installation est dans la barre d'adresse
+  var ov = document.getElementById("pwa-overlay");
+  var content = document.getElementById("pwa-content");
+  if (!ov || !content) return;
+  content.innerHTML = \`
+    <div style="text-align:center;padding:8px 0 16px;">
+      <div style="font-size:44px;margin-bottom:10px;">🔍</div>
+      <div style="font-size:16px;font-weight:800;color:#1e1b4b;margin-bottom:8px;">Installe depuis la barre d'adresse</div>
+      <div style="font-size:13px;color:#6b7280;margin-bottom:16px;">Ton navigateur a déjà proposé l'installation. Clique sur l'icône <strong>📥</strong> ou <strong>⊕</strong> dans la barre d'adresse en haut.</div>
+      <button class="pwa-btn-skip" onclick="pwaDismiss()">Fermer</button>
+    </div>\`;
+  ov.style.display = "flex";
 }
 
 function togglePwd(id, btn) {
