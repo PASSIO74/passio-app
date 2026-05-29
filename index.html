@@ -14345,71 +14345,66 @@ function aiGetRelated(query) {
 
 function filterExplore() {
   var inp = document.getElementById("explorerSearch");
-  var q = (inp ? inp.value : "").toLowerCase().trim();
-  var resultsBox = document.getElementById("searchResultsBox");
-  var normalContent = document.getElementById("exploreNormalContent");
+  var results = document.getElementById("exploreSearchResults");
+  if (!results) return;
+  var query = inp ? inp.value : "";
+  if (!query || query.trim().length < 1) {
+    results.style.display = "none";
+    results.innerHTML = "";
+    return;
+  }
+  var q = query.trim().toLowerCase();
 
-  if (!resultsBox || !normalContent) return;
+  // Passions
+  var allList = PASSIONS.concat(state.user.customPassions || []);
+  var fp = allList.filter(function(p) { return p.label.toLowerCase().includes(q); }).slice(0, 6);
 
-  // Vide → affichage normal
-  if (!q) {
-    resultsBox.style.display = "none";
-    resultsBox.innerHTML = "";
-    normalContent.style.display = "";
+  // Utilisateurs
+  var fu = (state.seed.users || []).filter(function(u) {
+    var pw = passionById(u.passion);
+    return (u.name||"").toLowerCase().includes(q)
+      || (u.bio||"").toLowerCase().includes(q)
+      || (pw && pw.label.toLowerCase().includes(q));
+  }).slice(0, 8);
+
+  if (fp.length === 0 && fu.length === 0) {
+    results.style.display = "block";
+    results.innerHTML = "<div style='padding:14px 16px;color:var(--muted);font-size:13px;text-align:center;'>Aucun résultat pour « " + escapeHtml(query.trim()) + " »</div>";
     return;
   }
 
-  // Masquer le contenu normal, afficher la zone résultats
-  normalContent.style.display = "none";
-  resultsBox.style.display = "block";
-
-  // Recherche passions
-  var allList = PASSIONS.concat(state.user.customPassions || []);
-  var fp = allList.filter(function(p) {
-    return p.label.toLowerCase().indexOf(q) !== -1;
-  });
-
-  // Recherche utilisateurs
-  var fu = (state.seed.users || []).filter(function(u) {
-    var pw = passionById(u.passion);
-    return (u.name||"").toLowerCase().indexOf(q) !== -1
-      || (u.bio||"").toLowerCase().indexOf(q) !== -1
-      || (pw && pw.label.toLowerCase().indexOf(q) !== -1);
-  });
-
   var html = "";
 
-  // Passions
-  html += '<div class="section-title" style="margin-top:8px;">🔥 Passions (' + fp.length + ')</div>';
+  // Section passions
   if (fp.length) {
-    html += '<div class="passion-grid">';
+    html += "<div style='padding:8px 14px 4px;font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;'>🔥 Passions</div>";
     fp.forEach(function(p) {
-      html += '<div class="passion-tile" onclick="openPassionExplorer(\'' + p.id + '\')">' +
-        '<div class="passion-tile-emoji">' + p.emoji + '</div>' +
-        '<div class="passion-tile-label">' + p.label + '</div></div>';
+      html += "<div onclick=\"openPassionExplorer('" + p.id + "');document.getElementById('exploreSearchResults').style.display='none';\" style='display:flex;align-items:center;gap:12px;padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border);'>" +
+        "<div style='width:38px;height:38px;border-radius:12px;background:var(--accent-soft,#ede9fe);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;'>" + p.emoji + "</div>" +
+        "<div style='flex:1;'><div style='font-weight:700;font-size:13px;color:var(--text);'>" + escapeHtml(p.label) + "</div></div>" +
+        "<div style='font-size:11px;font-weight:700;color:var(--accent);'>Explorer →</div>" +
+        "</div>";
     });
-    html += '</div>';
-  } else {
-    html += '<p style="font-size:13px;color:var(--muted);padding:6px 0 12px;">Aucune passion trouvée</p>';
   }
 
-  // Utilisateurs
-  html += '<div class="section-title" style="margin-top:16px;">👤 Utilisateurs (' + fu.length + ')</div>';
+  // Section utilisateurs
   if (fu.length) {
+    html += "<div style='padding:8px 14px 4px;font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;'>👤 Utilisateurs</div>";
     fu.forEach(function(u) {
-      var pw = passionById(u.passion);
-      html += '<div class="list-row" onclick="openUserProfile(\'' + u.id + '\')" style="cursor:pointer;">' +
-        '<div class="avatar" style="background:' + (u.avatar||'#8b5cf6') + ';">' + (u.profileEmoji||(u.name||"?")[0]) + '</div>' +
-        '<div class="list-row-body">' +
-          '<div class="list-row-title">' + (u.name||"") + '</div>' +
-          '<div class="list-row-meta">' + (pw ? pw.emoji+' '+pw.label : '') + (u.bio ? ' · '+u.bio : '') + '</div>' +
-        '</div></div>';
+      var pw = passionById(u.passion) || { emoji: "✨", label: "" };
+      html += "<div onclick=\"openUserProfile('" + u.id + "');document.getElementById('exploreSearchResults').style.display='none';\" style='display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border);'>" +
+        "<div style='width:38px;height:38px;border-radius:12px;background:" + (u.avatar||'#8b5cf6') + ";display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;'>" + (u.profileEmoji||(u.name||"?")[0]) + "</div>" +
+        "<div style='flex:1;min-width:0;'>" +
+          "<div style='font-weight:700;font-size:13px;color:var(--text);'>" + escapeHtml(u.name||"") + "</div>" +
+          "<div style='font-size:11px;color:var(--muted);'>" + pw.emoji + " " + pw.label + (u.bio ? " · " + escapeHtml(u.bio) : "") + "</div>" +
+        "</div>" +
+        "<div style='font-size:11px;font-weight:700;color:var(--accent);flex-shrink:0;'>Voir →</div>" +
+        "</div>";
     });
-  } else {
-    html += '<p style="font-size:13px;color:var(--muted);padding:6px 0;">Aucun utilisateur trouvé</p>';
   }
 
-  resultsBox.innerHTML = html;
+  results.style.display = "block";
+  results.innerHTML = html;
 }
 
 function openPassionExplorer(pid) {
