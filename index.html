@@ -12326,7 +12326,7 @@ function openCreateGroup() {
   openModal(html);
 }
 
-function confirmCreateGroup() {
+async function confirmCreateGroup() {
   const name = ($("#groupName") && $("#groupName").value || "").trim();
   if (!name) { toast("Donne un nom au groupe"); return; }
   const selectedPassions = [...document.querySelectorAll(".group-passion-option.selected input")].map(i => i.value);
@@ -12334,10 +12334,20 @@ function confirmCreateGroup() {
   if (selectedPassions.length === 0) { toast("Choisis au moins 1 passion"); return; }
   if (selectedUsers.length === 0) { toast("Sélectionne au moins 1 membre"); return; }
 
-  // Crée la nouvelle conversation de groupe
+  let groupId = "conv_grp_" + uid();
+
+  // Créer le groupe dans Supabase si connecté
+  if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
+    try {
+      const supaId = await supaCreateGroup(name, selectedUsers, selectedPassions[0]);
+      if (supaId) groupId = supaId;
+    } catch(e) {}
+  }
+
   const convs = getConversations();
+  const welcomeMsgId = "msg_" + uid();
   const newConv = {
-    id: "conv_grp_" + uid(),
+    id: groupId,
     isGroup: true,
     groupName: name,
     groupPassions: selectedPassions,
@@ -12347,11 +12357,20 @@ function confirmCreateGroup() {
     unread: 0,
     lastAt: Date.now(),
     messages: [
-      { from: "me", text: `J'ai créé ce groupe « ${name} » 🎉 Bienvenue à tous !`, at: Date.now() },
+      { id: welcomeMsgId, from: "me", text: `J'ai créé ce groupe « ${name} » 🎉 Bienvenue à tous !`, at: Date.now() },
     ],
   };
   convs.unshift(newConv);
+  conversationsState = convs;
   saveConversations();
+
+  // Envoyer le message de bienvenue dans Supabase
+  if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
+    try {
+      supa.from("conv_messages").insert({ id: welcomeMsgId, conv_id: groupId, from_id: MY_UID, content: newConv.messages[0].text, created_at: new Date().toISOString() }).then(() => {}).catch(() => {});
+    } catch(e) {}
+  }
+
   closeModal();
   renderMessages();
   toast(`✨ Groupe « ${name} » créé`);
