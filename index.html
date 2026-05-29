@@ -15814,7 +15814,11 @@ function playCurrentStory() {
 
   $("#storyAvatar").style.background = u.avatar;
   $("#storyAvatar").textContent = (u.profileEmoji || u.name[0] || "?");
+  $("#storyAvatar").style.cursor = "pointer";
+  $("#storyAvatar").onclick = function(e) { e.stopPropagation(); closeStoryViewer(); openUserProfile(s.authorId); };
   $("#storyAuthor").textContent = u.name;
+  $("#storyAuthor").style.cursor = "pointer";
+  $("#storyAuthor").onclick = function(e) { e.stopPropagation(); closeStoryViewer(); openUserProfile(s.authorId); };
   $("#storyTime").textContent = fmtTime(s.createdAt);
 
   const card = $("#storyCard");
