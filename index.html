@@ -11242,35 +11242,57 @@ function searchUsers(query) {
     results.innerHTML = "";
     return;
   }
-  var q = query.trim().toLowerCase();
-  var users = (state.seed && state.seed.users) ? state.seed.users : [];
-  var matches = users.filter(function(u) {
-    return (u.name || "").toLowerCase().includes(q) ||
-           (u.passion || "").toLowerCase().includes(q);
-  }).slice(0, 8);
-
-  if (matches.length === 0) {
-    results.style.display = "block";
-    results.innerHTML = "<div style='padding:14px 16px;color:var(--muted);font-size:13px;text-align:center;'>Aucun utilisateur trouvé</div>";
-    return;
-  }
 
   results.style.display = "block";
-  results.innerHTML = matches.map(function(u) {
-    var passion = passionById(u.passion) || { emoji: "✨", label: u.passion || "" };
-    var nameEsc = escapeHtml(u.name || "Passioné");
-    var avatarColor = u.avatar || "#8b5cf6";
-    var emoji = u.profileEmoji || passion.emoji || "✨";
-    return "<div class='msg-user-result-row' data-uid='" + u.id + "' data-name='" + nameEsc + "' data-emoji='" + emoji + "' data-avatar='" + avatarColor + "' onclick='_pickMsgUser(this)' style='display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border);'>" +
-      "<div style='width:38px;height:38px;border-radius:12px;background:" + avatarColor + ";display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;'>" + emoji + "</div>" +
-      "<div style='flex:1;min-width:0;'>" +
-        "<div style='font-weight:700;font-size:13px;color:var(--text);'>" + nameEsc + "</div>" +
-        "<div style='font-size:11px;color:var(--muted);'>" + passion.emoji + " " + passion.label + "</div>" +
-      "</div>" +
-      "<div style='font-size:11px;font-weight:700;color:var(--accent);flex-shrink:0;'>Message →</div>" +
-    "</div>";
-  }).join("") +
-  "<div style='padding:8px 14px;font-size:10px;color:var(--muted);text-align:center;'>Tap pour démarrer une conversation</div>";
+  results.innerHTML = "<div style='padding:14px;text-align:center;color:var(--muted);font-size:13px;'>Recherche…</div>";
+
+  var q = query.trim().toLowerCase();
+
+  // Seed local
+  var seedUsers = ((state.seed && state.seed.users) ? state.seed.users : []).filter(function(u) {
+    return (u.name||"").toLowerCase().includes(q) || (u.passion||"").toLowerCase().includes(q);
+  }).slice(0, 5);
+
+  // Supabase (vrais utilisateurs)
+  var supaPromise = (supa && typeof supaSearchUsers === 'function')
+    ? supaSearchUsers(query.trim())
+    : Promise.resolve([]);
+
+  supaPromise.then(function(supaUsers) {
+    var supaFormatted = (supaUsers || []).map(function(u) {
+      return {
+        id: u.id,
+        name: u.username || "Passionné",
+        profileEmoji: u.emoji || "✨",
+        avatar: u.color || "#8b5cf6",
+        passion: u.passion_id || "",
+        bio: u.bio || ""
+      };
+    });
+
+    var matches = supaFormatted.concat(seedUsers).slice(0, 8);
+
+    if (matches.length === 0) {
+      results.innerHTML = "<div style='padding:14px 16px;color:var(--muted);font-size:13px;text-align:center;'>Aucun utilisateur trouvé</div>";
+      return;
+    }
+
+    results.innerHTML = matches.map(function(u) {
+      var passion = passionById(u.passion) || { emoji: "✨", label: "" };
+      var nameEsc = escapeHtml(u.name || "Passionné");
+      var avatarColor = u.avatar || "#8b5cf6";
+      var emoji = u.profileEmoji || passion.emoji || "✨";
+      return "<div class='msg-user-result-row' data-uid='" + u.id + "' data-name='" + nameEsc + "' data-emoji='" + emoji + "' data-avatar='" + avatarColor + "' onclick='_pickMsgUser(this)' style='display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border);'>" +
+        "<div style='width:38px;height:38px;border-radius:12px;background:" + avatarColor + ";display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;'>" + emoji + "</div>" +
+        "<div style='flex:1;min-width:0;'>" +
+          "<div style='font-weight:700;font-size:13px;color:var(--text);'>" + nameEsc + "</div>" +
+          "<div style='font-size:11px;color:var(--muted);'>" + passion.emoji + " " + passion.label + "</div>" +
+        "</div>" +
+        "<div style='font-size:11px;font-weight:700;color:var(--accent);flex-shrink:0;'>Message →</div>" +
+      "</div>";
+    }).join("") +
+    "<div style='padding:8px 14px;font-size:10px;color:var(--muted);text-align:center;'>Tap pour démarrer une conversation</div>";
+  });
 }
 
 function _pickMsgUser(el) {
