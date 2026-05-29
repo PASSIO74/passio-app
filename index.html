@@ -16475,20 +16475,55 @@ async function supaLoadStories() {
 async function supaPublishEvent(event) {
   try {
     await supaUpsertProfile();
-    await supa.from("events").insert({
+    const { error } = await supa.from("events").insert({
       id: event.id || uid(), author_id: MY_UID,
       title: event.title, passion_id: event.passion || null,
-      lat: event.lat || 46.6, lng: event.lng || 2.5,
+      lat: event.lat || null, lng: event.lng || null,
       city: event.city || "", emoji: event.emoji || "📍",
       date_at: event.date ? new Date(event.date).toISOString() : new Date().toISOString(),
+      description: event.desc || null,
+      venue: event.venue || null,
+      address: event.address || null,
+      postal_code: event.postalCode || null,
+      price: event.price || 0,
+      max_attendees: event.maxAttendees || null,
+      contact: event.contact || null,
+      external_link: event.externalLink || null,
+      event_type: event.eventType || "Autre",
+      cover_url: event.coverUrl || null,
+      organizer_id: MY_UID,
     });
+    if (error) console.warn("Event Supabase error:", error);
   } catch(e) { console.warn("Event error:", e); }
 }
 
 async function supaLoadEvents() {
   try {
-    const { data } = await supa.from("events").select("*").order("created_at", { ascending: false }).limit(60);
-    return (data || []).map(r => ({ id: r.id, authorId: r.author_id, title: r.title || "Événement", passion: r.passion_id || "autre", lat: r.lat, lng: r.lng, city: r.city || "", emoji: r.emoji || "📍", date: r.date_at ? new Date(r.date_at).getTime() : Date.now(), fromSupabase: true }));
+    const { data } = await supa.from("events").select("*, profiles(username,emoji,color)").order("created_at", { ascending: false }).limit(60);
+    return (data || []).map(r => ({
+      id: r.id,
+      authorId: r.author_id,
+      organizerId: r.organizer_id || r.author_id,
+      organizerName: r.profiles?.username || "Passionné",
+      title: r.title || "Événement",
+      passion: r.passion_id || "autre",
+      lat: r.lat, lng: r.lng,
+      city: r.city || "",
+      emoji: r.emoji || "📍",
+      date: r.date_at ? new Date(r.date_at).getTime() : Date.now(),
+      desc: r.description || "",
+      venue: r.venue || "",
+      address: r.address || "",
+      postalCode: r.postal_code || "",
+      price: r.price || 0,
+      maxAttendees: r.max_attendees || null,
+      contact: r.contact || "",
+      externalLink: r.external_link || "",
+      eventType: r.event_type || "Autre",
+      coverUrl: r.cover_url || null,
+      attendees: [],
+      fromSupabase: true,
+    }));
   } catch(e) { return []; }
 }
 
