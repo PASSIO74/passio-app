@@ -19,51 +19,76 @@
   <link rel="apple-touch-icon" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='gA' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%23ddd6fe'/><stop offset='1' stop-color='%23a78bfa'/></linearGradient></defs><rect width='100' height='100' rx='22' fill='url(%23gA)'/><path d='M24 24 L76 24 L24 76' stroke='%23ffffff' stroke-width='13' stroke-linecap='round' stroke-linejoin='round' fill='none'/><path d='M76 24 L76 76' stroke='%234c1d95' stroke-width='13' stroke-linecap='round' fill='none'/></svg>" />
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='gA' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%23ddd6fe'/><stop offset='1' stop-color='%23a78bfa'/></linearGradient></defs><rect width='100' height='100' rx='22' fill='url(%23gA)'/><path d='M24 24 L76 24 L24 76' stroke='%23ffffff' stroke-width='13' stroke-linecap='round' stroke-linejoin='round' fill='none'/><path d='M76 24 L76 76' stroke='%234c1d95' stroke-width='13' stroke-linecap='round' fill='none'/></svg>" />
 
-  <!-- PWA : installation 100% automatique selon l'appareil -->
+  <!-- PWA : installation automatique adaptée à l'appareil ET au navigateur -->
   <script>
-    var _ua          = navigator.userAgent;
-    var _isIOS       = /iphone|ipad|ipod/i.test(_ua) && !window.MSStream;
-    var _isAndroid   = /android/i.test(_ua);
-    var _isStandalone= window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
-    var _isIOSSafari = _isIOS && /safari/i.test(_ua) && !/crios|fxios|opios|mercury/i.test(_ua);
-    var _isIOSOther  = _isIOS && !_isIOSSafari;
+    var _ua           = navigator.userAgent;
+    var _isIOS        = /iphone|ipad|ipod/i.test(_ua) && !window.MSStream;
+    var _isAndroid    = /android/i.test(_ua);
+    var _isWindows    = /windows/i.test(_ua);
+    var _isMac        = /mac os x/i.test(_ua) && !_isIOS;
+    var _isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+
+    // Navigateur actuel
+    var _isChrome   = /chrome|chromium/i.test(_ua) && !/edg|opr|samsungbrowser|crios/i.test(_ua);
+    var _isEdge     = /edg(e|\/)/i.test(_ua);
+    var _isSamsung  = /samsungbrowser/i.test(_ua);
+    var _isOpera    = /opr\//i.test(_ua);
+    var _isFirefox  = /firefox|fxios/i.test(_ua);
+    var _isSafari   = /safari/i.test(_ua) && !/chrome|crios|chromium/i.test(_ua);
+    var _isIOSSafari= _isIOS && _isSafari;
+    var _isIOSOther = _isIOS && !_isIOSSafari;
+
+    // Navigateur compatible PWA install natif ?
+    var _supportsPWA = _isChrome || _isEdge || _isSamsung || _isOpera;
+
     window._pwaPrompt = null;
 
     if (!_isStandalone) {
-      // ── Android/Desktop Chrome·Edge·Samsung : popup native immédiate ──
+      // ── Navigateurs compatibles : popup native automatique ──
       window.addEventListener('beforeinstallprompt', (e) => {
         e.preventDefault();
         window._pwaPrompt = e;
-        try { e.prompt(); } catch(_) {}   // ← déclenche la popup native immédiatement
+        try { e.prompt(); } catch(_) {}
       });
 
-      // ── iOS / autres : guide ou redirection automatique dès que la page est prête ──
       window.addEventListener('load', function() {
         var APP_URL = 'https://passio-app.netlify.app/';
+        // Intent URL Android
+        var _androidChrome  = 'intent://' + APP_URL.replace('https://','') + '#Intent;scheme=https;package=com.android.chrome;end';
+        var _androidEdge    = 'intent://' + APP_URL.replace('https://','') + '#Intent;scheme=https;package=com.microsoft.emmx;end';
+        var _androidSamsung = 'intent://' + APP_URL.replace('https://','') + '#Intent;scheme=https;package=com.sec.android.app.sbrowser;end';
 
-        // iOS Safari → guide 2 étapes
+        // iOS Safari → guide 2 étapes (seule option Apple)
         if (_isIOSSafari) {
           setTimeout(function() { if (typeof pwaShowOverlay === 'function') pwaShowOverlay(); }, 800);
         }
-        // iOS Chrome/Firefox → redirige vers Safari automatiquement
+        // iOS autre navigateur → redirige vers Safari
         else if (_isIOSOther) {
           setTimeout(function() { if (typeof pwaShowOverlay === 'function') pwaShowOverlay(); }, 800);
         }
-        // Android sans prompt (Firefox Android) → ouvre Chrome directement
-        else if (_isAndroid && !window._pwaPrompt) {
-          var ci = 'intent://' + APP_URL.replace('https://','') + '#Intent;scheme=https;package=com.android.chrome;end';
-          var ei = 'intent://' + APP_URL.replace('https://','') + '#Intent;scheme=https;package=com.microsoft.emmx;end';
-          setTimeout(function() { window.location.href = ci; }, 800);
-          setTimeout(function() { if (!window._pwaPrompt) window.location.href = ei; }, 2500);
+        // Android Firefox → ouvre Chrome, Edge ou Samsung dans l'ordre
+        else if (_isAndroid && _isFirefox) {
+          setTimeout(function() { window.location.href = _androidChrome; }, 600);
+          setTimeout(function() { window.location.href = _androidEdge; }, 2000);
+          setTimeout(function() { window.location.href = _androidSamsung; }, 3500);
         }
-        // Desktop Firefox → ouvre Chrome directement
-        else if (!_isIOS && !_isAndroid && !window._pwaPrompt) {
+        // Desktop Firefox Windows → ouvre Edge (pré-installé Win10/11)
+        else if (!_isIOS && !_isAndroid && _isFirefox && _isWindows) {
+          setTimeout(function() { window.location.href = 'microsoft-edge:' + APP_URL; }, 600);
+        }
+        // Desktop Firefox Mac → guide Safari (File > Ajouter au dock)
+        else if (!_isIOS && !_isAndroid && _isFirefox && _isMac) {
+          setTimeout(function() { if (typeof pwaShowOverlay === 'function') pwaShowOverlay(); }, 800);
+        }
+        // Desktop Safari Mac → guide Add to Dock
+        else if (_isSafari && _isMac) {
+          setTimeout(function() { if (typeof pwaShowOverlay === 'function') pwaShowOverlay(); }, 800);
+        }
+        // Desktop Firefox Linux ou autre → ouvre Chrome si dispo, sinon guide
+        else if (!_isIOS && !_isAndroid && !_supportsPWA) {
           setTimeout(function() {
             window.location.href = 'googlechrome://navigate?url=' + encodeURIComponent(APP_URL);
-          }, 800);
-          setTimeout(function() {
-            if (!window._pwaPrompt) window.location.href = 'microsoft-edge:' + APP_URL;
-          }, 2500);
+          }, 600);
         }
 
         // Bouton de secours toujours visible
