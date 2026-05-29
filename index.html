@@ -11382,53 +11382,73 @@ function _pickMsgUser(el) {
 }
 
 
-function startDirectMessage(userId, userName, userEmoji, userAvatar) {
-  // Close user results dropdown
+async function startDirectMessage(userId, userName, userEmoji, userAvatar) {
   var results = document.getElementById("msgUserResults");
   if (results) { results.style.display = "none"; results.innerHTML = ""; }
   var search = document.getElementById("msgUserSearch");
   if (search) search.value = "";
 
-  // Check if conversation already exists
+  var passion = currentProfile() ? currentProfile().passion : "autre";
+
+  // Si Supabase dispo : approche Supabase-first (ID cohérent entre utilisateurs)
+  if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID && userId !== "me") {
+    goTo("messages");
+    let supaConvId = null;
+    try {
+      // Chercher une conv directe existante entre les deux users dans Supabase
+      const { data: myMemberships } = await supa.from("conv_members").select("conv_id").eq("user_id", MY_UID);
+      const myConvIds = (myMemberships || []).map(m => m.conv_id);
+      if (myConvIds.length) {
+        const { data: shared } = await supa.from("conv_members")
+          .select("conv_id").eq("user_id", userId).in("conv_id", myConvIds);
+        if (shared && shared.length) {
+          // Vérifier que c'est une conv directe (pas groupe)
+          const { data: convData } = await supa.from("conversations")
+            .select("id, is_group").in("id", shared.map(s => s.conv_id)).eq("is_group", false).limit(1);
+          supaConvId = convData?.[0]?.id || null;
+        }
+      }
+    } catch(e) {}
+
+    // Pas de conv existante → en créer une dans Supabase
+    if (!supaConvId) {
+      try { supaConvId = await supaCreateConversation(userId, passion); } catch(e) {}
+    }
+
+    if (supaConvId) {
+      // Créer ou mettre à jour la conv locale avec l'ID Supabase
+      var convs = getConversations();
+      var existing = convs.find(c => c.id === supaConvId || (!c.isGroup && c.userId === userId));
+      if (existing) {
+        existing.id = supaConvId;
+        existing.userId = userId;
+        existing.userName = userName || existing.userName || "Passionné";
+        existing.userEmoji = userEmoji || existing.userEmoji || "✨";
+        existing.userColor = userAvatar || existing.userColor || "#8b5cf6";
+      } else {
+        convs.unshift({ id: supaConvId, userId, userName: userName || "Passionné", userEmoji: userEmoji || "✨", userColor: userAvatar || "#8b5cf6", passion, unread: 0, lastAt: Date.now(), messages: [], isGroup: false });
+      }
+      conversationsState = convs;
+      saveConversations();
+      setTimeout(function() { renderMessages(); openConversation(supaConvId); }, 120);
+      return;
+    }
+  }
+
+  // Fallback local
   var convs = getConversations();
   var existing = convs.find(function(c) { return !c.isGroup && c.userId === userId; });
-
   if (existing) {
-    // Navigate to messages and open existing conversation
     goTo("messages");
     setTimeout(function() { openConversation(existing.id); }, 120);
     return;
   }
-
-  // Create a new conversation locally
-  var passion = currentProfile() ? currentProfile().passion : "autre";
-  var newConv = {
-    id: "conv_" + uid(),
-    userId: userId,
-    userName: userName || "Passionné",
-    userEmoji: userEmoji || "✨",
-    userAvatar: userAvatar || "#8b5cf6",
-    passion: passion,
-    unread: 0,
-    lastAt: Date.now(),
-    messages: [],
-    isGroup: false,
-  };
+  var newConv = { id: "conv_" + uid(), userId, userName: userName || "Passionné", userEmoji: userEmoji || "✨", userColor: userAvatar || "#8b5cf6", passion, unread: 0, lastAt: Date.now(), messages: [], isGroup: false };
   convs.unshift(newConv);
   conversationsState = convs;
   saveConversations();
-
-  // Navigate to messages and open the new conversation
   goTo("messages");
-  setTimeout(function() {
-    renderMessages();
-    openConversation(newConv.id);
-  }, 120);
-
-  // Try Supabase sync
-  try {
-    if (typeof supaCreateConversation === "function") supaCreateConversation(userId, passion);
-  } catch(e) {}
+  setTimeout(function() { renderMessages(); openConversation(newConv.id); }, 120);
 }
 
 async function openUserProfile(authorId, source) {
