@@ -9199,10 +9199,11 @@ function openPost(id) {
   // Tous les commentaires
   const allComments = (post.comments || []).map(c => {
     const cu = userById(c.authorId) || { name: "?", profileEmoji: "👤", avatar: "#64748b" };
+    const cSrc = c.authorId === "me" ? "me" : "seed";
     return `<div class="comment">
-      <div class="avatar sm" style="background:${cu.avatar};">${cu.profileEmoji || (cu.name||"?")[0]}</div>
+      <div class="avatar sm" style="background:${cu.avatar};cursor:pointer;" onclick="openUserProfile('${c.authorId}','${cSrc}')">${cu.profileEmoji || (cu.name||"?")[0]}</div>
       <div class="comment-body">
-        <div class="comment-author">${escapeHtml(cu.name)}</div>
+        <div class="comment-author" style="cursor:pointer;" onclick="openUserProfile('${c.authorId}','${cSrc}')">${escapeHtml(cu.name)}</div>
         <div class="comment-text">${escapeHtml(c.text)}</div>
         <div class="comment-meta">${fmtTime(c.createdAt)}</div>
       </div>
