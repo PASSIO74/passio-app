@@ -11661,7 +11661,7 @@ function openConversation(convId) {
     ${headerAvatarWrap}
     <div class="conv-fp-head-info">
       <div class="conv-fp-name">${escapeHtml(displayName)}</div>
-      <div class="conv-fp-passion">${passion.emoji} ${escapeHtml(passion.label)}${c.isGroup ? ' · ' + ((c.userIds||[]).length || 0) + ' membres' : ''}</div>
+      ${c.isGroup ? `<div class="conv-fp-passion">👥 ${((c.userIds||[]).length || 0)} membres</div>` : '<div class="conv-fp-passion" style="color:var(--accent);font-size:11px;">En ligne</div>'}
     </div>
     <div class="conv-actions">
       ${c.isGroup ? `<button class="conv-action-btn" onclick="showGroupMembers('${convId}')" title="Membres">
