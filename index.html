@@ -8949,11 +8949,10 @@ function renderFeed() {
   const list = $("#feedList");
   const mood = state.currentMood;
 
-  // Filtre passion : on utilise la variable globale directe _activeFeedPassion
   let posts = allFeedPosts().filter(function(p) { return p.type !== "vlog"; });
 
-  if (_activeFeedPassion) {
-    posts = posts.filter(function(p) { return p.passion === _activeFeedPassion; });
+  if (_activeFeedPassions.size > 0) {
+    posts = posts.filter(function(p) { return _activeFeedPassions.has(p.passion); });
   }
 
   if (mood !== "all") {
@@ -8969,10 +8968,9 @@ function renderFeed() {
     if (emptyEl) {
       var emptyTitle = emptyEl.querySelector(".empty-title");
       var emptyText = emptyEl.querySelector(".empty-text");
-      if (_activeFeedPassion) {
-        var pw = passionById(_activeFeedPassion);
-        if (emptyTitle) emptyTitle.textContent = "Aucun post en " + pw.label;
-        if (emptyText) emptyText.textContent = "Sois le premier à publier dans cette passion.";
+      if (_activeFeedPassions.size > 0) {
+        if (emptyTitle) emptyTitle.textContent = "Aucun post pour ces passions";
+        if (emptyText) emptyText.textContent = "Sois le premier à publier dans ces passions.";
       } else {
         if (emptyTitle) emptyTitle.textContent = "Aucun post pour ce mood";
         if (emptyText) emptyText.textContent = "Change de mood ou crée le premier contenu.";
