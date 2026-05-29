@@ -9002,7 +9002,10 @@ function renderFeed() {
     if (emptyEl) {
       var emptyTitle = emptyEl.querySelector(".empty-title");
       var emptyText = emptyEl.querySelector(".empty-text");
-      if (_activeFeedPassions.size > 0) {
+      if (_currentFeedTab === 'following') {
+        if (emptyTitle) emptyTitle.textContent = "Tu ne suis personne encore";
+        if (emptyText) emptyText.textContent = "Explore des profils et clique ➕ Suivre pour voir leurs posts ici.";
+      } else if (_activeFeedPassions.size > 0) {
         if (emptyTitle) emptyTitle.textContent = "Aucun post pour ces passions";
         if (emptyText) emptyText.textContent = "Sois le premier à publier dans ces passions.";
       } else {
