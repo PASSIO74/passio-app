@@ -16619,73 +16619,79 @@ boot().catch(e => console.error("Boot error:", e));
 
 function pwaShowOverlay() {
   const ov = document.getElementById("pwa-overlay");
-  if (!ov) return;
+  if (!ov || _isStandalone) return;
   const lp = document.getElementById("pwaLogoImg");
   if (lp) lp.src = LOGO_SRC;
-
   const content = document.getElementById("pwa-content");
   if (!content) { ov.style.display = "flex"; return; }
 
+  const APP_URL = 'https://passio-app.netlify.app/';
+
+  // ═══ CAS 1 : Prompt natif dispo (Chrome/Edge/Samsung/Opera sur Android ou Desktop) ═══
   if (window._pwaPrompt) {
-    // Chrome / Edge / Android avec prompt natif → 1 seul bouton
     content.innerHTML = `
       <button class="pwa-btn-install" onclick="pwaInstall()">📲&nbsp;&nbsp;Installer PASSIO</button>
       <button class="pwa-btn-skip" onclick="pwaDismiss()">Plus tard</button>`;
-  } else if (_isIOS) {
-    // iOS Safari : 2 étapes obligatoires (limitation Apple)
+
+  // ═══ CAS 2 : iPhone/iPad sur Safari ═══
+  } else if (_isIOSSafari) {
     content.innerHTML = `
-      <div style="background:#f5f3ff;border-radius:16px;padding:16px 14px;margin-bottom:14px;">
-        <div style="font-size:14px;font-weight:800;color:#1e1b4b;margin-bottom:12px;text-align:center;">Installer sur iPhone / iPad</div>
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
-          <div style="font-size:26px;">1️⃣</div>
-          <div style="font-size:13px;color:#374151;">Appuie sur <strong style="color:#6d28d9;">Partager ⬆️</strong> en bas de Safari</div>
+      <div style="background:#f5f3ff;border-radius:16px;padding:16px;margin-bottom:14px;">
+        <div style="font-weight:800;color:#1e1b4b;margin-bottom:12px;text-align:center;">📱 Installer sur iPhone / iPad</div>
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;">
+          <span style="font-size:28px;">1️⃣</span>
+          <span style="font-size:13px;color:#374151;">Appuie sur <strong style="color:#6d28d9;">Partager ⬆️</strong> en bas de Safari</span>
         </div>
-        <div style="display:flex;align-items:center;gap:10px;">
-          <div style="font-size:26px;">2️⃣</div>
-          <div style="font-size:13px;color:#374151;">Choisis <strong style="color:#6d28d9;">"Sur l'écran d'accueil"</strong> puis <strong style="color:#6d28d9;">Ajouter</strong></div>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <span style="font-size:28px;">2️⃣</span>
+          <span style="font-size:13px;color:#374151;">Choisis <strong style="color:#6d28d9;">"Sur l'écran d'accueil"</strong> puis <strong style="color:#6d28d9;">Ajouter</strong></span>
         </div>
       </div>
       <button class="pwa-btn-skip" onclick="pwaDismiss()">Fermer</button>`;
+
+  // ═══ CAS 3 : iPhone/iPad sur Chrome/Firefox iOS → rediriger vers Safari ═══
+  } else if (_isIOSOther) {
+    const safariUrl = APP_URL;
+    content.innerHTML = `
+      <div style="text-align:center;padding:8px 0 16px;">
+        <div style="font-size:44px;margin-bottom:10px;">🍎</div>
+        <div style="font-size:16px;font-weight:800;color:#1e1b4b;margin-bottom:8px;">Ouvrir dans Safari</div>
+        <div style="font-size:13px;color:#6b7280;margin-bottom:16px;">Sur iPhone/iPad, seul <strong>Safari</strong> peut installer les apps web. Appuie sur le bouton ci-dessous :</div>
+        <button class="pwa-btn-install" onclick="window.location.href='${safariUrl}'" style="margin-bottom:10px;">
+          🧭&nbsp;&nbsp;Ouvrir dans Safari
+        </button>
+        <button class="pwa-btn-skip" onclick="pwaDismiss()">Plus tard</button>
+      </div>`;
+
+  // ═══ CAS 4 : Android sans prompt (Firefox Android) → proposer Chrome/Edge/Samsung ═══
+  } else if (_isAndroid) {
+    var ci = 'intent://' + APP_URL.replace('https://','') + '#Intent;scheme=https;package=com.android.chrome;end';
+    var ei = 'intent://' + APP_URL.replace('https://','') + '#Intent;scheme=https;package=com.microsoft.emmx;end';
+    var si = 'intent://' + APP_URL.replace('https://','') + '#Intent;scheme=https;package=com.sec.android.app.sbrowser;end';
+    content.innerHTML = `
+      <div style="text-align:center;padding:4px 0 12px;">
+        <div style="font-size:44px;margin-bottom:8px;">📲</div>
+        <div style="font-size:16px;font-weight:800;color:#1e1b4b;margin-bottom:6px;">Installer PASSIO</div>
+        <div style="font-size:12px;color:#6b7280;margin-bottom:14px;">Choisis un navigateur compatible — la popup d'installation apparaîtra automatiquement</div>
+        <button class="pwa-btn-install" onclick="window.location.href='${ci}'" style="margin-bottom:8px;">🟢&nbsp;&nbsp;Chrome</button>
+        <button class="pwa-btn-install" onclick="window.location.href='${ei}'" style="margin-bottom:8px;background:linear-gradient(135deg,#0078d4,#00a4ef);">🔵&nbsp;&nbsp;Microsoft Edge</button>
+        <button class="pwa-btn-install" onclick="window.location.href='${si}'" style="margin-bottom:8px;background:linear-gradient(135deg,#1428a0,#4472c4);">🌀&nbsp;&nbsp;Samsung Internet</button>
+        <button class="pwa-btn-skip" onclick="pwaDismiss()">Plus tard</button>
+      </div>`;
+
+  // ═══ CAS 5 : Desktop sans prompt (Firefox PC, etc.) → copier le lien ═══
   } else {
-    // Firefox ou navigateur sans support PWA
-    var appUrl = 'https://passio-app.netlify.app/';
-    var isAndroid = /android/i.test(navigator.userAgent);
-    if (isAndroid) {
-      // Android : essayer Chrome, puis Edge, puis Samsung Internet
-      var chromeIntent = 'intent://' + appUrl.replace('https://','') + '#Intent;scheme=https;package=com.android.chrome;end';
-      var edgeIntent   = 'intent://' + appUrl.replace('https://','') + '#Intent;scheme=https;package=com.microsoft.emmx;end';
-      var samsungIntent= 'intent://' + appUrl.replace('https://','') + '#Intent;scheme=https;package=com.sec.android.app.sbrowser;end';
-      content.innerHTML = `
-        <div style="text-align:center;padding:8px 0 16px;">
-          <div style="font-size:48px;margin-bottom:10px;">🚀</div>
-          <div style="font-size:16px;font-weight:800;color:#1e1b4b;margin-bottom:8px;">Installer PASSIO</div>
-          <div style="font-size:12px;color:#6b7280;margin-bottom:16px;">Choisis ton navigateur — la popup d'installation s'ouvrira automatiquement</div>
-          <button class="pwa-btn-install" onclick="window.location.href='${chromeIntent}'" style="margin-bottom:8px;font-size:14px;">
-            <img src="https://www.google.com/chrome/static/images/chrome-logo-m100.svg" style="height:18px;vertical-align:middle;margin-right:6px;" onerror="this.style.display='none'"/>Chrome
-          </button>
-          <button class="pwa-btn-install" onclick="window.location.href='${edgeIntent}'" style="margin-bottom:8px;font-size:14px;background:linear-gradient(135deg,#0078d4,#00a4ef);">
-            🌐&nbsp;&nbsp;Microsoft Edge
-          </button>
-          <button class="pwa-btn-install" onclick="window.location.href='${samsungIntent}'" style="margin-bottom:8px;font-size:14px;background:linear-gradient(135deg,#1428a0,#4472c4);">
-            🌀&nbsp;&nbsp;Samsung Internet
-          </button>
-          <button class="pwa-btn-skip" onclick="pwaDismiss()">Plus tard</button>
-        </div>`;
-    } else {
-      // Desktop (Firefox, etc.) : copier le lien, coller dans Chrome/Edge
-      content.innerHTML = `
-        <div style="text-align:center;padding:8px 0 16px;">
-          <div style="font-size:48px;margin-bottom:10px;">💻</div>
-          <div style="font-size:16px;font-weight:800;color:#1e1b4b;margin-bottom:6px;">Installer sur PC / Mac</div>
-          <div style="font-size:13px;color:#6b7280;margin-bottom:6px;">Copie ce lien et colle-le dans <strong style="color:#6d28d9;">Chrome</strong> ou <strong style="color:#0078d4;">Edge</strong> :</div>
-          <div style="background:#ede9fe;border-radius:10px;padding:10px 12px;font-size:12px;font-weight:700;color:#4c1d95;word-break:break-all;margin-bottom:14px;text-align:left;">${appUrl}</div>
-          <button class="pwa-btn-install" onclick="navigator.clipboard.writeText('${appUrl}').then(()=>{this.innerHTML='✅&nbsp;&nbsp;Lien copié !';this.style.background='#16a34a';})">
-            📋&nbsp;&nbsp;Copier le lien
-          </button>
-          <div style="font-size:11px;color:#9ca3af;margin-top:10px;">La popup d'installation apparaîtra automatiquement dans Chrome ou Edge</div>
-          <button class="pwa-btn-skip" onclick="pwaDismiss()" style="margin-top:8px;">Fermer</button>
-        </div>`;
-    }
+    content.innerHTML = `
+      <div style="text-align:center;padding:4px 0 12px;">
+        <div style="font-size:44px;margin-bottom:8px;">💻</div>
+        <div style="font-size:16px;font-weight:800;color:#1e1b4b;margin-bottom:6px;">Installer sur PC / Mac</div>
+        <div style="font-size:13px;color:#6b7280;margin-bottom:10px;">Colle ce lien dans <strong style="color:#6d28d9;">Chrome</strong> ou <strong style="color:#0078d4;">Edge</strong> — la popup d'installation apparaîtra seule :</div>
+        <div style="background:#ede9fe;border-radius:10px;padding:10px;font-size:12px;font-weight:700;color:#4c1d95;word-break:break-all;margin-bottom:12px;text-align:left;">${APP_URL}</div>
+        <button class="pwa-btn-install" onclick="navigator.clipboard.writeText('${APP_URL}').then(()=>{this.innerHTML='✅&nbsp;Lien copié !';this.style.background='#16a34a';})">
+          📋&nbsp;&nbsp;Copier le lien
+        </button>
+        <button class="pwa-btn-skip" onclick="pwaDismiss()" style="margin-top:8px;">Fermer</button>
+      </div>`;
   }
 
   ov.style.display = "flex";
