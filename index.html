@@ -37,16 +37,38 @@
         try { e.prompt(); } catch(_) {}   // ← déclenche la popup native immédiatement
       });
 
-      // ── iOS : guide automatique dès que la page est prête ──
+      // ── iOS / autres : guide ou redirection automatique dès que la page est prête ──
       window.addEventListener('load', function() {
-        if (_isIOSSafari || _isIOSOther) {
-          setTimeout(function() {
-            if (typeof pwaShowOverlay === 'function') pwaShowOverlay();
-          }, 800);
+        var APP_URL = 'https://passio-app.netlify.app/';
+
+        // iOS Safari → guide 2 étapes
+        if (_isIOSSafari) {
+          setTimeout(function() { if (typeof pwaShowOverlay === 'function') pwaShowOverlay(); }, 800);
         }
-        // Bouton de secours visible (si l'user a raté la popup auto)
+        // iOS Chrome/Firefox → redirige vers Safari automatiquement
+        else if (_isIOSOther) {
+          setTimeout(function() { if (typeof pwaShowOverlay === 'function') pwaShowOverlay(); }, 800);
+        }
+        // Android sans prompt (Firefox Android) → ouvre Chrome directement
+        else if (_isAndroid && !window._pwaPrompt) {
+          var ci = 'intent://' + APP_URL.replace('https://','') + '#Intent;scheme=https;package=com.android.chrome;end';
+          var ei = 'intent://' + APP_URL.replace('https://','') + '#Intent;scheme=https;package=com.microsoft.emmx;end';
+          setTimeout(function() { window.location.href = ci; }, 800);
+          setTimeout(function() { if (!window._pwaPrompt) window.location.href = ei; }, 2500);
+        }
+        // Desktop Firefox → ouvre Chrome directement
+        else if (!_isIOS && !_isAndroid && !window._pwaPrompt) {
+          setTimeout(function() {
+            window.location.href = 'googlechrome://navigate?url=' + encodeURIComponent(APP_URL);
+          }, 800);
+          setTimeout(function() {
+            if (!window._pwaPrompt) window.location.href = 'microsoft-edge:' + APP_URL;
+          }, 2500);
+        }
+
+        // Bouton de secours toujours visible
         var btn = document.getElementById('btn-install-app');
-        if (btn) btn.style.display = _isStandalone ? 'none' : '';
+        if (btn) btn.style.display = '';
       });
     }
   </script>
