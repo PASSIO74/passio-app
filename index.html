@@ -13241,13 +13241,13 @@ function renderProfileStrip() {
   if (!box) return;
   const profiles = state.user.profiles || [];
   if (profiles.length === 0) { box.innerHTML = ""; return; }
-  if (!state.selectedFeedPassions) state.selectedFeedPassions = [];
-  var hasFilter = state.selectedFeedPassions.length > 0;
+
+  var hasFilter = _activeFeedPassion !== null;
   box.classList.toggle("has-filter", hasFilter);
 
   var tilesHTML = profiles.map(function(p) {
     const passion = passionById(p.passion);
-    const isSelected = state.selectedFeedPassions.indexOf(p.passion) !== -1;
+    const isSelected = _activeFeedPassion === p.passion;
     const label = escapeHtml(passion.label);
     const photoId = passion.photo;
     const photoUrl = photoId
