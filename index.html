@@ -16581,18 +16581,7 @@ function exitLandingAsAuth(mode) {
 boot().catch(e => console.error("Boot error:", e));
 
 // ======== PWA INSTALL OVERLAY ========
-const _ua        = navigator.userAgent;
-const _isIOS     = /iphone|ipad|ipod/i.test(_ua) && !window.MSStream;
-const _isAndroid = /android/i.test(_ua);
-const _isSafari  = /^((?!chrome|android).)*safari/i.test(_ua);
-const _isChrome  = /chrome|chromium/i.test(_ua) && !/edge|opr/i.test(_ua);
-const _isEdge    = /edg(e|\/)/i.test(_ua);
-const _isMobile  = _isIOS || _isAndroid;
-
-function _pwaShowView(id) {
-  ["pwa-view-direct","pwa-view-ios","pwa-view-desktop","pwa-view-android-manual","pwa-view-unsupported"]
-    .forEach(v => { const el = document.getElementById(v); if (el) el.style.display = v===id ? "block" : "none"; });
-}
+const _isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
 
 function pwaShowOverlay() {
   const ov = document.getElementById("pwa-overlay");
@@ -16600,25 +16589,40 @@ function pwaShowOverlay() {
   const lp = document.getElementById("pwaLogoImg");
   if (lp) lp.src = LOGO_SRC;
 
-  if (_isIOS) {
-    _pwaShowView("pwa-view-ios");
-  } else if (window._pwaPrompt) {
-    _pwaShowView("pwa-view-direct");
-  } else if (_isAndroid) {
-    _pwaShowView("pwa-view-android-manual");
+  const content = document.getElementById("pwa-content");
+  if (!content) { ov.style.display = "flex"; return; }
+
+  if (window._pwaPrompt) {
+    // Chrome / Edge / Android avec prompt natif → 1 seul bouton
+    content.innerHTML = `
+      <button class="pwa-btn-install" onclick="pwaInstall()">📲&nbsp;&nbsp;Installer PASSIO</button>
+      <button class="pwa-btn-skip" onclick="pwaDismiss()">Plus tard</button>`;
+  } else if (_isIOS) {
+    // iOS Safari : 2 étapes obligatoires (limitation Apple)
+    content.innerHTML = `
+      <div style="background:#f5f3ff;border-radius:16px;padding:16px 14px;margin-bottom:14px;">
+        <div style="font-size:14px;font-weight:800;color:#1e1b4b;margin-bottom:12px;text-align:center;">Installer sur iPhone / iPad</div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+          <div style="font-size:26px;">1️⃣</div>
+          <div style="font-size:13px;color:#374151;">Appuie sur <strong style="color:#6d28d9;">Partager ⬆️</strong> en bas de Safari</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div style="font-size:26px;">2️⃣</div>
+          <div style="font-size:13px;color:#374151;">Choisis <strong style="color:#6d28d9;">"Sur l'écran d'accueil"</strong> puis <strong style="color:#6d28d9;">Ajouter</strong></div>
+        </div>
+      </div>
+      <button class="pwa-btn-skip" onclick="pwaDismiss()">Fermer</button>`;
   } else {
-    _pwaShowView("pwa-view-desktop");
-    const btn = document.getElementById("pwa-desktop-install-btn");
-    const fallback = document.getElementById("pwa-desktop-fallback");
-    setTimeout(() => {
-      if (window._pwaPrompt) {
-        _pwaShowView("pwa-view-direct");
-      } else {
-        if (btn) btn.style.display = "none";
-        if (fallback) fallback.style.display = "block";
-      }
-    }, 3000);
+    // Navigateur sans prompt (Firefox, Samsung, …) → message simple
+    content.innerHTML = `
+      <div style="background:#f5f3ff;border-radius:16px;padding:18px;margin-bottom:14px;text-align:center;">
+        <div style="font-size:32px;margin-bottom:8px;">🌐</div>
+        <div style="font-size:14px;font-weight:800;color:#1e1b4b;margin-bottom:8px;">Ouvre dans Chrome</div>
+        <div style="font-size:13px;color:#374151;line-height:1.6;">Pour installer PASSIO comme une vraie app, ouvre cette page dans <strong style="color:#6d28d9;">Google Chrome</strong> sur ton téléphone ou ordinateur.</div>
+      </div>
+      <button class="pwa-btn-skip" onclick="pwaDismiss()">OK</button>`;
   }
+
   ov.style.display = "flex";
 }
 
