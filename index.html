@@ -7352,7 +7352,7 @@ const REWARDS = {
 let state = null;
 const STATE_KEY = "passio_mvp_state_v1";
 // Filtre de passion actif dans le fil — variable globale directe, hors state/localStorage
-let _activeFeedPassion = null; // null = tout voir, string = passion ID
+let _activeFeedPassions = new Set(); // vide = tout voir, sinon filtre multi-sélection
 
 // Default seed (fake users / posts / events), built once at first launch
 function buildSeed() {
