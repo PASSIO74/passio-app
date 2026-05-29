@@ -8952,6 +8952,26 @@ function allFeedPosts() {
 
 // Profils sélectionnés pour filtrer le fil (multi-sélection)
 
+function setFeedTab(tab) {
+  _currentFeedTab = tab;
+  var btnPassions  = document.getElementById("feedTab-passions");
+  var btnFollowing = document.getElementById("feedTab-following");
+  if (btnPassions && btnFollowing) {
+    if (tab === 'passions') {
+      btnPassions.style.background  = 'var(--accent)'; btnPassions.style.color  = '#fff'; btnPassions.style.fontWeight = '800';
+      btnFollowing.style.background = 'transparent';   btnFollowing.style.color = 'var(--muted)'; btnFollowing.style.fontWeight = '700';
+    } else {
+      btnFollowing.style.background = 'var(--accent)'; btnFollowing.style.color = '#fff'; btnFollowing.style.fontWeight = '800';
+      btnPassions.style.background  = 'transparent';   btnPassions.style.color  = 'var(--muted)'; btnPassions.style.fontWeight = '700';
+    }
+  }
+  // Masquer/afficher le sélecteur de passions selon l'onglet
+  var strip = document.getElementById("profileStrip");
+  var moodSel = document.getElementById("moodSelector");
+  if (strip) strip.style.display = tab === 'passions' ? '' : 'none';
+  renderFeed();
+}
+
 function renderFeed() {
   const list = $("#feedList");
   const mood = state.currentMood;
