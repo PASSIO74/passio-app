@@ -11779,6 +11779,7 @@ function sendMessageFp(convId, displayName) {
 }
 
 function closeConversation() {
+  window._openedConvId = null; // plus de conv ouverte
   const fp = document.getElementById("conv-fullpage");
   if (fp) fp.classList.remove("active");
   renderMessages();
