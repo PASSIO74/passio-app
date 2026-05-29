@@ -15084,7 +15084,7 @@ function openEventDetails(id) {
     ` : ""}
 
     <div class="event-detail-section-title">Organisateur·ice</div>
-    <div class="event-detail-organizer">
+    <div class="event-detail-organizer" style="cursor:pointer;" onclick="openUserProfile('${ev.organizerId || "me"}')">
       <div class="avatar sm" style="background:${organizer.avatar || "#8b5cf6"};">${organizer.profileEmoji || "✨"}</div>
       <div style="font-size:14px;font-weight:700;">${escapeHtml(organizer.name || "?")}</div>
     </div>
