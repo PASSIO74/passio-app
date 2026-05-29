@@ -15983,7 +15983,13 @@ function playCurrentStory() {
   const stories = state.seed.stories;
   if (!stories[storyIdx]) return closeStoryViewer();
   const s = stories[storyIdx];
-  const u = userById(s.authorId) || { name: "?", avatar: "#8b5cf6" };
+  // Priorité aux infos embarquées dans la story (Supabase), sinon fallback userById
+  const uLocal = userById(s.authorId);
+  const u = {
+    name: s.authorName || uLocal?.name || "Passionné",
+    avatar: s.authorColor || uLocal?.avatar || "#8b5cf6",
+    profileEmoji: s.authorEmoji || uLocal?.profileEmoji || "✨",
+  };
 
   $("#storyAvatar").style.background = u.avatar;
   $("#storyAvatar").textContent = (u.profileEmoji || u.name[0] || "?");
