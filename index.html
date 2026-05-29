@@ -13321,13 +13321,6 @@ function toggleProfileFilter(passionId) {
   } else {
     _activeFeedPassions.add(passionId);
   }
-  if (_activeFeedPassions.size === 0) {
-    toast("Tout le fil", "info");
-  } else {
-    var pw = passionById(passionId);
-    var nb = allFeedPosts().filter(function(p){ return p.type !== "vlog" && _activeFeedPassions.has(p.passion); }).length;
-    toast(pw.emoji + " " + pw.label + " — " + nb + " post" + (nb > 1 ? "s" : ""), "info");
-  }
   state.currentMood = "all";
   $$(".mood-btn").forEach(function(b) { b.classList.remove("active"); });
   var allBtn = document.querySelector(".mood-btn[data-mood='all']");
