@@ -13277,8 +13277,16 @@ function toggleProfileFilter(passionId) {
   } else {
     state.selectedFeedPassions = [passionId]; // Sélection exclusive
   }
+  // Réinitialiser aussi le mood pour voir tous les posts de cette passion
+  state.currentMood = "all";
+  $$(".mood-btn").forEach(function(b) { b.classList.remove("active"); });
+  var allBtn = document.querySelector(".mood-btn[data-mood='all']");
+  if (allBtn) allBtn.classList.add("active");
   saveState();
   renderFeed();
+  // Scroll vers le haut du fil d'actu
+  var feedList = document.getElementById("feedList");
+  if (feedList) setTimeout(function() { feedList.scrollIntoView({ behavior: "smooth", block: "start" }); }, 60);
 }
 
 function selectAllProfiles() {
