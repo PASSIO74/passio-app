@@ -16663,13 +16663,13 @@ async function supaSearchUsers(query) {
   } catch(e) { return []; }
 }
 
-async function supaCreateConversation(withUserId, passionId) {
+async function supaCreateConversation(withUserId) {
   try {
     await supaUpsertProfile();
     const convId = "conv_" + uid();
     await supa.from("conversations").insert({
       id: convId, is_group: false,
-      passion_id: passionId || null, created_by: MY_UID,
+      passion_id: null, created_by: MY_UID,
     });
     await supa.from("conv_members").insert([
       { conv_id: convId, user_id: MY_UID },
