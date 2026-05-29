@@ -16664,7 +16664,7 @@ function pwaShowOverlay() {
 
 async function pwaInstall() {
   if (window._pwaPrompt) {
-    // Chrome / Edge / Android : prompt natif direct
+    // Chrome / Edge / Android : prompt natif direct (1 clic)
     try {
       window._pwaPrompt.prompt();
       const { outcome } = await window._pwaPrompt.userChoice;
@@ -16675,9 +16675,18 @@ async function pwaInstall() {
         if (btn) btn.style.display = 'none';
       }
     } catch(e) { /* ignore */ }
-  } else {
-    // iOS ou navigateur sans prompt → afficher le guide
+  } else if (_isIOS) {
+    // iOS Safari : guide 2 étapes (seule option possible sur Apple)
     pwaShowOverlay();
+  } else {
+    // Autre navigateur : ouvrir directement dans Chrome
+    var appUrl = 'https://passio-app.netlify.app/';
+    var isAndroid = /android/i.test(navigator.userAgent);
+    if (isAndroid) {
+      window.location.href = 'intent://' + appUrl.replace('https://','') + '#Intent;scheme=https;package=com.android.chrome;end';
+    } else {
+      window.open('googlechrome://' + appUrl.replace('https://',''), '_blank') || window.open(appUrl, '_blank');
+    }
   }
 }
 
