@@ -10905,6 +10905,11 @@ function submitComment(postId) {
   // Sync avec Supabase
   if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
     supaAddComment(postId, text);
+    // Notifier l'auteur du post
+    const commentedPost = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
+    if (commentedPost && commentedPost.authorId && commentedPost.authorId !== MY_UID && commentedPost.fromSupabase) {
+      supaInsertNotif(commentedPost.authorId, "comment", postId, "a commenté ton post");
+    }
   }
   closeModal();
   renderFeed();
