@@ -16639,14 +16639,24 @@ function pwaShowOverlay() {
       </div>
       <button class="pwa-btn-skip" onclick="pwaDismiss()">Fermer</button>`;
   } else {
-    // Navigateur sans prompt (Firefox, Samsung, …) → message simple
+    // Navigateur sans prompt natif → ouvrir Chrome directement avec l'URL de l'app
+    var appUrl = 'https://passio-app.netlify.app/';
+    var ua = navigator.userAgent;
+    var isAndroid = /android/i.test(ua);
+    // Intent Chrome Android : ouvre Chrome avec l'URL directement
+    var chromeUrl = isAndroid
+      ? 'intent://' + appUrl.replace('https://','') + '#Intent;scheme=https;package=com.android.chrome;end'
+      : 'googlechrome://' + appUrl.replace('https://','');
     content.innerHTML = `
-      <div style="background:#f5f3ff;border-radius:16px;padding:18px;margin-bottom:14px;text-align:center;">
-        <div style="font-size:32px;margin-bottom:8px;">🌐</div>
-        <div style="font-size:14px;font-weight:800;color:#1e1b4b;margin-bottom:8px;">Ouvre dans Chrome</div>
-        <div style="font-size:13px;color:#374151;line-height:1.6;">Pour installer PASSIO comme une vraie app, ouvre cette page dans <strong style="color:#6d28d9;">Google Chrome</strong> sur ton téléphone ou ordinateur.</div>
-      </div>
-      <button class="pwa-btn-skip" onclick="pwaDismiss()">OK</button>`;
+      <div style="text-align:center;padding:8px 0 16px;">
+        <div style="font-size:48px;margin-bottom:10px;">🚀</div>
+        <div style="font-size:16px;font-weight:800;color:#1e1b4b;margin-bottom:6px;">Installer PASSIO</div>
+        <div style="font-size:13px;color:#6b7280;margin-bottom:18px;">Un clic suffit pour installer l'app</div>
+        <button class="pwa-btn-install" onclick="window.location.href='${chromeUrl}'" style="margin-bottom:10px;">
+          📲&nbsp;&nbsp;Ouvrir et installer dans Chrome
+        </button>
+        <button class="pwa-btn-skip" onclick="pwaDismiss()">Plus tard</button>
+      </div>`;
   }
 
   ov.style.display = "flex";
