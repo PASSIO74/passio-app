@@ -16181,7 +16181,16 @@ function openNotifications() {
 
 function markNotifRead(id) {
   const n = state.notifications.find(x => x.id === id);
-  if (n) { n.unread = false; saveState(); renderBell(); openNotifications(); }
+  if (n) {
+    n.unread = false;
+    saveState();
+    renderBell();
+    openNotifications();
+    // Sync Supabase si c'est une notif Supabase
+    if (n.fromSupabase && typeof supaMarkNotifSeen === "function") {
+      supaMarkNotifSeen(id);
+    }
+  }
 }
 
 function markAllNotifsRead() {
