@@ -16310,15 +16310,27 @@ async function supaLoadPosts() {
   try {
     const { data } = await supa.from("posts").select("*, profiles(username,emoji,color)").order("created_at", { ascending: false }).limit(60);
     if (!data || !data.length) return [];
-    // Charger tous les likes d'un coup
+    // Charger tous les likes + counts commentaires d'un coup
     const postIds = data.map(r => r.id);
-    let likesData = [];
+    let likesData = [], commentsData = [];
     try {
-      const { data: ld } = await supa.from("post_likes").select("post_id, user_id").in("post_id", postIds);
-      likesData = ld || [];
+      const [likesRes, commentsRes] = await Promise.all([
+        supa.from("post_likes").select("post_id, user_id").in("post_id", postIds),
+        supa.from("post_comments").select("post_id, id, author_id, content, created_at, profiles(username,emoji,color)").in("post_id", postIds).order("created_at", { ascending: false }).limit(200),
+      ]);
+      likesData = likesRes.data || [];
+      commentsData = commentsRes.data || [];
     } catch(e) {}
     return data.map(r => {
       const postLikes = likesData.filter(l => l.post_id === r.id);
+      const postComments = commentsData.filter(c => c.post_id === r.id).map(c => ({
+        id: c.id, authorId: c.author_id,
+        authorName: c.profiles?.username || "Passionné",
+        authorEmoji: c.profiles?.emoji || "✨",
+        text: c.content || "", content: c.content || "",
+        createdAt: new Date(c.created_at).getTime(),
+        fromSupabase: true,
+      }));
       return {
         id: r.id, authorId: r.author_id,
         authorName: r.profiles?.username || "Passionné",
@@ -16329,7 +16341,7 @@ async function supaLoadPosts() {
         createdAt: new Date(r.created_at).getTime(),
         likes: postLikes.length,
         liked: postLikes.some(l => l.user_id === MY_UID),
-        comments: [], fromSupabase: true
+        comments: postComments, fromSupabase: true
       };
     });
   } catch(e) { return []; }
