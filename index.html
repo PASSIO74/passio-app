@@ -13267,30 +13267,24 @@ function renderProfileStrip() {
 }
 
 function toggleProfileFilter(passionId) {
-  if (!state.selectedFeedPassions) state.selectedFeedPassions = [];
-  // Sélection EXCLUSIVE : cliquer sur une tuile remplace toute la sélection.
-  // Si on reclique sur la tuile déjà seule sélectionnée → tout déselectionner (voir tout).
-  if (state.selectedFeedPassions.length === 1 && state.selectedFeedPassions[0] === passionId) {
-    state.selectedFeedPassions = []; // Toggle off → tout voir
+  // Toggle : si déjà actif → tout voir, sinon → filtre exclusif
+  if (_activeFeedPassion === passionId) {
+    _activeFeedPassion = null;
+    toast("Tout le fil", "info");
   } else {
-    state.selectedFeedPassions = [passionId]; // Sélection exclusive
+    _activeFeedPassion = passionId;
+    var pw = passionById(passionId);
+    var nb = allFeedPosts().filter(function(p){ return p.type !== "vlog" && p.passion === passionId; }).length;
+    toast(pw.emoji + " " + pw.label + " — " + nb + " post" + (nb > 1 ? "s" : ""), "info");
   }
-  // Réinitialiser aussi le mood pour voir tous les posts de cette passion
+  // Reset mood
   state.currentMood = "all";
   $$(".mood-btn").forEach(function(b) { b.classList.remove("active"); });
   var allBtn = document.querySelector(".mood-btn[data-mood='all']");
   if (allBtn) allBtn.classList.add("active");
   saveState();
   renderFeed();
-  // Confirmation visuelle
-  var pw = passionById(passionId);
-  var nb = allFeedPosts().filter(function(p){ return p.type !== "vlog" && p.passion === passionId; }).length;
-  if (state.selectedFeedPassions.length > 0) {
-    toast(pw.emoji + " " + pw.label + " · " + nb + " post" + (nb > 1 ? "s" : ""), "info");
-  } else {
-    toast("Tout afficher", "info");
-  }
-  // Scroll vers le haut du fil d'actu
+  // Scroll haut
   var appMain = document.getElementById("appMain");
   if (appMain) setTimeout(function() { appMain.scrollTop = 0; }, 60);
 }
