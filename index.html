@@ -11423,8 +11423,8 @@ function startDirectMessage(userId, userName, userEmoji, userAvatar) {
   } catch(e) {}
 }
 
-function openUserProfile(authorId, source) {
-  if (source === "me" || authorId === "me") {
+async function openUserProfile(authorId, source) {
+  if (source === "me" || authorId === "me" || (typeof MY_UID !== "undefined" && MY_UID && authorId === MY_UID)) {
     goTo("profiles");
     return;
   }
@@ -11436,13 +11436,31 @@ function openUserProfile(authorId, source) {
       user = { id: authorId, name: post.authorName || "Passionné", profileEmoji: post.authorEmoji || "✨", avatar: post.authorColor || "#8b5cf6", passion: post.passion, bio: post.authorBio || "" };
     }
   }
+  // Chercher dans Supabase si non trouvé localement
+  if (!user && typeof supa !== "undefined" && supa) {
+    try {
+      const { data } = await supa.from("profiles").select("id,username,emoji,color,passion_id,bio").eq("id", authorId).single();
+      if (data) {
+        user = { id: data.id, name: data.username || "Passionné", profileEmoji: data.emoji || "✨", avatar: data.color || "#8b5cf6", passion: data.passion_id || "", bio: data.bio || "" };
+        state.seed.users.push(user);
+      }
+    } catch(e) {}
+  }
   if (!user) { toast("Profil non trouvé"); return; }
 
   var passion = passionById(user.passion);
   var userPosts = allFeedPosts().filter(function(p) { return p.authorId === authorId; });
   var postCount = userPosts.length;
   var likeCount = userPosts.reduce(function(s,p) { return s + (p.likes||0); }, 0);
-  var followerCount = Math.floor(Math.random() * 200 + 10);
+  var followerCount = 0;
+
+  // Charger le vrai compte d'abonnés depuis Supabase
+  if (typeof supa !== "undefined" && supa) {
+    try {
+      const { count } = await supa.from("follows").select("*", { count: "exact", head: true }).eq("following_id", authorId);
+      followerCount = count || 0;
+    } catch(e) {}
+  }
 
   var postsHTML = userPosts.length > 0
     ? userPosts.map(renderPostHTML).join("")
