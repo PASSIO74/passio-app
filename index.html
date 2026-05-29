@@ -11373,7 +11373,7 @@ async function startDirectMessage(userId, userName, userEmoji, userAvatar) {
   var search = document.getElementById("msgUserSearch");
   if (search) search.value = "";
 
-  var passion = currentProfile() ? currentProfile().passion : "autre";
+  var passion = null; // Les DMs ne sont pas liés à une passion spécifique
 
   // Si Supabase dispo : approche Supabase-first (ID cohérent entre utilisateurs)
   if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID && userId !== "me") {
