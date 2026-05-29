@@ -24,9 +24,7 @@
     window._pwaPrompt = null;
     window.addEventListener('beforeinstallprompt', (e) => {
       e.preventDefault();
-      window._pwaPrompt = e;
-      // Lance l'installation directement après 1.5s (sans overlay)
-      setTimeout(() => { if (window._pwaPrompt) window._pwaPrompt.prompt(); }, 1500);
+      window._pwaPrompt = e; // Garde le prompt — on l'utilise SEULEMENT quand l'user clique
     });
   </script>
 
