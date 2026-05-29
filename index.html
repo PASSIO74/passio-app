@@ -16680,7 +16680,6 @@ function togglePwd(id, btn) {
 }
 
 function pwaDismiss() {
-  localStorage.setItem('pwa_dismissed', Date.now());
   const ov = document.getElementById("pwa-overlay");
   if (ov) {
     ov.style.animation = "pwaFadeIn .25s ease reverse both";
