@@ -16036,10 +16036,10 @@ async function boot() {
           state.user.currentProfileId = defProfile.id;
           saveState();
         }
-        // Initialise le filtre de fil sur le profil actif si pas encore défini
-        if (!state.selectedFeedPassions || state.selectedFeedPassions.length === 0) {
-          const cp = (state.user.profiles || []).find(p => p.id === state.user.currentProfileId) || state.user.profiles[0];
-          if (cp) { state.selectedFeedPassions = [cp.passion]; saveState(); }
+        // Initialise le filtre sur le profil actif au démarrage
+        {
+          const cp = (state.user.profiles || []).find(p => p.id === state.user.currentProfileId) || (state.user.profiles || [])[0];
+          if (cp) _activeFeedPassion = cp.passion;
         }
         try { renderEverything(); } catch(e) {}
         document.body.classList.add("screen-feed-active");
