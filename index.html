@@ -10793,6 +10793,12 @@ function deletePost(postId) {
     at: Date.now(),
   });
   saveState();
+  // Supprimer aussi dans Supabase
+  if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
+    supa.from("posts").delete().eq("id", postId).eq("author_id", MY_UID).then(() => {}).catch(() => {});
+  }
+  // Retirer aussi de seed.posts si présent
+  state.seed.posts = (state.seed.posts || []).filter(p => p.id !== postId);
   closeModal();
   // Re-render selon l'écran courant
   renderFeed();
