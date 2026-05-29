@@ -13290,8 +13290,7 @@ function toggleProfileFilter(passionId) {
 }
 
 function selectAllProfiles() {
-  state.selectedFeedPassions = [];
-  saveState();
+  _activeFeedPassion = null;
   renderFeed();
 }
 
