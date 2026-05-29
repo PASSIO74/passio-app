@@ -16764,8 +16764,16 @@ async function supaInit() {
       const localOnly = (state.seed.posts || []).filter(p => !supaIds.has(p.id));
       state.seed.posts = [...supaPosts, ...localOnly];
     }
-    if (supaStories.length) state.seed.stories = [...supaStories, ...(state.seed.stories || [])];
-    if (supaEvents.length) state.seed.events = [...supaEvents, ...(state.seed.events || [])];
+    if (supaStories.length) {
+      const supaStoryIds = new Set(supaStories.map(s => s.id));
+      const localStories = (state.seed.stories || []).filter(s => !supaStoryIds.has(s.id));
+      state.seed.stories = [...supaStories, ...localStories];
+    }
+    if (supaEvents.length) {
+      const supaEvIds = new Set(supaEvents.map(e => e.id));
+      const localEvents = (state.seed.events || []).filter(e => !supaEvIds.has(e.id));
+      state.seed.events = [...supaEvents, ...localEvents];
+    }
     // Fusionne les notifications (priorit\u00e9 Supabase si fromSupabase)
     if (supaNotifs.length) {
       const localOnly = (state.notifications || []).filter(n => !n.fromSupabase);
