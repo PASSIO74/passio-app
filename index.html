@@ -16783,6 +16783,48 @@ async function supaInsertNotif(toUserId, kind, refId, content) {
 
 // ---- TEMPS RÉEL — abonnements globaux ----
 function supaSubscribe() {
+  // ── Messages reçus dans toutes mes conversations (temps réel global) ──
+  supa.channel("realtime:my_messages")
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "conv_messages" }, async payload => {
+      const r = payload.new;
+      if (r.from_id === MY_UID) return; // ignorer mes propres messages (déjà ajoutés localement)
+      // Trouver la conv locale correspondante
+      var convs = getConversations();
+      var conv = convs.find(c => c.id === r.conv_id);
+      if (!conv) return; // message pour une conv que l'utilisateur n'a pas
+      // Charger le profil de l'expéditeur si besoin
+      var fromName = "Passionné", fromEmoji = "✨";
+      try {
+        const { data: prof } = await supa.from("profiles").select("username,emoji").eq("id", r.from_id).single();
+        fromName = prof?.username || "Passionné";
+        fromEmoji = prof?.emoji || "✨";
+      } catch(e) {}
+      const newMsg = { id: r.id, from: r.from_id, fromName, fromEmoji, text: r.content, at: new Date(r.created_at).getTime() };
+      // Vérifier que ce message n'est pas déjà là
+      if (!conv.messages) conv.messages = [];
+      if (conv.messages.find(m => m.id === r.id)) return;
+      conv.messages.push(newMsg);
+      conv.lastAt = newMsg.at;
+      // Incrémenter unread seulement si la conv n'est pas ouverte en ce moment
+      var openConvId = document.getElementById("convFpPanel") && document.getElementById("convFpPanel").style.display !== "none"
+        ? window._openedConvId || null : null;
+      if (openConvId !== r.conv_id) {
+        conv.unread = (conv.unread || 0) + 1;
+      }
+      conversationsState = convs;
+      saveConversations();
+      // Mettre à jour la liste de conversations visible
+      try { renderMessages(); } catch(e) {}
+      // Si la conv est ouverte, mettre à jour le thread aussi
+      if (openConvId === r.conv_id) {
+        try {
+          var c2 = getConversations().find(c => c.id === r.conv_id);
+          if (c2) renderConvFpThread(c2, c2.userName || c2.groupName || "Passionné");
+        } catch(e) {}
+      }
+    })
+    .subscribe();
+
   // Nouveaux posts en temps reel
   supa.channel("realtime:posts")
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "posts" }, async payload => {
