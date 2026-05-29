@@ -17013,12 +17013,18 @@ async function supaInit() {
     if (supaJoined.length) {
       state.user.joinedEvents = [...new Set([...(state.user.joinedEvents || []), ...supaJoined])];
     }
-    // Fusionne les conversations Supabase
+    // Fusionne + déduplique les conversations Supabase
     if (supaConvs && supaConvs.length) {
       const localConvs = getConversations();
       const supaConvIds = new Set(supaConvs.map(c => c.id));
-      const localOnly = localConvs.filter(c => !supaConvIds.has(c.id));
-      conversationsState = [...supaConvs, ...localOnly];
+      // Garder les convs locales non-seed qui ne sont pas dans Supabase (DMs offline)
+      const localOnly = localConvs.filter(c => !supaConvIds.has(c.id) && !SEED_CONVERSATIONS.find(s => s.id === c.id));
+      const merged = [...supaConvs, ...localOnly];
+      conversationsState = deduplicateConversations(merged);
+      saveConversations();
+    } else {
+      // Même sans Supabase, dédupliquer ce qui est en localStorage
+      conversationsState = deduplicateConversations(getConversations());
       saveConversations();
     }
     saveState();
