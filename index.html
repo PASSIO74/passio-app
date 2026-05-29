@@ -13238,7 +13238,7 @@ function renderProfilesScreen() {
 function switchToProfile(id) {
   state.user.currentProfileId = id;
   const p = currentProfile();
-  if (p) { _activeFeedPassion = p.passion; }
+  // switchToProfile ne force plus de filtre — l'utilisateur choisit lui-même
   saveState();
   renderTopbar();
   renderProfilesScreen();
