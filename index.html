@@ -16873,6 +16873,14 @@ async function supaInit() {
     if (supaJoined.length) {
       state.user.joinedEvents = [...new Set([...(state.user.joinedEvents || []), ...supaJoined])];
     }
+    // Fusionne les conversations Supabase
+    if (supaConvs && supaConvs.length) {
+      const localConvs = getConversations();
+      const supaConvIds = new Set(supaConvs.map(c => c.id));
+      const localOnly = localConvs.filter(c => !supaConvIds.has(c.id));
+      conversationsState = [...supaConvs, ...localOnly];
+      saveConversations();
+    }
     saveState();
     try { renderEverything(); } catch(e) { console.warn("supaInit render error:", e); }
     try { supaSubscribe(); } catch(e) {}
