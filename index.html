@@ -16601,7 +16601,7 @@ function exitLandingAsAuth(mode) {
 boot().catch(e => console.error("Boot error:", e));
 
 // ======== PWA INSTALL OVERLAY ========
-const _isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
+// (_isIOS, _isStandalone, _pwaInstalled sont déclarés dans le <head>)
 
 function pwaShowOverlay() {
   const ov = document.getElementById("pwa-overlay");
