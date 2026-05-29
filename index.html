@@ -11621,11 +11621,11 @@ function renderMessages() {
 }
 
 function openConversation(convId) {
+  window._openedConvId = convId; // tracker la conv ouverte pour le realtime global
   const convs = getConversations();
   const c = convs.find(x => x.id === convId);
   if (!c) return;
   const u = (state.seed.users || []).find(x => x.id === c.userId) || { name: "Inconnu", avatar: "#7c3aed", profileEmoji: "🙂" };
-  const passion = passionById(c.passion) || { label: c.passion || "autre", emoji: "✨" };
 
   var displayName, displayEmoji, displayAvatar;
   if (c.isGroup) {
