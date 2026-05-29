@@ -8149,7 +8149,10 @@ function passionById(id) {
 }
 
 function userById(id) {
-  if (id === "me") return { id: "me", name: state.user.name, avatar: "#8b5cf6", profileEmoji: "✨" };
+  if (id === "me" || (typeof MY_UID !== "undefined" && MY_UID && id === MY_UID)) {
+    const p = currentProfile ? currentProfile() : null;
+    return { id, name: (p?.name || state.user.name || "Moi"), avatar: (p?.color || "#8b5cf6"), profileEmoji: (p?.emoji || "✨") };
+  }
   return state.seed.users.find(u => u.id === id);
 }
 
