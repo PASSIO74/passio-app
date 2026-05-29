@@ -57,40 +57,7 @@
         var _androidEdge    = 'intent://' + APP_URL.replace('https://','') + '#Intent;scheme=https;package=com.microsoft.emmx;end';
         var _androidSamsung = 'intent://' + APP_URL.replace('https://','') + '#Intent;scheme=https;package=com.sec.android.app.sbrowser;end';
 
-        // iOS Safari → guide 2 étapes (seule option Apple)
-        if (_isIOSSafari) {
-          setTimeout(function() { if (typeof pwaShowOverlay === 'function') pwaShowOverlay(); }, 800);
-        }
-        // iOS autre navigateur → redirige vers Safari
-        else if (_isIOSOther) {
-          setTimeout(function() { if (typeof pwaShowOverlay === 'function') pwaShowOverlay(); }, 800);
-        }
-        // Android Firefox → ouvre Chrome, Edge ou Samsung dans l'ordre
-        else if (_isAndroid && _isFirefox) {
-          setTimeout(function() { window.location.href = _androidChrome; }, 600);
-          setTimeout(function() { window.location.href = _androidEdge; }, 2000);
-          setTimeout(function() { window.location.href = _androidSamsung; }, 3500);
-        }
-        // Desktop Firefox Windows → ouvre Edge (pré-installé Win10/11)
-        else if (!_isIOS && !_isAndroid && _isFirefox && _isWindows) {
-          setTimeout(function() { window.location.href = 'microsoft-edge:' + APP_URL; }, 600);
-        }
-        // Desktop Firefox Mac → guide Safari (File > Ajouter au dock)
-        else if (!_isIOS && !_isAndroid && _isFirefox && _isMac) {
-          setTimeout(function() { if (typeof pwaShowOverlay === 'function') pwaShowOverlay(); }, 800);
-        }
-        // Desktop Safari Mac → guide Add to Dock
-        else if (_isSafari && _isMac) {
-          setTimeout(function() { if (typeof pwaShowOverlay === 'function') pwaShowOverlay(); }, 800);
-        }
-        // Desktop Firefox Linux ou autre → ouvre Chrome si dispo, sinon guide
-        else if (!_isIOS && !_isAndroid && !_supportsPWA) {
-          setTimeout(function() {
-            window.location.href = 'googlechrome://navigate?url=' + encodeURIComponent(APP_URL);
-          }, 600);
-        }
-
-        // Bouton de secours toujours visible
+        // Bouton INSTALLER toujours visible (pwaInstall() gère tout au clic)
         var btn = document.getElementById('btn-install-app');
         if (btn) btn.style.display = '';
       });
