@@ -21,27 +21,34 @@
 
   <!-- PWA : prompt d'installation automatique -->
   <script>
-    // Déjà installée ? On ne re-propose pas
-    var _pwaInstalled = window.matchMedia('(display-mode: standalone)').matches
-      || window.navigator.standalone === true
-      || localStorage.getItem('pwa_dismissed');
+    var _isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
+    var _isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+    var _pwaInstalled = _isStandalone; // Seulement vrai si vraiment installée en standalone
 
-    // Chrome / Edge / Android : prompt natif → on le déclenche directement
+    window._pwaPrompt = null;
+
+    // Chrome / Edge / Android : capture le prompt natif
     window.addEventListener('beforeinstallprompt', (e) => {
       e.preventDefault();
-      if (_pwaInstalled) return;
-      // Déclenche automatiquement la popup native du navigateur après 2s
-      setTimeout(() => { try { e.prompt(); } catch(_){} }, 2000);
+      window._pwaPrompt = e;
+      if (!_isStandalone) {
+        // Déclenche automatiquement après 2s
+        setTimeout(() => { try { e.prompt(); } catch(_){} }, 2000);
+        // Affiche aussi le bouton dans la landing au cas où l'user rate le prompt
+        window.addEventListener('load', function() {
+          var btn = document.getElementById('btn-install-app');
+          if (btn) btn.style.display = '';
+        });
+      }
     });
 
-    // iOS Safari : pas de beforeinstallprompt → guide automatique après 2s
-    var _isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
-    var _isStandalone = window.navigator.standalone === true;
-    if (_isIOS && !_isStandalone && !_pwaInstalled) {
+    // iOS Safari : guide automatique + bouton visible
+    if (_isIOS && !_isStandalone) {
       window.addEventListener('load', function() {
+        var btn = document.getElementById('btn-install-app');
+        if (btn) btn.style.display = '';
         setTimeout(function() {
-          var ov = document.getElementById('pwa-overlay');
-          if (ov) { pwaShowOverlay(); }
+          if (typeof pwaShowOverlay === 'function') pwaShowOverlay();
         }, 2000);
       });
     }
