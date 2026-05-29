@@ -16667,78 +16667,7 @@ function pwaDismiss() {
       </div>
     </div>
 
-    <!-- VUE 1 : Android / Chrome / Edge → installation directe 1 clic -->
-    <div id="pwa-view-direct" style="display:none;">
-      <button class="pwa-btn-install" onclick="pwaInstall()">📲&nbsp;&nbsp;Installer PASSIO</button>
-      <button class="pwa-btn-skip" onclick="pwaDismiss()">Plus tard</button>
-    </div>
-
-    <!-- VUE 2 : iPhone / iPad (iOS Safari) -->
-    <div id="pwa-view-ios" style="display:none;">
-      <div style="background:#f5f3ff;border-radius:16px;padding:16px 14px;margin-bottom:14px;">
-        <div style="font-size:14px;font-weight:800;color:#1e1b4b;margin-bottom:12px;text-align:center;">Installer sur iPhone / iPad</div>
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
-          <div style="font-size:24px;flex-shrink:0;">1️⃣</div>
-          <div style="font-size:13px;color:#374151;">Appuie sur <strong style="color:#6d28d9;">Partager</strong> <span style="font-size:16px;">⬆️</span> en bas de Safari</div>
-        </div>
-        <div style="display:flex;align-items:center;gap:10px;">
-          <div style="font-size:24px;flex-shrink:0;">2️⃣</div>
-          <div style="font-size:13px;color:#374151;">Choisis <strong style="color:#6d28d9;">"Sur l'écran d'accueil"</strong> puis <strong style="color:#6d28d9;">Ajouter</strong></div>
-        </div>
-      </div>
-      <button class="pwa-btn-skip" onclick="pwaDismiss()">Plus tard</button>
-    </div>
-
-    <!-- VUE 3 : Desktop Chrome / Edge → bouton direct si prompt dispo, sinon guide -->
-    <div id="pwa-view-desktop" style="display:none;">
-      <button id="pwa-desktop-install-btn" class="pwa-btn-install" onclick="pwaInstall()" style="opacity:0.5;">
-        ⏳&nbsp;&nbsp;Préparation…
-      </button>
-      <div id="pwa-desktop-fallback" style="display:none;background:#f5f3ff;border-radius:16px;padding:16px 14px;margin-bottom:14px;">
-        <div style="font-size:14px;font-weight:800;color:#1e1b4b;margin-bottom:12px;text-align:center;">Installer via le menu Chrome</div>
-        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:10px;">
-          <div style="font-size:22px;flex-shrink:0;">1️⃣</div>
-          <div style="font-size:13px;color:#374151;">Clique sur les <strong style="color:#6d28d9;">⋮ trois points</strong> en haut à droite de Chrome</div>
-        </div>
-        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:10px;">
-          <div style="font-size:22px;flex-shrink:0;">2️⃣</div>
-          <div style="font-size:13px;color:#374151;">Cherche <strong style="color:#6d28d9;">"Enregistrer et partager"</strong> → <strong style="color:#6d28d9;">"Installer PASSIO"</strong><br/><span style="color:#9ca3af;font-size:12px;">(ou directement "Installer PASSIO" dans le menu)</span></div>
-        </div>
-        <div style="display:flex;align-items:flex-start;gap:10px;">
-          <div style="font-size:22px;flex-shrink:0;">3️⃣</div>
-          <div style="font-size:13px;color:#374151;">Clique sur <strong style="color:#6d28d9;">Installer</strong> dans la fenêtre qui s'ouvre</div>
-        </div>
-      </div>
-      <button class="pwa-btn-skip" onclick="pwaDismiss()">Plus tard</button>
-    </div>
-
-    <!-- VUE 4 : Android sans prompt natif → guide manuel Chrome -->
-    <div id="pwa-view-android-manual" style="display:none;">
-      <div style="background:#f5f3ff;border-radius:16px;padding:16px 14px;margin-bottom:14px;">
-        <div style="font-size:14px;font-weight:800;color:#1e1b4b;margin-bottom:12px;text-align:center;">Installer sur Android</div>
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
-          <div style="font-size:24px;flex-shrink:0;">1️⃣</div>
-          <div style="font-size:13px;color:#374151;">Appuie sur <strong style="color:#6d28d9;">⋮</strong> (les 3 points) en haut à droite de Chrome</div>
-        </div>
-        <div style="display:flex;align-items:center;gap:10px;">
-          <div style="font-size:24px;flex-shrink:0;">2️⃣</div>
-          <div style="font-size:13px;color:#374151;">Choisis <strong style="color:#6d28d9;">"Ajouter à l'écran d'accueil"</strong> puis <strong style="color:#6d28d9;">Ajouter</strong></div>
-        </div>
-      </div>
-      <button class="pwa-btn-skip" onclick="pwaDismiss()">Plus tard</button>
-    </div>
-
-    <!-- VUE 5 : Navigateur non supporté -->
-    <div id="pwa-view-unsupported" style="display:none;">
-      <div style="background:#f5f3ff;border-radius:16px;padding:16px 14px;margin-bottom:14px;text-align:center;">
-        <div style="font-size:14px;font-weight:800;color:#1e1b4b;margin-bottom:8px;">Pour installer PASSIO</div>
-        <div style="font-size:13px;color:#374151;line-height:1.6;">
-          Ouvre cette page dans <strong style="color:#6d28d9;">Chrome</strong> ou <strong style="color:#6d28d9;">Safari</strong><br/>
-          pour pouvoir l'installer sur ton appareil.
-        </div>
-      </div>
-      <button class="pwa-btn-skip" onclick="pwaDismiss()">OK</button>
-    </div>
+    <div id="pwa-content"></div>
 
   </div>
 </div>
