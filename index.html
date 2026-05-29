@@ -16654,15 +16654,20 @@ function pwaShowOverlay() {
 
 async function pwaInstall() {
   if (window._pwaPrompt) {
+    // Chrome / Edge / Android : prompt natif direct
     try {
       window._pwaPrompt.prompt();
       const { outcome } = await window._pwaPrompt.userChoice;
       window._pwaPrompt = null;
       if (outcome === "accepted") {
-        pwaDismiss();
         if (typeof toast === "function") toast("PASSIO installée ! 🎉", "success");
+        var btn = document.getElementById('btn-install-app');
+        if (btn) btn.style.display = 'none';
       }
     } catch(e) { /* ignore */ }
+  } else {
+    // iOS ou navigateur sans prompt → afficher le guide
+    pwaShowOverlay();
   }
 }
 
