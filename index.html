@@ -13313,30 +13313,30 @@ function renderProfileStrip() {
 }
 
 function toggleProfileFilter(passionId) {
-  // Toggle : si déjà actif → tout voir, sinon → filtre exclusif
-  if (_activeFeedPassion === passionId) {
-    _activeFeedPassion = null;
+  if (_activeFeedPassions.has(passionId)) {
+    _activeFeedPassions.delete(passionId);
+  } else {
+    _activeFeedPassions.add(passionId);
+  }
+  if (_activeFeedPassions.size === 0) {
     toast("Tout le fil", "info");
   } else {
-    _activeFeedPassion = passionId;
     var pw = passionById(passionId);
-    var nb = allFeedPosts().filter(function(p){ return p.type !== "vlog" && p.passion === passionId; }).length;
+    var nb = allFeedPosts().filter(function(p){ return p.type !== "vlog" && _activeFeedPassions.has(p.passion); }).length;
     toast(pw.emoji + " " + pw.label + " — " + nb + " post" + (nb > 1 ? "s" : ""), "info");
   }
-  // Reset mood
   state.currentMood = "all";
   $$(".mood-btn").forEach(function(b) { b.classList.remove("active"); });
   var allBtn = document.querySelector(".mood-btn[data-mood='all']");
   if (allBtn) allBtn.classList.add("active");
   saveState();
   renderFeed();
-  // Scroll haut
   var appMain = document.getElementById("appMain");
   if (appMain) setTimeout(function() { appMain.scrollTop = 0; }, 60);
 }
 
 function selectAllProfiles() {
-  _activeFeedPassion = null;
+  _activeFeedPassions = new Set();
   renderFeed();
 }
 
