@@ -16698,14 +16698,13 @@ function pwaDismiss() {
 
 
 <script>
-  // Cache le bouton installer si l'app est déjà installée (mode standalone)
-  function _updateInstallBtn() {
-    const isInstalled = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
-    const btn = document.getElementById('btn-install-app');
-    if (btn) btn.style.display = isInstalled ? 'none' : '';
+  // Sur iOS : afficher le bouton "Installer" dans la landing (le prompt auto ne marche pas sur Apple)
+  if (_isIOS && !_isStandalone && !_pwaInstalled) {
+    window.addEventListener('load', function() {
+      var btn = document.getElementById('btn-install-app');
+      if (btn) btn.style.display = '';
+    });
   }
-  window.addEventListener('load', _updateInstallBtn);
-  window.addEventListener('appinstalled', _updateInstallBtn);
 </script>
 </body>
 </html>
