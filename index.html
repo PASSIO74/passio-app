@@ -12008,48 +12008,41 @@ function openConversation(convId) {
     fp.classList.add("active");
   }
 
-  // Appliquer fond et taille de police sauvegardés
+  // Appliquer fond/police — dans try/catch car dépend du 2ème bloc script
   const thread = document.getElementById("convFpThread");
-  if (thread) {
-    _applyConvWallpaper(c, thread);
-    thread.style.fontSize = c._fontSize === "small" ? "12px" : c._fontSize === "large" ? "16px" : "14px";
-  }
+  try {
+    if (thread && typeof _applyConvWallpaper === "function") _applyConvWallpaper(c, thread);
+    if (thread) thread.style.fontSize = c._fontSize === "small" ? "12px" : c._fontSize === "large" ? "16px" : "14px";
+  } catch(e) {}
 
-  // Afficher les messages locaux immédiatement (zéro latence perçue)
+  // Affichage immédiat des messages locaux
   renderConvFpThread(c, displayName);
 
-  // Focus + scroll
   if (thread) thread.scrollTop = thread.scrollHeight;
   if (inp) inp.focus();
+  try { renderMessages(); } catch(e) {}
+  try { if (typeof _subscribeTyping === "function") _subscribeTyping(convId); } catch(e) {}
 
-  renderMessages();
-
-  // Typing indicator + canal par conversation (filtré côté Supabase → plus rapide)
-  _subscribeTyping(convId);
+  // Charger TOUT l'historique Supabase et remplacer l'affichage
   if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
-    // Canal dédié à cette conv : filtre conv_id côté Supabase, pas besoin de checker en JS
-    _supaConvSpecificChannel(convId, displayName);
-
-    // Charger l'historique Supabase en arrière-plan
     supaLoadMessages(convId).then(function(supaMessages) {
-      // Race condition guard : l'utilisateur a peut-être changé de conv
-      if (window._openedConvId !== convId) return;
-      if (!supaMessages || !supaMessages.length) return;
-      const convs2 = getConversations();
-      const c2 = convs2.find(x => x.id === convId);
+      if (window._openedConvId !== convId) return; // l'utilisateur a changé de conv
+      var convs2 = getConversations();
+      var c2 = convs2.find(function(x) { return x.id === convId; });
       if (!c2) return;
-      // Fusion : Supabase est source de vérité, on garde les messages locaux non encore confirmés
-      const supaIds = new Set(supaMessages.map(m => m.id).filter(Boolean));
-      const pendingLocal = (c2.messages || []).filter(m => !m.id || !supaIds.has(m.id));
-      const merged = [...supaMessages, ...pendingLocal].sort((a, b) => (a.at || 0) - (b.at || 0));
-      // Ne re-rendre que si les données ont vraiment changé
-      if (JSON.stringify(merged.map(m => m.id)) !== JSON.stringify((c2.messages || []).map(m => m.id))) {
-        c2.messages = merged;
-        c2._otherRead = true;
-        saveConversations();
-        if (window._openedConvId === convId) renderConvFpThread(c2, displayName);
+      var remote = supaMessages || [];
+      var remoteIds = new Set(remote.map(function(m) { return m.id; }).filter(Boolean));
+      // Garder les messages locaux non encore dans Supabase (optimistic, pas encore persistés)
+      var localPending = (c2.messages || []).filter(function(m) { return !m.id || !remoteIds.has(m.id); });
+      var merged = remote.concat(localPending).sort(function(a, b) { return (a.at || 0) - (b.at || 0); });
+      c2.messages = merged;
+      c2._otherRead = true;
+      saveConversations();
+      if (window._openedConvId === convId) {
+        renderConvFpThread(c2, displayName);
+        if (thread) thread.scrollTop = thread.scrollHeight;
       }
-    }).catch(function() {});
+    }).catch(function(e) { console.warn("supaLoadMessages error:", e); });
   }
 }
 
