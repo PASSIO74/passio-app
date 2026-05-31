@@ -12218,28 +12218,42 @@ function _toggleReaction(convId, msgId, emoji) {
 }
 
 function sendMessageFp(convId, displayName) {
-  const inp = document.getElementById("convFpInput");
+  var inp = document.getElementById("convFpInput");
   if (!inp) return;
-  const txt = inp.value.trim();
+  var txt = inp.value.trim();
   if (!txt) return;
+
+  // Vider le champ AVANT tout le reste (rendu immédiat)
   inp.value = "";
-  inp.style.height = "auto"; // reset textarea height
-  _closeEmojiPanel();
-  _closeAttachMenu();
-  _stopTyping(convId);
-  const convs = getConversations();
-  const c = convs.find(x => x.id === convId);
-  if (!c) return;
-  const msgId = "msg_" + uid();
+  try { inp.style.height = "auto"; } catch(e) {}
+
+  // Fermer les panneaux — appels optionnels (fonctions définies dans un 2ème script bloc)
+  try { if (typeof _closeEmojiPanel === "function") _closeEmojiPanel(); } catch(e) {}
+  try { if (typeof _closeAttachMenu === "function") _closeAttachMenu(); } catch(e) {}
+  try { _stopTyping(convId); } catch(e) {}
+
+  var convs = getConversations();
+  var c = convs.find(function(x) { return x.id === convId; });
+  if (!c) { toast("Conversation introuvable"); return; }
+
+  var msgId = "msg_" + uid();
+  if (!c.messages) c.messages = [];
   c.messages.push({ id: msgId, from: "me", text: txt, at: Date.now() });
   c.lastAt = Date.now();
   saveConversations();
-  renderConvFpThread(c, displayName);
-  renderMessages();
+
+  // Affichage immédiat (optimistic UI)
+  try { renderConvFpThread(c, displayName); } catch(e) { console.error("renderConvFpThread error:", e); }
+  try { renderMessages(); } catch(e) {}
+
+  // Envoi Supabase en arrière-plan
   if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
-    try {
-      supa.from("conv_messages").insert({ id: msgId, conv_id: convId, from_id: MY_UID, content: txt, created_at: new Date().toISOString() }).then(() => {}).catch(() => {});
-    } catch(e) {}
+    supa.from("conv_messages")
+      .insert({ id: msgId, conv_id: convId, from_id: MY_UID, content: txt, created_at: new Date().toISOString() })
+      .then(function(res) {
+        if (res && res.error) console.warn("Supabase insert error:", res.error);
+      })
+      .catch(function(err) { console.warn("Supabase send failed:", err); });
   }
 }
 
