@@ -11702,7 +11702,7 @@ function openConversation(convId) {
     ${headerAvatarWrap}
     <div class="conv-fp-head-info">
       <div class="conv-fp-name">${escapeHtml(displayName)}</div>
-      ${c.isGroup ? `<div class="conv-fp-passion">👥 ${((c.userIds||[]).length || 0)} membres</div>` : '<div class="conv-fp-passion" style="color:var(--accent);font-size:11px;">En ligne</div>'}
+      ${c.isGroup ? `<div class="conv-fp-passion">👥 ${((c.userIds||[]).length || 0)} membres</div>` : `<div class="conv-fp-passion" style="color:var(--accent);font-size:11px;cursor:pointer;" onclick="openUserProfile('${c.userId}','seed')">Voir le profil →</div>`}
     </div>
     <div class="conv-actions">
       ${c.isGroup ? `<button class="conv-action-btn" onclick="showGroupMembers('${convId}')" title="Membres">
