@@ -16943,17 +16943,23 @@ async function supaSendMessage(convId, content) {
   } catch(e) { console.warn("Msg error:", e); }
 }
 
-async function supaLoadMessages(convId) {
+async function supaLoadMessages(convId, limit = 100) {
   try {
     const { data } = await supa.from("conv_messages")
-      .select("*, profiles(username,emoji,color)")
-      .eq("conv_id", convId).order("created_at", { ascending: true }).limit(100);
-    return (data || []).map(r => ({
-      id: r.id, from: r.from_id === MY_UID ? "me" : r.from_id,
-      fromName: r.profiles?.username || "Passionné",
-      fromEmoji: r.profiles?.emoji || "✨",
-      text: r.content, at: new Date(r.created_at).getTime(),
-    }));
+      .select("id, conv_id, from_id, content, created_at, profiles(username,emoji,color)")
+      .eq("conv_id", convId).order("created_at", { ascending: true }).limit(limit);
+    return (data || []).map(r => {
+      // Peupler le cache profil au passage — prochains messages de cet expéditeur = 0 requête
+      if (r.profiles && r.from_id) {
+        _profileCache.set(r.from_id, { username: r.profiles.username || "Passionné", emoji: r.profiles.emoji || "✨", color: r.profiles.color || "#8b5cf6" });
+      }
+      return {
+        id: r.id, from: r.from_id === MY_UID ? "me" : r.from_id,
+        fromName: r.profiles?.username || "Passionné",
+        fromEmoji: r.profiles?.emoji || "✨",
+        text: r.content, at: new Date(r.created_at).getTime(),
+      };
+    });
   } catch(e) { return []; }
 }
 
