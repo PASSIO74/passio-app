@@ -11700,9 +11700,9 @@ function openConversation(convId) {
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
     </button>
     ${headerAvatarWrap}
-    <div class="conv-fp-head-info">
+    <div class="conv-fp-head-info" ${!c.isGroup ? `onclick="openUserProfile('${c.userId}','seed')" style="cursor:pointer;"` : ""}>
       <div class="conv-fp-name">${escapeHtml(displayName)}</div>
-      ${c.isGroup ? `<div class="conv-fp-passion">👥 ${((c.userIds||[]).length || 0)} membres</div>` : `<div class="conv-fp-passion" style="color:var(--accent);font-size:11px;cursor:pointer;" onclick="openUserProfile('${c.userId}','seed')">Voir le profil →</div>`}
+      ${c.isGroup ? `<div class="conv-fp-passion">👥 ${((c.userIds||[]).length || 0)} membres</div>` : `<div class="conv-fp-passion" style="color:var(--accent);font-size:11px;">Voir le profil →</div>`}
     </div>
     <div class="conv-actions">
       ${c.isGroup ? `<button class="conv-action-btn" onclick="showGroupMembers('${convId}')" title="Membres">
