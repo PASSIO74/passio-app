@@ -18451,26 +18451,55 @@ function _renderVoiceBubble(m) {
 }
 
 const _audioPlaying = {};
-function _playVoice(audioId, _unused, msgId) {
+
+// Délégation thread → bouton vocal
+document.addEventListener("click", function(e) {
+  const btn = e.target.closest("[data-audio-id]");
+  if (btn) { e.stopPropagation(); _playVoice(btn.getAttribute("data-audio-id")); }
+});
+
+function _playVoice(audioId) {
   const audio = document.getElementById(audioId);
   if (!audio) return;
-  if (!audio.paused) { audio.pause(); document.querySelector(`[data-audio-id="${audioId}"]`).textContent = "▶"; return; }
-  // Pause les autres
-  Object.keys(_audioPlaying).forEach(id => { if (id !== audioId) { const a = document.getElementById(id); if (a) a.pause(); document.querySelector(`[data-audio-id="${id}"]`).textContent = "▶"; } });
-  audio.play().then(() => {
-    document.querySelector(`[data-audio-id="${audioId}"]`).textContent = "⏸";
-    const wf = document.getElementById("wf_" + audioId);
+  // Charger la data-URI depuis le store si pas encore chargée
+  if (!audio.src && _voiceStore[audioId]) { audio.src = _voiceStore[audioId]; }
+  const playBtn = document.querySelector('button[data-audio-id="' + audioId + '"]');
+  if (!audio.paused) {
+    audio.pause();
+    if (playBtn) playBtn.textContent = "▶";
+    return;
+  }
+  // Mettre en pause tous les autres audios
+  Object.keys(_audioPlaying).forEach(function(id) {
+    if (id !== audioId) {
+      clearInterval(_audioPlaying[id]);
+      delete _audioPlaying[id];
+      const a = document.getElementById(id);
+      if (a) a.pause();
+      const pb = document.querySelector('button[data-audio-id="' + id + '"]');
+      if (pb) pb.textContent = "▶";
+    }
+  });
+  audio.play().then(function() {
+    if (playBtn) playBtn.textContent = "⏸";
+    const wf    = document.getElementById("wf_"  + audioId);
     const durEl = document.getElementById("dur_" + audioId);
-    const interval = setInterval(() => {
-      if (audio.paused || audio.ended) { clearInterval(interval); document.querySelector(`[data-audio-id="${audioId}"]`).textContent = "▶"; if (wf) wf.style.width = "0%"; return; }
-      if (wf && audio.duration) wf.style.width = (audio.currentTime / audio.duration * 100) + "%";
+    const interval = setInterval(function() {
+      if (audio.paused || audio.ended) {
+        clearInterval(interval);
+        delete _audioPlaying[audioId];
+        if (playBtn) playBtn.textContent = "▶";
+        if (wf) wf.style.width = "0%";
+        return;
+      }
+      if (wf && audio.duration)    wf.style.width = (audio.currentTime / audio.duration * 100) + "%";
       if (durEl && audio.duration) {
         const rem = Math.ceil(audio.duration - audio.currentTime);
-        durEl.textContent = Math.floor(rem/60) + ":" + String(rem%60).padStart(2,"0");
+        durEl.textContent = Math.floor(rem / 60) + ":" + String(rem % 60).padStart(2, "0");
       }
-    }, 100);
+    }, 150);
     _audioPlaying[audioId] = interval;
-  }).catch(()=>{});
+  }).catch(function() { if (playBtn) playBtn.textContent = "▶"; });
 }
 
 // ── Paramètres conversation ──
