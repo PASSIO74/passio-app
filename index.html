@@ -11767,21 +11767,94 @@ function openConversation(convId) {
 function renderConvFpThread(c, displayName) {
   const thread = document.getElementById("convFpThread");
   if (!thread) return;
-  const msgs = c.messages || [];
-  thread.innerHTML = msgs.map((m, i) => {
+  const allMsgs = c.messages || [];
+  // Pagination : afficher les N derniers messages
+  const PAGE = 40;
+  const total = allMsgs.length;
+  const _page = c._msgPage || 1;
+  const start = Math.max(0, total - PAGE * _page);
+  const msgs = allMsgs.slice(start);
+  const hasMore = start > 0;
+
+  const loadMoreBtn = hasMore
+    ? `<div style="text-align:center;padding:10px 0;">
+        <button onclick="_loadMoreMsgs('${c.id}')" style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:7px 18px;font-size:12px;color:var(--accent);font-weight:700;cursor:pointer;">⬆ Charger plus (${start} messages)</button>
+       </div>`
+    : "";
+
+  thread.innerHTML = loadMoreBtn + msgs.map((m, i) => {
     const isMe = m.from === "me";
     const senderName = isMe ? "" : (m.fromName || displayName || "");
     const isLastMe = isMe && i === msgs.length - 1;
     const imgHtml = m.img ? `<img src="${m.img}" style="max-width:220px;max-height:200px;border-radius:10px;display:block;margin-bottom:4px;" />` : "";
-    const readReceipt = isLastMe ? `<span style="font-size:9px;color:var(--accent);margin-left:4px;">✓✓ Vu</span>` : "";
+    // Read receipt réel : ✓ Envoyé, ✓✓ Lu si l'autre a bien ouvert la conv
+    const readReceipt = isLastMe
+      ? (c._otherRead ? `<span style="font-size:9px;color:var(--accent);margin-left:4px;">✓✓ Lu</span>`
+                      : `<span style="font-size:9px;color:var(--muted);margin-left:4px;">✓ Envoyé</span>`)
+      : "";
     const timeHtml = m.at ? `<span class="conv-bubble-time">${fmtTime(m.at)}${readReceipt}</span>` : "";
-    return `<div class="conv-bubble-wrap ${isMe ? "me" : "them"}">
+    // Réactions
+    const reactions = m.reactions || {};
+    const reactKeys = Object.keys(reactions);
+    const reactHtml = reactKeys.length
+      ? `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;${isMe?'justify-content:flex-end;':''}">${reactKeys.map(e => `<span onclick="_toggleReaction('${c.id}','${m.id || i}','${e}')" style="background:var(--bg-card);border:1px solid var(--border);border-radius:20px;padding:2px 7px;font-size:13px;cursor:pointer;">${e} ${reactions[e]}</span>`).join("")}</div>`
+      : "";
+    const msgId = m.id || ("mi_" + i);
+    return `<div class="conv-bubble-wrap ${isMe ? "me" : "them"}" data-mid="${msgId}">
       ${!isMe && senderName ? `<span class="conv-sender-name">${escapeHtml(senderName)}</span>` : ""}
-      <div class="conv-bubble ${isMe ? "me" : "them"}">${imgHtml}${m.text ? escapeHtml(m.text) : ""}</div>
+      <div class="conv-bubble ${isMe ? "me" : "them"}" oncontextmenu="event.preventDefault();_showReactPicker('${c.id}','${msgId}',this)" style="cursor:pointer;">${imgHtml}${m.text ? escapeHtml(m.text) : ""}</div>
+      ${reactHtml}
       ${timeHtml}
     </div>`;
   }).join("");
   thread.scrollTop = thread.scrollHeight;
+}
+
+function _loadMoreMsgs(convId) {
+  const convs = getConversations();
+  const c = convs.find(x => x.id === convId);
+  if (!c) return;
+  c._msgPage = (c._msgPage || 1) + 1;
+  const fp = document.getElementById("conv-fullpage");
+  const displayName = fp ? fp.getAttribute("data-display-name") : "";
+  renderConvFpThread(c, displayName);
+}
+
+const _REACT_EMOJIS = ["❤️","😂","😮","😢","👏","🔥","🎸","💪"];
+function _showReactPicker(convId, msgId, bubbleEl) {
+  // Supprimer un picker existant
+  var old = document.getElementById("_reactPicker");
+  if (old) { old.remove(); if (old._forMsg === msgId) return; }
+  var picker = document.createElement("div");
+  picker.id = "_reactPicker";
+  picker._forMsg = msgId;
+  picker.style.cssText = "position:fixed;z-index:999;background:var(--bg-card);border:1.5px solid var(--border);border-radius:20px;padding:8px 12px;display:flex;gap:8px;box-shadow:0 8px 30px rgba(0,0,0,0.25);";
+  picker.innerHTML = _REACT_EMOJIS.map(e => `<span style="font-size:22px;cursor:pointer;" onclick="_toggleReaction('${convId}','${msgId}','${e}');this.closest('#_reactPicker').remove();">${e}</span>`).join("");
+  // Positionner au-dessus de la bulle
+  var rect = bubbleEl.getBoundingClientRect();
+  picker.style.left = Math.min(rect.left, window.innerWidth - 290) + "px";
+  picker.style.top = (rect.top - 56) + "px";
+  document.body.appendChild(picker);
+  setTimeout(() => document.addEventListener("click", function _close(e) { if (!picker.contains(e.target)) { picker.remove(); document.removeEventListener("click", _close); }}, {once:false}), 100);
+}
+
+function _toggleReaction(convId, msgId, emoji) {
+  var convs = getConversations();
+  var c = convs.find(x => x.id === convId);
+  if (!c) return;
+  var m = (c.messages || []).find(x => x.id === msgId);
+  if (!m) return;
+  if (!m.reactions) m.reactions = {};
+  if (m.reactions[emoji]) {
+    m.reactions[emoji]--;
+    if (m.reactions[emoji] <= 0) delete m.reactions[emoji];
+  } else {
+    m.reactions[emoji] = (m.reactions[emoji] || 0) + 1;
+  }
+  saveConversations();
+  const fp = document.getElementById("conv-fullpage");
+  const displayName = fp ? fp.getAttribute("data-display-name") : "";
+  renderConvFpThread(c, displayName);
 }
 
 function sendMessageFp(convId, displayName) {
