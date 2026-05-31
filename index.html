@@ -11947,11 +11947,17 @@ function openConversation(convId) {
     fp.classList.add("active");
   }
 
+  // Appliquer fond et taille de police sauvegardés
+  const thread = document.getElementById("convFpThread");
+  if (thread) {
+    _applyConvWallpaper(c, thread);
+    thread.style.fontSize = c._fontSize === "small" ? "12px" : c._fontSize === "large" ? "16px" : "14px";
+  }
+
   // Afficher les messages locaux immédiatement (zéro latence perçue)
   renderConvFpThread(c, displayName);
 
-  // Focus + scroll sans délai arbitraire
-  const thread = document.getElementById("convFpThread");
+  // Focus + scroll
   if (thread) thread.scrollTop = thread.scrollHeight;
   if (inp) inp.focus();
 
