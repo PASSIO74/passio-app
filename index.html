@@ -18561,21 +18561,52 @@ function _deleteConv(convId) {
   toast("Conversation supprimée");
 }
 
+// ── Init : wirer les events qui ne peuvent pas être en HTML inline ──
+document.addEventListener("DOMContentLoaded", function() {
+  // Bouton vocal : hold-to-record (mouse + touch)
+  var btnVoice = document.getElementById("btnVoice");
+  if (btnVoice) {
+    btnVoice.addEventListener("mousedown", function(e) { e.preventDefault(); startVoiceRecord(); });
+    btnVoice.addEventListener("mouseup",   function() { stopVoiceRecord(); });
+    btnVoice.addEventListener("mouseleave",function() { if (_isRecording) stopVoiceRecord(); });
+    btnVoice.addEventListener("touchstart", function(e) { e.preventDefault(); startVoiceRecord(); }, { passive: false });
+    btnVoice.addEventListener("touchend",   function(e) { e.preventDefault(); stopVoiceRecord(); },  { passive: false });
+    btnVoice.addEventListener("touchcancel",function()  { if (_isRecording) cancelVoiceRecord(); });
+  }
+});
+
 // ── Fermer les panneaux en cliquant ailleurs ──
 document.addEventListener("click", function(e) {
   if (_emojiPanelOpen && !e.target.closest("#convEmojiPanel") && !e.target.closest("#btnEmoji")) _closeEmojiPanel();
   if (_attachMenuOpen && !e.target.closest("#convAttachMenu") && !e.target.closest("#btnAttach")) _closeAttachMenu();
 });
 
-// ── Modifier renderConvFpThread pour afficher GIF, video, doc, voice ──
-// (patch appliqué via _renderMsgContent)
+// ── Render contenu d'un message (GIF, vocal, vidéo, doc, image, texte) ──
 function _renderMsgContent(m) {
-  if (m.gif) return `<img src="${m.gif}" style="max-width:220px;max-height:180px;border-radius:10px;display:block;" loading="lazy" />`;
-  if (m.voiceData && !m.isFile) return _renderVoiceBubble(m, m.from === "me");
-  if (m.video) return `<video src="${m.video}" controls playsinline preload="metadata" style="max-width:220px;border-radius:10px;display:block;"></video>`;
-  if (m.img) return `<img src="${m.img}" style="max-width:220px;max-height:200px;border-radius:10px;display:block;cursor:pointer;" onclick="openFullImg('${m.img}')" />`;
-  if (m.docData) return `<div style="display:flex;align-items:center;gap:8px;background:rgba(255,255,255,0.15);border-radius:10px;padding:8px 12px;cursor:pointer;" onclick="downloadFile('${m.docData}','${escapeHtml(m.fileName||"fichier")}')"><span style="font-size:24px;">${_docIcon(m.fileType)}</span><div><div style="font-size:12px;font-weight:700;">${escapeHtml(m.fileName||"Fichier")}</div><div style="font-size:10px;opacity:0.7;">${m.fileType||""} · ${m.fileSize||""}</div></div></div>`;
-  if (m.text && m.text.startsWith("📍")) return `<a href="${m.text.split(": ")[1]}" target="_blank" style="color:inherit;text-decoration:underline;">${escapeHtml(m.text)}</a>`;
+  if (m.gif) {
+    // Image GIF : construit sans inline onclick pour éviter les quotes
+    return `<img src="${m.gif}" style="max-width:220px;max-height:180px;border-radius:10px;display:block;" loading="lazy" />`;
+  }
+  if (m.voiceData && !m.isFile) return _renderVoiceBubble(m);
+  if (m.video) return `<video src="${m.video}" controls playsinline preload="metadata" style="max-width:220px;border-radius:10px;display:block;max-height:280px;"></video>`;
+  if (m.img) {
+    // Stocker l'URL dans un data-src, clic géré par délégation dans renderConvFpThread
+    return `<img data-open-img="1" src="${m.img}" style="max-width:220px;max-height:200px;border-radius:10px;display:block;cursor:pointer;" />`;
+  }
+  if (m.docData) {
+    var icon  = _docIcon(m.fileType);
+    var fname = escapeHtml(m.fileName || "Fichier");
+    var finfo = (m.fileType || "") + (m.fileSize ? " · " + m.fileSize : "");
+    return `<div data-download-doc="1" style="display:flex;align-items:center;gap:8px;background:rgba(255,255,255,0.15);border-radius:10px;padding:8px 12px;cursor:pointer;">
+      <span style="font-size:24px;">${icon}</span>
+      <div><div style="font-size:12px;font-weight:700;">${fname}</div><div style="font-size:10px;opacity:0.7;">${finfo}</div></div>
+    </div>`;
+  }
+  if (m.text && m.text.startsWith("📍")) {
+    var parts = m.text.split(": ");
+    var mapUrl = parts[1] || "";
+    return `<a href="${mapUrl}" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;">${escapeHtml(m.text)}</a>`;
+  }
   return m.text ? escapeHtml(m.text) : "";
 }
 
