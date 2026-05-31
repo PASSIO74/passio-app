@@ -7271,11 +7271,12 @@
   <div id="conv-fullpage">
     <div class="conv-fp-head" id="convFpHead"></div>
     <div class="conv-fp-thread" id="convFpThread"></div>
+    <div id="convTypingBar" style="display:none;padding:4px 16px 0;font-size:11px;color:var(--muted);font-style:italic;"></div>
     <div class="conv-fp-input">
       <label class="conv-fp-photo-btn" title="Envoyer une photo" style="display:flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:10px;border:1px solid var(--border);background:var(--bg-card);cursor:pointer;font-size:18px;flex-shrink:0;">
           <input type="file" id="convFpPhotoFile" accept="image/*" style="display:none" onchange="attachMsgPhoto(this)"/>📷
         </label>
-        <input type="text" id="convFpInput" placeholder="Écris un message…" />
+        <input type="text" id="convFpInput" placeholder="Écris un message…" oninput="onConvInputTyping()" />
       <button id="convFpSendBtn">Envoyer</button>
     </div>
   </div>
