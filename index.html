@@ -11746,9 +11746,6 @@ function openConversation(convId) {
       </button>
     </div>`;
 
-  // ── Messages ──
-  renderConvFpThread(c, displayName);
-
   // ── Champ de saisie ──
   const inp = document.getElementById("convFpInput");
   const btn = document.getElementById("convFpSendBtn");
@@ -11767,33 +11764,42 @@ function openConversation(convId) {
     fp.classList.add("active");
   }
 
-  setTimeout(() => {
-    const thread = document.getElementById("convFpThread");
-    if (thread) thread.scrollTop = thread.scrollHeight;
-    if (inp) inp.focus();
-  }, 80);
+  // Afficher les messages locaux immédiatement (zéro latence perçue)
+  renderConvFpThread(c, displayName);
+
+  // Focus + scroll sans délai arbitraire
+  const thread = document.getElementById("convFpThread");
+  if (thread) thread.scrollTop = thread.scrollHeight;
+  if (inp) inp.focus();
 
   renderMessages();
 
-  // Typing indicator realtime
+  // Typing indicator + canal par conversation (filtré côté Supabase → plus rapide)
   _subscribeTyping(convId);
-
-  // Charger les vrais messages depuis Supabase + activer le realtime
   if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
-    supaLoadMessages(convId).then(supaMessages => {
-      if (!supaMessages) return;
+    // Canal dédié à cette conv : filtre conv_id côté Supabase, pas besoin de checker en JS
+    _supaConvSpecificChannel(convId, displayName);
+
+    // Charger l'historique Supabase en arrière-plan
+    supaLoadMessages(convId).then(function(supaMessages) {
+      // Race condition guard : l'utilisateur a peut-être changé de conv
+      if (window._openedConvId !== convId) return;
+      if (!supaMessages || !supaMessages.length) return;
       const convs2 = getConversations();
       const c2 = convs2.find(x => x.id === convId);
       if (!c2) return;
-      // Déduplication stricte par ID uniquement
+      // Fusion : Supabase est source de vérité, on garde les messages locaux non encore confirmés
       const supaIds = new Set(supaMessages.map(m => m.id).filter(Boolean));
-      const localOnly = (c2.messages || []).filter(m => !m.id || !supaIds.has(m.id));
-      c2.messages = [...supaMessages, ...localOnly].sort((a, b) => (a.at || 0) - (b.at || 0));
-      // Marquer comme "Lu" côté expéditeur : l'autre a ouvert → ses messages sont lus
-      c2._otherRead = true;
-      saveConversations();
-      renderConvFpThread(c2, displayName);
-    }).catch(() => {});
+      const pendingLocal = (c2.messages || []).filter(m => !m.id || !supaIds.has(m.id));
+      const merged = [...supaMessages, ...pendingLocal].sort((a, b) => (a.at || 0) - (b.at || 0));
+      // Ne re-rendre que si les données ont vraiment changé
+      if (JSON.stringify(merged.map(m => m.id)) !== JSON.stringify((c2.messages || []).map(m => m.id))) {
+        c2.messages = merged;
+        c2._otherRead = true;
+        saveConversations();
+        if (window._openedConvId === convId) renderConvFpThread(c2, displayName);
+      }
+    }).catch(function() {});
   }
 }
 
