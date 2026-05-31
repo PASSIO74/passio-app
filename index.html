@@ -7367,14 +7367,94 @@
   <!-- ── Conversation pleine page ── -->
   <div id="conv-fullpage">
     <div class="conv-fp-head" id="convFpHead"></div>
-    <div class="conv-fp-thread" id="convFpThread"></div>
-    <div id="convTypingBar" style="display:none;padding:4px 16px 0;font-size:11px;color:var(--muted);font-style:italic;"></div>
-    <div class="conv-fp-input">
-      <label class="conv-fp-photo-btn" title="Envoyer une photo" style="display:flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:10px;border:1px solid var(--border);background:var(--bg-card);cursor:pointer;font-size:18px;flex-shrink:0;">
-          <input type="file" id="convFpPhotoFile" accept="image/*" style="display:none" onchange="attachMsgPhoto(this)"/>📷
-        </label>
-        <input type="text" id="convFpInput" placeholder="Écris un message…" oninput="onConvInputTyping()" />
-      <button id="convFpSendBtn">Envoyer</button>
+
+    <!-- Settings panel (glisse par-dessus) -->
+    <div id="convSettingsPanel">
+      <div class="conv-fp-head" style="gap:10px;">
+        <button class="conv-fp-back" onclick="closeConvSettings()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+        </button>
+        <div style="font-weight:800;font-size:16px;color:var(--text);">Paramètres</div>
+      </div>
+      <div style="overflow-y:auto;flex:1;" id="convSettingsContent"></div>
+    </div>
+
+    <!-- Thread messages -->
+    <div class="conv-fp-thread" id="convFpThread" style="background:var(--bg-deep);"></div>
+
+    <!-- Barre typing -->
+    <div id="convTypingBar" style="display:none;padding:4px 16px 0;font-size:11px;color:var(--muted);font-style:italic;flex-shrink:0;"></div>
+
+    <!-- Barre enregistrement vocal -->
+    <div id="voiceRecordBar">
+      <div class="voice-dot"></div>
+      <span id="voiceRecordTimer" style="font-size:13px;font-weight:700;color:#ef4444;min-width:40px;">0:00</span>
+      <span style="flex:1;font-size:12px;color:var(--muted);">Enregistrement en cours…</span>
+      <button onclick="cancelVoiceRecord()" style="background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer;padding:0;">✕</button>
+    </div>
+
+    <!-- Panneau emoji/GIF (flotte au-dessus de la toolbar) -->
+    <div style="position:relative;flex-shrink:0;">
+      <div id="convEmojiPanel">
+        <div class="emoji-tabs">
+          <button class="emoji-tab active" onclick="switchEmojiTab('emoji',this)">😊 Emoji</button>
+          <button class="emoji-tab" onclick="switchEmojiTab('gif',this)">GIF</button>
+        </div>
+        <!-- Tab Emoji -->
+        <div id="emojiTabContent">
+          <div class="emoji-cat-bar" id="emojiCatBar"></div>
+          <div class="emoji-grid" id="emojiGrid"></div>
+        </div>
+        <!-- Tab GIF -->
+        <div id="gifTabContent" style="display:none;flex-direction:column;flex:1;overflow:hidden;">
+          <div class="gif-search-row">
+            <input type="text" id="gifSearchInput" placeholder="🔍 Rechercher un GIF…" oninput="_onGifSearch(this.value)" />
+          </div>
+          <div class="gif-grid" id="gifGrid"><div style="padding:20px;text-align:center;color:var(--muted);font-size:13px;">Tape pour chercher un GIF…</div></div>
+        </div>
+      </div>
+
+      <!-- Menu pièces jointes -->
+      <div id="convAttachMenu">
+        <div class="attach-item" onclick="triggerAttach('image')">
+          <div class="attach-icon" style="background:rgba(139,92,246,0.12);">🖼️</div>
+          <div class="attach-label">Photo / Vidéo</div>
+          <input type="file" id="attachImageFile" accept="image/*,video/*" style="display:none" onchange="handleAttachFile(this,'media')"/>
+        </div>
+        <div class="attach-item" onclick="triggerAttach('doc')">
+          <div class="attach-icon" style="background:rgba(14,165,233,0.12);">📄</div>
+          <div class="attach-label">Document</div>
+          <input type="file" id="attachDocFile" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.zip" style="display:none" onchange="handleAttachFile(this,'doc')"/>
+        </div>
+        <div class="attach-item" onclick="triggerAttach('audio')">
+          <div class="attach-icon" style="background:rgba(16,185,129,0.12);">🎵</div>
+          <div class="attach-label">Fichier audio</div>
+          <input type="file" id="attachAudioFile" accept="audio/*" style="display:none" onchange="handleAttachFile(this,'audio')"/>
+        </div>
+        <div class="attach-item" onclick="shareLocation()">
+          <div class="attach-icon" style="background:rgba(245,158,11,0.12);">📍</div>
+          <div class="attach-label">Localisation</div>
+        </div>
+        <div class="attach-item" onclick="openConvFiles()">
+          <div class="attach-icon" style="background:rgba(239,68,68,0.12);">📁</div>
+          <div class="attach-label">Pièces jointes</div>
+        </div>
+      </div>
+
+      <!-- Barre de saisie principale -->
+      <div class="conv-toolbar">
+        <button class="conv-tool-btn" id="btnAttach" onclick="toggleAttachMenu()" title="Pièce jointe">➕</button>
+        <button class="conv-tool-btn" id="btnEmoji" onclick="toggleEmojiPanel()" title="Emoji / GIF">😊</button>
+        <div class="conv-input-wrap">
+          <textarea id="convFpInput" rows="1" placeholder="Message…" oninput="onConvInputTyping();autoResizeTextarea(this)"></textarea>
+        </div>
+        <button class="conv-tool-btn" id="btnVoice" title="Message vocal"
+          onmousedown="startVoiceRecord()" ontouchstart="event.preventDefault();startVoiceRecord()"
+          onmouseup="stopVoiceRecord()" ontouchend="stopVoiceRecord()">🎙️</button>
+        <button class="conv-send-btn" id="convFpSendBtn" title="Envoyer">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+        </button>
+      </div>
     </div>
   </div>
 
