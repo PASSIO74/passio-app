@@ -17854,13 +17854,23 @@ let _emojiPanelOpen = false;
 let _attachMenuOpen = false;
 let _gifSearchTimer = null;
 
+// ── Emoji picker ──
 function _buildEmojiPicker() {
   const catBar = document.getElementById("emojiCatBar");
   const grid = document.getElementById("emojiGrid");
   if (!catBar || !grid) return;
   catBar.innerHTML = EMOJI_CATS.map((c,i) =>
-    `<button class="emoji-cat-btn${i===0?' active':''}" onclick="_setEmojiCat(${i},this)" title="${c.label}">${c.icon}</button>`
+    `<button class="emoji-cat-btn${i===0?' active':''}" data-catidx="${i}" title="${c.label}">${c.icon}</button>`
   ).join("");
+  // Délégation de clic sur la catBar
+  catBar.onclick = function(e) {
+    const btn = e.target.closest(".emoji-cat-btn");
+    if (!btn) return;
+    const idx = parseInt(btn.getAttribute("data-catidx"), 10);
+    catBar.querySelectorAll(".emoji-cat-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    _renderEmojiCat(idx);
+  };
   _renderEmojiCat(0);
 }
 
@@ -17868,42 +17878,50 @@ function _renderEmojiCat(idx) {
   const grid = document.getElementById("emojiGrid");
   if (!grid) return;
   _emojiActiveCat = idx;
-  grid.innerHTML = EMOJI_CATS[idx].emojis.map(e =>
-    `<div class="emoji-item" onclick="insertEmoji('${e}')">${e}</div>`
-  ).join("");
-}
-
-function _setEmojiCat(idx, btn) {
-  _renderEmojiCat(idx);
-  document.querySelectorAll(".emoji-cat-btn").forEach(b => b.classList.remove("active"));
-  if (btn) btn.classList.add("active");
+  // Stocker les emojis en data-emoji pour éviter tout problème de quote dans onclick
+  const frag = document.createDocumentFragment();
+  EMOJI_CATS[idx].emojis.forEach(function(e) {
+    const div = document.createElement("div");
+    div.className = "emoji-item";
+    div.textContent = e;
+    div.setAttribute("data-emoji", e);
+    frag.appendChild(div);
+  });
+  grid.innerHTML = "";
+  grid.appendChild(frag);
+  // Délégation de clic
+  grid.onclick = function(ev) {
+    const item = ev.target.closest(".emoji-item");
+    if (!item) return;
+    insertEmoji(item.getAttribute("data-emoji") || item.textContent);
+  };
 }
 
 function insertEmoji(e) {
   const inp = document.getElementById("convFpInput");
   if (!inp) return;
-  const start = inp.selectionStart || inp.value.length;
-  const end = inp.selectionEnd || inp.value.length;
+  const start = (inp.selectionStart != null) ? inp.selectionStart : inp.value.length;
+  const end   = (inp.selectionEnd   != null) ? inp.selectionEnd   : inp.value.length;
   inp.value = inp.value.slice(0, start) + e + inp.value.slice(end);
   inp.focus();
-  const pos = start + e.length;
-  inp.setSelectionRange(pos, pos);
+  const pos = start + [...e].length; // compte les chars Unicode correctement
+  try { inp.setSelectionRange(pos, pos); } catch(_) {}
   autoResizeTextarea(inp);
-  onConvInputTyping();
 }
 
 function switchEmojiTab(tab, btn) {
   document.querySelectorAll(".emoji-tab").forEach(b => b.classList.remove("active"));
   if (btn) btn.classList.add("active");
   const emojiContent = document.getElementById("emojiTabContent");
-  const gifContent = document.getElementById("gifTabContent");
+  const gifContent   = document.getElementById("gifTabContent");
+  if (!emojiContent || !gifContent) return;
   if (tab === "emoji") {
-    emojiContent.style.display = "";
-    gifContent.style.display = "none";
+    emojiContent.style.display = "flex";
+    gifContent.classList.remove("visible");
   } else {
     emojiContent.style.display = "none";
-    gifContent.style.display = "flex";
-    _loadTrendingGifs();
+    gifContent.classList.add("visible");
+    if (!gifContent._loaded) { gifContent._loaded = true; _loadTrendingGifs(); }
   }
 }
 
@@ -17914,7 +17932,13 @@ function toggleEmojiPanel() {
   _emojiPanelOpen = !_emojiPanelOpen;
   panel.classList.toggle("open", _emojiPanelOpen);
   document.getElementById("btnEmoji")?.classList.toggle("active", _emojiPanelOpen);
-  if (_emojiPanelOpen && !document.getElementById("emojiGrid").innerHTML) _buildEmojiPicker();
+  if (_emojiPanelOpen) {
+    const grid = document.getElementById("emojiGrid");
+    if (grid && !grid.hasChildNodes()) _buildEmojiPicker();
+    // S'assurer que l'onglet emoji est actif par défaut
+    const emojiTab = document.getElementById("emojiTabContent");
+    if (emojiTab) emojiTab.style.display = "flex";
+  }
 }
 
 function _closeEmojiPanel() {
@@ -17923,50 +17947,91 @@ function _closeEmojiPanel() {
   document.getElementById("btnEmoji")?.classList.remove("active");
 }
 
-// ── GIF (Tenor API) ──
-const TENOR_KEY = "LIVDSRZULELA"; // clé demo Tenor (usage non-commercial)
+// ── GIF ──
+const TENOR_KEY = "LIVDSRZULELA";
 
 async function _loadTrendingGifs() {
   const grid = document.getElementById("gifGrid");
   if (!grid) return;
-  grid.innerHTML = `<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px;">Chargement…</div>`;
+  grid.innerHTML = `<div style="grid-column:span 2;padding:20px;text-align:center;color:var(--muted);font-size:13px;">⏳ Chargement…</div>`;
   try {
-    const r = await fetch(`https://tenor.googleapis.com/v2/featured?key=${TENOR_KEY}&limit=20&media_filter=gif`);
+    const r = await fetch(`https://tenor.googleapis.com/v2/featured?key=${TENOR_KEY}&limit=16&media_filter=tinygif,gif`, { cache: "force-cache" });
+    if (!r.ok) throw new Error("status " + r.status);
     const data = await r.json();
     _renderGifs(data.results || []);
   } catch(e) {
-    grid.innerHTML = `<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px;">Impossible de charger les GIFs</div>`;
+    // Fallback : GIFs statiques de démonstration
+    _renderGifsStatic();
   }
+}
+
+function _renderGifsStatic() {
+  const grid = document.getElementById("gifGrid");
+  if (!grid) return;
+  const demos = [
+    { url:"https://media.giphy.com/media/3o7abKhOpu0NwenH3O/giphy.gif", label:"👍" },
+    { url:"https://media.giphy.com/media/xT9IgG50Lg7rusjtG8/giphy.gif", label:"🎉" },
+    { url:"https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif", label:"😂" },
+    { url:"https://media.giphy.com/media/26ufdipQqU2lhNA4g/giphy.gif", label:"❤️" },
+    { url:"https://media.giphy.com/media/3oz8xAFtqoOUUrsh7W/giphy.gif", label:"🔥" },
+    { url:"https://media.giphy.com/media/l4FGGafcOHmrlQxG0/giphy.gif", label:"😎" },
+  ];
+  grid.innerHTML = demos.map(d =>
+    `<div class="gif-item" data-gifurl="${d.url}"><img src="${d.url}" loading="lazy" alt="${d.label}" /></div>`
+  ).join("") + `<div style="grid-column:span 2;padding:8px;text-align:center;color:var(--muted);font-size:11px;">Recherche pour plus de GIFs</div>`;
+  grid.onclick = function(e) {
+    const item = e.target.closest(".gif-item");
+    if (item) _sendGif(item.getAttribute("data-gifurl"));
+  };
 }
 
 function _onGifSearch(query) {
   clearTimeout(_gifSearchTimer);
   if (!query.trim()) { _loadTrendingGifs(); return; }
-  _gifSearchTimer = setTimeout(() => _searchGifs(query.trim()), 400);
+  _gifSearchTimer = setTimeout(() => _searchGifs(query.trim()), 500);
 }
 
 async function _searchGifs(q) {
   const grid = document.getElementById("gifGrid");
   if (!grid) return;
-  grid.innerHTML = `<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px;">Recherche…</div>`;
+  grid.innerHTML = `<div style="grid-column:span 2;padding:20px;text-align:center;color:var(--muted);font-size:13px;">🔍 Recherche…</div>`;
   try {
-    const r = await fetch(`https://tenor.googleapis.com/v2/search?key=${TENOR_KEY}&q=${encodeURIComponent(q)}&limit=20&media_filter=gif`);
+    const r = await fetch(`https://tenor.googleapis.com/v2/search?key=${TENOR_KEY}&q=${encodeURIComponent(q)}&limit=16&media_filter=tinygif,gif`);
+    if (!r.ok) throw new Error("status " + r.status);
     const data = await r.json();
     _renderGifs(data.results || []);
   } catch(e) {
-    grid.innerHTML = `<div style="padding:16px;text-align:center;color:var(--muted);font-size:12px;">Erreur de chargement</div>`;
+    grid.innerHTML = `<div style="grid-column:span 2;padding:16px;text-align:center;color:var(--muted);font-size:12px;">Impossible de charger. Essaie une autre recherche.</div>`;
   }
 }
 
 function _renderGifs(results) {
   const grid = document.getElementById("gifGrid");
   if (!grid) return;
-  if (!results.length) { grid.innerHTML = `<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px;">Aucun GIF trouvé</div>`; return; }
-  grid.innerHTML = results.map(r => {
-    const url = r.media_formats?.gif?.url || r.media_formats?.tinygif?.url || "";
-    const preview = r.media_formats?.tinygif?.url || url;
-    return url ? `<div class="gif-item" onclick="_sendGif('${url.replace(/'/g,"\\'")}')"><img src="${preview}" loading="lazy" /></div>` : "";
-  }).join("");
+  if (!results.length) {
+    grid.innerHTML = `<div style="grid-column:span 2;padding:20px;text-align:center;color:var(--muted);font-size:13px;">Aucun GIF trouvé</div>`;
+    return;
+  }
+  // Construire avec délégation pour éviter les problèmes de quotes dans les URLs
+  grid.innerHTML = "";
+  results.forEach(function(r) {
+    const url     = (r.media_formats && (r.media_formats.gif || r.media_formats.tinygif))
+                    ? (r.media_formats.gif?.url || r.media_formats.tinygif?.url) : "";
+    const preview = (r.media_formats && r.media_formats.tinygif) ? r.media_formats.tinygif.url : url;
+    if (!url) return;
+    const div = document.createElement("div");
+    div.className = "gif-item";
+    div.setAttribute("data-gifurl", url);
+    const img = document.createElement("img");
+    img.src = preview;
+    img.loading = "lazy";
+    div.appendChild(img);
+    grid.appendChild(div);
+  });
+  grid.onclick = function(e) {
+    const item = e.target.closest(".gif-item");
+    if (item) _sendGif(item.getAttribute("data-gifurl"));
+  };
 }
 
 function _sendGif(url) {
