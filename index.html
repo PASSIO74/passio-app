@@ -12014,23 +12014,24 @@ function renderConvFpThread(c, displayName) {
     const isMe = m.from === "me";
     const senderName = isMe ? "" : (m.fromName || displayName || "");
     const isLastMe = isMe && i === msgs.length - 1;
-    const imgHtml = m.img ? `<img src="${m.img}" style="max-width:220px;max-height:200px;border-radius:10px;display:block;margin-bottom:4px;" />` : "";
-    // Read receipt réel : ✓ Envoyé, ✓✓ Lu si l'autre a bien ouvert la conv
     const readReceipt = isLastMe
       ? (c._otherRead ? `<span style="font-size:9px;color:var(--accent);margin-left:4px;">✓✓ Lu</span>`
                       : `<span style="font-size:9px;color:var(--muted);margin-left:4px;">✓ Envoyé</span>`)
       : "";
     const timeHtml = m.at ? `<span class="conv-bubble-time">${fmtTime(m.at)}${readReceipt}</span>` : "";
-    // Réactions
     const reactions = m.reactions || {};
     const reactKeys = Object.keys(reactions);
     const reactHtml = reactKeys.length
-      ? `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;${isMe?'justify-content:flex-end;':''}">${reactKeys.map(e => `<span onclick="_toggleReaction('${c.id}','${m.id || i}','${e}')" style="background:var(--bg-card);border:1px solid var(--border);border-radius:20px;padding:2px 7px;font-size:13px;cursor:pointer;">${e} ${reactions[e]}</span>`).join("")}</div>`
+      ? `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;${isMe?'justify-content:flex-end;':''}">${reactKeys.map(e => `<span onclick="_toggleReaction('${c.id}','${m.id||i}','${e}')" style="background:var(--bg-card);border:1px solid var(--border);border-radius:20px;padding:2px 7px;font-size:13px;cursor:pointer;">${e} ${reactions[e]}</span>`).join("")}</div>`
       : "";
     const msgId = m.id || ("mi_" + i);
+    // Déterminer si la bulle est "transparente" (GIF, vocal, vidéo, doc)
+    const isMedia = !!(m.gif || m.voiceData || m.video || m.docData);
+    const bubbleStyle = isMedia ? "background:transparent;padding:0;box-shadow:none;" : "";
+    const content = typeof _renderMsgContent === "function" ? _renderMsgContent(m) : (m.text ? escapeHtml(m.text) : "");
     return `<div class="conv-bubble-wrap ${isMe ? "me" : "them"}" data-mid="${msgId}">
       ${!isMe && senderName ? `<span class="conv-sender-name">${escapeHtml(senderName)}</span>` : ""}
-      <div class="conv-bubble ${isMe ? "me" : "them"}" oncontextmenu="event.preventDefault();_showReactPicker('${c.id}','${msgId}',this)" style="cursor:pointer;">${imgHtml}${m.text ? escapeHtml(m.text) : ""}</div>
+      <div class="conv-bubble ${isMe ? "me" : "them"}" style="${bubbleStyle}" oncontextmenu="event.preventDefault();_showReactPicker('${c.id}','${msgId}',this)">${content}</div>
       ${reactHtml}
       ${timeHtml}
     </div>`;
