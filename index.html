@@ -12013,9 +12013,10 @@ function _supaConvSpecificChannel(convId, displayName) {
 
 function closeConversation() {
   window._openedConvId = null;
-  // Nettoyer le canal typing
   if (_typingChannel) { try { supa.removeChannel(_typingChannel); } catch(e) {} _typingChannel = null; }
+  if (_supaConvChannel) { try { supa.removeChannel(_supaConvChannel); } catch(e) {} _supaConvChannel = null; }
   clearTimeout(_typingTimeout);
+  saveConversationsNow(); // sauvegarde immédiate en quittant
   const bar = document.getElementById("convTypingBar");
   if (bar) bar.style.display = "none";
   const fp = document.getElementById("conv-fullpage");
