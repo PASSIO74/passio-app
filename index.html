@@ -12092,7 +12092,10 @@ function sendMessageFp(convId, displayName) {
   const txt = inp.value.trim();
   if (!txt) return;
   inp.value = "";
-  _stopTyping(convId); // arrêter l'indicateur de frappe
+  inp.style.height = "auto"; // reset textarea height
+  _closeEmojiPanel();
+  _closeAttachMenu();
+  _stopTyping(convId);
   const convs = getConversations();
   const c = convs.find(x => x.id === convId);
   if (!c) return;
