@@ -12060,32 +12060,102 @@ function renderConvFpThread(c, displayName) {
        </div>`
     : "";
 
-  thread.innerHTML = loadMoreBtn + msgs.map((m, i) => {
+  // Construire avec fragment DOM pour éviter tout problème de quotes dans les attributs
+  const frag = document.createDocumentFragment();
+  if (loadMoreBtn) {
+    const tmp = document.createElement("div");
+    tmp.innerHTML = loadMoreBtn;
+    frag.appendChild(tmp.firstChild);
+  }
+
+  msgs.forEach(function(m, i) {
     const isMe = m.from === "me";
     const senderName = isMe ? "" : (m.fromName || displayName || "");
     const isLastMe = isMe && i === msgs.length - 1;
     const readReceipt = isLastMe
-      ? (c._otherRead ? `<span style="font-size:9px;color:var(--accent);margin-left:4px;">✓✓ Lu</span>`
-                      : `<span style="font-size:9px;color:var(--muted);margin-left:4px;">✓ Envoyé</span>`)
-      : "";
-    const timeHtml = m.at ? `<span class="conv-bubble-time">${fmtTime(m.at)}${readReceipt}</span>` : "";
-    const reactions = m.reactions || {};
-    const reactKeys = Object.keys(reactions);
-    const reactHtml = reactKeys.length
-      ? `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;${isMe?'justify-content:flex-end;':''}">${reactKeys.map(e => `<span onclick="_toggleReaction('${c.id}','${m.id||i}','${e}')" style="background:var(--bg-card);border:1px solid var(--border);border-radius:20px;padding:2px 7px;font-size:13px;cursor:pointer;">${e} ${reactions[e]}</span>`).join("")}</div>`
+      ? (c._otherRead ? '<span style="font-size:9px;color:var(--accent);margin-left:4px;">✓✓ Lu</span>'
+                      : '<span style="font-size:9px;color:var(--muted);margin-left:4px;">✓ Envoyé</span>')
       : "";
     const msgId = m.id || ("mi_" + i);
-    // Déterminer si la bulle est "transparente" (GIF, vocal, vidéo, doc)
-    const isMedia = !!(m.gif || m.voiceData || m.video || m.docData);
-    const bubbleStyle = isMedia ? "background:transparent;padding:0;box-shadow:none;" : "";
-    const content = typeof _renderMsgContent === "function" ? _renderMsgContent(m) : (m.text ? escapeHtml(m.text) : "");
-    return `<div class="conv-bubble-wrap ${isMe ? "me" : "them"}" data-mid="${msgId}">
-      ${!isMe && senderName ? `<span class="conv-sender-name">${escapeHtml(senderName)}</span>` : ""}
-      <div class="conv-bubble ${isMe ? "me" : "them"}" style="${bubbleStyle}" oncontextmenu="event.preventDefault();_showReactPicker('${c.id}','${msgId}',this)">${content}</div>
-      ${reactHtml}
-      ${timeHtml}
-    </div>`;
-  }).join("");
+
+    const wrap = document.createElement("div");
+    wrap.className = "conv-bubble-wrap " + (isMe ? "me" : "them");
+    wrap.setAttribute("data-mid", msgId);
+
+    if (!isMe && senderName) {
+      const sn = document.createElement("span");
+      sn.className = "conv-sender-name";
+      sn.textContent = senderName;
+      wrap.appendChild(sn);
+    }
+
+    const bubble = document.createElement("div");
+    bubble.className = "conv-bubble " + (isMe ? "me" : "them");
+    const isMedia = !!(m.gif || (m.voiceData && !m.isFile) || m.video || m.docData);
+    if (isMedia) bubble.style.cssText = "background:transparent;padding:0;box-shadow:none;";
+
+    // Stocker les données sur l'élément pour la délégation
+    bubble.setAttribute("data-cid", c.id);
+    bubble.setAttribute("data-mid2", msgId);
+    if (m.img)     { bubble.setAttribute("data-img-src", m.img); }
+    if (m.docData) { bubble.setAttribute("data-doc-data", m.docData); bubble.setAttribute("data-doc-name", m.fileName || "fichier"); }
+
+    // Contenu
+    if (typeof _renderMsgContent === "function") {
+      bubble.innerHTML = _renderMsgContent(m);
+    } else {
+      bubble.textContent = m.text || "";
+    }
+
+    // Context menu (réactions)
+    bubble.addEventListener("contextmenu", function(ev) {
+      ev.preventDefault();
+      if (typeof _showReactPicker === "function") _showReactPicker(c.id, msgId, bubble);
+    });
+
+    wrap.appendChild(bubble);
+
+    // Réactions
+    const reactions = m.reactions || {};
+    const reactKeys = Object.keys(reactions);
+    if (reactKeys.length) {
+      const reactDiv = document.createElement("div");
+      reactDiv.style.cssText = "display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;" + (isMe ? "justify-content:flex-end;" : "");
+      reactKeys.forEach(function(e) {
+        const badge = document.createElement("span");
+        badge.style.cssText = "background:var(--bg-card);border:1px solid var(--border);border-radius:20px;padding:2px 7px;font-size:13px;cursor:pointer;";
+        badge.textContent = e + " " + reactions[e];
+        badge.addEventListener("click", function() { if (typeof _toggleReaction === "function") _toggleReaction(c.id, msgId, e); });
+        reactDiv.appendChild(badge);
+      });
+      wrap.appendChild(reactDiv);
+    }
+
+    // Temps + read receipt
+    if (m.at) {
+      const timeEl = document.createElement("span");
+      timeEl.className = "conv-bubble-time";
+      timeEl.innerHTML = fmtTime(m.at) + readReceipt;
+      wrap.appendChild(timeEl);
+    }
+
+    frag.appendChild(wrap);
+  });
+
+  thread.innerHTML = "";
+  thread.appendChild(frag);
+
+  // Délégation de clic sur le thread pour images et docs
+  thread.onclick = function(e) {
+    const bubble = e.target.closest(".conv-bubble");
+    if (!bubble) return;
+    const imgSrc  = bubble.getAttribute("data-img-src");
+    const docData = bubble.getAttribute("data-doc-data");
+    const docName = bubble.getAttribute("data-doc-name");
+    if (imgSrc  && e.target.tagName === "IMG") { if (typeof openFullImg === "function") openFullImg(imgSrc); return; }
+    if (docData) { if (typeof downloadFile === "function") downloadFile(docData, docName || "fichier"); return; }
+  };
+
   thread.scrollTop = thread.scrollHeight;
 }
 
