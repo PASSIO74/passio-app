@@ -16827,30 +16827,38 @@ async function supaLoadMyConversations() {
     const convIds = memberships.map(m => m.conv_id);
     const { data: convs } = await supa.from("conversations").select("*").in("id", convIds);
     if (!convs) return [];
-    const result = [];
-    for (const c of convs) {
-      const { data: lastMsgs } = await supa.from("conv_messages")
-        .select("*, profiles(username,emoji,color)")
-        .eq("conv_id", c.id).order("created_at", { ascending: false }).limit(1);
-      const { data: members } = await supa.from("conv_members")
-        .select("user_id, profiles(username,emoji,color)").eq("conv_id", c.id);
-      const last = lastMsgs?.[0];
-      const other = (members || []).find(m => m.user_id !== MY_UID);
-      result.push({
+
+    // Batch toutes les requêtes en parallèle (fix N+1)
+    const [lastMsgsAll, membersAll] = await Promise.all([
+      Promise.all(convIds.map(cid =>
+        supa.from("conv_messages").select("id,conv_id,from_id,content,created_at,profiles(username,emoji,color)")
+          .eq("conv_id", cid).order("created_at", { ascending: false }).limit(1)
+      )),
+      Promise.all(convIds.map(cid =>
+        supa.from("conv_members").select("conv_id,user_id,profiles(username,emoji,color)").eq("conv_id", cid)
+      ))
+    ]);
+
+    const result = convs.map((c, i) => {
+      const last = lastMsgsAll[i]?.data?.[0];
+      const members = membersAll[i]?.data || [];
+      const other = members.find(m => m.user_id !== MY_UID);
+      return {
         id: c.id, isGroup: c.is_group, groupName: c.group_name,
         passion: null,
         userId: other?.user_id || "",
         userEmoji: other?.profiles?.emoji || "✨",
         userColor: other?.profiles?.color || "#8b5cf6",
         userName: other?.profiles?.username || "Passionné",
-        userIds: (members || []).map(m => m.user_id),
+        userIds: members.map(m => m.user_id),
         lastAt: last ? new Date(last.created_at).getTime() : new Date(c.created_at).getTime(),
         unread: 0,
-        messages: last ? [{ id: last.id, from: last.from_id === MY_UID ? "me" : last.from_id, text: last.content, at: new Date(last.created_at).getTime() }] : [],
+        messages: last ? [{ id: last.id, from: last.from_id === MY_UID ? "me" : last.from_id, fromName: last.profiles?.username || "Passionné", text: last.content, at: new Date(last.created_at).getTime() }] : [],
         fromSupabase: true,
-      });
-    }
-    // Dédupliquer par userId côté Supabase aussi (garder la conv la plus récente par paire)
+      };
+    });
+
+    // Dédupliquer par userId (garder la conv la plus récente par paire)
     const seenUsers = {};
     const deduped = [];
     for (const c of result.sort((a,b) => b.lastAt - a.lastAt)) {
