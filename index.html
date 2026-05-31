@@ -9085,7 +9085,7 @@ function renderPostCover(p, passion) {
 function renderPostHTML(p) {
   const author = p._source === "me"
     ? { name: currentProfile()?.name || state.user.name, profileEmoji: currentProfile()?.emoji || "✨", avatar: currentProfile()?.color || "#8b5cf6" }
-    : userById(p.authorId);
+    : userById(p.authorId) || { name: p.authorName || "Passionné", avatar: p.authorColor || "#8b5cf6", profileEmoji: p.authorEmoji || "✨" };
   const passion = passionById(p.passion);
   const moodMap = { creation: "🎨 Création", learn: "📚 Learn", chill: "😌 Chill", irl: "🤝 IRL" };
   const liked = state.user.likedPosts.includes(p.id);
