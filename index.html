@@ -11942,7 +11942,12 @@ function _subscribeTyping(convId) {
 }
 
 function closeConversation() {
-  window._openedConvId = null; // plus de conv ouverte
+  window._openedConvId = null;
+  // Nettoyer le canal typing
+  if (_typingChannel) { try { supa.removeChannel(_typingChannel); } catch(e) {} _typingChannel = null; }
+  clearTimeout(_typingTimeout);
+  const bar = document.getElementById("convTypingBar");
+  if (bar) bar.style.display = "none";
   const fp = document.getElementById("conv-fullpage");
   if (fp) fp.classList.remove("active");
   renderMessages();
