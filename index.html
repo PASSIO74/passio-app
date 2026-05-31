@@ -11232,6 +11232,28 @@ const SEED_CONVERSATIONS = [
 ];
 
 let conversationsState = null;
+let _saveConvTimer = null;          // debounce localStorage
+const _profileCache = new Map();    // cache profils → évite requêtes répétées
+
+// Cache pré-rempli depuis les convs déjà connues
+function _primeProfileCache(convs) {
+  (convs || []).forEach(function(c) {
+    if (c.userId && c.userName) {
+      _profileCache.set(c.userId, { username: c.userName, emoji: c.userEmoji || "✨", color: c.userColor || "#8b5cf6" });
+    }
+  });
+}
+
+// Récupère un profil avec cache — zéro requête Supabase si déjà connu
+async function _fetchProfile(userId) {
+  if (_profileCache.has(userId)) return _profileCache.get(userId);
+  try {
+    const { data } = await supa.from("profiles").select("username,emoji,color").eq("id", userId).single();
+    const prof = data ? { username: data.username || "Passionné", emoji: data.emoji || "✨", color: data.color || "#8b5cf6" } : { username: "Passionné", emoji: "✨", color: "#8b5cf6" };
+    _profileCache.set(userId, prof);
+    return prof;
+  } catch(e) { return { username: "Passionné", emoji: "✨", color: "#8b5cf6" }; }
+}
 
 function deduplicateConversations(convs) {
   // Pour les DMs : une seule conv par userId (garder la plus récente, fusionner les messages)
