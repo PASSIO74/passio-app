@@ -17837,6 +17837,600 @@ function pwaDismiss() {
 }
 </script>
 
+<!-- ======== MESSAGERIE ENRICHIE ======== -->
+<script>
+// ═══════════════════════════════════════════════════════════
+//  MESSAGERIE — Emoji, GIF, Vocal, Pièces jointes, Paramètres
+// ═══════════════════════════════════════════════════════════
+
+// ── Données Emoji ──
+const EMOJI_CATS = [
+  { id:"smileys", icon:"😊", label:"Smileys", emojis:["😀","😁","😂","🤣","😃","😄","😅","😆","😉","😊","😋","😎","😍","🥰","😘","😗","😙","😚","🙂","🤗","🤩","🤔","🤨","😐","😑","😶","🙄","😏","😣","😥","😮","🤐","😯","😪","😫","🥱","😴","😌","😛","😜","😝","🤤","😒","😓","😔","😕","🙃","🤑","😲","☹️","🙁","😖","😞","😟","😤","😢","😭","😦","😧","😨","😩","🤯","😬","😰","😱","🥵","🥶","😳","🤪","😵","🤫","🤭","🧐","🤓"] },
+  { id:"gestures", icon:"👋", label:"Gestes", emojis:["👋","🤚","🖐️","✋","🖖","👌","🤌","🤏","✌️","🤞","🤟","🤘","🤙","👈","👉","👆","🖕","👇","☝️","👍","👎","✊","👊","🤛","🤜","👏","🙌","👐","🤲","🙏","✍️","💅","🤳","💪","🦾","🦿","🦵","🦶","👂","🦻","👃","🫀","🫁","🧠","🦷","🦴","👀","👁️","👅","👄"] },
+  { id:"animals", icon:"🐱", label:"Animaux", emojis:["🐶","🐱","🐭","🐹","🐰","🦊","🐻","🐼","🐨","🐯","🦁","🐮","🐷","🐸","🐵","🙈","🙉","🙊","🐔","🐧","🐦","🦆","🦅","🦉","🦇","🐺","🐗","🐴","🦄","🐝","🐛","🦋","🐌","🐞","🐜","🦟","🦗","🕷️","🦂","🐢","🐍","🦎","🦖","🦕","🐙","🦑","🦐","🦞","🦀","🐡","🐠","🐟","🐬","🐳","🐋","🦈","🐊","🐅","🐆"] },
+  { id:"food", icon:"🍕", label:"Nourriture", emojis:["🍎","🍐","🍊","🍋","🍌","🍉","🍇","🍓","🫐","🍈","🍒","🍑","🥭","🍍","🥥","🥝","🍅","🥑","🍆","🥕","🫑","🥦","🥬","🥒","🌶️","🫒","🧄","🧅","🥔","🍠","🫘","🥜","🌰","🍞","🥐","🥖","🫓","🥨","🥯","🧀","🥚","🍳","🧈","🥞","🧇","🥓","🥩","🍗","🍖","🌭","🍔","🍟","🍕","🫔","🌮","🌯","🥙","🧆","🥚","🍲","🫕","🥣","🥗","🍿","🧂","🥫","🍱","🍘","🍙","🍚","🍛","🍜","🍝","🍠","🍢","🍣","🍤","🍥","🥮","🍡","🥟","🥠","🥡","🦀","🦞","🦐","🦑","🦪","🍦","🍧","🍨","🍩","🍪","🎂","🍰","🧁","🥧","🍫","🍬","🍭","🍮","🍯","🍼","🥛","☕","🫖","🍵","🍶","🍾","🍷","🍸","🍹","🍺","🍻","🥂","🥃","🫗","🥤","🧋","🧃","🧉","🧊"] },
+  { id:"activity", icon:"⚽", label:"Sport", emojis:["⚽","🏀","🏈","⚾","🥎","🎾","🏐","🏉","🥏","🎱","🏓","🏸","🏒","🥅","⛳","🏹","🎣","🤿","🥊","🥋","🎽","🛹","🛼","🛷","⛸️","🥌","🎿","⛷️","🏂","🏋️","🤼","🤸","⛹️","🤺","🏇","🧘","🏄","🏊","🤽","🚣","🧗","🚵","🚴","🤾","🏌️","🏆","🥇","🥈","🥉","🏅","🎖️","🎗️","🎫","🎟️","🎪","🎭","🎨","🎬","🎤","🎧","🎼","🎵","🎶","🎹","🥁","🪘","🎷","🎺","🎸","🪕","🎻","🎲","♟️","🎯","🎳","🎰","🎮","🕹️"] },
+  { id:"travel", icon:"✈️", label:"Voyage", emojis:["🚗","🚕","🚙","🚌","🚎","🏎️","🚓","🚑","🚒","🚐","🛻","🚚","🚛","🚜","🛵","🏍️","🛺","🚲","🛴","🛹","🛼","🚏","🛣️","🛤️","⛽","🚨","🚥","🚦","🛑","⚓","🪝","⛵","🚤","🛥️","🛳️","⛴️","🚢","✈️","🛩️","🛫","🛬","🪂","💺","🚁","🚟","🚠","🚡","🛰️","🚀","🛸","🪐","🌍","🌎","🌏","🗺️","🧭","🏔️","⛰️","🌋","🏕️","🏖️","🏜️","🏝️","🏞️","🏟️","🏛️","🏗️","🧱","🪞","🪟","🏘️","🏚️","🏠","🏡","🏢","🏣","🏤","🏥","🏦","🏨","🏩","🏪","🏫","🏬","🏭","🏯","🏰","💒","🗼","🗽","⛪","🕌","🛕","🕍","⛩️","🕋","⛲","⛺","🌁","🌃","🏙️","🌄","🌅","🌆","🌇","🌉","♨️","🎠","🛝","🎡","🎢","💈","🎪"] },
+  { id:"objects", icon:"💡", label:"Objets", emojis:["⌚","📱","💻","⌨️","🖥️","🖨️","🖱️","🖲️","💽","💾","💿","📀","📷","📸","📹","🎥","📽️","🎞️","📞","☎️","📟","📠","📺","📻","🎙️","🎚️","🎛️","🧭","⏱️","⏲️","⏰","🕰️","⌛","⏳","📡","🔋","🔌","💡","🔦","🕯️","🪔","🧯","🛢️","💸","💵","💴","💶","💷","🪙","💰","💳","💎","⚖️","🦯","🔧","🪛","🔨","⛏️","⚒️","🛠️","🗡️","⚔️","🔫","🪃","🛡️","🔑","🗝️","🔐","🔒","🔓","🪤","🧲","🪜","🧰","🧲","🪝","🗑️","🛒","🚪","🛏️","🪑","🚽","🪠","🚿","🛁","🪒","🧴","🧷","🧹","🧺","🧻","🪣","🧼","🫧","🪥","🧽","🧯","🛒","🪞","🪟","🛋️","🪑","🚪"] },
+  { id:"symbols", icon:"❤️", label:"Symboles", emojis:["❤️","🧡","💛","💚","💙","💜","🖤","🤍","🤎","💔","❤️‍🔥","❤️‍🩹","❣️","💕","💞","💓","💗","💖","💘","💝","💟","☮️","✝️","☪️","🕉️","☯️","✡️","🔯","🕎","☦️","⛎","♈","♉","♊","♋","♌","♍","♎","♏","♐","♑","♒","♓","🆔","⚛️","🉑","☢️","☣️","📴","📳","🈶","🈚","🈸","🈺","🈷️","✴️","🆚","💮","🉐","㊙️","㊗️","🈴","🈵","🈹","🈲","🅰️","🅱️","🆎","🆑","🅾️","🆘","❌","⭕","🛑","⛔","📛","🚫","💯","💢","♨️","🚷","🚯","🚳","🚱","🔞","📵","🔕","🔇","🎵","🎶","✅","☑️","❎","🔀","🔁","🔂","▶️","⏩","⏭️","⏯️","◀️","⏪","⏮️","🔼","⏫","🔽","⏬","⏸️","⏹️","⏺️","🎦","🔅","🔆","📶","📳","📴","♾️","💲","❔","❕","❓","❗","‼️","⁉️","🔱","⚜️","🔰","♻️","✅","🈯","💹","❇️","✳️","🌐","💠","Ⓜ️","🌀","💤","🏧","🚾","♿","🅿️","🛗","🈳","🈂️","🛂","🛃","🛄","🛅","🚹","🚺","🚼","⚧️","🚻","🚮","🎰","🗃️","🗄️","🗑️"] },
+];
+
+let _emojiActiveCat = 0;
+let _emojiPanelOpen = false;
+let _attachMenuOpen = false;
+let _gifSearchTimer = null;
+
+function _buildEmojiPicker() {
+  const catBar = document.getElementById("emojiCatBar");
+  const grid = document.getElementById("emojiGrid");
+  if (!catBar || !grid) return;
+  catBar.innerHTML = EMOJI_CATS.map((c,i) =>
+    `<button class="emoji-cat-btn${i===0?' active':''}" onclick="_setEmojiCat(${i},this)" title="${c.label}">${c.icon}</button>`
+  ).join("");
+  _renderEmojiCat(0);
+}
+
+function _renderEmojiCat(idx) {
+  const grid = document.getElementById("emojiGrid");
+  if (!grid) return;
+  _emojiActiveCat = idx;
+  grid.innerHTML = EMOJI_CATS[idx].emojis.map(e =>
+    `<div class="emoji-item" onclick="insertEmoji('${e}')">${e}</div>`
+  ).join("");
+}
+
+function _setEmojiCat(idx, btn) {
+  _renderEmojiCat(idx);
+  document.querySelectorAll(".emoji-cat-btn").forEach(b => b.classList.remove("active"));
+  if (btn) btn.classList.add("active");
+}
+
+function insertEmoji(e) {
+  const inp = document.getElementById("convFpInput");
+  if (!inp) return;
+  const start = inp.selectionStart || inp.value.length;
+  const end = inp.selectionEnd || inp.value.length;
+  inp.value = inp.value.slice(0, start) + e + inp.value.slice(end);
+  inp.focus();
+  const pos = start + e.length;
+  inp.setSelectionRange(pos, pos);
+  autoResizeTextarea(inp);
+  onConvInputTyping();
+}
+
+function switchEmojiTab(tab, btn) {
+  document.querySelectorAll(".emoji-tab").forEach(b => b.classList.remove("active"));
+  if (btn) btn.classList.add("active");
+  const emojiContent = document.getElementById("emojiTabContent");
+  const gifContent = document.getElementById("gifTabContent");
+  if (tab === "emoji") {
+    emojiContent.style.display = "";
+    gifContent.style.display = "none";
+  } else {
+    emojiContent.style.display = "none";
+    gifContent.style.display = "flex";
+    _loadTrendingGifs();
+  }
+}
+
+function toggleEmojiPanel() {
+  _closeAttachMenu();
+  const panel = document.getElementById("convEmojiPanel");
+  if (!panel) return;
+  _emojiPanelOpen = !_emojiPanelOpen;
+  panel.classList.toggle("open", _emojiPanelOpen);
+  document.getElementById("btnEmoji")?.classList.toggle("active", _emojiPanelOpen);
+  if (_emojiPanelOpen && !document.getElementById("emojiGrid").innerHTML) _buildEmojiPicker();
+}
+
+function _closeEmojiPanel() {
+  _emojiPanelOpen = false;
+  document.getElementById("convEmojiPanel")?.classList.remove("open");
+  document.getElementById("btnEmoji")?.classList.remove("active");
+}
+
+// ── GIF (Tenor API) ──
+const TENOR_KEY = "LIVDSRZULELA"; // clé demo Tenor (usage non-commercial)
+
+async function _loadTrendingGifs() {
+  const grid = document.getElementById("gifGrid");
+  if (!grid) return;
+  grid.innerHTML = `<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px;">Chargement…</div>`;
+  try {
+    const r = await fetch(`https://tenor.googleapis.com/v2/featured?key=${TENOR_KEY}&limit=20&media_filter=gif`);
+    const data = await r.json();
+    _renderGifs(data.results || []);
+  } catch(e) {
+    grid.innerHTML = `<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px;">Impossible de charger les GIFs</div>`;
+  }
+}
+
+function _onGifSearch(query) {
+  clearTimeout(_gifSearchTimer);
+  if (!query.trim()) { _loadTrendingGifs(); return; }
+  _gifSearchTimer = setTimeout(() => _searchGifs(query.trim()), 400);
+}
+
+async function _searchGifs(q) {
+  const grid = document.getElementById("gifGrid");
+  if (!grid) return;
+  grid.innerHTML = `<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px;">Recherche…</div>`;
+  try {
+    const r = await fetch(`https://tenor.googleapis.com/v2/search?key=${TENOR_KEY}&q=${encodeURIComponent(q)}&limit=20&media_filter=gif`);
+    const data = await r.json();
+    _renderGifs(data.results || []);
+  } catch(e) {
+    grid.innerHTML = `<div style="padding:16px;text-align:center;color:var(--muted);font-size:12px;">Erreur de chargement</div>`;
+  }
+}
+
+function _renderGifs(results) {
+  const grid = document.getElementById("gifGrid");
+  if (!grid) return;
+  if (!results.length) { grid.innerHTML = `<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px;">Aucun GIF trouvé</div>`; return; }
+  grid.innerHTML = results.map(r => {
+    const url = r.media_formats?.gif?.url || r.media_formats?.tinygif?.url || "";
+    const preview = r.media_formats?.tinygif?.url || url;
+    return url ? `<div class="gif-item" onclick="_sendGif('${url.replace(/'/g,"\\'")}')"><img src="${preview}" loading="lazy" /></div>` : "";
+  }).join("");
+}
+
+function _sendGif(url) {
+  _closeEmojiPanel();
+  const fp = document.getElementById("conv-fullpage");
+  if (!fp) return;
+  const convId = fp.getAttribute("data-conv-id");
+  const displayName = fp.getAttribute("data-display-name");
+  if (!convId) return;
+  const convs = getConversations();
+  const c = convs.find(x => x.id === convId);
+  if (!c) return;
+  const msgId = "msg_" + uid();
+  if (!c.messages) c.messages = [];
+  c.messages.push({ id: msgId, from: "me", text: "", gif: url, at: Date.now() });
+  c.lastAt = Date.now();
+  saveConversations();
+  renderConvFpThread(c, displayName);
+  renderMessages();
+  if (typeof supa !== "undefined" && supa && MY_UID) {
+    supa.from("conv_messages").insert({ id: msgId, conv_id: convId, from_id: MY_UID, content: "[GIF]", created_at: new Date().toISOString() }).then(()=>{}).catch(()=>{});
+  }
+}
+
+// ── Pièces jointes ──
+function toggleAttachMenu() {
+  _closeEmojiPanel();
+  _attachMenuOpen = !_attachMenuOpen;
+  document.getElementById("convAttachMenu")?.classList.toggle("open", _attachMenuOpen);
+  document.getElementById("btnAttach")?.classList.toggle("active", _attachMenuOpen);
+}
+
+function _closeAttachMenu() {
+  _attachMenuOpen = false;
+  document.getElementById("convAttachMenu")?.classList.remove("open");
+  document.getElementById("btnAttach")?.classList.remove("active");
+}
+
+function triggerAttach(type) {
+  _closeAttachMenu();
+  const ids = { image: "attachImageFile", doc: "attachDocFile", audio: "attachAudioFile" };
+  document.getElementById(ids[type])?.click();
+}
+
+function handleAttachFile(input, kind) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  const fp = document.getElementById("conv-fullpage");
+  if (!fp) return;
+  const convId = fp.getAttribute("data-conv-id");
+  const displayName = fp.getAttribute("data-display-name");
+  if (!convId) return;
+  const convs = getConversations();
+  const c = convs.find(x => x.id === convId);
+  if (!c) return;
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const msgId = "msg_" + uid();
+    const isVideo = file.type.startsWith("video/");
+    const isAudio = file.type.startsWith("audio/") || kind === "audio";
+    const isDoc = kind === "doc";
+    const msg = { id: msgId, from: "me", text: "", at: Date.now() };
+
+    if (isVideo) { msg.video = e.target.result; msg.fileName = file.name; }
+    else if (isAudio) { msg.voiceData = e.target.result; msg.voiceDuration = 0; msg.isFile = true; msg.fileName = file.name; }
+    else if (isDoc) { msg.docData = e.target.result; msg.fileName = file.name; msg.fileSize = (file.size/1024).toFixed(0) + " KB"; msg.fileType = file.name.split(".").pop().toUpperCase(); }
+    else { msg.img = e.target.result; }
+
+    if (!c.messages) c.messages = [];
+    c.messages.push(msg);
+    c.lastAt = Date.now();
+    saveConversations();
+    renderConvFpThread(c, displayName);
+    renderMessages();
+  };
+  if (kind === "doc") reader.readAsDataURL(file);
+  else reader.readAsDataURL(file);
+  input.value = "";
+}
+
+function shareLocation() {
+  _closeAttachMenu();
+  if (!navigator.geolocation) { toast("Géolocalisation non supportée"); return; }
+  toast("Localisation en cours…");
+  navigator.geolocation.getCurrentPosition(function(pos) {
+    const lat = pos.coords.latitude.toFixed(5);
+    const lng = pos.coords.longitude.toFixed(5);
+    const fp = document.getElementById("conv-fullpage");
+    if (!fp) return;
+    const convId = fp.getAttribute("data-conv-id");
+    const displayName = fp.getAttribute("data-display-name");
+    if (!convId) return;
+    const convs = getConversations();
+    const c = convs.find(x => x.id === convId);
+    if (!c) return;
+    const url = `https://maps.google.com/?q=${lat},${lng}`;
+    const msgId = "msg_" + uid();
+    c.messages.push({ id: msgId, from: "me", text: `📍 Ma position : ${url}`, at: Date.now() });
+    c.lastAt = Date.now();
+    saveConversations();
+    renderConvFpThread(c, displayName);
+    renderMessages();
+    if (typeof supa !== "undefined" && supa && MY_UID) {
+      supa.from("conv_messages").insert({ id: msgId, conv_id: convId, from_id: MY_UID, content: `📍 Ma position : ${url}`, created_at: new Date().toISOString() }).then(()=>{}).catch(()=>{});
+    }
+  }, function() { toast("Impossible d'obtenir la position"); });
+}
+
+function openConvFiles() {
+  _closeAttachMenu();
+  const fp = document.getElementById("conv-fullpage");
+  if (!fp) return;
+  const convId = fp.getAttribute("data-conv-id");
+  const convs = getConversations();
+  const c = convs.find(x => x.id === convId);
+  if (!c) return;
+  const files = (c.messages || []).filter(m => m.img || m.video || m.docData || m.voiceData || m.gif);
+  const html = `
+    <span class="modal-close" onclick="closeModal()">×</span>
+    <div style="font-weight:800;font-size:16px;padding:4px 0 16px;">📁 Pièces jointes</div>
+    ${files.length === 0 ? '<div style="color:var(--muted);font-size:13px;text-align:center;padding:30px;">Aucune pièce jointe</div>' : `
+    <div class="conv-files-grid">
+      ${files.map(m => {
+        if (m.img) return `<div class="conv-file-card" onclick="closeModal();openFullImg('${m.img}')"><img src="${m.img}" style="width:100%;border-radius:8px;aspect-ratio:1;object-fit:cover;"/><div class="conv-file-name">Image</div></div>`;
+        if (m.video) return `<div class="conv-file-card"><div class="conv-file-icon">🎬</div><div class="conv-file-name">Vidéo</div></div>`;
+        if (m.gif) return `<div class="conv-file-card" onclick="window.open('${m.gif}','_blank')"><img src="${m.gif}" style="width:100%;border-radius:8px;aspect-ratio:1;object-fit:cover;"/><div class="conv-file-name">GIF</div></div>`;
+        if (m.docData) return `<div class="conv-file-card" onclick="downloadFile('${m.docData}','${escapeHtml(m.fileName||"fichier")}')"><div class="conv-file-icon">📄</div><div class="conv-file-name">${escapeHtml(m.fileName||"Fichier")}</div></div>`;
+        if (m.voiceData) return `<div class="conv-file-card"><div class="conv-file-icon">🎙️</div><div class="conv-file-name">Vocal</div></div>`;
+        return "";
+      }).join("")}
+    </div>`}
+  `;
+  openModal(html);
+}
+
+function openFullImg(src) {
+  const html = `<span class="modal-close" onclick="closeModal()">×</span><img src="${src}" style="width:100%;border-radius:12px;max-height:70vh;object-fit:contain;" />`;
+  openModal(html);
+}
+
+function downloadFile(dataUrl, name) {
+  const a = document.createElement("a");
+  a.href = dataUrl; a.download = name; a.click();
+}
+
+// ── Auto-resize textarea ──
+function autoResizeTextarea(el) {
+  el.style.height = "auto";
+  el.style.height = Math.min(el.scrollHeight, 120) + "px";
+}
+
+// ── Message vocal (MediaRecorder) ──
+let _mediaRecorder = null;
+let _audioChunks = [];
+let _voiceTimer = null;
+let _voiceSeconds = 0;
+let _voiceStream = null;
+let _isRecording = false;
+
+function startVoiceRecord() {
+  if (_isRecording) return;
+  _isRecording = true;
+  navigator.mediaDevices.getUserMedia({ audio: true }).then(function(stream) {
+    _voiceStream = stream;
+    _audioChunks = [];
+    _mediaRecorder = new MediaRecorder(stream);
+    _mediaRecorder.ondataavailable = function(e) { if (e.data.size > 0) _audioChunks.push(e.data); };
+    _mediaRecorder.onstop = function() { _processVoiceRecord(); };
+    _mediaRecorder.start(100);
+    _voiceSeconds = 0;
+    document.getElementById("voiceRecordBar").classList.add("active");
+    document.getElementById("btnVoice").classList.add("record-active");
+    _voiceTimer = setInterval(function() {
+      _voiceSeconds++;
+      const m = Math.floor(_voiceSeconds / 60), s = _voiceSeconds % 60;
+      const el = document.getElementById("voiceRecordTimer");
+      if (el) el.textContent = m + ":" + String(s).padStart(2,"0");
+      if (_voiceSeconds >= 120) stopVoiceRecord(); // max 2min
+    }, 1000);
+  }).catch(function() { _isRecording = false; toast("Microphone non autorisé"); });
+}
+
+function stopVoiceRecord() {
+  if (!_isRecording || !_mediaRecorder) return;
+  clearInterval(_voiceTimer);
+  _mediaRecorder.stop();
+  _voiceStream?.getTracks().forEach(t => t.stop());
+  document.getElementById("voiceRecordBar").classList.remove("active");
+  document.getElementById("btnVoice").classList.remove("record-active");
+  _isRecording = false;
+}
+
+function cancelVoiceRecord() {
+  if (!_mediaRecorder) return;
+  clearInterval(_voiceTimer);
+  _mediaRecorder.onstop = function() {};
+  try { _mediaRecorder.stop(); } catch(e) {}
+  _voiceStream?.getTracks().forEach(t => t.stop());
+  document.getElementById("voiceRecordBar").classList.remove("active");
+  document.getElementById("btnVoice").classList.remove("record-active");
+  _isRecording = false;
+  _audioChunks = [];
+  toast("Enregistrement annulé");
+}
+
+function _processVoiceRecord() {
+  if (!_audioChunks.length) return;
+  const blob = new Blob(_audioChunks, { type: "audio/webm" });
+  const duration = _voiceSeconds;
+  const fp = document.getElementById("conv-fullpage");
+  if (!fp) return;
+  const convId = fp.getAttribute("data-conv-id");
+  const displayName = fp.getAttribute("data-display-name");
+  if (!convId) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const convs = getConversations();
+    const c = convs.find(x => x.id === convId);
+    if (!c) return;
+    const msgId = "msg_" + uid();
+    c.messages.push({ id: msgId, from: "me", text: "", voiceData: e.target.result, voiceDuration: duration, at: Date.now() });
+    c.lastAt = Date.now();
+    saveConversations();
+    renderConvFpThread(c, displayName);
+    renderMessages();
+    if (typeof supa !== "undefined" && supa && MY_UID) {
+      supa.from("conv_messages").insert({ id: msgId, conv_id: convId, from_id: MY_UID, content: "[VOCAL " + duration + "s]", created_at: new Date().toISOString() }).then(()=>{}).catch(()=>{});
+    }
+  };
+  reader.readAsDataURL(blob);
+}
+
+// ── Render bubble audio ──
+function _renderVoiceBubble(m, isMe) {
+  const dur = m.voiceDuration || 0;
+  const durStr = Math.floor(dur/60) + ":" + String(dur%60).padStart(2,"0");
+  const audioId = "audio_" + (m.id || Math.random().toString(36).slice(2));
+  return `<div class="msg-audio-bubble">
+    <button class="msg-audio-play" onclick="_playVoice('${audioId}','${m.voiceData ? m.voiceData.replace(/'/g,"\\'").slice(0,30) : ""}','${m.id||""}')" data-audio-id="${audioId}">▶</button>
+    <div class="msg-audio-wave" onclick="_playVoice('${audioId}','','${m.id||""}')">
+      <div class="msg-audio-wave-fill" id="wf_${audioId}"></div>
+    </div>
+    <span class="msg-audio-duration" id="dur_${audioId}">${durStr}</span>
+    <audio id="${audioId}" src="${m.voiceData || ""}" style="display:none;" preload="metadata"></audio>
+  </div>`;
+}
+
+const _audioPlaying = {};
+function _playVoice(audioId, _unused, msgId) {
+  const audio = document.getElementById(audioId);
+  if (!audio) return;
+  if (!audio.paused) { audio.pause(); document.querySelector(`[data-audio-id="${audioId}"]`).textContent = "▶"; return; }
+  // Pause les autres
+  Object.keys(_audioPlaying).forEach(id => { if (id !== audioId) { const a = document.getElementById(id); if (a) a.pause(); document.querySelector(`[data-audio-id="${id}"]`).textContent = "▶"; } });
+  audio.play().then(() => {
+    document.querySelector(`[data-audio-id="${audioId}"]`).textContent = "⏸";
+    const wf = document.getElementById("wf_" + audioId);
+    const durEl = document.getElementById("dur_" + audioId);
+    const interval = setInterval(() => {
+      if (audio.paused || audio.ended) { clearInterval(interval); document.querySelector(`[data-audio-id="${audioId}"]`).textContent = "▶"; if (wf) wf.style.width = "0%"; return; }
+      if (wf && audio.duration) wf.style.width = (audio.currentTime / audio.duration * 100) + "%";
+      if (durEl && audio.duration) {
+        const rem = Math.ceil(audio.duration - audio.currentTime);
+        durEl.textContent = Math.floor(rem/60) + ":" + String(rem%60).padStart(2,"0");
+      }
+    }, 100);
+    _audioPlaying[audioId] = interval;
+  }).catch(()=>{});
+}
+
+// ── Paramètres conversation ──
+let _convSettingsId = null;
+
+function openConvSettings(convId) {
+  _convSettingsId = convId;
+  const convs = getConversations();
+  const c = convs.find(x => x.id === convId);
+  if (!c) return;
+  const panel = document.getElementById("convSettingsPanel");
+  const content = document.getElementById("convSettingsContent");
+  if (!panel || !content) return;
+
+  const muted = c._muted || false;
+  const wallpaper = c._wallpaper || "";
+  const fontSize = c._fontSize || "medium";
+
+  content.innerHTML = `
+    <div class="csetting-section">CONVERSATION</div>
+    <div class="csetting-item" onclick="_toggleMuteConv('${convId}')">
+      <div class="csetting-icon">🔔</div>
+      <div class="csetting-label">${muted ? "Activer les notifications" : "Couper les notifications"}</div>
+      <div class="csetting-toggle ${muted ? "" : "on"}" id="muteToggle"></div>
+    </div>
+    <div class="csetting-item" onclick="_changeConvWallpaper('${convId}')">
+      <div class="csetting-icon">🎨</div>
+      <div class="csetting-label">Fond de conversation</div>
+      <div class="csetting-value">${wallpaper || "Défaut"}</div>
+    </div>
+    <div class="csetting-section">AFFICHAGE</div>
+    <div class="csetting-item" onclick="_setConvFontSize('${convId}','small')">
+      <div class="csetting-icon">🔡</div>
+      <div class="csetting-label">Police petite</div>
+      ${fontSize==="small" ? '<div class="csetting-value">✓ Actif</div>' : ""}
+    </div>
+    <div class="csetting-item" onclick="_setConvFontSize('${convId}','medium')">
+      <div class="csetting-icon">Aa</div>
+      <div class="csetting-label">Police normale</div>
+      ${fontSize==="medium" ? '<div class="csetting-value">✓ Actif</div>' : ""}
+    </div>
+    <div class="csetting-item" onclick="_setConvFontSize('${convId}','large')">
+      <div class="csetting-icon">🔠</div>
+      <div class="csetting-label">Police grande</div>
+      ${fontSize==="large" ? '<div class="csetting-value">✓ Actif</div>' : ""}
+    </div>
+    <div class="csetting-section">ACTIONS</div>
+    <div class="csetting-item" onclick="_clearConvMessages('${convId}')">
+      <div class="csetting-icon">🗑️</div>
+      <div class="csetting-label" style="color:var(--muted);">Effacer les messages</div>
+    </div>
+    <div class="csetting-item" onclick="_exportConv('${convId}')">
+      <div class="csetting-icon">📤</div>
+      <div class="csetting-label">Exporter la conversation</div>
+    </div>
+    ${!c.isGroup ? `<div class="csetting-item" onclick="_blockUser('${c.userId}')">
+      <div class="csetting-icon">🚫</div>
+      <div class="csetting-label" style="color:#ef4444;">Bloquer cet utilisateur</div>
+    </div>` : ""}
+    <div class="csetting-item" onclick="_deleteConv('${convId}')">
+      <div class="csetting-icon">❌</div>
+      <div class="csetting-label" style="color:#ef4444;">Supprimer la conversation</div>
+    </div>
+  `;
+  panel.classList.add("open");
+}
+
+function closeConvSettings() {
+  document.getElementById("convSettingsPanel")?.classList.remove("open");
+}
+
+function _toggleMuteConv(convId) {
+  const convs = getConversations();
+  const c = convs.find(x => x.id === convId);
+  if (!c) return;
+  c._muted = !c._muted;
+  saveConversations();
+  openConvSettings(convId);
+  toast(c._muted ? "Notifications coupées" : "Notifications activées");
+}
+
+const _WALLPAPERS = ["Défaut","🌸 Rose","🌊 Bleu","🌿 Vert","🌙 Sombre","⭐ Étoiles"];
+function _changeConvWallpaper(convId) {
+  const convs = getConversations();
+  const c = convs.find(x => x.id === convId);
+  if (!c) return;
+  const current = _WALLPAPERS.indexOf(c._wallpaper || "Défaut");
+  c._wallpaper = _WALLPAPERS[(current + 1) % _WALLPAPERS.length];
+  const thread = document.getElementById("convFpThread");
+  _applyConvWallpaper(c, thread);
+  saveConversations();
+  openConvSettings(convId);
+}
+
+const _WALLPAPER_STYLES = {
+  "Défaut": "", "🌸 Rose": "background:linear-gradient(135deg,#fce7f3,#fdf2f8);",
+  "🌊 Bleu": "background:linear-gradient(135deg,#e0f2fe,#bae6fd);",
+  "🌿 Vert": "background:linear-gradient(135deg,#d1fae5,#a7f3d0);",
+  "🌙 Sombre": "background:#1e1b36;",
+  "⭐ Étoiles": "background:radial-gradient(circle at 20% 20%,#3730a3,#1e1b4b);",
+};
+function _applyConvWallpaper(c, thread) {
+  if (!thread) return;
+  thread.style.cssText = (_WALLPAPER_STYLES[c._wallpaper] || "") + ";flex:1;overflow-y:auto;padding:14px 14px 8px;display:flex;flex-direction:column;gap:2px;-webkit-overflow-scrolling:touch;";
+}
+
+function _setConvFontSize(convId, size) {
+  const convs = getConversations();
+  const c = convs.find(x => x.id === convId);
+  if (!c) return;
+  c._fontSize = size;
+  const fp = document.getElementById("convFpThread");
+  if (fp) fp.style.fontSize = size === "small" ? "12px" : size === "large" ? "16px" : "14px";
+  saveConversations();
+  openConvSettings(convId);
+}
+
+function _clearConvMessages(convId) {
+  if (!confirm("Effacer tous les messages de cette conversation ?")) return;
+  const convs = getConversations();
+  const c = convs.find(x => x.id === convId);
+  if (!c) return;
+  c.messages = [];
+  c.lastAt = Date.now();
+  saveConversations();
+  const fp = document.getElementById("conv-fullpage");
+  const displayName = fp?.getAttribute("data-display-name") || "";
+  renderConvFpThread(c, displayName);
+  closeConvSettings();
+  toast("Messages effacés");
+}
+
+function _exportConv(convId) {
+  const convs = getConversations();
+  const c = convs.find(x => x.id === convId);
+  if (!c) return;
+  const lines = (c.messages || []).map(m => {
+    const who = m.from === "me" ? "Moi" : (m.fromName || c.userName || "Autre");
+    const time = m.at ? new Date(m.at).toLocaleString("fr-FR") : "";
+    const text = m.text || (m.gif ? "[GIF]") || (m.voiceData ? "[Vocal]") || (m.img ? "[Image]") || (m.video ? "[Vidéo]") || (m.docData ? "[Fichier: " + (m.fileName || "") + "]") || "";
+    return `[${time}] ${who}: ${text}`;
+  }).join("\n");
+  const blob = new Blob([lines], { type: "text/plain" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "conversation_" + (c.userName || c.groupName || "export") + ".txt";
+  a.click();
+  toast("Conversation exportée");
+}
+
+function _blockUser(userId) {
+  if (!confirm("Bloquer cet utilisateur ?")) return;
+  toast("Utilisateur bloqué (simulation MVP)");
+  closeConvSettings();
+}
+
+function _deleteConv(convId) {
+  if (!confirm("Supprimer cette conversation ?")) return;
+  conversationsState = (conversationsState || []).filter(c => c.id !== convId);
+  saveConversationsNow();
+  closeConvSettings();
+  closeConversation();
+  toast("Conversation supprimée");
+}
+
+// ── Fermer les panneaux en cliquant ailleurs ──
+document.addEventListener("click", function(e) {
+  if (_emojiPanelOpen && !e.target.closest("#convEmojiPanel") && !e.target.closest("#btnEmoji")) _closeEmojiPanel();
+  if (_attachMenuOpen && !e.target.closest("#convAttachMenu") && !e.target.closest("#btnAttach")) _closeAttachMenu();
+});
+
+// ── Modifier renderConvFpThread pour afficher GIF, video, doc, voice ──
+// (patch appliqué via _renderMsgContent)
+function _renderMsgContent(m) {
+  if (m.gif) return `<img src="${m.gif}" style="max-width:220px;max-height:180px;border-radius:10px;display:block;" loading="lazy" />`;
+  if (m.voiceData && !m.isFile) return _renderVoiceBubble(m, m.from === "me");
+  if (m.video) return `<video src="${m.video}" controls playsinline preload="metadata" style="max-width:220px;border-radius:10px;display:block;"></video>`;
+  if (m.img) return `<img src="${m.img}" style="max-width:220px;max-height:200px;border-radius:10px;display:block;cursor:pointer;" onclick="openFullImg('${m.img}')" />`;
+  if (m.docData) return `<div style="display:flex;align-items:center;gap:8px;background:rgba(255,255,255,0.15);border-radius:10px;padding:8px 12px;cursor:pointer;" onclick="downloadFile('${m.docData}','${escapeHtml(m.fileName||"fichier")}')"><span style="font-size:24px;">${_docIcon(m.fileType)}</span><div><div style="font-size:12px;font-weight:700;">${escapeHtml(m.fileName||"Fichier")}</div><div style="font-size:10px;opacity:0.7;">${m.fileType||""} · ${m.fileSize||""}</div></div></div>`;
+  if (m.text && m.text.startsWith("📍")) return `<a href="${m.text.split(": ")[1]}" target="_blank" style="color:inherit;text-decoration:underline;">${escapeHtml(m.text)}</a>`;
+  return m.text ? escapeHtml(m.text) : "";
+}
+
+function _docIcon(ext) {
+  const map = { PDF:"📕", DOC:"📘", DOCX:"📘", XLS:"📗", XLSX:"📗", TXT:"📄", ZIP:"🗜️", MP3:"🎵", WAV:"🎵" };
+  return map[(ext||"").toUpperCase()] || "📄";
+}
+</script>
+
 <!-- ======== PWA INSTALL OVERLAY ======== -->
 <div id="pwa-overlay" style="display:none;">
   <div id="pwa-sheet">
