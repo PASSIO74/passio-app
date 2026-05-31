@@ -8968,14 +8968,10 @@ function renderFeed() {
   let allPosts = allFeedPosts().filter(function(p) { return p.type !== "vlog"; });
 
   // ── Filtre passions : multi-select (OU entre passions) ──
-  // Par défaut (rien sélectionné) : afficher uniquement les passions des profils de l'utilisateur.
-  // Quand un ou plusieurs profils sont sélectionnés : affiner à ces passions-là.
-  const _userPassions = new Set((state.user.profiles || []).map(function(pr) { return pr.passion; }));
+  // Aucun profil sélectionné = fil vide. Sinon filtre sur les passions cochées.
   let postsByPassion = _activeFeedPassions.size > 0
     ? allPosts.filter(function(p) { return _activeFeedPassions.has(p.passion); })
-    : _userPassions.size > 0
-      ? allPosts.filter(function(p) { return _userPassions.has(p.passion); })
-      : allPosts;
+    : [];
 
   // ── Filtre mood : single select sur les posts déjà filtrés par passion ──
   let posts = mood !== "all"
