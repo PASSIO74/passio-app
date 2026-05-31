@@ -11745,6 +11745,9 @@ function openConversation(convId) {
 
   renderMessages();
 
+  // Typing indicator realtime
+  _subscribeTyping(convId);
+
   // Charger les vrais messages depuis Supabase + activer le realtime
   if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
     supaLoadMessages(convId).then(supaMessages => {
@@ -11752,15 +11755,15 @@ function openConversation(convId) {
       const convs2 = getConversations();
       const c2 = convs2.find(x => x.id === convId);
       if (!c2) return;
+      // Déduplication stricte par ID uniquement
       const supaIds = new Set(supaMessages.map(m => m.id).filter(Boolean));
       const localOnly = (c2.messages || []).filter(m => !m.id || !supaIds.has(m.id));
       c2.messages = [...supaMessages, ...localOnly].sort((a, b) => (a.at || 0) - (b.at || 0));
+      // Marquer comme "Lu" côté expéditeur : l'autre a ouvert → ses messages sont lus
+      c2._otherRead = true;
       saveConversations();
       renderConvFpThread(c2, displayName);
     }).catch(() => {});
-
-    // Le canal global realtime:my_messages dans supaSubscribe() gère la réception
-    // Pas besoin d'un canal supplémentaire par conversation
   }
 }
 
