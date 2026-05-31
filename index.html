@@ -11830,8 +11830,11 @@ function renderMessages() {
     const seedUsersArr = state.seed.users || [];
     const u = seedUsersArr.find(x => x.id === c.userId) || { name: "Inconnu", avatar: "#7c3aed", profileEmoji: "🙂" };
     const lastMsg = c.messages && c.messages.length ? c.messages[c.messages.length - 1] : null;
+    const _previewContent = lastMsg
+      ? (lastMsg.gif ? "🎞 GIF" : lastMsg.voiceData ? "🎙 Message vocal" : lastMsg.video ? "🎬 Vidéo" : lastMsg.img ? "📷 Photo" : lastMsg.docData ? "📄 " + (lastMsg.fileName || "Fichier") : lastMsg.text || "")
+      : "";
     const previewText = lastMsg
-      ? (lastMsg.from === "me" ? "Toi : " : "") + lastMsg.text
+      ? (lastMsg.from === "me" ? "Toi : " : "") + _previewContent
       : "Démarrer la conversation…";
 
     // Affichage groupe vs conversation simple
