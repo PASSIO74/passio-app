@@ -11515,11 +11515,84 @@ function renderMessageFilters() {
 }
 
 function openNewMessage() {
-  var search = document.getElementById("msgUserSearch");
-  if (search) { search.focus(); search.value = ""; }
-  // Hide previous results
-  var results = document.getElementById("msgUserResults");
-  if (results) { results.style.display = "none"; results.innerHTML = ""; }
+  var html = `
+    <span class="modal-close" onclick="closeModal()">×</span>
+    <div style="font-weight:800;font-size:16px;margin-bottom:14px;">✉️ Nouveau message</div>
+    <div style="position:relative;">
+      <input id="_nmSearch" type="text" class="input" placeholder="🔍 Chercher un utilisateur…" autocomplete="off"
+        style="width:100%;box-sizing:border-box;padding-right:40px;"
+        oninput="_nmDoSearch(this.value)" />
+    </div>
+    <div id="_nmResults" style="margin-top:8px;max-height:320px;overflow-y:auto;"></div>
+  `;
+  openModal(html);
+  setTimeout(function() {
+    var inp = document.getElementById("_nmSearch");
+    if (inp) inp.focus();
+    _nmDoSearch(""); // afficher les contacts récents immédiatement
+  }, 80);
+}
+
+function _nmDoSearch(q) {
+  var box = document.getElementById("_nmResults");
+  if (!box) return;
+  q = (q || "").trim().toLowerCase();
+
+  // Contacts récents (conversations existantes)
+  var convs = getConversations();
+  var recentUsers = convs.filter(function(c) { return !c.isGroup && c.userId; })
+    .map(function(c) { return { id: c.userId, name: c.userName || "Passionné", emoji: c.userEmoji || "✨", color: c.userColor || "#8b5cf6", src: "conv" }; });
+
+  // Seed users
+  var seedUsers = ((state.seed && state.seed.users) ? state.seed.users : []).map(function(u) {
+    return { id: u.id, name: u.name || "Passionné", emoji: u.profileEmoji || "✨", color: u.avatar || "#8b5cf6", passion: u.passion, src: "seed" };
+  });
+
+  var all = recentUsers.concat(seedUsers.filter(function(su) {
+    return !recentUsers.find(function(r) { return r.id === su.id; });
+  }));
+
+  var matches = q ? all.filter(function(u) { return u.name.toLowerCase().includes(q); }) : all;
+  matches = matches.slice(0, 10);
+
+  if (matches.length === 0) {
+    box.innerHTML = `<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px;">Aucun utilisateur trouvé</div>`;
+    // Lancer aussi la recherche Supabase si query non vide
+    if (q && typeof supaSearchUsers === "function" && supa && MY_UID) {
+      supaSearchUsers(q).then(function(res) {
+        if (!res || !res.length) return;
+        var html2 = res.slice(0,8).map(function(u) { return _nmUserRow(u.id, u.username||"Passionné", u.emoji||"✨", u.color||"#8b5cf6"); }).join("");
+        if (box) box.innerHTML = html2;
+      }).catch(function(){});
+    }
+    return;
+  }
+
+  box.innerHTML = matches.map(function(u) { return _nmUserRow(u.id, u.name, u.emoji, u.color); }).join("");
+
+  // Compléter avec Supabase en arrière-plan si query
+  if (q && typeof supaSearchUsers === "function" && supa && MY_UID) {
+    supaSearchUsers(q).then(function(res) {
+      if (!res || !box) return;
+      var extra = res.filter(function(u) { return !matches.find(function(m) { return m.id === u.id; }); }).slice(0,5);
+      if (extra.length) box.innerHTML += extra.map(function(u) { return _nmUserRow(u.id, u.username||"Passionné", u.emoji||"✨", u.color||"#8b5cf6"); }).join("");
+    }).catch(function(){});
+  }
+}
+
+function _nmUserRow(id, name, emoji, color) {
+  var esc = escapeHtml(name);
+  return `<div onclick="_nmPick('${id}','${esc}','${emoji}','${color}')"
+    style="display:flex;align-items:center;gap:12px;padding:11px 4px;cursor:pointer;border-bottom:1px solid var(--border);">
+    <div style="width:40px;height:40px;border-radius:14px;background:${color};display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">${emoji}</div>
+    <div style="font-weight:700;font-size:14px;color:var(--text);flex:1;">${esc}</div>
+    <div style="font-size:12px;color:var(--accent);font-weight:700;">Message →</div>
+  </div>`;
+}
+
+function _nmPick(id, name, emoji, color) {
+  closeModal();
+  startDirectMessage(id, name, emoji, color);
 }
 
 function searchUsers(query) {
