@@ -13546,13 +13546,10 @@ function renderProfileStrip() {
 }
 
 function toggleProfileFilter(passionId) {
-  // Mono-sélection exclusive (comme le filtre mood) :
-  // recliquer sur le profil actif → tout déselectionner
-  // cliquer sur un autre profil → sélectionner uniquement celui-là
   if (_activeFeedPassions.has(passionId)) {
-    _activeFeedPassions = new Set(); // deselect → retour "Tout"
+    _activeFeedPassions.delete(passionId);
   } else {
-    _activeFeedPassions = new Set([passionId]); // sélection exclusive
+    _activeFeedPassions.add(passionId);
   }
   // Auto-reset le mood si le mood actuel n'a plus de contenu dans la nouvelle sélection
   var mood = state.currentMood || "all";
