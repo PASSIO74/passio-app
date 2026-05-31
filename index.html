@@ -18431,27 +18431,23 @@ function _processVoiceRecord() {
 }
 
 // ── Render bubble audio ──
+// Store global pour les données audio (évite les data-URI géants dans le HTML)
+const _voiceStore = {};
+
 function _renderVoiceBubble(m) {
   const dur = m.voiceDuration || 0;
   const durStr = Math.floor(dur / 60) + ":" + String(dur % 60).padStart(2, "0");
-  // ID unique sans caractères problématiques
-  const audioId = "aud_" + (m.id || "").replace(/[^a-z0-9]/gi, "") + "_" + Math.floor(Math.random() * 9999);
-  // Construire avec DOM (pas d'inline onclick pour éviter les erreurs de quotes sur les data URI)
-  const wrap = document.createElement("div");
-  wrap.className = "msg-audio-bubble";
-  wrap.setAttribute("data-voice-id", audioId);
-  wrap.innerHTML = `
+  const audioId = "aud_" + (m.id || uid()).replace(/[^a-z0-9_]/gi, "");
+  // Stocker la data-URI dans le store, pas dans le HTML
+  if (m.voiceData) _voiceStore[audioId] = m.voiceData;
+  return `<div class="msg-audio-bubble" data-voice-id="${audioId}">
     <button class="msg-audio-play" data-audio-id="${audioId}">▶</button>
-    <div class="msg-audio-wave"><div class="msg-audio-wave-fill" id="wf_${audioId}"></div></div>
+    <div class="msg-audio-wave" data-audio-id="${audioId}">
+      <div class="msg-audio-wave-fill" id="wf_${audioId}"></div>
+    </div>
     <span class="msg-audio-duration" id="dur_${audioId}">${durStr}</span>
-    <audio id="${audioId}" preload="metadata" style="display:none;"></audio>`;
-  // Charger l'audio via JS pour éviter les limites de longueur d'attribut
-  const audio = wrap.querySelector("audio");
-  if (m.voiceData) audio.src = m.voiceData;
-  // Clic sur play/wave → délégation
-  wrap.querySelector(".msg-audio-play").addEventListener("click", function() { _playVoice(audioId); });
-  wrap.querySelector(".msg-audio-wave").addEventListener("click", function() { _playVoice(audioId); });
-  return wrap.outerHTML;
+    <audio id="${audioId}" preload="none" style="display:none;"></audio>
+  </div>`;
 }
 
 const _audioPlaying = {};
