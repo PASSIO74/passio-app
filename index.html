@@ -18431,18 +18431,27 @@ function _processVoiceRecord() {
 }
 
 // ── Render bubble audio ──
-function _renderVoiceBubble(m, isMe) {
+function _renderVoiceBubble(m) {
   const dur = m.voiceDuration || 0;
-  const durStr = Math.floor(dur/60) + ":" + String(dur%60).padStart(2,"0");
-  const audioId = "audio_" + (m.id || Math.random().toString(36).slice(2));
-  return `<div class="msg-audio-bubble">
-    <button class="msg-audio-play" onclick="_playVoice('${audioId}','${m.voiceData ? m.voiceData.replace(/'/g,"\\'").slice(0,30) : ""}','${m.id||""}')" data-audio-id="${audioId}">▶</button>
-    <div class="msg-audio-wave" onclick="_playVoice('${audioId}','','${m.id||""}')">
-      <div class="msg-audio-wave-fill" id="wf_${audioId}"></div>
-    </div>
+  const durStr = Math.floor(dur / 60) + ":" + String(dur % 60).padStart(2, "0");
+  // ID unique sans caractères problématiques
+  const audioId = "aud_" + (m.id || "").replace(/[^a-z0-9]/gi, "") + "_" + Math.floor(Math.random() * 9999);
+  // Construire avec DOM (pas d'inline onclick pour éviter les erreurs de quotes sur les data URI)
+  const wrap = document.createElement("div");
+  wrap.className = "msg-audio-bubble";
+  wrap.setAttribute("data-voice-id", audioId);
+  wrap.innerHTML = `
+    <button class="msg-audio-play" data-audio-id="${audioId}">▶</button>
+    <div class="msg-audio-wave"><div class="msg-audio-wave-fill" id="wf_${audioId}"></div></div>
     <span class="msg-audio-duration" id="dur_${audioId}">${durStr}</span>
-    <audio id="${audioId}" src="${m.voiceData || ""}" style="display:none;" preload="metadata"></audio>
-  </div>`;
+    <audio id="${audioId}" preload="metadata" style="display:none;"></audio>`;
+  // Charger l'audio via JS pour éviter les limites de longueur d'attribut
+  const audio = wrap.querySelector("audio");
+  if (m.voiceData) audio.src = m.voiceData;
+  // Clic sur play/wave → délégation
+  wrap.querySelector(".msg-audio-play").addEventListener("click", function() { _playVoice(audioId); });
+  wrap.querySelector(".msg-audio-wave").addEventListener("click", function() { _playVoice(audioId); });
+  return wrap.outerHTML;
 }
 
 const _audioPlaying = {};
