@@ -17255,18 +17255,22 @@ function attachMsgPhoto(input) {
   if (!fullpage) return;
   var cid = fullpage.getAttribute("data-conv-id");
   if (!cid) return;
-  var convs = loadConversations();
+  var convs = getConversations();
   var conv = convs.find(function(c){ return c.id === cid; });
   if (!conv) return;
   var reader = new FileReader();
   reader.onload = function(e) {
     if (!conv.messages) conv.messages = [];
-    conv.messages.push({ from:"me", text:"", img: e.target.result, at: Date.now() });
+    var msgId = "msg_" + uid();
+    conv.messages.push({ id: msgId, from:"me", text:"", img: e.target.result, at: Date.now() });
     conv.lastAt = Date.now();
-    saveConversations(convs);
-    renderConvFpThread(conv, conv.userName || conv.name || "Conversation");
+    saveConversations();
+    var displayName = fullpage.getAttribute("data-display-name") || conv.userName || "Conversation";
+    renderConvFpThread(conv, displayName);
+    renderMessages();
   };
   reader.readAsDataURL(file);
+  input.value = "";
 }
 
 // Profil chips dans feed
