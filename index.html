@@ -17037,82 +17037,57 @@ async function supaInsertNotif(toUserId, kind, refId, content) {
 
 // ---- TEMPS RÉEL — abonnements globaux ----
 function supaSubscribe() {
-  // ── Réception de messages : abonnement global sur conv_messages ──
+  // ── Canal global conv_messages : gère UNIQUEMENT les convs en arrière-plan ──
+  // Les messages de la conv ouverte sont gérés par _supaConvSpecificChannel (filtré, plus rapide)
   supa.channel("realtime:my_messages")
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "conv_messages" }, async payload => {
       const r = payload.new;
       if (!r || !r.conv_id) return;
-      if (r.from_id === MY_UID) return; // on a déjà ajouté localement
+      if (r.from_id === MY_UID) return; // déjà ajouté en local à l'envoi
 
-      // Vérifier que cette conv m'appartient (je suis membre)
+      // Si la conv est ouverte, le canal spécifique s'en occupe — on évite le double traitement
+      if (window._openedConvId === r.conv_id) return;
+
       var convs = getConversations();
       var conv = convs.find(c => c.id === r.conv_id);
 
       if (!conv) {
-        // Conversation inconnue localement → peut être une nouvelle conv initiée par l'autre
-        // Vérifier que je suis bien membre de cette conv
+        // Nouvelle conv inconnue localement → vérifier membership puis créer
         try {
           const { data: membership } = await supa.from("conv_members")
             .select("conv_id").eq("conv_id", r.conv_id).eq("user_id", MY_UID).single();
-          if (!membership) return; // je ne suis pas membre, ignorer
-
-          // Charger la conv complète depuis Supabase
+          if (!membership) return;
           const { data: convData } = await supa.from("conversations").select("*").eq("id", r.conv_id).single();
           const { data: members } = await supa.from("conv_members")
             .select("user_id, profiles(username,emoji,color)").eq("conv_id", r.conv_id);
           const other = (members || []).find(m => m.user_id !== MY_UID);
+          if (other?.profiles) _profileCache.set(other.user_id, { username: other.profiles.username, emoji: other.profiles.emoji, color: other.profiles.color });
           conv = {
-            id: r.conv_id,
-            isGroup: convData?.is_group || false,
-            groupName: convData?.group_name || null,
-            passion: null,
-            userId: other?.user_id || r.from_id,
-            userEmoji: other?.profiles?.emoji || "✨",
-            userColor: other?.profiles?.color || "#8b5cf6",
+            id: r.conv_id, isGroup: convData?.is_group || false, groupName: convData?.group_name || null,
+            passion: null, userId: other?.user_id || r.from_id,
+            userEmoji: other?.profiles?.emoji || "✨", userColor: other?.profiles?.color || "#8b5cf6",
             userName: other?.profiles?.username || "Passionné",
             userIds: (members || []).map(m => m.user_id),
-            lastAt: new Date(r.created_at).getTime(),
-            unread: 0,
-            messages: [],
-            fromSupabase: true,
+            lastAt: new Date(r.created_at).getTime(), unread: 0, messages: [], fromSupabase: true,
           };
           convs.unshift(conv);
         } catch(e) { return; }
       }
 
-      // Charger le profil de l'expéditeur
-      var fromName = conv.userName || "Passionné", fromEmoji = conv.userEmoji || "✨";
-      try {
-        const { data: prof } = await supa.from("profiles").select("username,emoji").eq("id", r.from_id).single();
-        if (prof) { fromName = prof.username || fromName; fromEmoji = prof.emoji || fromEmoji; }
-      } catch(e) {}
+      // Profil depuis cache — 0 requête Supabase si déjà connu
+      const prof = await _fetchProfile(r.from_id);
+      const newMsg = { id: r.id, from: r.from_id, fromName: prof.username, fromEmoji: prof.emoji, text: r.content, at: new Date(r.created_at).getTime() };
 
-      const newMsg = { id: r.id, from: r.from_id, fromName, fromEmoji, text: r.content, at: new Date(r.created_at).getTime() };
-
-      // Éviter les doublons
       if (!conv.messages) conv.messages = [];
-      if (conv.messages.find(m => m.id === r.id)) return;
-
+      if (conv.messages.find(m => m.id === r.id)) return; // doublon
       conv.messages.push(newMsg);
       conv.lastAt = newMsg.at;
-
-      // Incrémenter unread si la conv n'est pas ouverte
-      const openConvId = window._openedConvId || null;
-      if (openConvId !== r.conv_id) {
-        conv.unread = (conv.unread || 0) + 1;
-        _playMsgSound(); // son de notification
-      }
+      conv.unread = (conv.unread || 0) + 1;
+      _playMsgSound();
 
       conversationsState = convs;
       saveConversations();
-
-      // Rafraîchir la liste des conversations (conv remonte en haut)
       try { renderMessages(); } catch(e) {}
-
-      // Si la conv est ouverte, mettre à jour le thread
-      if (openConvId === r.conv_id) {
-        try { renderConvFpThread(conv, conv.userName || conv.groupName || "Passionné"); } catch(e) {}
-      }
     })
     .subscribe();
 
