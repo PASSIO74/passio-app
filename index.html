@@ -17014,19 +17014,7 @@ async function supaLoadMyConversations() {
   } catch(e) { return []; }
 }
 
-function supaSubscribeMessages(convId, onMessage) {
-  if (_supaConvChannel) { supa.removeChannel(_supaConvChannel); _supaConvChannel = null; }
-  _supaConvChannel = supa.channel("conv:" + convId)
-    .on("postgres_changes", { event: "INSERT", schema: "public", table: "conv_messages", filter: `conv_id=eq.${convId}` },
-      async payload => {
-        const r = payload.new;
-        if (r.from_id === MY_UID) return;
-        try {
-          const { data: prof } = await supa.from("profiles").select("username,emoji").eq("id", r.from_id).single();
-          onMessage({ id: r.id, from: r.from_id, fromName: prof?.username || "Passionné", fromEmoji: prof?.emoji || "✨", text: r.content, at: new Date(r.created_at).getTime() });
-        } catch(e) {}
-      }).subscribe();
-}
+// supaSubscribeMessages() remplacée par _supaConvSpecificChannel() — voir plus haut
 
 // ---- NOTIFICATIONS ----
 async function supaInsertNotif(toUserId, kind, refId, content) {
