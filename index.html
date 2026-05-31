@@ -18061,16 +18061,16 @@ function insertEmoji(e) {
 }
 
 function switchEmojiTab(tab, btn) {
-  document.querySelectorAll(".emoji-tab").forEach(b => b.classList.remove("active"));
+  document.querySelectorAll(".emoji-tab").forEach(function(b) { b.classList.remove("active"); });
   if (btn) btn.classList.add("active");
-  const emojiContent = document.getElementById("emojiTabContent");
-  const gifContent   = document.getElementById("gifTabContent");
+  var emojiContent = document.getElementById("emojiTabContent");
+  var gifContent   = document.getElementById("gifTabContent");
   if (!emojiContent || !gifContent) return;
   if (tab === "emoji") {
-    emojiContent.style.display = "flex";
+    emojiContent.classList.remove("hidden");
     gifContent.classList.remove("visible");
   } else {
-    emojiContent.style.display = "none";
+    emojiContent.classList.add("hidden");
     gifContent.classList.add("visible");
     if (!gifContent._loaded) { gifContent._loaded = true; _loadTrendingGifs(); }
   }
