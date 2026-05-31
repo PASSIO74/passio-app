@@ -18087,9 +18087,13 @@ function toggleEmojiPanel() {
   if (_emojiPanelOpen) {
     const grid = document.getElementById("emojiGrid");
     if (grid && !grid.hasChildNodes()) _buildEmojiPicker();
-    // S'assurer que l'onglet emoji est actif par défaut
+    // Réinitialiser sur l'onglet emoji (enlever hidden si on avait basculé sur GIF)
     const emojiTab = document.getElementById("emojiTabContent");
-    if (emojiTab) emojiTab.style.display = "flex";
+    const gifTab   = document.getElementById("gifTabContent");
+    if (emojiTab) emojiTab.classList.remove("hidden");
+    if (gifTab)   gifTab.classList.remove("visible");
+    // Réinitialiser les boutons onglet
+    document.querySelectorAll(".emoji-tab").forEach(function(b, i) { b.classList.toggle("active", i === 0); });
   }
 }
 
