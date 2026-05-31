@@ -11268,11 +11268,12 @@ function deduplicateConversations(convs) {
       seen[key] = c;
       result.push(c);
     } else {
-      // Fusionner les messages de la conv en double dans la conv principale
+      // Fusionner les messages par ID uniquement (plus de comparaison text+timestamp fragile)
       var main = seen[key];
-      var extraMsgs = (c.messages || []).filter(m => !(main.messages||[]).find(x => x.id === m.id || (x.text === m.text && Math.abs(x.at - m.at) < 2000)));
+      var mainIds = new Set((main.messages||[]).map(function(x){ return x.id; }).filter(Boolean));
+      var extraMsgs = (c.messages || []).filter(function(m){ return m.id && !mainIds.has(m.id); });
       if (extraMsgs.length) {
-        main.messages = [...(main.messages||[]), ...extraMsgs].sort((a,b) => a.at - b.at);
+        main.messages = [...(main.messages||[]), ...extraMsgs].sort(function(a,b){ return (a.at||0)-(b.at||0); });
       }
     }
   }
