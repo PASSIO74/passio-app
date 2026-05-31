@@ -11922,15 +11922,20 @@ function openConversation(convId) {
       <button class="conv-action-btn" onclick="startCall('${convId}', 'video')" title="Appel vidéo">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 10.5 V7 c0-0.55-0.45-1-1-1 H4 c-0.55 0-1 0.45-1 1 v10 c0 0.55 0.45 1 1 1 h12 c0.55 0 1-0.45 1-1 v-3.5 l4 4 v-11 l-4 4 z"/></svg>
       </button>
+      <button class="conv-action-btn" onclick="openConvSettings('${convId}')" title="Paramètres">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
     </div>`;
 
-  // ── Champ de saisie ──
+  // ── Champ de saisie (textarea) ──
   const inp = document.getElementById("convFpInput");
   const btn = document.getElementById("convFpSendBtn");
   if (inp) {
     inp.value = "";
-    inp.onkeypress = e => { if (e.key === "Enter") sendMessageFp(convId, displayName); };
-    inp.oninput = null;
+    inp.style.height = "auto";
+    inp.onkeydown = function(e) {
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessageFp(convId, displayName); }
+    };
   }
   if (btn) btn.onclick = () => sendMessageFp(convId, displayName);
 
