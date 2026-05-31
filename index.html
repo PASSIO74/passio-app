@@ -17295,19 +17295,21 @@ async function supaInit() {
     if (supaConvs && supaConvs.length) {
       const localConvs = getConversations();
       const supaConvIds = new Set(supaConvs.map(c => c.id));
-      // Garder les convs locales non-seed qui ne sont pas dans Supabase (DMs offline)
       const localOnly = localConvs.filter(c => !supaConvIds.has(c.id) && !SEED_CONVERSATIONS.find(s => s.id === c.id));
       const merged = [...supaConvs, ...localOnly];
       conversationsState = deduplicateConversations(merged);
+      _primeProfileCache(conversationsState); // pré-remplir cache → 0 requête lors de la réception
       saveConversations();
     } else {
-      // Même sans Supabase, dédupliquer ce qui est en localStorage
       conversationsState = deduplicateConversations(getConversations());
+      _primeProfileCache(conversationsState);
       saveConversations();
     }
     saveState();
     try { renderEverything(); } catch(e) { console.warn("supaInit render error:", e); }
     try { supaSubscribe(); } catch(e) {}
+    // Sauvegarder immédiatement avant fermeture de page (flush le debounce)
+    window.addEventListener("beforeunload", saveConversationsNow, { once: false });
   } catch(e) { console.warn("supaInit error:", e); }
 }
 
