@@ -11977,6 +11977,40 @@ function _subscribeTyping(convId) {
     .subscribe();
 }
 
+// Canal Supabase filtré par conv_id (réception instantanée sans aller-retour JS)
+let _supaConvChannel = null;
+function _supaConvSpecificChannel(convId, displayName) {
+  if (typeof supa === "undefined" || !supa) return;
+  if (_supaConvChannel) { try { supa.removeChannel(_supaConvChannel); } catch(e) {} _supaConvChannel = null; }
+  _supaConvChannel = supa.channel("conv_specific:" + convId)
+    .on("postgres_changes", {
+      event: "INSERT", schema: "public", table: "conv_messages",
+      filter: "conv_id=eq." + convId   // filtre côté Supabase → seuls les messages de CETTE conv arrivent
+    }, async function(payload) {
+      const r = payload.new;
+      if (!r || r.from_id === MY_UID) return; // ignorer nos propres messages (déjà ajoutés en local)
+      if (window._openedConvId !== convId) return; // race condition guard
+
+      // Profil depuis cache (0 requête si déjà connu)
+      const prof = await _fetchProfile(r.from_id);
+      const newMsg = { id: r.id, from: r.from_id, fromName: prof.username, fromEmoji: prof.emoji, text: r.content, at: new Date(r.created_at).getTime() };
+
+      const convs = getConversations();
+      const c = convs.find(x => x.id === convId);
+      if (!c) return;
+      if (!c.messages) c.messages = [];
+      if (c.messages.find(m => m.id === r.id)) return; // déjà présent
+      c.messages.push(newMsg);
+      c.messages.sort((a, b) => (a.at || 0) - (b.at || 0));
+      c.lastAt = newMsg.at;
+      c._otherRead = true; // la conv est ouverte → l'utilisateur a lu
+      saveConversations();
+      if (window._openedConvId === convId) renderConvFpThread(c, displayName);
+      renderMessages();
+    })
+    .subscribe();
+}
+
 function closeConversation() {
   window._openedConvId = null;
   // Nettoyer le canal typing
