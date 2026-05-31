@@ -17024,6 +17024,7 @@ function supaSubscribe() {
       const openConvId = window._openedConvId || null;
       if (openConvId !== r.conv_id) {
         conv.unread = (conv.unread || 0) + 1;
+        _playMsgSound(); // son de notification
       }
 
       conversationsState = convs;
