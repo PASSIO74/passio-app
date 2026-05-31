@@ -11293,11 +11293,19 @@ function getConversations() {
 }
 
 function saveConversations() {
-  // Toujours dédupliquer avant de sauvegarder
   if (conversationsState) conversationsState = deduplicateConversations(conversationsState);
-  try {
-    localStorage.setItem("passio_conversations_v1", JSON.stringify(conversationsState));
-  } catch (e) {}
+  // Debounce : évite des dizaines d'écritures localStorage en rafale
+  clearTimeout(_saveConvTimer);
+  _saveConvTimer = setTimeout(function() {
+    try { localStorage.setItem("passio_conversations_v1", JSON.stringify(conversationsState)); } catch(e) {}
+  }, 250);
+}
+
+// Sauvegarde immédiate pour les cas critiques (fermeture de page, etc.)
+function saveConversationsNow() {
+  clearTimeout(_saveConvTimer);
+  if (conversationsState) conversationsState = deduplicateConversations(conversationsState);
+  try { localStorage.setItem("passio_conversations_v1", JSON.stringify(conversationsState)); } catch(e) {}
 }
 
 // Nettoyage forcé des doublons au démarrage
