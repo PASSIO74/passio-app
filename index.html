@@ -18169,8 +18169,14 @@ function openConvFiles() {
 }
 
 function openFullImg(src) {
-  const html = `<span class="modal-close" onclick="closeModal()">×</span><img src="${src}" style="width:100%;border-radius:12px;max-height:70vh;object-fit:contain;" />`;
-  openModal(html);
+  // Utilise un data attribute pour éviter les problèmes de quotes dans l'URL
+  const div = document.createElement("div");
+  div.innerHTML = `<span class="modal-close" onclick="closeModal()">×</span>`;
+  const img = document.createElement("img");
+  img.src = src;
+  img.style.cssText = "width:100%;border-radius:12px;max-height:70vh;object-fit:contain;";
+  div.appendChild(img);
+  openModal(div.innerHTML);
 }
 
 function downloadFile(dataUrl, name) {
@@ -18180,6 +18186,7 @@ function downloadFile(dataUrl, name) {
 
 // ── Auto-resize textarea ──
 function autoResizeTextarea(el) {
+  if (!el) return;
   el.style.height = "auto";
   el.style.height = Math.min(el.scrollHeight, 120) + "px";
 }
@@ -18191,37 +18198,54 @@ let _voiceTimer = null;
 let _voiceSeconds = 0;
 let _voiceStream = null;
 let _isRecording = false;
+let _voiceStartTime = 0; // garde trace du temps pour éviter envoi accidentel
 
 function startVoiceRecord() {
   if (_isRecording) return;
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    toast("Enregistrement audio non supporté sur ce navigateur"); return;
+  }
+  _voiceStartTime = Date.now();
   _isRecording = true;
   navigator.mediaDevices.getUserMedia({ audio: true }).then(function(stream) {
     _voiceStream = stream;
     _audioChunks = [];
-    _mediaRecorder = new MediaRecorder(stream);
-    _mediaRecorder.ondataavailable = function(e) { if (e.data.size > 0) _audioChunks.push(e.data); };
+    const mimeType = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm"
+                   : MediaRecorder.isTypeSupported("audio/mp4")  ? "audio/mp4"
+                   : "audio/ogg";
+    _mediaRecorder = new MediaRecorder(stream, { mimeType });
+    _mediaRecorder.ondataavailable = function(e) { if (e.data && e.data.size > 0) _audioChunks.push(e.data); };
     _mediaRecorder.onstop = function() { _processVoiceRecord(); };
-    _mediaRecorder.start(100);
+    _mediaRecorder.start(200);
     _voiceSeconds = 0;
     document.getElementById("voiceRecordBar").classList.add("active");
-    document.getElementById("btnVoice").classList.add("record-active");
+    document.getElementById("btnVoice")?.classList.add("record-active");
     _voiceTimer = setInterval(function() {
       _voiceSeconds++;
       const m = Math.floor(_voiceSeconds / 60), s = _voiceSeconds % 60;
       const el = document.getElementById("voiceRecordTimer");
-      if (el) el.textContent = m + ":" + String(s).padStart(2,"0");
-      if (_voiceSeconds >= 120) stopVoiceRecord(); // max 2min
+      if (el) el.textContent = m + ":" + String(s).padStart(2, "0");
+      if (_voiceSeconds >= 120) stopVoiceRecord();
     }, 1000);
-  }).catch(function() { _isRecording = false; toast("Microphone non autorisé"); });
+  }).catch(function(err) {
+    _isRecording = false;
+    toast("Microphone non autorisé — vérifie les permissions");
+    console.warn("getUserMedia error:", err);
+  });
 }
 
 function stopVoiceRecord() {
   if (!_isRecording || !_mediaRecorder) return;
+  // Si l'enregistrement dure moins de 1s, c'est un tap accidentel → annuler
+  if (Date.now() - _voiceStartTime < 800) {
+    cancelVoiceRecord();
+    return;
+  }
   clearInterval(_voiceTimer);
-  _mediaRecorder.stop();
-  _voiceStream?.getTracks().forEach(t => t.stop());
+  try { _mediaRecorder.stop(); } catch(e) {}
+  if (_voiceStream) _voiceStream.getTracks().forEach(function(t) { t.stop(); });
   document.getElementById("voiceRecordBar").classList.remove("active");
-  document.getElementById("btnVoice").classList.remove("record-active");
+  document.getElementById("btnVoice")?.classList.remove("record-active");
   _isRecording = false;
 }
 
