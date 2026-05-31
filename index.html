@@ -11863,6 +11863,7 @@ function sendMessageFp(convId, displayName) {
   const txt = inp.value.trim();
   if (!txt) return;
   inp.value = "";
+  _stopTyping(convId); // arrêter l'indicateur de frappe
   const convs = getConversations();
   const c = convs.find(x => x.id === convId);
   if (!c) return;
@@ -11872,12 +11873,69 @@ function sendMessageFp(convId, displayName) {
   saveConversations();
   renderConvFpThread(c, displayName);
   renderMessages();
-  // Supabase : envoyer avec le même ID pour éviter les doublons
   if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
     try {
       supa.from("conv_messages").insert({ id: msgId, conv_id: convId, from_id: MY_UID, content: txt, created_at: new Date().toISOString() }).then(() => {}).catch(() => {});
     } catch(e) {}
   }
+}
+
+// ── Notification sonore ──
+function _playMsgSound() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.connect(g); g.connect(ctx.destination);
+    o.frequency.setValueAtTime(880, ctx.currentTime);
+    o.frequency.setValueAtTime(1100, ctx.currentTime + 0.08);
+    g.gain.setValueAtTime(0.15, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
+    o.start(ctx.currentTime);
+    o.stop(ctx.currentTime + 0.25);
+  } catch(e) {}
+}
+
+// ── Typing indicator ──
+let _typingTimeout = null;
+let _typingChannel = null;
+
+function onConvInputTyping() {
+  const fp = document.getElementById("conv-fullpage");
+  if (!fp) return;
+  const convId = fp.getAttribute("data-conv-id");
+  if (!convId) return;
+  _sendTyping(convId);
+  clearTimeout(_typingTimeout);
+  _typingTimeout = setTimeout(() => _stopTyping(convId), 3000);
+}
+
+function _sendTyping(convId) {
+  if (!_typingChannel) return;
+  try { _typingChannel.send({ type: "broadcast", event: "typing", payload: { user: currentProfile()?.name || state.user.name || "Quelqu'un" } }); } catch(e) {}
+}
+
+function _stopTyping(convId) {
+  clearTimeout(_typingTimeout);
+  if (!_typingChannel) return;
+  try { _typingChannel.send({ type: "broadcast", event: "stop_typing", payload: {} }); } catch(e) {}
+}
+
+function _subscribeTyping(convId) {
+  if (typeof supa === "undefined" || !supa) return;
+  if (_typingChannel) { try { supa.removeChannel(_typingChannel); } catch(e) {} _typingChannel = null; }
+  _typingChannel = supa.channel("typing:" + convId)
+    .on("broadcast", { event: "typing" }, ({ payload }) => {
+      const bar = document.getElementById("convTypingBar");
+      if (bar) { bar.textContent = (payload.user || "Quelqu'un") + " est en train d'écrire…"; bar.style.display = "block"; }
+      clearTimeout(bar?._hideTimer);
+      if (bar) bar._hideTimer = setTimeout(() => { bar.style.display = "none"; }, 4000);
+    })
+    .on("broadcast", { event: "stop_typing" }, () => {
+      const bar = document.getElementById("convTypingBar");
+      if (bar) bar.style.display = "none";
+    })
+    .subscribe();
 }
 
 function closeConversation() {
