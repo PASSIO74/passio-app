@@ -12040,120 +12040,112 @@ async function openConversation(convId) {
 }
 
 function renderConvFpThread(c, displayName) {
-  const thread = document.getElementById("convFpThread");
+  var thread = document.getElementById("convFpThread");
   if (!thread) return;
-  const allMsgs = c.messages || [];
-  // Pagination : afficher les N derniers messages
-  const PAGE = 40;
-  const total = allMsgs.length;
-  const _page = c._msgPage || 1;
-  const start = Math.max(0, total - PAGE * _page);
-  const msgs = allMsgs.slice(start);
-  const hasMore = start > 0;
+  var msgs = c.messages || [];
 
-  const loadMoreBtn = hasMore
-    ? `<div style="text-align:center;padding:10px 0;">
-        <button onclick="_loadMoreMsgs('${c.id}')" style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:7px 18px;font-size:12px;color:var(--accent);font-weight:700;cursor:pointer;">⬆ Charger plus (${start} messages)</button>
-       </div>`
-    : "";
-
-  // Construire avec fragment DOM pour éviter tout problème de quotes dans les attributs
-  const frag = document.createDocumentFragment();
-  if (loadMoreBtn) {
-    const tmp = document.createElement("div");
-    tmp.innerHTML = loadMoreBtn;
-    frag.appendChild(tmp.firstChild);
+  if (msgs.length === 0) {
+    thread.innerHTML = '<div style="text-align:center;padding:40px 20px;color:var(--muted);font-size:13px;">Aucun message. Commence la conversation !</div>';
+    return;
   }
 
-  msgs.forEach(function(m, i) {
-    const isMe = m.from === "me";
-    const senderName = isMe ? "" : (m.fromName || displayName || "");
-    const isLastMe = isMe && i === msgs.length - 1;
-    const readReceipt = isLastMe
-      ? (c._otherRead ? '<span style="font-size:9px;color:var(--accent);margin-left:4px;">✓✓ Lu</span>'
-                      : '<span style="font-size:9px;color:var(--muted);margin-left:4px;">✓ Envoyé</span>')
+  // Construction pure innerHTML — aucune dépendance externe
+  var html = msgs.map(function(m, i) {
+    var isMe = (m.from === "me");
+    var isLastMe = isMe && (i === msgs.length - 1);
+    var senderName = (!isMe && (m.fromName || displayName)) ? escapeHtml(m.fromName || displayName) : "";
+    var readReceipt = isLastMe
+      ? (c._otherRead
+          ? '<span style="font-size:9px;color:var(--accent);margin-left:4px;">✓✓ Lu</span>'
+          : '<span style="font-size:9px;color:var(--muted);margin-left:4px;">✓ Envoyé</span>')
       : "";
-    const msgId = m.id || ("mi_" + i);
+    var timeStr = m.at ? ('<span class="conv-bubble-time">' + fmtTime(m.at) + readReceipt + '</span>') : "";
 
-    const wrap = document.createElement("div");
-    wrap.className = "conv-bubble-wrap " + (isMe ? "me" : "them");
-    wrap.setAttribute("data-mid", msgId);
-
-    if (!isMe && senderName) {
-      const sn = document.createElement("span");
-      sn.className = "conv-sender-name";
-      sn.textContent = senderName;
-      wrap.appendChild(sn);
+    // Contenu de la bulle
+    var content = "";
+    var isMedia = false;
+    if (m.gif) {
+      isMedia = true;
+      content = '<img src="' + m.gif + '" style="max-width:220px;max-height:180px;border-radius:10px;display:block;" loading="lazy"/>';
+    } else if (m.img) {
+      isMedia = true;
+      content = '<img src="' + m.img + '" style="max-width:220px;max-height:200px;border-radius:10px;display:block;cursor:pointer;" onclick="openFullImg(this.src)"/>';
+    } else if (m.voiceData && !m.isFile) {
+      isMedia = true;
+      var dur = m.voiceDuration || 0;
+      var durStr = Math.floor(dur/60) + ':' + String(dur%60).padStart(2,'0');
+      var aid = 'aud_' + (m.id || i).toString().replace(/[^a-z0-9]/gi,'');
+      // stocker dans window pour accès via _playVoiceById
+      window['_vd_' + aid] = m.voiceData;
+      content = '<div style="display:flex;align-items:center;gap:8px;min-width:160px;">' +
+        '<button style="width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,0.25);border:none;color:inherit;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0;" onclick="_playVoiceById(\''+aid+'\')" id="pb_'+aid+'">▶</button>' +
+        '<div style="flex:1;height:24px;background:rgba(255,255,255,0.15);border-radius:8px;overflow:hidden;cursor:pointer;" onclick="_playVoiceById(\''+aid+'\')"><div id="wf_'+aid+'" style="height:100%;background:rgba(255,255,255,0.4);border-radius:8px;width:0%;transition:width 0.1s;"></div></div>' +
+        '<span id="dur_'+aid+'" style="font-size:11px;opacity:0.8;flex-shrink:0;">'+durStr+'</span>' +
+        '</div>';
+    } else if (m.docData) {
+      isMedia = true;
+      var fname = escapeHtml(m.fileName || 'Fichier');
+      content = '<div style="display:flex;align-items:center;gap:8px;cursor:pointer;" onclick="downloadFile(\'' + (m.docData.slice(0,30)) + '\')">' +
+        '<span style="font-size:24px;">📄</span>' +
+        '<div><div style="font-size:12px;font-weight:700;">' + fname + '</div>' +
+        '<div style="font-size:10px;opacity:0.7;">' + escapeHtml(m.fileType||'') + ' ' + escapeHtml(m.fileSize||'') + '</div></div></div>';
+    } else if (m.text) {
+      // Détecter les liens de localisation
+      if (m.text.startsWith('📍')) {
+        var parts2 = m.text.split(': ');
+        var mapUrl = escapeHtml(parts2[1] || '');
+        content = '<a href="' + mapUrl + '" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;">' + escapeHtml(m.text) + '</a>';
+      } else {
+        content = escapeHtml(m.text);
+      }
     }
 
-    const bubble = document.createElement("div");
-    bubble.className = "conv-bubble " + (isMe ? "me" : "them");
-    const isMedia = !!(m.gif || (m.voiceData && !m.isFile) || m.video || m.docData);
-    if (isMedia) bubble.style.cssText = "background:transparent;padding:0;box-shadow:none;";
+    var bubbleStyle = isMedia ? ' style="background:transparent;padding:0;box-shadow:none;"' : '';
+    var senderLine = senderName ? '<span class="conv-sender-name">' + senderName + '</span>' : '';
 
-    // Stocker les données sur l'élément pour la délégation
-    bubble.setAttribute("data-cid", c.id);
-    bubble.setAttribute("data-mid2", msgId);
-    if (m.img)     { bubble.setAttribute("data-img-src", m.img); }
-    if (m.docData) { bubble.setAttribute("data-doc-data", m.docData); bubble.setAttribute("data-doc-name", m.fileName || "fichier"); }
+    return '<div class="conv-bubble-wrap ' + (isMe ? 'me' : 'them') + '">' +
+      senderLine +
+      '<div class="conv-bubble ' + (isMe ? 'me' : 'them') + '"' + bubbleStyle + '>' + content + '</div>' +
+      timeStr +
+    '</div>';
+  }).join('');
 
-    // Contenu
-    if (typeof _renderMsgContent === "function") {
-      bubble.innerHTML = _renderMsgContent(m);
-    } else {
-      bubble.textContent = m.text || "";
-    }
-
-    // Context menu (réactions)
-    bubble.addEventListener("contextmenu", function(ev) {
-      ev.preventDefault();
-      if (typeof _showReactPicker === "function") _showReactPicker(c.id, msgId, bubble);
-    });
-
-    wrap.appendChild(bubble);
-
-    // Réactions
-    const reactions = m.reactions || {};
-    const reactKeys = Object.keys(reactions);
-    if (reactKeys.length) {
-      const reactDiv = document.createElement("div");
-      reactDiv.style.cssText = "display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;" + (isMe ? "justify-content:flex-end;" : "");
-      reactKeys.forEach(function(e) {
-        const badge = document.createElement("span");
-        badge.style.cssText = "background:var(--bg-card);border:1px solid var(--border);border-radius:20px;padding:2px 7px;font-size:13px;cursor:pointer;";
-        badge.textContent = e + " " + reactions[e];
-        badge.addEventListener("click", function() { if (typeof _toggleReaction === "function") _toggleReaction(c.id, msgId, e); });
-        reactDiv.appendChild(badge);
-      });
-      wrap.appendChild(reactDiv);
-    }
-
-    // Temps + read receipt
-    if (m.at) {
-      const timeEl = document.createElement("span");
-      timeEl.className = "conv-bubble-time";
-      timeEl.innerHTML = fmtTime(m.at) + readReceipt;
-      wrap.appendChild(timeEl);
-    }
-
-    frag.appendChild(wrap);
-  });
-
-  thread.innerHTML = "";
-  thread.appendChild(frag);
-
-  // Délégation de clic sur le thread pour images et docs
-  thread.onclick = function(e) {
-    const bubble = e.target.closest(".conv-bubble");
-    if (!bubble) return;
-    const imgSrc  = bubble.getAttribute("data-img-src");
-    const docData = bubble.getAttribute("data-doc-data");
-    const docName = bubble.getAttribute("data-doc-name");
-    if (imgSrc  && e.target.tagName === "IMG") { if (typeof openFullImg === "function") openFullImg(imgSrc); return; }
-    if (docData) { if (typeof downloadFile === "function") downloadFile(docData, docName || "fichier"); return; }
-  };
-
+  thread.innerHTML = html;
   thread.scrollTop = thread.scrollHeight;
+}
+
+// Lecture audio via window store (évite les data-URI dans les attributs)
+function _playVoiceById(aid) {
+  var src = window['_vd_' + aid];
+  var pb  = document.getElementById('pb_'  + aid);
+  var wf  = document.getElementById('wf_'  + aid);
+  var dur = document.getElementById('dur_' + aid);
+  var audioKey = '_aud_' + aid;
+  if (!window[audioKey]) {
+    window[audioKey] = new Audio(src);
+  }
+  var audio = window[audioKey];
+  if (!audio.paused) {
+    audio.pause();
+    if (pb) pb.textContent = '▶';
+    return;
+  }
+  audio.play().then(function() {
+    if (pb) pb.textContent = '⏸';
+    var iv = setInterval(function() {
+      if (audio.paused || audio.ended) {
+        clearInterval(iv);
+        if (pb) pb.textContent = '▶';
+        if (wf) wf.style.width = '0%';
+        return;
+      }
+      if (wf && audio.duration) wf.style.width = (audio.currentTime / audio.duration * 100) + '%';
+      if (dur && audio.duration) {
+        var r = Math.ceil(audio.duration - audio.currentTime);
+        dur.textContent = Math.floor(r/60) + ':' + String(r%60).padStart(2,'0');
+      }
+    }, 150);
+  }).catch(function() { if (pb) pb.textContent = '▶'; });
 }
 
 function _loadMoreMsgs(convId) {
