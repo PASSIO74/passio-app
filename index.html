@@ -11930,11 +11930,11 @@ function renderMessages() {
   }).join("");
 }
 
-function openConversation(convId) {
-  window._openedConvId = convId; // tracker la conv ouverte pour le realtime global
-  const convs = getConversations();
-  const c = convs.find(x => x.id === convId);
-  if (!c) return;
+async function openConversation(convId) {
+  window._openedConvId = convId;
+  var convs = getConversations();
+  var c = convs.find(function(x) { return x.id === convId; });
+  if (!c) { console.warn("openConversation: conv not found:", convId); return; }
   const u = (state.seed.users || []).find(x => x.id === c.userId) || { name: "Inconnu", avatar: "#7c3aed", profileEmoji: "🙂" };
 
   var displayName, displayEmoji, displayAvatar;
