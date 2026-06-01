@@ -12022,73 +12022,148 @@ function renderConvFpThread(c, displayName) {
   var msgs = c.messages || [];
 
   if (msgs.length === 0) {
-    thread.innerHTML = '<div style="text-align:center;padding:40px 20px;color:var(--muted);font-size:13px;">Aucun message. Commence la conversation !</div>';
+    thread.innerHTML = `
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;opacity:0.6;">
+        <div style="font-size:48px;">💬</div>
+        <div style="font-size:14px;color:var(--muted);text-align:center;">Aucun message pour l'instant.<br>Dis bonjour !</div>
+      </div>`;
     return;
   }
 
-  // Construction pure innerHTML — aucune dépendance externe
-  var html = msgs.map(function(m, i) {
+  // Helpers
+  function _dayLabel(ts) {
+    if (!ts) return "";
+    var d = new Date(ts), now = new Date();
+    var sameYear = d.getFullYear() === now.getFullYear();
+    var diffDays = Math.floor((now - d) / 86400000);
+    if (diffDays === 0) return "Aujourd'hui";
+    if (diffDays === 1) return "Hier";
+    return d.toLocaleDateString("fr-FR", { day:"numeric", month:"long", year: sameYear ? undefined : "numeric" });
+  }
+  function _dayKey(ts) { var d = new Date(ts); return d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate(); }
+
+  var parts = [];
+  var lastDay = "";
+  var lastFrom = "";
+
+  msgs.forEach(function(m, i) {
     var isMe = (m.from === "me");
+    var msgDay = m.at ? _dayKey(m.at) : "";
+
+    // Séparateur de date
+    if (msgDay && msgDay !== lastDay) {
+      lastDay = msgDay;
+      lastFrom = ""; // reset grouping on new day
+      parts.push(
+        '<div style="display:flex;align-items:center;gap:8px;margin:12px 4px 10px;">' +
+          '<div style="flex:1;height:1px;background:var(--border);"></div>' +
+          '<span style="font-size:11px;color:var(--muted);font-weight:600;white-space:nowrap;padding:0 4px;">' + _dayLabel(m.at) + '</span>' +
+          '<div style="flex:1;height:1px;background:var(--border);"></div>' +
+        '</div>'
+      );
+    }
+
     var isLastMe = isMe && (i === msgs.length - 1);
-    var senderName = (!isMe && (m.fromName || displayName)) ? escapeHtml(m.fromName || displayName) : "";
+    var isNewSender = (m.from !== lastFrom);
+    lastFrom = m.from;
+
+    // Nom de l'expéditeur (groupes uniquement, 1ère bulle du groupe)
+    var senderLine = "";
+    if (!isMe && c.isGroup && isNewSender && m.fromName) {
+      senderLine = '<span class="conv-sender-name">' + escapeHtml(m.fromName) + '</span>';
+    }
+
+    // Read receipt
     var readReceipt = isLastMe
       ? (c._otherRead
-          ? '<span style="font-size:9px;color:var(--accent);margin-left:4px;">✓✓ Lu</span>'
-          : '<span style="font-size:9px;color:var(--muted);margin-left:4px;">✓ Envoyé</span>')
+          ? ' <span style="color:var(--accent);">✓✓</span>'
+          : ' <span style="opacity:0.5;">✓</span>')
       : "";
-    var timeStr = m.at ? ('<span class="conv-bubble-time">' + fmtTime(m.at) + readReceipt + '</span>') : "";
 
-    // Contenu de la bulle
+    // Temps — affiché uniquement si dernier du groupe ou dernier message
+    var isLastInGroup = (i === msgs.length - 1) || (msgs[i+1] && msgs[i+1].from !== m.from) || (msgs[i+1] && m.at && msgs[i+1].at && _dayKey(msgs[i+1].at) !== msgDay);
+    var timeStr = (m.at && isLastInGroup)
+      ? '<span class="conv-bubble-time">' + fmtTime(m.at) + readReceipt + '</span>'
+      : (isLastMe ? '<span class="conv-bubble-time" style="height:4px;">' + readReceipt + '</span>' : "");
+
+    // Contenu
     var content = "";
     var isMedia = false;
+
     if (m.gif) {
       isMedia = true;
-      content = '<img src="' + m.gif + '" style="max-width:220px;max-height:180px;border-radius:10px;display:block;" loading="lazy"/>';
+      content = '<img src="' + m.gif + '" style="max-width:200px;max-height:160px;border-radius:12px;display:block;" loading="lazy"/>';
     } else if (m.img) {
       isMedia = true;
-      content = '<img src="' + m.img + '" style="max-width:220px;max-height:200px;border-radius:10px;display:block;cursor:pointer;" onclick="openFullImg(this.src)"/>';
+      content = '<img src="' + m.img + '" style="max-width:200px;max-height:200px;border-radius:12px;display:block;cursor:pointer;" onclick="openFullImg(this.src)"/>';
     } else if (m.voiceData && !m.isFile) {
       isMedia = true;
-      var dur = m.voiceDuration || 0;
-      var durStr = Math.floor(dur/60) + ':' + String(dur%60).padStart(2,'0');
+      var vDur = m.voiceDuration || 0;
+      var vDurStr = Math.floor(vDur/60) + ':' + String(vDur%60).padStart(2,'0');
       var aid = 'aud_' + (m.id || i).toString().replace(/[^a-z0-9]/gi,'');
-      // stocker dans window pour accès via _playVoiceById
       window['_vd_' + aid] = m.voiceData;
-      content = '<div style="display:flex;align-items:center;gap:8px;min-width:160px;">' +
-        '<button style="width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,0.25);border:none;color:inherit;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0;" onclick="_playVoiceById(\''+aid+'\')" id="pb_'+aid+'">▶</button>' +
-        '<div style="flex:1;height:24px;background:rgba(255,255,255,0.15);border-radius:8px;overflow:hidden;cursor:pointer;" onclick="_playVoiceById(\''+aid+'\')"><div id="wf_'+aid+'" style="height:100%;background:rgba(255,255,255,0.4);border-radius:8px;width:0%;transition:width 0.1s;"></div></div>' +
-        '<span id="dur_'+aid+'" style="font-size:11px;opacity:0.8;flex-shrink:0;">'+durStr+'</span>' +
+      var waveBg = isMe ? 'rgba(255,255,255,0.2)' : 'rgba(139,92,246,0.12)';
+      var waveFill = isMe ? 'rgba(255,255,255,0.6)' : 'var(--accent)';
+      content = '<div style="display:flex;align-items:center;gap:8px;min-width:180px;max-width:240px;">' +
+        '<button style="width:34px;height:34px;border-radius:50%;background:' + (isMe?'rgba(255,255,255,0.2)':'rgba(139,92,246,0.12)') + ';border:none;color:' + (isMe?'#fff':'var(--accent)') + ';cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center;flex-shrink:0;" onclick="_playVoiceById(\'' + aid + '\')" id="pb_' + aid + '">▶</button>' +
+        '<div style="flex:1;height:28px;background:' + waveBg + ';border-radius:8px;overflow:hidden;cursor:pointer;" onclick="_playVoiceById(\'' + aid + '\')"><div id="wf_' + aid + '" style="height:100%;background:' + waveFill + ';border-radius:8px;width:0%;transition:width 0.15s;"></div></div>' +
+        '<span id="dur_' + aid + '" style="font-size:11px;opacity:0.75;flex-shrink:0;min-width:30px;text-align:right;">' + vDurStr + '</span>' +
         '</div>';
     } else if (m.docData) {
       isMedia = true;
       var fname = escapeHtml(m.fileName || 'Fichier');
-      content = '<div style="display:flex;align-items:center;gap:8px;cursor:pointer;" onclick="downloadFile(\'' + (m.docData.slice(0,30)) + '\')">' +
-        '<span style="font-size:24px;">📄</span>' +
-        '<div><div style="font-size:12px;font-weight:700;">' + fname + '</div>' +
-        '<div style="font-size:10px;opacity:0.7;">' + escapeHtml(m.fileType||'') + ' ' + escapeHtml(m.fileSize||'') + '</div></div></div>';
+      var docBg = isMe ? 'rgba(255,255,255,0.12)' : 'var(--bg-soft)';
+      var docBorder = isMe ? 'rgba(255,255,255,0.2)' : 'var(--border)';
+      content = '<div style="display:flex;align-items:center;gap:10px;padding:4px 0;cursor:pointer;" onclick="_docDownload(\'' + (m.id||i) + '\')">' +
+        '<div style="width:36px;height:36px;border-radius:10px;background:' + docBg + ';border:1px solid ' + docBorder + ';display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">📄</div>' +
+        '<div><div style="font-size:13px;font-weight:700;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + fname + '</div>' +
+        '<div style="font-size:10px;opacity:0.6;">' + escapeHtml((m.fileType||'') + (m.fileSize ? ' · '+m.fileSize : '')) + '</div></div></div>';
+      // stocker pour le téléchargement
+      window['_doc_' + (m.id||i)] = { data: m.docData, name: m.fileName || 'fichier' };
     } else if (m.text) {
-      // Détecter les liens de localisation
       if (m.text.startsWith('📍')) {
         var parts2 = m.text.split(': ');
-        var mapUrl = escapeHtml(parts2[1] || '');
-        content = '<a href="' + mapUrl + '" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;">' + escapeHtml(m.text) + '</a>';
+        content = '<a href="' + escapeHtml(parts2[1]||'') + '" target="_blank" rel="noopener" style="color:inherit;">' + escapeHtml(m.text) + '</a>';
       } else {
         content = escapeHtml(m.text);
       }
     }
 
-    var bubbleStyle = isMedia ? ' style="background:transparent;padding:0;box-shadow:none;"' : '';
-    var senderLine = senderName ? '<span class="conv-sender-name">' + senderName + '</span>' : '';
+    // Arrondir les coins pour les messages groupés
+    var isFirstInGroup = isNewSender;
+    var isLastOfGroup = isLastInGroup;
+    var extraBubbleStyle = '';
+    if (isMe) {
+      if (!isFirstInGroup) extraBubbleStyle += 'border-top-right-radius:6px;';
+      if (!isLastOfGroup) extraBubbleStyle += 'border-bottom-right-radius:6px;';
+    } else {
+      if (!isFirstInGroup) extraBubbleStyle += 'border-top-left-radius:6px;';
+      if (!isLastOfGroup) extraBubbleStyle += 'border-bottom-left-radius:6px;';
+    }
 
-    return '<div class="conv-bubble-wrap ' + (isMe ? 'me' : 'them') + '">' +
-      senderLine +
-      '<div class="conv-bubble ' + (isMe ? 'me' : 'them') + '"' + bubbleStyle + '>' + content + '</div>' +
-      timeStr +
-    '</div>';
-  }).join('');
+    var bubbleStyle = isMedia
+      ? ' style="background:transparent;padding:0;box-shadow:none;' + extraBubbleStyle + '"'
+      : (extraBubbleStyle ? ' style="' + extraBubbleStyle + '"' : '');
 
-  thread.innerHTML = html;
+    parts.push(
+      '<div class="conv-bubble-wrap ' + (isMe?'me':'them') + '">' +
+        senderLine +
+        '<div class="conv-bubble ' + (isMe?'me':'them') + '"' + bubbleStyle + '>' + content + '</div>' +
+        timeStr +
+      '</div>'
+    );
+  });
+
+  thread.innerHTML = parts.join('');
   thread.scrollTop = thread.scrollHeight;
+}
+
+// Téléchargement doc depuis store global
+function _docDownload(key) {
+  var d = window['_doc_' + key];
+  if (!d) return;
+  var a = document.createElement('a');
+  a.href = d.data; a.download = d.name; a.click();
 }
 
 // Lecture audio via window store (évite les data-URI dans les attributs)
