@@ -12008,41 +12008,34 @@ async function openConversation(convId) {
     fp.classList.add("active");
   }
 
-  // Appliquer fond/police — dans try/catch car dépend du 2ème bloc script
-  const thread = document.getElementById("convFpThread");
-  try {
-    if (thread && typeof _applyConvWallpaper === "function") _applyConvWallpaper(c, thread);
-    if (thread) thread.style.fontSize = c._fontSize === "small" ? "12px" : c._fontSize === "large" ? "16px" : "14px";
-  } catch(e) {}
+  var thread = document.getElementById("convFpThread");
 
-  // Affichage immédiat des messages locaux
+  // Affichage immédiat avec les messages locaux (feedback instantané)
   renderConvFpThread(c, displayName);
-
   if (thread) thread.scrollTop = thread.scrollHeight;
   if (inp) inp.focus();
   try { renderMessages(); } catch(e) {}
-  try { if (typeof _subscribeTyping === "function") _subscribeTyping(convId); } catch(e) {}
 
-  // Charger TOUT l'historique Supabase et remplacer l'affichage
+  // Charger TOUS les messages depuis Supabase (pas de limite, tous les anciens inclus)
   if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
-    supaLoadMessages(convId).then(function(supaMessages) {
-      if (window._openedConvId !== convId) return; // l'utilisateur a changé de conv
+    try {
+      var supaMessages = await supaLoadMessages(convId);
+      if (window._openedConvId !== convId) return;
       var convs2 = getConversations();
       var c2 = convs2.find(function(x) { return x.id === convId; });
       if (!c2) return;
       var remote = supaMessages || [];
+      // Fusionner : Supabase + messages locaux optimistes non encore confirmés
       var remoteIds = new Set(remote.map(function(m) { return m.id; }).filter(Boolean));
-      // Garder les messages locaux non encore dans Supabase (optimistic, pas encore persistés)
       var localPending = (c2.messages || []).filter(function(m) { return !m.id || !remoteIds.has(m.id); });
-      var merged = remote.concat(localPending).sort(function(a, b) { return (a.at || 0) - (b.at || 0); });
-      c2.messages = merged;
+      c2.messages = remote.concat(localPending).sort(function(a, b) { return (a.at || 0) - (b.at || 0); });
       c2._otherRead = true;
       saveConversations();
       if (window._openedConvId === convId) {
         renderConvFpThread(c2, displayName);
         if (thread) thread.scrollTop = thread.scrollHeight;
       }
-    }).catch(function(e) { console.warn("supaLoadMessages error:", e); });
+    } catch(e) { console.warn("openConversation supabase load error:", e); }
   }
 }
 
