@@ -18021,6 +18021,128 @@ function togglePwd(id, btn) {
   btn.textContent = show ? '🙈' : '👁';
 }
 
+// ═══ Wrappers messagerie — définis ici pour être sûrement disponibles ═══
+// toggleEmojiPanel, toggleAttachMenu et openConvSettings sont dans le 2ème script
+// mais ces stubs garantissent qu'ils existent même si le 2ème script ne charge pas.
+function toggleEmojiPanel() {
+  try {
+    var panel = document.getElementById("convEmojiPanel");
+    if (!panel) return;
+    var isOpen = panel.classList.contains("open");
+    // Fermer l'attach menu si ouvert
+    document.getElementById("convAttachMenu")?.classList.remove("open");
+    document.getElementById("btnAttach")?.classList.remove("active");
+    // Basculer emoji panel
+    panel.classList.toggle("open", !isOpen);
+    document.getElementById("btnEmoji")?.classList.toggle("active", !isOpen);
+    if (!isOpen) {
+      // Construire si vide
+      var grid = document.getElementById("emojiGrid");
+      if (grid && !grid.hasChildNodes() && typeof _buildEmojiPicker === "function") _buildEmojiPicker();
+      document.getElementById("emojiTabContent")?.classList.remove("hidden");
+      document.getElementById("gifTabContent")?.classList.remove("visible");
+    }
+  } catch(e) { console.error("toggleEmojiPanel:", e); }
+}
+
+function toggleAttachMenu() {
+  try {
+    var menu = document.getElementById("convAttachMenu");
+    if (!menu) return;
+    var isOpen = menu.classList.contains("open");
+    // Fermer emoji si ouvert
+    document.getElementById("convEmojiPanel")?.classList.remove("open");
+    document.getElementById("btnEmoji")?.classList.remove("active");
+    menu.classList.toggle("open", !isOpen);
+    document.getElementById("btnAttach")?.classList.toggle("active", !isOpen);
+  } catch(e) { console.error("toggleAttachMenu:", e); }
+}
+
+function openConvSettings(convId) {
+  try {
+    var panel = document.getElementById("convSettingsPanel");
+    var content = document.getElementById("convSettingsContent");
+    if (!panel) return;
+    var convs = getConversations();
+    var c = convs.find(function(x) { return x.id === convId; });
+    if (!c) return;
+    content.innerHTML = `
+      <div class="csetting-section">CONVERSATION</div>
+      <div class="csetting-item" onclick="_toggleMuteConv('${convId}')">
+        <div class="csetting-icon">${c._muted ? '🔕' : '🔔'}</div>
+        <div class="csetting-label">${c._muted ? 'Activer les notifications' : 'Couper les notifications'}</div>
+      </div>
+      <div class="csetting-section">ACTIONS</div>
+      <div class="csetting-item" onclick="_clearConvMessages('${convId}')">
+        <div class="csetting-icon">🗑️</div>
+        <div class="csetting-label" style="color:var(--muted);">Effacer les messages</div>
+      </div>
+      <div class="csetting-item" onclick="_exportConv('${convId}')">
+        <div class="csetting-icon">📤</div>
+        <div class="csetting-label">Exporter la conversation</div>
+      </div>
+      ${!c.isGroup ? `<div class="csetting-item" onclick="_deleteConv('${convId}')">
+        <div class="csetting-icon">❌</div>
+        <div class="csetting-label" style="color:#ef4444;">Supprimer la conversation</div>
+      </div>` : ''}
+    `;
+    panel.classList.add("open");
+  } catch(e) { console.error("openConvSettings:", e); }
+}
+
+function closeConvSettings() {
+  document.getElementById("convSettingsPanel")?.classList.remove("open");
+}
+
+function _toggleMuteConv(convId) {
+  var convs = getConversations();
+  var c = convs.find(function(x){ return x.id === convId; });
+  if (!c) return;
+  c._muted = !c._muted;
+  saveConversations();
+  openConvSettings(convId);
+  toast(c._muted ? "🔕 Notifications coupées" : "🔔 Notifications activées");
+}
+
+function _clearConvMessages(convId) {
+  if (!confirm("Effacer tous les messages ?")) return;
+  var convs = getConversations();
+  var c = convs.find(function(x){ return x.id === convId; });
+  if (!c) return;
+  c.messages = [];
+  saveConversations();
+  var fp = document.getElementById("conv-fullpage");
+  renderConvFpThread(c, fp ? fp.getAttribute("data-display-name") : "");
+  closeConvSettings();
+  toast("Messages effacés");
+}
+
+function _exportConv(convId) {
+  var convs = getConversations();
+  var c = convs.find(function(x){ return x.id === convId; });
+  if (!c) return;
+  var lines = (c.messages||[]).map(function(m) {
+    var who = m.from === "me" ? "Moi" : (m.fromName || c.userName || "Autre");
+    var time = m.at ? new Date(m.at).toLocaleString("fr-FR") : "";
+    return "[" + time + "] " + who + ": " + (m.text||"[Media]");
+  }).join("\n");
+  var a = document.createElement("a");
+  a.href = "data:text/plain;charset=utf-8," + encodeURIComponent(lines);
+  a.download = "conv_" + (c.userName || c.id) + ".txt";
+  a.click();
+  toast("Exporté !");
+}
+
+function _deleteConv(convId) {
+  if (!confirm("Supprimer cette conversation ?")) return;
+  conversationsState = (conversationsState||[]).filter(function(c){ return c.id !== convId; });
+  saveConversationsNow();
+  closeConvSettings();
+  closeConversation();
+  toast("Conversation supprimée");
+}
+// ═══ fin wrappers messagerie ═══
+
 function pwaDismiss() {
   const ov = document.getElementById("pwa-overlay");
   if (ov) {
