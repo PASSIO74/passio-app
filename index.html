@@ -5688,27 +5688,24 @@
       padding: 4px 0;
     }
     .conv-bubble {
-      max-width: 75%;
-      padding: 10px 14px;
+      padding: 9px 13px;
       border-radius: 18px;
-      margin-bottom: 8px;
-      font-size: 13px;
-      line-height: 1.4;
+      font-size: 14px;
+      line-height: 1.45;
       word-wrap: break-word;
+      word-break: break-word;
+      white-space: pre-wrap;
     }
     .conv-bubble.them {
-      background: rgba(139, 92, 246, 0.10);
-      border: 1px solid rgba(139, 92, 246, 0.18);
-      align-self: flex-start;
-      border-bottom-left-radius: 6px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-bottom-left-radius: 5px;
       color: var(--text);
     }
     .conv-bubble.me {
       background: var(--grad-hero);
       color: #fff;
-      align-self: flex-end;
-      margin-left: auto;
-      border-bottom-right-radius: 6px;
+      border-bottom-right-radius: 5px;
     }
     .conv-thread-flex {
       display: flex; flex-direction: column;
