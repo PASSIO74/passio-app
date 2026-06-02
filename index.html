@@ -17419,11 +17419,11 @@ async function supaSendMessage(convId, content) {
 }
 
 async function supaLoadMessages(convId) {
-  // Charge TOUS les messages sans limite
+  // Charge TOUS les messages sans limite (avec GIFs, pièces jointes, localisations)
   try {
     const { data, error } = await supa
       .from("conv_messages")
-      .select("id, conv_id, from_id, content, created_at, profiles(username,emoji,color)")
+      .select("id, conv_id, from_id, content, created_at, profiles(username,emoji,color), gif_url, file_url, file_name, file_type, location_lat, location_lng, location_url")
       .eq("conv_id", convId)
       .order("created_at", { ascending: true });
     if (error) { console.warn("supaLoadMessages error:", error.message); return []; }
@@ -17431,7 +17431,7 @@ async function supaLoadMessages(convId) {
       if (r.profiles && r.from_id && typeof _profileCache !== "undefined") {
         _profileCache.set(r.from_id, { username: r.profiles.username || "Passionné", emoji: r.profiles.emoji || "✨", color: r.profiles.color || "#8b5cf6" });
       }
-      return {
+      var msg = {
         id: r.id,
         from: r.from_id === MY_UID ? "me" : r.from_id,
         fromName: (r.profiles && r.profiles.username) ? r.profiles.username : "Passionné",
@@ -17439,6 +17439,27 @@ async function supaLoadMessages(convId) {
         text: r.content || "",
         at: new Date(r.created_at).getTime(),
       };
+
+      // Ajouter les GIFs
+      if (r.gif_url) msg.gif = r.gif_url;
+
+      // Ajouter les pièces jointes
+      if (r.file_url) {
+        msg.fileUrl = r.file_url;
+        msg.fileName = r.file_name || "Fichier";
+        msg.fileType = r.file_type;
+      }
+
+      // Ajouter les localisations
+      if (r.location_lat && r.location_lng) {
+        msg.location = {
+          lat: r.location_lat,
+          lng: r.location_lng,
+          url: r.location_url
+        };
+      }
+
+      return msg;
     });
     // S'assurer que les messages sont triés par timestamp
     messages.sort(function(a, b) { return (a.at || 0) - (b.at || 0); });
