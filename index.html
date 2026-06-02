@@ -18744,10 +18744,15 @@ function openConvSettings(convId) {
     </div>
   `;
   panel.classList.add("open");
+  panel.style.transform = "translateX(0)";
 }
 
 function closeConvSettings() {
-  document.getElementById("convSettingsPanel")?.classList.remove("open");
+  const p = document.getElementById("convSettingsPanel");
+  if (p) {
+    p.classList.remove("open");
+    p.style.transform = "translateX(100%)";
+  }
 }
 
 function _toggleMuteConv(convId) {
