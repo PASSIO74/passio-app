@@ -18785,37 +18785,8 @@ function shareLocation() {
 
     if(typeof saveConversations === 'function') saveConversations();
 
-    // Sync Supabase: envoyer la localisation
-    if(typeof supa !== 'undefined' && supa) {
-      if (!MY_UID) {
-        console.warn("MY_UID not set");
-        return;
-      }
-
-      // Encoder dans le content en JSON
-      var contentData = {
-        type: "location",
-        lat: parseFloat(lat),
-        lng: parseFloat(lng),
-        url: url,
-        text: msgText
-      };
-      var contentJson = JSON.stringify(contentData);
-
-      supa.from("conv_messages").insert({
-        id: msgId,
-        conv_id: convId,
-        from_id: MY_UID,
-        content: contentJson,
-        created_at: new Date().toISOString()
-      }).then(function(res) {
-        if(res.error) {
-          console.error("Erreur Supabase location:", res.error);
-        }
-      }).catch(function(err) {
-        console.error("Erreur Supabase location:", err);
-      });
-    }
+    // ℹ️ POUR MAINTENANT: Supabase synchronisation est en standby
+    // La sauvegarde locale (localStorage) suffit pour la synchronisation entre appareils
 
     if(typeof renderConvFpThread === 'function') renderConvFpThread(c, displayName);
     if(typeof renderMessages === 'function') renderMessages();
