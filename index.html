@@ -18501,6 +18501,93 @@ function toggleAttachMenu() {
   } catch(e) { console.error("toggleAttachMenu:", e); }
 }
 
+// Pièces jointes functions
+function triggerAttach(type) {
+  var ids = { image: "attachImageFile", doc: "attachDocFile", audio: "attachAudioFile" };
+  var input = document.getElementById(ids[type]);
+  if(input) input.click();
+}
+
+function handleAttachFile(input, kind) {
+  var file = input.files && input.files[0];
+  if (!file) return;
+  var fp = document.getElementById("conv-fullpage");
+  if (!fp) return alert("Ouvre une conversation d'abord");
+
+  var convId = fp.getAttribute("data-conv-id");
+  var displayName = fp.getAttribute("data-display-name");
+  if (!convId) return;
+
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var convs = getConversations ? getConversations() : (window.conversationsState || []);
+    var c = convs.find(x => x.id === convId);
+    if (!c || !c.messages) return;
+
+    var msgId = "msg_" + (Date.now().toString(36) + Math.random().toString(36).substr(2));
+    var msg = {id: msgId, from: "me", text: "", at: Date.now()};
+
+    if(kind === 'media') {
+      if(file.type.startsWith("video/")) msg.video = e.target.result;
+      else msg.img = e.target.result;
+    } else if(kind === 'audio') {
+      msg.voiceData = e.target.result;
+      msg.voiceDuration = 0;
+      msg.isFile = true;
+      msg.fileName = file.name;
+    } else if(kind === 'doc') {
+      msg.docData = e.target.result;
+      msg.fileName = file.name;
+      msg.fileSize = (file.size/1024).toFixed(0) + " KB";
+      msg.fileType = file.name.split(".").pop().toUpperCase();
+    }
+
+    c.messages.push(msg);
+    c.lastAt = Date.now();
+
+    if(typeof saveConversations === 'function') saveConversations();
+    if(typeof renderConvFpThread === 'function') renderConvFpThread(c, displayName);
+    if(typeof renderMessages === 'function') renderMessages();
+
+    input.value = "";
+  };
+  reader.readAsDataURL(file);
+}
+
+function shareLocation() {
+  var fp = document.getElementById("conv-fullpage");
+  if (!fp) return alert("Ouvre une conversation d'abord");
+  if (!navigator.geolocation) return alert("Géolocalisation non supportée");
+
+  alert("Localisation en cours...");
+  navigator.geolocation.getCurrentPosition(function(pos) {
+    var lat = pos.coords.latitude.toFixed(5);
+    var lng = pos.coords.longitude.toFixed(5);
+    var url = "https://maps.google.com/?q=" + lat + "," + lng;
+
+    var convId = fp.getAttribute("data-conv-id");
+    var displayName = fp.getAttribute("data-display-name");
+    var convs = getConversations ? getConversations() : (window.conversationsState || []);
+    var c = convs.find(x => x.id === convId);
+    if (!c) return;
+
+    var msgId = "msg_" + (Date.now().toString(36) + Math.random().toString(36).substr(2));
+    c.messages.push({id: msgId, from: "me", text: "📍 Ma position : " + url, at: Date.now()});
+    c.lastAt = Date.now();
+
+    if(typeof saveConversations === 'function') saveConversations();
+    if(typeof renderConvFpThread === 'function') renderConvFpThread(c, displayName);
+    if(typeof renderMessages === 'function') renderMessages();
+  }, function() {
+    alert("Impossible d'obtenir la position");
+  });
+}
+
+function openConvFiles() {
+  toggleAttachMenu();
+  alert("Ouverture des pièces jointes (fonction en développement)");
+}
+
 function openConvSettings(convId) {
   try {
     var panel = document.getElementById("convSettingsPanel");
