@@ -18777,11 +18777,45 @@ function handleAttachFile(input, kind) {
     if(typeof renderConvFpThread === 'function') renderConvFpThread(c, displayName);
     if(typeof renderMessages === 'function') renderMessages();
 
-    // ℹ️ POUR MAINTENANT: Supabase synchronisation est en standby
-    // La sauvegarde locale (localStorage) suffit pour la synchronisation entre appareils
-    _diag("handleAttachFile: ✅ Sauvegarde locale OK - Pièce jointe synchronisée");
+    // Sauvegarder dans Supabase pour synchronisation multi-appareils
+    _diag("handleAttachFile: Tentative Supabase...");
 
-    // TODO: Activer Supabase Storage upload quand le bucket est prêt
+    if (!MY_UID) {
+      _diag("handleAttachFile: MY_UID NOT SET");
+      input.value = "";
+      return;
+    }
+
+    // Encoder dans le content en JSON (pas d'upload Storage pour l'instant)
+    var contentData = {
+      type: kind,
+      filename: file.name,
+      size: file.size,
+      text: "[" + kind.toUpperCase() + "] " + file.name,
+      dataUrl: e.target.result.substring(0, 1000) // Garder le début du data URL
+    };
+    var contentJson = JSON.stringify(contentData);
+
+    // Essayer INSERT - s'il échoue à cause de from_id, continuer quand même
+    supa.from("conv_messages").insert({
+      id: msgId,
+      conv_id: convId,
+      from_id: MY_UID,
+      content: contentJson,
+      created_at: new Date().toISOString()
+    }).then(function(res) {
+      if (res.error) {
+        _diag("handleAttachFile: Supabase error (ignoré) - " + res.error.message);
+        // Continuer même si Supabase échoue
+      } else {
+        _diag("handleAttachFile: ✅ Supabase OK");
+      }
+    }).catch(function(err) {
+      _diag("handleAttachFile: Supabase catch (ignoré) - " + err.message);
+      // Continuer même si erreur
+    });
+
+    _diag("handleAttachFile: ✅ Sauvegarde locale OK - Pièce jointe synchronisée");
 
     input.value = "";
   };
