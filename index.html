@@ -18541,6 +18541,7 @@ function handleAttachFile(input, kind) {
 
     var msgId = "msg_" + (Date.now().toString(36) + Math.random().toString(36).substr(2));
     var msg = {id: msgId, from: "me", text: "", at: Date.now()};
+    var fileUrl = null;
 
     if(kind === 'media') {
       if(file.type.startsWith("video/")) msg.video = e.target.result;
@@ -18563,6 +18564,38 @@ function handleAttachFile(input, kind) {
     if(typeof saveConversations === 'function') saveConversations();
     if(typeof renderConvFpThread === 'function') renderConvFpThread(c, displayName);
     if(typeof renderMessages === 'function') renderMessages();
+
+    // Upload vers Supabase Storage en parallèle
+    if(typeof supa !== 'undefined' && supa) {
+      var storagePath = "conversations/" + convId + "/" + msgId + "_" + file.name.replace(/\s+/g, "_");
+      supa.storage.from("files").upload(storagePath, file, {upsert: true})
+        .then(function(res) {
+          if(res.error) {
+            console.error("Upload Storage error:", res.error);
+            return;
+          }
+          // Obtenir l'URL public du fichier
+          var publicUrl = supa.storage.from("files").getPublicUrl(storagePath).data.publicUrl;
+
+          // Sauvegarder le message dans Supabase avec l'URL du fichier
+          var msgContent = "[" + kind.toUpperCase() + "] " + file.name;
+          supa.from("conv_messages").insert({
+            id: msgId,
+            conv_id: convId,
+            from_id: typeof MY_UID !== 'undefined' ? MY_UID : "me",
+            content: msgContent,
+            file_url: publicUrl,
+            file_name: file.name,
+            file_type: kind,
+            created_at: new Date().toISOString()
+          }).catch(function(err) {
+            console.error("Erreur Supabase message:", err);
+          });
+        })
+        .catch(function(err) {
+          console.error("Upload error:", err);
+        });
+    }
 
     input.value = "";
   };
