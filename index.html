@@ -17474,13 +17474,13 @@ async function supaSendMessage(convId, content) {
 }
 
 async function supaLoadMessages(convId) {
-  // Charge TOUS les messages sans limite (avec GIFs, pièces jointes, localisations dans extra_data)
+  // Charge TOUS les messages sans limite (GIFs, pièces jointes, localisations encodées en JSON dans content)
   try {
     _diag("supaLoadMessages: Chargement pour convId=" + convId);
 
     const { data, error } = await supa
       .from("conv_messages")
-      .select("id, conv_id, from_id, content, created_at, extra_data, profiles(username,emoji,color)")
+      .select("id, conv_id, from_id, content, created_at, profiles(username,emoji,color)")
       .eq("conv_id", convId)
       .order("created_at", { ascending: true });
 
@@ -17496,37 +17496,42 @@ async function supaLoadMessages(convId) {
       if (r.profiles && r.from_id && typeof _profileCache !== "undefined") {
         _profileCache.set(r.from_id, { username: r.profiles.username || "Passionné", emoji: r.profiles.emoji || "✨", color: r.profiles.color || "#8b5cf6" });
       }
+
+      // Essayer de décoder le content comme JSON
+      var contentData = null;
+      var contentText = r.content || "";
+      try {
+        contentData = JSON.parse(r.content);
+      } catch(e) {
+        // content n'est pas du JSON, c'est du texte normal
+      }
+
       var msg = {
         id: r.id,
         from: r.from_id === MY_UID ? "me" : r.from_id,
         fromName: (r.profiles && r.profiles.username) ? r.profiles.username : "Passionné",
         fromEmoji: (r.profiles && r.profiles.emoji) ? r.profiles.emoji : "✨",
-        text: r.content || "",
+        text: contentData && contentData.text ? contentData.text : contentText,
         at: new Date(r.created_at).getTime(),
       };
 
-      // Traiter extra_data JSON
-      if (r.extra_data) {
-        try {
-          var extra = JSON.parse(r.extra_data);
-          if (extra.type === "gif") {
-            msg.gif = extra.url;
-            _diag("supaLoadMessages: GIF trouvé");
-          } else if (extra.type === "media" || extra.type === "audio" || extra.type === "doc") {
-            msg.fileUrl = extra.url;
-            msg.fileName = extra.filename || "Fichier";
-            msg.fileType = extra.type;
-            _diag("supaLoadMessages: Pièce jointe trouvée - " + extra.type);
-          } else if (extra.type === "location") {
-            msg.location = {
-              lat: extra.lat,
-              lng: extra.lng,
-              url: extra.url
-            };
-            _diag("supaLoadMessages: Localisation trouvée");
-          }
-        } catch(parseErr) {
-          console.warn("Failed to parse extra_data:", parseErr);
+      // Traiter content JSON
+      if (contentData) {
+        if (contentData.type === "gif") {
+          msg.gif = contentData.url;
+          _diag("supaLoadMessages: GIF trouvé");
+        } else if (contentData.type === "media" || contentData.type === "audio" || contentData.type === "doc") {
+          msg.fileUrl = contentData.url;
+          msg.fileName = contentData.filename || "Fichier";
+          msg.fileType = contentData.type;
+          _diag("supaLoadMessages: Pièce jointe trouvée - " + contentData.type);
+        } else if (contentData.type === "location") {
+          msg.location = {
+            lat: contentData.lat,
+            lng: contentData.lng,
+            url: contentData.url
+          };
+          _diag("supaLoadMessages: Localisation trouvée");
         }
       }
 
