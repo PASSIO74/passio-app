@@ -18798,9 +18798,11 @@ function handleAttachFile(input, kind) {
 
   _diag("handleAttachFile: convId=" + convId + ", kind=" + kind);
 
+  // Lire le fichier pour l'affichage local ET pour l'upload à Supabase Storage
   var reader = new FileReader();
   reader.onload = function(e) {
-    _diag("handleAttachFile: FileReader completed - taille=" + e.target.result.length);
+    var dataUrl = e.target.result;
+    _diag("handleAttachFile: FileReader completed - taille=" + dataUrl.length);
 
     var convs = getConversations ? getConversations() : (window.conversationsState || []);
     var c = convs.find(x => x.id === convId);
@@ -18812,22 +18814,23 @@ function handleAttachFile(input, kind) {
     var msgId = "msg_" + (Date.now().toString(36) + Math.random().toString(36).substr(2));
     var msg = {id: msgId, from: "me", text: "", at: Date.now()};
 
+    // Affichage local avec le data URL
     if(kind === 'media') {
       if(file.type.startsWith("video/")) {
-        msg.video = e.target.result;
+        msg.video = dataUrl;
         _diag("handleAttachFile: VIDEO added");
       } else {
-        msg.img = e.target.result;
+        msg.img = dataUrl;
         _diag("handleAttachFile: IMAGE added");
       }
     } else if(kind === 'audio') {
-      msg.voiceData = e.target.result;
+      msg.voiceData = dataUrl;
       msg.voiceDuration = 0;
       msg.isFile = true;
       msg.fileName = file.name;
       _diag("handleAttachFile: AUDIO added");
     } else if(kind === 'doc') {
-      msg.docData = e.target.result;
+      msg.docData = dataUrl;
       msg.fileName = file.name;
       msg.fileSize = (file.size/1024).toFixed(0) + " KB";
       msg.fileType = file.name.split(".").pop().toUpperCase();
@@ -18843,55 +18846,87 @@ function handleAttachFile(input, kind) {
     if(typeof renderConvFpThread === 'function') renderConvFpThread(c, displayName);
     if(typeof renderMessages === 'function') renderMessages();
 
-    // Sauvegarder dans Supabase pour synchronisation multi-appareils
-    _diag("handleAttachFile: Tentative Supabase...");
+    // Upload à Supabase Storage pour la synchronisation
+    _diag("handleAttachFile: Upload Supabase Storage...");
 
-    // Encoder dans le content en JSON
-    var contentData = {
-      type: kind,
-      filename: file.name,
-      size: file.size,
-      fileType: file.type,
-      url: e.target.result,
-      text: "[" + kind.toUpperCase() + "] " + file.name
-    };
-    var contentJson = JSON.stringify(contentData);
+    var fileName = Date.now() + "_" + Math.random().toString(36).substr(2, 9) + "_" + file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+    var storagePath = "attachments/" + convId + "/" + fileName;
 
-    // Essayer INSERT SANS from_id d'abord
-    supa.from("conv_messages").insert({
-      id: msgId,
-      conv_id: convId,
-      content: contentJson,
-      created_at: new Date().toISOString()
-    }).then(function(res) {
-      if (res.error) {
-        _diag("handleAttachFile: Erreur sans from_id - " + res.error.message);
-        // Fallback: essayer AVEC from_id
-        if (MY_UID) {
-          _diag("handleAttachFile: Fallback - essai avec from_id...");
-          supa.from("conv_messages").insert({
-            id: msgId,
-            conv_id: convId,
-            from_id: MY_UID,
-            content: contentJson,
-            created_at: new Date().toISOString()
-          }).then(function(res2) {
-            if (!res2.error) {
-              _diag("handleAttachFile: ✅ Supabase OK (avec from_id)");
-            }
-          }).catch(function() {});
-        }
+    // Convertir le data URL en blob pour l'upload
+    var byteString = atob(dataUrl.split(',')[1]);
+    var ab = new ArrayBuffer(byteString.length);
+    var ia = new Uint8Array(ab);
+    for (var i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
+    var blob = new Blob([ab], { type: file.type });
+
+    // Upload le fichier à Supabase Storage
+    supa.storage.from("attachments").upload(storagePath, blob, {
+      cacheControl: "3600",
+      upsert: false
+    }).then(function(storageRes) {
+      if (storageRes.error) {
+        _diag("handleAttachFile: ❌ Storage upload failed - " + storageRes.error.message + " (fallback sur data URL)");
+        sendMessageToSupabase(msgId, convId, dataUrl, file.type, file.name, kind);
       } else {
-        _diag("handleAttachFile: ✅ Supabase OK (sans from_id)");
+        // Récupérer l'URL publique
+        var storageUrl = supa.storage.from("attachments").getPublicUrl(storagePath).data.publicUrl;
+        _diag("handleAttachFile: ✅ Storage URL: " + storageUrl);
+        sendMessageToSupabase(msgId, convId, storageUrl, file.type, file.name, kind);
       }
     }).catch(function(err) {
-      _diag("handleAttachFile: Catch - " + err.message);
+      _diag("handleAttachFile: Storage exception - " + err.message + " (fallback)");
+      sendMessageToSupabase(msgId, convId, dataUrl, file.type, file.name, kind);
     });
 
     _diag("handleAttachFile: ✅ Sauvegarde locale OK");
     input.value = "";
   };
   reader.readAsDataURL(file);
+}
+
+function sendMessageToSupabase(msgId, convId, fileUrl, fileType, fileName, kind) {
+  // Encoder dans le content en JSON
+  var contentData = {
+    type: kind,
+    filename: fileName,
+    fileType: fileType,
+    url: fileUrl,
+    text: "[" + kind.toUpperCase() + "] " + fileName
+  };
+  var contentJson = JSON.stringify(contentData);
+
+  _diag("handleAttachFile: Envoi à Supabase - URL length: " + fileUrl.length);
+
+  // Essayer INSERT SANS from_id d'abord
+  supa.from("conv_messages").insert({
+    id: msgId,
+    conv_id: convId,
+    content: contentJson,
+    created_at: new Date().toISOString()
+  }).then(function(res) {
+    if (res.error) {
+      _diag("handleAttachFile: Erreur sans from_id - " + res.error.message);
+      // Fallback: essayer AVEC from_id
+      if (MY_UID) {
+        _diag("handleAttachFile: Fallback - essai avec from_id...");
+        supa.from("conv_messages").insert({
+          id: msgId,
+          conv_id: convId,
+          from_id: MY_UID,
+          content: contentJson,
+          created_at: new Date().toISOString()
+        }).then(function(res2) {
+          if (!res2.error) {
+            _diag("handleAttachFile: ✅ Supabase OK (avec from_id)");
+          }
+        }).catch(function() {});
+      }
+    } else {
+      _diag("handleAttachFile: ✅ Supabase OK (sans from_id)");
+    }
+  }).catch(function(err) {
+    _diag("handleAttachFile: Catch - " + err.message);
+  });
 }
 
 function shareLocation() {
