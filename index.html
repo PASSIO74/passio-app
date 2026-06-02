@@ -19382,27 +19382,12 @@ window.addEventListener('load', function() {
 <!-- INITIALISATION FINALE EMOJI/GIF -->
 <script>
 window.addEventListener('load', function() {
-  // S'assurer que _populateEmojiGrid fonctionne
-  if (typeof _populateEmojiGrid === 'function' && document.getElementById('emojiGrid')) {
-    if (!document.getElementById('emojiGrid').hasChildNodes()) {
+  // Pré-charger les emojis dans la grille
+  if (typeof _populateEmojiGrid === 'function') {
+    var grid = document.getElementById('emojiGrid');
+    if (grid && !grid.hasChildNodes()) {
       _populateEmojiGrid();
     }
-  }
-
-  // Tester le bouton emoji
-  var btn = document.getElementById('btnEmoji');
-  if (btn) {
-    // Créer un nouveau bouton sans les anciens handlers
-    var newBtn = btn.cloneNode(true);
-    btn.parentNode.replaceChild(newBtn, btn);
-
-    // Ajouter un onclick simple et direct
-    newBtn.onclick = function(e) {
-      e.preventDefault();
-      e.stopPropagation();
-      toggleEmojiPanel();
-      return false;
-    };
   }
 });
 </script>
