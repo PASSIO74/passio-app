@@ -18065,31 +18065,25 @@ function toggleEmojiPanel() {
   } catch(e) { console.error("toggleEmojiPanel:", e); }
 }
 
-// Liste complète d'emojis (300+)
-const EMOJI_LIST = "😀😁😂🤣😃😄😅😆😉😊😋😎😍🥰😘😗😙😚🙂🤗🤩🤔🤨😐😑😶🙄😏😣😥😮🤐😯😪😫😴😌😛😜😝😒😓😔😕😲☹️🙁😖😞😟😤😢😭😦😧😨😩🤯😬😰😱😳🥵🥶😠😡🤬😈👿💀☠️💩🤡👹👺👻👽👾🤖😺😸😹😻😼😽🙀😿😾❤️🧡💛💚💙💜🖤🤍🤎💔❤️‍🔥❤️‍🩹💕💞💓💗💖💘💝💟💌💏💑👋🤚🖐️✋🖖👌🤌🤏✌️🤞🫰🤟🤘🤙👈👉👆👇☝️👍👎✊👊🤛🤜👏🙌👐🤲🤝💅🤳💪🦾🦿🦵🦶👂🦻👃🧠🦷🦴👀👁️👅👄🐶🐱🐭🐹🐰🦊🐻🐼🐨🐯🦁🐮🐷🐸🐵🙈🙉🙊🐒🐔🐧🐦🐤🦆🦅🦉🦇🐺🐗🐴🦄🐝🪱🐛🦋🐌🐞🐜🦟🦗🕷️🦂🐢🐍🦎🦖🦕🐙🦑🦐🦞🦀🐡🐠🐟🐬🐳🐋🦈🐊🐅🐆🐘🦛🦏🐪🐫🦒🦓🦍🦧🐶🦁🐯🐻🐼🐨🦝🐫🦒🦘🐄🐂🐃🐄🐎🐗🐖🐏🐑🦌🦌🐐🦌🦁🐯🐻🦊🐻‍❄️🐼🐨🐼🦁🦒🦓🐘🦏🦛🐪🐫🦒🦓🦍🦧🦮🐒🐵🦁🐁🐀🐿️🦌🦌🐿️🦝🦨🦡🦦🦥🐁🐀🐈🐓🦃🦚🦜🦢🦗🕷️🦂🐢🐍🦎🐙🦑🦐🦀🦞🦀🦑🐙🦪🦗🕷️🦂🐢🐍🦎🦖🦕🌲🌳🌴🌱🌿☘️🍀🎍🎎🎏🎐🎑🎀🎁🎗️🎊🎉🎈🎆🎇✨🎄🎄🎄💝💟❤️🧡💛💚💙💜🖤🤍🤎🏵️💐🌹🥀🌷🌺🌸🌼🌻🌞🌝🌛🌜🌚🌕🌖🌗🌘🌑🌒🌓🌔🌕🌖🌗🌘🌙🌚⭐🌟✨⚡☄️💥🔥🌪️🌈☀️🌤️⛅🌥️☁️🌦️🌧️⛈️🌩️🌨️❄️☃️⛄🌬️💨💧💦☔☂️🌊🌫️🍏🍎🍐🍊🍋🍌🍉🍇🍓🫐🍈🍒🍑🥭🍍🥥🥝🍅🥑🍆🥔🥐🍞🥖🥨🥯🧀🥚🍳🧈🥞🥓🥞🥚🍗🍖🌭🍔🍟🍕🥪🥙🧆🌮🌯🥗🥘🍝🍜🍲🍛🍣🍱🥟🦪🍤🍙🍚🍘🍥🥠🥮🍢🍡🍧🍨🍦🥧🧁🍰🎂🍮🍯🍼🥛☕🍵🍶🍾🍷🍸🍹🍺🍻🥂🏆🥇🥈🥉🏅⭐🌟✨💫🎯🎪🎭🎨🎬🎤🎧🎼🎹🎸🥁🎷🎺🎻🪕🪘📱💻⌨️🖥️🖨️🖱️🖲️🕹️🗜️💽💾💿📀📼📷📸📹🎥🎞️📽️🎬📺📻📡☎️☎️📞📟📠🔔🔕📢📣📯📻🎚️🎛️⏱️⏲️⏰🕰️⌚⏳⏲️🧿🎁🎀🎈🎉🎊🎎🎏🎐🎑🎀🎁🏵️🌹🌺🌸🌼🌻🌞🌝🌛🌜🌚🌕🌖🌗🌘⭐🌟✨💫🔥❤️💕💖💗💓💞💘💝💟❣️🧡💛💚💙💜🖤🤍🤎🏵️💐🌹";
+// Simple list of popular emojis
+var EMOJIS = ["😀","😁","😂","🤣","😃","😄","😅","😆","😉","😊","😋","😎","😍","🥰","😘","😗","😂","🤣","😃","❤️","💕","💖","💗","💓","💞","💝","🔥","👍","👎","👏","🙌","🎉","🎊","✨","⭐","💯","🔔","🎁","🎈","🎀","🌹","🌺","🌸","🌼","🌻","🍕","🍔","🍟","🍗","🍖","🥗","🍱","🍜","☕","🍰","🎂","🍪","🍩","🍫","🍬","🍭","🍮","🍯","🥤","🍷","🍾","🍸","🍹","🍺","🍻","🥂","🎤","🎧","🎼","🎹","🎸","🎺","🎷","🥁","🎻","🎲","🎯","🎳","🎮","🎰","🚗","🚕","🚙","🚌","🚎","🏎️","🚓","🚑","🚒","🚐","🚚","🚛","🚜","🏍️","🛴","🚲","✈️","🛫","🛬","🛩️","💺","🛰️","🚀","🛸","⛵","🚤","🛳️","⛴️","🚢","🐶","🐱","🐭","🐹","🐰","🦊","🐻","🐼","🐨","🐯","🦁","🐮","🐷","🐸","🐵","🙈","🙉","🙊","🐒","🐔","🐧","🐦","🐤","🦆","🦅","🦉","🦇","🐺","🐗","🐴","🦄","🐝","🐛","🦋","🐌","🐞","🐜","🦟","🦗","🕷️","🦂","🐢","🐍","🦎","🦖","🦕","🐙","🦑","🦐","🦞","🦀","🐡","🐠","🐟","🐬","🐳","🐋","🦈","🐊","🐅","🐆","🐘","🦛","🦏","🐪","🐫","🦒","🦓","🦍","🦧"];
 
-// Remplir la grille emoji
-function _buildEmojiGrid() {
+// Populate emoji grid
+function _populateEmojiGrid() {
   var grid = document.getElementById("emojiGrid");
-  if (!grid || grid.children.length > 0) return;
-  var emojis = EMOJI_LIST.split("");
-  var frag = document.createDocumentFragment();
-  emojis.forEach(function(emoji) {
+  if (!grid) return;
+  grid.innerHTML = "";
+  EMOJIS.forEach(function(emoji) {
     var div = document.createElement("div");
     div.className = "emoji-item";
     div.textContent = emoji;
     div.onclick = function() { insertEmoji(emoji); };
-    frag.appendChild(div);
+    grid.appendChild(div);
   });
-  grid.appendChild(frag);
 }
 
-// Appeler au chargement de la page
-if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", _buildEmojiGrid);
-} else {
-  _buildEmojiGrid();
-}
+// Call on page load
+setTimeout(_populateEmojiGrid, 100);
 
 // Fallback pour insertEmoji si le script 2 ne charge pas
 function insertEmoji(e) {
