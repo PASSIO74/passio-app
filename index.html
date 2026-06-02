@@ -11996,7 +11996,7 @@ async function openConversation(convId) {
 function renderConvFpThread(c, displayName) {
   var thread = document.getElementById("convFpThread");
   if (!thread) return;
-  var msgs = (c.messages || []).slice().sort(function(a, b) { return (a.at || 0) - (b.at || 0); });
+  var msgs = c.messages || [];
 
   if (msgs.length === 0) {
     thread.innerHTML = `
