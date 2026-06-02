@@ -18863,6 +18863,11 @@ function _deleteConv(convId) {
 
 // ── Init : wirer les events qui ne peuvent pas être en HTML inline ──
 document.addEventListener("DOMContentLoaded", function() {
+  // Initialiser le picker emoji
+  setTimeout(function() {
+    if (typeof _buildEmojiPicker === "function") _buildEmojiPicker();
+  }, 100);
+
   // Bouton vocal : hold-to-record (mouse + touch)
   var btnVoice = document.getElementById("btnVoice");
   if (btnVoice) {
