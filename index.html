@@ -18503,21 +18503,6 @@ function _populateEmojiGrid() {
 // Call on page load
 setTimeout(_populateEmojiGrid, 100);
 
-// Fallback pour insertEmoji si le script 2 ne charge pas
-function insertEmoji(e) {
-  try {
-    var inp = document.getElementById("convFpInput");
-    if (!inp) return;
-    var start = inp.selectionStart != null ? inp.selectionStart : inp.value.length;
-    var end = inp.selectionEnd != null ? inp.selectionEnd : inp.value.length;
-    inp.value = inp.value.slice(0, start) + e + inp.value.slice(end);
-    inp.focus();
-    var pos = start + [...e].length;
-    try { inp.setSelectionRange(pos, pos); } catch(_) {}
-    if (typeof autoResizeTextarea === "function") autoResizeTextarea(inp);
-  } catch(err) { console.error("insertEmoji:", err); }
-}
-
 function _sendGif(url) {
   try {
     _closeEmojiPanel();
