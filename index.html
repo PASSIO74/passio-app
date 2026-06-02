@@ -18843,6 +18843,7 @@ function handleAttachFile(input, kind) {
       type: kind,
       filename: file.name,
       size: file.size,
+      url: e.target.result,
       text: "[" + kind.toUpperCase() + "] " + file.name
     };
     var contentJson = JSON.stringify(contentData);
