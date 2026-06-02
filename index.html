@@ -18860,6 +18860,7 @@ function _renderGifsStatic() {
   const grid = document.getElementById("gifGrid");
   if (!grid) return;
   const demos = [
+    // Reactions
     { url:"https://media.giphy.com/media/3o7abKhOpu0NwenH3O/giphy.gif", label:"👍" },
     { url:"https://media.giphy.com/media/xT9IgG50Lg7rusjtG8/giphy.gif", label:"🎉" },
     { url:"https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif", label:"😂" },
@@ -18884,10 +18885,69 @@ function _renderGifsStatic() {
     { url:"https://media.giphy.com/media/RH16FlVXbaAzS/giphy.gif", label:"🎸" },
     { url:"https://media.giphy.com/media/l46Ce3kKMKxvEiFZS/giphy.gif", label:"🕺" },
     { url:"https://media.giphy.com/media/l0HlHJJxcNHFqyvrm/giphy.gif", label:"🎉" },
+    // Additional reactions and emotions
+    { url:"https://media.giphy.com/media/JIX9RbDfLvbl2/giphy.gif", label:"👏 applause" },
+    { url:"https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif", label:"😂 cry" },
+    { url:"https://media.giphy.com/media/l0HlF5j3QRG5pxPAI/giphy.gif", label:"🎊 party" },
+    { url:"https://media.giphy.com/media/l3q2K6HIuvsGyp7UE/giphy.gif", label:"🚀 rocket" },
+    { url:"https://media.giphy.com/media/l0MYM8m02D0c3PoFi/giphy.gif", label:"🎤 sing" },
+    { url:"https://media.giphy.com/media/26ufdipQqU2lhNA4g/giphy.gif", label:"💕 love" },
+    { url:"https://media.giphy.com/media/3oz8xAFtqoOUUrsh7W/giphy.gif", label:"🔥 hot" },
+    { url:"https://media.giphy.com/media/l0MYM8m02D0c3PoFi/giphy.gif", label:"🎵 music" },
+    { url:"https://media.giphy.com/media/JIX9RbDfLvbl2/giphy.gif", label:"😂 laugh" },
+    { url:"https://media.giphy.com/media/26ufdipQqU2lhNA4g/giphy.gif", label:"😍 heart eyes" },
+    { url:"https://media.giphy.com/media/l4Jz3a8jO92crOLXy/giphy.gif", label:"🎉 celebrate" },
+    { url:"https://media.giphy.com/media/3ohzdKdb7d1bbVwnQU/giphy.gif", label:"😎 cool" },
+    { url:"https://media.giphy.com/media/l0HlF5j3QRG5pxPAI/giphy.gif", label:"🍾 champagne" },
+    { url:"https://media.giphy.com/media/3o7abKhOpu0NwenH3O/giphy.gif", label:"👌 ok" },
+    { url:"https://media.giphy.com/media/xT9IgG50Lg7rusjtG8/giphy.gif", label:"🎊 confetti" },
+    { url:"https://media.giphy.com/media/FW8aI0tXVE8gKxYvRc/giphy.gif", label:"😂 grin" },
+    { url:"https://media.giphy.com/media/l0Iy1Z8oW4fvfBLh2/giphy.gif", label:"😍 cute" },
+    { url:"https://media.giphy.com/media/l0HlDtKUoRb0x8bDy/giphy.gif", label:"🥳 excited" },
+    { url:"https://media.giphy.com/media/l0MYr7jgMgWI8ouOI/giphy.gif", label:"🎵 dance" },
+    { url:"https://media.giphy.com/media/l0HlSY9x8FZo0XO1i/giphy.gif", label:"💃 dancing" },
+    // Add more popular GIFs
+    { url:"https://media.giphy.com/media/l3q2K6HIuvsGyp7UE/giphy.gif", label:"victory" },
+    { url:"https://media.giphy.com/media/3o7TKU8j7Yt9R2xNMY/giphy.gif", label:"art" },
+    { url:"https://media.giphy.com/media/l0MYM8m02D0c3PoFi/giphy.gif", label:"mic" },
+    { url:"https://media.giphy.com/media/RH16FlVXbaAzS/giphy.gif", label:"guitar" },
+    { url:"https://media.giphy.com/media/l46Ce3kKMKxvEiFZS/giphy.gif", label:"jump" },
+    { url:"https://media.giphy.com/media/l0HlHJJxcNHFqyvrm/giphy.gif", label:"party time" },
+    { url:"https://media.giphy.com/media/l4FgUMgdCHHBFcGe88/giphy.gif", label:"clapping" },
+    { url:"https://media.giphy.com/media/l4FGGafcOHmrlQxG0/giphy.gif", label:"sparkle" },
+    { url:"https://media.giphy.com/media/3ohzdKdb7d1bbVwnQU/giphy.gif", label:"cool guy" },
+    { url:"https://media.giphy.com/media/l0HlFZ3c8HWDRlCharepI/giphy.gif", label:"gift" },
+    { url:"https://media.giphy.com/media/26ufdipQqU2lhNA4g/giphy.gif", label:"red heart" },
+    { url:"https://media.giphy.com/media/3oz8xAFtqoOUUrsh7W/giphy.gif", label:"flame" },
+    { url:"https://media.giphy.com/media/xT9IgG50Lg7rusjtG8/giphy.gif", label:"balloons" },
+    { url:"https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif", label:"tears" },
+    { url:"https://media.giphy.com/media/3o7abKhOpu0NwenH3O/giphy.gif", label:"thumbs up" },
+    // Add some funny/meme GIFs (using common popular GIF URLs)
+    { url:"https://media.giphy.com/media/l0HlQaQ6gWfllcjDO/giphy.gif", label:"funny" },
+    { url:"https://media.giphy.com/media/l4FGGafcOHmrlQxG0/giphy.gif", label:"happy" },
+    { url:"https://media.giphy.com/media/l0HlMMaQ5vJ7lKOmY/giphy.gif", label:"movie" },
+    { url:"https://media.giphy.com/media/l3q2K6HIuvsGyp7UE/giphy.gif", label:"rocket launch" },
+    { url:"https://media.giphy.com/media/26ufdipQqU2lhNA4g/giphy.gif", label:"love heart" },
+    { url:"https://media.giphy.com/media/FW8aI0tXVE8gKxYvRc/giphy.gif", label:"smile" },
+    { url:"https://media.giphy.com/media/l0Iy1Z8oW4fvfBLh2/giphy.gif", label:"pretty" },
+    { url:"https://media.giphy.com/media/l0HlDtKUoRb0x8bDy/giphy.gif", label:"party horn" },
+    { url:"https://media.giphy.com/media/l0Iy0QcSoQYQW3SWHf/giphy.gif", label:"guitar player" },
+    { url:"https://media.giphy.com/media/l0MYr7jgMgWI8ouOI/giphy.gif", label:"music notes" },
+    { url:"https://media.giphy.com/media/l0HlSY9x8FZo0XO1i/giphy.gif", label:"dancer" },
+    { url:"https://media.giphy.com/media/l4FGGafcOHmrlQxG0/giphy.gif", label:"sparkles" },
+    { url:"https://media.giphy.com/media/l0HlMMaQ5vJ7lKOmY/giphy.gif", label:"camera" },
+    { url:"https://media.giphy.com/media/l3q2K6HIuvsGyp7UE/giphy.gif", label:"launch" },
+    { url:"https://media.giphy.com/media/l0HlQaQ6gWfllcjDO/giphy.gif", label:"circus" },
+    { url:"https://media.giphy.com/media/l4FgUMgdCHHBFcGe88/giphy.gif", label:"clap" },
+    { url:"https://media.giphy.com/media/3o7TKU8j7Yt9R2xNMY/giphy.gif", label:"paint" },
+    { url:"https://media.giphy.com/media/l0MYM8m02D0c3PoFi/giphy.gif", label:"sing mic" },
+    { url:"https://media.giphy.com/media/RH16FlVXbaAzS/giphy.gif", label:"play guitar" },
+    { url:"https://media.giphy.com/media/l46Ce3kKMKxvEiFZS/giphy.gif", label:"jump celebration" },
+    { url:"https://media.giphy.com/media/l0HlHJJxcNHFqyvrm/giphy.gif", label:"party band" },
   ];
   grid.innerHTML = demos.map(d =>
     `<div class="gif-item" data-gifurl="${d.url}"><img src="${d.url}" loading="lazy" alt="${d.label}" /></div>`
-  ).join("") + `<div style="grid-column:span 3;padding:8px;text-align:center;color:var(--muted);font-size:11px;">Recherche pour plus de GIFs</div>`;
+  ).join("") + `<div style="grid-column:span 3;padding:8px;text-align:center;color:var(--muted);font-size:11px;">📌 Tape pour chercher plus de GIFs</div>`;
   grid.onclick = function(e) {
     const item = e.target.closest(".gif-item");
     if (item) _sendGif(item.getAttribute("data-gifurl"));
