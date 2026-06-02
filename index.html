@@ -18518,11 +18518,6 @@ function insertEmoji(e) {
   } catch(err) { console.error("insertEmoji:", err); }
 }
 
-function _onGifSearch(query) {
-  // Fallback simple : afficher les GIFs statiques
-  _renderGifsStatic();
-}
-
 function _sendGif(url) {
   try {
     _closeEmojiPanel();
