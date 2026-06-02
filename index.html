@@ -18603,45 +18603,36 @@ function switchEmojiTab(tab, btn) {
 }
 
 function toggleEmojiPanel() {
-  if (typeof _closeAttachMenu === "function") {
-    _closeAttachMenu();
-  }
-
   var panel = document.getElementById("convEmojiPanel");
   if (!panel) {
-    console.error("Panel not found!");
+    alert("Panel emoji introuvable!");
     return;
   }
 
   _emojiPanelOpen = !_emojiPanelOpen;
 
   if (_emojiPanelOpen) {
-    // FORCER l'affichage du panel
-    panel.style.display = "flex";
-    panel.style.visibility = "visible";
-    panel.style.opacity = "1";
-    panel.classList.add("open");
+    // AFFICHER LE PANEL - ULTRA-SIMPLE
+    panel.style.display = "flex !important";
+    panel.style.position = "fixed !important";
+    panel.style.bottom = "70px !important";
+    panel.style.right = "20px !important";
+    panel.style.zIndex = "999999 !important";
+    panel.style.visibility = "visible !important";
+    panel.style.opacity = "1 !important";
 
     // Remplir les emojis
     var grid = document.getElementById("emojiGrid");
-    if (grid) {
-      if (!grid.hasChildNodes()) {
-        _populateEmojiGrid();
-      }
-      grid.style.display = "grid";
+    if (grid && !grid.hasChildNodes()) {
+      _populateEmojiGrid();
     }
 
-    // Afficher l'onglet emoji par défaut
+    // Afficher l'onglet emoji
     var emojiTab = document.getElementById("emojiTabContent");
+    if (emojiTab) emojiTab.style.display = "flex !important";
+
     var gifTab = document.getElementById("gifTabContent");
-    if (emojiTab) {
-      emojiTab.style.display = "flex";
-      emojiTab.classList.remove("hidden");
-    }
-    if (gifTab) {
-      gifTab.style.display = "none";
-      gifTab.classList.remove("visible");
-    }
+    if (gifTab) gifTab.style.display = "none !important";
 
     // Activer le bouton emoji
     document.querySelectorAll(".emoji-tab").forEach(function(b, i) {
@@ -18651,10 +18642,12 @@ function toggleEmojiPanel() {
         b.classList.remove("active");
       }
     });
+
+    console.log("✅ PANEL EMOJI OUVERT");
   } else {
-    // Fermer le panel
-    panel.style.display = "none";
-    panel.classList.remove("open");
+    // FERMER LE PANEL
+    panel.style.display = "none !important";
+    console.log("✅ PANEL EMOJI FERMÉ");
   }
 }
 
