@@ -12064,12 +12064,16 @@ function renderConvFpThread(c, displayName) {
           : ' <span style="opacity:0.5;">✓</span>')
       : "";
 
-    // Temps — affiché sur chaque message avec heure précise
+    // Temps — affiché sur chaque message avec heure exacte (HH:MM)
     var isLastInGroup = (i === msgs.length - 1) || (msgs[i+1] && msgs[i+1].from !== m.from) || (msgs[i+1] && m.at && msgs[i+1].at && _dayKey(msgs[i+1].at) !== msgDay);
     var timeStr = '';
     if (m.at) {
       var receipt = (isLastMe && isLastInGroup) ? readReceipt : '';
-      timeStr = '<span class="conv-bubble-time">' + fmtTime(m.at) + receipt + '</span>';
+      var d = new Date(m.at);
+      var hours = String(d.getHours()).padStart(2, '0');
+      var mins = String(d.getMinutes()).padStart(2, '0');
+      var timeExact = hours + ':' + mins;
+      timeStr = '<span class="conv-bubble-time">' + timeExact + receipt + '</span>';
     } else if (isLastMe && isLastInGroup) {
       timeStr = '<span class="conv-bubble-time">' + readReceipt + '</span>';
     }
