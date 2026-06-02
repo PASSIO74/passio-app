@@ -19100,6 +19100,19 @@ document.addEventListener("click", function(e) {
     a?.classList.remove("active");
   }
 });
+
+// INITIALISATION BOUTON DIAGNOSTIC 🔧
+setTimeout(function() {
+  var diagBtn = document.createElement("button");
+  diagBtn.id = "__diag_btn";
+  diagBtn.textContent = "🔧";
+  diagBtn.style.cssText = "position:fixed;top:20px;right:20px;width:40px;height:40px;border-radius:50%;background:#666;border:none;color:#fff;font-size:18px;cursor:pointer;z-index:99999;box-shadow:0 2px 8px rgba(0,0,0,0.3);transition:background 0.2s;";
+  diagBtn.title = "Activer/Désactiver le mode diagnostic";
+  diagBtn.onclick = toggleDiagPanel;
+  diagBtn.onmouseover = function() { if(!window._DEBUG_MODE) this.style.background = "#777"; };
+  diagBtn.onmouseout = function() { if(!window._DEBUG_MODE) this.style.background = "#666"; };
+  document.body.appendChild(diagBtn);
+}, 500);
 </script>
 
 </body>
