@@ -5923,13 +5923,20 @@
     }
 
     #gifTabContent {
-      display: none;
-      flex-direction: column;
-      flex: 1;
-      overflow: hidden;
+      display: none !important;
+      flex-direction: column !important;
+      flex: 1 !important;
+      overflow: hidden !important;
+      min-height: 0 !important;
     }
 
-    #gifTabContent.visible { display: flex; }
+    #gifTabContent.visible {
+      display: flex !important;
+    }
+
+    #gifTabContent[style*="display: flex"] {
+      display: flex !important;
+    }
 
     .gif-grid {
       display: grid;
