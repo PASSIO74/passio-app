@@ -18607,51 +18607,94 @@ function switchEmojiTab(tab, btn) {
 }
 
 function toggleEmojiPanel() {
-  var panel = document.getElementById("convEmojiPanel");
-  if (!panel) {
-    alert("Panel emoji introuvable!");
-    return;
+  console.log("toggleEmojiPanel called");
+
+  // CRÉER UN MODAL SIMPLE SI N'EXISTE PAS
+  var modal = document.getElementById("emojiModal");
+  if (!modal) {
+    modal = document.createElement("div");
+    modal.id = "emojiModal";
+    modal.style.cssText = "display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:999999;";
+
+    var content = document.createElement("div");
+    content.style.cssText = "position:absolute;bottom:70px;right:20px;width:350px;height:450px;background:white;border-radius:16px;box-shadow:0 4px 20px rgba(0,0,0,0.3);display:flex;flex-direction:column;overflow:hidden;";
+
+    var header = document.createElement("div");
+    header.style.cssText = "display:flex;gap:10px;border-bottom:1px solid #ddd;padding:10px;flex-shrink:0;";
+    header.innerHTML = '<button style="flex:1;padding:10px;border:none;background:none;cursor:pointer;font-weight:bold;color:#7c3aed;" onclick="document.getElementById(\'emojiGrid\').style.display=\'grid\';document.getElementById(\'gifGrid\').style.display=\'none\';">😊 Emoji</button><button style="flex:1;padding:10px;border:none;background:none;cursor:pointer;font-weight:bold;" onclick="document.getElementById(\'emojiGrid\').style.display=\'none\';document.getElementById(\'gifGrid\').style.display=\'grid\';">GIF</button><button style="padding:10px;border:none;background:none;cursor:pointer;font-size:18px;" onclick="toggleEmojiPanel()">✕</button>';
+
+    var emojiGridDiv = document.createElement("div");
+    emojiGridDiv.id = "emojiGridModal";
+    emojiGridDiv.style.cssText = "display:grid;grid-template-columns:repeat(8,1fr);gap:4px;padding:12px;overflow-y:auto;flex:1;";
+
+    var gifGridDiv = document.createElement("div");
+    gifGridDiv.id = "gifGridModal";
+    gifGridDiv.style.cssText = "display:none;grid-template-columns:repeat(3,1fr);gap:12px;padding:12px;overflow-y:auto;flex:1;";
+
+    content.appendChild(header);
+    content.appendChild(emojiGridDiv);
+    content.appendChild(gifGridDiv);
+    modal.appendChild(content);
+    document.body.appendChild(modal);
+
+    // Fermer quand on clique sur le fond
+    modal.addEventListener("click", function(e) {
+      if (e.target === modal) toggleEmojiPanel();
+    });
   }
 
   _emojiPanelOpen = !_emojiPanelOpen;
 
   if (_emojiPanelOpen) {
-    // AFFICHER LE PANEL - ULTRA-SIMPLE
-    panel.style.display = "flex !important";
-    panel.style.position = "fixed !important";
-    panel.style.bottom = "70px !important";
-    panel.style.right = "20px !important";
-    panel.style.zIndex = "999999 !important";
-    panel.style.visibility = "visible !important";
-    panel.style.opacity = "1 !important";
+    modal.style.display = "block";
 
     // Remplir les emojis
-    var grid = document.getElementById("emojiGrid");
+    var grid = document.getElementById("emojiGridModal");
     if (grid && !grid.hasChildNodes()) {
-      _populateEmojiGrid();
+      EMOJIS.forEach(function(emoji) {
+        var div = document.createElement("div");
+        div.style.cssText = "font-size:28px;text-align:center;cursor:pointer;padding:8px;border-radius:10px;";
+        div.textContent = emoji;
+        div.onclick = function() {
+          insertEmoji(emoji);
+          toggleEmojiPanel();
+        };
+        div.onmouseover = function() { this.style.background = "rgba(124,58,237,0.2)"; };
+        div.onmouseout = function() { this.style.background = ""; };
+        grid.appendChild(div);
+      });
     }
 
-    // Afficher l'onglet emoji
-    var emojiTab = document.getElementById("emojiTabContent");
-    if (emojiTab) emojiTab.style.display = "flex !important";
+    // Remplir les GIFs
+    var gifGrid = document.getElementById("gifGridModal");
+    if (gifGrid && !gifGrid.hasChildNodes()) {
+      var gifs = [
+        "https://media.giphy.com/media/3o7abKhOpu0NwenH3O/giphy.gif",
+        "https://media.giphy.com/media/xT9IgG50Lg7rusjtG8/giphy.gif",
+        "https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif",
+        "https://media.giphy.com/media/26ufdipQqU2lhNA4g/giphy.gif",
+        "https://media.giphy.com/media/3oz8xAFtqoOUUrsh7W/giphy.gif",
+        "https://media.giphy.com/media/l4FGGafcOHmrlQxG0/giphy.gif"
+      ];
+      gifs.forEach(function(url) {
+        var div = document.createElement("div");
+        div.style.cssText = "width:100%;height:120px;border-radius:12px;overflow:hidden;cursor:pointer;";
+        var img = document.createElement("img");
+        img.src = url;
+        img.style.cssText = "width:100%;height:100%;object-fit:cover;";
+        div.appendChild(img);
+        div.onclick = function() {
+          insertEmoji("[GIF]");
+          toggleEmojiPanel();
+        };
+        gifGrid.appendChild(div);
+      });
+    }
 
-    var gifTab = document.getElementById("gifTabContent");
-    if (gifTab) gifTab.style.display = "none !important";
-
-    // Activer le bouton emoji
-    document.querySelectorAll(".emoji-tab").forEach(function(b, i) {
-      if (i === 0) {
-        b.classList.add("active");
-      } else {
-        b.classList.remove("active");
-      }
-    });
-
-    console.log("✅ PANEL EMOJI OUVERT");
+    console.log("✅ Modal ouvert");
   } else {
-    // FERMER LE PANEL
-    panel.style.display = "none !important";
-    console.log("✅ PANEL EMOJI FERMÉ");
+    modal.style.display = "none";
+    console.log("✅ Modal fermé");
   }
 }
 
