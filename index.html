@@ -12023,9 +12023,6 @@ function renderConvFpThread(c, displayName) {
   var lastDay = "";
   var lastFrom = "";
 
-  // Trier les messages par timestamp (du plus ancien au plus récent)
-  msgs.sort(function(a, b) { return (a.at || 0) - (b.at || 0); });
-
   msgs.forEach(function(m, i) {
     var isMe = (m.from === "me");
     var msgDay = m.at ? _dayKey(m.at) : "";
