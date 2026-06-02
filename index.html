@@ -18607,6 +18607,10 @@ function switchEmojiTab(tab, btn) {
 }
 
 function toggleEmojiPanel() {
+  if (typeof _closeAttachMenu === "function") {
+    _closeAttachMenu();
+  }
+
   var panel = document.getElementById("convEmojiPanel");
   if (!panel) return;
 
