@@ -18919,6 +18919,16 @@ function _docIcon(ext) {
   const map = { PDF:"📕", DOC:"📘", DOCX:"📘", XLS:"📗", XLSX:"📗", TXT:"📄", ZIP:"🗜️", MP3:"🎵", WAV:"🎵" };
   return map[(ext||"").toUpperCase()] || "📄";
 }
+
+// Initialiser le picker emoji au chargement
+window.addEventListener('load', function() {
+  setTimeout(function() {
+    const grid = document.getElementById("emojiGrid");
+    if (grid && !grid.hasChildNodes() && typeof _buildEmojiPicker === "function") {
+      _buildEmojiPicker();
+    }
+  }, 100);
+});
 </script>
 
 <!-- ======== PWA INSTALL OVERLAY ======== -->
