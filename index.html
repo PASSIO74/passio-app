@@ -17311,7 +17311,7 @@ async function supaLoadMessages(convId) {
       .eq("conv_id", convId)
       .order("created_at", { ascending: true });
     if (error) { console.warn("supaLoadMessages error:", error.message); return []; }
-    return (data || []).map(function(r) {
+    const messages = (data || []).map(function(r) {
       if (r.profiles && r.from_id && typeof _profileCache !== "undefined") {
         _profileCache.set(r.from_id, { username: r.profiles.username || "Passionné", emoji: r.profiles.emoji || "✨", color: r.profiles.color || "#8b5cf6" });
       }
@@ -17324,6 +17324,9 @@ async function supaLoadMessages(convId) {
         at: new Date(r.created_at).getTime(),
       };
     });
+    // S'assurer que les messages sont triés par timestamp
+    messages.sort(function(a, b) { return (a.at || 0) - (b.at || 0); });
+    return messages;
   } catch(e) { console.error("supaLoadMessages exception:", e); return []; }
 }
 
