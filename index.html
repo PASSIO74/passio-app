@@ -19379,6 +19379,9 @@ window.addEventListener('load', function() {
 
 <!-- INITIALISATION FINALE EMOJI/GIF -->
 <script>
+// ASSURER QUE LES VARIABLES GLOBALES EXISTENT
+if (typeof _emojiPanelOpen === 'undefined') window._emojiPanelOpen = false;
+
 // DIAGNOSTIC VISUEL
 var _diagnosisDiv = document.createElement("div");
 _diagnosisDiv.id = "__emoji_diagnosis";
