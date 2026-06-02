@@ -18590,25 +18590,53 @@ function toggleEmojiPanel() {
   }
 
   var panel = document.getElementById("convEmojiPanel");
-  if (!panel) return;
+  if (!panel) {
+    console.error("Panel not found!");
+    return;
+  }
 
   _emojiPanelOpen = !_emojiPanelOpen;
-  panel.classList.toggle("open", _emojiPanelOpen);
 
   if (_emojiPanelOpen) {
+    // FORCER l'affichage du panel
+    panel.style.display = "flex";
+    panel.style.visibility = "visible";
+    panel.style.opacity = "1";
+    panel.classList.add("open");
+
+    // Remplir les emojis
     var grid = document.getElementById("emojiGrid");
-    if (grid && !grid.hasChildNodes()) {
-      _populateEmojiGrid();
+    if (grid) {
+      if (!grid.hasChildNodes()) {
+        _populateEmojiGrid();
+      }
+      grid.style.display = "grid";
     }
 
+    // Afficher l'onglet emoji par défaut
     var emojiTab = document.getElementById("emojiTabContent");
     var gifTab = document.getElementById("gifTabContent");
-    if (emojiTab) emojiTab.classList.remove("hidden");
-    if (gifTab) gifTab.classList.remove("visible");
+    if (emojiTab) {
+      emojiTab.style.display = "flex";
+      emojiTab.classList.remove("hidden");
+    }
+    if (gifTab) {
+      gifTab.style.display = "none";
+      gifTab.classList.remove("visible");
+    }
 
+    // Activer le bouton emoji
     document.querySelectorAll(".emoji-tab").forEach(function(b, i) {
-      b.classList.toggle("active", i === 0);
+      if (i === 0) {
+        b.classList.add("active");
+      } else {
+        b.classList.remove("active");
+      }
     });
+  } else {
+    // Fermer le panel
+    panel.style.display = "none";
+    panel.classList.remove("open");
   }
 }
 
