@@ -11966,6 +11966,10 @@ async function openConversation(convId) {
 
   var thread = document.getElementById("convFpThread");
 
+  // Souscrire aux nouveaux messages en temps réel
+  _supaConvSpecificChannel(convId, displayName);
+  _subscribeTyping(convId);
+
   // Affichage immédiat avec les messages locaux (feedback instantané)
   renderConvFpThread(c, displayName);
   if (thread) thread.scrollTop = thread.scrollHeight;
