@@ -18390,15 +18390,33 @@ function _onEmojiSearch(query) {
 // Populate emoji grid
 function _populateEmojiGrid() {
   var grid = document.getElementById("emojiGrid");
-  if (!grid) return;
+  if (!grid) {
+    console.error("emojiGrid not found");
+    return;
+  }
+
   grid.innerHTML = "";
+
+  // Vérifier que EMOJIS existe
+  if (typeof EMOJIS === 'undefined' || !Array.isArray(EMOJIS)) {
+    console.error("EMOJIS not defined or not an array");
+    grid.innerHTML = '<div style="grid-column:span 8;padding:20px;text-align:center;color:red;">Erreur: Emojis non disponibles</div>';
+    return;
+  }
+
+  // Remplir avec tous les emojis
   EMOJIS.forEach(function(emoji) {
     var div = document.createElement("div");
     div.className = "emoji-item";
     div.textContent = emoji;
-    div.onclick = function() { insertEmoji(emoji); };
+    div.style.cursor = "pointer";
+    div.onclick = function() {
+      insertEmoji(emoji);
+    };
     grid.appendChild(div);
   });
+
+  console.log("✅ " + EMOJIS.length + " emojis populés");
 }
 
 // Call on page load - avec délai pour garantir que le DOM est chargé
