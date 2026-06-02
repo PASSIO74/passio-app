@@ -18518,28 +18518,72 @@ function insertEmoji(e) {
 }
 
 // Send GIF to conversation
-function _sendGif(url) {
+function _sendGif(gifUrl) {
   try {
+    _diag("_sendGif: Envoi GIF: " + gifUrl.substring(0, 50) + "...");
     _closeEmojiPanel();
     var fp = document.getElementById("conv-fullpage");
-    if (!fp) return;
+    if (!fp) {
+      _diag("_sendGif: conv-fullpage NOT FOUND");
+      return;
+    }
     var convId = fp.getAttribute("data-conv-id");
     var displayName = fp.getAttribute("data-display-name");
-    if (!convId) return;
+    if (!convId) {
+      _diag("_sendGif: convId NOT FOUND");
+      return;
+    }
+    _diag("_sendGif: convId=" + convId);
+
     var convs = getConversations();
     var c = convs.find(x => x.id === convId);
-    if (!c) return;
+    if (!c) {
+      _diag("_sendGif: Conversation NOT FOUND");
+      return;
+    }
+
     var msgId = "msg_" + uid();
     if (!c.messages) c.messages = [];
-    c.messages.push({ id: msgId, from: "me", text: "", gif: url, at: Date.now() });
+    c.messages.push({ id: msgId, from: "me", text: "", gif: gifUrl, at: Date.now() });
     c.lastAt = Date.now();
+
+    _diag("_sendGif: Message créé localement - msgId=" + msgId);
     saveConversations();
+
     if (typeof renderConvFpThread === "function") renderConvFpThread(c, displayName);
     if (typeof renderMessages === "function") renderMessages();
-    if (typeof supa !== "undefined" && supa && MY_UID) {
-      supa.from("conv_messages").insert({ id: msgId, conv_id: convId, from_id: MY_UID, content: "[GIF]", created_at: new Date().toISOString() }).then(()=>{}).catch(()=>{});
+
+    // Sync Supabase
+    if (typeof supa === 'undefined' || !supa) {
+      _diag("_sendGif: Supabase NOT AVAILABLE");
+      return;
     }
+    if (!MY_UID) {
+      _diag("_sendGif: MY_UID NOT SET");
+      return;
+    }
+
+    _diag("_sendGif: Sync Supabase - Envoi du message avec gif_url...");
+    supa.from("conv_messages").insert({
+      id: msgId,
+      conv_id: convId,
+      from_id: MY_UID,
+      content: "🎬 GIF envoyé",
+      gif_url: gifUrl,
+      created_at: new Date().toISOString()
+    }).then(function(res) {
+      if (res.error) {
+        _diag("_sendGif: ERREUR Supabase - " + JSON.stringify(res.error));
+        console.error("Supabase insert error:", res.error);
+      } else {
+        _diag("_sendGif: ✅ Supabase OK");
+      }
+    }).catch(function(err) {
+      _diag("_sendGif: CATCH ERROR - " + err.message);
+      console.error("_sendGif Supabase error:", err);
+    });
   } catch(err) {
+    _diag("_sendGif: EXCEPTION - " + err.message);
     console.error("_sendGif:", err);
   }
 }
