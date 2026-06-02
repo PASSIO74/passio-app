@@ -18700,6 +18700,16 @@ function shareLocation() {
 
     if(typeof renderConvFpThread === 'function') renderConvFpThread(c, displayName);
     if(typeof renderMessages === 'function') renderMessages();
+
+    // Fermer le menu après envoi
+    setTimeout(function() {
+      var menu = document.getElementById("convAttachMenu");
+      if(menu && menu.classList.contains("open")) {
+        menu.classList.remove("open");
+        var btn = document.getElementById("btnAttach");
+        if(btn) btn.classList.remove("active");
+      }
+    }, 300);
   }, function() {
     alert("Impossible d'obtenir la position");
   });
