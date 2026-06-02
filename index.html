@@ -18121,6 +18121,38 @@ function _onGifSearch(query) {
   _renderGifsStatic();
 }
 
+function _sendGif(url) {
+  try {
+    _closeEmojiPanel();
+    var fp = document.getElementById("conv-fullpage");
+    if (!fp) return;
+    var convId = fp.getAttribute("data-conv-id");
+    var displayName = fp.getAttribute("data-display-name");
+    if (!convId) return;
+    var convs = getConversations();
+    var c = convs.find(x => x.id === convId);
+    if (!c) return;
+    var msgId = "msg_" + uid();
+    if (!c.messages) c.messages = [];
+    c.messages.push({ id: msgId, from: "me", text: "", gif: url, at: Date.now() });
+    c.lastAt = Date.now();
+    saveConversations();
+    if (typeof renderConvFpThread === "function") renderConvFpThread(c, displayName);
+    if (typeof renderMessages === "function") renderMessages();
+    if (typeof supa !== "undefined" && supa && MY_UID) {
+      supa.from("conv_messages").insert({ id: msgId, conv_id: convId, from_id: MY_UID, content: "[GIF]", created_at: new Date().toISOString() }).then(()=>{}).catch(()=>{});
+    }
+  } catch(err) { console.error("_sendGif:", err); }
+}
+
+function _closeEmojiPanel() {
+  var panel = document.getElementById("convEmojiPanel");
+  if (panel) {
+    panel.classList.remove("open");
+    panel.style.display = "none";
+  }
+}
+
 function toggleAttachMenu() {
   try {
     var menu = document.getElementById("convAttachMenu");
