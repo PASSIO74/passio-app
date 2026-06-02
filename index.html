@@ -19440,7 +19440,20 @@ function _populateGifGrid() {
     img.style.cssText = "width:100%;height:100%;object-fit:cover;";
     div.appendChild(img);
     div.onclick = function() {
-      if (typeof _sendGif === 'function') _sendGif(url);
+      diag("🖼️ GIF CLIQUÉ: " + url.substring(0, 40) + "...");
+
+      if (typeof _sendGif === 'function') {
+        diag("  ✅ _sendGif existe");
+        try {
+          _sendGif(url);
+          diag("  ✅ _sendGif exécutée");
+        } catch(e) {
+          diag("  ❌ _sendGif ERROR: " + e.message);
+        }
+      } else {
+        diag("  ❌ _sendGif N'EXISTE PAS!");
+      }
+
       window.toggleEmojiPanel();
     };
     gifGrid.appendChild(div);
