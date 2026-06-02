@@ -18585,46 +18585,6 @@ function pwaDismiss() {
 }
 </script>
 
-<!-- ======== MESSAGERIE ENRICHIE ======== -->
-<script>
-// ═══════════════════════════════════════════════════════════
-//  MESSAGERIE — Emoji, GIF, Vocal, Pièces jointes, Paramètres
-// ═══════════════════════════════════════════════════════════
-
-// *** VARIABLES GLOBALES ESSENTIELLES ***
-var _emojiPanelOpen = false;
-var _attachMenuOpen = false;
-var _gifSearchTimer = null;
-const TENOR_KEY = "LIVDSRZULELA";
-
-// *** FONCTION ESSENTIELLES ***
-function _buildEmojiPicker() {
-  _populateEmojiGrid();
-}
-
-function switchEmojiTab(tab, btn) {
-  document.querySelectorAll(".emoji-tab").forEach(function(b) { b.classList.remove("active"); });
-  if (btn) btn.classList.add("active");
-  var emojiContent = document.getElementById("emojiTabContent");
-  var gifContent   = document.getElementById("gifTabContent");
-  if (!emojiContent || !gifContent) return;
-  if (tab === "emoji") {
-    emojiContent.classList.remove("hidden");
-    gifContent.classList.remove("visible");
-  } else {
-    emojiContent.classList.add("hidden");
-    gifContent.classList.add("visible");
-    if (!gifContent._loaded) { gifContent._loaded = true; _loadTrendingGifs(); }
-  }
-}
-
-// ⚠️ SUPPRIMÉE: Vieille version de toggleEmojiPanel (remplacée par version en ligne 19555)
-
-function _closeEmojiPanel() {
-  _emojiPanelOpen = false;
-  document.getElementById("convEmojiPanel")?.classList.remove("open");
-  document.getElementById("btnEmoji")?.classList.remove("active");
-}
 
 // ── GIF ──
 async function _loadTrendingGifs() {
