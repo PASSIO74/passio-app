@@ -5820,10 +5820,11 @@
     /* Emoji/GIF picker */
     /* ── Emoji/GIF panel ── */
     #convEmojiPanel {
-      display:none; position:absolute; bottom:calc(100% + 2px); left:0; right:0;
-      background:var(--bg-card); border:1.5px solid var(--border); border-radius:16px 16px 0 0;
+      display:none; position:fixed; bottom:60px; right:20px; left:auto;
+      background:var(--bg-card); border:1.5px solid var(--border); border-radius:16px;
       box-shadow:0 -6px 30px rgba(0,0,0,0.20); z-index:9999;
-      height:450px; min-width:320px; max-height:80vh;
+      width:350px; height:450px; max-height:80vh;
+      will-change:opacity,transform;
     }
     #convEmojiPanel.open { display:flex; flex-direction:column; }
     .emoji-tabs { display:flex; border-bottom:1px solid var(--border); background:var(--bg-soft); flex-shrink:0; border-radius:18px 18px 0 0; overflow:hidden; }
