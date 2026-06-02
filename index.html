@@ -12222,6 +12222,11 @@ function renderConvFpThread(c, displayName) {
     var content = "";
     var isMedia = false;
 
+    // DEBUG: afficher les messages avec gif
+    if (m.gif || (m.text && m.text.includes('gif'))) {
+      _diag("renderConv msg " + i + ": gif=" + (m.gif ? "YES" : "NO") + " text=" + m.text.substring(0, 30));
+    }
+
     if (m.gif) {
       isMedia = true;
       content = '<img src="' + m.gif + '" style="max-width:200px;max-height:160px;border-radius:12px;display:block;" loading="lazy"/>';
