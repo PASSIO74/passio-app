@@ -19407,13 +19407,13 @@ window.toggleEmojiPanel = function() {
 
     try {
       updateDiag("→ Vérification _emojiPanelOpen...");
-      _emojiPanelOpen = !_emojiPanelOpen;
-      updateDiag("→ _emojiPanelOpen togglé = " + _emojiPanelOpen);
+      window._emojiPanelOpen = !window._emojiPanelOpen;
+      updateDiag("→ _emojiPanelOpen togglé = " + window._emojiPanelOpen);
     } catch(e) {
       updateDiag("❌ ERREUR _emojiPanelOpen: " + e.message);
     }
 
-    if (_emojiPanelOpen) {
+    if (window._emojiPanelOpen) {
       updateDiag("→ AFFICHAGE panel");
       try {
         panel.classList.add("open");
