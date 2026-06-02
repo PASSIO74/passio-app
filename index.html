@@ -19279,5 +19279,69 @@ window.addEventListener('load', function() {
     });
   }
 </script>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!-- SYSTÈME DE DÉBOGAGE EMOJI/GIF - ACTIVATION COMPLÈTE -->
+<!-- ════════════════════════════════════════════════════════════ -->
+<script>
+console.log("🔍 DÉBOGAGE EMOJI/GIF - INITIALISATION");
+
+// Au chargement de la page
+window.addEventListener('load', function() {
+  console.log("✅ Page chargée - Vérification du système emoji/GIF...");
+
+  // Vérifier le panel
+  var panel = document.getElementById('convEmojiPanel');
+  console.log("Panel existe: " + (panel ? "✅" : "❌"));
+
+  // Vérifier la grille emoji
+  var grid = document.getElementById('emojiGrid');
+  console.log("Grid emoji existe: " + (grid ? "✅" : "❌"));
+
+  // Vérifier la fonction toggleEmojiPanel
+  console.log("toggleEmojiPanel est fonction: " + (typeof toggleEmojiPanel === 'function' ? "✅" : "❌"));
+
+  // Vérifier la variable EMOJIS
+  console.log("EMOJIS array length: " + (typeof EMOJIS !== 'undefined' ? EMOJIS.length : "❌"));
+
+  // Ajouter un listener au bouton emoji
+  var btnEmoji = document.getElementById('btnEmoji');
+  if (btnEmoji) {
+    console.log("btnEmoji trouvé - Ajout de listener...");
+
+    btnEmoji.addEventListener('click', function(e) {
+      console.log("🎯 CLICK DÉTECTÉ sur btnEmoji!");
+      console.log("toggleEmojiPanel va être appelée...");
+    });
+  } else {
+    console.log("❌ btnEmoji NON TROUVÉ!");
+  }
+
+  // Override toggleEmojiPanel pour ajouter des logs
+  if (typeof toggleEmojiPanel === 'function') {
+    var originalToggle = window.toggleEmojiPanel;
+    window.toggleEmojiPanel = function() {
+      console.log("📢 toggleEmojiPanel() APPELÉE!");
+      var panel = document.getElementById('convEmojiPanel');
+      if (panel) {
+        console.log("Panel trouvé - classes avant: " + panel.className);
+        console.log("Display CSS: " + window.getComputedStyle(panel).display);
+      }
+      var result = originalToggle.call(this);
+      if (panel) {
+        console.log("Panel classes après: " + panel.className);
+        console.log("Display CSS après: " + window.getComputedStyle(panel).display);
+      }
+      return result;
+    };
+    console.log("✅ toggleEmojiPanel() wrappé avec logs");
+  }
+});
+
+// Vérifier les erreurs
+window.addEventListener('error', function(e) {
+  console.error("❌ ERREUR: " + e.message);
+});
+</script>
 </body>
 </html>
