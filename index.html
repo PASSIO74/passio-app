@@ -18081,6 +18081,46 @@ function insertEmoji(e) {
   } catch(err) { console.error("insertEmoji:", err); }
 }
 
+// Fallback pour les GIF si le script 2 ne charge pas
+function _renderGifsStatic() {
+  var grid = document.getElementById("gifGrid");
+  if (!grid) return;
+  var demos = [
+    { url:"https://media.giphy.com/media/3o7abKhOpu0NwenH3O/giphy.gif", label:"👍" },
+    { url:"https://media.giphy.com/media/xT9IgG50Lg7rusjtG8/giphy.gif", label:"🎉" },
+    { url:"https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif", label:"😂" },
+    { url:"https://media.giphy.com/media/26ufdipQqU2lhNA4g/giphy.gif", label:"❤️" },
+    { url:"https://media.giphy.com/media/3oz8xAFtqoOUUrsh7W/giphy.gif", label:"🔥" },
+    { url:"https://media.giphy.com/media/l4FGGafcOHmrlQxG0/giphy.gif", label:"😎" },
+    { url:"https://media.giphy.com/media/3ohzdKdb7d1bbVwnQU/giphy.gif", label:"🎊" },
+    { url:"https://media.giphy.com/media/l0HlFZ3c8HWDRlCharepI/giphy.gif", label:"🎁" },
+    { url:"https://media.giphy.com/media/FW8aI0tXVE8gKxYvRc/giphy.gif", label:"🤣" },
+    { url:"https://media.giphy.com/media/l0Iy1Z8oW4fvfBLh2/giphy.gif", label:"😍" },
+    { url:"https://media.giphy.com/media/l0HlDtKUoRb0x8bDy/giphy.gif", label:"🥳" },
+    { url:"https://media.giphy.com/media/l0Iy0QcSoQYQW3SWHf/giphy.gif", label:"🎸" },
+    { url:"https://media.giphy.com/media/l0MYr7jgMgWI8ouOI/giphy.gif", label:"🎶" },
+    { url:"https://media.giphy.com/media/l0HlSY9x8FZo0XO1i/giphy.gif", label:"💃" },
+    { url:"https://media.giphy.com/media/l4FGGafcOHmrlQxG0/giphy.gif", label:"✨" },
+    { url:"https://media.giphy.com/media/l0HlMMaQ5vJ7lKOmY/giphy.gif", label:"🎬" },
+  ];
+  grid.innerHTML = demos.map(d =>
+    "<div class=\"gif-item\" data-gifurl=\"" + d.url + "\"><img src=\"" + d.url + "\" loading=\"lazy\" alt=\"" + d.label + "\" /></div>"
+  ).join("") + "<div style=\"grid-column:span 2;padding:8px;text-align:center;color:var(--muted);font-size:11px;\">Recherche pour plus de GIFs</div>";
+  grid.onclick = function(e) {
+    var item = e.target.closest(".gif-item");
+    if (item && typeof _sendGif === "function") _sendGif(item.getAttribute("data-gifurl"));
+  };
+}
+
+function _loadTrendingGifs() {
+  _renderGifsStatic();
+}
+
+function _onGifSearch(query) {
+  // Fallback simple : afficher les GIFs statiques
+  _renderGifsStatic();
+}
+
 function toggleAttachMenu() {
   try {
     var menu = document.getElementById("convAttachMenu");
