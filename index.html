@@ -12234,9 +12234,19 @@ function renderConvFpThread(c, displayName) {
     var content = "";
     var isMedia = false;
 
-    // DEBUG: afficher TOUS les messages qui ont du JSON
-    if (m.text && m.text.trim().charAt(0) === '{') {
-      _diag("renderConv msg " + i + ": JSON TEXT DETECTED - gif=" + (m.gif ? "YES" : "NO") + " text=" + m.text.substring(0, 50));
+    // Essayer de parser le JSON du texte si nécessaire
+    if (!m.gif && m.text && m.text.trim().charAt(0) === '{') {
+      try {
+        var jsonData = JSON.parse(m.text);
+        if (jsonData.type === "gif") m.gif = jsonData.url;
+        else if (jsonData.type === "location") m.location = {lat: jsonData.lat, lng: jsonData.lng, url: jsonData.url};
+        else if (jsonData.type === "media" || jsonData.type === "audio" || jsonData.type === "doc") {
+          m.fileUrl = jsonData.url;
+          m.fileName = jsonData.filename;
+          m.fileType = jsonData.type;
+        }
+        if (jsonData.text) m.text = jsonData.text; // Mettre à jour le texte
+      } catch(e) {}
     }
 
     if (m.gif) {
