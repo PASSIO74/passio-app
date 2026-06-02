@@ -5675,8 +5675,13 @@
       transition: transform 280ms cubic-bezier(0.4,0,0.2,1);
       will-change: transform;
       overflow: hidden;
+      overflow-y: scroll;
       max-height: 100vh;
       max-height: 100dvh;
+    }
+    /* Permet au panel emoji de sortir sans être coupé */
+    #conv-fullpage > div:last-child {
+      overflow: visible;
     }
     #conv-fullpage.active { transform: translateX(0); }
 
