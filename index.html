@@ -18065,6 +18065,32 @@ function toggleEmojiPanel() {
   } catch(e) { console.error("toggleEmojiPanel:", e); }
 }
 
+// Liste complète d'emojis (300+)
+const EMOJI_LIST = "😀😁😂🤣😃😄😅😆😉😊😋😎😍🥰😘😗😙😚🙂🤗🤩🤔🤨😐😑😶🙄😏😣😥😮🤐😯😪😫😴😌😛😜😝😒😓😔😕😲☹️🙁😖😞😟😤😢😭😦😧😨😩🤯😬😰😱😳🥵🥶😠😡🤬😈👿💀☠️💩🤡👹👺👻👽👾🤖😺😸😹😻😼😽🙀😿😾❤️🧡💛💚💙💜🖤🤍🤎💔❤️‍🔥❤️‍🩹💕💞💓💗💖💘💝💟💌💏💑👋🤚🖐️✋🖖👌🤌🤏✌️🤞🫰🤟🤘🤙👈👉👆👇☝️👍👎✊👊🤛🤜👏🙌👐🤲🤝💅🤳💪🦾🦿🦵🦶👂🦻👃🧠🦷🦴👀👁️👅👄🐶🐱🐭🐹🐰🦊🐻🐼🐨🐯🦁🐮🐷🐸🐵🙈🙉🙊🐒🐔🐧🐦🐤🦆🦅🦉🦇🐺🐗🐴🦄🐝🪱🐛🦋🐌🐞🐜🦟🦗🕷️🦂🐢🐍🦎🦖🦕🐙🦑🦐🦞🦀🐡🐠🐟🐬🐳🐋🦈🐊🐅🐆🐘🦛🦏🐪🐫🦒🦓🦍🦧🐶🦁🐯🐻🐼🐨🦝🐫🦒🦘🐄🐂🐃🐄🐎🐗🐖🐏🐑🦌🦌🐐🦌🦁🐯🐻🦊🐻‍❄️🐼🐨🐼🦁🦒🦓🐘🦏🦛🐪🐫🦒🦓🦍🦧🦮🐒🐵🦁🐁🐀🐿️🦌🦌🐿️🦝🦨🦡🦦🦥🐁🐀🐈🐓🦃🦚🦜🦢🦗🕷️🦂🐢🐍🦎🐙🦑🦐🦀🦞🦀🦑🐙🦪🦗🕷️🦂🐢🐍🦎🦖🦕🌲🌳🌴🌱🌿☘️🍀🎍🎎🎏🎐🎑🎀🎁🎗️🎊🎉🎈🎆🎇✨🎄🎄🎄💝💟❤️🧡💛💚💙💜🖤🤍🤎🏵️💐🌹🥀🌷🌺🌸🌼🌻🌞🌝🌛🌜🌚🌕🌖🌗🌘🌑🌒🌓🌔🌕🌖🌗🌘🌙🌚⭐🌟✨⚡☄️💥🔥🌪️🌈☀️🌤️⛅🌥️☁️🌦️🌧️⛈️🌩️🌨️❄️☃️⛄🌬️💨💧💦☔☂️🌊🌫️🍏🍎🍐🍊🍋🍌🍉🍇🍓🫐🍈🍒🍑🥭🍍🥥🥝🍅🥑🍆🥔🥐🍞🥖🥨🥯🧀🥚🍳🧈🥞🥓🥞🥚🍗🍖🌭🍔🍟🍕🥪🥙🧆🌮🌯🥗🥘🍝🍜🍲🍛🍣🍱🥟🦪🍤🍙🍚🍘🍥🥠🥮🍢🍡🍧🍨🍦🥧🧁🍰🎂🍮🍯🍼🥛☕🍵🍶🍾🍷🍸🍹🍺🍻🥂🏆🥇🥈🥉🏅⭐🌟✨💫🎯🎪🎭🎨🎬🎤🎧🎼🎹🎸🥁🎷🎺🎻🪕🪘📱💻⌨️🖥️🖨️🖱️🖲️🕹️🗜️💽💾💿📀📼📷📸📹🎥🎞️📽️🎬📺📻📡☎️☎️📞📟📠🔔🔕📢📣📯📻🎚️🎛️⏱️⏲️⏰🕰️⌚⏳⏲️🧿🎁🎀🎈🎉🎊🎎🎏🎐🎑🎀🎁🏵️🌹🌺🌸🌼🌻🌞🌝🌛🌜🌚🌕🌖🌗🌘⭐🌟✨💫🔥❤️💕💖💗💓💞💘💝💟❣️🧡💛💚💙💜🖤🤍🤎🏵️💐🌹";
+
+// Remplir la grille emoji
+function _buildEmojiGrid() {
+  var grid = document.getElementById("emojiGrid");
+  if (!grid || grid.children.length > 0) return;
+  var emojis = EMOJI_LIST.split("");
+  var frag = document.createDocumentFragment();
+  emojis.forEach(function(emoji) {
+    var div = document.createElement("div");
+    div.className = "emoji-item";
+    div.textContent = emoji;
+    div.onclick = function() { insertEmoji(emoji); };
+    frag.appendChild(div);
+  });
+  grid.appendChild(frag);
+}
+
+// Appeler au chargement de la page
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", _buildEmojiGrid);
+} else {
+  _buildEmojiGrid();
+}
+
 // Fallback pour insertEmoji si le script 2 ne charge pas
 function insertEmoji(e) {
   try {
