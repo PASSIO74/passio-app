@@ -19434,6 +19434,18 @@ window.addEventListener('load', function() {
       _populateEmojiGrid();
     }
   }
+
+  // AJOUTER UN LISTENER DIRECT AU BOUTON EMOJI POUR S'ASSURER QU'IL FONCTIONNE
+  var btnEmoji = document.getElementById('btnEmoji');
+  if (btnEmoji) {
+    btnEmoji.addEventListener('click', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      console.log("🎯 EMOJI BUTTON CLICKED!");
+      toggleEmojiPanel();
+      return false;
+    }, true); // Capture phase pour s'assurer que ça se déclenche
+  }
 });
 </script>
 
