@@ -12240,7 +12240,15 @@ function renderConvFpThread(c, displayName) {
         var jsonData = JSON.parse(m.text);
         if (jsonData.type === "gif" && !m.gif) m.gif = jsonData.url;
         else if (jsonData.type === "location" && !m.location) m.location = {lat: jsonData.lat, lng: jsonData.lng, url: jsonData.url};
-        else if ((jsonData.type === "media" || jsonData.type === "audio" || jsonData.type === "doc") && !m.fileUrl) {
+        else if (jsonData.type === "media" && !m.img && !m.video) {
+          // Pour les images/vidéos, assigner à m.img ou m.video selon le type
+          if (jsonData.fileType && jsonData.fileType.startsWith("video/")) {
+            m.video = jsonData.url;
+          } else {
+            m.img = jsonData.url;
+          }
+        }
+        else if ((jsonData.type === "audio" || jsonData.type === "doc") && !m.fileUrl) {
           m.fileUrl = jsonData.url;
           m.fileName = jsonData.filename;
           m.fileType = jsonData.type;
