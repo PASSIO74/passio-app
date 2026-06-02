@@ -18717,6 +18717,37 @@ if(gifGrid) {
   });
 }
 
+// FONCTION POUR ENVOYER LES GIFs
+window._sendGif = function(gifUrl) {
+  var fp = document.getElementById("conv-fullpage");
+  if(!fp) return alert("Aucune conversation ouverte");
+
+  var convId = fp.getAttribute("data-conv-id");
+  var displayName = fp.getAttribute("data-display-name");
+  if(!convId) return alert("Erreur: conversationId manquant");
+
+  var convs = typeof getConversations === 'function' ? getConversations() : (window.conversationsState || []);
+  var conv = convs.find(function(c) { return c.id === convId; });
+  if(!conv) return alert("Conversation non trouvée");
+
+  if(!conv.messages) conv.messages = [];
+
+  var msgId = "msg_" + (Date.now().toString(36) + Math.random().toString(36).substr(2));
+  conv.messages.push({
+    id: msgId,
+    from: "me",
+    text: "",
+    gif: gifUrl,
+    at: Date.now()
+  });
+
+  conv.lastAt = Date.now();
+
+  if(typeof saveConversations === 'function') saveConversations();
+  if(typeof renderConvFpThread === 'function') renderConvFpThread(conv, displayName);
+  if(typeof renderMessages === 'function') renderMessages();
+};
+
 // Click outside to close
 document.addEventListener("click", function(e) {
   var p = document.getElementById("convEmojiPanel");
