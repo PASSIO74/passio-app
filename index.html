@@ -18542,14 +18542,6 @@ function _sendGif(url) {
   } catch(err) { console.error("_sendGif:", err); }
 }
 
-function _closeEmojiPanel() {
-  var panel = document.getElementById("convEmojiPanel");
-  if (panel) {
-    panel.classList.remove("open");
-    panel.style.display = "none";
-  }
-}
-
 function toggleAttachMenu() {
   try {
     var menu = document.getElementById("convAttachMenu");
