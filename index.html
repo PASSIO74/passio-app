@@ -19541,24 +19541,66 @@ window.addEventListener('load', function() {
 <!-- INITIALISATION FINALE EMOJI/GIF -->
 <script>
 window.addEventListener('load', function() {
+  console.log("🔍 Cherche le bouton emoji...");
+
+  // MÉTHODE 1: Directement sur le bouton
+  var btnEmoji = document.getElementById('btnEmoji');
+  console.log("btnEmoji trouvé: " + (btnEmoji ? "OUI" : "NON"));
+
+  if (btnEmoji) {
+    console.log("✅ Ajout du listener au bouton emoji");
+    btnEmoji.addEventListener('click', function(e) {
+      console.log("🎯 CLICK DÉTECTÉ SUR EMOJI BUTTON!");
+      try {
+        toggleEmojiPanel();
+      } catch(err) {
+        console.error("ERREUR dans toggleEmojiPanel: " + err.message);
+      }
+    }, true);
+
+    // AUSSI remplacer le onclick du HTML
+    btnEmoji.onclick = function(e) {
+      console.log("🎯 ONCLICK DÉCLENCHÉ!");
+      try {
+        toggleEmojiPanel();
+      } catch(err) {
+        console.error("ERREUR: " + err.message);
+      }
+      return false;
+    };
+  } else {
+    console.log("❌ btnEmoji NOT FOUND - cherche une solution alternative...");
+
+    // FALLBACK: Chercher le bouton par d'autres méthodes
+    var allBtns = document.querySelectorAll('button');
+    console.log("Total buttons: " + allBtns.length);
+
+    for (var i = 0; i < allBtns.length; i++) {
+      var btn = allBtns[i];
+      if (btn.textContent.includes('😊') || btn.getAttribute('title') === 'Emoji / GIF') {
+        console.log("✅ TROUVÉ bouton emoji par alternative!");
+        btn.onclick = function(e) {
+          toggleEmojiPanel();
+          return false;
+        };
+        break;
+      }
+    }
+  }
+
+  // Vérifier que toggleEmojiPanel existe
+  if (typeof toggleEmojiPanel === 'function') {
+    console.log("✅ toggleEmojiPanel EXISTE et est une fonction");
+  } else {
+    console.error("❌ toggleEmojiPanel N'EXISTE PAS!");
+  }
+
   // Pré-charger les emojis
   if (typeof _populateEmojiGrid === 'function') {
     var grid = document.getElementById('emojiGrid');
     if (grid && !grid.hasChildNodes()) {
       _populateEmojiGrid();
     }
-  }
-
-  // AJOUTER UN LISTENER DIRECT AU BOUTON EMOJI POUR S'ASSURER QU'IL FONCTIONNE
-  var btnEmoji = document.getElementById('btnEmoji');
-  if (btnEmoji) {
-    btnEmoji.addEventListener('click', function(e) {
-      e.preventDefault();
-      e.stopPropagation();
-      console.log("🎯 EMOJI BUTTON CLICKED!");
-      toggleEmojiPanel();
-      return false;
-    }, true); // Capture phase pour s'assurer que ça se déclenche
   }
 });
 </script>
