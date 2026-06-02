@@ -11885,6 +11885,7 @@ function renderMessages() {
 }
 
 async function openConversation(convId) {
+  try { document.getElementById("convSettingsPanel").classList.remove("open"); } catch(e) {}
   window._openedConvId = convId;
   var convs = getConversations();
   var c = convs.find(function(x) { return x.id === convId; });
