@@ -18469,7 +18469,7 @@ function _onEmojiSearch(query) {
   var q = query.toLowerCase().trim();
   var results = q ? EMOJI_DATA.filter(function(e) {
     return e.labels.includes(q);
-  }).map(e => e.emoji) : EMOJIS;
+  }).map(function(e) { return e.emoji; }) : EMOJIS;
 
   grid.innerHTML = "";
   if (results.length === 0) {
