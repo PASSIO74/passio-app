@@ -12194,9 +12194,33 @@ function renderConvFpThread(c, displayName) {
     if (m.gif) {
       isMedia = true;
       content = '<img src="' + m.gif + '" style="max-width:200px;max-height:160px;border-radius:12px;display:block;" loading="lazy"/>';
+    } else if (m.video) {
+      isMedia = true;
+      content = '<video src="' + m.video + '" style="max-width:200px;max-height:200px;border-radius:12px;display:block;cursor:pointer;" controls/>';
     } else if (m.img) {
       isMedia = true;
       content = '<img src="' + m.img + '" style="max-width:200px;max-height:200px;border-radius:12px;display:block;cursor:pointer;" onclick="openFullImg(this.src)"/>';
+    } else if (m.fileUrl) {
+      isMedia = true;
+      var ftype = (m.fileType || 'file').toLowerCase();
+      var fname = escapeHtml(m.fileName || 'Fichier');
+      var fileIcon = ftype === 'doc' || ftype === 'document' ? '📄' :
+                     ftype === 'image' ? '🖼️' :
+                     ftype === 'video' ? '🎬' :
+                     ftype === 'audio' ? '🎵' : '📎';
+      var docBg = isMe ? 'rgba(255,255,255,0.12)' : 'var(--bg-soft)';
+      var docBorder = isMe ? 'rgba(255,255,255,0.2)' : 'var(--border)';
+      content = '<a href="' + escapeHtml(m.fileUrl) + '" target="_blank" rel="noopener" style="text-decoration:none;color:inherit;display:inline-block;">' +
+        '<div style="display:flex;align-items:center;gap:10px;padding:8px;cursor:pointer;">' +
+        '<div style="width:36px;height:36px;border-radius:10px;background:' + docBg + ';border:1px solid ' + docBorder + ';display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">' + fileIcon + '</div>' +
+        '<div><div style="font-size:13px;font-weight:700;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + fname + '</div>' +
+        '<div style="font-size:10px;opacity:0.6;">📥 Télécharger</div></div></div></a>';
+    } else if (m.location) {
+      isMedia = true;
+      content = '<a href="' + escapeHtml(m.location.url || 'https://maps.google.com') + '" target="_blank" rel="noopener" style="color:inherit;text-decoration:none;">' +
+        '<div style="display:flex;align-items:center;gap:8px;padding:8px 0;">' +
+        '<div style="font-size:20px;">📍</div>' +
+        '<div><div style="font-size:13px;">📍 Position</div><div style="font-size:11px;opacity:0.7;">' + escapeHtml(m.location.lat + ', ' + m.location.lng) + '</div></div></div></a>';
     } else if (m.voiceData && !m.isFile) {
       isMedia = true;
       var vDur = m.voiceDuration || 0;
