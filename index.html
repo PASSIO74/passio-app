@@ -18620,10 +18620,28 @@ function shareLocation() {
     if (!c) return;
 
     var msgId = "msg_" + (Date.now().toString(36) + Math.random().toString(36).substr(2));
-    c.messages.push({id: msgId, from: "me", text: "📍 Ma position : " + url, at: Date.now()});
+    var msgText = "📍 Ma position : " + url;
+    c.messages.push({id: msgId, from: "me", text: msgText, at: Date.now()});
     c.lastAt = Date.now();
 
     if(typeof saveConversations === 'function') saveConversations();
+
+    // Sync Supabase: envoyer la localisation
+    if(typeof supa !== 'undefined' && supa) {
+      supa.from("conv_messages").insert({
+        id: msgId,
+        conv_id: convId,
+        from_id: typeof MY_UID !== 'undefined' ? MY_UID : "me",
+        content: msgText,
+        location_lat: parseFloat(lat),
+        location_lng: parseFloat(lng),
+        location_url: url,
+        created_at: new Date().toISOString()
+      }).catch(function(err) {
+        console.error("Erreur Supabase location:", err);
+      });
+    }
+
     if(typeof renderConvFpThread === 'function') renderConvFpThread(c, displayName);
     if(typeof renderMessages === 'function') renderMessages();
   }, function() {
