@@ -18660,13 +18660,7 @@ HTML LOADED OK!
 
 <!-- INITIALISATION FINALE EMOJI/GIF WHATSAPP COMPLÈTE -->
 <script>
-console.log("EMOJI SCRIPT START");
-
-// TEST SIMPLE
-var testDiv = document.createElement("div");
-testDiv.style.cssText = "position:fixed;bottom:10px;right:10px;background:green;color:white;padding:20px;font-size:16px;z-index:99999;";
-testDiv.textContent = "✅ JS WORKS";
-document.body.appendChild(testDiv);
+document.body.innerHTML += '<div style="position:fixed;bottom:10px;right:10px;background:blue;color:white;padding:20px;z-index:99999;font-size:18px;font-weight:bold;">JS LOADED</div>';
 
 // VARIABLES GLOBALES
 window._emojiPanelOpen = false;
