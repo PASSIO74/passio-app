@@ -18569,6 +18569,16 @@ function insertEmoji(e) {
   } catch(err) { console.error("insertEmoji:", err); }
 }
 
+// Fermer le panel emoji
+function _closeEmojiPanel() {
+  var p = document.getElementById("convEmojiPanel");
+  if(p && p.classList.contains("open")) {
+    p.classList.remove("open");
+    var btn = document.getElementById("btnEmoji");
+    if(btn) btn.classList.remove("active");
+  }
+}
+
 // Send GIF to conversation
 function _sendGif(gifUrl) {
   try {
