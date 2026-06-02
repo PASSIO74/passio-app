@@ -18625,20 +18625,35 @@ function _sendGif(gifUrl) {
       return;
     }
 
-    _diag("_sendGif: Sync Supabase - Envoi du message avec gif_url...");
+    _diag("_sendGif: Sync Supabase - Envoi du GIF...");
+    var extraData = {type: "gif", url: gifUrl};
     supa.from("conv_messages").insert({
       id: msgId,
       conv_id: convId,
       from_id: MY_UID,
-      content: "🎬 GIF envoyé",
-      gif_url: gifUrl,
+      content: "🎬 GIF",
+      extra_data: JSON.stringify(extraData),
       created_at: new Date().toISOString()
     }).then(function(res) {
       if (res.error) {
-        _diag("_sendGif: ERREUR Supabase - " + JSON.stringify(res.error));
-        console.error("Supabase insert error:", res.error);
+        _diag("_sendGif: ERREUR extra_data - " + res.error.message);
+        // Fallback: essayer sans extra_data, juste content avec URL
+        _diag("_sendGif: FALLBACK - essai avec content seul");
+        supa.from("conv_messages").insert({
+          id: msgId,
+          conv_id: convId,
+          from_id: MY_UID,
+          content: "🎬 GIF: " + gifUrl,
+          created_at: new Date().toISOString()
+        }).then(function(res2) {
+          if (res2.error) {
+            _diag("_sendGif: FALLBACK ÉCHOUÉ - " + res2.error.message);
+          } else {
+            _diag("_sendGif: ✅ FALLBACK Supabase OK");
+          }
+        });
       } else {
-        _diag("_sendGif: ✅ Supabase OK");
+        _diag("_sendGif: ✅ Supabase OK avec extra_data");
       }
     }).catch(function(err) {
       _diag("_sendGif: CATCH ERROR - " + err.message);
