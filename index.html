@@ -11982,7 +11982,8 @@ async function openConversation(convId) {
       // Fusionner : Supabase + messages locaux optimistes non encore confirmés
       var remoteIds = new Set(remote.map(function(m) { return m.id; }).filter(Boolean));
       var localPending = (c2.messages || []).filter(function(m) { return !m.id || !remoteIds.has(m.id); });
-      c2.messages = remote.concat(localPending).sort(function(a, b) { return (a.at || 0) - (b.at || 0); });
+      remote.sort(function(a, b) { return (a.at || 0) - (b.at || 0); });
+      c2.messages = remote.concat(localPending);
       c2._otherRead = true;
       saveConversations();
       if (window._openedConvId === convId) {
