@@ -19400,57 +19400,47 @@ function updateDiag(msg) {
 
 // DÉFINIR LA FONCTION toggleEmojiPanel - UTILISER LE PANEL EXISTANT
 window.toggleEmojiPanel = function() {
-  try {
-    updateDiag("✅ toggleEmojiPanel EXÉCUTÉE!");
+  updateDiag("✅ toggleEmojiPanel EXÉCUTÉE!");
 
-    var panel = document.getElementById("convEmojiPanel");
-    if (!panel) {
-      updateDiag("❌ Panel #convEmojiPanel NON TROUVÉ!");
-      return;
-    }
-    updateDiag("✅ Panel trouvé!");
-
-    try {
-      updateDiag("→ Vérification _emojiPanelOpen...");
-      window._emojiPanelOpen = !window._emojiPanelOpen;
-      updateDiag("→ _emojiPanelOpen togglé = " + window._emojiPanelOpen);
-    } catch(e) {
-      updateDiag("❌ ERREUR _emojiPanelOpen: " + e.message);
-    }
-
-    if (window._emojiPanelOpen) {
-      updateDiag("→ AFFICHAGE panel");
-      try {
-        panel.classList.add("open");
-        updateDiag("→ Classe 'open' ajoutée");
-      } catch(e) {
-        updateDiag("❌ ERREUR classList: " + e.message);
-      }
-
-      // Peupler le grid emoji si vide
-      var grid = document.getElementById("emojiGrid");
-      if (grid && grid.children.length === 0 && typeof EMOJIS !== 'undefined') {
-        updateDiag("→ Remplissage grid avec " + EMOJIS.length + " emojis");
-        EMOJIS.forEach(function(emoji) {
-          var div = document.createElement("div");
-          div.className = "emoji-item";
-          div.textContent = emoji;
-          div.onclick = function() {
-            if (typeof insertEmoji === 'function') insertEmoji(emoji);
-            window.toggleEmojiPanel();
-          };
-          grid.appendChild(div);
-        });
-      }
-    } else {
-      updateDiag("→ MASQUAGE panel");
-      panel.classList.remove("open");
-    }
-
-    updateDiag("✅ toggleEmojiPanel TERMINÉE!");
-  } catch(e) {
-    updateDiag("❌ ERREUR GLOBALE: " + e.message);
+  var panel = document.getElementById("convEmojiPanel");
+  if (!panel) {
+    updateDiag("❌ Panel #convEmojiPanel NON TROUVÉ!");
+    return;
   }
+  updateDiag("✅ Panel trouvé!");
+
+  updateDiag("→ Avant toggle: window._emojiPanelOpen = " + window._emojiPanelOpen);
+
+  window._emojiPanelOpen = window._emojiPanelOpen ? false : true;
+
+  updateDiag("→ Après toggle: window._emojiPanelOpen = " + window._emojiPanelOpen);
+
+  if (window._emojiPanelOpen) {
+    updateDiag("→ AFFICHAGE panel");
+    panel.classList.add("open");
+    updateDiag("→ Classe 'open' ajoutée");
+
+    // Peupler le grid emoji si vide
+    var grid = document.getElementById("emojiGrid");
+    if (grid && grid.children.length === 0 && typeof EMOJIS !== 'undefined') {
+      updateDiag("→ Remplissage grid avec " + EMOJIS.length + " emojis");
+      EMOJIS.forEach(function(emoji) {
+        var div = document.createElement("div");
+        div.className = "emoji-item";
+        div.textContent = emoji;
+        div.onclick = function() {
+          if (typeof insertEmoji === 'function') insertEmoji(emoji);
+          window.toggleEmojiPanel();
+        };
+        grid.appendChild(div);
+      });
+    }
+  } else {
+    updateDiag("→ MASQUAGE panel");
+    panel.classList.remove("open");
+  }
+
+  updateDiag("✅ toggleEmojiPanel TERMINÉE!");
 };
 
 // SETUP DU BOUTON EMOJI
