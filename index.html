@@ -18049,9 +18049,12 @@ function togglePwd(id, btn) {
 // toggleEmojiPanel, toggleAttachMenu et openConvSettings sont dans le 2ème script
 // mais ces stubs garantissent qu'ils existent même si le 2ème script ne charge pas.
 
+// ═════════════════════════════════════════════════════════════════════════════════════
+// SYSTÈME D'EMOJI/GIF - VERSION UNIFIÉ & CORRIGÉ
+// ═════════════════════════════════════════════════════════════════════════════════════
+
 // Emoji database with labels for search
 var EMOJI_DATA = [
-  // Visages heureux
   { emoji: "😀", labels: "sourire heureux joyeux grin" },
   { emoji: "😁", labels: "grand sourire dent rire" },
   { emoji: "😂", labels: "rire pleurer fou hilarant" },
@@ -18084,8 +18087,6 @@ var EMOJI_DATA = [
   { emoji: "🙄", labels: "yeux roulant" },
   { emoji: "😬", labels: "malaise anxieux inquiet" },
   { emoji: "🤥", labels: "mensonge pinocchio" },
-  { emoji: "😌", labels: "soulagé calme" },
-  { emoji: "😔", labels: "triste déçu" },
   { emoji: "😪", labels: "fatigué somnolent sommeil" },
   { emoji: "🤤", labels: "bave envie désir" },
   { emoji: "😴", labels: "dormir endormi zzz" },
@@ -18094,9 +18095,7 @@ var EMOJI_DATA = [
   { emoji: "🤕", labels: "bandeau blessé douleur" },
   { emoji: "🤮", labels: "vomir maladie nausée" },
   { emoji: "🤢", labels: "nausée malade envie" },
-  { emoji: "🤮", labels: "vomir maladie" },
   { emoji: "🤧", labels: "atchoum éternuer nez" },
-  { emoji: "🤎", labels: "coeur marron chocolat" },
   { emoji: "❤️", labels: "coeur amour rouge love" },
   { emoji: "🧡", labels: "coeur orange" },
   { emoji: "💛", labels: "coeur jaune amitié" },
@@ -18119,13 +18118,10 @@ var EMOJI_DATA = [
   { emoji: "🤚", labels: "main levée back" },
   { emoji: "🖐️", labels: "main ouverte cinq doigts" },
   { emoji: "✋", labels: "paume main stop arrêt" },
-  { emoji: "🖖", labels: "spock vulcan salute" },
   { emoji: "👌", labels: "ok doigt approuver perfect" },
   { emoji: "🤌", labels: "doigt pincer italien" },
-  { emoji: "🤏", labels: "petit doigt tiny" },
   { emoji: "✌️", labels: "victoire paix deux doigt" },
   { emoji: "🤞", labels: "doigts croisés chance" },
-  { emoji: "🫰", labels: "coeur doigt love" },
   { emoji: "🤟", labels: "aimer signe love hand" },
   { emoji: "🤘", labels: "cornes signe rocker metal" },
   { emoji: "🤙", labels: "appel telephone main" },
@@ -18140,12 +18136,7 @@ var EMOJI_DATA = [
   { emoji: "👐", labels: "mains ouvertes welcome" },
   { emoji: "🤲", labels: "mains coupe offrir" },
   { emoji: "🤝", labels: "poignee main accord deal" },
-  { emoji: "🤞", labels: "doigts croises chance hope" },
   { emoji: "💅", labels: "ongles vernis" },
-  { emoji: "🦾", labels: "bras robot mecanique" },
-  { emoji: "🦿", labels: "jambe mecanique robot" },
-  { emoji: "🦵", labels: "jambe" },
-  { emoji: "🦶", labels: "pied" },
   { emoji: "👂", labels: "oreille" },
   { emoji: "👃", labels: "nez" },
   { emoji: "🧠", labels: "cerveau intelligence esprit" },
@@ -18155,7 +18146,6 @@ var EMOJI_DATA = [
   { emoji: "👁️", labels: "oeil iris" },
   { emoji: "👅", labels: "langue taste gout" },
   { emoji: "👄", labels: "levre rouge bouche mouth" },
-  // Animals
   { emoji: "🐶", labels: "chien doggy woof animal" },
   { emoji: "🐱", labels: "chat cat meow animal" },
   { emoji: "🐭", labels: "souris rat mouse" },
@@ -18169,17 +18159,14 @@ var EMOJI_DATA = [
   { emoji: "🦁", labels: "lion king roi" },
   { emoji: "🐮", labels: "vache cow boeuf" },
   { emoji: "🐷", labels: "cochon pig porc" },
-  { emoji: "🐽", labels: "nez cochon" },
   { emoji: "🐸", labels: "grenouille frog coasse" },
   { emoji: "🐵", labels: "singe monkey macaque" },
   { emoji: "🙈", labels: "singe silent ne voir" },
   { emoji: "🙉", labels: "singe sourd entendre" },
   { emoji: "🙊", labels: "singe sans parole silence" },
-  { emoji: "🐒", labels: "singe tease taquiner" },
   { emoji: "🐔", labels: "poule chicken poussinn" },
   { emoji: "🐧", labels: "pingouin penguin froid" },
   { emoji: "🐦", labels: "oiseau bird vole" },
-  { emoji: "🐤", labels: "poussin chick jaune" },
   { emoji: "🦆", labels: "canard duck quack" },
   { emoji: "🦅", labels: "aigle eagle faucon" },
   { emoji: "🦉", labels: "chouette owl hibou" },
@@ -18192,101 +18179,51 @@ var EMOJI_DATA = [
   { emoji: "🐛", labels: "insecte bug crawl" },
   { emoji: "🦋", labels: "papillon butterfly voler" },
   { emoji: "🐌", labels: "escargot snail slow" },
-  { emoji: "🐞", labels: "coccinelle ladybug" },
-  { emoji: "🐜", labels: "fourmi ant travail" },
   { emoji: "🐢", labels: "tortue turtle lent" },
   { emoji: "🐍", labels: "serpent snake reptile" },
   { emoji: "🐙", labels: "pieuvre octopus tentacule" },
   { emoji: "🦑", labels: "calmar squid mer" },
-  { emoji: "🦐", labels: "crevette shrimp rose" },
   { emoji: "🐠", labels: "poisson fish nage" },
   { emoji: "🐟", labels: "poisson bleu nage" },
-  { emoji: "🐡", labels: "poisson ballon pufffish" },
   { emoji: "🐬", labels: "dauphin dolphin smart" },
   { emoji: "🐳", labels: "baleine whale geant" },
-  { emoji: "🐋", labels: "baleine grand ocean" },
   { emoji: "🦈", labels: "requin shark dent" },
-  // Food
   { emoji: "🍕", labels: "pizza fromage tomate" },
   { emoji: "🍔", labels: "burger hamburger viande" },
   { emoji: "🍟", labels: "frite pomme terre" },
   { emoji: "🍗", labels: "aile poulet fried" },
   { emoji: "🌭", labels: "hot dog saucisse" },
-  { emoji: "🍖", labels: "viande os cote" },
   { emoji: "🌮", labels: "taco mexicain" },
   { emoji: "🌯", labels: "burrito wrap" },
   { emoji: "🥪", labels: "sandwich sandwich pain" },
-  { emoji: "🥙", labels: "pita pain grecque" },
-  { emoji: "🧆", labels: "falafal falafel moyen orient" },
   { emoji: "🍳", labels: "oeuf scramble petit dej" },
   { emoji: "🍲", labels: "soupe pot chaud" },
   { emoji: "🍛", labels: "curry rice plat chaud" },
   { emoji: "🍜", labels: "nouilles ramen noodle asie" },
   { emoji: "🍝", labels: "pates spaghetti pasta" },
-  { emoji: "🥘", labels: "paella risotto plat" },
   { emoji: "🍱", labels: "bento box japanese" },
-  { emoji: "🥟", labels: "dumpling gyoza asie" },
-  { emoji: "🦪", labels: "huitre huître mer" },
-  { emoji: "🍤", labels: "crevette shrimp rose fruit mer" },
   { emoji: "🍣", labels: "sushi japanese poisson" },
-  { emoji: "🍢", labels: "brochette skewer" },
-  { emoji: "🍡", labels: "dango dumpling dessert" },
-  { emoji: "🍧", labels: "glace rasee shaved ice" },
-  { emoji: "🍨", labels: "glace ice cream froid" },
-  { emoji: "🍦", labels: "cone glace ice cream" },
   { emoji: "🍰", labels: "gateau cake dessert sucre" },
   { emoji: "🎂", labels: "gateau anniversaire candles" },
   { emoji: "🧁", labels: "cupcake gateau petit sucre" },
-  { emoji: "🥧", labels: "tarte pie dessert" },
   { emoji: "🍪", labels: "biscuit cookie sucre" },
   { emoji: "🍩", labels: "donut hole sucre" },
   { emoji: "🍫", labels: "chocolat chocolate brun sucre" },
-  { emoji: "🍬", labels: "bonbon candy sucre" },
-  { emoji: "🍭", labels: "lollipop sucette sucre" },
-  { emoji: "🍮", labels: "pudding dessert doux" },
-  { emoji: "🍯", labels: "pot miel honey" },
-  { emoji: "🍼", labels: "lait biberon baby" },
   { emoji: "☕", labels: "cafe coffee noir chaud" },
   { emoji: "🍵", labels: "the tea breuvage chaud" },
   { emoji: "🍶", labels: "sake japanese alcool" },
   { emoji: "🍾", labels: "champagne alcool celebration" },
   { emoji: "🍷", labels: "vin rouge wine alcool" },
-  { emoji: "🍸", labels: "cocktail drink verre" },
-  { emoji: "🍹", labels: "mojito drink tropical" },
   { emoji: "🍺", labels: "biere beer alcool mousse" },
   { emoji: "🍻", labels: "biere toast cheers" },
-  { emoji: "🥂", labels: "champagne toast celebration" },
-  { emoji: "🥃", labels: "coupe champagne flute" },
-  // Activities & Sports
   { emoji: "⚽", labels: "football soccer ball sport" },
   { emoji: "🏀", labels: "basketball ballon sport" },
-  { emoji: "🏈", labels: "football americain ellipse" },
-  { emoji: "⚾", labels: "baseball balle sport" },
-  { emoji: "🥎", labels: "softball balle sport" },
   { emoji: "🎾", labels: "tennis raquette sport" },
-  { emoji: "🏐", labels: "volleyball ballon sport" },
-  { emoji: "🏉", labels: "rugby ballon sport" },
-  { emoji: "🥏", labels: "cricket sport" },
-  { emoji: "🎳", labels: "bowling quille sport" },
-  { emoji: "🏓", labels: "ping pong table tennis" },
-  { emoji: "🏸", labels: "badminton raquette volant" },
-  { emoji: "🏒", labels: "hockey glace baton" },
-  { emoji: "🏑", labels: "hockey gazon baton" },
-  { emoji: "🥍", labels: "lacrosse sport" },
-  { emoji: "🏏", labels: "cricket batte sport" },
-  { emoji: "🥅", labels: "filet but goal" },
-  { emoji: "🎣", labels: "peche fishing canne" },
-  { emoji: "🎽", labels: "saut running sport" },
-  { emoji: "🎿", labels: "ski neige montagne" },
-  { emoji: "⛷️", labels: "skieur ski montagne" },
-  { emoji: "🏂", labels: "snowboard neige montagne" },
-  { emoji: "🎮", labels: "video game jeu controle" },
-  { emoji: "🎯", labels: "cible but target" },
+  { emoji: "⚾", labels: "baseball balle sport" },
   { emoji: "🎱", labels: "billard boule noir" },
-  { emoji: "♠️", labels: "pique carte jeu" },
-  { emoji: "♥️", labels: "coeur carte jeu rouge" },
-  { emoji: "♦️", labels: "carreau carte jeu" },
-  { emoji: "♣️", labels: "trefle carte jeu noir" },
+  { emoji: "🎯", labels: "cible but target" },
+  { emoji: "🎳", labels: "bowling quille sport" },
+  { emoji: "🎮", labels: "video game jeu controle" },
   { emoji: "🎬", labels: "clapper film cine movie" },
   { emoji: "🎤", labels: "micro chant music chanson" },
   { emoji: "🎧", labels: "casque audio music" },
@@ -18296,104 +18233,39 @@ var EMOJI_DATA = [
   { emoji: "🎺", labels: "trompette trumpet music" },
   { emoji: "🎸", labels: "guitare guitar music rock" },
   { emoji: "🥁", labels: "batterie drum drums music" },
-  { emoji: "🎻", labels: "violon violin music classique" },
-  // Travel & Places
   { emoji: "🚗", labels: "voiture car auto rouge" },
   { emoji: "🚕", labels: "taxi cab yellow" },
   { emoji: "🚙", labels: "jeep suv haut" },
   { emoji: "🚌", labels: "bus autobus transport" },
   { emoji: "🚎", labels: "trolleybus bus bleu" },
   { emoji: "🏎️", labels: "course car fast rapide" },
-  { emoji: "🚓", labels: "police car voiture flic" },
-  { emoji: "🚑", labels: "ambulance urgence medical" },
-  { emoji: "🚒", labels: "pompier fire truck incendie" },
-  { emoji: "🚐", labels: "minibus van transport" },
-  { emoji: "🛻", labels: "pickup truck camion" },
-  { emoji: "🚚", labels: "camion delivery livraison" },
-  { emoji: "🚛", labels: "camion gros truck" },
-  { emoji: "🚜", labels: "tracteur farm agriculture" },
-  { emoji: "🏍️", labels: "moto motorcycle bike" },
-  { emoji: "🏎️", labels: "race car sport rapide" },
   { emoji: "✈️", labels: "avion airplane fly travel" },
   { emoji: "🛫", labels: "avion decollage takeoff" },
   { emoji: "🛬", labels: "avion atterissage landing" },
-  { emoji: "🛩️", labels: "petit avion small plane" },
-  { emoji: "💺", labels: "siege seat avion" },
-  { emoji: "🛰️", labels: "satellite espace cosmos" },
   { emoji: "🚀", labels: "fusee rocket espace cosmos" },
-  { emoji: "🛸", labels: "ovni ufo space alien" },
   { emoji: "⛵", labels: "voile sailing bateau mer" },
-  { emoji: "🚤", labels: "speedboat bateau rapide" },
   { emoji: "🛳️", labels: "bateau ship cruise" },
-  { emoji: "⛴️", labels: "ferry transport bateau" },
-  { emoji: "🛥️", labels: "motoryacht bateau luxe" },
-  { emoji: "🏝️", labels: "ile desert palmier" },
-  { emoji: "⛱️", labels: "parasol plage beach" },
-  // Objects
   { emoji: "🎁", labels: "cadeau present gift celebration" },
   { emoji: "🎀", labels: "noeud ruban ribbon" },
   { emoji: "🎈", labels: "ballon party celebration" },
   { emoji: "🎉", labels: "confetti celebration party" },
   { emoji: "🎊", labels: "confetti ball celebration" },
   { emoji: "✉️", labels: "lettre email message" },
-  { emoji: "📩", labels: "email inbox message" },
-  { emoji: "📨", labels: "email outbox message" },
   { emoji: "📧", labels: "email letter message" },
-  { emoji: "💌", labels: "coeur letter amour" },
-  { emoji: "📥", labels: "inbox mail entree" },
-  { emoji: "📤", labels: "outbox mail sortie" },
-  { emoji: "📦", labels: "paquet package boite" },
-  { emoji: "🏷️", labels: "label etiquette tag" },
-  { emoji: "📪", labels: "boite mail close ferme" },
-  { emoji: "📫", labels: "boite mail open ouverte" },
-  { emoji: "📬", labels: "boite mail flagged flag" },
-  { emoji: "📭", labels: "boite mail flagged open" },
-  { emoji: "📮", labels: "boite mail postal service" },
-  { emoji: "✏️", labels: "crayon pencil ecrire" },
-  { emoji: "✒️", labels: "stylo plume pen" },
-  { emoji: "🖋️", labels: "stylo plume pen ecrire" },
-  { emoji: "🖊️", labels: "stylo ballpoint pen" },
-  { emoji: "🖌️", labels: "pinceau brush art" },
-  { emoji: "🖍️", labels: "crayon marker enfant" },
   { emoji: "📝", labels: "bloc note notepad memo" },
   { emoji: "📁", labels: "dossier folder file" },
-  { emoji: "📂", labels: "dossier ouvert open" },
   { emoji: "📅", labels: "calendrier calendar date" },
-  { emoji: "📆", labels: "calendrier tear off" },
-  { emoji: "📇", labels: "index card fichier" },
-  { emoji: "📈", labels: "graphique ascending chart" },
-  { emoji: "📉", labels: "graphique descending chart" },
-  { emoji: "📊", labels: "graphique bar chart stat" },
   { emoji: "📌", labels: "punaise pushpin pin" },
   { emoji: "📍", labels: "pin location place" },
-  { emoji: "📎", labels: "attache clip paperclip" },
-  { emoji: "🖇️", labels: "attache linked clip" },
-  { emoji: "📐", labels: "equerre triangular ruler" },
-  { emoji: "📏", labels: "regle ruler measure" },
-  { emoji: "📧", labels: "email message letter" },
   { emoji: "🔒", labels: "cadenas lock secure" },
   { emoji: "🔓", labels: "cadenas open deverrouille" },
-  { emoji: "🔏", labels: "cadenas lock secret" },
-  { emoji: "🔐", labels: "cadenas key secure" },
   { emoji: "🔑", labels: "clef key ouvre" },
   { emoji: "⚙️", labels: "roue gear setting" },
   { emoji: "🔧", labels: "clef wrench outil" },
   { emoji: "🔨", labels: "marteau hammer outil" },
-  { emoji: "⛏️", labels: "pioche pickaxe outil" },
-  { emoji: "⚒️", labels: "pioche marteau outil" },
   { emoji: "🛠️", labels: "marteau wrench outils" },
-  { emoji: "🗡️", labels: "epee sword arme" },
-  { emoji: "⚔️", labels: "epee sword arme" },
-  { emoji: "🔫", labels: "pistolet gun arme" },
-  { emoji: "🛡️", labels: "bouclier shield protection" },
-  { emoji: "🚬", labels: "cigarette smoke fumer" },
-  { emoji: "⚰️", labels: "cercueil coffin mort" },
-  { emoji: "⚱️", labels: "urne funeral mort" },
-  { emoji: "🏺", labels: "vase pot ancient" },
-  // Nature
   { emoji: "💐", labels: "bouquet fleur flower" },
   { emoji: "🌹", labels: "rose rouge flower amour" },
-  { emoji: "🥀", labels: "fleur wilted dried" },
   { emoji: "🌺", labels: "hibiscus tropical flower" },
   { emoji: "🌻", labels: "tournesol sunflower yellow" },
   { emoji: "🌼", labels: "fleur daisy flower" },
@@ -18402,60 +18274,17 @@ var EMOJI_DATA = [
   { emoji: "🌲", labels: "sapin evergreen tree forest" },
   { emoji: "🌳", labels: "arbre tree nature forest" },
   { emoji: "🌴", labels: "palmier palm tree tropical" },
-  { emoji: "🌵", labels: "cactus desert plante" },
-  { emoji: "🌾", labels: "riz rice field agriculture" },
-  { emoji: "🌿", labels: "herbe herb plant nature" },
   { emoji: "☀️", labels: "soleil sun sunny bright" },
   { emoji: "⛅", labels: "nuage cloud sunny sky" },
-  { emoji: "⛈️", labels: "orage thunderstorm pluie" },
   { emoji: "🌤️", labels: "soleil nuage mostly sunny" },
-  { emoji: "🌥️", labels: "nuage partly cloudy" },
-  { emoji: "🌦️", labels: "pluie rain shower wet" },
-  { emoji: "🌧️", labels: "pluie rainy weather mouille" },
+  { emoji: "🌈", labels: "arc en ciel rainbow colorful" },
   { emoji: "☔", labels: "parapluie umbrella rain" },
-  { emoji: "⚡", labels: "foudre lightning thunder" },
-  { emoji: "❄️", labels: "flocon snow froid" },
-  { emoji: "☃️", labels: "bonhomme neige snowman hiver" },
-  { emoji: "⛄", labels: "bonhomme neige winter cold" },
-  { emoji: "🌀", labels: "cyclone tornado storm" },
-  { emoji: "💨", labels: "vent wind speed air" },
-  { emoji: "💧", labels: "goutte water drop liquid" },
-  { emoji: "💦", labels: "eau spray water wet" },
-  { emoji: "☂️", labels: "parapluie umbrella protection" },
-  // Symbols
-  { emoji: "❤️", labels: "coeur love red heart" },
-  { emoji: "🧡", labels: "coeur love orange heart" },
-  { emoji: "💛", labels: "coeur love yellow heart" },
-  { emoji: "💚", labels: "coeur love green heart" },
-  { emoji: "💙", labels: "coeur love blue heart" },
-  { emoji: "💜", labels: "coeur love purple heart" },
-  { emoji: "🖤", labels: "coeur love black heart dark" },
-  { emoji: "🤍", labels: "coeur love white heart pure" },
-  { emoji: "🤎", labels: "coeur love brown heart" },
-  { emoji: "🤎", labels: "coeur love gray heart" },
-  { emoji: "💔", labels: "coeur broken broken heart sad" },
-  { emoji: "💕", labels: "coeur love two hearts" },
-  { emoji: "💞", labels: "coeur love revolving hearts" },
-  { emoji: "💓", labels: "coeur love beating heart" },
-  { emoji: "💗", labels: "coeur love growing heart" },
-  { emoji: "💖", labels: "coeur love sparkling heart" },
-  { emoji: "💘", labels: "fleche cupidon cupid arrow love" },
-  { emoji: "💝", labels: "cadeau coeur heart gift" },
-  { emoji: "💟", labels: "coeur decoration ornament" },
   { emoji: "⭐", labels: "etoile star gold bright" },
   { emoji: "🌟", labels: "etoile star glow sparkle" },
   { emoji: "✨", labels: "etincelle sparkle magic shine" },
-  { emoji: "⚡", labels: "foudre lightning bolt speed" },
-  { emoji: "☄️", labels: "meteore comet space" },
+  { emoji: "⚡", labels: "foudre lightning thunder" },
   { emoji: "💥", labels: "explosion boom bang crash" },
-  { emoji: "🔥", labels: "feu fire hot burn" },
-  { emoji: "🌪️", labels: "tornado tornado storm" },
-  { emoji: "🌈", labels: "arc en ciel rainbow colorful" },
-  { emoji: "☔", labels: "parapluie umbrella rain wet" },
-  { emoji: "🎆", labels: "feu artifice fireworks celebrate" },
-  { emoji: "🎇", labels: "feu sparkler fireworks" },
-  { emoji: "🎉", labels: "confetti celebration party" },
-  { emoji: "🎊", labels: "confetti ball party celebrate" }
+  { emoji: "🔥", labels: "feu fire hot burn" }
 ];
 
 // Create simpler emoji array for direct use
@@ -18500,10 +18329,13 @@ function _populateEmojiGrid() {
   });
 }
 
-// Call on page load
-setTimeout(_populateEmojiGrid, 100);
+// Call on page load - avec délai pour garantir que le DOM est chargé
+setTimeout(function() {
+  _populateEmojiGrid();
+  console.log("✅ Emoji grid populated with " + EMOJIS.length + " emojis");
+}, 100);
 
-// Fallback pour insertEmoji si le script 2 ne charge pas
+// Insert emoji into message input
 function insertEmoji(e) {
   try {
     var inp = document.getElementById("convFpInput");
@@ -18515,9 +18347,11 @@ function insertEmoji(e) {
     var pos = start + [...e].length;
     try { inp.setSelectionRange(pos, pos); } catch(_) {}
     if (typeof autoResizeTextarea === "function") autoResizeTextarea(inp);
+    _closeEmojiPanel();
   } catch(err) { console.error("insertEmoji:", err); }
 }
 
+// Send GIF to conversation
 function _sendGif(url) {
   try {
     _closeEmojiPanel();
@@ -18725,19 +18559,25 @@ function switchEmojiTab(tab, btn) {
   }
 }
 
-var toggleEmojiPanel = function() {
-  var panel = document.getElementById("convEmojiPanel");
+function toggleEmojiPanel() {
+  _closeAttachMenu();
+  const panel = document.getElementById("convEmojiPanel");
   if (!panel) return;
-  var isOpen = panel.style.display === "flex";
-  panel.style.display = isOpen ? "none" : "flex";
-  if (!isOpen) {
-    _populateEmojiGrid();
-    var emojiTab = document.getElementById("emojiTabContent");
-    var gifTab = document.getElementById("gifTabContent");
+  _emojiPanelOpen = !_emojiPanelOpen;
+  panel.classList.toggle("open", _emojiPanelOpen);
+  document.getElementById("btnEmoji")?.classList.toggle("active", _emojiPanelOpen);
+  if (_emojiPanelOpen) {
+    const grid = document.getElementById("emojiGrid");
+    if (grid && !grid.hasChildNodes()) _buildEmojiPicker();
+    // Réinitialiser sur l'onglet emoji (enlever hidden si on avait basculé sur GIF)
+    const emojiTab = document.getElementById("emojiTabContent");
+    const gifTab   = document.getElementById("gifTabContent");
     if (emojiTab) emojiTab.classList.remove("hidden");
-    if (gifTab) gifTab.classList.remove("visible");
+    if (gifTab)   gifTab.classList.remove("visible");
+    // Réinitialiser les boutons onglet
+    document.querySelectorAll(".emoji-tab").forEach(function(b, i) { b.classList.toggle("active", i === 0); });
   }
-};
+}
 
 function _closeEmojiPanel() {
   _emojiPanelOpen = false;
