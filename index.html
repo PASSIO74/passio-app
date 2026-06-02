@@ -11979,11 +11979,11 @@ async function openConversation(convId) {
       var c2 = convs2.find(function(x) { return x.id === convId; });
       if (!c2) return;
       var remote = supaMessages || [];
-      // Fusionner : Supabase + messages locaux optimistes non encore confirmés
+      remote.sort(function(a, b) { return (a.at || 0) - (b.at || 0); });
+      // Garder les messages locaux à la fin, dans l'ordre d'arrivée
       var remoteIds = new Set(remote.map(function(m) { return m.id; }).filter(Boolean));
       var localPending = (c2.messages || []).filter(function(m) { return !m.id || !remoteIds.has(m.id); });
       c2.messages = remote.concat(localPending);
-      c2.messages.sort(function(a, b) { return (a.at || 0) - (b.at || 0); });
       c2._otherRead = true;
       saveConversations();
       if (window._openedConvId === convId) {
