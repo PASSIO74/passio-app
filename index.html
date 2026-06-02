@@ -18057,6 +18057,8 @@ function toggleEmojiPanel() {
     panel.classList.toggle("open", !isOpen);
     document.getElementById("btnEmoji")?.classList.toggle("active", !isOpen);
     if (!isOpen) {
+      // Nettoyer le style display inline pour permettre la réouverture
+      panel.style.display = "";
       // Construire si vide
       var grid = document.getElementById("emojiGrid");
       if (grid && !grid.hasChildNodes() && typeof _buildEmojiPicker === "function") _buildEmojiPicker();
