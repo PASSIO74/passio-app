@@ -13012,7 +13012,8 @@ function openCreateGroup() {
 }
 
 async function confirmCreateGroup() {
-  const name = ($("#groupName") && $("#groupName").value || "").trim();
+  const nameInput = document.getElementById("groupName");
+  const name = (nameInput && nameInput.value || "").trim();
   if (!name) { toast("Donne un nom au groupe"); return; }
   const selectedPassions = [...document.querySelectorAll(".group-passion-option.selected input")].map(i => i.value);
   const selectedUsers = [...document.querySelectorAll(".group-user-option.selected input")].map(i => i.value);
