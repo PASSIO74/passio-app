@@ -18625,77 +18625,124 @@ function triggerAttach(type) {
 
 function handleAttachFile(input, kind) {
   var file = input.files && input.files[0];
-  if (!file) return;
+  if (!file) {
+    _diag("handleAttachFile: Aucun fichier sélectionné");
+    return;
+  }
+
+  _diag("handleAttachFile: Fichier sélectionné - " + file.name + " (" + file.type + ")");
+
   var fp = document.getElementById("conv-fullpage");
-  if (!fp) return alert("Ouvre une conversation d'abord");
+  if (!fp) {
+    _diag("handleAttachFile: conv-fullpage NOT FOUND");
+    return alert("Ouvre une conversation d'abord");
+  }
 
   var convId = fp.getAttribute("data-conv-id");
   var displayName = fp.getAttribute("data-display-name");
-  if (!convId) return;
+  if (!convId) {
+    _diag("handleAttachFile: convId NOT FOUND");
+    return;
+  }
+
+  _diag("handleAttachFile: convId=" + convId + ", kind=" + kind);
 
   var reader = new FileReader();
   reader.onload = function(e) {
+    _diag("handleAttachFile: FileReader completed - taille=" + e.target.result.length);
+
     var convs = getConversations ? getConversations() : (window.conversationsState || []);
     var c = convs.find(x => x.id === convId);
-    if (!c || !c.messages) return;
+    if (!c || !c.messages) {
+      _diag("handleAttachFile: Conversation NOT FOUND or no messages array");
+      return;
+    }
 
     var msgId = "msg_" + (Date.now().toString(36) + Math.random().toString(36).substr(2));
     var msg = {id: msgId, from: "me", text: "", at: Date.now()};
-    var fileUrl = null;
 
     if(kind === 'media') {
-      if(file.type.startsWith("video/")) msg.video = e.target.result;
-      else msg.img = e.target.result;
+      if(file.type.startsWith("video/")) {
+        msg.video = e.target.result;
+        _diag("handleAttachFile: VIDEO added");
+      } else {
+        msg.img = e.target.result;
+        _diag("handleAttachFile: IMAGE added");
+      }
     } else if(kind === 'audio') {
       msg.voiceData = e.target.result;
       msg.voiceDuration = 0;
       msg.isFile = true;
       msg.fileName = file.name;
+      _diag("handleAttachFile: AUDIO added");
     } else if(kind === 'doc') {
       msg.docData = e.target.result;
       msg.fileName = file.name;
       msg.fileSize = (file.size/1024).toFixed(0) + " KB";
       msg.fileType = file.name.split(".").pop().toUpperCase();
+      _diag("handleAttachFile: DOCUMENT added");
     }
 
     c.messages.push(msg);
     c.lastAt = Date.now();
+
+    _diag("handleAttachFile: Message ajouté localement");
 
     if(typeof saveConversations === 'function') saveConversations();
     if(typeof renderConvFpThread === 'function') renderConvFpThread(c, displayName);
     if(typeof renderMessages === 'function') renderMessages();
 
     // Upload vers Supabase Storage en parallèle
-    if(typeof supa !== 'undefined' && supa) {
-      var storagePath = "conversations/" + convId + "/" + msgId + "_" + file.name.replace(/\s+/g, "_");
-      supa.storage.from("files").upload(storagePath, file, {upsert: true})
-        .then(function(res) {
-          if(res.error) {
-            console.error("Upload Storage error:", res.error);
-            return;
-          }
-          // Obtenir l'URL public du fichier
-          var publicUrl = supa.storage.from("files").getPublicUrl(storagePath).data.publicUrl;
-
-          // Sauvegarder le message dans Supabase avec l'URL du fichier
-          var msgContent = "[" + kind.toUpperCase() + "] " + file.name;
-          supa.from("conv_messages").insert({
-            id: msgId,
-            conv_id: convId,
-            from_id: typeof MY_UID !== 'undefined' ? MY_UID : "me",
-            content: msgContent,
-            file_url: publicUrl,
-            file_name: file.name,
-            file_type: kind,
-            created_at: new Date().toISOString()
-          }).catch(function(err) {
-            console.error("Erreur Supabase message:", err);
-          });
-        })
-        .catch(function(err) {
-          console.error("Upload error:", err);
-        });
+    if(typeof supa === 'undefined' || !supa) {
+      _diag("handleAttachFile: Supabase NOT AVAILABLE");
+      input.value = "";
+      return;
     }
+
+    var storagePath = "conversations/" + convId + "/" + msgId + "_" + file.name.replace(/\s+/g, "_");
+    _diag("handleAttachFile: Upload vers Supabase Storage - " + storagePath);
+
+    supa.storage.from("files").upload(storagePath, file, {upsert: true})
+      .then(function(res) {
+        if(res.error) {
+          _diag("handleAttachFile: ERREUR Storage - " + JSON.stringify(res.error));
+          console.error("Upload Storage error:", res.error);
+          return;
+        }
+        _diag("handleAttachFile: Storage upload OK");
+
+        // Obtenir l'URL public du fichier
+        var publicUrl = supa.storage.from("files").getPublicUrl(storagePath).data.publicUrl;
+        _diag("handleAttachFile: URL public - " + publicUrl.substring(0, 50) + "...");
+
+        // Sauvegarder le message dans Supabase avec l'URL du fichier
+        var msgContent = "[" + kind.toUpperCase() + "] " + file.name;
+        _diag("handleAttachFile: Insertion message Supabase");
+
+        supa.from("conv_messages").insert({
+          id: msgId,
+          conv_id: convId,
+          from_id: typeof MY_UID !== 'undefined' ? MY_UID : "me",
+          content: msgContent,
+          file_url: publicUrl,
+          file_name: file.name,
+          file_type: kind,
+          created_at: new Date().toISOString()
+        }).then(function(res) {
+          if(res.error) {
+            _diag("handleAttachFile: ERREUR Supabase - " + JSON.stringify(res.error));
+          } else {
+            _diag("handleAttachFile: ✅ Supabase OK");
+          }
+        }).catch(function(err) {
+          _diag("handleAttachFile: CATCH Supabase - " + err.message);
+          console.error("Erreur Supabase message:", err);
+        });
+      })
+      .catch(function(err) {
+        _diag("handleAttachFile: CATCH Storage - " + err.message);
+        console.error("Upload error:", err);
+      });
 
     input.value = "";
   };
