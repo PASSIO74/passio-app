@@ -18491,7 +18491,6 @@ function _populateEmojiGrid() {
   var grid = document.getElementById("emojiGrid");
   if (!grid) return;
   grid.innerHTML = "";
-  if (!EMOJIS || EMOJIS.length === 0) return;
   EMOJIS.forEach(function(emoji) {
     var div = document.createElement("div");
     div.className = "emoji-item";
@@ -18500,6 +18499,9 @@ function _populateEmojiGrid() {
     grid.appendChild(div);
   });
 }
+
+// Call on page load
+setTimeout(_populateEmojiGrid, 100);
 
 function _sendGif(url) {
   try {
@@ -18723,22 +18725,37 @@ function switchEmojiTab(tab, btn) {
 }
 
 function toggleEmojiPanel() {
-  _closeAttachMenu();
-  const panel = document.getElementById("convEmojiPanel");
-  if (!panel) return;
-  _emojiPanelOpen = !_emojiPanelOpen;
-  panel.classList.toggle("open", _emojiPanelOpen);
-  document.getElementById("btnEmoji")?.classList.toggle("active", _emojiPanelOpen);
-  if (_emojiPanelOpen) {
-    const grid = document.getElementById("emojiGrid");
-    if (grid && !grid.hasChildNodes()) _populateEmojiGrid();
-    // Réinitialiser sur l'onglet emoji (enlever hidden si on avait basculé sur GIF)
-    const emojiTab = document.getElementById("emojiTabContent");
-    const gifTab   = document.getElementById("gifTabContent");
+  console.log("toggleEmojiPanel called");
+  var panel = document.getElementById("convEmojiPanel");
+  console.log("Panel:", panel);
+  if (!panel) {
+    console.log("Panel not found");
+    return;
+  }
+  if (typeof _closeAttachMenu === "function") _closeAttachMenu();
+  var isOpen = panel.classList.contains("open");
+  console.log("isOpen:", isOpen);
+  if (isOpen) {
+    panel.classList.remove("open");
+    var btn = document.getElementById("btnEmoji");
+    if (btn) btn.classList.remove("active");
+    console.log("Panel closed");
+  } else {
+    panel.classList.add("open");
+    var btn = document.getElementById("btnEmoji");
+    if (btn) btn.classList.add("active");
+    // Populate emoji grid
+    var grid = document.getElementById("emojiGrid");
+    if (grid && grid.children.length === 0) {
+      _populateEmojiGrid();
+      console.log("Emoji grid populated");
+    }
+    // Reset to emoji tab
+    var emojiTab = document.getElementById("emojiTabContent");
+    var gifTab = document.getElementById("gifTabContent");
     if (emojiTab) emojiTab.classList.remove("hidden");
-    if (gifTab)   gifTab.classList.remove("visible");
-    // Réinitialiser les boutons onglet
-    document.querySelectorAll(".emoji-tab").forEach(function(b, i) { b.classList.toggle("active", i === 0); });
+    if (gifTab) gifTab.classList.remove("visible");
+    console.log("Panel opened");
   }
 }
 
