@@ -19357,10 +19357,34 @@ window.addEventListener('load', function() {
   }
 </script>
 
+<!-- ════════════════════════════════════════════════════════════ -->
+<!-- PANEL EMOJI/GIF À LA RACINE - VISIBLE TOUJOURS -->
+<!-- ════════════════════════════════════════════════════════════ -->
+<div id="convEmojiPanel">
+  <div class="emoji-tabs">
+    <button class="emoji-tab active" onclick="switchEmojiTab('emoji',this)">😊 Emoji</button>
+    <button class="emoji-tab" onclick="switchEmojiTab('gif',this)">GIF</button>
+  </div>
+  <!-- Tab Emoji -->
+  <div id="emojiTabContent">
+    <div class="emoji-search-row">
+      <input type="text" id="emojiSearchInput" placeholder="🔍 Chercher emoji…" oninput="_onEmojiSearch(this.value)" />
+    </div>
+    <div class="emoji-grid" id="emojiGrid" style="display:grid;grid-template-columns:repeat(8,1fr);gap:4px;padding:12px;overflow-y:auto;flex:1;"></div>
+  </div>
+  <!-- Tab GIF -->
+  <div id="gifTabContent">
+    <div class="gif-search-row">
+      <input type="text" id="gifSearchInput" placeholder="🔍 Rechercher un GIF…" oninput="_onGifSearch(this.value)" />
+    </div>
+    <div class="gif-grid" id="gifGrid"><div style="padding:20px;text-align:center;color:var(--muted);font-size:13px;">Tape pour chercher un GIF…</div></div>
+  </div>
+</div>
+
 <!-- INITIALISATION FINALE EMOJI/GIF -->
 <script>
 window.addEventListener('load', function() {
-  // Pré-charger les emojis dans la grille
+  // Pré-charger les emojis
   if (typeof _populateEmojiGrid === 'function') {
     var grid = document.getElementById('emojiGrid');
     if (grid && !grid.hasChildNodes()) {
