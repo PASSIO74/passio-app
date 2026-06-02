@@ -18488,17 +18488,10 @@ function _sendGif(url) {
 }
 
 function toggleAttachMenu() {
-  alert("🔧 ATTACH MENU CLICKED!");
   try {
     var menu = document.getElementById("convAttachMenu");
-    console.log("Menu found:", !!menu);
-    if (!menu) {
-      alert("❌ Menu non trouvé!");
-      return;
-    }
+    if (!menu) return;
     var isOpen = menu.classList.contains("open");
-    console.log("Menu open:", isOpen);
-    alert("Menu open: " + isOpen);
 
     // Fermer emoji si ouvert
     document.getElementById("convEmojiPanel")?.classList.remove("open");
@@ -18506,10 +18499,7 @@ function toggleAttachMenu() {
 
     menu.classList.toggle("open", !isOpen);
     document.getElementById("btnAttach")?.classList.toggle("active", !isOpen);
-
-    alert("✅ Menu toggled!");
   } catch(e) {
-    alert("ERROR: " + e.message);
     console.error("toggleAttachMenu:", e);
   }
 }
