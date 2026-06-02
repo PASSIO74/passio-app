@@ -19392,30 +19392,17 @@ if (typeof window._attachMenuOpen === 'undefined') {
 
 // DÉFINIR LA FONCTION toggleEmojiPanel - UTILISER LE PANEL EXISTANT
 window.toggleEmojiPanel = function() {
-  updateDiag("✅ toggleEmojiPanel EXÉCUTÉE!");
-
   var panel = document.getElementById("convEmojiPanel");
-  if (!panel) {
-    updateDiag("❌ Panel #convEmojiPanel NON TROUVÉ!");
-    return;
-  }
-  updateDiag("✅ Panel trouvé!");
-
-  updateDiag("→ Avant toggle: window._emojiPanelOpen = " + window._emojiPanelOpen);
+  if (!panel) return;
 
   window._emojiPanelOpen = window._emojiPanelOpen ? false : true;
 
-  updateDiag("→ Après toggle: window._emojiPanelOpen = " + window._emojiPanelOpen);
-
   if (window._emojiPanelOpen) {
-    updateDiag("→ AFFICHAGE panel");
     panel.classList.add("open");
-    updateDiag("→ Classe 'open' ajoutée");
 
     // Peupler le grid emoji si vide
     var grid = document.getElementById("emojiGrid");
     if (grid && grid.children.length === 0 && typeof EMOJIS !== 'undefined') {
-      updateDiag("→ Remplissage grid avec " + EMOJIS.length + " emojis");
       EMOJIS.forEach(function(emoji) {
         var div = document.createElement("div");
         div.className = "emoji-item";
@@ -19428,35 +19415,20 @@ window.toggleEmojiPanel = function() {
       });
     }
   } else {
-    updateDiag("→ MASQUAGE panel");
     panel.classList.remove("open");
   }
-
-  updateDiag("✅ toggleEmojiPanel TERMINÉE!");
 };
 
 // SETUP DU BOUTON EMOJI
 setTimeout(function() {
-  updateDiag("\n=== SETUP ===");
-
   var btnEmoji = document.getElementById('btnEmoji');
   if (btnEmoji) {
-    updateDiag("✅ btnEmoji trouvé!");
     btnEmoji.onclick = function(e) {
-      updateDiag("\n=== CLICK ===");
       e.preventDefault();
       window.toggleEmojiPanel();
       return false;
     };
-    updateDiag("✅ onclick assigné");
-  } else {
-    updateDiag("❌ btnEmoji NON trouvé!");
   }
-
-  var panel = document.getElementById('convEmojiPanel');
-  updateDiag(panel ? "✅ convEmojiPanel existe" : "❌ convEmojiPanel NON existe");
-
-  updateDiag("✅ SETUP TERMINÉ");
 }, 100);
 </script>
 
