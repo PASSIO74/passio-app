@@ -19390,6 +19390,43 @@ if (typeof window._attachMenuOpen === 'undefined') {
   window._attachMenuOpen = false;
 }
 
+// GIFs PAR DÉFAUT
+var _defaultGifs = [
+  "https://media.giphy.com/media/3o7abKhOpu0NwenH3O/giphy.gif",
+  "https://media.giphy.com/media/xT9IgG50Lg7rusjtG8/giphy.gif",
+  "https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif",
+  "https://media.giphy.com/media/26ufdipQqU2lhNA4g/giphy.gif",
+  "https://media.giphy.com/media/3oz8xAFtqoOUUrsh7W/giphy.gif",
+  "https://media.giphy.com/media/l4FGGafcOHmrlQxG0/giphy.gif",
+  "https://media.giphy.com/media/3ohzdKdb7d1bbVwnQU/giphy.gif",
+  "https://media.giphy.com/media/l0HlFZ3c8HWDRlCharepI/giphy.gif",
+  "https://media.giphy.com/media/FW8aI0tXVE8gKxYvRc/giphy.gif",
+  "https://media.giphy.com/media/l0Iy1Z8oW4fvfBLh2/giphy.gif",
+  "https://media.giphy.com/media/l0HlDtKUoRb0x8bDy/giphy.gif",
+  "https://media.giphy.com/media/l0Iy0QcSoQYQW3SWHf/giphy.gif",
+];
+
+// REMPLIR LE GIF GRID PAR DÉFAUT
+function _populateGifGrid() {
+  var gifGrid = document.getElementById("gifGrid");
+  if (!gifGrid) return;
+
+  gifGrid.innerHTML = "";
+  _defaultGifs.forEach(function(url) {
+    var div = document.createElement("div");
+    div.style.cssText = "width:100%;height:120px;border-radius:8px;overflow:hidden;cursor:pointer;";
+    var img = document.createElement("img");
+    img.src = url;
+    img.style.cssText = "width:100%;height:100%;object-fit:cover;";
+    div.appendChild(img);
+    div.onclick = function() {
+      if (typeof _sendGif === 'function') _sendGif(url);
+      window.toggleEmojiPanel();
+    };
+    gifGrid.appendChild(div);
+  });
+}
+
 // DÉFINIR LA FONCTION toggleEmojiPanel - UTILISER LE PANEL EXISTANT
 window.toggleEmojiPanel = function() {
   var panel = document.getElementById("convEmojiPanel");
@@ -19414,8 +19451,34 @@ window.toggleEmojiPanel = function() {
         grid.appendChild(div);
       });
     }
+
+    // Peupler le grid GIF si vide
+    var gifGrid = document.getElementById("gifGrid");
+    if (gifGrid && gifGrid.children.length <= 1) {
+      _populateGifGrid();
+    }
   } else {
     panel.classList.remove("open");
+  }
+};
+
+// FUNCTION SWITCH EMOJI TAB (gérer l'affichage des onglets)
+window.switchEmojiTab = function(tab, btn) {
+  document.querySelectorAll(".emoji-tab").forEach(function(b) {
+    b.classList.remove("active");
+  });
+  btn.classList.add("active");
+
+  var emojiContent = document.getElementById("emojiTabContent");
+  var gifContent = document.getElementById("gifTabContent");
+
+  if (tab === "emoji") {
+    emojiContent.style.display = "flex";
+    gifContent.style.display = "none";
+  } else {
+    emojiContent.style.display = "none";
+    gifContent.style.display = "flex";
+    _populateGifGrid();
   }
 };
 
