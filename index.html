@@ -7420,30 +7420,8 @@
       <button onclick="cancelVoiceRecord()" style="background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer;padding:0;">✕</button>
     </div>
 
-    <!-- Panneau emoji/GIF (flotte au-dessus de la toolbar) -->
-    <div style="position:relative;flex-shrink:0;z-index:100;">
-      <div id="convEmojiPanel">
-        <div class="emoji-tabs">
-          <button class="emoji-tab active" onclick="switchEmojiTab('emoji',this)">😊 Emoji</button>
-          <button class="emoji-tab" onclick="switchEmojiTab('gif',this)">GIF</button>
-        </div>
-        <!-- Tab Emoji -->
-        <div id="emojiTabContent">
-          <div class="emoji-search-row">
-            <input type="text" id="emojiSearchInput" placeholder="🔍 Chercher emoji…" oninput="_onEmojiSearch(this.value)" />
-          </div>
-          <div class="emoji-grid" id="emojiGrid" style="display:grid;grid-template-columns:repeat(8,1fr);gap:4px;padding:12px;overflow-y:auto;flex:1;"></div>
-        </div>
-        <!-- Tab GIF -->
-        <div id="gifTabContent">
-          <div class="gif-search-row">
-            <input type="text" id="gifSearchInput" placeholder="🔍 Rechercher un GIF…" oninput="_onGifSearch(this.value)" />
-          </div>
-          <div class="gif-grid" id="gifGrid"><div style="padding:20px;text-align:center;color:var(--muted);font-size:13px;">Tape pour chercher un GIF…</div></div>
-        </div>
-      </div>
-
-      <!-- Menu pièces jointes -->
+    <!-- Panneau emoji/GIF (DÉPLACÉ À LA RACINE) -->
+    <!-- Menu pièces jointes -->
       <div id="convAttachMenu">
         <div class="attach-item" onclick="triggerAttach('image')">
           <div class="attach-icon" style="background:rgba(139,92,246,0.12);">🖼️</div>
