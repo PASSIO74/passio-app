@@ -18796,20 +18796,34 @@ function handleAttachFile(input, kind) {
         var msgContent = "[" + kind.toUpperCase() + "] " + file.name;
         _diag("handleAttachFile: Insertion message Supabase");
 
+        var extraData = {type: kind, filename: file.name, url: publicUrl, size: file.size};
         supa.from("conv_messages").insert({
           id: msgId,
           conv_id: convId,
           from_id: typeof MY_UID !== 'undefined' ? MY_UID : "me",
           content: msgContent,
-          file_url: publicUrl,
-          file_name: file.name,
-          file_type: kind,
+          extra_data: JSON.stringify(extraData),
           created_at: new Date().toISOString()
         }).then(function(res) {
           if(res.error) {
-            _diag("handleAttachFile: ERREUR Supabase - " + JSON.stringify(res.error));
+            _diag("handleAttachFile: ERREUR extra_data - " + res.error.message);
+            // Fallback: essayer sans extra_data
+            _diag("handleAttachFile: FALLBACK - essai avec content seul");
+            supa.from("conv_messages").insert({
+              id: msgId,
+              conv_id: convId,
+              from_id: typeof MY_UID !== 'undefined' ? MY_UID : "me",
+              content: msgContent + " - " + publicUrl,
+              created_at: new Date().toISOString()
+            }).then(function(res2) {
+              if(res2.error) {
+                _diag("handleAttachFile: FALLBACK ÉCHOUÉ - " + res2.error.message);
+              } else {
+                _diag("handleAttachFile: ✅ FALLBACK Supabase OK");
+              }
+            });
           } else {
-            _diag("handleAttachFile: ✅ Supabase OK");
+            _diag("handleAttachFile: ✅ Supabase OK avec extra_data");
           }
         }).catch(function(err) {
           _diag("handleAttachFile: CATCH Supabase - " + err.message);
