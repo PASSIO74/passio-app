@@ -19431,33 +19431,42 @@ function _populateGifGrid() {
   var gifGrid = document.getElementById("gifGrid");
   if (!gifGrid) return;
 
+  diag("→ _populateGifGrid appelée");
   gifGrid.innerHTML = "";
-  _defaultGifs.forEach(function(url) {
+
+  var count = 0;
+  _defaultGifs.forEach(function(url, idx) {
     var div = document.createElement("div");
     div.style.cssText = "width:100%;height:120px;border-radius:8px;overflow:hidden;cursor:pointer;";
     var img = document.createElement("img");
     img.src = url;
     img.style.cssText = "width:100%;height:100%;object-fit:cover;";
     div.appendChild(img);
-    div.onclick = function() {
-      diag("🖼️ GIF CLIQUÉ: " + url.substring(0, 40) + "...");
+
+    // Ajouter onclick avec diagnostic
+    div.onclick = function(e) {
+      diag("🖼️ GIF CLIQUÉ #" + idx);
 
       if (typeof _sendGif === 'function') {
         diag("  ✅ _sendGif existe");
         try {
           _sendGif(url);
-          diag("  ✅ _sendGif exécutée");
-        } catch(e) {
-          diag("  ❌ _sendGif ERROR: " + e.message);
+          diag("  ✅ _sendGif OK");
+        } catch(err) {
+          diag("  ❌ _sendGif ERROR: " + err.message);
         }
       } else {
-        diag("  ❌ _sendGif N'EXISTE PAS!");
+        diag("  ❌ _sendGif N'EXISTE PAS");
       }
 
       window.toggleEmojiPanel();
     };
+
     gifGrid.appendChild(div);
+    count++;
   });
+
+  diag("  → " + count + " GIFs ajoutés");
 }
 
 // DÉFINIR LA FONCTION toggleEmojiPanel - UTILISER LE PANEL EXISTANT
