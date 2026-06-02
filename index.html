@@ -19261,8 +19261,8 @@ document.addEventListener("DOMContentLoaded", function() {
 
 // ── Fermer les panneaux en cliquant ailleurs ──
 document.addEventListener("click", function(e) {
-  if (_emojiPanelOpen && !e.target.closest("#convEmojiPanel") && !e.target.closest("#btnEmoji")) _closeEmojiPanel();
-  if (_attachMenuOpen && !e.target.closest("#convAttachMenu") && !e.target.closest("#btnAttach")) _closeAttachMenu();
+  if (window._emojiPanelOpen && !e.target.closest("#convEmojiPanel") && !e.target.closest("#btnEmoji")) _closeEmojiPanel();
+  if (window._attachMenuOpen && !e.target.closest("#convAttachMenu") && !e.target.closest("#btnAttach")) _closeAttachMenu();
 });
 
 // ── Render contenu d'un message (GIF, vocal, vidéo, doc, image, texte) ──
