@@ -18524,49 +18524,24 @@ function switchEmojiTab(tab, btn) {
 }
 
 function toggleEmojiPanel() {
-  try {
-    _closeAttachMenu();
-  } catch(e) { console.error("_closeAttachMenu error:", e); }
-
-  const panel = document.getElementById("convEmojiPanel");
+  var panel = document.getElementById("convEmojiPanel");
   if (!panel) {
-    console.error("❌ convEmojiPanel NOT FOUND!");
+    console.error("❌ Panel n'existe pas");
     return;
   }
 
   _emojiPanelOpen = !_emojiPanelOpen;
-
-  // FORCER l'affichage avec style inline si le CSS ne fonctionne pas
-  if (_emojiPanelOpen) {
-    panel.style.display = "flex";
-    panel.classList.add("open");
-    console.log("✅ Panel OUVERT");
-  } else {
-    panel.style.display = "none";
-    panel.classList.remove("open");
-    console.log("✅ Panel FERMÉ");
-  }
-
-  // Toggle le bouton emoji
-  const btnEmoji = document.getElementById("btnEmoji");
-  if (btnEmoji) {
-    btnEmoji.classList.toggle("active", _emojiPanelOpen);
-  }
+  panel.classList.toggle("open", _emojiPanelOpen);
 
   if (_emojiPanelOpen) {
-    const grid = document.getElementById("emojiGrid");
-    if (grid) {
-      if (!grid.hasChildNodes()) {
-        console.log("Peuplement de la grille emoji...");
-        _buildEmojiPicker();
-      }
-    } else {
-      console.error("❌ emojiGrid NOT FOUND!");
+    var grid = document.getElementById("emojiGrid");
+    if (grid && !grid.hasChildNodes()) {
+      _populateEmojiGrid();
     }
 
     // Réinitialiser sur l'onglet emoji
-    const emojiTab = document.getElementById("emojiTabContent");
-    const gifTab = document.getElementById("gifTabContent");
+    var emojiTab = document.getElementById("emojiTabContent");
+    var gifTab = document.getElementById("gifTabContent");
     if (emojiTab) emojiTab.classList.remove("hidden");
     if (gifTab) gifTab.classList.remove("visible");
 
