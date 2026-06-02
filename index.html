@@ -18461,6 +18461,31 @@ var EMOJI_DATA = [
 // Create simpler emoji array for direct use
 var EMOJIS = EMOJI_DATA.map(e => e.emoji);
 
+// Search emojis by query
+function _onEmojiSearch(query) {
+  var grid = document.getElementById("emojiGrid");
+  if (!grid) return;
+
+  var q = query.toLowerCase().trim();
+  var results = q ? EMOJI_DATA.filter(function(e) {
+    return e.labels.includes(q);
+  }).map(e => e.emoji) : EMOJIS;
+
+  grid.innerHTML = "";
+  if (results.length === 0) {
+    grid.innerHTML = '<div style="grid-column:span 8;padding:20px;text-align:center;color:var(--muted);font-size:12px;">Aucun emoji trouvé</div>';
+    return;
+  }
+
+  results.forEach(function(emoji) {
+    var div = document.createElement("div");
+    div.className = "emoji-item";
+    div.textContent = emoji;
+    div.onclick = function() { insertEmoji(emoji); };
+    grid.appendChild(div);
+  });
+}
+
 // Populate emoji grid
 function _populateEmojiGrid() {
   var grid = document.getElementById("emojiGrid");
