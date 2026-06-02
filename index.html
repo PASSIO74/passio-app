@@ -5830,40 +5830,123 @@
       border: 1.5px solid var(--border);
       border-radius: 16px;
       box-shadow: 0 -6px 30px rgba(0,0,0,0.20);
-      z-index: 99999;
+      z-index: 9999;
+      flex-direction: column;
+      padding: 0;
       overflow: hidden;
     }
-    #convEmojiPanel.open {
-      display: flex !important;
-      flex-direction: column;
+    #convEmojiPanel.open { display: flex; }
+
+    .emoji-tabs {
+      display: flex;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-soft);
+      flex-shrink: 0;
     }
-    .emoji-tabs { display:flex; border-bottom:1px solid var(--border); background:var(--bg-soft); flex-shrink:0; border-radius:18px 18px 0 0; overflow:hidden; }
-    .emoji-tab { flex:1; padding:10px 0; font-size:13px; font-weight:700; color:var(--muted); cursor:pointer; text-align:center; border:none; background:none; transition:color 150ms; }
-    .emoji-tab.active { color:var(--accent); border-bottom:2px solid var(--accent); background:rgba(139,92,246,0.06); }
-    /* Tab emoji */
-    #emojiTabContent { display:flex; flex-direction:column; flex:1; overflow:hidden; min-height:0; }
-    #emojiTabContent.hidden { display:none; }
-    .emoji-search-row { padding:8px 10px 4px; flex-shrink:0; }
-    .emoji-search-row input { width:100%; padding:8px 14px; border-radius:20px; border:1.5px solid var(--border); background:var(--bg-deep); color:var(--text); font-size:13px; outline:none; box-sizing:border-box; }
-    .emoji-search-row input:focus { border-color:var(--accent); }
-    .emoji-cat-bar { display:flex; gap:2px; padding:4px 8px; overflow-x:auto; scrollbar-width:none; flex-shrink:0; background:var(--bg-soft); border-bottom:1px solid var(--border); }
-    .emoji-cat-bar::-webkit-scrollbar { display:none; }
-    .emoji-cat-btn { font-size:20px; cursor:pointer; padding:5px 7px; border-radius:8px; border:none; background:none; flex-shrink:0; line-height:1; transition:background 100ms; }
-    .emoji-cat-btn.active { background:rgba(139,92,246,0.15); }
-    .emoji-grid { display:grid; grid-template-columns:repeat(8,1fr); gap:1px; padding:6px 8px; overflow-y:auto; flex:1; min-height:100px; }
-    .emoji-item { font-size:28px; text-align:center; cursor:pointer; padding:8px 4px; border-radius:10px; line-height:1; user-select:none; transition:background 150ms, transform 100ms; }
-    .emoji-item:hover, .emoji-item:active { background:rgba(139,92,246,0.2); transform:scale(1.15); }
-    /* Tab GIF */
-    #gifTabContent { display:none; flex-direction:column; flex:1; overflow:hidden; min-height:200px; height:100%; }
-    #gifTabContent.visible { display:flex; }
-    .gif-search-row { padding:8px 10px 4px; flex-shrink:0; }
-    .gif-search-row input { width:100%; padding:8px 14px; border-radius:20px; border:1.5px solid var(--border); background:var(--bg-deep); color:var(--text); font-size:13px; outline:none; box-sizing:border-box; }
-    .gif-search-row input:focus { border-color:var(--accent); }
-    .gif-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; padding:12px; overflow-y:auto; flex:1; height:100%; }
-    .gif-item { width:100%; height:120px; border-radius:12px; overflow:hidden; cursor:pointer; background:var(--bg-deep); box-shadow:0 2px 8px rgba(0,0,0,0.1); transition:transform 150ms, box-shadow 150ms; }
-    .gif-item:hover { transform:scale(1.05); box-shadow:0 6px 16px rgba(0,0,0,0.15); }
-    .gif-item img { width:100%; height:100%; object-fit:cover; display:block; }
-    .gif-grid > div:last-child { grid-column:1/-1; }
+
+    .emoji-tab {
+      flex: 1;
+      padding: 10px 0;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--muted);
+      cursor: pointer;
+      text-align: center;
+      border: none;
+      background: none;
+      transition: color 150ms;
+    }
+
+    .emoji-tab.active {
+      color: var(--accent);
+      border-bottom: 2px solid var(--accent);
+    }
+
+    #emojiTabContent {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      overflow: hidden;
+      min-height: 0;
+    }
+
+    #emojiTabContent.hidden { display: none; }
+
+    .emoji-search-row {
+      padding: 8px 10px 4px;
+      flex-shrink: 0;
+    }
+
+    .emoji-search-row input {
+      width: 100%;
+      padding: 8px 14px;
+      border-radius: 20px;
+      border: 1.5px solid var(--border);
+      background: var(--bg-deep);
+      color: var(--text);
+      font-size: 13px;
+      outline: none;
+      box-sizing: border-box;
+    }
+
+    .emoji-grid {
+      display: grid;
+      grid-template-columns: repeat(8, 1fr);
+      gap: 1px;
+      padding: 6px 8px;
+      overflow-y: auto;
+      flex: 1;
+      min-height: 100px;
+    }
+
+    .emoji-item {
+      font-size: 28px;
+      text-align: center;
+      cursor: pointer;
+      padding: 8px 4px;
+      border-radius: 10px;
+      line-height: 1;
+      user-select: none;
+      transition: background 150ms, transform 100ms;
+    }
+
+    .emoji-item:hover {
+      background: rgba(139, 92, 246, 0.2);
+      transform: scale(1.15);
+    }
+
+    #gifTabContent {
+      display: none;
+      flex-direction: column;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    #gifTabContent.visible { display: flex; }
+
+    .gif-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      padding: 12px;
+      overflow-y: auto;
+      flex: 1;
+    }
+
+    .gif-item {
+      width: 100%;
+      height: 120px;
+      border-radius: 12px;
+      overflow: hidden;
+      cursor: pointer;
+      background: var(--bg-deep);
+    }
+
+    .gif-item img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
     /* Attach menu */
     #convAttachMenu {
       display:none; position:absolute; bottom:calc(100% + 2px); left:0;
