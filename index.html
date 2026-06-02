@@ -19505,37 +19505,16 @@ function _closeEmojiPanel() {
   if (panel) panel.classList.remove("open");
 }
 
-// SETUP DU BOUTON EMOJI + VÉRIFIER LES ONGLETS
+// SETUP DU BOUTON EMOJI
 setTimeout(function() {
-  diag("\n=== SETUP ===");
-
   var btnEmoji = document.getElementById('btnEmoji');
   if (btnEmoji) {
-    diag("✅ btnEmoji trouvé");
     btnEmoji.onclick = function(e) {
       e.preventDefault();
       window.toggleEmojiPanel();
       return false;
     };
-  } else {
-    diag("❌ btnEmoji NOT FOUND");
   }
-
-  // VÉRIFIER LES ONGLETS
-  var tabs = document.querySelectorAll(".emoji-tab");
-  diag("Onglets trouvés: " + tabs.length);
-
-  tabs.forEach(function(tab, idx) {
-    diag("  Tab " + idx + ": " + tab.textContent);
-    // Vérifier que onclick est bien là
-    if (tab.onclick || tab.getAttribute('onclick')) {
-      diag("    ✅ onclick exist");
-    } else {
-      diag("    ❌ onclick MISSING");
-    }
-  });
-
-  diag("✅ SETUP COMPLET");
 }, 100);
 </script>
 
