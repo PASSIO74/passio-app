@@ -19297,5 +19297,48 @@ window.addEventListener('load', function() {
   }
 </script>
 
+<!-- DEBUGGING EMOJI SYSTEM -->
+<script>
+console.log("🧪 EMOJI SYSTEM DEBUG - INITIALISATION");
+
+setTimeout(function() {
+  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  console.log("VÉRIFICATION SYSTÈME EMOJI/GIF");
+  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+
+  console.log("✅ Fonctions:");
+  console.log("  toggleEmojiPanel: " + (typeof toggleEmojiPanel === 'function' ? "✅" : "❌"));
+  console.log("  _populateEmojiGrid: " + (typeof _populateEmojiGrid === 'function' ? "✅" : "❌"));
+
+  console.log("✅ Variables:");
+  console.log("  EMOJIS: " + (typeof EMOJIS !== 'undefined' ? EMOJIS.length + " emojis" : "❌"));
+
+  console.log("✅ DOM:");
+  console.log("  #convEmojiPanel: " + (document.getElementById('convEmojiPanel') ? "✅" : "❌"));
+  console.log("  #btnEmoji: " + (document.getElementById('btnEmoji') ? "✅" : "❌"));
+
+  var btn = document.getElementById('btnEmoji');
+  if (btn) {
+    var newBtn = btn.cloneNode(true);
+    btn.parentNode.replaceChild(newBtn, btn);
+
+    newBtn.addEventListener('click', function(e) {
+      console.log("\n💥 CLICK DÉTECTÉ - Appel toggleEmojiPanel()");
+      try {
+        toggleEmojiPanel();
+        var panel = document.getElementById('convEmojiPanel');
+        console.log("Panel display: " + (panel ? window.getComputedStyle(panel).display : "N/A"));
+        console.log("Panel classes: " + (panel ? panel.className : "N/A"));
+        console.log("_emojiPanelOpen: " + _emojiPanelOpen);
+      } catch(e) {
+        console.error("ERREUR: " + e.message);
+      }
+    });
+  }
+
+  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+}, 500);
+</script>
+
 </body>
 </html>
