@@ -11887,7 +11887,7 @@ function renderMessages() {
 
 async function openConversation(convId) {
   const sp = document.getElementById("convSettingsPanel");
-  if (sp) { sp.classList.remove("open"); sp.style.transform = "translateX(100%)"; }
+  if (sp) { sp.classList.remove("open"); sp.style.transform = "translateX(100%)"; sp.style.display = "none"; sp.style.pointerEvents = "none"; }
   window._openedConvId = convId;
   var convs = getConversations();
   var c = convs.find(function(x) { return x.id === convId; });
