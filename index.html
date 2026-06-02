@@ -18089,10 +18089,6 @@ function openConvSettings(convId) {
   } catch(e) { console.error("openConvSettings:", e); }
 }
 
-function closeConvSettings() {
-  document.getElementById("convSettingsPanel")?.classList.remove("open");
-}
-
 function _toggleMuteConv(convId) {
   var convs = getConversations();
   var c = convs.find(function(x){ return x.id === convId; });
