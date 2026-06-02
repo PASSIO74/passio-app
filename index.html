@@ -19390,17 +19390,6 @@ if (typeof window._attachMenuOpen === 'undefined') {
   window._attachMenuOpen = false;
 }
 
-// DIAGNOSTIC VISUEL
-var _diagnosisDiv = document.createElement("div");
-_diagnosisDiv.id = "__emoji_diagnosis";
-_diagnosisDiv.style.cssText = "position:fixed;top:10px;right:10px;background:#ffeb3b;color:#000;padding:15px;border-radius:8px;font-size:12px;font-weight:bold;z-index:99999;max-width:300px;white-space:pre-wrap;line-height:1.6;";
-_diagnosisDiv.textContent = "DIAGNOSTIC EMOJI\n...";
-document.body.appendChild(_diagnosisDiv);
-
-function updateDiag(msg) {
-  _diagnosisDiv.textContent += "\n" + msg;
-}
-
 // DÉFINIR LA FONCTION toggleEmojiPanel - UTILISER LE PANEL EXISTANT
 window.toggleEmojiPanel = function() {
   updateDiag("✅ toggleEmojiPanel EXÉCUTÉE!");
