@@ -12125,10 +12125,22 @@ async function openConversation(convId) {
       var c2 = convs2.find(function(x) { return x.id === convId; });
       if (!c2) return;
       var remote = supaMessages || [];
-      var remoteIds = new Set(remote.map(function(m) { return m.id; }).filter(Boolean));
-      var existingIds = new Set((c2.messages || []).map(function(m) { return m.id; }).filter(Boolean));
-      var newRemote = remote.filter(function(m) { return !existingIds.has(m.id); });
-      c2.messages = (c2.messages || []).concat(newRemote);
+      // Créer un map des messages Supabase par ID
+      var remoteMap = {};
+      remote.forEach(function(m) { if (m.id) remoteMap[m.id] = m; });
+
+      // REMPLACER les messages locaux par les messages Supabase quand ils existent
+      var messages = (c2.messages || []).map(function(m) {
+        return remoteMap[m.id] || m; // Utiliser Supabase si disponible, sinon local
+      });
+
+      // Ajouter les messages Supabase qui n'existent pas localement
+      var localIds = new Set((c2.messages || []).map(function(m) { return m.id; }).filter(Boolean));
+      remote.forEach(function(m) {
+        if (!localIds.has(m.id)) messages.push(m);
+      });
+
+      c2.messages = messages;
       c2.messages.sort(function(a, b) { return (a.at || 0) - (b.at || 0); });
       c2._otherRead = true;
       saveConversations();
