@@ -19571,6 +19571,13 @@ window.switchEmojiTab = function(tab, btn) {
   }
 };
 
+// FONCTION FERMER PANEL EMOJI
+function _closeEmojiPanel() {
+  window._emojiPanelOpen = false;
+  var panel = document.getElementById("convEmojiPanel");
+  if (panel) panel.classList.remove("open");
+}
+
 // SETUP DU BOUTON EMOJI + VÉRIFIER LES ONGLETS
 setTimeout(function() {
   diag("\n=== SETUP ===");
