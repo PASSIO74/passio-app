@@ -18858,7 +18858,7 @@ function shareLocation() {
     if(typeof saveConversations === 'function') saveConversations();
 
     // Sync Supabase pour synchronisation multi-appareils
-    if(typeof supa !== 'undefined' && supa && MY_UID) {
+    if(typeof supa !== 'undefined' && supa) {
       // Encoder dans le content en JSON
       var contentData = {
         type: "location",
@@ -18869,18 +18869,27 @@ function shareLocation() {
       };
       var contentJson = JSON.stringify(contentData);
 
+      // Essayer SANS from_id d'abord
       supa.from("conv_messages").insert({
         id: msgId,
         conv_id: convId,
-        from_id: MY_UID,
         content: contentJson,
         created_at: new Date().toISOString()
       }).then(function(res) {
         if(res.error) {
-          console.warn("Supabase location error (ignoré):", res.error);
+          // Fallback: essayer AVEC from_id
+          if (MY_UID) {
+            supa.from("conv_messages").insert({
+              id: msgId,
+              conv_id: convId,
+              from_id: MY_UID,
+              content: contentJson,
+              created_at: new Date().toISOString()
+            }).catch(function() {});
+          }
         }
       }).catch(function(err) {
-        console.warn("Supabase location error (ignoré):", err);
+        // Continuer même en cas d'erreur
       });
     }
 
