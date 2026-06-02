@@ -18744,11 +18744,14 @@ function openConvSettings(convId) {
       <div class="csetting-label" style="color:#ef4444;">Supprimer la conversation</div>
     </div>
   `;
+  panel.style.display = "flex";
+  panel.style.pointerEvents = "auto";
   panel.classList.add("open");
 }
 
 function closeConvSettings() {
-  document.getElementById("convSettingsPanel")?.classList.remove("open");
+  const p = document.getElementById("convSettingsPanel");
+  if (p) { p.classList.remove("open"); p.style.display = "none"; p.style.pointerEvents = "none"; }
 }
 
 function _toggleMuteConv(convId) {
