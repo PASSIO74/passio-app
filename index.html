@@ -7497,6 +7497,18 @@ function $(id) {
   return document.getElementById(id);
 }
 
+// ⚙️ SYSTÈME DE DIAGNOSTIC RÉUTILISABLE
+// Utilisation: _diag("message") → affiche une alert + console.log
+// Pour activer: ouvre la console et tape: window._DEBUG_MODE = true
+// Pour désactiver: window._DEBUG_MODE = false
+window._DEBUG_MODE = false;
+function _diag(msg) {
+  if(window._DEBUG_MODE) {
+    alert("🔧 " + msg);
+    console.log("🔧", msg);
+  }
+}
+
 /* ============================================================
    PASSIO LOGO, inline SVG, two variants
    A = "Ascension"  (flèche haut-droite, blanc + magenta, fond violet clair)
