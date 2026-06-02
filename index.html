@@ -18447,10 +18447,18 @@ function _renderGifsStatic() {
     { url:"https://media.giphy.com/media/l0HlSY9x8FZo0XO1i/giphy.gif", label:"💃" },
     { url:"https://media.giphy.com/media/l4FGGafcOHmrlQxG0/giphy.gif", label:"✨" },
     { url:"https://media.giphy.com/media/l0HlMMaQ5vJ7lKOmY/giphy.gif", label:"🎬" },
+    { url:"https://media.giphy.com/media/l3q2K6HIuvsGyp7UE/giphy.gif", label:"🚀" },
+    { url:"https://media.giphy.com/media/l0HlQaQ6gWfllcjDO/giphy.gif", label:"🎪" },
+    { url:"https://media.giphy.com/media/l4FgUMgdCHHBFcGe88/giphy.gif", label:"🎭" },
+    { url:"https://media.giphy.com/media/3o7TKU8j7Yt9R2xNMY/giphy.gif", label:"🎨" },
+    { url:"https://media.giphy.com/media/l0MYM8m02D0c3PoFi/giphy.gif", label:"🎤" },
+    { url:"https://media.giphy.com/media/RH16FlVXbaAzS/giphy.gif", label:"🎸" },
+    { url:"https://media.giphy.com/media/l46Ce3kKMKxvEiFZS/giphy.gif", label:"🕺" },
+    { url:"https://media.giphy.com/media/l0HlHJJxcNHFqyvrm/giphy.gif", label:"🎉" },
   ];
   grid.innerHTML = demos.map(d =>
     `<div class="gif-item" data-gifurl="${d.url}"><img src="${d.url}" loading="lazy" alt="${d.label}" /></div>`
-  ).join("") + `<div style="grid-column:span 2;padding:8px;text-align:center;color:var(--muted);font-size:11px;">Recherche pour plus de GIFs</div>`;
+  ).join("") + `<div style="grid-column:span 3;padding:8px;text-align:center;color:var(--muted);font-size:11px;">Recherche pour plus de GIFs</div>`;
   grid.onclick = function(e) {
     const item = e.target.closest(".gif-item");
     if (item) _sendGif(item.getAttribute("data-gifurl"));
