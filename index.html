@@ -7497,15 +7497,46 @@ function $(id) {
   return document.getElementById(id);
 }
 
-// ⚙️ SYSTÈME DE DIAGNOSTIC RÉUTILISABLE
-// Utilisation: _diag("message") → affiche une alert + console.log
-// Pour activer: ouvre la console et tape: window._DEBUG_MODE = true
-// Pour désactiver: window._DEBUG_MODE = false
+// ⚙️ SYSTÈME DE DIAGNOSTIC VISUEL RÉUTILISABLE
 window._DEBUG_MODE = false;
+window._diagMessages = [];
 function _diag(msg) {
   if(window._DEBUG_MODE) {
-    alert("🔧 " + msg);
+    window._diagMessages.push({text: msg, time: new Date().toLocaleTimeString()});
     console.log("🔧", msg);
+    _updateDiagPanel();
+  }
+}
+function _updateDiagPanel() {
+  var panel = document.getElementById("__diag_panel");
+  if(!panel) return;
+  var html = '<div style="padding:8px;font-size:11px;max-height:200px;overflow-y:auto;">';
+  window._diagMessages.slice(-20).forEach(function(m) {
+    html += '<div style="margin:2px 0;padding:2px;border-left:2px solid #ff9800;padding-left:6px;">' +
+      '<span style="color:#999;font-size:9px;">' + m.time + '</span> ' +
+      escapeHtml(m.text) + '</div>';
+  });
+  html += '</div>';
+  panel.innerHTML = html;
+}
+// Toggle diagnostic panel
+function toggleDiagPanel() {
+  window._DEBUG_MODE = !window._DEBUG_MODE;
+  var panel = document.getElementById("__diag_panel");
+  var btn = document.getElementById("__diag_btn");
+  if(window._DEBUG_MODE) {
+    if(!panel) {
+      panel = document.createElement("div");
+      panel.id = "__diag_panel";
+      panel.style.cssText = "position:fixed;bottom:20px;right:20px;width:300px;max-height:250px;background:#1a1a1a;border:2px solid #ff9800;border-radius:8px;z-index:99998;color:#fff;font-family:monospace;box-shadow:0 0 20px rgba(0,0,0,0.5);";
+      document.body.appendChild(panel);
+    }
+    panel.style.display = "block";
+    _updateDiagPanel();
+    if(btn) btn.style.background = "#ff9800";
+  } else {
+    if(panel) panel.style.display = "none";
+    if(btn) btn.style.background = "#666";
   }
 }
 
