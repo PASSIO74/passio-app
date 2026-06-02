@@ -18638,32 +18638,39 @@ function _sendGif(gifUrl) {
     // Sync Supabase pour synchronisation multi-appareils
     _diag("_sendGif: Tentative Supabase...");
 
-    if (!MY_UID) {
-      _diag("_sendGif: MY_UID NOT SET");
-      return;
-    }
-
     // Encoder le GIF dans le content en JSON
     var contentData = {type: "gif", url: gifUrl, text: "🎬 GIF"};
     var contentJson = JSON.stringify(contentData);
 
-    // Essayer INSERT - s'il échoue à cause de from_id, continuer quand même
+    // Essayer INSERT SANS from_id d'abord (pour contourner la contrainte)
     supa.from("conv_messages").insert({
       id: msgId,
       conv_id: convId,
-      from_id: MY_UID,
       content: contentJson,
       created_at: new Date().toISOString()
     }).then(function(res) {
       if (res.error) {
-        _diag("_sendGif: Supabase error (ignoré) - " + res.error.message);
-        // Continuer même si Supabase échoue - on a la sauvegarde locale
+        _diag("_sendGif: Erreur sans from_id - " + res.error.message);
+        // Fallback: essayer AVEC from_id
+        _diag("_sendGif: Fallback - essai avec from_id...");
+        if (MY_UID) {
+          supa.from("conv_messages").insert({
+            id: msgId,
+            conv_id: convId,
+            from_id: MY_UID,
+            content: contentJson,
+            created_at: new Date().toISOString()
+          }).then(function(res2) {
+            if (!res2.error) {
+              _diag("_sendGif: ✅ Supabase OK (avec from_id)");
+            }
+          }).catch(function() {});
+        }
       } else {
-        _diag("_sendGif: ✅ Supabase OK");
+        _diag("_sendGif: ✅ Supabase OK (sans from_id)");
       }
     }).catch(function(err) {
-      _diag("_sendGif: Supabase catch (ignoré) - " + err.message);
-      // Continuer même si erreur
+      _diag("_sendGif: Catch - " + err.message);
     });
 
     _diag("_sendGif: ✅ Sauvegarde locale OK");
