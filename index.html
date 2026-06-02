@@ -18841,10 +18841,19 @@ window._sendGif = function(gifUrl) {
 
 // Click outside to close
 document.addEventListener("click", function(e) {
+  // Fermer emoji panel
   var p = document.getElementById("convEmojiPanel");
   var b = document.getElementById("btnEmoji");
   if(p && p.classList.contains("open") && !p.contains(e.target) && (!b || !b.contains(e.target))) {
     p.classList.remove("open");
+  }
+
+  // Fermer attach menu
+  var m = document.getElementById("convAttachMenu");
+  var a = document.getElementById("btnAttach");
+  if(m && m.classList.contains("open") && !m.contains(e.target) && (!a || !a.contains(e.target))) {
+    m.classList.remove("open");
+    a?.classList.remove("active");
   }
 });
 </script>
