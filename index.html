@@ -18701,36 +18701,6 @@ function _renderGifs(results) {
   };
 }
 
-function _sendGif(url) {
-  _closeEmojiPanel();
-  const fp = document.getElementById("conv-fullpage");
-  if (!fp) return;
-  const convId = fp.getAttribute("data-conv-id");
-  const displayName = fp.getAttribute("data-display-name");
-  if (!convId) return;
-  const convs = getConversations();
-  const c = convs.find(x => x.id === convId);
-  if (!c) return;
-  const msgId = "msg_" + uid();
-  if (!c.messages) c.messages = [];
-  c.messages.push({ id: msgId, from: "me", text: "", gif: url, at: Date.now() });
-  c.lastAt = Date.now();
-  saveConversations();
-  renderConvFpThread(c, displayName);
-  renderMessages();
-  if (typeof supa !== "undefined" && supa && MY_UID) {
-    supa.from("conv_messages").insert({ id: msgId, conv_id: convId, from_id: MY_UID, content: "[GIF]", created_at: new Date().toISOString() }).then(()=>{}).catch(()=>{});
-  }
-}
-
-// ── Pièces jointes ──
-function toggleAttachMenu() {
-  _closeEmojiPanel();
-  _attachMenuOpen = !_attachMenuOpen;
-  document.getElementById("convAttachMenu")?.classList.toggle("open", _attachMenuOpen);
-  document.getElementById("btnAttach")?.classList.toggle("active", _attachMenuOpen);
-}
-
 function _closeAttachMenu() {
   _attachMenuOpen = false;
   document.getElementById("convAttachMenu")?.classList.remove("open");
