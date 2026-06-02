@@ -19345,43 +19345,53 @@ window.addEventListener('load', function() {
   // Vérifier la variable EMOJIS
   console.log("EMOJIS array length: " + (typeof EMOJIS !== 'undefined' ? EMOJIS.length : "❌"));
 
-  // Ajouter un listener au bouton emoji
-  var btnEmoji = document.getElementById('btnEmoji');
-  if (btnEmoji) {
-    console.log("btnEmoji trouvé - Ajout de listener...");
-
-    btnEmoji.addEventListener('click', function(e) {
-      console.log("🎯 CLICK DÉTECTÉ sur btnEmoji!");
-      console.log("toggleEmojiPanel va être appelée...");
+  // ═══ AJOUTER LE LISTENER AU BOUTON TEST ═══
+  var testBtn = document.getElementById('testEmojiButton');
+  if (testBtn) {
+    console.log("✅ Bouton test trouvé - Ajout de listener");
+    testBtn.addEventListener('click', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      console.log("🧪 TEST BUTTON CLICKED!");
+      console.log("Appel toggleEmojiPanel()...");
+      try {
+        toggleEmojiPanel();
+        console.log("✅ toggleEmojiPanel() exécutée avec succès");
+      } catch(err) {
+        console.error("❌ Erreur dans toggleEmojiPanel():", err);
+      }
     });
   } else {
-    console.log("❌ btnEmoji NON TROUVÉ!");
+    console.log("❌ Bouton test NON TROUVÉ!");
+  }
+
+  // Ajouter un listener au bouton emoji réel
+  var btnEmoji = document.getElementById('btnEmoji');
+  if (btnEmoji) {
+    console.log("✅ btnEmoji trouvé");
+    btnEmoji.addEventListener('click', function(e) {
+      console.log("🎯 CLICK DÉTECTÉ sur btnEmoji!");
+    });
+  } else {
+    console.log("⚠️ btnEmoji pas encore disponible (normal si pas dans conv)");
   }
 
   // Override toggleEmojiPanel pour ajouter des logs
   if (typeof toggleEmojiPanel === 'function') {
-    var originalToggle = window.toggleEmojiPanel;
-    window.toggleEmojiPanel = function() {
-      console.log("📢 toggleEmojiPanel() APPELÉE!");
-      var panel = document.getElementById('convEmojiPanel');
-      if (panel) {
-        console.log("Panel trouvé - classes avant: " + panel.className);
-        console.log("Display CSS: " + window.getComputedStyle(panel).display);
-      }
-      var result = originalToggle.call(this);
-      if (panel) {
-        console.log("Panel classes après: " + panel.className);
-        console.log("Display CSS après: " + window.getComputedStyle(panel).display);
-      }
-      return result;
-    };
-    console.log("✅ toggleEmojiPanel() wrappé avec logs");
+    console.log("✅ toggleEmojiPanel() est définie et prête");
+  } else {
+    console.error("❌ toggleEmojiPanel() N'EST PAS DÉFINIE!");
   }
 });
 
 // Vérifier les erreurs
 window.addEventListener('error', function(e) {
-  console.error("❌ ERREUR: " + e.message);
+  console.error("❌ ERREUR JAVASCRIPT: " + e.message + " at " + e.filename + ":" + e.lineno);
+});
+
+// Vérifier les erreurs non capturées
+window.addEventListener('unhandledrejection', function(e) {
+  console.error("❌ UNHANDLED PROMISE REJECTION: " + e.reason);
 });
 </script>
 </body>
