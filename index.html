@@ -18981,53 +18981,8 @@ if(gifGrid) {
   });
 }
 
-// FONCTION POUR ENVOYER LES GIFs
-window._sendGif = function(gifUrl) {
-  var fp = document.getElementById("conv-fullpage");
-  if(!fp) return alert("Aucune conversation ouverte");
-
-  var convId = fp.getAttribute("data-conv-id");
-  var displayName = fp.getAttribute("data-display-name");
-  if(!convId) return alert("Erreur: conversationId manquant");
-
-  var convs = typeof getConversations === 'function' ? getConversations() : (window.conversationsState || []);
-  var conv = convs.find(function(c) { return c.id === convId; });
-  if(!conv) return alert("Conversation non trouvée");
-
-  if(!conv.messages) conv.messages = [];
-
-  var msgId = "msg_" + (Date.now().toString(36) + Math.random().toString(36).substr(2));
-  var msgData = {
-    id: msgId,
-    from: "me",
-    text: "",
-    gif: gifUrl,
-    at: Date.now()
-  };
-
-  conv.messages.push(msgData);
-  conv.lastAt = Date.now();
-
-  // Sauvegarde locale
-  if(typeof saveConversations === 'function') saveConversations();
-
-  // Sync Supabase: envoyer le message GIF
-  if(typeof supa !== 'undefined' && supa) {
-    supa.from("conv_messages").insert({
-      id: msgId,
-      conv_id: convId,
-      from_id: typeof MY_UID !== 'undefined' ? MY_UID : "me",
-      content: "[GIF] " + gifUrl,
-      gif_url: gifUrl,
-      created_at: new Date().toISOString()
-    }).catch(function(err) {
-      console.error("Erreur Supabase GIF:", err);
-    });
-  }
-
-  if(typeof renderConvFpThread === 'function') renderConvFpThread(conv, displayName);
-  if(typeof renderMessages === 'function') renderMessages();
-};
+// ASSIGNATION: _sendGif vers window._sendGif (utilise la version avec diags ci-dessus)
+window._sendGif = _sendGif;
 
 // Click outside to close
 document.addEventListener("click", function(e) {
