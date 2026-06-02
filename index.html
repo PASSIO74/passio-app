@@ -18503,6 +18503,21 @@ function _populateEmojiGrid() {
 // Call on page load
 setTimeout(_populateEmojiGrid, 100);
 
+// Fallback pour insertEmoji si le script 2 ne charge pas
+function insertEmoji(e) {
+  try {
+    var inp = document.getElementById("convFpInput");
+    if (!inp) return;
+    var start = inp.selectionStart != null ? inp.selectionStart : inp.value.length;
+    var end = inp.selectionEnd != null ? inp.selectionEnd : inp.value.length;
+    inp.value = inp.value.slice(0, start) + e + inp.value.slice(end);
+    inp.focus();
+    var pos = start + [...e].length;
+    try { inp.setSelectionRange(pos, pos); } catch(_) {}
+    if (typeof autoResizeTextarea === "function") autoResizeTextarea(inp);
+  } catch(err) { console.error("insertEmoji:", err); }
+}
+
 function _sendGif(url) {
   try {
     _closeEmojiPanel();
@@ -18655,22 +18670,8 @@ let _gifSearchTimer = null;
 
 // ── Emoji picker ──
 function _buildEmojiPicker() {
-  const catBar = document.getElementById("emojiCatBar");
-  const grid = document.getElementById("emojiGrid");
-  if (!catBar || !grid) return;
-  catBar.innerHTML = EMOJI_CATS.map((c,i) =>
-    `<button class="emoji-cat-btn${i===0?' active':''}" data-catidx="${i}" title="${c.label}">${c.icon}</button>`
-  ).join("");
-  // Délégation de clic sur la catBar
-  catBar.onclick = function(e) {
-    const btn = e.target.closest(".emoji-cat-btn");
-    if (!btn) return;
-    const idx = parseInt(btn.getAttribute("data-catidx"), 10);
-    catBar.querySelectorAll(".emoji-cat-btn").forEach(b => b.classList.remove("active"));
-    btn.classList.add("active");
-    _renderEmojiCat(idx);
-  };
-  _renderEmojiCat(0);
+  // Simplified version - just populate the grid directly
+  _populateEmojiGrid();
 }
 
 function _renderEmojiCat(idx) {
@@ -18725,37 +18726,22 @@ function switchEmojiTab(tab, btn) {
 }
 
 function toggleEmojiPanel() {
-  console.log("toggleEmojiPanel called");
-  var panel = document.getElementById("convEmojiPanel");
-  console.log("Panel:", panel);
-  if (!panel) {
-    console.log("Panel not found");
-    return;
-  }
-  if (typeof _closeAttachMenu === "function") _closeAttachMenu();
-  var isOpen = panel.classList.contains("open");
-  console.log("isOpen:", isOpen);
-  if (isOpen) {
-    panel.classList.remove("open");
-    var btn = document.getElementById("btnEmoji");
-    if (btn) btn.classList.remove("active");
-    console.log("Panel closed");
-  } else {
-    panel.classList.add("open");
-    var btn = document.getElementById("btnEmoji");
-    if (btn) btn.classList.add("active");
-    // Populate emoji grid
-    var grid = document.getElementById("emojiGrid");
-    if (grid && grid.children.length === 0) {
-      _populateEmojiGrid();
-      console.log("Emoji grid populated");
-    }
-    // Reset to emoji tab
-    var emojiTab = document.getElementById("emojiTabContent");
-    var gifTab = document.getElementById("gifTabContent");
+  _closeAttachMenu();
+  const panel = document.getElementById("convEmojiPanel");
+  if (!panel) return;
+  _emojiPanelOpen = !_emojiPanelOpen;
+  panel.classList.toggle("open", _emojiPanelOpen);
+  document.getElementById("btnEmoji")?.classList.toggle("active", _emojiPanelOpen);
+  if (_emojiPanelOpen) {
+    const grid = document.getElementById("emojiGrid");
+    if (grid && !grid.hasChildNodes()) _buildEmojiPicker();
+    // Réinitialiser sur l'onglet emoji (enlever hidden si on avait basculé sur GIF)
+    const emojiTab = document.getElementById("emojiTabContent");
+    const gifTab   = document.getElementById("gifTabContent");
     if (emojiTab) emojiTab.classList.remove("hidden");
-    if (gifTab) gifTab.classList.remove("visible");
-    console.log("Panel opened");
+    if (gifTab)   gifTab.classList.remove("visible");
+    // Réinitialiser les boutons onglet
+    document.querySelectorAll(".emoji-tab").forEach(function(b, i) { b.classList.toggle("active", i === 0); });
   }
 }
 
