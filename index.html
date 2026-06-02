@@ -12358,7 +12358,6 @@ function _supaConvSpecificChannel(convId, displayName) {
       if (!c.messages) c.messages = [];
       if (c.messages.find(m => m.id === r.id)) return; // déjà présent
       c.messages.push(newMsg);
-      c.messages.sort((a, b) => (a.at || 0) - (b.at || 0));
       c.lastAt = newMsg.at;
       c._otherRead = true; // la conv est ouverte → l'utilisateur a lu
       saveConversations();
