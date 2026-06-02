@@ -18836,17 +18836,34 @@ window._sendGif = function(gifUrl) {
   if(!conv.messages) conv.messages = [];
 
   var msgId = "msg_" + (Date.now().toString(36) + Math.random().toString(36).substr(2));
-  conv.messages.push({
+  var msgData = {
     id: msgId,
     from: "me",
     text: "",
     gif: gifUrl,
     at: Date.now()
-  });
+  };
 
+  conv.messages.push(msgData);
   conv.lastAt = Date.now();
 
+  // Sauvegarde locale
   if(typeof saveConversations === 'function') saveConversations();
+
+  // Sync Supabase: envoyer le message GIF
+  if(typeof supa !== 'undefined' && supa) {
+    supa.from("conv_messages").insert({
+      id: msgId,
+      conv_id: convId,
+      from_id: typeof MY_UID !== 'undefined' ? MY_UID : "me",
+      content: "[GIF] " + gifUrl,
+      gif_url: gifUrl,
+      created_at: new Date().toISOString()
+    }).catch(function(err) {
+      console.error("Erreur Supabase GIF:", err);
+    });
+  }
+
   if(typeof renderConvFpThread === 'function') renderConvFpThread(conv, displayName);
   if(typeof renderMessages === 'function') renderMessages();
 };
