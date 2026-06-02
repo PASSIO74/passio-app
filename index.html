@@ -18042,28 +18042,6 @@ function togglePwd(id, btn) {
 // ═══ Wrappers messagerie — définis ici pour être sûrement disponibles ═══
 // toggleEmojiPanel, toggleAttachMenu et openConvSettings sont dans le 2ème script
 // mais ces stubs garantissent qu'ils existent même si le 2ème script ne charge pas.
-function toggleEmojiPanel() {
-  try {
-    var panel = document.getElementById("convEmojiPanel");
-    if (!panel) return;
-    var isOpen = panel.classList.contains("open");
-    // Fermer l'attach menu si ouvert
-    document.getElementById("convAttachMenu")?.classList.remove("open");
-    document.getElementById("btnAttach")?.classList.remove("active");
-    // Basculer emoji panel
-    panel.classList.toggle("open", !isOpen);
-    document.getElementById("btnEmoji")?.classList.toggle("active", !isOpen);
-    if (!isOpen) {
-      // Nettoyer le style display inline pour permettre la réouverture
-      panel.style.display = "";
-      // Construire si vide
-      var grid = document.getElementById("emojiGrid");
-      if (grid && !grid.hasChildNodes() && typeof _buildEmojiPicker === "function") _buildEmojiPicker();
-      document.getElementById("emojiTabContent")?.classList.remove("hidden");
-      document.getElementById("gifTabContent")?.classList.remove("visible");
-    }
-  } catch(e) { console.error("toggleEmojiPanel:", e); }
-}
 
 // Simple list of popular emojis
 var EMOJIS = ["😀","😁","😂","🤣","😃","😄","😅","😆","😉","😊","😋","😎","😍","🥰","😘","😗","😂","🤣","😃","❤️","💕","💖","💗","💓","💞","💝","🔥","👍","👎","👏","🙌","🎉","🎊","✨","⭐","💯","🔔","🎁","🎈","🎀","🌹","🌺","🌸","🌼","🌻","🍕","🍔","🍟","🍗","🍖","🥗","🍱","🍜","☕","🍰","🎂","🍪","🍩","🍫","🍬","🍭","🍮","🍯","🥤","🍷","🍾","🍸","🍹","🍺","🍻","🥂","🎤","🎧","🎼","🎹","🎸","🎺","🎷","🥁","🎻","🎲","🎯","🎳","🎮","🎰","🚗","🚕","🚙","🚌","🚎","🏎️","🚓","🚑","🚒","🚐","🚚","🚛","🚜","🏍️","🛴","🚲","✈️","🛫","🛬","🛩️","💺","🛰️","🚀","🛸","⛵","🚤","🛳️","⛴️","🚢","🐶","🐱","🐭","🐹","🐰","🦊","🐻","🐼","🐨","🐯","🦁","🐮","🐷","🐸","🐵","🙈","🙉","🙊","🐒","🐔","🐧","🐦","🐤","🦆","🦅","🦉","🦇","🐺","🐗","🐴","🦄","🐝","🐛","🦋","🐌","🐞","🐜","🦟","🦗","🕷️","🦂","🐢","🐍","🦎","🦖","🦕","🐙","🦑","🦐","🦞","🦀","🐡","🐠","🐟","🐬","🐳","🐋","🦈","🐊","🐅","🐆","🐘","🦛","🦏","🐪","🐫","🦒","🦓","🦍","🦧"];
