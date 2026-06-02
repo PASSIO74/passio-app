@@ -18866,15 +18866,25 @@ function shareLocation() {
 
     // Sync Supabase: envoyer la localisation
     if(typeof supa !== 'undefined' && supa) {
+      var extraData = {type: "location", lat: parseFloat(lat), lng: parseFloat(lng), url: url};
       supa.from("conv_messages").insert({
         id: msgId,
         conv_id: convId,
         from_id: typeof MY_UID !== 'undefined' ? MY_UID : "me",
         content: msgText,
-        location_lat: parseFloat(lat),
-        location_lng: parseFloat(lng),
-        location_url: url,
+        extra_data: JSON.stringify(extraData),
         created_at: new Date().toISOString()
+      }).then(function(res) {
+        if(res.error) {
+          // Fallback: essayer sans extra_data
+          supa.from("conv_messages").insert({
+            id: msgId,
+            conv_id: convId,
+            from_id: typeof MY_UID !== 'undefined' ? MY_UID : "me",
+            content: msgText,
+            created_at: new Date().toISOString()
+          });
+        }
       }).catch(function(err) {
         console.error("Erreur Supabase location:", err);
       });
