@@ -5820,13 +5820,15 @@
     /* Emoji/GIF picker */
     /* ── Emoji/GIF panel ── */
     #convEmojiPanel {
-      display:none; position:fixed; bottom:60px; right:20px; left:auto;
+      display:none; position:fixed; bottom:70px; left:50%; transform:translateX(-50%);
       background:var(--bg-card); border:1.5px solid var(--border); border-radius:16px;
-      box-shadow:0 -6px 30px rgba(0,0,0,0.20); z-index:9999;
-      width:350px; height:450px; max-height:80vh;
+      box-shadow:0 4px 20px rgba(0,0,0,0.25); z-index:99999;
+      width:min(350px, 90vw); height:450px; max-height:75vh;
       will-change:opacity,transform;
+      flex-direction:column;
+      overflow:hidden;
     }
-    #convEmojiPanel.open { display:flex; flex-direction:column; }
+    #convEmojiPanel.open { display:flex !important; }
     .emoji-tabs { display:flex; border-bottom:1px solid var(--border); background:var(--bg-soft); flex-shrink:0; border-radius:18px 18px 0 0; overflow:hidden; }
     .emoji-tab { flex:1; padding:10px 0; font-size:13px; font-weight:700; color:var(--muted); cursor:pointer; text-align:center; border:none; background:none; transition:color 150ms; }
     .emoji-tab.active { color:var(--accent); border-bottom:2px solid var(--accent); background:rgba(139,92,246,0.06); }
