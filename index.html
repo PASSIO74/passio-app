@@ -18458,60 +18458,26 @@ function insertEmoji(e) {
 // Send GIF to conversation
 function _sendGif(url) {
   try {
-    diag("📤 _sendGif DÉBUT");
     _closeEmojiPanel();
-
     var fp = document.getElementById("conv-fullpage");
-    if (!fp) {
-      diag("  ❌ conv-fullpage NOT FOUND");
-      return;
-    }
-    diag("  ✅ conv-fullpage trouvé");
-
+    if (!fp) return;
     var convId = fp.getAttribute("data-conv-id");
     var displayName = fp.getAttribute("data-display-name");
-    if (!convId) {
-      diag("  ❌ convId NOT FOUND");
-      return;
-    }
-    diag("  ✅ convId: " + convId);
-
+    if (!convId) return;
     var convs = getConversations();
     var c = convs.find(x => x.id === convId);
-    if (!c) {
-      diag("  ❌ Conversation NOT FOUND");
-      return;
-    }
-    diag("  ✅ Conversation trouvée");
-
+    if (!c) return;
     var msgId = "msg_" + uid();
     if (!c.messages) c.messages = [];
-
     c.messages.push({ id: msgId, from: "me", text: "", gif: url, at: Date.now() });
     c.lastAt = Date.now();
-    diag("  ✅ Message ajouté à la conversation");
-
     saveConversations();
-    diag("  ✅ Conversation sauvegardée");
-
-    if (typeof renderConvFpThread === "function") {
-      renderConvFpThread(c, displayName);
-      diag("  ✅ renderConvFpThread appelée");
-    }
-
-    if (typeof renderMessages === "function") {
-      renderMessages();
-      diag("  ✅ renderMessages appelée");
-    }
-
+    if (typeof renderConvFpThread === "function") renderConvFpThread(c, displayName);
+    if (typeof renderMessages === "function") renderMessages();
     if (typeof supa !== "undefined" && supa && MY_UID) {
       supa.from("conv_messages").insert({ id: msgId, conv_id: convId, from_id: MY_UID, content: "[GIF]", created_at: new Date().toISOString() }).then(()=>{}).catch(()=>{});
-      diag("  ✅ Envoyé à Supabase");
     }
-
-    diag("📤 _sendGif OK!");
   } catch(err) {
-    diag("❌ _sendGif ERROR: " + err.message);
     console.error("_sendGif:", err);
   }
 }
