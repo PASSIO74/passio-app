@@ -19480,8 +19480,6 @@ window.toggleEmojiPanel = function() {
 
 // FUNCTION SWITCH EMOJI TAB (gérer l'affichage des onglets)
 window.switchEmojiTab = function(tab, btn) {
-  diag("→ switchEmojiTab: " + tab);
-
   document.querySelectorAll(".emoji-tab").forEach(function(b) {
     b.classList.remove("active");
   });
@@ -19490,22 +19488,13 @@ window.switchEmojiTab = function(tab, btn) {
   var emojiContent = document.getElementById("emojiTabContent");
   var gifContent = document.getElementById("gifTabContent");
 
-  diag(emojiContent ? "✅ emojiContent" : "❌ emojiContent");
-  diag(gifContent ? "✅ gifContent" : "❌ gifContent");
-
   if (tab === "emoji") {
     emojiContent.style.display = "flex";
     gifContent.style.display = "none";
-    diag("✅ Onglet EMOJI");
   } else {
     emojiContent.style.display = "none";
     gifContent.style.display = "flex";
-    diag("✅ Onglet GIF - avant populate");
-    var gCount = document.getElementById("gifGrid").children.length;
-    diag("  gifGrid enfants: " + gCount);
     _populateGifGrid();
-    var gCount2 = document.getElementById("gifGrid").children.length;
-    diag("  Après populate: " + gCount2);
   }
 };
 
