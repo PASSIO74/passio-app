@@ -19425,17 +19425,6 @@ window.addEventListener('load', function() {
 
 <!-- INITIALISATION FINALE EMOJI/GIF -->
 <script>
-// CRÉER LE BADGE DIAGNOSTIC
-var _diagDiv = document.createElement("div");
-_diagDiv.id = "__diag_emoji";
-_diagDiv.style.cssText = "position:fixed;top:10px;right:10px;background:#ffeb3b;color:#000;padding:12px;border-radius:8px;font-size:11px;font-weight:bold;z-index:99999;max-width:280px;white-space:pre-wrap;line-height:1.5;max-height:400px;overflow-y:auto;";
-_diagDiv.textContent = "🔧 DIAGNOSTIC\n...";
-document.body.appendChild(_diagDiv);
-
-function diag(msg) {
-  _diagDiv.textContent += "\n" + msg;
-}
-
 // DÉCLARER LES VARIABLES GLOBALES (si elles n'existent pas déjà)
 if (typeof window._emojiPanelOpen === 'undefined') {
   window._emojiPanelOpen = false;
@@ -19443,8 +19432,6 @@ if (typeof window._emojiPanelOpen === 'undefined') {
 if (typeof window._attachMenuOpen === 'undefined') {
   window._attachMenuOpen = false;
 }
-
-diag("✅ Variables init OK");
 
 // GIFs PAR DÉFAUT
 var _defaultGifs = [
