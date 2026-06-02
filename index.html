@@ -17501,8 +17501,13 @@ async function supaLoadMessages(convId) {
       var contentData = null;
       var contentText = r.content || "";
       try {
-        contentData = JSON.parse(r.content);
+        // Vérifier si le content commence par { (JSON)
+        if (r.content && r.content.trim().charAt(0) === '{') {
+          contentData = JSON.parse(r.content);
+          _diag("supaLoadMessages: JSON parsé - type=" + contentData.type);
+        }
       } catch(e) {
+        _diag("supaLoadMessages: JSON parse error - " + e.message);
         // content n'est pas du JSON, c'est du texte normal
       }
 
