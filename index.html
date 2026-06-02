@@ -18608,10 +18608,7 @@ function switchEmojiTab(tab, btn) {
 
 function toggleEmojiPanel() {
   var panel = document.getElementById("convEmojiPanel");
-  if (!panel) {
-    console.error("❌ Panel n'existe pas");
-    return;
-  }
+  if (!panel) return;
 
   _emojiPanelOpen = !_emojiPanelOpen;
   panel.classList.toggle("open", _emojiPanelOpen);
@@ -18622,13 +18619,11 @@ function toggleEmojiPanel() {
       _populateEmojiGrid();
     }
 
-    // Réinitialiser sur l'onglet emoji
     var emojiTab = document.getElementById("emojiTabContent");
     var gifTab = document.getElementById("gifTabContent");
     if (emojiTab) emojiTab.classList.remove("hidden");
     if (gifTab) gifTab.classList.remove("visible");
 
-    // Réinitialiser les boutons onglet
     document.querySelectorAll(".emoji-tab").forEach(function(b, i) {
       b.classList.toggle("active", i === 0);
     });
