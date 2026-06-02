@@ -11887,6 +11887,7 @@ function renderMessages() {
 async function openConversation(convId) {
   window._openedConvId = convId;
   closeConvSettings();
+  setTimeout(() => closeConvSettings(), 10);
   var convs = getConversations();
   var c = convs.find(function(x) { return x.id === convId; });
   if (!c) { console.warn("openConversation: conv not found:", convId); return; }
