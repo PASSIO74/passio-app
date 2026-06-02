@@ -18924,12 +18924,26 @@ function _docIcon(ext) {
   return map[(ext||"").toUpperCase()] || "📄";
 }
 
-// Initialiser le picker emoji au chargement
+// Initialiser le picker emoji au chargement avec les emojis les plus courants
 window.addEventListener('load', function() {
   setTimeout(function() {
     const grid = document.getElementById("emojiGrid");
-    if (grid && !grid.hasChildNodes() && typeof _buildEmojiPicker === "function") {
-      _buildEmojiPicker();
+    if (grid && !grid.hasChildNodes()) {
+      const frequentEmojis = ["😀","😁","😂","🤣","😃","😄","😅","😆","😉","😊","😋","😎","😍","🥰","😘","😗","😙","😚","🙂","🤗","❤️","💕","💖","💗","💘","💝","💟","👍","👎","👏","🙌","🤝","🎉","🎊","🎈","🎁","🔥","💯","✨","⭐","🌟","👋","🙏","😂","🤣","😍","🤩","😘","😲","😱","😨","😬","😌","😴","😴","🤐","😷","🤒","🤕","🤢","🤮","🤮","🤧","🤥","🤓","😎","🤓","😕","😟","🙁","☹️","😮","😯","😲","😳","😦","😧","😨","😰","😥","😢","😭","😱","😖","😣","😞","😓","😩","😫","😤","😡","😠","🤬","😈","👿","💀","☠️","💩","🤡","👹","👺","👻","👽","👾","🤖","😺","😸","😹","😻","😼","😽","🙀","😿","😾","🙈","🙉","🙊","😹","😽","😻","😺","😸","😼","🤖","💪","👊","👎","👊","🤛","🤜","👏","🙌","👐","🤲","🤝","🤜","🤛"];
+      const frag = document.createDocumentFragment();
+      frequentEmojis.forEach(function(e) {
+        const div = document.createElement("div");
+        div.className = "emoji-item";
+        div.textContent = e;
+        div.style.cursor = "pointer";
+        div.style.fontSize = "28px";
+        div.style.padding = "8px";
+        div.style.borderRadius = "8px";
+        div.style.userSelect = "none";
+        div.onclick = function() { insertEmoji(e); };
+        frag.appendChild(div);
+      });
+      grid.appendChild(frag);
     }
   }, 100);
 });
