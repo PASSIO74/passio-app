@@ -18748,7 +18748,7 @@ function toggleEmojiPanel() {
   document.getElementById("btnEmoji")?.classList.toggle("active", _emojiPanelOpen);
   if (_emojiPanelOpen) {
     const grid = document.getElementById("emojiGrid");
-    if (grid && !grid.hasChildNodes()) _buildEmojiPicker();
+    if (grid && !grid.hasChildNodes()) _populateEmojiGrid();
     // Réinitialiser sur l'onglet emoji (enlever hidden si on avait basculé sur GIF)
     const emojiTab = document.getElementById("emojiTabContent");
     const gifTab   = document.getElementById("gifTabContent");
