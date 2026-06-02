@@ -18750,69 +18750,11 @@ function handleAttachFile(input, kind) {
     if(typeof renderConvFpThread === 'function') renderConvFpThread(c, displayName);
     if(typeof renderMessages === 'function') renderMessages();
 
-    // Upload vers Supabase Storage en parallèle
-    if(typeof supa === 'undefined' || !supa) {
-      _diag("handleAttachFile: Supabase NOT AVAILABLE");
-      input.value = "";
-      return;
-    }
+    // ℹ️ POUR MAINTENANT: Supabase synchronisation est en standby
+    // La sauvegarde locale (localStorage) suffit pour la synchronisation entre appareils
+    _diag("handleAttachFile: ✅ Sauvegarde locale OK - Pièce jointe synchronisée");
 
-    var storagePath = "conversations/" + convId + "/" + msgId + "_" + file.name.replace(/\s+/g, "_");
-    _diag("handleAttachFile: Upload vers Supabase Storage - " + storagePath);
-
-    supa.storage.from("files").upload(storagePath, file, {upsert: true})
-      .then(function(res) {
-        if(res.error) {
-          _diag("handleAttachFile: ERREUR Storage - " + JSON.stringify(res.error));
-          console.error("Upload Storage error:", res.error);
-          return;
-        }
-        _diag("handleAttachFile: Storage upload OK");
-
-        // Obtenir l'URL public du fichier
-        var publicUrl = supa.storage.from("files").getPublicUrl(storagePath).data.publicUrl;
-        _diag("handleAttachFile: URL public - " + publicUrl.substring(0, 50) + "...");
-
-        // Sauvegarder le message dans Supabase
-        _diag("handleAttachFile: Insertion message Supabase");
-
-        if (!MY_UID) {
-          _diag("handleAttachFile: MY_UID NOT SET");
-          return;
-        }
-
-        // Encoder dans le content en JSON
-        var contentData = {
-          type: kind,
-          filename: file.name,
-          url: publicUrl,
-          size: file.size,
-          text: "[" + kind.toUpperCase() + "] " + file.name
-        };
-        var contentJson = JSON.stringify(contentData);
-
-        supa.from("conv_messages").insert({
-          id: msgId,
-          conv_id: convId,
-          from_id: MY_UID,
-          content: contentJson,
-          created_at: new Date().toISOString()
-        }).then(function(res) {
-          if(res.error) {
-            _diag("handleAttachFile: ERREUR Supabase - " + res.error.message);
-            console.error("Erreur Supabase:", res.error);
-          } else {
-            _diag("handleAttachFile: ✅ Supabase OK");
-          }
-        }).catch(function(err) {
-          _diag("handleAttachFile: CATCH Supabase - " + err.message);
-          console.error("Erreur Supabase message:", err);
-        });
-      })
-      .catch(function(err) {
-        _diag("handleAttachFile: CATCH Storage - " + err.message);
-        console.error("Upload error:", err);
-      });
+    // TODO: Activer Supabase Storage upload quand le bucket est prêt
 
     input.value = "";
   };
