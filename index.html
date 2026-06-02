@@ -12222,9 +12222,9 @@ function renderConvFpThread(c, displayName) {
     var content = "";
     var isMedia = false;
 
-    // DEBUG: afficher les messages avec gif
-    if (m.gif || (m.text && m.text.includes('gif'))) {
-      _diag("renderConv msg " + i + ": gif=" + (m.gif ? "YES" : "NO") + " text=" + m.text.substring(0, 30));
+    // DEBUG: afficher TOUS les messages qui ont du JSON
+    if (m.text && m.text.trim().charAt(0) === '{') {
+      _diag("renderConv msg " + i + ": JSON TEXT DETECTED - gif=" + (m.gif ? "YES" : "NO") + " text=" + m.text.substring(0, 50));
     }
 
     if (m.gif) {
