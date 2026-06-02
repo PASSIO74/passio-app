@@ -19366,26 +19366,40 @@ window.addEventListener('load', function() {
 </script>
 
 <!-- ════════════════════════════════════════════════════════════ -->
-<!-- PANEL EMOJI/GIF À LA RACINE - VISIBLE TOUJOURS -->
+<!-- PANEL EMOJI/GIF STYLE WHATSAPP -->
 <!-- ════════════════════════════════════════════════════════════ -->
 <div id="convEmojiPanel">
-  <div class="emoji-tabs">
-    <button class="emoji-tab active" onclick="switchEmojiTab('emoji',this)">😊 Emoji</button>
-    <button class="emoji-tab" onclick="switchEmojiTab('gif',this)">GIF</button>
+  <!-- BARRE SUPÉRIEURE: Onglets Emoji/GIF + Recherche -->
+  <div id="emojiTopBar" style="display:flex;border-bottom:1px solid var(--border);background:var(--bg-soft);flex-shrink:0;padding:8px;gap:8px;align-items:center;">
+    <button onclick="switchEmojiTab('emoji',this)" style="flex:1;padding:10px;border:none;background:#7c3aed;color:white;border-radius:6px;cursor:pointer;font-weight:bold;font-size:12px;">😊 Emoji</button>
+    <button onclick="switchEmojiTab('gif',this)" style="flex:1;padding:10px;border:none;background:transparent;color:var(--muted);border-radius:6px;cursor:pointer;font-weight:bold;font-size:12px;">GIF</button>
   </div>
-  <!-- Tab Emoji -->
-  <div id="emojiTabContent">
-    <div class="emoji-search-row">
-      <input type="text" id="emojiSearchInput" placeholder="🔍 Chercher emoji…" oninput="_onEmojiSearch(this.value)" />
+
+  <!-- TAB EMOJI AVEC CATÉGORIES -->
+  <div id="emojiTabContent" style="display:flex;flex-direction:column;flex:1;overflow:hidden;">
+    <!-- Barre de recherche -->
+    <div style="padding:8px;flex-shrink:0;border-bottom:1px solid var(--border);">
+      <input type="text" id="emojiSearchInput" placeholder="🔍 Chercher…" oninput="_onEmojiSearch(this.value)" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:20px;font-size:13px;box-sizing:border-box;">
     </div>
+
+    <!-- Catégories d'emojis (icônes en haut) -->
+    <div id="emojiCategoriesBar" style="display:flex;gap:0;padding:8px;border-bottom:1px solid var(--border);overflow-x:auto;flex-shrink:0;">
+      <!-- Les catégories seront ajoutées par JS -->
+    </div>
+
+    <!-- Grille d'emojis -->
     <div class="emoji-grid" id="emojiGrid" style="display:grid;grid-template-columns:repeat(8,1fr);gap:4px;padding:12px;overflow-y:auto;flex:1;"></div>
   </div>
-  <!-- Tab GIF -->
-  <div id="gifTabContent">
-    <div class="gif-search-row">
-      <input type="text" id="gifSearchInput" placeholder="🔍 Rechercher un GIF…" oninput="_onGifSearch(this.value)" />
+
+  <!-- TAB GIF -->
+  <div id="gifTabContent" style="display:none;flex-direction:column;flex:1;overflow:hidden;">
+    <!-- Barre de recherche -->
+    <div style="padding:8px;flex-shrink:0;border-bottom:1px solid var(--border);">
+      <input type="text" id="gifSearchInput" placeholder="🔍 Rechercher GIF…" oninput="_onGifSearch(this.value)" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:20px;font-size:13px;box-sizing:border-box;">
     </div>
-    <div class="gif-grid" id="gifGrid"><div style="padding:20px;text-align:center;color:var(--muted);font-size:13px;">Tape pour chercher un GIF…</div></div>
+
+    <!-- Grille GIF -->
+    <div class="gif-grid" id="gifGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:12px;overflow-y:auto;flex:1;"></div>
   </div>
 </div>
 
