@@ -18491,6 +18491,7 @@ function _populateEmojiGrid() {
   var grid = document.getElementById("emojiGrid");
   if (!grid) return;
   grid.innerHTML = "";
+  if (!EMOJIS || EMOJIS.length === 0) return;
   EMOJIS.forEach(function(emoji) {
     var div = document.createElement("div");
     div.className = "emoji-item";
@@ -18499,9 +18500,6 @@ function _populateEmojiGrid() {
     grid.appendChild(div);
   });
 }
-
-// Call on page load
-setTimeout(_populateEmojiGrid, 100);
 
 function _sendGif(url) {
   try {
