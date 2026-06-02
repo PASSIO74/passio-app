@@ -18565,7 +18565,18 @@ function toggleAttachMenu() {
 function triggerAttach(type) {
   var ids = { image: "attachImageFile", doc: "attachDocFile", audio: "attachAudioFile" };
   var input = document.getElementById(ids[type]);
-  if(input) input.click();
+  if(input) {
+    input.click();
+    // Fermer le menu après 300ms
+    setTimeout(function() {
+      var menu = document.getElementById("convAttachMenu");
+      if(menu && menu.classList.contains("open")) {
+        menu.classList.remove("open");
+        var btn = document.getElementById("btnAttach");
+        if(btn) btn.classList.remove("active");
+      }
+    }, 300);
+  }
 }
 
 function handleAttachFile(input, kind) {
