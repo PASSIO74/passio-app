@@ -18635,11 +18635,38 @@ function _sendGif(gifUrl) {
     _diag("_sendGif: MY_UID=" + MY_UID);
 
     // Vérifier que MY_UID est défini
-    // ℹ️ POUR MAINTENANT: Supabase synchronisation est en standby
-    // La sauvegarde locale (localStorage) suffit pour la synchronisation entre appareils
-    _diag("_sendGif: ✅ Sauvegarde locale OK - GIF synchronisé");
+    // Sync Supabase pour synchronisation multi-appareils
+    _diag("_sendGif: Tentative Supabase...");
 
-    // TODO: Activer Supabase sync quand les contraintes sont résolues
+    if (!MY_UID) {
+      _diag("_sendGif: MY_UID NOT SET");
+      return;
+    }
+
+    // Encoder le GIF dans le content en JSON
+    var contentData = {type: "gif", url: gifUrl, text: "🎬 GIF"};
+    var contentJson = JSON.stringify(contentData);
+
+    // Essayer INSERT - s'il échoue à cause de from_id, continuer quand même
+    supa.from("conv_messages").insert({
+      id: msgId,
+      conv_id: convId,
+      from_id: MY_UID,
+      content: contentJson,
+      created_at: new Date().toISOString()
+    }).then(function(res) {
+      if (res.error) {
+        _diag("_sendGif: Supabase error (ignoré) - " + res.error.message);
+        // Continuer même si Supabase échoue - on a la sauvegarde locale
+      } else {
+        _diag("_sendGif: ✅ Supabase OK");
+      }
+    }).catch(function(err) {
+      _diag("_sendGif: Supabase catch (ignoré) - " + err.message);
+      // Continuer même si erreur
+    });
+
+    _diag("_sendGif: ✅ Sauvegarde locale OK");
   } catch(err) {
     _diag("_sendGif: EXCEPTION - " + err.message);
     console.error("_sendGif:", err);
