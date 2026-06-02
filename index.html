@@ -18658,219 +18658,71 @@ function pwaDismiss() {
 HTML LOADED OK!
 </div>
 
-<!-- INITIALISATION FINALE EMOJI/GIF WHATSAPP COMPLÈTE -->
+<!-- EMOJI/GIF SYSTEM - SIMPLE VERSION -->
 <script>
-document.body.innerHTML += '<div style="position:fixed;bottom:10px;right:10px;background:blue;color:white;padding:20px;z-index:99999;font-size:18px;font-weight:bold;">JS LOADED</div>';
-
-// VARIABLES GLOBALES
-window._emojiPanelOpen = false;
-window._attachMenuOpen = false;
-var _currentEmojiCategory = "😊";
-var _allEmojis = [];
-var _filteredEmojis = [];
-
-// EMOJIS PAR CATÉGORIES (270+ emojis)
-var EMOJI_CATEGORIES = {
-  "😊": { name: "Récent", emojis: ["😀", "😂", "❤️", "👍", "🔥", "✨", "🎉", "😍"] },
-  "😄": { name: "Émojis", emojis: ["😀","😁","😂","🤣","😃","😄","😅","😆","😉","😊","😇","🥰","😍","😘","😗","😚","😙","🥲","😋","😛","😜","🤪","😌","😔","😑","😐","😶","😏","😒","🙄","😬","🤐","😷","🤒","🤕","🤮","🤧","🤥","🤓","😎","😕","😟","🙁","☹️","😮","😯","😲","😳","😦","😧","😨","😰","😥","😢","😭","😱","😖","😣","😞","😓","😩","😫","🥱","😤","😡","😠","🤬","😈","👿","💀","☠️","💩","🤡","👹","👺","👻","👽","👾","🤖","😺","😸","😹","😻","😼","😽","🙀","😿","😾","🙈","🙉","🙊"] },
-  "🌍": { name: "Nature", emojis: ["🌙","⭐","🌟","✨","⚡","☄️","💥","🔥","🌪️","🌈","☀️","🌤️","⛅","🌥️","☁️","🌦️","🌧️","⛈️","🌩️","🌨️","❄️","☃️","⛄","🌬️","💨","💧","💦","☔","🍎","🍊","🍋","🍌","🍉","🍇","🍓","🍈","🍒","🍑","🥭","🍍","🥥","🥑","🍅","🍆","🥒","🥬","🥦","🌶️","🌽","🥕","🧄","🧅","🥔","🍠","🐶","🐱","🐭","🐹","🐰","🦊","🐻","🐼","🐨","🐯","🦁","🐮","🐷","🐽","🐸","🐵","🙈","🙉","🙊","🐒","🐔","🐧","🐦","🐤","🐣","🐥","🦆","🦅","🦉","🦇","🐺","🐗","🐴","🦄","🐝","🐛","🦋","🐌","🐞","🐜","🪰"] },
-  "🍕": { name: "Aliments", emojis: ["🍕","🍔","🍟","🍗","🌭","🥪","🌮","🌯","🥙","🧆","🌶️","🍜","🍲","🥘","🍱","🍛","🍣","🍱","🥟","🍤","🦪","🍙","🍚","🍘","🍥","🥠","🥮","🍢","🍡","🍧","🍨","🍦","🍰","🎂","🧁","🍮","🍭","🍬","🍫","🍿","🍩","🍪","🌰","🍯","🥛","🥤","☕","🍵","🍶","🍾","🍷","🍸","🍹","🍺","🍻","🥂","🥃" ],
-  "🚗": { name: "Voyage", emojis: ["✈️","🚀","🛸","🚁","🚂","🚊","🚝","🚄","🚅","🚈","🚞","🚋","🚃","🚌","🚎","🚐","🚑","🚒","🚓","🚔","🚕","🚖","🚗","🚘","🚙","🚚","🚛","🚜","🏎️","🏍️","🛵","🦯","🛴","🚲","🛹","🛼","🛺","⛽","🚨","🚥","🚦","🏁","🎌","🏴","🏳️","🚢","⛵","🛥️","🚤","⛴️" ],
-  "⚽": { name: "Activités", emojis: ["🎯","⚽","🏀","🏈","⚾","🥎","🎾","🏐","🏉","🥏","🎳","🏓","🏸","🥊","🥋","🥅","⛳","⛸️","🎣","🎽","🎿","⛷️","🏂","🪂","🛷","🥌","🎱","🎮","🎰","🎲","♠️","♥️","♦️","♣️","♟️","🎭","🎨","🎬","🎤","🎧","🎼","🎹","🥁","🎷","🎺","🎸","🎻","🎲","🎯","🎳","🎮","🎰"] },
-  "❤️": { name: "Symboles", emojis: ["❤️","🧡","💛","💚","💙","💜","🖤","🤍","🤎","💔","💕","💞","💓","💗","💖","💘","💝","💟","👋","🤚","🖐️","✋","🖖","👌","🤌","🤏","✌️","🤞","🫰","🤟","🤘","🤙","👍","👎","✊","👊","🤛","🤜","👏","🙌","👐","🤲","🤝","🤜","🤛","🦾","🦿","🦵","🦶","👂","👃","🧠","🦷","🦴","🦳"] }
+window.toggleEmojiPanel = function() {
+  var p = document.getElementById("convEmojiPanel");
+  if(!p) return;
+  p.classList.toggle("open");
 };
 
-// 60+ GIFS
-var DEFAULT_GIFS = [
-  "https://media.giphy.com/media/3o7abKhOpu0NwenH3O/giphy.gif",
-  "https://media.giphy.com/media/xT9IgG50Lg7rusjtG8/giphy.gif",
-  "https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif",
-  "https://media.giphy.com/media/26ufdipQqU2lhNA4g/giphy.gif",
-  "https://media.giphy.com/media/3oz8xAFtqoOUUrsh7W/giphy.gif",
-  "https://media.giphy.com/media/l4FGGafcOHmrlQxG0/giphy.gif",
-  "https://media.giphy.com/media/3ohzdKdb7d1bbVwnQU/giphy.gif",
-  "https://media.giphy.com/media/l0HlFZ3c8HWDRlCharepI/giphy.gif",
-  "https://media.giphy.com/media/FW8aI0tXVE8gKxYvRc/giphy.gif",
-  "https://media.giphy.com/media/l0Iy1Z8oW4fvfBLh2/giphy.gif",
-  "https://media.giphy.com/media/l0HlDtKUoRb0x8bDy/giphy.gif",
-  "https://media.giphy.com/media/l0Iy0QcSoQYQW3SWHf/giphy.gif",
-  "https://media.giphy.com/media/l0MYr7jgMgWI8ouOI/giphy.gif",
-  "https://media.giphy.com/media/l0HlSY9x8FZo0XO1i/giphy.gif",
-  "https://media.giphy.com/media/l4FGGafcOHmrlQxG0/giphy.gif",
-  "https://media.giphy.com/media/l4Jz3a8jO92crOLXy/giphy.gif",
-  "https://media.giphy.com/media/3ohzdKdb7d1bbVwnQU/giphy.gif",
-  "https://media.giphy.com/media/l0HlF5j3QRG5pxPAI/giphy.gif",
-  "https://media.giphy.com/media/3o7TKU8j7Yt9R2xNMY/giphy.gif",
-  "https://media.giphy.com/media/l0MYM8m02D0c3PoFi/giphy.gif",
-  "https://media.giphy.com/media/RH16FlVXbaAzS/giphy.gif",
-  "https://media.giphy.com/media/l46Ce3kKMKxvEiFZS/giphy.gif",
-  "https://media.giphy.com/media/l0HlHJJxcNHFqyvrm/giphy.gif",
-  "https://media.giphy.com/media/JIX9RbDfLvbl2/giphy.gif",
-  "https://media.giphy.com/media/l0HlQaQ6gWfllcjDO/giphy.gif",
-  "https://media.giphy.com/media/l3q2K6HIuvsGyp7UE/giphy.gif",
-  "https://media.giphy.com/media/l0HlMMaQ5vJ7lKOmY/giphy.gif"
-];
-
-// INITIALISER LES EMOJIS
-function _initEmojis() {
-  _allEmojis = [];
-  for (var catKey in EMOJI_CATEGORIES) {
-    _allEmojis = _allEmojis.concat(EMOJI_CATEGORIES[catKey].emojis);
+window.switchEmojiTab = function(t,b) {
+  document.querySelectorAll("#emojiTopBar button").forEach(x => x.style.background="transparent");
+  b.style.background="#7c3aed";
+  var e = document.getElementById("emojiTabContent");
+  var g = document.getElementById("gifTabContent");
+  if(t==="emoji") {
+    e.style.display="flex";
+    g.style.display="none";
+  } else {
+    e.style.display="none";
+    g.style.display="flex";
   }
-}
-_initEmojis();
+};
 
-// AFFICHER LES CATÉGORIES D'EMOJIS
-function _renderEmojiCategories() {
-  var bar = document.getElementById("emojiCategoriesBar");
-  if (!bar) return;
-  bar.innerHTML = "";
-
-  var categoryOrder = ["😊", "😄", "🌍", "🍕", "🚗", "⚽", "❤️"];
-
-  categoryOrder.forEach(function(catKey) {
-    var btn = document.createElement("button");
-    btn.textContent = catKey;
-    btn.style.cssText = "flex:0 0 40px;height:40px;border:none;background:transparent;cursor:pointer;font-size:20px;padding:0;border-radius:8px;";
-    btn.onclick = function() {
-      _currentEmojiCategory = catKey;
-      _renderEmojiGrid();
-
-      // Highlight active
-      document.querySelectorAll("#emojiCategoriesBar button").forEach(function(b) {
-        b.style.background = "";
-      });
-      btn.style.background = "rgba(124,58,237,0.2)";
-    };
-
-    if (catKey === _currentEmojiCategory) {
-      btn.style.background = "rgba(124,58,237,0.2)";
-    }
-
-    bar.appendChild(btn);
-  });
-}
-
-// AFFICHER LE GRID D'EMOJIS
-function _renderEmojiGrid() {
-  var grid = document.getElementById("emojiGrid");
-  if (!grid) return;
-  grid.innerHTML = "";
-
-  var emojis = (_filteredEmojis.length > 0) ? _filteredEmojis : EMOJI_CATEGORIES[_currentEmojiCategory].emojis;
-
-  emojis.forEach(function(emoji) {
-    var div = document.createElement("div");
-    div.className = "emoji-item";
-    div.textContent = emoji;
-    div.style.cursor = "pointer";
-    div.onclick = function() {
-      if (typeof insertEmoji === 'function') insertEmoji(emoji);
+// Populate emoji grid
+var emojiList = "😀😁😂🤣😃😄😅😆😉😊😇🥰😍😘😗😚😙🥲😋😛😜🤪😌😔😑😐😶😏😒🙄😬🤐😷🤒🤕🤮🤧🤥🤓😎😕😟🙁☹️😮😯😲😳😦😧😨😰😥😢😭😱😖😣😞😓😩😫🥱😤😡😠🤬😈👿💀☠️💩🤡👹👺👻👽👾🤖😺😸😹😻😼😽🙀😿😾🙈🙉🙊❤️🧡💛💚💙💜🖤🤍🤎💔💕💞💓💗💖💘💝💟👋🤚🖐️✋🖖👌🤌🤏✌️🤞🫰🤟🤘🤙👍👎✊👊🤛🤜👏🙌👐🤲🤝🎉🎊🎈🎁🔥💯✨⭐🌟👀🎯🎭🎨🎬🎤🎧🎼🎹🥁🎷🎺🎸🎻🌈☀️🌙⭐✨💫🌟🎊🎉";
+var grid = document.getElementById("emojiGrid");
+if(grid) {
+  for(var i=0; i<emojiList.length; i++) {
+    var d = document.createElement("div");
+    d.textContent = emojiList[i];
+    d.style.cssText = "font-size:28px;padding:8px;cursor:pointer;border-radius:8px;";
+    d.onclick = function(e) {
+      if(window.insertEmoji) window.insertEmoji(e.target.textContent);
       window.toggleEmojiPanel();
     };
-    grid.appendChild(div);
-  });
+    grid.appendChild(d);
+  }
 }
 
-// RECHERCHE D'EMOJIS
-window._onEmojiSearch = function(query) {
-  if (!query.trim()) {
-    _filteredEmojis = [];
-    _renderEmojiGrid();
-    return;
-  }
-
-  var q = query.toLowerCase();
-  _filteredEmojis = _allEmojis.filter(function(emoji) {
-    return emoji.includes(query) || query.includes(emoji);
-  });
-
-  _renderEmojiGrid();
-};
-
-// REMPLIR LE GIF GRID
-function _populateGifGrid() {
-  var gifGrid = document.getElementById("gifGrid");
-  if (!gifGrid) return;
-  gifGrid.innerHTML = "";
-
-  DEFAULT_GIFS.forEach(function(url) {
-    var div = document.createElement("div");
-    div.style.cssText = "width:100%;height:120px;border-radius:8px;overflow:hidden;cursor:pointer;";
+// Populate GIF grid
+var gifUrls = ["https://media.giphy.com/media/3o7abKhOpu0NwenH3O/giphy.gif","https://media.giphy.com/media/xT9IgG50Lg7rusjtG8/giphy.gif","https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif","https://media.giphy.com/media/26ufdipQqU2lhNA4g/giphy.gif","https://media.giphy.com/media/3oz8xAFtqoOUUrsh7W/giphy.gif","https://media.giphy.com/media/l4FGGafcOHmrlQxG0/giphy.gif","https://media.giphy.com/media/3ohzdKdb7d1bbVwnQU/giphy.gif","https://media.giphy.com/media/l0HlFZ3c8HWDRlCharepI/giphy.gif","https://media.giphy.com/media/FW8aI0tXVE8gKxYvRc/giphy.gif","https://media.giphy.com/media/l0Iy1Z8oW4fvfBLh2/giphy.gif","https://media.giphy.com/media/l0HlDtKUoRb0x8bDy/giphy.gif","https://media.giphy.com/media/l0Iy0QcSoQYQW3SWHf/giphy.gif"];
+var gifGrid = document.getElementById("gifGrid");
+if(gifGrid) {
+  gifUrls.forEach(function(url) {
+    var d = document.createElement("div");
+    d.style.cssText = "width:100%;height:120px;border-radius:8px;overflow:hidden;cursor:pointer;";
     var img = document.createElement("img");
     img.src = url;
     img.style.cssText = "width:100%;height:100%;object-fit:cover;";
-    div.appendChild(img);
-
-    div.onclick = function() {
-      if (typeof _sendGif === 'function') _sendGif(url);
+    img.onclick = function() {
+      if(window._sendGif) window._sendGif(url);
       window.toggleEmojiPanel();
     };
-
-    gifGrid.appendChild(div);
+    d.appendChild(img);
+    gifGrid.appendChild(d);
   });
 }
 
-// TOGGLE PANEL
-window.toggleEmojiPanel = function() {
-  var panel = document.getElementById("convEmojiPanel");
-  if (!panel) return;
-
-  window._emojiPanelOpen = !window._emojiPanelOpen;
-
-  if (window._emojiPanelOpen) {
-    panel.classList.add("open");
-    _renderEmojiCategories();
-    _renderEmojiGrid();
-    _populateGifGrid();
-  } else {
-    panel.classList.remove("open");
-  }
-};
-
-// SWITCH TAB (Emoji vs GIF)
-window.switchEmojiTab = function(tab, btn) {
-  var buttons = btn.parentElement.querySelectorAll("button");
-  buttons.forEach(function(b) {
-    b.style.background = "transparent";
-    b.style.color = "var(--muted)";
-  });
-  btn.style.background = "#7c3aed";
-  btn.style.color = "white";
-
-  var emojiContent = document.getElementById("emojiTabContent");
-  var gifContent = document.getElementById("gifTabContent");
-
-  if (tab === "emoji") {
-    emojiContent.style.display = "flex";
-    gifContent.style.display = "none";
-  } else {
-    emojiContent.style.display = "none";
-    gifContent.style.display = "flex";
-    _populateGifGrid();
-  }
-};
-
-// FERMER PANEL EMOJI
-function _closeEmojiPanel() {
-  window._emojiPanelOpen = false;
-  var panel = document.getElementById("convEmojiPanel");
-  if (panel) panel.classList.remove("open");
-}
-
-// CLICK OUTSIDE POUR FERMER LE PANEL
+// Click outside to close
 document.addEventListener("click", function(e) {
-  var panel = document.getElementById("convEmojiPanel");
-  var btnEmoji = document.getElementById("btnEmoji");
-
-  if (window._emojiPanelOpen && panel && !panel.contains(e.target) && (!btnEmoji || !btnEmoji.contains(e.target))) {
-    _closeEmojiPanel();
+  var p = document.getElementById("convEmojiPanel");
+  var b = document.getElementById("btnEmoji");
+  if(p && p.classList.contains("open") && !p.contains(e.target) && (!b || !b.contains(e.target))) {
+    p.classList.remove("open");
   }
 });
-
-// ✅ DIAGNOSTIC: Système prêt!
-console.log("✅ EMOJI/GIF SYSTEM READY");
-if (window._diagDiv) window._diagDiv.textContent = "✅ EMOJI OK";
 </script>
 
 </body>
