@@ -7434,38 +7434,37 @@
       <button onclick="cancelVoiceRecord()" style="background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer;padding:0;">✕</button>
     </div>
 
-    <!-- Panneau emoji/GIF (DÉPLACÉ À LA RACINE) -->
-    <!-- Menu pièces jointes -->
-      <div id="convAttachMenu">
-        <div class="attach-item" onclick="triggerAttach('image')">
-          <div class="attach-icon" style="background:rgba(139,92,246,0.12);">🖼️</div>
-          <div class="attach-label">Photo / Vidéo</div>
-          <input type="file" id="attachImageFile" accept="image/*,video/*" style="display:none" onchange="handleAttachFile(this,'media')"/>
-        </div>
-        <div class="attach-item" onclick="triggerAttach('doc')">
-          <div class="attach-icon" style="background:rgba(14,165,233,0.12);">📄</div>
-          <div class="attach-label">Document</div>
-          <input type="file" id="attachDocFile" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.zip" style="display:none" onchange="handleAttachFile(this,'doc')"/>
-        </div>
-        <div class="attach-item" onclick="triggerAttach('audio')">
-          <div class="attach-icon" style="background:rgba(16,185,129,0.12);">🎵</div>
-          <div class="attach-label">Fichier audio</div>
-          <input type="file" id="attachAudioFile" accept="audio/*" style="display:none" onchange="handleAttachFile(this,'audio')"/>
-        </div>
-        <div class="attach-item" onclick="shareLocation()">
-          <div class="attach-icon" style="background:rgba(245,158,11,0.12);">📍</div>
-          <div class="attach-label">Localisation</div>
-        </div>
-        <div class="attach-item" onclick="openConvFiles()">
-          <div class="attach-icon" style="background:rgba(239,68,68,0.12);">📁</div>
-          <div class="attach-label">Pièces jointes</div>
-        </div>
-      </div>
-
       <!-- Barre de saisie principale -->
-      <div class="conv-toolbar">
+      <div class="conv-toolbar" style="position:relative;">
         <button class="conv-tool-btn" id="btnAttach" onclick="toggleAttachMenu()" title="Pièce jointe">➕</button>
         <button class="conv-tool-btn" id="btnEmoji" onclick="toggleEmojiPanel()" title="Emoji / GIF">😊</button>
+
+        <!-- Menu pièces jointes (DÉPLACÉ DANS TOOLBAR) -->
+        <div id="convAttachMenu">
+          <div class="attach-item" onclick="triggerAttach('image')">
+            <div class="attach-icon" style="background:rgba(139,92,246,0.12);">🖼️</div>
+            <div class="attach-label">Photo / Vidéo</div>
+            <input type="file" id="attachImageFile" accept="image/*,video/*" style="display:none" onchange="handleAttachFile(this,'media')"/>
+          </div>
+          <div class="attach-item" onclick="triggerAttach('doc')">
+            <div class="attach-icon" style="background:rgba(14,165,233,0.12);">📄</div>
+            <div class="attach-label">Document</div>
+            <input type="file" id="attachDocFile" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.zip" style="display:none" onchange="handleAttachFile(this,'doc')"/>
+          </div>
+          <div class="attach-item" onclick="triggerAttach('audio')">
+            <div class="attach-icon" style="background:rgba(16,185,129,0.12);">🎵</div>
+            <div class="attach-label">Fichier audio</div>
+            <input type="file" id="attachAudioFile" accept="audio/*" style="display:none" onchange="handleAttachFile(this,'audio')"/>
+          </div>
+          <div class="attach-item" onclick="shareLocation()">
+            <div class="attach-icon" style="background:rgba(245,158,11,0.12);">📍</div>
+            <div class="attach-label">Localisation</div>
+          </div>
+          <div class="attach-item" onclick="openConvFiles()">
+            <div class="attach-icon" style="background:rgba(239,68,68,0.12);">📁</div>
+            <div class="attach-label">Pièces jointes</div>
+          </div>
+        </div>
         <div class="conv-input-wrap">
           <textarea id="convFpInput" rows="1" placeholder="Message…" oninput="onConvInputTyping();autoResizeTextarea(this)"></textarea>
         </div>
