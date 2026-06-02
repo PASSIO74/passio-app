@@ -18684,10 +18684,11 @@ window.switchEmojiTab = function(t,b) {
 var emojiList = "😀😁😂🤣😃😄😅😆😉😊😇🥰😍😘😗😚😙🥲😋😛😜🤪😌😔😑😐😶😏😒🙄😬🤐😷🤒🤕🤮🤧🤥🤓😎😕😟🙁☹️😮😯😲😳😦😧😨😰😥😢😭😱😖😣😞😓😩😫🥱😤😡😠🤬😈👿💀☠️💩🤡👹👺👻👽👾🤖😺😸😹😻😼😽🙀😿😾🙈🙉🙊❤️🧡💛💚💙💜🖤🤍🤎💔💕💞💓💗💖💘💝💟👋🤚🖐️✋🖖👌🤌🤏✌️🤞🫰🤟🤘🤙👍👎✊👊🤛🤜👏🙌👐🤲🤝🎉🎊🎈🎁🔥💯✨⭐🌟👀🎯🎭🎨🎬🎤🎧🎼🎹🥁🎷🎺🎸🎻🌈☀️🌙⭐✨💫🌟🎊🎉";
 var grid = document.getElementById("emojiGrid");
 if(grid) {
+  grid.style.gap = "2px";
   for(var i=0; i<emojiList.length; i++) {
     var d = document.createElement("div");
     d.textContent = emojiList[i];
-    d.style.cssText = "font-size:28px;padding:8px;cursor:pointer;border-radius:8px;";
+    d.style.cssText = "font-size:18px;padding:2px;cursor:pointer;border-radius:4px;";
     d.onclick = function(e) {
       if(window.insertEmoji) window.insertEmoji(e.target.textContent);
       window.toggleEmojiPanel();
