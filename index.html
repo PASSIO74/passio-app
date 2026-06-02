@@ -18550,23 +18550,6 @@ function _closeEmojiPanel() {
   }
 }
 
-function switchEmojiTab(tab, btn) {
-  document.querySelectorAll(".emoji-tab").forEach(function(b) { b.classList.remove("active"); });
-  if (btn) btn.classList.add("active");
-  var emojiContent = document.getElementById("emojiTabContent");
-  var gifContent = document.getElementById("gifTabContent");
-  if (!emojiContent || !gifContent) return;
-  if (tab === "emoji") {
-    emojiContent.classList.remove("hidden");
-    gifContent.classList.remove("visible");
-  } else {
-    emojiContent.classList.add("hidden");
-    gifContent.classList.add("visible");
-    // Toujours recharger les GIF quand on ouvre l'onglet GIF
-    if (typeof _loadTrendingGifs === "function") _loadTrendingGifs();
-  }
-}
-
 function toggleAttachMenu() {
   try {
     var menu = document.getElementById("convAttachMenu");
