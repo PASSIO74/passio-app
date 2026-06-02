@@ -19647,17 +19647,44 @@ document.addEventListener("click", function(e) {
   }
 });
 
+// DIAGNOSTIC BADGE
+var _diagDiv = document.createElement("div");
+_diagDiv.style.cssText = "position:fixed;top:10px;right:10px;background:#ff0;color:#000;padding:10px;border-radius:8px;font-size:11px;font-weight:bold;z-index:99999;max-width:250px;white-space:pre-wrap;line-height:1.4;";
+_diagDiv.textContent = "🔧 EMOJI DIAG\n...";
+document.body.appendChild(_diagDiv);
+
+function diag(msg) {
+  _diagDiv.textContent += "\n" + msg;
+}
+
 // SETUP BOUTON EMOJI
 setTimeout(function() {
+  diag("=== SETUP ===");
+
   var btnEmoji = document.getElementById('btnEmoji');
+  diag(btnEmoji ? "✅ btnEmoji" : "❌ btnEmoji");
+
   if (btnEmoji) {
+    diag("→ Setup onclick");
     btnEmoji.onclick = function(e) {
+      diag("👆 CLICK!");
       e.preventDefault();
       e.stopPropagation();
-      window.toggleEmojiPanel();
+      try {
+        window.toggleEmojiPanel();
+        diag("✅ toggleEmojiPanel OK");
+      } catch(err) {
+        diag("❌ ERROR: " + err.message);
+      }
       return false;
     };
+    diag("✅ onclick setup");
   }
+
+  var panel = document.getElementById('convEmojiPanel');
+  diag(panel ? "✅ panel exists" : "❌ panel MISSING");
+
+  diag("✅ READY");
 }, 100);
 </script>
 
