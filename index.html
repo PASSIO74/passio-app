@@ -12057,10 +12057,11 @@ function renderConvFpThread(c, displayName) {
           : ' <span style="opacity:0.5;">✓</span>')
       : "";
 
-    // Temps — affiché sur chaque message
-    var timeStr = m.at
-      ? '<span class="conv-bubble-time">' + fmtTime(m.at) + (isLastMe ? readReceipt : '') + '</span>'
-      : '';
+    // Temps — affiché uniquement si dernier du groupe ou dernier message
+    var isLastInGroup = (i === msgs.length - 1) || (msgs[i+1] && msgs[i+1].from !== m.from) || (msgs[i+1] && m.at && msgs[i+1].at && _dayKey(msgs[i+1].at) !== msgDay);
+    var timeStr = (m.at && isLastInGroup)
+      ? '<span class="conv-bubble-time">' + fmtTime(m.at) + readReceipt + '</span>'
+      : (isLastMe ? '<span class="conv-bubble-time" style="height:4px;">' + readReceipt + '</span>' : "");
 
     // Contenu
     var content = "";
