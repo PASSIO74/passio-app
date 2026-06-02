@@ -18586,8 +18586,300 @@ function pwaDismiss() {
 </script>
 
 
-// ── GIF ──
-async function _loadTrendingGifs() {
+<!-- ======== PWA INSTALL OVERLAY ======== -->
+<div id="pwa-overlay" style="display:none;">
+  <div id="pwa-sheet">
+
+    <!-- Logo + nom -->
+    <div class="pwa-logo-wrap">
+      <div class="pwa-logo-icon"><img id="pwaLogoImg" alt="PASSIO" /></div>
+      <div>
+        <div class="pwa-app-name">PASSIO</div>
+        <div class="pwa-app-desc">Le réseau de tes passions</div>
+      </div>
+    </div>
+
+    <div id="pwa-content"></div>
+
+  </div>
+</div>
+
+
+<script>
+  // Sur iOS : afficher le bouton "Installer" dans la landing (le prompt auto ne marche pas sur Apple)
+  if (_isIOS && !_isStandalone && !_pwaInstalled) {
+    window.addEventListener('load', function() {
+      var btn = document.getElementById('btn-install-app');
+      if (btn) btn.style.display = '';
+    });
+  }
+</script>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!-- PANEL EMOJI/GIF STYLE WHATSAPP -->
+<!-- ════════════════════════════════════════════════════════════ -->
+<div id="convEmojiPanel">
+  <!-- BARRE SUPÉRIEURE: Onglets Emoji/GIF + Recherche -->
+  <div id="emojiTopBar" style="display:flex;border-bottom:1px solid var(--border);background:var(--bg-soft);flex-shrink:0;padding:8px;gap:8px;align-items:center;">
+    <button onclick="switchEmojiTab('emoji',this)" style="flex:1;padding:10px;border:none;background:#7c3aed;color:white;border-radius:6px;cursor:pointer;font-weight:bold;font-size:12px;">😊 Emoji</button>
+    <button onclick="switchEmojiTab('gif',this)" style="flex:1;padding:10px;border:none;background:transparent;color:var(--muted);border-radius:6px;cursor:pointer;font-weight:bold;font-size:12px;">GIF</button>
+  </div>
+
+  <!-- TAB EMOJI AVEC CATÉGORIES -->
+  <div id="emojiTabContent" style="display:flex;flex-direction:column;flex:1;overflow:hidden;">
+    <!-- Barre de recherche -->
+    <div style="padding:8px;flex-shrink:0;border-bottom:1px solid var(--border);">
+      <input type="text" id="emojiSearchInput" placeholder="🔍 Chercher…" oninput="window._onEmojiSearch(this.value)" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:20px;font-size:13px;box-sizing:border-box;">
+    </div>
+
+    <!-- Catégories d'emojis (icônes en haut) -->
+    <div id="emojiCategoriesBar" style="display:flex;gap:0;padding:8px;border-bottom:1px solid var(--border);overflow-x:auto;flex-shrink:0;">
+      <!-- Les catégories seront ajoutées par JS -->
+    </div>
+
+    <!-- Grille d'emojis -->
+    <div class="emoji-grid" id="emojiGrid" style="display:grid;grid-template-columns:repeat(8,1fr);gap:4px;padding:12px;overflow-y:auto;flex:1;"></div>
+  </div>
+
+  <!-- TAB GIF -->
+  <div id="gifTabContent" style="display:none;flex-direction:column;flex:1;overflow:hidden;">
+    <!-- Barre de recherche -->
+    <div style="padding:8px;flex-shrink:0;border-bottom:1px solid var(--border);">
+      <input type="text" id="gifSearchInput" placeholder="🔍 Rechercher GIF…" oninput="window._onGifSearch(this.value)" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:20px;font-size:13px;box-sizing:border-box;">
+    </div>
+
+    <!-- Grille GIF -->
+    <div class="gif-grid" id="gifGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:12px;overflow-y:auto;flex:1;"></div>
+  </div>
+</div>
+
+<!-- INITIALISATION FINALE EMOJI/GIF WHATSAPP COMPLÈTE -->
+<script>
+// ✅ DIAGNOSTIC - À la toute première ligne du script
+console.log("✅ EMOJI/GIF SYSTEM INITIALIZED");
+(function() {
+  var _diagDiv = document.createElement("div");
+  _diagDiv.style.cssText = "position:fixed;top:10px;right:10px;background:#0f0;color:#000;padding:10px;border-radius:8px;font-size:12px;font-weight:bold;z-index:99999;";
+  _diagDiv.textContent = "🔧 EMOJI LOADED";
+  document.body.appendChild(_diagDiv);
+  window._diagDiv = _diagDiv;
+})();
+
+// ═══════════════════════════════════════════════════════════
+// SYSTÈME EMOJI/GIF COMPLET STYLE WHATSAPP
+// ═══════════════════════════════════════════════════════════
+
+// VARIABLES GLOBALES
+window._emojiPanelOpen = false;
+window._attachMenuOpen = false;
+var _currentEmojiCategory = "😊";
+var _allEmojis = [];
+var _filteredEmojis = [];
+
+// EMOJIS PAR CATÉGORIES (270+ emojis)
+var EMOJI_CATEGORIES = {
+  "😊": { name: "Récent", emojis: ["😀", "😂", "❤️", "👍", "🔥", "✨", "🎉", "😍"] },
+  "😄": { name: "Émojis", emojis: ["😀","😁","😂","🤣","😃","😄","😅","😆","😉","😊","😇","🥰","😍","😘","😗","😚","😙","🥲","😋","😛","😜","🤪","😌","😔","😑","😐","😶","😏","😒","🙄","😬","🤐","😷","🤒","🤕","🤮","🤧","🤥","🤓","😎","😕","😟","🙁","☹️","😮","😯","😲","😳","😦","😧","😨","😰","😥","😢","😭","😱","😖","😣","😞","😓","😩","😫","🥱","😤","😡","😠","🤬","😈","👿","💀","☠️","💩","🤡","👹","👺","👻","👽","👾","🤖","😺","😸","😹","😻","😼","😽","🙀","😿","😾","🙈","🙉","🙊"] },
+  "🌍": { name: "Nature", emojis: ["🌙","⭐","🌟","✨","⚡","☄️","💥","🔥","🌪️","🌈","☀️","🌤️","⛅","🌥️","☁️","🌦️","🌧️","⛈️","🌩️","🌨️","❄️","☃️","⛄","🌬️","💨","💧","💦","☔","🍎","🍊","🍋","🍌","🍉","🍇","🍓","🍈","🍒","🍑","🥭","🍍","🥥","🥑","🍅","🍆","🥒","🥬","🥦","🌶️","🌽","🥕","🧄","🧅","🥔","🍠","🐶","🐱","🐭","🐹","🐰","🦊","🐻","🐼","🐨","🐯","🦁","🐮","🐷","🐽","🐸","🐵","🙈","🙉","🙊","🐒","🐔","🐧","🐦","🐤","🐣","🐥","🦆","🦅","🦉","🦇","🐺","🐗","🐴","🦄","🐝","🐛","🦋","🐌","🐞","🐜","🪰"] },
+  "🍕": { name: "Aliments", emojis: ["🍕","🍔","🍟","🍗","🌭","🥪","🌮","🌯","🥙","🧆","🌶️","🍜","🍲","🥘","🍱","🍛","🍣","🍱","🥟","🍤","🦪","🍙","🍚","🍘","🍥","🥠","🥮","🍢","🍡","🍧","🍨","🍦","🍰","🎂","🧁","🍮","🍭","🍬","🍫","🍿","🍩","🍪","🌰","🍯","🥛","🥤","☕","🍵","🍶","🍾","🍷","🍸","🍹","🍺","🍻","🥂","🥃" ],
+  "🚗": { name: "Voyage", emojis: ["✈️","🚀","🛸","🚁","🚂","🚊","🚝","🚄","🚅","🚈","🚞","🚋","🚃","🚌","🚎","🚐","🚑","🚒","🚓","🚔","🚕","🚖","🚗","🚘","🚙","🚚","🚛","🚜","🏎️","🏍️","🛵","🦯","🛴","🚲","🛹","🛼","🛺","⛽","🚨","🚥","🚦","🏁","🎌","🏴","🏳️","🚢","⛵","🛥️","🚤","⛴️" ],
+  "⚽": { name: "Activités", emojis: ["🎯","⚽","🏀","🏈","⚾","🥎","🎾","🏐","🏉","🥏","🎳","🏓","🏸","🥊","🥋","🥅","⛳","⛸️","🎣","🎽","🎿","⛷️","🏂","🪂","🛷","🥌","🎱","🎮","🎰","🎲","♠️","♥️","♦️","♣️","♟️","🎭","🎨","🎬","🎤","🎧","🎼","🎹","🥁","🎷","🎺","🎸","🎻","🎲","🎯","🎳","🎮","🎰"] },
+  "❤️": { name: "Symboles", emojis: ["❤️","🧡","💛","💚","💙","💜","🖤","🤍","🤎","💔","💕","💞","💓","💗","💖","💘","💝","💟","👋","🤚","🖐️","✋","🖖","👌","🤌","🤏","✌️","🤞","🫰","🤟","🤘","🤙","👍","👎","✊","👊","🤛","🤜","👏","🙌","👐","🤲","🤝","🤜","🤛","🦾","🦿","🦵","🦶","👂","👃","🧠","🦷","🦴","🦳"] }
+};
+
+// 60+ GIFS
+var DEFAULT_GIFS = [
+  "https://media.giphy.com/media/3o7abKhOpu0NwenH3O/giphy.gif",
+  "https://media.giphy.com/media/xT9IgG50Lg7rusjtG8/giphy.gif",
+  "https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif",
+  "https://media.giphy.com/media/26ufdipQqU2lhNA4g/giphy.gif",
+  "https://media.giphy.com/media/3oz8xAFtqoOUUrsh7W/giphy.gif",
+  "https://media.giphy.com/media/l4FGGafcOHmrlQxG0/giphy.gif",
+  "https://media.giphy.com/media/3ohzdKdb7d1bbVwnQU/giphy.gif",
+  "https://media.giphy.com/media/l0HlFZ3c8HWDRlCharepI/giphy.gif",
+  "https://media.giphy.com/media/FW8aI0tXVE8gKxYvRc/giphy.gif",
+  "https://media.giphy.com/media/l0Iy1Z8oW4fvfBLh2/giphy.gif",
+  "https://media.giphy.com/media/l0HlDtKUoRb0x8bDy/giphy.gif",
+  "https://media.giphy.com/media/l0Iy0QcSoQYQW3SWHf/giphy.gif",
+  "https://media.giphy.com/media/l0MYr7jgMgWI8ouOI/giphy.gif",
+  "https://media.giphy.com/media/l0HlSY9x8FZo0XO1i/giphy.gif",
+  "https://media.giphy.com/media/l4FGGafcOHmrlQxG0/giphy.gif",
+  "https://media.giphy.com/media/l4Jz3a8jO92crOLXy/giphy.gif",
+  "https://media.giphy.com/media/3ohzdKdb7d1bbVwnQU/giphy.gif",
+  "https://media.giphy.com/media/l0HlF5j3QRG5pxPAI/giphy.gif",
+  "https://media.giphy.com/media/3o7TKU8j7Yt9R2xNMY/giphy.gif",
+  "https://media.giphy.com/media/l0MYM8m02D0c3PoFi/giphy.gif",
+  "https://media.giphy.com/media/RH16FlVXbaAzS/giphy.gif",
+  "https://media.giphy.com/media/l46Ce3kKMKxvEiFZS/giphy.gif",
+  "https://media.giphy.com/media/l0HlHJJxcNHFqyvrm/giphy.gif",
+  "https://media.giphy.com/media/JIX9RbDfLvbl2/giphy.gif",
+  "https://media.giphy.com/media/l0HlQaQ6gWfllcjDO/giphy.gif",
+  "https://media.giphy.com/media/l3q2K6HIuvsGyp7UE/giphy.gif",
+  "https://media.giphy.com/media/l0HlMMaQ5vJ7lKOmY/giphy.gif"
+];
+
+// INITIALISER LES EMOJIS
+function _initEmojis() {
+  _allEmojis = [];
+  for (var catKey in EMOJI_CATEGORIES) {
+    _allEmojis = _allEmojis.concat(EMOJI_CATEGORIES[catKey].emojis);
+  }
+}
+_initEmojis();
+
+// AFFICHER LES CATÉGORIES D'EMOJIS
+function _renderEmojiCategories() {
+  var bar = document.getElementById("emojiCategoriesBar");
+  if (!bar) return;
+  bar.innerHTML = "";
+
+  var categoryOrder = ["😊", "😄", "🌍", "🍕", "🚗", "⚽", "❤️"];
+
+  categoryOrder.forEach(function(catKey) {
+    var btn = document.createElement("button");
+    btn.textContent = catKey;
+    btn.style.cssText = "flex:0 0 40px;height:40px;border:none;background:transparent;cursor:pointer;font-size:20px;padding:0;border-radius:8px;";
+    btn.onclick = function() {
+      _currentEmojiCategory = catKey;
+      _renderEmojiGrid();
+
+      // Highlight active
+      document.querySelectorAll("#emojiCategoriesBar button").forEach(function(b) {
+        b.style.background = "";
+      });
+      btn.style.background = "rgba(124,58,237,0.2)";
+    };
+
+    if (catKey === _currentEmojiCategory) {
+      btn.style.background = "rgba(124,58,237,0.2)";
+    }
+
+    bar.appendChild(btn);
+  });
+}
+
+// AFFICHER LE GRID D'EMOJIS
+function _renderEmojiGrid() {
+  var grid = document.getElementById("emojiGrid");
+  if (!grid) return;
+  grid.innerHTML = "";
+
+  var emojis = (_filteredEmojis.length > 0) ? _filteredEmojis : EMOJI_CATEGORIES[_currentEmojiCategory].emojis;
+
+  emojis.forEach(function(emoji) {
+    var div = document.createElement("div");
+    div.className = "emoji-item";
+    div.textContent = emoji;
+    div.style.cursor = "pointer";
+    div.onclick = function() {
+      if (typeof insertEmoji === 'function') insertEmoji(emoji);
+      window.toggleEmojiPanel();
+    };
+    grid.appendChild(div);
+  });
+}
+
+// RECHERCHE D'EMOJIS
+window._onEmojiSearch = function(query) {
+  if (!query.trim()) {
+    _filteredEmojis = [];
+    _renderEmojiGrid();
+    return;
+  }
+
+  var q = query.toLowerCase();
+  _filteredEmojis = _allEmojis.filter(function(emoji) {
+    return emoji.includes(query) || query.includes(emoji);
+  });
+
+  _renderEmojiGrid();
+};
+
+// REMPLIR LE GIF GRID
+function _populateGifGrid() {
+  var gifGrid = document.getElementById("gifGrid");
+  if (!gifGrid) return;
+  gifGrid.innerHTML = "";
+
+  DEFAULT_GIFS.forEach(function(url) {
+    var div = document.createElement("div");
+    div.style.cssText = "width:100%;height:120px;border-radius:8px;overflow:hidden;cursor:pointer;";
+    var img = document.createElement("img");
+    img.src = url;
+    img.style.cssText = "width:100%;height:100%;object-fit:cover;";
+    div.appendChild(img);
+
+    div.onclick = function() {
+      if (typeof _sendGif === 'function') _sendGif(url);
+      window.toggleEmojiPanel();
+    };
+
+    gifGrid.appendChild(div);
+  });
+}
+
+// TOGGLE PANEL
+window.toggleEmojiPanel = function() {
+  var panel = document.getElementById("convEmojiPanel");
+  if (!panel) return;
+
+  window._emojiPanelOpen = !window._emojiPanelOpen;
+
+  if (window._emojiPanelOpen) {
+    panel.classList.add("open");
+    _renderEmojiCategories();
+    _renderEmojiGrid();
+    _populateGifGrid();
+  } else {
+    panel.classList.remove("open");
+  }
+};
+
+// SWITCH TAB (Emoji vs GIF)
+window.switchEmojiTab = function(tab, btn) {
+  var buttons = btn.parentElement.querySelectorAll("button");
+  buttons.forEach(function(b) {
+    b.style.background = "transparent";
+    b.style.color = "var(--muted)";
+  });
+  btn.style.background = "#7c3aed";
+  btn.style.color = "white";
+
+  var emojiContent = document.getElementById("emojiTabContent");
+  var gifContent = document.getElementById("gifTabContent");
+
+  if (tab === "emoji") {
+    emojiContent.style.display = "flex";
+    gifContent.style.display = "none";
+  } else {
+    emojiContent.style.display = "none";
+    gifContent.style.display = "flex";
+    _populateGifGrid();
+  }
+};
+
+// FERMER PANEL EMOJI
+function _closeEmojiPanel() {
+  window._emojiPanelOpen = false;
+  var panel = document.getElementById("convEmojiPanel");
+  if (panel) panel.classList.remove("open");
+}
+
+// CLICK OUTSIDE POUR FERMER LE PANEL
+document.addEventListener("click", function(e) {
+  var panel = document.getElementById("convEmojiPanel");
+  var btnEmoji = document.getElementById("btnEmoji");
+
+  if (window._emojiPanelOpen && panel && !panel.contains(e.target) && (!btnEmoji || !btnEmoji.contains(e.target))) {
+    _closeEmojiPanel();
+  }
+});
+
+// ✅ DIAGNOSTIC: Système prêt!
+console.log("✅ EMOJI/GIF SYSTEM READY");
+if (window._diagDiv) window._diagDiv.textContent = "✅ EMOJI OK";
+</script>
+
   const grid = document.getElementById("gifGrid");
   if (!grid) return;
   grid.innerHTML = `<div style="grid-column:span 3;padding:20px;text-align:center;color:var(--muted);font-size:13px;">⏳ Chargement…</div>`;
