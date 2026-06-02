@@ -18165,10 +18165,8 @@ function switchEmojiTab(tab, btn) {
   } else {
     emojiContent.classList.add("hidden");
     gifContent.classList.add("visible");
-    if (!gifContent._loaded) {
-      gifContent._loaded = true;
-      if (typeof _loadTrendingGifs === "function") _loadTrendingGifs();
-    }
+    // Toujours recharger les GIF quand on ouvre l'onglet GIF
+    if (typeof _loadTrendingGifs === "function") _loadTrendingGifs();
   }
 }
 
