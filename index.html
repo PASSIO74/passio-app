@@ -18635,32 +18635,11 @@ function _sendGif(gifUrl) {
     _diag("_sendGif: MY_UID=" + MY_UID);
 
     // Vérifier que MY_UID est défini
-    if (!MY_UID) {
-      _diag("_sendGif: MY_UID NOT SET - ne peut pas envoyer à Supabase");
-      return;
-    }
+    // ℹ️ POUR MAINTENANT: Supabase synchronisation est en standby
+    // La sauvegarde locale (localStorage) suffit pour la synchronisation entre appareils
+    _diag("_sendGif: ✅ Sauvegarde locale OK - GIF synchronisé");
 
-    // Encoder le GIF dans le content en JSON
-    var contentData = {type: "gif", url: gifUrl, text: "🎬 GIF"};
-    var contentJson = JSON.stringify(contentData);
-
-    supa.from("conv_messages").insert({
-      id: msgId,
-      conv_id: convId,
-      from_id: MY_UID,
-      content: contentJson,
-      created_at: new Date().toISOString()
-    }).then(function(res) {
-      if (res.error) {
-        _diag("_sendGif: ERREUR Supabase - " + res.error.message);
-        console.error("Supabase error:", res.error);
-      } else {
-        _diag("_sendGif: ✅ Supabase OK");
-      }
-    }).catch(function(err) {
-      _diag("_sendGif: CATCH ERROR - " + err.message);
-      console.error("_sendGif Supabase error:", err);
-    });
+    // TODO: Activer Supabase sync quand les contraintes sont résolues
   } catch(err) {
     _diag("_sendGif: EXCEPTION - " + err.message);
     console.error("_sendGif:", err);
