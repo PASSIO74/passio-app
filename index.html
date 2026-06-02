@@ -18485,6 +18485,12 @@ function pwaDismiss() {
 //  MESSAGERIE — Emoji, GIF, Vocal, Pièces jointes, Paramètres
 // ═══════════════════════════════════════════════════════════
 
+// *** VARIABLES GLOBALES ESSENTIELLES ***
+var _emojiPanelOpen = false;
+var _attachMenuOpen = false;
+var _gifSearchTimer = null;
+const TENOR_KEY = "LIVDSRZULELA";
+
 function switchEmojiTab(tab, btn) {
   document.querySelectorAll(".emoji-tab").forEach(function(b) { b.classList.remove("active"); });
   if (btn) btn.classList.add("active");
