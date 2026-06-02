@@ -12437,16 +12437,37 @@ function sendMessageFp(convId, displayName) {
   try { renderMessages(); } catch(e) {}
 
   // 7. Envoyer à Supabase
-  if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
+  if (typeof supa !== "undefined" && supa) {
+    _diag("sendMessageFp: Tentative Supabase...");
+
+    // Essayer SANS from_id d'abord
     supa.from("conv_messages")
-      .insert({ id: msgId, conv_id: convId, from_id: MY_UID, content: txt, created_at: new Date().toISOString() })
+      .insert({ id: msgId, conv_id: convId, content: txt, created_at: new Date().toISOString() })
       .then(function(res) {
-        if (res && res.error) console.warn("Supabase send error:", res.error.message);
-        else console.log("Message envoyé à Supabase ✓ id:", msgId);
+        if (res && res.error) {
+          _diag("sendMessageFp: Erreur sans from_id - " + res.error.message);
+          // Fallback: essayer AVEC from_id
+          if (MY_UID) {
+            _diag("sendMessageFp: Fallback avec from_id...");
+            supa.from("conv_messages")
+              .insert({ id: msgId, conv_id: convId, from_id: MY_UID, content: txt, created_at: new Date().toISOString() })
+              .then(function(res2) {
+                if (!res2 || !res2.error) {
+                  _diag("sendMessageFp: ✅ Supabase OK (fallback avec from_id)");
+                }
+              })
+              .catch(function() {});
+          }
+        } else {
+          _diag("sendMessageFp: ✅ Supabase OK (sans from_id)");
+        }
       })
-      .catch(function(err) { console.error("Supabase send failed:", err); });
+      .catch(function(err) {
+        _diag("sendMessageFp: Catch - " + err.message);
+        console.error("Supabase send failed:", err);
+      });
   } else {
-    console.log("sendMessageFp: Supabase non dispo, message local seulement. supa=", typeof supa, "MY_UID=", typeof MY_UID !== "undefined" ? MY_UID : "undefined");
+    _diag("sendMessageFp: Supabase non disponible");
   }
 }
 
