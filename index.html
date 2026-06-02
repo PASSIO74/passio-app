@@ -11886,8 +11886,8 @@ function renderMessages() {
 
 async function openConversation(convId) {
   window._openedConvId = convId;
-  closeConvSettings();
-  setTimeout(() => closeConvSettings(), 10);
+  const sp = document.getElementById("convSettingsPanel");
+  if (sp) { sp.classList.remove("open"); sp.style.transform = "translateX(100%)"; }
   var convs = getConversations();
   var c = convs.find(function(x) { return x.id === convId; });
   if (!c) { console.warn("openConversation: conv not found:", convId); return; }
