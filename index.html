@@ -18789,38 +18789,36 @@ function handleAttachFile(input, kind) {
         var publicUrl = supa.storage.from("files").getPublicUrl(storagePath).data.publicUrl;
         _diag("handleAttachFile: URL public - " + publicUrl.substring(0, 50) + "...");
 
-        // Sauvegarder le message dans Supabase avec l'URL du fichier
-        var msgContent = "[" + kind.toUpperCase() + "] " + file.name;
+        // Sauvegarder le message dans Supabase
         _diag("handleAttachFile: Insertion message Supabase");
 
-        var extraData = {type: kind, filename: file.name, url: publicUrl, size: file.size};
+        if (!MY_UID) {
+          _diag("handleAttachFile: MY_UID NOT SET");
+          return;
+        }
+
+        // Encoder dans le content en JSON
+        var contentData = {
+          type: kind,
+          filename: file.name,
+          url: publicUrl,
+          size: file.size,
+          text: "[" + kind.toUpperCase() + "] " + file.name
+        };
+        var contentJson = JSON.stringify(contentData);
+
         supa.from("conv_messages").insert({
           id: msgId,
           conv_id: convId,
-          from_id: typeof MY_UID !== 'undefined' ? MY_UID : "me",
-          content: msgContent,
-          extra_data: JSON.stringify(extraData),
+          from_id: MY_UID,
+          content: contentJson,
           created_at: new Date().toISOString()
         }).then(function(res) {
           if(res.error) {
-            _diag("handleAttachFile: ERREUR extra_data - " + res.error.message);
-            // Fallback: essayer sans extra_data
-            _diag("handleAttachFile: FALLBACK - essai avec content seul");
-            supa.from("conv_messages").insert({
-              id: msgId,
-              conv_id: convId,
-              from_id: typeof MY_UID !== 'undefined' ? MY_UID : "me",
-              content: msgContent + " - " + publicUrl,
-              created_at: new Date().toISOString()
-            }).then(function(res2) {
-              if(res2.error) {
-                _diag("handleAttachFile: FALLBACK ÉCHOUÉ - " + res2.error.message);
-              } else {
-                _diag("handleAttachFile: ✅ FALLBACK Supabase OK");
-              }
-            });
+            _diag("handleAttachFile: ERREUR Supabase - " + res.error.message);
+            console.error("Erreur Supabase:", res.error);
           } else {
-            _diag("handleAttachFile: ✅ Supabase OK avec extra_data");
+            _diag("handleAttachFile: ✅ Supabase OK");
           }
         }).catch(function(err) {
           _diag("handleAttachFile: CATCH Supabase - " + err.message);
