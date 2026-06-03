@@ -19359,11 +19359,58 @@ function toggleCommentReplies(commentId) {
 }
 
 // Ajouter un emoji à un commentaire
-function showEmojiPickerForComment(postId, commentId) {
-  var emojis = ["❤️", "😂", "😍", "🔥", "👍", "🎉", "😮", "😢", "💯", "🙌"];
-  var selection = prompt("Choisir un emoji (copier l'emoji):\n" + emojis.join(" "));
-  if (!selection) return;
+function showEmojiPickerForComment(postId, commentId, event) {
+  event.stopPropagation();
 
+  var emojis = ["❤️", "😂", "😍", "🔥", "👍", "🎉", "😮", "😢", "💯", "🙌", "😊", "🤔", "👏", "🎪", "🌟"];
+
+  // Fermer les panels existants
+  var existing = document.querySelector(".emoji-panel-comment");
+  if (existing) existing.remove();
+
+  // Créer le panel
+  var panel = document.createElement("div");
+  panel.className = "emoji-panel-comment";
+
+  // Ajouter les emojis au panel
+  emojis.forEach(function(emoji) {
+    var btn = document.createElement("button");
+    btn.className = "emoji-btn";
+    btn.textContent = emoji;
+    btn.style.border = "none";
+    btn.style.background = "transparent";
+    btn.onclick = function(e) {
+      e.stopPropagation();
+      addEmojiToComment(postId, commentId, emoji);
+      panel.remove();
+    };
+    panel.appendChild(btn);
+  });
+
+  // Positionner le panel à côté du bouton
+  var btn = event.target.closest(".comment-action");
+  if (btn) {
+    var rect = btn.getBoundingClientRect();
+    panel.style.position = "fixed";
+    panel.style.top = (rect.bottom + 5) + "px";
+    panel.style.left = (rect.left - 50) + "px";
+  }
+
+  document.body.appendChild(panel);
+
+  // Fermer quand on clique ailleurs
+  setTimeout(function() {
+    document.addEventListener("click", function closePanel(e) {
+      if (!panel.contains(e.target)) {
+        panel.remove();
+        document.removeEventListener("click", closePanel);
+      }
+    });
+  }, 10);
+}
+
+// Ajouter l'emoji au commentaire
+function addEmojiToComment(postId, commentId, emoji) {
   var post = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
   if (!post) return;
 
@@ -19371,8 +19418,8 @@ function showEmojiPickerForComment(postId, commentId) {
   if (!comment) return;
 
   if (!comment.emojis) comment.emojis = [];
-  if (!comment.emojis.includes(selection)) {
-    comment.emojis.push(selection);
+  if (!comment.emojis.includes(emoji)) {
+    comment.emojis.push(emoji);
   }
 
   if (typeof saveConversations === 'function') saveConversations();
