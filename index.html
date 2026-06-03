@@ -9583,9 +9583,9 @@ async function openPost(id) {
     const cReplies = c.replies || [];
 
     return `<div class="comment" data-commentid="${c.id}">
-      <div class="avatar sm" style="background:${cAvatar};cursor:pointer;" onclick="openUserProfile('${cAuthorId}','${cSrc}')">${cEmoji || (cName||"?")[0]}</div>
+      <div class="avatar sm" style="background:${cAvatar};cursor:pointer;" onclick="event.stopPropagation();viewUserProfile('${cAuthorId}','${cSrc}')">${cEmoji || (cName||"?")[0]}</div>
       <div class="comment-body">
-        <div class="comment-author" onclick="openUserProfile('${cAuthorId}','${cSrc}')">${escapeHtml(cName)}</div>
+        <div class="comment-author" style="cursor:pointer;" onclick="event.stopPropagation();viewUserProfile('${cAuthorId}','${cSrc}')">${escapeHtml(cName)}</div>
         <div class="comment-text">${escapeHtml(c.text || c.content || "")}</div>
 
         ${cEmojis.length > 0 ? `<div class="comment-emoji-picker">${cEmojis.map(e => `<span class="comment-emoji-btn">${e}</span>`).join("")}</div>` : ""}
@@ -9599,7 +9599,7 @@ async function openPost(id) {
             ${cLiked ? "❤️" : "🤍"} ${cLikes}
           </span>
           <span class="comment-action" onclick="event.stopPropagation();replyToComment('${id}','${c.id}','${escapeHtml(cName)}')" title="Répondre">💬</span>
-          <span class="comment-action" onclick="showEmojiPickerForComment('${id}','${c.id}',event)" title="Réagir">😊</span>
+          <span class="comment-action" onclick="event.stopPropagation();showEmojiPickerForComment('${id}','${c.id}',event)" title="Réagir">😊</span>
           ${cReplies.length > 0 ? `<span class="comment-reply-count" onclick="event.stopPropagation();toggleCommentReplies('${c.id}')">${cReplies.length} réponse${cReplies.length > 1 ? "s" : ""}</span>` : ""}
         </div>
 
@@ -9607,7 +9607,7 @@ async function openPost(id) {
           const ru = userById(r.authorId) || { name: "?", profileEmoji: "👤", avatar: "#64748b" };
           const rSrc = r.authorId === "me" ? "me" : "seed";
           return `<div class="comment-reply">
-            <span class="comment-reply-author" onclick="event.stopPropagation();viewUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span>: ${escapeHtml(r.text)}
+            <span class="comment-reply-author" style="cursor:pointer;" onclick="event.stopPropagation();viewUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span>: ${escapeHtml(r.text)}
             <div style="font-size:10px;color:var(--muted);margin-top:2px;">${fmtTime(r.createdAt)}</div>
           </div>`;
         }).join("")}</div>` : ""}
