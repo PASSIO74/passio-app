@@ -9485,7 +9485,7 @@ function renderPostHTML(p) {
           const ru = userById(r.authorId) || { name: "?", profileEmoji: "👤", avatar: "#64748b" };
           const rSrc = r.authorId === "me" ? "me" : "seed";
           return `<div class="comment-reply">
-            <span class="comment-reply-author" onclick="event.stopPropagation();viewUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span>: ${escapeHtml(r.text)}
+            <span class="comment-reply-author" onclick="viewUserProfile('${r.authorId}','${rSrc}'); return false;">${escapeHtml(ru.name)}</span>: ${escapeHtml(r.text)}
             <div style="font-size:10px;color:var(--muted);margin-top:2px;">${fmtTime(r.createdAt)}</div>
           </div>`;
         }).join("")}</div>` : ""}
