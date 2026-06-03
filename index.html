@@ -9492,8 +9492,8 @@ function renderPostHTML(p) {
 
   return `<article class="post" data-postid="${p.id}">
     <div class="post-header">
-      <div class="avatar" style="background:${author.avatar};cursor:pointer;" onclick="openUserProfile('${p.authorId}','${p._source}')">${author.profileEmoji || (author.name || "?")[0]}</div>
-      <div class="post-author" style="cursor:pointer;" onclick="openUserProfile('${p.authorId}','${p._source}')">
+      <div class="avatar" style="background:${author.avatar};cursor:pointer;" onclick="viewUserProfile('${p.authorId}','${p._source}')">${author.profileEmoji || (author.name || "?")[0]}</div>
+      <div class="post-author" style="cursor:pointer;" onclick="viewUserProfile('${p.authorId}','${p._source}')">
         <div class="post-author-name">${escapeHtml(author.name || "Moi")}
           ${p._source === "me" ? '<span class="pill" style="padding:2px 7px;font-size:9px;border-color:rgba(139, 92, 246,0.5);color:#fed7aa;">Moi</span>' : ""}
         </div>
