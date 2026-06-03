@@ -19433,8 +19433,17 @@ function replyToComment(postId, commentId, authorName) {
 // Afficher/Masquer les replies d'un commentaire
 function toggleCommentReplies(commentId) {
   var repliesDiv = document.getElementById("replies-" + commentId);
-  if (repliesDiv) {
-    repliesDiv.style.display = repliesDiv.style.display === "none" ? "block" : "none";
+  if (!repliesDiv) {
+    console.warn("Replies div not found for comment:", commentId);
+    return;
+  }
+
+  var isHidden = repliesDiv.style.display === "none" || !repliesDiv.style.display;
+  repliesDiv.style.display = isHidden ? "block" : "none";
+
+  // Animer l'apparition
+  if (isHidden) {
+    repliesDiv.style.animation = "slideDown 0.3s ease-out";
   }
 }
 
