@@ -19414,7 +19414,16 @@ function replyToComment(postId, commentId, authorName) {
     });
 
     if (typeof saveConversations === 'function') saveConversations();
-    if (typeof renderFeed === 'function') renderFeed();
+
+    // Re-render correctement selon le contexte
+    var detailPage = document.getElementById("postDetailPage");
+    if (detailPage && detailPage.style.display !== "none") {
+      // On est dans la page détail, re-render le post
+      openPost(postId);
+    } else {
+      // On est dans le feed, re-render le feed
+      if (typeof renderFeed === 'function') renderFeed();
+    }
   };
 
   sendBtn.onclick = submitReply;
