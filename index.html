@@ -3466,6 +3466,35 @@
     .comment-reply-count { font-size: 11px; color: var(--accent); cursor: pointer; margin-top: 4px; }
     .comment-reply-count:hover { text-decoration: underline; }
 
+    /* Panel d'emojis pour commentaires */
+    .emoji-panel-comment {
+      position: absolute;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 8px;
+      z-index: 1000;
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 4px;
+      box-shadow: var(--shadow-soft);
+      min-width: 240px;
+    }
+    .emoji-panel-comment .emoji-btn {
+      font-size: 20px;
+      cursor: pointer;
+      padding: 8px;
+      border-radius: 8px;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .emoji-panel-comment .emoji-btn:hover {
+      background: rgba(124, 58, 237, 0.1);
+      transform: scale(1.15);
+    }
+
     /* Map IRL */
     /* Carte interactive Leaflet */
     .irl-map-wrap {
