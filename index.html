@@ -19500,6 +19500,86 @@ function addEmojiToComment(postId, commentId, emoji) {
 
 // ============ FONCTION POUR CLICKER SUR LES PROFILS DANS LA BOBINE ============
 
+// Voir le profil complet d'une autre personne (redirection)
+function viewUserProfile(authorId, source) {
+  if (source === "me" || authorId === "me" || (typeof MY_UID !== "undefined" && MY_UID && authorId === MY_UID)) {
+    goTo("profiles");
+    return;
+  }
+
+  // Charger et afficher le profil de l'autre personne
+  state._viewingUserProfile = authorId;
+  state._viewingUserSource = source;
+
+  // Charger les données du profil
+  var user = userById(authorId);
+  if (!user) {
+    var post = (state.seed.posts || []).find(function(p) { return p.authorId === authorId; });
+    if (post) {
+      user = { id: authorId, name: post.authorName || "Passionné", profileEmoji: post.authorEmoji || "✨", avatar: post.authorColor || "#8b5cf6", passion: post.passion, bio: post.authorBio || "" };
+    }
+  }
+
+  if (!user) {
+    toast("Profil non trouvé");
+    return;
+  }
+
+  // Afficher la page profil
+  renderUserProfilePage(authorId, user);
+  goTo("profile-view");
+}
+
+// Rendre la page du profil d'une autre personne
+function renderUserProfilePage(authorId, user) {
+  var passion = passionById(user.passion);
+  var userPosts = allFeedPosts().filter(function(p) { return p.authorId === authorId; });
+  var postCount = userPosts.length;
+  var likeCount = userPosts.reduce(function(s,p) { return s + (p.likes||0); }, 0);
+
+  var postsHTML = userPosts.length > 0
+    ? userPosts.slice(0, 12).map(renderPostHTML).join("")
+    : '<div style="text-align:center;padding:30px;color:var(--muted);font-size:12px;">Aucune publication pour l\'instant</div>';
+
+  var profilePageEl = document.getElementById("profile-view-content");
+  if (!profilePageEl) return;
+
+  profilePageEl.innerHTML = `
+    <div style="text-align:center;padding-top:20px;margin-bottom:16px;">
+      <div style="width:80px;height:80px;border-radius:50%;background:${user.avatar || 'var(--accent)'};display:flex;align-items:center;justify-content:center;font-size:38px;margin:0 auto 12px;border:4px solid #fff;box-shadow:0 6px 20px rgba(139,92,246,0.3);">${user.profileEmoji || "✨"}</div>
+      <div style="font-weight:900;font-size:22px;color:var(--text);">${escapeHtml(user.name || "Passionné")}</div>
+      <div style="font-size:13px;color:var(--accent);margin-top:4px;">${passion ? passion.emoji + " " + passion.label : ""}</div>
+      ${user.bio ? '<div style="font-size:13px;color:var(--text-dim);margin-top:10px;line-height:1.5;max-width:280px;margin-left:auto;margin-right:auto;">' + escapeHtml(user.bio) + '</div>' : ''}
+    </div>
+
+    <div style="display:flex;gap:8px;justify-content:center;margin-bottom:16px;">
+      <button class="btn primary" onclick="closeUserProfileView();startDirectMessage('${authorId}','${escapeHtml(user.name || "Passionné")}','${user.profileEmoji || "✨"}','${user.avatar || "#8b5cf6"}')" style="font-size:12px;padding:10px 18px;border-radius:14px;">💬 Message</button>
+      <button class="btn ghost" id="followBtn_${authorId}" onclick="toggleFollowUser('${authorId}','${escapeHtml(user.name || "")}')" style="font-size:12px;padding:10px 18px;border-radius:14px;">➕ Suivre</button>
+    </div>
+
+    <div style="display:flex;gap:0;border:1px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:16px;">
+      <div style="flex:1;text-align:center;padding:12px 6px;border-right:1px solid var(--border);">
+        <div style="font-size:18px;font-weight:900;color:var(--text);">${postCount}</div>
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;">Posts</div>
+      </div>
+      <div style="flex:1;text-align:center;padding:12px 6px;">
+        <div style="font-size:18px;font-weight:900;color:var(--text);">${likeCount}</div>
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;">Likes</div>
+      </div>
+    </div>
+
+    <div style="font-weight:800;font-size:14px;color:var(--text);margin-bottom:10px;margin-top:20px;">📝 Publications <span style="font-weight:400;color:var(--muted);">(${postCount})</span></div>
+    <div>${postsHTML}</div>
+  `;
+}
+
+// Fermer la vue du profil
+function closeUserProfileView() {
+  state._viewingUserProfile = null;
+  state._viewingUserSource = null;
+  goTo("feed");
+}
+
 // Créer une bobine avec profils cliquables
 function enhanceReelProfiles() {
   // Chercher tous les éléments de la bobine
