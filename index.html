@@ -19277,6 +19277,107 @@ if(gifGrid) {
 // ASSIGNATION: _sendGif vers window._sendGif (utilise la version avec diags ci-dessus)
 window._sendGif = _sendGif;
 
+// ============ FONCTIONS POUR LES COMMENTAIRES ============
+
+// Like/Unlike un commentaire
+function likeComment(postId, commentId) {
+  var post = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
+  if (!post) return;
+
+  var comment = (post.comments || []).find(c => c.id === commentId);
+  if (!comment) return;
+
+  comment.likes = (comment.likes || 0) + 1;
+  if (!comment.likedBy) comment.likedBy = [];
+  comment.likedBy.push(state.user?.id || "me");
+
+  if (typeof saveConversations === 'function') saveConversations();
+  if (typeof renderFeed === 'function') renderFeed();
+}
+
+// Répondre à un commentaire
+function replyToComment(postId, commentId, authorName) {
+  var replyText = prompt(`Répondre à ${authorName}:`);
+  if (!replyText) return;
+
+  var post = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
+  if (!post) return;
+
+  var comment = (post.comments || []).find(c => c.id === commentId);
+  if (!comment) return;
+
+  if (!comment.replies) comment.replies = [];
+
+  comment.replies.push({
+    id: "reply_" + Date.now(),
+    authorId: state.user?.id || "me",
+    text: replyText,
+    createdAt: Date.now()
+  });
+
+  if (typeof saveConversations === 'function') saveConversations();
+  if (typeof renderFeed === 'function') renderFeed();
+}
+
+// Afficher/Masquer les replies d'un commentaire
+function toggleCommentReplies(commentId) {
+  var repliesDiv = document.getElementById("replies-" + commentId);
+  if (repliesDiv) {
+    repliesDiv.style.display = repliesDiv.style.display === "none" ? "block" : "none";
+  }
+}
+
+// Ajouter un emoji à un commentaire
+function showEmojiPickerForComment(postId, commentId) {
+  var emojis = ["❤️", "😂", "😍", "🔥", "👍", "🎉", "😮", "😢", "💯", "🙌"];
+  var selection = prompt("Choisir un emoji (copier l'emoji):\n" + emojis.join(" "));
+  if (!selection) return;
+
+  var post = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
+  if (!post) return;
+
+  var comment = (post.comments || []).find(c => c.id === commentId);
+  if (!comment) return;
+
+  if (!comment.emojis) comment.emojis = [];
+  if (!comment.emojis.includes(selection)) {
+    comment.emojis.push(selection);
+  }
+
+  if (typeof saveConversations === 'function') saveConversations();
+  if (typeof renderFeed === 'function') renderFeed();
+}
+
+// ============ FONCTION POUR CLICKER SUR LES PROFILS DANS LA BOBINE ============
+
+// Créer une bobine avec profils cliquables
+function enhanceReelProfiles() {
+  // Chercher tous les éléments de la bobine
+  var reelCards = document.querySelectorAll("[data-postid]");
+  reelCards.forEach(card => {
+    var avatars = card.querySelectorAll(".avatar");
+    avatars.forEach(avatar => {
+      if (avatar.getAttribute("data-profile-enhanced")) return; // Déjà amélioré
+      avatar.setAttribute("data-profile-enhanced", "true");
+      avatar.style.cursor = "pointer";
+      avatar.style.transition = "transform 0.2s";
+      avatar.addEventListener("mouseenter", function() {
+        this.style.transform = "scale(1.1)";
+      });
+      avatar.addEventListener("mouseleave", function() {
+        this.style.transform = "scale(1)";
+      });
+    });
+  });
+}
+
+// Appeler la fonction quand les posts sont affichés
+var originalRenderFeed = renderFeed;
+renderFeed = function() {
+  originalRenderFeed();
+  setTimeout(enhanceReelProfiles, 100);
+};
+
 // Click outside to close
 document.addEventListener("click", function(e) {
   // Fermer emoji panel
