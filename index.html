@@ -86,6 +86,22 @@
 
   <!-- Service Worker registration + auto-update -->
   <script>
+    // Détection de version pour forcer les mises à jour
+    (function() {
+      const currentVersion = document.querySelector('meta[name="app-version"]')?.content || 'unknown';
+      const storedVersion = localStorage.getItem('app-version');
+
+      if (storedVersion && storedVersion !== currentVersion) {
+        console.log('🔄 Nouvelle version détectée - Mise à jour en cours...');
+        localStorage.setItem('app-version', currentVersion);
+        // Force le rechargement immédiat
+        setTimeout(() => window.location.reload(true), 100);
+        return; // Arrête l'exécution pour que le reload se fasse proprement
+      }
+
+      localStorage.setItem('app-version', currentVersion);
+    })();
+
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', async () => {
         try {
