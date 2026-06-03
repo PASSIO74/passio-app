@@ -9461,7 +9461,7 @@ function renderPostHTML(p) {
             ${cLiked ? "❤️" : "🤍"} ${cLikes}
           </span>
           <span class="comment-action" onclick="event.stopPropagation();replyToComment('${p.id}','${c.id}','${escapeHtml(cu.name)}')" title="Répondre">💬</span>
-          <span class="comment-action" onclick="event.stopPropagation();showEmojiPickerForComment('${p.id}','${c.id}')" title="Réagir">😊</span>
+          <span class="comment-action" onclick="showEmojiPickerForComment('${p.id}','${c.id}',event)" title="Réagir">😊</span>
           ${cReplies.length > 0 ? `<span class="comment-reply-count" onclick="event.stopPropagation();toggleCommentReplies('${c.id}')">${cReplies.length} réponse${cReplies.length > 1 ? "s" : ""}</span>` : ""}
         </div>
 
