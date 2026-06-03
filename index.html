@@ -9453,9 +9453,9 @@ function renderPostHTML(p) {
     const cReplies = c.replies || [];
 
     return `<div class="comment" data-commentid="${c.id}">
-      <div class="avatar sm" style="background:${cu.avatar};cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${c.authorId}','${cSrc}')">${cu.profileEmoji || (cu.name||"?")[0]}</div>
+      <div class="avatar sm" style="background:${cu.avatar};cursor:pointer;" onclick="event.stopPropagation();viewUserProfile('${c.authorId}','${cSrc}')">${cu.profileEmoji || (cu.name||"?")[0]}</div>
       <div class="comment-body">
-        <div class="comment-author" onclick="event.stopPropagation();openUserProfile('${c.authorId}','${cSrc}')">${escapeHtml(cu.name)}</div>
+        <div class="comment-author" onclick="event.stopPropagation();viewUserProfile('${c.authorId}','${cSrc}')">${escapeHtml(cu.name)}</div>
         <div class="comment-text">${escapeHtml(c.text)}</div>
 
         ${cEmojis.length > 0 ? `<div class="comment-emoji-picker">${cEmojis.map(e => `<span class="comment-emoji-btn">${e}</span>`).join("")}</div>` : ""}
