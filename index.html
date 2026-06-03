@@ -8102,6 +8102,31 @@ function buildSeed() {
     { id: "pv5", authorId: "u_nina", passion: "voyage", mood: "irl", type: "text", cover: "trail",
       text: "Rencontre du mois : Ibrahim, guide berbère dans l'Anti-Atlas marocain. 62 ans, marché 40 000 km de sa vie dans ces montagnes. Il connaît le nom de chaque pierre.\n\nC'est lui la destination. Pas le paysage.",
       createdAt: days(3), likes: 743, liked: false, comments: [] },
+
+    // Posts avec mood "actu" (actualités)
+    { id: "actu_1", authorId: "u_yanis", passion: "tech", mood: "actu", type: "text", cover: "tech",
+      text: "🚀 OpenAI vient de lancer o3 avec un breakthrough en reasoning.\n\nLa vraie révolution : ce n'est plus sur la vitesse mais sur la capacité à résoudre les problèmes vraiment complexes. Les implications pour le code et les maths sont énormes.",
+      createdAt: hours(2), likes: 156, liked: false, comments: [
+        { id: "c_actu_1", authorId: "u_liam", text: "Les reasoning models changent la game. Prêt à plonger dedans.", createdAt: hours(1) },
+      ]},
+
+    { id: "actu_2", authorId: "u_lea", passion: "litterature", mood: "actu", type: "text", cover: "news",
+      text: "📚 Les lauréats du Goncourt et du Renaudot sont annoncés aujourd'hui.\n\nForum des 5 continents pour débattre : qui croit qu'on lira vraiment ces livres ou c'est juste du bruit éditorial ?",
+      createdAt: hours(3), likes: 89, liked: false, comments: [
+        { id: "c_actu_2a", authorId: "u_sofia", text: "Le Goncourt = garantie de vente, pas de valeur littéraire garantie.", createdAt: hours(2) },
+      ]},
+
+    { id: "actu_3", authorId: "u_karim", passion: "photo", mood: "actu", type: "text", cover: "news",
+      text: "📸 Sony annonce le A1R2 : saut générationnel en ISO et AF.\n\nPremiers tests de photographes pros : 'C'est le boîtier à avoir en 2026 si tu fais de la photo de rue en faible lumière.'",
+      createdAt: hours(4), likes: 203, liked: false, comments: [
+        { id: "c_actu_3", authorId: "u_tom", text: "L'ISO en full frame dépasse enfin les petits capteurs. Enfin.", createdAt: hours(3) },
+      ]},
+
+    { id: "actu_4", authorId: "u_chloé", passion: "bienetre", mood: "actu", type: "text", cover: "news",
+      text: "💚 La recherche sénégalaise sur la phytothérapie reçoit une bourse de l'ONU.\n\n5 ans de travail sur les plantes locales = reconnaissance mondiale. Ça fait vraiment plaisir de voir l'Afrique avancer sur ses propres solutions.",
+      createdAt: days(1), likes: 421, liked: false, comments: [
+        { id: "c_actu_4a", authorId: "u_emma", text: "Cet article mérite d'être lu par tous les naturopathes.", createdAt: hours(22) },
+      ]},
   ];
 
   // Helpers pour créer des dates précises
