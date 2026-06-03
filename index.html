@@ -19356,26 +19356,70 @@ function likeComment(postId, commentId) {
 
 // Répondre à un commentaire
 function replyToComment(postId, commentId, authorName) {
-  var replyText = prompt(`Répondre à ${authorName}:`);
-  if (!replyText) return;
+  event.stopPropagation();
 
-  var post = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
-  if (!post) return;
-
-  var comment = (post.comments || []).find(c => c.id === commentId);
-  if (!comment) return;
-
-  if (!comment.replies) comment.replies = [];
-
-  comment.replies.push({
-    id: "reply_" + Date.now(),
-    authorId: state.user?.id || "me",
-    text: replyText,
-    createdAt: Date.now()
+  // Fermer les inputs existants
+  var existingInputs = document.querySelectorAll(".comment-reply-input");
+  existingInputs.forEach(function(input) {
+    input.remove();
   });
 
-  if (typeof saveConversations === 'function') saveConversations();
-  if (typeof renderFeed === 'function') renderFeed();
+  // Créer l'input
+  var inputDiv = document.createElement("div");
+  inputDiv.className = "comment-reply-input";
+  inputDiv.style.cssText = "margin-top:8px;display:flex;gap:6px;padding:8px 0;border-top:1px solid rgba(124,58,237,0.1);";
+
+  var inputField = document.createElement("input");
+  inputField.type = "text";
+  inputField.placeholder = "Répondre à " + authorName + "…";
+  inputField.style.cssText = "flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:12px;font-size:13px;box-sizing:border-box;";
+
+  var sendBtn = document.createElement("button");
+  sendBtn.textContent = "✓";
+  sendBtn.style.cssText = "width:32px;height:32px;border-radius:8px;background:var(--accent);color:#fff;border:none;cursor:pointer;font-weight:bold;transition:all 0.2s;";
+  sendBtn.onmouseover = function() { this.style.transform = "scale(1.05)"; };
+  sendBtn.onmouseout = function() { this.style.transform = "scale(1)"; };
+
+  var submitReply = function() {
+    var replyText = inputField.value.trim();
+    if (!replyText) return;
+
+    var post = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
+    if (!post) return;
+
+    var comment = (post.comments || []).find(c => c.id === commentId);
+    if (!comment) return;
+
+    if (!comment.replies) comment.replies = [];
+
+    comment.replies.push({
+      id: "reply_" + Date.now(),
+      authorId: state.user?.id || "me",
+      text: replyText,
+      createdAt: Date.now()
+    });
+
+    if (typeof saveConversations === 'function') saveConversations();
+    if (typeof renderFeed === 'function') renderFeed();
+  };
+
+  sendBtn.onclick = submitReply;
+  inputField.onkeypress = function(e) {
+    if (e.key === "Enter") submitReply();
+  };
+
+  inputDiv.appendChild(inputField);
+  inputDiv.appendChild(sendBtn);
+
+  // Insérer l'input sous le commentaire
+  var commentElement = document.querySelector('[data-commentid="' + commentId + '"]');
+  if (commentElement) {
+    var commentBody = commentElement.querySelector(".comment-body");
+    if (commentBody) {
+      commentBody.appendChild(inputDiv);
+      inputField.focus();
+    }
+  }
 }
 
 // Afficher/Masquer les replies d'un commentaire
