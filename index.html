@@ -105,7 +105,8 @@
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', async () => {
         try {
-          const reg = await navigator.serviceWorker.register('./sw.js');
+          // Force un nouveau Service Worker avec un querystring unique
+          const reg = await navigator.serviceWorker.register('./sw.js?v=' + Date.now());
           // Vérifie les mises à jour immédiatement puis toutes les 60s
           reg.update();
           setInterval(() => reg.update(), 60000);
