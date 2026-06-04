@@ -19406,11 +19406,11 @@ function likeComment(postId, commentId) {
 
   if (typeof saveConversations === 'function') saveConversations();
 
-  // Vérifier si on est en mode détail avec la classe "active"
-  var detailScreen = document.getElementById("screen-postDetailPage");
-  var isInDetailMode = detailScreen && detailScreen.classList.contains("active");
+  // Vérifier si on est en mode détail
+  var postDetailPage = document.getElementById("postDetailPage");
+  var isVisible = postDetailPage && postDetailPage.style.display !== "none" && window.getComputedStyle(postDetailPage).display !== "none";
 
-  if (isInDetailMode) {
+  if (isVisible) {
     _diag("📖 Re-render POST DETAIL");
     openPost(postId);
   } else {
