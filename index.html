@@ -13826,7 +13826,7 @@ function renderReelHTML(post, idx) {
       <div class="reel-overlay"></div>
       <span class="reel-tag-mood">${passion.emoji} ${escapeHtml(passion.label)} · ${moodLabel}</span>
       <div class="reel-info">
-        <div class="reel-author" style="cursor:pointer;" onclick="console.log('CLICK on reel-author'); viewUserProfile('${post._source === 'me' ? post.profileId : post.userId}','${post._source === 'me' ? 'me' : 'seed'}'); return false;">
+        <div class="reel-author" style="cursor:pointer;" onclick="viewUserProfile('${post._source === 'me' ? post.profileId : post.userId}','${post._source === 'me' ? 'me' : 'seed'}'); return false;">
           <div class="reel-avatar" style="background:${author.color};">${author.emoji}</div>
           <div class="reel-author-meta">
             <div class="reel-author-name">${escapeHtml(author.name)}</div>
