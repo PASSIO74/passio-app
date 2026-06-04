@@ -19403,8 +19403,13 @@ function likeComment(postId, commentId, event) {
   if (!post) { _diag("❌ Post not found"); return false; }
   var comment = (post.comments || []).find(c => c.id === commentId);
   if (!comment) { _diag("❌ Comment not found"); return false; }
-  comment.likes = (comment.likes || 0) + 1;
+  // Initialiser les propriétés manquantes
+  if (!comment.likes) comment.likes = 0;
   if (!comment.likedBy) comment.likedBy = [];
+  if (!comment.replies) comment.replies = [];
+  if (!comment.emojis) comment.emojis = [];
+
+  comment.likes = (comment.likes || 0) + 1;
   comment.likedBy.push(state.user?.id || "me");
   _diag("✅ Like added");
   if (typeof saveConversations === 'function') saveConversations();
