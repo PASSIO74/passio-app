@@ -17307,6 +17307,12 @@ function initApp() {
   document.body.classList.add("screen-feed-active");
   try { if (typeof supaInit === "function") supaInit(); } catch(e) {}
   launchTourSafe();
+
+  // Activer le panel de diagnostic automatiquement
+  setTimeout(function() {
+    toggleDiagPanel();
+    _diag("🚀 APP DÉMARRÉE - Panel de diagnostic actif");
+  }, 500);
 }
 
 // navigateTo — alias de goTo pour la compatibilité (utilisé dans les cartes IA)
