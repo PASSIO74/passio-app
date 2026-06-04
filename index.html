@@ -19438,26 +19438,46 @@ function replyToComment(postId, commentId, authorName, event) {
     var comment = (post.comments || []).find(c => c.id === commentId);
     if (!comment) { _diag("❌ Comment not found"); return; }
     if (!comment.replies) comment.replies = [];
-    comment.replies.push({ id: "reply_" + Date.now(), authorId: state.user?.id || "me", text: replyText, createdAt: Date.now() });
+
+    var newReply = { id: "reply_" + Date.now(), authorId: state.user?.id || "me", text: replyText, createdAt: Date.now() };
+    comment.replies.push(newReply);
     _diag("✅ Reply added");
     if (typeof saveConversations === 'function') saveConversations();
     inputDiv.remove();
 
-    // Créer ou mettre à jour le bouton réponse si c'est la première réponse
+    // Créer ou mettre à jour le div replies
+    var repliesDiv = document.getElementById("replies-" + commentId);
+    if (!repliesDiv) {
+      // Créer le div replies s'il n'existe pas
+      repliesDiv = document.createElement("div");
+      repliesDiv.className = "comment-replies";
+      repliesDiv.id = "replies-" + commentId;
+      repliesDiv.style.cssText = "display:none;";
+      var commentBody = document.querySelector('[data-commentid="' + commentId + '"] .comment-body');
+      if (commentBody) commentBody.appendChild(repliesDiv);
+    }
+
+    // Ajouter la nouvelle réponse au div
+    var currentUser = state.seed.users.find(u => u.id === (state.user?.id || "me")) || { name: "Toi" };
+    var replyEl = document.createElement("div");
+    replyEl.className = "comment-reply";
+    replyEl.innerHTML = '<span class="comment-reply-author">' + escapeHtml(currentUser.name) + '</span>: ' + escapeHtml(replyText) + '<div style="font-size:10px;color:var(--muted);margin-top:2px;">À l\'instant</div>';
+    repliesDiv.appendChild(replyEl);
+
+    // Créer ou mettre à jour le bouton réponse
     var replyCountBtn = document.querySelector('[data-commentid="' + commentId + '"] .comment-reply-count');
-    if (!replyCountBtn && comment.replies.length === 1) {
+    if (!replyCountBtn) {
       // Créer le bouton s'il n'existe pas
       replyCountBtn = document.createElement("span");
       replyCountBtn.className = "comment-reply-count";
       replyCountBtn.style.cssText = "cursor:pointer;font-size:12px;color:var(--accent);margin-left:8px;";
-      replyCountBtn.textContent = "1 réponse";
       replyCountBtn.onclick = function(e) { e.stopPropagation(); toggleCommentReplies(commentId, e); };
       var commentActions = document.querySelector('[data-commentid="' + commentId + '"] .comment-actions');
       if (commentActions) commentActions.appendChild(replyCountBtn);
-    } else if (replyCountBtn) {
-      // Mettre à jour le nombre de réponses
-      replyCountBtn.textContent = comment.replies.length + " réponse" + (comment.replies.length > 1 ? "s" : "");
     }
+    // Mettre à jour le nombre de réponses
+    replyCountBtn.textContent = comment.replies.length + " réponse" + (comment.replies.length > 1 ? "s" : "");
+    _diag("✅ Reply button updated");
   };
   inputField.onkeypress = function(e) { if (e.key === 'Enter') sendBtn.click(); };
   inputDiv.appendChild(inputField);
