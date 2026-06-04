@@ -19805,6 +19805,81 @@ function toggleCommentEmojis(commentId, event) {
   return false;
 }
 
+function showGifPickerForComment(postId, commentId, event) {
+  if (event) { event.stopPropagation(); event.preventDefault(); }
+  console.log("🎬 showGifPickerForComment:", postId, commentId);
+
+  // Fermer les anciens panels
+  var oldPanel = document.getElementById("gif-panel-" + commentId);
+  if (oldPanel) oldPanel.remove();
+
+  var gifs = [
+    "https://media.giphy.com/media/xT9IgEx8SbQ0teblZ6/giphy.gif",
+    "https://media.giphy.com/media/g9GUjSwvjeUPm/giphy.gif",
+    "https://media.giphy.com/media/FiGiRei2ICzzrwYPAd/giphy.gif",
+    "https://media.giphy.com/media/d3Z6hZ6h6h6h6h6h6/giphy.gif",
+    "https://media.giphy.com/media/xT9IgHCTt7bfq13KfC/giphy.gif",
+    "https://media.giphy.com/media/11sBLVxNwBrBFQ/giphy.gif",
+    "https://media.giphy.com/media/l0HlR7RPMhYpEKsXm/giphy.gif",
+    "https://media.giphy.com/media/3o6Zt6KHxJTbXCnSvu/giphy.gif",
+    "https://media.giphy.com/media/l3q2K5jinAlChoCLS/giphy.gif",
+    "https://media.giphy.com/media/8fen5LSZcHQ5O/giphy.gif",
+    "https://media.giphy.com/media/lD76UznFEUings5nItA/giphy.gif",
+    "https://media.giphy.com/media/l3q2wJsApX7YjPWHm/giphy.gif"
+  ];
+
+  var panel = document.createElement("div");
+  panel.id = "gif-panel-" + commentId;
+  panel.style.cssText = "position:fixed;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:8px;display:grid;grid-template-columns:repeat(3,80px);gap:6px;z-index:10000;box-shadow:0 4px 16px rgba(0,0,0,0.2);";
+
+  gifs.forEach(function(gifUrl) {
+    var gifBtn = document.createElement("div");
+    gifBtn.style.cssText = "width:80px;height:80px;background:var(--bg-soft);border-radius:6px;overflow:hidden;cursor:pointer;border:1px solid var(--border);transition:all 0.2s;";
+    var img = document.createElement("img");
+    img.src = gifUrl;
+    img.style.cssText = "width:100%;height:100%;object-fit:cover;";
+    gifBtn.appendChild(img);
+
+    gifBtn.onmouseover = function() { this.style.border = "2px solid var(--accent)";this.style.transform = "scale(1.05)"; };
+    gifBtn.onmouseout = function() { this.style.border = "1px solid var(--border)";this.style.transform = "scale(1)"; };
+
+    gifBtn.onclick = function(evt) {
+      evt.stopPropagation();
+      evt.preventDefault();
+      console.log("✅ GIF clicked");
+      addGifToComment(postId, commentId, gifUrl);
+      panel.remove();
+    };
+
+    panel.appendChild(gifBtn);
+  });
+
+  // Positionner le panel à côté du bouton GIF
+  var gifBtn = event?.target;
+  if (gifBtn && gifBtn.classList && gifBtn.classList.contains("comment-action")) {
+    var rect = gifBtn.getBoundingClientRect();
+    panel.style.left = (rect.left + 30) + "px";
+    panel.style.top = (rect.top - 10) + "px";
+    console.log("✅ Panel positioned at", panel.style.left, panel.style.top);
+  }
+
+  document.body.appendChild(panel);
+  console.log("✅ GIF picker shown");
+
+  // Fermer quand on clique ailleurs
+  setTimeout(function() {
+    var closeListener = function(e) {
+      if (!panel.contains(e.target)) {
+        panel.remove();
+        document.removeEventListener("click", closeListener);
+      }
+    };
+    document.addEventListener("click", closeListener);
+  }, 50);
+
+  return false;
+}
+
 function showEmojiPickerForComment(postId, commentId, event) {
   if (event) { event.stopPropagation(); event.preventDefault(); }
   console.log("😊 showEmojiPickerForComment:", postId, commentId);
