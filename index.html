@@ -9303,7 +9303,12 @@ var selectedMoods = new Set(["creation"]); // Par défaut "Création"
 // Vérifier que selectedMoods existe
 console.log("✅ selectedMoods initialisé:", Array.from(selectedMoods));
 
-function toggleMood(mood, btn) {
+function toggleMood(mood, btn, evt) {
+  if (evt) {
+    evt.stopPropagation();
+    evt.preventDefault();
+  }
+
   console.log("🔴 toggleMood APPELÉ avec mood:", mood);
   console.log("🎨 AVANT toggleMood:", Array.from(selectedMoods), "mood cliqué:", mood);
 
