@@ -19435,7 +19435,7 @@ function replyToComment(postId, commentId, authorName, event) {
   existingInputs.forEach(function(input) { input.remove(); });
   var inputDiv = document.createElement("div");
   inputDiv.className = "comment-reply-input";
-  inputDiv.style.cssText = "margin-top:8px;display:flex;gap:6px;padding:8px 0;border-top:1px solid rgba(124,58,237,0.1);";
+  inputDiv.style.cssText = "margin-top:12px;display:flex;gap:6px;padding:10px;background:var(--bg-soft);border-radius:8px;border:2px solid var(--accent);animation:fadeIn 0.3s ease;";
   var inputField = document.createElement("input");
   inputField.type = "text";
   inputField.placeholder = "Répondre à " + authorName + "…";
