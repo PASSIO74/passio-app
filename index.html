@@ -19482,11 +19482,14 @@ function replyToComment(postId, commentId, authorName) {
 
     if (typeof saveConversations === 'function') saveConversations();
 
-    // Re-render correctement selon le contexte
+    // Vérifier le vrai contexte avec le CSS calculé
     var detailPage = document.getElementById("postDetailPage");
-    var isDetailPageVisible = detailPage && detailPage.style.display !== "none";
-    _diag("📍 Context: " + (isDetailPageVisible ? "POST DETAIL" : "FEED"));
+    var computedStyle = detailPage ? window.getComputedStyle(detailPage) : null;
+    var isDetailPageVisible = detailPage && computedStyle && computedStyle.display !== "none";
+
     _diag("🔍 postDetailPage.style.display=" + (detailPage ? detailPage.style.display : "N/A"));
+    _diag("🔍 postDetailPage computed display=" + (computedStyle ? computedStyle.display : "N/A"));
+    _diag("📍 Context: " + (isDetailPageVisible ? "POST DETAIL" : "FEED"));
 
     if (isDetailPageVisible) {
       // On est dans la page détail, re-render le post
@@ -19496,12 +19499,6 @@ function replyToComment(postId, commentId, authorName) {
       // On est dans le feed, re-render le feed
       _diag("📰 Re-render FEED");
       if (typeof renderFeed === 'function') renderFeed();
-
-      // Vérifier après le re-render
-      setTimeout(function() {
-        var dp = document.getElementById("postDetailPage");
-        _diag("🔍 APRÈS renderFeed: postDetailPage.style.display=" + (dp ? dp.style.display : "N/A"));
-      }, 100);
     }
   };
 
