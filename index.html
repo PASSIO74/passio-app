@@ -19536,7 +19536,9 @@ function addEmojiToComment(postId, commentId, emoji) {
 
 // Voir le profil complet d'une autre personne (redirection)
 function viewUserProfile(authorId, source) {
+  var msg = "👤 authorId=" + authorId + ", source=" + source;
   console.log("🔷 viewUserProfile called:", {authorId, source});
+  toast(msg);
 
   if (source === "me" || authorId === "me" || (typeof MY_UID !== "undefined" && MY_UID && authorId === MY_UID)) {
     console.log("🔷 Viewing own profile");
@@ -19557,17 +19559,21 @@ function viewUserProfile(authorId, source) {
     console.log("🔷 Looking in state.user.profiles, found:", user);
   } else {
     // Chercher dans les utilisateurs seed
+    console.log("🔷 Available seed users:", (state.seed.users || []).map(function(u) { return u.id; }));
     user = (state.seed.users || []).find(function(u) { return u.id === authorId; });
-    console.log("🔷 Looking in state.seed.users, found:", user);
+    console.log("🔷 Looking in state.seed.users for ID " + authorId + ", found:", user);
   }
 
   if (!user) {
-    console.log("🔷 User not found! state.seed.users count:", (state.seed.users || []).length);
-    toast("Profil non trouvé");
+    var msg2 = "❌ User " + authorId + " not found! Available: " + ((state.seed.users || []).length) + " users";
+    console.log("🔷 " + msg2);
+    console.log("🔷 state.seed.users:", state.seed.users);
+    toast(msg2);
     return;
   }
 
-  console.log("🔷 User found, rendering profile...");
+  console.log("🔷 User found:", user.name);
+  toast("✅ Affichage profil de " + user.name);
   // Afficher la page profil
   renderUserProfilePage(authorId, user, source);
   goTo("profile-view");
