@@ -19557,6 +19557,13 @@ function openUserProfile(userId) {
 
   _diag("✅ User found: " + user.name);
 
+  // Vérifier que openModal existe
+  if (typeof openModal !== 'function') {
+    _diag("❌ openModal not found!");
+    alert("Erreur: fonction openModal non trouvée");
+    return;
+  }
+
   // Créer un modal avec les infos du profil
   var passion = passionById(user.passion) || { label: "Passion", emoji: "✨" };
   var html = `
@@ -19573,8 +19580,17 @@ function openUserProfile(userId) {
     </div>
   `;
 
+  console.log("🔧 Calling openModal with html length:", html.length);
+  _diag("🔧 Calling openModal...");
   openModal(html);
-  _diag("✅ Profile modal opened");
+
+  // Vérifier que le modal s'est affiché
+  var backdrop = document.getElementById("modalBackdrop");
+  if (backdrop && backdrop.classList.contains("active")) {
+    _diag("✅ Profile modal opened successfully!");
+  } else {
+    _diag("❌ Modal backdrop not active!");
+  }
 }
 
 // INITIALISATION BOUTON DIAGNOSTIC 🔧
