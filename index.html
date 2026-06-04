@@ -19598,7 +19598,9 @@ function viewUserProfile(authorId, source) {
   updateBadge("📖 Affichage profil...");
   // Afficher la page profil
   renderUserProfilePage(authorId, user, source);
+  updateBadge("🔄 Changement écran...");
   goTo("profile-view");
+  updateBadge("✅ PROFIL OUVERT!");
 }
 
 // Rendre la page du profil d'une autre personne
