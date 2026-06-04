@@ -7560,13 +7560,28 @@ function toggleDiagPanel() {
   window._DEBUG_MODE = !window._DEBUG_MODE;
   var panel = document.getElementById("__diag_panel");
   var btn = document.getElementById("__diag_btn");
+
   if(window._DEBUG_MODE) {
+    // Créer le panel s'il n'existe pas
     if(!panel) {
       panel = document.createElement("div");
       panel.id = "__diag_panel";
-      panel.style.cssText = "position:fixed;bottom:20px;right:20px;width:300px;max-height:250px;background:#1a1a1a;border:2px solid #ff9800;border-radius:8px;z-index:99998;color:#fff;font-family:monospace;box-shadow:0 0 20px rgba(0,0,0,0.5);";
+      panel.style.cssText = "position:fixed;bottom:20px;right:20px;width:320px;max-height:300px;background:#1a1a1a;border:2px solid #ff9800;border-radius:8px;z-index:99998;color:#fff;font-family:monospace;font-size:12px;box-shadow:0 0 20px rgba(0,0,0,0.5);";
       document.body.appendChild(panel);
     }
+
+    // Créer le bouton toggle s'il n'existe pas
+    if(!btn) {
+      btn = document.createElement("button");
+      btn.id = "__diag_btn";
+      btn.textContent = "🔧";
+      btn.style.cssText = "position:fixed;bottom:20px;right:340px;width:40px;height:40px;border-radius:50%;background:#ff9800;border:none;color:#fff;font-size:20px;cursor:pointer;z-index:99999;box-shadow:0 0 10px rgba(0,0,0,0.3);transition:all 0.2s;";
+      btn.onclick = toggleDiagPanel;
+      btn.onmouseover = function() { this.style.transform = "scale(1.1)"; };
+      btn.onmouseout = function() { this.style.transform = "scale(1)"; };
+      document.body.appendChild(btn);
+    }
+
     panel.style.display = "block";
     _updateDiagPanel();
     if(btn) btn.style.background = "#ff9800";
