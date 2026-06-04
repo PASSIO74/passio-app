@@ -9840,7 +9840,7 @@ async function openPost(id) {
   }).join("");
 
   content.innerHTML = `
-    <div class="post" style="cursor:default;">
+    <div class="post" data-postid="${id}" style="cursor:default;">
       <div class="post-header">
         <div class="avatar" style="background:${author.avatar};cursor:pointer;" onclick="openUserProfile('${post.authorId}','${post._source || "seed"}')">${author.profileEmoji || (author.name||"?")[0]}</div>
         <div class="post-author" style="cursor:pointer;" onclick="openUserProfile('${post.authorId}','${post._source || "seed"}')">
