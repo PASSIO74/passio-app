@@ -9322,7 +9322,35 @@ function toggleMood(mood) {
   // Re-render le feed UNE SEULE FOIS
   renderFeed();
 
+  // RE-ATTACHER les listeners après renderFeed (avec délai court)
+  setTimeout(function() {
+    console.log("🔄 Réattachement listeners après renderFeed");
+    reattachMoodListeners();
+    updateMoodButtonsUI();
+  }, 30);
+
   console.log("✅ toggleMood terminé");
+}
+
+function reattachMoodListeners() {
+  var buttons = document.querySelectorAll("#moodSelector .mood-btn");
+  console.log("  🔧 Réattachement pour", buttons.length, "boutons");
+
+  buttons.forEach(function(btn) {
+    var moodValue = btn.getAttribute("data-mood");
+
+    // Enlever les anciens listeners (en créant un nouveau nœud)
+    var newBtn = btn.cloneNode(true);
+    btn.parentNode.replaceChild(newBtn, btn);
+
+    // Attacher le nouveau listener
+    newBtn.addEventListener("click", function(e) {
+      e.stopPropagation();
+      e.preventDefault();
+      console.log("  📌 CLIC:", moodValue);
+      toggleMood(moodValue);
+    });
+  });
 }
 
 function updateMoodButtonsUI() {
