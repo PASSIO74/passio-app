@@ -19514,14 +19514,17 @@ function replyToComment(postId, commentId, authorName) {
 
 // Afficher/Masquer les replies d'un commentaire
 function toggleCommentReplies(commentId) {
+  _diag("📂 toggleCommentReplies appelé pour commentId=" + commentId);
+
   var repliesDiv = document.getElementById("replies-" + commentId);
   if (!repliesDiv) {
-    console.warn("Replies div not found for comment:", commentId);
+    _diag("❌ Replies div not found pour: " + commentId);
     return;
   }
 
   var isHidden = repliesDiv.style.display === "none" || !repliesDiv.style.display;
   repliesDiv.style.display = isHidden ? "block" : "none";
+  _diag("📂 Réponses " + (isHidden ? "affichées" : "masquées"));
 
   // Animer l'apparition
   if (isHidden) {
