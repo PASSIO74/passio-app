@@ -9318,8 +9318,22 @@ function toggleMood(mood) {
   console.log("🎨 APRÈS toggleMood:", Array.from(selectedMoods));
 
   // Mettre à jour les classes active sur les boutons
+  updateMoodButtonsUI();
+
+  // Re-render le feed
+  renderFeed();
+
+  // RE-ATTACHER les event listeners après le re-render
+  setTimeout(function() {
+    console.log("🔄 Re-attaching mood listeners après renderFeed");
+    setupMoodButtons();
+    updateMoodButtonsUI();
+  }, 50);
+}
+
+function updateMoodButtonsUI() {
   var allBtns = document.querySelectorAll("#moodSelector .mood-btn");
-  console.log("  Boutons trouvés:", allBtns.length);
+  console.log("  📝 updateMoodButtonsUI - Boutons trouvés:", allBtns.length);
 
   allBtns.forEach(function(b) {
     var moodValue = b.getAttribute("data-mood");
@@ -9333,9 +9347,6 @@ function toggleMood(mood) {
 
     console.log("  Bouton [" + moodValue + "]:", shouldBeActive ? "✅ active" : "⬜ inactive");
   });
-
-  // Re-render le feed
-  renderFeed();
 }
 
 // Fonction pour attacher les event listeners aux boutons de mood
