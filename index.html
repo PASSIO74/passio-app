@@ -11258,7 +11258,7 @@ async function openComments(postId) {
         const box = document.getElementById("commentsBox");
         if (box) {
           box.innerHTML = merged.length
-            ? _renderCommentsList(merged)
+            ? _renderCommentsList(merged, postId)
             : '<div class="empty"><div class="empty-icon">💭</div><div class="empty-title">Sois le premier à réagir</div></div>';
         }
         // Mettre à jour le titre
