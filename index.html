@@ -19556,19 +19556,37 @@ function showEmojiPickerForComment(postId, commentId, event) {
 
 // Ajouter l'emoji au commentaire
 function addEmojiToComment(postId, commentId, emoji) {
+  _diag("🎁 addEmojiToComment: emoji=" + emoji);
+
   var post = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
-  if (!post) return;
+  if (!post) {
+    _diag("❌ Post non trouvé!");
+    return;
+  }
 
   var comment = (post.comments || []).find(c => c.id === commentId);
-  if (!comment) return;
+  if (!comment) {
+    _diag("❌ Commentaire non trouvé!");
+    return;
+  }
 
   if (!comment.emojis) comment.emojis = [];
   if (!comment.emojis.includes(emoji)) {
     comment.emojis.push(emoji);
+    _diag("✅ Emoji ajouté au commentaire");
   }
 
   if (typeof saveConversations === 'function') saveConversations();
-  if (typeof renderFeed === 'function') renderFeed();
+
+  // Re-render correctement selon le contexte
+  var detailPage = document.getElementById("postDetailPage");
+  if (detailPage && detailPage.style.display !== "none") {
+    _diag("📖 Re-render POST DETAIL");
+    openPost(postId);
+  } else {
+    _diag("📰 Re-render FEED");
+    if (typeof renderFeed === 'function') renderFeed();
+  }
 }
 
 // ============ FONCTION POUR CLICKER SUR LES PROFILS DANS LA BOBINE ============
