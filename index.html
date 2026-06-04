@@ -9300,7 +9300,11 @@ function allFeedPosts() {
 // ======== MOOD MULTI-SELECT ========
 var selectedMoods = new Set(["creation"]); // Par défaut "Création"
 
+// Vérifier que selectedMoods existe
+console.log("✅ selectedMoods initialisé:", Array.from(selectedMoods));
+
 function toggleMood(mood, btn) {
+  console.log("🔴 toggleMood APPELÉ avec mood:", mood);
   console.log("🎨 AVANT toggleMood:", Array.from(selectedMoods), "mood cliqué:", mood);
 
   // Toggle le mood actuel
