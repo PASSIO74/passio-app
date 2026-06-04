@@ -19507,6 +19507,17 @@ function replyToComment(postId, commentId, authorName) {
     if (e.key === "Enter") submitReply();
   };
 
+  // Vérifier la visibilité des boutons après 100ms
+  setTimeout(function() {
+    var actions = document.querySelector('[data-commentid="' + commentId + '"] .comment-actions');
+    if (actions) {
+      var style = window.getComputedStyle(actions);
+      _diag("🔍 .comment-actions display=" + style.display);
+      _diag("🔍 .comment-actions visibility=" + style.visibility);
+      _diag("🔍 .comment-actions opacity=" + style.opacity);
+    }
+  }, 100);
+
   inputDiv.appendChild(inputField);
   inputDiv.appendChild(sendBtn);
 
