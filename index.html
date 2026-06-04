@@ -9301,19 +9301,34 @@ function allFeedPosts() {
 var selectedMoods = new Set(["creation"]); // Par défaut "Création"
 
 function toggleMood(mood, btn) {
+  console.log("🎨 AVANT toggleMood:", Array.from(selectedMoods), "mood cliqué:", mood);
+
   // Toggle le mood actuel
   if (selectedMoods.has(mood)) {
     selectedMoods.delete(mood);
+    console.log("  ❌ Supprimé:", mood);
   } else {
     selectedMoods.add(mood);
+    console.log("  ✅ Ajouté:", mood);
   }
 
-  // Si plus aucun mood, afficher tous les posts (set vide = all)
-  // Sinon filtrer par les moods sélectionnés
+  console.log("🎨 APRÈS toggleMood:", Array.from(selectedMoods));
 
-  // Mettre à jour les classes active
-  document.querySelectorAll("#moodSelector .mood-btn").forEach(b => {
-    b.classList.toggle("active", selectedMoods.has(b.dataset.mood));
+  // Mettre à jour les classes active sur les boutons
+  var allBtns = document.querySelectorAll("#moodSelector .mood-btn");
+  console.log("  Boutons trouvés:", allBtns.length);
+
+  allBtns.forEach(function(b) {
+    var moodValue = b.getAttribute("data-mood");
+    var shouldBeActive = selectedMoods.has(moodValue);
+
+    if (shouldBeActive) {
+      b.classList.add("active");
+    } else {
+      b.classList.remove("active");
+    }
+
+    console.log("  Bouton [" + moodValue + "]:", shouldBeActive ? "✅ active" : "⬜ inactive");
   });
 
   // Re-render le feed
