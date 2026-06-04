@@ -19406,9 +19406,17 @@ function likeComment(postId, commentId) {
 
   if (typeof saveConversations === 'function') saveConversations();
 
-  // Re-render SEULEMENT le feed, pas de changement d'écran
-  _diag("📰 Re-render FEED");
-  if (typeof renderFeed === 'function') renderFeed();
+  // Vérifier si on est en mode détail avec la classe "active"
+  var detailScreen = document.getElementById("screen-postDetailPage");
+  var isInDetailMode = detailScreen && detailScreen.classList.contains("active");
+
+  if (isInDetailMode) {
+    _diag("📖 Re-render POST DETAIL");
+    openPost(postId);
+  } else {
+    _diag("📰 Re-render FEED");
+    if (typeof renderFeed === 'function') renderFeed();
+  }
 }
 
 // Répondre à un commentaire
