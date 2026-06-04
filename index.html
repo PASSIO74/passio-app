@@ -19899,12 +19899,66 @@ function addEmojiToComment(postId, commentId, emoji) {
   }
 
   // Mettre à jour l'affichage des replies
-  var repliesDiv = document.getElementById("replies-" + commentId);
-  if (repliesDiv) {
-    // Si les replies sont cachées, les montrer
-    if (repliesDiv.style.display === "none") {
+  var commentElement = document.querySelector('[data-commentid="' + commentId + '"]');
+  if (commentElement) {
+    var commentActions = commentElement.querySelector(".comment-actions");
+    var replyCountBtn = commentActions?.querySelector(".comment-reply-count");
+
+    // Créer ou mettre à jour le bouton "X réponses"
+    if (!replyCountBtn && comment.replies.length > 0) {
+      replyCountBtn = document.createElement("span");
+      replyCountBtn.className = "comment-reply-count";
+      replyCountBtn.style.cssText = "cursor:pointer;font-size:12px;color:var(--accent);margin-left:8px;";
+      replyCountBtn.onclick = function(e) { e.stopPropagation(); toggleCommentReplies(commentId, e); };
+      commentActions?.appendChild(replyCountBtn);
+      console.log("✅ Reply count button created");
+    }
+
+    // Mettre à jour le texte du bouton
+    if (replyCountBtn && comment.replies.length > 0) {
+      replyCountBtn.textContent = comment.replies.length + " réponse" + (comment.replies.length > 1 ? "s" : "");
+      console.log("✅ Reply count updated:", replyCountBtn.textContent);
+    }
+
+    // Recréer le div des replies avec les nouvelles réponses
+    var repliesDiv = commentElement.querySelector(".comment-replies");
+    if (repliesDiv) {
+      repliesDiv.remove();
+    }
+
+    if (comment.replies.length > 0) {
+      var newRepliesDiv = document.createElement("div");
+      newRepliesDiv.className = "comment-replies";
+      newRepliesDiv.id = "replies-" + commentId;
+      newRepliesDiv.style.cssText = "display:none;";
+
+      var repliesHTML = comment.replies.map(r => {
+        const ru = userById(r.authorId) || { name: "?", profileEmoji: "👤", avatar: "#64748b" };
+        const rSrc = r.authorId === "me" ? "me" : "seed";
+
+        if (r.type === "emoji_reaction") {
+          return `<div class="comment-reply" style="display:flex;align-items:center;gap:6px;padding:8px 0;">
+            <span style="font-size:11px;color:var(--text);font-weight:600;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span>
+            <span style="font-size:18px;letter-spacing:2px;">${r.text}</span>
+          </div>`;
+        }
+
+        return `<div class="comment-reply">
+          <span class="comment-reply-author" style="cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span>: ${escapeHtml(r.text)}
+          <div style="font-size:10px;color:var(--muted);margin-top:2px;">${fmtTime(r.createdAt)}</div>
+        </div>`;
+      }).join("");
+
+      newRepliesDiv.innerHTML = repliesHTML;
+      commentElement.querySelector(".comment-body")?.appendChild(newRepliesDiv);
+      console.log("✅ Replies div created with", comment.replies.length, "items");
+    }
+
+    // Montrer les replies automatiquement
+    var repliesDiv = commentElement.querySelector(".comment-replies");
+    if (repliesDiv && repliesDiv.style.display === "none") {
       repliesDiv.style.display = "block";
-      console.log("✅ Replies shown");
+      console.log("✅ Replies displayed");
     }
   }
 
