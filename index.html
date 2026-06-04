@@ -9813,9 +9813,16 @@ async function openPost(id) {
 
           // Si c'est une réaction emoji, afficher différemment
           if (r.type === "emoji_reaction") {
-            return `<div class="comment-reply" style="display:flex;align-items:center;gap:6px;padding:8px 0;">
-              <span style="font-size:11px;color:var(--text);font-weight:600;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span>
-              <span style="font-size:18px;letter-spacing:2px;">${r.text}</span>
+            return `<div class="comment-reply" style="padding:8px 0;">
+              <span style="font-size:11px;color:var(--text);font-weight:600;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span><span style="font-size:11px;color:var(--text);font-weight:600;">:</span> <span style="font-size:18px;letter-spacing:2px;">${r.text}</span>
+            </div>`;
+          }
+
+          // Si c'est une réaction GIF
+          if (r.type === "gif_reaction") {
+            return `<div class="comment-reply" style="padding:8px 0;">
+              <span style="font-size:11px;color:var(--text);font-weight:600;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span><span style="font-size:11px;color:var(--text);font-weight:600;">:</span>
+              <img src="${r.text}" style="width:120px;height:120px;border-radius:8px;margin-top:6px;object-fit:cover;" alt="GIF" />
             </div>`;
           }
 
