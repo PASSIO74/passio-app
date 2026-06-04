@@ -19546,12 +19546,14 @@ function viewUserProfile(authorId, source) {
   state._viewingUserSource = source;
 
   // Charger les données du profil
-  var user = userById(authorId);
-  if (!user) {
-    var post = (state.seed.posts || []).find(function(p) { return p.authorId === authorId; });
-    if (post) {
-      user = { id: authorId, name: post.authorName || "Passionné", profileEmoji: post.authorEmoji || "✨", avatar: post.authorColor || "#8b5cf6", passion: post.passion, bio: post.authorBio || "" };
-    }
+  var user = null;
+
+  if (source === "me") {
+    // Chercher dans les profils utilisateur
+    user = (state.user.profiles || []).find(function(p) { return p.id === authorId; });
+  } else {
+    // Chercher dans les utilisateurs seed
+    user = (state.seed.users || []).find(function(u) { return u.id === authorId; });
   }
 
   if (!user) {
@@ -19560,7 +19562,7 @@ function viewUserProfile(authorId, source) {
   }
 
   // Afficher la page profil
-  renderUserProfilePage(authorId, user);
+  renderUserProfilePage(authorId, user, source);
   goTo("profile-view");
 }
 
