@@ -9604,12 +9604,12 @@ async function openPost(id) {
         <div class="comment-text">${escapeHtml(c.text || c.content || "")}</div>
         <div class="comment-meta">${fmtTime(c.createdAt)}</div>
         <div class="comment-actions">
-          <span class="comment-action ${cLiked ? "liked" : ""}" onclick="likeComment('${id}','${c.id}'); return false;">
+          <span class="comment-action ${cLiked ? "liked" : ""}" onclick="return likeComment('${id}','${c.id}', event);">
             ${cLiked ? "❤️" : "🤍"} ${cLikes}
           </span>
-          <span class="comment-action" onclick="replyToComment('${id}','${c.id}','${escapeHtml(cName)}'); return false;" title="Répondre">💬</span>
-          <span class="comment-action" onclick="showEmojiPickerForComment('${id}','${c.id}',event); return false;" title="Réagir">😊</span>
-          ${cReplies.length > 0 ? `<span class="comment-reply-count" onclick="toggleCommentReplies('${c.id}'); return false;">${cReplies.length} réponse${cReplies.length > 1 ? "s" : ""}</span>` : ""}
+          <span class="comment-action" onclick="return replyToComment('${id}','${c.id}','${escapeHtml(cName)}', event);" title="Répondre">💬</span>
+          <span class="comment-action" onclick="return showEmojiPickerForComment('${id}','${c.id}', event);" title="Réagir">😊</span>
+          ${cReplies.length > 0 ? `<span class="comment-reply-count" onclick="return toggleCommentReplies('${c.id}', event);">${cReplies.length} réponse${cReplies.length > 1 ? "s" : ""}</span>` : ""}
         </div>
         ${cReplies.length > 0 ? `<div class="comment-replies" id="replies-${c.id}" style="display:none;">${cReplies.map(r => {
           const ru = userById(r.authorId) || { name: "?", profileEmoji: "👤", avatar: "#64748b" };
