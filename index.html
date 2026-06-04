@@ -19399,9 +19399,16 @@ function likeComment(postId, commentId) {
 
   if (typeof saveConversations === 'function') saveConversations();
 
-  // Re-render correctement selon le contexte
+  // Vérifier l'état réel du postDetailPage
   var detailPage = document.getElementById("postDetailPage");
-  if (detailPage && detailPage.style.display !== "none") {
+  var computedStyle = detailPage ? window.getComputedStyle(detailPage) : null;
+  var isVisible = detailPage && detailPage.style.display !== "none" && computedStyle && computedStyle.display !== "none";
+
+  _diag("🔍 postDetailPage.style.display=" + (detailPage ? detailPage.style.display : "N/A"));
+  _diag("🔍 computed display=" + (computedStyle ? computedStyle.display : "N/A"));
+
+  // Re-render correctement selon le contexte
+  if (isVisible) {
     _diag("📖 Re-render POST DETAIL");
     openPost(postId);
   } else {
