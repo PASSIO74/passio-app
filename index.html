@@ -20161,6 +20161,204 @@ function addGifToComment(postId, commentId, gifUrl) {
   return false;
 }
 
+function showEmojiPickerForPost(postId, event) {
+  if (event) { event.stopPropagation(); event.preventDefault(); }
+  console.log("😊 showEmojiPickerForPost:", postId);
+
+  var oldPanel = document.getElementById("emoji-panel-post-" + postId);
+  if (oldPanel) oldPanel.remove();
+
+  var emojis = ["❤️", "🔥", "😂", "🎉", "👍", "💯", "😍", "🤔"];
+  var panel = document.createElement("div");
+  panel.id = "emoji-panel-post-" + postId;
+  panel.style.cssText = "position:fixed;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:8px;display:flex;gap:4px;flex-wrap:wrap;z-index:10000;box-shadow:0 4px 16px rgba(0,0,0,0.2);max-width:280px;";
+
+  emojis.forEach(function(e) {
+    var btn = document.createElement("span");
+    btn.textContent = e;
+    btn.style.cssText = "cursor:pointer;font-size:20px;padding:6px 6px;border-radius:6px;transition:all 0.2s;display:flex;align-items:center;justify-content:center;";
+    btn.onmouseover = function() { this.style.background = "rgba(124,58,237,0.2);transform:scale(1.15);"; };
+    btn.onmouseout = function() { this.style.background = "transparent;transform:scale(1);"; };
+    btn.onclick = function(evt) {
+      evt.stopPropagation();
+      evt.preventDefault();
+      console.log("✅ Emoji clicked for post:", e);
+      addEmojiToPost(postId, e);
+      panel.remove();
+    };
+    panel.appendChild(btn);
+  });
+
+  var emojiBtn = event?.target;
+  if (emojiBtn && emojiBtn.classList && emojiBtn.classList.contains("post-action")) {
+    var rect = emojiBtn.getBoundingClientRect();
+    panel.style.left = (rect.left + 30) + "px";
+    panel.style.top = (rect.top - 10) + "px";
+  }
+
+  document.body.appendChild(panel);
+
+  setTimeout(function() {
+    var closeListener = function(e) {
+      if (!panel.contains(e.target)) {
+        panel.remove();
+        document.removeEventListener("click", closeListener);
+      }
+    };
+    document.addEventListener("click", closeListener);
+  }, 50);
+
+  return false;
+}
+
+function addEmojiToPost(postId, emoji) {
+  console.log("✨ addEmojiToPost:", postId, emoji);
+  var post = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
+  if (!post) return false;
+
+  if (!post.reactions) post.reactions = [];
+
+  var currentUserEmojis = post.reactions.find(r => r.type === "emoji_reaction" && r.authorId === (state.user?.id || "me"));
+
+  if (currentUserEmojis) {
+    if (!currentUserEmojis.text.includes(emoji)) {
+      currentUserEmojis.text += " " + emoji;
+    }
+  } else {
+    post.reactions.push({
+      id: "emoji_" + postId + "_" + Math.random().toString(36).substr(2, 9),
+      authorId: state.user?.id || "me",
+      text: emoji,
+      type: "emoji_reaction",
+      createdAt: Date.now()
+    });
+  }
+
+  updatePostReactionsUI(postId);
+  return false;
+}
+
+function showGifPickerForPost(postId, event) {
+  if (event) { event.stopPropagation(); event.preventDefault(); }
+  console.log("🎬 showGifPickerForPost:", postId);
+
+  var oldPanel = document.getElementById("gif-panel-post-" + postId);
+  if (oldPanel) oldPanel.remove();
+
+  var gifs = [
+    "https://media.giphy.com/media/xT9IgEx8SbQ0teblZ6/giphy.gif",
+    "https://media.giphy.com/media/g9GUjSwvjeUPm/giphy.gif",
+    "https://media.giphy.com/media/FiGiRei2ICzzrwYPAd/giphy.gif",
+    "https://media.giphy.com/media/d3Z6hZ6h6h6h6h6h6/giphy.gif",
+    "https://media.giphy.com/media/xT9IgHCTt7bfq13KfC/giphy.gif",
+    "https://media.giphy.com/media/11sBLVxNwBrBFQ/giphy.gif",
+    "https://media.giphy.com/media/l0HlR7RPMhYpEKsXm/giphy.gif",
+    "https://media.giphy.com/media/3o6Zt6KHxJTbXCnSvu/giphy.gif",
+    "https://media.giphy.com/media/l3q2K5jinAlChoCLS/giphy.gif",
+    "https://media.giphy.com/media/8fen5LSZcHQ5O/giphy.gif",
+    "https://media.giphy.com/media/lD76UznFEUings5nItA/giphy.gif",
+    "https://media.giphy.com/media/l3q2wJsApX7YjPWHm/giphy.gif"
+  ];
+
+  var panel = document.createElement("div");
+  panel.id = "gif-panel-post-" + postId;
+  panel.style.cssText = "position:fixed;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:10px;display:grid;grid-template-columns:repeat(4,90px);gap:8px;z-index:10000;box-shadow:0 4px 16px rgba(0,0,0,0.2);max-height:400px;overflow-y:auto;";
+
+  gifs.forEach(function(gifUrl) {
+    var gifBtn = document.createElement("div");
+    gifBtn.style.cssText = "width:90px;height:90px;background:var(--bg-soft);border-radius:6px;overflow:hidden;cursor:pointer;border:1px solid var(--border);transition:all 0.2s;flex-shrink:0;";
+    var img = document.createElement("img");
+    img.src = gifUrl;
+    img.style.cssText = "width:100%;height:100%;object-fit:cover;";
+    gifBtn.appendChild(img);
+
+    gifBtn.onmouseover = function() { this.style.border = "2px solid var(--accent)";this.style.transform = "scale(1.05)"; };
+    gifBtn.onmouseout = function() { this.style.border = "1px solid var(--border)";this.style.transform = "scale(1)"; };
+
+    gifBtn.onclick = function(evt) {
+      evt.stopPropagation();
+      evt.preventDefault();
+      addGifToPost(postId, gifUrl);
+      panel.remove();
+    };
+
+    panel.appendChild(gifBtn);
+  });
+
+  var gifBtn = event?.target;
+  if (gifBtn && gifBtn.classList && gifBtn.classList.contains("post-action")) {
+    var rect = gifBtn.getBoundingClientRect();
+    panel.style.left = (rect.left + 30) + "px";
+    panel.style.top = (rect.top - 10) + "px";
+  }
+
+  document.body.appendChild(panel);
+
+  setTimeout(function() {
+    var closeListener = function(e) {
+      if (!panel.contains(e.target)) {
+        panel.remove();
+        document.removeEventListener("click", closeListener);
+      }
+    };
+    document.addEventListener("click", closeListener);
+  }, 50);
+
+  return false;
+}
+
+function addGifToPost(postId, gifUrl) {
+  console.log("🎬 addGifToPost:", postId);
+  var post = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
+  if (!post) return false;
+
+  if (!post.reactions) post.reactions = [];
+
+  post.reactions.push({
+    id: "gif_" + postId + "_" + Math.random().toString(36).substr(2, 9),
+    authorId: state.user?.id || "me",
+    text: gifUrl,
+    type: "gif_reaction",
+    createdAt: Date.now()
+  });
+
+  updatePostReactionsUI(postId);
+  return false;
+}
+
+function updatePostReactionsUI(postId) {
+  var post = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
+  if (!post || !post.reactions) return;
+
+  var postElement = document.querySelector('[data-postid="' + postId + '"]');
+  if (!postElement) return;
+
+  var reactionsDiv = postElement.querySelector(".post-reactions");
+  if (reactionsDiv) reactionsDiv.remove();
+
+  if (post.reactions.length > 0) {
+    var newReactionsDiv = document.createElement("div");
+    newReactionsDiv.className = "post-reactions";
+    newReactionsDiv.style.cssText = "margin-top:12px;padding-top:8px;border-top:1px solid var(--border);";
+
+    var reactionsHTML = post.reactions.map(r => {
+      const ru = userById(r.authorId) || { name: "?", profileEmoji: "👤", avatar: "#64748b" };
+      const rSrc = r.authorId === "me" ? "me" : "seed";
+
+      if (r.type === "emoji_reaction") {
+        return `<div style="padding:8px 0;"><span style="font-size:11px;font-weight:600;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span><span style="font-size:11px;font-weight:600;">:</span> <span style="font-size:18px;letter-spacing:2px;">${r.text}</span></div>`;
+      }
+
+      if (r.type === "gif_reaction") {
+        return `<div style="padding:8px 0;"><span style="font-size:11px;font-weight:600;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span><span style="font-size:11px;font-weight:600;">:</span><br/><img src="${r.text}" style="width:120px;height:120px;border-radius:8px;margin-top:6px;object-fit:cover;" alt="GIF" /></div>`;
+      }
+    }).join("");
+
+    newReactionsDiv.innerHTML = reactionsHTML;
+    postElement.appendChild(newReactionsDiv);
+  }
+}
+
 function addEmojiToComment(postId, commentId, emoji) {
   console.log("✨ addEmojiToComment:", postId, commentId, emoji);
   var post = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
