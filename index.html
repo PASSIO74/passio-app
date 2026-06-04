@@ -19542,9 +19542,19 @@ function toggleCommentReplies(commentId) {
   }
 
   var repliesDiv = document.getElementById("replies-" + commentId);
+  _diag("🔍 Cherche: #replies-" + commentId);
+  _diag("🔍 Trouvé? " + (repliesDiv ? "OUI" : "NON"));
+
   if (!repliesDiv) {
-    _diag("❌ Replies div NOT FOUND! ID cherché: replies-" + commentId);
-    _diag("🔍 Divs disponibles: " + document.querySelectorAll("[id^='replies-']").length);
+    _diag("❌ Replies div NOT FOUND!");
+    _diag("🔍 Divs avec id^='replies-': " + document.querySelectorAll("[id^='replies-']").length);
+
+    // Cherche tous les éléments de réponses
+    var allReplies = document.querySelectorAll("[id*='replies']");
+    _diag("🔍 Éléments avec 'replies' dans l'ID: " + allReplies.length);
+    for (var i = 0; i < Math.min(3, allReplies.length); i++) {
+      _diag("   - " + allReplies[i].id);
+    }
     return;
   }
 
