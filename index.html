@@ -9480,6 +9480,10 @@ function renderPostHTML(p) {
   const commentsPreview = (p.comments || []).slice(0, 2).map(c => {
     const cu = userById(c.authorId) || { name: "?", profileEmoji: "👤", avatar: "#64748b" };
     const cSrc = c.authorId === "me" ? "me" : "seed";
+    const cLiked = (c.likedBy || []).includes(state.user?.id || "me");
+    const cLikes = c.likes || 0;
+    const cReplies = c.replies || [];
+
     return `<div class="comment" data-commentid="${c.id}">
       <div class="avatar sm" style="background:${cu.avatar};cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${c.authorId}','${cSrc}')">${cu.profileEmoji || (cu.name||"?")[0]}</div>
       <div class="comment-body">
