@@ -17035,9 +17035,16 @@ function renderStories() {
     `;
   }).join("");
 
+  _diag("📖 HTML generated length: " + html.length);
   row.innerHTML = html;
+  _diag("📖 HTML set to #storiesRow");
   const rowFeed = $("#storiesRowFeed");
-  if (rowFeed) rowFeed.innerHTML = html;
+  if (rowFeed) {
+    rowFeed.innerHTML = html;
+    _diag("📖 HTML also set to #storiesRowFeed");
+  } else {
+    _diag("ℹ️ #storiesRowFeed not found (only main feed)");
+  }
 }
 
 function openStudioAsStory() {
