@@ -19542,6 +19542,41 @@ function addEmojiToComment(postId, commentId, emoji) {
   return false;
 }
 
+// ===== FONCTION PROFIL UTILISATEUR =====
+function openUserProfile(userId) {
+  console.log("🔍 openUserProfile called with userId:", userId);
+  _diag("🔍 openUserProfile(" + userId + ")");
+
+  // Chercher l'utilisateur dans les users seed
+  var user = state.seed.users.find(u => u.id === userId);
+  if (!user) {
+    _diag("❌ User not found: " + userId);
+    alert("Profil non trouvé");
+    return;
+  }
+
+  _diag("✅ User found: " + user.name);
+
+  // Créer un modal avec les infos du profil
+  var passion = passionById(user.passion) || { label: "Passion", emoji: "✨" };
+  var html = `
+    <div class="modal-handle"></div>
+    <div style="text-align:center;padding:20px 0;">
+      <div style="width:80px;height:80px;border-radius:50%;background:${user.avatar};color:#fff;display:flex;align-items:center;justify-content:center;font-size:40px;margin:0 auto 16px;">
+        ${user.profileEmoji || "✨"}
+      </div>
+      <div style="font-size:20px;font-weight:bold;">${escapeHtml(user.name)}</div>
+      <div style="color:var(--muted);margin-top:4px;">${passion.emoji} ${escapeHtml(passion.label)}</div>
+      <div style="margin-top:12px;padding:12px;background:var(--bg-soft);border-radius:8px;">
+        ${escapeHtml(user.bio || "Passionné par " + passion.label.toLowerCase())}
+      </div>
+    </div>
+  `;
+
+  openModal(html);
+  _diag("✅ Profile modal opened");
+}
+
 // INITIALISATION BOUTON DIAGNOSTIC 🔧
 setTimeout(function() {
   var diagBtn = document.createElement("button");
