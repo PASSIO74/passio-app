@@ -19661,14 +19661,25 @@ function addEmojiToComment(postId, commentId, emoji) {
 
   if (typeof saveConversations === 'function') saveConversations();
 
-  // Vérifier si on est en mode détail
-  var postDetailPage = document.getElementById("postDetailPage");
-  var isVisible = postDetailPage && postDetailPage.style.display !== "none" && window.getComputedStyle(postDetailPage).display !== "none";
+  // Juste mettre à jour l'emoji UI sans re-render complet
+  var emojiContainer = document.querySelector('[data-commentid="' + commentId + '"] .comment-emoji-picker');
+  if (!emojiContainer) {
+    // Créer le conteneur s'il n'existe pas
+    var commentText = document.querySelector('[data-commentid="' + commentId + '"] .comment-text');
+    if (commentText) {
+      emojiContainer = document.createElement("div");
+      emojiContainer.className = "comment-emoji-picker";
+      commentText.parentNode.insertBefore(emojiContainer, commentText.nextSibling);
+    }
+  }
+  if (emojiContainer) {
+    emojiContainer.innerHTML = comment.emojis.map(e => '<span class="comment-emoji-btn">' + e + '</span>').join("");
+    _diag("✅ Emoji UI mis à jour");
+  }
 
-  if (isVisible) {
-    _diag("📖 Re-render POST DETAIL");
-    openPost(postId);
-  } else {
+  // En mode FEED seulement, re-render le feed
+  var postDetailPage = document.getElementById("postDetailPage");
+  if (!postDetailPage || postDetailPage.style.display === "none") {
     _diag("📰 Re-render FEED");
     if (typeof renderFeed === 'function') renderFeed();
   }
