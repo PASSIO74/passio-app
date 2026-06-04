@@ -19396,12 +19396,13 @@ document.addEventListener("click", function(e) {
 });
 
 // ===== FONCTIONS COMMENTAIRES =====
-function likeComment(postId, commentId) {
+function likeComment(postId, commentId, event) {
+  if (event) { event.stopPropagation(); event.preventDefault(); }
   _diag("❤️ likeComment(" + postId + ", " + commentId + ")");
   var post = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
-  if (!post) { _diag("❌ Post not found"); return; }
+  if (!post) { _diag("❌ Post not found"); return false; }
   var comment = (post.comments || []).find(c => c.id === commentId);
-  if (!comment) { _diag("❌ Comment not found"); return; }
+  if (!comment) { _diag("❌ Comment not found"); return false; }
   comment.likes = (comment.likes || 0) + 1;
   if (!comment.likedBy) comment.likedBy = [];
   comment.likedBy.push(state.user?.id || "me");
@@ -19409,10 +19410,12 @@ function likeComment(postId, commentId) {
   if (typeof saveConversations === 'function') saveConversations();
   var likeEl = document.querySelector('[data-commentid="' + commentId + '"] .comment-action');
   if (likeEl) likeEl.innerHTML = '❤️ ' + comment.likes;
+  return false;
 }
 
-function replyToComment(postId, commentId, authorName) {
-  _diag("💬 replyToComment(" + postId + ", " + commentId + ", " + authorName + ")");
+function replyToComment(postId, commentId, authorName, event) {
+  if (event) { event.stopPropagation(); event.preventDefault(); }
+  _diag("💬 replyToComment(" + postId + ", " + commentId + ")");
   var existingInputs = document.querySelectorAll(".comment-reply-input");
   existingInputs.forEach(function(input) { input.remove(); });
   var inputDiv = document.createElement("div");
@@ -19425,7 +19428,8 @@ function replyToComment(postId, commentId, authorName) {
   var sendBtn = document.createElement("button");
   sendBtn.textContent = "✓";
   sendBtn.style.cssText = "width:32px;height:32px;border-radius:8px;background:var(--accent);color:#fff;border:none;cursor:pointer;font-weight:bold;";
-  sendBtn.onclick = function() {
+  sendBtn.onclick = function(e) {
+    e.stopPropagation();
     var replyText = inputField.value.trim();
     if (!replyText) return;
     _diag("📝 Submitting reply");
@@ -19449,35 +19453,57 @@ function replyToComment(postId, commentId, authorName) {
     inputField.focus();
     _diag("✅ Input inserted");
   }
+  return false;
 }
 
-function toggleCommentReplies(commentId) {
+function toggleCommentReplies(commentId, event) {
+  if (event) { event.stopPropagation(); event.preventDefault(); }
   _diag("📂 toggleCommentReplies(" + commentId + ")");
   var repliesDiv = document.getElementById("replies-" + commentId);
   if (repliesDiv) {
     repliesDiv.style.display = repliesDiv.style.display === "none" ? "block" : "none";
     _diag("✅ Replies toggled");
   }
+  return false;
 }
 
 function showEmojiPickerForComment(postId, commentId, event) {
+  if (event) { event.stopPropagation(); event.preventDefault(); }
   _diag("😊 showEmojiPickerForComment(" + postId + ", " + commentId + ")");
-  if (event) event.stopPropagation();
-  var emojis = ["❤️", "🔥", "😂", "🎉", "👍", "💯", "😍", "🤔", "😢", "🤮"];
-  var html = emojis.map(e => '<span style="cursor:pointer;font-size:20px;padding:5px;" onclick="addEmojiToComment(\'' + postId + '\',\'' + commentId + '\',\'' + e + '\'); return false;">' + e + '</span>').join('');
-  alert(html.replace(/<[^>]*>/g, ' '));
+  var emojis = ["❤️", "🔥", "😂", "🎉", "👍", "💯", "😍", "🤔"];
+  var panel = document.createElement("div");
+  panel.style.cssText = "position:fixed;bottom:100px;right:20px;background:#fff;border:1px solid #ddd;border-radius:8px;padding:10px;display:flex;gap:8px;z-index:10000;box-shadow:0 2px 8px rgba(0,0,0,0.2);";
+  emojis.forEach(function(e) {
+    var btn = document.createElement("span");
+    btn.textContent = e;
+    btn.style.cssText = "cursor:pointer;font-size:20px;padding:5px 8px;hover:background:#f0f0f0;";
+    btn.onclick = function(evt) { evt.stopPropagation(); addEmojiToComment(postId, commentId, e); panel.remove(); };
+    panel.appendChild(btn);
+  });
+  document.body.appendChild(panel);
   _diag("✅ Emoji picker shown");
+  return false;
 }
 
 function addEmojiToComment(postId, commentId, emoji) {
   _diag("✨ addEmojiToComment(" + postId + ", " + commentId + ", " + emoji + ")");
   var post = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
-  if (!post) return;
+  if (!post) return false;
   var comment = (post.comments || []).find(c => c.id === commentId);
-  if (!comment) return;
+  if (!comment) return false;
   if (!comment.emojis) comment.emojis = [];
   if (!comment.emojis.includes(emoji)) comment.emojis.push(emoji);
   _diag("✅ Emoji added: " + emoji);
+  var emojiContainer = document.querySelector('[data-commentid="' + commentId + '"] .comment-emoji-picker');
+  if (!emojiContainer) {
+    emojiContainer = document.createElement("div");
+    emojiContainer.className = "comment-emoji-picker";
+    emojiContainer.style.cssText = "margin-top:5px;display:flex;gap:3px;flex-wrap:wrap;";
+    var commentBody = document.querySelector('[data-commentid="' + commentId + '"] .comment-body');
+    if (commentBody) commentBody.appendChild(emojiContainer);
+  }
+  emojiContainer.innerHTML = comment.emojis.map(e => '<span style="font-size:16px;">' + e + '</span>').join('');
+  return false;
 }
 
 // INITIALISATION BOUTON DIAGNOSTIC 🔧
