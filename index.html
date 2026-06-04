@@ -14730,10 +14730,9 @@ function selectAllProfiles() {
   renderFeed();
 }
 
-// Met à jour les boutons mood : actif selon state.currentMood,
+// Met à jour les boutons mood : actif selon selectedMoods (multi-select),
 // grisé si aucun post disponible dans la sélection de passions courante
 function renderMoodStripSmart(availablePosts) {
-  var mood = state.currentMood || "all";
   // Compter les posts par mood dans la sélection de passions courante
   var countByMood = { all: availablePosts.length };
   availablePosts.forEach(function(p) {
@@ -14743,7 +14742,8 @@ function renderMoodStripSmart(availablePosts) {
   var hasPassionFilter = _activeFeedPassions.size > 0;
   $$(".mood-btn").forEach(function(btn) {
     var m = btn.getAttribute("data-mood");
-    var isActive = (m === mood);
+    // ✅ UTILISER selectedMoods AU LIEU DE state.currentMood
+    var isActive = selectedMoods.has(m);
     var count = m === "all" ? availablePosts.length : (countByMood[m] || 0);
     var hasContent = m === "all" ? true : count > 0;
     btn.classList.toggle("active", isActive);
