@@ -8534,6 +8534,9 @@ function goTo(screen) {
   if (el) {
     el.classList.add("active");
     console.log("🔄 Classe 'active' ajoutée!");
+    console.log("🔄 Display style:", window.getComputedStyle(el).display);
+    console.log("🔄 Visibility:", window.getComputedStyle(el).visibility);
+    console.log("🔄 Z-index:", window.getComputedStyle(el).zIndex);
   }
   var appMain = document.getElementById("appMain");
   if (appMain) appMain.scrollTop = 0;
