@@ -9544,7 +9544,7 @@ function renderPostHTML(p) {
       <span class="post-action" style="margin-left:auto;" onclick="openPassionExplorer('${p.passion}')">🔎 ${passion.label}</span>
     </div>
 
-    ${commentsPreview ? `<div style="margin-top:8px;" onclick="openPost('${p.id}')" style="cursor:pointer;">${commentsPreview}</div>` : ""}
+    ${commentsPreview ? `<div style="margin-top:8px;" onclick="if(!event.target.closest('.comment-action') && !event.target.closest('.comment-reply-input') && !event.target.closest('.emoji-panel-comment')) openPost('${p.id}'); return false;" style="cursor:pointer;">${commentsPreview}</div>` : ""}
   </article>`;
 }
 
