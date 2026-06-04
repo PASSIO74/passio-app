@@ -8010,7 +8010,7 @@ function buildSeed() {
     { id: "p47", authorId: "u_clara", passion: "voyage", mood: "irl", type: "text", cover: "trail",
       text: "Copenhague → Rome à vélo, jour 19 sur 40. Aujourd'hui 98 km sous la pluie en Bavière. Demain col à 1 200 m.\n\nCe qui me fait tenir : savoir que tous les soirs il y a quelqu'un qui m'offre le canapé. La solidarité cyclo, c'est une religion.",
       createdAt: hours(22), likes: 334, liked: false, comments: [
-        { id: "c47a", authorId: "u_mehdi", text: "Respect énorme 🚴", createdAt: hours(18) },
+        { id: "c47a", authorId: "u_mehdi", text: "Respect énorme 🚴", createdAt: hours(18), likes: 16, likedBy: [], emojis: [], replies: [] },
       ]},
     { id: "p48", authorId: "u_nina", passion: "voyage", mood: "chill", type: "text", cover: "sunrise",
       text: "Meilleure adresse cachée de Porto : « A Grade », une cantine d'ouvriers. Plat du jour 7 €, vue sur le Douro, et la patronne te sert comme sa nièce.\n\nRien n'est sur Instagram. Longue vie aux endroits comme ça.",
@@ -9582,12 +9582,28 @@ async function openPost(id) {
       cName = cu.name; cEmoji = cu.profileEmoji; cAvatar = cu.avatar;
     }
     const cSrc = (cAuthorId === "me" || (typeof MY_UID !== "undefined" && cAuthorId === MY_UID)) ? "me" : "seed";
-    return `<div class="comment">
-      <div class="avatar sm" style="background:${cAvatar};cursor:pointer;" onclick="openUserProfile('${cAuthorId}','${cSrc}')">${cEmoji || (cName||"?")[0]}</div>
+    return `<div class="comment" data-commentid="${c.id}">
+      <div class="avatar sm" style="background:${cAvatar};cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${cAuthorId}','${cSrc}')">${cEmoji || (cName||"?")[0]}</div>
       <div class="comment-body">
-        <div class="comment-author" style="cursor:pointer;" onclick="openUserProfile('${cAuthorId}','${cSrc}')">${escapeHtml(cName)}</div>
+        <div class="comment-author" style="cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${cAuthorId}','${cSrc}')">${escapeHtml(cName)}</div>
         <div class="comment-text">${escapeHtml(c.text || c.content || "")}</div>
         <div class="comment-meta">${fmtTime(c.createdAt)}</div>
+        <div class="comment-actions">
+          <span class="comment-action ${cLiked ? "liked" : ""}" onclick="likeComment('${id}','${c.id}'); return false;">
+            ${cLiked ? "❤️" : "🤍"} ${cLikes}
+          </span>
+          <span class="comment-action" onclick="replyToComment('${id}','${c.id}','${escapeHtml(cName)}'); return false;" title="Répondre">💬</span>
+          <span class="comment-action" onclick="showEmojiPickerForComment('${id}','${c.id}',event); return false;" title="Réagir">😊</span>
+          ${cReplies.length > 0 ? `<span class="comment-reply-count" onclick="toggleCommentReplies('${c.id}'); return false;">${cReplies.length} réponse${cReplies.length > 1 ? "s" : ""}</span>` : ""}
+        </div>
+        ${cReplies.length > 0 ? `<div class="comment-replies" id="replies-${c.id}" style="display:none;">${cReplies.map(r => {
+          const ru = userById(r.authorId) || { name: "?", profileEmoji: "👤", avatar: "#64748b" };
+          const rSrc = r.authorId === "me" ? "me" : "seed";
+          return `<div class="comment-reply">
+            <span class="comment-reply-author" style="cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span>: ${escapeHtml(r.text)}
+            <div style="font-size:10px;color:var(--muted);margin-top:2px;">${fmtTime(r.createdAt)}</div>
+          </div>`;
+        }).join("")}</div>` : ""}
       </div>
     </div>`;
   }).join("");
