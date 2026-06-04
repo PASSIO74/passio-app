@@ -19495,25 +19495,31 @@ function replyToComment(postId, commentId, authorName, event) {
   _diag("🔍 Looking for commentId: " + commentId);
   _diag("🔍 Found element: " + (commentElement ? "YES" : "NO"));
   if (commentElement) {
-    _diag("📍 Element visible: " + commentElement.offsetParent !== null);
-    _diag("📍 Element display: " + window.getComputedStyle(commentElement).display);
     var commentBody = commentElement.querySelector(".comment-body");
     _diag("🔍 Found comment-body: " + (commentBody ? "YES" : "NO"));
     if (commentBody) {
-      commentBody.appendChild(inputDiv);
+      // Insérer APRÈS les comment-actions (pas à la fin)
+      var commentActions = commentBody.querySelector(".comment-actions");
+      if (commentActions) {
+        commentActions.parentNode.insertBefore(inputDiv, commentActions.nextSibling);
+        _diag("✅ Input inserted AFTER comment-actions");
+      } else {
+        commentBody.appendChild(inputDiv);
+        _diag("✅ Input inserted at end of body");
+      }
+
       inputField.focus();
-      _diag("✅ Input inserted at " + commentBody.children.length + " position");
 
       // Scroll pour rendre l'input visible
       setTimeout(function() {
-        inputDiv.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        inputDiv.scrollIntoView({ behavior: "smooth", block: "center" });
         _diag("📍 Scrolled to input");
-      }, 50);
+      }, 100);
     } else {
       _diag("❌ Comment body not found!");
     }
   } else {
-    _diag("❌ Comment element not found! Check data-commentid attribute");
+    _diag("❌ Comment element not found!");
   }
   return false;
 }
