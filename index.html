@@ -9494,7 +9494,7 @@ function renderPostHTML(p) {
           </span>
           <span class="comment-action" onclick="replyToComment('${p.id}','${c.id}','${escapeHtml(cu.name)}', event); return false;" title="Répondre">💬</span>
           <span class="comment-action" onclick="showEmojiPickerForComment('${p.id}','${c.id}',event); return false;" title="Réagir">😊</span>
-          ${cReplies.length > 0 ? `<span class="comment-reply-count" onclick="toggleCommentReplies('${c.id}', event); return false;">${cReplies.length} réponse${cReplies.length > 1 ? "s" : ""}</span>` : ""}
+          ${cReplies.length > 0 ? `<span class="comment-reply-count" onclick="toggleCommentReplies('${c.id}'); return false;">${cReplies.length} réponse${cReplies.length > 1 ? "s" : ""}</span>` : ""}
         </div>
 
         ${cReplies.length > 0 ? `<div class="comment-replies" id="replies-${c.id}" style="display:none;">${cReplies.map(r => {
@@ -9631,7 +9631,7 @@ async function openPost(id) {
           </span>
           <span class="comment-action" onclick="replyToComment('${id}','${c.id}','${escapeHtml(cName)}'); return false;" title="Répondre">💬</span>
           <span class="comment-action" onclick="showEmojiPickerForComment('${id}','${c.id}',event); return false;" title="Réagir">😊</span>
-          ${cReplies.length > 0 ? `<span class="comment-reply-count" onclick="toggleCommentReplies('${c.id}', event); return false;">${cReplies.length} réponse${cReplies.length > 1 ? "s" : ""}</span>` : ""}
+          ${cReplies.length > 0 ? `<span class="comment-reply-count" onclick="toggleCommentReplies('${c.id}'); return false;">${cReplies.length} réponse${cReplies.length > 1 ? "s" : ""}</span>` : ""}
         </div>
 
         ${cReplies.length > 0 ? `<div class="comment-replies" id="replies-${c.id}" style="display:none;">${cReplies.map(r => {
