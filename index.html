@@ -19738,6 +19738,12 @@ function replyToComment(postId, commentId, authorName, event) {
     // Mettre à jour le nombre de réponses
     replyCountBtn.textContent = comment.replies.length + " réponse" + (comment.replies.length > 1 ? "s" : "");
     _diag("✅ Reply button updated");
+
+    // AFFICHER LES REPLIES AUTOMATIQUEMENT
+    if (repliesDiv && repliesDiv.style.display === "none") {
+      repliesDiv.style.display = "block";
+      _diag("✅ Replies displayed automatically");
+    }
   };
   inputField.onkeypress = function(e) { if (e.key === 'Enter') sendBtn.click(); };
   inputDiv.appendChild(inputField);
