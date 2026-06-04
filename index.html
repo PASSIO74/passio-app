@@ -17007,7 +17007,7 @@ function renderStories() {
   const stories = state.seed.stories || [];
   const seen = state.user.seenStories || [];
 
-  // Stories uniquement (pas de "Ton story" car Studio existe déjà)
+  // Stories des autres (pas de "Ton story" car Studio existe déjà)
   let html = ``;
 
   html += stories.map((s, i) => {
