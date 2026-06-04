@@ -19547,6 +19547,12 @@ function openUserProfile(userId) {
   console.log("🔍 openUserProfile called with userId:", userId);
   _diag("🔍 openUserProfile(" + userId + ")");
 
+  // Fermer Bobines d'abord
+  if (typeof closeReels === 'function') {
+    _diag("🔄 Closing reels...");
+    closeReels();
+  }
+
   // Chercher l'utilisateur dans les users seed
   var user = state.seed.users.find(u => u.id === userId);
   if (!user) {
