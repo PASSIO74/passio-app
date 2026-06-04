@@ -12993,6 +12993,11 @@ function applyConfig() {
   // ✅ INITIALISER LES BOUTONS DE MOOD
   setTimeout(function() {
     console.log("🎨 INIT MOOD BUTTONS - selectedMoods:", Array.from(selectedMoods));
+
+    // 1. Attacher les event listeners
+    setupMoodButtons();
+
+    // 2. Mettre à jour les classes active
     var allBtns = document.querySelectorAll("#moodSelector .mood-btn");
     console.log("  Boutons trouvés:", allBtns.length);
 
