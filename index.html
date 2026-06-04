@@ -11427,6 +11427,16 @@ function _renderCommentsList(allComments, postId) {
         ${cReplies.length > 0 ? `<div class="comment-replies" id="replies-${c.id}" style="display:none;">${cReplies.map(r => {
           const ru = userById(r.authorId) || { name: "?", profileEmoji: "👤", avatar: "#64748b" };
           const rSrc = r.authorId === "me" ? "me" : "seed";
+
+          // Si c'est une réaction emoji, afficher différemment
+          if (r.type === "emoji_reaction") {
+            return `<div class="comment-reply" style="display:flex;align-items:center;gap:6px;padding:8px 0;">
+              <span style="font-size:11px;color:var(--text);font-weight:600;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span>
+              <span style="font-size:18px;letter-spacing:2px;">${r.text}</span>
+            </div>`;
+          }
+
+          // Réponse normale
           return `<div class="comment-reply">
             <span class="comment-reply-author" style="cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span>: ${escapeHtml(r.text)}
             <div style="font-size:10px;color:var(--muted);margin-top:2px;">${fmtTime(r.createdAt)}</div>
