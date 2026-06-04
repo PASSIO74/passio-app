@@ -7558,6 +7558,7 @@
         <div class="conv-input-wrap">
           <textarea id="convFpInput" rows="1" placeholder="Message…" oninput="onConvInputTyping();autoResizeTextarea(this)"></textarea>
         </div>
+        <button class="conv-tool-btn" title="Ajouter un GIF" onclick="showGifPickerForMessage()">🎬</button>
         <button class="conv-tool-btn" id="btnVoice" title="Maintenir pour enregistrer"
           onmousedown="if(typeof startVoiceRecord==='function')startVoiceRecord()"
           onmouseup="if(typeof stopVoiceRecord==='function')stopVoiceRecord()"
