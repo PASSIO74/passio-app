@@ -19974,78 +19974,19 @@ function openUserProfile(userId) {
   }
 }
 
-// ✅ INITIALISATION MOODS MULTI-SELECT
-console.log("🎨 INITIALISATION MOODS GLOBALE - DEBUT");
+// ✅ INITIALISATION MOODS MULTI-SELECT - EVENT DELEGATION
+console.log("🎨 INITIALISATION MOODS GLOBALE");
 setTimeout(function() {
   try {
-    console.log("🎨 MOOD INIT (200ms) - selectedMoods:", window.selectedMoods ? Array.from(window.selectedMoods) : "NOT FOUND");
+    // 1. Setup event delegation (unique, robuste, fluide)
+    setupMoodDelegation();
 
-    // Vérifier que selectedMoods existe
-    if (!window.selectedMoods) {
-      console.error("❌ selectedMoods n'existe pas!");
-      return;
-    }
+    // 2. Mettre à jour l'UI initiale
+    updateMoodButtonsUI();
 
-    // 1. Trouver les boutons
-    var buttons = document.querySelectorAll("#moodSelector .mood-btn");
-    console.log("  ✅ Boutons trouvés:", buttons.length);
-
-    if (buttons.length === 0) {
-      console.error("❌ Pas de boutons trouvés!");
-      return;
-    }
-
-    // 2. Attacher les event listeners
-    buttons.forEach(function(btn) {
-      var moodValue = btn.getAttribute("data-mood");
-      console.log("  🔧 Attachement listener pour:", moodValue);
-
-      btn.addEventListener("click", function(e) {
-        console.log("🔴 CLIC BOUTON:", moodValue);
-        e.stopPropagation();
-        e.preventDefault();
-
-        // Toggle
-        if (window.selectedMoods.has(moodValue)) {
-          window.selectedMoods.delete(moodValue);
-          console.log("  ❌ Supprimé:", moodValue);
-        } else {
-          window.selectedMoods.add(moodValue);
-          console.log("  ✅ Ajouté:", moodValue);
-        }
-
-        console.log("  État actuel:", Array.from(window.selectedMoods));
-
-        // 3. Mettre à jour l'UI immédiatement
-        buttons.forEach(function(b) {
-          var mood = b.getAttribute("data-mood");
-          if (window.selectedMoods.has(mood)) {
-            b.classList.add("active");
-          } else {
-            b.classList.remove("active");
-          }
-        });
-
-        // 4. Re-render feed
-        if (typeof renderFeed === 'function') {
-          renderFeed();
-        }
-      });
-    });
-
-    // 3. Initialiser l'UI
-    buttons.forEach(function(b) {
-      var mood = b.getAttribute("data-mood");
-      if (window.selectedMoods.has(mood)) {
-        b.classList.add("active");
-      } else {
-        b.classList.remove("active");
-      }
-    });
-
-    console.log("🎨 MOOD INIT TERMINÉE AVEC SUCCÈS");
+    console.log("🎨 MOOD INIT TERMINÉE");
   } catch(err) {
-    console.error("❌ ERREUR INITIALISATION MOODS:", err.message, err.stack);
+    console.error("❌ ERREUR MOOD INIT:", err.message);
   }
 }, 200);
 
