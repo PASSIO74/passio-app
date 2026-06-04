@@ -9480,12 +9480,20 @@ function renderPostHTML(p) {
   const commentsPreview = (p.comments || []).slice(0, 2).map(c => {
     const cu = userById(c.authorId) || { name: "?", profileEmoji: "👤", avatar: "#64748b" };
     const cSrc = c.authorId === "me" ? "me" : "seed";
-    return `<div class="comment">
+    return `<div class="comment" data-commentid="${c.id}">
       <div class="avatar sm" style="background:${cu.avatar};cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${c.authorId}','${cSrc}')">${cu.profileEmoji || (cu.name||"?")[0]}</div>
       <div class="comment-body">
         <div class="comment-author" style="cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${c.authorId}','${cSrc}')">${escapeHtml(cu.name)}</div>
         <div class="comment-text">${escapeHtml(c.text)}</div>
         <div class="comment-meta">${fmtTime(c.createdAt)}</div>
+        <div class="comment-actions">
+          <span class="comment-action ${cLiked ? "liked" : ""}" onclick="likeComment('${p.id}','${c.id}'); return false;">
+            ${cLiked ? "❤️" : "🤍"} ${cLikes}
+          </span>
+          <span class="comment-action" onclick="replyToComment('${p.id}','${c.id}','${escapeHtml(cu.name)}'); return false;" title="Répondre">💬</span>
+          <span class="comment-action" onclick="showEmojiPickerForComment('${p.id}','${c.id}',event); return false;" title="Réagir">😊</span>
+          ${cReplies.length > 0 ? `<span class="comment-reply-count" onclick="toggleCommentReplies('${c.id}'); return false;">${cReplies.length} réponse${cReplies.length > 1 ? "s" : ""}</span>` : ""}
+        </div>
       </div>
     </div>`;
   }).join("");
