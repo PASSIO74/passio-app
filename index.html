@@ -9333,9 +9333,9 @@ function renderFeed() {
     : [];
 
   // ── Filtre mood : multi-select sur les posts déjà filtrés par passion ──
-  let posts = selectedMoods.has("all")
-    ? postsByPassion
-    : postsByPassion.filter(function(p) { return selectedMoods.has(p.mood); });
+  let posts = selectedMoods.size === 0
+    ? postsByPassion // Si aucun mood sélectionné, afficher tous les posts
+    : postsByPassion.filter(function(p) { return selectedMoods.has(p.mood); }); // Sinon filtrer
 
   renderProfileStrip();
   renderMoodStripSmart(postsByPassion); // met à jour les moods selon ce qui est dispo
