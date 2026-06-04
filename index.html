@@ -19548,26 +19548,7 @@ function addEmojiToComment(postId, commentId, emoji) {
 
 // Voir le profil complet d'une autre personne (redirection)
 function viewUserProfile(authorId, source) {
-  // Créer un badge de diagnostic visible
-  var badge = document.getElementById("__profil_debug_badge");
-  if (!badge) {
-    badge = document.createElement("div");
-    badge.id = "__profil_debug_badge";
-    badge.style.cssText = "position:fixed;top:10px;right:10px;background:#ffeb3b;color:#000;padding:15px;border-radius:8px;font-size:12px;font-weight:bold;z-index:99999;max-width:300px;white-space:pre-wrap;line-height:1.6;";
-    document.body.appendChild(badge);
-  }
-
-  function updateBadge(msg) {
-    badge.textContent += "\n" + msg;
-    console.log(msg);
-  }
-
-  badge.textContent = "🔍 PROFIL CLIQUE\n";
-  updateBadge("👤 ID: " + authorId);
-  updateBadge("📌 Source: " + source);
-
   if (source === "me" || authorId === "me" || (typeof MY_UID !== "undefined" && MY_UID && authorId === MY_UID)) {
-    updateBadge("✅ C'est TON profil!");
     goTo("profiles");
     return;
   }
@@ -19582,48 +19563,24 @@ function viewUserProfile(authorId, source) {
   if (source === "me") {
     // Chercher dans les profils utilisateur
     user = (state.user.profiles || []).find(function(p) { return p.id === authorId; });
-    updateBadge("🔍 Cherche dans MES profils...");
   } else {
     // Chercher dans les utilisateurs seed
-    var seedCount = (state.seed.users || []).length;
-    updateBadge("🔍 Seed users dispo: " + seedCount);
     user = (state.seed.users || []).find(function(u) { return u.id === authorId; });
-    updateBadge("🔎 Cherche ID: " + authorId);
   }
 
   if (!user) {
-    updateBadge("❌ PROFIL NON TROUVE!");
-    updateBadge("Users dispo: " + ((state.seed.users || []).map(function(u) { return u.id; }).join(", ")));
+    toast("Profil non trouvé");
     return;
   }
 
-  updateBadge("✅ TROUVE: " + user.name);
-  updateBadge("📖 Affichage profil...");
-
-  // Fermer la bobine si elle est ouverte
+  // Fermer la bobine si elle est ouverte pour afficher le profil
   if (reelsState && reelsState.open) {
-    updateBadge("🔚 Fermeture bobine...");
     closeReels();
   }
 
   // Afficher la page profil
   renderUserProfilePage(authorId, user, source);
-  updateBadge("🔄 Changement écran...");
   goTo("profile-view");
-  updateBadge("✅ PROFIL OUVERT!");
-
-  // Vérifier après un petit délai
-  setTimeout(function() {
-    var screenEl = document.getElementById("screen-profile-view");
-    var contentEl = document.getElementById("profile-view-content");
-    if (screenEl) {
-      var isActive = screenEl.classList.contains("active");
-      var style = window.getComputedStyle(screenEl);
-      updateBadge("🔍 Écran.active=" + (isActive ? "OUI" : "NON"));
-      updateBadge("🔍 Display=" + style.display);
-      updateBadge("🔍 Content HTML=" + (contentEl ? contentEl.innerHTML.length + " chars" : "VIDE"));
-    }
-  }, 100);
 }
 
 // Rendre la page du profil d'une autre personne
