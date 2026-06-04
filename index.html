@@ -19859,6 +19859,20 @@ function openUserProfile(userId) {
   }
 }
 
+// ✅ INITIALISATION MOODS MULTI-SELECT
+console.log("🎨 INITIALISATION MOODS GLOBALE");
+setTimeout(function() {
+  console.log("🎨 MOOD INIT (200ms) - selectedMoods:", Array.from(selectedMoods));
+
+  // 1. Attacher les event listeners
+  setupMoodButtons();
+
+  // 2. Mettre à jour l'UI
+  updateMoodButtonsUI();
+
+  console.log("🎨 MOOD INIT TERMINÉE");
+}, 200);
+
 // INITIALISATION BOUTON DIAGNOSTIC 🔧
 setTimeout(function() {
   var diagBtn = document.createElement("button");
