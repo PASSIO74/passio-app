@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="UTF-8" />
@@ -184,7 +184,10 @@
         "Segoe UI", sans-serif;
       color: var(--text);
       -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
       text-rendering: optimizeLegibility;
+      font-feature-settings: "kern" 1, "liga" 1, "calt" 1;
+      letter-spacing: -0.005em;
       background:
         radial-gradient(1200px 760px at 50% -8%, rgba(167, 139, 250, 0.22), transparent 60%),
         radial-gradient(900px 600px at 90% 110%, rgba(196, 181, 253, 0.18), transparent 64%),
@@ -443,6 +446,17 @@
 
     .screen.active { display: block; }
 
+    /* Animation subtile au changement d'onglet */
+    @media (prefers-reduced-motion: no-preference) {
+      .screen.active {
+        animation: screenIn 380ms cubic-bezier(0.22, 1, 0.36, 1);
+      }
+    }
+    @keyframes screenIn {
+      from { opacity: 0; transform: translateY(10px) scale(0.992); }
+      to   { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
     @keyframes fadeIn {
       from { opacity: 0; transform: translateY(6px); }
       to { opacity: 1; transform: translateY(0); }
@@ -468,13 +482,16 @@
       justify-content: center;
       gap: 3px;
       color: var(--muted);
-      font-size: 10px;
+      font-size: 9.5px;
       font-weight: 600;
+      letter-spacing: 0.01em;
       position: relative;
       cursor: pointer;
       transition: color 180ms ease;
     }
     .nav-item:hover { color: var(--text-dim); }
+    .nav-label { transition: font-weight 160ms ease; }
+    .nav-item.active .nav-label { font-weight: 700; }
 
     .nav-icon {
       font-size: 22px;
@@ -487,9 +504,10 @@
       height: 24px;
     }
     .nav-icon svg {
-      width: 22px;
-      height: 22px;
+      width: 23px;
+      height: 23px;
       display: block;
+      overflow: visible;
     }
     .nav-item.nav-cta .nav-icon svg {
       width: 24px;
@@ -502,16 +520,33 @@
 
     .nav-item.active .nav-icon {
       transform: translateY(-2px);
+      filter: drop-shadow(0 4px 8px rgba(124, 58, 237, 0.30));
+    }
+    @media (prefers-reduced-motion: no-preference) {
+      .nav-item.active .nav-icon { animation: navPop 420ms cubic-bezier(0.34, 1.56, 0.64, 1); }
+    }
+    @keyframes navPop {
+      0%   { transform: translateY(0) scale(0.86); }
+      55%  { transform: translateY(-4px) scale(1.16); }
+      100% { transform: translateY(-2px) scale(1); }
     }
 
     .nav-item.active::before {
       content: "";
       position: absolute;
-      top: 8px;
-      width: 22px;
+      top: 7px;
+      width: 20px;
       height: 3px;
       border-radius: 3px;
-      background: var(--accent);
+      background: var(--grad-hero);
+      box-shadow: 0 1px 6px rgba(124, 58, 237, 0.45);
+    }
+    @media (prefers-reduced-motion: no-preference) {
+      .nav-item.active::before { animation: navBar 360ms cubic-bezier(0.22, 1, 0.36, 1); }
+    }
+    @keyframes navBar {
+      from { width: 0; opacity: 0; }
+      to   { width: 20px; opacity: 1; }
     }
 
     /* Tous les onglets ont la même couleur, uniforme */
@@ -577,15 +612,26 @@
     }
 
     .section-title {
-      font-size: 16px;
+      font-size: 17px;
       font-weight: 800;
-      letter-spacing: -0.01em;
-      margin: 10px 2px 12px;
+      letter-spacing: -0.02em;
+      color: var(--accent-2);
+      margin: 12px 2px 14px;
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      gap: 8px;
+      justify-content: flex-start;
+      gap: 9px;
     }
+    .section-title::before {
+      content: "";
+      width: 4px;
+      height: 17px;
+      border-radius: 3px;
+      background: var(--grad-hero);
+      flex-shrink: 0;
+      box-shadow: 0 2px 6px rgba(124, 58, 237, 0.30);
+    }
+    .section-title .link { margin-left: auto; }
 
     .section-title .link {
       font-size: 11px;
@@ -1177,7 +1223,15 @@
       animation: livePulse 1.5s ease infinite;
     }
     @keyframes livePulse { 0%, 100% { opacity:1; } 50% { opacity:0.6; } }
-    .cdv-mode-icon { font-size: 32px; margin-bottom: 8px; }
+    .cdv-mode-icon {
+      margin-bottom: 10px;
+      color: var(--accent);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .cdv-mode-icon svg { width: 30px; height: 30px; display: block; }
+    .cdv-mode-live .cdv-mode-icon { color: #ef4444; }
     .cdv-mode-title { font-size: 14px; font-weight: 800; color: var(--text); margin-bottom: 4px; }
     .cdv-mode-desc { font-size: 11px; color: var(--muted); line-height: 1.4; }
 
@@ -1797,13 +1851,12 @@
     .mood-selector {
       display: grid;
       grid-template-columns: repeat(5, 1fr);
-      gap: 6px;
-      padding: 8px;
-      background: #fff;
-      border: 1px solid var(--border);
-      border-radius: var(--radius-md);
-      margin: 4px 12px 16px;
-      box-shadow: var(--shadow-soft);
+      gap: 4px;
+      padding: 0 4px;
+      background: transparent;
+      border: none;
+      box-shadow: none;
+      margin: 2px 12px 14px;
     }
 
     .mood-btn {
@@ -1811,10 +1864,10 @@
       flex-direction: column;
       align-items: center;
       justify-content: flex-start;
-      gap: 4px;
-      padding: 9px 4px;
-      border-radius: 12px;
-      font-size: 10.5px;
+      gap: 3px;
+      padding: 6px 3px;
+      border-radius: 10px;
+      font-size: 9.5px;
       font-weight: 700;
       color: var(--text-dim);
       background: transparent;
@@ -1826,15 +1879,15 @@
     .mood-btn:hover { color: var(--text); }
 
     .mood-btn-icon {
-      font-size: 20px;
+      font-size: 16px;
       line-height: 1;
-      height: 34px;
-      width: 34px;
+      height: 26px;
+      width: 26px;
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      margin-bottom: 2px;
-      border-radius: 11px;
+      margin-bottom: 1px;
+      border-radius: 9px;
       overflow: hidden;
       position: relative;
       box-shadow: 0 1px 3px rgba(24, 18, 48, 0.10);
@@ -1848,9 +1901,10 @@
       display: block;
     }
     .mood-btn-icon svg {
-      width: 18px;
-      height: 18px;
+      width: 15px;
+      height: 15px;
       display: block;
+      color: var(--accent);
     }
 
     .mood-btn.active {
@@ -1919,7 +1973,7 @@
 
     /* ===== Modals ===== */
     .modal-backdrop {
-      position: fixed;
+      position: absolute;
       inset: 0;
       background: rgba(24, 18, 48, 0.55);
       backdrop-filter: blur(10px) saturate(130%);
@@ -1998,8 +2052,10 @@
     }
 
     .modal-title {
-      font-size: 17px;
-      font-weight: 700;
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      color: var(--accent-2);
       margin-bottom: 6px;
     }
 
@@ -2980,8 +3036,9 @@
     .ai-search-label {
       font-size: 22px;
       font-weight: 800;
+      letter-spacing: -0.02em;
       margin-bottom: 10px;
-      background: linear-gradient(90deg, var(--accent), #c4b5fd);
+      background: linear-gradient(90deg, var(--accent-2), var(--accent));
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
@@ -3432,74 +3489,12 @@
       gap: 8px;
       padding: 8px 0;
       border-bottom: 1px solid var(--border);
-      position: relative;
     }
     .comment:last-child { border-bottom: none; }
     .comment-body { flex: 1; min-width: 0; }
-    .comment-author { font-size: 12px; font-weight: 600; cursor: pointer; }
-    .comment-author:hover { color: var(--accent); }
+    .comment-author { font-size: 12px; font-weight: 600; }
     .comment-text { font-size: 13px; color: var(--text-dim); margin-top: 2px; }
-    .comment-meta { font-size: 10px; color: var(--muted); margin-top: 4px; display: flex; gap: 8px; align-items: center; }
-
-    /* Actions et interactions sur commentaires */
-    .comment-actions {
-      display: flex;
-      gap: 6px;
-      font-size: 11px;
-      margin-top: 4px;
-      align-items: center;
-    }
-    .comment-action { cursor: pointer; padding: 2px 6px; border-radius: 8px; display: flex; gap: 3px; align-items: center; transition: background 0.2s; }
-    .comment-action:hover { background: rgba(124, 58, 237, 0.1); color: var(--accent); }
-    .comment-action.liked { color: #e74c3c; }
-
-    /* Emojis sur commentaires */
-    .comment-emoji-picker { display: flex; gap: 3px; margin-right: 8px; flex-wrap: wrap; max-width: 100px; }
-    .comment-emoji-btn { cursor: pointer; font-size: 13px; padding: 2px 4px; border-radius: 6px; transition: background 0.2s; }
-    .comment-emoji-btn:hover { background: rgba(124, 58, 237, 0.15); }
-
-    /* Replies sur commentaires */
-    .comment-replies { margin-left: 24px; margin-top: 6px; border-left: 2px solid rgba(124, 58, 237, 0.2); padding-left: 8px; }
-    .comment-reply { font-size: 12px; color: var(--text-dim); margin-bottom: 6px; padding: 6px; background: rgba(124, 58, 237, 0.05); border-radius: 8px; }
-    .comment-reply-author { font-weight: 600; cursor: pointer; }
-    .comment-reply-author:hover { color: var(--accent); }
-    .comment-reply-count { font-size: 11px; color: var(--accent); cursor: pointer; margin-top: 4px; }
-    .comment-reply-count:hover { text-decoration: underline; }
-
-    /* Animation pour les replies */
-    @keyframes slideDown {
-      from { opacity: 0; transform: translateY(-8px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-
-    /* Panel d'emojis pour commentaires */
-    .emoji-panel-comment {
-      position: absolute;
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 8px;
-      z-index: 1000;
-      display: grid;
-      grid-template-columns: repeat(5, 1fr);
-      gap: 4px;
-      box-shadow: var(--shadow-soft);
-      min-width: 240px;
-    }
-    .emoji-panel-comment .emoji-btn {
-      font-size: 20px;
-      cursor: pointer;
-      padding: 8px;
-      border-radius: 8px;
-      transition: all 0.2s;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .emoji-panel-comment .emoji-btn:hover {
-      background: rgba(124, 58, 237, 0.1);
-      transform: scale(1.15);
-    }
+    .comment-meta { font-size: 10px; color: var(--muted); margin-top: 2px; }
 
     /* Map IRL */
     /* Carte interactive Leaflet */
@@ -3738,12 +3733,83 @@
     /* Empty state */
     .empty {
       text-align: center;
-      padding: 30px 14px;
+      padding: 46px 26px;
       color: var(--muted);
     }
-    .empty-icon { font-size: 36px; margin-bottom: 8px; }
-    .empty-title { font-size: 14px; font-weight: 600; color: var(--text-dim); margin-bottom: 3px; }
-    .empty-text { font-size: 11px; }
+    .empty-icon {
+      font-size: 30px;
+      width: 70px;
+      height: 70px;
+      margin: 0 auto 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg-tint);
+      border-radius: 999px;
+      box-shadow: inset 0 0 0 1px rgba(124, 58, 237, 0.10);
+    }
+    .empty-title { font-size: 15px; font-weight: 800; letter-spacing: -0.015em; color: var(--text-dim); margin-bottom: 5px; }
+    .empty-text { font-size: 12px; line-height: 1.5; max-width: 250px; margin: 0 auto; }
+    .empty .btn { margin-top: 14px; }
+
+    /* ===== Cascade d'apparition des posts du Fil ===== */
+    @media (prefers-reduced-motion: no-preference) {
+      #screen-feed.active #feedList > .post {
+        animation: postIn 480ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+      }
+      #feedList > .post:nth-child(1) { animation-delay: 30ms; }
+      #feedList > .post:nth-child(2) { animation-delay: 90ms; }
+      #feedList > .post:nth-child(3) { animation-delay: 150ms; }
+      #feedList > .post:nth-child(4) { animation-delay: 210ms; }
+      #feedList > .post:nth-child(5) { animation-delay: 270ms; }
+      #feedList > .post:nth-child(6) { animation-delay: 320ms; }
+      #feedList > .post:nth-child(n+7) { animation-delay: 360ms; }
+    }
+    @keyframes postIn {
+      from { opacity: 0; transform: translateY(16px) scale(0.99); }
+      to   { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    /* ===== Retour tactile ===== */
+    .btn:active, .pill:active, .topbar-chip:active, .topbar-bell:active,
+    .mood-btn:active, .vlog-template-btn:active, .studio-type:active,
+    .wallet-tab:active, .explore-tab:active, .ai-shortcut-row:active,
+    .pay-method:active, .nav-item:active {
+      transform: scale(0.95);
+    }
+    .post:active, .card:active, .msg-card:active, .event-card:active,
+    .pack-card:active, .cdv-mode-card:active, .profile-tile:active {
+      transform: scale(0.985);
+    }
+    .btn, .pill, .topbar-chip, .topbar-bell, .ai-shortcut-row, .pay-method,
+    .wallet-tab, .explore-tab {
+      transition: transform 130ms cubic-bezier(0.4,0,0.2,1), background 180ms ease, box-shadow 220ms ease, color 160ms ease, border-color 160ms ease;
+    }
+
+    /* ===== Skeletons de chargement ===== */
+    .skeleton {
+      background: linear-gradient(100deg, var(--bg-soft) 28%, #ffffff 50%, var(--bg-soft) 72%);
+      background-size: 220% 100%;
+      border-radius: 8px;
+    }
+    @media (prefers-reduced-motion: no-preference) {
+      .skeleton { animation: shimmer 1.4s ease-in-out infinite; }
+    }
+    @keyframes shimmer {
+      from { background-position: 200% 0; }
+      to   { background-position: -200% 0; }
+    }
+    .skel-post {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 16px;
+      margin-bottom: 12px;
+      box-shadow: var(--shadow-soft);
+    }
+    .skel-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+    .skel-avatar { width: 44px; height: 44px; border-radius: 50%; flex-shrink: 0; }
+    .skel-line { height: 11px; border-radius: 6px; }
 
     /* Settings rows */
     .setting-row {
@@ -6344,7 +6410,7 @@
       <div class="topbar-chip score" title="Score Passion"><span>⭐</span><span id="topScore">0</span></div>
       <div class="topbar-chip passia" title="Passia"><span>💎</span><span id="topPassia">0</span></div>
       <div class="topbar-bell" onclick="openNotifications()" title="Notifications">
-        <span>🔔</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;"><path d="M18 8.5 A6 6 0 0 0 6 8.5 C6 14 3.8 15.5 3.8 15.5 H20.2 S18 14 18 8.5 Z"/><path d="M10.2 19 A2 2 0 0 0 13.8 19"/></svg>
         <span class="bell-dot" id="bellDot"></span>
       </div>
       <div class="hamburger" onclick="toggleDevPanel()">⋯</div>
@@ -6435,17 +6501,17 @@
       <div class="profile-strip" id="profileStrip"></div>
 
       <div class="mood-selector" id="moodSelector">
-        <button class="mood-btn active" data-mood="all"><span class="mood-btn-icon"><img src="https://images.unsplash.com/photo-1550745165-9bc0b252726f?w=120&h=120&fit=crop&crop=entropy&auto=format&q=75" alt="Tout" onerror="this.onerror=null;this.src='https://picsum.photos/seed/mood-all/120/120'"/></span>Tout</button>
-        <button class="mood-btn" data-mood="creation"><span class="mood-btn-icon"><img src="https://images.unsplash.com/photo-1513519245088-0e12902e5a38?w=120&h=120&fit=crop&crop=entropy&auto=format&q=75" alt="Création" onerror="this.onerror=null;this.src='https://picsum.photos/seed/mood-creation/120/120'"/></span>Création</button>
-        <button class="mood-btn" data-mood="learn"><span class="mood-btn-icon"><img src="https://images.unsplash.com/photo-1519681393784-d120267933ba?w=120&h=120&fit=crop&crop=entropy&auto=format&q=75" alt="Learn" onerror="this.onerror=null;this.src='https://picsum.photos/seed/mood-learn/120/120'"/></span>Learn</button>
-        <button class="mood-btn" data-mood="chill"><span class="mood-btn-icon"><img src="https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=120&h=120&fit=crop&crop=entropy&auto=format&q=75" alt="Chill" onerror="this.onerror=null;this.src='https://picsum.photos/seed/mood-chill/120/120'"/></span>Chill</button>
-        <button class="mood-btn" data-mood="actu"><span class="mood-btn-icon"><img src="https://images.unsplash.com/photo-1504711434969-e33886168f5c?w=120&h=120&fit=crop&crop=entropy&auto=format&q=75" alt="Actu" onerror="this.onerror=null;this.src='https://picsum.photos/seed/mood-actu/120/120'"/></span>Actu</button>
+        <button class="mood-btn active" data-mood="all"><span class="mood-btn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 L13.6 9 A2.4 2.4 0 0 0 15 10.4 L21 12 L15 13.6 A2.4 2.4 0 0 0 13.6 15 L12 21 L10.4 15 A2.4 2.4 0 0 0 9 13.6 L3 12 L9 10.4 A2.4 2.4 0 0 0 10.4 9 Z"/></svg></span>Tout</button>
+        <button class="mood-btn" data-mood="creation"><span class="mood-btn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M16.5 5.5 L18.5 7.5 M15.4 6.6 L5.5 16.5 L4 20 L7.5 18.5 L17.4 8.6 A1.5 1.5 0 0 0 15.4 6.6 Z"/><path d="M5.5 16.5 L7.5 18.5"/></svg></span>Création</button>
+        <button class="mood-btn" data-mood="learn"><span class="mood-btn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5.5 H10.5 A1.5 1.5 0 0 1 12 7 V19 A1.5 1.5 0 0 0 10.5 17.5 H5 Z"/><path d="M19 5.5 H13.5 A1.5 1.5 0 0 0 12 7 V19 A1.5 1.5 0 0 1 13.5 17.5 H19 Z"/></svg></span>Apprendre</button>
+        <button class="mood-btn" data-mood="chill"><span class="mood-btn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13.5 A8 8 0 1 1 10.5 4 A6.2 6.2 0 0 0 20 13.5 Z"/></svg></span>Chill</button>
+        <button class="mood-btn" data-mood="actu"><span class="mood-btn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12.5 3 L6 13 H11 L10.5 21 L18 10.5 H12.5 Z"/></svg></span>Actu</button>
       </div>
 
       <div class="stories-row" id="storiesRowFeed"></div>
 
 
-      <div id="feedList"></div>
+      <div id="feedList"><div id="feedSkeleton"><div class="skel-post"><div class="skel-head"><div class="skeleton skel-avatar"></div><div style="flex:1;"><div class="skeleton skel-line" style="width:42%;margin-bottom:7px;"></div><div class="skeleton skel-line" style="width:26%;height:9px;"></div></div></div><div class="skeleton skel-line" style="width:96%;margin-bottom:7px;"></div><div class="skeleton skel-line" style="width:78%;"></div></div><div class="skel-post"><div class="skel-head"><div class="skeleton skel-avatar"></div><div style="flex:1;"><div class="skeleton skel-line" style="width:38%;margin-bottom:7px;"></div><div class="skeleton skel-line" style="width:24%;height:9px;"></div></div></div><div class="skeleton skel-line" style="width:90%;margin-bottom:7px;"></div><div class="skeleton skel-line" style="width:64%;"></div></div></div></div>
 
       <div id="feedEmpty" class="empty" style="display:none;">
         <div class="empty-icon">🪷</div>
@@ -6539,7 +6605,6 @@
     <!-- ===== SCREEN: STUDIO ===== -->
     <section class="screen" id="screen-studio">
       <div class="section-title">Studio de création</div>
-      <p class="section-subtitle">Texte, photo ou mini-podcast audio. Choisis ton mood et ta passion.</p>
 
       <div class="studio-type-tabs" id="studioTypeTabs">
         <div class="studio-type active" data-type="text"><span class="studio-type-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7 V5 H20 V7"/><path d="M12 5 V20"/><path d="M9 20 H15"/></svg></span>Texte</div>
@@ -6575,7 +6640,7 @@
           <div class="upload-zone-text">Tap pour parcourir ou filmer · 3 min max</div>
         </div>
         <input type="file" id="videoInput" accept="video/*" capture="environment" style="display:none;" />
-        <p class="section-subtitle" style="margin-top:6px;">Format vertical conseillé · Partage un moment, un process, une démo.</p>
+        <p class="section-subtitle" style="margin-top:6px;">Format vertical conseillé.</p>
       </div>
 
       <!-- Audio block -->
@@ -6586,13 +6651,13 @@
           <div class="rec-status" id="recStatus">Tap pour démarrer l'enregistrement</div>
           <div id="recPlayback" style="margin-top:10px;"></div>
         </div>
-        <p class="section-subtitle" style="margin-top:-4px;">Durée max 2 min · Raconte les coulisses, pas juste le résultat.</p>
+        <p class="section-subtitle" style="margin-top:-4px;">Durée max 2 min.</p>
       </div>
 
       <!-- Vlog / Carnet de voyage block -->
       <div id="studioVlog" style="display:none;">
         <div class="vlog-editor">
-          <p class="section-subtitle" style="margin-top:0;">Un carnet de voyage agrège un récit complet : destination, dates, étapes jour par jour, conseils pratiques. Idéal pour inspirer et organiser des voyages.</p>
+          <p class="section-subtitle" style="margin-top:0;">Récit jour par jour, sur une carte.</p>
 
           <!-- Templates rapides -->
           <div class="vlog-templates">
@@ -6628,7 +6693,7 @@
           </label>
 
           <div class="section-title" style="margin-top:14px;font-size:13px;">Étapes du voyage <span class="link" onclick="addVlogStep()">+ Ajouter un jour</span></div>
-          <p class="section-subtitle">Chaque étape = un lieu, une photo, une note. Apparaîtra sur la carte automatiquement.</p>
+          <p class="section-subtitle">Chaque étape apparaît sur la carte.</p>
           <div id="vlogStepsList"></div>
 
           <div class="section-title" style="margin-top:14px;font-size:13px;">Bilan pratique (optionnel)</div>
@@ -6690,8 +6755,8 @@
 
       <!-- Tabs Explorer -->
       <div class="explore-tabs">
-        <button class="explore-tab active" id="exTab_search" onclick="switchExploreTab('search')">🔍 Recherche</button>
-        <button class="explore-tab" id="exTab_ai" onclick="switchExploreTab('ai')">✨ IA</button>
+        <button class="explore-tab active" id="exTab_search" onclick="switchExploreTab('search')">Recherche</button>
+        <button class="explore-tab" id="exTab_ai" onclick="switchExploreTab('ai')">Assistant IA</button>
       </div>
 
       <!-- Panneau Recherche classique -->
@@ -6715,7 +6780,6 @@
         <!-- Contenu normal (masqué pendant la recherche) -->
         <div id="exploreNormalContent">
         <div class="section-title">Moments à découvrir</div>
-        <p class="section-subtitle">Les stories du moment, partagées par la communauté.</p>
         <div class="stories-row" id="storiesRow"></div>
 
         <div class="section-title" style="margin-top:16px;">Passions tendance <span class="tag-hot">🔥 Hot</span></div>
@@ -6735,7 +6799,7 @@
         <!-- Barre de recherche -->
         <div class="ai-search-wrap">
           <div class="ai-search-label">✨ Passio IA</div>
-          <p style="font-size:13px;color:var(--muted);margin:0 0 12px;line-height:1.5;">Pose n'importe quelle question : conseils sur ta passion, trouver un event, progresser en photo, débuter la guitare…</p>
+          <p style="font-size:13px;color:var(--muted);margin:0 0 12px;line-height:1.5;">Pose ta question : conseils, events, progresser dans ta passion…</p>
           <div class="ai-search-bar">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" style="flex-shrink:0;color:var(--muted);"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
             <input type="text" id="aiInput" class="ai-input" placeholder="Ex : comment débuter la photo ?" onkeypress="if(event.key==='Enter')sendAIQuery()" />
@@ -6880,7 +6944,6 @@
     <!-- ===== SCREEN: IRL ===== -->
     <section class="screen" id="screen-irl">
       <div class="section-title">Passio IRL <span class="link" onclick="openCreateEvent()">+ Créer</span></div>
-      <p class="section-subtitle">Transforme le digital en relations réelles. Participe = +25 pts · +5 💎</p>
 
       <div class="irl-map-wrap" id="irlMapWrap">
         <div id="irlMap" class="irl-map"></div>
@@ -6947,19 +7010,18 @@
 
     <!-- ===== SCREEN: CDV (Carnets de Voyage) ===== -->
     <section class="screen" id="screen-cdv">
-      <div class="section-title">📔 Carnets de voyage <span class="link" onclick="setStudioToVlog()">+ Créer le mien</span></div>
-      <p class="section-subtitle">Inspire-toi des voyages des autres, organise les tiens.</p>
+      <div class="section-title">Carnets de voyage <span class="link" onclick="setStudioToVlog()">+ Créer le mien</span></div>
 
       <!-- Deux modes de création -->
       <div class="cdv-mode-row">
         <div class="cdv-mode-card" onclick="setStudioToVlog()">
-          <div class="cdv-mode-icon">📔</div>
+          <div class="cdv-mode-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><path d="M8.6 4 L3.4 5.9 V19.9 L8.6 18 L15.4 20 L20.6 18.1 V4.1 L15.4 6 L8.6 4 Z"/><path d="M8.6 4 V18"/><path d="M15.4 6 V20"/><path d="M6 16.4 C7.4 13.8 9.2 14.8 10.6 12.6 C11.7 10.9 13 11.3 14.4 9.3" stroke-dasharray="0.3 2.1"/><circle cx="6" cy="16.4" r="0.95" fill="currentColor" stroke="none"/><path d="M14.6 11.2 C14.6 11.2 13.2 9.9 13.2 8.7 A1.4 1.4 0 0 1 16 8.7 C16 9.9 14.6 11.2 14.6 11.2 Z"/><circle cx="14.6" cy="8.75" r="0.5" fill="currentColor" stroke="none"/></svg></div>
           <div class="cdv-mode-title">CDV Complet</div>
           <div class="cdv-mode-desc">Publie un carnet terminé avec toutes tes étapes, photos et conseils</div>
         </div>
         <div class="cdv-mode-card cdv-mode-live" onclick="startCdvLive()">
           <div class="cdv-mode-badge">🔴 LIVE</div>
-          <div class="cdv-mode-icon">📡</div>
+          <div class="cdv-mode-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="10.5" cy="20.4" rx="2.6" ry="0.7" opacity="0.45"/><path d="M10.5 20.2 C10.5 20.2 5.6 15.2 5.6 10.9 A4.9 4.9 0 0 1 15.4 10.9 C15.4 15.2 10.5 20.2 10.5 20.2 Z"/><circle cx="10.5" cy="10.9" r="1.7" fill="currentColor" stroke="none"/><path d="M16.2 6.2 A3.4 3.4 0 0 1 18.5 8.9"/><path d="M17.9 4 A6 6 0 0 1 20.9 8.5"/></svg></div>
           <div class="cdv-mode-title">CDV Live</div>
           <div class="cdv-mode-desc">Partage ton voyage en direct — tes abonnés suivent l'aventure étape par étape</div>
         </div>
@@ -6992,9 +7054,9 @@
       <!-- Onglets Wallet -->
       <div class="wallet-tabs">
         <button class="wallet-tab active" data-wallettab="mywallet">Wallet</button>
-        <button class="wallet-tab" data-wallettab="shop">💎 Boutique</button>
-        <button class="wallet-tab" data-wallettab="crypto">⛓ Crypto</button>
-        <button class="wallet-tab" data-wallettab="explain">ℹ Aide</button>
+        <button class="wallet-tab" data-wallettab="shop">Boutique</button>
+        <button class="wallet-tab" data-wallettab="crypto">Crypto</button>
+        <button class="wallet-tab" data-wallettab="explain">Aide</button>
       </div>
 
       <!-- ============ Pane 1 : Mon wallet (existant) ============ -->
@@ -7031,22 +7093,22 @@
         <div class="card indigo">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
             <div>
-              <div style="font-size:10px;color:#c4b5fd;text-transform:uppercase;letter-spacing:0.1em;font-weight:700;">Wallet Passia</div>
-              <div style="font-size:26px;font-weight:800;margin-top:2px;">
+              <div style="font-size:10px;color:rgba(255,255,255,0.7);text-transform:uppercase;letter-spacing:0.1em;font-weight:700;">Wallet Passia</div>
+              <div style="font-size:26px;font-weight:800;margin-top:2px;color:#fff;">
                 <span id="passiaBalance">0</span>
-                <span style="font-size:14px;color:var(--muted);">💎</span>
+                <span style="font-size:14px;color:rgba(255,255,255,0.65);">💎</span>
                 <span class="passia-value-indicator" id="passiaValueIndicator">≈ 0,00 € · ↗ +12 %</span>
               </div>
             </div>
             <div style="display:flex;gap:6px;">
-              <button class="btn small primary" onclick="setWalletTab('shop')">+ Acheter</button>
-              <button class="btn small" onclick="setWalletTab('crypto')">⛓ Crypto</button>
+              <button class="btn small" style="background:#fff;color:var(--accent-2);border-color:transparent;font-weight:800;" onclick="setWalletTab('shop')">+ Acheter</button>
+              <button class="btn small" style="background:rgba(255,255,255,0.16);color:#fff;border-color:rgba(255,255,255,0.28);" onclick="setWalletTab('crypto')">Crypto</button>
             </div>
           </div>
-          <p style="font-size:11px;color:var(--muted);margin:4px 0 0;line-height:1.5;">Gagné en créant, aidant, organisant. Achetable pour soutenir un créateur, payer un cours ou un événement. <b>Bientôt cryptomonnaie</b>, la valeur évoluera avec la communauté.</p>
+          <p style="font-size:11px;color:rgba(255,255,255,0.78);margin:4px 0 0;line-height:1.5;">Gagné en créant et en aidant. <b>Bientôt cryptomonnaie.</b></p>
         </div>
 
-        <div class="section-title" style="margin-top:14px;">🎯 Défis & quêtes <span style="font-size:10px;color:var(--muted);font-weight:500;" id="questsResetLabel">reset quotidien</span></div>
+        <div class="section-title" style="margin-top:14px;">Défis & quêtes <span style="font-size:10px;color:var(--muted);font-weight:500;" id="questsResetLabel">reset quotidien</span></div>
         <div class="card" id="questsBox"></div>
 
         <div class="section-title" style="margin-top:14px;">Comment gagner</div>
@@ -7074,14 +7136,14 @@
         </div>
 
         <div class="section-title" style="margin-top:6px;">Packs Passia</div>
-        <p class="section-subtitle">Achète une fois, dépense quand tu veux. Plus tu prends, plus le bonus est généreux.</p>
+        <p class="section-subtitle">Plus tu prends, plus le bonus grimpe.</p>
         <div class="pack-grid" id="packGrid"></div>
 
         <div class="section-title" style="margin-top:18px;">Pass Passion (abonnement)</div>
-        <p class="section-subtitle">Recevoir des Passia chaque mois + des avantages premium. Sans engagement.</p>
+        <p class="section-subtitle">Passia mensuels + avantages premium · sans engagement.</p>
         <div id="passList"></div>
 
-        <p style="font-size:11px;color:var(--muted);text-align:center;margin-top:16px;line-height:1.5;">Mode démo : aucune transaction réelle. En production, paiement via Stripe / Apple Pay / Google Pay. Conditions générales et politique de remboursement disponibles.</p>
+        <p style="font-size:11px;color:var(--muted);text-align:center;margin-top:16px;line-height:1.5;">Mode démo · aucun paiement réel.</p>
       </div>
 
       <!-- ============ Pane Crypto : token Passia ============ -->
@@ -7152,7 +7214,7 @@
               <div class="crypto-mech-title">Effet réseau (Metcalfe)</div>
               <div class="crypto-mech-text">Valeur d'un réseau ∝ utilisateurs². ×10 utilisateurs = ×100 connexions économiques.</div>
             </div>
-            <div class="crypto-mech" style="background: linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(236, 72, 153, 0.06)); border-color: rgba(245, 158, 11, 0.35);">
+            <div class="crypto-mech" style="background: linear-gradient(135deg, rgba(124, 58, 237, 0.10), rgba(124, 58, 237, 0.05)); border-color: rgba(245, 158, 11, 0.35);">
               <div class="crypto-mech-num" style="background: linear-gradient(135deg, #b45309, #f59e0b);">★</div>
               <div class="crypto-mech-title">Supply CAPÉ à 1 milliard</div>
               <div class="crypto-mech-text">Aucun nouveau PSI ne peut être créé. La rareté est garantie par le smart contract, pas par la confiance.</div>
@@ -7265,7 +7327,7 @@
 
       <!-- ============ Pane 3 : Comment ça marche ============ -->
       <div class="wallet-pane" data-walletpane="explain">
-        <div class="shop-hero" style="background: linear-gradient(135deg, #1f1b2e 0%, #4c1d95 60%, #ec4899 100%);">
+        <div class="shop-hero" style="background: linear-gradient(135deg, #2b1a5e 0%, #4c1d95 60%, #7c3aed 100%);">
           <div class="shop-hero-emoji">💡</div>
           <div class="shop-hero-title">Pourquoi acheter du Passia ?</div>
           <div class="shop-hero-sub">PASSIO vit de l'argent que tu choisis volontairement de redistribuer aux créateurs et à la communauté.</div>
@@ -7323,14 +7385,6 @@
       </div>
     </section>
 
-    <!-- ============ PROFIL D'UNE AUTRE PERSONNE ============ -->
-    <section class="screen" id="screen-profile-view">
-      <div style="padding:16px 16px 100px;">
-        <button class="btn ghost" onclick="closeUserProfileView()" style="margin-bottom:12px;padding:8px 12px;">← Retour</button>
-        <div id="profile-view-content"></div>
-      </div>
-    </section>
-
   </main>
 
   <!-- ============ DOC VIEWER (passia simple + complet, embedded) ============ -->
@@ -7385,15 +7439,15 @@
   <!-- ============ BOTTOM NAV ============ -->
   <nav class="app-nav" id="appNav">
     <div class="nav-item active" data-screen="feed">
-      <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6 H20"/><path d="M4 12 H20"/><path d="M4 18 H14"/></svg></span>
+      <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11.5 L12 4.5 L20 11.5"/><path d="M6 10 V19 A1 1 0 0 0 7 20 H17 A1 1 0 0 0 18 19 V10"/><path d="M10 20 V14.5 A1 1 0 0 1 11 13.5 H13 A1 1 0 0 1 14 14.5 V20"/></svg></span>
       <span class="nav-label">Fil</span>
     </div>
     <div class="nav-item nav-bobines" data-screen="bobines">
-      <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="3"/><path d="M10 9 L16 12 L10 15 Z" fill="currentColor"/></svg></span>
+      <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.8" y="3.8" width="16.4" height="16.4" rx="5.2"/><path d="M10.2 9.2 L15 12 L10.2 14.8 Z" fill="currentColor" stroke="none"/></svg></span>
       <span class="nav-label">Bobines</span>
     </div>
     <div class="nav-item" data-screen="explore">
-      <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21 L16.5 16.5"/></svg></span>
+      <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.4"/><path d="M15.4 8.6 L13.1 13.1 L8.6 15.4 L10.9 10.9 Z" fill="currentColor" stroke="none"/></svg></span>
       <span class="nav-label">Explorer</span>
     </div>
     <div class="nav-item nav-cta" data-screen="studio">
@@ -7401,15 +7455,15 @@
       <span class="nav-label">Créer</span>
     </div>
     <div class="nav-item" data-screen="messages">
-      <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5 H20 V17 H13 L9 21 V17 H4 Z"/><circle cx="9" cy="11" r="0.8" fill="currentColor"/><circle cx="12" cy="11" r="0.8" fill="currentColor"/><circle cx="15" cy="11" r="0.8" fill="currentColor"/></svg></span>
+      <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4.5 H19 A2.2 2.2 0 0 1 21.2 6.7 V14.3 A2.2 2.2 0 0 1 19 16.5 H13 L9 20 V16.5 H5 A2.2 2.2 0 0 1 2.8 14.3 V6.7 A2.2 2.2 0 0 1 5 4.5 Z"/><circle cx="9" cy="10.5" r="0.9" fill="currentColor" stroke="none"/><circle cx="12" cy="10.5" r="0.9" fill="currentColor" stroke="none"/><circle cx="15" cy="10.5" r="0.9" fill="currentColor" stroke="none"/></svg></span>
       <span class="nav-label">Messages</span>
     </div>
     <div class="nav-item" data-screen="irl">
-      <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8.5" r="3.2"/><path d="M3 20 C3 16.5 5.5 14.5 9 14.5 C12.5 14.5 15 16.5 15 20"/><circle cx="17.5" cy="9.5" r="2.6"/><path d="M17.5 14 C20 14 21 16 21 18"/></svg></span>
+      <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21 C12 21 5 14.8 5 9.8 A7 7 0 0 1 19 9.8 C19 14.8 12 21 12 21 Z"/><path d="M12 12.4 C12 12.4 9.4 10.6 9.4 8.9 A2.6 2.6 0 0 1 12 7.1 A2.6 2.6 0 0 1 14.6 8.9 C14.6 10.6 12 12.4 12 12.4 Z" fill="currentColor" stroke="none"/></svg></span>
       <span class="nav-label">IRL</span>
     </div>
     <div class="nav-item" data-screen="cdv">
-      <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4 H17 L19 6 V20 H5 Z"/><path d="M5 4 V20"/><path d="M9 9 H15"/><path d="M9 13 H15"/><path d="M9 17 H13"/></svg></span>
+      <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4.2 L3.6 6 V19.8 L9 18 L15 20 L20.4 18.2 V4.4 L15 6.2 L9 4.2 Z"/><path d="M9 4.2 V18"/><path d="M15 6.2 V20"/><path d="M12 13 C12 13 10.5 11.6 10.5 10.4 A1.5 1.5 0 0 1 13.5 10.4 C13.5 11.6 12 13 12 13 Z"/><circle cx="12" cy="10.45" r="0.5" fill="currentColor" stroke="none"/></svg></span>
       <span class="nav-label">CDV</span>
     </div>
   </nav>
@@ -7560,28 +7614,13 @@ function toggleDiagPanel() {
   window._DEBUG_MODE = !window._DEBUG_MODE;
   var panel = document.getElementById("__diag_panel");
   var btn = document.getElementById("__diag_btn");
-
   if(window._DEBUG_MODE) {
-    // Créer le panel s'il n'existe pas
     if(!panel) {
       panel = document.createElement("div");
       panel.id = "__diag_panel";
-      panel.style.cssText = "position:fixed;bottom:20px;right:20px;width:320px;max-height:300px;background:#1a1a1a;border:2px solid #ff9800;border-radius:8px;z-index:99998;color:#fff;font-family:monospace;font-size:12px;box-shadow:0 0 20px rgba(0,0,0,0.5);";
+      panel.style.cssText = "position:fixed;bottom:20px;right:20px;width:300px;max-height:250px;background:#1a1a1a;border:2px solid #ff9800;border-radius:8px;z-index:99998;color:#fff;font-family:monospace;box-shadow:0 0 20px rgba(0,0,0,0.5);";
       document.body.appendChild(panel);
     }
-
-    // Créer le bouton toggle s'il n'existe pas
-    if(!btn) {
-      btn = document.createElement("button");
-      btn.id = "__diag_btn";
-      btn.textContent = "🔧";
-      btn.style.cssText = "position:fixed;bottom:20px;right:340px;width:40px;height:40px;border-radius:50%;background:#ff9800;border:none;color:#fff;font-size:20px;cursor:pointer;z-index:99999;box-shadow:0 0 10px rgba(0,0,0,0.3);transition:all 0.2s;";
-      btn.onclick = toggleDiagPanel;
-      btn.onmouseover = function() { this.style.transform = "scale(1.1)"; };
-      btn.onmouseout = function() { this.style.transform = "scale(1)"; };
-      document.body.appendChild(btn);
-    }
-
     panel.style.display = "block";
     _updateDiagPanel();
     if(btn) btn.style.background = "#ff9800";
@@ -7721,10 +7760,8 @@ function buildSeed() {
       ],
       createdAt: Date.now() - 12 * 3600000, likes: 245, liked: false,
       comments: [
-        { id: "c_marr_1", authorId: "u_lea", text: "Le bleu Majorelle me hante depuis des années. Faut que j'y aille.", createdAt: Date.now() - 11 * 3600000, likes: 12, likedBy: ["u_theo"], emojis: ["❤️", "🔥"], replies: [
-          { id: "reply_1", authorId: "u_karim", text: "Vas-y, ça en vaut vraiment la peine! L'horaire : 8h30-18h, mieux le matin.", createdAt: Date.now() - 10.5 * 3600000 }
-        ]},
-        { id: "c_marr_2", authorId: "u_theo", text: "Tu peux partager le nom de ton riad en DM ?", createdAt: Date.now() - 10 * 3600000, likes: 3, likedBy: [], emojis: [], replies: [] },
+        { id: "c_marr_1", authorId: "u_lea", text: "Le bleu Majorelle me hante depuis des années. Faut que j'y aille.", createdAt: Date.now() - 11 * 3600000 },
+        { id: "c_marr_2", authorId: "u_theo", text: "Tu peux partager le nom de ton riad en DM ?", createdAt: Date.now() - 10 * 3600000 },
       ]
     },
 
@@ -7766,8 +7803,8 @@ function buildSeed() {
       ],
       createdAt: Date.now() - 48 * 3600000, likes: 489, liked: false,
       comments: [
-        { id: "c_tokyo_1", authorId: "u_karim", text: "Le JR Pass conseil = sauveur de portefeuille. Confirmé.", createdAt: Date.now() - 46 * 3600000, likes: 5, likedBy: [], emojis: [], replies: [] },
-        { id: "c_tokyo_2", authorId: "u_nina", text: "Tu m'as donné envie de réserver mon billet là maintenant.", createdAt: Date.now() - 44 * 3600000, likes: 3, likedBy: [], emojis: [], replies: [] },
+        { id: "c_tokyo_1", authorId: "u_karim", text: "Le JR Pass conseil = sauveur de portefeuille. Confirmé.", createdAt: Date.now() - 46 * 3600000 },
+        { id: "c_tokyo_2", authorId: "u_nina", text: "Tu m'as donné envie de réserver mon billet là maintenant.", createdAt: Date.now() - 44 * 3600000 },
       ]
     },
 
@@ -7787,7 +7824,7 @@ function buildSeed() {
       ],
       createdAt: Date.now() - 6 * 3600000, likes: 167, liked: false,
       comments: [
-        { id: "c_bret_1", authorId: "u_emma", text: "La crêperie de Yann je connais ! Trop bien.", createdAt: Date.now() - 5 * 3600000, likes: 2, likedBy: [], emojis: [], replies: [] },
+        { id: "c_bret_1", authorId: "u_emma", text: "La crêperie de Yann je connais ! Trop bien.", createdAt: Date.now() - 5 * 3600000 },
       ]
     },
 
@@ -7808,15 +7845,15 @@ function buildSeed() {
       ],
       createdAt: Date.now() - 5 * 3600000, likes: 187, liked: false,
       comments: [
-        { id: "c_vlog_1", authorId: "u_karim", text: "Tu m'as donné envie. Tu as quel appareil pour les photos ?", createdAt: Date.now() - 4 * 3600000, likes: 3, likedBy: [], emojis: [], replies: [] },
-        { id: "c_vlog_2", authorId: "u_lea", text: "Sintra, le rêve. Merci pour les bons plans 🌿", createdAt: Date.now() - 3 * 3600000, likes: 5, likedBy: [], emojis: [], replies: [] },
+        { id: "c_vlog_1", authorId: "u_karim", text: "Tu m'as donné envie. Tu as quel appareil pour les photos ?", createdAt: Date.now() - 4 * 3600000 },
+        { id: "c_vlog_2", authorId: "u_lea", text: "Sintra, le rêve. Merci pour les bons plans 🌿", createdAt: Date.now() - 3 * 3600000 },
       ]
     },
     { id: "p1",  authorId: "u_lea",   passion: "musique", mood: "creation", type: "text", cover: "studio",
       text: "Je viens de finir la démo d'un morceau que je porte depuis 3 ans. Pas parfait, mais honnête. 🎶\n\nMontrer le processus, pas la façade, c'est tout l'esprit PASSIO pour moi.",
       createdAt: hours(2), likes: 34, liked: false, comments: [
-        { id: "c1", authorId: "u_karim", text: "Ça sonne super brut, j'adore.", createdAt: hours(1), likes: 2, likedBy: [], emojis: [], replies: [] },
-        { id: "c2", authorId: "u_amira", text: "Le courage de poster une démo 👏", createdAt: hours(1), likes: 6, likedBy: [], emojis: [], replies: [] },
+        { id: "c1", authorId: "u_karim", text: "Ça sonne super brut, j'adore.", createdAt: hours(1) },
+        { id: "c2", authorId: "u_amira", text: "Le courage de poster une démo 👏", createdAt: hours(1) },
       ]},
     { id: "p2",  authorId: "u_yanis", passion: "tech", mood: "learn", type: "text", cover: "tech",
       text: "Petit tuto : comment j'ai codé mon premier agent IA ce week-end, sans framework. 3 règles que j'aurais aimé connaître avant.\n\n1. Pas de hype, juste des specs\n2. Logger chaque appel\n3. Commencer par le prompt, pas par le code",
@@ -7853,13 +7890,13 @@ function buildSeed() {
     { id: "p12", authorId: "u_mehdi", passion: "sport", mood: "irl", type: "text", cover: "trail",
       text: "Trail découverte au-dessus d'Annecy samedi matin. 8km, 400m D+, pour tous niveaux. Qui embarque ?",
       createdAt: days(3), likes: 38, liked: false, comments: [
-        { id: "c3", authorId: "u_jona", text: "Je viens ! Je ramène les barres énergétiques maison 💪", createdAt: days(2), likes: 4, likedBy: [], emojis: [], replies: [] },
+        { id: "c3", authorId: "u_jona", text: "Je viens ! Je ramène les barres énergétiques maison 💪", createdAt: days(2) },
       ]},
     { id: "p13", authorId: "u_inès", passion: "art", mood: "creation", type: "text", cover: "neon",
       text: "3h sur ce portrait à l'encre. J'ai failli abandonner 6 fois. La satisfaction finale vaut TOUTES les heures ratées. ✒️",
       createdAt: hours(3), likes: 87, liked: false, comments: [
-        { id: "c4", authorId: "u_lou", text: "La patience comme médium. Magnifique.", createdAt: hours(2), likes: 7, likedBy: [], emojis: [], replies: [] },
-        { id: "c5", authorId: "u_zoe", text: "Je peux voir le résultat stp ? 🙏", createdAt: hours(1), likes: 2, likedBy: [], emojis: [], replies: [] },
+        { id: "c4", authorId: "u_lou", text: "La patience comme médium. Magnifique.", createdAt: hours(2) },
+        { id: "c5", authorId: "u_zoe", text: "Je peux voir le résultat stp ? 🙏", createdAt: hours(1) },
       ]},
     { id: "p14", authorId: "u_oussa", passion: "musique", mood: "learn", type: "audio",
       text: "Mon process : je pars toujours de l'erreur. Un sample mal calé, un bug de synthé. Explications en 90 secondes.",
@@ -7868,8 +7905,8 @@ function buildSeed() {
     { id: "p15", authorId: "u_clara", passion: "voyage", mood: "irl", type: "text", cover: "sunrise",
       text: "J-12 avant le départ Copenhague → Rome à vélo. 1850 km. Solo. Terrifiée. Préparée.\n\nSi quelqu'un veut suivre le journal quotidien sur PASSIO, je poste chaque soir.",
       createdAt: hours(6), likes: 212, liked: false, comments: [
-        { id: "c6", authorId: "u_mehdi", text: "Tu vas tout déchirer. Jalousie maximale.", createdAt: hours(5), likes: 9, likedBy: [], emojis: [], replies: [] },
-        { id: "c7", authorId: "u_nina", text: "Je te file mes contacts à Munich et Vérone 📍", createdAt: hours(3), likes: 5, likedBy: [], emojis: [], replies: [] },
+        { id: "c6", authorId: "u_mehdi", text: "Tu vas tout déchirer. Jalousie maximale.", createdAt: hours(5) },
+        { id: "c7", authorId: "u_nina", text: "Je te file mes contacts à Munich et Vérone 📍", createdAt: hours(3) },
       ]},
     { id: "p16", authorId: "u_noa", passion: "cinema", mood: "learn", type: "text", cover: "studio",
       text: "3 coupes qui changent un film :\n1. Couper 2 secondes AVANT qu'on pense\n2. Garder le souffle, pas la réplique\n3. Le son précède l'image, toujours",
@@ -7877,7 +7914,7 @@ function buildSeed() {
     { id: "p17", authorId: "u_chloé", passion: "bienetre", mood: "chill", type: "text", cover: "nature",
       text: "Rappel doux : tu peux être productive ET fatiguée. Les deux sont vrais. Aujourd'hui j'ai fait la sieste. C'était parfait.",
       createdAt: hours(11), likes: 298, liked: false, comments: [
-        { id: "c8", authorId: "u_emma", text: "Merci pour ça. J'en avais besoin 🌿", createdAt: hours(10), likes: 12, likedBy: [], emojis: [], replies: [] },
+        { id: "c8", authorId: "u_emma", text: "Merci pour ça. J'en avais besoin 🌿", createdAt: hours(10) },
       ]},
     { id: "p18", authorId: "u_tom", passion: "jeux", mood: "chill", type: "text", cover: "neon",
       text: "Nouveau record perso sur Ocarina of Time any% : 16:54. La communauté speedrun FR devient ouf, on échange chaque semaine.",
@@ -7885,7 +7922,7 @@ function buildSeed() {
     { id: "p19", authorId: "u_raph", passion: "tech", mood: "creation", type: "text", cover: "tech",
       text: "Hot take : l'IA va pas tuer le design, elle va tuer le design pressé. Les 10 minutes qu'on passait à faire un mockup moche deviennent 10 secondes. Reste le goût.",
       createdAt: hours(16), likes: 183, liked: false, comments: [
-        { id: "c9", authorId: "u_yanis", text: "100% d'accord. La barre monte, elle disparaît pas.", createdAt: hours(15), likes: 8, likedBy: [], emojis: [], replies: [] },
+        { id: "c9", authorId: "u_yanis", text: "100% d'accord. La barre monte, elle disparaît pas.", createdAt: hours(15) },
       ]},
     { id: "p20", authorId: "u_mila", passion: "danse", mood: "irl", type: "text", cover: "dance",
       text: "Stage de contemporaine gratuit pour les 16-25 ans à Ajaccio, du 5 au 9 mai. 12 places. Je transmets ce qu'on m'a transmis.",
@@ -7896,7 +7933,7 @@ function buildSeed() {
     { id: "p22", authorId: "u_anaïs", passion: "litterature", mood: "creation", type: "text", cover: "book",
       text: "Un poème écrit ce matin en 7 minutes, sans retour. Brut.\n\n« On croit avancer.\nOn tourne en orbite\nautour d'une idée\nqu'on refuse de quitter. »",
       createdAt: days(1), likes: 238, liked: false, comments: [
-        { id: "c10", authorId: "u_sofia", text: "Le poème doit rester brut. Ne touche à rien. 💫", createdAt: hours(22), likes: 14, likedBy: [], emojis: [], replies: [] },
+        { id: "c10", authorId: "u_sofia", text: "Le poème doit rester brut. Ne touche à rien. 💫", createdAt: hours(22) },
       ]},
     { id: "p23", authorId: "u_hugo", passion: "cuisine", mood: "chill", type: "text", cover: "kitchen",
       text: "Tarte citron sans œufs ni beurre. J'ai mis 4 essais, mais cette version elle est propre. Si ça intéresse je mets la recette.",
@@ -7912,13 +7949,13 @@ function buildSeed() {
     { id: "p26", authorId: "u_sami", passion: "actu", mood: "actu", type: "text", cover: "news_europe",
       text: "🌍 Sommet européen sur l'énergie : 5 points à retenir\n\n1. Nouveau paquet d'aides pour la rénovation thermique\n2. Objectif 2030 réaffirmé malgré les tensions\n3. Dépendance au gaz : diversification encore partielle\n4. Nucléaire : accord a minima entre Paris et Berlin\n5. Fonds climat doublé pour les pays du Sud\n\nMon analyse complète en article dans les commentaires.",
       createdAt: hours(3), likes: 412, liked: false, comments: [
-        { id: "ca1", authorId: "u_val", text: "Point 4 surtout, c'est le vrai tournant. On en parle en visio ?", createdAt: hours(2), likes: 6, likedBy: [], emojis: [], replies: [] },
-        { id: "ca2", authorId: "u_raph", text: "Merci pour la synthèse claire, ça change du scroll anxiogène 🙏", createdAt: hours(1), likes: 18, likedBy: [], emojis: [], replies: [] },
+        { id: "ca1", authorId: "u_val", text: "Point 4 surtout, c'est le vrai tournant. On en parle en visio ?", createdAt: hours(2) },
+        { id: "ca2", authorId: "u_raph", text: "Merci pour la synthèse claire, ça change du scroll anxiogène 🙏", createdAt: hours(1) },
       ]},
     { id: "p27", authorId: "u_val", passion: "actu", mood: "actu", type: "text", cover: "news_asia",
       text: "Tensions en mer de Chine : ce qu'il faut comprendre au-delà des titres.\n\nLa question n'est pas « qui a raison » mais « qui contrôle quelles routes commerciales ». 40% du commerce mondial passe par ces eaux. Tout le reste en découle.\n\nFil en 10 points à venir ce soir.",
       createdAt: hours(6), likes: 289, liked: false, comments: [
-        { id: "ca3", authorId: "u_sami", text: "Hâte de lire le fil. Merci de remettre l'économie au centre.", createdAt: hours(5), likes: 11, likedBy: [], emojis: [], replies: [] },
+        { id: "ca3", authorId: "u_sami", text: "Hâte de lire le fil. Merci de remettre l'économie au centre.", createdAt: hours(5) },
       ]},
     { id: "p28", authorId: "u_kaoru", passion: "actu", mood: "actu", type: "text", cover: "news_asia",
       text: "🇯🇵 Depuis Tokyo : les élections locales de dimanche ont bougé la carte politique plus que prévu. Petite hausse de participation chez les 18-25 ans, +4 pts. Petit signal, grande direction.\n\nÀ suivre pour 2026.",
@@ -7926,12 +7963,12 @@ function buildSeed() {
     { id: "p29", authorId: "u_sami", passion: "actu", mood: "actu", type: "text", cover: "climate",
       text: "🌱 Bonne nouvelle climat (ça existe) : l'Inde vient de dépasser 50% de sa capacité électrique en renouvelables. 5 ans avant l'objectif annoncé.\n\nÇa reste 70% charbon en production réelle, mais la bascule est engagée. Chiffres sourcés IEA.",
       createdAt: hours(14), likes: 356, liked: false, comments: [
-        { id: "ca4", authorId: "u_emma", text: "Enfin une news qui fait pas déprimer. Merci 🌿", createdAt: hours(13), likes: 22, likedBy: [], emojis: [], replies: [] },
+        { id: "ca4", authorId: "u_emma", text: "Enfin une news qui fait pas déprimer. Merci 🌿", createdAt: hours(13) },
       ]},
     { id: "p30", authorId: "u_val", passion: "actu", mood: "actu", type: "text", cover: "tech",
       text: "Régulation IA en UE : l'AI Act entre dans sa phase contraignante. Ce que ça change concrètement pour les entreprises < 50 salariés :\n\n• Obligation de documentation pour les usages à haut risque\n• Transparence sur les modèles fondation\n• Droit d'opt-out pour les créateurs\n\nLe diable est dans les décrets d'application.",
       createdAt: days(1), likes: 223, liked: false, comments: [
-        { id: "ca5", authorId: "u_yanis", text: "Post à épingler. Beaucoup de startups vont dormir dessus et se réveiller à l'amende.", createdAt: hours(20), likes: 19, likedBy: [], emojis: [], replies: [] },
+        { id: "ca5", authorId: "u_yanis", text: "Post à épingler. Beaucoup de startups vont dormir dessus et se réveiller à l'amende.", createdAt: hours(20) },
       ]},
     { id: "p31", authorId: "u_kaoru", passion: "actu", mood: "actu", type: "text", cover: "news_africa",
       text: "Focus Afrique de l'Ouest : le corridor Dakar-Abidjan est en train de devenir la nouvelle artère économique du continent. 400 M€ d'investissements annoncés ce trimestre, 80% privés africains.\n\nOn parle peu de ces dynamiques. C'est une erreur.",
@@ -7941,13 +7978,13 @@ function buildSeed() {
     { id: "p40", authorId: "u_lea", passion: "musique", mood: "chill", type: "text", cover: "stage",
       text: "Première fois sur scène cette semaine. 40 personnes dans la salle, ça tremblait dans les jambes. J'ai raté la deuxième intro, rigolé, repris. Personne n'a tiqué.\n\nLeçon : le public ne veut pas un·e robot, il veut quelqu'un d'incarné.",
       createdAt: hours(9), likes: 156, liked: false, comments: [
-        { id: "c40a", authorId: "u_oussa", text: "On passe tous par là 🔥", createdAt: hours(7), likes: 3, likedBy: [], emojis: [], replies: [] },
+        { id: "c40a", authorId: "u_oussa", text: "On passe tous par là 🔥", createdAt: hours(7) },
       ]},
     { id: "p41", authorId: "u_oussa", passion: "musique", mood: "creation", type: "text", cover: "studio",
       text: "Mon setup home studio en 2026 : un bureau IKEA, un SM7B, un Apollo Twin, et surtout 4 m² traités avec des panneaux DIY. Pas besoin de 20 k€ pour sonner pro.\n\nJe poste la liste complète en commentaire si ça intéresse.",
       createdAt: hours(14), likes: 203, liked: false, comments: [
-        { id: "c41a", authorId: "u_liam", text: "Liste stp 🙏", createdAt: hours(13), likes: 8, likedBy: [], emojis: [], replies: [] },
-        { id: "c41b", authorId: "u_raph", text: "Le SM7B c'est vraiment le meilleur rapport qualité/prix encore 4 ans après ?", createdAt: hours(10), likes: 5, likedBy: [], emojis: [], replies: [] },
+        { id: "c41a", authorId: "u_liam", text: "Liste stp 🙏", createdAt: hours(13) },
+        { id: "c41b", authorId: "u_raph", text: "Le SM7B c'est vraiment le meilleur rapport qualité/prix encore 4 ans après ?", createdAt: hours(10) },
       ]},
     { id: "p42", authorId: "u_lea", passion: "musique", mood: "learn", type: "text", cover: "neon",
       text: "Le mode dorien, expliqué en 3 minutes sans jargon : c'est le mineur mais avec la 6ème majeure. Écoute « So What » de Miles Davis, tout est dedans.\n\nProchain live théorie musicale jeudi 21h.",
@@ -7957,7 +7994,7 @@ function buildSeed() {
     { id: "p43", authorId: "u_karim", passion: "photo", mood: "creation", type: "photo", cover: "street",
       text: "Série « Invisibles » : les gens qui ouvrent la ville à 5h du matin. Balayeurs, boulangers, livreurs. Ils méritent d'être vus.",
       createdAt: hours(11), likes: 287, liked: false, comments: [
-        { id: "c43a", authorId: "u_nina", text: "Touchée. On les oublie.", createdAt: hours(9), likes: 11, likedBy: [], emojis: [], replies: [] },
+        { id: "c43a", authorId: "u_nina", text: "Touchée. On les oublie.", createdAt: hours(9) },
       ]},
     { id: "p44", authorId: "u_karim", passion: "photo", mood: "learn", type: "text", cover: "horizon",
       text: "Règle qu'on m'a répétée 10 ans avant que je comprenne : la photo n'est pas ce que tu vois, c'est ce que tu montres.\n\nRecadrer c'est choisir. Choisir c'est exclure. Exclure c'est raconter.",
@@ -7973,7 +8010,7 @@ function buildSeed() {
     { id: "p47", authorId: "u_clara", passion: "voyage", mood: "irl", type: "text", cover: "trail",
       text: "Copenhague → Rome à vélo, jour 19 sur 40. Aujourd'hui 98 km sous la pluie en Bavière. Demain col à 1 200 m.\n\nCe qui me fait tenir : savoir que tous les soirs il y a quelqu'un qui m'offre le canapé. La solidarité cyclo, c'est une religion.",
       createdAt: hours(22), likes: 334, liked: false, comments: [
-        { id: "c47a", authorId: "u_mehdi", text: "Respect énorme 🚴", createdAt: hours(18), likes: 16, likedBy: [], emojis: [], replies: [] },
+        { id: "c47a", authorId: "u_mehdi", text: "Respect énorme 🚴", createdAt: hours(18) },
       ]},
     { id: "p48", authorId: "u_nina", passion: "voyage", mood: "chill", type: "text", cover: "sunrise",
       text: "Meilleure adresse cachée de Porto : « A Grade », une cantine d'ouvriers. Plat du jour 7 €, vue sur le Douro, et la patronne te sert comme sa nièce.\n\nRien n'est sur Instagram. Longue vie aux endroits comme ça.",
@@ -7983,8 +8020,8 @@ function buildSeed() {
     { id: "p49", authorId: "u_theo", passion: "cuisine", mood: "creation", type: "text", cover: "kitchen",
       text: "Expérimentation du mois : bouillon dashi au poireau grillé + panais. Umami végétal fou. Ça va entrer au menu de la semaine chez moi.\n\nJe vous partage la recette complète si ça vous botte.",
       createdAt: hours(6), likes: 167, liked: false, comments: [
-        { id: "c49a", authorId: "u_hugo", text: "La recette, vite 🙏", createdAt: hours(5), likes: 6, likedBy: [], emojis: [], replies: [] },
-        { id: "c49b", authorId: "u_emma", text: "J'adore l'idée panais + dashi", createdAt: hours(4), likes: 4, likedBy: [], emojis: [], replies: [] },
+        { id: "c49a", authorId: "u_hugo", text: "La recette, vite 🙏", createdAt: hours(5) },
+        { id: "c49b", authorId: "u_emma", text: "J'adore l'idée panais + dashi", createdAt: hours(4) },
       ]},
     { id: "p50", authorId: "u_hugo", passion: "cuisine", mood: "learn", type: "text", cover: "studio",
       text: "Pâtisserie véganisante, 3 trucs que j'ai appris en 1 an :\n\n1. Aquafaba > œuf pour les macarons (sérieux)\n2. Huile de coco désodorisée pour remplacer le beurre en viennoiserie\n3. Ne JAMAIS négliger l'acidité (citron, vinaigre de cidre)\n\nJe sors un carnet de recettes en juin.",
@@ -7997,7 +8034,7 @@ function buildSeed() {
     { id: "p52", authorId: "u_mehdi", passion: "sport", mood: "creation", type: "text", cover: "trail",
       text: "Préparation du trail du Mont-Blanc, semaine 8 sur 16. Cette semaine : 87 km, 4 200 D+, deux sorties longues. Les jambes tiennent, la tête suit, le sommeil est en béton.\n\nLe secret, c'est pas l'intensité. C'est la patience.",
       createdAt: hours(10), likes: 211, liked: false, comments: [
-        { id: "c52a", authorId: "u_jona", text: "Allez Mehdi 💪 tu vas le boucler celui-là", createdAt: hours(8), likes: 10, likedBy: [], emojis: [], replies: [] },
+        { id: "c52a", authorId: "u_jona", text: "Allez Mehdi 💪 tu vas le boucler celui-là", createdAt: hours(8) },
       ]},
     { id: "p53", authorId: "u_jona", passion: "sport", mood: "learn", type: "text", cover: "nature",
       text: "L'escalade m'a appris ça : la peur n'est pas un obstacle, c'est une donnée. Tu l'écoutes, tu la mesures, tu décides.\n\nC'est vrai sur la paroi. C'est vrai dans la vie.",
@@ -8010,7 +8047,7 @@ function buildSeed() {
     { id: "p55", authorId: "u_sofia", passion: "litterature", mood: "chill", type: "text", cover: "book",
       text: "Fini « Giovanni's Room » de Baldwin cette nuit. Trois heures sans bouger. La prose est une lame, et tu te rends compte à la dernière page qu'elle était dans ta main depuis le début.\n\nSi vous cherchez un court roman qui marque, c'est celui-là.",
       createdAt: hours(12), likes: 178, liked: false, comments: [
-        { id: "c55a", authorId: "u_anaïs", text: "Un des livres qui m'a formée. Belle lecture 📚", createdAt: hours(10), likes: 9, likedBy: [], emojis: [], replies: [] },
+        { id: "c55a", authorId: "u_anaïs", text: "Un des livres qui m'a formée. Belle lecture 📚", createdAt: hours(10) },
       ]},
     { id: "p56", authorId: "u_anaïs", passion: "litterature", mood: "creation", type: "text", cover: "book",
       text: "Premier jet du recueil terminé. 64 poèmes, 4 ans d'archives. Maintenant vient le vrai travail : couper la moitié.\n\nÉcrire c'est ajouter. Publier c'est soustraire.",
@@ -8020,7 +8057,7 @@ function buildSeed() {
     { id: "p57", authorId: "u_yanis", passion: "tech", mood: "chill", type: "text", cover: "neon",
       text: "Observation 2026 : tous les SaaS qui survivent ont en commun un truc, ils ont arrêté de copier ChatGPT comme interface. Le vrai chantier c'est les workflows, pas le chat.\n\nLe chat c'est la réponse facile. Pas la bonne.",
       createdAt: hours(4), likes: 289, liked: false, comments: [
-        { id: "c57a", authorId: "u_raph", text: "+1000. Le chat est une excuse pour ne pas designer.", createdAt: hours(3), likes: 23, likedBy: [], emojis: [], replies: [] },
+        { id: "c57a", authorId: "u_raph", text: "+1000. Le chat est une excuse pour ne pas designer.", createdAt: hours(3) },
       ]},
     { id: "p58", authorId: "u_raph", passion: "tech", mood: "learn", type: "text", cover: "tech",
       text: "Design produit IA, ma checklist avant de lancer une feature :\n\n• L'utilisateur peut-il réaliser la tâche SANS l'IA ?\n• Si l'IA se trompe, quel est le coût pour lui ?\n• Lui montre-t-on *comment* l'IA a décidé ?\n• L'a-t-on laissé corriger ?\n\nSi 3 sur 4 sont « oui », on peut shipper.",
@@ -8184,38 +8221,11 @@ function buildSeed() {
     { id: "pv4", authorId: "u_clara", passion: "voyage", mood: "chill", type: "text", cover: "horizon",
       text: "Ce qu'on ne te dit pas sur le voyage longue durée : les premières semaines sont dures. La solitude, la désorientation, le manque de routine.\n\nLes gens qui rentrent au bout d'une semaine n'ont pas échoué. Ils ont découvert que ce mode de vie n'est pas fait pour eux. Et c'est précieux aussi.",
       createdAt: days(2), likes: 892, liked: false, comments: [
-        { id: "cpv4a", authorId: "u_nina", text: "Le message le plus honnête que j'aie lu là-dessus.", createdAt: days(1), likes: 5, likedBy: [], emojis: ["❤️"], replies: [
-          { id: "reply_pv4a_1", authorId: "u_clara", text: "Merci ! C'est vraiment ce que je voulais partager. Trop de gens se sentent honteux de revenir en arrière.", createdAt: days(0.95) }
-        ]},
+        { id: "cpv4a", authorId: "u_nina", text: "Le message le plus honnête que j'aie lu là-dessus.", createdAt: days(1) },
       ]},
     { id: "pv5", authorId: "u_nina", passion: "voyage", mood: "irl", type: "text", cover: "trail",
       text: "Rencontre du mois : Ibrahim, guide berbère dans l'Anti-Atlas marocain. 62 ans, marché 40 000 km de sa vie dans ces montagnes. Il connaît le nom de chaque pierre.\n\nC'est lui la destination. Pas le paysage.",
       createdAt: days(3), likes: 743, liked: false, comments: [] },
-
-    // Posts avec mood "actu" (actualités)
-    { id: "actu_1", authorId: "u_yanis", passion: "tech", mood: "actu", type: "text", cover: "tech",
-      text: "🚀 OpenAI vient de lancer o3 avec un breakthrough en reasoning.\n\nLa vraie révolution : ce n'est plus sur la vitesse mais sur la capacité à résoudre les problèmes vraiment complexes. Les implications pour le code et les maths sont énormes.",
-      createdAt: hours(2), likes: 156, liked: false, comments: [
-        { id: "c_actu_1", authorId: "u_liam", text: "Les reasoning models changent la game. Prêt à plonger dedans.", createdAt: hours(1) },
-      ]},
-
-    { id: "actu_2", authorId: "u_lea", passion: "litterature", mood: "actu", type: "text", cover: "news",
-      text: "📚 Les lauréats du Goncourt et du Renaudot sont annoncés aujourd'hui.\n\nForum des 5 continents pour débattre : qui croit qu'on lira vraiment ces livres ou c'est juste du bruit éditorial ?",
-      createdAt: hours(3), likes: 89, liked: false, comments: [
-        { id: "c_actu_2a", authorId: "u_sofia", text: "Le Goncourt = garantie de vente, pas de valeur littéraire garantie.", createdAt: hours(2) },
-      ]},
-
-    { id: "actu_3", authorId: "u_karim", passion: "photo", mood: "actu", type: "text", cover: "news",
-      text: "📸 Sony annonce le A1R2 : saut générationnel en ISO et AF.\n\nPremiers tests de photographes pros : 'C'est le boîtier à avoir en 2026 si tu fais de la photo de rue en faible lumière.'",
-      createdAt: hours(4), likes: 203, liked: false, comments: [
-        { id: "c_actu_3", authorId: "u_tom", text: "L'ISO en full frame dépasse enfin les petits capteurs. Enfin.", createdAt: hours(3) },
-      ]},
-
-    { id: "actu_4", authorId: "u_chloé", passion: "bienetre", mood: "actu", type: "text", cover: "news",
-      text: "💚 La recherche sénégalaise sur la phytothérapie reçoit une bourse de l'ONU.\n\n5 ans de travail sur les plantes locales = reconnaissance mondiale. Ça fait vraiment plaisir de voir l'Afrique avancer sur ses propres solutions.",
-      createdAt: days(1), likes: 421, liked: false, comments: [
-        { id: "c_actu_4a", authorId: "u_emma", text: "Cet article mérite d'être lu par tous les naturopathes.", createdAt: hours(22) },
-      ]},
   ];
 
   // Helpers pour créer des dates précises
@@ -8544,8 +8554,7 @@ function goTo(screen) {
   $$(".screen").forEach(s => s.classList.remove("active"));
   const el = document.getElementById("screen-" + screen);
   if (el) el.classList.add("active");
-  var appMain = document.getElementById("appMain");
-  if (appMain) appMain.scrollTop = 0;
+  $("#appMain").scrollTop = 0;
   document.body.classList.toggle("screen-feed-active", screen === "feed");
 
   // Re-render dynamic screens on navigate
@@ -9414,7 +9423,7 @@ function renderPostHTML(p) {
     ? { name: currentProfile()?.name || state.user.name, profileEmoji: currentProfile()?.emoji || "✨", avatar: currentProfile()?.color || "#8b5cf6" }
     : userById(p.authorId) || { name: p.authorName || "Passionné", avatar: p.authorColor || "#8b5cf6", profileEmoji: p.authorEmoji || "✨" };
   const passion = passionById(p.passion);
-  const moodMap = { creation: "🎨 Création", learn: "📚 Learn", chill: "😌 Chill", irl: "🤝 IRL" };
+  const moodMap = { creation: "🎨 Création", learn: "📚 Apprendre", chill: "😌 Chill", irl: "🤝 IRL" };
   const liked = state.user.likedPosts.includes(p.id);
   const likeClass = liked ? "liked" : "";
 
@@ -9471,40 +9480,12 @@ function renderPostHTML(p) {
   const commentsPreview = (p.comments || []).slice(0, 2).map(c => {
     const cu = userById(c.authorId) || { name: "?", profileEmoji: "👤", avatar: "#64748b" };
     const cSrc = c.authorId === "me" ? "me" : "seed";
-    const cLiked = (c.likedBy || []).includes(state.user?.id || "me");
-    const cLikes = c.likes || 0;
-    const cEmojis = c.emojis || [];
-    const cReplies = c.replies || [];
-
-    return `<div class="comment" data-commentid="${c.id}">
-      <div class="avatar sm" style="background:${cu.avatar};cursor:pointer;" onclick="event.stopPropagation();viewUserProfile('${c.authorId}','${cSrc}')">${cu.profileEmoji || (cu.name||"?")[0]}</div>
+    return `<div class="comment">
+      <div class="avatar sm" style="background:${cu.avatar};cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${c.authorId}','${cSrc}')">${cu.profileEmoji || (cu.name||"?")[0]}</div>
       <div class="comment-body">
-        <div class="comment-author" onclick="event.stopPropagation();viewUserProfile('${c.authorId}','${cSrc}')">${escapeHtml(cu.name)}</div>
+        <div class="comment-author" style="cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${c.authorId}','${cSrc}')">${escapeHtml(cu.name)}</div>
         <div class="comment-text">${escapeHtml(c.text)}</div>
-
-        ${cEmojis.length > 0 ? `<div class="comment-emoji-picker">${cEmojis.map(e => `<span class="comment-emoji-btn">${e}</span>`).join("")}</div>` : ""}
-
-        <div class="comment-meta">
-          <span>${fmtTime(c.createdAt)}</span>
-        </div>
-
-        <div class="comment-actions">
-          <span class="comment-action ${cLiked ? "liked" : ""}" onclick="likeComment('${p.id}','${c.id}'); return false;">
-            ${cLiked ? "❤️" : "🤍"} ${cLikes}
-          </span>
-          <span class="comment-action" onclick="replyToComment('${p.id}','${c.id}','${escapeHtml(cu.name)}', event); return false;" title="Répondre">💬</span>
-          <span class="comment-action" onclick="showEmojiPickerForComment('${p.id}','${c.id}',event); return false;" title="Réagir">😊</span>
-          ${cReplies.length > 0 ? `<span class="comment-reply-count" onclick="toggleCommentReplies('${c.id}'); return false;">${cReplies.length} réponse${cReplies.length > 1 ? "s" : ""}</span>` : ""}
-        </div>
-
-        ${cReplies.length > 0 ? `<div class="comment-replies" id="replies-${c.id}" style="display:none;">${cReplies.map(r => {
-          const ru = userById(r.authorId) || { name: "?", profileEmoji: "👤", avatar: "#64748b" };
-          const rSrc = r.authorId === "me" ? "me" : "seed";
-          return `<div class="comment-reply">
-            <span class="comment-reply-author" onclick="viewUserProfile('${r.authorId}','${rSrc}'); return false;">${escapeHtml(ru.name)}</span>: ${escapeHtml(r.text)}
-            <div style="font-size:10px;color:var(--muted);margin-top:2px;">${fmtTime(r.createdAt)}</div>
-          </div>`;
-        }).join("")}</div>` : ""}
+        <div class="comment-meta">${fmtTime(c.createdAt)}</div>
       </div>
     </div>`;
   }).join("");
@@ -9516,8 +9497,8 @@ function renderPostHTML(p) {
 
   return `<article class="post" data-postid="${p.id}">
     <div class="post-header">
-      <div class="avatar" style="background:${author.avatar};cursor:pointer;" onclick="viewUserProfile('${p.authorId}','${p._source}')">${author.profileEmoji || (author.name || "?")[0]}</div>
-      <div class="post-author" style="cursor:pointer;" onclick="viewUserProfile('${p.authorId}','${p._source}')">
+      <div class="avatar" style="background:${author.avatar};cursor:pointer;" onclick="openUserProfile('${p.authorId}','${p._source}')">${author.profileEmoji || (author.name || "?")[0]}</div>
+      <div class="post-author" style="cursor:pointer;" onclick="openUserProfile('${p.authorId}','${p._source}')">
         <div class="post-author-name">${escapeHtml(author.name || "Moi")}
           ${p._source === "me" ? '<span class="pill" style="padding:2px 7px;font-size:9px;border-color:rgba(139, 92, 246,0.5);color:#fed7aa;">Moi</span>' : ""}
         </div>
@@ -9544,18 +9525,11 @@ function renderPostHTML(p) {
       <span class="post-action" style="margin-left:auto;" onclick="openPassionExplorer('${p.passion}')">🔎 ${passion.label}</span>
     </div>
 
-    ${commentsPreview ? `<div style="margin-top:8px;" onclick="if(!event.target.closest('.comment-action') && !event.target.closest('.comment-reply-input') && !event.target.closest('.emoji-panel-comment') && !event.target.closest('.comment-reply-count')) openPost('${p.id}'); return false;" style="cursor:pointer;">${commentsPreview}</div>` : ""}
+    ${commentsPreview ? `<div style="margin-top:8px;" onclick="openPost('${p.id}')" style="cursor:pointer;">${commentsPreview}</div>` : ""}
   </article>`;
 }
 
 async function openPost(id) {
-  _diag("🔓 openPost('" + id + "') APPELÉ!");
-
-  // Afficher la stack trace pour voir qui appelle
-  var stack = new Error().stack;
-  var caller = stack ? stack.split('\n')[2] : "unknown";
-  _diag("📍 Appelé par: " + caller.trim());
-
   const post = state.seed.posts.find(p => p.id === id) || state.userPosts.find(p => p.id === id);
   if (!post) return;
   const page = document.getElementById("postDetailPage");
@@ -9580,7 +9554,7 @@ async function openPost(id) {
     : (post.authorName ? { name: post.authorName, profileEmoji: post.authorEmoji || "✨", avatar: post.authorColor || "#8b5cf6" } : userById(post.authorId));
   const passion = passionById(post.passion);
   const liked = state.user.likedPosts.includes(id);
-  const moodMap = { creation: "🎨 Création", learn: "📚 Learn", chill: "😌 Chill", irl: "🤝 IRL" };
+  const moodMap = { creation: "🎨 Création", learn: "📚 Apprendre", chill: "😌 Chill", irl: "🤝 IRL" };
 
   // Media (réutilise la logique de renderPostHTML)
   let media = "";
@@ -9608,40 +9582,12 @@ async function openPost(id) {
       cName = cu.name; cEmoji = cu.profileEmoji; cAvatar = cu.avatar;
     }
     const cSrc = (cAuthorId === "me" || (typeof MY_UID !== "undefined" && cAuthorId === MY_UID)) ? "me" : "seed";
-    const cLiked = (c.likedBy || []).includes(state.user?.id || "me");
-    const cLikes = c.likes || 0;
-    const cEmojis = c.emojis || [];
-    const cReplies = c.replies || [];
-
-    return `<div class="comment" data-commentid="${c.id}">
-      <div class="avatar sm" style="background:${cAvatar};cursor:pointer;" onclick="event.stopPropagation();viewUserProfile('${cAuthorId}','${cSrc}')">${cEmoji || (cName||"?")[0]}</div>
+    return `<div class="comment">
+      <div class="avatar sm" style="background:${cAvatar};cursor:pointer;" onclick="openUserProfile('${cAuthorId}','${cSrc}')">${cEmoji || (cName||"?")[0]}</div>
       <div class="comment-body">
-        <div class="comment-author" style="cursor:pointer;" onclick="event.stopPropagation();viewUserProfile('${cAuthorId}','${cSrc}')">${escapeHtml(cName)}</div>
+        <div class="comment-author" style="cursor:pointer;" onclick="openUserProfile('${cAuthorId}','${cSrc}')">${escapeHtml(cName)}</div>
         <div class="comment-text">${escapeHtml(c.text || c.content || "")}</div>
-
-        ${cEmojis.length > 0 ? `<div class="comment-emoji-picker">${cEmojis.map(e => `<span class="comment-emoji-btn">${e}</span>`).join("")}</div>` : ""}
-
-        <div class="comment-meta">
-          <span>${fmtTime(c.createdAt)}</span>
-        </div>
-
-        <div class="comment-actions">
-          <span class="comment-action ${cLiked ? "liked" : ""}" onclick="likeComment('${id}','${c.id}'); return false;">
-            ${cLiked ? "❤️" : "🤍"} ${cLikes}
-          </span>
-          <span class="comment-action" onclick="replyToComment('${id}','${c.id}','${escapeHtml(cName)}'); return false;" title="Répondre">💬</span>
-          <span class="comment-action" onclick="showEmojiPickerForComment('${id}','${c.id}',event); return false;" title="Réagir">😊</span>
-          ${cReplies.length > 0 ? `<span class="comment-reply-count" onclick="toggleCommentReplies('${c.id}'); return false;">${cReplies.length} réponse${cReplies.length > 1 ? "s" : ""}</span>` : ""}
-        </div>
-
-        ${cReplies.length > 0 ? `<div class="comment-replies" id="replies-${c.id}" style="display:none;">${cReplies.map(r => {
-          const ru = userById(r.authorId) || { name: "?", profileEmoji: "👤", avatar: "#64748b" };
-          const rSrc = r.authorId === "me" ? "me" : "seed";
-          return `<div class="comment-reply">
-            <span class="comment-reply-author" style="cursor:pointer;" onclick="event.stopPropagation();viewUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span>: ${escapeHtml(r.text)}
-            <div style="font-size:10px;color:var(--muted);margin-top:2px;">${fmtTime(r.createdAt)}</div>
-          </div>`;
-        }).join("")}</div>` : ""}
+        <div class="comment-meta">${fmtTime(c.createdAt)}</div>
       </div>
     </div>`;
   }).join("");
@@ -10590,7 +10536,7 @@ function renderCarnetsExplore() {
     const stats = vlogStats(c);
     const author = c._source === "me" ? state.user.name : (userById(c.authorId) || { name: "Anonyme" }).name;
     return `<div class="carnet-explore-card" onclick="openVlogViewer('${c.id}')">
-      ${c.cover ? `<img class="carnet-explore-cover" src="${c.cover}" alt=""/>` : `<div class="carnet-explore-cover" style="background:linear-gradient(135deg,#4c1d95,#ec4899);"></div>`}
+      ${c.cover ? `<img class="carnet-explore-cover" src="${c.cover}" alt=""/>` : `<div class="carnet-explore-cover" style="background:linear-gradient(135deg,#4c1d95,#7c3aed);"></div>`}
       <div class="carnet-explore-body">
         <div class="carnet-explore-dest">📍 ${escapeHtml(c.destination || "Carnet")}</div>
         <div class="carnet-explore-meta">
@@ -10617,7 +10563,7 @@ function startCdvLive() {
   openModal(`
     <div class="modal-handle"></div>
     <div class="modal-title">📡 Démarrer un CDV Live</div>
-    <p class="section-subtitle" style="margin-top:-4px;">Tes abonnés suivent ton voyage en temps réel, étape par étape.</p>
+    <p class="section-subtitle" style="margin-top:-4px;">Tes abonnés te suivent en direct.</p>
 
     <label class="field"><span>🌍 Destination</span>
       <input type="text" class="input" id="cdvLiveDest" placeholder="Ex : Lisbonne, Road trip Écosse…" maxlength="60"/>
@@ -12756,7 +12702,7 @@ function closeConversation() {
 
 // ===== CONFIGURATEUR — personnalisation de l'app =====
 const ACCENT_COLORS = [
-  { id: "violet", name: "Violet", emoji: "💜", accent: "#8b5cf6", soft: "#a78bfa", c2: "#7c3aed", c2s: "#8b5cf6", c3: "#6d28d9", c3s: "#7c3aed", c4: "#a78bfa", c4s: "#c4b5fd", c5: "#c4b5fd", c5s: "#ddd6fe", bgDeep: "#ede9fe", bgSoft: "#f5f3ff", border: "rgba(139,92,246,0.18)", borderStrong: "rgba(139,92,246,0.32)", shadow: "139,92,246", grad1: "linear-gradient(135deg,#c4b5fd 0%,#8b5cf6 50%,#6d28d9 100%)", grad2: "linear-gradient(135deg,#a78bfa 0%,#7c3aed 100%)" },
+  { id: "violet", name: "Violet", emoji: "💜", accent: "#7c3aed", soft: "#8b5cf6", c2: "#6d28d9", c2s: "#7c3aed", c3: "#5b21b6", c3s: "#6d28d9", c4: "#a78bfa", c4s: "#c4b5fd", c5: "#c4b5fd", c5s: "#ddd6fe", bgDeep: "#e9e4f8", bgSoft: "#f3f0fb", border: "rgba(24,18,48,0.07)", borderStrong: "rgba(24,18,48,0.12)", shadow: "124,58,237", grad1: "linear-gradient(135deg,#8b5cf6 0%,#7c3aed 100%)", grad2: "linear-gradient(135deg,#7c3aed 0%,#6d28d9 100%)" },
   { id: "rose", name: "Rose", emoji: "🩷", accent: "#ec4899", soft: "#f472b6", c2: "#db2777", c2s: "#ec4899", c3: "#be185d", c3s: "#db2777", c4: "#f472b6", c4s: "#fbcfe8", c5: "#fbcfe8", c5s: "#fce7f3", bgDeep: "#fce7f3", bgSoft: "#fdf2f8", border: "rgba(236,72,153,0.18)", borderStrong: "rgba(236,72,153,0.32)", shadow: "236,72,153", grad1: "linear-gradient(135deg,#fbcfe8 0%,#ec4899 50%,#be185d 100%)", grad2: "linear-gradient(135deg,#f472b6 0%,#db2777 100%)" },
   { id: "bleu", name: "Bleu", emoji: "🩵", accent: "#0ea5e9", soft: "#38bdf8", c2: "#0284c7", c2s: "#0ea5e9", c3: "#0369a1", c3s: "#0284c7", c4: "#38bdf8", c4s: "#bae6fd", c5: "#bae6fd", c5s: "#e0f2fe", bgDeep: "#e0f2fe", bgSoft: "#f0f9ff", border: "rgba(14,165,233,0.18)", borderStrong: "rgba(14,165,233,0.32)", shadow: "14,165,233", grad1: "linear-gradient(135deg,#bae6fd 0%,#0ea5e9 50%,#0369a1 100%)", grad2: "linear-gradient(135deg,#38bdf8 0%,#0284c7 100%)" },
   { id: "vert", name: "Vert", emoji: "💚", accent: "#10b981", soft: "#34d399", c2: "#059669", c2s: "#10b981", c3: "#047857", c3s: "#059669", c4: "#34d399", c4s: "#a7f3d0", c5: "#a7f3d0", c5s: "#d1fae5", bgDeep: "#d1fae5", bgSoft: "#ecfdf5", border: "rgba(16,185,129,0.18)", borderStrong: "rgba(16,185,129,0.32)", shadow: "16,185,129", grad1: "linear-gradient(135deg,#a7f3d0 0%,#10b981 50%,#047857 100%)", grad2: "linear-gradient(135deg,#34d399 0%,#059669 100%)" },
@@ -12832,10 +12778,10 @@ function applyConfig() {
       root.style.setProperty("--bg-soft", c.bgSoft);
       root.style.setProperty("--border", c.border);
       root.style.setProperty("--border-strong", c.borderStrong);
-      root.style.setProperty("--shadow-soft", "0 10px 28px rgba(" + c.shadow + ",0.14)");
-      root.style.setProperty("--shadow-strong", "0 18px 48px rgba(" + c.shadow + ",0.22)");
-      root.style.setProperty("--shadow-glow", "0 10px 28px rgba(" + c.shadow + ",0.28)");
-      root.style.setProperty("--shadow-glow-2", "0 10px 28px rgba(" + c.shadow + ",0.24)");
+      root.style.setProperty("--shadow-soft", "0 1px 2px rgba(" + c.shadow + ",0.05), 0 8px 24px rgba(" + c.shadow + ",0.10)");
+      root.style.setProperty("--shadow-strong", "0 16px 48px rgba(" + c.shadow + ",0.18)");
+      root.style.setProperty("--shadow-glow", "0 8px 22px rgba(" + c.shadow + ",0.22)");
+      root.style.setProperty("--shadow-glow-2", "0 8px 22px rgba(" + c.shadow + ",0.20)");
       root.style.setProperty("--grad-hero", c.grad1);
       root.style.setProperty("--grad-hero-2", c.grad2);
       root.style.setProperty("--grad-warm", c.grad2);
@@ -12845,8 +12791,13 @@ function applyConfig() {
       var colorOverride = document.getElementById("passio-color-override");
       if (!colorOverride) { colorOverride = document.createElement("style"); colorOverride.id = "passio-color-override"; document.head.appendChild(colorOverride); }
       colorOverride.textContent = "\
-        .app-shell { background: radial-gradient(circle at 0 0, " + c.border + ", transparent 55%), radial-gradient(circle at 100% 0, " + c.border + ", transparent 55%), radial-gradient(circle at 20% 100%, rgba(" + c.shadow + ",0.12), transparent 58%), radial-gradient(circle at 90% 90%, rgba(" + c.shadow + ",0.12), transparent 55%), " + c.bgSoft + " !important; }\
-        .topbar { background: linear-gradient(135deg, " + c.accent + " 0%, " + c.c3 + " 100%) !important; }\
+        .app-shell { background: radial-gradient(circle at 50% -6%, rgba(" + c.shadow + ",0.16), transparent 58%), " + c.bgSoft + " !important; }\
+        .topbar { background: linear-gradient(135deg, " + c.accent + " 0%, " + c.c3 + " 100%) !important; border-bottom-color: rgba(255,255,255,0.12) !important; }\
+        .brand-name { color: #fff !important; }\
+        .brand-tagline { color: rgba(255,255,255,0.82) !important; }\
+        .brand-logo { background: rgba(255,255,255,0.92) !important; box-shadow: 0 0 0 1.5px rgba(255,255,255,0.4), 0 4px 12px rgba(0,0,0,0.18) !important; }\
+        .topbar-chip, .topbar-chip.score, .topbar-chip.passia { background: rgba(255,255,255,0.16) !important; border-color: rgba(255,255,255,0.30) !important; color: #fff !important; }\
+        .topbar-bell { background: rgba(255,255,255,0.16) !important; border-color: rgba(255,255,255,0.30) !important; color: #fff !important; }\
         .nav-item.active { color: " + c.accent + " !important; }\
         .btn.primary { background: linear-gradient(135deg, " + c.accent + ", " + c.c3 + ") !important; }\
         .pill.active { background: " + c.accent + " !important; }\
@@ -12855,8 +12806,8 @@ function applyConfig() {
         .story-ring:not(.seen):not(.create) { background: linear-gradient(135deg, " + c.accent + ", " + c.c3 + ") !important; }\
         .kpi.score .kpi-value { color: " + c.accent + " !important; }\
         .kpi.passia .kpi-value { color: " + c.c2 + " !important; }\
-        .landing { background: radial-gradient(circle at 15% 10%, rgba(" + c.shadow + ",0.55), transparent 50%), radial-gradient(circle at 85% 15%, rgba(" + c.shadow + ",0.48), transparent 55%), radial-gradient(circle at 85% 85%, rgba(" + c.shadow + ",0.55), transparent 50%), radial-gradient(circle at 15% 90%, rgba(" + c.shadow + ",0.38), transparent 55%), #fbf7f1 !important; }\
-        .onboarding-shell { background: radial-gradient(circle at 18% 12%, rgba(" + c.shadow + ",0.48), transparent 52%), radial-gradient(circle at 85% 15%, rgba(" + c.shadow + ",0.38), transparent 55%), radial-gradient(circle at 80% 88%, rgba(" + c.shadow + ",0.48), transparent 55%), radial-gradient(circle at 20% 95%, rgba(" + c.shadow + ",0.28), transparent 55%), #fbf7f1 !important; }\
+        .landing { background: radial-gradient(circle at 12% 6%, rgba(" + c.shadow + ",0.18), transparent 52%), radial-gradient(circle at 88% 92%, rgba(" + c.shadow + ",0.14), transparent 55%), " + c.bgDeep + " !important; }\
+        .onboarding-shell { background: radial-gradient(circle at 16% 10%, rgba(" + c.shadow + ",0.18), transparent 54%), radial-gradient(circle at 84% 90%, rgba(" + c.shadow + ",0.14), transparent 56%), " + c.bgDeep + " !important; }\
         .link { color: " + c.accent + " !important; }\
         .main-profile-avatar { background: linear-gradient(135deg, " + c.c4 + ", " + c.c2 + ") !important; }\
         .main-profile-cover { background: linear-gradient(135deg, " + c.c5 + " 0%, " + c.accent + " 50%, " + c.c3 + " 100%) !important; }\
@@ -13197,7 +13148,7 @@ function startCall(convId, kind) {
         ${kind === "video" ? '<button class="call-control-btn video" onclick="toast(\'Caméra coupée\')">📷</button>' : ''}
         <button class="call-control-btn hangup" onclick="endCall()">📞</button>
       </div>
-      <p style="font-size:11px;color:var(--muted);text-align:center;margin-top:14px;font-style:italic;">Mode démo. La vraie visio sera disponible en version production.</p>
+      <p style="font-size:11px;color:var(--muted);text-align:center;margin-top:14px;font-style:italic;">Mode démo.</p>
     </div>
   `;
   openModal(html);
@@ -13829,7 +13780,7 @@ const COLORS_PASSION_BG = {
 function renderReelHTML(post, idx) {
   const author = authorOfReel(post);
   const passion = passionById(post.passion) || { label: post.passion, emoji: "✨" };
-  const moodLabel = ({ creation: "Création", learn: "Learn", chill: "Chill", actu: "Actu" })[post.mood] || "Tout";
+  const moodLabel = ({ creation: "Création", learn: "Apprendre", chill: "Chill", actu: "Actu" })[post.mood] || "Tout";
   const isLiked = reelsState.liked.has(post.id);
   const isTipped = reelsState.tipped.has(post.id);
   const txt = post.text || post.caption || "";
@@ -13839,7 +13790,7 @@ function renderReelHTML(post, idx) {
       <div class="reel-overlay"></div>
       <span class="reel-tag-mood">${passion.emoji} ${escapeHtml(passion.label)} · ${moodLabel}</span>
       <div class="reel-info">
-        <div class="reel-author" style="cursor:pointer;" onclick="viewUserProfile('${post._source === 'me' ? post.profileId : post.userId}','${post._source === 'me' ? 'me' : 'seed'}'); return false;">
+        <div class="reel-author">
           <div class="reel-avatar" style="background:${author.color};">${author.emoji}</div>
           <div class="reel-author-meta">
             <div class="reel-author-name">${escapeHtml(author.name)}</div>
@@ -14112,7 +14063,7 @@ function renderMainProfile() {
 
   var cover = document.getElementById("mainProfileCover");
   if (cover) {
-    cover.style.background = g.coverPhoto ? "url(" + g.coverPhoto + ") center/cover" : "linear-gradient(135deg, #c4b5fd 0%, #8b5cf6 50%, #6d28d9 100%)";
+    cover.style.background = g.coverPhoto ? "url(" + g.coverPhoto + ") center/cover" : "linear-gradient(135deg, #8b5cf6, #6d28d9)";
   }
 
   if (g.avatarPhoto) {
@@ -17085,7 +17036,7 @@ function playCurrentStory() {
   const card = $("#storyCard");
   card.style.background = s.bg || "var(--grad-hero)";
 
-  $("#storyContent").innerHTML = `<div style="font-size:22px;font-weight:800;line-height:1.25;white-space:pre-line;color:#f6f1ea;">${escapeHtml(s.text)}</div>`;
+  $("#storyContent").innerHTML = `<div style="font-size:22px;font-weight:800;line-height:1.25;white-space:pre-line;color:#ffffff;">${escapeHtml(s.text)}</div>`;
 
   // Progress bars
   const row = $("#storyProgressRow");
@@ -17329,12 +17280,6 @@ function initApp() {
   document.body.classList.add("screen-feed-active");
   try { if (typeof supaInit === "function") supaInit(); } catch(e) {}
   launchTourSafe();
-
-  // Activer le panel de diagnostic automatiquement
-  setTimeout(function() {
-    toggleDiagPanel();
-    _diag("🚀 APP DÉMARRÉE - Panel de diagnostic actif");
-  }, 500);
 }
 
 // navigateTo — alias de goTo pour la compatibilité (utilisé dans les cartes IA)
@@ -19380,442 +19325,6 @@ if(gifGrid) {
 
 // ASSIGNATION: _sendGif vers window._sendGif (utilise la version avec diags ci-dessus)
 window._sendGif = _sendGif;
-
-// ============ FONCTIONS POUR LES COMMENTAIRES ============
-
-// Like/Unlike un commentaire
-function likeComment(postId, commentId) {
-  _diag("❤️ likeComment appelé pour postId=" + postId + ", commentId=" + commentId);
-
-  var post = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
-  if (!post) {
-    _diag("❌ Post non trouvé!");
-    return;
-  }
-
-  var comment = (post.comments || []).find(c => c.id === commentId);
-  if (!comment) {
-    _diag("❌ Commentaire non trouvé!");
-    return;
-  }
-
-  _diag("✅ Commentaire trouvé, ajout like");
-  comment.likes = (comment.likes || 0) + 1;
-  if (!comment.likedBy) comment.likedBy = [];
-  comment.likedBy.push(state.user?.id || "me");
-
-  if (typeof saveConversations === 'function') saveConversations();
-
-  // Juste mettre à jour le like UI sans re-render complet
-  var likeEl = document.querySelector('[data-commentid="' + commentId + '"] .comment-action');
-  if (likeEl) {
-    var newLikes = comment.likes || 0;
-    likeEl.innerHTML = '❤️ ' + newLikes;
-    likeEl.classList.add("liked");
-    _diag("✅ Like UI mis à jour");
-  }
-
-  // En mode FEED seulement, re-render le feed
-  var postDetailPage = document.getElementById("postDetailPage");
-  if (!postDetailPage || postDetailPage.style.display === "none") {
-    _diag("📰 Re-render FEED");
-    if (typeof renderFeed === 'function') renderFeed();
-  }
-}
-
-// Répondre à un commentaire
-function replyToComment(postId, commentId, authorName) {
-  _diag("💬 replyToComment appelé pour postId=" + postId + ", commentId=" + commentId);
-  _diag("🔍 authorName=" + authorName);
-
-  // Fermer les inputs existants
-  var existingInputs = document.querySelectorAll(".comment-reply-input");
-  existingInputs.forEach(function(input) {
-    input.remove();
-  });
-
-  // Créer l'input
-  var inputDiv = document.createElement("div");
-  inputDiv.className = "comment-reply-input";
-  inputDiv.style.cssText = "margin-top:8px;display:flex;gap:6px;padding:8px 0;border-top:1px solid rgba(124,58,237,0.1);";
-
-  var inputField = document.createElement("input");
-  inputField.type = "text";
-  inputField.placeholder = "Répondre à " + authorName + "…";
-  inputField.style.cssText = "flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:12px;font-size:13px;box-sizing:border-box;";
-
-  var sendBtn = document.createElement("button");
-  sendBtn.textContent = "✓";
-  sendBtn.style.cssText = "width:32px;height:32px;border-radius:8px;background:var(--accent);color:#fff;border:none;cursor:pointer;font-weight:bold;transition:all 0.2s;";
-  sendBtn.onmouseover = function() { this.style.transform = "scale(1.05)"; };
-  sendBtn.onmouseout = function() { this.style.transform = "scale(1)"; };
-
-  var submitReply = function() {
-    var replyText = inputField.value.trim();
-    if (!replyText) return;
-
-    _diag("📝 Soumission réponse: " + replyText.substring(0, 30) + "...");
-
-    var post = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
-    if (!post) {
-      _diag("❌ Post non trouvé!");
-      return;
-    }
-
-    var comment = (post.comments || []).find(c => c.id === commentId);
-    if (!comment) {
-      _diag("❌ Commentaire non trouvé!");
-      return;
-    }
-
-    if (!comment.replies) comment.replies = [];
-
-    comment.replies.push({
-      id: "reply_" + Date.now(),
-      authorId: state.user?.id || "me",
-      text: replyText,
-      createdAt: Date.now()
-    });
-
-    _diag("✅ Réponse ajoutée au commentaire");
-
-    if (typeof saveConversations === 'function') saveConversations();
-
-    // Vérifier le vrai contexte avec le CSS calculé
-    var detailPage = document.getElementById("postDetailPage");
-    var computedStyle = detailPage ? window.getComputedStyle(detailPage) : null;
-    var isDetailPageVisible = detailPage && computedStyle && computedStyle.display !== "none";
-
-    _diag("🔍 postDetailPage.style.display=" + (detailPage ? detailPage.style.display : "N/A"));
-    _diag("🔍 postDetailPage computed display=" + (computedStyle ? computedStyle.display : "N/A"));
-    _diag("📍 Context: " + (isDetailPageVisible ? "POST DETAIL" : "FEED"));
-
-    if (isDetailPageVisible) {
-      // On est dans la page détail, re-render le post
-      _diag("📖 Re-render POST DETAIL");
-      openPost(postId);
-    } else {
-      // On est dans le feed, re-render le feed
-      _diag("📰 Re-render FEED");
-      if (typeof renderFeed === 'function') renderFeed();
-    }
-  };
-
-  sendBtn.onclick = submitReply;
-  inputField.onkeypress = function(e) {
-    if (e.key === "Enter") submitReply();
-  };
-
-  // Vérifier la visibilité de l'input après insertion
-  setTimeout(function() {
-    var input = inputField;
-    if (input) {
-      var style = window.getComputedStyle(input);
-      var rect = input.getBoundingClientRect();
-      _diag("🔍 Input display=" + style.display);
-      _diag("🔍 Input visibility=" + style.visibility);
-      _diag("🔍 Input offsetHeight=" + input.offsetHeight);
-      _diag("🔍 Input viewport Y=" + rect.top);
-      _diag("🔍 Input in viewport? " + (rect.top >= 0 && rect.top <= window.innerHeight ? "OUI" : "NON"));
-    }
-
-    var actions = document.querySelector('[data-commentid="' + commentId + '"] .comment-actions');
-    if (actions) {
-      var style = window.getComputedStyle(actions);
-      _diag("🔍 .comment-actions display=" + style.display);
-      _diag("🔍 .comment-actions visibility=" + style.visibility);
-      _diag("🔍 .comment-actions opacity=" + style.opacity);
-    }
-  }, 100);
-
-  inputDiv.appendChild(inputField);
-  inputDiv.appendChild(sendBtn);
-
-  // Insérer l'input sous le commentaire
-  var commentElement = document.querySelector('[data-commentid="' + commentId + '"]');
-  _diag("🔍 Cherche commentaire: [data-commentid='" + commentId + "']");
-  _diag("🔍 Commentaire trouvé? " + (commentElement ? "OUI" : "NON"));
-
-  if (commentElement) {
-    var commentBody = commentElement.querySelector(".comment-body");
-    _diag("🔍 .comment-body trouvé? " + (commentBody ? "OUI" : "NON"));
-    if (commentBody) {
-      commentBody.appendChild(inputDiv);
-      inputField.focus();
-      _diag("✅ Input inséré et focus!");
-
-      // Scroller vers l'input pour qu'il soit visible
-      setTimeout(function() {
-        inputDiv.scrollIntoView({ behavior: "smooth", block: "center" });
-        _diag("📍 Scroll vers input!");
-      }, 50);
-    } else {
-      _diag("❌ .comment-body NOT FOUND!");
-      _diag("🔍 Structure du commentaire: " + commentElement.innerHTML.substring(0, 100));
-    }
-  } else {
-    _diag("❌ Commentaire NOT FOUND!");
-    _diag("🔍 Tous les [data-commentid] disponibles: " + document.querySelectorAll("[data-commentid]").length);
-  }
-}
-
-// Afficher/Masquer les replies d'un commentaire
-function toggleCommentReplies(commentId) {
-  _diag("📂 toggleCommentReplies appelé pour commentId=" + commentId);
-
-  var repliesDiv = document.getElementById("replies-" + commentId);
-  _diag("🔍 Cherche: #replies-" + commentId);
-  _diag("🔍 Trouvé? " + (repliesDiv ? "OUI" : "NON"));
-
-  if (!repliesDiv) {
-    _diag("❌ Replies div NOT FOUND!");
-    _diag("🔍 Divs avec id^='replies-': " + document.querySelectorAll("[id^='replies-']").length);
-
-    // Cherche tous les éléments de réponses
-    var allReplies = document.querySelectorAll("[id*='replies']");
-    _diag("🔍 Éléments avec 'replies' dans l'ID: " + allReplies.length);
-    for (var i = 0; i < Math.min(3, allReplies.length); i++) {
-      _diag("   - " + allReplies[i].id);
-    }
-    return;
-  }
-
-  var isHidden = repliesDiv.style.display === "none" || !repliesDiv.style.display;
-  repliesDiv.style.display = isHidden ? "block" : "none";
-  _diag("📂 Réponses " + (isHidden ? "affichées" : "masquées"));
-
-  // Animer l'apparition
-  if (isHidden) {
-    repliesDiv.style.animation = "slideDown 0.3s ease-out";
-  }
-}
-
-// Ajouter un emoji à un commentaire
-function showEmojiPickerForComment(postId, commentId, event) {
-  _diag("😊 showEmojiPickerForComment appelé pour postId=" + postId + ", commentId=" + commentId);
-
-  if (event) event.stopPropagation();
-
-  var emojis = ["❤️", "😂", "😍", "🔥", "👍", "🎉", "😮", "😢", "💯", "🙌", "😊", "🤔", "👏", "🎪", "🌟"];
-
-  // Fermer les panels existants
-  var existing = document.querySelector(".emoji-panel-comment");
-  if (existing) existing.remove();
-
-  // Créer le panel
-  var panel = document.createElement("div");
-  panel.className = "emoji-panel-comment";
-
-  // Ajouter les emojis au panel
-  emojis.forEach(function(emoji) {
-    var btn = document.createElement("button");
-    btn.className = "emoji-btn";
-    btn.textContent = emoji;
-    btn.style.border = "none";
-    btn.style.background = "transparent";
-    btn.onclick = function(e) {
-      e.stopPropagation();
-      _diag("✅ Emoji sélectionné: " + emoji);
-      addEmojiToComment(postId, commentId, emoji);
-      panel.remove();
-    };
-    panel.appendChild(btn);
-  });
-
-  // Positionner le panel à côté du bouton
-  var btn = event.target.closest(".comment-action");
-  if (btn) {
-    var rect = btn.getBoundingClientRect();
-    panel.style.position = "fixed";
-    panel.style.top = (rect.bottom + 5) + "px";
-    panel.style.left = (rect.left - 50) + "px";
-  }
-
-  document.body.appendChild(panel);
-
-  // Fermer quand on clique ailleurs
-  setTimeout(function() {
-    document.addEventListener("click", function closePanel(e) {
-      if (!panel.contains(e.target)) {
-        panel.remove();
-        document.removeEventListener("click", closePanel);
-      }
-    });
-  }, 10);
-}
-
-// Ajouter l'emoji au commentaire
-function addEmojiToComment(postId, commentId, emoji) {
-  _diag("🎁 addEmojiToComment: emoji=" + emoji);
-
-  var post = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
-  if (!post) {
-    _diag("❌ Post non trouvé!");
-    return;
-  }
-
-  var comment = (post.comments || []).find(c => c.id === commentId);
-  if (!comment) {
-    _diag("❌ Commentaire non trouvé!");
-    return;
-  }
-
-  if (!comment.emojis) comment.emojis = [];
-  if (!comment.emojis.includes(emoji)) {
-    comment.emojis.push(emoji);
-    _diag("✅ Emoji ajouté au commentaire");
-  }
-
-  if (typeof saveConversations === 'function') saveConversations();
-
-  // Juste mettre à jour l'emoji UI sans re-render complet
-  var emojiContainer = document.querySelector('[data-commentid="' + commentId + '"] .comment-emoji-picker');
-  if (!emojiContainer) {
-    // Créer le conteneur s'il n'existe pas
-    var commentText = document.querySelector('[data-commentid="' + commentId + '"] .comment-text');
-    if (commentText) {
-      emojiContainer = document.createElement("div");
-      emojiContainer.className = "comment-emoji-picker";
-      commentText.parentNode.insertBefore(emojiContainer, commentText.nextSibling);
-    }
-  }
-  if (emojiContainer) {
-    emojiContainer.innerHTML = comment.emojis.map(e => '<span class="comment-emoji-btn">' + e + '</span>').join("");
-    _diag("✅ Emoji UI mis à jour");
-  }
-
-  // En mode FEED seulement, re-render le feed
-  var postDetailPage = document.getElementById("postDetailPage");
-  if (!postDetailPage || postDetailPage.style.display === "none") {
-    _diag("📰 Re-render FEED");
-    if (typeof renderFeed === 'function') renderFeed();
-  }
-}
-
-// ============ FONCTION POUR CLICKER SUR LES PROFILS DANS LA BOBINE ============
-
-// Voir le profil complet d'une autre personne (redirection)
-function viewUserProfile(authorId, source) {
-  if (source === "me" || authorId === "me" || (typeof MY_UID !== "undefined" && MY_UID && authorId === MY_UID)) {
-    goTo("profiles");
-    return;
-  }
-
-  // Charger et afficher le profil de l'autre personne
-  state._viewingUserProfile = authorId;
-  state._viewingUserSource = source;
-
-  // Charger les données du profil
-  var user = null;
-
-  if (source === "me") {
-    // Chercher dans les profils utilisateur
-    user = (state.user.profiles || []).find(function(p) { return p.id === authorId; });
-  } else {
-    // Chercher dans les utilisateurs seed
-    user = (state.seed.users || []).find(function(u) { return u.id === authorId; });
-  }
-
-  if (!user) {
-    toast("Profil non trouvé");
-    return;
-  }
-
-  // Fermer la bobine si elle est ouverte pour afficher le profil
-  if (reelsState && reelsState.open) {
-    closeReels();
-  }
-
-  // Afficher la page profil
-  renderUserProfilePage(authorId, user, source);
-  goTo("profile-view");
-}
-
-// Rendre la page du profil d'une autre personne
-function renderUserProfilePage(authorId, user, source) {
-  var passion = passionById(user.passion);
-
-  // Chercher les posts de cet utilisateur selon la source
-  var userPosts;
-  if (source === "me") {
-    userPosts = allFeedPosts().filter(function(p) { return p.profileId === authorId || p.authorId === authorId; });
-  } else {
-    userPosts = allFeedPosts().filter(function(p) { return p.userId === authorId || p.authorId === authorId; });
-  }
-
-  var postCount = userPosts.length;
-  var likeCount = userPosts.reduce(function(s,p) { return s + (p.likes||0); }, 0);
-
-  var postsHTML = userPosts.length > 0
-    ? userPosts.slice(0, 12).map(renderPostHTML).join("")
-    : '<div style="text-align:center;padding:30px;color:var(--muted);font-size:12px;">Aucune publication pour l\'instant</div>';
-
-  var profilePageEl = document.getElementById("profile-view-content");
-  if (!profilePageEl) return;
-
-  profilePageEl.innerHTML = `
-    <div style="text-align:center;padding-top:20px;margin-bottom:16px;">
-      <div style="width:80px;height:80px;border-radius:50%;background:${user.avatar || 'var(--accent)'};display:flex;align-items:center;justify-content:center;font-size:38px;margin:0 auto 12px;border:4px solid #fff;box-shadow:0 6px 20px rgba(139,92,246,0.3);">${user.profileEmoji || "✨"}</div>
-      <div style="font-weight:900;font-size:22px;color:var(--text);">${escapeHtml(user.name || "Passionné")}</div>
-      <div style="font-size:13px;color:var(--accent);margin-top:4px;">${passion ? passion.emoji + " " + passion.label : ""}</div>
-      ${user.bio ? '<div style="font-size:13px;color:var(--text-dim);margin-top:10px;line-height:1.5;max-width:280px;margin-left:auto;margin-right:auto;">' + escapeHtml(user.bio) + '</div>' : ''}
-    </div>
-
-    <div style="display:flex;gap:8px;justify-content:center;margin-bottom:16px;">
-      <button class="btn primary" onclick="closeUserProfileView();startDirectMessage('${authorId}','${escapeHtml(user.name || "Passionné")}','${user.profileEmoji || "✨"}','${user.avatar || "#8b5cf6"}')" style="font-size:12px;padding:10px 18px;border-radius:14px;">💬 Message</button>
-      <button class="btn ghost" id="followBtn_${authorId}" onclick="toggleFollowUser('${authorId}','${escapeHtml(user.name || "")}')" style="font-size:12px;padding:10px 18px;border-radius:14px;">➕ Suivre</button>
-    </div>
-
-    <div style="display:flex;gap:0;border:1px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:16px;">
-      <div style="flex:1;text-align:center;padding:12px 6px;border-right:1px solid var(--border);">
-        <div style="font-size:18px;font-weight:900;color:var(--text);">${postCount}</div>
-        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;">Posts</div>
-      </div>
-      <div style="flex:1;text-align:center;padding:12px 6px;">
-        <div style="font-size:18px;font-weight:900;color:var(--text);">${likeCount}</div>
-        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;">Likes</div>
-      </div>
-    </div>
-
-    <div style="font-weight:800;font-size:14px;color:var(--text);margin-bottom:10px;margin-top:20px;">📝 Publications <span style="font-weight:400;color:var(--muted);">(${postCount})</span></div>
-    <div>${postsHTML}</div>
-  `;
-}
-
-// Fermer la vue du profil
-function closeUserProfileView() {
-  state._viewingUserProfile = null;
-  state._viewingUserSource = null;
-  goTo("feed");
-}
-
-// Créer une bobine avec profils cliquables
-function enhanceReelProfiles() {
-  // Chercher tous les éléments de la bobine
-  var reelCards = document.querySelectorAll("[data-postid]");
-  reelCards.forEach(card => {
-    var avatars = card.querySelectorAll(".avatar");
-    avatars.forEach(avatar => {
-      if (avatar.getAttribute("data-profile-enhanced")) return; // Déjà amélioré
-      avatar.setAttribute("data-profile-enhanced", "true");
-      avatar.style.cursor = "pointer";
-      avatar.style.transition = "transform 0.2s";
-      avatar.addEventListener("mouseenter", function() {
-        this.style.transform = "scale(1.1)";
-      });
-      avatar.addEventListener("mouseleave", function() {
-        this.style.transform = "scale(1)";
-      });
-    });
-  });
-}
-
-// Appeler la fonction quand les posts sont affichés
-var originalRenderFeed = renderFeed;
-renderFeed = function() {
-  originalRenderFeed();
-  setTimeout(enhanceReelProfiles, 100);
-};
 
 // Click outside to close
 document.addEventListener("click", function(e) {
