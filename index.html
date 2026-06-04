@@ -13841,7 +13841,7 @@ function renderReelHTML(post, idx) {
       <div class="reel-overlay"></div>
       <span class="reel-tag-mood">${passion.emoji} ${escapeHtml(passion.label)} · ${moodLabel}</span>
       <div class="reel-info">
-        <div class="reel-author" onclick="openProfile('${escapeHtml(post.userId)}'); return false;" style="cursor:pointer;">
+        <div class="reel-author" onclick="openUserProfile('${escapeHtml(post.userId)}'); return false;" style="cursor:pointer;">
           <div class="reel-avatar" style="background:${author.color};">${author.emoji}</div>
           <div class="reel-author-meta">
             <div class="reel-author-name">${escapeHtml(author.name)}</div>
