@@ -19599,6 +19599,13 @@ function viewUserProfile(authorId, source) {
 
   updateBadge("✅ TROUVE: " + user.name);
   updateBadge("📖 Affichage profil...");
+
+  // Fermer la bobine si elle est ouverte
+  if (reelsState && reelsState.open) {
+    updateBadge("🔚 Fermeture bobine...");
+    closeReels();
+  }
+
   // Afficher la page profil
   renderUserProfilePage(authorId, user, source);
   updateBadge("🔄 Changement écran...");
