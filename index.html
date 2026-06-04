@@ -9549,6 +9549,13 @@ function renderPostHTML(p) {
 }
 
 async function openPost(id) {
+  _diag("🔓 openPost('" + id + "') APPELÉ!");
+
+  // Afficher la stack trace pour voir qui appelle
+  var stack = new Error().stack;
+  var caller = stack ? stack.split('\n')[2] : "unknown";
+  _diag("📍 Appelé par: " + caller.trim());
+
   const post = state.seed.posts.find(p => p.id === id) || state.userPosts.find(p => p.id === id);
   if (!post) return;
   const page = document.getElementById("postDetailPage");
