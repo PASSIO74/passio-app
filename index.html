@@ -9594,6 +9594,9 @@ async function openPost(id) {
       cName = cu.name; cEmoji = cu.profileEmoji; cAvatar = cu.avatar;
     }
     const cSrc = (cAuthorId === "me" || (typeof MY_UID !== "undefined" && cAuthorId === MY_UID)) ? "me" : "seed";
+    const cLiked = (c.likedBy || []).includes(state.user?.id || "me");
+    const cLikes = c.likes || 0;
+    const cReplies = c.replies || [];
     return `<div class="comment" data-commentid="${c.id}">
       <div class="avatar sm" style="background:${cAvatar};cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${cAuthorId}','${cSrc}')">${cEmoji || (cName||"?")[0]}</div>
       <div class="comment-body">
