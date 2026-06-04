@@ -19604,6 +19604,19 @@ function viewUserProfile(authorId, source) {
   updateBadge("🔄 Changement écran...");
   goTo("profile-view");
   updateBadge("✅ PROFIL OUVERT!");
+
+  // Vérifier après un petit délai
+  setTimeout(function() {
+    var screenEl = document.getElementById("screen-profile-view");
+    var contentEl = document.getElementById("profile-view-content");
+    if (screenEl) {
+      var isActive = screenEl.classList.contains("active");
+      var style = window.getComputedStyle(screenEl);
+      updateBadge("🔍 Écran.active=" + (isActive ? "OUI" : "NON"));
+      updateBadge("🔍 Display=" + style.display);
+      updateBadge("🔍 Content HTML=" + (contentEl ? contentEl.innerHTML.length + " chars" : "VIDE"));
+    }
+  }, 100);
 }
 
 // Rendre la page du profil d'une autre personne
