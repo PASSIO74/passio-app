@@ -19503,6 +19503,12 @@ function replyToComment(postId, commentId, authorName, event) {
       commentBody.appendChild(inputDiv);
       inputField.focus();
       _diag("✅ Input inserted at " + commentBody.children.length + " position");
+
+      // Scroll pour rendre l'input visible
+      setTimeout(function() {
+        inputDiv.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        _diag("📍 Scrolled to input");
+      }, 50);
     } else {
       _diag("❌ Comment body not found!");
     }
