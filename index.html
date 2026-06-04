@@ -9300,15 +9300,9 @@ function allFeedPosts() {
 // ======== MOOD MULTI-SELECT ========
 var selectedMoods = new Set(["creation"]); // Par défaut "Création"
 
-// Vérifier que selectedMoods existe
 console.log("✅ selectedMoods initialisé:", Array.from(selectedMoods));
 
-function toggleMood(mood, btn, evt) {
-  if (evt) {
-    evt.stopPropagation();
-    evt.preventDefault();
-  }
-
+function toggleMood(mood) {
   console.log("🔴 toggleMood APPELÉ avec mood:", mood);
   console.log("🎨 AVANT toggleMood:", Array.from(selectedMoods), "mood cliqué:", mood);
 
@@ -9342,6 +9336,25 @@ function toggleMood(mood, btn, evt) {
 
   // Re-render le feed
   renderFeed();
+}
+
+// Fonction pour attacher les event listeners aux boutons de mood
+function setupMoodButtons() {
+  console.log("🔧 setupMoodButtons() called");
+  var buttons = document.querySelectorAll("#moodSelector .mood-btn");
+  console.log("  Boutons trouvés:", buttons.length);
+
+  buttons.forEach(function(btn) {
+    var moodValue = btn.getAttribute("data-mood");
+    console.log("  Attachement du listener pour:", moodValue);
+
+    btn.addEventListener("click", function(e) {
+      e.stopPropagation();
+      e.preventDefault();
+      console.log("  📌 CLIC sur bouton:", moodValue);
+      toggleMood(moodValue);
+    });
+  });
 }
 
 function renderFeed() {
