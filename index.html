@@ -19406,14 +19406,18 @@ function likeComment(postId, commentId) {
 
   if (typeof saveConversations === 'function') saveConversations();
 
-  // Vérifier si on est en mode détail
-  var postDetailPage = document.getElementById("postDetailPage");
-  var isVisible = postDetailPage && postDetailPage.style.display !== "none" && window.getComputedStyle(postDetailPage).display !== "none";
+  // Juste mettre à jour le like UI sans re-render complet
+  var likeEl = document.querySelector('[data-commentid="' + commentId + '"] .comment-action');
+  if (likeEl) {
+    var newLikes = comment.likes || 0;
+    likeEl.innerHTML = '❤️ ' + newLikes;
+    likeEl.classList.add("liked");
+    _diag("✅ Like UI mis à jour");
+  }
 
-  if (isVisible) {
-    _diag("📖 Re-render POST DETAIL");
-    openPost(postId);
-  } else {
+  // En mode FEED seulement, re-render le feed
+  var postDetailPage = document.getElementById("postDetailPage");
+  if (!postDetailPage || postDetailPage.style.display === "none") {
     _diag("📰 Re-render FEED");
     if (typeof renderFeed === 'function') renderFeed();
   }
