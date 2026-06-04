@@ -19395,6 +19395,91 @@ document.addEventListener("click", function(e) {
   }
 });
 
+// ===== FONCTIONS COMMENTAIRES =====
+function likeComment(postId, commentId) {
+  _diag("❤️ likeComment(" + postId + ", " + commentId + ")");
+  var post = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
+  if (!post) { _diag("❌ Post not found"); return; }
+  var comment = (post.comments || []).find(c => c.id === commentId);
+  if (!comment) { _diag("❌ Comment not found"); return; }
+  comment.likes = (comment.likes || 0) + 1;
+  if (!comment.likedBy) comment.likedBy = [];
+  comment.likedBy.push(state.user?.id || "me");
+  _diag("✅ Like added");
+  if (typeof saveConversations === 'function') saveConversations();
+  var likeEl = document.querySelector('[data-commentid="' + commentId + '"] .comment-action');
+  if (likeEl) likeEl.innerHTML = '❤️ ' + comment.likes;
+}
+
+function replyToComment(postId, commentId, authorName) {
+  _diag("💬 replyToComment(" + postId + ", " + commentId + ", " + authorName + ")");
+  var existingInputs = document.querySelectorAll(".comment-reply-input");
+  existingInputs.forEach(function(input) { input.remove(); });
+  var inputDiv = document.createElement("div");
+  inputDiv.className = "comment-reply-input";
+  inputDiv.style.cssText = "margin-top:8px;display:flex;gap:6px;padding:8px 0;border-top:1px solid rgba(124,58,237,0.1);";
+  var inputField = document.createElement("input");
+  inputField.type = "text";
+  inputField.placeholder = "Répondre à " + authorName + "…";
+  inputField.style.cssText = "flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:12px;font-size:13px;box-sizing:border-box;";
+  var sendBtn = document.createElement("button");
+  sendBtn.textContent = "✓";
+  sendBtn.style.cssText = "width:32px;height:32px;border-radius:8px;background:var(--accent);color:#fff;border:none;cursor:pointer;font-weight:bold;";
+  sendBtn.onclick = function() {
+    var replyText = inputField.value.trim();
+    if (!replyText) return;
+    _diag("📝 Submitting reply");
+    var post = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
+    if (!post) { _diag("❌ Post not found"); return; }
+    var comment = (post.comments || []).find(c => c.id === commentId);
+    if (!comment) { _diag("❌ Comment not found"); return; }
+    if (!comment.replies) comment.replies = [];
+    comment.replies.push({ id: "reply_" + Date.now(), authorId: state.user?.id || "me", text: replyText, createdAt: Date.now() });
+    _diag("✅ Reply added");
+    if (typeof saveConversations === 'function') saveConversations();
+    inputDiv.remove();
+  };
+  inputField.onkeypress = function(e) { if (e.key === 'Enter') sendBtn.click(); };
+  inputDiv.appendChild(inputField);
+  inputDiv.appendChild(sendBtn);
+  var commentElement = document.querySelector('[data-commentid="' + commentId + '"]');
+  if (commentElement) {
+    var commentBody = commentElement.querySelector(".comment-body");
+    if (commentBody) commentBody.appendChild(inputDiv);
+    inputField.focus();
+    _diag("✅ Input inserted");
+  }
+}
+
+function toggleCommentReplies(commentId) {
+  _diag("📂 toggleCommentReplies(" + commentId + ")");
+  var repliesDiv = document.getElementById("replies-" + commentId);
+  if (repliesDiv) {
+    repliesDiv.style.display = repliesDiv.style.display === "none" ? "block" : "none";
+    _diag("✅ Replies toggled");
+  }
+}
+
+function showEmojiPickerForComment(postId, commentId, event) {
+  _diag("😊 showEmojiPickerForComment(" + postId + ", " + commentId + ")");
+  if (event) event.stopPropagation();
+  var emojis = ["❤️", "🔥", "😂", "🎉", "👍", "💯", "😍", "🤔", "😢", "🤮"];
+  var html = emojis.map(e => '<span style="cursor:pointer;font-size:20px;padding:5px;" onclick="addEmojiToComment(\'' + postId + '\',\'' + commentId + '\',\'' + e + '\'); return false;">' + e + '</span>').join('');
+  alert(html.replace(/<[^>]*>/g, ' '));
+  _diag("✅ Emoji picker shown");
+}
+
+function addEmojiToComment(postId, commentId, emoji) {
+  _diag("✨ addEmojiToComment(" + postId + ", " + commentId + ", " + emoji + ")");
+  var post = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
+  if (!post) return;
+  var comment = (post.comments || []).find(c => c.id === commentId);
+  if (!comment) return;
+  if (!comment.emojis) comment.emojis = [];
+  if (!comment.emojis.includes(emoji)) comment.emojis.push(emoji);
+  _diag("✅ Emoji added: " + emoji);
+}
+
 // INITIALISATION BOUTON DIAGNOSTIC 🔧
 setTimeout(function() {
   var diagBtn = document.createElement("button");
