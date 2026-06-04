@@ -19567,9 +19567,17 @@ function viewUserProfile(authorId, source) {
 }
 
 // Rendre la page du profil d'une autre personne
-function renderUserProfilePage(authorId, user) {
+function renderUserProfilePage(authorId, user, source) {
   var passion = passionById(user.passion);
-  var userPosts = allFeedPosts().filter(function(p) { return p.authorId === authorId; });
+
+  // Chercher les posts de cet utilisateur selon la source
+  var userPosts;
+  if (source === "me") {
+    userPosts = allFeedPosts().filter(function(p) { return p.profileId === authorId || p.authorId === authorId; });
+  } else {
+    userPosts = allFeedPosts().filter(function(p) { return p.userId === authorId || p.authorId === authorId; });
+  }
+
   var postCount = userPosts.length;
   var likeCount = userPosts.reduce(function(s,p) { return s + (p.likes||0); }, 0);
 
