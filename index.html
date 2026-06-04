@@ -17003,8 +17003,13 @@ function skipToApp() {
 // ======== STORIES ========
 function renderStories() {
   const row = $("#storiesRow");
-  if (!row) return;
+  _diag("📖 renderStories() called - row exists: " + (row ? "YES" : "NO"));
+  if (!row) {
+    _diag("❌ storiesRow element not found!");
+    return;
+  }
   const stories = state.seed.stories || [];
+  _diag("📖 Stories count: " + stories.length);
   const seen = state.user.seenStories || [];
 
   // Stories des autres (pas de "Ton story" car Studio existe déjà)
