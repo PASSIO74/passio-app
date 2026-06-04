@@ -9802,6 +9802,7 @@ async function openPost(id) {
           </span>
           <span class="comment-action" onclick="return replyToComment('${id}','${c.id}','${escapeHtml(cName)}', event);" title="Répondre">💬</span>
           <span class="comment-action" onclick="return showEmojiPickerForComment('${id}','${c.id}', event);" title="Réagir">😊</span>
+          <span class="comment-action" onclick="return showGifPickerForComment('${id}','${c.id}', event);" title="GIF">🎬</span>
           ${cReplies.length > 0 ? `<span class="comment-reply-count" onclick="return toggleCommentReplies('${c.id}', event);">${cReplies.length} réponse${cReplies.length > 1 ? "s" : ""}</span>` : ""}
           ${(c.emojis || []).length > 0 ? `<span class="comment-emoji-count" onclick="return toggleCommentEmojis('${c.id}', event);">${(c.emojis || []).length} emoji</span>` : ""}
         </div>
