@@ -17008,19 +17008,8 @@ function renderStories() {
   const stories = state.seed.stories || [];
   const seen = state.user.seenStories || [];
 
-  // "Your story" create tile
-  const me = currentProfile();
-  const myEmoji = me ? me.emoji : "✨";
-  const myColor = me ? me.color : "#8b5cf6";
-
-  let html = `
-    <div class="story-item" onclick="openStudioAsStory()">
-      <div class="story-ring create">
-        <div class="story-inner" style="background: ${myColor};">${myEmoji}</div>
-      </div>
-      <div class="story-label">Ton story</div>
-    </div>
-  `;
+  // Stories uniquement (pas de "Ton story" car Studio existe déjà)
+  let html = ``;
 
   html += stories.map((s, i) => {
     const u = userById(s.authorId) || { name: "?", avatar: "#8b5cf6", profileEmoji: "✨" };
