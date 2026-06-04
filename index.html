@@ -9607,7 +9607,9 @@ async function openPost(id) {
           <span class="comment-action" onclick="return replyToComment('${id}','${c.id}','${escapeHtml(cName)}', event);" title="Répondre">💬</span>
           <span class="comment-action" onclick="return showEmojiPickerForComment('${id}','${c.id}', event);" title="Réagir">😊</span>
           ${cReplies.length > 0 ? `<span class="comment-reply-count" onclick="return toggleCommentReplies('${c.id}', event);">${cReplies.length} réponse${cReplies.length > 1 ? "s" : ""}</span>` : ""}
+          ${(c.emojis || []).length > 0 ? `<span class="comment-emoji-count" onclick="return toggleCommentEmojis('${c.id}', event);">${(c.emojis || []).length} emoji</span>` : ""}
         </div>
+        ${(c.emojis || []).length > 0 ? `<div class="comment-emojis" id="emojis-${c.id}" style="display:none;padding:8px 0;border-top:1px solid rgba(124,58,237,0.1);margin-top:8px;"><div style="display:flex;gap:6px;flex-wrap:wrap;">${(c.emojis || []).map(e => `<span style="font-size:20px;padding:4px 8px;background:var(--bg-soft);border-radius:6px;cursor:default;">${e}</span>`).join("")}</div></div>` : ""}
         ${cReplies.length > 0 ? `<div class="comment-replies" id="replies-${c.id}" style="display:none;">${cReplies.map(r => {
           const ru = userById(r.authorId) || { name: "?", profileEmoji: "👤", avatar: "#64748b" };
           const rSrc = r.authorId === "me" ? "me" : "seed";
