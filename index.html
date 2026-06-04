@@ -19583,15 +19583,39 @@ function addEmojiToComment(postId, commentId, emoji) {
   if (!comment.emojis) comment.emojis = [];
   if (!comment.emojis.includes(emoji)) comment.emojis.push(emoji);
   _diag("✅ Emoji added: " + emoji);
-  var emojiContainer = document.querySelector('[data-commentid="' + commentId + '"] .comment-emoji-picker');
-  if (!emojiContainer) {
-    emojiContainer = document.createElement("div");
-    emojiContainer.className = "comment-emoji-picker";
-    emojiContainer.style.cssText = "margin-top:5px;display:flex;gap:3px;flex-wrap:wrap;";
+
+  // Créer ou mettre à jour le div emojis
+  var emojisDiv = document.getElementById("emojis-" + commentId);
+  if (!emojisDiv) {
+    emojisDiv = document.createElement("div");
+    emojisDiv.className = "comment-emojis";
+    emojisDiv.id = "emojis-" + commentId;
+    emojisDiv.style.cssText = "display:none;padding:8px 0;border-top:1px solid rgba(124,58,237,0.1);margin-top:8px;";
     var commentBody = document.querySelector('[data-commentid="' + commentId + '"] .comment-body');
-    if (commentBody) commentBody.appendChild(emojiContainer);
+    if (commentBody) commentBody.appendChild(emojisDiv);
+    _diag("✅ Emojis div created");
   }
-  emojiContainer.innerHTML = comment.emojis.map(e => '<span style="font-size:16px;">' + e + '</span>').join('');
+
+  // Mettre à jour le contenu des emojis
+  var emojiContent = document.createElement("div");
+  emojiContent.style.cssText = "display:flex;gap:6px;flex-wrap:wrap;";
+  emojiContent.innerHTML = comment.emojis.map(e => '<span style="font-size:20px;padding:4px 8px;background:var(--bg-soft);border-radius:6px;cursor:default;">' + e + '</span>').join('');
+  emojisDiv.innerHTML = '';
+  emojisDiv.appendChild(emojiContent);
+
+  // Créer ou mettre à jour le bouton emoji
+  var commentActions = document.querySelector('[data-commentid="' + commentId + '"] .comment-actions');
+  var emojiBtn = commentActions?.querySelector('.comment-emoji-count');
+  if (!emojiBtn) {
+    emojiBtn = document.createElement("span");
+    emojiBtn.className = "comment-emoji-count";
+    emojiBtn.style.cssText = "cursor:pointer;font-size:12px;color:var(--accent);margin-left:8px;";
+    emojiBtn.onclick = function(e) { e.stopPropagation(); toggleCommentEmojis(commentId, e); };
+    commentActions?.appendChild(emojiBtn);
+  }
+  emojiBtn.textContent = comment.emojis.length + " emoji";
+
+  _diag("✅ Emoji button updated");
   return false;
 }
 
