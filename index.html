@@ -19561,14 +19561,35 @@ function showEmojiPickerForComment(postId, commentId, event) {
 
   var emojis = ["❤️", "🔥", "😂", "🎉", "👍", "💯", "😍", "🤔"];
   var panel = document.createElement("div");
-  panel.style.cssText = "position:fixed;bottom:100px;right:20px;background:#fff;border:1px solid #ddd;border-radius:8px;padding:10px;display:flex;gap:8px;z-index:10000;box-shadow:0 2px 8px rgba(0,0,0,0.2);";
+  panel.id = "emoji-panel-" + commentId;
+  panel.style.cssText = "position:absolute;background:var(--bg-card);border:2px solid var(--border);border-radius:12px;padding:8px;display:flex;gap:6px;z-index:10000;box-shadow:0 4px 12px rgba(0,0,0,0.15);animation:fadeIn 0.2s ease;";
+
   emojis.forEach(function(e) {
     var btn = document.createElement("span");
     btn.textContent = e;
-    btn.style.cssText = "cursor:pointer;font-size:20px;padding:5px 8px;hover:background:#f0f0f0;";
-    btn.onclick = function(evt) { evt.stopPropagation(); addEmojiToComment(postId, commentId, e); panel.remove(); };
+    btn.style.cssText = "cursor:pointer;font-size:22px;padding:6px 8px;hover:background:rgba(124,58,237,0.1);border-radius:6px;transition:0.2s;";
+    btn.onmouseover = function() { this.style.background = "rgba(124,58,237,0.15)"; };
+    btn.onmouseout = function() { this.style.background = "transparent"; };
+    btn.onclick = function(evt) {
+      evt.stopPropagation();
+      addEmojiToComment(postId, commentId, e);
+      // Fermer le panel après sélection
+      setTimeout(function() { panel.remove(); }, 100);
+      _diag("✅ Emoji selected and panel closed");
+    };
     panel.appendChild(btn);
   });
+
+  // Positionner le panel sous le bouton emoji
+  var commentElement = document.querySelector('[data-commentid="' + commentId + '"]');
+  if (commentElement) {
+    var commentActions = commentElement.querySelector('.comment-actions');
+    if (commentActions) {
+      commentActions.parentNode.insertBefore(panel, commentActions.nextSibling);
+      _diag("✅ Emoji picker positioned under comment");
+    }
+  }
+
   document.body.appendChild(panel);
   _diag("✅ Emoji picker shown");
   return false;
