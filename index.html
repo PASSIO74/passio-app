@@ -9449,6 +9449,12 @@ function toggleMood(mood) {
 
   // Re-render le feed UNE SEULE FOIS
   renderFeed();
+
+  // RE-METTRE À JOUR L'UI après renderFeed (le DOM peut avoir changé)
+  setTimeout(function() {
+    console.log("🔄 Mise à jour UI après renderFeed");
+    updateMoodButtonsUI();
+  }, 50);
 }
 
 function updateMoodButtonsUI() {
