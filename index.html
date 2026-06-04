@@ -8522,14 +8522,21 @@ function grantReward(kind, customLabel) {
 
 // ======== NAVIGATION ========
 function goTo(screen) {
+  console.log("🔄 goTo(" + screen + ")");
+
   $$(".nav-item").forEach(n => {
     const is = n.getAttribute("data-screen") === screen;
     n.classList.toggle("active", is);
   });
   $$(".screen").forEach(s => s.classList.remove("active"));
   const el = document.getElementById("screen-" + screen);
-  if (el) el.classList.add("active");
-  $("#appMain").scrollTop = 0;
+  console.log("🔄 Element screen-" + screen + " trouvé?", el ? "OUI" : "NON");
+  if (el) {
+    el.classList.add("active");
+    console.log("🔄 Classe 'active' ajoutée!");
+  }
+  var appMain = document.getElementById("appMain");
+  if (appMain) appMain.scrollTop = 0;
   document.body.classList.toggle("screen-feed-active", screen === "feed");
 
   // Re-render dynamic screens on navigate
