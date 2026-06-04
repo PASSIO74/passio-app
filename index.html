@@ -17002,10 +17002,11 @@ function skipToApp() {
 
 // ======== STORIES ========
 function renderStories() {
-  const row = $("#storiesRow");
+  // Chercher #storiesRowFeed (feed) OU #storiesRow (explorer)
+  const row = $("#storiesRowFeed") || $("#storiesRow");
   _diag("📖 renderStories() called - row exists: " + (row ? "YES" : "NO"));
   if (!row) {
-    _diag("❌ storiesRow element not found!");
+    _diag("❌ Neither storiesRowFeed nor storiesRow found!");
     return;
   }
   const stories = state.seed.stories || [];
