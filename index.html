@@ -9852,7 +9852,7 @@ async function openPost(id) {
       <div class="post-body" style="white-space:pre-wrap;">${escapeHtml(post.text || "")}</div>
       ${media}
       <div class="post-actions">
-        <span class="post-action ${liked ? "liked" : ""}" onclick="likePost('${id}'); setTimeout(() => openPost('${id}'), 100);">
+        <span class="post-action ${liked ? "liked" : ""}" onclick="likePost('${id}', true); setTimeout(() => openPost('${id}'), 50);">
           ${liked ? "❤️" : "🤍"} ${post.likes || 0}
         </span>
         <span class="post-action" onclick="openComments('${id}')">💬 ${(post.comments||[]).length}</span>
