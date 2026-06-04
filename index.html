@@ -1909,18 +1909,18 @@
     }
 
     .mood-btn.active {
-      color: #ffffff;
-      background: var(--accent);
+      color: var(--accent);
+      background: transparent;
       border-color: transparent;
-      box-shadow: 0 6px 16px rgba(124, 58, 237, 0.28);
+      box-shadow: none;
     }
     .mood-btn.active .mood-btn-icon {
-      border-color: rgba(255, 255, 255, 0.6);
-      box-shadow: 0 2px 8px rgba(24, 18, 48, 0.18);
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2.5px var(--accent), 0 4px 12px rgba(124, 58, 237, 0.25);
     }
     .mood-btn[data-mood="learn"].active {
-      background: var(--accent);
-      box-shadow: 0 6px 16px rgba(124, 58, 237, 0.28);
+      background: transparent;
+      box-shadow: none;
     }
     .mood-btn[data-mood="chill"].active {
       background: var(--accent-soft);
