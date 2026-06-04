@@ -9727,6 +9727,8 @@ function renderPostHTML(p) {
         ${liked ? "❤️" : "🤍"} ${p.likes || 0}
       </span>
       <span class="post-action" onclick="openComments('${p.id}')">💬 ${(p.comments || []).length}</span>
+      <span class="post-action" onclick="return showEmojiPickerForPost('${p.id}', event);" title="Réagir">😊</span>
+      <span class="post-action" onclick="return showGifPickerForPost('${p.id}', event);" title="GIF">🎬</span>
       <span class="post-action" onclick="sharePost('${p.id}')">🔁 Partager</span>
       <span class="post-action" style="margin-left:auto;" onclick="openPassionExplorer('${p.passion}')">🔎 ${passion.label}</span>
     </div>
