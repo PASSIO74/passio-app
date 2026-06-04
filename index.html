@@ -19515,6 +19515,18 @@ function toggleCommentReplies(commentId, event) {
 function showEmojiPickerForComment(postId, commentId, event) {
   if (event) { event.stopPropagation(); event.preventDefault(); }
   _diag("😊 showEmojiPickerForComment(" + postId + ", " + commentId + ")");
+  // Initialiser les propriétés du commentaire
+  var post = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
+  if (post) {
+    var comment = (post.comments || []).find(c => c.id === commentId);
+    if (comment) {
+      if (!comment.likes) comment.likes = 0;
+      if (!comment.likedBy) comment.likedBy = [];
+      if (!comment.replies) comment.replies = [];
+      if (!comment.emojis) comment.emojis = [];
+    }
+  }
+
   var emojis = ["❤️", "🔥", "😂", "🎉", "👍", "💯", "😍", "🤔"];
   var panel = document.createElement("div");
   panel.style.cssText = "position:fixed;bottom:100px;right:20px;background:#fff;border:1px solid #ddd;border-radius:8px;padding:10px;display:flex;gap:8px;z-index:10000;box-shadow:0 2px 8px rgba(0,0,0,0.2);";
