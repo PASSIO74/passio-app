@@ -19548,6 +19548,12 @@ function replyToComment(postId, commentId, authorName) {
       commentBody.appendChild(inputDiv);
       inputField.focus();
       _diag("✅ Input inséré et focus!");
+
+      // Scroller vers l'input pour qu'il soit visible
+      setTimeout(function() {
+        inputDiv.scrollIntoView({ behavior: "smooth", block: "center" });
+        _diag("📍 Scroll vers input!");
+      }, 50);
     } else {
       _diag("❌ .comment-body NOT FOUND!");
       _diag("🔍 Structure du commentaire: " + commentElement.innerHTML.substring(0, 100));
