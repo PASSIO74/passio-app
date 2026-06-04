@@ -9348,10 +9348,10 @@ function renderFeed() {
     ? allPosts.filter(function(p) { return _activeFeedPassions.has(p.passion); })
     : [];
 
-  // ── Filtre mood : single select sur les posts déjà filtrés par passion ──
-  let posts = mood !== "all"
-    ? postsByPassion.filter(function(p) { return p.mood === mood; })
-    : postsByPassion;
+  // ── Filtre mood : multi-select sur les posts déjà filtrés par passion ──
+  let posts = selectedMoods.has("all")
+    ? postsByPassion
+    : postsByPassion.filter(function(p) { return selectedMoods.has(p.mood); });
 
   renderProfileStrip();
   renderMoodStripSmart(postsByPassion); // met à jour les moods selon ce qui est dispo
