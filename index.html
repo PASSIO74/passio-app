@@ -19437,7 +19437,11 @@ function replyToComment(postId, commentId, authorName, event) {
     if (!post) { _diag("❌ Post not found"); return; }
     var comment = (post.comments || []).find(c => c.id === commentId);
     if (!comment) { _diag("❌ Comment not found"); return; }
+    // Initialiser les propriétés manquantes
     if (!comment.replies) comment.replies = [];
+    if (!comment.likes) comment.likes = 0;
+    if (!comment.likedBy) comment.likedBy = [];
+    if (!comment.emojis) comment.emojis = [];
 
     var newReply = { id: "reply_" + Date.now(), authorId: state.user?.id || "me", text: replyText, createdAt: Date.now() };
     comment.replies.push(newReply);
