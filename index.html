@@ -19492,11 +19492,22 @@ function replyToComment(postId, commentId, authorName, event) {
   inputDiv.appendChild(inputField);
   inputDiv.appendChild(sendBtn);
   var commentElement = document.querySelector('[data-commentid="' + commentId + '"]');
+  _diag("🔍 Looking for commentId: " + commentId);
+  _diag("🔍 Found element: " + (commentElement ? "YES" : "NO"));
   if (commentElement) {
+    _diag("📍 Element visible: " + commentElement.offsetParent !== null);
+    _diag("📍 Element display: " + window.getComputedStyle(commentElement).display);
     var commentBody = commentElement.querySelector(".comment-body");
-    if (commentBody) commentBody.appendChild(inputDiv);
-    inputField.focus();
-    _diag("✅ Input inserted");
+    _diag("🔍 Found comment-body: " + (commentBody ? "YES" : "NO"));
+    if (commentBody) {
+      commentBody.appendChild(inputDiv);
+      inputField.focus();
+      _diag("✅ Input inserted at " + commentBody.children.length + " position");
+    } else {
+      _diag("❌ Comment body not found!");
+    }
+  } else {
+    _diag("❌ Comment element not found! Check data-commentid attribute");
   }
   return false;
 }
