@@ -12976,6 +12976,26 @@ function applyConfig() {
 
   // ONGLETS
   if (cfg.navOrder) { setTimeout(function() { applyNavOrder(); }, 100); }
+
+  // ✅ INITIALISER LES BOUTONS DE MOOD
+  setTimeout(function() {
+    console.log("🎨 INIT MOOD BUTTONS - selectedMoods:", Array.from(selectedMoods));
+    var allBtns = document.querySelectorAll("#moodSelector .mood-btn");
+    console.log("  Boutons trouvés:", allBtns.length);
+
+    allBtns.forEach(function(b) {
+      var moodValue = b.getAttribute("data-mood");
+      var shouldBeActive = selectedMoods.has(moodValue);
+
+      if (shouldBeActive) {
+        b.classList.add("active");
+        console.log("  ✅ Bouton [" + moodValue + "] activé");
+      } else {
+        b.classList.remove("active");
+        console.log("  ⬜ Bouton [" + moodValue + "] désactivé");
+      }
+    });
+  }, 150);
 }
 
 function openConfigurator() {
