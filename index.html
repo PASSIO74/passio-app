@@ -19411,10 +19411,20 @@ function likeComment(postId, commentId, event) {
 
   comment.likes = (comment.likes || 0) + 1;
   comment.likedBy.push(state.user?.id || "me");
-  _diag("✅ Like added");
+  _diag("✅ Like added: " + comment.likes + " likes");
+  saveState();
   if (typeof saveConversations === 'function') saveConversations();
-  var likeEl = document.querySelector('[data-commentid="' + commentId + '"] .comment-action');
-  if (likeEl) likeEl.innerHTML = '❤️ ' + comment.likes;
+
+  // Update visuel du like
+  var commentEl = document.querySelector('[data-commentid="' + commentId + '"]');
+  if (commentEl) {
+    var likeBtn = commentEl.querySelector('.comment-actions .comment-action');
+    if (likeBtn) {
+      likeBtn.classList.add('liked');
+      likeBtn.innerHTML = '❤️ ' + comment.likes;
+      _diag("🎨 Like button updated visually");
+    }
+  }
   return false;
 }
 
