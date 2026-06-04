@@ -19618,9 +19618,17 @@ function addEmojiToComment(postId, commentId, emoji) {
 
   if (typeof saveConversations === 'function') saveConversations();
 
-  // Re-render SEULEMENT le feed, pas de changement d'écran
-  _diag("📰 Re-render FEED");
-  if (typeof renderFeed === 'function') renderFeed();
+  // Vérifier si on est en mode détail
+  var postDetailPage = document.getElementById("postDetailPage");
+  var isVisible = postDetailPage && postDetailPage.style.display !== "none" && window.getComputedStyle(postDetailPage).display !== "none";
+
+  if (isVisible) {
+    _diag("📖 Re-render POST DETAIL");
+    openPost(postId);
+  } else {
+    _diag("📰 Re-render FEED");
+    if (typeof renderFeed === 'function') renderFeed();
+  }
 }
 
 // ============ FONCTION POUR CLICKER SUR LES PROFILS DANS LA BOBINE ============
