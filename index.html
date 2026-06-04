@@ -9688,6 +9688,7 @@ function renderPostHTML(p) {
           </span>
           <span class="comment-action" onclick="return replyToComment('${p.id}','${c.id}','${escapeHtml(cu.name)}', event);" title="Répondre">💬</span>
           <span class="comment-action" onclick="return showEmojiPickerForComment('${p.id}','${c.id}', event);" title="Réagir">😊</span>
+          <span class="comment-action" onclick="return showGifPickerForComment('${p.id}','${c.id}', event);" title="GIF">🎬</span>
           ${cReplies.length > 0 ? `<span class="comment-reply-count" onclick="return toggleCommentReplies('${c.id}', event);">${cReplies.length} réponse${cReplies.length > 1 ? "s" : ""}</span>` : ""}
         </div>
       </div>
