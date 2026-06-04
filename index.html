@@ -9405,80 +9405,61 @@ var selectedMoods = new Set(["creation"]); // Par défaut "Création"
 
 console.log("✅ selectedMoods initialisé:", Array.from(selectedMoods));
 
-// Variable globale pour les listeners
-var _moodListeners = {};
+// ✅ EVENT DELEGATION pour les moods - Plus robuste et fluide!
+function setupMoodDelegation() {
+  var moodSelector = document.getElementById("moodSelector");
+  if (!moodSelector) return;
+
+  // Enlever les anciens listeners (si présent)
+  if (moodSelector._delegationAttached) return;
+
+  console.log("🔧 setupMoodDelegation");
+
+  moodSelector.addEventListener("click", function(e) {
+    var btn = e.target.closest(".mood-btn");
+    if (!btn) return;
+
+    e.stopPropagation();
+    e.preventDefault();
+
+    var mood = btn.getAttribute("data-mood");
+    if (!mood) return;
+
+    console.log("🔴 CLIC MOOD:", mood);
+    toggleMood(mood);
+  });
+
+  moodSelector._delegationAttached = true;
+}
 
 function toggleMood(mood) {
-  console.log("🔴 toggleMood APPELÉ avec mood:", mood);
+  console.log("🔴 toggleMood:", mood, "| avant:", Array.from(selectedMoods));
 
-  // Toggle le mood actuel
+  // Toggle
   if (selectedMoods.has(mood)) {
     selectedMoods.delete(mood);
-    console.log("  ❌ Supprimé:", mood);
   } else {
     selectedMoods.add(mood);
-    console.log("  ✅ Ajouté:", mood);
   }
 
-  console.log("  État actuel:", Array.from(selectedMoods));
+  console.log("  après:", Array.from(selectedMoods));
 
   // Mettre à jour l'UI immédiatement
   updateMoodButtonsUI();
 
-  // Re-render le feed
+  // Re-render le feed UNE SEULE FOIS
   renderFeed();
-
-  // Re-attacher les listeners après renderFeed
-  setTimeout(function() {
-    setupMoodButtons();
-    updateMoodButtonsUI();
-  }, 30);
-
-  console.log("✅ toggleMood terminé");
-}
-
-function setupMoodButtons() {
-  var buttons = document.querySelectorAll("#moodSelector .mood-btn");
-  console.log("  🔧 setupMoodButtons - " + buttons.length + " boutons");
-
-  buttons.forEach(function(btn) {
-    var moodValue = btn.getAttribute("data-mood");
-
-    // Vérifier si ce bouton a déjà un listener
-    if (btn.hasAttribute("data-mood-listener-attached")) {
-      console.log("  ✅ Listener déjà attaché pour:", moodValue);
-      return;
-    }
-
-    // Marquer le bouton comme ayant un listener
-    btn.setAttribute("data-mood-listener-attached", "true");
-
-    // Attacher le listener
-    btn.addEventListener("click", function(e) {
-      e.stopPropagation();
-      e.preventDefault();
-      console.log("  📌 CLIC sur:", moodValue);
-      toggleMood(moodValue);
-    });
-
-    console.log("  ✅ Listener attaché pour:", moodValue);
-  });
 }
 
 function updateMoodButtonsUI() {
-  var allBtns = document.querySelectorAll("#moodSelector .mood-btn");
-  console.log("  📝 updateMoodButtonsUI - " + allBtns.length + " boutons, sélections:", Array.from(selectedMoods));
+  var buttons = document.querySelectorAll("#moodSelector .mood-btn");
 
-  allBtns.forEach(function(b) {
-    var moodValue = b.getAttribute("data-mood");
-    var shouldBeActive = selectedMoods.has(moodValue);
-
-    if (shouldBeActive) {
+  buttons.forEach(function(b) {
+    var mood = b.getAttribute("data-mood");
+    if (selectedMoods.has(mood)) {
       b.classList.add("active");
-      console.log("    ✅ " + moodValue + " = active");
     } else {
       b.classList.remove("active");
-      console.log("    ⬜ " + moodValue + " = inactive");
     }
   });
 }
