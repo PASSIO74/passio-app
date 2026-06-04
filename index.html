@@ -19560,13 +19560,8 @@ function replyToComment(postId, commentId, authorName) {
 }
 
 // Afficher/Masquer les replies d'un commentaire
-function toggleCommentReplies(commentId, event) {
+function toggleCommentReplies(commentId) {
   _diag("📂 toggleCommentReplies appelé pour commentId=" + commentId);
-
-  if (event) {
-    event.stopPropagation();
-    event.preventDefault();
-  }
 
   var repliesDiv = document.getElementById("replies-" + commentId);
   _diag("🔍 Cherche: #replies-" + commentId);
