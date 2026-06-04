@@ -19845,47 +19845,41 @@ function showEmojiPickerForComment(postId, commentId, event) {
 }
 
 function addEmojiToComment(postId, commentId, emoji) {
-  _diag("✨ addEmojiToComment(" + postId + ", " + commentId + ", " + emoji + ")");
+  console.log("✨ addEmojiToComment:", postId, commentId, emoji);
   var post = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
   if (!post) return false;
   var comment = (post.comments || []).find(c => c.id === commentId);
   if (!comment) return false;
-  if (!comment.emojis) comment.emojis = [];
-  if (!comment.emojis.includes(emoji)) comment.emojis.push(emoji);
-  _diag("✅ Emoji added: " + emoji);
 
-  // Créer ou mettre à jour le div emojis
-  var emojisDiv = document.getElementById("emojis-" + commentId);
-  if (!emojisDiv) {
-    emojisDiv = document.createElement("div");
-    emojisDiv.className = "comment-emojis";
-    emojisDiv.id = "emojis-" + commentId;
-    emojisDiv.style.cssText = "display:none;padding:8px 0;border-top:1px solid rgba(124,58,237,0.1);margin-top:8px;";
-    var commentBody = document.querySelector('[data-commentid="' + commentId + '"] .comment-body');
-    if (commentBody) commentBody.appendChild(emojisDiv);
-    _diag("✅ Emojis div created");
+  // Initialiser replies si nécessaire
+  if (!comment.replies) comment.replies = [];
+
+  // Chercher si "Toi" (ou l'utilisateur actuel) a déjà une réaction emoji
+  var currentUserEmojis = comment.replies.find(r => r.type === "emoji_reaction" && r.authorId === (state.user?.id || "me"));
+
+  if (currentUserEmojis) {
+    // Ajouter l'emoji à la réaction existante
+    if (!currentUserEmojis.text.includes(emoji)) {
+      currentUserEmojis.text += " " + emoji;
+    }
+    console.log("✅ Emoji added to existing reaction:", currentUserEmojis.text);
+  } else {
+    // Créer une nouvelle réaction emoji
+    var reactionReply = {
+      id: "emoji_" + commentId + "_" + Math.random().toString(36).substr(2, 9),
+      authorId: state.user?.id || "me",
+      text: emoji,
+      type: "emoji_reaction",
+      createdAt: Date.now(),
+      likes: 0,
+      likedBy: []
+    };
+    comment.replies.push(reactionReply);
+    console.log("✅ New emoji reaction added:", emoji);
   }
 
-  // Mettre à jour le contenu des emojis
-  var emojiContent = document.createElement("div");
-  emojiContent.style.cssText = "display:flex;gap:6px;flex-wrap:wrap;";
-  emojiContent.innerHTML = comment.emojis.map(e => '<span style="font-size:20px;padding:4px 8px;background:var(--bg-soft);border-radius:6px;cursor:default;">' + e + '</span>').join('');
-  emojisDiv.innerHTML = '';
-  emojisDiv.appendChild(emojiContent);
-
-  // Créer ou mettre à jour le bouton emoji
-  var commentActions = document.querySelector('[data-commentid="' + commentId + '"] .comment-actions');
-  var emojiBtn = commentActions?.querySelector('.comment-emoji-count');
-  if (!emojiBtn) {
-    emojiBtn = document.createElement("span");
-    emojiBtn.className = "comment-emoji-count";
-    emojiBtn.style.cssText = "cursor:pointer;font-size:12px;color:var(--accent);margin-left:8px;";
-    emojiBtn.onclick = function(e) { e.stopPropagation(); toggleCommentEmojis(commentId, e); };
-    commentActions?.appendChild(emojiBtn);
-  }
-  emojiBtn.textContent = comment.emojis.length + " emoji";
-
-  _diag("✅ Emoji button updated");
+  // Re-render les replies du commentaire
+  renderCommentReplies(commentId, post.id);
   return false;
 }
 
