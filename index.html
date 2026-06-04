@@ -19528,9 +19528,15 @@ function replyToComment(postId, commentId, authorName) {
 function toggleCommentReplies(commentId) {
   _diag("📂 toggleCommentReplies appelé pour commentId=" + commentId);
 
+  if (event) {
+    event.stopPropagation();
+    event.preventDefault();
+  }
+
   var repliesDiv = document.getElementById("replies-" + commentId);
   if (!repliesDiv) {
-    _diag("❌ Replies div not found pour: " + commentId);
+    _diag("❌ Replies div NOT FOUND! ID cherché: replies-" + commentId);
+    _diag("🔍 Divs disponibles: " + document.querySelectorAll("[id^='replies-']").length);
     return;
   }
 
