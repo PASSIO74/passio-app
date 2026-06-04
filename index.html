@@ -19445,10 +19445,27 @@ function replyToComment(postId, commentId, authorName, event) {
 
     // Afficher les réponses automatiquement
     var repliesDiv = document.getElementById("replies-" + commentId);
-    if (repliesDiv) {
+    if (!repliesDiv) {
+      // Créer le div replies s'il n'existe pas
+      repliesDiv = document.createElement("div");
+      repliesDiv.className = "comment-replies";
+      repliesDiv.id = "replies-" + commentId;
+      repliesDiv.style.cssText = "display:block;";
+      var commentBody = document.querySelector('[data-commentid="' + commentId + '"] .comment-body');
+      if (commentBody) commentBody.appendChild(repliesDiv);
+      _diag("📂 Created replies div");
+    } else {
       repliesDiv.style.display = "block";
-      _diag("📂 Replies displayed");
+      _diag("📂 Displayed existing replies");
     }
+
+    // Ajouter la nouvelle réponse au div
+    var replyEl = document.createElement("div");
+    replyEl.className = "comment-reply";
+    var currentUser = state.seed.users.find(u => u.id === (state.user?.id || "me")) || { name: "Toi" };
+    replyEl.innerHTML = '<span class="comment-reply-author">' + escapeHtml(currentUser.name) + '</span>: ' + escapeHtml(replyText) + '<div style="font-size:10px;color:var(--muted);margin-top:2px;">' + new Date().toLocaleTimeString() + '</div>';
+    repliesDiv.appendChild(replyEl);
+    _diag("✅ Reply rendered");
   };
   inputField.onkeypress = function(e) { if (e.key === 'Enter') sendBtn.click(); };
   inputDiv.appendChild(inputField);
