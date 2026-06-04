@@ -19442,6 +19442,13 @@ function replyToComment(postId, commentId, authorName, event) {
     _diag("✅ Reply added");
     if (typeof saveConversations === 'function') saveConversations();
     inputDiv.remove();
+
+    // Afficher les réponses automatiquement
+    var repliesDiv = document.getElementById("replies-" + commentId);
+    if (repliesDiv) {
+      repliesDiv.style.display = "block";
+      _diag("📂 Replies displayed");
+    }
   };
   inputField.onkeypress = function(e) { if (e.key === 'Enter') sendBtn.click(); };
   inputDiv.appendChild(inputField);
