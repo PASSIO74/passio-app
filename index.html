@@ -19502,7 +19502,9 @@ function toggleCommentReplies(commentId) {
 
 // Ajouter un emoji à un commentaire
 function showEmojiPickerForComment(postId, commentId, event) {
-  event.stopPropagation();
+  _diag("😊 showEmojiPickerForComment appelé pour postId=" + postId + ", commentId=" + commentId);
+
+  if (event) event.stopPropagation();
 
   var emojis = ["❤️", "😂", "😍", "🔥", "👍", "🎉", "😮", "😢", "💯", "🙌", "😊", "🤔", "👏", "🎪", "🌟"];
 
@@ -19523,6 +19525,7 @@ function showEmojiPickerForComment(postId, commentId, event) {
     btn.style.background = "transparent";
     btn.onclick = function(e) {
       e.stopPropagation();
+      _diag("✅ Emoji sélectionné: " + emoji);
       addEmojiToComment(postId, commentId, emoji);
       panel.remove();
     };
