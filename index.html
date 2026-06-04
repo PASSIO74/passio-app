@@ -9629,7 +9629,7 @@ async function openPost(id) {
           <span class="comment-action ${cLiked ? "liked" : ""}" onclick="likeComment('${id}','${c.id}'); return false;">
             ${cLiked ? "❤️" : "🤍"} ${cLikes}
           </span>
-          <span class="comment-action" onclick="replyToComment('${id}','${c.id}','${escapeHtml(cName)}', event); return false;" title="Répondre">💬</span>
+          <span class="comment-action" onclick="replyToComment('${id}','${c.id}','${escapeHtml(cName)}'); return false;" title="Répondre">💬</span>
           <span class="comment-action" onclick="showEmojiPickerForComment('${id}','${c.id}',event); return false;" title="Réagir">😊</span>
           ${cReplies.length > 0 ? `<span class="comment-reply-count" onclick="toggleCommentReplies('${c.id}', event); return false;">${cReplies.length} réponse${cReplies.length > 1 ? "s" : ""}</span>` : ""}
         </div>
