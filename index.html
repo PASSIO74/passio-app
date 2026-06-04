@@ -19926,7 +19926,7 @@ function addEmojiToComment(postId, commentId, emoji) {
       console.log("✅ Reply count updated:", replyCountBtn.textContent);
     }
 
-    // Recréer le div des replies avec les nouvelles réponses
+    // Mettre à jour ou créer le div des replies
     var repliesDiv = commentElement.querySelector(".comment-replies");
     if (repliesDiv) {
       repliesDiv.remove();
@@ -19936,7 +19936,7 @@ function addEmojiToComment(postId, commentId, emoji) {
       var newRepliesDiv = document.createElement("div");
       newRepliesDiv.className = "comment-replies";
       newRepliesDiv.id = "replies-" + commentId;
-      newRepliesDiv.style.cssText = "display:none;";
+      newRepliesDiv.style.cssText = "display:block;"; // Afficher directement!
 
       var repliesHTML = comment.replies.map(r => {
         const ru = userById(r.authorId) || { name: "?", profileEmoji: "👤", avatar: "#64748b" };
@@ -19957,14 +19957,7 @@ function addEmojiToComment(postId, commentId, emoji) {
 
       newRepliesDiv.innerHTML = repliesHTML;
       commentElement.querySelector(".comment-body")?.appendChild(newRepliesDiv);
-      console.log("✅ Replies div created with", comment.replies.length, "items");
-    }
-
-    // Montrer les replies automatiquement
-    var repliesDiv = commentElement.querySelector(".comment-replies");
-    if (repliesDiv && repliesDiv.style.display === "none") {
-      repliesDiv.style.display = "block";
-      console.log("✅ Replies displayed");
+      console.log("✅ Replies div created and displayed with", comment.replies.length, "items");
     }
   }
 
