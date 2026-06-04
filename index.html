@@ -13814,8 +13814,6 @@ const COLORS_PASSION_BG = {
 };
 
 function renderReelHTML(post, idx) {
-  console.log("🎬 renderReelHTML - post._source:", post._source, "profileId:", post.profileId, "userId:", post.userId);
-
   const author = authorOfReel(post);
   const passion = passionById(post.passion) || { label: post.passion, emoji: "✨" };
   const moodLabel = ({ creation: "Création", learn: "Learn", chill: "Chill", actu: "Actu" })[post.mood] || "Tout";
