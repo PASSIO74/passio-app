@@ -19511,8 +19511,19 @@ function replyToComment(postId, commentId, authorName) {
     if (e.key === "Enter") submitReply();
   };
 
-  // Vérifier la visibilité des boutons après 100ms
+  // Vérifier la visibilité de l'input après insertion
   setTimeout(function() {
+    var input = inputField;
+    if (input) {
+      var style = window.getComputedStyle(input);
+      var rect = input.getBoundingClientRect();
+      _diag("🔍 Input display=" + style.display);
+      _diag("🔍 Input visibility=" + style.visibility);
+      _diag("🔍 Input offsetHeight=" + input.offsetHeight);
+      _diag("🔍 Input viewport Y=" + rect.top);
+      _diag("🔍 Input in viewport? " + (rect.top >= 0 && rect.top <= window.innerHeight ? "OUI" : "NON"));
+    }
+
     var actions = document.querySelector('[data-commentid="' + commentId + '"] .comment-actions');
     if (actions) {
       var style = window.getComputedStyle(actions);
