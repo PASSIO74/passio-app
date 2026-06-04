@@ -19840,12 +19840,30 @@ function showGifPickerForComment(postId, commentId, event) {
     "https://media.giphy.com/media/l3q2K5jinAlChoCLS/giphy.gif",
     "https://media.giphy.com/media/8fen5LSZcHQ5O/giphy.gif",
     "https://media.giphy.com/media/lD76UznFEUings5nItA/giphy.gif",
-    "https://media.giphy.com/media/l3q2wJsApX7YjPWHm/giphy.gif"
+    "https://media.giphy.com/media/l3q2wJsApX7YjPWHm/giphy.gif",
+    "https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif",
+    "https://media.giphy.com/media/l3q2zVr6cu85j15Qc/giphy.gif",
+    "https://media.giphy.com/media/3o85xIO33l7RlmLR4I/giphy.gif",
+    "https://media.giphy.com/media/l0HlNaQ9OHIOXmHh6/giphy.gif",
+    "https://media.giphy.com/media/26uf1EKct4X5njPQA/giphy.gif",
+    "https://media.giphy.com/media/l0HlRnAQ7lyB6EHjq/giphy.gif",
+    "https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif",
+    "https://media.giphy.com/media/l3q2zVr6cu85j15Qc/giphy.gif",
+    "https://media.giphy.com/media/3o85xIO33l7RlmLR4I/giphy.gif",
+    "https://media.giphy.com/media/l0HlNaQ9OHIOXmHh6/giphy.gif",
+    "https://media.giphy.com/media/26uf1EKct4X5njPQA/giphy.gif",
+    "https://media.giphy.com/media/l0HlRnAQ7lyB6EHjq/giphy.gif",
+    "https://media.giphy.com/media/xT9IgEx8SbQ0teblZ6/giphy.gif",
+    "https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif",
+    "https://media.giphy.com/media/3o7TKvjhMLChz0jZDq/giphy.gif",
+    "https://media.giphy.com/media/l0HlAKfgjfVzV8BPi/giphy.gif",
+    "https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif",
+    "https://media.giphy.com/media/l3q2K5jinAlChoCLS/giphy.gif"
   ];
 
   var panel = document.createElement("div");
   panel.id = "gif-panel-" + commentId;
-  panel.style.cssText = "position:fixed;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:8px;display:grid;grid-template-columns:repeat(3,80px);gap:6px;z-index:10000;box-shadow:0 4px 16px rgba(0,0,0,0.2);";
+  panel.style.cssText = "position:fixed;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:10px;display:grid;grid-template-columns:repeat(4,90px);gap:8px;z-index:10000;box-shadow:0 4px 16px rgba(0,0,0,0.2);max-height:400px;overflow-y:auto;";
 
   gifs.forEach(function(gifUrl) {
     var gifBtn = document.createElement("div");
