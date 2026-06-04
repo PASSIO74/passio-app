@@ -19583,8 +19583,6 @@ function viewUserProfile(authorId, source) {
 
 // Rendre la page du profil d'une autre personne
 function renderUserProfilePage(authorId, user, source) {
-  console.log("📄 renderUserProfilePage pour:", user.name);
-
   var passion = passionById(user.passion);
 
   // Chercher les posts de cet utilisateur selon la source
@@ -19595,8 +19593,6 @@ function renderUserProfilePage(authorId, user, source) {
     userPosts = allFeedPosts().filter(function(p) { return p.userId === authorId || p.authorId === authorId; });
   }
 
-  console.log("📄 Posts trouvés pour " + user.name + ":", userPosts.length);
-
   var postCount = userPosts.length;
   var likeCount = userPosts.reduce(function(s,p) { return s + (p.likes||0); }, 0);
 
@@ -19605,11 +19601,7 @@ function renderUserProfilePage(authorId, user, source) {
     : '<div style="text-align:center;padding:30px;color:var(--muted);font-size:12px;">Aucune publication pour l\'instant</div>';
 
   var profilePageEl = document.getElementById("profile-view-content");
-  console.log("📄 Element #profile-view-content existe?", profilePageEl ? "OUI" : "NON");
-  if (!profilePageEl) {
-    console.log("❌ ERREUR: #profile-view-content NOT FOUND!");
-    return;
-  }
+  if (!profilePageEl) return;
 
   profilePageEl.innerHTML = `
     <div style="text-align:center;padding-top:20px;margin-bottom:16px;">
