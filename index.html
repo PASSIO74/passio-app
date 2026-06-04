@@ -19536,12 +19536,26 @@ function addEmojiToComment(postId, commentId, emoji) {
 
 // Voir le profil complet d'une autre personne (redirection)
 function viewUserProfile(authorId, source) {
-  var msg = "👤 authorId=" + authorId + ", source=" + source;
-  console.log("🔷 viewUserProfile called:", {authorId, source});
-  toast(msg);
+  // Créer un badge de diagnostic visible
+  var badge = document.getElementById("__profil_debug_badge");
+  if (!badge) {
+    badge = document.createElement("div");
+    badge.id = "__profil_debug_badge";
+    badge.style.cssText = "position:fixed;top:10px;right:10px;background:#ffeb3b;color:#000;padding:15px;border-radius:8px;font-size:12px;font-weight:bold;z-index:99999;max-width:300px;white-space:pre-wrap;line-height:1.6;";
+    document.body.appendChild(badge);
+  }
+
+  function updateBadge(msg) {
+    badge.textContent += "\n" + msg;
+    console.log(msg);
+  }
+
+  badge.textContent = "🔍 PROFIL CLIQUE\n";
+  updateBadge("👤 ID: " + authorId);
+  updateBadge("📌 Source: " + source);
 
   if (source === "me" || authorId === "me" || (typeof MY_UID !== "undefined" && MY_UID && authorId === MY_UID)) {
-    console.log("🔷 Viewing own profile");
+    updateBadge("✅ C'est TON profil!");
     goTo("profiles");
     return;
   }
@@ -19556,24 +19570,23 @@ function viewUserProfile(authorId, source) {
   if (source === "me") {
     // Chercher dans les profils utilisateur
     user = (state.user.profiles || []).find(function(p) { return p.id === authorId; });
-    console.log("🔷 Looking in state.user.profiles, found:", user);
+    updateBadge("🔍 Cherche dans MES profils...");
   } else {
     // Chercher dans les utilisateurs seed
-    console.log("🔷 Available seed users:", (state.seed.users || []).map(function(u) { return u.id; }));
+    var seedCount = (state.seed.users || []).length;
+    updateBadge("🔍 Seed users dispo: " + seedCount);
     user = (state.seed.users || []).find(function(u) { return u.id === authorId; });
-    console.log("🔷 Looking in state.seed.users for ID " + authorId + ", found:", user);
+    updateBadge("🔎 Cherche ID: " + authorId);
   }
 
   if (!user) {
-    var msg2 = "❌ User " + authorId + " not found! Available: " + ((state.seed.users || []).length) + " users";
-    console.log("🔷 " + msg2);
-    console.log("🔷 state.seed.users:", state.seed.users);
-    toast(msg2);
+    updateBadge("❌ PROFIL NON TROUVE!");
+    updateBadge("Users dispo: " + ((state.seed.users || []).map(function(u) { return u.id; }).join(", ")));
     return;
   }
 
-  console.log("🔷 User found:", user.name);
-  toast("✅ Affichage profil de " + user.name);
+  updateBadge("✅ TROUVE: " + user.name);
+  updateBadge("📖 Affichage profil...");
   // Afficher la page profil
   renderUserProfilePage(authorId, user, source);
   goTo("profile-view");
