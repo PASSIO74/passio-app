@@ -11237,7 +11237,7 @@ async function openComments(postId) {
     <div class="modal-title">Discussion</div>
     <div class="modal-subtitle">Commente pour gagner +3 pts.</div>
     <div id="commentsBox" style="max-height:260px;overflow-y:auto;margin-bottom:12px;">
-      ${localComments.length ? _renderCommentsList(localComments) : '<div class="empty"><div class="empty-icon">💭</div><div class="empty-title">Chargement…</div></div>'}
+      ${localComments.length ? _renderCommentsList(localComments, postId) : '<div class="empty"><div class="empty-icon">💭</div><div class="empty-title">Chargement…</div></div>'}
     </div>
     <textarea class="textarea" id="newComment" placeholder="Réponse authentique, pas vide..." maxlength="400" style="min-height:70px;"></textarea>
     <button class="btn primary block" style="margin-top:10px;" onclick="submitComment('${postId}')">Publier · +3 pts</button>
