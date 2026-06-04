@@ -9297,6 +9297,44 @@ function allFeedPosts() {
 
 // Profils sélectionnés pour filtrer le fil (multi-sélection)
 
+// ======== MOOD MULTI-SELECT ========
+var selectedMoods = new Set(["all"]); // Par défaut "Tout"
+
+function toggleMood(mood, btn) {
+  // Si "all" est cliqué, réinitialiser à "all" seulement
+  if (mood === "all") {
+    selectedMoods.clear();
+    selectedMoods.add("all");
+    // Retirer active de tous les autres boutons
+    document.querySelectorAll("#moodSelector .mood-btn").forEach(b => {
+      b.classList.toggle("active", b.dataset.mood === "all");
+    });
+  } else {
+    // Enlever "all" s'il y a d'autres moods
+    selectedMoods.delete("all");
+
+    // Toggle le mood actuel
+    if (selectedMoods.has(mood)) {
+      selectedMoods.delete(mood);
+    } else {
+      selectedMoods.add(mood);
+    }
+
+    // Si plus aucun mood, revenir à "all"
+    if (selectedMoods.size === 0) {
+      selectedMoods.add("all");
+    }
+
+    // Mettre à jour les classes active
+    document.querySelectorAll("#moodSelector .mood-btn").forEach(b => {
+      b.classList.toggle("active", selectedMoods.has(b.dataset.mood));
+    });
+  }
+
+  // Re-render le feed
+  renderFeed();
+}
+
 function renderFeed() {
   const list = $("#feedList");
   const mood = state.currentMood || "all";
