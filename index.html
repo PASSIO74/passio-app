@@ -19898,8 +19898,16 @@ function addEmojiToComment(postId, commentId, emoji) {
     console.log("✅ New emoji reaction added:", emoji);
   }
 
-  // Re-render les replies du commentaire
-  renderCommentReplies(commentId, post.id);
+  // Mettre à jour l'affichage des replies
+  var repliesDiv = document.getElementById("replies-" + commentId);
+  if (repliesDiv) {
+    // Si les replies sont cachées, les montrer
+    if (repliesDiv.style.display === "none") {
+      repliesDiv.style.display = "block";
+      console.log("✅ Replies shown");
+    }
+  }
+
   return false;
 }
 
