@@ -19533,6 +19533,17 @@ function toggleCommentReplies(commentId, event) {
   return false;
 }
 
+function toggleCommentEmojis(commentId, event) {
+  if (event) { event.stopPropagation(); event.preventDefault(); }
+  _diag("😊 toggleCommentEmojis(" + commentId + ")");
+  var emojisDiv = document.getElementById("emojis-" + commentId);
+  if (emojisDiv) {
+    emojisDiv.style.display = emojisDiv.style.display === "none" ? "block" : "none";
+    _diag("✅ Emojis toggled");
+  }
+  return false;
+}
+
 function showEmojiPickerForComment(postId, commentId, event) {
   if (event) { event.stopPropagation(); event.preventDefault(); }
   _diag("😊 showEmojiPickerForComment(" + postId + ", " + commentId + ")");
