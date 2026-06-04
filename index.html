@@ -19512,12 +19512,23 @@ function replyToComment(postId, commentId, authorName) {
 
   // Insérer l'input sous le commentaire
   var commentElement = document.querySelector('[data-commentid="' + commentId + '"]');
+  _diag("🔍 Cherche commentaire: [data-commentid='" + commentId + "']");
+  _diag("🔍 Commentaire trouvé? " + (commentElement ? "OUI" : "NON"));
+
   if (commentElement) {
     var commentBody = commentElement.querySelector(".comment-body");
+    _diag("🔍 .comment-body trouvé? " + (commentBody ? "OUI" : "NON"));
     if (commentBody) {
       commentBody.appendChild(inputDiv);
       inputField.focus();
+      _diag("✅ Input inséré et focus!");
+    } else {
+      _diag("❌ .comment-body NOT FOUND!");
+      _diag("🔍 Structure du commentaire: " + commentElement.innerHTML.substring(0, 100));
     }
+  } else {
+    _diag("❌ Commentaire NOT FOUND!");
+    _diag("🔍 Tous les [data-commentid] disponibles: " + document.querySelectorAll("[data-commentid]").length);
   }
 }
 
