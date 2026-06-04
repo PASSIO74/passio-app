@@ -9856,6 +9856,8 @@ async function openPost(id) {
           ${liked ? "❤️" : "🤍"} ${post.likes || 0}
         </span>
         <span class="post-action" onclick="openComments('${id}')">💬 ${(post.comments||[]).length}</span>
+        <span class="post-action" onclick="return showEmojiPickerForPost('${id}', event);" title="Réagir">😊</span>
+        <span class="post-action" onclick="return showGifPickerForPost('${id}', event);" title="GIF">🎬</span>
         <span class="post-action" onclick="sharePost('${id}')">🔁 Partager</span>
       </div>
     </div>
