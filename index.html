@@ -16045,11 +16045,20 @@ $$("#irlFilterRow .pill").forEach(p => {
   });
 });
 
-// Délégation : clic sur une tuile passion (générée dynamiquement)
+// Délégation : clic sur une tuile passion (générée dynamiquement) - MULTI-SELECT
 document.addEventListener("click", (e) => {
   const tile = e.target.closest("[data-irlpassion]");
   if (!tile) return;
-  irlPassionFilter = tile.getAttribute("data-irlpassion");
+  const passionId = tile.getAttribute("data-irlpassion");
+
+  // Toggle multi-select
+  if (irlPassionFilters.has(passionId)) {
+    irlPassionFilters.delete(passionId);
+  } else {
+    irlPassionFilters.add(passionId);
+  }
+
+  tile.classList.toggle("active");
   renderIRL();
 });
 
