@@ -16377,10 +16377,16 @@ var irlDateFilter = "all";
 var irlCustomDate = null;
 
 function setIrlDateFilter(val, btn) {
-  irlDateFilter = val;
-  irlCustomDate = null;
-  document.querySelectorAll("#irlDateRow .pill").forEach(function(p) { p.classList.remove("active"); });
-  if (btn) btn.classList.add("active");
+  if (!irlDateFilters) irlDateFilters = new Set();
+
+  // Toggle multi-select
+  if (irlDateFilters.has(val)) {
+    irlDateFilters.delete(val);
+  } else {
+    irlDateFilters.add(val);
+  }
+
+  if (btn) btn.classList.toggle("active");
   renderIRL();
 }
 
