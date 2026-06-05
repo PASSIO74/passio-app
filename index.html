@@ -14930,44 +14930,121 @@ function submitReelComment() {
   toast("✅ Commentaire posté!");
 }
 
-function likeReelComment(commentIdx) {
-  const postId = window.currentReelCommentPostId;
-  if (!postId) return;
-
+function likeReelComment(postId, commentIdx) {
   const reel = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
   if (!reel || !reel.comments || !reel.comments[commentIdx]) return;
 
   const comment = reel.comments[commentIdx];
-  if (!comment.reactions) comment.reactions = {};
-  if (!comment.reactions['❤️']) comment.reactions['❤️'] = 0;
+  const userId = state.user?.id || "me";
 
-  if (comment.liked) {
-    comment.liked = false;
-    comment.reactions['❤️'] = Math.max(0, comment.reactions['❤️'] - 1);
+  if (!comment.likedBy) comment.likedBy = [];
+  if (!comment.likes) comment.likes = 0;
+
+  const idx = comment.likedBy.indexOf(userId);
+  if (idx > -1) {
+    comment.likedBy.splice(idx, 1);
+    comment.likes = Math.max(0, comment.likes - 1);
   } else {
-    comment.liked = true;
-    comment.reactions['❤️']++;
+    comment.likedBy.push(userId);
+    comment.likes++;
   }
 
   saveState();
   loadReelComments(postId);
 }
 
-function replyToReelComment(commentIdx) {
-  const postId = window.currentReelCommentPostId;
-  if (!postId) return;
+function replyToReelCommentBox(postId, commentIdx, authorName) {
+  const input = document.getElementById("reelCommentInput");
+  if (input) {
+    input.value = `@${authorName} `;
+    input.focus();
+    autoResizeReelCommentInput();
+  }
+}
 
+function toggleReelCommentReplies(commentIdx) {
+  const repliesDiv = document.getElementById(`reel-replies-${commentIdx}`);
+  if (repliesDiv) {
+    repliesDiv.style.display = repliesDiv.style.display === "none" ? "block" : "none";
+  }
+}
+
+function showEmojiPickerForReelComment(postId, commentIdx) {
+  const reel = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
+  if (!reel || !reel.comments || !reel.comments[commentIdx]) return;
+
+  const emojis = ["😂", "❤️", "😍", "🔥", "🎉", "👍", "😮", "😢", "🤔", "👏", "🙌", "💯"];
+  const modal = openModal(`
+    <div class="modal-title">Réagir au commentaire</div>
+    <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin:16px 0;">
+      ${emojis.map(emoji => `<button class="btn secondary" onclick="addEmojiReactionToReelComment('${postId}', ${commentIdx}, '${emoji}')" style="padding:10px;font-size:20px;border:none;">${emoji}</button>`).join("")}
+    </div>
+  `);
+}
+
+function showGifPickerForReelComment(postId, commentIdx) {
+  const reel = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
+  if (!reel || !reel.comments || !reel.comments[commentIdx]) return;
+
+  const gifs = [
+    "https://media.giphy.com/media/3o85xIO33l7RlmLAsI/giphy.gif",
+    "https://media.giphy.com/media/8mkofSUREGEIpBSfgW/giphy.gif",
+    "https://media.giphy.com/media/3o7TKU2KsKXJ2V0xKI/giphy.gif",
+    "https://media.giphy.com/media/l0MYJnCKZrTc5flPa/giphy.gif",
+    "https://media.giphy.com/media/kaq6zmatVOeSvIGITS/giphy.gif",
+    "https://media.giphy.com/media/fem2uU5QBG0fmlrUfq/giphy.gif"
+  ];
+
+  openModal(`
+    <div class="modal-title">GIF de réaction</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:16px 0;max-height:300px;overflow-y:auto;">
+      ${gifs.map(gif => `<img src="${gif}" alt="GIF" style="width:100%;height:120px;object-fit:cover;border-radius:8px;cursor:pointer;" onclick="addGifReactionToReelComment('${postId}', ${commentIdx}, '${gif}')" />`).join("")}
+    </div>
+  `);
+}
+
+function addEmojiReactionToReelComment(postId, commentIdx, emoji) {
   const reel = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
   if (!reel || !reel.comments || !reel.comments[commentIdx]) return;
 
   const comment = reel.comments[commentIdx];
-  const commenter = userById(comment.authorId) || { name: comment.authorName || "Anonyme" };
+  if (!comment.replies) comment.replies = [];
 
-  const input = document.getElementById("reelCommentInput");
-  if (input) {
-    input.value = `@${commenter.name} `;
-    input.focus();
-  }
+  const reply = {
+    type: "emoji_reaction",
+    text: emoji,
+    authorId: state.user?.id || "me",
+    authorName: currentProfile()?.name || "Moi",
+    createdAt: Date.now()
+  };
+
+  comment.replies.push(reply);
+  saveState();
+  closeModal();
+  loadReelComments(postId);
+  toast(`${emoji} Réaction ajoutée!`);
+}
+
+function addGifReactionToReelComment(postId, commentIdx, gifUrl) {
+  const reel = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
+  if (!reel || !reel.comments || !reel.comments[commentIdx]) return;
+
+  const comment = reel.comments[commentIdx];
+  if (!comment.replies) comment.replies = [];
+
+  const reply = {
+    type: "gif_reaction",
+    text: gifUrl,
+    authorId: state.user?.id || "me",
+    authorName: currentProfile()?.name || "Moi",
+    createdAt: Date.now()
+  };
+
+  comment.replies.push(reply);
+  saveState();
+  closeModal();
+  loadReelComments(postId);
+  toast("🎬 GIF ajouté!");
 }
 
 function reactToReel(emoji) {
