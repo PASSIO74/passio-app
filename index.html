@@ -6993,17 +6993,13 @@
       <!-- Niveau 1 : passions (grandes tuiles) -->
       <div id="irlPassionRow"></div>
 
-      <!-- Carousel de dates ÉLÉGANT -->
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;padding:0 0;">
-        <button onclick="scrollDateCarousel(-1)" style="min-width:32px;width:32px;height:32px;border-radius:50%;border:1px solid var(--border);background:var(--bg-card);color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;transition:all 0.2s;">◀</button>
-        <div id="irlDateCarousel" style="display:flex;gap:8px;overflow-x:auto;overflow-y:hidden;flex:1;scroll-behavior:smooth;padding:4px 0;scrollbar-width:none;">
-          <button class="pill" data-irldate="custom" onclick="setIrlDateFilter('custom',this);openIrlCalendar()" style="white-space:nowrap;flex-shrink:0;">🗓 Choisir</button>
-          <button class="pill" data-irldate="today" onclick="setIrlDateFilter('today',this)" style="white-space:nowrap;flex-shrink:0;">Aujourd'hui</button>
-          <button class="pill" data-irldate="tomorrow" onclick="setIrlDateFilter('tomorrow',this)" style="white-space:nowrap;flex-shrink:0;">Demain</button>
-          <button class="pill" data-irldate="week" onclick="setIrlDateFilter('week',this)" style="white-space:nowrap;flex-shrink:0;">Cette semaine</button>
-          <button class="pill" data-irldate="month" onclick="setIrlDateFilter('month',this)" style="white-space:nowrap;flex-shrink:0;">Ce mois</button>
-        </div>
-        <button onclick="scrollDateCarousel(1)" style="min-width:32px;width:32px;height:32px;border-radius:50%;border:1px solid var(--border);background:var(--bg-card);color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;transition:all 0.2s;">▶</button>
+      <!-- Dates compactes -->
+      <div style="display:flex;gap:4px;justify-content:center;flex-wrap:wrap;padding:6px 0;margin-bottom:8px;" id="irlDateCarousel">
+        <button class="pill" data-irldate="custom" onclick="setIrlDateFilter('custom',this);openIrlCalendar()">🗓 Choisir</button>
+        <button class="pill" data-irldate="today" onclick="setIrlDateFilter('today',this)">Aujourd'hui</button>
+        <button class="pill" data-irldate="tomorrow" onclick="setIrlDateFilter('tomorrow',this)">Demain</button>
+        <button class="pill" data-irldate="week" onclick="setIrlDateFilter('week',this)">Cette semaine</button>
+        <button class="pill" data-irldate="month" onclick="setIrlDateFilter('month',this)">Ce mois</button>
       </div>
 
       <!-- Distance et Heure -->
@@ -7023,7 +7019,7 @@
         </select>
 
         <!-- Heure -->
-        <input type="time" id="irlTimeFilter" style="padding:8px 12px;border-radius:10px;border:1px solid var(--border);background:var(--bg-card);font-size:12px;color:var(--text);cursor:pointer;flex:1;min-width:120px;" onchange="filterIrlByTime()" placeholder="⏰ Heure">
+        <input type="time" id="irlTimeFilter" style="padding:8px 12px;border-radius:10px;border:1px solid var(--border);background:var(--bg-card);font-size:12px;color:var(--text);cursor:pointer;flex:1;min-width:120px;" onchange="filterIrlByTime()">
       </div>
 
       <!-- Mes events et Inscrit en dessous -->
