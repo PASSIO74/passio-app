@@ -12152,21 +12152,8 @@ function renderMessageFilters() {
   if (row) row.innerHTML = ""; // vide, on n'affiche plus de filtres passion
   const readRow = $("#msgReadFilterRow");
   if (!readRow) return;
-  const convs = getConversations();
-  const allCount = convs.length;
-  const unreadCount = convs.filter(c => c.unread > 0).length;
-  const readCount = convs.filter(c => !c.unread || c.unread === 0).length;
-  readRow.innerHTML = `
-    <button class="msg-readfilter-pill ${msgReadFilter === 'all' ? 'active' : ''}" data-msgread="all">
-      Tout <span class="msg-readfilter-count">${allCount}</span>
-    </button>
-    <button class="msg-readfilter-pill ${msgReadFilter === 'unread' ? 'active' : ''}" data-msgread="unread">
-      Non lu <span class="msg-readfilter-count">${unreadCount}</span>
-    </button>
-    <button class="msg-readfilter-pill ${msgReadFilter === 'read' ? 'active' : ''}" data-msgread="read">
-      Lu <span class="msg-readfilter-count">${readCount}</span>
-    </button>
-  `;
+  // Onglets supprimés
+  readRow.innerHTML = "";
 }
 
 function openNewMessage() {
