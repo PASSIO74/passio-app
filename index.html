@@ -16546,6 +16546,11 @@ function applyIrlCalendar() {
 }
 
 function renderIRL() {
+  // Initialiser les filtres passion avec les profils de l'utilisateur
+  if (irlPassionFilters.size === 0) {
+    initializeIrlPassionFilters();
+  }
+
   renderIrlPassionTiles();
   initIrlMap();
   updateIrlMapMarkers();
