@@ -16513,8 +16513,8 @@ function initIrlMap() {
     maxZoom: 19,
   }).addTo(irlMap);
   irlMarkersLayer = L.layerGroup().addTo(irlMap);
-  // Petite latence pour laisser le DOM mesurer correctement
-  setTimeout(() => irlMap.invalidateSize(), 100);
+  // Minimal delay pour laisser le DOM se stabiliser
+  setTimeout(() => irlMap.invalidateSize(), 10);
 }
 
 function updateIrlMapMarkers() {
