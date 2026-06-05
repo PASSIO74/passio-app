@@ -4989,10 +4989,11 @@
     }
     .wallet-tab:hover { color: var(--text); }
     .wallet-tab.active {
-      background: var(--accent-wash);
-      border: 1px solid rgba(124, 58, 237, 0.30);
-      color: var(--accent-2);
+      background: transparent;
+      border: 2px solid var(--accent);
+      color: var(--accent);
       font-weight: 700;
+      box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.12);
     }
 
     .wallet-pane { display: none; }
