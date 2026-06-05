@@ -16494,6 +16494,25 @@ function cityToLatLng(city) {
   return null;
 }
 
+// Trouver la ville la plus proche des coordonnées GPS
+function getClosestCity(lat, lng) {
+  if (!lat || !lng) return "France";
+
+  let closestCity = "France";
+  let closestDistance = Infinity;
+
+  for (const cityName in FRANCE_CITIES) {
+    const coords = FRANCE_CITIES[cityName];
+    const dist = calculateDistance(lat, lng, coords[0], coords[1]);
+    if (dist < closestDistance) {
+      closestDistance = dist;
+      closestCity = cityName.charAt(0).toUpperCase() + cityName.slice(1); // Capitalize
+    }
+  }
+
+  return closestCity;
+}
+
 let irlMap = null;
 let irlMarkersLayer = null;
 
