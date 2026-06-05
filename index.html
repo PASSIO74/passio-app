@@ -16462,20 +16462,14 @@ function renderIrlPassionTiles() {
     passionIds = [...new Set(events.map(e => e.passion).filter(Boolean))];
   }
 
-  const totalCount = events.length;
-
   row.className = "msg-filter-tiles"; // réutilise le même style que la messagerie
 
-  let html = `<button class="msg-tile ${irlPassionFilter === 'all' ? 'active' : ''}" data-irlpassion="all">
-    <span class="msg-tile-icon">🗺</span>
-    <span class="msg-tile-label">Toutes</span>
-    ${totalCount > 0 ? `<span class="msg-tile-badge">${totalCount}</span>` : ""}
-  </button>`;
+  let html = "";
 
   passionIds.forEach(pid => {
     const p = passionById(pid) || { label: pid, emoji: "✨" };
     const cnt = events.filter(e => e.passion === pid).length;
-    const isActive = irlPassionFilter === pid;
+    const isActive = irlPassionFilters.has(pid);
     html += `<button class="msg-tile ${isActive ? 'active' : ''}" data-irlpassion="${pid}">
       <span class="msg-tile-icon">${p.emoji}</span>
       <span class="msg-tile-label">${escapeHtml(p.label)}</span>
