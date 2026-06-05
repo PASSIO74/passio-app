@@ -16941,14 +16941,39 @@ function updateIrlMapMarkers() {
   // Filtre par distance (OPTIONNEL)
   if (irlDistanceFilter && irlDistanceFilter !== "") {
     const maxDistanceKm = parseInt(irlDistanceFilter);
-    const refLoc = irlUserLocation || { lat: 48.8566, lng: 2.3522 };
+
+    // Déterminer la référence: ville sélectionnée > GPS > Paris
+    let refLoc, locSource;
+    if (irlSelectedCity) {
+      refLoc = { lat: irlSelectedCity.coords[0], lng: irlSelectedCity.coords[1] };
+      locSource = "🏙️ " + irlSelectedCity.name;
+    } else if (irlUserLocation) {
+      refLoc = irlUserLocation;
+      locSource = "📍 GPS";
+    } else {
+      refLoc = { lat: 48.8566, lng: 2.3522 };
+      locSource = "🔄 PARIS";
+    }
+
+    _diag("=== DISTANCE: " + maxDistanceKm + "km ===");
+    _diag("[DISTANCE] Référence: " + locSource + " (" + refLoc.lat.toFixed(4) + ", " + refLoc.lng.toFixed(4) + ")");
+    _diag("[DISTANCE] Avant filtre: " + filtered.length + " événements");
+
+    let distIncluded = 0;
     filtered = filtered.filter(function(e) {
       const eventLoc = cityToLatLng(e.city) || cityToLatLng(e.location);
-      if (!eventLoc) return true;
+      if (!eventLoc) {
+        _diag("[DISTANCE] " + e.title + " → Ville: '" + (e.city || e.location || "?") + "' (non reconnue) ⚠️");
+        return true; // Inclure si pas de localisation
+      }
       // eventLoc est un tableau [lat, lng]
       const dist = calculateDistance(refLoc.lat, refLoc.lng, eventLoc[0], eventLoc[1]);
-      return dist <= maxDistanceKm;
+      const isWithin = dist <= maxDistanceKm;
+      if (isWithin) distIncluded++;
+      _diag("[DISTANCE] " + e.title + " → " + (e.city || e.location) + " (" + dist.toFixed(1) + "km) " + (isWithin ? "✅" : "❌"));
+      return isWithin;
     });
+    _diag("[DISTANCE] RÉSULTAT: " + distIncluded + "/" + events.length + " événements inclus");
   }
 
   // Filtre par heure (OPTIONNEL)
