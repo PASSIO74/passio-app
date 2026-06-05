@@ -17933,9 +17933,15 @@ function openModal(html) {
   const closeBtn = `<button type="button" class="modal-close" onclick="closeModal()" aria-label="Fermer">×</button>`;
   $("#modalContent").innerHTML = closeBtn + html;
   $("#modalBackdrop").classList.add("active");
+
+  // Mettre à jour le bouton retour
+  updateBackButtonVisibility();
 }
 function closeModal() {
   $("#modalBackdrop").classList.remove("active");
+
+  // Mettre à jour le bouton retour
+  updateBackButtonVisibility();
 }
 function closeModalOnBackdrop(e) {
   if (e.target.id === "modalBackdrop") closeModal();
