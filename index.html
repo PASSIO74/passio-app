@@ -16099,6 +16099,8 @@ let irlFilters = new Set(); // Multi-select: vide par défaut pour afficher TOUS
 let irlPassionFilters = new Set(); // Multi-select des profils
 let irlDistanceFilter = "";
 let irlTimeFilter = ""; // Filtre d'heure (format: "HH:MM")
+let irlUserLocation = null; // Position actuelle de l'utilisateur { lat, lng }
+let irlUserLocationError = false; // Erreur d'obtention de position
 
 // Initialiser irlPassionFilters avec les profils de l'utilisateur
 // Si pas de profils, afficher TOUS les événements
