@@ -16555,6 +16555,14 @@ function toggleJoinEvent(id) {
   renderIRL();
 }
 
+function filterIrlByDistance() {
+  const distanceSelect = document.getElementById("irlDistanceFilter");
+  if (distanceSelect) {
+    irlDistanceFilter = distanceSelect.value || "";
+  }
+  renderIRL();
+}
+
 function openEventDetails(id) {
   const ev = allEvents().find(e => e.id === id);
   if (!ev) return;
