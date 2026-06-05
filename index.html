@@ -16600,10 +16600,10 @@ function updateIrlMapMarkers() {
   filtered.forEach(ev => {
     const ll = cityToLatLng(ev.city) || cityToLatLng(ev.location);
     if (!ll) return;
-    // Jitter DÉTERMINISTE basé sur l'id (sinon le marqueur saute à chaque re-render)
+    // Micro-jitter DÉTERMINISTE basé sur l'id (minimal, évite le chevauchement sans décalage visible)
     const h = String(ev.id || "").split("").reduce((s, c) => s + c.charCodeAt(0), 0);
-    const lat = ll[0] + (((h * 13) % 100) / 5000 - 0.01);
-    const lng = ll[1] + (((h * 23) % 100) / 5000 - 0.01);
+    const lat = ll[0] + (((h * 13) % 100) / 50000 - 0.001);
+    const lng = ll[1] + (((h * 23) % 100) / 50000 - 0.001);
     const passion = passionById(ev.passion) || { emoji: "📍", label: "" };
     const icon = L.divIcon({
       className: "passio-marker-wrap",
