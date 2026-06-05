@@ -16028,7 +16028,7 @@ function quickCreateProfile(pid) {
 
 // ======== IRL ========
 let irlFilters = new Set(["mine"]);
-let irlPassionFilter = "all";
+let irlPassionFilters = new Set(); // Multi-select des profils
 let irlDistanceFilter = "";
 
 $$("#irlFilterRow .pill").forEach(p => {
