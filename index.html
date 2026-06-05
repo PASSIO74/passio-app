@@ -14867,13 +14867,20 @@ function loadReelComments(postId) {
   }).join("");
 }
 
+function autoResizeReelCommentInput() {
+  const input = document.getElementById("reelCommentInput");
+  if (!input) return;
+  input.style.height = "auto";
+  input.style.height = Math.min(input.scrollHeight, 100) + "px";
+}
+
 function submitReelComment() {
   const input = document.getElementById("reelCommentInput");
   if (!input || !window.currentReelCommentPostId) return;
 
   const text = input.value.trim();
   if (!text) {
-    toast("Ajoute un message!");
+    toast("Écris quelque chose d'abord! 💭");
     return;
   }
 
