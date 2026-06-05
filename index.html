@@ -16462,11 +16462,19 @@ const FRANCE_CITIES = {
 
 // Demande la position actuelle de l'utilisateur
 function requestUserLocation() {
+  // SI DÉJÀ obtenue, ne pas redemander
+  if (irlUserLocation) {
+    console.log("[GEO] Position déjà obtenue:", irlUserLocation);
+    return;
+  }
+
   if (!navigator.geolocation) {
-    console.log("Géolocalisation non supportée, utilisation de Paris par défaut");
+    console.log("[GEO] ❌ Géolocalisation non supportée → Fallback PARIS");
     irlUserLocation = { lat: 48.8566, lng: 2.3522 };
     return;
   }
+
+  console.log("[GEO] 📍 Demande de position utilisateur...");
 
   navigator.geolocation.getCurrentPosition(
     function(position) {
@@ -16474,14 +16482,16 @@ function requestUserLocation() {
         lat: position.coords.latitude,
         lng: position.coords.longitude
       };
-      console.log("Position obtenue:", irlUserLocation);
+      console.log("[GEO] ✅ Position obtenue:", irlUserLocation);
+      console.log("[GEO] 📍 Précision:", position.coords.accuracy, "mètres");
       renderIRL(); // Re-render avec la nouvelle position
     },
     function(error) {
-      console.log("Erreur géolocalisation:", error.message);
+      console.log("[GEO] ❌ Erreur géolocalisation:", error.message);
       irlUserLocationError = true;
       // Utiliser Paris par défaut
       irlUserLocation = { lat: 48.8566, lng: 2.3522 };
+      console.log("[GEO] 🔄 Fallback PARIS:", irlUserLocation);
       renderIRL();
     },
     { timeout: 5000, enableHighAccuracy: false }
