@@ -6959,18 +6959,29 @@
 
       <!-- Filtre par date -->
       <div style="display:flex;gap:6px;justify-content:space-around;flex-wrap:wrap;padding:6px 0;margin-bottom:8px;scrollbar-width:none;" id="irlDateRow">
-        <button class="pill active" data-irldate="all" onclick="setIrlDateFilter('all',this)">📅 Tous</button>
-        <button class="pill" data-irldate="today" onclick="setIrlDateFilter('today',this)">Aujourd'hui</button>
+        <button class="pill" data-irldate="custom" onclick="setIrlDateFilter('custom',this);openIrlCalendar()">🗓 Choisir</button>
+        <button class="pill active" data-irldate="today" onclick="setIrlDateFilter('today',this)">Aujourd'hui</button>
         <button class="pill" data-irldate="tomorrow" onclick="setIrlDateFilter('tomorrow',this)">Demain</button>
         <button class="pill" data-irldate="week" onclick="setIrlDateFilter('week',this)">Cette semaine</button>
         <button class="pill" data-irldate="month" onclick="setIrlDateFilter('month',this)">Ce mois</button>
-        <button class="pill" data-irldate="custom" onclick="openIrlCalendar()">🗓 Choisir</button>
       </div>
 
-      <!-- Niveau 2 : filtres existants Tous / Mes events / Inscrit -->
+      <!-- Sélection de distance -->
+      <div style="display:flex;gap:6px;justify-content:space-around;flex-wrap:wrap;padding:6px 0;margin-bottom:8px;" id="irlDistanceRow">
+        <span style="font-size:11px;font-weight:700;color:var(--text-dim);align-self:center;">📍 Distance</span>
+        <select id="irlDistanceFilter" onchange="filterIrlByDistance()" style="padding:6px 12px;border-radius:10px;border:1px solid var(--border);background:#fff;font-size:11px;font-weight:700;color:var(--text-dim);cursor:pointer;">
+          <option value="">Tous</option>
+          <option value="5">5 km</option>
+          <option value="10">10 km</option>
+          <option value="25">25 km</option>
+          <option value="50">50 km</option>
+          <option value="100">100 km</option>
+        </select>
+      </div>
+
+      <!-- Niveau 2 : filtres existants Mes events / Inscrit (multi-select) -->
       <div class="pill-row" id="irlFilterRow">
-        <button class="pill active" data-irlfilter="all">Tous</button>
-        <button class="pill" data-irlfilter="mine">Mes events</button>
+        <button class="pill active" data-irlfilter="mine">Mes events</button>
         <button class="pill" data-irlfilter="joined">Inscrit</button>
       </div>
 
