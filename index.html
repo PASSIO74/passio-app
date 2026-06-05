@@ -17711,29 +17711,32 @@ function submitEvent() {
 // Fonction de test pour vérifier le filtre distance
 function testIrlDistance() {
   // Créer des événements de test avec des villes exactes de FRANCE_CITIES
+  // Calibré pour un point de référence à Annecy
   const testEvents = [
-    { id: "test_nearby_5", title: "Déjeuner local", passion: "cuisine", city: "annecy", date: Date.now() + 86400000, time: "12:00", organizerId: "test", emoji: "🍽️", attendees: [] },
-    { id: "test_nearby_15", title: "Balade à vélo", passion: "sport", city: "geneva", date: Date.now() + 2*86400000, time: "10:00", organizerId: "test", emoji: "🚴", attendees: [] },
-    { id: "test_nearby_50", title: "Musique en live", passion: "musique", city: "lyon", date: Date.now() + 3*86400000, time: "20:00", organizerId: "test", emoji: "🎵", attendees: [] },
-    { id: "test_far_150", title: "Festival art", passion: "art", city: "marseille", date: Date.now() + 4*86400000, time: "14:00", organizerId: "test", emoji: "🎨", attendees: [] },
-    { id: "test_far_300", title: "Conférence tech", passion: "tech", city: "paris", date: Date.now() + 5*86400000, time: "19:00", organizerId: "test", emoji: "💻", attendees: [] },
+    { id: "test_nearby_10km", title: "🍽️ Déjeuner local", passion: "cuisine", city: "annecy", date: Date.now() + 86400000, time: "12:00", organizerId: "test", emoji: "🍽️", attendees: [] },
+    { id: "test_nearby_25km", title: "🏔️ Rando montagne", passion: "sport", city: "chambery", date: Date.now() + 2*86400000, time: "09:00", organizerId: "test", emoji: "⛰️", attendees: [] },
+    { id: "test_nearby_80km", title: "🎵 Festival musique", passion: "musique", city: "lyon", date: Date.now() + 3*86400000, time: "20:00", organizerId: "test", emoji: "🎵", attendees: [] },
+    { id: "test_far_350km", title: "🎨 Expo moderne", passion: "art", city: "marseille", date: Date.now() + 4*86400000, time: "14:00", organizerId: "test", emoji: "🎨", attendees: [] },
+    { id: "test_far_650km", title: "💻 Tech conference", passion: "tech", city: "paris", date: Date.now() + 5*86400000, time: "19:00", organizerId: "test", emoji: "💻", attendees: [] },
   ];
 
   state.userEvents = (state.userEvents || []).concat(testEvents);
   saveState();
 
-  _diag("🧪 [TEST] " + testEvents.length + " événements de test créés");
+  _diag("🧪 === TEST DISTANCE ===");
+  _diag("🧪 " + testEvents.length + " événements de test créés");
   testEvents.forEach(ev => {
     const loc = cityToLatLng(ev.city);
     if (loc) {
-      _diag("🧪 [TEST] " + ev.title + " → " + ev.city + " (" + loc[0].toFixed(2) + ", " + loc[1].toFixed(2) + ")");
+      const dist = calculateDistance(45.8992, 6.1294, loc[0], loc[1]); // Annecy as reference
+      _diag("🧪 [" + dist.toFixed(0) + "km] " + ev.title + " → " + ev.city);
     } else {
-      _diag("🧪 [TEST] " + ev.title + " → " + ev.city + " ❌ VILLE NON RECONNUE");
+      _diag("🧪 ❌ " + ev.title + " → " + ev.city + " NON RECONNUE");
     }
   });
 
   renderIRL();
-  toast("🧪 5 événements de test créés pour tester la distance!");
+  toast("🧪 5 événements de test créés! Ouvre le diagnostic (F12)");
 }
 
 // ======== WALLET ========
