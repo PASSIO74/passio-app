@@ -16728,13 +16728,20 @@ function renderIRL() {
     return e.date > currentTime;
   });
 
-  // Filtre par passion (multi-select)
+  console.log("[IRL] Événements total:", events.length);
+
+  // DÉBUT FILTRAGE CROISÉ
   var filtered = events;
+
+  // 1. Filtre par passion (multi-select) - OPTIONNEL
   if (irlPassionFilters && irlPassionFilters.size > 0) {
-    filtered = filtered.filter(function(e) { return irlPassionFilters.has(e.passion); });
+    filtered = filtered.filter(function(e) {
+      return irlPassionFilters.has(e.passion);
+    });
+    console.log("[IRL] Après filtre passion:", filtered.length);
   }
 
-  // Filtre par type d'événement (multi-select)
+  // 2. Filtre par type d'événement (Mes events / Inscrit) - OPTIONNEL
   if (irlFilters && irlFilters.size > 0) {
     filtered = filtered.filter(function(e) {
       var matches = false;
@@ -16742,9 +16749,10 @@ function renderIRL() {
       if (irlFilters.has("joined") && (state.user.joinedEvents || []).includes(e.id)) matches = true;
       return matches;
     });
+    console.log("[IRL] Après filtre type:", filtered.length);
   }
 
-  // Filtre par date (multi-select)
+  // 3. Filtre par date (multi-select) - OPTIONNEL
   if (irlDateFilters && irlDateFilters.size > 0) {
     filtered = filtered.filter(function(e) {
       var matches = false;
@@ -16771,6 +16779,46 @@ function renderIRL() {
       }
       return matches;
     });
+    console.log("[IRL] Après filtre date:", filtered.length);
+  }
+
+  // 4. Filtre par distance (OPTIONNEL - seulement si sélectionné)
+  if (irlDistanceFilter && irlDistanceFilter !== "") {
+    const maxDistanceKm = parseInt(irlDistanceFilter);
+    const refLoc = irlUserLocation || { lat: 48.8566, lng: 2.3522 };
+
+    console.log("[IRL] Position référence:", refLoc, "Distance max:", maxDistanceKm + "km");
+
+    filtered = filtered.filter(function(e) {
+      const eventLoc = cityToLatLng(e.city) || cityToLatLng(e.location);
+      if (!eventLoc) return true; // Inclure si pas de localisation
+      const dist = calculateDistance(refLoc.lat, refLoc.lng, eventLoc.lat, eventLoc.lng);
+      const isWithin = dist <= maxDistanceKm;
+      if (!isWithin) console.log("[IRL] Événement rejeté (trop loin):", e.title, "(" + dist.toFixed(1) + "km)");
+      return isWithin;
+    });
+    console.log("[IRL] Après filtre distance:", filtered.length);
+  }
+
+  // 5. Filtre par heure (OPTIONNEL - seulement si sélectionné)
+  if (irlTimeFilter && irlTimeFilter !== "") {
+    const timeParts = irlTimeFilter.split(":");
+    if (timeParts.length === 2) {
+      const [filterHours, filterMins] = timeParts.map(Number);
+      const filterTimeInMinutes = filterHours * 60 + filterMins;
+
+      console.log("[IRL] Filtre heure >= " + irlTimeFilter);
+
+      filtered = filtered.filter(function(e) {
+        const eventDate = new Date(e.date);
+        const eventHours = eventDate.getHours();
+        const eventMins = eventDate.getMinutes();
+        const eventTimeInMinutes = eventHours * 60 + eventMins;
+
+        return eventTimeInMinutes >= filterTimeInMinutes;
+      });
+      console.log("[IRL] Après filtre heure:", filtered.length);
+    }
   }
 
   // Sync pills date (multi-select)
@@ -16782,36 +16830,6 @@ function renderIRL() {
   document.querySelectorAll("[data-irlfilter]").forEach(function(btn) {
     btn.classList.toggle("active", irlFilters && irlFilters.has(btn.getAttribute("data-irlfilter")));
   });
-
-  // Filtre par distance
-  if (irlDistanceFilter) {
-    const maxDistanceKm = parseInt(irlDistanceFilter);
-    // Position de référence: position actuelle ou Paris par défaut
-    const refLoc = irlUserLocation || { lat: 48.8566, lng: 2.3522 };
-    filtered = filtered.filter(function(e) {
-      const eventLoc = cityToLatLng(e.city) || cityToLatLng(e.location);
-      if (!eventLoc) return true; // Inclure les événements sans localisation
-      const dist = calculateDistance(refLoc.lat, refLoc.lng, eventLoc.lat, eventLoc.lng);
-      return dist <= maxDistanceKm;
-    });
-  }
-
-  // Filtre par heure
-  if (irlTimeFilter) {
-    const [filterHours, filterMins] = irlTimeFilter.split(":").map(Number);
-    const filterTimeInMinutes = filterHours * 60 + filterMins;
-
-    filtered = filtered.filter(function(e) {
-      const eventDate = new Date(e.date);
-      const eventHours = eventDate.getHours();
-      const eventMins = eventDate.getMinutes();
-      const eventTimeInMinutes = eventHours * 60 + eventMins;
-
-      // Afficher les événements qui sont à la même heure ou après l'heure sélectionnée
-      // (même jour, ou jours suivants)
-      return eventTimeInMinutes >= filterTimeInMinutes;
-    });
-  }
 
   // Trier par date croissante (prochain en premier)
   filtered.sort(function(a, b) { return a.date - b.date; });
