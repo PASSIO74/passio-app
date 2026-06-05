@@ -8884,6 +8884,11 @@ function buildSeed() {
 
 function defaultState() {
   const seed = buildSeed();
+
+  // Ajouter les bobines avec commentaires d'exemple
+  const seedReels = getSeedReelPosts();
+  seed.posts = [...seed.posts, ...seedReels];
+
   return {
     onboarded: false,
     landingSeen: false,
