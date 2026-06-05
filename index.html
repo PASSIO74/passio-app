@@ -7658,10 +7658,16 @@ function toggleDiagPanel() {
     }
     panel.style.display = "block";
     _updateDiagPanel();
-    if(btn) btn.style.background = "#ff9800";
+    if(btn) {
+      btn.style.display = "flex";
+      btn.style.background = "#ff9800";
+    }
   } else {
     if(panel) panel.style.display = "none";
-    if(btn) btn.style.background = "#666";
+    if(btn) {
+      btn.style.display = "none";
+      btn.style.background = "#666";
+    }
   }
 }
 
