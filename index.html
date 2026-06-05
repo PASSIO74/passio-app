@@ -16158,19 +16158,8 @@ function initializeIrlPassionFilters() {
   }
 }
 
-$$("#irlFilterRow .pill").forEach(p => {
-  p.addEventListener("click", () => {
-    const val = p.getAttribute("data-irlfilter");
-    // Multi-select: toggle the filter
-    if (irlFilters.has(val)) {
-      irlFilters.delete(val);
-    } else {
-      irlFilters.add(val);
-    }
-    p.classList.toggle("active");
-    renderIRL();
-  });
-});
+// Note: Les event listeners pour les filtres de passion et type sont gérés
+// par la délegation d'événements dans les blocs addEventListener plus bas
 
 // Délégation : clic sur une tuile passion (générée dynamiquement) - MULTI-SELECT
 document.addEventListener("click", (e) => {
