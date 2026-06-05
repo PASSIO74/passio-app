@@ -1979,7 +1979,7 @@
 
     /* ===== Modals ===== */
     .modal-backdrop {
-      position: absolute;
+      position: fixed;
       inset: 0;
       background: rgba(24, 18, 48, 0.55);
       backdrop-filter: blur(10px) saturate(130%);
@@ -1987,7 +1987,7 @@
       display: none;
       align-items: flex-end;
       justify-content: center;
-      z-index: 1300;
+      z-index: 10001;
       animation: fadeIn 220ms ease-out;
     }
 
