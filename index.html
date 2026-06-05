@@ -7575,6 +7575,29 @@
     </div>
     <div class="reels-list" id="reelsList"></div>
 
+    <!-- PANEL DE COMMENTAIRES STYLE INSTAGRAM -->
+    <div class="reel-comments-panel" id="reelCommentsPanel">
+      <div class="reel-comments-header">
+        <div class="reel-comments-title">Commentaires</div>
+        <div class="reel-comments-close" onclick="closeReelComments()">×</div>
+      </div>
+      <div class="reel-comments-list" id="reelCommentsList"></div>
+      <div class="reel-comments-footer">
+        <div class="reel-emoji-reactions" id="reelEmojiReactions">
+          <button class="reel-emoji-btn" onclick="reactToReel('❤️')">❤️</button>
+          <button class="reel-emoji-btn" onclick="reactToReel('🔥')">🔥</button>
+          <button class="reel-emoji-btn" onclick="reactToReel('😂')">😂</button>
+          <button class="reel-emoji-btn" onclick="reactToReel('👍')">👍</button>
+          <button class="reel-emoji-btn" onclick="reactToReel('😍')">😍</button>
+          <button class="reel-emoji-btn" onclick="reactToReel('😮')">😮</button>
+        </div>
+        <div class="reel-comments-input-area">
+          <input type="text" class="reel-comments-input" id="reelCommentInput" placeholder="Commentaire..." />
+          <button class="reel-comments-send" onclick="submitReelComment()">↑</button>
+        </div>
+      </div>
+    </div>
+
     <button class="reels-nav prev" id="reelsPrevBtn" onclick="prevReel()" aria-label="Bobine précédente">
       <svg viewBox="0 0 24 24"><path d="M6 14 L12 8 L18 14"/></svg>
     </button>
