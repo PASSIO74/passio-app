@@ -16630,14 +16630,33 @@ function updateIrlMapMarkers() {
     });
     const userMarker = L.marker([refLoc.lat, refLoc.lng], { icon: userIcon }).addTo(irlMarkersLayer);
     userMarker.bindPopup(`
-      <div style="text-align:center;min-width:150px;">
-        <div style="font-size:24px;margin-bottom:8px;">📍</div>
-        <div style="font-weight:600;margin-bottom:4px;">${locLabel}</div>
-        <button onclick="openIrlCitySelector()" style="padding:6px 12px;border-radius:8px;border:none;background:#7c3aed;color:#fff;font-size:12px;font-weight:600;cursor:pointer;margin-top:8px;">
-          🔄 Changer le lieu
-        </button>
+      <div style="min-width:200px;padding:4px;">
+        <div style="font-size:20px;text-align:center;margin-bottom:8px;">📍</div>
+        <div style="font-weight:600;text-align:center;margin-bottom:12px;font-size:13px;">${locLabel}</div>
+        <div style="margin-bottom:10px;">
+          <input type="text" id="irlAddressInput" placeholder="Entrer une adresse..." style="width:100%;padding:8px;border-radius:6px;border:1px solid #ddd;font-size:12px;box-sizing:border-box;"/>
+        </div>
+        <div style="display:flex;gap:6px;">
+          <button onclick="openIrlCitySelector()" style="flex:1;padding:6px 8px;border-radius:6px;border:none;background:#f0f0f0;color:#333;font-size:11px;font-weight:600;cursor:pointer;">
+            🌍 Villes
+          </button>
+          <button onclick="geocodeIrlAddress()" style="flex:1;padding:6px 8px;border-radius:6px;border:none;background:#7c3aed;color:#fff;font-size:11px;font-weight:600;cursor:pointer;">
+            🔍 Chercher
+          </button>
+        </div>
       </div>
     `);
+
+    // Focus sur l'input après l'ouverture du popup
+    setTimeout(() => {
+      const input = document.getElementById("irlAddressInput");
+      if (input) {
+        input.focus();
+        input.addEventListener("keypress", (e) => {
+          if (e.key === "Enter") geocodeIrlAddress();
+        });
+      }
+    }, 100);
   }
 
   var events = allEvents();
