@@ -16803,21 +16803,19 @@ function updateIrlMapMarkers() {
     });
     const userMarker = L.marker([refLoc.lat, refLoc.lng], { icon: userIcon }).addTo(irlMarkersLayer);
     userMarker.bindPopup(`
-      <div style="min-width:220px;padding:8px;">
+      <div style="min-width:240px;padding:10px;">
         <div style="font-size:20px;text-align:center;margin-bottom:8px;">📍</div>
-        <div style="font-weight:600;text-align:center;margin-bottom:12px;font-size:13px;">${locLabel}</div>
+        <div style="font-weight:600;text-align:center;margin-bottom:8px;font-size:13px;line-height:1.4;">${locLabel}</div>
+        <button onclick="resetToUserLocation()" style="width:100%;padding:4px 8px;border:none;background:transparent;color:#7c3aed;font-size:11px;text-decoration:underline;cursor:pointer;margin-bottom:12px;">
+          ← Ma position actuelle
+        </button>
         <div style="margin-bottom:10px;">
-          <input type="text" id="irlAddressInput" placeholder="Entrer une adresse..." style="width:100%;padding:8px;border-radius:6px;border:1px solid #ddd;font-size:12px;box-sizing:border-box;"/>
+          <input type="text" id="irlAddressInput" placeholder="Chercher une adresse..." style="width:100%;padding:8px;border-radius:6px;border:1px solid #ddd;font-size:12px;box-sizing:border-box;"/>
           <div id="irlAddressSuggestions" style="margin-top:6px;max-height:200px;overflow-y:auto;border:1px solid #eee;border-radius:6px;background:#fff;display:none;"></div>
         </div>
-        <div style="display:flex;gap:6px;">
-          <button onclick="openIrlCitySelector()" style="flex:1;padding:6px 8px;border-radius:6px;border:none;background:#f0f0f0;color:#333;font-size:11px;font-weight:600;cursor:pointer;">
-            🌍 Villes
-          </button>
-          <button onclick="geocodeIrlAddress()" style="flex:1;padding:6px 8px;border-radius:6px;border:none;background:#7c3aed;color:#fff;font-size:11px;font-weight:600;cursor:pointer;">
-            🔍 Chercher
-          </button>
-        </div>
+        <button onclick="geocodeIrlAddress()" style="width:100%;padding:8px;border-radius:6px;border:none;background:#7c3aed;color:#fff;font-size:12px;font-weight:600;cursor:pointer;">
+          🔍 Chercher
+        </button>
       </div>
     `);
 
