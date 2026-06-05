@@ -16422,6 +16422,34 @@ const FRANCE_CITIES = {
   "amman":          [31.9454, 35.9284],
 };
 
+// Demande la position actuelle de l'utilisateur
+function requestUserLocation() {
+  if (!navigator.geolocation) {
+    console.log("Géolocalisation non supportée, utilisation de Paris par défaut");
+    irlUserLocation = { lat: 48.8566, lng: 2.3522 };
+    return;
+  }
+
+  navigator.geolocation.getCurrentPosition(
+    function(position) {
+      irlUserLocation = {
+        lat: position.coords.latitude,
+        lng: position.coords.longitude
+      };
+      console.log("Position obtenue:", irlUserLocation);
+      renderIRL(); // Re-render avec la nouvelle position
+    },
+    function(error) {
+      console.log("Erreur géolocalisation:", error.message);
+      irlUserLocationError = true;
+      // Utiliser Paris par défaut
+      irlUserLocation = { lat: 48.8566, lng: 2.3522 };
+      renderIRL();
+    },
+    { timeout: 5000, enableHighAccuracy: false }
+  );
+}
+
 function cityToLatLng(city) {
   if (!city) return null;
   const key = String(city).toLowerCase().trim();
