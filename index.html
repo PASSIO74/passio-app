@@ -17576,6 +17576,9 @@ function openEventDetails(id) {
   const page = document.getElementById("eventDetailPage");
   page.style.display = "flex";
   page.scrollTop = 0;
+
+  // Mettre à jour le bouton retour
+  updateBackButtonVisibility();
 }
 
 function _refreshEventDetailCta(ev, joined) {
