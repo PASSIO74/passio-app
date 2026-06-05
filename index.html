@@ -14011,12 +14011,6 @@ document.addEventListener("click", (e) => {
     renderMessages();
     return;
   }
-  const readPill = e.target.closest("[data-msgread]");
-  if (readPill) {
-    msgReadFilter = readPill.getAttribute("data-msgread");
-    renderMessages();
-    return;
-  }
 });
 
 // ======== BOBINES (REELS) ========
