@@ -14479,6 +14479,9 @@ function openReels() {
     void hint.offsetWidth; // reflow pour redémarrer l'anim
     hint.style.animation = "";
   }
+
+  // Mettre à jour le bouton retour
+  updateBackButtonVisibility();
 }
 
 function closeReels() {
