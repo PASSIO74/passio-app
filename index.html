@@ -17375,6 +17375,9 @@ function calculateDistance(lat1, lng1, lat2, lng2) {
 }
 
 function openEventDetails(id) {
+  // Ajouter à l'historique pour que le bouton back fonctionne
+  pushOverlayToHistory("event", id);
+
   const ev = allEvents().find(e => e.id === id);
   if (!ev) return;
   const passion = passionById(ev.passion) || { emoji: "✨", label: "Passion" };
