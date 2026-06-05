@@ -8823,19 +8823,42 @@ function goTo(screen) {
   if (screen === "cdv")      renderCdvScreen();
 }
 
-// Gérer le bouton back du téléphone
-window.addEventListener("popstate", (e) => {
-  // Vérifier si un modal/reel/story est ouvert et le fermer en priorité
+// Fonction générique pour fermer les overlays
+function closeCurrentOverlay() {
+  // Vérifier et fermer les overlays dans cet ordre de priorité
   if (reelsState && reelsState.open) {
     closeReels();
-    return;
+    return true;
   }
-  if (document.getElementById("modal") && document.getElementById("modal").style.display !== "none") {
+  if (document.getElementById("modalBackdrop") && document.getElementById("modalBackdrop").classList.contains("active")) {
     closeModal();
-    return;
+    return true;
   }
-  if (document.getElementById("storyViewer") && document.getElementById("storyViewer").style.display !== "none") {
+  if (document.getElementById("storyViewer") && document.getElementById("storyViewer").classList.contains("active")) {
     closeStoryViewer();
+    return true;
+  }
+
+  // Vérifier d'autres overlays spécifiques
+  const detailModal = document.getElementById("eventDetail") || document.getElementById("postDetail") || document.getElementById("profileDetail");
+  if (detailModal && detailModal.style.display !== "none") {
+    detailModal.style.display = "none";
+    return true;
+  }
+
+  const commentsPanel = document.getElementById("commentsPanel");
+  if (commentsPanel && commentsPanel.style.display !== "none") {
+    commentsPanel.style.display = "none";
+    return true;
+  }
+
+  return false;
+}
+
+// Gérer le bouton back du téléphone
+window.addEventListener("popstate", (e) => {
+  // D'abord, essayer de fermer un overlay ouvert
+  if (closeCurrentOverlay()) {
     return;
   }
 
