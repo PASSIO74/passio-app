@@ -16436,28 +16436,38 @@ function renderIRL() {
   if (irlFilter === "mine") filtered = filtered.filter(function(e) { return e._mine; });
   if (irlFilter === "joined") filtered = filtered.filter(function(e) { return (state.user.joinedEvents || []).includes(e.id); });
 
-  // Filtre par date
-  if (irlDateFilter === "today") {
-    var todayStart = new Date(); todayStart.setHours(0,0,0,0);
-    var todayEnd = new Date(); todayEnd.setHours(23,59,59,999);
-    filtered = filtered.filter(function(e) { return e.date >= todayStart.getTime() && e.date <= todayEnd.getTime(); });
-  } else if (irlDateFilter === "tomorrow") {
-    var tmrStart = new Date(); tmrStart.setDate(tmrStart.getDate()+1); tmrStart.setHours(0,0,0,0);
-    var tmrEnd = new Date(); tmrEnd.setDate(tmrEnd.getDate()+1); tmrEnd.setHours(23,59,59,999);
-    filtered = filtered.filter(function(e) { return e.date >= tmrStart.getTime() && e.date <= tmrEnd.getTime(); });
-  } else if (irlDateFilter === "week") {
-    var weekEnd = currentTime + 7 * 86400000;
-    filtered = filtered.filter(function(e) { return e.date >= currentTime && e.date <= weekEnd; });
-  } else if (irlDateFilter === "month") {
-    var monthEnd = currentTime + 30 * 86400000;
-    filtered = filtered.filter(function(e) { return e.date >= currentTime && e.date <= monthEnd; });
-  } else if (irlDateFilter === "custom" && irlCustomDate) {
-    filtered = filtered.filter(function(e) { return e.date >= irlCustomDate.start && e.date <= irlCustomDate.end; });
+  // Filtre par date (multi-select)
+  if (irlDateFilters && irlDateFilters.size > 0) {
+    filtered = filtered.filter(function(e) {
+      var matches = false;
+      if (irlDateFilters.has("today")) {
+        var todayStart = new Date(); todayStart.setHours(0,0,0,0);
+        var todayEnd = new Date(); todayEnd.setHours(23,59,59,999);
+        if (e.date >= todayStart.getTime() && e.date <= todayEnd.getTime()) matches = true;
+      }
+      if (irlDateFilters.has("tomorrow")) {
+        var tmrStart = new Date(); tmrStart.setDate(tmrStart.getDate()+1); tmrStart.setHours(0,0,0,0);
+        var tmrEnd = new Date(); tmrEnd.setDate(tmrEnd.getDate()+1); tmrEnd.setHours(23,59,59,999);
+        if (e.date >= tmrStart.getTime() && e.date <= tmrEnd.getTime()) matches = true;
+      }
+      if (irlDateFilters.has("week")) {
+        var weekEnd = currentTime + 7 * 86400000;
+        if (e.date >= currentTime && e.date <= weekEnd) matches = true;
+      }
+      if (irlDateFilters.has("month")) {
+        var monthEnd = currentTime + 30 * 86400000;
+        if (e.date >= currentTime && e.date <= monthEnd) matches = true;
+      }
+      if (irlDateFilters.has("custom") && irlCustomDate) {
+        if (e.date >= irlCustomDate.start && e.date <= irlCustomDate.end) matches = true;
+      }
+      return matches;
+    });
   }
 
-  // Sync pills date
+  // Sync pills date (multi-select)
   document.querySelectorAll("#irlDateRow .pill").forEach(function(p) {
-    p.classList.toggle("active", p.getAttribute("data-irldate") === irlDateFilter);
+    p.classList.toggle("active", irlDateFilters && irlDateFilters.has(p.getAttribute("data-irldate")));
   });
 
   // Trier par date croissante (prochain en premier)
