@@ -14419,8 +14419,6 @@ function openReels() {
     hint.style.animation = "";
   }
 
-  // Mettre à jour le bouton retour
-  updateBackButtonVisibility();
 }
 
 function closeReels() {
@@ -14435,8 +14433,6 @@ function closeReels() {
   document.querySelectorAll("#reelsList video").forEach(vid => { try { vid.pause(); } catch(e){} });
   if (reelsState.observer) { try { reelsState.observer.disconnect(); } catch(e){} reelsState.observer = null; }
 
-  // Mettre à jour le bouton retour
-  updateBackButtonVisibility();
 }
 
 function resumeReels() {
@@ -17651,8 +17647,6 @@ function openEventDetails(id) {
   page.style.display = "flex";
   page.scrollTop = 0;
 
-  // Mettre à jour le bouton retour
-  updateBackButtonVisibility();
 }
 
 function _refreshEventDetailCta(ev, joined) {
@@ -17684,8 +17678,6 @@ function closeEventDetail() {
   const page = document.getElementById("eventDetailPage");
   if (page) page.style.display = "none";
 
-  // Mettre à jour le bouton retour
-  updateBackButtonVisibility();
 }
 
 function previewEventCover(input) {
@@ -18014,14 +18006,10 @@ function openModal(html) {
   $("#modalContent").innerHTML = closeBtn + html;
   $("#modalBackdrop").classList.add("active");
 
-  // Mettre à jour le bouton retour
-  updateBackButtonVisibility();
 }
 function closeModal() {
   $("#modalBackdrop").classList.remove("active");
 
-  // Mettre à jour le bouton retour
-  updateBackButtonVisibility();
 }
 function closeModalOnBackdrop(e) {
   if (e.target.id === "modalBackdrop") closeModal();
@@ -18409,8 +18397,6 @@ function openStoryViewer(idx) {
   $("#storyViewer").classList.add("active");
   playCurrentStory();
 
-  // Mettre à jour le bouton retour
-  updateBackButtonVisibility();
 }
 
 function playCurrentStory() {
@@ -18489,8 +18475,6 @@ function closeStoryViewer() {
   $("#storyViewer").classList.remove("active");
   renderStories();
 
-  // Mettre à jour le bouton retour
-  updateBackButtonVisibility();
 }
 
 // ======== NOTIFICATIONS ========
