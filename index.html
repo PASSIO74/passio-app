@@ -8818,6 +8818,21 @@ function goTo(screen) {
 
 // Gérer le bouton back du téléphone
 window.addEventListener("popstate", (e) => {
+  // Vérifier si un modal/reel/story est ouvert et le fermer en priorité
+  if (reelsState && reelsState.open) {
+    closeReels();
+    return;
+  }
+  if (document.getElementById("modal") && document.getElementById("modal").style.display !== "none") {
+    closeModal();
+    return;
+  }
+  if (document.getElementById("storyViewer") && document.getElementById("storyViewer").style.display !== "none") {
+    closeStoryViewer();
+    return;
+  }
+
+  // Sinon, naviguer vers l'écran précédent
   if (e.state && e.state.screen) {
     isNavigatingBack = true;
     goTo(e.state.screen);
