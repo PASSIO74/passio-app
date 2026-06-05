@@ -16484,6 +16484,19 @@ function renderIRL() {
     p.classList.toggle("active", irlDateFilters && irlDateFilters.has(p.getAttribute("data-irldate")));
   });
 
+  // Filtre par distance
+  if (irlDistanceFilter) {
+    const maxDistanceKm = parseInt(irlDistanceFilter);
+    // Position de référence (Paris par défaut)
+    const refLoc = cityToLatLng("Paris") || { lat: 48.8566, lng: 2.3522 };
+    filtered = filtered.filter(function(e) {
+      const eventLoc = cityToLatLng(e.city) || cityToLatLng(e.location);
+      if (!eventLoc) return true; // Inclure les événements sans localisation
+      const dist = calculateDistance(refLoc.lat, refLoc.lng, eventLoc.lat, eventLoc.lng);
+      return dist <= maxDistanceKm;
+    });
+  }
+
   // Trier par date croissante (prochain en premier)
   filtered.sort(function(a, b) { return a.date - b.date; });
 
