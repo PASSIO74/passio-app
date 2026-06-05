@@ -16540,10 +16540,9 @@ function updateIrlMapMarkers() {
     });
   }
 
-  // Filtre par distance
-  if (irlDistanceFilter) {
+  // Filtre par distance (OPTIONNEL)
+  if (irlDistanceFilter && irlDistanceFilter !== "") {
     const maxDistanceKm = parseInt(irlDistanceFilter);
-    // Position de référence: position actuelle ou Paris par défaut
     const refLoc = irlUserLocation || { lat: 48.8566, lng: 2.3522 };
     filtered = filtered.filter(function(e) {
       const eventLoc = cityToLatLng(e.city) || cityToLatLng(e.location);
@@ -16553,20 +16552,22 @@ function updateIrlMapMarkers() {
     });
   }
 
-  // Filtre par heure
-  if (irlTimeFilter) {
-    const [filterHours, filterMins] = irlTimeFilter.split(":").map(Number);
-    const filterTimeInMinutes = filterHours * 60 + filterMins;
+  // Filtre par heure (OPTIONNEL)
+  if (irlTimeFilter && irlTimeFilter !== "") {
+    const timeParts = irlTimeFilter.split(":");
+    if (timeParts.length === 2) {
+      const [filterHours, filterMins] = timeParts.map(Number);
+      const filterTimeInMinutes = filterHours * 60 + filterMins;
 
-    filtered = filtered.filter(function(e) {
-      const eventDate = new Date(e.date);
-      const eventHours = eventDate.getHours();
-      const eventMins = eventDate.getMinutes();
-      const eventTimeInMinutes = eventHours * 60 + eventMins;
+      filtered = filtered.filter(function(e) {
+        const eventDate = new Date(e.date);
+        const eventHours = eventDate.getHours();
+        const eventMins = eventDate.getMinutes();
+        const eventTimeInMinutes = eventHours * 60 + eventMins;
 
-      // Afficher les événements qui sont à la même heure ou après l'heure sélectionnée
-      return eventTimeInMinutes >= filterTimeInMinutes;
-    });
+        return eventTimeInMinutes >= filterTimeInMinutes;
+      });
+    }
   }
 
   const points = [];
