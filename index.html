@@ -16515,6 +16515,22 @@ function updateIrlMapMarkers() {
     });
   }
 
+  // Filtre par heure
+  if (irlTimeFilter) {
+    const [filterHours, filterMins] = irlTimeFilter.split(":").map(Number);
+    const filterTimeInMinutes = filterHours * 60 + filterMins;
+
+    filtered = filtered.filter(function(e) {
+      const eventDate = new Date(e.date);
+      const eventHours = eventDate.getHours();
+      const eventMins = eventDate.getMinutes();
+      const eventTimeInMinutes = eventHours * 60 + eventMins;
+
+      // Afficher les événements qui sont à la même heure ou après l'heure sélectionnée
+      return eventTimeInMinutes >= filterTimeInMinutes;
+    });
+  }
+
   const points = [];
   filtered.forEach(ev => {
     const ll = cityToLatLng(ev.city) || cityToLatLng(ev.location);
