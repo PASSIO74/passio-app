@@ -16894,14 +16894,6 @@ function applyIrlCalendar() {
   renderIRL();
 }
 
-// Scroller le carousel des dates
-function scrollDateCarousel(direction) {
-  const carousel = document.getElementById("irlDateCarousel");
-  if (!carousel) return;
-  const scrollAmount = 140; // Distance à scroller
-  carousel.scrollLeft += direction * scrollAmount;
-}
-
 function renderIRL() {
   // Mettre à jour le titre de la ville (sélectionnée ou détectée)
   updateIrlCityTitle();
