@@ -16737,6 +16737,23 @@ function renderIRL() {
     });
   }
 
+  // Filtre par heure
+  if (irlTimeFilter) {
+    const [filterHours, filterMins] = irlTimeFilter.split(":").map(Number);
+    const filterTimeInMinutes = filterHours * 60 + filterMins;
+
+    filtered = filtered.filter(function(e) {
+      const eventDate = new Date(e.date);
+      const eventHours = eventDate.getHours();
+      const eventMins = eventDate.getMinutes();
+      const eventTimeInMinutes = eventHours * 60 + eventMins;
+
+      // Afficher les événements qui sont à la même heure ou après l'heure sélectionnée
+      // (même jour, ou jours suivants)
+      return eventTimeInMinutes >= filterTimeInMinutes;
+    });
+  }
+
   // Trier par date croissante (prochain en premier)
   filtered.sort(function(a, b) { return a.date - b.date; });
 
