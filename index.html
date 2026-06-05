@@ -5471,10 +5471,11 @@
       color: var(--text);
     }
     .msg-readfilter-pill.active {
-      background: var(--accent-wash);
-      border-color: rgba(124, 58, 237, 0.30);
-      color: var(--accent-2);
-      box-shadow: none;
+      background: transparent;
+      border-color: var(--accent);
+      border-width: 2px;
+      color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.12);
     }
     .msg-readfilter-count {
       display: inline-block;
@@ -5487,7 +5488,7 @@
     }
     .msg-readfilter-pill.active .msg-readfilter-count {
       background: rgba(124, 58, 237, 0.20);
-      color: var(--accent-2);
+      color: var(--accent);
     }
 
     .msg-card {
