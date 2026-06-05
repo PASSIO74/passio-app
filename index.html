@@ -14785,18 +14785,22 @@ function openReelComments(postId) {
   const reelsViewer = document.getElementById("reelsViewer");
 
   if (panel && reelsViewer) {
-    // Faire monter légèrement le reel viewer
-    reelsViewer.style.transform = "translateY(-60px)";
-
+    // Ajouter la classe pour réduire la vidéo
+    reelsViewer.classList.add("comments-open");
     panel.classList.add("open");
+
     // Stocker le postId courant
     window.currentReelCommentPostId = postId;
     // Charger les commentaires
     loadReelComments(postId);
+
     // Focus sur l'input
     setTimeout(() => {
       const input = document.getElementById("reelCommentInput");
-      if (input) input.focus();
+      if (input) {
+        input.focus();
+        input.click();
+      }
       // Scroller vers le haut des commentaires
       const list = document.getElementById("reelCommentsList");
       if (list) list.scrollTop = 0;
@@ -14811,7 +14815,7 @@ function closeReelComments() {
   if (panel) {
     panel.classList.remove("open");
     if (reelsViewer) {
-      reelsViewer.style.transform = "translateY(0)";
+      reelsViewer.classList.remove("comments-open");
     }
     window.currentReelCommentPostId = null;
   }
