@@ -16706,11 +16706,12 @@ function updateIrlMapMarkers() {
     });
     const userMarker = L.marker([refLoc.lat, refLoc.lng], { icon: userIcon }).addTo(irlMarkersLayer);
     userMarker.bindPopup(`
-      <div style="min-width:200px;padding:4px;">
+      <div style="min-width:220px;padding:8px;">
         <div style="font-size:20px;text-align:center;margin-bottom:8px;">📍</div>
         <div style="font-weight:600;text-align:center;margin-bottom:12px;font-size:13px;">${locLabel}</div>
         <div style="margin-bottom:10px;">
           <input type="text" id="irlAddressInput" placeholder="Entrer une adresse..." style="width:100%;padding:8px;border-radius:6px;border:1px solid #ddd;font-size:12px;box-sizing:border-box;"/>
+          <div id="irlAddressSuggestions" style="margin-top:6px;max-height:200px;overflow-y:auto;border:1px solid #eee;border-radius:6px;background:#fff;display:none;"></div>
         </div>
         <div style="display:flex;gap:6px;">
           <button onclick="openIrlCitySelector()" style="flex:1;padding:6px 8px;border-radius:6px;border:none;background:#f0f0f0;color:#333;font-size:11px;font-weight:600;cursor:pointer;">
@@ -16723,11 +16724,18 @@ function updateIrlMapMarkers() {
       </div>
     `);
 
-    // Focus sur l'input après l'ouverture du popup
+    // Focus sur l'input après l'ouverture du popup et setup autocomplete
     setTimeout(() => {
       const input = document.getElementById("irlAddressInput");
       if (input) {
         input.focus();
+
+        // Recherche en temps réel
+        input.addEventListener("input", (e) => {
+          searchIrlAddressSuggestions(e.target.value);
+        });
+
+        // Touche Enter pour rechercher
         input.addEventListener("keypress", (e) => {
           if (e.key === "Enter") geocodeIrlAddress();
         });
