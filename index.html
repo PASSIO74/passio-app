@@ -16632,6 +16632,85 @@ function initIrlMap() {
   setTimeout(() => irlMap.invalidateSize(), 10);
 }
 
+// Rechercher les suggestions d'adresses en temps réel
+let irlAddressSearchTimeout;
+async function searchIrlAddressSuggestions(query) {
+  const suggestionsDiv = document.getElementById("irlAddressSuggestions");
+  if (!suggestionsDiv) return;
+
+  // Effacer le timeout précédent
+  clearTimeout(irlAddressSearchTimeout);
+
+  // Si le texte est trop court, ne rien faire
+  if (!query || query.trim().length < 3) {
+    suggestionsDiv.style.display = "none";
+    return;
+  }
+
+  // Attendre 300ms avant de faire la requête (pour éviter trop d'appels)
+  irlAddressSearchTimeout = setTimeout(async () => {
+    try {
+      // Rechercher sur Nominatim
+      const response = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query + ", France")}&format=json&limit=8&addressdetails=1`);
+      const results = await response.json();
+
+      if (!results || results.length === 0) {
+        suggestionsDiv.style.display = "none";
+        return;
+      }
+
+      // Afficher les suggestions
+      let html = "";
+      results.forEach((result, index) => {
+        const name = result.display_name.split(",")[0];
+        const fullName = result.display_name.split(",").slice(0, 2).join(",").trim();
+        html += `
+          <div onclick="selectIrlAddressSuggestion('${name}', ${result.lat}, ${result.lon})" style="padding:8px 10px;border-bottom:1px solid #eee;cursor:pointer;font-size:12px;transition:background 0.2s;" onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background='transparent';">
+            <div style="font-weight:500;color:#333;">${name}</div>
+            <div style="font-size:11px;color:#888;">${fullName.substring(fullName.indexOf(",") + 1).trim()}</div>
+          </div>
+        `;
+      });
+
+      suggestionsDiv.innerHTML = html;
+      suggestionsDiv.style.display = "block";
+    } catch (error) {
+      console.error("Erreur recherche adresse:", error);
+      suggestionsDiv.style.display = "none";
+    }
+  }, 300);
+}
+
+// Sélectionner une adresse suggérée
+function selectIrlAddressSuggestion(name, lat, lng) {
+  const input = document.getElementById("irlAddressInput");
+  if (input) {
+    input.value = name;
+  }
+
+  const suggestionsDiv = document.getElementById("irlAddressSuggestions");
+  if (suggestionsDiv) {
+    suggestionsDiv.style.display = "none";
+  }
+
+  // Mettre à jour la position
+  irlSelectedCity = {
+    id: "custom",
+    name: name,
+    coords: [lat, lng]
+  };
+
+  _diag("[GEO] ✅ Adresse sélectionnée: " + name);
+
+  // Fermer le popup
+  if (irlMap) irlMap.closePopup();
+
+  // Re-render
+  renderIRL();
+
+  toast(`📍 ${name}`);
+}
+
 // Géocoder une adresse et mettre à jour la position
 async function geocodeIrlAddress() {
   const input = document.getElementById("irlAddressInput");
