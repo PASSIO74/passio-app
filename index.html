@@ -5008,10 +5008,27 @@
     .reel-comment-reply:hover {
       color: var(--text);
     }
-    .reel-comment-likes-count {
+    .reel-comment-action {
+      cursor: pointer;
+      color: var(--muted);
+      transition: color 200ms;
+    }
+    .reel-comment-action:hover {
+      color: var(--text);
+    }
+    .reel-comment-reply-count {
+      cursor: pointer;
       color: var(--muted);
       font-size: 12px;
-      margin-top: 4px;
+      transition: color 200ms;
+    }
+    .reel-comment-reply-count:hover {
+      color: var(--text);
+    }
+    .reel-comment-replies {
+      padding: 8px 0;
+      border-left: 2px solid var(--border);
+      padding-left: 12px;
     }
 
     .reel-comments-input-section {
