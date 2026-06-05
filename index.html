@@ -16850,9 +16850,15 @@ function toggleJoinEvent(id) {
 
 function filterIrlByDistance() {
   const distanceSelect = document.getElementById("irlDistanceFilter");
-  if (distanceSelect) {
+  const customDistance = document.getElementById("irlCustomDistance");
+
+  // Priorité: distance personnalisée > sélecteur
+  if (customDistance && customDistance.value) {
+    irlDistanceFilter = customDistance.value;
+  } else if (distanceSelect) {
     irlDistanceFilter = distanceSelect.value || "";
   }
+
   renderIRL();
 }
 
