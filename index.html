@@ -16896,11 +16896,16 @@ function renderIRL() {
   var filtered = events;
 
   // 1. Filtre par passion (multi-select) - OPTIONNEL
+  // Si le Set est vide, afficher TOUS les événements (pas de filtre)
+  // Si le Set a des éléments, filtrer par ce Set
   if (irlPassionFilters && irlPassionFilters.size > 0) {
     filtered = filtered.filter(function(e) {
       return irlPassionFilters.has(e.passion);
     });
     console.log("[IRL] Après filtre passion:", filtered.length);
+  } else if (!irlPassionFilters || irlPassionFilters.size === 0) {
+    // Au démarrage, afficher tous les événements si aucun profil sélectionné
+    console.log("[IRL] Aucun filtre profil, affichage de tous les événements");
   }
 
   // 2. Filtre par type d'événement (Mes events / Inscrit) - OPTIONNEL
