@@ -21689,18 +21689,6 @@ setTimeout(function() {
     }
   });
 }, 500);
-
-// INITIALISATION BOUTON RETOUR
-setTimeout(function() {
-  try {
-    if (typeof updateBackButtonVisibility === "function") {
-      updateBackButtonVisibility();
-      console.log("✅ Bouton retour initialisé");
-    }
-  } catch(err) {
-    console.error("❌ Erreur initialisation bouton retour:", err);
-  }
-}, 300);
 </script>
 
 </body>
