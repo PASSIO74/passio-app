@@ -16109,10 +16109,12 @@ let irlPassionFiltersInitialized = false; // Flag pour tracker la première init
 // Initialiser irlPassionFilters avec les profils de l'utilisateur
 // Si pas de profils, afficher TOUS les événements
 function initializeIrlPassionFilters() {
-  // NE réinitialiser que si les filtres sont complètement vides (l'utilisateur n'a rien cliqué)
-  if (irlPassionFilters.size > 0) {
-    return; // L'utilisateur a déjà sélectionné, ne pas réinitialiser
+  // Ne réinitialiser que la première fois
+  if (irlPassionFiltersInitialized) {
+    return;
   }
+
+  irlPassionFiltersInitialized = true;
 
   const userPassionIds = (state.user.profiles || []).map(p => p.passion).filter(Boolean);
 
