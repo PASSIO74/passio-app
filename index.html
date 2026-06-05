@@ -16650,6 +16650,16 @@ function initIrlMap() {
   setTimeout(() => irlMap.invalidateSize(), 10);
 }
 
+// Revenir à la position GPS actuelle de l'utilisateur
+function resetToUserLocation() {
+  irlSelectedCity = null;
+  _diag("[IRL] 🗺️ Retour à ta position actuelle");
+  updateIrlCityTitle();
+  if (irlMap) irlMap.closePopup();
+  renderIRL();
+  toast("📍 Position actuelle");
+}
+
 // Rechercher les suggestions d'adresses en temps réel
 let irlAddressSearchTimeout;
 async function searchIrlAddressSuggestions(query) {
