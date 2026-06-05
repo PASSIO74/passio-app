@@ -8917,6 +8917,23 @@ function goBack() {
   window.history.back();
 }
 
+// Mettre à jour la visibilité du bouton retour
+function updateBackButtonVisibility() {
+  var backBtn = document.getElementById("backBtn");
+  if (!backBtn) return;
+
+  // Afficher le bouton retour si on n'est pas à la racine ou s'il y a des overlays
+  var historyLength = window.history.length;
+  var hasOverlay = closeCurrentOverlay ? true : false;
+
+  // Afficher si on n'est pas sur la première page
+  if (historyLength > 1 || hasOverlay) {
+    backBtn.style.display = "flex";
+  } else {
+    backBtn.style.display = "none";
+  }
+}
+
 function toggleDevPanel() {
   $("#devPanel").classList.toggle("active");
 }
