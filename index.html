@@ -15961,14 +15961,19 @@ function quickCreateProfile(pid) {
 }
 
 // ======== IRL ========
-let irlFilter = "all";
+let irlFilters = new Set(["mine"]);
 let irlPassionFilter = "all";
 
 $$("#irlFilterRow .pill").forEach(p => {
   p.addEventListener("click", () => {
-    $$("#irlFilterRow .pill").forEach(x => x.classList.remove("active"));
-    p.classList.add("active");
-    irlFilter = p.getAttribute("data-irlfilter");
+    const val = p.getAttribute("data-irlfilter");
+    // Multi-select: toggle the filter
+    if (irlFilters.has(val)) {
+      irlFilters.delete(val);
+    } else {
+      irlFilters.add(val);
+    }
+    p.classList.toggle("active");
     renderIRL();
   });
 });
