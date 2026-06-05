@@ -16872,11 +16872,19 @@ function applyIrlCalendar() {
   irlCustomDate = { start: new Date(start).getTime(), end: end ? new Date(end + "T23:59:59").getTime() : new Date(start + "T23:59:59").getTime() };
 
   // Mettre à jour le bouton actif
-  var customBtn = document.querySelector('#irlDateRow [data-irldate="custom"]');
+  var customBtn = document.querySelector('#irlDateCarousel [data-irldate="custom"]');
   if (customBtn) customBtn.classList.add("active");
 
   closeModal();
   renderIRL();
+}
+
+// Scroller le carousel des dates
+function scrollDateCarousel(direction) {
+  const carousel = document.getElementById("irlDateCarousel");
+  if (!carousel) return;
+  const scrollAmount = 140; // Distance à scroller
+  carousel.scrollLeft += direction * scrollAmount;
 }
 
 function renderIRL() {
