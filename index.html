@@ -6967,20 +6967,28 @@
           <button class="pill" data-irldate="month" onclick="setIrlDateFilter('month',this)">Ce mois</button>
         </div>
 
-        <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;justify-content:center;">
-          <select id="irlDistanceFilter" onchange="filterIrlByDistance()" style="padding:6px 12px;border-radius:10px;border:1px solid var(--border);background:#fff;font-size:11px;font-weight:700;color:var(--text-dim);cursor:pointer;">
-            <option value="">📍 Distance</option>
-            <option value="5">5 km</option>
-            <option value="10">10 km</option>
-            <option value="25">25 km</option>
-            <option value="50">50 km</option>
-            <option value="100">100 km</option>
-            <option value="250">250 km</option>
-            <option value="500">500 km</option>
-            <option value="1000">1000 km</option>
-            <option value="5000">5000 km</option>
-          </select>
-          <input type="number" id="irlCustomDistance" placeholder="ou personnalisé (km)" min="1" max="10000" onchange="filterIrlByDistance()" style="padding:6px 12px;border-radius:10px;border:1px solid var(--border);background:#fff;font-size:11px;color:var(--text);width:120px;"/>
+        <div style="display:flex;gap:8px;align-items:center;justify-content:center;flex-wrap:wrap;">
+          <!-- Distance -->
+          <div style="display:flex;gap:4px;align-items:center;">
+            <select id="irlDistanceFilter" onchange="filterIrlByDistance()" style="padding:6px 12px;border-radius:10px;border:1px solid var(--border);background:#fff;font-size:11px;font-weight:700;color:var(--text-dim);cursor:pointer;">
+              <option value="">📍 Distance</option>
+              <option value="5">5 km</option>
+              <option value="10">10 km</option>
+              <option value="25">25 km</option>
+              <option value="50">50 km</option>
+              <option value="100">100 km</option>
+              <option value="250">250 km</option>
+              <option value="500">500 km</option>
+              <option value="1000">1000 km</option>
+              <option value="5000">5000 km</option>
+            </select>
+            <input type="number" id="irlCustomDistance" placeholder="perso (km)" min="1" max="10000" onchange="filterIrlByDistance()" style="padding:6px 8px;border-radius:10px;border:1px solid var(--border);background:#fff;font-size:11px;color:var(--text);width:80px;"/>
+          </div>
+
+          <!-- Heure -->
+          <div style="display:flex;gap:4px;align-items:center;">
+            <input type="time" id="irlTimeFilter" style="padding:6px 8px;border-radius:10px;border:1px solid var(--border);background:#fff;font-size:11px;color:var(--text);cursor:pointer;" onchange="filterIrlByTime()">
+          </div>
         </div>
       </div>
 
