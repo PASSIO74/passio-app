@@ -18137,6 +18137,9 @@ let storyTimer = null;
 const STORY_DURATION = 4500;
 
 function openStoryViewer(idx) {
+  // Ajouter à l'historique pour que le bouton back fonctionne
+  window.history.pushState({ overlay: "story" }, "", "#story");
+
   storyIdx = idx;
   $("#storyViewer").classList.add("active");
   playCurrentStory();
