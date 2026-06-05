@@ -16618,6 +16618,7 @@ function selectIrlCity(cityId, cityName) {
     coords: FRANCE_CITIES[cityId]
   };
   _diag("[IRL] 🏙️ Ville sélectionnée: " + cityName);
+  updateIrlCityTitle();
   closeModal();
   renderIRL();
 }
@@ -16626,6 +16627,7 @@ function selectIrlCity(cityId, cityName) {
 function clearIrlCitySelection() {
   irlSelectedCity = null;
   _diag("[IRL] 🗺️ Retour à ta position");
+  updateIrlCityTitle();
   closeModal();
   renderIRL();
 }
