@@ -16596,7 +16596,8 @@ function updateIrlMapMarkers() {
     filtered = filtered.filter(function(e) {
       const eventLoc = cityToLatLng(e.city) || cityToLatLng(e.location);
       if (!eventLoc) return true;
-      const dist = calculateDistance(refLoc.lat, refLoc.lng, eventLoc.lat, eventLoc.lng);
+      // eventLoc est un tableau [lat, lng]
+      const dist = calculateDistance(refLoc.lat, refLoc.lng, eventLoc[0], eventLoc[1]);
       return dist <= maxDistanceKm;
     });
   }
