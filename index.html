@@ -6940,13 +6940,14 @@
     <!-- ===== SCREEN: IRL ===== -->
     <section class="screen" id="screen-irl">
       <div class="section-title">Passio IRL <span class="link" onclick="openCreateEvent()">+ Créer</span></div>
-      <div style="display:flex;align-items:center;gap:8px;margin:0 0 12px;padding:8px 0;">
-        <div style="flex:1;">
-          <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">📍 Repère</div>
-          <div style="font-size:13px;font-weight:600;color:var(--text);" id="irlUserCityName">Détection...</div>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:8px;margin:0 0 14px;padding:12px 16px;background:var(--bg-card);border-radius:12px;border:1px solid var(--border);">
+        <div style="text-align:center;">
+          <div style="font-size:24px;margin-bottom:6px;">📍</div>
+          <div style="font-size:13px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Repère</div>
+          <div style="font-size:16px;font-weight:700;color:var(--text);" id="irlUserCityName">Détection...</div>
         </div>
-        <button onclick="openIrlCitySelector()" style="padding:6px 12px;border-radius:10px;border:1px solid var(--border);background:var(--bg-card);color:var(--text);font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;transition:all 0.2s;">
-          Positionnement
+        <button onclick="openIrlCitySelector()" style="padding:8px 16px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--accent);font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;transition:all 0.2s;margin-top:4px;">
+          🔄 Positionnement
         </button>
       </div>
 
