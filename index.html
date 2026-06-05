@@ -16742,17 +16742,18 @@ function applyIrlCalendar() {
 }
 
 function renderIRL() {
-  // Demander la position actuelle de l'utilisateur
-  if (!irlUserLocation) {
-    requestUserLocation();
-  }
-
-  // Initialiser les filtres passion avec les profils de l'utilisateur (TOUJOURS, pas une seule fois)
+  // Initialiser les filtres passion avec les profils de l'utilisateur (SYNCHRONE - pas d'attente)
   initializeIrlPassionFilters();
 
   renderIrlPassionTiles();
   initIrlMap();
   updateIrlMapMarkers();
+
+  // Demander la position GPS EN ARRIÈRE-PLAN (ne pas bloquer le rendu initial)
+  // Si elle est obtenue, elle appellera renderIRL() à nouveau avec la vraie position
+  if (!irlUserLocation) {
+    requestUserLocation();
+  }
 
   var events = allEvents();
   var currentTime = Date.now();
