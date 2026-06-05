@@ -16834,18 +16834,24 @@ function renderIRL() {
   if (irlDistanceFilter && irlDistanceFilter !== "") {
     const maxDistanceKm = parseInt(irlDistanceFilter);
     const refLoc = irlUserLocation || { lat: 48.8566, lng: 2.3522 };
+    const locSource = irlUserLocation ? "📍 TON GPS" : "🔄 PARIS (fallback)";
 
-    console.log("[IRL] Position référence:", refLoc, "Distance max:", maxDistanceKm + "km");
+    console.log("[DISTANCE] Référence:", locSource, refLoc);
+    console.log("[DISTANCE] Max distance:", maxDistanceKm + "km");
+    console.log("[DISTANCE] Position GPS obtenue?", irlUserLocation ? "✅ OUI" : "❌ NON (utilisation fallback)");
 
     filtered = filtered.filter(function(e) {
       const eventLoc = cityToLatLng(e.city) || cityToLatLng(e.location);
-      if (!eventLoc) return true; // Inclure si pas de localisation
+      if (!eventLoc) {
+        console.log("[DISTANCE] Événement sans ville:", e.title);
+        return true; // Inclure si pas de localisation
+      }
       const dist = calculateDistance(refLoc.lat, refLoc.lng, eventLoc.lat, eventLoc.lng);
       const isWithin = dist <= maxDistanceKm;
-      if (!isWithin) console.log("[IRL] Événement rejeté (trop loin):", e.title, "(" + dist.toFixed(1) + "km)");
+      console.log("[DISTANCE]", e.title, "→", dist.toFixed(1) + "km", isWithin ? "✅ INCLUS" : "❌ REJETÉ");
       return isWithin;
     });
-    console.log("[IRL] Après filtre distance:", filtered.length);
+    console.log("[DISTANCE] Résultat: " + filtered.length + " événements");
   }
 
   // 5. Filtre par heure (OPTIONNEL - seulement si sélectionné)
