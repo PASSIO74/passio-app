@@ -12447,6 +12447,9 @@ async function startDirectMessage(userId, userName, userEmoji, userAvatar) {
 }
 
 async function openUserProfile(authorId, source) {
+  // Ajouter à l'historique pour que le bouton back fonctionne
+  pushOverlayToHistory("profile", authorId);
+
   if (source === "me" || authorId === "me" || (typeof MY_UID !== "undefined" && MY_UID && authorId === MY_UID)) {
     goTo("profiles");
     return;
