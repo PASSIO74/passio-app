@@ -16613,6 +16613,11 @@ function renderIRL() {
     p.classList.toggle("active", irlDateFilters && irlDateFilters.has(p.getAttribute("data-irldate")));
   });
 
+  // Sync filter buttons (Mes events / Inscrit) - multi-select
+  document.querySelectorAll("[data-irlfilter]").forEach(function(btn) {
+    btn.classList.toggle("active", irlFilters && irlFilters.has(btn.getAttribute("data-irlfilter")));
+  });
+
   // Filtre par distance
   if (irlDistanceFilter) {
     const maxDistanceKm = parseInt(irlDistanceFilter);
