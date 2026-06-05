@@ -14769,7 +14769,12 @@ function tipReel(postId, btn) {
 function openReelComments(postId) {
   // Afficher le panel de commentaires en bas style Instagram
   const panel = document.getElementById("reelCommentsPanel");
-  if (panel) {
+  const reelsViewer = document.getElementById("reelsViewer");
+
+  if (panel && reelsViewer) {
+    // Faire monter légèrement le reel viewer
+    reelsViewer.style.transform = "translateY(-60px)";
+
     panel.classList.add("open");
     // Stocker le postId courant
     window.currentReelCommentPostId = postId;
@@ -14779,14 +14784,22 @@ function openReelComments(postId) {
     setTimeout(() => {
       const input = document.getElementById("reelCommentInput");
       if (input) input.focus();
-    }, 300);
+      // Scroller vers le haut des commentaires
+      const list = document.getElementById("reelCommentsList");
+      if (list) list.scrollTop = 0;
+    }, 350);
   }
 }
 
 function closeReelComments() {
   const panel = document.getElementById("reelCommentsPanel");
+  const reelsViewer = document.getElementById("reelsViewer");
+
   if (panel) {
     panel.classList.remove("open");
+    if (reelsViewer) {
+      reelsViewer.style.transform = "translateY(0)";
+    }
     window.currentReelCommentPostId = null;
   }
 }
@@ -14801,27 +14814,36 @@ function loadReelComments(postId) {
   const comments = reel.comments || [];
 
   if (comments.length === 0) {
-    commentsList.innerHTML = '<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px;">Aucun commentaire pour le moment. Sois le premier! 🚀</div>';
+    commentsList.innerHTML = `
+      <div class="reel-comments-empty">
+        <div style="font-size:32px;margin-bottom:8px;">💬</div>
+        <div>Aucun commentaire pour le moment</div>
+        <div style="font-size:12px;opacity:0.7;margin-top:4px;">Sois le premier à commenter!</div>
+      </div>
+    `;
     return;
   }
 
   commentsList.innerHTML = comments.map((c, idx) => {
     const commenter = userById(c.authorId) || { name: c.authorName || "Anonyme", profileEmoji: "✨", avatar: "#8b5cf6" };
     const timeStr = c.timestamp ? fmtTime(c.timestamp) : "Maintenant";
+    const likesCount = c.reactions?.['❤️'] || 0;
+    const isLiked = c.liked ? "liked" : "";
 
     return `
       <div class="reel-comment-item">
-        <div class="reel-comment-avatar" style="background:${commenter.avatar};">${commenter.profileEmoji}</div>
-        <div class="reel-comment-content">
+        <div class="reel-comment-avatar" style="background:${commenter.avatar};" onclick="openUserProfile('${c.authorId}')" title="${escapeHtml(commenter.name)}">${commenter.profileEmoji}</div>
+        <div class="reel-comment-body">
           <div class="reel-comment-header">
-            <span class="reel-comment-name">${escapeHtml(commenter.name)}</span>
-            <span class="reel-comment-time">${timeStr}</span>
+            <span class="reel-comment-name" onclick="openUserProfile('${c.authorId}')">${escapeHtml(commenter.name)}</span>
+            <span class="reel-comment-badge">${timeStr}</span>
           </div>
           <div class="reel-comment-text">${escapeHtml(c.text || c.content || "")}</div>
-          <div class="reel-comment-actions">
-            <span class="reel-comment-action" onclick="reactToReelComment(${idx}, '❤️')">❤️ ${(c.reactions?.['❤️'] || 0) > 0 ? c.reactions['❤️'] : ''}</span>
-            <span class="reel-comment-action" onclick="shareReelComment(${idx})">📤 Partager</span>
+          <div class="reel-comment-footer">
+            <span class="reel-comment-like ${isLiked}" onclick="likeReelComment(${idx})">♡ J'aime</span>
+            <span class="reel-comment-reply" onclick="replyToReelComment(${idx})">↩️ Répondre</span>
           </div>
+          ${likesCount > 0 ? `<div class="reel-comment-likes-count">${likesCount} j'aime</div>` : ''}
         </div>
       </div>
     `;
