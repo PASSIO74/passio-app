@@ -14489,6 +14489,79 @@ const SEED_REEL_VIDEOS = [
   },
 ];
 
+function getSeedReelPostsWithComments(seedUsers) {
+  // Version de getSeedReelPosts() qui reçoit les users en paramètre
+  return SEED_REEL_VIDEOS.map(r => {
+    const commentExamples = [
+      { text: "J'aime beaucoup! 😍", author: "u_alex", name: "Alex" },
+      { text: "C'est incroyable!", author: "u_marie", name: "Marie" },
+      { text: "Trop cool 🔥", author: "u_luc", name: "Luc" },
+      { text: "Merci pour le partage!", author: "u_sara", name: "Sara" },
+      { text: "Je veux essayer ça!", author: "u_tom", name: "Tom" },
+      { text: "Magnifique ✨", author: "u_lisa", name: "Lisa" },
+    ];
+
+    const comments = [];
+    const numComments = Math.floor(Math.random() * 4) + 2;
+
+    for (let i = 0; i < numComments; i++) {
+      const comment = commentExamples[i % commentExamples.length];
+      const replies = [];
+
+      if (Math.random() > 0.7 && i === 0) {
+        const creatorUser = seedUsers.find(u => u.id === r.userId) || { name: "Créateur" };
+        replies.push({
+          type: "text",
+          text: "Merci! 😊",
+          authorId: r.userId,
+          authorName: creatorUser.name,
+          createdAt: Date.now() - 1 * 3600000
+        });
+      }
+
+      if (Math.random() > 0.8) {
+        const emojiReactions = ["😂", "❤️", "🔥", "👍", "🎉"];
+        replies.push({
+          type: "emoji_reaction",
+          text: emojiReactions[Math.floor(Math.random() * emojiReactions.length)],
+          authorId: "u_" + ["jade", "noah", "zoe", "oliver"][Math.floor(Math.random() * 4)],
+          authorName: ["Jade", "Noah", "Zoé", "Olivier"][Math.floor(Math.random() * 4)],
+          createdAt: Date.now() - 2 * 3600000
+        });
+      }
+
+      comments.push({
+        id: "comment_" + r.id + "_" + i,
+        text: comment.text,
+        authorId: comment.author,
+        authorName: comment.name,
+        createdAt: Date.now() - (i + 1) * 3600000,
+        likes: Math.floor(Math.random() * 15),
+        likedBy: [],
+        replies: replies
+      });
+    }
+
+    return {
+      id: r.id,
+      type: "video",
+      video: r.video,
+      fallback: r.fallback,
+      poster: r.poster,
+      userId: r.userId,
+      profileId: null,
+      passion: r.passion,
+      mood: r.mood,
+      text: r.text,
+      createdAt: r.createdAt,
+      likes: Math.floor(Math.random() * 280) + 30,
+      comments: comments,
+      reactions: {},
+      _source: "seed_reel",
+    };
+  });
+}
+
 function getSeedReelPosts() {
   // Convertit les seed reels en posts compatibles avec le rendu reels existant
   return SEED_REEL_VIDEOS.map(r => {
