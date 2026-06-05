@@ -12513,12 +12513,6 @@ function renderMessages() {
   renderMessageFilters();
 
   let filtered = [...convs].sort((a, b) => b.lastAt - a.lastAt);
-  // Filtre lu/non lu
-  if (msgReadFilter === "unread") {
-    filtered = filtered.filter(c => c.unread > 0);
-  } else if (msgReadFilter === "read") {
-    filtered = filtered.filter(c => !c.unread || c.unread === 0);
-  }
 
   if (!filtered.length) {
     list.innerHTML = "";
