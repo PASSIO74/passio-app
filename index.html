@@ -11360,11 +11360,26 @@ function renderCdvScreen() {
   const q = (($("#cdvSearchInput") && $("#cdvSearchInput").value) || "").toLowerCase().trim();
   let carnets = allCarnets();
 
-  if (cdvFilter === "saved") {
-    const saved = savedCarnets();
-    carnets = carnets.filter(c => saved.includes(c.id));
-  } else if (cdvFilter === "mine") {
-    carnets = carnets.filter(c => c._source === "me");
+  // Filtre multi-select: si des filtres sont sélectionnés, afficher UNIQUEMENT ceux-ci
+  if (cdvFilters && cdvFilters.size > 0) {
+    const saved = cdvFilters.has("saved") ? savedCarnets() : [];
+    const myCarnets = cdvFilters.has("mine") ? carnets.filter(c => c._source === "me") : [];
+
+    // Combiner les résultats de TOUS les filtres sélectionnés
+    const filtered = new Set();
+
+    if (cdvFilters.has("saved")) {
+      saved.forEach(id => {
+        const c = carnets.find(x => x.id === id);
+        if (c) filtered.add(c);
+      });
+    }
+
+    if (cdvFilters.has("mine")) {
+      myCarnets.forEach(c => filtered.add(c));
+    }
+
+    carnets = Array.from(filtered);
   }
 
   if (q) {
