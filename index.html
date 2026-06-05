@@ -8776,7 +8776,25 @@ function grantReward(kind, customLabel) {
 }
 
 // ======== NAVIGATION ========
+// Historique de navigation pour le bouton back du téléphone
+let navigationHistory = ["feed"];
+let isNavigatingBack = false;
+
 function goTo(screen) {
+  // Ajouter à l'historique seulement si ce n'est pas un retour en arrière
+  if (!isNavigatingBack) {
+    // Ne pas ajouter si c'est le même écran
+    if (navigationHistory[navigationHistory.length - 1] !== screen) {
+      navigationHistory.push(screen);
+      // Limiter l'historique à 20 écrans
+      if (navigationHistory.length > 20) {
+        navigationHistory.shift();
+      }
+    }
+    // Utiliser l'History API pour le bouton back
+    window.history.pushState({ screen }, "", "#" + screen);
+  }
+
   $$(".nav-item").forEach(n => {
     const is = n.getAttribute("data-screen") === screen;
     n.classList.toggle("active", is);
@@ -8797,6 +8815,15 @@ function goTo(screen) {
   if (screen === "messages") renderMessages();
   if (screen === "cdv")      renderCdvScreen();
 }
+
+// Gérer le bouton back du téléphone
+window.addEventListener("popstate", (e) => {
+  if (e.state && e.state.screen) {
+    isNavigatingBack = true;
+    goTo(e.state.screen);
+    isNavigatingBack = false;
+  }
+});
 
 function toggleDevPanel() {
   $("#devPanel").classList.toggle("active");
