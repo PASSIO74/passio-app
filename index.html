@@ -8879,10 +8879,7 @@ function buildSeed() {
     { id: "q12", emoji: "🌟", title: "Crée une passion communautaire", reward: 200, passia: 35, target: 1, progress: 0, type: "create_passion", kind: "community", done: false },
   ];
 
-  // Ajouter les bobines avec commentaires d'exemple
-  const seedReels = getSeedReelPosts();
-
-  return { users: seedUsers, posts: [...seedPosts, ...seedReels], events: seedEvents, stories: seedStories, notifications: seedNotifications, quests: seedQuests };
+  return { users: seedUsers, posts: seedPosts, events: seedEvents, stories: seedStories, notifications: seedNotifications, quests: seedQuests };
 }
 
 function defaultState() {
