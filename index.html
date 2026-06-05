@@ -14495,6 +14495,9 @@ function closeReels() {
   // Pause toutes les vidéos
   document.querySelectorAll("#reelsList video").forEach(vid => { try { vid.pause(); } catch(e){} });
   if (reelsState.observer) { try { reelsState.observer.disconnect(); } catch(e){} reelsState.observer = null; }
+
+  // Mettre à jour le bouton retour
+  updateBackButtonVisibility();
 }
 
 function resumeReels() {
