@@ -16373,7 +16373,7 @@ function renderIrlPassionTiles() {
   row.innerHTML = html;
 }
 
-var irlDateFilter = "all";
+var irlDateFilters = new Set(["today"]);
 var irlCustomDate = null;
 
 function setIrlDateFilter(val, btn) {
