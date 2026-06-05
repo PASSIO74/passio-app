@@ -16148,6 +16148,23 @@ document.addEventListener("click", (e) => {
   renderIRL();
 });
 
+// Événements click pour "Mes events" et "Inscrit"
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-irlfilter]");
+  if (!btn) return;
+  const filterType = btn.getAttribute("data-irlfilter");
+
+  // Toggle multi-select
+  if (irlFilters.has(filterType)) {
+    irlFilters.delete(filterType);
+  } else {
+    irlFilters.add(filterType);
+  }
+
+  btn.classList.toggle("active");
+  renderIRL();
+});
+
 function allEvents() {
   const seedEvIds = new Set((state.seed.events || []).map(e => e.id));
   const myEvFiltered = (state.userEvents || []).filter(e => !seedEvIds.has(e.id));
