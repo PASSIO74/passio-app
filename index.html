@@ -16546,6 +16546,23 @@ function getClosestCity(lat, lng) {
   return closestCity;
 }
 
+// Mettre à jour le titre avec la ville (sélectionnée ou détectée)
+function updateIrlCityTitle() {
+  const titleEl = document.getElementById("irlUserCityName");
+  if (!titleEl) return;
+
+  let displayName = "France";
+  if (irlSelectedCity) {
+    displayName = irlSelectedCity.name + " (recherche)";
+  } else if (irlUserLocation) {
+    displayName = getClosestCity(irlUserLocation.lat, irlUserLocation.lng);
+  } else if (irlUserLocationError) {
+    displayName = "Paris (approx)";
+  }
+
+  titleEl.textContent = displayName;
+}
+
 // Sélecteur de ville pour IRL
 function openIrlCitySelector() {
   const citiesList = Object.keys(FRANCE_CITIES).map(name => ({
