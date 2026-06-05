@@ -16531,10 +16531,13 @@ function updateIrlMapMarkers() {
   // Supprimer les événements passés
   events = events.filter(function(e) { return e.date > currentTime; });
 
+  console.log("[CARTE] Événements total:", events.length, "Profils filtrés:", Array.from(irlPassionFilters));
+
   // Filtre par passion (multi-select)
   var filtered = events;
   if (irlPassionFilters && irlPassionFilters.size > 0) {
     filtered = filtered.filter(function(e) { return irlPassionFilters.has(e.passion); });
+    console.log("[CARTE] Après filtre passion:", filtered.length);
   }
 
   // Filtre par type (multi-select mine/joined)
