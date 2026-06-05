@@ -16891,18 +16891,25 @@ function filterIrlByDistance() {
   // Priorité: distance personnalisée > sélecteur
   if (customDistance && customDistance.value) {
     irlDistanceFilter = customDistance.value;
-  } else if (distanceSelect) {
-    irlDistanceFilter = distanceSelect.value || "";
+  } else if (distanceSelect && distanceSelect.value) {
+    irlDistanceFilter = distanceSelect.value;
+  } else {
+    irlDistanceFilter = ""; // Aucun filtre distance
   }
 
+  console.log("[IRL Filter] Distance:", irlDistanceFilter);
   renderIRL();
 }
 
 function filterIrlByTime() {
   const timeInput = document.getElementById("irlTimeFilter");
-  if (timeInput) {
-    irlTimeFilter = timeInput.value || "";
+  if (timeInput && timeInput.value) {
+    irlTimeFilter = timeInput.value;
+  } else {
+    irlTimeFilter = ""; // Aucun filtre heure
   }
+
+  console.log("[IRL Filter] Heure:", irlTimeFilter);
   renderIRL();
 }
 
