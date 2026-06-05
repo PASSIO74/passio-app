@@ -11470,11 +11470,21 @@ function renderCdvScreen() {
   }).join("");
 }
 
-// Click sur les pills filter de CDV
+// Click sur les pills filter de CDV - multi-select
 document.addEventListener("click", (e) => {
   const t = e.target.closest("#cdvFilterRow [data-cdvfilter]");
   if (!t) return;
-  cdvFilter = t.getAttribute("data-cdvfilter");
+
+  const filterType = t.getAttribute("data-cdvfilter");
+
+  // Toggle multi-select
+  if (cdvFilters.has(filterType)) {
+    cdvFilters.delete(filterType);
+  } else {
+    cdvFilters.add(filterType);
+  }
+
+  console.log("[CDV] Filtres sélectionnés:", Array.from(cdvFilters));
   renderCdvScreen();
 });
 
