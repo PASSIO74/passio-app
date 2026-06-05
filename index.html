@@ -7660,7 +7660,7 @@
           <button class="reel-emoji-btn" onclick="reactToReel('😮')" title="Surpris">😮</button>
         </div>
         <div class="reel-comments-input-wrapper">
-          <textarea class="reel-comments-input" id="reelCommentInput" placeholder="Lancez la conversation..." rows="1"></textarea>
+          <textarea class="reel-comments-input" id="reelCommentInput" placeholder="Lancez la conversation..." rows="1" oninput="autoResizeReelCommentInput()"></textarea>
           <button class="reel-comments-send" onclick="submitReelComment()" title="Envoyer">↑</button>
         </div>
       </div>
