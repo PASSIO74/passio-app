@@ -16738,10 +16738,8 @@ function renderIRL() {
     requestUserLocation();
   }
 
-  // Initialiser les filtres passion avec les profils de l'utilisateur
-  if (irlPassionFilters.size === 0) {
-    initializeIrlPassionFilters();
-  }
+  // Initialiser les filtres passion avec les profils de l'utilisateur (TOUJOURS, pas une seule fois)
+  initializeIrlPassionFilters();
 
   renderIrlPassionTiles();
   initIrlMap();
