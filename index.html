@@ -21737,17 +21737,34 @@ setTimeout(function() {
   }
 }, 200);
 
-// INITIALISATION BOUTON DIAGNOSTIC 🔧
+// INITIALISATION BOUTON DIAGNOSTIC 🔧 - Caché par défaut
 setTimeout(function() {
   var diagBtn = document.createElement("button");
   diagBtn.id = "__diag_btn";
   diagBtn.textContent = "🔧";
-  diagBtn.style.cssText = "position:fixed;top:20px;right:20px;width:40px;height:40px;border-radius:50%;background:#666;border:none;color:#fff;font-size:18px;cursor:pointer;z-index:99999;box-shadow:0 2px 8px rgba(0,0,0,0.3);transition:background 0.2s;";
-  diagBtn.title = "Activer/Désactiver le mode diagnostic";
+  diagBtn.style.cssText = "position:fixed;top:20px;right:20px;width:40px;height:40px;border-radius:50%;background:#666;border:none;color:#fff;font-size:18px;cursor:pointer;z-index:99999;box-shadow:0 2px 8px rgba(0,0,0,0.3);transition:background 0.2s;display:none;";
+  diagBtn.title = "Appuie sur Ctrl+Shift+D pour activer/désactiver";
   diagBtn.onclick = toggleDiagPanel;
   diagBtn.onmouseover = function() { if(!window._DEBUG_MODE) this.style.background = "#777"; };
   diagBtn.onmouseout = function() { if(!window._DEBUG_MODE) this.style.background = "#666"; };
   document.body.appendChild(diagBtn);
+
+  // Raccourci clavier: Ctrl+Shift+D pour afficher/masquer le bouton diagnostic
+  document.addEventListener("keydown", function(e) {
+    if (e.ctrlKey && e.shiftKey && e.code === "KeyD") {
+      e.preventDefault();
+      var btn = document.getElementById("__diag_btn");
+      if (btn) {
+        var isVisible = btn.style.display !== "none";
+        btn.style.display = isVisible ? "none" : "flex";
+        if (!isVisible) {
+          window._DEBUG_MODE = true;
+          btn.style.background = "#ec4899";
+          btn.style.borderColor = "#ec4899";
+        }
+      }
+    }
+  });
 }, 500);
 
 // INITIALISATION BOUTON RETOUR
