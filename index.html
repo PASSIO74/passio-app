@@ -16619,11 +16619,11 @@ function updateIrlMapMarkers() {
 
   if (refLoc) {
     const userIcon = L.divIcon({
-      className: "passio-marker-wrap",
-      html: `<div class="passio-marker" style="font-size:28px;line-height:1;cursor:pointer;">📍</div>`,
-      iconSize: [36, 36],
-      iconAnchor: [18, 18],
-      popupAnchor: [0, -16],
+      className: "",
+      html: `<div style="font-size:32px;line-height:1;cursor:pointer;text-shadow:0 1px 3px rgba(0,0,0,0.3);">📍</div>`,
+      iconSize: [32, 32],
+      iconAnchor: [16, 32],
+      popupAnchor: [0, -32],
     });
     const userMarker = L.marker([refLoc.lat, refLoc.lng], { icon: userIcon }).addTo(irlMarkersLayer);
     userMarker.bindPopup(`
