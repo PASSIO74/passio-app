@@ -16546,6 +16546,73 @@ function getClosestCity(lat, lng) {
   return closestCity;
 }
 
+// Sélecteur de ville pour IRL
+function openIrlCitySelector() {
+  const citiesList = Object.keys(FRANCE_CITIES).map(name => ({
+    name: name.charAt(0).toUpperCase() + name.slice(1),
+    id: name,
+    coords: FRANCE_CITIES[name]
+  })).sort((a, b) => a.name.localeCompare(b.name));
+
+  let html = `
+    <div class="modal-handle"></div>
+    <div class="modal-title">🔍 Chercher une ville</div>
+    <input type="text" class="input" id="irlCitySearchInput" placeholder="Tape le nom d'une ville..." style="margin-bottom:12px;" />
+    <div id="irlCitiesGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;max-height:300px;overflow-y:auto;margin-bottom:12px;">
+  `;
+
+  citiesList.forEach(city => {
+    html += `<button class="pill" onclick="selectIrlCity('${city.id}', '${city.name}')" style="width:100%;justify-content:center;">
+      ${city.name}
+    </button>`;
+  });
+
+  html += `
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn secondary block" onclick="closeModal()">Annuler</button>
+      <button class="btn primary block" onclick="clearIrlCitySelection()">📍 Ma position</button>
+    </div>
+  `;
+
+  openModal(html);
+
+  // Filtre en temps réel
+  const searchInput = document.getElementById("irlCitySearchInput");
+  const citiesGrid = document.getElementById("irlCitiesGrid");
+  if (searchInput && citiesGrid) {
+    searchInput.addEventListener("input", (e) => {
+      const query = e.target.value.toLowerCase();
+      const buttons = citiesGrid.querySelectorAll("button");
+      buttons.forEach(btn => {
+        const text = btn.textContent.toLowerCase();
+        btn.style.display = text.includes(query) ? "block" : "none";
+      });
+    });
+    setTimeout(() => searchInput.focus(), 100);
+  }
+}
+
+// Sélectionner une ville spécifique
+function selectIrlCity(cityId, cityName) {
+  irlSelectedCity = {
+    id: cityId,
+    name: cityName,
+    coords: FRANCE_CITIES[cityId]
+  };
+  _diag("[IRL] 🏙️ Ville sélectionnée: " + cityName);
+  closeModal();
+  renderIRL();
+}
+
+// Revenir à ta position
+function clearIrlCitySelection() {
+  irlSelectedCity = null;
+  _diag("[IRL] 🗺️ Retour à ta position");
+  closeModal();
+  renderIRL();
+}
+
 let irlMap = null;
 let irlMarkersLayer = null;
 
