@@ -16847,7 +16847,8 @@ function renderIRL() {
         _diag("[DISTANCE] " + e.title + " → Ville: '" + (e.city || e.location || "?") + "' (non reconnue) ⚠️");
         return true; // Inclure si pas de localisation
       }
-      const dist = calculateDistance(refLoc.lat, refLoc.lng, eventLoc.lat, eventLoc.lng);
+      // eventLoc est un tableau [lat, lng]
+      const dist = calculateDistance(refLoc.lat, refLoc.lng, eventLoc[0], eventLoc[1]);
       const isWithin = dist <= maxDistanceKm;
       if (isWithin) distIncluded++;
       _diag("[DISTANCE] " + e.title + " → " + (e.city || e.location) + " (" + dist.toFixed(1) + "km) " + (isWithin ? "✅" : "❌"));
