@@ -14844,10 +14844,11 @@ function loadReelComments(postId) {
   commentsList.innerHTML = comments.map((c, idx) => {
     const commenter = userById(c.authorId) || { name: c.authorName || "Anonyme", profileEmoji: "✨", avatar: "#8b5cf6" };
     const timeStr = c.timestamp ? fmtTime(c.timestamp) : "Maintenant";
-    const likesCount = c.reactions?.['❤️'] || 0;
-    const isLiked = c.liked ? "liked" : "";
+    const likesCount = c.likes || 0;
+    const isLiked = (c.likedBy || []).includes(state.user?.id || "me");
+    const replies = c.replies || [];
 
-    return `
+    let commentHTML = `
       <div class="reel-comment-item">
         <div class="reel-comment-avatar" style="background:${commenter.avatar};" onclick="openUserProfile('${c.authorId}')" title="${escapeHtml(commenter.name)}">${commenter.profileEmoji}</div>
         <div class="reel-comment-body">
@@ -14857,13 +14858,33 @@ function loadReelComments(postId) {
           </div>
           <div class="reel-comment-text">${escapeHtml(c.text || c.content || "")}</div>
           <div class="reel-comment-footer">
-            <span class="reel-comment-like ${isLiked}" onclick="likeReelComment(${idx})">♡ J'aime</span>
-            <span class="reel-comment-reply" onclick="replyToReelComment(${idx})">↩️ Répondre</span>
+            <span class="reel-comment-like ${isLiked ? 'liked' : ''}" onclick="likeReelComment('${postId}', ${idx})">${isLiked ? '❤️' : '🤍'} ${likesCount}</span>
+            <span class="reel-comment-reply" onclick="replyToReelCommentBox('${postId}', ${idx}, '${escapeHtml(commenter.name)}')">💬</span>
+            <span class="reel-comment-action" onclick="showEmojiPickerForReelComment('${postId}', ${idx})" title="Réagir">😊</span>
+            <span class="reel-comment-action" onclick="showGifPickerForReelComment('${postId}', ${idx})" title="GIF">🎬</span>
+            ${replies.length > 0 ? `<span class="reel-comment-reply-count" onclick="toggleReelCommentReplies(${idx})">${replies.length} réponse${replies.length > 1 ? 's' : ''}</span>` : ''}
           </div>
-          ${likesCount > 0 ? `<div class="reel-comment-likes-count">${likesCount} j'aime</div>` : ''}
         </div>
       </div>
     `;
+
+    // Afficher les réponses si elles existent
+    if (replies.length > 0) {
+      commentHTML += `<div class="reel-comment-replies" id="reel-replies-${idx}" style="display:none;margin-left:40px;padding-top:8px;">`;
+      replies.forEach(r => {
+        const replyAuthor = userById(r.authorId) || { name: r.authorName || "?", profileEmoji: "👤", avatar: "#64748b" };
+        if (r.type === "emoji_reaction") {
+          commentHTML += `<div style="padding:6px 0;font-size:11px;"><span style="font-weight:600;cursor:pointer;" onclick="openUserProfile('${r.authorId}')">${escapeHtml(replyAuthor.name)}</span>: <span style="font-size:18px;letter-spacing:2px;">${r.text}</span></div>`;
+        } else if (r.type === "gif_reaction") {
+          commentHTML += `<div style="padding:6px 0;"><span style="font-size:11px;font-weight:600;cursor:pointer;" onclick="openUserProfile('${r.authorId}')">${escapeHtml(replyAuthor.name)}</span>:<br><img src="${r.text}" style="width:120px;height:120px;border-radius:8px;margin-top:6px;object-fit:cover;" alt="GIF" /></div>`;
+        } else {
+          commentHTML += `<div style="padding:6px 0;font-size:12px;"><span style="font-weight:600;cursor:pointer;" onclick="openUserProfile('${r.authorId}')">${escapeHtml(replyAuthor.name)}</span>: ${escapeHtml(r.text)}</div>`;
+        }
+      });
+      commentHTML += `</div>`;
+    }
+
+    return commentHTML;
   }).join("");
 }
 
