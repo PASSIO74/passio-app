@@ -11317,8 +11317,8 @@ function setStudioToVlog() {
   }, 200);
 }
 
-// Filtre actif sur l'écran CDV (all / saved / mine)
-let cdvFilter = "all";
+// Filtre actif sur l'écran CDV - multi-select (saved / mine / live)
+let cdvFilters = new Set(); // Vide par défaut = affiche TOUS les carnets
 
 function renderCdvScreen() {
   const list = document.getElementById("cdvList");
@@ -11327,13 +11327,15 @@ function renderCdvScreen() {
   // Render les CDV Lives en cours
   if (typeof renderCdvLives === "function") renderCdvLives();
 
-  // Sync filter pills
+  // Sync filter pills (multi-select)
   document.querySelectorAll("#cdvFilterRow .pill").forEach(p => {
-    p.classList.toggle("active", p.getAttribute("data-cdvfilter") === cdvFilter);
+    const filterType = p.getAttribute("data-cdvfilter");
+    p.classList.toggle("active", cdvFilters && cdvFilters.has(filterType));
   });
 
-  // Filtre live : montrer uniquement les CDV Lives terminés
-  if (cdvFilter === "live") {
+  // Filtre multi-select: affiche seulement si "live" est l'UNIQUE filtre
+  const showLiveOnly = cdvFilters && cdvFilters.size === 1 && cdvFilters.has("live");
+  if (showLiveOnly) {
     const ended = getCdvLives().filter(l => l.status === "ended");
     const ongoing = getCdvLives().filter(l => l.status === "live");
     if (!ended.length && !ongoing.length) {
