@@ -16438,8 +16438,16 @@ function renderIRL() {
   // Filtre par passion
   var filtered = events;
   if (irlPassionFilter !== "all") filtered = filtered.filter(function(e) { return e.passion === irlPassionFilter; });
-  if (irlFilter === "mine") filtered = filtered.filter(function(e) { return e._mine; });
-  if (irlFilter === "joined") filtered = filtered.filter(function(e) { return (state.user.joinedEvents || []).includes(e.id); });
+
+  // Filtre par type d'événement (multi-select)
+  if (irlFilters && irlFilters.size > 0) {
+    filtered = filtered.filter(function(e) {
+      var matches = false;
+      if (irlFilters.has("mine") && e._mine) matches = true;
+      if (irlFilters.has("joined") && (state.user.joinedEvents || []).includes(e.id)) matches = true;
+      return matches;
+    });
+  }
 
   // Filtre par date (multi-select)
   if (irlDateFilters && irlDateFilters.size > 0) {
