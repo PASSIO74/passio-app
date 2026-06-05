@@ -16844,13 +16844,13 @@ function renderIRL() {
     filtered = filtered.filter(function(e) {
       const eventLoc = cityToLatLng(e.city) || cityToLatLng(e.location);
       if (!eventLoc) {
-        _diag("[DISTANCE] " + e.title + " → Sans ville (INCLUS)");
+        _diag("[DISTANCE] " + e.title + " → Ville: '" + (e.city || e.location || "?") + "' (non reconnue) ⚠️");
         return true; // Inclure si pas de localisation
       }
       const dist = calculateDistance(refLoc.lat, refLoc.lng, eventLoc.lat, eventLoc.lng);
       const isWithin = dist <= maxDistanceKm;
       if (isWithin) distIncluded++;
-      _diag("[DISTANCE] " + e.title + " → " + dist.toFixed(1) + "km " + (isWithin ? "✅" : "❌"));
+      _diag("[DISTANCE] " + e.title + " → " + (e.city || e.location) + " (" + dist.toFixed(1) + "km) " + (isWithin ? "✅" : "❌"));
       return isWithin;
     });
     _diag("[DISTANCE] RÉSULTAT: " + distIncluded + "/" + events.length + " événements");
