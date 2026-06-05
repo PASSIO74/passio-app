@@ -16043,8 +16043,8 @@ function initializeIrlPassionFilters() {
     userPassionIds.forEach(p => irlPassionFilters.add(p));
   } else {
     // Pas de profils créés, afficher TOUTES les passions
-    const allEvents = allEvents();
-    const allPassions = [...new Set(allEvents.map(e => e.passion).filter(Boolean))];
+    const events = allEvents();
+    const allPassions = [...new Set(events.map(e => e.passion).filter(Boolean))];
     allPassions.forEach(p => irlPassionFilters.add(p));
   }
 }
