@@ -16485,13 +16485,8 @@ function requestUserLocation() {
 
       // Afficher la ville de l'utilisateur
       const cityName = getClosestCity(irlUserLocation.lat, irlUserLocation.lng);
-      const titleEl = document.getElementById("irlUserLocationTitle");
-      const cityEl = document.getElementById("irlUserCityName");
-      if (titleEl && cityEl) {
-        cityEl.textContent = cityName;
-        titleEl.style.display = "block";
-        _diag("[GEO] 🏙️ Ville détectée: " + cityName);
-      }
+      updateIrlCityTitle();
+      _diag("[GEO] 🏙️ Ville détectée: " + cityName);
 
       renderIRL(); // Re-render avec la nouvelle position
     },
@@ -16503,12 +16498,7 @@ function requestUserLocation() {
       _diag("[GEO] 🔄 Fallback PARIS: 48.8566, 2.3522");
 
       // Afficher Paris comme fallback
-      const titleEl = document.getElementById("irlUserLocationTitle");
-      const cityEl = document.getElementById("irlUserCityName");
-      if (titleEl && cityEl) {
-        cityEl.textContent = "Paris (approx)";
-        titleEl.style.display = "block";
-      }
+      updateIrlCityTitle();
 
       renderIRL();
     },
