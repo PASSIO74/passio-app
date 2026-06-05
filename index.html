@@ -15059,12 +15059,7 @@ function showEmojiPickerForReelComment(postId, commentIdx) {
 }
 
 function showGifPickerForReelComment(postId, commentIdx) {
-  // Chercher dans buildReels() en priorité
-  const allReels = buildReels();
-  let reel = allReels.find(p => p.id === postId);
-  if (!reel) {
-    reel = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
-  }
+  const reel = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
   if (!reel || !reel.comments || !reel.comments[commentIdx]) return;
 
   const gifs = [
