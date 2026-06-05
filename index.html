@@ -16344,10 +16344,10 @@ function updateIrlMapMarkers() {
   // Supprimer les événements passés
   events = events.filter(function(e) { return e.date > currentTime; });
 
-  // Filtre par passion
+  // Filtre par passion (multi-select)
   var filtered = events;
-  if (irlPassionFilter !== "all") {
-    filtered = filtered.filter(function(e) { return e.passion === irlPassionFilter; });
+  if (irlPassionFilters && irlPassionFilters.size > 0) {
+    filtered = filtered.filter(function(e) { return irlPassionFilters.has(e.passion); });
   }
 
   // Filtre par type (multi-select mine/joined)
