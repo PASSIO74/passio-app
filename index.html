@@ -8481,6 +8481,67 @@ function buildSeed() {
       city: "Saint-Denis", venue: "Studio Oussa", address: "48 rue de la Paix", postalCode: "93200",
       contact: "oussa.farid@passio.app", price: 10, maxAttendees: 20,
       attendees: ["u_lea", "u_raph"], desc: "Beatmakers débutants à confirmés. Apporte ton laptop ou utilise les équips du studio. Echanges sur prod, sample, mix. Freestyle sessions." },
+
+    // ÉVÉNEMENTS PROCHES DE PARIS (pour les filtres distance)
+    { id: "e41", title: "Yoga matin à Versailles", passion: "yoga", emoji: "🧘",
+      eventType: "Cours", organizerId: "u_emma", date: todayAt(7, 0), time: "07:00",
+      city: "Versailles", venue: "Parc de Versailles", address: "Place d'Armes", postalCode: "78000",
+      contact: "emma.wright@passio.app", price: 5, maxAttendees: 15,
+      attendees: ["u_sofia"], desc: "Yoga doux dans les jardins du château. ~15km de Paris. Prévoir tapis et bouteille d'eau." },
+
+    { id: "e42", title: "Balade vélo Fontainebleau", passion: "sport", emoji: "🚴",
+      eventType: "Randonnée", organizerId: "u_clara", date: tomorrowAt(9, 0), time: "09:00",
+      city: "Fontainebleau", venue: "Gare de Fontainebleau", address: "Place de la Gare", postalCode: "77300",
+      contact: "clara.jensen@passio.app", price: 0, maxAttendees: 12,
+      attendees: ["u_mehdi", "u_raph"], desc: "Sortie vélo facile ~50km autour de Fontainebleau. ~50km de Paris. Tous niveaux." },
+
+    { id: "e43", title: "Pique-nique photos Fontainebleau", passion: "photo", emoji: "📷",
+      eventType: "Sortie", organizerId: "u_karim", date: inDaysAt(2, 10, 0), time: "10:00",
+      city: "Fontainebleau", venue: "Forêt de Fontainebleau", address: "Parking Gorges de Franchard", postalCode: "77300",
+      contact: "karim.belkacem@passio.app", price: 0, maxAttendees: 8,
+      attendees: ["u_nina"], desc: "Photo nature en forêt. Lumière douce matin. Pique-nique partage après shoot. ~50km." },
+
+    { id: "e44", title: "Atelier poterie Fontainebleau", passion: "art", emoji: "🏺",
+      eventType: "Atelier", organizerId: "u_lou", date: inDaysAt(3, 14, 0), time: "14:00",
+      city: "Fontainebleau", venue: "Studio Terre & Feu", address: "15 rue du Four", postalCode: "77300",
+      contact: "lou.petit@passio.app", price: 20, maxAttendees: 10,
+      attendees: ["u_inès"], desc: "Atelier poterie 3h. Débutants welcome. Tout fourni. ~50km de Paris." },
+
+    { id: "e45", title: "Brunch littéraire Rambouilet", passion: "litterature", emoji: "📚",
+      eventType: "Rencontre", organizerId: "u_sofia", date: inDaysAt(1, 10, 30), time: "10:30",
+      city: "Rambouillet", venue: "Café du Château", address: "22 place Poulain", postalCode: "78120",
+      contact: "sofia.lindqvist@passio.app", price: 15, maxAttendees: 16,
+      attendees: ["u_anaïs"], desc: "Brunch + discussion littéraire autour des lectures du mois. ~70km. RDV intérieur café." },
+
+    { id: "e46", title: "Jam session jazz Boulogne", passion: "musique", emoji: "🎸",
+      eventType: "Jam", organizerId: "u_lea", date: todayAt(19, 30), time: "19:30",
+      city: "Boulogne-Billancourt", venue: "Blues Club", address: "8 rue des Pécheurs", postalCode: "92100",
+      contact: "lea.moreau@passio.app", price: 8, maxAttendees: 25,
+      attendees: ["u_oussa"], desc: "Jam jazz gratuit ce soir! Musiciens du dimanche welcome. ~3km de Paris. Buvettes sur place." },
+
+    { id: "e47", title: "Tech meetup Neuilly", passion: "tech", emoji: "💻",
+      eventType: "Meetup", organizerId: "u_raph", date: inDaysAt(1, 18, 0), time: "18:00",
+      city: "Neuilly-sur-Seine", venue: "Hub Tech Neuilly", address: "35 avenue du Maréchal", postalCode: "92200",
+      contact: "raph.thys@passio.app", price: 0, maxAttendees: 40,
+      attendees: ["u_yanis", "u_tom"], desc: "Meetup mensuel tech: IA, DevOps, startups. ~5km. Apéro offert." },
+
+    { id: "e48", title: "Danse urbaine Montreuil", passion: "danse", emoji: "💃",
+      eventType: "Classe", organizerId: "u_amira", date: inDaysAt(2, 18, 0), time: "18:00",
+      city: "Montreuil", venue: "Studio Urban Groove", address: "42 rue de Miromesnil", postalCode: "93100",
+      contact: "amira.haddad@passio.app", price: 12, maxAttendees: 20,
+      attendees: ["u_mila"], desc: "Hip-hop, popping, locking. Tous niveaux. ~8km de Paris. Musique live." },
+
+    { id: "e49", title: "Mode éthique workshop Marais", passion: "mode", emoji: "👗",
+      eventType: "Atelier", organizerId: "u_zoe", date: inDaysAt(4, 15, 0), time: "15:00",
+      city: "Paris", venue: "Marais Créatif", address: "50 rue du Turenne", postalCode: "75003",
+      contact: "zoe.marchand@passio.app", price: 25, maxAttendees: 12,
+      attendees: ["u_rita"], desc: "Mode éthique & durable. Apprendre à coudre une pièce. ~0km (dans Paris)." },
+
+    { id: "e50", title: "Cuisine méditerranéenne la Défense", passion: "cuisine", emoji: "🍳",
+      eventType: "Atelier", organizerId: "u_theo", date: inDaysAt(3, 19, 0), time: "19:00",
+      city: "La Défense", venue: "Cook Studio", address: "15 place de la Défense", postalCode: "92400",
+      contact: "theo.roussel@passio.app", price: 35, maxAttendees: 14,
+      attendees: ["u_emma"], desc: "Cuisine méditerranéenne: pâtes fraîches & sauces. Apéro inclus. ~10km. Beaucoup de rires!" },
   ];
 
   const seedStories = [
