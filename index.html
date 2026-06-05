@@ -18334,6 +18334,9 @@ function openStoryViewer(idx) {
   storyIdx = idx;
   $("#storyViewer").classList.add("active");
   playCurrentStory();
+
+  // Mettre à jour le bouton retour
+  updateBackButtonVisibility();
 }
 
 function playCurrentStory() {
