@@ -16615,6 +16615,30 @@ function initIrlMap() {
 function updateIrlMapMarkers() {
   if (!irlMap || !irlMarkersLayer) return;
   irlMarkersLayer.clearLayers();
+
+  // Ajouter un marqueur pour la position actuelle
+  var refLoc = null;
+  var locLabel = "";
+  if (irlSelectedCity) {
+    refLoc = { lat: irlSelectedCity.coords[0], lng: irlSelectedCity.coords[1] };
+    locLabel = irlSelectedCity.name;
+  } else if (irlUserLocation) {
+    refLoc = irlUserLocation;
+    locLabel = getClosestCity(irlUserLocation.lat, irlUserLocation.lng);
+  }
+
+  if (refLoc) {
+    const userIcon = L.divIcon({
+      className: "passio-marker-wrap",
+      html: `<div class="passio-marker" style="background:#7c3aed;color:#fff;border:3px solid #fff;box-shadow:0 0 0 2px #7c3aed;font-size:18px;">📍</div>`,
+      iconSize: [44, 44],
+      iconAnchor: [22, 22],
+      popupAnchor: [0, -18],
+    });
+    const userMarker = L.marker([refLoc.lat, refLoc.lng], { icon: userIcon }).addTo(irlMarkersLayer);
+    userMarker.bindPopup(`<div style="text-align:center;"><strong>Repère</strong><br/>${locLabel}</div>`);
+  }
+
   var events = allEvents();
   var currentTime = Date.now();
 
