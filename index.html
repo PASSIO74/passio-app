@@ -16428,7 +16428,7 @@ function updateIrlMapMarkers() {
   });
 
   // Auto-zoom sur les marqueurs filtrés
-  if ((irlPassionFilter !== "all" || (irlDateFilters && irlDateFilters.size > 0) || (irlFilters && irlFilters.size > 0)) && points.length > 0) {
+  if (((irlPassionFilters && irlPassionFilters.size > 0) || (irlDateFilters && irlDateFilters.size > 0) || (irlFilters && irlFilters.size > 0)) && points.length > 0) {
     irlMap.fitBounds(L.latLngBounds(points), { padding: [40, 40], maxZoom: 11 });
   } else if (points.length === 0) {
     irlMap.setView([46.6, 2.5], 5.7);
