@@ -16273,27 +16273,55 @@ function updateIrlMapMarkers() {
     filtered = filtered.filter(function(e) { return e.passion === irlPassionFilter; });
   }
 
-  // Filtre par type (mine/joined)
-  if (irlFilter === "mine") filtered = filtered.filter(function(e) { return e._mine; });
-  if (irlFilter === "joined") filtered = filtered.filter(function(e) { return (state.user.joinedEvents || []).includes(e.id); });
+  // Filtre par type (multi-select mine/joined)
+  if (irlFilters && irlFilters.size > 0) {
+    filtered = filtered.filter(function(e) {
+      var matches = false;
+      if (irlFilters.has("mine") && e._mine) matches = true;
+      if (irlFilters.has("joined") && (state.user.joinedEvents || []).includes(e.id)) matches = true;
+      return matches;
+    });
+  }
 
-  // Filtre par date — même logique que renderIRL
-  if (irlDateFilter === "today") {
-    var todayStart = new Date(); todayStart.setHours(0,0,0,0);
-    var todayEnd = new Date(); todayEnd.setHours(23,59,59,999);
-    filtered = filtered.filter(function(e) { return e.date >= todayStart.getTime() && e.date <= todayEnd.getTime(); });
-  } else if (irlDateFilter === "tomorrow") {
-    var tmrStart = new Date(); tmrStart.setDate(tmrStart.getDate()+1); tmrStart.setHours(0,0,0,0);
-    var tmrEnd = new Date(); tmrEnd.setDate(tmrEnd.getDate()+1); tmrEnd.setHours(23,59,59,999);
-    filtered = filtered.filter(function(e) { return e.date >= tmrStart.getTime() && e.date <= tmrEnd.getTime(); });
-  } else if (irlDateFilter === "week") {
-    var weekEnd = currentTime + 7 * 86400000;
-    filtered = filtered.filter(function(e) { return e.date >= currentTime && e.date <= weekEnd; });
-  } else if (irlDateFilter === "month") {
-    var monthEnd = currentTime + 30 * 86400000;
-    filtered = filtered.filter(function(e) { return e.date >= currentTime && e.date <= monthEnd; });
-  } else if (irlDateFilter === "custom" && irlCustomDate) {
-    filtered = filtered.filter(function(e) { return e.date >= irlCustomDate.start && e.date <= irlCustomDate.end; });
+  // Filtre par date (multi-select) — même logique que renderIRL
+  if (irlDateFilters && irlDateFilters.size > 0) {
+    filtered = filtered.filter(function(e) {
+      var matches = false;
+      if (irlDateFilters.has("today")) {
+        var todayStart = new Date(); todayStart.setHours(0,0,0,0);
+        var todayEnd = new Date(); todayEnd.setHours(23,59,59,999);
+        if (e.date >= todayStart.getTime() && e.date <= todayEnd.getTime()) matches = true;
+      }
+      if (irlDateFilters.has("tomorrow")) {
+        var tmrStart = new Date(); tmrStart.setDate(tmrStart.getDate()+1); tmrStart.setHours(0,0,0,0);
+        var tmrEnd = new Date(); tmrEnd.setDate(tmrEnd.getDate()+1); tmrEnd.setHours(23,59,59,999);
+        if (e.date >= tmrStart.getTime() && e.date <= tmrEnd.getTime()) matches = true;
+      }
+      if (irlDateFilters.has("week")) {
+        var weekEnd = currentTime + 7 * 86400000;
+        if (e.date >= currentTime && e.date <= weekEnd) matches = true;
+      }
+      if (irlDateFilters.has("month")) {
+        var monthEnd = currentTime + 30 * 86400000;
+        if (e.date >= currentTime && e.date <= monthEnd) matches = true;
+      }
+      if (irlDateFilters.has("custom") && irlCustomDate) {
+        if (e.date >= irlCustomDate.start && e.date <= irlCustomDate.end) matches = true;
+      }
+      return matches;
+    });
+  }
+
+  // Filtre par distance
+  if (irlDistanceFilter) {
+    const maxDistanceKm = parseInt(irlDistanceFilter);
+    const refLoc = cityToLatLng("Paris") || { lat: 48.8566, lng: 2.3522 };
+    filtered = filtered.filter(function(e) {
+      const eventLoc = cityToLatLng(e.city) || cityToLatLng(e.location);
+      if (!eventLoc) return true;
+      const dist = calculateDistance(refLoc.lat, refLoc.lng, eventLoc.lat, eventLoc.lng);
+      return dist <= maxDistanceKm;
+    });
   }
 
   const points = [];
