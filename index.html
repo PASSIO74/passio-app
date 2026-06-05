@@ -16657,7 +16657,7 @@ function renderIrlPassionTiles() {
   row.innerHTML = html;
 }
 
-var irlDateFilters = new Set(["today"]);
+var irlDateFilters = new Set(); // Vide par défaut = afficher TOUS les événements futurs
 var irlCustomDate = null;
 
 function setIrlDateFilter(val, btn) {
