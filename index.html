@@ -17025,8 +17025,8 @@ function renderIRL() {
     }
   }
 
-  // Sync pills date (multi-select)
-  document.querySelectorAll("#irlDateRow .pill").forEach(function(p) {
+  // Sync pills date (multi-select) - carousel
+  document.querySelectorAll("#irlDateCarousel .pill").forEach(function(p) {
     p.classList.toggle("active", irlDateFilters && irlDateFilters.has(p.getAttribute("data-irldate")));
   });
 
