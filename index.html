@@ -16353,8 +16353,19 @@ function renderIrlPassionTiles() {
   const row = $("#irlPassionRow");
   if (!row) return;
   const events = allEvents();
-  // Toutes les passions présentes dans les événements
-  const passionIds = [...new Set(events.map(e => e.passion).filter(Boolean))];
+
+  // Passions de l'utilisateur (basée sur ses profils créés)
+  const userPassionIds = (state.user.profiles || []).map(p => p.passion).filter(Boolean);
+
+  // Si l'utilisateur a des profils, afficher seulement ces passions
+  // Sinon, afficher toutes les passions
+  let passionIds = [];
+  if (userPassionIds.length > 0) {
+    passionIds = userPassionIds;
+  } else {
+    passionIds = [...new Set(events.map(e => e.passion).filter(Boolean))];
+  }
+
   const totalCount = events.length;
 
   row.className = "msg-filter-tiles"; // réutilise le même style que la messagerie
