@@ -16032,6 +16032,13 @@ let irlFilters = new Set(["mine"]);
 let irlPassionFilters = new Set(); // Multi-select des profils
 let irlDistanceFilter = "";
 
+// Initialiser irlPassionFilters avec les profils de l'utilisateur
+function initializeIrlPassionFilters() {
+  const userPassionIds = (state.user.profiles || []).map(p => p.passion).filter(Boolean);
+  irlPassionFilters.clear();
+  userPassionIds.forEach(p => irlPassionFilters.add(p));
+}
+
 $$("#irlFilterRow .pill").forEach(p => {
   p.addEventListener("click", () => {
     const val = p.getAttribute("data-irlfilter");
