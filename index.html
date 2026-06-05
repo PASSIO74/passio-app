@@ -7634,21 +7634,21 @@
     <div class="reel-comments-panel" id="reelCommentsPanel">
       <div class="reel-comments-header">
         <div class="reel-comments-title">Commentaires</div>
-        <div class="reel-comments-close" onclick="closeReelComments()">×</div>
+        <div class="reel-comments-close" onclick="closeReelComments()">−</div>
       </div>
       <div class="reel-comments-list" id="reelCommentsList"></div>
-      <div class="reel-comments-footer">
+      <div class="reel-comments-input-section">
         <div class="reel-emoji-reactions" id="reelEmojiReactions">
-          <button class="reel-emoji-btn" onclick="reactToReel('❤️')">❤️</button>
-          <button class="reel-emoji-btn" onclick="reactToReel('🔥')">🔥</button>
-          <button class="reel-emoji-btn" onclick="reactToReel('😂')">😂</button>
-          <button class="reel-emoji-btn" onclick="reactToReel('👍')">👍</button>
-          <button class="reel-emoji-btn" onclick="reactToReel('😍')">😍</button>
-          <button class="reel-emoji-btn" onclick="reactToReel('😮')">😮</button>
+          <button class="reel-emoji-btn" onclick="reactToReel('❤️')" title="J'aime">❤️</button>
+          <button class="reel-emoji-btn" onclick="reactToReel('🔥')" title="C'est chaud">🔥</button>
+          <button class="reel-emoji-btn" onclick="reactToReel('😂')" title="Hilarant">😂</button>
+          <button class="reel-emoji-btn" onclick="reactToReel('👏')" title="Bravo">👏</button>
+          <button class="reel-emoji-btn" onclick="reactToReel('😍')" title="J'adore">😍</button>
+          <button class="reel-emoji-btn" onclick="reactToReel('😮')" title="Surpris">😮</button>
         </div>
-        <div class="reel-comments-input-area">
-          <input type="text" class="reel-comments-input" id="reelCommentInput" placeholder="Commentaire..." />
-          <button class="reel-comments-send" onclick="submitReelComment()">↑</button>
+        <div class="reel-comments-input-wrapper">
+          <textarea class="reel-comments-input" id="reelCommentInput" placeholder="Lancez la conversation..." rows="1"></textarea>
+          <button class="reel-comments-send" onclick="submitReelComment()" title="Envoyer">↑</button>
         </div>
       </div>
     </div>
