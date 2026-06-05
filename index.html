@@ -8886,7 +8886,7 @@ function defaultState() {
   const seed = buildSeed();
 
   // Ajouter les bobines avec commentaires d'exemple
-  const seedReels = getSeedReelPosts();
+  const seedReels = getSeedReelPostsWithComments(seed.users);
   seed.posts = [...seed.posts, ...seedReels];
 
   return {
