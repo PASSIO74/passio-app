@@ -16816,6 +16816,14 @@ function filterIrlByDistance() {
   renderIRL();
 }
 
+function filterIrlByTime() {
+  const timeInput = document.getElementById("irlTimeFilter");
+  if (timeInput) {
+    irlTimeFilter = timeInput.value || "";
+  }
+  renderIRL();
+}
+
 // Calcule la distance en km entre deux points GPS
 function calculateDistance(lat1, lng1, lat2, lng2) {
   const R = 6371; // Rayon de la Terre en km
