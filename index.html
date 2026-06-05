@@ -14872,15 +14872,57 @@ function submitReelComment() {
     authorName: currentProfile()?.name || "Moi",
     text: text,
     timestamp: Date.now(),
-    reactions: {}
+    reactions: {},
+    liked: false
   };
 
   reel.comments.push(newComment);
   saveState();
 
   input.value = "";
+  input.style.height = "auto";
   loadReelComments(postId);
   toast("✅ Commentaire posté!");
+}
+
+function likeReelComment(commentIdx) {
+  const postId = window.currentReelCommentPostId;
+  if (!postId) return;
+
+  const reel = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
+  if (!reel || !reel.comments || !reel.comments[commentIdx]) return;
+
+  const comment = reel.comments[commentIdx];
+  if (!comment.reactions) comment.reactions = {};
+  if (!comment.reactions['❤️']) comment.reactions['❤️'] = 0;
+
+  if (comment.liked) {
+    comment.liked = false;
+    comment.reactions['❤️'] = Math.max(0, comment.reactions['❤️'] - 1);
+  } else {
+    comment.liked = true;
+    comment.reactions['❤️']++;
+  }
+
+  saveState();
+  loadReelComments(postId);
+}
+
+function replyToReelComment(commentIdx) {
+  const postId = window.currentReelCommentPostId;
+  if (!postId) return;
+
+  const reel = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
+  if (!reel || !reel.comments || !reel.comments[commentIdx]) return;
+
+  const comment = reel.comments[commentIdx];
+  const commenter = userById(comment.authorId) || { name: comment.authorName || "Anonyme" };
+
+  const input = document.getElementById("reelCommentInput");
+  if (input) {
+    input.value = `@${commenter.name} `;
+    input.focus();
+  }
 }
 
 function reactToReel(emoji) {
@@ -14895,43 +14937,7 @@ function reactToReel(emoji) {
   reel.reactions[emoji]++;
 
   saveState();
-  toast(`${emoji} Ajouté!`);
-}
-
-function reactToReelComment(commentIdx, emoji) {
-  const postId = window.currentReelCommentPostId;
-  if (!postId) return;
-
-  const reel = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
-  if (!reel || !reel.comments || !reel.comments[commentIdx]) return;
-
-  const comment = reel.comments[commentIdx];
-  if (!comment.reactions) comment.reactions = {};
-  if (!comment.reactions[emoji]) comment.reactions[emoji] = 0;
-  comment.reactions[emoji]++;
-
-  saveState();
-  loadReelComments(postId);
-}
-
-function shareReelComment(commentIdx) {
-  const postId = window.currentReelCommentPostId;
-  if (!postId) return;
-
-  const reel = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
-  if (!reel || !reel.comments || !reel.comments[commentIdx]) return;
-
-  const comment = reel.comments[commentIdx];
-  const commenter = userById(comment.authorId) || { name: comment.authorName || "Anonyme" };
-
-  const shareText = `📝 ${escapeHtml(commenter.name)}: "${escapeHtml(comment.text || "")}"\n\nSur une bobine PASSIO`;
-  const url = `${location.origin}${location.pathname}#reel=${encodeURIComponent(postId)}`;
-
-  if (navigator.share) {
-    navigator.share({ title: "PASSIO - Commentaire", text: shareText, url }).catch(() => {});
-  } else if (navigator.clipboard) {
-    navigator.clipboard.writeText(`${shareText}\n\n${url}`).then(() => toast("Commentaire copié!"));
-  }
+  toast(`${emoji} Réaction ajoutée!`);
 }
 
 function shareReel(postId) {
