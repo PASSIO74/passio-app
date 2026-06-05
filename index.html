@@ -21614,6 +21614,18 @@ setTimeout(function() {
   diagBtn.onmouseout = function() { if(!window._DEBUG_MODE) this.style.background = "#666"; };
   document.body.appendChild(diagBtn);
 }, 500);
+
+// INITIALISATION BOUTON RETOUR
+setTimeout(function() {
+  try {
+    if (typeof updateBackButtonVisibility === "function") {
+      updateBackButtonVisibility();
+      console.log("✅ Bouton retour initialisé");
+    }
+  } catch(err) {
+    console.error("❌ Erreur initialisation bouton retour:", err);
+  }
+}, 300);
 </script>
 
 </body>
