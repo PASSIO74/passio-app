@@ -16424,11 +16424,16 @@ function applyIrlCalendar() {
   var start = document.getElementById("irlCalStart")?.value;
   var end = document.getElementById("irlCalEnd")?.value;
   if (!start) { toast("Choisis une date"); return; }
-  irlDateFilter = "custom";
+
+  // Ajouter "custom" aux filtres de date
+  if (!irlDateFilters) irlDateFilters = new Set();
+  irlDateFilters.add("custom");
   irlCustomDate = { start: new Date(start).getTime(), end: end ? new Date(end + "T23:59:59").getTime() : new Date(start + "T23:59:59").getTime() };
-  document.querySelectorAll("#irlDateRow .pill").forEach(function(p) { p.classList.remove("active"); });
+
+  // Mettre à jour le bouton actif
   var customBtn = document.querySelector('#irlDateRow [data-irldate="custom"]');
   if (customBtn) customBtn.classList.add("active");
+
   closeModal();
   renderIRL();
 }
