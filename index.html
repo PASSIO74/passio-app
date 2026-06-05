@@ -8906,6 +8906,17 @@ window.addEventListener("popstate", (e) => {
   }
 });
 
+// Fonction de retour universelle pour le bouton retour
+function goBack() {
+  // D'abord, essayer de fermer un overlay ouvert
+  if (closeCurrentOverlay()) {
+    return;
+  }
+
+  // Sinon, utiliser le popstate du navigateur pour retourner à l'écran précédent
+  window.history.back();
+}
+
 function toggleDevPanel() {
   $("#devPanel").classList.toggle("active");
 }
