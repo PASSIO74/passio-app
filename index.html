@@ -16541,7 +16541,8 @@ function updateIrlMapMarkers() {
   // Filtre par distance
   if (irlDistanceFilter) {
     const maxDistanceKm = parseInt(irlDistanceFilter);
-    const refLoc = cityToLatLng("Paris") || { lat: 48.8566, lng: 2.3522 };
+    // Position de référence: position actuelle ou Paris par défaut
+    const refLoc = irlUserLocation || { lat: 48.8566, lng: 2.3522 };
     filtered = filtered.filter(function(e) {
       const eventLoc = cityToLatLng(e.city) || cityToLatLng(e.location);
       if (!eventLoc) return true;
