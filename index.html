@@ -8780,6 +8780,13 @@ function grantReward(kind, customLabel) {
 let navigationHistory = ["feed"];
 let isNavigatingBack = false;
 
+// Ajouter un overlay/modal à l'historique de navigation
+function pushOverlayToHistory(overlayType, overlayId = "") {
+  const state = { overlay: overlayType, id: overlayId };
+  const hash = overlayId ? `#${overlayType}-${overlayId}` : `#${overlayType}`;
+  window.history.pushState(state, "", hash);
+}
+
 function goTo(screen) {
   // Ajouter à l'historique seulement si ce n'est pas un retour en arrière
   if (!isNavigatingBack) {
