@@ -11712,6 +11712,9 @@ function _renderCommentsList(allComments, postId) {
 }
 
 async function openComments(postId) {
+  // Ajouter à l'historique pour que le bouton back fonctionne
+  pushOverlayToHistory("comments", postId);
+
   let post = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
   if (!post) return;
 
