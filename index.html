@@ -14606,14 +14606,149 @@ function openReelComments(postId) {
 }
 
 function shareReel(postId) {
+  openReelShareModal(postId);
+}
+
+function openReelShareModal(postId) {
+  const reel = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
+  if (!reel) return;
+
   const url = `${location.origin}${location.pathname}#reel=${encodeURIComponent(postId)}`;
-  if (navigator.share) {
-    navigator.share({ title: "PASSIO, bobine", text: "Regarde cette bobine sur PASSIO", url }).catch(()=>{});
-  } else if (navigator.clipboard) {
-    navigator.clipboard.writeText(url).then(() => toast("Lien copié, partage-le où tu veux."));
+  const author = authorOfReel(reel);
+  const passion = passionById(reel.passion) || { label: reel.passion, emoji: "✨" };
+  const moodLabel = ({ creation: "Création", learn: "Apprendre", chill: "Chill", actu: "Actu" })[reel.mood] || "Tout";
+  const txt = reel.text || reel.caption || "";
+
+  // Créer des URLs de partage pour les réseaux sociaux
+  const encodedUrl = encodeURIComponent(url);
+  const encodedText = encodeURIComponent(`Regarde cette bobine PASSIO: ${txt.slice(0, 50)}...`);
+
+  const shareHTML = `
+    <div class="modal-handle"></div>
+    <div class="modal-title">📤 Partager la bobine</div>
+
+    <div style="padding:12px;background:var(--bg-soft);border-radius:8px;margin-bottom:16px;">
+      <div class="reel-info" style="display:flex;gap:10px;margin:0;">
+        <div class="reel-avatar" style="background:${author.color};width:48px;height:48px;flex-shrink:0;">${author.emoji}</div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:700;font-size:13px;">${escapeHtml(author.name)}</div>
+          <div style="font-size:12px;color:var(--muted);">${passion.emoji} ${escapeHtml(passion.label)} · ${moodLabel}</div>
+          <div style="font-size:13px;margin-top:6px;color:var(--text);line-height:1.4;">${escapeHtml(txt).slice(0, 100)}${txt.length > 100 ? "…" : ""}</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-bottom:16px;">
+      <div style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;margin-bottom:8px;">📱 Partager dans l'app</div>
+      <button class="btn primary block" onclick="shareReelInFeed('${postId}')" style="margin-bottom:8px;">
+        ➕ Partager dans le Feed
+      </button>
+    </div>
+
+    <div style="margin-bottom:16px;">
+      <div style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;margin-bottom:8px;">🌐 Partager externement</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+        <button class="btn ghost" onclick="shareReelVia('whatsapp', '${postId}', '${encodedUrl}', '${encodedText}')">💬 WhatsApp</button>
+        <button class="btn ghost" onclick="shareReelVia('twitter', '${postId}', '${encodedUrl}', '${encodedText}')">𝕏 Twitter</button>
+        <button class="btn ghost" onclick="shareReelVia('facebook', '${postId}', '${encodedUrl}', '${encodedText}')">👍 Facebook</button>
+        <button class="btn ghost" onclick="shareReelVia('telegram', '${postId}', '${encodedUrl}', '${encodedText}')">✈️ Telegram</button>
+      </div>
+    </div>
+
+    <div style="margin-bottom:8px;">
+      <div style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;margin-bottom:8px;">🔗 Lien</div>
+      <button class="btn secondary block" onclick="copyReelLink('${postId}', '${encodedUrl}')">
+        📋 Copier le lien
+      </button>
+    </div>
+  `;
+
+  openModal(shareHTML);
+}
+
+function shareReelInFeed(postId) {
+  const reel = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
+  if (!reel) return;
+
+  const author = authorOfReel(reel);
+  const passion = passionById(reel.passion) || { label: reel.passion, emoji: "✨" };
+  const txt = reel.text || reel.caption || "";
+
+  // Créer un post de partage dans le feed
+  const newPost = {
+    id: "post_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9),
+    authorId: typeof MY_UID !== "undefined" ? MY_UID : "me",
+    authorName: currentProfile()?.name || "Moi",
+    authorEmoji: currentProfile()?.profileEmoji || "✨",
+    authorColor: currentProfile()?.avatar || "#8b5cf6",
+    authorBio: currentProfile()?.bio || "",
+    text: `📤 A partagé une bobine\n\n${passion.emoji} ${escapeHtml(author.name)} – ${passion.label}\n\n"${escapeHtml(txt).slice(0, 150)}${txt.length > 150 ? "…" : ""}"`,
+    caption: `Shared reel from ${author.name}`,
+    timestamp: Date.now(),
+    likes: 0,
+    comments: [],
+    passion: reel.passion,
+    mood: reel.mood || "chill",
+    sharedReel: postId,
+    sharedReelData: {
+      id: reel.id,
+      text: txt,
+      authorName: author.name,
+      authorEmoji: author.emoji,
+      authorColor: author.color,
+      passion: reel.passion
+    }
+  };
+
+  if (!state.userPosts) state.userPosts = [];
+  state.userPosts.push(newPost);
+  saveState();
+
+  closeModal();
+  setTimeout(() => {
+    goTo("feed");
+    setTimeout(() => renderFeed(), 100);
+  }, 100);
+
+  toast("✅ Bobine partagée dans ton feed!");
+}
+
+function copyReelLink(postId, encodedUrl) {
+  const url = decodeURIComponent(encodedUrl);
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(url).then(() => {
+      toast("🔗 Lien copié!");
+      closeModal();
+    });
   } else {
-    toast("Partage indisponible sur ce navigateur.");
+    toast("Copie impossible sur ce navigateur");
   }
+}
+
+function shareReelVia(platform, postId, encodedUrl, encodedText) {
+  const url = decodeURIComponent(encodedUrl);
+  const text = decodeURIComponent(encodedText);
+  let shareUrl;
+
+  switch(platform) {
+    case "whatsapp":
+      shareUrl = `https://wa.me/?text=${encodedText}%20${encodedUrl}`;
+      break;
+    case "twitter":
+      shareUrl = `https://twitter.com/intent/tweet?text=${encodedText}&url=${encodedUrl}`;
+      break;
+    case "facebook":
+      shareUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}`;
+      break;
+    case "telegram":
+      shareUrl = `https://t.me/share/url?url=${encodedUrl}&text=${encodedText}`;
+      break;
+    default:
+      return;
+  }
+
+  window.open(shareUrl, "_blank", "width=600,height=400");
+  toast(`Ouverture ${platform}...`);
 }
 
 function scrollToReel(idx) {
