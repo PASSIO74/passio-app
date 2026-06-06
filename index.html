@@ -14680,7 +14680,9 @@ function renderReelHTML(post, idx) {
   const txt = post.text || post.caption || "";
   return `
     <div class="reel-item" data-reel-idx="${idx}" data-post-id="${escapeHtml(post.id)}">
-      ${reelMediaHTML(post)}
+      <div class="reel-media-container">
+        ${reelMediaHTML(post)}
+      </div>
       <div class="reel-overlay"></div>
       <span class="reel-tag-mood">${passion.emoji} ${escapeHtml(passion.label)} · ${moodLabel}</span>
       <div class="reel-info">
