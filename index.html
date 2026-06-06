@@ -14990,7 +14990,9 @@ function loadReelComments(postId) {
 
     // Afficher les réponses si elles existent
     if (replies.length > 0) {
-      commentHTML += `<div class="reel-comment-replies" id="reel-replies-${idx}" style="display:none;">`;
+      commentHTML += `
+        <div class="reel-comment-replies" id="reel-replies-${idx}">
+      `;
       replies.forEach(r => {
         const replyAuthor = userById(r.authorId) || { name: r.authorName || "?", profileEmoji: "👤", avatar: "#64748b" };
         if (r.type === "emoji_reaction") {
