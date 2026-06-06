@@ -14618,7 +14618,9 @@ function reelVideoFallback(videoEl, fallbackUrl) {
 
 function buildReels() {
   const mood = state.currentMood || "all";
-  const seedReels = getSeedReelPosts();
+
+  // Utiliser les reels depuis state.seed.posts (qui ont les commentaires)
+  const seedReels = (state.seed.posts || []).filter(p => p._source === "seed_reel");
   const userPosts = allFeedPosts();
 
   const filterByPassion = function(p) {
