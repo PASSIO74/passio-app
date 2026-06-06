@@ -14989,15 +14989,30 @@ function loadReelComments(postId) {
 
     // Afficher les réponses si elles existent
     if (replies.length > 0) {
-      commentHTML += `<div class="reel-comment-replies" id="reel-replies-${idx}" style="display:none;margin-left:40px;padding-top:8px;">`;
+      commentHTML += `<div class="reel-comment-replies" id="reel-replies-${idx}" style="display:none;">`;
       replies.forEach(r => {
         const replyAuthor = userById(r.authorId) || { name: r.authorName || "?", profileEmoji: "👤", avatar: "#64748b" };
         if (r.type === "emoji_reaction") {
-          commentHTML += `<div style="padding:6px 0;font-size:11px;"><span style="font-weight:600;cursor:pointer;" onclick="openUserProfile('${r.authorId}')">${escapeHtml(replyAuthor.name)}</span>: <span style="font-size:18px;letter-spacing:2px;">${r.text}</span></div>`;
+          commentHTML += `
+            <div class="reel-reply-item">
+              <span class="reel-reply-author" onclick="openUserProfile('${r.authorId}')">${escapeHtml(replyAuthor.name)}</span>
+              <span style="font-size:18px;margin-left:6px;letter-spacing:1px;">${r.text}</span>
+            </div>
+          `;
         } else if (r.type === "gif_reaction") {
-          commentHTML += `<div style="padding:6px 0;"><span style="font-size:11px;font-weight:600;cursor:pointer;" onclick="openUserProfile('${r.authorId}')">${escapeHtml(replyAuthor.name)}</span>:<br><img src="${r.text}" style="width:120px;height:120px;border-radius:8px;margin-top:6px;object-fit:cover;" alt="GIF" /></div>`;
+          commentHTML += `
+            <div class="reel-reply-item">
+              <span class="reel-reply-author" onclick="openUserProfile('${r.authorId}')">${escapeHtml(replyAuthor.name)}</span>
+              <img src="${r.text}" style="width:100%;max-width:150px;height:auto;border-radius:6px;margin-top:6px;object-fit:cover;" alt="GIF" />
+            </div>
+          `;
         } else {
-          commentHTML += `<div style="padding:6px 0;font-size:12px;"><span style="font-weight:600;cursor:pointer;" onclick="openUserProfile('${r.authorId}')">${escapeHtml(replyAuthor.name)}</span>: ${escapeHtml(r.text)}</div>`;
+          commentHTML += `
+            <div class="reel-reply-item">
+              <span class="reel-reply-author" onclick="openUserProfile('${r.authorId}')">${escapeHtml(replyAuthor.name)}</span>
+              <div class="reel-reply-text">${escapeHtml(r.text)}</div>
+            </div>
+          `;
         }
       });
       commentHTML += `</div>`;
