@@ -15050,24 +15050,48 @@ function submitReelComment() {
 
   if (!reel.comments) reel.comments = [];
 
-  const newComment = {
-    id: "comment_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9),
+  const newReply = {
+    id: "reply_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9),
     authorId: typeof MY_UID !== "undefined" ? MY_UID : "me",
     authorName: currentProfile()?.name || "Moi",
     text: text,
-    createdAt: Date.now(),
-    likes: 0,
-    likedBy: [],
-    replies: []
+    type: "text",
+    createdAt: Date.now()
   };
 
-  reel.comments.push(newComment);
+  // Si on répond à un commentaire spécifique
+  if (window.replyingToCommentIdx !== undefined && window.replyingToCommentIdx !== null) {
+    const commentIdx = window.replyingToCommentIdx;
+    if (reel.comments[commentIdx]) {
+      if (!reel.comments[commentIdx].replies) {
+        reel.comments[commentIdx].replies = [];
+      }
+      reel.comments[commentIdx].replies.push(newReply);
+      toast("✅ Réponse postée!");
+    }
+  } else {
+    // Sinon, créer un nouveau commentaire
+    const newComment = {
+      id: "comment_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9),
+      authorId: newReply.authorId,
+      authorName: newReply.authorName,
+      text: text,
+      createdAt: Date.now(),
+      likes: 0,
+      likedBy: [],
+      replies: []
+    };
+    reel.comments.push(newComment);
+    toast("✅ Commentaire posté!");
+  }
+
   saveState();
 
   input.value = "";
   input.style.height = "auto";
+  window.replyingToCommentIdx = null;
+  window.replyingToPostId = null;
   loadReelComments(postId);
-  toast("✅ Commentaire posté!");
 }
 
 function likeReelComment(postId, commentIdx) {
