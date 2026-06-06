@@ -4578,11 +4578,20 @@
       scroll-snap-stop: always;
       overflow: hidden;
       background: #000;
-      transition: height 350ms cubic-bezier(0.4, 0, 0.2, 1);
     }
-    .reels-viewer.comments-open .reel-item {
-      height: 30vh;
+    .reel-media-container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 100vh;
+      height: 100dvh;
       overflow: hidden;
+      transition: height 350ms cubic-bezier(0.4, 0, 0.2, 1), max-height 350ms cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .reels-viewer.comments-open .reel-media-container {
+      height: 30vh;
+      max-height: 30vh;
     }
     .reel-media {
       position: absolute;
@@ -4590,13 +4599,6 @@
       width: 100%;
       height: 100%;
       object-fit: cover;
-      transition: none;
-    }
-    .reels-viewer.comments-open .reel-media {
-      height: 30vh;
-      width: 100%;
-      object-fit: cover;
-      object-position: center;
     }
     img.reel-media,
     div.reel-media {
