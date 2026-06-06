@@ -5029,9 +5029,27 @@
       color: var(--text);
     }
     .reel-comment-replies {
-      padding: 8px 0;
-      border-left: 2px solid var(--border);
+      margin-top: 8px;
+      margin-left: 50px;
       padding-left: 12px;
+      border-left: 2px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .reel-reply-item {
+      padding: 8px;
+      background: var(--bg-soft);
+      border-radius: 6px;
+      font-size: 12px;
+    }
+    .reel-reply-author {
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .reel-reply-text {
+      margin-top: 4px;
+      color: var(--text);
     }
 
     .reel-comments-input-section {
