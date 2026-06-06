@@ -15094,6 +15094,10 @@ function likeReelComment(postId, commentIdx) {
 }
 
 function replyToReelCommentBox(postId, commentIdx, authorName) {
+  // Tracker quel commentaire on répond
+  window.replyingToCommentIdx = commentIdx;
+  window.replyingToPostId = postId;
+
   const input = document.getElementById("reelCommentInput");
   if (input) {
     input.value = `@${authorName} `;
