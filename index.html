@@ -15017,9 +15017,10 @@ function submitReelComment() {
     authorId: typeof MY_UID !== "undefined" ? MY_UID : "me",
     authorName: currentProfile()?.name || "Moi",
     text: text,
-    timestamp: Date.now(),
-    reactions: {},
-    liked: false
+    createdAt: Date.now(),
+    likes: 0,
+    likedBy: [],
+    replies: []
   };
 
   reel.comments.push(newComment);
