@@ -6988,6 +6988,40 @@
         </div>
       </div>
 
+      <!-- CDV Live block -->
+      <div id="studiocdvlive" style="display:none;">
+        <p class="section-subtitle" style="margin-top:0;">Raconte ton voyage en direct ! Tes abonnés te suivent en temps réel.</p>
+
+        <label class="field"><span>🌍 Destination du voyage</span>
+          <input type="text" class="input" id="cdvLiveDestInput" placeholder="Ex : Lisbonne, Road trip en Écosse, Randonnée alpestre…" maxlength="60" /></label>
+
+        <label class="field"><span>📝 Description du voyage</span>
+          <textarea class="textarea" id="cdvLiveDescInput" placeholder="De quoi parle ce voyage ? Quel est ton itinéraire ?" maxlength="300" style="min-height:60px;"></textarea></label>
+
+        <label class="field"><span>📅 Durée prévue</span>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="pill duration-btn active" onclick="selectCdvStudioDuration(this,'1j')">1 jour</button>
+            <button class="pill duration-btn" onclick="selectCdvStudioDuration(this,'weekend')">Weekend</button>
+            <button class="pill duration-btn" onclick="selectCdvStudioDuration(this,'semaine')">1 semaine</button>
+            <button class="pill duration-btn" onclick="selectCdvStudioDuration(this,'long')">+ long</button>
+          </div></label>
+
+        <label class="field"><span>🔒 Visibilité</span>
+          <div style="display:flex;gap:8px;">
+            <button class="pill visibility-btn active" onclick="selectCdvStudioVisibility(this,'public')">🌍 Public</button>
+            <button class="pill visibility-btn" onclick="selectCdvStudioVisibility(this,'followers')">👥 Abonnés</button>
+            <button class="pill visibility-btn" onclick="selectCdvStudioVisibility(this,'private')">🔒 Privé</button>
+          </div></label>
+
+        <div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.25);border-radius:10px;padding:12px;margin:12px 0;font-size:12px;color:var(--text-dim);line-height:1.5;">
+          💡 <strong>Conseil :</strong> Chaque étape que tu ajoutes apparaît en direct pour tes spectateurs. Tu peux ajouter autant d'étapes que tu veux pendant ta diffusion.
+        </div>
+
+        <button class="btn primary block" style="background:linear-gradient(135deg,#ef4444,#f59e0b);" onclick="startCdvLiveFromStudio()">
+          🔴 Lancer le CDV Live
+        </button>
+      </div>
+
       <label class="field" id="fieldPassion">
         <span>Passion liée</span>
         <select class="input" id="postPassion"></select>
