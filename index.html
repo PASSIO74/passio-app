@@ -15770,7 +15770,7 @@ function renderProfileStrip() {
   const profiles = state.user.profiles || [];
   if (profiles.length === 0) { box.innerHTML = ""; return; }
 
-  var hasFilter = _activeFeedPassions.size > 0;
+  var hasFilter = _activeFeedPassions.size > 0 || _showFollowingFeed;
   box.classList.toggle("has-filter", hasFilter);
 
   var hasPassionFilter = _activeFeedPassions.size > 0;
@@ -15779,7 +15779,15 @@ function renderProfileStrip() {
   var postCountByPassion = {};
   allPostsFlat.forEach(function(p) { postCountByPassion[p.passion] = (postCountByPassion[p.passion] || 0) + 1; });
 
-  var tilesHTML = profiles.map(function(p) {
+  // ── PROFIL SPÉCIAL "ABONNEMENTS" ──
+  var followingIds = state.user?.following || [];
+  var followingPostCount = allPostsFlat.filter(function(p) { return followingIds.includes(p.authorId); }).length;
+  var followingTile = '<div class="profile-tile ' + (_showFollowingFeed ? "active" : "") + '" onclick="toggleFollowingFilter()" title="Abonnements" style="opacity:' + (_showFollowingFeed ? '1' : (hasFilter ? '0.3' : '1')) + ';transform:' + (_showFollowingFeed ? 'scale(1.07)' : 'scale(1)') + ';transition:all 0.2s;">\
+      <div class="profile-tile-avatar" style="position:relative;background:linear-gradient(135deg, #8b5cf6, #7c3aed);display:flex;align-items:center;justify-content:center;">👥' + (followingPostCount > 0 ? '<span style="position:absolute;top:-5px;right:-5px;background:var(--accent);color:#fff;font-size:9px;font-weight:800;border-radius:8px;padding:1px 5px;min-width:16px;text-align:center;border:2px solid var(--bg);line-height:14px;">' + followingPostCount + '</span>' : '') + '</div>\
+      <div class="profile-tile-label" style="font-weight:' + (_showFollowingFeed ? '800' : '600') + ';color:' + (_showFollowingFeed ? 'var(--accent)' : '') + ';">Abonnements</div>\
+    </div>';
+
+  var tilesHTML = followingTile + profiles.map(function(p) {
     const passion = passionById(p.passion);
     const isSelected = _activeFeedPassions.has(p.passion);
     const isDimmed = hasPassionFilter && !isSelected;
