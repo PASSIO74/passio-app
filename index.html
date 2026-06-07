@@ -18350,27 +18350,80 @@ function openIrlTimePicker() {
     <div class="modal-handle"></div>
     <div class="modal-title">🕐 Choisir une plage horaire</div>
 
-    <div style="text-align:center;margin-bottom:24px;">
-      <div style="font-size:26px;font-weight:800;" id="irlTimeRangeDisplay">
-        <span style="color:var(--text);">De</span>
-        <span style="color:#3b82f6;margin:0 8px;">${String(startHour).padStart(2, '0')}:00</span>
-        <span style="color:var(--text);">à</span>
-        <span style="color:#3b82f6;margin:0 8px;">${String(endHour).padStart(2, '0')}:00</span>
+    <div style="text-align:center;margin-bottom:32px;">
+      <div style="font-size:32px;font-weight:800;" id="irlTimeRangeDisplay">
+        <span style="color:#3b82f6;">${String(startHour).padStart(2, '0')}:00</span>
+        <span style="color:var(--text);margin:0 8px;">—</span>
+        <span style="color:#3b82f6;">${String(endHour).padStart(2, '0')}:00</span>
       </div>
     </div>
 
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:24px;">
-      <div>
-        <label style="font-size:11px;font-weight:600;color:var(--text);display:block;margin-bottom:8px;">Début</label>
-        <input type="range" id="irlStartSlider" min="0" max="23" value="${startHour}" style="width:100%;cursor:pointer;height:8px;" oninput="updateIrlTimeRange()">
-        <div style="text-align:center;font-size:10px;color:var(--muted);margin-top:4px;" id="irlStartLabel">${String(startHour).padStart(2, '0')}:00</div>
-      </div>
+    <div style="position:relative;margin:40px 0 32px 0;padding:0 12px;">
+      <!-- Barre de fond -->
+      <div style="position:absolute;top:50%;transform:translateY(-50%);left:12px;right:12px;height:4px;background:var(--border);border-radius:2px;"></div>
 
-      <div>
-        <label style="font-size:11px;font-weight:600;color:var(--text);display:block;margin-bottom:8px;">Fin</label>
-        <input type="range" id="irlEndSlider" min="0" max="23" value="${endHour}" style="width:100%;cursor:pointer;height:8px;" oninput="updateIrlTimeRange()">
-        <div style="text-align:center;font-size:10px;color:var(--muted);margin-top:4px;" id="irlEndLabel">${String(endHour).padStart(2, '0')}:00</div>
-      </div>
+      <!-- Barre colorée (la plage sélectionnée) -->
+      <div id="irlSliderFill" style="position:absolute;top:50%;transform:translateY(-50%);height:4px;background:#3b82f6;border-radius:2px;pointer-events:none;"></div>
+
+      <!-- Slider début -->
+      <input type="range" id="irlStartSlider" min="0" max="23" value="${startHour}" style="
+        position:relative;
+        z-index:5;
+        width:100%;
+        height:20px;
+        -webkit-appearance:none;
+        appearance:none;
+        background:transparent;
+        cursor:pointer;
+        outline:none;
+      " oninput="updateIrlDoubleRange()">
+
+      <!-- Slider fin -->
+      <input type="range" id="irlEndSlider" min="0" max="23" value="${endHour}" style="
+        position:absolute;
+        top:0;
+        left:0;
+        z-index:4;
+        width:100%;
+        height:20px;
+        -webkit-appearance:none;
+        appearance:none;
+        background:transparent;
+        cursor:pointer;
+        outline:none;
+      " oninput="updateIrlDoubleRange()">
+
+      <style>
+        #irlStartSlider::-webkit-slider-thumb, #irlEndSlider::-webkit-slider-thumb {
+          -webkit-appearance: none;
+          appearance: none;
+          width: 20px;
+          height: 20px;
+          border-radius: 50%;
+          background: #3b82f6;
+          cursor: pointer;
+          border: 3px solid white;
+          box-shadow: 0 2px 8px rgba(59, 130, 246, 0.4);
+        }
+
+        #irlStartSlider::-moz-range-thumb, #irlEndSlider::-moz-range-thumb {
+          width: 20px;
+          height: 20px;
+          border-radius: 50%;
+          background: #3b82f6;
+          cursor: pointer;
+          border: 3px solid white;
+          box-shadow: 0 2px 8px rgba(59, 130, 246, 0.4);
+        }
+
+        #irlStartSlider::-webkit-slider-thumb:active, #irlEndSlider::-webkit-slider-thumb:active {
+          transform: scale(1.2);
+        }
+
+        #irlStartSlider::-moz-range-thumb:active, #irlEndSlider::-moz-range-thumb:active {
+          transform: scale(1.2);
+        }
+      </style>
     </div>
 
     <div style="display:flex;gap:8px;">
@@ -18380,6 +18433,8 @@ function openIrlTimePicker() {
   `;
 
   openModal(html);
+  // Initialiser la barre colorée
+  setTimeout(updateIrlDoubleRange, 50);
 }
 
 function updateIrlTimeRange() {
