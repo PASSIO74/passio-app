@@ -15310,7 +15310,28 @@ function openReelShareModal(postId) {
 
   const shareHTML = `
     <div class="modal-handle"></div>
-    <div class="modal-title">📤 Partager</div>
+    <div class="modal-title">📤 Partager cette bobine</div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
+      <button class="btn secondary" onclick="shareReelVia('whatsapp', '${postId}', '${encodedUrl}', '${encodedText}')" style="font-size:13px;">
+        💬 WhatsApp
+      </button>
+      <button class="btn secondary" onclick="shareReelVia('telegram', '${postId}', '${encodedUrl}', '${encodedText}')" style="font-size:13px;">
+        ✈️ Telegram
+      </button>
+      <button class="btn secondary" onclick="shareReelVia('twitter', '${postId}', '${encodedUrl}', '${encodedText}')" style="font-size:13px;">
+        𝕏 Twitter
+      </button>
+      <button class="btn secondary" onclick="shareReelVia('facebook', '${postId}', '${encodedUrl}', '${encodedText}')" style="font-size:13px;">
+        📘 Facebook
+      </button>
+      <button class="btn secondary" onclick="shareReelEmail('${postId}', '${encodedText}')" style="font-size:13px;">
+        📧 Email
+      </button>
+      <button class="btn secondary" onclick="shareReelSMS('${postId}', '${encodedUrl}')" style="font-size:13px;">
+        📱 SMS
+      </button>
+    </div>
 
     <button class="btn primary block" onclick="shareReelInFeed('${postId}')" style="margin-bottom:8px;">
       ➕ Partager dans le Feed
