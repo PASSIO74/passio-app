@@ -9985,6 +9985,63 @@ function setupMoodButtons() {
   });
 }
 
+// Afficher le carrousel de CDV Lives en haut du feed
+function renderFeedCdvLives() {
+  const container = document.getElementById("feedList");
+  if (!container) return;
+
+  // Récupérer les lives actifs pertinents pour l'utilisateur
+  const allLives = getCdvLives().filter(l => l.status === "live");
+  const myFollowing = state.following || [];
+  const relevantLives = allLives.filter(l =>
+    l.authorId === "me" ||
+    myFollowing.includes(l.authorId) ||
+    l.visibility === "public"
+  );
+
+  if (!relevantLives.length) return;
+
+  // Créer un élément de live dans le feed
+  const livesHTML = relevantLives.slice(0, 3).map(l => {
+    const seedAuthor = userById(l.authorId);
+    const authorName = l.authorId === "me" ? (state.user.name || "Toi") : (seedAuthor && seedAuthor.name) || "Passionné";
+    const viewerCount = (l.currentViewers || 0) + Math.floor(Math.random()*10);
+
+    return `<div class="cdv-feed-live-item" style="
+      background:linear-gradient(135deg,rgba(239,68,68,0.1),rgba(245,158,11,0.1));
+      border:1px solid rgba(239,68,68,0.25);
+      border-radius:12px;
+      padding:12px;
+      margin-bottom:12px;
+      cursor:pointer;
+      transition:all 0.2s;
+    " onclick="openCdvLiveViewer('${l.id}')" onmouseover="this.style.background='linear-gradient(135deg,rgba(239,68,68,0.15),rgba(245,158,11,0.15))'" onmouseout="this.style.background='linear-gradient(135deg,rgba(239,68,68,0.1),rgba(245,158,11,0.1))'">
+      <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px;">
+        <span style="background:#ef4444;color:#fff;font-size:9px;font-weight:700;padding:3px 7px;border-radius:6px;animation:livePulse 1.5s ease infinite;">🔴 EN DIRECT</span>
+        <span style="font-weight:700;font-size:13px;color:var(--text);">📡 ${escapeHtml(l.destination)}</span>
+        <span style="font-size:11px;color:var(--muted);margin-left:auto;">👁 ${viewerCount}</span>
+      </div>
+      <div style="font-size:11px;color:var(--text-dim);margin-bottom:6px;">par ${escapeHtml(authorName)}</div>
+      ${l.steps.length ? `<div style="font-size:10px;color:var(--muted);">${l.steps.length} étape${l.steps.length>1?"s":""} · ${l.duration || ""}</div>` : ""}
+    </div>`;
+  }).join("");
+
+  // Insérer le carrousel en haut du feed
+  const section = document.createElement("div");
+  section.id = "feedCdvLivesSection";
+  section.innerHTML = livesHTML;
+
+  // Insérer avant le premier post
+  const firstPost = container.querySelector(".post");
+  if (firstPost) {
+    container.insertBefore(section, firstPost);
+  } else if (container.children.length > 0) {
+    container.insertBefore(section, container.children[0]);
+  } else {
+    container.appendChild(section);
+  }
+}
+
 function renderFeed() {
   const list = $("#feedList");
   const mood = state.currentMood || "all";
