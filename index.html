@@ -11806,6 +11806,7 @@ function openCdvLiveViewer(liveId) {
   var modalEl = document.querySelector(".modal");
   if (modalEl) {
     modalEl.classList.add("modal-fullscreen");
+    modalEl.setAttribute("data-live-id", liveId);
     // Lancer le refresh en temps réel si c'est un live
     if (isLive) {
       startCdvLiveRefresh(liveId);
