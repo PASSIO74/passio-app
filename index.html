@@ -17638,6 +17638,8 @@ function initIrlMap() {
   irlMarkersLayer = L.layerGroup().addTo(irlMap);
   // Minimal delay pour laisser le DOM se stabiliser
   setTimeout(() => irlMap.invalidateSize(), 10);
+  // Flag pour tracer la première initialisation
+  irlMapInitialized = true;
 }
 
 // Revenir à la position GPS actuelle de l'utilisateur
