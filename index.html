@@ -10006,10 +10006,10 @@ function renderFeed() {
   let posts = [];
   let availablePostsForMood = []; // Pour afficher les moods disponibles
 
-  // ── COMBINAISON : "Abonnements" OU "Passions" (multi-sélection) ──
+  // ── COMBINAISON : "Suivis" OU "Passions" (multi-sélection) ──
   let combinedPosts = [];
 
-  // Ajouter les posts des abonnements si sélectionné
+  // Ajouter les posts des suivis si sélectionné
   if (_showFollowingFeed) {
     const followingIds = state.user?.following || [];
     let followingPosts = allPosts.filter(function(p) { return followingIds.includes(p.authorId); });
@@ -10022,7 +10022,7 @@ function renderFeed() {
     combinedPosts = combinedPosts.concat(postsByPassion);
   }
 
-  // Si rien n'est sélectionné (ni Abonnements ni Passions), montrer tout
+  // Si rien n'est sélectionné (ni Suivis ni Passions), montrer tout
   if (!_showFollowingFeed && _activeFeedPassions.size === 0) {
     combinedPosts = allPosts;
   }
