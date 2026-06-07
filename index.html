@@ -18722,12 +18722,16 @@ function openIrlTimePicker() {
   `;
 
   openModal(html);
-  // Initialiser la barre colorée
+  // Initialiser les variables globales ET la barre colorée
   setTimeout(() => {
     const startSlider = document.getElementById("irlStartSlider");
     const endSlider = document.getElementById("irlEndSlider");
     if (startSlider && endSlider) {
-      updateIrlSliderDisplay(parseInt(startSlider.value) || 0, parseInt(endSlider.value) || 23);
+      // 🔧 SYNCHRONISER les variables globales avec les valeurs actuelles
+      irlStartValue = parseInt(startSlider.value) || 0;
+      irlEndValue = parseInt(endSlider.value) || 23;
+      // Afficher la barre colorée
+      updateIrlSliderDisplay(irlStartValue, irlEndValue);
     }
   }, 50);
 }
