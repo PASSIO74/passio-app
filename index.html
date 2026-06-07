@@ -10330,7 +10330,14 @@ function renderPostHTML(p) {
         <div class="post-author-name">${escapeHtml(author.name || "Moi")}
           ${p._source === "me" ? '<span class="pill" style="padding:2px 7px;font-size:9px;border-color:rgba(139, 92, 246,0.5);color:#fed7aa;">Moi</span>' : ""}
         </div>
-        <div class="post-author-meta">${passion.emoji} ${passion.label} · ${fmtTime(p.createdAt)}</div>
+        <div class="post-author-meta">
+          ${passion.emoji} ${passion.label} · ${fmtTime(p.createdAt)}
+          ${p._source === "me" && p.syncStatus ? `
+            ${p.syncStatus === "syncing" ? '<span style="margin-left:8px;font-size:10px;color:var(--muted);">⏳ Sync...</span>' : ""}
+            ${p.syncStatus === "synced" ? '<span style="margin-left:8px;font-size:10px;color:#22c55e;">📡 En ligne</span>' : ""}
+            ${p.syncStatus === "offline" ? '<span style="margin-left:8px;font-size:10px;color:#f59e0b;">📴 Local</span>' : ""}
+          ` : ""}
+        </div>
       </div>
       ${p._source === "me" ? `<button class="post-delete-btn" onclick="confirmDeletePost('${p.id}')" aria-label="Supprimer ce post" title="Supprimer">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7 H20"/><path d="M9 7 V4 H15 V7"/><path d="M6 7 L7 20 H17 L18 7"/><path d="M10 11 V17"/><path d="M14 11 V17"/></svg>
