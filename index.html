@@ -11832,7 +11832,7 @@ function renderCdvScreen() {
   const list = document.getElementById("cdvList");
   if (!list) return;
 
-  // Render les CDV Lives en cours
+  // Render les CDV Lives en cours (toujours visible en haut)
   if (typeof renderCdvLives === "function") renderCdvLives();
 
   // Sync filter pills (multi-select)
@@ -11841,18 +11841,36 @@ function renderCdvScreen() {
     p.classList.toggle("active", cdvFilters && cdvFilters.has(filterType));
   });
 
-  // Filtre multi-select: affiche seulement si "live" est l'UNIQUE filtre
+  // Filtre multi-select: affiche seulement si "live" est l'UNIQUE filtre actif
   const showLiveOnly = cdvFilters && cdvFilters.size === 1 && cdvFilters.has("live");
   if (showLiveOnly) {
-    const ended = getCdvLives().filter(l => l.status === "ended");
-    const ongoing = getCdvLives().filter(l => l.status === "live");
-    if (!ended.length && !ongoing.length) {
+    // Affiche les lives en cours ET les lives terminés
+    const lives = getCdvLives().filter(l => l.authorId === "me" || (state.following || []).includes(l.authorId) || l.visibility === "public");
+    if (!lives.length) {
       list.innerHTML = "";
       document.getElementById("cdvEmpty").style.display = "block";
       return;
     }
     document.getElementById("cdvEmpty").style.display = "none";
-    list.innerHTML = ended.map(l => `
+
+    // Lives en cours d'abord
+    const active = lives.filter(l => l.status === "live");
+    const ended = lives.filter(l => l.status === "ended");
+
+    let html = active.length ? `<div style="font-weight:700;font-size:13px;color:var(--text);margin:14px 0 8px;">✨ ${active.length} live${active.length>1?"s":""} en cours</div>` : "";
+    html += active.map(l => `
+      <div class="cdv-live-card" onclick="openCdvLiveViewer('${l.id}')" style="border-color:rgba(239,68,68,0.3);">
+        <div class="cdv-live-header">
+          <span class="cdv-live-badge">🔴 EN DIRECT</span>
+          <div style="flex:1;">
+            <div class="cdv-live-dest">${escapeHtml(l.destination)}</div>
+            <div class="cdv-live-author">${l.steps.length} étape${l.steps.length>1?"s":""}</div>
+          </div>
+        </div>
+      </div>`).join("");
+
+    if (ended.length) html += `<div style="font-weight:700;font-size:13px;color:var(--text);margin:14px 0 8px;">✅ Lives terminés</div>`;
+    html += ended.map(l => `
       <div class="cdv-live-card" onclick="openCdvLiveViewer('${l.id}')" style="border-color:var(--border);">
         <div class="cdv-live-header">
           <span style="font-size:10px;font-weight:700;color:var(--muted);background:var(--bg-deep);padding:3px 8px;border-radius:6px;">✅ TERMINÉ</span>
@@ -11862,6 +11880,8 @@ function renderCdvScreen() {
           </div>
         </div>
       </div>`).join("");
+
+    list.innerHTML = html;
     return;
   }
 
