@@ -11705,12 +11705,18 @@ function openCdvLiveViewer(liveId) {
         <button class="btn ghost" style="border-color:rgba(239,68,68,0.4);color:#ef4444;" onclick="closeModal();endCdvLive(\'' + liveId + '\')">Terminer</button>\
       </div>' : (!isMine ? '\
       <div style="margin-top:14px;">\
-        <button class="btn primary block" onclick="toast(\'📡 Tu suis ce CDV Live !\')" style="background:linear-gradient(135deg,#ef4444,#f59e0b);">📡 Suivre ce voyage</button>\
+        <button class="btn primary block" onclick="toggleFollowCdvLive(\'' + liveId + '\',this)" style="background:linear-gradient(135deg,#ef4444,#f59e0b);">📡 Suivre ce voyage</button>\
       </div>' : '')) + '\
   ';
   openModal(html);
   var modalEl = document.querySelector(".modal");
-  if (modalEl) modalEl.classList.add("modal-fullscreen");
+  if (modalEl) {
+    modalEl.classList.add("modal-fullscreen");
+    // Lancer le refresh en temps réel si c'est un live
+    if (isLive) {
+      startCdvLiveRefresh(liveId);
+    }
+  }
 }
 
 function reactCdvLive(liveId, emoji) {
