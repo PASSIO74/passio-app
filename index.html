@@ -18331,73 +18331,75 @@ function filterIrlByDistance() {
 }
 
 function openIrlTimePicker() {
-  const currentHour = irlTimeFilter ? parseInt(irlTimeFilter.split(":")[0]) : 0;
-  const currentMin = irlTimeFilter ? parseInt(irlTimeFilter.split(":")[1]) : 0;
+  // Parser le filtre actuel au format "HH:MM - HH:MM" ou sinon utiliser valeurs par défaut
+  let startHour = 0, endHour = 23;
+
+  if (irlTimeFilter && irlTimeFilter.includes(" - ")) {
+    const parts = irlTimeFilter.split(" - ");
+    startHour = parseInt(parts[0].split(":")[0]) || 0;
+    endHour = parseInt(parts[1].split(":")[0]) || 23;
+  }
 
   let html = `
     <div class="modal-handle"></div>
-    <div class="modal-title">🕐 Choisir l'horaire</div>
-    <p style="font-size:12px;color:var(--muted);margin-bottom:14px;">Afficher les événements à partir de cette heure</p>
+    <div class="modal-title">🕐 Choisir une plage horaire</div>
 
-    <div style="display:flex;gap:12px;margin-bottom:16px;justify-content:center;align-items:center;">
-      <div style="text-align:center;flex:1;">
-        <div style="font-size:32px;font-weight:800;color:var(--accent);margin-bottom:8px;" id="irlTimeDisplay">${String(currentHour).padStart(2, '0')}:${String(currentMin).padStart(2, '0')}</div>
-        <div style="font-size:10px;color:var(--muted);">Heure</div>
-      </div>
+    <div style="text-align:center;margin-bottom:20px;">
+      <div style="font-size:28px;font-weight:800;color:var(--accent);" id="irlTimeRangeDisplay">${String(startHour).padStart(2, '0')}:00 - ${String(endHour).padStart(2, '0')}:00</div>
     </div>
 
-    <div style="margin-bottom:16px;">
-      <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:8px;">Heures (${String(currentHour).padStart(2, '0')})</label>
-      <input type="range" id="irlHourSlider" min="0" max="23" value="${currentHour}" style="width:100%;cursor:pointer;height:6px;" oninput="updateIrlTimeDisplay()">
-      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-top:4px;">
-        <span>00:00</span>
-        <span>23:59</span>
-      </div>
+    <div style="margin-bottom:24px;">
+      <label style="font-size:11px;font-weight:600;color:var(--text);display:block;margin-bottom:8px;">Début: <span id="irlStartLabel">${String(startHour).padStart(2, '0')}:00</span></label>
+      <input type="range" id="irlStartSlider" min="0" max="23" value="${startHour}" style="width:100%;cursor:pointer;height:8px;" oninput="updateIrlTimeRange()">
     </div>
 
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:16px;">
-      <button class="btn secondary" style="font-size:11px;padding:8px;" onclick="setIrlQuickTime(6)">6:00</button>
-      <button class="btn secondary" style="font-size:11px;padding:8px;" onclick="setIrlQuickTime(9)">9:00</button>
-      <button class="btn secondary" style="font-size:11px;padding:8px;" onclick="setIrlQuickTime(12)">12:00</button>
-      <button class="btn secondary" style="font-size:11px;padding:8px;" onclick="setIrlQuickTime(18)">18:00</button>
-      <button class="btn secondary" style="font-size:11px;padding:8px;" onclick="setIrlQuickTime(20)">20:00</button>
-      <button class="btn secondary" style="font-size:11px;padding:8px;" onclick="setIrlQuickTime(22)">22:00</button>
+    <div style="margin-bottom:24px;">
+      <label style="font-size:11px;font-weight:600;color:var(--text);display:block;margin-bottom:8px;">Fin: <span id="irlEndLabel">${String(endHour).padStart(2, '0')}:00</span></label>
+      <input type="range" id="irlEndSlider" min="0" max="23" value="${endHour}" style="width:100%;cursor:pointer;height:8px;" oninput="updateIrlTimeRange()">
     </div>
 
     <div style="display:flex;gap:8px;">
       <button class="btn secondary block" onclick="clearIrlTimeFilter();closeModal()">Effacer</button>
-      <button class="btn primary block" onclick="applyIrlTimeFilter();closeModal()">Appliquer</button>
+      <button class="btn primary block" onclick="applyIrlTimeRange();closeModal()">Appliquer</button>
     </div>
   `;
 
   openModal(html);
 }
 
-function updateIrlTimeDisplay() {
-  const hour = parseInt(document.getElementById("irlHourSlider").value);
-  document.getElementById("irlTimeDisplay").textContent = String(hour).padStart(2, '0') + ":00";
+function updateIrlTimeRange() {
+  const startHour = parseInt(document.getElementById("irlStartSlider").value);
+  const endHour = parseInt(document.getElementById("irlEndSlider").value);
+
+  // S'assurer que la fin n'est pas avant le début
+  if (endHour < startHour) {
+    document.getElementById("irlEndSlider").value = startHour;
+  }
+
+  const actualEnd = Math.max(startHour, parseInt(document.getElementById("irlEndSlider").value));
+
+  document.getElementById("irlStartLabel").textContent = String(startHour).padStart(2, '0') + ":00";
+  document.getElementById("irlEndLabel").textContent = String(actualEnd).padStart(2, '0') + ":00";
+  document.getElementById("irlTimeRangeDisplay").textContent = String(startHour).padStart(2, '0') + ":00 - " + String(actualEnd).padStart(2, '0') + ":00";
+}
+
+function applyIrlTimeRange() {
+  const startHour = parseInt(document.getElementById("irlStartSlider").value);
+  const endHour = Math.max(startHour, parseInt(document.getElementById("irlEndSlider").value));
+
+  irlTimeFilter = String(startHour).padStart(2, '0') + ":00 - " + String(endHour).padStart(2, '0') + ":00";
+  const btn = document.getElementById("irlTimeFilterBtn");
+  if (btn) btn.textContent = "🕐 " + irlTimeFilter;
+  console.log("[IRL Filter] Plage horaire:", irlTimeFilter);
+  renderIRL();
 }
 
 function setIrlQuickTime(hour) {
-  document.getElementById("irlHourSlider").value = hour;
-  updateIrlTimeDisplay();
+  // Fonction supprimée - plus utilisée
 }
 
-function applyIrlTimeFilter() {
-  const hour = parseInt(document.getElementById("irlHourSlider").value);
-  irlTimeFilter = String(hour).padStart(2, '0') + ":00";
-  const btn = document.getElementById("irlTimeFilterBtn");
-  if (btn) btn.textContent = "🕐 " + irlTimeFilter;
-  console.log("[IRL Filter] Heure:", irlTimeFilter);
-  renderIRL();
-}
-
-function clearIrlTimeFilter() {
-  irlTimeFilter = "";
-  const btn = document.getElementById("irlTimeFilterBtn");
-  if (btn) btn.textContent = "🕐 Horaire";
-  console.log("[IRL Filter] Heure: (effacée)");
-  renderIRL();
+function updateIrlTimeDisplay() {
+  // Fonction supprimée - remplacée par updateIrlTimeRange()
 }
 
 function filterIrlByTime() {
