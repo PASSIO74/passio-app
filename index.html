@@ -18670,8 +18670,8 @@ function openIrlTimePicker() {
         background:transparent;
         cursor:pointer;
         outline:none;
-        z-index:5;
-      " oninput="updateIrlStart()" onmousedown="this.style.zIndex=10" onmouseup="resetIrlSliderZ()" ontouchstart="this.style.zIndex=10" ontouchend="resetIrlSliderZ()">
+        z-index:4;
+      " oninput="updateIrlStart()" onmousedown="swapIrlSliderZ('start')" onmouseup="swapIrlSliderZ('end')" ontouchstart="swapIrlSliderZ('start')" ontouchend="swapIrlSliderZ('end')">
 
       <!-- Slider fin -->
       <input type="range" id="irlEndSlider" min="0" max="23" value="${endHour}" style="
@@ -18685,8 +18685,8 @@ function openIrlTimePicker() {
         background:transparent;
         cursor:pointer;
         outline:none;
-        z-index:4;
-      " oninput="updateIrlEnd()" onmousedown="this.style.zIndex=10" onmouseup="resetIrlSliderZ()" ontouchstart="this.style.zIndex=10" ontouchend="resetIrlSliderZ()">
+        z-index:5;
+      " oninput="updateIrlEnd()" onmousedown="swapIrlSliderZ('end')" onmouseup="swapIrlSliderZ('start')" ontouchstart="swapIrlSliderZ('end')" ontouchend="swapIrlSliderZ('start')">
 
       <style>
         #irlStartSlider::-webkit-slider-thumb, #irlEndSlider::-webkit-slider-thumb {
