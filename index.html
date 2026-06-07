@@ -15428,6 +15428,38 @@ function shareReelVia(platform, postId, encodedUrl, encodedText) {
 
   window.open(shareUrl, "_blank", "width=600,height=400");
   toast(`Ouverture ${platform}...`);
+  closeModal();
+}
+
+function shareReelEmail(postId, encodedText) {
+  const reel = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
+  if (!reel) return;
+
+  const url = `${location.origin}${location.pathname}#reel=${encodeURIComponent(postId)}`;
+  const author = authorOfReel(reel);
+  const passion = passionById(reel.passion) || { label: reel.passion, emoji: "✨" };
+  const text = reel.text || reel.caption || "";
+
+  const subject = encodeURIComponent(`Regarde cette bobine PASSIO de ${author.name}!`);
+  const body = encodeURIComponent(`Salut!\n\nJe viens de découvrir cette super bobine sur PASSIO:\n\n${passion.emoji} ${author.name} – ${passion.label}\n"${text.slice(0, 150)}${text.length > 150 ? "…" : ""}"\n\nViens la voir ici: ${url}\n\nPASSIO - Partage tes passions!`);
+
+  const mailtoLink = `mailto:?subject=${subject}&body=${body}`;
+  window.location.href = mailtoLink;
+  toast("📧 Ouverture de ton client email...");
+  closeModal();
+}
+
+function shareReelSMS(postId, encodedUrl) {
+  const url = decodeURIComponent(encodedUrl);
+  const reel = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
+  if (!reel) return;
+
+  const text = reel.text || reel.caption || "";
+  const smsBody = encodeURIComponent(`Regarde cette bobine PASSIO: ${text.slice(0, 30)}... ${url}`);
+  const smsLink = `sms:?body=${smsBody}`;
+  window.location.href = smsLink;
+  toast("📱 Ouverture SMS...");
+  closeModal();
 }
 
 function scrollToReel(idx) {
