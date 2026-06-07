@@ -16392,6 +16392,63 @@ let photoDataUrl = null;
 let audioDataUrl = null;
 let videoDataUrl = null;
 
+// ===== STUDIO CDV LIVE HELPERS =====
+var _studioCdvDuration = "semaine";
+var _studioCdvVisibility = "public";
+
+function selectCdvStudioDuration(btn, val) {
+  _studioCdvDuration = val;
+  document.querySelectorAll(".duration-btn").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+}
+
+function selectCdvStudioVisibility(btn, val) {
+  _studioCdvVisibility = val;
+  document.querySelectorAll(".visibility-btn").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+}
+
+function startCdvLiveFromStudio() {
+  const dest = document.getElementById("cdvLiveDestInput")?.value.trim();
+  if (!dest) { toast("Indique une destination"); return; }
+  const desc = document.getElementById("cdvLiveDescInput")?.value.trim() || "";
+
+  const live = {
+    id: "live_" + uid(),
+    authorId: "me",
+    destination: dest,
+    description: desc,
+    duration: _studioCdvDuration,
+    visibility: _studioCdvVisibility,
+    status: "live",
+    steps: [],
+    followers: [],
+    viewers: [],
+    currentViewers: 0,
+    reactions: [],
+    comments: [],
+    createdAt: Date.now(),
+  };
+
+  const lives = getCdvLives();
+  lives.unshift(live);
+  saveCdvLives(lives);
+
+  // Reset le studio
+  document.getElementById("cdvLiveDestInput").value = "";
+  document.getElementById("cdvLiveDescInput").value = "";
+  _studioCdvDuration = "semaine";
+  _studioCdvVisibility = "public";
+
+  toast("📡 CDV Live démarré ! Ajoute une étape pour lancer la diffusion");
+  goTo("cdv");
+  setTimeout(() => {
+    renderCdvScreen();
+    renderFeed();
+    addCdvLiveStep(live.id);
+  }, 300);
+}
+
 function renderStudio() {
   // Passion dropdown based on user profiles
   const sel = $("#postPassion");
