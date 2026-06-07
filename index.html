@@ -20354,11 +20354,34 @@ async function supaLoadEvents() {
 
 async function supaSearchUsers(query) {
   try {
+    // 🔍 Retourner TOUS les profils de chaque utilisateur (pas juste un)
     const { data } = await supa.from("profiles")
       .select("id, username, emoji, color, passion_id, bio")
       .ilike("username", `%${query}%`)
-      .neq("id", MY_UID).limit(8);
-    return data || [];
+      .neq("id", MY_UID);
+
+    if (!data) return [];
+
+    // Grouper par utilisateur (username) pour obtenir TOUS ses profils/passions
+    const userMap = {};
+    data.forEach(profile => {
+      if (!userMap[profile.id]) {
+        userMap[profile.id] = {
+          id: profile.id,
+          username: profile.username || "Passionné",
+          emoji: profile.emoji || "✨",
+          color: profile.color || "#8b5cf6",
+          bio: profile.bio || "",
+          passions: [] // Tous les profils/passions de cet utilisateur
+        };
+      }
+      userMap[profile.id].passions.push({
+        id: profile.passion_id || "",
+        emoji: profile.emoji || "✨"
+      });
+    });
+
+    return Object.values(userMap).slice(0, 8);
   } catch(e) { return []; }
 }
 
