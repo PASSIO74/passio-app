@@ -20405,10 +20405,10 @@ async function supaSearchUsers(query) {
     }
 
     // 🔍 Retourner TOUS les profils de chaque utilisateur (pas juste un)
-    // Search by username OR bio OR passion name
+    // Search by username OR bio
     const { data, error } = await supa.from("profiles")
       .select("id, username, emoji, color, passion_id, bio")
-      .or(`username.ilike.%${query}%,bio.ilike.%${query}%`)
+      .or(`username.ilike.*${query}*,bio.ilike.*${query}*`)
       .neq("id", MY_UID);
 
     console.log("[SEARCH] Data returned:", data, "Error:", error);
