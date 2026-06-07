@@ -18211,14 +18211,17 @@ function renderIRL() {
     _diag("[DISTANCE] RÉSULTAT: " + distIncluded + "/" + events.length + " événements");
   }
 
-  // 5. Filtre par heure (OPTIONNEL - seulement si sélectionné)
+  // 5. Filtre par heure (OPTIONNEL - plage horaire)
   if (irlTimeFilter && irlTimeFilter !== "") {
-    const timeParts = irlTimeFilter.split(":");
-    if (timeParts.length === 2) {
-      const [filterHours, filterMins] = timeParts.map(Number);
-      const filterTimeInMinutes = filterHours * 60 + filterMins;
+    // Format: "HH:00 - HH:00"
+    if (irlTimeFilter.includes(" - ")) {
+      const [startStr, endStr] = irlTimeFilter.split(" - ");
+      const startHours = parseInt(startStr.split(":")[0]);
+      const endHours = parseInt(endStr.split(":")[0]);
+      const startTimeInMinutes = startHours * 60;
+      const endTimeInMinutes = endHours * 60 + 59;
 
-      console.log("[IRL] Filtre heure >= " + irlTimeFilter);
+      console.log("[IRL] Filtre horaire: " + irlTimeFilter);
 
       filtered = filtered.filter(function(e) {
         const eventDate = new Date(e.date);
@@ -18226,7 +18229,7 @@ function renderIRL() {
         const eventMins = eventDate.getMinutes();
         const eventTimeInMinutes = eventHours * 60 + eventMins;
 
-        return eventTimeInMinutes >= filterTimeInMinutes;
+        return eventTimeInMinutes >= startTimeInMinutes && eventTimeInMinutes <= endTimeInMinutes;
       });
       console.log("[IRL] Après filtre heure:", filtered.length);
     }
