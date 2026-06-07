@@ -18617,54 +18617,48 @@ function openIrlTimePicker() {
     endHour = parseInt(parts[1].split(":")[0]) || 23;
   }
 
-  // Initialiser les variables globales
-  irlStartValue = startHour;
-  irlEndValue = endHour;
+  // Générer les options pour les selects
+  let hourOptions = '';
+  for (let i = 0; i <= 23; i++) {
+    hourOptions += `<option value="${i}">${String(i).padStart(2, '0')}:00</option>`;
+  }
 
   let html = `
     <div class="modal-handle"></div>
     <div class="modal-title">🕐 Choisir une plage horaire</div>
 
     <div style="text-align:center;margin-bottom:20px;">
-      <div style="font-size:36px;font-weight:800;" id="irlTimeRangeDisplay">
-        <span style="color:#3b82f6;">${String(startHour).padStart(2, '0')}:00</span>
+      <div style="font-size:32px;font-weight:800;">
+        <span id="irlDisplayStart" style="color:#3b82f6;">${String(startHour).padStart(2, '0')}:00</span>
         <span style="color:var(--text);margin:0 12px;">→</span>
-        <span style="color:#3b82f6;">${String(endHour).padStart(2, '0')}:00</span>
+        <span id="irlDisplayEnd" style="color:#3b82f6;">${String(endHour).padStart(2, '0')}:00</span>
       </div>
     </div>
 
-    <!-- Section Début -->
-    <div style="margin-bottom:20px;">
-      <div style="font-weight:700;font-size:12px;color:var(--text);margin-bottom:8px;">📍 Début</div>
-      <div style="display:flex;gap:8px;align-items:center;">
-        <button class="btn small" onclick="adjustIrlTime('start',-1)">−</button>
-        <input type="number" id="irlStartInput" min="0" max="23" value="${startHour}"
-               oninput="updateIrlStartInput()"
-               style="flex:1;padding:10px;text-align:center;font-size:18px;font-weight:700;border:1px solid var(--border);border-radius:8px;" />
-        <button class="btn small" onclick="adjustIrlTime('start',1)">+</button>
+    <!-- Dropdowns simples -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px;">
+      <div>
+        <label style="display:block;font-weight:700;font-size:12px;margin-bottom:6px;">📍 Début</label>
+        <select id="irlStartHour" class="input" onchange="irlUpdateTime()" style="width:100%;">
+          ${hourOptions}
+        </select>
       </div>
-    </div>
-
-    <!-- Section Fin -->
-    <div style="margin-bottom:20px;">
-      <div style="font-weight:700;font-size:12px;color:var(--text);margin-bottom:8px;">📍 Fin</div>
-      <div style="display:flex;gap:8px;align-items:center;">
-        <button class="btn small" onclick="adjustIrlTime('end',-1)">−</button>
-        <input type="number" id="irlEndInput" min="0" max="23" value="${endHour}"
-               oninput="updateIrlEndInput()"
-               style="flex:1;padding:10px;text-align:center;font-size:18px;font-weight:700;border:1px solid var(--border);border-radius:8px;" />
-        <button class="btn small" onclick="adjustIrlTime('end',1)">+</button>
+      <div>
+        <label style="display:block;font-weight:700;font-size:12px;margin-bottom:6px;">📍 Fin</label>
+        <select id="irlEndHour" class="input" onchange="irlUpdateTime()" style="width:100%;">
+          ${hourOptions}
+        </select>
       </div>
     </div>
 
     <!-- Prédéfinis rapides -->
     <div style="margin-bottom:20px;">
-      <div style="font-weight:700;font-size:12px;color:var(--text);margin-bottom:8px;">⚡ Rapide</div>
+      <div style="font-weight:700;font-size:12px;color:var(--text);margin-bottom:8px;">⚡ Prédéfinis</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
-        <button class="pill" style="cursor:pointer;" onclick="setIrlQuickTime(6,12);updateIrlDisplay()">06:00 → 12:00</button>
-        <button class="pill" style="cursor:pointer;" onclick="setIrlQuickTime(12,18);updateIrlDisplay()">12:00 → 18:00</button>
-        <button class="pill" style="cursor:pointer;" onclick="setIrlQuickTime(18,23);updateIrlDisplay()">18:00 → 23:00</button>
-        <button class="pill" style="cursor:pointer;" onclick="setIrlQuickTime(0,23);updateIrlDisplay()">00:00 → 23:00</button>
+        <button class="pill" onclick="irlSetQuick(6,12)">06h → 12h</button>
+        <button class="pill" onclick="irlSetQuick(12,18)">12h → 18h</button>
+        <button class="pill" onclick="irlSetQuick(18,23)">18h → 23h</button>
+        <button class="pill" onclick="irlSetQuick(0,23)">00h → 23h</button>
       </div>
     </div>
 
@@ -18675,6 +18669,14 @@ function openIrlTimePicker() {
   `;
 
   openModal(html);
+
+  // Initialiser les dropdowns avec les valeurs actuelles
+  setTimeout(() => {
+    const startSelect = document.getElementById("irlStartHour");
+    const endSelect = document.getElementById("irlEndHour");
+    if (startSelect) startSelect.value = startHour;
+    if (endSelect) endSelect.value = endHour;
+  }, 100);
 }
 
 // ===== NOUVELLE INTERFACE HORAIRE SIMPLE ET INTUITIVE =====
