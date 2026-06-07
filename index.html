@@ -18744,13 +18744,34 @@ function updateIrlDoubleRange() {
 }
 
 function applyIrlTimeRange() {
-  const startHour = parseInt(document.getElementById("irlStartSlider").value);
-  const endHour = Math.max(startHour, parseInt(document.getElementById("irlEndSlider").value));
+  // Lire depuis les NOUVEAUX selects
+  const startSelect = document.getElementById("irlStartHour");
+  const endSelect = document.getElementById("irlEndHour");
 
+  if (!startSelect || !endSelect) {
+    toast("❌ Erreur: sélects non trouvés");
+    return;
+  }
+
+  let startHour = parseInt(startSelect.value) || 0;
+  let endHour = parseInt(endSelect.value) || 23;
+
+  // Validation
+  if (endHour <= startHour) {
+    endHour = startHour + 1;
+  }
+
+  // Sauvegarder le filtre
   irlTimeFilter = String(startHour).padStart(2, '0') + ":00 - " + String(endHour).padStart(2, '0') + ":00";
+
+  // Mettre à jour le bouton
   const btn = document.getElementById("irlTimeFilterBtn");
   if (btn) btn.textContent = "🕐 " + irlTimeFilter;
-  console.log("[IRL Filter] Plage horaire:", irlTimeFilter);
+
+  console.log("[IRL Filter] Plage horaire appliquée:", irlTimeFilter);
+  toast("✓ Filtre appliqué: " + irlTimeFilter);
+
+  // Recharger les événements filtrés
   renderIRL();
 }
 
