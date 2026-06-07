@@ -17424,11 +17424,18 @@ function filterExplore() {
       html += "<div style='padding:8px 14px 4px;font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;'>👤 Utilisateurs</div>";
       fu.forEach(function(u) {
         // Afficher tous les passions/profils comme des badges
+        // Gérer à la fois le format Supabase (passions array) et le format seed (passion string)
         var passionsHTML = "";
-        if (u.passions && u.passions.length > 0) {
+
+        if (u.passions && Array.isArray(u.passions) && u.passions.length > 0) {
+          // Format Supabase: passions array
           passionsHTML = u.passions.map(function(p) {
             return p.emoji || "✨";
           }).join(" ");
+        } else if (u.passion) {
+          // Format seed: passion string
+          var pw = passionById(u.passion) || { emoji: "✨", label: "" };
+          passionsHTML = pw.emoji;
         } else {
           passionsHTML = "✨";
         }
