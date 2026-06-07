@@ -13022,7 +13022,41 @@ async function openUserProfile(authorId, source) {
   }
   if (!user) { toast("Profil non trouvé"); return; }
 
-  var passion = passionById(user.passion);
+  // 🔄 Charger TOUS les profils/passions de cet utilisateur
+  let userPassions = [];
+  if (user.passions && Array.isArray(user.passions)) {
+    // Si les passions sont déjà présentes (depuis la recherche)
+    userPassions = user.passions;
+  } else if (typeof supa !== "undefined" && supa) {
+    // Sinon, charger depuis Supabase
+    try {
+      const { data } = await supa.from("profiles")
+        .select("passion_id, emoji")
+        .eq("id", authorId);
+      if (data) {
+        userPassions = data.map(p => ({ id: p.passion_id, emoji: p.emoji || "✨" }));
+      }
+    } catch(e) {}
+  }
+
+  // Fallback: si pas de passions, utiliser la passion principale
+  if (!userPassions.length && user.passion) {
+    const passion = passionById(user.passion);
+    if (passion) {
+      userPassions = [{ id: user.passion, emoji: passion.emoji }];
+    }
+  }
+
+  // 🎯 Créer un HTML pour afficher TOUTES les passions
+  const passionsHTML = userPassions.length > 0
+    ? '<div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-top:8px;">' +
+      userPassions.map(p => {
+        const pas = passionById(p.id);
+        return '<div style="display:flex;align-items:center;gap:4px;padding:4px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;font-size:11px;font-weight:700;">' + (p.emoji || "✨") + ' ' + (pas ? pas.label : "Passion") + '</div>';
+      }).join("") +
+      '</div>'
+    : '';
+
   var userPosts = allFeedPosts().filter(function(p) { return p.authorId === authorId; });
   var postCount = userPosts.length;
   var likeCount = userPosts.reduce(function(s,p) { return s + (p.likes||0); }, 0);
@@ -13047,7 +13081,7 @@ async function openUserProfile(authorId, source) {
     <div style="text-align:center;padding-top:20px;margin-bottom:16px;">\
       <div style="width:80px;height:80px;border-radius:50%;background:' + (user.avatar || 'var(--accent)') + ';display:flex;align-items:center;justify-content:center;font-size:38px;margin:0 auto 12px;border:4px solid #fff;box-shadow:0 6px 20px rgba(139,92,246,0.3);">' + (user.profileEmoji || "✨") + '</div>\
       <div style="font-weight:900;font-size:22px;color:var(--text);">' + escapeHtml(user.name || "Passionné") + '</div>\
-      <div style="font-size:13px;color:var(--accent);margin-top:4px;">' + (passion ? passion.emoji + " " + passion.label : "") + '</div>\
+      ' + passionsHTML + '\
       ' + (user.bio ? '<div style="font-size:13px;color:var(--text-dim);margin-top:10px;line-height:1.5;max-width:280px;margin-left:auto;margin-right:auto;">' + escapeHtml(user.bio) + '</div>' : '') + '\
     </div>\
     \
