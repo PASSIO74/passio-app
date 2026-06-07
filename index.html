@@ -15867,11 +15867,11 @@ function renderProfileStrip() {
   var postCountByPassion = {};
   allPostsFlat.forEach(function(p) { postCountByPassion[p.passion] = (postCountByPassion[p.passion] || 0) + 1; });
 
-  // ── PROFIL SPÉCIAL "ABONNEMENTS" ──
+  // ── PROFIL SPÉCIAL "SUIVIS" : Photo de gens/communauté ──
   var followingIds = state.user?.following || [];
   var followingPostCount = allPostsFlat.filter(function(p) { return followingIds.includes(p.authorId); }).length;
   var followingTile = '<div class="profile-tile ' + (_showFollowingFeed ? "active" : "") + '" onclick="toggleFollowingFilter()" title="Suivis" style="opacity:1;transform:' + (_showFollowingFeed ? 'scale(1.07)' : 'scale(1)') + ';transition:all 0.2s;">\
-      <div class="profile-tile-avatar" style="position:relative;background:linear-gradient(135deg, #8b5cf6, #7c3aed);display:flex;align-items:center;justify-content:center;">👥' + (followingPostCount > 0 ? '<span style="position:absolute;top:-5px;right:-5px;background:var(--accent);color:#fff;font-size:9px;font-weight:800;border-radius:8px;padding:1px 5px;min-width:16px;text-align:center;border:2px solid var(--bg);line-height:14px;">' + followingPostCount + '</span>' : '') + '</div>\
+      <div class="profile-tile-avatar" style="position:relative;overflow:hidden;background:linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(124, 58, 237, 0.10));"><img class="profile-tile-photo" src="https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=200&h=200&fit=crop&crop=faces,entropy&auto=format&q=80" alt="Suivis" onerror="this.onerror=null;this.src=\'https://picsum.photos/seed/community/200/200\'" /><div style="position:absolute;inset:0;background:radial-gradient(circle at 30% 30%, rgba(139, 92, 246, 0.08), transparent 70%);pointer-events:none;"></div>' + (followingPostCount > 0 ? '<span style="position:absolute;top:-5px;right:-5px;background:var(--accent);color:#fff;font-size:9px;font-weight:800;border-radius:8px;padding:1px 5px;min-width:16px;text-align:center;border:2px solid var(--bg);line-height:14px;">' + followingPostCount + '</span>' : '') + '</div>\
       <div class="profile-tile-label" style="font-weight:' + (_showFollowingFeed ? '800' : '600') + ';color:' + (_showFollowingFeed ? 'var(--accent)' : '') + ';">Suivis</div>\
     </div>';
 
