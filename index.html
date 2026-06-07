@@ -11933,8 +11933,9 @@ function renderCdvScreen() {
   const list = document.getElementById("cdvList");
   if (!list) return;
 
-  // Render les CDV Lives en cours (toujours visible en haut)
-  if (typeof renderCdvLives === "function") renderCdvLives();
+  // Vider cdvLiveList (ne pas afficher les lives en haut)
+  const liveListEl = document.getElementById("cdvLiveList");
+  if (liveListEl) liveListEl.innerHTML = "";
 
   // Sync filter pills (multi-select)
   document.querySelectorAll("#cdvFilterRow .pill").forEach(p => {
@@ -11954,21 +11955,50 @@ function renderCdvScreen() {
     }
     document.getElementById("cdvEmpty").style.display = "none";
 
+    // Dédupliquer par ID pour éviter les doublons
+    const seenIds = new Set();
+    const uniqueLives = lives.filter(l => {
+      if (seenIds.has(l.id)) return false;
+      seenIds.add(l.id);
+      return true;
+    });
+
     // Lives en cours d'abord
-    const active = lives.filter(l => l.status === "live");
-    const ended = lives.filter(l => l.status === "ended");
+    const active = uniqueLives.filter(l => l.status === "live");
+    const ended = uniqueLives.filter(l => l.status === "ended");
 
     let html = active.length ? `<div style="font-weight:700;font-size:13px;color:var(--text);margin:14px 0 8px;">✨ ${active.length} live${active.length>1?"s":""} en cours</div>` : "";
-    html += active.map(l => `
-      <div class="cdv-live-card" onclick="openCdvLiveViewer('${l.id}')" style="border-color:rgba(239,68,68,0.3);">
+    html += active.map(l => {
+      const isNew = l.createdAt && Date.now() - l.createdAt < 60000;
+      const seedAuthor = userById(l.authorId);
+      const authorName = l.authorId === "me" ? (state.user.name || "Toi") : (seedAuthor && seedAuthor.name) || "Passionné";
+      const viewerCount = (l.currentViewers || 0) + Math.floor(Math.random()*10);
+      const isFollowing = (state.following || []).includes(l.authorId);
+
+      return `<div class="cdv-live-card" onclick="openCdvLiveViewer('${l.id}')" style="border-color:rgba(239,68,68,0.3);position:relative;">
+        ${isNew ? '<div style="position:absolute;top:10px;right:10px;background:#ef4444;color:#fff;font-size:9px;font-weight:700;padding:3px 7px;border-radius:12px;">NOUVEAU</div>' : ''}
         <div class="cdv-live-header">
           <span class="cdv-live-badge">🔴 EN DIRECT</span>
           <div style="flex:1;">
             <div class="cdv-live-dest">${escapeHtml(l.destination)}</div>
-            <div class="cdv-live-author">${l.steps.length} étape${l.steps.length>1?"s":""}</div>
+            <div class="cdv-live-author">par ${escapeHtml(authorName)} · ${l.steps.length} étape${l.steps.length>1?"s":""}</div>
           </div>
         </div>
-      </div>`).join("");
+        ${l.steps.length ? `
+          <div class="cdv-live-steps">
+            ${l.steps.slice(-5).map(s => `
+              <div class="cdv-live-step">
+                <div class="cdv-live-step-emoji">${s.emoji}</div>
+                <div class="cdv-live-step-city">${escapeHtml(s.city)}</div>
+                <div class="cdv-live-step-time">${fmtTime(s.createdAt)}</div>
+              </div>`).join("")}
+          </div>` : `<div style="text-align:center;padding:10px;color:var(--muted);font-size:11px;">En attente de la première étape…</div>`}
+        <div class="cdv-live-footer">
+          <div class="cdv-live-count">👁 ${viewerCount} regardent en direct</div>
+          ${l.authorId === "me" ? `<button class="cdv-live-follow-btn" onclick="event.stopPropagation();addCdvLiveStep('${l.id}')">+ Étape</button>` : `<button class="cdv-live-follow-btn" onclick="event.stopPropagation();toggleFollowCdvLive('${l.id}',this)" style="background:${isFollowing ? '#8b5cf6' : 'var(--border)'};color:${isFollowing ? '#fff' : 'var(--text)'};">${isFollowing ? '✓ En suivi' : '📡 Suivre'}</button>`}
+        </div>
+      </div>`;
+    }).join("");
 
     if (ended.length) html += `<div style="font-weight:700;font-size:13px;color:var(--text);margin:14px 0 8px;">✅ Lives terminés</div>`;
     html += ended.map(l => `
