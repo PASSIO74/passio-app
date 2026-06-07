@@ -19302,8 +19302,19 @@ function openModal(html) {
 
 }
 function closeModal() {
-  $("#modalBackdrop").classList.remove("active");
+  // Arrêter le refresh automatique du CDV Live si actif
+  if (cdvLiveRefreshInterval) {
+    clearInterval(cdvLiveRefreshInterval);
+    cdvLiveRefreshInterval = null;
+  }
 
+  // Retirer le spectateur du live si c'est applicable
+  const currentLiveId = document.querySelector(".modal-fullscreen")?.getAttribute("data-live-id");
+  if (currentLiveId) {
+    removeCdvLiveViewer(currentLiveId);
+  }
+
+  $("#modalBackdrop").classList.remove("active");
 }
 function closeModalOnBackdrop(e) {
   if (e.target.id === "modalBackdrop") closeModal();
