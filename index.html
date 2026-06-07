@@ -17619,6 +17619,8 @@ function clearIrlCitySelection() {
 
 let irlMap = null;
 let irlMarkersLayer = null;
+let irlMapInitialized = false;
+let irlMarkersAddedOnce = false;
 
 function initIrlMap() {
   if (irlMap) {
