@@ -11719,6 +11719,26 @@ function openCdvLiveViewer(liveId) {
   }
 }
 
+function toggleFollowCdvLive(liveId, btn) {
+  const lives = getCdvLives();
+  const live = lives.find(l => l.id === liveId);
+  if (!live) return;
+
+  if (!live.followers) live.followers = [];
+  const userId = state.user?.id || "me";
+  const isFollowing = live.followers.includes(userId);
+
+  if (isFollowing) {
+    live.followers = live.followers.filter(f => f !== userId);
+    toast("✖️ Tu ne suis plus ce voyage");
+  } else {
+    live.followers.push(userId);
+    toast("📡 Tu suis ce voyage en direct !");
+  }
+  saveCdvLives(lives);
+  openCdvLiveViewer(liveId);
+}
+
 function reactCdvLive(liveId, emoji) {
   var lives = getCdvLives();
   var live = lives.find(function(l) { return l.id === liveId; });
