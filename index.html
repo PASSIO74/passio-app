@@ -18437,20 +18437,45 @@ function openIrlTimePicker() {
   setTimeout(updateIrlDoubleRange, 50);
 }
 
-function updateIrlTimeRange() {
-  const startHour = parseInt(document.getElementById("irlStartSlider").value);
-  const endHour = parseInt(document.getElementById("irlEndSlider").value);
+function updateIrlDoubleRange() {
+  const startSlider = document.getElementById("irlStartSlider");
+  const endSlider = document.getElementById("irlEndSlider");
+  const fill = document.getElementById("irlSliderFill");
+  const display = document.getElementById("irlTimeRangeDisplay");
+
+  if (!startSlider || !endSlider || !fill) return;
+
+  let startVal = parseInt(startSlider.value);
+  let endVal = parseInt(endSlider.value);
 
   // S'assurer que la fin n'est pas avant le début
-  if (endHour < startHour) {
-    document.getElementById("irlEndSlider").value = startHour;
+  if (endVal < startVal) {
+    endSlider.value = startVal;
+    endVal = startVal;
   }
 
-  const actualEnd = Math.max(startHour, parseInt(document.getElementById("irlEndSlider").value));
+  // S'assurer que le début n'est pas après la fin
+  if (startVal > endVal) {
+    startSlider.value = endVal;
+    startVal = endVal;
+  }
 
-  document.getElementById("irlStartLabel").textContent = String(startHour).padStart(2, '0') + ":00";
-  document.getElementById("irlEndLabel").textContent = String(actualEnd).padStart(2, '0') + ":00";
-  document.getElementById("irlTimeRangeDisplay").textContent = String(startHour).padStart(2, '0') + ":00 - " + String(actualEnd).padStart(2, '0') + ":00";
+  // Calculer les positions en pourcentage pour la barre colorée
+  const startPercent = (startVal / 23) * 100;
+  const endPercent = (endVal / 23) * 100;
+
+  // Colorier la barre entre les deux curseurs
+  fill.style.left = startPercent + "%";
+  fill.style.right = (100 - endPercent) + "%";
+
+  // Mettre à jour l'affichage
+  if (display) {
+    display.innerHTML = `
+      <span style="color:#3b82f6;">${String(startVal).padStart(2, '0')}:00</span>
+      <span style="color:var(--text);margin:0 8px;">—</span>
+      <span style="color:#3b82f6;">${String(endVal).padStart(2, '0')}:00</span>
+    `;
+  }
 }
 
 function applyIrlTimeRange() {
