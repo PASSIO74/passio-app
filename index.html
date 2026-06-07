@@ -17924,12 +17924,15 @@ function updateIrlMapMarkers() {
     _diag("[DISTANCE] RÉSULTAT: " + distIncluded + "/" + events.length + " événements inclus");
   }
 
-  // Filtre par heure (OPTIONNEL)
+  // Filtre par heure (OPTIONNEL - plage horaire)
   if (irlTimeFilter && irlTimeFilter !== "") {
-    const timeParts = irlTimeFilter.split(":");
-    if (timeParts.length === 2) {
-      const [filterHours, filterMins] = timeParts.map(Number);
-      const filterTimeInMinutes = filterHours * 60 + filterMins;
+    // Format: "HH:00 - HH:00"
+    if (irlTimeFilter.includes(" - ")) {
+      const [startStr, endStr] = irlTimeFilter.split(" - ");
+      const startHours = parseInt(startStr.split(":")[0]);
+      const endHours = parseInt(endStr.split(":")[0]);
+      const startTimeInMinutes = startHours * 60;
+      const endTimeInMinutes = endHours * 60 + 59;
 
       filtered = filtered.filter(function(e) {
         const eventDate = new Date(e.date);
@@ -17937,7 +17940,7 @@ function updateIrlMapMarkers() {
         const eventMins = eventDate.getMinutes();
         const eventTimeInMinutes = eventHours * 60 + eventMins;
 
-        return eventTimeInMinutes >= filterTimeInMinutes;
+        return eventTimeInMinutes >= startTimeInMinutes && eventTimeInMinutes <= endTimeInMinutes;
       });
     }
   }
