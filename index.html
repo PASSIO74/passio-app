@@ -20070,22 +20070,73 @@ async function supaUpsertProfile() {
 }
 
 // ---- POSTS ----
+// ===== PUBLICATION AVEC RETRY AUTOMATIQUE =====
+async function supaPublishPostWithRetry(post, maxRetries = 3) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`[Sync ${attempt}/${maxRetries}] Publication du post ${post.id}...`);
+
+      // Mettre à jour le profil d'abord
+      await supaUpsertProfile();
+
+      // Insérer le post
+      const { data, error } = await supa.from("posts").insert({
+        id: post.id,
+        author_id: MY_UID,
+        passion_id: post.passion || null,
+        mood: post.mood || "all",
+        content: post.text || "",
+        media_url: post.image || null,
+        created_at: new Date(post.createdAt).toISOString(),
+      }).select();
+
+      if (error) {
+        console.error(`[Sync ${attempt}] Erreur Supabase:`, error);
+
+        // Retry seulement si ce n'est pas une erreur de validation
+        if (error.code && error.code.includes("unique") && attempt < maxRetries) {
+          // Attendre avant de retry (backoff exponentiel)
+          const delay = Math.pow(2, attempt - 1) * 1000; // 1s, 2s, 4s
+          console.log(`[Sync] Retry dans ${delay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        }
+
+        throw error;
+      }
+
+      console.log(`[Sync] ✅ Post sauvegardé sur Supabase:`, data);
+      return true; // Succès!
+
+    } catch (e) {
+      console.warn(`[Sync ${attempt}] Erreur:`, e.message);
+
+      // Dernier essai échoué
+      if (attempt === maxRetries) {
+        console.error("[Sync] Impossible de synchroniser après", maxRetries, "essais");
+        return false;
+      }
+
+      // Attendre avant le prochain essai (backoff exponentiel)
+      const delay = Math.pow(2, attempt) * 1000;
+      console.log(`[Sync] Nouvelle tentative dans ${delay}ms...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+
+  return false;
+}
+
+// Version legacy (fallback)
 async function supaPublishPost(post) {
   try {
-    await supaUpsertProfile();
-    const { data, error } = await supa.from("posts").insert({
-      id: post.id, author_id: MY_UID,
-      passion_id: post.passion || null, mood: post.mood || "all",
-      content: post.text || "", media_url: post.image || null,
-      created_at: new Date(post.createdAt).toISOString(),
-    }).select();
-    if (error) {
-      console.error("Supabase post error:", error);
-      toast("⚠️ Post non synchronisé : " + error.message, "error");
-    } else {
-      console.log("Post saved to Supabase:", data);
+    const success = await supaPublishPostWithRetry(post);
+    if (!success) {
+      console.warn("Post non synchronisé après tentatives");
     }
-  } catch(e) { console.warn("Post error:", e); toast("⚠️ Erreur de connexion", "error"); }
+  } catch(e) {
+    console.warn("Post error:", e);
+  }
 }
 
 async function supaLoadPosts() {
