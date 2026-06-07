@@ -18617,107 +18617,64 @@ function openIrlTimePicker() {
     endHour = parseInt(parts[1].split(":")[0]) || 23;
   }
 
+  // Initialiser les variables globales
+  irlStartValue = startHour;
+  irlEndValue = endHour;
+
   let html = `
     <div class="modal-handle"></div>
     <div class="modal-title">🕐 Choisir une plage horaire</div>
 
-    <div style="text-align:center;margin-bottom:32px;">
-      <div style="font-size:32px;font-weight:800;" id="irlTimeRangeDisplay">
+    <div style="text-align:center;margin-bottom:20px;">
+      <div style="font-size:36px;font-weight:800;" id="irlTimeRangeDisplay">
         <span style="color:#3b82f6;">${String(startHour).padStart(2, '0')}:00</span>
-        <span style="color:var(--text);margin:0 8px;">—</span>
+        <span style="color:var(--text);margin:0 12px;">→</span>
         <span style="color:#3b82f6;">${String(endHour).padStart(2, '0')}:00</span>
       </div>
     </div>
 
-    <div style="position:relative;margin:20px 0 28px 0;padding:0 8px;height:24px;">
-      <!-- Barre de fond -->
-      <div style="position:absolute;top:50%;transform:translateY(-50%);left:8px;right:8px;height:4px;background:var(--border);border-radius:2px;"></div>
+    <!-- Section Début -->
+    <div style="margin-bottom:20px;">
+      <div style="font-weight:700;font-size:12px;color:var(--text);margin-bottom:8px;">📍 Début</div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <button class="btn small" onclick="adjustIrlTime('start',-1)">−</button>
+        <input type="number" id="irlStartInput" min="0" max="23" value="${startHour}"
+               oninput="updateIrlStartInput()"
+               style="flex:1;padding:10px;text-align:center;font-size:18px;font-weight:700;border:1px solid var(--border);border-radius:8px;" />
+        <button class="btn small" onclick="adjustIrlTime('start',1)">+</button>
+      </div>
+    </div>
 
-      <!-- Barre colorée (la plage sélectionnée) -->
-      <div id="irlSliderFill" style="position:absolute;top:50%;transform:translateY(-50%);height:4px;background:#3b82f6;border-radius:2px;pointer-events:none;left:0%;width:100%;"></div>
+    <!-- Section Fin -->
+    <div style="margin-bottom:20px;">
+      <div style="font-weight:700;font-size:12px;color:var(--text);margin-bottom:8px;">📍 Fin</div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <button class="btn small" onclick="adjustIrlTime('end',-1)">−</button>
+        <input type="number" id="irlEndInput" min="0" max="23" value="${endHour}"
+               oninput="updateIrlEndInput()"
+               style="flex:1;padding:10px;text-align:center;font-size:18px;font-weight:700;border:1px solid var(--border);border-radius:8px;" />
+        <button class="btn small" onclick="adjustIrlTime('end',1)">+</button>
+      </div>
+    </div>
 
-      <!-- Slider début -->
-      <input type="range" id="irlStartSlider" min="0" max="23" value="${startHour}" style="
-        position:absolute;
-        top:2px;
-        left:0;
-        width:100%;
-        height:20px;
-        -webkit-appearance:none;
-        appearance:none;
-        background:transparent;
-        cursor:pointer;
-        outline:none;
-        z-index:4;
-      " oninput="updateIrlStart()" onmousedown="swapIrlSliderZ('start')" onmouseup="swapIrlSliderZ('end')" ontouchstart="swapIrlSliderZ('start')" ontouchend="swapIrlSliderZ('end')">
-
-      <!-- Slider fin -->
-      <input type="range" id="irlEndSlider" min="0" max="23" value="${endHour}" style="
-        position:absolute;
-        top:2px;
-        left:0;
-        width:100%;
-        height:20px;
-        -webkit-appearance:none;
-        appearance:none;
-        background:transparent;
-        cursor:pointer;
-        outline:none;
-        z-index:5;
-      " oninput="updateIrlEnd()" onmousedown="swapIrlSliderZ('end')" onmouseup="swapIrlSliderZ('start')" ontouchstart="swapIrlSliderZ('end')" ontouchend="swapIrlSliderZ('start')">
-
-      <style>
-        #irlStartSlider::-webkit-slider-thumb, #irlEndSlider::-webkit-slider-thumb {
-          -webkit-appearance: none;
-          appearance: none;
-          width: 20px;
-          height: 20px;
-          border-radius: 50%;
-          background: #3b82f6;
-          cursor: pointer;
-          border: 3px solid white;
-          box-shadow: 0 2px 8px rgba(59, 130, 246, 0.4);
-        }
-
-        #irlStartSlider::-moz-range-thumb, #irlEndSlider::-moz-range-thumb {
-          width: 20px;
-          height: 20px;
-          border-radius: 50%;
-          background: #3b82f6;
-          cursor: pointer;
-          border: 3px solid white;
-          box-shadow: 0 2px 8px rgba(59, 130, 246, 0.4);
-        }
-
-        #irlStartSlider::-webkit-slider-thumb:active, #irlEndSlider::-webkit-slider-thumb:active {
-          transform: scale(1.2);
-        }
-
-        #irlStartSlider::-moz-range-thumb:active, #irlEndSlider::-moz-range-thumb:active {
-          transform: scale(1.2);
-        }
-      </style>
+    <!-- Prédéfinis rapides -->
+    <div style="margin-bottom:20px;">
+      <div style="font-weight:700;font-size:12px;color:var(--text);margin-bottom:8px;">⚡ Rapide</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+        <button class="pill" onclick="setIrlQuickTime(6,12)">06:00 → 12:00</button>
+        <button class="pill" onclick="setIrlQuickTime(12,18)">12:00 → 18:00</button>
+        <button class="pill" onclick="setIrlQuickTime(18,23)">18:00 → 23:00</button>
+        <button class="pill" onclick="setIrlQuickTime(0,23)">00:00 → 23:00</button>
+      </div>
     </div>
 
     <div style="display:flex;gap:8px;">
       <button class="btn secondary block" onclick="clearIrlTimeFilter();closeModal()">Effacer</button>
-      <button class="btn primary block" onclick="applyIrlTimeRange();closeModal()">Appliquer</button>
+      <button class="btn primary block" onclick="applyIrlTimeRange();closeModal()">✓ Appliquer</button>
     </div>
   `;
 
   openModal(html);
-  // Initialiser les variables globales ET la barre colorée
-  setTimeout(() => {
-    const startSlider = document.getElementById("irlStartSlider");
-    const endSlider = document.getElementById("irlEndSlider");
-    if (startSlider && endSlider) {
-      // 🔧 SYNCHRONISER les variables globales avec les valeurs actuelles
-      irlStartValue = parseInt(startSlider.value) || 0;
-      irlEndValue = parseInt(endSlider.value) || 23;
-      // Afficher la barre colorée
-      updateIrlSliderDisplay(irlStartValue, irlEndValue);
-    }
-  }, 50);
 }
 
 // Swap z-index : le curseur actif passe au-dessus
