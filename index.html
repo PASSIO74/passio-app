@@ -16642,7 +16642,7 @@ function clearAudio() {
   $("#recTime").textContent = "00:00";
 }
 
-function publishPost() {
+async function publishPost() {
   const text = $("#postText").value.trim();
   const passion = $("#postPassion").value;
 
@@ -16657,6 +16657,9 @@ function publishPost() {
     if (!dest) { toast("Destination obligatoire pour un carnet."); return; }
     if (!vlogState.steps || vlogState.steps.length === 0) { toast("Ajoute au moins un jour."); return; }
   }
+
+  // 📡 Afficher le statut de synchronisation
+  toast("⏳ Publication en cours...", "loading");
 
   const post = {
     id: uid(),
@@ -16673,6 +16676,7 @@ function publishPost() {
     likes: 0,
     liked: false,
     comments: [],
+    syncStatus: "syncing", // 🔄 Nouveau: tracker le statut de sync
   };
 
   // Champs spécifiques au carnet de voyage
@@ -16690,12 +16694,30 @@ function publishPost() {
     post.lodging = ($("#vlogLodging") && $("#vlogLodging").value || "").trim();
     post.season = ($("#vlogSeason") && $("#vlogSeason").value || "").trim();
     post.tip = ($("#vlogTip") && $("#vlogTip").value || "").trim();
-    // Le texte principal du carnet : destination + dates pour aperçu
     post.text = post.destination + (post.dateStart || post.dateEnd ? " · carnet" : "");
   }
 
+  // Sauvegarder localement d'abord
   state.userPosts.unshift(post);
-  if (typeof supaPublishPost === "function") supaPublishPost(post);
+  saveState();
+
+  // 🔄 Essayer de synchroniser avec Supabase (avec retry)
+  let syncSuccess = false;
+  if (typeof supaPublishPostWithRetry === "function") {
+    try {
+      syncSuccess = await supaPublishPostWithRetry(post);
+    } catch (e) {
+      console.warn("Erreur sync:", e);
+      syncSuccess = false;
+    }
+  }
+
+  // Mettre à jour le statut de sync
+  const publishedPost = state.userPosts.find(p => p.id === post.id);
+  if (publishedPost) {
+    publishedPost.syncStatus = syncSuccess ? "synced" : "offline";
+    saveState();
+  }
 
   // Clear form
   $("#postText").value = "";
@@ -16732,15 +16754,22 @@ function publishPost() {
   grantReward(kind);
   if (studioMood === "creation") bumpQuest("publish");
 
-  // Navigation immédiate, sauvegarde en arrière-plan
+  // ✅ Afficher message de confirmation avec statut
+  const passionLabel = passionById(passion)?.label || passion;
+  if (syncSuccess) {
+    toast(`✅ ${studioType === "vlog" ? "Carnet" : "Post"} publié et synchronisé!`, "success");
+  } else {
+    toast(`⚠️ ${studioType === "vlog" ? "Carnet" : "Post"} publié localement (sync en attente)`, "warning");
+  }
+
+  // Navigation immédiate
   if (studioType === "vlog") {
     goTo("cdv");
-    pushNotification(`📔 Ton carnet <b>${escapeHtml(post.destination || "voyage")}</b> est en ligne`, "📔");
+    pushNotification(`📔 Ton carnet <b>${escapeHtml(post.destination || "voyage")}</b> ${syncSuccess ? "est en ligne" : "est local"}`, "📔");
   } else {
     goTo("feed");
-    pushNotification(`✨ Ton post <b>${escapeHtml(passionById(passion).label)}</b> est en ligne`, "✨");
+    pushNotification(`✨ Ton post est ${syncSuccess ? "en ligne" : "en attente"}`, "✨");
   }
-  setTimeout(() => saveState(), 0);
 }
 
 function saveDraft() {
