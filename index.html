@@ -18446,28 +18446,45 @@ function resetIrlSliderZ() {
   if (endSlider) endSlider.style.zIndex = 4;
 }
 
-function updateIrlDoubleRange() {
+function updateIrlStart() {
   const startSlider = document.getElementById("irlStartSlider");
   const endSlider = document.getElementById("irlEndSlider");
-  const fill = document.getElementById("irlSliderFill");
-  const display = document.getElementById("irlTimeRangeDisplay");
-
-  if (!startSlider || !endSlider || !fill || !display) return;
+  if (!startSlider || !endSlider) return;
 
   let startVal = parseInt(startSlider.value) || 0;
   let endVal = parseInt(endSlider.value) || 23;
 
-  // S'assurer que la fin n'est pas avant le début
-  if (endVal < startVal) {
-    endVal = startVal;
+  // Si le début dépasse la fin, définir la fin au début
+  if (startVal > endVal) {
     endSlider.value = startVal;
+    endVal = startVal;
   }
 
-  // S'assurer que le début n'est pas après la fin
-  if (startVal > endVal) {
-    startVal = endVal;
+  updateIrlSliderDisplay(startVal, endVal);
+}
+
+function updateIrlEnd() {
+  const startSlider = document.getElementById("irlStartSlider");
+  const endSlider = document.getElementById("irlEndSlider");
+  if (!startSlider || !endSlider) return;
+
+  let startVal = parseInt(startSlider.value) || 0;
+  let endVal = parseInt(endSlider.value) || 23;
+
+  // Si la fin est inférieure au début, définir le début à la fin
+  if (endVal < startVal) {
     startSlider.value = endVal;
+    startVal = endVal;
   }
+
+  updateIrlSliderDisplay(startVal, endVal);
+}
+
+function updateIrlSliderDisplay(startVal, endVal) {
+  const fill = document.getElementById("irlSliderFill");
+  const display = document.getElementById("irlTimeRangeDisplay");
+
+  if (!fill || !display) return;
 
   // Calculer les positions en pourcentage pour la barre colorée
   const startPercent = (startVal / 23) * 100;
@@ -18483,6 +18500,10 @@ function updateIrlDoubleRange() {
     <span style="color:var(--text);margin:0 8px;">—</span>
     <span style="color:#3b82f6;">${String(endVal).padStart(2, '0')}:00</span>
   `;
+}
+
+function updateIrlDoubleRange() {
+  // Fonction maintenant remplacée par updateIrlStart() et updateIrlEnd()
 }
 
 function applyIrlTimeRange() {
