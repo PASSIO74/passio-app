@@ -20399,10 +20399,16 @@ async function supaSearchUsers(query) {
   try {
     console.log("[SEARCH] Query:", query, "MY_UID:", MY_UID);
 
+    if (!query || query.trim().length === 0) {
+      console.log("[SEARCH] Query is empty");
+      return [];
+    }
+
     // 🔍 Retourner TOUS les profils de chaque utilisateur (pas juste un)
+    // Search by username OR bio OR passion name
     const { data, error } = await supa.from("profiles")
       .select("id, username, emoji, color, passion_id, bio")
-      .ilike("username", `%${query}%`)
+      .or(`username.ilike.%${query}%,bio.ilike.%${query}%`)
       .neq("id", MY_UID);
 
     console.log("[SEARCH] Data returned:", data, "Error:", error);
@@ -20426,10 +20432,12 @@ async function supaSearchUsers(query) {
           passions: [] // Tous les profils/passions de cet utilisateur
         };
       }
-      userMap[profile.id].passions.push({
-        id: profile.passion_id || "",
-        emoji: profile.emoji || "✨"
-      });
+      if (profile.passion_id) {
+        userMap[profile.id].passions.push({
+          id: profile.passion_id,
+          emoji: profile.emoji || "✨"
+        });
+      }
     });
 
     const results = Object.values(userMap).slice(0, 8);
