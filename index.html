@@ -17386,14 +17386,14 @@ function filterExplore() {
         || (pw && pw.label.toLowerCase().includes(q));
     }).slice(0, 5);
 
-    // Convertir les users Supabase au même format
+    // Convertir les users Supabase au même format (avec passions array)
     var supaFormatted = (supaUsers || []).map(function(u) {
       return {
         id: u.id,
         name: u.username || "Passionné",
         profileEmoji: u.emoji || "✨",
         avatar: u.color || "#8b5cf6",
-        passion: u.passion_id || "",
+        passions: u.passions || [], // Tableau de passions au lieu d'une seule
         bio: u.bio || ""
       };
     });
@@ -17423,12 +17423,21 @@ function filterExplore() {
     if (fu.length) {
       html += "<div style='padding:8px 14px 4px;font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;'>👤 Utilisateurs</div>";
       fu.forEach(function(u) {
-        var pw = passionById(u.passion) || { emoji: "✨", label: "" };
+        // Afficher tous les passions/profils comme des badges
+        var passionsHTML = "";
+        if (u.passions && u.passions.length > 0) {
+          passionsHTML = u.passions.map(function(p) {
+            return p.emoji || "✨";
+          }).join(" ");
+        } else {
+          passionsHTML = "✨";
+        }
+
         html += "<div onclick=\"openUserProfile('" + u.id + "');document.getElementById('exploreSearchResults').style.display='none';\" style='display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border);'>" +
           "<div style='width:38px;height:38px;border-radius:12px;background:" + (u.avatar||'#8b5cf6') + ";display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;'>" + (u.profileEmoji||(u.name||"?")[0]) + "</div>" +
           "<div style='flex:1;min-width:0;'>" +
             "<div style='font-weight:700;font-size:13px;color:var(--text);'>" + escapeHtml(u.name||"") + "</div>" +
-            "<div style='font-size:11px;color:var(--muted);'>" + pw.emoji + " " + pw.label + (u.bio ? " · " + escapeHtml(u.bio) : "") + "</div>" +
+            "<div style='font-size:11px;color:var(--muted);'>" + passionsHTML + (u.bio ? " · " + escapeHtml(u.bio) : "") + "</div>" +
           "</div>" +
           "<div style='font-size:11px;font-weight:700;color:var(--accent);flex-shrink:0;'>Voir →</div>" +
           "</div>";
