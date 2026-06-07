@@ -18367,7 +18367,9 @@ function openIrlTimePicker() {
 
       <!-- Slider début -->
       <input type="range" id="irlStartSlider" min="0" max="23" value="${startHour}" style="
-        position:relative;
+        position:absolute;
+        top:0;
+        left:0;
         z-index:5;
         width:100%;
         height:20px;
@@ -18376,7 +18378,8 @@ function openIrlTimePicker() {
         background:transparent;
         cursor:pointer;
         outline:none;
-      " oninput="updateIrlDoubleRange()">
+        pointer-events:none;
+      " pointerdown="this.style.pointerEvents='auto'" pointerup="this.style.pointerEvents='none'" oninput="updateIrlDoubleRange()">
 
       <!-- Slider fin -->
       <input type="range" id="irlEndSlider" min="0" max="23" value="${endHour}" style="
