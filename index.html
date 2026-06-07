@@ -18358,9 +18358,9 @@ function openIrlTimePicker() {
       </div>
     </div>
 
-    <div style="position:relative;margin:40px 0 32px 0;padding:0 12px;">
+    <div style="position:relative;margin:20px 0 28px 0;padding:0 8px;height:24px;">
       <!-- Barre de fond -->
-      <div style="position:absolute;top:50%;transform:translateY(-50%);left:12px;right:12px;height:4px;background:var(--border);border-radius:2px;"></div>
+      <div style="position:absolute;top:50%;transform:translateY(-50%);left:8px;right:8px;height:4px;background:var(--border);border-radius:2px;"></div>
 
       <!-- Barre colorée (la plage sélectionnée) -->
       <div id="irlSliderFill" style="position:absolute;top:50%;transform:translateY(-50%);height:4px;background:#3b82f6;border-radius:2px;pointer-events:none;left:0%;width:100%;"></div>
@@ -18368,7 +18368,7 @@ function openIrlTimePicker() {
       <!-- Slider début -->
       <input type="range" id="irlStartSlider" min="0" max="23" value="${startHour}" style="
         position:absolute;
-        top:0;
+        top:2px;
         left:0;
         width:100%;
         height:20px;
@@ -18378,12 +18378,12 @@ function openIrlTimePicker() {
         cursor:pointer;
         outline:none;
         z-index:5;
-      " oninput="updateIrlDoubleRange()" onmousedown="this.style.zIndex=10" onmouseup="resetIrlSliderZ()" ontouchstart="this.style.zIndex=10" ontouchend="resetIrlSliderZ()">
+      " oninput="updateIrlStart()" onmousedown="this.style.zIndex=10" onmouseup="resetIrlSliderZ()" ontouchstart="this.style.zIndex=10" ontouchend="resetIrlSliderZ()">
 
       <!-- Slider fin -->
       <input type="range" id="irlEndSlider" min="0" max="23" value="${endHour}" style="
         position:absolute;
-        top:0;
+        top:2px;
         left:0;
         width:100%;
         height:20px;
@@ -18393,7 +18393,7 @@ function openIrlTimePicker() {
         cursor:pointer;
         outline:none;
         z-index:4;
-      " oninput="updateIrlDoubleRange()" onmousedown="this.style.zIndex=10" onmouseup="resetIrlSliderZ()" ontouchstart="this.style.zIndex=10" ontouchend="resetIrlSliderZ()">
+      " oninput="updateIrlEnd()" onmousedown="this.style.zIndex=10" onmouseup="resetIrlSliderZ()" ontouchstart="this.style.zIndex=10" ontouchend="resetIrlSliderZ()">
 
       <style>
         #irlStartSlider::-webkit-slider-thumb, #irlEndSlider::-webkit-slider-thumb {
