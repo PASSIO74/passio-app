@@ -18436,7 +18436,13 @@ function openIrlTimePicker() {
 
   openModal(html);
   // Initialiser la barre colorée
-  setTimeout(updateIrlDoubleRange, 50);
+  setTimeout(() => {
+    const startSlider = document.getElementById("irlStartSlider");
+    const endSlider = document.getElementById("irlEndSlider");
+    if (startSlider && endSlider) {
+      updateIrlSliderDisplay(parseInt(startSlider.value) || 0, parseInt(endSlider.value) || 23);
+    }
+  }, 50);
 }
 
 function resetIrlSliderZ() {
