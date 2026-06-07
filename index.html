@@ -11348,10 +11348,70 @@ function renderCarnetsExplore() {
 
 // Helper : aller direct au Studio en mode vlog
 // ===== CDV LIVE =====
+// ===== CDV LIVE SYSTEM (complet et fonctionnel) =====
 function getCdvLives() {
   try { return JSON.parse(localStorage.getItem("passio_cdv_lives") || "[]"); } catch(e) { return []; }
 }
 function saveCdvLives(lives) { localStorage.setItem("passio_cdv_lives", JSON.stringify(lives)); }
+
+// Récupérer les lives actifs (global, pour tous)
+function getActiveCdvLives() {
+  return getCdvLives().filter(l => l.status === "live" && l.visibility !== "private");
+}
+
+// Récupérer les lives des people qu'on suit
+function getFollowingCdvLives() {
+  const allLives = getCdvLives();
+  const myFollowing = state.following || [];
+  return allLives.filter(l => l.status === "live" && myFollowing.includes(l.authorId));
+}
+
+// Incrémenter le compteur de spectateurs
+function addCdvLiveViewer(liveId) {
+  const lives = getCdvLives();
+  const live = lives.find(l => l.id === liveId);
+  if (!live) return;
+  if (!live.currentViewers) live.currentViewers = 0;
+  if (!live.viewers) live.viewers = [];
+
+  const userId = state.user?.id || "me";
+  if (!live.viewers.includes(userId)) {
+    live.viewers.push(userId);
+    live.currentViewers = live.viewers.length;
+  }
+  saveCdvLives(lives);
+}
+
+// Retirer un spectateur
+function removeCdvLiveViewer(liveId) {
+  const lives = getCdvLives();
+  const live = lives.find(l => l.id === liveId);
+  if (!live) return;
+
+  const userId = state.user?.id || "me";
+  live.viewers = (live.viewers || []).filter(v => v !== userId);
+  live.currentViewers = live.viewers.length;
+  saveCdvLives(lives);
+}
+
+// Auto-refresh du CDV Live toutes les 5 secondes (tant que la modal est ouverte)
+let cdvLiveRefreshInterval = null;
+function startCdvLiveRefresh(liveId) {
+  if (cdvLiveRefreshInterval) clearInterval(cdvLiveRefreshInterval);
+  cdvLiveRefreshInterval = setInterval(() => {
+    const modal = document.querySelector(".modal");
+    if (!modal || !modal.classList.contains("modal-fullscreen")) {
+      clearInterval(cdvLiveRefreshInterval);
+      cdvLiveRefreshInterval = null;
+      return;
+    }
+    // Re-render le viewer si le live existe toujours
+    const lives = getCdvLives();
+    if (lives.find(l => l.id === liveId)) {
+      openCdvLiveViewer(liveId);
+    }
+  }, 5000);
+}
 
 function startCdvLive() {
   openModal(`
