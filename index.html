@@ -10054,7 +10054,10 @@ function renderFeed() {
       var emptyTitle = emptyEl.querySelector(".empty-title");
       var emptyText = emptyEl.querySelector(".empty-text");
 
-      if (_showFollowingFeed) {
+      if (_showFollowingFeed && _activeFeedPassions.size > 0) {
+        if (emptyTitle) emptyTitle.textContent = "Aucun post pour cette combinaison";
+        if (emptyText) emptyText.textContent = "Essaie un autre mood ou autre sélection.";
+      } else if (_showFollowingFeed) {
         if (emptyTitle) emptyTitle.textContent = "Aucun post de tes abonnements";
         if (emptyText) emptyText.textContent = "Tu ne suis personne, ou ils n'ont rien publié.";
       } else if (_activeFeedPassions.size > 0 && mood !== "all") {
