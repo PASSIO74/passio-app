@@ -11767,16 +11767,34 @@ function addCdvLiveComment(liveId) {
 function renderCdvLives() {
   const el = document.getElementById("cdvLiveList");
   if (!el) return;
-  const lives = getCdvLives().filter(l => l.status === "live");
-  if (!lives.length) { el.innerHTML = ""; return; }
+
+  // Filtrer : mes lives + lives des gens que je suis
+  const allLives = getCdvLives().filter(l => l.status === "live");
+  const myLives = allLives.filter(l => l.authorId === "me");
+  const followingLives = allLives.filter(l => {
+    const myFollowing = state.following || [];
+    return myFollowing.includes(l.authorId) && l.visibility !== "private";
+  });
+  const publicLives = allLives.filter(l => l.visibility === "public" && l.authorId !== "me");
+
+  // Combiner : mes lives d'abord, puis lives des gens que je suis, puis publics
+  const livesToShow = [...new Map([...myLives, ...followingLives, ...publicLives].map(l => [l.id, l])).values()];
+
+  if (!livesToShow.length) { el.innerHTML = ""; return; }
 
   el.innerHTML = `<div class="section-title" style="margin-bottom:10px;">🔴 CDV Lives en cours</div>` +
-    lives.map(l => {
+    livesToShow.map(l => {
       const isMine = l.authorId === "me";
-      const authorName = isMine ? (state.user.name || "Toi") : "Passionné";
-      return `<div class="cdv-live-card" onclick="openCdvLiveViewer('${l.id}')">
+      const isFollowing = (state.following || []).includes(l.authorId);
+      const seedAuthor = userById(l.authorId);
+      const authorName = isMine ? (state.user.name || "Toi") : (seedAuthor && seedAuthor.name) || "Passionné";
+      const viewerCount = (l.currentViewers || 0) + Math.floor(Math.random()*10);
+      const isNew = l.createdAt && Date.now() - l.createdAt < 60000; // Moins d'1 min
+
+      return `<div class="cdv-live-card" onclick="openCdvLiveViewer('${l.id}')" style="position:relative;">
+        ${isNew ? '<div style="position:absolute;top:10px;right:10px;background:#ef4444;color:#fff;font-size:9px;font-weight:700;padding:3px 7px;border-radius:12px;">NOUVEAU</div>' : ''}
         <div class="cdv-live-header">
-          <span class="cdv-live-badge">🔴 LIVE</span>
+          <span class="cdv-live-badge">🔴 EN DIRECT</span>
           <div style="flex:1;">
             <div class="cdv-live-dest">${escapeHtml(l.destination)}</div>
             <div class="cdv-live-author">par ${escapeHtml(authorName)} · ${l.steps.length} étape${l.steps.length>1?"s":""}</div>
@@ -11792,8 +11810,8 @@ function renderCdvLives() {
               </div>`).join("")}
           </div>` : `<div style="text-align:center;padding:10px;color:var(--muted);font-size:11px;">En attente de la première étape…</div>`}
         <div class="cdv-live-footer">
-          <div class="cdv-live-count">👁 ${Math.floor(Math.random()*30+5)} suivent en direct</div>
-          ${isMine ? `<button class="cdv-live-follow-btn" onclick="event.stopPropagation();addCdvLiveStep('${l.id}')">+ Étape</button>` : `<button class="cdv-live-follow-btn" onclick="event.stopPropagation();toast('Tu suis ce CDV Live !')">📡 Suivre</button>`}
+          <div class="cdv-live-count">👁 ${viewerCount} regardent en direct</div>
+          ${isMine ? `<button class="cdv-live-follow-btn" onclick="event.stopPropagation();addCdvLiveStep('${l.id}')">+ Étape</button>` : `<button class="cdv-live-follow-btn" onclick="event.stopPropagation();toggleFollowCdvLive('${l.id}',this)" style="background:${isFollowing ? '#8b5cf6' : 'var(--border)'};color:${isFollowing ? '#fff' : 'var(--text)'};">${isFollowing ? '✓ En suivi' : '📡 Suivre'}</button>`}
         </div>
       </div>`;
     }).join("");
