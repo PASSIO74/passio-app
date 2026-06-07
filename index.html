@@ -14653,28 +14653,47 @@ function reelVideoFallback(videoEl, fallbackUrl) {
 }
 
 function buildReels() {
-  const mood = state.currentMood || "all";
+  // Utiliser les mêmes filtres que renderFeed()
+  const allPosts = allFeedPosts().filter(function(p) { return p.type !== "vlog"; });
 
-  // Utiliser les reels depuis state.seed.posts (qui ont les commentaires)
-  const seedReels = (state.seed.posts || []).filter(p => p._source === "seed_reel");
-  const userPosts = allFeedPosts();
+  let posts = [];
+  let combinedPosts = [];
 
-  const filterByPassion = function(p) {
-    if (_activeFeedPassions.size === 0) return true;
-    return _activeFeedPassions.has(p.passion);
-  };
-  const filterByMood = function(p) { return mood === "all" ? true : p.mood === mood; };
+  // ── COMBINAISON : "Suivis" OU "Passions" (multi-sélection) ──
+  // Ajouter les posts des suivis si sélectionné
+  if (_showFollowingFeed) {
+    const followingIds = state.user?.following || [];
+    let followingPosts = allPosts.filter(function(p) { return followingIds.includes(p.authorId); });
+    combinedPosts = combinedPosts.concat(followingPosts);
+  }
 
-  const seedFiltered = seedReels.filter(filterByMood).filter(filterByPassion);
-  const userFiltered = userPosts.filter(filterByMood).filter(filterByPassion);
+  // Ajouter les posts des passions sélectionnées
+  if (_activeFeedPassions.size > 0) {
+    let postsByPassion = allPosts.filter(function(p) { return _activeFeedPassions.has(p.passion); });
+    combinedPosts = combinedPosts.concat(postsByPassion);
+  }
 
-  const userVideos = userFiltered.filter(function(p) { return p.type === "video" && p.video; });
-  const userPhotos = userFiltered.filter(function(p) { return p.type === "photo" || (p.cover && p.type !== "video"); });
-  const ordered = [...userVideos, ...seedFiltered, ...userPhotos];
+  // Si rien n'est sélectionné (ni Suivis ni Passions), montrer tout
+  if (!_showFollowingFeed && _activeFeedPassions.size === 0) {
+    combinedPosts = allPosts;
+  }
+
+  // Dédupliquer les posts
+  const seenIds = new Set();
+  let availablePosts = combinedPosts.filter(function(p) {
+    if (seenIds.has(p.id)) return false;
+    seenIds.add(p.id);
+    return true;
+  });
+
+  // Appliquer le filtre mood (multi-sélection)
+  posts = selectedMoods.size === 0
+    ? availablePosts
+    : availablePosts.filter(function(p) { return selectedMoods.has(p.mood); });
 
   const seen = new Set();
   const items = [];
-  for (const p of ordered) {
+  for (const p of posts) {
     if (seen.has(p.id)) continue;
     seen.add(p.id);
     items.push(p);
