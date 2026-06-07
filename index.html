@@ -15815,14 +15815,6 @@ function renderMainProfile() {
   }
 
   // Passions
-  var passionsEl = document.getElementById("profilePassionsList");
-  if (passionsEl) {
-    passionsEl.innerHTML = (state.user.profiles||[]).map(function(p) {
-      var pas=passionById(p.passion);
-      return '<div style="display:flex;align-items:center;gap:5px;padding:6px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;font-size:12px;font-weight:700;">'+pas.emoji+' '+pas.label+'</div>';
-    }).join("");
-  }
-
   // Events
   var eventsEl = document.getElementById("profileEvents");
   if (eventsEl) {
