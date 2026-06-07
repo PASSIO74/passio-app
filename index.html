@@ -10034,6 +10034,9 @@ function renderFeed() {
   // Afficher les filtres de mood pour les deux modes
   renderMoodStripSmart(availablePostsForMood);
 
+  // Afficher les CDV Lives actifs en haut du feed
+  renderFeedCdvLives();
+
   renderStories();
 
   if (posts.length === 0) {
