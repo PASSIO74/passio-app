@@ -9995,36 +9995,6 @@ function setupMoodButtons() {
   });
 }
 
-// Variable globale pour tracker l'onglet actif du fil
-let currentFeedTab = "for-you";
-
-function switchFeedTab(tabName) {
-  currentFeedTab = tabName;
-
-  // Mettre à jour l'UI des onglets
-  const tabs = document.querySelectorAll(".feed-tab");
-  tabs.forEach(tab => {
-    if (tab.dataset.feedTab === tabName) {
-      tab.classList.add("active");
-    } else {
-      tab.classList.remove("active");
-    }
-  });
-
-  // Masquer/afficher les filtres selon l'onglet
-  const moodSelector = document.getElementById("moodSelector");
-  if (moodSelector) {
-    if (tabName === "for-you") {
-      moodSelector.style.display = "flex";
-    } else {
-      moodSelector.style.display = "none";
-    }
-  }
-
-  // Recharger le fil
-  renderFeed();
-}
-
 function renderFeed() {
   const list = $("#feedList");
   const mood = state.currentMood || "all";
@@ -10032,40 +10002,19 @@ function renderFeed() {
   // Tous les posts (hors vlogs)
   let allPosts = allFeedPosts().filter(function(p) { return p.type !== "vlog"; });
 
-  let posts = [];
+  // ── Filtre passions : multi-select (OU entre passions) ──
+  // Aucun profil sélectionné = fil vide. Sinon filtre sur les passions cochées.
+  let postsByPassion = _activeFeedPassions.size > 0
+    ? allPosts.filter(function(p) { return _activeFeedPassions.has(p.passion); })
+    : [];
 
-  // ── ONGLET "POUR TOI" : Filtre par passion + mood ──
-  if (currentFeedTab === "for-you") {
-    // Filtre passions : multi-select (OU entre passions)
-    let postsByPassion = _activeFeedPassions.size > 0
-      ? allPosts.filter(function(p) { return _activeFeedPassions.has(p.passion); })
-      : [];
-
-    // Filtre mood : multi-select sur les posts déjà filtrés par passion
-    posts = selectedMoods.size === 0
-      ? postsByPassion
-      : postsByPassion.filter(function(p) { return selectedMoods.has(p.mood); });
-  }
-  // ── ONGLET "ABONNEMENTS" : Posts des personnes qu'on suit ──
-  else if (currentFeedTab === "following") {
-    const followingIds = (state.user?.following || []);
-    posts = allPosts.filter(function(p) { return followingIds.includes(p.authorId); });
-  }
-  // ── ONGLET "EXPLORER" : Tous les posts ──
-  else if (currentFeedTab === "explore") {
-    posts = allPosts;
-  }
+  // ── Filtre mood : multi-select sur les posts déjà filtrés par passion ──
+  let posts = selectedMoods.size === 0
+    ? postsByPassion // Si aucun mood sélectionné, afficher tous les posts
+    : postsByPassion.filter(function(p) { return selectedMoods.has(p.mood); }); // Sinon filtrer
 
   renderProfileStrip();
-
-  // Afficher les filtres de mood seulement pour l'onglet "Pour toi"
-  if (currentFeedTab === "for-you") {
-    let postsByPassion = _activeFeedPassions.size > 0
-      ? allPosts.filter(function(p) { return _activeFeedPassions.has(p.passion); })
-      : [];
-    renderMoodStripSmart(postsByPassion);
-  }
-
+  renderMoodStripSmart(postsByPassion); // met à jour les moods selon ce qui est dispo
   renderStories();
 
   if (posts.length === 0) {
@@ -10074,26 +10023,16 @@ function renderFeed() {
     if (emptyEl) {
       var emptyTitle = emptyEl.querySelector(".empty-title");
       var emptyText = emptyEl.querySelector(".empty-text");
-
-      if (currentFeedTab === "for-you") {
-        if (_activeFeedPassions.size > 0 && mood !== "all") {
-          if (emptyTitle) emptyTitle.textContent = "Aucun post pour cette combinaison";
-          if (emptyText) emptyText.textContent = "Essaie un autre mood ou une autre passion.";
-        } else if (_activeFeedPassions.size > 0) {
-          if (emptyTitle) emptyTitle.textContent = "Aucun post pour ces passions";
-          if (emptyText) emptyText.textContent = "Sois le premier à publier ici.";
-        } else {
-          if (emptyTitle) emptyTitle.textContent = "Aucun post pour ce mood";
-          if (emptyText) emptyText.textContent = "Change de mood ou crée le premier contenu.";
-        }
-      } else if (currentFeedTab === "following") {
-        if (emptyTitle) emptyTitle.textContent = "Tu ne suis personne encore";
-        if (emptyText) emptyText.textContent = "Suis d'autres passionnés pour voir leur contenu ici.";
-      } else if (currentFeedTab === "explore") {
-        if (emptyTitle) emptyTitle.textContent = "Aucun contenu à explorer";
-        if (emptyText) emptyText.textContent = "Sois le premier à créer du contenu!";
+      if (_activeFeedPassions.size > 0 && mood !== "all") {
+        if (emptyTitle) emptyTitle.textContent = "Aucun post pour cette combinaison";
+        if (emptyText) emptyText.textContent = "Essaie un autre mood ou une autre passion.";
+      } else if (_activeFeedPassions.size > 0) {
+        if (emptyTitle) emptyTitle.textContent = "Aucun post pour ces passions";
+        if (emptyText) emptyText.textContent = "Sois le premier à publier ici.";
+      } else {
+        if (emptyTitle) emptyTitle.textContent = "Aucun post pour ce mood";
+        if (emptyText) emptyText.textContent = "Change de mood ou crée le premier contenu.";
       }
-
       emptyEl.style.display = "block";
     }
     return;
