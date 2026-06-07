@@ -11863,6 +11863,12 @@ function renderCdvLives() {
   const el = document.getElementById("cdvLiveList");
   if (!el) return;
 
+  // 🔴 Afficher les lives SEULEMENT si le filtre "live" est sélectionné
+  if (!cdvFilters.has("live")) {
+    el.innerHTML = "";
+    return;
+  }
+
   // Filtrer : mes lives + lives des gens que je suis
   const allLives = getCdvLives().filter(l => l.status === "live");
   const myLives = allLives.filter(l => l.authorId === "me");
