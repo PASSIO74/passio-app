@@ -15813,7 +15813,25 @@ function renderProfileStrip() {
   box.innerHTML = tilesHTML;
 }
 
+function toggleFollowingFilter() {
+  _showFollowingFeed = !_showFollowingFeed;
+  if (_showFollowingFeed) {
+    // Quand on active "Abonnements", on désactive les filtres par passion
+    _activeFeedPassions.clear();
+    state.currentMood = "all";
+  }
+  saveState();
+  renderFeed();
+  var appMain = document.getElementById("appMain");
+  if (appMain) setTimeout(function() { appMain.scrollTop = 0; }, 60);
+}
+
 function toggleProfileFilter(passionId) {
+  // Désactiver "Abonnements" si on sélectionne une passion
+  if (_showFollowingFeed) {
+    _showFollowingFeed = false;
+  }
+
   if (_activeFeedPassions.has(passionId)) {
     _activeFeedPassions.delete(passionId);
   } else {
