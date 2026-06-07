@@ -16444,15 +16444,18 @@ $$("#studioTypeTabs .studio-type").forEach(el => {
     $("#studioAudio").style.display = studioType === "audio" ? "block" : "none";
     const vlogEl = $("#studioVlog");
     if (vlogEl) vlogEl.style.display = studioType === "vlog" ? "block" : "none";
+    const cdvliveEl = $("#studiocdvlive");
+    if (cdvliveEl) cdvliveEl.style.display = studioType === "cdvlive" ? "block" : "none";
 
-    // En mode carnet : masquer le textarea principal, mood, templates, passion
+    // En mode carnet/live : masquer le textarea principal, mood, templates, passion
     // Le carnet a sa propre catégorie (voyage) et son propre mood (chill)
     const isVlog = studioType === "vlog";
+    const isCdvLive = studioType === "cdvlive";
     const mainTextField = $("#postText") && $("#postText").closest(".field");
-    if (mainTextField) mainTextField.style.display = isVlog ? "none" : "block";
-    const fp = $("#fieldPassion"); if (fp) fp.style.display = isVlog ? "none" : "block";
-    const fm = $("#fieldMood");    if (fm) fm.style.display = isVlog ? "none" : "block";
-    const ft = $("#fieldTemplates"); if (ft) ft.style.display = isVlog ? "none" : "block";
+    if (mainTextField) mainTextField.style.display = (isVlog || isCdvLive) ? "none" : "block";
+    const fp = $("#fieldPassion"); if (fp) fp.style.display = (isVlog || isCdvLive) ? "none" : "block";
+    const fm = $("#fieldMood");    if (fm) fm.style.display = (isVlog || isCdvLive) ? "none" : "block";
+    const ft = $("#fieldTemplates"); if (ft) ft.style.display = (isVlog || isCdvLive) ? "none" : "block";
 
     // Si on bascule sur vlog, on initialise au moins une étape
     if (studioType === "vlog" && (!vlogState.steps || vlogState.steps.length === 0)) {
