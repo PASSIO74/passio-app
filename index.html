@@ -18739,8 +18739,8 @@ function resetIrlSliderZ() {
   if (endSlider) endSlider.style.zIndex = 4;
 }
 
-let irlLastStartValue = 0;
-let irlLastEndValue = 23;
+let irlStartValue = 0;
+let irlEndValue = 23;
 
 function updateIrlStart() {
   const startSlider = document.getElementById("irlStartSlider");
@@ -18748,15 +18748,16 @@ function updateIrlStart() {
   if (!startSlider || !endSlider) return;
 
   let startVal = parseInt(startSlider.value) || 0;
-  let endVal = irlLastEndValue;
+  let endVal = parseInt(endSlider.value) || 23;
 
-  // Si le début dépasse la fin, le réduire à la fin
+  // Si le début dépasse la fin, REJETER le mouvement
   if (startVal > endVal) {
-    startVal = endVal;
-    startSlider.value = endVal;
+    startSlider.value = irlStartValue; // Revenir à la position précédente
+    return; // Ne pas mettre à jour
   }
 
-  irlLastStartValue = startVal;
+  // Accepter et sauvegarder
+  irlStartValue = startVal;
   updateIrlSliderDisplay(startVal, endVal);
 }
 
@@ -18765,16 +18766,17 @@ function updateIrlEnd() {
   const endSlider = document.getElementById("irlEndSlider");
   if (!startSlider || !endSlider) return;
 
-  let startVal = irlLastStartValue;
+  let startVal = parseInt(startSlider.value) || 0;
   let endVal = parseInt(endSlider.value) || 23;
 
-  // Si la fin est inférieure au début, l'augmenter au début
+  // Si la fin est inférieure au début, REJETER le mouvement
   if (endVal < startVal) {
-    endVal = startVal;
-    endSlider.value = startVal;
+    endSlider.value = irlEndValue; // Revenir à la position précédente
+    return; // Ne pas mettre à jour
   }
 
-  irlLastEndValue = endVal;
+  // Accepter et sauvegarder
+  irlEndValue = endVal;
   updateIrlSliderDisplay(startVal, endVal);
 }
 
