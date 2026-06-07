@@ -6783,6 +6783,24 @@
     <section class="screen active" id="screen-feed">
       <div class="profile-strip" id="profileStrip"></div>
 
+      <!-- FEED TABS -->
+      <div class="feed-tabs-container">
+        <div class="feed-tabs" id="feedTabs">
+          <button class="feed-tab active" data-feed-tab="for-you" onclick="switchFeedTab('for-you')">
+            <span class="feed-tab-icon">✨</span>
+            <span class="feed-tab-label">Pour toi</span>
+          </button>
+          <button class="feed-tab" data-feed-tab="following" onclick="switchFeedTab('following')">
+            <span class="feed-tab-icon">👥</span>
+            <span class="feed-tab-label">Abonnements</span>
+          </button>
+          <button class="feed-tab" data-feed-tab="explore" onclick="switchFeedTab('explore')">
+            <span class="feed-tab-icon">🔍</span>
+            <span class="feed-tab-label">Explorer</span>
+          </button>
+        </div>
+      </div>
+
       <div class="mood-selector" id="moodSelector">
         <button class="mood-btn" data-mood="creation"><span class="mood-btn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M16.5 5.5 L18.5 7.5 M15.4 6.6 L5.5 16.5 L4 20 L7.5 18.5 L17.4 8.6 A1.5 1.5 0 0 0 15.4 6.6 Z"/><path d="M5.5 16.5 L7.5 18.5"/></svg></span>Création</button>
         <button class="mood-btn" data-mood="learn"><span class="mood-btn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5.5 H10.5 A1.5 1.5 0 0 1 12 7 V19 A1.5 1.5 0 0 0 10.5 17.5 H5 Z"/><path d="M19 5.5 H13.5 A1.5 1.5 0 0 0 12 7 V19 A1.5 1.5 0 0 1 13.5 17.5 H19 Z"/></svg></span>Apprendre</button>
