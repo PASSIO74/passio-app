@@ -264,3 +264,6 @@ EXCEPTION WHEN others THEN NULL; END $$;
 DO $$ BEGIN
   ALTER PUBLICATION supabase_realtime ADD TABLE notifications;
 EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER PUBLICATION supabase_realtime ADD TABLE conv_members;
+EXCEPTION WHEN others THEN NULL; END $$;
