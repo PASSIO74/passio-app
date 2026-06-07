@@ -16048,6 +16048,29 @@ function renderProfilesScreen() {
   }
 }
 
+// 🔄 MULTI-SÉLECTION DES PROFILS
+function toggleProfileFilter(profileId) {
+  if (!window.profilesFilterSelection) {
+    window.profilesFilterSelection = new Set();
+  }
+
+  if (window.profilesFilterSelection.has(profileId)) {
+    window.profilesFilterSelection.delete(profileId);
+  } else {
+    window.profilesFilterSelection.add(profileId);
+  }
+
+  renderProfilesScreen();
+}
+
+function clearProfilesFilter() {
+  if (!window.profilesFilterSelection) {
+    window.profilesFilterSelection = new Set();
+  }
+  window.profilesFilterSelection.clear();
+  renderProfilesScreen();
+}
+
 function switchToProfile(id) {
   state.user.currentProfileId = id;
   const p = currentProfile();
