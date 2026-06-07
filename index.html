@@ -18677,62 +18677,59 @@ function openIrlTimePicker() {
   openModal(html);
 }
 
-// Swap z-index : le curseur actif passe au-dessus
-function swapIrlSliderZ(active) {
-  const startSlider = document.getElementById("irlStartSlider");
-  const endSlider = document.getElementById("irlEndSlider");
-  if (!startSlider || !endSlider) return;
-
-  if (active === "start") {
-    // Curseur début en avant
-    startSlider.style.zIndex = 5;
-    endSlider.style.zIndex = 4;
-  } else {
-    // Curseur fin en avant
-    endSlider.style.zIndex = 5;
-    startSlider.style.zIndex = 4;
-  }
-}
-
+// ===== NOUVELLE INTERFACE HORAIRE SIMPLE ET INTUITIVE =====
 let irlStartValue = 0;
 let irlEndValue = 23;
 
-function updateIrlStart() {
-  const startSlider = document.getElementById("irlStartSlider");
-  const endSlider = document.getElementById("irlEndSlider");
-  if (!startSlider || !endSlider) return;
-
-  let startVal = parseInt(startSlider.value) || 0;
-  let endVal = parseInt(endSlider.value) || 23;
-
-  // Si le début dépasse la fin, REJETER le mouvement
-  if (startVal > endVal) {
-    startSlider.value = irlStartValue; // Revenir à la position précédente
-    return; // Ne pas mettre à jour
+function updateIrlDisplay() {
+  const display = document.getElementById("irlTimeRangeDisplay");
+  if (display) {
+    display.innerHTML = `
+      <span style="color:#3b82f6;">${String(irlStartValue).padStart(2, '0')}:00</span>
+      <span style="color:var(--text);margin:0 12px;">→</span>
+      <span style="color:#3b82f6;">${String(irlEndValue).padStart(2, '0')}:00</span>
+    `;
   }
 
-  // Accepter et sauvegarder
-  irlStartValue = startVal;
-  updateIrlSliderDisplay(startVal, endVal);
+  const startInput = document.getElementById("irlStartInput");
+  const endInput = document.getElementById("irlEndInput");
+  if (startInput) startInput.value = irlStartValue;
+  if (endInput) endInput.value = irlEndValue;
 }
 
-function updateIrlEnd() {
-  const startSlider = document.getElementById("irlStartSlider");
-  const endSlider = document.getElementById("irlEndSlider");
-  if (!startSlider || !endSlider) return;
-
-  let startVal = parseInt(startSlider.value) || 0;
-  let endVal = parseInt(endSlider.value) || 23;
-
-  // Si la fin est inférieure au début, REJETER le mouvement
-  if (endVal < startVal) {
-    endSlider.value = irlEndValue; // Revenir à la position précédente
-    return; // Ne pas mettre à jour
+function adjustIrlTime(type, delta) {
+  if (type === "start") {
+    irlStartValue = Math.max(0, Math.min(irlEndValue, irlStartValue + delta));
+  } else {
+    irlEndValue = Math.max(irlStartValue, Math.min(23, irlEndValue + delta));
   }
+  updateIrlDisplay();
+}
 
-  // Accepter et sauvegarder
-  irlEndValue = endVal;
-  updateIrlSliderDisplay(startVal, endVal);
+function updateIrlStartInput() {
+  const input = document.getElementById("irlStartInput");
+  if (!input) return;
+
+  let val = parseInt(input.value) || 0;
+  val = Math.max(0, Math.min(irlEndValue - 1, val));
+  irlStartValue = val;
+  updateIrlDisplay();
+}
+
+function updateIrlEndInput() {
+  const input = document.getElementById("irlEndInput");
+  if (!input) return;
+
+  let val = parseInt(input.value) || 23;
+  val = Math.max(irlStartValue + 1, Math.min(23, val));
+  irlEndValue = val;
+  updateIrlDisplay();
+}
+
+function setIrlQuickTime(start, end) {
+  irlStartValue = start;
+  irlEndValue = end;
+  updateIrlDisplay();
 }
 
 function updateIrlSliderDisplay(startVal, endVal) {
