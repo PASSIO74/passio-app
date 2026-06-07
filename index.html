@@ -10034,19 +10034,8 @@ function renderFeed() {
 
   renderProfileStrip();
 
-  // Afficher les filtres de mood seulement en mode "Passions"
-  if (!_showFollowingFeed) {
-    let postsByPassion = _activeFeedPassions.size > 0
-      ? allPosts.filter(function(p) { return _activeFeedPassions.has(p.passion); })
-      : [];
-    renderMoodStripSmart(postsByPassion);
-  } else {
-    // En mode "Abonnements", masquer les filtres mood
-    $$(".mood-btn").forEach(function(btn) {
-      btn.style.opacity = "0.25";
-      btn.style.pointerEvents = "none";
-    });
-  }
+  // Afficher les filtres de mood pour les deux modes
+  renderMoodStripSmart(availablePostsForMood);
 
   renderStories();
 
