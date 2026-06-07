@@ -20397,13 +20397,21 @@ async function supaLoadEvents() {
 
 async function supaSearchUsers(query) {
   try {
+    console.log("[SEARCH] Query:", query, "MY_UID:", MY_UID);
+
     // 🔍 Retourner TOUS les profils de chaque utilisateur (pas juste un)
-    const { data } = await supa.from("profiles")
+    const { data, error } = await supa.from("profiles")
       .select("id, username, emoji, color, passion_id, bio")
       .ilike("username", `%${query}%`)
       .neq("id", MY_UID);
 
-    if (!data) return [];
+    console.log("[SEARCH] Data returned:", data, "Error:", error);
+    if (!data) {
+      console.log("[SEARCH] No data returned");
+      return [];
+    }
+
+    console.log("[SEARCH] Found " + data.length + " profiles");
 
     // Grouper par utilisateur (username) pour obtenir TOUS ses profils/passions
     const userMap = {};
@@ -20424,8 +20432,13 @@ async function supaSearchUsers(query) {
       });
     });
 
-    return Object.values(userMap).slice(0, 8);
-  } catch(e) { return []; }
+    const results = Object.values(userMap).slice(0, 8);
+    console.log("[SEARCH] Returning " + results.length + " users");
+    return results;
+  } catch(e) {
+    console.error("[SEARCH] Error:", e);
+    return [];
+  }
 }
 
 async function supaCreateConversation(withUserId) {
