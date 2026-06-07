@@ -15980,43 +15980,69 @@ function saveMainProfile() {
 function renderProfilesScreen() {
   renderMainProfile();
 
+  // 🔄 Initialiser la sélection des profils (multi-select)
+  if (!window.profilesFilterSelection) {
+    window.profilesFilterSelection = new Set();
+  }
+
   const list = $("#profileList");
   const cur  = currentProfile();
   const sub  = $("#profilesQuotaSub");
 
   if (sub) {
     const cnt = profilesCount();
-    sub.innerHTML = hasActivePass()
-      ? `<b>${cnt} profils passion</b> · 👑 Pass Passion actif`
-      : `<b>${cnt} profil${cnt>1?"s":""} passion</b>`;
+    const selectedCount = window.profilesFilterSelection.size;
+    if (selectedCount > 0) {
+      sub.innerHTML = `<b>${cnt} profils</b> · 📌 ${selectedCount} sélectionné${selectedCount > 1 ? "s" : ""} · <span class="link" onclick="clearProfilesFilter()">Réinitialiser</span>`;
+    } else {
+      sub.innerHTML = hasActivePass()
+        ? `<b>${cnt} profils passion</b> · 👑 Pass Passion actif`
+        : `<b>${cnt} profil${cnt>1?"s":""} passion</b>`;
+    }
   }
 
   list.innerHTML = state.user.profiles.map(p => {
     const passion    = passionById(p.passion);
     const postCount  = state.userPosts.filter(up => up.profileId === p.id).length;
     const isCur      = p.id === state.user.currentProfileId;
+    const isSelected = window.profilesFilterSelection.has(p.id);
     const hasPhoto   = p.photo ? true : false;
     const avatarStyle = hasPhoto
       ? `background:url(${p.photo}) center/cover;`
       : `background:${p.color};`;
     const avatarContent = hasPhoto ? "" : p.emoji;
-    return `<div class="profile-card ${isCur?"current":""}" onclick="switchToProfile('${p.id}')">
+
+    return `<div class="profile-card ${isCur?"current":""} ${isSelected?"selected":""}" style="${isSelected ? "border:2px solid #3b82f6;background:rgba(59,130,246,0.08);" : ""}" onclick="toggleProfileFilter('${p.id}')">
       <div class="avatar lg" style="${avatarStyle}position:relative;">${avatarContent}
         <div class="passion-photo-badge" onclick="event.stopPropagation();document.getElementById('passionPhoto_${p.id}').click()">📷</div>
         <input type="file" id="passionPhoto_${p.id}" accept="image/*" style="display:none;" onchange="event.stopPropagation();changePassionPhoto(event,'${p.id}')"/>
       </div>
       <div class="profile-card-body" style="flex:1;">
-        <div class="profile-card-name">${passion.emoji} ${passion.label} ${isCur?'<span class="pill active" style="margin-left:4px;padding:2px 7px;font-size:9px;">Actif</span>':""}</div>
+        <div class="profile-card-name">
+          ${passion.emoji} ${passion.label}
+          ${isCur?'<span class="pill active" style="margin-left:4px;padding:2px 7px;font-size:9px;">Actif</span>':""}
+          ${isSelected?'<span class="pill" style="margin-left:4px;padding:2px 7px;font-size:9px;background:#3b82f6;color:#fff;border-color:#3b82f6;">✓ Sélectionné</span>':""}
+        </div>
         <div class="profile-card-passion" style="color:var(--muted);font-size:11px;">${postCount} post${postCount>1?"s":""} · créé le ${fmtDate(p.createdAt)}</div>
       </div>
       <button onclick="event.stopPropagation();confirmDeleteProfile('${p.id}','${escapeHtml(passion.label)}')" style="flex-shrink:0;width:32px;height:32px;border-radius:50%;border:1px solid rgba(239,68,68,0.3);background:transparent;color:#ef4444;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;">🗑</button>
     </div>`;
   }).join("");
 
+  // Filtrer le contenu selon la sélection
   const myPostsDiv = $("#myPosts");
-  const mine = state.userPosts.filter(p => p.profileId === cur?.id);
+  let mine = state.userPosts.filter(p => p.profileId === cur?.id);
+
+  // Si une ou plusieurs passions sont sélectionnées, filtrer par elles
+  if (window.profilesFilterSelection.size > 0) {
+    mine = state.userPosts.filter(p => window.profilesFilterSelection.has(p.profileId));
+  }
+
   if (mine.length === 0) {
-    myPostsDiv.innerHTML = `<div class="empty"><div class="empty-icon">✏️</div><div class="empty-title">Rien publié avec ce profil</div><div class="empty-text">Passe au Studio pour créer ton premier post.</div><button class="btn primary" style="margin-top:10px;" onclick="goTo('studio')">Aller au Studio</button></div>`;
+    const msg = window.profilesFilterSelection.size > 0
+      ? `Aucun post partagé par ${window.profilesFilterSelection.size === 1 ? "ce profil" : "ces profils"}`
+      : "Rien publié avec ce profil";
+    myPostsDiv.innerHTML = `<div class="empty"><div class="empty-icon">✏️</div><div class="empty-title">${msg}</div><div class="empty-text">Passe au Studio pour créer ton premier post.</div><button class="btn primary" style="margin-top:10px;" onclick="goTo('studio')">Aller au Studio</button></div>`;
   } else {
     myPostsDiv.innerHTML = mine.map(p => ({ ...p, _source:"me" })).map(renderPostHTML).join("");
   }
