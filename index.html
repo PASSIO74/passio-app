@@ -11626,9 +11626,17 @@ function openCdvLiveViewer(liveId) {
   const lives = getCdvLives();
   const live = lives.find(l => l.id === liveId);
   if (!live) return;
+
   const isMine = live.authorId === "me";
   const isLive = live.status === "live";
-  var viewerCount = Math.floor(Math.random()*30+5);
+
+  // Ajouter le spectateur actuel au compteur
+  if (isLive && !isMine) {
+    addCdvLiveViewer(liveId);
+  }
+
+  // Nombre réel de spectateurs + base minimale pour démo
+  var viewerCount = (live.currentViewers || 0) + Math.floor(Math.random()*10);
 
   let stepsHTML = live.steps.map(function(s) {
     var photosHTML = "";
