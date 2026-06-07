@@ -17979,18 +17979,22 @@ function updateIrlMapMarkers() {
   });
 
   // Auto-zoom sur les marqueurs filtrés
-  if (points.length > 0) {
-    irlMap.fitBounds(L.latLngBounds(points), { padding: [40, 40], maxZoom: 11 });
-  } else if (irlSelectedCity) {
-    // Pas de marqueurs mais une ville sélectionnée : centrer sur cette ville
-    irlMap.setView([irlSelectedCity.coords[0], irlSelectedCity.coords[1]], 9);
-  } else if (irlUserLocation) {
-    // Pas de marqueurs mais position GPS : centrer sur la position
-    irlMap.setView([irlUserLocation.lat, irlUserLocation.lng], 9);
-  } else {
-    // Aucune position : vue générale de la France
-    irlMap.setView([46.6, 2.5], 5.7);
-  }
+  setTimeout(() => {
+    if (points.length > 0) {
+      irlMap.fitBounds(L.latLngBounds(points), { padding: [40, 40], maxZoom: 11 });
+    } else if (irlSelectedCity) {
+      // Pas de marqueurs mais une ville sélectionnée : centrer sur cette ville
+      irlMap.setView([irlSelectedCity.coords[0], irlSelectedCity.coords[1]], 9);
+    } else if (irlUserLocation) {
+      // Pas de marqueurs mais position GPS : centrer sur la position
+      irlMap.setView([irlUserLocation.lat, irlUserLocation.lng], 9);
+    } else {
+      // Aucune position : vue générale de la France
+      irlMap.setView([46.6, 2.5], 5.7);
+    }
+    // Forcer le redraw de la carte
+    if (irlMap) irlMap.invalidateSize();
+  }, 100);
 }
 
 function toggleIrlMapFullscreen() {
