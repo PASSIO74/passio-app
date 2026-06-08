@@ -9009,31 +9009,24 @@ function uid() { return "x" + Math.random().toString(36).slice(2, 10) + Date.now
 function fmtTime(ts) {
   if (!ts) return "Invalid Date";
 
-  // ⚠️ CORRECTION FUSEAU HORAIRE: Supabase enregistre en UTC
-  // On doit ajouter le décalage local pour afficher l'heure correcte
   let d;
   if (typeof ts === "string") {
     // Chaîne ISO UTC: "2026-06-08T15:50:12.753"
-    // Ajouter Z pour indiquer que c'est UTC
     d = new Date(ts + "Z");
   } else {
     // Timestamp en ms (depuis Date.now())
     d = new Date(ts);
   }
 
-  // Obtenir le décalage local en minutes et le convertir en ms
-  const localOffset = new Date().getTimezoneOffset() * 60 * 1000;
-  // Créer une date ajustée pour l'heure locale
-  const localDate = new Date(d.getTime() - localOffset);
-
-  // Extraire l'heure locale correcte
-  const h = String(localDate.getUTCHours()).padStart(2, "0");
-  const m = String(localDate.getUTCMinutes()).padStart(2, "0");
+  // ✅ JavaScript gère automatiquement le fuseau horaire!
+  // getHours() retourne l'heure locale, pas UTC
+  const h = String(d.getHours()).padStart(2, "0");
+  const m = String(d.getMinutes()).padStart(2, "0");
 
   const diff = (Date.now() - ts) / 1000;
   if (diff < 60) return "à l'instant";
   if (diff < 3600) return Math.floor(diff / 60) + " min";
-  if (diff < 86400) return `${h}:${m}`;  // ✅ Afficher HH:MM avec fuseau horaire correct
+  if (diff < 86400) return `${h}:${m}`;
   if (diff < 2592000) return Math.floor(diff / 86400) + " j";
   return d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
 }
