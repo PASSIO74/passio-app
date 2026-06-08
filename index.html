@@ -16955,6 +16955,20 @@ async function publishPost() {
     goTo("cdv");
     pushNotification(`📔 Ton carnet <b>${escapeHtml(post.destination || "voyage")}</b> ${syncSuccess ? "est en ligne" : "est local"}`, "📔");
   } else {
+    // 🔄 RECHARGER LES POSTS APRÈS PUBLICATION
+    if (syncSuccess) {
+      try {
+        diagLog("🔄 Reloading posts after publish...");
+        const newPosts = await supaLoadPosts();
+        if (newPosts && newPosts.length > 0) {
+          state.seed.posts = newPosts;
+          diagLog(`✅ ${newPosts.length} posts reloaded`);
+        }
+      } catch(e) {
+        console.error("Erreur reload posts:", e);
+      }
+    }
+
     goTo("feed");
     pushNotification(`✨ Ton post est ${syncSuccess ? "en ligne" : "en attente"}`, "✨");
   }
