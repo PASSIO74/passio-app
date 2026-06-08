@@ -16815,6 +16815,11 @@ async function publishPost() {
   toast("⏳ Publication en cours...", "loading");
   diagLog(`📝 Création post - Type: ${studioType}, Passion: ${passion}`);
 
+  // ℹ️ Déterminer le bon nom de l'auteur
+  const authorName = state.user.general?.username || state.user.name || "Passionné";
+  const authorEmoji = currentProfile()?.emoji || "✨";
+  const authorColor = currentProfile()?.color || "#8b5cf6";
+
   const post = {
     id: uid(),
     authorId: (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me",
@@ -16830,16 +16835,15 @@ async function publishPost() {
     likes: 0,
     liked: false,
     comments: [],
-    syncStatus: "syncing", // 🔄 Nouveau: tracker le statut de sync
-    // 📝 Ajouter le nom du profil qui publie
-    authorName: currentProfile()?.name || state.user.name,
-    authorEmoji: currentProfile()?.emoji || "✨",
-    authorColor: currentProfile()?.color || "#8b5cf6",
+    syncStatus: "syncing", // 🔄 Tracker le statut de sync
+    authorName: authorName,
+    authorEmoji: authorEmoji,
+    authorColor: authorColor,
   };
 
-  diagLog(`authorName: "${post.authorName}"`);
-  diagLog(`authorEmoji: "${post.authorEmoji}"`);
-  diagLog(`authorColor: "${post.authorColor}"`);
+  diagLog(`📝 authorName: "${authorName}" (de general.username)`);
+  diagLog(`authorEmoji: "${authorEmoji}"`);
+  diagLog(`authorColor: "${authorColor}"`);
 
   // Champs spécifiques au carnet de voyage
   if (studioType === "vlog") {
