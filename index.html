@@ -10162,7 +10162,11 @@ function renderFeed() {
   if (emptyEl2) emptyEl2.style.display = "none";
 
   // ✅ TRIER LES POSTS: les plus récents en premier!
-  const sortedPosts = posts.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  const sortedPosts = posts.sort((a, b) => {
+    const dateA = a.createdAt || 0;
+    const dateB = b.createdAt || 0;
+    return dateB - dateA;  // Descendant = récents d'abord
+  });
 
   list.innerHTML = sortedPosts.slice(0, 20).map(renderPostHTML).join("");
 }
