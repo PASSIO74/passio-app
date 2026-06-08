@@ -16693,6 +16693,9 @@ async function toggleRecording() {
       const reader = new FileReader();
       reader.onload = () => {
         audioDataUrl = reader.result;
+        // 🎯 Changer automatiquement le type à "audio"
+        studioType = "audio";
+        renderStudio();
         $("#recStatus").textContent = "Enregistrement prêt à publier";
         $("#recPlayback").innerHTML = `<audio controls src="${audioDataUrl}" style="width:100%;margin-top:6px;"></audio>
           <button class="btn small ghost" style="margin-top:6px;" onclick="clearAudio()">🗑 Supprimer</button>`;
