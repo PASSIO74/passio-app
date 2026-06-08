@@ -20262,6 +20262,9 @@ async function supaPublishPostWithRetry(post, maxRetries = 3) {
         media_url: post.image || null,
         post_type: post.type || "text",  // 🎯 Ajouter le type du post (photo, video, audio, text, vlog, cdvlive)
         created_at: new Date(post.createdAt).toISOString(),
+        author_name: post.authorName,  // 📝 Sauvegarder le nom du profil
+        author_emoji: post.authorEmoji,  // 📝 Sauvegarder l'emoji du profil
+        author_color: post.authorColor,  // 📝 Sauvegarder la couleur du profil
       }).select();
 
       if (error) {
