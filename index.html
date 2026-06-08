@@ -20253,19 +20253,22 @@ async function supaPublishPostWithRetry(post, maxRetries = 3) {
       await supaUpsertProfile();
 
       // Insérer le post
-      const { data, error } = await supa.from("posts").insert({
+      const postData = {
         id: post.id,
         author_id: MY_UID,
         passion_id: post.passion || null,
         mood: post.mood || "all",
         content: post.text || "",
         media_url: post.image || null,
-        post_type: post.type || "text",  // 🎯 Ajouter le type du post (photo, video, audio, text, vlog, cdvlive)
+        post_type: post.type || "text",  // 🎯 Ajouter le type du post
         created_at: new Date(post.createdAt).toISOString(),
-        author_name: post.authorName,  // 📝 Sauvegarder le nom du profil
-        author_emoji: post.authorEmoji,  // 📝 Sauvegarder l'emoji du profil
-        author_color: post.authorColor,  // 📝 Sauvegarder la couleur du profil
-      }).select();
+      };
+      // Optionnel: ajouter les champs nom/emoji/color s'ils existent en Supabase
+      if (post.authorName) postData.author_name = post.authorName;
+      if (post.authorEmoji) postData.author_emoji = post.authorEmoji;
+      if (post.authorColor) postData.author_color = post.authorColor;
+
+      const { data, error } = await supa.from("posts").insert(postData).select();
 
       if (error) {
         console.error(`[Sync ${attempt}] Erreur Supabase:`, error);
