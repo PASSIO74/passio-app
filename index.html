@@ -20442,19 +20442,20 @@ async function supaLoadEvents() {
 
 async function supaSearchUsers(query) {
   try {
-    console.log("[SEARCH] Query:", query, "MY_UID:", MY_UID);
+    const cleanQuery = (query || "").trim();
+    console.log("[SEARCH] Query:", cleanQuery, "MY_UID:", MY_UID);
 
-    if (!query || query.trim().length === 0) {
+    if (!cleanQuery || cleanQuery.length === 0) {
       console.log("[SEARCH] Query is empty");
       return [];
     }
 
     // 🔍 Retourner TOUS les profils de chaque utilisateur (pas juste un)
-    // Search by username OR bio
+    // Search by username OR bio - sans exclusion par MY_UID pour permettre de trouver son propre profil depuis un autre appareil
+    const searchPattern = `%${cleanQuery}%`;
     const { data, error } = await supa.from("profiles")
       .select("id, username, emoji, color, passion_id, bio")
-      .or(`username.ilike.*${query}*,bio.ilike.*${query}*`)
-      .neq("id", MY_UID);
+      .or(`username.ilike.${searchPattern},bio.ilike.${searchPattern}`);
 
     console.log("[SEARCH] Data returned:", data, "Error:", error);
     if (!data) {
