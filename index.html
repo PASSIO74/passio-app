@@ -16658,7 +16658,15 @@ $("#photoInput").addEventListener("change", (e) => {
     photoDataUrl = reader.result;
     // 🎯 Changer automatiquement le type à "photo"
     studioType = "photo";
-    renderStudio();
+    // Mettre à jour l'affichage des boutons studio-type
+    $$("#studioTypeTabs .studio-type").forEach(e => e.classList.remove("active"));
+    document.querySelector('[data-type="photo"]')?.classList.add("active");
+    // Afficher la section photo et masquer les autres
+    $("#studioPhoto").style.display = "block";
+    $("#studioVideo").style.display = "none";
+    $("#studioAudio").style.display = "none";
+    const vlogEl = $("#studioVlog"); if (vlogEl) vlogEl.style.display = "none";
+    const cdvliveEl = $("#studiocdvlive"); if (cdvliveEl) cdvliveEl.style.display = "none";
     renderPhotoPreview();
   };
   reader.readAsDataURL(f);
