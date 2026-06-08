@@ -20340,7 +20340,8 @@ async function supaLoadPosts() {
         authorEmoji: r.profiles?.emoji || "✨",
         authorColor: r.profiles?.color || "#8b5cf6",
         passion: r.passion_id || "autre", mood: r.mood || "all",
-        type: "text", text: r.content || "", image: r.media_url || null,
+        type: r.post_type || "text",  // 🎯 Charger le type réel depuis Supabase
+        text: r.content || "", image: r.media_url || null,
         createdAt: new Date(r.created_at).getTime(),
         likes: postLikes.length,
         liked: postLikes.some(l => l.user_id === MY_UID),
