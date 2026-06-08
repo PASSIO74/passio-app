@@ -20388,12 +20388,15 @@ async function supaPublishPost(post) {
 
 async function supaLoadPosts() {
   try {
+    diagLog("📥 Chargement posts depuis Supabase...");
     console.log("[SYNC] Chargement des posts depuis Supabase...");
     const { data, error } = await supa.from("posts").select("*, profiles!author_id(username,emoji,color)").order("created_at", { ascending: false }).limit(60);
     if (error) {
+      diagLog(`❌ Erreur chargement: ${error.message}`);
       console.error("[SYNC] Erreur requête posts:", error);
       return [];
     }
+    diagLog(`📥 ${data?.length || 0} posts chargés`);
     console.log("[SYNC] Posts chargés:", data?.length || 0);
     if (!data || !data.length) return [];
     // Charger tous les likes + counts commentaires d'un coup
