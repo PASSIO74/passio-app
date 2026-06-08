@@ -13013,12 +13013,15 @@ async function openUserProfile(authorId, source) {
   // Chercher dans Supabase si non trouvé localement
   if (!user && typeof supa !== "undefined" && supa) {
     try {
-      const { data } = await supa.from("profiles").select("id,username,emoji,color,passion_id,bio").eq("id", authorId).single();
-      if (data) {
-        user = { id: data.id, name: data.username || "Passionné", profileEmoji: data.emoji || "✨", avatar: data.color || "#8b5cf6", passion: data.passion_id || "", bio: data.bio || "" };
+      const { data } = await supa.from("profiles").select("id,username,emoji,color,passion_id,bio").eq("id", authorId).limit(1);
+      if (data && data.length > 0) {
+        const profile = data[0];
+        user = { id: profile.id, name: profile.username || "Passionné", profileEmoji: profile.emoji || "✨", avatar: profile.color || "#8b5cf6", passion: profile.passion_id || "", bio: profile.bio || "" };
         state.seed.users.push(user);
       }
-    } catch(e) {}
+    } catch(e) {
+      console.warn("Erreur lors de la recherche du profil dans Supabase:", e);
+    }
   }
   if (!user) { toast("Profil non trouvé"); return; }
 
