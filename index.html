@@ -20269,6 +20269,8 @@ async function supaPublishPostWithRetry(post, maxRetries = 3) {
 
       if (error) {
         console.error(`[Sync ${attempt}] Erreur Supabase:`, error);
+        console.error(`[Sync] Code erreur:`, error.code);
+        console.error(`[Sync] Message:`, error.message);
 
         // Retry seulement si ce n'est pas une erreur de validation
         if (error.code && error.code.includes("unique") && attempt < maxRetries) {
