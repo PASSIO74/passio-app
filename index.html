@@ -16752,7 +16752,15 @@ async function toggleRecording() {
         audioDataUrl = reader.result;
         // 🎯 Changer automatiquement le type à "audio"
         studioType = "audio";
-        renderStudio();
+        // Mettre à jour l'affichage des boutons studio-type
+        $$("#studioTypeTabs .studio-type").forEach(e => e.classList.remove("active"));
+        document.querySelector('[data-type="audio"]')?.classList.add("active");
+        // Afficher la section audio et masquer les autres
+        $("#studioPhoto").style.display = "none";
+        $("#studioVideo").style.display = "none";
+        $("#studioAudio").style.display = "block";
+        const vlogEl = $("#studioVlog"); if (vlogEl) vlogEl.style.display = "none";
+        const cdvliveEl = $("#studiocdvlive"); if (cdvliveEl) cdvliveEl.style.display = "none";
         $("#recStatus").textContent = "Enregistrement prêt à publier";
         $("#recPlayback").innerHTML = `<audio controls src="${audioDataUrl}" style="width:100%;margin-top:6px;"></audio>
           <button class="btn small ghost" style="margin-top:6px;" onclick="clearAudio()">🗑 Supprimer</button>`;
