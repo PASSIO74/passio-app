@@ -16839,10 +16839,19 @@ async function publishPost() {
   toast("⏳ Publication en cours...", "loading");
   diagLog(`📝 Création post - Type: ${studioType}, Passion: ${passion}`);
 
-  // ℹ️ UTILISER LE USERNAME DU PROFIL EN SUPABASE!
-  // Le username en Supabase est "BEN PC PORTABLE", pas "passionee"!
-  // On va le chercher depuis la requête Supabase du profil
-  let authorName = "BEN PC PORTABLE";  // ✅ TEMPORAIRE: remplacer par requête Supabase
+  // ℹ️ CHARGER LE USERNAME DU PROFIL DEPUIS SUPABASE!
+  // Pas state.user.general?.username qui peut être "passionee"!
+  let authorName = "Passionné";  // Défaut
+  try {
+    const { data: profileData } = await supa.from("profiles").select("username,emoji,color").eq("id", MY_UID).single();
+    if (profileData) {
+      authorName = profileData.username || "Passionné";
+      diagLog(`✅ Username chargé depuis Supabase: "${authorName}"`);
+    }
+  } catch(e) {
+    // Fallback
+    authorName = state.user.general?.username || currentProfile()?.name || state.user.name || "Passionné";
+  }
   const authorEmoji = currentProfile()?.emoji || "✨";
   const authorColor = currentProfile()?.color || "#8b5cf6";
 
