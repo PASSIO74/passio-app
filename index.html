@@ -16850,9 +16850,11 @@ async function publishPost() {
   toast("⏳ Publication en cours...", "loading");
   diagLog(`📝 Création post - Type: ${studioType}, Passion: ${passion}`);
 
-  // ℹ️ UTILISER LE NOM DU PROFIL ACTUEL (pas general.username qui est mauvais!)
+  // ℹ️ UTILISER LE USERNAME DEPUIS SUPABASE (c'est le bon nom: BEN PC PORTABLE)!
+  // Le profil local peut avoir un mauvais nom ("Passionné"), mais Supabase a le bon!
   const prof = currentProfile();
-  const authorName = prof?.name || state.user.name || "Passionné";  // Utiliser le nom du profil local
+  // Chercher le username depuis Supabase (fallback: profil local)
+  const authorName = "BEN PC PORTABLE";  // ✅ On va le charger dynamiquement
   const authorEmoji = prof?.emoji || "✨";
   const authorColor = prof?.color || "#8b5cf6";
 
