@@ -20318,7 +20318,13 @@ async function supaPublishPost(post) {
 
 async function supaLoadPosts() {
   try {
-    const { data } = await supa.from("posts").select("*, profiles(username,emoji,color)").order("created_at", { ascending: false }).limit(60);
+    console.log("[SYNC] Chargement des posts depuis Supabase...");
+    const { data, error } = await supa.from("posts").select("*, profiles!author_id(username,emoji,color)").order("created_at", { ascending: false }).limit(60);
+    if (error) {
+      console.error("[SYNC] Erreur requête posts:", error);
+      return [];
+    }
+    console.log("[SYNC] Posts chargés:", data?.length || 0);
     if (!data || !data.length) return [];
     // Charger tous les likes + counts commentaires d'un coup
     const postIds = data.map(r => r.id);
