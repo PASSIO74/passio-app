@@ -20410,7 +20410,7 @@ async function supaLoadPosts() {
       likesData = likesRes.data || [];
       commentsData = commentsRes.data || [];
     } catch(e) {}
-    return data.map(r => {
+    return data.map((r, idx) => {
       const postLikes = likesData.filter(l => l.post_id === r.id);
       const postComments = commentsData.filter(c => c.post_id === r.id).map(c => ({
         id: c.id, authorId: c.author_id,
@@ -20420,6 +20420,15 @@ async function supaLoadPosts() {
         createdAt: new Date(c.created_at).getTime(),
         fromSupabase: true,
       }));
+
+      // Diagnostic du premier post
+      if (idx === 0) {
+        diagLog(`📌 Post #1:`);
+        diagLog(`  - author_name (field): "${r.author_name}"`);
+        diagLog(`  - profiles?.username: "${r.profiles?.username}"`);
+        diagLog(`  - post_type: "${r.post_type}"`);
+      }
+
       return {
         id: r.id, authorId: r.author_id,
         authorName: r.author_name || r.profiles?.username || "Passionné",  // 📝 Utiliser le nom du profil sauvegardé, pas le username
