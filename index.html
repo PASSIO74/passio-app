@@ -12998,6 +12998,8 @@ async function openUserProfile(authorId, source) {
   // Ajouter à l'historique pour que le bouton back fonctionne
   pushOverlayToHistory("profile", authorId);
 
+  console.log("[openUserProfile] authorId:", authorId, "source:", source);
+
   if (source === "me" || authorId === "me" || (typeof MY_UID !== "undefined" && MY_UID && authorId === MY_UID)) {
     goTo("profiles");
     return;
@@ -13008,22 +13010,35 @@ async function openUserProfile(authorId, source) {
     var post = (state.seed.posts || []).find(function(p) { return p.authorId === authorId; });
     if (post) {
       user = { id: authorId, name: post.authorName || "Passionné", profileEmoji: post.authorEmoji || "✨", avatar: post.authorColor || "#8b5cf6", passion: post.passion, bio: post.authorBio || "" };
+      console.log("[openUserProfile] Trouvé via post seed");
     }
+  } else {
+    console.log("[openUserProfile] Trouvé dans seed.users");
   }
+
   // Chercher dans Supabase si non trouvé localement
   if (!user && typeof supa !== "undefined" && supa) {
     try {
-      const { data } = await supa.from("profiles").select("id,username,emoji,color,passion_id,bio").eq("id", authorId).limit(1);
+      console.log("[openUserProfile] Cherchant dans Supabase avec id:", authorId);
+      const { data, error } = await supa.from("profiles").select("id,username,emoji,color,passion_id,bio").eq("id", authorId).limit(1);
+      console.log("[openUserProfile] Supabase response:", data, "error:", error);
+
       if (data && data.length > 0) {
         const profile = data[0];
         user = { id: profile.id, name: profile.username || "Passionné", profileEmoji: profile.emoji || "✨", avatar: profile.color || "#8b5cf6", passion: profile.passion_id || "", bio: profile.bio || "" };
         state.seed.users.push(user);
+        console.log("[openUserProfile] Trouvé dans Supabase");
       }
     } catch(e) {
-      console.warn("Erreur lors de la recherche du profil dans Supabase:", e);
+      console.warn("[openUserProfile] Erreur Supabase:", e);
     }
   }
-  if (!user) { toast("Profil non trouvé"); return; }
+
+  if (!user) {
+    console.warn("[openUserProfile] Profil non trouvé pour:", authorId);
+    toast("Profil non trouvé");
+    return;
+  }
 
   // 🔄 Charger TOUS les profils/passions de cet utilisateur
   let userPassions = [];
