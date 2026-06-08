@@ -16815,8 +16815,9 @@ async function publishPost() {
   toast("⏳ Publication en cours...", "loading");
   diagLog(`📝 Création post - Type: ${studioType}, Passion: ${passion}`);
 
-  // ℹ️ Déterminer le bon nom de l'auteur (depuis le profil actuel, pas general.username)
-  const authorName = currentProfile()?.name || state.user.name || "Passionné";
+  // ℹ️ Chercher le username du profil EN SUPABASE (pas le nom local)
+  // Fallback: general.username → name → "Passionné"
+  let authorName = state.user.general?.username || currentProfile()?.name || state.user.name || "Passionné";
   const authorEmoji = currentProfile()?.emoji || "✨";
   const authorColor = currentProfile()?.color || "#8b5cf6";
 
