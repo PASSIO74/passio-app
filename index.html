@@ -13006,14 +13006,26 @@ async function openUserProfile(authorId, source) {
   }
 
   var user = userById(authorId);
+
+  // Si pas trouvé par ID, chercher par username dans seed.users
+  if (!user) {
+    user = (state.seed.users || []).find(u =>
+      u.username === authorId ||
+      (u.name && u.name.toLowerCase() === (authorId || "").toLowerCase())
+    );
+    if (user) {
+      console.log("[openUserProfile] Trouvé dans seed.users par username");
+    }
+  } else {
+    console.log("[openUserProfile] Trouvé dans seed.users par ID");
+  }
+
   if (!user) {
     var post = (state.seed.posts || []).find(function(p) { return p.authorId === authorId; });
     if (post) {
       user = { id: authorId, name: post.authorName || "Passionné", profileEmoji: post.authorEmoji || "✨", avatar: post.authorColor || "#8b5cf6", passion: post.passion, bio: post.authorBio || "" };
       console.log("[openUserProfile] Trouvé via post seed");
     }
-  } else {
-    console.log("[openUserProfile] Trouvé dans seed.users");
   }
 
   // Chercher dans Supabase si non trouvé localement
