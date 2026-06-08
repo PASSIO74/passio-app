@@ -20433,9 +20433,11 @@ async function supaLoadPosts() {
       if (idx === 0) {
         diagLog(`📌 Post #1 détails:`);
         diagLog(`  - author_id: "${r.author_id}"`);
+        diagLog(`  - passion_id: "${r.passion_id}"`);
         diagLog(`  - profiles?.username: "${r.profiles?.username}"`);
         diagLog(`  - profiles?.emoji: "${r.profiles?.emoji}"`);
         diagLog(`  → Affichera: "${r.profiles?.username || "Passionné"}"`);
+        diagLog(`🎯 Passion filtrée actuelle: ${_activeFeedPassions.size > 0 ? Array.from(_activeFeedPassions).join(",") : "AUCUNE"}`);
       }
 
       return {
