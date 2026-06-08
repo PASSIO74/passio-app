@@ -20332,6 +20332,8 @@ async function supaPublishPostWithRetry(post, maxRetries = 3) {
       const { data, error } = await supa.from("posts").insert(postData).select();
 
       if (error) {
+        diagLog(`❌ ERREUR: ${error.message}`);
+        diagLog(`Code: ${error.code}`);
         console.error(`[Sync ${attempt}] Erreur Supabase:`, error);
         console.error(`[Sync] Code erreur:`, error.code);
         console.error(`[Sync] Message:`, error.message);
@@ -20340,6 +20342,7 @@ async function supaPublishPostWithRetry(post, maxRetries = 3) {
         if (error.code && error.code.includes("unique") && attempt < maxRetries) {
           // Attendre avant de retry (backoff exponentiel)
           const delay = Math.pow(2, attempt - 1) * 1000; // 1s, 2s, 4s
+          diagLog(`⏱️ Retry dans ${delay}ms...`);
           console.log(`[Sync] Retry dans ${delay}ms...`);
           await new Promise(resolve => setTimeout(resolve, delay));
           continue;
@@ -20348,6 +20351,7 @@ async function supaPublishPostWithRetry(post, maxRetries = 3) {
         throw error;
       }
 
+      diagLog(`✅ Post publié! ID: ${data?.[0]?.id || "?"}`);
       console.log(`[Sync] ✅ Post sauvegardé sur Supabase:`, data);
       return true; // Succès!
 
