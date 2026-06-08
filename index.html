@@ -20343,6 +20343,10 @@ window.addEventListener("load", () => {
     diagLog(`state.user.profiles.length: ${state.user.profiles?.length || 0}`);
     if (state.user.profiles && state.user.profiles.length > 0) {
       diagLog(`Profile #1: name="${state.user.profiles[0].name}"`);
+      diagLog(`⚠️ TOUS LES PROFILS:`);
+      state.user.profiles.forEach((p, i) => {
+        diagLog(`  ${i+1}. name="${p.name}" id="${p.id}"`);
+      });
     }
     showDiag();
   }, 500);
