@@ -16839,21 +16839,11 @@ async function publishPost() {
   toast("⏳ Publication en cours...", "loading");
   diagLog(`📝 Création post - Type: ${studioType}, Passion: ${passion}`);
 
-  // ℹ️ CHARGER LE USERNAME DU PROFIL DEPUIS SUPABASE!
-  // Pas state.user.general?.username qui peut être "passionee"!
-  let authorName = "Passionné";  // Défaut
-  try {
-    const { data: profileData } = await supa.from("profiles").select("username,emoji,color").eq("id", MY_UID).single();
-    if (profileData) {
-      authorName = profileData.username || "Passionné";
-      diagLog(`✅ Username chargé depuis Supabase: "${authorName}"`);
-    }
-  } catch(e) {
-    // Fallback
-    authorName = state.user.general?.username || currentProfile()?.name || state.user.name || "Passionné";
-  }
-  const authorEmoji = currentProfile()?.emoji || "✨";
-  const authorColor = currentProfile()?.color || "#8b5cf6";
+  // ℹ️ UTILISER LE NOM DU PROFIL ACTUEL (pas general.username qui est mauvais!)
+  const prof = currentProfile();
+  const authorName = prof?.name || state.user.name || "Passionné";  // Utiliser le nom du profil local
+  const authorEmoji = prof?.emoji || "✨";
+  const authorColor = prof?.color || "#8b5cf6";
 
   const post = {
     id: uid(),
