@@ -20304,10 +20304,13 @@ window.addEventListener("load", () => {
 async function supaPublishPostWithRetry(post, maxRetries = 3) {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
+      diagLog(`🔄 Tentative ${attempt}/${maxRetries}: Publication du post`);
       console.log(`[Sync ${attempt}/${maxRetries}] Publication du post ${post.id}...`);
 
       // Mettre à jour le profil d'abord
+      diagLog(`📤 Mise à jour du profil...`);
       await supaUpsertProfile();
+      diagLog(`✅ Profil mis à jour`);
 
       // Insérer le post
       const postData = {
@@ -20325,6 +20328,7 @@ async function supaPublishPostWithRetry(post, maxRetries = 3) {
       if (post.authorEmoji) postData.author_emoji = post.authorEmoji;
       if (post.authorColor) postData.author_color = post.authorColor;
 
+      diagLog(`📤 Envoi post: author_name="${postData.author_name}"`);
       const { data, error } = await supa.from("posts").insert(postData).select();
 
       if (error) {
