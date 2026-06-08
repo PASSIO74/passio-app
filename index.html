@@ -10156,7 +10156,11 @@ function renderFeed() {
   }
   var emptyEl2 = $("#feedEmpty");
   if (emptyEl2) emptyEl2.style.display = "none";
-  list.innerHTML = posts.slice(0, 20).map(renderPostHTML).join("");
+
+  // ✅ TRIER LES POSTS: les plus récents en premier!
+  const sortedPosts = posts.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+  list.innerHTML = sortedPosts.slice(0, 20).map(renderPostHTML).join("");
 }
 
 // Real-photo cover, maps each `cover` variant to an Unsplash HD photo.
