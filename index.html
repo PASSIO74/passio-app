@@ -13019,15 +13019,26 @@ async function openUserProfile(authorId, source) {
   // Chercher dans Supabase si non trouvé localement
   if (!user && typeof supa !== "undefined" && supa) {
     try {
+      // D'abord, chercher par ID
       console.log("[openUserProfile] Cherchant dans Supabase avec id:", authorId);
-      const { data, error } = await supa.from("profiles").select("id,username,emoji,color,passion_id,bio").eq("id", authorId).limit(1);
-      console.log("[openUserProfile] Supabase response:", data, "error:", error);
+      let { data, error } = await supa.from("profiles").select("id,username,emoji,color,passion_id,bio").eq("id", authorId).limit(1);
+      console.log("[openUserProfile] Supabase response (by id):", data, "error:", error);
+
+      // Si pas trouvé par ID, chercher par username (en cas de confusion entre ID et username)
+      if ((!data || data.length === 0) && authorId && !authorId.startsWith("u_")) {
+        console.log("[openUserProfile] Pas trouvé par id, cherchant par username:", authorId);
+        const { data: dataByUsername } = await supa.from("profiles").select("id,username,emoji,color,passion_id,bio").ilike("username", authorId).limit(1);
+        if (dataByUsername && dataByUsername.length > 0) {
+          data = dataByUsername;
+          console.log("[openUserProfile] Trouvé par username:", dataByUsername);
+        }
+      }
 
       if (data && data.length > 0) {
         const profile = data[0];
         user = { id: profile.id, name: profile.username || "Passionné", profileEmoji: profile.emoji || "✨", avatar: profile.color || "#8b5cf6", passion: profile.passion_id || "", bio: profile.bio || "" };
         state.seed.users.push(user);
-        console.log("[openUserProfile] Trouvé dans Supabase");
+        console.log("[openUserProfile] Trouvé dans Supabase et ajouté à seed.users");
       }
     } catch(e) {
       console.warn("[openUserProfile] Erreur Supabase:", e);
