@@ -20343,9 +20343,9 @@ async function supaLoadPosts() {
       }));
       return {
         id: r.id, authorId: r.author_id,
-        authorName: r.author_name || r.profiles?.username || "Passionné",  // 📝 Utiliser le nom du profil sauvegardé
-        authorEmoji: r.author_emoji || r.profiles?.emoji || "✨",  // 📝 Utiliser l'emoji du profil sauvegardé
-        authorColor: r.author_color || r.profiles?.color || "#8b5cf6",  // 📝 Utiliser la couleur du profil sauvegardé
+        authorName: r.profiles?.username || "Passionné",  // 📝 Utiliser le nom du profil depuis le username
+        authorEmoji: r.profiles?.emoji || "✨",  // 📝 Utiliser l'emoji du profil
+        authorColor: r.profiles?.color || "#8b5cf6",  // 📝 Utiliser la couleur du profil
         passion: r.passion_id || "autre", mood: r.mood || "all",
         type: r.post_type || "text",  // 🎯 Charger le type réel depuis Supabase
         text: r.content || "", image: r.media_url || null,
