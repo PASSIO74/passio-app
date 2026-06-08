@@ -9009,24 +9009,31 @@ function uid() { return "x" + Math.random().toString(36).slice(2, 10) + Date.now
 function fmtTime(ts) {
   if (!ts) return "Invalid Date";
 
-  // ⚠️ CORRECTION FUSEAU HORAIRE: si ts est une chaîne ISO, elle est en UTC
-  // On doit l'interpréter localement
+  // ⚠️ CORRECTION FUSEAU HORAIRE: Supabase enregistre en UTC
+  // On doit ajouter le décalage local pour afficher l'heure correcte
   let d;
   if (typeof ts === "string") {
-    // Chaîne ISO: "2026-06-08T15:50:12.753" - remplacer le T par un espace et ajouter Z si manquant
-    d = new Date(ts.includes("Z") ? ts : ts + "Z");
+    // Chaîne ISO UTC: "2026-06-08T15:50:12.753"
+    // Ajouter Z pour indiquer que c'est UTC
+    d = new Date(ts + "Z");
   } else {
+    // Timestamp en ms (depuis Date.now())
     d = new Date(ts);
   }
 
-  // Convertir en heure locale pour affichage
-  const h = String(d.getHours()).padStart(2, "0");
-  const m = String(d.getMinutes()).padStart(2, "0");
+  // Obtenir le décalage local en minutes et le convertir en ms
+  const localOffset = new Date().getTimezoneOffset() * 60 * 1000;
+  // Créer une date ajustée pour l'heure locale
+  const localDate = new Date(d.getTime() - localOffset);
+
+  // Extraire l'heure locale correcte
+  const h = String(localDate.getUTCHours()).padStart(2, "0");
+  const m = String(localDate.getUTCMinutes()).padStart(2, "0");
 
   const diff = (Date.now() - ts) / 1000;
   if (diff < 60) return "à l'instant";
   if (diff < 3600) return Math.floor(diff / 60) + " min";
-  if (diff < 86400) return `${h}:${m}`;  // ✅ Afficher HH:MM pour aujourd'hui
+  if (diff < 86400) return `${h}:${m}`;  // ✅ Afficher HH:MM avec fuseau horaire correct
   if (diff < 2592000) return Math.floor(diff / 86400) + " j";
   return d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
 }
