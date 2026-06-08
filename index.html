@@ -10170,11 +10170,14 @@ function renderFeed() {
 
   // Diagnostic: afficher les 3 premiers posts et leurs créatedAt
   if (sortedPosts.length > 0) {
-    console.log("🎯 TOP 3 POSTS TRIÉS:");
+    console.log("🎯 TOP 3 POSTS TRIÉS (AVANT RENDU):");
     for (let i = 0; i < Math.min(3, sortedPosts.length); i++) {
       const p = sortedPosts[i];
       console.log(`${i+1}. ${p.authorName || "?"} - createdAt: ${p.createdAt} - ${new Date(p.createdAt).toLocaleString('fr-FR')}`);
     }
+    // DIAGNOSTIC: vérifier les timestamps exacts
+    console.log("DEBUG: First post createdAt =", sortedPosts[0].createdAt, "Type:", typeof sortedPosts[0].createdAt);
+    console.log("DEBUG: Second post createdAt =", sortedPosts[1]?.createdAt, "Type:", typeof sortedPosts[1]?.createdAt);
   }
 
   list.innerHTML = sortedPosts.slice(0, 20).map(renderPostHTML).join("");
