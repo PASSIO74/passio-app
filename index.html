@@ -16645,6 +16645,9 @@ $("#videoInput").addEventListener("change", (e) => {
   const reader = new FileReader();
   reader.onload = () => {
     videoDataUrl = reader.result;
+    // 🎯 Changer automatiquement le type à "video"
+    studioType = "video";
+    renderStudio();
     renderVideoPreview();
   };
   reader.readAsDataURL(f);
