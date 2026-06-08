@@ -20456,6 +20456,10 @@ async function supaLoadPosts() {
         diagLog(`📌 Post #1 détails:`);
         diagLog(`  - author_id: "${r.author_id}"`);
         diagLog(`  - passion_id: "${r.passion_id}"`);
+        diagLog(`  - created_at (raw): ${r.created_at}`);
+        const ts = new Date(r.created_at).getTime();
+        diagLog(`  - createdAt (ms): ${ts}`);
+        diagLog(`  - Heure locale: ${new Date(ts).toLocaleString('fr-FR')}`);
         diagLog(`  - profiles?.username: "${r.profiles?.username}"`);
         diagLog(`  - profiles?.emoji: "${r.profiles?.emoji}"`);
         diagLog(`  → Affichera: "${r.profiles?.username || "Passionné"}"`);
