@@ -20435,9 +20435,9 @@ async function supaLoadPosts() {
 
       return {
         id: r.id, authorId: r.author_id,
-        authorName: r.author_name || r.profiles?.username || "Passionné",  // 📝 Utiliser le nom du profil sauvegardé, pas le username
-        authorEmoji: r.author_emoji || r.profiles?.emoji || "✨",  // 📝 Utiliser l'emoji du profil sauvegardé
-        authorColor: r.author_color || r.profiles?.color || "#8b5cf6",  // 📝 Utiliser la couleur du profil sauvegardée
+        authorName: r.profiles?.username || "Passionné",  // ✅ Utiliser le username depuis profiles (BEN PC PORTABLE)
+        authorEmoji: r.profiles?.emoji || "✨",  // ✅ Utiliser l'emoji depuis profiles
+        authorColor: r.profiles?.color || "#8b5cf6",  // ✅ Utiliser la couleur depuis profiles
         passion: r.passion_id || "autre", mood: r.mood || "all",
         type: r.post_type || "text",  // 🎯 Charger le type réel depuis Supabase
         text: r.content || "", image: r.media_url || null,
