@@ -16615,6 +16615,9 @@ $("#photoInput").addEventListener("change", (e) => {
   const reader = new FileReader();
   reader.onload = () => {
     photoDataUrl = reader.result;
+    // 🎯 Changer automatiquement le type à "photo"
+    studioType = "photo";
+    renderStudio();
     renderPhotoPreview();
   };
   reader.readAsDataURL(f);
