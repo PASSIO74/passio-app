@@ -9008,7 +9008,18 @@ function uid() { return "x" + Math.random().toString(36).slice(2, 10) + Date.now
 
 function fmtTime(ts) {
   if (!ts) return "Invalid Date";
-  const d = new Date(ts);
+
+  // ⚠️ CORRECTION FUSEAU HORAIRE: si ts est une chaîne ISO, elle est en UTC
+  // On doit l'interpréter localement
+  let d;
+  if (typeof ts === "string") {
+    // Chaîne ISO: "2026-06-08T15:50:12.753" - remplacer le T par un espace et ajouter Z si manquant
+    d = new Date(ts.includes("Z") ? ts : ts + "Z");
+  } else {
+    d = new Date(ts);
+  }
+
+  // Convertir en heure locale pour affichage
   const h = String(d.getHours()).padStart(2, "0");
   const m = String(d.getMinutes()).padStart(2, "0");
 
