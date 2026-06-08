@@ -20312,7 +20312,7 @@ async function supaPublishPostWithRetry(post, maxRetries = 3) {
       await supaUpsertProfile();
       diagLog(`✅ Profil mis à jour`);
 
-      // Insérer le post
+      // Insérer le post - utiliser SEULEMENT les colonnes qui existent!
       const postData = {
         id: post.id,
         author_id: MY_UID,
@@ -20320,15 +20320,18 @@ async function supaPublishPostWithRetry(post, maxRetries = 3) {
         mood: post.mood || "all",
         content: post.text || "",
         media_url: post.image || null,
-        post_type: post.type || "text",  // 🎯 Ajouter le type du post
         created_at: new Date(post.createdAt).toISOString(),
       };
-      // Optionnel: ajouter les champs nom/emoji/color s'ils existent en Supabase
-      if (post.authorName) postData.author_name = post.authorName;
-      if (post.authorEmoji) postData.author_emoji = post.authorEmoji;
-      if (post.authorColor) postData.author_color = post.authorColor;
+      // Ajouter les colonnes optionnelles SEULEMENT si elles existent en Supabase
+      // (Éviter les erreurs PGRST204)
+      try {
+        if (post.authorName) postData.author_name = post.authorName;
+        if (post.authorEmoji) postData.author_emoji = post.authorEmoji;
+        if (post.authorColor) postData.author_color = post.authorColor;
+        if (post.type) postData.post_type = post.type;
+      } catch(e) {}
 
-      diagLog(`📤 Envoi post: author_name="${postData.author_name}"`);
+      diagLog(`📤 Envoi post avec: ${Object.keys(postData).join(", ")}`);
       const { data, error } = await supa.from("posts").insert(postData).select();
 
       if (error) {
