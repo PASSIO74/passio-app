@@ -10168,6 +10168,15 @@ function renderFeed() {
     return dateB - dateA;  // Descendant = récents d'abord
   });
 
+  // Diagnostic: afficher les 3 premiers posts et leurs créatedAt
+  if (sortedPosts.length > 0) {
+    console.log("🎯 TOP 3 POSTS TRIÉS:");
+    for (let i = 0; i < Math.min(3, sortedPosts.length); i++) {
+      const p = sortedPosts[i];
+      console.log(`${i+1}. ${p.authorName || "?"} - createdAt: ${p.createdAt} - ${new Date(p.createdAt).toLocaleString('fr-FR')}`);
+    }
+  }
+
   list.innerHTML = sortedPosts.slice(0, 20).map(renderPostHTML).join("");
 }
 
