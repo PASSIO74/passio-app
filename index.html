@@ -20242,6 +20242,58 @@ async function supaUpsertProfile() {
   } catch(e) { console.warn("Profile upsert error:", e); }
 }
 
+// ---- DIAGNOSTIC ----
+// Créer un panneau de diagnostic visible à l'écran
+const _diagPanel = document.createElement("div");
+_diagPanel.id = "sync_diagnosis_panel";
+_diagPanel.style.cssText = `
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  background: #1a1a1a;
+  color: #00ff00;
+  padding: 15px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-family: monospace;
+  max-width: 350px;
+  max-height: 300px;
+  overflow-y: auto;
+  z-index: 99999;
+  border: 2px solid #00ff00;
+  white-space: pre-wrap;
+  word-break: break-all;
+  display: none;
+`;
+_diagPanel.textContent = "DIAGNOSTIC SYNC\n================\n";
+document.body.appendChild(_diagPanel);
+
+function showDiag() {
+  _diagPanel.style.display = "block";
+}
+
+function hideDiag() {
+  _diagPanel.style.display = "none";
+}
+
+function diagLog(msg) {
+  const time = new Date().toLocaleTimeString();
+  const line = `[${time}] ${msg}\n`;
+  _diagPanel.textContent += line;
+  _diagPanel.scrollTop = _diagPanel.scrollHeight;
+  console.log("[DIAG]", msg);
+}
+
+// Afficher le diagnostic au démarrage
+window.addEventListener("load", () => {
+  setTimeout(() => {
+    diagLog("✅ Système de diagnostic activé");
+    diagLog(`MY_UID: ${MY_UID}`);
+    diagLog(`currentProfile: ${currentProfile()?.name || "N/A"}`);
+    showDiag();
+  }, 500);
+});
+
 // ---- POSTS ----
 // ===== PUBLICATION AVEC RETRY AUTOMATIQUE =====
 async function supaPublishPostWithRetry(post, maxRetries = 3) {
