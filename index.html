@@ -16813,6 +16813,7 @@ async function publishPost() {
 
   // 📡 Afficher le statut de synchronisation
   toast("⏳ Publication en cours...", "loading");
+  diagLog(`📝 Création post - Type: ${studioType}, Passion: ${passion}`);
 
   const post = {
     id: uid(),
@@ -16835,6 +16836,10 @@ async function publishPost() {
     authorEmoji: currentProfile()?.emoji || "✨",
     authorColor: currentProfile()?.color || "#8b5cf6",
   };
+
+  diagLog(`authorName: "${post.authorName}"`);
+  diagLog(`authorEmoji: "${post.authorEmoji}"`);
+  diagLog(`authorColor: "${post.authorColor}"`);
 
   // Champs spécifiques au carnet de voyage
   if (studioType === "vlog") {
