@@ -20458,7 +20458,7 @@ async function supaLoadPosts() {
         authorEmoji: r.profiles?.emoji || "✨",  // ✅ Utiliser l'emoji depuis profiles
         authorColor: r.profiles?.color || "#8b5cf6",  // ✅ Utiliser la couleur depuis profiles
         passion: r.passion_id || "autre", mood: r.mood || "all",
-        type: r.post_type || "text",  // 🎯 Charger le type réel depuis Supabase
+        type: r.media_url ? "photo" : (r.post_type || "text"),  // 🎯 Si media_url existe = photo!
         text: r.content || "", image: r.media_url || null,
         createdAt: new Date(r.created_at).getTime(),
         likes: postLikes.length,
