@@ -20427,10 +20427,11 @@ async function supaLoadPosts() {
 
       // Diagnostic du premier post
       if (idx === 0) {
-        diagLog(`📌 Post #1:`);
-        diagLog(`  - author_name (field): "${r.author_name}"`);
+        diagLog(`📌 Post #1 détails:`);
+        diagLog(`  - author_id: "${r.author_id}"`);
         diagLog(`  - profiles?.username: "${r.profiles?.username}"`);
-        diagLog(`  - post_type: "${r.post_type}"`);
+        diagLog(`  - profiles?.emoji: "${r.profiles?.emoji}"`);
+        diagLog(`  → Affichera: "${r.profiles?.username || "Passionné"}"`);
       }
 
       return {
