@@ -16830,6 +16830,10 @@ async function publishPost() {
     liked: false,
     comments: [],
     syncStatus: "syncing", // 🔄 Nouveau: tracker le statut de sync
+    // 📝 Ajouter le nom du profil qui publie
+    authorName: currentProfile()?.name || state.user.name,
+    authorEmoji: currentProfile()?.emoji || "✨",
+    authorColor: currentProfile()?.color || "#8b5cf6",
   };
 
   // Champs spécifiques au carnet de voyage
