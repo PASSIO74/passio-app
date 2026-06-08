@@ -20256,6 +20256,7 @@ async function supaPublishPostWithRetry(post, maxRetries = 3) {
         mood: post.mood || "all",
         content: post.text || "",
         media_url: post.image || null,
+        post_type: post.type || "text",  // 🎯 Ajouter le type du post (photo, video, audio, text, vlog, cdvlive)
         created_at: new Date(post.createdAt).toISOString(),
       }).select();
 
