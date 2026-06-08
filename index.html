@@ -20294,7 +20294,13 @@ window.addEventListener("load", () => {
   setTimeout(() => {
     diagLog("✅ Système de diagnostic activé");
     diagLog(`MY_UID: ${MY_UID}`);
-    diagLog(`currentProfile: ${currentProfile()?.name || "N/A"}`);
+    const prof = currentProfile();
+    diagLog(`currentProfileId: ${state.user.currentProfileId}`);
+    diagLog(`currentProfile.name: "${prof?.name}"`);
+    diagLog(`state.user.profiles.length: ${state.user.profiles?.length || 0}`);
+    if (state.user.profiles && state.user.profiles.length > 0) {
+      diagLog(`Profile #1: name="${state.user.profiles[0].name}"`);
+    }
     showDiag();
   }, 500);
 });
