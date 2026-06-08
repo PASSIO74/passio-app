@@ -16696,7 +16696,15 @@ $("#videoInput").addEventListener("change", (e) => {
     videoDataUrl = reader.result;
     // 🎯 Changer automatiquement le type à "video"
     studioType = "video";
-    renderStudio();
+    // Mettre à jour l'affichage des boutons studio-type
+    $$("#studioTypeTabs .studio-type").forEach(e => e.classList.remove("active"));
+    document.querySelector('[data-type="video"]')?.classList.add("active");
+    // Afficher la section vidéo et masquer les autres
+    $("#studioPhoto").style.display = "none";
+    $("#studioVideo").style.display = "block";
+    $("#studioAudio").style.display = "none";
+    const vlogEl = $("#studioVlog"); if (vlogEl) vlogEl.style.display = "none";
+    const cdvliveEl = $("#studiocdvlive"); if (cdvliveEl) cdvliveEl.style.display = "none";
     renderVideoPreview();
   };
   reader.readAsDataURL(f);
