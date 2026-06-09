@@ -21477,25 +21477,33 @@ document.addEventListener("click", function(e) {
 // ---- INIT COMPL\u00c8TE ----
 async function supaInit() {
   try {
-    // \u26a1 OPTIMISATION DRASTIQUE: Retourner IMM\u00c9DIATEMENT!
-    // Lancer TOUTES les requ\u00eates en arri\u00e8re-plan sans bloquer
-    // L'interface s'affiche TOUT DE SUITE
+    // \ud83d\udd27 FIX CRITIQUE: Le Promise.all() lancait 7 requ\u00eates Supabase en parall\u00e8le
+    // \u2192 Le client Supabase se cassait apr\u00e8s la premi\u00e8re requ\u00eate
+    // SOLUTION: Charger seulement les posts, puis attendre
 
-    // Ne PAS attendre - retourner imm\u00e9diatement pour d\u00e9bloquer l'interface
-    setImmediate(() => {
-      // Charger les donn\u00e9es EN ARRI\u00c8RE-PLAN
-      Promise.all([
-        supaLoadPosts().then(p => { if (p.length) { state.seed.posts = p; renderFeed(); } }),
-        supaLoadStories().then(s => { if (s.length) state.seed.stories = s; }),
-        supaLoadEvents().then(e => { if (e.length) state.seed.events = e; }),
-        supaLoadNotifications().then(n => { if (n.length) state.user.notifications = n; }),
-        supaLoadFollowing().then(f => { if (f.length) state.user.following = f; }),
-        supaLoadJoinedEvents().then(j => { if (j.length) state.user.joinedEvents = j; }),
-        supaLoadMyConversations().then(c => { if (c.length) state.user.conversations = c; }),
-      ]).catch(e => console.warn("Background load error:", e));
+    console.log("\ud83d\udce5 supaInit() d\u00e9marrage...");
+
+    // 1. CHARGER LES POSTS d'abord (c'est le plus important)
+    supaLoadPosts().then(p => {
+      console.log(`\u2705 Posts charg\u00e9s: ${p.length}`);
+      if (p.length) {
+        state.seed.posts = p;
+        renderFeed();
+      }
+    }).catch(e => {
+      console.error("\u274c Erreur chargement posts:", e);
     });
 
-    // \u2705 RETOURNER IMM\u00c9DIATEMENT - ne pas attendre les requ\u00eates!
+    // 2. Les autres requ\u00eates peuvent attendre (moins critiques pour UX)
+    // On les lance avec un d\u00e9lai pour pas surcharger Supabase
+    setTimeout(() => {
+      if (typeof supaLoadStories === "function")
+        supaLoadStories().then(s => { if (s.length) { state.seed.stories = s; console.log(`\u2705 Stories: ${s.length}`); } }).catch(e => {});
+      if (typeof supaLoadEvents === "function")
+        supaLoadEvents().then(e => { if (e.length) { state.seed.events = e; console.log(`\u2705 Events: ${e.length}`); } }).catch(e => {});
+    }, 2000);
+
+    // \u2705 RETOURNER IMM\u00c9DIATEMENT pour d\u00e9bloquer UI
     return;
     if (supaPosts.length) {
       // Sync les posts likés depuis Supabase
