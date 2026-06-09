@@ -15688,20 +15688,21 @@ async function shareReelInFeed(postId) {
   const passion = passionById(reel.passion) || { label: reel.passion, emoji: "✨" };
   const txt = reel.text || reel.caption || "";
 
-  // ✅ Charger le username depuis Supabase OU utiliser le nom du profil
+  // ✅ Afficher directement le nom du profil courant!
   const prof = currentProfile();
   const g = state.user.general || {};
-  let authorName = g.username || prof?.name || "Moi";
 
-  // Essayer charger depuis Supabase si besoin
-  if (!g.username && typeof supa !== "undefined" && supa && state.user.currentProfileId) {
+  // Charger le username depuis Supabase par MY_UID
+  if (!g.username && typeof supa !== "undefined" && supa && MY_UID) {
     try {
-      const { data } = await supa.from("profiles").select("username").eq("id", state.user.currentProfileId).single();
-      if (data?.username && data.username !== "Passionné") {
-        authorName = data.username;
+      const { data } = await supa.from("profiles").select("username").eq("id", MY_UID).single();
+      if (data?.username) {
+        state.user.general.username = data.username;
       }
     } catch (e) {}
   }
+
+  const authorName = (state.user.general?.username) || prof?.name || "Moi";
 
   // Créer un post de partage dans le feed
   const newPost = {
