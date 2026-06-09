@@ -20566,7 +20566,7 @@ async function supaPublishPostWithRetry(post, maxRetries = 3) {
       // ✅ Photo: upload en Supabase Storage
       if (post.image && post.image.startsWith("data:")) {
         diagLog(`📸 Photo détectée - upload en Supabase Storage...`);
-        mediaUrl = await supaUploadMedia(post.image, "photos", post.id + "_photo");
+        mediaUrl = await supaUploadMedia(post.image, post.id, "photo");
         if (mediaUrl) diagLog(`✅ Photo uploadée: ${mediaUrl.substring(0, 60)}...`);
         else diagLog(`⚠️ Fallback photo base64`), mediaUrl = post.image;
       }
@@ -20574,7 +20574,7 @@ async function supaPublishPostWithRetry(post, maxRetries = 3) {
       // ✅ Vidéo: upload en Supabase Storage
       if (post.video && post.video.startsWith("data:")) {
         diagLog(`📹 Vidéo détectée - upload en Supabase Storage...`);
-        videoUrl = await supaUploadMedia(post.video, "videos", post.id + "_video");
+        videoUrl = await supaUploadMedia(post.video, post.id, "video");
         if (videoUrl) diagLog(`✅ Vidéo uploadée: ${videoUrl.substring(0, 60)}...`);
         else diagLog(`⚠️ Fallback vidéo base64`), videoUrl = post.video;
       }
@@ -20582,7 +20582,7 @@ async function supaPublishPostWithRetry(post, maxRetries = 3) {
       // ✅ Audio: upload en Supabase Storage
       if (post.audio && post.audio.startsWith("data:")) {
         diagLog(`🎙️ Audio détecté - upload en Supabase Storage...`);
-        audioUrl = await supaUploadMedia(post.audio, "audios", post.id + "_audio");
+        audioUrl = await supaUploadMedia(post.audio, post.id, "audio");
         if (audioUrl) diagLog(`✅ Audio uploadé: ${audioUrl.substring(0, 60)}...`);
         else diagLog(`⚠️ Fallback audio base64`), audioUrl = post.audio;
       }
