@@ -16705,9 +16705,9 @@ document.addEventListener("click", (e) => {
 $("#photoInput").addEventListener("change", (e) => {
   const f = e.target.files[0];
   if (!f) return;
-  // ✅ LIMITE PHOTOS: 500 KB max (base64 serait 667 KB)
-  if (f.size > 500 * 1024) {
-    toast("Photo > 500 KB, compresse-la!");
+  // ✅ LIMITE PHOTOS: 200 KB max (base64 serait 267 KB)
+  if (f.size > 200 * 1024) {
+    toast("Photo > 200 KB, compresse-la!");
     return;
   }
   const reader = new FileReader();
