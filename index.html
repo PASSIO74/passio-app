@@ -23699,10 +23699,19 @@ function openUserProfile(userId) {
 // ⚡ INITIALISATION PRINCIPALE - Attendre boot() puis lancer initApp()
 console.log("🚀 Démarrage PASSIO...");
 setTimeout(function() {
-  // ✅ IMPORTANT: boot() doit s'être exécutée pour charger MY_UID depuis Supabase
-  // boot() est appelée à la fin du fichier, donc attendre 500ms pour qu'elle finisse
+  // ✅ IMPORTANT: Assurer que MY_UID est défini
+  // Si boot() n'a pas chargé depuis Supabase, utiliser localStorage
+  if (!window.MY_UID || window.MY_UID === 'undefined') {
+    window.MY_UID = localStorage.getItem("passio_uid") || ("u_" + Math.random().toString(36).slice(2,10));
+    if (!localStorage.getItem("passio_uid")) {
+      localStorage.setItem("passio_uid", window.MY_UID);
+    }
+    console.log("✅ MY_UID assigné: " + window.MY_UID);
+  }
+
+  // boot() doit s'être exécutée pour charger l'app, donc attendre 500ms
   setTimeout(function() {
-    console.log("📱 MY_UID=" + (window.MY_UID || 'undefined'));
+    console.log("📱 MY_UID=" + window.MY_UID);
     if (typeof initApp === "function") {
       console.log("📱 Appel initApp()");
       try {
