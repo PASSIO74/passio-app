@@ -20478,16 +20478,38 @@ async function supaPublishPostWithRetry(post, maxRetries = 3) {
       await supaUpsertProfile();
       diagLog(`✅ Profil mis à jour`);
 
-      // ✅ Upload photo si besoin
-      let mediaUrl = post.image || null;
-      if (mediaUrl && mediaUrl.startsWith("data:")) {
+      // ✅ Upload TOUS les contenus média (photo, vidéo, audio)
+      let mediaUrl = null;
+      let videoUrl = null;
+      let audioUrl = null;
+
+      // Upload photo
+      if (post.image && post.image.startsWith("data:")) {
         diagLog(`📸 Upload photo...`);
-        const uploadedUrl = await supaUploadPhoto(mediaUrl, post.id);
-        if (uploadedUrl) {
-          mediaUrl = uploadedUrl;
-          diagLog(`✅ Photo uploadée: ${uploadedUrl.substring(0, 50)}...`);
-        } else {
-          diagLog(`⚠️ Upload échoué, utiliser data URL`);
+        const url = await supaUploadMedia(post.image, post.id, "photo");
+        if (url) {
+          mediaUrl = url;
+          diagLog(`✅ Photo: ${url.substring(0, 50)}...`);
+        }
+      }
+
+      // Upload vidéo
+      if (post.video && post.video.startsWith("data:")) {
+        diagLog(`🎬 Upload vidéo...`);
+        const url = await supaUploadMedia(post.video, post.id, "video");
+        if (url) {
+          videoUrl = url;
+          diagLog(`✅ Vidéo: ${url.substring(0, 50)}...`);
+        }
+      }
+
+      // Upload audio/podcast
+      if (post.audio && post.audio.startsWith("data:")) {
+        diagLog(`🎙️ Upload audio...`);
+        const url = await supaUploadMedia(post.audio, post.id, "audio");
+        if (url) {
+          audioUrl = url;
+          diagLog(`✅ Audio: ${url.substring(0, 50)}...`);
         }
       }
 
@@ -20498,7 +20520,8 @@ async function supaPublishPostWithRetry(post, maxRetries = 3) {
         passion_id: post.passion || null,
         mood: post.mood || "all",
         content: post.text || "",
-        media_url: mediaUrl,
+        media_url: mediaUrl || videoUrl || audioUrl,  // ✅ Utiliser la première URL disponible
+        post_type: post.type,  // ✅ Sauvegarder le type
         created_at: new Date(post.createdAt).toISOString(),
       };
       // ⚠️ NE PAS ajouter: author_name, author_emoji, author_color, post_type
