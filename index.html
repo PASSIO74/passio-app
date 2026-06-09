@@ -21368,11 +21368,26 @@ document.addEventListener("click", function(e) {
 // ---- INIT COMPL\u00c8TE ----
 async function supaInit() {
   try {
-    const [supaPosts, supaStories, supaEvents, supaNotifs, supaFollowing, supaJoined, supaConvs] = await Promise.all([
-      supaLoadPosts(), supaLoadStories(), supaLoadEvents(),
-      supaLoadNotifications(), supaLoadFollowing(), supaLoadJoinedEvents(),
-      supaLoadMyConversations(),
-    ]);
+    // \u26a1 OPTIMISATION: Ne PAS attendre les requ\u00eates au d\u00e9marrage!
+    // Afficher l'interface MAINTENANT, charger en arri\u00e8re-plan
+    const supaPosts = [];
+    const supaStories = [];
+    const supaEvents = [];
+    const supaNotifs = [];
+    const supaFollowing = [];
+    const supaJoined = [];
+    const supaConvs = [];
+
+    // Lancer les requ\u00eates EN ARRI\u00c8RE-PLAN sans bloquer
+    Promise.all([
+      supaLoadPosts().then(p => {Object.assign(supaPosts, p); render();}),
+      supaLoadStories().then(s => {Object.assign(supaStories, s);}),
+      supaLoadEvents().then(e => {Object.assign(supaEvents, e);}),
+      supaLoadNotifications().then(n => {Object.assign(supaNotifs, n);}),
+      supaLoadFollowing().then(f => {Object.assign(supaFollowing, f);}),
+      supaLoadJoinedEvents().then(j => {Object.assign(supaJoined, j);}),
+      supaLoadMyConversations().then(c => {Object.assign(supaConvs, c);}),
+    ]).catch(e => console.warn("Background load error:", e));
     if (supaPosts.length) {
       // Sync les posts likés depuis Supabase
       const likedFromSupa = supaPosts.filter(p => p.liked).map(p => p.id);
