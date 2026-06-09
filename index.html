@@ -23868,8 +23868,15 @@ window.testSupabaseInsert = async function() {
   document.body.appendChild(modal);
 
   try {
-    console.log("📤 Insertion test:", testPost);
-    const { data, error } = await supa.from("posts").insert(testPost).select();
+    console.log("📤 Insertion test (TIMEOUT 5s):", testPost);
+
+    // ⏱️ TIMEOUT: Si pas de réponse en 5s, arrêter
+    const timeoutPromise = new Promise((resolve, reject) => {
+      setTimeout(() => reject(new Error("TIMEOUT: Supabase ne répond pas après 5 secondes")), 5000);
+    });
+
+    const insertPromise = supa.from("posts").insert(testPost).select();
+    const { data, error } = await Promise.race([insertPromise, timeoutPromise]);
 
     if (error) {
       html += "<br/><b>❌ ERREUR:</b><br/>";
