@@ -24164,6 +24164,26 @@ setTimeout(function() {
   }
 }, 200);
 
+// BOUTON TEST SUPABASE - TOUJOURS VISIBLE (ROUGE = URGENT)
+setTimeout(function() {
+  var testBtn = document.createElement("button");
+  testBtn.id = "__test_supa_btn";
+  testBtn.textContent = "🧪 TEST";
+  testBtn.style.cssText = "position:fixed;bottom:140px;right:10px;width:60px;height:40px;border-radius:8px;background:#ef4444;border:none;color:#fff;font-size:12px;cursor:pointer;z-index:99998;box-shadow:0 2px 8px rgba(0,0,0,0.3);font-weight:bold;animation:pulse 2s infinite;";
+  testBtn.title = "Tester si Supabase fonctionne";
+  testBtn.onclick = function() {
+    window.testSupabaseInsert();
+  };
+
+  // Ajouter animation pulse
+  var style = document.createElement("style");
+  style.textContent = "@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }";
+  document.head.appendChild(style);
+
+  document.body.appendChild(testBtn);
+  console.log("✅ Bouton test Supabase créé");
+}, 500);
+
 // BOUTON DIAGNOSTIC AVANCÉ - TOUJOURS VISIBLE
 setTimeout(function() {
   var advDiagBtn = document.createElement("button");
