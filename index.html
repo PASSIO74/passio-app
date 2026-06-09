@@ -20644,12 +20644,17 @@ async function boot() {
     }
   } catch(e) { /* pas de session */ }
 
-  // Écouter les changements d'état auth (ex : retour de confirmation email)
+  // Écouter les changements d'état auth (connexion depuis un autre appareil, confirmation email, etc.)
   try {
     supa.auth.onAuthStateChange((event, session) => {
       if (session?.user) {
         MY_UID = session.user.id;
         localStorage.setItem("passio_uid", MY_UID);
+        // ✅ FIX CRITIQUE : déclencher supaInit() dès qu'une session est établie
+        // Sans ça, les posts Supabase ne chargent jamais sur un nouvel appareil
+        if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
+          try { supaInit(); } catch(e) { console.warn("supaInit on auth change:", e); }
+        }
       }
     });
   } catch(e) {}
