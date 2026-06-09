@@ -23711,6 +23711,18 @@ setTimeout(function() {
   }
 }, 100);
 
+// 🔧 ACTIVER LE DIAGNOSTIC AUTOMATIQUEMENT
+setTimeout(function() {
+  window._DEBUG_MODE = true;
+  var diagBtn = document.getElementById("__diag_btn");
+  if (diagBtn) {
+    diagBtn.style.display = "flex";
+    diagBtn.style.background = "#ec4899";
+    diagBtn.style.borderColor = "#ec4899";
+    console.log("✅ Diagnostic activé!");
+  }
+}, 600);
+
 // ✅ INITIALISATION MOODS MULTI-SELECT - EVENT DELEGATION
 console.log("🎨 INITIALISATION MOODS GLOBALE");
 setTimeout(function() {
