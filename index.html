@@ -16778,6 +16778,36 @@ function renderVideoPreview() {
 
 function clearVideo() { videoDataUrl = null; renderVideoPreview(); }
 
+// ✅ Audio file upload
+$("#audioInput").addEventListener("change", (e) => {
+  const f = e.target.files[0];
+  if (!f) return;
+  if (f.size > 50 * 1024 * 1024) {
+    toast("Audio > 50 Mo, trop gros!");
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = () => {
+    audioDataUrl = reader.result;
+    // Changer automatiquement le type à "audio"
+    studioType = "audio";
+    // Mettre à jour l'affichage des boutons studio-type
+    $$("#studioTypeTabs .studio-type").forEach(e => e.classList.remove("active"));
+    document.querySelector('[data-type="audio"]')?.classList.add("active");
+    // Afficher la section audio
+    $("#studioAudio").style.display = "block";
+    $("#studioVideo").style.display = "none";
+    $("#studioVlog").style.display = "none";
+    $("#studioPhoto").style.display = "none";
+    $("#studioText").style.display = "none";
+    // Afficher l'audio en lecture
+    $("#recStatus").textContent = "✅ Audio chargé et prêt à publier";
+    $("#recPlayback").innerHTML = `<audio controls src="${audioDataUrl}" style="width:100%;margin-top:6px;"></audio>`;
+    toast("✅ Audio chargé!");
+  };
+  reader.readAsDataURL(f);
+});
+
 // Audio recording
 let mediaRecorder = null;
 let audioChunks = [];
