@@ -20372,7 +20372,12 @@ function initApp() {
   try { renderEverything(); } catch(e) {}
   document.body.classList.add("screen-feed-active");
   try { if (typeof supaInit === "function") supaInit(); } catch(e) {}
-  launchTourSafe();
+  // ✅ LANCER LE TOUR SEULEMENT SI C'EST LA PREMIÈRE VISITE
+  if (!state.tourSeen) {
+    state.tourSeen = true;
+    saveState();
+    launchTourSafe();
+  }
 }
 
 // navigateTo — alias de goTo pour la compatibilité (utilisé dans les cartes IA)
