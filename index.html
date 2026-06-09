@@ -15696,7 +15696,7 @@ async function shareReelInFeed(postId) {
   // Essayer charger depuis Supabase si besoin
   if (!g.username && typeof supa !== "undefined" && supa && state.user.currentProfileId) {
     try {
-      const { data } = await supa.from("profiles").select("username").eq("id", MY_UID).single();
+      const { data } = await supa.from("profiles").select("username").eq("id", state.user.currentProfileId).single();
       if (data?.username && data.username !== "Passionné") {
         authorName = data.username;
       }
@@ -16874,7 +16874,7 @@ async function publishPost() {
   // Essayer charger depuis Supabase si besoin
   if (!g.username && typeof supa !== "undefined" && supa && state.user.currentProfileId) {
     try {
-      const { data } = await supa.from("profiles").select("username").eq("id", MY_UID).single();
+      const { data } = await supa.from("profiles").select("username").eq("id", state.user.currentProfileId).single();
       if (data?.username && data.username !== "Passionné") {
         authorName = data.username;
       }
