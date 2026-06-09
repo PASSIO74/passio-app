@@ -20509,7 +20509,7 @@ async function supaLoadPosts() {
         passion: r.passion_id || "autre", mood: r.mood || "all",
         type: r.media_url ? "photo" : (r.post_type || "text"),  // 🎯 Si media_url existe = photo!
         text: r.content || "", image: r.media_url || null,
-        createdAt: new Date(r.created_at).getTime(),
+        createdAt: new Date(r.created_at + "Z").getTime(),  // ✅ Ajouter Z pour indiquer que c'est UTC!
         likes: postLikes.length,
         liked: postLikes.some(l => l.user_id === MY_UID),
         comments: postComments, fromSupabase: true
