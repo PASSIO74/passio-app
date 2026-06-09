@@ -16748,11 +16748,13 @@ $("#videoInput").addEventListener("change", (e) => {
     return;
   }
 
-  // ✅ Augmenter limite à 200 Mo (standard téléphone)
-  const maxSize = 200 * 1024 * 1024;
+  // ✅ LIMITE RÉDUITE: 5 Mo max (base64 serait 6.7 Mo → manageable par Supabase)
+  // Les vidéos base64 sont très volumineuses!
+  const maxSize = 5 * 1024 * 1024;  // 5 MB = ~6.7 MB base64
   if (f.size > maxSize) {
-    toast(`Vidéo > 200 Mo (${Math.round(f.size / 1024 / 1024)} Mo), trop gros!`);
-    console.warn("❌ Vidéo trop grande");
+    const sizeMB = Math.round(f.size / 1024 / 1024);
+    toast(`Vidéo > 5 Mo (${sizeMB} Mo). Compresse-la avec: ffmpeg ou Claquette!`);
+    console.warn("❌ Vidéo trop grande, besoin de compression");
     return;
   }
 
