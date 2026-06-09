@@ -21379,8 +21379,10 @@ function supaSubscribe() {
       try {
         const { data: prof } = await supa.from("profiles").select("username,emoji,color").eq("id", r.author_id).single();
         const newPost = { id: r.id, authorId: r.author_id, authorName: prof?.username || "Passionne", authorEmoji: prof?.emoji || "✨", authorColor: prof?.color || "#8b5cf6", passion: r.passion_id || "autre", mood: r.mood || "all", type: "text", text: r.content || "", image: r.media_url || null, createdAt: new Date(r.created_at + "Z").getTime(), likes: 0, liked: false, comments: [], fromSupabase: true };
-        if (!state.seed.posts.find(p => p.id === newPost.id)) {
-          state.seed.posts.unshift(newPost);
+        // ✅ Ajouter dans state.supabasePosts, pas state.seed.posts!
+        if (!state.supabasePosts.find(p => p.id === newPost.id)) {
+          state.supabasePosts.unshift(newPost);
+          console.log("📥 Post reçu en realtime:", newPost.authorName);
           try { renderFeed(); } catch(e) {}
         }
       } catch(e) {}
