@@ -23711,17 +23711,64 @@ setTimeout(function() {
   }
 }, 100);
 
-// 🔧 ACTIVER LE DIAGNOSTIC AUTOMATIQUEMENT
+// 🔧 DIAGNOSTIC PANEL VISIBLE - AFFICHER DIRECTEMENT
 setTimeout(function() {
-  window._DEBUG_MODE = true;
-  var diagBtn = document.getElementById("__diag_btn");
-  if (diagBtn) {
-    diagBtn.style.display = "flex";
-    diagBtn.style.background = "#ec4899";
-    diagBtn.style.borderColor = "#ec4899";
-    console.log("✅ Diagnostic activé!");
+  // Créer un panel diagnostic visible
+  var diagPanel = document.createElement("div");
+  diagPanel.id = "__visible_diag";
+  diagPanel.style.cssText = `
+    position: fixed;
+    top: 80px;
+    right: 10px;
+    width: 350px;
+    background: white;
+    border: 2px solid #ec4899;
+    border-radius: 8px;
+    padding: 12px;
+    font-size: 11px;
+    font-family: monospace;
+    z-index: 99999;
+    max-height: 500px;
+    overflow-y: auto;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  `;
+
+  function updateDiag() {
+    var content = `
+<b>🔧 DIAGNOSTIC PASSIO</b><br/>
+<br/>
+<b>UTILISATEUR:</b><br/>
+MY_UID: ${window.MY_UID || '❌ undefined'}<br/>
+Profil: ${(state?.user?.currentProfileId || '?').substring(0,8)}...<br/>
+<br/>
+<b>POSTS:</b><br/>
+state.seed.posts: ${(state?.seed?.posts?.length || 0)} posts<br/>
+state.userPosts: ${(state?.userPosts?.length || 0)} posts<br/>
+<br/>
+<b>DERNIER POST:</b><br/>
+${state?.seed?.posts?.[0] ? `
+ID: ${state.seed.posts[0].id.substring(0,8)}...<br/>
+Auteur: ${state.seed.posts[0].authorName || state.seed.posts[0].author || '?'}<br/>
+Type: ${state.seed.posts[0].type || '?'}<br/>
+Texte: ${(state.seed.posts[0].text || '').substring(0,30)}...<br/>
+Time: ${new Date(state.seed.posts[0].createdAt).toLocaleTimeString('fr-FR')}
+` : 'Aucun post'}<br/>
+<br/>
+<b>CONNEXION:</b><br/>
+Supa: ${typeof supa !== 'undefined' ? '✅' : '❌'}<br/>
+Online: ${navigator.onLine ? '✅' : '❌'}
+    `;
+    diagPanel.innerHTML = content;
   }
-}, 600);
+
+  document.body.appendChild(diagPanel);
+  updateDiag();
+
+  // Mettre à jour chaque 1 secondes
+  setInterval(updateDiag, 1000);
+
+  console.log("✅ Diagnostic visible activé!");
+}, 800);
 
 // ✅ INITIALISATION MOODS MULTI-SELECT - EVENT DELEGATION
 console.log("🎨 INITIALISATION MOODS GLOBALE");
