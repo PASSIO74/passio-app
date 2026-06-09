@@ -23739,12 +23739,28 @@ setTimeout(function() {
   `;
 
   function updateDiag() {
+    // Vérifier la session Supabase
+    var supaSession = 'Vérification...';
+    if (typeof supa !== 'undefined' && supa.auth) {
+      supa.auth.getSession().then(function(result) {
+        if (result?.data?.session?.user?.id) {
+          supaSession = '✅ ' + result.data.session.user.id.substring(0,8) + '...';
+        } else {
+          supaSession = '❌ Pas de session';
+        }
+      }).catch(function(e) {
+        supaSession = '❌ Erreur: ' + e.message;
+      });
+    }
+
     var textContent = `
 🔧 DIAGNOSTIC PASSIO
 
-UTILISATEUR:
+AUTHENTIFICATION:
 MY_UID: ${window.MY_UID || '❌ undefined'}
-Profil: ${(state?.user?.currentProfileId || '?').substring(0,8)}...
+Session Supa: ${supaSession}
+Profil actif: ${(state?.user?.currentProfileId || '?').substring(0,8)}...
+User name: ${state?.user?.name || '?'}
 
 POSTS:
 state.seed.posts: ${(state?.seed?.posts?.length || 0)} posts
@@ -23762,6 +23778,7 @@ Time: ${new Date(state.seed.posts[0].createdAt).toLocaleTimeString('fr-FR')}
 CONNEXION:
 Supa: ${typeof supa !== 'undefined' ? '✅' : '❌'}
 Online: ${navigator.onLine ? '✅' : '❌'}
+localStorage passio_uid: ${localStorage.getItem('passio_uid') || '❌ undefined'}
     `;
 
     var htmlContent = textContent.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br/>');
