@@ -6926,11 +6926,15 @@
       <div id="studioAudio" style="display:none;">
         <div class="recorder">
           <div class="rec-time" id="recTime">00:00</div>
-          <div class="rec-btn" id="recBtn" onclick="toggleRecording()"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11 C5 15 8 18 12 18 C16 18 19 15 19 11"/><path d="M12 18 V22"/><path d="M9 22 H15"/></svg></div>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <div class="rec-btn" id="recBtn" onclick="toggleRecording()"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11 C5 15 8 18 12 18 C16 18 19 15 19 11"/><path d="M12 18 V22"/><path d="M9 22 H15"/></svg></div>
+            <div class="rec-btn" id="audioFileBtn" onclick="$('#audioInput').click()" title="Choisir un fichier audio" style="flex:1;text-align:center;font-size:12px;">📁 Choisir fichier</div>
+          </div>
           <div class="rec-status" id="recStatus">Tap pour démarrer l'enregistrement</div>
           <div id="recPlayback" style="margin-top:10px;"></div>
         </div>
-        <p class="section-subtitle" style="margin-top:-4px;">Durée max 2 min.</p>
+        <p class="section-subtitle" style="margin-top:-4px;">Durée max 2 min. ou choisir un fichier existant.</p>
+        <input type="file" id="audioInput" accept="audio/*" style="display:none;" />
       </div>
 
       <!-- Vlog / Carnet de voyage block -->
