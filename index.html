@@ -10295,10 +10295,29 @@ function renderPostCover(p, passion) {
 }
 
 function renderPostHTML(p) {
-  // ✅ AFFICHER TOUJOURS LE VRAI NOM DU PROFIL - JAMAIS "Passionné"!
-  const author = p._source === "me"
-    ? { name: p.authorName || currentProfile()?.name || state.user.name, profileEmoji: p.authorEmoji || currentProfile()?.emoji || "✨", avatar: p.authorColor || currentProfile()?.color || "#8b5cf6" }
-    : { name: p.authorName || "Utilisateur", avatar: p.authorColor || "#8b5cf6", profileEmoji: p.authorEmoji || "✨" };
+  // ✅ AFFICHER TOUJOURS LE VRAI NOM DU PROFIL!
+  let authorName = p.authorName;
+
+  // Si source est "me", utiliser le profil courant
+  if (p._source === "me") {
+    authorName = p.authorName || currentProfile()?.name || state.user.name;
+  }
+  // Si pas de nom et c'est un post Supabase, chercher dans les posts Supabase
+  else if (!authorName && p._source === "supabase") {
+    const supaPost = state.supabasePosts?.find(sp => sp.id === p.id);
+    authorName = supaPost?.authorName || p.authorName;
+  }
+  // Si toujours pas de nom, chercher dans tous les posts
+  if (!authorName) {
+    const anyPost = [...(state.seed.posts || []), ...(state.supabasePosts || []), ...(state.userPosts || [])].find(post => post.id === p.id);
+    authorName = anyPost?.authorName;
+  }
+
+  const author = {
+    name: authorName || "Profil",  // Fallback minimal au lieu de "Utilisateur"
+    profileEmoji: p.authorEmoji || "✨",
+    avatar: p.authorColor || "#8b5cf6"
+  };
   const passion = passionById(p.passion);
   const moodMap = { creation: "🎨 Création", learn: "📚 Apprendre", chill: "😌 Chill", irl: "🤝 IRL" };
   const liked = state.user.likedPosts.includes(p.id);
