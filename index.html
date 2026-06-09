@@ -20823,15 +20823,22 @@ async function supaPublishPostWithRetry(post, maxRetries = 3) {
   return false;
 }
 
-// Fonction d'upload média vers Supabase Storage
+// Fonction d'upload média vers Supabase Storage (avec fallback)
 async function supaUploadMedia(postId, folder, base64Data, mediaType) {
   console.log(`📤 [UPLOAD] Début upload ${folder}/${postId}`);
 
   if (!base64Data || !base64Data.startsWith("data:")) {
-    throw new Error("Format base64 invalide");
+    console.warn("⚠️ [UPLOAD] Format base64 invalide - utiliser fallback");
+    return base64Data;  // Retourner le base64 comme fallback
   }
 
   try {
+    // Vérifier que Supabase Storage existe
+    if (!supa || !supa.storage) {
+      console.warn("⚠️ [UPLOAD] Storage indisponible - fallback base64");
+      return base64Data;
+    }
+
     // Convertir base64 en Blob
     const parts = base64Data.split(",");
     const bstr = atob(parts[1]);
@@ -20842,7 +20849,7 @@ async function supaUploadMedia(postId, folder, base64Data, mediaType) {
     }
     const blob = new Blob([u8arr], { type: parts[0].split(":")[1].split(";")[0] });
 
-    console.log(`📊 [UPLOAD] Blob créé:`, blob.size, "bytes");
+    console.log(`📊 [UPLOAD] Blob créé: ${blob.size} bytes`);
 
     // Générer nom de fichier
     const ext = mediaType === "video" ? ".mp4" : mediaType === "audio" ? ".mp3" : ".jpg";
@@ -20858,21 +20865,31 @@ async function supaUploadMedia(postId, folder, base64Data, mediaType) {
     });
 
     if (error) {
-      console.error("❌ [UPLOAD] Erreur Storage:", error);
-      throw error;
+      console.warn("⚠️ [UPLOAD] Storage échoué:", error.message);
+      console.warn("📌 [UPLOAD] Fallback: utiliser base64 temporairement");
+      return base64Data;  // Fallback à base64
     }
 
     console.log("✅ [UPLOAD] Fichier uploadé:", data);
 
     // Récupérer l'URL publique
-    const { data: publicUrl } = supa.storage.from("content").getPublicUrl(filePath);
-    console.log("🔗 [UPLOAD] URL publique:", publicUrl?.publicUrl?.substring(0, 60));
+    try {
+      const { data: publicUrl } = supa.storage.from("content").getPublicUrl(filePath);
+      if (publicUrl?.publicUrl) {
+        console.log("🔗 [UPLOAD] URL publique OK");
+        return publicUrl.publicUrl;
+      }
+    } catch (e) {
+      console.warn("⚠️ [UPLOAD] getPublicUrl échoué, fallback base64");
+      return base64Data;
+    }
 
-    return publicUrl?.publicUrl;
+    return base64Data;  // Fallback final
 
   } catch (e) {
-    console.error("❌ [UPLOAD] Exception:", e);
-    throw new Error(`Upload ${mediaType} échoué: ${e.message}`);
+    console.warn("⚠️ [UPLOAD] Exception:", e.message);
+    console.warn("📌 [UPLOAD] Fallback: utiliser base64");
+    return base64Data;  // Fallback toujours
   }
 }
 
