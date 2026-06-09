@@ -21633,28 +21633,28 @@ async function supaInit() {
 
     console.log("\ud83d\udce5 supaInit() d\u00e9marrage...");
 
-    // 1. CHARGER LES POSTS d'abord (c'est le plus important)
-    supaLoadPosts().then(p => {
-      console.log(`\u2705 Posts Supabase charg\u00e9s: ${p.length}`);
-      if (p.length) {
-        state.supabasePosts = p;  // \u2705 CHARGER DANS supabasePosts, PAS seed.posts!
-        console.log(`\ud83d\udcca Total: ${state.supabasePosts.length} posts vrais utilisateurs`);
-        renderFeed();
-      }
-    }).catch(e => {
-      console.error("\u274c Erreur chargement posts:", e);
-    });
+    // 1. CHARGER LES POSTS au d\u00e9marrage
+    console.log("\ud83d\udce5 [INIT] Chargement des posts Supabase");
+    const initPosts = await supaLoadPosts();
+    console.log(`\u2705 [INIT] ${initPosts.length} posts charg\u00e9s`);
+    if (initPosts.length > 0) {
+      state.supabasePosts = initPosts;
+      renderFeed();
+    }
 
-    // 2. Les autres requ\u00eates peuvent attendre (moins critiques pour UX)
-    // On les lance avec un d\u00e9lai pour pas surcharger Supabase
+    // 2. D\u00c9MARRER LE REFRESH AUTOMATIQUE DU FEED
+    // Cela garantit que les posts d'autres utilisateurs apparaissent en temps quasi-r\u00e9el
+    startFeedRefreshLoop();
+
+    // 3. Les autres requ\u00eates peuvent attendre (moins critiques)
     setTimeout(() => {
       if (typeof supaLoadStories === "function")
-        supaLoadStories().then(s => { if (s.length) { state.seed.stories = s; console.log(`\u2705 Stories: ${s.length}`); } }).catch(e => {});
+        supaLoadStories().then(s => { if (s.length) { state.seed.stories = s; } }).catch(e => {});
       if (typeof supaLoadEvents === "function")
-        supaLoadEvents().then(e => { if (e.length) { state.seed.events = e; console.log(`\u2705 Events: ${e.length}`); } }).catch(e => {});
+        supaLoadEvents().then(e => { if (e.length) { state.seed.events = e; } }).catch(e => {});
     }, 2000);
 
-    // \u2705 RETOURNER IMM\u00c9DIATEMENT pour d\u00e9bloquer UI
+    console.log("\u2705 [INIT] Initialisation Supabase compl\u00e8te");
     return;
     if (supaPosts.length) {
       // Sync les posts likés depuis Supabase
