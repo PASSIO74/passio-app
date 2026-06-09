@@ -24265,6 +24265,15 @@ setTimeout(function() {
 // (Les boutons de diagnostic ont été supprimés - app en mode normal)
 console.log("✅ Mode normal - diagnostic buttons désactivés");
 
+// 🔨 Fermer tous les diagnostics ouverts
+setTimeout(() => {
+  const diagnosticModal = document.getElementById("__advanced_diag_modal");
+  const testModal = document.querySelector("[style*='rgba(0,0,0,0.5)']");
+  if (diagnosticModal) diagnosticModal.remove();
+  if (testModal && testModal !== diagnosticModal) testModal.remove();
+  console.log("✅ Diagnostics fermés");
+}, 100);
+
 // INITIALISATION BOUTON DIAGNOSTIC 🔧 - Caché par défaut
 setTimeout(function() {
   var diagBtn = document.createElement("button");
