@@ -20646,10 +20646,13 @@ async function supaPublishPostWithRetry(post, maxRetries = 3) {
       diagLog(`🔄 Tentative ${attempt}/${maxRetries}: Publication du post`);
       console.log(`[Sync ${attempt}/${maxRetries}] Publication du post ${post.id}...`);
 
-      // Mettre à jour le profil d'abord
-      diagLog(`📤 Mise à jour du profil...`);
-      await supaUpsertProfile();
-      diagLog(`✅ Profil mis à jour`);
+      // ⚡ Mettre à jour le profil EN BACKGROUND (sans bloquer)
+      diagLog(`📤 Mise à jour du profil (background)...`);
+      supaUpsertProfile().catch(e => {
+        console.warn("⚠️ Profile upsert échoué:", e);
+      });
+      // NE PAS ATTENDRE - continuer immédiatement
+      diagLog(`✅ Profil lancé en background`);
 
       // ✅ Upload TOUS les contenus média (photo, vidéo, audio)
       let mediaUrl = null;
