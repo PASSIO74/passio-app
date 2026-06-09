@@ -20416,11 +20416,22 @@ async function supaUploadMedia(dataUrl, postId, type = "photo") {
     for (let i = 0; i < n; i++) {
       u8arr[i] = bstr.charCodeAt(i);
     }
-    const blob = new Blob([u8arr], { type: "image/jpeg" });
-    console.log(`✅ Blob créé: ${blob.size} bytes`);
+    // Déterminer le type MIME et l'extension
+    let mimeType = "image/jpeg";
+    let extension = "jpg";
+    if (type === "video") {
+      mimeType = "video/mp4";
+      extension = "mp4";
+    } else if (type === "audio") {
+      mimeType = "audio/mpeg";
+      extension = "mp3";
+    }
+
+    const blob = new Blob([u8arr], { type: mimeType });
+    console.log(`✅ Blob ${type} créé: ${blob.size} bytes`);
 
     // Upload à Supabase Storage
-    const fileName = `posts/${MY_UID}/${postId}.jpg`;
+    const fileName = `${type}s/${MY_UID}/${postId}.${extension}`;
     console.log(`📤 Upload vers: ${fileName}`);
 
     // Essayer upload au bucket "media" d'abord
