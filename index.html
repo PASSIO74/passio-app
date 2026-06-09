@@ -16749,9 +16749,10 @@ $("#videoInput").addEventListener("change", (e) => {
     return;
   }
 
-  // ✅ LIMITE RÉDUITE: 1 Mo max (base64 serait 1.35 Mo → compatible Supabase HTTP)
-  // Même 2MB donne "Failed to fetch" - réduire à 1MB pour respecter les limites Supabase
-  const maxSize = 1 * 1024 * 1024;  // 1 MB = ~1.35 MB base64
+  // ⚠️ LIMITE TRÈS RÉDUITE: 300 KB max (base64 serait 400 KB)
+  // Supabase rejette les requêtes POST > 2MB
+  // Les données base64 gonflent la taille de 33%
+  const maxSize = 300 * 1024;  // 300 KB = ~400 KB base64
   if (f.size > maxSize) {
     const sizeMB = Math.round(f.size / 1024 / 1024);
     toast(`Vidéo > 1 Mo (${sizeMB} Mo). Compresse-la avec: ffmpeg ou Claquette!`);
