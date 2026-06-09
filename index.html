@@ -23734,6 +23734,60 @@ setTimeout(function() {
   }, 500);
 }, 100);
 
+// 🔍 DIAGNOSTIC AVANCÉ - Inspecter Supabase directement
+window.advancedDiagnostic = async function() {
+  console.log("🔍 DIAGNOSTIC AVANCÉ SUPABASE");
+  console.log("=" .repeat(50));
+
+  // 1. Vérifier la connexion Supabase
+  console.log("1️⃣ SUPABASE CONNEXION:");
+  if (typeof supa === 'undefined') {
+    console.error("❌ supa n'existe pas!");
+    return;
+  }
+  console.log("✅ supa existe");
+
+  // 2. Vérifier MY_UID
+  console.log("\n2️⃣ UTILISATEUR COURANT:");
+  console.log("MY_UID:", window.MY_UID);
+  console.log("state.user.name:", state.user.name);
+  console.log("state.user.currentProfileId:", state.user.currentProfileId);
+
+  // 3. Charger TOUS les posts directement de Supabase
+  console.log("\n3️⃣ CHARGER TOUS LES POSTS DE SUPABASE:");
+  try {
+    const { data, error } = await supa.from("posts").select("*").order("created_at", { ascending: false }).limit(100);
+    if (error) {
+      console.error("❌ Erreur requête posts:", error);
+      return;
+    }
+    console.log(`✅ ${data?.length || 0} posts trouvés dans Supabase:`);
+    (data || []).slice(0, 5).forEach((p, i) => {
+      console.log(`  ${i+1}. ID: ${p.id}, author_id: ${p.author_id}, passion: ${p.passion_id}, created: ${p.created_at}`);
+    });
+  } catch(e) {
+    console.error("❌ Exception:", e);
+  }
+
+  // 4. Vérifier state.seed.posts
+  console.log("\n4️⃣ STATE LOCAL (state.seed.posts):");
+  console.log(`Total: ${(state.seed.posts || []).length}`);
+  (state.seed.posts || []).slice(0, 5).forEach((p, i) => {
+    console.log(`  ${i+1}. ID: ${p.id}, author: ${p.authorId}, passion: ${p.passion}`);
+  });
+
+  // 5. Vérifier state.userPosts
+  console.log("\n5️⃣ POSTS PERSONNELS (state.userPosts):");
+  console.log(`Total: ${(state.userPosts || []).length}`);
+  (state.userPosts || []).slice(0, 5).forEach((p, i) => {
+    console.log(`  ${i+1}. ID: ${p.id}, text: ${(p.text || '').substring(0, 30)}`);
+  });
+
+  console.log("\n" + "=".repeat(50));
+  console.log("ℹ️ Si Supabase a 0 posts: vérifier si les publications échouent");
+  console.log("ℹ️ Si Supabase a des posts mais state.seed.posts est vide: problème de chargement");
+};
+
 // 🔄 FONCTION AUTO-REFRESH - Recharger les posts automatiquement toutes les 10 sec
 window._autoRefreshInterval = null;
 window.startAutoRefresh = function() {
