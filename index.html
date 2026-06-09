@@ -15793,6 +15793,7 @@ async function shareReelInFeed(postId) {
   // Créer un post de partage dans le feed
   const newPost = {
     id: "post_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9),
+    type: "text",  // ✅ Type explicit pour les posts partagés
     authorId: typeof MY_UID !== "undefined" ? MY_UID : "me",
     authorName: authorName,
     authorEmoji: prof?.emoji || "✨",
