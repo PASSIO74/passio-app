@@ -5971,6 +5971,7 @@
  </style>
 </head>
 <body>
+<script>document.addEventListener("DOMContentLoaded", function() { var skel = document.getElementById("feedSkeleton"); if (skel) skel.style.display = "none"; }); if (document.readyState === "loading") { document.addEventListener("DOMContentLoaded", function() { var skel = document.getElementById("feedSkeleton"); if (skel) skel.style.display = "none"; }); } else { var skel = document.getElementById("feedSkeleton"); if (skel) skel.style.display = "none"; }</script>
 <div class="app-shell">
  <div class="demo-ribbon">MVP BETA</div>
  <!-- ============ LANDING / PITCH ============ -->
@@ -6164,7 +6165,7 @@
  <div class="brand-logo"><img id="logoTopbar" alt="PASSIO" /></div>
  <div class="brand-text">
  <div class="brand-name">PASSIO</div>
- <div class="brand-tagline" id="currentProfilePassion">— Multi-profils</div>
+ <div class="brand-tagline" id="currentProfilePassion"></div>
  </div>
  </div>
  <div class="topbar-right">
@@ -20571,5 +20572,6 @@ setTimeout(function() {
  });
 }, 500);
 </script>
+<script>document.addEventListener("DOMContentLoaded", function() { setTimeout(function() { if (typeof renderFeed === "function") { console.log("🎯 Affichage du fil au démarrage..."); renderFeed(); console.log("✅ Fil affiché!"); } }, 100); }); if (document.readyState !== "loading") { setTimeout(function() { if (typeof renderFeed === "function") { renderFeed(); } }, 100); }</script>
 </body>
 </html>
