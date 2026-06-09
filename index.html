@@ -24038,6 +24038,17 @@ localStorage passio_uid: ${localStorage.getItem('passio_uid') || '❌ undefined'
       };
     }
 
+    // BOUTON DIAGNOSTIC AVANCÉ
+    var advBtn = document.createElement("button");
+    advBtn.id = "diag-advanced";
+    advBtn.style.cssText = "padding:2px 6px;font-size:10px;cursor:pointer;background:#8b5cf6;color:white;border:none;border-radius:3px;";
+    advBtn.textContent = "🔍 AVANCÉ";
+    advBtn.onclick = function(e) {
+      e.stopPropagation();
+      window.showAdvancedDiagnostic();
+    };
+    box.children[0].appendChild(advBtn);
+
     var closeBtn = document.getElementById("diag-close");
     if (closeBtn) {
       closeBtn.onclick = function(e) {
