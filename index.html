@@ -23692,6 +23692,21 @@ function openUserProfile(userId) {
   }
 }
 
+// ⚡ INITIALISATION PRINCIPALE - Lancer l'app au démarrage
+console.log("🚀 Démarrage PASSIO...");
+setTimeout(function() {
+  if (typeof initApp === "function") {
+    console.log("📱 Appel initApp()");
+    try {
+      initApp();
+    } catch(err) {
+      console.error("❌ ERREUR initApp:", err);
+    }
+  } else {
+    console.error("❌ initApp() n'existe pas!");
+  }
+}, 100);
+
 // ✅ INITIALISATION MOODS MULTI-SELECT - EVENT DELEGATION
 console.log("🎨 INITIALISATION MOODS GLOBALE");
 setTimeout(function() {
