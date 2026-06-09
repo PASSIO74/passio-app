@@ -17043,8 +17043,8 @@ async function publishPost() {
     } catch (e) {}
   }
 
-  // ✅ AFFICHER LE VRAI NOM - JAMAIS "Passionné"!
-  const authorName = (state.user.general?.username) || prof?.name || state.user.name || "Utilisateur";
+  // ✅ Toujours afficher le vrai nom du profil!
+  const authorName = (state.user.general?.username) || prof?.name || state.user.name || "Profil";
   const authorEmoji = prof?.emoji || "✨";
   const authorColor = prof?.color || "#8b5cf6";
 
