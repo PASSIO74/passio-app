@@ -21486,9 +21486,10 @@ async function supaInit() {
 
     // 1. CHARGER LES POSTS d'abord (c'est le plus important)
     supaLoadPosts().then(p => {
-      console.log(`\u2705 Posts charg\u00e9s: ${p.length}`);
+      console.log(`\u2705 Posts Supabase charg\u00e9s: ${p.length}`);
       if (p.length) {
-        state.seed.posts = p;
+        state.supabasePosts = p;  // \u2705 CHARGER DANS supabasePosts, PAS seed.posts!
+        console.log(`\ud83d\udcca Total: ${state.supabasePosts.length} posts vrais utilisateurs`);
         renderFeed();
       }
     }).catch(e => {
