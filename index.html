@@ -23813,14 +23813,22 @@ window.testSupabaseRead = async function() {
 
   try {
     console.log("📖 Tentative de lecture des posts (TIMEOUT 5s)...");
+    console.log("🔍 supa client OK?", !!supa);
 
     // ⏱️ TIMEOUT: Si pas de réponse en 5s, arrêter
     const timeoutPromise = new Promise((resolve, reject) => {
-      setTimeout(() => reject(new Error("TIMEOUT: Supabase ne répond pas après 5 secondes")), 5000);
+      const timer = setTimeout(() => {
+        console.error("⏱️ TIMEOUT déclenché - Supabase n'a pas répondu en 5s");
+        reject(new Error("TIMEOUT: Supabase ne répond pas après 5 secondes"));
+      }, 5000);
     });
 
+    console.log("📤 Envoi requête SELECT vers Supabase...");
     const readPromise = supa.from("posts").select("id,author_id,created_at").limit(1);
+    console.log("📤 Requête construite, en attente...");
+
     const { data, error } = await Promise.race([readPromise, timeoutPromise]);
+    console.log("✅ Réponse reçue!", { data: data?.length, error: error?.message });
 
     if (error) {
       html += "<br/><b>❌ ERREUR READ:</b><br/>";
@@ -23838,6 +23846,8 @@ window.testSupabaseRead = async function() {
   } catch(e) {
     html += "<br/><b>❌ EXCEPTION READ:</b><br/>";
     html += "Message: " + e.message + "<br/>";
+    html += "Type: " + e.name + "<br/>";
+    html += "Stack: " + (e.stack?.split("\n")[0] || "?") + "<br/>";
     console.error("❌ Exception:", e);
   }
 
