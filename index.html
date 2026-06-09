@@ -20574,28 +20574,22 @@ async function supaPublishPostWithRetry(post, maxRetries = 3) {
       let videoUrl = null;
       let audioUrl = null;
 
-      // ✅ Photo: upload en Supabase Storage
+      // ✅ Photo: utiliser base64 directement (pas d'upload Storage)
       if (post.image && post.image.startsWith("data:")) {
-        diagLog(`📸 Photo détectée - upload en Supabase Storage...`);
-        mediaUrl = await supaUploadMedia(post.image, post.id, "photo");
-        if (mediaUrl) diagLog(`✅ Photo uploadée: ${mediaUrl.substring(0, 60)}...`);
-        else diagLog(`⚠️ Fallback photo base64`), mediaUrl = post.image;
+        diagLog(`📸 Photo base64 prête`);
+        mediaUrl = post.image;
       }
 
-      // ✅ Vidéo: upload en Supabase Storage
+      // ✅ Vidéo: utiliser base64 directement (pas d'upload Storage)
       if (post.video && post.video.startsWith("data:")) {
-        diagLog(`📹 Vidéo détectée - upload en Supabase Storage...`);
-        videoUrl = await supaUploadMedia(post.video, post.id, "video");
-        if (videoUrl) diagLog(`✅ Vidéo uploadée: ${videoUrl.substring(0, 60)}...`);
-        else diagLog(`⚠️ Fallback vidéo base64`), videoUrl = post.video;
+        diagLog(`📹 Vidéo base64 prête`);
+        videoUrl = post.video;
       }
 
-      // ✅ Audio: upload en Supabase Storage
+      // ✅ Audio: utiliser base64 directement (pas d'upload Storage)
       if (post.audio && post.audio.startsWith("data:")) {
-        diagLog(`🎙️ Audio détecté - upload en Supabase Storage...`);
-        audioUrl = await supaUploadMedia(post.audio, post.id, "audio");
-        if (audioUrl) diagLog(`✅ Audio uploadé: ${audioUrl.substring(0, 60)}...`);
-        else diagLog(`⚠️ Fallback audio base64`), audioUrl = post.audio;
+        diagLog(`🎙️ Audio base64 prêt`);
+        audioUrl = post.audio;
       }
 
       // ✅ Diagnostic: vérifier les URLs uploadées
