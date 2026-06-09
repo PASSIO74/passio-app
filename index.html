@@ -17075,9 +17075,8 @@ async function publishPost() {
   saveState();
 
   // 🎯 OPTIMISTIC UPDATE - Afficher le post immédiatement dans le feed
-  // (avant même la confirmation de Supabase)
-  state.seed.posts.unshift(post);
-  diagLog(`✅ Optimistic update: post ajouté au feed localement`);
+  // (allFeedPosts() va le trouver dans state.userPosts, pas besoin de l'ajouter à state.seed.posts!)
+  diagLog(`✅ Optimistic update: post ajouté à state.userPosts`);
 
   // Naviguer immédiatement et afficher le post
   goTo("feed");
