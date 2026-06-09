@@ -16742,26 +16742,55 @@ function clearPhoto() { photoDataUrl = null; renderPhotoPreview(); }
 // Video upload
 $("#videoInput").addEventListener("change", (e) => {
   const f = e.target.files[0];
-  if (!f) return;
-  if (f.size > 30 * 1024 * 1024) {
-    toast("Vidéo > 30 Mo, compresse-la ou raccourcis-la");
+  console.log("📹 Fichier vidéo sélectionné:", f?.name, f?.size, "bytes");
+  if (!f) {
+    console.warn("❌ Aucun fichier sélectionné");
     return;
   }
+
+  // ✅ Augmenter limite à 200 Mo (standard téléphone)
+  const maxSize = 200 * 1024 * 1024;
+  if (f.size > maxSize) {
+    toast(`Vidéo > 200 Mo (${Math.round(f.size / 1024 / 1024)} Mo), trop gros!`);
+    console.warn("❌ Vidéo trop grande");
+    return;
+  }
+
+  console.log("✅ Vidéo OK, conversion en cours...");
+  toast("⏳ Chargement vidéo...");
+
   const reader = new FileReader();
+  reader.onerror = () => {
+    console.error("❌ Erreur FileReader:", reader.error);
+    toast("❌ Erreur lecture vidéo");
+  };
   reader.onload = () => {
-    videoDataUrl = reader.result;
-    // 🎯 Changer automatiquement le type à "video"
-    studioType = "video";
-    // Mettre à jour l'affichage des boutons studio-type
-    $$("#studioTypeTabs .studio-type").forEach(e => e.classList.remove("active"));
-    document.querySelector('[data-type="video"]')?.classList.add("active");
-    // Afficher la section vidéo et masquer les autres
-    $("#studioPhoto").style.display = "none";
-    $("#studioVideo").style.display = "block";
-    $("#studioAudio").style.display = "none";
-    const vlogEl = $("#studioVlog"); if (vlogEl) vlogEl.style.display = "none";
-    const cdvliveEl = $("#studiocdvlive"); if (cdvliveEl) cdvliveEl.style.display = "none";
-    renderVideoPreview();
+    try {
+      videoDataUrl = reader.result;
+      console.log("✅ Vidéo convertie, taille data URL:", videoDataUrl.length);
+
+      // 🎯 Changer automatiquement le type à "video"
+      studioType = "video";
+      console.log("✅ Type changé à video");
+
+      // Mettre à jour l'affichage des boutons studio-type
+      $$("#studioTypeTabs .studio-type").forEach(e => e.classList.remove("active"));
+      document.querySelector('[data-type="video"]')?.classList.add("active");
+
+      // Afficher la section vidéo et masquer les autres
+      $("#studioPhoto").style.display = "none";
+      $("#studioVideo").style.display = "block";
+      $("#studioAudio").style.display = "none";
+      const vlogEl = $("#studioVlog"); if (vlogEl) vlogEl.style.display = "none";
+      const cdvliveEl = $("#studiocdvlive"); if (cdvliveEl) cdvliveEl.style.display = "none";
+
+      renderVideoPreview();
+      toast("✅ Vidéo chargée et prête!");
+      console.log("✅ Vidéo affichée et prête à partager");
+    } catch (err) {
+      console.error("❌ Exception:", err);
+      toast("❌ Erreur lors du traitement vidéo");
+    }
   };
   reader.readAsDataURL(f);
 });
