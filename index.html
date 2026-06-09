@@ -20923,8 +20923,9 @@ async function supaPublishPostWithRetry(post, maxRetries = 2) {
         author_id: MY_UID,
         passion_id: post.passion || null,
         mood: post.mood || "all",
-        content: post.text || "",
-        media_url: mediaUrl,
+        content: (post.text && !post.text.startsWith("data:")) ? post.text : (post.text?.startsWith("data:") ? "" : ""),
+        // ✅ NE JAMAIS stocker du base64 en DB — seulement des URLs Supabase Storage
+        media_url: (mediaUrl && !mediaUrl.startsWith("data:")) ? mediaUrl : null,
         created_at: new Date(post.createdAt).toISOString(),
         // 🔄 Ajouter les champs de repost si applicable
         ...(post.sharedReel && { shared_from_post_id: post.sharedReel }),
