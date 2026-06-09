@@ -20547,6 +20547,14 @@ async function supaPublishPostWithRetry(post, maxRetries = 3) {
         }
       }
 
+      // ✅ Diagnostic: vérifier les URLs uploadées
+      diagLog(`📊 DIAGNOSTIC UPLOAD:`);
+      diagLog(`  - Type: ${post.type}`);
+      diagLog(`  - Photo: ${mediaUrl ? "✅" : "❌"}`);
+      diagLog(`  - Vidéo: ${videoUrl ? "✅" : "❌"}`);
+      diagLog(`  - Audio: ${audioUrl ? "✅" : "❌"}`);
+      diagLog(`  - URL finale: ${mediaUrl || videoUrl || audioUrl ? (mediaUrl || videoUrl || audioUrl).substring(0, 60) + "..." : "AUCUNE"}`);
+
       // Insérer le post - colonnes de base qui EXISTENT en Supabase
       const postData = {
         id: post.id,
@@ -20555,14 +20563,13 @@ async function supaPublishPostWithRetry(post, maxRetries = 3) {
         mood: post.mood || "all",
         content: post.text || "",
         media_url: mediaUrl || videoUrl || audioUrl,  // ✅ Utiliser la première URL disponible
-        post_type: post.type,  // ✅ Sauvegarder le type
         created_at: new Date(post.createdAt).toISOString(),
       };
-      // ⚠️ NE PAS ajouter: author_name, author_emoji, author_color, post_type
-      // Ces colonnes n'existent pas en Supabase (erreur PGRST204)
-      // On utilisera profiles.username à la place
+      // ⚠️ NOTE: post_type n'existe pas comme colonne, on utilise media_url pour détecter le type
+      // Videos/Audios ont media_url remplie, photos aussi
+      // On détecte le type en regardant l'extension du fichier dans media_url
 
-      diagLog(`📤 Envoi post minimal (sans author_name/color)`);
+      diagLog(`📤 Envoi post à Supabase...`);
       const { data, error } = await supa.from("posts").insert(postData).select();
 
       if (error) {
