@@ -21368,26 +21368,26 @@ document.addEventListener("click", function(e) {
 // ---- INIT COMPL\u00c8TE ----
 async function supaInit() {
   try {
-    // \u26a1 OPTIMISATION: Ne PAS attendre les requ\u00eates au d\u00e9marrage!
-    // Afficher l'interface MAINTENANT, charger en arri\u00e8re-plan
-    const supaPosts = [];
-    const supaStories = [];
-    const supaEvents = [];
-    const supaNotifs = [];
-    const supaFollowing = [];
-    const supaJoined = [];
-    const supaConvs = [];
+    // \u26a1 OPTIMISATION DRASTIQUE: Retourner IMM\u00c9DIATEMENT!
+    // Lancer TOUTES les requ\u00eates en arri\u00e8re-plan sans bloquer
+    // L'interface s'affiche TOUT DE SUITE
 
-    // Lancer les requ\u00eates EN ARRI\u00c8RE-PLAN sans bloquer
-    Promise.all([
-      supaLoadPosts().then(p => {Object.assign(supaPosts, p); render();}),
-      supaLoadStories().then(s => {Object.assign(supaStories, s);}),
-      supaLoadEvents().then(e => {Object.assign(supaEvents, e);}),
-      supaLoadNotifications().then(n => {Object.assign(supaNotifs, n);}),
-      supaLoadFollowing().then(f => {Object.assign(supaFollowing, f);}),
-      supaLoadJoinedEvents().then(j => {Object.assign(supaJoined, j);}),
-      supaLoadMyConversations().then(c => {Object.assign(supaConvs, c);}),
-    ]).catch(e => console.warn("Background load error:", e));
+    // Ne PAS attendre - retourner imm\u00e9diatement pour d\u00e9bloquer l'interface
+    setImmediate(() => {
+      // Charger les donn\u00e9es EN ARRI\u00c8RE-PLAN
+      Promise.all([
+        supaLoadPosts().then(p => { if (p.length) { state.seed.posts = p; refreshPostsUI(); } }),
+        supaLoadStories().then(s => { if (s.length) state.seed.stories = s; }),
+        supaLoadEvents().then(e => { if (e.length) state.seed.events = e; }),
+        supaLoadNotifications().then(n => { if (n.length) state.user.notifications = n; }),
+        supaLoadFollowing().then(f => { if (f.length) state.user.following = f; }),
+        supaLoadJoinedEvents().then(j => { if (j.length) state.user.joinedEvents = j; }),
+        supaLoadMyConversations().then(c => { if (c.length) state.user.conversations = c; }),
+      ]).catch(e => console.warn("Background load error:", e));
+    });
+
+    // \u2705 RETOURNER IMM\u00c9DIATEMENT - ne pas attendre les requ\u00eates!
+    return;
     if (supaPosts.length) {
       // Sync les posts likés depuis Supabase
       const likedFromSupa = supaPosts.filter(p => p.liked).map(p => p.id);
