@@ -21582,6 +21582,37 @@ async function supaLoadNotifications() {
   } catch(e) { return []; }
 }
 
+// ===== SYSTÈME DE REFRESH AUTOMATIQUE DU FEED =====
+let _feedRefreshInterval = null;
+
+function startFeedRefreshLoop() {
+  if (_feedRefreshInterval) return;  // Déjà en cours
+  console.log("🔄 [FEED] Démarrage refresh automatique du feed (10s)");
+  _feedRefreshInterval = setInterval(async () => {
+    try {
+      const posts = await supaLoadPosts();
+      if (posts && posts.length > 0) {
+        state.supabasePosts = posts;
+        // NE RAFRAÎCHIR QUE SI ON EST SUR LE FEED
+        const feedEl = document.getElementById("feed");
+        if (feedEl && feedEl.classList.contains("active")) {
+          renderFeed();
+        }
+      }
+    } catch (e) {
+      console.warn("⚠️ [FEED] Refresh échoué:", e.message);
+    }
+  }, 10000);  // Chaque 10 secondes
+}
+
+function stopFeedRefreshLoop() {
+  if (_feedRefreshInterval) {
+    clearInterval(_feedRefreshInterval);
+    _feedRefreshInterval = null;
+    console.log("⏹️ [FEED] Refresh arrêté");
+  }
+}
+
 async function supaMarkNotifSeen(notifId) {
   try { await supa.from("notifications").upsert({ id: notifId, seen: true }, { onConflict: "id" }); } catch(e) {}
 }
