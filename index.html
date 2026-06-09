@@ -8989,6 +8989,8 @@ function loadState() {
     if (!Array.isArray(parsed.user.customPassions)) parsed.user.customPassions = [];
     if (!Array.isArray(parsed.user.following)) parsed.user.following = [];
     if (!Array.isArray(parsed.selectedFeedPassions)) parsed.selectedFeedPassions = [];
+    // ✅ SÉCURITÉ: Initialiser supabasePosts s'il n'existe pas
+    if (!Array.isArray(parsed.supabasePosts)) parsed.supabasePosts = [];
     return parsed;
   } catch (e) {
     return defaultState();
