@@ -16866,21 +16866,22 @@ async function publishPost() {
   toast("⏳ Publication en cours...", "loading");
   diagLog(`📝 Création post - Type: ${studioType}, Passion: ${passion}`);
 
-  // ✅ Charger le username depuis Supabase OU utiliser le nom du profil
+  // ✅ Afficher directement le nom du profil courant!
   const prof = currentProfile();
   const g = state.user.general || {};
-  let authorName = g.username || prof?.name || "Passionné";  // Priorité: username Supabase > nom profil > fallback
 
-  // Essayer charger depuis Supabase si besoin
-  if (!g.username && typeof supa !== "undefined" && supa && state.user.currentProfileId) {
+  // Charger le username depuis Supabase par MY_UID (clé primaire correcte)
+  if (!g.username && typeof supa !== "undefined" && supa && MY_UID) {
     try {
-      const { data } = await supa.from("profiles").select("username").eq("id", state.user.currentProfileId).single();
-      if (data?.username && data.username !== "Passionné") {
-        authorName = data.username;
+      const { data } = await supa.from("profiles").select("username").eq("id", MY_UID).single();
+      if (data?.username) {
+        state.user.general.username = data.username;  // Sauvegarder dans state
       }
     } catch (e) {}
   }
 
+  // Utiliser: username Supabase > nom profil local
+  const authorName = (state.user.general?.username) || prof?.name || "Passionné";
   const authorEmoji = prof?.emoji || "✨";
   const authorColor = prof?.color || "#8b5cf6";
 
