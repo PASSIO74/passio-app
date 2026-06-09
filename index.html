@@ -17100,33 +17100,43 @@ async function publishPost() {
     post.text = post.destination + (post.dateStart || post.dateEnd ? " · carnet" : "");
   }
 
-  // 🔄 Synchroniser IMMÉDIATEMENT avec Supabase (BLOCKING)
-  // ⚠️ NE PAS FAIRE D'OPTIMISTIC UPDATE - attendre la confirmation Supabase!
+  // 🔄 Synchroniser avec Supabase (avec timeout court)
   console.log("🚀 [PUBLISH] Début synchronisation Supabase");
-  let syncSuccess = false;
 
-  try {
-    syncSuccess = await supaPublishPostWithRetry(post);
-  } catch (e) {
-    console.error("❌ [PUBLISH] Exception sync:", e);
-    syncSuccess = false;
-  }
-
-  if (!syncSuccess) {
-    // ❌ Publication échouée - NE PAS afficher le post
-    console.error("❌ [PUBLISH] Publication échouée - Post NON affiché");
-    toast("❌ Publication échouée. Réessayez.", "error");
-    return;  // Sortir et laisser l'utilisateur réessayer
-  }
-
-  // ✅ Publication réussie - Ajouter au state local ET au feed
-  console.log("✅ [PUBLISH] Publication réussie");
+  // Ajouter au state local IMMÉDIATEMENT (optimistic update)
   state.userPosts.unshift(post);
   saveState();
+  diagLog("✅ Post ajouté localement (optimistic)");
 
-  // Rafraîchir le feed et afficher le nouveau post
+  // Naviguer et afficher immédiatement
   goTo("feed");
-  setTimeout(() => renderFeed(), 100);
+  setTimeout(() => renderFeed(), 50);
+
+  // Synchroniser EN BACKGROUND avec timeout court (3 secondes)
+  let syncSuccess = false;
+  try {
+    // Promise avec timeout
+    const timeoutPromise = new Promise((resolve) =>
+      setTimeout(() => {
+        console.warn("⚠️ [PUBLISH] Timeout sync (3s)");
+        resolve(false);
+      }, 3000)
+    );
+
+    const syncPromise = supaPublishPostWithRetry(post);
+    syncSuccess = await Promise.race([syncPromise, timeoutPromise]);
+
+    if (syncSuccess) {
+      console.log("✅ [PUBLISH] Publication synchronisée");
+      toast("✅ Post publié!", "success");
+    } else {
+      console.warn("⚠️ [PUBLISH] Sync timeout - post local uniquement");
+      toast("⏱️ Post en local (connexion lente)", "warning");
+    }
+  } catch (e) {
+    console.warn("⚠️ [PUBLISH] Erreur sync:", e.message);
+    toast("⏱️ Post en local (erreur sync)", "warning");
+  }
 
   // Clear form
   $("#postText").value = "";
