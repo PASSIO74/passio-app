@@ -20707,126 +20707,72 @@ async function supaUploadMedia(dataUrl, postId, type = "photo") {
 
 // ===== PUBLICATION AVEC RETRY AUTOMATIQUE =====
 // ===== SYSTÈME DE PUBLICATION FIABLE MULTI-APPAREILS =====
-// RÈGLE: Un post ne doit JAMAIS rester en état local s'il échoue à synchroniser
+// TIMEOUT COURT: Supabase répond ou on considère que c'est un problème réseau
 
-async function supaPublishPostWithRetry(post, maxRetries = 3) {
+async function supaPublishPostWithRetry(post, maxRetries = 2) {
   console.log("🚀 [PUBLISH] supaPublishPostWithRetry() DÉBUT - Post ID:", post.id);
-  toast("📤 Publication en cours...", "info");
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      console.log(`\n🔄 [PUBLISH ${attempt}/${maxRetries}] Tentative pour post: ${post.id}`);
-      diagLog(`🔄 Tentative ${attempt}/${maxRetries}: Publication du post`);
+      console.log(`🔄 [PUBLISH ${attempt}/${maxRetries}] Tentative...`);
 
-      // STEP 1: Mettre à jour le profil EN PREMIER (blocking)
-      console.log("📋 [PUBLISH] Étape 1: Mise à jour profil");
-      await supaUpsertProfile();
-      console.log("✅ [PUBLISH] Profil mis à jour");
-
-      // STEP 2: Uploader les médias dans Supabase Storage
+      // STEP 1: Uploader les médias (avec timeout 2s)
       let mediaUrl = null;
-      let mediaType = "text";
 
-      if (post.type === "photo" && post.image && post.image.startsWith("data:")) {
-        console.log("📸 [PUBLISH] Étape 2a: Upload photo");
-        try {
-          mediaUrl = await supaUploadMedia(post.id, "photos", post.image, "image");
-          mediaType = "photo";
-          console.log("✅ [PUBLISH] Photo uploadée:", mediaUrl?.substring(0, 50));
-        } catch (e) {
-          console.error("❌ [PUBLISH] Upload photo échoué:", e);
-          throw new Error(`Upload photo échoué: ${e.message}`);
-        }
-      } else if (post.type === "video" && post.video && post.video.startsWith("data:")) {
-        console.log("📹 [PUBLISH] Étape 2b: Upload vidéo");
-        try {
-          mediaUrl = await supaUploadMedia(post.id, "videos", post.video, "video");
-          mediaType = "video";
-          console.log("✅ [PUBLISH] Vidéo uploadée:", mediaUrl?.substring(0, 50));
-        } catch (e) {
-          console.error("❌ [PUBLISH] Upload vidéo échoué:", e);
-          throw new Error(`Upload vidéo échoué: ${e.message}`);
-        }
-      } else if (post.type === "audio" && post.audio && post.audio.startsWith("data:")) {
-        console.log("🎙️ [PUBLISH] Étape 2c: Upload audio");
-        try {
-          mediaUrl = await supaUploadMedia(post.id, "audios", post.audio, "audio");
-          mediaType = "audio";
-          console.log("✅ [PUBLISH] Audio uploadé:", mediaUrl?.substring(0, 50));
-        } catch (e) {
-          console.error("❌ [PUBLISH] Upload audio échoué:", e);
-          throw new Error(`Upload audio échoué: ${e.message}`);
-        }
+      if (post.type === "photo" && post.image) {
+        console.log("📸 [PUBLISH] Upload photo...");
+        mediaUrl = await Promise.race([
+          supaUploadMedia(post.id, "photos", post.image, "image"),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("Upload timeout")), 2000))
+        ]);
+      } else if (post.type === "video" && post.video) {
+        console.log("📹 [PUBLISH] Upload vidéo...");
+        mediaUrl = await Promise.race([
+          supaUploadMedia(post.id, "videos", post.video, "video"),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("Upload timeout")), 2000))
+        ]);
+      } else if (post.type === "audio" && post.audio) {
+        console.log("🎙️ [PUBLISH] Upload audio...");
+        mediaUrl = await Promise.race([
+          supaUploadMedia(post.id, "audios", post.audio, "audio"),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("Upload timeout")), 2000))
+        ]);
       }
 
-      // STEP 3: Créer le post dans Supabase avec l'URL distante
-      console.log("📝 [PUBLISH] Étape 3: Création post Supabase");
+      // STEP 2: Créer le post (avec timeout 3s)
+      console.log("📝 [PUBLISH] Création post...");
       const postData = {
         id: post.id,
         author_id: MY_UID,
         passion_id: post.passion || null,
         mood: post.mood || "all",
         content: post.text || "",
-        media_url: mediaUrl,  // ✅ URL DISTANTE, pas base64!
-        post_type: mediaType,
+        media_url: mediaUrl,
         created_at: new Date(post.createdAt).toISOString(),
       };
 
-      console.log("📤 [PUBLISH] Envoi post à Supabase:", postData);
-      const { data, error } = await supa.from("posts").insert([postData]).select();
+      const insertPromise = supa.from("posts").insert([postData]).select();
+      const { data, error } = await Promise.race([
+        insertPromise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error("Insert timeout")), 3000))
+      ]);
 
-      if (error) {
-        console.error("❌ [PUBLISH] Erreur Supabase:", error);
-        throw new Error(`Erreur Supabase: ${error.message}`);
-      }
+      if (error) throw error;
 
-      console.log("✅ [PUBLISH] Post créé dans Supabase:", data);
-      diagLog(`✅ Post publié avec succès: ${data?.[0]?.id || post.id}`);
-
-      // STEP 4: Confirmation et rafraîchissement du feed
-      toast("✅ Post publié!", "success");
-
-      // Rafraîchir le feed immédiatement après publication
-      console.log("🔄 [PUBLISH] Étape 4: Refresh du feed");
-      setTimeout(async () => {
-        try {
-          const newPosts = await supaLoadPosts();
-          state.supabasePosts = newPosts;
-          console.log("✅ [PUBLISH] Feed rafraîchi:", newPosts.length, "posts");
-          renderFeed();
-        } catch (e) {
-          console.warn("⚠️ [PUBLISH] Refresh feed échoué:", e);
-        }
-      }, 500);
-
-      return true;  // ✅ SUCCÈS CONFIRMÉ
+      console.log("✅ [PUBLISH] Publication réussie!");
+      diagLog(`✅ Post ${post.id} publié`);
+      return true;
 
     } catch (e) {
-      console.warn(`❌ [PUBLISH ${attempt}/${maxRetries}] Erreur:`, e.message);
-      diagLog(`❌ Tentative ${attempt} échouée: ${e.message}`);
+      console.warn(`⚠️ [PUBLISH ${attempt}] Erreur:`, e.message);
 
       if (attempt === maxRetries) {
-        console.error("❌ [PUBLISH] ÉCHEC FINAL après", maxRetries, "tentatives");
-
-        // Afficher message d'erreur spécifique
-        const errorMsg = e.message || "Erreur inconnue";
-        if (errorMsg.includes("413")) {
-          toast("❌ Fichier trop gros (>500KB). Compresse-le.", "error");
-        } else if (errorMsg.includes("Upload")) {
-          toast("❌ Upload média échoué. Vérifiez la connexion.", "error");
-        } else if (errorMsg.includes("timeout") || errorMsg.includes("Failed to fetch")) {
-          toast("⏱️ Connexion lente. Réessayez.", "error");
-        } else {
-          toast(`❌ Publication échouée: ${errorMsg.substring(0, 50)}`, "error");
-        }
-
-        return false;  // ❌ ÉCHEC CONFIRMÉ
+        console.error("❌ [PUBLISH] Impossible après retries");
+        return false;
       }
 
-      // Attendre avant nouvelle tentative (backoff exponentiel)
-      const delay = Math.pow(2, attempt) * 1000;
-      console.log(`⏳ [PUBLISH] Nouvelle tentative dans ${delay}ms...`);
-      await new Promise(resolve => setTimeout(resolve, delay));
+      // Attendre avant retry
+      await new Promise(resolve => setTimeout(resolve, 1000));
     }
   }
 
