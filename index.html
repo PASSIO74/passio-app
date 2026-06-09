@@ -15680,7 +15680,7 @@ function openReelShareModal(postId) {
   openModal(shareHTML);
 }
 
-function shareReelInFeed(postId) {
+async function shareReelInFeed(postId) {
   const reel = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
   if (!reel) return;
 
@@ -15688,11 +15688,23 @@ function shareReelInFeed(postId) {
   const passion = passionById(reel.passion) || { label: reel.passion, emoji: "✨" };
   const txt = reel.text || reel.caption || "";
 
+  // ✅ Charger le username depuis Supabase
+  let authorName = currentProfile()?.name || "Moi";
+  try {
+    const { data: profData } = await supa.from("profiles")
+      .select("username")
+      .eq("id", state.user.currentProfileId)
+      .single();
+    if (profData?.username) {
+      authorName = profData.username;
+    }
+  } catch (e) {}
+
   // Créer un post de partage dans le feed
   const newPost = {
     id: "post_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9),
     authorId: typeof MY_UID !== "undefined" ? MY_UID : "me",
-    authorName: currentProfile()?.name || "Moi",
+    authorName: authorName,  // ✅ Utiliser le username chargé
     authorEmoji: currentProfile()?.profileEmoji || "✨",
     authorColor: currentProfile()?.avatar || "#8b5cf6",
     authorBio: currentProfile()?.bio || "",
