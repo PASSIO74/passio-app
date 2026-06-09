@@ -20521,12 +20521,23 @@ async function supaUploadMedia(dataUrl, postId, type = "photo") {
 
     if (error) {
       console.error("❌ Upload échoué:", error);
-      console.error("   Message:", error.message);
-      console.error("   Code:", error.code);
-      console.error("   Status:", error.status);
-      // ⚠️ Fallback: retourner le dataUrl original en base64
-      // (au moins le post sera créé avec les données)
-      console.warn("⚠️ Fallback base64 car Storage n'est pas disponible");
+      console.error("   Message complet:", JSON.stringify(error, null, 2));
+      console.error("   Status HTTP:", error.status);
+      console.error("   Code erreur:", error.code);
+
+      // Diagnostic: pourquoi l'upload échoue?
+      if (error.message?.includes("not found") || error.message?.includes("does not exist")) {
+        console.error("⚠️ RAISON: Bucket Supabase Storage n'existe pas!");
+        console.error("   → Créer les buckets 'media' et 'storage' dans Supabase");
+      } else if (error.status === 401 || error.status === 403) {
+        console.error("⚠️ RAISON: Permissions Supabase Storage insuffisantes");
+        console.error("   → Vérifier les row level security (RLS) policies");
+      } else if (error.status === 413) {
+        console.error("⚠️ RAISON: Fichier trop gros pour Supabase Storage");
+      }
+
+      // Fallback: retourner le dataUrl original en base64
+      console.warn("⚠️ Fallback: utiliser base64 au lieu de Storage");
       return dataUrl;  // Retourner les données base64 originales!
     }
 
