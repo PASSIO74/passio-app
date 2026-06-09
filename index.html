@@ -23722,6 +23722,15 @@ setTimeout(function() {
     } else {
       console.error("❌ initApp() n'existe pas!");
     }
+
+    // ✅ ACTIVER AUTO-REFRESH du feed (toutes les 10 secondes)
+    setTimeout(function() {
+      console.log("✅ Activation auto-refresh du feed");
+      if (typeof startAutoRefresh === "function") {
+        startAutoRefresh();
+      }
+    }, 1000);
+
   }, 500);
 }, 100);
 
