@@ -10486,7 +10486,9 @@ function renderPostHTML(p) {
 }
 
 async function openPost(id) {
-  const post = state.seed.posts.find(p => p.id === id) || state.userPosts.find(p => p.id === id);
+  const post = state.seed.posts.find(p => p.id === id)
+            || state.userPosts.find(p => p.id === id)
+            || (state.supabasePosts || []).find(p => p.id === id);
   if (!post) return;
   const page = document.getElementById("postDetailPage");
   const content = document.getElementById("postDetailContent");
