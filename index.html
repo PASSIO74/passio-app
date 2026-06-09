@@ -24094,6 +24094,19 @@ setTimeout(function() {
   }
 }, 200);
 
+// BOUTON DIAGNOSTIC AVANCÉ - TOUJOURS VISIBLE
+setTimeout(function() {
+  var advDiagBtn = document.createElement("button");
+  advDiagBtn.id = "__adv_diag_btn";
+  advDiagBtn.textContent = "🔍 DIAG";
+  advDiagBtn.style.cssText = "position:fixed;bottom:80px;right:10px;width:60px;height:40px;border-radius:8px;background:#8b5cf6;border:none;color:#fff;font-size:12px;cursor:pointer;z-index:99998;box-shadow:0 2px 8px rgba(0,0,0,0.3);font-weight:bold;";
+  advDiagBtn.onclick = function() {
+    window.showAdvancedDiagnostic();
+  };
+  document.body.appendChild(advDiagBtn);
+  console.log("✅ Bouton diagnostic avancé créé");
+}, 500);
+
 // INITIALISATION BOUTON DIAGNOSTIC 🔧 - Caché par défaut
 setTimeout(function() {
   var diagBtn = document.createElement("button");
