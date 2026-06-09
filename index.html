@@ -16705,8 +16705,9 @@ document.addEventListener("click", (e) => {
 $("#photoInput").addEventListener("change", (e) => {
   const f = e.target.files[0];
   if (!f) return;
-  if (f.size > 4 * 1024 * 1024) {
-    toast("Photo > 4 Mo, compresse-la");
+  // ✅ LIMITE PHOTOS: 1 Mo max (base64 serait 1.35 Mo → compatible Supabase)
+  if (f.size > 1 * 1024 * 1024) {
+    toast("Photo > 1 Mo, compresse-la avec: ffmpeg ou Claquette!");
     return;
   }
   const reader = new FileReader();
