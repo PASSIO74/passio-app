@@ -20985,7 +20985,17 @@ async function supaLoadPosts() {
         createdAt: new Date(r.created_at + "Z").getTime(),  // ✅ Ajouter Z pour indiquer que c'est UTC!
         likes: postLikes.length,
         liked: postLikes.some(l => l.user_id === MY_UID),
-        comments: postComments, fromSupabase: true
+        comments: postComments, fromSupabase: true,
+        // 🔄 Repost support: parse shared_from_post_id and shared_data if applicable
+        ...(r.shared_from_post_id && { sharedReel: r.shared_from_post_id }),
+        ...(r.shared_data && { sharedReelData: (() => {
+          try {
+            return typeof r.shared_data === 'string' ? JSON.parse(r.shared_data) : r.shared_data;
+          } catch(e) {
+            console.warn("Failed to parse shared_data:", e);
+            return null;
+          }
+        })() }),
       };
     });
   } catch(e) { return []; }
