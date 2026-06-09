@@ -20559,14 +20559,11 @@ async function supaPublishPostWithRetry(post, maxRetries = 3) {
       let videoUrl = null;
       let audioUrl = null;
 
-      // Upload photo
+      // ✅ Photo: sauvegarder directement en base64
+      diagLog(`📸 Photo détectée - sauvegarde directe en base64`);
       if (post.image && post.image.startsWith("data:")) {
-        diagLog(`📸 Upload photo...`);
-        const url = await supaUploadMedia(post.image, post.id, "photo");
-        if (url) {
-          mediaUrl = url;
-          diagLog(`✅ Photo: ${url.substring(0, 50)}...`);
-        }
+        mediaUrl = post.image;  // Utiliser la data URL directement!
+        diagLog(`✅ Photo base64 prête: ${post.image.substring(0, 50)}...`);
       }
 
       // ✅ Vidéo: sauvegarder directement en base64 (pas d'upload Supabase Storage)
