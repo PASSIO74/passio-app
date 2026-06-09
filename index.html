@@ -23725,6 +23725,25 @@ setTimeout(function() {
   }, 500);
 }, 100);
 
+// 🔄 FONCTION FORCE REFRESH - Recharger les posts depuis Supabase SANS cache
+window.forceRefreshFeed = function() {
+  console.log("🔄 FORCE REFRESH: Chargement des posts depuis Supabase...");
+  supaLoadPosts().then(function(posts) {
+    if (posts && posts.length > 0) {
+      state.seed.posts = posts;
+      console.log("✅ Posts mis à jour: " + posts.length);
+      renderFeed();
+      toast("✅ Feed rafraîchi (" + posts.length + " posts)", "success");
+    } else {
+      console.warn("❌ Aucun post retourné");
+      toast("❌ Aucun post trouvé", "error");
+    }
+  }).catch(function(err) {
+    console.error("❌ Erreur refresh:", err);
+    toast("❌ Erreur: " + err.message, "error");
+  });
+};
+
 // 🔧 DIAGNOSTIC PANEL VISIBLE - AFFICHER DIRECTEMENT
 setTimeout(function() {
   // Créer un panel diagnostic visible
