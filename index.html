@@ -20698,128 +20698,184 @@ async function supaUploadMedia(dataUrl, postId, type = "photo") {
 }
 
 // ===== PUBLICATION AVEC RETRY AUTOMATIQUE =====
+// ===== SYSTÈME DE PUBLICATION FIABLE MULTI-APPAREILS =====
+// RÈGLE: Un post ne doit JAMAIS rester en état local s'il échoue à synchroniser
+
 async function supaPublishPostWithRetry(post, maxRetries = 3) {
-  // 🎯 FEEDBACK UTILISATEUR - Toast au démarrage
-  if (maxRetries === 3) {  // Seulement au premier appel, pas aux retries
-    toast("📤 Publication en cours...", "info");
-  }
+  console.log("🚀 [PUBLISH] supaPublishPostWithRetry() DÉBUT - Post ID:", post.id);
+  toast("📤 Publication en cours...", "info");
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
+      console.log(`\n🔄 [PUBLISH ${attempt}/${maxRetries}] Tentative pour post: ${post.id}`);
       diagLog(`🔄 Tentative ${attempt}/${maxRetries}: Publication du post`);
-      console.log(`[Sync ${attempt}/${maxRetries}] Publication du post ${post.id}...`);
 
-      // ⚡ Mettre à jour le profil EN BACKGROUND (sans bloquer)
-      diagLog(`📤 Mise à jour du profil (background)...`);
-      supaUpsertProfile().catch(e => {
-        console.warn("⚠️ Profile upsert échoué:", e);
-      });
-      // NE PAS ATTENDRE - continuer immédiatement
-      diagLog(`✅ Profil lancé en background`);
+      // STEP 1: Mettre à jour le profil EN PREMIER (blocking)
+      console.log("📋 [PUBLISH] Étape 1: Mise à jour profil");
+      await supaUpsertProfile();
+      console.log("✅ [PUBLISH] Profil mis à jour");
 
-      // ✅ Upload TOUS les contenus média (photo, vidéo, audio)
+      // STEP 2: Uploader les médias dans Supabase Storage
       let mediaUrl = null;
-      let videoUrl = null;
-      let audioUrl = null;
+      let mediaType = "text";
 
-      // ✅ Photo: sauvegarder directement en base64
-      if (post.image && post.image.startsWith("data:")) {
-        diagLog(`📸 Photo détectée - sauvegarde base64`);
-        mediaUrl = post.image;
-        diagLog(`✅ Photo base64 prête: ${post.image.substring(0, 50)}...`);
+      if (post.type === "photo" && post.image && post.image.startsWith("data:")) {
+        console.log("📸 [PUBLISH] Étape 2a: Upload photo");
+        try {
+          mediaUrl = await supaUploadMedia(post.id, "photos", post.image, "image");
+          mediaType = "photo";
+          console.log("✅ [PUBLISH] Photo uploadée:", mediaUrl?.substring(0, 50));
+        } catch (e) {
+          console.error("❌ [PUBLISH] Upload photo échoué:", e);
+          throw new Error(`Upload photo échoué: ${e.message}`);
+        }
+      } else if (post.type === "video" && post.video && post.video.startsWith("data:")) {
+        console.log("📹 [PUBLISH] Étape 2b: Upload vidéo");
+        try {
+          mediaUrl = await supaUploadMedia(post.id, "videos", post.video, "video");
+          mediaType = "video";
+          console.log("✅ [PUBLISH] Vidéo uploadée:", mediaUrl?.substring(0, 50));
+        } catch (e) {
+          console.error("❌ [PUBLISH] Upload vidéo échoué:", e);
+          throw new Error(`Upload vidéo échoué: ${e.message}`);
+        }
+      } else if (post.type === "audio" && post.audio && post.audio.startsWith("data:")) {
+        console.log("🎙️ [PUBLISH] Étape 2c: Upload audio");
+        try {
+          mediaUrl = await supaUploadMedia(post.id, "audios", post.audio, "audio");
+          mediaType = "audio";
+          console.log("✅ [PUBLISH] Audio uploadé:", mediaUrl?.substring(0, 50));
+        } catch (e) {
+          console.error("❌ [PUBLISH] Upload audio échoué:", e);
+          throw new Error(`Upload audio échoué: ${e.message}`);
+        }
       }
 
-      // ✅ Vidéo: sauvegarder directement en base64
-      if (post.video && post.video.startsWith("data:")) {
-        diagLog(`📹 Vidéo détectée - sauvegarde base64`);
-        videoUrl = post.video;
-        diagLog(`✅ Vidéo base64 prête: ${post.video.substring(0, 50)}...`);
-      }
-
-      // ✅ Audio: sauvegarder directement en base64
-      if (post.audio && post.audio.startsWith("data:")) {
-        diagLog(`🎙️ Audio détecté - sauvegarde base64`);
-        audioUrl = post.audio;
-        diagLog(`✅ Audio base64 prêt: ${post.audio.substring(0, 50)}...`);
-      }
-
-      // ✅ Diagnostic: vérifier les URLs uploadées
-      diagLog(`📊 DIAGNOSTIC UPLOAD:`);
-      diagLog(`  - Type: ${post.type}`);
-      diagLog(`  - Photo: ${mediaUrl ? "✅" : "❌"}`);
-      diagLog(`  - Vidéo: ${videoUrl ? "✅" : "❌"}`);
-      diagLog(`  - Audio: ${audioUrl ? "✅" : "❌"}`);
-      diagLog(`  - URL finale: ${mediaUrl || videoUrl || audioUrl ? (mediaUrl || videoUrl || audioUrl).substring(0, 60) + "..." : "AUCUNE"}`);
-
-      // Insérer le post - colonnes de base qui EXISTENT en Supabase
+      // STEP 3: Créer le post dans Supabase avec l'URL distante
+      console.log("📝 [PUBLISH] Étape 3: Création post Supabase");
       const postData = {
         id: post.id,
         author_id: MY_UID,
         passion_id: post.passion || null,
         mood: post.mood || "all",
         content: post.text || "",
-        media_url: mediaUrl || videoUrl || audioUrl,  // ✅ Utiliser la première URL disponible
+        media_url: mediaUrl,  // ✅ URL DISTANTE, pas base64!
+        post_type: mediaType,
         created_at: new Date(post.createdAt).toISOString(),
       };
-      // ⚠️ NOTE: post_type n'existe pas comme colonne, on utilise media_url pour détecter le type
-      // Videos/Audios ont media_url remplie, photos aussi
-      // On détecte le type en regardant l'extension du fichier dans media_url
 
-      diagLog(`📤 Envoi post à Supabase (async)...`);
-      diagLog(`📋 postData: ${JSON.stringify(postData)}`);
+      console.log("📤 [PUBLISH] Envoi post à Supabase:", postData);
+      const { data, error } = await supa.from("posts").insert([postData]).select();
 
-      // ⚡ ENVOYER L'INSERT EN BACKGROUND SANS ATTENDRE
-      // (Les requêtes Supabase bloquent, donc on ne bloque pas)
-      supa.from("posts").insert(postData).select().then(({ data, error }) => {
-        if (error) {
-          console.error("❌ [Sync BG] Erreur INSERT:", error);
-          diagLog(`❌ [BG] INSERT ÉCHOUÉ: ${error.message}`);
-        } else {
-          console.log("✅ [Sync BG] Post inséré:", data);
-          diagLog(`✅ [BG] Post inséré: ${data?.[0]?.id || "?"}`);
-        }
-      }).catch(e => {
-        console.error("❌ [Sync BG] Exception:", e);
-        diagLog(`❌ [BG] EXCEPTION: ${e.message}`);
-      });
-
-      // ✅ RETOURNER SUCCÈS IMMÉDIATEMENT (sans attendre Supabase)
-      diagLog(`✅ Publication confirmée localement (sync en BG)`);
-      console.log(`[Sync] ✅ Post marqué comme publié localement`);
-
-      // 🎯 FEEDBACK UTILISATEUR - Toast de succès
-      toast("✅ Post publié! Visible maintenant.", "success");
-
-      return true; // Succès!
-
-    } catch (e) {
-      console.warn(`[Sync ${attempt}] Erreur:`, e.message);
-
-      // Dernier essai échoué
-      if (attempt === maxRetries) {
-        console.error("[Sync] Impossible de synchroniser après", maxRetries, "essais");
-
-        // 🎯 FEEDBACK UTILISATEUR - Toast d'erreur final
-        const errorMsg = e.message || "Erreur inconnue";
-        if (errorMsg.includes("413")) {
-          toast("❌ Fichier trop gros. Compresse-le et réessaie.", "error");
-        } else if (errorMsg.includes("timeout") || errorMsg.includes("Failed to fetch")) {
-          toast("⏱️ Connexion lente. Vérifiez votre réseau.", "error");
-        } else {
-          toast("❌ Publication échouée. Réessaie plus tard.", "error");
-        }
-
-        return false;
+      if (error) {
+        console.error("❌ [PUBLISH] Erreur Supabase:", error);
+        throw new Error(`Erreur Supabase: ${error.message}`);
       }
 
-      // Attendre avant le prochain essai (backoff exponentiel)
+      console.log("✅ [PUBLISH] Post créé dans Supabase:", data);
+      diagLog(`✅ Post publié avec succès: ${data?.[0]?.id || post.id}`);
+
+      // STEP 4: Confirmation et rafraîchissement du feed
+      toast("✅ Post publié!", "success");
+
+      // Rafraîchir le feed immédiatement après publication
+      console.log("🔄 [PUBLISH] Étape 4: Refresh du feed");
+      setTimeout(async () => {
+        try {
+          const newPosts = await supaLoadPosts();
+          state.supabasePosts = newPosts;
+          console.log("✅ [PUBLISH] Feed rafraîchi:", newPosts.length, "posts");
+          renderFeed();
+        } catch (e) {
+          console.warn("⚠️ [PUBLISH] Refresh feed échoué:", e);
+        }
+      }, 500);
+
+      return true;  // ✅ SUCCÈS CONFIRMÉ
+
+    } catch (e) {
+      console.warn(`❌ [PUBLISH ${attempt}/${maxRetries}] Erreur:`, e.message);
+      diagLog(`❌ Tentative ${attempt} échouée: ${e.message}`);
+
+      if (attempt === maxRetries) {
+        console.error("❌ [PUBLISH] ÉCHEC FINAL après", maxRetries, "tentatives");
+
+        // Afficher message d'erreur spécifique
+        const errorMsg = e.message || "Erreur inconnue";
+        if (errorMsg.includes("413")) {
+          toast("❌ Fichier trop gros (>500KB). Compresse-le.", "error");
+        } else if (errorMsg.includes("Upload")) {
+          toast("❌ Upload média échoué. Vérifiez la connexion.", "error");
+        } else if (errorMsg.includes("timeout") || errorMsg.includes("Failed to fetch")) {
+          toast("⏱️ Connexion lente. Réessayez.", "error");
+        } else {
+          toast(`❌ Publication échouée: ${errorMsg.substring(0, 50)}`, "error");
+        }
+
+        return false;  // ❌ ÉCHEC CONFIRMÉ
+      }
+
+      // Attendre avant nouvelle tentative (backoff exponentiel)
       const delay = Math.pow(2, attempt) * 1000;
-      console.log(`[Sync] Nouvelle tentative dans ${delay}ms...`);
+      console.log(`⏳ [PUBLISH] Nouvelle tentative dans ${delay}ms...`);
       await new Promise(resolve => setTimeout(resolve, delay));
     }
   }
 
   return false;
+}
+
+// Fonction d'upload média vers Supabase Storage
+async function supaUploadMedia(postId, folder, base64Data, mediaType) {
+  console.log(`📤 [UPLOAD] Début upload ${folder}/${postId}`);
+
+  if (!base64Data || !base64Data.startsWith("data:")) {
+    throw new Error("Format base64 invalide");
+  }
+
+  try {
+    // Convertir base64 en Blob
+    const parts = base64Data.split(",");
+    const bstr = atob(parts[1]);
+    const n = bstr.length;
+    const u8arr = new Uint8Array(n);
+    for (let i = 0; i < n; i++) {
+      u8arr[i] = bstr.charCodeAt(i);
+    }
+    const blob = new Blob([u8arr], { type: parts[0].split(":")[1].split(";")[0] });
+
+    console.log(`📊 [UPLOAD] Blob créé:`, blob.size, "bytes");
+
+    // Générer nom de fichier
+    const ext = mediaType === "video" ? ".mp4" : mediaType === "audio" ? ".mp3" : ".jpg";
+    const fileName = `${postId}${ext}`;
+    const filePath = `${folder}/${MY_UID}/${fileName}`;
+
+    console.log(`📁 [UPLOAD] Chemin: ${filePath}`);
+
+    // Uploader vers Supabase Storage
+    const { data, error } = await supa.storage.from("content").upload(filePath, blob, {
+      cacheControl: "3600",
+      upsert: true,
+    });
+
+    if (error) {
+      console.error("❌ [UPLOAD] Erreur Storage:", error);
+      throw error;
+    }
+
+    console.log("✅ [UPLOAD] Fichier uploadé:", data);
+
+    // Récupérer l'URL publique
+    const { data: publicUrl } = supa.storage.from("content").getPublicUrl(filePath);
+    console.log("🔗 [UPLOAD] URL publique:", publicUrl?.publicUrl?.substring(0, 60));
+
+    return publicUrl?.publicUrl;
+
+  } catch (e) {
+    console.error("❌ [UPLOAD] Exception:", e);
+    throw new Error(`Upload ${mediaType} échoué: ${e.message}`);
+  }
 }
 
 // Version legacy (fallback)
