@@ -20563,25 +20563,28 @@ async function supaPublishPostWithRetry(post, maxRetries = 3) {
       let videoUrl = null;
       let audioUrl = null;
 
-      // ✅ Photo: sauvegarder directement en base64
-      diagLog(`📸 Photo détectée - sauvegarde directe en base64`);
+      // ✅ Photo: upload en Supabase Storage
       if (post.image && post.image.startsWith("data:")) {
-        mediaUrl = post.image;  // Utiliser la data URL directement!
-        diagLog(`✅ Photo base64 prête: ${post.image.substring(0, 50)}...`);
+        diagLog(`📸 Photo détectée - upload en Supabase Storage...`);
+        mediaUrl = await supaUploadMedia(post.image, "photos", post.id + "_photo");
+        if (mediaUrl) diagLog(`✅ Photo uploadée: ${mediaUrl.substring(0, 60)}...`);
+        else diagLog(`⚠️ Fallback photo base64`), mediaUrl = post.image;
       }
 
-      // ✅ Vidéo: sauvegarder directement en base64 (pas d'upload Supabase Storage)
-      diagLog(`📹 Vidéo détectée - sauvegarde directe en base64`);
+      // ✅ Vidéo: upload en Supabase Storage
       if (post.video && post.video.startsWith("data:")) {
-        videoUrl = post.video;  // Utiliser la data URL directement!
-        diagLog(`✅ Vidéo base64 prête: ${post.video.substring(0, 50)}...`);
+        diagLog(`📹 Vidéo détectée - upload en Supabase Storage...`);
+        videoUrl = await supaUploadMedia(post.video, "videos", post.id + "_video");
+        if (videoUrl) diagLog(`✅ Vidéo uploadée: ${videoUrl.substring(0, 60)}...`);
+        else diagLog(`⚠️ Fallback vidéo base64`), videoUrl = post.video;
       }
 
-      // ✅ Audio: sauvegarder directement en base64
-      diagLog(`🎙️ Audio détecté - sauvegarde directe en base64`);
+      // ✅ Audio: upload en Supabase Storage
       if (post.audio && post.audio.startsWith("data:")) {
-        audioUrl = post.audio;  // Utiliser la data URL directement!
-        diagLog(`✅ Audio base64 prêt: ${post.audio.substring(0, 50)}...`);
+        diagLog(`🎙️ Audio détecté - upload en Supabase Storage...`);
+        audioUrl = await supaUploadMedia(post.audio, "audios", post.id + "_audio");
+        if (audioUrl) diagLog(`✅ Audio uploadé: ${audioUrl.substring(0, 60)}...`);
+        else diagLog(`⚠️ Fallback audio base64`), audioUrl = post.audio;
       }
 
       // ✅ Diagnostic: vérifier les URLs uploadées
