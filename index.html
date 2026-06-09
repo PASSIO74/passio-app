@@ -23696,19 +23696,24 @@ function openUserProfile(userId) {
   }
 }
 
-// ⚡ INITIALISATION PRINCIPALE - Lancer l'app au démarrage
+// ⚡ INITIALISATION PRINCIPALE - Attendre boot() puis lancer initApp()
 console.log("🚀 Démarrage PASSIO...");
 setTimeout(function() {
-  if (typeof initApp === "function") {
-    console.log("📱 Appel initApp()");
-    try {
-      initApp();
-    } catch(err) {
-      console.error("❌ ERREUR initApp:", err);
+  // ✅ IMPORTANT: boot() doit s'être exécutée pour charger MY_UID depuis Supabase
+  // boot() est appelée à la fin du fichier, donc attendre 500ms pour qu'elle finisse
+  setTimeout(function() {
+    console.log("📱 MY_UID=" + (window.MY_UID || 'undefined'));
+    if (typeof initApp === "function") {
+      console.log("📱 Appel initApp()");
+      try {
+        initApp();
+      } catch(err) {
+        console.error("❌ ERREUR initApp:", err);
+      }
+    } else {
+      console.error("❌ initApp() n'existe pas!");
     }
-  } else {
-    console.error("❌ initApp() n'existe pas!");
-  }
+  }, 500);
 }, 100);
 
 // 🔧 DIAGNOSTIC PANEL VISIBLE - AFFICHER DIRECTEMENT
