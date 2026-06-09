@@ -20683,12 +20683,36 @@ async function supaLoadPosts() {
         authorEmoji: r.profiles?.emoji || "✨",  // ✅ Utiliser l'emoji depuis profiles
         authorColor: r.profiles?.color || "#8b5cf6",  // ✅ Utiliser la couleur depuis profiles
         passion: r.passion_id || "autre", mood: r.mood || "all",
-        type: r.post_type || (r.media_url ? "photo" : "text"),  // ✅ Utiliser post_type si disponible, sinon détecter par media_url
+        // ✅ Détecter le type basé sur l'extension du fichier dans media_url
+        type: (() => {
+          if (!r.media_url) return "text";
+          const url = r.media_url.toLowerCase();
+          if (url.includes(".mp4") || url.includes("videos/")) return "video";
+          if (url.includes(".mp3") || url.includes(".wav") || url.includes("audios/")) return "audio";
+          if (url.includes(".jpg") || url.includes(".png") || url.includes("photos/")) return "photo";
+          return r.post_type || "photo";  // Fallback
+        })(),
         text: r.content || "",
-        // ✅ Charger media_url dans la bonne variable selon le type
-        image: (r.post_type === "photo" || !r.post_type) && r.media_url ? r.media_url : null,
-        video: r.post_type === "video" && r.media_url ? r.media_url : null,
-        audio: r.post_type === "audio" && r.media_url ? r.media_url : null,
+        // ✅ Charger media_url dans la bonne variable selon le type détecté
+        image: (() => {
+          if (!r.media_url) return null;
+          const url = r.media_url.toLowerCase();
+          if (url.includes(".mp4") || url.includes("videos/")) return null;
+          if (url.includes(".mp3") || url.includes(".wav") || url.includes("audios/")) return null;
+          return r.media_url;
+        })(),
+        video: (() => {
+          if (!r.media_url) return null;
+          const url = r.media_url.toLowerCase();
+          if (url.includes(".mp4") || url.includes("videos/")) return r.media_url;
+          return null;
+        })(),
+        audio: (() => {
+          if (!r.media_url) return null;
+          const url = r.media_url.toLowerCase();
+          if (url.includes(".mp3") || url.includes(".wav") || url.includes("audios/")) return r.media_url;
+          return null;
+        })(),
         createdAt: new Date(r.created_at + "Z").getTime(),  // ✅ Ajouter Z pour indiquer que c'est UTC!
         likes: postLikes.length,
         liked: postLikes.some(l => l.user_id === MY_UID),
