@@ -20394,6 +20394,41 @@ window.addEventListener("load", () => {
 });
 
 // ---- POSTS ----
+// ===== UPLOAD PHOTO À SUPABASE STORAGE =====
+async function supaUploadPhoto(dataUrl, postId) {
+  try {
+    if (!dataUrl || !dataUrl.startsWith("data:")) return null;
+
+    // Convertir data:// base64 en Blob
+    const parts = dataUrl.split(';base64,');
+    const bstr = atob(parts[1]);
+    const n = bstr.length;
+    const u8arr = new Uint8Array(n);
+    for (let i = 0; i < n; i++) {
+      u8arr[i] = bstr.charCodeAt(i);
+    }
+    const blob = new Blob([u8arr], { type: "image/jpeg" });
+
+    // Upload à Supabase Storage
+    const fileName = `posts/${MY_UID}/${postId}.jpg`;
+    const { data, error } = await supa.storage
+      .from("media")
+      .upload(fileName, blob, { upsert: true });
+
+    if (error) {
+      console.warn("Upload erreur:", error);
+      return null;
+    }
+
+    // Retourner l'URL publique
+    const publicUrl = supa.storage.from("media").getPublicUrl(fileName).data.publicUrl;
+    return publicUrl;
+  } catch (e) {
+    console.warn("Upload exception:", e);
+    return null;
+  }
+}
+
 // ===== PUBLICATION AVEC RETRY AUTOMATIQUE =====
 async function supaPublishPostWithRetry(post, maxRetries = 3) {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
