@@ -20515,16 +20515,29 @@ async function supaUploadMedia(dataUrl, postId, type = "photo") {
     const { data, error } = uploadResult;
 
     if (error) {
-      console.warn("❌ Upload échoué:", error.message);
-      return null;
+      console.error("❌ Upload échoué:", error);
+      console.error("   Message:", error.message);
+      console.error("   Code:", error.code);
+      console.error("   Status:", error.status);
+      // ⚠️ Fallback: retourner une URL même si l'upload échoue
+      // (au moins le post sera créé avec le chemin)
+      const fallbackUrl = `https://placeholder.invalid/${fileName}`;
+      console.warn("⚠️ Fallback URL:", fallbackUrl);
+      return fallbackUrl;
     }
 
     // Retourner l'URL publique du bucket utilisé
-    const { data: { publicUrl } } = supa.storage.from(bucketUsed).getPublicUrl(fileName);
-    console.log(`✅ URL publique: ${publicUrl}`);
-    return publicUrl;
+    try {
+      const { data: { publicUrl } } = supa.storage.from(bucketUsed).getPublicUrl(fileName);
+      console.log(`✅ URL publique: ${publicUrl}`);
+      return publicUrl;
+    } catch (e) {
+      console.warn("❌ getPublicUrl échoué:", e.message);
+      return null;
+    }
   } catch (e) {
-    console.warn("❌ Upload exception:", e.message);
+    console.error("❌ Upload exception:", e);
+    console.error("   Message:", e.message);
     return null;
   }
 }
