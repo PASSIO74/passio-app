@@ -21045,7 +21045,13 @@ async function supaLoadPosts() {
   try {
     // diagLog("📥 Chargement posts depuis Supabase..."); // LOG LOURD DÉSACTIVÉ
     // console.log("[SYNC] Chargement des posts depuis Supabase..."); // LOG LOURD DÉSACTIVÉ
-    const { data, error } = await supa.from("posts").select("*, profiles!author_id(username,emoji,color)").order("created_at", { ascending: false }).limit(60);
+    // ✅ FIX: sélection explicite des champs + exclusion des media_url base64
+    // Les images base64 stockées en DB causent des timeouts (~36MB de données)
+    const { data, error } = await supa.from("posts")
+      .select("id, author_id, passion_id, mood, content, media_url, created_at, shared_from_post_id, shared_data, profiles!author_id(username,emoji,color)")
+      .or("media_url.is.null,media_url.not.like.data:*")
+      .order("created_at", { ascending: false })
+      .limit(60);
     if (error) {
       diagLog(`❌ Erreur chargement: ${error.message}`);
       console.error("[SYNC] Erreur requête posts:", error);
