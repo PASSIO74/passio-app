@@ -23811,9 +23811,10 @@ localStorage passio_uid: ${localStorage.getItem('passio_uid') || '❌ undefined'
 
     var htmlContent = textContent.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br/>');
     diagPanel.innerHTML = `
-      <div style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;">
+      <div style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:4px;flex-wrap:wrap;">
         <b style="flex:1;">🔧 DIAGNOSTIC</b>
-        <button id="diag-copy" style="padding:2px 6px;font-size:10px;cursor:pointer;background:#ec4899;color:white;border:none;border-radius:3px;margin-right:4px;">📋 COPY</button>
+        <button id="diag-refresh" style="padding:2px 6px;font-size:10px;cursor:pointer;background:#10b981;color:white;border:none;border-radius:3px;">🔄 REFRESH</button>
+        <button id="diag-copy" style="padding:2px 6px;font-size:10px;cursor:pointer;background:#ec4899;color:white;border:none;border-radius:3px;">📋 COPY</button>
         <button id="diag-close" style="padding:2px 6px;font-size:10px;cursor:pointer;background:#666;color:white;border:none;border-radius:3px;">✕</button>
       </div>
       <pre style="margin:0;white-space:pre-wrap;word-wrap:break-word;background:#f5f5f5;padding:8px;border-radius:4px;font-size:10px;">${htmlContent}</pre>
