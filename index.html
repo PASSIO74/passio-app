@@ -10093,6 +10093,10 @@ function renderFeedCdvLives() {
 }
 
 function renderFeed() {
+  // 🎯 Masquer le skeleton loader au démarrage
+  const skeleton = $("#feedSkeleton");
+  if (skeleton) skeleton.style.display = "none";
+
   const list = $("#feedList");
   const mood = state.currentMood || "all";
 
