@@ -20894,6 +20894,10 @@ async function supaUploadMedia(dataUrl, postId, type = "photo") {
 async function supaPublishPostWithRetry(post, maxRetries = 2) {
   console.log("🚀 [PUBLISH] supaPublishPostWithRetry() DÉBUT - Post ID:", post.id);
 
+  // ✅ S'assurer que le profil existe en DB avant de publier
+  // Sinon le JOIN profiles!author_id retourne null → pas de nom d'auteur pour les autres
+  try { await supaUpsertProfile(); } catch(e) { console.warn("⚠️ [PUBLISH] upsertProfile échoué:", e.message); }
+
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       console.log(`🔄 [PUBLISH ${attempt}/${maxRetries}] Tentative...`);
