@@ -20397,10 +20397,19 @@ window.addEventListener("load", () => {
 // ===== UPLOAD PHOTO À SUPABASE STORAGE =====
 async function supaUploadPhoto(dataUrl, postId) {
   try {
-    if (!dataUrl || !dataUrl.startsWith("data:")) return null;
+    if (!dataUrl || !dataUrl.startsWith("data:")) {
+      console.warn("❌ DataUrl invalide");
+      return null;
+    }
 
+    console.log("📸 Conversion data URL en Blob...");
     // Convertir data:// base64 en Blob
     const parts = dataUrl.split(';base64,');
+    if (parts.length < 2) {
+      console.warn("❌ Format data URL incorrect");
+      return null;
+    }
+
     const bstr = atob(parts[1]);
     const n = bstr.length;
     const u8arr = new Uint8Array(n);
@@ -20408,23 +20417,27 @@ async function supaUploadPhoto(dataUrl, postId) {
       u8arr[i] = bstr.charCodeAt(i);
     }
     const blob = new Blob([u8arr], { type: "image/jpeg" });
+    console.log(`✅ Blob créé: ${blob.size} bytes`);
 
     // Upload à Supabase Storage
     const fileName = `posts/${MY_UID}/${postId}.jpg`;
+    console.log(`📤 Upload vers: ${fileName}`);
+
     const { data, error } = await supa.storage
       .from("media")
       .upload(fileName, blob, { upsert: true });
 
     if (error) {
-      console.warn("Upload erreur:", error);
+      console.warn("❌ Upload erreur:", error.message);
       return null;
     }
 
     // Retourner l'URL publique
-    const publicUrl = supa.storage.from("media").getPublicUrl(fileName).data.publicUrl;
+    const { data: { publicUrl } } = supa.storage.from("media").getPublicUrl(fileName);
+    console.log(`✅ URL publique: ${publicUrl}`);
     return publicUrl;
   } catch (e) {
-    console.warn("Upload exception:", e);
+    console.warn("❌ Upload exception:", e.message);
     return null;
   }
 }
