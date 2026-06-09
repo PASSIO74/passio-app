@@ -20717,6 +20717,17 @@ async function supaLoadPosts() {
         diagLog(`  - profiles?.emoji: "${r.profiles?.emoji}"`);
         diagLog(`  → Affichera: "${r.profiles?.username || "Passionné"}"`);
         diagLog(`🎯 Passion filtrée actuelle: ${_activeFeedPassions.size > 0 ? Array.from(_activeFeedPassions).join(",") : "AUCUNE"}`);
+
+        // ✅ DIAGNOSTIC VIDÉO
+        diagLog(`📹 DIAGNOSTIC MEDIA:`);
+        diagLog(`  - media_url défini? ${r.media_url ? "✅" : "❌"}`);
+        if (r.media_url) {
+          diagLog(`  - media_url: ${r.media_url.substring(0, 80)}...`);
+          diagLog(`  - Contient .mp4? ${r.media_url.includes(".mp4") ? "✅" : "❌"}`);
+          diagLog(`  - Contient videos/? ${r.media_url.includes("videos/") ? "✅" : "❌"}`);
+          diagLog(`  - Contient .jpg/.png? ${r.media_url.includes(".jpg") || r.media_url.includes(".png") ? "✅" : "❌"}`);
+          diagLog(`  - Contient photos/? ${r.media_url.includes("photos/") ? "✅" : "❌"}`);
+        }
       }
 
       return {
