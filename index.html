@@ -17365,10 +17365,11 @@ function deleteDraft(id) {
 function renderExplorer() {
   // Stories (déplacées du Fil vers Explorer)
   if (typeof renderStories === "function") renderStories();
-  // Trending (top 6 passions by post count in seed + user)
+
+  // Trending : inclut seed + userPosts + supabasePosts (vrais posts réseau)
   const counts = {};
-  [...state.seed.posts, ...state.userPosts].forEach(p => {
-    counts[p.passion] = (counts[p.passion] || 0) + 1;
+  [...state.seed.posts, ...state.userPosts, ...(state.supabasePosts || [])].forEach(p => {
+    if (p.passion) counts[p.passion] = (counts[p.passion] || 0) + 1;
   });
   const ranked = PASSIONS.map(p => ({ ...p, count: counts[p.id] || 0 }))
     .sort((a, b) => b.count - a.count).slice(0, 6);
@@ -17398,10 +17399,8 @@ function renderExplorer() {
     </div>
   `).join("") + createCta;
 
-  // (Section Carnets retirée d'Explorer, désormais dans l'onglet CDV dédié)
-
-  // Suggested creators
-  $("#suggestedCreators").innerHTML = state.seed.users.slice(0, 8).map(u => {
+  // Suggested creators : seed en premier, puis vrais utilisateurs Supabase chargés async
+  const seedHtml = state.seed.users.slice(0, 4).map(u => {
     const p = passionById(u.passion);
     return `<div class="list-row" onclick="openUserProfile('${u.id}')">
       <div class="avatar" style="background:${u.avatar};">${u.profileEmoji || u.name[0]}</div>
@@ -17412,8 +17411,68 @@ function renderExplorer() {
       <button class="btn small" onclick="event.stopPropagation();toast('+ ${escapeHtml(u.name)} suivi·e')">Suivre</button>
     </div>`;
   }).join("");
+  $("#suggestedCreators").innerHTML = seedHtml;
+
+  // Charger les vrais profils Supabase en async et les ajouter
+  if (typeof supa !== "undefined" && supa) {
+    supa.from("profiles")
+      .select("id, username, emoji, color, passion_id, bio")
+      .not("username", "is", null)
+      .limit(12)
+      .then(({ data, error }) => {
+        if (error || !data || !data.length) return;
+        const el = document.getElementById("suggestedCreators");
+        if (!el) return;
+        // Exclure mon propre profil
+        const others = data.filter(u => u.id !== MY_UID && u.username);
+        if (!others.length) return;
+        const supaHtml = others.map(u => {
+          const p = passionById(u.passion_id) || { emoji: "✨", label: u.passion_id || "" };
+          const name = escapeHtml(u.username || "Passionné");
+          const bio = escapeHtml(u.bio || "");
+          const avatarColor = u.color || "#8b5cf6";
+          const emoji = u.emoji || "✨";
+          return `<div class="list-row" onclick="openUserProfile('${u.id}')">
+            <div class="avatar" style="background:${avatarColor};">${emoji}</div>
+            <div class="list-row-body">
+              <div class="list-row-title">${name}</div>
+              <div class="list-row-meta">${p.emoji} ${p.label}${bio ? " · " + bio.slice(0, 40) : ""}</div>
+            </div>
+            <button class="btn small" onclick="event.stopPropagation();followUserFromExplorer('${u.id}','${name}')">Suivre</button>
+          </div>`;
+        }).join("");
+        // Remplacer la section avec seed (4) + vrais users (jusqu'à 8)
+        const seedSlice = state.seed.users.slice(0, 4).map(u => {
+          const p = passionById(u.passion);
+          return `<div class="list-row" onclick="openUserProfile('${u.id}')">
+            <div class="avatar" style="background:${u.avatar};">${u.profileEmoji || u.name[0]}</div>
+            <div class="list-row-body">
+              <div class="list-row-title">${escapeHtml(u.name)}</div>
+              <div class="list-row-meta">${p.emoji} ${p.label} · ${escapeHtml(u.bio || "")}</div>
+            </div>
+            <button class="btn small" onclick="event.stopPropagation();toast('+ ${escapeHtml(u.name)} suivi·e')">Suivre</button>
+          </div>`;
+        }).join("");
+        el.innerHTML = supaHtml + seedSlice;
+      })
+      .catch(() => {});
+  }
 
   // La recherche est gérée par filterExplore() (oninput sur l'input HTML)
+}
+
+function followUserFromExplorer(userId, userName) {
+  if (!state.user.following) state.user.following = [];
+  if (state.user.following.includes(userId)) {
+    toast("Tu suis déjà " + userName);
+    return;
+  }
+  state.user.following.push(userId);
+  saveState();
+  toast("✅ " + userName + " suivi·e !");
+  if (typeof supa !== "undefined" && supa && MY_UID) {
+    supa.from("follows").insert({ follower_id: MY_UID, following_id: userId }).catch(() => {});
+  }
 }
 
 function openCreateCustomPassionFromExplorer() {
