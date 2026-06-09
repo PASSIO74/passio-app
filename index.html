@@ -20362,7 +20362,7 @@ window.addEventListener("load", () => {
         diagLog(`  ${i+1}. name="${p.name}" id="${p.id}"`);
       });
     }
-    showDiag();
+    hideDiag();  // ✅ Diagnostic fermé par défaut
   }, 500);
 });
 
