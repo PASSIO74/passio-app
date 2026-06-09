@@ -15827,6 +15827,27 @@ async function shareReelInFeed(postId) {
   }, 100);
 
   toast("✅ Bobine partagée dans ton feed!");
+
+  // 🔄 SYNC with Supabase (shared posts must be persisted!)
+  if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
+    try {
+      const timeoutPromise = new Promise((resolve) =>
+        setTimeout(() => {
+          console.warn("⏱️ [SHARE] Timeout sync (3s)");
+          resolve(false);
+        }, 3000)
+      );
+      const syncPromise = supaPublishPostWithRetry(newPost);
+      const syncSuccess = await Promise.race([syncPromise, timeoutPromise]);
+      if (syncSuccess) {
+        console.log("✅ [SHARE] Shared post synced to Supabase");
+      } else {
+        console.warn("⚠️ [SHARE] Shared post sync timeout - local only");
+      }
+    } catch (e) {
+      console.warn("⚠️ [SHARE] Sync error:", e.message);
+    }
+  }
 }
 
 function copyReelLink(postId, encodedUrl) {
