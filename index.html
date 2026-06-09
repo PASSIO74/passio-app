@@ -16749,8 +16749,8 @@ $("#videoInput").addEventListener("change", (e) => {
     return;
   }
 
-  // ✅ LIMITE VIDÉO: 500 KB max (base64 serait 667 KB - manageable)
-  const maxSize = 500 * 1024;  // 500 KB = ~667 KB base64
+  // ✅ LIMITE VIDÉO: 200 KB max (base64 serait 267 KB - léger pour Supabase)
+  const maxSize = 200 * 1024;  // 200 KB = ~267 KB base64
   if (f.size > maxSize) {
     const sizeMB = Math.round(f.size / 1024 / 1024);
     toast(`Vidéo > 1 Mo (${sizeMB} Mo). Compresse-la avec: ffmpeg ou Claquette!`);
