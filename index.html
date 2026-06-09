@@ -23734,31 +23734,50 @@ setTimeout(function() {
   `;
 
   function updateDiag() {
-    var content = `
-<b>🔧 DIAGNOSTIC PASSIO</b><br/>
-<br/>
-<b>UTILISATEUR:</b><br/>
-MY_UID: ${window.MY_UID || '❌ undefined'}<br/>
-Profil: ${(state?.user?.currentProfileId || '?').substring(0,8)}...<br/>
-<br/>
-<b>POSTS:</b><br/>
-state.seed.posts: ${(state?.seed?.posts?.length || 0)} posts<br/>
-state.userPosts: ${(state?.userPosts?.length || 0)} posts<br/>
-<br/>
-<b>DERNIER POST:</b><br/>
+    var textContent = `
+🔧 DIAGNOSTIC PASSIO
+
+UTILISATEUR:
+MY_UID: ${window.MY_UID || '❌ undefined'}
+Profil: ${(state?.user?.currentProfileId || '?').substring(0,8)}...
+
+POSTS:
+state.seed.posts: ${(state?.seed?.posts?.length || 0)} posts
+state.userPosts: ${(state?.userPosts?.length || 0)} posts
+
+DERNIER POST:
 ${state?.seed?.posts?.[0] ? `
-ID: ${state.seed.posts[0].id.substring(0,8)}...<br/>
-Auteur: ${state.seed.posts[0].authorName || state.seed.posts[0].author || '?'}<br/>
-Type: ${state.seed.posts[0].type || '?'}<br/>
-Texte: ${(state.seed.posts[0].text || '').substring(0,30)}...<br/>
+ID: ${state.seed.posts[0].id.substring(0,8)}...
+Auteur: ${state.seed.posts[0].authorName || state.seed.posts[0].author || '?'}
+Type: ${state.seed.posts[0].type || '?'}
+Texte: ${(state.seed.posts[0].text || '').substring(0,30)}...
 Time: ${new Date(state.seed.posts[0].createdAt).toLocaleTimeString('fr-FR')}
-` : 'Aucun post'}<br/>
-<br/>
-<b>CONNEXION:</b><br/>
-Supa: ${typeof supa !== 'undefined' ? '✅' : '❌'}<br/>
+` : 'Aucun post'}
+
+CONNEXION:
+Supa: ${typeof supa !== 'undefined' ? '✅' : '❌'}
 Online: ${navigator.onLine ? '✅' : '❌'}
     `;
-    diagPanel.innerHTML = content;
+
+    var htmlContent = textContent.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br/>');
+    diagPanel.innerHTML = `
+      <div style="margin-bottom:8px;">
+        <b>🔧 DIAGNOSTIC PASSIO</b>
+        <button id="diag-copy" style="float:right;padding:2px 6px;font-size:10px;cursor:pointer;background:#ec4899;color:white;border:none;border-radius:3px;">📋 COPY</button>
+      </div>
+      <pre style="margin:0;white-space:pre-wrap;word-wrap:break-word;background:#f5f5f5;padding:8px;border-radius:4px;font-size:10px;">${htmlContent}</pre>
+    `;
+
+    var copyBtn = document.getElementById("diag-copy");
+    if (copyBtn) {
+      copyBtn.onclick = function(e) {
+        e.stopPropagation();
+        navigator.clipboard.writeText(textContent).then(function() {
+          copyBtn.textContent = "✅ COPIÉ!";
+          setTimeout(function() { copyBtn.textContent = "📋 COPY"; }, 2000);
+        });
+      };
+    }
   }
 
   document.body.appendChild(diagPanel);
