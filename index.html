@@ -20515,7 +20515,7 @@ async function supaUpsertProfile() {
 
     const profileData = {
       id: MY_UID,
-      username: g.username || prof.name || state.user.name || "Utilisateur",  // ✅ JAMAIS "Passionné"!
+      username: g.username || prof.name || state.user.name || "Profil",  // ✅ Toujours afficher le vrai nom du profil!
       emoji: prof.emoji || "✨",
       color: prof.color || "#8b5cf6",
       passion_id: prof.passion || null,
