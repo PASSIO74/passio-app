@@ -16947,13 +16947,35 @@ function clearAudio() {
 }
 
 async function publishPost() {
+  console.log("🚀 [PUBLISH] publishPost() APPELÉE!");
+  diagLog(`🚀 [PUBLISH] Début publishPost()`);
+
   const text = $("#postText").value.trim();
   const passion = $("#postPassion").value;
 
-  if (studioType === "text" && text.length < 3) { toast("Écris quelque chose."); return; }
-  if (studioType === "photo" && !photoDataUrl) { toast("Ajoute une photo."); return; }
-  if (studioType === "video" && !videoDataUrl) { toast("Ajoute une vidéo."); return; }
-  if (studioType === "audio" && !audioDataUrl) { toast("Enregistre un audio."); return; }
+  console.log("🔍 [PUBLISH] Validation: type=" + studioType + ", text=" + text.substring(0,20));
+  diagLog(`🔍 [PUBLISH] Type: ${studioType}, Passion: ${passion}`);
+
+  if (studioType === "text" && text.length < 3) {
+    console.warn("❌ [PUBLISH] Text trop court");
+    toast("Écris quelque chose.");
+    return;
+  }
+  if (studioType === "photo" && !photoDataUrl) {
+    console.warn("❌ [PUBLISH] Pas de photo");
+    toast("Ajoute une photo.");
+    return;
+  }
+  if (studioType === "video" && !videoDataUrl) {
+    console.warn("❌ [PUBLISH] Pas de vidéo");
+    toast("Ajoute une vidéo.");
+    return;
+  }
+  if (studioType === "audio" && !audioDataUrl) {
+    console.warn("❌ [PUBLISH] Pas d'audio");
+    toast("Enregistre un audio.");
+    return;
+  }
 
   // Validation spéciale carnet de voyage
   if (studioType === "vlog") {
@@ -16963,8 +16985,9 @@ async function publishPost() {
   }
 
   // 📡 Afficher le statut de synchronisation
+  console.log("✅ [PUBLISH] Validation passée, démarrage publication");
   toast("⏳ Publication en cours...", "loading");
-  diagLog(`📝 Création post - Type: ${studioType}, Passion: ${passion}`);
+  diagLog(`📝 [PUBLISH] Validation OK - Création post`);
 
   // ✅ Afficher directement le nom du profil courant!
   const prof = currentProfile();
