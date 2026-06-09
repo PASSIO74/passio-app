@@ -23767,7 +23767,18 @@ window.showAdvancedDiagnostic = function() {
   }
   html += "<br/>";
 
-  html += "<b>3️⃣ CONCLUSION:</b><br/>";
+  html += "<b>3️⃣ LOGS DE DIAGNOSTIC:</b><br/>";
+  if (window._diagLogs && window._diagLogs.length > 0) {
+    html += "<b>Derniers logs:</b><br/>";
+    window._diagLogs.slice(-10).forEach(log => {
+      html += "• " + log + "<br/>";
+    });
+  } else {
+    html += "Aucun log pour l'instant<br/>";
+  }
+  html += "<br/>";
+
+  html += "<b>4️⃣ CONCLUSION:</b><br/>";
   var seedCount = (state.seed.posts || []).length;
   var userCount = (state.userPosts || []).length;
 
@@ -23775,16 +23786,18 @@ window.showAdvancedDiagnostic = function() {
     html += "❌ <b>PROBLÈME MAJEUR:</b> Aucun post en mémoire!<br/>";
     html += "→ Les posts ne sont pas chargés au démarrage";
   } else if (userCount > 0 && seedCount < 130) {
-    html += "⚠️ <b>PROBLÈME:</b> seed.posts (" + seedCount + ") < userPosts (" + userCount + ")<br/>";
-    html += "→ Tes posts ne sont pas visibles aux autres!<br/>";
-    html += "→ Probable: les posts ne sont PAS sauvegardés en Supabase";
+    html += "❌ <b>PROBLÈME CRITIQUE:</b> seed.posts (" + seedCount + ") < userPosts (" + userCount + ")<br/>";
+    html += "→ <b>Tes posts NE SONT PAS EN SUPABASE!</b><br/>";
+    html += "→ supaPublishPostWithRetry() échoue silencieusement<br/>";
+    html += "→ Vérifier les logs ci-dessus pour l'erreur";
   } else {
     html += "✅ <b>OK:</b> Posts en mémoire";
   }
   html += "<br/><br/>";
-  html += "<b>💡 PROCHAINE ÉTAPE:</b><br/>";
-  html += "Cliquer 🔄 REFRESH sur le diagnostic<br/>";
-  html += "Si rien ne change: problème de synchronisation Supabase";
+  html += "<b>💡 ACTION:</b><br/>";
+  html += "1. Clique 🔄 REFRESH<br/>";
+  html += "2. Regarde les logs de diagnostic<br/>";
+  html += "3. L'erreur Supabase apparaîtra ici";
 
   box.innerHTML = html + "<br/><button id='diag-close-modal' style='margin-top:10px;padding:8px 12px;background:#ec4899;color:white;border:none;border-radius:6px;cursor:pointer;width:100%;'>Fermer</button>";
 
