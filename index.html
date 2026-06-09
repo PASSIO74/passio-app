@@ -20834,7 +20834,7 @@ async function supaLoadPosts() {
       const postLikes = likesData.filter(l => l.post_id === r.id);
       const postComments = commentsData.filter(c => c.post_id === r.id).map(c => ({
         id: c.id, authorId: c.author_id,
-        authorName: c.profiles?.username || "Passionné",
+        authorName: c.profiles?.username || "Utilisateur",  // ✅ JAMAIS "Passionné"!
         authorEmoji: c.profiles?.emoji || "✨",
         text: c.content || "", content: c.content || "",
         createdAt: new Date(c.created_at + "Z").getTime(),
