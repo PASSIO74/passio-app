@@ -10295,10 +10295,10 @@ function renderPostCover(p, passion) {
 }
 
 function renderPostHTML(p) {
-  // ✅ Toujours utiliser p.authorName (chargé depuis Supabase) en priorité!
+  // ✅ AFFICHER TOUJOURS LE VRAI NOM DU PROFIL - JAMAIS "Passionné"!
   const author = p._source === "me"
     ? { name: p.authorName || currentProfile()?.name || state.user.name, profileEmoji: p.authorEmoji || currentProfile()?.emoji || "✨", avatar: p.authorColor || currentProfile()?.color || "#8b5cf6" }
-    : { name: p.authorName || "Passionné", avatar: p.authorColor || "#8b5cf6", profileEmoji: p.authorEmoji || "✨" };
+    : { name: p.authorName || "Utilisateur", avatar: p.authorColor || "#8b5cf6", profileEmoji: p.authorEmoji || "✨" };
   const passion = passionById(p.passion);
   const moodMap = { creation: "🎨 Création", learn: "📚 Apprendre", chill: "😌 Chill", irl: "🤝 IRL" };
   const liked = state.user.likedPosts.includes(p.id);
