@@ -23820,6 +23820,20 @@ localStorage passio_uid: ${localStorage.getItem('passio_uid') || '❌ undefined'
       <pre style="margin:0;white-space:pre-wrap;word-wrap:break-word;background:#f5f5f5;padding:8px;border-radius:4px;font-size:10px;">${htmlContent}</pre>
     `;
 
+    var refreshBtn = document.getElementById("diag-refresh");
+    if (refreshBtn) {
+      refreshBtn.onclick = function(e) {
+        e.stopPropagation();
+        refreshBtn.textContent = "⏳...";
+        refreshBtn.disabled = true;
+        window.forceRefreshFeed();
+        setTimeout(function() {
+          refreshBtn.textContent = "🔄 REFRESH";
+          refreshBtn.disabled = false;
+        }, 2000);
+      };
+    }
+
     var closeBtn = document.getElementById("diag-close");
     if (closeBtn) {
       closeBtn.onclick = function(e) {
