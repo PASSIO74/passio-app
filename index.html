@@ -10139,22 +10139,23 @@ function renderFeed() {
   // ── COMBINAISON : "Suivis" OU "Passions" (multi-sélection) ──
   let combinedPosts = [];
 
-  // Ajouter les posts des suivis si sélectionné
-  if (_showFollowingFeed) {
-    const followingIds = state.user?.following || [];
-    let followingPosts = allPosts.filter(function(p) { return followingIds.includes(p.authorId); });
-    combinedPosts = combinedPosts.concat(followingPosts);
-  }
+  // ✅ RÈGLE : si aucune passion ET aucun suivis sélectionné → feed vide
+  // L'utilisateur doit choisir une passion pour voir du contenu
+  const nothingSelected = !_showFollowingFeed && _activeFeedPassions.size === 0;
 
-  // Ajouter les posts des passions sélectionnées
-  if (_activeFeedPassions.size > 0) {
-    let postsByPassion = allPosts.filter(function(p) { return _activeFeedPassions.has(p.passion); });
-    combinedPosts = combinedPosts.concat(postsByPassion);
-  }
+  if (!nothingSelected) {
+    // Ajouter les posts des suivis si sélectionné
+    if (_showFollowingFeed) {
+      const followingIds = state.user?.following || [];
+      let followingPosts = allPosts.filter(function(p) { return followingIds.includes(p.authorId); });
+      combinedPosts = combinedPosts.concat(followingPosts);
+    }
 
-  // Si rien n'est sélectionné (ni Suivis ni Passions), montrer tout
-  if (!_showFollowingFeed && _activeFeedPassions.size === 0) {
-    combinedPosts = allPosts;
+    // Ajouter les posts des passions sélectionnées
+    if (_activeFeedPassions.size > 0) {
+      let postsByPassion = allPosts.filter(function(p) { return _activeFeedPassions.has(p.passion); });
+      combinedPosts = combinedPosts.concat(postsByPassion);
+    }
   }
 
   // Dédupliquer les posts
@@ -10165,18 +10166,15 @@ function renderFeed() {
     return true;
   });
 
-  // Appliquer le filtre mood
+  // Appliquer le filtre mood (si aucun mood sélectionné → rien non plus)
   posts = selectedMoods.size === 0
-    ? availablePostsForMood
+    ? []
     : availablePostsForMood.filter(function(p) { return selectedMoods.has(p.mood); });
 
   renderProfileStrip();
 
   // Afficher les filtres de mood pour les deux modes
   renderMoodStripSmart(availablePostsForMood);
-
-  // Optionnel: afficher les CDV Lives actifs en haut du feed (commenté pour que ce soit discret)
-  // renderFeedCdvLives();
 
   renderStories();
 
@@ -10187,21 +10185,24 @@ function renderFeed() {
       var emptyTitle = emptyEl.querySelector(".empty-title");
       var emptyText = emptyEl.querySelector(".empty-text");
 
-      if (_showFollowingFeed && _activeFeedPassions.size > 0) {
+      if (nothingSelected) {
+        if (emptyTitle) emptyTitle.textContent = "Choisis une passion";
+        if (emptyText) emptyText.textContent = "Sélectionne une passion ci-dessus pour voir le contenu de ta communauté.";
+      } else if (selectedMoods.size === 0) {
+        if (emptyTitle) emptyTitle.textContent = "Choisis un mood";
+        if (emptyText) emptyText.textContent = "Sélectionne un mood pour filtrer le contenu.";
+      } else if (_showFollowingFeed && _activeFeedPassions.size > 0) {
         if (emptyTitle) emptyTitle.textContent = "Aucun post pour cette combinaison";
         if (emptyText) emptyText.textContent = "Essaie un autre mood ou autre sélection.";
       } else if (_showFollowingFeed) {
         if (emptyTitle) emptyTitle.textContent = "Aucun post de tes suivis";
         if (emptyText) emptyText.textContent = "Tu ne suis personne, ou ils n'ont rien publié.";
-      } else if (_activeFeedPassions.size > 0 && mood !== "all") {
-        if (emptyTitle) emptyTitle.textContent = "Aucun post pour cette combinaison";
-        if (emptyText) emptyText.textContent = "Essaie un autre mood ou une autre passion.";
       } else if (_activeFeedPassions.size > 0) {
-        if (emptyTitle) emptyTitle.textContent = "Aucun post pour ces passions";
-        if (emptyText) emptyText.textContent = "Sois le premier à publier ici.";
+        if (emptyTitle) emptyTitle.textContent = "Aucun post pour cette sélection";
+        if (emptyText) emptyText.textContent = "Essaie un autre mood ou sois le premier à publier ici.";
       } else {
-        if (emptyTitle) emptyTitle.textContent = "Aucun post pour ce mood";
-        if (emptyText) emptyText.textContent = "Change de mood ou crée le premier contenu.";
+        if (emptyTitle) emptyTitle.textContent = "Aucun contenu";
+        if (emptyText) emptyText.textContent = "Sélectionne une passion et un mood.";
       }
       emptyEl.style.display = "block";
     }
