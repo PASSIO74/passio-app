@@ -15157,22 +15157,16 @@ function buildReels() {
   let combinedPosts = [];
 
   // ── COMBINAISON : "Suivis" OU "Passions" (multi-sélection) ──
-  // Ajouter les posts des suivis si sélectionné
+  // ✅ RÈGLE : si aucune passion sélectionnée → bobines vides (même logique que le feed)
   if (_showFollowingFeed) {
     const followingIds = state.user?.following || [];
     let followingPosts = allPosts.filter(function(p) { return followingIds.includes(p.authorId); });
     combinedPosts = combinedPosts.concat(followingPosts);
   }
 
-  // Ajouter les posts des passions sélectionnées
   if (_activeFeedPassions.size > 0) {
     let postsByPassion = allPosts.filter(function(p) { return _activeFeedPassions.has(p.passion); });
     combinedPosts = combinedPosts.concat(postsByPassion);
-  }
-
-  // Si rien n'est sélectionné (ni Suivis ni Passions), montrer tout
-  if (!_showFollowingFeed && _activeFeedPassions.size === 0) {
-    combinedPosts = allPosts;
   }
 
   // Dédupliquer les posts
