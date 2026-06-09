@@ -20648,14 +20648,18 @@ async function supaPublishPostWithRetry(post, maxRetries = 3) {
       // On détecte le type en regardant l'extension du fichier dans media_url
 
       diagLog(`📤 Envoi post à Supabase...`);
+      diagLog(`📋 postData: ${JSON.stringify(postData)}`);
+
       const { data, error } = await supa.from("posts").insert(postData).select();
 
       if (error) {
-        diagLog(`❌ ERREUR: ${error.message}`);
-        diagLog(`Code: ${error.code}`);
+        diagLog(`❌ ERREUR INSERTION: ${error.message}`);
+        diagLog(`❌ Code: ${error.code}`);
+        diagLog(`❌ Details: ${JSON.stringify(error)}`);
         console.error(`[Sync ${attempt}] Erreur Supabase:`, error);
         console.error(`[Sync] Code erreur:`, error.code);
         console.error(`[Sync] Message:`, error.message);
+        console.error(`[Sync] JSON:`, JSON.stringify(error));
 
         // Retry seulement si ce n'est pas une erreur de validation
         if (error.code && error.code.includes("unique") && attempt < maxRetries) {
