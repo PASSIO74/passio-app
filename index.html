@@ -17024,8 +17024,8 @@ async function publishPost() {
     } catch (e) {}
   }
 
-  // Utiliser: username Supabase > nom profil local
-  const authorName = (state.user.general?.username) || prof?.name || "Passionné";
+  // ✅ AFFICHER LE VRAI NOM - JAMAIS "Passionné"!
+  const authorName = (state.user.general?.username) || prof?.name || state.user.name || "Utilisateur";
   const authorEmoji = prof?.emoji || "✨";
   const authorColor = prof?.color || "#8b5cf6";
 
