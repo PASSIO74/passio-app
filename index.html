@@ -16855,9 +16855,21 @@ async function publishPost() {
   toast("⏳ Publication en cours...", "loading");
   diagLog(`📝 Création post - Type: ${studioType}, Passion: ${passion}`);
 
-  // ✅ Utiliser le nom du profil courant (c'est le vrai nom choisi par l'utilisateur)!
+  // ✅ Charger le username depuis Supabase OU utiliser le nom du profil
   const prof = currentProfile();
-  const authorName = prof?.name || "Passionné";  // Utiliser directement le nom du profil
+  const g = state.user.general || {};
+  let authorName = g.username || prof?.name || "Passionné";  // Priorité: username Supabase > nom profil > fallback
+
+  // Essayer charger depuis Supabase si besoin
+  if (!g.username && typeof supa !== "undefined" && supa && state.user.currentProfileId) {
+    try {
+      const { data } = await supa.from("profiles").select("username").eq("id", MY_UID).single();
+      if (data?.username && data.username !== "Passionné") {
+        authorName = data.username;
+      }
+    } catch (e) {}
+  }
+
   const authorEmoji = prof?.emoji || "✨";
   const authorColor = prof?.color || "#8b5cf6";
 
