@@ -253,6 +253,15 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- ════════════════════════════════════════
+-- MIGRATION : colonnes partage/repost (posts)
+-- ════════════════════════════════════════
+-- Ces colonnes sont nécessaires pour persister les partages inter-comptes.
+-- shared_from_post_id : ID du post original partagé
+-- shared_data         : JSON du snapshot auteur/passion du post original
+ALTER TABLE posts ADD COLUMN IF NOT EXISTS shared_from_post_id TEXT;
+ALTER TABLE posts ADD COLUMN IF NOT EXISTS shared_data TEXT;
+
+-- ════════════════════════════════════════
 -- Realtime (ignoré si déjà actif)
 -- ════════════════════════════════════════
 DO $$ BEGIN
