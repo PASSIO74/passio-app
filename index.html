@@ -20441,6 +20441,19 @@ async function supaPublishPostWithRetry(post, maxRetries = 3) {
       await supaUpsertProfile();
       diagLog(`✅ Profil mis à jour`);
 
+      // ✅ Upload photo si besoin
+      let mediaUrl = post.image || null;
+      if (mediaUrl && mediaUrl.startsWith("data:")) {
+        diagLog(`📸 Upload photo...`);
+        const uploadedUrl = await supaUploadPhoto(mediaUrl, post.id);
+        if (uploadedUrl) {
+          mediaUrl = uploadedUrl;
+          diagLog(`✅ Photo uploadée: ${uploadedUrl.substring(0, 50)}...`);
+        } else {
+          diagLog(`⚠️ Upload échoué, utiliser data URL`);
+        }
+      }
+
       // Insérer le post - colonnes de base qui EXISTENT en Supabase
       const postData = {
         id: post.id,
@@ -20448,7 +20461,7 @@ async function supaPublishPostWithRetry(post, maxRetries = 3) {
         passion_id: post.passion || null,
         mood: post.mood || "all",
         content: post.text || "",
-        media_url: post.image || null,
+        media_url: mediaUrl,
         created_at: new Date(post.createdAt).toISOString(),
       };
       // ⚠️ NE PAS ajouter: author_name, author_emoji, author_color, post_type
