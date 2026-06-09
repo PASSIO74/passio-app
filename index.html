@@ -10643,13 +10643,103 @@ function closePost() {
 }
 
 function sharePost(id) {
-  const post = state.seed.posts.find(p => p.id === id) || state.userPosts.find(p => p.id === id);
-  const text = (post?.text || "").slice(0, 100) + (post?.text?.length > 100 ? "…" : "");
-  if (navigator.share) {
-    navigator.share({ title: "PASSIO", text: text, url: window.location.href })
-      .catch(() => {});
-  } else {
-    navigator.clipboard?.writeText(text + "\n\n— PASSIO").then(() => toast("✅ Copié dans le presse-papiers")).catch(() => toast("Partage non disponible"));
+  const post = state.seed.posts.find(p => p.id === id)
+            || state.userPosts.find(p => p.id === id)
+            || (state.supabasePosts || []).find(p => p.id === id);
+  if (!post) { toast("Le contenu original n'est plus disponible."); return; }
+
+  const passion = passionById(post.passion) || { label: post.passion || "", emoji: "✨" };
+  const txt = (post.text || post.caption || "").slice(0, 100);
+  const encodedUrl = encodeURIComponent(window.location.href);
+  const encodedText = encodeURIComponent("PASSIO – " + passion.emoji + " " + passion.label);
+
+  const html = `
+    <div class="modal-title">🔁 Partager ce post</div>
+    <div style="background:var(--bg-soft);border-radius:14px;padding:12px 14px;margin-bottom:16px;font-size:13px;color:var(--text-dim);line-height:1.5;">
+      ${escapeHtml(txt)}${txt.length >= 100 ? "…" : ""}
+    </div>
+    <button class="btn primary block" id="_shareInFeedBtn" onclick="sharePostInFeed('${id}')" style="margin-bottom:10px;">
+      ➕ Partager dans mon feed
+    </button>
+    <button class="btn secondary block" onclick="if(navigator.share){navigator.share({title:'PASSIO',text:'${txt.replace(/'/g,"\\'")}',url:'${window.location.href}'}).catch(()=>{})}else{navigator.clipboard?.writeText('${txt.replace(/'/g,"\\'")}\\n\\nhttps://passio-app.netlify.app').then(()=>toast('✅ Lien copié')).catch(()=>toast('Copie impossible'))}">
+      📤 Partager en dehors
+    </button>
+  `;
+  openModal(html);
+}
+
+async function sharePostInFeed(id) {
+  const btn = document.getElementById("_shareInFeedBtn");
+  if (btn) { btn.disabled = true; btn.textContent = "Partage en cours…"; }
+
+  if (typeof MY_UID === "undefined" || !MY_UID) {
+    toast("Connexion requise pour partager ce contenu.");
+    closeModal();
+    return;
+  }
+
+  const post = state.seed.posts.find(p => p.id === id)
+             || state.userPosts.find(p => p.id === id)
+             || (state.supabasePosts || []).find(p => p.id === id);
+  if (!post) { toast("Le contenu original n'est plus disponible."); closeModal(); return; }
+
+  const prof = currentProfile();
+  const g = state.user.general || {};
+  let authorName = g.username || prof?.name || "Moi";
+
+  if (!g.username && typeof supa !== "undefined" && supa && MY_UID) {
+    try {
+      const { data } = await supa.from("profiles").select("username").eq("id", MY_UID).single();
+      if (data?.username) { state.user.general.username = data.username; authorName = data.username; }
+    } catch(e) {}
+  }
+
+  const passion = passionById(post.passion) || { label: post.passion || "", emoji: "✨" };
+  const txt = post.text || post.caption || "";
+
+  const newPost = {
+    id: "post_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9),
+    type: "text",
+    authorId: MY_UID,
+    authorName: authorName,
+    authorEmoji: prof?.emoji || g.emoji || "✨",
+    authorColor: prof?.color || g.color || "#8b5cf6",
+    text: `📤 A partagé un post\n\n${passion.emoji} ${escapeHtml(post.authorName || "Passionné")} – ${passion.label}\n\n"${escapeHtml(txt).slice(0, 150)}${txt.length > 150 ? "…" : ""}"`,
+    passion: post.passion || null,
+    mood: post.mood || "all",
+    createdAt: Date.now(),
+    timestamp: Date.now(),
+    likes: 0,
+    comments: [],
+    sharedReel: id,
+    sharedReelData: {
+      id: post.id,
+      text: txt,
+      authorName: post.authorName || "Passionné",
+      authorEmoji: post.authorEmoji || "✨",
+      authorColor: post.authorColor || "#8b5cf6",
+      passion: post.passion
+    }
+  };
+
+  if (!state.userPosts) state.userPosts = [];
+  state.userPosts.push(newPost);
+  saveState();
+
+  closeModal();
+  setTimeout(() => { goTo("feed"); setTimeout(() => renderFeed(), 100); }, 100);
+  toast("✅ Publication partagée avec succès.");
+
+  if (typeof supa !== "undefined" && supa) {
+    try {
+      const syncPromise = supaPublishPostWithRetry(newPost);
+      const timeout = new Promise(resolve => setTimeout(() => resolve(false), 5000));
+      const ok = await Promise.race([syncPromise, timeout]);
+      if (!ok) console.warn("⚠️ [SHARE] Sync timeout — partagé localement uniquement");
+    } catch(e) {
+      console.warn("⚠️ [SHARE] Erreur sync:", e.message);
+      toast("Impossible de partager ce contenu pour le moment.");
+    }
   }
 }
 
