@@ -20444,18 +20444,42 @@ let MY_UID = getMyUserId();
 // ---- PROFIL ----
 async function supaUpsertProfile() {
   try {
+    console.log("🔄 [UPSERT] Début supaUpsertProfile()");
+    diagLog(`🔄 [UPSERT] Début supaUpsertProfile()`);
+
     const prof = currentProfile();
     const g = state.user.general || {};
-    if (!prof) return;
-    await supa.from("profiles").upsert({
+
+    console.log("📋 [UPSERT] prof=", prof);
+    console.log("📋 [UPSERT] MY_UID=", MY_UID);
+
+    if (!prof) {
+      console.warn("❌ [UPSERT] Pas de profil courant!");
+      diagLog(`❌ [UPSERT] Pas de profil courant`);
+      return;
+    }
+
+    const profileData = {
       id: MY_UID,
       username: g.username || prof.name || "Passionné",
       emoji: prof.emoji || "✨",
       color: prof.color || "#8b5cf6",
       passion_id: prof.passion || null,
       bio: g.bio || "",
-    }, { onConflict: "id" });
-  } catch(e) { console.warn("Profile upsert error:", e); }
+    };
+
+    console.log("📤 [UPSERT] Envoi:", profileData);
+    diagLog(`📤 [UPSERT] Envoi profil: ${JSON.stringify(profileData)}`);
+
+    const result = await supa.from("profiles").upsert(profileData, { onConflict: "id" });
+
+    console.log("✅ [UPSERT] Succès:", result);
+    diagLog(`✅ [UPSERT] Profil mis à jour`);
+  } catch(e) {
+    console.error("❌ [UPSERT] Erreur:", e);
+    console.error("❌ [UPSERT] Message:", e.message);
+    diagLog(`❌ [UPSERT] ERREUR: ${e.message}`);
+  }
 }
 
 // ---- DIAGNOSTIC ----
