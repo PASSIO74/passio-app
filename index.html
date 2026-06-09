@@ -20523,11 +20523,10 @@ async function supaUploadMedia(dataUrl, postId, type = "photo") {
       console.error("   Message:", error.message);
       console.error("   Code:", error.code);
       console.error("   Status:", error.status);
-      // ⚠️ Fallback: retourner une URL même si l'upload échoue
-      // (au moins le post sera créé avec le chemin)
-      const fallbackUrl = `https://placeholder.invalid/${fileName}`;
-      console.warn("⚠️ Fallback URL:", fallbackUrl);
-      return fallbackUrl;
+      // ⚠️ Fallback: retourner le dataUrl original en base64
+      // (au moins le post sera créé avec les données)
+      console.warn("⚠️ Fallback base64 car Storage n'est pas disponible");
+      return dataUrl;  // Retourner les données base64 originales!
     }
 
     // Retourner l'URL publique du bucket utilisé
