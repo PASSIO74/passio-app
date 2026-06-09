@@ -13842,7 +13842,7 @@ function _supaConvSpecificChannel(convId, displayName) {
 
       // Profil depuis cache (0 requête si déjà connu)
       const prof = await _fetchProfile(r.from_id);
-      const newMsg = { id: r.id, from: r.from_id, fromName: prof.username, fromEmoji: prof.emoji, text: r.content, at: new Date(r.created_at).getTime() };
+      const newMsg = { id: r.id, from: r.from_id, fromName: prof.username, fromEmoji: prof.emoji, text: r.content, at: new Date(r.created_at + "Z").getTime() };
 
       const convs = getConversations();
       const c = convs.find(x => x.id === convId);
@@ -20492,7 +20492,7 @@ async function supaLoadPosts() {
         diagLog(`  - author_id: "${r.author_id}"`);
         diagLog(`  - passion_id: "${r.passion_id}"`);
         diagLog(`  - created_at (raw): ${r.created_at}`);
-        const ts = new Date(r.created_at).getTime();
+        const ts = new Date(r.created_at + "Z").getTime();
         diagLog(`  - createdAt (ms): ${ts}`);
         diagLog(`  - Heure locale: ${new Date(ts).toLocaleString('fr-FR')}`);
         diagLog(`  - profiles?.username: "${r.profiles?.username}"`);
@@ -20560,7 +20560,7 @@ async function supaLoadComments(postId) {
       authorName: r.profiles?.username || "Passionné",
       authorEmoji: r.profiles?.emoji || "✨",
       content: r.content,
-      createdAt: new Date(r.created_at).getTime(),
+      createdAt: new Date(r.created_at + "Z").getTime(),
     }));
   } catch(e) { return []; }
 }
@@ -20784,7 +20784,7 @@ async function supaLoadMessages(convId) {
         fromName: (r.profiles && r.profiles.username) ? r.profiles.username : "Passionné",
         fromEmoji: (r.profiles && r.profiles.emoji) ? r.profiles.emoji : "✨",
         text: contentData && contentData.text ? contentData.text : contentText,
-        at: new Date(r.created_at).getTime(),
+        at: new Date(r.created_at + "Z").getTime(),
       };
 
       // Traiter content JSON
@@ -20917,7 +20917,7 @@ function supaSubscribe() {
             userEmoji: other?.profiles?.emoji || "✨", userColor: other?.profiles?.color || "#8b5cf6",
             userName: other?.profiles?.username || "Passionné",
             userIds: (members || []).map(m => m.user_id),
-            lastAt: new Date(r.created_at).getTime(), unread: 0, messages: [], fromSupabase: true,
+            lastAt: new Date(r.created_at + "Z").getTime(), unread: 0, messages: [], fromSupabase: true,
           };
           convs.unshift(conv);
         } catch(e) { return; }
@@ -20925,7 +20925,7 @@ function supaSubscribe() {
 
       // Profil depuis cache (0 requête si déjà connu)
       const prof = await _fetchProfile(r.from_id);
-      const msgAt = new Date(r.created_at).getTime();
+      const msgAt = new Date(r.created_at + "Z").getTime();
       const newMsg = { id: r.id, from: r.from_id, fromName: prof.username, fromEmoji: prof.emoji, text: r.content, at: msgAt };
 
       if (!conv.messages) conv.messages = [];
@@ -21001,7 +21001,7 @@ function supaSubscribe() {
       if (r.author_id === MY_UID) return;
       try {
         const { data: prof } = await supa.from("profiles").select("username,emoji,color").eq("id", r.author_id).single();
-        const newPost = { id: r.id, authorId: r.author_id, authorName: prof?.username || "Passionne", authorEmoji: prof?.emoji || "✨", authorColor: prof?.color || "#8b5cf6", passion: r.passion_id || "autre", mood: r.mood || "all", type: "text", text: r.content || "", image: r.media_url || null, createdAt: new Date(r.created_at).getTime(), likes: 0, liked: false, comments: [], fromSupabase: true };
+        const newPost = { id: r.id, authorId: r.author_id, authorName: prof?.username || "Passionne", authorEmoji: prof?.emoji || "✨", authorColor: prof?.color || "#8b5cf6", passion: r.passion_id || "autre", mood: r.mood || "all", type: "text", text: r.content || "", image: r.media_url || null, createdAt: new Date(r.created_at + "Z").getTime(), likes: 0, liked: false, comments: [], fromSupabase: true };
         if (!state.seed.posts.find(p => p.id === newPost.id)) {
           state.seed.posts.unshift(newPost);
           try { renderFeed(); } catch(e) {}
@@ -21035,7 +21035,7 @@ function supaSubscribe() {
           const { data: prof } = await supa.from("profiles").select("username,emoji").eq("id", r.author_id).single();
           if (!post.comments) post.comments = [];
           if (!post.comments.find(c => c.id === r.id)) {
-            post.comments.unshift({ id: r.id, authorId: r.author_id, authorName: prof?.username || "Passionne", authorEmoji: prof?.emoji || "✨", text: r.content || "", content: r.content || "", createdAt: new Date(r.created_at).getTime(), fromSupabase: true });
+            post.comments.unshift({ id: r.id, authorId: r.author_id, authorName: prof?.username || "Passionne", authorEmoji: prof?.emoji || "✨", text: r.content || "", content: r.content || "", createdAt: new Date(r.created_at + "Z").getTime(), fromSupabase: true });
           }
           try { renderFeed(); } catch(e) {}
         }
@@ -21097,7 +21097,7 @@ async function supaLoadNotifications() {
       id: r.id, kind: r.kind, fromId: r.from_id,
       text: r.content || "",
       emoji: r.profiles?.emoji || "✨",
-      createdAt: new Date(r.created_at).getTime(),
+      createdAt: new Date(r.created_at + "Z").getTime(),
       unread: !r.seen,
       fromSupabase: true,
     }));
