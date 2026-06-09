@@ -24261,50 +24261,9 @@ setTimeout(function() {
   }
 }, 200);
 
-// BOUTONS TEST SUPABASE - TOUJOURS VISIBLES
-setTimeout(function() {
-  // Ajouter animation pulse
-  var style = document.createElement("style");
-  style.textContent = "@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }";
-  document.head.appendChild(style);
-
-  // BOUTON READ (bleu)
-  var readBtn = document.createElement("button");
-  readBtn.id = "__test_read_btn";
-  readBtn.textContent = "📖 LIRE";
-  readBtn.style.cssText = "position:fixed;bottom:180px;right:10px;width:60px;height:40px;border-radius:8px;background:#3b82f6;border:none;color:#fff;font-size:11px;cursor:pointer;z-index:99998;box-shadow:0 2px 8px rgba(0,0,0,0.3);font-weight:bold;";
-  readBtn.title = "Tester si on peut LIRE les posts";
-  readBtn.onclick = function() {
-    window.testSupabaseRead();
-  };
-  document.body.appendChild(readBtn);
-
-  // BOUTON INSERT (rouge)
-  var insertBtn = document.createElement("button");
-  insertBtn.id = "__test_insert_btn";
-  insertBtn.textContent = "🧪 INSÉRER";
-  insertBtn.style.cssText = "position:fixed;bottom:130px;right:10px;width:60px;height:40px;border-radius:8px;background:#ef4444;border:none;color:#fff;font-size:11px;cursor:pointer;z-index:99998;box-shadow:0 2px 8px rgba(0,0,0,0.3);font-weight:bold;animation:pulse 2s infinite;";
-  insertBtn.title = "Tester si on peut INSÉRER un post";
-  insertBtn.onclick = function() {
-    window.testSupabaseInsert();
-  };
-  document.body.appendChild(insertBtn);
-
-  console.log("✅ Boutons test Supabase créés");
-}, 500);
-
-// BOUTON DIAGNOSTIC AVANCÉ - TOUJOURS VISIBLE
-setTimeout(function() {
-  var advDiagBtn = document.createElement("button");
-  advDiagBtn.id = "__adv_diag_btn";
-  advDiagBtn.textContent = "🔍 DIAG";
-  advDiagBtn.style.cssText = "position:fixed;bottom:80px;right:10px;width:60px;height:40px;border-radius:8px;background:#8b5cf6;border:none;color:#fff;font-size:12px;cursor:pointer;z-index:99998;box-shadow:0 2px 8px rgba(0,0,0,0.3);font-weight:bold;";
-  advDiagBtn.onclick = function() {
-    window.showAdvancedDiagnostic();
-  };
-  document.body.appendChild(advDiagBtn);
-  console.log("✅ Bouton diagnostic avancé créé");
-}, 500);
+// 🔧 BOUTONS TEST SUPABASE - DÉSACTIVÉS
+// (Les boutons de diagnostic ont été supprimés - app en mode normal)
+console.log("✅ Mode normal - diagnostic buttons désactivés");
 
 // INITIALISATION BOUTON DIAGNOSTIC 🔧 - Caché par défaut
 setTimeout(function() {
