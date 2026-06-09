@@ -16753,7 +16753,7 @@ $("#videoInput").addEventListener("change", (e) => {
   const maxSize = 1 * 1024 * 1024;  // 1 MB = ~1.35 MB base64
   if (f.size > maxSize) {
     const sizeMB = Math.round(f.size / 1024 / 1024);
-    toast(`Vidéo > 5 Mo (${sizeMB} Mo). Compresse-la avec: ffmpeg ou Claquette!`);
+    toast(`Vidéo > 1 Mo (${sizeMB} Mo). Compresse-la avec: ffmpeg ou Claquette!`);
     console.warn("❌ Vidéo trop grande, besoin de compression");
     return;
   }
