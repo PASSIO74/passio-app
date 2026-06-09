@@ -20569,27 +20569,11 @@ async function supaPublishPostWithRetry(post, maxRetries = 3) {
         }
       }
 
-      // Upload vidéo
-      diagLog(`📊 Vérif vidéo - post.video défini? ${post.video ? "✅" : "❌"}`);
-      diagLog(`  - Type: ${typeof post.video}`);
-      diagLog(`  - Taille: ${post.video ? post.video.length : 0} chars`);
-      diagLog(`  - Commence par data:? ${post.video && post.video.startsWith("data:") ? "✅" : "❌"}`);
-
+      // ✅ Vidéo: sauvegarder directement en base64 (pas d'upload Supabase Storage)
+      diagLog(`📹 Vidéo détectée - sauvegarde directe en base64`);
       if (post.video && post.video.startsWith("data:")) {
-        diagLog(`🎬 Upload vidéo en cours...`);
-        console.log("🎬 Upload vidéo, taille:", post.video.length);
-        const url = await supaUploadMedia(post.video, post.id, "video");
-        diagLog(`  - URL retournée? ${url ? "✅" : "❌"}`);
-        if (url) {
-          videoUrl = url;
-          diagLog(`✅ Vidéo uploadée: ${url.substring(0, 50)}...`);
-          console.log("✅ Vidéo uploadée:", url);
-        } else {
-          diagLog(`❌ Upload vidéo échoué!`);
-          console.error("❌ Upload vidéo échoué");
-        }
-      } else {
-        diagLog(`⚠️ post.video vide ou pas data URL`);
+        videoUrl = post.video;  // Utiliser la data URL directement!
+        diagLog(`✅ Vidéo base64 prête: ${post.video.substring(0, 50)}...`);
       }
 
       // Upload audio/podcast
