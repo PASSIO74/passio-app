@@ -20394,8 +20394,8 @@ window.addEventListener("load", () => {
 });
 
 // ---- POSTS ----
-// ===== UPLOAD PHOTO À SUPABASE STORAGE =====
-async function supaUploadPhoto(dataUrl, postId) {
+// ===== UPLOAD PHOTO/VIDÉO/AUDIO À SUPABASE STORAGE =====
+async function supaUploadMedia(dataUrl, postId, type = "photo") {
   try {
     if (!dataUrl || !dataUrl.startsWith("data:")) {
       console.warn("❌ DataUrl invalide");
