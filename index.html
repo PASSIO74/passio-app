@@ -16863,24 +16863,9 @@ async function publishPost() {
   toast("⏳ Publication en cours...", "loading");
   diagLog(`📝 Création post - Type: ${studioType}, Passion: ${passion}`);
 
-  // ℹ️ UTILISER LE USERNAME DEPUIS SUPABASE (c'est le bon nom)!
-  // Le profil local peut avoir un mauvais nom ("Passionné"), mais Supabase a le bon!
+  // ✅ Utiliser le nom du profil courant (c'est le vrai nom choisi par l'utilisateur)!
   const prof = currentProfile();
-
-  // ✅ Charger dynamiquement le username depuis Supabase
-  let authorName = prof?.name || "Passionné";  // fallback au nom local
-  try {
-    const { data: profData } = await supa.from("profiles")
-      .select("username")
-      .eq("id", state.user.currentProfileId)
-      .single();
-    if (profData?.username) {
-      authorName = profData.username;  // Utiliser le username Supabase
-    }
-  } catch (e) {
-    console.warn("Impossible de charger le username:", e);
-  }
-
+  const authorName = prof?.name || "Passionné";  // Utiliser directement le nom du profil
   const authorEmoji = prof?.emoji || "✨";
   const authorColor = prof?.color || "#8b5cf6";
 
