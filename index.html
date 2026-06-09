@@ -8932,6 +8932,15 @@ function buildSeed() {
 function defaultState() {
   const seed = buildSeed();
 
+  // ✅ Enrichir les posts SEED avec le vrai nom de l'auteur
+  const userMap = {};
+  seed.users.forEach(u => { userMap[u.id] = u.name; });
+  seed.posts.forEach(p => {
+    if (!p.authorName && userMap[p.authorId]) {
+      p.authorName = userMap[p.authorId];
+    }
+  });
+
   // Ajouter les bobines avec commentaires d'exemple
   const seedReels = getSeedReelPostsWithComments(seed.users);
   seed.posts = [...seed.posts, ...seedReels];
