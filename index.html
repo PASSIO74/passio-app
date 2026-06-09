@@ -20869,7 +20869,7 @@ async function supaLoadPosts() {
 
       return {
         id: r.id, authorId: r.author_id,
-        authorName: r.profiles?.username || "Passionné",  // ✅ Utiliser le username depuis profiles (BEN PC PORTABLE)
+        authorName: r.profiles?.username || "Utilisateur",  // ✅ TOUJOURS afficher le vrai nom du profil - JAMAIS "Passionné"!
         authorEmoji: r.profiles?.emoji || "✨",  // ✅ Utiliser l'emoji depuis profiles
         authorColor: r.profiles?.color || "#8b5cf6",  // ✅ Utiliser la couleur depuis profiles
         passion: r.passion_id || "autre", mood: r.mood || "all",
