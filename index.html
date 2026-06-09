@@ -20482,7 +20482,7 @@ async function supaLoadPosts() {
         authorName: c.profiles?.username || "Passionné",
         authorEmoji: c.profiles?.emoji || "✨",
         text: c.content || "", content: c.content || "",
-        createdAt: new Date(c.created_at).getTime(),
+        createdAt: new Date(c.created_at + "Z").getTime(),
         fromSupabase: true,
       }));
 
@@ -20852,7 +20852,7 @@ async function supaLoadMyConversations() {
         userColor: other?.profiles?.color || "#8b5cf6",
         userName: other?.profiles?.username || "Passionné",
         userIds: members.map(m => m.user_id),
-        lastAt: last ? new Date(last.created_at).getTime() : new Date(c.created_at).getTime(),
+        lastAt: last ? new Date(last.created_at).getTime() : new Date(c.created_at + "Z").getTime(),
         unread: 0,
         messages: last ? [{ id: last.id, from: last.from_id === MY_UID ? "me" : last.from_id, fromName: last.profiles?.username || "Passionné", text: last.content, at: new Date(last.created_at).getTime() }] : [],
         fromSupabase: true,
