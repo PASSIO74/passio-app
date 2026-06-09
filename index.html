@@ -16813,9 +16813,9 @@ function clearVideo() { videoDataUrl = null; renderVideoPreview(); }
 $("#audioInput").addEventListener("change", (e) => {
   const f = e.target.files[0];
   if (!f) return;
-  // ⚠️ LIMITE AUDIO: 300 KB max (base64 serait 400 KB)
-  if (f.size > 300 * 1024) {
-    toast("Audio > 300 KB, compresse-la (MP3 128kbps, très court)!");
+  // ✅ LIMITE AUDIO: 500 KB max (base64 serait 667 KB)
+  if (f.size > 500 * 1024) {
+    toast("Audio > 500 KB, compresse-la!");
     return;
   }
   const reader = new FileReader();
