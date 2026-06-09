@@ -20574,22 +20574,25 @@ async function supaPublishPostWithRetry(post, maxRetries = 3) {
       let videoUrl = null;
       let audioUrl = null;
 
-      // ✅ Photo: utiliser base64 directement (pas d'upload Storage)
+      // ✅ Photo: sauvegarder directement en base64
       if (post.image && post.image.startsWith("data:")) {
-        diagLog(`📸 Photo base64 prête`);
+        diagLog(`📸 Photo détectée - sauvegarde base64`);
         mediaUrl = post.image;
+        diagLog(`✅ Photo base64 prête: ${post.image.substring(0, 50)}...`);
       }
 
-      // ✅ Vidéo: utiliser base64 directement (pas d'upload Storage)
+      // ✅ Vidéo: sauvegarder directement en base64
       if (post.video && post.video.startsWith("data:")) {
-        diagLog(`📹 Vidéo base64 prête`);
+        diagLog(`📹 Vidéo détectée - sauvegarde base64`);
         videoUrl = post.video;
+        diagLog(`✅ Vidéo base64 prête: ${post.video.substring(0, 50)}...`);
       }
 
-      // ✅ Audio: utiliser base64 directement (pas d'upload Storage)
+      // ✅ Audio: sauvegarder directement en base64
       if (post.audio && post.audio.startsWith("data:")) {
-        diagLog(`🎙️ Audio base64 prêt`);
+        diagLog(`🎙️ Audio détecté - sauvegarde base64`);
         audioUrl = post.audio;
+        diagLog(`✅ Audio base64 prêt: ${post.audio.substring(0, 50)}...`);
       }
 
       // ✅ Diagnostic: vérifier les URLs uploadées
