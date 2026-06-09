@@ -23792,12 +23792,21 @@ localStorage passio_uid: ${localStorage.getItem('passio_uid') || '❌ undefined'
 
     var htmlContent = textContent.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br/>');
     diagPanel.innerHTML = `
-      <div style="margin-bottom:8px;">
-        <b>🔧 DIAGNOSTIC PASSIO</b>
-        <button id="diag-copy" style="float:right;padding:2px 6px;font-size:10px;cursor:pointer;background:#ec4899;color:white;border:none;border-radius:3px;">📋 COPY</button>
+      <div style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;">
+        <b style="flex:1;">🔧 DIAGNOSTIC</b>
+        <button id="diag-copy" style="padding:2px 6px;font-size:10px;cursor:pointer;background:#ec4899;color:white;border:none;border-radius:3px;margin-right:4px;">📋 COPY</button>
+        <button id="diag-close" style="padding:2px 6px;font-size:10px;cursor:pointer;background:#666;color:white;border:none;border-radius:3px;">✕</button>
       </div>
       <pre style="margin:0;white-space:pre-wrap;word-wrap:break-word;background:#f5f5f5;padding:8px;border-radius:4px;font-size:10px;">${htmlContent}</pre>
     `;
+
+    var closeBtn = document.getElementById("diag-close");
+    if (closeBtn) {
+      closeBtn.onclick = function(e) {
+        e.stopPropagation();
+        diagPanel.style.display = "none";
+      };
+    }
 
     var copyBtn = document.getElementById("diag-copy");
     if (copyBtn) {
