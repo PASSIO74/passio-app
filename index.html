@@ -23785,6 +23785,63 @@ setTimeout(function() {
   }, 500);
 }, 100);
 
+// 🧪 TEST SUPABASE - Vérifier si on peut insérer un post
+window.testSupabaseInsert = async function() {
+  console.log("🧪 TEST SUPABASE INSERT");
+
+  var modal = document.createElement("div");
+  modal.style.cssText = "position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:999999;";
+
+  var box = document.createElement("div");
+  box.style.cssText = "background:white;padding:20px;border-radius:12px;max-width:95%;max-height:85%;overflow-y:auto;font-family:monospace;font-size:11px;";
+
+  var html = "<h3>🧪 TEST SUPABASE INSERT</h3>";
+  html += "Envoi d'un post test en Supabase...<br/>";
+
+  var testPost = {
+    id: "test_" + Date.now(),
+    author_id: window.MY_UID,
+    passion_id: "test",
+    mood: "all",
+    content: "Post test pour vérifier si Supabase fonctionne",
+    media_url: null,
+    created_at: new Date().toISOString(),
+  };
+
+  html += "<br/><b>Données à insérer:</b><br/>";
+  html += JSON.stringify(testPost, null, 2) + "<br/><br/>";
+  html += "Envoi en cours...<br/>";
+
+  box.innerHTML = html + "<button onclick='this.parentElement.parentElement.remove();' style='margin-top:10px;padding:8px 12px;background:#ec4899;color:white;border:none;border-radius:6px;cursor:pointer;width:100%;'>Fermer</button>";
+  modal.appendChild(box);
+  document.body.appendChild(modal);
+
+  try {
+    console.log("📤 Insertion test:", testPost);
+    const { data, error } = await supa.from("posts").insert(testPost).select();
+
+    if (error) {
+      html += "<br/><b>❌ ERREUR:</b><br/>";
+      html += "Message: " + error.message + "<br/>";
+      html += "Code: " + error.code + "<br/>";
+      html += "JSON: " + JSON.stringify(error) + "<br/>";
+      console.error("❌ Erreur INSERT:", error);
+    } else {
+      html += "<br/><b>✅ SUCCÈS!</b><br/>";
+      html += "Post inséré: " + data[0].id + "<br/>";
+      html += "Cela signifie que Supabase fonctionne!<br/>";
+      console.log("✅ Succès INSERT:", data);
+    }
+  } catch(e) {
+    html += "<br/><b>❌ EXCEPTION:</b><br/>";
+    html += "Message: " + e.message + "<br/>";
+    html += "Stack: " + e.stack + "<br/>";
+    console.error("❌ Exception:", e);
+  }
+
+  box.innerHTML = html + "<button onclick='this.parentElement.parentElement.remove();' style='margin-top:10px;padding:8px 12px;background:#ec4899;color:white;border:none;border-radius:6px;cursor:pointer;width:100%;'>Fermer</button>";
+};
+
 // 🔍 DIAGNOSTIC AVANCÉ - Version SIMPLE (sans async)
 window.showAdvancedDiagnostic = function() {
   // Créer une modal visible
