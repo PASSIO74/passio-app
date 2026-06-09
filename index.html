@@ -20576,14 +20576,11 @@ async function supaPublishPostWithRetry(post, maxRetries = 3) {
         diagLog(`✅ Vidéo base64 prête: ${post.video.substring(0, 50)}...`);
       }
 
-      // Upload audio/podcast
+      // ✅ Audio: sauvegarder directement en base64
+      diagLog(`🎙️ Audio détecté - sauvegarde directe en base64`);
       if (post.audio && post.audio.startsWith("data:")) {
-        diagLog(`🎙️ Upload audio...`);
-        const url = await supaUploadMedia(post.audio, post.id, "audio");
-        if (url) {
-          audioUrl = url;
-          diagLog(`✅ Audio: ${url.substring(0, 50)}...`);
-        }
+        audioUrl = post.audio;  // Utiliser la data URL directement!
+        diagLog(`✅ Audio base64 prêt: ${post.audio.substring(0, 50)}...`);
       }
 
       // ✅ Diagnostic: vérifier les URLs uploadées
