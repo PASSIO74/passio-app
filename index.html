@@ -20496,7 +20496,7 @@ async function supaUpsertProfile() {
 
     const profileData = {
       id: MY_UID,
-      username: g.username || prof.name || "Passionné",
+      username: g.username || prof.name || state.user.name || "Utilisateur",  // ✅ JAMAIS "Passionné"!
       emoji: prof.emoji || "✨",
       color: prof.color || "#8b5cf6",
       passion_id: prof.passion || null,
