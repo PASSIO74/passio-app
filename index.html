@@ -21430,7 +21430,7 @@ async function supaInit() {
     setImmediate(() => {
       // Charger les donn\u00e9es EN ARRI\u00c8RE-PLAN
       Promise.all([
-        supaLoadPosts().then(p => { if (p.length) { state.seed.posts = p; refreshPostsUI(); } }),
+        supaLoadPosts().then(p => { if (p.length) { state.seed.posts = p; renderFeed(); } }),
         supaLoadStories().then(s => { if (s.length) state.seed.stories = s; }),
         supaLoadEvents().then(e => { if (e.length) state.seed.events = e; }),
         supaLoadNotifications().then(n => { if (n.length) state.user.notifications = n; }),
