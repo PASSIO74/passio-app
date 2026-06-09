@@ -20424,13 +20424,15 @@ async function supaUploadPhoto(dataUrl, postId) {
     console.log(`📤 Upload vers: ${fileName}`);
 
     // Essayer upload au bucket "media" d'abord
+    let bucketUsed = "media";
     let uploadResult = await supa.storage
       .from("media")
       .upload(fileName, blob, { upsert: true });
 
-    // Si le bucket "media" n'existe pas, essayer "storage" ou "public"
-    if (uploadResult.error && uploadResult.error.message.includes("not found")) {
-      console.warn("⚠️ Bucket 'media' non trouvé, essayer autre bucket...");
+    // Si le bucket "media" n'existe pas, essayer "storage"
+    if (uploadResult.error && (uploadResult.error.message.includes("not found") || uploadResult.error.message.includes("does not exist"))) {
+      console.warn("⚠️ Bucket 'media' non trouvé, essayer 'storage'...");
+      bucketUsed = "storage";
       uploadResult = await supa.storage
         .from("storage")
         .upload(fileName, blob, { upsert: true });
@@ -20443,12 +20445,8 @@ async function supaUploadPhoto(dataUrl, postId) {
       return null;
     }
 
-    // Retourner l'URL publique - essayer le même bucket
-    let bucketName = "media";
-    if (error?.message.includes("not found")) {
-      bucketName = "storage";
-    }
-    const { data: { publicUrl } } = supa.storage.from(bucketName).getPublicUrl(fileName);
+    // Retourner l'URL publique du bucket utilisé
+    const { data: { publicUrl } } = supa.storage.from(bucketUsed).getPublicUrl(fileName);
     console.log(`✅ URL publique: ${publicUrl}`);
     return publicUrl;
   } catch (e) {
