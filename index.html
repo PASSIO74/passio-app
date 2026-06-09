@@ -17100,35 +17100,33 @@ async function publishPost() {
     post.text = post.destination + (post.dateStart || post.dateEnd ? " · carnet" : "");
   }
 
-  // Sauvegarder localement d'abord
+  // 🔄 Synchroniser IMMÉDIATEMENT avec Supabase (BLOCKING)
+  // ⚠️ NE PAS FAIRE D'OPTIMISTIC UPDATE - attendre la confirmation Supabase!
+  console.log("🚀 [PUBLISH] Début synchronisation Supabase");
+  let syncSuccess = false;
+
+  try {
+    syncSuccess = await supaPublishPostWithRetry(post);
+  } catch (e) {
+    console.error("❌ [PUBLISH] Exception sync:", e);
+    syncSuccess = false;
+  }
+
+  if (!syncSuccess) {
+    // ❌ Publication échouée - NE PAS afficher le post
+    console.error("❌ [PUBLISH] Publication échouée - Post NON affiché");
+    toast("❌ Publication échouée. Réessayez.", "error");
+    return;  // Sortir et laisser l'utilisateur réessayer
+  }
+
+  // ✅ Publication réussie - Ajouter au state local ET au feed
+  console.log("✅ [PUBLISH] Publication réussie");
   state.userPosts.unshift(post);
   saveState();
 
-  // 🎯 OPTIMISTIC UPDATE - Afficher le post immédiatement dans le feed
-  // (allFeedPosts() va le trouver dans state.userPosts, pas besoin de l'ajouter à state.seed.posts!)
-  diagLog(`✅ Optimistic update: post ajouté à state.userPosts`);
-
-  // Naviguer immédiatement et afficher le post
+  // Rafraîchir le feed et afficher le nouveau post
   goTo("feed");
-  setTimeout(() => renderFeed(), 50);  // Render après navigation pour éviter race condition
-
-  // 🔄 Essayer de synchroniser avec Supabase (avec retry) EN BACKGROUND
-  let syncSuccess = false;
-  if (typeof supaPublishPostWithRetry === "function") {
-    try {
-      syncSuccess = await supaPublishPostWithRetry(post);
-    } catch (e) {
-      console.warn("Erreur sync:", e);
-      syncSuccess = false;
-    }
-  }
-
-  // Mettre à jour le statut de sync
-  const publishedPost = state.userPosts.find(p => p.id === post.id);
-  if (publishedPost) {
-    publishedPost.syncStatus = syncSuccess ? "synced" : "offline";
-    saveState();
-  }
+  setTimeout(() => renderFeed(), 100);
 
   // Clear form
   $("#postText").value = "";
