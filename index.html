@@ -20475,6 +20475,11 @@ function diagLog(msg) {
   _diagPanel.textContent += line;
   _diagPanel.scrollTop = _diagPanel.scrollHeight;
   console.log("[DIAG]", msg);
+
+  // 🔧 STOCKER LES LOGS pour le diagnostic avancé
+  if (!window._diagLogs) window._diagLogs = [];
+  window._diagLogs.push(`[${time}] ${msg}`);
+  if (window._diagLogs.length > 100) window._diagLogs.shift();  // Garder seulement les 100 derniers
 }
 
 // Diagnostic DÉSACTIVÉ au démarrage pour éviter les lags (le garder fermé)
