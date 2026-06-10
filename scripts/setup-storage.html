@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Setup Supabase Storage - PASSIO</title>
+  <style>
+    body { font-family: Arial; padding: 20px; background: #f5f5f5; }
+    .container { max-width: 600px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; }
+    h1 { color: #7c3aed; }
+    button { background: #7c3aed; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; }
+    button:hover { background: #6d28d9; }
+    .status { margin-top: 20px; padding: 15px; border-radius: 4px; }
+    .success { background: #d4edda; color: #155724; }
+    .error { background: #f8d7da; color: #721c24; }
+    .loading { background: #e2e3e5; color: #383d41; }
+    pre { background: #f8f9fa; padding: 10px; border-radius: 4px; overflow-x: auto; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🚀 Setup Supabase Storage - PASSIO</h1>
+    <p>Ce script crée automatiquement les buckets Storage nécessaires.</p>
+
+    <div>
+      <h3>1️⃣ Colle ta clé Service Role ici:</h3>
+      <textarea id="serviceRoleKey" style="width:100%; height:100px; padding:10px; border: 1px solid #ccc; border-radius:4px;" placeholder="Colle ta clé service_role ici"></textarea>
+      <p><small>Trouve-la dans: Supabase Dashboard → Settings → API → service_role secret</small></p>
+    </div>
+
+    <div>
+      <button onclick="createBuckets()">✅ Créer les Buckets</button>
+    </div>
+
+    <div id="status"></div>
+  </div>
+
+  <script>
+    const SUPABASE_URL = "https://njkiyoklssvefstljemx.supabase.co";
+
+    async function createBuckets() {
+      const serviceRoleKey = document.getElementById("serviceRoleKey").value.trim();
+      const statusDiv = document.getElementById("status");
+
+      if (!serviceRoleKey) {
+        statusDiv.className = "status error";
+        statusDiv.innerHTML = "❌ Colle d'abord ta clé service_role!";
+        return;
+      }
+
+      statusDiv.className = "status loading";
+      statusDiv.innerHTML = "⏳ Création des buckets en cours...";
+
+      try {
+        // Créer le bucket "media"
+        const res1 = await fetch(`${SUPABASE_URL}/storage/v1/b`, {
+          method: "POST",
+          headers: {
+            "authorization": `Bearer ${serviceRoleKey}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ name: "media", public: true })
+        });
+
+        const data1 = await res1.json();
+        console.log("Media bucket:", data1);
+
+        // Créer le bucket "storage"
+        const res2 = await fetch(`${SUPABASE_URL}/storage/v1/b`, {
+          method: "POST",
+          headers: {
+            "authorization": `Bearer ${serviceRoleKey}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ name: "storage", public: true })
+        });
+
+        const data2 = await res2.json();
+        console.log("Storage bucket:", data2);
+
+        if (res1.ok && res2.ok) {
+          statusDiv.className = "status success";
+          statusDiv.innerHTML = `
+            ✅ <b>Buckets créés avec succès!</b><br>
+            📦 media: ${data1.name}<br>
+            📦 storage: ${data2.name}<br>
+            <br>Reviens à PASSIO et teste la publication! 🎉
+          `;
+        } else {
+          throw new Error(`Erreur: ${data1.message || data2.message}`);
+        }
+      } catch (error) {
+        statusDiv.className = "status error";
+        statusDiv.innerHTML = `❌ Erreur: ${error.message}<br><pre>${JSON.stringify(error, null, 2)}</pre>`;
+      }
+    }
+  </script>
+</body>
+</html>

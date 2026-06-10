@@ -21,6 +21,19 @@
 
   <!-- PWA : installation automatique adaptée à l'appareil ET au navigateur -->
   <script>
+    // ═══ MODE PRODUCTION : logs désactivés ═══
+    // Pour réactiver les logs : localStorage.setItem("passio_debug", "1") puis recharger.
+    (function() {
+      try {
+        window.PASSIO_DEBUG = localStorage.getItem("passio_debug") === "1"
+          || location.hostname === "localhost" || location.hostname === "127.0.0.1";
+      } catch (e) { window.PASSIO_DEBUG = false; }
+      if (!window.PASSIO_DEBUG) {
+        console.log = function() {};
+        console.debug = function() {};
+      }
+    })();
+
     var _ua           = navigator.userAgent;
     var _isIOS        = /iphone|ipad|ipod/i.test(_ua) && !window.MSStream;
     var _isAndroid    = /android/i.test(_ua);
@@ -13858,7 +13871,13 @@ function _showReactPicker(convId, msgId, bubbleEl) {
   picker.id = "_reactPicker";
   picker._forMsg = msgId;
   picker.style.cssText = "position:fixed;z-index:999;background:var(--bg-card);border:1.5px solid var(--border);border-radius:20px;padding:8px 12px;display:flex;gap:8px;box-shadow:0 8px 30px rgba(0,0,0,0.25);";
-  picker.innerHTML = _REACT_EMOJIS.map(e => `<span style="font-size:22px;cursor:pointer;" onclick="_toggleReaction('${convId}','${msgId}','${e}');this.closest('#_reactPicker').remove();">${e}</span>`).join("");
+  _REACT_EMOJIS.forEach(e => {
+    var sp = document.createElement("span");
+    sp.style.cssText = "font-size:22px;cursor:pointer;";
+    sp.textContent = e;
+    sp.addEventListener("click", function() { _toggleReaction(convId, msgId, e); picker.remove(); });
+    picker.appendChild(sp);
+  });
   // Positionner au-dessus de la bulle
   var rect = bubbleEl.getBoundingClientRect();
   picker.style.left = Math.min(rect.left, window.innerWidth - 290) + "px";
@@ -16824,13 +16843,13 @@ function renderStudio() {
   if (drafts.length === 0) {
     dl.innerHTML = `<div class="empty"><div class="empty-icon">📝</div><div class="empty-title">Aucun brouillon</div><div class="empty-text">Tes brouillons apparaîtront ici.</div></div>`;
   } else {
-    dl.innerHTML = drafts.map(d => `<div class="list-row" onclick="loadDraft('${d.id}')">
+    dl.innerHTML = drafts.map(d => `<div class="list-row" onclick="loadDraft('${escapeHtml(d.id)}')">
       <div style="font-size:22px;">${d.type === "photo" ? "📷" : d.type === "audio" ? "🎙" : "✍️"}</div>
       <div class="list-row-body">
         <div class="list-row-title">${escapeHtml((d.text || "").slice(0, 60)) || "(vide)"}</div>
         <div class="list-row-meta">${passionById(d.passion).label} · ${fmtTime(d.at)}</div>
       </div>
-      <button class="btn small ghost" onclick="event.stopPropagation();deleteDraft('${d.id}')">🗑</button>
+      <button class="btn small ghost" onclick="event.stopPropagation();deleteDraft('${escapeHtml(d.id)}')">🗑</button>
     </div>`).join("");
   }
 }
@@ -19469,7 +19488,7 @@ function openEventDetails(id) {
   if (ev.coverUrl) {
     coverEl.innerHTML = `<img class="event-detail-cover" src="${escapeHtml(ev.coverUrl)}" onerror="this.parentElement.innerHTML='<div class=\\'event-detail-cover-placeholder\\'>${ev.emoji || passion.emoji}</div>'" alt=""/>`;
   } else {
-    coverEl.innerHTML = `<div class="event-detail-cover-placeholder">${ev.emoji || passion.emoji}</div>`;
+    coverEl.innerHTML = `<div class="event-detail-cover-placeholder">${escapeHtml(ev.emoji || passion.emoji)}</div>`;
   }
 
   const heroTitle = document.getElementById("eventDetailHeroTitle");
@@ -21175,7 +21194,7 @@ async function supaLoadPosts() {
 // ---- LIKES ----
 async function supaToggleLike(postId) {
   try {
-    const { data: existing } = await supa.from("post_likes").select("*").eq("post_id", postId).eq("user_id", MY_UID).maybeSingle();
+    const { data: existing } = await supa.from("post_likes").select("post_id").eq("post_id", postId).eq("user_id", MY_UID).maybeSingle();
     if (existing) {
       await supa.from("post_likes").delete().eq("post_id", postId).eq("user_id", MY_UID);
       return false;
@@ -21765,7 +21784,7 @@ let _feedRefreshInterval = null;
 
 function startFeedRefreshLoop() {
   if (_feedRefreshInterval) return;  // Déjà en cours
-  console.log("🔄 [FEED] Démarrage refresh automatique du feed (10s)");
+  console.log("🔄 [FEED] Démarrage refresh fallback du feed (60s, le realtime gère le reste)");
   _feedRefreshInterval = setInterval(async () => {
     try {
       const posts = await supaLoadPosts();
@@ -21780,7 +21799,7 @@ function startFeedRefreshLoop() {
     } catch (e) {
       console.warn("⚠️ [FEED] Refresh échoué:", e.message);
     }
-  }, 10000);  // Chaque 10 secondes
+  }, 60000);  // Fallback 60s — les mises à jour instantanées passent par le canal realtime:posts
 }
 
 function stopFeedRefreshLoop() {
@@ -23121,7 +23140,7 @@ var grid = document.getElementById("emojiGrid");
 if(grid) {
   grid.style.gap = "0px";
   grid.style.gridTemplateColumns = "repeat(12,1fr)";
-  for(var i=0; i<emojiList.length; i++) {
+  for(var i=0; i < emojiList.length; i++) {
     var d = document.createElement("div");
     d.textContent = emojiList[i];
     d.style.cssText = "font-size:12px;padding:0px;cursor:pointer;text-align:center;line-height:1;";
@@ -24230,7 +24249,7 @@ window.advancedDiagnostic = async function() {
   // 3. Charger TOUS les posts directement de Supabase
   console.log("\n3️⃣ CHARGER TOUS LES POSTS DE SUPABASE:");
   try {
-    const { data, error } = await supa.from("posts").select("*").order("created_at", { ascending: false }).limit(100);
+    const { data, error } = await supa.from("posts").select("id,author_id,passion_id,created_at").order("created_at", { ascending: false }).limit(100);
     if (error) {
       console.error("❌ Erreur requête posts:", error);
       return;
@@ -24266,7 +24285,7 @@ window.advancedDiagnostic = async function() {
 window._autoRefreshInterval = null;
 window.startAutoRefresh = function() {
   if (window._autoRefreshInterval) return;  // Déjà actif
-  console.log("🔄 Auto-refresh ACTIVÉ (toutes les 10s)");
+  console.log("🔄 Auto-refresh fallback ACTIVÉ (toutes les 60s, realtime actif par ailleurs)");
   window._autoRefreshInterval = setInterval(function() {
     supaLoadPosts().then(function(posts) {
       if (posts && posts.length > 0) {
@@ -24282,7 +24301,7 @@ window.startAutoRefresh = function() {
     }).catch(function(err) {
       console.warn("⚠️ Auto-refresh erreur:", err.message);
     });
-  }, 10000);  // 10 secondes
+  }, 60000);  // Fallback 60s — les mises à jour instantanées passent par le canal realtime:posts
 };
 
 window.stopAutoRefresh = function() {
@@ -24376,6 +24395,5 @@ setTimeout(function() {
   });
 }, 500);
 </script>
-
 </body>
 </html>

@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>🚀 Créer Buckets Supabase - PASSIO</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      padding: 40px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0;
+    }
+    .container {
+      max-width: 500px;
+      background: white;
+      padding: 40px;
+      border-radius: 12px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    }
+    h1 {
+      color: #667eea;
+      text-align: center;
+      margin: 0 0 20px 0;
+    }
+    .status {
+      margin-top: 20px;
+      padding: 20px;
+      border-radius: 8px;
+      text-align: center;
+      font-weight: bold;
+      font-size: 16px;
+    }
+    .loading {
+      background: #e3f2fd;
+      color: #1976d2;
+      animation: pulse 1.5s infinite;
+    }
+    .success {
+      background: #e8f5e9;
+      color: #388e3c;
+      border: 2px solid #4caf50;
+    }
+    .error {
+      background: #ffebee;
+      color: #c62828;
+      border: 2px solid #f44336;
+    }
+    .bucket-item {
+      display: flex;
+      align-items: center;
+      margin: 10px 0;
+      font-size: 18px;
+    }
+    .bucket-item.done {
+      color: #4caf50;
+    }
+    .bucket-item.pending {
+      color: #999;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.7; }
+    }
+    .spinner {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 3px solid #f3f3f3;
+      border-top: 3px solid #667eea;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-right: 10px;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🚀 PASSIO Storage Setup</h1>
+
+    <div id="status" class="status loading">
+      <div class="spinner"></div>
+      Création des buckets en cours...
+    </div>
+
+    <div style="margin-top: 20px;">
+      <div id="media" class="bucket-item pending">
+        ⏳ Bucket "media"
+      </div>
+      <div id="storage" class="bucket-item pending">
+        ⏳ Bucket "storage"
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const SUPABASE_URL = "https://njkiyoklssvefstljemx.supabase.co";
+    const SERVICE_ROLE_KEY = "COLLE_TA_CLE_SERVICE_ROLE_ICI";
+
+    async function createBuckets() {
+      try {
+        // Créer bucket "media"
+        console.log("📦 Création du bucket 'media'...");
+        document.getElementById("media").innerHTML = '<div class="spinner"></div> Création du bucket "media"...';
+
+        const res1 = await fetch(`${SUPABASE_URL}/storage/v1/buckets`, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${SERVICE_ROLE_KEY}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ name: "media", public: true })
+        });
+
+        const data1 = await res1.json();
+        console.log("Media response:", data1);
+
+        if (res1.ok) {
+          document.getElementById("media").className = "bucket-item done";
+          document.getElementById("media").innerHTML = "✅ Bucket 'media' créé";
+        } else {
+          throw new Error(data1.message || "Erreur création media");
+        }
+
+        // Créer bucket "storage"
+        console.log("📦 Création du bucket 'storage'...");
+        document.getElementById("storage").innerHTML = '<div class="spinner"></div> Création du bucket "storage"...';
+
+        const res2 = await fetch(`${SUPABASE_URL}/storage/v1/buckets`, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${SERVICE_ROLE_KEY}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ name: "storage", public: true })
+        });
+
+        const data2 = await res2.json();
+        console.log("Storage response:", data2);
+
+        if (res2.ok) {
+          document.getElementById("storage").className = "bucket-item done";
+          document.getElementById("storage").innerHTML = "✅ Bucket 'storage' créé";
+        } else {
+          throw new Error(data2.message || "Erreur création storage");
+        }
+
+        // Succès!
+        document.getElementById("status").className = "status success";
+        document.getElementById("status").innerHTML = `
+          ✅ <b>Buckets créés avec succès!</b><br>
+          <br>
+          📱 Reviens à PASSIO et teste la publication! 🎉
+        `;
+        console.log("✅ Tous les buckets ont été créés avec succès!");
+
+      } catch (error) {
+        console.error("❌ Erreur:", error);
+        document.getElementById("status").className = "status error";
+        document.getElementById("status").innerHTML = `
+          ❌ <b>Erreur lors de la création</b><br>
+          ${error.message}
+        `;
+      }
+    }
+
+    // Lancer la création au chargement
+    window.addEventListener("load", createBuckets);
+  </script>
+</body>
+</html>

@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Test Toggle</title>
+<style>
+  body { font-family: sans-serif; padding: 20px; }
+  button { padding: 10px 20px; font-size: 16px; cursor: pointer; }
+  #panel { position: fixed; bottom: 100px; left: 20px; width: 300px; height: 400px; background: white; border: 1px solid #ddd; border-radius: 8px; display: none; }
+  #panel.open { display: block; }
+</style>
+</head>
+<body>
+<h1>Test Simple Toggle</h1>
+<button id="btn" onclick="toggle()">Ouvrir Panel</button>
+<div id="panel">
+  <div style="padding: 20px; text-align: center;">Panel Content</div>
+</div>
+
+<script>
+var isOpen = false;
+
+function toggle() {
+  isOpen = !isOpen;
+  var panel = document.getElementById("panel");
+  if (isOpen) {
+    panel.classList.add("open");
+    console.log("Panel ouvert");
+  } else {
+    panel.classList.remove("open");
+    console.log("Panel fermé");
+  }
+}
+
+// Test: Log au chargement
+console.log("Page loaded, toggle function ready");
+</script>
+</body>
+</html>

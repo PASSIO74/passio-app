@@ -12,8 +12,24 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
+      - name: Build dist (whitelist des fichiers publics uniquement)
+        run: |
+          mkdir -p dist
+          cp index.html sw.js manifest.json _headers icon-192.png icon-512.png dist/
+
+      - name: Minify index.html (fallback sur le fichier brut en cas d'erreur)
+        run: |
+          npx --yes html-minifier-terser \
+            --collapse-whitespace \
+            --remove-comments \
+            --minify-css true \
+            --minify-js true \
+            -o dist/index.min.html dist/index.html \
+          && mv dist/index.min.html dist/index.html \
+          || echo "Minification échouée, déploiement du fichier brut"
+
       - name: Deploy to Netlify
         env:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           NETLIFY_SITE_ID: eee53fe0-9fb2-41f4-ab70-0a4e2c3f01a1
-        run: npx netlify-cli deploy --prod --dir . --auth "$NETLIFY_AUTH_TOKEN" --site "$NETLIFY_SITE_ID"
+        run: npx netlify-cli deploy --prod --dir dist --auth "$NETLIFY_AUTH_TOKEN" --site "$NETLIFY_SITE_ID"

@@ -4,10 +4,22 @@
 *.zip
 *.url
 
-# Dossiers temporaires
+# Backups locaux — l'historique git sert de backup
+*.bak
+*.backup
+*.before_render_fix
+*.original
+index_*.html
+nul
+
+# Dossiers temporaires / locaux
 files_extracted/
 apli_extracted/
 deploy/
+dist/
+archive/
+node_modules/
+.claude/
 
 # Netlify cache
 .netlify/

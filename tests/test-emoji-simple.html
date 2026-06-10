@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Test Emoji Panel - SIMPLE</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root { --accent: #7c3aed; --bg-card: white; --bg-deep: #f5f5f5; --border: #ddd; --text: #333; --muted: #999; }
+  body { font-family: sans-serif; padding: 20px; background: #f5f5f5; }
+  .test-btn { padding: 10px 20px; background: var(--accent); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 16px; margin: 20px 0; }
+  .test-btn:hover { opacity: 0.9; }
+
+  /* ===== PANEL EMOJI CSS ===== */
+  #convEmojiPanel {
+    display: none;
+    position: fixed;
+    bottom: 100px;
+    left: 20px;
+    width: 350px;
+    height: 450px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+    z-index: 9999;
+    flex-direction: column;
+  }
+
+  #convEmojiPanel.open {
+    display: flex;
+  }
+
+  .emoji-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-deep);
+    flex-shrink: 0;
+  }
+
+  .emoji-tab {
+    flex: 1;
+    padding: 10px;
+    text-align: center;
+    border: none;
+    background: none;
+    cursor: pointer;
+    font-weight: 600;
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  .emoji-tab.active {
+    color: var(--accent);
+    border-bottom: 2px solid var(--accent);
+  }
+
+  #emojiTabContent {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    overflow: hidden;
+    min-height: 0;
+  }
+
+  #emojiTabContent.hidden {
+    display: none;
+  }
+
+  .emoji-search-row {
+    padding: 8px 10px;
+    flex-shrink: 0;
+  }
+
+  .emoji-search-row input {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    font-size: 13px;
+    box-sizing: border-box;
+  }
+
+  .emoji-grid {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap: 4px;
+    padding: 8px;
+    overflow-y: auto;
+    flex: 1;
+  }
+
+  .emoji-item {
+    font-size: 24px;
+    text-align: center;
+    padding: 4px;
+    cursor: pointer;
+    border-radius: 8px;
+    transition: background 150ms;
+  }
+
+  .emoji-item:hover {
+    background: var(--bg-deep);
+  }
+
+  #gifTabContent {
+    display: none;
+    flex-direction: column;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  #gifTabContent.visible {
+    display: flex;
+  }
+
+  .gif-search-row {
+    padding: 8px 10px;
+    flex-shrink: 0;
+  }
+
+  .gif-search-row input {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    font-size: 13px;
+    box-sizing: border-box;
+  }
+
+  .gif-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    padding: 12px;
+    overflow-y: auto;
+    flex: 1;
+  }
+
+  .gif-item {
+    width: 100%;
+    height: 120px;
+    border-radius: 8px;
+    overflow: hidden;
+    cursor: pointer;
+    background: var(--bg-deep);
+  }
+
+  .gif-item img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .status { padding: 10px; background: #e3f2fd; border-left: 3px solid #2196F3; margin: 10px 0; }
+</style>
+</head>
+<body>
+<h1>🧪 TEST EMOJI PANEL - DEBUG SIMPLE</h1>
+
+<button class="test-btn" id="testBtn" onclick="testClick()">🧪 CLICK HERE TO TEST EMOJI PANEL</button>
+
+<div class="status" id="log">Prêt pour le test</div>
+
+<!-- PANEL EMOJI/GIF -->
+<div id="convEmojiPanel">
+  <div class="emoji-tabs">
+    <button class="emoji-tab active" onclick="switchEmojiTab('emoji', this)">😊 Emoji</button>
+    <button class="emoji-tab" onclick="switchEmojiTab('gif', this)">GIF</button>
+  </div>
+
+  <div id="emojiTabContent">
+    <div class="emoji-search-row">
+      <input type="text" placeholder="🔍 Chercher..." oninput="_onEmojiSearch(this.value)">
+    </div>
+    <div class="emoji-grid" id="emojiGrid"></div>
+  </div>
+
+  <div id="gifTabContent">
+    <div class="gif-search-row">
+      <input type="text" placeholder="🔍 GIFs...">
+    </div>
+    <div class="gif-grid" id="gifGrid"></div>
+  </div>
+</div>
+
+<script>
+// LOG FUNCTION
+function log(msg) {
+  var logDiv = document.getElementById("log");
+  logDiv.textContent = msg;
+  console.log(msg);
+}
+
+// VARIABLES
+var _emojiPanelOpen = false;
+var EMOJI_DATA = [
+  { emoji: "😀", labels: "sourire heureux" },
+  { emoji: "😂", labels: "rire pleurer" },
+  { emoji: "❤️", labels: "coeur amour" },
+  { emoji: "🔥", labels: "feu fire" },
+  { emoji: "👍", labels: "pouce" },
+  { emoji: "🎉", labels: "celebration party" },
+  { emoji: "🚀", labels: "rocket" },
+  { emoji: "✨", labels: "sparkle" },
+  { emoji: "😍", labels: "amour coeur" },
+  { emoji: "🤔", labels: "pense" },
+  { emoji: "👏", labels: "applaudissement" },
+  { emoji: "🙌", labels: "celebration" },
+  { emoji: "💯", labels: "cent" },
+  { emoji: "🎊", labels: "celebration party" },
+  { emoji: "💪", labels: "force" },
+  { emoji: "😎", labels: "cool" }
+];
+
+var EMOJIS = EMOJI_DATA.map(e => e.emoji);
+
+// MAIN FUNCTION
+function testClick() {
+  log("TEST 1: Click détecté! Appel toggleEmojiPanel()...");
+  toggleEmojiPanel();
+}
+
+function toggleEmojiPanel() {
+  log("TEST 2: toggleEmojiPanel() appelée");
+  var panel = document.getElementById("convEmojiPanel");
+
+  if (!panel) {
+    log("ERREUR: Panel n'existe pas!");
+    return;
+  }
+
+  _emojiPanelOpen = !_emojiPanelOpen;
+  log("TEST 3: _emojiPanelOpen = " + _emojiPanelOpen);
+
+  panel.classList.toggle("open", _emojiPanelOpen);
+  log("TEST 4: Class 'open' togglée. classList = " + panel.className);
+
+  if (_emojiPanelOpen) {
+    var grid = document.getElementById("emojiGrid");
+    if (grid && !grid.hasChildNodes()) {
+      log("TEST 5: Grid vide, peuplement...");
+      populateEmojis();
+    } else {
+      log("TEST 5: Grid déjà peuplée");
+    }
+  }
+}
+
+function populateEmojis() {
+  var grid = document.getElementById("emojiGrid");
+  if (!grid) {
+    log("ERREUR: Grid n'existe pas");
+    return;
+  }
+
+  grid.innerHTML = "";
+  EMOJIS.forEach(function(emoji) {
+    var div = document.createElement("div");
+    div.className = "emoji-item";
+    div.textContent = emoji;
+    div.onclick = function() {
+      log("Emoji sélectionné: " + emoji);
+    };
+    grid.appendChild(div);
+  });
+
+  log("✅ " + EMOJIS.length + " emojis affichés!");
+}
+
+function _onEmojiSearch(query) {
+  var grid = document.getElementById("emojiGrid");
+  if (!query.trim()) {
+    populateEmojis();
+    return;
+  }
+
+  var q = query.toLowerCase();
+  var results = EMOJI_DATA.filter(function(e) {
+    return e.labels.includes(q);
+  }).map(function(e) { return e.emoji; });
+
+  grid.innerHTML = "";
+  results.forEach(function(emoji) {
+    var div = document.createElement("div");
+    div.className = "emoji-item";
+    div.textContent = emoji;
+    grid.appendChild(div);
+  });
+
+  log("Résultats recherche '" + query + "': " + results.length);
+}
+
+function switchEmojiTab(tab, btn) {
+  log("Onglet sélectionné: " + tab);
+
+  document.querySelectorAll(".emoji-tab").forEach(function(b) {
+    b.classList.remove("active");
+  });
+  btn.classList.add("active");
+
+  var emojiContent = document.getElementById("emojiTabContent");
+  var gifContent = document.getElementById("gifTabContent");
+
+  if (tab === "emoji") {
+    emojiContent.classList.remove("hidden");
+    gifContent.classList.remove("visible");
+  } else {
+    emojiContent.classList.add("hidden");
+    gifContent.classList.add("visible");
+    renderGifs();
+  }
+}
+
+function renderGifs() {
+  var grid = document.getElementById("gifGrid");
+  var gifs = [
+    "https://media.giphy.com/media/3o7abKhOpu0NwenH3O/giphy.gif",
+    "https://media.giphy.com/media/xT9IgG50Lg7rusjtG8/giphy.gif",
+    "https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif",
+    "https://media.giphy.com/media/26ufdipQqU2lhNA4g/giphy.gif",
+  ];
+
+  grid.innerHTML = gifs.map(url =>
+    '<div class="gif-item"><img src="' + url + '" loading="lazy" /></div>'
+  ).join("");
+
+  log("✅ " + gifs.length + " GIFs affichés!");
+}
+
+log("Page chargée. Clique sur le bouton pour tester.");
+</script>
+</body>
+</html>

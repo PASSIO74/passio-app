@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Debug Emoji Panel</title>
+<style>
+  :root {
+    --accent: #7c3aed;
+    --bg-card: white;
+    --bg-deep: #f5f5f5;
+    --border: #ddd;
+    --text: #333;
+    --muted: #999;
+  }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f5f5f5; margin: 0; padding: 20px; }
+  .container { max-width: 800px; margin: 0 auto; }
+  .section { background: white; padding: 20px; margin-bottom: 20px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+  .test-btn { padding: 10px 20px; background: var(--accent); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; margin: 5px; }
+  .test-btn:hover { opacity: 0.9; }
+  #convEmojiPanel { position: fixed; bottom: 100px; left: 20px; width: 350px; height: 450px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px; display: none; flex-direction: column; z-index: 9999; }
+  #convEmojiPanel.open { display: flex; }
+  .emoji-tabs { display: flex; border-bottom: 1px solid var(--border); background: var(--bg-deep); }
+  .emoji-tab { flex: 1; padding: 10px 0; text-align: center; border: none; background: none; cursor: pointer; font-weight: 600; color: var(--muted); font-size: 13px; }
+  .emoji-tab.active { color: var(--accent); border-bottom: 2px solid var(--accent); }
+  .emoji-search-row { padding: 8px 10px 4px; flex-shrink: 0; }
+  .emoji-search-row input { width: 100%; padding: 8px 14px; border-radius: 20px; border: 1.5px solid var(--border); background: var(--bg-deep); color: var(--text); font-size: 13px; outline: none; box-sizing: border-box; }
+  .emoji-search-row input:focus { border-color: var(--accent); }
+  #emojiTabContent { display: flex; flex-direction: column; flex: 1; overflow: hidden; min-height: 0; }
+  #emojiTabContent.hidden { display: none; }
+  .emoji-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; padding: 12px; overflow-y: auto; flex: 1; }
+  .emoji-item { font-size: 24px; text-align: center; padding: 4px; cursor: pointer; border-radius: 8px; transition: background 150ms; }
+  .emoji-item:hover { background: var(--bg-deep); }
+  #gifTabContent { display: none; flex-direction: column; flex: 1; overflow: hidden; min-height: 200px; height: 100%; }
+  #gifTabContent.visible { display: flex; }
+  .gif-search-row { padding: 8px 10px 4px; flex-shrink: 0; }
+  .gif-search-row input { width: 100%; padding: 8px 14px; border-radius: 20px; border: 1.5px solid var(--border); background: var(--bg-deep); color: var(--text); font-size: 13px; outline: none; box-sizing: border-box; }
+  .gif-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; padding: 12px; overflow-y: auto; flex: 1; height: 100%; }
+  .gif-item { width: 100%; height: 120px; border-radius: 12px; overflow: hidden; cursor: pointer; background: var(--bg-deep); box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+  .gif-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .log { background: #f0f0f0; padding: 10px; margin: 10px 0; font-family: monospace; font-size: 12px; border-radius: 4px; max-height: 200px; overflow-y: auto; border-left: 3px solid var(--accent); }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>🧪 Debug Panel Emoji/GIF</h1>
+
+  <div class="section">
+    <h2>Test 1: Vérification des fonctions</h2>
+    <button class="test-btn" onclick="testFunctions()">✅ Vérifier les fonctions</button>
+    <button class="test-btn" onclick="testToggle()">🎯 Tester toggleEmojiPanel()</button>
+    <button class="test-btn" onclick="clearLog()">🗑️ Effacer log</button>
+  </div>
+
+  <div class="section">
+    <h2>Panel Emoji/GIF (devrait s'ouvrir en bas)</h2>
+    <button class="test-btn" id="btnEmoji" onclick="toggleEmojiPanel()">😊 Ouvrir Panel</button>
+  </div>
+
+  <div class="section">
+    <h2>Log de debug</h2>
+    <div class="log" id="logBox">En attente de test...</div>
+  </div>
+</div>
+
+<!-- Panel Emoji/GIF -->
+<div style="position: relative; flex-shrink: 0; z-index: 100;">
+  <div id="convEmojiPanel">
+    <div class="emoji-tabs">
+      <button class="emoji-tab active" onclick="switchEmojiTab('emoji', this)">😊 Emoji</button>
+      <button class="emoji-tab" onclick="switchEmojiTab('gif', this)">GIF</button>
+    </div>
+    <div id="emojiTabContent">
+      <div class="emoji-search-row">
+        <input type="text" placeholder="🔍 Chercher emoji…" oninput="_onEmojiSearch(this.value)" />
+      </div>
+      <div class="emoji-grid" id="emojiGrid">
+        <div style="grid-column: span 8; text-align: center; color: var(--muted);">Chargement...</div>
+      </div>
+    </div>
+    <div id="gifTabContent">
+      <div class="gif-search-row">
+        <input type="text" placeholder="🔍 Rechercher GIF…" />
+      </div>
+      <div class="gif-grid" id="gifGrid">
+        <div style="grid-column: span 3; text-align: center; color: var(--muted);">GIFs ici</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+var _emojiPanelOpen = false;
+var logs = [];
+
+function log(msg) {
+  logs.push(new Date().toLocaleTimeString() + " - " + msg);
+  var logBox = document.getElementById("logBox");
+  if (logBox) {
+    logBox.innerHTML = logs.slice(-10).map(l => "<div>" + l + "</div>").join("");
+    logBox.scrollTop = logBox.scrollHeight;
+  }
+  console.log(msg);
+}
+
+function clearLog() {
+  logs = [];
+  var logBox = document.getElementById("logBox");
+  if (logBox) logBox.innerHTML = "Log effacé";
+}
+
+function testFunctions() {
+  log("=== Test des fonctions ===");
+
+  if (typeof toggleEmojiPanel === "function") {
+    log("✅ toggleEmojiPanel existe");
+  } else {
+    log("❌ toggleEmojiPanel n'existe pas");
+  }
+
+  if (typeof switchEmojiTab === "function") {
+    log("✅ switchEmojiTab existe");
+  } else {
+    log("❌ switchEmojiTab n'existe pas");
+  }
+
+  if (typeof _closeEmojiPanel === "function") {
+    log("✅ _closeEmojiPanel existe");
+  } else {
+    log("❌ _closeEmojiPanel n'existe pas");
+  }
+
+  if (typeof _onEmojiSearch === "function") {
+    log("✅ _onEmojiSearch existe");
+  } else {
+    log("❌ _onEmojiSearch n'existe pas");
+  }
+
+  var panel = document.getElementById("convEmojiPanel");
+  if (panel) {
+    log("✅ Panel DOM existe");
+    log("   - Classe: " + panel.className);
+    log("   - Display: " + window.getComputedStyle(panel).display);
+  } else {
+    log("❌ Panel DOM n'existe pas");
+  }
+}
+
+function testToggle() {
+  log("=== Test toggle ===");
+  try {
+    toggleEmojiPanel();
+    log("✅ toggleEmojiPanel() appelée sans erreur");
+    var panel = document.getElementById("convEmojiPanel");
+    if (panel) {
+      log("   - _emojiPanelOpen = " + _emojiPanelOpen);
+      log("   - classList: " + panel.className);
+      log("   - style.display: " + panel.style.display);
+      log("   - computed display: " + window.getComputedStyle(panel).display);
+    }
+  } catch (e) {
+    log("❌ Erreur: " + e.message);
+  }
+}
+
+function toggleEmojiPanel() {
+  log("toggleEmojiPanel() appelée");
+  var panel = document.getElementById("convEmojiPanel");
+  if (!panel) {
+    log("Erreur: panel n'existe pas");
+    return;
+  }
+
+  _emojiPanelOpen = !_emojiPanelOpen;
+  log("_emojiPanelOpen = " + _emojiPanelOpen);
+
+  panel.classList.toggle("open", _emojiPanelOpen);
+  log("classList.toggle('open') appelé");
+
+  if (_emojiPanelOpen) {
+    populateEmojis();
+  }
+}
+
+function switchEmojiTab(tab, btn) {
+  log("switchEmojiTab(" + tab + ") appelée");
+  document.querySelectorAll(".emoji-tab").forEach(function(b) { b.classList.remove("active"); });
+  if (btn) btn.classList.add("active");
+
+  var emojiContent = document.getElementById("emojiTabContent");
+  var gifContent = document.getElementById("gifTabContent");
+
+  if (tab === "emoji") {
+    emojiContent.classList.remove("hidden");
+    gifContent.classList.remove("visible");
+    log("Emoji tab activé");
+  } else {
+    emojiContent.classList.add("hidden");
+    gifContent.classList.add("visible");
+    log("GIF tab activé");
+  }
+}
+
+function _closeEmojiPanel() {
+  log("_closeEmojiPanel() appelée");
+  _emojiPanelOpen = false;
+  var panel = document.getElementById("convEmojiPanel");
+  if (panel) {
+    panel.classList.remove("open");
+  }
+}
+
+function _onEmojiSearch(query) {
+  log("Recherche emoji: " + query);
+}
+
+function populateEmojis() {
+  var grid = document.getElementById("emojiGrid");
+  if (!grid) {
+    log("Erreur: emojiGrid n'existe pas");
+    return;
+  }
+
+  var emojis = ["😀", "😁", "😂", "🤣", "😃", "❤️", "🔥", "👍", "🎉"];
+  grid.innerHTML = emojis.map(e => '<div class="emoji-item">' + e + '</div>').join("");
+  log("✅ " + emojis.length + " emojis affichés");
+}
+
+// Au chargement
+log("Page chargée - Tests disponibles");
+testFunctions();
+</script>
+</body>
+</html>

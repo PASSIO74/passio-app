@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Test Rapide - Vérification Erreurs JS</title>
+<style>
+body { font-family: sans-serif; padding: 20px; background: #f5f5f5; }
+.section { background: white; padding: 20px; margin: 20px 0; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+.status { padding: 10px; margin: 10px 0; border-radius: 4px; }
+.ok { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+.error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+button { padding: 8px 16px; background: #7c3aed; color: white; border: none; border-radius: 4px; cursor: pointer; }
+button:hover { opacity: 0.9; }
+code { background: #f0f0f0; padding: 2px 6px; border-radius: 3px; font-family: monospace; }
+</style>
+</head>
+<body>
+
+<h1>🔍 Vérification Rapide - Erreurs JavaScript</h1>
+
+<div class="section">
+  <h2>✅ Test 1: Aucune erreur JavaScript?</h2>
+  <div id="jsErrors" class="status ok">Charger index.html pour vérifier...</div>
+</div>
+
+<div class="section">
+  <h2>✅ Test 2: Vérification des variables globales</h2>
+  <button onclick="testVariables()">Tester variables</button>
+  <div id="varResults" class="status"></div>
+</div>
+
+<div class="section">
+  <h2>✅ Test 3: Vérification des fonctions</h2>
+  <button onclick="testFunctions()">Tester fonctions</button>
+  <div id="funcResults" class="status"></div>
+</div>
+
+<div class="section">
+  <h2>✅ Test 4: Vérification du DOM</h2>
+  <button onclick="testDOM()">Tester DOM</button>
+  <div id="domResults" class="status"></div>
+</div>
+
+<iframe id="indexFrame" src="index.html" style="display: none;"></iframe>
+
+<script>
+var consoleErrors = [];
+
+// Capture les erreurs console
+var originalError = console.error;
+console.error = function() {
+  consoleErrors.push(Array.from(arguments).join(" "));
+  originalError.apply(console, arguments);
+};
+
+function testVariables() {
+  var results = [];
+
+  if (typeof _emojiPanelOpen !== "undefined") {
+    results.push('✅ <code>_emojiPanelOpen</code> défini');
+  } else {
+    results.push('❌ <code>_emojiPanelOpen</code> NON défini');
+  }
+
+  if (typeof EMOJIS !== "undefined" && Array.isArray(EMOJIS)) {
+    results.push('✅ <code>EMOJIS</code> array (' + EMOJIS.length + ' emojis)');
+  } else {
+    results.push('❌ <code>EMOJIS</code> NON array');
+  }
+
+  if (typeof TENOR_KEY !== "undefined") {
+    results.push('✅ <code>TENOR_KEY</code> défini');
+  } else {
+    results.push('❌ <code>TENOR_KEY</code> NON défini');
+  }
+
+  document.getElementById("varResults").innerHTML = results.join("<br>");
+}
+
+function testFunctions() {
+  var results = [];
+
+  var funcs = ["toggleEmojiPanel", "switchEmojiTab", "_closeEmojiPanel", "_onEmojiSearch", "_populateEmojiGrid", "_loadTrendingGifs", "_sendGif", "toggleAttachMenu", "_closeAttachMenu"];
+
+  funcs.forEach(function(fname) {
+    if (typeof window[fname] === "function") {
+      results.push('✅ <code>' + fname + '</code> existe');
+    } else {
+      results.push('❌ <code>' + fname + '</code> NON trouvée');
+    }
+  });
+
+  document.getElementById("funcResults").innerHTML = results.join("<br>");
+}
+
+function testDOM() {
+  var results = [];
+
+  var elemIds = ["convEmojiPanel", "emojiGrid", "gifGrid", "btnEmoji", "emojiTabContent", "gifTabContent"];
+
+  elemIds.forEach(function(id) {
+    var elem = document.getElementById(id);
+    if (elem) {
+      results.push('✅ <code>#' + id + '</code> trouvé');
+    } else {
+      results.push('❌ <code>#' + id + '</code> NON trouvé');
+    }
+  });
+
+  document.getElementById("domResults").innerHTML = results.join("<br>");
+}
+
+// Test des erreurs au chargement
+setTimeout(function() {
+  if (consoleErrors.length === 0) {
+    document.getElementById("jsErrors").className = "status ok";
+    document.getElementById("jsErrors").innerHTML = "✅ Pas d'erreur JavaScript détectée!";
+  } else {
+    document.getElementById("jsErrors").className = "status error";
+    document.getElementById("jsErrors").innerHTML = "❌ Erreurs détectées:<br>" + consoleErrors.join("<br>");
+  }
+}, 1000);
+</script>
+
+</body>
+</html>
