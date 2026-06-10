@@ -33,10 +33,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build dist (whitelist des fichiers publics uniquement)
+      - name: Build dist (assemblage monolithique + assets publics)
         run: |
-          mkdir -p dist
-          cp index.html sw.js manifest.json _headers icon-192.png icon-512.png dist/
+          node scripts/build.js dist/index.html
+          cp sw.js manifest.json _headers icon-192.png icon-512.png dist/
 
       - name: Minify index.html (fallback sur le fichier brut en cas d'erreur)
         run: |
@@ -65,8 +65,8 @@ jobs:
 
       - name: Build dist
         run: |
-          mkdir -p dist
-          cp index.html sw.js manifest.json _headers icon-192.png icon-512.png dist/
+          node scripts/build.js dist/index.html
+          cp sw.js manifest.json _headers icon-192.png icon-512.png dist/
 
       - name: Deploy preview Netlify
         env:

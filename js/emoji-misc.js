@@ -1,0 +1,1281 @@
+window.toggleEmojiPanel = function() {
+  var p = document.getElementById("convEmojiPanel");
+  if(!p) return;
+  p.classList.toggle("open");
+};
+
+window.switchEmojiTab = function(t,b) {
+  document.querySelectorAll("#emojiTopBar button").forEach(x => x.style.background="transparent");
+  b.style.background="#7c3aed";
+  var e = document.getElementById("emojiTabContent");
+  var g = document.getElementById("gifTabContent");
+  if(t==="emoji") {
+    e.style.display="flex";
+    g.style.display="none";
+  } else {
+    e.style.display="none";
+    g.style.display="flex";
+  }
+};
+
+// Populate emoji grid - TRÈS COMPACT
+var emojiList = "😀😁😂🤣😃😄😅😆😉😊😇🥰😍😘😗😚😙🥲😋😛😜🤪😌😔😑😐😶😏😒🙄😬🤐😷🤒🤕🤮🤧🤥🤓😎😕😟🙁☹️😮😯😲😳😦😧😨😰😥😢😭😱😖😣😞😓😩😫🥱😤😡😠🤬😈👿💀☠️💩🤡👹👺👻👽👾🤖😺😸😹😻😼😽🙀😿😾🙈🙉🙊❤️🧡💛💚💙💜🖤🤍🤎💔💕💞💓💗💖💘💝💟👋🤚🖐️✋🖖👌🤌🤏✌️🤞🫰🤟🤘🤙👍👎✊👊🤛🤜👏🙌👐🤲🤝🎉🎊🎈🎁🔥💯✨⭐🌟👀🎯🎭🎨🎬🎤🎧🎼🎹🥁🎷🎺🎸🎻🌈☀️🌙⭐✨💫🌟🎊🎉";
+var grid = document.getElementById("emojiGrid");
+if(grid) {
+  grid.style.gap = "0px";
+  grid.style.gridTemplateColumns = "repeat(12,1fr)";
+  for(var i=0; i < emojiList.length; i++) {
+    var d = document.createElement("div");
+    d.textContent = emojiList[i];
+    d.style.cssText = "font-size:12px;padding:0px;cursor:pointer;text-align:center;line-height:1;";
+    d.onclick = function(e) {
+      if(window.insertEmoji) window.insertEmoji(e.target.textContent);
+      window.toggleEmojiPanel();
+    };
+    grid.appendChild(d);
+  }
+}
+
+// Populate GIF grid - 50+ GIFs DIFFÉRENTS
+var gifUrls = ["https://media.giphy.com/media/3o7abKhOpu0NwenH3O/giphy.gif","https://media.giphy.com/media/xT9IgG50Lg7rusjtG8/giphy.gif","https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif","https://media.giphy.com/media/26ufdipQqU2lhNA4g/giphy.gif","https://media.giphy.com/media/3oz8xAFtqoOUUrsh7W/giphy.gif","https://media.giphy.com/media/l4FGGafcOHmrlQxG0/giphy.gif","https://media.giphy.com/media/3ohzdKdb7d1bbVwnQU/giphy.gif","https://media.giphy.com/media/l0HlFZ3c8HWDRlCharepI/giphy.gif","https://media.giphy.com/media/FW8aI0tXVE8gKxYvRc/giphy.gif","https://media.giphy.com/media/l0Iy1Z8oW4fvfBLh2/giphy.gif","https://media.giphy.com/media/l0HlDtKUoRb0x8bDy/giphy.gif","https://media.giphy.com/media/l0Iy0QcSoQYQW3SWHf/giphy.gif","https://media.giphy.com/media/l0MYr7jgMgWI8ouOI/giphy.gif","https://media.giphy.com/media/l0HlSY9x8FZo0XO1i/giphy.gif","https://media.giphy.com/media/l4FGGafcOHmrlQxG0/giphy.gif","https://media.giphy.com/media/l4Jz3a8jO92crOLXy/giphy.gif","https://media.giphy.com/media/3ohzdKdb7d1bbVwnQU/giphy.gif","https://media.giphy.com/media/l0HlF5j3QRG5pxPAI/giphy.gif","https://media.giphy.com/media/3o7TKU8j7Yt9R2xNMY/giphy.gif","https://media.giphy.com/media/l0MYM8m02D0c3PoFi/giphy.gif","https://media.giphy.com/media/RH16FlVXbaAzS/giphy.gif","https://media.giphy.com/media/l46Ce3kKMKxvEiFZS/giphy.gif","https://media.giphy.com/media/l0HlHJJxcNHFqyvrm/giphy.gif","https://media.giphy.com/media/JIX9RbDfLvbl2/giphy.gif","https://media.giphy.com/media/l0HlQaQ6gWfllcjDO/giphy.gif","https://media.giphy.com/media/l3q2K6HIuvsGyp7UE/giphy.gif","https://media.giphy.com/media/l0HlMMaQ5vJ7lKOmY/giphy.gif","https://media.giphy.com/media/l4FgUMgdCHHBFcGe88/giphy.gif","https://media.giphy.com/media/l4Jz3a8jO92crOLXy/giphy.gif","https://media.giphy.com/media/RH16FlVXbaAzS/giphy.gif","https://media.giphy.com/media/l3q2K6HIuvsGyp7UE/giphy.gif","https://media.giphy.com/media/l0HlSY9x8FZo0XO1i/giphy.gif","https://media.giphy.com/media/l0MYr7jgMgWI8ouOI/giphy.gif","https://media.giphy.com/media/26ufdipQqU2lhNA4g/giphy.gif","https://media.giphy.com/media/xT9IgG50Lg7rusjtG8/giphy.gif","https://media.giphy.com/media/3o7abKhOpu0NwenH3O/giphy.gif","https://media.giphy.com/media/l0Iy1Z8oW4fvfBLh2/giphy.gif","https://media.giphy.com/media/l0HlDtKUoRb0x8bDy/giphy.gif","https://media.giphy.com/media/3oz8xAFtqoOUUrsh7W/giphy.gif","https://media.giphy.com/media/FW8aI0tXVE8gKxYvRc/giphy.gif","https://media.giphy.com/media/l4FGGafcOHmrlQxG0/giphy.gif","https://media.giphy.com/media/3ohzdKdb7d1bbVwnQU/giphy.gif","https://media.giphy.com/media/l0HlFZ3c8HWDRlCharepI/giphy.gif","https://media.giphy.com/media/l0MYM8m02D0c3PoFi/giphy.gif","https://media.giphy.com/media/RH16FlVXbaAzS/giphy.gif","https://media.giphy.com/media/l46Ce3kKMKxvEiFZS/giphy.gif","https://media.giphy.com/media/l0HlHJJxcNHFqyvrm/giphy.gif","https://media.giphy.com/media/JIX9RbDfLvbl2/giphy.gif","https://media.giphy.com/media/l0HlQaQ6gWfllcjDO/giphy.gif","https://media.giphy.com/media/l3q2K6HIuvsGyp7UE/giphy.gif","https://media.giphy.com/media/l0HlMMaQ5vJ7lKOmY/giphy.gif"];
+var gifGrid = document.getElementById("gifGrid");
+if(gifGrid) {
+  gifUrls.forEach(function(url) {
+    var d = document.createElement("div");
+    d.style.cssText = "width:100%;height:120px;border-radius:8px;overflow:hidden;cursor:pointer;";
+    var img = document.createElement("img");
+    img.src = url;
+    img.style.cssText = "width:100%;height:100%;object-fit:cover;";
+    img.onclick = function() {
+      if(window._sendGif) window._sendGif(url);
+      window.toggleEmojiPanel();
+    };
+    d.appendChild(img);
+    gifGrid.appendChild(d);
+  });
+}
+
+// ASSIGNATION: _sendGif vers window._sendGif (utilise la version avec diags ci-dessus)
+window._sendGif = _sendGif;
+
+// Click outside to close
+document.addEventListener("click", function(e) {
+  // Fermer emoji panel
+  var p = document.getElementById("convEmojiPanel");
+  var b = document.getElementById("btnEmoji");
+  if(p && p.classList.contains("open") && !p.contains(e.target) && (!b || !b.contains(e.target))) {
+    p.classList.remove("open");
+  }
+
+  // Fermer attach menu
+  var m = document.getElementById("convAttachMenu");
+  var a = document.getElementById("btnAttach");
+  if(m && m.classList.contains("open") && !m.contains(e.target) && (!a || !a.contains(e.target))) {
+    m.classList.remove("open");
+    a?.classList.remove("active");
+  }
+});
+
+// ===== FONCTIONS COMMENTAIRES =====
+function likeComment(postId, commentId, event) {
+  if (event) { event.stopPropagation(); event.preventDefault(); }
+  _diag("❤️ likeComment(" + postId + ", " + commentId + ")");
+  var post = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
+  if (!post) { _diag("❌ Post not found"); return false; }
+  var comment = (post.comments || []).find(c => c.id === commentId);
+  if (!comment) { _diag("❌ Comment not found"); return false; }
+  // Initialiser les propriétés manquantes
+  if (!comment.likes) comment.likes = 0;
+  if (!comment.likedBy) comment.likedBy = [];
+  if (!comment.replies) comment.replies = [];
+  if (!comment.emojis) comment.emojis = [];
+
+  comment.likes = (comment.likes || 0) + 1;
+  comment.likedBy.push(state.user?.id || "me");
+  _diag("✅ Like added: " + comment.likes + " likes");
+  saveState();
+  if (typeof saveConversations === 'function') saveConversations();
+
+  // Update visuel du like
+  var commentEl = document.querySelector('[data-commentid="' + commentId + '"]');
+  if (commentEl) {
+    var likeBtn = commentEl.querySelector('.comment-actions .comment-action');
+    if (likeBtn) {
+      likeBtn.classList.add('liked');
+      likeBtn.innerHTML = '❤️ ' + comment.likes;
+      _diag("🎨 Like button updated visually");
+    }
+  }
+  return false;
+}
+
+function replyToComment(postId, commentId, authorName, event) {
+  if (event) { event.stopPropagation(); event.preventDefault(); }
+  _diag("💬 replyToComment(" + postId + ", " + commentId + ")");
+  var existingInputs = document.querySelectorAll(".comment-reply-input");
+  existingInputs.forEach(function(input) { input.remove(); });
+  var inputDiv = document.createElement("div");
+  inputDiv.className = "comment-reply-input";
+  inputDiv.style.cssText = "margin-top:12px;display:flex;gap:6px;padding:10px;background:var(--bg-soft);border-radius:8px;border:2px solid var(--accent);animation:fadeIn 0.3s ease;";
+  var inputField = document.createElement("input");
+  inputField.type = "text";
+  inputField.placeholder = "Répondre à " + authorName + "…";
+  inputField.style.cssText = "flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:12px;font-size:13px;box-sizing:border-box;";
+  var sendBtn = document.createElement("button");
+  sendBtn.textContent = "✓";
+  sendBtn.style.cssText = "width:32px;height:32px;border-radius:8px;background:var(--accent);color:#fff;border:none;cursor:pointer;font-weight:bold;";
+  sendBtn.onclick = function(e) {
+    e.stopPropagation();
+    var replyText = inputField.value.trim();
+    if (!replyText) return;
+    _diag("📝 Submitting reply");
+    var post = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
+    if (!post) { _diag("❌ Post not found"); return; }
+    var comment = (post.comments || []).find(c => c.id === commentId);
+    if (!comment) { _diag("❌ Comment not found"); return; }
+    // Initialiser les propriétés manquantes
+    if (!comment.replies) comment.replies = [];
+    if (!comment.likes) comment.likes = 0;
+    if (!comment.likedBy) comment.likedBy = [];
+    if (!comment.emojis) comment.emojis = [];
+
+    var newReply = { id: "reply_" + Date.now(), authorId: state.user?.id || "me", text: replyText, createdAt: Date.now() };
+    comment.replies.push(newReply);
+    _diag("✅ Reply added");
+    if (typeof saveConversations === 'function') saveConversations();
+    inputDiv.remove();
+
+    // Créer ou mettre à jour le div replies
+    var repliesDiv = document.getElementById("replies-" + commentId);
+    if (!repliesDiv) {
+      // Créer le div replies s'il n'existe pas
+      repliesDiv = document.createElement("div");
+      repliesDiv.className = "comment-replies";
+      repliesDiv.id = "replies-" + commentId;
+      repliesDiv.style.cssText = "display:none;";
+      var commentBody = document.querySelector('[data-commentid="' + commentId + '"] .comment-body');
+      if (commentBody) commentBody.appendChild(repliesDiv);
+    }
+
+    // Ajouter la nouvelle réponse au div
+    var currentUser = state.seed.users.find(u => u.id === (state.user?.id || "me")) || { name: "Toi" };
+    var replyEl = document.createElement("div");
+    replyEl.className = "comment-reply";
+    replyEl.innerHTML = '<span class="comment-reply-author">' + escapeHtml(currentUser.name) + '</span>: ' + escapeHtml(replyText) + '<div style="font-size:10px;color:var(--muted);margin-top:2px;">À l\'instant</div>';
+    repliesDiv.appendChild(replyEl);
+
+    // Créer ou mettre à jour le bouton réponse
+    var replyCountBtn = document.querySelector('[data-commentid="' + commentId + '"] .comment-reply-count');
+    if (!replyCountBtn) {
+      // Créer le bouton s'il n'existe pas
+      replyCountBtn = document.createElement("span");
+      replyCountBtn.className = "comment-reply-count";
+      replyCountBtn.style.cssText = "cursor:pointer;font-size:12px;color:var(--accent);margin-left:8px;";
+      replyCountBtn.onclick = function(e) { e.stopPropagation(); toggleCommentReplies(commentId, e); };
+      var commentActions = document.querySelector('[data-commentid="' + commentId + '"] .comment-actions');
+      if (commentActions) commentActions.appendChild(replyCountBtn);
+    }
+    // Mettre à jour le nombre de réponses
+    replyCountBtn.textContent = comment.replies.length + " réponse" + (comment.replies.length > 1 ? "s" : "");
+    _diag("✅ Reply button updated");
+
+    // AFFICHER LES REPLIES AUTOMATIQUEMENT
+    if (repliesDiv && repliesDiv.style.display === "none") {
+      repliesDiv.style.display = "block";
+      _diag("✅ Replies displayed automatically");
+    }
+  };
+  inputField.onkeypress = function(e) { if (e.key === 'Enter') sendBtn.click(); };
+  inputDiv.appendChild(inputField);
+  inputDiv.appendChild(sendBtn);
+  var commentElement = document.querySelector('[data-commentid="' + commentId + '"]');
+  _diag("🔍 Looking for commentId: " + commentId);
+  _diag("🔍 Found element: " + (commentElement ? "YES" : "NO"));
+  if (commentElement) {
+    var commentBody = commentElement.querySelector(".comment-body");
+    _diag("🔍 Found comment-body: " + (commentBody ? "YES" : "NO"));
+    if (commentBody) {
+      // Insérer APRÈS les comment-actions (pas à la fin)
+      var commentActions = commentBody.querySelector(".comment-actions");
+      if (commentActions) {
+        commentActions.parentNode.insertBefore(inputDiv, commentActions.nextSibling);
+        _diag("✅ Input inserted AFTER comment-actions");
+      } else {
+        commentBody.appendChild(inputDiv);
+        _diag("✅ Input inserted at end of body");
+      }
+
+      inputField.focus();
+
+      // Scroll pour rendre l'input visible
+      setTimeout(function() {
+        inputDiv.scrollIntoView({ behavior: "smooth", block: "center" });
+        _diag("📍 Scrolled to input");
+      }, 100);
+    } else {
+      _diag("❌ Comment body not found!");
+    }
+  } else {
+    _diag("❌ Comment element not found!");
+  }
+  return false;
+}
+
+function toggleCommentReplies(commentId, event) {
+  if (event) { event.stopPropagation(); event.preventDefault(); }
+  _diag("📂 toggleCommentReplies(" + commentId + ")");
+  var repliesDiv = document.getElementById("replies-" + commentId);
+  if (repliesDiv) {
+    repliesDiv.style.display = repliesDiv.style.display === "none" ? "block" : "none";
+    _diag("✅ Replies toggled");
+  }
+  return false;
+}
+
+function toggleCommentEmojis(commentId, event) {
+  if (event) { event.stopPropagation(); event.preventDefault(); }
+  _diag("😊 toggleCommentEmojis(" + commentId + ")");
+  var emojisDiv = document.getElementById("emojis-" + commentId);
+  if (emojisDiv) {
+    emojisDiv.style.display = emojisDiv.style.display === "none" ? "block" : "none";
+    _diag("✅ Emojis toggled");
+  }
+  return false;
+}
+
+function showGifPickerForMessage() {
+  console.log("🎬 showGifPickerForMessage");
+
+  // Fermer les anciens panels
+  var oldPanel = document.getElementById("gif-panel-msg");
+  if (oldPanel) oldPanel.remove();
+
+  var gifs = [
+    "https://media.giphy.com/media/xT9IgEx8SbQ0teblZ6/giphy.gif",
+    "https://media.giphy.com/media/g9GUjSwvjeUPm/giphy.gif",
+    "https://media.giphy.com/media/FiGiRei2ICzzrwYPAd/giphy.gif",
+    "https://media.giphy.com/media/d3Z6hZ6h6h6h6h6h6/giphy.gif",
+    "https://media.giphy.com/media/xT9IgHCTt7bfq13KfC/giphy.gif",
+    "https://media.giphy.com/media/11sBLVxNwBrBFQ/giphy.gif",
+    "https://media.giphy.com/media/l0HlR7RPMhYpEKsXm/giphy.gif",
+    "https://media.giphy.com/media/3o6Zt6KHxJTbXCnSvu/giphy.gif",
+    "https://media.giphy.com/media/l3q2K5jinAlChoCLS/giphy.gif",
+    "https://media.giphy.com/media/8fen5LSZcHQ5O/giphy.gif",
+    "https://media.giphy.com/media/lD76UznFEUings5nItA/giphy.gif",
+    "https://media.giphy.com/media/l3q2wJsApX7YjPWHm/giphy.gif",
+    "https://media.giphy.com/media/l0MYAHkJlYd0s/giphy.gif",
+    "https://media.giphy.com/media/l3q2zVr6cu85j15Qc/giphy.gif",
+    "https://media.giphy.com/media/3o85xIO33l7RlmLR4I/giphy.gif",
+    "https://media.giphy.com/media/l0HlNaQ9OHIOXmHh6/giphy.gif",
+    "https://media.giphy.com/media/26uf1EKct4X5njPQA/giphy.gif",
+    "https://media.giphy.com/media/l0HlRnAQ7lyB6EHjq/giphy.gif",
+    "https://media.giphy.com/media/l4JwLay23EhDvGd6w/giphy.gif",
+    "https://media.giphy.com/media/l4JzaTg1mqIFKIe1O/giphy.gif",
+    "https://media.giphy.com/media/l4JzXGbfFvzz3qJyU/giphy.gif",
+    "https://media.giphy.com/media/26uf1QuMIKT4BqwxO/giphy.gif",
+    "https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif",
+    "https://media.giphy.com/media/ZeNmLlst5V1NXg6xlH/giphy.gif",
+    "https://media.giphy.com/media/l4JzQo3Wl7T4Bmpka/giphy.gif",
+    "https://media.giphy.com/media/l0HlPy9x8FZo0XO1i/giphy.gif",
+    "https://media.giphy.com/media/3o7TKvjhMLChz0jZDq/giphy.gif",
+    "https://media.giphy.com/media/l4JyKxzclJboMucEC/giphy.gif",
+    "https://media.giphy.com/media/g5x7EVU8FQeIw/giphy.gif",
+    "https://media.giphy.com/media/3o7TKB3wbgkJv61ivu/giphy.gif"
+  ];
+
+  var panel = document.createElement("div");
+  panel.id = "gif-panel-msg";
+  panel.style.cssText = "position:fixed;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:10px;display:grid;grid-template-columns:repeat(4,90px);gap:8px;z-index:10000;box-shadow:0 4px 16px rgba(0,0,0,0.2);max-height:400px;overflow-y:auto;bottom:120px;right:20px;";
+
+  gifs.forEach(function(gifUrl) {
+    var gifBtn = document.createElement("div");
+    gifBtn.style.cssText = "width:90px;height:90px;background:var(--bg-soft);border-radius:6px;overflow:hidden;cursor:pointer;border:1px solid var(--border);transition:all 0.2s;flex-shrink:0;";
+    var img = document.createElement("img");
+    img.src = gifUrl;
+    img.style.cssText = "width:100%;height:100%;object-fit:cover;";
+    gifBtn.appendChild(img);
+
+    gifBtn.onmouseover = function() { this.style.border = "2px solid var(--accent)";this.style.transform = "scale(1.05)"; };
+    gifBtn.onmouseout = function() { this.style.border = "1px solid var(--border)";this.style.transform = "scale(1)"; };
+
+    gifBtn.onclick = function(evt) {
+      evt.stopPropagation();
+      evt.preventDefault();
+      console.log("✅ GIF selected for message");
+      // Insérer l'URL du GIF dans le textarea
+      var input = document.getElementById("convFpInput");
+      if (input) {
+        input.value = gifUrl;
+        input.focus();
+        autoResizeTextarea(input);
+      }
+      panel.remove();
+    };
+
+    panel.appendChild(gifBtn);
+  });
+
+  document.body.appendChild(panel);
+  console.log("✅ GIF picker for message shown");
+
+  // Fermer quand on clique ailleurs
+  setTimeout(function() {
+    var closeListener = function(e) {
+      if (!panel.contains(e.target) && e.target.id !== "btnGif") {
+        panel.remove();
+        document.removeEventListener("click", closeListener);
+      }
+    };
+    document.addEventListener("click", closeListener);
+  }, 50);
+}
+
+function showGifPickerForComment(postId, commentId, event) {
+  if (event) { event.stopPropagation(); event.preventDefault(); }
+  console.log("🎬 showGifPickerForComment:", postId, commentId);
+
+  // Fermer les anciens panels
+  var oldPanel = document.getElementById("gif-panel-" + commentId);
+  if (oldPanel) oldPanel.remove();
+
+  var gifs = [
+    "https://media.giphy.com/media/xT9IgEx8SbQ0teblZ6/giphy.gif",
+    "https://media.giphy.com/media/g9GUjSwvjeUPm/giphy.gif",
+    "https://media.giphy.com/media/FiGiRei2ICzzrwYPAd/giphy.gif",
+    "https://media.giphy.com/media/d3Z6hZ6h6h6h6h6h6/giphy.gif",
+    "https://media.giphy.com/media/xT9IgHCTt7bfq13KfC/giphy.gif",
+    "https://media.giphy.com/media/11sBLVxNwBrBFQ/giphy.gif",
+    "https://media.giphy.com/media/l0HlR7RPMhYpEKsXm/giphy.gif",
+    "https://media.giphy.com/media/3o6Zt6KHxJTbXCnSvu/giphy.gif",
+    "https://media.giphy.com/media/l3q2K5jinAlChoCLS/giphy.gif",
+    "https://media.giphy.com/media/8fen5LSZcHQ5O/giphy.gif",
+    "https://media.giphy.com/media/lD76UznFEUings5nItA/giphy.gif",
+    "https://media.giphy.com/media/l3q2wJsApX7YjPWHm/giphy.gif",
+    "https://media.giphy.com/media/l0MYAHkJlYd0s/giphy.gif",
+    "https://media.giphy.com/media/l3q2zVr6cu85j15Qc/giphy.gif",
+    "https://media.giphy.com/media/3o85xIO33l7RlmLR4I/giphy.gif",
+    "https://media.giphy.com/media/l0HlNaQ9OHIOXmHh6/giphy.gif",
+    "https://media.giphy.com/media/26uf1EKct4X5njPQA/giphy.gif",
+    "https://media.giphy.com/media/l0HlRnAQ7lyB6EHjq/giphy.gif",
+    "https://media.giphy.com/media/l4JwLay23EhDvGd6w/giphy.gif",
+    "https://media.giphy.com/media/l4JzaTg1mqIFKIe1O/giphy.gif",
+    "https://media.giphy.com/media/l4JzXGbfFvzz3qJyU/giphy.gif",
+    "https://media.giphy.com/media/26uf1QuMIKT4BqwxO/giphy.gif",
+    "https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif",
+    "https://media.giphy.com/media/ZeNmLlst5V1NXg6xlH/giphy.gif",
+    "https://media.giphy.com/media/l4JzQo3Wl7T4Bmpka/giphy.gif",
+    "https://media.giphy.com/media/l0HlPy9x8FZo0XO1i/giphy.gif",
+    "https://media.giphy.com/media/3o7TKvjhMLChz0jZDq/giphy.gif",
+    "https://media.giphy.com/media/l4JyKxzclJboMucEC/giphy.gif",
+    "https://media.giphy.com/media/g5x7EVU8FQeIw/giphy.gif",
+    "https://media.giphy.com/media/3o7TKB3wbgkJv61ivu/giphy.gif"
+  ];
+
+  var panel = document.createElement("div");
+  panel.id = "gif-panel-" + commentId;
+  panel.style.cssText = "position:fixed;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:10px;display:grid;grid-template-columns:repeat(4,90px);gap:8px;z-index:10000;box-shadow:0 4px 16px rgba(0,0,0,0.2);max-height:400px;overflow-y:auto;";
+
+  gifs.forEach(function(gifUrl) {
+    var gifBtn = document.createElement("div");
+    gifBtn.style.cssText = "width:90px;height:90px;background:var(--bg-soft);border-radius:6px;overflow:hidden;cursor:pointer;border:1px solid var(--border);transition:all 0.2s;flex-shrink:0;";
+    var img = document.createElement("img");
+    img.src = gifUrl;
+    img.style.cssText = "width:100%;height:100%;object-fit:cover;";
+    gifBtn.appendChild(img);
+
+    gifBtn.onmouseover = function() { this.style.border = "2px solid var(--accent)";this.style.transform = "scale(1.05)"; };
+    gifBtn.onmouseout = function() { this.style.border = "1px solid var(--border)";this.style.transform = "scale(1)"; };
+
+    gifBtn.onclick = function(evt) {
+      evt.stopPropagation();
+      evt.preventDefault();
+      console.log("✅ GIF clicked");
+      addGifToComment(postId, commentId, gifUrl);
+      panel.remove();
+    };
+
+    panel.appendChild(gifBtn);
+  });
+
+  // Positionner le panel à côté du bouton GIF
+  var gifBtn = event?.target;
+  if (gifBtn && gifBtn.classList && gifBtn.classList.contains("comment-action")) {
+    var rect = gifBtn.getBoundingClientRect();
+    panel.style.left = (rect.left + 30) + "px";
+    panel.style.top = (rect.top - 10) + "px";
+    console.log("✅ Panel positioned at", panel.style.left, panel.style.top);
+  }
+
+  document.body.appendChild(panel);
+  console.log("✅ GIF picker shown");
+
+  // Fermer quand on clique ailleurs
+  setTimeout(function() {
+    var closeListener = function(e) {
+      if (!panel.contains(e.target)) {
+        panel.remove();
+        document.removeEventListener("click", closeListener);
+      }
+    };
+    document.addEventListener("click", closeListener);
+  }, 50);
+
+  return false;
+}
+
+function showEmojiPickerForComment(postId, commentId, event) {
+  if (event) { event.stopPropagation(); event.preventDefault(); }
+  console.log("😊 showEmojiPickerForComment:", postId, commentId);
+
+  // Fermer les anciens panels
+  var oldPanel = document.getElementById("emoji-panel-" + commentId);
+  if (oldPanel) oldPanel.remove();
+
+  // Initialiser les propriétés du commentaire
+  var post = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
+  if (post) {
+    var comment = (post.comments || []).find(c => c.id === commentId);
+    if (comment) {
+      if (!comment.likes) comment.likes = 0;
+      if (!comment.likedBy) comment.likedBy = [];
+      if (!comment.replies) comment.replies = [];
+      if (!comment.emojis) comment.emojis = [];
+    }
+  }
+
+  var emojis = ["❤️", "🔥", "😂", "🎉", "👍", "💯", "😍", "🤔"];
+  var panel = document.createElement("div");
+  panel.id = "emoji-panel-" + commentId;
+  panel.style.cssText = "position:fixed;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:8px;display:flex;gap:4px;flex-wrap:wrap;z-index:10000;box-shadow:0 4px 16px rgba(0,0,0,0.2);max-width:280px;";
+
+  emojis.forEach(function(e) {
+    var btn = document.createElement("span");
+    btn.textContent = e;
+    btn.style.cssText = "cursor:pointer;font-size:20px;padding:6px 6px;border-radius:6px;transition:all 0.2s;display:flex;align-items:center;justify-content:center;";
+    btn.onmouseover = function() { this.style.background = "rgba(124,58,237,0.2);transform:scale(1.15);"; };
+    btn.onmouseout = function() { this.style.background = "transparent;transform:scale(1);"; };
+    btn.onclick = function(evt) {
+      evt.stopPropagation();
+      evt.preventDefault();
+      console.log("✅ Emoji clicked:", e);
+      addEmojiToComment(postId, commentId, e);
+      panel.remove();
+    };
+    panel.appendChild(btn);
+  });
+
+  // Positionner le panel à côté du bouton emoji
+  var emojiBtn = event?.target;
+  if (emojiBtn && emojiBtn.classList && emojiBtn.classList.contains("comment-action")) {
+    var rect = emojiBtn.getBoundingClientRect();
+    panel.style.left = (rect.left + 30) + "px";
+    panel.style.top = (rect.top - 10) + "px";
+    console.log("✅ Panel positioned at", panel.style.left, panel.style.top);
+  }
+
+  document.body.appendChild(panel);
+  console.log("✅ Emoji picker shown");
+
+  // Fermer quand on clique ailleurs
+  setTimeout(function() {
+    var closeListener = function(e) {
+      if (!panel.contains(e.target)) {
+        panel.remove();
+        document.removeEventListener("click", closeListener);
+      }
+    };
+    document.addEventListener("click", closeListener);
+  }, 50);
+
+  return false;
+}
+
+function addGifToComment(postId, commentId, gifUrl) {
+  console.log("🎬 addGifToComment:", postId, commentId);
+  var post = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
+  if (!post) return false;
+  var comment = (post.comments || []).find(c => c.id === commentId);
+  if (!comment) return false;
+
+  // Initialiser replies si nécessaire
+  if (!comment.replies) comment.replies = [];
+
+  // Créer une nouvelle réaction GIF
+  var gifReaction = {
+    id: "gif_" + commentId + "_" + Math.random().toString(36).substr(2, 9),
+    authorId: state.user?.id || "me",
+    text: gifUrl,
+    type: "gif_reaction",
+    createdAt: Date.now(),
+    likes: 0,
+    likedBy: []
+  };
+  comment.replies.push(gifReaction);
+  console.log("✅ GIF reaction added");
+
+  // Mettre à jour l'affichage des replies
+  var commentElement = document.querySelector('[data-commentid="' + commentId + '"]');
+  if (commentElement) {
+    var commentActions = commentElement.querySelector(".comment-actions");
+    var replyCountBtn = commentActions?.querySelector(".comment-reply-count");
+
+    // Créer ou mettre à jour le bouton "X réponses"
+    if (!replyCountBtn && comment.replies.length > 0) {
+      replyCountBtn = document.createElement("span");
+      replyCountBtn.className = "comment-reply-count";
+      replyCountBtn.style.cssText = "cursor:pointer;font-size:12px;color:var(--accent);margin-left:8px;";
+      replyCountBtn.onclick = function(e) { e.stopPropagation(); toggleCommentReplies(commentId, e); };
+      commentActions?.appendChild(replyCountBtn);
+      console.log("✅ Reply count button created");
+    }
+
+    // Mettre à jour le texte du bouton
+    if (replyCountBtn && comment.replies.length > 0) {
+      replyCountBtn.textContent = comment.replies.length + " réponse" + (comment.replies.length > 1 ? "s" : "");
+      console.log("✅ Reply count updated:", replyCountBtn.textContent);
+    }
+
+    // Mettre à jour ou créer le div des replies
+    var repliesDiv = commentElement.querySelector(".comment-replies");
+    if (repliesDiv) {
+      repliesDiv.remove();
+    }
+
+    if (comment.replies.length > 0) {
+      var newRepliesDiv = document.createElement("div");
+      newRepliesDiv.className = "comment-replies";
+      newRepliesDiv.id = "replies-" + commentId;
+      newRepliesDiv.style.cssText = "display:block;";
+
+      var repliesHTML = comment.replies.map(r => {
+        const ru = userById(r.authorId) || { name: "?", profileEmoji: "👤", avatar: "#64748b" };
+        const rSrc = r.authorId === "me" ? "me" : "seed";
+
+        if (r.type === "emoji_reaction") {
+          return `<div class="comment-reply" style="padding:8px 0;">
+            <span style="font-size:11px;color:var(--text);font-weight:600;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span><span style="font-size:11px;color:var(--text);font-weight:600;">:</span> <span style="font-size:18px;letter-spacing:2px;">${r.text}</span>
+          </div>`;
+        }
+
+        if (r.type === "gif_reaction") {
+          return `<div class="comment-reply" style="padding:8px 0;">
+            <span style="font-size:11px;color:var(--text);font-weight:600;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span><span style="font-size:11px;color:var(--text);font-weight:600;">:</span>
+            <img loading="lazy" decoding="async" src="${r.text}" style="width:120px;height:120px;border-radius:8px;margin-top:6px;object-fit:cover;" alt="GIF" />
+          </div>`;
+        }
+
+        return `<div class="comment-reply">
+          <span class="comment-reply-author" style="cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span>: ${escapeHtml(r.text)}
+          <div style="font-size:10px;color:var(--muted);margin-top:2px;">${fmtTime(r.createdAt)}</div>
+        </div>`;
+      }).join("");
+
+      newRepliesDiv.innerHTML = repliesHTML;
+      commentElement.querySelector(".comment-body")?.appendChild(newRepliesDiv);
+      console.log("✅ Replies div created and displayed with", comment.replies.length, "items");
+    }
+  }
+
+  return false;
+}
+
+function showEmojiPickerForPost(postId, event) {
+  if (event) { event.stopPropagation(); event.preventDefault(); }
+  console.log("😊 showEmojiPickerForPost:", postId);
+
+  var oldPanel = document.getElementById("emoji-panel-post-" + postId);
+  if (oldPanel) oldPanel.remove();
+
+  var emojis = ["❤️", "🔥", "😂", "🎉", "👍", "💯", "😍", "🤔"];
+  var panel = document.createElement("div");
+  panel.id = "emoji-panel-post-" + postId;
+  panel.style.cssText = "position:fixed;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:8px;display:flex;gap:4px;flex-wrap:wrap;z-index:10000;box-shadow:0 4px 16px rgba(0,0,0,0.2);max-width:280px;";
+
+  emojis.forEach(function(e) {
+    var btn = document.createElement("span");
+    btn.textContent = e;
+    btn.style.cssText = "cursor:pointer;font-size:20px;padding:6px 6px;border-radius:6px;transition:all 0.2s;display:flex;align-items:center;justify-content:center;";
+    btn.onmouseover = function() { this.style.background = "rgba(124,58,237,0.2);transform:scale(1.15);"; };
+    btn.onmouseout = function() { this.style.background = "transparent;transform:scale(1);"; };
+    btn.onclick = function(evt) {
+      evt.stopPropagation();
+      evt.preventDefault();
+      console.log("✅ Emoji clicked for post:", e);
+      addEmojiToPost(postId, e);
+      panel.remove();
+    };
+    panel.appendChild(btn);
+  });
+
+  var emojiBtn = event?.target;
+  if (emojiBtn && emojiBtn.classList && emojiBtn.classList.contains("post-action")) {
+    var rect = emojiBtn.getBoundingClientRect();
+    panel.style.left = (rect.left + 30) + "px";
+    panel.style.top = (rect.top - 10) + "px";
+  }
+
+  document.body.appendChild(panel);
+
+  setTimeout(function() {
+    var closeListener = function(e) {
+      if (!panel.contains(e.target)) {
+        panel.remove();
+        document.removeEventListener("click", closeListener);
+      }
+    };
+    document.addEventListener("click", closeListener);
+  }, 50);
+
+  return false;
+}
+
+function addEmojiToPost(postId, emoji) {
+  console.log("✨ addEmojiToPost:", postId, emoji);
+  var post = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
+  if (!post) return false;
+
+  if (!post.reactions) post.reactions = [];
+
+  var currentUserEmojis = post.reactions.find(r => r.type === "emoji_reaction" && r.authorId === (state.user?.id || "me"));
+
+  if (currentUserEmojis) {
+    if (!currentUserEmojis.text.includes(emoji)) {
+      currentUserEmojis.text += " " + emoji;
+    }
+  } else {
+    post.reactions.push({
+      id: "emoji_" + postId + "_" + Math.random().toString(36).substr(2, 9),
+      authorId: state.user?.id || "me",
+      text: emoji,
+      type: "emoji_reaction",
+      createdAt: Date.now()
+    });
+  }
+
+  updatePostReactionsUI(postId);
+  return false;
+}
+
+function showGifPickerForPost(postId, event) {
+  if (event) { event.stopPropagation(); event.preventDefault(); }
+  console.log("🎬 showGifPickerForPost:", postId);
+
+  var oldPanel = document.getElementById("gif-panel-post-" + postId);
+  if (oldPanel) oldPanel.remove();
+
+  var gifs = [
+    "https://media.giphy.com/media/xT9IgEx8SbQ0teblZ6/giphy.gif",
+    "https://media.giphy.com/media/g9GUjSwvjeUPm/giphy.gif",
+    "https://media.giphy.com/media/FiGiRei2ICzzrwYPAd/giphy.gif",
+    "https://media.giphy.com/media/d3Z6hZ6h6h6h6h6h6/giphy.gif",
+    "https://media.giphy.com/media/xT9IgHCTt7bfq13KfC/giphy.gif",
+    "https://media.giphy.com/media/11sBLVxNwBrBFQ/giphy.gif",
+    "https://media.giphy.com/media/l0HlR7RPMhYpEKsXm/giphy.gif",
+    "https://media.giphy.com/media/3o6Zt6KHxJTbXCnSvu/giphy.gif",
+    "https://media.giphy.com/media/l3q2K5jinAlChoCLS/giphy.gif",
+    "https://media.giphy.com/media/8fen5LSZcHQ5O/giphy.gif",
+    "https://media.giphy.com/media/lD76UznFEUings5nItA/giphy.gif",
+    "https://media.giphy.com/media/l3q2wJsApX7YjPWHm/giphy.gif"
+  ];
+
+  var panel = document.createElement("div");
+  panel.id = "gif-panel-post-" + postId;
+  panel.style.cssText = "position:fixed;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:10px;display:grid;grid-template-columns:repeat(4,90px);gap:8px;z-index:10000;box-shadow:0 4px 16px rgba(0,0,0,0.2);max-height:400px;overflow-y:auto;";
+
+  gifs.forEach(function(gifUrl) {
+    var gifBtn = document.createElement("div");
+    gifBtn.style.cssText = "width:90px;height:90px;background:var(--bg-soft);border-radius:6px;overflow:hidden;cursor:pointer;border:1px solid var(--border);transition:all 0.2s;flex-shrink:0;";
+    var img = document.createElement("img");
+    img.src = gifUrl;
+    img.style.cssText = "width:100%;height:100%;object-fit:cover;";
+    gifBtn.appendChild(img);
+
+    gifBtn.onmouseover = function() { this.style.border = "2px solid var(--accent)";this.style.transform = "scale(1.05)"; };
+    gifBtn.onmouseout = function() { this.style.border = "1px solid var(--border)";this.style.transform = "scale(1)"; };
+
+    gifBtn.onclick = function(evt) {
+      evt.stopPropagation();
+      evt.preventDefault();
+      addGifToPost(postId, gifUrl);
+      panel.remove();
+    };
+
+    panel.appendChild(gifBtn);
+  });
+
+  var gifBtn = event?.target;
+  if (gifBtn && gifBtn.classList && gifBtn.classList.contains("post-action")) {
+    var rect = gifBtn.getBoundingClientRect();
+    panel.style.left = (rect.left + 30) + "px";
+    panel.style.top = (rect.top - 10) + "px";
+  }
+
+  document.body.appendChild(panel);
+
+  setTimeout(function() {
+    var closeListener = function(e) {
+      if (!panel.contains(e.target)) {
+        panel.remove();
+        document.removeEventListener("click", closeListener);
+      }
+    };
+    document.addEventListener("click", closeListener);
+  }, 50);
+
+  return false;
+}
+
+function addGifToPost(postId, gifUrl) {
+  console.log("🎬 addGifToPost:", postId);
+  var post = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
+  if (!post) return false;
+
+  if (!post.reactions) post.reactions = [];
+
+  post.reactions.push({
+    id: "gif_" + postId + "_" + Math.random().toString(36).substr(2, 9),
+    authorId: state.user?.id || "me",
+    text: gifUrl,
+    type: "gif_reaction",
+    createdAt: Date.now()
+  });
+
+  updatePostReactionsUI(postId);
+  return false;
+}
+
+function updatePostReactionsUI(postId) {
+  var post = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
+  if (!post || !post.reactions) return;
+
+  var postElement = document.querySelector('[data-postid="' + postId + '"]');
+  if (!postElement) return;
+
+  var reactionsDiv = postElement.querySelector(".post-reactions");
+  if (reactionsDiv) reactionsDiv.remove();
+
+  if (post.reactions.length > 0) {
+    var newReactionsDiv = document.createElement("div");
+    newReactionsDiv.className = "post-reactions";
+    newReactionsDiv.style.cssText = "margin-top:12px;padding-top:8px;border-top:1px solid var(--border);";
+
+    var reactionsHTML = post.reactions.map(r => {
+      const ru = userById(r.authorId) || { name: "?", profileEmoji: "👤", avatar: "#64748b" };
+      const rSrc = r.authorId === "me" ? "me" : "seed";
+
+      if (r.type === "emoji_reaction") {
+        return `<div style="padding:8px 0;"><span style="font-size:11px;font-weight:600;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span><span style="font-size:11px;font-weight:600;">:</span> <span style="font-size:18px;letter-spacing:2px;">${r.text}</span></div>`;
+      }
+
+      if (r.type === "gif_reaction") {
+        return `<div style="padding:8px 0;"><span style="font-size:11px;font-weight:600;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span><span style="font-size:11px;font-weight:600;">:</span><br/><img loading="lazy" decoding="async" src="${r.text}" style="width:120px;height:120px;border-radius:8px;margin-top:6px;object-fit:cover;" alt="GIF" /></div>`;
+      }
+    }).join("");
+
+    newReactionsDiv.innerHTML = reactionsHTML;
+    postElement.appendChild(newReactionsDiv);
+  }
+}
+
+function addEmojiToComment(postId, commentId, emoji) {
+  console.log("✨ addEmojiToComment:", postId, commentId, emoji);
+  var post = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
+  if (!post) return false;
+  var comment = (post.comments || []).find(c => c.id === commentId);
+  if (!comment) return false;
+
+  // Initialiser replies si nécessaire
+  if (!comment.replies) comment.replies = [];
+
+  // Chercher si "Toi" (ou l'utilisateur actuel) a déjà une réaction emoji
+  var currentUserEmojis = comment.replies.find(r => r.type === "emoji_reaction" && r.authorId === (state.user?.id || "me"));
+
+  if (currentUserEmojis) {
+    // Ajouter l'emoji à la réaction existante
+    if (!currentUserEmojis.text.includes(emoji)) {
+      currentUserEmojis.text += " " + emoji;
+    }
+    console.log("✅ Emoji added to existing reaction:", currentUserEmojis.text);
+  } else {
+    // Créer une nouvelle réaction emoji
+    var reactionReply = {
+      id: "emoji_" + commentId + "_" + Math.random().toString(36).substr(2, 9),
+      authorId: state.user?.id || "me",
+      text: emoji,
+      type: "emoji_reaction",
+      createdAt: Date.now(),
+      likes: 0,
+      likedBy: []
+    };
+    comment.replies.push(reactionReply);
+    console.log("✅ New emoji reaction added:", emoji);
+  }
+
+  // Mettre à jour l'affichage des replies
+  var commentElement = document.querySelector('[data-commentid="' + commentId + '"]');
+  if (commentElement) {
+    var commentActions = commentElement.querySelector(".comment-actions");
+    var replyCountBtn = commentActions?.querySelector(".comment-reply-count");
+
+    // Créer ou mettre à jour le bouton "X réponses"
+    if (!replyCountBtn && comment.replies.length > 0) {
+      replyCountBtn = document.createElement("span");
+      replyCountBtn.className = "comment-reply-count";
+      replyCountBtn.style.cssText = "cursor:pointer;font-size:12px;color:var(--accent);margin-left:8px;";
+      replyCountBtn.onclick = function(e) { e.stopPropagation(); toggleCommentReplies(commentId, e); };
+      commentActions?.appendChild(replyCountBtn);
+      console.log("✅ Reply count button created");
+    }
+
+    // Mettre à jour le texte du bouton
+    if (replyCountBtn && comment.replies.length > 0) {
+      replyCountBtn.textContent = comment.replies.length + " réponse" + (comment.replies.length > 1 ? "s" : "");
+      console.log("✅ Reply count updated:", replyCountBtn.textContent);
+    }
+
+    // Mettre à jour ou créer le div des replies
+    var repliesDiv = commentElement.querySelector(".comment-replies");
+    if (repliesDiv) {
+      repliesDiv.remove();
+    }
+
+    if (comment.replies.length > 0) {
+      var newRepliesDiv = document.createElement("div");
+      newRepliesDiv.className = "comment-replies";
+      newRepliesDiv.id = "replies-" + commentId;
+      newRepliesDiv.style.cssText = "display:block;"; // Afficher directement!
+
+      var repliesHTML = comment.replies.map(r => {
+        const ru = userById(r.authorId) || { name: "?", profileEmoji: "👤", avatar: "#64748b" };
+        const rSrc = r.authorId === "me" ? "me" : "seed";
+
+        if (r.type === "emoji_reaction") {
+          return `<div class="comment-reply" style="padding:8px 0;">
+            <span style="font-size:11px;color:var(--text);font-weight:600;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span><span style="font-size:11px;color:var(--text);font-weight:600;">:</span> <span style="font-size:18px;letter-spacing:2px;">${r.text}</span>
+          </div>`;
+        }
+
+        if (r.type === "gif_reaction") {
+          return `<div class="comment-reply" style="padding:8px 0;">
+            <span style="font-size:11px;color:var(--text);font-weight:600;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span><span style="font-size:11px;color:var(--text);font-weight:600;">:</span>
+            <img loading="lazy" decoding="async" src="${r.text}" style="width:120px;height:120px;border-radius:8px;margin-top:6px;object-fit:cover;" alt="GIF" />
+          </div>`;
+        }
+
+        return `<div class="comment-reply">
+          <span class="comment-reply-author" style="cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span>: ${escapeHtml(r.text)}
+          <div style="font-size:10px;color:var(--muted);margin-top:2px;">${fmtTime(r.createdAt)}</div>
+        </div>`;
+      }).join("");
+
+      newRepliesDiv.innerHTML = repliesHTML;
+      commentElement.querySelector(".comment-body")?.appendChild(newRepliesDiv);
+      console.log("✅ Replies div created and displayed with", comment.replies.length, "items");
+    }
+  }
+
+  return false;
+}
+
+// ⚡ INITIALISATION PRINCIPALE - Attendre boot() puis lancer initApp()
+console.log("🚀 Démarrage PASSIO...");
+setTimeout(function() {
+  // ✅ IMPORTANT: Assurer que MY_UID est défini
+  // Si boot() n'a pas chargé depuis Supabase, utiliser localStorage
+  if (!window.MY_UID || window.MY_UID === 'undefined') {
+    window.MY_UID = localStorage.getItem("passio_uid") || ("u_" + Math.random().toString(36).slice(2,10));
+    if (!localStorage.getItem("passio_uid")) {
+      localStorage.setItem("passio_uid", window.MY_UID);
+    }
+    console.log("✅ MY_UID assigné: " + window.MY_UID);
+  }
+
+  // boot() doit s'être exécutée pour charger l'app, donc attendre 500ms
+  setTimeout(function() {
+    console.log("📱 MY_UID=" + window.MY_UID);
+    if (typeof initApp === "function") {
+      console.log("📱 Appel initApp()");
+      try {
+        initApp();
+      } catch(err) {
+        console.error("❌ ERREUR initApp:", err);
+      }
+    } else {
+      console.error("❌ initApp() n'existe pas!");
+    }
+
+    // ✅ ACTIVER AUTO-REFRESH du feed (toutes les 10 secondes)
+    setTimeout(function() {
+      console.log("✅ Activation auto-refresh du feed");
+      if (typeof startAutoRefresh === "function") {
+        startAutoRefresh();
+      }
+    }, 1000);
+
+  }, 500);
+}, 100);
+
+// 🧪 TEST SUPABASE READ - Vérifier si Supabase répond
+window.testSupabaseRead = async function() {
+  console.log("🧪 TEST SUPABASE READ");
+
+  var modal = document.createElement("div");
+  modal.style.cssText = "position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:999999;";
+
+  var box = document.createElement("div");
+  box.style.cssText = "background:white;padding:20px;border-radius:12px;max-width:95%;max-height:85%;overflow-y:auto;font-family:monospace;font-size:11px;";
+
+  var html = "<h3>🧪 TEST SUPABASE READ</h3>";
+  html += "Essai de lire les posts depuis Supabase...<br/>";
+  html += "Cela teste si la table 'posts' existe et est accessible<br/><br/>";
+
+  box.innerHTML = html + "<button onclick='this.parentElement.parentElement.remove();' style='margin-top:10px;padding:8px 12px;background:#ec4899;color:white;border:none;border-radius:6px;cursor:pointer;width:100%;'>Fermer</button>";
+  modal.appendChild(box);
+  document.body.appendChild(modal);
+
+  try {
+    console.log("📖 Tentative de lecture des posts (TIMEOUT 5s)...");
+    console.log("🔍 supa client OK?", !!supa);
+
+    // ⏱️ TIMEOUT: Si pas de réponse en 5s, arrêter
+    const timeoutPromise = new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        console.error("⏱️ TIMEOUT déclenché - Supabase n'a pas répondu en 5s");
+        reject(new Error("TIMEOUT: Supabase ne répond pas après 5 secondes"));
+      }, 5000);
+    });
+
+    console.log("📤 Envoi requête SELECT vers Supabase...");
+    const readPromise = supa.from("posts").select("id,author_id,created_at").limit(1);
+    console.log("📤 Requête construite, en attente...");
+
+    const { data, error } = await Promise.race([readPromise, timeoutPromise]);
+    console.log("✅ Réponse reçue!", { data: data?.length, error: error?.message });
+
+    if (error) {
+      html += "<br/><b>❌ ERREUR READ:</b><br/>";
+      html += "Message: " + error.message + "<br/>";
+      html += "Code: " + error.code + "<br/>";
+      html += "Cela signifie: Supabase ne peut pas lire la table<br/>";
+      console.error("❌ Erreur READ:", error);
+    } else {
+      html += "<br/><b>✅ LECTURE OK!</b><br/>";
+      html += "Posts trouvés: " + (data?.length || 0) + "<br/>";
+      html += "Cela signifie: La table 'posts' existe et est accessible<br/>";
+      html += "Mais les INSERTs bloquent quand même = problème RLS/permissions<br/>";
+      console.log("✅ Lecture OK:", data?.length);
+    }
+  } catch(e) {
+    html += "<br/><b>❌ EXCEPTION READ:</b><br/>";
+    html += "Message: " + e.message + "<br/>";
+    html += "Type: " + e.name + "<br/>";
+    html += "Stack: " + (e.stack?.split("\n")[0] || "?") + "<br/>";
+    console.error("❌ Exception:", e);
+  }
+
+  box.innerHTML = html + "<button onclick='this.parentElement.parentElement.remove();' style='margin-top:10px;padding:8px 12px;background:#ec4899;color:white;border:none;border-radius:6px;cursor:pointer;width:100%;'>Fermer</button>";
+};
+
+// 🧪 TEST SUPABASE - Vérifier si on peut insérer un post
+window.testSupabaseInsert = async function() {
+  console.log("🧪 TEST SUPABASE INSERT");
+
+  var modal = document.createElement("div");
+  modal.style.cssText = "position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:999999;";
+
+  var box = document.createElement("div");
+  box.style.cssText = "background:white;padding:20px;border-radius:12px;max-width:95%;max-height:85%;overflow-y:auto;font-family:monospace;font-size:11px;";
+
+  var html = "<h3>🧪 TEST SUPABASE INSERT</h3>";
+  html += "Envoi d'un post test en Supabase...<br/>";
+
+  var testPost = {
+    id: "test_" + Date.now(),
+    author_id: window.MY_UID,
+    passion_id: "test",
+    mood: "all",
+    content: "Post test pour vérifier si Supabase fonctionne",
+    media_url: null,
+    created_at: new Date().toISOString(),
+  };
+
+  html += "<br/><b>Données à insérer:</b><br/>";
+  html += JSON.stringify(testPost, null, 2) + "<br/><br/>";
+  html += "Envoi en cours...<br/>";
+
+  box.innerHTML = html + "<button onclick='this.parentElement.parentElement.remove();' style='margin-top:10px;padding:8px 12px;background:#ec4899;color:white;border:none;border-radius:6px;cursor:pointer;width:100%;'>Fermer</button>";
+  modal.appendChild(box);
+  document.body.appendChild(modal);
+
+  try {
+    console.log("📤 Insertion test (TIMEOUT 5s):", testPost);
+
+    // ⏱️ TIMEOUT: Si pas de réponse en 5s, arrêter
+    const timeoutPromise = new Promise((resolve, reject) => {
+      setTimeout(() => reject(new Error("TIMEOUT: Supabase ne répond pas après 5 secondes")), 5000);
+    });
+
+    const insertPromise = supa.from("posts").insert(testPost).select();
+    const { data, error } = await Promise.race([insertPromise, timeoutPromise]);
+
+    if (error) {
+      html += "<br/><b>❌ ERREUR:</b><br/>";
+      html += "Message: " + error.message + "<br/>";
+      html += "Code: " + error.code + "<br/>";
+      html += "JSON: " + JSON.stringify(error) + "<br/>";
+      console.error("❌ Erreur INSERT:", error);
+    } else {
+      html += "<br/><b>✅ SUCCÈS!</b><br/>";
+      html += "Post inséré: " + data[0].id + "<br/>";
+      html += "Cela signifie que Supabase fonctionne!<br/>";
+      console.log("✅ Succès INSERT:", data);
+    }
+  } catch(e) {
+    html += "<br/><b>❌ EXCEPTION:</b><br/>";
+    html += "Message: " + e.message + "<br/>";
+    html += "Stack: " + e.stack + "<br/>";
+    console.error("❌ Exception:", e);
+  }
+
+  box.innerHTML = html + "<button onclick='this.parentElement.parentElement.remove();' style='margin-top:10px;padding:8px 12px;background:#ec4899;color:white;border:none;border-radius:6px;cursor:pointer;width:100%;'>Fermer</button>";
+};
+
+// 🔍 DIAGNOSTIC AVANCÉ - Version SIMPLE (sans async)
+window.showAdvancedDiagnostic = function() {
+  // Créer une modal visible
+  var modal = document.createElement("div");
+  modal.id = "__advanced_diag_modal";
+  modal.style.cssText = "position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:999999;";
+
+  var box = document.createElement("div");
+  box.style.cssText = "background:white;padding:20px;border-radius:12px;max-width:95%;max-height:85%;overflow-y:auto;font-family:monospace;font-size:11px;line-height:1.6;";
+
+  // Construire le diagnostic SIMPLE et RAPIDE
+  var html = "";
+  html += "<h3 style='margin-top:0;'>🔍 DIAGNOSTIC AVANCÉ</h3>";
+  html += "<b>1️⃣ UTILISATEUR:</b><br/>";
+  html += "MY_UID: <b>" + (window.MY_UID || "?") + "</b><br/>";
+  html += "User: <b>" + (state.user?.name || "?") + "</b><br/>";
+  html += "Profile: <b>" + ((state.user?.currentProfileId || "?").substring(0,8)) + "...</b><br/><br/>";
+
+  html += "<b>2️⃣ POSTS EN MÉMOIRE:</b><br/>";
+  html += "state.seed.posts: <b>" + ((state.seed.posts || []).length) + " posts</b><br/>";
+  html += "state.userPosts: <b>" + ((state.userPosts || []).length) + " posts</b><br/>";
+  if ((state.seed.posts || []).length > 0) {
+    html += "Dernier post (seed): <b>" + (state.seed.posts[0].authorName || state.seed.posts[0].authorId || "?") + "</b><br/>";
+  }
+  if ((state.userPosts || []).length > 0) {
+    html += "Dernier post (user): <b>" + ((state.userPosts[0].text || "").substring(0,30)) + "...</b><br/>";
+  }
+  html += "<br/>";
+
+  html += "<b>3️⃣ LOGS DE DIAGNOSTIC:</b><br/>";
+  if (window._diagLogs && window._diagLogs.length > 0) {
+    html += "<b>Derniers logs:</b><br/>";
+    window._diagLogs.slice(-10).forEach(log => {
+      html += "• " + log + "<br/>";
+    });
+  } else {
+    html += "Aucun log pour l'instant<br/>";
+  }
+  html += "<br/>";
+
+  html += "<b>4️⃣ CONCLUSION:</b><br/>";
+  var seedCount = (state.seed.posts || []).length;
+  var userCount = (state.userPosts || []).length;
+
+  if (seedCount === 0) {
+    html += "❌ <b>PROBLÈME MAJEUR:</b> Aucun post en mémoire!<br/>";
+    html += "→ Les posts ne sont pas chargés au démarrage";
+  } else if (userCount > 0 && seedCount < 130) {
+    html += "❌ <b>PROBLÈME CRITIQUE:</b> seed.posts (" + seedCount + ") < userPosts (" + userCount + ")<br/>";
+    html += "→ <b>Tes posts NE SONT PAS EN SUPABASE!</b><br/>";
+    html += "→ supaPublishPostWithRetry() échoue silencieusement<br/>";
+    html += "→ Vérifier les logs ci-dessus pour l'erreur";
+  } else {
+    html += "✅ <b>OK:</b> Posts en mémoire";
+  }
+  html += "<br/><br/>";
+  html += "<b>💡 ACTION:</b><br/>";
+  html += "1. Clique 🔄 REFRESH<br/>";
+  html += "2. Regarde les logs de diagnostic<br/>";
+  html += "3. L'erreur Supabase apparaîtra ici";
+
+  box.innerHTML = html + "<br/><button id='diag-close-modal' style='margin-top:10px;padding:8px 12px;background:#ec4899;color:white;border:none;border-radius:6px;cursor:pointer;width:100%;'>Fermer</button>";
+
+  modal.appendChild(box);
+  document.body.appendChild(modal);
+
+  document.getElementById("diag-close-modal").onclick = function() {
+    modal.remove();
+  };
+};
+
+// 🔍 DIAGNOSTIC AVANCÉ - Inspecter Supabase directement (version console)
+window.advancedDiagnostic = async function() {
+  console.log("🔍 DIAGNOSTIC AVANCÉ SUPABASE");
+  console.log("=" .repeat(50));
+
+  // 1. Vérifier la connexion Supabase
+  console.log("1️⃣ SUPABASE CONNEXION:");
+  if (typeof supa === 'undefined') {
+    console.error("❌ supa n'existe pas!");
+    return;
+  }
+  console.log("✅ supa existe");
+
+  // 2. Vérifier MY_UID
+  console.log("\n2️⃣ UTILISATEUR COURANT:");
+  console.log("MY_UID:", window.MY_UID);
+  console.log("state.user.name:", state.user.name);
+  console.log("state.user.currentProfileId:", state.user.currentProfileId);
+
+  // 3. Charger TOUS les posts directement de Supabase
+  console.log("\n3️⃣ CHARGER TOUS LES POSTS DE SUPABASE:");
+  try {
+    const { data, error } = await supa.from("posts").select("id,author_id,passion_id,created_at").order("created_at", { ascending: false }).limit(100);
+    if (error) {
+      console.error("❌ Erreur requête posts:", error);
+      return;
+    }
+    console.log(`✅ ${data?.length || 0} posts trouvés dans Supabase:`);
+    (data || []).slice(0, 5).forEach((p, i) => {
+      console.log(`  ${i+1}. ID: ${p.id}, author_id: ${p.author_id}, passion: ${p.passion_id}, created: ${p.created_at}`);
+    });
+  } catch(e) {
+    console.error("❌ Exception:", e);
+  }
+
+  // 4. Vérifier state.seed.posts
+  console.log("\n4️⃣ STATE LOCAL (state.seed.posts):");
+  console.log(`Total: ${(state.seed.posts || []).length}`);
+  (state.seed.posts || []).slice(0, 5).forEach((p, i) => {
+    console.log(`  ${i+1}. ID: ${p.id}, author: ${p.authorId}, passion: ${p.passion}`);
+  });
+
+  // 5. Vérifier state.userPosts
+  console.log("\n5️⃣ POSTS PERSONNELS (state.userPosts):");
+  console.log(`Total: ${(state.userPosts || []).length}`);
+  (state.userPosts || []).slice(0, 5).forEach((p, i) => {
+    console.log(`  ${i+1}. ID: ${p.id}, text: ${(p.text || '').substring(0, 30)}`);
+  });
+
+  console.log("\n" + "=".repeat(50));
+  console.log("ℹ️ Si Supabase a 0 posts: vérifier si les publications échouent");
+  console.log("ℹ️ Si Supabase a des posts mais state.seed.posts est vide: problème de chargement");
+};
+
+// 🔄 FONCTION AUTO-REFRESH - Recharger les posts automatiquement toutes les 10 sec
+window._autoRefreshInterval = null;
+window.startAutoRefresh = function() {
+  if (window._autoRefreshInterval) return;  // Déjà actif
+  console.log("🔄 Auto-refresh fallback ACTIVÉ (toutes les 60s, realtime actif par ailleurs)");
+  window._autoRefreshInterval = setInterval(function() {
+    supaLoadPosts().then(function(posts) {
+      if (posts && posts.length > 0) {
+        // Comparer avec les posts actuels
+        const currentCount = (state.seed.posts || []).length;
+        const newCount = posts.length;
+        if (newCount !== currentCount) {
+          console.log(`🔄 Feed mis à jour: ${currentCount} → ${newCount} posts`);
+          const extra2 = (window._feedExtraPosts || []).filter(p => !posts.some(x => x.id === p.id));
+          state.seed.posts = posts.concat(extra2);
+          renderFeed();
+        }
+      }
+    }).catch(function(err) {
+      console.warn("⚠️ Auto-refresh erreur:", err.message);
+    });
+  }, 60000);  // Fallback 60s — les mises à jour instantanées passent par le canal realtime:posts
+};
+
+window.stopAutoRefresh = function() {
+  if (window._autoRefreshInterval) {
+    clearInterval(window._autoRefreshInterval);
+    window._autoRefreshInterval = null;
+    console.log("⏹️ Auto-refresh DÉSACTIVÉ");
+  }
+};
+
+// 🔄 FONCTION FORCE REFRESH - Recharger les posts depuis Supabase MAINTENANT
+window.forceRefreshFeed = function() {
+  console.log("🔄 FORCE REFRESH: Chargement des posts depuis Supabase...");
+  supaLoadPosts().then(function(posts) {
+    if (posts && posts.length > 0) {
+      const oldCount = (state.seed.posts || []).length;
+      state.seed.posts = posts;
+      console.log(`✅ Posts mis à jour: ${oldCount} → ${posts.length}`);
+      renderFeed();
+      toast(`✅ Feed rafraîchi (${posts.length} posts)`, "success");
+    } else {
+      console.warn("❌ Aucun post retourné");
+      toast("❌ Aucun post trouvé", "error");
+    }
+  }).catch(function(err) {
+    console.error("❌ Erreur refresh:", err);
+    toast("❌ Erreur: " + err.message, "error");
+  });
+};
+
+// 🔧 DIAGNOSTIC PANEL - DÉSACTIVÉ (Mode normal)
+// (Le diagnostic visible a été supprimé de l'interface)
+console.log("✅ Mode normal - diagnostic panel désactivé");
+
+// ✅ INITIALISATION MOODS MULTI-SELECT - EVENT DELEGATION
+console.log("🎨 INITIALISATION MOODS GLOBALE");
+setTimeout(function() {
+  try {
+    // 1. Setup event delegation (unique, robuste, fluide)
+    setupMoodDelegation();
+
+    // 2. Mettre à jour l'UI initiale
+    updateMoodButtonsUI();
+
+    console.log("🎨 MOOD INIT TERMINÉE");
+  } catch(err) {
+    console.error("❌ ERREUR MOOD INIT:", err.message);
+  }
+}, 200);
+
+// 🔧 BOUTONS TEST SUPABASE - DÉSACTIVÉS
+// (Les boutons de diagnostic ont été supprimés - app en mode normal)
+console.log("✅ Mode normal - diagnostic buttons désactivés");
+
+// 🔨 Fermer tous les diagnostics ouverts
+setTimeout(() => {
+  const diagnosticModal = document.getElementById("__advanced_diag_modal");
+  const testModal = document.querySelector("[style*='rgba(0,0,0,0.5)']");
+  if (diagnosticModal) diagnosticModal.remove();
+  if (testModal && testModal !== diagnosticModal) testModal.remove();
+  console.log("✅ Diagnostics fermés");
+}, 100);
+
+// INITIALISATION BOUTON DIAGNOSTIC 🔧 - Caché par défaut
+setTimeout(function() {
+  var diagBtn = document.createElement("button");
+  diagBtn.id = "__diag_btn";
+  diagBtn.textContent = "🔧";
+  diagBtn.style.cssText = "position:fixed;top:20px;right:20px;width:40px;height:40px;border-radius:50%;background:#666;border:none;color:#fff;font-size:18px;cursor:pointer;z-index:99999;box-shadow:0 2px 8px rgba(0,0,0,0.3);transition:background 0.2s;display:none;";
+  diagBtn.title = "Appuie sur Ctrl+Shift+D pour activer/désactiver";
+  diagBtn.onclick = toggleDiagPanel;
+  diagBtn.onmouseover = function() { if(!window._DEBUG_MODE) this.style.background = "#777"; };
+  diagBtn.onmouseout = function() { if(!window._DEBUG_MODE) this.style.background = "#666"; };
+  document.body.appendChild(diagBtn);
+
+  // Raccourci clavier: Ctrl+Shift+D pour afficher/masquer le bouton diagnostic
+  document.addEventListener("keydown", function(e) {
+    if (e.ctrlKey && e.shiftKey && e.code === "KeyD") {
+      e.preventDefault();
+      var btn = document.getElementById("__diag_btn");
+      if (btn) {
+        var isVisible = btn.style.display !== "none";
+        btn.style.display = isVisible ? "none" : "flex";
+        if (!isVisible) {
+          window._DEBUG_MODE = true;
+          btn.style.background = "#ec4899";
+          btn.style.borderColor = "#ec4899";
+        }
+      }
+    }
+  });
+}, 500);
