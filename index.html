@@ -34,6 +34,34 @@
       }
     })();
 
+    // ═══ MONITORING : remonte les erreurs JS dans Supabase (table client_errors) ═══
+    (function() {
+      var sent = 0;
+      function report(message, source, line, col, stackText) {
+        try {
+          if (sent >= 5) return; // max 5 erreurs par session (anti-spam)
+          sent++;
+          if (!window.supa) return;
+          window.supa.from("client_errors").insert({
+            message: String(message).slice(0, 500),
+            source: String(source || "").slice(0, 200),
+            line: line || null,
+            stack: String(stackText || "").slice(0, 1500),
+            url: location.pathname,
+            ua: navigator.userAgent.slice(0, 200),
+            uid: window.MY_UID || null,
+          }).then(function(){}, function(){});
+        } catch (e) {}
+      }
+      window.addEventListener("error", function(e) {
+        report(e.message, e.filename, e.lineno, e.colno, e.error && e.error.stack);
+      });
+      window.addEventListener("unhandledrejection", function(e) {
+        var r = e.reason || {};
+        report("Promise rejetée: " + (r.message || String(r)).slice(0, 300), "", null, null, r.stack);
+      });
+    })();
+
     var _ua           = navigator.userAgent;
     var _isIOS        = /iphone|ipad|ipod/i.test(_ua) && !window.MSStream;
     var _isAndroid    = /android/i.test(_ua);
@@ -129,11 +157,29 @@
   <!-- Supabase SDK -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
-  <!-- Leaflet, carte interactive (CDN stable) -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <!-- Leaflet : chargé à la demande quand une carte s'ouvre (gain ~180 Ko au démarrage) -->
+  <script>
+    window.ensureLeaflet = function() {
+      if (window.L) return Promise.resolve();
+      if (window._leafletLoading) return window._leafletLoading;
+      window._leafletLoading = new Promise(function(resolve, reject) {
+        var css = document.createElement("link");
+        css.rel = "stylesheet";
+        css.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+        css.integrity = "sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=";
+        css.crossOrigin = "";
+        document.head.appendChild(css);
+        var s = document.createElement("script");
+        s.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+        s.integrity = "sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=";
+        s.crossOrigin = "";
+        s.onload = resolve;
+        s.onerror = reject;
+        document.head.appendChild(s);
+      });
+      return window._leafletLoading;
+    };
+  </script>
 
   <style>
     /* ========================================================
@@ -9686,7 +9732,22 @@ async function onbDoAuth() {
   }
 }
 
-function onbSkipAuth() {
+async function onbSkipAuth() {
+  // Auth anonyme Supabase : donne un vrai auth.uid() aux utilisateurs sans compte,
+  // indispensable depuis les policies RLS strictes (sinon publication impossible).
+  try {
+    if (supa && supa.auth && typeof supa.auth.signInAnonymously === "function") {
+      const { data, error } = await supa.auth.signInAnonymously();
+      if (!error && data && data.session) {
+        MY_UID = data.session.user.id;
+        window.MY_UID = MY_UID;
+        try { localStorage.setItem("passio_uid", MY_UID); } catch(e) {}
+        console.log("Session anonyme créée");
+      } else if (error) {
+        console.warn("Auth anonyme refusée:", error.message);
+      }
+    }
+  } catch(e) { console.warn("Auth anonyme indisponible:", e); }
   onbNext();
 }
 
@@ -10248,7 +10309,12 @@ function renderFeed() {
     console.log("DEBUG: Second post createdAt =", sortedPosts[1]?.createdAt, "Type:", typeof sortedPosts[1]?.createdAt);
   }
 
-  list.innerHTML = sortedPosts.slice(0, 20).map(renderPostHTML).join("");
+  const renderLimit = window._feedRenderLimit || 20;
+  list.innerHTML = sortedPosts.slice(0, renderLimit).map(renderPostHTML).join("");
+  // ── Pagination : bouton "Charger plus" si d'autres posts existent (local ou serveur)
+  if (sortedPosts.length > renderLimit || window._feedServerMayHaveMore) {
+    list.innerHTML += `<div style="text-align:center;padding:14px 0 24px;"><button class="btn ghost" id="feedLoadMoreBtn" onclick="loadMoreFeedPosts()">⤵ Charger plus de posts</button></div>`;
+  }
 }
 
 // Real-photo cover, maps each `cover` variant to an Unsplash HD photo.
@@ -10364,7 +10430,7 @@ function renderPostHTML(p) {
     const nbDays = (p.steps || []).length;
     const coverSrc = p.cover || "";
     media = `<div class="post-vlog-card" onclick="openVlogViewer('${p.id}')">
-      ${coverSrc ? `<img class="post-vlog-cover" src="${coverSrc}" alt="${escapeHtml(p.destination || '')}" onerror="this.onerror=null;this.src='https://picsum.photos/seed/vlog-feed-${p.id}/1280/720';"/>` : `<div class="post-vlog-cover"></div>`}
+      ${coverSrc ? `<img loading="lazy" decoding="async" class="post-vlog-cover" src="${coverSrc}" alt="${escapeHtml(p.destination || '')}" onerror="this.onerror=null;this.src='https://picsum.photos/seed/vlog-feed-${p.id}/1280/720';"/>` : `<div class="post-vlog-cover"></div>`}
       <div class="post-vlog-overlay"></div>
       <div class="post-vlog-meta">
         <span class="post-vlog-tag">📔 CARNET DE VOYAGE</span>
@@ -10537,7 +10603,7 @@ async function openPost(id) {
   let media = "";
   if (post.type === "photo" || (post.cover && post.type !== "vlog" && post.type !== "audio")) {
     media = post.image
-      ? `<div class="post-media"><img src="${post.image}" alt="post" style="width:100%;border-radius:14px;"/></div>`
+      ? `<div class="post-media"><img loading="lazy" decoding="async" src="${post.image}" alt="post" style="width:100%;border-radius:14px;"/></div>`
       : renderPostCover(post, passion);
   }
   if (post.type === "audio") {
@@ -10594,7 +10660,7 @@ async function openPost(id) {
           if (r.type === "gif_reaction") {
             return `<div class="comment-reply" style="padding:8px 0;">
               <span style="font-size:11px;color:var(--text);font-weight:600;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span><span style="font-size:11px;color:var(--text);font-weight:600;">:</span>
-              <img src="${r.text}" style="width:120px;height:120px;border-radius:8px;margin-top:6px;object-fit:cover;" alt="GIF" />
+              <img loading="lazy" decoding="async" src="${r.text}" style="width:120px;height:120px;border-radius:8px;margin-top:6px;object-fit:cover;" alt="GIF" />
             </div>`;
           }
 
@@ -11396,7 +11462,7 @@ function renderVlogSteps() {
         </button>
       </div>
       <input type="text" class="input" placeholder="Lieu (ex: Lisbonne · Alfama)" value="${escapeHtml(s.place || '')}" maxlength="60" oninput="updateVlogStep('${s.id}', 'place', this.value)" style="margin-bottom:6px;" />
-      ${s.photo ? `<img class="vlog-step-photo-thumb" src="${s.photo}" alt=""/>` : ''}
+      ${s.photo ? `<img loading="lazy" decoding="async" class="vlog-step-photo-thumb" src="${s.photo}" alt=""/>` : ''}
       ${s.video ? `<video class="vlog-step-photo-thumb" src="${s.video}" controls playsinline preload="metadata" style="max-height:160px;"></video>` : ''}
       ${s.audio ? `<audio src="${s.audio}" controls style="width:100%;margin:6px 0;"></audio>` : ''}
       <div class="vlog-step-media-row">
@@ -11473,7 +11539,7 @@ document.addEventListener("change", (e) => {
     reader.onload = (ev) => {
       vlogState.cover = ev.target.result;
       const prev = $("#vlogCoverPreview");
-      if (prev) prev.innerHTML = `<img class="vlog-cover-preview" src="${ev.target.result}" alt="Cover"/>`;
+      if (prev) prev.innerHTML = `<img loading="lazy" decoding="async" class="vlog-cover-preview" src="${ev.target.result}" alt="Cover"/>`;
     };
     reader.readAsDataURL(f);
   }
@@ -11501,7 +11567,7 @@ function openVlogViewer(postId) {
     <div class="vlog-viewer-step">
       <span class="vlog-viewer-step-day">JOUR ${i + 1}</span>
       ${st.place ? `<div class="vlog-viewer-step-place">📍 ${escapeHtml(st.place)}</div>` : ""}
-      ${st.photo ? `<img class="vlog-viewer-step-photo" src="${st.photo}" alt="" onerror="this.onerror=null;this.src='https://picsum.photos/seed/vlog-step-${i}-${postId}/720/480';"/>` : ""}
+      ${st.photo ? `<img loading="lazy" decoding="async" class="vlog-viewer-step-photo" src="${st.photo}" alt="" onerror="this.onerror=null;this.src='https://picsum.photos/seed/vlog-step-${i}-${postId}/720/480';"/>` : ""}
       ${st.video ? `<video class="vlog-viewer-step-photo" src="${st.video}" controls playsinline preload="metadata" style="background:#000;"></video>` : ""}
       ${st.audio ? `<audio src="${st.audio}" controls style="width:100%;margin:6px 0;"></audio>` : ""}
       ${st.text ? `<div class="vlog-viewer-step-text">${escapeHtml(st.text)}</div>` : ""}
@@ -11529,7 +11595,7 @@ function openVlogViewer(postId) {
   const isSaved = isCarnetSaved(postId);
 
   const html = `
-    ${post.cover ? `<img class="vlog-viewer-cover" src="${post.cover}" alt="${escapeHtml(post.destination || '')}" onerror="this.onerror=null;this.src='https://picsum.photos/seed/vlog-${postId}/1280/720';"/>` : `<div class="vlog-viewer-cover"></div>`}
+    ${post.cover ? `<img loading="lazy" decoding="async" class="vlog-viewer-cover" src="${post.cover}" alt="${escapeHtml(post.destination || '')}" onerror="this.onerror=null;this.src='https://picsum.photos/seed/vlog-${postId}/1280/720';"/>` : `<div class="vlog-viewer-cover"></div>`}
     <div class="vlog-viewer-body">
       <div class="vlog-viewer-title">${escapeHtml(post.destination || "Carnet de voyage")}</div>
       <div class="vlog-viewer-dates">${escapeHtml(fmtRange(post.dateStart, post.dateEnd))}</div>
@@ -11591,7 +11657,8 @@ function openVlogViewer(postId) {
 
 function initVlogMiniMap(places) {
   const el = document.getElementById("vlogViewerMap");
-  if (!el || typeof L === "undefined" || !places.length) return;
+  if (!el || !places.length) return;
+  if (typeof L === "undefined") { ensureLeaflet().then(function(){ initVlogMiniMap(places); }).catch(function(){}); return; }
   // Évite double init
   if (el._leafletMap) { try { el._leafletMap.remove(); } catch(e) {} el._leafletMap = null; }
 
@@ -11663,7 +11730,7 @@ function renderCarnetsExplore() {
     const stats = vlogStats(c);
     const author = c._source === "me" ? state.user.name : (userById(c.authorId) || { name: "Anonyme" }).name;
     return `<div class="carnet-explore-card" onclick="openVlogViewer('${c.id}')">
-      ${c.cover ? `<img class="carnet-explore-cover" src="${c.cover}" alt=""/>` : `<div class="carnet-explore-cover" style="background:linear-gradient(135deg,#4c1d95,#7c3aed);"></div>`}
+      ${c.cover ? `<img loading="lazy" decoding="async" class="carnet-explore-cover" src="${c.cover}" alt=""/>` : `<div class="carnet-explore-cover" style="background:linear-gradient(135deg,#4c1d95,#7c3aed);"></div>`}
       <div class="carnet-explore-body">
         <div class="carnet-explore-dest">📍 ${escapeHtml(c.destination || "Carnet")}</div>
         <div class="carnet-explore-meta">
@@ -11897,7 +11964,7 @@ function previewLiveStepPhotos(event) {
       var prev = document.getElementById("liveStepPhotoPreview");
       if (prev) {
         prev.innerHTML = _liveStepPhotos.map(function(p, i) {
-          return '<div style="position:relative;display:inline-block;"><img src="' + p + '" style="width:70px;height:70px;border-radius:10px;object-fit:cover;"/><span onclick="_liveStepPhotos.splice(' + i + ',1);previewLiveStepPhotosRefresh();" style="position:absolute;top:-4px;right:-4px;width:18px;height:18px;border-radius:50%;background:#ef4444;color:#fff;font-size:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;">×</span></div>';
+          return '<div style="position:relative;display:inline-block;"><img loading="lazy" decoding="async" src="' + p + '" style="width:70px;height:70px;border-radius:10px;object-fit:cover;"/><span onclick="_liveStepPhotos.splice(' + i + ',1);previewLiveStepPhotosRefresh();" style="position:absolute;top:-4px;right:-4px;width:18px;height:18px;border-radius:50%;background:#ef4444;color:#fff;font-size:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;">×</span></div>';
         }).join("");
       }
     };
@@ -11908,7 +11975,7 @@ function previewLiveStepPhotosRefresh() {
   var prev = document.getElementById("liveStepPhotoPreview");
   if (prev) {
     prev.innerHTML = _liveStepPhotos.map(function(p, i) {
-      return '<div style="position:relative;display:inline-block;"><img src="' + p + '" style="width:70px;height:70px;border-radius:10px;object-fit:cover;"/><span onclick="_liveStepPhotos.splice(' + i + ',1);previewLiveStepPhotosRefresh();" style="position:absolute;top:-4px;right:-4px;width:18px;height:18px;border-radius:50%;background:#ef4444;color:#fff;font-size:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;">×</span></div>';
+      return '<div style="position:relative;display:inline-block;"><img loading="lazy" decoding="async" src="' + p + '" style="width:70px;height:70px;border-radius:10px;object-fit:cover;"/><span onclick="_liveStepPhotos.splice(' + i + ',1);previewLiveStepPhotosRefresh();" style="position:absolute;top:-4px;right:-4px;width:18px;height:18px;border-radius:50%;background:#ef4444;color:#fff;font-size:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;">×</span></div>';
     }).join("");
   }
 }
@@ -11974,9 +12041,9 @@ function openCdvLiveViewer(liveId) {
   let stepsHTML = live.steps.map(function(s) {
     var photosHTML = "";
     if (s.photos && s.photos.length > 1) {
-      photosHTML = '<div style="display:flex;gap:4px;overflow-x:auto;margin-top:6px;scrollbar-width:none;">' + s.photos.map(function(p) { return '<img src="' + p + '" style="height:120px;border-radius:8px;object-fit:cover;flex-shrink:0;"/>'; }).join("") + '</div>';
+      photosHTML = '<div style="display:flex;gap:4px;overflow-x:auto;margin-top:6px;scrollbar-width:none;">' + s.photos.map(function(p) { return '<img loading="lazy" decoding="async" src="' + p + '" style="height:120px;border-radius:8px;object-fit:cover;flex-shrink:0;"/>'; }).join("") + '</div>';
     } else if (s.photo) {
-      photosHTML = '<img src="' + s.photo + '" style="width:100%;border-radius:10px;margin-top:6px;max-height:200px;object-fit:cover;"/>';
+      photosHTML = '<img loading="lazy" decoding="async" src="' + s.photo + '" style="width:100%;border-radius:10px;margin-top:6px;max-height:200px;object-fit:cover;"/>';
     }
     var ratingHTML = s.rating ? '<span style="font-size:12px;color:#f59e0b;margin-left:8px;">' + "★".repeat(s.rating) + "☆".repeat(5-s.rating) + '</span>' : "";
     var budgetHTML = s.budget ? '<span style="font-size:10px;background:var(--bg-deep);border-radius:6px;padding:2px 6px;margin-left:6px;">' + s.budget + '</span>' : "";
@@ -12277,7 +12344,7 @@ function renderCdvScreen() {
       </div>
 
       <div class="cdv-feed-cover-wrap">
-        ${c.cover ? `<img class="cdv-feed-cover" src="${c.cover}" alt="" onerror="this.onerror=null;this.src='https://picsum.photos/seed/cdv-${c.id}/1280/720';"/>` : ""}
+        ${c.cover ? `<img loading="lazy" decoding="async" class="cdv-feed-cover" src="${c.cover}" alt="" onerror="this.onerror=null;this.src='https://picsum.photos/seed/cdv-${c.id}/1280/720';"/>` : ""}
         <div class="cdv-feed-cover-overlay"></div>
         <div class="cdv-feed-cover-meta">
           <span class="cdv-feed-tag">📔 CARNET DE VOYAGE</span>
@@ -12349,7 +12416,7 @@ function renderVlogCarousel() {
   html += carnets.map(c => {
     const stats = vlogStats(c);
     return `<div class="vlog-card-mini" onclick="openVlogViewer('${c.id}')">
-      <img class="vlog-card-mini-cover" src="${c.cover || `https://picsum.photos/seed/vlog-mini-${c.id}/360/240`}" alt="${escapeHtml(c.destination || '')}" onerror="this.onerror=null;this.src='https://picsum.photos/seed/vlog-mini-${c.id}/360/240';"/>
+      <img loading="lazy" decoding="async" class="vlog-card-mini-cover" src="${c.cover || `https://picsum.photos/seed/vlog-mini-${c.id}/360/240`}" alt="${escapeHtml(c.destination || '')}" onerror="this.onerror=null;this.src='https://picsum.photos/seed/vlog-mini-${c.id}/360/240';"/>
       <div class="vlog-card-mini-overlay"></div>
       <span class="vlog-card-mini-tag">📔 CARNET</span>
       <div class="vlog-card-mini-meta">
@@ -12476,7 +12543,7 @@ function _renderCommentsList(allComments, postId) {
           if (r.type === "gif_reaction") {
             return `<div class="comment-reply" style="padding:8px 0;">
               <span style="font-size:11px;color:var(--text);font-weight:600;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span><span style="font-size:11px;color:var(--text);font-weight:600;">:</span>
-              <img src="${r.text}" style="width:120px;height:120px;border-radius:8px;margin-top:6px;object-fit:cover;" alt="GIF" />
+              <img loading="lazy" decoding="async" src="${r.text}" style="width:120px;height:120px;border-radius:8px;margin-top:6px;object-fit:cover;" alt="GIF" />
             </div>`;
           }
 
@@ -13726,7 +13793,7 @@ function renderConvFpThread(c, displayName) {
       content = '<video src="' + m.video + '" style="max-width:200px;max-height:200px;border-radius:12px;display:block;cursor:pointer;" controls/>';
     } else if (m.img) {
       isMedia = true;
-      content = '<img src="' + m.img + '" style="max-width:200px;max-height:200px;border-radius:12px;display:block;cursor:pointer;" onclick="openFullImg(this.src)"/>';
+      content = '<img loading="lazy" decoding="async" src="' + m.img + '" style="max-width:200px;max-height:200px;border-radius:12px;display:block;cursor:pointer;" onclick="openFullImg(this.src)"/>';
     } else if (m.fileUrl) {
       isMedia = true;
       var ftype = (m.fileType || 'file').toLowerCase();
@@ -15578,7 +15645,7 @@ function loadReelComments(postId) {
           commentHTML += `
             <div class="reel-reply-item">
               <span class="reel-reply-author" onclick="openUserProfile('${r.authorId}')">${escapeHtml(replyAuthor.name)}</span>
-              <img src="${r.text}" style="width:100%;max-width:150px;height:auto;border-radius:6px;margin-top:6px;object-fit:cover;" alt="GIF" />
+              <img loading="lazy" decoding="async" src="${r.text}" style="width:100%;max-width:150px;height:auto;border-radius:6px;margin-top:6px;object-fit:cover;" alt="GIF" />
             </div>
           `;
         } else {
@@ -15760,7 +15827,7 @@ function showGifPickerForReelComment(postId, commentIdx) {
   openModal(`
     <div class="modal-title">GIF de réaction</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:16px 0;max-height:300px;overflow-y:auto;">
-      ${gifs.map(gif => `<img src="${gif}" alt="GIF" style="width:100%;height:120px;object-fit:cover;border-radius:8px;cursor:pointer;" onclick="addGifReactionToReelComment('${postId}', ${commentIdx}, '${gif}')" />`).join("")}
+      ${gifs.map(gif => `<img loading="lazy" decoding="async" src="${gif}" alt="GIF" style="width:100%;height:120px;object-fit:cover;border-radius:8px;cursor:pointer;" onclick="addGifReactionToReelComment('${postId}', ${commentIdx}, '${gif}')" />`).join("")}
     </div>
   `);
 }
@@ -16193,7 +16260,7 @@ function switchProfileTab(tab, btn) {
     myPostsDiv.innerHTML = mine.length ? mine.map(function(p){return renderPostHTML(Object.assign({},p,{_source:"me"}));}).join("") : '<div class="empty"><div class="empty-icon">✏️</div><div class="empty-title">Rien publié</div></div>';
   } else if (tab==="photos") {
     var photos = mine.filter(function(p){return p.type==="photo"||p.image;});
-    myPostsDiv.innerHTML = photos.length ? '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;">'+photos.map(function(p){var src=p.image||"https://picsum.photos/seed/"+p.id+"/300/300";return '<div style="aspect-ratio:1;border-radius:8px;overflow:hidden;"><img src="'+src+'" style="width:100%;height:100%;object-fit:cover;"/></div>';}).join("")+'</div>' : '<div class="empty"><div class="empty-icon">📷</div><div class="empty-title">Aucune photo</div></div>';
+    myPostsDiv.innerHTML = photos.length ? '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;">'+photos.map(function(p){var src=p.image||"https://picsum.photos/seed/"+p.id+"/300/300";return '<div style="aspect-ratio:1;border-radius:8px;overflow:hidden;"><img loading="lazy" decoding="async" src="'+src+'" style="width:100%;height:100%;object-fit:cover;"/></div>';}).join("")+'</div>' : '<div class="empty"><div class="empty-icon">📷</div><div class="empty-title">Aucune photo</div></div>';
   } else if (tab==="videos") {
     var videos = mine.filter(function(p){return p.type==="video";});
     myPostsDiv.innerHTML = videos.length ? videos.map(function(p){return renderPostHTML(Object.assign({},p,{_source:"me"}));}).join("") : '<div class="empty"><div class="empty-icon">🎬</div><div class="empty-title">Aucune vidéo</div></div>';
@@ -16486,7 +16553,7 @@ function renderProfileStrip() {
   var followingIds = state.user?.following || [];
   var followingPostCount = allPostsFlat.filter(function(p) { return followingIds.includes(p.authorId); }).length;
   var followingTile = '<div class="profile-tile ' + (_showFollowingFeed ? "active" : "") + '" onclick="toggleFollowingFilter()" title="Suivis" style="opacity:1;transform:' + (_showFollowingFeed ? 'scale(1.07)' : 'scale(1)') + ';transition:all 0.2s;">\
-      <div class="profile-tile-avatar" style="position:relative;overflow:hidden;background:linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(124, 58, 237, 0.10));"><img class="profile-tile-photo" src="https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=200&h=200&fit=crop&crop=faces,entropy&auto=format&q=80" alt="Suivis" onerror="this.onerror=null;this.src=\'https://picsum.photos/seed/community/200/200\'" /><div style="position:absolute;inset:0;background:radial-gradient(circle at 30% 30%, rgba(139, 92, 246, 0.08), transparent 70%);pointer-events:none;"></div>' + (followingPostCount > 0 ? '<span style="position:absolute;top:-5px;right:-5px;background:var(--accent);color:#fff;font-size:9px;font-weight:800;border-radius:8px;padding:1px 5px;min-width:16px;text-align:center;border:2px solid var(--bg);line-height:14px;">' + followingPostCount + '</span>' : '') + '</div>\
+      <div class="profile-tile-avatar" style="position:relative;overflow:hidden;background:linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(124, 58, 237, 0.10));"><img loading="lazy" decoding="async" class="profile-tile-photo" src="https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=200&h=200&fit=crop&crop=faces,entropy&auto=format&q=80" alt="Suivis" onerror="this.onerror=null;this.src=\'https://picsum.photos/seed/community/200/200\'" /><div style="position:absolute;inset:0;background:radial-gradient(circle at 30% 30%, rgba(139, 92, 246, 0.08), transparent 70%);pointer-events:none;"></div>' + (followingPostCount > 0 ? '<span style="position:absolute;top:-5px;right:-5px;background:var(--accent);color:#fff;font-size:9px;font-weight:800;border-radius:8px;padding:1px 5px;min-width:16px;text-align:center;border:2px solid var(--bg);line-height:14px;">' + followingPostCount + '</span>' : '') + '</div>\
       <div class="profile-tile-label" style="font-weight:' + (_showFollowingFeed ? '800' : '600') + ';color:' + (_showFollowingFeed ? 'var(--accent)' : '') + ';">Suivis</div>\
     </div>';
 
@@ -16501,7 +16568,7 @@ function renderProfileStrip() {
       : null;
     const fallback = "https://picsum.photos/seed/" + p.passion + "/200/200";
     const avatarContent = photoUrl
-      ? '<img class="profile-tile-photo" src="' + photoUrl + '" alt="' + label + '" onerror="this.onerror=null;this.src=\'' + fallback + '\'"/><span class="profile-tile-emoji-badge">' + p.emoji + '</span>'
+      ? '<img loading="lazy" decoding="async" class="profile-tile-photo" src="' + photoUrl + '" alt="' + label + '" onerror="this.onerror=null;this.src=\'' + fallback + '\'"/><span class="profile-tile-emoji-badge">' + p.emoji + '</span>'
       : p.emoji;
     const count = postCountByPassion[p.passion] || 0;
     const countBadge = count > 0
@@ -16952,7 +17019,7 @@ function renderPhotoPreview() {
   const box = $("#photoPreviewBox");
   if (!photoDataUrl) { box.innerHTML = ""; return; }
   box.innerHTML = `<div class="photo-preview">
-    <img src="${photoDataUrl}" alt="preview"/>
+    <img loading="lazy" decoding="async" src="${photoDataUrl}" alt="preview"/>
     <div class="photo-clear" onclick="clearPhoto()">✕</div>
   </div>`;
 }
@@ -18560,7 +18627,11 @@ function initIrlMap() {
     return;
   }
   const el = document.getElementById("irlMap");
-  if (!el || typeof L === "undefined") return;
+  if (!el) return;
+  if (typeof L === "undefined") {
+    ensureLeaflet().then(function(){ initIrlMap(); if (typeof updateIrlMapMarkers === "function") updateIrlMapMarkers(); }).catch(function(){});
+    return;
+  }
   // Vue initiale : centre de la France, zoom 5.5 → on voit tout le pays
   irlMap = L.map(el, { zoomControl: true, attributionControl: true })
     .setView([46.6, 2.5], 5.7);
@@ -19486,7 +19557,7 @@ function openEventDetails(id) {
   const coverEl = document.getElementById("eventDetailCover");
   if (!coverEl) return;
   if (ev.coverUrl) {
-    coverEl.innerHTML = `<img class="event-detail-cover" src="${escapeHtml(ev.coverUrl)}" onerror="this.parentElement.innerHTML='<div class=\\'event-detail-cover-placeholder\\'>${ev.emoji || passion.emoji}</div>'" alt=""/>`;
+    coverEl.innerHTML = `<img loading="lazy" decoding="async" class="event-detail-cover" src="${escapeHtml(ev.coverUrl)}" onerror="this.parentElement.innerHTML='<div class=\\'event-detail-cover-placeholder\\'>${ev.emoji || passion.emoji}</div>'" alt=""/>`;
   } else {
     coverEl.innerHTML = `<div class="event-detail-cover-placeholder">${escapeHtml(ev.emoji || passion.emoji)}</div>`;
   }
@@ -19651,7 +19722,7 @@ function openCreateEvent() {
 
     <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.12em;color:var(--accent);margin:14px 0 8px;">🖼 Photo de couverture</div>
     <div id="evCoverPreviewWrap" style="width:100%;height:140px;border-radius:14px;overflow:hidden;background:linear-gradient(135deg,#4c1d95,#7c3aed);display:flex;align-items:center;justify-content:center;margin-bottom:10px;position:relative;cursor:pointer;" onclick="document.getElementById('evCoverFile').click()">
-      <img id="evCoverPreviewImg" src="" alt="" style="display:none;width:100%;height:100%;object-fit:cover;position:absolute;inset:0;"/>
+      <img loading="lazy" decoding="async" id="evCoverPreviewImg" src="" alt="" style="display:none;width:100%;height:100%;object-fit:cover;position:absolute;inset:0;"/>
       <div id="evCoverPreviewPlaceholder" style="text-align:center;color:rgba(255,255,255,0.85);">
         <div style="font-size:32px;margin-bottom:6px;">📷</div>
         <div style="font-size:12px;font-weight:700;">Appuie pour choisir une photo</div>
@@ -20101,10 +20172,10 @@ function showTour() {
   // Carte interactive pour l'étape IRL
   const mapWrap = $("#tourMapWrap");
   if (mapWrap) {
-    if (step.screen === "irl" && typeof L !== "undefined") {
+    if (step.screen === "irl") {
       mapWrap.style.display = "block";
       if (_tourMap) { _tourMap.remove(); _tourMap = null; }
-      setTimeout(() => {
+      ensureLeaflet().then(() => setTimeout(() => {
         _tourMap = L.map("tourMap", { zoomControl: true, attributionControl: false, dragging: true, scrollWheelZoom: true, doubleClickZoom: true, touchZoom: true });
         L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(_tourMap);
         _tourMap.setView([46.6, 2.5], 5);
@@ -20118,7 +20189,7 @@ function showTour() {
           const icon = L.divIcon({ className: "", html: `<div style="width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#8b5cf6,#6d28d9);display:flex;align-items:center;justify-content:center;font-size:14px;border:2px solid #fff;box-shadow:0 4px 10px rgba(124,58,237,0.45)">${e.emoji}</div>`, iconSize: [28,28], iconAnchor: [14,14] });
           L.marker([e.lat, e.lng], { icon }).addTo(_tourMap);
         });
-      }, 80);
+      }, 80)).catch(function(){});
     } else {
       mapWrap.style.display = "none";
       if (_tourMap) { _tourMap.remove(); _tourMap = null; }
@@ -20302,7 +20373,7 @@ function renderStories() {
       : null;
     const fallback = `https://picsum.photos/seed/${s.id}/160/160`;
     const inner = photoUrl
-      ? `<img src="${photoUrl}" alt="${escapeHtml(u.name)}" onerror="this.onerror=null;this.src='${fallback}'"/>`
+      ? `<img loading="lazy" decoding="async" src="${photoUrl}" alt="${escapeHtml(u.name)}" onerror="this.onerror=null;this.src='${fallback}'"/>`
       : (u.profileEmoji || "✨");
     return `
       <div class="story-item" onclick="openStoryViewer(${i})">
@@ -21070,7 +21141,7 @@ async function supaPublishPost(post) {
   }
 }
 
-async function supaLoadPosts() {
+async function supaLoadPosts(offset = 0) {
   try {
     // diagLog("📥 Chargement posts depuis Supabase..."); // LOG LOURD DÉSACTIVÉ
     // console.log("[SYNC] Chargement des posts depuis Supabase..."); // LOG LOURD DÉSACTIVÉ
@@ -21079,7 +21150,7 @@ async function supaLoadPosts() {
     const { data, error } = await supa.from("posts")
       .select("id, author_id, passion_id, mood, content, media_url, created_at, shared_from_post_id, shared_data, profiles!author_id(username,emoji,color)")
       .order("created_at", { ascending: false })
-      .limit(60);
+      .range(offset, offset + 59);
     if (error) {
       diagLog(`❌ Erreur chargement: ${error.message}`);
       console.error("[SYNC] Erreur requête posts:", error);
@@ -21087,6 +21158,7 @@ async function supaLoadPosts() {
     }
     // diagLog(`📥 ${data?.length || 0} posts chargés`); // LOG LOURD DÉSACTIVÉ
     // console.log("[SYNC] Posts chargés:", data?.length || 0); // LOG LOURD DÉSACTIVÉ
+    window._feedServerMayHaveMore = ((data || []).length === 60);
     if (!data || !data.length) return [];
     // Charger tous les likes + counts commentaires d'un coup
     const postIds = data.map(r => r.id);
@@ -21779,6 +21851,30 @@ async function supaLoadNotifications() {
   } catch(e) { return []; }
 }
 
+// ── Pagination du feed : rendre 20 de plus, et recharger une page serveur si besoin
+window._feedRenderLimit = 20;
+window._feedExtraPosts = [];
+async function loadMoreFeedPosts() {
+  const btn = document.getElementById("feedLoadMoreBtn");
+  if (btn) { btn.disabled = true; btn.textContent = "Chargement…"; }
+  window._feedRenderLimit = (window._feedRenderLimit || 20) + 20;
+  try {
+    const loadedCount = (state.supabasePosts || []).length;
+    // Si on approche de la fin du stock local et que le serveur peut avoir plus → page suivante
+    if (window._feedServerMayHaveMore && window._feedRenderLimit >= loadedCount - 10) {
+      const more = await supaLoadPosts(loadedCount);
+      window._feedServerMayHaveMore = (more.length === 60);
+      if (more.length) {
+        const known = new Set((state.supabasePosts || []).map(p => p.id));
+        const fresh = more.filter(p => !known.has(p.id));
+        window._feedExtraPosts = (window._feedExtraPosts || []).concat(fresh);
+        state.supabasePosts = (state.supabasePosts || []).concat(fresh);
+      }
+    }
+  } catch (e) { console.warn("loadMoreFeedPosts:", e); }
+  renderFeed();
+}
+
 // ===== SYSTÈME DE REFRESH AUTOMATIQUE DU FEED =====
 let _feedRefreshInterval = null;
 
@@ -21789,7 +21885,8 @@ function startFeedRefreshLoop() {
     try {
       const posts = await supaLoadPosts();
       if (posts && posts.length > 0) {
-        state.supabasePosts = posts;
+        const extra = (window._feedExtraPosts || []).filter(p => !posts.some(x => x.id === p.id));
+        state.supabasePosts = posts.concat(extra);
         // NE RAFRAÎCHIR QUE SI ON EST SUR LE FEED
         const feedEl = document.getElementById("feed");
         if (feedEl && feedEl.classList.contains("active")) {
@@ -23051,7 +23148,7 @@ function pwaDismiss() {
 
     <!-- Logo + nom -->
     <div class="pwa-logo-wrap">
-      <div class="pwa-logo-icon"><img id="pwaLogoImg" alt="PASSIO" /></div>
+      <div class="pwa-logo-icon"><img loading="lazy" decoding="async" id="pwaLogoImg" alt="PASSIO" /></div>
       <div>
         <div class="pwa-app-name">PASSIO</div>
         <div class="pwa-app-desc">Le réseau de tes passions</div>
@@ -23676,7 +23773,7 @@ function addGifToComment(postId, commentId, gifUrl) {
         if (r.type === "gif_reaction") {
           return `<div class="comment-reply" style="padding:8px 0;">
             <span style="font-size:11px;color:var(--text);font-weight:600;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span><span style="font-size:11px;color:var(--text);font-weight:600;">:</span>
-            <img src="${r.text}" style="width:120px;height:120px;border-radius:8px;margin-top:6px;object-fit:cover;" alt="GIF" />
+            <img loading="lazy" decoding="async" src="${r.text}" style="width:120px;height:120px;border-radius:8px;margin-top:6px;object-fit:cover;" alt="GIF" />
           </div>`;
         }
 
@@ -23884,7 +23981,7 @@ function updatePostReactionsUI(postId) {
       }
 
       if (r.type === "gif_reaction") {
-        return `<div style="padding:8px 0;"><span style="font-size:11px;font-weight:600;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span><span style="font-size:11px;font-weight:600;">:</span><br/><img src="${r.text}" style="width:120px;height:120px;border-radius:8px;margin-top:6px;object-fit:cover;" alt="GIF" /></div>`;
+        return `<div style="padding:8px 0;"><span style="font-size:11px;font-weight:600;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span><span style="font-size:11px;font-weight:600;">:</span><br/><img loading="lazy" decoding="async" src="${r.text}" style="width:120px;height:120px;border-radius:8px;margin-top:6px;object-fit:cover;" alt="GIF" /></div>`;
       }
     }).join("");
 
@@ -23974,7 +24071,7 @@ function addEmojiToComment(postId, commentId, emoji) {
         if (r.type === "gif_reaction") {
           return `<div class="comment-reply" style="padding:8px 0;">
             <span style="font-size:11px;color:var(--text);font-weight:600;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span><span style="font-size:11px;color:var(--text);font-weight:600;">:</span>
-            <img src="${r.text}" style="width:120px;height:120px;border-radius:8px;margin-top:6px;object-fit:cover;" alt="GIF" />
+            <img loading="lazy" decoding="async" src="${r.text}" style="width:120px;height:120px;border-radius:8px;margin-top:6px;object-fit:cover;" alt="GIF" />
           </div>`;
         }
 
@@ -24294,7 +24391,8 @@ window.startAutoRefresh = function() {
         const newCount = posts.length;
         if (newCount !== currentCount) {
           console.log(`🔄 Feed mis à jour: ${currentCount} → ${newCount} posts`);
-          state.seed.posts = posts;
+          const extra2 = (window._feedExtraPosts || []).filter(p => !posts.some(x => x.id === p.id));
+          state.seed.posts = posts.concat(extra2);
           renderFeed();
         }
       }

@@ -28,3 +28,7 @@ node_modules/
 .DS_Store
 Thumbs.db
 push_passio.bat
+
+# Tests
+test-results/
+playwright-report/

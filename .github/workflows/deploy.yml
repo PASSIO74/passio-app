@@ -1,16 +1,37 @@
-name: Deploy to Netlify
+name: CI & Deploy
 
 on:
   push:
     branches:
       - main
+  pull_request:
 
 jobs:
-  deploy:
+  test:
+    name: Tests smoke (Playwright)
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Installer Playwright
+        run: |
+          npm install --no-save @playwright/test
+          npx playwright install --with-deps chromium
+
+      - name: Lancer les tests
+        run: npx playwright test
+
+  deploy:
+    name: Déploiement production
+    if: github.event_name == 'push'
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
       - name: Build dist (whitelist des fichiers publics uniquement)
         run: |
@@ -33,3 +54,22 @@ jobs:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           NETLIFY_SITE_ID: eee53fe0-9fb2-41f4-ab70-0a4e2c3f01a1
         run: npx netlify-cli deploy --prod --dir dist --auth "$NETLIFY_AUTH_TOKEN" --site "$NETLIFY_SITE_ID"
+
+  preview:
+    name: Déploiement preview (PR)
+    if: github.event_name == 'pull_request'
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build dist
+        run: |
+          mkdir -p dist
+          cp index.html sw.js manifest.json _headers icon-192.png icon-512.png dist/
+
+      - name: Deploy preview Netlify
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: eee53fe0-9fb2-41f4-ab70-0a4e2c3f01a1
+        run: npx netlify-cli deploy --dir dist --alias "pr-${{ github.event.number }}" --auth "$NETLIFY_AUTH_TOKEN" --site "$NETLIFY_SITE_ID"
