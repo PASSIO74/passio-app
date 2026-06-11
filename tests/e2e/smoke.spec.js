@@ -1,12 +1,16 @@
 // Tests smoke PASSIO — vérifient que l'app démarre et que les flux critiques s'affichent.
 // Aucune écriture en base : on ne crée ni compte ni post.
 const { test, expect } = require("@playwright/test");
+const { GATE_TOKEN, GATE_KEY } = require("./gate-helper");
 
 let pageErrors;
 
 test.beforeEach(async ({ page }) => {
   pageErrors = [];
   page.on("pageerror", (err) => pageErrors.push(err.message));
+  // Déverrouille l'Access Gate pour tester l'app elle-même
+  // (le gate a sa propre suite : access-gate.spec.js)
+  await page.addInitScript(([k, t]) => sessionStorage.setItem(k, t), [GATE_KEY, GATE_TOKEN]);
 });
 
 test("la page charge avec le bon titre", async ({ page }) => {
