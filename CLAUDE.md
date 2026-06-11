@@ -40,7 +40,7 @@ Fait : access gate en prod, 14 bugs corrigés, RGPD (suppression de compte réel
 5. Remplacer les GIFs Giphy hardcodés (emoji-misc.js, 4 listes) par l'API Giphy/Tenor.
 6. Redesign écran par écran (états vides, transitions, hiérarchie) — comparer avec Instagram/TikTok.
 7. ~~Accessibilité~~ — fait le 2026-06-11 : `user-scalable=no`/`maximum-scale` retirés, champs < 16px passés à 16px (anti auto-zoom iOS), `--muted` assombri (#6e6987, AA), zone tactile 44px sur `.conv-tool-btn`. Reste : audit complet écran par écran (avec le redesign, point 6).
-8. Perf : audit de couverture CSS (styles.css 191 Ko), pagination des conversations.
+8. Perf : audit de couverture CSS fait le 2026-06-11 (`node scripts/css-coverage.js`, serveur 8080 requis) : 33 % utilisé sur un tour des 8 écrans (62/187 Ko, sous-estimé — hover/modals non visités). Avec minification + Brotli Netlify le coût réseau réel est ~25-30 Ko → purge non prioritaire, à coupler au redesign (point 6). Reste : pagination des conversations (la liste charge tout ; le fil des messages est déjà paginé via `_loadMoreMsgs`).
 
 ## Pièges connus
 
