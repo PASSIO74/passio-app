@@ -19,6 +19,10 @@
   <link rel="apple-touch-icon" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='gA' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%23ddd6fe'/><stop offset='1' stop-color='%23a78bfa'/></linearGradient></defs><rect width='100' height='100' rx='22' fill='url(%23gA)'/><path d='M24 24 L76 24 L24 76' stroke='%23ffffff' stroke-width='13' stroke-linecap='round' stroke-linejoin='round' fill='none'/><path d='M76 24 L76 76' stroke='%234c1d95' stroke-width='13' stroke-linecap='round' fill='none'/></svg>" />
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='gA' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%23ddd6fe'/><stop offset='1' stop-color='%23a78bfa'/></linearGradient></defs><rect width='100' height='100' rx='22' fill='url(%23gA)'/><path d='M24 24 L76 24 L24 76' stroke='%23ffffff' stroke-width='13' stroke-linecap='round' stroke-linejoin='round' fill='none'/><path d='M76 24 L76 76' stroke='%234c1d95' stroke-width='13' stroke-linecap='round' fill='none'/></svg>" />
 
+  <!-- 🔒 ACCESS GATE : verrouillage par code avant tout accès (pré-lancement).
+       Doit rester le PREMIER script — voir docs/SECURITE_CODE_ACCES.md -->
+  <script src="js/access-gate.js"></script>
+
   <!-- PWA : installation automatique adaptée à l'appareil ET au navigateur -->
   <script src="js/platform.js"></script>
 
@@ -313,6 +317,7 @@
       </div>
       <div class="settings-section-body">
         <button class="btn ghost" onclick="event.stopPropagation();toggleDevPanel();feedbackModal()">Feedback & aide</button>
+        <button class="btn ghost" onclick="event.stopPropagation();toggleDevPanel();openPrivacyPolicy()">🛡 Politique de confidentialité</button>
         <button class="btn ghost" onclick="event.stopPropagation();toggleDevPanel();openAbout()">À propos de PASSIO</button>
         <button class="btn ghost" onclick="event.stopPropagation();toggleDevPanel();shareBeta()">Inviter des amis</button>
       </div>
@@ -333,7 +338,9 @@
     <!-- DANGER ZONE -->
     <div style="margin-top:10px;display:flex;flex-direction:column;gap:6px;">
       <button class="btn ghost" onclick="toggleDevPanel();openLogoutConfirm()" style="color:#ef4444;border-color:rgba(239,68,68,0.3);font-size:11px;">🚪 Se déconnecter</button>
-      <button class="btn ghost" onclick="resetApp()" style="color:#ef4444;border-color:rgba(239,68,68,0.3);font-size:11px;">🗑 Supprimer mon compte</button>
+      <!-- 🛡 RGPD 2026-06-10 : vraie suppression (données serveur + locales),
+           avant ce bouton ne vidait que le localStorage -->
+      <button class="btn ghost" onclick="toggleDevPanel();openDeleteAccountConfirm()" style="color:#ef4444;border-color:rgba(239,68,68,0.3);font-size:11px;">🗑 Supprimer mon compte</button>
     </div>
   </div>
 
@@ -416,6 +423,13 @@
           <div style="font-size:10px;color:var(--muted);">score</div>
         </div>
       </div>
+
+      <!-- BADGES & ACTIVITÉ (restaurés audit 2026-06-10 : le code de rendu
+           existait dans renderWallet/profil mais les conteneurs avaient disparu) -->
+      <div class="section-title" style="margin-top:14px;">Badges</div>
+      <div id="profileBadges" style="display:flex;gap:8px;overflow-x:auto;padding:4px 0 8px;"></div>
+      <div class="section-title" style="margin-top:10px;">Activité · 7 derniers jours</div>
+      <div id="activityGraph" style="display:flex;align-items:flex-end;gap:6px;height:64px;background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:10px 12px;"></div>
 
       <!-- PASSIONS SUIVIES -->
       <!-- PROFILS PASSION -->
