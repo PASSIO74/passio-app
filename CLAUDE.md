@@ -33,7 +33,7 @@ Fait : access gate en prod, 14 bugs corrigés, RGPD (suppression de compte réel
 
 ## Backlog prioritaire
 
-1. Tests utilisateur multi-comptes (inscription → publication → messages entre 2 comptes réels).
+1. Tests utilisateur multi-comptes — test E2E écrit le 2026-06-11 (`tests/e2e/multi-comptes.spec.js`, opt-in : `PASSIO_E2E_MULTI=1 npm test`). **Bug critique trouvé et reproduit** : la RLS v2 empêchait d'ajouter l'autre membre dans `conv_members` → le destinataire ne voyait jamais la conversation. Client corrigé (inserts séparés + erreurs loguées) ; **reste : appliquer `migrations/migration_fix_conv_members_insert.sql` dans le SQL Editor prod**, puis relancer le test E2E qui doit passer.
 2. ~~Réception des messages vocaux côté destinataire~~ — fait le 2026-06-11 : décodage unifié via `applyMsgContentData()` (app-04), utilisé par renderConvFpThread, supaLoadMessages, le handler realtime et l'aperçu de conversation. Reste à valider avec 2 comptes réels (point 1).
 3. ~~Galerie "Pièces jointes" d'une conversation~~ — fait le 2026-06-11 : panneau `#convFilesPanel` (médias / vocaux / fichiers, état vide), `openConvFiles()`/`closeConvFiles()` (app-09).
 4. Edge Function Supabase `delete-account` — code écrit le 2026-06-11 (`supabase/functions/delete-account/index.ts`, appel best-effort branché dans `doDeleteAccount`, app-02). **Reste : déployer** via la CLI Supabase (5 min, voir `docs/EDGE_FUNCTION_DELETE_ACCOUNT.md`) — action humaine (login Supabase).
@@ -47,4 +47,5 @@ Fait : access gate en prod, 14 bugs corrigés, RGPD (suppression de compte réel
 - Le build exige EXACTEMENT 9 fichiers app-*.js entre les marqueurs BUILD:APP dans index.html.
 - `tests/e2e/access-gate.spec.js` dépend du hash dans gate-helper.js — à mettre à jour si le code d'accès change.
 - Les messages média Supabase encodent le contenu en JSON dans `content` (type gif/media/audio/doc/location) — décodage centralisé dans `applyMsgContentData()` (app-04) : vocaux (audio/webm ou "Message vocal (Xs)") → lecteur intégré, autres audios → carte téléchargement.
-- Insert conv_messages : d'abord SANS from_id, fallback AVEC (contrainte historique).
+- Insert conv_messages : AVEC from_id d'abord (la RLS v2 exige from_id = auth.uid()), fallback sans from_id. (Inversé le 2026-06-11 — l'ancien ordre « sans d'abord » échouait systématiquement et gaspillait une requête par message.)
+- `from_id` et `conv_members.user_id` ont une FK vers `profiles` : `supaUpsertProfile()` doit être passé avant (fait au boot et dans supaCreateConversation).

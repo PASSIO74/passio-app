@@ -1467,14 +1467,23 @@ async function supaCreateConversation(withUserId) {
   try {
     await supaUpsertProfile();
     const convId = "conv_" + uid();
-    await supa.from("conversations").insert({
+    const rConv = await supa.from("conversations").insert({
       id: convId, is_group: false,
       passion_id: null, created_by: MY_UID,
     });
-    await supa.from("conv_members").insert([
-      { conv_id: convId, user_id: MY_UID },
-      { conv_id: convId, user_id: withUserId },
-    ]);
+    if (rConv.error) { console.warn("Conv error (conversations):", rConv.error.message); return null; }
+    // Inserts séparés : un échec sur l'autre membre ne doit pas annuler le nôtre.
+    // ⚠️ L'ajout de l'AUTRE membre exige la policy de migration_fix_conv_members_insert.sql
+    // (sans elle, RLS v2 refuse → la conv serait invisible pour le destinataire).
+    const rMe = await supa.from("conv_members").insert({ conv_id: convId, user_id: MY_UID });
+    const rHim = await supa.from("conv_members").insert({ conv_id: convId, user_id: withUserId });
+    if (rMe.error || rHim.error) {
+      console.warn("Conv error (conv_members):", (rMe.error || rHim.error).message);
+      // Conversation inutilisable côté serveur → nettoyer et laisser le fallback local
+      try { await supa.from("conv_members").delete().eq("conv_id", convId); } catch(e) {}
+      try { await supa.from("conversations").delete().eq("id", convId); } catch(e) {}
+      return null;
+    }
     return convId;
   } catch(e) { console.warn("Conv error:", e); return null; }
 }
@@ -1483,13 +1492,20 @@ async function supaCreateGroup(groupName, memberIds, passionId) {
   try {
     await supaUpsertProfile();
     const convId = "grp_" + uid();
-    await supa.from("conversations").insert({
+    const rConv = await supa.from("conversations").insert({
       id: convId, is_group: true,
       group_name: groupName, passion_id: passionId || null,
       created_by: MY_UID,
     });
+    if (rConv.error) { console.warn("Group error (conversations):", rConv.error.message); return null; }
     const members = [...new Set([MY_UID, ...memberIds])].map(u => ({ conv_id: convId, user_id: u }));
-    await supa.from("conv_members").insert(members);
+    // Inserts séparés (cf. supaCreateConversation) : au moins les membres permis passent.
+    let anyMemberError = null;
+    for (const m of members) {
+      const r = await supa.from("conv_members").insert(m);
+      if (r.error && m.user_id !== MY_UID) anyMemberError = r.error;
+    }
+    if (anyMemberError) console.warn("Group error (conv_members):", anyMemberError.message);
     return convId;
   } catch(e) { return null; }
 }

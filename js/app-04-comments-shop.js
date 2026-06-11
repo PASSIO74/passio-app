@@ -1641,26 +1641,27 @@ function sendMessageFp(convId, displayName) {
   if (typeof supa !== "undefined" && supa) {
     _diag("sendMessageFp: Tentative Supabase...");
 
-    // Essayer SANS from_id d'abord
+    // AVEC from_id d'abord : depuis la RLS v2, l'insert sans from_id est toujours
+    // rejeté (WITH CHECK from_id = auth.uid()) — l'ancien ordre gaspillait une
+    // requête par message. On garde le sans-from_id en fallback par prudence.
     supa.from("conv_messages")
-      .insert({ id: msgId, conv_id: convId, content: txt, created_at: new Date().toISOString() })
+      .insert({ id: msgId, conv_id: convId, from_id: MY_UID || null, content: txt, created_at: new Date().toISOString() })
       .then(function(res) {
         if (res && res.error) {
-          _diag("sendMessageFp: Erreur sans from_id - " + res.error.message);
-          // Fallback: essayer AVEC from_id
-          if (MY_UID) {
-            _diag("sendMessageFp: Fallback avec from_id...");
-            supa.from("conv_messages")
-              .insert({ id: msgId, conv_id: convId, from_id: MY_UID, content: txt, created_at: new Date().toISOString() })
-              .then(function(res2) {
-                if (!res2 || !res2.error) {
-                  _diag("sendMessageFp: ✅ Supabase OK (fallback avec from_id)");
-                }
-              })
-              .catch(function() {});
-          }
+          _diag("sendMessageFp: Erreur avec from_id - " + res.error.message);
+          supa.from("conv_messages")
+            .insert({ id: msgId, conv_id: convId, content: txt, created_at: new Date().toISOString() })
+            .then(function(res2) {
+              if (!res2 || !res2.error) {
+                _diag("sendMessageFp: ✅ Supabase OK (fallback sans from_id)");
+              } else {
+                _diag("sendMessageFp: ❌ Échec définitif - " + res2.error.message);
+                console.warn("sendMessageFp: message non synchronisé:", res2.error.message);
+              }
+            })
+            .catch(function() {});
         } else {
-          _diag("sendMessageFp: ✅ Supabase OK (sans from_id)");
+          _diag("sendMessageFp: ✅ Supabase OK (avec from_id)");
         }
       })
       .catch(function(err) {

@@ -823,32 +823,31 @@ function sendMessageToSupabase(msgId, convId, fileUrl, fileType, fileName, kind)
 
   _diag("handleAttachFile: Envoi à Supabase - URL length: " + fileUrl.length);
 
-  // Essayer INSERT SANS from_id d'abord
+  // AVEC from_id d'abord : la RLS v2 rejette toujours l'insert sans from_id
+  // (WITH CHECK from_id = auth.uid()) — fallback sans from_id par prudence.
   supa.from("conv_messages").insert({
     id: msgId,
     conv_id: convId,
+    from_id: (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : null,
     content: contentJson,
     created_at: new Date().toISOString()
   }).then(function(res) {
     if (res.error) {
-      _diag("handleAttachFile: Erreur sans from_id - " + res.error.message);
-      // Fallback: essayer AVEC from_id
-      if (MY_UID) {
-        _diag("handleAttachFile: Fallback - essai avec from_id...");
-        supa.from("conv_messages").insert({
-          id: msgId,
-          conv_id: convId,
-          from_id: MY_UID,
-          content: contentJson,
-          created_at: new Date().toISOString()
-        }).then(function(res2) {
-          if (!res2.error) {
-            _diag("handleAttachFile: ✅ Supabase OK (avec from_id)");
-          }
-        }).catch(function() {});
-      }
+      _diag("handleAttachFile: Erreur avec from_id - " + res.error.message);
+      supa.from("conv_messages").insert({
+        id: msgId,
+        conv_id: convId,
+        content: contentJson,
+        created_at: new Date().toISOString()
+      }).then(function(res2) {
+        if (!res2.error) {
+          _diag("handleAttachFile: ✅ Supabase OK (fallback sans from_id)");
+        } else {
+          _diag("handleAttachFile: ❌ Échec définitif - " + res2.error.message);
+        }
+      }).catch(function() {});
     } else {
-      _diag("handleAttachFile: ✅ Supabase OK (sans from_id)");
+      _diag("handleAttachFile: ✅ Supabase OK (avec from_id)");
     }
   }).catch(function(err) {
     _diag("handleAttachFile: Catch - " + err.message);
