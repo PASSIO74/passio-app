@@ -1401,6 +1401,17 @@
       <div style="overflow-y:auto;flex:1;" id="convSettingsContent"></div>
     </div>
 
+    <!-- Galerie pièces jointes (glisse par-dessus) -->
+    <div id="convFilesPanel">
+      <div class="conv-fp-head" style="gap:10px;">
+        <button class="conv-fp-back" onclick="closeConvFiles()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+        </button>
+        <div style="font-weight:800;font-size:16px;color:var(--text);">Pièces jointes</div>
+      </div>
+      <div style="overflow-y:auto;flex:1;" id="convFilesContent"></div>
+    </div>
+
     <!-- Thread messages -->
     <div class="conv-fp-thread" id="convFpThread" style="background:var(--bg-deep);"></div>
 
