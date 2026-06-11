@@ -1,5 +1,11 @@
 # Edge Function `delete-account` — guide de déploiement
 
+> ✅ **DÉPLOYÉE le 2026-06-11** via l'éditeur du Dashboard (Edge Functions → delete-account).
+> Testée en réel : compte anonyme jetable → invoke → `{ok:true}`, profil supprimé,
+> compte auth supprimé. Le guide CLI ci-dessous reste valable pour les mises à jour
+> (ou éditer directement dans le Dashboard, le code source de référence est
+> `supabase/functions/delete-account/index.ts`).
+
 ## Pourquoi
 
 La suppression de compte in-app (Paramètres → Supprimer mon compte) efface les données
