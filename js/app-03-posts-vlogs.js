@@ -657,9 +657,11 @@ function organizeGroupTrip(postId) {
       openCreateEvent();
       // Pré-remplir si on peut accéder aux champs
       setTimeout(() => {
-        const titleInput = document.getElementById("eventTitle");
-        const cityInput = document.getElementById("eventCity");
-        const descInput = document.getElementById("eventDesc");
+        // 🔧 FIX AUDIT 2026-06-10 : les vrais IDs du modal sont evTitle/
+        // evCity/evDesc — le pré-remplissage "Voyage groupé" ne marchait jamais.
+        const titleInput = document.getElementById("evTitle");
+        const cityInput = document.getElementById("evCity");
+        const descInput = document.getElementById("evDesc");
         if (titleInput) titleInput.value = "Voyage groupé : " + (post.destination || "destination");
         if (cityInput) cityInput.value = (post.destination || "").split(/[·,]/)[0].trim();
         if (descInput) descInput.value = "Inspiré du carnet de voyage de la communauté. " + ((post.steps || []).length) + " jours, " + (post.budget ? "budget ~" + post.budget : "à définir ensemble") + ". " + (post.tip || "");

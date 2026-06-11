@@ -1,4 +1,7 @@
-boot().catch(e => console.error("Boot error:", e));
+// 🔒 Le boot attend le déverrouillage de l'Access Gate (code d'accès).
+// Tant que le code n'est pas validé, AUCUNE donnée n'est chargée et aucun
+// écran n'est rendu — couvre URL directes, routes internes et deep links.
+(window.__gateReady || Promise.resolve()).then(() => boot()).catch(e => console.error("Boot error:", e));
 
 // ======== PWA INSTALL OVERLAY ========
 // (_isIOS, _isStandalone, _pwaInstalled sont déclarés dans le <head>)
@@ -6,6 +9,9 @@ boot().catch(e => console.error("Boot error:", e));
 function pwaShowOverlay() {
   const ov = document.getElementById("pwa-overlay");
   if (!ov || _isStandalone) return;
+  // 🔧 FIX AUDIT 2026-06-10 : ne pas re-proposer l'installation si
+  // l'utilisateur a déjà fermé l'overlay dans cette session.
+  try { if (sessionStorage.getItem("passio_pwa_dismissed") === "1") return; } catch (e) {}
   const lp = document.getElementById("pwaLogoImg");
   if (lp) lp.src = LOGO_SRC;
   const content = document.getElementById("pwa-content");
@@ -706,7 +712,7 @@ function handleAttachFile(input, kind) {
   var fp = document.getElementById("conv-fullpage");
   if (!fp) {
     _diag("handleAttachFile: conv-fullpage NOT FOUND");
-    return alert("Ouvre une conversation d'abord");
+    return toast("Ouvre une conversation d'abord");
   }
 
   var convId = fp.getAttribute("data-conv-id");
@@ -851,10 +857,11 @@ function sendMessageToSupabase(msgId, convId, fileUrl, fileType, fileName, kind)
 
 function shareLocation() {
   var fp = document.getElementById("conv-fullpage");
-  if (!fp) return alert("Ouvre une conversation d'abord");
-  if (!navigator.geolocation) return alert("Géolocalisation non supportée");
+  // 🔧 UX 2026-06-10 : toasts non bloquants au lieu d'alert()
+  if (!fp) return toast("Ouvre une conversation d'abord");
+  if (!navigator.geolocation) return toast("Géolocalisation non supportée");
 
-  alert("Localisation en cours...");
+  toast("📍 Localisation en cours…");
   navigator.geolocation.getCurrentPosition(function(pos) {
     var lat = pos.coords.latitude.toFixed(5);
     var lng = pos.coords.longitude.toFixed(5);
@@ -922,13 +929,13 @@ function shareLocation() {
       }
     }, 300);
   }, function() {
-    alert("Impossible d'obtenir la position");
+    toast("❌ Impossible d'obtenir la position");
   });
 }
 
 function openConvFiles() {
   toggleAttachMenu();
-  alert("Ouverture des pièces jointes (fonction en développement)");
+  toast("📁 Bientôt disponible : galerie des pièces jointes");
 }
 
 function openConvSettings(convId) {
@@ -1010,7 +1017,158 @@ function _deleteConv(convId) {
   closeConversation();
   toast("Conversation supprimée");
 }
-// ═══ fin wrappers messagerie ═══
+
+/* ============================================================
+   🔧 CORRECTIFS AUDIT 2026-06-10 — fonctions référencées par des
+   onclick/oninput mais jamais définies (boutons morts + erreurs JS)
+   ============================================================ */
+
+// FIX 2 — Bouton retour du panneau "Paramètres de conversation"
+// (aussi appelé après effacement/suppression d'une conversation).
+function closeConvSettings() {
+  var panel = document.getElementById("convSettingsPanel");
+  if (panel) panel.classList.remove("open");
+}
+
+// FIX 3 — Auto-resize du champ message (oninput sur #convFpInput
+// jetait une ReferenceError à chaque frappe).
+function autoResizeTextarea(el) {
+  if (!el) return;
+  el.style.height = "auto";
+  el.style.height = Math.min(el.scrollHeight, 120) + "px";
+}
+
+// FIX 4 — Recherche GIF du panneau Emoji/GIF (input mort).
+function _onGifSearch(query) {
+  var grid = document.getElementById("gifGrid");
+  if (!grid) return;
+  var q = (query || "").trim().toLowerCase();
+  var cells = grid.children;
+  for (var i = 0; i < cells.length; i++) {
+    var img = cells[i].querySelector("img");
+    var hay = (img && img.src ? img.src : "").toLowerCase();
+    cells[i].style.display = (!q || hay.indexOf(q) !== -1) ? "" : "none";
+  }
+}
+window._onGifSearch = _onGifSearch;
+
+// FIX 5 — Clic sur une image dans le chat : ouvre un visualiseur
+// plein écran (avant : ReferenceError, rien ne se passait).
+function openFullImg(src) {
+  if (!src) return;
+  var old = document.getElementById("fullImgViewer");
+  if (old) old.remove();
+  var v = document.createElement("div");
+  v.id = "fullImgViewer";
+  v.style.cssText = "position:fixed;inset:0;z-index:99999;background:rgba(10,6,30,0.92);display:flex;align-items:center;justify-content:center;cursor:zoom-out;backdrop-filter:blur(6px);animation:fadeIn .2s ease;";
+  v.innerHTML = '<img src="' + src.replace(/"/g, "&quot;") + '" style="max-width:94vw;max-height:90vh;border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,0.6);" alt=""/>' +
+    '<button aria-label="Fermer" style="position:absolute;top:max(16px,env(safe-area-inset-top));right:16px;width:38px;height:38px;border-radius:50%;border:none;background:rgba(255,255,255,0.14);color:#fff;font-size:20px;cursor:pointer;">✕</button>';
+  v.onclick = function () { v.remove(); };
+  document.body.appendChild(v);
+}
+
+// FIX 6 — Messages vocaux : le rendu (lecteur, waveform) existait
+// déjà mais l'enregistrement n'était pas implémenté → bouton 🎙️ mort
+// et ✕ de la barre d'enregistrement en erreur.
+var _voiceRecorder = null, _voiceChunks = [], _voiceStartAt = 0, _voiceTimerInt = null, _voiceCancelled = false;
+window._isRecording = false;
+
+async function startVoiceRecord() {
+  if (window._isRecording) return;
+  if (!navigator.mediaDevices || !window.MediaRecorder) { toast("🎙️ Enregistrement non supporté sur cet appareil"); return; }
+  try {
+    var stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    _voiceChunks = []; _voiceCancelled = false;
+    var mime = (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported("audio/webm")) ? "audio/webm" : "";
+    _voiceRecorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+    _voiceRecorder.ondataavailable = function (e) { if (e.data && e.data.size) _voiceChunks.push(e.data); };
+    _voiceRecorder.onstop = function () {
+      stream.getTracks().forEach(function (t) { t.stop(); });
+      _voiceUIStop();
+      var elapsed = Date.now() - _voiceStartAt;
+      if (_voiceCancelled || !_voiceChunks.length || elapsed < 600) return; // tap trop court / annulé
+      var dur = Math.max(1, Math.round(elapsed / 1000));
+      var blob = new Blob(_voiceChunks, { type: _voiceRecorder.mimeType || "audio/webm" });
+      var reader = new FileReader();
+      reader.onload = function () { _sendVoiceMessage(reader.result, dur); };
+      reader.readAsDataURL(blob);
+    };
+    _voiceRecorder.start();
+    window._isRecording = true;
+    _voiceStartAt = Date.now();
+    var bar = document.getElementById("voiceRecordBar");
+    if (bar) bar.classList.add("active");
+    var timerEl = document.getElementById("voiceRecordTimer");
+    _voiceTimerInt = setInterval(function () {
+      if (!timerEl) return;
+      var s = Math.floor((Date.now() - _voiceStartAt) / 1000);
+      timerEl.textContent = Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+    }, 250);
+  } catch (e) {
+    console.warn("startVoiceRecord:", e);
+    toast("🎙️ Micro non disponible (autorisation refusée ?)");
+  }
+}
+
+function _voiceUIStop() {
+  window._isRecording = false;
+  if (_voiceTimerInt) { clearInterval(_voiceTimerInt); _voiceTimerInt = null; }
+  var bar = document.getElementById("voiceRecordBar");
+  if (bar) bar.classList.remove("active");
+  var timerEl = document.getElementById("voiceRecordTimer");
+  if (timerEl) timerEl.textContent = "0:00";
+}
+
+function stopVoiceRecord() {
+  if (_voiceRecorder && window._isRecording) {
+    try { _voiceRecorder.stop(); } catch (e) { _voiceUIStop(); }
+  }
+}
+
+function cancelVoiceRecord() {
+  _voiceCancelled = true;
+  if (_voiceRecorder && window._isRecording) {
+    try { _voiceRecorder.stop(); } catch (e) {}
+  }
+  _voiceUIStop();
+}
+
+function _sendVoiceMessage(dataUrl, duration) {
+  try {
+    var fp = document.getElementById("conv-fullpage");
+    if (!fp) return;
+    var convId = fp.getAttribute("data-conv-id");
+    var displayName = fp.getAttribute("data-display-name");
+    if (!convId) return;
+    var convs = getConversations();
+    var c = convs.find(function (x) { return x.id === convId; });
+    if (!c) return;
+    if (!c.messages) c.messages = [];
+    var msgId = "msg_" + uid();
+    c.messages.push({ id: msgId, from: "me", text: "", voiceData: dataUrl, voiceDuration: duration, at: Date.now() });
+    c.lastAt = Date.now();
+    saveConversations();
+    if (typeof renderConvFpThread === "function") renderConvFpThread(c, displayName);
+    if (typeof renderMessages === "function") renderMessages();
+
+    // Sync Supabase : upload Storage puis message (même pipeline que les pièces jointes)
+    if (typeof supa === "undefined" || !supa) return;
+    try {
+      var byteString = atob(dataUrl.split(",")[1]);
+      var ia = new Uint8Array(byteString.length);
+      for (var i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
+      var blob = new Blob([ia.buffer], { type: "audio/webm" });
+      var storagePath = "attachments/" + convId + "/" + Date.now() + "_voice.webm";
+      supa.storage.from("attachments").upload(storagePath, blob, { cacheControl: "3600", upsert: false }).then(function (res) {
+        var url = res.error ? dataUrl : supa.storage.from("attachments").getPublicUrl(storagePath).data.publicUrl;
+        sendMessageToSupabase(msgId, convId, url, "audio/webm", "Message vocal (" + duration + "s)", "audio");
+      }).catch(function () {
+        sendMessageToSupabase(msgId, convId, dataUrl, "audio/webm", "Message vocal", "audio");
+      });
+    } catch (e) { console.warn("_sendVoiceMessage sync:", e); }
+  } catch (e) { console.error("_sendVoiceMessage:", e); }
+}
+// ═══ fin wrappers messagerie ═══ (audit 2026-06-10)
 
 function pwaDismiss() {
   const ov = document.getElementById("pwa-overlay");
@@ -1018,4 +1176,7 @@ function pwaDismiss() {
     ov.style.animation = "pwaFadeIn .25s ease reverse both";
     setTimeout(() => { ov.style.display = "none"; ov.style.animation = ""; }, 220);
   }
+  // 🔧 FIX AUDIT 2026-06-10 : mémorise le refus pour ne pas re-proposer
+  // l'installation à chaque navigation dans la même session.
+  try { sessionStorage.setItem("passio_pwa_dismissed", "1"); } catch (e) {}
 }

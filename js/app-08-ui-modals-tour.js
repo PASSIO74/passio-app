@@ -1906,7 +1906,9 @@ function startFeedRefreshLoop() {
         const extra = (window._feedExtraPosts || []).filter(p => !posts.some(x => x.id === p.id));
         state.supabasePosts = posts.concat(extra);
         // NE RAFRAÎCHIR QUE SI ON EST SUR LE FEED
-        const feedEl = document.getElementById("feed");
+        // 🔧 FIX AUDIT 2026-06-10 : l'id est "screen-feed" (pas "feed") —
+        // le fallback 60s ne rafraîchissait JAMAIS le fil.
+        const feedEl = document.getElementById("screen-feed");
         if (feedEl && feedEl.classList.contains("active")) {
           renderFeed();
         }
@@ -2117,8 +2119,9 @@ function resetOnboarding() {
   state.landingSeen = false;
   saveState();
   // Cacher l'app, montrer l'onboarding
+  // 🔧 FIX AUDIT 2026-06-10 : #appShell n'existe pas (TypeError qui
+  // interrompait le reset) — l'élément est .app-shell, sans état "active".
   document.body.classList.remove("screen-feed-active");
-  document.getElementById("appShell").classList.remove("active");
   document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
   document.getElementById("onboarding").classList.add("active");
   document.getElementById("landing").classList.remove("active");

@@ -1619,6 +1619,17 @@ function applyIrlTimeRange() {
   renderIRL();
 }
 
+// 🔧 FIX AUDIT 2026-06-10 : bouton "Effacer" du filtre horaire IRL
+// (référencé par onclick mais jamais défini → ReferenceError, le modal
+// ne se fermait même pas).
+function clearIrlTimeFilter() {
+  irlTimeFilter = "";
+  const btn = document.getElementById("irlTimeFilterBtn");
+  if (btn) btn.textContent = "🕐 Heure";
+  toast("Filtre horaire effacé");
+  renderIRL();
+}
+
 function setIrlQuickTime(hour) {
   // Fonction supprimée - plus utilisée
 }

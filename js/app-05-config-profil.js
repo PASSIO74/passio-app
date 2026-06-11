@@ -1112,10 +1112,20 @@ function authorOfReel(post) {
     };
   }
   const su = (state.seed.users || []).find(u => u.id === post.userId);
+  if (su) {
+    return {
+      name: su.name,
+      emoji: su.profileEmoji || "🙂",
+      color: su.avatar || "#7c3aed",
+    };
+  }
+  // 🔧 FIX AUDIT 2026-06-10 : posts Supabase (vrais utilisateurs) — ils
+  // portent authorName/authorEmoji/authorColor, pas un userId seed.
+  // Avant : toutes les Bobines des vrais utilisateurs affichaient "Anonyme".
   return {
-    name: su ? su.name : "Anonyme",
-    emoji: su ? (su.profileEmoji || "🙂") : "🙂",
-    color: su ? su.avatar : "#7c3aed",
+    name: post.authorName || "Anonyme",
+    emoji: post.authorEmoji || "🙂",
+    color: post.authorColor || "#7c3aed",
   };
 }
 

@@ -36,14 +36,16 @@ if(grid) {
   }
 }
 
-// Populate GIF grid - 50+ GIFs DIFFÉRENTS
-var gifUrls = ["https://media.giphy.com/media/3o7abKhOpu0NwenH3O/giphy.gif","https://media.giphy.com/media/xT9IgG50Lg7rusjtG8/giphy.gif","https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif","https://media.giphy.com/media/26ufdipQqU2lhNA4g/giphy.gif","https://media.giphy.com/media/3oz8xAFtqoOUUrsh7W/giphy.gif","https://media.giphy.com/media/l4FGGafcOHmrlQxG0/giphy.gif","https://media.giphy.com/media/3ohzdKdb7d1bbVwnQU/giphy.gif","https://media.giphy.com/media/l0HlFZ3c8HWDRlCharepI/giphy.gif","https://media.giphy.com/media/FW8aI0tXVE8gKxYvRc/giphy.gif","https://media.giphy.com/media/l0Iy1Z8oW4fvfBLh2/giphy.gif","https://media.giphy.com/media/l0HlDtKUoRb0x8bDy/giphy.gif","https://media.giphy.com/media/l0Iy0QcSoQYQW3SWHf/giphy.gif","https://media.giphy.com/media/l0MYr7jgMgWI8ouOI/giphy.gif","https://media.giphy.com/media/l0HlSY9x8FZo0XO1i/giphy.gif","https://media.giphy.com/media/l4FGGafcOHmrlQxG0/giphy.gif","https://media.giphy.com/media/l4Jz3a8jO92crOLXy/giphy.gif","https://media.giphy.com/media/3ohzdKdb7d1bbVwnQU/giphy.gif","https://media.giphy.com/media/l0HlF5j3QRG5pxPAI/giphy.gif","https://media.giphy.com/media/3o7TKU8j7Yt9R2xNMY/giphy.gif","https://media.giphy.com/media/l0MYM8m02D0c3PoFi/giphy.gif","https://media.giphy.com/media/RH16FlVXbaAzS/giphy.gif","https://media.giphy.com/media/l46Ce3kKMKxvEiFZS/giphy.gif","https://media.giphy.com/media/l0HlHJJxcNHFqyvrm/giphy.gif","https://media.giphy.com/media/JIX9RbDfLvbl2/giphy.gif","https://media.giphy.com/media/l0HlQaQ6gWfllcjDO/giphy.gif","https://media.giphy.com/media/l3q2K6HIuvsGyp7UE/giphy.gif","https://media.giphy.com/media/l0HlMMaQ5vJ7lKOmY/giphy.gif","https://media.giphy.com/media/l4FgUMgdCHHBFcGe88/giphy.gif","https://media.giphy.com/media/l4Jz3a8jO92crOLXy/giphy.gif","https://media.giphy.com/media/RH16FlVXbaAzS/giphy.gif","https://media.giphy.com/media/l3q2K6HIuvsGyp7UE/giphy.gif","https://media.giphy.com/media/l0HlSY9x8FZo0XO1i/giphy.gif","https://media.giphy.com/media/l0MYr7jgMgWI8ouOI/giphy.gif","https://media.giphy.com/media/26ufdipQqU2lhNA4g/giphy.gif","https://media.giphy.com/media/xT9IgG50Lg7rusjtG8/giphy.gif","https://media.giphy.com/media/3o7abKhOpu0NwenH3O/giphy.gif","https://media.giphy.com/media/l0Iy1Z8oW4fvfBLh2/giphy.gif","https://media.giphy.com/media/l0HlDtKUoRb0x8bDy/giphy.gif","https://media.giphy.com/media/3oz8xAFtqoOUUrsh7W/giphy.gif","https://media.giphy.com/media/FW8aI0tXVE8gKxYvRc/giphy.gif","https://media.giphy.com/media/l4FGGafcOHmrlQxG0/giphy.gif","https://media.giphy.com/media/3ohzdKdb7d1bbVwnQU/giphy.gif","https://media.giphy.com/media/l0HlFZ3c8HWDRlCharepI/giphy.gif","https://media.giphy.com/media/l0MYM8m02D0c3PoFi/giphy.gif","https://media.giphy.com/media/RH16FlVXbaAzS/giphy.gif","https://media.giphy.com/media/l46Ce3kKMKxvEiFZS/giphy.gif","https://media.giphy.com/media/l0HlHJJxcNHFqyvrm/giphy.gif","https://media.giphy.com/media/JIX9RbDfLvbl2/giphy.gif","https://media.giphy.com/media/l0HlQaQ6gWfllcjDO/giphy.gif","https://media.giphy.com/media/l3q2K6HIuvsGyp7UE/giphy.gif","https://media.giphy.com/media/l0HlMMaQ5vJ7lKOmY/giphy.gif"];
+// Populate GIF grid — 🔧 PERF AUDIT 2026-06-10 : liste dédupliquée
+// (51 entrées dont 25 doublons → 26 GIFs uniques, ~50 % de requêtes en moins)
+var gifUrls = ["https://media.giphy.com/media/3o7abKhOpu0NwenH3O/giphy.gif","https://media.giphy.com/media/xT9IgG50Lg7rusjtG8/giphy.gif","https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif","https://media.giphy.com/media/26ufdipQqU2lhNA4g/giphy.gif","https://media.giphy.com/media/3oz8xAFtqoOUUrsh7W/giphy.gif","https://media.giphy.com/media/l4FGGafcOHmrlQxG0/giphy.gif","https://media.giphy.com/media/3ohzdKdb7d1bbVwnQU/giphy.gif","https://media.giphy.com/media/l0HlFZ3c8HWDRlCharepI/giphy.gif","https://media.giphy.com/media/FW8aI0tXVE8gKxYvRc/giphy.gif","https://media.giphy.com/media/l0Iy1Z8oW4fvfBLh2/giphy.gif","https://media.giphy.com/media/l0HlDtKUoRb0x8bDy/giphy.gif","https://media.giphy.com/media/l0Iy0QcSoQYQW3SWHf/giphy.gif","https://media.giphy.com/media/l0MYr7jgMgWI8ouOI/giphy.gif","https://media.giphy.com/media/l0HlSY9x8FZo0XO1i/giphy.gif","https://media.giphy.com/media/l4Jz3a8jO92crOLXy/giphy.gif","https://media.giphy.com/media/l0HlF5j3QRG5pxPAI/giphy.gif","https://media.giphy.com/media/3o7TKU8j7Yt9R2xNMY/giphy.gif","https://media.giphy.com/media/l0MYM8m02D0c3PoFi/giphy.gif","https://media.giphy.com/media/RH16FlVXbaAzS/giphy.gif","https://media.giphy.com/media/l46Ce3kKMKxvEiFZS/giphy.gif","https://media.giphy.com/media/l0HlHJJxcNHFqyvrm/giphy.gif","https://media.giphy.com/media/JIX9RbDfLvbl2/giphy.gif","https://media.giphy.com/media/l0HlQaQ6gWfllcjDO/giphy.gif","https://media.giphy.com/media/l3q2K6HIuvsGyp7UE/giphy.gif","https://media.giphy.com/media/l0HlMMaQ5vJ7lKOmY/giphy.gif","https://media.giphy.com/media/l4FgUMgdCHHBFcGe88/giphy.gif"];
 var gifGrid = document.getElementById("gifGrid");
 if(gifGrid) {
   gifUrls.forEach(function(url) {
     var d = document.createElement("div");
     d.style.cssText = "width:100%;height:120px;border-radius:8px;overflow:hidden;cursor:pointer;";
     var img = document.createElement("img");
+    img.loading = "lazy"; // 🔧 PERF : ne charge que les GIFs visibles
     img.src = url;
     img.style.cssText = "width:100%;height:100%;object-fit:cover;";
     img.onclick = function() {
@@ -254,7 +256,6 @@ function showGifPickerForMessage() {
     "https://media.giphy.com/media/xT9IgEx8SbQ0teblZ6/giphy.gif",
     "https://media.giphy.com/media/g9GUjSwvjeUPm/giphy.gif",
     "https://media.giphy.com/media/FiGiRei2ICzzrwYPAd/giphy.gif",
-    "https://media.giphy.com/media/d3Z6hZ6h6h6h6h6h6/giphy.gif",
     "https://media.giphy.com/media/xT9IgHCTt7bfq13KfC/giphy.gif",
     "https://media.giphy.com/media/11sBLVxNwBrBFQ/giphy.gif",
     "https://media.giphy.com/media/l0HlR7RPMhYpEKsXm/giphy.gif",
@@ -291,6 +292,7 @@ function showGifPickerForMessage() {
     var gifBtn = document.createElement("div");
     gifBtn.style.cssText = "width:90px;height:90px;background:var(--bg-soft);border-radius:6px;overflow:hidden;cursor:pointer;border:1px solid var(--border);transition:all 0.2s;flex-shrink:0;";
     var img = document.createElement("img");
+    img.loading = "lazy"; // 🔧 PERF 2026-06-10 : ne charge que les GIFs visibles
     img.src = gifUrl;
     img.style.cssText = "width:100%;height:100%;object-fit:cover;";
     gifBtn.appendChild(img);
@@ -342,7 +344,6 @@ function showGifPickerForComment(postId, commentId, event) {
     "https://media.giphy.com/media/xT9IgEx8SbQ0teblZ6/giphy.gif",
     "https://media.giphy.com/media/g9GUjSwvjeUPm/giphy.gif",
     "https://media.giphy.com/media/FiGiRei2ICzzrwYPAd/giphy.gif",
-    "https://media.giphy.com/media/d3Z6hZ6h6h6h6h6h6/giphy.gif",
     "https://media.giphy.com/media/xT9IgHCTt7bfq13KfC/giphy.gif",
     "https://media.giphy.com/media/11sBLVxNwBrBFQ/giphy.gif",
     "https://media.giphy.com/media/l0HlR7RPMhYpEKsXm/giphy.gif",
@@ -379,6 +380,7 @@ function showGifPickerForComment(postId, commentId, event) {
     var gifBtn = document.createElement("div");
     gifBtn.style.cssText = "width:90px;height:90px;background:var(--bg-soft);border-radius:6px;overflow:hidden;cursor:pointer;border:1px solid var(--border);transition:all 0.2s;flex-shrink:0;";
     var img = document.createElement("img");
+    img.loading = "lazy"; // 🔧 PERF 2026-06-10 : ne charge que les GIFs visibles
     img.src = gifUrl;
     img.style.cssText = "width:100%;height:100%;object-fit:cover;";
     gifBtn.appendChild(img);
@@ -667,7 +669,6 @@ function showGifPickerForPost(postId, event) {
     "https://media.giphy.com/media/xT9IgEx8SbQ0teblZ6/giphy.gif",
     "https://media.giphy.com/media/g9GUjSwvjeUPm/giphy.gif",
     "https://media.giphy.com/media/FiGiRei2ICzzrwYPAd/giphy.gif",
-    "https://media.giphy.com/media/d3Z6hZ6h6h6h6h6h6/giphy.gif",
     "https://media.giphy.com/media/xT9IgHCTt7bfq13KfC/giphy.gif",
     "https://media.giphy.com/media/11sBLVxNwBrBFQ/giphy.gif",
     "https://media.giphy.com/media/l0HlR7RPMhYpEKsXm/giphy.gif",
@@ -686,6 +687,7 @@ function showGifPickerForPost(postId, event) {
     var gifBtn = document.createElement("div");
     gifBtn.style.cssText = "width:90px;height:90px;background:var(--bg-soft);border-radius:6px;overflow:hidden;cursor:pointer;border:1px solid var(--border);transition:all 0.2s;flex-shrink:0;";
     var img = document.createElement("img");
+    img.loading = "lazy"; // 🔧 PERF 2026-06-10 : ne charge que les GIFs visibles
     img.src = gifUrl;
     img.style.cssText = "width:100%;height:100%;object-fit:cover;";
     gifBtn.appendChild(img);

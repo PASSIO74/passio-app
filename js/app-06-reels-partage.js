@@ -870,8 +870,11 @@ function renderStudio() {
   }).join("");
 
   // Drafts
+  // 🔧 FIX AUDIT 2026-06-10 : #draftList n'existe plus dans le markup →
+  // TypeError à CHAQUE ouverture du Studio (goTo("studio") → renderStudio).
   const drafts = state.user.drafts || [];
   const dl = $("#draftList");
+  if (!dl) return;
   if (drafts.length === 0) {
     dl.innerHTML = `<div class="empty"><div class="empty-icon">📝</div><div class="empty-title">Aucun brouillon</div><div class="empty-text">Tes brouillons apparaîtront ici.</div></div>`;
   } else {
@@ -1078,11 +1081,13 @@ $("#audioInput").addEventListener("change", (e) => {
     $$("#studioTypeTabs .studio-type").forEach(e => e.classList.remove("active"));
     document.querySelector('[data-type="audio"]')?.classList.add("active");
     // Afficher la section audio
+    // 🔧 FIX AUDIT 2026-06-10 : #studioText n'existe pas (le textarea
+    // #postText est toujours visible) → TypeError qui cassait l'import
+    // audio avant l'affichage du lecteur.
     $("#studioAudio").style.display = "block";
     $("#studioVideo").style.display = "none";
     $("#studioVlog").style.display = "none";
     $("#studioPhoto").style.display = "none";
-    $("#studioText").style.display = "none";
     // Afficher l'audio en lecture
     $("#recStatus").textContent = "✅ Audio chargé et prêt à publier";
     $("#recPlayback").innerHTML = `<audio controls src="${audioDataUrl}" style="width:100%;margin-top:6px;"></audio>`;

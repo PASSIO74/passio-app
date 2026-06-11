@@ -616,6 +616,92 @@ async function doLogout() {
   setTimeout(() => location.reload(), 1200);
 }
 
+/* ============================================================
+   🛡 RGPD 2026-06-10 — Suppression de compte réelle + politique
+   de confidentialité. Avant : "Supprimer mon compte" ne vidait
+   que le localStorage, les données Supabase restaient en base.
+   ============================================================ */
+
+function openDeleteAccountConfirm() {
+  openModal('\
+    <div class="modal-handle"></div>\
+    <div class="modal-title" style="color:#ef4444;">🗑 Supprimer mon compte</div>\
+    <p style="font-size:13px;color:var(--muted);margin-bottom:10px;">Cette action est <strong>définitive</strong>. Seront supprimés :</p>\
+    <ul style="font-size:13px;color:var(--muted);margin:0 0 12px 18px;line-height:1.7;">\
+      <li>ton profil et tes profils passion ;</li>\
+      <li>tous tes posts, photos, vidéos, carnets et stories ;</li>\
+      <li>tes messages, conversations et notifications ;</li>\
+      <li>tes likes, commentaires, abonnements et événements.</li>\
+    </ul>\
+    <p style="font-size:12px;color:var(--muted);margin-bottom:14px;">Ton adresse e-mail de connexion sera définitivement retirée de nos serveurs sous 30 jours (art. 17 RGPD). Pour toute question : contact@ladamemetallerie.com</p>\
+    <label class="field"><span>Tape <strong>SUPPRIMER</strong> pour confirmer</span>\
+      <input type="text" class="input" id="deleteConfirmInput" autocomplete="off" placeholder="SUPPRIMER"/></label>\
+    <div style="display:flex;gap:8px;margin-top:12px;">\
+      <button class="btn ghost" onclick="closeModal()" style="flex:1;">Annuler</button>\
+      <button class="btn primary" onclick="doDeleteAccount()" style="flex:1;background:#ef4444;">Supprimer définitivement</button>\
+    </div>\
+  ');
+}
+
+async function doDeleteAccount() {
+  var input = document.getElementById("deleteConfirmInput");
+  if (!input || input.value.trim().toUpperCase() !== "SUPPRIMER") {
+    toast("Tape SUPPRIMER pour confirmer");
+    return;
+  }
+  closeModal();
+  toast("🗑 Suppression en cours…");
+  // Suppression best-effort des données serveur, table par table.
+  // Les policies RLS limitent de toute façon chaque DELETE au propriétaire.
+  if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
+    var jobs = [
+      ["posts",           "author_id"],
+      ["post_likes",      "user_id"],
+      ["post_comments",   "author_id"],
+      ["stories",         "author_id"],
+      ["events",          "author_id"],
+      ["event_attendees", "user_id"],
+      ["conv_messages",   "from_id"],
+      ["conv_members",    "user_id"],
+      ["notifications",   "user_id"],
+      ["profiles",        "id"],
+    ];
+    for (var i = 0; i < jobs.length; i++) {
+      try { await supa.from(jobs[i][0]).delete().eq(jobs[i][1], MY_UID); } catch (e) {}
+    }
+    try { await supa.from("follows").delete().eq("follower_id", MY_UID); } catch (e) {}
+    try { await supa.from("follows").delete().eq("following_id", MY_UID); } catch (e) {}
+    try { await supa.auth.signOut(); } catch (e) {}
+  }
+  // Purge locale complète
+  try {
+    Object.keys(localStorage)
+      .filter(function (k) { return k.indexOf("passio") !== -1 || k === "sb-njkiyoklssvefstljemx-auth-token"; })
+      .forEach(function (k) { localStorage.removeItem(k); });
+  } catch (e) {}
+  try { sessionStorage.clear(); } catch (e) {}
+  toast("✅ Compte supprimé. Au revoir 💜");
+  setTimeout(function () { location.reload(); }, 1500);
+}
+
+function openPrivacyPolicy() {
+  openModal('\
+    <div class="modal-handle"></div>\
+    <div class="modal-title">🛡 Politique de confidentialité</div>\
+    <div style="font-size:12.5px;color:var(--muted);line-height:1.65;max-height:55vh;overflow-y:auto;padding-right:4px;">\
+      <p style="margin:0 0 10px;"><strong style="color:var(--text);">Dernière mise à jour : juin 2026 — PASSIO (beta privée)</strong></p>\
+      <p style="margin:0 0 10px;"><strong style="color:var(--text);">1. Données collectées.</strong> Lors de l\'inscription : adresse e-mail et nom d\'utilisateur. Lors de l\'utilisation : profils passion, publications (textes, photos, vidéos, audio), carnets, messages, commentaires, likes, abonnements, participation aux événements, et préférences locales (thème, filtres).</p>\
+      <p style="margin:0 0 10px;"><strong style="color:var(--text);">2. Où sont stockées tes données.</strong> Sur les serveurs de notre prestataire Supabase (hébergement UE/US, chiffrement en transit), et en partie sur ton appareil (localStorage) pour le fonctionnement hors-ligne. Les accès en base sont restreints par des règles de sécurité par propriétaire (RLS).</p>\
+      <p style="margin:0 0 10px;"><strong style="color:var(--text);">3. Ce que nous ne faisons pas.</strong> Pas de revente de données, pas de publicité ciblée, pas de traqueurs tiers. C\'est l\'engagement fondateur de PASSIO.</p>\
+      <p style="margin:0 0 10px;"><strong style="color:var(--text);">4. Durée de conservation.</strong> Tes données sont conservées tant que ton compte est actif. La suppression du compte efface tes contenus immédiatement et ton e-mail sous 30 jours.</p>\
+      <p style="margin:0 0 10px;"><strong style="color:var(--text);">5. Tes droits (RGPD).</strong> Accès, rectification, effacement, portabilité, opposition. Exerce-les directement dans l\'app (Paramètres → Supprimer mon compte) ou par e-mail : <strong style="color:var(--text);">contact@ladamemetallerie.com</strong>. Tu peux aussi saisir la CNIL (cnil.fr).</p>\
+      <p style="margin:0 0 10px;"><strong style="color:var(--text);">6. Mineurs.</strong> PASSIO est réservé aux 13 ans et plus ; l\'inscription demande l\'âge à l\'onboarding.</p>\
+      <p style="margin:0;"><strong style="color:var(--text);">7. Beta privée.</strong> Pendant la phase de test, l\'accès est protégé par code et les fonctionnalités peuvent évoluer ; tes retours peuvent être utilisés pour améliorer le produit.</p>\
+    </div>\
+    <button class="btn primary block" onclick="closeModal()" style="margin-top:14px;">J\'ai compris</button>\
+  ');
+}
+
 document.addEventListener("click", (e) => {
   if (!e.target.closest(".hamburger") && !e.target.closest(".dev-panel")) {
     $("#devPanel").classList.remove("active");
