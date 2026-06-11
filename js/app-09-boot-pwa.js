@@ -935,7 +935,83 @@ function shareLocation() {
 
 function openConvFiles() {
   toggleAttachMenu();
-  toast("📁 Bientôt disponible : galerie des pièces jointes");
+  try {
+    var fp = document.getElementById("conv-fullpage");
+    var panel = document.getElementById("convFilesPanel");
+    var content = document.getElementById("convFilesContent");
+    if (!fp || !panel || !content) return;
+    var convId = fp.getAttribute("data-conv-id");
+    var convs = getConversations();
+    var c = convs.find(function (x) { return x.id === convId; });
+    if (!c) return;
+
+    var medias = [], voices = [], files = [];
+    (c.messages || []).forEach(function (m, i) {
+      if (typeof applyMsgContentData === "function") applyMsgContentData(m);
+      var key = (m.id || i).toString().replace(/[^a-z0-9]/gi, "");
+      if (m.gif) medias.push({ kind: "img", src: m.gif });
+      else if (m.video) medias.push({ kind: "video", src: m.video });
+      else if (m.img) medias.push({ kind: "img", src: m.img });
+      else if (m.voiceData) voices.push({ aid: "g" + key, src: m.voiceData, dur: m.voiceDuration || 0, at: m.at, name: m.isFile ? m.fileName : null });
+      else if (m.fileUrl) files.push({ name: m.fileName || "Fichier", url: m.fileUrl });
+      else if (m.docData) files.push({ name: m.fileName || "Fichier", key: m.id || i, data: m.docData });
+    });
+
+    var html = "";
+    if (medias.length) {
+      html += '<div class="csetting-section">Médias (' + medias.length + ')</div><div class="conv-files-grid">';
+      medias.forEach(function (md) {
+        if (md.kind === "video") {
+          html += '<video src="' + escapeHtml(md.src) + '" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:12px;cursor:pointer;" muted playsinline onclick="this.paused?this.play():this.pause()"></video>';
+        } else {
+          html += '<img src="' + escapeHtml(md.src) + '" loading="lazy" decoding="async" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:12px;cursor:pointer;" onclick="openFullImg(this.src)"/>';
+        }
+      });
+      html += '</div>';
+    }
+    if (voices.length) {
+      html += '<div class="csetting-section">Messages vocaux (' + voices.length + ')</div>';
+      voices.forEach(function (v) {
+        window["_vd_" + v.aid] = v.src;
+        var durStr = Math.floor(v.dur / 60) + ":" + String(v.dur % 60).padStart(2, "0");
+        var dateStr = v.at ? new Date(v.at).toLocaleDateString("fr-FR") : "";
+        html += '<div style="display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--border);">' +
+          '<button id="pb_' + v.aid + '" onclick="_playVoiceById(\'' + v.aid + '\')" style="width:34px;height:34px;border-radius:50%;background:rgba(139,92,246,0.12);border:none;color:var(--accent);cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">▶</button>' +
+          '<div style="flex:1;height:28px;background:rgba(139,92,246,0.12);border-radius:8px;overflow:hidden;cursor:pointer;" onclick="_playVoiceById(\'' + v.aid + '\')"><div id="wf_' + v.aid + '" style="height:100%;background:var(--accent);border-radius:8px;width:0%;transition:width 0.15s;"></div></div>' +
+          '<span id="dur_' + v.aid + '" style="font-size:11px;color:var(--muted);flex-shrink:0;min-width:30px;text-align:right;">' + durStr + '</span>' +
+          (dateStr ? '<span style="font-size:11px;color:var(--muted);flex-shrink:0;">' + dateStr + '</span>' : '') +
+          '</div>';
+      });
+    }
+    if (files.length) {
+      html += '<div class="csetting-section">Fichiers (' + files.length + ')</div>';
+      files.forEach(function (f) {
+        var row = '<div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--border);cursor:pointer;">' +
+          '<div style="width:36px;height:36px;border-radius:10px;background:var(--bg-soft);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">📄</div>' +
+          '<div style="flex:1;min-width:0;"><div style="font-size:13px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(f.name) + '</div>' +
+          '<div style="font-size:10px;color:var(--muted);">📥 Télécharger</div></div></div>';
+        if (f.url) {
+          html += '<a href="' + escapeHtml(f.url) + '" target="_blank" rel="noopener" style="text-decoration:none;">' + row + '</a>';
+        } else {
+          window["_doc_" + f.key] = { data: f.data, name: f.name };
+          html += row.replace('<div style="display:flex;align-items:center;gap:12px;', '<div onclick="_docDownload(\'' + f.key + '\')" style="display:flex;align-items:center;gap:12px;');
+        }
+      });
+    }
+    if (!html) {
+      html = '<div style="padding:48px 24px;text-align:center;color:var(--muted);">' +
+        '<div style="font-size:40px;margin-bottom:12px;">📁</div>' +
+        '<div style="font-weight:700;color:var(--text);">Aucune pièce jointe</div>' +
+        '<div style="font-size:13px;margin-top:6px;">Les photos, vidéos, vocaux et fichiers échangés dans cette conversation apparaîtront ici.</div></div>';
+    }
+    content.innerHTML = html;
+    panel.classList.add("open");
+  } catch (e) { console.error("openConvFiles:", e); }
+}
+
+function closeConvFiles() {
+  var panel = document.getElementById("convFilesPanel");
+  if (panel) panel.classList.remove("open");
 }
 
 function openConvSettings(convId) {

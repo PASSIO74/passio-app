@@ -1773,6 +1773,9 @@ function closeConversation() {
   if (bar) bar.style.display = "none";
   const fp = document.getElementById("conv-fullpage");
   if (fp) fp.classList.remove("active");
+  // Refermer les panneaux glissants pour ne pas les retrouver ouverts dans la prochaine conversation
+  document.getElementById("convSettingsPanel")?.classList.remove("open");
+  document.getElementById("convFilesPanel")?.classList.remove("open");
   renderMessages();
 }
 
