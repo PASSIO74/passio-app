@@ -1377,28 +1377,8 @@ function renderConvFpThread(c, displayName) {
     var content = "";
     var isMedia = false;
 
-    // Essayer de parser le JSON du texte si nécessaire (pour tous les types de contenu)
-    if (m.text && m.text.trim && m.text.trim().charAt(0) === '{') {
-      try {
-        var jsonData = JSON.parse(m.text);
-        if (jsonData.type === "gif" && !m.gif) m.gif = jsonData.url;
-        else if (jsonData.type === "location" && !m.location) m.location = {lat: jsonData.lat, lng: jsonData.lng, url: jsonData.url};
-        else if (jsonData.type === "media" && !m.img && !m.video) {
-          // Pour les images/vidéos, assigner à m.img ou m.video selon le type
-          if (jsonData.fileType && jsonData.fileType.startsWith("video/")) {
-            m.video = jsonData.url;
-          } else {
-            m.img = jsonData.url;
-          }
-        }
-        else if ((jsonData.type === "audio" || jsonData.type === "doc") && !m.fileUrl) {
-          m.fileUrl = jsonData.url;
-          m.fileName = jsonData.filename;
-          m.fileType = jsonData.type;
-        }
-        if (jsonData.text && !m.text.startsWith(jsonData.text)) m.text = jsonData.text; // Mettre à jour le texte
-      } catch(e) {}
-    }
+    // Décoder le JSON du texte si nécessaire (messages média Supabase non encore décodés)
+    applyMsgContentData(m);
 
     if (m.gif) {
       isMedia = true;
@@ -1490,6 +1470,43 @@ function renderConvFpThread(c, displayName) {
 
   thread.innerHTML = parts.join('');
   thread.scrollTop = thread.scrollHeight;
+}
+
+// Décode le content JSON des messages média Supabase (type gif/media/audio/doc/location,
+// encodé par sendMessageToSupabase, app-09) et applique les champs sur l'objet message.
+// Les messages vocaux (audio/webm ou "Message vocal (Xs)") vont vers le lecteur intégré
+// (m.voiceData) ; les autres fichiers audio restent des pièces jointes téléchargeables.
+// `raw` est optionnel : par défaut on tente de décoder m.text.
+function applyMsgContentData(m, raw) {
+  var src = (raw === undefined || raw === null) ? m.text : raw;
+  if (!src || typeof src !== "string" || src.trim().charAt(0) !== "{") return;
+  var d;
+  try { d = JSON.parse(src); } catch (e) { return; }
+  if (!d || !d.type) return;
+  if (d.type === "gif" && !m.gif) {
+    m.gif = d.url;
+  } else if (d.type === "location" && !m.location) {
+    m.location = { lat: d.lat, lng: d.lng, url: d.url };
+  } else if (d.type === "media" && !m.img && !m.video) {
+    if (d.fileType && d.fileType.indexOf("video/") === 0) m.video = d.url;
+    else m.img = d.url;
+  } else if (d.type === "audio" && !m.voiceData && !m.fileUrl) {
+    var isVoice = d.fileType === "audio/webm" || /^Message vocal/.test(d.filename || "");
+    if (isVoice) {
+      m.voiceData = d.url;
+      var dm = (d.filename || "").match(/\((\d+)\s*s\)/);
+      m.voiceDuration = dm ? parseInt(dm[1], 10) : 0;
+    } else {
+      m.fileUrl = d.url;
+      m.fileName = d.filename;
+      m.fileType = d.type;
+    }
+  } else if (d.type === "doc" && !m.fileUrl) {
+    m.fileUrl = d.url;
+    m.fileName = d.filename;
+    m.fileType = d.type;
+  }
+  if (d.text && m.text !== d.text) m.text = d.text;
 }
 
 // Téléchargement doc depuis store global

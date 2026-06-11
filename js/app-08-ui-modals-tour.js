@@ -1550,24 +1550,10 @@ async function supaLoadMessages(convId) {
         at: new Date(r.created_at + "Z").getTime(),
       };
 
-      // Traiter content JSON
+      // Traiter content JSON — décodage partagé avec renderConvFpThread (app-04)
       if (contentData) {
-        if (contentData.type === "gif") {
-          msg.gif = contentData.url;
-          _diag("supaLoadMessages: GIF trouvé");
-        } else if (contentData.type === "media" || contentData.type === "audio" || contentData.type === "doc") {
-          msg.fileUrl = contentData.url;
-          msg.fileName = contentData.filename || "Fichier";
-          msg.fileType = contentData.type;
-          _diag("supaLoadMessages: Pièce jointe trouvée - " + contentData.type);
-        } else if (contentData.type === "location") {
-          msg.location = {
-            lat: contentData.lat,
-            lng: contentData.lng,
-            url: contentData.url
-          };
-          _diag("supaLoadMessages: Localisation trouvée");
-        }
+        applyMsgContentData(msg, r.content);
+        _diag("supaLoadMessages: contenu média appliqué - " + contentData.type);
       }
 
       return msg;
@@ -1607,6 +1593,11 @@ async function supaLoadMyConversations() {
       const last = lastMsgsAll[i]?.data?.[0];
       const members = membersAll[i]?.data || [];
       const other = members.find(m => m.user_id !== MY_UID);
+      let lastMsg = null;
+      if (last) {
+        lastMsg = { id: last.id, from: last.from_id === MY_UID ? "me" : last.from_id, fromName: last.profiles?.username || "Passionné", text: last.content, at: new Date(last.created_at + "Z").getTime() };
+        applyMsgContentData(lastMsg, last.content); // aperçu : "🎙 Message vocal" plutôt que le JSON brut
+      }
       return {
         id: c.id, isGroup: c.is_group, groupName: c.group_name,
         passion: null,
@@ -1617,7 +1608,7 @@ async function supaLoadMyConversations() {
         userIds: members.map(m => m.user_id),
         lastAt: last ? new Date(last.created_at + "Z").getTime() : new Date(c.created_at + "Z").getTime(),
         unread: 0,
-        messages: last ? [{ id: last.id, from: last.from_id === MY_UID ? "me" : last.from_id, fromName: last.profiles?.username || "Passionné", text: last.content, at: new Date(last.created_at + "Z").getTime() }] : [],
+        messages: lastMsg ? [lastMsg] : [],
         fromSupabase: true,
       };
     });
@@ -1690,6 +1681,7 @@ function supaSubscribe() {
       const prof = await _fetchProfile(r.from_id);
       const msgAt = new Date(r.created_at + "Z").getTime();
       const newMsg = { id: r.id, from: r.from_id, fromName: prof.username, fromEmoji: prof.emoji, text: r.content, at: msgAt };
+      applyMsgContentData(newMsg, r.content); // décode gif/media/audio/doc/location (sinon JSON brut dans le thread et l'aperçu)
 
       if (!conv.messages) conv.messages = [];
       if (conv.messages.find(m => m.id === r.id)) return; // déjà présent (dedup)

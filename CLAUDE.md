@@ -34,7 +34,7 @@ Fait : access gate en prod, 14 bugs corrigés, RGPD (suppression de compte réel
 ## Backlog prioritaire
 
 1. Tests utilisateur multi-comptes (inscription → publication → messages entre 2 comptes réels).
-2. Réception des messages vocaux côté destinataire : actuellement rendus comme fichier téléchargeable (JSON type "audio" → fileUrl) au lieu du lecteur intégré (m.voiceData) — unifier dans renderConvFpThread (app-04 ~1400).
+2. ~~Réception des messages vocaux côté destinataire~~ — fait le 2026-06-11 : décodage unifié via `applyMsgContentData()` (app-04), utilisé par renderConvFpThread, supaLoadMessages, le handler realtime et l'aperçu de conversation. Reste à valider avec 2 comptes réels (point 1).
 3. Galerie "Pièces jointes" d'une conversation (openConvFiles = placeholder, app-09).
 4. Edge Function Supabase `delete-account` (suppression auth.users — le client ne peut pas).
 5. Remplacer les GIFs Giphy hardcodés (emoji-misc.js, 4 listes) par l'API Giphy/Tenor.
@@ -46,5 +46,5 @@ Fait : access gate en prod, 14 bugs corrigés, RGPD (suppression de compte réel
 
 - Le build exige EXACTEMENT 9 fichiers app-*.js entre les marqueurs BUILD:APP dans index.html.
 - `tests/e2e/access-gate.spec.js` dépend du hash dans gate-helper.js — à mettre à jour si le code d'accès change.
-- Les messages média Supabase encodent le contenu en JSON dans `content` (type gif/media/audio/doc/location) — parsing dans renderConvFpThread.
+- Les messages média Supabase encodent le contenu en JSON dans `content` (type gif/media/audio/doc/location) — décodage centralisé dans `applyMsgContentData()` (app-04) : vocaux (audio/webm ou "Message vocal (Xs)") → lecteur intégré, autres audios → carte téléchargement.
 - Insert conv_messages : d'abord SANS from_id, fallback AVEC (contrainte historique).
