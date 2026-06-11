@@ -671,6 +671,10 @@ async function doDeleteAccount() {
     }
     try { await supa.from("follows").delete().eq("follower_id", MY_UID); } catch (e) {}
     try { await supa.from("follows").delete().eq("following_id", MY_UID); } catch (e) {}
+    // Suppression du compte auth (e-mail) côté serveur — best-effort : tant que
+    // l'Edge Function n'est pas déployée (docs/EDGE_FUNCTION_DELETE_ACCOUNT.md),
+    // l'échec est silencieux et la purge manuelle sous 30 jours s'applique.
+    try { await supa.functions.invoke("delete-account"); } catch (e) {}
     try { await supa.auth.signOut(); } catch (e) {}
   }
   // Purge locale complète

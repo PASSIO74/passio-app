@@ -36,7 +36,7 @@ Fait : access gate en prod, 14 bugs corrigés, RGPD (suppression de compte réel
 1. Tests utilisateur multi-comptes (inscription → publication → messages entre 2 comptes réels).
 2. ~~Réception des messages vocaux côté destinataire~~ — fait le 2026-06-11 : décodage unifié via `applyMsgContentData()` (app-04), utilisé par renderConvFpThread, supaLoadMessages, le handler realtime et l'aperçu de conversation. Reste à valider avec 2 comptes réels (point 1).
 3. ~~Galerie "Pièces jointes" d'une conversation~~ — fait le 2026-06-11 : panneau `#convFilesPanel` (médias / vocaux / fichiers, état vide), `openConvFiles()`/`closeConvFiles()` (app-09).
-4. Edge Function Supabase `delete-account` (suppression auth.users — le client ne peut pas).
+4. Edge Function Supabase `delete-account` — code écrit le 2026-06-11 (`supabase/functions/delete-account/index.ts`, appel best-effort branché dans `doDeleteAccount`, app-02). **Reste : déployer** via la CLI Supabase (5 min, voir `docs/EDGE_FUNCTION_DELETE_ACCOUNT.md`) — action humaine (login Supabase).
 5. Remplacer les GIFs Giphy hardcodés (emoji-misc.js, 4 listes) par l'API Giphy/Tenor.
 6. Redesign écran par écran (états vides, transitions, hiérarchie) — comparer avec Instagram/TikTok.
 7. ~~Accessibilité~~ — fait le 2026-06-11 : `user-scalable=no`/`maximum-scale` retirés, champs < 16px passés à 16px (anti auto-zoom iOS), `--muted` assombri (#6e6987, AA), zone tactile 44px sur `.conv-tool-btn`. Reste : audit complet écran par écran (avec le redesign, point 6).
