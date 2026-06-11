@@ -13,7 +13,7 @@ Réseau social des passions. PWA vanilla JS (pas de framework, pas de bundler) +
 
 ## Commandes
 
-- Serveur local : `npm run serve` → http://localhost:8080 (code d'accès : 2125)
+- Serveur local : `npm run serve` → http://localhost:8080 (code d'accès : 2125 ; http-server, plus besoin de Python)
 - Tests : `npx playwright install chromium` puis `npm test` (smoke + access-gate ; le helper `tests/e2e/gate-helper.js` déverrouille le gate pour les tests)
 - Build prod : `node scripts/build.js dist/index.html`
 - Déploiement : `git push origin main` → GitHub Actions teste, build, minifie, déploie sur Netlify (https://passio-app.netlify.app)
@@ -39,7 +39,7 @@ Fait : access gate en prod, 14 bugs corrigés, RGPD (suppression de compte réel
 4. Edge Function Supabase `delete-account` (suppression auth.users — le client ne peut pas).
 5. Remplacer les GIFs Giphy hardcodés (emoji-misc.js, 4 listes) par l'API Giphy/Tenor.
 6. Redesign écran par écran (états vides, transitions, hiérarchie) — comparer avec Instagram/TikTok.
-7. Accessibilité : retirer `user-scalable=no` du viewport (tester que le layout tient), contrastes, tailles touch ≥ 44px.
+7. ~~Accessibilité~~ — fait le 2026-06-11 : `user-scalable=no`/`maximum-scale` retirés, champs < 16px passés à 16px (anti auto-zoom iOS), `--muted` assombri (#6e6987, AA), zone tactile 44px sur `.conv-tool-btn`. Reste : audit complet écran par écran (avec le redesign, point 6).
 8. Perf : audit de couverture CSS (styles.css 191 Ko), pagination des conversations.
 
 ## Pièges connus

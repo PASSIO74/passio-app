@@ -12,7 +12,7 @@ module.exports = defineConfig({
     locale: "fr-FR",
   },
   webServer: {
-    command: "python3 -m http.server 8080",
+    command: "http-server -p 8080 -a 127.0.0.1 -c-1 .",
     url: "http://127.0.0.1:8080/index.html",
     reuseExistingServer: true,
     timeout: 30000,

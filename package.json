@@ -3,10 +3,11 @@
   "private": true,
   "scripts": {
     "test": "playwright test",
-    "serve": "python3 -m http.server 8080"
+    "serve": "http-server -p 8080 -c-1 ."
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0",
+    "http-server": "^14.1.1",
     "sharp": "^0.34.5"
   }
 }
