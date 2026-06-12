@@ -10,6 +10,7 @@ module.exports = defineConfig({
     baseURL: "http://127.0.0.1:8080",
     viewport: { width: 390, height: 844 },
     locale: "fr-FR",
+    actionTimeout: 15000, // un clic qui ne trouve pas son élément doit échouer vite et dire lequel, pas geler le test
   },
   webServer: {
     command: "http-server -p 8080 -a 127.0.0.1 -c-1 .",

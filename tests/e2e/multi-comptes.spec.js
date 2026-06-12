@@ -16,16 +16,23 @@ test.describe("messagerie entre 2 comptes réels", () => {
 
   test("inscription → conversation → texte + vocal dans les deux sens", async ({ browser }) => {
     test.setTimeout(180000);
+    const t0 = Date.now();
+    const log = (m) => console.log(`[multi ${(((Date.now() - t0) / 1000) | 0)}s] ${m}`);
 
     const ctxA = await browser.newContext();
     const ctxB = await browser.newContext();
     const pageA = await ctxA.newPage();
     const pageB = await ctxB.newPage();
+    pageA.on("console", (msg) => { if (msg.type() === "error") log("A console.error: " + msg.text().slice(0, 200)); });
+    pageB.on("console", (msg) => { if (msg.type() === "error") log("B console.error: " + msg.text().slice(0, 200)); });
 
     try {
       // ── 1. Inscription des deux comptes par le vrai parcours d'onboarding ──
+      log("étape 1 : inscription A…");
       const uidA = await signupAnonymous(pageA, "Test Alice");
+      log("A inscrit: " + uidA);
       const uidB = await signupAnonymous(pageB, "Test Bob");
+      log("B inscrit: " + uidB);
       expect(uidA, "compte A créé").toBeTruthy();
       expect(uidB, "compte B créé").toBeTruthy();
       expect(uidA).not.toBe(uidB);
@@ -42,10 +49,12 @@ test.describe("messagerie entre 2 comptes réels", () => {
         return id;
       }, uidB);
       expect(convId, "conversation créée dans Supabase").toBeTruthy();
+      log("étape 2 OK : conv créée " + convId);
 
       // ── 3. A envoie un texte, B doit le recevoir (realtime, conv auto-créée) ──
       await pageA.fill("#convFpInput", "Bonjour de Alice [test auto]");
       await pageA.evaluate((id) => sendMessageFp(id), convId);
+      log("étape 3 : message A envoyé, attente réception B…");
 
       await pageB.waitForFunction(
         (id) => {
@@ -56,10 +65,13 @@ test.describe("messagerie entre 2 comptes réels", () => {
         { timeout: 30000 }
       );
 
+      log("étape 3 OK : B a reçu le texte de A");
+
       // ── 4. B répond, A doit le recevoir ──
       await pageB.evaluate((id) => openConversation(id), convId);
       await pageB.fill("#convFpInput", "Bien reçu, réponse de Bob [test auto]");
       await pageB.evaluate((id) => sendMessageFp(id), convId);
+      log("étape 4 : réponse B envoyée, attente réception A…");
 
       await pageA.waitForFunction(
         (id) => {
@@ -69,6 +81,8 @@ test.describe("messagerie entre 2 comptes réels", () => {
         convId,
         { timeout: 30000 }
       );
+
+      log("étape 4 OK : A a reçu la réponse de B");
 
       // ── 5. A envoie un message vocal (même format que _sendVoiceMessage) ──
       const voiceMsgId = await pageA.evaluate((id) => {
@@ -105,6 +119,7 @@ test.describe("messagerie entre 2 comptes réels", () => {
       expect(voiceRender.duree).toBe("0:03");
       expect(voiceRender.jsonBrut, "pas de JSON brut affiché").toBe(false);
       expect(voiceRender.carteTelechargement, "pas de carte téléchargement pour un vocal").toBe(false);
+      log("étapes 5-6 OK : vocal reçu et rendu dans le lecteur intégré");
 
       // ── 7. Nettoyage des données de test (best-effort, RLS par propriétaire) ──
       await cleanup(pageA, convId);
@@ -120,22 +135,48 @@ test.describe("messagerie entre 2 comptes réels", () => {
 // anonyme Supabase) → âge → prénom → 1 passion → Entrer sur PASSIO, puis
 // reload pour que boot() refasse supaInit + supaSubscribe avec la session.
 async function signupAnonymous(page, name) {
+  const step = (m) => console.log(`[signup ${name}] ${m}`);
   await page.addInitScript(([k, t]) => sessionStorage.setItem(k, t), [GATE_KEY, GATE_TOKEN]);
   await page.goto("/index.html");
+  // ⚠️ boot() est async et se termine par showLanding() : cliquer avant la fin du boot
+  // déclenche une course (showLanding() ré-écrase l'onboarding en cours). On attend
+  // donc que la landing soit réellement affichée avant de démarrer le parcours.
+  await page.waitForSelector("#landing.active", { timeout: 20000 });
+  step("landing affichée (boot terminé)");
   await page.getByRole("button", { name: "Créer un compte" }).first().click();
+  step("clic Créer un compte");
   await page.getByRole("button", { name: /Continuer sans compte/ }).click();
+  step("clic Continuer sans compte — attente MY_UID…");
   await page.waitForFunction(() => !!window.MY_UID, null, { timeout: 20000 });
+  step("MY_UID obtenu");
   await page.locator("#birthYear").fill("1995");
   await page.getByRole("button", { name: "Valider" }).click();
+  step("âge validé");
   await page.locator("#userName").fill(name);
   await page.getByRole("button", { name: "Continuer" }).click();
+  step("prénom validé");
   await page.locator("#passionGrid .passion-tile[data-passion]").first().click();
   await page.getByRole("button", { name: "Entrer sur PASSIO" }).click();
+  step("onboarding terminé");
   await page.waitForTimeout(1500);
   await page.reload();
   await page.waitForFunction(() => !!window.MY_UID && typeof supa !== "undefined" && !!supa, null, { timeout: 20000 });
   // Laisse le temps à supaInit/supaSubscribe de s'abonner au realtime
   await page.waitForTimeout(3000);
+  // La ligne profiles est créée en DIFFÉRÉ par supaInit (~10 s après le boot), or
+  // conv_members.user_id a une FK vers profiles. On force l'upsert maintenant (même
+  // fonction que l'app) puis on vérifie la ligne — page.evaluate attend les promesses
+  // (contrairement à waitForFunction avec un callback async, qui rend une promesse
+  // toujours truthy et passait avant que la ligne existe).
+  const profilOk = await page.evaluate(async () => {
+    try {
+      await supaUpsertProfile();
+      const { data } = await supa.from("profiles").select("id").eq("id", MY_UID);
+      return !!(data && data.length);
+    } catch (e) { return "erreur: " + e.message; }
+  });
+  if (profilOk !== true) throw new Error("profil Supabase absent après upsert: " + profilOk);
+  step("reboot avec session + profil Supabase OK");
   return page.evaluate(() => window.MY_UID);
 }
 

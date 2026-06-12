@@ -761,7 +761,11 @@ async function boot() {
         // ✅ FIX CRITIQUE : déclencher supaInit() dès qu'une session est établie
         // Sans ça, les posts Supabase ne chargent jamais sur un nouvel appareil
         if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
-          try { supaInit(); } catch(e) { console.warn("supaInit on auth change:", e); }
+          // ⚠️ setTimeout OBLIGATOIRE (piège supabase-js documenté) : le client tient
+          // un verrou auth pendant l'émission de l'événement ; toute requête Supabase
+          // lancée DANS le callback attend ce verrou → deadlock, et la promesse de
+          // signInAnonymously()/signUp() ne résout jamais (onboarding figé sur l'auth).
+          setTimeout(() => { try { supaInit(); } catch(e) { console.warn("supaInit on auth change:", e); } }, 0);
         }
       }
     });
@@ -1659,6 +1663,10 @@ async function supaInsertNotif(toUserId, kind, refId, content) {
 
 // ---- TEMPS RÉEL — abonnements globaux ----
 function supaSubscribe() {
+  // Garde anti double-abonnement : supaInit peut être appelé par boot() ET par
+  // onAuthStateChange — un seul jeu de canaux realtime doit exister.
+  if (window._supaSubscribed) return;
+  window._supaSubscribed = true;
   // ── Canal global conv_messages : reçoit TOUS les messages pour cet utilisateur ──
   // Gère aussi bien les convs en fond que la conv ouverte (robustesse si canal filtré échoue)
   supa.channel("realtime:my_messages")
@@ -1975,6 +1983,29 @@ async function supaInit() {
       if (typeof supaLoadEvents === "function")
         supaLoadEvents().then(e => { if (e.length) { state.seed.events = e; } }).catch(e => {});
     }, 2000);
+
+    // 4. CONVERSATIONS + REALTIME \u2014 \ud83d\udd27 FIX CRITIQUE 2026-06-12 : ces deux blocs
+    // \u00e9taient dans le code mort apr\u00e8s le `return` ci-dessous depuis le "FIX Promise.all"
+    // \u2192 l'app ne chargeait JAMAIS les conversations Supabase et ne s'abonnait JAMAIS
+    // au realtime global : le destinataire ne recevait rien tant qu'il n'ouvrait pas
+    // lui-m\u00eame la conversation (qu'il ne voyait pas non plus dans sa liste).
+    try {
+      const supaConvs = await supaLoadMyConversations();
+      if (supaConvs && supaConvs.length) {
+        const localConvs = getConversations();
+        const supaConvIds = new Set(supaConvs.map(c => c.id));
+        const localOnly = localConvs.filter(c => !supaConvIds.has(c.id) && !SEED_CONVERSATIONS.find(s => s.id === c.id));
+        conversationsState = deduplicateConversations([...supaConvs, ...localOnly]);
+      } else {
+        conversationsState = deduplicateConversations(getConversations());
+      }
+      _primeProfileCache(conversationsState); // pr\u00e9-remplir cache \u2192 0 requ\u00eate lors de la r\u00e9ception
+      saveConversations();
+      try { renderMessages(); } catch(e) {}
+    } catch(e) { console.warn("supaInit conversations:", e); }
+    try { supaSubscribe(); } catch(e) { console.warn("supaSubscribe:", e); }
+    // Sauvegarder imm\u00e9diatement avant fermeture de page (flush le debounce)
+    window.addEventListener("beforeunload", saveConversationsNow, { once: false });
 
     console.log("\u2705 [INIT] Initialisation Supabase compl\u00e8te");
     return;

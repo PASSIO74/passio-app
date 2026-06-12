@@ -835,6 +835,11 @@ async function onbDoAuth() {
 async function onbSkipAuth() {
   // Auth anonyme Supabase : donne un vrai auth.uid() aux utilisateurs sans compte,
   // indispensable depuis les policies RLS strictes (sinon publication impossible).
+  // ⚠️ onbNext() AVANT l'await : la promesse de signInAnonymously() peut rester
+  // bloquée par le verrou auth interne de supabase-js (constaté 2026-06-12, selon
+  // le timing) — l'onboarding restait figé sur l'écran auth. L'UI avance tout de
+  // suite ; MY_UID est posé par le retour ci-dessous OU par onAuthStateChange (boot).
+  onbNext();
   try {
     if (supa && supa.auth && typeof supa.auth.signInAnonymously === "function") {
       const { data, error } = await supa.auth.signInAnonymously();
@@ -848,7 +853,6 @@ async function onbSkipAuth() {
       }
     }
   } catch(e) { console.warn("Auth anonyme indisponible:", e); }
-  onbNext();
 }
 
 function renderPassionGrid() {

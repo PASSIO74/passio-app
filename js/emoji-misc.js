@@ -895,7 +895,16 @@ setTimeout(function() {
   // boot() doit s'être exécutée pour charger l'app, donc attendre 500ms
   setTimeout(function() {
     console.log("📱 MY_UID=" + window.MY_UID);
-    if (typeof initApp === "function") {
+    // ⚠️ FIX CRITIQUE 2026-06-12 : initApp() SEULEMENT si l'onboarding est déjà fait.
+    // Sinon, pour un NOUVEL utilisateur, initApp → launchTourSafe retirait de force
+    // la landing et l'onboarding en plein parcours d'inscription (écran âge/prénom
+    // écrasé par le tour ~1,4 s après le chargement). Le parcours nouveau venu est
+    // géré par boot() (landing) puis onbFinish() (renderEverything + tour + supaInit).
+    var _onboarded = false;
+    try { _onboarded = !!(state && state.onboarded); } catch (e) {}
+    if (!_onboarded) {
+      console.log("⏭ initApp() ignoré : onboarding en cours (géré par boot/onbFinish)");
+    } else if (typeof initApp === "function") {
       console.log("📱 Appel initApp()");
       try {
         initApp();
