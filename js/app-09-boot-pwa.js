@@ -1113,17 +1113,15 @@ function autoResizeTextarea(el) {
   el.style.height = Math.min(el.scrollHeight, 120) + "px";
 }
 
-// FIX 4 — Recherche GIF du panneau Emoji/GIF (input mort).
+// FIX 4 — Recherche GIF du panneau Emoji/GIF. Depuis l'intégration API
+// (backlog #5), la recherche interroge Tenor/Giphy via _fillEmojiGifGrid
+// (emoji-misc.js) avec un debounce ; sans clé API, fallback liste locale.
+var _gifSearchDeb = null;
 function _onGifSearch(query) {
-  var grid = document.getElementById("gifGrid");
-  if (!grid) return;
-  var q = (query || "").trim().toLowerCase();
-  var cells = grid.children;
-  for (var i = 0; i < cells.length; i++) {
-    var img = cells[i].querySelector("img");
-    var hay = (img && img.src ? img.src : "").toLowerCase();
-    cells[i].style.display = (!q || hay.indexOf(q) !== -1) ? "" : "none";
-  }
+  clearTimeout(_gifSearchDeb);
+  _gifSearchDeb = setTimeout(function () {
+    if (window._fillEmojiGifGrid) window._fillEmojiGifGrid(query);
+  }, 350);
 }
 window._onGifSearch = _onGifSearch;
 

@@ -1,7 +1,145 @@
+// ════════════════════════════════════════════════════════════════
+// API GIF (backlog #5) — Tenor v2 ou Giphy, avec fallback hors-ligne.
+// 👉 POUR ACTIVER : coller la clé ci-dessous (une seule ligne à changer).
+//    Tenor : console.cloud.google.com → activer « Tenor API » → Identifiants → Clé API
+//    Giphy : developers.giphy.com → Create an API Key
+// Sans clé (ou si l'API échoue), l'app retombe sur les listes locales — rien ne casse.
+// ⚠️ CSP : tenor.googleapis.com et api.giphy.com doivent rester autorisés dans
+//    connect-src (netlify.toml + _headers).
+window.PASSIO_GIF_API = {
+  provider: "tenor", // "tenor" ou "giphy"
+  key: ""            // ← COLLER LA CLÉ ICI
+};
+
+// Liste de secours (les 26 GIFs historiques dédupliqués) — utilisée sans clé ou hors-ligne.
+var PASSIO_DEFAULT_GIFS = ["https://media.giphy.com/media/3o7abKhOpu0NwenH3O/giphy.gif","https://media.giphy.com/media/xT9IgG50Lg7rusjtG8/giphy.gif","https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif","https://media.giphy.com/media/26ufdipQqU2lhNA4g/giphy.gif","https://media.giphy.com/media/3oz8xAFtqoOUUrsh7W/giphy.gif","https://media.giphy.com/media/l4FGGafcOHmrlQxG0/giphy.gif","https://media.giphy.com/media/3ohzdKdb7d1bbVwnQU/giphy.gif","https://media.giphy.com/media/l0HlFZ3c8HWDRlCharepI/giphy.gif","https://media.giphy.com/media/FW8aI0tXVE8gKxYvRc/giphy.gif","https://media.giphy.com/media/l0Iy1Z8oW4fvfBLh2/giphy.gif","https://media.giphy.com/media/l0HlDtKUoRb0x8bDy/giphy.gif","https://media.giphy.com/media/l0Iy0QcSoQYQW3SWHf/giphy.gif","https://media.giphy.com/media/l0MYr7jgMgWI8ouOI/giphy.gif","https://media.giphy.com/media/l0HlSY9x8FZo0XO1i/giphy.gif","https://media.giphy.com/media/l4Jz3a8jO92crOLXy/giphy.gif","https://media.giphy.com/media/l0HlF5j3QRG5pxPAI/giphy.gif","https://media.giphy.com/media/3o7TKU8j7Yt9R2xNMY/giphy.gif","https://media.giphy.com/media/l0MYM8m02D0c3PoFi/giphy.gif","https://media.giphy.com/media/RH16FlVXbaAzS/giphy.gif","https://media.giphy.com/media/l46Ce3kKMKxvEiFZS/giphy.gif","https://media.giphy.com/media/l0HlHJJxcNHFqyvrm/giphy.gif","https://media.giphy.com/media/JIX9RbDfLvbl2/giphy.gif","https://media.giphy.com/media/l0HlQaQ6gWfllcjDO/giphy.gif","https://media.giphy.com/media/l3q2K6HIuvsGyp7UE/giphy.gif","https://media.giphy.com/media/l0HlMMaQ5vJ7lKOmY/giphy.gif","https://media.giphy.com/media/l4FgUMgdCHHBFcGe88/giphy.gif"];
+
+// Recherche de GIFs (tendances si query vide) → Promise<string[]> d'URLs.
+// Cache mémoire 10 min par requête pour économiser le quota.
+var _gifCache = {};
+function passioFetchGifs(query, limit) {
+  limit = limit || 24;
+  var q = (query || "").trim();
+  var cfg = window.PASSIO_GIF_API || {};
+  if (!cfg.key) return Promise.resolve(PASSIO_DEFAULT_GIFS.slice(0, limit));
+  var cacheKey = cfg.provider + ":" + q.toLowerCase() + ":" + limit;
+  var hit = _gifCache[cacheKey];
+  if (hit && Date.now() - hit.at < 600000) return Promise.resolve(hit.urls);
+  var url;
+  if (cfg.provider === "giphy") {
+    url = q
+      ? "https://api.giphy.com/v1/gifs/search?api_key=" + encodeURIComponent(cfg.key) + "&q=" + encodeURIComponent(q) + "&limit=" + limit + "&rating=pg-13&lang=fr"
+      : "https://api.giphy.com/v1/gifs/trending?api_key=" + encodeURIComponent(cfg.key) + "&limit=" + limit + "&rating=pg-13";
+  } else {
+    url = q
+      ? "https://tenor.googleapis.com/v2/search?key=" + encodeURIComponent(cfg.key) + "&q=" + encodeURIComponent(q) + "&limit=" + limit + "&media_filter=tinygif,gif&locale=fr_FR&contentfilter=medium"
+      : "https://tenor.googleapis.com/v2/featured?key=" + encodeURIComponent(cfg.key) + "&limit=" + limit + "&media_filter=tinygif,gif&locale=fr_FR&contentfilter=medium";
+  }
+  return fetch(url)
+    .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+    .then(function (data) {
+      var urls;
+      if (cfg.provider === "giphy") {
+        urls = (data.data || []).map(function (g) {
+          var i = g.images && (g.images.fixed_height || g.images.original);
+          return i && i.url;
+        }).filter(Boolean);
+      } else {
+        urls = (data.results || []).map(function (g) {
+          var mf = g.media_formats || {};
+          return (mf.tinygif || mf.gif || {}).url;
+        }).filter(Boolean);
+      }
+      if (!urls.length) return PASSIO_DEFAULT_GIFS.slice(0, limit);
+      _gifCache[cacheKey] = { at: Date.now(), urls: urls };
+      return urls;
+    })
+    .catch(function () { return PASSIO_DEFAULT_GIFS.slice(0, limit); });
+}
+window.passioFetchGifs = passioFetchGifs;
+
+// Panneau GIF générique : recherche + grille, rempli via passioFetchGifs.
+// opts = { id, onPick(url), position (css fixe), cols, cell, keepOpenFor (id de bouton) }
+function passioGifPanel(opts) {
+  var old = document.getElementById(opts.id);
+  if (old) { old.remove(); return null; } // toggle : 2e clic = fermer
+  var cols = opts.cols || 4, cell = opts.cell || 90;
+  var panel = document.createElement("div");
+  panel.id = opts.id;
+  panel.style.cssText = "position:fixed;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:10px;z-index:10000;box-shadow:0 4px 16px rgba(0,0,0,0.25);" + (opts.position || "bottom:120px;right:20px;");
+  var search = document.createElement("input");
+  search.type = "search";
+  search.placeholder = "Rechercher un GIF…";
+  search.setAttribute("aria-label", "Rechercher un GIF");
+  search.style.cssText = "width:100%;box-sizing:border-box;margin-bottom:8px;padding:8px 12px;border-radius:10px;border:1.5px solid var(--border);background:var(--bg-deep);color:var(--text);font-size:16px;outline:none;";
+  var grid = document.createElement("div");
+  grid.style.cssText = "display:grid;grid-template-columns:repeat(" + cols + "," + cell + "px);gap:8px;max-height:340px;overflow-y:auto;";
+  panel.appendChild(search);
+  panel.appendChild(grid);
+
+  function fill(urls) {
+    grid.innerHTML = "";
+    if (!urls || !urls.length) {
+      var empty = document.createElement("div");
+      empty.style.cssText = "grid-column:1/-1;padding:18px;text-align:center;color:var(--muted);font-size:13px;";
+      empty.textContent = "Aucun GIF trouvé";
+      grid.appendChild(empty);
+      return;
+    }
+    urls.forEach(function (gifUrl) {
+      var cellEl = document.createElement("div");
+      cellEl.style.cssText = "width:" + cell + "px;height:" + cell + "px;background:var(--bg-soft);border-radius:6px;overflow:hidden;cursor:pointer;border:1px solid var(--border);transition:border-color 0.15s;";
+      var img = document.createElement("img");
+      img.loading = "lazy";
+      img.decoding = "async";
+      img.src = gifUrl;
+      img.alt = "GIF";
+      img.style.cssText = "width:100%;height:100%;object-fit:cover;";
+      cellEl.appendChild(img);
+      cellEl.onmouseover = function () { this.style.borderColor = "var(--accent)"; };
+      cellEl.onmouseout = function () { this.style.borderColor = "var(--border)"; };
+      cellEl.onclick = function (evt) {
+        evt.stopPropagation();
+        evt.preventDefault();
+        opts.onPick(gifUrl);
+        panel.remove();
+      };
+      grid.appendChild(cellEl);
+    });
+  }
+  passioFetchGifs("").then(fill);
+  var _deb = null;
+  search.oninput = function () {
+    clearTimeout(_deb);
+    var q = search.value;
+    _deb = setTimeout(function () { passioFetchGifs(q).then(fill); }, 350);
+  };
+  search.onclick = function (e) { e.stopPropagation(); };
+
+  document.body.appendChild(panel);
+  setTimeout(function () {
+    var closeListener = function (e) {
+      if (!panel.contains(e.target) && (!opts.keepOpenFor || e.target.id !== opts.keepOpenFor)) {
+        panel.remove();
+        document.removeEventListener("click", closeListener);
+      }
+    };
+    document.addEventListener("click", closeListener);
+  }, 50);
+  return panel;
+}
+window.passioGifPanel = passioGifPanel;
+// ════════════════════════════════════════════════════════════════
+
 window.toggleEmojiPanel = function() {
   var p = document.getElementById("convEmojiPanel");
   if(!p) return;
   p.classList.toggle("open");
+  // Remplissage (lazy) de la grille GIF à la première ouverture — via l'API si clé.
+  if (p.classList.contains("open") && !p._gifFilled) {
+    p._gifFilled = true;
+    if (window._fillEmojiGifGrid) window._fillEmojiGifGrid("");
+  }
 };
 
 window.switchEmojiTab = function(t,b) {
@@ -36,26 +174,30 @@ if(grid) {
   }
 }
 
-// Populate GIF grid — 🔧 PERF AUDIT 2026-06-10 : liste dédupliquée
-// (51 entrées dont 25 doublons → 26 GIFs uniques, ~50 % de requêtes en moins)
-var gifUrls = ["https://media.giphy.com/media/3o7abKhOpu0NwenH3O/giphy.gif","https://media.giphy.com/media/xT9IgG50Lg7rusjtG8/giphy.gif","https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif","https://media.giphy.com/media/26ufdipQqU2lhNA4g/giphy.gif","https://media.giphy.com/media/3oz8xAFtqoOUUrsh7W/giphy.gif","https://media.giphy.com/media/l4FGGafcOHmrlQxG0/giphy.gif","https://media.giphy.com/media/3ohzdKdb7d1bbVwnQU/giphy.gif","https://media.giphy.com/media/l0HlFZ3c8HWDRlCharepI/giphy.gif","https://media.giphy.com/media/FW8aI0tXVE8gKxYvRc/giphy.gif","https://media.giphy.com/media/l0Iy1Z8oW4fvfBLh2/giphy.gif","https://media.giphy.com/media/l0HlDtKUoRb0x8bDy/giphy.gif","https://media.giphy.com/media/l0Iy0QcSoQYQW3SWHf/giphy.gif","https://media.giphy.com/media/l0MYr7jgMgWI8ouOI/giphy.gif","https://media.giphy.com/media/l0HlSY9x8FZo0XO1i/giphy.gif","https://media.giphy.com/media/l4Jz3a8jO92crOLXy/giphy.gif","https://media.giphy.com/media/l0HlF5j3QRG5pxPAI/giphy.gif","https://media.giphy.com/media/3o7TKU8j7Yt9R2xNMY/giphy.gif","https://media.giphy.com/media/l0MYM8m02D0c3PoFi/giphy.gif","https://media.giphy.com/media/RH16FlVXbaAzS/giphy.gif","https://media.giphy.com/media/l46Ce3kKMKxvEiFZS/giphy.gif","https://media.giphy.com/media/l0HlHJJxcNHFqyvrm/giphy.gif","https://media.giphy.com/media/JIX9RbDfLvbl2/giphy.gif","https://media.giphy.com/media/l0HlQaQ6gWfllcjDO/giphy.gif","https://media.giphy.com/media/l3q2K6HIuvsGyp7UE/giphy.gif","https://media.giphy.com/media/l0HlMMaQ5vJ7lKOmY/giphy.gif","https://media.giphy.com/media/l4FgUMgdCHHBFcGe88/giphy.gif"];
-var gifGrid = document.getElementById("gifGrid");
-if(gifGrid) {
-  gifUrls.forEach(function(url) {
-    var d = document.createElement("div");
-    d.style.cssText = "width:100%;height:120px;border-radius:8px;overflow:hidden;cursor:pointer;";
-    var img = document.createElement("img");
-    img.loading = "lazy"; // 🔧 PERF : ne charge que les GIFs visibles
-    img.src = url;
-    img.style.cssText = "width:100%;height:100%;object-fit:cover;";
-    img.onclick = function() {
-      if(window._sendGif) window._sendGif(url);
-      window.toggleEmojiPanel();
-    };
-    d.appendChild(img);
-    gifGrid.appendChild(d);
+// Grille GIF du panneau emoji — remplie en LAZY à la première ouverture
+// (toggleEmojiPanel) via passioFetchGifs : API si clé, sinon liste locale.
+// 🔧 PERF : plus aucun GIF chargé au boot (avant : 26 requêtes Giphy à vide).
+window._fillEmojiGifGrid = function(query) {
+  var gifGrid = document.getElementById("gifGrid");
+  if (!gifGrid) return;
+  passioFetchGifs(query || "", 26).then(function(urls) {
+    gifGrid.innerHTML = "";
+    urls.forEach(function(url) {
+      var d = document.createElement("div");
+      d.style.cssText = "width:100%;height:120px;border-radius:8px;overflow:hidden;cursor:pointer;";
+      var img = document.createElement("img");
+      img.loading = "lazy"; // 🔧 PERF : ne charge que les GIFs visibles
+      img.src = url;
+      img.style.cssText = "width:100%;height:100%;object-fit:cover;";
+      img.onclick = function() {
+        if(window._sendGif) window._sendGif(url);
+        window.toggleEmojiPanel();
+      };
+      d.appendChild(img);
+      gifGrid.appendChild(d);
+    });
   });
-}
+};
 
 // ASSIGNATION: _sendGif vers window._sendGif (utilise la version avec diags ci-dessus)
 window._sendGif = _sendGif;
@@ -246,90 +388,20 @@ function toggleCommentEmojis(commentId, event) {
 }
 
 function showGifPickerForMessage() {
-  console.log("🎬 showGifPickerForMessage");
-
-  // Fermer les anciens panels
-  var oldPanel = document.getElementById("gif-panel-msg");
-  if (oldPanel) oldPanel.remove();
-
-  var gifs = [
-    "https://media.giphy.com/media/xT9IgEx8SbQ0teblZ6/giphy.gif",
-    "https://media.giphy.com/media/g9GUjSwvjeUPm/giphy.gif",
-    "https://media.giphy.com/media/FiGiRei2ICzzrwYPAd/giphy.gif",
-    "https://media.giphy.com/media/xT9IgHCTt7bfq13KfC/giphy.gif",
-    "https://media.giphy.com/media/11sBLVxNwBrBFQ/giphy.gif",
-    "https://media.giphy.com/media/l0HlR7RPMhYpEKsXm/giphy.gif",
-    "https://media.giphy.com/media/3o6Zt6KHxJTbXCnSvu/giphy.gif",
-    "https://media.giphy.com/media/l3q2K5jinAlChoCLS/giphy.gif",
-    "https://media.giphy.com/media/8fen5LSZcHQ5O/giphy.gif",
-    "https://media.giphy.com/media/lD76UznFEUings5nItA/giphy.gif",
-    "https://media.giphy.com/media/l3q2wJsApX7YjPWHm/giphy.gif",
-    "https://media.giphy.com/media/l0MYAHkJlYd0s/giphy.gif",
-    "https://media.giphy.com/media/l3q2zVr6cu85j15Qc/giphy.gif",
-    "https://media.giphy.com/media/3o85xIO33l7RlmLR4I/giphy.gif",
-    "https://media.giphy.com/media/l0HlNaQ9OHIOXmHh6/giphy.gif",
-    "https://media.giphy.com/media/26uf1EKct4X5njPQA/giphy.gif",
-    "https://media.giphy.com/media/l0HlRnAQ7lyB6EHjq/giphy.gif",
-    "https://media.giphy.com/media/l4JwLay23EhDvGd6w/giphy.gif",
-    "https://media.giphy.com/media/l4JzaTg1mqIFKIe1O/giphy.gif",
-    "https://media.giphy.com/media/l4JzXGbfFvzz3qJyU/giphy.gif",
-    "https://media.giphy.com/media/26uf1QuMIKT4BqwxO/giphy.gif",
-    "https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif",
-    "https://media.giphy.com/media/ZeNmLlst5V1NXg6xlH/giphy.gif",
-    "https://media.giphy.com/media/l4JzQo3Wl7T4Bmpka/giphy.gif",
-    "https://media.giphy.com/media/l0HlPy9x8FZo0XO1i/giphy.gif",
-    "https://media.giphy.com/media/3o7TKvjhMLChz0jZDq/giphy.gif",
-    "https://media.giphy.com/media/l4JyKxzclJboMucEC/giphy.gif",
-    "https://media.giphy.com/media/g5x7EVU8FQeIw/giphy.gif",
-    "https://media.giphy.com/media/3o7TKB3wbgkJv61ivu/giphy.gif"
-  ];
-
-  var panel = document.createElement("div");
-  panel.id = "gif-panel-msg";
-  panel.style.cssText = "position:fixed;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:10px;display:grid;grid-template-columns:repeat(4,90px);gap:8px;z-index:10000;box-shadow:0 4px 16px rgba(0,0,0,0.2);max-height:400px;overflow-y:auto;bottom:120px;right:20px;";
-
-  gifs.forEach(function(gifUrl) {
-    var gifBtn = document.createElement("div");
-    gifBtn.style.cssText = "width:90px;height:90px;background:var(--bg-soft);border-radius:6px;overflow:hidden;cursor:pointer;border:1px solid var(--border);transition:all 0.2s;flex-shrink:0;";
-    var img = document.createElement("img");
-    img.loading = "lazy"; // 🔧 PERF 2026-06-10 : ne charge que les GIFs visibles
-    img.src = gifUrl;
-    img.style.cssText = "width:100%;height:100%;object-fit:cover;";
-    gifBtn.appendChild(img);
-
-    gifBtn.onmouseover = function() { this.style.border = "2px solid var(--accent)";this.style.transform = "scale(1.05)"; };
-    gifBtn.onmouseout = function() { this.style.border = "1px solid var(--border)";this.style.transform = "scale(1)"; };
-
-    gifBtn.onclick = function(evt) {
-      evt.stopPropagation();
-      evt.preventDefault();
-      console.log("✅ GIF selected for message");
-      // Insérer l'URL du GIF dans le textarea
+  // Panneau générique branché sur l'API GIF (recherche incluse, fallback local)
+  passioGifPanel({
+    id: "gif-panel-msg",
+    position: "bottom:120px;right:20px;",
+    keepOpenFor: "btnGif",
+    onPick: function(gifUrl) {
       var input = document.getElementById("convFpInput");
       if (input) {
         input.value = gifUrl;
         input.focus();
         autoResizeTextarea(input);
       }
-      panel.remove();
-    };
-
-    panel.appendChild(gifBtn);
+    }
   });
-
-  document.body.appendChild(panel);
-  console.log("✅ GIF picker for message shown");
-
-  // Fermer quand on clique ailleurs
-  setTimeout(function() {
-    var closeListener = function(e) {
-      if (!panel.contains(e.target) && e.target.id !== "btnGif") {
-        panel.remove();
-        document.removeEventListener("click", closeListener);
-      }
-    };
-    document.addEventListener("click", closeListener);
-  }, 50);
 }
 
 function showGifPickerForComment(postId, commentId, event) {
@@ -340,88 +412,18 @@ function showGifPickerForComment(postId, commentId, event) {
   var oldPanel = document.getElementById("gif-panel-" + commentId);
   if (oldPanel) oldPanel.remove();
 
-  var gifs = [
-    "https://media.giphy.com/media/xT9IgEx8SbQ0teblZ6/giphy.gif",
-    "https://media.giphy.com/media/g9GUjSwvjeUPm/giphy.gif",
-    "https://media.giphy.com/media/FiGiRei2ICzzrwYPAd/giphy.gif",
-    "https://media.giphy.com/media/xT9IgHCTt7bfq13KfC/giphy.gif",
-    "https://media.giphy.com/media/11sBLVxNwBrBFQ/giphy.gif",
-    "https://media.giphy.com/media/l0HlR7RPMhYpEKsXm/giphy.gif",
-    "https://media.giphy.com/media/3o6Zt6KHxJTbXCnSvu/giphy.gif",
-    "https://media.giphy.com/media/l3q2K5jinAlChoCLS/giphy.gif",
-    "https://media.giphy.com/media/8fen5LSZcHQ5O/giphy.gif",
-    "https://media.giphy.com/media/lD76UznFEUings5nItA/giphy.gif",
-    "https://media.giphy.com/media/l3q2wJsApX7YjPWHm/giphy.gif",
-    "https://media.giphy.com/media/l0MYAHkJlYd0s/giphy.gif",
-    "https://media.giphy.com/media/l3q2zVr6cu85j15Qc/giphy.gif",
-    "https://media.giphy.com/media/3o85xIO33l7RlmLR4I/giphy.gif",
-    "https://media.giphy.com/media/l0HlNaQ9OHIOXmHh6/giphy.gif",
-    "https://media.giphy.com/media/26uf1EKct4X5njPQA/giphy.gif",
-    "https://media.giphy.com/media/l0HlRnAQ7lyB6EHjq/giphy.gif",
-    "https://media.giphy.com/media/l4JwLay23EhDvGd6w/giphy.gif",
-    "https://media.giphy.com/media/l4JzaTg1mqIFKIe1O/giphy.gif",
-    "https://media.giphy.com/media/l4JzXGbfFvzz3qJyU/giphy.gif",
-    "https://media.giphy.com/media/26uf1QuMIKT4BqwxO/giphy.gif",
-    "https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif",
-    "https://media.giphy.com/media/ZeNmLlst5V1NXg6xlH/giphy.gif",
-    "https://media.giphy.com/media/l4JzQo3Wl7T4Bmpka/giphy.gif",
-    "https://media.giphy.com/media/l0HlPy9x8FZo0XO1i/giphy.gif",
-    "https://media.giphy.com/media/3o7TKvjhMLChz0jZDq/giphy.gif",
-    "https://media.giphy.com/media/l4JyKxzclJboMucEC/giphy.gif",
-    "https://media.giphy.com/media/g5x7EVU8FQeIw/giphy.gif",
-    "https://media.giphy.com/media/3o7TKB3wbgkJv61ivu/giphy.gif"
-  ];
-
-  var panel = document.createElement("div");
-  panel.id = "gif-panel-" + commentId;
-  panel.style.cssText = "position:fixed;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:10px;display:grid;grid-template-columns:repeat(4,90px);gap:8px;z-index:10000;box-shadow:0 4px 16px rgba(0,0,0,0.2);max-height:400px;overflow-y:auto;";
-
-  gifs.forEach(function(gifUrl) {
-    var gifBtn = document.createElement("div");
-    gifBtn.style.cssText = "width:90px;height:90px;background:var(--bg-soft);border-radius:6px;overflow:hidden;cursor:pointer;border:1px solid var(--border);transition:all 0.2s;flex-shrink:0;";
-    var img = document.createElement("img");
-    img.loading = "lazy"; // 🔧 PERF 2026-06-10 : ne charge que les GIFs visibles
-    img.src = gifUrl;
-    img.style.cssText = "width:100%;height:100%;object-fit:cover;";
-    gifBtn.appendChild(img);
-
-    gifBtn.onmouseover = function() { this.style.border = "2px solid var(--accent)";this.style.transform = "scale(1.05)"; };
-    gifBtn.onmouseout = function() { this.style.border = "1px solid var(--border)";this.style.transform = "scale(1)"; };
-
-    gifBtn.onclick = function(evt) {
-      evt.stopPropagation();
-      evt.preventDefault();
-      console.log("✅ GIF clicked");
-      addGifToComment(postId, commentId, gifUrl);
-      panel.remove();
-    };
-
-    panel.appendChild(gifBtn);
-  });
-
-  // Positionner le panel à côté du bouton GIF
+  // Position : près du bouton GIF du commentaire si dispo, sinon centré
+  var position = "left:50%;top:25%;transform:translateX(-50%);";
   var gifBtn = event?.target;
   if (gifBtn && gifBtn.classList && gifBtn.classList.contains("comment-action")) {
     var rect = gifBtn.getBoundingClientRect();
-    panel.style.left = (rect.left + 30) + "px";
-    panel.style.top = (rect.top - 10) + "px";
-    console.log("✅ Panel positioned at", panel.style.left, panel.style.top);
+    position = "left:" + Math.min(rect.left + 30, window.innerWidth - 420) + "px;top:" + Math.max(rect.top - 10, 10) + "px;";
   }
-
-  document.body.appendChild(panel);
-  console.log("✅ GIF picker shown");
-
-  // Fermer quand on clique ailleurs
-  setTimeout(function() {
-    var closeListener = function(e) {
-      if (!panel.contains(e.target)) {
-        panel.remove();
-        document.removeEventListener("click", closeListener);
-      }
-    };
-    document.addEventListener("click", closeListener);
-  }, 50);
-
+  passioGifPanel({
+    id: "gif-panel-" + commentId,
+    position: position,
+    onPick: function(gifUrl) { addGifToComment(postId, commentId, gifUrl); }
+  });
   return false;
 }
 
@@ -665,65 +667,18 @@ function showGifPickerForPost(postId, event) {
   var oldPanel = document.getElementById("gif-panel-post-" + postId);
   if (oldPanel) oldPanel.remove();
 
-  var gifs = [
-    "https://media.giphy.com/media/xT9IgEx8SbQ0teblZ6/giphy.gif",
-    "https://media.giphy.com/media/g9GUjSwvjeUPm/giphy.gif",
-    "https://media.giphy.com/media/FiGiRei2ICzzrwYPAd/giphy.gif",
-    "https://media.giphy.com/media/xT9IgHCTt7bfq13KfC/giphy.gif",
-    "https://media.giphy.com/media/11sBLVxNwBrBFQ/giphy.gif",
-    "https://media.giphy.com/media/l0HlR7RPMhYpEKsXm/giphy.gif",
-    "https://media.giphy.com/media/3o6Zt6KHxJTbXCnSvu/giphy.gif",
-    "https://media.giphy.com/media/l3q2K5jinAlChoCLS/giphy.gif",
-    "https://media.giphy.com/media/8fen5LSZcHQ5O/giphy.gif",
-    "https://media.giphy.com/media/lD76UznFEUings5nItA/giphy.gif",
-    "https://media.giphy.com/media/l3q2wJsApX7YjPWHm/giphy.gif"
-  ];
-
-  var panel = document.createElement("div");
-  panel.id = "gif-panel-post-" + postId;
-  panel.style.cssText = "position:fixed;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:10px;display:grid;grid-template-columns:repeat(4,90px);gap:8px;z-index:10000;box-shadow:0 4px 16px rgba(0,0,0,0.2);max-height:400px;overflow-y:auto;";
-
-  gifs.forEach(function(gifUrl) {
-    var gifBtn = document.createElement("div");
-    gifBtn.style.cssText = "width:90px;height:90px;background:var(--bg-soft);border-radius:6px;overflow:hidden;cursor:pointer;border:1px solid var(--border);transition:all 0.2s;flex-shrink:0;";
-    var img = document.createElement("img");
-    img.loading = "lazy"; // 🔧 PERF 2026-06-10 : ne charge que les GIFs visibles
-    img.src = gifUrl;
-    img.style.cssText = "width:100%;height:100%;object-fit:cover;";
-    gifBtn.appendChild(img);
-
-    gifBtn.onmouseover = function() { this.style.border = "2px solid var(--accent)";this.style.transform = "scale(1.05)"; };
-    gifBtn.onmouseout = function() { this.style.border = "1px solid var(--border)";this.style.transform = "scale(1)"; };
-
-    gifBtn.onclick = function(evt) {
-      evt.stopPropagation();
-      evt.preventDefault();
-      addGifToPost(postId, gifUrl);
-      panel.remove();
-    };
-
-    panel.appendChild(gifBtn);
-  });
-
+  // Position : près du bouton réaction du post si dispo, sinon centré
+  var position = "left:50%;top:25%;transform:translateX(-50%);";
   var gifBtn = event?.target;
   if (gifBtn && gifBtn.classList && gifBtn.classList.contains("post-action")) {
     var rect = gifBtn.getBoundingClientRect();
-    panel.style.left = (rect.left + 30) + "px";
-    panel.style.top = (rect.top - 10) + "px";
+    position = "left:" + Math.min(rect.left + 30, window.innerWidth - 420) + "px;top:" + Math.max(rect.top - 10, 10) + "px;";
   }
-
-  document.body.appendChild(panel);
-
-  setTimeout(function() {
-    var closeListener = function(e) {
-      if (!panel.contains(e.target)) {
-        panel.remove();
-        document.removeEventListener("click", closeListener);
-      }
-    };
-    document.addEventListener("click", closeListener);
-  }, 50);
-
+  passioGifPanel({
+    id: "gif-panel-post-" + postId,
+    position: position,
+    onPick: function(gifUrl) { addGifToPost(postId, gifUrl); }
+  });
   return false;
 }
 

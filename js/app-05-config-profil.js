@@ -1643,21 +1643,33 @@ function showGifPickerForReelComment(postId, commentIdx) {
   const reel = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
   if (!reel || !reel.comments || !reel.comments[commentIdx]) return;
 
-  const gifs = [
-    "https://media.giphy.com/media/3o85xIO33l7RlmLAsI/giphy.gif",
-    "https://media.giphy.com/media/8mkofSUREGEIpBSfgW/giphy.gif",
-    "https://media.giphy.com/media/3o7TKU2KsKXJ2V0xKI/giphy.gif",
-    "https://media.giphy.com/media/l0MYJnCKZrTc5flPa/giphy.gif",
-    "https://media.giphy.com/media/kaq6zmatVOeSvIGITS/giphy.gif",
-    "https://media.giphy.com/media/fem2uU5QBG0fmlrUfq/giphy.gif"
-  ];
-
   openModal(`
     <div class="modal-title">GIF de réaction</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:16px 0;max-height:300px;overflow-y:auto;">
-      ${gifs.map(gif => `<img loading="lazy" decoding="async" src="${gif}" alt="GIF" style="width:100%;height:120px;object-fit:cover;border-radius:8px;cursor:pointer;" onclick="addGifReactionToReelComment('${postId}', ${commentIdx}, '${gif}')" />`).join("")}
+    <input type="search" placeholder="Rechercher un GIF…" aria-label="Rechercher un GIF"
+      oninput="_reelGifSearch('${postId}', ${commentIdx}, this.value)"
+      style="width:100%;box-sizing:border-box;margin:10px 0 4px;padding:8px 12px;border-radius:10px;border:1.5px solid var(--border);background:var(--bg-deep);color:var(--text);font-size:16px;outline:none;" />
+    <div id="reelGifGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0;max-height:300px;overflow-y:auto;">
+      <div style="grid-column:1/-1;text-align:center;color:var(--muted);padding:18px;">Chargement…</div>
     </div>
   `);
+  _fillReelGifGrid(postId, commentIdx, "");
+}
+
+// Remplit la grille GIF du modal de réaction bobine via l'API (fallback local)
+function _fillReelGifGrid(postId, commentIdx, query) {
+  passioFetchGifs(query, 12).then(urls => {
+    const grid = document.getElementById("reelGifGrid");
+    if (!grid) return; // modal refermé entre-temps
+    grid.innerHTML = urls.length
+      ? urls.map(gif => `<img loading="lazy" decoding="async" src="${escapeHtml(gif)}" alt="GIF" style="width:100%;height:120px;object-fit:cover;border-radius:8px;cursor:pointer;" onclick="addGifReactionToReelComment('${postId}', ${commentIdx}, '${escapeHtml(gif)}')" />`).join("")
+      : '<div style="grid-column:1/-1;text-align:center;color:var(--muted);padding:18px;">Aucun GIF trouvé</div>';
+  });
+}
+
+let _reelGifDeb = null;
+function _reelGifSearch(postId, commentIdx, q) {
+  clearTimeout(_reelGifDeb);
+  _reelGifDeb = setTimeout(() => _fillReelGifGrid(postId, commentIdx, q), 350);
 }
 
 function addEmojiReactionToReelComment(postId, commentIdx, emoji) {
