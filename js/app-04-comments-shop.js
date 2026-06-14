@@ -1124,7 +1124,19 @@ function renderMessages() {
   }
   $("#messagesEmpty").style.display = "none";
 
-  list.innerHTML = filtered.map(c => {
+  // Pagination : on n'affiche que les N conversations les plus récentes (30 par
+  // défaut, +30 par clic). La liste chargeait tout — coûteux au-delà de quelques
+  // dizaines de fils (le fil des messages est déjà paginé via _loadMoreMsgs).
+  const PAGE = 30;
+  if (typeof window._convListLimit !== "number") window._convListLimit = PAGE;
+  const total = filtered.length;
+  const shown = Math.min(window._convListLimit, total);
+  const visible = filtered.slice(0, shown);
+  const moreBtn = total > shown
+    ? `<button class="btn ghost block" style="margin:10px auto;display:block;" onclick="_loadMoreConvs()">Voir les conversations plus anciennes (${total - shown})</button>`
+    : "";
+
+  list.innerHTML = visible.map(c => {
     const seedUsersArr = state.seed.users || [];
     const u = seedUsersArr.find(x => x.id === c.userId) || { name: "Inconnu", avatar: "#7c3aed", profileEmoji: "🙂" };
     const lastMsg = c.messages && c.messages.length ? c.messages[c.messages.length - 1] : null;
@@ -1167,7 +1179,13 @@ function renderMessages() {
       </div>
       ${c.unread > 0 ? `<div class="msg-badge">${c.unread}</div>` : ""}
     </div>`;
-  }).join("");
+  }).join("") + moreBtn;
+}
+
+// Pagination de la liste de conversations : afficher 30 fils de plus.
+function _loadMoreConvs() {
+  window._convListLimit = (window._convListLimit || 30) + 30;
+  renderMessages();
 }
 
 async function openConversation(convId) {
