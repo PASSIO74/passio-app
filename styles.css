@@ -4339,6 +4339,10 @@
       border-radius: 999px;
       z-index: 11;
       text-transform: uppercase;
+      /* Watermark beta : ne doit jamais chevaucher/bloquer le contenu interactif
+         (audit UX 2026-06-12 : le bandeau interceptait les taps et passait sur les cartes). */
+      pointer-events: none;
+      opacity: 0.55;
       box-shadow: 0 4px 12px rgba(139, 92, 246, 0.35);
       pointer-events: none;
       opacity: 0.85;
