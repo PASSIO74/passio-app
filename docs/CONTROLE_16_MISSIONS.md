@@ -12,7 +12,7 @@ Skills disponibles dans cette session : `code-review`, `security-review`, `revie
 | # | Mission | Statut | Preuve | Action corrective |
 |---|---------|--------|--------|-------------------|
 | 1 | Audit complet (handlers, tests, console) | ✅ | `scripts/audit-handlers.js` (0 fantôme/522 handlers), `npm test` 11✅, `navigation.spec.js` 2✅ | aucune (faux positifs CSS exclus du script) |
-| 2 | Tests utilisateur simulés (9 profils types) | ⏳ | | |
+| 2 | Tests utilisateur simulés (9 profils types) | ✅ | `profils-types.spec.js` 6✅ (créateur, actif, visiteur, visiteur de profils, partageur, multi-passions) + `multi-comptes.spec.js` (messageur+onboarding, opt-in) | helper partagé `app-helper.js` (clé `passio_mvp_state_v1`) |
 | 3 | Correction des bugs (14 + 4 critiques) | ⏳ | | |
 | 4 | UX/UI design | ⏳ | | |
 | 5 | Onglets & navigation | ⏳ | | |
@@ -52,3 +52,32 @@ irl 173, wallet 42, messages 11, cdv 31 (tous < 1500 ms). Aucune exception `page
 ni `console.error` applicatif (erreurs réseau Supabase hors-ligne comptées à part).
 Bottom-nav : 6 libellés présents, clic réel sur chaque item → écran actif (cas
 spécial « Bobines » → overlay `#reelsViewer`).
+
+**Bug trouvé pendant l'audit** : `CLAUDE.md` documentait la clé d'état local comme
+`passio_state`, alors que la vraie constante `STATE_KEY` (app-02) vaut
+`passio_mvp_state_v1`. Les tests qui injectaient `passio_state` tombaient donc sur
+`defaultState()` (0 profil). Corrigé dans le helper + CLAUDE.md.
+
+### Mission 2 — Tests utilisateur simulés ✅ (2026-06-12)
+
+`npx playwright test profils-types.spec.js` : **6 passed**. Profils couverts :
+- **créateur** : `publishPost()` texte → apparition dans le fil après activation du
+  filtre passion (le fil est volontairement vide sans passion choisie) + persistance
+  vérifiée en `localStorage` après reload.
+- **utilisateur actif** : `likePost()` (+1, ajout à `likedPosts`) + `submitComment()`
+  (commentaire ajouté au post via le vrai parcours `openComments` → `#newComment`).
+- **visiteur** : navigation feed/explore sans publier (`userPosts` reste vide).
+- **visiteur de profils** : `openUserProfile()` sur un auteur seed → vue profil.
+- **partageur** : `sharePost()` → feuille de partage ouverte (« Partager dans mon feed »).
+- **multi-passions** : 3 profils, `switchToProfile()` effectif, `#profileBadges` +
+  `#activityGraph` présents.
+
+Écritures Supabase neutralisées pendant ces tests (prod non polluée). Les profils
+**nouvel utilisateur (onboarding complet)** et **messageur (vocal/GIF/pièce jointe
+sur 2 comptes réels + realtime)** sont couverts par `multi-comptes.spec.js` (opt-in
+`PASSIO_E2E_MULTI=1`, inscription anonyme réelle).
+
+### Suite complète — `npm run test:all`
+18 passed, 1 skipped (multi-comptes opt-in), 1 flaky (access-gate « rechargement » :
+timeout 10 s sous 5 workers parallèles, **vert au retry** — pas un bug applicatif,
+artefact de charge CI).

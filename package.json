@@ -3,6 +3,8 @@
   "private": true,
   "scripts": {
     "test": "playwright test",
+    "test:all": "playwright test",
+    "audit:handlers": "node scripts/audit-handlers.js",
     "serve": "http-server -p 8080 -c-1 ."
   },
   "devDependencies": {

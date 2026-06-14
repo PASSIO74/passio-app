@@ -9,7 +9,7 @@ Réseau social des passions. PWA vanilla JS (pas de framework, pas de bundler) +
 - `js/access-gate.js` : verrouillage par code (2125) — chargé en PREMIER dans <head>. Voir `docs/SECURITE_CODE_ACCES.md` pour changer le code.
 - `styles.css` : 6300 lignes, thème violet (#7c3aed), variables CSS (--bg-card, --border, --muted, --accent…).
 - Backend : Supabase (URL/clé anon dans app-08). Tables : profiles, posts, post_likes, post_comments, stories, events, event_attendees, conversations, conv_members, conv_messages, notifications, follows, client_errors. RLS par propriétaire (`auth.uid()::text`). Migrations dans `migrations/`.
-- État local : `localStorage.passio_state` (profils, posts perso, conversations…). `MY_UID` = id Supabase auth.
+- État local : `localStorage["passio_mvp_state_v1"]` (constante `STATE_KEY` dans app-02 — PAS `passio_state`). Contient profils, posts perso, conversations… `MY_UID` = id Supabase auth ; jeton du gate = `sessionStorage["passio_gate_v1"]`.
 
 ## Commandes
 
