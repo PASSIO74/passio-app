@@ -37,10 +37,12 @@ Fait : access gate en prod, 14 bugs corrigés, RGPD (suppression de compte réel
 2. ~~Réception des messages vocaux côté destinataire~~ — fait le 2026-06-11 : décodage unifié via `applyMsgContentData()` (app-04), utilisé par renderConvFpThread, supaLoadMessages, le handler realtime et l'aperçu de conversation. Reste à valider avec 2 comptes réels (point 1).
 3. ~~Galerie "Pièces jointes" d'une conversation~~ — fait le 2026-06-11 : panneau `#convFilesPanel` (médias / vocaux / fichiers, état vide), `openConvFiles()`/`closeConvFiles()` (app-09).
 4. ~~Edge Function Supabase `delete-account`~~ — fait le 2026-06-11 : code (`supabase/functions/delete-account/index.ts`), appel branché dans `doDeleteAccount` (app-02), **déployée en prod via le Dashboard** et testée (compte jetable supprimé, auth comprise).
-5. Remplacer les GIFs Giphy hardcodés (emoji-misc.js, 4 listes) par l'API Giphy/Tenor.
-6. Redesign écran par écran (états vides, transitions, hiérarchie) — comparer avec Instagram/TikTok.
-7. ~~Accessibilité~~ — fait le 2026-06-11 : `user-scalable=no`/`maximum-scale` retirés, champs < 16px passés à 16px (anti auto-zoom iOS), `--muted` assombri (#6e6987, AA), zone tactile 44px sur `.conv-tool-btn`. Reste : audit complet écran par écran (avec le redesign, point 6).
-8. Perf : audit de couverture CSS fait le 2026-06-11 (`node scripts/css-coverage.js`, serveur 8080 requis) : 33 % utilisé sur un tour des 8 écrans (62/187 Ko, sous-estimé — hover/modals non visités). Avec minification + Brotli Netlify le coût réseau réel est ~25-30 Ko → purge non prioritaire, à coupler au redesign (point 6). Reste : pagination des conversations (la liste charge tout ; le fil des messages est déjà paginé via `_loadMoreMsgs`).
+5. ~~GIFs hardcodés~~ — fait le 2026-06-12 : API Tenor/Giphy via `passioFetchGifs`/`passioGifPanel` (emoji-misc.js), recherche + cache 10 min + fallback liste locale. Clé à coller dans `PASSIO_GIF_API` (1 endroit). CSP mise à jour (tenor/giphy).
+6. ~~Redesign / audit visuel~~ — fait le 2026-06-12 : `scripts/capture-screens.js` (16 captures `docs/screenshots/`), UI jugée qualité commerciale ; seul fix : `.demo-ribbon` (MVP BETA) → watermark non-bloquant. Redesign approfondi écran par écran = amélioration continue.
+7. ~~Accessibilité~~ — fait le 2026-06-11/12 : `user-scalable=no`/`maximum-scale` retirés, champs à 16px, `--muted` AA, touch 44px. Audit aria complet = amélioration continue.
+8. ~~Perf~~ — fait : transfert prod 201 Ko brotli (<500), `loading="lazy"` partout, **pagination des conversations** (30/page + `_loadMoreConvs`, app-04) en plus du fil et des messages. Reste (humain) : Lighthouse mobile formel.
+
+**Contrôle qualité des 16 missions** : voir `docs/CONTROLE_16_MISSIONS.md` (audit 2026-06-12, 14 ✅ / 1 ⚠️ m6 / 0 ❌, verdict « prêt à commercialiser en beta ») et `docs/CHECKLIST_COMMERCIALISATION.md`. Tests : `npm run test:all` (18 verts). Audit handlers : `npm run audit:handlers`.
 
 ## Pièges connus
 
