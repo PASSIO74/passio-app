@@ -7,8 +7,8 @@
 // ⚠️ CSP : tenor.googleapis.com et api.giphy.com doivent rester autorisés dans
 //    connect-src (netlify.toml + _headers).
 window.PASSIO_GIF_API = {
-  provider: "tenor", // "tenor" ou "giphy"
-  key: ""            // ← COLLER LA CLÉ ICI
+  provider: "giphy", // "tenor" ou "giphy"
+  key: "u28ANom3fQTKp1KmOtVXhJcjRTRTXkBE" // clé Web Giphy (publique, côté client — comme la clé anon Supabase)
 };
 
 // Liste de secours (les 26 GIFs historiques dédupliqués) — utilisée sans clé ou hors-ligne.
