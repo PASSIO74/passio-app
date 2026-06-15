@@ -1681,7 +1681,11 @@ async function supaInsertNotif(toUserId, kind, refId, content) {
 // migration_realtime_authorization.sql N'EST PAS appliquée + Realtime
 // Authorization activé au dashboard. Passer à true UNIQUEMENT après ça + test
 // 2 comptes (voir docs/SCALE_RUNBOOK.md P0.1). En v1 ce code est inerte.
-window.PASSIO_REALTIME_V2 = window.PASSIO_REALTIME_V2 || false;
+// Activable par device sans redéploiement : localStorage.passio_realtime_v2 = "1"
+// (permet de tester v2 sur un seul client après l'étape dashboard, avant de
+// l'activer pour tout le monde). Défaut : false.
+window.PASSIO_REALTIME_V2 = window.PASSIO_REALTIME_V2 ||
+  (function(){ try { return localStorage.getItem("passio_realtime_v2") === "1"; } catch(e){ return false; } })();
 
 // Traitement d'un message entrant (factorisé : utilisé par le canal global v1
 // ET par les canaux privés v2). `r` = ligne conv_messages (payload.new ou
