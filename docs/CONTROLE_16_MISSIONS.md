@@ -16,7 +16,7 @@ Skills disponibles dans cette session : `code-review`, `security-review`, `revie
 | 3 | Correction des bugs (14 + 4 critiques) | ✅ | grep : tous les fix présents (clearIrlTimeFilter, autoResizeTextarea, closeConvSettings, openFullImg, feed polling `screen-feed`, `#draftList` gardé, `appShell`/`studioText` retirés, applyMsgContentData, RLS conv_members appliquée) | bug clé STATE_KEY trouvé+corrigé (m2) |
 | 4 | UX/UI design | ✅ | `scripts/capture-screens.js` → 16 captures `docs/screenshots/` ; audit visuel : UI qualité commerciale | `.demo-ribbon` (MVP BETA) chevauchait/bloquait → watermark non-bloquant |
 | 5 | Onglets & navigation | ✅ | `navigation.spec.js` 2✅ : 8 écrans actifs < 1,5 s + clics réels bottom-nav (Bobines=overlay) | — |
-| 6 | Partage de données et contenus | ⚠️ | `profils-types.spec.js` créateur ✅ (texte : optimistic + persistance reload) ; like/comment ✅ | photo/vidéo/carnet + cas erreur upload : tests à fixtures recommandés |
+| 6 | Partage de données et contenus | ✅ | `profils-types.spec.js` 8✅ : texte (optimistic+persistance), **photo + vidéo + carnet**, **upload >500 Ko rejeté proprement** (toast, pas de crash, pas de post), like/comment, partage | — |
 | 7 | Profils et visites | ✅ | multi-passions ✅ (3 profils, switch, `#profileBadges`+`#activityGraph`), visiteur de profils ✅ (`openUserProfile`) | follow/unfollow + édition bio : non auto-testés |
 | 8 | Messagerie | ✅ | galerie `#convFilesPanel` + lecteur vocal vérifiés (sessions préc.) ; grep : décodage centralisé `applyMsgContentData` (1 seul `JSON.parse(content)`, guard de détection) | multi-comptes opt-in vert |
 | 9 | Performance et scalabilité | ✅ | transfert prod **201 Ko brotli** (<500), 32 `loading="lazy"`, fil+messages+**conversations** paginés | Lighthouse formel = étape humaine recommandée |
@@ -106,7 +106,8 @@ artefact de charge CI).
 
 ## Verdict
 
-**Prêt à commercialiser : OUI**, en beta privée (gate actif), sous réserve des points
-1-3 ci-dessus qui sont des améliorations/preuves complémentaires, pas des bloqueurs.
-Les 16 missions sont prouvées (14 ✅, 1 ⚠️ m6 partiel, aucune ❌). Suite E2E verte
-(18✅), prod déployée et fonctionnelle, sécurité et accessibilité de base validées.
+**Prêt à commercialiser : OUI**, en beta privée (gate actif). Les 16 missions sont
+prouvées (**15 ✅, 0 ⚠️, 0 ❌** après finalisation de la m6 — publication
+photo/vidéo/carnet + rejet d'upload testés). Suite E2E verte (**20✅**), prod
+déployée et fonctionnelle, sécurité et accessibilité de base validées. Les points
+« décisions humaines » (clé GIF, Lighthouse) sont des confort/preuves, pas des bloqueurs.

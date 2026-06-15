@@ -48,6 +48,86 @@ test.describe("profils types — parcours simulés", () => {
     expect(errors.js).toEqual([]);
   });
 
+  test("créateur média : publie photo, vidéo et carnet", async ({ page }) => {
+    const errors = { js: [], console: [], network: [] };
+    await bootOnboarded(page, errors);
+
+    // 1px GIF/MP4 en data URL (petit, sous la limite)
+    const IMG = "data:image/gif;base64,R0lGODlhAQABAIAAAP8AAP///yH5BAAAAAAALAAAAAABAAEAAAICRAEAOw==";
+    const VID = "data:video/mp4;base64,AAAAHGZ0eXBpc29tAAACAGlzb21pc28y";
+
+    const res = await page.evaluate(async ({ img, vid }) => {
+      const out = {};
+      const passion = (() => { const s = document.getElementById("postPassion"); return s && s.options.length ? s.options[0].value : "musique"; })();
+
+      // ── PHOTO ──
+      goTo("studio");
+      studioType = "photo"; photoDataUrl = img; videoDataUrl = null;
+      { const s = document.getElementById("postPassion"); if (s && s.options.length) s.selectedIndex = 0; }
+      await publishPost();
+      out.photo = state.userPosts[0] && state.userPosts[0].type === "photo" && !!state.userPosts[0].image;
+
+      // ── VIDÉO ──
+      goTo("studio");
+      studioType = "video"; videoDataUrl = vid; photoDataUrl = null;
+      { const s = document.getElementById("postPassion"); if (s && s.options.length) s.selectedIndex = 0; }
+      await publishPost();
+      out.video = state.userPosts[0] && state.userPosts[0].type === "video" && !!state.userPosts[0].video;
+
+      // ── CARNET (vlog) ──
+      goTo("studio");
+      studioType = "vlog"; photoDataUrl = null; videoDataUrl = null;
+      const dest = document.getElementById("vlogDestination");
+      if (dest) dest.value = "Lisbonne [audit]";
+      vlogState.cover = null;
+      vlogState.steps = [{ place: "Alfama", text: "Jour 1", tip: "Tram 28", photo: null, video: null, audio: null }];
+      await publishPost();
+      out.vlog = state.userPosts[0] && state.userPosts[0].type === "vlog" && /Lisbonne/.test(state.userPosts[0].destination || state.userPosts[0].text || "");
+
+      // Le fil (passion activée) doit rendre la photo postée (img data:)
+      toggleProfileFilter(passion);
+      out.photoRendered = !!document.querySelector('#screen-feed .post img[src^="data:image"]');
+      out.totalUserPosts = state.userPosts.length;
+      return out;
+    }, { img: IMG, vid: VID });
+
+    expect(res.photo, "post photo créé (type+image)").toBe(true);
+    expect(res.video, "post vidéo créé (type+video)").toBe(true);
+    expect(res.vlog, "carnet créé (type vlog + destination)").toBe(true);
+    expect(res.photoRendered, "photo rendue dans le fil").toBe(true);
+    expect(res.totalUserPosts, "3 posts créés").toBe(3);
+    expect(errors.js).toEqual([]);
+  });
+
+  test("upload trop volumineux : rejet propre (toast, pas de crash, pas de post)", async ({ page }) => {
+    const errors = { js: [], console: [], network: [] };
+    await bootOnboarded(page, errors);
+
+    const res = await page.evaluate(async () => {
+      goTo("studio");
+      studioType = "text"; photoDataUrl = null;
+      const before = state.userPosts.length;
+      // Fichier de 600 Ko > limite 500 Ko sur #photoInput
+      const big = new File([new Uint8Array(600 * 1024)], "big.png", { type: "image/png" });
+      const dt = new DataTransfer();
+      dt.items.add(big);
+      const input = document.getElementById("photoInput");
+      input.files = dt.files;
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+      await new Promise((r) => setTimeout(r, 300));
+      return {
+        photoStillNull: photoDataUrl === null, // handler a rejeté avant d'assigner
+        noNewPost: state.userPosts.length === before,
+        inputExists: !!input,
+      };
+    });
+
+    expect(res.inputExists, "#photoInput présent").toBe(true);
+    expect(res.photoStillNull, "fichier trop gros rejeté (photoDataUrl reste null)").toBe(true);
+    expect(res.noNewPost, "aucun post créé suite au rejet").toBe(true);
+    expect(errors.js, "aucune exception JS sur le rejet").toEqual([]);
+  });
+
   test("utilisateur actif : like + commentaire sur un post du fil", async ({ page }) => {
     const errors = { js: [], console: [], network: [] };
     await bootOnboarded(page, errors);

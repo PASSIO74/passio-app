@@ -25,7 +25,8 @@ Statut par fonctionnalité, onglet et contrôle. Détail des preuves :
 
 ## Publication & contenu
 - [x] Post texte — optimistic + persistance reload (testé)
-- [~] Post photo / vidéo / carnet — UI OK ; tests à fixtures recommandés
+- [x] Post photo / vidéo / carnet — testés (type + média + rendu fil)
+- [x] Upload trop volumineux (>500 Ko) — rejet propre (toast, pas de crash)
 - [x] Like / commentaire — testés
 - [x] Partage post (feuille de partage)
 
