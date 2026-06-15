@@ -1681,11 +1681,20 @@ async function supaInsertNotif(toUserId, kind, refId, content) {
 // migration_realtime_authorization.sql N'EST PAS appliquée + Realtime
 // Authorization activé au dashboard. Passer à true UNIQUEMENT après ça + test
 // 2 comptes (voir docs/SCALE_RUNBOOK.md P0.1). En v1 ce code est inerte.
-// Activable par device sans redéploiement : localStorage.passio_realtime_v2 = "1"
-// (permet de tester v2 sur un seul client après l'étape dashboard, avant de
-// l'activer pour tout le monde). Défaut : false.
-window.PASSIO_REALTIME_V2 = window.PASSIO_REALTIME_V2 ||
-  (function(){ try { return localStorage.getItem("passio_realtime_v2") === "1"; } catch(e){ return false; } })();
+// Realtime v2 (canaux privés par conversation) ACTIVÉ PAR DÉFAUT — validé en
+// prod le 2026-06-15 (migration_realtime_authorization.sql appliquée + RLS
+// realtime.messages active + test 2 comptes vert dans les 2 sens).
+// Soupape de secours par device : localStorage.passio_realtime_v2 = "0" →
+// revient au canal global v1 (le code v1 reste présent en fallback).
+window.PASSIO_REALTIME_V2 = (function(){
+  if (typeof window.PASSIO_REALTIME_V2 === "boolean") return window.PASSIO_REALTIME_V2;
+  try {
+    var v = localStorage.getItem("passio_realtime_v2");
+    if (v === "0") return false;
+    if (v === "1") return true;
+  } catch(e){}
+  return true; // défaut : v2 pour tout le monde
+})();
 
 // Traitement d'un message entrant (factorisé : utilisé par le canal global v1
 // ET par les canaux privés v2). `r` = ligne conv_messages (payload.new ou

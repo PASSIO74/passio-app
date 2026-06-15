@@ -29,7 +29,17 @@ cassent à 50 000. **Ne pas tout déployer d'un coup** : valider chaque étape.
 
 ## 🔴 P0 — Bloquants réels avant ouverture large
 
-### 1. Realtime : chaque client reçoit TOUS les messages 🧑 (dashboard) + 🤖 (diff prêt)
+### 1. Realtime : chaque client reçoit TOUS les messages ✅ DÉPLOYÉ (2026-06-15)
+
+**Réglé.** `migration_realtime_authorization.sql` appliquée en prod (trigger +
+RLS `realtime.messages` active, vérifiée). Client v2 (`PASSIO_REALTIME_V2`)
+**activé par défaut** : chaque client s'abonne à un canal privé `conv:<id>` par
+conversation. Validé par test 2 comptes réels (texte/GIF/vocal dans les 2 sens).
+Soupape : `localStorage.passio_realtime_v2 = "0"` → fallback v1. Historique
+ci-dessous conservé pour mémoire.
+
+---
+<details><summary>Historique de la mise en œuvre (P0.1)</summary>
 
 **Symptôme à l'échelle** : `realtime:my_messages` (`app-08-ui-modals-tour.js:1685`)
 s'abonne à *tous* les INSERT `conv_messages` et filtre l'appartenance en JS
@@ -59,6 +69,7 @@ prod inchangée. Il ne reste qu'à appliquer le serveur puis flipper le flag.
 5. Une fois (1)–(4) verts en prod, supprimer le canal global `realtime:my_messages`
    du `else` (v1) et nettoyer. **Garde-fou** : ne jamais retirer le canal v1 avant
    que v2 soit validé en prod.
+</details>
 
 ### 2. État applicatif entièrement dans une clé localStorage 🤖 (gros chantier)
 
