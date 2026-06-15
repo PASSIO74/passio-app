@@ -42,33 +42,23 @@ vraie correction est **Realtime Authorization (RLS)** côté serveur.
 
 **SQL prêt** : `migrations/migration_realtime_authorization.sql` (Broadcast-from-
 Database : trigger sur `conv_messages` → topic privé `conv:<id>` + RLS sur
-`realtime.messages` réservant l'écoute aux membres). Non destructif : tant que le
-client n'est pas basculé, il diffuse **en plus** de l'ancien canal.
+`realtime.messages` réservant l'écoute aux membres). Non destructif.
 
-**Procédure (staged)** :
+**Client prêt aussi** ✅ : le code v2 est **déjà implémenté** (app-08
+`_subscribePrivateConv` + `_handleIncomingConvMessage` factorisé ; app-04
+`_supaConvSpecificChannel` ; abonnement à l'ajout dans une conv), **derrière le
+flag `window.PASSIO_REALTIME_V2` (false par défaut)**. En v1 ce code est inerte —
+prod inchangée. Il ne reste qu'à appliquer le serveur puis flipper le flag.
+
+**Procédure (staged)** — faire dans l'ordre, sinon plus aucun message livré :
 1. Appliquer `migration_realtime_authorization.sql` au Dashboard (SQL Editor).
 2. Dashboard → Database → Realtime : activer **Realtime Authorization**.
-3. Tester avec **2 comptes réels** (`PASSIO_E2E_MULTI=1 npm test`) que les
-   broadcasts privés arrivent bien aux membres.
-4. **Ensuite seulement**, basculer le client : s'abonner par conversation au
-   topic privé au lieu du canal global. Diff client (app-04, à l'ouverture
-   d'une conv, et app-08 pour les convs en fond) :
-   ```js
-   // Remplacer le postgres_changes global par un canal privé par conversation :
-   supa.channel("conv:" + convId, { config: { private: true } })
-     .on("broadcast", { event: "INSERT" }, ({ payload }) => {
-       const r = payload.record;          // la ligne conv_messages diffusée
-       if (!r || r.from_id === MY_UID) return;
-       // …même traitement qu'aujourd'hui : applyMsgContentData + push + render…
-     })
-     .subscribe();
-   ```
-5. Supprimer le canal global `realtime:my_messages` une fois (3)–(4) verts, et
-   retirer le trigger « en plus ». **Garde-fou** : ne jamais retirer l'ancien
-   canal avant que le nouveau soit validé, sinon plus aucun message livré.
-
-**Test de régression** : envoi texte + vocal + GIF dans les 2 sens, réception
-≤ ~1 s, et un 3ᵉ compte ne reçoit rien.
+3. Passer `window.PASSIO_REALTIME_V2 = true` (une ligne, app-08 ou avant boot).
+4. Tester avec **2 comptes réels** (`PASSIO_E2E_MULTI=1 npm test`) : réception
+   ≤ ~1 s, texte + vocal + GIF dans les 2 sens, **et un 3ᵉ compte ne reçoit rien**.
+5. Une fois (1)–(4) verts en prod, supprimer le canal global `realtime:my_messages`
+   du `else` (v1) et nettoyer. **Garde-fou** : ne jamais retirer le canal v1 avant
+   que v2 soit validé en prod.
 
 ### 2. État applicatif entièrement dans une clé localStorage 🤖 (gros chantier)
 

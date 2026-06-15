@@ -1675,79 +1675,118 @@ async function supaInsertNotif(toUserId, kind, refId, content) {
 }
 
 // ---- TEMPS RÉEL — abonnements globaux ----
+// ════════════════════════════════════════════════════════════════════════
+// REALTIME v2 (scaling P0.1) — canaux PRIVÉS par conversation.
+// Flag OFF par défaut : la prod reste sur le canal global (v1) tant que la
+// migration_realtime_authorization.sql N'EST PAS appliquée + Realtime
+// Authorization activé au dashboard. Passer à true UNIQUEMENT après ça + test
+// 2 comptes (voir docs/SCALE_RUNBOOK.md P0.1). En v1 ce code est inerte.
+window.PASSIO_REALTIME_V2 = window.PASSIO_REALTIME_V2 || false;
+
+// Traitement d'un message entrant (factorisé : utilisé par le canal global v1
+// ET par les canaux privés v2). `r` = ligne conv_messages (payload.new ou
+// payload.record selon la source).
+async function _handleIncomingConvMessage(r) {
+  if (!r || !r.conv_id) return;
+  if (r.from_id === MY_UID) return; // nos propres messages sont déjà dans l'UI (optimistic)
+
+  var convs = getConversations();
+  var conv = convs.find(c => c.id === r.conv_id);
+
+  if (!conv) {
+    // Nouvelle conv inconnue → vérifier membership Supabase puis créer localement
+    try {
+      const { data: membership } = await supa.from("conv_members")
+        .select("conv_id").eq("conv_id", r.conv_id).eq("user_id", MY_UID).single();
+      if (!membership) return; // pas membre → ignorer
+      const { data: convData } = await supa.from("conversations").select("*").eq("id", r.conv_id).single();
+      const { data: members } = await supa.from("conv_members")
+        .select("user_id, profiles(username,emoji,color)").eq("conv_id", r.conv_id);
+      const other = (members || []).find(m => m.user_id !== MY_UID);
+      if (other?.profiles) _profileCache.set(other.user_id, { username: other.profiles.username, emoji: other.profiles.emoji || "✨", color: other.profiles.color || "#8b5cf6" });
+      conv = {
+        id: r.conv_id, isGroup: convData?.is_group || false, groupName: convData?.group_name || null,
+        passion: null, userId: other?.user_id || r.from_id,
+        userEmoji: other?.profiles?.emoji || "✨", userColor: other?.profiles?.color || "#8b5cf6",
+        userName: other?.profiles?.username || "Passionné",
+        userIds: (members || []).map(m => m.user_id),
+        lastAt: new Date(r.created_at + "Z").getTime(), unread: 0, messages: [], fromSupabase: true,
+      };
+      convs.unshift(conv);
+      if (window.PASSIO_REALTIME_V2 && window._subscribePrivateConv) window._subscribePrivateConv(r.conv_id);
+    } catch(e) { return; }
+  }
+
+  // Profil depuis cache (0 requête si déjà connu)
+  const prof = await _fetchProfile(r.from_id);
+  const msgAt = new Date(r.created_at + "Z").getTime();
+  const newMsg = { id: r.id, from: r.from_id, fromName: prof.username, fromEmoji: prof.emoji, text: r.content, at: msgAt };
+  applyMsgContentData(newMsg, r.content); // décode gif/media/audio/doc/location
+
+  if (!conv.messages) conv.messages = [];
+  if (conv.messages.find(m => m.id === r.id)) return; // déjà présent (dedup)
+  conv.messages.push(newMsg);
+  conv.messages.sort((a, b) => (a.at || 0) - (b.at || 0));
+  conv.lastAt = msgAt;
+
+  const isConvOpen = window._openedConvId === r.conv_id;
+  if (isConvOpen) {
+    conv._otherRead = true; // l'utilisateur lit le message
+    conversationsState = convs;
+    saveConversations();
+    try {
+      const fp = document.getElementById("conv-fullpage");
+      const displayName = fp ? fp.getAttribute("data-display-name") : (conv.userName || "");
+      renderConvFpThread(conv, displayName);
+    } catch(e) {}
+    try { renderMessages(); } catch(e) {}
+  } else {
+    conv.unread = (conv.unread || 0) + 1;
+    conversationsState = convs;
+    saveConversations();
+    _playMsgSound();
+    try { renderMessages(); } catch(e) {}
+  }
+}
+window._handleIncomingConvMessage = _handleIncomingConvMessage;
+
+// v2 : s'abonne au canal PRIVÉ d'une conversation (Broadcast-from-Database).
+// Idempotent (dedup via _privateConvChans). No-op si supa absent.
+window._privateConvChans = window._privateConvChans || {};
+function _subscribePrivateConv(convId) {
+  if (typeof supa === "undefined" || !supa || !convId) return;
+  if (window._privateConvChans[convId]) return; // déjà abonné
+  var ch = supa.channel("conv:" + convId, { config: { private: true } })
+    .on("broadcast", { event: "INSERT" }, function(msg) {
+      var p = msg && msg.payload;
+      var r = p && (p.record || p.new || p); // selon le format broadcast_changes
+      if (r && r.conv_id) _handleIncomingConvMessage(r);
+    })
+    .subscribe();
+  window._privateConvChans[convId] = ch;
+}
+window._subscribePrivateConv = _subscribePrivateConv;
+// ════════════════════════════════════════════════════════════════════════
+
 function supaSubscribe() {
   // Garde anti double-abonnement : supaInit peut être appelé par boot() ET par
   // onAuthStateChange — un seul jeu de canaux realtime doit exister.
   if (window._supaSubscribed) return;
   window._supaSubscribed = true;
-  // ── Canal global conv_messages : reçoit TOUS les messages pour cet utilisateur ──
-  // Gère aussi bien les convs en fond que la conv ouverte (robustesse si canal filtré échoue)
-  supa.channel("realtime:my_messages")
-    .on("postgres_changes", { event: "INSERT", schema: "public", table: "conv_messages" }, async payload => {
-      const r = payload.new;
-      if (!r || !r.conv_id) return;
-      if (r.from_id === MY_UID) return; // nos propres messages sont déjà dans l'UI (optimistic)
-
-      var convs = getConversations();
-      var conv = convs.find(c => c.id === r.conv_id);
-
-      if (!conv) {
-        // Nouvelle conv inconnue → vérifier membership Supabase puis créer localement
-        try {
-          const { data: membership } = await supa.from("conv_members")
-            .select("conv_id").eq("conv_id", r.conv_id).eq("user_id", MY_UID).single();
-          if (!membership) return; // pas membre → ignorer
-          const { data: convData } = await supa.from("conversations").select("*").eq("id", r.conv_id).single();
-          const { data: members } = await supa.from("conv_members")
-            .select("user_id, profiles(username,emoji,color)").eq("conv_id", r.conv_id);
-          const other = (members || []).find(m => m.user_id !== MY_UID);
-          if (other?.profiles) _profileCache.set(other.user_id, { username: other.profiles.username, emoji: other.profiles.emoji || "✨", color: other.profiles.color || "#8b5cf6" });
-          conv = {
-            id: r.conv_id, isGroup: convData?.is_group || false, groupName: convData?.group_name || null,
-            passion: null, userId: other?.user_id || r.from_id,
-            userEmoji: other?.profiles?.emoji || "✨", userColor: other?.profiles?.color || "#8b5cf6",
-            userName: other?.profiles?.username || "Passionné",
-            userIds: (members || []).map(m => m.user_id),
-            lastAt: new Date(r.created_at + "Z").getTime(), unread: 0, messages: [], fromSupabase: true,
-          };
-          convs.unshift(conv);
-        } catch(e) { return; }
-      }
-
-      // Profil depuis cache (0 requête si déjà connu)
-      const prof = await _fetchProfile(r.from_id);
-      const msgAt = new Date(r.created_at + "Z").getTime();
-      const newMsg = { id: r.id, from: r.from_id, fromName: prof.username, fromEmoji: prof.emoji, text: r.content, at: msgAt };
-      applyMsgContentData(newMsg, r.content); // décode gif/media/audio/doc/location (sinon JSON brut dans le thread et l'aperçu)
-
-      if (!conv.messages) conv.messages = [];
-      if (conv.messages.find(m => m.id === r.id)) return; // déjà présent (dedup)
-      conv.messages.push(newMsg);
-      conv.messages.sort((a, b) => (a.at || 0) - (b.at || 0));
-      conv.lastAt = msgAt;
-
-      const isConvOpen = window._openedConvId === r.conv_id;
-      if (isConvOpen) {
-        // Conversation ouverte → afficher le message immédiatement dans le thread
-        conv._otherRead = true; // l'utilisateur lit le message
-        conversationsState = convs;
-        saveConversations();
-        try {
-          const fp = document.getElementById("conv-fullpage");
-          const displayName = fp ? fp.getAttribute("data-display-name") : (conv.userName || "");
-          renderConvFpThread(conv, displayName);
-        } catch(e) {}
-        try { renderMessages(); } catch(e) {}
-      } else {
-        // Conv en arrière-plan → incrémenter unread + son
-        conv.unread = (conv.unread || 0) + 1;
-        conversationsState = convs;
-        saveConversations();
-        _playMsgSound();
-        try { renderMessages(); } catch(e) {}
-      }
-    })
-    .subscribe();
+  // ── Réception des messages entrants ──
+  if (window.PASSIO_REALTIME_V2) {
+    // v2 (scalable) : un canal PRIVÉ par conversation (Broadcast-from-Database).
+    // Chaque client ne reçoit QUE les messages de SES convs. Nécessite
+    // migration_realtime_authorization.sql + Realtime Authorization activé.
+    (getConversations() || []).forEach(function(c) { if (c && c.id) _subscribePrivateConv(c.id); });
+  } else {
+    // v1 (défaut) : canal global, filtrage d'appartenance côté client (_handleIncomingConvMessage).
+    supa.channel("realtime:my_messages")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "conv_messages" }, function(payload) {
+        _handleIncomingConvMessage(payload.new);
+      })
+      .subscribe();
+  }
 
   // ── Nouvelle conversation créée pour moi (l'autre personne m'ajoute comme membre) ──
   supa.channel("realtime:conv_members")
@@ -1781,6 +1820,7 @@ function supaSubscribe() {
         };
         conversationsState = deduplicateConversations([newConv, ...getConversations()]);
         saveConversations();
+        if (window.PASSIO_REALTIME_V2 && window._subscribePrivateConv) window._subscribePrivateConv(convId);
         try { renderMessages(); } catch(e) {}
       } catch(e) {}
     })

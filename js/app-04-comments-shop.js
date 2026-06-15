@@ -1755,6 +1755,12 @@ function _subscribeTyping(convId) {
 let _supaConvChannel = null;
 function _supaConvSpecificChannel(convId, displayName) {
   if (typeof supa === "undefined" || !supa) return;
+  // v2 : la réception passe par le canal PRIVÉ de la conv (abonné au boot / à
+  // la création). On s'assure juste qu'il existe — pas de postgres_changes.
+  if (window.PASSIO_REALTIME_V2) {
+    if (window._subscribePrivateConv) window._subscribePrivateConv(convId);
+    return;
+  }
   if (_supaConvChannel) { try { supa.removeChannel(_supaConvChannel); } catch(e) {} _supaConvChannel = null; }
   _supaConvChannel = supa.channel("conv_specific:" + convId)
     .on("postgres_changes", {
