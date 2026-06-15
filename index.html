@@ -255,8 +255,6 @@
       </div>
     </div>
     <div class="topbar-right">
-      <div class="topbar-chip score" title="Score Passion"><span>⭐</span><span id="topScore">0</span></div>
-      <div class="topbar-chip passia" title="Passia"><span>💎</span><span id="topPassia">0</span></div>
       <div class="topbar-bell" onclick="openNotifications()" title="Notifications">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;"><path d="M18 8.5 A6 6 0 0 0 6 8.5 C6 14 3.8 15.5 3.8 15.5 H20.2 S18 14 18 8.5 Z"/><path d="M10.2 19 A2 2 0 0 0 13.8 19"/></svg>
         <span class="bell-dot" id="bellDot"></span>
@@ -386,13 +384,13 @@
               <div class="main-profile-avatar-badge">📷</div>
               <input type="file" id="avatarPhotoInput" accept="image/*" style="display:none;" onchange="changeAvatarPhoto(event)"/>
             </div>
-            <div style="display:flex;gap:6px;">
+            <div style="display:flex;gap:6px;align-items:center;">
               <button class="main-profile-edit-btn" onclick="openEditMainProfile()">✏️ Éditer</button>
               <button class="main-profile-edit-btn" onclick="shareMyProfile()">📤 Partager</button>
+              <div class="topbar-chip passia" id="profilePassiaChip" onclick="goTo('wallet')" title="Mon solde Passia" style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;"><span>💎</span><span id="topPassia">0</span><span style="font-size:11px;color:var(--muted);font-weight:600;">Passia</span></div>
             </div>
           </div>
           <div class="main-profile-username" id="mainProfileUsername">Mon profil</div>
-          <div id="mainProfileBadge" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;padding:3px 8px;border-radius:8px;background:var(--bg-deep);color:var(--accent);margin-bottom:6px;">🌱 Débutant</div>
           <div id="mainProfileStatus" style="font-size:11px;color:var(--muted);margin-bottom:6px;">🟢 En ligne</div>
           <div class="main-profile-bio" id="mainProfileBio">Ajoute une biographie…</div>
           <div class="main-profile-rs" id="mainProfileRs"></div>
@@ -400,36 +398,9 @@
             <div class="main-profile-stat"><span id="mainStatPosts">0</span><span>posts</span></div>
             <div class="main-profile-stat"><span id="mainStatFollowers">0</span><span>abonnés</span></div>
             <div class="main-profile-stat"><span id="mainStatFollowing">0</span><span>abonnements</span></div>
-            <div class="main-profile-stat"><span id="mainStatPassia">0</span><span>passia</span></div>
           </div>
         </div>
       </div>
-
-      <!-- STREAK & NIVEAU -->
-      <div style="display:flex;gap:8px;margin-top:14px;">
-        <div style="flex:1;background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:12px;text-align:center;">
-          <div style="font-size:24px;" id="streakEmoji">🔥</div>
-          <div style="font-size:18px;font-weight:900;color:var(--text);" id="streakCount">0</div>
-          <div style="font-size:10px;color:var(--muted);">jours de streak</div>
-        </div>
-        <div style="flex:1;background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:12px;text-align:center;">
-          <div style="font-size:24px;">⭐</div>
-          <div style="font-size:18px;font-weight:900;color:var(--text);" id="levelCount">1</div>
-          <div style="font-size:10px;color:var(--muted);">niveau</div>
-        </div>
-        <div style="flex:1;background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:12px;text-align:center;">
-          <div style="font-size:24px;">💎</div>
-          <div style="font-size:18px;font-weight:900;color:var(--text);" id="mainStatScore2">0</div>
-          <div style="font-size:10px;color:var(--muted);">score</div>
-        </div>
-      </div>
-
-      <!-- BADGES & ACTIVITÉ (restaurés audit 2026-06-10 : le code de rendu
-           existait dans renderWallet/profil mais les conteneurs avaient disparu) -->
-      <div class="section-title" style="margin-top:14px;">Badges</div>
-      <div id="profileBadges" style="display:flex;gap:8px;overflow-x:auto;padding:4px 0 8px;"></div>
-      <div class="section-title" style="margin-top:10px;">Activité · 7 derniers jours</div>
-      <div id="activityGraph" style="display:flex;align-items:flex-end;gap:6px;height:64px;background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:10px 12px;"></div>
 
       <!-- PASSIONS SUIVIES -->
       <!-- PROFILS PASSION -->

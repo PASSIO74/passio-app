@@ -1,7 +1,6 @@
 // ======== TOPBAR ========
 function renderTopbar() {
   const prof = currentProfile();
-  $("#topScore").textContent = state.user.score || 0;
   $("#topPassia").textContent = state.user.passia || 0;
   // Ne pas afficher la passion, juste PASSIO
   if (prof) {

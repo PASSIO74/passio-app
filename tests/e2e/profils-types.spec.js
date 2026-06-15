@@ -202,7 +202,7 @@ test.describe("profils types — parcours simulés", () => {
     expect(errors.js).toEqual([]);
   });
 
-  test("multi-passions : 3 profils, bascule fonctionnelle, badges + graphe d'activité", async ({ page }) => {
+  test("multi-passions : 3 profils, bascule fonctionnelle", async ({ page }) => {
     const errors = { js: [], console: [], network: [] };
     await bootOnboarded(page, errors, 3);
 
@@ -211,20 +211,20 @@ test.describe("profils types — parcours simulés", () => {
       switchToProfile(ids[2]);
       const after = state.user.currentProfileId;
       goTo("profiles");
-      // Conteneurs badges + activité (restaurés lors d'une session précédente)
+      // Gamification retirée (badges / streak / activité 7 jours) : ne doit plus exister
       const badges = document.getElementById("profileBadges");
       const graph = document.getElementById("activityGraph");
       return {
         nbProfiles: state.user.profiles.length,
         switched: after === ids[2],
-        badgesPresent: !!badges,
-        graphPresent: !!graph,
+        badgesAbsent: !badges,
+        graphAbsent: !graph,
       };
     });
     expect(res.nbProfiles, "3 profils passion").toBe(3);
     expect(res.switched, "bascule de profil effective").toBe(true);
-    expect(res.badgesPresent, "#profileBadges présent").toBe(true);
-    expect(res.graphPresent, "#activityGraph présent").toBe(true);
+    expect(res.badgesAbsent, "#profileBadges retiré").toBe(true);
+    expect(res.graphAbsent, "#activityGraph retiré").toBe(true);
     expect(errors.js).toEqual([]);
   });
 });

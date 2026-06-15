@@ -149,54 +149,11 @@ function renderMainProfile() {
     : '<span style="font-size:11px;color:var(--muted);">Aucun RS lié</span>';
 
   var postCount = state.userPosts.length;
-  var score = state.user.score || 0;
   document.getElementById("mainStatPosts").textContent = postCount;
-  document.getElementById("mainStatPassia").textContent = state.user.passia || 0;
+  var ppEl = document.getElementById("topPassia"); if (ppEl) ppEl.textContent = state.user.passia || 0;
   var fEl = document.getElementById("mainStatFollowers"); if (fEl) fEl.textContent = Math.floor(Math.random()*50+5);
   var foEl = document.getElementById("mainStatFollowing"); if (foEl) foEl.textContent = Math.floor(Math.random()*30+3);
-  var s2 = document.getElementById("mainStatScore2"); if (s2) s2.textContent = score;
 
-  var badgeEl = document.getElementById("mainProfileBadge");
-  if (badgeEl) {
-    if (score >= 500) badgeEl.innerHTML = "👑 Expert";
-    else if (score >= 200) badgeEl.innerHTML = "🔥 Passionné";
-    else if (score >= 50) badgeEl.innerHTML = "✨ Actif";
-    else badgeEl.innerHTML = "🌱 Débutant";
-  }
-
-  var streak = parseInt(localStorage.getItem("passio_streak") || "1");
-  var scEl = document.getElementById("streakCount"); if (scEl) scEl.textContent = streak;
-  var lvEl = document.getElementById("levelCount"); if (lvEl) lvEl.textContent = Math.floor(score/100)+1;
-
-  // Badges
-  var badgesEl = document.getElementById("profileBadges");
-  if (badgesEl) {
-    var badges = [
-      {e:"🎉",n:"Bienvenue",g:true},{e:"📝",n:"1er post",g:postCount>=1},{e:"🔥",n:"3 jours",g:streak>=3},
-      {e:"⭐",n:"50 pts",g:score>=50},{e:"💎",n:"100 Passia",g:(state.user.passia||0)>=100},
-      {e:"👥",n:"1er abonné",g:true},{e:"🎨",n:"Créateur",g:postCount>=5},{e:"🤝",n:"1er event",g:false},
-    ];
-    badgesEl.innerHTML = badges.map(function(b) {
-      return '<div style="flex-shrink:0;width:64px;text-align:center;padding:8px 4px;border-radius:12px;background:'+(b.g?'var(--bg-card)':'var(--bg-deep)')+';border:1px solid var(--border);opacity:'+(b.g?'1':'0.4')+';"><div style="font-size:22px;">'+b.e+'</div><div style="font-size:9px;color:var(--muted);margin-top:2px;">'+b.n+'</div></div>';
-    }).join("");
-  }
-
-  // Graph activité
-  var graphEl = document.getElementById("activityGraph");
-  if (graphEl) {
-    var days = [], dayNames = ["Dim","Lun","Mar","Mer","Jeu","Ven","Sam"];
-    for (var d=6;d>=0;d--) {
-      var ds = Date.now()-d*86400000;
-      days.push(state.userPosts.filter(function(p){return p.createdAt>ds-86400000&&p.createdAt<=ds;}).length);
-    }
-    var mx = Math.max(1, Math.max.apply(null,days));
-    graphEl.innerHTML = days.map(function(c,i) {
-      var h=Math.max(4,(c/mx)*40); var di=new Date(Date.now()-(6-i)*86400000).getDay();
-      return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;"><div style="width:100%;height:'+h+'px;background:var(--accent);border-radius:4px;opacity:'+(c>0?'1':'0.2')+';"></div><div style="font-size:8px;color:var(--muted);">'+dayNames[di]+'</div></div>';
-    }).join("");
-  }
-
-  // Passions
   // Events
   var eventsEl = document.getElementById("profileEvents");
   if (eventsEl) {
