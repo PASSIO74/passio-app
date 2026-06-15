@@ -1037,6 +1037,15 @@ async function supaPublishPostWithRetry(post, maxRetries = 2) {
         ]);
       }
 
+      // Réécrire l'URL Storage dans le post local : le base64 est remplacé par
+      // l'URL → l'affichage et la persistance (saveState) n'utilisent plus le
+      // base64 (évite le quota localStorage et garde l'image après reload).
+      if (mediaUrl && typeof mediaUrl === "string" && mediaUrl.indexOf("http") === 0) {
+        if (post.type === "photo") post.image = mediaUrl;
+        else if (post.type === "video") post.video = mediaUrl;
+        else if (post.type === "audio") post.audio = mediaUrl;
+      }
+
       // STEP 2: Créer le post (avec timeout 3s)
       console.log("📝 [PUBLISH] Création post...");
       const postData = {
@@ -1109,8 +1118,12 @@ async function supaUploadMedia(postId, folder, base64Data, mediaType) {
 
     console.log(`📊 [UPLOAD] Blob créé: ${blob.size} bytes`);
 
-    // Générer nom de fichier
-    const ext = mediaType === "video" ? ".mp4" : mediaType === "audio" ? ".mp3" : ".jpg";
+    // Générer nom de fichier (extension cohérente avec le vrai type pour les images : webp/jpeg)
+    let ext = ".jpg";
+    if (mediaType === "video") ext = ".mp4";
+    else if (mediaType === "audio") ext = ".mp3";
+    else if (base64Data.indexOf("data:image/webp") === 0) ext = ".webp";
+    else if (base64Data.indexOf("data:image/png") === 0) ext = ".png";
     const fileName = `${postId}${ext}`;
     const filePath = `${folder}/${MY_UID}/${fileName}`;
 

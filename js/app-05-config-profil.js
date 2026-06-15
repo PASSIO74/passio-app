@@ -1140,7 +1140,7 @@ function reelMediaHTML(post) {
   if (!src) {
     return `<div class="reel-media" style="background: linear-gradient(135deg, ${COLORS_PASSION_BG[post.passion] || "#4c1d95"}, #7c3aed);"></div>`;
   }
-  return `<img class="reel-media" src="${src}" alt="" loading="lazy" onerror="this.onerror=null;this.src='https://picsum.photos/seed/' + Math.random() + '/720/1280';"/>`;
+  return `<img class="reel-media" src="${typeof passioThumb === 'function' ? passioThumb(src, 720) : src}" alt="" loading="lazy" onerror="this.onerror=null;this.src='https://picsum.photos/seed/' + Math.random() + '/720/1280';"/>`;
 }
 
 function resolveCoverUrl(cover) {

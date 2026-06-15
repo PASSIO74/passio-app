@@ -978,7 +978,10 @@ window.passioCompressImage = function (file, maxDim, quality) {
           var canvas = document.createElement("canvas");
           canvas.width = w; canvas.height = h;
           canvas.getContext("2d").drawImage(img, 0, 0, w, h);
-          resolve(canvas.toDataURL("image/jpeg", quality));
+          // WebP si supporté (~30 % plus léger), sinon JPEG.
+          var out = canvas.toDataURL("image/webp", quality);
+          if (out.indexOf("data:image/webp") !== 0) out = canvas.toDataURL("image/jpeg", quality);
+          resolve(out);
         } catch (e) { reject(e); }
       };
       img.src = reader.result;
@@ -1030,12 +1033,13 @@ $("#videoInput").addEventListener("change", (e) => {
     return;
   }
 
-  // ✅ LIMITE VIDÉO: 500 KB max (base64 serait 667 KB - réaliste pour Supabase)
-  const maxSize = 500 * 1024;  // 500 KB = ~667 KB base64
+  // Limite vidéo généreuse : le média n'est plus persisté en base64 (Storage only),
+  // donc plus besoin du garde 500 Ko. On garde un plafond mémoire raisonnable.
+  const maxSize = 30 * 1024 * 1024; // 30 Mo
   if (f.size > maxSize) {
     const sizeMB = Math.round(f.size / 1024 / 1024);
-    toast(`Vidéo > 1 Mo (${sizeMB} Mo). Compresse-la avec: ffmpeg ou Claquette!`);
-    console.warn("❌ Vidéo trop grande, besoin de compression");
+    toast(`Vidéo trop lourde (${sizeMB} Mo, max 30 Mo).`);
+    console.warn("❌ Vidéo trop grande");
     return;
   }
 
@@ -1324,7 +1328,12 @@ async function publishPost() {
       }, 3000)
     );
 
-    const syncPromise = supaPublishPostWithRetry(post);
+    // Quand l'upload se termine (même après le timeout d'affichage), l'URL Storage
+    // a remplacé le base64 dans `post` → on persiste et on re-rend pour fixer l'image.
+    const syncPromise = supaPublishPostWithRetry(post).then((ok) => {
+      if (ok) { try { saveState(); renderFeed(); } catch (e) {} }
+      return ok;
+    });
     syncSuccess = await Promise.race([syncPromise, timeoutPromise]);
 
     if (syncSuccess) {

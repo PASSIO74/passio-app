@@ -80,10 +80,35 @@ function saveState() {
     // Don't persist seed nor heavy media to save quota
     const lean = { ...state };
     lean.seed = null; // rebuilt at load
+    // ⚠️ Ne JAMAIS persister de base64 média dans localStorage (quota ~5 Mo) :
+    // c'était la vraie cause des limites de taille (500 Ko) et des « Save failed ».
+    // Les médias vivent dans Supabase Storage ; on ne garde localement que les URLs.
+    // Le base64 reste en mémoire (affichage optimistic) jusqu'à ce que l'URL
+    // Storage le remplace après upload (cf. supaPublishPostWithRetry).
+    const stripData = (v) => (typeof v === "string" && v.indexOf("data:") === 0) ? null : v;
+    if (Array.isArray(lean.userPosts)) {
+      lean.userPosts = lean.userPosts.map((p) => {
+        const c = { ...p, image: stripData(p.image), video: stripData(p.video), audio: stripData(p.audio), cover: stripData(p.cover) };
+        if (Array.isArray(p.steps)) {
+          c.steps = p.steps.map((s) => ({ ...s, photo: stripData(s.photo), video: stripData(s.video), audio: stripData(s.audio) }));
+        }
+        return c;
+      });
+    }
     localStorage.setItem(STATE_KEY, JSON.stringify(lean));
   } catch (e) {
     console.warn("Save failed:", e);
   }
+}
+
+// Miniature CDN : transforme une URL Supabase Storage publique en version
+// redimensionnée (transformation d'image Supabase) pour le fil — beaucoup plus
+// légère. Laisse les autres URLs (base64, externes) intactes. Pleine résolution
+// conservée pour le visualiseur plein écran.
+function passioThumb(url, width) {
+  if (!url || typeof url !== "string") return url;
+  if (url.indexOf("/storage/v1/object/public/") === -1) return url;
+  return url.replace("/storage/v1/object/public/", "/storage/v1/render/image/public/") + "?width=" + (width || 600) + "&quality=75";
 }
 
 // ======== UTILS ========
@@ -1555,8 +1580,9 @@ function renderPostHTML(p) {
       // ✅ Ajouter fallback si l'image échoue à charger
       media = `<div class="post-media">
         <img
-          src="${p.image}"
+          src="${passioThumb(p.image, 700)}"
           alt="post"
+          loading="lazy" decoding="async"
           onerror="this.onerror=null;this.style.background='#eee';this.style.minHeight='200px';"
           style="width:100%;display:block;background:#f5f5f5;"
         />
@@ -1707,7 +1733,7 @@ async function openPost(id) {
   let media = "";
   if (post.type === "photo" || (post.cover && post.type !== "vlog" && post.type !== "audio")) {
     media = post.image
-      ? `<div class="post-media"><img loading="lazy" decoding="async" src="${post.image}" alt="post" style="width:100%;border-radius:14px;"/></div>`
+      ? `<div class="post-media"><img loading="lazy" decoding="async" src="${passioThumb(post.image, 700)}" alt="post" style="width:100%;border-radius:14px;"/></div>`
       : renderPostCover(post, passion);
   }
   if (post.type === "audio") {
