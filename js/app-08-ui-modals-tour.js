@@ -1021,19 +1021,19 @@ async function supaPublishPostWithRetry(post, maxRetries = 2) {
         console.log("📸 [PUBLISH] Upload photo...");
         mediaUrl = await Promise.race([
           supaUploadMedia(post.id, "photos", post.image, "image"),
-          new Promise((_, reject) => setTimeout(() => reject(new Error("Upload timeout")), 2000))
+          new Promise((_, reject) => setTimeout(() => reject(new Error("Upload timeout")), 12000))
         ]);
       } else if (post.type === "video" && post.video) {
         console.log("📹 [PUBLISH] Upload vidéo...");
         mediaUrl = await Promise.race([
           supaUploadMedia(post.id, "videos", post.video, "video"),
-          new Promise((_, reject) => setTimeout(() => reject(new Error("Upload timeout")), 2000))
+          new Promise((_, reject) => setTimeout(() => reject(new Error("Upload timeout")), 20000))
         ]);
       } else if (post.type === "audio" && post.audio) {
         console.log("🎙️ [PUBLISH] Upload audio...");
         mediaUrl = await Promise.race([
           supaUploadMedia(post.id, "audios", post.audio, "audio"),
-          new Promise((_, reject) => setTimeout(() => reject(new Error("Upload timeout")), 2000))
+          new Promise((_, reject) => setTimeout(() => reject(new Error("Upload timeout")), 15000))
         ]);
       }
 

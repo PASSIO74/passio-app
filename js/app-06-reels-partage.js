@@ -956,31 +956,58 @@ document.addEventListener("click", (e) => {
   }
 });
 
-$("#photoInput").addEventListener("change", (e) => {
+// Compression d'image côté client : redimensionne à maxDim px max et ré-encode
+// en JPEG. Permet de partager N'IMPORTE QUELLE photo (plus de limite 500 Ko) en
+// la ramenant à un poids raisonnable (~150-400 Ko) avant l'upload Storage.
+window.passioCompressImage = function (file, maxDim, quality) {
+  maxDim = maxDim || 1600; quality = quality || 0.82;
+  return new Promise(function (resolve, reject) {
+    if (!file || !file.type || file.type.indexOf("image/") !== 0) { reject(new Error("not-image")); return; }
+    var reader = new FileReader();
+    reader.onerror = function () { reject(new Error("read-fail")); };
+    reader.onload = function () {
+      var img = new Image();
+      img.onerror = function () { reject(new Error("decode-fail")); };
+      img.onload = function () {
+        var w = img.naturalWidth, h = img.naturalHeight;
+        if (w > maxDim || h > maxDim) {
+          if (w >= h) { h = Math.round(h * maxDim / w); w = maxDim; }
+          else { w = Math.round(w * maxDim / h); h = maxDim; }
+        }
+        try {
+          var canvas = document.createElement("canvas");
+          canvas.width = w; canvas.height = h;
+          canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL("image/jpeg", quality));
+        } catch (e) { reject(e); }
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+};
+
+$("#photoInput").addEventListener("change", async (e) => {
   const f = e.target.files[0];
   if (!f) return;
-  // ✅ LIMITE PHOTOS: 500 KB max (base64 serait 667 KB)
-  if (f.size > 500 * 1024) {
-    toast("Photo > 500 KB, compresse-la!");
-    return;
-  }
-  const reader = new FileReader();
-  reader.onload = () => {
-    photoDataUrl = reader.result;
-    // 🎯 Changer automatiquement le type à "photo"
+  if (!f.type || f.type.indexOf("image/") !== 0) { toast("Choisis une image."); return; }
+  // Garde-fou mémoire uniquement (très large) — la photo est ensuite compressée.
+  if (f.size > 40 * 1024 * 1024) { toast("Image trop lourde (>40 Mo)."); return; }
+  try {
+    photoDataUrl = await passioCompressImage(f); // ✅ compression auto, plus de limite 500 Ko
     studioType = "photo";
-    // Mettre à jour l'affichage des boutons studio-type
-    $$("#studioTypeTabs .studio-type").forEach(e => e.classList.remove("active"));
+    $$("#studioTypeTabs .studio-type").forEach(el => el.classList.remove("active"));
     document.querySelector('[data-type="photo"]')?.classList.add("active");
-    // Afficher la section photo et masquer les autres
     $("#studioPhoto").style.display = "block";
     $("#studioVideo").style.display = "none";
     $("#studioAudio").style.display = "none";
     const vlogEl = $("#studioVlog"); if (vlogEl) vlogEl.style.display = "none";
     const cdvliveEl = $("#studiocdvlive"); if (cdvliveEl) cdvliveEl.style.display = "none";
     renderPhotoPreview();
-  };
-  reader.readAsDataURL(f);
+  } catch (err) {
+    console.warn("compress photo:", err);
+    toast("Impossible de lire cette image.");
+  }
 });
 
 function renderPhotoPreview() {

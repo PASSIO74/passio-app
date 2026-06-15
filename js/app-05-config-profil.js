@@ -1172,7 +1172,7 @@ function renderReelHTML(post, idx) {
       <div class="reel-overlay"></div>
       <span class="reel-tag-mood">${passion.emoji} ${escapeHtml(passion.label)} · ${moodLabel}</span>
       <div class="reel-info">
-        <div class="reel-author" onclick="_diag('🎯 Click on reel-author for userId: ' + '${post.userId}'); openUserProfile('${escapeHtml(post.userId)}'); return false;" style="cursor:pointer;">
+        <div class="reel-author" onclick="_openReelAuthor('${escapeHtml(post.authorId || post.userId || '')}'); return false;" style="cursor:pointer;">
           <div class="reel-avatar" style="background:${author.color};">${author.emoji}</div>
           <div class="reel-author-meta">
             <div class="reel-author-name">${escapeHtml(author.name)}</div>
@@ -1278,6 +1278,14 @@ function closeReels() {
 
 function resumeReels() {
   document.getElementById("reelsPause").classList.remove("show");
+}
+
+// Ouvre le profil de l'auteur d'une bobine : ferme d'abord l'overlay reels
+// (sinon le profil s'ouvre sous l'overlay et reste invisible), puis openUserProfile.
+function _openReelAuthor(uid) {
+  if (!uid) { toast("Profil indisponible"); return; }
+  try { closeReels(); } catch (e) {}
+  setTimeout(function () { try { openUserProfile(uid, "reel"); } catch (e) { console.warn("_openReelAuthor:", e); } }, 80);
 }
 
 function updateReelsCounter() {

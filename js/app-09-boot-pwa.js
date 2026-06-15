@@ -700,13 +700,35 @@ function triggerAttach(type) {
   }
 }
 
+// Convertit un data URL en File (pour ré-injecter une image compressée).
+function _passioDataUrlToFile(durl, name) {
+  var parts = durl.split(",");
+  var bstr = atob(parts[1]);
+  var u8 = new Uint8Array(bstr.length);
+  for (var i = 0; i < bstr.length; i++) u8[i] = bstr.charCodeAt(i);
+  var base = (name || "photo").replace(/\.[^.]+$/, "");
+  return new File([u8], base + ".jpg", { type: "image/jpeg" });
+}
+
 function handleAttachFile(input, kind) {
   var file = input.files && input.files[0];
   if (!file) {
     _diag("handleAttachFile: Aucun fichier sélectionné");
     return;
   }
+  // Images : compresser AVANT envoi (toute taille acceptée → ~150-400 Ko),
+  // puis traiter le fichier compressé. Évite les uploads énormes et les échecs.
+  if (kind === "media" && file.type && file.type.indexOf("image/") === 0 && typeof passioCompressImage === "function") {
+    if (file.size > 40 * 1024 * 1024) { input.value = ""; return toast("Image trop lourde (>40 Mo)."); }
+    passioCompressImage(file).then(function (durl) {
+      _processAttach(input, kind, _passioDataUrlToFile(durl, file.name));
+    }).catch(function () { input.value = ""; toast("Impossible de lire cette image."); });
+    return;
+  }
+  _processAttach(input, kind, file);
+}
 
+function _processAttach(input, kind, file) {
   _diag("handleAttachFile: Fichier sélectionné - " + file.name + " (" + file.type + ")");
 
   var fp = document.getElementById("conv-fullpage");
