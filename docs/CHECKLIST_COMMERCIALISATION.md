@@ -62,9 +62,9 @@ Statut par fonctionnalité, onglet et contrôle. Détail des preuves :
 - [x] Monitoring `client_errors` câblé
 
 ## Avant le grand public (décisions humaines)
-- [ ] Coller la clé API GIF (`PASSIO_GIF_API`, `js/emoji-misc.js`)
-- [ ] Lighthouse mobile formel
-- [ ] Fixtures de test média (photo/vidéo/carnet + erreur upload)
+- [x] Clé API GIF (Giphy) activée dans `PASSIO_GIF_API` — recherche en ligne live
+- [x] Fixtures de test média (photo/vidéo/carnet + erreur upload) — tests verts
+- [ ] Lighthouse mobile formel (poids déjà prouvé : 201 Ko brotli)
 - [ ] (option) domaine perso, comptes admin, plugin frontend-design
 
 Légende : [x] fait & prouvé · [~] partiel · [ ] à faire (humain)

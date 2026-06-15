@@ -94,14 +94,11 @@ artefact de charge CI).
 
 ## Décisions humaines requises (hors code)
 
-1. **Clé API GIF** (Tenor ou Giphy) — l'intégration est prête (fallback liste locale
-   sans clé). Coller la clé dans `PASSIO_GIF_API` en tête de `js/emoji-misc.js`.
-   Reco : Tenor (gratuit, quota Google Cloud généreux).
-2. **Lighthouse mobile formel** — preuve de poids OK (201 Ko brotli) ; lancer un
+1. ~~**Clé API GIF**~~ — FAIT le 2026-06-12 : clé Web Giphy activée dans
+   `PASSIO_GIF_API` (`js/emoji-misc.js`), recherche en ligne vérifiée en preview.
+2. ~~**Tests de publication média**~~ — FAIT (m6) : photo/vidéo/carnet + rejet upload testés.
+3. **Lighthouse mobile formel** — preuve de poids OK (201 Ko brotli) ; lancer un
    Lighthouse réel pour le score chiffré ≥ 85 (étape navigateur, non automatisée ici).
-3. **Tests de publication média** (photo/vidéo/carnet) avec fixtures — le parcours
-   texte est prouvé ; ajouter des fixtures < 500 Ko pour couvrir photo/vidéo + cas
-   d'erreur upload (toast, pas de crash).
 4. **Domaine + comptes admin + plugin `frontend-design`** (optionnel) — confort.
 
 ## Verdict
