@@ -20,6 +20,10 @@ cassent à 50 000. **Ne pas tout déployer d'un coup** : valider chaque étape.
 - RLS par propriétaire sur toutes les tables ; suppression de compte + purge Storage.
 - **Index complémentaires** (`migration_scale_v3.sql`, ce lot) : follows(following_id),
   conv_messages(from_id), conv_messages(conv_id, created_at).
+- **Feed serveur paginé par curseur** : `supaLoadPosts(offset)` charge par lots de 60
+  (`.range`), trié `created_at DESC`, likes + commentaires groupés (pas de N+1),
+  colonnes explicites (zéro base64). `loadMoreFeedPosts()` + `_feedServerMayHaveMore`
+  recharge à la demande. ⇒ **P1.4 ci-dessous est DÉJÀ FAIT.**
 
 ---
 
@@ -36,22 +40,32 @@ et confidentialité dégradée (le message transite chez des non-membres avant f
 qu'une égalité mono-colonne (`conv_id=eq.X`), pas « conv_id ∈ mes convs ». La
 vraie correction est **Realtime Authorization (RLS)** côté serveur.
 
+**SQL prêt** : `migrations/migration_realtime_authorization.sql` (Broadcast-from-
+Database : trigger sur `conv_messages` → topic privé `conv:<id>` + RLS sur
+`realtime.messages` réservant l'écoute aux membres). Non destructif : tant que le
+client n'est pas basculé, il diffuse **en plus** de l'ancien canal.
+
 **Procédure (staged)** :
-1. Dashboard → Database → Replication : confirmer que `conv_messages` est dans la
-   publication `supabase_realtime` et que la diffusion respecte la RLS (la RLS
-   SELECT « membre de la conv » existe déjà).
-2. Tester avec **2 comptes réels** (cf. `tests/e2e/multi-comptes.spec.js`,
-   `PASSIO_E2E_MULTI=1 npm test`) AVANT toute modif client : un compte C ne
-   doit plus recevoir les INSERT d'une conv A↔B.
-3. Si la diffusion ne respecte pas encore la RLS, passer le canal en privé :
+1. Appliquer `migration_realtime_authorization.sql` au Dashboard (SQL Editor).
+2. Dashboard → Database → Realtime : activer **Realtime Authorization**.
+3. Tester avec **2 comptes réels** (`PASSIO_E2E_MULTI=1 npm test`) que les
+   broadcasts privés arrivent bien aux membres.
+4. **Ensuite seulement**, basculer le client : s'abonner par conversation au
+   topic privé au lieu du canal global. Diff client (app-04, à l'ouverture
+   d'une conv, et app-08 pour les convs en fond) :
    ```js
-   // app-08, remplacer supa.channel("realtime:my_messages") par :
-   supa.channel("conv:" + MY_UID, { config: { private: true } })
+   // Remplacer le postgres_changes global par un canal privé par conversation :
+   supa.channel("conv:" + convId, { config: { private: true } })
+     .on("broadcast", { event: "INSERT" }, ({ payload }) => {
+       const r = payload.record;          // la ligne conv_messages diffusée
+       if (!r || r.from_id === MY_UID) return;
+       // …même traitement qu'aujourd'hui : applyMsgContentData + push + render…
+     })
+     .subscribe();
    ```
-   et ajouter une policy sur `realtime.messages` autorisant l'écoute aux membres.
-4. **Garde-fou** : ne livrer le diff client qu'une fois (1)–(2) verts, sinon
-   plus aucun message n'est délivré. Le filtrage applicatif actuel reste un
-   filet de sécurité fonctionnel correct en attendant.
+5. Supprimer le canal global `realtime:my_messages` une fois (3)–(4) verts, et
+   retirer le trigger « en plus ». **Garde-fou** : ne jamais retirer l'ancien
+   canal avant que le nouveau soit validé, sinon plus aucun message livré.
 
 **Test de régression** : envoi texte + vocal + GIF dans les 2 sens, réception
 ≤ ~1 s, et un 3ᵉ compte ne reçoit rien.
@@ -78,11 +92,12 @@ du gate. Décision produit + intégration onboarding.
 
 ## 🟠 P1 — Important pendant la montée en charge
 
-### 4. Feed serveur paginé 🤖
-Le feed charge les posts puis filtre les « following » en JS
-(`app-02 renderFeed`, `allPosts.filter`). À l'échelle : requête serveur paginée
-par curseur — `posts` triés `created_at DESC`, `.lt('created_at', cursor).limit(N)`,
-filtre `author_id IN (following)` côté SQL. Index déjà présents.
+### 4. Feed serveur paginé ✅ DÉJÀ FAIT
+`supaLoadPosts(offset)` (app-08) charge par lots de 60 via `.range`, trié
+`created_at DESC`, likes + commentaires groupés (pas de N+1), colonnes explicites.
+`loadMoreFeedPosts()` recharge à la demande. Reste éventuel : filtre `author_id IN
+(following)` côté SQL plutôt qu'en JS quand le nombre de suivis devient grand —
+optimisation mineure, pas un bloquant.
 
 ### 5. Connection pooling 🧑
 Dashboard → Database → Connection pooling : activer **PgBouncer (mode transaction)**
@@ -108,9 +123,11 @@ La clé Giphy est partagée par tous les clients (quota commun) et le cache 10 m
 est par-onglet. Edge Function `gif-search` (cache KV/edge), client appelle la
 fonction au lieu de Giphy en direct. Bénéfice marginal en beta, utile à l'échelle.
 
-### 9. Monitoring & cleanup 🧑
-- Alerting sur `client_errors` (la table existe, l'ingestion aussi) : vue
-  d'agrégation + notification au-delà d'un seuil.
+### 9. Monitoring & cleanup 🤖+🧑
+- **Vues d'agrégation livrées** : `migration_monitoring_view.sql`
+  (`client_errors_top_24h`, `client_errors_par_heure` + index). À appliquer au
+  dashboard, puis brancher une scheduled Edge Function pour l'alerting au-delà
+  d'un seuil (Supabase n'a pas d'alerting natif sur vue).
 - Lifecycle Storage : job de nettoyage des médias orphelins (posts/messages supprimés).
 
 ---
