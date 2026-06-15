@@ -65,6 +65,19 @@ Deno.serve(async (req) => {
     } catch (_e) { /* best-effort : on ne bloque pas la suppression du compte */ }
   }
 
+  // 3bis. Purge des médias Storage de l'utilisateur (best-effort) — bucket
+  // "content", fichiers stockés sous "<photos|videos|audios>/<uid>/...".
+  // Évite les fichiers orphelins (coût de stockage + RGPD).
+  for (const folder of ["photos", "videos", "audios"]) {
+    try {
+      const prefix = `${folder}/${uid}`;
+      const { data: files } = await admin.storage.from("content").list(prefix, { limit: 1000 });
+      if (files && files.length) {
+        await admin.storage.from("content").remove(files.map((f) => `${prefix}/${f.name}`));
+      }
+    } catch (_e) { /* best-effort */ }
+  }
+
   // 4. Suppression du compte auth (e-mail compris) — l'objet de cette fonction.
   const { error: delErr } = await admin.auth.admin.deleteUser(uid);
   if (delErr) {
