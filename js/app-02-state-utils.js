@@ -1812,6 +1812,9 @@ async function openPost(id) {
           <div class="post-author-name">${escapeHtml(author.name || "Utilisateur")}</div>
           <div class="post-author-meta">${passion.emoji} ${passion.label} · ${fmtTime(post.createdAt)}</div>
         </div>
+        ${(state.userPosts || []).some(function(up){ return up.id === id; }) ? `<button class="post-delete-btn" onclick="event.stopPropagation();confirmDeletePost('${id}')" aria-label="Supprimer ce post" title="Supprimer">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7 H20"/><path d="M9 7 V4 H15 V7"/><path d="M6 7 L7 20 H17 L18 7"/><path d="M10 11 V17"/><path d="M14 11 V17"/></svg>
+        </button>` : ""}
         <span class="post-mood-tag">${moodMap[post.mood] || ""}</span>
       </div>
       <div class="post-body" style="white-space:pre-wrap;">${escapeHtml(post.text || "")}</div>

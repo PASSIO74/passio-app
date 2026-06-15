@@ -106,6 +106,8 @@ function deletePost(postId) {
   // Retirer aussi de seed.posts si présent
   state.seed.posts = (state.seed.posts || []).filter(p => p.id !== postId);
   closeModal();
+  // Fermer la page de détail si elle affichait ce post (sinon il reste à l'écran)
+  if (typeof closePost === "function") closePost();
   // Re-render selon l'écran courant
   renderFeed();
   if (typeof renderProfilesScreen === "function") renderProfilesScreen();

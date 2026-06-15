@@ -394,11 +394,14 @@ function showGifPickerForMessage() {
     position: "bottom:120px;right:20px;",
     keepOpenFor: "btnGif",
     onPick: function(gifUrl) {
-      var input = document.getElementById("convFpInput");
-      if (input) {
-        input.value = gifUrl;
-        input.focus();
-        autoResizeTextarea(input);
+      // FIX 2026-06-15 : envoyer le GIF comme média (m.gif) via _sendGif, et NON
+      // coller l'URL dans le champ texte (sinon il partait en texte brut, l'URL
+      // s'affichait au lieu du GIF animé).
+      if (window._sendGif) {
+        window._sendGif(gifUrl);
+      } else {
+        var input = document.getElementById("convFpInput");
+        if (input) { input.value = gifUrl; input.focus(); autoResizeTextarea(input); }
       }
     }
   });

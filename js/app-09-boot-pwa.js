@@ -627,32 +627,34 @@ function _sendGif(gifUrl) {
     var contentData = {type: "gif", url: gifUrl, text: "🎬 GIF"};
     var contentJson = JSON.stringify(contentData);
 
-    // Essayer INSERT SANS from_id d'abord (pour contourner la contrainte)
+    // AVEC from_id d'abord : la RLS v2 rejette toujours l'insert sans from_id
+    // (WITH CHECK from_id = auth.uid()) — fallback sans from_id par prudence.
+    // (Aligné sur sendMessageToSupabase / sendMessageFp le 2026-06-15.)
     supa.from("conv_messages").insert({
       id: msgId,
       conv_id: convId,
+      from_id: MY_UID,
       content: contentJson,
       created_at: new Date().toISOString()
     }).then(function(res) {
       if (res.error) {
-        _diag("_sendGif: Erreur sans from_id - " + res.error.message);
-        // Fallback: essayer AVEC from_id
-        _diag("_sendGif: Fallback - essai avec from_id...");
-        if (MY_UID) {
-          supa.from("conv_messages").insert({
-            id: msgId,
-            conv_id: convId,
-            from_id: MY_UID,
-            content: contentJson,
-            created_at: new Date().toISOString()
-          }).then(function(res2) {
-            if (!res2.error) {
-              _diag("_sendGif: ✅ Supabase OK (avec from_id)");
-            }
-          }).catch(function() {});
-        }
+        _diag("_sendGif: Erreur avec from_id - " + res.error.message);
+        // Fallback: essayer SANS from_id
+        _diag("_sendGif: Fallback - essai sans from_id...");
+        supa.from("conv_messages").insert({
+          id: msgId,
+          conv_id: convId,
+          content: contentJson,
+          created_at: new Date().toISOString()
+        }).then(function(res2) {
+          if (!res2.error) {
+            _diag("_sendGif: ✅ Supabase OK (fallback sans from_id)");
+          } else {
+            _diag("_sendGif: ❌ Échec définitif - " + res2.error.message);
+          }
+        }).catch(function() {});
       } else {
-        _diag("_sendGif: ✅ Supabase OK (sans from_id)");
+        _diag("_sendGif: ✅ Supabase OK (avec from_id)");
       }
     }).catch(function(err) {
       _diag("_sendGif: Catch - " + err.message);
