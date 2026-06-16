@@ -1711,19 +1711,23 @@ async function supaInsertNotif(toUserId, kind, refId, content) {
 // migration_realtime_authorization.sql N'EST PAS appliquée + Realtime
 // Authorization activé au dashboard. Passer à true UNIQUEMENT après ça + test
 // 2 comptes (voir docs/SCALE_RUNBOOK.md P0.1). En v1 ce code est inerte.
-// Realtime v2 (canaux privés par conversation) ACTIVÉ PAR DÉFAUT — validé en
-// prod le 2026-06-15 (migration_realtime_authorization.sql appliquée + RLS
-// realtime.messages active + test 2 comptes vert dans les 2 sens).
-// Soupape de secours par device : localStorage.passio_realtime_v2 = "0" →
-// revient au canal global v1 (le code v1 reste présent en fallback).
+// Realtime v2 (canaux privés par conversation) — OPT-IN (défaut OFF).
+// ⚠️ Repassé OFF par défaut le 2026-06-15 : le test 2 comptes automatisé a
+// révélé une COURSE pour les conversations créées PENDANT la session — B
+// s'abonne au canal privé via le handler conv_members APRÈS que A ait pu
+// diffuser le 1er message (broadcasts non rejoués) → 1er message perdu. v1
+// (canal global) n'a pas ce problème. v2 reste activable par device pour les
+// tests : localStorage.passio_realtime_v2 = "1". Correctif robuste prévu =
+// topic privé PAR UTILISATEUR (`user:<uid>`, abonné une fois au boot, le
+// trigger diffuse à chaque membre) → plus de course. Voir docs/SCALE_RUNBOOK.
 window.PASSIO_REALTIME_V2 = (function(){
   if (typeof window.PASSIO_REALTIME_V2 === "boolean") return window.PASSIO_REALTIME_V2;
   try {
     var v = localStorage.getItem("passio_realtime_v2");
-    if (v === "0") return false;
     if (v === "1") return true;
+    if (v === "0") return false;
   } catch(e){}
-  return true; // défaut : v2 pour tout le monde
+  return false; // défaut : v1 (fiable) pour tout le monde
 })();
 
 // Traitement d'un message entrant (factorisé : utilisé par le canal global v1
@@ -1864,6 +1868,25 @@ function supaSubscribe() {
         conversationsState = deduplicateConversations([newConv, ...getConversations()]);
         saveConversations();
         if (window.PASSIO_REALTIME_V2 && window._subscribePrivateConv) window._subscribePrivateConv(convId);
+        // Backfill (v2) : en s'abonnant au canal privé d'une conv créée PENDANT la
+        // session, on peut manquer les messages déjà diffusés avant que l'abonnement
+        // soit actif (broadcasts non rejoués). On recharge donc l'historique depuis
+        // la base pour combler la course. (En v1, le canal global les attrapait.)
+        if (window.PASSIO_REALTIME_V2 && typeof supaLoadMessages === "function") {
+          try {
+            const msgs = await supaLoadMessages(convId);
+            if (msgs && msgs.length) {
+              const cc = getConversations().find(x => x.id === convId);
+              if (cc) {
+                cc.messages = msgs;
+                cc.lastAt = (msgs[msgs.length - 1] && msgs[msgs.length - 1].at) || cc.lastAt;
+                if (window._openedConvId !== convId) cc.unread = msgs.filter(m => m.from !== "me").length;
+                conversationsState = deduplicateConversations(getConversations());
+                saveConversations();
+              }
+            }
+          } catch(e) {}
+        }
         try { renderMessages(); } catch(e) {}
       } catch(e) {}
     })

@@ -131,9 +131,10 @@ test.describe("messagerie entre 2 comptes réels", () => {
   });
 });
 
-// Parcours réel : landing → Créer un compte → Continuer sans compte (auth
-// anonyme Supabase) → âge → prénom → 1 passion → Entrer sur PASSIO, puis
-// reload pour que boot() refasse supaInit + supaSubscribe avec la session.
+// Parcours réel : landing → Créer un compte → (auth anonyme Supabase par l'API,
+// le bouton « sans compte » ayant été retiré — compte obligatoire) → âge →
+// prénom → 1 passion → Entrer sur PASSIO, puis reload pour que boot() refasse
+// supaInit + supaSubscribe (realtime v2 par défaut) avec la session.
 async function signupAnonymous(page, name) {
   const step = (m) => console.log(`[signup ${name}] ${m}`);
   await page.addInitScript(([k, t]) => sessionStorage.setItem(k, t), [GATE_KEY, GATE_TOKEN]);
@@ -145,8 +146,18 @@ async function signupAnonymous(page, name) {
   step("landing affichée (boot terminé)");
   await page.getByRole("button", { name: "Créer un compte" }).first().click();
   step("clic Créer un compte");
-  await page.getByRole("button", { name: /Continuer sans compte/ }).click();
-  step("clic Continuer sans compte — attente MY_UID…");
+  // Compte obligatoire : le bouton « Continuer sans compte » a été retiré de l'UI.
+  // L'API signInAnonymously reste disponible — on crée la session par code puis on
+  // avance l'onboarding (comme le faisait onbSkipAuth : signin + onbNext()).
+  await page.waitForFunction(() => typeof supa !== "undefined" && !!supa && typeof onbNext === "function", null, { timeout: 20000 });
+  await page.evaluate(async () => {
+    try {
+      const { data } = await supa.auth.signInAnonymously();
+      if (data && data.session) { window.MY_UID = data.session.user.id; try { localStorage.setItem("passio_uid", window.MY_UID); } catch (e) {} }
+    } catch (e) {}
+    if (typeof onbNext === "function") onbNext();
+  });
+  step("auth anonyme (API) — attente MY_UID…");
   await page.waitForFunction(() => !!window.MY_UID, null, { timeout: 20000 });
   step("MY_UID obtenu");
   await page.locator("#birthYear").fill("1995");

@@ -29,16 +29,29 @@ cassent à 50 000. **Ne pas tout déployer d'un coup** : valider chaque étape.
 
 ## 🔴 P0 — Bloquants réels avant ouverture large
 
-### 1. Realtime : chaque client reçoit TOUS les messages ✅ DÉPLOYÉ (2026-06-15)
+### 1. Realtime : chaque client reçoit TOUS les messages 🟠 v2 EN OPT-IN (course à corriger)
 
-**Réglé.** `migration_realtime_authorization.sql` appliquée en prod (trigger +
-RLS `realtime.messages` active, vérifiée). Client v2 (`PASSIO_REALTIME_V2`)
-**activé par défaut** : chaque client s'abonne à un canal privé `conv:<id>` par
-conversation. Validé par test 2 comptes réels (texte/GIF/vocal dans les 2 sens).
-Soupape : `localStorage.passio_realtime_v2 = "0"` → fallback v1. Historique
-ci-dessous conservé pour mémoire.
+**Statut au 2026-06-15** : infra serveur prête (`migration_realtime_authorization
+.sql` appliquée : trigger `conv:<id>` + RLS `realtime.messages`). Client v2
+implémenté mais **repassé OPT-IN** (`localStorage.passio_realtime_v2 = "1"`) ;
+**défaut = v1** (canal global, fiable).
 
----
+**Pourquoi pas par défaut** : le test 2 comptes automatisé (`PASSIO_E2E_MULTI=1`)
+a révélé une **course** sur les convs créées PENDANT la session. En v2, B reçoit
+les messages d'une nouvelle conv en s'abonnant à `conv:<id>` via le handler
+`realtime:conv_members` — mais cet abonnement se fait APRÈS que A ait pu diffuser
+le 1er message (les broadcasts ne sont pas rejoués) → 1er message perdu. Le
+`_backfillConvMessages` atténue mais ne ferme pas la fenêtre. v1 (canal global)
+n'a pas ce problème car il reçoit tout.
+
+**Correctif robuste à faire** : topic privé **PAR UTILISATEUR** (`user:<uid>`),
+abonné UNE fois au boot (stable, pas de course) ; le trigger diffuse le message à
+`user:<id>` de **chaque membre** de la conv (boucle sur `conv_members`). RLS
+`realtime.messages` : `realtime.topic() = 'user:' || auth.uid()::text`. Scalable
+(chaque client ne reçoit que ses messages) ET sans course. Nécessite : nouvelle
+migration (trigger par membre) + client (s'abonner à `user:<MY_UID>` au boot) +
+re-test 2 comptes. Tant que ce n'est pas fait, **garder v1 par défaut**.
+
 <details><summary>Historique de la mise en œuvre (P0.1)</summary>
 
 **Symptôme à l'échelle** : `realtime:my_messages` (`app-08-ui-modals-tour.js:1685`)
