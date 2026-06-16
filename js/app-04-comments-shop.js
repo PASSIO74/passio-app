@@ -1798,6 +1798,9 @@ function _subscribeTyping(convId) {
 let _supaConvChannel = null;
 function _supaConvSpecificChannel(convId, displayName) {
   if (typeof supa === "undefined" || !supa) return;
+  // v3 : le topic privé par utilisateur (abonné une fois au boot) couvre déjà
+  // cette conv → rien à faire à l'ouverture.
+  if (window.PASSIO_REALTIME_V3) return;
   // v2 : la réception passe par le canal PRIVÉ de la conv (abonné au boot / à
   // la création). On s'assure juste qu'il existe — pas de postgres_changes.
   if (window.PASSIO_REALTIME_V2) {

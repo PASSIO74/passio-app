@@ -11,6 +11,11 @@
 const { test, expect } = require("@playwright/test");
 const { GATE_TOKEN, GATE_KEY } = require("./gate-helper");
 
+// Mode realtime à tester : PASSIO_E2E_RT = "v2" | "v3" (sinon v1 par défaut).
+// Permet de valider le realtime scalable de bout en bout :
+//   PASSIO_E2E_MULTI=1 PASSIO_E2E_RT=v3 npm test -- multi-comptes
+const RT_MODE = process.env.PASSIO_E2E_RT || "";
+
 test.describe("messagerie entre 2 comptes réels", () => {
   test.skip(!process.env.PASSIO_E2E_MULTI, "opt-in : PASSIO_E2E_MULTI=1 (écrit en base réelle)");
 
@@ -138,6 +143,10 @@ test.describe("messagerie entre 2 comptes réels", () => {
 async function signupAnonymous(page, name) {
   const step = (m) => console.log(`[signup ${name}] ${m}`);
   await page.addInitScript(([k, t]) => sessionStorage.setItem(k, t), [GATE_KEY, GATE_TOKEN]);
+  // Active le mode realtime demandé (v2/v3) AVANT le boot, pour tester le scalable.
+  if (RT_MODE === "v2" || RT_MODE === "v3") {
+    await page.addInitScript((mode) => { try { localStorage.setItem("passio_realtime_" + mode, "1"); } catch (e) {} }, RT_MODE);
+  }
   await page.goto("/index.html");
   // ⚠️ boot() est async et se termine par showLanding() : cliquer avant la fin du boot
   // déclenche une course (showLanding() ré-écrase l'onboarding en cours). On attend

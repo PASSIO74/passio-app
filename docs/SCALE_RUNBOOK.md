@@ -44,13 +44,24 @@ le 1er message (les broadcasts ne sont pas rejoués) → 1er message perdu. Le
 `_backfillConvMessages` atténue mais ne ferme pas la fenêtre. v1 (canal global)
 n'a pas ce problème car il reçoit tout.
 
-**Correctif robuste à faire** : topic privé **PAR UTILISATEUR** (`user:<uid>`),
-abonné UNE fois au boot (stable, pas de course) ; le trigger diffuse le message à
-`user:<id>` de **chaque membre** de la conv (boucle sur `conv_members`). RLS
-`realtime.messages` : `realtime.topic() = 'user:' || auth.uid()::text`. Scalable
-(chaque client ne reçoit que ses messages) ET sans course. Nécessite : nouvelle
-migration (trigger par membre) + client (s'abonner à `user:<MY_UID>` au boot) +
-re-test 2 comptes. Tant que ce n'est pas fait, **garder v1 par défaut**.
+**Correctif robuste v3 ✅ IMPLÉMENTÉ (opt-in, à valider)** : topic privé **PAR
+UTILISATEUR** (`user:<uid>`), abonné UNE fois au boot (stable, pas de course) ; le
+trigger diffuse le message au topic perso de **chaque membre** de la conv. Scalable
+(chaque client ne reçoit que ses messages) ET sans course.
+
+- SQL : `migrations/migration_realtime_user_topic.sql` (trigger par membre + RLS
+  `realtime.topic() = 'user:' || auth.uid()::text` ; supprime le trigger/policy v2).
+- Client : `_subscribeUserTopic()` (app-08), branché en priorité dans `supaSubscribe`
+  + appel idempotent au SIGNED_IN. `_supaConvSpecificChannel` inerte en v3.
+- Flag : `localStorage.passio_realtime_v3 = "1"` (défaut OFF → v1 fiable).
+
+**Pour activer (mise en charge)** :
+1. Appliquer `migration_realtime_user_topic.sql` au Dashboard (SQL Editor).
+2. Valider en E2E : `PASSIO_E2E_MULTI=1 PASSIO_E2E_RT=v3 npx playwright test multi-comptes`.
+3. Si vert : passer le défaut de `PASSIO_REALTIME_V3` à `true` (app-08) + déployer.
+4. Garder la soupape `passio_realtime_v2/v3 = "0"`/absent → v1.
+
+Tant que (1)–(2) ne sont pas verts, **garder v1 par défaut**.
 
 <details><summary>Historique de la mise en œuvre (P0.1)</summary>
 

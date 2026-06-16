@@ -795,7 +795,12 @@ async function boot() {
           // un verrou auth pendant l'émission de l'événement ; toute requête Supabase
           // lancée DANS le callback attend ce verrou → deadlock, et la promesse de
           // signInAnonymously()/signUp() ne résout jamais (onboarding figé sur l'auth).
-          setTimeout(() => { try { supaInit(); } catch(e) { console.warn("supaInit on auth change:", e); } }, 0);
+          setTimeout(() => {
+            try { supaInit(); } catch(e) { console.warn("supaInit on auth change:", e); }
+            // v3 : garantir l'abonnement au topic user même si supaSubscribe a déjà
+            // tourné avant que MY_UID soit posé (idempotent via _userTopicChan).
+            if (window.PASSIO_REALTIME_V3) { try { if (typeof _subscribeUserTopic === "function") _subscribeUserTopic(); } catch(e) {} }
+          }, 0);
         }
       }
     });
@@ -1730,6 +1735,18 @@ window.PASSIO_REALTIME_V2 = (function(){
   return false; // défaut : v1 (fiable) pour tout le monde
 })();
 
+// Realtime v3 (DESIGN DÉFINITIF, scalable + sans course) : un seul canal privé
+// PAR UTILISATEUR (`user:<MY_UID>`), abonné une fois au boot. Le trigger SQL
+// (migration_realtime_user_topic.sql) diffuse chaque message au topic perso de
+// CHAQUE membre. Pas de course (topic stable), et chaque client ne reçoit que
+// ses messages. OPT-IN tant que non validé : localStorage.passio_realtime_v3="1".
+// Quand v3 est ON, il a priorité sur v2/v1.
+window.PASSIO_REALTIME_V3 = (function(){
+  if (typeof window.PASSIO_REALTIME_V3 === "boolean") return window.PASSIO_REALTIME_V3;
+  try { if (localStorage.getItem("passio_realtime_v3") === "1") return true; } catch(e){}
+  return false;
+})();
+
 // Traitement d'un message entrant (factorisé : utilisé par le canal global v1
 // ET par les canaux privés v2). `r` = ligne conv_messages (payload.new ou
 // payload.record selon la source).
@@ -1813,6 +1830,20 @@ function _subscribePrivateConv(convId) {
   window._privateConvChans[convId] = ch;
 }
 window._subscribePrivateConv = _subscribePrivateConv;
+
+// v3 : s'abonne UNE fois au topic privé de l'utilisateur (`user:<MY_UID>`).
+// Reçoit tous ses messages (le trigger diffuse à chaque membre). Idempotent.
+function _subscribeUserTopic() {
+  if (typeof supa === "undefined" || !supa || !MY_UID || window._userTopicChan) return;
+  window._userTopicChan = supa.channel("user:" + MY_UID, { config: { private: true } })
+    .on("broadcast", { event: "INSERT" }, function(msg) {
+      var p = msg && msg.payload;
+      var r = p && (p.record || p.new || p);
+      if (r && r.conv_id) _handleIncomingConvMessage(r);
+    })
+    .subscribe();
+}
+window._subscribeUserTopic = _subscribeUserTopic;
 // ════════════════════════════════════════════════════════════════════════
 
 function supaSubscribe() {
@@ -1821,10 +1852,13 @@ function supaSubscribe() {
   if (window._supaSubscribed) return;
   window._supaSubscribed = true;
   // ── Réception des messages entrants ──
-  if (window.PASSIO_REALTIME_V2) {
-    // v2 (scalable) : un canal PRIVÉ par conversation (Broadcast-from-Database).
-    // Chaque client ne reçoit QUE les messages de SES convs. Nécessite
-    // migration_realtime_authorization.sql + Realtime Authorization activé.
+  if (window.PASSIO_REALTIME_V3) {
+    // v3 (design définitif) : UN canal privé par utilisateur, abonné une fois.
+    // Scalable + aucune course. Nécessite migration_realtime_user_topic.sql.
+    _subscribeUserTopic();
+  } else if (window.PASSIO_REALTIME_V2) {
+    // v2 (expérimental) : un canal PRIVÉ par conversation (course sur conv créée
+    // en session — voir SCALE_RUNBOOK). Nécessite migration_realtime_authorization.
     (getConversations() || []).forEach(function(c) { if (c && c.id) _subscribePrivateConv(c.id); });
   } else {
     // v1 (défaut) : canal global, filtrage d'appartenance côté client (_handleIncomingConvMessage).
