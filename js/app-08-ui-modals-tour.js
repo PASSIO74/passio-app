@@ -725,6 +725,11 @@ async function boot() {
 
   state = loadState();
 
+  // Restaure les conversations depuis le store DURABLE (IndexedDB) — toujours,
+  // quel que soit le chemin de boot. Async + auto-gardé (s'exécute une seule
+  // fois), fusionne sans perte avec localStorage/seed/Supabase.
+  try { hydrateConvsFromIDB(); } catch(e) {}
+
   // Vérifie si l'utilisateur est déjà connecté via Supabase Auth
   try {
     const { data: { session } } = await supa.auth.getSession();

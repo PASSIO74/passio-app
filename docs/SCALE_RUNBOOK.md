@@ -71,16 +71,24 @@ prod inchangée. Il ne reste qu'à appliquer le serveur puis flipper le flag.
    que v2 soit validé en prod.
 </details>
 
-### 2. État applicatif entièrement dans une clé localStorage 🤖 (gros chantier)
+### 2. État volumineux dans localStorage ✅ FAIT pour les conversations (2026-06-15)
 
-`passio_mvp_state_v1` (`STATE_KEY`, app-02) contient profils + posts + convos.
-Plafond ~5 Mo, sérialisation synchrone bloquante.
+Le plus gros volume (les **conversations + messages**, `passio_conversations_v1`,
+y compris vocaux base64) est désormais persisté dans **IndexedDB** (store durable,
+sans limite ~5 Mo) via `js/idb-store.js` :
+- write-through à chaque `saveConversations`/`saveConversationsNow` (app-04) ;
+- localStorage conservé en chemin sync rapide (toléré à échouer sur quota — plus
+  de perte, IDB a tout) ;
+- au boot, `hydrateConvsFromIDB()` (en tête de `boot()`) restaure depuis IDB et
+  **fusionne sans perte** (union par id + messages par id) avec localStorage/seed/
+  Supabase ; migration initiale automatique localStorage → IDB.
 
-**Plan** : migrer le stockage volumineux (conversations, posts) vers IndexedDB,
-garder en localStorage uniquement un index léger ; s'appuyer sur la pagination
-Supabase (déjà en place) comme source de vérité. Migration one-shot au boot
-(`if (!localStorage.passio_idb_migrated) { … }`). **Risque élevé** (touche tout
-l'état) → à faire isolément, avec sauvegarde/rollback et tests E2E complets.
+Vérifié : write-through + récupération (localStorage effacé → restauration complète
+depuis IDB, messages inclus).
+
+**Reste optionnel** (non bloquant) : `STATE_KEY` (profils, posts perso, notifs)
+reste en localStorage — beaucoup plus léger (le base64 y est déjà strippé par
+`saveState`). Le déplacer vers IDB aussi serait un confort, pas une urgence.
 
 ### 3. Gate d'accès purement client 🧑 (décision produit)
 

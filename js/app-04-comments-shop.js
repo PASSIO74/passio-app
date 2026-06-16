@@ -628,12 +628,54 @@ function getConversations() {
   return conversationsState;
 }
 
+// Fusionne deux listes de conversations par id, en unissant les messages par id
+// (aucune perte). Gère les groupes (que deduplicateConversations ne déduplique
+// pas par id). Utilisé pour fusionner IndexedDB + état courant à l'hydratation.
+function _unionConvsById(a, b) {
+  var byId = {};
+  [].concat(a || [], b || []).forEach(function(c) {
+    if (!c || !c.id) return;
+    var ex = byId[c.id];
+    if (!ex) { byId[c.id] = Object.assign({}, c, { messages: (c.messages || []).slice() }); return; }
+    var ids = {};
+    (ex.messages || []).forEach(function(m) { if (m && m.id) ids[m.id] = 1; });
+    (c.messages || []).forEach(function(m) { if (m && m.id && !ids[m.id]) { ex.messages.push(m); ids[m.id] = 1; } });
+    if ((c.lastAt || 0) > (ex.lastAt || 0)) { ex.lastAt = c.lastAt; }
+  });
+  return Object.keys(byId).map(function(k) {
+    byId[k].messages.sort(function(x, y) { return (x.at || 0) - (y.at || 0); });
+    return byId[k];
+  });
+}
+
+// Hydrate les conversations depuis IndexedDB (store durable) et fusionne avec
+// l'état courant (localStorage/seed) SANS PERTE. Appelé une fois au boot.
+// Première fois (IDB vide) : migre l'état localStorage existant vers IDB.
+var _idbConvHydrated = false;
+function hydrateConvsFromIDB() {
+  if (_idbConvHydrated || !window.idbConvLoad) return Promise.resolve();
+  _idbConvHydrated = true;
+  return window.idbConvLoad().then(function(idbConvs) {
+    if (!idbConvs || !idbConvs.length) {
+      // Migration initiale : pousser l'état actuel dans IDB.
+      if (window.idbConvSave) window.idbConvSave(getConversations());
+      return;
+    }
+    var current = conversationsState || [];
+    conversationsState = deduplicateConversations(_unionConvsById(idbConvs, current));
+    try { if (typeof renderMessages === "function") renderMessages(); } catch(e) {}
+  }).catch(function() {});
+}
+
 function saveConversations() {
   if (conversationsState) conversationsState = deduplicateConversations(conversationsState);
   // Debounce : évite des dizaines d'écritures localStorage en rafale
   clearTimeout(_saveConvTimer);
   _saveConvTimer = setTimeout(function() {
     try { localStorage.setItem("passio_conversations_v1", JSON.stringify(conversationsState)); } catch(e) {}
+    // Store DURABLE (IndexedDB, sans limite ~5 Mo) : si le localStorage ci-dessus
+    // échoue sur quota, les données restent sauvegardées ici sans perte.
+    if (window.idbConvSave) window.idbConvSave(conversationsState);
   }, 250);
 }
 
@@ -642,6 +684,7 @@ function saveConversationsNow() {
   clearTimeout(_saveConvTimer);
   if (conversationsState) conversationsState = deduplicateConversations(conversationsState);
   try { localStorage.setItem("passio_conversations_v1", JSON.stringify(conversationsState)); } catch(e) {}
+  if (window.idbConvSave) window.idbConvSave(conversationsState);
 }
 
 // Nettoyage forcé des doublons au démarrage
