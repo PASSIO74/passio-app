@@ -140,19 +140,26 @@ function renderMainProfile() {
   }
 
   usernameEl.textContent = g.username || state.user.name || "Mon profil";
-  bioEl.textContent = g.bio || "Aucune biographie — clique Éditer.";
+  // Bio : afficher seulement si renseignée (sinon rien, pas de placeholder)
+  bioEl.textContent = g.bio || "";
+  bioEl.style.display = g.bio ? "" : "none";
 
   var RS_ICONS = { instagram:"📸", facebook:"👤", tiktok:"🎵", youtube:"▶️", twitter:"𝕏", linkedin:"💼", snapchat:"👻", autre:"🔗" };
   var links = g.rsLinks || [];
+  // Réseaux sociaux : afficher seulement s'il y en a (sinon rien)
   rsEl.innerHTML = links.length
     ? links.map(function(l) { return '<a class="main-profile-rs-link" href="' + escapeHtml(l.url) + '" target="_blank">' + (RS_ICONS[l.platform]||"🔗") + " " + escapeHtml(l.platform) + '</a>'; }).join("")
-    : '<span style="font-size:11px;color:var(--muted);">Aucun RS lié</span>';
+    : "";
+  rsEl.style.display = links.length ? "" : "none";
 
   var postCount = state.userPosts.length;
   document.getElementById("mainStatPosts").textContent = postCount;
   var ppEl = document.getElementById("topPassia"); if (ppEl) ppEl.textContent = state.user.passia || 0;
-  var fEl = document.getElementById("mainStatFollowers"); if (fEl) fEl.textContent = Math.floor(Math.random()*50+5);
-  var foEl = document.getElementById("mainStatFollowing"); if (foEl) foEl.textContent = Math.floor(Math.random()*30+3);
+  // Abonnements : vraie donnée locale (les gens que je suis)
+  var foEl = document.getElementById("mainStatFollowing"); if (foEl) foEl.textContent = (state.user.following || []).length;
+  // Abonnés : vrai compte Supabase (async). Affiche le cache en attendant.
+  var fEl = document.getElementById("mainStatFollowers"); if (fEl) fEl.textContent = (typeof window._followersCount === "number" ? window._followersCount : 0);
+  loadFollowersCount();
 
   // Events
   var eventsEl = document.getElementById("profileEvents");
@@ -168,6 +175,79 @@ function renderMainProfile() {
   if (topEl) {
     var top = state.userPosts.slice().sort(function(a,b){return(b.likes||0)-(a.likes||0);}).slice(0,3);
     topEl.innerHTML = top.length ? top.map(function(p){return renderPostHTML(Object.assign({},p,{_source:"me"}));}).join("") : '<div style="font-size:12px;color:var(--muted);padding:10px;">Publie ton premier post !</div>';
+  }
+}
+
+// ===== STATS PROFIL CLIQUABLES (posts / abonnés / abonnements) =====
+
+// Charge le vrai nombre d'abonnés depuis Supabase (follows.following_id = MY_UID)
+async function loadFollowersCount() {
+  if (typeof supa === "undefined" || !supa || typeof MY_UID === "undefined" || !MY_UID) return;
+  try {
+    const { count } = await supa.from("follows").select("*", { count: "exact", head: true }).eq("following_id", MY_UID);
+    window._followersCount = count || 0;
+    var fEl = document.getElementById("mainStatFollowers");
+    if (fEl) fEl.textContent = window._followersCount;
+  } catch (e) {}
+}
+
+// Clic « posts » : sélectionne tous mes profils, onglet Posts, défile vers le contenu
+function openMyPostsTab() {
+  window.profilesFilterSelection = new Set((state.user.profiles || []).map(function(p){ return p.id; }));
+  window.activeProfileTab = "posts";
+  document.querySelectorAll(".profile-tab").forEach(function(b, i){ b.classList.toggle("active", i === 0); });
+  renderProfilesScreen();
+  var anchor = document.getElementById("myPosts");
+  if (anchor && anchor.scrollIntoView) anchor.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+// Une ligne de personne (avatar + nom), clic -> ouvre son profil
+function _personRowHTML(id, u) {
+  return '<div onclick="closeModal();openUserProfile(\'' + id + '\')" style="display:flex;align-items:center;gap:10px;padding:8px;border:1px solid var(--border);border-radius:12px;cursor:pointer;">'
+    + '<div style="width:40px;height:40px;border-radius:50%;background:' + (u.avatar || '#7c3aed') + ';display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">' + (u.profileEmoji || '👤') + '</div>'
+    + '<div style="font-weight:700;font-size:14px;color:var(--text);">' + escapeHtml(u.name || 'Utilisateur') + '</div></div>';
+}
+function _peopleEmpty(msg) {
+  return '<div style="text-align:center;padding:24px;color:var(--muted);font-size:13px;">' + escapeHtml(msg) + '</div>';
+}
+function _peopleModal(title, bodyHTML) {
+  openModal('<span class="modal-close" onclick="closeModal()">×</span>'
+    + '<div class="modal-title">' + title + '</div>'
+    + '<div id="peopleListBody" style="display:flex;flex-direction:column;gap:8px;margin-top:8px;max-height:60vh;overflow-y:auto;">' + bodyHTML + '</div>');
+}
+
+// Clic « abonnements » : liste des gens que je suis (vraie donnée locale)
+function openFollowingList() {
+  var ids = state.user.following || [];
+  var rows = ids.map(function(id){
+    var u = userById(id) || { name: "Utilisateur", profileEmoji: "👤", avatar: "#64748b" };
+    return _personRowHTML(id, u);
+  }).join("");
+  _peopleModal("Abonnements", ids.length ? rows : _peopleEmpty("Tu ne suis personne pour l'instant."));
+}
+
+// Clic « abonnés » : liste réelle depuis Supabase (follows + profiles)
+async function openFollowersList() {
+  _peopleModal("Abonnés", '<div style="text-align:center;padding:20px;color:var(--muted);font-size:12px;">Chargement…</div>');
+  var body = document.getElementById("peopleListBody");
+  if (typeof supa === "undefined" || !supa || typeof MY_UID === "undefined" || !MY_UID) {
+    if (body) body.innerHTML = _peopleEmpty("Connecte-toi pour voir tes abonnés.");
+    return;
+  }
+  try {
+    const { data: rels } = await supa.from("follows").select("follower_id").eq("following_id", MY_UID);
+    var ids = (rels || []).map(function(r){ return r.follower_id; }).filter(Boolean);
+    if (!ids.length) { if (body) body.innerHTML = _peopleEmpty("Personne ne te suit encore."); return; }
+    const { data: profs } = await supa.from("profiles").select("id,username,emoji,color").in("id", ids);
+    var map = {}; (profs || []).forEach(function(p){ map[p.id] = p; });
+    var rows = ids.map(function(id){
+      var p = map[id] || {};
+      var u = { name: p.username || (userById(id) || {}).name || "Utilisateur", profileEmoji: p.emoji || "👤", avatar: p.color || "#64748b" };
+      return _personRowHTML(id, u);
+    }).join("");
+    if (body) body.innerHTML = rows || _peopleEmpty("Personne ne te suit encore.");
+  } catch (e) {
+    if (body) body.innerHTML = _peopleEmpty("Impossible de charger les abonnés.");
   }
 }
 
@@ -350,14 +430,14 @@ function renderProfilesScreen() {
   const sub  = $("#profilesQuotaSub");
 
   if (sub) {
-    const cnt = profilesCount();
-    const selectedCount = window.profilesFilterSelection.size;
-    if (selectedCount > 0) {
-      sub.innerHTML = `<b>${cnt} profils</b> · 📌 ${selectedCount} sélectionné${selectedCount > 1 ? "s" : ""} · <span class="link" onclick="clearProfilesFilter()">Réinitialiser</span>`;
+    // Plus de décompte verbeux : on garde uniquement la fonction Réinitialiser
+    // quand une sélection est active, sinon rien.
+    if (window.profilesFilterSelection.size > 0) {
+      sub.innerHTML = `<span class="link" onclick="clearProfilesFilter()">Réinitialiser</span>`;
+      sub.style.display = "";
     } else {
-      sub.innerHTML = hasActivePass()
-        ? `<b>${cnt} profils passion</b> · 👑 Pass Passion actif`
-        : `<b>${cnt} profil${cnt>1?"s":""} passion</b>`;
+      sub.innerHTML = "";
+      sub.style.display = "none";
     }
   }
 

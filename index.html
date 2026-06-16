@@ -391,13 +391,12 @@
             </div>
           </div>
           <div class="main-profile-username" id="mainProfileUsername">Mon profil</div>
-          <div id="mainProfileStatus" style="font-size:11px;color:var(--muted);margin-bottom:6px;">🟢 En ligne</div>
           <div class="main-profile-bio" id="mainProfileBio">Ajoute une biographie…</div>
           <div class="main-profile-rs" id="mainProfileRs"></div>
           <div class="main-profile-stats">
-            <div class="main-profile-stat"><span id="mainStatPosts">0</span><span>posts</span></div>
-            <div class="main-profile-stat"><span id="mainStatFollowers">0</span><span>abonnés</span></div>
-            <div class="main-profile-stat"><span id="mainStatFollowing">0</span><span>abonnements</span></div>
+            <div class="main-profile-stat" onclick="openMyPostsTab()" style="cursor:pointer;"><span id="mainStatPosts">0</span><span>posts</span></div>
+            <div class="main-profile-stat" onclick="openFollowersList()" style="cursor:pointer;"><span id="mainStatFollowers">0</span><span>abonnés</span></div>
+            <div class="main-profile-stat" onclick="openFollowingList()" style="cursor:pointer;"><span id="mainStatFollowing">0</span><span>abonnements</span></div>
           </div>
         </div>
       </div>
