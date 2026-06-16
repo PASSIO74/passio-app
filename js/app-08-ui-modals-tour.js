@@ -1735,16 +1735,22 @@ window.PASSIO_REALTIME_V2 = (function(){
   return false; // défaut : v1 (fiable) pour tout le monde
 })();
 
-// Realtime v3 (DESIGN DÉFINITIF, scalable + sans course) : un seul canal privé
-// PAR UTILISATEUR (`user:<MY_UID>`), abonné une fois au boot. Le trigger SQL
-// (migration_realtime_user_topic.sql) diffuse chaque message au topic perso de
-// CHAQUE membre. Pas de course (topic stable), et chaque client ne reçoit que
-// ses messages. OPT-IN tant que non validé : localStorage.passio_realtime_v3="1".
-// Quand v3 est ON, il a priorité sur v2/v1.
+// Realtime v3 (DESIGN DÉFINITIF, scalable + sans course) — ACTIVÉ PAR DÉFAUT
+// depuis le 2026-06-15 : un seul canal privé PAR UTILISATEUR (`user:<MY_UID>`),
+// abonné une fois au boot. Le trigger SQL (migration_realtime_user_topic.sql,
+// appliquée en prod) diffuse chaque message au topic perso de CHAQUE membre.
+// Pas de course (topic stable), chaque client ne reçoit que ses messages.
+// Validé par test 2 comptes (PASSIO_E2E_RT=v3, vert). Quand v3 est ON, il a
+// priorité sur v2/v1. Soupape par device : localStorage.passio_realtime_v3="0"
+// → revient à v1 (canal global). v2 reste accessible via passio_realtime_v2="1".
 window.PASSIO_REALTIME_V3 = (function(){
   if (typeof window.PASSIO_REALTIME_V3 === "boolean") return window.PASSIO_REALTIME_V3;
-  try { if (localStorage.getItem("passio_realtime_v3") === "1") return true; } catch(e){}
-  return false;
+  try {
+    var v = localStorage.getItem("passio_realtime_v3");
+    if (v === "1") return true;
+    if (v === "0") return false;
+  } catch(e){}
+  return true; // défaut : v3 (scalable) pour tout le monde
 })();
 
 // Traitement d'un message entrant (factorisé : utilisé par le canal global v1

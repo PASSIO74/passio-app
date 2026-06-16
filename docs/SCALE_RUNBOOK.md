@@ -29,12 +29,14 @@ cassent à 50 000. **Ne pas tout déployer d'un coup** : valider chaque étape.
 
 ## 🔴 P0 — Bloquants réels avant ouverture large
 
-### 1. Realtime : chaque client reçoit TOUS les messages 🟠 v2 EN OPT-IN (course à corriger)
+### 1. Realtime : chaque client reçoit TOUS les messages ✅ RÉSOLU — v3 par défaut (2026-06-15)
 
-**Statut au 2026-06-15** : infra serveur prête (`migration_realtime_authorization
-.sql` appliquée : trigger `conv:<id>` + RLS `realtime.messages`). Client v2
-implémenté mais **repassé OPT-IN** (`localStorage.passio_realtime_v2 = "1"`) ;
-**défaut = v1** (canal global, fiable).
+**Réglé.** Realtime **v3 (topic privé par utilisateur)** déployé et **activé par
+défaut**. `migration_realtime_user_topic.sql` appliquée en prod (trigger par membre
++ RLS `realtime.topic()='user:'||auth.uid()`). Client : `_subscribeUserTopic()`
+abonné au boot. Scalable + sans course. Validé E2E 2 comptes (`PASSIO_E2E_RT=v3`,
+vert). Soupape : `localStorage.passio_realtime_v3="0"` → v1. Détail technique du
+parcours v1→v2→v3 conservé ci-dessous.
 
 **Pourquoi pas par défaut** : le test 2 comptes automatisé (`PASSIO_E2E_MULTI=1`)
 a révélé une **course** sur les convs créées PENDANT la session. En v2, B reçoit
