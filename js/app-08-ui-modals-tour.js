@@ -730,12 +730,26 @@ async function boot() {
   // fois), fusionne sans perte avec localStorage/seed/Supabase.
   try { hydrateConvsFromIDB(); } catch(e) {}
 
+  // Retour depuis un lien « mot de passe oublié » : l'URL contient type=recovery.
+  // On affiche l'UI de nouveau mot de passe par-dessus l'écran courant.
+  if ((window.location.hash || "").indexOf("type=recovery") !== -1) {
+    try { if (typeof _showPasswordRecoveryUI === "function") _showPasswordRecoveryUI(); } catch(e) {}
+  }
+
   // Vérifie si l'utilisateur est déjà connecté via Supabase Auth
   try {
     const { data: { session } } = await supa.auth.getSession();
     if (session?.user) {
       MY_UID = session.user.id;
       localStorage.setItem("passio_uid", MY_UID);
+      // Retour OAuth (Google) : un compte existe désormais → on finalise l'entrée
+      // dans l'app même si l'onboarding local n'a jamais été complété (nouvel
+      // appareil). Le bloc onboardé ci-dessous crée un profil par défaut si besoin.
+      if (localStorage.getItem("passio_oauth_pending")) {
+        localStorage.removeItem("passio_oauth_pending");
+        state.onboarded = true;
+        try { saveState(); } catch(e) {}
+      }
       if (state.onboarded) {
         // Session active + déjà onboardé → accès direct à l'app
         // Crée un profil par défaut si l'utilisateur n'en a pas (connexion sans onboarding)
@@ -759,9 +773,21 @@ async function boot() {
   // Écouter les changements d'état auth (connexion depuis un autre appareil, confirmation email, etc.)
   try {
     supa.auth.onAuthStateChange((event, session) => {
+      // Lien « mot de passe oublié » → afficher l'UI de nouveau mot de passe.
+      if (event === "PASSWORD_RECOVERY") {
+        try { if (typeof _showPasswordRecoveryUI === "function") _showPasswordRecoveryUI(); } catch(e) {}
+        return;
+      }
       if (session?.user) {
         MY_UID = session.user.id;
         localStorage.setItem("passio_uid", MY_UID);
+        // Retour OAuth (Google) arrivé après le boot : finaliser + recharger dans l'app.
+        if (event === "SIGNED_IN" && localStorage.getItem("passio_oauth_pending")) {
+          localStorage.removeItem("passio_oauth_pending");
+          if (typeof state !== "undefined") { state.onboarded = true; try { saveState(); } catch(e) {} }
+          setTimeout(() => { try { window.location.reload(); } catch(e) {} }, 0);
+          return;
+        }
         // ✅ FIX CRITIQUE : déclencher supaInit() dès qu'une session est établie
         // Sans ça, les posts Supabase ne chargent jamais sur un nouvel appareil
         if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {

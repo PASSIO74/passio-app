@@ -792,10 +792,88 @@ function switchAuthTab(mode) {
   document.getElementById("authTabSignup").classList.toggle("active", mode === "signup");
   document.getElementById("authPasswordConfirmWrap").style.display = mode === "signup" ? "" : "none";
   document.getElementById("authSubmitBtn").textContent = mode === "signin" ? "Se connecter" : "Créer mon compte";
+  // "Mot de passe oublié ?" pertinent uniquement en connexion
+  const forgot = document.getElementById("authForgotLink");
+  if (forgot) forgot.style.display = mode === "signin" ? "" : "none";
   const msg = document.getElementById("authMsg");
   msg.className = "onb-auth-msg";
   msg.textContent = "";
 }
+
+// ── Mot de passe oublié : envoie un e-mail de réinitialisation Supabase ──
+async function onbForgotPassword() {
+  const email = (document.getElementById("authEmail")?.value || "").trim();
+  if (!email || !email.includes("@")) {
+    _showAuthMsg("Entre ton adresse e-mail ci-dessus, puis reclique sur « Mot de passe oublié ».", "error");
+    return;
+  }
+  try {
+    const { error } = await supa.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin + window.location.pathname });
+    if (error) { _showAuthMsg(error.message || "Échec de l'envoi.", "error"); return; }
+    _showAuthMsg("📧 E-mail de réinitialisation envoyé. Vérifie ta boîte (et les spams).", "success");
+  } catch (e) {
+    _showAuthMsg("Erreur réseau. Vérifie ta connexion.", "error");
+  }
+}
+
+// ── Connexion Google (OAuth) : redirige vers Google puis revient sur l'app ──
+// Nécessite le provider Google activé dans le Dashboard Supabase (Authentication
+// → Providers → Google). Le retour est géré par onAuthStateChange (boot, app-08)
+// qui voit le flag passio_oauth_pending et finalise l'entrée dans l'app.
+async function onbGoogleAuth() {
+  try {
+    try { localStorage.setItem("passio_oauth_pending", "1"); } catch (e) {}
+    const { error } = await supa.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: window.location.origin + window.location.pathname },
+    });
+    if (error) {
+      try { localStorage.removeItem("passio_oauth_pending"); } catch (e) {}
+      _showAuthMsg(error.message || "Connexion Google indisponible.", "error");
+    }
+  } catch (e) {
+    try { localStorage.removeItem("passio_oauth_pending"); } catch (e) {}
+    _showAuthMsg("Connexion Google indisponible.", "error");
+  }
+}
+
+// ── Récupération de mot de passe : UI minimale affichée quand Supabase émet
+// l'événement PASSWORD_RECOVERY (retour depuis le lien e-mail). ──
+function _showPasswordRecoveryUI() {
+  if (document.getElementById("pwdRecoveryOverlay")) return;
+  const ov = document.createElement("div");
+  ov.id = "pwdRecoveryOverlay";
+  ov.style.cssText = "position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;padding:20px;";
+  ov.innerHTML =
+    '<div style="background:var(--bg-card,#fff);border-radius:18px;padding:24px;max-width:360px;width:100%;box-shadow:0 12px 48px rgba(0,0,0,0.3);">' +
+      '<div style="font-size:18px;font-weight:800;margin-bottom:6px;">Nouveau mot de passe</div>' +
+      '<div style="font-size:13px;color:var(--muted);margin-bottom:16px;">Choisis un nouveau mot de passe pour ton compte.</div>' +
+      '<input type="password" id="pwdRecoveryInput" placeholder="••••••••" minlength="6" autocomplete="new-password" class="input" style="width:100%;box-sizing:border-box;font-size:15px;margin-bottom:8px;"/>' +
+      '<div id="pwdRecoveryMsg" style="font-size:12px;min-height:16px;margin-bottom:10px;"></div>' +
+      '<button id="pwdRecoveryBtn" class="btn primary block" style="padding:13px;font-weight:800;">Valider</button>' +
+    '</div>';
+  document.body.appendChild(ov);
+  const input = ov.querySelector("#pwdRecoveryInput");
+  const btn = ov.querySelector("#pwdRecoveryBtn");
+  const msg = ov.querySelector("#pwdRecoveryMsg");
+  setTimeout(function () { try { input.focus(); } catch (e) {} }, 50);
+  btn.onclick = async function () {
+    const pwd = input.value || "";
+    if (pwd.length < 6) { msg.style.color = "#e11d48"; msg.textContent = "Au moins 6 caractères."; return; }
+    btn.disabled = true; btn.textContent = "…";
+    try {
+      const { error } = await supa.auth.updateUser({ password: pwd });
+      if (error) { msg.style.color = "#e11d48"; msg.textContent = error.message; btn.disabled = false; btn.textContent = "Valider"; return; }
+      msg.style.color = "#16a34a"; msg.textContent = "✅ Mot de passe mis à jour.";
+      if (typeof state !== "undefined") { state.onboarded = true; try { saveState(); } catch (e) {} }
+      setTimeout(function () { window.location.reload(); }, 900);
+    } catch (e) {
+      msg.style.color = "#e11d48"; msg.textContent = "Erreur réseau."; btn.disabled = false; btn.textContent = "Valider";
+    }
+  };
+  input.onkeypress = function (e) { if (e.key === "Enter") btn.click(); };
+}
+window._showPasswordRecoveryUI = _showPasswordRecoveryUI;
 
 function _showAuthMsg(text, type) {
   const el = document.getElementById("authMsg");

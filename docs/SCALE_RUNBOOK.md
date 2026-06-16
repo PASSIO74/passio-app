@@ -90,12 +90,25 @@ depuis IDB, messages inclus).
 reste en localStorage — beaucoup plus léger (le base64 y est déjà strippé par
 `saveState`). Le déplacer vers IDB aussi serait un confort, pas une urgence.
 
-### 3. Gate d'accès purement client 🧑 (décision produit)
+### 3. Auth ✅ DURCIE (2026-06-15) — gate beta conservé
 
-Code `2125` lisible dans le JS, contournable. OK pour filtrer le grand public en
-beta (la RLS protège les **données**), mais ce n'est pas de la sécurité d'accès.
-Avant ouverture large : vraie auth (email/OAuth Supabase) en remplacement/complément
-du gate. Décision produit + intégration onboarding.
+L'auth email/mot de passe existait déjà (`onbDoAuth`). Ajouté le 2026-06-15 :
+- **Compte obligatoire** : retrait du bouton « Continuer sans compte » (anonyme).
+  Les sessions anonymes existantes continuent de fonctionner ; seuls les NOUVEAUX
+  arrivants doivent créer/connecter un compte.
+- **Mot de passe oublié** : `onbForgotPassword` (`resetPasswordForEmail`) + UI de
+  nouveau mot de passe `_showPasswordRecoveryUI` déclenchée par l'événement
+  `PASSWORD_RECOVERY` / `type=recovery` dans l'URL (`updateUser`).
+- **Google OAuth** : `onbGoogleAuth` (`signInWithOAuth`), retour finalisé au boot
+  via le flag `passio_oauth_pending` (marque onboardé + profil par défaut).
+
+**🧑 Étape dashboard requise pour Google** : Supabase → Authentication → Providers
+→ activer **Google** (client ID/secret OAuth Google Cloud) + ajouter l'URL de
+redirection du site dans les Redirect URLs autorisées. Tant que ce n'est pas fait,
+le bouton affiche une erreur propre (aucun crash).
+
+Le **gate beta (2125) reste en place** (choix produit). À retirer seulement à
+l'ouverture grand public.
 
 ---
 
