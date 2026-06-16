@@ -171,25 +171,47 @@ function renderMainProfile() {
   }
 }
 
-function switchProfileTab(tab, btn) {
-  document.querySelectorAll(".profile-tab").forEach(function(b){b.classList.remove("active");});
-  if (btn) btn.classList.add("active");
+// Onglet de contenu actif (posts | photos | videos | carnets)
+function _activeProfileTab() { return window.activeProfileTab || "posts"; }
+
+// Rend la zone #myPosts selon l'onglet actif ET la multi-sélection de profils.
+// Sélection vide => invite à sélectionner (pas de fallback profil actif).
+function renderProfileContent() {
   var myPostsDiv = document.getElementById("myPosts");
   if (!myPostsDiv) return;
-  var cur = currentProfile();
-  var mine = state.userPosts.filter(function(p){return p.profileId===(cur?cur.id:"");});
-  if (tab==="posts") {
-    myPostsDiv.innerHTML = mine.length ? mine.map(function(p){return renderPostHTML(Object.assign({},p,{_source:"me"}));}).join("") : '<div class="empty"><div class="empty-icon">✏️</div><div class="empty-title">Rien publié</div></div>';
-  } else if (tab==="photos") {
+
+  var sel = window.profilesFilterSelection || new Set();
+  if (sel.size === 0) {
+    myPostsDiv.innerHTML = '<div class="empty"><div class="empty-icon">👆</div><div class="empty-title">Sélectionne un profil passion</div><div class="empty-text">Coche un ou plusieurs profils ci-dessus pour afficher leur contenu.</div></div>';
+    return;
+  }
+
+  var mine = state.userPosts.filter(function(p){ return sel.has(p.profileId); });
+  var tab = _activeProfileTab();
+
+  function emptyBlock(icon, title) {
+    return '<div class="empty"><div class="empty-icon">'+icon+'</div><div class="empty-title">'+title+'</div><div class="empty-text">Rien à afficher pour '+(sel.size===1?"ce profil":"ces profils")+'.</div></div>';
+  }
+
+  if (tab==="photos") {
     var photos = mine.filter(function(p){return p.type==="photo"||p.image;});
-    myPostsDiv.innerHTML = photos.length ? '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;">'+photos.map(function(p){var src=p.image||"https://picsum.photos/seed/"+p.id+"/300/300";return '<div style="aspect-ratio:1;border-radius:8px;overflow:hidden;"><img loading="lazy" decoding="async" src="'+src+'" style="width:100%;height:100%;object-fit:cover;"/></div>';}).join("")+'</div>' : '<div class="empty"><div class="empty-icon">📷</div><div class="empty-title">Aucune photo</div></div>';
+    myPostsDiv.innerHTML = photos.length ? '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;">'+photos.map(function(p){var src=p.image||"https://picsum.photos/seed/"+p.id+"/300/300";return '<div style="aspect-ratio:1;border-radius:8px;overflow:hidden;"><img loading="lazy" decoding="async" src="'+src+'" style="width:100%;height:100%;object-fit:cover;"/></div>';}).join("")+'</div>' : emptyBlock("📷","Aucune photo");
   } else if (tab==="videos") {
     var videos = mine.filter(function(p){return p.type==="video";});
-    myPostsDiv.innerHTML = videos.length ? videos.map(function(p){return renderPostHTML(Object.assign({},p,{_source:"me"}));}).join("") : '<div class="empty"><div class="empty-icon">🎬</div><div class="empty-title">Aucune vidéo</div></div>';
+    myPostsDiv.innerHTML = videos.length ? videos.map(function(p){return renderPostHTML(Object.assign({},p,{_source:"me"}));}).join("") : emptyBlock("🎬","Aucune vidéo");
   } else if (tab==="carnets") {
     var carnets = mine.filter(function(p){return p.type==="vlog";});
-    myPostsDiv.innerHTML = carnets.length ? carnets.map(function(p){return renderPostHTML(Object.assign({},p,{_source:"me"}));}).join("") : '<div class="empty"><div class="empty-icon">📔</div><div class="empty-title">Aucun carnet</div></div>';
+    myPostsDiv.innerHTML = carnets.length ? carnets.map(function(p){return renderPostHTML(Object.assign({},p,{_source:"me"}));}).join("") : emptyBlock("📔","Aucun carnet");
+  } else {
+    myPostsDiv.innerHTML = mine.length ? mine.map(function(p){return renderPostHTML(Object.assign({},p,{_source:"me"}));}).join("") : emptyBlock("✏️","Rien publié");
   }
+}
+
+function switchProfileTab(tab, btn) {
+  window.activeProfileTab = tab;
+  document.querySelectorAll(".profile-tab").forEach(function(b){b.classList.remove("active");});
+  if (btn) btn.classList.add("active");
+  renderProfileContent();
 }
 
 function shareMyProfile() {
@@ -325,7 +347,6 @@ function renderProfilesScreen() {
   }
 
   const list = $("#profileList");
-  const cur  = currentProfile();
   const sub  = $("#profilesQuotaSub");
 
   if (sub) {
@@ -343,7 +364,6 @@ function renderProfilesScreen() {
   list.innerHTML = state.user.profiles.map(p => {
     const passion    = passionById(p.passion);
     const postCount  = state.userPosts.filter(up => up.profileId === p.id).length;
-    const isCur      = p.id === state.user.currentProfileId;
     const isSelected = window.profilesFilterSelection.has(p.id);
     const hasPhoto   = p.photo ? true : false;
     const avatarStyle = hasPhoto
@@ -351,7 +371,7 @@ function renderProfilesScreen() {
       : `background:${p.color};`;
     const avatarContent = hasPhoto ? "" : p.emoji;
 
-    return `<div class="profile-card ${isCur?"current":""} ${isSelected?"selected":""}" style="${isSelected ? "border:2px solid #3b82f6;background:rgba(59,130,246,0.08);" : ""}" onclick="toggleProfileFilter('${p.id}')">
+    return `<div class="profile-card ${isSelected?"selected":""}" style="${isSelected ? "border:2px solid var(--accent);background:rgba(124,58,237,0.08);" : ""}" onclick="toggleProfileSelect('${p.id}')">
       <div class="avatar lg" style="${avatarStyle}position:relative;">${avatarContent}
         <div class="passion-photo-badge" onclick="event.stopPropagation();document.getElementById('passionPhoto_${p.id}').click()">📷</div>
         <input type="file" id="passionPhoto_${p.id}" accept="image/*" style="display:none;" onchange="event.stopPropagation();changePassionPhoto(event,'${p.id}')"/>
@@ -359,8 +379,6 @@ function renderProfilesScreen() {
       <div class="profile-card-body" style="flex:1;">
         <div class="profile-card-name">
           ${passion.emoji} ${passion.label}
-          ${isCur?'<span class="pill active" style="margin-left:4px;padding:2px 7px;font-size:9px;">Actif</span>':""}
-          ${isSelected?'<span class="pill" style="margin-left:4px;padding:2px 7px;font-size:9px;background:#3b82f6;color:#fff;border-color:#3b82f6;">✓ Sélectionné</span>':""}
         </div>
         <div class="profile-card-passion" style="color:var(--muted);font-size:11px;">${postCount} post${postCount>1?"s":""} · créé le ${fmtDate(p.createdAt)}</div>
       </div>
@@ -368,27 +386,13 @@ function renderProfilesScreen() {
     </div>`;
   }).join("");
 
-  // Filtrer le contenu selon la sélection
-  const myPostsDiv = $("#myPosts");
-  let mine = state.userPosts.filter(p => p.profileId === cur?.id);
-
-  // Si une ou plusieurs passions sont sélectionnées, filtrer par elles
-  if (window.profilesFilterSelection.size > 0) {
-    mine = state.userPosts.filter(p => window.profilesFilterSelection.has(p.profileId));
-  }
-
-  if (mine.length === 0) {
-    const msg = window.profilesFilterSelection.size > 0
-      ? `Aucun post partagé par ${window.profilesFilterSelection.size === 1 ? "ce profil" : "ces profils"}`
-      : "Rien publié avec ce profil";
-    myPostsDiv.innerHTML = `<div class="empty"><div class="empty-icon">✏️</div><div class="empty-title">${msg}</div><div class="empty-text">Passe au Studio pour créer ton premier post.</div><button class="btn primary" style="margin-top:10px;" onclick="goTo('studio')">Aller au Studio</button></div>`;
-  } else {
-    myPostsDiv.innerHTML = mine.map(p => ({ ...p, _source:"me" })).map(renderPostHTML).join("");
-  }
+  // Contenu en dessous : filtré par l'onglet actif ET la multi-sélection
+  renderProfileContent();
 }
 
-// 🔄 MULTI-SÉLECTION DES PROFILS
-function toggleProfileFilter(profileId) {
+// 🔄 MULTI-SÉLECTION DES PROFILS (écran profil). Nom distinct de toggleProfileFilter
+// (feed, _activeFeedPassions, plus bas) pour éviter la collision de noms qui masquait ce handler.
+function toggleProfileSelect(profileId) {
   if (!window.profilesFilterSelection) {
     window.profilesFilterSelection = new Set();
   }
