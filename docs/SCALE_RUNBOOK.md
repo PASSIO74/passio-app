@@ -147,41 +147,53 @@ l'ouverture grand public.
 (following)` côté SQL plutôt qu'en JS quand le nombre de suivis devient grand —
 optimisation mineure, pas un bloquant.
 
-### 5. Connection pooling 🧑
-Dashboard → Database → Connection pooling : activer **PgBouncer (mode transaction)**
-et viser l'endpoint *pooler* pour encaisser la concurrence (Edge Functions + clients).
+### 5. Connection pooling ✅ DÉJÀ ACTIF (vérifié dashboard 2026-06-15)
+Le pooler Supavisor est **activé par défaut** : Connection poolers SHARED, pool de
+15 connexions backend, **200 clients simultanés** (limites de la compute Nano). Le
+client PWA passe par PostgREST (REST), automatiquement poolé. **Rien à faire en
+code.** Pour aller au-delà de 200 clients concurrents → monter la compute tier
+(Nano → Small/Medium…), qui relève automatiquement ces limites (décision billing).
 
-### 6. Insert messages : retirer le double-insert quand la RLS v2 est stable 🤖
+### 6. Insert messages : double-insert ✅ REVU — gardé volontairement
 Le pattern « avec from_id, sinon sans » (sendMessageFp, sendMessageToSupabase,
-_sendGif, shareLocation) garde un fallback. Le chemin nominal réussit au 1er essai ;
-le fallback ne coûte que sur erreur. Quand la RLS v2 est confirmée stable partout,
-simplifier en un seul insert (avec from_id) + gestion d'erreur, sans 2ᵉ requête.
+_sendGif, shareLocation) ne déclenche le 2ᵉ insert **que sur erreur** (jamais dans
+le chemin nominal). Le retirer = zéro gain utilisateur tout en touchant le chemin
+critique d'envoi sur une app en prod. **Décision : conservé** comme filet de
+sécurité inoffensif (coût nul en fonctionnement normal).
 
 ---
 
 ## 🟡 P2 — Confort / coûts
 
-### 7. Code-splitting 🤖
-Monolithe JS (~1 Mo non minifié) chargé d'un bloc. Charger en lazy les écrans non
-critiques (studio, IRL, IA). Sans bundler : `import()` dynamique ou injection de
-`<script>` à la première navigation vers l'écran. Réduit le TTI mobile.
+### 7. Code-splitting ⏸️ DIFFÉRÉ VOLONTAIREMENT (rapport risque/gain défavorable)
+Le bundle app (9 fichiers `app-*.js`) repose sur le **hoisting inter-fichiers**
+(CLAUDE.md : « NE PAS réordonner ») → un lazy-load casserait les dépendances. Le
+bundle est déjà chargé en **fin de `<body>`** (ne bloque pas le rendu initial), et
+le transfert prod est ~201 Ko brotli. Gain TTI réel marginal pour un risque élevé.
+À ne revisiter que si un audit Lighthouse mobile l'exige réellement.
 
-### 8. Proxy GIF avec cache serveur 🤖+🧑
-La clé Giphy est partagée par tous les clients (quota commun) et le cache 10 min
-est par-onglet. Edge Function `gif-search` (cache KV/edge), client appelle la
-fonction au lieu de Giphy en direct. Bénéfice marginal en beta, utile à l'échelle.
+### 8. Proxy GIF avec cache serveur ⏸️ DIFFÉRÉ (marginal à l'échelle actuelle)
+Le client utilise Tenor/Giphy avec clé partagée + cache 10 min par onglet — suffisant
+tant qu'on n'a pas un volume massif de recherches GIF. Si le quota de la clé devient
+un point de contention : Edge Function `gif-search` (cache edge) + le client appelle
+la fonction au lieu de l'API directe. Approche prête, à construire au besoin.
 
-### 9. Monitoring & cleanup 🤖+🧑
-- **Vues d'agrégation livrées** : `migration_monitoring_view.sql`
-  (`client_errors_top_24h`, `client_errors_par_heure` + index). À appliquer au
-  dashboard, puis brancher une scheduled Edge Function pour l'alerting au-delà
-  d'un seuil (Supabase n'a pas d'alerting natif sur vue).
-- Lifecycle Storage : job de nettoyage des médias orphelins (posts/messages supprimés).
+### 9. Monitoring & cleanup ✅ FAIT (2026-06-15)
+- **Vues d'agrégation** : `migration_monitoring_view.sql` (`client_errors_top_24h`,
+  `client_errors_par_heure` + index) — appliquées en prod.
+- **Médias orphelins réglés À LA SOURCE** : `deletePost` (app-04) supprime désormais
+  l'objet Storage associé (image/vidéo/audio/cover) à la suppression d'un post —
+  best-effort, plus d'accumulation de fichiers orphelins. La suppression de compte
+  purgeait déjà tout le Storage de l'utilisateur (`delete-account`).
+- Reste (optionnel) : alerting automatique au-delà d'un seuil (scheduled Edge
+  Function lisant `client_errors_top_24h` + webhook/mail) — confort, non bloquant.
 
 ---
 
-## Ordre recommandé
-**P0.1 (realtime, dashboard d'abord)** → P1.5 (pooling) → P1.4 (feed serveur) →
-P0.3 (auth, avant ouverture publique) → P0.2 (IndexedDB) → P2.
+## État P0/P1/P2 (2026-06-15)
+- **P0** : tous faits et déployés (realtime v3, IndexedDB, auth).
+- **P1** : feed paginé ✅, pooling ✅ (par défaut), double-insert ✅ (gardé).
+- **P2** : monitoring + cleanup orphelins ✅ ; code-splitting et proxy GIF différés
+  volontairement (gain marginal / risque), prêts à construire si le besoin réel apparaît.
 
 Chaque étape : 1 unité cohérente, test E2E vert (`npm run test:all`), puis commit.

@@ -85,6 +85,7 @@ function deletePost(postId) {
     closeModal();
     return;
   }
+  const post = state.userPosts[idx];
   // Retire le post de la liste perso
   state.userPosts.splice(idx, 1);
   // Nettoie les références (likes notamment)
@@ -102,6 +103,15 @@ function deletePost(postId) {
   // Supprimer aussi dans Supabase
   if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
     supa.from("posts").delete().eq("id", postId).eq("author_id", MY_UID).then(() => {}).catch(() => {});
+    // Nettoyer le média Storage associé → évite les fichiers orphelins (coût à l'échelle).
+    // Best-effort : si la RLS Storage refuse, on ignore (le pire = un orphelin, statu quo).
+    try {
+      const marker = "/storage/v1/object/public/content/";
+      const paths = [post && post.image, post && post.video, post && post.audio, post && post.cover]
+        .filter(function(u){ return typeof u === "string" && u.indexOf(marker) !== -1; })
+        .map(function(u){ return decodeURIComponent(u.slice(u.indexOf(marker) + marker.length).split("?")[0]); });
+      if (paths.length) supa.storage.from("content").remove(paths).then(function(){}).catch(function(){});
+    } catch(e) {}
   }
   // Retirer aussi de seed.posts si présent
   state.seed.posts = (state.seed.posts || []).filter(p => p.id !== postId);
