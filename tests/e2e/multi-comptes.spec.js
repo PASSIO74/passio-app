@@ -134,6 +134,110 @@ test.describe("messagerie entre 2 comptes réels", () => {
       await ctxB.close();
     }
   });
+
+  // Notifications cross-compte : A publie un post, B like + commente + suit,
+  // A doit recevoir 3 notifications (like, comment, follow). Valide le fix du
+  // 2026-06-17 : (a) findPostAnywhere → B peut interagir avec un vrai post de A ;
+  // (b) supaInsertNotif insère bien la notif chez A ; (c) A charge ses notifs
+  // (supaLoadNotifications, garanti) ; (d) best-effort : livraison realtime.
+  test("interactions sur un post → l'auteur reçoit les notifications", async ({ browser }) => {
+    test.setTimeout(180000);
+    const t0 = Date.now();
+    const log = (m) => console.log(`[notif ${(((Date.now() - t0) / 1000) | 0)}s] ${m}`);
+
+    const ctxA = await browser.newContext();
+    const ctxB = await browser.newContext();
+    const pageA = await ctxA.newPage();
+    const pageB = await ctxB.newPage();
+    pageA.on("console", (msg) => { if (msg.type() === "error") log("A console.error: " + msg.text().slice(0, 200)); });
+    pageB.on("console", (msg) => { if (msg.type() === "error") log("B console.error: " + msg.text().slice(0, 200)); });
+
+    let postId = null;
+    try {
+      // ── 1. Inscription des deux comptes ──
+      const uidA = await signupAnonymous(pageA, "Test Alice");
+      const uidB = await signupAnonymous(pageB, "Test Bob");
+      expect(uidA).toBeTruthy(); expect(uidB).toBeTruthy(); expect(uidA).not.toBe(uidB);
+      log("A=" + uidA + " B=" + uidB);
+
+      // ── 2. A publie un vrai post dans Supabase (même schéma que supaPublishPost) ──
+      postId = await pageA.evaluate(async () => {
+        const id = "post_" + uid();
+        const { error } = await supa.from("posts").insert([{
+          id, author_id: MY_UID, passion_id: "musique", mood: "all",
+          content: "Post de Alice [test notif auto]", media_url: null,
+          created_at: new Date().toISOString(),
+        }]);
+        return error ? null : id;
+      });
+      expect(postId, "post de A inséré dans Supabase").toBeTruthy();
+      log("post publié: " + postId);
+
+      // ── 3. B charge le post dans son feed puis interagit (vrais handlers) ──
+      // Injection dans supabasePosts = ce que fait supaLoadPosts au boot/refresh.
+      await pageB.evaluate(([pid, aid]) => {
+        state.supabasePosts = state.supabasePosts || [];
+        if (!state.supabasePosts.find((p) => p.id === pid)) {
+          state.supabasePosts.unshift({
+            id: pid, authorId: aid, authorName: "Test Alice", authorEmoji: "✨",
+            authorColor: "#8b5cf6", passion: "musique", mood: "all", type: "text",
+            text: "Post de Alice [test notif auto]", image: null,
+            createdAt: Date.now(), likes: 0, liked: false, comments: [], fromSupabase: true,
+          });
+        }
+      }, [postId, uidA]);
+
+      // 3a. Like (likePost → supaInsertNotif "like")
+      await pageB.evaluate((pid) => likePost(pid, true), postId);
+      log("B a liké");
+
+      // 3b. Commentaire (openComments ouvre le modal — interdit avant le fix —
+      //     puis submitComment → supaAddComment + supaInsertNotif "comment")
+      await pageB.evaluate((pid) => openComments(pid), postId);
+      await pageB.waitForSelector("#newComment", { timeout: 10000 });
+      await pageB.fill("#newComment", "Super post Alice ! [test notif auto]");
+      await pageB.evaluate((pid) => submitComment(pid), postId);
+      log("B a commenté");
+
+      // 3c. Follow (supaFollowUser → supaInsertNotif "follow")
+      await pageB.evaluate((aid) => supaFollowUser(aid), uidA);
+      log("B a suivi A");
+
+      // supaInsertNotif est fire-and-forget : laisser les inserts atterrir.
+      await pageB.waitForTimeout(2500);
+
+      // ── 4. Best-effort : A a-t-il reçu en temps réel ? (dépend de la
+      //     publication realtime de la table notifications — informatif) ──
+      let rtKinds = [];
+      try {
+        await pageA.waitForFunction(
+          () => (state.notifications || []).some((n) => n.fromSupabase),
+          null, { timeout: 8000 }
+        );
+        rtKinds = await pageA.evaluate(() => (state.notifications || []).filter((n) => n.fromSupabase).map((n) => n.kind));
+        log("realtime OK chez A: " + JSON.stringify(rtKinds));
+      } catch (e) {
+        log("realtime non livré sous 8s (publication notifications ?) — on valide via le chargement");
+      }
+
+      // ── 5. Garantie : A charge ses notifications depuis Supabase ──
+      const notifs = await loadNotifsWithRetry(pageA, 3, 20000);
+      const kinds = notifs.map((n) => n.kind).sort();
+      const fromB = notifs.every((n) => n.fromId === uidB);
+      log("notifs chargées par A: " + JSON.stringify(notifs.map((n) => ({ k: n.kind, f: n.fromId }))));
+      expect(notifs.length, "A a au moins 3 notifications").toBeGreaterThanOrEqual(3);
+      expect(kinds, "kinds attendus").toEqual(expect.arrayContaining(["like", "comment", "follow"]));
+      expect(fromB, "toutes les notifs viennent de B").toBe(true);
+      log("✅ notifications cross-compte validées (like + comment + follow)");
+
+      // ── 6. Nettoyage ──
+      await cleanupNotifs(pageA, postId);
+      await cleanupNotifs(pageB, postId);
+    } finally {
+      await ctxA.close();
+      await ctxB.close();
+    }
+  });
 });
 
 // Parcours réel : landing → Créer un compte → (auth anonyme Supabase par l'API,
@@ -208,4 +312,32 @@ async function cleanup(page, convId) {
     try { await supa.from("profiles").delete().eq("id", MY_UID); } catch (e) {}
     try { await supa.auth.signOut(); } catch (e) {}
   }, convId);
+}
+
+// Recharge les notifications de A depuis Supabase jusqu'à en avoir au moins
+// `minCount` (les supaInsertNotif côté B sont fire-and-forget → on retente).
+async function loadNotifsWithRetry(page, minCount, timeoutMs) {
+  const start = Date.now();
+  let last = [];
+  while (Date.now() - start < timeoutMs) {
+    last = await page.evaluate(() => (typeof supaLoadNotifications === "function" ? supaLoadNotifications() : []));
+    if (last && last.length >= minCount) return last;
+    await page.waitForTimeout(1500);
+  }
+  return last || [];
+}
+
+// Nettoyage du test notifications (best-effort, RLS par propriétaire).
+async function cleanupNotifs(page, postId) {
+  await page.evaluate(async (pid) => {
+    try { await supa.from("notifications").delete().eq("user_id", MY_UID); } catch (e) {}
+    try { await supa.from("notifications").delete().eq("from_id", MY_UID); } catch (e) {}
+    try { await supa.from("post_comments").delete().eq("post_id", pid); } catch (e) {}
+    try { await supa.from("post_likes").delete().eq("post_id", pid); } catch (e) {}
+    try { await supa.from("follows").delete().eq("follower_id", MY_UID); } catch (e) {}
+    try { await supa.from("follows").delete().eq("following_id", MY_UID); } catch (e) {}
+    try { await supa.from("posts").delete().eq("id", pid); } catch (e) {}
+    try { await supa.from("profiles").delete().eq("id", MY_UID); } catch (e) {}
+    try { await supa.auth.signOut(); } catch (e) {}
+  }, postId);
 }
