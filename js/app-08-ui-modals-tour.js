@@ -1767,9 +1767,9 @@ async function _handleIncomingConvMessage(r) {
     // Nouvelle conv inconnue → vérifier membership Supabase puis créer localement
     try {
       const { data: membership } = await supa.from("conv_members")
-        .select("conv_id").eq("conv_id", r.conv_id).eq("user_id", MY_UID).single();
+        .select("conv_id").eq("conv_id", r.conv_id).eq("user_id", MY_UID).maybeSingle();
       if (!membership) return; // pas membre → ignorer
-      const { data: convData } = await supa.from("conversations").select("*").eq("id", r.conv_id).single();
+      const { data: convData } = await supa.from("conversations").select("*").eq("id", r.conv_id).maybeSingle();
       const { data: members } = await supa.from("conv_members")
         .select("user_id, profiles(username,emoji,color)").eq("conv_id", r.conv_id);
       const other = (members || []).find(m => m.user_id !== MY_UID);
@@ -1886,7 +1886,7 @@ function supaSubscribe() {
       if (convs.find(c => c.id === convId)) return;
       // Charger la conv depuis Supabase
       try {
-        const { data: convData } = await supa.from("conversations").select("*").eq("id", convId).single();
+        const { data: convData } = await supa.from("conversations").select("*").eq("id", convId).maybeSingle();
         const { data: members } = await supa.from("conv_members")
           .select("user_id, profiles(username,emoji,color)").eq("conv_id", convId);
         const other = (members || []).find(m => m.user_id !== MY_UID);
@@ -1938,7 +1938,7 @@ function supaSubscribe() {
       const r = payload.new;
       if (r.author_id === MY_UID) return;
       try {
-        const { data: prof } = await supa.from("profiles").select("username,emoji,color").eq("id", r.author_id).single();
+        const { data: prof } = await supa.from("profiles").select("username,emoji,color").eq("id", r.author_id).maybeSingle();
         const newPost = { id: r.id, authorId: r.author_id, authorName: prof?.username || "Passionne", authorEmoji: prof?.emoji || "✨", authorColor: prof?.color || "#8b5cf6", passion: r.passion_id || "autre", mood: r.mood || "all", type: "text", text: r.content || "", image: r.media_url || null, createdAt: new Date(r.created_at + "Z").getTime(), likes: 0, liked: false, comments: [], fromSupabase: true };
         // ✅ Ajouter dans state.supabasePosts, pas state.seed.posts!
         if (!state.supabasePosts.find(p => p.id === newPost.id)) {
@@ -1972,7 +1972,7 @@ function supaSubscribe() {
       try {
         const post = state.seed.posts.find(p => p.id === r.post_id) || (state.userPosts||[]).find(p => p.id === r.post_id);
         if (post) {
-          const { data: prof } = await supa.from("profiles").select("username,emoji").eq("id", r.author_id).single();
+          const { data: prof } = await supa.from("profiles").select("username,emoji").eq("id", r.author_id).maybeSingle();
           if (!post.comments) post.comments = [];
           if (!post.comments.find(c => c.id === r.id)) {
             post.comments.unshift({ id: r.id, authorId: r.author_id, authorName: prof?.username || "Passionne", authorEmoji: prof?.emoji || "✨", text: r.content || "", content: r.content || "", createdAt: new Date(r.created_at + "Z").getTime(), fromSupabase: true });

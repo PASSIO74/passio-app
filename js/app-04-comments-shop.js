@@ -593,7 +593,7 @@ function _primeProfileCache(convs) {
 async function _fetchProfile(userId) {
   if (_profileCache.has(userId)) return _profileCache.get(userId);
   try {
-    const { data } = await supa.from("profiles").select("username,emoji,color").eq("id", userId).single();
+    const { data } = await supa.from("profiles").select("username,emoji,color").eq("id", userId).maybeSingle();
     const prof = data ? { username: data.username || "Passionné", emoji: data.emoji || "✨", color: data.color || "#8b5cf6" } : { username: "Passionné", emoji: "✨", color: "#8b5cf6" };
     _profileCache.set(userId, prof);
     return prof;
