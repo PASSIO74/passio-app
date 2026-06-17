@@ -404,10 +404,10 @@
               <div class="main-profile-avatar-badge">📷</div>
               <input type="file" id="avatarPhotoInput" accept="image/*" style="display:none;" onchange="changeAvatarPhoto(event)"/>
             </div>
-            <div style="display:flex;gap:6px;align-items:center;">
+            <div class="main-profile-actions">
               <button class="main-profile-edit-btn" onclick="openEditMainProfile()">✏️ Éditer</button>
               <button class="main-profile-edit-btn" onclick="shareMyProfile()">📤 Partager</button>
-              <div class="topbar-chip passia" id="profilePassiaChip" onclick="goTo('wallet')" title="Mon solde Passia" style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;"><span>💎</span><span id="topPassia">0</span><span style="font-size:11px;color:var(--muted);font-weight:600;">Passia</span></div>
+              <button class="main-profile-edit-btn" id="profilePassiaChip" onclick="goTo('wallet')" title="Mon solde Passia">💎 <span id="topPassia">0</span></button>
             </div>
           </div>
           <div class="main-profile-username" id="mainProfileUsername">Mon profil</div>

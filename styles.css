@@ -2308,15 +2308,26 @@
       border: 2px solid #fff;
       cursor: pointer;
     }
+    .main-profile-actions {
+      display: flex;
+      gap: 6px;
+      align-items: flex-end;
+    }
     .main-profile-edit-btn {
       background: var(--bg-deep);
       border: 1.5px solid var(--border);
       border-radius: 10px;
-      padding: 6px 12px;
+      padding: 6px 10px;
       font-size: 12px;
       font-weight: 700;
+      line-height: 1.2;
       color: var(--accent);
       cursor: pointer;
+      white-space: nowrap;
+      height: 30px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
     }
     .main-profile-username {
       font-size: 18px;
