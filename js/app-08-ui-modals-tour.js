@@ -1395,18 +1395,40 @@ async function supaAddComment(postId, content) {
   } catch(e) { console.warn("Comment error:", e); }
 }
 
+// Résout des profils (username/emoji/color) par ids en UNE requête, SANS embed
+// PostgREST. Les tables post_comments / stories / events n'ont pas de FK
+// `author_id → profiles` en prod → l'embed `profiles(...)` y renvoie 400 et la
+// requête échoue (constaté le 2026-06-17 : commentaires des autres invisibles,
+// 400 au boot). Retourne { [id]: {id,username,emoji,color} }.
+async function _resolveProfilesByIds(ids) {
+  const out = {};
+  const uniq = [...new Set((ids || []).filter(Boolean))];
+  if (!uniq.length) return out;
+  try {
+    const { data } = await supa.from("profiles").select("id,username,emoji,color").in("id", uniq);
+    (data || []).forEach(p => { out[p.id] = p; });
+  } catch(e) {}
+  return out;
+}
+
 async function supaLoadComments(postId) {
   try {
-    const { data } = await supa.from("post_comments")
-      .select("*, profiles(username,emoji,color)")
+    const { data, error } = await supa.from("post_comments")
+      .select("*")
       .eq("post_id", postId).order("created_at", { ascending: true });
-    return (data || []).map(r => ({
-      id: r.id, authorId: r.author_id,
-      authorName: r.profiles?.username || "Passionné",
-      authorEmoji: r.profiles?.emoji || "✨",
-      content: r.content,
-      createdAt: new Date(r.created_at + "Z").getTime(),
-    }));
+    if (error) { console.warn("supaLoadComments:", error.message); return []; }
+    const rows = data || [];
+    const profs = await _resolveProfilesByIds(rows.map(r => r.author_id));
+    return rows.map(r => {
+      const p = profs[r.author_id] || {};
+      return {
+        id: r.id, authorId: r.author_id,
+        authorName: p.username || "Passionné",
+        authorEmoji: p.emoji || "✨",
+        content: r.content,
+        createdAt: new Date(r.created_at + "Z").getTime(),
+      };
+    });
   } catch(e) { return []; }
 }
 
@@ -1427,8 +1449,11 @@ async function supaPublishStory(story) {
 async function supaLoadStories() {
   try {
     const since = new Date(Date.now() - 24*3600*1000).toISOString();
-    const { data } = await supa.from("stories").select("*, profiles(username,emoji,color)").gte("created_at", since).order("created_at", { ascending: false }).limit(30);
-    return (data || []).map(r => ({ id: r.id, authorId: r.author_id, authorName: r.profiles?.username || "Passionné", authorEmoji: r.profiles?.emoji || "✨", authorColor: r.profiles?.color || "#8b5cf6", passion: r.passion_id, content: r.content || "", emoji: r.emoji || "✨", fromSupabase: true }));
+    const { data, error } = await supa.from("stories").select("*").gte("created_at", since).order("created_at", { ascending: false }).limit(30);
+    if (error) { console.warn("supaLoadStories:", error.message); return []; }
+    const rows = data || [];
+    const profs = await _resolveProfilesByIds(rows.map(r => r.author_id));
+    return rows.map(r => { const p = profs[r.author_id] || {}; return { id: r.id, authorId: r.author_id, authorName: p.username || "Passionné", authorEmoji: p.emoji || "✨", authorColor: p.color || "#8b5cf6", passion: r.passion_id, content: r.content || "", emoji: r.emoji || "✨", fromSupabase: true }; });
   } catch(e) { return []; }
 }
 
@@ -1460,12 +1485,15 @@ async function supaPublishEvent(event) {
 
 async function supaLoadEvents() {
   try {
-    const { data } = await supa.from("events").select("*, profiles(username,emoji,color)").order("created_at", { ascending: false }).limit(60);
-    return (data || []).map(r => ({
+    const { data, error } = await supa.from("events").select("*").order("created_at", { ascending: false }).limit(60);
+    if (error) { console.warn("supaLoadEvents:", error.message); return []; }
+    const rows = data || [];
+    const profs = await _resolveProfilesByIds(rows.map(r => r.organizer_id || r.author_id));
+    return rows.map(r => ({
       id: r.id,
       authorId: r.author_id,
       organizerId: r.organizer_id || r.author_id,
-      organizerName: r.profiles?.username || "Passionné",
+      organizerName: (profs[r.organizer_id || r.author_id] || {}).username || "Passionné",
       title: r.title || "Événement",
       passion: r.passion_id || "autre",
       lat: r.lat, lng: r.lng,
@@ -2005,7 +2033,7 @@ function supaSubscribe() {
       if (!r || r.user_id !== MY_UID) return; // pas pour moi
       const notif = {
         id: r.id, kind: r.kind, fromId: r.from_id,
-        text: r.content || "", emoji: "✨",
+        text: r.content || "", emoji: _notifEmoji(r.kind),
         createdAt: new Date((r.created_at || "") + "Z").getTime() || Date.now(),
         unread: !r.seen, fromSupabase: true,
       };
@@ -2082,17 +2110,29 @@ async function supaLoadJoinedEvents() {
 }
 
 // ---- NOTIFICATIONS SUPABASE ----
+// Emoji d'une notif dérivé de son `kind` (pas de jointure profiles : voir
+// supaLoadNotifications).
+function _notifEmoji(kind) {
+  return ({ like: "❤️", comment: "💬", follow: "➕", message: "✉️", mention: "📣", reaction: "😊" })[kind] || "✨";
+}
+
 async function supaLoadNotifications() {
   try {
-    const { data } = await supa.from("notifications")
-      .select("*, profiles!from_id(username,emoji)")
+    // ⚠️ NE PAS faire `.select("*, profiles!from_id(...)")` : `notifications.from_id`
+    // est une simple colonne TEXT SANS FK vers profiles (cf. supabase_tables.sql)
+    // → PostgREST renvoie 400 sur l'embed et la requête échoue toujours en prod.
+    // (Bug constaté le 2026-06-17 par le test 2 comptes : 0 notif chargée.) On
+    // dérive l'emoji du kind ; le nom de l'émetteur est déjà dans `content`.
+    const { data, error } = await supa.from("notifications")
+      .select("*")
       .eq("user_id", MY_UID)
       .order("created_at", { ascending: false })
       .limit(30);
+    if (error) { console.warn("supaLoadNotifications:", error.message); return []; }
     return (data || []).map(r => ({
       id: r.id, kind: r.kind, fromId: r.from_id,
       text: r.content || "",
-      emoji: r.profiles?.emoji || "✨",
+      emoji: _notifEmoji(r.kind),
       createdAt: new Date(r.created_at + "Z").getTime(),
       unread: !r.seen,
       fromSupabase: true,
