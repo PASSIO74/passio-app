@@ -1418,7 +1418,7 @@ function closeReelComments() {
 
 function loadReelComments(postId) {
   // Chercher dans state.seed.posts ou state.userPosts
-  const reel = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
+  const reel = findPostAnywhere(postId);
   if (!reel) return;
 
   const commentsList = document.getElementById("reelCommentsList");
@@ -1518,7 +1518,7 @@ function submitReelComment() {
   }
 
   const postId = window.currentReelCommentPostId;
-  const reel = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
+  const reel = findPostAnywhere(postId);
   if (!reel) return;
 
   if (!reel.comments) reel.comments = [];
@@ -1568,7 +1568,7 @@ function submitReelComment() {
 }
 
 function likeReelComment(postId, commentIdx) {
-  const reel = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
+  const reel = findPostAnywhere(postId);
   if (!reel || !reel.comments || !reel.comments[commentIdx]) return;
 
   const comment = reel.comments[commentIdx];
@@ -1612,7 +1612,7 @@ function toggleReelCommentReplies(commentIdx) {
 
 function showQuickEmojiForReelComment(postId, commentIdx, event) {
   event.stopPropagation();
-  const reel = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
+  const reel = findPostAnywhere(postId);
   if (!reel || !reel.comments || !reel.comments[commentIdx]) return;
 
   const emojis = ["😂", "❤️", "😍", "🔥", "👍"];
@@ -1635,7 +1635,7 @@ function showQuickEmojiForReelComment(postId, commentIdx, event) {
 }
 
 function showEmojiPickerForReelComment(postId, commentIdx) {
-  const reel = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
+  const reel = findPostAnywhere(postId);
   if (!reel || !reel.comments || !reel.comments[commentIdx]) return;
 
   const emojis = ["😂", "❤️", "😍", "🔥", "🎉", "👍"];
@@ -1648,7 +1648,7 @@ function showEmojiPickerForReelComment(postId, commentIdx) {
 }
 
 function showGifPickerForReelComment(postId, commentIdx) {
-  const reel = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
+  const reel = findPostAnywhere(postId);
   if (!reel || !reel.comments || !reel.comments[commentIdx]) return;
 
   openModal(`
@@ -1681,7 +1681,7 @@ function _reelGifSearch(postId, commentIdx, q) {
 }
 
 function addEmojiReactionToReelComment(postId, commentIdx, emoji) {
-  const reel = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
+  const reel = findPostAnywhere(postId);
   if (!reel || !reel.comments || !reel.comments[commentIdx]) return;
 
   const comment = reel.comments[commentIdx];
@@ -1703,7 +1703,7 @@ function addEmojiReactionToReelComment(postId, commentIdx, emoji) {
 }
 
 function addGifReactionToReelComment(postId, commentIdx, gifUrl) {
-  const reel = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
+  const reel = findPostAnywhere(postId);
   if (!reel || !reel.comments || !reel.comments[commentIdx]) return;
 
   const comment = reel.comments[commentIdx];
@@ -1728,7 +1728,7 @@ function reactToReel(emoji) {
   const postId = window.currentReelCommentPostId;
   if (!postId) return;
 
-  const reel = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
+  const reel = findPostAnywhere(postId);
   if (!reel) return;
 
   if (!reel.reactions) reel.reactions = {};
@@ -1744,7 +1744,7 @@ function shareReel(postId) {
 }
 
 function openReelShareModal(postId) {
-  const reel = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
+  const reel = findPostAnywhere(postId);
   if (!reel) return;
 
   const url = `${location.origin}${location.pathname}#reel=${encodeURIComponent(postId)}`;

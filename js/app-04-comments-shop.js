@@ -189,7 +189,7 @@ async function openComments(postId) {
   // Ajouter à l'historique pour que le bouton back fonctionne
   pushOverlayToHistory("comments", postId);
 
-  let post = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
+  let post = findPostAnywhere(postId);
   if (!post) return;
 
   // Afficher immédiatement avec les commentaires locaux
@@ -240,7 +240,7 @@ async function openComments(postId) {
 function submitComment(postId) {
   const text = $("#newComment").value.trim();
   if (text.length < 2) { toast("Trop court"); return; }
-  let post = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
+  let post = findPostAnywhere(postId);
   if (!post) return;
   if (!post.comments) post.comments = [];
   const realAuthorId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
@@ -260,7 +260,7 @@ function submitComment(postId) {
   if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
     supaAddComment(postId, text);
     // Notifier l'auteur du post
-    const commentedPost = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
+    const commentedPost = findPostAnywhere(postId);
     if (commentedPost && commentedPost.authorId && commentedPost.authorId !== MY_UID && commentedPost.fromSupabase) {
       supaInsertNotif(commentedPost.authorId, "comment", postId, "a commenté ton post");
     }

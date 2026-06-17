@@ -127,10 +127,12 @@ function likePost(id, skipRender = false) {
   // Sync avec Supabase
   if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
     supaToggleLike(id);
-    // Notifier l'auteur du post si c'est un like (pas un unlike)
-    const post2 = state.seed.posts.find(p => p.id === id) || state.userPosts.find(p => p.id === id);
-    if (!liked && post2 && post2.authorId && post2.authorId !== MY_UID && post2.fromSupabase) {
-      supaInsertNotif(post2.authorId, "like", id, "a aimé ton post");
+    // Notifier l'auteur du post si c'est un like (pas un unlike).
+    // On réutilise `post` (déjà cherché dans seed + userPosts + supabasePosts) :
+    // l'ancienne re-recherche oubliait supabasePosts → liker un vrai post ne
+    // notifiait jamais l'auteur.
+    if (!liked && post && post.authorId && post.authorId !== MY_UID && post.fromSupabase) {
+      supaInsertNotif(post.authorId, "like", id, "a aimé ton post");
     }
   }
 }

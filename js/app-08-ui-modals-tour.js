@@ -523,6 +523,45 @@ function renderBell() {
   dot.textContent = n > 0 ? (n > 9 ? "9+" : String(n)) : "";
 }
 
+// HTML de la liste de notifications (extrait pour pouvoir re-rendre le panneau
+// en place lors d'un rafraîchissement Supabase / temps réel).
+function _notifListHtml(notifs) {
+  notifs = notifs || [];
+  if (!notifs.length) return `
+    <div class="empty">
+      <div class="empty-icon">🔕</div>
+      <div class="empty-title">Tout est calme</div>
+      <div class="empty-text">Tu es à jour, profite.</div>
+    </div>`;
+  return notifs.map(n => `
+    <div class="notif-row ${n.unread ? "unread" : ""}" onclick="markNotifRead('${n.id}')">
+      <div class="notif-icon">${n.emoji || "✨"}</div>
+      <div class="notif-body">
+        <div class="notif-text">${n.text}</div>
+        <div class="notif-meta">${fmtTime(n.createdAt)}</div>
+      </div>
+      ${n.unread ? '<div class="notif-dot"></div>' : ""}
+    </div>`).join("");
+}
+
+// Fusionne des notifications Supabase dans l'état local (priorité Supabase,
+// dédup par id, tri par date), met à jour le badge cloche et rafraîchit le
+// panneau s'il est ouvert. Utilisé au boot, à l'ouverture du panneau et en
+// temps réel. Remplace la fusion qui dormait dans le code mort de supaInit.
+function mergeSupaNotifs(ns) {
+  if (!ns || !ns.length) return;
+  const localOnly = (state.notifications || []).filter(n => !n.fromSupabase);
+  const byId = new Map();
+  [...ns, ...localOnly].forEach(n => { if (n && n.id && !byId.has(n.id)) byId.set(n.id, n); });
+  state.notifications = [...byId.values()]
+    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+    .slice(0, 50);
+  try { saveState(); } catch(e) {}
+  try { renderBell(); } catch(e) {}
+  const list = document.querySelector(".notif-list");
+  if (list) list.innerHTML = _notifListHtml(state.notifications);
+}
+
 function openNotifications() {
   const notifs = state.notifications || [];
   const html = `
@@ -530,25 +569,7 @@ function openNotifications() {
     <div class="modal-title">🔔 Notifications</div>
     <div class="modal-subtitle">Ce qui s'est passé pendant que tu vivais ta vraie vie.</div>
     <div class="notif-list">
-      ${notifs.length ? notifs.map(n => {
-        const u = userById(n.fromId) || { name: "Passio", avatar: "#8b5cf6", profileEmoji: "✨" };
-        return `
-          <div class="notif-row ${n.unread ? "unread" : ""}" onclick="markNotifRead('${n.id}')">
-            <div class="notif-icon">${n.emoji || "✨"}</div>
-            <div class="notif-body">
-              <div class="notif-text">${n.text}</div>
-              <div class="notif-meta">${fmtTime(n.createdAt)}</div>
-            </div>
-            ${n.unread ? '<div class="notif-dot"></div>' : ""}
-          </div>
-        `;
-      }).join("") : `
-        <div class="empty">
-          <div class="empty-icon">🔕</div>
-          <div class="empty-title">Tout est calme</div>
-          <div class="empty-text">Tu es à jour, profite.</div>
-        </div>
-      `}
+      ${_notifListHtml(notifs)}
     </div>
     <div style="display:flex;gap:8px;margin-top:14px;">
       <button class="btn ghost block" onclick="markAllNotifsRead()">Tout marquer lu</button>
@@ -556,6 +577,13 @@ function openNotifications() {
     </div>
   `;
   openModal(html);
+  // Rafraîchir depuis Supabase à l'ouverture : garantit l'affichage des notifs
+  // reçues même si le realtime ne les a pas livrées. La liste se met à jour en
+  // place via mergeSupaNotifs (pas de réouverture de modal).
+  if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID
+      && typeof supaLoadNotifications === "function") {
+    supaLoadNotifications().then(ns => { if (ns && ns.length) mergeSupaNotifs(ns); }).catch(e => {});
+  }
 }
 
 function markNotifRead(id) {
@@ -564,7 +592,9 @@ function markNotifRead(id) {
     n.unread = false;
     saveState();
     renderBell();
-    openNotifications();
+    // Re-render en place (pas de réouverture → évite un re-fetch Supabase).
+    const list = document.querySelector(".notif-list");
+    if (list) list.innerHTML = _notifListHtml(state.notifications);
     // Sync Supabase si c'est une notif Supabase
     if (n.fromSupabase && typeof supaMarkNotifSeen === "function") {
       supaMarkNotifSeen(id);
@@ -1954,13 +1984,34 @@ function supaSubscribe() {
   supa.channel("realtime:likes")
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "post_likes" }, payload => {
       const r = payload.new;
-      const post = state.seed.posts.find(p => p.id === r.post_id) || (state.userPosts||[]).find(p => p.id === r.post_id);
+      const post = findPostAnywhere(r.post_id);
       if (post) { post.likes = (post.likes || 0) + 1; try { renderFeed(); } catch(e) {} }
     })
     .on("postgres_changes", { event: "DELETE", schema: "public", table: "post_likes" }, payload => {
       const r = payload.old;
-      const post = state.seed.posts.find(p => p.id === r.post_id) || (state.userPosts||[]).find(p => p.id === r.post_id);
+      const post = findPostAnywhere(r.post_id);
       if (post) { post.likes = Math.max(0, (post.likes || 1) - 1); try { renderFeed(); } catch(e) {} }
+    })
+    .subscribe();
+
+  // ── Notifications entrantes (like, comment, follow…) en temps réel ──
+  // 🔧 FIX 2026-06-17 : il n'existait AUCUN canal realtime sur la table
+  // notifications → les notifs n'arrivaient jamais en direct. La table est dans
+  // la publication supabase_realtime (cf. migrations). mergeSupaNotifs gère
+  // badge + panneau ouvert + dédup.
+  supa.channel("realtime:notifications")
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications" }, payload => {
+      const r = payload.new;
+      if (!r || r.user_id !== MY_UID) return; // pas pour moi
+      const notif = {
+        id: r.id, kind: r.kind, fromId: r.from_id,
+        text: r.content || "", emoji: "✨",
+        createdAt: new Date((r.created_at || "") + "Z").getTime() || Date.now(),
+        unread: !r.seen, fromSupabase: true,
+      };
+      if ((state.notifications || []).some(n => n.id === notif.id)) return;
+      mergeSupaNotifs([notif]);
+      try { toast(notif.text || "Nouvelle notification", "info"); } catch(e) {}
     })
     .subscribe();
 
@@ -1970,7 +2021,7 @@ function supaSubscribe() {
       const r = payload.new;
       if (r.author_id === MY_UID) return;
       try {
-        const post = state.seed.posts.find(p => p.id === r.post_id) || (state.userPosts||[]).find(p => p.id === r.post_id);
+        const post = findPostAnywhere(r.post_id);
         if (post) {
           const { data: prof } = await supa.from("profiles").select("username,emoji").eq("id", r.author_id).maybeSingle();
           if (!post.comments) post.comments = [];
@@ -1988,6 +2039,11 @@ async function supaFollowUser(targetId) {
   try {
     await supaUpsertProfile();
     await supa.from("follows").insert({ follower_id: MY_UID, following_id: targetId, created_at: new Date().toISOString() });
+    // Notifier la personne suivie (un suivi est une interaction qui doit
+    // apparaître dans ses notifications).
+    if (targetId && targetId !== MY_UID && typeof supaInsertNotif === "function") {
+      supaInsertNotif(targetId, "follow", MY_UID, "a commencé à te suivre");
+    }
   } catch(e) {}
 }
 
@@ -2141,6 +2197,11 @@ async function supaInit() {
         supaLoadStories().then(s => { if (s.length) { state.seed.stories = s; } }).catch(e => {});
       if (typeof supaLoadEvents === "function")
         supaLoadEvents().then(e => { if (e.length) { state.seed.events = e; } }).catch(e => {});
+      // \ud83d\udd27 FIX 2026-06-17 : les notifications Supabase n'\u00e9taient charg\u00e9es que dans
+      // le code mort apr\u00e8s le `return;` plus bas \u2192 la cloche n'affichait JAMAIS
+      // les notifs re\u00e7ues d'autres comptes. On les charge ici (chemin vivant).
+      if (typeof supaLoadNotifications === "function")
+        supaLoadNotifications().then(ns => { if (ns && ns.length) mergeSupaNotifs(ns); }).catch(e => {});
     }, 2000);
 
     // 4. CONVERSATIONS + REALTIME \u2014 \ud83d\udd27 FIX CRITIQUE 2026-06-12 : ces deux blocs

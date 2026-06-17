@@ -1228,6 +1228,18 @@ function onbFinish() {
   launchTourSafe();
 }
 
+// Recherche un post par id dans TOUTES les sources : seed (démo), posts perso
+// (userPosts) ET posts réseau Supabase (vrais utilisateurs). De nombreux
+// handlers ne regardaient que seed + userPosts → impossible d'ouvrir/commenter/
+// réagir sur un vrai post d'un autre compte, et les notifs de like ne partaient
+// pas. Centralisé le 2026-06-17. Voir [[project_passio]].
+function findPostAnywhere(id) {
+  return (state.seed.posts || []).find(p => p.id === id)
+      || (state.userPosts || []).find(p => p.id === id)
+      || (state.supabasePosts || []).find(p => p.id === id)
+      || null;
+}
+
 // ======== FEED ========
 function allFeedPosts() {
   // ✅ NOUVELLES SOURCES DE POSTS:

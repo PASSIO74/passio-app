@@ -38,7 +38,7 @@ function shareReelVia(platform, postId, encodedUrl, encodedText) {
 }
 
 function shareReelEmail(postId, encodedText) {
-  const reel = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
+  const reel = findPostAnywhere(postId);
   if (!reel) return;
 
   const url = `${location.origin}${location.pathname}#reel=${encodeURIComponent(postId)}`;
@@ -57,7 +57,7 @@ function shareReelEmail(postId, encodedText) {
 
 function shareReelSMS(postId, encodedUrl) {
   const url = decodeURIComponent(encodedUrl);
-  const reel = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
+  const reel = findPostAnywhere(postId);
   if (!reel) return;
 
   const text = reel.text || reel.caption || "";

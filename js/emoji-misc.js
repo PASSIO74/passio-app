@@ -224,7 +224,7 @@ document.addEventListener("click", function(e) {
 function likeComment(postId, commentId, event) {
   if (event) { event.stopPropagation(); event.preventDefault(); }
   _diag("❤️ likeComment(" + postId + ", " + commentId + ")");
-  var post = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
+  var post = findPostAnywhere(postId);
   if (!post) { _diag("❌ Post not found"); return false; }
   var comment = (post.comments || []).find(c => c.id === commentId);
   if (!comment) { _diag("❌ Comment not found"); return false; }
@@ -273,7 +273,7 @@ function replyToComment(postId, commentId, authorName, event) {
     var replyText = inputField.value.trim();
     if (!replyText) return;
     _diag("📝 Submitting reply");
-    var post = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
+    var post = findPostAnywhere(postId);
     if (!post) { _diag("❌ Post not found"); return; }
     var comment = (post.comments || []).find(c => c.id === commentId);
     if (!comment) { _diag("❌ Comment not found"); return; }
@@ -439,7 +439,7 @@ function showEmojiPickerForComment(postId, commentId, event) {
   if (oldPanel) oldPanel.remove();
 
   // Initialiser les propriétés du commentaire
-  var post = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
+  var post = findPostAnywhere(postId);
   if (post) {
     var comment = (post.comments || []).find(c => c.id === commentId);
     if (comment) {
@@ -499,7 +499,7 @@ function showEmojiPickerForComment(postId, commentId, event) {
 
 function addGifToComment(postId, commentId, gifUrl) {
   console.log("🎬 addGifToComment:", postId, commentId);
-  var post = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
+  var post = findPostAnywhere(postId);
   if (!post) return false;
   var comment = (post.comments || []).find(c => c.id === commentId);
   if (!comment) return false;
@@ -638,7 +638,7 @@ function showEmojiPickerForPost(postId, event) {
 
 function addEmojiToPost(postId, emoji) {
   console.log("✨ addEmojiToPost:", postId, emoji);
-  var post = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
+  var post = findPostAnywhere(postId);
   if (!post) return false;
 
   if (!post.reactions) post.reactions = [];
@@ -687,7 +687,7 @@ function showGifPickerForPost(postId, event) {
 
 function addGifToPost(postId, gifUrl) {
   console.log("🎬 addGifToPost:", postId);
-  var post = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
+  var post = findPostAnywhere(postId);
   if (!post) return false;
 
   if (!post.reactions) post.reactions = [];
@@ -705,7 +705,7 @@ function addGifToPost(postId, gifUrl) {
 }
 
 function updatePostReactionsUI(postId) {
-  var post = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
+  var post = findPostAnywhere(postId);
   if (!post || !post.reactions) return;
 
   var postElement = document.querySelector('[data-postid="' + postId + '"]');
@@ -739,7 +739,7 @@ function updatePostReactionsUI(postId) {
 
 function addEmojiToComment(postId, commentId, emoji) {
   console.log("✨ addEmojiToComment:", postId, commentId, emoji);
-  var post = state.seed.posts.find(p => p.id === postId) || state.userPosts.find(p => p.id === postId);
+  var post = findPostAnywhere(postId);
   if (!post) return false;
   var comment = (post.comments || []).find(c => c.id === commentId);
   if (!comment) return false;
