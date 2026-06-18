@@ -1414,21 +1414,28 @@ function renderIRL() {
 function toggleJoinEvent(id) {
   const ev = allEvents().find(e => e.id === id);
   if (!ev) return;
+  const meId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
   const joined = (state.user.joinedEvents || []).includes(id);
   if (joined) {
     state.user.joinedEvents = state.user.joinedEvents.filter(x => x !== id);
-    ev.attendees = (ev.attendees || []).filter(x => x !== "me");
+    // Retire mon uid ET l'ancien marqueur "me" (la liste chargée depuis Supabase
+    // contient MY_UID) pour ne pas laisser de doublon.
+    ev.attendees = (ev.attendees || []).filter(x => x !== meId && x !== "me");
     toast("Désinscrit");
     supaLeaveEvent(id);
   } else {
     state.user.joinedEvents = state.user.joinedEvents || [];
     state.user.joinedEvents.push(id);
-    ev.attendees = ev.attendees || [];
-    ev.attendees.push("me");
+    ev.attendees = (ev.attendees || []).filter(x => x !== meId && x !== "me");
+    ev.attendees.push(meId);
     grantReward("event_join");
     bumpQuest("join");
     pushNotification(`🤝 Tu rejoins <b>${escapeHtml(ev.title)}</b>`, "🤝");
     supaJoinEvent(id);
+    // Notifier l'organisateur (interaction cross-compte sur SON événement).
+    if (ev.fromSupabase && ev.organizerId && ev.organizerId !== meId && typeof supaInsertNotif === "function") {
+      supaInsertNotif(ev.organizerId, "event_join", id, "a rejoint ton événement");
+    }
   }
   saveState();
   renderIRL();

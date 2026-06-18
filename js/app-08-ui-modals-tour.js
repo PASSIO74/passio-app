@@ -1489,6 +1489,17 @@ async function supaLoadEvents() {
     if (error) { console.warn("supaLoadEvents:", error.message); return []; }
     const rows = data || [];
     const profs = await _resolveProfilesByIds(rows.map(r => r.organizer_id || r.author_id));
+    // Charger les vrais participants (compteurs/avatars cross-compte). Sans ça,
+    // supaLoadEvents renvoyait attendees:[] → tout événement affichait "0 inscrit"
+    // même si plusieurs comptes l'avaient rejoint. (Corrigé le 2026-06-18.)
+    const attByEvent = {};
+    if (rows.length) {
+      try {
+        const { data: atts } = await supa.from("event_attendees")
+          .select("event_id,user_id").in("event_id", rows.map(r => r.id));
+        (atts || []).forEach(a => { (attByEvent[a.event_id] = attByEvent[a.event_id] || []).push(a.user_id); });
+      } catch(e) {}
+    }
     return rows.map(r => ({
       id: r.id,
       authorId: r.author_id,
@@ -1510,7 +1521,7 @@ async function supaLoadEvents() {
       externalLink: r.external_link || "",
       eventType: r.event_type || "Autre",
       coverUrl: r.cover_url || null,
-      attendees: [],
+      attendees: attByEvent[r.id] || [],
       fromSupabase: true,
     }));
   } catch(e) { return []; }
@@ -1758,10 +1769,15 @@ async function supaInsertNotif(toUserId, kind, refId, content) {
   try {
     if (toUserId === MY_UID) return;
     const prof = currentProfile();
+    // ⚠️ Le pseudo est contrôlé par l'utilisateur ET le texte de la notif est
+    // rendu en innerHTML chez le destinataire (_notifListHtml) → on échappe le
+    // pseudo ici pour éviter un XSS stocké cross-compte. `content` est statique
+    // (fourni par le code appelant), donc sûr.
+    const safeName = (typeof escapeHtml === "function") ? escapeHtml(prof?.name || "Quelqu'un") : (prof?.name || "Quelqu'un");
     await supa.from("notifications").insert({
       id: "n_" + uid(), user_id: toUserId,
       kind, from_id: MY_UID, ref_id: refId,
-      content: `${prof?.name || "Quelqu'un"} ${content}`,
+      content: `${safeName} ${content}`,
       seen: false, created_at: new Date().toISOString(),
     });
   } catch(e) {}
@@ -2113,7 +2129,7 @@ async function supaLoadJoinedEvents() {
 // Emoji d'une notif dérivé de son `kind` (pas de jointure profiles : voir
 // supaLoadNotifications).
 function _notifEmoji(kind) {
-  return ({ like: "❤️", comment: "💬", follow: "➕", message: "✉️", mention: "📣", reaction: "😊" })[kind] || "✨";
+  return ({ like: "❤️", comment: "💬", follow: "➕", message: "✉️", mention: "📣", reaction: "😊", event_join: "🤝" })[kind] || "✨";
 }
 
 async function supaLoadNotifications() {
