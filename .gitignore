@@ -20,6 +20,7 @@ dist/
 archive/
 node_modules/
 .claude/
+supabase/.temp/
 
 # Netlify cache
 .netlify/
