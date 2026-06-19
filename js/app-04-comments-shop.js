@@ -125,7 +125,8 @@ function deletePost(postId) {
 }
 
 function _renderCommentsList(allComments, postId) {
-  return allComments.map(c => {
+  // Masquer les commentaires des utilisateurs bloqués (modération)
+  return allComments.filter(c => !(typeof isBlocked === "function" && isBlocked(c.authorId))).map(c => {
     let name, emoji, avatarColor, authorId;
     authorId = c.authorId || "?";
     // Priorité : infos embarquées (Supabase) > userById
@@ -1122,9 +1123,11 @@ async function openUserProfile(authorId, source) {
     \
     <!-- ACTIONS RAPIDES -->\
     <div style="display:flex;gap:8px;margin-bottom:16px;">\
-      <button class="btn ghost" onclick="toast(\'🔔 Notifications activées\')" style="flex:1;font-size:11px;padding:8px;">🔔 Notifier</button>\
-      <button class="btn ghost" onclick="toast(\'📤 Profil partagé\')" style="flex:1;font-size:11px;padding:8px;">📤 Partager</button>\
-      <button class="btn ghost" onclick="toast(\'🚫 Utilisateur bloqué\')" style="flex:1;font-size:11px;padding:8px;color:#ef4444;border-color:rgba(239,68,68,0.3);">🚫 Bloquer</button>\
+      <button class="btn ghost" onclick="shareUserProfile(\'' + authorId + '\',\'' + escapeHtml(user.name || "") + '\')" style="flex:1;font-size:11px;padding:8px;">📤 Partager</button>\
+      <button class="btn ghost" onclick="reportUser(\'' + authorId + '\',\'' + escapeHtml(user.name || "") + '\')" style="flex:1;font-size:11px;padding:8px;color:#f59e0b;border-color:rgba(245,158,11,0.3);">🚩 Signaler</button>\
+      ' + (isBlocked(authorId)
+        ? '<button class="btn ghost" onclick="unblockUser(\'' + authorId + '\',\'' + escapeHtml(user.name || "") + '\');closeModal();" style="flex:1;font-size:11px;padding:8px;">✅ Débloquer</button>'
+        : '<button class="btn ghost" onclick="blockUser(\'' + authorId + '\',\'' + escapeHtml(user.name || "") + '\')" style="flex:1;font-size:11px;padding:8px;color:#ef4444;border-color:rgba(239,68,68,0.3);">🚫 Bloquer</button>') + '\
     </div>\
     \
     <!-- PUBLICATIONS -->\
@@ -1162,6 +1165,88 @@ function toggleFollowUser(userId, userName) {
   saveState();
 }
 
+// ======== MODÉRATION (UI) ========
+function blockUser(userId, name) {
+  if (!userId || userId === MY_UID || userId === "me") return;
+  state.user.blocked = state.user.blocked || [];
+  if (!state.user.blocked.includes(userId)) state.user.blocked.push(userId);
+  // Bloquer = ne plus suivre non plus
+  state.user.following = (state.user.following || []).filter(id => id !== userId);
+  saveState();
+  if (typeof supaBlockUser === "function") supaBlockUser(userId);
+  if (typeof supaUnfollowUser === "function") supaUnfollowUser(userId);
+  closeModal();
+  toast("🚫 " + (name || "Utilisateur") + " bloqué");
+  try { renderFeed(); } catch(e) {}
+  try { renderMessages(); } catch(e) {}
+  try { renderBell(); } catch(e) {}
+}
+
+function unblockUser(userId, name) {
+  if (!userId) return;
+  state.user.blocked = (state.user.blocked || []).filter(id => id !== userId);
+  saveState();
+  if (typeof supaUnblockUser === "function") supaUnblockUser(userId);
+  toast("✅ " + (name || "Utilisateur") + " débloqué");
+  try { renderFeed(); } catch(e) {}
+  try { if (typeof renderBlockedList === "function") renderBlockedList(); } catch(e) {}
+}
+
+function reportUser(userId, name) {
+  if (!userId) return;
+  if (typeof supaReport === "function") supaReport("user", userId, "");
+  closeModal();
+  toast("🚩 Signalement envoyé. Notre équipe va vérifier.");
+}
+
+function reportPost(postId) {
+  if (!postId) return;
+  if (typeof supaReport === "function") supaReport("post", postId, "");
+  toast("🚩 Post signalé. Merci, on s'en occupe.");
+}
+
+function _blockedListHtml() {
+  const blocked = state.user.blocked || [];
+  if (!blocked.length) return '<div class="empty"><div class="empty-icon">✅</div><div class="empty-title">Aucun compte bloqué</div><div class="empty-text">Tu n\'as bloqué personne.</div></div>';
+  return blocked.map(id => {
+    const u = (typeof userById === "function" && userById(id)) || {};
+    const name = u.name || "Utilisateur";
+    const emoji = u.profileEmoji || "👤";
+    return `<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);">
+      <div class="avatar sm" style="background:${u.avatar || '#64748b'};">${emoji}</div>
+      <div style="flex:1;font-weight:700;font-size:13px;color:var(--text);">${escapeHtml(name)}</div>
+      <button class="btn ghost" style="font-size:11px;padding:6px 12px;" onclick="unblockUser('${id}','${escapeHtml(name)}')">Débloquer</button>
+    </div>`;
+  }).join("");
+}
+
+function renderBlockedList() {
+  const box = document.getElementById("blockedListBox");
+  if (box) box.innerHTML = _blockedListHtml();
+}
+
+function openBlockedList() {
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">🚫 Comptes bloqués</div>
+    <div class="modal-subtitle">Leurs posts, commentaires et messages sont masqués.</div>
+    <div id="blockedListBox" style="max-height:320px;overflow-y:auto;margin-top:8px;">${_blockedListHtml()}</div>
+    <button class="btn primary block" style="margin-top:12px;" onclick="closeModal()">OK</button>
+  `);
+}
+
+function shareUserProfile(userId, name) {
+  const url = location.origin + location.pathname + "#user-" + userId;
+  const data = { title: name || "Profil PASSIO", text: "Découvre " + (name || "ce profil") + " sur PASSIO", url };
+  if (navigator.share) {
+    navigator.share(data).catch(() => {});
+  } else if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(url).then(() => toast("🔗 Lien du profil copié"), () => toast("Lien : " + url));
+  } else {
+    toast("Lien : " + url);
+  }
+}
+
 function renderMessages() {
   const list = $("#messageList");
   if (!list) return;
@@ -1170,7 +1255,9 @@ function renderMessages() {
   // Génère les pills lu/non lu
   renderMessageFilters();
 
-  let filtered = [...convs].sort((a, b) => b.lastAt - a.lastAt);
+  // Masquer les conversations avec un utilisateur bloqué (modération)
+  let filtered = convs.filter(c => !(typeof isBlocked === "function" && isBlocked(c.userId)))
+    .sort((a, b) => b.lastAt - a.lastAt);
 
   if (!filtered.length) {
     list.innerHTML = "";

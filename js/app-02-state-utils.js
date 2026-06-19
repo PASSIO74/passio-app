@@ -33,6 +33,7 @@ function defaultState() {
       customPassions: [],
       following: [],
       savedCarnets: [],
+      blocked: [],             // ids des utilisateurs bloqués (modération)
       general: {},
     },
     seed,                    // fake accounts / posts / events / stories / notifs / quests (SEED DE DÉMO SEULEMENT)
@@ -696,6 +697,8 @@ async function doDeleteAccount() {
     }
     try { await supa.from("follows").delete().eq("follower_id", MY_UID); } catch (e) {}
     try { await supa.from("follows").delete().eq("following_id", MY_UID); } catch (e) {}
+    try { await supa.from("blocks").delete().eq("blocker_id", MY_UID); } catch (e) {}
+    try { await supa.from("blocks").delete().eq("blocked_id", MY_UID); } catch (e) {}
     // Suppression du compte auth (e-mail) côté serveur — best-effort : tant que
     // l'Edge Function n'est pas déployée (docs/EDGE_FUNCTION_DELETE_ACCOUNT.md),
     // l'échec est silencieux et la purge manuelle sous 30 jours s'applique.
@@ -1240,6 +1243,15 @@ function findPostAnywhere(id) {
       || null;
 }
 
+// ======== MODÉRATION ========
+// Vrai si l'utilisateur `id` est bloqué (son contenu doit être masqué et ses
+// interactions ignorées). Centralisé pour filtrer feed, commentaires, stories,
+// conversations et notifications. Voir [[project_passio]].
+function isBlocked(id) {
+  if (!id) return false;
+  return (state.user.blocked || []).includes(id);
+}
+
 // ======== FEED ========
 function allFeedPosts() {
   // ✅ NOUVELLES SOURCES DE POSTS:
@@ -1255,11 +1267,13 @@ function allFeedPosts() {
   // Combiner TOUS les posts
   const allPosts = [...seedPosts, ...supabasePosts, ...myPosts];
 
-  // Dédupliquer par ID
+  // Dédupliquer par ID + masquer les auteurs bloqués (modération)
+  const blocked = state.user.blocked || [];
   const seenIds = new Set();
   const deduplicated = allPosts.filter(p => {
     if (seenIds.has(p.id)) return false;
     seenIds.add(p.id);
+    if (blocked.length && blocked.includes(p.authorId)) return false;
     return true;
   });
 

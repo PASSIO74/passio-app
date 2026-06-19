@@ -550,6 +550,9 @@ function _notifListHtml(notifs) {
 // temps réel. Remplace la fusion qui dormait dans le code mort de supaInit.
 function mergeSupaNotifs(ns) {
   if (!ns || !ns.length) return;
+  // Ignorer les notifs émises par un utilisateur bloqué (modération)
+  if (typeof isBlocked === "function") ns = ns.filter(n => !isBlocked(n.fromId));
+  if (!ns.length) return;
   const localOnly = (state.notifications || []).filter(n => !n.fromSupabase);
   const byId = new Map();
   [...ns, ...localOnly].forEach(n => { if (n && n.id && !byId.has(n.id)) byId.set(n.id, n); });
@@ -1844,6 +1847,7 @@ window.PASSIO_REALTIME_V3 = (function(){
 async function _handleIncomingConvMessage(r) {
   if (!r || !r.conv_id) return;
   if (r.from_id === MY_UID) return; // nos propres messages sont déjà dans l'UI (optimistic)
+  if (typeof isBlocked === "function" && isBlocked(r.from_id)) return; // expéditeur bloqué (modération)
 
   var convs = getConversations();
   var conv = convs.find(c => c.id === r.conv_id);
@@ -2115,6 +2119,33 @@ async function supaLoadFollowing() {
   } catch(e) { return []; }
 }
 
+// ---- MODÉRATION : BLOCAGE / SIGNALEMENT ----
+async function supaBlockUser(targetId) {
+  try {
+    await supa.from("blocks").insert({ blocker_id: MY_UID, blocked_id: targetId, created_at: new Date().toISOString() });
+  } catch(e) {}
+}
+async function supaUnblockUser(targetId) {
+  try {
+    await supa.from("blocks").delete().eq("blocker_id", MY_UID).eq("blocked_id", targetId);
+  } catch(e) {}
+}
+async function supaLoadBlocks() {
+  try {
+    const { data } = await supa.from("blocks").select("blocked_id").eq("blocker_id", MY_UID);
+    return (data || []).map(r => r.blocked_id);
+  } catch(e) { return []; }
+}
+async function supaReport(targetType, targetId, reason) {
+  try {
+    await supa.from("reports").insert({
+      id: "r_" + uid(), reporter_id: MY_UID || null,
+      target_type: targetType, target_id: String(targetId || ""),
+      reason: String(reason || "").slice(0, 500), created_at: new Date().toISOString(),
+    });
+  } catch(e) {}
+}
+
 // ---- EVENT JOINING ----
 async function supaJoinEvent(eventId) {
   try {
@@ -2269,6 +2300,15 @@ async function supaInit() {
       // les notifs re\u00e7ues d'autres comptes. On les charge ici (chemin vivant).
       if (typeof supaLoadNotifications === "function")
         supaLoadNotifications().then(ns => { if (ns && ns.length) mergeSupaNotifs(ns); }).catch(e => {});
+      // Liste de blocage (modération) : fusion avec le cache local.
+      if (typeof supaLoadBlocks === "function")
+        supaLoadBlocks().then(bl => {
+          if (bl && bl.length) {
+            state.user.blocked = [...new Set([...(state.user.blocked || []), ...bl])];
+            try { saveState(); } catch(e) {}
+            try { if (typeof renderFeed === "function") renderFeed(); } catch(e) {}
+          }
+        }).catch(e => {});
     }, 2000);
 
     // 4. CONVERSATIONS + REALTIME \u2014 \ud83d\udd27 FIX CRITIQUE 2026-06-12 : ces deux blocs
