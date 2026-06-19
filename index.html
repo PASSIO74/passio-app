@@ -453,13 +453,18 @@
 
     <!-- ===== SCREEN: STUDIO ===== -->
     <section class="screen" id="screen-studio">
-      <div class="studio-head">
-        <div class="section-title" style="margin:0;">Studio de création</div>
-        <button class="studio-explore-btn" onclick="goTo('explore')" title="Explorer les passions">
+      <!-- Sélecteur principal du ➕ : deux fonctionnalités distinctes -->
+      <div class="create-hub-tabs">
+        <button class="create-hub-tab active" onclick="goTo('studio')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20 H8 L19 9 L15 5 L4 16 Z"/><path d="M14 6 L18 10"/></svg>
+          <span>Studio</span>
+        </button>
+        <button class="create-hub-tab" onclick="goTo('explore')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.4"/><path d="M15.4 8.6 L13.1 13.1 L8.6 15.4 L10.9 10.9 Z" fill="currentColor" stroke="none"/></svg>
           <span>Explorer</span>
         </button>
       </div>
+      <div class="section-title" style="font-size:15px;">Studio de création</div>
 
       <div class="studio-type-tabs" id="studioTypeTabs">
         <div class="studio-type active" data-type="text"><span class="studio-type-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7 V5 H20 V7"/><path d="M12 5 V20"/><path d="M9 20 H15"/></svg></span>Texte</div>
@@ -623,6 +628,18 @@
 
     <!-- ===== SCREEN: EXPLORER ===== -->
     <section class="screen" id="screen-explore">
+
+      <!-- Sélecteur principal du ➕ : deux fonctionnalités distinctes -->
+      <div class="create-hub-tabs">
+        <button class="create-hub-tab" onclick="goTo('studio')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20 H8 L19 9 L15 5 L4 16 Z"/><path d="M14 6 L18 10"/></svg>
+          <span>Studio</span>
+        </button>
+        <button class="create-hub-tab active" onclick="goTo('explore')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.4"/><path d="M15.4 8.6 L13.1 13.1 L8.6 15.4 L10.9 10.9 Z" fill="currentColor" stroke="none"/></svg>
+          <span>Explorer</span>
+        </button>
+      </div>
 
       <!-- Tabs Explorer -->
       <div class="explore-tabs">

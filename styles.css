@@ -449,31 +449,41 @@
 
     .nav-cta .nav-label { display: none; }
 
-    /* En-tête du studio : titre + accès Explorer (déplacé depuis la barre du bas) */
-    .studio-head {
+    /* Sélecteur principal du ➕ : deux grands onglets « Studio » / « Explorer »
+       côte à côte (présent en tête des écrans studio ET explore). */
+    .create-hub-tabs {
       display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      margin-bottom: 14px;
+      gap: 6px;
+      background: var(--bg-deep);
+      border: 1.5px solid var(--border);
+      border-radius: 16px;
+      padding: 5px;
+      margin-bottom: 16px;
     }
-    .studio-explore-btn {
+    .create-hub-tab {
+      flex: 1;
       display: inline-flex;
       align-items: center;
-      gap: 6px;
-      padding: 8px 14px;
+      justify-content: center;
+      gap: 8px;
+      padding: 13px 10px;
       border-radius: 12px;
-      border: 1.5px solid var(--border);
-      background: var(--accent-wash);
-      color: var(--accent-2);
-      font-size: 12px;
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      font-size: 14px;
       font-weight: 700;
+      letter-spacing: 0.01em;
       cursor: pointer;
-      flex-shrink: 0;
-      transition: transform 160ms ease, background 160ms ease;
+      transition: color 180ms ease, background 220ms ease, box-shadow 220ms ease, transform 160ms ease;
     }
-    .studio-explore-btn:active { transform: scale(0.96); }
-    .studio-explore-btn svg { width: 16px; height: 16px; }
+    .create-hub-tab svg { width: 18px; height: 18px; flex-shrink: 0; }
+    .create-hub-tab:active { transform: scale(0.97); }
+    .create-hub-tab.active {
+      background: var(--grad-hero);
+      color: #fff;
+      box-shadow: 0 6px 16px rgba(124, 58, 237, 0.30);
+    }
 
     /* ============ COMPONENTS ============ */
     .card {

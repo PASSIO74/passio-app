@@ -50,12 +50,19 @@ test("bottom-nav : libellés, clics réels et écran attendu", async ({ page }) 
     const el = document.getElementById("screen-messages");
     return el && el.classList.contains("active");
   }, null, { timeout: 5000 });
-  // Explorer relogé dans le ➕ Créer (bouton en tête du studio)
+  // Explorer relogé dans le ➕ Créer : sélecteur segmenté Studio | Explorer
   await page.evaluate(() => goTo("studio"));
-  await expect(page.locator(".studio-explore-btn"), "bouton Explorer dans le studio").toBeVisible();
-  await page.click(".studio-explore-btn");
+  await expect(page.locator("#screen-studio .create-hub-tabs"), "sélecteur Studio/Explorer").toBeVisible();
+  await expect(page.locator("#screen-studio .create-hub-tab.active"), "onglet Studio actif").toHaveText(/Studio/);
+  await page.locator("#screen-studio .create-hub-tab", { hasText: "Explorer" }).click();
   await page.waitForFunction(() => {
     const el = document.getElementById("screen-explore");
+    return el && el.classList.contains("active");
+  }, null, { timeout: 5000 });
+  // et retour vers Studio depuis l'écran explore
+  await page.locator("#screen-explore .create-hub-tab", { hasText: "Studio" }).click();
+  await page.waitForFunction(() => {
+    const el = document.getElementById("screen-studio");
     return el && el.classList.contains("active");
   }, null, { timeout: 5000 });
 
