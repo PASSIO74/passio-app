@@ -12,14 +12,25 @@
     })();
 
     // ═══ MONITORING : remonte les erreurs JS dans Supabase (table client_errors) ═══
+    // platform.js est chargé dans <head>, AVANT app-08 qui crée le client et fait
+    // `window.supa = supa`. Les erreurs survenant pendant le boot (les plus
+    // utiles) arrivent donc avant que window.supa existe → on les met en file et
+    // on les vide dès que le client est prêt.
     (function() {
       var sent = 0;
+      var pending = [];
+      function doInsert(payload) {
+        try { window.supa.from("client_errors").insert(payload).then(function(){}, function(){}); } catch (e) {}
+      }
+      function flush() {
+        if (!window.supa) return;
+        while (pending.length) doInsert(pending.shift());
+      }
       function report(message, source, line, col, stackText) {
         try {
           if (sent >= 5) return; // max 5 erreurs par session (anti-spam)
           sent++;
-          if (!window.supa) return;
-          window.supa.from("client_errors").insert({
+          var payload = {
             message: String(message).slice(0, 500),
             source: String(source || "").slice(0, 200),
             line: line || null,
@@ -27,16 +38,27 @@
             url: location.pathname,
             ua: navigator.userAgent.slice(0, 200),
             uid: window.MY_UID || null,
-          }).then(function(){}, function(){});
+          };
+          if (window.supa) doInsert(payload);
+          else pending.push(payload); // boot : on garde pour plus tard
         } catch (e) {}
       }
       window.addEventListener("error", function(e) {
         report(e.message, e.filename, e.lineno, e.colno, e.error && e.error.stack);
+        flush();
       });
       window.addEventListener("unhandledrejection", function(e) {
         var r = e.reason || {};
         report("Promise rejetée: " + (r.message || String(r)).slice(0, 300), "", null, null, r.stack);
+        flush();
       });
+      // Vide la file dès que le client Supabase est dispo (boot ~ quelques s).
+      var tries = 0;
+      var iv = setInterval(function() {
+        tries++;
+        if (window.supa) flush();
+        if (window.supa || tries > 40) clearInterval(iv); // abandon après ~20s
+      }, 500);
     })();
 
     var _ua           = navigator.userAgent;

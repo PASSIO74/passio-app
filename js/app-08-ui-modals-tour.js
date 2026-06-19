@@ -863,6 +863,11 @@ if (!supa) {
     },
   };
 }
+// Exposer le client sur window : `supa` est un `let` (binding lexical) qui ne
+// crée PAS de propriété window → le monitoring d'erreurs (platform.js, chargé
+// avant) testait `window.supa` toujours undefined et ne loggait JAMAIS rien
+// dans client_errors. (Corrigé le 2026-06-19.)
+window.supa = supa;
 
 function getMyUserId() {
   let id = localStorage.getItem("passio_uid");
