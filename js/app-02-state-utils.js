@@ -1267,12 +1267,14 @@ function allFeedPosts() {
   // Combiner TOUS les posts
   const allPosts = [...seedPosts, ...supabasePosts, ...myPosts];
 
-  // Dédupliquer par ID + masquer les auteurs bloqués (modération)
+  // Dédup par ID + masquer auteurs bloqués (modération) + exclure les bobines
+  // (isReel) : elles vivent dans le viewer Bobines, pas dans le fil.
   const blocked = state.user.blocked || [];
   const seenIds = new Set();
   const deduplicated = allPosts.filter(p => {
     if (seenIds.has(p.id)) return false;
     seenIds.add(p.id);
+    if (p.isReel) return false;
     if (blocked.length && blocked.includes(p.authorId)) return false;
     return true;
   });

@@ -1228,6 +1228,8 @@ async function supaPublishPostWithRetry(post, maxRetries = 2) {
         // ✅ NE JAMAIS stocker du base64 en DB — seulement des URLs Supabase Storage
         media_url: (mediaUrl && !mediaUrl.startsWith("data:")) ? mediaUrl : null,
         created_at: new Date(post.createdAt).toISOString(),
+        is_reel: !!post.isReel, // bobine → Bobines (exclu du feed)
+        ...(post.overlays && post.overlays.length ? { overlays: post.overlays } : {}),
         // 🔄 Ajouter les champs de repost si applicable
         ...(post.sharedReel && { shared_from_post_id: post.sharedReel }),
         ...(post.sharedReelData && { shared_data: JSON.stringify(post.sharedReelData) }),
@@ -1460,6 +1462,8 @@ async function supaLoadPosts(offset = 0) {
         likes: postLikes.length,
         liked: postLikes.some(l => l.user_id === MY_UID),
         comments: postComments, fromSupabase: true,
+        isReel: !!r.is_reel, // bobine (exclu du feed, affiché dans Bobines)
+        overlays: r.overlays || null,
         // 🔄 Repost support: parse shared_from_post_id and shared_data if applicable
         ...(r.shared_from_post_id && { sharedReel: r.shared_from_post_id }),
         ...(r.shared_data && { sharedReelData: (() => {
@@ -2127,12 +2131,15 @@ function supaSubscribe() {
       if (r.author_id === MY_UID) return;
       try {
         const { data: prof } = await supa.from("profiles").select("username,emoji,color").eq("id", r.author_id).maybeSingle();
-        const newPost = { id: r.id, authorId: r.author_id, authorName: prof?.username || "Passionne", authorEmoji: prof?.emoji || "✨", authorColor: prof?.color || "#8b5cf6", passion: r.passion_id || "autre", mood: r.mood || "all", type: "text", text: r.content || "", image: r.media_url || null, createdAt: new Date(r.created_at + "Z").getTime(), likes: 0, liked: false, comments: [], fromSupabase: true };
+        const _mu = (r.media_url || "").toLowerCase();
+        const _isVid = _mu.includes(".mp4") || _mu.includes("videos/");
+        const newPost = { id: r.id, authorId: r.author_id, authorName: prof?.username || "Passionne", authorEmoji: prof?.emoji || "✨", authorColor: prof?.color || "#8b5cf6", passion: r.passion_id || "autre", mood: r.mood || "all", type: _isVid ? "video" : "text", text: r.content || "", image: _isVid ? null : (r.media_url || null), video: _isVid ? r.media_url : null, isReel: !!r.is_reel, overlays: r.overlays || null, createdAt: new Date(r.created_at + "Z").getTime(), likes: 0, liked: false, comments: [], fromSupabase: true };
         // ✅ Ajouter dans state.supabasePosts, pas state.seed.posts!
         if (!state.supabasePosts.find(p => p.id === newPost.id)) {
           state.supabasePosts.unshift(newPost);
-          console.log("📥 Post reçu en realtime:", newPost.authorName);
+          console.log("📥 Post reçu en realtime:", newPost.authorName, newPost.isReel ? "(bobine)" : "");
           try { renderFeed(); } catch(e) {}
+          if (newPost.isReel && reelsState && reelsState.open) { try { /* viewer ouvert : laisser l'utilisateur rafraîchir */ } catch(e) {} }
         }
       } catch(e) {}
     })

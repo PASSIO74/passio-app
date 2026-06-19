@@ -1059,47 +1059,27 @@ function reelVideoFallback(videoEl, fallbackUrl) {
 }
 
 function buildReels() {
-  // Utiliser les mêmes filtres que renderFeed()
-  const allPosts = allFeedPosts().filter(function(p) { return p.type !== "vlog"; });
-
-  let posts = [];
-  let combinedPosts = [];
-
-  // ── COMBINAISON : "Suivis" OU "Passions" (multi-sélection) ──
-  // ✅ RÈGLE : si aucune passion sélectionnée → bobines vides (même logique que le feed)
-  if (_showFollowingFeed) {
-    const followingIds = state.user?.following || [];
-    let followingPosts = allPosts.filter(function(p) { return followingIds.includes(p.authorId); });
-    combinedPosts = combinedPosts.concat(followingPosts);
-  }
-
-  if (_activeFeedPassions.size > 0) {
-    let postsByPassion = allPosts.filter(function(p) { return _activeFeedPassions.has(p.passion); });
-    combinedPosts = combinedPosts.concat(postsByPassion);
-  }
-
-  // Dédupliquer les posts
-  const seenIds = new Set();
-  let availablePosts = combinedPosts.filter(function(p) {
-    if (seenIds.has(p.id)) return false;
-    seenIds.add(p.id);
-    return true;
-  });
-
-  // Appliquer le filtre mood (multi-sélection)
-  posts = selectedMoods.size === 0
-    ? availablePosts
-    : availablePosts.filter(function(p) { return selectedMoods.has(p.mood); });
-
+  // Les Bobines sont une fonctionnalité DISTINCTE du fil (comme Reels) : on ne
+  // montre QUE les contenus marqués `isReel` (créés via le type « Bobine » du
+  // Studio), jamais les vidéos du feed. Toutes les bobines récentes, dédupliquées,
+  // hors comptes bloqués (modération).
+  const sources = [
+    ...(state.seed.posts || []),
+    ...(state.supabasePosts || []),
+    ...(state.userPosts || []),
+  ];
   const seen = new Set();
-  const items = [];
-  for (const p of posts) {
-    if (seen.has(p.id)) continue;
-    seen.add(p.id);
-    items.push(p);
-    if (items.length >= 30) break;
-  }
-  return items;
+  const blocked = state.user.blocked || [];
+  return sources
+    .filter(function(p) {
+      if (!p || !p.isReel) return false;
+      if (seen.has(p.id)) return false;
+      seen.add(p.id);
+      if (blocked.length && blocked.includes(p.authorId)) return false;
+      return true;
+    })
+    .sort(function(a, b) { return (b.createdAt || 0) - (a.createdAt || 0); })
+    .slice(0, 30);
 }
 
 function authorOfReel(post) {
@@ -1221,9 +1201,10 @@ function openReels() {
     v.setAttribute("aria-hidden", "false");
     document.getElementById("reelsList").innerHTML = `
       <div class="reels-empty">
-        <div class="reels-empty-emoji">🪷</div>
+        <div class="reels-empty-emoji">🎬</div>
         <div class="reels-empty-title">Pas encore de bobines</div>
-        <div class="reels-empty-text">Crée la première vidéo dans ton Studio, ou change de mood pour découvrir d'autres contenus.</div>
+        <div class="reels-empty-text">Crée ta première bobine : ➕ → Studio → onglet <b>Bobine</b>.</div>
+        <button class="btn primary" style="margin-top:14px;" onclick="startBobineCreation()">🎬 Créer une bobine</button>
       </div>`;
     document.body.style.overflow = "hidden";
     reelsState.open = true;
@@ -1278,6 +1259,18 @@ function closeReels() {
 
 function resumeReels() {
   document.getElementById("reelsPause").classList.remove("show");
+}
+
+// Ouvre le Studio directement sur le type « Bobine » (création de bobine).
+function startBobineCreation() {
+  try { closeReels(); } catch(e) {}
+  goTo("studio");
+  setTimeout(function() {
+    var t = document.querySelector('#studioTypeTabs .studio-type[data-type="bobine"]');
+    if (t) t.click();
+    var main = document.getElementById("appMain");
+    if (main) main.scrollTop = 0;
+  }, 120);
 }
 
 // Ouvre le profil de l'auteur d'une bobine : ferme d'abord l'overlay reels

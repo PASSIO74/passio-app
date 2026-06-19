@@ -953,7 +953,9 @@ $$("#studioTypeTabs .studio-type").forEach(el => {
     el.classList.add("active");
     studioType = el.getAttribute("data-type");
     $("#studioPhoto").style.display = studioType === "photo" ? "block" : "none";
-    $("#studioVideo").style.display = studioType === "video" ? "block" : "none";
+    // « Bobine » réutilise le même bloc d'upload vidéo que « Vidéo » (mais publie
+    // en is_reel → va dans les Bobines, pas le feed).
+    $("#studioVideo").style.display = (studioType === "video" || studioType === "bobine") ? "block" : "none";
     $("#studioAudio").style.display = studioType === "audio" ? "block" : "none";
     const vlogEl = $("#studioVlog");
     if (vlogEl) vlogEl.style.display = studioType === "vlog" ? "block" : "none";
@@ -1261,9 +1263,9 @@ async function publishPost() {
     toast("Ajoute une photo.");
     return;
   }
-  if (studioType === "video" && !videoDataUrl) {
+  if ((studioType === "video" || studioType === "bobine") && !videoDataUrl) {
     console.warn("❌ [PUBLISH] Pas de vidéo");
-    toast("Ajoute une vidéo.");
+    toast(studioType === "bobine" ? "Ajoute une vidéo pour ta bobine." : "Ajoute une vidéo.");
     return;
   }
   if (studioType === "audio" && !audioDataUrl) {
@@ -1309,10 +1311,12 @@ async function publishPost() {
     profileId: state.user.currentProfileId,
     passion,
     mood: studioMood,
-    type: studioType,
+    // Une bobine est une vidéo verticale, mais marquée is_reel (→ Bobines, pas le feed)
+    type: studioType === "bobine" ? "video" : studioType,
+    isReel: studioType === "bobine",
     text,
     image: studioType === "photo" ? photoDataUrl : null,
-    video: studioType === "video" ? videoDataUrl : null,
+    video: (studioType === "video" || studioType === "bobine") ? videoDataUrl : null,
     audio: studioType === "audio" ? audioDataUrl : null,
     createdAt: Date.now(),
     likes: 0,
@@ -1354,9 +1358,14 @@ async function publishPost() {
   saveState();
   diagLog("✅ Post ajouté localement (optimistic)");
 
-  // Naviguer et afficher immédiatement
-  goTo("feed");
-  setTimeout(() => renderFeed(), 50);
+  // Naviguer et afficher immédiatement. Une bobine → viewer Bobines (pas le feed).
+  if (post.isReel) {
+    try { renderFeed(); } catch(e) {}
+    setTimeout(() => { try { if (typeof openReels === "function") openReels(); } catch(e) {} }, 80);
+  } else {
+    goTo("feed");
+    setTimeout(() => renderFeed(), 50);
+  }
 
   // Synchroniser EN BACKGROUND avec timeout court (3 secondes)
   let syncSuccess = false;
