@@ -379,25 +379,39 @@ function renderStories() {
   _diag("📖 Stories count: " + stories.length);
   const seen = state.user.seenStories || [];
 
-  // Stories des autres (pas de "Ton story" car Studio existe déjà)
-  let html = ``;
+  // Bulle "Ta story" (création) en tête, puis les stories.
+  const me = (typeof currentProfile === "function" && currentProfile()) || {};
+  const myEmoji = me.emoji || "✨";
+  const myColor = me.color || "#8b5cf6";
+  let html = `
+    <div class="story-item" onclick="openStoryComposer()" title="Créer une story">
+      <div class="story-ring create">
+        <div class="story-inner" style="background:${myColor};">${myEmoji}</div>
+      </div>
+      <div class="story-label">Ta story</div>
+    </div>
+  `;
 
   html += stories.map((s, i) => {
-    const u = userById(s.authorId) || { name: "?", avatar: "#8b5cf6", profileEmoji: "✨" };
+    // Priorité aux infos embarquées (Supabase/locale), fallback userById.
+    const u = userById(s.authorId) || {};
+    const name = s.authorName || u.name || "Passionné";
+    const emoji = s.authorEmoji || u.profileEmoji || "✨";
+    const color = s.authorColor || u.avatar || "#8b5cf6";
     const isSeen = seen.includes(s.id);
     const photoUrl = s.photo
       ? `https://images.unsplash.com/${s.photo}?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75`
       : null;
     const fallback = `https://picsum.photos/seed/${s.id}/160/160`;
     const inner = photoUrl
-      ? `<img loading="lazy" decoding="async" src="${photoUrl}" alt="${escapeHtml(u.name)}" onerror="this.onerror=null;this.src='${fallback}'"/>`
-      : (u.profileEmoji || "✨");
+      ? `<img loading="lazy" decoding="async" src="${photoUrl}" alt="${escapeHtml(name)}" onerror="this.onerror=null;this.src='${fallback}'"/>`
+      : emoji;
     return `
       <div class="story-item" onclick="openStoryViewer(${i})">
         <div class="story-ring ${isSeen ? "seen" : ""}">
-          <div class="story-inner" style="background: ${u.avatar};">${inner}</div>
+          <div class="story-inner" style="background: ${color};">${inner}</div>
         </div>
-        <div class="story-label">${escapeHtml(u.name.split(" ")[0])}</div>
+        <div class="story-label">${escapeHtml(name.split(" ")[0])}</div>
       </div>
     `;
   }).join("");
@@ -414,10 +428,83 @@ function renderStories() {
   }
 }
 
-function openStudioAsStory() {
-  toast("Studio stories · bientôt en bêta", "info");
-  goTo("studio");
+// ======== CRÉATION DE STORY ========
+const STORY_BGS = [
+  "linear-gradient(135deg,#7c3aed,#a78bfa)",
+  "linear-gradient(135deg,#ec4899,#f97316)",
+  "linear-gradient(135deg,#0ea5e9,#22d3ee)",
+  "linear-gradient(135deg,#10b981,#84cc16)",
+  "linear-gradient(135deg,#f43f5e,#fb7185)",
+  "linear-gradient(135deg,#1e293b,#475569)",
+];
+let _storyBg = STORY_BGS[0];
+
+function openStoryComposer() {
+  _storyBg = STORY_BGS[0];
+  const swatches = STORY_BGS.map((bg, i) =>
+    `<button class="story-bg-swatch ${i === 0 ? "active" : ""}" data-bg="${bg}" style="background:${bg};" onclick="selectStoryBg(this)" aria-label="Fond ${i + 1}"></button>`
+  ).join("");
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">✨ Créer une story</div>
+    <div class="modal-subtitle">Visible 24 h par ta communauté.</div>
+    <div class="story-compose-preview" id="storyPreview" style="background:${_storyBg};">
+      <div id="storyPreviewText">Ton texte ici…</div>
+    </div>
+    <div class="story-bg-row">${swatches}</div>
+    <textarea class="textarea" id="storyComposeText" maxlength="180" placeholder="Quoi de neuf dans ta passion ?" oninput="_onStoryComposeInput(this)" style="margin-top:10px;min-height:64px;"></textarea>
+    <button class="btn primary block" style="margin-top:12px;" onclick="publishStoryFromComposer()">Publier ma story</button>
+  `);
 }
+
+function _onStoryComposeInput(ta) {
+  const prev = document.getElementById("storyPreviewText");
+  if (prev) prev.textContent = ta.value || "Ton texte ici…";
+}
+
+function selectStoryBg(btn) {
+  _storyBg = btn.getAttribute("data-bg") || STORY_BGS[0];
+  document.querySelectorAll(".story-bg-swatch").forEach(s => s.classList.remove("active"));
+  btn.classList.add("active");
+  const prev = document.getElementById("storyPreview");
+  if (prev) prev.style.background = _storyBg;
+}
+
+function publishStoryFromComposer() {
+  const ta = document.getElementById("storyComposeText");
+  const text = (ta && ta.value || "").trim();
+  if (text.length < 1) { toast("Écris quelque chose pour ta story"); return; }
+  const p = (typeof currentProfile === "function" && currentProfile()) || {};
+  const story = {
+    id: "story_" + uid(),
+    authorId: (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me",
+    authorName: p.name || state.user.name || "Moi",
+    authorEmoji: p.emoji || "✨",
+    authorColor: p.color || "#8b5cf6",
+    text, content: text,
+    bg: _storyBg,
+    emoji: p.emoji || "✨",
+    passion: p.passion || null,
+    createdAt: Date.now(),
+    fromSupabase: false,
+  };
+  state.seed.stories = state.seed.stories || [];
+  state.seed.stories.unshift(story);
+  // Rendre l'auteur résoluble par userById() (pour les rendus qui s'y fient)
+  try {
+    const meId = story.authorId;
+    state.seed.users = (state.seed.users || []).filter(u => u.id !== meId);
+    state.seed.users.push({ id: meId, name: story.authorName, profileEmoji: story.authorEmoji, avatar: story.authorColor });
+  } catch(e) {}
+  saveState();
+  if (typeof supa !== "undefined" && supa && typeof supaPublishStory === "function") supaPublishStory(story);
+  closeModal();
+  try { renderStories(); } catch(e) {}
+  toast("✨ Story publiée !");
+}
+
+// Conservé pour compat : redirige vers le composeur.
+function openStudioAsStory() { openStoryComposer(); }
 
 let storyIdx = 0;
 let storyTimer = null;
@@ -458,7 +545,7 @@ function playCurrentStory() {
   const card = $("#storyCard");
   card.style.background = s.bg || "var(--grad-hero)";
 
-  $("#storyContent").innerHTML = `<div style="font-size:22px;font-weight:800;line-height:1.25;white-space:pre-line;color:#ffffff;">${escapeHtml(s.text)}</div>`;
+  $("#storyContent").innerHTML = `<div style="font-size:22px;font-weight:800;line-height:1.25;white-space:pre-line;color:#ffffff;">${escapeHtml(s.text || s.content || "")}</div>`;
 
   // Progress bars
   const row = $("#storyProgressRow");
