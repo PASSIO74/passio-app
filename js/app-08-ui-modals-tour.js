@@ -384,7 +384,7 @@ function renderStories() {
   const myEmoji = me.emoji || "✨";
   const myColor = me.color || "#8b5cf6";
   let html = `
-    <div class="story-item" onclick="openStoryComposer()" title="Créer une story">
+    <div class="story-item" onclick="meOpen('story')" title="Créer une story">
       <div class="story-ring create">
         <div class="story-inner" style="background:${myColor};">${myEmoji}</div>
       </div>
@@ -503,8 +503,196 @@ function publishStoryFromComposer() {
   toast("✨ Story publiée !");
 }
 
-// Conservé pour compat : redirige vers le composeur.
-function openStudioAsStory() { openStoryComposer(); }
+// Conservé pour compat : redirige vers l'éditeur média.
+function openStudioAsStory() { meOpen("story"); }
+
+// ════════════════════════════════════════════════════════════════════════
+// ÉDITEUR MÉDIA façon Instagram — partagé par STORIES et BOBINES.
+// Média (photo/vidéo) ou fond dégradé (story) + overlays déplaçables :
+// texte, emoji, GIF. Publie en story (24h) ou en bobine (is_reel).
+// ════════════════════════════════════════════════════════════════════════
+var meState = { mode: "story", media: null, mediaType: null, bg: STORY_BGS[0], bgIdx: 0, overlays: [], _seq: 0 };
+
+function meOpen(mode) {
+  meState = { mode: mode || "story", media: null, mediaType: null, bg: STORY_BGS[0], bgIdx: 0, overlays: [], _seq: 0 };
+  var ed = document.getElementById("mediaEditor"); if (!ed) return;
+  document.getElementById("meMedia").innerHTML = "";
+  document.getElementById("meOverlays").innerHTML = "";
+  document.getElementById("meCanvas").style.background = meState.bg;
+  document.getElementById("mePlaceholder").classList.remove("hidden");
+  document.getElementById("mePhTitle").textContent = (mode === "bobine")
+    ? "Ajoute une vidéo (ou une photo) pour ta bobine" : "Ajoute une photo ou une vidéo";
+  var gradBtn = document.getElementById("meGradientBtn"); if (gradBtn) gradBtn.style.display = (mode === "bobine") ? "none" : "";
+  var bgTool = document.getElementById("meBgTool"); if (bgTool) bgTool.style.display = (mode === "bobine") ? "none" : "";
+  document.getElementById("mePublishBtn").textContent = (mode === "bobine") ? "Publier ma bobine" : "Publier ma story";
+  ed.classList.add("open"); ed.setAttribute("aria-hidden", "false");
+  document.body.style.overflow = "hidden";
+}
+function meClose() {
+  var ed = document.getElementById("mediaEditor");
+  if (ed) { ed.classList.remove("open"); ed.setAttribute("aria-hidden", "true"); }
+  document.body.style.overflow = "";
+  try { var v = document.querySelector("#meMedia video"); if (v) v.pause(); } catch(e) {}
+  var bar = document.getElementById("meEmojiBar"); if (bar) bar.remove();
+}
+function mePickMedia() { var i = document.getElementById("meMediaInput"); if (i) i.click(); }
+function meCycleBg() {
+  if (meState.mode === "bobine") return;
+  meState.media = null; meState.mediaType = null;
+  document.getElementById("meMedia").innerHTML = "";
+  meState.bgIdx = (meState.bgIdx + 1) % STORY_BGS.length;
+  meState.bg = STORY_BGS[meState.bgIdx];
+  document.getElementById("meCanvas").style.background = meState.bg;
+  document.getElementById("mePlaceholder").classList.add("hidden");
+}
+function _meReadFile(file) {
+  return new Promise(function(res, rej) { var r = new FileReader(); r.onload = function() { res(r.result); }; r.onerror = function() { rej(r.error); }; r.readAsDataURL(file); });
+}
+async function meOnMedia(ev) {
+  var file = ev.target.files && ev.target.files[0]; ev.target.value = "";
+  if (!file) return;
+  var isVideo = (file.type || "").indexOf("video/") === 0;
+  if (!isVideo && (file.type || "").indexOf("image/") !== 0) { toast("Photo ou vidéo uniquement"); return; }
+  try {
+    var dataUrl;
+    if (isVideo) { dataUrl = await _meReadFile(file); }
+    else { try { dataUrl = await window.passioCompressImage(file, 1280, 0.85); } catch(e) { dataUrl = await _meReadFile(file); } }
+    meSetMedia(dataUrl, isVideo ? "video" : "photo");
+  } catch(e) { toast("Impossible de charger ce média"); }
+}
+function meSetMedia(dataUrl, type) {
+  meState.media = dataUrl; meState.mediaType = type;
+  document.getElementById("meMedia").innerHTML = (type === "video")
+    ? '<video src="' + dataUrl + '" muted playsinline loop autoplay></video>'
+    : '<img src="' + dataUrl + '" alt=""/>';
+  document.getElementById("mePlaceholder").classList.add("hidden");
+}
+function meAddText() {
+  var t = prompt("Ton texte :"); if (t == null) return; t = t.trim(); if (!t) return;
+  meAddOverlay({ type: "text", text: t, color: "#ffffff", x: 50, y: 45, size: 26 });
+}
+var ME_EMOJIS = ["🔥","😂","❤️","✨","😍","🎉","👏","🙌","💯","🎸","📸","🌍","☕","🍕","⚽","🎬","💜","😎","🥳","🤩"];
+function meAddEmoji() {
+  var existing = document.getElementById("meEmojiBar"); if (existing) { existing.remove(); return; }
+  var bar = document.createElement("div"); bar.id = "meEmojiBar";
+  bar.style.cssText = "position:fixed;left:50%;bottom:84px;transform:translateX(-50%);background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:10px;display:flex;flex-wrap:wrap;gap:4px;max-width:320px;z-index:4100;box-shadow:0 8px 24px rgba(0,0,0,0.3);";
+  ME_EMOJIS.forEach(function(em) {
+    var b = document.createElement("button"); b.textContent = em;
+    b.style.cssText = "font-size:24px;background:none;border:none;cursor:pointer;padding:4px;";
+    b.onclick = function() { meAddOverlay({ type: "emoji", emoji: em, x: 50, y: 55, size: 52 }); bar.remove(); };
+    bar.appendChild(b);
+  });
+  document.body.appendChild(bar);
+}
+function meAddGif() {
+  if (typeof passioGifPanel !== "function") { toast("GIF indisponible"); return; }
+  passioGifPanel({ id: "meGifPanel", position: "left:50%;bottom:84px;transform:translateX(-50%);", onPick: function(url) { meAddOverlay({ type: "gif", url: url, x: 50, y: 55 }); } });
+}
+function meAddOverlay(ov) {
+  ov.id = "ov_" + (++meState._seq);
+  meState.overlays.push(ov);
+  _meRenderOverlay(ov);
+  meSelectOverlay(ov);
+}
+function meSelectOverlay(ov) {
+  document.querySelectorAll("#meOverlays .me-overlay").forEach(function(e) { e.classList.remove("selected"); });
+  var el = document.getElementById(ov.id); if (el) el.classList.add("selected");
+}
+function meRemoveOverlay(id) {
+  meState.overlays = meState.overlays.filter(function(o) { return o.id !== id; });
+  var el = document.getElementById(id); if (el) el.remove();
+}
+function _meRenderOverlay(ov) {
+  var layer = document.getElementById("meOverlays");
+  var el = document.createElement("div");
+  el.className = "me-overlay " + ov.type; el.id = ov.id;
+  el.style.left = ov.x + "%"; el.style.top = ov.y + "%";
+  var content = document.createElement("span");
+  if (ov.type === "text") { content.textContent = ov.text; el.style.color = ov.color; if (ov.size) el.style.fontSize = ov.size + "px"; }
+  else if (ov.type === "emoji") { content.textContent = ov.emoji; }
+  else if (ov.type === "gif") { content.innerHTML = '<img src="' + ov.url + '" alt="GIF"/>'; }
+  el.appendChild(content);
+  var del = document.createElement("button"); del.className = "me-ov-del"; del.textContent = "✕";
+  del.onclick = function(e) { e.stopPropagation(); meRemoveOverlay(ov.id); };
+  el.appendChild(del);
+  if (ov.type === "text") {
+    el.addEventListener("dblclick", function(e) { e.stopPropagation(); var nt = prompt("Modifier le texte :", ov.text); if (nt != null && nt.trim()) { ov.text = nt.trim(); content.textContent = ov.text; } });
+  }
+  _meMakeDraggable(el, ov);
+  layer.appendChild(el);
+}
+function _meMakeDraggable(el, ov) {
+  var canvas = document.getElementById("meCanvas");
+  var startX, startY, ox, oy, rect, dragging = false;
+  el.addEventListener("pointerdown", function(e) {
+    e.preventDefault(); e.stopPropagation();
+    meSelectOverlay(ov);
+    rect = canvas.getBoundingClientRect();
+    startX = e.clientX; startY = e.clientY; ox = ov.x; oy = ov.y; dragging = true;
+    try { el.setPointerCapture(e.pointerId); } catch(_) {}
+  });
+  el.addEventListener("pointermove", function(e) {
+    if (!dragging) return;
+    var dx = (e.clientX - startX) / rect.width * 100;
+    var dy = (e.clientY - startY) / rect.height * 100;
+    ov.x = Math.max(3, Math.min(97, ox + dx));
+    ov.y = Math.max(3, Math.min(97, oy + dy));
+    el.style.left = ov.x + "%"; el.style.top = ov.y + "%";
+  });
+  el.addEventListener("pointerup", function(e) { dragging = false; try { el.releasePointerCapture(e.pointerId); } catch(_) {} });
+  el.addEventListener("pointercancel", function() { dragging = false; });
+}
+function _meOverlaysData() {
+  return meState.overlays.map(function(o) {
+    var c = { type: o.type, x: Math.round(o.x), y: Math.round(o.y) };
+    if (o.type === "text") { c.text = o.text; c.color = o.color; c.size = o.size; }
+    if (o.type === "emoji") { c.emoji = o.emoji; c.size = o.size; }
+    if (o.type === "gif") { c.url = o.url; }
+    return c;
+  });
+}
+async function mePublish() {
+  if (meState.mode === "bobine" && !meState.media) { toast("Ajoute une vidéo ou une photo pour ta bobine"); return; }
+  var p = (typeof currentProfile === "function" && currentProfile()) || {};
+  var authorId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
+  var overlays = _meOverlaysData();
+  var firstText = (meState.overlays.find(function(o) { return o.type === "text"; }) || {}).text || "";
+  var media = meState.media, mediaType = meState.mediaType, bg = meState.bg, mode = meState.mode;
+  meClose();
+  if (mode === "story") {
+    var story = {
+      id: "story_" + uid(), authorId: authorId,
+      authorName: p.name || state.user.name || "Moi", authorEmoji: p.emoji || "✨", authorColor: p.color || "#8b5cf6",
+      text: firstText, content: firstText,
+      bg: media ? null : bg, media: media || null, mediaType: mediaType || null,
+      overlays: overlays, emoji: p.emoji || "✨", passion: p.passion || null, createdAt: Date.now(), fromSupabase: false,
+    };
+    state.seed.stories = state.seed.stories || [];
+    state.seed.stories.unshift(story);
+    try { state.seed.users = (state.seed.users || []).filter(function(u) { return u.id !== authorId; }); state.seed.users.push({ id: authorId, name: story.authorName, profileEmoji: story.authorEmoji, avatar: story.authorColor }); } catch(e) {}
+    saveState();
+    if (typeof supaPublishStory === "function") supaPublishStory(story);
+    try { renderStories(); } catch(e) {}
+    toast("✨ Story publiée !");
+  } else {
+    var post = {
+      id: "reel_" + uid(), authorId: authorId, profileId: state.user.currentProfileId,
+      authorName: p.name || state.user.name || "Profil", authorEmoji: p.emoji || "✨", authorColor: p.color || "#8b5cf6",
+      passion: p.passion || "autre", mood: "creation",
+      type: (mediaType === "video") ? "video" : "photo", isReel: true,
+      image: (mediaType === "photo") ? media : null, video: (mediaType === "video") ? media : null,
+      text: firstText, overlays: overlays,
+      createdAt: Date.now(), likes: 0, liked: false, comments: [],
+    };
+    state.userPosts = state.userPosts || [];
+    state.userPosts.unshift(post);
+    saveState();
+    if (typeof supaPublishPostWithRetry === "function") supaPublishPostWithRetry(post);
+    try { renderFeed(); } catch(e) {}
+    setTimeout(function() { try { if (typeof openReels === "function") openReels(); } catch(e) {} }, 80);
+    toast("🎬 Bobine publiée !");
+  }
+}
 
 let storyIdx = 0;
 let storyTimer = null;
@@ -518,6 +706,23 @@ function openStoryViewer(idx) {
   $("#storyViewer").classList.add("active");
   playCurrentStory();
 
+}
+
+// HTML des overlays (texte/emoji/GIF positionnés) pour les viewers story & bobine.
+function _storyOverlaysHtml(overlays) {
+  return (overlays || []).map(function(o) {
+    var pos = "left:" + (o.x != null ? o.x : 50) + "%;top:" + (o.y != null ? o.y : 50) + "%;";
+    if (o.type === "text") {
+      return '<div class="story-ov" style="' + pos + 'color:' + (o.color || "#fff") + ';font-size:' + (o.size || 26) + 'px;font-weight:800;">' + escapeHtml(o.text || "") + '</div>';
+    }
+    if (o.type === "emoji") {
+      return '<div class="story-ov emoji" style="' + pos + 'font-size:' + (o.size || 52) + 'px;">' + escapeHtml(o.emoji || "") + '</div>';
+    }
+    if (o.type === "gif") {
+      return '<div class="story-ov gif" style="' + pos + '"><img src="' + escapeHtml(o.url || "") + '" alt="GIF"/></div>';
+    }
+    return "";
+  }).join("");
 }
 
 function playCurrentStory() {
@@ -543,9 +748,28 @@ function playCurrentStory() {
   $("#storyTime").textContent = fmtTime(s.createdAt);
 
   const card = $("#storyCard");
-  card.style.background = s.bg || "var(--grad-hero)";
+  card.style.background = (s.media ? "#000" : (s.bg || "var(--grad-hero)"));
 
-  $("#storyContent").innerHTML = `<div style="font-size:22px;font-weight:800;line-height:1.25;white-space:pre-line;color:#ffffff;">${escapeHtml(s.text || s.content || "")}</div>`;
+  // Couche média (photo/vidéo) si présente
+  const mediaLayer = document.getElementById("storyMedia");
+  if (mediaLayer) {
+    if (s.media) {
+      mediaLayer.innerHTML = (s.mediaType === "video")
+        ? `<video src="${s.media}" muted playsinline loop autoplay></video>`
+        : `<img src="${escapeHtml(s.media)}" alt="" onerror="this.style.display='none'"/>`;
+    } else { mediaLayer.innerHTML = ""; }
+  }
+
+  // Overlays (texte/emoji/GIF positionnés). Si présents, ils remplacent le texte centré.
+  const ovLayer = document.getElementById("storyOverlays");
+  const overlays = Array.isArray(s.overlays) ? s.overlays : [];
+  if (ovLayer) ovLayer.innerHTML = _storyOverlaysHtml(overlays);
+
+  if (overlays.length) {
+    $("#storyContent").innerHTML = "";
+  } else {
+    $("#storyContent").innerHTML = `<div style="font-size:22px;font-weight:800;line-height:1.25;white-space:pre-line;color:#ffffff;text-shadow:0 2px 10px rgba(0,0,0,0.25);">${escapeHtml(s.text || s.content || "")}</div>`;
+  }
 
   // Progress bars
   const row = $("#storyProgressRow");
@@ -1552,11 +1776,26 @@ async function supaLoadComments(postId) {
 async function supaPublishStory(story) {
   try {
     await supaUpsertProfile();
+    // Uploader le média (photo/vidéo) en Storage — jamais de base64 en DB.
+    var mediaUrl = null, mediaType = story.mediaType || null;
+    if (story.media && typeof story.media === "string") {
+      if (story.media.startsWith("data:") && typeof supaUploadMedia === "function") {
+        var folder = (mediaType === "video") ? "videos" : "photos";
+        try { mediaUrl = await supaUploadMedia(story.id, folder, story.media, mediaType || "photo"); } catch(e) {}
+        if (mediaUrl && mediaUrl.indexOf("data:") === 0) mediaUrl = null;
+        if (mediaUrl) { story.media = mediaUrl; try { saveState(); renderStories(); } catch(e) {} }
+      } else if (story.media.indexOf("data:") !== 0) {
+        mediaUrl = story.media;
+      }
+    }
     await supa.from("stories").insert({
       id: story.id || uid(), author_id: MY_UID,
       passion_id: story.passion || null,
       content: story.text || story.content || "",
       emoji: story.emoji || "✨",
+      media_url: mediaUrl,
+      media_type: mediaType,
+      overlays: (story.overlays && story.overlays.length) ? story.overlays : null,
       created_at: new Date().toISOString(),
     });
   } catch(e) { console.warn("Story error:", e); }
@@ -1569,7 +1808,7 @@ async function supaLoadStories() {
     if (error) { console.warn("supaLoadStories:", error.message); return []; }
     const rows = data || [];
     const profs = await _resolveProfilesByIds(rows.map(r => r.author_id));
-    return rows.map(r => { const p = profs[r.author_id] || {}; return { id: r.id, authorId: r.author_id, authorName: p.username || "Passionné", authorEmoji: p.emoji || "✨", authorColor: p.color || "#8b5cf6", passion: r.passion_id, content: r.content || "", emoji: r.emoji || "✨", fromSupabase: true }; });
+    return rows.map(r => { const p = profs[r.author_id] || {}; return { id: r.id, authorId: r.author_id, authorName: p.username || "Passionné", authorEmoji: p.emoji || "✨", authorColor: p.color || "#8b5cf6", passion: r.passion_id, content: r.content || "", text: r.content || "", emoji: r.emoji || "✨", media: r.media_url || null, mediaType: r.media_type || null, overlays: r.overlays || null, fromSupabase: true }; });
   } catch(e) { return []; }
 }
 

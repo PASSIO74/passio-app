@@ -163,11 +163,41 @@
     </div>
     <div class="story-viewer-stage">
       <div class="story-viewer-card" id="storyCard">
+        <div id="storyMedia" class="story-media-layer"></div>
+        <div id="storyOverlays" class="story-overlays-layer"></div>
+        <div id="storyContent"></div>
         <div class="story-viewer-tap story-tap-prev" onclick="storyPrev()"></div>
         <div class="story-viewer-tap story-tap-next" onclick="storyNext()"></div>
-        <div id="storyContent"></div>
       </div>
     </div>
+  </div>
+
+  <!-- ============ ÉDITEUR MÉDIA (story / bobine, façon Instagram) ============ -->
+  <div id="mediaEditor" class="media-editor" aria-hidden="true">
+    <div class="me-canvas" id="meCanvas">
+      <div class="me-media" id="meMedia"></div>
+      <div class="me-overlays" id="meOverlays"></div>
+      <div class="me-placeholder" id="mePlaceholder">
+        <div class="me-ph-icon">🖼️</div>
+        <div class="me-ph-title" id="mePhTitle">Ajoute une photo ou une vidéo</div>
+        <button class="btn primary" style="margin-top:14px;" onclick="mePickMedia()">Choisir un média</button>
+        <button class="btn ghost" id="meGradientBtn" style="margin-top:8px;" onclick="meCycleBg()">…ou un fond coloré</button>
+      </div>
+    </div>
+    <div class="me-toolbar">
+      <button class="me-tool" onclick="meClose()" title="Fermer">✕</button>
+      <div class="me-tool-group">
+        <button class="me-tool" onclick="mePickMedia()" title="Média">🖼️</button>
+        <button class="me-tool" onclick="meAddText()" title="Texte">Aa</button>
+        <button class="me-tool" onclick="meAddEmoji()" title="Emoji">😀</button>
+        <button class="me-tool" onclick="meAddGif()" title="GIF">GIF</button>
+        <button class="me-tool" id="meBgTool" onclick="meCycleBg()" title="Fond">🎨</button>
+      </div>
+    </div>
+    <div class="me-bottom">
+      <button class="btn primary block" id="mePublishBtn" onclick="mePublish()">Publier</button>
+    </div>
+    <input type="file" id="meMediaInput" accept="image/*,video/*" style="display:none;" onchange="meOnMedia(event)"/>
   </div>
 
   <!-- ============ ONBOARDING ============ -->

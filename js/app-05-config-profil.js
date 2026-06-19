@@ -1148,6 +1148,7 @@ function renderReelHTML(post, idx) {
     <div class="reel-item" data-reel-idx="${idx}" data-post-id="${escapeHtml(post.id)}">
       <div class="reel-media-container">
         ${reelMediaHTML(post)}
+        ${(Array.isArray(post.overlays) && post.overlays.length && typeof _storyOverlaysHtml === "function") ? `<div class="reel-overlays-layer">${_storyOverlaysHtml(post.overlays)}</div>` : ""}
       </div>
       <div class="reel-overlay"></div>
       <span class="reel-tag-mood">${passion.emoji} ${escapeHtml(passion.label)} · ${moodLabel}</span>
@@ -1261,16 +1262,10 @@ function resumeReels() {
   document.getElementById("reelsPause").classList.remove("show");
 }
 
-// Ouvre le Studio directement sur le type « Bobine » (création de bobine).
+// Ouvre l'éditeur média en mode bobine (vidéo/photo + overlays façon Instagram).
 function startBobineCreation() {
   try { closeReels(); } catch(e) {}
-  goTo("studio");
-  setTimeout(function() {
-    var t = document.querySelector('#studioTypeTabs .studio-type[data-type="bobine"]');
-    if (t) t.click();
-    var main = document.getElementById("appMain");
-    if (main) main.scrollTop = 0;
-  }, 120);
+  if (typeof meOpen === "function") meOpen("bobine");
 }
 
 // Ouvre le profil de l'auteur d'une bobine : ferme d'abord l'overlay reels

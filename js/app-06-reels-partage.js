@@ -949,6 +949,12 @@ function applyTemplate(kind) {
 // Studio type tabs
 $$("#studioTypeTabs .studio-type").forEach(el => {
   el.addEventListener("click", () => {
+    // « Bobine » se crée dans l'éditeur média (façon Instagram : vidéo/photo +
+    // overlays texte/emoji/GIF), pas dans le formulaire du Studio.
+    if (el.getAttribute("data-type") === "bobine") {
+      if (typeof meOpen === "function") meOpen("bobine");
+      return;
+    }
     $$("#studioTypeTabs .studio-type").forEach(e => e.classList.remove("active"));
     el.classList.add("active");
     studioType = el.getAttribute("data-type");
