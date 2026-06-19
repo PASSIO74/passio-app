@@ -238,6 +238,84 @@ test.describe("messagerie entre 2 comptes réels", () => {
       await ctxB.close();
     }
   });
+
+  // Événement cross-compte : A crée un événement, B le rejoint, A doit recevoir
+  // une notif "event_join" ET le compteur de participants doit refléter B.
+  // Valide le fix du 2026-06-18 : supaLoadEvents charge les vrais event_attendees
+  // (avant : attendees:[] → "0 inscrit"), et toggleJoinEvent notifie l'organisateur.
+  test("rejoindre l'événement d'un autre → notif organisateur + participant compté", async ({ browser }) => {
+    test.setTimeout(180000);
+    const t0 = Date.now();
+    const log = (m) => console.log(`[event ${(((Date.now() - t0) / 1000) | 0)}s] ${m}`);
+
+    const ctxA = await browser.newContext();
+    const ctxB = await browser.newContext();
+    const pageA = await ctxA.newPage();
+    const pageB = await ctxB.newPage();
+    pageA.on("console", (msg) => { if (msg.type() === "error") log("A console.error: " + msg.text().slice(0, 200)); });
+    pageB.on("console", (msg) => { if (msg.type() === "error") log("B console.error: " + msg.text().slice(0, 200)); });
+
+    let eventId = null;
+    try {
+      const uidA = await signupAnonymous(pageA, "Test Alice");
+      const uidB = await signupAnonymous(pageB, "Test Bob");
+      expect(uidA).toBeTruthy(); expect(uidB).toBeTruthy(); expect(uidA).not.toBe(uidB);
+      log("A=" + uidA + " B=" + uidB);
+
+      // ── A crée un vrai événement (même schéma que supaPublishEvent) ──
+      eventId = await pageA.evaluate(async () => {
+        const id = "evt_" + uid();
+        const { error } = await supa.from("events").insert({
+          id, author_id: MY_UID, organizer_id: MY_UID, title: "Atelier test auto",
+          passion_id: "musique", city: "Paris", emoji: "🎸",
+          date_at: new Date(Date.now() + 86400000).toISOString(),
+          created_at: new Date().toISOString(),
+        });
+        return error ? null : id;
+      });
+      expect(eventId, "événement de A inséré").toBeTruthy();
+      log("événement publié: " + eventId);
+
+      // ── B charge l'événement dans son état puis le rejoint (vrai handler) ──
+      await pageB.evaluate(([eid, aid]) => {
+        state.seed.events = state.seed.events || [];
+        if (!state.seed.events.find((e) => e.id === eid)) {
+          state.seed.events.unshift({
+            id: eid, authorId: aid, organizerId: aid, title: "Atelier test auto",
+            passion: "musique", city: "Paris", emoji: "🎸",
+            date: Date.now() + 86400000, attendees: [], fromSupabase: true,
+          });
+        }
+        toggleJoinEvent(eid);
+      }, [eventId, uidA]);
+      log("B a rejoint l'événement");
+      await pageB.waitForTimeout(2500); // laisser supaJoinEvent + supaInsertNotif atterrir
+
+      // ── 1. A reçoit la notif event_join ──
+      const notifs = await loadNotifsWithRetry(pageA, 1, 20000);
+      const joinNotif = notifs.find((n) => n.kind === "event_join");
+      log("notifs A: " + JSON.stringify(notifs.map((n) => n.kind)));
+      expect(joinNotif, "A a une notif event_join").toBeTruthy();
+      expect(joinNotif.fromId, "la notif vient de B").toBe(uidB);
+
+      // ── 2. Le participant B est bien chargé depuis event_attendees ──
+      const attendees = await pageA.evaluate(async (eid) => {
+        const evs = (typeof supaLoadEvents === "function") ? await supaLoadEvents() : [];
+        const e = evs.find((x) => x.id === eid);
+        return e ? e.attendees : null;
+      }, eventId);
+      log("attendees chargés: " + JSON.stringify(attendees));
+      expect(attendees, "attendees chargés depuis Supabase").toBeTruthy();
+      expect(attendees, "B figure dans les participants (compteur réel)").toContain(uidB);
+      log("✅ événement cross-compte validé (notif organisateur + compteur réel)");
+
+      await cleanupEvent(pageA, eventId);
+      await cleanupEvent(pageB, eventId);
+    } finally {
+      await ctxA.close();
+      await ctxB.close();
+    }
+  });
 });
 
 // Parcours réel : landing → Créer un compte → (auth anonyme Supabase par l'API,
@@ -340,4 +418,17 @@ async function cleanupNotifs(page, postId) {
     try { await supa.from("profiles").delete().eq("id", MY_UID); } catch (e) {}
     try { await supa.auth.signOut(); } catch (e) {}
   }, postId);
+}
+
+// Nettoyage du test événement (best-effort, RLS par propriétaire).
+async function cleanupEvent(page, eventId) {
+  await page.evaluate(async (eid) => {
+    try { await supa.from("notifications").delete().eq("user_id", MY_UID); } catch (e) {}
+    try { await supa.from("notifications").delete().eq("from_id", MY_UID); } catch (e) {}
+    try { await supa.from("event_attendees").delete().eq("event_id", eid); } catch (e) {}
+    try { await supa.from("event_attendees").delete().eq("user_id", MY_UID); } catch (e) {}
+    try { await supa.from("events").delete().eq("id", eid); } catch (e) {}
+    try { await supa.from("profiles").delete().eq("id", MY_UID); } catch (e) {}
+    try { await supa.auth.signOut(); } catch (e) {}
+  }, eventId);
 }
