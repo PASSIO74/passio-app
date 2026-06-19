@@ -523,6 +523,16 @@ function renderBell() {
   dot.textContent = n > 0 ? (n > 9 ? "9+" : String(n)) : "";
 }
 
+// Badge des messages non-lus sur l'icône Messages du topbar (déplacée depuis la
+// barre du bas). Somme des `unread` de toutes les conversations.
+function renderMsgBadge() {
+  const dot = document.getElementById("msgDot");
+  if (!dot) return;
+  let n = 0;
+  try { (getConversations() || []).forEach(c => { n += (c.unread || 0); }); } catch(e) {}
+  dot.textContent = n > 0 ? (n > 9 ? "9+" : String(n)) : "";
+}
+
 // HTML de la liste de notifications (extrait pour pouvoir re-rendre le panneau
 // en place lors d'un rafraîchissement Supabase / temps réel).
 function _notifListHtml(notifs) {
@@ -726,6 +736,7 @@ function renderEverything() {
   renderTopbar();
   renderFeed();
   renderBell();
+  try { renderMsgBadge(); } catch(e) {}
   // Re-render les écrans déjà ouverts si nécessaire
   try { if (typeof renderMessages === "function") renderMessages(); } catch(e) {}
   try { if (typeof renderIRL === "function") renderIRL(); } catch(e) {}
@@ -1906,6 +1917,7 @@ async function _handleIncomingConvMessage(r) {
     _playMsgSound();
     try { renderMessages(); } catch(e) {}
   }
+  try { renderMsgBadge(); } catch(e) {}
 }
 window._handleIncomingConvMessage = _handleIncomingConvMessage;
 

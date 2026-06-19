@@ -1254,6 +1254,7 @@ function renderMessages() {
 
   // Génère les pills lu/non lu
   renderMessageFilters();
+  try { if (typeof renderMsgBadge === "function") renderMsgBadge(); } catch(e) {}
 
   // Masquer les conversations avec un utilisateur bloqué (modération)
   let filtered = convs.filter(c => !(typeof isBlocked === "function" && isBlocked(c.userId)))
@@ -1352,6 +1353,7 @@ async function openConversation(convId) {
 
   c.unread = 0;
   saveConversations();
+  try { if (typeof renderMsgBadge === "function") renderMsgBadge(); } catch(e) {}
 
   // Avatar header — photo de groupe ou couleur+emoji
   var avatarHtml;

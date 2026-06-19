@@ -341,7 +341,7 @@
     .app-nav {
       height: 72px;
       display: grid;
-      grid-template-columns: repeat(7, 1fr);
+      grid-template-columns: repeat(5, 1fr);
       align-items: stretch;
       background: rgba(255, 255, 255, 0.92);
       border-top: 1px solid var(--border);
@@ -448,6 +448,32 @@
     }
 
     .nav-cta .nav-label { display: none; }
+
+    /* En-tête du studio : titre + accès Explorer (déplacé depuis la barre du bas) */
+    .studio-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .studio-explore-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 14px;
+      border-radius: 12px;
+      border: 1.5px solid var(--border);
+      background: var(--accent-wash);
+      color: var(--accent-2);
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: transform 160ms ease, background 160ms ease;
+    }
+    .studio-explore-btn:active { transform: scale(0.96); }
+    .studio-explore-btn svg { width: 16px; height: 16px; }
 
     /* ============ COMPONENTS ============ */
     .card {

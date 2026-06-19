@@ -5,7 +5,9 @@ const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
 
 const SCREENS = ["feed", "profiles", "studio", "explore", "irl", "wallet", "messages", "cdv"];
-const NAV_LABELS = ["Fil", "Bobines", "Explorer", "Messages", "IRL", "CDV"];
+// Barre du bas à 5 onglets (règle des 5) depuis le 2026-06-19 : Messages est
+// passé dans le topbar (à côté des notifs) et Explorer dans le ➕ Créer.
+const NAV_LABELS = ["Fil", "Bobines", "IRL", "CDV"];
 
 test("tour des 8 écrans : zéro erreur JS, chaque écran devient actif", async ({ page }) => {
   const errors = { js: [], console: [], network: [] };
@@ -36,10 +38,26 @@ test("bottom-nav : libellés, clics réels et écran attendu", async ({ page }) 
   const errors = { js: [], console: [], network: [] };
   await bootOnboarded(page, errors);
 
-  // Libellés attendus présents dans la nav
+  // Libellés attendus présents dans la nav (5 onglets : 4 labels + le ➕ central)
   for (const label of NAV_LABELS) {
     await expect(page.locator(".nav-item", { hasText: label }).first(), `nav « ${label} »`).toBeVisible();
   }
+  // Barre du bas = exactement 5 onglets
+  expect(await page.locator("#appNav .nav-item").count(), "5 onglets dans la barre").toBe(5);
+  // Messages relogé dans le topbar (icône à côté des notifs)
+  await page.click(".topbar-right .topbar-bell:first-child");
+  await page.waitForFunction(() => {
+    const el = document.getElementById("screen-messages");
+    return el && el.classList.contains("active");
+  }, null, { timeout: 5000 });
+  // Explorer relogé dans le ➕ Créer (bouton en tête du studio)
+  await page.evaluate(() => goTo("studio"));
+  await expect(page.locator(".studio-explore-btn"), "bouton Explorer dans le studio").toBeVisible();
+  await page.click(".studio-explore-btn");
+  await page.waitForFunction(() => {
+    const el = document.getElementById("screen-explore");
+    return el && el.classList.contains("active");
+  }, null, { timeout: 5000 });
 
   // Clic réel sur chaque item de la nav.
   // Cas particulier : « Bobines » (data-screen=bobines) ouvre l'overlay #reelsViewer
