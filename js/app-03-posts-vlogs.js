@@ -50,7 +50,7 @@ async function sharePostInFeed(id) {
 
   if (!g.username && typeof supa !== "undefined" && supa && MY_UID) {
     try {
-      const { data } = await supa.from("profiles").select("username").eq("id", MY_UID).single();
+      const { data } = await supa.from("profiles").select("username").eq("id", MY_UID).maybeSingle();
       if (data?.username) { state.user.general.username = data.username; authorName = data.username; }
     } catch(e) {}
   }

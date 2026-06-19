@@ -1271,21 +1271,27 @@ async function supaLoadPosts(offset = 0) {
     try {
       const [likesRes, commentsRes] = await Promise.all([
         supa.from("post_likes").select("post_id, user_id").in("post_id", postIds),
-        supa.from("post_comments").select("post_id, id, author_id, content, created_at, profiles(username,emoji,color)").in("post_id", postIds).order("created_at", { ascending: false }).limit(200),
+        // ⚠️ PAS d'embed profiles(...) : post_comments n'a pas de FK vers profiles
+        // en prod → 400 (commentsData restait vide → posts du feed à "0 commentaire").
+        supa.from("post_comments").select("post_id, id, author_id, content, created_at").in("post_id", postIds).order("created_at", { ascending: false }).limit(200),
       ]);
       likesData = likesRes.data || [];
       commentsData = commentsRes.data || [];
     } catch(e) {}
+    // Résout les auteurs des commentaires en une requête (sans embed).
+    const commentProfs = await _resolveProfilesByIds((commentsData || []).map(c => c.author_id));
     return data.map((r, idx) => {
       const postLikes = likesData.filter(l => l.post_id === r.id);
-      const postComments = commentsData.filter(c => c.post_id === r.id).map(c => ({
+      const postComments = commentsData.filter(c => c.post_id === r.id).map(c => {
+        const cp = commentProfs[c.author_id] || {};
+        return {
         id: c.id, authorId: c.author_id,
-        authorName: c.profiles?.username || "Profil",  // ✅ Doit toujours avoir un username!
-        authorEmoji: c.profiles?.emoji || "✨",
+        authorName: cp.username || "Profil",
+        authorEmoji: cp.emoji || "✨",
         text: c.content || "", content: c.content || "",
         createdAt: new Date(c.created_at + "Z").getTime(),
         fromSupabase: true,
-      }));
+      };});
 
       // Diagnostic du premier post
       if (idx === 0) {
