@@ -316,6 +316,84 @@ test.describe("messagerie entre 2 comptes réels", () => {
       await ctxB.close();
     }
   });
+
+  // Story + Bobine façon Instagram : A publie une story (média + overlays) et une
+  // bobine (is_reel), B doit les charger depuis Supabase (overlays préservés ;
+  // bobine dans les Bobines, PAS dans le feed). Valide le chemin d'écriture
+  // Supabase de l'éditeur média du 2026-06-19.
+  test("story + bobine façon Instagram → publiées et visibles cross-compte", async ({ browser }) => {
+    test.setTimeout(180000);
+    const t0 = Date.now();
+    const log = (m) => console.log(`[media ${(((Date.now() - t0) / 1000) | 0)}s] ${m}`);
+
+    const ctxA = await browser.newContext();
+    const ctxB = await browser.newContext();
+    const pageA = await ctxA.newPage();
+    const pageB = await ctxB.newPage();
+    pageA.on("console", (m) => { if (m.type() === "error") log("A err: " + m.text().slice(0, 160)); });
+    pageB.on("console", (m) => { if (m.type() === "error") log("B err: " + m.text().slice(0, 160)); });
+
+    const PX = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
+    let storyId = null, reelId = null;
+    try {
+      const uidA = await signupAnonymous(pageA, "Test Alice");
+      const uidB = await signupAnonymous(pageB, "Test Bob");
+      expect(uidA).toBeTruthy(); expect(uidB).toBeTruthy(); expect(uidA).not.toBe(uidB);
+
+      // ── A publie une STORY (média + 2 overlays) ──
+      storyId = await pageA.evaluate(async (px) => {
+        const id = "story_" + uid();
+        await supaPublishStory({
+          id, authorId: MY_UID, authorName: "Test Alice", authorEmoji: "✨", authorColor: "#8b5cf6",
+          text: "Story auto", content: "Story auto", media: px, mediaType: "photo",
+          overlays: [
+            { type: "text", text: "Coucou", color: "#ffffff", x: 50, y: 40, size: 26 },
+            { type: "emoji", emoji: "🔥", x: 60, y: 60, size: 52 },
+          ],
+          emoji: "✨", passion: null, createdAt: Date.now(),
+        });
+        return id;
+      }, PX);
+      log("story publiée: " + storyId);
+      const bStory = await loadFindWithRetry(pageB, "supaLoadStories", storyId, 20000);
+      expect(bStory, "B charge la story de A").toBeTruthy();
+      expect((bStory.overlays || []).length, "overlays de la story préservés").toBeGreaterThanOrEqual(2);
+      log("B voit la story · overlays=" + (bStory.overlays || []).length + " · media=" + (bStory.media ? (bStory.media.indexOf("data:") === 0 ? "base64" : "url") : "none"));
+
+      // ── A publie une BOBINE (is_reel + média + overlay) ──
+      reelId = await pageA.evaluate(async (px) => {
+        const id = "reel_" + uid();
+        await supaPublishPostWithRetry({
+          id, authorId: MY_UID, authorName: "Test Alice", authorEmoji: "✨", authorColor: "#8b5cf6",
+          passion: "musique", mood: "creation", type: "photo", isReel: true, image: px,
+          overlays: [{ type: "text", text: "Ma bobine", color: "#ffffff", x: 50, y: 30, size: 24 }],
+          text: "Ma bobine", createdAt: Date.now(), likes: 0, liked: false, comments: [],
+        });
+        return id;
+      }, PX);
+      log("bobine publiée: " + reelId);
+      const bReel = await loadFindWithRetry(pageB, "supaLoadPosts", reelId, 20000);
+      expect(bReel, "B charge la bobine de A").toBeTruthy();
+      expect(bReel.isReel, "bobine marquée is_reel chez B").toBe(true);
+
+      // B : la bobine est dans les Bobines, PAS dans le feed
+      const split = await pageB.evaluate((reel) => {
+        state.supabasePosts = state.supabasePosts || [];
+        if (!state.supabasePosts.find((p) => p.id === reel.id)) state.supabasePosts.unshift(reel);
+        return { inReels: buildReels().some((p) => p.id === reel.id), inFeed: allFeedPosts().some((p) => p.id === reel.id) };
+      }, bReel);
+      log("B : bobine dans Bobines=" + split.inReels + " feed=" + split.inFeed);
+      expect(split.inReels, "bobine visible dans Bobines chez B").toBe(true);
+      expect(split.inFeed, "bobine ABSENTE du feed chez B").toBe(false);
+      log("✅ story + bobine cross-compte validées");
+
+      await cleanupMedia(pageA, storyId, reelId);
+      await cleanupMedia(pageB, storyId, reelId);
+    } finally {
+      await ctxA.close();
+      await ctxB.close();
+    }
+  });
 });
 
 // Parcours réel : landing → Créer un compte → (auth anonyme Supabase par l'API,
@@ -431,4 +509,32 @@ async function cleanupEvent(page, eventId) {
     try { await supa.from("profiles").delete().eq("id", MY_UID); } catch (e) {}
     try { await supa.auth.signOut(); } catch (e) {}
   }, eventId);
+}
+
+// Charge un tableau via window[fnName]() et y cherche un id, avec retries (les
+// écritures Supabase + Storage peuvent prendre un instant à se propager).
+async function loadFindWithRetry(page, fnName, id, timeoutMs) {
+  const start = Date.now();
+  let found = null;
+  while (Date.now() - start < timeoutMs) {
+    found = await page.evaluate(async ([fn, wantId]) => {
+      const arr = (typeof window[fn] === "function") ? await window[fn]() : [];
+      return (arr || []).find((x) => x.id === wantId) || null;
+    }, [fnName, id]);
+    if (found) return found;
+    await page.waitForTimeout(1500);
+  }
+  return found;
+}
+
+// Nettoyage du test story+bobine (best-effort, RLS par propriétaire).
+async function cleanupMedia(page, storyId, reelId) {
+  await page.evaluate(async ([sid, rid]) => {
+    try { await supa.from("stories").delete().eq("id", sid); } catch (e) {}
+    try { await supa.from("post_comments").delete().eq("post_id", rid); } catch (e) {}
+    try { await supa.from("post_likes").delete().eq("post_id", rid); } catch (e) {}
+    try { await supa.from("posts").delete().eq("id", rid); } catch (e) {}
+    try { await supa.from("profiles").delete().eq("id", MY_UID); } catch (e) {}
+    try { await supa.auth.signOut(); } catch (e) {}
+  }, [storyId, reelId]);
 }

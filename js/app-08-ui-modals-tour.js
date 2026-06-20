@@ -1580,7 +1580,7 @@ async function supaLoadPosts(offset = 0) {
     // ✅ FIX: sélection explicite des champs (évite de charger des colonnes non nécessaires)
     // La DB a été nettoyée des base64 — le code empêche désormais tout nouveau base64 en DB
     const { data, error } = await supa.from("posts")
-      .select("id, author_id, passion_id, mood, content, media_url, created_at, shared_from_post_id, shared_data, profiles!author_id(username,emoji,color)")
+      .select("id, author_id, passion_id, mood, content, media_url, created_at, is_reel, overlays, shared_from_post_id, shared_data, profiles!author_id(username,emoji,color)")
       .order("created_at", { ascending: false })
       .range(offset, offset + 59);
     if (error) {
