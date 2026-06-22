@@ -1103,7 +1103,7 @@ function _notifListHtml(notifs) {
       <div class="empty-text">Tu es à jour, profite.</div>
     </div>`;
   return notifs.map(n => `
-    <div class="notif-row ${n.unread ? "unread" : ""}" onclick="markNotifRead('${n.id}')">
+    <div class="notif-row ${n.unread ? "unread" : ""}" onclick="clickNotif('${n.id}')">
       <div class="notif-icon">${n.emoji || "✨"}</div>
       <div class="notif-body">
         <div class="notif-text">${n.text}</div>
@@ -1171,6 +1171,44 @@ function markNotifRead(id) {
     if (n.fromSupabase && typeof supaMarkNotifSeen === "function") {
       supaMarkNotifSeen(id);
     }
+  }
+}
+
+// Clic sur une notif (panneau OU toast) : marque lu + emmène vers le contenu.
+function clickNotif(id) {
+  const n = (state.notifications || []).find(x => x.id === id);
+  markNotifRead(id);
+  openNotifTarget(n);
+}
+
+// Navigue vers l'action d'une notification selon son type.
+//  like/comment/mention/reaction → le post concerné (ref_id)
+//  follow                        → le profil de l'émetteur
+//  event_join                    → la fiche événement
+//  message                       → la conversation
+function openNotifTarget(n) {
+  if (!n) return;
+  try { closeModal(); } catch (e) {}
+  const ref = n.refId, from = n.fromId;
+  switch (n.kind) {
+    case "like":
+    case "comment":
+    case "mention":
+    case "reaction":
+      if (ref && typeof openPost === "function") openPost(ref);
+      break;
+    case "follow":
+      if ((from || ref) && typeof openUserProfile === "function") openUserProfile(from || ref);
+      break;
+    case "event_join":
+      if (ref && typeof openEventDetails === "function") openEventDetails(ref);
+      break;
+    case "message":
+      if (ref && typeof openConversation === "function") openConversation(ref);
+      break;
+    default:
+      // Notif locale / type inconnu : pas de cible précise, on n'ouvre rien.
+      break;
   }
 }
 
@@ -2656,14 +2694,15 @@ function supaSubscribe() {
       const r = payload.new;
       if (!r || r.user_id !== MY_UID) return; // pas pour moi
       const notif = {
-        id: r.id, kind: r.kind, fromId: r.from_id,
+        id: r.id, kind: r.kind, fromId: r.from_id, refId: r.ref_id,
         text: r.content || "", emoji: _notifEmoji(r.kind),
         createdAt: new Date((r.created_at || "") + "Z").getTime() || Date.now(),
         unread: !r.seen, fromSupabase: true,
       };
       if ((state.notifications || []).some(n => n.id === notif.id)) return;
       mergeSupaNotifs([notif]);
-      try { toast(notif.text || "Nouvelle notification", "info"); } catch(e) {}
+      // Toast cliquable → emmène vers le contenu de la notif.
+      try { toast(notif.text || "Nouvelle notification", "info", () => { markNotifRead(notif.id); openNotifTarget(notif); }); } catch(e) {}
     })
     .subscribe();
 
@@ -2781,7 +2820,7 @@ async function supaLoadNotifications() {
       .limit(30);
     if (error) { console.warn("supaLoadNotifications:", error.message); return []; }
     return (data || []).map(r => ({
-      id: r.id, kind: r.kind, fromId: r.from_id,
+      id: r.id, kind: r.kind, fromId: r.from_id, refId: r.ref_id,
       text: r.content || "",
       emoji: _notifEmoji(r.kind),
       createdAt: new Date(r.created_at + "Z").getTime(),

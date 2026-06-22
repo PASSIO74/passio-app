@@ -2021,6 +2021,22 @@
       color: #ffffff;
     }
 
+    /* Toast cliquable (notification) : reçoit les clics, reste plus longtemps,
+       et affiche un chevron pour signaler qu'on peut l'ouvrir. */
+    .toast.clickable {
+      pointer-events: auto;
+      cursor: pointer;
+      padding-right: 32px;
+      position: relative;
+      animation: toastIn 300ms ease, toastOut 300ms ease 5.6s forwards;
+    }
+    .toast.clickable::after {
+      content: "›";
+      position: absolute; right: 13px; top: 50%; transform: translateY(-50%);
+      font-size: 18px; font-weight: 800; opacity: 0.85;
+    }
+    .toast.clickable:active { transform: scale(0.97); }
+
     @keyframes toastIn {
       from { transform: translateY(20px); opacity: 0; }
       to { transform: translateY(0); opacity: 1; }

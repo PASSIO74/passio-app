@@ -188,13 +188,19 @@ function rankOf(score) {
 }
 
 // ======== TOAST ========
-function toast(msg, type = "info") {
+function toast(msg, type = "info", onClick = null) {
   const stack = $("#toastStack");
   const t = document.createElement("div");
   t.className = "toast " + (type || "");
   t.textContent = msg;
+  if (typeof onClick === "function") {
+    t.classList.add("clickable");
+    t.setAttribute("role", "button");
+    t.addEventListener("click", () => { t.remove(); try { onClick(); } catch (e) {} });
+  }
   stack.appendChild(t);
-  setTimeout(() => t.remove(), 3000);
+  // Les toasts cliquables restent un peu plus longtemps pour laisser le temps de cliquer.
+  setTimeout(() => t.remove(), onClick ? 6000 : 3000);
 }
 
 function rewardToast(amount, passia, reason) {
