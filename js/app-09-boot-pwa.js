@@ -811,7 +811,7 @@ function _processAttach(input, kind, file) {
 
     // Upload le fichier à Supabase Storage
     supa.storage.from("attachments").upload(storagePath, blob, {
-      cacheControl: "3600",
+      cacheControl: "31536000", // 1 an : pièce jointe immuable → cache, soulage l'egress
       upsert: false
     }).then(function(storageRes) {
       if (storageRes.error) {

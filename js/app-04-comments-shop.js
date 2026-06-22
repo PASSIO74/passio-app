@@ -1547,7 +1547,7 @@ function renderConvFpThread(c, displayName) {
       content = '<img src="' + m.gif + '" style="max-width:200px;max-height:160px;border-radius:12px;display:block;" loading="lazy"/>';
     } else if (m.video) {
       isMedia = true;
-      content = '<video src="' + m.video + '" style="max-width:200px;max-height:200px;border-radius:12px;display:block;cursor:pointer;" controls/>';
+      content = '<video src="' + m.video + '" style="max-width:200px;max-height:200px;border-radius:12px;display:block;cursor:pointer;" controls preload="none"/>';
     } else if (m.img) {
       isMedia = true;
       content = '<img loading="lazy" decoding="async" src="' + m.img + '" style="max-width:200px;max-height:200px;border-radius:12px;display:block;cursor:pointer;" onclick="openFullImg(this.src)"/>';

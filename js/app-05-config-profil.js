@@ -1113,7 +1113,7 @@ function reelMediaHTML(post) {
   if (post.type === "video" && post.video) {
     const poster = post.poster ? ` poster="${post.poster}"` : "";
     const fallback = post.fallback ? ` onerror="reelVideoFallback(this, '${post.fallback}')"` : "";
-    return `<video class="reel-media" src="${post.video}"${poster}${fallback} muted playsinline loop preload="auto"></video>`;
+    return `<video class="reel-media" src="${post.video}"${poster}${fallback} muted playsinline loop preload="metadata"></video>`;
   }
   // Sinon : utilise la cover photo (existant pour les posts seed) ou la photo uploadée
   const src = post.photo || post.coverPhotoUrl || resolveCoverUrl(post.cover) || "";

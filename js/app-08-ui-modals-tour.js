@@ -590,7 +590,9 @@ async function meStartCamera() {
   try {
     meStopCamera();
     var stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: meCam.facing, width: { ideal: 1280 }, height: { ideal: 1280 } },
+      // 720p (au lieu de 1280) : suffisant pour du social mobile, ~2× moins
+      // de pixels donc des vidéos bien plus légères (cf. bitrate ci-dessous).
+      video: { facingMode: meCam.facing, width: { ideal: 720 }, height: { ideal: 720 } },
       audio: true
     });
     meCam.stream = stream;
@@ -642,8 +644,16 @@ function meStartRecording() {
     : (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported("video/webm")) ? "video/webm"
     : (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported("video/mp4")) ? "video/mp4" : "";
   meCam.chunks = [];
-  try { meCam.recorder = mime ? new MediaRecorder(meCam.stream, { mimeType: mime }) : new MediaRecorder(meCam.stream); }
-  catch(e) { return; }
+  // Bitrate plafonné : sans ça le navigateur enregistre à 2,5-8 Mbps → une
+  // vidéo de 60 s pèse 20-30 Mo et sature le Storage (1 Go en gratuit).
+  // 1,2 Mbps vidéo + 96 kbps audio → ~60 s ≈ 8-9 Mo, qualité sociale OK.
+  var recOpts = { videoBitsPerSecond: 1200000, audioBitsPerSecond: 96000 };
+  if (mime) recOpts.mimeType = mime;
+  try { meCam.recorder = new MediaRecorder(meCam.stream, recOpts); }
+  catch(e) {
+    try { meCam.recorder = mime ? new MediaRecorder(meCam.stream, { mimeType: mime }) : new MediaRecorder(meCam.stream); }
+    catch(e2) { return; }
+  }
   meCam.recorder.ondataavailable = function(ev) { if (ev.data && ev.data.size) meCam.chunks.push(ev.data); };
   meCam.recorder.onstop = _meOnRecordingStop;
   try { meCam.recorder.start(); } catch(e) { return; }
@@ -722,6 +732,12 @@ async function meOnMedia(ev) {
   if (!file) return;
   var isVideo = (file.type || "").indexOf("video/") === 0;
   if (!isVideo && (file.type || "").indexOf("image/") !== 0) { toast("Photo ou vidéo uniquement"); return; }
+  // Les vidéos de galerie ne sont pas ré-encodées : on refuse celles trop
+  // lourdes (un fichier de 30 Mo a rempli 1/3 du Storage en beta). 25 Mo max.
+  if (isVideo && file.size > 25 * 1024 * 1024) {
+    toast("Vidéo trop lourde (" + Math.round(file.size / 1048576) + " Mo). Filme directement dans l'app ou choisis une vidéo < 25 Mo.");
+    return;
+  }
   try {
     var dataUrl;
     if (isVideo) { dataUrl = await _meReadFile(file); }
@@ -1833,7 +1849,7 @@ async function supaUploadMedia(postId, folder, base64Data, mediaType) {
 
     // Uploader vers Supabase Storage
     const { data, error } = await supa.storage.from("content").upload(filePath, blob, {
-      cacheControl: "3600",
+      cacheControl: "31536000", // 1 an : média immuable (nom unique) → cache navigateur/CDN, soulage l'egress
       upsert: true,
     });
 
