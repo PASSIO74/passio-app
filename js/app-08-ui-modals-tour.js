@@ -527,7 +527,6 @@ function meOpen(mode) {
   document.getElementById("mePhTitle").textContent = (mode === "bobine")
     ? "Ajoute une vidéo (ou une photo) pour ta bobine" : "Ajoute une photo ou une vidéo";
   var gradBtn = document.getElementById("meGradientBtn"); if (gradBtn) gradBtn.style.display = (mode === "bobine") ? "none" : "";
-  var bgTool = document.getElementById("meBgTool"); if (bgTool) bgTool.style.display = (mode === "bobine") ? "none" : "";
   var bgBtn = document.getElementById("meBgBtn"); if (bgBtn) bgBtn.style.display = (mode === "bobine") ? "none" : "";
   var title = document.getElementById("meTitle"); if (title) title.textContent = (mode === "bobine") ? "Bobine" : "Story";
   document.getElementById("mePublishBtn").textContent = (mode === "bobine") ? "Publier ma bobine" : "Publier ma story";
@@ -773,49 +772,123 @@ function meRemoveOverlay(id) {
   meState.overlays = meState.overlays.filter(function(o) { return o.id !== id; });
   var el = document.getElementById(id); if (el) el.remove();
 }
+// Applique position (left/top) + transform (scale/rotation) et garde les
+// poignées à taille constante (contre-scale).
+function _meApplyTransform(el, ov) {
+  var s = ov.scale || 1, r = ov.rot || 0;
+  el.style.left = ov.x + "%"; el.style.top = ov.y + "%";
+  el.style.transform = "translate(-50%,-50%) scale(" + s + ") rotate(" + r + "deg)";
+  el.querySelectorAll(".me-ov-ctrl").forEach(function(b) { b.style.transform = "scale(" + (1 / s) + ")"; });
+}
 function _meRenderOverlay(ov) {
+  if (ov.scale == null) ov.scale = 1;
+  if (ov.rot == null) ov.rot = 0;
   var layer = document.getElementById("meOverlays");
   var el = document.createElement("div");
   el.className = "me-overlay " + ov.type; el.id = ov.id;
-  el.style.left = ov.x + "%"; el.style.top = ov.y + "%";
   var content = document.createElement("span");
   if (ov.type === "text") { content.textContent = ov.text; el.style.color = ov.color; if (ov.size) el.style.fontSize = ov.size + "px"; }
   else if (ov.type === "emoji") { content.textContent = ov.emoji; }
   else if (ov.type === "gif") { content.innerHTML = '<img src="' + ov.url + '" alt="GIF"/>'; }
   el.appendChild(content);
-  var del = document.createElement("button"); del.className = "me-ov-del"; del.textContent = "✕";
+  var del = document.createElement("button"); del.className = "me-ov-del me-ov-ctrl"; del.textContent = "✕";
   del.onclick = function(e) { e.stopPropagation(); meRemoveOverlay(ov.id); };
   el.appendChild(del);
+  var rsz = document.createElement("button"); rsz.className = "me-ov-resize me-ov-ctrl"; rsz.textContent = "⤡"; rsz.setAttribute("aria-label", "Redimensionner");
+  el.appendChild(rsz);
   if (ov.type === "text") {
     el.addEventListener("dblclick", function(e) { e.stopPropagation(); var nt = prompt("Modifier le texte :", ov.text); if (nt != null && nt.trim()) { ov.text = nt.trim(); content.textContent = ov.text; } });
   }
-  _meMakeDraggable(el, ov);
+  _meApplyTransform(el, ov);
+  _meMakeInteractive(el, ov, rsz);
   layer.appendChild(el);
 }
-function _meMakeDraggable(el, ov) {
+// Déplacement (1 doigt) + pincer pour redimensionner/pivoter (2 doigts)
+// + poignée d'angle pour agrandir/rétrécir à la souris ou à 1 doigt.
+function _meMakeInteractive(el, ov, handle) {
   var canvas = document.getElementById("meCanvas");
-  var startX, startY, ox, oy, rect, dragging = false;
+  var pointers = {}; var rect = null;
+  var drag = null;            // { px, py, ox, oy }
+  var pinch = null;           // { dist, ang, scale, rot }
+
   el.addEventListener("pointerdown", function(e) {
     e.preventDefault(); e.stopPropagation();
     meSelectOverlay(ov);
     rect = canvas.getBoundingClientRect();
-    startX = e.clientX; startY = e.clientY; ox = ov.x; oy = ov.y; dragging = true;
     try { el.setPointerCapture(e.pointerId); } catch(_) {}
+    pointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+    var ids = Object.keys(pointers);
+    if (ids.length === 1) { drag = { px: e.clientX, py: e.clientY, ox: ov.x, oy: ov.y }; }
+    else if (ids.length === 2) { drag = null; pinch = _mePinchStart(pointers, ids, ov); }
   });
   el.addEventListener("pointermove", function(e) {
-    if (!dragging) return;
-    var dx = (e.clientX - startX) / rect.width * 100;
-    var dy = (e.clientY - startY) / rect.height * 100;
-    ov.x = Math.max(3, Math.min(97, ox + dx));
-    ov.y = Math.max(3, Math.min(97, oy + dy));
-    el.style.left = ov.x + "%"; el.style.top = ov.y + "%";
+    if (!pointers[e.pointerId]) return;
+    pointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+    var ids = Object.keys(pointers);
+    if (ids.length >= 2 && pinch) {
+      var p = pointers[ids[0]], q = pointers[ids[1]];
+      var dist = Math.hypot(p.x - q.x, p.y - q.y) || 1;
+      var ang = Math.atan2(q.y - p.y, q.x - p.x);
+      ov.scale = Math.max(0.3, Math.min(5, pinch.scale * (dist / pinch.dist)));
+      ov.rot = pinch.rot + (ang - pinch.ang) * 180 / Math.PI;
+      _meApplyTransform(el, ov);
+    } else if (drag && rect) {
+      var dx = (e.clientX - drag.px) / rect.width * 100;
+      var dy = (e.clientY - drag.py) / rect.height * 100;
+      ov.x = Math.max(3, Math.min(97, drag.ox + dx));
+      ov.y = Math.max(3, Math.min(97, drag.oy + dy));
+      _meApplyTransform(el, ov);
+    }
   });
-  el.addEventListener("pointerup", function(e) { dragging = false; try { el.releasePointerCapture(e.pointerId); } catch(_) {} });
-  el.addEventListener("pointercancel", function() { dragging = false; });
+  function up(e) {
+    delete pointers[e.pointerId];
+    try { el.releasePointerCapture(e.pointerId); } catch(_) {}
+    var ids = Object.keys(pointers);
+    if (ids.length === 1) { pinch = null; drag = { px: pointers[ids[0]].x, py: pointers[ids[0]].y, ox: ov.x, oy: ov.y }; }
+    else if (ids.length === 0) { drag = null; pinch = null; }
+  }
+  el.addEventListener("pointerup", up);
+  el.addEventListener("pointercancel", up);
+
+  // Poignée d'angle : redimensionne selon la distance au centre de l'overlay.
+  if (handle) {
+    handle.addEventListener("pointerdown", function(e) {
+      e.preventDefault(); e.stopPropagation();
+      meSelectOverlay(ov);
+      var r = el.getBoundingClientRect();
+      var cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+      var startD = Math.hypot(e.clientX - cx, e.clientY - cy) || 1;
+      var sScale = ov.scale || 1;
+      try { handle.setPointerCapture(e.pointerId); } catch(_) {}
+      function mv(ev) {
+        var d = Math.hypot(ev.clientX - cx, ev.clientY - cy) || 1;
+        ov.scale = Math.max(0.3, Math.min(5, sScale * (d / startD)));
+        _meApplyTransform(el, ov);
+      }
+      function end(ev) {
+        try { handle.releasePointerCapture(ev.pointerId); } catch(_) {}
+        handle.removeEventListener("pointermove", mv);
+        handle.removeEventListener("pointerup", end);
+        handle.removeEventListener("pointercancel", end);
+      }
+      handle.addEventListener("pointermove", mv);
+      handle.addEventListener("pointerup", end);
+      handle.addEventListener("pointercancel", end);
+    });
+  }
+}
+function _mePinchStart(pointers, ids, ov) {
+  var p = pointers[ids[0]], q = pointers[ids[1]];
+  return {
+    dist: Math.hypot(p.x - q.x, p.y - q.y) || 1,
+    ang: Math.atan2(q.y - p.y, q.x - p.x),
+    scale: ov.scale || 1,
+    rot: ov.rot || 0
+  };
 }
 function _meOverlaysData() {
   return meState.overlays.map(function(o) {
-    var c = { type: o.type, x: Math.round(o.x), y: Math.round(o.y) };
+    var c = { type: o.type, x: Math.round(o.x), y: Math.round(o.y), scale: +(o.scale || 1).toFixed(3), rot: Math.round(o.rot || 0) };
     if (o.type === "text") { c.text = o.text; c.color = o.color; c.size = o.size; }
     if (o.type === "emoji") { c.emoji = o.emoji; c.size = o.size; }
     if (o.type === "gif") { c.url = o.url; }
@@ -884,7 +957,9 @@ function openStoryViewer(idx) {
 // HTML des overlays (texte/emoji/GIF positionnés) pour les viewers story & bobine.
 function _storyOverlaysHtml(overlays) {
   return (overlays || []).map(function(o) {
-    var pos = "left:" + (o.x != null ? o.x : 50) + "%;top:" + (o.y != null ? o.y : 50) + "%;";
+    var s = o.scale || 1, r = o.rot || 0;
+    var tr = "transform:translate(-50%,-50%) scale(" + s + ") rotate(" + r + "deg);";
+    var pos = "left:" + (o.x != null ? o.x : 50) + "%;top:" + (o.y != null ? o.y : 50) + "%;" + tr;
     if (o.type === "text") {
       return '<div class="story-ov" style="' + pos + 'color:' + (o.color || "#fff") + ';font-size:' + (o.size || 26) + 'px;font-weight:800;">' + escapeHtml(o.text || "") + '</div>';
     }

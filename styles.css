@@ -4071,6 +4071,15 @@
       align-items: center; justify-content: center; line-height: 1;
     }
     .me-overlay.selected .me-ov-del { display: flex; }
+    .me-overlay .me-ov-resize {
+      position: absolute; bottom: -10px; right: -10px;
+      width: 24px; height: 24px; border-radius: 999px;
+      background: rgba(0,0,0,0.65); color: #fff; border: none;
+      font-size: 12px; cursor: nwse-resize; display: none;
+      align-items: center; justify-content: center; line-height: 1;
+      touch-action: none;
+    }
+    .me-overlay.selected .me-ov-resize { display: flex; }
     .me-overlay.selected { outline: 1.5px dashed rgba(255,255,255,0.7); outline-offset: 3px; }
 
     .me-toolbar {
