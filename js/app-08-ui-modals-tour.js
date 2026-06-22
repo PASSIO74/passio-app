@@ -520,8 +520,10 @@ function meOpen(mode) {
   var ed = document.getElementById("mediaEditor"); if (!ed) return;
   document.getElementById("meMedia").innerHTML = "";
   document.getElementById("meOverlays").innerHTML = "";
-  document.getElementById("meCanvas").style.background = meState.bg;
-  document.getElementById("mePlaceholder").classList.remove("hidden");
+  // Fond noir pendant la capture (pas le dégradé de l'ancien composer).
+  document.getElementById("meCanvas").style.background = "#000";
+  // Placeholder gardé masqué : il ne sert que de fallback si la caméra échoue.
+  document.getElementById("mePlaceholder").classList.add("hidden");
   document.getElementById("mePhTitle").textContent = (mode === "bobine")
     ? "Ajoute une vidéo (ou une photo) pour ta bobine" : "Ajoute une photo ou une vidéo";
   var gradBtn = document.getElementById("meGradientBtn"); if (gradBtn) gradBtn.style.display = (mode === "bobine") ? "none" : "";
@@ -529,8 +531,8 @@ function meOpen(mode) {
   var bgBtn = document.getElementById("meBgBtn"); if (bgBtn) bgBtn.style.display = (mode === "bobine") ? "none" : "";
   var title = document.getElementById("meTitle"); if (title) title.textContent = (mode === "bobine") ? "Bobine" : "Story";
   document.getElementById("mePublishBtn").textContent = (mode === "bobine") ? "Publier ma bobine" : "Publier ma story";
-  // Phase capture par défaut.
-  ed.classList.remove("phase-edit", "me-recording", "me-cam-on");
+  // Phase capture par défaut (le loader caméra s'affiche le temps de l'init).
+  ed.classList.remove("phase-edit", "me-recording", "me-cam-on", "me-no-cam");
   ed.classList.add("open", "phase-capture");
   ed.setAttribute("aria-hidden", "false");
   document.body.style.overflow = "hidden";
@@ -557,8 +559,9 @@ function meBackToCapture() {
   meState.media = null; meState.mediaType = null; meState.overlays = []; meState._seq = 0;
   document.getElementById("meMedia").innerHTML = "";
   document.getElementById("meOverlays").innerHTML = "";
-  document.getElementById("meCanvas").style.background = meState.bg;
-  ed.classList.remove("phase-edit"); ed.classList.add("phase-capture");
+  document.getElementById("meCanvas").style.background = "#000";
+  document.getElementById("mePlaceholder").classList.add("hidden");
+  ed.classList.remove("phase-edit", "me-no-cam"); ed.classList.add("phase-capture");
   meStartCamera();
 }
 function meEnterEditPhase() {
@@ -596,7 +599,7 @@ async function meStartCamera() {
     if (!v) { meStopCamera(); _meNoCamera(); return; }
     v.srcObject = stream; v.muted = true;
     v.style.transform = (meCam.facing === "user") ? "scaleX(-1)" : "none";
-    var ed = document.getElementById("mediaEditor"); if (ed) ed.classList.add("me-cam-on");
+    var ed = document.getElementById("mediaEditor"); if (ed) { ed.classList.remove("me-no-cam"); ed.classList.add("me-cam-on"); }
     try { await v.play(); } catch(e) {}
   } catch(e) { _meNoCamera(); }
 }
@@ -607,8 +610,8 @@ function meStopCamera() {
   var ed = document.getElementById("mediaEditor"); if (ed) ed.classList.remove("me-cam-on");
 }
 function _meNoCamera() {
-  // Pas d'accès caméra → on retombe sur le placeholder galerie/fond.
-  var ed = document.getElementById("mediaEditor"); if (ed) ed.classList.remove("me-cam-on");
+  // Pas d'accès caméra → on masque le loader et on retombe sur le placeholder galerie/fond.
+  var ed = document.getElementById("mediaEditor"); if (ed) { ed.classList.remove("me-cam-on"); ed.classList.add("me-no-cam"); }
   var ph = document.getElementById("mePlaceholder"); if (ph) ph.classList.remove("hidden");
 }
 function meFlipCamera() {
