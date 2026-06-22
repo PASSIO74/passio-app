@@ -566,6 +566,19 @@ function meEnterEditPhase() {
   meStopRecording(true);
   meStopCamera();
   ed.classList.remove("phase-capture"); ed.classList.add("phase-edit");
+  meState._enteredEditAt = Date.now(); // anti clic-fantôme : bloque une publication immédiate
+}
+// Absorbe le prochain clic (le « ghost click » émis après un pointerup tactile),
+// pour qu'il n'atteigne pas le bouton Publier qui vient d'apparaître sous le doigt.
+function _meSwallowNextClick() {
+  var t;
+  var swallow = function(e) {
+    e.stopPropagation(); e.preventDefault();
+    document.removeEventListener("click", swallow, true);
+    clearTimeout(t);
+  };
+  document.addEventListener("click", swallow, true);
+  t = setTimeout(function() { document.removeEventListener("click", swallow, true); }, 700);
 }
 
 // ---- Caméra live ----
@@ -680,8 +693,8 @@ function _meBindShutter() {
     clearTimeout(meCam.holdTimer);
     var ed = document.getElementById("mediaEditor");
     if (!ed || !ed.classList.contains("me-cam-on")) return;
-    if (meCam.recording) { meStopRecording(); }
-    else if (!held) { meCapturePhoto(); }
+    if (meCam.recording) { _meSwallowNextClick(); meStopRecording(); }
+    else if (!held) { _meSwallowNextClick(); meCapturePhoto(); }
     held = false;
   }
   sh.addEventListener("pointerup", end);
@@ -807,6 +820,8 @@ function _meOverlaysData() {
   });
 }
 async function mePublish() {
+  // Anti clic-fantôme : ignore une publication déclenchée dans la foulée d'une capture.
+  if (meState._enteredEditAt && (Date.now() - meState._enteredEditAt) < 700) return;
   if (meState.mode === "bobine" && !meState.media) { toast("Ajoute une vidéo ou une photo pour ta bobine"); return; }
   var p = (typeof currentProfile === "function" && currentProfile()) || {};
   var authorId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
