@@ -173,10 +173,20 @@
   </div>
 
   <!-- ============ ÉDITEUR MÉDIA (story / bobine, façon Instagram) ============ -->
-  <div id="mediaEditor" class="media-editor" aria-hidden="true">
+  <div id="mediaEditor" class="media-editor phase-capture" aria-hidden="true">
+    <!-- Barre du haut -->
+    <div class="me-topbar">
+      <button class="me-icon-btn" id="meBackBtn" onclick="meTopBack()" aria-label="Fermer">✕</button>
+      <div class="me-title" id="meTitle">Story</div>
+      <button class="me-icon-btn" id="meFlipBtn" onclick="meFlipCamera()" aria-label="Changer de caméra" title="Changer de caméra">🔄</button>
+    </div>
+
+    <!-- Scène (caméra live en capture, média + overlays en édition) -->
     <div class="me-canvas" id="meCanvas">
+      <video id="meCamVideo" class="me-cam-video" autoplay playsinline muted></video>
       <div class="me-media" id="meMedia"></div>
       <div class="me-overlays" id="meOverlays"></div>
+      <div class="me-rec-badge" id="meRecBadge"><span class="me-rec-dot"></span><span id="meRecTime">0:00</span></div>
       <div class="me-placeholder" id="mePlaceholder">
         <div class="me-ph-icon">🖼️</div>
         <div class="me-ph-title" id="mePhTitle">Ajoute une photo ou une vidéo</div>
@@ -184,14 +194,25 @@
         <button class="btn ghost" id="meGradientBtn" style="margin-top:8px;" onclick="meCycleBg()">…ou un fond coloré</button>
       </div>
     </div>
+
+    <!-- Contrôles de capture (façon appareil photo Instagram) -->
+    <div class="me-capture-area">
+      <div class="me-capture-hint" id="meCaptureHint">Appuie pour une photo · maintiens pour une vidéo</div>
+      <div class="me-capture-bar">
+        <button class="me-gallery-thumb" id="meGalleryThumb" onclick="mePickMedia()" aria-label="Choisir dans la galerie">🖼️</button>
+        <button class="me-shutter" id="meShutter" aria-label="Capturer"><span class="me-shutter-ring"></span><span class="me-shutter-inner"></span></button>
+        <button class="me-cap-side" id="meBgBtn" onclick="meCycleBg()" aria-label="Fond coloré" title="Fond coloré">🎨</button>
+      </div>
+    </div>
+
+    <!-- Outils d'édition (overlays) -->
     <div class="me-toolbar">
-      <button class="me-tool" onclick="meClose()" title="Fermer">✕</button>
       <div class="me-tool-group">
-        <button class="me-tool" onclick="mePickMedia()" title="Média">🖼️</button>
         <button class="me-tool" onclick="meAddText()" title="Texte">Aa</button>
         <button class="me-tool" onclick="meAddEmoji()" title="Emoji">😀</button>
         <button class="me-tool" onclick="meAddGif()" title="GIF">GIF</button>
         <button class="me-tool" id="meBgTool" onclick="meCycleBg()" title="Fond">🎨</button>
+        <button class="me-tool" onclick="mePickMedia()" title="Changer de média">🖼️</button>
       </div>
     </div>
     <div class="me-bottom">

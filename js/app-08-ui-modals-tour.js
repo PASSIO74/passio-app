@@ -512,6 +512,8 @@ function openStudioAsStory() { meOpen("story"); }
 // texte, emoji, GIF. Publie en story (24h) ou en bobine (is_reel).
 // ════════════════════════════════════════════════════════════════════════
 var meState = { mode: "story", media: null, mediaType: null, bg: STORY_BGS[0], bgIdx: 0, overlays: [], _seq: 0 };
+// État de la caméra live (capture façon Instagram).
+var meCam = { stream: null, facing: "user", recorder: null, chunks: [], recording: false, recTimer: null, recStart: 0, holdTimer: null, maxTimer: null, _boundShutter: false };
 
 function meOpen(mode) {
   meState = { mode: mode || "story", media: null, mediaType: null, bg: STORY_BGS[0], bgIdx: 0, overlays: [], _seq: 0 };
@@ -524,17 +526,168 @@ function meOpen(mode) {
     ? "Ajoute une vidéo (ou une photo) pour ta bobine" : "Ajoute une photo ou une vidéo";
   var gradBtn = document.getElementById("meGradientBtn"); if (gradBtn) gradBtn.style.display = (mode === "bobine") ? "none" : "";
   var bgTool = document.getElementById("meBgTool"); if (bgTool) bgTool.style.display = (mode === "bobine") ? "none" : "";
+  var bgBtn = document.getElementById("meBgBtn"); if (bgBtn) bgBtn.style.display = (mode === "bobine") ? "none" : "";
+  var title = document.getElementById("meTitle"); if (title) title.textContent = (mode === "bobine") ? "Bobine" : "Story";
   document.getElementById("mePublishBtn").textContent = (mode === "bobine") ? "Publier ma bobine" : "Publier ma story";
-  ed.classList.add("open"); ed.setAttribute("aria-hidden", "false");
+  // Phase capture par défaut.
+  ed.classList.remove("phase-edit", "me-recording", "me-cam-on");
+  ed.classList.add("open", "phase-capture");
+  ed.setAttribute("aria-hidden", "false");
   document.body.style.overflow = "hidden";
+  _meBindShutter();
+  meStartCamera();
 }
 function meClose() {
   var ed = document.getElementById("mediaEditor");
-  if (ed) { ed.classList.remove("open"); ed.setAttribute("aria-hidden", "true"); }
+  meStopRecording(true);
+  meStopCamera();
+  if (ed) { ed.classList.remove("open", "phase-edit", "phase-capture", "me-recording", "me-cam-on"); ed.setAttribute("aria-hidden", "true"); }
   document.body.style.overflow = "";
   try { var v = document.querySelector("#meMedia video"); if (v) v.pause(); } catch(e) {}
   var bar = document.getElementById("meEmojiBar"); if (bar) bar.remove();
 }
+// Bouton ✕ : en édition → revient à la capture ; en capture → ferme.
+function meTopBack() {
+  var ed = document.getElementById("mediaEditor");
+  if (ed && ed.classList.contains("phase-edit")) { meBackToCapture(); return; }
+  meClose();
+}
+function meBackToCapture() {
+  var ed = document.getElementById("mediaEditor"); if (!ed) return;
+  meState.media = null; meState.mediaType = null; meState.overlays = []; meState._seq = 0;
+  document.getElementById("meMedia").innerHTML = "";
+  document.getElementById("meOverlays").innerHTML = "";
+  document.getElementById("meCanvas").style.background = meState.bg;
+  ed.classList.remove("phase-edit"); ed.classList.add("phase-capture");
+  meStartCamera();
+}
+function meEnterEditPhase() {
+  var ed = document.getElementById("mediaEditor"); if (!ed) return;
+  meStopRecording(true);
+  meStopCamera();
+  ed.classList.remove("phase-capture"); ed.classList.add("phase-edit");
+}
+
+// ---- Caméra live ----
+async function meStartCamera() {
+  if (meState.mode !== "bobine" && meState.mode !== "story") return;
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { _meNoCamera(); return; }
+  try {
+    meStopCamera();
+    var stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: meCam.facing, width: { ideal: 1280 }, height: { ideal: 1280 } },
+      audio: true
+    });
+    meCam.stream = stream;
+    var v = document.getElementById("meCamVideo");
+    if (!v) { meStopCamera(); _meNoCamera(); return; }
+    v.srcObject = stream; v.muted = true;
+    v.style.transform = (meCam.facing === "user") ? "scaleX(-1)" : "none";
+    var ed = document.getElementById("mediaEditor"); if (ed) ed.classList.add("me-cam-on");
+    try { await v.play(); } catch(e) {}
+  } catch(e) { _meNoCamera(); }
+}
+function meStopCamera() {
+  try { if (meCam.stream) meCam.stream.getTracks().forEach(function(t) { t.stop(); }); } catch(e) {}
+  meCam.stream = null;
+  var v = document.getElementById("meCamVideo"); if (v) { try { v.srcObject = null; } catch(e) {} }
+  var ed = document.getElementById("mediaEditor"); if (ed) ed.classList.remove("me-cam-on");
+}
+function _meNoCamera() {
+  // Pas d'accès caméra → on retombe sur le placeholder galerie/fond.
+  var ed = document.getElementById("mediaEditor"); if (ed) ed.classList.remove("me-cam-on");
+  var ph = document.getElementById("mePlaceholder"); if (ph) ph.classList.remove("hidden");
+}
+function meFlipCamera() {
+  if (!meCam.stream) { meStartCamera(); return; }
+  meCam.facing = (meCam.facing === "user") ? "environment" : "user";
+  meStartCamera();
+}
+
+// Capture photo : on dessine l'image de la vidéo dans un canvas.
+function meCapturePhoto() {
+  var v = document.getElementById("meCamVideo");
+  if (!v || !v.videoWidth) { mePickMedia(); return; }
+  try {
+    var c = document.createElement("canvas");
+    c.width = v.videoWidth; c.height = v.videoHeight;
+    var ctx = c.getContext("2d");
+    if (meCam.facing === "user") { ctx.translate(c.width, 0); ctx.scale(-1, 1); }
+    ctx.drawImage(v, 0, 0, c.width, c.height);
+    var url = c.toDataURL("image/jpeg", 0.88);
+    meSetMedia(url, "photo");
+  } catch(e) { toast("Impossible de prendre la photo"); }
+}
+
+// Enregistrement vidéo (maintien du déclencheur).
+function meStartRecording() {
+  if (!meCam.stream || !window.MediaRecorder || meCam.recording) return;
+  var mime = (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")) ? "video/webm;codecs=vp9,opus"
+    : (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported("video/webm;codecs=vp8,opus")) ? "video/webm;codecs=vp8,opus"
+    : (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported("video/webm")) ? "video/webm"
+    : (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported("video/mp4")) ? "video/mp4" : "";
+  meCam.chunks = [];
+  try { meCam.recorder = mime ? new MediaRecorder(meCam.stream, { mimeType: mime }) : new MediaRecorder(meCam.stream); }
+  catch(e) { return; }
+  meCam.recorder.ondataavailable = function(ev) { if (ev.data && ev.data.size) meCam.chunks.push(ev.data); };
+  meCam.recorder.onstop = _meOnRecordingStop;
+  try { meCam.recorder.start(); } catch(e) { return; }
+  meCam.recording = true; meCam.recStart = Date.now();
+  var ed = document.getElementById("mediaEditor"); if (ed) ed.classList.add("me-recording");
+  meCam.recTimer = setInterval(_meUpdateRecTime, 200);
+  meCam.maxTimer = setTimeout(function() { meStopRecording(); }, 60000); // 60 s max
+}
+function meStopRecording(silent) {
+  clearTimeout(meCam.maxTimer); clearInterval(meCam.recTimer);
+  if (!meCam.recording) return;
+  meCam.recording = false;
+  meCam._silent = !!silent;
+  try { if (meCam.recorder && meCam.recorder.state !== "inactive") meCam.recorder.stop(); } catch(e) {}
+  var ed = document.getElementById("mediaEditor"); if (ed) ed.classList.remove("me-recording");
+}
+function _meUpdateRecTime() {
+  var el = document.getElementById("meRecTime"); if (!el) return;
+  var s = Math.floor((Date.now() - meCam.recStart) / 1000);
+  el.textContent = "0:" + (s < 10 ? "0" : "") + s;
+}
+function _meOnRecordingStop() {
+  if (meCam._silent) { meCam._silent = false; return; }
+  var dur = Date.now() - meCam.recStart;
+  if (dur < 700 || !meCam.chunks.length) { meCapturePhoto(); return; } // appui bref → photo
+  var blob = new Blob(meCam.chunks, { type: (meCam.chunks[0] && meCam.chunks[0].type) || "video/webm" });
+  var r = new FileReader();
+  r.onload = function() { meSetMedia(r.result, "video"); };
+  r.onerror = function() { toast("Impossible d'enregistrer la vidéo"); };
+  r.readAsDataURL(blob);
+}
+
+// Déclencheur : tap = photo, maintien = vidéo.
+function _meBindShutter() {
+  if (meCam._boundShutter) return;
+  var sh = document.getElementById("meShutter"); if (!sh) return;
+  meCam._boundShutter = true;
+  var held = false;
+  sh.addEventListener("pointerdown", function(e) {
+    e.preventDefault();
+    var ed = document.getElementById("mediaEditor");
+    if (!ed || !ed.classList.contains("me-cam-on")) { mePickMedia(); return; }
+    held = false;
+    try { sh.setPointerCapture(e.pointerId); } catch(_) {}
+    meCam.holdTimer = setTimeout(function() { held = true; meStartRecording(); }, 320);
+  });
+  function end(e) {
+    if (e) { e.preventDefault(); try { sh.releasePointerCapture(e.pointerId); } catch(_) {} }
+    clearTimeout(meCam.holdTimer);
+    var ed = document.getElementById("mediaEditor");
+    if (!ed || !ed.classList.contains("me-cam-on")) return;
+    if (meCam.recording) { meStopRecording(); }
+    else if (!held) { meCapturePhoto(); }
+    held = false;
+  }
+  sh.addEventListener("pointerup", end);
+  sh.addEventListener("pointercancel", function(e) { if (meCam.recording) end(e); else clearTimeout(meCam.holdTimer); });
+}
+
 function mePickMedia() { var i = document.getElementById("meMediaInput"); if (i) i.click(); }
 function meCycleBg() {
   if (meState.mode === "bobine") return;
@@ -544,6 +697,7 @@ function meCycleBg() {
   meState.bg = STORY_BGS[meState.bgIdx];
   document.getElementById("meCanvas").style.background = meState.bg;
   document.getElementById("mePlaceholder").classList.add("hidden");
+  meEnterEditPhase();
 }
 function _meReadFile(file) {
   return new Promise(function(res, rej) { var r = new FileReader(); r.onload = function() { res(r.result); }; r.onerror = function() { rej(r.error); }; r.readAsDataURL(file); });
@@ -566,6 +720,7 @@ function meSetMedia(dataUrl, type) {
     ? '<video src="' + dataUrl + '" muted playsinline loop autoplay></video>'
     : '<img src="' + dataUrl + '" alt=""/>';
   document.getElementById("mePlaceholder").classList.add("hidden");
+  meEnterEditPhase();
 }
 function meAddText() {
   var t = prompt("Ton texte :"); if (t == null) return; t = t.trim(); if (!t) return;

@@ -3916,32 +3916,115 @@
       display: none;
       flex-direction: column;
       align-items: center;
-      justify-content: center;
+      justify-content: flex-start;
       padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
     }
     .media-editor.open { display: flex; }
+
+    /* ---- Barre du haut ---- */
+    .me-topbar {
+      width: min(100%, calc((100vh - 200px) * 9 / 16));
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 8px; padding: 10px 8px 8px;
+      flex: 0 0 auto;
+    }
+    .me-title { color: #fff; font-weight: 800; font-size: 16px; letter-spacing: .2px; }
+    .me-icon-btn {
+      width: 40px; height: 40px; border-radius: 999px; border: none;
+      background: rgba(255,255,255,0.14); color: #fff; font-size: 18px;
+      cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+      transition: background 160ms ease, transform 140ms ease; backdrop-filter: blur(8px);
+    }
+    .me-icon-btn:active { transform: scale(0.92); background: rgba(255,255,255,0.26); }
+    /* Le bouton flip n'a de sens qu'en mode capture caméra */
+    .media-editor.phase-edit #meFlipBtn,
+    .media-editor:not(.me-cam-on) #meFlipBtn { visibility: hidden; }
+
     .me-canvas {
       position: relative;
-      width: min(100%, calc((100vh - 168px) * 9 / 16));
+      width: min(100%, calc((100vh - 200px) * 9 / 16));
       aspect-ratio: 9 / 16;
-      max-height: calc(100vh - 168px);
-      border-radius: 18px;
+      max-height: calc(100vh - 200px);
+      border-radius: 22px;
       overflow: hidden;
       background: linear-gradient(135deg,#7c3aed,#a78bfa);
       box-shadow: 0 20px 60px rgba(0,0,0,0.5);
       touch-action: none;
+      flex: 0 1 auto;
     }
+    .me-cam-video {
+      position: absolute; inset: 0; z-index: 0;
+      width: 100%; height: 100%; object-fit: cover; display: none; background: #000;
+    }
+    .media-editor.me-cam-on.phase-capture .me-cam-video { display: block; }
     .me-media { position: absolute; inset: 0; z-index: 0; }
     .me-media img, .me-media video { width: 100%; height: 100%; object-fit: cover; display: block; }
     .me-overlays { position: absolute; inset: 0; z-index: 1; }
+
+    /* Badge d'enregistrement vidéo */
+    .me-rec-badge {
+      position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 5;
+      display: none; align-items: center; gap: 7px;
+      background: rgba(0,0,0,0.55); color: #fff; font-weight: 800; font-size: 13px;
+      padding: 5px 12px; border-radius: 999px; backdrop-filter: blur(8px);
+    }
+    .media-editor.me-recording .me-rec-badge { display: inline-flex; }
+    .me-rec-dot { width: 9px; height: 9px; border-radius: 999px; background: #ef4444; animation: mePulse 1s infinite; }
+    @keyframes mePulse { 0%,100% { opacity: 1; } 50% { opacity: .25; } }
+
     .me-placeholder {
       position: absolute; inset: 0; z-index: 2;
       display: flex; flex-direction: column; align-items: center; justify-content: center;
       gap: 4px; text-align: center; color: #fff; padding: 24px;
     }
     .me-placeholder.hidden { display: none; }
+    /* En capture caméra, le placeholder ne s'affiche que si la caméra est indisponible */
+    .media-editor.phase-capture.me-cam-on .me-placeholder { display: none; }
+    .media-editor.phase-edit .me-placeholder { display: none; }
     .me-ph-icon { font-size: 40px; }
     .me-ph-title { font-size: 15px; font-weight: 700; opacity: 0.95; }
+
+    /* ---- Zone de capture (appareil photo) ---- */
+    .me-capture-area {
+      width: min(100%, calc((100vh - 200px) * 9 / 16));
+      flex: 1 1 auto; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 10px; padding: 6px 6px 12px;
+    }
+    .me-capture-hint { color: rgba(255,255,255,0.72); font-size: 12.5px; font-weight: 600; text-align: center; }
+    .media-editor.me-recording .me-capture-hint { visibility: hidden; }
+    .me-capture-bar {
+      width: 100%; display: flex; align-items: center; justify-content: space-between;
+      padding: 0 22px;
+    }
+    .me-gallery-thumb, .me-cap-side {
+      width: 46px; height: 46px; border-radius: 12px; border: 2px solid rgba(255,255,255,0.55);
+      background: rgba(255,255,255,0.1); color: #fff; font-size: 20px; cursor: pointer;
+      display: inline-flex; align-items: center; justify-content: center;
+      transition: transform 140ms ease, background 160ms ease;
+    }
+    .me-cap-side { border-radius: 999px; border-style: solid; }
+    .me-gallery-thumb:active, .me-cap-side:active { transform: scale(0.9); background: rgba(255,255,255,0.25); }
+    .me-shutter {
+      width: 78px; height: 78px; border-radius: 999px; border: none; background: transparent;
+      cursor: pointer; padding: 0; position: relative; flex: 0 0 auto;
+      display: inline-flex; align-items: center; justify-content: center;
+    }
+    .me-shutter-ring {
+      position: absolute; inset: 0; border-radius: 999px; border: 4px solid #fff;
+      transition: border-color 180ms ease, transform 180ms ease;
+    }
+    .me-shutter-inner {
+      width: 62px; height: 62px; border-radius: 999px; background: #fff;
+      transition: transform 180ms ease, background 180ms ease, border-radius 180ms ease;
+    }
+    .me-shutter:active .me-shutter-inner { transform: scale(0.88); }
+    .media-editor.me-recording .me-shutter-ring { border-color: #ef4444; transform: scale(1.08); }
+    .media-editor.me-recording .me-shutter-inner { background: #ef4444; width: 30px; height: 30px; border-radius: 8px; }
+
+    /* ---- Visibilité par phase ---- */
+    .media-editor.phase-capture .me-toolbar,
+    .media-editor.phase-capture .me-bottom { display: none; }
+    .media-editor.phase-edit .me-capture-area { display: none; }
 
     .me-overlay {
       position: absolute;
@@ -3976,8 +4059,8 @@
     .me-overlay.selected { outline: 1.5px dashed rgba(255,255,255,0.7); outline-offset: 3px; }
 
     .me-toolbar {
-      display: flex; align-items: center; justify-content: space-between;
-      gap: 8px; width: min(100%, calc((100vh - 168px) * 9 / 16));
+      display: flex; align-items: center; justify-content: center;
+      gap: 8px; width: min(100%, calc((100vh - 200px) * 9 / 16));
       padding: 12px 6px 8px;
     }
     .me-tool-group { display: flex; gap: 6px; }
@@ -3990,7 +4073,7 @@
       transition: background 160ms ease, transform 140ms ease;
     }
     .me-tool:active { transform: scale(0.93); background: rgba(255,255,255,0.26); }
-    .me-bottom { width: min(100%, calc((100vh - 168px) * 9 / 16)); padding: 4px 6px 10px; }
+    .me-bottom { width: min(100%, calc((100vh - 200px) * 9 / 16)); padding: 4px 6px 10px; }
 
     /* Couches média + overlays dans le viewer de story */
     .story-media-layer { position: absolute; inset: 0; z-index: 0; }
