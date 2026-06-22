@@ -1151,11 +1151,30 @@ function openNotifications() {
   openModal(html);
   // Rafraîchir depuis Supabase à l'ouverture : garantit l'affichage des notifs
   // reçues même si le realtime ne les a pas livrées. La liste se met à jour en
-  // place via mergeSupaNotifs (pas de réouverture de modal).
+  // place via mergeSupaNotifs (pas de réouverture de modal). Puis on remet le
+  // badge à zéro (les lignes affichées gardent leur surlignage pour CETTE vue).
   if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID
       && typeof supaLoadNotifications === "function") {
-    supaLoadNotifications().then(ns => { if (ns && ns.length) mergeSupaNotifs(ns); }).catch(e => {});
+    supaLoadNotifications()
+      .then(ns => { if (ns && ns.length) mergeSupaNotifs(ns); _resetNotifBadge(); })
+      .catch(() => { _resetNotifBadge(); });
+  } else {
+    _resetNotifBadge();
   }
+}
+
+// Remet le compteur (badge cloche) à zéro : marque toutes les notifs comme lues
+// et synchronise le « seen » côté Supabase, sans re-rendre la liste affichée
+// (le surlignage des nouvelles reste visible le temps de cette ouverture).
+function _resetNotifBadge() {
+  let changed = false;
+  (state.notifications || []).forEach(n => {
+    if (n.unread) {
+      n.unread = false; changed = true;
+      if (n.fromSupabase && typeof supaMarkNotifSeen === "function") { try { supaMarkNotifSeen(n.id); } catch (e) {} }
+    }
+  });
+  if (changed) { try { saveState(); } catch (e) {} try { renderBell(); } catch (e) {} }
 }
 
 function markNotifRead(id) {
