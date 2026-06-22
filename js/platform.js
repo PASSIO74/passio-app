@@ -67,6 +67,15 @@
     var _isWindows    = /windows/i.test(_ua);
     var _isMac        = /mac os x/i.test(_ua) && !_isIOS;
     var _isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+    // _pwaInstalled : référencé par pwa-landing.js mais jamais déclaré
+    // → « ReferenceError: _pwaInstalled is not defined » (4310 erreurs en 3 j).
+    // Vrai si l'app tourne en standalone OU déjà installée (flag persistant).
+    var _pwaInstalled = _isStandalone;
+    try { _pwaInstalled = _pwaInstalled || localStorage.getItem('passio_pwa_installed') === '1'; } catch (e) {}
+    window.addEventListener('appinstalled', function () {
+      _pwaInstalled = true;
+      try { localStorage.setItem('passio_pwa_installed', '1'); } catch (e) {}
+    });
 
     // Navigateur actuel
     var _isChrome   = /chrome|chromium/i.test(_ua) && !/edg|opr|samsungbrowser|crios/i.test(_ua);
@@ -90,8 +99,12 @@
       window.addEventListener('beforeinstallprompt', function(e) {
         e.preventDefault();
         window._pwaPrompt = e;
-        // Déclenchement automatique immédiat (pas besoin de cliquer)
-        try { e.prompt(); } catch(_) {}
+        // NE PAS appeler e.prompt() ici : Chrome exige un geste utilisateur,
+        // sinon « Failed to execute 'prompt' on 'BeforeInstallPromptEvent' »
+        // (4305 erreurs en 3 jours). Le prompt est déclenché au clic sur le
+        // bouton INSTALLER (pwaInstall(), app-09).
+        var btn = document.getElementById('btn-install-app');
+        if (btn) btn.style.display = '';
       });
 
       window.addEventListener('load', function() {
