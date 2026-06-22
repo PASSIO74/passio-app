@@ -835,17 +835,29 @@ function _processAttach(input, kind, file) {
 }
 
 function sendMessageToSupabase(msgId, convId, fileUrl, fileType, fileName, kind) {
+  // ⛔ NE JAMAIS stocker de base64 en DB (data: URL = média non uploadé sur
+  // Storage). Un seul message de 5 Mo a fait gonfler conv_messages à 24 Mo en
+  // beta. Si l'upload Storage a échoué, on insère uniquement les métadonnées
+  // (filename/type) sans le payload : le destinataire voit « média non
+  // synchronisé », l'expéditeur garde sa copie locale, et la DB reste légère.
+  var _expired = (typeof fileUrl === "string" && fileUrl.indexOf("data:") === 0);
+  if (_expired) {
+    _diag("sendMessageToSupabase: ⚠️ upload Storage échoué → base64 NON stocké en DB (" + (fileUrl.length) + " octets ignorés)");
+    fileUrl = "";
+  }
+
   // Encoder dans le content en JSON
   var contentData = {
     type: kind,
     filename: fileName,
     fileType: fileType,
     url: fileUrl,
-    text: "[" + kind.toUpperCase() + "] " + fileName
+    expired: _expired || undefined,
+    text: _expired ? "📎 " + (fileName || "Média") + " (non synchronisé)" : "[" + kind.toUpperCase() + "] " + fileName
   };
   var contentJson = JSON.stringify(contentData);
 
-  _diag("handleAttachFile: Envoi à Supabase - URL length: " + fileUrl.length);
+  _diag("handleAttachFile: Envoi à Supabase - URL length: " + (fileUrl ? fileUrl.length : 0));
 
   // AVEC from_id d'abord : la RLS v2 rejette toujours l'insert sans from_id
   // (WITH CHECK from_id = auth.uid()) — fallback sans from_id par prudence.
