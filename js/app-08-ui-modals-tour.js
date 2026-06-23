@@ -367,65 +367,112 @@ function skipToApp() {
 }
 
 // ======== STORIES ========
+// Identifiant de l'utilisateur courant côté stories (auth Supabase ou "me").
+function _myStoryAuthorId() {
+  return (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
+}
+
+// Regroupe state.seed.stories PAR AUTEUR (façon Instagram) : une seule bulle par
+// profil, qui contient toutes ses stories. L'ordre des groupes suit l'activité
+// la plus récente (les stories sont déjà unshift => plus récentes en tête).
+// Dans chaque groupe, on joue de la plus ancienne à la plus récente.
+function buildStoryGroups() {
+  const stories = state.seed.stories || [];
+  const map = new Map();
+  const order = [];
+  stories.forEach(s => {
+    const id = String(s.authorId || "unknown");
+    if (!map.has(id)) {
+      const u = userById(s.authorId) || {};
+      map.set(id, {
+        authorId: s.authorId,
+        name: s.authorName || u.name || "Passionné",
+        emoji: s.authorEmoji || u.profileEmoji || "✨",
+        color: s.authorColor || u.avatar || "#8b5cf6",
+        stories: [],
+      });
+      order.push(id);
+    }
+    map.get(id).stories.push(s);
+  });
+  const groups = order.map(id => map.get(id));
+  groups.forEach(g => g.stories.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0)));
+  return groups;
+}
+
+// Miniature de la bulle d'un groupe : la story la plus récente avec un visuel,
+// sinon l'emoji du profil.
+function _storyBubbleInner(g) {
+  const withMedia = g.stories.slice().reverse().find(s => s.media && s.mediaType !== "video");
+  if (withMedia) {
+    return `<img loading="lazy" decoding="async" src="${escapeHtml(withMedia.media)}" alt="${escapeHtml(g.name)}" onerror="this.style.display='none'"/>`;
+  }
+  const withPhoto = g.stories.slice().reverse().find(s => s.photo);
+  if (withPhoto) {
+    const photoUrl = `https://images.unsplash.com/${withPhoto.photo}?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75`;
+    const fallback = `https://picsum.photos/seed/${withPhoto.id}/160/160`;
+    return `<img loading="lazy" decoding="async" src="${photoUrl}" alt="${escapeHtml(g.name)}" onerror="this.onerror=null;this.src='${fallback}'"/>`;
+  }
+  return g.emoji || "✨";
+}
+
 function renderStories() {
   // Chercher #storiesRowFeed (feed) OU #storiesRow (explorer)
   const row = $("#storiesRowFeed") || $("#storiesRow");
-  _diag("📖 renderStories() called - row exists: " + (row ? "YES" : "NO"));
-  if (!row) {
-    _diag("❌ Neither storiesRowFeed nor storiesRow found!");
-    return;
-  }
-  const stories = state.seed.stories || [];
-  _diag("📖 Stories count: " + stories.length);
+  if (!row) return;
   const seen = state.user.seenStories || [];
+  const groups = buildStoryGroups();
+  const myId = String(_myStoryAuthorId());
 
-  // Bulle "Ta story" (création) en tête, puis les stories.
+  // Mon groupe (toutes MES stories) : affiché UNE SEULE fois via la bulle "Ta story".
+  // Les autres profils suivent, un par bulle.
+  const myGroup = groups.find(g => String(g.authorId) === myId || String(g.authorId) === "me");
+  const others = groups.filter(g => g !== myGroup);
+
   const me = (typeof currentProfile === "function" && currentProfile()) || {};
-  const myEmoji = me.emoji || "✨";
-  const myColor = me.color || "#8b5cf6";
-  let html = `
-    <div class="story-item" onclick="meOpen('story')" title="Créer une story">
-      <div class="story-ring create">
-        <div class="story-inner" style="background:${myColor};">${myEmoji}</div>
-      </div>
-      <div class="story-label">Ta story</div>
-    </div>
-  `;
+  const myColor = (myGroup && myGroup.color) || me.color || "#8b5cf6";
+  const myEmoji = (myGroup && myGroup.emoji) || me.emoji || "✨";
 
-  html += stories.map((s, i) => {
-    // Priorité aux infos embarquées (Supabase/locale), fallback userById.
-    const u = userById(s.authorId) || {};
-    const name = s.authorName || u.name || "Passionné";
-    const emoji = s.authorEmoji || u.profileEmoji || "✨";
-    const color = s.authorColor || u.avatar || "#8b5cf6";
-    const isSeen = seen.includes(s.id);
-    const photoUrl = s.photo
-      ? `https://images.unsplash.com/${s.photo}?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75`
-      : null;
-    const fallback = `https://picsum.photos/seed/${s.id}/160/160`;
-    const inner = photoUrl
-      ? `<img loading="lazy" decoding="async" src="${photoUrl}" alt="${escapeHtml(name)}" onerror="this.onerror=null;this.src='${fallback}'"/>`
-      : emoji;
-    return `
-      <div class="story-item" onclick="openStoryViewer(${i})">
-        <div class="story-ring ${isSeen ? "seen" : ""}">
-          <div class="story-inner" style="background: ${color};">${inner}</div>
+  let html;
+  if (myGroup && myGroup.stories.length) {
+    // J'ai déjà des stories : la bulle ouvre MON groupe ; le petit "+" en ajoute une.
+    const allSeen = myGroup.stories.every(s => seen.includes(s.id));
+    html = `
+      <div class="story-item" onclick="openStoryGroup('${escapeHtml(String(myGroup.authorId))}')" title="Voir ta story">
+        <div class="story-ring ${allSeen ? "seen" : ""}">
+          <div class="story-inner" style="background:${myColor};">${_storyBubbleInner(myGroup)}</div>
         </div>
-        <div class="story-label">${escapeHtml(name.split(" ")[0])}</div>
+        <button class="story-add-badge" onclick="event.stopPropagation();meOpen('story')" aria-label="Ajouter une story">+</button>
+        <div class="story-label">Ta story</div>
+      </div>
+    `;
+  } else {
+    // Pas encore de story : bulle de création.
+    html = `
+      <div class="story-item" onclick="meOpen('story')" title="Créer une story">
+        <div class="story-ring create">
+          <div class="story-inner" style="background:${myColor};">${myEmoji}</div>
+        </div>
+        <div class="story-label">Ta story</div>
+      </div>
+    `;
+  }
+
+  html += others.map(g => {
+    const allSeen = g.stories.every(s => seen.includes(s.id));
+    return `
+      <div class="story-item" onclick="openStoryGroup('${escapeHtml(String(g.authorId))}')">
+        <div class="story-ring ${allSeen ? "seen" : ""}">
+          <div class="story-inner" style="background: ${g.color};">${_storyBubbleInner(g)}</div>
+        </div>
+        <div class="story-label">${escapeHtml(g.name.split(" ")[0])}</div>
       </div>
     `;
   }).join("");
 
-  _diag("📖 HTML generated length: " + html.length);
   row.innerHTML = html;
-  _diag("📖 HTML set to #storiesRow");
   const rowFeed = $("#storiesRowFeed");
-  if (rowFeed) {
-    rowFeed.innerHTML = html;
-    _diag("📖 HTML also set to #storiesRowFeed");
-  } else {
-    _diag("ℹ️ #storiesRowFeed not found (only main feed)");
-  }
+  if (rowFeed) rowFeed.innerHTML = html;
 }
 
 // ======== CRÉATION DE STORY ========
@@ -956,18 +1003,39 @@ async function mePublish() {
   }
 }
 
-let storyIdx = 0;
+// Viewer groupé (Instagram) : un groupe = un auteur ; storyItemIdx = index de la
+// story DANS le groupe courant.
+let storyGroups = [];
+let storyGroupIdx = 0;
+let storyItemIdx = 0;
 let storyTimer = null;
 const STORY_DURATION = 4500;
 
-function openStoryViewer(idx) {
+// Ouvre le viewer sur toutes les stories d'un auteur, à la suite.
+function openStoryGroup(authorId) {
+  storyGroups = buildStoryGroups();
+  let gi = storyGroups.findIndex(g => String(g.authorId) === String(authorId));
+  if (gi < 0) gi = 0;
+  openStoryViewerAt(gi, 0);
+}
+
+function openStoryViewerAt(groupIdx, itemIdx) {
+  if (!storyGroups.length) storyGroups = buildStoryGroups();
+  if (!storyGroups.length) return;
   // Ajouter à l'historique pour que le bouton back fonctionne
   window.history.pushState({ overlay: "story" }, "", "#story");
-
-  storyIdx = idx;
+  storyGroupIdx = Math.max(0, Math.min(groupIdx, storyGroups.length - 1));
+  storyItemIdx = itemIdx || 0;
   $("#storyViewer").classList.add("active");
   playCurrentStory();
+}
 
+// Compat : ancien appel par index plat dans state.seed.stories → ouvre le groupe.
+function openStoryViewer(idx) {
+  const stories = state.seed.stories || [];
+  const target = stories[idx];
+  if (!target) return;
+  openStoryGroup(target.authorId);
 }
 
 // HTML des overlays (texte/emoji/GIF positionnés) pour les viewers story & bobine.
@@ -991,9 +1059,11 @@ function _storyOverlaysHtml(overlays) {
 
 function playCurrentStory() {
   clearInterval(storyTimer);
-  const stories = state.seed.stories;
-  if (!stories[storyIdx]) return closeStoryViewer();
-  const s = stories[storyIdx];
+  const group = storyGroups[storyGroupIdx];
+  if (!group) return closeStoryViewer();
+  const stories = group.stories;
+  if (!stories[storyItemIdx]) return closeStoryViewer();
+  const s = stories[storyItemIdx];
   // Priorité aux infos embarquées dans la story (Supabase), sinon fallback userById
   const uLocal = userById(s.authorId);
   const u = {
@@ -1038,8 +1108,8 @@ function playCurrentStory() {
   // Progress bars
   const row = $("#storyProgressRow");
   row.innerHTML = stories.map((_, i) => `
-    <div class="story-progress ${i < storyIdx ? "done" : ""}">
-      <div class="story-progress-bar" id="sp-${i}" style="width:${i < storyIdx ? "100%" : "0"};"></div>
+    <div class="story-progress ${i < storyItemIdx ? "done" : ""}">
+      <div class="story-progress-bar" id="sp-${i}" style="width:${i < storyItemIdx ? "100%" : "0"};"></div>
     </div>
   `).join("");
 
@@ -1050,7 +1120,7 @@ function playCurrentStory() {
   }
 
   // Animate current bar
-  const bar = document.getElementById("sp-" + storyIdx);
+  const bar = document.getElementById("sp-" + storyItemIdx);
   if (bar) {
     let start = Date.now();
     storyTimer = setInterval(() => {
@@ -1066,17 +1136,43 @@ function playCurrentStory() {
 
 function storyNext() {
   clearInterval(storyTimer);
-  const stories = state.seed.stories;
-  if (storyIdx >= stories.length - 1) { closeStoryViewer(); return; }
-  storyIdx++;
-  playCurrentStory();
+  const group = storyGroups[storyGroupIdx];
+  if (!group) { closeStoryViewer(); return; }
+  // Story suivante du même auteur…
+  if (storyItemIdx < group.stories.length - 1) {
+    storyItemIdx++;
+    playCurrentStory();
+    return;
+  }
+  // …sinon on passe à l'auteur suivant…
+  if (storyGroupIdx < storyGroups.length - 1) {
+    storyGroupIdx++;
+    storyItemIdx = 0;
+    playCurrentStory();
+    return;
+  }
+  // …sinon fin.
+  closeStoryViewer();
 }
 
 function storyPrev() {
   clearInterval(storyTimer);
-  if (storyIdx <= 0) { closeStoryViewer(); return; }
-  storyIdx--;
-  playCurrentStory();
+  // Story précédente du même auteur…
+  if (storyItemIdx > 0) {
+    storyItemIdx--;
+    playCurrentStory();
+    return;
+  }
+  // …sinon dernière story de l'auteur précédent…
+  if (storyGroupIdx > 0) {
+    storyGroupIdx--;
+    const g = storyGroups[storyGroupIdx];
+    storyItemIdx = g ? Math.max(0, g.stories.length - 1) : 0;
+    playCurrentStory();
+    return;
+  }
+  // …sinon on ferme.
+  closeStoryViewer();
 }
 
 function closeStoryViewer() {
