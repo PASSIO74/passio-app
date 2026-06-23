@@ -2408,6 +2408,24 @@ async function supaSearchUsers(query) {
   }
 }
 
+// Unicité des pseudos : un même pseudo ne doit jamais être porté par deux comptes
+// (sinon impossible de distinguer les conversations / on a l'impression d'écrire
+// au mauvais compte). Renvoie l'id du compte qui détient déjà ce pseudo (autre
+// que le mien), ou null. Insensible à la casse. En cas de souci réseau → null
+// (on n'empêche pas l'utilisateur de continuer hors-ligne).
+async function supaUsernameTaken(name) {
+  try {
+    const clean = (name || "").trim();
+    if (!clean || typeof supa === "undefined" || !supa || !window._supaReal) return null;
+    const { data, error } = await supa.from("profiles")
+      .select("id, username").ilike("username", clean).limit(10);
+    if (error || !data) return null;
+    const hit = data.find(p => p.id !== MY_UID && (p.username || "").trim().toLowerCase() === clean.toLowerCase());
+    return hit ? hit.id : null;
+  } catch(e) { return null; }
+}
+window.supaUsernameTaken = supaUsernameTaken;
+
 async function supaCreateConversation(withUserId) {
   try {
     await supaUpsertProfile();

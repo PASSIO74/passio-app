@@ -417,12 +417,18 @@ function openEditMainProfile() {
   if (bioTa && bioCount) bioTa.addEventListener("input", () => bioCount.textContent = `${bioTa.value.length}/200`);
 }
 
-function saveMainProfile() {
+async function saveMainProfile() {
   const username = document.getElementById("editUsername")?.value.trim() || "";
   const bio      = document.getElementById("editBio")?.value.trim() || "";
   const rsInputs = document.querySelectorAll(".rs-link-input");
   const rsLinks  = [];
   rsInputs.forEach(inp => { if (inp.value.trim()) rsLinks.push({ platform: inp.dataset.platform, url: inp.value.trim() }); });
+
+  // Unicité du pseudo : refuse un pseudo déjà porté par un autre compte.
+  if (username && typeof supaUsernameTaken === "function") {
+    const takenBy = await supaUsernameTaken(username);
+    if (takenBy) { toast("⚠️ Ce pseudo est déjà utilisé, choisis-en un autre"); return; }
+  }
 
   if (!state.user.general) state.user.general = {};
   state.user.general.username = username;
@@ -801,7 +807,7 @@ function selectNewProfilePassion(id) {
   });
 }
 
-function confirmCreateProfile() {
+async function confirmCreateProfile() {
   const pid = window._newProfilePassion;
   if (!pid) { toast("Choisis une passion"); return; }
 
@@ -815,6 +821,15 @@ function confirmCreateProfile() {
 
   const name = $("#newProfileName").value.trim() || state.user.name;
   const bio = $("#newProfileBio").value.trim();
+
+  // Unicité du nom : ni deux profils du même compte, ni le pseudo d'un autre compte.
+  if (name && (state.user.profiles || []).some(p => (p.name || "").trim().toLowerCase() === name.toLowerCase())) {
+    toast("⚠️ Tu as déjà un profil avec ce nom"); return;
+  }
+  if (name && typeof supaUsernameTaken === "function") {
+    const takenBy = await supaUsernameTaken(name);
+    if (takenBy) { toast("⚠️ Ce pseudo est déjà utilisé par un autre compte"); return; }
+  }
   const p = passionById(pid);
   const np = {
     id: uid(),
