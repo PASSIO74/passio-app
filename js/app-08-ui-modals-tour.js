@@ -1392,6 +1392,11 @@ function navigateTo(screen) {
 }
 
 async function boot() {
+  // Charge le SDK Supabase à la demande (lazy, hors page verrouillée) PUIS
+  // construit le vrai client, avant le moindre appel `supa.*` ci-dessous.
+  try { if (typeof ensureSupabase === "function") await ensureSupabase(); } catch(e) { console.warn("Supabase SDK load failed:", e); }
+  _initRealSupa();
+
   $("#logoTopbar").src = LOGO_SRC;
   $("#logoOnb1").src = LOGO_SRC;
   const ll = document.getElementById("logoLanding");
@@ -1506,12 +1511,13 @@ function cdnUrl(url) {
 window.cdnUrl = cdnUrl;
 
 let supa;
-try {
-  supa = (typeof supabase !== "undefined") ? supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
-} catch(e) { console.warn("Supabase init failed:", e); supa = null; }
-if (!supa) {
+// Le SDK Supabase est chargé en PARESSEUX (supabase-loader.js, post-gate). Tant
+// qu'il n'est pas prêt, `supa` est un stub noop : tout appel retombe dessus sans
+// casser (offline-safe). Le VRAI client est construit par _initRealSupa() en tête
+// de boot(), une fois ensureSupabase() résolu.
+function _buildNoopSupa() {
   const _noopQ = () => ({ select: () => _noopQ(), order: () => _noopQ(), limit: () => Promise.resolve({data:[],error:null}), eq: () => _noopQ(), neq: () => _noopQ(), ilike: () => _noopQ(), gte: () => _noopQ(), in: () => _noopQ(), maybeSingle: () => Promise.resolve({data:null,error:null}), single: () => Promise.resolve({data:null,error:null}), delete: () => _noopQ(), upsert: () => Promise.resolve({error:null}), insert: () => _noopQ() });
-  supa = {
+  return {
     from: () => _noopQ(),
     channel: () => ({ on: function(){ return this; }, subscribe: () => null }),
     removeChannel: () => {},
@@ -1524,11 +1530,26 @@ if (!supa) {
     },
   };
 }
+supa = _buildNoopSupa();
 // Exposer le client sur window : `supa` est un `let` (binding lexical) qui ne
 // crée PAS de propriété window → le monitoring d'erreurs (platform.js, chargé
 // avant) testait `window.supa` toujours undefined et ne loggait JAMAIS rien
-// dans client_errors. (Corrigé le 2026-06-19.)
+// dans client_errors. (Corrigé le 2026-06-19.) Réaffecté par _initRealSupa().
 window.supa = supa;
+
+// Construit le VRAI client une fois le SDK chargé. Idempotent. Appelé en tête de
+// boot() après `await ensureSupabase()`. Retourne false si le SDK est absent
+// (réseau coupé) → on reste sur le stub noop, l'app fonctionne en local.
+function _initRealSupa() {
+  if (window._supaReal) return true;
+  if (typeof supabase === "undefined") return false;
+  try {
+    supa = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    window.supa = supa;
+    window._supaReal = true;
+    return true;
+  } catch(e) { console.warn("Supabase init failed:", e); return false; }
+}
 
 function getMyUserId() {
   let id = localStorage.getItem("passio_uid");

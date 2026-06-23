@@ -44,8 +44,13 @@
   <!-- Service Worker registration + auto-update -->
   <script src="js/pwa-detect.js"></script>
 
-  <!-- Supabase SDK -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- Connexions anticipées (DNS+TLS) pour le SDK et le backend, chargés post-gate -->
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+  <link rel="preconnect" href="https://njkiyoklssvefstljemx.supabase.co" />
+
+  <!-- Supabase SDK : chargé À LA DEMANDE en tête de boot() (après le code d'accès,
+       gain FCP + JS inutilisé sur la page verrouillée) — voir supabase-loader.js -->
+  <script src="js/supabase-loader.js"></script>
 
   <!-- Leaflet : chargé à la demande quand une carte s'ouvre (gain ~180 Ko au démarrage) -->
   <script src="js/leaflet-loader.js"></script>
