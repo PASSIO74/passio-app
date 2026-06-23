@@ -76,30 +76,116 @@ function loadState() {
   }
 }
 
+// Construit une copie « allégée » de l'état : sans le seed (reconstruit au load)
+// ni le base64 média (les médias vivent dans Supabase Storage, on ne garde que
+// les URLs). Partagé par la sauvegarde locale ET la sync cross-appareil.
+function _leanState() {
+  const lean = { ...state };
+  lean.seed = null; // rebuilt at load
+  const stripData = (v) => (typeof v === "string" && v.indexOf("data:") === 0) ? null : v;
+  if (Array.isArray(lean.userPosts)) {
+    lean.userPosts = lean.userPosts.map((p) => {
+      const c = { ...p, image: stripData(p.image), video: stripData(p.video), audio: stripData(p.audio), cover: stripData(p.cover) };
+      if (Array.isArray(p.steps)) {
+        c.steps = p.steps.map((s) => ({ ...s, photo: stripData(s.photo), video: stripData(s.video), audio: stripData(s.audio) }));
+      }
+      return c;
+    });
+  }
+  return lean;
+}
+
 function saveState() {
   try {
-    // Don't persist seed nor heavy media to save quota
-    const lean = { ...state };
-    lean.seed = null; // rebuilt at load
-    // ⚠️ Ne JAMAIS persister de base64 média dans localStorage (quota ~5 Mo) :
-    // c'était la vraie cause des limites de taille (500 Ko) et des « Save failed ».
-    // Les médias vivent dans Supabase Storage ; on ne garde localement que les URLs.
-    // Le base64 reste en mémoire (affichage optimistic) jusqu'à ce que l'URL
-    // Storage le remplace après upload (cf. supaPublishPostWithRetry).
-    const stripData = (v) => (typeof v === "string" && v.indexOf("data:") === 0) ? null : v;
-    if (Array.isArray(lean.userPosts)) {
-      lean.userPosts = lean.userPosts.map((p) => {
-        const c = { ...p, image: stripData(p.image), video: stripData(p.video), audio: stripData(p.audio), cover: stripData(p.cover) };
-        if (Array.isArray(p.steps)) {
-          c.steps = p.steps.map((s) => ({ ...s, photo: stripData(s.photo), video: stripData(s.video), audio: stripData(s.audio) }));
-        }
-        return c;
-      });
-    }
-    localStorage.setItem(STATE_KEY, JSON.stringify(lean));
+    // ⚠️ Ne JAMAIS persister de base64 média dans localStorage (quota ~5 Mo).
+    localStorage.setItem(STATE_KEY, JSON.stringify(_leanState()));
   } catch (e) {
     console.warn("Save failed:", e);
   }
+  // Réplique l'état personnel vers Supabase (debounced) → retrouvable sur tout
+  // appareil. Ignoré pendant l'hydratation (évite la boucle) et hors session.
+  try { if (!window._hydratingState) _scheduleStateSync(); } catch (e) {}
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// SYNCHRONISATION CROSS-APPAREIL — état personnel du compte (table user_state)
+// Personas, carnets, passions custom, réglages, brouillons, listes (suivis,
+// likés, bloqués, events rejoints…) : tout ce qui n'est PAS déjà dans une table
+// partagée (posts/stories/events/messages/notifs). Un blob JSON par compte,
+// RLS owner-only. « Last write wins » via updated_at.
+// ════════════════════════════════════════════════════════════════════════
+
+// Tranche d'état à répliquer : l'état allégé SAUF ce qui est rechargé du serveur
+// (le seed local et les posts réseau supabasePosts).
+function _syncableState() {
+  const s = _leanState();
+  delete s.seed;
+  delete s.supabasePosts;
+  return s;
+}
+
+let _stateSyncTimer = null;
+function _scheduleStateSync() {
+  if (typeof MY_UID === "undefined" || !MY_UID) return;
+  if (_stateSyncTimer) clearTimeout(_stateSyncTimer);
+  _stateSyncTimer = setTimeout(() => { _stateSyncTimer = null; supaSaveUserState(); }, 2500);
+}
+
+async function supaSaveUserState() {
+  try {
+    if (typeof supa === "undefined" || !supa || !window._supaReal) return;
+    if (typeof MY_UID === "undefined" || !MY_UID) return;
+    const payload = { user_id: MY_UID, data: _syncableState(), updated_at: new Date().toISOString() };
+    const { error } = await supa.from("user_state").upsert(payload, { onConflict: "user_id" });
+    if (!error) state._stateSyncedAt = payload.updated_at;
+  } catch (e) { console.warn("supaSaveUserState:", e && e.message); }
+}
+
+// Applique un blob serveur sur l'état local (sans toucher au seed ni aux posts
+// réseau, qui sont rechargés séparément).
+function _applyUserState(data) {
+  if (!data || typeof data !== "object") return;
+  const keepSeed = state.seed, keepSupa = state.supabasePosts;
+  window._hydratingState = true;
+  try {
+    Object.keys(data).forEach((k) => { if (k !== "seed" && k !== "supabasePosts") state[k] = data[k]; });
+    state.seed = keepSeed;
+    state.supabasePosts = keepSupa;
+    state.user = state.user || {};
+    if (!Array.isArray(state.user.profiles)) state.user.profiles = [];
+  } finally { window._hydratingState = false; }
+}
+
+// Charge l'état du compte depuis Supabase au boot/connexion. Si le serveur a une
+// version plus récente (ou si l'appareil est vierge), on l'applique → le profil
+// et toutes les données suivent l'utilisateur. Sinon on pousse le local.
+async function supaLoadUserState() {
+  try {
+    if (typeof supa === "undefined" || !supa || !window._supaReal) return false;
+    if (typeof MY_UID === "undefined" || !MY_UID) return false;
+    const { data, error } = await supa.from("user_state").select("data,updated_at").eq("user_id", MY_UID).maybeSingle();
+    if (error) { console.warn("supaLoadUserState:", error.message); return false; }
+    if (!data) {
+      // Aucune sauvegarde serveur → on pousse l'état local (création de la ligne).
+      await supaSaveUserState();
+      return false;
+    }
+    const serverTs = data.updated_at ? new Date(data.updated_at).getTime() : 0;
+    const localTs = state._stateSyncedAt ? new Date(state._stateSyncedAt).getTime() : 0;
+    // Appareil vierge (pas onboardé) OU serveur plus récent → on restaure.
+    if (!state.onboarded || serverTs >= localTs) {
+      _applyUserState(data.data);
+      state._stateSyncedAt = data.updated_at;
+      // Si le serveur a un profil réel, le compte est forcément onboardé.
+      if (state.user && Array.isArray(state.user.profiles) && state.user.profiles.length) state.onboarded = true;
+      window._hydratingState = true;
+      try { saveState(); } finally { window._hydratingState = false; }
+      return true;
+    }
+    // Local plus récent → on pousse vers le serveur.
+    await supaSaveUserState();
+    return false;
+  } catch (e) { console.warn("supaLoadUserState:", e && e.message); return false; }
 }
 
 // Miniature CDN : transforme une URL Supabase Storage publique en version
@@ -739,6 +825,7 @@ async function doDeleteAccount() {
       ["conv_messages",   "from_id"],
       ["conv_members",    "user_id"],
       ["notifications",   "user_id"],
+      ["user_state",      "user_id"],
       ["profiles",        "id"],
     ];
     for (var i = 0; i < jobs.length; i++) {
@@ -940,7 +1027,9 @@ async function onbDoAuth() {
   const pwd2 = document.getElementById("authPasswordConfirm")?.value || "";
   const btn = document.getElementById("authSubmitBtn");
 
-  if (!email || !email.includes("@")) { _showAuthMsg("Adresse e-mail invalide.", "error"); return; }
+  // Validation de format stricte (en plus de la confirmation par e-mail Supabase).
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+  if (!EMAIL_RE.test(email)) { _showAuthMsg("Adresse e-mail invalide.", "error"); return; }
   if (pwd.length < 6) { _showAuthMsg("Le mot de passe doit contenir au moins 6 caractères.", "error"); return; }
   if (_authMode === "signup" && pwd !== pwd2) { _showAuthMsg("Les mots de passe ne correspondent pas.", "error"); return; }
 
@@ -963,11 +1052,24 @@ async function onbDoAuth() {
       if (btn) { btn.disabled = false; btn.textContent = _authMode === "signin" ? "Se connecter" : "Créer mon compte"; }
       return;
     }
-    if (_authMode === "signup" && data?.user && !data?.session) {
-      _showAuthMsg("✅ Compte créé ! Vérifie tes e-mails pour confirmer, puis reviens te connecter.", "success");
-      switchAuthTab("signin");
-      if (btn) { btn.disabled = false; btn.textContent = "Se connecter"; }
-      return;
+    if (_authMode === "signup") {
+      // Avec « Confirm email » activé, Supabase NE renvoie PAS d'erreur si l'e-mail
+      // existe déjà (anti-énumération) : il renvoie un user aux `identities` vides.
+      // On le détecte pour garantir « un seul compte par e-mail ».
+      if (data?.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+        _showAuthMsg("Cet e-mail est déjà utilisé. Connecte-toi.", "error");
+        switchAuthTab("signin");
+        if (btn) { btn.disabled = false; btn.textContent = "Se connecter"; }
+        return;
+      }
+      // Pas de session → e-mail à confirmer. On NE rentre PAS dans l'app sans
+      // adresse confirmée (exigence : « il faut une adresse mail valide »).
+      if (!data?.session) {
+        _showAuthMsg("✅ Compte créé ! Vérifie tes e-mails pour confirmer, puis reviens te connecter.", "success");
+        switchAuthTab("signin");
+        if (btn) { btn.disabled = false; btn.textContent = "Se connecter"; }
+        return;
+      }
     }
     if (data?.session?.user) {
       MY_UID = data.session.user.id;

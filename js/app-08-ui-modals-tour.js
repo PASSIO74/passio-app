@@ -1519,6 +1519,11 @@ async function boot() {
     if (session?.user) {
       MY_UID = session.user.id;
       localStorage.setItem("passio_uid", MY_UID);
+      // 🔄 SYNC CROSS-APPAREIL : restaure tout l'état du compte (profils, réglages,
+      // carnets, passions custom, listes…) depuis Supabase. Sur un appareil vierge
+      // ça reconstitue le compte ; le profil par défaut ci-dessous ne sert plus
+      // que de filet ultime si le serveur n'a vraiment rien.
+      try { if (typeof supaLoadUserState === "function") await supaLoadUserState(); } catch(e) {}
       // Retour OAuth (Google) : un compte existe désormais → on finalise l'entrée
       // dans l'app même si l'onboarding local n'a jamais été complété (nouvel
       // appareil). Le bloc onboardé ci-dessous crée un profil par défaut si besoin.
@@ -3099,6 +3104,15 @@ async function supaInit() {
     // SOLUTION: Charger seulement les posts, puis attendre
 
     console.log("\ud83d\udce5 supaInit() d\u00e9marrage...");
+
+    // 0. SYNC CROSS-APPAREIL : restaure l'\u00e9tat du compte si le serveur en a un
+    // plus r\u00e9cent (couvre le chemin onAuthStateChange/SIGNED_IN apr\u00e8s le boot).
+    try {
+      if (typeof supaLoadUserState === "function") {
+        const restored = await supaLoadUserState();
+        if (restored) { try { renderEverything(); } catch(e) {} }
+      }
+    } catch(e) {}
 
     // 1. CHARGER LES POSTS au d\u00e9marrage
     console.log("\ud83d\udce5 [INIT] Chargement des posts Supabase");
