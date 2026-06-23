@@ -1519,19 +1519,24 @@ async function boot() {
     if (session?.user) {
       MY_UID = session.user.id;
       localStorage.setItem("passio_uid", MY_UID);
+      if (localStorage.getItem("passio_oauth_pending")) localStorage.removeItem("passio_oauth_pending");
+      // 🔑 Une session Supabase valide = compte réel connecté → on entre dans l'app,
+      // même si le flag d'onboarding local est absent (nouvel appareil, réinstallation,
+      // connexion directe par email, user_state purgé…). Sans ça, un utilisateur
+      // pourtant authentifié retombait sur la landing (« ça me renvoie à la première
+      // page sans me connecter »).
+      // ⚠️ ORDRE IMPORTANT : on pose onboarded=true AVANT supaLoadUserState — sinon
+      // la sync ré-applique l'état serveur (sauvé à onboarded=false) et écrase le flag.
+      state.onboarded = true;
+      try { saveState(); } catch(e) {}
       // 🔄 SYNC CROSS-APPAREIL : restaure tout l'état du compte (profils, réglages,
       // carnets, passions custom, listes…) depuis Supabase. Sur un appareil vierge
       // ça reconstitue le compte ; le profil par défaut ci-dessous ne sert plus
       // que de filet ultime si le serveur n'a vraiment rien.
       try { if (typeof supaLoadUserState === "function") await supaLoadUserState(); } catch(e) {}
-      // Retour OAuth (Google) : un compte existe désormais → on finalise l'entrée
-      // dans l'app même si l'onboarding local n'a jamais été complété (nouvel
-      // appareil). Le bloc onboardé ci-dessous crée un profil par défaut si besoin.
-      if (localStorage.getItem("passio_oauth_pending")) {
-        localStorage.removeItem("passio_oauth_pending");
-        state.onboarded = true;
-        try { saveState(); } catch(e) {}
-      }
+      // supaLoadUserState a pu ré-appliquer un état serveur sans le flag → on le
+      // re-garantit (on a une session valide, donc accès).
+      state.onboarded = true;
       if (state.onboarded) {
         // Session active + déjà onboardé → accès direct à l'app
         // Crée un profil par défaut si l'utilisateur n'en a pas (connexion sans onboarding)

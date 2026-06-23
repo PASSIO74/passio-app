@@ -174,10 +174,22 @@ async function supaLoadUserState() {
     const localTs = state._stateSyncedAt ? new Date(state._stateSyncedAt).getTime() : 0;
     // Appareil vierge (pas onboardé) OU serveur plus récent → on restaure.
     if (!state.onboarded || serverTs >= localTs) {
+      // ⚠️ Ne PAS écraser des profils locaux par un état serveur VIDE (compte
+      // fraîchement créé / purgé, sync pas encore poussée) — sinon le profil par
+      // défaut tout juste créé au boot disparaît. On pousse plutôt le bon état local.
+      const incoming = data.data || {};
+      const incomingProfiles = (incoming.user && Array.isArray(incoming.user.profiles)) ? incoming.user.profiles.length : 0;
+      const localProfiles = (state.user && Array.isArray(state.user.profiles)) ? state.user.profiles.length : 0;
+      if (incomingProfiles === 0 && localProfiles > 0) {
+        state.onboarded = true; // session active = compte onboardé
+        await supaSaveUserState();
+        return false;
+      }
       _applyUserState(data.data);
       state._stateSyncedAt = data.updated_at;
-      // Si le serveur a un profil réel, le compte est forcément onboardé.
-      if (state.user && Array.isArray(state.user.profiles) && state.user.profiles.length) state.onboarded = true;
+      // supaLoadUserState n'est appelée qu'avec une session active → l'utilisateur
+      // est connecté, donc onboardé (évite de retomber sur la landing).
+      state.onboarded = true;
       window._hydratingState = true;
       try { saveState(); } finally { window._hydratingState = false; }
       return true;
