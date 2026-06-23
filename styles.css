@@ -666,6 +666,10 @@
       margin-bottom: 12px;
       box-shadow: var(--shadow-soft);
       transition: transform 200ms ease, box-shadow 220ms ease;
+      /* Perf : le navigateur saute le layout/paint des cartes hors-écran sur les
+         longs fils (la taille intrinsèque estimée évite les sauts de scrollbar). */
+      content-visibility: auto;
+      contain-intrinsic-size: auto 320px;
     }
     .post:hover { box-shadow: 0 2px 4px rgba(24,18,48,0.05), 0 14px 32px rgba(24,18,48,0.10); }
 
