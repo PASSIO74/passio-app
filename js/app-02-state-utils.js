@@ -172,9 +172,52 @@ function passionById(id) {
 function userById(id) {
   if (id === "me" || (typeof MY_UID !== "undefined" && MY_UID && id === MY_UID)) {
     const p = currentProfile ? currentProfile() : null;
-    return { id, name: (p?.name || state.user.name || "Moi"), avatar: (p?.color || "#8b5cf6"), profileEmoji: (p?.emoji || "✨") };
+    const g = state.user.general || {};
+    return { id, name: (g.username || p?.name || state.user.name || "Moi"), avatar: (p?.color || "#8b5cf6"), profileEmoji: (p?.emoji || "✨"), photoUrl: g.avatarPhoto || null };
   }
   return state.seed.users.find(u => u.id === id);
+}
+
+// ===== AVATARS (photo de profil partagée) =====
+// Un profil peut désormais avoir une vraie photo (URL Storage, colonne
+// profiles.avatar_url) en plus de l'emoji+couleur. Ces helpers centralisent le
+// rendu pour que la photo se propage PARTOUT (fil, commentaires, messages,
+// profils) dès qu'elle est connue. `u` = objet user/profil.
+function _userPhoto(u) {
+  if (!u) return null;
+  return u.photoUrl || u.avatarPhoto || u.avatar_url || null;
+}
+// Style `background:` d'un avatar : la photo si dispo, sinon la couleur.
+function avatarBg(u) {
+  const ph = _userPhoto(u);
+  return ph ? ("url('" + ph + "') center/cover") : ((u && (u.avatar || u.color)) || "#8b5cf6");
+}
+// Contenu interne d'un avatar : rien si photo (elle remplit le fond), sinon emoji.
+function avatarInner(u) {
+  if (_userPhoto(u)) return "";
+  return (u && (u.profileEmoji || u.emoji)) || ((u && u.name && u.name[0]) || "?");
+}
+
+// Met en cache / rafraîchit un profil DISTANT dans state.seed.users à partir
+// d'une ligne `profiles` Supabase (id, username, emoji, color, avatar_url…).
+// → userById() renvoie alors les infos fraîches (photo comprise) et toute modif
+// d'un autre utilisateur se propage à l'écran au prochain rendu.
+function cacheRemoteProfile(p) {
+  if (!p || !p.id) return;
+  if (typeof MY_UID !== "undefined" && p.id === MY_UID) return; // « moi » = currentProfile
+  state.seed.users = state.seed.users || [];
+  const entry = {
+    id: p.id,
+    name: p.username || "Passionné",
+    avatar: p.color || "#8b5cf6",
+    profileEmoji: p.emoji || "✨",
+    photoUrl: p.avatar_url || null,
+    passion: p.passion_id || undefined,
+    bio: p.bio || "",
+  };
+  const i = state.seed.users.findIndex(u => u.id === p.id);
+  if (i >= 0) state.seed.users[i] = { ...state.seed.users[i], ...entry };
+  else state.seed.users.push(entry);
 }
 
 function currentProfile() {
@@ -1648,10 +1691,12 @@ function renderPostHTML(p) {
     authorName = anyPost?.authorName;
   }
 
+  const _cuAuthor = userById(p.authorId) || {};
   const author = {
-    name: authorName || "Profil",  // Fallback minimal au lieu de "Utilisateur"
-    profileEmoji: p.authorEmoji || "✨",
-    avatar: p.authorColor || "#8b5cf6"
+    name: authorName || _cuAuthor.name || "Profil",  // Fallback minimal au lieu de "Utilisateur"
+    profileEmoji: p.authorEmoji || _cuAuthor.profileEmoji || "✨",
+    avatar: p.authorColor || _cuAuthor.avatar || "#8b5cf6",
+    photoUrl: _cuAuthor.photoUrl || p.authorAvatar || null,  // 📷 photo de profil (live > snapshot)
   };
   const passion = passionById(p.passion);
   const moodMap = { creation: "🎨 Création", learn: "📚 Apprendre", chill: "😌 Chill", irl: "🤝 IRL" };
@@ -1746,7 +1791,7 @@ function renderPostHTML(p) {
     const cReplies = c.replies || [];
 
     return `<div class="comment" data-commentid="${c.id}">
-      <div class="avatar sm" style="background:${cu.avatar};cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${c.authorId}','${cSrc}')">${cu.profileEmoji || (cu.name||"?")[0]}</div>
+      <div class="avatar sm" style="background:${avatarBg(cu)};cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${c.authorId}','${cSrc}')">${avatarInner(cu)}</div>
       <div class="comment-body">
         <div class="comment-author" style="cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${c.authorId}','${cSrc}')">${escapeHtml(cu.name)}</div>
         <div class="comment-text">${escapeHtml(c.text)}</div>
@@ -1771,7 +1816,7 @@ function renderPostHTML(p) {
 
   return `<article class="post" data-postid="${p.id}">
     <div class="post-header">
-      <div class="avatar" style="background:${author.avatar};cursor:pointer;" onclick="openUserProfile('${p.authorId}','${p._source}')">${author.profileEmoji || (author.name || "?")[0]}</div>
+      <div class="avatar" style="background:${avatarBg(author)};cursor:pointer;" onclick="openUserProfile('${p.authorId}','${p._source}')">${avatarInner(author)}</div>
       <div class="post-author" style="cursor:pointer;" onclick="openUserProfile('${p.authorId}','${p._source}')">
         <div class="post-author-name">${escapeHtml(author.name || "Moi")}
           ${p._source === "me" ? '<span class="pill" style="padding:2px 7px;font-size:9px;border-color:rgba(139, 92, 246,0.5);color:#fed7aa;">Moi</span>' : ""}
@@ -1835,8 +1880,8 @@ async function openPost(id) {
   }
 
   const author = (post._source === "me" || (typeof MY_UID !== "undefined" && post.authorId === MY_UID))
-    ? { name: currentProfile()?.name || state.user.name, profileEmoji: currentProfile()?.emoji || "✨", avatar: currentProfile()?.color || "#8b5cf6" }
-    : (post.authorName ? { name: post.authorName, profileEmoji: post.authorEmoji || "✨", avatar: post.authorColor || "#8b5cf6" } : userById(post.authorId));
+    ? { name: currentProfile()?.name || state.user.name, profileEmoji: currentProfile()?.emoji || "✨", avatar: currentProfile()?.color || "#8b5cf6", photoUrl: (state.user.general || {}).avatarPhoto || null }
+    : (function(){ const cu = userById(post.authorId) || {}; return post.authorName ? { name: post.authorName, profileEmoji: post.authorEmoji || "✨", avatar: post.authorColor || "#8b5cf6", photoUrl: cu.photoUrl || post.authorAvatar || null } : cu; })();
   const passion = passionById(post.passion);
   const liked = state.user.likedPosts.includes(id);
   const moodMap = { creation: "🎨 Création", learn: "📚 Apprendre", chill: "😌 Chill", irl: "🤝 IRL" };
@@ -1860,18 +1905,19 @@ async function openPost(id) {
   // Tous les commentaires (Supabase + locaux)
   const allComments = (post.comments || []).map(c => {
     let cName, cEmoji, cAvatar, cAuthorId = c.authorId || "?";
+    const _cu = userById(cAuthorId) || {};
     if (c.authorName) {
-      cName = c.authorName; cEmoji = c.authorEmoji || "✨"; cAvatar = "#8b5cf6";
+      cName = c.authorName; cEmoji = c.authorEmoji || "✨"; cAvatar = _cu.avatar || "#8b5cf6";
     } else {
-      const cu = userById(cAuthorId) || { name: "?", profileEmoji: "👤", avatar: "#64748b" };
-      cName = cu.name; cEmoji = cu.profileEmoji; cAvatar = cu.avatar;
+      cName = _cu.name || "?"; cEmoji = _cu.profileEmoji || "👤"; cAvatar = _cu.avatar || "#64748b";
     }
+    const cAuthorObj = { name: cName, profileEmoji: cEmoji, avatar: cAvatar, photoUrl: _cu.photoUrl || null };
     const cSrc = (cAuthorId === "me" || (typeof MY_UID !== "undefined" && cAuthorId === MY_UID)) ? "me" : "seed";
     const cLiked = (c.likedBy || []).includes(state.user?.id || "me");
     const cLikes = c.likes || 0;
     const cReplies = c.replies || [];
     return `<div class="comment" data-commentid="${c.id}">
-      <div class="avatar sm" style="background:${cAvatar};cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${cAuthorId}','${cSrc}')">${cEmoji || (cName||"?")[0]}</div>
+      <div class="avatar sm" style="background:${avatarBg(cAuthorObj)};cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${cAuthorId}','${cSrc}')">${avatarInner(cAuthorObj)}</div>
       <div class="comment-body">
         <div class="comment-author" style="cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${cAuthorId}','${cSrc}')">${escapeHtml(cName)}</div>
         <div class="comment-text">${escapeHtml(c.text || c.content || "")}</div>
@@ -1919,7 +1965,7 @@ async function openPost(id) {
   content.innerHTML = `
     <div class="post" data-postid="${id}" style="cursor:default;">
       <div class="post-header">
-        <div class="avatar" style="background:${author.avatar};cursor:pointer;" onclick="openUserProfile('${post.authorId}','${post._source || "seed"}')">${author.profileEmoji || (author.name||"?")[0]}</div>
+        <div class="avatar" style="background:${avatarBg(author)};cursor:pointer;" onclick="openUserProfile('${post.authorId}','${post._source || "seed"}')">${avatarInner(author)}</div>
         <div class="post-author" style="cursor:pointer;" onclick="openUserProfile('${post.authorId}','${post._source || "seed"}')">
           <div class="post-author-name">${escapeHtml(author.name || "Utilisateur")}</div>
           <div class="post-author-meta">${passion.emoji} ${passion.label} · ${fmtTime(post.createdAt)}</div>

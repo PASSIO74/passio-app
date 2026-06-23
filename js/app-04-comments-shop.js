@@ -996,7 +996,7 @@ async function openUserProfile(authorId, source) {
   if (!user) {
     var post = (state.seed.posts || []).find(function(p) { return p.authorId === authorId; });
     if (post) {
-      user = { id: authorId, name: post.authorName || "Passionné", profileEmoji: post.authorEmoji || "✨", avatar: post.authorColor || "#8b5cf6", passion: post.passion, bio: post.authorBio || "" };
+      user = { id: authorId, name: post.authorName || "Passionné", profileEmoji: post.authorEmoji || "✨", avatar: post.authorColor || "#8b5cf6", passion: post.passion, bio: post.authorBio || "", photoUrl: post.authorAvatar || null };
       console.log("[openUserProfile] Trouvé via post seed");
     }
   }
@@ -1006,13 +1006,13 @@ async function openUserProfile(authorId, source) {
     try {
       // D'abord, chercher par ID
       console.log("[openUserProfile] Cherchant dans Supabase avec id:", authorId);
-      let { data, error } = await supa.from("profiles").select("id,username,emoji,color,passion_id,bio").eq("id", authorId).limit(1);
+      let { data, error } = await supa.from("profiles").select("id,username,emoji,color,passion_id,bio,avatar_url").eq("id", authorId).limit(1);
       console.log("[openUserProfile] Supabase response (by id):", data, "error:", error);
 
       // Si pas trouvé par ID, chercher par username (en cas de confusion entre ID et username)
       if ((!data || data.length === 0) && authorId && !authorId.startsWith("u_")) {
         console.log("[openUserProfile] Pas trouvé par id, cherchant par username:", authorId);
-        const { data: dataByUsername } = await supa.from("profiles").select("id,username,emoji,color,passion_id,bio").ilike("username", authorId).limit(1);
+        const { data: dataByUsername } = await supa.from("profiles").select("id,username,emoji,color,passion_id,bio,avatar_url").ilike("username", authorId).limit(1);
         if (dataByUsername && dataByUsername.length > 0) {
           data = dataByUsername;
           console.log("[openUserProfile] Trouvé par username:", dataByUsername);
@@ -1021,7 +1021,8 @@ async function openUserProfile(authorId, source) {
 
       if (data && data.length > 0) {
         const profile = data[0];
-        user = { id: profile.id, name: profile.username || "Passionné", profileEmoji: profile.emoji || "✨", avatar: profile.color || "#8b5cf6", passion: profile.passion_id || "", bio: profile.bio || "" };
+        user = { id: profile.id, name: profile.username || "Passionné", profileEmoji: profile.emoji || "✨", avatar: profile.color || "#8b5cf6", passion: profile.passion_id || "", bio: profile.bio || "", photoUrl: profile.avatar_url || null };
+        try { cacheRemoteProfile(profile); } catch(e) {}
         state.seed.users.push(user);
         console.log("[openUserProfile] Trouvé dans Supabase et ajouté à seed.users");
       }
@@ -1093,7 +1094,7 @@ async function openUserProfile(authorId, source) {
     \
     <!-- AVATAR + NOM -->\
     <div style="text-align:center;padding-top:20px;margin-bottom:16px;">\
-      <div style="width:80px;height:80px;border-radius:50%;background:' + (user.avatar || 'var(--accent)') + ';display:flex;align-items:center;justify-content:center;font-size:38px;margin:0 auto 12px;border:4px solid #fff;box-shadow:0 6px 20px rgba(139,92,246,0.3);">' + (user.profileEmoji || "✨") + '</div>\
+      <div style="width:80px;height:80px;border-radius:50%;background:' + avatarBg(user) + ';display:flex;align-items:center;justify-content:center;font-size:38px;margin:0 auto 12px;border:4px solid #fff;box-shadow:0 6px 20px rgba(139,92,246,0.3);">' + avatarInner(user) + '</div>\
       <div style="font-weight:900;font-size:22px;color:var(--text);">' + escapeHtml(user.name || "Passionné") + '</div>\
       ' + passionsHTML + '\
       ' + (user.bio ? '<div style="font-size:13px;color:var(--text-dim);margin-top:10px;line-height:1.5;max-width:280px;margin-left:auto;margin-right:auto;">' + escapeHtml(user.bio) + '</div>' : '') + '\
@@ -1302,16 +1303,19 @@ function renderMessages() {
       displayAvatar = c.userColor || u.avatar;
     }
 
+    // Avatar de la conv : photo de groupe, sinon photo de profil live de l'autre, sinon couleur+emoji.
+    const _convU = c.isGroup ? null : { avatar: displayAvatar, profileEmoji: displayEmoji, photoUrl: (userById(c.userId) || {}).photoUrl || u.photoUrl || null };
     const avatarStyle = (c.isGroup && c.groupPhoto)
       ? `background:url(${c.groupPhoto}) center/cover;font-size:0;`
-      : `background:${displayAvatar};`;
+      : (c.isGroup ? `background:${displayAvatar};` : `background:${avatarBg(_convU)};`);
+    const _convAvInner = (c.isGroup && c.groupPhoto) ? '' : (c.isGroup ? displayEmoji : avatarInner(_convU));
 
     const membresLine = c.isGroup
       ? `<div class="msg-passion" style="font-size:11px;color:var(--muted);">👥 ${((c.userIds||[]).length || 0)} membres</div>`
       : "";
 
     return `<div class="msg-card ${c.unread > 0 ? "unread" : ""}" onclick="openConversation('${c.id}')">
-      <div class="msg-avatar" style="${avatarStyle}">${(c.isGroup && c.groupPhoto) ? '' : displayEmoji}</div>
+      <div class="msg-avatar" style="${avatarStyle}">${_convAvInner}</div>
       <div class="msg-body">
         <div class="msg-head">
           <span class="msg-name">${escapeHtml(displayName)}</span>
@@ -1363,7 +1367,8 @@ async function openConversation(convId) {
       <div style="position:absolute;bottom:-1px;right:-1px;width:14px;height:14px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:8px;border:1.5px solid var(--bg-soft);">📷</div>
     </div>`;
   } else {
-    avatarHtml = `<div class="conv-fp-head-avatar" style="background:${displayAvatar};" onclick="${c.isGroup ? '' : `openUserProfile('${c.userId}','seed')`}">${displayEmoji}</div>`;
+    const _hu = { avatar: displayAvatar, profileEmoji: displayEmoji, photoUrl: (userById(c.userId) || {}).photoUrl || u.photoUrl || null };
+    avatarHtml = `<div class="conv-fp-head-avatar" style="background:${avatarBg(_hu)};" onclick="${c.isGroup ? '' : `openUserProfile('${c.userId}','seed')`}">${avatarInner(_hu)}</div>`;
   }
 
   // ── Header ──

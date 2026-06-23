@@ -1680,6 +1680,11 @@ async function supaUpsertProfile() {
       passion_id: prof.passion || null,
       bio: g.bio || "",
     };
+    // Photo de profil / couverture : on ne pousse en DB que des URLs Storage
+    // (jamais de base64 — quota + egress). Les colonnes sont nullables : si la
+    // photo n'est pas encore uploadée, on laisse `null` (l'avatar emoji reste).
+    if (typeof g.avatarPhoto === "string" && /^https?:\/\//.test(g.avatarPhoto)) profileData.avatar_url = g.avatarPhoto;
+    if (typeof g.coverPhoto === "string" && /^https?:\/\//.test(g.coverPhoto)) profileData.cover_url = g.coverPhoto;
 
     console.log("📤 [UPSERT] Envoi:", profileData);
     diagLog(`📤 [UPSERT] Envoi profil: ${JSON.stringify(profileData)}`);
@@ -2033,7 +2038,7 @@ async function supaLoadPosts(offset = 0) {
     // ✅ FIX: sélection explicite des champs (évite de charger des colonnes non nécessaires)
     // La DB a été nettoyée des base64 — le code empêche désormais tout nouveau base64 en DB
     const { data, error } = await supa.from("posts")
-      .select("id, author_id, passion_id, mood, content, media_url, created_at, is_reel, overlays, shared_from_post_id, shared_data, profiles!author_id(username,emoji,color)")
+      .select("id, author_id, passion_id, mood, content, media_url, created_at, is_reel, overlays, shared_from_post_id, shared_data, profiles!author_id(username,emoji,color,avatar_url)")
       .order("created_at", { ascending: false })
       .range(offset, offset + 59);
     if (error) {
@@ -2099,11 +2104,14 @@ async function supaLoadPosts(offset = 0) {
         }
       }
 
+      // Cache le profil de l'auteur (photo comprise) → propagation partout.
+      try { if (r.profiles && r.author_id) cacheRemoteProfile({ id: r.author_id, username: r.profiles.username, emoji: r.profiles.emoji, color: r.profiles.color, avatar_url: r.profiles.avatar_url, passion_id: r.passion_id }); } catch(e) {}
       return {
         id: r.id, authorId: r.author_id,
         authorName: r.profiles?.username || "Profil",  // ✅ Doit toujours avoir un username depuis Supabase!
         authorEmoji: r.profiles?.emoji || "✨",  // ✅ Utiliser l'emoji depuis profiles
         authorColor: r.profiles?.color || "#8b5cf6",  // ✅ Utiliser la couleur depuis profiles
+        authorAvatar: r.profiles?.avatar_url || null,  // 📷 Photo de profil (URL Storage) si définie
         passion: r.passion_id || "autre", mood: r.mood || "all",
         // ✅ Détecter le type basé sur l'extension du fichier dans media_url
         type: (() => {
@@ -2198,8 +2206,8 @@ async function _resolveProfilesByIds(ids) {
   const uniq = [...new Set((ids || []).filter(Boolean))];
   if (!uniq.length) return out;
   try {
-    const { data } = await supa.from("profiles").select("id,username,emoji,color").in("id", uniq);
-    (data || []).forEach(p => { out[p.id] = p; });
+    const { data } = await supa.from("profiles").select("id,username,emoji,color,avatar_url,passion_id,bio").in("id", uniq);
+    (data || []).forEach(p => { out[p.id] = p; try { cacheRemoteProfile(p); } catch(e) {} });
   } catch(e) {}
   return out;
 }
@@ -2812,6 +2820,23 @@ function supaSubscribe() {
           } catch(e) {}
         }
         try { renderMessages(); } catch(e) {}
+      } catch(e) {}
+    })
+    .subscribe();
+
+  // ── Mises à jour de profil en temps réel (photo/pseudo/emoji/couleur) ──
+  // Quand un utilisateur change sa photo de profil ou son pseudo, on rafraîchit
+  // le cache local (state.seed.users) → son avatar se met à jour PARTOUT à
+  // l'écran (fil, commentaires, messages) sans rechargement.
+  supa.channel("realtime:profiles")
+    .on("postgres_changes", { event: "UPDATE", schema: "public", table: "profiles" }, payload => {
+      try {
+        const p = payload.new;
+        if (!p || !p.id || p.id === MY_UID) return;
+        cacheRemoteProfile(p);
+        // Re-rendre les surfaces visibles (léger, idempotent).
+        try { if (typeof renderFeed === "function") renderFeed(); } catch(e) {}
+        try { if (typeof renderMessages === "function") renderMessages(); } catch(e) {}
       } catch(e) {}
     })
     .subscribe();

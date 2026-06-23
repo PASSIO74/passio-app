@@ -304,15 +304,38 @@ function shareMyProfile() {
   }
 }
 
+// Upload une photo de profil/couverture vers Supabase Storage puis pousse l'URL
+// dans la table `profiles` (via supaUpsertProfile) → visible par TOUS les autres
+// comptes. Affichage optimistic en base64 d'abord, remplacé par l'URL Storage.
+// `field` = "avatarPhoto" | "coverPhoto" ; `folder` = dossier Storage.
+async function _syncProfilePhoto(field, folder, dataUrl) {
+  if (!state.user.general) state.user.general = {};
+  // 1) Optimistic : affiche tout de suite la photo locale (base64).
+  state.user.general[field] = dataUrl;
+  saveState();
+  renderMainProfile();
+  // 2) Upload Storage → URL durable (sinon le base64 ne quitte jamais l'appareil).
+  try {
+    if (typeof supaUploadMedia === "function" && typeof MY_UID !== "undefined" && MY_UID) {
+      const key = field + "_" + MY_UID + "_" + Date.now();
+      const url = await supaUploadMedia(key, folder, dataUrl, "photo");
+      if (url && /^https?:\/\//.test(url)) {
+        state.user.general[field] = url; // remplace le base64 par l'URL partageable
+        saveState();
+        renderMainProfile();
+      }
+    }
+    // 3) Pousse l'URL (ou laisse tel quel si offline) dans la table profiles.
+    if (typeof supaUpsertProfile === "function") await supaUpsertProfile();
+  } catch (e) { console.warn("Sync photo profil échouée:", e && e.message); }
+}
+
 function changeCoverPhoto(event) {
   const file = event.target.files[0];
   if (!file) return;
   const reader = new FileReader();
   reader.onload = function(e) {
-    if (!state.user.general) state.user.general = {};
-    state.user.general.coverPhoto = e.target.result;
-    saveState();
-    renderMainProfile();
+    _syncProfilePhoto("coverPhoto", "covers", e.target.result);
     toast("📷 Photo de couverture mise à jour !");
   };
   reader.readAsDataURL(file);
@@ -323,10 +346,7 @@ function changeAvatarPhoto(event) {
   if (!file) return;
   const reader = new FileReader();
   reader.onload = function(e) {
-    if (!state.user.general) state.user.general = {};
-    state.user.general.avatarPhoto = e.target.result;
-    saveState();
-    renderMainProfile();
+    _syncProfilePhoto("avatarPhoto", "avatars", e.target.result);
     toast("📷 Photo de profil mise à jour !");
   };
   reader.readAsDataURL(file);
