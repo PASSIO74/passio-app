@@ -204,7 +204,7 @@ function openMyPostsTab() {
 // Une ligne de personne (avatar + nom), clic -> ouvre son profil
 function _personRowHTML(id, u) {
   return '<div onclick="closeModal();openUserProfile(\'' + id + '\')" style="display:flex;align-items:center;gap:10px;padding:8px;border:1px solid var(--border);border-radius:12px;cursor:pointer;">'
-    + '<div style="width:40px;height:40px;border-radius:50%;background:' + (u.avatar || '#7c3aed') + ';display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">' + (u.profileEmoji || '👤') + '</div>'
+    + '<div style="width:40px;height:40px;border-radius:50%;background:' + avatarBg(u) + ';display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">' + avatarInner(u) + '</div>'
     + '<div style="font-weight:700;font-size:14px;color:var(--text);">' + escapeHtml(u.name || 'Utilisateur') + '</div></div>';
 }
 function _peopleEmpty(msg) {
@@ -1577,7 +1577,7 @@ function renderExplorer() {
   const seedHtml = state.seed.users.slice(0, 4).map(u => {
     const p = passionById(u.passion);
     return `<div class="list-row" onclick="openUserProfile('${u.id}')">
-      <div class="avatar" style="background:${u.avatar};">${u.profileEmoji || u.name[0]}</div>
+      <div class="avatar" style="background:${avatarBg(u)};">${avatarInner(u)}</div>
       <div class="list-row-body">
         <div class="list-row-title">${escapeHtml(u.name)}</div>
         <div class="list-row-meta">${p.emoji} ${p.label} · ${escapeHtml(u.bio || "")}</div>
@@ -1590,7 +1590,7 @@ function renderExplorer() {
   // Charger les vrais profils Supabase en async et les ajouter
   if (typeof supa !== "undefined" && supa) {
     supa.from("profiles")
-      .select("id, username, emoji, color, passion_id, bio")
+      .select("id, username, emoji, color, passion_id, bio, avatar_url")
       .not("username", "is", null)
       .limit(12)
       .then(({ data, error }) => {
@@ -1606,8 +1606,9 @@ function renderExplorer() {
           const bio = escapeHtml(u.bio || "");
           const avatarColor = u.color || "#8b5cf6";
           const emoji = u.emoji || "✨";
+          const _av = { avatar: avatarColor, profileEmoji: emoji, photoUrl: u.avatar_url || null };
           return `<div class="list-row" onclick="openUserProfile('${u.id}')">
-            <div class="avatar" style="background:${avatarColor};">${emoji}</div>
+            <div class="avatar" style="background:${avatarBg(_av)};">${avatarInner(_av)}</div>
             <div class="list-row-body">
               <div class="list-row-title">${name}</div>
               <div class="list-row-meta">${p.emoji} ${p.label}${bio ? " · " + bio.slice(0, 40) : ""}</div>
@@ -1619,7 +1620,7 @@ function renderExplorer() {
         const seedSlice = state.seed.users.slice(0, 4).map(u => {
           const p = passionById(u.passion);
           return `<div class="list-row" onclick="openUserProfile('${u.id}')">
-            <div class="avatar" style="background:${u.avatar};">${u.profileEmoji || u.name[0]}</div>
+            <div class="avatar" style="background:${avatarBg(u)};">${avatarInner(u)}</div>
             <div class="list-row-body">
               <div class="list-row-title">${escapeHtml(u.name)}</div>
               <div class="list-row-meta">${p.emoji} ${p.label} · ${escapeHtml(u.bio || "")}</div>
@@ -1831,7 +1832,7 @@ function aiGenerateResponse(query) {
       var p = passionById(u.passion) || { emoji:"✨", label:"" };
       return '<div class="ai-card" onclick="openUserProfile(\'' + u.id + '\')">' +
         '<div style="display:flex;align-items:center;gap:8px;">' +
-          '<div style="width:32px;height:32px;border-radius:50%;background:' + u.avatar + ';display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;">' + u.profileEmoji + '</div>' +
+          '<div style="width:32px;height:32px;border-radius:50%;background:' + avatarBg(u) + ';display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;">' + avatarInner(u) + '</div>' +
           '<div><div class="ai-card-title" style="margin:0;">' + escapeHtml(u.name) + '</div><div class="ai-card-meta">' + p.emoji + ' ' + p.label + '</div></div>' +
         '</div>' +
       '</div>';
@@ -1927,7 +1928,7 @@ function aiGenerateResponse(query) {
       passionCreators.forEach(function(u) {
         html += '<div class="ai-card" onclick="openUserProfile(\'' + u.id + '\')">' +
           '<div style="display:flex;align-items:center;gap:8px;">' +
-            '<div style="width:30px;height:30px;border-radius:50%;background:' + u.avatar + ';display:flex;align-items:center;justify-content:center;font-size:14px;">' + u.profileEmoji + '</div>' +
+            '<div style="width:30px;height:30px;border-radius:50%;background:' + avatarBg(u) + ';display:flex;align-items:center;justify-content:center;font-size:14px;">' + avatarInner(u) + '</div>' +
             '<div><div class="ai-card-title" style="margin:0;">' + escapeHtml(u.name) + '</div><div class="ai-card-meta">' + escapeHtml(u.bio || "") + '</div></div>' +
           '</div></div>';
       });

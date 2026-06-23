@@ -130,19 +130,20 @@ function _renderCommentsList(allComments, postId) {
     let name, emoji, avatarColor, authorId;
     authorId = c.authorId || "?";
     // Priorité : infos embarquées (Supabase) > userById
+    const _cu = userById(authorId) || { name: "?", profileEmoji: "👤", avatar: "#64748b" };
     if (c.authorName) {
-      name = c.authorName; emoji = c.authorEmoji || "✨"; avatarColor = "#8b5cf6";
+      name = c.authorName; emoji = c.authorEmoji || "✨"; avatarColor = _cu.avatar || "#8b5cf6";
     } else {
-      const cu = userById(authorId) || { name: "?", profileEmoji: "👤", avatar: "#64748b" };
-      name = cu.name; emoji = cu.profileEmoji; avatarColor = cu.avatar;
+      name = _cu.name; emoji = _cu.profileEmoji; avatarColor = _cu.avatar;
     }
+    const _cAv = { avatar: avatarColor, profileEmoji: emoji, name, photoUrl: _cu.photoUrl || null };
     const cSrc = (authorId === "me" || (typeof MY_UID !== "undefined" && authorId === MY_UID)) ? "me" : "seed";
     const cLiked = (c.likedBy || []).includes(state.user?.id || "me");
     const cLikes = c.likes || 0;
     const cReplies = c.replies || [];
 
     return `<div class="comment" data-commentid="${c.id}">
-      <div class="avatar sm" style="background:${avatarColor};cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${authorId}','${cSrc}')">${emoji || (name||"?")[0]}</div>
+      <div class="avatar sm" style="background:${avatarBg(_cAv)};cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${authorId}','${cSrc}')">${avatarInner(_cAv)}</div>
       <div class="comment-body">
         <div class="comment-author" style="cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${authorId}','${cSrc}')">${escapeHtml(name)}</div>
         <div class="comment-text">${escapeHtml(c.text || c.content || "")}</div>
@@ -877,7 +878,7 @@ function searchUsers(query) {
       var avatarColor = u.avatar || "#8b5cf6";
       var emoji = u.profileEmoji || passion.emoji || "✨";
       return "<div class='msg-user-result-row' data-uid='" + u.id + "' data-name='" + nameEsc + "' data-emoji='" + emoji + "' data-avatar='" + avatarColor + "' onclick='_pickMsgUser(this)' style='display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border);'>" +
-        "<div style='width:38px;height:38px;border-radius:12px;background:" + avatarColor + ";display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;'>" + emoji + "</div>" +
+        "<div style='width:38px;height:38px;border-radius:12px;background:" + avatarBg(u) + ";display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;'>" + avatarInner(u) + "</div>" +
         "<div style='flex:1;min-width:0;'>" +
           "<div style='font-weight:700;font-size:13px;color:var(--text);'>" + nameEsc + "</div>" +
           "<div style='font-size:11px;color:var(--muted);'>" + passion.emoji + " " + passion.label + "</div>" +
@@ -1214,7 +1215,7 @@ function _blockedListHtml() {
     const name = u.name || "Utilisateur";
     const emoji = u.profileEmoji || "👤";
     return `<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);">
-      <div class="avatar sm" style="background:${u.avatar || '#64748b'};">${emoji}</div>
+      <div class="avatar sm" style="background:${avatarBg(u)};">${avatarInner(u)}</div>
       <div style="flex:1;font-weight:700;font-size:13px;color:var(--text);">${escapeHtml(name)}</div>
       <button class="btn ghost" style="font-size:11px;padding:6px 12px;" onclick="unblockUser('${id}','${escapeHtml(name)}')">Débloquer</button>
     </div>`;

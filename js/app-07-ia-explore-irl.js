@@ -157,7 +157,7 @@ function filterExplore() {
         }
 
         html += "<div onclick=\"openUserProfile('" + u.id + "');document.getElementById('exploreSearchResults').style.display='none';\" style='display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border);'>" +
-          "<div style='width:38px;height:38px;border-radius:12px;background:" + (u.avatar||'#8b5cf6') + ";display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;'>" + (u.profileEmoji||(u.name||"?")[0]) + "</div>" +
+          "<div style='width:38px;height:38px;border-radius:12px;background:" + avatarBg(u) + ";display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;'>" + avatarInner(u) + "</div>" +
           "<div style='flex:1;min-width:0;'>" +
             "<div style='font-weight:700;font-size:13px;color:var(--text);'>" + escapeHtml(u.name||"") + "</div>" +
             "<div style='font-size:11px;color:var(--muted);'>" + passionsHTML + (u.bio ? " · " + escapeHtml(u.bio) : "") + "</div>" +
@@ -180,7 +180,7 @@ function openPassionExplorer(pid) {
 
   var creatorsHTML = creators.length ? creators.map(function(u) {
     return '<div class="list-row">' +
-      '<div class="avatar" style="background:' + u.avatar + ';">' + u.profileEmoji + '</div>' +
+      '<div class="avatar" style="background:' + avatarBg(u) + ';">' + avatarInner(u) + '</div>' +
       '<div class="list-row-body">' +
         '<div class="list-row-title">' + escapeHtml(u.name) + '</div>' +
         '<div class="list-row-meta">' + escapeHtml(u.bio || "") + '</div>' +
@@ -1381,7 +1381,7 @@ function renderIRL() {
     const atts = (e.attendees || []).slice(0, 4);
     const attAvatars = atts.map(aid => {
       const u = userById(aid) || { avatar: "#64748b", profileEmoji: "?" };
-      return `<div class="avatar sm" style="background:${u.avatar};cursor:pointer;" onclick="openUserProfile('${aid}')">${u.profileEmoji}</div>`;
+      return `<div class="avatar sm" style="background:${avatarBg(u)};cursor:pointer;" onclick="openUserProfile('${aid}')">${avatarInner(u)}</div>`;
     }).join("");
     const timeStr = e.time || d.time || "";
     const venue = e.venue ? `· ${e.venue}` : "";
@@ -1717,7 +1717,7 @@ function openEventDetails(id) {
     const u = userById(aid) || { name: aid === "me" ? (currentProfile()?.name || "Moi") : "Participant", avatar: "#8b5cf6", profileEmoji: "✨" };
     const firstName = (u.name || "?").split(" ")[0];
     return `<div class="event-detail-participant" style="cursor:pointer;" onclick="openUserProfile('${aid}')">
-      <div class="avatar sm" style="background:${u.avatar || "#8b5cf6"};">${u.profileEmoji || "✨"}</div>
+      <div class="avatar sm" style="background:${avatarBg(u)};">${avatarInner(u)}</div>
       <div class="event-detail-participant-name">${escapeHtml(firstName)}</div>
     </div>`;
   }).join("") + (atts.length > 12 ? `<div class="event-detail-participant"><span style="font-size:12px;color:var(--muted);">+${atts.length - 12} autres</span></div>` : "");
@@ -1748,7 +1748,7 @@ function openEventDetails(id) {
 
     <div class="event-detail-section-title">Organisateur·ice</div>
     <div class="event-detail-organizer" style="cursor:pointer;" onclick="openUserProfile('${ev.organizerId || "me"}')">
-      <div class="avatar sm" style="background:${organizer.avatar || "#8b5cf6"};">${organizer.profileEmoji || "✨"}</div>
+      <div class="avatar sm" style="background:${avatarBg(organizer)};">${avatarInner(organizer)}</div>
       <div style="font-size:14px;font-weight:700;">${escapeHtml(organizer.name || "?")}</div>
     </div>
 

@@ -426,7 +426,7 @@ function startCall(convId, kind) {
     <div class="modal-handle"></div>
     <div class="call-modal">
       ${kind === "video" ? `<div class="call-video-preview">${u.profileEmoji} ${escapeHtml(u.name)}</div>` : ""}
-      <div class="msg-avatar" style="background:${u.avatar};width:80px;height:80px;font-size:34px;margin:0 auto 10px;">${u.profileEmoji}</div>
+      <div class="msg-avatar" style="background:${avatarBg(u)};width:80px;height:80px;font-size:34px;margin:0 auto 10px;">${avatarInner(u)}</div>
       <div class="call-name">${escapeHtml(u.name)}</div>
       <div class="call-status">${kind === "video" ? "Appel vidéo en cours…" : "Appel audio en cours…"}</div>
       <div class="call-timer" id="callTimer">00:00</div>
@@ -484,7 +484,7 @@ function openCreateGroup() {
   const userOptions = seedUsers.slice(0, 10).map(u =>
     `<div class="group-user-option" data-uid="${u.id}" onclick="toggleGroupUser(this)">
       <input type="checkbox" value="${u.id}" />
-      <span class="msg-avatar" style="background:${u.avatar};width:36px;height:36px;font-size:18px;flex-shrink:0;">${u.profileEmoji || (u.name || "?")[0]}</span>
+      <span class="msg-avatar" style="background:${avatarBg(u)};width:36px;height:36px;font-size:18px;flex-shrink:0;">${avatarInner(u)}</span>
       <span style="flex:1;font-size:13px;">${escapeHtml(u.name)}</span>
       <span class="grp-check"></span>
     </div>`
@@ -596,7 +596,7 @@ function _renderGroupMembersModal(convId) {
     if (!u) return '';
     var passion = passionById(u.passion);
     return '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);">' +
-      '<div style="width:40px;height:40px;border-radius:50%;background:' + u.avatar + ';display:flex;align-items:center;justify-content:center;font-size:18px;">' + u.profileEmoji + '</div>' +
+      '<div style="width:40px;height:40px;border-radius:50%;background:' + avatarBg(u) + ';display:flex;align-items:center;justify-content:center;font-size:18px;">' + avatarInner(u) + '</div>' +
       '<div style="flex:1;">' +
         '<div style="font-weight:700;font-size:13px;">' + escapeHtml(u.name) + '</div>' +
         '<div style="font-size:11px;color:var(--muted);">' + (passion ? passion.emoji + ' ' + passion.label : '') + '</div>' +
@@ -621,7 +621,7 @@ function _renderGroupMembersModal(convId) {
     if (filtered.length === 0) return '<div style="font-size:12px;color:var(--muted);padding:8px 0;">Aucun résultat.</div>';
     return filtered.map(function(u) {
       return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);">' +
-        '<div style="width:36px;height:36px;border-radius:50%;background:' + u.avatar + ';display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;">' + u.profileEmoji + '</div>' +
+        '<div style="width:36px;height:36px;border-radius:50%;background:' + avatarBg(u) + ';display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;">' + avatarInner(u) + '</div>' +
         '<span style="flex:1;font-size:13px;font-weight:600;">' + escapeHtml(u.name) + '</span>' +
         '<button class="btn primary" style="font-size:11px;padding:5px 12px;" onclick="addGroupMember(\'' + convId + '\',\'' + u.id + '\')">+ Ajouter</button>' +
       '</div>';
@@ -765,7 +765,7 @@ function filterGroupAddList(query) {
   }
   list.innerHTML = filtered.map(function(u) {
     return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);">' +
-      '<div style="width:36px;height:36px;border-radius:50%;background:' + u.avatar + ';display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;">' + u.profileEmoji + '</div>' +
+      '<div style="width:36px;height:36px;border-radius:50%;background:' + avatarBg(u) + ';display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;">' + avatarInner(u) + '</div>' +
       '<span style="flex:1;font-size:13px;font-weight:600;">' + escapeHtml(u.name) + '</span>' +
       '<button class="btn primary" style="font-size:11px;padding:5px 12px;" onclick="addGroupMember(\'' + convId + '\',\'' + u.id + '\')">+ Ajouter</button>' +
     '</div>';
@@ -1434,7 +1434,7 @@ function loadReelComments(postId) {
 
     let commentHTML = `
       <div class="reel-comment-item">
-        <div class="reel-comment-avatar" style="background:${commenter.avatar};" onclick="openUserProfile('${c.authorId}')" title="${escapeHtml(commenter.name)}">${commenter.profileEmoji}</div>
+        <div class="reel-comment-avatar" style="background:${avatarBg(commenter)};" onclick="openUserProfile('${c.authorId}')" title="${escapeHtml(commenter.name)}">${avatarInner(commenter)}</div>
         <div class="reel-comment-body">
           <div class="reel-comment-header">
             <span class="reel-comment-name" onclick="openUserProfile('${c.authorId}')">${escapeHtml(commenter.name)}</span>
