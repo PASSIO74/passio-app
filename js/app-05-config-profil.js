@@ -562,7 +562,7 @@ async function confirmCreateGroup() {
   // Envoyer le message de bienvenue dans Supabase
   if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
     try {
-      supa.from("conv_messages").insert({ id: welcomeMsgId, conv_id: groupId, from_id: MY_UID, content: newConv.messages[0].text, created_at: new Date().toISOString() }).then(() => {}).catch(() => {});
+      supa.from("conv_messages").insert({ id: welcomeMsgId, conv_id: groupId, from_id: MY_UID, content: _withSenderMeta(newConv.messages[0].text), created_at: new Date().toISOString() }).then(() => {}).catch(() => {});
     } catch(e) {}
   }
 

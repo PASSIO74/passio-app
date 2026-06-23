@@ -634,7 +634,7 @@ function _sendGif(gifUrl) {
       id: msgId,
       conv_id: convId,
       from_id: MY_UID,
-      content: contentJson,
+      content: _withSenderMeta(contentJson),
       created_at: new Date().toISOString()
     }).then(function(res) {
       if (res.error) {
@@ -644,7 +644,7 @@ function _sendGif(gifUrl) {
         supa.from("conv_messages").insert({
           id: msgId,
           conv_id: convId,
-          content: contentJson,
+          content: _withSenderMeta(contentJson),
           created_at: new Date().toISOString()
         }).then(function(res2) {
           if (!res2.error) {
@@ -865,7 +865,7 @@ function sendMessageToSupabase(msgId, convId, fileUrl, fileType, fileName, kind)
     id: msgId,
     conv_id: convId,
     from_id: (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : null,
-    content: contentJson,
+    content: _withSenderMeta(contentJson),
     created_at: new Date().toISOString()
   }).then(function(res) {
     if (res.error) {
@@ -873,7 +873,7 @@ function sendMessageToSupabase(msgId, convId, fileUrl, fileType, fileName, kind)
       supa.from("conv_messages").insert({
         id: msgId,
         conv_id: convId,
-        content: contentJson,
+        content: _withSenderMeta(contentJson),
         created_at: new Date().toISOString()
       }).then(function(res2) {
         if (!res2.error) {
@@ -931,7 +931,7 @@ function shareLocation() {
       supa.from("conv_messages").insert({
         id: msgId,
         conv_id: convId,
-        content: contentJson,
+        content: _withSenderMeta(contentJson),
         created_at: new Date().toISOString()
       }).then(function(res) {
         if(res.error) {
@@ -941,7 +941,7 @@ function shareLocation() {
               id: msgId,
               conv_id: convId,
               from_id: MY_UID,
-              content: contentJson,
+              content: _withSenderMeta(contentJson),
               created_at: new Date().toISOString()
             }).catch(function() {});
           }

@@ -310,6 +310,40 @@ function currentProfile() {
   return state.user.profiles.find(p => p.id === state.user.currentProfileId) || state.user.profiles[0];
 }
 
+// ===== IDENTITÉ D'EXPÉDITEUR PAR MESSAGE =====
+// La table `profiles` n'a qu'UNE ligne par compte (id = MY_UID) : le destinataire
+// dérive le nom de l'expéditeur de cette ligne. Or l'utilisateur peut écrire
+// depuis plusieurs profils/personas locaux (ex. « ben123 » alors que le compte
+// s'appelle « benjamin »). On attache donc l'identité du PROFIL ACTIF à chaque
+// message sortant pour que le destinataire voie le bon profil, sans dépendre de
+// la ligne `profiles` partagée. Champs courts pour limiter la taille en DB.
+function _msgSenderMeta() {
+  try {
+    var prof = currentProfile() || {};
+    var g = (state.user && state.user.general) || {};
+    return {
+      n: prof.name || g.username || (state.user && state.user.name) || "Profil",
+      e: prof.emoji || "✨",
+      c: prof.color || "#8b5cf6",
+      pid: (state.user && state.user.currentProfileId) || null,
+      ph: (typeof g.avatarPhoto === "string" && /^https?:\/\//.test(g.avatarPhoto)) ? g.avatarPhoto : null,
+    };
+  } catch (e) { return null; }
+}
+
+// Injecte l'identité de l'expéditeur dans le `content` d'un message sortant.
+// - content déjà JSON (média/gif/doc/location) → ajoute le champ `sp`
+// - texte brut → enveloppe en {type:"text", text, sp}
+// Décodé côté réception par applyMsgContentData() (champ `sp`).
+function _withSenderMeta(content) {
+  var sp = _msgSenderMeta();
+  if (!sp) return content;
+  if (typeof content === "string" && content.trim().charAt(0) === "{") {
+    try { var d = JSON.parse(content); if (d && d.type) { d.sp = sp; return JSON.stringify(d); } } catch (e) {}
+  }
+  return JSON.stringify({ type: "text", text: (content == null ? "" : String(content)), sp: sp });
+}
+
 function rankOf(score) {
   let r = RANKS[0];
   for (const rank of RANKS) if (score >= rank.min) r = rank;

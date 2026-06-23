@@ -612,6 +612,14 @@ function deduplicateConversations(convs) {
   var sorted = [...convs].sort((a, b) => (b.lastAt || 0) - (a.lastAt || 0));
   for (var c of sorted) {
     if (c.isGroup) { result.push(c); continue; }
+    // Repli : d'anciennes conversations (créées avant la résolution fiable du
+    // partenaire) ont pu être sauvegardées avec userId vide → elles ne se
+    // dédupliquaient pas (clé = id, unique). On infère alors l'userId depuis le
+    // premier message reçu (from ≠ "me") pour qu'elles fusionnent par paire.
+    if (!c.userId && c.messages && c.messages.length) {
+      var fromOther = c.messages.find(function(m){ return m && m.from && m.from !== "me"; });
+      if (fromOther) c.userId = fromOther.from;
+    }
     var key = c.userId || c.id;
     if (!seen[key]) {
       seen[key] = c;
@@ -1667,6 +1675,13 @@ function applyMsgContentData(m, raw) {
   var d;
   try { d = JSON.parse(src); } catch (e) { return; }
   if (!d || !d.type) return;
+  // Identité de l'expéditeur (profil/persona utilisé à l'envoi) — prioritaire sur
+  // le nom dérivé de la ligne `profiles` partagée. Cf. _withSenderMeta (app-02).
+  if (d.sp) {
+    m.senderProfile = d.sp;
+    if (d.sp.n) m.fromName = d.sp.n;
+    if (d.sp.e) m.fromEmoji = d.sp.e;
+  }
   if (d.type === "gif" && !m.gif) {
     m.gif = d.url;
   } else if (d.type === "location" && !m.location) {
@@ -1828,13 +1843,14 @@ function sendMessageFp(convId, displayName) {
     // AVEC from_id d'abord : depuis la RLS v2, l'insert sans from_id est toujours
     // rejeté (WITH CHECK from_id = auth.uid()) — l'ancien ordre gaspillait une
     // requête par message. On garde le sans-from_id en fallback par prudence.
+    var _content = _withSenderMeta(txt); // attache le profil actif (persona) au message
     supa.from("conv_messages")
-      .insert({ id: msgId, conv_id: convId, from_id: MY_UID || null, content: txt, created_at: new Date().toISOString() })
+      .insert({ id: msgId, conv_id: convId, from_id: MY_UID || null, content: _content, created_at: new Date().toISOString() })
       .then(function(res) {
         if (res && res.error) {
           _diag("sendMessageFp: Erreur avec from_id - " + res.error.message);
           supa.from("conv_messages")
-            .insert({ id: msgId, conv_id: convId, content: txt, created_at: new Date().toISOString() })
+            .insert({ id: msgId, conv_id: convId, content: _content, created_at: new Date().toISOString() })
             .then(function(res2) {
               if (!res2 || !res2.error) {
                 _diag("sendMessageFp: ✅ Supabase OK (fallback sans from_id)");
