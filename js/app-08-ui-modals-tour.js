@@ -3195,6 +3195,13 @@ async function supaInit() {
       }
     } catch(e) {}
 
+    // 0bis. RENDRE LE PROFIL D\u00c9COUVRABLE : pousse la ligne `profiles` (pseudo,
+    // emoji, couleur, photo) d\u00e8s la connexion. Sans \u00e7a, un compte qui vient de se
+    // connecter n'appara\u00eet PAS dans la recherche et ne peut PAS recevoir de message
+    // (la table profiles \u2014 interrog\u00e9e par la recherche ET cible des FK des
+    // conversations \u2014 restait vide tant qu'on n'avait pas post\u00e9/\u00e9crit).
+    try { await supaUpsertProfile(); } catch(e) {}
+
     // 1. CHARGER LES POSTS au d\u00e9marrage
     console.log("\ud83d\udce5 [INIT] Chargement des posts Supabase");
     const initPosts = await supaLoadPosts();

@@ -525,6 +525,9 @@ function switchToProfile(id) {
   const p = currentProfile();
   // switchToProfile ne force plus de filtre — l'utilisateur choisit lui-même
   saveState();
+  // Le profil actif = identité publique (1 ligne profiles par compte) → on la
+  // resynchronise pour que la recherche/messagerie reflètent le bon pseudo.
+  if (typeof supaUpsertProfile === "function") { try { supaUpsertProfile(); } catch(e) {} }
   renderTopbar();
   renderProfilesScreen();
   renderFeed();
@@ -858,6 +861,10 @@ async function confirmCreateProfile() {
 
   state.user.profiles.push(np);
   state.user.currentProfileId = np.id;
+  saveState();
+  // Synchronise tout de suite le profil actif vers Supabase → découvrable dans la
+  // recherche et messageable sans attendre le prochain boot.
+  if (typeof supaUpsertProfile === "function") { try { supaUpsertProfile(); } catch(e) {} }
   grantReward("profile_create");
   closeModal();
   renderProfilesScreen();
