@@ -819,7 +819,7 @@ function _processAttach(input, kind, file) {
         sendMessageToSupabase(msgId, convId, dataUrl, file.type, file.name, kind);
       } else {
         // Récupérer l'URL publique
-        var storageUrl = supa.storage.from("attachments").getPublicUrl(storagePath).data.publicUrl;
+        var storageUrl = (typeof cdnUrl === "function" ? cdnUrl(supa.storage.from("attachments").getPublicUrl(storagePath).data.publicUrl) : supa.storage.from("attachments").getPublicUrl(storagePath).data.publicUrl);
         _diag("handleAttachFile: ✅ Storage URL: " + storageUrl);
         sendMessageToSupabase(msgId, convId, storageUrl, file.type, file.name, kind);
       }

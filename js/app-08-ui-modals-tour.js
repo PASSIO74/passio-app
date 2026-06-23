@@ -1490,6 +1490,21 @@ async function boot() {
 // =====================================================
 const SUPABASE_URL = "https://njkiyoklssvefstljemx.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5qa2l5b2tsc3N2ZWZzdGxqZW14Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTc3MDQsImV4cCI6MjA5NDI3MzcwNH0.wbFAexVW75vlXZ7mRRxeZ28zKevOAYYe0lda0F22dTM";
+// CDN optionnel devant Supabase Storage (cache au bord → soulage l'egress du
+// forfait gratuit). VIDE = désactivé (URL Supabase directe, comportement actuel).
+// Pour activer : déployer cloudflare/passio-cdn-worker.js puis coller ici l'URL
+// du Worker SANS slash final, ex. "https://passio-cdn.toncompte.workers.dev".
+// Pense à autoriser ce domaine dans la CSP (img-src/media-src). Voir docs/CDN_CLOUDFLARE.md.
+const PASSIO_CDN_BASE = "";
+function cdnUrl(url) {
+  if (!PASSIO_CDN_BASE || typeof url !== "string" || url.indexOf("data:") === 0) return url;
+  const marker = "/storage/v1/object/public/";
+  const i = url.indexOf(marker);
+  if (i === -1) return url;
+  return PASSIO_CDN_BASE + "/" + url.slice(i + marker.length);
+}
+window.cdnUrl = cdnUrl;
+
 let supa;
 try {
   supa = (typeof supabase !== "undefined") ? supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
@@ -1866,7 +1881,7 @@ async function supaUploadMedia(postId, folder, base64Data, mediaType) {
       const { data: publicUrl } = supa.storage.from("content").getPublicUrl(filePath);
       if (publicUrl?.publicUrl) {
         console.log("🔗 [UPLOAD] URL publique OK");
-        return publicUrl.publicUrl;
+        return cdnUrl(publicUrl.publicUrl);
       }
     } catch (e) {
       console.warn("⚠️ [UPLOAD] getPublicUrl échoué, fallback base64");
