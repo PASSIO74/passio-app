@@ -595,11 +595,13 @@ function _primeProfileCache(convs) {
 async function _fetchProfile(userId) {
   if (_profileCache.has(userId)) return _profileCache.get(userId);
   try {
-    const { data } = await supa.from("profiles").select("username,emoji,color").eq("id", userId).maybeSingle();
-    const prof = data ? { username: data.username || "Passionné", emoji: data.emoji || "✨", color: data.color || "#8b5cf6" } : { username: "Passionné", emoji: "✨", color: "#8b5cf6" };
+    const { data } = await supa.from("profiles").select("username,emoji,color,avatar_url").eq("id", userId).maybeSingle();
+    const prof = data ? { username: data.username || "Passionné", emoji: data.emoji || "✨", color: data.color || "#8b5cf6", photoUrl: data.avatar_url || null } : { username: "Passionné", emoji: "✨", color: "#8b5cf6", photoUrl: null };
     _profileCache.set(userId, prof);
+    // Propage la photo partout (fil, profils, autres conversations).
+    try { if (data && typeof cacheRemoteProfile === "function") cacheRemoteProfile({ id: userId, username: data.username, emoji: data.emoji, color: data.color, avatar_url: data.avatar_url }); } catch(e) {}
     return prof;
-  } catch(e) { return { username: "Passionné", emoji: "✨", color: "#8b5cf6" }; }
+  } catch(e) { return { username: "Passionné", emoji: "✨", color: "#8b5cf6", photoUrl: null }; }
 }
 
 function deduplicateConversations(convs) {
@@ -622,6 +624,13 @@ function deduplicateConversations(convs) {
       if (extraMsgs.length) {
         main.messages = [...(main.messages||[]), ...extraMsgs].sort(function(a,b){ return (a.at||0)-(b.at||0); });
       }
+      // Backfill identité : si l'entrée gardée n'a pas de nom/photo résolus mais que
+      // le doublon les a, on les récupère (sinon l'entrée fusionnée resterait
+      // « Passionné » sans photo alors qu'on connaît la bonne identité).
+      if ((!main.userName || main.userName === "Passionné") && c.userName && c.userName !== "Passionné") main.userName = c.userName;
+      if (!main.userPhoto && c.userPhoto) main.userPhoto = c.userPhoto;
+      if ((!main.userEmoji || main.userEmoji === "✨") && c.userEmoji && c.userEmoji !== "✨") main.userEmoji = c.userEmoji;
+      if (!main.userId && c.userId) main.userId = c.userId;
     }
   }
   return result;
@@ -765,11 +774,11 @@ function _nmDoSearch(q) {
   // Contacts récents (conversations existantes)
   var convs = getConversations();
   var recentUsers = convs.filter(function(c) { return !c.isGroup && c.userId; })
-    .map(function(c) { return { id: c.userId, name: c.userName || "Passionné", emoji: c.userEmoji || "✨", color: c.userColor || "#8b5cf6", src: "conv" }; });
+    .map(function(c) { return { id: c.userId, name: c.userName || "Passionné", emoji: c.userEmoji || "✨", color: c.userColor || "#8b5cf6", photoUrl: c.userPhoto || (userById(c.userId) || {}).photoUrl || null, src: "conv" }; });
 
   // Seed users
   var seedUsers = ((state.seed && state.seed.users) ? state.seed.users : []).map(function(u) {
-    return { id: u.id, name: u.name || "Passionné", emoji: u.profileEmoji || "✨", color: u.avatar || "#8b5cf6", passion: u.passion, src: "seed" };
+    return { id: u.id, name: u.name || "Passionné", emoji: u.profileEmoji || "✨", color: u.avatar || "#8b5cf6", photoUrl: u.photoUrl || null, passion: u.passion, src: "seed" };
   });
 
   var all = recentUsers.concat(seedUsers.filter(function(su) {
@@ -785,31 +794,32 @@ function _nmDoSearch(q) {
     if (q && typeof supaSearchUsers === "function" && supa && MY_UID) {
       supaSearchUsers(q).then(function(res) {
         if (!res || !res.length) return;
-        var html2 = res.slice(0,8).map(function(u) { return _nmUserRow(u.id, u.username||"Passionné", u.emoji||"✨", u.color||"#8b5cf6"); }).join("");
+        var html2 = res.slice(0,8).map(function(u) { return _nmUserRow(u.id, u.username||"Passionné", u.emoji||"✨", u.color||"#8b5cf6", u.photoUrl); }).join("");
         if (box) box.innerHTML = html2;
       }).catch(function(){});
     }
     return;
   }
 
-  box.innerHTML = matches.map(function(u) { return _nmUserRow(u.id, u.name, u.emoji, u.color); }).join("");
+  box.innerHTML = matches.map(function(u) { return _nmUserRow(u.id, u.name, u.emoji, u.color, u.photoUrl); }).join("");
 
   // Compléter avec Supabase en arrière-plan si query
   if (q && typeof supaSearchUsers === "function" && supa && MY_UID) {
     supaSearchUsers(q).then(function(res) {
       if (!res || !box) return;
       var extra = res.filter(function(u) { return !matches.find(function(m) { return m.id === u.id; }); }).slice(0,5);
-      if (extra.length) box.innerHTML += extra.map(function(u) { return _nmUserRow(u.id, u.username||"Passionné", u.emoji||"✨", u.color||"#8b5cf6"); }).join("");
+      if (extra.length) box.innerHTML += extra.map(function(u) { return _nmUserRow(u.id, u.username||"Passionné", u.emoji||"✨", u.color||"#8b5cf6", u.photoUrl); }).join("");
     }).catch(function(){});
   }
 }
 
-function _nmUserRow(id, name, emoji, color) {
+function _nmUserRow(id, name, emoji, color, photoUrl) {
   var esc = escapeHtml(name || "Passionné");
+  var _u = { avatar: color, profileEmoji: emoji, photoUrl: photoUrl || null };
   // data-* attributes pour éviter les problèmes de quotes dans onclick
-  return `<div class="_nm-row" data-uid="${escapeHtml(id)}" data-name="${esc}" data-emoji="${escapeHtml(emoji)}" data-color="${escapeHtml(color)}"
+  return `<div class="_nm-row" data-uid="${escapeHtml(id)}" data-name="${esc}" data-emoji="${escapeHtml(emoji)}" data-color="${escapeHtml(color)}" data-photo="${escapeHtml(photoUrl || '')}"
     style="display:flex;align-items:center;gap:12px;padding:11px 4px;cursor:pointer;border-bottom:1px solid var(--border);">
-    <div style="width:40px;height:40px;border-radius:14px;background:${escapeHtml(color)};display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">${escapeHtml(emoji)}</div>
+    <div style="width:40px;height:40px;border-radius:14px;background:${avatarBg(_u)};display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">${avatarInner(_u)}</div>
     <div style="font-weight:700;font-size:14px;color:var(--text);flex:1;">${esc}</div>
     <div style="font-size:12px;color:var(--accent);font-weight:700;">Message →</div>
   </div>`;
@@ -824,7 +834,8 @@ document.addEventListener("click", function(e) {
       row.getAttribute("data-uid"),
       row.getAttribute("data-name"),
       row.getAttribute("data-emoji"),
-      row.getAttribute("data-color")
+      row.getAttribute("data-color"),
+      row.getAttribute("data-photo") || null
     );
   }
 });
@@ -860,6 +871,7 @@ function searchUsers(query) {
         name: u.username || "Passionné",
         profileEmoji: u.emoji || "✨",
         avatar: u.color || "#8b5cf6",
+        photoUrl: u.photoUrl || null,
         passion: u.passion_id || "",
         bio: u.bio || ""
       };
@@ -877,7 +889,7 @@ function searchUsers(query) {
       var nameEsc = escapeHtml(u.name || "Passionné");
       var avatarColor = u.avatar || "#8b5cf6";
       var emoji = u.profileEmoji || passion.emoji || "✨";
-      return "<div class='msg-user-result-row' data-uid='" + u.id + "' data-name='" + nameEsc + "' data-emoji='" + emoji + "' data-avatar='" + avatarColor + "' onclick='_pickMsgUser(this)' style='display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border);'>" +
+      return "<div class='msg-user-result-row' data-uid='" + u.id + "' data-name='" + nameEsc + "' data-emoji='" + emoji + "' data-avatar='" + avatarColor + "' data-photo='" + escapeHtml(u.photoUrl || '') + "' onclick='_pickMsgUser(this)' style='display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border);'>" +
         "<div style='width:38px;height:38px;border-radius:12px;background:" + avatarBg(u) + ";display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;'>" + avatarInner(u) + "</div>" +
         "<div style='flex:1;min-width:0;'>" +
           "<div style='font-weight:700;font-size:13px;color:var(--text);'>" + nameEsc + "</div>" +
@@ -895,11 +907,14 @@ function _pickMsgUser(el) {
   var u_name = el.getAttribute("data-name");
   var u_emoji = el.getAttribute("data-emoji");
   var u_avatar = el.getAttribute("data-avatar");
-  startDirectMessage(u_id, u_name, u_emoji, u_avatar);
+  var u_photo = el.getAttribute("data-photo") || null;
+  startDirectMessage(u_id, u_name, u_emoji, u_avatar, u_photo);
 }
 
 
-async function startDirectMessage(userId, userName, userEmoji, userAvatar) {
+async function startDirectMessage(userId, userName, userEmoji, userAvatar, userPhoto) {
+  // Photo : argument explicite, sinon profil déjà connu en cache
+  if (!userPhoto) userPhoto = (userById(userId) || {}).photoUrl || null;
   var results = document.getElementById("msgUserResults");
   if (results) { results.style.display = "none"; results.innerHTML = ""; }
   var search = document.getElementById("msgUserSearch");
@@ -942,8 +957,9 @@ async function startDirectMessage(userId, userName, userEmoji, userAvatar) {
         existing.userName = userName || existing.userName || "Passionné";
         existing.userEmoji = userEmoji || existing.userEmoji || "✨";
         existing.userColor = userAvatar || existing.userColor || "#8b5cf6";
+        if (userPhoto) existing.userPhoto = userPhoto;
       } else {
-        convs.unshift({ id: supaConvId, userId, userName: userName || "Passionné", userEmoji: userEmoji || "✨", userColor: userAvatar || "#8b5cf6", passion, unread: 0, lastAt: Date.now(), messages: [], isGroup: false });
+        convs.unshift({ id: supaConvId, userId, userName: userName || "Passionné", userEmoji: userEmoji || "✨", userColor: userAvatar || "#8b5cf6", userPhoto: userPhoto || null, passion, unread: 0, lastAt: Date.now(), messages: [], isGroup: false });
       }
       conversationsState = convs;
       saveConversations();
@@ -960,7 +976,7 @@ async function startDirectMessage(userId, userName, userEmoji, userAvatar) {
     setTimeout(function() { openConversation(existing.id); }, 120);
     return;
   }
-  var newConv = { id: "conv_" + uid(), userId, userName: userName || "Passionné", userEmoji: userEmoji || "✨", userColor: userAvatar || "#8b5cf6", passion, unread: 0, lastAt: Date.now(), messages: [], isGroup: false };
+  var newConv = { id: "conv_" + uid(), userId, userName: userName || "Passionné", userEmoji: userEmoji || "✨", userColor: userAvatar || "#8b5cf6", userPhoto: userPhoto || null, passion, unread: 0, lastAt: Date.now(), messages: [], isGroup: false };
   convs.unshift(newConv);
   conversationsState = convs;
   saveConversations();
@@ -1103,7 +1119,7 @@ async function openUserProfile(authorId, source) {
     \
     <!-- BOUTONS -->\
     <div style="display:flex;gap:8px;justify-content:center;margin-bottom:16px;">\
-      <button class="btn primary" onclick="closeModal();startDirectMessage(\'' + authorId + '\',\'' + escapeHtml(user.name || "Passionné") + '\',\'' + (user.profileEmoji || "✨") + '\',\'' + (user.avatar || "#8b5cf6") + '\')" style="font-size:12px;padding:10px 18px;border-radius:14px;">💬 Message</button>\
+      <button class="btn primary" onclick="closeModal();startDirectMessage(\'' + authorId + '\',\'' + escapeHtml(user.name || "Passionné") + '\',\'' + (user.profileEmoji || "✨") + '\',\'' + (user.avatar || "#8b5cf6") + '\',\'' + (user.photoUrl || "") + '\')" style="font-size:12px;padding:10px 18px;border-radius:14px;">💬 Message</button>\
       <button class="btn ghost" id="followBtn_' + authorId + '" onclick="toggleFollowUser(\'' + authorId + '\',\'' + escapeHtml(user.name || "") + '\')" style="font-size:12px;padding:10px 18px;border-radius:14px;">➕ Suivre</button>\
     </div>\
     \
@@ -1305,7 +1321,7 @@ function renderMessages() {
     }
 
     // Avatar de la conv : photo de groupe, sinon photo de profil live de l'autre, sinon couleur+emoji.
-    const _convU = c.isGroup ? null : { avatar: displayAvatar, profileEmoji: displayEmoji, photoUrl: (userById(c.userId) || {}).photoUrl || u.photoUrl || null };
+    const _convU = c.isGroup ? null : { avatar: displayAvatar, profileEmoji: displayEmoji, photoUrl: (userById(c.userId) || {}).photoUrl || c.userPhoto || u.photoUrl || null };
     const avatarStyle = (c.isGroup && c.groupPhoto)
       ? `background:url(${c.groupPhoto}) center/cover;font-size:0;`
       : (c.isGroup ? `background:${displayAvatar};` : `background:${avatarBg(_convU)};`);
@@ -1368,7 +1384,7 @@ async function openConversation(convId) {
       <div style="position:absolute;bottom:-1px;right:-1px;width:14px;height:14px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:8px;border:1.5px solid var(--bg-soft);">📷</div>
     </div>`;
   } else {
-    const _hu = { avatar: displayAvatar, profileEmoji: displayEmoji, photoUrl: (userById(c.userId) || {}).photoUrl || u.photoUrl || null };
+    const _hu = { avatar: displayAvatar, profileEmoji: displayEmoji, photoUrl: (userById(c.userId) || {}).photoUrl || c.userPhoto || u.photoUrl || null };
     avatarHtml = `<div class="conv-fp-head-avatar" style="background:${avatarBg(_hu)};" onclick="${c.isGroup ? '' : `openUserProfile('${c.userId}','seed')`}">${avatarInner(_hu)}</div>`;
   }
 

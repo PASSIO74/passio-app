@@ -2364,7 +2364,7 @@ async function supaSearchUsers(query) {
     // Search by username OR bio - sans exclusion par MY_UID pour permettre de trouver son propre profil depuis un autre appareil
     const searchPattern = `%${cleanQuery}%`;
     const { data, error } = await supa.from("profiles")
-      .select("id, username, emoji, color, passion_id, bio")
+      .select("id, username, emoji, color, passion_id, bio, avatar_url")
       .or(`username.ilike.${searchPattern},bio.ilike.${searchPattern}`);
 
     console.log("[SEARCH] Data returned:", data, "Error:", error);
@@ -2384,9 +2384,12 @@ async function supaSearchUsers(query) {
           username: profile.username || "Passionné",
           emoji: profile.emoji || "✨",
           color: profile.color || "#8b5cf6",
+          photoUrl: profile.avatar_url || null, // 📷 photo de profil (Storage)
           bio: profile.bio || "",
           passions: [] // Tous les profils/passions de cet utilisateur
         };
+        // Met en cache le profil distant (photo comprise) → propagation partout
+        try { if (typeof cacheRemoteProfile === "function") cacheRemoteProfile({ id: profile.id, username: profile.username, emoji: profile.emoji, color: profile.color, avatar_url: profile.avatar_url, passion_id: profile.passion_id, bio: profile.bio }); } catch(e) {}
       }
       if (profile.passion_id) {
         userMap[profile.id].passions.push({
@@ -2539,18 +2542,34 @@ async function supaLoadMyConversations() {
     // Batch toutes les requêtes en parallèle (fix N+1)
     const [lastMsgsAll, membersAll] = await Promise.all([
       Promise.all(convIds.map(cid =>
-        supa.from("conv_messages").select("id,conv_id,from_id,content,created_at,profiles(username,emoji,color)")
+        supa.from("conv_messages").select("id,conv_id,from_id,content,created_at,profiles(username,emoji,color,avatar_url)")
           .eq("conv_id", cid).order("created_at", { ascending: false }).limit(1)
       )),
       Promise.all(convIds.map(cid =>
-        supa.from("conv_members").select("conv_id,user_id,profiles(username,emoji,color)").eq("conv_id", cid)
+        supa.from("conv_members").select("conv_id,user_id,profiles(username,emoji,color,avatar_url)").eq("conv_id", cid)
       ))
     ]);
 
     const result = convs.map((c, i) => {
       const last = lastMsgsAll[i]?.data?.[0];
       const members = membersAll[i]?.data || [];
-      const other = members.find(m => m.user_id !== MY_UID);
+      // Identifier le partenaire de façon robuste. L'embed `profiles` peut être
+      // null (pas de FK résolue) et la ligne conv_members de l'autre peut manquer
+      // (insert refusé un temps par la RLS) → on retombe alors sur l'expéditeur du
+      // dernier message puis sur le créateur de la conv. Sans ça, userId reste ""
+      // → la conv n'est PAS dédupliquée (doublons « Passionné ») et la photo manque.
+      let other = members.find(m => m.user_id !== MY_UID);
+      let otherId = (other && other.user_id)
+        || (last && last.from_id && last.from_id !== MY_UID ? last.from_id : null)
+        || (c.created_by && c.created_by !== MY_UID ? c.created_by : null)
+        || "";
+      // Profil du partenaire : embed members, sinon embed du dernier message.
+      const otherProf = (other && other.profiles)
+        || (last && last.from_id === otherId ? last.profiles : null)
+        || null;
+      if (otherId && otherProf && typeof cacheRemoteProfile === "function") {
+        try { cacheRemoteProfile({ id: otherId, username: otherProf.username, emoji: otherProf.emoji, color: otherProf.color, avatar_url: otherProf.avatar_url }); } catch(e) {}
+      }
       let lastMsg = null;
       if (last) {
         lastMsg = { id: last.id, from: last.from_id === MY_UID ? "me" : last.from_id, fromName: last.profiles?.username || "Passionné", text: last.content, at: new Date(last.created_at + "Z").getTime() };
@@ -2559,10 +2578,11 @@ async function supaLoadMyConversations() {
       return {
         id: c.id, isGroup: c.is_group, groupName: c.group_name,
         passion: null,
-        userId: other?.user_id || "",
-        userEmoji: other?.profiles?.emoji || "✨",
-        userColor: other?.profiles?.color || "#8b5cf6",
-        userName: other?.profiles?.username || "Passionné",
+        userId: otherId,
+        userEmoji: otherProf?.emoji || "✨",
+        userColor: otherProf?.color || "#8b5cf6",
+        userName: otherProf?.username || "Passionné",
+        userPhoto: otherProf?.avatar_url || null,
         userIds: members.map(m => m.user_id),
         lastAt: last ? new Date(last.created_at + "Z").getTime() : new Date(c.created_at + "Z").getTime(),
         unread: 0,
@@ -2571,7 +2591,9 @@ async function supaLoadMyConversations() {
       };
     });
 
-    // Dédupliquer par userId (garder la conv la plus récente par paire)
+    // Dédupliquer par userId (garder la conv la plus récente par paire). Quand
+    // userId a pu être résolu, deux conversations Supabase entre les deux mêmes
+    // comptes fusionnent en une seule entrée → plus de doublon dans la liste.
     const seenUsers = {};
     const deduped = [];
     for (const c of result.sort((a,b) => b.lastAt - a.lastAt)) {
@@ -2659,6 +2681,14 @@ async function _handleIncomingConvMessage(r) {
   var convs = getConversations();
   var conv = convs.find(c => c.id === r.conv_id);
 
+  // La déduplication (1 conv par paire) peut avoir fusionné CETTE conv_id dans une
+  // autre entrée ayant le même partenaire → l'entrée locale a un id différent de
+  // r.conv_id. Sans ce repli, le message entrant déclencherait une « nouvelle conv »
+  // en double, voire serait perdu côté affichage. On route donc par partenaire.
+  if (!conv && r.from_id) {
+    conv = convs.find(c => !c.isGroup && c.userId === r.from_id);
+  }
+
   if (!conv) {
     // Nouvelle conv inconnue → vérifier membership Supabase puis créer localement
     try {
@@ -2667,14 +2697,18 @@ async function _handleIncomingConvMessage(r) {
       if (!membership) return; // pas membre → ignorer
       const { data: convData } = await supa.from("conversations").select("*").eq("id", r.conv_id).maybeSingle();
       const { data: members } = await supa.from("conv_members")
-        .select("user_id, profiles(username,emoji,color)").eq("conv_id", r.conv_id);
+        .select("user_id, profiles(username,emoji,color,avatar_url)").eq("conv_id", r.conv_id);
       const other = (members || []).find(m => m.user_id !== MY_UID);
-      if (other?.profiles) _profileCache.set(other.user_id, { username: other.profiles.username, emoji: other.profiles.emoji || "✨", color: other.profiles.color || "#8b5cf6" });
+      if (other?.profiles) {
+        _profileCache.set(other.user_id, { username: other.profiles.username, emoji: other.profiles.emoji || "✨", color: other.profiles.color || "#8b5cf6", photoUrl: other.profiles.avatar_url || null });
+        try { if (typeof cacheRemoteProfile === "function") cacheRemoteProfile({ id: other.user_id, username: other.profiles.username, emoji: other.profiles.emoji, color: other.profiles.color, avatar_url: other.profiles.avatar_url }); } catch(e) {}
+      }
       conv = {
         id: r.conv_id, isGroup: convData?.is_group || false, groupName: convData?.group_name || null,
         passion: null, userId: other?.user_id || r.from_id,
         userEmoji: other?.profiles?.emoji || "✨", userColor: other?.profiles?.color || "#8b5cf6",
         userName: other?.profiles?.username || "Passionné",
+        userPhoto: other?.profiles?.avatar_url || null,
         userIds: (members || []).map(m => m.user_id),
         lastAt: new Date(r.created_at + "Z").getTime(), unread: 0, messages: [], fromSupabase: true,
       };
@@ -2695,7 +2729,8 @@ async function _handleIncomingConvMessage(r) {
   conv.messages.sort((a, b) => (a.at || 0) - (b.at || 0));
   conv.lastAt = msgAt;
 
-  const isConvOpen = window._openedConvId === r.conv_id;
+  // Conv ouverte : soit l'id serveur, soit l'entrée locale fusionnée (id ≠ r.conv_id).
+  const isConvOpen = window._openedConvId === r.conv_id || window._openedConvId === conv.id;
   if (isConvOpen) {
     conv._otherRead = true; // l'utilisateur lit le message
     conversationsState = convs;
@@ -2785,17 +2820,27 @@ function supaSubscribe() {
       try {
         const { data: convData } = await supa.from("conversations").select("*").eq("id", convId).maybeSingle();
         const { data: members } = await supa.from("conv_members")
-          .select("user_id, profiles(username,emoji,color)").eq("conv_id", convId);
+          .select("user_id, profiles(username,emoji,color,avatar_url)").eq("conv_id", convId);
         const other = (members || []).find(m => m.user_id !== MY_UID);
+        // Repli sur le créateur de la conv si l'autre membre n'est pas (encore)
+        // lisible → userId résolu → la dédup par paire opère et il n'y a pas de
+        // doublon « Passionné » sans photo. (cf. supaLoadMyConversations)
+        const otherId = (other && other.user_id)
+          || (convData?.created_by && convData.created_by !== MY_UID ? convData.created_by : "")
+          || "";
+        if (other?.profiles && typeof cacheRemoteProfile === "function") {
+          try { cacheRemoteProfile({ id: other.user_id, username: other.profiles.username, emoji: other.profiles.emoji, color: other.profiles.color, avatar_url: other.profiles.avatar_url }); } catch(e) {}
+        }
         const newConv = {
           id: convId,
           isGroup: convData?.is_group || false,
           groupName: convData?.group_name || null,
           passion: null,
-          userId: other?.user_id || "",
+          userId: otherId,
           userEmoji: other?.profiles?.emoji || "✨",
           userColor: other?.profiles?.color || "#8b5cf6",
           userName: other?.profiles?.username || "Passionné",
+          userPhoto: other?.profiles?.avatar_url || null,
           userIds: (members || []).map(m => m.user_id),
           lastAt: new Date(convData?.created_at || Date.now()).getTime(),
           unread: 0,
