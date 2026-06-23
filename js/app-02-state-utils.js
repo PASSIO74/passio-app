@@ -823,6 +823,70 @@ async function doLogout() {
   setTimeout(() => location.reload(), 1200);
 }
 
+/* Changement de mot de passe SANS email : pour un utilisateur déjà connecté,
+   via la session active (supa.auth.updateUser). Indispensable tant que l'envoi
+   d'e-mails (lien « mot de passe oublié ») n'est pas opérationnel. */
+function openChangePassword() {
+  openModal('\
+    <div class="modal-handle"></div>\
+    <div class="modal-title">🔑 Changer mon mot de passe</div>\
+    <p style="font-size:13px;color:var(--muted);margin-bottom:14px;">Choisis un nouveau mot de passe (6 caractères minimum). Tu resteras connecté.</p>\
+    <label class="field"><span>Nouveau mot de passe</span>\
+      <input type="password" class="input" id="cpNew" autocomplete="new-password" minlength="6" placeholder="••••••••"/></label>\
+    <label class="field" style="margin-top:8px;"><span>Confirme le mot de passe</span>\
+      <input type="password" class="input" id="cpConfirm" autocomplete="new-password" minlength="6" placeholder="••••••••"/></label>\
+    <div id="cpMsg" style="font-size:12px;min-height:16px;margin:8px 0 2px;"></div>\
+    <div style="display:flex;gap:8px;margin-top:10px;">\
+      <button class="btn ghost" onclick="closeModal()" style="flex:1;">Annuler</button>\
+      <button class="btn primary" id="cpBtn" onclick="doChangePassword()" style="flex:1;">Valider</button>\
+    </div>\
+  ');
+}
+
+async function doChangePassword() {
+  var nEl = document.getElementById("cpNew");
+  var cEl = document.getElementById("cpConfirm");
+  var msg = document.getElementById("cpMsg");
+  var btn = document.getElementById("cpBtn");
+  var n = nEl ? nEl.value : "";
+  var c = cEl ? cEl.value : "";
+  function err(t) { if (msg) { msg.style.color = "#e11d48"; msg.textContent = t; } }
+  if (n.length < 6) { err("Au moins 6 caractères."); return; }
+  if (n !== c) { err("Les mots de passe ne correspondent pas."); return; }
+  if (btn) { btn.disabled = true; btn.textContent = "…"; }
+  // S'assurer que la session est bien chargée en mémoire avant updateUser
+  // (sinon supabase-js renvoie « Auth session missing »).
+  try {
+    var gs = await supa.auth.getSession();
+    if (!gs || !gs.data || !gs.data.session) {
+      err("Session expirée. Reconnecte-toi puis réessaie.");
+      if (btn) { btn.disabled = false; btn.textContent = "Valider"; }
+      return;
+    }
+  } catch (e) {}
+  try {
+    var r = await supa.auth.updateUser({ password: n });
+    if (r && r.error) {
+      var m = r.error.message || "";
+      // Traduction des messages Supabase courants.
+      if (/different from the old/i.test(m)) m = "Le nouveau mot de passe doit être différent de l'ancien.";
+      else if (/session/i.test(m)) m = "Session expirée. Reconnecte-toi puis réessaie.";
+      else if (/at least/i.test(m)) m = "Mot de passe trop court.";
+      else if (!m) m = "Impossible de changer le mot de passe.";
+      err(m);
+      if (btn) { btn.disabled = false; btn.textContent = "Valider"; }
+      return;
+    }
+    closeModal();
+    toast("✅ Mot de passe mis à jour");
+  } catch (e) {
+    err("Erreur réseau. Réessaie.");
+    if (btn) { btn.disabled = false; btn.textContent = "Valider"; }
+  }
+}
+window.openChangePassword = openChangePassword;
+window.doChangePassword = doChangePassword;
+
 /* ============================================================
    🛡 RGPD 2026-06-10 — Suppression de compte réelle + politique
    de confidentialité. Avant : "Supprimer mon compte" ne vidait
