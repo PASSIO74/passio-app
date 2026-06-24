@@ -1032,6 +1032,11 @@ function getCdvLives() {
 }
 function saveCdvLives(lives) { localStorage.setItem("passio_cdv_lives", JSON.stringify(lives)); }
 
+// Un live publié localement a authorId "me" ; rechargé depuis Supabase il a MY_UID.
+function isMyLive(l) {
+  return !!l && (l.authorId === "me" || (typeof MY_UID !== "undefined" && MY_UID && l.authorId === MY_UID));
+}
+
 // Récupérer les lives actifs (global, pour tous)
 function getActiveCdvLives() {
   return getCdvLives().filter(l => l.status === "live" && l.visibility !== "private");
@@ -1078,15 +1083,37 @@ function startCdvLiveRefresh(liveId) {
   if (cdvLiveRefreshInterval) clearInterval(cdvLiveRefreshInterval);
   cdvLiveRefreshInterval = setInterval(() => {
     const modal = document.querySelector(".modal");
-    if (!modal || !modal.classList.contains("modal-fullscreen")) {
+    if (!modal || !modal.classList.contains("modal-fullscreen") || modal.getAttribute("data-live-id") !== liveId) {
       clearInterval(cdvLiveRefreshInterval);
       cdvLiveRefreshInterval = null;
       return;
     }
-    // Re-render le viewer si le live existe toujours
-    const lives = getCdvLives();
-    if (lives.find(l => l.id === liveId)) {
-      openCdvLiveViewer(liveId);
+    // Ne pas rafraîchir pendant la saisie d'un commentaire (sinon on efface le texte).
+    const ci = document.getElementById("cdvLiveComment");
+    if (ci && document.activeElement === ci && ci.value) return;
+
+    // Recharger ce live depuis Supabase (étapes/commentaires/réactions/suivis cross-compte).
+    if (typeof supaLoadCdvLive === "function") {
+      supaLoadCdvLive(liveId).then(fresh => {
+        if (!fresh) return;
+        const lives = getCdvLives();
+        const idx = lives.findIndex(l => l.id === liveId);
+        const prev = idx >= 0 ? lives[idx] : null;
+        if (idx >= 0) lives[idx] = fresh; else lives.unshift(fresh);
+        saveCdvLives(lives);
+        // Re-render uniquement si le contenu a changé (évite le scintillement).
+        const changed = !prev
+          || (prev.steps || []).length !== fresh.steps.length
+          || (prev.comments || []).length !== fresh.comments.length
+          || (prev.reactions || []).length !== fresh.reactions.length
+          || (prev.followers || []).length !== fresh.followers.length
+          || prev.status !== fresh.status;
+        const stillOpen = document.querySelector(".modal.modal-fullscreen[data-live-id='" + liveId + "']");
+        if (changed && stillOpen) openCdvLiveViewer(liveId);
+      }).catch(() => {});
+    } else {
+      const lives = getCdvLives();
+      if (lives.find(l => l.id === liveId)) openCdvLiveViewer(liveId);
     }
   }, 5000);
 }
@@ -1155,6 +1182,7 @@ function createCdvLive() {
   const lives = getCdvLives();
   lives.unshift(live);
   saveCdvLives(lives);
+  if (typeof supaPublishCdvLive === "function") supaPublishCdvLive(live);
   closeModal();
   toast("📡 CDV Live démarré !");
   renderCdvLives();
@@ -1284,6 +1312,7 @@ function saveCdvLiveStep(liveId) {
   if (!live) return;
   live.steps.push(step);
   saveCdvLives(lives);
+  if (typeof supaAddCdvLiveStep === "function") supaAddCdvLiveStep(liveId, step);
   closeModal();
   toast("📍 Étape publiée en direct !");
   renderCdvLives();
@@ -1295,6 +1324,7 @@ function endCdvLive(liveId) {
   if (!live) return;
   live.status = "ended";
   saveCdvLives(lives);
+  if (typeof supaUpdateCdvLiveStatus === "function") supaUpdateCdvLiveStatus(liveId, "ended");
   toast("✅ CDV Live terminé — il apparaît maintenant comme un carnet complet");
   renderCdvLives();
   renderCdvScreen();
@@ -1305,7 +1335,7 @@ function openCdvLiveViewer(liveId) {
   const live = lives.find(l => l.id === liveId);
   if (!live) return;
 
-  const isMine = live.authorId === "me";
+  const isMine = isMyLive(live);
   const isLive = live.status === "live";
 
   // Ajouter le spectateur actuel au compteur
@@ -1313,8 +1343,8 @@ function openCdvLiveViewer(liveId) {
     addCdvLiveViewer(liveId);
   }
 
-  // Nombre réel de spectateurs + base minimale pour démo
-  var viewerCount = (live.currentViewers || 0) + Math.floor(Math.random()*10);
+  // Nombre réel de personnes qui suivent (plus de valeur fictive aléatoire).
+  var viewerCount = (live.followers || live.viewers || []).length;
 
   let stepsHTML = live.steps.map(function(s) {
     var photosHTML = "";
@@ -1403,17 +1433,20 @@ function toggleFollowCdvLive(liveId, btn) {
   const live = lives.find(l => l.id === liveId);
   if (!live) return;
 
-  if (!live.followers) live.followers = [];
-  const userId = state.user?.id || "me";
+  if (!Array.isArray(live.followers)) live.followers = [];
+  const userId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : (state.user?.id || "me");
   const isFollowing = live.followers.includes(userId);
 
   if (isFollowing) {
     live.followers = live.followers.filter(f => f !== userId);
+    if (typeof supaUnfollowCdvLive === "function") supaUnfollowCdvLive(liveId);
     toast("✖️ Tu ne suis plus ce voyage");
   } else {
     live.followers.push(userId);
+    if (typeof supaFollowCdvLive === "function") supaFollowCdvLive(liveId);
     toast("📡 Tu suis ce voyage en direct !");
   }
+  live.currentViewers = live.followers.length;
   saveCdvLives(lives);
   openCdvLiveViewer(liveId);
 }
@@ -1425,6 +1458,7 @@ function reactCdvLive(liveId, emoji) {
   if (!live.reactions) live.reactions = [];
   live.reactions.push(emoji);
   saveCdvLives(lives);
+  if (typeof supaReactCdvLive === "function") supaReactCdvLive(liveId, emoji);
   toast(emoji);
   openCdvLiveViewer(liveId);
 }
@@ -1440,6 +1474,7 @@ function addCdvLiveComment(liveId) {
   if (!live.comments) live.comments = [];
   live.comments.push({ author: state.user.name || "Moi", text: text, at: Date.now() });
   saveCdvLives(lives);
+  if (typeof supaAddCdvLiveComment === "function") supaAddCdvLiveComment(liveId, text);
   openCdvLiveViewer(liveId);
 }
 
@@ -1479,7 +1514,7 @@ function renderCdvScreen() {
   const showLiveOnly = cdvFilters && cdvFilters.size === 1 && cdvFilters.has("live");
   if (showLiveOnly) {
     // Affiche les lives en cours ET les lives terminés
-    const lives = getCdvLives().filter(l => l.authorId === "me" || (state.following || []).includes(l.authorId) || l.visibility === "public");
+    const lives = getCdvLives().filter(l => isMyLive(l) || (state.following || []).includes(l.authorId) || l.visibility === "public");
     if (!lives.length) {
       list.innerHTML = "";
       document.getElementById("cdvEmpty").style.display = "block";
@@ -1503,9 +1538,10 @@ function renderCdvScreen() {
     html += active.map(l => {
       const isNew = l.createdAt && Date.now() - l.createdAt < 60000;
       const seedAuthor = userById(l.authorId);
-      const authorName = l.authorId === "me" ? (state.user.name || "Toi") : (seedAuthor && seedAuthor.name) || "Passionné";
-      const viewerCount = (l.currentViewers || 0) + Math.floor(Math.random()*10);
-      const isFollowing = (state.following || []).includes(l.authorId);
+      const authorName = isMyLive(l) ? (state.user.name || "Toi") : (seedAuthor && seedAuthor.name) || "Passionné";
+      const viewerCount = (l.followers || l.viewers || []).length;
+      const myId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
+      const isFollowing = (l.followers || []).includes(myId);
 
       return `<div class="cdv-live-card" onclick="openCdvLiveViewer('${l.id}')" style="border-color:rgba(239,68,68,0.3);position:relative;">
         ${isNew ? '<div style="position:absolute;top:10px;right:10px;background:#ef4444;color:#fff;font-size:9px;font-weight:700;padding:3px 7px;border-radius:12px;">NOUVEAU</div>' : ''}
@@ -1527,7 +1563,7 @@ function renderCdvScreen() {
           </div>` : `<div style="text-align:center;padding:10px;color:var(--muted);font-size:11px;">En attente de la première étape…</div>`}
         <div class="cdv-live-footer">
           <div class="cdv-live-count">👁 ${viewerCount} regardent en direct</div>
-          ${l.authorId === "me" ? `<button class="cdv-live-follow-btn" onclick="event.stopPropagation();addCdvLiveStep('${l.id}')">+ Étape</button>` : `<button class="cdv-live-follow-btn" onclick="event.stopPropagation();toggleFollowCdvLive('${l.id}',this)" style="background:${isFollowing ? '#8b5cf6' : 'var(--border)'};color:${isFollowing ? '#fff' : 'var(--text)'};">${isFollowing ? '✓ En suivi' : '📡 Suivre'}</button>`}
+          ${isMyLive(l) ? `<button class="cdv-live-follow-btn" onclick="event.stopPropagation();addCdvLiveStep('${l.id}')">+ Étape</button>` : `<button class="cdv-live-follow-btn" onclick="event.stopPropagation();toggleFollowCdvLive('${l.id}',this)" style="background:${isFollowing ? '#8b5cf6' : 'var(--border)'};color:${isFollowing ? '#fff' : 'var(--text)'};">${isFollowing ? '✓ En suivi' : '📡 Suivre'}</button>`}
         </div>
       </div>`;
     }).join("");

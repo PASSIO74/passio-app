@@ -452,7 +452,7 @@ function goTo(screen) {
   if (screen === "irl")      renderIRL();
   if (screen === "wallet")   renderWallet();
   if (screen === "messages") renderMessages();
-  if (screen === "cdv")      renderCdvScreen();
+  if (screen === "cdv")      { renderCdvScreen(); if (typeof supaRefreshCdvLives === "function") supaRefreshCdvLives(); }
 }
 
 // Fonction générique pour fermer les overlays

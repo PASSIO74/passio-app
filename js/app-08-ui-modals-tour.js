@@ -2435,6 +2435,128 @@ async function supaLoadEvents() {
   } catch(e) { return []; }
 }
 
+// ======== CDV LIVES (voyages en direct, sync cross-compte) ========
+// Tables : cdv_lives / cdv_live_steps / cdv_live_comments / cdv_live_reactions /
+// cdv_live_followers (migration_cdv_lives.sql, appliquée en prod le 2026-06-24).
+
+async function supaPublishCdvLive(live) {
+  try {
+    await supaUpsertProfile();
+    const { error } = await supa.from("cdv_lives").insert({
+      id: live.id, author_id: MY_UID,
+      destination: live.destination || "", description: live.description || "",
+      duration: live.duration || "", visibility: live.visibility || "public",
+      status: live.status || "live",
+    });
+    if (error) console.warn("CDV live publish:", error.message);
+  } catch(e) { console.warn("CDV live publish:", e); }
+}
+
+async function supaUpdateCdvLiveStatus(liveId, status) {
+  try { await supa.from("cdv_lives").update({ status: status, updated_at: new Date().toISOString() }).eq("id", liveId); }
+  catch(e) { console.warn("CDV live status:", e); }
+}
+
+async function supaAddCdvLiveStep(liveId, step) {
+  try {
+    const { error } = await supa.from("cdv_live_steps").insert({
+      id: step.id || ("ls_" + uid()), live_id: liveId, author_id: MY_UID,
+      city: step.city || "", emoji: step.emoji || "📍", content: step.content || "",
+      photos: step.photos || [], rating: step.rating || 0, budget: step.budget || "",
+    });
+    if (error) console.warn("CDV step:", error.message);
+    await supa.from("cdv_lives").update({ updated_at: new Date().toISOString() }).eq("id", liveId);
+  } catch(e) { console.warn("CDV step:", e); }
+}
+
+async function supaAddCdvLiveComment(liveId, text) {
+  try {
+    const { error } = await supa.from("cdv_live_comments").insert({
+      id: "lc_" + uid(), live_id: liveId, author_id: MY_UID,
+      author_name: (state.user && state.user.name) || "Moi", text: text,
+    });
+    if (error) console.warn("CDV comment:", error.message);
+  } catch(e) { console.warn("CDV comment:", e); }
+}
+
+async function supaReactCdvLive(liveId, emoji) {
+  try { await supa.from("cdv_live_reactions").insert({ id: "lr_" + uid(), live_id: liveId, user_id: MY_UID, emoji: emoji }); }
+  catch(e) { console.warn("CDV reaction:", e); }
+}
+
+async function supaFollowCdvLive(liveId) {
+  try { await supa.from("cdv_live_followers").insert({ live_id: liveId, user_id: MY_UID }); }
+  catch(e) { console.warn("CDV follow:", e); }
+}
+async function supaUnfollowCdvLive(liveId) {
+  try { await supa.from("cdv_live_followers").delete().eq("live_id", liveId).eq("user_id", MY_UID); }
+  catch(e) { console.warn("CDV unfollow:", e); }
+}
+
+async function supaLoadCdvLives() {
+  try {
+    const { data: lives, error } = await supa.from("cdv_lives").select("*").order("created_at", { ascending: false }).limit(50);
+    if (error) { console.warn("supaLoadCdvLives:", error.message); return []; }
+    const rows = lives || [];
+    if (!rows.length) return [];
+    const ids = rows.map(r => r.id);
+    const [stepsRes, comRes, reacRes, folRes] = await Promise.all([
+      supa.from("cdv_live_steps").select("*").in("live_id", ids).order("created_at", { ascending: true }),
+      supa.from("cdv_live_comments").select("*").in("live_id", ids).order("created_at", { ascending: true }),
+      supa.from("cdv_live_reactions").select("*").in("live_id", ids),
+      supa.from("cdv_live_followers").select("*").in("live_id", ids),
+    ]);
+    const groupBy = (res, key) => {
+      const m = {}; (res.data || []).forEach(x => { (m[x[key]] = m[x[key]] || []).push(x); }); return m;
+    };
+    const stepsBy = groupBy(stepsRes, "live_id");
+    const comBy = groupBy(comRes, "live_id");
+    const reacBy = groupBy(reacRes, "live_id");
+    const folBy = groupBy(folRes, "live_id");
+    return rows.map(r => {
+      const followers = (folBy[r.id] || []).map(f => f.user_id);
+      return {
+        id: r.id, authorId: r.author_id,
+        destination: r.destination || "", description: r.description || "",
+        duration: r.duration || "", visibility: r.visibility || "public",
+        status: r.status || "live",
+        steps: (stepsBy[r.id] || []).map(s => ({
+          id: s.id, city: s.city || "", emoji: s.emoji || "📍", content: s.content || "",
+          photos: Array.isArray(s.photos) ? s.photos : [], photo: (Array.isArray(s.photos) && s.photos[0]) || null,
+          rating: s.rating || 0, budget: s.budget || "", createdAt: new Date(s.created_at).getTime(),
+        })),
+        comments: (comBy[r.id] || []).map(c => ({ author: c.author_name || "Anonyme", text: c.text || "", at: new Date(c.created_at).getTime() })),
+        reactions: (reacBy[r.id] || []).map(x => x.emoji),
+        followers: followers, viewers: followers, currentViewers: followers.length,
+        createdAt: new Date(r.created_at).getTime(),
+        fromSupabase: true,
+      };
+    });
+  } catch(e) { console.warn("supaLoadCdvLives:", e); return []; }
+}
+
+// Charge un seul live (pour le rafraîchissement du viewer ouvert).
+async function supaLoadCdvLive(liveId) {
+  const all = await supaLoadCdvLives();
+  return all.find(l => l.id === liveId) || null;
+}
+
+// Fusionne les lives Supabase dans le cache local (passio_cdv_lives) + re-render.
+async function supaRefreshCdvLives() {
+  try {
+    if (typeof getCdvLives !== "function") return;
+    const supaLives = await supaLoadCdvLives();
+    if (!supaLives || !supaLives.length) return;
+    const supaIds = new Set(supaLives.map(l => l.id));
+    const localOnly = (getCdvLives() || []).filter(l => !supaIds.has(l.id) && !l.fromSupabase);
+    saveCdvLives([...supaLives, ...localOnly]);
+    try {
+      const cdvScreen = document.getElementById("screen-cdv");
+      if (cdvScreen && cdvScreen.classList.contains("active") && typeof renderCdvScreen === "function") renderCdvScreen();
+    } catch(_) {}
+  } catch(e) { console.warn("supaRefreshCdvLives:", e); }
+}
+
 // ---- MESSAGERIE TEMPS RÉEL ----
 
 async function supaSearchUsers(query) {
@@ -3456,6 +3578,8 @@ async function supaInit() {
       // les notifs re\u00e7ues d'autres comptes. On les charge ici (chemin vivant).
       if (typeof supaLoadNotifications === "function")
         supaLoadNotifications().then(ns => { if (ns && ns.length) mergeSupaNotifs(ns); }).catch(e => {});
+      // CDV Lives : fusionner les voyages en direct des autres comptes.
+      if (typeof supaRefreshCdvLives === "function") supaRefreshCdvLives();
       // Liste de blocage (modération) : fusion avec le cache local.
       if (typeof supaLoadBlocks === "function")
         supaLoadBlocks().then(bl => {
