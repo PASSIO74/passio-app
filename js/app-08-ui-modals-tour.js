@@ -3328,6 +3328,8 @@ async function supaInit() {
       try { renderMessages(); } catch(e) {}
     } catch(e) { console.warn("supaInit conversations:", e); }
     try { supaSubscribe(); } catch(e) { console.warn("supaSubscribe:", e); }
+    // Renvoie les messages rest\u00e9s en file d'attente (\u00e9chec/hors-ligne) d'une session pr\u00e9c\u00e9dente.
+    try { if (typeof _flushOutbox === "function") setTimeout(_flushOutbox, 1500); } catch(e) {}
     // Sauvegarder imm\u00e9diatement avant fermeture de page (flush le debounce)
     window.addEventListener("beforeunload", saveConversationsNow, { once: false });
 

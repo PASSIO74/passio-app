@@ -1617,6 +1617,13 @@ function renderConvFpThread(c, displayName) {
           : ' <span style="opacity:0.5;">✓</span>')
       : "";
 
+    // Statut d'envoi (mes messages) : 🕓 en cours, ⚠️ échec (cliquable pour réessayer).
+    var statusInd = "";
+    if (isMe) {
+      if (m.status === "sending") statusInd = ' <span style="opacity:0.55;">🕓</span>';
+      else if (m.status === "failed") statusInd = ' <span style="color:#ef4444;cursor:pointer;font-weight:700;" onclick="_retryMsg(\'' + c.id + '\',\'' + m.id + '\')">⚠️ réessayer</span>';
+    }
+
     // Temps — affiché sur chaque message avec heure exacte (HH:MM)
     var isLastInGroup = (i === msgs.length - 1) || (msgs[i+1] && msgs[i+1].from !== m.from) || (msgs[i+1] && m.at && msgs[i+1].at && _dayKey(msgs[i+1].at) !== msgDay);
     var timeStr = '';
@@ -1626,9 +1633,9 @@ function renderConvFpThread(c, displayName) {
       var hours = String(d.getHours()).padStart(2, '0');
       var mins = String(d.getMinutes()).padStart(2, '0');
       var timeExact = hours + ':' + mins;
-      timeStr = '<span class="conv-bubble-time">' + timeExact + receipt + '</span>';
-    } else if (isLastMe && isLastInGroup) {
-      timeStr = '<span class="conv-bubble-time">' + readReceipt + '</span>';
+      timeStr = '<span class="conv-bubble-time">' + timeExact + receipt + statusInd + '</span>';
+    } else if (isMe) {
+      timeStr = '<span class="conv-bubble-time">' + ((isLastMe && isLastInGroup) ? readReceipt : '') + statusInd + '</span>';
     }
 
     // Contenu
@@ -2086,7 +2093,7 @@ function sendMessageFp(convId, displayName) {
   // 5. Ajouter le message localement (+ contexte de réponse si actif)
   if (!c.messages) c.messages = [];
   var msgId = "msg_" + uid();
-  var _localMsg = { id: msgId, from: "me", text: txt, at: Date.now() };
+  var _localMsg = { id: msgId, from: "me", text: txt, at: Date.now(), status: "sending" };
   var _reply = (window._replyTo && window._replyTo.convId === convId) ? { id: window._replyTo.id, t: window._replyTo.t, n: window._replyTo.n } : null;
   if (_reply) _localMsg.replyTo = _reply;
   c.messages.push(_localMsg);
@@ -2100,42 +2107,74 @@ function sendMessageFp(convId, displayName) {
   if (thread) thread.scrollTop = thread.scrollHeight;
   try { renderMessages(); } catch(e) {}
 
-  // 7. Envoyer à Supabase
-  if (typeof supa !== "undefined" && supa) {
-    _diag("sendMessageFp: Tentative Supabase...");
+  // 7. Envoyer à Supabase (statut + file d'attente hors-ligne)
+  var _content = _withSenderMeta(txt); // attache le profil actif (persona)
+  if (_reply) { try { var _cd = JSON.parse(_content); _cd.rt = _reply; _content = JSON.stringify(_cd); } catch(e) {} }
+  _sendTextToSupa(convId, msgId, _content);
+}
 
-    // AVEC from_id d'abord : depuis la RLS v2, l'insert sans from_id est toujours
-    // rejeté (WITH CHECK from_id = auth.uid()) — l'ancien ordre gaspillait une
-    // requête par message. On garde le sans-from_id en fallback par prudence.
-    var _content = _withSenderMeta(txt); // attache le profil actif (persona) au message
-    if (_reply) { try { var _cd = JSON.parse(_content); _cd.rt = _reply; _content = JSON.stringify(_cd); } catch(e) {} } // contexte de réponse
-    supa.from("conv_messages")
-      .insert({ id: msgId, conv_id: convId, from_id: MY_UID || null, content: _content, created_at: new Date().toISOString() })
-      .then(function(res) {
-        if (res && res.error) {
-          _diag("sendMessageFp: Erreur avec from_id - " + res.error.message);
-          supa.from("conv_messages")
-            .insert({ id: msgId, conv_id: convId, content: _content, created_at: new Date().toISOString() })
-            .then(function(res2) {
-              if (!res2 || !res2.error) {
-                _diag("sendMessageFp: ✅ Supabase OK (fallback sans from_id)");
-              } else {
-                _diag("sendMessageFp: ❌ Échec définitif - " + res2.error.message);
-                console.warn("sendMessageFp: message non synchronisé:", res2.error.message);
-              }
-            })
-            .catch(function() {});
-        } else {
-          _diag("sendMessageFp: ✅ Supabase OK (avec from_id)");
-        }
-      })
-      .catch(function(err) {
-        _diag("sendMessageFp: Catch - " + err.message);
-        console.error("Supabase send failed:", err);
-      });
-  } else {
-    _diag("sendMessageFp: Supabase non disponible");
+// ───────── Statut d'envoi + file d'attente hors-ligne ─────────
+var OUTBOX_KEY = "passio_outbox_v1";
+function _outboxLoad() { try { return JSON.parse(localStorage.getItem(OUTBOX_KEY) || "[]"); } catch(e) { return []; } }
+function _outboxSave(a) { try { localStorage.setItem(OUTBOX_KEY, JSON.stringify(a)); } catch(e) {} }
+function _outboxAdd(convId, msgId, content) {
+  var a = _outboxLoad().filter(function(x){ return x.msgId !== msgId; });
+  a.push({ convId: convId, msgId: msgId, content: content, at: Date.now() });
+  _outboxSave(a);
+}
+function _outboxRemove(msgId) { _outboxSave(_outboxLoad().filter(function(x){ return x.msgId !== msgId; })); }
+
+// Met à jour le statut d'un message local et rafraîchit le fil si ouvert.
+function _setMsgStatus(convId, msgId, status) {
+  var convs = getConversations();
+  var c = convs.find(function(x){ return x.id === convId; }); if (!c) return;
+  var m = (c.messages || []).find(function(x){ return x.id === msgId; }); if (!m) return;
+  m.status = status;
+  saveConversations();
+  if (window._openedConvId === convId) {
+    try { var fp = document.getElementById("conv-fullpage"); renderConvFpThread(c, fp ? fp.getAttribute("data-display-name") : (c.userName||"")); } catch(e) {}
   }
+}
+
+// Envoie un message texte/enveloppe à Supabase, gère statut (sending→sent/failed)
+// et la file d'attente : hors-ligne ou échec → garde en outbox pour renvoi auto.
+function _sendTextToSupa(convId, msgId, content) {
+  if (typeof supa === "undefined" || !supa || typeof MY_UID === "undefined" || !MY_UID || !window._supaReal) {
+    _setMsgStatus(convId, msgId, "failed"); _outboxAdd(convId, msgId, content); return;
+  }
+  if (navigator && navigator.onLine === false) {
+    _setMsgStatus(convId, msgId, "failed"); _outboxAdd(convId, msgId, content); return;
+  }
+  supa.from("conv_messages")
+    .insert({ id: msgId, conv_id: convId, from_id: MY_UID, content: content, created_at: new Date().toISOString() })
+    .then(function(res) {
+      if (res && res.error) { _setMsgStatus(convId, msgId, "failed"); _outboxAdd(convId, msgId, content); }
+      else { _setMsgStatus(convId, msgId, "sent"); _outboxRemove(msgId); }
+    })
+    .catch(function() { _setMsgStatus(convId, msgId, "failed"); _outboxAdd(convId, msgId, content); });
+}
+
+// Renvoi manuel d'un message en échec.
+function _retryMsg(convId, msgId) {
+  var item = _outboxLoad().find(function(x){ return x.msgId === msgId; });
+  _setMsgStatus(convId, msgId, "sending");
+  if (item) _sendTextToSupa(convId, msgId, item.content);
+  else { // pas en outbox → re-tenter depuis le texte du message
+    var c = getConversations().find(function(x){ return x.id === convId; });
+    var m = c && (c.messages||[]).find(function(x){ return x.id === msgId; });
+    if (m) { var ct = _withSenderMeta(m.text || ""); _sendTextToSupa(convId, msgId, ct); }
+  }
+}
+
+// Vide la file d'attente (à la reconnexion ou au boot).
+function _flushOutbox() {
+  var a = _outboxLoad();
+  if (!a.length) return;
+  if (navigator && navigator.onLine === false) return;
+  a.forEach(function(item){ _setMsgStatus(item.convId, item.msgId, "sending"); _sendTextToSupa(item.convId, item.msgId, item.content); });
+}
+if (typeof window !== "undefined") {
+  window.addEventListener("online", function(){ try { toast("🟢 Connexion rétablie — envoi des messages en attente"); } catch(e){} _flushOutbox(); });
 }
 
 // ── Notification sonore ──
