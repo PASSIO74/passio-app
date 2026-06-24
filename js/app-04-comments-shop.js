@@ -2151,6 +2151,8 @@ function sendMessageFp(convId, displayName) {
   delete c.draft; // brouillon envoyé
   saveConversations();
   if (window._replyTo) { window._replyTo = null; try { _renderReplyBar(); } catch(e) {} }
+  try { _hideMentionBox(); } catch(e) {}
+  try { if (c.isGroup) _notifyMentions(c, txt); } catch(e) {} // notifie les @mentionnés
 
   // 6. Afficher IMMÉDIATEMENT
   renderConvFpThread(c, displayName);
@@ -2266,8 +2268,54 @@ function onConvInputTyping() {
     if (v.trim()) c.draft = v; else delete c.draft;
     saveConversations();
   }, 350);
+  // Mentions @ (groupes uniquement)
+  try { _mentionDetect(convId); } catch(e) {}
 }
 var _draftTimer = null;
+
+// ───────── Mentions @ dans les groupes ─────────
+function _hideMentionBox() { var b = document.getElementById("convMentionBox"); if (b) b.remove(); }
+function _mentionDetect(convId) {
+  var c = getConversations().find(function(x){ return x.id === convId; });
+  if (!c || !c.isGroup) { _hideMentionBox(); return; }
+  var inp = document.getElementById("convFpInput"); if (!inp) return;
+  var val = (inp.value || "").slice(0, inp.selectionStart || (inp.value||"").length);
+  var mt = val.match(/@([\wà-öø-ÿ' -]{0,20})$/i);
+  if (!mt) { _hideMentionBox(); return; }
+  var q = (mt[1] || "").toLowerCase().trim();
+  var members = (c.userIds || []).map(function(id){ return { id: id, name: (typeof _groupMemberName === "function" ? _groupMemberName(id) : "Membre") }; })
+    .filter(function(m){ return !q || m.name.toLowerCase().indexOf(q) > -1; }).slice(0, 6);
+  if (!members.length) { _hideMentionBox(); return; }
+  var toolbar = document.querySelector("#conv-fullpage .conv-toolbar"); if (!toolbar) return;
+  var box = document.getElementById("convMentionBox");
+  if (!box) { box = document.createElement("div"); box.id = "convMentionBox"; box.style.cssText = "position:absolute;bottom:100%;left:8px;right:8px;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;box-shadow:0 -4px 20px rgba(0,0,0,0.18);max-height:200px;overflow-y:auto;z-index:30;margin-bottom:6px;"; toolbar.style.position = "relative"; toolbar.appendChild(box); }
+  box.innerHTML = members.map(function(m){
+    return '<div onclick="_pickMention(\'' + String(m.name).replace(/'/g,"\\'") + '\')" style="display:flex;align-items:center;gap:8px;padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--border);">' +
+      '<span style="width:26px;height:26px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;">' + escapeHtml(String(m.name).charAt(0).toUpperCase()) + '</span>' +
+      '<span style="font-size:13px;font-weight:600;">' + escapeHtml(m.name) + '</span></div>';
+  }).join("");
+}
+function _pickMention(name) {
+  var inp = document.getElementById("convFpInput"); if (!inp) return;
+  var pos = inp.selectionStart || inp.value.length;
+  var before = inp.value.slice(0, pos).replace(/@([\wà-öø-ÿ' -]{0,20})$/i, "@" + name + " ");
+  inp.value = before + inp.value.slice(pos);
+  _hideMentionBox();
+  inp.focus();
+  try { autoResizeTextarea(inp); } catch(e) {}
+}
+// Notifie les membres mentionnés (@nom) dans un message de groupe.
+function _notifyMentions(c, text) {
+  if (!c || !c.isGroup || !text || text.indexOf("@") < 0) return;
+  if (typeof supaInsertNotif !== "function") return;
+  var low = text.toLowerCase();
+  (c.userIds || []).forEach(function(id){
+    var name = (typeof _groupMemberName === "function" ? _groupMemberName(id) : "");
+    if (name && low.indexOf("@" + name.toLowerCase()) > -1) {
+      try { supaInsertNotif(id, "mention", c.id, "t'a mentionné dans « " + (c.groupName || "un groupe") + " »"); } catch(e) {}
+    }
+  });
+}
 
 function _sendTyping(convId) {
   if (!_typingChannel) return;

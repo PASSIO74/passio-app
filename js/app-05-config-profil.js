@@ -647,6 +647,8 @@ function _renderGroupMembersModal(convId) {
     grpAvatarHTML +
     '<div class="modal-title" style="margin-top:0;">👥 ' + escapeHtml(c.groupName || "Groupe") + '</div>' +
     '<div style="font-size:12px;color:var(--muted);margin-bottom:10px;">' + (memberIds.length + 1) + ' membre' + (memberIds.length + 1 > 1 ? 's' : '') + '</div>' +
+    '<div onclick="editGroupDescription(\'' + convId + '\')" style="cursor:pointer;font-size:13px;color:' + (c.groupDesc ? 'var(--text)' : 'var(--muted)') + ';background:var(--bg-deep);border-radius:10px;padding:9px 12px;margin-bottom:10px;">' +
+      (c.groupDesc ? escapeHtml(c.groupDesc) : '📝 Ajouter une description…') + '</div>' +
     '<div style="margin-bottom:12px;">' + passionsHTML + '</div>' +
     // Onglets
     '<div style="display:flex;gap:0;margin-bottom:14px;border-bottom:2px solid var(--border);">' +
@@ -668,7 +670,7 @@ function _renderGroupMembersModal(convId) {
     '</div>' +
     '<div style="display:flex;gap:8px;margin-top:12px;">' +
       '<button class="btn ghost" onclick="closeModal();openConversation(\'' + convId + '\')" style="flex:1;">← Retour</button>' +
-      '<button class="btn ghost" onclick="toast(\'🚪 Tu as quitté le groupe\')" style="flex:1;color:#ef4444;border-color:rgba(239,68,68,0.3);">Quitter</button>' +
+      '<button class="btn ghost" onclick="leaveGroup(\'' + convId + '\')" style="flex:1;color:#ef4444;border-color:rgba(239,68,68,0.3);">Quitter</button>' +
     '</div>'
   );
 
@@ -772,6 +774,13 @@ function filterGroupAddList(query) {
   }).join("");
 }
 
+function _groupMemberName(userId) {
+  var u = (state.seed.users || []).find(function(x) { return x.id === userId; });
+  if (u) return u.name;
+  if (typeof userById === "function") { var uu = userById(userId); if (uu && uu.name) return uu.name; }
+  return "Membre";
+}
+
 function addGroupMember(convId, userId) {
   var convs = getConversations();
   var c = convs.find(function(x) { return x.id === convId; });
@@ -779,35 +788,67 @@ function addGroupMember(convId, userId) {
   c.userIds = c.userIds || [];
   if (c.userIds.includes(userId)) return;
   c.userIds.push(userId);
-  var u = (state.seed.users || []).find(function(x) { return x.id === userId; });
-  c.messages.push({ from: "me", text: "👋 " + (u ? u.name : "Quelqu'un") + " a rejoint le groupe.", at: Date.now(), fromName: "Passio" });
+  var name = _groupMemberName(userId);
+  c.messages.push({ id: "msg_" + uid(), from: "me", text: "👋 " + name + " a rejoint le groupe.", at: Date.now(), fromName: "Passio" });
   c.lastAt = Date.now();
   saveConversations();
-  toast("✅ " + (u ? u.name : "Membre") + " ajouté·e au groupe");
+  // Sync Supabase : ajoute le membre à conv_members → il reçoit les messages.
+  if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID && window._supaReal) {
+    try { supa.from("conv_members").insert({ conv_id: convId, user_id: userId }).then(function(){}, function(){}); } catch(e) {}
+  }
+  toast("✅ " + name + " ajouté·e au groupe");
   _renderGroupMembersModal(convId);
   var fp = document.getElementById("conv-fullpage");
-  if (fp && fp.classList.contains("active")) {
-    var displayName = c.groupName || "Groupe";
-    renderConvFpThread(c, displayName);
-  }
+  if (fp && fp.classList.contains("active")) renderConvFpThread(c, c.groupName || "Groupe");
 }
 
 function removeGroupMember(convId, userId) {
   var convs = getConversations();
   var c = convs.find(function(x) { return x.id === convId; });
   if (!c) return;
-  var u = (state.seed.users || []).find(function(x) { return x.id === userId; });
+  var name = _groupMemberName(userId);
   c.userIds = (c.userIds || []).filter(function(id) { return id !== userId; });
-  c.messages.push({ from: "me", text: "👋 " + (u ? u.name : "Un membre") + " a quitté le groupe.", at: Date.now(), fromName: "Passio" });
+  c.messages.push({ id: "msg_" + uid(), from: "me", text: "👋 " + name + " a quitté le groupe.", at: Date.now(), fromName: "Passio" });
   c.lastAt = Date.now();
   saveConversations();
-  toast("🗑 " + (u ? u.name : "Membre") + " retiré·e du groupe");
+  // Sync Supabase : retire le membre (autorisé au créateur via policy « Suppression admin »).
+  if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID && window._supaReal) {
+    try { supa.from("conv_members").delete().eq("conv_id", convId).eq("user_id", userId).then(function(){}, function(){}); } catch(e) {}
+  }
+  toast("🗑 " + name + " retiré·e du groupe");
   _renderGroupMembersModal(convId);
   var fp = document.getElementById("conv-fullpage");
-  if (fp && fp.classList.contains("active")) {
-    var displayName = c.groupName || "Groupe";
-    renderConvFpThread(c, displayName);
+  if (fp && fp.classList.contains("active")) renderConvFpThread(c, c.groupName || "Groupe");
+}
+
+// Quitter un groupe : retire MA propre adhésion (RLS « Suppression propre ») et
+// supprime la conversation localement.
+function leaveGroup(convId) {
+  if (!confirm("Quitter ce groupe ? Tu ne recevras plus ses messages.")) return;
+  if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID && window._supaReal) {
+    try { supa.from("conv_members").delete().eq("conv_id", convId).eq("user_id", MY_UID).then(function(){}, function(){}); } catch(e) {}
   }
+  conversationsState = (getConversations() || []).filter(function(c){ return c.id !== convId; });
+  saveConversationsNow();
+  closeModal();
+  try { if (typeof closeConversation === "function") closeConversation(); } catch(e) {}
+  try { renderMessages(); } catch(e) {}
+  toast("🚪 Tu as quitté le groupe");
+}
+
+// Édite la description du groupe (locale + colonne conversations.description).
+function editGroupDescription(convId) {
+  var c = getConversations().find(function(x){ return x.id === convId; });
+  if (!c) return;
+  var d = prompt("Description du groupe :", c.groupDesc || "");
+  if (d == null) return;
+  c.groupDesc = d.trim();
+  saveConversations();
+  if (typeof supa !== "undefined" && supa && window._supaReal) {
+    try { supa.from("conversations").update({ description: c.groupDesc }).eq("id", convId).then(function(){}, function(){}); } catch(e) {}
+  }
+  _renderGroupMembersModal(convId);
+  toast("📝 Description mise à jour");
 }
 
 function sendMessage(convId) {
