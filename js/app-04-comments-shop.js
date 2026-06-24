@@ -1706,6 +1706,7 @@ function renderConvFpThread(c, displayName) {
         '<button style="width:34px;height:34px;border-radius:50%;background:' + (isMe?'rgba(255,255,255,0.2)':'rgba(139,92,246,0.12)') + ';border:none;color:' + (isMe?'#fff':'var(--accent)') + ';cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center;flex-shrink:0;" onclick="_playVoiceById(\'' + aid + '\')" id="pb_' + aid + '">▶</button>' +
         '<div style="flex:1;height:28px;background:' + waveBg + ';border-radius:8px;overflow:hidden;cursor:pointer;" onclick="_playVoiceById(\'' + aid + '\')"><div id="wf_' + aid + '" style="height:100%;background:' + waveFill + ';border-radius:8px;width:0%;transition:width 0.15s;"></div></div>' +
         '<span id="dur_' + aid + '" style="font-size:11px;opacity:0.75;flex-shrink:0;min-width:30px;text-align:right;">' + vDurStr + '</span>' +
+        '<button class="voice-speed-btn" onclick="_cycleVoiceSpeed()" style="flex-shrink:0;background:' + (isMe?'rgba(255,255,255,0.18)':'rgba(139,92,246,0.12)') + ';border:none;color:' + (isMe?'#fff':'var(--accent)') + ';font-size:10px;font-weight:800;border-radius:8px;padding:2px 6px;cursor:pointer;">' + (((window._voiceSpeed||1) % 1 === 0) ? (window._voiceSpeed||1) : String(window._voiceSpeed).replace(".",",")) + '×</button>' +
         '</div>';
     } else if (m.docData) {
       isMedia = true;
@@ -2044,6 +2045,7 @@ function _playVoiceById(aid) {
     window[audioKey] = new Audio(src);
   }
   var audio = window[audioKey];
+  audio.playbackRate = window._voiceSpeed || 1; // vitesse de lecture choisie
   if (!audio.paused) {
     audio.pause();
     if (pb) pb.textContent = '▶';
@@ -2065,6 +2067,17 @@ function _playVoiceById(aid) {
       }
     }, 150);
   }).catch(function() { if (pb) pb.textContent = '▶'; });
+}
+
+// Vitesse de lecture des messages vocaux : cycle 1× → 1,5× → 2×.
+function _cycleVoiceSpeed(btnId) {
+  var cur = window._voiceSpeed || 1;
+  var next = cur === 1 ? 1.5 : (cur === 1.5 ? 2 : 1);
+  window._voiceSpeed = next;
+  // Applique à tous les vocaux en cours de lecture.
+  Object.keys(window).forEach(function(k){ if (k.indexOf("_aud_") === 0 && window[k] && typeof window[k].playbackRate !== "undefined") { try { window[k].playbackRate = next; } catch(e) {} } });
+  // Met à jour tous les boutons de vitesse affichés.
+  document.querySelectorAll(".voice-speed-btn").forEach(function(b){ b.textContent = (next % 1 === 0 ? next : next.toString().replace(".", ",")) + "×"; });
 }
 
 function _loadMoreMsgs(convId) {

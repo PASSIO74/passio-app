@@ -702,6 +702,36 @@ function triggerAttach(type) {
   }
 }
 
+// Compresse/redimensionne une image (File) en JPEG via canvas avant l'envoi.
+// Évite d'uploader des photos de plusieurs Mo (quota + egress Storage). Renvoie
+// une Promise<dataURL>. Référencée par handleAttachFile (était fantôme → la
+// compression ne s'exécutait jamais).
+function passioCompressImage(file, maxDim, quality) {
+  maxDim = maxDim || 1280; quality = quality || 0.72;
+  return new Promise(function (resolve, reject) {
+    try {
+      var url = URL.createObjectURL(file);
+      var img = new Image();
+      img.onload = function () {
+        try {
+          var w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+          var scale = Math.min(1, maxDim / Math.max(w, h));
+          var cw = Math.max(1, Math.round(w * scale)), ch = Math.max(1, Math.round(h * scale));
+          var canvas = document.createElement("canvas");
+          canvas.width = cw; canvas.height = ch;
+          canvas.getContext("2d").drawImage(img, 0, 0, cw, ch);
+          var durl = canvas.toDataURL("image/jpeg", quality);
+          URL.revokeObjectURL(url);
+          // Si la compression échoue à réduire (petite image déjà légère), on garde.
+          resolve(durl);
+        } catch (e) { URL.revokeObjectURL(url); reject(e); }
+      };
+      img.onerror = function (e) { URL.revokeObjectURL(url); reject(e); };
+      img.src = url;
+    } catch (e) { reject(e); }
+  });
+}
+
 // Convertit un data URL en File (pour ré-injecter une image compressée).
 function _passioDataUrlToFile(durl, name) {
   var parts = durl.split(",");
@@ -1337,11 +1367,35 @@ function openFullImg(src) {
   if (old) old.remove();
   var v = document.createElement("div");
   v.id = "fullImgViewer";
-  v.style.cssText = "position:fixed;inset:0;z-index:99999;background:rgba(10,6,30,0.92);display:flex;align-items:center;justify-content:center;cursor:zoom-out;backdrop-filter:blur(6px);animation:fadeIn .2s ease;";
-  v.innerHTML = '<img src="' + src.replace(/"/g, "&quot;") + '" style="max-width:94vw;max-height:90vh;border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,0.6);" alt=""/>' +
-    '<button aria-label="Fermer" style="position:absolute;top:max(16px,env(safe-area-inset-top));right:16px;width:38px;height:38px;border-radius:50%;border:none;background:rgba(255,255,255,0.14);color:#fff;font-size:20px;cursor:pointer;">✕</button>';
-  v.onclick = function () { v.remove(); };
+  v.style.cssText = "position:fixed;inset:0;z-index:99999;background:rgba(10,6,30,0.92);display:flex;align-items:center;justify-content:center;backdrop-filter:blur(6px);animation:fadeIn .2s ease;overflow:hidden;touch-action:none;";
+  var esc = src.replace(/"/g, "&quot;");
+  v.innerHTML = '<img id="_fiv_img" src="' + esc + '" style="max-width:94vw;max-height:90vh;border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,0.6);transition:transform .15s ease;will-change:transform;" alt=""/>' +
+    '<div style="position:absolute;top:max(16px,env(safe-area-inset-top));right:16px;display:flex;gap:8px;">' +
+      '<button id="_fiv_dl" aria-label="Télécharger" style="width:38px;height:38px;border-radius:50%;border:none;background:rgba(255,255,255,0.14);color:#fff;font-size:17px;cursor:pointer;">⬇️</button>' +
+      '<button id="_fiv_close" aria-label="Fermer" style="width:38px;height:38px;border-radius:50%;border:none;background:rgba(255,255,255,0.14);color:#fff;font-size:20px;cursor:pointer;">✕</button>' +
+    '</div>' +
+    '<div style="position:absolute;bottom:max(14px,env(safe-area-inset-bottom));left:0;right:0;text-align:center;color:rgba(255,255,255,0.6);font-size:12px;pointer-events:none;">Double-tap pour zoomer · glisser pour déplacer</div>';
   document.body.appendChild(v);
+  var img = v.querySelector("#_fiv_img");
+  var scale = 1, tx = 0, ty = 0, dragging = false, sx = 0, sy = 0, lastTap = 0;
+  function apply() { img.style.transform = "translate(" + tx + "px," + ty + "px) scale(" + scale + ")"; img.style.cursor = scale > 1 ? "grab" : "zoom-in"; }
+  function reset() { scale = 1; tx = 0; ty = 0; apply(); }
+  v.querySelector("#_fiv_close").onclick = function (e) { e.stopPropagation(); v.remove(); };
+  v.querySelector("#_fiv_dl").onclick = function (e) { e.stopPropagation(); try { var a = document.createElement("a"); a.href = src; a.download = "passio_image"; a.click(); } catch (err) {} };
+  // Fond cliqué (hors image) → fermer.
+  v.addEventListener("click", function (e) { if (e.target === v) v.remove(); });
+  // Double-tap / double-clic → zoom toggle.
+  img.addEventListener("click", function (e) {
+    e.stopPropagation();
+    var now = Date.now();
+    if (now - lastTap < 300) { if (scale === 1) { scale = 2.5; } else { reset(); return; } apply(); }
+    lastTap = now;
+  });
+  // Glisser quand zoomé → déplacer.
+  img.addEventListener("pointerdown", function (e) { if (scale === 1) return; dragging = true; sx = e.clientX - tx; sy = e.clientY - ty; try { img.setPointerCapture(e.pointerId); } catch (err) {} });
+  img.addEventListener("pointermove", function (e) { if (!dragging) return; tx = e.clientX - sx; ty = e.clientY - sy; img.style.transition = "none"; apply(); });
+  img.addEventListener("pointerup", function () { dragging = false; img.style.transition = "transform .15s ease"; });
+  apply();
 }
 
 // FIX 6 — Messages vocaux : le rendu (lecteur, waveform) existait
