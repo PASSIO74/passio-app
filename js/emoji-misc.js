@@ -234,20 +234,31 @@ function likeComment(postId, commentId, event) {
   if (!comment.replies) comment.replies = [];
   if (!comment.emojis) comment.emojis = [];
 
-  comment.likes = (comment.likes || 0) + 1;
-  comment.likedBy.push(state.user?.id || "me");
-  _diag("✅ Like added: " + comment.likes + " likes");
+  var meId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : (state.user?.id || "me");
+  var already = comment.likedBy.indexOf(meId) > -1;
+  if (already) {
+    comment.likedBy = comment.likedBy.filter(function(x){ return x !== meId; });
+    comment.likes = Math.max(0, (comment.likes || 1) - 1);
+    if (typeof supaCommentRemoveLike === "function") supaCommentRemoveLike(commentId);
+  } else {
+    comment.likes = (comment.likes || 0) + 1;
+    comment.likedBy.push(meId);
+    if (typeof supaCommentInteract === "function") supaCommentInteract(commentId, postId, "like", "");
+    // Notifie l'auteur du commentaire (interaction cross-compte).
+    if (comment.authorId && comment.authorId !== meId && comment.fromSupabase && typeof supaInsertNotif === "function") {
+      try { supaInsertNotif(comment.authorId, "like", postId, "a aimé ton commentaire"); } catch(e) {}
+    }
+  }
+  _diag("✅ Like toggle: " + comment.likes + " likes");
   saveState();
-  if (typeof saveConversations === 'function') saveConversations();
 
   // Update visuel du like
   var commentEl = document.querySelector('[data-commentid="' + commentId + '"]');
   if (commentEl) {
     var likeBtn = commentEl.querySelector('.comment-actions .comment-action');
     if (likeBtn) {
-      likeBtn.classList.add('liked');
-      likeBtn.innerHTML = '❤️ ' + comment.likes;
-      _diag("🎨 Like button updated visually");
+      likeBtn.classList.toggle('liked', !already);
+      likeBtn.innerHTML = (already ? '🤍 ' : '❤️ ') + comment.likes;
     }
   }
   return false;
@@ -283,10 +294,16 @@ function replyToComment(postId, commentId, authorName, event) {
     if (!comment.likedBy) comment.likedBy = [];
     if (!comment.emojis) comment.emojis = [];
 
-    var newReply = { id: "reply_" + Date.now(), authorId: state.user?.id || "me", text: replyText, createdAt: Date.now() };
+    var _meId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : (state.user?.id || "me");
+    var newReply = { id: "reply_" + Date.now(), authorId: _meId, text: replyText, createdAt: Date.now() };
     comment.replies.push(newReply);
     _diag("✅ Reply added");
-    if (typeof saveConversations === 'function') saveConversations();
+    saveState();
+    // Sync Supabase → la réponse apparaît chez tous les comptes.
+    if (typeof supaCommentInteract === "function") supaCommentInteract(commentId, postId, "reply", replyText);
+    if (comment.authorId && comment.authorId !== _meId && comment.fromSupabase && typeof supaInsertNotif === "function") {
+      try { supaInsertNotif(comment.authorId, "comment", postId, "a répondu à ton commentaire"); } catch(e) {}
+    }
     inputDiv.remove();
 
     // Créer ou mettre à jour le div replies
@@ -744,32 +761,27 @@ function addEmojiToComment(postId, commentId, emoji) {
   var comment = (post.comments || []).find(c => c.id === commentId);
   if (!comment) return false;
 
-  // Initialiser replies si nécessaire
-  if (!comment.replies) comment.replies = [];
+  // Réaction emoji = ajout à comment.emojis (l'array rendu en badges, app-02).
+  if (!comment.emojis) comment.emojis = [];
+  if (!comment.replies) comment.replies = []; // garde (le bloc d'affichage ci-dessous l'utilise)
+  comment.emojis.push(emoji);
+  saveState();
+  // Sync Supabase → la réaction emoji apparaît chez tous les comptes.
+  if (typeof supaCommentInteract === "function") supaCommentInteract(commentId, postId, "emoji", emoji);
+  console.log("✅ Emoji reaction added + synced:", emoji);
 
-  // Chercher si "Toi" (ou l'utilisateur actuel) a déjà une réaction emoji
-  var currentUserEmojis = comment.replies.find(r => r.type === "emoji_reaction" && r.authorId === (state.user?.id || "me"));
-
-  if (currentUserEmojis) {
-    // Ajouter l'emoji à la réaction existante
-    if (!currentUserEmojis.text.includes(emoji)) {
-      currentUserEmojis.text += " " + emoji;
+  // Affichage immédiat de l'emoji dans la zone dédiée du commentaire.
+  try {
+    var ediv = document.getElementById("emojis-" + commentId);
+    if (ediv) {
+      ediv.style.display = "block";
+      var inner = ediv.querySelector("div") || ediv;
+      var sp = document.createElement("span");
+      sp.style.cssText = "font-size:20px;padding:4px 8px;background:var(--bg-soft);border-radius:6px;";
+      sp.textContent = emoji;
+      inner.appendChild(sp);
     }
-    console.log("✅ Emoji added to existing reaction:", currentUserEmojis.text);
-  } else {
-    // Créer une nouvelle réaction emoji
-    var reactionReply = {
-      id: "emoji_" + commentId + "_" + Math.random().toString(36).substr(2, 9),
-      authorId: state.user?.id || "me",
-      text: emoji,
-      type: "emoji_reaction",
-      createdAt: Date.now(),
-      likes: 0,
-      likedBy: []
-    };
-    comment.replies.push(reactionReply);
-    console.log("✅ New emoji reaction added:", emoji);
-  }
+  } catch(e) {}
 
   // Mettre à jour l'affichage des replies
   var commentElement = document.querySelector('[data-commentid="' + commentId + '"]');

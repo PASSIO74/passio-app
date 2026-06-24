@@ -219,15 +219,19 @@ async function openComments(postId) {
           .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
         // Mettre à jour le post local
         post.comments = merged;
+        // Hydrate les interactions cross-compte (likes/réponses/emojis) puis re-rend.
+        if (typeof hydrateCommentInteractions === "function") {
+          try { await hydrateCommentInteractions(post); } catch(e) {}
+        }
         const box = document.getElementById("commentsBox");
         if (box) {
-          box.innerHTML = merged.length
-            ? _renderCommentsList(merged, postId)
+          box.innerHTML = post.comments.length
+            ? _renderCommentsList(post.comments, postId)
             : '<div class="empty"><div class="empty-icon">💭</div><div class="empty-title">Sois le premier à réagir</div></div>';
         }
         // Mettre à jour le titre
         const title = document.querySelector(".modal-title");
-        if (title) title.textContent = `Discussion (${merged.length})`;
+        if (title) title.textContent = `Discussion (${post.comments.length})`;
       }
     } catch(e) {}
   } else {
@@ -247,8 +251,9 @@ function submitComment(postId) {
   if (!post.comments) post.comments = [];
   const realAuthorId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
   const p = currentProfile();
+  const _cid = "c_" + uid(); // id aligné local ⇄ Supabase (cf. supaAddComment)
   post.comments.unshift({
-    id: uid(), authorId: realAuthorId,
+    id: _cid, authorId: realAuthorId,
     authorName: p?.name || state.user.name || "Moi",
     authorEmoji: p?.emoji || "✨",
     text, content: text, createdAt: Date.now(),
@@ -260,7 +265,7 @@ function submitComment(postId) {
   grantReward("comment");
   // Sync avec Supabase
   if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
-    supaAddComment(postId, text);
+    supaAddComment(postId, text, _cid);
     // Notifier l'auteur du post
     const commentedPost = findPostAnywhere(postId);
     if (commentedPost && commentedPost.authorId && commentedPost.authorId !== MY_UID && commentedPost.fromSupabase) {

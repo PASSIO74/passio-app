@@ -2226,14 +2226,66 @@ async function supaGetLikeCount(postId) {
 }
 
 // ---- COMMENTAIRES ----
-async function supaAddComment(postId, content) {
+async function supaAddComment(postId, content, commentId) {
   try {
     await supaUpsertProfile();
     await supa.from("post_comments").insert({
-      id: "c_" + uid(), post_id: postId, author_id: MY_UID, content,
+      // ⚠️ id ALIGNÉ avec le commentaire local (commentId) pour pouvoir rattacher
+      // les interactions cross-compte (like/réponse/emoji) au même id partout.
+      id: commentId || ("c_" + uid()), post_id: postId, author_id: MY_UID, content,
       created_at: new Date().toISOString(),
     });
   } catch(e) { console.warn("Comment error:", e); }
+}
+
+// ───────── Interactions sur les commentaires (like / réponse / emoji) ─────────
+// Stockées dans comment_interactions (RLS owner) → propagées à tous les comptes.
+async function supaCommentInteract(commentId, postId, kind, payload) {
+  try {
+    if (typeof supa === "undefined" || !supa || !MY_UID || !window._supaReal) return;
+    await supa.from("comment_interactions").insert({
+      id: "ci_" + uid(), comment_id: commentId, post_id: postId || null,
+      user_id: MY_UID, kind: kind, payload: payload || null, created_at: new Date().toISOString(),
+    });
+  } catch(e) {}
+}
+async function supaCommentRemoveLike(commentId) {
+  try {
+    if (typeof supa === "undefined" || !supa || !MY_UID || !window._supaReal) return;
+    await supa.from("comment_interactions").delete().eq("comment_id", commentId).eq("user_id", MY_UID).eq("kind", "like");
+  } catch(e) {}
+}
+// Charge les interactions de plusieurs commentaires → { [cid]: {likes,likedBy,replies,emojis} }.
+async function supaLoadCommentInteractions(commentIds) {
+  var out = {};
+  try {
+    var uniq = [...new Set((commentIds || []).filter(Boolean))];
+    if (!uniq.length || typeof supa === "undefined" || !supa || !window._supaReal) return out;
+    var res = await supa.from("comment_interactions").select("comment_id,user_id,kind,payload,created_at").in("comment_id", uniq).order("created_at", { ascending: true });
+    (res.data || []).forEach(function(r){
+      var o = out[r.comment_id] || (out[r.comment_id] = { likes: 0, likedBy: [], replies: [], emojis: [] });
+      if (r.kind === "like") { o.likes++; o.likedBy.push(r.user_id); }
+      else if (r.kind === "reply") o.replies.push({ id: "srep_" + r.created_at, authorId: r.user_id, text: r.payload || "", createdAt: new Date(r.created_at + "Z").getTime() });
+      else if (r.kind === "emoji" && r.payload) o.emojis.push(r.payload);
+    });
+  } catch(e) {}
+  return out;
+}
+// Applique les interactions chargées sur les objets commentaires d'un post.
+async function hydrateCommentInteractions(post) {
+  try {
+    if (!post || !Array.isArray(post.comments) || !post.comments.length) return;
+    var ids = post.comments.map(function(c){ return c.id; });
+    var map = await supaLoadCommentInteractions(ids);
+    post.comments.forEach(function(c){
+      var info = map[c.id]; if (!info) return;
+      c.likes = info.likes || 0;
+      c.likedBy = info.likedBy || [];
+      c.emojis = info.emojis || [];
+      // Réponses serveur (texte) — remplace la liste (source de vérité partagée).
+      c.replies = (info.replies || []).slice();
+    });
+  } catch(e) {}
 }
 
 // Résout des profils (username/emoji/color) par ids en UNE requête, SANS embed
