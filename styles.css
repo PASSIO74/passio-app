@@ -6591,6 +6591,14 @@
     .csetting-toggle { width:44px; height:24px; border-radius:12px; background:var(--border); position:relative; cursor:pointer; transition:background 200ms; flex-shrink:0; }
     .csetting-toggle.on { background:var(--accent); }
     .csetting-toggle::after { content:''; position:absolute; width:20px; height:20px; border-radius:50%; background:#fff; top:2px; left:2px; transition:left 200ms; box-shadow:0 2px 6px rgba(0,0,0,0.2); }
+    /* Citation (réponse) dans une bulle */
+    .conv-reply-quote { display:flex; flex-direction:column; gap:1px; padding:5px 8px; margin:0 0 5px; border-left:3px solid currentColor; background:rgba(127,127,127,0.14); border-radius:6px; cursor:pointer; max-width:240px; }
+    .conv-reply-name { font-size:11px; font-weight:800; opacity:0.95; }
+    .conv-reply-text { font-size:12px; opacity:0.8; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    /* Réactions sous une bulle */
+    .conv-reactions { display:flex; gap:4px; margin:-2px 2px 2px; }
+    .conv-reactions.me { justify-content:flex-end; }
+    .conv-react-badge { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:1px 7px; font-size:12px; box-shadow:0 1px 3px rgba(0,0,0,0.12); }
     .csetting-toggle.on::after { left:22px; }
     /* Files attachments tab */
     .conv-files-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; padding:12px; }

@@ -2734,6 +2734,24 @@ async function _handleIncomingConvMessage(r) {
   if (r.from_id === MY_UID) return; // nos propres messages sont déjà dans l'UI (optimistic)
   if (typeof isBlocked === "function" && isBlocked(r.from_id)) return; // expéditeur bloqué (modération)
 
+  // Tombstone « supprimer pour tous » : retire le message cible au lieu d'en ajouter un.
+  try {
+    if (r.content && typeof r.content === "string" && r.content.charAt(0) === "{") {
+      var _dd = JSON.parse(r.content);
+      if (_dd && _dd.type === "del" && _dd.target) {
+        var _cv = getConversations().find(function(x){ return x.id === r.conv_id || (!x.isGroup && x.userId === r.from_id); });
+        if (_cv && _cv.messages) {
+          _cv.messages = _cv.messages.filter(function(x){ return x.id !== _dd.target; });
+          conversationsState = getConversations();
+          saveConversations();
+          try { if (window._openedConvId === (_cv.id) || window._openedConvId === r.conv_id) { var fp = document.getElementById("conv-fullpage"); renderConvFpThread(_cv, fp ? fp.getAttribute("data-display-name") : (_cv.userName||"")); } } catch(e) {}
+          try { renderMessages(); } catch(e) {}
+        }
+        return;
+      }
+    }
+  } catch(e) {}
+
   var convs = getConversations();
   var conv = convs.find(c => c.id === r.conv_id);
 

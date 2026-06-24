@@ -1424,6 +1424,8 @@ function _toggleArchiveConv(convId) {
 async function openConversation(convId) {
   const sp = document.getElementById("convSettingsPanel");
   if (sp) { sp.classList.remove("open"); sp.style.transform = "translateX(100%)"; sp.style.display = "none"; sp.style.pointerEvents = "none"; }
+  // Réinitialise un éventuel contexte de réponse d'une conversation précédente.
+  if (window._replyTo) { window._replyTo = null; try { _renderReplyBar(); } catch(e) {} }
   window._openedConvId = convId;
   var convs = getConversations();
   var c = convs.find(function(x) { return x.id === convId; });
@@ -1715,10 +1717,27 @@ function renderConvFpThread(c, displayName) {
       ? ' style="background:transparent;padding:0;box-shadow:none;' + extraBubbleStyle + '"'
       : (extraBubbleStyle ? ' style="' + extraBubbleStyle + '"' : '');
 
+    // Bloc citation (réponse à un message)
+    var replyHtml = "";
+    if (m.replyTo && (m.replyTo.t || m.replyTo.n)) {
+      replyHtml = '<div class="conv-reply-quote" onclick="_jumpToMsg(\'' + (m.replyTo.id||'') + '\')">' +
+        '<span class="conv-reply-name">' + escapeHtml(m.replyTo.n || '') + '</span>' +
+        '<span class="conv-reply-text">' + escapeHtml((m.replyTo.t || '📎 Pièce jointe').slice(0,80)) + '</span></div>';
+    }
+
+    // Réactions sous la bulle
+    var reactHtml = "";
+    if (m.reactions && Object.keys(m.reactions).length) {
+      reactHtml = '<div class="conv-reactions ' + (isMe?'me':'them') + '">' +
+        Object.keys(m.reactions).map(function(e){ return '<span class="conv-react-badge">' + e + (m.reactions[e]>1?(' '+m.reactions[e]):'') + '</span>'; }).join('') +
+        '</div>';
+    }
+
     parts.push(
-      '<div class="conv-bubble-wrap ' + (isMe?'me':'them') + '">' +
+      '<div class="conv-bubble-wrap ' + (isMe?'me':'them') + '" data-mid="' + (m.id||'') + '" data-me="' + (isMe?'1':'0') + '">' +
         senderLine +
-        '<div class="conv-bubble ' + (isMe?'me':'them') + '"' + bubbleStyle + '>' + content + '</div>' +
+        '<div class="conv-bubble ' + (isMe?'me':'them') + '"' + bubbleStyle + '>' + replyHtml + content + '</div>' +
+        reactHtml +
         timeStr +
       '</div>'
     );
@@ -1726,6 +1745,182 @@ function renderConvFpThread(c, displayName) {
 
   thread.innerHTML = parts.join('');
   thread.scrollTop = thread.scrollHeight;
+  _wireMsgActions(thread, c.id);
+}
+
+// Attache (une fois par fil) l'ouverture du menu d'actions sur appui long / clic droit
+// d'une bulle. Délégué sur le conteneur → robuste au re-render.
+function _wireMsgActions(thread, convId) {
+  if (!thread || thread._msgActionsWired === convId) {
+    if (thread) thread._curConvId = convId;
+    return;
+  }
+  thread._msgActionsWired = convId;
+  thread._curConvId = convId;
+  var pressTimer = null, moved = false;
+  function bubbleMid(t) { var w = t && t.closest ? t.closest(".conv-bubble-wrap") : null; return w ? w.getAttribute("data-mid") : null; }
+  thread.addEventListener("contextmenu", function(e) {
+    var mid = bubbleMid(e.target); if (!mid) return;
+    e.preventDefault(); _openMsgActions(thread._curConvId, mid);
+  });
+  thread.addEventListener("touchstart", function(e) {
+    var mid = bubbleMid(e.target); if (!mid) return;
+    moved = false;
+    pressTimer = setTimeout(function(){ if (!moved) _openMsgActions(thread._curConvId, mid); }, 480);
+  }, { passive: true });
+  thread.addEventListener("touchmove", function(){ moved = true; clearTimeout(pressTimer); }, { passive: true });
+  thread.addEventListener("touchend", function(){ clearTimeout(pressTimer); }, { passive: true });
+}
+
+// Scroll jusqu'au message cité (surbrillance brève).
+function _jumpToMsg(mid) {
+  if (!mid) return;
+  var el = document.querySelector('.conv-bubble-wrap[data-mid="' + mid + '"]');
+  if (!el) { toast("Message introuvable (peut-être plus ancien)"); return; }
+  el.scrollIntoView({ behavior: "smooth", block: "center" });
+  var b = el.querySelector(".conv-bubble");
+  if (b) { b.style.transition = "box-shadow .3s"; b.style.boxShadow = "0 0 0 3px var(--accent)"; setTimeout(function(){ b.style.boxShadow = ""; }, 1200); }
+}
+
+// ───────── Actions sur un message (appui long) ─────────
+function _msgById(convId, msgId) {
+  var c = getConversations().find(function(x){ return x.id === convId; });
+  if (!c) return null;
+  return { c: c, m: (c.messages || []).find(function(x){ return x.id === msgId; }) };
+}
+function _msgPreviewText(m) {
+  if (!m) return "";
+  if (m.text && !/^\{/.test(m.text)) return m.text;
+  if (m.gif) return "🎞 GIF"; if (m.img) return "📷 Photo"; if (m.video) return "🎬 Vidéo";
+  if (m.voiceData) return "🎙 Message vocal"; if (m.fileUrl || m.docData) return "📄 " + (m.fileName || "Fichier");
+  if (m.location) return "📍 Position"; return m.text || "Message";
+}
+
+function _openMsgActions(convId, msgId) {
+  var r = _msgById(convId, msgId); if (!r || !r.m) return;
+  var m = r.m, isMe = (m.from === "me");
+  var reacts = ["❤️","😂","👍","😮","😢","🔥"];
+  var reactRow = '<div style="display:flex;justify-content:space-around;padding:6px 4px 12px;">' +
+    reacts.map(function(e){ return '<span onclick="_reactAndClose(\'' + convId + '\',\'' + msgId + '\',\'' + e + '\')" style="font-size:26px;cursor:pointer;">' + e + '</span>'; }).join('') + '</div>';
+  function item(icon, label, fn, danger) {
+    return '<div class="csetting-item" onclick="' + fn + '"><div class="csetting-icon">' + icon + '</div>' +
+      '<div class="csetting-label"' + (danger?' style="color:#ef4444;"':'') + '>' + label + '</div></div>';
+  }
+  var canCopy = m.text && !/^\{/.test(m.text);
+  openModal(
+    '<div class="modal-handle"></div>' + reactRow +
+    item('↩️', 'Répondre', "_setReplyTo('" + convId + "','" + msgId + "')") +
+    (canCopy ? item('📋', 'Copier le texte', "_copyMsg('" + convId + "','" + msgId + "')") : '') +
+    item('↪️', 'Transférer', "_forwardPick('" + convId + "','" + msgId + "')") +
+    item('🗑️', 'Supprimer pour moi', "_deleteMsgForMe('" + convId + "','" + msgId + "')", true) +
+    (isMe ? item('🗑️', 'Supprimer pour tous', "_deleteMsgForAll('" + convId + "','" + msgId + "')", true) : '')
+  );
+}
+
+function _reactAndClose(convId, msgId, emoji) { closeModal(); _toggleReaction(convId, msgId, emoji); }
+
+function _copyMsg(convId, msgId) {
+  var r = _msgById(convId, msgId); if (!r || !r.m) return;
+  var t = r.m.text || "";
+  try { navigator.clipboard.writeText(t); toast("📋 Copié"); } catch(e) { toast("Copie impossible"); }
+  closeModal();
+}
+
+// Répondre : mémorise la cible et affiche un bandeau au-dessus du champ de saisie.
+function _setReplyTo(convId, msgId) {
+  closeModal();
+  var r = _msgById(convId, msgId); if (!r || !r.m) return;
+  var m = r.m;
+  window._replyTo = { convId: convId, id: msgId, t: _msgPreviewText(m).slice(0,80), n: (m.from === "me" ? "Toi" : (m.fromName || r.c.userName || "Lui")) };
+  _renderReplyBar();
+  var inp = document.getElementById("convFpInput"); if (inp) inp.focus();
+}
+function _cancelReply() { window._replyTo = null; _renderReplyBar(); }
+function _renderReplyBar() {
+  var bar = document.getElementById("convReplyBar");
+  var rt = window._replyTo;
+  if (!rt) { if (bar) bar.remove(); return; }
+  var toolbar = document.querySelector("#conv-fullpage .conv-toolbar");
+  if (!toolbar) return;
+  if (!bar) { bar = document.createElement("div"); bar.id = "convReplyBar"; toolbar.parentNode.insertBefore(bar, toolbar); }
+  bar.innerHTML = '<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--bg-soft);border-left:3px solid var(--accent);border-radius:8px;margin:0 8px 6px;">' +
+    '<div style="flex:1;min-width:0;"><div style="font-size:11px;font-weight:800;color:var(--accent);">↩️ Réponse à ' + escapeHtml(rt.n) + '</div>' +
+    '<div style="font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(rt.t) + '</div></div>' +
+    '<span onclick="_cancelReply()" style="font-size:18px;cursor:pointer;color:var(--muted);padding:0 4px;">✕</span></div>';
+}
+
+// Supprimer pour moi : retrait local uniquement.
+function _deleteMsgForMe(convId, msgId) {
+  closeModal();
+  var r = _msgById(convId, msgId); if (!r || !r.m) return;
+  r.c.messages = (r.c.messages || []).filter(function(x){ return x.id !== msgId; });
+  saveConversations();
+  var fp = document.getElementById("conv-fullpage");
+  renderConvFpThread(r.c, fp ? fp.getAttribute("data-display-name") : "");
+  try { renderMessages(); } catch(e) {}
+  toast("Message supprimé");
+}
+
+// Supprimer pour tous (mes messages) : retrait local + suppression Supabase +
+// tombstone diffusé au destinataire (géré par _handleIncomingConvMessage type:del).
+function _deleteMsgForAll(convId, msgId) {
+  closeModal();
+  var r = _msgById(convId, msgId); if (!r || !r.m || r.m.from !== "me") return;
+  r.c.messages = (r.c.messages || []).filter(function(x){ return x.id !== msgId; });
+  saveConversations();
+  var fp = document.getElementById("conv-fullpage");
+  renderConvFpThread(r.c, fp ? fp.getAttribute("data-display-name") : "");
+  try { renderMessages(); } catch(e) {}
+  if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
+    try { supa.from("conv_messages").delete().eq("id", msgId).then(function(){}, function(){}); } catch(e) {}
+    // Tombstone : prévient l'autre client de retirer le message.
+    try {
+      var tomb = JSON.stringify({ type: "del", target: msgId, text: "🗑 Message supprimé" });
+      supa.from("conv_messages").insert({ id: "del_" + uid(), conv_id: convId, from_id: MY_UID, content: tomb, created_at: new Date().toISOString() }).then(function(){}, function(){});
+    } catch(e) {}
+  }
+  toast("Message supprimé pour tous");
+}
+
+// Transférer : choisir une conversation cible.
+function _forwardPick(convId, msgId) {
+  closeModal();
+  window._forwardSrc = { convId: convId, msgId: msgId };
+  var convs = getConversations().filter(function(c){ return !c.archived; }).sort(function(a,b){ return (b.lastAt||0)-(a.lastAt||0); }).slice(0, 30);
+  var rows = convs.map(function(c){
+    var name = c.isGroup ? (c.groupName || "Groupe") : (c.userName || "Conversation");
+    return '<div class="csetting-item" onclick="_forwardTo(\'' + c.id + '\')"><div class="csetting-icon">' + (c.isGroup?'👥':'💬') + '</div>' +
+      '<div class="csetting-label">' + escapeHtml(name) + '</div></div>';
+  }).join("");
+  openModal('<div class="modal-handle"></div><div class="modal-title">↪️ Transférer vers…</div>' +
+    '<div style="max-height:340px;overflow-y:auto;margin-top:8px;">' + (rows || '<div style="padding:20px;text-align:center;color:var(--muted);">Aucune conversation</div>') + '</div>');
+}
+
+function _forwardTo(targetConvId) {
+  closeModal();
+  var src = window._forwardSrc; if (!src) return;
+  var r = _msgById(src.convId, src.msgId); if (!r || !r.m) return;
+  var m = r.m;
+  var convs = getConversations();
+  var target = convs.find(function(x){ return x.id === targetConvId; }); if (!target) return;
+  // Reconstruit un envelope de contenu selon le type, puis insère localement + Supabase.
+  var content = null, localMsg = { id: "msg_" + uid(), from: "me", at: Date.now() };
+  if (m.img || m.video) { content = { type: "media", url: m.img || m.video, fileType: m.video ? "video/mp4" : "image/jpeg", filename: "média", text: m.video ? "🎬 Vidéo" : "📷 Photo" }; if (m.video) localMsg.video = m.video; else localMsg.img = m.img; }
+  else if (m.gif) { content = { type: "gif", url: m.gif, text: "🎞 GIF" }; localMsg.gif = m.gif; }
+  else if (m.fileUrl) { content = { type: "doc", url: m.fileUrl, filename: m.fileName || "Fichier", text: "📄 " + (m.fileName||"Fichier") }; localMsg.fileUrl = m.fileUrl; localMsg.fileName = m.fileName; localMsg.fileType = m.fileType; }
+  else if (m.location) { content = { type: "location", lat: m.location.lat, lng: m.location.lng, url: m.location.url, text: "📍 Position" }; localMsg.location = m.location; }
+  else { localMsg.text = m.text || ""; }
+  if (!target.messages) target.messages = [];
+  target.messages.push(localMsg);
+  target.lastAt = Date.now();
+  saveConversations();
+  if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
+    var raw = content ? JSON.stringify(content) : (localMsg.text || "");
+    var payload = (typeof _withSenderMeta === "function") ? _withSenderMeta(raw) : raw;
+    try { supa.from("conv_messages").insert({ id: localMsg.id, conv_id: targetConvId, from_id: MY_UID, content: payload, created_at: new Date().toISOString() }).then(function(){}, function(){}); } catch(e) {}
+  }
+  try { renderMessages(); } catch(e) {}
+  toast("↪️ Transféré");
 }
 
 // Décode le content JSON des messages média Supabase (type gif/media/audio/doc/location,
@@ -1746,6 +1941,7 @@ function applyMsgContentData(m, raw) {
     if (d.sp.n) m.fromName = d.sp.n;
     if (d.sp.e) m.fromEmoji = d.sp.e;
   }
+  if (d.rt && !m.replyTo) m.replyTo = d.rt; // contexte de réponse (cf. _setReplyTo)
   if (d.type === "gif" && !m.gif) {
     m.gif = d.url;
   } else if (d.type === "location" && !m.location) {
@@ -1887,12 +2083,16 @@ function sendMessageFp(convId, displayName) {
   var c = convs.find(function(x) { return x.id === convId; });
   if (!c) { console.error("sendMessageFp: conv not found:", convId); toast("Erreur : conversation introuvable"); return; }
 
-  // 5. Ajouter le message localement
+  // 5. Ajouter le message localement (+ contexte de réponse si actif)
   if (!c.messages) c.messages = [];
   var msgId = "msg_" + uid();
-  c.messages.push({ id: msgId, from: "me", text: txt, at: Date.now() });
+  var _localMsg = { id: msgId, from: "me", text: txt, at: Date.now() };
+  var _reply = (window._replyTo && window._replyTo.convId === convId) ? { id: window._replyTo.id, t: window._replyTo.t, n: window._replyTo.n } : null;
+  if (_reply) _localMsg.replyTo = _reply;
+  c.messages.push(_localMsg);
   c.lastAt = Date.now();
   saveConversations();
+  if (window._replyTo) { window._replyTo = null; try { _renderReplyBar(); } catch(e) {} }
 
   // 6. Afficher IMMÉDIATEMENT
   renderConvFpThread(c, displayName);
@@ -1908,6 +2108,7 @@ function sendMessageFp(convId, displayName) {
     // rejeté (WITH CHECK from_id = auth.uid()) — l'ancien ordre gaspillait une
     // requête par message. On garde le sans-from_id en fallback par prudence.
     var _content = _withSenderMeta(txt); // attache le profil actif (persona) au message
+    if (_reply) { try { var _cd = JSON.parse(_content); _cd.rt = _reply; _content = JSON.stringify(_cd); } catch(e) {} } // contexte de réponse
     supa.from("conv_messages")
       .insert({ id: msgId, conv_id: convId, from_id: MY_UID || null, content: _content, created_at: new Date().toISOString() })
       .then(function(res) {
