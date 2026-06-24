@@ -2564,8 +2564,11 @@ async function supaLoadMessages(convId) {
         at: new Date(r.created_at + "Z").getTime(),
       };
 
-      // Traiter content JSON — décodage partagé avec renderConvFpThread (app-04)
-      if (contentData) {
+      // Messages de contrôle (réaction / suppression) : pas de bulle, on les marque.
+      if (contentData && (contentData.type === "react" || contentData.type === "del")) {
+        msg._ctrl = contentData;
+      } else if (contentData) {
+        // Traiter content JSON — décodage partagé avec renderConvFpThread (app-04)
         applyMsgContentData(msg, r.content);
         _diag("supaLoadMessages: contenu média appliqué - " + contentData.type);
       }
@@ -2575,8 +2578,23 @@ async function supaLoadMessages(convId) {
 
     // S'assurer que les messages sont triés par timestamp
     messages.sort(function(a, b) { return (a.at || 0) - (b.at || 0); });
-    _diag("supaLoadMessages: ✅ " + messages.length + " messages traités");
-    return messages;
+
+    // Rejoue les événements de contrôle (réactions / suppressions) dans l'ordre,
+    // puis les exclut du fil (ils ne doivent pas s'afficher comme des bulles).
+    var ctrls = messages.filter(function(m){ return m._ctrl; });
+    var clean = messages.filter(function(m){ return !m._ctrl; });
+    if (ctrls.length) {
+      var byId = {}; clean.forEach(function(m){ byId[m.id] = m; });
+      ctrls.forEach(function(m){
+        var ev = m._ctrl;
+        if (ev.type === "del") { var i = clean.findIndex(function(x){ return x.id === ev.target; }); if (i >= 0) { delete byId[ev.target]; clean.splice(i,1); } }
+        else if (ev.type === "react" && ev.target) {
+          var tm = byId[ev.target]; if (tm) { tm.reactions = tm.reactions || {}; if (ev.op === "remove") { tm.reactions[ev.emoji] = (tm.reactions[ev.emoji]||1)-1; if (tm.reactions[ev.emoji] <= 0) delete tm.reactions[ev.emoji]; } else { tm.reactions[ev.emoji] = (tm.reactions[ev.emoji]||0)+1; } }
+        }
+      });
+    }
+    _diag("supaLoadMessages: ✅ " + clean.length + " messages traités");
+    return clean;
   } catch(e) {
     _diag("supaLoadMessages: EXCEPTION - " + e.message);
     console.error("supaLoadMessages exception:", e);
@@ -2627,7 +2645,7 @@ async function supaLoadMyConversations() {
     const [lastMsgsAll, membersAll] = await Promise.all([
       Promise.all(convIds.map(cid =>
         supa.from("conv_messages").select("id,conv_id,from_id,content,created_at,profiles(username,emoji,color,avatar_url)")
-          .eq("conv_id", cid).order("created_at", { ascending: false }).limit(1)
+          .eq("conv_id", cid).order("created_at", { ascending: false }).limit(5)
       )),
       Promise.all(convIds.map(cid =>
         supa.from("conv_members").select("conv_id,user_id,profiles(username,emoji,color,avatar_url)").eq("conv_id", cid)
@@ -2635,7 +2653,13 @@ async function supaLoadMyConversations() {
     ]);
 
     const result = convs.map((c, i) => {
-      const last = lastMsgsAll[i]?.data?.[0];
+      // Premier message NON de contrôle (on saute les événements react/del qui ne
+      // doivent pas servir d'aperçu de conversation).
+      const _recent = lastMsgsAll[i]?.data || [];
+      const last = _recent.find(function(mm){
+        if (!mm || typeof mm.content !== "string" || mm.content.charAt(0) !== "{") return true;
+        try { var t = JSON.parse(mm.content).type; return t !== "react" && t !== "del"; } catch(e) { return true; }
+      }) || _recent[0];
       const members = membersAll[i]?.data || [];
       // Identifier le partenaire de façon robuste. L'embed `profiles` peut être
       // null (pas de FK résolue) et la ligne conv_members de l'autre peut manquer
@@ -2765,14 +2789,18 @@ async function _handleIncomingConvMessage(r) {
   if (r.from_id === MY_UID) return; // nos propres messages sont déjà dans l'UI (optimistic)
   if (typeof isBlocked === "function" && isBlocked(r.from_id)) return; // expéditeur bloqué (modération)
 
-  // Tombstone « supprimer pour tous » : retire le message cible au lieu d'en ajouter un.
+  // Messages de contrôle (pas de bulle) : suppression « pour tous » et réactions.
   try {
     if (r.content && typeof r.content === "string" && r.content.charAt(0) === "{") {
       var _dd = JSON.parse(r.content);
-      if (_dd && _dd.type === "del" && _dd.target) {
+      if (_dd && (_dd.type === "del" || _dd.type === "react") && _dd.target) {
         var _cv = getConversations().find(function(x){ return x.id === r.conv_id || (!x.isGroup && x.userId === r.from_id); });
         if (_cv && _cv.messages) {
-          _cv.messages = _cv.messages.filter(function(x){ return x.id !== _dd.target; });
+          if (_dd.type === "del") {
+            _cv.messages = _cv.messages.filter(function(x){ return x.id !== _dd.target; });
+          } else if (typeof _applyReactionEvent === "function") {
+            _applyReactionEvent(_cv, _dd); // applique la réaction de l'autre
+          }
           conversationsState = getConversations();
           saveConversations();
           try { if (window._openedConvId === (_cv.id) || window._openedConvId === r.conv_id) { var fp = document.getElementById("conv-fullpage"); renderConvFpThread(_cv, fp ? fp.getAttribute("data-display-name") : (_cv.userName||"")); } } catch(e) {}

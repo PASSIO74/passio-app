@@ -1536,9 +1536,12 @@ async function openConversation(convId) {
       var remoteMap = {};
       remote.forEach(function(m) { if (m.id) remoteMap[m.id] = m; });
 
-      // REMPLACER les messages locaux par les messages Supabase quand ils existent
+      // REMPLACER les messages locaux par les messages Supabase quand ils existent.
+      // On conserve `myReact` (suivi de MA réaction, local) et le `status` d'envoi.
       var messages = (c2.messages || []).map(function(m) {
-        return remoteMap[m.id] || m; // Utiliser Supabase si disponible, sinon local
+        var rm = remoteMap[m.id];
+        if (rm) { if (m.myReact) rm.myReact = m.myReact; if (m.status && !rm.status) rm.status = m.status; return rm; }
+        return m;
       });
 
       // Ajouter les messages Supabase qui n'existent pas localement
@@ -2121,16 +2124,50 @@ function _toggleReaction(convId, msgId, emoji) {
   var m = (c.messages || []).find(x => x.id === msgId);
   if (!m) return;
   if (!m.reactions) m.reactions = {};
-  if (m.reactions[emoji]) {
-    m.reactions[emoji]--;
+  if (!m.myReact) m.myReact = {};
+  // On suit MA réaction séparément du total : sinon, réagir au même emoji qu'un
+  // autre membre l'aurait retiré au lieu d'ajouter la mienne.
+  var op;
+  if (m.myReact[emoji]) {
+    delete m.myReact[emoji];
+    m.reactions[emoji] = (m.reactions[emoji] || 1) - 1;
     if (m.reactions[emoji] <= 0) delete m.reactions[emoji];
+    op = "remove";
   } else {
+    m.myReact[emoji] = true;
     m.reactions[emoji] = (m.reactions[emoji] || 0) + 1;
+    op = "add";
   }
   saveConversations();
   const fp = document.getElementById("conv-fullpage");
   const displayName = fp ? fp.getAttribute("data-display-name") : "";
   renderConvFpThread(c, displayName);
+  // Diffuse la réaction à l'autre (persistée comme message de contrôle type:react).
+  _sendReaction(convId, msgId, emoji, op);
+}
+
+// Envoie un événement de réaction à Supabase (appliqué chez le destinataire par
+// _handleIncomingConvMessage, et rejoué au chargement via supaLoadMessages).
+function _sendReaction(convId, msgId, emoji, op) {
+  if (typeof supa === "undefined" || !supa || typeof MY_UID === "undefined" || !MY_UID || !window._supaReal) return;
+  try {
+    var content = JSON.stringify({ type: "react", target: msgId, emoji: emoji, op: op });
+    supa.from("conv_messages").insert({ id: "rx_" + uid(), conv_id: convId, from_id: MY_UID, content: content, created_at: new Date().toISOString() }).then(function(){}, function(){});
+  } catch(e) {}
+}
+
+// Applique un événement de réaction (reçu ou rejoué) à un message d'une conv.
+function _applyReactionEvent(c, ev) {
+  if (!c || !ev || !ev.target) return;
+  var tm = (c.messages || []).find(function(x){ return x.id === ev.target; });
+  if (!tm) return;
+  tm.reactions = tm.reactions || {};
+  if (ev.op === "remove") {
+    tm.reactions[ev.emoji] = (tm.reactions[ev.emoji] || 1) - 1;
+    if (tm.reactions[ev.emoji] <= 0) delete tm.reactions[ev.emoji];
+  } else {
+    tm.reactions[ev.emoji] = (tm.reactions[ev.emoji] || 0) + 1;
+  }
 }
 
 function sendMessageFp(convId, displayName) {
