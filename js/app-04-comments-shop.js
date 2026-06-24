@@ -1284,7 +1284,8 @@ function renderMessages() {
 
   // Masquer les conversations avec un utilisateur bloqué (modération)
   let filtered = convs.filter(c => !(typeof isBlocked === "function" && isBlocked(c.userId)))
-    .sort((a, b) => b.lastAt - a.lastAt);
+    // Épinglées d'abord, puis par date du dernier message.
+    .sort((a, b) => ((b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)) || (b.lastAt - a.lastAt));
 
   if (!filtered.length) {
     list.innerHTML = "";
@@ -1343,7 +1344,7 @@ function renderMessages() {
       <div class="msg-avatar" style="${avatarStyle}">${_convAvInner}</div>
       <div class="msg-body">
         <div class="msg-head">
-          <span class="msg-name">${escapeHtml(displayName)}</span>
+          <span class="msg-name">${c.pinned ? "📌 " : ""}${escapeHtml(displayName)}</span>
           <span class="msg-time">${lastMsg ? fmtMsgTime(c.lastAt) : ""}</span>
         </div>
         ${membresLine}
@@ -1440,6 +1441,8 @@ async function openConversation(convId) {
   }
 
   var thread = document.getElementById("convFpThread");
+  // Fond de conversation personnalisé (réglages → 🎨), sinon fond par défaut.
+  if (thread) thread.style.background = c.bg || "var(--bg-deep)";
 
   // Souscrire aux nouveaux messages en temps réel
   _supaConvSpecificChannel(convId, displayName);

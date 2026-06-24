@@ -1073,6 +1073,12 @@ function openConvSettings(convId) {
         '<div class="csetting-label">' + (c._muted ? 'Activer les notifications' : 'Couper les notifications') + '</div></div>' +
       '<div class="csetting-item" onclick="openConvFiles()">' +
         '<div class="csetting-icon">📎</div><div class="csetting-label">Pièces jointes & médias</div></div>' +
+      '<div class="csetting-item" onclick="_togglePinConv(\'' + convId + '\')">' +
+        '<div class="csetting-icon">📌</div><div class="csetting-label">' + (c.pinned ? 'Désépingler la conversation' : 'Épingler en haut de la liste') + '</div></div>' +
+      '<div class="csetting-item" onclick="_openConvBgPicker(\'' + convId + '\')">' +
+        '<div class="csetting-icon">🎨</div><div class="csetting-label">Fond de conversation</div></div>' +
+      (c.isGroup ? '<div class="csetting-item" onclick="closeConvSettings();pickGroupPhoto(\'' + convId + '\')">' +
+        '<div class="csetting-icon">🖼️</div><div class="csetting-label">Changer la photo du groupe</div></div>' : '') +
       '<div class="csetting-item" onclick="_markConvUnread(\'' + convId + '\')">' +
         '<div class="csetting-icon">📩</div><div class="csetting-label">Marquer comme non lu</div></div>' +
 
@@ -1207,6 +1213,65 @@ function _searchConv(convId) {
     bar.onclick = function(){ renderConvFpThread(c, dn); };
     thread.insertBefore(bar, thread.firstChild);
   }
+}
+
+// Épingler / désépingler : la conversation remonte en tête de liste (tri dans
+// renderMessages, qui place les .pinned en premier).
+function _togglePinConv(convId) {
+  var convs = getConversations();
+  var c = convs.find(function(x){ return x.id === convId; });
+  if (!c) return;
+  c.pinned = !c.pinned;
+  saveConversations();
+  closeConvSettings();
+  try { renderMessages(); } catch(e) {}
+  toast(c.pinned ? "📌 Conversation épinglée" : "Conversation désépinglée");
+}
+
+// Fond de conversation : applique un dégradé/couleur au fil (#convFpThread),
+// mémorisé par conversation (c.bg) et réappliqué à l'ouverture.
+var CONV_BGS = [
+  { label: "Par défaut", css: "var(--bg-deep)" },
+  { label: "Violet",     css: "linear-gradient(160deg,#2a1a4a,#160d2a)" },
+  { label: "Océan",      css: "linear-gradient(160deg,#0f2a3a,#0a1722)" },
+  { label: "Coucher",    css: "linear-gradient(160deg,#3a1a2a,#241019)" },
+  { label: "Forêt",      css: "linear-gradient(160deg,#16291f,#0d1a12)" },
+  { label: "Nuit",       css: "#0a0a0f" }
+];
+
+function _applyConvBg(css) {
+  var thread = document.getElementById("convFpThread");
+  if (thread) thread.style.background = css || "var(--bg-deep)";
+}
+
+function _openConvBgPicker(convId) {
+  var convs = getConversations();
+  var c = convs.find(function(x){ return x.id === convId; });
+  if (!c) return;
+  var swatches = CONV_BGS.map(function(b, i) {
+    var sel = (c.bg || "var(--bg-deep)") === b.css;
+    return '<div onclick="_setConvBg(\'' + convId + '\',' + i + ')" style="cursor:pointer;border-radius:14px;overflow:hidden;border:2px solid ' + (sel ? 'var(--accent)' : 'transparent') + ';">' +
+      '<div style="height:62px;background:' + b.css + ';"></div>' +
+      '<div style="font-size:11px;text-align:center;padding:6px 0;color:var(--text);font-weight:600;">' + b.label + '</div></div>';
+  }).join("");
+  openModal(
+    '<div class="modal-handle"></div>' +
+    '<div class="modal-title">🎨 Fond de conversation</div>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:10px;">' + swatches + '</div>' +
+    '<button class="btn primary block" style="margin-top:14px;" onclick="closeModal()">Terminé</button>'
+  );
+}
+
+function _setConvBg(convId, idx) {
+  var convs = getConversations();
+  var c = convs.find(function(x){ return x.id === convId; });
+  if (!c || !CONV_BGS[idx]) return;
+  c.bg = CONV_BGS[idx].css;
+  saveConversations();
+  _applyConvBg(c.bg);
+  closeModal();
+  closeConvSettings();
+  toast("🎨 Fond mis à jour");
 }
 
 /* ============================================================
