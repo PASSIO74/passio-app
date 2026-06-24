@@ -881,6 +881,7 @@
       <div class="event-detail-hero" id="eventDetailHero">
         <div id="eventDetailCover"></div>
         <button class="event-detail-back" onclick="closeEventDetail()">← Retour</button>
+        <button class="event-detail-back" id="eventDetailShareBtn" style="left:auto;right:12px;" aria-label="Partager">🔗 Partager</button>
         <div class="event-detail-hero-title" id="eventDetailHeroTitle"></div>
       </div>
       <!-- Scrollable body -->
@@ -894,6 +895,14 @@
     <!-- ===== SCREEN: IRL ===== -->
     <section class="screen" id="screen-irl">
       <div class="section-title">Passio IRL <span class="link" onclick="openCreateEvent()">+ Créer</span></div>
+
+      <!-- Ville de référence (pour le filtre distance) — cliquable pour changer -->
+      <div class="irl-locbar" onclick="openIrlCitySelector()" role="button" tabindex="0"
+        style="display:flex;align-items:center;gap:6px;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:8px 12px;margin-bottom:10px;cursor:pointer;font-size:13px;">
+        <span>📍 Autour de</span>
+        <b id="irlUserCityName" style="color:var(--accent);">…</b>
+        <span style="margin-left:auto;color:var(--muted);font-size:12px;">Changer ›</span>
+      </div>
 
       <div class="irl-map-wrap" id="irlMapWrap">
         <div id="irlMap" class="irl-map"></div>
@@ -953,6 +962,7 @@
   </div>
 </div>
 <div id="irlSearchEmpty" style="display:none;text-align:center;padding:24px;color:var(--muted);font-size:13px;">Aucun événement trouvé pour cette recherche.</div>
+<div id="irlFilterStatus" style="display:none;"></div>
 <div id="eventList"></div>
     </section>
 
@@ -985,6 +995,12 @@
     <!-- ===== SCREEN: CDV (Carnets de Voyage) ===== -->
     <section class="screen" id="screen-cdv">
       <div class="section-title">Carnets de voyage</div>
+
+      <!-- Points d'entrée création -->
+      <div style="display:flex;gap:8px;margin-bottom:12px;">
+        <button onclick="setStudioToVlog()" style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:11px 12px;border-radius:14px;border:none;background:var(--grad-hero);color:#fff;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 4px 12px rgba(124,58,237,0.3);">📔 Nouveau carnet</button>
+        <button onclick="startCdvLive()" style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:11px 12px;border-radius:14px;border:none;background:linear-gradient(135deg,#ef4444,#f59e0b);color:#fff;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 4px 12px rgba(239,68,68,0.3);">🔴 Démarrer un Live</button>
+      </div>
 
       <!-- CDV Lives en cours -->
       <div id="cdvLiveList"></div>

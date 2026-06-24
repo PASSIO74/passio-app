@@ -305,10 +305,24 @@ document.addEventListener("click", (e) => {
 });
 
 function allEvents() {
+  const meId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
   const seedEvIds = new Set((state.seed.events || []).map(e => e.id));
   const myEvFiltered = (state.userEvents || []).filter(e => !seedEvIds.has(e.id));
-  return [...myEvFiltered.map(e => ({ ...e, _mine: true })), ...(state.seed.events || []).map(e => ({ ...e, _mine: false }))]
-    .sort((a, b) => a.date - b.date);
+  return [
+    ...myEvFiltered.map(e => ({ ...e, _mine: true })),
+    // Un event Supabase qu'on a créé revient dans seed après reload (dédup contre userEvents) :
+    // on garde le flag _mine via organizerId/authorId pour qu'il reste dans « Mes events ».
+    ...(state.seed.events || []).map(e => ({ ...e, _mine: e.organizerId === meId || e.authorId === meId }))
+  ].sort((a, b) => a.date - b.date);
+}
+
+// Retrouve l'objet événement CANONIQUE (dans le state, pas une copie de allEvents()).
+// allEvents() renvoie des copies shallow via {...e} : muter `.attendees` sur ces copies
+// ne se répercutait jamais sur la source → compteur d'inscrits figé. (Corrigé le 2026-06-24.)
+function _findCanonicalEvent(id) {
+  return (state.userEvents || []).find(e => e.id === id)
+      || (state.seed.events || []).find(e => e.id === id)
+      || null;
 }
 
 // ===== Carte interactive Leaflet =====
@@ -637,9 +651,9 @@ function updateIrlCityTitle() {
   const titleEl = document.getElementById("irlUserCityName");
   if (!titleEl) return;
 
-  let displayName = "France";
+  let displayName = "ta position";
   if (irlSelectedCity) {
-    displayName = irlSelectedCity.name + " (recherche)";
+    displayName = irlSelectedCity.name;
   } else if (irlUserLocation) {
     displayName = getClosestCity(irlUserLocation.lat, irlUserLocation.lng);
   } else if (irlUserLocationError) {
@@ -947,118 +961,8 @@ function updateIrlMapMarkers() {
     }, 100);
   }
 
-  var events = allEvents();
-  var currentTime = Date.now();
-
-  // Supprimer les événements passés
-  events = events.filter(function(e) { return e.date > currentTime; });
-
-  console.log("[CARTE] Événements total:", events.length, "Profils filtrés:", Array.from(irlPassionFilters));
-
-  // Filtre par passion (multi-select)
-  var filtered = events;
-  if (irlPassionFilters && irlPassionFilters.size > 0) {
-    filtered = filtered.filter(function(e) { return irlPassionFilters.has(e.passion); });
-    console.log("[CARTE] Après filtre passion:", filtered.length);
-  }
-
-  // Filtre par type (multi-select mine/joined)
-  if (irlFilters && irlFilters.size > 0) {
-    filtered = filtered.filter(function(e) {
-      var matches = false;
-      if (irlFilters.has("mine") && e._mine) matches = true;
-      if (irlFilters.has("joined") && (state.user.joinedEvents || []).includes(e.id)) matches = true;
-      return matches;
-    });
-  }
-
-  // Filtre par date (multi-select) — même logique que renderIRL
-  if (irlDateFilters && irlDateFilters.size > 0) {
-    filtered = filtered.filter(function(e) {
-      var matches = false;
-      if (irlDateFilters.has("today")) {
-        var todayStart = new Date(); todayStart.setHours(0,0,0,0);
-        var todayEnd = new Date(); todayEnd.setHours(23,59,59,999);
-        if (e.date >= todayStart.getTime() && e.date <= todayEnd.getTime()) matches = true;
-      }
-      if (irlDateFilters.has("tomorrow")) {
-        var tmrStart = new Date(); tmrStart.setDate(tmrStart.getDate()+1); tmrStart.setHours(0,0,0,0);
-        var tmrEnd = new Date(); tmrEnd.setDate(tmrEnd.getDate()+1); tmrEnd.setHours(23,59,59,999);
-        if (e.date >= tmrStart.getTime() && e.date <= tmrEnd.getTime()) matches = true;
-      }
-      if (irlDateFilters.has("week")) {
-        var weekEnd = currentTime + 7 * 86400000;
-        if (e.date >= currentTime && e.date <= weekEnd) matches = true;
-      }
-      if (irlDateFilters.has("month")) {
-        var monthEnd = currentTime + 30 * 86400000;
-        if (e.date >= currentTime && e.date <= monthEnd) matches = true;
-      }
-      if (irlDateFilters.has("custom") && irlCustomDate) {
-        if (e.date >= irlCustomDate.start && e.date <= irlCustomDate.end) matches = true;
-      }
-      return matches;
-    });
-  }
-
-  // Filtre par distance (OPTIONNEL)
-  if (irlDistanceFilter && irlDistanceFilter !== "") {
-    const maxDistanceKm = parseInt(irlDistanceFilter);
-
-    // Déterminer la référence: ville sélectionnée > GPS > Paris
-    let refLoc, locSource;
-    if (irlSelectedCity) {
-      refLoc = { lat: irlSelectedCity.coords[0], lng: irlSelectedCity.coords[1] };
-      locSource = "🏙️ " + irlSelectedCity.name;
-    } else if (irlUserLocation) {
-      refLoc = irlUserLocation;
-      locSource = "📍 GPS";
-    } else {
-      refLoc = { lat: 48.8566, lng: 2.3522 };
-      locSource = "🔄 PARIS";
-    }
-
-    _diag("=== DISTANCE: " + maxDistanceKm + "km ===");
-    _diag("[DISTANCE] Référence: " + locSource + " (" + refLoc.lat.toFixed(4) + ", " + refLoc.lng.toFixed(4) + ")");
-    _diag("[DISTANCE] Avant filtre: " + filtered.length + " événements");
-
-    let distIncluded = 0;
-    filtered = filtered.filter(function(e) {
-      const eventLoc = cityToLatLng(e.city) || cityToLatLng(e.location);
-      if (!eventLoc) {
-        _diag("[DISTANCE] " + e.title + " → Ville: '" + (e.city || e.location || "?") + "' (non reconnue) ⚠️");
-        return true; // Inclure si pas de localisation
-      }
-      // eventLoc est un tableau [lat, lng]
-      const dist = calculateDistance(refLoc.lat, refLoc.lng, eventLoc[0], eventLoc[1]);
-      const isWithin = dist <= maxDistanceKm;
-      if (isWithin) distIncluded++;
-      _diag("[DISTANCE] " + e.title + " → " + (e.city || e.location) + " (" + dist.toFixed(1) + "km) " + (isWithin ? "✅" : "❌"));
-      return isWithin;
-    });
-    _diag("[DISTANCE] RÉSULTAT: " + distIncluded + "/" + events.length + " événements inclus");
-  }
-
-  // Filtre par heure (OPTIONNEL - plage horaire)
-  if (irlTimeFilter && irlTimeFilter !== "") {
-    // Format: "HH:00 - HH:00"
-    if (irlTimeFilter.includes(" - ")) {
-      const [startStr, endStr] = irlTimeFilter.split(" - ");
-      const startHours = parseInt(startStr.split(":")[0]);
-      const endHours = parseInt(endStr.split(":")[0]);
-      const startTimeInMinutes = startHours * 60;
-      const endTimeInMinutes = endHours * 60 + 59;
-
-      filtered = filtered.filter(function(e) {
-        const eventDate = new Date(e.date);
-        const eventHours = eventDate.getHours();
-        const eventMins = eventDate.getMinutes();
-        const eventTimeInMinutes = eventHours * 60 + eventMins;
-
-        return eventTimeInMinutes >= startTimeInMinutes && eventTimeInMinutes <= endTimeInMinutes;
-      });
-    }
-  }
+  // Même filtrage que la liste (helper partagé) → carte et liste cohérentes.
+  var filtered = _filterIrlEvents(allEvents());
 
   const points = [];
   filtered.forEach(ev => {
@@ -1207,6 +1111,103 @@ function applyIrlCalendar() {
   renderIRL();
 }
 
+// Point de référence pour le filtre distance : ville sélectionnée > GPS > Paris.
+function _irlReferenceLoc() {
+  if (irlSelectedCity) return { lat: irlSelectedCity.coords[0], lng: irlSelectedCity.coords[1] };
+  if (irlUserLocation) return irlUserLocation;
+  return { lat: 48.8566, lng: 2.3522 }; // fallback Paris
+}
+
+// Applique les 5 filtres IRL (passion / type / date / distance / heure) + retire le
+// passé. Partagé entre la liste (renderIRL) et les marqueurs (updateIrlMapMarkers)
+// pour qu'ils ne divergent jamais. (Factorisé le 2026-06-24.)
+function _filterIrlEvents(events) {
+  var now = Date.now();
+  var filtered = events.filter(function(e) { return e.date > now; });
+
+  // 1. Passion (multi-select) — vide = toutes
+  if (irlPassionFilters && irlPassionFilters.size > 0) {
+    filtered = filtered.filter(function(e) { return irlPassionFilters.has(e.passion); });
+  }
+  // 2. Type (Mes events / Inscrit)
+  if (irlFilters && irlFilters.size > 0) {
+    filtered = filtered.filter(function(e) {
+      if (irlFilters.has("mine") && e._mine) return true;
+      if (irlFilters.has("joined") && (state.user.joinedEvents || []).includes(e.id)) return true;
+      return false;
+    });
+  }
+  // 3. Date (multi-select)
+  if (irlDateFilters && irlDateFilters.size > 0) {
+    filtered = filtered.filter(function(e) {
+      if (irlDateFilters.has("today")) {
+        var ts = new Date(); ts.setHours(0,0,0,0);
+        var te = new Date(); te.setHours(23,59,59,999);
+        if (e.date >= ts.getTime() && e.date <= te.getTime()) return true;
+      }
+      if (irlDateFilters.has("tomorrow")) {
+        var ms = new Date(); ms.setDate(ms.getDate()+1); ms.setHours(0,0,0,0);
+        var me = new Date(); me.setDate(me.getDate()+1); me.setHours(23,59,59,999);
+        if (e.date >= ms.getTime() && e.date <= me.getTime()) return true;
+      }
+      if (irlDateFilters.has("week") && e.date >= now && e.date <= now + 7 * 86400000) return true;
+      if (irlDateFilters.has("month") && e.date >= now && e.date <= now + 30 * 86400000) return true;
+      if (irlDateFilters.has("custom") && irlCustomDate && e.date >= irlCustomDate.start && e.date <= irlCustomDate.end) return true;
+      return false;
+    });
+  }
+  // 4. Distance
+  if (irlDistanceFilter && irlDistanceFilter !== "") {
+    var maxKm = parseInt(irlDistanceFilter);
+    var ref = _irlReferenceLoc();
+    filtered = filtered.filter(function(e) {
+      var loc = cityToLatLng(e.city) || cityToLatLng(e.location);
+      if (!loc) return true; // inclure si lieu non géolocalisable
+      return calculateDistance(ref.lat, ref.lng, loc[0], loc[1]) <= maxKm;
+    });
+  }
+  // 5. Heure (plage "HH:00 - HH:00")
+  if (irlTimeFilter && irlTimeFilter.includes(" - ")) {
+    var parts = irlTimeFilter.split(" - ");
+    var sMin = parseInt(parts[0].split(":")[0]) * 60;
+    var eMin = parseInt(parts[1].split(":")[0]) * 60 + 59;
+    filtered = filtered.filter(function(e) {
+      var d = new Date(e.date);
+      var m = d.getHours() * 60 + d.getMinutes();
+      return m >= sMin && m <= eMin;
+    });
+  }
+  return filtered;
+}
+
+// Nombre de filtres actifs (pour l'indicateur "X filtres · Réinitialiser").
+function _irlActiveFilterCount() {
+  var n = 0;
+  if (irlPassionFilters && irlPassionFilters.size) n += irlPassionFilters.size;
+  if (irlFilters && irlFilters.size) n += irlFilters.size;
+  if (irlDateFilters && irlDateFilters.size) n += irlDateFilters.size;
+  if (irlDistanceFilter) n += 1;
+  if (irlTimeFilter) n += 1;
+  return n;
+}
+
+// Réinitialise tous les filtres IRL et l'état UI associé.
+function clearAllIrlFilters() {
+  if (irlPassionFilters) irlPassionFilters.clear();
+  if (irlFilters) irlFilters.clear();
+  if (irlDateFilters) irlDateFilters.clear();
+  irlDistanceFilter = "";
+  irlTimeFilter = "";
+  irlCustomDate = null;
+  var distSel = document.getElementById("irlDistanceFilter");
+  if (distSel) distSel.value = "";
+  var timeBtn = document.getElementById("irlTimeFilterBtn");
+  if (timeBtn) timeBtn.textContent = "🕐 Horaire";
+  var citySearch = document.getElementById("irlCitySearch");
+  if (citySearch) citySearch.value = "";
+  renderIRL();
+}
+
 function renderIRL() {
   // Mettre à jour le titre de la ville (sélectionnée ou détectée)
   updateIrlCityTitle();
@@ -1224,132 +1225,20 @@ function renderIRL() {
     requestUserLocation();
   }
 
-  var events = allEvents();
-  var currentTime = Date.now();
+  var filtered = _filterIrlEvents(allEvents());
 
-  // Supprimer les événements passés immédiatement
-  events = events.filter(function(e) {
-    return e.date > currentTime;
-  });
-
-  console.log("[IRL] Événements total:", events.length);
-
-  // DÉBUT FILTRAGE CROISÉ
-  var filtered = events;
-
-  // 1. Filtre par passion (multi-select) - OPTIONNEL
-  // Si le Set est vide, afficher TOUS les événements (pas de filtre)
-  // Si le Set a des éléments, filtrer par ce Set
-  if (irlPassionFilters && irlPassionFilters.size > 0) {
-    filtered = filtered.filter(function(e) {
-      return irlPassionFilters.has(e.passion);
-    });
-    console.log("[IRL] Après filtre passion:", filtered.length);
-  } else if (!irlPassionFilters || irlPassionFilters.size === 0) {
-    // Au démarrage, afficher tous les événements si aucun profil sélectionné
-    console.log("[IRL] Aucun filtre profil, affichage de tous les événements");
-  }
-
-  // 2. Filtre par type d'événement (Mes events / Inscrit) - OPTIONNEL
-  if (irlFilters && irlFilters.size > 0) {
-    filtered = filtered.filter(function(e) {
-      var matches = false;
-      if (irlFilters.has("mine") && e._mine) matches = true;
-      if (irlFilters.has("joined") && (state.user.joinedEvents || []).includes(e.id)) matches = true;
-      return matches;
-    });
-    console.log("[IRL] Après filtre type:", filtered.length);
-  }
-
-  // 3. Filtre par date (multi-select) - OPTIONNEL
-  if (irlDateFilters && irlDateFilters.size > 0) {
-    filtered = filtered.filter(function(e) {
-      var matches = false;
-      if (irlDateFilters.has("today")) {
-        var todayStart = new Date(); todayStart.setHours(0,0,0,0);
-        var todayEnd = new Date(); todayEnd.setHours(23,59,59,999);
-        if (e.date >= todayStart.getTime() && e.date <= todayEnd.getTime()) matches = true;
-      }
-      if (irlDateFilters.has("tomorrow")) {
-        var tmrStart = new Date(); tmrStart.setDate(tmrStart.getDate()+1); tmrStart.setHours(0,0,0,0);
-        var tmrEnd = new Date(); tmrEnd.setDate(tmrEnd.getDate()+1); tmrEnd.setHours(23,59,59,999);
-        if (e.date >= tmrStart.getTime() && e.date <= tmrEnd.getTime()) matches = true;
-      }
-      if (irlDateFilters.has("week")) {
-        var weekEnd = currentTime + 7 * 86400000;
-        if (e.date >= currentTime && e.date <= weekEnd) matches = true;
-      }
-      if (irlDateFilters.has("month")) {
-        var monthEnd = currentTime + 30 * 86400000;
-        if (e.date >= currentTime && e.date <= monthEnd) matches = true;
-      }
-      if (irlDateFilters.has("custom") && irlCustomDate) {
-        if (e.date >= irlCustomDate.start && e.date <= irlCustomDate.end) matches = true;
-      }
-      return matches;
-    });
-    console.log("[IRL] Après filtre date:", filtered.length);
-  }
-
-  // 4. Filtre par distance (OPTIONNEL - seulement si sélectionné)
-  if (irlDistanceFilter && irlDistanceFilter !== "") {
-    const maxDistanceKm = parseInt(irlDistanceFilter);
-
-    // Déterminer la référence: ville sélectionnée > GPS > Paris
-    let refLoc, locSource;
-    if (irlSelectedCity) {
-      refLoc = { lat: irlSelectedCity.coords[0], lng: irlSelectedCity.coords[1] };
-      locSource = "🏙️ " + irlSelectedCity.name;
-    } else if (irlUserLocation) {
-      refLoc = irlUserLocation;
-      locSource = "📍 GPS";
+  // Indicateur "X filtres actifs · Réinitialiser"
+  var statusEl = document.getElementById("irlFilterStatus");
+  if (statusEl) {
+    var nActive = _irlActiveFilterCount();
+    if (nActive > 0) {
+      statusEl.style.display = "flex";
+      statusEl.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 12px;margin-bottom:10px;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;font-size:12px;";
+      statusEl.innerHTML = '<span style="color:var(--muted);">' + nActive + ' filtre' + (nActive > 1 ? 's' : '') + ' actif' + (nActive > 1 ? 's' : '') + '</span>' +
+        '<button onclick="clearAllIrlFilters()" style="background:none;border:none;color:var(--accent);font-weight:700;cursor:pointer;font-size:12px;">✕ Réinitialiser</button>';
     } else {
-      refLoc = { lat: 48.8566, lng: 2.3522 };
-      locSource = "🔄 PARIS";
-    }
-
-    _diag("=== DISTANCE: " + maxDistanceKm + "km ===");
-    _diag("[DISTANCE] Référence: " + locSource + " (" + refLoc.lat.toFixed(4) + ", " + refLoc.lng.toFixed(4) + ")");
-    _diag("[DISTANCE] Source utilisée: " + (irlSelectedCity ? "🏙️ ville sélectionnée" : (irlUserLocation ? "✅ GPS" : "❌ fallback PARIS")));
-
-    let distIncluded = 0;
-    filtered = filtered.filter(function(e) {
-      const eventLoc = cityToLatLng(e.city) || cityToLatLng(e.location);
-      if (!eventLoc) {
-        _diag("[DISTANCE] " + e.title + " → Ville: '" + (e.city || e.location || "?") + "' (non reconnue) ⚠️");
-        return true; // Inclure si pas de localisation
-      }
-      // eventLoc est un tableau [lat, lng]
-      const dist = calculateDistance(refLoc.lat, refLoc.lng, eventLoc[0], eventLoc[1]);
-      const isWithin = dist <= maxDistanceKm;
-      if (isWithin) distIncluded++;
-      _diag("[DISTANCE] " + e.title + " → " + (e.city || e.location) + " (" + dist.toFixed(1) + "km) " + (isWithin ? "✅" : "❌"));
-      return isWithin;
-    });
-    _diag("[DISTANCE] RÉSULTAT: " + distIncluded + "/" + events.length + " événements");
-  }
-
-  // 5. Filtre par heure (OPTIONNEL - plage horaire)
-  if (irlTimeFilter && irlTimeFilter !== "") {
-    // Format: "HH:00 - HH:00"
-    if (irlTimeFilter.includes(" - ")) {
-      const [startStr, endStr] = irlTimeFilter.split(" - ");
-      const startHours = parseInt(startStr.split(":")[0]);
-      const endHours = parseInt(endStr.split(":")[0]);
-      const startTimeInMinutes = startHours * 60;
-      const endTimeInMinutes = endHours * 60 + 59;
-
-      console.log("[IRL] Filtre horaire: " + irlTimeFilter);
-
-      filtered = filtered.filter(function(e) {
-        const eventDate = new Date(e.date);
-        const eventHours = eventDate.getHours();
-        const eventMins = eventDate.getMinutes();
-        const eventTimeInMinutes = eventHours * 60 + eventMins;
-
-        return eventTimeInMinutes >= startTimeInMinutes && eventTimeInMinutes <= endTimeInMinutes;
-      });
-      console.log("[IRL] Après filtre heure:", filtered.length);
+      statusEl.style.display = "none";
+      statusEl.innerHTML = "";
     }
   }
 
@@ -1387,7 +1276,13 @@ function renderIRL() {
     const venue = e.venue ? `· ${e.venue}` : "";
     const priceTag = e.price !== undefined && e.price !== null && e.price !== "" ? `<span class="pill" style="padding:2px 7px;font-size:10px;">${e.price == 0 ? "Gratuit 🎉" : e.price + " 💎 Passia"}</span>` : "";
     const typeTag = e.eventType ? `<span class="pill" style="padding:2px 7px;font-size:10px;">${e.eventType}</span>` : "";
-    const spotsTag = e.maxAttendees ? `<span style="font-size:10px;color:var(--muted);">${(e.attendees||[]).length}/${e.maxAttendees} places</span>` : "";
+    const attCount = (e.attendees || []).length;
+    const isFull = e.maxAttendees && attCount >= e.maxAttendees && !joined;
+    const spotsTag = e.maxAttendees
+      ? (isFull
+          ? `<span class="pill" style="padding:2px 7px;font-size:10px;color:#ef4444;border-color:rgba(239,68,68,0.4);">⚠️ Complet</span>`
+          : `<span style="font-size:10px;color:var(--muted);">${attCount}/${e.maxAttendees} places</span>`)
+      : "";
     return `<div class="event-card" data-city="${escapeHtml((e.city||'').toLowerCase())}" data-title="${escapeHtml((e.title||'').toLowerCase())}" onclick="openEventDetails('${e.id}')">
       <div style="display:flex;gap:10px;">
         <div class="event-date-block">
@@ -1405,14 +1300,16 @@ function renderIRL() {
       <div style="font-size:12px;color:var(--text-dim);margin-top:8px;line-height:1.5;">${escapeHtml((e.desc || "").slice(0, 120))}${(e.desc||"").length > 120 ? "…" : ""}</div>
       <div class="event-footer">
         <div class="attendees">${attAvatars}<span class="pill" style="margin-left:6px;padding:3px 8px;">${(e.attendees || []).length} inscrit${(e.attendees||[]).length>1?"s":""}</span></div>
-        <button class="btn small ${joined ? "ghost" : "primary"}" onclick="event.stopPropagation();toggleJoinEvent('${e.id}')">${joined ? "✓ Inscrit" : "+ Rejoindre"}</button>
+        <button class="btn small ${joined ? "ghost" : "primary"}" ${isFull ? "disabled" : ""} onclick="event.stopPropagation();toggleJoinEvent('${e.id}')">${joined ? "✓ Inscrit" : isFull ? "Complet" : "+ Rejoindre"}</button>
       </div>
     </div>`;
   }).join("");
 }
 
 function toggleJoinEvent(id) {
-  const ev = allEvents().find(e => e.id === id);
+  // Muter l'objet canonique (state), pas une copie de allEvents() — sinon le
+  // compteur d'inscrits et les avatars ne se mettaient jamais à jour localement.
+  const ev = _findCanonicalEvent(id) || allEvents().find(e => e.id === id);
   if (!ev) return;
   const meId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
   const joined = (state.user.joinedEvents || []).includes(id);
@@ -1443,18 +1340,7 @@ function toggleJoinEvent(id) {
 
 function filterIrlByDistance() {
   const distanceSelect = document.getElementById("irlDistanceFilter");
-  const customDistance = document.getElementById("irlCustomDistance");
-
-  // Priorité: distance personnalisée > sélecteur
-  if (customDistance && customDistance.value) {
-    irlDistanceFilter = customDistance.value;
-  } else if (distanceSelect && distanceSelect.value) {
-    irlDistanceFilter = distanceSelect.value;
-  } else {
-    irlDistanceFilter = ""; // Aucun filtre distance
-  }
-
-  console.log("[IRL Filter] Distance:", irlDistanceFilter);
+  irlDistanceFilter = (distanceSelect && distanceSelect.value) ? distanceSelect.value : "";
   renderIRL();
 }
 
@@ -1759,6 +1645,9 @@ function openEventDetails(id) {
 
   _refreshEventDetailCta(ev, joined);
 
+  const shareBtn = document.getElementById("eventDetailShareBtn");
+  if (shareBtn) shareBtn.onclick = function() { shareEvent(id); };
+
   const page = document.getElementById("eventDetailPage");
   page.style.display = "flex";
   page.scrollTop = 0;
@@ -1794,6 +1683,27 @@ function closeEventDetail() {
   const page = document.getElementById("eventDetailPage");
   if (page) page.style.display = "none";
 
+}
+
+// Partage d'un événement : Web Share API si dispo, sinon copie du lien.
+function shareEvent(id) {
+  const ev = allEvents().find(e => e.id === id);
+  if (!ev) return;
+  const url = location.origin + location.pathname + "#irl-event-" + id;
+  const d = fmtEventDate(ev.date);
+  const text = `${ev.title} · ${ev.city || ""} · ${d.day} ${d.month}`;
+  if (navigator.share) {
+    navigator.share({ title: ev.title, text, url }).catch(() => {});
+    return;
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(url + "\n" + text).then(
+      () => toast("🔗 Lien de l'événement copié"),
+      () => toast("Copie impossible")
+    );
+  } else {
+    toast("🔗 " + url);
+  }
 }
 
 function previewEventCover(input) {

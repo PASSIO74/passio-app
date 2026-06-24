@@ -3436,7 +3436,21 @@ async function supaInit() {
       if (typeof supaLoadStories === "function")
         supaLoadStories().then(s => { if (s.length) { state.seed.stories = s; } }).catch(e => {});
       if (typeof supaLoadEvents === "function")
-        supaLoadEvents().then(e => { if (e.length) { state.seed.events = e; } }).catch(e => {});
+        supaLoadEvents().then(e => {
+          if (e && e.length) {
+            // Fusionner (au lieu de remplacer) : on garde les événements démo locaux
+            // pour ne pas vider l'écran IRL en beta quand la prod a peu d'events.
+            const ids = new Set(e.map(x => x.id));
+            const localOnly = (state.seed.events || []).filter(x => !ids.has(x.id));
+            state.seed.events = [...e, ...localOnly];
+            // Rafraîchir si l'utilisateur regarde déjà l'écran IRL (sinon il ne voyait
+            // les events Supabase qu'après re-navigation).
+            try {
+              const irlScreen = document.getElementById("screen-irl");
+              if (irlScreen && irlScreen.classList.contains("active") && typeof renderIRL === "function") renderIRL();
+            } catch(_) {}
+          }
+        }).catch(e => {});
       // \ud83d\udd27 FIX 2026-06-17 : les notifications Supabase n'\u00e9taient charg\u00e9es que dans
       // le code mort apr\u00e8s le `return;` plus bas \u2192 la cloche n'affichait JAMAIS
       // les notifs re\u00e7ues d'autres comptes. On les charge ici (chemin vivant).

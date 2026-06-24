@@ -1583,7 +1583,24 @@ function renderCdvScreen() {
 
   if (!carnets.length) {
     list.innerHTML = "";
-    document.getElementById("cdvEmpty").style.display = "block";
+    const empty = document.getElementById("cdvEmpty");
+    if (empty) {
+      let icon = "📔", title = "Aucun carnet trouvé", text = "", cta = "";
+      if (q) {
+        title = "Aucun résultat";
+        text = "Aucun carnet ne correspond à « " + escapeHtml(q) + " ». Essaie une autre destination.";
+      } else if (cdvFilters && cdvFilters.size > 0) {
+        title = "Aucun carnet dans ce filtre";
+        text = "Retire les filtres ou crée ton premier carnet.";
+        cta = '<button class="btn primary" style="margin-top:12px;" onclick="setStudioToVlog()">📔 Créer un carnet</button>';
+      } else {
+        title = "Aucun carnet pour le moment";
+        text = "Raconte ton prochain voyage, étape par étape.";
+        cta = '<button class="btn primary" style="margin-top:12px;" onclick="setStudioToVlog()">📔 Créer un carnet</button>';
+      }
+      empty.innerHTML = '<div class="empty-icon">' + icon + '</div><div class="empty-title">' + title + '</div><div class="empty-text">' + text + '</div>' + cta;
+      empty.style.display = "block";
+    }
     return;
   }
   document.getElementById("cdvEmpty").style.display = "none";
