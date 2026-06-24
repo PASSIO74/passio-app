@@ -3184,6 +3184,13 @@ function supaSubscribe() {
             post.comments.unshift({ id: r.id, authorId: r.author_id, authorName: prof?.username || "Passionne", authorEmoji: prof?.emoji || "✨", text: r.content || "", content: r.content || "", createdAt: new Date(r.created_at + "Z").getTime(), fromSupabase: true });
           }
           try { renderFeed(); } catch(e) {}
+          // Si la modale commentaires de ce post est ouverte → l'actualiser en direct.
+          try {
+            if (window._openCommentsPostId === r.post_id && document.getElementById("commentsBox") && typeof _renderCommentsList === "function") {
+              document.getElementById("commentsBox").innerHTML = _renderCommentsList(post.comments, r.post_id);
+              var _t = document.querySelector(".modal-title"); if (_t) _t.textContent = "Discussion (" + post.comments.length + ")";
+            }
+          } catch(e) {}
         }
       } catch(e) {}
     })
