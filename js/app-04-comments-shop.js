@@ -1345,9 +1345,11 @@ function renderMessages() {
     const _previewContent = lastMsg
       ? (lastMsg.gif ? "🎞 GIF" : lastMsg.voiceData ? "🎙 Message vocal" : lastMsg.video ? "🎬 Vidéo" : lastMsg.img ? "📷 Photo" : lastMsg.docData ? "📄 " + (lastMsg.fileName || "Fichier") : lastMsg.text || "")
       : "";
-    const previewText = lastMsg
-      ? (lastMsg.from === "me" ? "Toi : " : "") + _previewContent
-      : "Démarrer la conversation…";
+    const previewText = (c.draft && c.id !== window._openedConvId)
+      ? "✏️ Brouillon : " + c.draft
+      : (lastMsg
+          ? (lastMsg.from === "me" ? "Toi : " : "") + _previewContent
+          : "Démarrer la conversation…");
 
     // Affichage groupe vs conversation simple
     var displayName, displayEmoji, displayAvatar;
@@ -1430,6 +1432,7 @@ async function openConversation(convId) {
   var convs = getConversations();
   var c = convs.find(function(x) { return x.id === convId; });
   if (!c) { console.warn("openConversation: conv not found:", convId); return; }
+  c._convPage = 1; // repart du bas (messages récents) à chaque ouverture
   const u = (state.seed.users || []).find(x => x.id === c.userId) || { name: "Inconnu", avatar: "#7c3aed", profileEmoji: "🙂" };
 
   var displayName, displayEmoji, displayAvatar;
@@ -1486,8 +1489,9 @@ async function openConversation(convId) {
   const inp = document.getElementById("convFpInput");
   const btn = document.getElementById("convFpSendBtn");
   if (inp) {
-    inp.value = "";
+    inp.value = c.draft || ""; // restaure le brouillon non envoyé
     inp.style.height = "auto";
+    try { if (inp.value) autoResizeTextarea(inp); } catch(e) {}
     inp.onkeydown = function(e) {
       if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessageFp(convId, displayName); }
     };
@@ -1555,7 +1559,17 @@ async function openConversation(convId) {
 function renderConvFpThread(c, displayName) {
   var thread = document.getElementById("convFpThread");
   if (!thread) return;
-  var msgs = c.messages || [];
+  var allMsgs = c.messages || [];
+
+  // Scroll infini : on n'affiche que les N derniers messages, on en charge plus en
+  // remontant. _convPage = nombre de pages affichées (réinitialisé à l'ouverture).
+  var CONV_PAGE = 40;
+  if (typeof c._convPage !== "number") c._convPage = 1;
+  var _shownCount = Math.min(allMsgs.length, c._convPage * CONV_PAGE);
+  var _startIdx = Math.max(0, allMsgs.length - _shownCount);
+  var _hasMoreOlder = _startIdx > 0;
+  var msgs = allMsgs.slice(_startIdx);
+  _wireConvScroll(thread, c.id);
 
   if (msgs.length === 0) {
     thread.innerHTML = `
@@ -1750,9 +1764,40 @@ function renderConvFpThread(c, displayName) {
     );
   });
 
+  // Indicateur « messages plus anciens » en tête quand il en reste à charger.
+  if (_hasMoreOlder) {
+    parts.unshift('<div style="text-align:center;padding:8px;font-size:12px;color:var(--muted);">⏳ Remonte pour charger les messages plus anciens…</div>');
+  }
+
   thread.innerHTML = parts.join('');
-  thread.scrollTop = thread.scrollHeight;
+  if (!c._loadingOlder) thread.scrollTop = thread.scrollHeight; // pas de saut en bas pendant le chargement d'historique
   _wireMsgActions(thread, c.id);
+  _wireConvScroll(thread, c.id);
+}
+
+// Scroll infini : charge une page de messages plus anciens quand on approche du
+// haut du fil, en préservant la position visuelle.
+function _wireConvScroll(thread, convId) {
+  if (!thread) return;
+  thread._curConvId = convId;
+  if (thread._scrollWired) return;
+  thread._scrollWired = true;
+  thread.addEventListener("scroll", function() {
+    if (thread.scrollTop > 60 || thread._loadingMore) return;
+    var c = getConversations().find(function(x){ return x.id === thread._curConvId; });
+    if (!c || !c.messages) return;
+    var shown = Math.min(c.messages.length, (c._convPage || 1) * 40);
+    if (shown >= c.messages.length) return; // tout est déjà affiché
+    thread._loadingMore = true;
+    var oldH = thread.scrollHeight;
+    c._convPage = (c._convPage || 1) + 1;
+    c._loadingOlder = true;
+    var fp = document.getElementById("conv-fullpage");
+    renderConvFpThread(c, fp ? fp.getAttribute("data-display-name") : (c.userName||""));
+    c._loadingOlder = false;
+    thread.scrollTop = thread.scrollHeight - oldH; // conserve la position visuelle
+    thread._loadingMore = false;
+  }, { passive: true });
 }
 
 // Attache (une fois par fil) l'ouverture du menu d'actions sur appui long / clic droit
@@ -2098,6 +2143,7 @@ function sendMessageFp(convId, displayName) {
   if (_reply) _localMsg.replyTo = _reply;
   c.messages.push(_localMsg);
   c.lastAt = Date.now();
+  delete c.draft; // brouillon envoyé
   saveConversations();
   if (window._replyTo) { window._replyTo = null; try { _renderReplyBar(); } catch(e) {} }
 
@@ -2205,7 +2251,18 @@ function onConvInputTyping() {
   _sendTyping(convId);
   clearTimeout(_typingTimeout);
   _typingTimeout = setTimeout(() => _stopTyping(convId), 3000);
+  // Brouillon : mémorise le texte non envoyé (debounce léger).
+  clearTimeout(_draftTimer);
+  _draftTimer = setTimeout(function(){
+    var inp = document.getElementById("convFpInput");
+    var c = getConversations().find(function(x){ return x.id === convId; });
+    if (!inp || !c) return;
+    var v = inp.value || "";
+    if (v.trim()) c.draft = v; else delete c.draft;
+    saveConversations();
+  }, 350);
 }
+var _draftTimer = null;
 
 function _sendTyping(convId) {
   if (!_typingChannel) return;
