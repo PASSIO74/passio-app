@@ -969,7 +969,9 @@ function shareLocation() {
 }
 
 function openConvFiles() {
-  toggleAttachMenu();
+  // Ferme le menu pièce jointe (au lieu de le basculer) → appelable aussi depuis
+  // le panneau Paramètres sans rouvrir le menu par effet de bord.
+  try { document.getElementById("convAttachMenu")?.classList.remove("open"); document.getElementById("btnAttach")?.classList.remove("active"); } catch(e) {}
   try {
     var fp = document.getElementById("conv-fullpage");
     var panel = document.getElementById("convFilesPanel");
@@ -1053,30 +1055,56 @@ function openConvSettings(convId) {
   try {
     var panel = document.getElementById("convSettingsPanel");
     var content = document.getElementById("convSettingsContent");
-    if (!panel) return;
+    if (!panel || !content) return;
     var convs = getConversations();
     var c = convs.find(function(x) { return x.id === convId; });
     if (!c) return;
-    content.innerHTML = `
-      <div class="csetting-section">CONVERSATION</div>
-      <div class="csetting-item" onclick="_toggleMuteConv('${convId}')">
-        <div class="csetting-icon">${c._muted ? '🔕' : '🔔'}</div>
-        <div class="csetting-label">${c._muted ? 'Activer les notifications' : 'Couper les notifications'}</div>
-      </div>
-      <div class="csetting-section">ACTIONS</div>
-      <div class="csetting-item" onclick="_clearConvMessages('${convId}')">
-        <div class="csetting-icon">🗑️</div>
-        <div class="csetting-label" style="color:var(--muted);">Effacer les messages</div>
-      </div>
-      <div class="csetting-item" onclick="_exportConv('${convId}')">
-        <div class="csetting-icon">📤</div>
-        <div class="csetting-label">Exporter la conversation</div>
-      </div>
-      ${!c.isGroup ? `<div class="csetting-item" onclick="_deleteConv('${convId}')">
-        <div class="csetting-icon">❌</div>
-        <div class="csetting-label" style="color:#ef4444;">Supprimer la conversation</div>
-      </div>` : ''}
-    `;
+    var isDM = !c.isGroup;
+    var uid = (c.userId || "").replace(/'/g, "\\'");
+    var uname = String(c.userName || "Utilisateur").replace(/'/g, "\\'");
+    var blocked = isDM && typeof isBlocked === "function" && isBlocked(c.userId);
+
+    content.innerHTML =
+      '<div class="csetting-section">CONVERSATION</div>' +
+      (isDM ? '<div class="csetting-item" onclick="closeConvSettings();openUserProfile(\'' + uid + '\',\'seed\')">' +
+        '<div class="csetting-icon">👤</div><div class="csetting-label">Voir le profil</div></div>' : '') +
+      '<div class="csetting-item" onclick="_toggleMuteConv(\'' + convId + '\')">' +
+        '<div class="csetting-icon">' + (c._muted ? '🔕' : '🔔') + '</div>' +
+        '<div class="csetting-label">' + (c._muted ? 'Activer les notifications' : 'Couper les notifications') + '</div></div>' +
+      '<div class="csetting-item" onclick="openConvFiles()">' +
+        '<div class="csetting-icon">📎</div><div class="csetting-label">Pièces jointes & médias</div></div>' +
+      '<div class="csetting-item" onclick="_markConvUnread(\'' + convId + '\')">' +
+        '<div class="csetting-icon">📩</div><div class="csetting-label">Marquer comme non lu</div></div>' +
+
+      '<div class="csetting-section">ACTIONS</div>' +
+      '<div class="csetting-item" onclick="_searchConv(\'' + convId + '\')">' +
+        '<div class="csetting-icon">🔍</div><div class="csetting-label">Rechercher dans la conversation</div></div>' +
+      '<div class="csetting-item" onclick="_exportConv(\'' + convId + '\')">' +
+        '<div class="csetting-icon">📤</div><div class="csetting-label">Exporter la conversation</div></div>' +
+      '<div class="csetting-item" onclick="_clearConvMessages(\'' + convId + '\')">' +
+        '<div class="csetting-icon">🗑️</div><div class="csetting-label" style="color:var(--muted);">Effacer les messages</div></div>' +
+
+      (isDM ?
+        '<div class="csetting-section">CONFIDENTIALITÉ</div>' +
+        (blocked ?
+          '<div class="csetting-item" onclick="closeConvSettings();unblockUser(\'' + uid + '\',\'' + uname + '\')">' +
+            '<div class="csetting-icon">✅</div><div class="csetting-label">Débloquer ' + escapeHtml(c.userName || '') + '</div></div>'
+          :
+          '<div class="csetting-item" onclick="_blockFromConv(\'' + convId + '\')">' +
+            '<div class="csetting-icon">🚫</div><div class="csetting-label" style="color:#ef4444;">Bloquer ' + escapeHtml(c.userName || '') + '</div></div>') +
+        '<div class="csetting-item" onclick="closeConvSettings();reportUser(\'' + uid + '\',\'' + uname + '\')">' +
+          '<div class="csetting-icon">🚩</div><div class="csetting-label" style="color:#ef4444;">Signaler</div></div>'
+        : '') +
+
+      '<div class="csetting-item" onclick="_deleteConv(\'' + convId + '\')">' +
+        '<div class="csetting-icon">❌</div><div class="csetting-label" style="color:#ef4444;">Supprimer la conversation</div></div>';
+
+    // 🔑 FIX : openConversation pose des styles inline (display:none, transform,
+    // pointer-events) sur ce panneau → ils écrasaient la classe .open et le panneau
+    // ne s'affichait jamais (« les trois points ne fonctionnent pas »). On les purge.
+    panel.style.display = "";
+    panel.style.transform = "";
+    panel.style.pointerEvents = "";
     panel.classList.add("open");
   } catch(e) { console.error("openConvSettings:", e); }
 }
@@ -1127,6 +1155,58 @@ function _deleteConv(convId) {
   closeConvSettings();
   closeConversation();
   toast("Conversation supprimée");
+}
+
+// Marquer la conversation comme non lue → revient à la liste avec le badge.
+function _markConvUnread(convId) {
+  var convs = getConversations();
+  var c = convs.find(function(x){ return x.id === convId; });
+  if (!c) return;
+  c.unread = Math.max(1, c.unread || 0);
+  saveConversations();
+  closeConvSettings();
+  try { if (typeof closeConversation === "function") closeConversation(); } catch(e) {}
+  try { renderMessages(); } catch(e) {}
+  try { if (typeof renderMsgBadge === "function") renderMsgBadge(); } catch(e) {}
+  toast("📩 Marqué comme non lu");
+}
+
+// Bloquer depuis la conversation (avec confirmation) → masque ses messages + retour liste.
+function _blockFromConv(convId) {
+  var convs = getConversations();
+  var c = convs.find(function(x){ return x.id === convId; });
+  if (!c || c.isGroup) return;
+  if (!confirm("Bloquer " + (c.userName || "cet utilisateur") + " ?\nSes messages seront masqués et tu ne le suivras plus.")) return;
+  closeConvSettings();
+  if (typeof blockUser === "function") blockUser(c.userId, c.userName);
+  try { if (typeof closeConversation === "function") closeConversation(); } catch(e) {}
+}
+
+// Recherche de texte dans la conversation : filtre le fil sur les messages
+// correspondants, avec un bandeau « Tout afficher » pour revenir.
+function _searchConv(convId) {
+  closeConvSettings();
+  var convs = getConversations();
+  var c = convs.find(function(x){ return x.id === convId; });
+  if (!c) return;
+  var q = prompt("🔍 Rechercher dans la conversation :");
+  if (q == null) return;
+  q = q.trim().toLowerCase();
+  if (!q) return;
+  var matches = (c.messages || []).filter(function(m){ return (m.text || "").toLowerCase().indexOf(q) > -1; });
+  if (!matches.length) { toast("Aucun message trouvé pour « " + q + " »"); return; }
+  var fp = document.getElementById("conv-fullpage");
+  var dn = fp ? fp.getAttribute("data-display-name") : "";
+  var clone = Object.assign({}, c, { messages: matches });
+  renderConvFpThread(clone, dn);
+  var thread = document.getElementById("convFpThread");
+  if (thread) {
+    var bar = document.createElement("div");
+    bar.style.cssText = "position:sticky;top:0;z-index:5;background:var(--accent);color:#fff;padding:9px 12px;border-radius:10px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;font-size:13px;cursor:pointer;";
+    bar.innerHTML = "<span>🔍 " + matches.length + " résultat(s) — « " + escapeHtml(q) + " »</span><span style=\"font-weight:800;\">✕ Tout afficher</span>";
+    bar.onclick = function(){ renderConvFpThread(c, dn); };
+    thread.insertBefore(bar, thread.firstChild);
+  }
 }
 
 /* ============================================================
