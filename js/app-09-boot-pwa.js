@@ -1081,8 +1081,14 @@ function openConvSettings(convId) {
         '<div class="csetting-icon">🖼️</div><div class="csetting-label">Changer la photo du groupe</div></div>' : '') +
       '<div class="csetting-item" onclick="_markConvUnread(\'' + convId + '\')">' +
         '<div class="csetting-icon">📩</div><div class="csetting-label">Marquer comme non lu</div></div>' +
+      (function(){ var on = !((state.user.general||{}).readReceipts === false);
+        return '<div class="csetting-item" onclick="_toggleReadReceipts(\'' + convId + '\')">' +
+          '<div class="csetting-icon">' + (on ? '👁️' : '🚫') + '</div>' +
+          '<div class="csetting-label">Accusés de lecture<span style="color:var(--muted);font-weight:600;"> · ' + (on ? 'activés' : 'désactivés') + '</span></div></div>'; })() +
 
       '<div class="csetting-section">ACTIONS</div>' +
+      '<div class="csetting-item" onclick="_toggleArchiveConv(\'' + convId + '\')">' +
+        '<div class="csetting-icon">' + (c.archived ? '📤' : '📥') + '</div><div class="csetting-label">' + (c.archived ? 'Désarchiver' : 'Archiver la conversation') + '</div></div>' +
       '<div class="csetting-item" onclick="_searchConv(\'' + convId + '\')">' +
         '<div class="csetting-icon">🔍</div><div class="csetting-label">Rechercher dans la conversation</div></div>' +
       '<div class="csetting-item" onclick="_exportConv(\'' + convId + '\')">' +
@@ -1161,6 +1167,23 @@ function _deleteConv(convId) {
   closeConvSettings();
   closeConversation();
   toast("Conversation supprimée");
+}
+
+// Accusés de lecture (✓✓) activables — réglage global du compte. Quand désactivés,
+// on n'affiche plus les accusés dans le fil (renderConvFpThread les respecte).
+function _toggleReadReceipts(convId) {
+  state.user.general = state.user.general || {};
+  var on = !(state.user.general.readReceipts === false);
+  state.user.general.readReceipts = !on; // bascule
+  try { saveState(); } catch(e) {}
+  try { openConvSettings(convId); } catch(e) {}            // rafraîchit le libellé
+  try {
+    var fp = document.getElementById("conv-fullpage");
+    var convs = getConversations();
+    var cc = convs.find(function(x){ return x.id === convId; });
+    if (cc) renderConvFpThread(cc, fp ? fp.getAttribute("data-display-name") : "");
+  } catch(e) {}
+  toast(state.user.general.readReceipts === false ? "🚫 Accusés de lecture désactivés" : "👁️ Accusés de lecture activés");
 }
 
 // Marquer la conversation comme non lue → revient à la liste avec le badge.

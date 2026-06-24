@@ -965,6 +965,12 @@
         <button onclick="openCreateGroup()" style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:11px 12px;border-radius:14px;border:none;background:var(--grad-hero);color:#fff;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 4px 12px rgba(124,58,237,0.3);">👥 Nouveau groupe</button>
       </div>
 
+      <div style="position:relative;margin-bottom:10px;">
+        <input id="convGlobalSearch" type="text" class="input" autocomplete="off"
+          placeholder="🔍 Rechercher une conversation ou un message…"
+          oninput="_globalMsgSearch(this.value)" style="width:100%;box-sizing:border-box;" />
+      </div>
+      <div id="archivedToggleRow" style="margin-bottom:8px;"></div>
       <div id="msgFilterRow"></div>
       <div class="msg-readfilter-row" id="msgReadFilterRow"></div>
       <div id="messageList"></div>

@@ -1282,14 +1282,46 @@ function renderMessages() {
   renderMessageFilters();
   try { if (typeof renderMsgBadge === "function") renderMsgBadge(); } catch(e) {}
 
+  const _q = (window._msgSearchQuery || "").trim().toLowerCase();
+  const _showArch = !!window._showArchived;
+
   // Masquer les conversations avec un utilisateur bloqué (modération)
-  let filtered = convs.filter(c => !(typeof isBlocked === "function" && isBlocked(c.userId)))
-    // Épinglées d'abord, puis par date du dernier message.
-    .sort((a, b) => ((b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)) || (b.lastAt - a.lastAt));
+  let filtered = convs.filter(c => !(typeof isBlocked === "function" && isBlocked(c.userId)));
+
+  // Bandeau « Archivées » : compteur + bascule (caché pendant une recherche).
+  const archivedCount = filtered.filter(c => c.archived).length;
+  const archRow = document.getElementById("archivedToggleRow");
+  if (archRow) {
+    if (_q) archRow.innerHTML = "";
+    else if (_showArch) archRow.innerHTML = `<button class="btn ghost block" onclick="_toggleArchivedView()" style="font-size:13px;">← Retour aux conversations</button>`;
+    else if (archivedCount) archRow.innerHTML = `<button class="btn ghost block" onclick="_toggleArchivedView()" style="font-size:13px;">📥 Archivées (${archivedCount})</button>`;
+    else archRow.innerHTML = "";
+  }
+
+  if (_q) {
+    // Recherche globale : nom de conversation OU texte d'un message (archivées incluses).
+    filtered = filtered.filter(c => {
+      const name = (c.isGroup ? (c.groupName || "") : (c.userName || "")).toLowerCase();
+      if (name.indexOf(_q) > -1) return true;
+      return (c.messages || []).some(m => (m.text || "").toLowerCase().indexOf(_q) > -1);
+    });
+  } else {
+    // Vue normale : actives, ou archivées si on a basculé.
+    filtered = filtered.filter(c => _showArch ? c.archived : !c.archived);
+  }
+  // Épinglées d'abord, puis par date du dernier message.
+  filtered.sort((a, b) => ((b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)) || (b.lastAt - a.lastAt));
 
   if (!filtered.length) {
     list.innerHTML = "";
-    $("#messagesEmpty").style.display = "block";
+    const empt = $("#messagesEmpty");
+    if (empt) {
+      empt.style.display = "block";
+      const t = empt.querySelector(".empty-title"), x = empt.querySelector(".empty-text");
+      if (_q) { if (t) t.textContent = "Aucun résultat"; if (x) x.textContent = "Aucune conversation ni message ne correspond à ta recherche."; }
+      else if (_showArch) { if (t) t.textContent = "Aucune conversation archivée"; if (x) x.textContent = "Les conversations archivées apparaîtront ici."; }
+      else { if (t) t.textContent = "Aucune conversation"; if (x) x.textContent = "Recherche un utilisateur ci-dessus pour démarrer une discussion."; }
+    }
     return;
   }
   $("#messagesEmpty").style.display = "none";
@@ -1359,6 +1391,34 @@ function renderMessages() {
 function _loadMoreConvs() {
   window._convListLimit = (window._convListLimit || 30) + 30;
   renderMessages();
+}
+
+// Recherche globale dans la liste des conversations (nom + texte des messages).
+function _globalMsgSearch(q) {
+  window._msgSearchQuery = q || "";
+  window._convListLimit = 30; // réinitialise la pagination pour la recherche
+  renderMessages();
+}
+
+// Bascule entre conversations actives et archivées.
+function _toggleArchivedView() {
+  window._showArchived = !window._showArchived;
+  window._convListLimit = 30;
+  renderMessages();
+}
+
+// Archive / désarchive une conversation (masquée de la liste principale).
+function _toggleArchiveConv(convId) {
+  var convs = getConversations();
+  var c = convs.find(function(x){ return x.id === convId; });
+  if (!c) return;
+  c.archived = !c.archived;
+  if (c.archived) c.pinned = false; // une conv archivée n'est plus épinglée
+  saveConversations();
+  if (typeof closeConvSettings === "function") closeConvSettings();
+  try { if (typeof closeConversation === "function") closeConversation(); } catch(e) {}
+  try { renderMessages(); } catch(e) {}
+  toast(c.archived ? "📥 Conversation archivée" : "📤 Conversation désarchivée");
 }
 
 async function openConversation(convId) {
@@ -1547,8 +1607,9 @@ function renderConvFpThread(c, displayName) {
       senderLine = '<span class="conv-sender-name">' + escapeHtml(m.fromName) + '</span>';
     }
 
-    // Read receipt
-    var readReceipt = isLastMe
+    // Read receipt — masqués si l'utilisateur les a désactivés (réglage global).
+    var _rrOn = !(((state.user.general)||{}).readReceipts === false);
+    var readReceipt = (isLastMe && _rrOn)
       ? (c._otherRead
           ? ' <span style="color:var(--accent);">✓✓</span>'
           : ' <span style="opacity:0.5;">✓</span>')
