@@ -3019,6 +3019,16 @@ function supaSubscribe() {
     })
     .subscribe();
 
+  // ── Interactions de commentaires en temps réel (like / réponse / emoji) ──
+  supa.channel("realtime:comment_interactions")
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "comment_interactions" }, function(payload) {
+      try { if (typeof _applyCommentInteractionEvent === "function") _applyCommentInteractionEvent(payload.new, "add"); } catch(e) {}
+    })
+    .on("postgres_changes", { event: "DELETE", schema: "public", table: "comment_interactions" }, function(payload) {
+      try { if (typeof _applyCommentInteractionEvent === "function") _applyCommentInteractionEvent(payload.old, "remove"); } catch(e) {}
+    })
+    .subscribe();
+
   // ── Nouvelle conversation créée pour moi (l'autre personne m'ajoute comme membre) ──
   supa.channel("realtime:conv_members")
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "conv_members" }, async payload => {

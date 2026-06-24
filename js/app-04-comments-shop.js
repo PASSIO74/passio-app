@@ -190,6 +190,7 @@ function _renderCommentsList(allComments, postId) {
 async function openComments(postId) {
   // Ajouter à l'historique pour que le bouton back fonctionne
   pushOverlayToHistory("comments", postId);
+  window._openCommentsPostId = postId; // suivi pour le temps réel des interactions
 
   let post = findPostAnywhere(postId);
   if (!post) return;
@@ -274,6 +275,34 @@ function submitComment(postId) {
   }
   closeModal();
   renderFeed();
+}
+
+// Applique en TEMPS RÉEL une interaction de commentaire reçue d'un autre compte
+// (canal realtime:comment_interactions, app-08). op = "add" (INSERT) | "remove" (DELETE).
+function _applyCommentInteractionEvent(r, op) {
+  try {
+    if (!r || !r.comment_id) return;
+    if (typeof MY_UID !== "undefined" && r.user_id === MY_UID) return; // déjà appliqué localement
+    if (typeof isBlocked === "function" && isBlocked(r.user_id)) return;
+    var post = (r.post_id && typeof findPostAnywhere === "function") ? findPostAnywhere(r.post_id) : null;
+    var comment = post && post.comments ? post.comments.find(function(c){ return c.id === r.comment_id; }) : null;
+    if (!comment) return; // post/commentaire pas chargé localement → rien à faire
+    comment.likedBy = comment.likedBy || []; comment.replies = comment.replies || []; comment.emojis = comment.emojis || [];
+    if (r.kind === "like") {
+      if (op === "add") { if (comment.likedBy.indexOf(r.user_id) < 0) { comment.likedBy.push(r.user_id); comment.likes = (comment.likes || 0) + 1; } }
+      else { if (comment.likedBy.indexOf(r.user_id) > -1) { comment.likedBy = comment.likedBy.filter(function(x){ return x !== r.user_id; }); comment.likes = Math.max(0, (comment.likes || 1) - 1); } }
+    } else if (r.kind === "reply" && op === "add") {
+      var rid = "srep_" + r.created_at;
+      if (!comment.replies.find(function(x){ return x.id === rid; })) comment.replies.push({ id: rid, authorId: r.user_id, text: r.payload || "", createdAt: r.created_at ? new Date(r.created_at + "Z").getTime() : Date.now() });
+    } else if (r.kind === "emoji" && op === "add" && r.payload) {
+      comment.emojis.push(r.payload);
+    }
+    saveState();
+    // Re-render si la modale commentaires de ce post est ouverte.
+    if (window._openCommentsPostId === post.id && document.getElementById("commentsBox")) {
+      try { document.getElementById("commentsBox").innerHTML = _renderCommentsList(post.comments, post.id); } catch(e) {}
+    }
+  } catch(e) {}
 }
 
 // Mood selector
