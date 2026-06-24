@@ -1513,6 +1513,9 @@ async function openConversation(convId) {
   // Souscrire aux nouveaux messages en temps réel
   _supaConvSpecificChannel(convId, displayName);
   _subscribeTyping(convId);
+  // Accusés de lecture réels : je marque comme lu + je charge l'état de l'autre.
+  try { if (typeof supaMarkRead === "function") supaMarkRead(convId); } catch(e) {}
+  try { if (typeof supaLoadOtherRead === "function") supaLoadOtherRead(convId); } catch(e) {}
 
   // Affichage immédiat avec les messages locaux (feedback instantané)
   renderConvFpThread(c, displayName);
@@ -1623,10 +1626,12 @@ function renderConvFpThread(c, displayName) {
       senderLine = '<span class="conv-sender-name">' + escapeHtml(m.fromName) + '</span>';
     }
 
-    // Read receipt — masqués si l'utilisateur les a désactivés (réglage global).
+    // Read receipt — ✓✓ si l'autre a lu (last_read_at >= heure du message), sinon ✓.
+    // Masqués si l'utilisateur les a désactivés (réglage global).
     var _rrOn = !(((state.user.general)||{}).readReceipts === false);
+    var _isRead = c._otherReadAt ? (m.at && m.at <= c._otherReadAt) : c._otherRead;
     var readReceipt = (isLastMe && _rrOn)
-      ? (c._otherRead
+      ? (_isRead
           ? ' <span style="color:var(--accent);">✓✓</span>'
           : ' <span style="opacity:0.5;">✓</span>')
       : "";

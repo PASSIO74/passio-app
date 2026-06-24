@@ -2584,6 +2584,37 @@ async function supaLoadMessages(convId) {
   }
 }
 
+// ───────── Accusés de lecture réels (table conv_reads) ─────────
+// Marque la conversation comme lue par MOI (upsert de mon last_read_at).
+async function supaMarkRead(convId) {
+  try {
+    if (typeof supa === "undefined" || !supa || !MY_UID || !window._supaReal || !convId) return;
+    await supa.from("conv_reads").upsert(
+      { conv_id: convId, user_id: MY_UID, last_read_at: new Date().toISOString() },
+      { onConflict: "conv_id,user_id" }
+    );
+  } catch(e) {}
+}
+
+// Charge l'instant de lecture des AUTRES membres → c._otherReadAt (le plus récent).
+// Sert à afficher un ✓✓ fiable sur mes messages (lus si envoyés avant cet instant).
+async function supaLoadOtherRead(convId) {
+  try {
+    if (typeof supa === "undefined" || !supa || !MY_UID || !window._supaReal || !convId) return;
+    const { data } = await supa.from("conv_reads").select("user_id,last_read_at").eq("conv_id", convId).neq("user_id", MY_UID);
+    if (!data || !data.length) return;
+    var maxAt = 0;
+    data.forEach(function(r){ var t = new Date(r.last_read_at).getTime(); if (t > maxAt) maxAt = t; });
+    var c = getConversations().find(function(x){ return x.id === convId; });
+    if (c && maxAt) {
+      c._otherReadAt = maxAt; c._otherRead = true;
+      if (window._openedConvId === convId) {
+        try { var fp = document.getElementById("conv-fullpage"); renderConvFpThread(c, fp ? fp.getAttribute("data-display-name") : (c.userName||"")); } catch(e) {}
+      }
+    }
+  } catch(e) {}
+}
+
 async function supaLoadMyConversations() {
   try {
     const { data: memberships } = await supa.from("conv_members").select("conv_id").eq("user_id", MY_UID);
@@ -2816,7 +2847,8 @@ async function _handleIncomingConvMessage(r) {
   // Conv ouverte : soit l'id serveur, soit l'entrée locale fusionnée (id ≠ r.conv_id).
   const isConvOpen = window._openedConvId === r.conv_id || window._openedConvId === conv.id;
   if (isConvOpen) {
-    conv._otherRead = true; // l'utilisateur lit le message
+    // Je lis le message en direct → marque MA lecture côté serveur (accusés réels).
+    try { if (typeof supaMarkRead === "function") supaMarkRead(conv.id); } catch(e) {}
     conversationsState = convs;
     saveConversations();
     try {
@@ -2890,6 +2922,22 @@ function supaSubscribe() {
       })
       .subscribe();
   }
+
+  // ── Accusés de lecture : un autre membre a lu → met à jour le ✓✓ en direct ──
+  supa.channel("realtime:conv_reads")
+    .on("postgres_changes", { event: "*", schema: "public", table: "conv_reads" }, function(payload) {
+      var r = payload.new; if (!r || r.user_id === MY_UID) return;
+      var c = getConversations().find(function(x){ return x.id === r.conv_id || (!x.isGroup && x.userId === r.user_id); });
+      if (!c) return;
+      var t = new Date(r.last_read_at).getTime();
+      if (t > (c._otherReadAt || 0)) {
+        c._otherReadAt = t; c._otherRead = true;
+        if (window._openedConvId === c.id || window._openedConvId === r.conv_id) {
+          try { var fp = document.getElementById("conv-fullpage"); renderConvFpThread(c, fp ? fp.getAttribute("data-display-name") : (c.userName||"")); } catch(e) {}
+        }
+      }
+    })
+    .subscribe();
 
   // ── Nouvelle conversation créée pour moi (l'autre personne m'ajoute comme membre) ──
   supa.channel("realtime:conv_members")
