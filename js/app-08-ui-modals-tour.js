@@ -1542,9 +1542,32 @@ async function boot() {
         // Crée un profil par défaut si l'utilisateur n'en a pas (connexion sans onboarding)
         if (!state.user.profiles || state.user.profiles.length === 0) {
           const defPassion = allPassions()[0];
-          const defProfile = { id: uid(), name: state.user.name || "Passionné", passion: defPassion.id, emoji: defPassion.emoji, color: defPassion.color, bio: "", createdAt: Date.now() };
+          // 🔑 D'abord récupérer le VRAI profil déjà publié pour ce compte (table
+          // profiles) : sinon on créait « Passionné » par défaut et on l'upsertait,
+          // ÉCRASANT le vrai nom/emoji/couleur/photo en base (bug « ça affiche
+          // Passionné »). On adopte le profil serveur s'il existe.
+          let srvProf = null;
+          try {
+            const { data } = await supa.from("profiles").select("username,emoji,color,passion_id,avatar_url,bio").eq("id", MY_UID).maybeSingle();
+            if (data && data.username) srvProf = data;
+          } catch(e) {}
+          const defProfile = {
+            id: uid(),
+            name: (srvProf && srvProf.username) || state.user.name || "Passionné",
+            passion: (srvProf && srvProf.passion_id) || defPassion.id,
+            emoji: (srvProf && srvProf.emoji) || defPassion.emoji,
+            color: (srvProf && srvProf.color) || defPassion.color,
+            bio: (srvProf && srvProf.bio) || "",
+            createdAt: Date.now(),
+          };
           state.user.profiles = [defProfile];
           state.user.currentProfileId = defProfile.id;
+          if (srvProf) {
+            state.user.general = state.user.general || {};
+            if (srvProf.username) state.user.general.username = srvProf.username;
+            if (srvProf.avatar_url) state.user.general.avatarPhoto = srvProf.avatar_url;
+            if (!state.user.name && srvProf.username) state.user.name = srvProf.username;
+          }
           saveState();
         }
         // Pas de filtre par défaut au démarrage — l'utilisateur choisit
@@ -1682,9 +1705,16 @@ async function supaUpsertProfile() {
       return;
     }
 
+    // Nom public = nom du PROFIL ACTIF (persona). Mais « Passionné »/« Profil »
+    // sont des sentinelles auto-générées (profil par défaut créé sans onboarding) :
+    // si c'en est une, on préfère le vrai nom de compte plutôt que d'écraser en
+    // base un vrai pseudo par « Passionné » (bug « ça affiche Passionné »).
+    const _isDefaultName = (n) => !n || n === "Passionné" || n === "Profil";
+    let _uname = prof.name;
+    if (_isDefaultName(_uname)) _uname = g.username || state.user.name || _uname || "Profil";
     const profileData = {
       id: MY_UID,
-      username: prof.name || g.username || state.user.name || "Profil",  // ✅ nom du PROFIL ACTIF (persona) d'abord, puis nom de compte
+      username: _uname,
       emoji: prof.emoji || "✨",
       color: prof.color || "#8b5cf6",
       passion_id: prof.passion || null,

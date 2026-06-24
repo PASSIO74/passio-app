@@ -436,6 +436,10 @@ async function saveMainProfile() {
   state.user.general.rsLinks  = rsLinks;
   state.user.general.emoji    = currentProfile()?.emoji || "✨";
   if (username) state.user.name = username;
+  // ⚠️ Renommer aussi le PROFIL ACTIF : c'est lui que supaUpsertProfile publie
+  // (prof.name prioritaire). Sans ça, « Modifier le profil » changeait g.username
+  // mais l'identité publique restait l'ancien nom du profil → renommage ignoré.
+  if (username) { const _cp = currentProfile(); if (_cp) _cp.name = username; }
 
   saveState();
   if (typeof supaUpsertProfile === "function") supaUpsertProfile();
