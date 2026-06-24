@@ -3225,12 +3225,35 @@ async function supaInit() {
       }
     } catch(e) {}
 
-    // 0bis. RENDRE LE PROFIL D\u00c9COUVRABLE : pousse la ligne `profiles` (pseudo,
-    // emoji, couleur, photo) d\u00e8s la connexion. Sans \u00e7a, un compte qui vient de se
-    // connecter n'appara\u00eet PAS dans la recherche et ne peut PAS recevoir de message
-    // (la table profiles \u2014 interrog\u00e9e par la recherche ET cible des FK des
-    // conversations \u2014 restait vide tant qu'on n'avait pas post\u00e9/\u00e9crit).
-    try { await supaUpsertProfile(); } catch(e) {}
+    // 0bis. PROFIL STABLE PAR COMPTE/EMAIL : la ligne `profiles` (cl\u00e9 = uid du
+    // compte mail) fait FOI. \u00c0 chaque connexion, l'appareil ADOPTE le nom/emoji/
+    // couleur/photo du serveur au lieu de republier le nom local \u2014 sinon le nom
+    // d\u00e9rivait d'un appareil \u00e0 l'autre (profil local diff\u00e9rent \u2192 \u00e9crasement).
+    // Le nom ne change QUE via \u00ab Modifier le profil \u00bb (saveMainProfile, explicite).
+    // S'il n'y a pas encore de profil serveur (compte neuf), on publie le local
+    // (cr\u00e9ation de la ligne \u2192 d\u00e9couvrable dans la recherche + FK conversations).
+    try {
+      const { data: srv } = await supa.from("profiles")
+        .select("username,emoji,color,avatar_url,passion_id,bio").eq("id", MY_UID).maybeSingle();
+      const cp = (typeof currentProfile === "function") ? currentProfile() : null;
+      if (srv && srv.username && cp) {
+        cp.name = srv.username;
+        if (srv.emoji) cp.emoji = srv.emoji;
+        if (srv.color) cp.color = srv.color;
+        if (srv.passion_id) cp.passion = srv.passion_id;
+        state.user.general = state.user.general || {};
+        state.user.general.username = srv.username;
+        if (srv.avatar_url) state.user.general.avatarPhoto = srv.avatar_url;
+        if (!state.user.name) state.user.name = srv.username;
+        try { if (typeof cacheRemoteProfile === "function") cacheRemoteProfile({ id: MY_UID, username: srv.username, emoji: srv.emoji, color: srv.color, avatar_url: srv.avatar_url, passion_id: srv.passion_id }); } catch(e) {}
+        try { saveState(); } catch(e) {}
+        try { if (typeof renderTopbar === "function") renderTopbar(); } catch(e) {}
+        try { if (typeof renderMainProfile === "function") renderMainProfile(); } catch(e) {}
+      } else {
+        // Pas de profil serveur encore \u2192 publier le profil local (cr\u00e9ation).
+        await supaUpsertProfile();
+      }
+    } catch(e) { try { await supaUpsertProfile(); } catch(_e) {} }
 
     // 1. CHARGER LES POSTS au d\u00e9marrage
     console.log("\ud83d\udce5 [INIT] Chargement des posts Supabase");

@@ -442,7 +442,9 @@ async function saveMainProfile() {
   if (username) { const _cp = currentProfile(); if (_cp) _cp.name = username; }
 
   saveState();
-  if (typeof supaUpsertProfile === "function") supaUpsertProfile();
+  // await : on garantit que le serveur (source de vérité du profil stable) est à
+  // jour AVANT de rendre la main, pour qu'un éventuel re-sync adopte le nouveau nom.
+  if (typeof supaUpsertProfile === "function") { try { await supaUpsertProfile(); } catch(e) {} }
   closeModal();
   renderMainProfile();
   toast("✅ Profil mis à jour !");
