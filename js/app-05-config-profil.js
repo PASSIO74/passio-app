@@ -532,29 +532,32 @@ function _callMyName() {
   return [g.username, state.user && state.user.name, (currentProfile() || {}).name].find(n => !isDefault(n)) || "Contact";
 }
 
-// Contraintes audio « haute qualité voix » : traitement activé (anti-écho /
-// anti-bruit / gain auto) + 48 kHz mono → son net pour la parole.
+// Contraintes audio « HD » : traitement activé (anti-écho / anti-bruit / gain
+// auto) + 48 kHz STÉRÉO → son riche et net.
 const CALL_AUDIO_CONSTRAINTS = {
   echoCancellation: true,
   noiseSuppression: true,
   autoGainControl: true,
-  channelCount: 1,
+  channelCount: 2,
   sampleRate: 48000,
+  sampleSize: 16,
+};
+
+// Cible vidéo HD 1080p (idéal — repli auto sur ce que supporte la caméra).
+const CALL_VIDEO_QUALITY = {
+  width: { ideal: 1920, max: 1920 },
+  height: { ideal: 1080, max: 1080 },
+  frameRate: { ideal: 30, max: 30 },
 };
 
 async function _callGetMedia(kind) {
   const constraints = kind === "video"
-    ? { audio: CALL_AUDIO_CONSTRAINTS, video: {
-        facingMode: "user",
-        width: { ideal: 1280, max: 1920 },
-        height: { ideal: 720, max: 1080 },
-        frameRate: { ideal: 30, max: 30 },
-      } }
+    ? { audio: CALL_AUDIO_CONSTRAINTS, video: Object.assign({ facingMode: "user" }, CALL_VIDEO_QUALITY) }
     : { audio: CALL_AUDIO_CONSTRAINTS, video: false };
   return await navigator.mediaDevices.getUserMedia(constraints);
 }
 
-// Monte les débits d'encodage (sinon WebRTC démarre très bas → image floue /
+// Pousse la qualité au MAXIMUM (sinon WebRTC démarre très bas → image floue /
 // son compressé). Appelé une fois connecté et après un changement de caméra.
 async function _callApplyMediaQuality() {
   const cs = window._call;
@@ -565,11 +568,15 @@ async function _callApplyMediaQuality() {
       const params = sender.getParameters();
       if (!params.encodings || !params.encodings.length) params.encodings = [{}];
       if (sender.track.kind === "video") {
-        params.encodings[0].maxBitrate = 2500000; // ~2,5 Mbps → 720p net
+        try { sender.track.contentHint = "detail"; } catch (e) {} // privilégie la netteté
+        params.encodings[0].maxBitrate = 5000000; // ~5 Mbps → 1080p HD net
         params.encodings[0].maxFramerate = 30;
-        if ("degradationPreference" in params) params.degradationPreference = "balanced";
+        delete params.encodings[0].scaleResolutionDownBy; // ne JAMAIS réduire la résolution
+        // Garde la résolution HD : si le réseau faiblit, on baisse le fps plutôt
+        // que de flouter l'image.
+        if ("degradationPreference" in params) params.degradationPreference = "maintain-resolution";
       } else if (sender.track.kind === "audio") {
-        params.encodings[0].maxBitrate = 96000; // Opus voix haute qualité
+        params.encodings[0].maxBitrate = 256000; // Opus stéréo haute fidélité
       }
       try { await sender.setParameters(params); } catch (e) {}
     }
@@ -604,6 +611,32 @@ function _callSetupPeerConnection() {
   };
 }
 
+// Force Opus en STÉRÉO haute fidélité dans le SDP (WebRTC négocie sinon de
+// l'Opus mono ~32 kbps par défaut). Ajoute stéréo + 256 kbps + FEC anti-perte.
+function _callTuneSdp(sdp) {
+  if (!sdp) return sdp;
+  try {
+    const m = sdp.match(/a=rtpmap:(\d+)\s+opus\/48000/i);
+    if (!m) return sdp;
+    const pt = m[1];
+    const opts = "stereo=1;sprop-stereo=1;maxaveragebitrate=256000;maxplaybackrate=48000;cbr=0;useinbandfec=1";
+    const fmtpRe = new RegExp("a=fmtp:" + pt + " ([^\\r\\n]*)");
+    if (fmtpRe.test(sdp)) {
+      sdp = sdp.replace(fmtpRe, function (full, params) {
+        let p = params;
+        ["stereo", "sprop-stereo", "maxaveragebitrate", "maxplaybackrate", "cbr", "useinbandfec"].forEach(function (k) {
+          p = p.replace(new RegExp(";?\\b" + k + "=[^;]*"), "");
+        });
+        p = p.replace(/^;|;$/g, "");
+        return "a=fmtp:" + pt + " " + (p ? p + ";" : "") + opts;
+      });
+    } else {
+      sdp = sdp.replace(new RegExp("(a=rtpmap:" + pt + "\\s+opus/48000[^\\r\\n]*\\r?\\n)"), "$1a=fmtp:" + pt + " " + opts + "\r\n");
+    }
+    return sdp;
+  } catch (e) { return sdp; }
+}
+
 // Envoie un message de signalisation sur le canal d'appel courant.
 function _callSend(event, data) {
   const cs = window._call;
@@ -624,7 +657,7 @@ function _callBindChannelEvents(chan) {
     if (cs.status === "calling") { cs.status = "connecting"; const st = document.getElementById("callStatusText"); if (st) st.textContent = "Connexion…"; }
     try {
       const offer = await cs.pc.createOffer();
-      await cs.pc.setLocalDescription(offer);
+      await cs.pc.setLocalDescription({ type: offer.type, sdp: _callTuneSdp(offer.sdp) });
       _callSend("offer", { sdp: cs.pc.localDescription });
     } catch (e) {}
   });
@@ -634,7 +667,7 @@ function _callBindChannelEvents(chan) {
     try {
       await cs.pc.setRemoteDescription(new RTCSessionDescription(msg.payload.sdp));
       const answer = await cs.pc.createAnswer();
-      await cs.pc.setLocalDescription(answer);
+      await cs.pc.setLocalDescription({ type: answer.type, sdp: _callTuneSdp(answer.sdp) });
       _callSend("answer", { sdp: cs.pc.localDescription });
       _callDrainPendingIce();
     } catch (e) {}
@@ -793,7 +826,7 @@ async function flipCallCamera() {
   // appui re-sélectionnait "user" (aucun changement visible).
   const current = cs._facing || "user";
   const next = current === "environment" ? "user" : "environment";
-  const quality = { width: { ideal: 1280, max: 1920 }, height: { ideal: 720, max: 1080 }, frameRate: { ideal: 30 } };
+  const quality = CALL_VIDEO_QUALITY;
   let ns = null;
   try {
     // `exact` force réellement le changement de caméra sur mobile.
