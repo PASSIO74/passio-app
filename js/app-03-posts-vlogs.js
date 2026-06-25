@@ -1330,6 +1330,33 @@ function endCdvLive(liveId) {
   renderCdvScreen();
 }
 
+// Convertit un Live (de préférence terminé) en brouillon de carnet éditable
+// dans le Studio : destination + étapes (lieu/texte/photo) pré-remplies.
+function convertLiveToCarnet(liveId) {
+  const live = getCdvLives().find(l => l.id === liveId);
+  if (!live) return;
+  closeModal();
+  goTo("studio");
+  setTimeout(() => {
+    const tab = document.querySelector('#studioTypeTabs [data-type="vlog"]');
+    if (tab) tab.click();
+    setTimeout(() => {
+      if ($("#vlogDestination")) $("#vlogDestination").value = live.destination || "";
+      vlogState.cover = null;
+      if ($("#vlogCoverPreview")) $("#vlogCoverPreview").innerHTML = "";
+      vlogState.steps = (live.steps || []).map(s => ({
+        id: uid(),
+        place: s.city || "",
+        text: s.content || "",
+        tip: "",
+        photo: s.photo || (s.photos && s.photos[0]) || null,
+      }));
+      if (typeof renderVlogSteps === "function") renderVlogSteps();
+      toast("📔 Live converti en brouillon de carnet — complète-le puis publie");
+    }, 250);
+  }, 200);
+}
+
 function openCdvLiveViewer(liveId) {
   const lives = getCdvLives();
   const live = lives.find(l => l.id === liveId);
@@ -1414,7 +1441,10 @@ function openCdvLiveViewer(liveId) {
       </div>' : (!isMine ? '\
       <div style="margin-top:14px;">\
         <button class="btn primary block" onclick="toggleFollowCdvLive(\'' + liveId + '\',this)" style="background:linear-gradient(135deg,#ef4444,#f59e0b);">📡 Suivre ce voyage</button>\
-      </div>' : '')) + '\
+      </div>' : (isMine && !isLive ? '\
+      <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);">\
+        <button class="btn primary block" onclick="convertLiveToCarnet(\'' + liveId + '\')">📔 Convertir en carnet de voyage</button>\
+      </div>' : ''))) + '\
   ';
   openModal(html);
   var modalEl = document.querySelector(".modal");

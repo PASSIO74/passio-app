@@ -394,6 +394,71 @@ test.describe("messagerie entre 2 comptes réels", () => {
       await ctxB.close();
     }
   });
+
+  // CDV Live cross-compte : A démarre un Live + une étape, B le charge depuis
+  // Supabase, commente, réagit et le suit ; A recharge et voit le commentaire,
+  // la réaction et le follower. Valide la synchro des Lives (migration_cdv_lives).
+  test("CDV Live d'un autre → étape/commentaire/réaction/suivi cross-compte", async ({ browser }) => {
+    test.setTimeout(180000);
+    const t0 = Date.now();
+    const log = (m) => console.log(`[cdv ${(((Date.now() - t0) / 1000) | 0)}s] ${m}`);
+
+    const ctxA = await browser.newContext();
+    const ctxB = await browser.newContext();
+    const pageA = await ctxA.newPage();
+    const pageB = await ctxB.newPage();
+    pageA.on("console", (m) => { if (m.type() === "error") log("A err: " + m.text().slice(0, 160)); });
+    pageB.on("console", (m) => { if (m.type() === "error") log("B err: " + m.text().slice(0, 160)); });
+
+    let liveId = null;
+    try {
+      const uidA = await signupAnonymous(pageA, "Test Alice");
+      const uidB = await signupAnonymous(pageB, "Test Bob");
+      expect(uidA).toBeTruthy(); expect(uidB).toBeTruthy(); expect(uidA).not.toBe(uidB);
+      log("A=" + uidA + " B=" + uidB);
+
+      // ── A démarre un Live + publie une étape (vraies fonctions de sync) ──
+      liveId = await pageA.evaluate(async () => {
+        const id = "live_" + uid();
+        await supaPublishCdvLive({ id, authorId: "me", destination: "Tour auto", description: "e2e", duration: "weekend", visibility: "public", status: "live" });
+        await supaAddCdvLiveStep(id, { id: "ls_" + uid(), city: "Lisbonne", emoji: "📍", content: "Arrivée [test auto]", photos: [], rating: 5, budget: "€€" });
+        return id;
+      });
+      expect(liveId, "Live de A publié").toBeTruthy();
+      log("live publié: " + liveId);
+
+      // ── B charge le Live de A depuis Supabase ──
+      const bLive = await loadFindWithRetry(pageB, "supaLoadCdvLives", liveId, 20000);
+      expect(bLive, "B charge le Live de A").toBeTruthy();
+      expect(bLive.steps.length, "étape visible chez B").toBeGreaterThanOrEqual(1);
+      expect(bLive.authorId, "auteur = A").toBe(uidA);
+      log("B voit le live · étapes=" + bLive.steps.length);
+
+      // ── B commente, réagit, suit (vraies fonctions de sync) ──
+      await pageB.evaluate(async (id) => {
+        await supaAddCdvLiveComment(id, "Génial ce voyage ! [test auto]");
+        await supaReactCdvLive(id, "🔥");
+        await supaFollowCdvLive(id);
+      }, liveId);
+      log("B a commenté / réagi / suivi");
+      await pageB.waitForTimeout(1500);
+
+      // ── A recharge son Live et voit les interactions de B ──
+      const aLive = await loadFindWithRetry(pageA, "supaLoadCdvLives", liveId, 20000);
+      expect(aLive, "A recharge son Live").toBeTruthy();
+      expect((aLive.comments || []).some((c) => (c.text || "").indexOf("Génial") !== -1), "commentaire de B visible chez A").toBe(true);
+      expect((aLive.reactions || []).includes("🔥"), "réaction de B visible chez A").toBe(true);
+      expect((aLive.followers || []).includes(uidB), "B figure dans les followers chez A").toBe(true);
+      log("✅ CDV Live cross-compte validé (étape + commentaire + réaction + suivi)");
+
+      // ── Nettoyage : A supprime son Live (cascade efface les enfants) ──
+      await cleanupCdvLive(pageA, liveId);
+      await cleanupCdvLive(pageB, null);
+    } finally {
+      await ctxA.close();
+      await ctxB.close();
+    }
+  });
 });
 
 // Parcours réel : landing → Créer un compte → (auth anonyme Supabase par l'API,
@@ -525,6 +590,16 @@ async function loadFindWithRetry(page, fnName, id, timeoutMs) {
     await page.waitForTimeout(1500);
   }
   return found;
+}
+
+// Nettoyage du test CDV Live : A supprime le Live (le cascade efface étapes /
+// commentaires / réactions / followers). liveId=null côté B = juste profil+signout.
+async function cleanupCdvLive(page, liveId) {
+  await page.evaluate(async (id) => {
+    if (id) { try { await supa.from("cdv_lives").delete().eq("id", id); } catch (e) {} }
+    try { await supa.from("profiles").delete().eq("id", MY_UID); } catch (e) {}
+    try { await supa.auth.signOut(); } catch (e) {}
+  }, liveId);
 }
 
 // Nettoyage du test story+bobine (best-effort, RLS par propriétaire).

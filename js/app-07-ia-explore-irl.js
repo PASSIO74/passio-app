@@ -966,7 +966,7 @@ function updateIrlMapMarkers() {
 
   const points = [];
   filtered.forEach(ev => {
-    const ll = cityToLatLng(ev.city) || cityToLatLng(ev.location);
+    const ll = eventLatLng(ev);
     if (!ll) return;
     // Micro-jitter DÉTERMINISTE basé sur l'id (minimal, évite le chevauchement sans décalage visible)
     const h = String(ev.id || "").split("").reduce((s, c) => s + c.charCodeAt(0), 0);
@@ -1161,7 +1161,7 @@ function _filterIrlEvents(events) {
     var maxKm = parseInt(irlDistanceFilter);
     var ref = _irlReferenceLoc();
     filtered = filtered.filter(function(e) {
-      var loc = cityToLatLng(e.city) || cityToLatLng(e.location);
+      var loc = eventLatLng(e);
       if (!loc) return true; // inclure si lieu non géolocalisable
       return calculateDistance(ref.lat, ref.lng, loc[0], loc[1]) <= maxKm;
     });
@@ -1625,6 +1625,11 @@ function openEventDetails(id) {
   document.getElementById("eventDetailContent").innerHTML = `
     <div class="event-detail-urgency ${urgencyClass}">${urgencyText}</div>
 
+    <div style="display:flex;gap:8px;margin:10px 0;">
+      <button class="btn ghost block" onclick="downloadEventIcs('${ev.id}')" style="font-size:12px;">📅 Ajouter au calendrier</button>
+      <button class="btn ghost block" onclick="shareEvent('${ev.id}')" style="font-size:12px;">🔗 Partager</button>
+    </div>
+
     <div class="event-detail-info-card">${infoRows}</div>
 
     ${ev.desc ? `
@@ -1683,6 +1688,42 @@ function closeEventDetail() {
   const page = document.getElementById("eventDetailPage");
   if (page) page.style.display = "none";
 
+}
+
+// Export d'un événement au format iCalendar (.ics) → import dans Google/Apple/Outlook.
+function downloadEventIcs(id) {
+  const ev = allEvents().find(e => e.id === id);
+  if (!ev) return;
+  const start = new Date(ev.date);
+  const end = new Date(ev.date + 2 * 3600000); // durée par défaut 2 h
+  const fmt = (d) => d.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
+  const loc = [ev.venue, ev.address, ev.postalCode, ev.city].filter(Boolean).join(", ");
+  const esc = (s) => String(s || "").replace(/([,;\\])/g, "\\$1").replace(/\n/g, "\\n");
+  const ics = [
+    "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//PASSIO//IRL//FR", "CALSCALE:GREGORIAN",
+    "BEGIN:VEVENT",
+    "UID:passio-" + ev.id + "@passio.app",
+    "DTSTAMP:" + fmt(new Date()),
+    "DTSTART:" + fmt(start),
+    "DTEND:" + fmt(end),
+    "SUMMARY:" + esc(ev.title),
+    "DESCRIPTION:" + esc(ev.desc || ""),
+    "LOCATION:" + esc(loc),
+    "BEGIN:VALARM", "TRIGGER:-P1D", "ACTION:DISPLAY",
+    "DESCRIPTION:" + esc("Rappel : " + (ev.title || "événement") + " demain"),
+    "END:VALARM",
+    "END:VEVENT", "END:VCALENDAR",
+  ].join("\r\n");
+  try {
+    const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = (ev.title || "evenement").replace(/[^a-z0-9]+/gi, "-").toLowerCase().slice(0, 40) + ".ics";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    toast("📅 Événement ajouté à ton calendrier (rappel J-1 inclus)");
+  } catch (e) { toast("Export calendrier impossible"); }
 }
 
 // Partage d'un événement : Web Share API si dispo, sinon copie du lien.
@@ -1830,7 +1871,7 @@ function openCreateEvent() {
   }, 20);
 }
 
-function submitEvent() {
+async function submitEvent() {
   const g = (id) => document.getElementById(id);
   const title = (g("evTitle")?.value || "").trim();
   const passion = g("evPassion")?.value || "";
@@ -1864,18 +1905,44 @@ function submitEvent() {
     price, maxAttendees, contact, externalLink, eventType,
     coverUrl,
     organizerId: "me", attendees: ["me"],
+    lat: null, lng: null,
   };
+  // Coordonnées : ville connue (dictionnaire) sinon géocodage Nominatim de l'adresse
+  // complète → le marqueur apparaît même pour une ville hors dictionnaire.
+  const known = cityToLatLng(city);
+  if (known) { ev.lat = known[0]; ev.lng = known[1]; }
+  else {
+    const geo = await _geocodeAddress([address, postalCode, city, "France"].filter(Boolean).join(", "));
+    if (geo) { ev.lat = geo.lat; ev.lng = geo.lng; }
+  }
   state.userEvents = state.userEvents || [];
   state.userEvents.unshift(ev);
   state.user.joinedEvents = state.user.joinedEvents || [];
   state.user.joinedEvents.push(ev.id);
   grantReward("event_create");
   saveState();
-  // Sync Supabase
+  // Sync Supabase (coords incluses)
   if (typeof supaPublishEvent === "function") supaPublishEvent(ev);
   closeModal();
   renderIRL();
   toast("🎉 Événement créé !");
+}
+
+// Géocode une adresse libre via Nominatim → { lat, lng } ou null.
+async function _geocodeAddress(query) {
+  if (!query) return null;
+  try {
+    const r = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`);
+    const j = await r.json();
+    if (j && j[0]) return { lat: parseFloat(j[0].lat), lng: parseFloat(j[0].lon) };
+  } catch (e) {}
+  return null;
+}
+
+// Coordonnées d'un événement : coords stockées (géocodage) sinon dictionnaire ville.
+function eventLatLng(ev) {
+  if (ev && typeof ev.lat === "number" && typeof ev.lng === "number") return [ev.lat, ev.lng];
+  return cityToLatLng(ev && ev.city) || cityToLatLng(ev && ev.location);
 }
 
 
