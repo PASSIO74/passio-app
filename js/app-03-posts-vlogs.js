@@ -627,9 +627,8 @@ function inspireFromCarnet(postId) {
   setTimeout(() => {
     goTo("studio");
     setTimeout(() => {
-      // Bascule onglet Carnet
-      const tab = document.querySelector('#studioTypeTabs [data-type="vlog"]');
-      if (tab) tab.click();
+      // Bascule en vue Carnet (onglet retiré → fonction dédiée)
+      activateStudioVlog();
       // Remplit avec la structure
       if ($("#vlogDestination")) $("#vlogDestination").value = "Mon " + (post.destination || "voyage");
       if ($("#vlogTransport")) $("#vlogTransport").value = post.transport || "";
@@ -1339,8 +1338,7 @@ function convertLiveToCarnet(liveId) {
   closeModal();
   goTo("studio");
   setTimeout(() => {
-    const tab = document.querySelector('#studioTypeTabs [data-type="vlog"]');
-    if (tab) tab.click();
+    activateStudioVlog();
     setTimeout(() => {
       if ($("#vlogDestination")) $("#vlogDestination").value = live.destination || "";
       vlogState.cover = null;
@@ -1527,8 +1525,7 @@ function renderCdvLives() {
 function setStudioToVlog() {
   goTo("studio");
   setTimeout(() => {
-    const tab = document.querySelector('#studioTypeTabs [data-type="vlog"]');
-    if (tab) tab.click();
+    activateStudioVlog();
   }, 200);
 }
 

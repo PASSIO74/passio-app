@@ -1050,6 +1050,29 @@ $$("#studioTypeTabs .studio-type").forEach(el => {
   });
 });
 
+// Active la vue « Carnet » du Studio SANS onglet dédié (retiré le 2026-06-25 :
+// le carnet se crée depuis sa catégorie, écran CDV → « Nouveau carnet »). Remplace
+// l'ancien `document.querySelector('[data-type="vlog"]').click()` (cf. setStudioToVlog,
+// inspireFromCarnet, convertLiveToCarnet) qui n'a plus d'onglet à cliquer.
+function activateStudioVlog() {
+  $$("#studioTypeTabs .studio-type").forEach(e => e.classList.remove("active"));
+  studioType = "vlog";
+  if ($("#studioPhoto")) $("#studioPhoto").style.display = "none";
+  if ($("#studioVideo")) $("#studioVideo").style.display = "none";
+  if ($("#studioAudio")) $("#studioAudio").style.display = "none";
+  const vlogEl = $("#studioVlog"); if (vlogEl) vlogEl.style.display = "block";
+  const cdvliveEl = $("#studiocdvlive"); if (cdvliveEl) cdvliveEl.style.display = "none";
+  const mainTextField = $("#postText") && $("#postText").closest(".field");
+  if (mainTextField) mainTextField.style.display = "none";
+  const fp = $("#fieldPassion"); if (fp) fp.style.display = "none";
+  const fm = $("#fieldMood");    if (fm) fm.style.display = "none";
+  const ft = $("#fieldTemplates"); if (ft) ft.style.display = "none";
+  if (!vlogState.steps || vlogState.steps.length === 0) {
+    vlogState.steps = [{ id: uid(), place: "", text: "", tip: "", photo: null, video: null, audio: null }];
+    renderVlogSteps();
+  }
+}
+
 // Mood pill row
 $$("#postMoodRow .pill").forEach(p => {
   p.addEventListener("click", () => {
