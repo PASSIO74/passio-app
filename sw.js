@@ -32,6 +32,61 @@ self.addEventListener("activate", e => {
   );
 });
 
+// ════════════════════════════════════════════════════════════════════════
+// WEB PUSH — appels entrants même app fermée
+// ════════════════════════════════════════════════════════════════════════
+// Réception d'une push : affiche une notification « Appel entrant » persistante
+// avec un bouton Répondre. Le tap ouvre l'app sur l'écran d'appel.
+self.addEventListener("push", e => {
+  let data = {};
+  try { data = e.data ? e.data.json() : {}; } catch (_e) { data = {}; }
+  if (data.type !== "call") return;
+  const title = (data.emoji || "📞") + " " + (data.name || "Quelqu'un") + " t'appelle";
+  const opts = {
+    body: data.kind === "video" ? "Appel vidéo entrant — touche pour répondre" : "Appel entrant — touche pour répondre",
+    tag: "passio-call-" + (data.callId || ""),
+    renotify: true,
+    requireInteraction: true,
+    vibrate: [200, 100, 200, 100, 200],
+    icon: "./icon-192.png",
+    badge: "./icon-192.png",
+    data: { callId: data.callId, from: data.from, kind: data.kind, name: data.name, emoji: data.emoji },
+    actions: [
+      { action: "answer", title: "✅ Répondre" },
+      { action: "decline", title: "📵 Refuser" },
+    ],
+  };
+  e.waitUntil(self.registration.showNotification(title, opts));
+});
+
+// Tap sur la notification (ou un de ses boutons) → ouvre/focus l'app avec les
+// paramètres d'appel dans l'URL. La page lit ?call=… au boot et ouvre l'écran
+// d'appel entrant (réponse explicite par l'utilisateur).
+self.addEventListener("notificationclick", e => {
+  e.notification.close();
+  if (e.action === "decline") return; // refus : on ferme juste la notif
+  const d = e.notification.data || {};
+  const qs = "?call=" + encodeURIComponent(d.callId || "") +
+             "&from=" + encodeURIComponent(d.from || "") +
+             "&kind=" + encodeURIComponent(d.kind || "voice") +
+             "&cname=" + encodeURIComponent(d.name || "") +
+             "&cemoji=" + encodeURIComponent(d.emoji || "");
+  const target = "./" + qs;
+  e.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(clients => {
+      for (const c of clients) {
+        if ("focus" in c) {
+          // App déjà ouverte : on la focus et on lui transmet l'appel via message.
+          c.postMessage({ type: "INCOMING_CALL", call: d });
+          return c.focus();
+        }
+      }
+      // App fermée : on l'ouvre sur l'URL qui déclenche l'écran d'appel.
+      if (self.clients.openWindow) return self.clients.openWindow(target);
+    })
+  );
+});
+
 // Fetch : network-first pour index.html, cache-first pour le reste
 self.addEventListener("fetch", e => {
   if (e.request.method !== "GET") return;

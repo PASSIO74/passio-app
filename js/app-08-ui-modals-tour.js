@@ -3196,6 +3196,9 @@ function supaSubscribe() {
   window._supaSubscribed = true;
   // ── Sonnerie d'appels entrants (WebRTC, canal broadcast `ring:<MY_UID>`) ──
   try { if (typeof _subscribeCallRing === "function") _subscribeCallRing(); } catch(e) {}
+  // ── Push : (ré)enregistre l'abonnement de cet appareil si déjà autorisé,
+  //    pour recevoir les appels même app fermée. ──
+  try { if (typeof ensureCallPushSubscription === "function") ensureCallPushSubscription(); } catch(e) {}
   // ── Réception des messages entrants ──
   if (window.PASSIO_REALTIME_V3) {
     // v3 (design définitif) : UN canal privé par utilisateur, abonné une fois.

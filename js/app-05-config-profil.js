@@ -516,10 +516,14 @@ async function startCall(convId, kind) {
     window._call.inviteInterval = setInterval(fire, 2000);
   });
 
-  // Délai de réponse : si le pair ne décroche pas, on raccroche.
+  // Réveil PUSH du destinataire (app fermée). En plus du ring temps réel.
+  _callPushNotify(peer, callId, kind);
+
+  // Délai de réponse : 60 s (laisse le temps d'ouvrir une app fermée depuis la
+  // notification, de charger et de rejoindre le canal d'appel).
   window._call.ringTimeout = setTimeout(() => {
     if (window._call && window._call.status === "calling") { toast("Pas de réponse"); endCall(); }
-  }, 35000);
+  }, 60000);
 }
 
 function _callMyName() {
@@ -829,6 +833,115 @@ function _subscribeCallRing() {
   chan.subscribe();
 }
 window._subscribeCallRing = _subscribeCallRing;
+
+// ════════════════════════════════════════════════════════════════════════
+// WEB PUSH — recevoir un appel même app FERMÉE
+// ════════════════════════════════════════════════════════════════════════
+// Clé publique VAPID (la privée vit côté Edge Function `notify-call`, jamais ici).
+const CALL_VAPID_PUBLIC = "BDtLiNPAVm63VXN_z5cc_hliMa_u5DfFsv_CGQ_8Hb41mDbS5UD8F6gKHRdEb2JmTR95gciKKpOk3jbSOSm8PO0";
+
+function _urlB64ToUint8(base64) {
+  const padding = "=".repeat((4 - (base64.length % 4)) % 4);
+  const b64 = (base64 + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(b64);
+  const arr = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+  return arr;
+}
+
+// Abonne CET appareil aux push et enregistre l'abonnement en base. Idempotent.
+// N'agit que si la permission de notification est déjà accordée (ne prompte pas).
+async function ensureCallPushSubscription() {
+  try {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+    if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
+    if (typeof supa === "undefined" || !supa || !window._supaReal || !MY_UID) return;
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: _urlB64ToUint8(CALL_VAPID_PUBLIC) });
+    }
+    const json = sub.toJSON();
+    await supa.from("push_subscriptions").upsert(
+      { endpoint: sub.endpoint, user_id: MY_UID, subscription: json },
+      { onConflict: "endpoint" }
+    );
+    window._callPushReady = true;
+    console.log("[call] push subscription enregistrée");
+  } catch (e) { console.warn("[call] ensureCallPushSubscription:", e && e.message); }
+}
+window.ensureCallPushSubscription = ensureCallPushSubscription;
+
+// Demande la permission de notification (geste utilisateur) puis s'abonne.
+// Appelée la 1ʳᵉ fois que l'utilisateur ouvre une conversation, pour qu'il
+// puisse RECEVOIR des appels même app fermée. Ne re-prompte pas si déjà décidé.
+async function requestCallNotifications() {
+  try {
+    if (typeof Notification === "undefined") return;
+    if (Notification.permission === "granted") { await ensureCallPushSubscription(); return; }
+    if (Notification.permission === "denied") return; // déjà refusé : on n'insiste pas
+    if (window._callNotifAsked) return;
+    window._callNotifAsked = true;
+    const perm = await Notification.requestPermission();
+    if (perm === "granted") { toast("🔔 Tu recevras les appels même app fermée"); await ensureCallPushSubscription(); }
+  } catch (e) {}
+}
+window.requestCallNotifications = requestCallNotifications;
+
+// Réveille le destinataire via push (app fermée). Best-effort, en plus du ring
+// temps réel (qui couvre le cas app ouverte).
+function _callPushNotify(peer, callId, kind) {
+  try {
+    if (typeof supa === "undefined" || !supa || !window._supaReal) return;
+    supa.functions.invoke("notify-call", { body: {
+      toUserId: peer.id, callId: callId, kind: kind,
+      fromName: _callMyName(), fromEmoji: (currentProfile() && currentProfile().emoji) || "📞",
+    }}).then(r => { console.log("[call] notify-call:", r && r.data); }).catch(() => {});
+  } catch (e) {}
+}
+
+// Affiche l'écran d'appel entrant à partir d'une push (app ouverte depuis la
+// notification, ou message du SW). Reconstruit une invitation et l'affiche ;
+// les invitations realtime répétées de l'appelant prendront le relais ensuite.
+function handlePushIncomingCall(d) {
+  if (!d || !d.callId) return;
+  // S'assurer d'être abonné au canal d'appel pour la suite du handshake.
+  try { if (typeof _subscribeCallRing === "function") _subscribeCallRing(); } catch (e) {}
+  _callOnInvite({ callId: d.callId, from: d.from, kind: d.kind || "voice", name: d.cname || d.name || "Contact", emoji: d.cemoji || d.emoji || "📞" });
+}
+window.handlePushIncomingCall = handlePushIncomingCall;
+
+// App ouverte VIA la notification d'appel (?call=…) → écran d'appel entrant.
+function _checkIncomingCallFromUrl() {
+  try {
+    const p = new URLSearchParams(location.search);
+    const callId = p.get("call");
+    if (!callId) return;
+    // Nettoie l'URL (évite de re-déclencher au prochain rendu / partage du lien).
+    try { history.replaceState(null, "", location.pathname); } catch (e) {}
+    const d = { callId: callId, from: p.get("from"), kind: p.get("kind") || "voice", cname: p.get("cname"), cemoji: p.get("cemoji") };
+    // Laisse le temps à supa/MY_UID de s'initialiser avant d'afficher l'écran.
+    let tries = 0;
+    const iv = setInterval(() => {
+      tries++;
+      if (window._supaReal && MY_UID) { clearInterval(iv); handlePushIncomingCall(d); }
+      else if (tries > 40) { clearInterval(iv); handlePushIncomingCall(d); } // au pire on affiche quand même
+    }, 250);
+  } catch (e) {}
+}
+
+// Messages du service worker (app déjà ouverte quand la notif est cliquée).
+if (typeof navigator !== "undefined" && navigator.serviceWorker) {
+  navigator.serviceWorker.addEventListener("message", (e) => {
+    if (e.data && e.data.type === "INCOMING_CALL") { try { handlePushIncomingCall(e.data.call); } catch (x) {} }
+  });
+}
+
+// Au chargement : si l'app a été ouverte par une notif d'appel, on l'affiche.
+if (typeof document !== "undefined") {
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", _checkIncomingCallFromUrl);
+  else setTimeout(_checkIncomingCallFromUrl, 300);
+}
 
 // Création de groupe (conversation multi-utilisateurs)
 function toggleGroupUser(el) {

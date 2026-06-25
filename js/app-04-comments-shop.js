@@ -1472,6 +1472,9 @@ async function openConversation(convId) {
   var convs = getConversations();
   var c = convs.find(function(x) { return x.id === convId; });
   if (!c) { console.warn("openConversation: conv not found:", convId); return; }
+  // 1ʳᵉ ouverture d'une conversation : proposer les notifications d'appel pour
+  // pouvoir RECEVOIR un appel même app fermée (geste utilisateur = autorisé).
+  if (!c.isGroup) { try { if (typeof requestCallNotifications === "function") requestCallNotifications(); } catch(e) {} }
   c._convPage = 1; // repart du bas (messages récents) à chaque ouverture
   const u = (state.seed.users || []).find(x => x.id === c.userId) || { name: "Inconnu", avatar: "#7c3aed", profileEmoji: "🙂" };
 
