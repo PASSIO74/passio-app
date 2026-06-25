@@ -420,13 +420,14 @@ test.describe("messagerie entre 2 comptes réels", () => {
       expect(uidA).toBeTruthy(); expect(uidB).toBeTruthy(); expect(uidA).not.toBe(uidB);
       log("A=" + uidA + " B=" + uidB);
 
-      // ── A démarre un Live + publie une étape (vraies fonctions de sync) ──
-      liveId = await pageA.evaluate(async () => {
+      // ── A démarre un Live + publie une étape AVEC une photo base64 ──
+      const PX = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
+      liveId = await pageA.evaluate(async (px) => {
         const id = "live_" + uid();
         await supaPublishCdvLive({ id, authorId: "me", destination: "Tour auto", description: "e2e", duration: "weekend", visibility: "public", status: "live" });
-        await supaAddCdvLiveStep(id, { id: "ls_" + uid(), city: "Lisbonne", emoji: "📍", content: "Arrivée [test auto]", photos: [], rating: 5, budget: "€€" });
+        await supaAddCdvLiveStep(id, { id: "ls_" + uid(), city: "Lisbonne", emoji: "📍", content: "Arrivée [test auto]", photos: [px], rating: 5, budget: "€€" });
         return id;
-      });
+      }, PX);
       expect(liveId, "Live de A publié").toBeTruthy();
       log("live publié: " + liveId);
 
@@ -435,7 +436,11 @@ test.describe("messagerie entre 2 comptes réels", () => {
       expect(bLive, "B charge le Live de A").toBeTruthy();
       expect(bLive.steps.length, "étape visible chez B").toBeGreaterThanOrEqual(1);
       expect(bLive.authorId, "auteur = A").toBe(uidA);
-      log("B voit le live · étapes=" + bLive.steps.length);
+      // Invariant DB-hygiène : AUCUNE photo d'étape ne doit être du base64 en DB
+      // (uploadée sur Storage → URL, ou sautée si l'upload échoue — jamais base64).
+      const stepPhotos = bLive.steps.reduce((acc, s) => acc.concat(s.photos || []), []);
+      expect(stepPhotos.every((p) => typeof p === "string" && p.indexOf("data:") !== 0), "aucune photo base64 en DB").toBe(true);
+      log("B voit le live · étapes=" + bLive.steps.length + " · photos=" + JSON.stringify(stepPhotos.map((p) => (p || "").slice(0, 24))));
 
       // ── B commente, réagit, suit (vraies fonctions de sync) ──
       await pageB.evaluate(async (id) => {

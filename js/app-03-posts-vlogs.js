@@ -1039,7 +1039,8 @@ function isMyLive(l) {
 
 // Récupérer les lives actifs (global, pour tous)
 function getActiveCdvLives() {
-  return getCdvLives().filter(l => l.status === "live" && l.visibility !== "private");
+  return getCdvLives().filter(l => l.status === "live" && l.visibility !== "private"
+    && !(typeof isBlocked === "function" && isBlocked(l.authorId)));
 }
 
 // Récupérer les lives des people qu'on suit
@@ -1441,6 +1442,7 @@ function openCdvLiveViewer(liveId) {
       </div>' : (!isMine ? '\
       <div style="margin-top:14px;">\
         <button class="btn primary block" onclick="toggleFollowCdvLive(\'' + liveId + '\',this)" style="background:linear-gradient(135deg,#ef4444,#f59e0b);">📡 Suivre ce voyage</button>\
+        <button onclick="reportCdvLive(\'' + liveId + '\')" style="display:block;margin:10px auto 0;background:none;border:none;color:var(--muted);font-size:11px;cursor:pointer;">⚠️ Signaler ce live</button>\
       </div>' : (isMine && !isLive ? '\
       <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);">\
         <button class="btn primary block" onclick="convertLiveToCarnet(\'' + liveId + '\')">📔 Convertir en carnet de voyage</button>\
@@ -1479,6 +1481,13 @@ function toggleFollowCdvLive(liveId, btn) {
   live.currentViewers = live.followers.length;
   saveCdvLives(lives);
   openCdvLiveViewer(liveId);
+}
+
+// Signalement d'un Live (modération) — réutilise supaReport (table reports).
+function reportCdvLive(liveId) {
+  if (!liveId) return;
+  if (typeof supaReport === "function") supaReport("cdv_live", liveId, "");
+  toast("🚩 Live signalé. Merci, on s'en occupe.");
 }
 
 function reactCdvLive(liveId, emoji) {
@@ -1544,7 +1553,9 @@ function renderCdvScreen() {
   const showLiveOnly = cdvFilters && cdvFilters.size === 1 && cdvFilters.has("live");
   if (showLiveOnly) {
     // Affiche les lives en cours ET les lives terminés
-    const lives = getCdvLives().filter(l => isMyLive(l) || (state.following || []).includes(l.authorId) || l.visibility === "public");
+    const lives = getCdvLives().filter(l =>
+      !(typeof isBlocked === "function" && isBlocked(l.authorId)) &&
+      (isMyLive(l) || (state.following || []).includes(l.authorId) || l.visibility === "public"));
     if (!lives.length) {
       list.innerHTML = "";
       document.getElementById("cdvEmpty").style.display = "block";

@@ -2459,10 +2459,29 @@ async function supaUpdateCdvLiveStatus(liveId, status) {
 
 async function supaAddCdvLiveStep(liveId, step) {
   try {
+    const stepId = step.id || ("ls_" + uid());
+    // Uploader les photos base64 sur Storage (bucket "content") et ne stocker que
+    // des URLs dans la DB — JAMAIS de base64 (un seul média de 5 Mo a fait gonfler
+    // une table à 24 Mo). Si l'upload échoue, on saute la photo (la DB reste légère,
+    // l'expéditeur garde sa copie locale base64).
+    const photoUrls = [];
+    const photos = Array.isArray(step.photos) ? step.photos : [];
+    for (let i = 0; i < photos.length; i++) {
+      const p = photos[i];
+      if (typeof p !== "string" || !p) continue;
+      if (p.indexOf("data:") === 0) {
+        if (typeof supaUploadMedia === "function") {
+          const url = await supaUploadMedia(stepId + "_" + i, "cdv_steps", p, "photo");
+          if (url && url.indexOf("data:") !== 0) photoUrls.push(url);
+        }
+      } else {
+        photoUrls.push(p); // déjà une URL
+      }
+    }
     const { error } = await supa.from("cdv_live_steps").insert({
-      id: step.id || ("ls_" + uid()), live_id: liveId, author_id: MY_UID,
+      id: stepId, live_id: liveId, author_id: MY_UID,
       city: step.city || "", emoji: step.emoji || "📍", content: step.content || "",
-      photos: step.photos || [], rating: step.rating || 0, budget: step.budget || "",
+      photos: photoUrls, rating: step.rating || 0, budget: step.budget || "",
     });
     if (error) console.warn("CDV step:", error.message);
     await supa.from("cdv_lives").update({ updated_at: new Date().toISOString() }).eq("id", liveId);
