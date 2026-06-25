@@ -481,7 +481,7 @@ async function startCall(convId, kind) {
   window._call = {
     id: callId, peer: peer, kind: kind, role: "caller",
     status: "calling", localStream: stream, remoteStream: null,
-    pc: null, chan: null, startedAt: 0,
+    pc: null, chan: null, startedAt: 0, _facing: "user",
   };
 
   _callRenderActiveUI();
@@ -532,11 +532,48 @@ function _callMyName() {
   return [g.username, state.user && state.user.name, (currentProfile() || {}).name].find(n => !isDefault(n)) || "Contact";
 }
 
+// Contraintes audio « haute qualité voix » : traitement activé (anti-écho /
+// anti-bruit / gain auto) + 48 kHz mono → son net pour la parole.
+const CALL_AUDIO_CONSTRAINTS = {
+  echoCancellation: true,
+  noiseSuppression: true,
+  autoGainControl: true,
+  channelCount: 1,
+  sampleRate: 48000,
+};
+
 async function _callGetMedia(kind) {
   const constraints = kind === "video"
-    ? { audio: true, video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } } }
-    : { audio: true, video: false };
+    ? { audio: CALL_AUDIO_CONSTRAINTS, video: {
+        facingMode: "user",
+        width: { ideal: 1280, max: 1920 },
+        height: { ideal: 720, max: 1080 },
+        frameRate: { ideal: 30, max: 30 },
+      } }
+    : { audio: CALL_AUDIO_CONSTRAINTS, video: false };
   return await navigator.mediaDevices.getUserMedia(constraints);
+}
+
+// Monte les débits d'encodage (sinon WebRTC démarre très bas → image floue /
+// son compressé). Appelé une fois connecté et après un changement de caméra.
+async function _callApplyMediaQuality() {
+  const cs = window._call;
+  if (!cs || !cs.pc) return;
+  try {
+    for (const sender of cs.pc.getSenders()) {
+      if (!sender.track) continue;
+      const params = sender.getParameters();
+      if (!params.encodings || !params.encodings.length) params.encodings = [{}];
+      if (sender.track.kind === "video") {
+        params.encodings[0].maxBitrate = 2500000; // ~2,5 Mbps → 720p net
+        params.encodings[0].maxFramerate = 30;
+        if ("degradationPreference" in params) params.degradationPreference = "balanced";
+      } else if (sender.track.kind === "audio") {
+        params.encodings[0].maxBitrate = 96000; // Opus voix haute qualité
+      }
+      try { await sender.setParameters(params); } catch (e) {}
+    }
+  } catch (e) {}
 }
 
 function _callSetupPeerConnection() {
@@ -663,7 +700,7 @@ async function acceptIncomingCall() {
   window._call = {
     id: inv.callId, peer: { id: inv.from, name: inv.name || "Contact", emoji: inv.emoji || "🙂", color: "#7c3aed", photo: null },
     kind: inv.kind, role: "callee", status: "connecting",
-    localStream: stream, remoteStream: null, pc: null, chan: null, startedAt: 0,
+    localStream: stream, remoteStream: null, pc: null, chan: null, startedAt: 0, _facing: "user",
   };
   _callRenderActiveUI();
   _callSetupPeerConnection();
@@ -721,6 +758,8 @@ function _callMarkConnected() {
   cs.startedAt = Date.now();
   const statusEl = document.getElementById("callStatusText");
   if (statusEl) statusEl.textContent = cs.kind === "video" ? "Appel vidéo" : "Appel audio";
+  // Monte la qualité (débits d'encodage) une fois la connexion établie.
+  _callApplyMediaQuality();
   // Timer.
   if (callTimerInterval) clearInterval(callTimerInterval);
   callTimerInterval = setInterval(() => {
@@ -749,19 +788,38 @@ function toggleCallVideo(btn) {
 }
 async function flipCallCamera() {
   const cs = window._call; if (!cs || cs.kind !== "video" || !cs.pc) return;
-  cs._facing = cs._facing === "environment" ? "user" : "environment";
+  // La caméra de départ est frontale ("user") → le 1ᵉʳ appui doit passer à
+  // l'arrière. Bug précédent : `cs._facing` partait `undefined`, donc le 1ᵉʳ
+  // appui re-sélectionnait "user" (aucun changement visible).
+  const current = cs._facing || "user";
+  const next = current === "environment" ? "user" : "environment";
+  const quality = { width: { ideal: 1280, max: 1920 }, height: { ideal: 720, max: 1080 }, frameRate: { ideal: 30 } };
+  let ns = null;
   try {
-    const ns = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: cs._facing } });
-    const newTrack = ns.getVideoTracks()[0];
-    const sender = cs.pc.getSenders().find(s => s.track && s.track.kind === "video");
-    if (sender && newTrack) await sender.replaceTrack(newTrack);
-    // Remplace dans le flux local + aperçu.
-    const old = cs.localStream.getVideoTracks()[0];
-    if (old) { cs.localStream.removeTrack(old); old.stop(); }
-    cs.localStream.addTrack(newTrack);
-    const lv = document.getElementById("callLocalVideo");
-    if (lv) lv.srcObject = cs.localStream;
-  } catch (e) { toast("Impossible de changer de caméra"); }
+    // `exact` force réellement le changement de caméra sur mobile.
+    ns = await navigator.mediaDevices.getUserMedia({ audio: false, video: Object.assign({ facingMode: { exact: next } }, quality) });
+  } catch (e1) {
+    // Pas de caméra correspondant en "exact" (ex. webcam unique sur desktop) →
+    // on retente en préférence souple ; si ça échoue aussi, une seule caméra.
+    try { ns = await navigator.mediaDevices.getUserMedia({ audio: false, video: Object.assign({ facingMode: next }, quality) }); }
+    catch (e2) { toast("Une seule caméra disponible"); return; }
+  }
+  const newTrack = ns.getVideoTracks()[0];
+  if (!newTrack) { toast("Caméra indisponible"); return; }
+  cs._facing = next;
+  const sender = cs.pc.getSenders().find(s => s.track && s.track.kind === "video");
+  if (sender) { try { await sender.replaceTrack(newTrack); } catch (e) {} }
+  // Remplace la piste dans le flux local + aperçu.
+  const old = cs.localStream.getVideoTracks()[0];
+  if (old) { cs.localStream.removeTrack(old); old.stop(); }
+  cs.localStream.addTrack(newTrack);
+  await _callApplyMediaQuality(); // ré-applique le débit sur la nouvelle piste
+  const lv = document.getElementById("callLocalVideo");
+  if (lv) {
+    lv.srcObject = cs.localStream;
+    // Effet miroir uniquement pour la caméra frontale (comme les apps natives).
+    lv.style.transform = next === "environment" ? "none" : "scaleX(-1)";
+  }
 }
 
 // ════════════════════════ UI D'APPEL ════════════════════════
