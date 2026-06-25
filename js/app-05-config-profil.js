@@ -486,24 +486,34 @@ async function startCall(convId, kind) {
 
   _callRenderActiveUI();
   _callSetupPeerConnection();
+  console.log("[call] startCall →", peer.id, "callId", callId, "kind", kind);
 
-  // S'abonne au canal d'appel PUIS envoie l'invitation au pair.
+  // S'abonne au canal d'appel (réponse SDP / ICE).
   const chan = _callChannel("call:" + callId);
   window._call.chan = chan;
   _callBindChannelEvents(chan);
-  chan.subscribe((status) => {
-    if (status !== "SUBSCRIBED") return;
-    // Invitation déposée sur le canal personnel du pair.
-    const ring = _callChannel("ring:" + peer.id);
-    ring.subscribe((rs) => {
-      if (rs !== "SUBSCRIBED") return;
-      ring.send({ type: "broadcast", event: "invite", payload: {
-        callId: callId, from: MY_UID, kind: kind,
-        name: _callMyName(), emoji: (currentProfile() && currentProfile().emoji) || "✨",
-      }});
-      // Le canal ring sert juste à la sonnerie : on le ferme après envoi.
-      setTimeout(() => { try { supa.removeChannel(ring); } catch (e) {} }, 1500);
-    });
+  chan.subscribe((status) => { console.log("[call] call channel:", status); });
+
+  // Invitation déposée sur le canal personnel du pair (`ring:<peerId>`).
+  // ⚠️ Le broadcast est ÉPHÉMÈRE : un envoi unique peut être perdu si le canal
+  // du destinataire se reconnecte au mauvais moment. On RÉPÈTE donc l'invitation
+  // toutes les 2 s jusqu'à ce que le pair réponde (`ready`/`answer`) ou jusqu'au
+  // timeout de sonnerie. C'est ce qui rend la sonnerie fiable en conditions réelles.
+  const invitePayload = {
+    callId: callId, from: MY_UID, kind: kind,
+    name: _callMyName(), emoji: (currentProfile() && currentProfile().emoji) || "✨",
+  };
+  const ring = _callChannel("ring:" + peer.id);
+  window._call.ringSendChan = ring;
+  ring.subscribe((rs) => {
+    console.log("[call] ring(send) channel:", rs);
+    if (rs !== "SUBSCRIBED") return;
+    const fire = () => {
+      if (!window._call || window._call.id !== callId || window._call.status !== "calling") return;
+      try { ring.send({ type: "broadcast", event: "invite", payload: invitePayload }); console.log("[call] invite envoyée"); } catch (e) {}
+    };
+    fire();
+    window._call.inviteInterval = setInterval(fire, 2000);
   });
 
   // Délai de réponse : si le pair ne décroche pas, on raccroche.
@@ -563,9 +573,14 @@ function _callSend(event, data) {
 // Lie les handlers de signalisation à un canal d'appel.
 function _callBindChannelEvents(chan) {
   chan.on("broadcast", { event: "ready" }, async () => {
-    // Le pair a accepté et rejoint le canal → on crée l'offre.
+    // Le pair a accepté et rejoint le canal → on arrête la sonnerie répétée et
+    // on crée l'offre.
     const cs = window._call;
     if (!cs || cs.role !== "caller" || !cs.pc) return;
+    console.log("[call] ready reçu → création de l'offre");
+    if (cs.inviteInterval) { clearInterval(cs.inviteInterval); cs.inviteInterval = null; }
+    if (cs.ringSendChan) { try { supa.removeChannel(cs.ringSendChan); } catch (e) {} cs.ringSendChan = null; }
+    if (cs.status === "calling") { cs.status = "connecting"; const st = document.getElementById("callStatusText"); if (st) st.textContent = "Connexion…"; }
     try {
       const offer = await cs.pc.createOffer();
       await cs.pc.setLocalDescription(offer);
@@ -614,13 +629,20 @@ function _callDrainPendingIce() {
 // ── Réception d'une invitation entrante (depuis le canal ring:<MY_UID>) ──
 function _callOnInvite(payload) {
   if (!payload || !payload.callId) return;
+  // L'appelant RÉPÈTE l'invitation toutes les 2 s (fiabilité). On ignore donc
+  // les doublons : même appel déjà en cours, ou écran entrant déjà affiché.
+  if (window._call && window._call.id === payload.callId) return;          // déjà accepté CET appel
+  if (!window._call && window._callIncoming && window._callIncoming.callId === payload.callId) return; // sonnerie déjà affichée
   if (window._call) {
-    // Déjà en appel → refuse poliment.
+    // Occupé sur un AUTRE appel → refuse poliment (une seule fois).
+    if (window._declinedCallId === payload.callId) return;
+    window._declinedCallId = payload.callId;
     const busy = _callChannel("call:" + payload.callId);
     busy.subscribe((s) => { if (s === "SUBSCRIBED") { busy.send({ type: "broadcast", event: "decline", payload: { from: MY_UID } }); setTimeout(() => { try { supa.removeChannel(busy); } catch (e) {} }, 800); } });
     return;
   }
   if (typeof isBlocked === "function" && isBlocked(payload.from)) return; // modération
+  console.log("[call] invite reçue de", payload.from, payload.callId);
   window._callIncoming = payload;
   _callRenderIncomingUI(payload);
 }
@@ -677,9 +699,11 @@ function _callTeardown() {
   if (cs) {
     cs.status = "ended";
     if (cs.ringTimeout) clearTimeout(cs.ringTimeout);
+    if (cs.inviteInterval) { clearInterval(cs.inviteInterval); cs.inviteInterval = null; }
     try { (cs.localStream && cs.localStream.getTracks() || []).forEach(t => t.stop()); } catch (e) {}
     try { if (cs.pc) cs.pc.close(); } catch (e) {}
     try { if (cs.chan) supa.removeChannel(cs.chan); } catch (e) {}
+    try { if (cs.ringSendChan) supa.removeChannel(cs.ringSendChan); } catch (e) {}
   }
   window._call = null;
   if (callTimerInterval) { clearInterval(callTimerInterval); callTimerInterval = null; }
