@@ -90,11 +90,14 @@ test.describe("messagerie entre 2 comptes réels", () => {
       log("étape 4 OK : A a reçu la réponse de B");
 
       // ── 5. A envoie un message vocal (même format que _sendVoiceMessage) ──
+      // ⚠️ sendMessageToSupabase RETIRE volontairement tout payload `data:` base64
+      // (hygiène DB : un vocal de 5 Mo avait gonflé conv_messages à 24 Mo). Le vrai
+      // chemin vocal uploade sur Storage et envoie une URL https — c'est ce qu'on
+      // simule ici pour valider la réception + le rendu du lecteur cross-compte.
       const voiceMsgId = await pageA.evaluate((id) => {
         const msgId = "msg_" + uid();
-        // mini webm silencieux en data URL (le fallback sans Storage de _sendVoiceMessage)
-        const dataUrl = "data:audio/webm;base64,GkXfo59ChoEBQveBAULygQRC84EIQoKEd2VibUKHgQRChYECGFOAZwH/////////";
-        sendMessageToSupabase(msgId, id, dataUrl, "audio/webm", "Message vocal (3s)", "audio");
+        const storageUrl = "https://njkiyoklssvefstljemx.supabase.co/storage/v1/object/public/media/voice-test.webm";
+        sendMessageToSupabase(msgId, id, storageUrl, "audio/webm", "Message vocal (3s)", "audio");
         return msgId;
       }, convId);
 
@@ -461,10 +464,14 @@ test.describe("messagerie entre 2 comptes réels", () => {
   });
 });
 
-// Parcours réel : landing → Créer un compte → (auth anonyme Supabase par l'API,
-// le bouton « sans compte » ayant été retiré — compte obligatoire) → âge →
-// prénom → 1 passion → Entrer sur PASSIO, puis reload pour que boot() refasse
-// supaInit + supaSubscribe (realtime v2 par défaut) avec la session.
+// Parcours réel : landing → Créer un compte → inscription par e-mail/mot de passe
+// (l'auth ANONYME est désactivée côté Supabase — `anonymous_provider_disabled` —
+// et l'app exige un vrai compte ; « Confirm email » étant OFF, signUp renvoie une
+// session immédiatement) → âge → prénom → 1 passion → Entrer sur PASSIO, puis
+// reload pour que boot() refasse supaInit + supaSubscribe avec la session.
+// ⚠️ Crée de vrais utilisateurs e-mail jetables dans auth.users (préfixe e2e_…@
+// passio-e2e.test) — non supprimables sans service_role, comme les anciens
+// comptes anonymes. C'est pourquoi le test reste OPT-IN.
 async function signupAnonymous(page, name) {
   const step = (m) => console.log(`[signup ${name}] ${m}`);
   await page.addInitScript(([k, t]) => sessionStorage.setItem(k, t), [GATE_KEY, GATE_TOKEN]);
@@ -480,18 +487,19 @@ async function signupAnonymous(page, name) {
   step("landing affichée (boot terminé)");
   await page.getByRole("button", { name: "Créer un compte" }).first().click();
   step("clic Créer un compte");
-  // Compte obligatoire : le bouton « Continuer sans compte » a été retiré de l'UI.
-  // L'API signInAnonymously reste disponible — on crée la session par code puis on
-  // avance l'onboarding (comme le faisait onbSkipAuth : signin + onbNext()).
+  // Inscription e-mail par l'API (équivalent de onbDoAuth en mode signup) puis
+  // onbNext() pour avancer l'onboarding, comme l'ancien chemin anonyme.
   await page.waitForFunction(() => typeof supa !== "undefined" && !!supa && typeof onbNext === "function", null, { timeout: 20000 });
-  await page.evaluate(async () => {
+  const email = `e2e_${Date.now()}_${Math.random().toString(36).slice(2, 8)}@passio-e2e.test`;
+  await page.evaluate(async (em) => {
     try {
-      const { data } = await supa.auth.signInAnonymously();
+      const { data, error } = await supa.auth.signUp({ email: em, password: "Passio-e2e-12345!" });
       if (data && data.session) { window.MY_UID = data.session.user.id; try { localStorage.setItem("passio_uid", window.MY_UID); } catch (e) {} }
-    } catch (e) {}
+      else if (error) console.warn("signUp e2e error:", error.message);
+    } catch (e) { console.warn("signUp e2e exception:", e && e.message); }
     if (typeof onbNext === "function") onbNext();
-  });
-  step("auth anonyme (API) — attente MY_UID…");
+  }, email);
+  step("inscription e-mail (API) — attente MY_UID…");
   await page.waitForFunction(() => !!window.MY_UID, null, { timeout: 20000 });
   step("MY_UID obtenu");
   await page.locator("#birthYear").fill("1995");
