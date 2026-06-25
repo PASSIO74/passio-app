@@ -2557,6 +2557,25 @@ async function supaRefreshCdvLives() {
   } catch(e) { console.warn("supaRefreshCdvLives:", e); }
 }
 
+// Handler realtime CDV Lives (debounced) : un changement sur n'importe quelle
+// table cdv_* → recharge la liste + le viewer ouvert. Rend les Lives instantanés
+// (le polling 5 s de startCdvLiveRefresh reste un filet de sécurité hors-ligne).
+let _cdvRtDebounce = null;
+function _onCdvRealtime() {
+  if (_cdvRtDebounce) clearTimeout(_cdvRtDebounce);
+  _cdvRtDebounce = setTimeout(async function() {
+    try { if (typeof supaRefreshCdvLives === "function") await supaRefreshCdvLives(); } catch(e) {}
+    try {
+      const modal = document.querySelector(".modal.modal-fullscreen[data-live-id]");
+      if (!modal) return;
+      const ci = document.getElementById("cdvLiveComment");
+      if (ci && document.activeElement === ci && ci.value) return; // ne pas écraser la saisie en cours
+      const lid = modal.getAttribute("data-live-id");
+      if (lid && typeof openCdvLiveViewer === "function") openCdvLiveViewer(lid);
+    } catch(e) {}
+  }, 400);
+}
+
 // ---- MESSAGERIE TEMPS RÉEL ----
 
 async function supaSearchUsers(query) {
@@ -3317,6 +3336,16 @@ function supaSubscribe() {
       } catch(e) {}
     })
     .subscribe();
+
+  // CDV Lives en temps réel : 1 canal pour les 5 tables (étapes / commentaires /
+  // réactions / suivis). Handler debounced → refresh liste + viewer ouvert.
+  supa.channel("realtime:cdv_lives")
+    .on("postgres_changes", { event: "*", schema: "public", table: "cdv_lives" }, _onCdvRealtime)
+    .on("postgres_changes", { event: "*", schema: "public", table: "cdv_live_steps" }, _onCdvRealtime)
+    .on("postgres_changes", { event: "*", schema: "public", table: "cdv_live_comments" }, _onCdvRealtime)
+    .on("postgres_changes", { event: "*", schema: "public", table: "cdv_live_reactions" }, _onCdvRealtime)
+    .on("postgres_changes", { event: "*", schema: "public", table: "cdv_live_followers" }, _onCdvRealtime)
+    .subscribe();
 }
 // ---- FOLLOW / UNFOLLOW ----
 async function supaFollowUser(targetId) {
@@ -3580,6 +3609,8 @@ async function supaInit() {
         supaLoadNotifications().then(ns => { if (ns && ns.length) mergeSupaNotifs(ns); }).catch(e => {});
       // CDV Lives : fusionner les voyages en direct des autres comptes.
       if (typeof supaRefreshCdvLives === "function") supaRefreshCdvLives();
+      // Rappel in-app des événements rejoints dans les prochaines 24 h.
+      if (typeof _checkEventReminders === "function") _checkEventReminders();
       // Liste de blocage (modération) : fusion avec le cache local.
       if (typeof supaLoadBlocks === "function")
         supaLoadBlocks().then(bl => {

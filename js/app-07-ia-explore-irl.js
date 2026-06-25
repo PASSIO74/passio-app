@@ -1690,6 +1690,37 @@ function closeEventDetail() {
 
 }
 
+// Rappel in-app pour les événements rejoints qui ont lieu dans les prochaines
+// 24 h : pousse une notification locale UNE seule fois par événement (dédup via
+// localStorage). Appelé au boot. Complète l'alarme J-1 du fichier .ics.
+function _checkEventReminders() {
+  try {
+    var reminded = JSON.parse(localStorage.getItem("passio_event_reminded") || "[]");
+    var now = Date.now();
+    var joined = (state.user && state.user.joinedEvents) || [];
+    if (!joined.length) return;
+    var events = allEvents();
+    events.forEach(function(e) {
+      if (joined.indexOf(e.id) === -1) return;
+      var diff = e.date - now;
+      if (diff > 0 && diff <= 24 * 3600000 && reminded.indexOf(e.id) === -1) {
+        var d = fmtEventDate(e.date);
+        var when = diff <= 12 * 3600000 ? "aujourd'hui" : "demain";
+        if (typeof pushNotification === "function") {
+          pushNotification("⏰ Rappel : <b>" + escapeHtml(e.title) + "</b> " + when + " à " + (e.time || d.time || "") + (e.city ? " · " + escapeHtml(e.city) : ""), "⏰");
+        }
+        reminded.push(e.id);
+      }
+    });
+    // Purge les ids trop vieux pour ne pas faire gonfler le cache.
+    reminded = reminded.filter(function(id) {
+      var ev = events.find(function(x) { return x.id === id; });
+      return ev && ev.date > now - 7 * 86400000;
+    });
+    localStorage.setItem("passio_event_reminded", JSON.stringify(reminded));
+  } catch (e) {}
+}
+
 // Export d'un événement au format iCalendar (.ics) → import dans Google/Apple/Outlook.
 function downloadEventIcs(id) {
   const ev = allEvents().find(e => e.id === id);

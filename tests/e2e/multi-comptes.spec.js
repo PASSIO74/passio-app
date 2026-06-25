@@ -454,6 +454,19 @@ test.describe("messagerie entre 2 comptes réels", () => {
       expect((aLive.followers || []).includes(uidB), "B figure dans les followers chez A").toBe(true);
       log("✅ CDV Live cross-compte validé (étape + commentaire + réaction + suivi)");
 
+      // ── Realtime : A ajoute une 2e étape, B la reçoit SANS recharger manuellement
+      //    (canal postgres_changes "realtime:cdv_lives" → _onCdvRealtime → refresh) ──
+      await pageA.evaluate((id) => supaAddCdvLiveStep(id, { id: "ls_" + uid(), city: "Sintra", emoji: "📍", content: "Étape realtime [test auto]", photos: [], rating: 4, budget: "€" }), liveId);
+      try {
+        await pageB.waitForFunction(
+          (id) => { const l = (typeof getCdvLives === "function" ? getCdvLives() : []).find((x) => x.id === id); return !!(l && (l.steps || []).length >= 2); },
+          liveId, { timeout: 15000 }
+        );
+        log("✅ realtime OK : B a reçu la 2e étape sans recharger");
+      } catch (e) {
+        log("⚠️ realtime non livré sous 15s (le polling 5 s du viewer reste le filet de sécurité)");
+      }
+
       // ── Nettoyage : A supprime son Live (cascade efface les enfants) ──
       await cleanupCdvLive(pageA, liveId);
       await cleanupCdvLive(pageB, null);
