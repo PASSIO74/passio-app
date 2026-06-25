@@ -34,6 +34,7 @@ function defaultState() {
       following: [],
       savedCarnets: [],
       blocked: [],             // ids des utilisateurs bloqués (modération)
+      seenNotifIds: [],        // mémoire locale des notifs déjà vues (anti-réapparition)
       general: {},
     },
     seed,                    // fake accounts / posts / events / stories / notifs / quests (SEED DE DÉMO SEULEMENT)
@@ -67,6 +68,7 @@ function loadState() {
     if (typeof parsed.landingSeen === "undefined") parsed.landingSeen = false;
     if (!Array.isArray(parsed.user.customPassions)) parsed.user.customPassions = [];
     if (!Array.isArray(parsed.user.following)) parsed.user.following = [];
+    if (!Array.isArray(parsed.user.seenNotifIds)) parsed.user.seenNotifIds = [];
     if (!Array.isArray(parsed.selectedFeedPassions)) parsed.selectedFeedPassions = [];
     // ✅ SÉCURITÉ: Initialiser supabasePosts s'il n'existe pas
     if (!Array.isArray(parsed.supabasePosts)) parsed.supabasePosts = [];
@@ -333,8 +335,12 @@ function _msgSenderMeta() {
   try {
     var prof = currentProfile() || {};
     var g = (state.user && state.user.general) || {};
+    // Identité d'expéditeur CENTRALISÉE : on envoie le pseudo général (un seul
+    // nom public pour toutes les passions), pas le nom du profil-passion actif.
+    var _isDefaultName = function(n) { return !n || n === "Passionné" || n === "Profil"; };
+    var _n = [g.username, (state.user && state.user.name), prof.name].find(function(x){ return !_isDefaultName(x); }) || "Profil";
     return {
-      n: prof.name || g.username || (state.user && state.user.name) || "Profil",
+      n: _n,
       e: prof.emoji || "✨",
       c: prof.color || "#8b5cf6",
       pid: (state.user && state.user.currentProfileId) || null,
@@ -2190,22 +2196,7 @@ async function openPost(id) {
       <div class="post-body" style="white-space:pre-wrap;">${escapeHtml(post.text || "")}</div>
       ${media}
       <div class="post-actions">
-        <span class="post-action ${liked ? "liked" : ""}" onclick="event.stopPropagation(); (function() {
-          let p = state.seed.posts.find(x => x.id === '${id}') || state.userPosts.find(x => x.id === '${id}');
-          if (!p) return;
-          const wasLiked = state.user.likedPosts.includes('${id}');
-          if (wasLiked) {
-            state.user.likedPosts = state.user.likedPosts.filter(x => x !== '${id}');
-            p.likes = Math.max(0, (p.likes || 1) - 1);
-          } else {
-            state.user.likedPosts.push('${id}');
-            p.likes = (p.likes || 0) + 1;
-          }
-          saveState();
-          this.classList.toggle('liked');
-          this.innerHTML = (wasLiked ? '🤍' : '❤️') + ' ' + p.likes;
-          if (typeof supaToggleLike !== 'undefined') supaToggleLike('${id}');
-        }).call(this);">
+        <span class="post-action ${liked ? "liked" : ""}" onclick="event.stopPropagation(); likePostDetail('${id}', this);">
           ${liked ? "❤️" : "🤍"} ${post.likes || 0}
         </span>
         <span class="post-action" onclick="openComments('${id}')">💬 ${(post.comments||[]).length}</span>
@@ -2225,5 +2216,21 @@ async function openPost(id) {
 
   page.style.display = "flex";
   page.scrollTop = 0;
+}
+
+// Like depuis la vue détail d'un post : délègue au likePost() canonique
+// (cherche dans seed + userPosts + supabasePosts via findPostAnywhere, sync
+// Supabase, notif auteur) puis met à jour le bouton EN PLACE — sans re-render
+// global. Remplace l'ancien handler inline dupliqué qui oubliait supabasePosts
+// (cf. CLAUDE.md) et désynchronisait le compteur → « double like ».
+function likePostDetail(id, el) {
+  likePost(id, true); // skipRender : on est en vue détail, pas dans le fil
+  const liked = state.user.likedPosts.includes(id);
+  const p = findPostAnywhere(id);
+  const n = p ? (p.likes || 0) : 0;
+  if (el) {
+    el.classList.toggle("liked", liked);
+    el.innerHTML = (liked ? "❤️" : "🤍") + " " + n;
+  }
 }
 

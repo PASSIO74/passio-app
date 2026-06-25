@@ -1234,6 +1234,12 @@ function mergeSupaNotifs(ns) {
   // Ignorer les notifs émises par un utilisateur bloqué (modération)
   if (typeof isBlocked === "function") ns = ns.filter(n => !isBlocked(n.fromId));
   if (!ns.length) return;
+  // Mémoire locale des notifs déjà vues : même si le `seen` Supabase n'a pas
+  // été persisté (ou pas encore propagé), une notif vue ici ne doit JAMAIS
+  // revenir en non-lue → on force `unread=false`. (Bug « les mêmes notifs
+  // réapparaissent à chaque ouverture ».)
+  const _seenSet = new Set((state.user && state.user.seenNotifIds) || []);
+  ns.forEach(n => { if (n && _seenSet.has(n.id)) n.unread = false; });
   const localOnly = (state.notifications || []).filter(n => !n.fromSupabase);
   const byId = new Map();
   [...ns, ...localOnly].forEach(n => { if (n && n.id && !byId.has(n.id)) byId.set(n.id, n); });
@@ -1280,19 +1286,35 @@ function openNotifications() {
 // (le surlignage des nouvelles reste visible le temps de cette ouverture).
 function _resetNotifBadge() {
   let changed = false;
+  const supaIds = [];
   (state.notifications || []).forEach(n => {
     if (n.unread) {
       n.unread = false; changed = true;
-      if (n.fromSupabase && typeof supaMarkNotifSeen === "function") { try { supaMarkNotifSeen(n.id); } catch (e) {} }
+      _rememberSeenNotif(n.id);
+      if (n.fromSupabase) supaIds.push(n.id);
     }
   });
+  // Sync « seen » côté Supabase en UN seul appel (cross-appareil).
+  if (supaIds.length && typeof supaMarkNotifsSeen === "function") { try { supaMarkNotifsSeen(supaIds); } catch (e) {} }
   if (changed) { try { saveState(); } catch (e) {} try { renderBell(); } catch (e) {} }
+}
+
+// Mémorise localement qu'une notif a été vue (anti-réapparition). Borné à 300
+// ids pour ne pas gonfler indéfiniment le localStorage.
+function _rememberSeenNotif(id) {
+  if (!id || !state.user) return;
+  if (!Array.isArray(state.user.seenNotifIds)) state.user.seenNotifIds = [];
+  if (state.user.seenNotifIds.indexOf(id) === -1) {
+    state.user.seenNotifIds.push(id);
+    if (state.user.seenNotifIds.length > 300) state.user.seenNotifIds = state.user.seenNotifIds.slice(-300);
+  }
 }
 
 function markNotifRead(id) {
   const n = state.notifications.find(x => x.id === id);
   if (n) {
     n.unread = false;
+    _rememberSeenNotif(id);
     saveState();
     renderBell();
     // Re-render en place (pas de réouverture → évite un re-fetch Supabase).
@@ -1344,7 +1366,16 @@ function openNotifTarget(n) {
 }
 
 function markAllNotifsRead() {
-  state.notifications.forEach(n => n.unread = false);
+  const supaIds = [];
+  state.notifications.forEach(n => {
+    n.unread = false;
+    _rememberSeenNotif(n.id);
+    if (n.fromSupabase) supaIds.push(n.id);
+  });
+  // ⚠️ Bug historique : « Tout marquer lu » ne synchronisait PAS le `seen` côté
+  // Supabase → au rechargement les notifs revenaient en non-lues. On persiste
+  // désormais en base (et localement via seenNotifIds).
+  if (supaIds.length && typeof supaMarkNotifsSeen === "function") { try { supaMarkNotifsSeen(supaIds); } catch (e) {} }
   saveState();
   renderBell();
   closeModal();
@@ -1705,19 +1736,30 @@ async function supaUpsertProfile() {
       return;
     }
 
-    // Nom public = nom du PROFIL ACTIF (persona). Mais « Passionné »/« Profil »
-    // sont des sentinelles auto-générées (profil par défaut créé sans onboarding) :
-    // si c'en est une, on préfère le vrai nom de compte plutôt que d'écraser en
-    // base un vrai pseudo par « Passionné » (bug « ça affiche Passionné »).
+    // PSEUDO CENTRALISÉ : un seul nom public pour TOUTES les passions du compte.
+    // (Avant : on publiait `prof.name` — le nom du profil-passion ACTIF — donc un
+    // même compte apparaissait sous des noms différents selon la passion choisie.
+    // Désormais l'identité publique = le pseudo général, et les profils-passion
+    // ne sont que des catégories internes.) « Passionné »/« Profil » sont des
+    // sentinelles auto-générées : on prend le 1ᵉʳ nom RÉEL disponible.
     const _isDefaultName = (n) => !n || n === "Passionné" || n === "Profil";
-    let _uname = prof.name;
-    if (_isDefaultName(_uname)) _uname = g.username || state.user.name || _uname || "Profil";
+    const _uname = [g.username, state.user.name, prof.name].find(n => !_isDefaultName(n)) || "Profil";
+
+    // Liste de TOUTES les passions du compte → affichée telle quelle sur le
+    // profil public. La passion principale (1ʳᵉ créée) reste dans `passion_id`
+    // pour la rétro-compatibilité (feed, embeds, anciens clients).
+    const _passions = (state.user.profiles || []).map(pr => {
+      const pas = (typeof passionById === "function") ? passionById(pr.passion) : null;
+      return { id: pr.passion, emoji: pr.emoji || (pas && pas.emoji) || "✨", label: pas ? pas.label : "" };
+    }).filter(p => p.id);
+
     const profileData = {
       id: MY_UID,
       username: _uname,
       emoji: prof.emoji || "✨",
       color: prof.color || "#8b5cf6",
-      passion_id: prof.passion || null,
+      passion_id: (_passions[0] && _passions[0].id) || prof.passion || null,
+      passions: _passions,
       bio: g.bio || "",
     };
     // Photo de profil / couverture : on ne pousse en DB que des URLs Storage
@@ -1729,7 +1771,14 @@ async function supaUpsertProfile() {
     console.log("📤 [UPSERT] Envoi:", profileData);
     diagLog(`📤 [UPSERT] Envoi profil: ${JSON.stringify(profileData)}`);
 
-    const result = await supa.from("profiles").upsert(profileData, { onConflict: "id" });
+    let result = await supa.from("profiles").upsert(profileData, { onConflict: "id" });
+    // Filet de sécurité : si la colonne `passions` n'existe pas encore en base
+    // (migration_profile_passions non appliquée sur ce projet), on retente sans
+    // elle pour ne pas bloquer toute la synchro du profil.
+    if (result && result.error && /passions/.test(result.error.message || "")) {
+      const { passions, ...legacy } = profileData;
+      result = await supa.from("profiles").upsert(legacy, { onConflict: "id" });
+    }
 
     console.log("✅ [UPSERT] Succès:", result);
     diagLog(`✅ [UPSERT] Profil mis à jour`);
@@ -3145,6 +3194,8 @@ function supaSubscribe() {
   // onAuthStateChange — un seul jeu de canaux realtime doit exister.
   if (window._supaSubscribed) return;
   window._supaSubscribed = true;
+  // ── Sonnerie d'appels entrants (WebRTC, canal broadcast `ring:<MY_UID>`) ──
+  try { if (typeof _subscribeCallRing === "function") _subscribeCallRing(); } catch(e) {}
   // ── Réception des messages entrants ──
   if (window.PASSIO_REALTIME_V3) {
     // v3 (design définitif) : UN canal privé par utilisateur, abonné une fois.
@@ -3298,11 +3349,15 @@ function supaSubscribe() {
   supa.channel("realtime:likes")
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "post_likes" }, payload => {
       const r = payload.new;
+      // ⚠️ NE PAS recompter MON propre like : likePost() l'a déjà ajouté en
+      // optimiste. Sinon +1 optimiste + +1 echo realtime = « double like ».
+      if (!r || r.user_id === MY_UID) return;
       const post = findPostAnywhere(r.post_id);
       if (post) { post.likes = (post.likes || 0) + 1; try { renderFeed(); } catch(e) {} }
     })
     .on("postgres_changes", { event: "DELETE", schema: "public", table: "post_likes" }, payload => {
       const r = payload.old;
+      if (!r || r.user_id === MY_UID) return; // mon propre unlike déjà décompté
       const post = findPostAnywhere(r.post_id);
       if (post) { post.likes = Math.max(0, (post.likes || 1) - 1); try { renderFeed(); } catch(e) {} }
     })
@@ -3324,7 +3379,11 @@ function supaSubscribe() {
         unread: !r.seen, fromSupabase: true,
       };
       if ((state.notifications || []).some(n => n.id === notif.id)) return;
+      // Notif déjà vue (mémoire locale) : ne pas la re-toaster ni la repasser
+      // en non-lue (cas d'une notif purgée du cache local mais déjà consultée).
+      const _seen = ((state.user && state.user.seenNotifIds) || []).indexOf(notif.id) > -1;
       mergeSupaNotifs([notif]);
+      if (_seen) return;
       // Toast cliquable → emmène vers le contenu de la notif.
       try { toast(notif.text || "Nouvelle notification", "info", () => { markNotifRead(notif.id); openNotifTarget(notif); }); } catch(e) {}
     })
@@ -3530,7 +3589,17 @@ function stopFeedRefreshLoop() {
 }
 
 async function supaMarkNotifSeen(notifId) {
-  try { await supa.from("notifications").upsert({ id: notifId, seen: true }, { onConflict: "id" }); } catch(e) {}
+  // UPDATE ciblé (pas upsert) : l'upsert refaisait un INSERT/ON CONFLICT qui
+  // pouvait échouer silencieusement → `seen` jamais persisté → notifs qui
+  // réapparaissent. La policy RLS « Update propre » autorise l'UPDATE du
+  // destinataire. (filtre user_id pour rester dans le périmètre RLS.)
+  try { await supa.from("notifications").update({ seen: true }).eq("id", notifId).eq("user_id", MY_UID); } catch(e) {}
+}
+
+// Marque plusieurs notifs comme lues en UN seul appel réseau.
+async function supaMarkNotifsSeen(ids) {
+  if (!ids || !ids.length) return;
+  try { await supa.from("notifications").update({ seen: true }).in("id", ids).eq("user_id", MY_UID); } catch(e) {}
 }
 
 document.addEventListener("click", function(e) {

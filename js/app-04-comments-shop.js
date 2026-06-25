@@ -1065,13 +1065,13 @@ async function openUserProfile(authorId, source) {
     try {
       // D'abord, chercher par ID
       console.log("[openUserProfile] Cherchant dans Supabase avec id:", authorId);
-      let { data, error } = await supa.from("profiles").select("id,username,emoji,color,passion_id,bio,avatar_url").eq("id", authorId).limit(1);
+      let { data, error } = await supa.from("profiles").select("id,username,emoji,color,passion_id,passions,bio,avatar_url").eq("id", authorId).limit(1);
       console.log("[openUserProfile] Supabase response (by id):", data, "error:", error);
 
       // Si pas trouvé par ID, chercher par username (en cas de confusion entre ID et username)
       if ((!data || data.length === 0) && authorId && !authorId.startsWith("u_")) {
         console.log("[openUserProfile] Pas trouvé par id, cherchant par username:", authorId);
-        const { data: dataByUsername } = await supa.from("profiles").select("id,username,emoji,color,passion_id,bio,avatar_url").ilike("username", authorId).limit(1);
+        const { data: dataByUsername } = await supa.from("profiles").select("id,username,emoji,color,passion_id,passions,bio,avatar_url").ilike("username", authorId).limit(1);
         if (dataByUsername && dataByUsername.length > 0) {
           data = dataByUsername;
           console.log("[openUserProfile] Trouvé par username:", dataByUsername);
@@ -1080,7 +1080,7 @@ async function openUserProfile(authorId, source) {
 
       if (data && data.length > 0) {
         const profile = data[0];
-        user = { id: profile.id, name: profile.username || "Passionné", profileEmoji: profile.emoji || "✨", avatar: profile.color || "#8b5cf6", passion: profile.passion_id || "", bio: profile.bio || "", photoUrl: profile.avatar_url || null };
+        user = { id: profile.id, name: profile.username || "Passionné", profileEmoji: profile.emoji || "✨", avatar: profile.color || "#8b5cf6", passion: profile.passion_id || "", passions: Array.isArray(profile.passions) ? profile.passions : undefined, bio: profile.bio || "", photoUrl: profile.avatar_url || null };
         try { cacheRemoteProfile(profile); } catch(e) {}
         state.seed.users.push(user);
         console.log("[openUserProfile] Trouvé dans Supabase et ajouté à seed.users");
@@ -1096,19 +1096,25 @@ async function openUserProfile(authorId, source) {
     return;
   }
 
-  // 🔄 Charger TOUS les profils/passions de cet utilisateur
+  // 🔄 Charger TOUTES les passions de cet utilisateur (un seul profil public,
+  // colonne `passions` jsonb). La table profiles n'a qu'UNE ligne par compte :
+  // l'ancien `.select("passion_id")` ne pouvait donc renvoyer qu'une passion.
   let userPassions = [];
-  if (user.passions && Array.isArray(user.passions)) {
-    // Si les passions sont déjà présentes (depuis la recherche)
+  if (user.passions && Array.isArray(user.passions) && user.passions.length) {
+    // Déjà présentes (depuis la recherche ou la requête ci-dessus)
     userPassions = user.passions;
   } else if (typeof supa !== "undefined" && supa) {
-    // Sinon, charger depuis Supabase
     try {
       const { data } = await supa.from("profiles")
-        .select("passion_id, emoji")
-        .eq("id", authorId);
+        .select("passion_id, emoji, passions")
+        .eq("id", authorId)
+        .maybeSingle();
       if (data) {
-        userPassions = data.map(p => ({ id: p.passion_id, emoji: p.emoji || "✨" }));
+        if (Array.isArray(data.passions) && data.passions.length) {
+          userPassions = data.passions;
+        } else if (data.passion_id) {
+          userPassions = [{ id: data.passion_id, emoji: data.emoji || "✨" }];
+        }
       }
     } catch(e) {}
   }
@@ -1511,9 +1517,12 @@ async function openConversation(convId) {
       ${c.isGroup ? `<button class="conv-action-btn" onclick="showGroupMembers('${convId}')" title="Membres">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
       </button>` : ''}
-      <button class="conv-action-btn" onclick="startCall('${convId}','voice')" title="Appel">
+      ${c.isGroup ? '' : `<button class="conv-action-btn" onclick="startCall('${convId}','voice')" title="Appel audio">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.62 3.38 2 2 0 0 1 3.6 1.2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.91 9a16 16 0 0 0 6 6l.92-.92a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
       </button>
+      <button class="conv-action-btn" onclick="startCall('${convId}','video')" title="Appel vidéo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+      </button>`}
       <button class="conv-action-btn" onclick="openConvSettings('${convId}')" title="Paramètres">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
       </button>

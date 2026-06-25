@@ -414,49 +414,397 @@ if (typeof document !== "undefined") {
   setTimeout(() => { try { applyConfig(); } catch(e) {} }, 100);
 }
 
-// Démarre un appel (audio ou vidéo) — mode démo, pas de vrai WebRTC en MVP
+// ════════════════════════════════════════════════════════════════════════
+// APPELS AUDIO / VIDÉO — vrai WebRTC peer-to-peer (signalisation Supabase
+// Realtime Broadcast, sans table dédiée ni migration).
+//
+// Handshake (évite la course « ICE perdu avant que le pair ne rejoigne ») :
+//   1. Appelant : getUserMedia → ouvre la PeerConnection → s'abonne au canal
+//      `call:<callId>` → envoie une invitation sur `ring:<peerId>`.
+//   2. Appelé : reçoit l'invitation sur son canal `ring:<MY_UID>` → UI entrante.
+//      Accepter → getUserMedia → s'abonne à `call:<callId>` → envoie `ready`.
+//   3. Appelant (sur `ready`) → crée l'offre SDP → l'envoie. ICE en trickle des
+//      deux côtés une fois les deux abonnés au même canal.
+//   4. Appelé (sur `offer`) → réponse SDP. Appelant (sur `answer`) → connecté.
+// ════════════════════════════════════════════════════════════════════════
+
+const CALL_ICE_SERVERS = [
+  { urls: "stun:stun.l.google.com:19302" },
+  { urls: "stun:stun1.l.google.com:19302" },
+  { urls: "stun:stun2.l.google.com:19302" },
+];
+
+// État global d'un appel en cours (un seul à la fois).
+window._call = window._call || null;
+
 let callTimerInterval = null;
-function startCall(convId, kind) {
-  const convs = getConversations();
-  const c = convs.find(x => x.id === convId);
-  if (!c) return;
-  const u = (state.seed.users || []).find(x => x.id === c.userId) || { name: "Inconnu", avatar: "#7c3aed", profileEmoji: "🙂" };
 
-  const html = `
-    <div class="modal-handle"></div>
-    <div class="call-modal">
-      ${kind === "video" ? `<div class="call-video-preview">${u.profileEmoji} ${escapeHtml(u.name)}</div>` : ""}
-      <div class="msg-avatar" style="background:${avatarBg(u)};width:80px;height:80px;font-size:34px;margin:0 auto 10px;">${avatarInner(u)}</div>
-      <div class="call-name">${escapeHtml(u.name)}</div>
-      <div class="call-status">${kind === "video" ? "Appel vidéo en cours…" : "Appel audio en cours…"}</div>
-      <div class="call-timer" id="callTimer">00:00</div>
-      <div class="call-controls">
-        <button class="call-control-btn mute" onclick="toast('Micro coupé')">🎙</button>
-        ${kind === "video" ? '<button class="call-control-btn video" onclick="toast(\'Caméra coupée\')">📷</button>' : ''}
-        <button class="call-control-btn hangup" onclick="endCall()">📞</button>
-      </div>
-      <p style="font-size:11px;color:var(--muted);text-align:center;margin-top:14px;font-style:italic;">Mode démo.</p>
-    </div>
-  `;
-  openModal(html);
+// Canal Realtime broadcast (public) ; helper de création.
+function _callChannel(name) {
+  if (typeof supa === "undefined" || !supa) return null;
+  return supa.channel(name, { config: { broadcast: { self: false, ack: false } } });
+}
 
-  // Timer
-  let seconds = 0;
+// Résout le pair (id Supabase + identité d'affichage) d'une conversation 1:1.
+function _callResolvePeer(convId) {
+  const c = (getConversations() || []).find(x => x.id === convId);
+  if (!c || c.isGroup) return null;
+  const u = (state.seed.users || []).find(x => x.id === c.userId);
+  return {
+    id: c.userId,
+    name: c.userName || (u && u.name) || "Contact",
+    emoji: c.userEmoji || (u && u.profileEmoji) || "🙂",
+    color: c.userColor || (u && u.avatar) || "#7c3aed",
+    photo: c.userPhoto || (u && u.photoUrl) || null,
+  };
+}
+
+// Démarre un APPEL SORTANT (kind = "voice" | "video").
+async function startCall(convId, kind) {
+  if (window._call) { toast("Un appel est déjà en cours"); return; }
+  if (typeof RTCPeerConnection === "undefined") { toast("Ton navigateur ne gère pas les appels"); return; }
+  const peer = _callResolvePeer(convId);
+  if (!peer) { toast("Appel disponible uniquement en conversation privée"); return; }
+  if (typeof supa === "undefined" || !supa || !window._supaReal || typeof MY_UID === "undefined" || !MY_UID) {
+    toast("Connecte-toi pour passer un appel"); return;
+  }
+  if (!peer.id || /^u_/.test(peer.id)) { toast("Ce contact de démo n'est pas joignable"); return; }
+
+  let stream;
+  try {
+    stream = await _callGetMedia(kind);
+  } catch (e) {
+    toast("Caméra/micro indisponible ou refusé"); return;
+  }
+
+  const callId = MY_UID + "_" + Date.now().toString(36);
+  window._call = {
+    id: callId, peer: peer, kind: kind, role: "caller",
+    status: "calling", localStream: stream, remoteStream: null,
+    pc: null, chan: null, startedAt: 0,
+  };
+
+  _callRenderActiveUI();
+  _callSetupPeerConnection();
+
+  // S'abonne au canal d'appel PUIS envoie l'invitation au pair.
+  const chan = _callChannel("call:" + callId);
+  window._call.chan = chan;
+  _callBindChannelEvents(chan);
+  chan.subscribe((status) => {
+    if (status !== "SUBSCRIBED") return;
+    // Invitation déposée sur le canal personnel du pair.
+    const ring = _callChannel("ring:" + peer.id);
+    ring.subscribe((rs) => {
+      if (rs !== "SUBSCRIBED") return;
+      ring.send({ type: "broadcast", event: "invite", payload: {
+        callId: callId, from: MY_UID, kind: kind,
+        name: _callMyName(), emoji: (currentProfile() && currentProfile().emoji) || "✨",
+      }});
+      // Le canal ring sert juste à la sonnerie : on le ferme après envoi.
+      setTimeout(() => { try { supa.removeChannel(ring); } catch (e) {} }, 1500);
+    });
+  });
+
+  // Délai de réponse : si le pair ne décroche pas, on raccroche.
+  window._call.ringTimeout = setTimeout(() => {
+    if (window._call && window._call.status === "calling") { toast("Pas de réponse"); endCall(); }
+  }, 35000);
+}
+
+function _callMyName() {
+  const g = (state.user && state.user.general) || {};
+  const isDefault = (n) => !n || n === "Passionné" || n === "Profil";
+  return [g.username, state.user && state.user.name, (currentProfile() || {}).name].find(n => !isDefault(n)) || "Contact";
+}
+
+async function _callGetMedia(kind) {
+  const constraints = kind === "video"
+    ? { audio: true, video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } } }
+    : { audio: true, video: false };
+  return await navigator.mediaDevices.getUserMedia(constraints);
+}
+
+function _callSetupPeerConnection() {
+  const cs = window._call;
+  const pc = new RTCPeerConnection({ iceServers: CALL_ICE_SERVERS });
+  cs.pc = pc;
+  // Pistes locales.
+  (cs.localStream.getTracks() || []).forEach(t => pc.addTrack(t, cs.localStream));
+  // ICE en trickle.
+  pc.onicecandidate = (e) => {
+    if (e.candidate) _callSend("ice", { candidate: e.candidate });
+  };
+  // Flux distant.
+  pc.ontrack = (e) => {
+    cs.remoteStream = e.streams[0];
+    const rv = document.getElementById("callRemoteVideo");
+    if (rv) { rv.srcObject = cs.remoteStream; try { rv.play(); } catch (x) {} }
+    const ra = document.getElementById("callRemoteAudio");
+    if (ra) { ra.srcObject = cs.remoteStream; try { ra.play(); } catch (x) {} }
+  };
+  pc.onconnectionstatechange = () => {
+    if (!window._call) return;
+    const st = pc.connectionState;
+    if (st === "connected") { _callMarkConnected(); }
+    else if (st === "failed" || st === "disconnected" || st === "closed") {
+      if (window._call && window._call.status !== "ended") { toast("Connexion perdue"); endCall(); }
+    }
+  };
+}
+
+// Envoie un message de signalisation sur le canal d'appel courant.
+function _callSend(event, data) {
+  const cs = window._call;
+  if (!cs || !cs.chan) return;
+  try { cs.chan.send({ type: "broadcast", event: event, payload: Object.assign({ from: MY_UID }, data || {}) }); } catch (e) {}
+}
+
+// Lie les handlers de signalisation à un canal d'appel.
+function _callBindChannelEvents(chan) {
+  chan.on("broadcast", { event: "ready" }, async () => {
+    // Le pair a accepté et rejoint le canal → on crée l'offre.
+    const cs = window._call;
+    if (!cs || cs.role !== "caller" || !cs.pc) return;
+    try {
+      const offer = await cs.pc.createOffer();
+      await cs.pc.setLocalDescription(offer);
+      _callSend("offer", { sdp: cs.pc.localDescription });
+    } catch (e) {}
+  });
+  chan.on("broadcast", { event: "offer" }, async (msg) => {
+    const cs = window._call;
+    if (!cs || cs.role !== "callee" || !cs.pc) return;
+    try {
+      await cs.pc.setRemoteDescription(new RTCSessionDescription(msg.payload.sdp));
+      const answer = await cs.pc.createAnswer();
+      await cs.pc.setLocalDescription(answer);
+      _callSend("answer", { sdp: cs.pc.localDescription });
+      _callDrainPendingIce();
+    } catch (e) {}
+  });
+  chan.on("broadcast", { event: "answer" }, async (msg) => {
+    const cs = window._call;
+    if (!cs || cs.role !== "caller" || !cs.pc) return;
+    try { await cs.pc.setRemoteDescription(new RTCSessionDescription(msg.payload.sdp)); _callDrainPendingIce(); } catch (e) {}
+  });
+  chan.on("broadcast", { event: "ice" }, async (msg) => {
+    const cs = window._call;
+    if (!cs || !cs.pc || !msg.payload || !msg.payload.candidate) return;
+    try {
+      // Avant la remote description, on met les candidats en file d'attente.
+      if (!cs.pc.remoteDescription || !cs.pc.remoteDescription.type) {
+        (cs.pendingIce = cs.pendingIce || []).push(msg.payload.candidate);
+      } else {
+        await cs.pc.addIceCandidate(new RTCIceCandidate(msg.payload.candidate));
+      }
+    } catch (e) {}
+  });
+  chan.on("broadcast", { event: "hangup" }, () => { if (window._call) { toast("Appel terminé"); _callTeardown(); } });
+  chan.on("broadcast", { event: "decline" }, () => { if (window._call) { toast("Appel refusé"); _callTeardown(); } });
+}
+
+function _callDrainPendingIce() {
+  const cs = window._call;
+  if (!cs || !cs.pc || !cs.pendingIce) return;
+  cs.pendingIce.forEach(c => { try { cs.pc.addIceCandidate(new RTCIceCandidate(c)); } catch (e) {} });
+  cs.pendingIce = [];
+}
+
+// ── Réception d'une invitation entrante (depuis le canal ring:<MY_UID>) ──
+function _callOnInvite(payload) {
+  if (!payload || !payload.callId) return;
+  if (window._call) {
+    // Déjà en appel → refuse poliment.
+    const busy = _callChannel("call:" + payload.callId);
+    busy.subscribe((s) => { if (s === "SUBSCRIBED") { busy.send({ type: "broadcast", event: "decline", payload: { from: MY_UID } }); setTimeout(() => { try { supa.removeChannel(busy); } catch (e) {} }, 800); } });
+    return;
+  }
+  if (typeof isBlocked === "function" && isBlocked(payload.from)) return; // modération
+  window._callIncoming = payload;
+  _callRenderIncomingUI(payload);
+}
+
+async function acceptIncomingCall() {
+  const inv = window._callIncoming;
+  if (!inv) return;
+  window._callIncoming = null;
+  if (typeof RTCPeerConnection === "undefined") { toast("Appels non supportés"); return; }
+  let stream;
+  try { stream = await _callGetMedia(inv.kind); }
+  catch (e) { toast("Caméra/micro refusé"); _callDeclineSilent(inv); _callCloseUI(); return; }
+
+  window._call = {
+    id: inv.callId, peer: { id: inv.from, name: inv.name || "Contact", emoji: inv.emoji || "🙂", color: "#7c3aed", photo: null },
+    kind: inv.kind, role: "callee", status: "connecting",
+    localStream: stream, remoteStream: null, pc: null, chan: null, startedAt: 0,
+  };
+  _callRenderActiveUI();
+  _callSetupPeerConnection();
+  const chan = _callChannel("call:" + inv.callId);
+  window._call.chan = chan;
+  _callBindChannelEvents(chan);
+  chan.subscribe((status) => {
+    if (status === "SUBSCRIBED") _callSend("ready", {});
+  });
+}
+
+function declineIncomingCall() {
+  const inv = window._callIncoming;
+  window._callIncoming = null;
+  if (inv) _callDeclineSilent(inv);
+  _callCloseUI();
+}
+
+function _callDeclineSilent(inv) {
+  const chan = _callChannel("call:" + inv.callId);
+  chan.subscribe((s) => {
+    if (s !== "SUBSCRIBED") return;
+    chan.send({ type: "broadcast", event: "decline", payload: { from: MY_UID } });
+    setTimeout(() => { try { supa.removeChannel(chan); } catch (e) {} }, 800);
+  });
+}
+
+// Raccroche (action utilisateur) : prévient le pair puis démonte.
+function endCall() {
+  if (window._call) { _callSend("hangup", {}); }
+  _callTeardown();
+}
+
+// Démonte l'appel : ferme pistes, PeerConnection, canal, UI, timer.
+function _callTeardown() {
+  const cs = window._call;
+  if (cs) {
+    cs.status = "ended";
+    if (cs.ringTimeout) clearTimeout(cs.ringTimeout);
+    try { (cs.localStream && cs.localStream.getTracks() || []).forEach(t => t.stop()); } catch (e) {}
+    try { if (cs.pc) cs.pc.close(); } catch (e) {}
+    try { if (cs.chan) supa.removeChannel(cs.chan); } catch (e) {}
+  }
+  window._call = null;
+  if (callTimerInterval) { clearInterval(callTimerInterval); callTimerInterval = null; }
+  _callCloseUI();
+}
+
+function _callMarkConnected() {
+  const cs = window._call;
+  if (!cs || cs.status === "connected") return;
+  cs.status = "connected";
+  cs.startedAt = Date.now();
+  const statusEl = document.getElementById("callStatusText");
+  if (statusEl) statusEl.textContent = cs.kind === "video" ? "Appel vidéo" : "Appel audio";
+  // Timer.
   if (callTimerInterval) clearInterval(callTimerInterval);
   callTimerInterval = setInterval(() => {
-    seconds++;
-    const m = String(Math.floor(seconds / 60)).padStart(2, "0");
-    const s = String(seconds % 60).padStart(2, "0");
+    if (!window._call || !window._call.startedAt) return;
+    const s = Math.floor((Date.now() - window._call.startedAt) / 1000);
     const t = document.getElementById("callTimer");
-    if (t) t.textContent = `${m}:${s}`;
+    if (t) t.textContent = String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
   }, 1000);
 }
 
-function endCall() {
-  if (callTimerInterval) { clearInterval(callTimerInterval); callTimerInterval = null; }
-  closeModal();
-  toast("Appel terminé");
+// ── Contrôles ──
+function toggleCallMute(btn) {
+  const cs = window._call; if (!cs || !cs.localStream) return;
+  const tracks = cs.localStream.getAudioTracks();
+  const on = tracks[0] && tracks[0].enabled;
+  tracks.forEach(t => t.enabled = !on);
+  if (btn) { btn.classList.toggle("active", on); btn.textContent = on ? "🔇" : "🎙"; }
 }
+function toggleCallVideo(btn) {
+  const cs = window._call; if (!cs || !cs.localStream) return;
+  const tracks = cs.localStream.getVideoTracks();
+  if (!tracks.length) return;
+  const on = tracks[0].enabled;
+  tracks.forEach(t => t.enabled = !on);
+  if (btn) { btn.classList.toggle("active", on); btn.textContent = on ? "🚫" : "📷"; }
+}
+async function flipCallCamera() {
+  const cs = window._call; if (!cs || cs.kind !== "video" || !cs.pc) return;
+  cs._facing = cs._facing === "environment" ? "user" : "environment";
+  try {
+    const ns = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: cs._facing } });
+    const newTrack = ns.getVideoTracks()[0];
+    const sender = cs.pc.getSenders().find(s => s.track && s.track.kind === "video");
+    if (sender && newTrack) await sender.replaceTrack(newTrack);
+    // Remplace dans le flux local + aperçu.
+    const old = cs.localStream.getVideoTracks()[0];
+    if (old) { cs.localStream.removeTrack(old); old.stop(); }
+    cs.localStream.addTrack(newTrack);
+    const lv = document.getElementById("callLocalVideo");
+    if (lv) lv.srcObject = cs.localStream;
+  } catch (e) { toast("Impossible de changer de caméra"); }
+}
+
+// ════════════════════════ UI D'APPEL ════════════════════════
+function _callOverlayEl() {
+  let el = document.getElementById("callOverlay");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "callOverlay";
+    el.className = "call-overlay";
+    document.body.appendChild(el);
+  }
+  return el;
+}
+function _callCloseUI() {
+  const el = document.getElementById("callOverlay");
+  if (el) { el.classList.remove("active"); el.innerHTML = ""; }
+}
+
+function _callRenderIncomingUI(inv) {
+  const el = _callOverlayEl();
+  const isVideo = inv.kind === "video";
+  el.innerHTML =
+    '<div class="call-card">' +
+      '<div class="call-avatar" style="background:#7c3aed;">' + (inv.emoji || "🙂") + '</div>' +
+      '<div class="call-name">' + escapeHtml(inv.name || "Contact") + '</div>' +
+      '<div class="call-status">' + (isVideo ? "📹 Appel vidéo entrant…" : "📞 Appel entrant…") + '</div>' +
+      '<div class="call-controls">' +
+        '<button class="call-control-btn hangup" onclick="declineIncomingCall()" title="Refuser">📵</button>' +
+        '<button class="call-control-btn accept" onclick="acceptIncomingCall()" title="Répondre">✅</button>' +
+      '</div>' +
+    '</div>';
+  el.classList.add("active");
+}
+
+function _callRenderActiveUI() {
+  const cs = window._call;
+  const el = _callOverlayEl();
+  const isVideo = cs.kind === "video";
+  el.innerHTML =
+    (isVideo ? '<video id="callRemoteVideo" class="call-remote-video" autoplay playsinline></video>' : '<audio id="callRemoteAudio" autoplay></audio>') +
+    (isVideo ? '<video id="callLocalVideo" class="call-local-video" autoplay playsinline muted></video>' : '') +
+    '<div class="call-card ' + (isVideo ? 'call-card-video' : '') + '">' +
+      (isVideo ? '' : '<div class="call-avatar" style="background:' + (cs.peer.color || "#7c3aed") + ';">' + (cs.peer.emoji || "🙂") + '</div>') +
+      '<div class="call-name">' + escapeHtml(cs.peer.name || "Contact") + '</div>' +
+      '<div class="call-status" id="callStatusText">' + (cs.role === "caller" ? "Appel en cours…" : "Connexion…") + '</div>' +
+      '<div class="call-timer" id="callTimer">00:00</div>' +
+      '<div class="call-controls">' +
+        '<button class="call-control-btn mute" onclick="toggleCallMute(this)" title="Micro">🎙</button>' +
+        (isVideo ? '<button class="call-control-btn video" onclick="toggleCallVideo(this)" title="Caméra">📷</button>' : '') +
+        (isVideo ? '<button class="call-control-btn flip" onclick="flipCallCamera()" title="Changer de caméra">🔄</button>' : '') +
+        '<button class="call-control-btn hangup" onclick="endCall()" title="Raccrocher">📞</button>' +
+      '</div>' +
+    '</div>';
+  el.classList.add("active");
+  // Aperçu local.
+  if (isVideo) {
+    const lv = document.getElementById("callLocalVideo");
+    if (lv && cs.localStream) lv.srcObject = cs.localStream;
+  }
+}
+
+// S'abonne au canal de sonnerie personnel (`ring:<MY_UID>`) pour recevoir les
+// appels entrants. Idempotent ; appelé au boot (supaSubscribe).
+function _subscribeCallRing() {
+  if (typeof supa === "undefined" || !supa || !MY_UID || window._callRingChan) return;
+  const chan = _callChannel("ring:" + MY_UID);
+  window._callRingChan = chan;
+  chan.on("broadcast", { event: "invite" }, (msg) => { try { _callOnInvite(msg.payload); } catch (e) {} });
+  chan.subscribe();
+}
+window._subscribeCallRing = _subscribeCallRing;
 
 // Création de groupe (conversation multi-utilisateurs)
 function toggleGroupUser(el) {

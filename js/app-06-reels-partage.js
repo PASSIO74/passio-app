@@ -152,6 +152,19 @@ function renderMainProfile() {
     : "";
   rsEl.style.display = links.length ? "" : "none";
 
+  // Pastille étoiles : indicateur discret de points + rang (clic → Wallet pour
+  // le détail). Remis à la demande de l'utilisateur, version sobre et intuitive.
+  var starsScoreEl = document.getElementById("profileStarsScore");
+  var starsRankEl  = document.getElementById("profileStarsRank");
+  if (starsScoreEl && starsRankEl) {
+    var _score = state.user.score || 0;
+    var _rank  = (typeof rankOf === "function") ? rankOf(_score) : { label: "Débutant" };
+    starsScoreEl.textContent = _score;
+    starsRankEl.textContent  = _rank.label;
+    var chip = document.getElementById("mainProfileStars");
+    if (chip) chip.title = _rank.next ? ("Plus que " + Math.max(0, _rank.next - _score) + " pts avant « " + (rankOf(_rank.next).label) + " »") : "Rang maximum atteint 🏆";
+  }
+
   var postCount = state.userPosts.length;
   document.getElementById("mainStatPosts").textContent = postCount;
   var ppEl = document.getElementById("topPassia"); if (ppEl) ppEl.textContent = state.user.passia || 0;
@@ -569,6 +582,9 @@ function deleteProfile(profileId) {
   }
   // selectedFeedPassions ne contient pas d'IDs de profil, rien à nettoyer ici
   saveState();
+  // Re-synchronise le profil public pour retirer la passion supprimée de la
+  // liste affichée aux autres.
+  if (typeof supaUpsertProfile === "function") { try { supaUpsertProfile(); } catch(e) {} }
   closeModal();
   renderProfilesScreen();
   renderProfileStrip();

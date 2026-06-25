@@ -226,6 +226,9 @@ function quickCreateProfile(pid) {
   };
   state.user.profiles.push(np);
   state.user.currentProfileId = np.id;
+  saveState();
+  // Re-synchronise le profil public (pseudo unique + liste de passions à jour).
+  if (typeof supaUpsertProfile === "function") { try { supaUpsertProfile(); } catch(e) {} }
   grantReward("profile_create");
   closeModal();
   renderTopbar();
