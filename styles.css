@@ -2807,13 +2807,23 @@
     .tx-amount.plus { color: #8b5cf6; }
     .tx-amount.minus { color: var(--danger); }
 
-    /* Studio, onglets compacts, 6 inline sur la même ligne */
+    .earn-section-title {
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin: 14px 2px 4px;
+    }
+    .earn-section-title:first-child { margin-top: 2px; }
+
+    /* Studio, onglets compacts, 5 inline centrés sur la même ligne */
     .studio-type-tabs {
       display: grid;
-      grid-template-columns: repeat(6, 1fr);
-      gap: 4px;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 6px;
       margin-bottom: 14px;
-      padding: 4px;
+      padding: 5px;
       background: #fff;
       border: 1px solid var(--border);
       border-radius: 14px;
@@ -6315,6 +6325,14 @@
       background: #111;
       z-index: 3;
       transform: scaleX(-1); /* effet miroir caméra avant */
+    }
+    .call-stats {
+      font-size: 11px;
+      color: rgba(255,255,255,0.55);
+      letter-spacing: 0.02em;
+      margin-bottom: 14px;
+      min-height: 14px;
+      font-variant-numeric: tabular-nums;
     }
     .call-control-btn.accept { background: #16a34a; color: #fff; }
     .call-control-btn.flip { background: rgba(255,255,255,0.16); color: #fff; }

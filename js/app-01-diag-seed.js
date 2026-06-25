@@ -109,20 +109,31 @@ const RANKS = [
 ];
 
 // ======== POINTS MAP ========
+// Deux monnaies, deux logiques claires :
+//  ⭐ Étoiles  = ton ACTIVITÉ. Généreuses, elles font monter ton rang. Chaque
+//               action en donne (publier, commenter, participer, créer…).
+//  💎 Passia   = la VALEUR que tu crées pour les autres. Vraie valeur, donc rare
+//               et IMPOSSIBLE à farmer en solo : on n'en gagne JAMAIS par une
+//               action perso. Les seules sources sont (1) les likes reçus sur
+//               ton contenu (palier tous les LIKES_PER_PASSIA likes) et (2) les
+//               quêtes/jalons (claimQuest). → passia: 0 partout ici, exprès.
 const REWARDS = {
-  publish_text:   { pts: 10, passia: 1, label: "Post publié" },
-  publish_photo:  { pts: 15, passia: 2, label: "Photo publiée" },
-  publish_video:  { pts: 25, passia: 4, label: "Vidéo publiée" },
-  publish_audio:  { pts: 20, passia: 3, label: "Podcast publié" },
-  publish_vlog:   { pts: 50, passia: 8, label: "Carnet de voyage publié" },
-  event_create:   { pts: 30, passia: 5, label: "Événement créé" },
-  event_join:     { pts: 25, passia: 5, label: "Participation IRL" },
-  profile_create: { pts: 15, passia: 2, label: "Nouveau profil" },
+  publish_text:   { pts: 10, passia: 0, label: "Post publié" },
+  publish_photo:  { pts: 15, passia: 0, label: "Photo publiée" },
+  publish_video:  { pts: 25, passia: 0, label: "Vidéo publiée" },
+  publish_audio:  { pts: 20, passia: 0, label: "Podcast publié" },
+  publish_vlog:   { pts: 50, passia: 0, label: "Carnet de voyage publié" },
+  event_create:   { pts: 30, passia: 0, label: "Événement créé" },
+  event_join:     { pts: 20, passia: 0, label: "Participation IRL" },
+  profile_create: { pts: 15, passia: 0, label: "Nouveau profil" },
   comment:        { pts: 3,  passia: 0, label: "Commentaire" },
-  like_received:  { pts: 1,  passia: 0, label: "Like reçu" },
-  first_login:    { pts: 50, passia: 10, label: "Premier login" },
-  daily:          { pts: 5,  passia: 1, label: "Connexion du jour" },
+  like_received:  { pts: 2,  passia: 0, label: "Like reçu" },
+  first_login:    { pts: 50, passia: 0, label: "Premier login" },
+  daily:          { pts: 5,  passia: 0, label: "Connexion du jour" },
 };
+
+// 💎 Un palier de likes reçus = +1 Passia (la valeur reçue, lissée et non-farmable).
+const LIKES_PER_PASSIA = 10;
 
 // ======== STATE ========
 let state = null;

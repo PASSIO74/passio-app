@@ -413,6 +413,33 @@ function grantReward(kind, customLabel) {
   rewardToast(r.pts, r.passia, customLabel || r.label);
 }
 
+// 💎 VALEUR REÇUE — appelé quand QUELQU'UN D'AUTRE like un de MES posts (via le
+// canal realtime:likes). C'est la seule source « organique » de Passia : rare,
+// non-farmable (il faut que les autres aiment ton contenu). Chaque like reçu
+// donne 2 ⭐ ; tous les LIKES_PER_PASSIA likes reçus → +1 💎.
+function awardLikeReceived() {
+  if (!state || !state.user) return;
+  state.user.score = (state.user.score || 0) + (REWARDS.like_received.pts || 2);
+  state.user.likesReceived = (state.user.likesReceived || 0) + 1;
+  let passia = 0;
+  if (state.user.likesReceived % LIKES_PER_PASSIA === 0) {
+    passia = 1;
+    state.user.passia = (state.user.passia || 0) + 1;
+  }
+  state.transactions.unshift({
+    id: uid(),
+    kind: "like_received",
+    pts: REWARDS.like_received.pts || 2,
+    passia,
+    label: passia ? "Palier de likes reçus 💎" : "Like reçu",
+    at: Date.now(),
+  });
+  saveState();
+  try { renderTopbar(); } catch (e) {}
+  try { renderWallet(); } catch (e) {}
+  if (passia) rewardToast(REWARDS.like_received.pts || 2, passia, "Ton contenu plaît !");
+}
+
 // ======== NAVIGATION ========
 // Historique de navigation pour le bouton back du téléphone
 let navigationHistory = ["feed"];

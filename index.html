@@ -638,7 +638,6 @@
 
       <!-- CDV Live block -->
       <div id="studiocdvlive" style="display:none;">
-        <p class="section-subtitle" style="margin-top:0;">Raconte ton voyage en direct ! Tes abonnés te suivent en temps réel.</p>
 
         <label class="field"><span>🌍 Destination du voyage</span>
           <input type="text" class="input" id="cdvLiveDestInput" placeholder="Ex : Lisbonne, Road trip en Écosse, Randonnée alpestre…" maxlength="60" /></label>
@@ -767,7 +766,6 @@
 
             <!-- Section 1 : dans l'app -->
             <div class="ai-home-section-title">Dans PASSIO</div>
-            <div class="ai-home-section-sub">Trouve des events, carnets ou créateurs directement dans l'app</div>
             <div class="ai-shortcut-list">
               <button class="ai-shortcut-row" onclick="sendAIQuery('Événements IRL cette semaine')">
                 <span class="ai-shortcut-row-icon">📍</span>
@@ -805,7 +803,6 @@
 
             <!-- Section 2 : conseils passion -->
             <div class="ai-home-section-title" style="margin-top:20px;">Conseils par passion</div>
-            <div class="ai-home-section-sub">Tips, ressources et idées pour progresser dans ce qui t'anime</div>
             <div class="ai-shortcut-list">
               <button class="ai-shortcut-row" onclick="sendAIQuery('Conseils et astuces photographie')">
                 <span class="ai-shortcut-row-icon">📷</span>
@@ -896,12 +893,11 @@
     <section class="screen" id="screen-irl">
       <div class="section-title">Passio IRL <span class="link" onclick="openCreateEvent()">+ Créer</span></div>
 
-      <!-- Ville de référence (pour le filtre distance) — cliquable pour changer -->
+      <!-- Ville de référence (filtre distance) — discrète, tout le bloc ouvre le sélecteur -->
       <div class="irl-locbar" onclick="openIrlCitySelector()" role="button" tabindex="0"
-        style="display:flex;align-items:center;gap:6px;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:8px 12px;margin-bottom:10px;cursor:pointer;font-size:13px;">
+        style="display:inline-flex;align-items:center;gap:5px;margin-bottom:10px;cursor:pointer;font-size:13px;color:var(--muted);">
         <span>📍 Autour de</span>
-        <b id="irlUserCityName" style="color:var(--accent);">…</b>
-        <span style="margin-left:auto;color:var(--muted);font-size:12px;">Changer ›</span>
+        <b id="irlUserCityName" style="color:var(--accent);border-bottom:1px dashed var(--accent);">…</b>
       </div>
 
       <div class="irl-map-wrap" id="irlMapWrap">

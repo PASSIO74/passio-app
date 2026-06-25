@@ -569,9 +569,10 @@ async function _callApplyMediaQuality() {
       if (!params.encodings || !params.encodings.length) params.encodings = [{}];
       if (sender.track.kind === "video") {
         try { sender.track.contentHint = "detail"; } catch (e) {} // privilégie la netteté
-        params.encodings[0].maxBitrate = 5000000; // ~5 Mbps → 1080p HD net
+        params.encodings[0].maxBitrate = 6000000; // ~6 Mbps → 1080p HD net
         params.encodings[0].maxFramerate = 30;
-        delete params.encodings[0].scaleResolutionDownBy; // ne JAMAIS réduire la résolution
+        params.encodings[0].scaleResolutionDownBy = 1; // ne JAMAIS réduire la résolution
+        params.encodings[0].active = true;
         // Garde la résolution HD : si le réseau faiblit, on baisse le fps plutôt
         // que de flouter l'image.
         if ("degradationPreference" in params) params.degradationPreference = "maintain-resolution";
@@ -774,6 +775,7 @@ function _callTeardown() {
     cs.status = "ended";
     if (cs.ringTimeout) clearTimeout(cs.ringTimeout);
     if (cs.inviteInterval) { clearInterval(cs.inviteInterval); cs.inviteInterval = null; }
+    if (cs.statsInterval) { clearInterval(cs.statsInterval); cs.statsInterval = null; }
     try { (cs.localStream && cs.localStream.getTracks() || []).forEach(t => t.stop()); } catch (e) {}
     try { if (cs.pc) cs.pc.close(); } catch (e) {}
     try { if (cs.chan) supa.removeChannel(cs.chan); } catch (e) {}
@@ -793,6 +795,11 @@ function _callMarkConnected() {
   if (statusEl) statusEl.textContent = cs.kind === "video" ? "Appel vidéo" : "Appel audio";
   // Monte la qualité (débits d'encodage) une fois la connexion établie.
   _callApplyMediaQuality();
+  // Ré-affirme la qualité après quelques secondes (le 1ᵉʳ setParameters avant
+  // que le média ne circule ne « prend » pas toujours).
+  setTimeout(() => { _callApplyMediaQuality(); }, 3000);
+  // Lecture en direct des stats (résolution / débit / fps) → affichage + console.
+  _callStartStats();
   // Timer.
   if (callTimerInterval) clearInterval(callTimerInterval);
   callTimerInterval = setInterval(() => {
@@ -801,6 +808,45 @@ function _callMarkConnected() {
     const t = document.getElementById("callTimer");
     if (t) t.textContent = String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
   }, 1000);
+}
+
+// Lecture périodique des stats WebRTC (débit/résolution/fps réels) → barre
+// `#callStats` + console. Permet de voir si la HD passe vraiment et où ça coince.
+function _callStartStats() {
+  const cs = window._call;
+  if (!cs || !cs.pc) return;
+  if (cs.statsInterval) clearInterval(cs.statsInterval);
+  let lastBytes = 0, lastTs = 0;
+  cs.statsInterval = setInterval(async () => {
+    const c = window._call;
+    if (!c || !c.pc) return;
+    try {
+      const stats = await c.pc.getStats();
+      let w = 0, h = 0, fps = 0, bytes = 0, ts = 0;
+      stats.forEach((r) => {
+        if (r.type === "inbound-rtp" && r.kind === "video") {
+          if (typeof r.frameWidth === "number") { w = r.frameWidth; h = r.frameHeight; }
+          if (typeof r.framesPerSecond === "number") fps = r.framesPerSecond;
+          if (typeof r.bytesReceived === "number") { bytes = r.bytesReceived; ts = r.timestamp; }
+        }
+      });
+      // Appel audio : pas de vidéo entrante → on prend le débit audio entrant.
+      if (!bytes) {
+        stats.forEach((r) => { if (r.type === "inbound-rtp" && r.kind === "audio" && typeof r.bytesReceived === "number") { bytes = r.bytesReceived; ts = r.timestamp; } });
+      }
+      let kbps = 0;
+      if (lastTs && ts > lastTs) kbps = Math.round(((bytes - lastBytes) * 8) / (ts - lastTs)); // bytes*8 / ms = kbps
+      lastBytes = bytes; lastTs = ts;
+      const el = document.getElementById("callStats");
+      if (el) {
+        let txt = "";
+        if (c.kind === "video" && w) txt = w + "×" + h + (fps ? " · " + Math.round(fps) + " fps" : "") + (kbps ? " · " + (kbps >= 1000 ? (kbps / 1000).toFixed(1) + " Mb/s" : kbps + " kb/s") : "");
+        else if (kbps) txt = "audio · " + kbps + " kb/s";
+        el.textContent = txt;
+      }
+      if (c.kind === "video") console.log("[call] reçu:", w + "x" + h, Math.round(fps) + "fps", kbps + "kbps");
+    } catch (e) {}
+  }, 2000);
 }
 
 // ── Contrôles ──
@@ -899,6 +945,7 @@ function _callRenderActiveUI() {
       '<div class="call-name">' + escapeHtml(cs.peer.name || "Contact") + '</div>' +
       '<div class="call-status" id="callStatusText">' + (cs.role === "caller" ? "Appel en cours…" : "Connexion…") + '</div>' +
       '<div class="call-timer" id="callTimer">00:00</div>' +
+      '<div class="call-stats" id="callStats"></div>' +
       '<div class="call-controls">' +
         '<button class="call-control-btn mute" onclick="toggleCallMute(this)" title="Micro">🎙</button>' +
         (isVideo ? '<button class="call-control-btn video" onclick="toggleCallVideo(this)" title="Caméra">📷</button>' : '') +
@@ -1949,8 +1996,8 @@ function toggleReelLike(postId, btn) {
   } else {
     reelsState.liked.add(postId);
     btn.classList.add("liked");
-    // Le créateur reçoit 1 point côté seed (symbolique pour la démo)
-    grantReward("like_received", "J'aime sur une bobine");
+    // Aimer une bobine ne rapporte RIEN à celui qui like (anti-farm) : les 💎
+    // se gagnent uniquement en RECEVANT des likes (awardLikeReceived).
   }
 }
 

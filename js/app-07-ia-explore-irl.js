@@ -2036,27 +2036,34 @@ function renderWallet() {
     valIndic.textContent = `≈ ${eurValue} € · ↗ +12 %`;
   }
 
-  // Earn guide
+  // Earn guide — deux monnaies, deux logiques :
+  //  ⭐ Étoiles = ton activité (généreux, fait monter le rang)
+  //  💎 Passia  = la valeur que tu crées pour les autres (rare, vraie valeur)
   const guide = $("#earnGuide");
   guide.innerHTML = `
+    <div class="earn-section-title">⭐ Gagne des étoiles en agissant</div>
     <div class="tx"><div class="tx-icon">✍️</div>
-      <div class="tx-body"><div class="tx-title">Publier un post texte</div><div class="tx-meta">Raconte ton processus</div></div>
-      <div class="tx-amount plus">+10 · 1💎</div></div>
+      <div class="tx-body"><div class="tx-title">Publier un post texte</div></div>
+      <div class="tx-amount plus">+10 ⭐</div></div>
     <div class="tx"><div class="tx-icon">📷</div>
-      <div class="tx-body"><div class="tx-title">Publier une photo</div><div class="tx-meta">Montre, ne décris pas</div></div>
-      <div class="tx-amount plus">+15 · 2💎</div></div>
+      <div class="tx-body"><div class="tx-title">Publier une photo</div></div>
+      <div class="tx-amount plus">+15 ⭐</div></div>
     <div class="tx"><div class="tx-icon">🎙️</div>
-      <div class="tx-body"><div class="tx-title">Publier un podcast</div><div class="tx-meta">Les coulisses valent de l'or</div></div>
-      <div class="tx-amount plus">+20 · 3💎</div></div>
+      <div class="tx-body"><div class="tx-title">Publier un podcast</div></div>
+      <div class="tx-amount plus">+20 ⭐</div></div>
     <div class="tx"><div class="tx-icon">🤝</div>
-      <div class="tx-body"><div class="tx-title">Rejoindre un événement IRL</div><div class="tx-meta">Le digital devient réel</div></div>
-      <div class="tx-amount plus">+25 · 5💎</div></div>
+      <div class="tx-body"><div class="tx-title">Rejoindre un événement IRL</div></div>
+      <div class="tx-amount plus">+20 ⭐</div></div>
     <div class="tx"><div class="tx-icon">🗓</div>
-      <div class="tx-body"><div class="tx-title">Organiser un événement</div><div class="tx-meta">Tu rassembles la communauté</div></div>
-      <div class="tx-amount plus">+30 · 5💎</div></div>
-    <div class="tx"><div class="tx-icon">✨</div>
-      <div class="tx-body"><div class="tx-title">Créer un nouveau profil</div><div class="tx-meta">Nouvelle passion = nouvelle identité</div></div>
-      <div class="tx-amount plus">+15 · 2💎</div></div>
+      <div class="tx-body"><div class="tx-title">Organiser un événement</div></div>
+      <div class="tx-amount plus">+30 ⭐</div></div>
+    <div class="earn-section-title">💎 Gagne des Passia (vraie valeur)</div>
+    <div class="tx"><div class="tx-icon">❤️</div>
+      <div class="tx-body"><div class="tx-title">${LIKES_PER_PASSIA} likes reçus sur ton contenu</div></div>
+      <div class="tx-amount plus">+1 💎</div></div>
+    <div class="tx"><div class="tx-icon">🎯</div>
+      <div class="tx-body"><div class="tx-title">Compléter une quête</div></div>
+      <div class="tx-amount plus">+💎</div></div>
   `;
 
   // History
@@ -2066,7 +2073,7 @@ function renderWallet() {
     txList.innerHTML = `<div class="empty"><div class="empty-icon">🧾</div><div class="empty-title">Aucune transaction</div><div class="empty-text">Commence à publier pour gagner.</div></div>`;
   } else {
     txList.innerHTML = tx.slice(0, 30).map(t => {
-      const icon = { publish_text: "✍️", publish_photo: "📷", publish_video: "🎬", publish_audio: "🎙", event_create: "🗓", event_join: "🤝", comment: "💬", profile_create: "✨", first_login: "🎉", daily: "☀️" }[t.kind] || "⭐";
+      const icon = { publish_text: "✍️", publish_photo: "📷", publish_video: "🎬", publish_audio: "🎙", event_create: "🗓", event_join: "🤝", comment: "💬", profile_create: "✨", first_login: "🎉", daily: "☀️", like_received: "❤️", tip_reel: "💎", quest: "🎯" }[t.kind] || "⭐";
       return `<div class="tx">
         <div class="tx-icon">${icon}</div>
         <div class="tx-body">

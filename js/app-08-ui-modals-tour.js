@@ -1189,9 +1189,25 @@ function unreadCount() {
 
 function renderBell() {
   const dot = $("#bellDot");
-  if (!dot) return;
-  const n = unreadCount();
-  dot.textContent = n > 0 ? (n > 9 ? "9+" : String(n)) : "";
+  if (dot) {
+    const n = unreadCount();
+    dot.textContent = n > 0 ? (n > 9 ? "9+" : String(n)) : "";
+  }
+  updateAppBadge();
+}
+
+// 🔴 Pastille sur l'ICÔNE de l'app (écran d'accueil) — visible sans ouvrir l'app.
+// Badging API (PWA installée : Android/desktop Chrome, iOS 16.4+ installée).
+// Total = notifications non-lues + messages non-lus.
+function updateAppBadge() {
+  try {
+    if (!("setAppBadge" in navigator)) return;
+    let n = 0;
+    try { n += unreadCount(); } catch (e) {}
+    try { (getConversations() || []).forEach(c => { n += (c.unread || 0); }); } catch (e) {}
+    if (n > 0) navigator.setAppBadge(n).catch(() => {});
+    else navigator.clearAppBadge().catch(() => {});
+  } catch (e) {}
 }
 
 // Badge des messages non-lus sur l'icône Messages du topbar (déplacée depuis la
@@ -1202,6 +1218,7 @@ function renderMsgBadge() {
   let n = 0;
   try { (getConversations() || []).forEach(c => { n += (c.unread || 0); }); } catch(e) {}
   dot.textContent = n > 0 ? (n > 9 ? "9+" : String(n)) : "";
+  updateAppBadge();
 }
 
 // HTML de la liste de notifications (extrait pour pouvoir re-rendre le panneau
@@ -3356,7 +3373,14 @@ function supaSubscribe() {
       // optimiste. Sinon +1 optimiste + +1 echo realtime = « double like ».
       if (!r || r.user_id === MY_UID) return;
       const post = findPostAnywhere(r.post_id);
-      if (post) { post.likes = (post.likes || 0) + 1; try { renderFeed(); } catch(e) {} }
+      if (post) {
+        post.likes = (post.likes || 0) + 1;
+        try { renderFeed(); } catch(e) {}
+        // 💎 Valeur reçue : un autre compte a aimé MON contenu → récompense l'auteur.
+        if (post.authorId === MY_UID || post.author === "me" || post.mine) {
+          try { awardLikeReceived(); } catch(e) {}
+        }
+      }
     })
     .on("postgres_changes", { event: "DELETE", schema: "public", table: "post_likes" }, payload => {
       const r = payload.old;
