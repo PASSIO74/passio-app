@@ -877,6 +877,10 @@ function openLogoutConfirm() {
 }
 
 async function doLogout() {
+  // Flush immédiat : pousse les changements en attente (debounce 2500ms non encore
+  // déclenché) vers Supabase AVANT la déconnexion. Sans ça, toute modification faite
+  // dans les 2,5 s précédant le logout est perdue à la reconnexion.
+  try { if (typeof supaSaveUserState === "function") await supaSaveUserState(); } catch(e) {}
   try { await supa.auth.signOut(); } catch(e) {}
   localStorage.removeItem("passio_uid");
   localStorage.removeItem("passio_state");
