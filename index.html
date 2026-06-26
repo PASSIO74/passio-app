@@ -891,7 +891,12 @@
 
     <!-- ===== SCREEN: IRL ===== -->
     <section class="screen" id="screen-irl">
-      <div class="section-title">Passio IRL <span class="link" onclick="openCreateEvent()">+ Créer</span></div>
+      <div class="section-title">Passio IRL</div>
+
+      <!-- Bouton créer un événement — même charte que CDV -->
+      <div style="display:flex;gap:8px;margin-bottom:12px;">
+        <button onclick="openCreateEvent()" style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:11px 12px;border-radius:14px;border:none;background:var(--grad-hero);color:#fff;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 4px 12px rgba(124,58,237,0.3);">📍 Créer un événement</button>
+      </div>
 
       <!-- Ville de référence (filtre distance) — discrète, tout le bloc ouvre le sélecteur -->
       <div class="irl-locbar" onclick="openIrlCitySelector()" role="button" tabindex="0"
