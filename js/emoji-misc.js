@@ -663,48 +663,80 @@ function addGifToComment(postId, commentId, gifUrl) {
 
 function showEmojiPickerForPost(postId, event) {
   if (event) { event.stopPropagation(); event.preventDefault(); }
-  console.log("😊 showEmojiPickerForPost:", postId);
 
   var oldPanel = document.getElementById("emoji-panel-post-" + postId);
-  if (oldPanel) oldPanel.remove();
+  if (oldPanel) { oldPanel.remove(); return false; }
+
+  var selected = [];
 
   var emojis = ["❤️", "🔥", "😂", "🎉", "👍", "💯", "😍", "🤔"];
   var panel = document.createElement("div");
   panel.id = "emoji-panel-post-" + postId;
-  panel.style.cssText = "position:fixed;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:8px;display:flex;gap:4px;flex-wrap:wrap;z-index:10000;box-shadow:0 4px 16px rgba(0,0,0,0.2);max-width:280px;";
+  panel.style.cssText = "position:fixed;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px;z-index:10000;box-shadow:0 4px 20px rgba(0,0,0,0.25);max-width:260px;";
+
+  // Ligne prévisualisation + bouton valider
+  var previewRow = document.createElement("div");
+  previewRow.style.cssText = "display:flex;align-items:center;gap:6px;min-height:34px;border-bottom:1px solid var(--border);padding-bottom:6px;";
+
+  var previewSpan = document.createElement("span");
+  previewSpan.style.cssText = "font-size:22px;flex:1;letter-spacing:2px;min-width:0;";
+
+  var validateBtn = document.createElement("button");
+  validateBtn.textContent = "✓";
+  validateBtn.style.cssText = "background:var(--accent);color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:14px;font-weight:700;cursor:pointer;opacity:0.4;pointer-events:none;transition:opacity 0.15s;flex-shrink:0;";
+  validateBtn.onclick = function(evt) {
+    evt.stopPropagation();
+    evt.preventDefault();
+    if (!selected.length) return;
+    addEmojiToPost(postId, selected.join(""));
+    panel.remove();
+    document.removeEventListener("click", closeListener);
+  };
+
+  previewRow.appendChild(previewSpan);
+  previewRow.appendChild(validateBtn);
+  panel.appendChild(previewRow);
+
+  var grid = document.createElement("div");
+  grid.style.cssText = "display:flex;gap:4px;flex-wrap:wrap;";
 
   emojis.forEach(function(e) {
     var btn = document.createElement("span");
     btn.textContent = e;
-    btn.style.cssText = "cursor:pointer;font-size:20px;padding:6px 6px;border-radius:6px;transition:all 0.2s;display:flex;align-items:center;justify-content:center;";
-    btn.onmouseover = function() { this.style.background = "rgba(124,58,237,0.2);transform:scale(1.15);"; };
-    btn.onmouseout = function() { this.style.background = "transparent;transform:scale(1);"; };
+    btn.style.cssText = "cursor:pointer;font-size:22px;padding:5px;border-radius:6px;transition:background 0.15s,transform 0.1s;";
+    btn.onmouseover = function() { this.style.background = "rgba(124,58,237,0.2)"; this.style.transform = "scale(1.2)"; };
+    btn.onmouseout = function() { this.style.background = "transparent"; this.style.transform = "scale(1)"; };
     btn.onclick = function(evt) {
       evt.stopPropagation();
       evt.preventDefault();
-      console.log("✅ Emoji clicked for post:", e);
-      addEmojiToPost(postId, e);
-      panel.remove();
+      selected.push(e);
+      previewSpan.textContent = selected.join("");
+      validateBtn.style.opacity = "1";
+      validateBtn.style.pointerEvents = "auto";
     };
-    panel.appendChild(btn);
+    grid.appendChild(btn);
   });
 
-  var emojiBtn = event?.target;
-  if (emojiBtn && emojiBtn.classList && emojiBtn.classList.contains("post-action")) {
+  panel.appendChild(grid);
+
+  var emojiBtn = event && event.target;
+  if (emojiBtn) {
     var rect = emojiBtn.getBoundingClientRect();
-    panel.style.left = (rect.left + 30) + "px";
-    panel.style.top = (rect.top - 10) + "px";
+    var left = rect.left + window.scrollX;
+    if (left + 265 > window.innerWidth) left = window.innerWidth - 270;
+    panel.style.left = Math.max(4, left) + "px";
+    panel.style.top = Math.max(4, rect.top - 130) + "px";
   }
 
   document.body.appendChild(panel);
 
+  var closeListener = function(e) {
+    if (!panel.contains(e.target)) {
+      panel.remove();
+      document.removeEventListener("click", closeListener);
+    }
+  };
   setTimeout(function() {
-    var closeListener = function(e) {
-      if (!panel.contains(e.target)) {
-        panel.remove();
-        document.removeEventListener("click", closeListener);
-      }
-    };
     document.addEventListener("click", closeListener);
   }, 50);
 
