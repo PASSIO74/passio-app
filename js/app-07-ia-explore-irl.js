@@ -151,21 +151,24 @@ function filterExplore() {
         if (u.passions && Array.isArray(u.passions) && u.passions.length > 0) {
           passionBadges = u.passions.map(function(p) {
             var label = p.label || (typeof passionById === "function" && passionById(p.id) ? passionById(p.id).label : "");
-            return "<span style='display:inline-flex;align-items:center;gap:3px;background:rgba(124,58,237,0.10);border:1px solid rgba(124,58,237,0.18);border-radius:20px;padding:2px 7px;font-size:10px;font-weight:600;color:var(--accent);margin-right:3px;white-space:nowrap;'>"
+            return "<span style='display:inline-flex;align-items:center;gap:2px;background:rgba(124,58,237,0.08);border:1px solid rgba(124,58,237,0.15);border-radius:20px;padding:1px 5px;font-size:9px;font-weight:600;color:var(--accent);margin-right:2px;white-space:nowrap;line-height:1.4;'>"
               + (p.emoji || "✨") + (label ? " " + escapeHtml(label) : "") + "</span>";
           }).join("");
         } else if (u.passion) {
           var pw = passionById(u.passion) || { emoji: "✨", label: "" };
-          passionBadges = "<span style='display:inline-flex;align-items:center;gap:3px;background:rgba(124,58,237,0.10);border:1px solid rgba(124,58,237,0.18);border-radius:20px;padding:2px 7px;font-size:10px;font-weight:600;color:var(--accent);margin-right:3px;'>"
+          passionBadges = "<span style='display:inline-flex;align-items:center;gap:2px;background:rgba(124,58,237,0.08);border:1px solid rgba(124,58,237,0.15);border-radius:20px;padding:1px 5px;font-size:9px;font-weight:600;color:var(--accent);margin-right:2px;line-height:1.4;'>"
             + pw.emoji + (pw.label ? " " + escapeHtml(pw.label) : "") + "</span>";
         }
 
+        var _avBg = avatarBg(u);
+        var _avInner = avatarInner(u);
+        var _hasPhoto = !!_userPhoto(u);
         html += "<div onclick=\"openUserProfile('" + u.id + "');document.getElementById('exploreSearchResults').style.display='none';\" style='display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border);'>" +
-          "<div style='width:40px;height:40px;border-radius:50%;background:" + avatarBg(u) + ";display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;'>" + avatarInner(u) + "</div>" +
+          "<div style='width:44px;height:44px;border-radius:50%;background:" + _avBg + ";background-size:cover;background-position:center;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;overflow:hidden;border:2px solid rgba(124,58,237,0.15);'>" + _avInner + "</div>" +
           "<div style='flex:1;min-width:0;overflow:hidden;'>" +
-            "<div style='font-weight:700;font-size:13px;color:var(--text);margin-bottom:4px;'>" + escapeHtml(u.name||"") + "</div>" +
+            "<div style='font-weight:700;font-size:13px;color:var(--text);margin-bottom:3px;'>" + escapeHtml(u.name||"") + "</div>" +
             "<div style='display:flex;flex-wrap:wrap;gap:2px;'>" + passionBadges + "</div>" +
-            (u.bio ? "<div style='font-size:11px;color:var(--muted);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'>" + escapeHtml(u.bio) + "</div>" : "") +
+            (u.bio ? "<div style='font-size:11px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'>" + escapeHtml(u.bio) + "</div>" : "") +
           "</div>" +
           "<div style='font-size:11px;font-weight:700;color:var(--accent);flex-shrink:0;margin-left:6px;'>Voir →</div>" +
           "</div>";
