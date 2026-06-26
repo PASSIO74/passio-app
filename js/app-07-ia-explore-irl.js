@@ -1254,21 +1254,6 @@ function renderIRL() {
   // Bouton filtres : badge + bordure accentuée
   _updateIrlFiltersBtn();
 
-  // Indicateur "X filtres actifs · Réinitialiser"
-  var statusEl = document.getElementById("irlFilterStatus");
-  if (statusEl) {
-    var nActive = _irlActiveFilterCount();
-    if (nActive > 0) {
-      statusEl.style.display = "flex";
-      statusEl.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 12px;margin-bottom:10px;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;font-size:12px;";
-      statusEl.innerHTML = '<span style="color:var(--muted);">' + nActive + ' filtre' + (nActive > 1 ? 's' : '') + ' actif' + (nActive > 1 ? 's' : '') + '</span>' +
-        '<button onclick="clearAllIrlFilters()" style="background:none;border:none;color:var(--accent);font-weight:700;cursor:pointer;font-size:12px;">✕ Réinitialiser</button>';
-    } else {
-      statusEl.style.display = "none";
-      statusEl.innerHTML = "";
-    }
-  }
-
   // Sync pills date (multi-select) - carousel
   document.querySelectorAll("#irlDateCarousel .pill").forEach(function(p) {
     p.classList.toggle("active", irlDateFilters && irlDateFilters.has(p.getAttribute("data-irldate")));
