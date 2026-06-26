@@ -750,21 +750,13 @@ function addEmojiToPost(postId, emoji) {
 
   if (!post.reactions) post.reactions = [];
 
-  var currentUserEmojis = post.reactions.find(r => r.type === "emoji_reaction" && r.authorId === (state.user?.id || "me"));
-
-  if (currentUserEmojis) {
-    if (!currentUserEmojis.text.includes(emoji)) {
-      currentUserEmojis.text += " " + emoji;
-    }
-  } else {
-    post.reactions.push({
-      id: "emoji_" + postId + "_" + Math.random().toString(36).substr(2, 9),
-      authorId: state.user?.id || "me",
-      text: emoji,
-      type: "emoji_reaction",
-      createdAt: Date.now()
-    });
-  }
+  post.reactions.push({
+    id: "emoji_" + postId + "_" + Math.random().toString(36).substr(2, 9),
+    authorId: (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : (state.user?.id || "me"),
+    text: emoji,
+    type: "emoji_reaction",
+    createdAt: Date.now()
+  });
 
   if (typeof saveState === "function") saveState();
   updatePostReactionsUI(postId);
