@@ -223,23 +223,36 @@ async function supaLoadUserState() {
       _applyUserState(data.data);
       // Fusion défensive : ré-injecte les profils locaux ABSENTS du serveur (créés
       // entre la dernière sync et la fermeture) ET les versions locales des profils
-      // MODIFIÉS (même ID mais contenu plus récent — photo, bio, photoUrl…).
+      // MODIFIÉS (contenu plus récent — photo, bio, photoUrl…).
+      // ⚠️ Comparaison par PASSION (pas par ID) : le fallback de reconstruction crée
+      // des uid() neufs → les IDs locaux et serveur peuvent diverger pour la même
+      // passion, causant des doublons si on compare par id.
       if (localProfiles.length > 0) {
-        const serverIds = new Set((state.user.profiles || []).map(p => p.id));
-        const missing = localProfiles.filter(p => !serverIds.has(p.id));
+        const serverPassions = new Set((state.user.profiles || []).map(p => p.passion).filter(Boolean));
+        const missing = localProfiles.filter(p => p.passion && !serverPassions.has(p.passion));
         if (missing.length > 0) {
           state.user.profiles = (state.user.profiles || []).concat(missing);
         }
         // Pour les profils présents des deux côtés : si la version locale porte une
         // photo (base64 ou URL Storage) absente côté serveur, on la réinjecte.
+        // Matching par passion (pas par id) pour la même raison.
         state.user.profiles = state.user.profiles.map(function(sp) {
-          const lp = localProfiles.find(function(p) { return p.id === sp.id; });
+          const lp = localProfiles.find(function(p) { return p.passion && p.passion === sp.passion; });
           if (!lp) return sp;
           const merged = Object.assign({}, sp);
           if (!merged.photo && lp.photo) merged.photo = lp.photo;
           if (!merged.photoUrl && lp.photoUrl) merged.photoUrl = lp.photoUrl;
           if (!merged.bio && lp.bio) merged.bio = lp.bio;
           return merged;
+        });
+        // Dédup final : s'il reste deux profils pour la même passion (ne devrait
+        // plus arriver avec la correction ci-dessus, mais garde de sécurité),
+        // on ne garde que le premier.
+        const seenPassions = new Set();
+        state.user.profiles = state.user.profiles.filter(function(p) {
+          if (!p.passion || seenPassions.has(p.passion)) return false;
+          seenPassions.add(p.passion);
+          return true;
         });
         // Re-pousse immédiatement si des différences ont été fusionnées.
         setTimeout(function() { try { supaSaveUserState(); } catch(_e) {} }, 0);
