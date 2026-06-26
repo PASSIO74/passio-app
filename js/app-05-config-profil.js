@@ -2275,7 +2275,7 @@ function showQuickEmojiForReelComment(postId, commentIdx, event) {
   const reel = findPostAnywhere(postId);
   if (!reel || !reel.comments || !reel.comments[commentIdx]) return;
 
-  const emojis = ["😂", "❤️", "😍", "🔥", "👍"];
+  const emojis = window._PASSIO_EMOJI_LIST || ["😂","❤️","😍","🔥","👍","💯","🎉","🤔"];
   const container = document.createElement("div");
   container.style.cssText = "position:absolute;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:6px;display:flex;gap:4px;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,0.1);";
 
@@ -2298,7 +2298,7 @@ function showEmojiPickerForReelComment(postId, commentIdx) {
   const reel = findPostAnywhere(postId);
   if (!reel || !reel.comments || !reel.comments[commentIdx]) return;
 
-  const emojis = ["😂", "❤️", "😍", "🔥", "🎉", "👍", "💯", "🤔"];
+  const emojis = window._PASSIO_EMOJI_LIST || ["😂","❤️","😍","🔥","🎉","👍","💯","🤔"];
   let selected = [];
 
   openModal(`
@@ -2307,8 +2307,8 @@ function showEmojiPickerForReelComment(postId, commentIdx) {
       <span id="_reelEmojiPreview" style="font-size:24px;flex:1;letter-spacing:2px;"></span>
       <button id="_reelEmojiValidate" onclick="_reelEmojiConfirm('${postId}',${commentIdx})" style="background:var(--accent);color:#fff;border:none;border-radius:8px;padding:6px 16px;font-size:15px;font-weight:700;cursor:pointer;opacity:0.4;pointer-events:none;">✓ Valider</button>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:4px 0;">
-      ${emojis.map(emoji => `<button class="btn secondary" onclick="_reelEmojiPick('${emoji}')" style="padding:10px;font-size:22px;border:none;">${emoji}</button>`).join("")}
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin:4px 0;max-height:200px;overflow-y:auto;">
+      ${emojis.map(emoji => `<button class="btn secondary" onclick="_reelEmojiPick('${emoji}')" style="padding:8px;font-size:22px;border:none;">${emoji}</button>`).join("")}
     </div>
   `);
 

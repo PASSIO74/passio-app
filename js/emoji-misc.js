@@ -1,3 +1,17 @@
+// Liste partagée d'emojis disponibles dans tous les pickers de l'app
+window._PASSIO_EMOJI_LIST = [
+  // Émotions / visages
+  "😂","😍","🥰","😊","😎","🤩","😆","😅","🤣","😭","😤","🤯","😜","😏","🫶",
+  // Amour / cœurs
+  "❤️","💕","💖","💗","💓","💞","🖤","💛","💚","💙","💜","🤍","🧡",
+  // Réactions classiques
+  "👍","👎","👏","🙌","💪","🤜","🫡","🤔","💯","🔥","✨","🌟","⭐","🎉","🎊",
+  // Nature / objets / fun
+  "🌈","🦋","🌸","🍀","🚀","🎵","🎶","🎯","🏆","📸","🌙","☀️","🍕","🍔","🎮",
+  // Divers expressifs
+  "💀","👀","🫠","🥲","🤌","💅","🫶","🙏","✌️","🤞",
+];
+
 // ════════════════════════════════════════════════════════════════
 // API GIF (backlog #5) — Tenor v2 ou Giphy, avec fallback hors-ligne.
 // 👉 POUR ACTIVER : coller la clé ci-dessous (une seule ligne à changer).
@@ -487,10 +501,10 @@ function showEmojiPickerForComment(postId, commentId, event) {
 
   var selected = []; // emojis accumulés pour cette session
 
-  var emojis = ["❤️", "🔥", "😂", "🎉", "👍", "💯", "😍", "🤔"];
+  var emojis = window._PASSIO_EMOJI_LIST;
   var panel = document.createElement("div");
   panel.id = "emoji-panel-" + commentId;
-  panel.style.cssText = "position:fixed;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px;z-index:10000;box-shadow:0 4px 20px rgba(0,0,0,0.25);max-width:260px;";
+  panel.style.cssText = "position:fixed;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px;z-index:10000;box-shadow:0 4px 20px rgba(0,0,0,0.25);width:260px;";
 
   // Ligne de prévisualisation + bouton valider
   var previewRow = document.createElement("div");
@@ -518,7 +532,7 @@ function showEmojiPickerForComment(postId, commentId, event) {
 
   // Grille d'emojis
   var grid = document.createElement("div");
-  grid.style.cssText = "display:flex;gap:4px;flex-wrap:wrap;";
+  grid.style.cssText = "display:flex;gap:4px;flex-wrap:wrap;max-height:160px;overflow-y:auto;";
 
   emojis.forEach(function(e) {
     var btn = document.createElement("span");
@@ -669,10 +683,10 @@ function showEmojiPickerForPost(postId, event) {
 
   var selected = [];
 
-  var emojis = ["❤️", "🔥", "😂", "🎉", "👍", "💯", "😍", "🤔"];
+  var emojis = window._PASSIO_EMOJI_LIST;
   var panel = document.createElement("div");
   panel.id = "emoji-panel-post-" + postId;
-  panel.style.cssText = "position:fixed;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px;z-index:10000;box-shadow:0 4px 20px rgba(0,0,0,0.25);max-width:260px;";
+  panel.style.cssText = "position:fixed;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px;z-index:10000;box-shadow:0 4px 20px rgba(0,0,0,0.25);width:260px;";
 
   // Ligne prévisualisation + bouton valider
   var previewRow = document.createElement("div");
@@ -698,7 +712,7 @@ function showEmojiPickerForPost(postId, event) {
   panel.appendChild(previewRow);
 
   var grid = document.createElement("div");
-  grid.style.cssText = "display:flex;gap:4px;flex-wrap:wrap;";
+  grid.style.cssText = "display:flex;gap:4px;flex-wrap:wrap;max-height:160px;overflow-y:auto;";
 
   emojis.forEach(function(e) {
     var btn = document.createElement("span");
