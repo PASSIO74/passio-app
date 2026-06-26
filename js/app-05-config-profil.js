@@ -428,10 +428,18 @@ if (typeof document !== "undefined") {
 //   4. Appelé (sur `offer`) → réponse SDP. Appelant (sur `answer`) → connecté.
 // ════════════════════════════════════════════════════════════════════════
 
+// STUN (découverte d'IP publique) + TURN (relais quand le P2P direct échoue ou
+// passe par un mauvais chemin NAT → c'est ce qui dégrade la qualité même avec
+// une « bonne connexion » : sans relais, ICE peut retomber sur un lien pourri).
+// TURN public Open Relay (metered) en repli — UDP/TCP/TLS pour traverser les
+// pare-feux. Idéalement à remplacer par un TURN dédié pour la prod.
 const CALL_ICE_SERVERS = [
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" },
   { urls: "stun:stun2.l.google.com:19302" },
+  { urls: "turn:openrelay.metered.ca:80", username: "openrelayproject", credential: "openrelayproject" },
+  { urls: "turn:openrelay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" },
+  { urls: "turn:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" },
 ];
 
 // État global d'un appel en cours (un seul à la fois).
