@@ -435,6 +435,10 @@ function renderStories() {
   const me = (typeof currentProfile === "function" && currentProfile()) || {};
   const myColor = (myGroup && myGroup.color) || me.color || "#8b5cf6";
   const myEmoji = (myGroup && myGroup.emoji) || me.emoji || "✨";
+  const myAvatar = (state.user && state.user.general && state.user.general.avatarPhoto) || me.avatarPhoto || "";
+  const myAvatarHtml = myAvatar
+    ? `<img loading="lazy" decoding="async" src="${escapeHtml(myAvatar)}" alt="Moi" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.style.display='none'"/>`
+    : myEmoji;
 
   let html;
   if (myGroup && myGroup.stories.length) {
@@ -443,7 +447,7 @@ function renderStories() {
     html = `
       <div class="story-item" onclick="openStoryGroup('${escapeHtml(String(myGroup.authorId))}')" title="Voir ta story">
         <div class="story-ring ${allSeen ? "seen" : ""}">
-          <div class="story-inner" style="background:${myColor};">${_storyBubbleInner(myGroup)}</div>
+          <div class="story-inner" style="background:${myColor};">${myAvatarHtml}</div>
         </div>
         <button class="story-add-badge" onclick="event.stopPropagation();meOpen('story')" aria-label="Ajouter une story">+</button>
         <div class="story-label">Ta story</div>
@@ -454,7 +458,7 @@ function renderStories() {
     html = `
       <div class="story-item" onclick="meOpen('story')" title="Créer une story">
         <div class="story-ring create">
-          <div class="story-inner" style="background:${myColor};">${myEmoji}</div>
+          <div class="story-inner" style="background:${myColor};">${myAvatarHtml}</div>
         </div>
         <div class="story-label">Ta story</div>
       </div>
