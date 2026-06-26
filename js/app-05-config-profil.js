@@ -2298,13 +2298,32 @@ function showEmojiPickerForReelComment(postId, commentIdx) {
   const reel = findPostAnywhere(postId);
   if (!reel || !reel.comments || !reel.comments[commentIdx]) return;
 
-  const emojis = ["😂", "❤️", "😍", "🔥", "🎉", "👍"];
-  const modal = openModal(`
+  const emojis = ["😂", "❤️", "😍", "🔥", "🎉", "👍", "💯", "🤔"];
+  let selected = [];
+
+  openModal(`
     <div class="modal-title">Réagir au commentaire</div>
-    <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin:16px 0;">
-      ${emojis.map(emoji => `<button class="btn secondary" onclick="addEmojiReactionToReelComment('${postId}', ${commentIdx}, '${emoji}')" style="padding:10px;font-size:20px;border:none;">${emoji}</button>`).join("")}
+    <div id="_reelEmojiPreviewRow" style="display:flex;align-items:center;gap:8px;min-height:38px;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border);">
+      <span id="_reelEmojiPreview" style="font-size:24px;flex:1;letter-spacing:2px;"></span>
+      <button id="_reelEmojiValidate" onclick="_reelEmojiConfirm('${postId}',${commentIdx})" style="background:var(--accent);color:#fff;border:none;border-radius:8px;padding:6px 16px;font-size:15px;font-weight:700;cursor:pointer;opacity:0.4;pointer-events:none;">✓ Valider</button>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:4px 0;">
+      ${emojis.map(emoji => `<button class="btn secondary" onclick="_reelEmojiPick('${emoji}')" style="padding:10px;font-size:22px;border:none;">${emoji}</button>`).join("")}
     </div>
   `);
+
+  window._reelEmojiSelected = [];
+  window._reelEmojiPick = function(e) {
+    window._reelEmojiSelected.push(e);
+    var prev = document.getElementById("_reelEmojiPreview");
+    var val = document.getElementById("_reelEmojiValidate");
+    if (prev) prev.textContent = window._reelEmojiSelected.join("");
+    if (val) { val.style.opacity = "1"; val.style.pointerEvents = "auto"; }
+  };
+  window._reelEmojiConfirm = function(pid, idx) {
+    if (!window._reelEmojiSelected.length) return;
+    addEmojiReactionToReelComment(pid, idx, window._reelEmojiSelected.join(""));
+  };
 }
 
 function showGifPickerForReelComment(postId, commentIdx) {
