@@ -160,11 +160,13 @@ function filterExplore() {
             + pw.emoji + (pw.label ? " " + escapeHtml(pw.label) : "") + "</span>";
         }
 
-        var _avBg = avatarBg(u);
-        var _avInner = avatarInner(u);
-        var _hasPhoto = !!_userPhoto(u);
+        var _photo = _userPhoto(u);
+        var _avContent = _photo
+          ? "<img src='" + _photo + "' style='width:100%;height:100%;object-fit:cover;border-radius:50%;display:block;' onerror=\"this.style.display='none'\" />"
+          : "<span style='font-size:18px;line-height:1;'>" + (u.profileEmoji || u.emoji || (u.name && u.name[0]) || "?") + "</span>";
+        var _avBgColor = (u.avatar || u.color || "#8b5cf6");
         html += "<div onclick=\"openUserProfile('" + u.id + "');document.getElementById('exploreSearchResults').style.display='none';\" style='display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border);'>" +
-          "<div style='width:44px;height:44px;border-radius:50%;background:" + _avBg + ";background-size:cover;background-position:center;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;overflow:hidden;border:2px solid rgba(124,58,237,0.15);'>" + _avInner + "</div>" +
+          "<div style='width:44px;height:44px;border-radius:50%;background:" + _avBgColor + ";display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden;border:2px solid rgba(124,58,237,0.15);'>" + _avContent + "</div>" +
           "<div style='flex:1;min-width:0;overflow:hidden;'>" +
             "<div style='font-weight:700;font-size:13px;color:var(--text);margin-bottom:3px;'>" + escapeHtml(u.name||"") + "</div>" +
             "<div style='display:flex;flex-wrap:wrap;gap:2px;'>" + passionBadges + "</div>" +
