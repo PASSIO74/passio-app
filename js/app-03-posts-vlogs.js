@@ -4,9 +4,7 @@ function closePost() {
 }
 
 function sharePost(id) {
-  const post = state.seed.posts.find(p => p.id === id)
-            || state.userPosts.find(p => p.id === id)
-            || (state.supabasePosts || []).find(p => p.id === id);
+  const post = findPostAnywhere(id);
   if (!post) { toast("Le contenu original n'est plus disponible."); return; }
 
   const passion = passionById(post.passion) || { label: post.passion || "", emoji: "✨" };
@@ -39,9 +37,7 @@ async function sharePostInFeed(id) {
     return;
   }
 
-  const post = state.seed.posts.find(p => p.id === id)
-             || state.userPosts.find(p => p.id === id)
-             || (state.supabasePosts || []).find(p => p.id === id);
+  const post = findPostAnywhere(id);
   if (!post) { toast("Le contenu original n'est plus disponible."); closeModal(); return; }
 
   const prof = currentProfile();
@@ -104,11 +100,16 @@ async function sharePostInFeed(id) {
   }
 }
 
+// Verrou anti-double-clic : empêche deux likes simultanés sur le même post
+const _likePending = new Set();
+
 function likePost(id, skipRender = false) {
-  let post = state.seed.posts.find(p => p.id === id)
-           || state.userPosts.find(p => p.id === id)
-           || (state.supabasePosts || []).find(p => p.id === id);
-  if (!post) return;
+  if (_likePending.has(id)) return;
+  _likePending.add(id);
+  setTimeout(() => _likePending.delete(id), 800);
+
+  const post = findPostAnywhere(id);
+  if (!post) { _likePending.delete(id); return; }
   const liked = state.user.likedPosts.includes(id);
   if (liked) {
     state.user.likedPosts = state.user.likedPosts.filter(x => x !== id);

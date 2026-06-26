@@ -534,14 +534,11 @@ function _populateEmojiGrid() {
     };
     grid.appendChild(div);
   });
-
-  console.log("✅ " + EMOJIS.length + " emojis populés");
 }
 
 // Call on page load - avec délai pour garantir que le DOM est chargé
 setTimeout(function() {
   _populateEmojiGrid();
-  console.log("✅ Emoji grid populated with " + EMOJIS.length + " emojis");
 }, 100);
 
 // Insert emoji into message input

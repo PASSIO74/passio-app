@@ -1582,8 +1582,6 @@ function allFeedPosts() {
 // ======== MOOD MULTI-SELECT ========
 var selectedMoods = new Set(["creation"]); // Par défaut "Création"
 
-console.log("✅ selectedMoods initialisé:", Array.from(selectedMoods));
-
 // ✅ EVENT DELEGATION pour les moods - Plus robuste et fluide!
 function setupMoodDelegation() {
   var moodSelector = document.getElementById("moodSelector");
@@ -1591,8 +1589,6 @@ function setupMoodDelegation() {
 
   // Enlever les anciens listeners (si présent)
   if (moodSelector._delegationAttached) return;
-
-  console.log("🔧 setupMoodDelegation");
 
   moodSelector.addEventListener("click", function(e) {
     var btn = e.target.closest(".mood-btn");
@@ -1604,7 +1600,6 @@ function setupMoodDelegation() {
     var mood = btn.getAttribute("data-mood");
     if (!mood) return;
 
-    console.log("🔴 CLIC MOOD:", mood);
     toggleMood(mood);
   });
 
@@ -1612,26 +1607,17 @@ function setupMoodDelegation() {
 }
 
 function toggleMood(mood) {
-  console.log("🔴 toggleMood:", mood, "| avant:", Array.from(selectedMoods));
-
-  // Toggle
   if (selectedMoods.has(mood)) {
     selectedMoods.delete(mood);
   } else {
     selectedMoods.add(mood);
   }
 
-  console.log("  après:", Array.from(selectedMoods));
-
-  // Mettre à jour l'UI immédiatement
   updateMoodButtonsUI();
-
-  // Re-render le feed UNE SEULE FOIS
   renderFeed();
 
   // RE-METTRE À JOUR L'UI après renderFeed (le DOM peut avoir changé)
   setTimeout(function() {
-    console.log("🔄 Mise à jour UI après renderFeed");
     updateMoodButtonsUI();
   }, 50);
 }
@@ -1825,18 +1811,6 @@ function renderFeed() {
     const dateB = b.createdAt || 0;
     return dateB - dateA;  // Descendant = récents d'abord
   });
-
-  // Diagnostic: afficher les 3 premiers posts et leurs créatedAt
-  if (sortedPosts.length > 0) {
-    console.log("🎯 TOP 3 POSTS TRIÉS (AVANT RENDU):");
-    for (let i = 0; i < Math.min(3, sortedPosts.length); i++) {
-      const p = sortedPosts[i];
-      console.log(`${i+1}. ${p.authorName || "?"} - createdAt: ${p.createdAt} - ${new Date(p.createdAt).toLocaleString('fr-FR')}`);
-    }
-    // DIAGNOSTIC: vérifier les timestamps exacts
-    console.log("DEBUG: First post createdAt =", sortedPosts[0].createdAt, "Type:", typeof sortedPosts[0].createdAt);
-    console.log("DEBUG: Second post createdAt =", sortedPosts[1]?.createdAt, "Type:", typeof sortedPosts[1]?.createdAt);
-  }
 
   const renderLimit = window._feedRenderLimit || 20;
   list.innerHTML = sortedPosts.slice(0, renderLimit).map(renderPostHTML).join("");
