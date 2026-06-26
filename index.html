@@ -916,39 +916,63 @@
       <!-- Niveau 1 : passions (grandes tuiles) -->
       <div id="irlPassionRow"></div>
 
-      <!-- Dates compactes -->
-      <div style="display:flex;gap:4px;justify-content:center;flex-wrap:wrap;padding:6px 0;margin-bottom:8px;" id="irlDateCarousel">
-        <button class="pill" data-irldate="custom" onclick="setIrlDateFilter('custom',this);openIrlCalendar()">🗓 Choisir</button>
-        <button class="pill" data-irldate="today" onclick="setIrlDateFilter('today',this)">Aujourd'hui</button>
-        <button class="pill" data-irldate="tomorrow" onclick="setIrlDateFilter('tomorrow',this)">Demain</button>
-        <button class="pill" data-irldate="week" onclick="setIrlDateFilter('week',this)">Cette semaine</button>
-        <button class="pill" data-irldate="month" onclick="setIrlDateFilter('month',this)">Ce mois</button>
+      <!-- Bouton unique filtres -->
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+        <button id="irlFiltersBtn" onclick="openIrlFiltersPanel()" style="display:flex;align-items:center;gap:7px;padding:9px 16px;border-radius:12px;border:1px solid var(--border);background:var(--bg-card);font-size:13px;font-weight:600;color:var(--text);cursor:pointer;flex:1;justify-content:center;">
+          <span>🎯</span><span>Filtres</span><span id="irlFiltersBadge" style="display:none;background:var(--accent);color:#fff;border-radius:999px;font-size:11px;font-weight:700;padding:1px 7px;min-width:18px;text-align:center;"></span>
+        </button>
+        <button id="irlFiltersClearBtn" onclick="clearAllIrlFilters()" style="display:none;padding:9px 14px;border-radius:12px;border:1px solid var(--border);background:var(--bg-card);font-size:13px;color:var(--muted);cursor:pointer;">✕</button>
       </div>
 
-      <!-- Distance et Heure -->
-      <div style="display:flex;gap:8px;align-items:center;justify-content:center;flex-wrap:wrap;padding:4px 0;margin-bottom:8px;">
-        <!-- Distance -->
-        <select id="irlDistanceFilter" onchange="filterIrlByDistance()" oninput="filterIrlByDistance()" style="padding:8px 12px;border-radius:10px;border:1px solid var(--border);background:var(--bg-card);font-size:12px;font-weight:600;color:var(--text);cursor:pointer;flex:1;min-width:140px;">
-          <option value="">📍 Distance</option>
-          <option value="5">5 km</option>
-          <option value="10">10 km</option>
-          <option value="25">25 km</option>
-          <option value="50">50 km</option>
-          <option value="100">100 km</option>
-          <option value="250">250 km</option>
-          <option value="500">500 km</option>
-          <option value="1000">1000 km</option>
-          <option value="5000">5000 km</option>
-        </select>
+      <!-- Panel filtres (bottom-sheet) — éléments toujours dans le DOM pour les sync JS -->
+      <div id="irlFiltersPanel" style="display:none;position:fixed;inset:0;z-index:600;">
+        <div onclick="closeIrlFiltersPanel()" style="position:absolute;inset:0;background:rgba(0,0,0,.45);backdrop-filter:blur(2px);"></div>
+        <div style="position:absolute;bottom:0;left:0;right:0;background:var(--bg);border-radius:20px 20px 0 0;padding:20px 16px 32px;max-height:85vh;overflow-y:auto;">
+          <div style="width:36px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 18px;"></div>
+          <div style="font-size:17px;font-weight:800;color:var(--text);margin-bottom:18px;text-align:center;">🎯 Filtres</div>
 
-        <!-- Heure -->
-        <button id="irlTimeFilterBtn" style="padding:8px 12px;border-radius:10px;border:1px solid var(--border);background:var(--bg-card);font-size:12px;color:var(--text);cursor:pointer;flex:1;min-width:120px;font-weight:600;" onclick="openIrlTimePicker()">🕐 Horaire</button>
-      </div>
+          <!-- Date -->
+          <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">📅 Date</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:18px;" id="irlDateCarousel">
+            <button class="pill" data-irldate="today" onclick="setIrlDateFilter('today',this)">Aujourd'hui</button>
+            <button class="pill" data-irldate="tomorrow" onclick="setIrlDateFilter('tomorrow',this)">Demain</button>
+            <button class="pill" data-irldate="week" onclick="setIrlDateFilter('week',this)">Cette semaine</button>
+            <button class="pill" data-irldate="month" onclick="setIrlDateFilter('month',this)">Ce mois</button>
+            <button class="pill" data-irldate="custom" onclick="setIrlDateFilter('custom',this);openIrlCalendar()">🗓 Choisir…</button>
+          </div>
 
-      <!-- Mes events et Inscrit en dessous -->
-      <div id="irlEventTypeFilter" style="display:flex;gap:4px;justify-content:center;padding:6px 0;margin-bottom:8px;">
-        <button class="pill" data-irlfilter="mine">Mes events</button>
-        <button class="pill" data-irlfilter="joined">Inscrit</button>
+          <!-- Distance -->
+          <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">📍 Distance</div>
+          <select id="irlDistanceFilter" onchange="filterIrlByDistance()" oninput="filterIrlByDistance()" style="width:100%;padding:10px 12px;border-radius:12px;border:1px solid var(--border);background:var(--bg-card);font-size:13px;font-weight:600;color:var(--text);cursor:pointer;margin-bottom:18px;">
+            <option value="">Toutes distances</option>
+            <option value="5">5 km</option>
+            <option value="10">10 km</option>
+            <option value="25">25 km</option>
+            <option value="50">50 km</option>
+            <option value="100">100 km</option>
+            <option value="250">250 km</option>
+            <option value="500">500 km</option>
+            <option value="1000">1000 km</option>
+            <option value="5000">5000 km</option>
+          </select>
+
+          <!-- Heure -->
+          <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">🕐 Horaire</div>
+          <button id="irlTimeFilterBtn" style="width:100%;padding:10px 12px;border-radius:12px;border:1px solid var(--border);background:var(--bg-card);font-size:13px;color:var(--text);cursor:pointer;font-weight:600;text-align:left;margin-bottom:18px;" onclick="openIrlTimePicker()">🕐 Horaire</button>
+
+          <!-- Type -->
+          <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">👤 Mes événements</div>
+          <div id="irlEventTypeFilter" style="display:flex;gap:6px;margin-bottom:24px;">
+            <button class="pill" data-irlfilter="mine" style="flex:1;justify-content:center;">Mes events</button>
+            <button class="pill" data-irlfilter="joined" style="flex:1;justify-content:center;">Inscrit</button>
+          </div>
+
+          <!-- Actions -->
+          <div style="display:flex;gap:8px;">
+            <button class="btn secondary block" onclick="clearAllIrlFilters()">✕ Réinitialiser</button>
+            <button class="btn primary block" onclick="closeIrlFiltersPanel()">✓ Appliquer</button>
+          </div>
+        </div>
       </div>
 
       <div style="display:flex;align-items:center;gap:8px;padding:4px 0 8px;">

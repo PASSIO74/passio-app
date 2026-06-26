@@ -1211,6 +1211,27 @@ function clearAllIrlFilters() {
   renderIRL();
 }
 
+function openIrlFiltersPanel() {
+  var panel = document.getElementById("irlFiltersPanel");
+  if (panel) panel.style.display = "block";
+}
+
+function closeIrlFiltersPanel() {
+  var panel = document.getElementById("irlFiltersPanel");
+  if (panel) panel.style.display = "none";
+  renderIRL();
+}
+
+function _updateIrlFiltersBtn() {
+  var n = _irlActiveFilterCount();
+  var badge = document.getElementById("irlFiltersBadge");
+  var clearBtn = document.getElementById("irlFiltersClearBtn");
+  var mainBtn = document.getElementById("irlFiltersBtn");
+  if (badge) { badge.textContent = n > 0 ? n : ""; badge.style.display = n > 0 ? "inline-block" : "none"; }
+  if (clearBtn) clearBtn.style.display = n > 0 ? "block" : "none";
+  if (mainBtn) mainBtn.style.borderColor = n > 0 ? "var(--accent)" : "var(--border)";
+}
+
 function renderIRL() {
   // Mettre à jour le titre de la ville (sélectionnée ou détectée)
   updateIrlCityTitle();
@@ -1229,6 +1250,9 @@ function renderIRL() {
   }
 
   var filtered = _filterIrlEvents(allEvents());
+
+  // Bouton filtres : badge + bordure accentuée
+  _updateIrlFiltersBtn();
 
   // Indicateur "X filtres actifs · Réinitialiser"
   var statusEl = document.getElementById("irlFilterStatus");

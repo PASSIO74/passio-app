@@ -1210,6 +1210,14 @@ function updateAppBadge() {
   } catch (e) {}
 }
 
+// Efface le badge dès que l'utilisateur ouvre/revient sur l'app.
+// Les nouvelles notifs qui arrivent ensuite remettront le badge via updateAppBadge().
+document.addEventListener("visibilitychange", function() {
+  if (document.visibilityState === "visible" && "clearAppBadge" in navigator) {
+    navigator.clearAppBadge().catch(() => {});
+  }
+});
+
 // Badge des messages non-lus sur l'icône Messages du topbar (déplacée depuis la
 // barre du bas). Somme des `unread` de toutes les conversations.
 function renderMsgBadge() {
