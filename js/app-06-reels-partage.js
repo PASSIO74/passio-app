@@ -1438,6 +1438,7 @@ async function publishPost() {
 
     if (syncSuccess) {
       toast("✅ Post publié !", "success");
+      try { supaTrack("publish_post", { type: post.type, passion: post.passion, is_reel: !!post.isReel }); } catch(_) {}
     } else {
       toast("⏱️ Post en local (connexion lente)", "warning");
     }

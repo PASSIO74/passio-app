@@ -133,6 +133,7 @@ function likePost(id, skipRender = false) {
     post.likes = (post.likes || 0) + 1;
     post.liked = true;
     bumpQuest("like");
+    try { supaTrack("like_post", { passion: post.passion }); } catch(_) {}
   }
   saveState();
   if (!skipRender) {

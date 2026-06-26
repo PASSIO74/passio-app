@@ -1962,33 +1962,26 @@ async function supaUploadMedia(dataUrl, postId, type = "photo") {
 // TIMEOUT COURT: Supabase répond ou on considère que c'est un problème réseau
 
 async function supaPublishPostWithRetry(post, maxRetries = 2) {
-  console.log("🚀 [PUBLISH] supaPublishPostWithRetry() DÉBUT - Post ID:", post.id);
-
-  // ✅ S'assurer que le profil existe en DB avant de publier
-  // Sinon le JOIN profiles!author_id retourne null → pas de nom d'auteur pour les autres
-  try { await supaUpsertProfile(); } catch(e) { console.warn("⚠️ [PUBLISH] upsertProfile échoué:", e.message); }
+  // S'assurer que le profil existe en DB avant de publier
+  // (le JOIN profiles!author_id retourne null sinon → pas de nom d'auteur)
+  try { await supaUpsertProfile(); } catch(e) {}
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      console.log(`🔄 [PUBLISH ${attempt}/${maxRetries}] Tentative...`);
-
-      // STEP 1: Uploader les médias (avec timeout 2s)
+      // STEP 1: Uploader les médias
       let mediaUrl = null;
 
       if (post.type === "photo" && post.image) {
-        console.log("📸 [PUBLISH] Upload photo...");
         mediaUrl = await Promise.race([
           supaUploadMedia(post.id, "photos", post.image, "image"),
           new Promise((_, reject) => setTimeout(() => reject(new Error("Upload timeout")), 12000))
         ]);
       } else if (post.type === "video" && post.video) {
-        console.log("📹 [PUBLISH] Upload vidéo...");
         mediaUrl = await Promise.race([
           supaUploadMedia(post.id, "videos", post.video, "video"),
           new Promise((_, reject) => setTimeout(() => reject(new Error("Upload timeout")), 20000))
         ]);
       } else if (post.type === "audio" && post.audio) {
-        console.log("🎙️ [PUBLISH] Upload audio...");
         mediaUrl = await Promise.race([
           supaUploadMedia(post.id, "audios", post.audio, "audio"),
           new Promise((_, reject) => setTimeout(() => reject(new Error("Upload timeout")), 15000))
@@ -2005,7 +1998,6 @@ async function supaPublishPostWithRetry(post, maxRetries = 2) {
       }
 
       // STEP 2: Créer le post (avec timeout 3s)
-      console.log("📝 [PUBLISH] Création post...");
       const postData = {
         id: post.id,
         author_id: MY_UID,
@@ -2030,17 +2022,10 @@ async function supaPublishPostWithRetry(post, maxRetries = 2) {
 
       if (error) throw error;
 
-      console.log("✅ [PUBLISH] Publication réussie!");
-      diagLog(`✅ Post ${post.id} publié`);
       return true;
 
     } catch (e) {
-      console.warn(`⚠️ [PUBLISH ${attempt}] Erreur:`, e.message);
-
-      if (attempt === maxRetries) {
-        console.error("❌ [PUBLISH] Impossible après retries");
-        return false;
-      }
+      if (attempt === maxRetries) return false;
 
       // Attendre avant retry
       await new Promise(resolve => setTimeout(resolve, 1000));
@@ -2060,99 +2045,53 @@ async function supaUploadMedia(postId, folder, base64Data, mediaType) {
   }
 
   try {
-    // Vérifier que Supabase Storage existe
-    if (!supa || !supa.storage) {
-      console.warn("⚠️ [UPLOAD] Storage indisponible - fallback base64");
-      return base64Data;
-    }
+    if (!supa || !supa.storage) return base64Data;
 
     // Convertir base64 en Blob
     const parts = base64Data.split(",");
     const bstr = atob(parts[1]);
-    const n = bstr.length;
-    const u8arr = new Uint8Array(n);
-    for (let i = 0; i < n; i++) {
-      u8arr[i] = bstr.charCodeAt(i);
-    }
+    const u8arr = new Uint8Array(bstr.length);
+    for (let i = 0; i < bstr.length; i++) u8arr[i] = bstr.charCodeAt(i);
     const blob = new Blob([u8arr], { type: parts[0].split(":")[1].split(";")[0] });
 
-    console.log(`📊 [UPLOAD] Blob créé: ${blob.size} bytes`);
-
-    // Générer nom de fichier (extension cohérente avec le vrai type pour les images : webp/jpeg)
     let ext = ".jpg";
     if (mediaType === "video") ext = ".mp4";
     else if (mediaType === "audio") ext = ".mp3";
     else if (base64Data.indexOf("data:image/webp") === 0) ext = ".webp";
     else if (base64Data.indexOf("data:image/png") === 0) ext = ".png";
-    const fileName = `${postId}${ext}`;
-    const filePath = `${folder}/${MY_UID}/${fileName}`;
+    const filePath = `${folder}/${MY_UID}/${postId}${ext}`;
 
-    console.log(`📁 [UPLOAD] Chemin: ${filePath}`);
-
-    // Uploader vers Supabase Storage
-    const { data, error } = await supa.storage.from("content").upload(filePath, blob, {
-      cacheControl: "31536000", // 1 an : média immuable (nom unique) → cache navigateur/CDN, soulage l'egress
+    const { error } = await supa.storage.from("content").upload(filePath, blob, {
+      cacheControl: "31536000",
       upsert: true,
     });
 
-    if (error) {
-      console.warn("⚠️ [UPLOAD] Storage échoué:", error.message);
-      console.warn("📌 [UPLOAD] Fallback: utiliser base64 temporairement");
-      return base64Data;  // Fallback à base64
-    }
+    if (error) return base64Data;
 
-    console.log("✅ [UPLOAD] Fichier uploadé:", data);
-
-    // Récupérer l'URL publique
     try {
       const { data: publicUrl } = supa.storage.from("content").getPublicUrl(filePath);
-      if (publicUrl?.publicUrl) {
-        console.log("🔗 [UPLOAD] URL publique OK");
-        return cdnUrl(publicUrl.publicUrl);
-      }
-    } catch (e) {
-      console.warn("⚠️ [UPLOAD] getPublicUrl échoué, fallback base64");
-      return base64Data;
-    }
+      if (publicUrl?.publicUrl) return cdnUrl(publicUrl.publicUrl);
+    } catch (e) { return base64Data; }
 
-    return base64Data;  // Fallback final
+    return base64Data;
 
   } catch (e) {
-    console.warn("⚠️ [UPLOAD] Exception:", e.message);
-    console.warn("📌 [UPLOAD] Fallback: utiliser base64");
-    return base64Data;  // Fallback toujours
+    return base64Data;
   }
 }
 
 // Version legacy (fallback)
 async function supaPublishPost(post) {
-  try {
-    const success = await supaPublishPostWithRetry(post);
-    if (!success) {
-      console.warn("Post non synchronisé après tentatives");
-    }
-  } catch(e) {
-    console.warn("Post error:", e);
-  }
+  try { await supaPublishPostWithRetry(post); } catch(e) {}
 }
 
 async function supaLoadPosts(offset = 0) {
   try {
-    // diagLog("📥 Chargement posts depuis Supabase..."); // LOG LOURD DÉSACTIVÉ
-    // console.log("[SYNC] Chargement des posts depuis Supabase..."); // LOG LOURD DÉSACTIVÉ
-    // ✅ FIX: sélection explicite des champs (évite de charger des colonnes non nécessaires)
-    // La DB a été nettoyée des base64 — le code empêche désormais tout nouveau base64 en DB
     const { data, error } = await supa.from("posts")
       .select("id, author_id, passion_id, mood, content, media_url, created_at, is_reel, overlays, shared_from_post_id, shared_data, profiles!author_id(username,emoji,color,avatar_url)")
       .order("created_at", { ascending: false })
       .range(offset, offset + 59);
-    if (error) {
-      diagLog(`❌ Erreur chargement: ${error.message}`);
-      console.error("[SYNC] Erreur requête posts:", error);
-      return [];
-    }
-    // diagLog(`📥 ${data?.length || 0} posts chargés`); // LOG LOURD DÉSACTIVÉ
-    // console.log("[SYNC] Posts chargés:", data?.length || 0); // LOG LOURD DÉSACTIVÉ
+    if (error) return [];
     window._feedServerMayHaveMore = ((data || []).length === 60);
     if (!data || !data.length) return [];
     // Charger tous les likes + counts commentaires d'un coup
@@ -3582,34 +3521,37 @@ async function loadMoreFeedPosts() {
 let _feedRefreshInterval = null;
 
 function startFeedRefreshLoop() {
-  if (_feedRefreshInterval) return;  // Déjà en cours
-  console.log("🔄 [FEED] Démarrage refresh fallback du feed (60s, le realtime gère le reste)");
+  if (_feedRefreshInterval) return;
   _feedRefreshInterval = setInterval(async () => {
     try {
       const posts = await supaLoadPosts();
       if (posts && posts.length > 0) {
         const extra = (window._feedExtraPosts || []).filter(p => !posts.some(x => x.id === p.id));
         state.supabasePosts = posts.concat(extra);
-        // NE RAFRAÎCHIR QUE SI ON EST SUR LE FEED
-        // 🔧 FIX AUDIT 2026-06-10 : l'id est "screen-feed" (pas "feed") —
-        // le fallback 60s ne rafraîchissait JAMAIS le fil.
         const feedEl = document.getElementById("screen-feed");
-        if (feedEl && feedEl.classList.contains("active")) {
-          renderFeed();
-        }
+        if (feedEl && feedEl.classList.contains("active")) renderFeed();
       }
-    } catch (e) {
-      console.warn("⚠️ [FEED] Refresh échoué:", e.message);
-    }
-  }, 60000);  // Fallback 60s — les mises à jour instantanées passent par le canal realtime:posts
+    } catch (e) {}
+  }, 60000); // Fallback 60s — les mises à jour instantanées passent par realtime:posts
 }
 
 function stopFeedRefreshLoop() {
   if (_feedRefreshInterval) {
     clearInterval(_feedRefreshInterval);
     _feedRefreshInterval = null;
-    console.log("⏹️ [FEED] Refresh arrêté");
   }
+}
+
+// ═══ ANALYTICS LÉGÈRES ═══
+// Fire-and-forget : n'attend pas la réponse, n'affiche aucune erreur.
+// Instrumentation des actions clés pour DAU, funnel et features populaires.
+// Table analytics_events — migration_analytics.sql à appliquer en prod.
+function supaTrack(event, properties) {
+  try {
+    if (!window._supaReal || typeof MY_UID === "undefined" || !MY_UID) return;
+    var payload = { user_id: MY_UID, event: String(event), properties: properties || {} };
+    supa.from("analytics_events").insert(payload).then(function() {}, function() {});
+  } catch(e) {}
 }
 
 async function supaMarkNotifSeen(notifId) {
@@ -3640,7 +3582,6 @@ async function supaInit() {
     // \u2192 Le client Supabase se cassait apr\u00e8s la premi\u00e8re requ\u00eate
     // SOLUTION: Charger seulement les posts, puis attendre
 
-    console.log("\ud83d\udce5 supaInit() d\u00e9marrage...");
 
     // 0. SYNC CROSS-APPAREIL : restaure l'\u00e9tat du compte si le serveur en a un
     // plus r\u00e9cent (couvre le chemin onAuthStateChange/SIGNED_IN apr\u00e8s le boot).

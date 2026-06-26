@@ -148,12 +148,20 @@ self.addEventListener("fetch", e => {
     return;
   }
 
-  // Icônes et manifest → cache-first (ne changent presque jamais)
+  // Icônes, manifest et assets → stale-while-revalidate
   e.respondWith(
     caches.match(e.request).then(cached => {
       const network = fetch(e.request).then(res => {
         if (res.ok) caches.open(CACHE).then(c => c.put(e.request, res.clone()));
         return res;
+      }).catch(() => {
+        // Réseau absent : on sert depuis le cache et on notifie l'app
+        if (cached) {
+          self.clients.matchAll({ includeUncontrolled: true }).then(clients =>
+            clients.forEach(c => c.postMessage({ type: "OFFLINE" }))
+          );
+        }
+        return cached || new Response("", { status: 503 });
       });
       return cached || network;
     })

@@ -435,7 +435,18 @@
   <main class="app-main" id="appMain">
 
     <!-- ===== SCREEN: HOME / FEED ===== -->
+    <!-- Banner mode hors-ligne (affiché par le SW quand réseau indisponible) -->
+    <div id="offlineBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9999;background:#1e1b4b;color:#fff;text-align:center;padding:10px 16px;font-size:13px;font-weight:600;letter-spacing:.01em;">
+      📵 Mode hors-ligne — Contenu en cache
+      <button onclick="document.getElementById('offlineBanner').style.display='none'" style="background:none;border:none;color:#c4b5fd;font-size:16px;cursor:pointer;margin-left:8px;">×</button>
+    </div>
+
     <section class="screen active" id="screen-feed">
+      <!-- Indicateur pull-to-refresh -->
+      <div id="_pullIndicator" style="display:none;align-items:center;justify-content:center;gap:8px;padding:10px;color:var(--accent);font-size:13px;font-weight:600;">
+        <div style="width:16px;height:16px;border:2px solid var(--accent);border-top-color:transparent;border-radius:50%;animation:spin .7s linear infinite;"></div>
+        Actualisation…
+      </div>
       <div class="profile-strip" id="profileStrip"></div>
 
       <div class="mood-selector" id="moodSelector">

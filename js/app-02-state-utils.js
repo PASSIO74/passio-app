@@ -486,6 +486,9 @@ function goTo(screen) {
   if (screen === "wallet")   renderWallet();
   if (screen === "messages") renderMessages();
   if (screen === "cdv")      { renderCdvScreen(); if (typeof supaRefreshCdvLives === "function") supaRefreshCdvLives(); }
+
+  // Analytics navigation (fire-and-forget, silencieux)
+  try { if (typeof supaTrack === "function") supaTrack("screen_view", { screen: screen }); } catch(_) {}
 }
 
 // Fonction générique pour fermer les overlays
@@ -1702,8 +1705,59 @@ function renderFeedCdvLives() {
   }
 }
 
+// ======== PULL-TO-REFRESH ========
+// Détecte un swipe vers le bas depuis le haut du feed et recharge les posts Supabase.
+(function _setupPullToRefresh() {
+  var _touchStartY = 0;
+  var _pullActive = false;
+  var _pulling = false;
+
+  document.addEventListener("touchstart", function(e) {
+    var feedEl = document.getElementById("screen-feed");
+    if (!feedEl || !feedEl.classList.contains("active")) return;
+    var list = document.getElementById("feedList");
+    if (!list) return;
+    // Déclenche seulement si on est en haut du scroll
+    if (list.scrollTop > 10) return;
+    _touchStartY = e.touches[0].clientY;
+    _pullActive = true;
+  }, { passive: true });
+
+  document.addEventListener("touchmove", function(e) {
+    if (!_pullActive) return;
+    var delta = e.touches[0].clientY - _touchStartY;
+    if (delta > 60 && !_pulling) {
+      _pulling = true;
+      var ind = document.getElementById("_pullIndicator");
+      if (ind) ind.style.display = "flex";
+    }
+  }, { passive: true });
+
+  document.addEventListener("touchend", function() {
+    if (!_pullActive) return;
+    _pullActive = false;
+    if (_pulling) {
+      _pulling = false;
+      var ind = document.getElementById("_pullIndicator");
+      if (ind) ind.style.display = "none";
+      // Recharge les posts depuis Supabase
+      if (typeof supaLoadPosts === "function" && typeof MY_UID !== "undefined" && MY_UID) {
+        supaLoadPosts().then(function(posts) {
+          if (posts && posts.length > 0) {
+            var extra = (window._feedExtraPosts || []).filter(function(p) { return !posts.some(function(x) { return x.id === p.id; }); });
+            state.supabasePosts = posts.concat(extra);
+            renderFeed();
+          }
+        }).catch(function() {});
+      } else {
+        renderFeed();
+      }
+    }
+  }, { passive: true });
+})();
+
 function renderFeed() {
-  // 🎯 Masquer le skeleton loader au démarrage
+  // 🎯 Masquer le skeleton loader
   const skeleton = $("#feedSkeleton");
   if (skeleton) skeleton.style.display = "none";
 

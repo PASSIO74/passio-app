@@ -236,6 +236,48 @@ function togglePwd(id, btn) {
   btn.textContent = show ? '🙈' : '👁';
 }
 
+// ═══ BANNER HORS-LIGNE ═══
+// Le SW envoie { type:"OFFLINE" } quand il sert depuis le cache faute de réseau.
+// On écoute aussi les événements natifs online/offline du navigateur.
+(function _setupOfflineBanner() {
+  function showOffline() {
+    var b = document.getElementById("offlineBanner");
+    if (b) b.style.display = "flex";
+  }
+  function hideOffline() {
+    var b = document.getElementById("offlineBanner");
+    if (b) b.style.display = "none";
+  }
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.addEventListener("message", function(e) {
+      if (e.data && e.data.type === "OFFLINE") showOffline();
+      if (e.data && e.data.type === "SW_UPDATED") {
+        // Propose un rechargement discret quand le SW a été mis à jour
+        try { toast("✨ Mise à jour disponible — recharge pour l'appliquer", "info"); } catch(_) {}
+      }
+    });
+  }
+  window.addEventListener("offline", showOffline);
+  window.addEventListener("online", function() {
+    hideOffline();
+    // Tente de re-synchroniser les posts au retour en ligne
+    try {
+      if (typeof supaLoadPosts === "function" && typeof MY_UID !== "undefined" && MY_UID) {
+        supaLoadPosts().then(function(posts) {
+          if (posts && posts.length > 0) {
+            var extra = (window._feedExtraPosts || []).filter(function(p) {
+              return !posts.some(function(x) { return x.id === p.id; });
+            });
+            state.supabasePosts = posts.concat(extra);
+            var feedEl = document.getElementById("screen-feed");
+            if (feedEl && feedEl.classList.contains("active")) renderFeed();
+          }
+        }).catch(function() {});
+      }
+    } catch(_) {}
+  });
+})();
+
 // ═══ Wrappers messagerie — définis ici pour être sûrement disponibles ═══
 // toggleEmojiPanel, toggleAttachMenu et openConvSettings sont dans le 2ème script
 // mais ces stubs garantissent qu'ils existent même si le 2ème script ne charge pas.
