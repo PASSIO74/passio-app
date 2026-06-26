@@ -1228,7 +1228,6 @@ function _updateIrlFiltersBtn() {
   var clearBtn = document.getElementById("irlFiltersClearBtn");
   var mainBtn = document.getElementById("irlFiltersBtn");
   if (badge) { badge.textContent = n > 0 ? n : ""; badge.style.display = n > 0 ? "inline-block" : "none"; }
-  if (clearBtn) clearBtn.style.display = n > 0 ? "block" : "none";
   if (mainBtn) mainBtn.style.borderColor = n > 0 ? "var(--accent)" : "var(--border)";
 }
 

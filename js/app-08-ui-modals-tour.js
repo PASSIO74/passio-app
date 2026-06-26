@@ -1193,6 +1193,13 @@ function renderBell() {
     const n = unreadCount();
     dot.textContent = n > 0 ? (n > 9 ? "9+" : String(n)) : "";
   }
+  // Badge titre de l'onglet navigateur (notifs + messages non-lus)
+  try {
+    let _total = 0;
+    try { _total += unreadCount(); } catch(e) {}
+    try { (getConversations() || []).forEach(c => { _total += (c.unread || 0); }); } catch(e) {}
+    document.title = _total > 0 ? `(${_total > 99 ? "99+" : _total}) PASSIO` : "PASSIO";
+  } catch(e) {}
   updateAppBadge();
 }
 
@@ -3009,17 +3016,22 @@ async function supaInsertNotif(toUserId, kind, refId, content) {
   try {
     if (toUserId === MY_UID) return;
     const prof = currentProfile();
-    // ⚠️ Le pseudo est contrôlé par l'utilisateur ET le texte de la notif est
-    // rendu en innerHTML chez le destinataire (_notifListHtml) → on échappe le
-    // pseudo ici pour éviter un XSS stocké cross-compte. `content` est statique
-    // (fourni par le code appelant), donc sûr.
     const safeName = (typeof escapeHtml === "function") ? escapeHtml(prof?.name || "Quelqu'un") : (prof?.name || "Quelqu'un");
-    await supa.from("notifications").insert({
+    const fullText = `${safeName} ${content}`;
+    const { error } = await supa.from("notifications").insert({
       id: "n_" + uid(), user_id: toUserId,
       kind, from_id: MY_UID, ref_id: refId,
-      content: `${safeName} ${content}`,
+      content: fullText,
       seen: false, created_at: new Date().toISOString(),
     });
+    // Push Web → réveille le destinataire même app fermée (fire-and-forget).
+    if (!error) {
+      try {
+        supa.functions.invoke("notify-call", {
+          body: { toUserId, type: "notif", kind, text: fullText, emoji: _notifEmoji(kind) }
+        }).catch(() => {});
+      } catch(e) {}
+    }
   } catch(e) {}
 }
 
@@ -3176,6 +3188,14 @@ async function _handleIncomingConvMessage(r) {
     conversationsState = convs;
     saveConversations();
     _playMsgSound();
+    // Notif dans l'onglet 🔔 Notifications (+ badge cloche + titre onglet)
+    try {
+      var _msgSender = (prof && prof.username) ? prof.username : (conv.userName || "Quelqu'un");
+      var _msgBody = conv.isGroup
+        ? "Nouveau message dans " + (conv.groupName || "le groupe")
+        : "t'a envoyé un message";
+      pushNotification(_msgSender, _msgBody, "✉️");
+    } catch(e) {}
     try { renderMessages(); } catch(e) {}
   }
   try { renderMsgBadge(); } catch(e) {}
@@ -3404,7 +3424,7 @@ function supaSubscribe() {
   // la publication supabase_realtime (cf. migrations). mergeSupaNotifs gère
   // badge + panneau ouvert + dédup.
   supa.channel("realtime:notifications")
-    .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications" }, payload => {
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications", filter: `user_id=eq.${MY_UID}` }, payload => {
       const r = payload.new;
       if (!r || r.user_id !== MY_UID) return; // pas pour moi
       const notif = {

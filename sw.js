@@ -40,6 +40,21 @@ self.addEventListener("activate", e => {
 self.addEventListener("push", e => {
   let data = {};
   try { data = e.data ? e.data.json() : {}; } catch (_e) { data = {}; }
+
+  // Notif sociale (like, follow, commentaire, message…) — app fermée ou en arrière-plan.
+  if (data.type === "notif") {
+    const opts = {
+      body: data.text || "Nouvelle notification",
+      tag: "passio-notif-" + (data.kind || "notif"),
+      renotify: true,
+      icon: "./icon-192.png",
+      badge: "./icon-192.png",
+      data: { url: "./" },
+    };
+    e.waitUntil(self.registration.showNotification((data.emoji || "🔔") + " PASSIO", opts));
+    return;
+  }
+
   if (data.type !== "call") return;
   const title = (data.emoji || "📞") + " " + (data.name || "Quelqu'un") + " t'appelle";
   const opts = {
@@ -64,7 +79,19 @@ self.addEventListener("push", e => {
 // d'appel entrant (réponse explicite par l'utilisateur).
 self.addEventListener("notificationclick", e => {
   e.notification.close();
-  if (e.action === "decline") return; // refus : on ferme juste la notif
+  if (e.action === "decline") return;
+
+  // Notif sociale → ouvrir/focuser l'app (pas de paramètres d'appel).
+  if (e.notification.tag && e.notification.tag.startsWith("passio-notif-")) {
+    e.waitUntil(
+      self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(clients => {
+        for (const c of clients) { if ("focus" in c) return c.focus(); }
+        if (self.clients.openWindow) return self.clients.openWindow("./");
+      })
+    );
+    return;
+  }
+
   const d = e.notification.data || {};
   const qs = "?call=" + encodeURIComponent(d.callId || "") +
              "&from=" + encodeURIComponent(d.from || "") +

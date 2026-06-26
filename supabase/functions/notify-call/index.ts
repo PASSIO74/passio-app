@@ -36,10 +36,11 @@ Deno.serve(async (req) => {
   if (userErr || !userData?.user) return json({ error: "Non authentifié" }, 401);
   const fromUid = userData.user.id;
 
-  let body: { toUserId?: string; callId?: string; kind?: string; fromName?: string; fromEmoji?: string };
+  let body: { toUserId?: string; callId?: string; kind?: string; fromName?: string; fromEmoji?: string; type?: string; text?: string; emoji?: string };
   try { body = await req.json(); } catch { return json({ error: "Body invalide" }, 400); }
-  const { toUserId, callId, kind, fromName, fromEmoji } = body;
-  if (!toUserId || !callId) return json({ error: "toUserId/callId requis" }, 400);
+  const { toUserId, callId, kind, fromName, fromEmoji, type = "call", text, emoji } = body;
+  if (!toUserId) return json({ error: "toUserId requis" }, 400);
+  if (type === "call" && !callId) return json({ error: "callId requis pour les appels" }, 400);
 
   // 2. VAPID.
   const pub = Deno.env.get("VAPID_PUBLIC_KEY");
@@ -56,20 +57,19 @@ Deno.serve(async (req) => {
   const { data: subs } = await admin.from("push_subscriptions").select("endpoint, subscription").eq("user_id", toUserId);
   if (!subs || !subs.length) return json({ ok: true, sent: 0, note: "aucun appareil abonné" });
 
-  const payload = JSON.stringify({
-    type: "call",
-    callId, kind: kind || "voice",
-    from: fromUid,
-    name: fromName || "Quelqu'un",
-    emoji: fromEmoji || "📞",
-  });
+  const payload = type === "notif"
+    ? JSON.stringify({ type: "notif", text: text || "Nouvelle notification", emoji: emoji || "🔔", kind })
+    : JSON.stringify({ type: "call", callId, kind: kind || "voice", from: fromUid, name: fromName || "Quelqu'un", emoji: fromEmoji || "📞" });
+
+  const ttl = type === "notif" ? 3600 : 45;
+  const urgency = type === "notif" ? "normal" : "high";
 
   // 4. Envoyer à chaque appareil ; nettoyer les abonnements morts (410/404).
   let sent = 0;
   const dead: string[] = [];
   await Promise.all((subs || []).map(async (row) => {
     try {
-      await webpush.sendNotification(row.subscription, payload, { TTL: 45, urgency: "high" });
+      await webpush.sendNotification(row.subscription, payload, { TTL: ttl, urgency });
       sent++;
     } catch (e) {
       const code = (e as { statusCode?: number })?.statusCode;
