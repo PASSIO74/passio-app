@@ -468,11 +468,10 @@ function showGifPickerForComment(postId, commentId, event) {
 
 function showEmojiPickerForComment(postId, commentId, event) {
   if (event) { event.stopPropagation(); event.preventDefault(); }
-  console.log("😊 showEmojiPickerForComment:", postId, commentId);
 
   // Fermer les anciens panels
   var oldPanel = document.getElementById("emoji-panel-" + commentId);
-  if (oldPanel) oldPanel.remove();
+  if (oldPanel) { oldPanel.remove(); return false; }
 
   // Initialiser les propriétés du commentaire
   var post = findPostAnywhere(postId);
@@ -486,47 +485,83 @@ function showEmojiPickerForComment(postId, commentId, event) {
     }
   }
 
+  var selected = []; // emojis accumulés pour cette session
+
   var emojis = ["❤️", "🔥", "😂", "🎉", "👍", "💯", "😍", "🤔"];
   var panel = document.createElement("div");
   panel.id = "emoji-panel-" + commentId;
-  panel.style.cssText = "position:fixed;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:8px;display:flex;gap:4px;flex-wrap:wrap;z-index:10000;box-shadow:0 4px 16px rgba(0,0,0,0.2);max-width:280px;";
+  panel.style.cssText = "position:fixed;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px;z-index:10000;box-shadow:0 4px 20px rgba(0,0,0,0.25);max-width:260px;";
+
+  // Ligne de prévisualisation + bouton valider
+  var previewRow = document.createElement("div");
+  previewRow.style.cssText = "display:flex;align-items:center;gap:6px;min-height:34px;border-bottom:1px solid var(--border);padding-bottom:6px;";
+
+  var previewSpan = document.createElement("span");
+  previewSpan.style.cssText = "font-size:22px;flex:1;letter-spacing:2px;min-width:0;";
+  previewSpan.textContent = "";
+
+  var validateBtn = document.createElement("button");
+  validateBtn.textContent = "✓";
+  validateBtn.style.cssText = "background:var(--accent);color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:14px;font-weight:700;cursor:pointer;opacity:0.4;pointer-events:none;transition:opacity 0.15s;flex-shrink:0;";
+  validateBtn.onclick = function(evt) {
+    evt.stopPropagation();
+    evt.preventDefault();
+    if (!selected.length) return;
+    addEmojiToComment(postId, commentId, selected.join(""));
+    panel.remove();
+    document.removeEventListener("click", closeListener);
+  };
+
+  previewRow.appendChild(previewSpan);
+  previewRow.appendChild(validateBtn);
+  panel.appendChild(previewRow);
+
+  // Grille d'emojis
+  var grid = document.createElement("div");
+  grid.style.cssText = "display:flex;gap:4px;flex-wrap:wrap;";
 
   emojis.forEach(function(e) {
     var btn = document.createElement("span");
     btn.textContent = e;
-    btn.style.cssText = "cursor:pointer;font-size:20px;padding:6px 6px;border-radius:6px;transition:all 0.2s;display:flex;align-items:center;justify-content:center;";
-    btn.onmouseover = function() { this.style.background = "rgba(124,58,237,0.2);transform:scale(1.15);"; };
-    btn.onmouseout = function() { this.style.background = "transparent;transform:scale(1);"; };
+    btn.style.cssText = "cursor:pointer;font-size:22px;padding:5px;border-radius:6px;transition:background 0.15s,transform 0.1s;";
+    btn.onmouseover = function() { this.style.background = "rgba(124,58,237,0.2)"; this.style.transform = "scale(1.2)"; };
+    btn.onmouseout = function() { this.style.background = "transparent"; this.style.transform = "scale(1)"; };
     btn.onclick = function(evt) {
       evt.stopPropagation();
       evt.preventDefault();
-      console.log("✅ Emoji clicked:", e);
-      addEmojiToComment(postId, commentId, e);
-      panel.remove();
+      selected.push(e);
+      previewSpan.textContent = selected.join("");
+      validateBtn.style.opacity = "1";
+      validateBtn.style.pointerEvents = "auto";
     };
-    panel.appendChild(btn);
+    grid.appendChild(btn);
   });
 
+  panel.appendChild(grid);
+
   // Positionner le panel à côté du bouton emoji
-  var emojiBtn = event?.target;
-  if (emojiBtn && emojiBtn.classList && emojiBtn.classList.contains("comment-action")) {
+  var emojiBtn = event && event.target;
+  if (emojiBtn) {
     var rect = emojiBtn.getBoundingClientRect();
-    panel.style.left = (rect.left + 30) + "px";
-    panel.style.top = (rect.top - 10) + "px";
-    console.log("✅ Panel positioned at", panel.style.left, panel.style.top);
+    var left = rect.left + window.scrollX;
+    var top = rect.top + window.scrollY - 10;
+    // Eviter débordement à droite
+    if (left + 265 > window.innerWidth) left = window.innerWidth - 270;
+    panel.style.position = "fixed";
+    panel.style.left = Math.max(4, left) + "px";
+    panel.style.top = Math.max(4, rect.top - 130) + "px";
   }
 
   document.body.appendChild(panel);
-  console.log("✅ Emoji picker shown");
 
-  // Fermer quand on clique ailleurs
+  // Fermer quand on clique ailleurs (sans fermer si clic dans le panel)
+  var closeListener = function(e) {
+    if (!panel.contains(e.target)) {
+      panel.remove();
+      document.removeEventListener("click", closeListener);
+    }
+  };
   setTimeout(function() {
-    var closeListener = function(e) {
-      if (!panel.contains(e.target)) {
-        panel.remove();
-        document.removeEventListener("click", closeListener);
-      }
-    };
     document.addEventListener("click", closeListener);
   }, 50);
 
