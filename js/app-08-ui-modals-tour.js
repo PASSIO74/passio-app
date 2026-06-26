@@ -2688,47 +2688,34 @@ async function supaSearchUsers(query) {
       return [];
     }
 
-    // 🔍 Retourner TOUS les profils de chaque utilisateur (pas juste un)
-    // Search by username OR bio - sans exclusion par MY_UID pour permettre de trouver son propre profil depuis un autre appareil
+    // 🔍 1 ligne par compte dans profiles, colonne passions = jsonb [{id,emoji,label}]
     const searchPattern = `%${cleanQuery}%`;
     const { data, error } = await supa.from("profiles")
-      .select("id, username, emoji, color, passion_id, bio, avatar_url")
+      .select("id, username, emoji, color, passion_id, passions, bio, avatar_url")
       .or(`username.ilike.${searchPattern},bio.ilike.${searchPattern}`);
 
-    console.log("[SEARCH] Data returned:", data, "Error:", error);
-    if (!data) {
-      console.log("[SEARCH] No data returned");
-      return [];
-    }
+    if (!data) return [];
 
-    console.log("[SEARCH] Found " + data.length + " profiles");
-
-    // Grouper par utilisateur (username) pour obtenir TOUS ses profils/passions
-    const userMap = {};
-    data.forEach(profile => {
-      if (!userMap[profile.id]) {
-        userMap[profile.id] = {
-          id: profile.id,
-          username: profile.username || "Passionné",
-          emoji: profile.emoji || "✨",
-          color: profile.color || "#8b5cf6",
-          photoUrl: profile.avatar_url || null, // 📷 photo de profil (Storage)
-          bio: profile.bio || "",
-          passions: [] // Tous les profils/passions de cet utilisateur
-        };
-        // Met en cache le profil distant (photo comprise) → propagation partout
-        try { if (typeof cacheRemoteProfile === "function") cacheRemoteProfile({ id: profile.id, username: profile.username, emoji: profile.emoji, color: profile.color, avatar_url: profile.avatar_url, passion_id: profile.passion_id, bio: profile.bio }); } catch(e) {}
+    const results = data.map(profile => {
+      // Passions : colonne jsonb d'abord, fallback sur passion_id si vide
+      let passions = [];
+      if (Array.isArray(profile.passions) && profile.passions.length > 0) {
+        passions = profile.passions; // [{id, emoji, label}]
+      } else if (profile.passion_id) {
+        passions = [{ id: profile.passion_id, emoji: profile.emoji || "✨", label: "" }];
       }
-      if (profile.passion_id) {
-        userMap[profile.id].passions.push({
-          id: profile.passion_id,
-          emoji: profile.emoji || "✨"
-        });
-      }
-    });
+      try { if (typeof cacheRemoteProfile === "function") cacheRemoteProfile({ id: profile.id, username: profile.username, emoji: profile.emoji, color: profile.color, avatar_url: profile.avatar_url, passion_id: profile.passion_id, bio: profile.bio }); } catch(e) {}
+      return {
+        id: profile.id,
+        username: profile.username || "Passionné",
+        emoji: profile.emoji || "✨",
+        color: profile.color || "#8b5cf6",
+        photoUrl: profile.avatar_url || null,
+        bio: profile.bio || "",
+        passions
+      };
+    }).slice(0, 8);
 
-    const results = Object.values(userMap).slice(0, 8);
-    console.log("[SEARCH] Returning " + results.length + " users");
     return results;
   } catch(e) {
     console.error("[SEARCH] Error:", e);

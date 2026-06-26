@@ -94,25 +94,28 @@ function filterExplore() {
     : Promise.resolve([]);
 
   supaPromise.then(function(supaUsers) {
-    // Fusion : Supabase en priorité + seed local en fallback
-    var seedUsers = (state.seed.users || []).filter(function(u) {
-      var pw = passionById(u.passion);
-      return (u.name||"").toLowerCase().includes(q)
-        || (u.bio||"").toLowerCase().includes(q)
-        || (pw && pw.label.toLowerCase().includes(q));
-    }).slice(0, 5);
+    // Supabase en priorité — les IDs déjà trouvés ne sont pas ajoutés depuis le seed
+    var supaIds = new Set((supaUsers || []).map(function(u) { return u.id; }));
 
-    // Convertir les users Supabase au même format (avec passions array)
     var supaFormatted = (supaUsers || []).map(function(u) {
       return {
         id: u.id,
         name: u.username || "Passionné",
         profileEmoji: u.emoji || "✨",
         avatar: u.color || "#8b5cf6",
-        passions: u.passions || [], // Tableau de passions au lieu d'une seule
+        passions: u.passions || [],
         bio: u.bio || ""
       };
     });
+
+    // Seed : on exclut les IDs déjà dans Supabase pour éviter les doublons
+    var seedUsers = (state.seed.users || []).filter(function(u) {
+      if (supaIds.has(u.id)) return false;
+      var pw = passionById(u.passion);
+      return (u.name||"").toLowerCase().includes(q)
+        || (u.bio||"").toLowerCase().includes(q)
+        || (pw && pw.label.toLowerCase().includes(q));
+    }).slice(0, 5);
 
     var fu = supaFormatted.concat(seedUsers).slice(0, 8);
 
@@ -139,30 +142,28 @@ function filterExplore() {
     if (fu.length) {
       html += "<div style='padding:8px 14px 4px;font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;'>👤 Utilisateurs</div>";
       fu.forEach(function(u) {
-        // Afficher tous les passions/profils comme des badges
-        // Gérer à la fois le format Supabase (passions array) et le format seed (passion string)
-        var passionsHTML = "";
-
+        // Badges passions : emoji + label pour chaque passion du compte
+        var passionBadges = "";
         if (u.passions && Array.isArray(u.passions) && u.passions.length > 0) {
-          // Format Supabase: passions array
-          passionsHTML = u.passions.map(function(p) {
-            return p.emoji || "✨";
-          }).join(" ");
+          passionBadges = u.passions.map(function(p) {
+            var label = p.label || (typeof passionById === "function" && passionById(p.id) ? passionById(p.id).label : "");
+            return "<span style='display:inline-flex;align-items:center;gap:3px;background:rgba(124,58,237,0.10);border:1px solid rgba(124,58,237,0.18);border-radius:20px;padding:2px 7px;font-size:10px;font-weight:600;color:var(--accent);margin-right:3px;white-space:nowrap;'>"
+              + (p.emoji || "✨") + (label ? " " + escapeHtml(label) : "") + "</span>";
+          }).join("");
         } else if (u.passion) {
-          // Format seed: passion string
           var pw = passionById(u.passion) || { emoji: "✨", label: "" };
-          passionsHTML = pw.emoji;
-        } else {
-          passionsHTML = "✨";
+          passionBadges = "<span style='display:inline-flex;align-items:center;gap:3px;background:rgba(124,58,237,0.10);border:1px solid rgba(124,58,237,0.18);border-radius:20px;padding:2px 7px;font-size:10px;font-weight:600;color:var(--accent);margin-right:3px;'>"
+            + pw.emoji + (pw.label ? " " + escapeHtml(pw.label) : "") + "</span>";
         }
 
         html += "<div onclick=\"openUserProfile('" + u.id + "');document.getElementById('exploreSearchResults').style.display='none';\" style='display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border);'>" +
-          "<div style='width:38px;height:38px;border-radius:12px;background:" + avatarBg(u) + ";display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;'>" + avatarInner(u) + "</div>" +
-          "<div style='flex:1;min-width:0;'>" +
-            "<div style='font-weight:700;font-size:13px;color:var(--text);'>" + escapeHtml(u.name||"") + "</div>" +
-            "<div style='font-size:11px;color:var(--muted);'>" + passionsHTML + (u.bio ? " · " + escapeHtml(u.bio) : "") + "</div>" +
+          "<div style='width:40px;height:40px;border-radius:50%;background:" + avatarBg(u) + ";display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;'>" + avatarInner(u) + "</div>" +
+          "<div style='flex:1;min-width:0;overflow:hidden;'>" +
+            "<div style='font-weight:700;font-size:13px;color:var(--text);margin-bottom:4px;'>" + escapeHtml(u.name||"") + "</div>" +
+            "<div style='display:flex;flex-wrap:wrap;gap:2px;'>" + passionBadges + "</div>" +
+            (u.bio ? "<div style='font-size:11px;color:var(--muted);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'>" + escapeHtml(u.bio) + "</div>" : "") +
           "</div>" +
-          "<div style='font-size:11px;font-weight:700;color:var(--accent);flex-shrink:0;'>Voir →</div>" +
+          "<div style='font-size:11px;font-weight:700;color:var(--accent);flex-shrink:0;margin-left:6px;'>Voir →</div>" +
           "</div>";
       });
     }

@@ -907,6 +907,7 @@ function searchUsers(query) {
     : Promise.resolve([]);
 
   supaPromise.then(function(supaUsers) {
+    var supaIds = new Set((supaUsers || []).map(function(u) { return u.id; }));
     var supaFormatted = (supaUsers || []).map(function(u) {
       return {
         id: u.id,
@@ -914,12 +915,14 @@ function searchUsers(query) {
         profileEmoji: u.emoji || "✨",
         avatar: u.color || "#8b5cf6",
         photoUrl: u.photoUrl || null,
-        passion: u.passion_id || "",
+        passions: u.passions || [],
         bio: u.bio || ""
       };
     });
 
-    var matches = supaFormatted.concat(seedUsers).slice(0, 8);
+    // Seed : exclure ceux déjà dans Supabase
+    var seedFiltered = seedUsers.filter(function(u) { return !supaIds.has(u.id); });
+    var matches = supaFormatted.concat(seedFiltered).slice(0, 8);
 
     if (matches.length === 0) {
       results.innerHTML = "<div style='padding:14px 16px;color:var(--muted);font-size:13px;text-align:center;'>Aucun utilisateur trouvé</div>";
@@ -927,15 +930,26 @@ function searchUsers(query) {
     }
 
     results.innerHTML = matches.map(function(u) {
-      var passion = passionById(u.passion) || { emoji: "✨", label: "" };
       var nameEsc = escapeHtml(u.name || "Passionné");
-      var avatarColor = u.avatar || "#8b5cf6";
-      var emoji = u.profileEmoji || passion.emoji || "✨";
-      return "<div class='msg-user-result-row' data-uid='" + u.id + "' data-name='" + nameEsc + "' data-emoji='" + emoji + "' data-avatar='" + avatarColor + "' data-photo='" + escapeHtml(u.photoUrl || '') + "' onclick='_pickMsgUser(this)' style='display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border);'>" +
-        "<div style='width:38px;height:38px;border-radius:12px;background:" + avatarBg(u) + ";display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;'>" + avatarInner(u) + "</div>" +
+      var emoji = u.profileEmoji || "✨";
+      // Badges passions
+      var passionBadges = "";
+      if (u.passions && u.passions.length > 0) {
+        passionBadges = u.passions.map(function(p) {
+          var label = p.label || (typeof passionById === "function" && passionById(p.id) ? passionById(p.id).label : "");
+          return "<span style='background:rgba(124,58,237,0.10);border:1px solid rgba(124,58,237,0.18);border-radius:20px;padding:1px 6px;font-size:10px;font-weight:600;color:var(--accent);margin-right:2px;'>"
+            + (p.emoji || "✨") + (label ? " " + escapeHtml(label) : "") + "</span>";
+        }).join("");
+      } else if (u.passion) {
+        var pw = passionById(u.passion) || { emoji: "✨", label: "" };
+        passionBadges = "<span style='background:rgba(124,58,237,0.10);border:1px solid rgba(124,58,237,0.18);border-radius:20px;padding:1px 6px;font-size:10px;font-weight:600;color:var(--accent);'>"
+          + pw.emoji + (pw.label ? " " + escapeHtml(pw.label) : "") + "</span>";
+      }
+      return "<div class='msg-user-result-row' data-uid='" + u.id + "' data-name='" + nameEsc + "' data-emoji='" + emoji + "' data-avatar='" + escapeHtml(u.avatar||"#8b5cf6") + "' data-photo='" + escapeHtml(u.photoUrl || '') + "' onclick='_pickMsgUser(this)' style='display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border);'>" +
+        "<div style='width:38px;height:38px;border-radius:50%;background:" + avatarBg(u) + ";display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;'>" + avatarInner(u) + "</div>" +
         "<div style='flex:1;min-width:0;'>" +
-          "<div style='font-weight:700;font-size:13px;color:var(--text);'>" + nameEsc + "</div>" +
-          "<div style='font-size:11px;color:var(--muted);'>" + passion.emoji + " " + passion.label + "</div>" +
+          "<div style='font-weight:700;font-size:13px;color:var(--text);margin-bottom:3px;'>" + nameEsc + "</div>" +
+          "<div>" + passionBadges + "</div>" +
         "</div>" +
         "<div style='font-size:11px;font-weight:700;color:var(--accent);flex-shrink:0;'>Message →</div>" +
       "</div>";

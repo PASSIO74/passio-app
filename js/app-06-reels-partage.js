@@ -789,9 +789,12 @@ function openCreateProfile(_paidSlotConfirmed) {
   const pool = allPassions().filter(p => !already.includes(p.id));
   openModal(`
     <div class="modal-handle"></div>
-    <div class="modal-title">Nouveau fil · Nouvelle passion</div>
-    <div class="modal-subtitle">Choisis une passion existante, ou crée la tienne. Chaque passion = un fil dédié. +15 pts · +2 💎</div>
-    <div class="passion-grid" id="newProfileGrid">
+    <div style="text-align:center;margin-bottom:18px;">
+      <div style="font-size:28px;margin-bottom:6px;">✨</div>
+      <div style="font-weight:800;font-size:17px;color:var(--text);margin-bottom:4px;">Nouveau fil passion</div>
+      <div style="font-size:12px;color:var(--muted);line-height:1.5;">Chaque passion = un fil dédié sur ton profil.<br/>+15 pts · +2 💎 à la création.</div>
+    </div>
+    <div class="passion-grid new-profile-passion-grid" id="newProfileGrid">
       ${pool.map(p => `
         <div class="passion-tile ${p.custom ? 'passion-custom' : ''}" data-passion="${p.id}" onclick="selectNewProfilePassion('${p.id}')">
           <div class="passion-tile-emoji">${p.emoji}</div>
@@ -801,19 +804,15 @@ function openCreateProfile(_paidSlotConfirmed) {
       `).join("")}
       <div class="passion-tile passion-tile-create" onclick="openCreateCustomPassionFromProfile()">
         <div class="passion-tile-emoji">＋</div>
-        <div class="passion-tile-label">Créer une passion</div>
+        <div class="passion-tile-label">Créer</div>
       </div>
     </div>
-    ${pool.length === 0 ? '<div style="font-size:12px;color:var(--muted);text-align:center;margin:8px 0;">Toutes les passions du catalogue sont déjà prises, tu peux créer la tienne ci-dessus ✨</div>' : ''}
-    <label class="field" style="margin-top:8px;">
-      <span>Nom affiché (peut être un pseudo)</span>
-      <input type="text" class="input" id="newProfileName" value="${escapeHtml(state.user.name)}" maxlength="40" />
+    ${pool.length === 0 ? '<div style="font-size:12px;color:var(--muted);text-align:center;margin:8px 0;">Toutes les passions du catalogue sont déjà prises, tu peux créer la tienne ✨</div>' : ''}
+    <label class="field" style="margin-top:4px;">
+      <span>Bio courte <span style="font-weight:400;color:var(--muted);">(optionnel)</span></span>
+      <input type="text" class="input" id="newProfileBio" placeholder="Ex : Photographe amateur · Paris" maxlength="80" />
     </label>
-    <label class="field">
-      <span>Bio courte</span>
-      <input type="text" class="input" id="newProfileBio" placeholder="Ex: Photographe amateur · Paris" maxlength="80" />
-    </label>
-    <button class="btn primary block" onclick="confirmCreateProfile()">Créer ce fil</button>
+    <button class="btn primary block" style="margin-top:12px;" onclick="confirmCreateProfile()">Créer ce fil</button>
   `);
   window._newProfilePassion = null;
 }
@@ -844,17 +843,9 @@ async function confirmCreateProfile() {
     return;
   }
 
-  const name = $("#newProfileName").value.trim() || state.user.name;
-  const bio = $("#newProfileBio").value.trim();
-
-  // Unicité du nom : ni deux profils du même compte, ni le pseudo d'un autre compte.
-  if (name && (state.user.profiles || []).some(p => (p.name || "").trim().toLowerCase() === name.toLowerCase())) {
-    toast("⚠️ Tu as déjà un profil avec ce nom"); return;
-  }
-  if (name && typeof supaUsernameTaken === "function") {
-    const takenBy = await supaUsernameTaken(name);
-    if (takenBy) { toast("⚠️ Ce pseudo est déjà utilisé par un autre compte"); return; }
-  }
+  // Identité centralisée : on réutilise toujours le nom principal du compte.
+  const name = (state.user.general && state.user.general.username) || state.user.name || "Passionné";
+  const bio = ($("#newProfileBio") ? $("#newProfileBio").value.trim() : "") || "";
   const p = passionById(pid);
   const np = {
     id: uid(),

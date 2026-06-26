@@ -2151,6 +2151,22 @@
       margin-bottom: 12px;
     }
 
+    /* Grille dans la modale "Nouveau fil" : 4 colonnes, tiles moins hautes */
+    .new-profile-passion-grid {
+      grid-template-columns: repeat(4, 1fr);
+      gap: 7px;
+      max-height: 42vh;
+      overflow-y: auto;
+    }
+    .new-profile-passion-grid .passion-tile {
+      aspect-ratio: auto;
+      padding: 10px 6px;
+      border-radius: 14px;
+      min-height: 72px;
+    }
+    .new-profile-passion-grid .passion-tile-emoji { font-size: 22px; }
+    .new-profile-passion-grid .passion-tile-label { font-size: 10px; }
+
     .onb-step[data-onb-step="passions"] .passion-grid {
       grid-template-columns: repeat(4, 1fr);
       gap: 7px;
