@@ -72,6 +72,17 @@ function loadState() {
     if (!Array.isArray(parsed.selectedFeedPassions)) parsed.selectedFeedPassions = [];
     // ✅ SÉCURITÉ: Initialiser supabasePosts s'il n'existe pas
     if (!Array.isArray(parsed.supabasePosts)) parsed.supabasePosts = [];
+    // Dédup inconditionnelle des profils-passion par passion (clé métier).
+    // Nettoie tout état corrompu accumulé avant le fix, quel que soit le chemin
+    // de sync (merge ou non). Un utilisateur ne peut avoir qu'un profil par passion.
+    if (Array.isArray(parsed.user && parsed.user.profiles)) {
+      const seenP = new Set();
+      parsed.user.profiles = parsed.user.profiles.filter(function(p) {
+        if (!p || !p.passion || seenP.has(p.passion)) return false;
+        seenP.add(p.passion);
+        return true;
+      });
+    }
     return parsed;
   } catch (e) {
     return defaultState();
