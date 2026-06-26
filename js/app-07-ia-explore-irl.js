@@ -239,6 +239,8 @@ function quickCreateProfile(pid) {
   saveState();
   // Re-synchronise le profil public (pseudo unique + liste de passions à jour).
   if (typeof supaUpsertProfile === "function") { try { supaUpsertProfile(); } catch(e) {} }
+  // Flush immédiat de user_state sans attendre le debounce.
+  if (typeof supaSaveUserState === "function") { try { supaSaveUserState(); } catch(e) {} }
   grantReward("profile_create");
   closeModal();
   renderTopbar();

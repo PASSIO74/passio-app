@@ -123,6 +123,24 @@ function _syncableState() {
   const s = _leanState();
   delete s.seed;
   delete s.supabasePosts;
+  // Strip base64 photos from passion profiles : les images base64 peuvent dépasser
+  // la limite de payload Supabase (~1 Mo) et bloquer TOUS les appels supaSaveUserState.
+  // La photo reste dans localStorage (s.user n'est pas modifié en mémoire) ; seule
+  // la copie envoyée au serveur est expurgée. L'URL Storage (prof.photoUrl) elle,
+  // est conservée pour la synchronisation cross-appareil.
+  if (s.user && Array.isArray(s.user.profiles)) {
+    s.user = {
+      ...s.user,
+      profiles: s.user.profiles.map(function(p) {
+        if (p.photo && typeof p.photo === "string" && p.photo.indexOf("data:") === 0) {
+          const c = Object.assign({}, p);
+          c.photo = null;
+          return c;
+        }
+        return p;
+      })
+    };
+  }
   return s;
 }
 
@@ -200,18 +218,36 @@ async function supaLoadUserState() {
         await supaSaveUserState();
         return false;
       }
+      // Mémorise le currentProfileId local AVANT l'écrasement (pour le restaurer si valide).
+      const localCurrentId = state.user && state.user.currentProfileId;
       _applyUserState(data.data);
-      // Fusion défensive : si le local avait des profils absents du serveur (créés
-      // entre la dernière sync et la fermeture de l'app), on les réinjecte pour ne
-      // pas les perdre, puis on re-pousse vers le serveur pour rester en cohérence.
+      // Fusion défensive : ré-injecte les profils locaux ABSENTS du serveur (créés
+      // entre la dernière sync et la fermeture) ET les versions locales des profils
+      // MODIFIÉS (même ID mais contenu plus récent — photo, bio, photoUrl…).
       if (localProfiles.length > 0) {
         const serverIds = new Set((state.user.profiles || []).map(p => p.id));
         const missing = localProfiles.filter(p => !serverIds.has(p.id));
         if (missing.length > 0) {
           state.user.profiles = (state.user.profiles || []).concat(missing);
-          // Re-pousse immédiatement pour que le serveur soit à jour.
-          setTimeout(() => { try { supaSaveUserState(); } catch(_e) {} }, 0);
         }
+        // Pour les profils présents des deux côtés : si la version locale porte une
+        // photo (base64 ou URL Storage) absente côté serveur, on la réinjecte.
+        state.user.profiles = state.user.profiles.map(function(sp) {
+          const lp = localProfiles.find(function(p) { return p.id === sp.id; });
+          if (!lp) return sp;
+          const merged = Object.assign({}, sp);
+          if (!merged.photo && lp.photo) merged.photo = lp.photo;
+          if (!merged.photoUrl && lp.photoUrl) merged.photoUrl = lp.photoUrl;
+          if (!merged.bio && lp.bio) merged.bio = lp.bio;
+          return merged;
+        });
+        // Re-pousse immédiatement si des différences ont été fusionnées.
+        setTimeout(function() { try { supaSaveUserState(); } catch(_e) {} }, 0);
+      }
+      // Restaure le profil actif local s'il est toujours dans la liste fusionnée.
+      if (localCurrentId) {
+        const stillExists = Array.isArray(state.user.profiles) && state.user.profiles.some(function(p) { return p.id === localCurrentId; });
+        if (stillExists) state.user.currentProfileId = localCurrentId;
       }
       state._stateSyncedAt = data.updated_at;
       // supaLoadUserState n'est appelée qu'avec une session active → l'utilisateur
@@ -883,7 +919,7 @@ async function doLogout() {
   try { if (typeof supaSaveUserState === "function") await supaSaveUserState(); } catch(e) {}
   try { await supa.auth.signOut(); } catch(e) {}
   localStorage.removeItem("passio_uid");
-  localStorage.removeItem("passio_state");
+  localStorage.removeItem(STATE_KEY);
   toast("👋 Déconnecté — à bientôt !");
   setTimeout(() => location.reload(), 1200);
 }

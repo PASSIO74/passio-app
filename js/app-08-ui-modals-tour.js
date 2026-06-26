@@ -1805,61 +1805,6 @@ async function supaUpsertProfile() {
   } catch(e) { /* erreur réseau non bloquante */ }
 }
 
-// ---- DIAGNOSTIC ----
-// Créer un panneau de diagnostic visible à l'écran
-const _diagPanel = document.createElement("div");
-_diagPanel.id = "sync_diagnosis_panel";
-_diagPanel.style.cssText = `
-  position: fixed;
-  bottom: 20px;
-  right: 20px;
-  background: #1a1a1a;
-  color: #00ff00;
-  padding: 15px;
-  border-radius: 8px;
-  font-size: 11px;
-  font-family: monospace;
-  max-width: 350px;
-  max-height: 300px;
-  overflow-y: auto;
-  z-index: 99999;
-  border: 2px solid #00ff00;
-  white-space: pre-wrap;
-  word-break: break-all;
-  display: none;
-`;
-_diagPanel.textContent = "DIAGNOSTIC SYNC\n================\n";
-document.body.appendChild(_diagPanel);
-
-function showDiag() {
-  _diagPanel.style.display = "block";
-}
-
-function hideDiag() {
-  _diagPanel.style.display = "none";
-}
-
-function diagLog(msg) {
-  // Actif uniquement en mode debug (localStorage passio_debug=1 ou localhost)
-  if (!window.PASSIO_DEBUG) return;
-  const time = new Date().toLocaleTimeString();
-  const line = `[${time}] ${msg}\n`;
-  _diagPanel.textContent += line;
-  _diagPanel.scrollTop = _diagPanel.scrollHeight;
-  console.log("[DIAG]", msg);
-  if (!window._diagLogs) window._diagLogs = [];
-  window._diagLogs.push(`[${time}] ${msg}`);
-  if (window._diagLogs.length > 100) window._diagLogs.shift();
-}
-
-// Diagnostic DÉSACTIVÉ au démarrage pour éviter les lags (le garder fermé)
-window.addEventListener("load", () => {
-  setTimeout(() => {
-    // ⚠️ LOGS MINIMAUX AU DÉMARRAGE (pour fluidité)
-    // Ne pas afficher le diagnostic - le garder fermé jusqu'à ce que l'utilisateur le demande
-    // hideDiag() est appelé par défaut
-  }, 500);
-});
 
 // ---- POSTS ----
 // ===== UPLOAD PHOTO/VIDÉO/AUDIO À SUPABASE STORAGE =====

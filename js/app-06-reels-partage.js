@@ -369,14 +369,26 @@ function changePassionPhoto(event, profileId) {
   const file = event.target.files[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = function(e) {
+  reader.onload = async function(e) {
     const prof = state.user.profiles.find(p => p.id === profileId);
-    if (prof) {
-      prof.photo = e.target.result;
-      saveState();
-      renderProfilesScreen();
-      toast("📷 Photo du profil passion mise à jour !");
+    if (!prof) return;
+    const base64 = e.target.result;
+    prof.photo = base64; // cache local immédiat pour l'affichage
+    saveState();
+    renderProfilesScreen();
+    toast("📷 Photo du profil passion mise à jour !");
+    // Tente un upload vers Storage → stocke l'URL (sync cross-appareil sans base64)
+    if (typeof supaUploadMedia === "function" && window._supaReal) {
+      try {
+        const url = await supaUploadMedia(base64, "passion_" + profileId, "photo");
+        if (url) {
+          prof.photoUrl = url;
+          saveState();
+        }
+      } catch(_e) {}
     }
+    // Flush immédiat vers user_state (sans attendre le debounce 2500ms).
+    if (typeof supaSaveUserState === "function") { try { supaSaveUserState(); } catch(_e) {} }
   };
   reader.readAsDataURL(file);
 }
@@ -458,6 +470,8 @@ async function saveMainProfile() {
   // await : on garantit que le serveur (source de vérité du profil stable) est à
   // jour AVANT de rendre la main, pour qu'un éventuel re-sync adopte le nouveau nom.
   if (typeof supaUpsertProfile === "function") { try { await supaUpsertProfile(); } catch(e) {} }
+  // Flush user_state immédiat (username/bio/rsLinks doivent être dans le blob sync).
+  if (typeof supaSaveUserState === "function") { try { supaSaveUserState(); } catch(e) {} }
   closeModal();
   renderMainProfile();
   toast("✅ Profil mis à jour !");
@@ -490,9 +504,10 @@ function renderProfilesScreen() {
     const passion    = passionById(p.passion);
     const postCount  = state.userPosts.filter(up => up.profileId === p.id).length;
     const isSelected = window.profilesFilterSelection.has(p.id);
-    const hasPhoto   = p.photo ? true : false;
+    const _pPhoto = p.photoUrl || p.photo || null;
+    const hasPhoto   = !!_pPhoto;
     const avatarStyle = hasPhoto
-      ? `background:url(${p.photo}) center/cover;`
+      ? `background:url(${_pPhoto}) center/cover;`
       : `background:${p.color};`;
     const avatarContent = hasPhoto ? "" : p.emoji;
 
@@ -547,6 +562,8 @@ function switchToProfile(id) {
   // Le profil actif = identité publique (1 ligne profiles par compte) → on la
   // resynchronise pour que la recherche/messagerie reflètent le bon pseudo.
   if (typeof supaUpsertProfile === "function") { try { supaUpsertProfile(); } catch(e) {} }
+  // Flush immédiat de user_state pour persister le changement de profil actif.
+  if (typeof supaSaveUserState === "function") { try { supaSaveUserState(); } catch(e) {} }
   renderTopbar();
   renderProfilesScreen();
   renderFeed();
@@ -585,6 +602,9 @@ function deleteProfile(profileId) {
   // Re-synchronise le profil public pour retirer la passion supprimée de la
   // liste affichée aux autres.
   if (typeof supaUpsertProfile === "function") { try { supaUpsertProfile(); } catch(e) {} }
+  // Flush immédiat de user_state pour ne pas perdre la suppression si l'utilisateur
+  // se déconnecte dans les 2500ms suivantes.
+  if (typeof supaSaveUserState === "function") { try { supaSaveUserState(); } catch(e) {} }
   closeModal();
   renderProfilesScreen();
   renderProfileStrip();
@@ -878,6 +898,9 @@ async function confirmCreateProfile() {
   // Synchronise tout de suite le profil actif vers Supabase → découvrable dans la
   // recherche et messageable sans attendre le prochain boot.
   if (typeof supaUpsertProfile === "function") { try { supaUpsertProfile(); } catch(e) {} }
+  // Pousse immédiatement user_state (liste complète des profils) sans attendre le
+  // debounce de 2500ms — sinon un logout rapide perd le nouveau profil.
+  if (typeof supaSaveUserState === "function") { try { supaSaveUserState(); } catch(e) {} }
   grantReward("profile_create");
   closeModal();
   renderProfilesScreen();
