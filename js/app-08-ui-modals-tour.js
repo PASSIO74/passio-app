@@ -3750,6 +3750,14 @@ async function supaInit() {
             try { if (typeof renderFeed === "function") renderFeed(); } catch(e) {}
           }
         }).catch(e => {});
+      // Follows : restaure depuis Supabase (le code mort après return; ne s'exécutait jamais).
+      if (typeof supaLoadFollowing === "function")
+        supaLoadFollowing().then(ids => {
+          if (ids && ids.length) {
+            state.user.following = [...new Set([...(state.user.following || []), ...ids])];
+            try { saveState(); } catch(e) {}
+          }
+        }).catch(e => {});
     }, 2000);
 
     // 4. CONVERSATIONS + REALTIME \u2014 \ud83d\udd27 FIX CRITIQUE 2026-06-12 : ces deux blocs
