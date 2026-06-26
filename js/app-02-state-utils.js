@@ -2205,6 +2205,18 @@ function renderPostHTML(p) {
     </div>
 
     ${commentsPreview ? `<div style="margin-top:8px;" onclick="openPost('${p.id}')" style="cursor:pointer;">${commentsPreview}</div>` : ""}
+    ${(p.reactions && p.reactions.length > 0) ? `<div class="post-reactions" style="margin-top:12px;padding-top:8px;border-top:1px solid var(--border);">${(p.reactions).map(r => {
+      const ru = userById(r.authorId) || { name: "?", profileEmoji: "👤", avatar: "#64748b" };
+      const rSrc = r.authorId === "me" ? "me" : "seed";
+      const _rAv = { avatar: ru.avatar || "#64748b", profileEmoji: ru.profileEmoji || "👤", name: ru.name, photoUrl: ru.photoUrl || null };
+      if (r.type === "emoji_reaction") {
+        return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;"><div class="avatar sm" style="background:${avatarBg(_rAv)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${avatarInner(_rAv)}</div><div><span style="font-size:11px;font-weight:600;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span> <span style="font-size:18px;">${r.text}</span></div></div>`;
+      }
+      if (r.type === "gif_reaction") {
+        return `<div style="display:flex;align-items:flex-start;gap:8px;padding:6px 0;"><div class="avatar sm" style="background:${avatarBg(_rAv)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${avatarInner(_rAv)}</div><div><span style="font-size:11px;font-weight:600;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span><br/><img loading="lazy" decoding="async" src="${r.text}" style="width:120px;height:120px;border-radius:8px;margin-top:6px;object-fit:cover;" alt="GIF"/></div></div>`;
+      }
+      return "";
+    }).join("")}</div>` : ""}
   </article>`;
 }
 

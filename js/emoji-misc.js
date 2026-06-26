@@ -691,6 +691,7 @@ function addEmojiToPost(postId, emoji) {
     });
   }
 
+  if (typeof saveState === "function") saveState();
   updatePostReactionsUI(postId);
   return false;
 }
@@ -732,6 +733,7 @@ function addGifToPost(postId, gifUrl) {
     createdAt: Date.now()
   });
 
+  if (typeof saveState === "function") saveState();
   updatePostReactionsUI(postId);
   return false;
 }
