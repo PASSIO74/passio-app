@@ -139,7 +139,20 @@ async function supaSaveUserState() {
     if (typeof MY_UID === "undefined" || !MY_UID) return;
     const payload = { user_id: MY_UID, data: _syncableState(), updated_at: new Date().toISOString() };
     const { error } = await supa.from("user_state").upsert(payload, { onConflict: "user_id" });
-    if (!error) state._stateSyncedAt = payload.updated_at;
+    if (!error) {
+      state._stateSyncedAt = payload.updated_at;
+      // Persiste _stateSyncedAt dans localStorage immédiatement : évite la fenêtre
+      // où le serveur a updated_at=T_sync mais localStorage croit encore être à T_old,
+      // ce qui déclencherait une restauration depuis le serveur au prochain boot.
+      try {
+        const raw = localStorage.getItem(STATE_KEY);
+        if (raw) {
+          const snap = JSON.parse(raw);
+          snap._stateSyncedAt = payload.updated_at;
+          localStorage.setItem(STATE_KEY, JSON.stringify(snap));
+        }
+      } catch(_e) {}
+    }
   } catch (e) { console.warn("supaSaveUserState:", e && e.message); }
 }
 
@@ -180,14 +193,26 @@ async function supaLoadUserState() {
       // fraîchement créé / purgé, sync pas encore poussée) — sinon le profil par
       // défaut tout juste créé au boot disparaît. On pousse plutôt le bon état local.
       const incoming = data.data || {};
-      const incomingProfiles = (incoming.user && Array.isArray(incoming.user.profiles)) ? incoming.user.profiles.length : 0;
-      const localProfiles = (state.user && Array.isArray(state.user.profiles)) ? state.user.profiles.length : 0;
-      if (incomingProfiles === 0 && localProfiles > 0) {
+      const incomingProfiles = (incoming.user && Array.isArray(incoming.user.profiles)) ? incoming.user.profiles : [];
+      const localProfiles = (state.user && Array.isArray(state.user.profiles)) ? state.user.profiles : [];
+      if (incomingProfiles.length === 0 && localProfiles.length > 0) {
         state.onboarded = true; // session active = compte onboardé
         await supaSaveUserState();
         return false;
       }
       _applyUserState(data.data);
+      // Fusion défensive : si le local avait des profils absents du serveur (créés
+      // entre la dernière sync et la fermeture de l'app), on les réinjecte pour ne
+      // pas les perdre, puis on re-pousse vers le serveur pour rester en cohérence.
+      if (localProfiles.length > 0) {
+        const serverIds = new Set((state.user.profiles || []).map(p => p.id));
+        const missing = localProfiles.filter(p => !serverIds.has(p.id));
+        if (missing.length > 0) {
+          state.user.profiles = (state.user.profiles || []).concat(missing);
+          // Re-pousse immédiatement pour que le serveur soit à jour.
+          setTimeout(() => { try { supaSaveUserState(); } catch(_e) {} }, 0);
+        }
+      }
       state._stateSyncedAt = data.updated_at;
       // supaLoadUserState n'est appelée qu'avec une session active → l'utilisateur
       // est connecté, donc onboardé (évite de retomber sur la landing).
