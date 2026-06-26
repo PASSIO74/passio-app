@@ -1607,27 +1607,51 @@ async function boot() {
         // Session active + déjà onboardé → accès direct à l'app
         // Crée un profil par défaut si l'utilisateur n'en a pas (connexion sans onboarding)
         if (!state.user.profiles || state.user.profiles.length === 0) {
-          const defPassion = allPassions()[0];
-          // 🔑 D'abord récupérer le VRAI profil déjà publié pour ce compte (table
-          // profiles) : sinon on créait « Passionné » par défaut et on l'upsertait,
-          // ÉCRASANT le vrai nom/emoji/couleur/photo en base (bug « ça affiche
-          // Passionné »). On adopte le profil serveur s'il existe.
+          // Aucun profil local → lire la table `profiles` (identité publique) ET
+          // `profiles.passions` (liste de TOUTES les passions du compte, colonne jsonb
+          // ajoutée par migration_profile_passions) pour reconstruire tous les profils-passion.
+          // Sans ça, on créait 1 seul profil avec la passion principale et l'utilisateur
+          // perdait tous ses autres profils-passion après une déconnexion.
           let srvProf = null;
           try {
-            const { data } = await supa.from("profiles").select("username,emoji,color,passion_id,avatar_url,bio").eq("id", MY_UID).maybeSingle();
+            const { data } = await supa.from("profiles")
+              .select("username,emoji,color,passion_id,avatar_url,bio,passions")
+              .eq("id", MY_UID).maybeSingle();
             if (data && data.username) srvProf = data;
           } catch(e) {}
-          const defProfile = {
-            id: uid(),
-            name: (srvProf && srvProf.username) || state.user.name || "Passionné",
-            passion: (srvProf && srvProf.passion_id) || defPassion.id,
-            emoji: (srvProf && srvProf.emoji) || defPassion.emoji,
-            color: (srvProf && srvProf.color) || defPassion.color,
-            bio: (srvProf && srvProf.bio) || "",
-            createdAt: Date.now(),
-          };
-          state.user.profiles = [defProfile];
-          state.user.currentProfileId = defProfile.id;
+
+          const _name = (srvProf && srvProf.username) || state.user.name || "Passionné";
+          const defPassion = allPassions()[0];
+
+          // Reconstruit TOUS les profils-passion depuis profiles.passions si disponible
+          const srvPassions = (srvProf && Array.isArray(srvProf.passions) && srvProf.passions.length > 0)
+            ? srvProf.passions : null;
+          if (srvPassions) {
+            state.user.profiles = srvPassions.map(function(ps, idx) {
+              const pd = (typeof passionById === "function") ? passionById(ps.id) : null;
+              return {
+                id: uid(),
+                name: _name,
+                passion: ps.id,
+                emoji: ps.emoji || (pd && pd.emoji) || "✨",
+                color: (pd && pd.color) || "#8b5cf6",
+                bio: "",
+                createdAt: Date.now() - idx,
+              };
+            });
+          } else {
+            // Fallback : 1 seul profil avec la passion principale
+            state.user.profiles = [{
+              id: uid(),
+              name: _name,
+              passion: (srvProf && srvProf.passion_id) || defPassion.id,
+              emoji: (srvProf && srvProf.emoji) || defPassion.emoji,
+              color: (srvProf && srvProf.color) || defPassion.color,
+              bio: (srvProf && srvProf.bio) || "",
+              createdAt: Date.now(),
+            }];
+          }
+          state.user.currentProfileId = state.user.profiles[0].id;
           if (srvProf) {
             state.user.general = state.user.general || {};
             if (srvProf.username) state.user.general.username = srvProf.username;
@@ -1635,6 +1659,9 @@ async function boot() {
             if (!state.user.name && srvProf.username) state.user.name = srvProf.username;
           }
           saveState();
+          // Flush immédiat vers user_state pour que la prochaine reconnexion n'ait
+          // pas à retomber sur ce fallback (user_state sera désormais peuplé).
+          try { if (typeof supaSaveUserState === "function") await supaSaveUserState(); } catch(e) {}
         }
         // Pas de filtre par défaut au démarrage — l'utilisateur choisit
         _activeFeedPassions = new Set();
@@ -3549,10 +3576,14 @@ async function supaInit() {
         .select("username,emoji,color,avatar_url,passion_id,bio").eq("id", MY_UID).maybeSingle();
       const cp = (typeof currentProfile === "function") ? currentProfile() : null;
       if (srv && srv.username && cp) {
+        // Adopte le NOM/AVATAR du serveur (identit\u00e9 publique partag\u00e9e).
+        // \u26a0\ufe0f Ne PAS \u00e9craser cp.passion (passion_id = 1\u02b3\u1d49 passion pour retrocompat)
+        // car le profil actif a SA PROPRE passion choisie par l'utilisateur \u2014 la
+        // remplacer par la passion principale causait un "reset" apparent des profils.
         cp.name = srv.username;
-        if (srv.emoji) cp.emoji = srv.emoji;
-        if (srv.color) cp.color = srv.color;
-        if (srv.passion_id) cp.passion = srv.passion_id;
+        if (!cp.emoji && srv.emoji) cp.emoji = srv.emoji;
+        if (!cp.color && srv.color) cp.color = srv.color;
+        // cp.passion intentionnellement NON modifi\u00e9 ici
         state.user.general = state.user.general || {};
         state.user.general.username = srv.username;
         if (srv.avatar_url) state.user.general.avatarPhoto = srv.avatar_url;

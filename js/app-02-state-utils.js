@@ -1589,6 +1589,15 @@ function onbFinish() {
   try { renderEverything(); } catch(e) { console.warn("renderEverything error:", e); }
   document.body.classList.add("screen-feed-active");
   try { if (typeof supaInit === "function") supaInit(); } catch(e) {}
+  // Flush IMMÉDIAT des profils-passion vers user_state dès la fin de l'onboarding.
+  // Sans ça, si l'utilisateur ferme l'app dans les 2.5s suivant le choix de ses
+  // passions, le debounce n'a pas eu le temps de sauvegarder → profils perdus à
+  // la prochaine connexion. supaInit appelle aussi supaLoadUserState qui peut faire
+  // un save, mais on garantit ici un flush explicite en parallèle.
+  setTimeout(function() {
+    try { if (typeof supaSaveUserState === "function") supaSaveUserState(); } catch(e) {}
+    try { if (typeof supaUpsertProfile === "function") supaUpsertProfile(); } catch(e) {}
+  }, 800);
   // Lancer le tour — avec fallback
   launchTourSafe();
 }
