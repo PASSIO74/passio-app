@@ -574,17 +574,20 @@ function addGifToComment(postId, commentId, gifUrl) {
       var repliesHTML = comment.replies.map(r => {
         const ru = userById(r.authorId) || { name: "?", profileEmoji: "👤", avatar: "#64748b" };
         const rSrc = r.authorId === "me" ? "me" : "seed";
+        const _rAv = { avatar: ru.avatar || "#64748b", profileEmoji: ru.profileEmoji || "👤", name: ru.name, photoUrl: ru.photoUrl || null };
 
         if (r.type === "emoji_reaction") {
-          return `<div class="comment-reply" style="padding:8px 0;">
-            <span style="font-size:11px;color:var(--text);font-weight:600;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span><span style="font-size:11px;color:var(--text);font-weight:600;">:</span> <span style="font-size:18px;letter-spacing:2px;">${r.text}</span>
+          return `<div class="comment-reply" style="display:flex;align-items:center;gap:8px;padding:6px 0;">
+            <div class="avatar sm" style="background:${avatarBg(_rAv)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${avatarInner(_rAv)}</div>
+            <div><span style="font-size:11px;color:var(--text);font-weight:600;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span> <span style="font-size:18px;">${r.text}</span></div>
           </div>`;
         }
 
         if (r.type === "gif_reaction") {
-          return `<div class="comment-reply" style="padding:8px 0;">
-            <span style="font-size:11px;color:var(--text);font-weight:600;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span><span style="font-size:11px;color:var(--text);font-weight:600;">:</span>
-            <img loading="lazy" decoding="async" src="${r.text}" style="width:120px;height:120px;border-radius:8px;margin-top:6px;object-fit:cover;" alt="GIF" />
+          return `<div class="comment-reply" style="display:flex;align-items:flex-start;gap:8px;padding:6px 0;">
+            <div class="avatar sm" style="background:${avatarBg(_rAv)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${avatarInner(_rAv)}</div>
+            <div><span style="font-size:11px;color:var(--text);font-weight:600;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span><br/>
+            <img loading="lazy" decoding="async" src="${r.text}" style="width:120px;height:120px;border-radius:8px;margin-top:6px;object-fit:cover;" alt="GIF" /></div>
           </div>`;
         }
 
@@ -739,13 +742,21 @@ function updatePostReactionsUI(postId) {
     var reactionsHTML = post.reactions.map(r => {
       const ru = userById(r.authorId) || { name: "?", profileEmoji: "👤", avatar: "#64748b" };
       const rSrc = r.authorId === "me" ? "me" : "seed";
+      const _rAv = { avatar: ru.avatar || "#64748b", profileEmoji: ru.profileEmoji || "👤", name: ru.name, photoUrl: ru.photoUrl || null };
 
       if (r.type === "emoji_reaction") {
-        return `<div style="padding:8px 0;"><span style="font-size:11px;font-weight:600;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span><span style="font-size:11px;font-weight:600;">:</span> <span style="font-size:18px;letter-spacing:2px;">${r.text}</span></div>`;
+        return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;">
+          <div class="avatar sm" style="background:${avatarBg(_rAv)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${avatarInner(_rAv)}</div>
+          <div><span style="font-size:11px;font-weight:600;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span> <span style="font-size:18px;">${r.text}</span></div>
+        </div>`;
       }
 
       if (r.type === "gif_reaction") {
-        return `<div style="padding:8px 0;"><span style="font-size:11px;font-weight:600;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span><span style="font-size:11px;font-weight:600;">:</span><br/><img loading="lazy" decoding="async" src="${r.text}" style="width:120px;height:120px;border-radius:8px;margin-top:6px;object-fit:cover;" alt="GIF" /></div>`;
+        return `<div style="display:flex;align-items:flex-start;gap:8px;padding:6px 0;">
+          <div class="avatar sm" style="background:${avatarBg(_rAv)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${avatarInner(_rAv)}</div>
+          <div><span style="font-size:11px;font-weight:600;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span><br/>
+          <img loading="lazy" decoding="async" src="${r.text}" style="width:120px;height:120px;border-radius:8px;margin-top:6px;object-fit:cover;" alt="GIF" /></div>
+        </div>`;
       }
     }).join("");
 
@@ -761,27 +772,20 @@ function addEmojiToComment(postId, commentId, emoji) {
   var comment = (post.comments || []).find(c => c.id === commentId);
   if (!comment) return false;
 
-  // Réaction emoji = ajout à comment.emojis (l'array rendu en badges, app-02).
-  if (!comment.emojis) comment.emojis = [];
-  if (!comment.replies) comment.replies = []; // garde (le bloc d'affichage ci-dessous l'utilise)
-  comment.emojis.push(emoji);
+  // Chaque emoji = entrée séparée dans comment.replies (avec authorId pour l'avatar).
+  if (!comment.replies) comment.replies = [];
+  var emojiReaction = {
+    id: "emoji_" + commentId + "_" + Math.random().toString(36).substr(2, 9),
+    authorId: (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : (state.user?.id || "me"),
+    text: emoji,
+    type: "emoji_reaction",
+    createdAt: Date.now()
+  };
+  comment.replies.push(emojiReaction);
   saveState();
   // Sync Supabase → la réaction emoji apparaît chez tous les comptes.
   if (typeof supaCommentInteract === "function") supaCommentInteract(commentId, postId, "emoji", emoji);
   console.log("✅ Emoji reaction added + synced:", emoji);
-
-  // Affichage immédiat de l'emoji dans la zone dédiée du commentaire.
-  try {
-    var ediv = document.getElementById("emojis-" + commentId);
-    if (ediv) {
-      ediv.style.display = "block";
-      var inner = ediv.querySelector("div") || ediv;
-      var sp = document.createElement("span");
-      sp.style.cssText = "font-size:20px;padding:4px 8px;background:var(--bg-soft);border-radius:6px;";
-      sp.textContent = emoji;
-      inner.appendChild(sp);
-    }
-  } catch(e) {}
 
   // Mettre à jour l'affichage des replies
   var commentElement = document.querySelector('[data-commentid="' + commentId + '"]');
@@ -820,17 +824,20 @@ function addEmojiToComment(postId, commentId, emoji) {
       var repliesHTML = comment.replies.map(r => {
         const ru = userById(r.authorId) || { name: "?", profileEmoji: "👤", avatar: "#64748b" };
         const rSrc = r.authorId === "me" ? "me" : "seed";
+        const _rAv = { avatar: ru.avatar || "#64748b", profileEmoji: ru.profileEmoji || "👤", name: ru.name, photoUrl: ru.photoUrl || null };
 
         if (r.type === "emoji_reaction") {
-          return `<div class="comment-reply" style="padding:8px 0;">
-            <span style="font-size:11px;color:var(--text);font-weight:600;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span><span style="font-size:11px;color:var(--text);font-weight:600;">:</span> <span style="font-size:18px;letter-spacing:2px;">${r.text}</span>
+          return `<div class="comment-reply" style="display:flex;align-items:center;gap:8px;padding:6px 0;">
+            <div class="avatar sm" style="background:${avatarBg(_rAv)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${avatarInner(_rAv)}</div>
+            <div><span style="font-size:11px;color:var(--text);font-weight:600;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span> <span style="font-size:18px;">${r.text}</span></div>
           </div>`;
         }
 
         if (r.type === "gif_reaction") {
-          return `<div class="comment-reply" style="padding:8px 0;">
-            <span style="font-size:11px;color:var(--text);font-weight:600;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span><span style="font-size:11px;color:var(--text);font-weight:600;">:</span>
-            <img loading="lazy" decoding="async" src="${r.text}" style="width:120px;height:120px;border-radius:8px;margin-top:6px;object-fit:cover;" alt="GIF" />
+          return `<div class="comment-reply" style="display:flex;align-items:flex-start;gap:8px;padding:6px 0;">
+            <div class="avatar sm" style="background:${avatarBg(_rAv)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${avatarInner(_rAv)}</div>
+            <div><span style="font-size:11px;color:var(--text);font-weight:600;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span><br/>
+            <img loading="lazy" decoding="async" src="${r.text}" style="width:120px;height:120px;border-radius:8px;margin-top:6px;object-fit:cover;" alt="GIF" /></div>
           </div>`;
         }
 

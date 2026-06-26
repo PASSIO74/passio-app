@@ -2242,7 +2242,7 @@ async function supaLoadCommentInteractions(commentIds) {
       var o = out[r.comment_id] || (out[r.comment_id] = { likes: 0, likedBy: [], replies: [], emojis: [] });
       if (r.kind === "like") { o.likes++; o.likedBy.push(r.user_id); }
       else if (r.kind === "reply") o.replies.push({ id: "srep_" + r.created_at, authorId: r.user_id, text: r.payload || "", createdAt: new Date(r.created_at + "Z").getTime() });
-      else if (r.kind === "emoji" && r.payload) o.emojis.push(r.payload);
+      else if (r.kind === "emoji" && r.payload) o.replies.push({ id: "semoji_" + r.created_at + "_" + r.user_id, authorId: r.user_id, text: r.payload, type: "emoji_reaction", createdAt: new Date(r.created_at + "Z").getTime() });
     });
   } catch(e) {}
   return out;
@@ -2257,8 +2257,7 @@ async function hydrateCommentInteractions(post) {
       var info = map[c.id]; if (!info) return;
       c.likes = info.likes || 0;
       c.likedBy = info.likedBy || [];
-      c.emojis = info.emojis || [];
-      // Réponses serveur (texte) — remplace la liste (source de vérité partagée).
+      // Réponses serveur (texte + emoji_reaction + gif_reaction) — source de vérité.
       c.replies = (info.replies || []).slice();
     });
   } catch(e) {}

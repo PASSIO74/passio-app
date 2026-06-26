@@ -163,16 +163,20 @@ function _renderCommentsList(allComments, postId) {
 
           // Si c'est une réaction emoji, afficher différemment
           if (r.type === "emoji_reaction") {
-            return `<div class="comment-reply" style="padding:8px 0;">
-              <span style="font-size:11px;color:var(--text);font-weight:600;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span><span style="font-size:11px;color:var(--text);font-weight:600;">:</span> <span style="font-size:18px;letter-spacing:2px;">${r.text}</span>
+            const _rAv = { avatar: ru.avatar || "#64748b", profileEmoji: ru.profileEmoji || "👤", name: ru.name, photoUrl: ru.photoUrl || null };
+            return `<div class="comment-reply" style="display:flex;align-items:center;gap:8px;padding:6px 0;">
+              <div class="avatar sm" style="background:${avatarBg(_rAv)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${r.authorId}','${rSrc}')">${avatarInner(_rAv)}</div>
+              <div><span style="font-size:11px;color:var(--text);font-weight:600;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span> <span style="font-size:18px;">${r.text}</span></div>
             </div>`;
           }
 
           // Si c'est une réaction GIF
           if (r.type === "gif_reaction") {
-            return `<div class="comment-reply" style="padding:8px 0;">
-              <span style="font-size:11px;color:var(--text);font-weight:600;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span><span style="font-size:11px;color:var(--text);font-weight:600;">:</span>
-              <img loading="lazy" decoding="async" src="${r.text}" style="width:120px;height:120px;border-radius:8px;margin-top:6px;object-fit:cover;" alt="GIF" />
+            const _rAv = { avatar: ru.avatar || "#64748b", profileEmoji: ru.profileEmoji || "👤", name: ru.name, photoUrl: ru.photoUrl || null };
+            return `<div class="comment-reply" style="display:flex;align-items:flex-start;gap:8px;padding:6px 0;">
+              <div class="avatar sm" style="background:${avatarBg(_rAv)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${r.authorId}','${rSrc}')">${avatarInner(_rAv)}</div>
+              <div><span style="font-size:11px;color:var(--text);font-weight:600;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span><br/>
+              <img loading="lazy" decoding="async" src="${r.text}" style="width:120px;height:120px;border-radius:8px;margin-top:6px;object-fit:cover;" alt="GIF" /></div>
             </div>`;
           }
 
@@ -295,7 +299,9 @@ function _applyCommentInteractionEvent(r, op) {
       var rid = "srep_" + r.created_at;
       if (!comment.replies.find(function(x){ return x.id === rid; })) comment.replies.push({ id: rid, authorId: r.user_id, text: r.payload || "", createdAt: r.created_at ? new Date(r.created_at + "Z").getTime() : Date.now() });
     } else if (r.kind === "emoji" && op === "add" && r.payload) {
-      comment.emojis.push(r.payload);
+      var eid = "semoji_" + (r.created_at || Date.now()) + "_" + r.user_id;
+      if (!comment.replies.find(function(x){ return x.id === eid; }))
+        comment.replies.push({ id: eid, authorId: r.user_id, text: r.payload, type: "emoji_reaction", createdAt: r.created_at ? new Date(r.created_at + "Z").getTime() : Date.now() });
     }
     saveState();
     // Re-render si la modale commentaires de ce post est ouverte.
