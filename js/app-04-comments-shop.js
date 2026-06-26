@@ -1096,18 +1096,14 @@ async function openUserProfile(authorId, source) {
     return;
   }
 
-  // 🔄 Charger TOUTES les passions de cet utilisateur (un seul profil public,
-  // colonne `passions` jsonb). La table profiles n'a qu'UNE ligne par compte :
-  // l'ancien `.select("passion_id")` ne pouvait donc renvoyer qu'une passion.
+  // 🔄 Charger TOUTES les passions depuis Supabase (toujours, même si user déjà trouvé en local)
   let userPassions = [];
-  if (user.passions && Array.isArray(user.passions) && user.passions.length) {
-    // Déjà présentes (depuis la recherche ou la requête ci-dessus)
-    userPassions = user.passions;
-  } else if (typeof supa !== "undefined" && supa) {
+  const _profileId = user.id || authorId;
+  if (typeof supa !== "undefined" && supa && _profileId) {
     try {
       const { data } = await supa.from("profiles")
-        .select("passion_id, emoji, passions")
-        .eq("id", authorId)
+        .select("passion_id, emoji, passions, bio, avatar_url")
+        .eq("id", _profileId)
         .maybeSingle();
       if (data) {
         if (Array.isArray(data.passions) && data.passions.length) {
@@ -1115,15 +1111,23 @@ async function openUserProfile(authorId, source) {
         } else if (data.passion_id) {
           userPassions = [{ id: data.passion_id, emoji: data.emoji || "✨" }];
         }
+        // Enrichir le user avec les données fraîches de Supabase
+        if (data.bio && !user.bio) user.bio = data.bio;
+        if (data.avatar_url && !user.photoUrl) user.photoUrl = data.avatar_url;
       }
     } catch(e) {}
   }
 
-  // Fallback: si pas de passions, utiliser la passion principale
+  // Fallback: passions déjà dans l'objet user (cache local)
+  if (!userPassions.length && user.passions && Array.isArray(user.passions)) {
+    userPassions = user.passions;
+  }
+
+  // Dernier fallback: passion unique
   if (!userPassions.length && user.passion) {
     const passion = passionById(user.passion);
     if (passion) {
-      userPassions = [{ id: user.passion, emoji: passion.emoji }];
+      userPassions = [{ id: user.passion, emoji: passion.emoji, label: passion.label }];
     }
   }
 
