@@ -197,6 +197,15 @@ function _applyUserState(data) {
     state.supabasePosts = keepSupa;
     state.user = state.user || {};
     if (!Array.isArray(state.user.profiles)) state.user.profiles = [];
+    // Dédup par passion dès l'application du blob serveur — nettoie l'état
+    // corrompu quelle que soit l'origine (file://, localhost, production).
+    (function() {
+      const seen = new Set();
+      state.user.profiles = state.user.profiles.filter(function(p) {
+        if (!p || !p.passion || seen.has(p.passion)) return false;
+        seen.add(p.passion); return true;
+      });
+    })();
   } finally { window._hydratingState = false; }
 }
 
