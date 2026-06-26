@@ -2295,9 +2295,11 @@ async function openPost(id) {
           }
 
           // Réponse normale
-          return `<div class="comment-reply">
-            <span class="comment-reply-author" style="cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span>: ${escapeHtml(r.text)}
-            <div style="font-size:10px;color:var(--muted);margin-top:2px;">${fmtTime(r.createdAt)}</div>
+          const _rAvT = { avatar: ru.avatar || "#64748b", profileEmoji: ru.profileEmoji || "👤", name: ru.name, photoUrl: ru.photoUrl || null };
+          return `<div class="comment-reply" style="display:flex;align-items:flex-start;gap:8px;padding:6px 0;">
+            <div class="avatar sm" style="background:${avatarBg(_rAvT)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${avatarInner(_rAvT)}</div>
+            <div><span class="comment-reply-author" style="font-size:11px;font-weight:600;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span> ${escapeHtml(r.text)}
+            <div style="font-size:10px;color:var(--muted);margin-top:2px;">${fmtTime(r.createdAt)}</div></div>
           </div>`;
         }).join("")}</div>` : ""}
       </div>

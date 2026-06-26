@@ -318,11 +318,22 @@ function replyToComment(postId, commentId, authorName, event) {
       if (commentBody) commentBody.appendChild(repliesDiv);
     }
 
-    // Ajouter la nouvelle réponse au div
-    var currentUser = state.seed.users.find(u => u.id === (state.user?.id || "me")) || { name: "Toi" };
+    // Ajouter la nouvelle réponse au div — avec vrai pseudo et avatar
+    var _meUser = (typeof userById === "function") ? (userById(_meId) || {}) : {};
+    var _meProf = (typeof currentProfile === "function") ? (currentProfile() || {}) : {};
+    var _meName = _meUser.name || _meProf.name || state.user?.name || "Moi";
+    // Filtrer les sentinelles génériques
+    if (_meName === "Passionné" || _meName === "Profil" || _meName === "Moi" || !_meName) {
+      var _gen = typeof state !== "undefined" && state.user?.name;
+      if (_gen && _gen !== "Passionné" && _gen !== "Profil") _meName = _gen;
+    }
+    var _meAvObj = { avatar: _meUser.avatar || _meProf.color || "#8b5cf6", profileEmoji: _meUser.profileEmoji || _meProf.emoji || "✨", name: _meName, photoUrl: _meUser.photoUrl || _meProf.photoUrl || null };
     var replyEl = document.createElement("div");
     replyEl.className = "comment-reply";
-    replyEl.innerHTML = '<span class="comment-reply-author">' + escapeHtml(currentUser.name) + '</span>: ' + escapeHtml(replyText) + '<div style="font-size:10px;color:var(--muted);margin-top:2px;">À l\'instant</div>';
+    replyEl.style.cssText = "display:flex;align-items:flex-start;gap:8px;padding:6px 0;";
+    replyEl.innerHTML = '<div class="avatar sm" style="background:' + avatarBg(_meAvObj) + ';flex-shrink:0;">' + avatarInner(_meAvObj) + '</div>' +
+      '<div><span class="comment-reply-author" style="font-size:11px;font-weight:600;color:var(--text);">' + escapeHtml(_meName) + '</span> ' + escapeHtml(replyText) +
+      '<div style="font-size:10px;color:var(--muted);margin-top:2px;">À l\'instant</div></div>';
     repliesDiv.appendChild(replyEl);
 
     // Créer ou mettre à jour le bouton réponse
@@ -591,9 +602,10 @@ function addGifToComment(postId, commentId, gifUrl) {
           </div>`;
         }
 
-        return `<div class="comment-reply">
-          <span class="comment-reply-author" style="cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span>: ${escapeHtml(r.text)}
-          <div style="font-size:10px;color:var(--muted);margin-top:2px;">${fmtTime(r.createdAt)}</div>
+        return `<div class="comment-reply" style="display:flex;align-items:flex-start;gap:8px;padding:6px 0;">
+          <div class="avatar sm" style="background:${avatarBg(_rAv)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${avatarInner(_rAv)}</div>
+          <div><span class="comment-reply-author" style="font-size:11px;font-weight:600;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span> ${escapeHtml(r.text)}
+          <div style="font-size:10px;color:var(--muted);margin-top:2px;">${fmtTime(r.createdAt)}</div></div>
         </div>`;
       }).join("");
 
@@ -841,9 +853,10 @@ function addEmojiToComment(postId, commentId, emoji) {
           </div>`;
         }
 
-        return `<div class="comment-reply">
-          <span class="comment-reply-author" style="cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span>: ${escapeHtml(r.text)}
-          <div style="font-size:10px;color:var(--muted);margin-top:2px;">${fmtTime(r.createdAt)}</div>
+        return `<div class="comment-reply" style="display:flex;align-items:flex-start;gap:8px;padding:6px 0;">
+          <div class="avatar sm" style="background:${avatarBg(_rAv)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${avatarInner(_rAv)}</div>
+          <div><span class="comment-reply-author" style="font-size:11px;font-weight:600;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span> ${escapeHtml(r.text)}
+          <div style="font-size:10px;color:var(--muted);margin-top:2px;">${fmtTime(r.createdAt)}</div></div>
         </div>`;
       }).join("");
 
