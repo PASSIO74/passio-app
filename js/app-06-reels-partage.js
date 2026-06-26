@@ -1154,44 +1154,27 @@ function clearPhoto() { photoDataUrl = null; renderPhotoPreview(); }
 // Video upload
 $("#videoInput").addEventListener("change", (e) => {
   const f = e.target.files[0];
-  console.log("📹 Fichier vidéo sélectionné:", f?.name, f?.size, "bytes");
-  if (!f) {
-    console.warn("❌ Aucun fichier sélectionné");
-    return;
-  }
+  if (!f) return;
 
-  // Limite vidéo généreuse : le média n'est plus persisté en base64 (Storage only),
-  // donc plus besoin du garde 500 Ko. On garde un plafond mémoire raisonnable.
   const maxSize = 30 * 1024 * 1024; // 30 Mo
   if (f.size > maxSize) {
     const sizeMB = Math.round(f.size / 1024 / 1024);
     toast(`Vidéo trop lourde (${sizeMB} Mo, max 30 Mo).`);
-    console.warn("❌ Vidéo trop grande");
     return;
   }
 
-  console.log("✅ Vidéo OK, conversion en cours...");
   toast("⏳ Chargement vidéo...");
 
   const reader = new FileReader();
-  reader.onerror = () => {
-    console.error("❌ Erreur FileReader:", reader.error);
-    toast("❌ Erreur lecture vidéo");
-  };
+  reader.onerror = () => toast("Erreur lors de la lecture de la vidéo.");
   reader.onload = () => {
     try {
       videoDataUrl = reader.result;
-      console.log("✅ Vidéo convertie, taille data URL:", videoDataUrl.length);
-
-      // 🎯 Changer automatiquement le type à "video"
       studioType = "video";
-      console.log("✅ Type changé à video");
 
-      // Mettre à jour l'affichage des boutons studio-type
       $$("#studioTypeTabs .studio-type").forEach(e => e.classList.remove("active"));
       document.querySelector('[data-type="video"]')?.classList.add("active");
 
-      // Afficher la section vidéo et masquer les autres
       $("#studioPhoto").style.display = "none";
       $("#studioVideo").style.display = "block";
       $("#studioAudio").style.display = "none";
@@ -1199,11 +1182,9 @@ $("#videoInput").addEventListener("change", (e) => {
       const cdvliveEl = $("#studiocdvlive"); if (cdvliveEl) cdvliveEl.style.display = "none";
 
       renderVideoPreview();
-      toast("✅ Vidéo chargée et prête!");
-      console.log("✅ Vidéo affichée et prête à partager");
+      toast("✅ Vidéo chargée !");
     } catch (err) {
-      console.error("❌ Exception:", err);
-      toast("❌ Erreur lors du traitement vidéo");
+      toast("Erreur lors du traitement de la vidéo.");
     }
   };
   reader.readAsDataURL(f);
@@ -1327,36 +1308,36 @@ function clearAudio() {
   $("#recTime").textContent = "00:00";
 }
 
+// Verrou anti-double-clic : empêche deux soumissions simultanées du même post
+let _publishInProgress = false;
+
 async function publishPost() {
-  console.log("🚀 [PUBLISH] publishPost() APPELÉE!");
-  diagLog(`🚀 [PUBLISH] Début publishPost()`);
+  if (_publishInProgress) {
+    toast("Publication en cours, attends un moment...");
+    return;
+  }
 
   const text = $("#postText").value.trim();
   const passion = $("#postPassion").value;
 
-  console.log("🔍 [PUBLISH] Validation: type=" + studioType + ", text=" + text.substring(0,20));
-  diagLog(`🔍 [PUBLISH] Type: ${studioType}, Passion: ${passion}`);
-
   if (studioType === "text" && text.length < 3) {
-    console.warn("❌ [PUBLISH] Text trop court");
     toast("Écris quelque chose.");
     return;
   }
   if (studioType === "photo" && !photoDataUrl) {
-    console.warn("❌ [PUBLISH] Pas de photo");
     toast("Ajoute une photo.");
     return;
   }
   if ((studioType === "video" || studioType === "bobine") && !videoDataUrl) {
-    console.warn("❌ [PUBLISH] Pas de vidéo");
     toast(studioType === "bobine" ? "Ajoute une vidéo pour ta bobine." : "Ajoute une vidéo.");
     return;
   }
   if (studioType === "audio" && !audioDataUrl) {
-    console.warn("❌ [PUBLISH] Pas d'audio");
     toast("Enregistre un audio.");
     return;
   }
+
+  _publishInProgress = true;
 
   // Validation spéciale carnet de voyage
   if (studioType === "vlog") {
@@ -1365,10 +1346,7 @@ async function publishPost() {
     if (!vlogState.steps || vlogState.steps.length === 0) { toast("Ajoute au moins un jour."); return; }
   }
 
-  // 📡 Afficher le statut de synchronisation
-  console.log("✅ [PUBLISH] Validation passée, démarrage publication");
   toast("⏳ Publication en cours...", "loading");
-  diagLog(`📝 [PUBLISH] Validation OK - Création post`);
 
   // ✅ Afficher directement le nom du profil courant!
   const prof = currentProfile();
@@ -1412,10 +1390,6 @@ async function publishPost() {
     authorColor: authorColor,
   };
 
-  diagLog(`📝 authorName: "${authorName}" (de general.username)`);
-  diagLog(`authorEmoji: "${authorEmoji}"`);
-  diagLog(`authorColor: "${authorColor}"`);
-
   // Champs spécifiques au carnet de voyage
   if (studioType === "vlog") {
     post.destination = ($("#vlogDestination").value || "").trim();
@@ -1434,13 +1408,9 @@ async function publishPost() {
     post.text = post.destination + (post.dateStart || post.dateEnd ? " · carnet" : "");
   }
 
-  // 🔄 Synchroniser avec Supabase (avec timeout court)
-  console.log("🚀 [PUBLISH] Début synchronisation Supabase");
-
   // Ajouter au state local IMMÉDIATEMENT (optimistic update)
   state.userPosts.unshift(post);
   saveState();
-  diagLog("✅ Post ajouté localement (optimistic)");
 
   // Naviguer et afficher immédiatement. Une bobine → viewer Bobines (pas le feed).
   if (post.isReel) {
@@ -1451,15 +1421,11 @@ async function publishPost() {
     setTimeout(() => renderFeed(), 50);
   }
 
-  // Synchroniser EN BACKGROUND avec timeout court (3 secondes)
+  // Synchroniser EN BACKGROUND avec timeout 5s
   let syncSuccess = false;
   try {
-    // Promise avec timeout
     const timeoutPromise = new Promise((resolve) =>
-      setTimeout(() => {
-        console.warn("⚠️ [PUBLISH] Timeout sync (3s)");
-        resolve(false);
-      }, 3000)
+      setTimeout(() => resolve(false), 5000)
     );
 
     // Quand l'upload se termine (même après le timeout d'affichage), l'URL Storage
@@ -1471,15 +1437,14 @@ async function publishPost() {
     syncSuccess = await Promise.race([syncPromise, timeoutPromise]);
 
     if (syncSuccess) {
-      console.log("✅ [PUBLISH] Publication synchronisée");
-      toast("✅ Post publié!", "success");
+      toast("✅ Post publié !", "success");
     } else {
-      console.warn("⚠️ [PUBLISH] Sync timeout - post local uniquement");
       toast("⏱️ Post en local (connexion lente)", "warning");
     }
   } catch (e) {
-    console.warn("⚠️ [PUBLISH] Erreur sync:", e.message);
-    toast("⏱️ Post en local (erreur sync)", "warning");
+    toast("⏱️ Post en local (erreur réseau)", "warning");
+  } finally {
+    _publishInProgress = false; // libère le verrou quoi qu'il arrive
   }
 
   // Clear form
@@ -1535,9 +1500,7 @@ async function publishPost() {
           state.seed.posts = newPosts;
           diagLog(`✅ ${newPosts.length} posts reloaded`);
         }
-      } catch(e) {
-        console.error("Erreur reload posts:", e);
-      }
+      } catch(e) { /* erreur réseau non bloquante */ }
     }
 
     goTo("feed");

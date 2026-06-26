@@ -41,18 +41,18 @@ function pwaShowOverlay() {
       </div>
       <button class="pwa-btn-skip" onclick="pwaDismiss()">Fermer</button>`;
 
-  // ═══ CAS 3 : iPhone/iPad sur Chrome/Firefox iOS → rediriger vers Safari ═══
+  // ═══ CAS 3 : iPhone/iPad sur Chrome/Firefox iOS → proposer Safari ou continuer ═══
   } else if (_isIOSOther) {
     const safariUrl = APP_URL;
     content.innerHTML = `
       <div style="text-align:center;padding:8px 0 16px;">
         <div style="font-size:44px;margin-bottom:10px;">🍎</div>
-        <div style="font-size:16px;font-weight:800;color:#1e1b4b;margin-bottom:8px;">Ouvrir dans Safari</div>
-        <div style="font-size:13px;color:#6b7280;margin-bottom:16px;">Sur iPhone/iPad, seul <strong>Safari</strong> peut installer les apps web. Appuie sur le bouton ci-dessous :</div>
+        <div style="font-size:16px;font-weight:800;color:#1e1b4b;margin-bottom:8px;">Installer PASSIO</div>
+        <div style="font-size:13px;color:#6b7280;margin-bottom:16px;">Sur iPhone/iPad, seul <strong>Safari</strong> peut installer les apps web.</div>
         <button class="pwa-btn-install" onclick="window.location.href='${safariUrl}'" style="margin-bottom:10px;">
-          🧭&nbsp;&nbsp;Ouvrir dans Safari
+          🧭&nbsp;&nbsp;Ouvrir dans Safari pour installer
         </button>
-        <button class="pwa-btn-skip" onclick="pwaDismiss()">Plus tard</button>
+        <button class="pwa-btn-skip" onclick="pwaDismiss()">Continuer sans installer</button>
       </div>`;
 
   // ═══ CAS 4 : Android sans prompt (Firefox Android) → ouvre Chrome automatiquement ═══
@@ -509,17 +509,12 @@ function _onEmojiSearch(query) {
 // Populate emoji grid
 function _populateEmojiGrid() {
   var grid = document.getElementById("emojiGrid");
-  if (!grid) {
-    console.error("emojiGrid not found");
-    return;
-  }
+  if (!grid) return; // panel pas encore ouvert — appelé de nouveau à l'ouverture
 
   grid.innerHTML = "";
 
-  // Vérifier que EMOJIS existe
   if (typeof EMOJIS === 'undefined' || !Array.isArray(EMOJIS)) {
-    console.error("EMOJIS not defined or not an array");
-    grid.innerHTML = '<div style="grid-column:span 8;padding:20px;text-align:center;color:red;">Erreur: Emojis non disponibles</div>';
+    grid.innerHTML = '<div style="grid-column:span 8;padding:20px;text-align:center;color:var(--muted);font-size:12px;">Emojis indisponibles</div>';
     return;
   }
 

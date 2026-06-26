@@ -1613,13 +1613,10 @@ function toggleMood(mood) {
     selectedMoods.add(mood);
   }
 
-  updateMoodButtonsUI();
   renderFeed();
-
-  // RE-METTRE À JOUR L'UI après renderFeed (le DOM peut avoir changé)
-  setTimeout(function() {
-    updateMoodButtonsUI();
-  }, 50);
+  // renderFeed reconstruit le DOM du feed mais pas le sélecteur de moods —
+  // on resynchronise les classes .active immédiatement après.
+  updateMoodButtonsUI();
 }
 
 function updateMoodButtonsUI() {
@@ -1635,20 +1632,14 @@ function updateMoodButtonsUI() {
   });
 }
 
-// Fonction pour attacher les event listeners aux boutons de mood
+// Attache les event listeners individuels aux boutons de mood (fallback si delegation échoue)
 function setupMoodButtons() {
-  console.log("🔧 setupMoodButtons() called");
   var buttons = document.querySelectorAll("#moodSelector .mood-btn");
-  console.log("  Boutons trouvés:", buttons.length);
-
   buttons.forEach(function(btn) {
     var moodValue = btn.getAttribute("data-mood");
-    console.log("  Attachement du listener pour:", moodValue);
-
     btn.addEventListener("click", function(e) {
       e.stopPropagation();
       e.preventDefault();
-      console.log("  📌 CLIC sur bouton:", moodValue);
       toggleMood(moodValue);
     });
   });

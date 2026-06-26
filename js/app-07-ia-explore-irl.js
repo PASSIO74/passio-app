@@ -22,7 +22,7 @@ function sendAIQuery(forceQuery) {
     '</div>' +
     '<div class="ai-loading">' +
       '<div class="ai-dot"></div><div class="ai-dot"></div><div class="ai-dot"></div>' +
-      '<span>Recherche en cours…</span>' +
+      '<span>Suggestions en cours…</span>' +
     '</div>';
 
   // Générer la réponse après court délai
@@ -42,6 +42,9 @@ function sendAIQuery(forceQuery) {
       '<div class="ai-result-header">' +
         '<div class="ai-result-query">"' + escapeHtml(query) + '"</div>' +
         '<button class="ai-result-back" onclick="aiShowHome()">‹ Retour</button>' +
+      '</div>' +
+      '<div style="display:inline-flex;align-items:center;gap:6px;background:rgba(124,58,237,0.08);border:1px solid rgba(124,58,237,0.2);border-radius:20px;padding:4px 10px;font-size:11px;color:var(--muted);margin-bottom:12px;">' +
+        '✨ Suggestions locales — IA complète bientôt disponible' +
       '</div>' +
       response +
       relatedHTML;

@@ -6,13 +6,19 @@ self.addEventListener("message", e => {
   if (e.data && e.data.type === "SKIP_WAITING") self.skipWaiting();
 });
 
-// Installation : pré-cache les fichiers essentiels avec la nouvelle version
+// Installation : pré-cache les fichiers essentiels pour un vrai fonctionnement offline
 self.addEventListener("install", e => {
   self.skipWaiting(); // Active immédiatement sans attendre la fermeture des onglets
   e.waitUntil(
     caches.open(CACHE).then(c =>
-      c.addAll(["./manifest.json", "./icon-192.png", "./icon-512.png"])
-        .catch(() => {}) // Ne pas bloquer si une icône manque
+      // Chaque fichier est ajouté individuellement : un échec n'empêche pas les autres
+      Promise.allSettled([
+        "./index.html",
+        "./styles.css",
+        "./manifest.json",
+        "./icon-192.png",
+        "./icon-512.png",
+      ].map(url => c.add(url).catch(() => {})))
     )
   );
 });

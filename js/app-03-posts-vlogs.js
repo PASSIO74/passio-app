@@ -9,8 +9,6 @@ function sharePost(id) {
 
   const passion = passionById(post.passion) || { label: post.passion || "", emoji: "✨" };
   const txt = (post.text || post.caption || "").slice(0, 100);
-  const encodedUrl = encodeURIComponent(window.location.href);
-  const encodedText = encodeURIComponent("PASSIO – " + passion.emoji + " " + passion.label);
 
   const html = `
     <div class="modal-title">🔁 Partager ce post</div>
@@ -20,11 +18,26 @@ function sharePost(id) {
     <button class="btn primary block" id="_shareInFeedBtn" onclick="sharePostInFeed('${id}')" style="margin-bottom:10px;">
       ➕ Partager dans mon feed
     </button>
-    <button class="btn secondary block" onclick="if(navigator.share){navigator.share({title:'PASSIO',text:'${txt.replace(/'/g,"\\'")}',url:'${window.location.href}'}).catch(()=>{})}else{navigator.clipboard?.writeText('${txt.replace(/'/g,"\\'")}\\n\\nhttps://passio-app.netlify.app').then(()=>toast('✅ Lien copié')).catch(()=>toast('Copie impossible'))}">
+    <button class="btn secondary block" id="_shareOutBtn">
       📤 Partager en dehors
     </button>
   `;
   openModal(html);
+  // Listener propre : évite l'injection de texte utilisateur dans un onclick inline
+  setTimeout(() => {
+    const btn = document.getElementById("_shareOutBtn");
+    if (!btn) return;
+    btn.addEventListener("click", function() {
+      const shareUrl = "https://passio-app.netlify.app";
+      if (navigator.share) {
+        navigator.share({ title: "PASSIO", text: txt, url: shareUrl }).catch(() => {});
+      } else {
+        navigator.clipboard?.writeText(txt + "\n\n" + shareUrl)
+          .then(() => toast("✅ Lien copié"))
+          .catch(() => toast("Copie impossible"));
+      }
+    });
+  }, 0);
 }
 
 async function sharePostInFeed(id) {

@@ -11,14 +11,17 @@ function renderTopbar() {
 
 // ======== MODALS ========
 function openModal(html) {
-  // Ajouter à l'historique pour que le bouton back fonctionne
-  window.history.pushState({ overlay: "modal" }, "", "#modal");
+  const backdrop = $("#modalBackdrop");
+  // Si un modal est déjà ouvert, on remplace son contenu sans empiler une nouvelle entrée history.
+  // Sinon on pousse une seule entrée pour que le bouton back ferme le modal.
+  if (backdrop && !backdrop.classList.contains("active")) {
+    window.history.pushState({ overlay: "modal" }, "", "#modal");
+  }
 
   // Injecte un bouton × de fermeture en haut à droite de tous les modals
   const closeBtn = `<button type="button" class="modal-close" onclick="closeModal()" aria-label="Fermer">×</button>`;
   $("#modalContent").innerHTML = closeBtn + html;
-  $("#modalBackdrop").classList.add("active");
-
+  if (backdrop) backdrop.classList.add("active");
 }
 function closeModal() {
   // Arrêter le refresh automatique du CDV Live si actif
@@ -1753,20 +1756,10 @@ let MY_UID = getMyUserId();
 // ---- PROFIL ----
 async function supaUpsertProfile() {
   try {
-    console.log("🔄 [UPSERT] Début supaUpsertProfile()");
-    diagLog(`🔄 [UPSERT] Début supaUpsertProfile()`);
-
     const prof = currentProfile();
     const g = state.user.general || {};
 
-    console.log("📋 [UPSERT] prof=", prof);
-    console.log("📋 [UPSERT] MY_UID=", MY_UID);
-
-    if (!prof) {
-      console.warn("❌ [UPSERT] Pas de profil courant!");
-      diagLog(`❌ [UPSERT] Pas de profil courant`);
-      return;
-    }
+    if (!prof) return;
 
     // PSEUDO CENTRALISÉ : un seul nom public pour TOUTES les passions du compte.
     // (Avant : on publiait `prof.name` — le nom du profil-passion ACTIF — donc un
@@ -1800,9 +1793,6 @@ async function supaUpsertProfile() {
     if (typeof g.avatarPhoto === "string" && /^https?:\/\//.test(g.avatarPhoto)) profileData.avatar_url = g.avatarPhoto;
     if (typeof g.coverPhoto === "string" && /^https?:\/\//.test(g.coverPhoto)) profileData.cover_url = g.coverPhoto;
 
-    console.log("📤 [UPSERT] Envoi:", profileData);
-    diagLog(`📤 [UPSERT] Envoi profil: ${JSON.stringify(profileData)}`);
-
     let result = await supa.from("profiles").upsert(profileData, { onConflict: "id" });
     // Filet de sécurité : si la colonne `passions` n'existe pas encore en base
     // (migration_profile_passions non appliquée sur ce projet), on retente sans
@@ -1812,13 +1802,7 @@ async function supaUpsertProfile() {
       result = await supa.from("profiles").upsert(legacy, { onConflict: "id" });
     }
 
-    console.log("✅ [UPSERT] Succès:", result);
-    diagLog(`✅ [UPSERT] Profil mis à jour`);
-  } catch(e) {
-    console.error("❌ [UPSERT] Erreur:", e);
-    console.error("❌ [UPSERT] Message:", e.message);
-    diagLog(`❌ [UPSERT] ERREUR: ${e.message}`);
-  }
+  } catch(e) { /* erreur réseau non bloquante */ }
 }
 
 // ---- DIAGNOSTIC ----
@@ -1856,16 +1840,16 @@ function hideDiag() {
 }
 
 function diagLog(msg) {
+  // Actif uniquement en mode debug (localStorage passio_debug=1 ou localhost)
+  if (!window.PASSIO_DEBUG) return;
   const time = new Date().toLocaleTimeString();
   const line = `[${time}] ${msg}\n`;
   _diagPanel.textContent += line;
   _diagPanel.scrollTop = _diagPanel.scrollHeight;
   console.log("[DIAG]", msg);
-
-  // 🔧 STOCKER LES LOGS pour le diagnostic avancé
   if (!window._diagLogs) window._diagLogs = [];
   window._diagLogs.push(`[${time}] ${msg}`);
-  if (window._diagLogs.length > 100) window._diagLogs.shift();  // Garder seulement les 100 derniers
+  if (window._diagLogs.length > 100) window._diagLogs.shift();
 }
 
 // Diagnostic DÉSACTIVÉ au démarrage pour éviter les lags (le garder fermé)
@@ -3372,9 +3356,7 @@ function supaSubscribe() {
         // ✅ Ajouter dans state.supabasePosts, pas state.seed.posts!
         if (!state.supabasePosts.find(p => p.id === newPost.id)) {
           state.supabasePosts.unshift(newPost);
-          console.log("📥 Post reçu en realtime:", newPost.authorName, newPost.isReel ? "(bobine)" : "");
           try { renderFeed(); } catch(e) {}
-          if (newPost.isReel && reelsState && reelsState.open) { try { /* viewer ouvert : laisser l'utilisateur rafraîchir */ } catch(e) {} }
         }
       } catch(e) {}
     })
