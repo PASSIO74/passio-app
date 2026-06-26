@@ -103,6 +103,7 @@ function filterExplore() {
         name: u.username || "Passionné",
         profileEmoji: u.emoji || "✨",
         avatar: u.color || "#8b5cf6",
+        photoUrl: u.avatar_url || null,
         passions: u.passions || [],
         bio: u.bio || ""
       };
