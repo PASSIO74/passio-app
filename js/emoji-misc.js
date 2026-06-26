@@ -348,7 +348,7 @@ function replyToComment(postId, commentId, authorName, event) {
       if (commentActions) commentActions.appendChild(replyCountBtn);
     }
     // Mettre à jour le nombre de réponses
-    replyCountBtn.textContent = comment.replies.length + " réponse" + (comment.replies.length > 1 ? "s" : "");
+    replyCountBtn.textContent = "▲ Masquer les réponses";
     _diag("✅ Reply button updated");
 
     // AFFICHER LES REPLIES AUTOMATIQUEMENT
@@ -397,8 +397,16 @@ function toggleCommentReplies(commentId, event) {
   if (event) { event.stopPropagation(); event.preventDefault(); }
   _diag("📂 toggleCommentReplies(" + commentId + ")");
   var repliesDiv = document.getElementById("replies-" + commentId);
+  var btn = document.querySelector('[data-commentid="' + commentId + '"] .comment-reply-count');
   if (repliesDiv) {
-    repliesDiv.style.display = repliesDiv.style.display === "none" ? "block" : "none";
+    var isHidden = repliesDiv.style.display === "none" || repliesDiv.style.display === "";
+    repliesDiv.style.display = isHidden ? "block" : "none";
+    if (btn) {
+      var count = repliesDiv.querySelectorAll(".comment-reply").length;
+      btn.textContent = isHidden
+        ? "▲ Masquer les réponses"
+        : "▼ " + count + " réponse" + (count > 1 ? "s" : "");
+    }
     _diag("✅ Replies toggled");
   }
   return false;
@@ -566,7 +574,7 @@ function addGifToComment(postId, commentId, gifUrl) {
 
     // Mettre à jour le texte du bouton
     if (replyCountBtn && comment.replies.length > 0) {
-      replyCountBtn.textContent = comment.replies.length + " réponse" + (comment.replies.length > 1 ? "s" : "");
+      replyCountBtn.textContent = "▲ Masquer les réponses";
       console.log("✅ Reply count updated:", replyCountBtn.textContent);
     }
 
@@ -819,7 +827,7 @@ function addEmojiToComment(postId, commentId, emoji) {
 
     // Mettre à jour le texte du bouton
     if (replyCountBtn && comment.replies.length > 0) {
-      replyCountBtn.textContent = comment.replies.length + " réponse" + (comment.replies.length > 1 ? "s" : "");
+      replyCountBtn.textContent = "▲ Masquer les réponses";
       console.log("✅ Reply count updated:", replyCountBtn.textContent);
     }
 

@@ -3490,6 +3490,16 @@
     .comment-author { font-size: 12px; font-weight: 600; }
     .comment-text { font-size: 13px; color: var(--text-dim); margin-top: 2px; }
     .comment-meta { font-size: 10px; color: var(--muted); margin-top: 2px; }
+    .comment-reply-count {
+      cursor: pointer;
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 600;
+      margin-left: 4px;
+      transition: opacity 150ms;
+      user-select: none;
+    }
+    .comment-reply-count:hover { opacity: 0.75; }
 
     /* Map IRL */
     /* Carte interactive Leaflet */

@@ -116,7 +116,7 @@ async function sharePostInFeed(id) {
 // Verrou anti-double-clic : empêche deux likes simultanés sur le même post
 const _likePending = new Set();
 
-function likePost(id, skipRender = false) {
+function likePost(id, skipRender = false, el = null) {
   if (_likePending.has(id)) return;
   _likePending.add(id);
   setTimeout(() => _likePending.delete(id), 800);
@@ -136,16 +136,25 @@ function likePost(id, skipRender = false) {
     try { supaTrack("like_post", { passion: post.passion }); } catch(_) {}
   }
   saveState();
-  if (!skipRender) {
+
+  // Mise à jour en place : évite de reconstruire tout le fil (perte de scroll,
+  // panels ouverts, états de saisie). On cherche le bouton via el (passé par
+  // l'onclick inline) ou via data-postid dans le DOM.
+  const nowLiked = !liked;
+  var _btn = el || (function() {
+    var art = document.querySelector('[data-postid="' + id + '"]');
+    return art ? art.querySelector('[data-action="like"]') : null;
+  })();
+  if (_btn) {
+    _btn.classList.toggle("liked", nowLiked);
+    _btn.innerHTML = (nowLiked ? "❤️" : "🤍") + " " + (post.likes || 0);
+  } else if (!skipRender) {
     renderFeed();
   }
+
   // Sync avec Supabase
   if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
     supaToggleLike(id);
-    // Notifier l'auteur du post si c'est un like (pas un unlike).
-    // On réutilise `post` (déjà cherché dans seed + userPosts + supabasePosts) :
-    // l'ancienne re-recherche oubliait supabasePosts → liker un vrai post ne
-    // notifiait jamais l'auteur.
     if (!liked && post && post.authorId && post.authorId !== MY_UID && post.fromSupabase) {
       supaInsertNotif(post.authorId, "like", id, "a aimé ton post");
     }

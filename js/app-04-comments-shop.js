@@ -155,7 +155,7 @@ function _renderCommentsList(allComments, postId) {
           <span class="comment-action" onclick="return replyToComment('${postId}','${c.id}','${escapeHtml(name)}', event);" title="Répondre">💬</span>
           <span class="comment-action" onclick="return showEmojiPickerForComment('${postId}','${c.id}', event);" title="Réagir">😊</span>
           <span class="comment-action" onclick="return showGifPickerForComment('${postId}','${c.id}', event);" title="GIF">🎬</span>
-          ${cReplies.length > 0 ? `<span class="comment-reply-count" onclick="return toggleCommentReplies('${c.id}', event);">${cReplies.length} réponse${cReplies.length > 1 ? "s" : ""}</span>` : ""}
+          ${cReplies.length > 0 ? `<span class="comment-reply-count" onclick="return toggleCommentReplies('${c.id}', event);">▼ ${cReplies.length} réponse${cReplies.length > 1 ? "s" : ""}</span>` : ""}
         </div>
         ${cReplies.length > 0 ? `<div class="comment-replies" id="replies-${c.id}" style="display:none;">${cReplies.map(r => {
           const ru = userById(r.authorId) || { name: "?", profileEmoji: "👤", avatar: "#64748b" };

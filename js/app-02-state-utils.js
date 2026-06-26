@@ -2154,7 +2154,7 @@ function renderPostHTML(p) {
           <span class="comment-action" onclick="return replyToComment('${p.id}','${c.id}','${escapeHtml(cu.name)}', event);" title="Répondre">💬</span>
           <span class="comment-action" onclick="return showEmojiPickerForComment('${p.id}','${c.id}', event);" title="Réagir">😊</span>
           <span class="comment-action" onclick="return showGifPickerForComment('${p.id}','${c.id}', event);" title="GIF">🎬</span>
-          ${cReplies.length > 0 ? `<span class="comment-reply-count" onclick="return toggleCommentReplies('${c.id}', event);">${cReplies.length} réponse${cReplies.length > 1 ? "s" : ""}</span>` : ""}
+          ${cReplies.length > 0 ? `<span class="comment-reply-count" onclick="return toggleCommentReplies('${c.id}', event);">▼ ${cReplies.length} réponse${cReplies.length > 1 ? "s" : ""}</span>` : ""}
         </div>
       </div>
     </div>`;
@@ -2194,7 +2194,7 @@ function renderPostHTML(p) {
     <div onclick="openPost('${p.id}')" style="cursor:pointer;">${media}</div>
 
     <div class="post-actions">
-      <span class="post-action ${likeClass}" onclick="likePost('${p.id}')">
+      <span class="post-action ${likeClass}" data-action="like" onclick="likePost('${p.id}', false, this)">
         ${liked ? "❤️" : "🤍"} ${p.likes || 0}
       </span>
       <span class="post-action" onclick="openComments('${p.id}')">💬 ${(p.comments || []).length}</span>
@@ -2292,7 +2292,7 @@ async function openPost(id) {
           <span class="comment-action" onclick="return replyToComment('${id}','${c.id}','${escapeHtml(cName)}', event);" title="Répondre">💬</span>
           <span class="comment-action" onclick="return showEmojiPickerForComment('${id}','${c.id}', event);" title="Réagir">😊</span>
           <span class="comment-action" onclick="return showGifPickerForComment('${id}','${c.id}', event);" title="GIF">🎬</span>
-          ${cReplies.length > 0 ? `<span class="comment-reply-count" onclick="return toggleCommentReplies('${c.id}', event);">${cReplies.length} réponse${cReplies.length > 1 ? "s" : ""}</span>` : ""}
+          ${cReplies.length > 0 ? `<span class="comment-reply-count" onclick="return toggleCommentReplies('${c.id}', event);">▼ ${cReplies.length} réponse${cReplies.length > 1 ? "s" : ""}</span>` : ""}
           ${(c.emojis || []).length > 0 ? `<span class="comment-emoji-count" onclick="return toggleCommentEmojis('${c.id}', event);">${(c.emojis || []).length} emoji</span>` : ""}
         </div>
         ${(c.emojis || []).length > 0 ? `<div class="comment-emojis" id="emojis-${c.id}" style="display:none;padding:8px 0;border-top:1px solid rgba(124,58,237,0.1);margin-top:8px;"><div style="display:flex;gap:6px;flex-wrap:wrap;">${(c.emojis || []).map(e => `<span style="font-size:20px;padding:4px 8px;background:var(--bg-soft);border-radius:6px;cursor:default;">${e}</span>`).join("")}</div></div>` : ""}
