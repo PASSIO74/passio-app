@@ -175,7 +175,7 @@ async function supaLoadUserState() {
     const serverTs = data.updated_at ? new Date(data.updated_at).getTime() : 0;
     const localTs = state._stateSyncedAt ? new Date(state._stateSyncedAt).getTime() : 0;
     // Appareil vierge (pas onboardé) OU serveur plus récent → on restaure.
-    if (!state.onboarded || serverTs >= localTs) {
+    if (!state.onboarded || serverTs > localTs) {
       // ⚠️ Ne PAS écraser des profils locaux par un état serveur VIDE (compte
       // fraîchement créé / purgé, sync pas encore poussée) — sinon le profil par
       // défaut tout juste créé au boot disparaît. On pousse plutôt le bon état local.

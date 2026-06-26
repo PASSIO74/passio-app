@@ -3784,6 +3784,11 @@ async function supaInit() {
     try { if (typeof _flushOutbox === "function") setTimeout(_flushOutbox, 1500); } catch(e) {}
     // Sauvegarder imm\u00e9diatement avant fermeture de page (flush le debounce)
     window.addEventListener("beforeunload", saveConversationsNow, { once: false });
+    // Flush le debounce du state-sync avant fermeture \u2192 \u00e9vite de perdre les follows
+    // et autres changements locaux non encore envoy\u00e9s \u00e0 Supabase (user_state).
+    window.addEventListener("beforeunload", function() {
+      if (typeof supaSaveUserState === "function") supaSaveUserState();
+    }, { once: false });
 
     console.log("\u2705 [INIT] Initialisation Supabase compl\u00e8te");
     return;
