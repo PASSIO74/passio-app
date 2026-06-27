@@ -1916,6 +1916,25 @@ function openReels() {
 
 }
 
+// Ouvre le viewer Bobines directement sur une bobine précise (depuis l'onglet
+// Bobines du profil). Retombe sur la 1ʳᵉ si l'id n'est pas trouvé.
+function openReelById(id) {
+  openReels();
+  try {
+    var idx = (reelsState.items || []).findIndex(function(p){ return p.id === id; });
+    if (idx > 0) {
+      var items = document.querySelectorAll("#reelsList .reel-item");
+      if (items[idx]) {
+        items[idx].scrollIntoView();
+        reelsState.current = idx;
+        if (typeof playReelAt === "function") playReelAt(idx);
+        if (typeof updateReelsNavState === "function") updateReelsNavState(idx);
+        if (typeof updateReelsCounter === "function") updateReelsCounter();
+      }
+    }
+  } catch (e) {}
+}
+
 function closeReels() {
   const v = document.getElementById("reelsViewer");
   v.classList.remove("open");

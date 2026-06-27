@@ -731,12 +731,16 @@ function meStopRecording(silent) {
   meCam._silent = !!silent;
   try { if (meCam.recorder && meCam.recorder.state !== "inactive") meCam.recorder.stop(); } catch(e) {}
   var ed = document.getElementById("mediaEditor"); if (ed) ed.classList.remove("me-recording");
+  var sh = document.getElementById("meShutter"); if (sh) sh.style.setProperty("--p", 0);
   var capHint = document.getElementById("meCaptureHint"); if (capHint && meState.mode === "bobine") capHint.textContent = "Appuie pour démarrer la vidéo · appuie de nouveau pour arrêter";
 }
 function _meUpdateRecTime() {
-  var el = document.getElementById("meRecTime"); if (!el) return;
-  var s = Math.floor((Date.now() - meCam.recStart) / 1000);
-  el.textContent = "0:" + (s < 10 ? "0" : "") + s;
+  var elapsed = Date.now() - meCam.recStart;
+  var el = document.getElementById("meRecTime");
+  if (el) { var s = Math.floor(elapsed / 1000); el.textContent = "0:" + (s < 10 ? "0" : "") + s; }
+  // Anneau de progression (0→100 % sur 60 s).
+  var sh = document.getElementById("meShutter");
+  if (sh) sh.style.setProperty("--p", Math.min(100, (elapsed / 60000) * 100));
 }
 function _meOnRecordingStop() {
   if (meCam._silent) { meCam._silent = false; return; }
@@ -806,6 +810,84 @@ function meCycleBg() {
 function _meReadFile(file) {
   return new Promise(function(res, rej) { var r = new FileReader(); r.onload = function() { res(r.result); }; r.onerror = function() { rej(r.error); }; r.readAsDataURL(file); });
 }
+
+// ── Overlay de progression (compression vidéo) ──
+function _meShowProgress(label) {
+  _meHideProgress();
+  var d = document.createElement("div");
+  d.id = "meProgressOv";
+  d.style.cssText = "position:fixed;inset:0;z-index:5200;background:rgba(0,0,0,0.82);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;color:#fff;padding:24px;text-align:center;";
+  d.innerHTML = '<div style="font-weight:800;font-size:15px;">' + escapeHtml(label || "Traitement…") + '</div>'
+    + '<div style="width:min(260px,70vw);height:8px;border-radius:999px;background:rgba(255,255,255,0.2);overflow:hidden;"><div id="meProgressBar" style="height:100%;width:0%;background:var(--accent);transition:width 120ms linear;"></div></div>'
+    + '<div id="meProgressPct" style="font-size:12px;color:rgba(255,255,255,0.7);">0 %</div>';
+  document.body.appendChild(d);
+}
+function _meUpdateProgress(p) {
+  var bar = document.getElementById("meProgressBar");
+  var pct = document.getElementById("meProgressPct");
+  var v = Math.max(0, Math.min(100, Math.round((p || 0) * 100)));
+  if (bar) bar.style.width = v + "%";
+  if (pct) pct.textContent = v + " %";
+}
+function _meHideProgress() { var d = document.getElementById("meProgressOv"); if (d) d.remove(); }
+
+// Compresse/ré-encode une vidéo côté client (canvas + MediaRecorder) en 720p à
+// bitrate plafonné. Best-effort : rejette si le navigateur ne supporte pas, pour
+// laisser l'appelant retomber sur un message clair. Préserve l'audio (volume 0).
+function passioCompressVideo(file, opts, onProgress) {
+  opts = opts || {};
+  var maxDim = opts.maxDim || 720, bitrate = opts.bitrate || 1200000;
+  return new Promise(function(resolve, reject) {
+    if (!window.MediaRecorder || !HTMLCanvasElement.prototype.captureStream) { reject(new Error("unsupported")); return; }
+    var url = URL.createObjectURL(file);
+    function cleanup() { try { URL.revokeObjectURL(url); } catch (e) {} }
+    var video = document.createElement("video");
+    video.playsInline = true; video.preload = "auto"; video.src = url; video.volume = 0;
+    video.onerror = function() { cleanup(); reject(new Error("video load failed")); };
+    video.onloadedmetadata = function() {
+      var dur = video.duration;
+      if (!isFinite(dur) || dur <= 0) { cleanup(); reject(new Error("bad duration")); return; }
+      if (dur > 65) { cleanup(); reject(new Error("too long")); return; }
+      var scale = Math.min(1, maxDim / Math.max(video.videoWidth || maxDim, video.videoHeight || maxDim));
+      var w = Math.max(2, Math.round((video.videoWidth || maxDim) * scale));
+      var h = Math.max(2, Math.round((video.videoHeight || maxDim) * scale));
+      var canvas = document.createElement("canvas"); canvas.width = w; canvas.height = h;
+      var ctx = canvas.getContext("2d");
+      var cstream;
+      try { cstream = canvas.captureStream(30); } catch (e) { cleanup(); reject(e); return; }
+      try {
+        var vstream = video.captureStream ? video.captureStream() : (video.mozCaptureStream ? video.mozCaptureStream() : null);
+        var at = vstream && vstream.getAudioTracks && vstream.getAudioTracks()[0];
+        if (at) cstream.addTrack(at);
+      } catch (e) {}
+      var mime = (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported("video/webm;codecs=vp8,opus")) ? "video/webm;codecs=vp8,opus"
+        : (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported("video/webm")) ? "video/webm" : "";
+      var recOpts = { videoBitsPerSecond: bitrate, audioBitsPerSecond: 96000 };
+      if (mime) recOpts.mimeType = mime;
+      var rec;
+      try { rec = new MediaRecorder(cstream, recOpts); } catch (e) { cleanup(); reject(e); return; }
+      var chunks = [], raf = 0;
+      rec.ondataavailable = function(ev) { if (ev.data && ev.data.size) chunks.push(ev.data); };
+      rec.onstop = function() {
+        cancelAnimationFrame(raf);
+        var blob = new Blob(chunks, { type: (chunks[0] && chunks[0].type) || "video/webm" });
+        var r = new FileReader();
+        r.onload = function() { cleanup(); resolve(r.result); };
+        r.onerror = function() { cleanup(); reject(r.error); };
+        r.readAsDataURL(blob);
+      };
+      function draw() {
+        try { ctx.drawImage(video, 0, 0, w, h); } catch (e) {}
+        if (onProgress) onProgress(Math.min(1, video.currentTime / dur));
+        if (!video.ended) raf = requestAnimationFrame(draw);
+      }
+      video.onended = function() { try { if (rec.state !== "inactive") rec.stop(); } catch (e) {} };
+      try { rec.start(); } catch (e) { cleanup(); reject(e); return; }
+      video.play().then(function() { draw(); }).catch(function(e) { try { rec.stop(); } catch (_) {} cleanup(); reject(e); });
+    };
+  });
+}
+
 async function meOnMedia(ev) {
   var file = ev.target.files && ev.target.files[0]; ev.target.value = "";
   if (!file) return;
@@ -813,18 +895,33 @@ async function meOnMedia(ev) {
   if (!isVideo && (file.type || "").indexOf("image/") !== 0) { toast("Photo ou vidéo uniquement"); return; }
   // Une bobine est une vidéo : on refuse les photos même via la galerie.
   if (meState.mode === "bobine" && !isVideo) { toast("Une bobine est une vidéo — choisis une vidéo"); return; }
-  // Les vidéos de galerie ne sont pas ré-encodées : on refuse celles trop
-  // lourdes (un fichier de 30 Mo a rempli 1/3 du Storage en beta). 25 Mo max.
-  if (isVideo && file.size > 25 * 1024 * 1024) {
-    toast("Vidéo trop lourde (" + Math.round(file.size / 1048576) + " Mo). Filme directement dans l'app ou choisis une vidéo < 25 Mo.");
-    return;
-  }
+  var LIMIT = 25 * 1024 * 1024;     // au-delà : on tente une compression au lieu de refuser
+  var HARD = 150 * 1024 * 1024;     // garde-fou mémoire absolu
   try {
     var dataUrl;
-    if (isVideo) { dataUrl = await _meReadFile(file); }
-    else { try { dataUrl = await window.passioCompressImage(file, 1280, 0.85); } catch(e) { dataUrl = await _meReadFile(file); } }
+    if (isVideo) {
+      if (file.size <= LIMIT) {
+        dataUrl = await _meReadFile(file);
+      } else if (file.size <= HARD && typeof passioCompressVideo === "function") {
+        try {
+          _meShowProgress("Optimisation de la vidéo…");
+          dataUrl = await passioCompressVideo(file, { maxDim: 720, bitrate: 1200000 }, _meUpdateProgress);
+          _meHideProgress();
+          if (!dataUrl || dataUrl.length < 1000) throw new Error("empty result");
+        } catch (e) {
+          _meHideProgress();
+          toast("Vidéo trop lourde à optimiser (" + Math.round(file.size / 1048576) + " Mo). Filme dans l'app ou choisis une vidéo < 25 Mo.");
+          return;
+        }
+      } else {
+        toast("Vidéo trop lourde (" + Math.round(file.size / 1048576) + " Mo). Filme directement dans l'app ou choisis une vidéo < 25 Mo.");
+        return;
+      }
+    } else {
+      try { dataUrl = await window.passioCompressImage(file, 1280, 0.85); } catch (e) { dataUrl = await _meReadFile(file); }
+    }
     meSetMedia(dataUrl, isVideo ? "video" : "photo");
-  } catch(e) { toast("Impossible de charger ce média"); }
+  } catch (e) { _meHideProgress(); toast("Impossible de charger ce média"); }
 }
 function meSetMedia(dataUrl, type) {
   meState.media = dataUrl; meState.mediaType = type;
@@ -2531,6 +2628,18 @@ async function supaLoadEventComments(eventId) {
     return (data || []).map(c => ({ id: c.id, authorId: c.author_id, author: c.author_name || "Anonyme", text: c.text || "", at: new Date(c.created_at).getTime() }));
   } catch(e) { console.warn("load event comments:", e); return []; }
 }
+// Compte des commentaires pour un lot d'événements (1 requête) → { eventId: n }.
+async function supaLoadEventCommentCounts(eventIds) {
+  if (!eventIds || !eventIds.length) return {};
+  try {
+    const { data, error } = await supa.from("event_comments").select("event_id").in("event_id", eventIds);
+    if (error) { console.warn("event comment counts:", error.message); return {}; }
+    var out = {};
+    (data || []).forEach(function(r){ out[r.event_id] = (out[r.event_id] || 0) + 1; });
+    eventIds.forEach(function(id){ if (out[id] == null) out[id] = 0; });
+    return out;
+  } catch(e) { console.warn("event comment counts:", e); return {}; }
+}
 
 async function supaFollowCdvLive(liveId) {
   try { await supa.from("cdv_live_followers").insert({ live_id: liveId, user_id: MY_UID }); }
@@ -2573,7 +2682,7 @@ async function supaLoadCdvLives() {
           photos: Array.isArray(s.photos) ? s.photos : [], photo: (Array.isArray(s.photos) && s.photos[0]) || null,
           rating: s.rating || 0, budget: s.budget || "", createdAt: new Date(s.created_at).getTime(),
         })),
-        comments: (comBy[r.id] || []).map(c => ({ author: c.author_name || "Anonyme", text: c.text || "", at: new Date(c.created_at).getTime() })),
+        comments: (comBy[r.id] || []).map(c => ({ id: c.id, authorId: c.author_id, author: c.author_name || "Anonyme", text: c.text || "", at: new Date(c.created_at).getTime() })),
         reactions: (reacBy[r.id] || []).map(x => x.emoji),
         followers: followers, viewers: followers, currentViewers: followers.length,
         createdAt: new Date(r.created_at).getTime(),

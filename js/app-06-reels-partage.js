@@ -207,6 +207,7 @@ async function loadFollowersCount() {
 // Clic « posts » : sélectionne tous mes profils, onglet Posts, défile vers le contenu
 function openMyPostsTab() {
   window.profilesFilterSelection = new Set((state.user.profiles || []).map(function(p){ return p.id; }));
+  _persistProfileFilter();
   window.activeProfileTab = "posts";
   document.querySelectorAll(".profile-tab").forEach(function(b, i){ b.classList.toggle("active", i === 0); });
   renderProfilesScreen();
@@ -293,11 +294,23 @@ function renderProfileContent() {
   }
 
   if (tab==="photos") {
-    var photos = mine.filter(function(p){return p.type==="photo"||p.image;});
+    var photos = mine.filter(function(p){return !p.isReel && (p.type==="photo"||p.image);});
     myPostsDiv.innerHTML = photos.length ? '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;">'+photos.map(function(p){var src=p.image||"https://picsum.photos/seed/"+p.id+"/300/300";return '<div style="aspect-ratio:1;border-radius:8px;overflow:hidden;"><img loading="lazy" decoding="async" src="'+src+'" style="width:100%;height:100%;object-fit:cover;"/></div>';}).join("")+'</div>' : emptyBlock("📷","Aucune photo");
   } else if (tab==="videos") {
-    var videos = mine.filter(function(p){return p.type==="video";});
+    // Vidéos « classiques » : on exclut les bobines (elles ont leur propre onglet).
+    var videos = mine.filter(function(p){return p.type==="video" && !p.isReel;});
     myPostsDiv.innerHTML = videos.length ? videos.map(function(p){return renderPostHTML(Object.assign({},p,{_source:"me"}));}).join("") : emptyBlock("🎬","Aucune vidéo");
+  } else if (tab==="bobines") {
+    var bobines = mine.filter(function(p){return p.isReel;});
+    myPostsDiv.innerHTML = bobines.length
+      ? '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;">'+bobines.map(function(p){
+          var poster = p.image || p.poster || "";
+          var thumb = poster
+            ? '<img loading="lazy" decoding="async" src="'+poster+'" style="width:100%;height:100%;object-fit:cover;"/>'
+            : (p.video ? '<video src="'+p.video+'#t=0.1" muted playsinline preload="metadata" style="width:100%;height:100%;object-fit:cover;background:#000;"></video>' : '<div style="width:100%;height:100%;background:linear-gradient(135deg,#7c3aed,#a78bfa);"></div>');
+          return '<div onclick="openReelById(\''+p.id+'\')" style="aspect-ratio:9/16;border-radius:8px;overflow:hidden;position:relative;cursor:pointer;">'+thumb+'<span style="position:absolute;left:6px;bottom:6px;font-size:14px;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.6));">🎞️</span></div>';
+        }).join("")+'</div>'
+      : emptyBlock("🎞️","Aucune bobine");
   } else if (tab==="carnets") {
     var carnets = mine.filter(function(p){return p.type==="vlog";});
     myPostsDiv.innerHTML = carnets.length ? carnets.map(function(p){return renderPostHTML(Object.assign({},p,{_source:"me"}));}).join("") : emptyBlock("📔","Aucun carnet");
@@ -372,6 +385,7 @@ function passioOpenCropper(src, opts) {
       '<div style="color:#fff;font-weight:800;font-size:16px;margin-bottom:14px;text-align:center;">' + escapeHtml(title) + '</div>'
       + '<div id="pcropView" style="position:relative;width:' + VW + 'px;height:' + VH + 'px;overflow:hidden;border-radius:' + (round ? "50%" : "14px") + ';touch-action:none;background:#000;box-shadow:0 0 0 2px rgba(255,255,255,0.9);cursor:grab;">'
       + '<img id="pcropImg" alt="" draggable="false" style="position:absolute;left:0;top:0;user-select:none;-webkit-user-drag:none;max-width:none;"/>'
+      + '<div class="pcrop-grid" style="position:absolute;inset:0;pointer-events:none;background-image:linear-gradient(rgba(255,255,255,0.35) 1px,transparent 1px),linear-gradient(rgba(255,255,255,0.35) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.35) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.35) 1px,transparent 1px);background-position:0 33.33%,0 66.66%,33.33% 0,66.66% 0;background-size:100% 1px,100% 1px,1px 100%,1px 100%;background-repeat:no-repeat;"></div>'
       + '</div>'
       + '<div style="display:flex;align-items:center;gap:10px;width:' + VW + 'px;margin-top:16px;">'
       + '<span style="font-size:16px;">🔍</span>'
@@ -619,9 +633,12 @@ async function saveMainProfile() {
 function renderProfilesScreen() {
   renderMainProfile();
 
-  // 🔄 Initialiser la sélection des profils (multi-select)
+  // 🔄 Initialiser la sélection des profils (multi-select), restaurée depuis la
+  // dernière session (state.user.profileFilterIds), filtrée sur les profils existants.
   if (!window.profilesFilterSelection) {
-    window.profilesFilterSelection = new Set();
+    var _saved = (state.user && state.user.profileFilterIds) || [];
+    var _valid = new Set((state.user.profiles || []).map(function(p){ return p.id; }));
+    window.profilesFilterSelection = new Set(_saved.filter(function(id){ return _valid.has(id); }));
   }
 
   const list = $("#profileList");
@@ -672,6 +689,15 @@ function renderProfilesScreen() {
 
 // 🔄 MULTI-SÉLECTION DES PROFILS (écran profil). Nom distinct de toggleProfileFilter
 // (feed, _activeFeedPassions, plus bas) pour éviter la collision de noms qui masquait ce handler.
+// Persiste la sélection de profils pour la restaurer à la prochaine session.
+function _persistProfileFilter() {
+  try {
+    if (!state.user) return;
+    state.user.profileFilterIds = [...(window.profilesFilterSelection || [])];
+    saveState();
+  } catch (e) {}
+}
+
 function toggleProfileSelect(profileId) {
   if (!window.profilesFilterSelection) {
     window.profilesFilterSelection = new Set();
@@ -683,6 +709,7 @@ function toggleProfileSelect(profileId) {
     window.profilesFilterSelection.add(profileId);
   }
 
+  _persistProfileFilter();
   renderProfilesScreen();
 }
 
@@ -691,6 +718,7 @@ function clearProfilesFilter() {
     window.profilesFilterSelection = new Set();
   }
   window.profilesFilterSelection.clear();
+  _persistProfileFilter();
   renderProfilesScreen();
 }
 

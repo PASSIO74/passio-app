@@ -1380,6 +1380,29 @@ function convertLiveToCarnet(liveId) {
   }, 200);
 }
 
+// Construit le bloc commentaires d'un live (barre de tri + likes), re-rendable
+// seul (#cdvCommentsBox) sans ré-ouvrir toute la modale.
+function _cdvCommentsBoxHtml(live) {
+  var comments = (live.comments || []).map(function(c) {
+    return Object.assign({}, c, { id: c.id || (c.at + "_" + String(c.text || "").slice(0, 10)) });
+  });
+  if (!comments.length) return '<div style="font-size:11px;color:var(--muted);padding:8px;">Aucun commentaire</div>';
+  var mode = window._cdvCommentSort || "recent";
+  var bar = comments.length > 1 ? commentSortBarHtml(mode, "setCdvCommentSort") : "";
+  return bar + sortComments(comments, mode).map(function(c) {
+    return '<div style="display:flex;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);"><div style="width:24px;height:24px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0;">😊</div><div style="flex:1;min-width:0;"><div style="font-size:11px;font-weight:700;">' + escapeHtml(c.author) + '</div><div style="font-size:11px;color:var(--text-dim);word-break:break-word;">' + escapeHtml(c.text) + '</div><div style="margin-top:2px;">' + commentLikeBtnHtml(c.id) + '</div></div></div>';
+  }).join("");
+}
+function setCdvCommentSort(mode) {
+  window._cdvCommentSort = mode;
+  var modalEl = document.querySelector(".modal[data-live-id]");
+  var liveId = modalEl && modalEl.getAttribute("data-live-id");
+  var box = document.getElementById("cdvCommentsBox");
+  if (!liveId || !box) return;
+  var live = getCdvLives().find(function(l){ return l.id === liveId; });
+  if (live) box.innerHTML = _cdvCommentsBoxHtml(live);
+}
+
 function openCdvLiveViewer(liveId) {
   const lives = getCdvLives();
   const live = lives.find(l => l.id === liveId);
@@ -1420,9 +1443,7 @@ function openCdvLiveViewer(liveId) {
 
   if (!live.steps.length) stepsHTML = '<div style="text-align:center;padding:30px;color:var(--muted);"><div style="font-size:32px;margin-bottom:8px;">🧳</div>L\'aventure commence bientôt…</div>';
 
-  var commentsHTML = (live.comments || []).map(function(c) {
-    return '<div style="display:flex;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);"><div style="width:24px;height:24px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0;">😊</div><div style="flex:1;"><div style="font-size:11px;font-weight:700;">' + escapeHtml(c.author) + '</div><div style="font-size:11px;color:var(--text-dim);">' + escapeHtml(c.text) + '</div></div></div>';
-  }).join("");
+  var commentsHTML = _cdvCommentsBoxHtml(live);
 
   const html = '\
     <span class="modal-close" onclick="closeModal()">×</span>\
@@ -1451,7 +1472,7 @@ function openCdvLiveViewer(liveId) {
     ' + stepsHTML + '\
     \
     <div style="font-weight:800;font-size:13px;color:var(--text);margin:14px 0 8px;">💬 Commentaires</div>\
-    ' + (commentsHTML || '<div style="font-size:11px;color:var(--muted);padding:8px;">Aucun commentaire</div>') + '\
+    <div id="cdvCommentsBox">' + commentsHTML + '</div>\
     <div style="display:flex;gap:6px;margin-top:8px;">\
       <input type="text" class="input" id="cdvLiveComment" placeholder="Écris un commentaire…" style="flex:1;font-size:12px;padding:8px 12px;" onkeypress="if(event.key===\'Enter\')addCdvLiveComment(\'' + liveId + '\')"/>\
       <button class="btn primary" onclick="addCdvLiveComment(\'' + liveId + '\')" style="font-size:12px;padding:8px 12px;">Envoyer</button>\
@@ -1557,7 +1578,8 @@ function addCdvLiveComment(liveId) {
   if (!live) return;
   if (!live.comments) live.comments = [];
   var _author = (state.user.general && state.user.general.username) || state.user.name || "Moi";
-  live.comments.push({ author: _author, text: text, at: Date.now() });
+  var _myId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
+  live.comments.push({ id: "lc_local_" + Date.now(), authorId: _myId, author: _author, text: text, at: Date.now() });
   saveCdvLives(lives);
   if (typeof supaAddCdvLiveComment === "function") supaAddCdvLiveComment(liveId, text);
   openCdvLiveViewer(liveId);
@@ -1648,7 +1670,7 @@ function renderCdvScreen() {
               </div>`).join("")}
           </div>` : `<div style="text-align:center;padding:10px;color:var(--muted);font-size:11px;">En attente de la première étape…</div>`}
         <div class="cdv-live-footer">
-          <div class="cdv-live-count">👁 ${viewerCount} regardent en direct</div>
+          <div class="cdv-live-count">👁 ${viewerCount} regardent · 💬 ${(l.comments||[]).length}</div>
           ${isMyLive(l) ? `<button class="cdv-live-follow-btn" onclick="event.stopPropagation();addCdvLiveStep('${l.id}')">+ Étape</button>` : `<button class="cdv-live-follow-btn" onclick="event.stopPropagation();toggleFollowCdvLive('${l.id}',this)" style="background:${isFollowing ? '#8b5cf6' : 'var(--border)'};color:${isFollowing ? '#fff' : 'var(--text)'};">${isFollowing ? '✓ En suivi' : '📡 Suivre'}</button>`}
         </div>
       </div>`;
@@ -1661,7 +1683,7 @@ function renderCdvScreen() {
           <span style="font-size:10px;font-weight:700;color:var(--muted);background:var(--bg-deep);padding:3px 8px;border-radius:6px;">✅ TERMINÉ</span>
           <div style="flex:1;">
             <div class="cdv-live-dest">${escapeHtml(l.destination)}</div>
-            <div class="cdv-live-author">${l.steps.length} étape${l.steps.length>1?"s":""}</div>
+            <div class="cdv-live-author">${l.steps.length} étape${l.steps.length>1?"s":""} · 💬 ${(l.comments||[]).length}</div>
           </div>
         </div>
       </div>`).join("");

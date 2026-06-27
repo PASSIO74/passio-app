@@ -2043,6 +2043,57 @@ function renderPostCover(p, passion) {
   </div>`;
 }
 
+// ════════════════════════════════════════════════════════════════════════
+// LIKES LOCAUX SUR LES COMMENTAIRES (IRL & CDV) — persistés par appareil dans
+// localStorage (passio_comment_likes). Partagé par les fils IRL et CDV.
+// + tri des commentaires (récents / plus aimés).
+// ════════════════════════════════════════════════════════════════════════
+function _commentLikeStore() {
+  try { return JSON.parse(localStorage.getItem("passio_comment_likes") || "{}"); } catch (e) { return {}; }
+}
+function _saveCommentLikeStore(s) {
+  try { localStorage.setItem("passio_comment_likes", JSON.stringify(s)); } catch (e) {}
+}
+function commentLikeInfo(id) {
+  var s = _commentLikeStore(); return s[id] || { liked: false, count: 0 };
+}
+function commentLikeBtnHtml(id) {
+  var info = commentLikeInfo(id);
+  return '<button class="cmt-like-btn ' + (info.liked ? "liked" : "") + '" data-cmtlike="' + id + '" onclick="return toggleCommentLike(\'' + id + '\', this, event)" style="background:none;border:none;cursor:pointer;font-size:12px;color:' + (info.liked ? "#ef4444" : "var(--muted)") + ';padding:2px 4px;">' + (info.liked ? "❤️" : "🤍") + ' <span>' + (info.count || 0) + '</span></button>';
+}
+function toggleCommentLike(id, btn, event) {
+  if (event && event.stopPropagation) event.stopPropagation();
+  var s = _commentLikeStore();
+  var cur = s[id] || { liked: false, count: 0 };
+  cur.liked = !cur.liked;
+  cur.count = Math.max(0, (cur.count || 0) + (cur.liked ? 1 : -1));
+  s[id] = cur; _saveCommentLikeStore(s);
+  if (btn) {
+    btn.style.color = cur.liked ? "#ef4444" : "var(--muted)";
+    btn.innerHTML = (cur.liked ? "❤️" : "🤍") + ' <span>' + cur.count + '</span>';
+  }
+  return false;
+}
+function sortComments(list, mode) {
+  var arr = (list || []).slice();
+  if (mode === "liked") {
+    arr.sort(function(a, b) { return (commentLikeInfo(b.id).count || 0) - (commentLikeInfo(a.id).count || 0) || (b.at || 0) - (a.at || 0); });
+  } else {
+    arr.sort(function(a, b) { return (b.at || 0) - (a.at || 0); }); // récents d'abord
+  }
+  return arr;
+}
+// Barre de tri (pills) réutilisable. `current` = "recent"|"liked", `onpick` = nom
+// d'une fonction globale recevant le mode.
+function commentSortBarHtml(current, onpick) {
+  current = current || "recent";
+  function pill(mode, label) {
+    var active = current === mode;
+    return '<button onclick="' + onpick + '(\'' + mode + '\')" style="background:' + (active ? "var(--accent)" : "var(--bg-deep)") + ';color:' + (active ? "#fff" : "var(--muted)") + ';border:none;border-radius:999px;font-size:11px;font-weight:700;padding:4px 10px;cursor:pointer;">' + label + '</button>';
+  }
+  return '<div style="display:flex;gap:6px;margin-bottom:8px;">' + pill("recent", "🕐 Récents") + pill("liked", "❤️ Aimés") + '</div>';
+}
+
 function renderPostHTML(p) {
   // ✅ AFFICHER TOUJOURS LE VRAI NOM DU PROFIL!
   let authorName = p.authorName;

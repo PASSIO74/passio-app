@@ -213,7 +213,7 @@
       <div class="me-capture-hint" id="meCaptureHint">Appuie pour une photo · maintiens pour une vidéo</div>
       <div class="me-capture-bar">
         <button class="me-gallery-thumb" id="meGalleryThumb" onclick="mePickMedia()" aria-label="Choisir dans la galerie">🖼️</button>
-        <button class="me-shutter" id="meShutter" aria-label="Capturer"><span class="me-shutter-ring"></span><span class="me-shutter-inner"></span></button>
+        <button class="me-shutter" id="meShutter" aria-label="Capturer"><span class="me-shutter-progress"></span><span class="me-shutter-ring"></span><span class="me-shutter-inner"></span></button>
         <button class="me-cap-side" id="meBgBtn" onclick="meCycleBg()" aria-label="Fond coloré" title="Fond coloré">🎨</button>
       </div>
     </div>
@@ -513,6 +513,7 @@
         <button class="profile-tab active" onclick="switchProfileTab('posts',this)">📝 Posts</button>
         <button class="profile-tab" onclick="switchProfileTab('photos',this)">📷 Photos</button>
         <button class="profile-tab" onclick="switchProfileTab('videos',this)">🎬 Vidéos</button>
+        <button class="profile-tab" onclick="switchProfileTab('bobines',this)">🎞️ Bobines</button>
         <button class="profile-tab" onclick="switchProfileTab('carnets',this)">📔 Carnets</button>
       </div>
       <div id="myPosts"></div>

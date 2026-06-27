@@ -1322,11 +1322,31 @@ function renderIRL() {
       </div>
       <div style="font-size:12px;color:var(--text-dim);margin-top:8px;line-height:1.5;">${escapeHtml((e.desc || "").slice(0, 120))}${(e.desc||"").length > 120 ? "…" : ""}</div>
       <div class="event-footer">
-        <div class="attendees">${attAvatars}<span class="pill" style="margin-left:6px;padding:3px 8px;">${(e.attendees || []).length} inscrit${(e.attendees||[]).length>1?"s":""}</span></div>
+        <div class="attendees">${attAvatars}<span class="pill" style="margin-left:6px;padding:3px 8px;">${(e.attendees || []).length} inscrit${(e.attendees||[]).length>1?"s":""}</span><span class="pill" style="margin-left:6px;padding:3px 8px;" data-evc="${e.id}">💬 ${(window._eventCommentCounts && window._eventCommentCounts[e.id]) || 0}</span></div>
         <button class="btn small ${joined ? "ghost" : "primary"}" ${isFull ? "disabled" : ""} onclick="event.stopPropagation();toggleJoinEvent('${e.id}')">${joined ? "✓ Inscrit" : isFull ? "Complet" : "+ Rejoindre"}</button>
       </div>
     </div>`;
   }).join("");
+
+  // Compteurs de commentaires (chargés en lot, patch DOM sans re-render).
+  _loadEventCommentCounts(filtered.map(function(e){ return e.id; }));
+}
+
+// Charge en une requête le nombre de commentaires des événements visibles puis
+// met à jour les pastilles 💬 en place (cache window._eventCommentCounts).
+async function _loadEventCommentCounts(ids) {
+  window._eventCommentCounts = window._eventCommentCounts || {};
+  if (!ids || !ids.length) return;
+  if (typeof supaLoadEventCommentCounts !== "function" || !window._supaReal) return;
+  try {
+    var counts = await supaLoadEventCommentCounts(ids);
+    if (!counts) return;
+    Object.keys(counts).forEach(function(id){ window._eventCommentCounts[id] = counts[id]; });
+    ids.forEach(function(id){
+      var el = document.querySelector('[data-evc="' + id + '"]');
+      if (el) el.textContent = "💬 " + (window._eventCommentCounts[id] || 0);
+    });
+  } catch (e) {}
 }
 
 function toggleJoinEvent(id) {
@@ -1833,6 +1853,12 @@ async function _loadEventComments(eventId) {
   _renderEventComments(eventId);
 }
 
+function setEventCommentSort(mode) {
+  window._eventCommentSort = mode;
+  var id = window._openEventDetailId;
+  if (id) _renderEventComments(id);
+}
+
 function _renderEventComments(eventId) {
   var box = document.getElementById("eventCommentsList");
   if (!box) return;
@@ -1841,7 +1867,10 @@ function _renderEventComments(eventId) {
     box.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:4px 0;">Aucun commentaire — lance la conversation !</div>';
     return;
   }
-  box.innerHTML = list.map(function (c) {
+  var sortMode = window._eventCommentSort || "recent";
+  var sorted = sortComments(list, sortMode);
+  var bar = list.length > 1 ? commentSortBarHtml(sortMode, "setEventCommentSort") : "";
+  box.innerHTML = bar + sorted.map(function (c) {
     var u = userById(c.authorId) || {};
     var av = { avatar: u.avatar || "#8b5cf6", profileEmoji: u.profileEmoji || "💬", name: c.author, photoUrl: u.photoUrl || null };
     return '<div style="display:flex;gap:8px;align-items:flex-start;">'
@@ -1849,7 +1878,10 @@ function _renderEventComments(eventId) {
       + '<div style="flex:1;min-width:0;">'
       + '<div style="font-size:12px;font-weight:700;color:var(--text);">' + escapeHtml(c.author || "Anonyme") + '</div>'
       + '<div style="font-size:12.5px;color:var(--text-dim);line-height:1.45;word-break:break-word;">' + escapeHtml(c.text || "") + '</div>'
-      + '<div style="font-size:10px;color:var(--muted);margin-top:2px;">' + fmtTime(c.at) + '</div>'
+      + '<div style="display:flex;align-items:center;gap:10px;margin-top:2px;">'
+      + '<span style="font-size:10px;color:var(--muted);">' + fmtTime(c.at) + '</span>'
+      + commentLikeBtnHtml(c.id)
+      + '</div>'
       + '</div></div>';
   }).join("");
 }
