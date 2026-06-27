@@ -1444,7 +1444,7 @@ function openCdvLiveViewer(liveId) {
       <button class="btn ghost" onclick="reactCdvLive(\'' + liveId + '\',\'❤️\')" style="flex:1;font-size:13px;padding:8px;">❤️ ' + ((live.reactions||[]).filter(function(r){return r==="❤️"}).length || "") + '</button>\
       <button class="btn ghost" onclick="reactCdvLive(\'' + liveId + '\',\'🔥\')" style="flex:1;font-size:13px;padding:8px;">🔥 ' + ((live.reactions||[]).filter(function(r){return r==="🔥"}).length || "") + '</button>\
       <button class="btn ghost" onclick="reactCdvLive(\'' + liveId + '\',\'😍\')" style="flex:1;font-size:13px;padding:8px;">😍 ' + ((live.reactions||[]).filter(function(r){return r==="😍"}).length || "") + '</button>\
-      <button class="btn ghost" onclick="toast(\'📤 Lien copié !\')" style="flex:1;font-size:13px;padding:8px;">📤</button>\
+      <button class="btn ghost" onclick="shareCdvLive(\'' + liveId + '\')" style="flex:1;font-size:13px;padding:8px;" title="Partager ce live">📤</button>\
     </div>\
     \
     <div style="font-weight:800;font-size:13px;color:var(--text);margin-bottom:8px;">📍 Étapes</div>\
@@ -1505,6 +1505,29 @@ function toggleFollowCdvLive(liveId, btn) {
   openCdvLiveViewer(liveId);
 }
 
+// Partage d'un Live CDV : Web Share API si dispo, sinon copie du lien (réel,
+// plus de faux toast). Le lien #cdv-live-<id> est repris au boot par le routage.
+function shareCdvLive(liveId) {
+  var lives = getCdvLives();
+  var live = lives.find(function(l) { return l.id === liveId; });
+  if (!live) return;
+  var url = location.origin + location.pathname + "#cdv-live-" + liveId;
+  var title = "📡 " + (live.destination || "Carnet de voyage en direct") + " sur PASSIO";
+  var text = (live.destination ? live.destination + " · " : "") + (live.steps ? live.steps.length : 0) + " étape" + ((live.steps && live.steps.length > 1) ? "s" : "");
+  if (navigator.share) {
+    navigator.share({ title: title, text: text, url: url }).catch(function() {});
+    return;
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(url).then(
+      function() { toast("🔗 Lien du live copié"); },
+      function() { toast("🔗 " + url); }
+    );
+  } else {
+    toast("🔗 " + url);
+  }
+}
+
 // Signalement d'un Live (modération) — réutilise supaReport (table reports).
 function reportCdvLive(liveId) {
   if (!liveId) return;
@@ -1533,7 +1556,8 @@ function addCdvLiveComment(liveId) {
   var live = lives.find(function(l) { return l.id === liveId; });
   if (!live) return;
   if (!live.comments) live.comments = [];
-  live.comments.push({ author: state.user.name || "Moi", text: text, at: Date.now() });
+  var _author = (state.user.general && state.user.general.username) || state.user.name || "Moi";
+  live.comments.push({ author: _author, text: text, at: Date.now() });
   saveCdvLives(lives);
   if (typeof supaAddCdvLiveComment === "function") supaAddCdvLiveComment(liveId, text);
   openCdvLiveViewer(liveId);

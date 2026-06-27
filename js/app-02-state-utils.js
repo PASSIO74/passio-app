@@ -2221,7 +2221,7 @@ function renderPostHTML(p) {
       <span class="post-action" onclick="return showEmojiPickerForPost('${p.id}', event);" title="Réagir">😊</span>
       <span class="post-action" onclick="return showGifPickerForPost('${p.id}', event);" title="GIF">🎬</span>
       <span class="post-action" onclick="sharePost('${p.id}')">🔁 Partager</span>
-      <span class="post-action" style="margin-left:auto;" onclick="openPassionExplorer('${p.passion}')">🔎 ${passion.label}</span>
+      <span class="post-action" style="margin-left:auto;" onclick="openPassionExplorer('${p.passion}')" title="Explorer ${escapeHtml(passion.label)}">🔎</span>
     </div>
 
     ${commentsPreview ? `<div style="margin-top:8px;" onclick="openPost('${p.id}')" style="cursor:pointer;">${commentsPreview}</div>` : ""}

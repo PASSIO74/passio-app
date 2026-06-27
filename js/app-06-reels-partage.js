@@ -279,7 +279,13 @@ function renderProfileContent() {
     return;
   }
 
-  var mine = state.userPosts.filter(function(p){ return sel.has(p.profileId); });
+  // Filtrage cohérent : un profil sélectionné = sa passion. On matche par PASSION
+  // (donnée fiable sur chaque post) avec le profileId en repli. Sans ça, un post
+  // « moto » publié alors qu'un autre profil était actif gardait le profileId de
+  // ce profil et n'apparaissait jamais sous « moto » → contenu incohérent.
+  var selProfiles = (state.user.profiles || []).filter(function(pr){ return sel.has(pr.id); });
+  var selPassions = new Set(selProfiles.map(function(pr){ return pr.passion; }));
+  var mine = state.userPosts.filter(function(p){ return sel.has(p.profileId) || selPassions.has(p.passion); });
   var tab = _activeProfileTab();
 
   function emptyBlock(icon, title) {
@@ -343,36 +349,169 @@ async function _syncProfilePhoto(field, folder, dataUrl) {
   } catch (e) { console.warn("Sync photo profil échouée:", e && e.message); }
 }
 
+// ════════════════════════════════════════════════════════════════════════
+// RECADREUR DE PHOTO (vanilla, sans dépendance) — utilisé pour l'avatar, la
+// couverture et les photos de profil passion. Glisser pour déplacer, molette /
+// pince / curseur pour zoomer ; exporte un JPEG recadré à la bonne résolution.
+// passioOpenCropper(src, {aspect,outW,outH,round,title}) → Promise<dataUrl>.
+// ════════════════════════════════════════════════════════════════════════
+function passioOpenCropper(src, opts) {
+  opts = opts || {};
+  var aspect = opts.aspect || 1;
+  var outW = opts.outW || 480;
+  var outH = opts.outH || Math.round(outW / aspect);
+  var round = !!opts.round;
+  var title = opts.title || "Recadrer la photo";
+  return new Promise(function(resolve, reject) {
+    var VW = Math.min((window.innerWidth || 360) - 48, 360);
+    var VH = Math.round(VW / aspect);
+    var ov = document.createElement("div");
+    ov.className = "passio-cropper-ov";
+    ov.style.cssText = "position:fixed;inset:0;z-index:6000;background:rgba(0,0,0,0.88);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;";
+    ov.innerHTML =
+      '<div style="color:#fff;font-weight:800;font-size:16px;margin-bottom:14px;text-align:center;">' + escapeHtml(title) + '</div>'
+      + '<div id="pcropView" style="position:relative;width:' + VW + 'px;height:' + VH + 'px;overflow:hidden;border-radius:' + (round ? "50%" : "14px") + ';touch-action:none;background:#000;box-shadow:0 0 0 2px rgba(255,255,255,0.9);cursor:grab;">'
+      + '<img id="pcropImg" alt="" draggable="false" style="position:absolute;left:0;top:0;user-select:none;-webkit-user-drag:none;max-width:none;"/>'
+      + '</div>'
+      + '<div style="display:flex;align-items:center;gap:10px;width:' + VW + 'px;margin-top:16px;">'
+      + '<span style="font-size:16px;">🔍</span>'
+      + '<input id="pcropZoom" type="range" min="1" max="4" step="0.01" value="1" style="flex:1;accent-color:var(--accent);"/>'
+      + '</div>'
+      + '<div style="display:flex;gap:10px;margin-top:18px;width:' + VW + 'px;">'
+      + '<button class="btn ghost" id="pcropCancel" style="flex:1;background:rgba(255,255,255,0.12);color:#fff;border-color:rgba(255,255,255,0.25);">Annuler</button>'
+      + '<button class="btn primary" id="pcropOk" style="flex:1;">Valider</button>'
+      + '</div>'
+      + '<div style="color:rgba(255,255,255,0.6);font-size:11px;margin-top:10px;text-align:center;">Glisse pour déplacer · pince ou molette pour zoomer</div>';
+    document.body.appendChild(ov);
+
+    var img = ov.querySelector("#pcropImg");
+    var view = ov.querySelector("#pcropView");
+    var zoomEl = ov.querySelector("#pcropZoom");
+    var NW = 0, NH = 0, baseScale = 1, zoom = 1, ox = 0, oy = 0;
+
+    function clamp() {
+      var dispW = NW * baseScale * zoom, dispH = NH * baseScale * zoom;
+      ox = Math.min(0, Math.max(VW - dispW, ox));
+      oy = Math.min(0, Math.max(VH - dispH, oy));
+    }
+    function apply() {
+      clamp();
+      img.style.width = (NW * baseScale * zoom) + "px";
+      img.style.height = (NH * baseScale * zoom) + "px";
+      img.style.left = ox + "px";
+      img.style.top = oy + "px";
+    }
+    function zoomTo(nz, cx, cy) {
+      nz = Math.min(4, Math.max(1, nz));
+      var k = nz / zoom;
+      ox = cx - (cx - ox) * k; oy = cy - (cy - oy) * k;
+      zoom = nz; zoomEl.value = zoom; apply();
+    }
+    img.onload = function() {
+      NW = img.naturalWidth || 1; NH = img.naturalHeight || 1;
+      baseScale = Math.max(VW / NW, VH / NH);
+      zoom = 1;
+      ox = (VW - NW * baseScale) / 2; oy = (VH - NH * baseScale) / 2;
+      apply();
+    };
+    img.onerror = function() { ov.remove(); reject(new Error("img load failed")); };
+    img.src = src;
+
+    zoomEl.addEventListener("input", function() { zoomTo(parseFloat(zoomEl.value), VW / 2, VH / 2); });
+    view.addEventListener("wheel", function(e) {
+      e.preventDefault();
+      var rect = view.getBoundingClientRect();
+      zoomTo(zoom * (e.deltaY < 0 ? 1.08 : 0.92), e.clientX - rect.left, e.clientY - rect.top);
+    }, { passive: false });
+
+    var pts = {}, pinch = null;
+    view.addEventListener("pointerdown", function(e) {
+      try { view.setPointerCapture(e.pointerId); } catch (_) {}
+      pts[e.pointerId] = { x: e.clientX, y: e.clientY };
+      view.style.cursor = "grabbing";
+      if (Object.keys(pts).length === 2) {
+        var a = Object.values(pts);
+        pinch = { dist: Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y), zoom: zoom };
+      }
+    });
+    view.addEventListener("pointermove", function(e) {
+      if (!pts[e.pointerId]) return;
+      var prev = pts[e.pointerId];
+      if (Object.keys(pts).length === 2 && pinch) {
+        pts[e.pointerId] = { x: e.clientX, y: e.clientY };
+        var a = Object.values(pts);
+        var dist = Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y);
+        var rect = view.getBoundingClientRect();
+        zoomTo(pinch.zoom * (dist / pinch.dist), (a[0].x + a[1].x) / 2 - rect.left, (a[0].y + a[1].y) / 2 - rect.top);
+        return;
+      }
+      var dx = e.clientX - prev.x, dy = e.clientY - prev.y;
+      pts[e.pointerId] = { x: e.clientX, y: e.clientY };
+      ox += dx; oy += dy; apply();
+    });
+    function up(e) { delete pts[e.pointerId]; if (Object.keys(pts).length < 2) pinch = null; view.style.cursor = "grab"; }
+    view.addEventListener("pointerup", up);
+    view.addEventListener("pointercancel", up);
+
+    ov.querySelector("#pcropCancel").onclick = function() { ov.remove(); reject(new Error("cancelled")); };
+    ov.querySelector("#pcropOk").onclick = function() {
+      try {
+        var s = baseScale * zoom;
+        var c = document.createElement("canvas");
+        c.width = outW; c.height = outH;
+        var ctx = c.getContext("2d");
+        ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
+        ctx.drawImage(img, (-ox) / s, (-oy) / s, VW / s, VH / s, 0, 0, outW, outH);
+        var out = c.toDataURL("image/jpeg", 0.9);
+        ov.remove(); resolve(out);
+      } catch (err) { ov.remove(); reject(err); }
+    };
+  });
+}
+
+// Lit le fichier choisi, ouvre le recadreur, renvoie le dataURL recadré.
+function _readAndCrop(file, cropOpts) {
+  return new Promise(function(resolve, reject) {
+    if (!file) { reject(new Error("no file")); return; }
+    var reader = new FileReader();
+    reader.onload = function(e) { passioOpenCropper(e.target.result, cropOpts).then(resolve, reject); };
+    reader.onerror = function() { reject(reader.error); };
+    reader.readAsDataURL(file);
+  });
+}
+
 function changeCoverPhoto(event) {
   const file = event.target.files[0];
+  if (event.target) event.target.value = "";
   if (!file) return;
-  const reader = new FileReader();
-  reader.onload = function(e) {
-    _syncProfilePhoto("coverPhoto", "covers", e.target.result);
-    toast("📷 Photo de couverture mise à jour !");
-  };
-  reader.readAsDataURL(file);
+  _readAndCrop(file, { aspect: 1080 / 320, outW: 1080, outH: 320, round: false, title: "Recadre ta photo de couverture" })
+    .then(function(dataUrl) {
+      _syncProfilePhoto("coverPhoto", "covers", dataUrl);
+      toast("📷 Photo de couverture mise à jour !");
+    })
+    .catch(function() {});
 }
 
 function changeAvatarPhoto(event) {
   const file = event.target.files[0];
+  if (event.target) event.target.value = "";
   if (!file) return;
-  const reader = new FileReader();
-  reader.onload = function(e) {
-    _syncProfilePhoto("avatarPhoto", "avatars", e.target.result);
-    toast("📷 Photo de profil mise à jour !");
-  };
-  reader.readAsDataURL(file);
+  _readAndCrop(file, { aspect: 1, outW: 480, outH: 480, round: true, title: "Recadre ta photo de profil" })
+    .then(function(dataUrl) {
+      _syncProfilePhoto("avatarPhoto", "avatars", dataUrl);
+      toast("📷 Photo de profil mise à jour !");
+    })
+    .catch(function() {});
 }
 
 function changePassionPhoto(event, profileId) {
   const file = event.target.files[0];
+  if (event.target) event.target.value = "";
   if (!file) return;
-  const reader = new FileReader();
-  reader.onload = async function(e) {
+  _readAndCrop(file, { aspect: 1, outW: 480, outH: 480, round: true, title: "Recadre la photo du profil passion" })
+    .then(async function(base64) {
     const prof = state.user.profiles.find(p => p.id === profileId);
     if (!prof) return;
-    const base64 = e.target.result;
     prof.photo = base64; // cache local immédiat pour l'affichage
     saveState();
     renderProfilesScreen();
@@ -389,8 +528,8 @@ function changePassionPhoto(event, profileId) {
     }
     // Flush immédiat vers user_state (sans attendre le debounce 2500ms).
     if (typeof supaSaveUserState === "function") { try { supaSaveUserState(); } catch(_e) {} }
-  };
-  reader.readAsDataURL(file);
+    })
+    .catch(function() {});
 }
 
 function openEditMainProfile() {
@@ -502,7 +641,8 @@ function renderProfilesScreen() {
 
   list.innerHTML = state.user.profiles.map(p => {
     const passion    = passionById(p.passion);
-    const postCount  = state.userPosts.filter(up => up.profileId === p.id).length;
+    // Compte cohérent avec le filtre : posts de ce profil OU de sa passion.
+    const postCount  = state.userPosts.filter(up => up.profileId === p.id || up.passion === p.passion).length;
     const isSelected = window.profilesFilterSelection.has(p.id);
     const _pPhoto = p.photoUrl || p.photo || null;
     const hasPhoto   = !!_pPhoto;
@@ -1390,10 +1530,13 @@ async function publishPost() {
   const authorEmoji = prof?.emoji || "✨";
   const authorColor = prof?.color || "#8b5cf6";
 
+  // Rattacher le post au profil passion CHOISI (pas au profil actif) pour que le
+  // filtre de l'écran profil reste cohérent. Repli sur le profil actif.
+  const _matchProf = (state.user.profiles || []).find(function(pr){ return pr.passion === passion; });
   const post = {
     id: uid(),
     authorId: (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me",
-    profileId: state.user.currentProfileId,
+    profileId: (_matchProf && _matchProf.id) || state.user.currentProfileId,
     passion,
     mood: studioMood,
     // Une bobine est une vidéo verticale, mais marquée is_reel (→ Bobines, pas le feed)

@@ -578,12 +578,17 @@ function meOpen(mode) {
   document.getElementById("meCanvas").style.background = "#000";
   // Placeholder gardé masqué : il ne sert que de fallback si la caméra échoue.
   document.getElementById("mePlaceholder").classList.add("hidden");
-  document.getElementById("mePhTitle").textContent = (mode === "bobine")
-    ? "Ajoute une vidéo (ou une photo) pour ta bobine" : "Ajoute une photo ou une vidéo";
-  var gradBtn = document.getElementById("meGradientBtn"); if (gradBtn) gradBtn.style.display = (mode === "bobine") ? "none" : "";
-  var bgBtn = document.getElementById("meBgBtn"); if (bgBtn) bgBtn.style.display = (mode === "bobine") ? "none" : "";
-  var title = document.getElementById("meTitle"); if (title) title.textContent = (mode === "bobine") ? "Bobine" : "Story";
-  document.getElementById("mePublishBtn").textContent = (mode === "bobine") ? "Publier ma bobine" : "Publier ma story";
+  var isBob = (mode === "bobine");
+  document.getElementById("mePhTitle").textContent = isBob
+    ? "Ajoute une vidéo pour ta bobine" : "Ajoute une photo ou une vidéo";
+  // Bobine = VIDÉO uniquement (galerie filtrée sur les vidéos, pas de photo).
+  var mediaInput = document.getElementById("meMediaInput"); if (mediaInput) mediaInput.accept = isBob ? "video/*" : "image/*,video/*";
+  var galThumb = document.getElementById("meGalleryThumb"); if (galThumb) { galThumb.textContent = isBob ? "🎬" : "🖼️"; galThumb.setAttribute("aria-label", isBob ? "Choisir une vidéo" : "Choisir dans la galerie"); }
+  var capHint = document.getElementById("meCaptureHint"); if (capHint) capHint.textContent = isBob ? "Appuie pour démarrer la vidéo · appuie de nouveau pour arrêter" : "Appuie pour une photo · maintiens pour une vidéo";
+  var gradBtn = document.getElementById("meGradientBtn"); if (gradBtn) gradBtn.style.display = isBob ? "none" : "";
+  var bgBtn = document.getElementById("meBgBtn"); if (bgBtn) bgBtn.style.display = isBob ? "none" : "";
+  var title = document.getElementById("meTitle"); if (title) title.textContent = isBob ? "Bobine" : "Story";
+  document.getElementById("mePublishBtn").textContent = isBob ? "Publier ma bobine" : "Publier ma story";
   // Phase capture par défaut (le loader caméra s'affiche le temps de l'init).
   ed.classList.remove("phase-edit", "me-recording", "me-cam-on", "me-no-cam");
   ed.classList.add("open", "phase-capture");
@@ -677,6 +682,8 @@ function meFlipCamera() {
 
 // Capture photo : on dessine l'image de la vidéo dans un canvas.
 function meCapturePhoto() {
+  // Une bobine est une vidéo : pas de capture photo.
+  if (meState.mode === "bobine") { toast("Une bobine est une vidéo : appuie pour filmer"); return; }
   var v = document.getElementById("meCamVideo");
   if (!v || !v.videoWidth) { mePickMedia(); return; }
   try {
@@ -713,6 +720,7 @@ function meStartRecording() {
   try { meCam.recorder.start(); } catch(e) { return; }
   meCam.recording = true; meCam.recStart = Date.now();
   var ed = document.getElementById("mediaEditor"); if (ed) ed.classList.add("me-recording");
+  var capHint = document.getElementById("meCaptureHint"); if (capHint && meState.mode === "bobine") capHint.textContent = "● Enregistrement… appuie pour arrêter";
   meCam.recTimer = setInterval(_meUpdateRecTime, 200);
   meCam.maxTimer = setTimeout(function() { meStopRecording(); }, 60000); // 60 s max
 }
@@ -723,6 +731,7 @@ function meStopRecording(silent) {
   meCam._silent = !!silent;
   try { if (meCam.recorder && meCam.recorder.state !== "inactive") meCam.recorder.stop(); } catch(e) {}
   var ed = document.getElementById("mediaEditor"); if (ed) ed.classList.remove("me-recording");
+  var capHint = document.getElementById("meCaptureHint"); if (capHint && meState.mode === "bobine") capHint.textContent = "Appuie pour démarrer la vidéo · appuie de nouveau pour arrêter";
 }
 function _meUpdateRecTime() {
   var el = document.getElementById("meRecTime"); if (!el) return;
@@ -732,7 +741,10 @@ function _meUpdateRecTime() {
 function _meOnRecordingStop() {
   if (meCam._silent) { meCam._silent = false; return; }
   var dur = Date.now() - meCam.recStart;
-  if (dur < 700 || !meCam.chunks.length) { meCapturePhoto(); return; } // appui bref → photo
+  if (meState.mode === "bobine") {
+    // Bobine = vidéo only : un enregistrement trop court ne bascule PAS en photo.
+    if (dur < 800 || !meCam.chunks.length) { toast("Vidéo trop courte — filme un peu plus longtemps"); return; }
+  } else if (dur < 700 || !meCam.chunks.length) { meCapturePhoto(); return; } // story : appui bref → photo
   var blob = new Blob(meCam.chunks, { type: (meCam.chunks[0] && meCam.chunks[0].type) || "video/webm" });
   var r = new FileReader();
   r.onload = function() { meSetMedia(r.result, "video"); };
@@ -750,21 +762,34 @@ function _meBindShutter() {
     e.preventDefault();
     var ed = document.getElementById("mediaEditor");
     if (!ed || !ed.classList.contains("me-cam-on")) { mePickMedia(); return; }
+    // Bobine = vidéo only : tap-pour-démarrer / tap-pour-arrêter (géré au pointerup).
+    // Plus de maintien (le pointercancel mobile le coupait au bout de ~3 s).
+    if (meState.mode === "bobine") return;
     held = false;
     try { sh.setPointerCapture(e.pointerId); } catch(_) {}
     meCam.holdTimer = setTimeout(function() { held = true; meStartRecording(); }, 320);
   });
   function end(e) {
     if (e) { e.preventDefault(); try { sh.releasePointerCapture(e.pointerId); } catch(_) {} }
-    clearTimeout(meCam.holdTimer);
     var ed = document.getElementById("mediaEditor");
     if (!ed || !ed.classList.contains("me-cam-on")) return;
+    if (meState.mode === "bobine") {
+      _meSwallowNextClick();
+      if (meCam.recording) meStopRecording(); else meStartRecording();
+      return;
+    }
+    clearTimeout(meCam.holdTimer);
     if (meCam.recording) { _meSwallowNextClick(); meStopRecording(); }
     else if (!held) { _meSwallowNextClick(); meCapturePhoto(); }
     held = false;
   }
   sh.addEventListener("pointerup", end);
-  sh.addEventListener("pointercancel", function(e) { if (meCam.recording) end(e); else clearTimeout(meCam.holdTimer); });
+  sh.addEventListener("pointercancel", function(e) {
+    // En bobine, on IGNORE pointercancel : il ne doit jamais arrêter la vidéo
+    // (c'est ce qui la coupait prématurément). On n'arrête qu'au tap suivant.
+    if (meState.mode === "bobine") return;
+    if (meCam.recording) end(e); else clearTimeout(meCam.holdTimer);
+  });
 }
 
 function mePickMedia() { var i = document.getElementById("meMediaInput"); if (i) i.click(); }
@@ -786,6 +811,8 @@ async function meOnMedia(ev) {
   if (!file) return;
   var isVideo = (file.type || "").indexOf("video/") === 0;
   if (!isVideo && (file.type || "").indexOf("image/") !== 0) { toast("Photo ou vidéo uniquement"); return; }
+  // Une bobine est une vidéo : on refuse les photos même via la galerie.
+  if (meState.mode === "bobine" && !isVideo) { toast("Une bobine est une vidéo — choisis une vidéo"); return; }
   // Les vidéos de galerie ne sont pas ré-encodées : on refuse celles trop
   // lourdes (un fichier de 30 Mo a rempli 1/3 du Storage en beta). 25 Mo max.
   if (isVideo && file.size > 25 * 1024 * 1024) {
@@ -968,7 +995,7 @@ function _meOverlaysData() {
 async function mePublish() {
   // Anti clic-fantôme : ignore une publication déclenchée dans la foulée d'une capture.
   if (meState._enteredEditAt && (Date.now() - meState._enteredEditAt) < 700) return;
-  if (meState.mode === "bobine" && !meState.media) { toast("Ajoute une vidéo ou une photo pour ta bobine"); return; }
+  if (meState.mode === "bobine" && meState.mediaType !== "video") { toast("Une bobine est une vidéo — filme ou choisis une vidéo"); return; }
   var p = (typeof currentProfile === "function" && currentProfile()) || {};
   var authorId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
   var overlays = _meOverlaysData();
@@ -1393,6 +1420,7 @@ function openNotifTarget(n) {
       if ((from || ref) && typeof openUserProfile === "function") openUserProfile(from || ref);
       break;
     case "event_join":
+    case "event_comment":
       if (ref && typeof openEventDetails === "function") openEventDetails(ref);
       break;
     case "message":
@@ -2482,6 +2510,28 @@ async function supaReactCdvLive(liveId, emoji) {
   catch(e) { console.warn("CDV reaction:", e); }
 }
 
+// ── Commentaires d'événements IRL (table event_comments, cross-compte) ──
+async function supaAddEventComment(eventId, text) {
+  if (!eventId || !text) return null;
+  try {
+    var id = "ec_" + uid();
+    var name = (state.user && state.user.general && state.user.general.username) || (state.user && state.user.name) || "Moi";
+    const { error } = await supa.from("event_comments").insert({
+      id: id, event_id: eventId, author_id: MY_UID, author_name: name, text: text,
+    });
+    if (error) { console.warn("event comment:", error.message); return null; }
+    return id;
+  } catch(e) { console.warn("event comment:", e); return null; }
+}
+async function supaLoadEventComments(eventId) {
+  if (!eventId) return [];
+  try {
+    const { data, error } = await supa.from("event_comments").select("*").eq("event_id", eventId).order("created_at", { ascending: true });
+    if (error) { console.warn("load event comments:", error.message); return []; }
+    return (data || []).map(c => ({ id: c.id, authorId: c.author_id, author: c.author_name || "Anonyme", text: c.text || "", at: new Date(c.created_at).getTime() }));
+  } catch(e) { console.warn("load event comments:", e); return []; }
+}
+
 async function supaFollowCdvLive(liveId) {
   try { await supa.from("cdv_live_followers").insert({ live_id: liveId, user_id: MY_UID }); }
   catch(e) { console.warn("CDV follow:", e); }
@@ -3353,6 +3403,22 @@ function supaSubscribe() {
     })
     .subscribe();
 
+  // Commentaires d'événements IRL en temps réel : si la fiche de l'événement
+  // concerné est ouverte, on recharge le fil. Léger (1 reload ciblé).
+  supa.channel("realtime:event_comments")
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "event_comments" }, payload => {
+      const r = payload.new;
+      if (!r || r.author_id === MY_UID) return;
+      try {
+        const page = document.getElementById("eventDetailPage");
+        const open = page && page.style.display !== "none" && document.getElementById("eventCommentsList");
+        if (open && typeof _loadEventComments === "function" && window._openEventDetailId === r.event_id) {
+          _loadEventComments(r.event_id);
+        }
+      } catch(e) {}
+    })
+    .subscribe();
+
   // CDV Lives en temps réel : 1 canal pour les 5 tables (étapes / commentaires /
   // réactions / suivis). Handler debounced → refresh liste + viewer ouvert.
   supa.channel("realtime:cdv_lives")
@@ -3441,7 +3507,7 @@ async function supaLoadJoinedEvents() {
 // Emoji d'une notif dérivé de son `kind` (pas de jointure profiles : voir
 // supaLoadNotifications).
 function _notifEmoji(kind) {
-  return ({ like: "❤️", comment: "💬", follow: "➕", message: "✉️", mention: "📣", reaction: "😊", event_join: "🤝" })[kind] || "✨";
+  return ({ like: "❤️", comment: "💬", follow: "➕", message: "✉️", mention: "📣", reaction: "😊", event_join: "🤝", event_comment: "💬" })[kind] || "✨";
 }
 
 async function supaLoadNotifications() {

@@ -1576,6 +1576,7 @@ function openEventDetails(id) {
 
   const ev = allEvents().find(e => e.id === id);
   if (!ev) return;
+  window._openEventDetailId = id; // pour le refresh realtime des commentaires
   const passion = passionById(ev.passion) || { emoji: "✨", label: "Passion" };
   const organizer = userById(ev.organizerId) || { name: currentProfile()?.name || "Organisateur", profileEmoji: "✨", avatar: "#8b5cf6" };
   const joined = (state.user.joinedEvents || []).includes(id);
@@ -1669,8 +1670,18 @@ function openEventDetails(id) {
     <div class="event-detail-section-title">Participants (${atts.length}${maxStr})</div>
     ${spotsHtml ? `<div style="margin-bottom:8px;">${spotsHtml}</div>` : ""}
     <div class="event-detail-participants">${participantsHtml || "<span style='font-size:13px;color:var(--muted);'>Aucun inscrit pour l'instant — sois le premier !</span>"}</div>
+
+    <div class="event-detail-section-title">💬 Commentaires</div>
+    <div id="eventCommentsList" style="display:flex;flex-direction:column;gap:10px;margin-bottom:10px;">
+      <div style="font-size:12px;color:var(--muted);">Chargement…</div>
+    </div>
+    <div style="display:flex;gap:6px;">
+      <input type="text" class="input" id="eventCommentInput" placeholder="Écris un commentaire…" maxlength="500" style="flex:1;font-size:13px;padding:10px 12px;" onkeypress="if(event.key==='Enter')addEventComment('${ev.id}')"/>
+      <button class="btn primary" onclick="addEventComment('${ev.id}')" style="font-size:13px;padding:10px 14px;">Envoyer</button>
+    </div>
   `;
 
+  _loadEventComments(ev.id);
   _refreshEventDetailCta(ev, joined);
 
   const shareBtn = document.getElementById("eventDetailShareBtn");
@@ -1710,7 +1721,7 @@ function toggleJoinEventDetail(id) {
 function closeEventDetail() {
   const page = document.getElementById("eventDetailPage");
   if (page) page.style.display = "none";
-
+  window._openEventDetailId = null;
 }
 
 // Rappel in-app pour les événements rejoints qui ont lieu dans les prochaines
@@ -1798,6 +1809,73 @@ function shareEvent(id) {
     );
   } else {
     toast("🔗 " + url);
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// COMMENTAIRES D'ÉVÉNEMENTS IRL (cross-compte via table event_comments).
+// Cache mémoire par événement pour un rendu optimiste sans flash de chargement.
+// ════════════════════════════════════════════════════════════════════════
+var _eventCommentsCache = {};
+
+async function _loadEventComments(eventId) {
+  var box = document.getElementById("eventCommentsList");
+  if (!box) return;
+  var list = [];
+  if (typeof supaLoadEventComments === "function" && window._supaReal) {
+    try { list = await supaLoadEventComments(eventId); } catch (e) {}
+  }
+  // Conserve les commentaires optimistes locaux non encore renvoyés par le serveur.
+  var localOnly = (_eventCommentsCache[eventId] || []).filter(function (lc) {
+    return String(lc.id).indexOf("ec_local_") === 0 && !list.some(function (s) { return s.text === lc.text && Math.abs(s.at - lc.at) < 60000; });
+  });
+  _eventCommentsCache[eventId] = list.concat(localOnly);
+  _renderEventComments(eventId);
+}
+
+function _renderEventComments(eventId) {
+  var box = document.getElementById("eventCommentsList");
+  if (!box) return;
+  var list = _eventCommentsCache[eventId] || [];
+  if (!list.length) {
+    box.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:4px 0;">Aucun commentaire — lance la conversation !</div>';
+    return;
+  }
+  box.innerHTML = list.map(function (c) {
+    var u = userById(c.authorId) || {};
+    var av = { avatar: u.avatar || "#8b5cf6", profileEmoji: u.profileEmoji || "💬", name: c.author, photoUrl: u.photoUrl || null };
+    return '<div style="display:flex;gap:8px;align-items:flex-start;">'
+      + '<div class="avatar sm" style="background:' + avatarBg(av) + ';flex-shrink:0;cursor:pointer;" onclick="openUserProfile(\'' + c.authorId + '\')">' + avatarInner(av) + '</div>'
+      + '<div style="flex:1;min-width:0;">'
+      + '<div style="font-size:12px;font-weight:700;color:var(--text);">' + escapeHtml(c.author || "Anonyme") + '</div>'
+      + '<div style="font-size:12.5px;color:var(--text-dim);line-height:1.45;word-break:break-word;">' + escapeHtml(c.text || "") + '</div>'
+      + '<div style="font-size:10px;color:var(--muted);margin-top:2px;">' + fmtTime(c.at) + '</div>'
+      + '</div></div>';
+  }).join("");
+}
+
+async function addEventComment(eventId) {
+  var inp = document.getElementById("eventCommentInput");
+  if (!inp) return;
+  var text = inp.value.trim();
+  if (!text) return;
+  inp.value = "";
+  var ev = allEvents().find(function (e) { return e.id === eventId; });
+  var name = (state.user.general && state.user.general.username) || state.user.name || "Moi";
+  var myId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
+  var optimistic = { id: "ec_local_" + Date.now(), authorId: myId, author: name, text: text, at: Date.now() };
+  _eventCommentsCache[eventId] = (_eventCommentsCache[eventId] || []).concat([optimistic]);
+  _renderEventComments(eventId);
+  if (typeof grantReward === "function") { try { grantReward("comment"); } catch (e) {} }
+  if (typeof supaAddEventComment === "function" && window._supaReal) {
+    try {
+      var realId = await supaAddEventComment(eventId, text);
+      if (realId) optimistic.id = realId;
+      // Notifier l'organisateur (interaction cross-compte sur SON événement).
+      if (ev && ev.organizerId && ev.organizerId !== myId && typeof supaInsertNotif === "function") {
+        supaInsertNotif(ev.organizerId, "event_comment", eventId, "a commenté ton événement");
+      }
+    } catch (e) {}
   }
 }
 
