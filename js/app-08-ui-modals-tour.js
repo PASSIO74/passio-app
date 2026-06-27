@@ -2628,6 +2628,34 @@ async function supaLoadEventComments(eventId) {
     return (data || []).map(c => ({ id: c.id, authorId: c.author_id, author: c.author_name || "Anonyme", text: c.text || "", at: new Date(c.created_at).getTime() }));
   } catch(e) { console.warn("load event comments:", e); return []; }
 }
+// ── Likes cross-compte sur les commentaires (table comment_likes) ──
+async function supaLikeComment(commentId) {
+  if (!commentId || typeof MY_UID === "undefined" || !MY_UID) return;
+  try { await supa.from("comment_likes").insert({ comment_id: commentId, user_id: MY_UID }); }
+  catch(e) { /* doublon PK ignoré */ }
+}
+async function supaUnlikeComment(commentId) {
+  if (!commentId || typeof MY_UID === "undefined" || !MY_UID) return;
+  try { await supa.from("comment_likes").delete().eq("comment_id", commentId).eq("user_id", MY_UID); }
+  catch(e) {}
+}
+// Charge les likes d'un lot de commentaires (1 requête) → { id: {count, liked} }.
+async function supaLoadCommentLikes(commentIds) {
+  if (!commentIds || !commentIds.length) return {};
+  try {
+    const { data, error } = await supa.from("comment_likes").select("comment_id,user_id").in("comment_id", commentIds);
+    if (error) { console.warn("comment likes:", error.message); return {}; }
+    var out = {};
+    commentIds.forEach(function(id){ out[id] = { count: 0, liked: false }; });
+    (data || []).forEach(function(r){
+      var o = out[r.comment_id] || (out[r.comment_id] = { count: 0, liked: false });
+      o.count++;
+      if (r.user_id === MY_UID) o.liked = true;
+    });
+    return out;
+  } catch(e) { console.warn("comment likes:", e); return {}; }
+}
+
 // Compte des commentaires pour un lot d'événements (1 requête) → { eventId: n }.
 async function supaLoadEventCommentCounts(eventIds) {
   if (!eventIds || !eventIds.length) return {};

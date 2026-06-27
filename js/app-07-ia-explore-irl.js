@@ -1851,6 +1851,10 @@ async function _loadEventComments(eventId) {
   });
   _eventCommentsCache[eventId] = list.concat(localOnly);
   _renderEventComments(eventId);
+  // Likes cross-compte : hydrate les compteurs réels puis re-render.
+  if (typeof hydrateCommentLikes === "function") {
+    hydrateCommentLikes(_eventCommentsCache[eventId].map(function(c){ return c.id; }), function(){ _renderEventComments(eventId); });
+  }
 }
 
 function setEventCommentSort(mode) {

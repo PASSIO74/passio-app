@@ -1501,6 +1501,14 @@ function openCdvLiveViewer(liveId) {
       startCdvLiveRefresh(liveId);
     }
   }
+  // Likes cross-compte des commentaires : hydrate puis re-render le bloc seul.
+  if (typeof hydrateCommentLikes === "function") {
+    var _cids = (live.comments || []).map(function(c){ return c.id || (c.at + "_" + String(c.text || "").slice(0, 10)); });
+    hydrateCommentLikes(_cids, function(){
+      var box = document.getElementById("cdvCommentsBox");
+      if (box && document.querySelector('.modal[data-live-id="' + liveId + '"]')) box.innerHTML = _cdvCommentsBoxHtml(live);
+    });
+  }
 }
 
 function toggleFollowCdvLive(liveId, btn) {

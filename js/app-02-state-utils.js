@@ -2044,18 +2044,14 @@ function renderPostCover(p, passion) {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// LIKES LOCAUX SUR LES COMMENTAIRES (IRL & CDV) — persistés par appareil dans
-// localStorage (passio_comment_likes). Partagé par les fils IRL et CDV.
+// LIKES CROSS-COMPTE SUR LES COMMENTAIRES (IRL & CDV) — table comment_likes.
+// Compteurs partagés et visibles par TOUS. Cache mémoire window._commentLikeData
+// = { id: {count, liked} }, hydraté depuis Supabase à l'ouverture d'un fil.
 // + tri des commentaires (récents / plus aimés).
 // ════════════════════════════════════════════════════════════════════════
-function _commentLikeStore() {
-  try { return JSON.parse(localStorage.getItem("passio_comment_likes") || "{}"); } catch (e) { return {}; }
-}
-function _saveCommentLikeStore(s) {
-  try { localStorage.setItem("passio_comment_likes", JSON.stringify(s)); } catch (e) {}
-}
 function commentLikeInfo(id) {
-  var s = _commentLikeStore(); return s[id] || { liked: false, count: 0 };
+  window._commentLikeData = window._commentLikeData || {};
+  return window._commentLikeData[id] || { liked: false, count: 0 };
 }
 function commentLikeBtnHtml(id) {
   var info = commentLikeInfo(id);
@@ -2063,16 +2059,31 @@ function commentLikeBtnHtml(id) {
 }
 function toggleCommentLike(id, btn, event) {
   if (event && event.stopPropagation) event.stopPropagation();
-  var s = _commentLikeStore();
-  var cur = s[id] || { liked: false, count: 0 };
+  window._commentLikeData = window._commentLikeData || {};
+  var cur = window._commentLikeData[id] || { liked: false, count: 0 };
   cur.liked = !cur.liked;
   cur.count = Math.max(0, (cur.count || 0) + (cur.liked ? 1 : -1));
-  s[id] = cur; _saveCommentLikeStore(s);
+  window._commentLikeData[id] = cur;
   if (btn) {
     btn.style.color = cur.liked ? "#ef4444" : "var(--muted)";
     btn.innerHTML = (cur.liked ? "❤️" : "🤍") + ' <span>' + cur.count + '</span>';
   }
+  // Sync cross-compte (optimiste : l'UI est déjà à jour).
+  if (cur.liked) { if (typeof supaLikeComment === "function") supaLikeComment(id); }
+  else { if (typeof supaUnlikeComment === "function") supaUnlikeComment(id); }
   return false;
+}
+// Hydrate les compteurs réels depuis Supabase pour un lot d'ids, puis re-render.
+async function hydrateCommentLikes(ids, rerender) {
+  ids = (ids || []).filter(Boolean);
+  if (!ids.length || typeof supaLoadCommentLikes !== "function" || !window._supaReal) return;
+  try {
+    var data = await supaLoadCommentLikes(ids);
+    if (!data) return;
+    window._commentLikeData = window._commentLikeData || {};
+    Object.keys(data).forEach(function(id) { window._commentLikeData[id] = data[id]; });
+    if (typeof rerender === "function") rerender();
+  } catch (e) {}
 }
 function sortComments(list, mode) {
   var arr = (list || []).slice();
