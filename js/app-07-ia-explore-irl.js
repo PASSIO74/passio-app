@@ -1671,7 +1671,7 @@ function openEventDetails(id) {
 
     <div style="display:flex;gap:8px;margin:10px 0;">
       <button class="btn ghost block" onclick="downloadEventIcs('${ev.id}')" style="font-size:12px;">📅 Ajouter au calendrier</button>
-      <button class="btn ghost block" onclick="shareEvent('${ev.id}')" style="font-size:12px;">🔗 Partager</button>
+      <button class="btn ghost block" onclick="shareEvent('${ev.id}')" style="font-size:12px;">${shareIconSvg(14)} Partager</button>
     </div>
 
     <div class="event-detail-info-card">${infoRows}</div>

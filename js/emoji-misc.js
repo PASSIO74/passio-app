@@ -534,7 +534,25 @@ function showEmojiPickerForComment(postId, commentId, event) {
     document.removeEventListener("click", closeListener);
   };
 
+  // Onglet GIF intégré au picker emoji (réaction GIF accessible depuis le même
+  // panneau → on retire le bouton 🎬 séparé des actions de commentaire).
+  var gifTab = document.createElement("button");
+  gifTab.type = "button";
+  gifTab.innerHTML = "🎬 GIF";
+  gifTab.title = "Réagir avec un GIF";
+  gifTab.style.cssText = "border:1px solid var(--border);background:transparent;color:var(--text);font-size:12px;font-weight:700;padding:3px 9px;border-radius:999px;cursor:pointer;flex-shrink:0;";
+  gifTab.onmouseover = function() { this.style.background = "rgba(124,58,237,0.15)"; this.style.borderColor = "var(--accent)"; };
+  gifTab.onmouseout = function() { this.style.background = "transparent"; this.style.borderColor = "var(--border)"; };
+  gifTab.onclick = function(evt) {
+    evt.stopPropagation();
+    evt.preventDefault();
+    panel.remove();
+    try { document.removeEventListener("click", closeListener); } catch(e) {}
+    showGifPickerForComment(postId, commentId, evt);
+  };
+
   previewRow.appendChild(previewSpan);
+  previewRow.appendChild(gifTab);
   previewRow.appendChild(validateBtn);
   panel.appendChild(previewRow);
 
@@ -717,7 +735,25 @@ function showEmojiPickerForPost(postId, event) {
     document.removeEventListener("click", closeListener);
   };
 
+  // Onglet GIF intégré au picker emoji du post (→ on retire le 🎬 séparé de la
+  // barre d'actions du post).
+  var gifTab = document.createElement("button");
+  gifTab.type = "button";
+  gifTab.innerHTML = "🎬 GIF";
+  gifTab.title = "Réagir avec un GIF";
+  gifTab.style.cssText = "border:1px solid var(--border);background:transparent;color:var(--text);font-size:12px;font-weight:700;padding:3px 9px;border-radius:999px;cursor:pointer;flex-shrink:0;";
+  gifTab.onmouseover = function() { this.style.background = "rgba(124,58,237,0.15)"; this.style.borderColor = "var(--accent)"; };
+  gifTab.onmouseout = function() { this.style.background = "transparent"; this.style.borderColor = "var(--border)"; };
+  gifTab.onclick = function(evt) {
+    evt.stopPropagation();
+    evt.preventDefault();
+    panel.remove();
+    try { document.removeEventListener("click", closeListener); } catch(e) {}
+    showGifPickerForPost(postId, evt);
+  };
+
   previewRow.appendChild(previewSpan);
+  previewRow.appendChild(gifTab);
   previewRow.appendChild(validateBtn);
   panel.appendChild(previewRow);
 

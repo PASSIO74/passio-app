@@ -1,3 +1,13 @@
+// Icône de partage UNIFIÉE (« share » à nœuds reliés) — utilisée partout :
+// posts, bobines, lives, profils, événements. Remplace l'ancien mélange
+// 📤 / 🔁 / 🔗 / boîte+flèche. Hérite de la couleur via currentColor.
+function shareIconSvg(size) {
+  var s = size || 18;
+  return '<svg class="share-ico" viewBox="0 0 24 24" width="' + s + '" height="' + s + '" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+    + '<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>'
+    + '<line x1="8.6" y1="10.7" x2="15.4" y2="6.3"/><line x1="8.6" y1="13.3" x2="15.4" y2="17.7"/></svg>';
+}
+
 function defaultState() {
   const seed = buildSeed();
 
@@ -2238,8 +2248,7 @@ function renderPostHTML(p) {
             ${cLiked ? "❤️" : "🤍"} ${cLikes}
           </span>
           <span class="comment-action" onclick="return replyToComment('${p.id}','${c.id}','${escapeHtml(cu.name)}', event);" title="Répondre">💬</span>
-          <span class="comment-action" onclick="return showEmojiPickerForComment('${p.id}','${c.id}', event);" title="Réagir">😊</span>
-          <span class="comment-action" onclick="return showGifPickerForComment('${p.id}','${c.id}', event);" title="GIF">🎬</span>
+          <span class="comment-action" onclick="return showEmojiPickerForComment('${p.id}','${c.id}', event);" title="Emoji & GIF">😊</span>
           ${cReplies.length > 0 ? `<span class="comment-reply-count" onclick="event.stopPropagation();openComments('${p.id}');return false;">▼ ${cReplies.length} réponse${cReplies.length > 1 ? "s" : ""}</span>` : ""}
         </div>
       </div>
@@ -2282,10 +2291,9 @@ function renderPostHTML(p) {
         ${liked ? "❤️" : "🤍"} ${p.likes || 0}
       </span>
       <span class="post-action" onclick="openComments('${p.id}')">💬 ${(p.comments || []).length}</span>
-      <span class="post-action" onclick="return showEmojiPickerForPost('${p.id}', event);" title="Réagir">😊</span>
-      <span class="post-action" onclick="return showGifPickerForPost('${p.id}', event);" title="GIF">🎬</span>
+      <span class="post-action" onclick="return showEmojiPickerForPost('${p.id}', event);" title="Emoji & GIF">😊</span>
       <span class="post-action" onclick="event.stopPropagation();sharePost('${p.id}')" title="Partager" aria-label="Partager">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7"/><path d="M16 6l-4-4-4 4"/><path d="M12 2v13"/></svg>
+        ${shareIconSvg(18)}
       </span>
     </div>
 
@@ -2375,8 +2383,7 @@ async function openPost(id) {
             ${cLiked ? "❤️" : "🤍"} ${cLikes}
           </span>
           <span class="comment-action" onclick="return replyToComment('${id}','${c.id}','${escapeHtml(cName)}', event);" title="Répondre">💬</span>
-          <span class="comment-action" onclick="return showEmojiPickerForComment('${id}','${c.id}', event);" title="Réagir">😊</span>
-          <span class="comment-action" onclick="return showGifPickerForComment('${id}','${c.id}', event);" title="GIF">🎬</span>
+          <span class="comment-action" onclick="return showEmojiPickerForComment('${id}','${c.id}', event);" title="Emoji & GIF">😊</span>
           ${cReplies.length > 0 ? `<span class="comment-reply-count" onclick="return toggleCommentReplies('${c.id}', event);">▼ ${cReplies.length} réponse${cReplies.length > 1 ? "s" : ""}</span>` : ""}
           ${(c.emojis || []).length > 0 ? `<span class="comment-emoji-count" onclick="return toggleCommentEmojis('${c.id}', event);">${(c.emojis || []).length} emoji</span>` : ""}
         </div>
@@ -2436,10 +2443,9 @@ async function openPost(id) {
           ${liked ? "❤️" : "🤍"} ${post.likes || 0}
         </span>
         <span class="post-action" onclick="openComments('${id}')">💬 ${(post.comments||[]).length}</span>
-        <span class="post-action" onclick="return showEmojiPickerForPost('${id}', event);" title="Réagir">😊</span>
-        <span class="post-action" onclick="return showGifPickerForPost('${id}', event);" title="GIF">🎬</span>
+        <span class="post-action" onclick="return showEmojiPickerForPost('${id}', event);" title="Emoji & GIF">😊</span>
         <span class="post-action" onclick="event.stopPropagation();sharePost('${id}')" title="Partager" aria-label="Partager">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7"/><path d="M16 6l-4-4-4 4"/><path d="M12 2v13"/></svg>
+          ${shareIconSvg(18)}
         </span>
       </div>
     </div>

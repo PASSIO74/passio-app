@@ -192,8 +192,7 @@ function _renderCommentsList(allComments, postId) {
             ${cLiked ? "❤️" : "🤍"} ${cLikes}
           </span>
           <span class="comment-action" onclick="return replyToComment('${postId}','${c.id}','${escapeHtml(name)}', event);" title="Répondre">💬</span>
-          <span class="comment-action" onclick="return showEmojiPickerForComment('${postId}','${c.id}', event);" title="Réagir">😊</span>
-          <span class="comment-action" onclick="return showGifPickerForComment('${postId}','${c.id}', event);" title="GIF">🎬</span>
+          <span class="comment-action" onclick="return showEmojiPickerForComment('${postId}','${c.id}', event);" title="Emoji & GIF">😊</span>
           ${cReplies.length > 0 ? `<span class="comment-reply-count" onclick="return toggleCommentReplies('${c.id}', event);">▼ ${cReplies.length} réponse${cReplies.length > 1 ? "s" : ""}</span>` : ""}
         </div>
         ${cReplies.length > 0 ? `<div class="comment-replies" id="replies-${c.id}" style="display:none;">${cReplies.map(r => {
@@ -599,8 +598,8 @@ function submitCommentSheet(threadId) {
 // ════════════════════════════════════════════════════════════════════════
 function _cmtComposerToolsHtml(inputId, submitFn, submitArg) {
   var arg = submitArg != null ? "'" + String(submitArg).replace(/'/g, "\\'") + "'" : "null";
-  return '<button type="button" class="cmt-tool-btn" title="Emoji" aria-label="Ajouter un emoji" onclick="cmtComposerEmoji(\'' + inputId + '\',event)">😊</button>'
-       + '<button type="button" class="cmt-tool-btn" title="Envoyer un GIF" aria-label="Envoyer un GIF" onclick="cmtComposerGif(\'' + inputId + '\',event,\'' + submitFn + '\',' + arg + ')">🎬</button>';
+  // UN SEUL bouton 😊 (toolbar allégée) : le panneau emoji contient un onglet GIF.
+  return '<button type="button" class="cmt-tool-btn" title="Emoji & GIF" aria-label="Ajouter un emoji ou un GIF" onclick="cmtComposerEmoji(\'' + inputId + '\',event,\'' + submitFn + '\',' + arg + ')">😊</button>';
 }
 
 function _cmtInsertAtCursor(inp, text) {
@@ -616,12 +615,13 @@ function _cmtInsertAtCursor(inp, text) {
   if (typeof autoResizeTextarea === "function") { try { autoResizeTextarea(inp); } catch (e) {} }
 }
 
-function cmtComposerEmoji(inputId, event) {
+function cmtComposerEmoji(inputId, event, submitFn, submitArg) {
   if (event) { event.stopPropagation(); event.preventDefault(); }
   var old = document.getElementById("cmt-emoji-composer");
   if (old) { old.remove(); return false; } // toggle
   var inp = document.getElementById(inputId);
   if (!inp) return false;
+  var btnOpener = event && (event.currentTarget || event.target);
   var emojis = window._PASSIO_EMOJI_LIST
     || ["😀","😂","😍","🥰","😎","😭","😡","👍","🙏","🔥","❤️","🎉","✨","💯","😅","🤔","😴","🥳","😇","🙌","👏","😢","😱","🤗","😋","🤩","😉","😘","🤤","😏"];
   var panel = document.createElement("div");
@@ -629,7 +629,32 @@ function cmtComposerEmoji(inputId, event) {
   // z-index 100002 : AU-DESSUS du .modal-backdrop (10001, viewer CDV) et de la
   // feuille de réponse .cmt-sheet-ov (10001) d'où ce panel peut être ouvert,
   // sinon il s'affiche en arrière-plan (bug IRL/CDV).
-  panel.style.cssText = "position:fixed;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:8px;z-index:100002;box-shadow:0 4px 20px rgba(0,0,0,0.25);width:264px;display:flex;flex-wrap:wrap;gap:4px;max-height:200px;overflow-y:auto;";
+  panel.style.cssText = "position:fixed;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:8px;z-index:100002;box-shadow:0 4px 20px rgba(0,0,0,0.25);width:264px;display:flex;flex-wrap:wrap;gap:4px;max-height:220px;overflow-y:auto;";
+  // En-tête : libellé « Emoji » + onglet « 🎬 GIF » (le GIF vit DANS le panneau
+  // emoji → toolbar du composeur allégée à un seul bouton).
+  var header = document.createElement("div");
+  header.style.cssText = "flex-basis:100%;display:flex;align-items:center;justify-content:space-between;padding:2px 2px 6px;border-bottom:1px solid var(--border);margin-bottom:4px;position:sticky;top:-8px;background:var(--bg-card);";
+  var hLabel = document.createElement("span");
+  hLabel.textContent = "Emoji";
+  hLabel.style.cssText = "font-size:12px;font-weight:700;color:var(--muted);";
+  var gifTab = document.createElement("button");
+  gifTab.type = "button";
+  gifTab.innerHTML = "🎬 GIF";
+  gifTab.title = "Envoyer un GIF";
+  gifTab.style.cssText = "border:1px solid var(--border);background:var(--bg-soft,transparent);color:var(--text);font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;cursor:pointer;";
+  gifTab.onmouseover = function () { this.style.background = "rgba(124,58,237,0.15)"; this.style.borderColor = "var(--accent)"; };
+  gifTab.onmouseout = function () { this.style.background = "var(--bg-soft,transparent)"; this.style.borderColor = "var(--border)"; };
+  gifTab.onclick = function (ev) {
+    ev.stopPropagation();
+    panel.remove();
+    // Positionner le panneau GIF par rapport au bouton 😊 d'origine (le bouton
+    // onglet est détaché après panel.remove → son rect serait vide).
+    var fakeEv = { stopPropagation: function () {}, preventDefault: function () {}, currentTarget: btnOpener };
+    cmtComposerGif(inputId, fakeEv, submitFn, submitArg);
+  };
+  header.appendChild(hLabel);
+  header.appendChild(gifTab);
+  panel.appendChild(header);
   emojis.forEach(function (e) {
     var b = document.createElement("span");
     b.textContent = e;
@@ -1582,7 +1607,7 @@ async function openUserProfile(authorId, source) {
     \
     <!-- ACTIONS RAPIDES -->\
     <div style="display:flex;gap:8px;margin-bottom:16px;">\
-      <button class="btn ghost" onclick="shareUserProfile(\'' + authorId + '\',\'' + escapeHtml(user.name || "") + '\')" style="flex:1;font-size:11px;padding:8px;">📤 Partager</button>\
+      <button class="btn ghost" onclick="shareUserProfile(\'' + authorId + '\',\'' + escapeHtml(user.name || "") + '\')" style="flex:1;font-size:11px;padding:8px;">' + shareIconSvg(14) + ' Partager</button>\
       <button class="btn ghost" onclick="reportUser(\'' + authorId + '\',\'' + escapeHtml(user.name || "") + '\')" style="flex:1;font-size:11px;padding:8px;color:#f59e0b;border-color:rgba(245,158,11,0.3);">🚩 Signaler</button>\
       ' + (isBlocked(authorId)
         ? '<button class="btn ghost" onclick="unblockUser(\'' + authorId + '\',\'' + escapeHtml(user.name || "") + '\');closeModal();" style="flex:1;font-size:11px;padding:8px;">✅ Débloquer</button>'

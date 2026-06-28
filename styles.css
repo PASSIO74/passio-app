@@ -1804,6 +1804,10 @@
 
     .post-action svg { width: 17px; height: 17px; display: block; }
 
+    /* Icône de partage unifiée (shareIconSvg) — alignement quand elle suit/précède du texte dans un bouton */
+    .share-ico { vertical-align: middle; }
+    .btn .share-ico, button .share-ico { vertical-align: -3px; }
+
     /* ===== Mood selector (feed) ===== */
     .mood-selector {
       display: grid;

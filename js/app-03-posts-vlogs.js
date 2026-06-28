@@ -1469,7 +1469,7 @@ function openCdvLiveViewer(liveId) {
       <button class="btn ghost" onclick="reactCdvLive(\'' + liveId + '\',\'❤️\')" style="flex:1;font-size:13px;padding:8px;">❤️ ' + ((live.reactions||[]).filter(function(r){return r==="❤️"}).length || "") + '</button>\
       <button class="btn ghost" onclick="reactCdvLive(\'' + liveId + '\',\'🔥\')" style="flex:1;font-size:13px;padding:8px;">🔥 ' + ((live.reactions||[]).filter(function(r){return r==="🔥"}).length || "") + '</button>\
       <button class="btn ghost" onclick="reactCdvLive(\'' + liveId + '\',\'😍\')" style="flex:1;font-size:13px;padding:8px;">😍 ' + ((live.reactions||[]).filter(function(r){return r==="😍"}).length || "") + '</button>\
-      <button class="btn ghost" onclick="shareCdvLive(\'' + liveId + '\')" style="flex:1;font-size:13px;padding:8px;" title="Partager ce live">📤</button>\
+      <button class="btn ghost" onclick="shareCdvLive(\'' + liveId + '\')" style="flex:1;font-size:13px;padding:8px;" title="Partager ce live">' + shareIconSvg(16) + '</button>\
     </div>\
     \
     <div style="font-weight:800;font-size:13px;color:var(--text);margin-bottom:8px;">📍 Étapes</div>\
@@ -1696,7 +1696,7 @@ function renderCdvScreen() {
               </div>`).join("")}
           </div>` : `<div style="text-align:center;padding:10px;color:var(--muted);font-size:11px;">En attente de la première étape…</div>`}
         <div class="cdv-live-footer">
-          <div class="cdv-live-count">👁 ${viewerCount} regardent · <span style="cursor:pointer;text-decoration:underline;" onclick="event.stopPropagation();openCommentSheet('${l.id}','💬 ${escapeHtml((l.destination||'').replace(/'/g,'’')).slice(0,40)}')">💬 ${(l.comments||[]).length}</span> · <span style="cursor:pointer;" title="Partager" onclick="event.stopPropagation();shareCdvLive('${l.id}')">📤</span></div>
+          <div class="cdv-live-count">👁 ${viewerCount} regardent · <span style="cursor:pointer;text-decoration:underline;" onclick="event.stopPropagation();openCommentSheet('${l.id}','💬 ${escapeHtml((l.destination||'').replace(/'/g,'’')).slice(0,40)}')">💬 ${(l.comments||[]).length}</span> · <span style="cursor:pointer;display:inline-flex;vertical-align:middle;" title="Partager" onclick="event.stopPropagation();shareCdvLive('${l.id}')">${shareIconSvg(15)}</span></div>
           ${isMyLive(l) ? `<button class="cdv-live-follow-btn" onclick="event.stopPropagation();addCdvLiveStep('${l.id}')">+ Étape</button>` : `<button class="cdv-live-follow-btn" onclick="event.stopPropagation();toggleFollowCdvLive('${l.id}',this)" style="background:${isFollowing ? '#8b5cf6' : 'var(--border)'};color:${isFollowing ? '#fff' : 'var(--text)'};">${isFollowing ? '✓ En suivi' : '📡 Suivre'}</button>`}
         </div>
       </div>`;
