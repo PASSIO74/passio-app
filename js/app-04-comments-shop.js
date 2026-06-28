@@ -428,6 +428,16 @@ function _refreshCommentThreadUI(threadId) {
       }
     }
   } catch(e) {}
+  // Carnet CDV ouvert dans le viewer plein écran (#vlogCommentsList).
+  try {
+    var vv = document.getElementById("vlogViewer");
+    var vlist = document.getElementById("vlogCommentsList");
+    if (vlist && vv && vv.getAttribute("data-current-post") === threadId) {
+      vlist.innerHTML = thread.comments.length
+        ? _renderCommentsList(thread.comments, threadId)
+        : '<div style="font-size:12px;color:var(--muted);">Aucun commentaire — sois le premier 💬</div>';
+    }
+  } catch(e) {}
   // Feuille générique inline (carte CDV/fil sans ouvrir le détail).
   try {
     var sheet = document.getElementById("cmtThreadList");
