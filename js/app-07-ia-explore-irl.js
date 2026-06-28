@@ -1322,8 +1322,12 @@ function renderIRL() {
       </div>
       <div style="font-size:12px;color:var(--text-dim);margin-top:8px;line-height:1.5;">${escapeHtml((e.desc || "").slice(0, 120))}${(e.desc||"").length > 120 ? "…" : ""}</div>
       <div class="event-footer">
-        <div class="attendees">${attAvatars}<span class="pill" style="margin-left:6px;padding:3px 8px;">${(e.attendees || []).length} inscrit${(e.attendees||[]).length>1?"s":""}</span><span class="pill" style="margin-left:6px;padding:3px 8px;cursor:pointer;" data-evc="${e.id}" onclick="event.stopPropagation();openCommentSheet('${e.id}','💬 ${escapeHtml((e.title||'').replace(/'/g,'’')).slice(0,40)}')">💬 ${(window._eventCommentCounts && window._eventCommentCounts[e.id]) || 0}</span><span class="pill" style="margin-left:6px;padding:3px 8px;cursor:pointer;" title="Partager" onclick="event.stopPropagation();shareEvent('${e.id}')">📤</span></div>
+        <div class="attendees">${attAvatars}<span class="pill" style="margin-left:6px;padding:3px 8px;">${(e.attendees || []).length} inscrit${(e.attendees||[]).length>1?"s":""}</span></div>
         <button class="btn small ${joined ? "ghost" : "primary"}" ${isFull ? "disabled" : ""} onclick="event.stopPropagation();toggleJoinEvent('${e.id}')">${joined ? "✓ Inscrit" : isFull ? "Complet" : "+ Rejoindre"}</button>
+      </div>
+      <div class="post-actions" onclick="event.stopPropagation()">
+        <span class="post-action" data-evc="${e.id}" onclick="event.stopPropagation();openCommentSheet('${e.id}','💬 ${escapeHtml((e.title||'').replace(/'/g,'’')).slice(0,40)}')">💬 ${(window._eventCommentCounts && window._eventCommentCounts[e.id]) || 0}</span>
+        <span class="post-action" onclick="event.stopPropagation();shareEvent('${e.id}')" title="Partager" aria-label="Partager">${shareIconSvg(18)}</span>
       </div>
     </div>`;
   }).join("");

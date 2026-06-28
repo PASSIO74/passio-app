@@ -1778,8 +1778,12 @@ function renderCdvScreen() {
               </div>`).join("")}
           </div>` : `<div style="text-align:center;padding:10px;color:var(--muted);font-size:11px;">En attente de la première étape…</div>`}
         <div class="cdv-live-footer">
-          <div class="cdv-live-count">👁 ${viewerCount} regardent · <span style="cursor:pointer;text-decoration:underline;" onclick="event.stopPropagation();openCommentSheet('${l.id}','💬 ${escapeHtml((l.destination||'').replace(/'/g,'’')).slice(0,40)}')">💬 ${(l.comments||[]).length}</span> · <span style="cursor:pointer;display:inline-flex;vertical-align:middle;" title="Partager" onclick="event.stopPropagation();shareCdvLive('${l.id}')">${shareIconSvg(15)}</span></div>
+          <div class="cdv-live-count">👁 ${viewerCount} regardent</div>
           ${isMyLive(l) ? `<button class="cdv-live-follow-btn" onclick="event.stopPropagation();addCdvLiveStep('${l.id}')">+ Étape</button>` : `<button class="cdv-live-follow-btn" onclick="event.stopPropagation();toggleFollowCdvLive('${l.id}',this)" style="background:${isFollowing ? '#8b5cf6' : 'var(--border)'};color:${isFollowing ? '#fff' : 'var(--text)'};">${isFollowing ? '✓ En suivi' : '📡 Suivre'}</button>`}
+        </div>
+        <div class="post-actions" onclick="event.stopPropagation()">
+          <span class="post-action" onclick="event.stopPropagation();openCommentSheet('${l.id}','💬 ${escapeHtml((l.destination||'').replace(/'/g,'’')).slice(0,40)}')">💬 ${(l.comments||[]).length}</span>
+          <span class="post-action" onclick="event.stopPropagation();shareCdvLive('${l.id}')" title="Partager" aria-label="Partager">${shareIconSvg(18)}</span>
         </div>
       </div>`;
     }).join("");
@@ -1794,8 +1798,9 @@ function renderCdvScreen() {
             <div class="cdv-live-author">${l.steps.length} étape${l.steps.length>1?"s":""}</div>
           </div>
         </div>
-        <div class="cdv-live-footer">
-          <div class="cdv-live-count"><span style="cursor:pointer;text-decoration:underline;" onclick="event.stopPropagation();openCommentSheet('${l.id}','💬 ${escapeHtml((l.destination||'').replace(/'/g,'’')).slice(0,40)}')">💬 ${(l.comments||[]).length}</span> · <span style="cursor:pointer;display:inline-flex;vertical-align:middle;" title="Partager" onclick="event.stopPropagation();shareCdvLive('${l.id}')">${shareIconSvg(15)}</span></div>
+        <div class="post-actions" onclick="event.stopPropagation()">
+          <span class="post-action" onclick="event.stopPropagation();openCommentSheet('${l.id}','💬 ${escapeHtml((l.destination||'').replace(/'/g,'’')).slice(0,40)}')">💬 ${(l.comments||[]).length}</span>
+          <span class="post-action" onclick="event.stopPropagation();shareCdvLive('${l.id}')" title="Partager" aria-label="Partager">${shareIconSvg(18)}</span>
         </div>
       </div>`).join("");
 
@@ -1917,17 +1922,14 @@ function renderCdvScreen() {
         </div>` : ""}
       </div>
 
-      <div class="cdv-feed-actions" onclick="event.stopPropagation()">
-        <span class="cdv-feed-action ${isLiked ? "liked" : ""}" onclick="likePost('${c.id}')">
+      <div class="post-actions" onclick="event.stopPropagation()">
+        <span class="post-action ${isLiked ? "liked" : ""}" onclick="likePost('${c.id}')">
           ${isLiked ? "❤️" : "🤍"} ${c.likes || 0}
         </span>
-        <span class="cdv-feed-action" onclick="openComments('${c.id}')">
-          💬 ${(c.comments || []).length}
-        </span>
-        <span class="cdv-feed-action" onclick="toggleCarnetSave('${c.id}');renderCdvScreen()">
-          ${isSaved ? "⭐" : "☆"}
-        </span>
-        <button class="cdv-feed-cta" onclick="openVlogViewer('${c.id}')">Voir le carnet →</button>
+        <span class="post-action" onclick="openComments('${c.id}')">💬 ${(c.comments || []).length}</span>
+        <span class="post-action" onclick="return showEmojiPickerForPost('${c.id}', event);" title="Emoji & GIF">😊</span>
+        <span class="post-action" onclick="event.stopPropagation();sharePost('${c.id}')" title="Partager" aria-label="Partager">${shareIconSvg(18)}</span>
+        <span class="post-action" onclick="toggleCarnetSave('${c.id}');renderCdvScreen()" title="${isSaved ? "Sauvegardé" : "Sauvegarder"}">${isSaved ? "⭐" : "☆"}</span>
       </div>
     </article>`;
   }).join("");
