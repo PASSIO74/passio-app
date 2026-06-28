@@ -1608,31 +1608,61 @@
       margin: 18px 0;
     }
 
-    /* Bouton supprimer un post (visible uniquement sur les posts perso) */
-    .post-delete-btn {
-      width: 22px;
-      height: 22px;
-      border-radius: 7px;
+    /* Menu d'options « ⋯ » d'un post (visible uniquement sur les posts perso) */
+    .post-menu-btn {
+      width: 30px;
+      height: 30px;
+      border-radius: 9px;
       padding: 0;
       background: transparent;
       border: none;
-      color: rgba(185, 28, 28, 0.55);
+      color: var(--muted);
       cursor: pointer;
       display: inline-flex;
       align-items: center;
       justify-content: center;
       transition: color 160ms ease, background 160ms ease, transform 140ms ease;
       flex-shrink: 0;
-      opacity: 0.65;
+      -webkit-tap-highlight-color: transparent;
     }
-    .post-delete-btn:hover {
-      color: #b91c1c;
-      background: rgba(220, 38, 38, 0.10);
-      opacity: 1;
-      transform: scale(1.10);
+    .post-menu-btn:hover {
+      color: var(--text);
+      background: var(--bg-soft);
     }
-    .post-delete-btn:active { transform: scale(0.92); }
-    .post-delete-btn svg { width: 13px; height: 13px; }
+    .post-menu-btn:active { transform: scale(0.92); }
+    .post-menu-btn svg { width: 18px; height: 18px; }
+
+    /* Bottom-sheet d'options d'un post */
+    .post-options-sheet {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 6px;
+    }
+    .post-option {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+      padding: 14px 16px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--bg-card);
+      color: var(--text);
+      font-size: 14.5px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 160ms ease, border-color 160ms ease, transform 120ms ease;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .post-option:hover { background: var(--bg-soft); }
+    .post-option:active { transform: scale(0.98); }
+    .post-option svg { width: 18px; height: 18px; flex-shrink: 0; }
+    .post-option.danger {
+      color: #dc2626;
+      border-color: rgba(220, 38, 38, 0.25);
+    }
+    .post-option.danger:hover { background: rgba(220, 38, 38, 0.08); }
 
     .post-body {
       font-size: 14.5px;
@@ -1743,11 +1773,12 @@
 
     .post-actions {
       display: flex;
-      gap: 18px;
-      margin-top: 14px;
-      padding-top: 12px;
+      align-items: center;
+      gap: 4px;
+      margin-top: 12px;
+      padding-top: 10px;
       border-top: 1px solid var(--border);
-      font-size: 12px;
+      font-size: 12.5px;
       color: var(--muted);
     }
 
@@ -1757,12 +1788,20 @@
       gap: 5px;
       cursor: pointer;
       font-weight: 600;
-      transition: color 160ms ease;
+      font-size: 12.5px;
+      line-height: 1;
+      padding: 7px 9px;
+      border-radius: 10px;
+      transition: color 160ms ease, background 160ms ease;
+      -webkit-tap-highlight-color: transparent;
     }
 
-    .post-action:hover { color: var(--text); }
+    .post-action:hover { color: var(--text); background: var(--bg-soft); }
+    .post-action:active { transform: scale(0.94); }
 
     .post-action.liked { color: var(--accent); }
+
+    .post-action svg { width: 17px; height: 17px; display: block; }
 
     /* ===== Mood selector (feed) ===== */
     .mood-selector {

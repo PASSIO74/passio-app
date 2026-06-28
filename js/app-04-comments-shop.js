@@ -50,6 +50,21 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
+// ===== MENU D'OPTIONS D'UN POST (⋯) =====
+// Bottom-sheet façon Instagram : la suppression vit ici, plus dans l'en-tête du post.
+function openPostOptions(postId) {
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="post-options-sheet">
+      <button class="post-option danger" onclick="closeModal();confirmDeletePost('${postId}')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7 H20"/><path d="M9 7 V4 H15 V7"/><path d="M6 7 L7 20 H17 L18 7"/><path d="M10 11 V17"/><path d="M14 11 V17"/></svg>
+        Supprimer le post
+      </button>
+      <button class="post-option" onclick="closeModal()">Annuler</button>
+    </div>
+  `);
+}
+
 // ===== SUPPRESSION DES POSTS =====
 function confirmDeletePost(postId) {
   const post = state.userPosts.find(p => p.id === postId);

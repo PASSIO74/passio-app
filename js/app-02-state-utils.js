@@ -2236,7 +2236,7 @@ function renderPostHTML(p) {
           <span class="comment-action" onclick="return replyToComment('${p.id}','${c.id}','${escapeHtml(cu.name)}', event);" title="Répondre">💬</span>
           <span class="comment-action" onclick="return showEmojiPickerForComment('${p.id}','${c.id}', event);" title="Réagir">😊</span>
           <span class="comment-action" onclick="return showGifPickerForComment('${p.id}','${c.id}', event);" title="GIF">🎬</span>
-          ${cReplies.length > 0 ? `<span class="comment-reply-count" onclick="return toggleCommentReplies('${c.id}', event);">▼ ${cReplies.length} réponse${cReplies.length > 1 ? "s" : ""}</span>` : ""}
+          ${cReplies.length > 0 ? `<span class="comment-reply-count" onclick="event.stopPropagation();openComments('${p.id}');return false;">▼ ${cReplies.length} réponse${cReplies.length > 1 ? "s" : ""}</span>` : ""}
         </div>
       </div>
     </div>`;
@@ -2251,9 +2251,7 @@ function renderPostHTML(p) {
     <div class="post-header">
       <div class="avatar" style="background:${avatarBg(author)};cursor:pointer;" onclick="openUserProfile('${p.authorId}','${p._source}')">${avatarInner(author)}</div>
       <div class="post-author" style="cursor:pointer;" onclick="openUserProfile('${p.authorId}','${p._source}')">
-        <div class="post-author-name">${escapeHtml(author.name || "Moi")}
-          ${p._source === "me" ? '<span class="pill" style="padding:2px 7px;font-size:9px;border-color:rgba(139, 92, 246,0.5);color:#fed7aa;">Moi</span>' : ""}
-        </div>
+        <div class="post-author-name">${escapeHtml(author.name || "Moi")}</div>
         <div class="post-author-meta">
           ${passion.emoji} ${passion.label} · ${fmtTime(p.createdAt)}
           ${p._source === "me" && p.syncStatus ? `
@@ -2263,8 +2261,8 @@ function renderPostHTML(p) {
           ` : ""}
         </div>
       </div>
-      ${p._source === "me" ? `<button class="post-delete-btn" onclick="confirmDeletePost('${p.id}')" aria-label="Supprimer ce post" title="Supprimer">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7 H20"/><path d="M9 7 V4 H15 V7"/><path d="M6 7 L7 20 H17 L18 7"/><path d="M10 11 V17"/><path d="M14 11 V17"/></svg>
+      ${p._source === "me" ? `<button class="post-menu-btn" onclick="event.stopPropagation();openPostOptions('${p.id}')" aria-label="Options du post" title="Options">
+        <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>
       </button>` : ""}
       <span class="post-mood-tag">${moodMap[p.mood] || ""}</span>
     </div>
@@ -2282,7 +2280,9 @@ function renderPostHTML(p) {
       <span class="post-action" onclick="openComments('${p.id}')">💬 ${(p.comments || []).length}</span>
       <span class="post-action" onclick="return showEmojiPickerForPost('${p.id}', event);" title="Réagir">😊</span>
       <span class="post-action" onclick="return showGifPickerForPost('${p.id}', event);" title="GIF">🎬</span>
-      <span class="post-action" onclick="sharePost('${p.id}')">🔁 Partager</span>
+      <span class="post-action" onclick="event.stopPropagation();sharePost('${p.id}')" title="Partager" aria-label="Partager">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7"/><path d="M16 6l-4-4-4 4"/><path d="M12 2v13"/></svg>
+      </span>
       <span class="post-action" style="margin-left:auto;" onclick="openPassionExplorer('${p.passion}')" title="Explorer ${escapeHtml(passion.label)}">🔎</span>
     </div>
 
@@ -2421,8 +2421,8 @@ async function openPost(id) {
           <div class="post-author-name">${escapeHtml(author.name || "Utilisateur")}</div>
           <div class="post-author-meta">${passion.emoji} ${passion.label} · ${fmtTime(post.createdAt)}</div>
         </div>
-        ${(state.userPosts || []).some(function(up){ return up.id === id; }) ? `<button class="post-delete-btn" onclick="event.stopPropagation();confirmDeletePost('${id}')" aria-label="Supprimer ce post" title="Supprimer">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7 H20"/><path d="M9 7 V4 H15 V7"/><path d="M6 7 L7 20 H17 L18 7"/><path d="M10 11 V17"/><path d="M14 11 V17"/></svg>
+        ${(state.userPosts || []).some(function(up){ return up.id === id; }) ? `<button class="post-menu-btn" onclick="event.stopPropagation();openPostOptions('${id}')" aria-label="Options du post" title="Options">
+          <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>
         </button>` : ""}
         <span class="post-mood-tag">${moodMap[post.mood] || ""}</span>
       </div>
@@ -2435,7 +2435,9 @@ async function openPost(id) {
         <span class="post-action" onclick="openComments('${id}')">💬 ${(post.comments||[]).length}</span>
         <span class="post-action" onclick="return showEmojiPickerForPost('${id}', event);" title="Réagir">😊</span>
         <span class="post-action" onclick="return showGifPickerForPost('${id}', event);" title="GIF">🎬</span>
-        <span class="post-action" onclick="sharePost('${id}')">🔁 Partager</span>
+        <span class="post-action" onclick="event.stopPropagation();sharePost('${id}')" title="Partager" aria-label="Partager">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7"/><path d="M16 6l-4-4-4 4"/><path d="M12 2v13"/></svg>
+        </span>
       </div>
     </div>
     ${allComments ? `
