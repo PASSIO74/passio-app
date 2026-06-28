@@ -1791,8 +1791,11 @@ function renderCdvScreen() {
           <span style="font-size:10px;font-weight:700;color:var(--muted);background:var(--bg-deep);padding:3px 8px;border-radius:6px;">✅ TERMINÉ</span>
           <div style="flex:1;">
             <div class="cdv-live-dest">${escapeHtml(l.destination)}</div>
-            <div class="cdv-live-author">${l.steps.length} étape${l.steps.length>1?"s":""} · 💬 ${(l.comments||[]).length}</div>
+            <div class="cdv-live-author">${l.steps.length} étape${l.steps.length>1?"s":""}</div>
           </div>
+        </div>
+        <div class="cdv-live-footer">
+          <div class="cdv-live-count"><span style="cursor:pointer;text-decoration:underline;" onclick="event.stopPropagation();openCommentSheet('${l.id}','💬 ${escapeHtml((l.destination||'').replace(/'/g,'’')).slice(0,40)}')">💬 ${(l.comments||[]).length}</span> · <span style="cursor:pointer;display:inline-flex;vertical-align:middle;" title="Partager" onclick="event.stopPropagation();shareCdvLive('${l.id}')">${shareIconSvg(15)}</span></div>
         </div>
       </div>`).join("");
 
