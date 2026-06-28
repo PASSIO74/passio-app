@@ -11,7 +11,7 @@ function sharePost(id) {
   const txt = (post.text || post.caption || "").slice(0, 100);
 
   const html = `
-    <div class="modal-title">🔁 Partager ce post</div>
+    <div class="modal-title">${shareIconSvg(20)} Partager ce post</div>
     <div style="background:var(--bg-soft);border-radius:14px;padding:12px 14px;margin-bottom:16px;font-size:13px;color:var(--text-dim);line-height:1.5;">
       ${escapeHtml(txt)}${txt.length >= 100 ? "…" : ""}
     </div>
@@ -19,7 +19,7 @@ function sharePost(id) {
       ➕ Partager dans mon feed
     </button>
     <button class="btn secondary block" id="_shareOutBtn">
-      📤 Partager en dehors
+      ${shareIconSvg(16)} Partager en dehors
     </button>
   `;
   openModal(html);

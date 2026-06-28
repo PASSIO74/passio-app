@@ -2457,7 +2457,7 @@ function openReelShareModal(postId) {
 
   const shareHTML = `
     <div class="modal-handle"></div>
-    <div class="modal-title">📤 Partager cette bobine</div>
+    <div class="modal-title">${shareIconSvg(20)} Partager cette bobine</div>
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
       <button class="btn secondary" onclick="shareReelVia('whatsapp', '${postId}', '${encodedUrl}', '${encodedText}')" style="font-size:13px;">
