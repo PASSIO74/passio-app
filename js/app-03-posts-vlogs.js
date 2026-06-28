@@ -938,6 +938,18 @@ function openVlogViewer(postId) {
           🤝 Organiser un voyage groupé
         </button>
       </div>
+
+      <div class="vlog-viewer-comments" style="margin-top:24px;border-top:1px solid var(--border);padding-top:16px;">
+        <div style="font-size:14px;font-weight:800;color:var(--text);margin-bottom:12px;">💬 Commentaires</div>
+        <div id="vlogCommentsList" style="display:flex;flex-direction:column;gap:10px;margin-bottom:12px;">
+          <div style="font-size:12px;color:var(--muted);">Chargement…</div>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <input type="text" class="input" id="vlogCommentInput" placeholder="Écris un commentaire…" maxlength="500" style="flex:1;font-size:13px;padding:10px 12px;" onkeypress="if(event.key==='Enter')submitVlogComment('${postId}')"/>
+          ${_cmtComposerToolsHtml("vlogCommentInput", "submitVlogComment", postId)}
+          <button class="btn primary" onclick="submitVlogComment('${postId}')" style="font-size:13px;padding:10px 14px;">Envoyer</button>
+        </div>
+      </div>
     </div>
   `;
   $("#vlogViewerContent").innerHTML = html;
@@ -950,10 +962,80 @@ function openVlogViewer(postId) {
   // Reset du scroll du viewer en haut
   $("#vlogViewer").scrollTop = 0;
 
+  // Charge / rend les commentaires du carnet (même système que le fil/IRL)
+  _renderVlogComments(postId);
+
   // Initialise la mini-carte si on a des points géolocalisés
   if (hasMap) {
     setTimeout(() => initVlogMiniMap(mapPlaces), 200);
   }
+}
+
+// Rend les commentaires d'un carnet dans le viewer plein écran (#vlogCommentsList).
+// Le carnet EST un post (findPostAnywhere), donc on réutilise tel quel le renderer
+// et le pipeline Supabase du fil (même fonctionnalité, mêmes commentaires).
+async function _renderVlogComments(postId) {
+  var box = document.getElementById("vlogCommentsList");
+  if (!box) return;
+  var post = (typeof findPostAnywhere === "function") ? findPostAnywhere(postId) : null;
+  var empty = '<div style="font-size:12px;color:var(--muted);">Aucun commentaire — sois le premier 💬</div>';
+  var comments = (post && post.comments) || [];
+  box.innerHTML = comments.length ? _renderCommentsList(comments, postId) : empty;
+  // Charge les commentaires Supabase (cross-compte) puis re-rend.
+  if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID && typeof supaLoadComments === "function") {
+    try {
+      var supaComments = await supaLoadComments(postId);
+      if (supaComments && post) {
+        var supaIds = supaComments.map(function(c){ return c.id; });
+        var localOnly = comments.filter(function(c){ return supaIds.indexOf(c.id) < 0 && !c.fromSupabase; });
+        var merged = supaComments.map(function(c){ return Object.assign({}, c, { text: c.content || c.text || "" }); })
+          .concat(localOnly)
+          .sort(function(a, b){ return (b.createdAt || 0) - (a.createdAt || 0); });
+        post.comments = merged;
+        if (typeof hydrateCommentInteractions === "function") { try { await hydrateCommentInteractions(post); } catch(e) {} }
+        var box2 = document.getElementById("vlogCommentsList");
+        var vv = document.getElementById("vlogViewer");
+        if (box2 && vv && vv.getAttribute("data-current-post") === postId) {
+          box2.innerHTML = post.comments.length ? _renderCommentsList(post.comments, postId) : empty;
+        }
+      }
+    } catch(e) {}
+  }
+}
+
+// Publie un commentaire sur un carnet — calque exact de submitComment (fil).
+function submitVlogComment(postId) {
+  var inp = document.getElementById("vlogCommentInput");
+  if (!inp) return;
+  var text = inp.value.trim();
+  if (text.length < 2) { toast("Trop court"); return; }
+  var post = (typeof findPostAnywhere === "function") ? findPostAnywhere(postId) : null;
+  if (!post) return;
+  if (!post.comments) post.comments = [];
+  var realAuthorId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
+  var p = (typeof currentProfile === "function") ? currentProfile() : null;
+  var _cid = "c_" + uid();
+  post.comments.unshift({
+    id: _cid, authorId: realAuthorId,
+    authorName: (p && p.name) || state.user.name || "Moi",
+    authorEmoji: (p && p.emoji) || "✨",
+    text: text, content: text, createdAt: Date.now(),
+  });
+  // S'assure que l'auteur est dans seed.users pour userById()
+  var meEntry = { id: realAuthorId, name: (p && p.name) || state.user.name || "Moi", profileEmoji: (p && p.emoji) || "✨", avatar: (p && p.color) || "#8b5cf6" };
+  state.seed.users = state.seed.users.filter(function(u){ return u.id !== realAuthorId; });
+  state.seed.users.push(meEntry);
+  if (typeof grantReward === "function") grantReward("comment");
+  // Sync Supabase + notif auteur (mêmes règles que submitComment)
+  if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID && typeof supaAddComment === "function") {
+    supaAddComment(postId, text, _cid);
+    if (post.authorId && post.authorId !== MY_UID && post.fromSupabase && typeof supaInsertNotif === "function") {
+      supaInsertNotif(post.authorId, "comment", postId, "a commenté ton carnet");
+    }
+  }
+  inp.value = "";
+  _renderVlogComments(postId);
+  if (typeof renderCdvScreen === "function") { try { renderCdvScreen(); } catch(e) {} }
 }
 
 function initVlogMiniMap(places) {
