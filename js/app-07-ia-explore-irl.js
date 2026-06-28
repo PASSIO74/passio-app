@@ -1322,7 +1322,7 @@ function renderIRL() {
       </div>
       <div style="font-size:12px;color:var(--text-dim);margin-top:8px;line-height:1.5;">${escapeHtml((e.desc || "").slice(0, 120))}${(e.desc||"").length > 120 ? "…" : ""}</div>
       <div class="event-footer">
-        <div class="attendees">${attAvatars}<span class="pill" style="margin-left:6px;padding:3px 8px;">${(e.attendees || []).length} inscrit${(e.attendees||[]).length>1?"s":""}</span><span class="pill" style="margin-left:6px;padding:3px 8px;cursor:pointer;" data-evc="${e.id}" onclick="event.stopPropagation();openCommentSheet('${e.id}','💬 ${escapeHtml((e.title||'').replace(/'/g,'’')).slice(0,40)}')">💬 ${(window._eventCommentCounts && window._eventCommentCounts[e.id]) || 0}</span></div>
+        <div class="attendees">${attAvatars}<span class="pill" style="margin-left:6px;padding:3px 8px;">${(e.attendees || []).length} inscrit${(e.attendees||[]).length>1?"s":""}</span><span class="pill" style="margin-left:6px;padding:3px 8px;cursor:pointer;" data-evc="${e.id}" onclick="event.stopPropagation();openCommentSheet('${e.id}','💬 ${escapeHtml((e.title||'').replace(/'/g,'’')).slice(0,40)}')">💬 ${(window._eventCommentCounts && window._eventCommentCounts[e.id]) || 0}</span><span class="pill" style="margin-left:6px;padding:3px 8px;cursor:pointer;" title="Partager" onclick="event.stopPropagation();shareEvent('${e.id}')">📤</span></div>
         <button class="btn small ${joined ? "ghost" : "primary"}" ${isFull ? "disabled" : ""} onclick="event.stopPropagation();toggleJoinEvent('${e.id}')">${joined ? "✓ Inscrit" : isFull ? "Complet" : "+ Rejoindre"}</button>
       </div>
     </div>`;
@@ -1695,8 +1695,9 @@ function openEventDetails(id) {
     <div id="eventCommentsList" style="display:flex;flex-direction:column;gap:10px;margin-bottom:10px;">
       <div style="font-size:12px;color:var(--muted);">Chargement…</div>
     </div>
-    <div style="display:flex;gap:6px;">
+    <div style="display:flex;gap:6px;align-items:center;">
       <input type="text" class="input" id="eventCommentInput" placeholder="Écris un commentaire…" maxlength="500" style="flex:1;font-size:13px;padding:10px 12px;" onkeypress="if(event.key==='Enter')addEventComment('${ev.id}')"/>
+      ${_cmtComposerToolsHtml("eventCommentInput", "addEventComment", ev.id)}
       <button class="btn primary" onclick="addEventComment('${ev.id}')" style="font-size:13px;padding:10px 14px;">Envoyer</button>
     </div>
   `;

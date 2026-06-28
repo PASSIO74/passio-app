@@ -1477,8 +1477,9 @@ function openCdvLiveViewer(liveId) {
     \
     <div style="font-weight:800;font-size:13px;color:var(--text);margin:14px 0 8px;">💬 Commentaires</div>\
     <div id="cdvCommentsBox">' + commentsHTML + '</div>\
-    <div style="display:flex;gap:6px;margin-top:8px;">\
+    <div style="display:flex;gap:6px;margin-top:8px;align-items:center;">\
       <input type="text" class="input" id="cdvLiveComment" placeholder="Écris un commentaire…" style="flex:1;font-size:12px;padding:8px 12px;" onkeypress="if(event.key===\'Enter\')addCdvLiveComment(\'' + liveId + '\')"/>\
+      ' + _cmtComposerToolsHtml("cdvLiveComment", "addCdvLiveComment", liveId) + '\
       <button class="btn primary" onclick="addCdvLiveComment(\'' + liveId + '\')" style="font-size:12px;padding:8px 12px;">Envoyer</button>\
     </div>\
     \
@@ -1695,7 +1696,7 @@ function renderCdvScreen() {
               </div>`).join("")}
           </div>` : `<div style="text-align:center;padding:10px;color:var(--muted);font-size:11px;">En attente de la première étape…</div>`}
         <div class="cdv-live-footer">
-          <div class="cdv-live-count">👁 ${viewerCount} regardent · <span style="cursor:pointer;text-decoration:underline;" onclick="event.stopPropagation();openCommentSheet('${l.id}','💬 ${escapeHtml((l.destination||'').replace(/'/g,'’')).slice(0,40)}')">💬 ${(l.comments||[]).length}</span></div>
+          <div class="cdv-live-count">👁 ${viewerCount} regardent · <span style="cursor:pointer;text-decoration:underline;" onclick="event.stopPropagation();openCommentSheet('${l.id}','💬 ${escapeHtml((l.destination||'').replace(/'/g,'’')).slice(0,40)}')">💬 ${(l.comments||[]).length}</span> · <span style="cursor:pointer;" title="Partager" onclick="event.stopPropagation();shareCdvLive('${l.id}')">📤</span></div>
           ${isMyLive(l) ? `<button class="cdv-live-follow-btn" onclick="event.stopPropagation();addCdvLiveStep('${l.id}')">+ Étape</button>` : `<button class="cdv-live-follow-btn" onclick="event.stopPropagation();toggleFollowCdvLive('${l.id}',this)" style="background:${isFollowing ? '#8b5cf6' : 'var(--border)'};color:${isFollowing ? '#fff' : 'var(--text)'};">${isFollowing ? '✓ En suivi' : '📡 Suivre'}</button>`}
         </div>
       </div>`;

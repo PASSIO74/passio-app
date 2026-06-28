@@ -3549,6 +3549,24 @@
     }
     .comment-action:hover { opacity: 0.7; }
     .comment-action.liked { color: #ef4444; }
+    /* Outils du composeur de commentaires (emoji + GIF), communs fil/IRL/CDV */
+    .cmt-tool-btn {
+      flex-shrink: 0;
+      width: 38px;
+      height: 38px;
+      border: 1px solid var(--border);
+      background: var(--bg-soft);
+      border-radius: 10px;
+      font-size: 18px;
+      line-height: 1;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.15s, border-color 0.15s, transform 0.1s;
+    }
+    .cmt-tool-btn:hover { background: var(--bg-card); border-color: var(--accent); transform: translateY(-1px); }
+    .cmt-tool-btn:active { transform: scale(0.94); }
     /* Bouton ⋯ d'options d'un commentaire (Instagram-like) */
     .comment-menu-btn {
       position: absolute;

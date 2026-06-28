@@ -139,6 +139,23 @@ function deletePost(postId) {
   toast("Post supprimé.");
 }
 
+// Détecte une URL d'image/GIF (Giphy/Tenor ou extension média) pour rendre un
+// commentaire « GIF » comme une vraie image plutôt qu'en texte brut. Utilisé par
+// le renderer unifié → un commentaire dont le texte EST une URL de GIF s'affiche
+// en image dans les 3 contextes (fil / IRL / CDV) sans changement de schéma.
+function _looksLikeMediaUrl(s) {
+  if (!s || typeof s !== "string") return false;
+  s = s.trim();
+  if (!/^https?:\/\//i.test(s)) return false;
+  return /\.(gif|png|jpe?g|webp)(\?|#|$)/i.test(s)
+    || /(giphy\.com|tenor\.com|media\d*\.giphy|media\.tenor)/i.test(s);
+}
+function _commentBodyHtml(txt) {
+  return _looksLikeMediaUrl(txt)
+    ? '<img loading="lazy" decoding="async" src="' + txt.replace(/"/g, "&quot;") + '" style="max-width:160px;border-radius:10px;margin-top:2px;display:block;" alt="GIF" />'
+    : escapeHtml(txt || "");
+}
+
 function _renderCommentsList(allComments, postId) {
   // Masquer les commentaires des utilisateurs bloqués (modération)
   return allComments.filter(c => !(typeof isBlocked === "function" && isBlocked(c.authorId))).map(c => {
@@ -168,7 +185,7 @@ function _renderCommentsList(allComments, postId) {
       <button class="comment-menu-btn" title="Options" onclick="event.stopPropagation();return openCommentOptions('${postId}','${c.id}',${cMine ? 1 : 0}, event);"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg></button>
       <div class="comment-body">
         <div class="comment-author" style="cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${authorId}','${cSrc}')">${escapeHtml(name)}</div>
-        <div class="comment-text">${escapeHtml(c.text || c.content || "")}</div>
+        <div class="comment-text">${_commentBodyHtml(c.text || c.content || "")}</div>
         <div class="comment-meta">${fmtTime(c.createdAt || c.at)}</div>
         <div class="comment-actions">
           <span class="comment-action ${cLiked ? "liked" : ""}" onclick="return likeComment('${postId}','${c.id}', event);">
@@ -206,7 +223,7 @@ function _renderCommentsList(allComments, postId) {
           const _rAvT = { avatar: ru.avatar || "#64748b", profileEmoji: ru.profileEmoji || "👤", name: ru.name, photoUrl: ru.photoUrl || null };
           return `<div class="comment-reply" style="display:flex;align-items:flex-start;gap:6px;padding:4px 0;">
             <div class="avatar xs" style="background:${avatarBg(_rAvT)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${r.authorId}','${rSrc}')">${avatarInner(_rAvT)}</div>
-            <div><span class="comment-reply-author" style="font-size:11px;font-weight:600;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span> ${escapeHtml(r.text)}
+            <div><span class="comment-reply-author" style="font-size:11px;font-weight:600;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span> ${_commentBodyHtml(r.text)}
             <div style="font-size:10px;color:var(--muted);margin-top:2px;">${fmtTime(r.createdAt)}</div></div>
           </div>`;
         }).join("")}</div>` : ""}
@@ -233,7 +250,10 @@ async function openComments(postId) {
       ${localComments.length ? _renderCommentsList(localComments, postId) : '<div class="empty"><div class="empty-icon">💭</div><div class="empty-title">Chargement…</div></div>'}
     </div>
     <textarea class="textarea" id="newComment" placeholder="Réponse authentique, pas vide..." maxlength="400" style="min-height:70px;"></textarea>
-    <button class="btn primary block" style="margin-top:10px;" onclick="submitComment('${postId}')">Publier · +3 pts</button>
+    <div style="display:flex;align-items:center;gap:6px;margin-top:8px;">
+      ${_cmtComposerToolsHtml("newComment", "submitComment", postId)}
+      <button class="btn primary" style="flex:1;" onclick="submitComment('${postId}')">Publier · +3 pts</button>
+    </div>
   `);
 
   // Charger les vrais commentaires Supabase
@@ -525,8 +545,9 @@ function openCommentSheet(threadId, title) {
     + '<div class="modal-title">' + (title || "💬 Commentaires") + '</div>'
     + '<div class="modal-subtitle">Commente pour gagner +3 pts.</div>'
     + '<div id="cmtThreadList" data-thread="' + threadId + '" style="max-height:52vh;overflow-y:auto;margin-bottom:12px;">' + initial + '</div>'
-    + '<div style="display:flex;gap:6px;">'
+    + '<div style="display:flex;gap:6px;align-items:center;">'
     + '<input type="text" class="input" id="cmtThreadInput" placeholder="Écris un commentaire…" maxlength="500" style="flex:1;" onkeypress="if(event.key===\'Enter\')submitCommentSheet(\'' + threadId + '\')"/>'
+    + _cmtComposerToolsHtml("cmtThreadInput", "submitCommentSheet", threadId)
     + '<button class="btn primary" onclick="submitCommentSheet(\'' + threadId + '\')">Envoyer</button>'
     + '</div>'
   );
@@ -565,6 +586,94 @@ function submitCommentSheet(threadId) {
       _refreshCommentThreadUI(threadId);
     }
   }
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// BARRE DE COMPOSITION UNIFIÉE (emoji + GIF) — commune au fil, à l'IRL et au CDV.
+// Tous les composeurs de commentaires (champ texte + bouton Envoyer) reçoivent
+// les mêmes outils 😊/🎬 : insertion d'emoji au curseur + envoi d'un GIF en
+// commentaire. Un commentaire « GIF » = un commentaire dont le texte est l'URL
+// du GIF (rendu en image par _commentBodyHtml) → aucun changement de schéma, OK
+// pour les 3 back-ends (post_comments / event_comments / cdv_live_comments).
+// `submitFn`/`submitArg` = la fonction d'envoi propre à chaque contexte.
+// ════════════════════════════════════════════════════════════════════════
+function _cmtComposerToolsHtml(inputId, submitFn, submitArg) {
+  var arg = submitArg != null ? "'" + String(submitArg).replace(/'/g, "\\'") + "'" : "null";
+  return '<button type="button" class="cmt-tool-btn" title="Emoji" aria-label="Ajouter un emoji" onclick="cmtComposerEmoji(\'' + inputId + '\',event)">😊</button>'
+       + '<button type="button" class="cmt-tool-btn" title="Envoyer un GIF" aria-label="Envoyer un GIF" onclick="cmtComposerGif(\'' + inputId + '\',event,\'' + submitFn + '\',' + arg + ')">🎬</button>';
+}
+
+function _cmtInsertAtCursor(inp, text) {
+  try {
+    var s = inp.selectionStart, e = inp.selectionEnd;
+    if (typeof s === "number") {
+      inp.value = inp.value.slice(0, s) + text + inp.value.slice(e);
+      var np = s + text.length;
+      inp.selectionStart = inp.selectionEnd = np;
+    } else { inp.value += text; }
+  } catch (err) { inp.value += text; }
+  inp.focus();
+  if (typeof autoResizeTextarea === "function") { try { autoResizeTextarea(inp); } catch (e) {} }
+}
+
+function cmtComposerEmoji(inputId, event) {
+  if (event) { event.stopPropagation(); event.preventDefault(); }
+  var old = document.getElementById("cmt-emoji-composer");
+  if (old) { old.remove(); return false; } // toggle
+  var inp = document.getElementById(inputId);
+  if (!inp) return false;
+  var emojis = window._PASSIO_EMOJI_LIST
+    || ["😀","😂","😍","🥰","😎","😭","😡","👍","🙏","🔥","❤️","🎉","✨","💯","😅","🤔","😴","🥳","😇","🙌","👏","😢","😱","🤗","😋","🤩","😉","😘","🤤","😏"];
+  var panel = document.createElement("div");
+  panel.id = "cmt-emoji-composer";
+  panel.style.cssText = "position:fixed;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:8px;z-index:10000;box-shadow:0 4px 20px rgba(0,0,0,0.25);width:264px;display:flex;flex-wrap:wrap;gap:4px;max-height:200px;overflow-y:auto;";
+  emojis.forEach(function (e) {
+    var b = document.createElement("span");
+    b.textContent = e;
+    b.style.cssText = "cursor:pointer;font-size:22px;padding:4px;border-radius:6px;transition:background 0.15s,transform 0.1s;";
+    b.onmouseover = function () { this.style.background = "rgba(124,58,237,0.2)"; this.style.transform = "scale(1.15)"; };
+    b.onmouseout = function () { this.style.background = "transparent"; this.style.transform = "scale(1)"; };
+    b.onclick = function (ev) { ev.stopPropagation(); _cmtInsertAtCursor(inp, e); };
+    panel.appendChild(b);
+  });
+  var btn = event && (event.currentTarget || event.target);
+  if (btn && btn.getBoundingClientRect) {
+    var r = btn.getBoundingClientRect();
+    panel.style.left = Math.max(8, Math.min(r.left - 110, window.innerWidth - 274)) + "px";
+    panel.style.bottom = Math.max(8, window.innerHeight - r.top + 8) + "px";
+  } else {
+    panel.style.left = "50%"; panel.style.bottom = "30%"; panel.style.transform = "translateX(-50%)";
+  }
+  document.body.appendChild(panel);
+  setTimeout(function () {
+    var cl = function (ev) {
+      if (!panel.contains(ev.target) && ev.target !== btn) { panel.remove(); document.removeEventListener("click", cl); }
+    };
+    document.addEventListener("click", cl);
+  }, 50);
+  return false;
+}
+
+function cmtComposerGif(inputId, event, submitFn, submitArg) {
+  if (event) { event.stopPropagation(); event.preventDefault(); }
+  if (typeof passioGifPanel !== "function") { if (typeof toast === "function") toast("GIF indisponible"); return false; }
+  var btn = event && (event.currentTarget || event.target);
+  var pos = "left:50%;top:28%;transform:translateX(-50%);";
+  if (btn && btn.getBoundingClientRect) {
+    var r = btn.getBoundingClientRect();
+    pos = "left:" + Math.max(8, Math.min(r.left - 140, window.innerWidth - 380)) + "px;bottom:" + Math.max(8, window.innerHeight - r.top + 8) + "px;";
+  }
+  passioGifPanel({
+    id: "cmt-gif-composer",
+    position: pos,
+    onPick: function (url) {
+      var inp = document.getElementById(inputId);
+      if (!inp) return;
+      inp.value = url; // le texte EST l'URL → rendu en image (cf. _commentBodyHtml)
+      if (submitFn && typeof window[submitFn] === "function") { try { window[submitFn](submitArg); } catch (e) {} }
+    }
+  });
+  return false;
 }
 
 // Mood selector
