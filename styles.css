@@ -4159,6 +4159,11 @@
       width: 78px; height: 78px; border-radius: 999px; border: none; background: transparent;
       cursor: pointer; padding: 0; position: relative; flex: 0 0 auto;
       display: inline-flex; align-items: center; justify-content: center;
+      /* touch-action:none → empêche le navigateur d'interpréter le maintien comme
+         un geste (scroll/zoom) et d'émettre un pointercancel qui coupait la vidéo
+         au bout de ~3 s. callout/select none → pas de menu contextuel au long-press. */
+      touch-action: none; -webkit-touch-callout: none;
+      user-select: none; -webkit-user-select: none;
     }
     .me-shutter-ring {
       position: absolute; inset: 0; border-radius: 999px; border: 4px solid #fff;

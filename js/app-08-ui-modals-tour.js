@@ -584,7 +584,7 @@ function meOpen(mode) {
   // Bobine = VIDÉO uniquement (galerie filtrée sur les vidéos, pas de photo).
   var mediaInput = document.getElementById("meMediaInput"); if (mediaInput) mediaInput.accept = isBob ? "video/*" : "image/*,video/*";
   var galThumb = document.getElementById("meGalleryThumb"); if (galThumb) { galThumb.textContent = isBob ? "🎬" : "🖼️"; galThumb.setAttribute("aria-label", isBob ? "Choisir une vidéo" : "Choisir dans la galerie"); }
-  var capHint = document.getElementById("meCaptureHint"); if (capHint) capHint.textContent = isBob ? "Appuie pour démarrer la vidéo · appuie de nouveau pour arrêter" : "Appuie pour une photo · maintiens pour une vidéo";
+  var capHint = document.getElementById("meCaptureHint"); if (capHint) capHint.textContent = isBob ? "Maintiens pour filmer · relâche pour l'aperçu" : "Appuie pour une photo · maintiens pour une vidéo";
   var gradBtn = document.getElementById("meGradientBtn"); if (gradBtn) gradBtn.style.display = isBob ? "none" : "";
   var bgBtn = document.getElementById("meBgBtn"); if (bgBtn) bgBtn.style.display = isBob ? "none" : "";
   var title = document.getElementById("meTitle"); if (title) title.textContent = isBob ? "Bobine" : "Story";
@@ -720,7 +720,7 @@ function meStartRecording() {
   try { meCam.recorder.start(); } catch(e) { return; }
   meCam.recording = true; meCam.recStart = Date.now();
   var ed = document.getElementById("mediaEditor"); if (ed) ed.classList.add("me-recording");
-  var capHint = document.getElementById("meCaptureHint"); if (capHint && meState.mode === "bobine") capHint.textContent = "● Enregistrement… appuie pour arrêter";
+  var capHint = document.getElementById("meCaptureHint"); if (capHint && meState.mode === "bobine") capHint.textContent = "● Enregistrement… relâche pour arrêter";
   meCam.recTimer = setInterval(_meUpdateRecTime, 200);
   meCam.maxTimer = setTimeout(function() { meStopRecording(); }, 60000); // 60 s max
 }
@@ -732,7 +732,7 @@ function meStopRecording(silent) {
   try { if (meCam.recorder && meCam.recorder.state !== "inactive") meCam.recorder.stop(); } catch(e) {}
   var ed = document.getElementById("mediaEditor"); if (ed) ed.classList.remove("me-recording");
   var sh = document.getElementById("meShutter"); if (sh) sh.style.setProperty("--p", 0);
-  var capHint = document.getElementById("meCaptureHint"); if (capHint && meState.mode === "bobine") capHint.textContent = "Appuie pour démarrer la vidéo · appuie de nouveau pour arrêter";
+  var capHint = document.getElementById("meCaptureHint"); if (capHint && meState.mode === "bobine") capHint.textContent = "Maintiens pour filmer · relâche pour l'aperçu";
 }
 function _meUpdateRecTime() {
   var elapsed = Date.now() - meCam.recStart;
@@ -745,18 +745,28 @@ function _meUpdateRecTime() {
 function _meOnRecordingStop() {
   if (meCam._silent) { meCam._silent = false; return; }
   var dur = Date.now() - meCam.recStart;
+  var hasData = meCam.chunks && meCam.chunks.length;
   if (meState.mode === "bobine") {
-    // Bobine = vidéo only : un enregistrement trop court ne bascule PAS en photo.
-    if (dur < 800 || !meCam.chunks.length) { toast("Vidéo trop courte — filme un peu plus longtemps"); return; }
-  } else if (dur < 700 || !meCam.chunks.length) { meCapturePhoto(); return; } // story : appui bref → photo
+    // Appui trop bref (relâché tout de suite) → on invite à maintenir, sans rien casser.
+    if (dur < 500) { toast("Maintiens le bouton pour filmer ta bobine"); return; }
+    if (!hasData) { toast("Enregistrement impossible — réessaie ou choisis une vidéo dans la galerie"); return; }
+  } else if (dur < 700 || !hasData) { meCapturePhoto(); return; } // story : appui bref → photo
   var blob = new Blob(meCam.chunks, { type: (meCam.chunks[0] && meCam.chunks[0].type) || "video/webm" });
+  if (!blob.size) {
+    if (meState.mode === "bobine") toast("Enregistrement vide — réessaie");
+    else meCapturePhoto();
+    return;
+  }
+  // Toujours afficher l'aperçu (phase édition) avant publication.
   var r = new FileReader();
   r.onload = function() { meSetMedia(r.result, "video"); };
-  r.onerror = function() { toast("Impossible d'enregistrer la vidéo"); };
+  r.onerror = function() { toast("Impossible de lire la vidéo"); };
   r.readAsDataURL(blob);
 }
 
-// Déclencheur : tap = photo, maintien = vidéo.
+// Déclencheur :
+//  • Story  : tap = photo, maintien = vidéo.
+//  • Bobine : MAINTIENS pour filmer, RELÂCHE pour voir l'aperçu (vidéo only).
 function _meBindShutter() {
   if (meCam._boundShutter) return;
   var sh = document.getElementById("meShutter"); if (!sh) return;
@@ -766,34 +776,31 @@ function _meBindShutter() {
     e.preventDefault();
     var ed = document.getElementById("mediaEditor");
     if (!ed || !ed.classList.contains("me-cam-on")) { mePickMedia(); return; }
-    // Bobine = vidéo only : tap-pour-démarrer / tap-pour-arrêter (géré au pointerup).
-    // Plus de maintien (le pointercancel mobile le coupait au bout de ~3 s).
-    if (meState.mode === "bobine") return;
-    held = false;
     try { sh.setPointerCapture(e.pointerId); } catch(_) {}
+    if (meState.mode === "bobine") {
+      // Pas de MediaRecorder (vieux navigateur) → repli galerie vidéo.
+      if (!window.MediaRecorder) { try { sh.releasePointerCapture(e.pointerId); } catch(_) {} mePickMedia(); return; }
+      held = true;
+      meStartRecording();   // démarre dès l'appui
+      return;
+    }
+    held = false;
     meCam.holdTimer = setTimeout(function() { held = true; meStartRecording(); }, 320);
   });
   function end(e) {
     if (e) { e.preventDefault(); try { sh.releasePointerCapture(e.pointerId); } catch(_) {} }
     var ed = document.getElementById("mediaEditor");
     if (!ed || !ed.classList.contains("me-cam-on")) return;
-    if (meState.mode === "bobine") {
-      _meSwallowNextClick();
-      if (meCam.recording) meStopRecording(); else meStartRecording();
-      return;
-    }
     clearTimeout(meCam.holdTimer);
+    // Bobine : relâcher = arrêter → aperçu (géré par _meOnRecordingStop).
     if (meCam.recording) { _meSwallowNextClick(); meStopRecording(); }
-    else if (!held) { _meSwallowNextClick(); meCapturePhoto(); }
+    else if (!held && meState.mode !== "bobine") { _meSwallowNextClick(); meCapturePhoto(); }
     held = false;
   }
   sh.addEventListener("pointerup", end);
-  sh.addEventListener("pointercancel", function(e) {
-    // En bobine, on IGNORE pointercancel : il ne doit jamais arrêter la vidéo
-    // (c'est ce qui la coupait prématurément). On n'arrête qu'au tap suivant.
-    if (meState.mode === "bobine") return;
-    if (meCam.recording) end(e); else clearTimeout(meCam.holdTimer);
-  });
+  // pointercancel = relâché/interrompu → on arrête aussi (avec touch-action:none il
+  // ne se déclenche normalement plus en plein enregistrement).
+  sh.addEventListener("pointercancel", end);
 }
 
 function mePickMedia() { var i = document.getElementById("meMediaInput"); if (i) i.click(); }
