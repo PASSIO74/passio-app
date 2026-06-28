@@ -1879,9 +1879,14 @@ function setEventCommentSort(mode) {
 }
 
 function _renderEventComments(eventId) {
-  // Page détail OU feuille inline (carte IRL sans ouvrir l'événement).
-  var box = document.getElementById("eventCommentsList")
-    || (function(){ var s = document.getElementById("cmtThreadList"); return (s && s.getAttribute("data-thread") === eventId) ? s : null; })();
+  // La feuille inline (#cmtThreadList) est prioritaire quand elle est ouverte : la
+  // page détail (#eventDetailPage) reste dans le DOM en display:none après
+  // fermeture, donc #eventCommentsList existe encore mais est caché → écrire
+  // dedans plutôt que dans la feuille au 1er plan serait invisible.
+  var sheet = document.getElementById("cmtThreadList");
+  var box = (sheet && sheet.getAttribute("data-thread") === eventId)
+    ? sheet
+    : document.getElementById("eventCommentsList");
   if (!box) return;
   var list = (_eventCommentsCache[eventId] || []).map(_normalizeThreadComment);
   if (!list.length) {
@@ -1896,7 +1901,9 @@ function _renderEventComments(eventId) {
 }
 
 async function addEventComment(eventId) {
-  var inp = document.getElementById("eventCommentInput") || document.getElementById("cmtThreadInput");
+  // Feuille inline prioritaire (cf. _renderEventComments) : #eventCommentInput de la
+  // page détail reste dans le DOM (caché) après fermeture et serait lu à tort.
+  var inp = document.getElementById("cmtThreadInput") || document.getElementById("eventCommentInput");
   if (!inp) return;
   var text = inp.value.trim();
   if (!text) return;

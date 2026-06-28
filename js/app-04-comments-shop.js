@@ -387,15 +387,19 @@ function _findCommentThread(threadId) {
 function _refreshCommentThreadUI(threadId) {
   var thread = _findCommentThread(threadId);
   if (!thread) return;
+  // Modale commentaires du fil
   try {
     if (window._openCommentsPostId === threadId) {
       var box = document.getElementById("commentsBox");
       if (box) box.innerHTML = _renderCommentsList(thread.comments, threadId);
     }
   } catch(e) {}
-  // IRL (page détail OU feuille inline)
-  try { if (typeof _renderEventComments === "function" && thread.kind === "event") _renderEventComments(threadId); } catch(e) {}
-  // CDV
+  // IRL : son renderer gère DÉJÀ la page détail ET la feuille inline (#cmtThreadList).
+  if (thread.kind === "event") {
+    try { if (typeof _renderEventComments === "function") _renderEventComments(threadId); } catch(e) {}
+    return;
+  }
+  // CDV : viewer plein écran (#cdvCommentsBox).
   try {
     if (thread.kind === "cdv") {
       var cdvBox = document.getElementById("cdvCommentsBox");
@@ -405,7 +409,7 @@ function _refreshCommentThreadUI(threadId) {
       }
     }
   } catch(e) {}
-  // Feuille générique de commentaires (carte IRL/CDV sans ouvrir le détail)
+  // Feuille générique inline (carte CDV/fil sans ouvrir le détail).
   try {
     var sheet = document.getElementById("cmtThreadList");
     if (sheet && sheet.getAttribute("data-thread") === threadId) {
