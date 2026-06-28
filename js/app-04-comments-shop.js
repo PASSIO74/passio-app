@@ -626,7 +626,10 @@ function cmtComposerEmoji(inputId, event) {
     || ["😀","😂","😍","🥰","😎","😭","😡","👍","🙏","🔥","❤️","🎉","✨","💯","😅","🤔","😴","🥳","😇","🙌","👏","😢","😱","🤗","😋","🤩","😉","😘","🤤","😏"];
   var panel = document.createElement("div");
   panel.id = "cmt-emoji-composer";
-  panel.style.cssText = "position:fixed;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:8px;z-index:10000;box-shadow:0 4px 20px rgba(0,0,0,0.25);width:264px;display:flex;flex-wrap:wrap;gap:4px;max-height:200px;overflow-y:auto;";
+  // z-index 100002 : AU-DESSUS du .modal-backdrop (10001, viewer CDV) et de la
+  // feuille de réponse .cmt-sheet-ov (10001) d'où ce panel peut être ouvert,
+  // sinon il s'affiche en arrière-plan (bug IRL/CDV).
+  panel.style.cssText = "position:fixed;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:8px;z-index:100002;box-shadow:0 4px 20px rgba(0,0,0,0.25);width:264px;display:flex;flex-wrap:wrap;gap:4px;max-height:200px;overflow-y:auto;";
   emojis.forEach(function (e) {
     var b = document.createElement("span");
     b.textContent = e;
@@ -666,6 +669,7 @@ function cmtComposerGif(inputId, event, submitFn, submitArg) {
   passioGifPanel({
     id: "cmt-gif-composer",
     position: pos,
+    z: 100002, // au-dessus du modal viewer CDV / de la feuille de réponse (10001)
     onPick: function (url) {
       var inp = document.getElementById(inputId);
       if (!inp) return;

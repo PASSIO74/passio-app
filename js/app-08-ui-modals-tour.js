@@ -604,6 +604,7 @@ function meClose() {
   if (ed) { ed.classList.remove("open", "phase-edit", "phase-capture", "me-recording", "me-cam-on"); ed.setAttribute("aria-hidden", "true"); }
   document.body.style.overflow = "";
   try { var v = document.querySelector("#meMedia video"); if (v) v.pause(); } catch(e) {}
+  _meRemoveVideoControls();
   var bar = document.getElementById("meEmojiBar"); if (bar) bar.remove();
 }
 // Bouton ✕ : en édition → revient à la capture ; en capture → ferme.
@@ -615,6 +616,7 @@ function meTopBack() {
 function meBackToCapture() {
   var ed = document.getElementById("mediaEditor"); if (!ed) return;
   meState.media = null; meState.mediaType = null; meState.overlays = []; meState._seq = 0;
+  _meRemoveVideoControls();
   document.getElementById("meMedia").innerHTML = "";
   document.getElementById("meOverlays").innerHTML = "";
   document.getElementById("meCanvas").style.background = "#000";
@@ -807,6 +809,7 @@ function mePickMedia() { var i = document.getElementById("meMediaInput"); if (i)
 function meCycleBg() {
   if (meState.mode === "bobine") return;
   meState.media = null; meState.mediaType = null;
+  _meRemoveVideoControls();
   document.getElementById("meMedia").innerHTML = "";
   meState.bgIdx = (meState.bgIdx + 1) % STORY_BGS.length;
   meState.bg = STORY_BGS[meState.bgIdx];
@@ -932,11 +935,43 @@ async function meOnMedia(ev) {
 }
 function meSetMedia(dataUrl, type) {
   meState.media = dataUrl; meState.mediaType = type;
-  document.getElementById("meMedia").innerHTML = (type === "video")
-    ? '<video src="' + dataUrl + '" muted playsinline loop autoplay></video>'
-    : '<img src="' + dataUrl + '" alt=""/>';
+  _meRemoveVideoControls(); // nettoie d'éventuels contrôles de la vidéo précédente
+  var box = document.getElementById("meMedia");
+  if (type === "video") {
+    box.innerHTML = '<video src="' + dataUrl + '" muted playsinline loop autoplay></video>';
+    _meSetupVideoPreviewControls(box.querySelector("video"));
+  } else {
+    box.innerHTML = '<img src="' + dataUrl + '" alt=""/>';
+  }
   document.getElementById("mePlaceholder").classList.add("hidden");
   meEnterEditPhase();
+}
+
+// Contrôles de prévisualisation pour la vidéo en phase édition : l'utilisateur
+// peut RELIRE sa bobine (lecture/pause + son) avant de la valider/publier. Posés
+// dans #meCanvas au-dessus de la couche d'overlays (qui sinon intercepterait les
+// clics). Non capturés dans le média publié (publication = meState.media + overlays).
+function _meRemoveVideoControls() {
+  var c = document.getElementById("mePreviewCtrls"); if (c) c.remove();
+}
+function _meSetupVideoPreviewControls(video) {
+  if (!video) return;
+  var canvas = document.getElementById("meCanvas"); if (!canvas) return;
+  var bar = document.createElement("div");
+  bar.id = "mePreviewCtrls"; bar.className = "me-preview-ctrls";
+  var soundBtn = document.createElement("button");
+  soundBtn.type = "button"; soundBtn.className = "me-prev-btn"; soundBtn.setAttribute("aria-label", "Activer le son");
+  var playBtn = document.createElement("button");
+  playBtn.type = "button"; playBtn.className = "me-prev-btn"; playBtn.setAttribute("aria-label", "Lecture / pause");
+  function syncPlay() { playBtn.textContent = video.paused ? "▶" : "⏸"; }
+  function syncSound() { soundBtn.textContent = video.muted ? "🔇" : "🔊"; }
+  playBtn.onclick = function(e) { e.stopPropagation(); if (video.paused) { try { video.play(); } catch(_){} } else { video.pause(); } };
+  soundBtn.onclick = function(e) { e.stopPropagation(); video.muted = !video.muted; if (!video.muted && video.paused) { try { video.play(); } catch(_){} } syncSound(); };
+  video.addEventListener("play", syncPlay);
+  video.addEventListener("pause", syncPlay);
+  bar.appendChild(soundBtn); bar.appendChild(playBtn);
+  canvas.appendChild(bar);
+  syncPlay(); syncSound();
 }
 function meAddText() {
   var t = prompt("Ton texte :"); if (t == null) return; t = t.trim(); if (!t) return;

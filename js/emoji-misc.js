@@ -80,7 +80,8 @@ function passioGifPanel(opts) {
   var cols = opts.cols || 4, cell = opts.cell || 90;
   var panel = document.createElement("div");
   panel.id = opts.id;
-  panel.style.cssText = "position:fixed;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:10px;z-index:10000;box-shadow:0 4px 16px rgba(0,0,0,0.25);" + (opts.position || "bottom:120px;right:20px;");
+  var _z = opts.z || 10000; // surclassable : un composeur ouvert depuis un modal (10001) doit passer au-dessus
+  panel.style.cssText = "position:fixed;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:10px;z-index:" + _z + ";box-shadow:0 4px 16px rgba(0,0,0,0.25);" + (opts.position || "bottom:120px;right:20px;");
   var search = document.createElement("input");
   search.type = "search";
   search.placeholder = "Rechercher un GIF…";
@@ -477,6 +478,7 @@ function showGifPickerForComment(postId, commentId, event) {
   passioGifPanel({
     id: "gif-panel-" + commentId,
     position: position,
+    z: 100002, // au-dessus du modal (10001) qui contient la liste de commentaires
     onPick: function(gifUrl) { addGifToComment(postId, commentId, gifUrl); }
   });
   return false;
@@ -507,7 +509,10 @@ function showEmojiPickerForComment(postId, commentId, event) {
   var emojis = window._PASSIO_EMOJI_LIST;
   var panel = document.createElement("div");
   panel.id = "emoji-panel-" + commentId;
-  panel.style.cssText = "position:fixed;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px;z-index:10000;box-shadow:0 4px 20px rgba(0,0,0,0.25);width:260px;";
+  // z-index 100002 : ce picker de réaction est toujours ouvert depuis la liste de
+  // commentaires, qui vit dans un modal (10001 : viewer CDV, openComments, feuille
+  // de réponse) → sans ça il s'affiche en arrière-plan (bug IRL/CDV).
+  panel.style.cssText = "position:fixed;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px;z-index:100002;box-shadow:0 4px 20px rgba(0,0,0,0.25);width:260px;";
 
   // Ligne de prévisualisation + bouton valider
   var previewRow = document.createElement("div");
