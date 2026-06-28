@@ -280,13 +280,14 @@ function renderProfileContent() {
     return;
   }
 
-  // Filtrage cohérent : un profil sélectionné = sa passion. On matche par PASSION
-  // (donnée fiable sur chaque post) avec le profileId en repli. Sans ça, un post
-  // « moto » publié alors qu'un autre profil était actif gardait le profileId de
-  // ce profil et n'apparaissait jamais sous « moto » → contenu incohérent.
+  // Filtrage cohérent : un profil sélectionné = sa passion. On matche STRICTEMENT
+  // par PASSION (donnée fiable, figée à la création). Le profileId ne sert QUE de
+  // repli pour un post sans passion. Matcher aussi par profileId (comme avant)
+  // faisait fuiter un post « photo » publié pendant que le profil « musique » était
+  // actif (profileId=musique) DANS le profil musique, et le double-comptait.
   var selProfiles = (state.user.profiles || []).filter(function(pr){ return sel.has(pr.id); });
   var selPassions = new Set(selProfiles.map(function(pr){ return pr.passion; }));
-  var mine = state.userPosts.filter(function(p){ return sel.has(p.profileId) || selPassions.has(p.passion); });
+  var mine = state.userPosts.filter(function(p){ return selPassions.has(p.passion) || (!p.passion && sel.has(p.profileId)); });
   var tab = _activeProfileTab();
 
   function emptyBlock(icon, title) {
@@ -658,8 +659,10 @@ function renderProfilesScreen() {
 
   list.innerHTML = state.user.profiles.map(p => {
     const passion    = passionById(p.passion);
-    // Compte cohérent avec le filtre : posts de ce profil OU de sa passion.
-    const postCount  = state.userPosts.filter(up => up.profileId === p.id || up.passion === p.passion).length;
+    // Compte cohérent avec le filtre de contenu : par PASSION (profileId en repli
+    // seulement pour un post sans passion). Évite le double-comptage d'un post
+    // d'une autre passion publié pendant que ce profil était actif.
+    const postCount  = state.userPosts.filter(up => up.passion === p.passion || (!up.passion && up.profileId === p.id)).length;
     const isSelected = window.profilesFilterSelection.has(p.id);
     const _pPhoto = p.photoUrl || p.photo || null;
     const hasPhoto   = !!_pPhoto;

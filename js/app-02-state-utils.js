@@ -2087,10 +2087,14 @@ async function hydrateCommentLikes(ids, rerender) {
 }
 function sortComments(list, mode) {
   var arr = (list || []).slice();
+  // Likes : système unifié (c.likes via comment_interactions) avec repli sur l'ancien
+  // cache comment_likes ; date : at (IRL/CDV) ou createdAt (fil).
+  function _cl(c) { return (c.likes != null) ? c.likes : ((typeof commentLikeInfo === "function" ? commentLikeInfo(c.id).count : 0) || 0); }
+  function _at(c) { return c.at || c.createdAt || 0; }
   if (mode === "liked") {
-    arr.sort(function(a, b) { return (commentLikeInfo(b.id).count || 0) - (commentLikeInfo(a.id).count || 0) || (b.at || 0) - (a.at || 0); });
+    arr.sort(function(a, b) { return _cl(b) - _cl(a) || _at(b) - _at(a); });
   } else {
-    arr.sort(function(a, b) { return (b.at || 0) - (a.at || 0); }); // récents d'abord
+    arr.sort(function(a, b) { return _at(b) - _at(a); }); // récents d'abord
   }
   return arr;
 }
@@ -2283,7 +2287,6 @@ function renderPostHTML(p) {
       <span class="post-action" onclick="event.stopPropagation();sharePost('${p.id}')" title="Partager" aria-label="Partager">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7"/><path d="M16 6l-4-4-4 4"/><path d="M12 2v13"/></svg>
       </span>
-      <span class="post-action" style="margin-left:auto;" onclick="openPassionExplorer('${p.passion}')" title="Explorer ${escapeHtml(passion.label)}">🔎</span>
     </div>
 
     ${commentsPreview ? `<div style="margin-top:8px;" onclick="openPost('${p.id}')" style="cursor:pointer;">${commentsPreview}</div>` : ""}

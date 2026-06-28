@@ -144,6 +144,11 @@ function _renderCommentsList(allComments, postId) {
   return allComments.filter(c => !(typeof isBlocked === "function" && isBlocked(c.authorId))).map(c => {
     let name, emoji, avatarColor, authorId;
     authorId = c.authorId || "?";
+    // Normalisation cross-contexte : les commentaires IRL/CDV utilisent c.author
+    // et c.at au lieu de c.authorName/c.createdAt → on aligne sur la forme « post »
+    // pour que ce même renderer marche partout.
+    if (!c.authorName && c.author) c.authorName = c.author;
+    if (c.createdAt == null && c.at != null) c.createdAt = c.at;
     // Priorité : infos embarquées (Supabase) > userById
     const _cu = userById(authorId) || { name: "?", profileEmoji: "👤", avatar: "#64748b" };
     if (c.authorName) {
@@ -157,12 +162,14 @@ function _renderCommentsList(allComments, postId) {
     const cLikes = c.likes || 0;
     const cReplies = c.replies || [];
 
+    const cMine = (authorId === "me" || (typeof MY_UID !== "undefined" && authorId === MY_UID));
     return `<div class="comment" data-commentid="${c.id}">
       <div class="avatar sm" style="background:${avatarBg(_cAv)};cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${authorId}','${cSrc}')">${avatarInner(_cAv)}</div>
+      <button class="comment-menu-btn" title="Options" onclick="event.stopPropagation();return openCommentOptions('${postId}','${c.id}',${cMine ? 1 : 0}, event);"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg></button>
       <div class="comment-body">
         <div class="comment-author" style="cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${authorId}','${cSrc}')">${escapeHtml(name)}</div>
         <div class="comment-text">${escapeHtml(c.text || c.content || "")}</div>
-        <div class="comment-meta">${fmtTime(c.createdAt)}</div>
+        <div class="comment-meta">${fmtTime(c.createdAt || c.at)}</div>
         <div class="comment-actions">
           <span class="comment-action ${cLiked ? "liked" : ""}" onclick="return likeComment('${postId}','${c.id}', event);">
             ${cLiked ? "❤️" : "🤍"} ${cLikes}
@@ -179,26 +186,26 @@ function _renderCommentsList(allComments, postId) {
           // Si c'est une réaction emoji, afficher différemment
           if (r.type === "emoji_reaction") {
             const _rAv = { avatar: ru.avatar || "#64748b", profileEmoji: ru.profileEmoji || "👤", name: ru.name, photoUrl: ru.photoUrl || null };
-            return `<div class="comment-reply" style="display:flex;align-items:center;gap:8px;padding:6px 0;">
-              <div class="avatar sm" style="background:${avatarBg(_rAv)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${r.authorId}','${rSrc}')">${avatarInner(_rAv)}</div>
-              <div><span style="font-size:11px;color:var(--text);font-weight:600;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span> <span style="font-size:18px;">${r.text}</span></div>
+            return `<div class="comment-reply" style="display:flex;align-items:center;gap:6px;padding:4px 0;">
+              <div class="avatar xs" style="background:${avatarBg(_rAv)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${r.authorId}','${rSrc}')">${avatarInner(_rAv)}</div>
+              <div><span style="font-size:11px;color:var(--text);font-weight:600;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span> <span style="font-size:14px;">${r.text}</span></div>
             </div>`;
           }
 
           // Si c'est une réaction GIF
           if (r.type === "gif_reaction") {
             const _rAv = { avatar: ru.avatar || "#64748b", profileEmoji: ru.profileEmoji || "👤", name: ru.name, photoUrl: ru.photoUrl || null };
-            return `<div class="comment-reply" style="display:flex;align-items:flex-start;gap:8px;padding:6px 0;">
-              <div class="avatar sm" style="background:${avatarBg(_rAv)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${r.authorId}','${rSrc}')">${avatarInner(_rAv)}</div>
+            return `<div class="comment-reply" style="display:flex;align-items:flex-start;gap:6px;padding:4px 0;">
+              <div class="avatar xs" style="background:${avatarBg(_rAv)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${r.authorId}','${rSrc}')">${avatarInner(_rAv)}</div>
               <div><span style="font-size:11px;color:var(--text);font-weight:600;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span><br/>
-              <img loading="lazy" decoding="async" src="${r.text}" style="width:120px;height:120px;border-radius:8px;margin-top:6px;object-fit:cover;" alt="GIF" /></div>
+              <img loading="lazy" decoding="async" src="${r.text}" style="width:90px;height:90px;border-radius:8px;margin-top:4px;object-fit:cover;" alt="GIF" /></div>
             </div>`;
           }
 
           // Réponse normale
           const _rAvT = { avatar: ru.avatar || "#64748b", profileEmoji: ru.profileEmoji || "👤", name: ru.name, photoUrl: ru.photoUrl || null };
-          return `<div class="comment-reply" style="display:flex;align-items:flex-start;gap:8px;padding:6px 0;">
-            <div class="avatar sm" style="background:${avatarBg(_rAvT)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${r.authorId}','${rSrc}')">${avatarInner(_rAvT)}</div>
+          return `<div class="comment-reply" style="display:flex;align-items:flex-start;gap:6px;padding:4px 0;">
+            <div class="avatar xs" style="background:${avatarBg(_rAvT)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${r.authorId}','${rSrc}')">${avatarInner(_rAvT)}</div>
             <div><span class="comment-reply-author" style="font-size:11px;font-weight:600;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span> ${escapeHtml(r.text)}
             <div style="font-size:10px;color:var(--muted);margin-top:2px;">${fmtTime(r.createdAt)}</div></div>
           </div>`;
@@ -305,9 +312,10 @@ function _applyCommentInteractionEvent(r, op) {
     if (!r || !r.comment_id) return;
     if (typeof MY_UID !== "undefined" && r.user_id === MY_UID) return; // déjà appliqué localement
     if (typeof isBlocked === "function" && isBlocked(r.user_id)) return;
-    var post = (r.post_id && typeof findPostAnywhere === "function") ? findPostAnywhere(r.post_id) : null;
-    var comment = post && post.comments ? post.comments.find(function(c){ return c.id === r.comment_id; }) : null;
-    if (!comment) return; // post/commentaire pas chargé localement → rien à faire
+    // Résolution générique : post, événement IRL ou live CDV (post_id sert d'id de fil).
+    var thread = (r.post_id && typeof _findCommentThread === "function") ? _findCommentThread(r.post_id) : null;
+    var comment = thread ? thread.comments.find(function(c){ return c.id === r.comment_id; }) : null;
+    if (!comment) return; // fil/commentaire pas chargé localement → rien à faire
     comment.likedBy = comment.likedBy || []; comment.replies = comment.replies || []; comment.emojis = comment.emojis || [];
     if (r.kind === "like") {
       if (op === "add") { if (comment.likedBy.indexOf(r.user_id) < 0) { comment.likedBy.push(r.user_id); comment.likes = (comment.likes || 0) + 1; } }
@@ -320,12 +328,239 @@ function _applyCommentInteractionEvent(r, op) {
       if (!comment.replies.find(function(x){ return x.id === eid; }))
         comment.replies.push({ id: eid, authorId: r.user_id, text: r.payload, type: "emoji_reaction", createdAt: r.created_at ? new Date(r.created_at + "Z").getTime() : Date.now() });
     }
-    saveState();
-    // Re-render si la modale commentaires de ce post est ouverte.
-    if (window._openCommentsPostId === post.id && document.getElementById("commentsBox")) {
-      try { document.getElementById("commentsBox").innerHTML = _renderCommentsList(post.comments, post.id); } catch(e) {}
+    if (typeof thread.save === "function") thread.save(); else saveState();
+    if (typeof _refreshCommentThreadUI === "function") _refreshCommentThreadUI(r.post_id);
+  } catch(e) {}
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// SYSTÈME DE COMMENTAIRES UNIFIÉ (fil / IRL / CDV)
+// Un seul renderer (_renderCommentsList) + un seul jeu de handlers (like/répondre/
+// emoji/GIF dans emoji-misc.js) pour les 3 contextes. _findCommentThread(id)
+// localise le tableau de commentaires quel que soit le contexte ; les handlers
+// ne dépendent plus de findPostAnywhere. Cross-compte via comment_interactions
+// (post_id = id du fil, nullable côté table → OK pour event/cdv).
+// ════════════════════════════════════════════════════════════════════════
+
+// Retourne { kind, id, comments (référence mutable), save(), targetUserId } ou null.
+function _findCommentThread(threadId) {
+  if (!threadId) return null;
+  // 1) Post du fil
+  if (typeof findPostAnywhere === "function") {
+    var post = findPostAnywhere(threadId);
+    if (post) {
+      if (!post.comments) post.comments = [];
+      return { kind: "post", id: threadId, comments: post.comments,
+        save: function(){ try { saveState(); } catch(e){} },
+        targetUserId: post.authorId, fromSupabase: post.fromSupabase };
+    }
+  }
+  // 2) Événement IRL
+  if (typeof allEvents === "function") {
+    try {
+      var ev = allEvents().find(function(e){ return e.id === threadId; });
+      if (ev) {
+        window._eventCommentsCache = window._eventCommentsCache || {};
+        if (!window._eventCommentsCache[threadId]) window._eventCommentsCache[threadId] = [];
+        return { kind: "event", id: threadId, comments: window._eventCommentsCache[threadId],
+          save: function(){}, targetUserId: ev.organizerId };
+      }
+    } catch(e) {}
+  }
+  // 3) Live CDV
+  if (typeof getCdvLives === "function") {
+    try {
+      var lives = getCdvLives();
+      var live = lives.find(function(l){ return l.id === threadId; });
+      if (live) {
+        if (!live.comments) live.comments = [];
+        return { kind: "cdv", id: threadId, comments: live.comments,
+          save: function(){ try { saveCdvLives(lives); } catch(e){} }, targetUserId: live.authorId };
+      }
+    } catch(e) {}
+  }
+  return null;
+}
+
+// Re-render le fil de commentaires partout où il est affiché (modale post,
+// page détail IRL, viewer CDV, feuille générique).
+function _refreshCommentThreadUI(threadId) {
+  var thread = _findCommentThread(threadId);
+  if (!thread) return;
+  try {
+    if (window._openCommentsPostId === threadId) {
+      var box = document.getElementById("commentsBox");
+      if (box) box.innerHTML = _renderCommentsList(thread.comments, threadId);
     }
   } catch(e) {}
+  // IRL (page détail OU feuille inline)
+  try { if (typeof _renderEventComments === "function" && thread.kind === "event") _renderEventComments(threadId); } catch(e) {}
+  // CDV
+  try {
+    if (thread.kind === "cdv") {
+      var cdvBox = document.getElementById("cdvCommentsBox");
+      if (cdvBox && typeof _cdvCommentsBoxHtml === "function") {
+        var l = getCdvLives().find(function(x){ return x.id === threadId; });
+        if (l) cdvBox.innerHTML = _cdvCommentsBoxHtml(l);
+      }
+    }
+  } catch(e) {}
+  // Feuille générique de commentaires (carte IRL/CDV sans ouvrir le détail)
+  try {
+    var sheet = document.getElementById("cmtThreadList");
+    if (sheet && sheet.getAttribute("data-thread") === threadId) {
+      sheet.innerHTML = thread.comments.length
+        ? _renderCommentsList(thread.comments, threadId)
+        : '<div class="empty"><div class="empty-icon">💭</div><div class="empty-title">Sois le premier à réagir</div></div>';
+    }
+  } catch(e) {}
+}
+
+// ───────── Menu ⋯ d'options d'un commentaire (Instagram-like) ─────────
+function openCommentOptions(threadId, commentId, mine, event) {
+  if (event && event.stopPropagation) event.stopPropagation();
+  var thread = _findCommentThread(threadId);
+  var c = thread && thread.comments.find(function(x){ return x.id === commentId; });
+  if (!c) return false;
+  var isMine = (mine === 1 || mine === "1" || mine === true)
+    || (typeof MY_UID !== "undefined" && c.authorId === MY_UID) || c.authorId === "me";
+  window._cmtSheetCtx = { threadId: threadId, commentId: commentId,
+    name: c.authorName || c.author || "ce compte", authorId: c.authorId,
+    text: c.text || c.content || "" };
+  var rows = ""
+    + _cmtRow("💬", "Répondre", "reply")
+    + _cmtRow("😊", "Réagir avec un emoji", "react")
+    + _cmtRow("🎬", "Réagir avec un GIF", "gif")
+    + _cmtRow("📋", "Copier le texte", "copy");
+  if (isMine) {
+    rows += _cmtRow("🗑", "Supprimer", "delete", true);
+  } else {
+    rows += _cmtRow("🔕", "Masquer ce commentaire", "hide");
+    rows += _cmtRow("🚫", "Bloquer ce compte", "block", true);
+    rows += _cmtRow("⚠️", "Signaler", "report", true);
+  }
+  var ov = document.createElement("div");
+  ov.id = "cmtSheet";
+  ov.className = "cmt-sheet-ov";
+  ov.onclick = function(e){ if (e.target === ov) _closeCmtSheet(); };
+  ov.innerHTML = '<div class="cmt-sheet"><div class="cmt-sheet-handle"></div>' + rows
+    + '<button class="cmt-sheet-row cancel" onclick="_closeCmtSheet()">Annuler</button></div>';
+  document.body.appendChild(ov);
+  return false;
+}
+function _cmtRow(icon, label, action, danger) {
+  return '<button class="cmt-sheet-row' + (danger ? " danger" : "") + '" onclick="_cmtAct(\'' + action + '\')">'
+    + '<span class="cmt-sheet-ic">' + icon + '</span>' + escapeHtml(label) + '</button>';
+}
+function _closeCmtSheet() { var o = document.getElementById("cmtSheet"); if (o) o.remove(); }
+function _cmtAct(kind) {
+  var ctx = window._cmtSheetCtx; if (!ctx) return;
+  _closeCmtSheet();
+  if (kind === "reply") { try { replyToComment(ctx.threadId, ctx.commentId, ctx.name, null); } catch(e){} }
+  else if (kind === "react") { try { showEmojiPickerForComment(ctx.threadId, ctx.commentId, null); } catch(e){} }
+  else if (kind === "gif") { try { showGifPickerForComment(ctx.threadId, ctx.commentId, null); } catch(e){} }
+  else if (kind === "copy") {
+    try { navigator.clipboard.writeText(ctx.text); toast("📋 Texte copié"); }
+    catch(e) { toast("Copie impossible"); }
+  }
+  else if (kind === "delete") { deleteCommentEntry(ctx.threadId, ctx.commentId); }
+  else if (kind === "hide") { deleteCommentEntry(ctx.threadId, ctx.commentId, true); toast("🔕 Commentaire masqué"); }
+  else if (kind === "block") { if (typeof blockUser === "function") blockUser(ctx.authorId); }
+  else if (kind === "report") { reportCommentEntry(ctx.threadId, ctx.commentId); }
+}
+
+// Supprime un commentaire (local + best-effort Supabase selon le préfixe d'id).
+// `localOnly` = simple masquage local (action « Masquer » sur le commentaire d'autrui).
+function deleteCommentEntry(threadId, commentId, localOnly) {
+  var thread = _findCommentThread(threadId);
+  if (!thread) return;
+  var idx = thread.comments.findIndex(function(c){ return c.id === commentId; });
+  if (idx > -1) thread.comments.splice(idx, 1);
+  if (typeof thread.save === "function") thread.save();
+  // Reflète sur le post local (compteur de la carte fil) le cas échéant.
+  if (thread.kind === "post" && typeof renderFeed === "function") { try { renderFeed(); } catch(e){} }
+  _refreshCommentThreadUI(threadId);
+  if (!localOnly) {
+    _supaDeleteCommentRow(commentId);
+    if (thread.kind === "post") toast("🗑 Commentaire supprimé");
+    else toast("🗑 Commentaire supprimé");
+  }
+}
+async function _supaDeleteCommentRow(commentId) {
+  try {
+    if (typeof supa === "undefined" || !supa || !window._supaReal) return;
+    var table = null;
+    if (/^ec_/.test(commentId)) table = "event_comments";
+    else if (/^lc_/.test(commentId)) table = "cdv_live_comments";
+    else table = "post_comments"; // c_… et autres
+    await supa.from(table).delete().eq("id", commentId);
+    // Nettoie aussi les interactions liées (best-effort, RLS owner).
+    try { await supa.from("comment_interactions").delete().eq("comment_id", commentId); } catch(e) {}
+  } catch(e) {}
+}
+
+// Signale un commentaire (modération) → table reports via supaReport.
+function reportCommentEntry(threadId, commentId) {
+  if (typeof supaReport === "function") supaReport("comment", commentId, "");
+  toast("⚠️ Commentaire signalé. Merci, on s'en occupe.");
+}
+
+// ───────── Feuille de commentaires inline (IRL / CDV sans ouvrir le détail) ─────────
+// Ouvre une modale légère avec le fil de commentaires riche + un champ de saisie,
+// pour commenter/voir les commentaires d'un événement ou d'un live directement
+// depuis la carte de liste.
+function openCommentSheet(threadId, title) {
+  var thread = _findCommentThread(threadId);
+  if (!thread) { toast("Commentaires indisponibles"); return; }
+  if (typeof pushOverlayToHistory === "function") { try { pushOverlayToHistory("comments", threadId); } catch(e) {} }
+  window._openCommentsPostId = null; // ce n'est pas la modale post
+  var empty = '<div class="empty"><div class="empty-icon">💭</div><div class="empty-title">Sois le premier à réagir</div></div>';
+  var initial = thread.comments.length ? _renderCommentsList(thread.comments, threadId) : empty;
+  openModal(
+    '<div class="modal-handle"></div>'
+    + '<div class="modal-title">' + (title || "💬 Commentaires") + '</div>'
+    + '<div class="modal-subtitle">Commente pour gagner +3 pts.</div>'
+    + '<div id="cmtThreadList" data-thread="' + threadId + '" style="max-height:52vh;overflow-y:auto;margin-bottom:12px;">' + initial + '</div>'
+    + '<div style="display:flex;gap:6px;">'
+    + '<input type="text" class="input" id="cmtThreadInput" placeholder="Écris un commentaire…" maxlength="500" style="flex:1;" onkeypress="if(event.key===\'Enter\')submitCommentSheet(\'' + threadId + '\')"/>'
+    + '<button class="btn primary" onclick="submitCommentSheet(\'' + threadId + '\')">Envoyer</button>'
+    + '</div>'
+  );
+  // Hydrate / charge les commentaires distants selon le contexte.
+  if (thread.kind === "event" && typeof _loadEventComments === "function") {
+    _loadEventComments(threadId); // écrit dans #cmtThreadList (cf. _renderEventComments)
+  } else if (thread.comments.length && typeof hydrateCommentInteractions === "function") {
+    hydrateCommentInteractions({ comments: thread.comments }).then(function(){
+      var b = document.getElementById("cmtThreadList");
+      if (b && b.getAttribute("data-thread") === threadId) b.innerHTML = _renderCommentsList(thread.comments, threadId);
+    });
+  }
+}
+
+function submitCommentSheet(threadId) {
+  var inp = document.getElementById("cmtThreadInput");
+  if (!inp || !inp.value.trim()) return;
+  var thread = _findCommentThread(threadId);
+  if (!thread) return;
+  if (thread.kind === "event" && typeof addEventComment === "function") {
+    addEventComment(threadId); // lit #cmtThreadInput en repli, re-render #cmtThreadList
+  } else if (thread.kind === "cdv" && typeof addCdvLiveComment === "function") {
+    addCdvLiveComment(threadId); // lit #cmtThreadInput en repli, re-render via _refreshCommentThreadUI
+  } else if (typeof submitComment === "function") {
+    // Fil : réutilise le chemin post (champ texte différent → on délègue manuellement)
+    var t = inp.value.trim(); inp.value = "";
+    var post = (typeof findPostAnywhere === "function") ? findPostAnywhere(threadId) : null;
+    if (post) {
+      if (!post.comments) post.comments = [];
+      var _cid = "c_" + uid();
+      var p = (typeof currentProfile === "function") ? currentProfile() : null;
+      var realAuthorId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
+      post.comments.unshift({ id: _cid, authorId: realAuthorId, authorName: (p && p.name) || state.user.name || "Moi", authorEmoji: (p && p.emoji) || "✨", text: t, content: t, createdAt: Date.now() });
+      if (typeof grantReward === "function") grantReward("comment");
+      if (typeof supaAddComment === "function" && typeof MY_UID !== "undefined" && MY_UID) supaAddComment(threadId, t, _cid);
+      _refreshCommentThreadUI(threadId);
+    }
+  }
 }
 
 // Mood selector

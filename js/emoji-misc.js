@@ -238,9 +238,10 @@ document.addEventListener("click", function(e) {
 function likeComment(postId, commentId, event) {
   if (event) { event.stopPropagation(); event.preventDefault(); }
   _diag("❤️ likeComment(" + postId + ", " + commentId + ")");
-  var post = findPostAnywhere(postId);
-  if (!post) { _diag("❌ Post not found"); return false; }
-  var comment = (post.comments || []).find(c => c.id === commentId);
+  var thread = (typeof _findCommentThread === "function") ? _findCommentThread(postId) : null;
+  if (!thread && typeof findPostAnywhere === "function") { var _p = findPostAnywhere(postId); if (_p) thread = { comments: _p.comments || [], save: function(){ try{saveState();}catch(e){} } }; }
+  if (!thread) { _diag("❌ Thread not found"); return false; }
+  var comment = thread.comments.find(c => c.id === commentId);
   if (!comment) { _diag("❌ Comment not found"); return false; }
   // Initialiser les propriétés manquantes
   if (!comment.likes) comment.likes = 0;
@@ -264,7 +265,7 @@ function likeComment(postId, commentId, event) {
     }
   }
   _diag("✅ Like toggle: " + comment.likes + " likes");
-  saveState();
+  if (typeof thread.save === "function") thread.save(); else saveState();
 
   // Update visuel du like
   var commentEl = document.querySelector('[data-commentid="' + commentId + '"]');
@@ -298,9 +299,10 @@ function replyToComment(postId, commentId, authorName, event) {
     var replyText = inputField.value.trim();
     if (!replyText) return;
     _diag("📝 Submitting reply");
-    var post = findPostAnywhere(postId);
-    if (!post) { _diag("❌ Post not found"); return; }
-    var comment = (post.comments || []).find(c => c.id === commentId);
+    var thread = (typeof _findCommentThread === "function") ? _findCommentThread(postId) : null;
+    if (!thread && typeof findPostAnywhere === "function") { var _p = findPostAnywhere(postId); if (_p) thread = { comments: _p.comments || [], save: function(){ try{saveState();}catch(e){} } }; }
+    if (!thread) { _diag("❌ Thread not found"); return; }
+    var comment = thread.comments.find(c => c.id === commentId);
     if (!comment) { _diag("❌ Comment not found"); return; }
     // Initialiser les propriétés manquantes
     if (!comment.replies) comment.replies = [];
@@ -312,7 +314,7 @@ function replyToComment(postId, commentId, authorName, event) {
     var newReply = { id: "reply_" + Date.now(), authorId: _meId, text: replyText, createdAt: Date.now() };
     comment.replies.push(newReply);
     _diag("✅ Reply added");
-    saveState();
+    if (typeof thread.save === "function") thread.save(); else saveState();
     // Sync Supabase → la réponse apparaît chez tous les comptes.
     if (typeof supaCommentInteract === "function") supaCommentInteract(commentId, postId, "reply", replyText);
     if (comment.authorId && comment.authorId !== _meId && comment.fromSupabase && typeof supaInsertNotif === "function") {
@@ -488,9 +490,10 @@ function showEmojiPickerForComment(postId, commentId, event) {
   if (oldPanel) { oldPanel.remove(); return false; }
 
   // Initialiser les propriétés du commentaire
-  var post = findPostAnywhere(postId);
-  if (post) {
-    var comment = (post.comments || []).find(c => c.id === commentId);
+  var _thr = (typeof _findCommentThread === "function") ? _findCommentThread(postId) : null;
+  if (!_thr && typeof findPostAnywhere === "function") { var _pp = findPostAnywhere(postId); if (_pp) _thr = { comments: _pp.comments || [] }; }
+  if (_thr) {
+    var comment = _thr.comments.find(c => c.id === commentId);
     if (comment) {
       if (!comment.likes) comment.likes = 0;
       if (!comment.likedBy) comment.likedBy = [];
@@ -584,9 +587,10 @@ function showEmojiPickerForComment(postId, commentId, event) {
 
 function addGifToComment(postId, commentId, gifUrl) {
   console.log("🎬 addGifToComment:", postId, commentId);
-  var post = findPostAnywhere(postId);
-  if (!post) return false;
-  var comment = (post.comments || []).find(c => c.id === commentId);
+  var thread = (typeof _findCommentThread === "function") ? _findCommentThread(postId) : null;
+  if (!thread && typeof findPostAnywhere === "function") { var _p = findPostAnywhere(postId); if (_p) thread = { comments: _p.comments || [], save: function(){ try{saveState();}catch(e){} } }; }
+  if (!thread) return false;
+  var comment = thread.comments.find(c => c.id === commentId);
   if (!comment) return false;
 
   // Initialiser replies si nécessaire
@@ -645,22 +649,22 @@ function addGifToComment(postId, commentId, gifUrl) {
         const _rAv = { avatar: ru.avatar || "#64748b", profileEmoji: ru.profileEmoji || "👤", name: ru.name, photoUrl: ru.photoUrl || null };
 
         if (r.type === "emoji_reaction") {
-          return `<div class="comment-reply" style="display:flex;align-items:center;gap:8px;padding:6px 0;">
-            <div class="avatar sm" style="background:${avatarBg(_rAv)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${avatarInner(_rAv)}</div>
-            <div><span style="font-size:11px;color:var(--text);font-weight:600;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span> <span style="font-size:18px;">${r.text}</span></div>
+          return `<div class="comment-reply" style="display:flex;align-items:center;gap:6px;padding:4px 0;">
+            <div class="avatar xs" style="background:${avatarBg(_rAv)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${avatarInner(_rAv)}</div>
+            <div><span style="font-size:11px;color:var(--text);font-weight:600;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span> <span style="font-size:14px;">${r.text}</span></div>
           </div>`;
         }
 
         if (r.type === "gif_reaction") {
-          return `<div class="comment-reply" style="display:flex;align-items:flex-start;gap:8px;padding:6px 0;">
-            <div class="avatar sm" style="background:${avatarBg(_rAv)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${avatarInner(_rAv)}</div>
+          return `<div class="comment-reply" style="display:flex;align-items:flex-start;gap:6px;padding:4px 0;">
+            <div class="avatar xs" style="background:${avatarBg(_rAv)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${avatarInner(_rAv)}</div>
             <div><span style="font-size:11px;color:var(--text);font-weight:600;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span><br/>
-            <img loading="lazy" decoding="async" src="${r.text}" style="width:120px;height:120px;border-radius:8px;margin-top:6px;object-fit:cover;" alt="GIF" /></div>
+            <img loading="lazy" decoding="async" src="${r.text}" style="width:90px;height:90px;border-radius:8px;margin-top:4px;object-fit:cover;" alt="GIF" /></div>
           </div>`;
         }
 
-        return `<div class="comment-reply" style="display:flex;align-items:flex-start;gap:8px;padding:6px 0;">
-          <div class="avatar sm" style="background:${avatarBg(_rAv)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${avatarInner(_rAv)}</div>
+        return `<div class="comment-reply" style="display:flex;align-items:flex-start;gap:6px;padding:4px 0;">
+          <div class="avatar xs" style="background:${avatarBg(_rAv)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${avatarInner(_rAv)}</div>
           <div><span class="comment-reply-author" style="font-size:11px;font-weight:600;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span> ${escapeHtml(r.text)}
           <div style="font-size:10px;color:var(--muted);margin-top:2px;">${fmtTime(r.createdAt)}</div></div>
         </div>`;
@@ -672,6 +676,7 @@ function addGifToComment(postId, commentId, gifUrl) {
     }
   }
 
+  if (typeof thread.save === "function") thread.save();
   return false;
 }
 
@@ -862,9 +867,10 @@ function updatePostReactionsUI(postId) {
 
 function addEmojiToComment(postId, commentId, emoji) {
   console.log("✨ addEmojiToComment:", postId, commentId, emoji);
-  var post = findPostAnywhere(postId);
-  if (!post) return false;
-  var comment = (post.comments || []).find(c => c.id === commentId);
+  var thread = (typeof _findCommentThread === "function") ? _findCommentThread(postId) : null;
+  if (!thread && typeof findPostAnywhere === "function") { var _p = findPostAnywhere(postId); if (_p) thread = { comments: _p.comments || [], save: function(){ try{saveState();}catch(e){} } }; }
+  if (!thread) return false;
+  var comment = thread.comments.find(c => c.id === commentId);
   if (!comment) return false;
 
   // Chaque emoji = entrée séparée dans comment.replies (avec authorId pour l'avatar).
@@ -877,7 +883,7 @@ function addEmojiToComment(postId, commentId, emoji) {
     createdAt: Date.now()
   };
   comment.replies.push(emojiReaction);
-  saveState();
+  if (typeof thread.save === "function") thread.save(); else saveState();
   // Sync Supabase → la réaction emoji apparaît chez tous les comptes.
   if (typeof supaCommentInteract === "function") supaCommentInteract(commentId, postId, "emoji", emoji);
   console.log("✅ Emoji reaction added + synced:", emoji);
@@ -922,22 +928,22 @@ function addEmojiToComment(postId, commentId, emoji) {
         const _rAv = { avatar: ru.avatar || "#64748b", profileEmoji: ru.profileEmoji || "👤", name: ru.name, photoUrl: ru.photoUrl || null };
 
         if (r.type === "emoji_reaction") {
-          return `<div class="comment-reply" style="display:flex;align-items:center;gap:8px;padding:6px 0;">
-            <div class="avatar sm" style="background:${avatarBg(_rAv)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${avatarInner(_rAv)}</div>
-            <div><span style="font-size:11px;color:var(--text);font-weight:600;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span> <span style="font-size:18px;">${r.text}</span></div>
+          return `<div class="comment-reply" style="display:flex;align-items:center;gap:6px;padding:4px 0;">
+            <div class="avatar xs" style="background:${avatarBg(_rAv)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${avatarInner(_rAv)}</div>
+            <div><span style="font-size:11px;color:var(--text);font-weight:600;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span> <span style="font-size:14px;">${r.text}</span></div>
           </div>`;
         }
 
         if (r.type === "gif_reaction") {
-          return `<div class="comment-reply" style="display:flex;align-items:flex-start;gap:8px;padding:6px 0;">
-            <div class="avatar sm" style="background:${avatarBg(_rAv)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${avatarInner(_rAv)}</div>
+          return `<div class="comment-reply" style="display:flex;align-items:flex-start;gap:6px;padding:4px 0;">
+            <div class="avatar xs" style="background:${avatarBg(_rAv)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${avatarInner(_rAv)}</div>
             <div><span style="font-size:11px;color:var(--text);font-weight:600;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span><br/>
-            <img loading="lazy" decoding="async" src="${r.text}" style="width:120px;height:120px;border-radius:8px;margin-top:6px;object-fit:cover;" alt="GIF" /></div>
+            <img loading="lazy" decoding="async" src="${r.text}" style="width:90px;height:90px;border-radius:8px;margin-top:4px;object-fit:cover;" alt="GIF" /></div>
           </div>`;
         }
 
-        return `<div class="comment-reply" style="display:flex;align-items:flex-start;gap:8px;padding:6px 0;">
-          <div class="avatar sm" style="background:${avatarBg(_rAv)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${avatarInner(_rAv)}</div>
+        return `<div class="comment-reply" style="display:flex;align-items:flex-start;gap:6px;padding:4px 0;">
+          <div class="avatar xs" style="background:${avatarBg(_rAv)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${avatarInner(_rAv)}</div>
           <div><span class="comment-reply-author" style="font-size:11px;font-weight:600;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span> ${escapeHtml(r.text)}
           <div style="font-size:10px;color:var(--muted);margin-top:2px;">${fmtTime(r.createdAt)}</div></div>
         </div>`;

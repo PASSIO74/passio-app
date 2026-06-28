@@ -654,6 +654,7 @@
     }
 
     .avatar.sm { width: 30px; height: 30px; font-size: 13px; }
+    .avatar.xs { width: 22px; height: 22px; font-size: 10px; box-shadow: 0 0 0 1.5px #fff, 0 1px 4px rgba(24, 18, 48, 0.12); }
     .avatar.lg { width: 68px; height: 68px; font-size: 28px; }
     .avatar.xl { width: 92px; height: 92px; font-size: 38px; }
 
@@ -3523,22 +3524,121 @@
       gap: 8px;
       padding: 8px 0;
       border-bottom: 1px solid var(--border);
+      position: relative;
     }
     .comment:last-child { border-bottom: none; }
-    .comment-body { flex: 1; min-width: 0; }
+    .comment-body { flex: 1; min-width: 0; padding-right: 20px; }
     .comment-author { font-size: 12px; font-weight: 600; }
     .comment-text { font-size: 13px; color: var(--text-dim); margin-top: 2px; }
     .comment-meta { font-size: 10px; color: var(--muted); margin-top: 2px; }
+    /* Barre d'actions sous un commentaire (like / répondre / réagir / GIF) */
+    .comment-actions {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 5px;
+    }
+    .comment-action {
+      cursor: pointer;
+      font-size: 12px;
+      color: var(--muted);
+      user-select: none;
+      transition: opacity 150ms, color 150ms;
+      line-height: 1;
+    }
+    .comment-action:hover { opacity: 0.7; }
+    .comment-action.liked { color: #ef4444; }
+    /* Bouton ⋯ d'options d'un commentaire (Instagram-like) */
+    .comment-menu-btn {
+      position: absolute;
+      top: 6px;
+      right: 0;
+      width: 24px;
+      height: 24px;
+      padding: 0;
+      border: none;
+      background: none;
+      color: var(--muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      opacity: 0.65;
+      transition: opacity 150ms, background 150ms;
+    }
+    .comment-menu-btn:hover { opacity: 1; background: var(--bg-soft); }
+    .comment-menu-btn svg { width: 16px; height: 16px; }
+    /* Réponses : légèrement indentées et plus compactes que le commentaire parent */
+    .comment-replies {
+      margin-top: 4px;
+      padding-left: 8px;
+      border-left: 2px solid var(--border);
+    }
+    .comment-reply { font-size: 12px; }
     .comment-reply-count {
       cursor: pointer;
       color: var(--accent);
       font-size: 12px;
       font-weight: 600;
-      margin-left: 4px;
       transition: opacity 150ms;
       user-select: none;
     }
     .comment-reply-count:hover { opacity: 0.75; }
+
+    /* ===== Action sheet d'options de commentaire (⋯) ===== */
+    .cmt-sheet-ov {
+      position: fixed;
+      inset: 0;
+      z-index: 10001;
+      background: rgba(10, 6, 25, 0.45);
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      animation: fadeIn 0.15s ease;
+    }
+    .cmt-sheet {
+      width: 100%;
+      max-width: 480px;
+      background: var(--bg-card);
+      border-radius: 18px 18px 0 0;
+      padding: 8px 8px max(14px, env(safe-area-inset-bottom));
+      box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.3);
+      animation: slideUp 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .cmt-sheet-handle {
+      width: 40px;
+      height: 4px;
+      border-radius: 999px;
+      background: var(--border-strong);
+      margin: 6px auto 10px;
+    }
+    .cmt-sheet-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      width: 100%;
+      padding: 14px 16px;
+      border: none;
+      background: none;
+      color: var(--text);
+      font-size: 15px;
+      font-weight: 600;
+      text-align: left;
+      cursor: pointer;
+      border-radius: 12px;
+    }
+    .cmt-sheet-row:hover { background: var(--bg-soft); }
+    .cmt-sheet-row.danger { color: #ef4444; }
+    .cmt-sheet-row.cancel {
+      justify-content: center;
+      color: var(--muted);
+      margin-top: 4px;
+      border-top: 1px solid var(--border);
+      border-radius: 0;
+    }
+    .cmt-sheet-ic { font-size: 18px; width: 22px; text-align: center; }
 
     /* Map IRL */
     /* Carte interactive Leaflet */

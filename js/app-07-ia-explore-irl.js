@@ -1322,7 +1322,7 @@ function renderIRL() {
       </div>
       <div style="font-size:12px;color:var(--text-dim);margin-top:8px;line-height:1.5;">${escapeHtml((e.desc || "").slice(0, 120))}${(e.desc||"").length > 120 ? "…" : ""}</div>
       <div class="event-footer">
-        <div class="attendees">${attAvatars}<span class="pill" style="margin-left:6px;padding:3px 8px;">${(e.attendees || []).length} inscrit${(e.attendees||[]).length>1?"s":""}</span><span class="pill" style="margin-left:6px;padding:3px 8px;" data-evc="${e.id}">💬 ${(window._eventCommentCounts && window._eventCommentCounts[e.id]) || 0}</span></div>
+        <div class="attendees">${attAvatars}<span class="pill" style="margin-left:6px;padding:3px 8px;">${(e.attendees || []).length} inscrit${(e.attendees||[]).length>1?"s":""}</span><span class="pill" style="margin-left:6px;padding:3px 8px;cursor:pointer;" data-evc="${e.id}" onclick="event.stopPropagation();openCommentSheet('${e.id}','💬 ${escapeHtml((e.title||'').replace(/'/g,'’')).slice(0,40)}')">💬 ${(window._eventCommentCounts && window._eventCommentCounts[e.id]) || 0}</span></div>
         <button class="btn small ${joined ? "ghost" : "primary"}" ${isFull ? "disabled" : ""} onclick="event.stopPropagation();toggleJoinEvent('${e.id}')">${joined ? "✓ Inscrit" : isFull ? "Complet" : "+ Rejoindre"}</button>
       </div>
     </div>`;
@@ -1849,12 +1849,27 @@ async function _loadEventComments(eventId) {
   var localOnly = (_eventCommentsCache[eventId] || []).filter(function (lc) {
     return String(lc.id).indexOf("ec_local_") === 0 && !list.some(function (s) { return s.text === lc.text && Math.abs(s.at - lc.at) < 60000; });
   });
-  _eventCommentsCache[eventId] = list.concat(localOnly);
+  _eventCommentsCache[eventId] = list.concat(localOnly).map(_normalizeThreadComment);
+  window._eventCommentsCache = _eventCommentsCache;
   _renderEventComments(eventId);
-  // Likes cross-compte : hydrate les compteurs réels puis re-render.
-  if (typeof hydrateCommentLikes === "function") {
-    hydrateCommentLikes(_eventCommentsCache[eventId].map(function(c){ return c.id; }), function(){ _renderEventComments(eventId); });
+  // Interactions cross-compte (likes + réponses + emojis) via comment_interactions :
+  // hydrate puis re-render avec le renderer riche unifié.
+  if (typeof hydrateCommentInteractions === "function") {
+    hydrateCommentInteractions({ comments: _eventCommentsCache[eventId] }).then(function(){ _renderEventComments(eventId); });
   }
+}
+
+// Aligne un commentaire IRL/CDV (author/at) sur la forme « post » attendue par le
+// renderer unifié _renderCommentsList (authorName/createdAt + champs d'interaction).
+function _normalizeThreadComment(c) {
+  if (!c) return c;
+  if (!c.authorName && c.author) c.authorName = c.author;
+  if (c.createdAt == null && c.at != null) c.createdAt = c.at;
+  if (c.at == null && c.createdAt != null) c.at = c.createdAt;
+  if (!Array.isArray(c.replies)) c.replies = [];
+  if (c.likes == null) c.likes = 0;
+  if (!Array.isArray(c.likedBy)) c.likedBy = [];
+  return c;
 }
 
 function setEventCommentSort(mode) {
@@ -1864,9 +1879,11 @@ function setEventCommentSort(mode) {
 }
 
 function _renderEventComments(eventId) {
-  var box = document.getElementById("eventCommentsList");
+  // Page détail OU feuille inline (carte IRL sans ouvrir l'événement).
+  var box = document.getElementById("eventCommentsList")
+    || (function(){ var s = document.getElementById("cmtThreadList"); return (s && s.getAttribute("data-thread") === eventId) ? s : null; })();
   if (!box) return;
-  var list = _eventCommentsCache[eventId] || [];
+  var list = (_eventCommentsCache[eventId] || []).map(_normalizeThreadComment);
   if (!list.length) {
     box.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:4px 0;">Aucun commentaire — lance la conversation !</div>';
     return;
@@ -1874,24 +1891,12 @@ function _renderEventComments(eventId) {
   var sortMode = window._eventCommentSort || "recent";
   var sorted = sortComments(list, sortMode);
   var bar = list.length > 1 ? commentSortBarHtml(sortMode, "setEventCommentSort") : "";
-  box.innerHTML = bar + sorted.map(function (c) {
-    var u = userById(c.authorId) || {};
-    var av = { avatar: u.avatar || "#8b5cf6", profileEmoji: u.profileEmoji || "💬", name: c.author, photoUrl: u.photoUrl || null };
-    return '<div style="display:flex;gap:8px;align-items:flex-start;">'
-      + '<div class="avatar sm" style="background:' + avatarBg(av) + ';flex-shrink:0;cursor:pointer;" onclick="openUserProfile(\'' + c.authorId + '\')">' + avatarInner(av) + '</div>'
-      + '<div style="flex:1;min-width:0;">'
-      + '<div style="font-size:12px;font-weight:700;color:var(--text);">' + escapeHtml(c.author || "Anonyme") + '</div>'
-      + '<div style="font-size:12.5px;color:var(--text-dim);line-height:1.45;word-break:break-word;">' + escapeHtml(c.text || "") + '</div>'
-      + '<div style="display:flex;align-items:center;gap:10px;margin-top:2px;">'
-      + '<span style="font-size:10px;color:var(--muted);">' + fmtTime(c.at) + '</span>'
-      + commentLikeBtnHtml(c.id)
-      + '</div>'
-      + '</div></div>';
-  }).join("");
+  // Renderer unifié : like / répondre / emoji / GIF / menu ⋯, comme le fil.
+  box.innerHTML = bar + _renderCommentsList(sorted, eventId);
 }
 
 async function addEventComment(eventId) {
-  var inp = document.getElementById("eventCommentInput");
+  var inp = document.getElementById("eventCommentInput") || document.getElementById("cmtThreadInput");
   if (!inp) return;
   var text = inp.value.trim();
   if (!text) return;
@@ -1899,8 +1904,9 @@ async function addEventComment(eventId) {
   var ev = allEvents().find(function (e) { return e.id === eventId; });
   var name = (state.user.general && state.user.general.username) || state.user.name || "Moi";
   var myId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
-  var optimistic = { id: "ec_local_" + Date.now(), authorId: myId, author: name, text: text, at: Date.now() };
+  var optimistic = _normalizeThreadComment({ id: "ec_local_" + Date.now(), authorId: myId, author: name, authorName: name, text: text, at: Date.now(), createdAt: Date.now() });
   _eventCommentsCache[eventId] = (_eventCommentsCache[eventId] || []).concat([optimistic]);
+  window._eventCommentsCache = _eventCommentsCache;
   _renderEventComments(eventId);
   if (typeof grantReward === "function") { try { grantReward("comment"); } catch (e) {} }
   if (typeof supaAddEventComment === "function" && window._supaReal) {

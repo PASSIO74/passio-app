@@ -1383,15 +1383,19 @@ function convertLiveToCarnet(liveId) {
 // Construit le bloc commentaires d'un live (barre de tri + likes), re-rendable
 // seul (#cdvCommentsBox) sans ré-ouvrir toute la modale.
 function _cdvCommentsBoxHtml(live) {
-  var comments = (live.comments || []).map(function(c) {
-    return Object.assign({}, c, { id: c.id || (c.at + "_" + String(c.text || "").slice(0, 10)) });
+  if (!live) return "";
+  var comments = (live.comments || []);
+  // Normalise EN PLACE (id stable + forme « post ») pour que le renderer unifié
+  // et ses handlers (like/répondre/emoji/GIF/⋯) retrouvent le bon commentaire.
+  comments.forEach(function(c) {
+    if (!c.id) c.id = "lc_" + (c.at || Date.now()) + "_" + Math.random().toString(36).slice(2, 7);
+    if (typeof _normalizeThreadComment === "function") _normalizeThreadComment(c);
+    else { if (!c.authorName && c.author) c.authorName = c.author; if (c.createdAt == null && c.at != null) c.createdAt = c.at; }
   });
-  if (!comments.length) return '<div style="font-size:11px;color:var(--muted);padding:8px;">Aucun commentaire</div>';
+  if (!comments.length) return '<div style="font-size:11px;color:var(--muted);padding:8px;">Aucun commentaire — lance la conversation !</div>';
   var mode = window._cdvCommentSort || "recent";
   var bar = comments.length > 1 ? commentSortBarHtml(mode, "setCdvCommentSort") : "";
-  return bar + sortComments(comments, mode).map(function(c) {
-    return '<div style="display:flex;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);"><div style="width:24px;height:24px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0;">😊</div><div style="flex:1;min-width:0;"><div style="font-size:11px;font-weight:700;">' + escapeHtml(c.author) + '</div><div style="font-size:11px;color:var(--text-dim);word-break:break-word;">' + escapeHtml(c.text) + '</div><div style="margin-top:2px;">' + commentLikeBtnHtml(c.id) + '</div></div></div>';
-  }).join("");
+  return bar + _renderCommentsList(sortComments(comments, mode), live.id);
 }
 function setCdvCommentSort(mode) {
   window._cdvCommentSort = mode;
@@ -1501,10 +1505,12 @@ function openCdvLiveViewer(liveId) {
       startCdvLiveRefresh(liveId);
     }
   }
-  // Likes cross-compte des commentaires : hydrate puis re-render le bloc seul.
-  if (typeof hydrateCommentLikes === "function") {
-    var _cids = (live.comments || []).map(function(c){ return c.id || (c.at + "_" + String(c.text || "").slice(0, 10)); });
-    hydrateCommentLikes(_cids, function(){
+  // Interactions cross-compte des commentaires (likes + réponses + emojis) via
+  // comment_interactions : hydrate puis re-render le bloc seul.
+  if (typeof hydrateCommentInteractions === "function" && (live.comments || []).length) {
+    // S'assure que chaque commentaire a un id stable avant l'hydratation.
+    (live.comments || []).forEach(function(c){ if (!c.id) c.id = "lc_" + (c.at || Date.now()) + "_" + Math.random().toString(36).slice(2, 7); });
+    hydrateCommentInteractions({ comments: live.comments }).then(function(){
       var box = document.getElementById("cdvCommentsBox");
       if (box && document.querySelector('.modal[data-live-id="' + liveId + '"]')) box.innerHTML = _cdvCommentsBoxHtml(live);
     });
@@ -1577,7 +1583,7 @@ function reactCdvLive(liveId, emoji) {
 }
 
 function addCdvLiveComment(liveId) {
-  var inp = document.getElementById("cdvLiveComment");
+  var inp = document.getElementById("cdvLiveComment") || document.getElementById("cmtThreadInput");
   if (!inp) return;
   var text = inp.value.trim();
   if (!text) return;
@@ -1587,10 +1593,21 @@ function addCdvLiveComment(liveId) {
   if (!live.comments) live.comments = [];
   var _author = (state.user.general && state.user.general.username) || state.user.name || "Moi";
   var _myId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
-  live.comments.push({ id: "lc_local_" + Date.now(), authorId: _myId, author: _author, text: text, at: Date.now() });
+  var _c = { id: "lc_local_" + Date.now(), authorId: _myId, author: _author, authorName: _author, text: text, at: Date.now(), createdAt: Date.now(), replies: [], likes: 0, likedBy: [] };
+  live.comments.push(_c);
   saveCdvLives(lives);
   if (typeof supaAddCdvLiveComment === "function") supaAddCdvLiveComment(liveId, text);
-  openCdvLiveViewer(liveId);
+  // Notifie l'auteur du live (interaction cross-compte sur SON carnet).
+  if (live.authorId && live.authorId !== _myId && live.authorId !== "me" && typeof supaInsertNotif === "function") {
+    try { supaInsertNotif(live.authorId, "comment", liveId, "a commenté ton live"); } catch (e) {}
+  }
+  // Re-render le bloc commentaires seul (évite de ré-ouvrir toute la modale et de
+  // perdre la position de défilement).
+  if (inp) inp.value = "";
+  var box = document.getElementById("cdvCommentsBox");
+  if (box) box.innerHTML = _cdvCommentsBoxHtml(live);
+  else if (typeof _refreshCommentThreadUI === "function" && document.getElementById("cmtThreadList")) _refreshCommentThreadUI(liveId);
+  else if (document.querySelector(".modal[data-live-id]")) openCdvLiveViewer(liveId);
 }
 
 // renderCdvLives() n'est plus utilisée - les lives s'affichent uniquement dans cdvList via renderCdvScreen()
@@ -1678,7 +1695,7 @@ function renderCdvScreen() {
               </div>`).join("")}
           </div>` : `<div style="text-align:center;padding:10px;color:var(--muted);font-size:11px;">En attente de la première étape…</div>`}
         <div class="cdv-live-footer">
-          <div class="cdv-live-count">👁 ${viewerCount} regardent · 💬 ${(l.comments||[]).length}</div>
+          <div class="cdv-live-count">👁 ${viewerCount} regardent · <span style="cursor:pointer;text-decoration:underline;" onclick="event.stopPropagation();openCommentSheet('${l.id}','💬 ${escapeHtml((l.destination||'').replace(/'/g,'’')).slice(0,40)}')">💬 ${(l.comments||[]).length}</span></div>
           ${isMyLive(l) ? `<button class="cdv-live-follow-btn" onclick="event.stopPropagation();addCdvLiveStep('${l.id}')">+ Étape</button>` : `<button class="cdv-live-follow-btn" onclick="event.stopPropagation();toggleFollowCdvLive('${l.id}',this)" style="background:${isFollowing ? '#8b5cf6' : 'var(--border)'};color:${isFollowing ? '#fff' : 'var(--text)'};">${isFollowing ? '✓ En suivi' : '📡 Suivre'}</button>`}
         </div>
       </div>`;
