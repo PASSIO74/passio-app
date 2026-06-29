@@ -1975,10 +1975,29 @@ function renderFeed() {
   });
 
   const renderLimit = window._feedRenderLimit || 20;
-  list.innerHTML = sortedPosts.slice(0, renderLimit).map(renderPostHTML).join("");
-  // ── Pagination : bouton "Charger plus" si d'autres posts existent (local ou serveur)
-  if (sortedPosts.length > renderLimit || window._feedServerMayHaveMore) {
-    list.innerHTML += `<div style="text-align:center;padding:14px 0 24px;"><button class="btn ghost" id="feedLoadMoreBtn" onclick="loadMoreFeedPosts()">⤵ Charger plus de posts</button></div>`;
+  const visible = sortedPosts.slice(0, renderLimit);
+  const hasMore = sortedPosts.length > renderLimit || window._feedServerMayHaveMore;
+  const moreBtnHtml = `<div style="text-align:center;padding:14px 0 24px;"><button class="btn ghost" id="feedLoadMoreBtn" onclick="loadMoreFeedPosts()">⤵ Charger plus de posts</button></div>`;
+
+  // ── Peinture en 2 temps : on affiche d'abord FAST cartes (paint initial ~2×
+  // plus rapide à la navigation), puis on complète jusqu'à renderLimit juste
+  // après, en idle, SANS reconstruire les premières cartes (insertAdjacentHTML).
+  // Le nombre total affiché est inchangé — seul l'instant du paint diffère.
+  const FAST = Math.min(12, visible.length);
+  list.innerHTML = visible.slice(0, FAST).map(renderPostHTML).join("")
+    + (visible.length <= FAST && hasMore ? moreBtnHtml : "");
+
+  // Jeton de rendu : si renderFeed est rappelé (filtre/refresh) avant que le
+  // complément idle ne s'exécute, l'ancien complément est annulé.
+  const _token = (window._feedRenderToken = (window._feedRenderToken || 0) + 1);
+  if (visible.length > FAST) {
+    const _fill = function() {
+      if (window._feedRenderToken !== _token) return;          // rendu obsolète
+      if (!document.body.contains(list)) return;
+      list.insertAdjacentHTML("beforeend",
+        visible.slice(FAST).map(renderPostHTML).join("") + (hasMore ? moreBtnHtml : ""));
+    };
+    (window.requestIdleCallback || function(f){ return setTimeout(f, 50); })(_fill, { timeout: 300 });
   }
 
   // Cascade d'apparition : UNIQUEMENT au premier rendu du fil de la session.
