@@ -1665,22 +1665,44 @@ function reactCdvLive(liveId, emoji) {
   openCdvLiveViewer(liveId);
 }
 
-// Like ❤️ depuis une CARTE live (ne rouvre PAS le viewer ; patch le compteur en place).
+// Like ❤️ d'une CARTE live en TOGGLE STRICT (1 par compte, comme les événements).
+// Ne rouvre PAS le viewer ; patch le compteur en place. Cache window._liveLikes +
+// état optimiste state.user.likedLives ; sync cdv_live_reactions (emoji '❤️').
 function likeCdvLiveCard(liveId, el) {
-  var lives = getCdvLives();
-  var live = lives.find(function(l) { return l.id === liveId; });
-  if (!live) return;
-  if (!live.reactions) live.reactions = [];
-  live.reactions.push("❤️");
-  saveCdvLives(lives);
-  if (typeof supaReactCdvLive === "function") supaReactCdvLive(liveId, "❤️");
-  var n = live.reactions.filter(function(r){ return r === "❤️"; }).length;
-  if (el) el.innerHTML = "❤️ " + n;
+  state.user.likedLives = state.user.likedLives || [];
+  window._liveLikes = window._liveLikes || {};
+  var cur = window._liveLikes[liveId] || { likes: 0, liked: false };
+  var liked = state.user.likedLives.indexOf(liveId) > -1;
+  if (liked) {
+    state.user.likedLives = state.user.likedLives.filter(function(x){ return x !== liveId; });
+    cur.likes = Math.max(0, (cur.likes || 1) - 1); cur.liked = false;
+  } else {
+    state.user.likedLives.push(liveId);
+    cur.likes = (cur.likes || 0) + 1; cur.liked = true;
+  }
+  window._liveLikes[liveId] = cur;
+  if (typeof saveState === "function") saveState();
+  if (el) { el.classList.toggle("liked", cur.liked); el.innerHTML = (cur.liked ? "❤️" : "🤍") + " " + (cur.likes || 0); }
+  if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID && window._supaReal && typeof supaToggleCdvLiveLike === "function") {
+    supaToggleCdvLiveLike(liveId);
+    if (cur.liked) {
+      var lv = getCdvLives().find(function(l){ return l.id === liveId; });
+      if (lv && lv.authorId && lv.authorId !== MY_UID && typeof supaInsertNotif === "function") {
+        supaInsertNotif(lv.authorId, "like", liveId, "a aimé ton live");
+      }
+    }
+  }
 }
 
 // 😊 Réagir depuis une CARTE live : popover d'emojis → reactions (sans rouvrir le viewer).
+// Le ❤️ du popover route vers le toggle de like (cohérent avec le bouton ❤️).
 function reactCdvLivePicker(liveId, event) {
   return _emojiReactPopover(event, function(emoji){
+    if (emoji === "❤️") {
+      var el = document.querySelector('[data-livelike="' + liveId + '"]');
+      if ((state.user.likedLives || []).indexOf(liveId) < 0) likeCdvLiveCard(liveId, el);
+      return;
+    }
     var lives = getCdvLives();
     var live = lives.find(function(l) { return l.id === liveId; });
     if (!live) return;
@@ -1689,11 +1711,36 @@ function reactCdvLivePicker(liveId, event) {
     saveCdvLives(lives);
     if (typeof supaReactCdvLive === "function") supaReactCdvLive(liveId, emoji);
     if (typeof toast === "function") toast(emoji);
-    if (emoji === "❤️") {
-      var el = document.querySelector('[data-livelike="' + liveId + '"]');
-      if (el) el.innerHTML = "❤️ " + live.reactions.filter(function(r){ return r === "❤️"; }).length;
-    }
   });
+}
+
+// Span ❤️ de like d'une carte live (toggle), lu depuis le cache _liveLikes +
+// l'état optimiste state.user.likedLives. Mutualisé entre cartes en cours/terminées.
+function _liveLikeSpanHtml(l) {
+  var c = (window._liveLikes && window._liveLikes[l.id]) || { likes: 0, liked: false };
+  var liked = (state.user.likedLives || []).indexOf(l.id) > -1 || c.liked;
+  return '<span class="post-action ' + (liked ? "liked" : "") + '" data-livelike="' + l.id
+    + '" onclick="event.stopPropagation();likeCdvLiveCard(\'' + l.id + '\', this)">'
+    + (liked ? "❤️" : "🤍") + " " + (c.likes || 0) + '</span>';
+}
+
+// Charge en une requête les likes ❤️ (par utilisateur distinct) des lives visibles
+// puis met à jour les pastilles ❤️ en place (cache window._liveLikes).
+async function _loadCdvLiveLikes(ids) {
+  window._liveLikes = window._liveLikes || {};
+  if (!ids || !ids.length) return;
+  if (typeof supaLoadCdvLiveLikes !== "function" || !window._supaReal) return;
+  try {
+    var data = await supaLoadCdvLiveLikes(ids);
+    if (!data) return;
+    Object.keys(data).forEach(function(id){
+      var d = data[id];
+      if ((state.user.likedLives || []).indexOf(id) > -1) d.liked = true;
+      window._liveLikes[id] = d;
+      var lk = document.querySelector('[data-livelike="' + id + '"]');
+      if (lk) { lk.classList.toggle("liked", d.liked); lk.innerHTML = (d.liked ? "❤️" : "🤍") + " " + (d.likes || 0); }
+    });
+  } catch (e) {}
 }
 
 function addCdvLiveComment(liveId) {
@@ -1813,7 +1860,7 @@ function renderCdvScreen() {
           ${isMyLive(l) ? `<button class="cdv-live-follow-btn" onclick="event.stopPropagation();addCdvLiveStep('${l.id}')">+ Étape</button>` : `<button class="cdv-live-follow-btn" onclick="event.stopPropagation();toggleFollowCdvLive('${l.id}',this)" style="background:${isFollowing ? '#8b5cf6' : 'var(--border)'};color:${isFollowing ? '#fff' : 'var(--text)'};">${isFollowing ? '✓ En suivi' : '📡 Suivre'}</button>`}
         </div>
         <div class="post-actions" onclick="event.stopPropagation()">
-          <span class="post-action liked" data-livelike="${l.id}" onclick="event.stopPropagation();likeCdvLiveCard('${l.id}', this)">❤️ ${(l.reactions||[]).filter(r=>r==="❤️").length}</span>
+          ${_liveLikeSpanHtml(l)}
           <span class="post-action" onclick="event.stopPropagation();openCommentSheet('${l.id}','💬 ${escapeHtml((l.destination||'').replace(/'/g,'’')).slice(0,40)}')">💬 ${(l.comments||[]).length}</span>
           <span class="post-action" onclick="return reactCdvLivePicker('${l.id}', event);" title="Réagir">😊</span>
           <span class="post-action" onclick="event.stopPropagation();shareCdvLive('${l.id}')" title="Partager" aria-label="Partager">${shareIconSvg(18)}</span>
@@ -1832,7 +1879,7 @@ function renderCdvScreen() {
           </div>
         </div>
         <div class="post-actions" onclick="event.stopPropagation()">
-          <span class="post-action liked" data-livelike="${l.id}" onclick="event.stopPropagation();likeCdvLiveCard('${l.id}', this)">❤️ ${(l.reactions||[]).filter(r=>r==="❤️").length}</span>
+          ${_liveLikeSpanHtml(l)}
           <span class="post-action" onclick="event.stopPropagation();openCommentSheet('${l.id}','💬 ${escapeHtml((l.destination||'').replace(/'/g,'’')).slice(0,40)}')">💬 ${(l.comments||[]).length}</span>
           <span class="post-action" onclick="return reactCdvLivePicker('${l.id}', event);" title="Réagir">😊</span>
           <span class="post-action" onclick="event.stopPropagation();shareCdvLive('${l.id}')" title="Partager" aria-label="Partager">${shareIconSvg(18)}</span>
@@ -1840,6 +1887,8 @@ function renderCdvScreen() {
       </div>`).join("");
 
     list.innerHTML = html;
+    // Likes ❤️ par utilisateur distinct (chargés en lot, patch DOM sans re-render).
+    _loadCdvLiveLikes(active.concat(ended).map(function(l){ return l.id; }));
     return;
   }
 
