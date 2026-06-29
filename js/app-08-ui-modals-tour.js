@@ -2679,14 +2679,45 @@ async function supaLoadEventReactions(eventIds) {
       .select("event_id,user_id,emoji").in("event_id", eventIds);
     if (error) { console.warn("event reactions:", error.message); return {}; }
     var out = {};
-    eventIds.forEach(function(id){ out[id] = { likes: 0, liked: false, emojiCounts: {} }; });
+    eventIds.forEach(function(id){ out[id] = { likes: 0, liked: false, emojiCounts: {}, gifs: [] }; });
     (data || []).forEach(function(r){
-      var o = out[r.event_id] || (out[r.event_id] = { likes: 0, liked: false, emojiCounts: {} });
+      var o = out[r.event_id] || (out[r.event_id] = { likes: 0, liked: false, emojiCounts: {}, gifs: [] });
       if (r.emoji === "❤️") { o.likes++; if (r.user_id === MY_UID) o.liked = true; }
+      else if (/^https?:\/\//.test(r.emoji)) { o.gifs.push(r.emoji); } // réaction GIF (URL stockée dans emoji)
       else { o.emojiCounts[r.emoji] = (o.emojiCounts[r.emoji] || 0) + 1; }
     });
     return out;
   } catch(e) { console.warn("event reactions:", e); return {}; }
+}
+// Détail des réactions d'UN événement (pour la pastille cliquable) → [{userId, emoji}].
+async function supaLoadEventReactionDetail(eventId) {
+  if (!eventId) return [];
+  try {
+    const { data, error } = await supa.from("event_reactions")
+      .select("user_id,emoji,created_at").eq("event_id", eventId).neq("emoji", "❤️")
+      .order("created_at", { ascending: false });
+    if (error) { return []; }
+    return (data || []).map(function(r){ return { userId: r.user_id, emoji: r.emoji }; });
+  } catch(e) { return []; }
+}
+// Commentaires d'un LOT d'événements (1 requête) pour l'aperçu inline sur les cartes
+// → { eventId: [ {id,authorId,author,text,at}... ] } (triés récent→ancien).
+async function supaLoadEventCommentsBatch(eventIds) {
+  if (!eventIds || !eventIds.length) return {};
+  try {
+    const { data, error } = await supa.from("event_comments")
+      .select("*").in("event_id", eventIds).order("created_at", { ascending: false });
+    if (error) { console.warn("event comments batch:", error.message); return {}; }
+    var out = {};
+    eventIds.forEach(function(id){ out[id] = []; });
+    (data || []).forEach(function(c){
+      (out[c.event_id] || (out[c.event_id] = [])).push({
+        id: c.id, authorId: c.author_id, author: c.author_name || "Anonyme",
+        authorName: c.author_name || "Anonyme", text: c.text || "", at: new Date(c.created_at).getTime(), fromSupabase: true
+      });
+    });
+    return out;
+  } catch(e) { console.warn("event comments batch:", e); return {}; }
 }
 
 // ── Like ❤️ d'un live CDV en TOGGLE strict (1 par compte), via cdv_live_reactions ──

@@ -1336,16 +1336,18 @@ function renderIRL() {
       <div class="post-actions" onclick="event.stopPropagation()">
         <span class="post-action ${evLiked ? "liked" : ""}" data-evlike="${e.id}" onclick="event.stopPropagation();toggleEventLike('${e.id}', this)">${evLiked ? "❤️" : "🤍"} ${evLikeCount}</span>
         <span class="post-action" data-evc="${e.id}" onclick="event.stopPropagation();openCommentSheet('${e.id}','💬 ${escapeHtml((e.title||'').replace(/'/g,'’')).slice(0,40)}')">💬 ${(window._eventCommentCounts && window._eventCommentCounts[e.id]) || 0}</span>
-        <span class="post-action" onclick="return reactEventPicker('${e.id}', event);" title="Réagir">😊</span>
+        <span class="post-action" onclick="return showEmojiPickerForEvent('${e.id}', event);" title="Réagir">😊</span>
         <span class="post-action" onclick="event.stopPropagation();shareEvent('${e.id}')" title="Partager" aria-label="Partager">${shareIconSvg(18)}</span>
       </div>
-      <div class="event-react-strip" data-evreact="${e.id}" style="font-size:13px;color:var(--muted);padding:2px 4px 0;${evStripHtml ? "" : "display:none;"}">${evStripHtml}</div>
+      <div class="event-react-chip-holder" data-evchipholder="${e.id}" style="padding:4px 2px 0;">${_evReactChipHtml(e.id)}</div>
+      <div class="event-comments-inline" data-evcomments="${e.id}" onclick="event.stopPropagation()">${_evCommentsInlineHtml(e.id)}</div>
     </div>`;
   }).join("");
 
-  // Compteurs de commentaires + likes/réactions (chargés en lot, patch DOM).
+  // Compteurs de commentaires + likes/réactions + aperçu commentaires (lots, patch DOM).
   _loadEventCommentCounts(filtered.map(function(e){ return e.id; }));
   _loadEventReactions(filtered.map(function(e){ return e.id; }));
+  _loadEventCommentsPreviews(filtered.map(function(e){ return e.id; }));
 }
 
 // Charge en une requête les likes/réactions des événements visibles puis met à
@@ -1361,17 +1363,13 @@ async function _loadEventReactions(ids) {
       var d = data[id];
       // Préserve mon like optimiste local (au cas où il n'est pas encore en base)
       if ((state.user.likedEvents || []).indexOf(id) > -1) d.liked = true;
+      // Conserve mes GIFs optimistes locaux (pas encore relus en base) si présents.
+      var _prev = window._eventLikes[id];
+      if (_prev && _prev.gifs && _prev.gifs.length && (!d.gifs || !d.gifs.length)) d.gifs = _prev.gifs;
       window._eventLikes[id] = d;
       var lk = document.querySelector('[data-evlike="' + id + '"]');
       if (lk) { lk.classList.toggle("liked", d.liked); lk.innerHTML = (d.liked ? "❤️" : "🤍") + " " + (d.likes || 0); }
-      var rs = document.querySelector('[data-evreact="' + id + '"]');
-      if (rs) {
-        var keys = Object.keys(d.emojiCounts || {});
-        if (keys.length) {
-          rs.innerHTML = keys.slice(0, 5).map(function(k){ return '<span style="margin-right:8px;">' + k + ' ' + d.emojiCounts[k] + '</span>'; }).join("");
-          rs.style.display = "";
-        } else { rs.style.display = "none"; }
-      }
+      if (typeof _patchEventReactChip === "function") _patchEventReactChip(id);
     });
   } catch (e) {}
 }
@@ -1404,29 +1402,189 @@ function toggleEventLike(id, el) {
   }
 }
 
-// 😊 Réagir à un événement : popover d'emojis → event_reactions + bande de réactions.
+// 😊 Réagir à un événement : ouvre le MÊME sélecteur emoji + GIF que les posts
+// (grille complète, prévisualisation, bouton ✓ valider avant d'envoyer).
 function reactEventPicker(id, event) {
-  return _emojiReactPopover(event, function(emoji){
-    window._eventLikes = window._eventLikes || {};
-    var cur = window._eventLikes[id] || { likes: 0, liked: false, emojiCounts: {} };
-    if (emoji === "❤️") {
-      // Le cœur du popover = un like (cohérent avec le bouton ❤️)
-      var lk = document.querySelector('[data-evlike="' + id + '"]');
-      if (!(state.user.likedEvents || []).includes(id)) toggleEventLike(id, lk);
+  if (typeof showEmojiPickerForEvent === "function") return showEmojiPickerForEvent(id, event);
+  return false;
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// RÉACTIONS D'ÉVÉNEMENT — pastille unique cliquable (comme demandé) + détail
+// ════════════════════════════════════════════════════════════════════════
+
+// HTML de la pastille de réactions d'un événement : un SEUL bouton « 😍🔥❤️ N »
+// (emojis distincts + total), cliquable pour voir le détail. Vide si 0 réaction.
+function _evReactChipHtml(eventId) {
+  var d = (window._eventLikes && window._eventLikes[eventId]) || {};
+  var counts = d.emojiCounts || {};
+  var keys = Object.keys(counts);
+  var gifN = (d.gifs || []).length;
+  var total = keys.reduce(function(s, k){ return s + counts[k]; }, 0) + gifN;
+  if (!total) return "";
+  var faces = keys.slice(0, 3).join("");
+  if (gifN) faces += "🎬";
+  return '<button class="ev-react-chip" data-evchip="' + eventId + '" onclick="event.stopPropagation();return openEventReactions(\'' + eventId + '\', event);">'
+    + (faces || "😊") + ' <b>' + total + '</b></button>';
+}
+// Repeint la pastille (dans son conteneur data-evchipholder) après une réaction.
+function _patchEventReactChip(eventId) {
+  var holder = document.querySelector('[data-evchipholder="' + eventId + '"]');
+  if (holder) holder.innerHTML = _evReactChipHtml(eventId);
+}
+// Applique une ou plusieurs réactions emoji (tableau) à un événement (optimiste +
+// sync event_reactions), puis repeint la pastille.
+function applyEventEmojiReaction(eventId, emojiArr) {
+  if (!emojiArr || !emojiArr.length) return;
+  window._eventLikes = window._eventLikes || {};
+  var d = window._eventLikes[eventId] || { likes: 0, liked: false, emojiCounts: {}, gifs: [] };
+  d.emojiCounts = d.emojiCounts || {};
+  emojiArr.forEach(function(e){
+    if (!e) return;
+    if (e === "❤️") { // le cœur = un like (cohérent avec le bouton ❤️)
+      var lk = document.querySelector('[data-evlike="' + eventId + '"]');
+      if (!(state.user.likedEvents || []).includes(eventId)) toggleEventLike(eventId, lk);
       return;
     }
-    cur.emojiCounts = cur.emojiCounts || {};
-    cur.emojiCounts[emoji] = (cur.emojiCounts[emoji] || 0) + 1;
-    window._eventLikes[id] = cur;
-    if (typeof supaAddEventReaction === "function") supaAddEventReaction(id, emoji);
-    var rs = document.querySelector('[data-evreact="' + id + '"]');
-    if (rs) {
-      var keys = Object.keys(cur.emojiCounts);
-      rs.innerHTML = keys.slice(0, 5).map(function(k){ return '<span style="margin-right:8px;">' + k + ' ' + cur.emojiCounts[k] + '</span>'; }).join("");
-      rs.style.display = "";
-    }
-    if (typeof toast === "function") toast(emoji);
+    d.emojiCounts[e] = (d.emojiCounts[e] || 0) + 1;
+    if (typeof supaAddEventReaction === "function") supaAddEventReaction(eventId, e);
   });
+  window._eventLikes[eventId] = d;
+  _patchEventReactChip(eventId);
+  _notifyEventOrganizerReaction(eventId);
+}
+// Applique une réaction GIF (URL stockée dans event_reactions.emoji), repeint.
+function applyEventGifReaction(eventId, gifUrl) {
+  if (!gifUrl) return;
+  window._eventLikes = window._eventLikes || {};
+  var d = window._eventLikes[eventId] || { likes: 0, liked: false, emojiCounts: {}, gifs: [] };
+  d.gifs = d.gifs || []; d.gifs.push(gifUrl);
+  window._eventLikes[eventId] = d;
+  if (typeof supaAddEventReaction === "function") supaAddEventReaction(eventId, gifUrl);
+  _patchEventReactChip(eventId);
+  _notifyEventOrganizerReaction(eventId);
+}
+function _notifyEventOrganizerReaction(eventId) {
+  try {
+    var ev = (typeof _findCanonicalEvent === "function" && _findCanonicalEvent(eventId))
+      || (typeof allEvents === "function" ? allEvents().find(function(x){ return x.id === eventId; }) : null);
+    if (ev && ev.organizerId && ev.organizerId !== MY_UID && ev.fromSupabase && typeof supaInsertNotif === "function") {
+      supaInsertNotif(ev.organizerId, "like", eventId, "a réagi à ton événement");
+    }
+  } catch(e) {}
+}
+// Panneau de détail des réactions (qui a réagi avec quoi). Chargé à la demande.
+function openEventReactions(eventId, event) {
+  if (event) { event.stopPropagation(); event.preventDefault(); }
+  var old = document.getElementById("ev-react-detail");
+  if (old) { old.remove(); return false; }
+  var panel = document.createElement("div");
+  panel.id = "ev-react-detail";
+  panel.style.cssText = "position:fixed;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:10px 12px;z-index:100002;box-shadow:0 8px 28px rgba(0,0,0,0.28);width:230px;max-height:280px;overflow-y:auto;";
+  panel.innerHTML = '<div style="font-size:12px;font-weight:800;color:var(--text);margin-bottom:8px;">Réactions</div><div id="evReactDetailBody" style="font-size:12px;color:var(--text-dim);">Chargement…</div>';
+  var btn = event && (event.currentTarget || event.target);
+  if (btn && btn.getBoundingClientRect) {
+    var r = btn.getBoundingClientRect();
+    panel.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 240)) + "px";
+    panel.style.bottom = Math.max(8, window.innerHeight - r.top + 8) + "px";
+  } else { panel.style.left = "50%"; panel.style.bottom = "30%"; panel.style.transform = "translateX(-50%)"; }
+  document.body.appendChild(panel);
+  setTimeout(function(){
+    var cl = function(e){ if (!panel.contains(e.target) && e.target !== btn) { panel.remove(); document.removeEventListener("click", cl); } };
+    document.addEventListener("click", cl);
+  }, 50);
+  _fillEventReactionDetail(eventId);
+  return false;
+}
+async function _fillEventReactionDetail(eventId) {
+  var body = document.getElementById("evReactDetailBody");
+  if (!body) return;
+  var rows = [];
+  if (typeof supaLoadEventReactionDetail === "function" && window._supaReal) {
+    try { rows = await supaLoadEventReactionDetail(eventId); } catch(e) {}
+  }
+  body = document.getElementById("evReactDetailBody"); if (!body) return;
+  if (rows && rows.length) {
+    body.innerHTML = rows.map(function(r){
+      var u = (typeof userById === "function" && userById(r.userId)) || { name: "Quelqu'un", profileEmoji: "👤", avatar: "#64748b" };
+      var _av = { avatar: u.avatar || "#64748b", profileEmoji: u.profileEmoji || "👤", name: u.name, photoUrl: u.photoUrl || null };
+      var face = /^https?:\/\//.test(r.emoji)
+        ? '<img loading="lazy" src="' + r.emoji + '" style="width:30px;height:30px;border-radius:6px;object-fit:cover;"/>'
+        : '<span style="font-size:18px;">' + r.emoji + '</span>';
+      return '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;">'
+        + '<div class="avatar sm" style="background:' + avatarBg(_av) + ';flex-shrink:0;">' + avatarInner(_av) + '</div>'
+        + '<span style="flex:1;font-size:12px;color:var(--text);">' + escapeHtml(u.name) + '</span>' + face + '</div>';
+    }).join("");
+    return;
+  }
+  // Fallback (hors-ligne ou pas de détail) : décompte agrégé par emoji.
+  var d = (window._eventLikes && window._eventLikes[eventId]) || {};
+  var counts = d.emojiCounts || {};
+  var keys = Object.keys(counts);
+  if (!keys.length && !(d.gifs || []).length) { body.innerHTML = "Aucune réaction pour l'instant."; return; }
+  body.innerHTML = keys.map(function(k){ return '<div style="padding:3px 0;font-size:14px;">' + k + ' × ' + counts[k] + '</div>'; }).join("")
+    + (d.gifs || []).map(function(g){ return '<img loading="lazy" src="' + g + '" style="width:60px;height:60px;border-radius:6px;object-fit:cover;margin:4px 4px 0 0;"/>'; }).join("");
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// COMMENTAIRES INLINE sur les cartes d'événement (aperçu visible + masquer)
+// ════════════════════════════════════════════════════════════════════════
+
+// Aperçu inline des commentaires d'un événement (2 derniers par défaut, comme un
+// post du fil), avec bascule Afficher/Masquer. Données dans _eventCommentsCache.
+function _evCommentsInlineHtml(eventId) {
+  var arr = (window._eventCommentsCache && window._eventCommentsCache[eventId]) || [];
+  if (!arr.length) return "";
+  window._evCommentsHidden = window._evCommentsHidden || {};
+  if (window._evCommentsHidden[eventId]) {
+    return '<span class="ev-cmt-toggle" onclick="event.stopPropagation();return toggleEventComments(\'' + eventId + '\');">💬 Afficher les ' + arr.length + ' commentaire' + (arr.length > 1 ? "s" : "") + '</span>';
+  }
+  var sorted = arr.slice().sort(function(a, b){ return (b.at || b.createdAt || 0) - (a.at || a.createdAt || 0); });
+  window._evCommentsExpanded = window._evCommentsExpanded || {};
+  var expanded = window._evCommentsExpanded[eventId];
+  var show = expanded ? sorted.slice(0, 30) : sorted.slice(0, 2);
+  var items = show.map(function(c){
+    var u = (typeof userById === "function" && userById(c.authorId)) || {};
+    var nm = c.author || c.authorName || u.name || "?";
+    return '<div class="ev-cmt-preview"><b>' + escapeHtml(nm) + '</b> ' + escapeHtml(c.text || "") + '</div>';
+  }).join("");
+  var links = "";
+  if (arr.length > 2) {
+    links += '<span class="ev-cmt-toggle" onclick="event.stopPropagation();return toggleEventCommentsExpand(\'' + eventId + '\');">'
+      + (expanded ? "▲ Réduire" : ("▼ Voir les " + arr.length + " commentaires")) + '</span>';
+  }
+  links += '<span class="ev-cmt-toggle" style="margin-left:10px;" onclick="event.stopPropagation();return toggleEventComments(\'' + eventId + '\');">Masquer</span>';
+  return items + '<div style="margin-top:2px;">' + links + '</div>';
+}
+function _patchEventCommentsInline(eventId) {
+  var holder = document.querySelector('[data-evcomments="' + eventId + '"]');
+  if (holder) holder.innerHTML = _evCommentsInlineHtml(eventId);
+}
+function toggleEventComments(eventId) {
+  window._evCommentsHidden = window._evCommentsHidden || {};
+  window._evCommentsHidden[eventId] = !window._evCommentsHidden[eventId];
+  _patchEventCommentsInline(eventId);
+  return false;
+}
+function toggleEventCommentsExpand(eventId) {
+  window._evCommentsExpanded = window._evCommentsExpanded || {};
+  window._evCommentsExpanded[eventId] = !window._evCommentsExpanded[eventId];
+  _patchEventCommentsInline(eventId);
+  return false;
+}
+// Charge en 1 requête les commentaires des événements visibles puis peint l'aperçu.
+async function _loadEventCommentsPreviews(ids) {
+  if (!ids || !ids.length) return;
+  if (typeof supaLoadEventCommentsBatch !== "function" || !window._supaReal) return;
+  try {
+    var map = await supaLoadEventCommentsBatch(ids);
+    if (!map) return;
+    window._eventCommentsCache = window._eventCommentsCache || {};
+    Object.keys(map).forEach(function(id){
+      window._eventCommentsCache[id] = map[id];
+      _patchEventCommentsInline(id);
+    });
+  } catch(e) {}
 }
 
 // Charge en une requête le nombre de commentaires des événements visibles puis
@@ -2026,6 +2184,8 @@ async function addEventComment(eventId) {
     var _badge = document.querySelector('[data-evc="' + eventId + '"]');
     if (_badge) _badge.textContent = "💬 " + window._eventCommentCounts[eventId];
   } catch (e) {}
+  // Rafraîchit l'aperçu inline des commentaires sur la carte de l'événement.
+  if (typeof _patchEventCommentsInline === "function") { try { _patchEventCommentsInline(eventId); } catch(e) {} }
   if (typeof grantReward === "function") { try { grantReward("comment"); } catch (e) {} }
   if (typeof supaAddEventComment === "function" && window._supaReal) {
     try {

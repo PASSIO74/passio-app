@@ -7039,3 +7039,25 @@
       background: rgba(15, 15, 20, 0.46);
       border-color: rgba(255, 255, 255, 0.18);
     }
+
+    /* ===== Réactions & commentaires inline des cartes d'événement IRL ===== */
+    .ev-react-chip {
+      display: inline-flex; align-items: center; gap: 4px;
+      background: var(--accent-wash); color: var(--accent-2);
+      border: 1px solid rgba(124, 58, 237, 0.22); border-radius: 999px;
+      padding: 3px 10px; font-size: 13px; font-weight: 700; cursor: pointer;
+      transition: transform 120ms ease, background 160ms ease;
+    }
+    .ev-react-chip:active { transform: scale(0.94); }
+    .ev-react-chip b { font-weight: 800; }
+    .event-comments-inline { margin-top: 8px; display: flex; flex-direction: column; gap: 3px; }
+    .event-comments-inline:empty { display: none; margin: 0; }
+    .ev-cmt-preview {
+      font-size: 12px; line-height: 1.45; color: var(--text-dim);
+      background: var(--bg-soft); border-radius: 8px; padding: 6px 9px;
+    }
+    .ev-cmt-preview b { color: var(--text); font-weight: 700; margin-right: 4px; }
+    .ev-cmt-toggle {
+      font-size: 11.5px; font-weight: 700; color: var(--accent-2);
+      cursor: pointer; display: inline-block; padding: 2px 0;
+    }

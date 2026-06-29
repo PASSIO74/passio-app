@@ -809,6 +809,90 @@ function showEmojiPickerForPost(postId, event) {
   return false;
 }
 
+// Sélecteur emoji + GIF pour un ÉVÉNEMENT IRL — même présentation que celui des
+// posts (grille complète, prévisualisation des emojis choisis, bouton ✓ pour
+// valider AVANT d'envoyer). Onglet 🎬 GIF intégré. Au valider → réactions appliquées.
+function showEmojiPickerForEvent(eventId, event) {
+  if (event) { event.stopPropagation(); event.preventDefault(); }
+  var oldPanel = document.getElementById("emoji-panel-ev-" + eventId);
+  if (oldPanel) { oldPanel.remove(); return false; }
+
+  var selected = [];
+  var emojis = window._PASSIO_EMOJI_LIST || ["❤️","🔥","😍","👏","😂","😮","😢","🎉","💯","🙌"];
+  var panel = document.createElement("div");
+  panel.id = "emoji-panel-ev-" + eventId;
+  panel.style.cssText = "position:fixed;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px;z-index:100002;box-shadow:0 4px 20px rgba(0,0,0,0.25);width:260px;";
+
+  var previewRow = document.createElement("div");
+  previewRow.style.cssText = "display:flex;align-items:center;gap:6px;min-height:34px;border-bottom:1px solid var(--border);padding-bottom:6px;";
+  var previewSpan = document.createElement("span");
+  previewSpan.style.cssText = "font-size:22px;flex:1;letter-spacing:2px;min-width:0;overflow:hidden;";
+
+  var validateBtn = document.createElement("button");
+  validateBtn.textContent = "✓";
+  validateBtn.style.cssText = "background:var(--accent);color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:14px;font-weight:700;cursor:pointer;opacity:0.4;pointer-events:none;transition:opacity 0.15s;flex-shrink:0;";
+  validateBtn.onclick = function(evt) {
+    evt.stopPropagation(); evt.preventDefault();
+    if (!selected.length) return;
+    if (typeof applyEventEmojiReaction === "function") applyEventEmojiReaction(eventId, selected.slice());
+    panel.remove();
+    try { document.removeEventListener("click", closeListener); } catch(e) {}
+    if (typeof toast === "function") toast("Réaction envoyée " + selected.join(""));
+  };
+
+  var gifTab = document.createElement("button");
+  gifTab.type = "button";
+  gifTab.innerHTML = "🎬 GIF";
+  gifTab.title = "Réagir avec un GIF";
+  gifTab.style.cssText = "border:1px solid var(--border);background:transparent;color:var(--text);font-size:12px;font-weight:700;padding:3px 9px;border-radius:999px;cursor:pointer;flex-shrink:0;";
+  gifTab.onclick = function(evt) {
+    evt.stopPropagation(); evt.preventDefault();
+    panel.remove();
+    try { document.removeEventListener("click", closeListener); } catch(e) {}
+    if (typeof passioGifPanel === "function") {
+      passioGifPanel({ id: "gif-panel-ev-" + eventId, position: "left:50%;top:25%;transform:translateX(-50%);",
+        onPick: function(gifUrl) { if (typeof applyEventGifReaction === "function") applyEventGifReaction(eventId, gifUrl); if (typeof toast === "function") toast("GIF envoyé 🎬"); } });
+    }
+  };
+
+  previewRow.appendChild(previewSpan);
+  previewRow.appendChild(gifTab);
+  previewRow.appendChild(validateBtn);
+  panel.appendChild(previewRow);
+
+  var grid = document.createElement("div");
+  grid.style.cssText = "display:flex;gap:4px;flex-wrap:wrap;max-height:160px;overflow-y:auto;";
+  emojis.forEach(function(e) {
+    var b = document.createElement("span");
+    b.textContent = e;
+    b.style.cssText = "cursor:pointer;font-size:22px;padding:5px;border-radius:6px;transition:background 0.15s,transform 0.1s;";
+    b.onmouseover = function() { this.style.background = "rgba(124,58,237,0.2)"; this.style.transform = "scale(1.2)"; };
+    b.onmouseout = function() { this.style.background = "transparent"; this.style.transform = "scale(1)"; };
+    b.onclick = function(evt) {
+      evt.stopPropagation(); evt.preventDefault();
+      selected.push(e);
+      previewSpan.textContent = selected.join("");
+      validateBtn.style.opacity = "1"; validateBtn.style.pointerEvents = "auto";
+    };
+    grid.appendChild(b);
+  });
+  panel.appendChild(grid);
+
+  var emojiBtn = event && event.target;
+  if (emojiBtn && emojiBtn.getBoundingClientRect) {
+    var rect = emojiBtn.getBoundingClientRect();
+    var left = rect.left;
+    if (left + 265 > window.innerWidth) left = window.innerWidth - 270;
+    panel.style.left = Math.max(4, left) + "px";
+    panel.style.top = Math.max(4, rect.top - 200) + "px";
+  } else { panel.style.left = "50%"; panel.style.top = "25%"; panel.style.transform = "translateX(-50%)"; }
+
+  document.body.appendChild(panel);
+  var closeListener = function(e) { if (!panel.contains(e.target)) { panel.remove(); document.removeEventListener("click", closeListener); } };
+  setTimeout(function() { document.addEventListener("click", closeListener); }, 50);
+  return false;
+}
+
 function addEmojiToPost(postId, emoji) {
   console.log("✨ addEmojiToPost:", postId, emoji);
   var post = findPostAnywhere(postId);
