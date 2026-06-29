@@ -175,7 +175,12 @@ function _renderCommentsList(allComments, postId) {
     }
     const _cAv = { avatar: avatarColor, profileEmoji: emoji, name, photoUrl: _cu.photoUrl || null };
     const cSrc = (authorId === "me" || (typeof MY_UID !== "undefined" && authorId === MY_UID)) ? "me" : "seed";
-    const cLiked = (c.likedBy || []).includes(state.user?.id || "me");
+    // « Aimé par moi » : likeComment() enregistre le like sous MY_UID (et non
+    // state.user.id, souvent vide) → comparer la liste likedBy à TOUTES mes
+    // identités possibles, sinon le ❤️ repasse en 🤍 à chaque re-render (bug
+    // fil/IRL/CDV : le like semblait disparaître).
+    const _selfIds = [(typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : null, state.user?.id, "me"].filter(Boolean);
+    const cLiked = (c.likedBy || []).some(x => _selfIds.indexOf(x) > -1);
     const cLikes = c.likes || 0;
     const cReplies = c.replies || [];
 
@@ -193,9 +198,9 @@ function _renderCommentsList(allComments, postId) {
           </span>
           <span class="comment-action" onclick="return replyToComment('${postId}','${c.id}','${escapeHtml(name)}', event);" title="Répondre">💬</span>
           <span class="comment-action" onclick="return showEmojiPickerForComment('${postId}','${c.id}', event);" title="Emoji & GIF">😊</span>
-          ${cReplies.length > 0 ? `<span class="comment-reply-count" onclick="return toggleCommentReplies('${c.id}', event);">▼ ${cReplies.length} réponse${cReplies.length > 1 ? "s" : ""}</span>` : ""}
+          ${cReplies.length > 0 ? `<span class="comment-reply-count" onclick="return toggleCommentReplies('${c.id}', event);">▲ Masquer les réponses</span>` : ""}
         </div>
-        ${cReplies.length > 0 ? `<div class="comment-replies" id="replies-${c.id}" style="display:none;">${cReplies.map(r => {
+        ${cReplies.length > 0 ? `<div class="comment-replies" id="replies-${c.id}" style="display:block;">${cReplies.map(r => {
           const ru = userById(r.authorId) || { name: "?", profileEmoji: "👤", avatar: "#64748b" };
           const rSrc = r.authorId === "me" ? "me" : "seed";
 

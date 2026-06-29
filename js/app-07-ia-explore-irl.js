@@ -1937,7 +1937,13 @@ function shareEvent(id) {
 var _eventCommentsCache = {};
 
 async function _loadEventComments(eventId) {
-  var box = document.getElementById("eventCommentsList");
+  // Cible : la page détail (#eventCommentsList) OU la feuille inline ouverte depuis
+  // une carte (#cmtThreadList). Sans ce 2ᵉ cas, commenter un événement depuis sa
+  // carte n'affichait jamais les commentaires distants (early-return → "Chargement…").
+  var sheet = document.getElementById("cmtThreadList");
+  var box = (sheet && sheet.getAttribute("data-thread") === eventId)
+    ? sheet
+    : document.getElementById("eventCommentsList");
   if (!box) return;
   var list = [];
   if (typeof supaLoadEventComments === "function" && window._supaReal) {
@@ -2013,6 +2019,13 @@ async function addEventComment(eventId) {
   _eventCommentsCache[eventId] = (_eventCommentsCache[eventId] || []).concat([optimistic]);
   window._eventCommentsCache = _eventCommentsCache;
   _renderEventComments(eventId);
+  // Met à jour le compteur 💬 de la carte (optimiste) sans attendre un re-render.
+  try {
+    window._eventCommentCounts = window._eventCommentCounts || {};
+    window._eventCommentCounts[eventId] = (window._eventCommentCounts[eventId] || 0) + 1;
+    var _badge = document.querySelector('[data-evc="' + eventId + '"]');
+    if (_badge) _badge.textContent = "💬 " + window._eventCommentCounts[eventId];
+  } catch (e) {}
   if (typeof grantReward === "function") { try { grantReward("comment"); } catch (e) {} }
   if (typeof supaAddEventComment === "function" && window._supaReal) {
     try {
