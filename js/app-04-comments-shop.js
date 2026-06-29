@@ -765,6 +765,44 @@ function cmtComposerGif(inputId, event, submitFn, submitArg) {
   return cmtComposerEmoji(inputId, event, submitFn, submitArg, "gif");
 }
 
+// Petit popover de réaction emoji (rangée d'emojis, façon Facebook) — réutilisé
+// par les cartes événement IRL et live CDV pour le bouton 😊 « Réagir ».
+// onPick(emoji) reçoit l'emoji choisi.
+function _emojiReactPopover(event, onPick) {
+  if (event) { event.stopPropagation(); event.preventDefault(); }
+  var old = document.getElementById("react-popover");
+  if (old) { old.remove(); return false; } // toggle
+  var btn = event && (event.currentTarget || event.target);
+  var emojis = ["❤️","🔥","😍","👏","😂","😮","😢","🎉","💯","🙌"];
+  var pop = document.createElement("div");
+  pop.id = "react-popover";
+  pop.style.cssText = "position:fixed;background:var(--bg-card);border:1px solid var(--border);border-radius:999px;padding:6px 8px;z-index:100002;box-shadow:0 6px 24px rgba(0,0,0,0.28);display:flex;gap:2px;max-width:92vw;overflow-x:auto;";
+  emojis.forEach(function (e) {
+    var s = document.createElement("span");
+    s.textContent = e;
+    s.style.cssText = "cursor:pointer;font-size:22px;line-height:1;padding:5px;border-radius:50%;transition:transform .1s,background .15s;";
+    s.onmouseover = function () { this.style.transform = "scale(1.3)"; this.style.background = "rgba(124,58,237,0.15)"; };
+    s.onmouseout = function () { this.style.transform = "scale(1)"; this.style.background = "transparent"; };
+    s.onclick = function (ev) { ev.stopPropagation(); pop.remove(); try { onPick(e); } catch (er) {} };
+    pop.appendChild(s);
+  });
+  if (btn && btn.getBoundingClientRect) {
+    var r = btn.getBoundingClientRect();
+    pop.style.left = Math.max(8, Math.min(r.left - 90, window.innerWidth - 300)) + "px";
+    pop.style.bottom = Math.max(8, window.innerHeight - r.top + 8) + "px";
+  } else {
+    pop.style.left = "50%"; pop.style.bottom = "30%"; pop.style.transform = "translateX(-50%)";
+  }
+  document.body.appendChild(pop);
+  setTimeout(function () {
+    var cl = function (ev) {
+      if (!pop.contains(ev.target) && ev.target !== btn) { pop.remove(); document.removeEventListener("click", cl); }
+    };
+    document.addEventListener("click", cl);
+  }, 50);
+  return false;
+}
+
 // Mood selector
 $$(".mood-btn").forEach(btn => {
   btn.addEventListener("click", () => {

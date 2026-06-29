@@ -1287,6 +1287,14 @@ function renderIRL() {
   list.innerHTML = filtered.map(e => {
     const passion = passionById(e.passion);
     const joined = (state.user.joinedEvents || []).includes(e.id);
+    // Like ❤️ + réactions (cache window._eventLikes, hydraté par _loadEventReactions)
+    const _evL = (window._eventLikes && window._eventLikes[e.id]) || { likes: 0, liked: false, emojiCounts: {} };
+    const evLiked = (state.user.likedEvents || []).includes(e.id) || _evL.liked;
+    const evLikeCount = _evL.likes || 0;
+    const _evEmojiKeys = Object.keys(_evL.emojiCounts || {});
+    const evStripHtml = _evEmojiKeys.length
+      ? _evEmojiKeys.slice(0, 5).map(k => '<span style="margin-right:8px;">' + k + ' ' + _evL.emojiCounts[k] + '</span>').join("")
+      : "";
     const d = fmtEventDate(e.date);
     const daysLeft = Math.max(0, Math.ceil((e.date - Date.now()) / 86400000));
     const urgency = daysLeft === 0 ? "🔴 Aujourd'hui" : daysLeft === 1 ? "🟠 Demain" : daysLeft <= 7 ? "🟢 Dans " + daysLeft + "j" : "";
@@ -1326,14 +1334,99 @@ function renderIRL() {
         <button class="btn small ${joined ? "ghost" : "primary"}" ${isFull ? "disabled" : ""} onclick="event.stopPropagation();toggleJoinEvent('${e.id}')">${joined ? "✓ Inscrit" : isFull ? "Complet" : "+ Rejoindre"}</button>
       </div>
       <div class="post-actions" onclick="event.stopPropagation()">
+        <span class="post-action ${evLiked ? "liked" : ""}" data-evlike="${e.id}" onclick="event.stopPropagation();toggleEventLike('${e.id}', this)">${evLiked ? "❤️" : "🤍"} ${evLikeCount}</span>
         <span class="post-action" data-evc="${e.id}" onclick="event.stopPropagation();openCommentSheet('${e.id}','💬 ${escapeHtml((e.title||'').replace(/'/g,'’')).slice(0,40)}')">💬 ${(window._eventCommentCounts && window._eventCommentCounts[e.id]) || 0}</span>
+        <span class="post-action" onclick="return reactEventPicker('${e.id}', event);" title="Réagir">😊</span>
         <span class="post-action" onclick="event.stopPropagation();shareEvent('${e.id}')" title="Partager" aria-label="Partager">${shareIconSvg(18)}</span>
       </div>
+      <div class="event-react-strip" data-evreact="${e.id}" style="font-size:13px;color:var(--muted);padding:2px 4px 0;${evStripHtml ? "" : "display:none;"}">${evStripHtml}</div>
     </div>`;
   }).join("");
 
-  // Compteurs de commentaires (chargés en lot, patch DOM sans re-render).
+  // Compteurs de commentaires + likes/réactions (chargés en lot, patch DOM).
   _loadEventCommentCounts(filtered.map(function(e){ return e.id; }));
+  _loadEventReactions(filtered.map(function(e){ return e.id; }));
+}
+
+// Charge en une requête les likes/réactions des événements visibles puis met à
+// jour les pastilles ❤️ et la bande de réactions en place (cache _eventLikes).
+async function _loadEventReactions(ids) {
+  window._eventLikes = window._eventLikes || {};
+  if (!ids || !ids.length) return;
+  if (typeof supaLoadEventReactions !== "function" || !window._supaReal) return;
+  try {
+    var data = await supaLoadEventReactions(ids);
+    if (!data) return;
+    Object.keys(data).forEach(function(id){
+      var d = data[id];
+      // Préserve mon like optimiste local (au cas où il n'est pas encore en base)
+      if ((state.user.likedEvents || []).indexOf(id) > -1) d.liked = true;
+      window._eventLikes[id] = d;
+      var lk = document.querySelector('[data-evlike="' + id + '"]');
+      if (lk) { lk.classList.toggle("liked", d.liked); lk.innerHTML = (d.liked ? "❤️" : "🤍") + " " + (d.likes || 0); }
+      var rs = document.querySelector('[data-evreact="' + id + '"]');
+      if (rs) {
+        var keys = Object.keys(d.emojiCounts || {});
+        if (keys.length) {
+          rs.innerHTML = keys.slice(0, 5).map(function(k){ return '<span style="margin-right:8px;">' + k + ' ' + d.emojiCounts[k] + '</span>'; }).join("");
+          rs.style.display = "";
+        } else { rs.style.display = "none"; }
+      }
+    });
+  } catch (e) {}
+}
+
+// Like ❤️ d'un événement (toggle optimiste local + sync event_reactions).
+function toggleEventLike(id, el) {
+  state.user.likedEvents = state.user.likedEvents || [];
+  window._eventLikes = window._eventLikes || {};
+  var cur = window._eventLikes[id] || { likes: 0, liked: false, emojiCounts: {} };
+  var liked = state.user.likedEvents.indexOf(id) > -1;
+  if (liked) {
+    state.user.likedEvents = state.user.likedEvents.filter(function(x){ return x !== id; });
+    cur.likes = Math.max(0, (cur.likes || 1) - 1); cur.liked = false;
+  } else {
+    state.user.likedEvents.push(id);
+    cur.likes = (cur.likes || 0) + 1; cur.liked = true;
+    if (typeof bumpQuest === "function") { try { bumpQuest("like"); } catch(e){} }
+  }
+  window._eventLikes[id] = cur;
+  if (typeof saveState === "function") saveState();
+  if (el) { el.classList.toggle("liked", cur.liked); el.innerHTML = (cur.liked ? "❤️" : "🤍") + " " + (cur.likes || 0); }
+  if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID && window._supaReal && typeof supaToggleEventLike === "function") {
+    supaToggleEventLike(id);
+    if (cur.liked) {
+      var ev = _findCanonicalEvent(id) || (typeof allEvents === "function" ? allEvents().find(function(x){ return x.id === id; }) : null);
+      if (ev && ev.organizerId && ev.organizerId !== MY_UID && ev.fromSupabase && typeof supaInsertNotif === "function") {
+        supaInsertNotif(ev.organizerId, "like", id, "a aimé ton événement");
+      }
+    }
+  }
+}
+
+// 😊 Réagir à un événement : popover d'emojis → event_reactions + bande de réactions.
+function reactEventPicker(id, event) {
+  return _emojiReactPopover(event, function(emoji){
+    window._eventLikes = window._eventLikes || {};
+    var cur = window._eventLikes[id] || { likes: 0, liked: false, emojiCounts: {} };
+    if (emoji === "❤️") {
+      // Le cœur du popover = un like (cohérent avec le bouton ❤️)
+      var lk = document.querySelector('[data-evlike="' + id + '"]');
+      if (!(state.user.likedEvents || []).includes(id)) toggleEventLike(id, lk);
+      return;
+    }
+    cur.emojiCounts = cur.emojiCounts || {};
+    cur.emojiCounts[emoji] = (cur.emojiCounts[emoji] || 0) + 1;
+    window._eventLikes[id] = cur;
+    if (typeof supaAddEventReaction === "function") supaAddEventReaction(id, emoji);
+    var rs = document.querySelector('[data-evreact="' + id + '"]');
+    if (rs) {
+      var keys = Object.keys(cur.emojiCounts);
+      rs.innerHTML = keys.slice(0, 5).map(function(k){ return '<span style="margin-right:8px;">' + k + ' ' + cur.emojiCounts[k] + '</span>'; }).join("");
+      rs.style.display = "";
+    }
+    if (typeof toast === "function") toast(emoji);
+  });
 }
 
 // Charge en une requête le nombre de commentaires des événements visibles puis
