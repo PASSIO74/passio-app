@@ -1278,6 +1278,11 @@ function renderIRL() {
   // Trier par date croissante (prochain en premier)
   filtered.sort(function(a, b) { return a.date - b.date; });
 
+  // Données de démo (commentaires + réactions) pour les événements seed, afin de
+  // VOIR la fonctionnalité tant qu'il n'y a pas encore de vrais utilisateurs.
+  // Doit tourner AVANT de construire le markup (les cartes lisent ces caches).
+  _seedDemoEventInteractions(filtered);
+
   const list = $("#eventList");
   if (filtered.length === 0) {
     list.innerHTML = '<div class="empty"><div class="empty-icon">🗓</div><div class="empty-title">Aucun événement</div><div class="empty-text">Crée le premier pour +30 pts.</div><button class="btn primary" style="margin-top:10px;" onclick="openCreateEvent()">+ Créer</button></div>';
@@ -1344,10 +1349,13 @@ function renderIRL() {
     </div>`;
   }).join("");
 
-  // Compteurs de commentaires + likes/réactions + aperçu commentaires (lots, patch DOM).
-  _loadEventCommentCounts(filtered.map(function(e){ return e.id; }));
-  _loadEventReactions(filtered.map(function(e){ return e.id; }));
-  _loadEventCommentsPreviews(filtered.map(function(e){ return e.id; }));
+  // Compteurs de commentaires + likes/réactions + aperçu commentaires (lots, patch
+  // DOM). UNIQUEMENT pour les vrais événements Supabase — sinon les résultats vides
+  // écraseraient les données de démo des événements seed.
+  var _supaEvIds = filtered.filter(function(e){ return e.fromSupabase; }).map(function(e){ return e.id; });
+  _loadEventCommentCounts(_supaEvIds);
+  _loadEventReactions(_supaEvIds);
+  _loadEventCommentsPreviews(_supaEvIds);
 }
 
 // Charge en une requête les likes/réactions des événements visibles puis met à
@@ -1407,6 +1415,55 @@ function toggleEventLike(id, el) {
 function reactEventPicker(id, event) {
   if (typeof showEmojiPickerForEvent === "function") return showEmojiPickerForEvent(id, event);
   return false;
+}
+
+// Injecte des commentaires + réactions de DÉMO (déterministes) sur les événements
+// seed (non-Supabase), pour visualiser la fonctionnalité tant que personne n'utilise
+// encore l'app. Ne touche jamais aux vrais événements ni aux caches déjà remplis.
+var _DEMO_EV_USERS = ["u_lea", "u_karim", "u_nina", "u_sofia", "u_amira", "u_theo"];
+var _DEMO_EV_COMMENTS = [
+  "Trop hâte d'y être 🙌", "Quelqu'un vient depuis le centre ?", "On peut amener des amis ?",
+  "Première fois pour moi, j'ai hâte !", "C'est validé, je serai là 😄", "Ça a l'air génial, merci pour l'orga !",
+  "Je ramène de quoi grignoter 🍪", "Hâte de rencontrer la communauté !"
+];
+var _DEMO_EV_EMOJIS = ["🔥", "😍", "👏", "🎉", "💯", "😮"];
+function _seedDemoEventInteractions(events) {
+  window._eventCommentsCache = window._eventCommentsCache || {};
+  window._eventLikes = window._eventLikes || {};
+  window._eventCommentCounts = window._eventCommentCounts || {};
+  window._eventReactDetail = window._eventReactDetail || {};
+  (events || []).forEach(function(e){
+    if (!e || e.fromSupabase) return; // vrais événements : on garde les données réelles
+    var h = 0; for (var i = 0; i < e.id.length; i++) { h = (h * 31 + e.id.charCodeAt(i)) >>> 0; }
+    // Commentaires démo
+    if (window._eventCommentsCache[e.id] === undefined) {
+      var nC = h % 4; // 0..3
+      var arr = [];
+      for (var c = 0; c < nC; c++) {
+        var uId = _DEMO_EV_USERS[(h + c * 7) % _DEMO_EV_USERS.length];
+        arr.push({ id: "ecdemo_" + e.id + "_" + c, authorId: uId,
+          author: ((typeof userById === "function" && userById(uId)) || {}).name || "Passionné",
+          text: _DEMO_EV_COMMENTS[(h + c * 5) % _DEMO_EV_COMMENTS.length],
+          at: Date.now() - (c + 1) * 3600000, _demo: true });
+      }
+      window._eventCommentsCache[e.id] = arr;
+      if (window._eventCommentCounts[e.id] == null) window._eventCommentCounts[e.id] = arr.length;
+    }
+    // Réactions démo (+ détail par utilisateur pour la pastille)
+    if (window._eventLikes[e.id] === undefined) {
+      var counts = {}, detail = [];
+      var nE = (h % 3) + 1; // 1..3 types d'emoji
+      for (var k = 0; k < nE; k++) {
+        var em = _DEMO_EV_EMOJIS[(h + k * 3) % _DEMO_EV_EMOJIS.length];
+        if (counts[em]) continue;
+        var cnt = 1 + ((h + k) % 4);
+        counts[em] = cnt;
+        for (var n = 0; n < cnt; n++) detail.push({ userId: _DEMO_EV_USERS[(h + k * 3 + n) % _DEMO_EV_USERS.length], emoji: em });
+      }
+      window._eventLikes[e.id] = { likes: h % 9, liked: (state.user.likedEvents || []).includes(e.id), emojiCounts: counts, gifs: [] };
+      window._eventReactDetail[e.id] = detail;
+    }
+  });
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -1499,11 +1556,13 @@ function openEventReactions(eventId, event) {
 async function _fillEventReactionDetail(eventId) {
   var body = document.getElementById("evReactDetailBody");
   if (!body) return;
-  var rows = [];
-  if (typeof supaLoadEventReactionDetail === "function" && window._supaReal) {
+  // Événement DÉMO : détail déjà en mémoire → affichage immédiat (pas d'attente
+  // d'une requête Supabase qui ne renverrait rien pour un événement seed).
+  var rows = (window._eventReactDetail && window._eventReactDetail[eventId]) || null;
+  if (!rows && typeof supaLoadEventReactionDetail === "function" && window._supaReal) {
     try { rows = await supaLoadEventReactionDetail(eventId); } catch(e) {}
+    body = document.getElementById("evReactDetailBody"); if (!body) return;
   }
-  body = document.getElementById("evReactDetailBody"); if (!body) return;
   if (rows && rows.length) {
     body.innerHTML = rows.map(function(r){
       var u = (typeof userById === "function" && userById(r.userId)) || { name: "Quelqu'un", profileEmoji: "👤", avatar: "#64748b" };
