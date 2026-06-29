@@ -158,7 +158,18 @@ function _commentBodyHtml(txt) {
 
 function _renderCommentsList(allComments, postId) {
   // Masquer les commentaires des utilisateurs bloqués (modération)
-  return allComments.filter(c => !(typeof isBlocked === "function" && isBlocked(c.authorId))).map(c => {
+  var _visible = (allComments || []).filter(c => !(typeof isBlocked === "function" && isBlocked(c.authorId)));
+  // Pagination : injecter 80+ commentaires d'un coup coûtait ~130ms de DOM
+  // (gros lag, rejoué à chaque (ré)ouverture et interaction). On n'affiche que
+  // les _LIMIT plus récents (l'array est trié récent→ancien) ; le reste via
+  // "voir plus". Cap le coût de paint quel que soit le contexte (fil/IRL/CDV).
+  var _LIMIT = 30;
+  var _olderBtn = "";
+  if (!(window._cmtExpanded && window._cmtExpanded[postId]) && _visible.length > _LIMIT) {
+    _olderBtn = '<button class="btn ghost block" style="margin:10px auto 2px;display:block;font-size:12px;" onclick="_expandComments(\'' + postId + '\')">↓ Voir les ' + (_visible.length - _LIMIT) + ' commentaires plus anciens</button>';
+    _visible = _visible.slice(0, _LIMIT);
+  }
+  return _visible.map(c => {
     let name, emoji, avatarColor, authorId;
     authorId = c.authorId || "?";
     // Normalisation cross-contexte : les commentaires IRL/CDV utilisent c.author
@@ -233,7 +244,14 @@ function _renderCommentsList(allComments, postId) {
         }).join("")}</div>` : ""}
       </div>
     </div>`;
-  }).join("");
+  }).join("") + _olderBtn;
+}
+
+// Déplie tous les commentaires d'un fil (retire le cap de pagination) puis re-rend.
+function _expandComments(threadId) {
+  window._cmtExpanded = window._cmtExpanded || {};
+  window._cmtExpanded[threadId] = true;
+  if (typeof _refreshCommentThreadUI === "function") _refreshCommentThreadUI(threadId);
 }
 
 async function openComments(postId) {
@@ -412,7 +430,20 @@ function _findCommentThread(threadId) {
 
 // Re-render le fil de commentaires partout où il est affiché (modale post,
 // page détail IRL, viewer CDV, feuille générique).
+// Coalesce les rafraîchissements (rafales realtime : plusieurs likes/réponses
+// reçus en même temps recompilaient toute la liste à chaque event = lag). Un
+// seul rebuild par frame (~16ms, imperceptible).
+var _cmtRefreshQueued = {};
 function _refreshCommentThreadUI(threadId) {
+  if (!threadId) return;
+  if (_cmtRefreshQueued[threadId]) return;
+  _cmtRefreshQueued[threadId] = true;
+  requestAnimationFrame(function(){
+    _cmtRefreshQueued[threadId] = false;
+    try { _refreshCommentThreadUINow(threadId); } catch(e) {}
+  });
+}
+function _refreshCommentThreadUINow(threadId) {
   var thread = _findCommentThread(threadId);
   if (!thread) return;
   // Modale commentaires du fil
