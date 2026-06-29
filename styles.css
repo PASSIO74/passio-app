@@ -316,20 +316,22 @@
 
     .screen {
       display: none;
-      animation: fadeIn 240ms ease-out;
+      animation: fadeIn 130ms ease-out;
     }
 
     .screen.active { display: block; }
 
-    /* Animation subtile au changement d'onglet */
+    /* Animation subtile au changement d'onglet — courte = navigation perçue
+       comme instantanée. Pas de scale (évite de compositer/flouter tout le
+       sous-arbre de l'écran à chaque frame). */
     @media (prefers-reduced-motion: no-preference) {
       .screen.active {
-        animation: screenIn 380ms cubic-bezier(0.22, 1, 0.36, 1);
+        animation: screenIn 150ms cubic-bezier(0.22, 1, 0.36, 1);
       }
     }
     @keyframes screenIn {
-      from { opacity: 0; transform: translateY(10px) scale(0.992); }
-      to   { opacity: 1; transform: translateY(0) scale(1); }
+      from { opacity: 0; transform: translateY(6px); }
+      to   { opacity: 1; transform: translateY(0); }
     }
 
     @keyframes fadeIn {
@@ -7008,3 +7010,28 @@
     /* Compat ancien code */
     .pwa-card { display:none; }
     .pwa-ios-step { display:none; }
+
+    /* ============================================================
+       OPTIMISATIONS PERFORMANCE / FLUIDITÉ (2026-06-29)
+       ------------------------------------------------------------
+       1) backdrop-filter: blur() sur des badges RÉPÉTÉS à l'intérieur
+          des listes scrollables = re-flou GPU à CHAQUE frame de scroll
+          (le contenu sous le badge bouge) → jank de scroll sur mobile.
+          On supprime le blur sur ces éléments décoratifs et on compense
+          par un fond translucide un peu plus opaque (rendu quasi identique,
+          meilleur contraste du texte blanc).
+       2) Accélération GPU + isolation de la zone scrollable principale.
+       ============================================================ */
+    .vlog-card-mini-tag, .cdv-feed-tag, .post-vlog-tag,
+    .post-cover-caption, .passion-tile, .pass-card-badge,
+    .pass-card-cta, .crypto-stat, .crypto-hero-tag,
+    .reel-tag-mood, .reel-action-icon, .reels-counter, .reels-hint {
+      backdrop-filter: none !important;
+      -webkit-backdrop-filter: none !important;
+    }
+    /* Pills de catégorie (texte blanc sur cover) : sans le flou, un fond
+       sombre translucide garde la lisibilité (le flou assombrissait avant). */
+    .vlog-card-mini-tag, .cdv-feed-tag, .post-vlog-tag {
+      background: rgba(15, 15, 20, 0.46);
+      border-color: rgba(255, 255, 255, 0.18);
+    }

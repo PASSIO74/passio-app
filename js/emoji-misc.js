@@ -1305,6 +1305,13 @@ window.advancedDiagnostic = async function() {
 // 🔄 FONCTION AUTO-REFRESH - Recharger les posts automatiquement toutes les 10 sec
 window._autoRefreshInterval = null;
 window.startAutoRefresh = function() {
+  // DÉSACTIVÉ (2026-06-29) : doublon de startFeedRefreshLoop() (app-08) qui fait
+  // déjà le fallback 60s + realtime. Les deux tournaient en parallèle → 2 requêtes
+  // réseau/min + 2 renderFeed (celui-ci re-rendait MÊME écran feed inactif).
+  // startFeedRefreshLoop reste la source unique (vérifie l'écran actif, écrit dans
+  // state.supabasePosts = source canonique de findPostAnywhere).
+  return;
+  // eslint-disable-next-line no-unreachable
   if (window._autoRefreshInterval) return;  // Déjà actif
   console.log("🔄 Auto-refresh fallback ACTIVÉ (toutes les 60s, realtime actif par ailleurs)");
   window._autoRefreshInterval = setInterval(function() {
