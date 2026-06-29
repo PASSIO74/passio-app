@@ -2688,6 +2688,39 @@ async function supaLoadEventReactions(eventIds) {
   } catch(e) { console.warn("event reactions:", e); return {}; }
 }
 
+// ── Like ❤️ d'un live CDV en TOGGLE strict (1 par compte), via cdv_live_reactions ──
+async function supaToggleCdvLiveLike(liveId) {
+  if (!liveId || typeof MY_UID === "undefined" || !MY_UID) return false;
+  try {
+    const { data: existing } = await supa.from("cdv_live_reactions")
+      .select("id").eq("live_id", liveId).eq("user_id", MY_UID).eq("emoji", "❤️").limit(1).maybeSingle();
+    if (existing) {
+      await supa.from("cdv_live_reactions").delete().eq("live_id", liveId).eq("user_id", MY_UID).eq("emoji", "❤️");
+      return false;
+    }
+    await supa.from("cdv_live_reactions").insert({ id: "lr_" + uid(), live_id: liveId, user_id: MY_UID, emoji: "❤️" });
+    return true;
+  } catch(e) { return false; }
+}
+// Likes ❤️ d'un lot de lives (comptés par UTILISATEUR distinct) → { liveId:{likes,liked} }.
+async function supaLoadCdvLiveLikes(liveIds) {
+  if (!liveIds || !liveIds.length) return {};
+  try {
+    const { data, error } = await supa.from("cdv_live_reactions")
+      .select("live_id,user_id,emoji").in("live_id", liveIds).eq("emoji", "❤️");
+    if (error) { console.warn("cdv live likes:", error.message); return {}; }
+    var out = {};
+    liveIds.forEach(function(id){ out[id] = { likes: 0, liked: false, _seen: {} }; });
+    (data || []).forEach(function(r){
+      var o = out[r.live_id] || (out[r.live_id] = { likes: 0, liked: false, _seen: {} });
+      if (!o._seen[r.user_id]) { o._seen[r.user_id] = 1; o.likes++; } // distinct users
+      if (r.user_id === MY_UID) o.liked = true;
+    });
+    liveIds.forEach(function(id){ if (out[id]) delete out[id]._seen; });
+    return out;
+  } catch(e) { console.warn("cdv live likes:", e); return {}; }
+}
+
 // ── Commentaires d'événements IRL (table event_comments, cross-compte) ──
 async function supaAddEventComment(eventId, text) {
   if (!eventId || !text) return null;
