@@ -1207,15 +1207,22 @@ function startCdvLiveRefresh(liveId) {
         const prev = idx >= 0 ? lives[idx] : null;
         if (idx >= 0) lives[idx] = fresh; else lives.unshift(fresh);
         saveCdvLives(lives);
-        // Re-render uniquement si le contenu a changé (évite le scintillement).
-        const changed = !prev
-          || (prev.steps || []).length !== fresh.steps.length
-          || (prev.comments || []).length !== fresh.comments.length
-          || (prev.reactions || []).length !== fresh.reactions.length
-          || (prev.followers || []).length !== fresh.followers.length
-          || prev.status !== fresh.status;
         const stillOpen = document.querySelector(".modal.modal-fullscreen[data-live-id='" + liveId + "']");
-        if (changed && stillOpen) openCdvLiveViewer(liveId);
+        if (!stillOpen) return;
+        // Rebuild COMPLET seulement si la structure change (nouvelle étape / statut)
+        // — rare. Sinon on PATCHE en place (compteurs, réactions, et bloc commentaires
+        // uniquement s'ils ont changé) pour NE PAS détruire le scroll, les réponses
+        // ouvertes et les photos d'étapes à chaque tick de 5s. C'était la cause du
+        // "ça bug / ça lag" sur les commentaires CDV.
+        const structuralChange = !prev
+          || (prev.steps || []).length !== (fresh.steps || []).length
+          || prev.status !== fresh.status;
+        if (structuralChange) { openCdvLiveViewer(liveId); return; }
+        const commentsChanged = (prev.comments || []).length !== (fresh.comments || []).length;
+        // Ne pas écraser le bloc commentaires si l'utilisateur a déplié des réponses
+        // ou est en train d'interagir : on ne le re-rend QUE si un commentaire est
+        // réellement apparu/disparu.
+        if (typeof _patchCdvLiveViewer === "function") _patchCdvLiveViewer(fresh, commentsChanged);
       }).catch(() => {});
     } else {
       const lives = getCdvLives();
@@ -1479,6 +1486,30 @@ function _cdvCommentsBoxHtml(live) {
   var bar = comments.length > 1 ? commentSortBarHtml(mode, "setCdvCommentSort") : "";
   return bar + _renderCommentsList(sortComments(comments, mode), live.id);
 }
+// Barre de réactions (❤️🔥😍 + partage) du viewer de live — extraite pour pouvoir
+// la patcher en place lors du refresh 5s sans reconstruire tout le viewer.
+function _cdvReactBarHtml(liveId, live) {
+  var cnt = function(e){ return (live.reactions || []).filter(function(r){ return r === e; }).length || ""; };
+  return '<button class="btn ghost" onclick="reactCdvLive(\'' + liveId + '\',\'❤️\')" style="flex:1;font-size:13px;padding:8px;">❤️ ' + cnt("❤️") + '</button>'
+    + '<button class="btn ghost" onclick="reactCdvLive(\'' + liveId + '\',\'🔥\')" style="flex:1;font-size:13px;padding:8px;">🔥 ' + cnt("🔥") + '</button>'
+    + '<button class="btn ghost" onclick="reactCdvLive(\'' + liveId + '\',\'😍\')" style="flex:1;font-size:13px;padding:8px;">😍 ' + cnt("😍") + '</button>'
+    + '<button class="btn ghost" onclick="shareCdvLive(\'' + liveId + '\')" style="flex:1;font-size:13px;padding:8px;" title="Partager ce live">' + shareIconSvg(16) + '</button>';
+}
+// Patch LÉGER du viewer de live ouvert (compteur de suivis, réactions, et bloc
+// commentaires si demandé) — SANS reconstruire les étapes/photos ni perdre le
+// scroll / les réponses ouvertes. Utilisé par le refresh 5s quand seuls les
+// commentaires/réactions/suivis ont changé (pas les étapes ni le statut).
+function _patchCdvLiveViewer(live, patchComments) {
+  if (!live) return;
+  var vc = document.getElementById("cdvViewerCount");
+  if (vc) vc.textContent = "👁 " + ((live.followers || live.viewers || []).length) + " suivent";
+  var rb = document.getElementById("cdvReactBar");
+  if (rb) rb.innerHTML = _cdvReactBarHtml(live.id, live);
+  if (patchComments) {
+    var box = document.getElementById("cdvCommentsBox");
+    if (box) box.innerHTML = _cdvCommentsBoxHtml(live);
+  }
+}
 function setCdvCommentSort(mode) {
   window._cdvCommentSort = mode;
   var modalEl = document.querySelector(".modal[data-live-id]");
@@ -1542,17 +1573,12 @@ function openCdvLiveViewer(liveId) {
     \
     <div style="display:flex;gap:12px;margin-bottom:14px;font-size:11px;color:var(--muted);">\
       <span>📍 ' + live.steps.length + ' étape' + (live.steps.length>1?"s":"") + '</span>\
-      <span>👁 ' + viewerCount + ' suivent</span>\
+      <span id="cdvViewerCount">👁 ' + viewerCount + ' suivent</span>\
       <span>🕐 ' + fmtTime(live.createdAt) + '</span>\
       ' + (live.duration ? '<span>📅 ' + live.duration + '</span>' : '') + '\
     </div>\
     \
-    <div style="display:flex;gap:6px;margin-bottom:14px;">\
-      <button class="btn ghost" onclick="reactCdvLive(\'' + liveId + '\',\'❤️\')" style="flex:1;font-size:13px;padding:8px;">❤️ ' + ((live.reactions||[]).filter(function(r){return r==="❤️"}).length || "") + '</button>\
-      <button class="btn ghost" onclick="reactCdvLive(\'' + liveId + '\',\'🔥\')" style="flex:1;font-size:13px;padding:8px;">🔥 ' + ((live.reactions||[]).filter(function(r){return r==="🔥"}).length || "") + '</button>\
-      <button class="btn ghost" onclick="reactCdvLive(\'' + liveId + '\',\'😍\')" style="flex:1;font-size:13px;padding:8px;">😍 ' + ((live.reactions||[]).filter(function(r){return r==="😍"}).length || "") + '</button>\
-      <button class="btn ghost" onclick="shareCdvLive(\'' + liveId + '\')" style="flex:1;font-size:13px;padding:8px;" title="Partager ce live">' + shareIconSvg(16) + '</button>\
-    </div>\
+    <div id="cdvReactBar" style="display:flex;gap:6px;margin-bottom:14px;">' + _cdvReactBarHtml(liveId, live) + '</div>\
     \
     <div style="font-weight:800;font-size:13px;color:var(--text);margin-bottom:8px;">📍 Étapes</div>\
     ' + stepsHTML + '\
@@ -1662,7 +1688,11 @@ function reactCdvLive(liveId, emoji) {
   saveCdvLives(lives);
   if (typeof supaReactCdvLive === "function") supaReactCdvLive(liveId, emoji);
   toast(emoji);
-  openCdvLiveViewer(liveId);
+  // Patch la barre de réactions en place (compteurs) plutôt que reconstruire tout
+  // le viewer (étapes/photos/commentaires) à chaque tap → plus de scroll perdu ni
+  // de lag, et les réponses dépliées restent ouvertes.
+  if (typeof _patchCdvLiveViewer === "function") _patchCdvLiveViewer(live, false);
+  else openCdvLiveViewer(liveId);
 }
 
 // Like ❤️ d'une CARTE live en TOGGLE STRICT (1 par compte, comme les événements).
