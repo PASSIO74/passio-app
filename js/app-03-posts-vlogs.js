@@ -1891,7 +1891,7 @@ function renderCdvScreen() {
         </div>
         <div class="post-actions" onclick="event.stopPropagation()">
           ${_liveLikeSpanHtml(l)}
-          <span class="post-action" onclick="event.stopPropagation();openCommentSheet('${l.id}','💬 ${escapeHtml((l.destination||'').replace(/'/g,'’')).slice(0,40)}')">💬 ${(l.comments||[]).length}</span>
+          <span class="post-action" onclick="event.stopPropagation();openCommentSheet('${l.id}','💬 ${escapeHtml((l.destination||'').replace(/'/g,'’')).slice(0,40)}')">💬 ${commentThreadCount(l.comments)}</span>
           <span class="post-action" onclick="return reactCdvLivePicker('${l.id}', event);" title="Réagir">😊</span>
           <span class="post-action" onclick="event.stopPropagation();shareCdvLive('${l.id}')" title="Partager" aria-label="Partager">${shareIconSvg(18)}</span>
         </div>
@@ -1910,7 +1910,7 @@ function renderCdvScreen() {
         </div>
         <div class="post-actions" onclick="event.stopPropagation()">
           ${_liveLikeSpanHtml(l)}
-          <span class="post-action" onclick="event.stopPropagation();openCommentSheet('${l.id}','💬 ${escapeHtml((l.destination||'').replace(/'/g,'’')).slice(0,40)}')">💬 ${(l.comments||[]).length}</span>
+          <span class="post-action" onclick="event.stopPropagation();openCommentSheet('${l.id}','💬 ${escapeHtml((l.destination||'').replace(/'/g,'’')).slice(0,40)}')">💬 ${commentThreadCount(l.comments)}</span>
           <span class="post-action" onclick="return reactCdvLivePicker('${l.id}', event);" title="Réagir">😊</span>
           <span class="post-action" onclick="event.stopPropagation();shareCdvLive('${l.id}')" title="Partager" aria-label="Partager">${shareIconSvg(18)}</span>
         </div>
@@ -2040,7 +2040,7 @@ function renderCdvScreen() {
         <span class="post-action ${isLiked ? "liked" : ""}" onclick="likePost('${c.id}')">
           ${isLiked ? "❤️" : "🤍"} ${c.likes || 0}
         </span>
-        <span class="post-action" onclick="openComments('${c.id}')">💬 ${(c.comments || []).length}</span>
+        <span class="post-action" onclick="openComments('${c.id}')">💬 ${commentThreadCount(c.comments)}</span>
         <span class="post-action" onclick="return showEmojiPickerForPost('${c.id}', event);" title="Emoji & GIF">😊</span>
         <span class="post-action" onclick="event.stopPropagation();sharePost('${c.id}')" title="Partager" aria-label="Partager">${shareIconSvg(18)}</span>
         <span class="post-action" onclick="toggleCarnetSave('${c.id}');renderCdvScreen()" title="${isSaved ? "Sauvegardé" : "Sauvegarder"}">${isSaved ? "⭐" : "☆"}</span>

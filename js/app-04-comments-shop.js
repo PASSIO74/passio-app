@@ -193,7 +193,12 @@ function _renderCommentsList(allComments, postId) {
     const _selfIds = [(typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : null, state.user?.id, "me"].filter(Boolean);
     const cLiked = (c.likedBy || []).some(x => _selfIds.indexOf(x) > -1);
     const cLikes = c.likes || 0;
-    const cReplies = c.replies || [];
+    // Sépare les VRAIES réponses (texte / GIF) des réactions emoji : une réaction
+    // emoji n'est PAS un commentaire → elle ne s'affiche pas en ligne de réponse mais
+    // dans une pastille « 😍 N » cliquable (cf. _cmtReactChipHtml / openCommentReactors).
+    const cAllReplies = c.replies || [];
+    const cReplies = cAllReplies.filter(r => r.type !== "emoji_reaction");
+    const cReactChip = _cmtReactChipHtml(postId, c);
 
     const cMine = (authorId === "me" || (typeof MY_UID !== "undefined" && authorId === MY_UID));
     return `<div class="comment" data-commentid="${c.id}">
@@ -209,6 +214,7 @@ function _renderCommentsList(allComments, postId) {
           </span>
           <span class="comment-action" onclick="return replyToComment('${postId}','${c.id}','${escapeHtml(name)}', event);" title="Répondre">💬</span>
           <span class="comment-action" onclick="return showEmojiPickerForComment('${postId}','${c.id}', event);" title="Emoji & GIF">😊</span>
+          ${cReactChip}
           ${cReplies.length > 0 ? `<span class="comment-reply-count" onclick="return toggleCommentReplies('${c.id}', event);">▲ Masquer les réponses</span>` : ""}
         </div>
         ${cReplies.length > 0 ? `<div class="comment-replies" id="replies-${c.id}" style="display:block;">${cReplies.map(r => {
@@ -252,6 +258,64 @@ function _expandComments(threadId) {
   window._cmtExpanded = window._cmtExpanded || {};
   window._cmtExpanded[threadId] = true;
   if (typeof _refreshCommentThreadUI === "function") _refreshCommentThreadUI(threadId);
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// RÉACTIONS EMOJI SUR UN COMMENTAIRE — pastille unique « 😍 N » (fil/IRL/CDV).
+// Une réaction emoji n'est PAS un commentaire : toutes les réactions d'un même
+// commentaire sont agrégées en UN SEUL emoji (le plus fréquent) + le total ; un
+// clic ouvre la liste de QUI a réagi (et avec quoi). Identique partout.
+// ════════════════════════════════════════════════════════════════════════
+function _cmtReactions(comment) {
+  return (comment && comment.replies || []).filter(function(r){ return r && r.type === "emoji_reaction"; });
+}
+function _cmtReactChipHtml(threadId, comment) {
+  var reactions = _cmtReactions(comment);
+  if (!reactions.length) return "";
+  var counts = {};
+  reactions.forEach(function(r){ var e = r.text || "❤️"; counts[e] = (counts[e] || 0) + 1; });
+  var top = Object.keys(counts).sort(function(a, b){ return counts[b] - counts[a]; })[0] || "❤️";
+  var _selfIds = [(typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : null, (state.user && state.user.id), "me"].filter(Boolean);
+  var mine = reactions.some(function(r){ return _selfIds.indexOf(r.authorId) > -1; });
+  return '<span class="cmt-react-chip' + (mine ? " mine" : "") + '" title="Voir qui a réagi"'
+    + ' onclick="return openCommentReactors(\'' + threadId + '\',\'' + comment.id + '\', event);">'
+    + top + ' <b>' + reactions.length + '</b></span>';
+}
+// Popover listant les réactions emoji d'un commentaire : qui a réagi + son emoji.
+function openCommentReactors(threadId, commentId, event) {
+  if (event && event.stopPropagation) { event.stopPropagation(); event.preventDefault(); }
+  var old = document.getElementById("cmt-react-detail");
+  if (old) { old.remove(); return false; }
+  var thread = (typeof _findCommentThread === "function") ? _findCommentThread(threadId) : null;
+  var c = thread && thread.comments.find(function(x){ return x.id === commentId; });
+  if (!c) return false;
+  var reactions = _cmtReactions(c);
+  if (!reactions.length) return false;
+  var pop = document.createElement("div");
+  pop.id = "cmt-react-detail";
+  pop.style.cssText = "position:fixed;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:10px 12px;z-index:100003;box-shadow:0 8px 28px rgba(0,0,0,0.28);width:230px;max-height:280px;overflow-y:auto;";
+  var rowsHtml = reactions.map(function(r){
+    var u = (typeof userById === "function" && userById(r.authorId)) || { name: "Quelqu'un", profileEmoji: "👤", avatar: "#64748b" };
+    var _av = { avatar: u.avatar || "#64748b", profileEmoji: u.profileEmoji || "👤", name: u.name, photoUrl: u.photoUrl || null };
+    var rSrc = (r.authorId === "me" || (typeof MY_UID !== "undefined" && r.authorId === MY_UID)) ? "me" : "seed";
+    return '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;">'
+      + '<div class="avatar sm" style="background:' + avatarBg(_av) + ';flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();closeModal&&closeModal();openUserProfile(\'' + r.authorId + '\',\'' + rSrc + '\')">' + avatarInner(_av) + '</div>'
+      + '<span style="flex:1;font-size:12px;color:var(--text);">' + escapeHtml(u.name) + '</span>'
+      + '<span style="font-size:18px;">' + (r.text || "❤️") + '</span></div>';
+  }).join("");
+  pop.innerHTML = '<div style="font-size:12px;font-weight:800;color:var(--text);margin-bottom:8px;">Réactions · ' + reactions.length + '</div>' + rowsHtml;
+  var btn = event && (event.currentTarget || event.target);
+  if (btn && btn.getBoundingClientRect) {
+    var r = btn.getBoundingClientRect();
+    pop.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 240)) + "px";
+    pop.style.bottom = Math.max(8, window.innerHeight - r.top + 8) + "px";
+  } else { pop.style.left = "50%"; pop.style.bottom = "30%"; pop.style.transform = "translateX(-50%)"; }
+  document.body.appendChild(pop);
+  setTimeout(function(){
+    var cl = function(e){ if (!pop.contains(e.target) && e.target !== btn) { pop.remove(); document.removeEventListener("click", cl); } };
+    document.addEventListener("click", cl);
+  }, 50);
+  return false;
 }
 
 async function openComments(postId) {

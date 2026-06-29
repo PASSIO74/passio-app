@@ -365,6 +365,23 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, m => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m]));
 }
 
+// Compte unifié des commentaires d'un fil (fil / IRL / CDV) : commentaires de
+// premier niveau + TOUTES les réponses, mais SANS les réactions emoji/GIF (qui
+// ne sont pas des commentaires — elles s'affichent en pastille « 😍 N »). Utilisé
+// par toutes les pastilles « 💬 N » pour une cohérence totale entre les surfaces.
+function commentThreadCount(comments) {
+  var arr = comments || [];
+  var n = 0;
+  arr.forEach(function(c){
+    if (!c) return;
+    n++; // le commentaire lui-même
+    (c.replies || []).forEach(function(r){
+      if (r && r.type !== "emoji_reaction") n++; // les réponses comptent, pas les réactions
+    });
+  });
+  return n;
+}
+
 function allPassions() {
   const custom = (state && state.user && state.user.customPassions) || [];
   return [...PASSIONS, ...custom];
@@ -2346,7 +2363,7 @@ function renderPostHTML(p) {
       <span class="post-action ${likeClass}" data-action="like" onclick="likePost('${p.id}', false, this)">
         ${liked ? "❤️" : "🤍"} ${p.likes || 0}
       </span>
-      <span class="post-action" onclick="openComments('${p.id}')">💬 ${(p.comments || []).length}</span>
+      <span class="post-action" onclick="openComments('${p.id}')">💬 ${commentThreadCount(p.comments)}</span>
       <span class="post-action" onclick="return showEmojiPickerForPost('${p.id}', event);" title="Emoji & GIF">😊</span>
       <span class="post-action" onclick="event.stopPropagation();sharePost('${p.id}')" title="Partager" aria-label="Partager">
         ${shareIconSvg(18)}
@@ -2498,7 +2515,7 @@ async function openPost(id) {
         <span class="post-action ${liked ? "liked" : ""}" onclick="event.stopPropagation(); likePostDetail('${id}', this);">
           ${liked ? "❤️" : "🤍"} ${post.likes || 0}
         </span>
-        <span class="post-action" onclick="openComments('${id}')">💬 ${(post.comments||[]).length}</span>
+        <span class="post-action" onclick="openComments('${id}')">💬 ${commentThreadCount(post.comments)}</span>
         <span class="post-action" onclick="return showEmojiPickerForPost('${id}', event);" title="Emoji & GIF">😊</span>
         <span class="post-action" onclick="event.stopPropagation();sharePost('${id}')" title="Partager" aria-label="Partager">
           ${shareIconSvg(18)}

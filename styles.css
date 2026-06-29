@@ -3555,6 +3555,18 @@
     }
     .comment-action:hover { opacity: 0.7; }
     .comment-action.liked { color: #ef4444; }
+    /* Pastille unique des réactions emoji d'un commentaire : « 😍 N » cliquable */
+    .cmt-react-chip {
+      display: inline-flex; align-items: center; gap: 4px;
+      background: var(--accent-wash); color: var(--accent-2);
+      border: 1px solid rgba(124, 58, 237, 0.22); border-radius: 999px;
+      padding: 1px 8px; font-size: 12px; line-height: 1.4; cursor: pointer;
+      user-select: none; transition: transform 120ms ease, background 160ms ease;
+    }
+    .cmt-react-chip:hover { background: rgba(124, 58, 237, 0.16); }
+    .cmt-react-chip:active { transform: scale(0.94); }
+    .cmt-react-chip b { font-weight: 800; }
+    .cmt-react-chip.mine { border-color: var(--accent); background: rgba(124, 58, 237, 0.2); }
     /* Outils du composeur de commentaires (emoji + GIF), communs fil/IRL/CDV */
     .cmt-tool-btn {
       flex-shrink: 0;
@@ -7054,7 +7066,7 @@
     .event-comments-inline:empty { display: none; margin: 0; }
     .ev-cmt-preview {
       font-size: 12px; line-height: 1.45; color: var(--text-dim);
-      background: var(--bg-soft); border-radius: 8px; padding: 6px 9px;
+      padding: 2px 0;
     }
     .ev-cmt-preview b { color: var(--text); font-weight: 700; margin-right: 4px; }
     .ev-cmt-toggle {

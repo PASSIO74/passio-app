@@ -638,74 +638,10 @@ function addGifToComment(postId, commentId, gifUrl) {
   if (typeof supaCommentInteract === "function") supaCommentInteract(commentId, postId, "gif", gifUrl);
   console.log("✅ GIF reaction added + synced");
 
-  // Mettre à jour l'affichage des replies
-  var commentElement = document.querySelector('[data-commentid="' + commentId + '"]');
-  if (commentElement) {
-    var commentActions = commentElement.querySelector(".comment-actions");
-    var replyCountBtn = commentActions?.querySelector(".comment-reply-count");
-
-    // Créer ou mettre à jour le bouton "X réponses"
-    if (!replyCountBtn && comment.replies.length > 0) {
-      replyCountBtn = document.createElement("span");
-      replyCountBtn.className = "comment-reply-count";
-      replyCountBtn.style.cssText = "cursor:pointer;font-size:12px;color:var(--accent);margin-left:8px;";
-      replyCountBtn.onclick = function(e) { e.stopPropagation(); toggleCommentReplies(commentId, e); };
-      commentActions?.appendChild(replyCountBtn);
-      console.log("✅ Reply count button created");
-    }
-
-    // Mettre à jour le texte du bouton
-    if (replyCountBtn && comment.replies.length > 0) {
-      replyCountBtn.textContent = "▲ Masquer les réponses";
-      console.log("✅ Reply count updated:", replyCountBtn.textContent);
-    }
-
-    // Mettre à jour ou créer le div des replies
-    var repliesDiv = commentElement.querySelector(".comment-replies");
-    if (repliesDiv) {
-      repliesDiv.remove();
-    }
-
-    if (comment.replies.length > 0) {
-      var newRepliesDiv = document.createElement("div");
-      newRepliesDiv.className = "comment-replies";
-      newRepliesDiv.id = "replies-" + commentId;
-      newRepliesDiv.style.cssText = "display:block;";
-
-      var repliesHTML = comment.replies.map(r => {
-        const ru = userById(r.authorId) || { name: "?", profileEmoji: "👤", avatar: "#64748b" };
-        const rSrc = r.authorId === "me" ? "me" : "seed";
-        const _rAv = { avatar: ru.avatar || "#64748b", profileEmoji: ru.profileEmoji || "👤", name: ru.name, photoUrl: ru.photoUrl || null };
-
-        if (r.type === "emoji_reaction") {
-          return `<div class="comment-reply" style="display:flex;align-items:center;gap:6px;padding:4px 0;">
-            <div class="avatar xs" style="background:${avatarBg(_rAv)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${avatarInner(_rAv)}</div>
-            <div><span style="font-size:11px;color:var(--text);font-weight:600;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span> <span style="font-size:14px;">${r.text}</span></div>
-          </div>`;
-        }
-
-        if (r.type === "gif_reaction") {
-          return `<div class="comment-reply" style="display:flex;align-items:flex-start;gap:6px;padding:4px 0;">
-            <div class="avatar xs" style="background:${avatarBg(_rAv)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${avatarInner(_rAv)}</div>
-            <div><span style="font-size:11px;color:var(--text);font-weight:600;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span><br/>
-            <img loading="lazy" decoding="async" src="${r.text}" style="width:90px;height:90px;border-radius:8px;margin-top:4px;object-fit:cover;" alt="GIF" /></div>
-          </div>`;
-        }
-
-        return `<div class="comment-reply" style="display:flex;align-items:flex-start;gap:6px;padding:4px 0;">
-          <div class="avatar xs" style="background:${avatarBg(_rAv)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${avatarInner(_rAv)}</div>
-          <div><span class="comment-reply-author" style="font-size:11px;font-weight:600;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span> ${escapeHtml(r.text)}
-          <div style="font-size:10px;color:var(--muted);margin-top:2px;">${fmtTime(r.createdAt)}</div></div>
-        </div>`;
-      }).join("");
-
-      newRepliesDiv.innerHTML = repliesHTML;
-      commentElement.querySelector(".comment-body")?.appendChild(newRepliesDiv);
-      console.log("✅ Replies div created and displayed with", comment.replies.length, "items");
-    }
-  }
-
   if (typeof thread.save === "function") thread.save();
+  // Re-render unifié : la réponse GIF apparaît dans la liste, les réactions emoji
+  // restent agrégées dans la pastille.
+  if (typeof _refreshCommentThreadUI === "function") _refreshCommentThreadUI(postId);
   return false;
 }
 
@@ -1019,73 +955,9 @@ function addEmojiToComment(postId, commentId, emoji) {
   if (typeof supaCommentInteract === "function") supaCommentInteract(commentId, postId, "emoji", emoji);
   console.log("✅ Emoji reaction added + synced:", emoji);
 
-  // Mettre à jour l'affichage des replies
-  var commentElement = document.querySelector('[data-commentid="' + commentId + '"]');
-  if (commentElement) {
-    var commentActions = commentElement.querySelector(".comment-actions");
-    var replyCountBtn = commentActions?.querySelector(".comment-reply-count");
-
-    // Créer ou mettre à jour le bouton "X réponses"
-    if (!replyCountBtn && comment.replies.length > 0) {
-      replyCountBtn = document.createElement("span");
-      replyCountBtn.className = "comment-reply-count";
-      replyCountBtn.style.cssText = "cursor:pointer;font-size:12px;color:var(--accent);margin-left:8px;";
-      replyCountBtn.onclick = function(e) { e.stopPropagation(); toggleCommentReplies(commentId, e); };
-      commentActions?.appendChild(replyCountBtn);
-      console.log("✅ Reply count button created");
-    }
-
-    // Mettre à jour le texte du bouton
-    if (replyCountBtn && comment.replies.length > 0) {
-      replyCountBtn.textContent = "▲ Masquer les réponses";
-      console.log("✅ Reply count updated:", replyCountBtn.textContent);
-    }
-
-    // Mettre à jour ou créer le div des replies
-    var repliesDiv = commentElement.querySelector(".comment-replies");
-    if (repliesDiv) {
-      repliesDiv.remove();
-    }
-
-    if (comment.replies.length > 0) {
-      var newRepliesDiv = document.createElement("div");
-      newRepliesDiv.className = "comment-replies";
-      newRepliesDiv.id = "replies-" + commentId;
-      newRepliesDiv.style.cssText = "display:block;"; // Afficher directement!
-
-      var repliesHTML = comment.replies.map(r => {
-        const ru = userById(r.authorId) || { name: "?", profileEmoji: "👤", avatar: "#64748b" };
-        const rSrc = r.authorId === "me" ? "me" : "seed";
-        const _rAv = { avatar: ru.avatar || "#64748b", profileEmoji: ru.profileEmoji || "👤", name: ru.name, photoUrl: ru.photoUrl || null };
-
-        if (r.type === "emoji_reaction") {
-          return `<div class="comment-reply" style="display:flex;align-items:center;gap:6px;padding:4px 0;">
-            <div class="avatar xs" style="background:${avatarBg(_rAv)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${avatarInner(_rAv)}</div>
-            <div><span style="font-size:11px;color:var(--text);font-weight:600;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span> <span style="font-size:14px;">${r.text}</span></div>
-          </div>`;
-        }
-
-        if (r.type === "gif_reaction") {
-          return `<div class="comment-reply" style="display:flex;align-items:flex-start;gap:6px;padding:4px 0;">
-            <div class="avatar xs" style="background:${avatarBg(_rAv)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${avatarInner(_rAv)}</div>
-            <div><span style="font-size:11px;color:var(--text);font-weight:600;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span><br/>
-            <img loading="lazy" decoding="async" src="${r.text}" style="width:90px;height:90px;border-radius:8px;margin-top:4px;object-fit:cover;" alt="GIF" /></div>
-          </div>`;
-        }
-
-        return `<div class="comment-reply" style="display:flex;align-items:flex-start;gap:6px;padding:4px 0;">
-          <div class="avatar xs" style="background:${avatarBg(_rAv)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${avatarInner(_rAv)}</div>
-          <div><span class="comment-reply-author" style="font-size:11px;font-weight:600;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span> ${escapeHtml(r.text)}
-          <div style="font-size:10px;color:var(--muted);margin-top:2px;">${fmtTime(r.createdAt)}</div></div>
-        </div>`;
-      }).join("");
-
-      newRepliesDiv.innerHTML = repliesHTML;
-      commentElement.querySelector(".comment-body")?.appendChild(newRepliesDiv);
-      console.log("✅ Replies div created and displayed with", comment.replies.length, "items");
-    }
-  }
-
+  // Une réaction emoji n'est PAS un commentaire : on re-rend le fil via le renderer
+  // unifié, qui l'agrège dans la pastille « 😍 N » (et non en ligne de réponse).
+  if (typeof _refreshCommentThreadUI === "function") _refreshCommentThreadUI(postId);
   return false;
 }
 

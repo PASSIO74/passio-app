@@ -1340,7 +1340,7 @@ function renderIRL() {
       </div>
       <div class="post-actions" onclick="event.stopPropagation()">
         <span class="post-action ${evLiked ? "liked" : ""}" data-evlike="${e.id}" onclick="event.stopPropagation();toggleEventLike('${e.id}', this)">${evLiked ? "❤️" : "🤍"} ${evLikeCount}</span>
-        <span class="post-action" data-evc="${e.id}" onclick="event.stopPropagation();openCommentSheet('${e.id}','💬 ${escapeHtml((e.title||'').replace(/'/g,'’')).slice(0,40)}')">💬 ${(window._eventCommentCounts && window._eventCommentCounts[e.id]) || 0}</span>
+        <span class="post-action" data-evc="${e.id}" onclick="event.stopPropagation();openCommentSheet('${e.id}','💬 ${escapeHtml((e.title||'').replace(/'/g,'’')).slice(0,40)}')">💬 ${_eventCmtBadge(e.id)}</span>
         <span class="post-action" onclick="return showEmojiPickerForEvent('${e.id}', event);" title="Réagir">😊</span>
         <span class="post-action" onclick="event.stopPropagation();shareEvent('${e.id}')" title="Partager" aria-label="Partager">${shareIconSvg(18)}</span>
       </div>
@@ -1479,10 +1479,11 @@ function _evReactChipHtml(eventId) {
   var gifN = (d.gifs || []).length;
   var total = keys.reduce(function(s, k){ return s + counts[k]; }, 0) + gifN;
   if (!total) return "";
-  var faces = keys.slice(0, 3).join("");
-  if (gifN) faces += "🎬";
+  // UN SEUL emoji (le plus fréquent) + le total — clic pour voir qui a réagi.
+  var top = keys.slice().sort(function(a, b){ return counts[b] - counts[a]; })[0];
+  var face = top || (gifN ? "🎬" : "😊");
   return '<button class="ev-react-chip" data-evchip="' + eventId + '" onclick="event.stopPropagation();return openEventReactions(\'' + eventId + '\', event);">'
-    + (faces || "😊") + ' <b>' + total + '</b></button>';
+    + face + ' <b>' + total + '</b></button>';
 }
 // Repeint la pastille (dans son conteneur data-evchipholder) après une réaction.
 function _patchEventReactChip(eventId) {
@@ -1646,6 +1647,16 @@ async function _loadEventCommentsPreviews(ids) {
   } catch(e) {}
 }
 
+// Valeur de la pastille « 💬 N » d'une carte événement : si le fil de commentaires
+// est déjà en cache (hydraté avec réponses), on compte commentaires + réponses via
+// commentThreadCount ; sinon on retombe sur le décompte serveur des commentaires
+// de premier niveau. Cohérent avec le fil et le CDV.
+function _eventCmtBadge(eventId) {
+  var arr = window._eventCommentsCache && window._eventCommentsCache[eventId];
+  if (arr && arr.length) return commentThreadCount(arr);
+  return (window._eventCommentCounts && window._eventCommentCounts[eventId]) || 0;
+}
+
 // Charge en une requête le nombre de commentaires des événements visibles puis
 // met à jour les pastilles 💬 en place (cache window._eventCommentCounts).
 async function _loadEventCommentCounts(ids) {
@@ -1658,7 +1669,7 @@ async function _loadEventCommentCounts(ids) {
     Object.keys(counts).forEach(function(id){ window._eventCommentCounts[id] = counts[id]; });
     ids.forEach(function(id){
       var el = document.querySelector('[data-evc="' + id + '"]');
-      if (el) el.textContent = "💬 " + (window._eventCommentCounts[id] || 0);
+      if (el) el.textContent = "💬 " + _eventCmtBadge(id);
     });
   } catch (e) {}
 }
@@ -2241,7 +2252,7 @@ async function addEventComment(eventId) {
     window._eventCommentCounts = window._eventCommentCounts || {};
     window._eventCommentCounts[eventId] = (window._eventCommentCounts[eventId] || 0) + 1;
     var _badge = document.querySelector('[data-evc="' + eventId + '"]');
-    if (_badge) _badge.textContent = "💬 " + window._eventCommentCounts[eventId];
+    if (_badge) _badge.textContent = "💬 " + _eventCmtBadge(eventId);
   } catch (e) {}
   // Rafraîchit l'aperçu inline des commentaires sur la carte de l'événement.
   if (typeof _patchEventCommentsInline === "function") { try { _patchEventCommentsInline(eventId); } catch(e) {} }
