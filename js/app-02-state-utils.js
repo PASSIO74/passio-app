@@ -1980,6 +1980,43 @@ function renderFeed() {
   if (sortedPosts.length > renderLimit || window._feedServerMayHaveMore) {
     list.innerHTML += `<div style="text-align:center;padding:14px 0 24px;"><button class="btn ghost" id="feedLoadMoreBtn" onclick="loadMoreFeedPosts()">⤵ Charger plus de posts</button></div>`;
   }
+
+  // Cascade d'apparition : UNIQUEMENT au premier rendu du fil de la session.
+  // Sinon chaque re-render (refresh, like realtime, filtre) rejouait l'anim
+  // sur 20 cartes → ~840ms de "lag" perçu à chaque fois.
+  if (!window._feedIntroDone) {
+    window._feedIntroDone = true;
+    list.classList.add("feed-intro");
+    setTimeout(function(){ list.classList.remove("feed-intro"); }, 700);
+  } else {
+    list.classList.remove("feed-intro");
+  }
+}
+
+// Met à jour en place le compteur de like d'un post dans le DOM (fil + détail),
+// sans reconstruire tout le fil. Utilisé par les canaux realtime (like d'un AUTRE
+// compte) : avant, chaque like reçu déclenchait un renderFeed() complet (~34ms +
+// re-décodage des images + scroll qui saute). post.liked = MON état (inchangé par
+// le like d'autrui), on le préserve.
+function patchPostLikeDom(post) {
+  if (!post) return;
+  var liked = !!post.liked;
+  var sel = '.post[data-postid="' + post.id + '"] .post-action[data-action="like"]';
+  document.querySelectorAll(sel).forEach(function(span){
+    span.classList.toggle("liked", liked);
+    span.innerHTML = (liked ? "❤️" : "🤍") + " " + (post.likes || 0);
+  });
+}
+
+// renderFeed() différé + coalescé, et SEULEMENT si le fil est visible. Pour les
+// événements realtime peu fréquents (nouveau post) : évite de reconstruire le fil
+// à chaque insert et de le faire pour rien quand on est sur un autre écran.
+var _feedRenderTimer = null;
+function scheduleFeedRender() {
+  var feedEl = document.getElementById("screen-feed");
+  if (!feedEl || !feedEl.classList.contains("active")) return;
+  clearTimeout(_feedRenderTimer);
+  _feedRenderTimer = setTimeout(function(){ try { renderFeed(); } catch(e){} }, 350);
 }
 
 // Real-photo cover, maps each `cover` variant to an Unsplash HD photo.

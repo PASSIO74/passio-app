@@ -3552,8 +3552,10 @@ function supaSubscribe() {
         const p = payload.new;
         if (!p || !p.id || p.id === MY_UID) return;
         cacheRemoteProfile(p);
-        // Re-rendre les surfaces visibles (léger, idempotent).
-        try { if (typeof renderFeed === "function") renderFeed(); } catch(e) {}
+        // Re-rendre le fil s'il est visible (différé/coalescé : un changement de
+        // profil n'a pas besoin d'un rebuild synchrone, et ça évite un renderFeed
+        // par mise à jour de profil reçue).
+        try { if (typeof scheduleFeedRender === "function") scheduleFeedRender(); } catch(e) {}
         try { if (typeof renderMessages === "function") renderMessages(); } catch(e) {}
       } catch(e) {}
     })
@@ -3572,7 +3574,7 @@ function supaSubscribe() {
         // ✅ Ajouter dans state.supabasePosts, pas state.seed.posts!
         if (!state.supabasePosts.find(p => p.id === newPost.id)) {
           state.supabasePosts.unshift(newPost);
-          try { renderFeed(); } catch(e) {}
+          try { scheduleFeedRender(); } catch(e) {}
         }
       } catch(e) {}
     })
@@ -3588,7 +3590,7 @@ function supaSubscribe() {
       const post = findPostAnywhere(r.post_id);
       if (post) {
         post.likes = (post.likes || 0) + 1;
-        try { renderFeed(); } catch(e) {}
+        try { patchPostLikeDom(post); } catch(e) {}
         // 💎 Valeur reçue : un autre compte a aimé MON contenu → récompense l'auteur.
         if (post.authorId === MY_UID || post.author === "me" || post.mine) {
           try { awardLikeReceived(); } catch(e) {}
@@ -3599,7 +3601,7 @@ function supaSubscribe() {
       const r = payload.old;
       if (!r || r.user_id === MY_UID) return; // mon propre unlike déjà décompté
       const post = findPostAnywhere(r.post_id);
-      if (post) { post.likes = Math.max(0, (post.likes || 1) - 1); try { renderFeed(); } catch(e) {} }
+      if (post) { post.likes = Math.max(0, (post.likes || 1) - 1); try { patchPostLikeDom(post); } catch(e) {} }
     })
     .subscribe();
 
@@ -3642,7 +3644,7 @@ function supaSubscribe() {
           if (!post.comments.find(c => c.id === r.id)) {
             post.comments.unshift({ id: r.id, authorId: r.author_id, authorName: prof?.username || "Passionne", authorEmoji: prof?.emoji || "✨", text: r.content || "", content: r.content || "", createdAt: new Date(r.created_at + "Z").getTime(), fromSupabase: true });
           }
-          try { renderFeed(); } catch(e) {}
+          try { scheduleFeedRender(); } catch(e) {}
           // Si la modale commentaires de ce post est ouverte → l'actualiser en direct.
           try {
             if (window._openCommentsPostId === r.post_id && document.getElementById("commentsBox") && typeof _renderCommentsList === "function") {

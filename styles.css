@@ -38,7 +38,7 @@
       --radius-md: 18px;
       --radius-sm: 12px;
 
-      --shadow-soft: 0 1px 2px rgba(24, 18, 48, 0.04), 0 8px 24px rgba(24, 18, 48, 0.06);
+      --shadow-soft: 0 1px 2px rgba(24, 18, 48, 0.05), 0 4px 12px rgba(24, 18, 48, 0.05);
       --shadow-strong: 0 16px 48px rgba(24, 18, 48, 0.12);
       --shadow-glow: 0 8px 22px rgba(124, 58, 237, 0.22);
       --shadow-glow-2: 0 8px 22px rgba(109, 40, 217, 0.20);
@@ -3920,22 +3920,26 @@
     .empty-text { font-size: 12px; line-height: 1.5; max-width: 250px; margin: 0 auto; }
     .empty .btn { margin-top: 14px; }
 
-    /* ===== Cascade d'apparition des posts du Fil ===== */
+    /* ===== Cascade d'apparition des posts du Fil =====
+       La cascade ne joue QU'au premier affichage du fil de la session : la
+       classe .feed-intro est posée par renderFeed() une seule fois puis retirée.
+       Avant, chaque re-render (refresh 60s, like realtime, changement de filtre)
+       recréait les 20 cartes et rejouait 480ms d'animation transform+scale →
+       le fil mettait ~840ms à se stabiliser à chaque fois (perçu comme un lag).
+       Anim raccourcie (260ms), sans scale (évite de compositer 20 couches). */
     @media (prefers-reduced-motion: no-preference) {
-      #screen-feed.active #feedList > .post {
-        animation: postIn 480ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+      #screen-feed.active #feedList.feed-intro > .post {
+        animation: postIn 260ms ease-out backwards;
       }
-      #feedList > .post:nth-child(1) { animation-delay: 30ms; }
-      #feedList > .post:nth-child(2) { animation-delay: 90ms; }
-      #feedList > .post:nth-child(3) { animation-delay: 150ms; }
-      #feedList > .post:nth-child(4) { animation-delay: 210ms; }
-      #feedList > .post:nth-child(5) { animation-delay: 270ms; }
-      #feedList > .post:nth-child(6) { animation-delay: 320ms; }
-      #feedList > .post:nth-child(n+7) { animation-delay: 360ms; }
+      #feedList.feed-intro > .post:nth-child(1) { animation-delay: 0ms; }
+      #feedList.feed-intro > .post:nth-child(2) { animation-delay: 45ms; }
+      #feedList.feed-intro > .post:nth-child(3) { animation-delay: 90ms; }
+      #feedList.feed-intro > .post:nth-child(4) { animation-delay: 130ms; }
+      #feedList.feed-intro > .post:nth-child(n+5) { animation-delay: 160ms; }
     }
     @keyframes postIn {
-      from { opacity: 0; transform: translateY(16px) scale(0.99); }
-      to   { opacity: 1; transform: translateY(0) scale(1); }
+      from { opacity: 0; transform: translateY(10px); }
+      to   { opacity: 1; transform: translateY(0); }
     }
 
     /* ===== Retour tactile ===== */
