@@ -351,6 +351,10 @@ function _applyCommentInteractionEvent(r, op) {
       var eid = "semoji_" + (r.created_at || Date.now()) + "_" + r.user_id;
       if (!comment.replies.find(function(x){ return x.id === eid; }))
         comment.replies.push({ id: eid, authorId: r.user_id, text: r.payload, type: "emoji_reaction", createdAt: r.created_at ? new Date(r.created_at + "Z").getTime() : Date.now() });
+    } else if (r.kind === "gif" && op === "add" && r.payload) {
+      var gid = "sgif_" + (r.created_at || Date.now()) + "_" + r.user_id;
+      if (!comment.replies.find(function(x){ return x.id === gid; }))
+        comment.replies.push({ id: gid, authorId: r.user_id, text: r.payload, type: "gif_reaction", createdAt: r.created_at ? new Date(r.created_at + "Z").getTime() : Date.now() });
     }
     if (typeof thread.save === "function") thread.save(); else saveState();
     if (typeof _refreshCommentThreadUI === "function") _refreshCommentThreadUI(r.post_id);

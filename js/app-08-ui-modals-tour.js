@@ -2414,6 +2414,7 @@ async function supaLoadCommentInteractions(commentIds) {
       if (r.kind === "like") { o.likes++; o.likedBy.push(r.user_id); }
       else if (r.kind === "reply") o.replies.push({ id: "srep_" + r.created_at, authorId: r.user_id, text: r.payload || "", createdAt: new Date(r.created_at + "Z").getTime() });
       else if (r.kind === "emoji" && r.payload) o.replies.push({ id: "semoji_" + r.created_at + "_" + r.user_id, authorId: r.user_id, text: r.payload, type: "emoji_reaction", createdAt: new Date(r.created_at + "Z").getTime() });
+      else if (r.kind === "gif" && r.payload) o.replies.push({ id: "sgif_" + r.created_at + "_" + r.user_id, authorId: r.user_id, text: r.payload, type: "gif_reaction", createdAt: new Date(r.created_at + "Z").getTime() });
     });
   } catch(e) {}
   return out;

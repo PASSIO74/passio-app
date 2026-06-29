@@ -622,7 +622,9 @@ function addGifToComment(postId, commentId, gifUrl) {
   // Créer une nouvelle réaction GIF
   var gifReaction = {
     id: "gif_" + commentId + "_" + Math.random().toString(36).substr(2, 9),
-    authorId: state.user?.id || "me",
+    // MY_UID (et non state.user.id souvent vide) → cohérent avec emoji/reply/like,
+    // sinon la réaction est attribuée à "me" (résolution d'auteur incohérente).
+    authorId: (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : (state.user?.id || "me"),
     text: gifUrl,
     type: "gif_reaction",
     createdAt: Date.now(),
@@ -630,7 +632,11 @@ function addGifToComment(postId, commentId, gifUrl) {
     likedBy: []
   };
   comment.replies.push(gifReaction);
-  console.log("✅ GIF reaction added");
+  // Sync Supabase → la réaction GIF apparaît chez tous les comptes ET survit au
+  // re-render/hydratation (sans ça, seul l'emoji était synchronisé : le GIF
+  // disparaissait au rechargement / poll CDV 5 s).
+  if (typeof supaCommentInteract === "function") supaCommentInteract(commentId, postId, "gif", gifUrl);
+  console.log("✅ GIF reaction added + synced");
 
   // Mettre à jour l'affichage des replies
   var commentElement = document.querySelector('[data-commentid="' + commentId + '"]');
