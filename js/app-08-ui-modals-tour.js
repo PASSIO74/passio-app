@@ -2649,6 +2649,45 @@ async function supaReactCdvLive(liveId, emoji) {
   catch(e) { console.warn("CDV reaction:", e); }
 }
 
+// ── Likes & réactions emoji des événements IRL (table event_reactions) ──
+// Un like = une réaction d'emoji '❤️' (toggle) ; tout autre emoji = réaction.
+async function supaToggleEventLike(eventId) {
+  if (!eventId || typeof MY_UID === "undefined" || !MY_UID) return false;
+  try {
+    const { data: existing } = await supa.from("event_reactions")
+      .select("emoji").eq("event_id", eventId).eq("user_id", MY_UID).eq("emoji", "❤️").maybeSingle();
+    if (existing) {
+      await supa.from("event_reactions").delete().eq("event_id", eventId).eq("user_id", MY_UID).eq("emoji", "❤️");
+      return false;
+    }
+    await supa.from("event_reactions").insert({ event_id: eventId, user_id: MY_UID, emoji: "❤️" });
+    return true;
+  } catch(e) { return false; }
+}
+async function supaAddEventReaction(eventId, emoji) {
+  if (!eventId || !emoji || typeof MY_UID === "undefined" || !MY_UID) return;
+  try { await supa.from("event_reactions").insert({ event_id: eventId, user_id: MY_UID, emoji: emoji }); }
+  catch(e) { /* doublon PK (event_id,user_id,emoji) ignoré */ }
+}
+// Charge likes + my-liked + décompte des emojis pour un lot d'événements (1 req)
+// → { eventId: { likes, liked, emojiCounts:{emoji:n} } }.
+async function supaLoadEventReactions(eventIds) {
+  if (!eventIds || !eventIds.length) return {};
+  try {
+    const { data, error } = await supa.from("event_reactions")
+      .select("event_id,user_id,emoji").in("event_id", eventIds);
+    if (error) { console.warn("event reactions:", error.message); return {}; }
+    var out = {};
+    eventIds.forEach(function(id){ out[id] = { likes: 0, liked: false, emojiCounts: {} }; });
+    (data || []).forEach(function(r){
+      var o = out[r.event_id] || (out[r.event_id] = { likes: 0, liked: false, emojiCounts: {} });
+      if (r.emoji === "❤️") { o.likes++; if (r.user_id === MY_UID) o.liked = true; }
+      else { o.emojiCounts[r.emoji] = (o.emojiCounts[r.emoji] || 0) + 1; }
+    });
+    return out;
+  } catch(e) { console.warn("event reactions:", e); return {}; }
+}
+
 // ── Commentaires d'événements IRL (table event_comments, cross-compte) ──
 async function supaAddEventComment(eventId, text) {
   if (!eventId || !text) return null;

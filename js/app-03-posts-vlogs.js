@@ -1665,6 +1665,37 @@ function reactCdvLive(liveId, emoji) {
   openCdvLiveViewer(liveId);
 }
 
+// Like ❤️ depuis une CARTE live (ne rouvre PAS le viewer ; patch le compteur en place).
+function likeCdvLiveCard(liveId, el) {
+  var lives = getCdvLives();
+  var live = lives.find(function(l) { return l.id === liveId; });
+  if (!live) return;
+  if (!live.reactions) live.reactions = [];
+  live.reactions.push("❤️");
+  saveCdvLives(lives);
+  if (typeof supaReactCdvLive === "function") supaReactCdvLive(liveId, "❤️");
+  var n = live.reactions.filter(function(r){ return r === "❤️"; }).length;
+  if (el) el.innerHTML = "❤️ " + n;
+}
+
+// 😊 Réagir depuis une CARTE live : popover d'emojis → reactions (sans rouvrir le viewer).
+function reactCdvLivePicker(liveId, event) {
+  return _emojiReactPopover(event, function(emoji){
+    var lives = getCdvLives();
+    var live = lives.find(function(l) { return l.id === liveId; });
+    if (!live) return;
+    if (!live.reactions) live.reactions = [];
+    live.reactions.push(emoji);
+    saveCdvLives(lives);
+    if (typeof supaReactCdvLive === "function") supaReactCdvLive(liveId, emoji);
+    if (typeof toast === "function") toast(emoji);
+    if (emoji === "❤️") {
+      var el = document.querySelector('[data-livelike="' + liveId + '"]');
+      if (el) el.innerHTML = "❤️ " + live.reactions.filter(function(r){ return r === "❤️"; }).length;
+    }
+  });
+}
+
 function addCdvLiveComment(liveId) {
   var inp = document.getElementById("cdvLiveComment") || document.getElementById("cmtThreadInput");
   if (!inp) return;
@@ -1782,7 +1813,9 @@ function renderCdvScreen() {
           ${isMyLive(l) ? `<button class="cdv-live-follow-btn" onclick="event.stopPropagation();addCdvLiveStep('${l.id}')">+ Étape</button>` : `<button class="cdv-live-follow-btn" onclick="event.stopPropagation();toggleFollowCdvLive('${l.id}',this)" style="background:${isFollowing ? '#8b5cf6' : 'var(--border)'};color:${isFollowing ? '#fff' : 'var(--text)'};">${isFollowing ? '✓ En suivi' : '📡 Suivre'}</button>`}
         </div>
         <div class="post-actions" onclick="event.stopPropagation()">
+          <span class="post-action liked" data-livelike="${l.id}" onclick="event.stopPropagation();likeCdvLiveCard('${l.id}', this)">❤️ ${(l.reactions||[]).filter(r=>r==="❤️").length}</span>
           <span class="post-action" onclick="event.stopPropagation();openCommentSheet('${l.id}','💬 ${escapeHtml((l.destination||'').replace(/'/g,'’')).slice(0,40)}')">💬 ${(l.comments||[]).length}</span>
+          <span class="post-action" onclick="return reactCdvLivePicker('${l.id}', event);" title="Réagir">😊</span>
           <span class="post-action" onclick="event.stopPropagation();shareCdvLive('${l.id}')" title="Partager" aria-label="Partager">${shareIconSvg(18)}</span>
         </div>
       </div>`;
@@ -1799,7 +1832,9 @@ function renderCdvScreen() {
           </div>
         </div>
         <div class="post-actions" onclick="event.stopPropagation()">
+          <span class="post-action liked" data-livelike="${l.id}" onclick="event.stopPropagation();likeCdvLiveCard('${l.id}', this)">❤️ ${(l.reactions||[]).filter(r=>r==="❤️").length}</span>
           <span class="post-action" onclick="event.stopPropagation();openCommentSheet('${l.id}','💬 ${escapeHtml((l.destination||'').replace(/'/g,'’')).slice(0,40)}')">💬 ${(l.comments||[]).length}</span>
+          <span class="post-action" onclick="return reactCdvLivePicker('${l.id}', event);" title="Réagir">😊</span>
           <span class="post-action" onclick="event.stopPropagation();shareCdvLive('${l.id}')" title="Partager" aria-label="Partager">${shareIconSvg(18)}</span>
         </div>
       </div>`).join("");
