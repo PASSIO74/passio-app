@@ -3555,18 +3555,20 @@
     }
     .comment-action:hover { opacity: 0.7; }
     .comment-action.liked { color: #ef4444; }
-    /* Pastille unique des réactions emoji d'un commentaire : « 😍 N » cliquable */
+    /* Pastille unique des réactions emoji d'un commentaire : « 😍 N » cliquable.
+       Sans contour ni fond (même config partout : fil / IRL / CDV) — juste l'emoji
+       et le nombre, le compte en couleur d'accent. */
     .cmt-react-chip {
-      display: inline-flex; align-items: center; gap: 4px;
-      background: var(--accent-wash); color: var(--accent-2);
-      border: 1px solid rgba(124, 58, 237, 0.22); border-radius: 999px;
-      padding: 1px 8px; font-size: 12px; line-height: 1.4; cursor: pointer;
-      user-select: none; transition: transform 120ms ease, background 160ms ease;
+      display: inline-flex; align-items: center; gap: 3px;
+      background: none; border: none; border-radius: 0;
+      color: var(--accent-2);
+      padding: 1px 2px; font-size: 12px; line-height: 1.4; cursor: pointer;
+      user-select: none; transition: transform 120ms ease, opacity 160ms ease;
     }
-    .cmt-react-chip:hover { background: rgba(124, 58, 237, 0.16); }
+    .cmt-react-chip:hover { opacity: 0.75; }
     .cmt-react-chip:active { transform: scale(0.94); }
     .cmt-react-chip b { font-weight: 800; }
-    .cmt-react-chip.mine { border-color: var(--accent); background: rgba(124, 58, 237, 0.2); }
+    .cmt-react-chip.mine { color: var(--accent); }
     /* Outils du composeur de commentaires (emoji + GIF), communs fil/IRL/CDV */
     .cmt-tool-btn {
       flex-shrink: 0;
