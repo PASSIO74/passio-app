@@ -428,8 +428,11 @@ function _openReactorsList(items, event) {
 function _postReactItems(postId) {
   var post = (typeof findPostAnywhere === "function") ? findPostAnywhere(postId) : null;
   if (!post) return [];
-  return (post.reactions || [])
-    .filter(function(r){ return r.type === "emoji_reaction" || r.type === "gif_reaction"; })
+  // post.reactions peut être un OBJET (ex. réactions agrégées des bobines/messages)
+  // et non un tableau → garder Array.isArray pour éviter un crash de .filter.
+  var arr = Array.isArray(post.reactions) ? post.reactions : [];
+  return arr
+    .filter(function(r){ return r && (r.type === "emoji_reaction" || r.type === "gif_reaction"); })
     .map(function(r){ return { authorId: r.authorId, text: r.text }; });
 }
 function _postReactChipHtml(postId) {
@@ -449,7 +452,8 @@ function _liveReactItems(liveId) {
     return live.reactionsBy.filter(function(x){ return x && x.emoji !== "❤️"; })
       .map(function(x){ return { authorId: x.userId, text: x.emoji }; });
   }
-  return (live.reactions || []).filter(function(e){ return e !== "❤️"; })
+  var arr = Array.isArray(live.reactions) ? live.reactions : [];
+  return arr.filter(function(e){ return e !== "❤️"; })
     .map(function(e){ return { authorId: null, text: e }; });
 }
 function _liveReactChipHtml(liveId) {
