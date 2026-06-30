@@ -1343,8 +1343,8 @@ function renderIRL() {
         <span class="post-action" data-evc="${e.id}" onclick="event.stopPropagation();openCommentSheet('${e.id}','💬 ${escapeHtml((e.title||'').replace(/'/g,'’')).slice(0,40)}')">💬 ${_eventCmtBadge(e.id)}</span>
         <span class="post-action" onclick="return showEmojiPickerForEvent('${e.id}', event);" title="Réagir">😊</span>
         <span class="post-action" onclick="event.stopPropagation();shareEvent('${e.id}')" title="Partager" aria-label="Partager">${shareIconSvg(18)}</span>
+        <span class="event-react-chip-holder" data-evchipholder="${e.id}" style="margin-left:auto;">${_evReactChipHtml(e.id)}</span>
       </div>
-      <div class="event-react-chip-holder" data-evchipholder="${e.id}" style="padding:4px 2px 0;">${_evReactChipHtml(e.id)}</div>
       <div class="event-comments-inline" data-evcomments="${e.id}" onclick="event.stopPropagation()">${_evCommentsInlineHtml(e.id)}</div>
     </div>`;
   }).join("");

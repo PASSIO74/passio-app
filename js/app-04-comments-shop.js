@@ -347,8 +347,10 @@ function openCommentReactors(threadId, commentId, event) {
 // localise indifféremment un commentaire ou une réponse). Pas de GIF ici (réponses
 // = réactions emoji uniquement, pour rester simple et cohérent).
 function reactToReply(threadId, replyId, event) {
-  if (typeof _emojiReactPopover === "function") {
-    return _emojiReactPopover(event, function(e){
+  // Même panneau segmenté que partout, en emoji uniquement (une réaction GIF sur
+  // une réponse ne serait pas rendue → on garde les réponses en emoji).
+  if (typeof emojiReactPanel === "function") {
+    return emojiReactPanel(event, function(e){
       if (typeof addEmojiToComment === "function") addEmojiToComment(threadId, replyId, e);
     });
   }
@@ -949,6 +951,125 @@ function _emojiReactPopover(event, onPick) {
     var cl = function (ev) {
       if (!pop.contains(ev.target) && ev.target !== btn) { pop.remove(); document.removeEventListener("click", cl); }
     };
+    document.addEventListener("click", cl);
+  }, 50);
+  return false;
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// PANNEAU DE RÉACTION UNIFIÉ (😊 Emoji | 🎬 GIF) — MÊME présentation PARTOUT.
+// Exactement le look du composeur de commentaires (onglets segmentés), mais en
+// mode « réaction » : tap sur un emoji = réaction appliquée + fermeture ; pick
+// d'un GIF = GIF appliqué + fermeture. Utilisé pour réagir à un post, un
+// commentaire, une réponse, un événement IRL et un live CDV.
+//   onEmoji(emoji)  → applique la réaction emoji (obligatoire)
+//   onGif(url)      → applique la réaction GIF (optionnel : sans lui, pas d'onglet GIF)
+// ════════════════════════════════════════════════════════════════════════
+function emojiReactPanel(event, onEmoji, onGif) {
+  if (event) { event.stopPropagation(); event.preventDefault(); }
+  var old = document.getElementById("emoji-react-panel");
+  if (old) { old.remove(); return false; } // toggle
+  var btn = event && (event.currentTarget || event.target);
+  var emojis = window._PASSIO_EMOJI_LIST
+    || ["😀","😂","😍","🥰","😎","😭","😡","👍","🙏","🔥","❤️","🎉","✨","💯","😅","🤔","😴","🥳","😇","🙌","👏","😢","😱","🤗","😋","🤩","😉","😘","🤤","😏"];
+  var hasGif = (typeof onGif === "function") && (typeof passioFetchGifs === "function");
+
+  var panel = document.createElement("div");
+  panel.id = "emoji-react-panel";
+  panel.style.cssText = "position:fixed;background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:10px;z-index:100002;box-shadow:0 6px 24px rgba(0,0,0,0.28);width:288px;box-sizing:border-box;";
+
+  var cl = null;
+  function close() { panel.remove(); try { document.removeEventListener("click", cl); } catch (e) {} }
+  function pickEmoji(e) { try { if (onEmoji) onEmoji(e); } catch (err) {} close(); }
+  function pickGif(url) { try { if (onGif) onGif(url); } catch (err) {} close(); }
+
+  var content = document.createElement("div");
+
+  function showEmoji() {
+    content.innerHTML = "";
+    var grid = document.createElement("div");
+    grid.style.cssText = "display:flex;flex-wrap:wrap;gap:2px;max-height:200px;overflow-y:auto;";
+    emojis.forEach(function (e) {
+      var b = document.createElement("span");
+      b.textContent = e;
+      b.style.cssText = "cursor:pointer;font-size:18px;line-height:1;padding:5px;border-radius:8px;transition:background .15s,transform .1s;";
+      b.onmouseover = function () { this.style.background = "rgba(124,58,237,0.18)"; this.style.transform = "scale(1.18)"; };
+      b.onmouseout = function () { this.style.background = "transparent"; this.style.transform = "scale(1)"; };
+      b.onclick = function (ev) { ev.stopPropagation(); pickEmoji(e); };
+      grid.appendChild(b);
+    });
+    content.appendChild(grid);
+  }
+  function showGif() {
+    content.innerHTML = "";
+    var search = document.createElement("input");
+    search.type = "search";
+    search.placeholder = "Rechercher un GIF…";
+    search.setAttribute("aria-label", "Rechercher un GIF");
+    search.style.cssText = "width:100%;box-sizing:border-box;margin-bottom:8px;padding:8px 12px;border-radius:10px;border:1.5px solid var(--border);background:var(--bg-deep);color:var(--text);font-size:16px;outline:none;";
+    search.onclick = function (e) { e.stopPropagation(); };
+    var grid = document.createElement("div");
+    grid.style.cssText = "display:grid;grid-template-columns:repeat(3,1fr);gap:6px;max-height:240px;overflow-y:auto;";
+    content.appendChild(search);
+    content.appendChild(grid);
+    function fill(urls) {
+      grid.innerHTML = "";
+      if (!urls || !urls.length) {
+        var empty = document.createElement("div");
+        empty.style.cssText = "grid-column:1/-1;padding:18px;text-align:center;color:var(--muted);font-size:13px;";
+        empty.textContent = "Aucun GIF trouvé";
+        grid.appendChild(empty);
+        return;
+      }
+      urls.forEach(function (gifUrl) {
+        var cellEl = document.createElement("div");
+        cellEl.style.cssText = "aspect-ratio:1/1;background:var(--bg-soft);border-radius:8px;overflow:hidden;cursor:pointer;border:1px solid var(--border);transition:border-color .15s;";
+        var img = document.createElement("img");
+        img.loading = "lazy"; img.decoding = "async"; img.src = gifUrl; img.alt = "GIF";
+        img.style.cssText = "width:100%;height:100%;object-fit:cover;display:block;";
+        cellEl.appendChild(img);
+        cellEl.onmouseover = function () { this.style.borderColor = "var(--accent)"; };
+        cellEl.onmouseout = function () { this.style.borderColor = "var(--border)"; };
+        cellEl.onclick = function (evt) { evt.stopPropagation(); evt.preventDefault(); pickGif(gifUrl); };
+        grid.appendChild(cellEl);
+      });
+    }
+    passioFetchGifs("").then(fill);
+    var _deb = null;
+    search.oninput = function () { clearTimeout(_deb); var q = search.value; _deb = setTimeout(function () { passioFetchGifs(q).then(fill); }, 350); };
+  }
+
+  if (hasGif) {
+    var seg = document.createElement("div");
+    seg.style.cssText = "display:flex;gap:4px;background:var(--bg-deep);border-radius:999px;padding:3px;margin-bottom:8px;";
+    var tabEmoji = document.createElement("button");
+    var tabGif = document.createElement("button");
+    var styleTab = function (b, active) {
+      b.style.cssText = "flex:1;border:none;border-radius:999px;font-size:12.5px;font-weight:700;padding:7px 10px;cursor:pointer;transition:all .15s;"
+        + (active ? "background:var(--accent);color:#fff;box-shadow:0 1px 4px rgba(124,58,237,0.35);" : "background:transparent;color:var(--muted);");
+    };
+    tabEmoji.type = "button"; tabEmoji.innerHTML = "😊 Emoji";
+    tabGif.type = "button"; tabGif.innerHTML = "🎬 GIF";
+    seg.appendChild(tabEmoji); seg.appendChild(tabGif);
+    panel.appendChild(seg);
+    panel.appendChild(content);
+    tabEmoji.onclick = function (ev) { ev.stopPropagation(); styleTab(tabEmoji, true); styleTab(tabGif, false); showEmoji(); };
+    tabGif.onclick = function (ev) { ev.stopPropagation(); styleTab(tabGif, true); styleTab(tabEmoji, false); showGif(); };
+    styleTab(tabEmoji, true); styleTab(tabGif, false);
+    showEmoji();
+  } else {
+    panel.appendChild(content);
+    showEmoji();
+  }
+
+  if (btn && btn.getBoundingClientRect) {
+    var r = btn.getBoundingClientRect();
+    panel.style.left = Math.max(8, Math.min(r.left - 120, window.innerWidth - 296)) + "px";
+    panel.style.bottom = Math.max(8, window.innerHeight - r.top + 8) + "px";
+  } else { panel.style.left = "50%"; panel.style.bottom = "30%"; panel.style.transform = "translateX(-50%)"; }
+  document.body.appendChild(panel);
+  setTimeout(function () {
+    cl = function (ev) { if (!panel.contains(ev.target) && ev.target !== btn) { panel.remove(); document.removeEventListener("click", cl); } };
     document.addEventListener("click", cl);
   }, 50);
   return false;

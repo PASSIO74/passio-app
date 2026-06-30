@@ -1727,7 +1727,9 @@ function likeCdvLiveCard(liveId, el) {
 // 😊 Réagir depuis une CARTE live : popover d'emojis → reactions (sans rouvrir le viewer).
 // Le ❤️ du popover route vers le toggle de like (cohérent avec le bouton ❤️).
 function reactCdvLivePicker(liveId, event) {
-  return _emojiReactPopover(event, function(emoji){
+  // Panneau segmenté unifié, emoji uniquement (les lives ne stockent que des emojis).
+  var _picker = (typeof emojiReactPanel === "function") ? emojiReactPanel : _emojiReactPopover;
+  return _picker(event, function(emoji){
     if (emoji === "❤️") {
       var el = document.querySelector('[data-livelike="' + liveId + '"]');
       if ((state.user.likedLives || []).indexOf(liveId) < 0) likeCdvLiveCard(liveId, el);

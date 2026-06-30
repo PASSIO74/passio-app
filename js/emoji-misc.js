@@ -484,127 +484,14 @@ function showGifPickerForComment(postId, commentId, event) {
   return false;
 }
 
+// Réagir à un commentaire : panneau segmenté unifié (😊 Emoji | 🎬 GIF), même
+// présentation que partout. Tap emoji = réaction appliquée ; pick GIF = réaction GIF.
 function showEmojiPickerForComment(postId, commentId, event) {
-  if (event) { event.stopPropagation(); event.preventDefault(); }
-
-  // Fermer les anciens panels
-  var oldPanel = document.getElementById("emoji-panel-" + commentId);
-  if (oldPanel) { oldPanel.remove(); return false; }
-
-  // Initialiser les propriétés du commentaire
-  var _thr = (typeof _findCommentThread === "function") ? _findCommentThread(postId) : null;
-  if (!_thr && typeof findPostAnywhere === "function") { var _pp = findPostAnywhere(postId); if (_pp) _thr = { comments: _pp.comments || [] }; }
-  if (_thr) {
-    var comment = _thr.comments.find(c => c.id === commentId);
-    if (comment) {
-      if (!comment.likes) comment.likes = 0;
-      if (!comment.likedBy) comment.likedBy = [];
-      if (!comment.replies) comment.replies = [];
-      if (!comment.emojis) comment.emojis = [];
-    }
+  if (typeof emojiReactPanel === "function") {
+    return emojiReactPanel(event,
+      function(e){ addEmojiToComment(postId, commentId, e); },
+      function(url){ addGifToComment(postId, commentId, url); });
   }
-
-  var selected = []; // emojis accumulés pour cette session
-
-  var emojis = window._PASSIO_EMOJI_LIST;
-  var panel = document.createElement("div");
-  panel.id = "emoji-panel-" + commentId;
-  // z-index 100002 : ce picker de réaction est toujours ouvert depuis la liste de
-  // commentaires, qui vit dans un modal (10001 : viewer CDV, openComments, feuille
-  // de réponse) → sans ça il s'affiche en arrière-plan (bug IRL/CDV).
-  panel.style.cssText = "position:fixed;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px;z-index:100002;box-shadow:0 4px 20px rgba(0,0,0,0.25);width:260px;";
-
-  // Ligne de prévisualisation + bouton valider
-  var previewRow = document.createElement("div");
-  previewRow.style.cssText = "display:flex;align-items:center;gap:6px;min-height:34px;border-bottom:1px solid var(--border);padding-bottom:6px;";
-
-  var previewSpan = document.createElement("span");
-  previewSpan.style.cssText = "font-size:22px;flex:1;letter-spacing:2px;min-width:0;";
-  previewSpan.textContent = "";
-
-  var validateBtn = document.createElement("button");
-  validateBtn.textContent = "✓";
-  validateBtn.style.cssText = "background:var(--accent);color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:14px;font-weight:700;cursor:pointer;opacity:0.4;pointer-events:none;transition:opacity 0.15s;flex-shrink:0;";
-  validateBtn.onclick = function(evt) {
-    evt.stopPropagation();
-    evt.preventDefault();
-    if (!selected.length) return;
-    addEmojiToComment(postId, commentId, selected.join(""));
-    panel.remove();
-    document.removeEventListener("click", closeListener);
-  };
-
-  // Onglet GIF intégré au picker emoji (réaction GIF accessible depuis le même
-  // panneau → on retire le bouton 🎬 séparé des actions de commentaire).
-  var gifTab = document.createElement("button");
-  gifTab.type = "button";
-  gifTab.innerHTML = "🎬 GIF";
-  gifTab.title = "Réagir avec un GIF";
-  gifTab.style.cssText = "border:1px solid var(--border);background:transparent;color:var(--text);font-size:12px;font-weight:700;padding:3px 9px;border-radius:999px;cursor:pointer;flex-shrink:0;";
-  gifTab.onmouseover = function() { this.style.background = "rgba(124,58,237,0.15)"; this.style.borderColor = "var(--accent)"; };
-  gifTab.onmouseout = function() { this.style.background = "transparent"; this.style.borderColor = "var(--border)"; };
-  gifTab.onclick = function(evt) {
-    evt.stopPropagation();
-    evt.preventDefault();
-    panel.remove();
-    try { document.removeEventListener("click", closeListener); } catch(e) {}
-    showGifPickerForComment(postId, commentId, evt);
-  };
-
-  previewRow.appendChild(previewSpan);
-  previewRow.appendChild(gifTab);
-  previewRow.appendChild(validateBtn);
-  panel.appendChild(previewRow);
-
-  // Grille d'emojis
-  var grid = document.createElement("div");
-  grid.style.cssText = "display:flex;gap:4px;flex-wrap:wrap;max-height:160px;overflow-y:auto;";
-
-  emojis.forEach(function(e) {
-    var btn = document.createElement("span");
-    btn.textContent = e;
-    btn.style.cssText = "cursor:pointer;font-size:22px;padding:5px;border-radius:6px;transition:background 0.15s,transform 0.1s;";
-    btn.onmouseover = function() { this.style.background = "rgba(124,58,237,0.2)"; this.style.transform = "scale(1.2)"; };
-    btn.onmouseout = function() { this.style.background = "transparent"; this.style.transform = "scale(1)"; };
-    btn.onclick = function(evt) {
-      evt.stopPropagation();
-      evt.preventDefault();
-      selected.push(e);
-      previewSpan.textContent = selected.join("");
-      validateBtn.style.opacity = "1";
-      validateBtn.style.pointerEvents = "auto";
-    };
-    grid.appendChild(btn);
-  });
-
-  panel.appendChild(grid);
-
-  // Positionner le panel à côté du bouton emoji
-  var emojiBtn = event && event.target;
-  if (emojiBtn) {
-    var rect = emojiBtn.getBoundingClientRect();
-    var left = rect.left + window.scrollX;
-    var top = rect.top + window.scrollY - 10;
-    // Eviter débordement à droite
-    if (left + 265 > window.innerWidth) left = window.innerWidth - 270;
-    panel.style.position = "fixed";
-    panel.style.left = Math.max(4, left) + "px";
-    panel.style.top = Math.max(4, rect.top - 130) + "px";
-  }
-
-  document.body.appendChild(panel);
-
-  // Fermer quand on clique ailleurs (sans fermer si clic dans le panel)
-  var closeListener = function(e) {
-    if (!panel.contains(e.target)) {
-      panel.remove();
-      document.removeEventListener("click", closeListener);
-    }
-  };
-  setTimeout(function() {
-    document.addEventListener("click", closeListener);
-  }, 50);
-
   return false;
 }
 
@@ -645,187 +532,24 @@ function addGifToComment(postId, commentId, gifUrl) {
   return false;
 }
 
+// Réagir à un POST du fil : même panneau segmenté unifié (😊 Emoji | 🎬 GIF).
 function showEmojiPickerForPost(postId, event) {
-  if (event) { event.stopPropagation(); event.preventDefault(); }
-
-  var oldPanel = document.getElementById("emoji-panel-post-" + postId);
-  if (oldPanel) { oldPanel.remove(); return false; }
-
-  var selected = [];
-
-  var emojis = window._PASSIO_EMOJI_LIST;
-  var panel = document.createElement("div");
-  panel.id = "emoji-panel-post-" + postId;
-  panel.style.cssText = "position:fixed;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px;z-index:10000;box-shadow:0 4px 20px rgba(0,0,0,0.25);width:260px;";
-
-  // Ligne prévisualisation + bouton valider
-  var previewRow = document.createElement("div");
-  previewRow.style.cssText = "display:flex;align-items:center;gap:6px;min-height:34px;border-bottom:1px solid var(--border);padding-bottom:6px;";
-
-  var previewSpan = document.createElement("span");
-  previewSpan.style.cssText = "font-size:22px;flex:1;letter-spacing:2px;min-width:0;";
-
-  var validateBtn = document.createElement("button");
-  validateBtn.textContent = "✓";
-  validateBtn.style.cssText = "background:var(--accent);color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:14px;font-weight:700;cursor:pointer;opacity:0.4;pointer-events:none;transition:opacity 0.15s;flex-shrink:0;";
-  validateBtn.onclick = function(evt) {
-    evt.stopPropagation();
-    evt.preventDefault();
-    if (!selected.length) return;
-    addEmojiToPost(postId, selected.join(""));
-    panel.remove();
-    document.removeEventListener("click", closeListener);
-  };
-
-  // Onglet GIF intégré au picker emoji du post (→ on retire le 🎬 séparé de la
-  // barre d'actions du post).
-  var gifTab = document.createElement("button");
-  gifTab.type = "button";
-  gifTab.innerHTML = "🎬 GIF";
-  gifTab.title = "Réagir avec un GIF";
-  gifTab.style.cssText = "border:1px solid var(--border);background:transparent;color:var(--text);font-size:12px;font-weight:700;padding:3px 9px;border-radius:999px;cursor:pointer;flex-shrink:0;";
-  gifTab.onmouseover = function() { this.style.background = "rgba(124,58,237,0.15)"; this.style.borderColor = "var(--accent)"; };
-  gifTab.onmouseout = function() { this.style.background = "transparent"; this.style.borderColor = "var(--border)"; };
-  gifTab.onclick = function(evt) {
-    evt.stopPropagation();
-    evt.preventDefault();
-    panel.remove();
-    try { document.removeEventListener("click", closeListener); } catch(e) {}
-    showGifPickerForPost(postId, evt);
-  };
-
-  previewRow.appendChild(previewSpan);
-  previewRow.appendChild(gifTab);
-  previewRow.appendChild(validateBtn);
-  panel.appendChild(previewRow);
-
-  var grid = document.createElement("div");
-  grid.style.cssText = "display:flex;gap:4px;flex-wrap:wrap;max-height:160px;overflow-y:auto;";
-
-  emojis.forEach(function(e) {
-    var btn = document.createElement("span");
-    btn.textContent = e;
-    btn.style.cssText = "cursor:pointer;font-size:22px;padding:5px;border-radius:6px;transition:background 0.15s,transform 0.1s;";
-    btn.onmouseover = function() { this.style.background = "rgba(124,58,237,0.2)"; this.style.transform = "scale(1.2)"; };
-    btn.onmouseout = function() { this.style.background = "transparent"; this.style.transform = "scale(1)"; };
-    btn.onclick = function(evt) {
-      evt.stopPropagation();
-      evt.preventDefault();
-      selected.push(e);
-      previewSpan.textContent = selected.join("");
-      validateBtn.style.opacity = "1";
-      validateBtn.style.pointerEvents = "auto";
-    };
-    grid.appendChild(btn);
-  });
-
-  panel.appendChild(grid);
-
-  var emojiBtn = event && event.target;
-  if (emojiBtn) {
-    var rect = emojiBtn.getBoundingClientRect();
-    var left = rect.left + window.scrollX;
-    if (left + 265 > window.innerWidth) left = window.innerWidth - 270;
-    panel.style.left = Math.max(4, left) + "px";
-    panel.style.top = Math.max(4, rect.top - 130) + "px";
+  if (typeof emojiReactPanel === "function") {
+    return emojiReactPanel(event,
+      function(e){ addEmojiToPost(postId, e); },
+      function(url){ addGifToPost(postId, url); });
   }
-
-  document.body.appendChild(panel);
-
-  var closeListener = function(e) {
-    if (!panel.contains(e.target)) {
-      panel.remove();
-      document.removeEventListener("click", closeListener);
-    }
-  };
-  setTimeout(function() {
-    document.addEventListener("click", closeListener);
-  }, 50);
-
   return false;
 }
 
-// Sélecteur emoji + GIF pour un ÉVÉNEMENT IRL — même présentation que celui des
-// posts (grille complète, prévisualisation des emojis choisis, bouton ✓ pour
-// valider AVANT d'envoyer). Onglet 🎬 GIF intégré. Au valider → réactions appliquées.
+// Réagir à un ÉVÉNEMENT IRL : même panneau segmenté unifié (😊 Emoji | 🎬 GIF).
+// Tap emoji = réaction (❤️ → like, géré par applyEventEmojiReaction) ; pick GIF = réaction GIF.
 function showEmojiPickerForEvent(eventId, event) {
-  if (event) { event.stopPropagation(); event.preventDefault(); }
-  var oldPanel = document.getElementById("emoji-panel-ev-" + eventId);
-  if (oldPanel) { oldPanel.remove(); return false; }
-
-  var selected = [];
-  var emojis = window._PASSIO_EMOJI_LIST || ["❤️","🔥","😍","👏","😂","😮","😢","🎉","💯","🙌"];
-  var panel = document.createElement("div");
-  panel.id = "emoji-panel-ev-" + eventId;
-  panel.style.cssText = "position:fixed;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px;z-index:100002;box-shadow:0 4px 20px rgba(0,0,0,0.25);width:260px;";
-
-  var previewRow = document.createElement("div");
-  previewRow.style.cssText = "display:flex;align-items:center;gap:6px;min-height:34px;border-bottom:1px solid var(--border);padding-bottom:6px;";
-  var previewSpan = document.createElement("span");
-  previewSpan.style.cssText = "font-size:22px;flex:1;letter-spacing:2px;min-width:0;overflow:hidden;";
-
-  var validateBtn = document.createElement("button");
-  validateBtn.textContent = "✓";
-  validateBtn.style.cssText = "background:var(--accent);color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:14px;font-weight:700;cursor:pointer;opacity:0.4;pointer-events:none;transition:opacity 0.15s;flex-shrink:0;";
-  validateBtn.onclick = function(evt) {
-    evt.stopPropagation(); evt.preventDefault();
-    if (!selected.length) return;
-    if (typeof applyEventEmojiReaction === "function") applyEventEmojiReaction(eventId, selected.slice());
-    panel.remove();
-    try { document.removeEventListener("click", closeListener); } catch(e) {}
-    if (typeof toast === "function") toast("Réaction envoyée " + selected.join(""));
-  };
-
-  var gifTab = document.createElement("button");
-  gifTab.type = "button";
-  gifTab.innerHTML = "🎬 GIF";
-  gifTab.title = "Réagir avec un GIF";
-  gifTab.style.cssText = "border:1px solid var(--border);background:transparent;color:var(--text);font-size:12px;font-weight:700;padding:3px 9px;border-radius:999px;cursor:pointer;flex-shrink:0;";
-  gifTab.onclick = function(evt) {
-    evt.stopPropagation(); evt.preventDefault();
-    panel.remove();
-    try { document.removeEventListener("click", closeListener); } catch(e) {}
-    if (typeof passioGifPanel === "function") {
-      passioGifPanel({ id: "gif-panel-ev-" + eventId, position: "left:50%;top:25%;transform:translateX(-50%);",
-        onPick: function(gifUrl) { if (typeof applyEventGifReaction === "function") applyEventGifReaction(eventId, gifUrl); if (typeof toast === "function") toast("GIF envoyé 🎬"); } });
-    }
-  };
-
-  previewRow.appendChild(previewSpan);
-  previewRow.appendChild(gifTab);
-  previewRow.appendChild(validateBtn);
-  panel.appendChild(previewRow);
-
-  var grid = document.createElement("div");
-  grid.style.cssText = "display:flex;gap:4px;flex-wrap:wrap;max-height:160px;overflow-y:auto;";
-  emojis.forEach(function(e) {
-    var b = document.createElement("span");
-    b.textContent = e;
-    b.style.cssText = "cursor:pointer;font-size:22px;padding:5px;border-radius:6px;transition:background 0.15s,transform 0.1s;";
-    b.onmouseover = function() { this.style.background = "rgba(124,58,237,0.2)"; this.style.transform = "scale(1.2)"; };
-    b.onmouseout = function() { this.style.background = "transparent"; this.style.transform = "scale(1)"; };
-    b.onclick = function(evt) {
-      evt.stopPropagation(); evt.preventDefault();
-      selected.push(e);
-      previewSpan.textContent = selected.join("");
-      validateBtn.style.opacity = "1"; validateBtn.style.pointerEvents = "auto";
-    };
-    grid.appendChild(b);
-  });
-  panel.appendChild(grid);
-
-  var emojiBtn = event && event.target;
-  if (emojiBtn && emojiBtn.getBoundingClientRect) {
-    var rect = emojiBtn.getBoundingClientRect();
-    var left = rect.left;
-    if (left + 265 > window.innerWidth) left = window.innerWidth - 270;
-    panel.style.left = Math.max(4, left) + "px";
-    panel.style.top = Math.max(4, rect.top - 200) + "px";
-  } else { panel.style.left = "50%"; panel.style.top = "25%"; panel.style.transform = "translateX(-50%)"; }
-
-  document.body.appendChild(panel);
-  var closeListener = function(e) { if (!panel.contains(e.target)) { panel.remove(); document.removeEventListener("click", closeListener); } };
-  setTimeout(function() { document.addEventListener("click", closeListener); }, 50);
+  if (typeof emojiReactPanel === "function") {
+    return emojiReactPanel(event,
+      function(e){ if (typeof applyEventEmojiReaction === "function") applyEventEmojiReaction(eventId, [e]); if (typeof toast === "function") toast("Réaction envoyée " + e); },
+      function(url){ if (typeof applyEventGifReaction === "function") applyEventGifReaction(eventId, url); if (typeof toast === "function") toast("GIF envoyé 🎬"); });
+  }
   return false;
 }
 
