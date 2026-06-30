@@ -240,12 +240,17 @@ function _renderCommentsList(allComments, postId) {
             </div>`;
           }
 
-          // Réponse normale
+          // Réponse normale — avec sa propre action « réagir » + pastille de réactions
           const _rAvT = { avatar: ru.avatar || "#64748b", profileEmoji: ru.profileEmoji || "👤", name: ru.name, photoUrl: ru.photoUrl || null };
-          return `<div class="comment-reply" style="display:flex;align-items:flex-start;gap:6px;padding:4px 0;">
+          const rReactChip = _cmtReactChipHtml(postId, r);
+          return `<div class="comment-reply" data-replyid="${r.id}" style="display:flex;align-items:flex-start;gap:6px;padding:4px 0;">
             <div class="avatar xs" style="background:${avatarBg(_rAvT)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${r.authorId}','${rSrc}')">${avatarInner(_rAvT)}</div>
-            <div><span class="comment-reply-author" style="font-size:11px;font-weight:600;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span> ${_commentBodyHtml(r.text)}
-            <div style="font-size:10px;color:var(--muted);margin-top:2px;">${fmtTime(r.createdAt)}</div></div>
+            <div style="flex:1;min-width:0;"><span class="comment-reply-author" style="font-size:11px;font-weight:600;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span> ${_commentBodyHtml(r.text)}
+            <div class="comment-reply-actions" style="display:flex;align-items:center;gap:10px;margin-top:2px;">
+              <span style="font-size:10px;color:var(--muted);">${fmtTime(r.createdAt)}</span>
+              <span class="comment-action" style="font-size:12px;" onclick="return reactToReply('${postId}','${r.id}', event);" title="Réagir">😊</span>
+              ${rReactChip}
+            </div></div>
           </div>`;
         }).join("")}</div>` : ""}
       </div>
@@ -269,6 +274,25 @@ function _expandComments(threadId) {
 function _cmtReactions(comment) {
   return (comment && comment.replies || []).filter(function(r){ return r && r.type === "emoji_reaction"; });
 }
+// Localise un NŒUD de commentaire — un commentaire de premier niveau OU une réponse
+// — par son id, dans n'importe quel fil (fil / IRL / CDV). Permet de réagir aussi
+// bien à un commentaire qu'à une réponse avec le même code. Renvoie
+// { thread, node, parent? } ou null.
+function _findCommentNode(threadId, nodeId) {
+  var thread = (typeof _findCommentThread === "function") ? _findCommentThread(threadId) : null;
+  if (!thread && typeof findPostAnywhere === "function") {
+    var p = findPostAnywhere(threadId);
+    if (p) thread = { comments: p.comments || [], save: function(){ try { saveState(); } catch(e){} } };
+  }
+  if (!thread) return null;
+  var c = thread.comments.find(function(x){ return x.id === nodeId; });
+  if (c) return { thread: thread, node: c, parent: null };
+  for (var i = 0; i < thread.comments.length; i++) {
+    var rep = (thread.comments[i].replies || []).find(function(x){ return x.id === nodeId; });
+    if (rep) return { thread: thread, node: rep, parent: thread.comments[i] };
+  }
+  return null;
+}
 function _cmtReactChipHtml(threadId, comment) {
   var reactions = _cmtReactions(comment);
   if (!reactions.length) return "";
@@ -286,8 +310,8 @@ function openCommentReactors(threadId, commentId, event) {
   if (event && event.stopPropagation) { event.stopPropagation(); event.preventDefault(); }
   var old = document.getElementById("cmt-react-detail");
   if (old) { old.remove(); return false; }
-  var thread = (typeof _findCommentThread === "function") ? _findCommentThread(threadId) : null;
-  var c = thread && thread.comments.find(function(x){ return x.id === commentId; });
+  var found = _findCommentNode(threadId, commentId);
+  var c = found && found.node;
   if (!c) return false;
   var reactions = _cmtReactions(c);
   if (!reactions.length) return false;
@@ -315,6 +339,19 @@ function openCommentReactors(threadId, commentId, event) {
     var cl = function(e){ if (!pop.contains(e.target) && e.target !== btn) { pop.remove(); document.removeEventListener("click", cl); } };
     document.addEventListener("click", cl);
   }, 50);
+  return false;
+}
+
+// Réagir à une RÉPONSE de commentaire : popover emoji léger (façon Facebook), un
+// emoji par tap → agrégé dans la pastille « 😍 N » de la réponse (addEmojiToComment
+// localise indifféremment un commentaire ou une réponse). Pas de GIF ici (réponses
+// = réactions emoji uniquement, pour rester simple et cohérent).
+function reactToReply(threadId, replyId, event) {
+  if (typeof _emojiReactPopover === "function") {
+    return _emojiReactPopover(event, function(e){
+      if (typeof addEmojiToComment === "function") addEmojiToComment(threadId, replyId, e);
+    });
+  }
   return false;
 }
 
@@ -420,7 +457,17 @@ function _applyCommentInteractionEvent(r, op) {
     if (typeof isBlocked === "function" && isBlocked(r.user_id)) return;
     // Résolution générique : post, événement IRL ou live CDV (post_id sert d'id de fil).
     var thread = (r.post_id && typeof _findCommentThread === "function") ? _findCommentThread(r.post_id) : null;
-    var comment = thread ? thread.comments.find(function(c){ return c.id === r.comment_id; }) : null;
+    // Cible un commentaire OU une réponse (réactions de réponse sync via le même canal).
+    var comment = null;
+    if (thread) {
+      comment = thread.comments.find(function(c){ return c.id === r.comment_id; });
+      if (!comment) {
+        for (var _i = 0; _i < thread.comments.length; _i++) {
+          var _rep = (thread.comments[_i].replies || []).find(function(x){ return x.id === r.comment_id; });
+          if (_rep) { comment = _rep; break; }
+        }
+      }
+    }
     if (!comment) return; // fil/commentaire pas chargé localement → rien à faire
     comment.likedBy = comment.likedBy || []; comment.replies = comment.replies || []; comment.emojis = comment.emojis || [];
     if (r.kind === "like") {

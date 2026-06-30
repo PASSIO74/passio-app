@@ -610,10 +610,10 @@ function showEmojiPickerForComment(postId, commentId, event) {
 
 function addGifToComment(postId, commentId, gifUrl) {
   console.log("🎬 addGifToComment:", postId, commentId);
-  var thread = (typeof _findCommentThread === "function") ? _findCommentThread(postId) : null;
-  if (!thread && typeof findPostAnywhere === "function") { var _p = findPostAnywhere(postId); if (_p) thread = { comments: _p.comments || [], save: function(){ try{saveState();}catch(e){} } }; }
-  if (!thread) return false;
-  var comment = thread.comments.find(c => c.id === commentId);
+  // commentId peut désigner un commentaire OU une réponse (_findCommentNode gère les deux).
+  var found = (typeof _findCommentNode === "function") ? _findCommentNode(postId, commentId) : null;
+  var thread = found && found.thread;
+  var comment = found && found.node;
   if (!comment) return false;
 
   // Initialiser replies si nécessaire
@@ -934,13 +934,13 @@ function updatePostReactionsUI(postId) {
 
 function addEmojiToComment(postId, commentId, emoji) {
   console.log("✨ addEmojiToComment:", postId, commentId, emoji);
-  var thread = (typeof _findCommentThread === "function") ? _findCommentThread(postId) : null;
-  if (!thread && typeof findPostAnywhere === "function") { var _p = findPostAnywhere(postId); if (_p) thread = { comments: _p.comments || [], save: function(){ try{saveState();}catch(e){} } }; }
-  if (!thread) return false;
-  var comment = thread.comments.find(c => c.id === commentId);
+  // commentId peut désigner un commentaire OU une réponse (_findCommentNode gère les deux).
+  var found = (typeof _findCommentNode === "function") ? _findCommentNode(postId, commentId) : null;
+  var thread = found && found.thread;
+  var comment = found && found.node;
   if (!comment) return false;
 
-  // Chaque emoji = entrée séparée dans comment.replies (avec authorId pour l'avatar).
+  // Chaque emoji = entrée séparée dans node.replies (avec authorId pour l'avatar).
   if (!comment.replies) comment.replies = [];
   var emojiReaction = {
     id: "emoji_" + commentId + "_" + Math.random().toString(36).substr(2, 9),

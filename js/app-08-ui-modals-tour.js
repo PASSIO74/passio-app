@@ -2432,6 +2432,23 @@ async function hydrateCommentInteractions(post) {
       // Réponses serveur (texte + emoji_reaction + gif_reaction) — source de vérité.
       c.replies = (info.replies || []).slice();
     });
+    // 2e passe : réactions emoji portées sur les RÉPONSES (comment_interactions dont
+    // comment_id = id d'une réponse, ex. « srep_… » déterministe). Les réponses sont
+    // reconstruites ci-dessus avec des ids stables → on peut leur rattacher leurs
+    // propres réactions, agrégées ensuite dans la pastille « 😍 N » de la réponse.
+    var replyIds = [];
+    post.comments.forEach(function(c){ (c.replies || []).forEach(function(r){ if (r && r.id) replyIds.push(r.id); }); });
+    if (replyIds.length) {
+      var rmap = await supaLoadCommentInteractions(replyIds);
+      post.comments.forEach(function(c){
+        (c.replies || []).forEach(function(r){
+          var ri = rmap[r.id]; if (!ri) return;
+          r.likes = ri.likes || 0;
+          r.likedBy = ri.likedBy || [];
+          r.replies = (ri.replies || []).slice();
+        });
+      });
+    }
   } catch(e) {}
 }
 
