@@ -7065,7 +7065,8 @@
     .ev-react-chip:active { transform: scale(0.94); }
     .ev-react-chip b { font-weight: 800; }
     /* Pastille de réactions désormais dans la barre d'actions (poussée à droite) */
-    .event-react-chip-holder:empty { display: none; }
+    .event-react-chip-holder:empty,
+    .post-react-chip-holder:empty { display: none; }
     .event-comments-inline { margin-top: 8px; display: flex; flex-direction: column; gap: 3px; }
     .event-comments-inline:empty { display: none; margin: 0; }
     .ev-cmt-preview {

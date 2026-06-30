@@ -1742,6 +1742,10 @@ function reactCdvLivePicker(liveId, event) {
     live.reactions.push(emoji);
     saveCdvLives(lives);
     if (typeof supaReactCdvLive === "function") supaReactCdvLive(liveId, emoji);
+    // Met à jour EN PLACE la pastille « 😍 N » de la/les carte(s) de ce live.
+    if (typeof _liveReactChipHtml === "function") {
+      document.querySelectorAll('[data-livechip="' + liveId + '"]').forEach(function(h){ h.innerHTML = _liveReactChipHtml(liveId); });
+    }
     if (typeof toast === "function") toast(emoji);
   });
 }
@@ -1896,6 +1900,7 @@ function renderCdvScreen() {
           <span class="post-action" onclick="event.stopPropagation();openCommentSheet('${l.id}','💬 ${escapeHtml((l.destination||'').replace(/'/g,'’')).slice(0,40)}')">💬 ${commentThreadCount(l.comments)}</span>
           <span class="post-action" onclick="return reactCdvLivePicker('${l.id}', event);" title="Réagir">😊</span>
           <span class="post-action" onclick="event.stopPropagation();shareCdvLive('${l.id}')" title="Partager" aria-label="Partager">${shareIconSvg(18)}</span>
+          <span class="post-react-chip-holder" data-livechip="${l.id}" style="margin-left:auto;">${_liveReactChipHtml(l.id)}</span>
         </div>
       </div>`;
     }).join("");
@@ -1915,6 +1920,7 @@ function renderCdvScreen() {
           <span class="post-action" onclick="event.stopPropagation();openCommentSheet('${l.id}','💬 ${escapeHtml((l.destination||'').replace(/'/g,'’')).slice(0,40)}')">💬 ${commentThreadCount(l.comments)}</span>
           <span class="post-action" onclick="return reactCdvLivePicker('${l.id}', event);" title="Réagir">😊</span>
           <span class="post-action" onclick="event.stopPropagation();shareCdvLive('${l.id}')" title="Partager" aria-label="Partager">${shareIconSvg(18)}</span>
+          <span class="post-react-chip-holder" data-livechip="${l.id}" style="margin-left:auto;">${_liveReactChipHtml(l.id)}</span>
         </div>
       </div>`).join("");
 
@@ -2046,6 +2052,7 @@ function renderCdvScreen() {
         <span class="post-action" onclick="return showEmojiPickerForPost('${c.id}', event);" title="Emoji & GIF">😊</span>
         <span class="post-action" onclick="event.stopPropagation();sharePost('${c.id}')" title="Partager" aria-label="Partager">${shareIconSvg(18)}</span>
         <span class="post-action" onclick="toggleCarnetSave('${c.id}');renderCdvScreen()" title="${isSaved ? "Sauvegardé" : "Sauvegarder"}">${isSaved ? "⭐" : "☆"}</span>
+        <span class="post-react-chip-holder" data-postchip="${c.id}" style="margin-left:auto;">${_postReactChipHtml(c.id)}</span>
       </div>
     </article>`;
   }).join("");

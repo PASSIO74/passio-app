@@ -357,6 +357,101 @@ function reactToReply(threadId, replyId, event) {
   return false;
 }
 
+// ════════════════════════════════════════════════════════════════════════
+// PASTILLE DE RÉACTIONS GÉNÉRIQUE (post du fil / carnet / live CDV) — EXACTEMENT
+// la même que sur les commentaires (.cmt-react-chip : 1 emoji + total, clic → qui
+// a réagi). Normalise les réactions de chaque surface en [{authorId?, text}].
+// ════════════════════════════════════════════════════════════════════════
+// Clé d'agrégation : un GIF (URL) compte comme « 🎬 », sinon l'emoji lui-même.
+function _reactKey(t) {
+  return (typeof _looksLikeMediaUrl === "function" && _looksLikeMediaUrl(t)) ? "🎬" : (t || "❤️");
+}
+// items = [{authorId?, text}]. onclickAttr = handler de détail (chaîne onclick).
+function _reactionItemsChipHtml(items, onclickAttr) {
+  if (!items || !items.length) return "";
+  var counts = {};
+  items.forEach(function(it){ var k = _reactKey(it.text); counts[k] = (counts[k] || 0) + 1; });
+  var top = Object.keys(counts).sort(function(a, b){ return counts[b] - counts[a]; })[0] || "❤️";
+  var _selfIds = [(typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : null, (state.user && state.user.id), "me"].filter(Boolean);
+  var mine = items.some(function(it){ return _selfIds.indexOf(it.authorId) > -1; });
+  return '<span class="cmt-react-chip' + (mine ? " mine" : "") + '" title="Voir qui a réagi" onclick="' + onclickAttr + '">'
+    + top + ' <b>' + items.length + '</b></span>';
+}
+// Popover listant les réacteurs : avatar + pseudo + emoji (ou vignette GIF) si
+// l'auteur est connu ; sinon décompte par emoji (cas des lives, sans auteur local).
+function _openReactorsList(items, event) {
+  if (event && event.stopPropagation) { event.stopPropagation(); event.preventDefault(); }
+  var old = document.getElementById("cmt-react-detail");
+  if (old) { old.remove(); return false; }
+  if (!items || !items.length) return false;
+  var pop = document.createElement("div");
+  pop.id = "cmt-react-detail";
+  pop.style.cssText = "position:fixed;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:10px 12px;z-index:100003;box-shadow:0 8px 28px rgba(0,0,0,0.28);width:230px;max-height:280px;overflow-y:auto;";
+  var withAuthors = items.some(function(it){ return it.authorId; });
+  var rowsHtml;
+  function face(t) {
+    return (typeof _looksLikeMediaUrl === "function" && _looksLikeMediaUrl(t))
+      ? '<img loading="lazy" src="' + String(t).replace(/"/g, "&quot;") + '" style="width:30px;height:30px;border-radius:6px;object-fit:cover;"/>'
+      : '<span style="font-size:18px;">' + (t || "❤️") + '</span>';
+  }
+  if (withAuthors) {
+    rowsHtml = items.map(function(it){
+      var u = (typeof userById === "function" && userById(it.authorId)) || { name: "Quelqu'un", profileEmoji: "👤", avatar: "#64748b" };
+      var _av = { avatar: u.avatar || "#64748b", profileEmoji: u.profileEmoji || "👤", name: u.name, photoUrl: u.photoUrl || null };
+      var rSrc = (it.authorId === "me" || (typeof MY_UID !== "undefined" && it.authorId === MY_UID)) ? "me" : "seed";
+      return '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;">'
+        + '<div class="avatar sm" style="background:' + avatarBg(_av) + ';flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();closeModal&&closeModal();openUserProfile(\'' + it.authorId + '\',\'' + rSrc + '\')">' + avatarInner(_av) + '</div>'
+        + '<span style="flex:1;font-size:12px;color:var(--text);">' + escapeHtml(u.name) + '</span>' + face(it.text) + '</div>';
+    }).join("");
+  } else {
+    var counts = {};
+    items.forEach(function(it){ var k = _reactKey(it.text); counts[k] = (counts[k] || 0) + 1; });
+    rowsHtml = Object.keys(counts).map(function(k){
+      return '<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;">' + face(k) + '<b style="font-size:13px;color:var(--text);">' + counts[k] + '</b></div>';
+    }).join("");
+  }
+  pop.innerHTML = '<div style="font-size:12px;font-weight:800;color:var(--text);margin-bottom:8px;">Réactions · ' + items.length + '</div>' + rowsHtml;
+  var btn = event && (event.currentTarget || event.target);
+  if (btn && btn.getBoundingClientRect) {
+    var r = btn.getBoundingClientRect();
+    pop.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 240)) + "px";
+    pop.style.bottom = Math.max(8, window.innerHeight - r.top + 8) + "px";
+  } else { pop.style.left = "50%"; pop.style.bottom = "30%"; pop.style.transform = "translateX(-50%)"; }
+  document.body.appendChild(pop);
+  setTimeout(function(){
+    var cl = function(e){ if (!pop.contains(e.target) && e.target !== btn) { pop.remove(); document.removeEventListener("click", cl); } };
+    document.addEventListener("click", cl);
+  }, 50);
+  return false;
+}
+// ── Post du fil / carnet (réactions = post.reactions, avec authorId) ──
+function _postReactItems(postId) {
+  var post = (typeof findPostAnywhere === "function") ? findPostAnywhere(postId) : null;
+  if (!post) return [];
+  return (post.reactions || [])
+    .filter(function(r){ return r.type === "emoji_reaction" || r.type === "gif_reaction"; })
+    .map(function(r){ return { authorId: r.authorId, text: r.text }; });
+}
+function _postReactChipHtml(postId) {
+  return _reactionItemsChipHtml(_postReactItems(postId), "return openPostReactors('" + postId + "', event);");
+}
+function openPostReactors(postId, event) {
+  return _openReactorsList(_postReactItems(postId), event);
+}
+// ── Live CDV (réactions = live.reactions, simples emojis sans auteur local) ──
+function _liveReactItems(liveId) {
+  var lives = (typeof getCdvLives === "function") ? getCdvLives() : [];
+  var live = lives.find(function(l){ return l.id === liveId; });
+  if (!live) return [];
+  return (live.reactions || []).map(function(e){ return { authorId: null, text: e }; });
+}
+function _liveReactChipHtml(liveId) {
+  return _reactionItemsChipHtml(_liveReactItems(liveId), "return openLiveReactors('" + liveId + "', event);");
+}
+function openLiveReactors(liveId, event) {
+  return _openReactorsList(_liveReactItems(liveId), event);
+}
+
 async function openComments(postId) {
   // Ajouter à l'historique pour que le bouton back fonctionne
   pushOverlayToHistory("comments", postId);

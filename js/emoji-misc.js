@@ -604,7 +604,7 @@ function addGifToPost(postId, gifUrl) {
 
   post.reactions.push({
     id: "gif_" + postId + "_" + Math.random().toString(36).substr(2, 9),
-    authorId: state.user?.id || "me",
+    authorId: (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : (state.user?.id || "me"),
     text: gifUrl,
     type: "gif_reaction",
     createdAt: Date.now()
@@ -615,45 +615,13 @@ function addGifToPost(postId, gifUrl) {
   return false;
 }
 
+// Met à jour EN PLACE la pastille « 😍 N » du post (fil + détail + carte carnet),
+// même présentation que les réactions de commentaire. Patch ciblé (pas de re-render).
 function updatePostReactionsUI(postId) {
-  var post = findPostAnywhere(postId);
-  if (!post || !post.reactions) return;
-
-  var postElement = document.querySelector('[data-postid="' + postId + '"]');
-  if (!postElement) return;
-
-  var reactionsDiv = postElement.querySelector(".post-reactions");
-  if (reactionsDiv) reactionsDiv.remove();
-
-  if (post.reactions.length > 0) {
-    var newReactionsDiv = document.createElement("div");
-    newReactionsDiv.className = "post-reactions";
-    newReactionsDiv.style.cssText = "margin-top:12px;padding-top:8px;border-top:1px solid var(--border);";
-
-    var reactionsHTML = post.reactions.map(r => {
-      const ru = userById(r.authorId) || { name: "?", profileEmoji: "👤", avatar: "#64748b" };
-      const rSrc = r.authorId === "me" ? "me" : "seed";
-      const _rAv = { avatar: ru.avatar || "#64748b", profileEmoji: ru.profileEmoji || "👤", name: ru.name, photoUrl: ru.photoUrl || null };
-
-      if (r.type === "emoji_reaction") {
-        return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;">
-          <div class="avatar sm" style="background:${avatarBg(_rAv)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${avatarInner(_rAv)}</div>
-          <div><span style="font-size:11px;font-weight:600;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span> <span style="font-size:18px;">${r.text}</span></div>
-        </div>`;
-      }
-
-      if (r.type === "gif_reaction") {
-        return `<div style="display:flex;align-items:flex-start;gap:8px;padding:6px 0;">
-          <div class="avatar sm" style="background:${avatarBg(_rAv)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${avatarInner(_rAv)}</div>
-          <div><span style="font-size:11px;font-weight:600;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span><br/>
-          <img loading="lazy" decoding="async" src="${r.text}" style="width:120px;height:120px;border-radius:8px;margin-top:6px;object-fit:cover;" alt="GIF" /></div>
-        </div>`;
-      }
-    }).join("");
-
-    newReactionsDiv.innerHTML = reactionsHTML;
-    postElement.appendChild(newReactionsDiv);
-  }
+  if (typeof _postReactChipHtml !== "function") return;
+  document.querySelectorAll('[data-postchip="' + postId + '"]').forEach(function(h){
+    h.innerHTML = _postReactChipHtml(postId);
+  });
 }
 
 function addEmojiToComment(postId, commentId, emoji) {
