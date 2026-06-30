@@ -2875,6 +2875,8 @@ async function supaLoadCdvLives() {
         })),
         comments: (comBy[r.id] || []).map(c => ({ id: c.id, authorId: c.author_id, author: c.author_name || "Anonyme", text: c.text || "", at: new Date(c.created_at).getTime() })),
         reactions: (reacBy[r.id] || []).map(x => x.emoji),
+        // Garde l'auteur de chaque réaction → pastille « qui a réagi » sur les cartes live.
+        reactionsBy: (reacBy[r.id] || []).map(x => ({ emoji: x.emoji, userId: x.user_id })),
         followers: followers, viewers: followers, currentViewers: followers.length,
         createdAt: new Date(r.created_at).getTime(),
         fromSupabase: true,

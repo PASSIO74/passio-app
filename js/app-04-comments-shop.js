@@ -443,7 +443,14 @@ function _liveReactItems(liveId) {
   var lives = (typeof getCdvLives === "function") ? getCdvLives() : [];
   var live = lives.find(function(l){ return l.id === liveId; });
   if (!live) return [];
-  return (live.reactions || []).map(function(e){ return { authorId: null, text: e }; });
+  // ❤️ = like (compté à part) → exclu de la pastille de réactions.
+  // reactionsBy [{emoji,userId}] (auteur connu) prioritaire ; sinon strings (sans auteur).
+  if (Array.isArray(live.reactionsBy) && live.reactionsBy.length) {
+    return live.reactionsBy.filter(function(x){ return x && x.emoji !== "❤️"; })
+      .map(function(x){ return { authorId: x.userId, text: x.emoji }; });
+  }
+  return (live.reactions || []).filter(function(e){ return e !== "❤️"; })
+    .map(function(e){ return { authorId: null, text: e }; });
 }
 function _liveReactChipHtml(liveId) {
   return _reactionItemsChipHtml(_liveReactItems(liveId), "return openLiveReactors('" + liveId + "', event);");

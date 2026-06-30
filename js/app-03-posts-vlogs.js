@@ -1679,12 +1679,22 @@ function reportCdvLive(liveId) {
   toast("🚩 Live signalé. Merci, on s'en occupe.");
 }
 
+// Enregistre une réaction emoji sur un live AVEC son auteur : `reactions` (strings,
+// pour les compteurs de la barre du viewer) ET `reactionsBy` ([{emoji,userId}], pour
+// la pastille « qui a réagi »). Auteur = MY_UID.
+function _pushLiveReaction(live, emoji) {
+  if (!live) return;
+  if (!live.reactions) live.reactions = [];
+  live.reactions.push(emoji);
+  if (!Array.isArray(live.reactionsBy)) live.reactionsBy = [];
+  live.reactionsBy.push({ emoji: emoji, userId: (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me" });
+}
+
 function reactCdvLive(liveId, emoji) {
   var lives = getCdvLives();
   var live = lives.find(function(l) { return l.id === liveId; });
   if (!live) return;
-  if (!live.reactions) live.reactions = [];
-  live.reactions.push(emoji);
+  _pushLiveReaction(live, emoji);
   saveCdvLives(lives);
   if (typeof supaReactCdvLive === "function") supaReactCdvLive(liveId, emoji);
   toast(emoji);
@@ -1738,8 +1748,7 @@ function reactCdvLivePicker(liveId, event) {
     var lives = getCdvLives();
     var live = lives.find(function(l) { return l.id === liveId; });
     if (!live) return;
-    if (!live.reactions) live.reactions = [];
-    live.reactions.push(emoji);
+    _pushLiveReaction(live, emoji);
     saveCdvLives(lives);
     if (typeof supaReactCdvLive === "function") supaReactCdvLive(liveId, emoji);
     // Met à jour EN PLACE la pastille « 😍 N » de la/les carte(s) de ce live.
