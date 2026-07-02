@@ -3052,15 +3052,20 @@ function _onCdvRealtime() {
 async function supaSearchUsers(query) {
   try {
     const cleanQuery = (query || "").trim();
-    console.log("[SEARCH] Query:", cleanQuery, "MY_UID:", MY_UID);
 
     if (!cleanQuery || cleanQuery.length === 0) {
-      console.log("[SEARCH] Query is empty");
       return [];
     }
 
+    // ⚠️ Neutraliser les métacaractères du filtre PostgREST `.or()` : une virgule
+    // sépare les conditions, les parenthèses groupent, et `%`/`_` sont des
+    // jokers `ilike`. Sans ça, chercher « a,b » ou « (x) » cassait la requête
+    // (0 résultat) — voire injectait une condition. On retire , ( ) et on
+    // échappe les jokers ; on borne aussi la longueur.
+    const safe = cleanQuery.slice(0, 60).replace(/[,()*]/g, " ").replace(/[%_]/g, "").trim();
+    if (!safe) return [];
     // 🔍 1 ligne par compte dans profiles, colonne passions = jsonb [{id,emoji,label}]
-    const searchPattern = `%${cleanQuery}%`;
+    const searchPattern = `%${safe}%`;
     const { data, error } = await supa.from("profiles")
       .select("id, username, emoji, color, passion_id, passions, bio, avatar_url")
       .or(`username.ilike.${searchPattern},bio.ilike.${searchPattern}`);

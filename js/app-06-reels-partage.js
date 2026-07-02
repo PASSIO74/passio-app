@@ -1768,9 +1768,9 @@ function renderExplorer() {
     .sort((a, b) => b.count - a.count).slice(0, 6);
 
   $("#trendingGrid").innerHTML = ranked.map(p => `
-    <div class="trending-tile" onclick="openPassionExplorer('${p.id}')">
-      <div class="trending-emoji">${p.emoji}</div>
-      <div class="trending-name">${p.label}</div>
+    <div class="trending-tile" onclick="openPassionExplorer('${escapeJsArg(p.id)}')">
+      <div class="trending-emoji">${escapeHtml(p.emoji)}</div>
+      <div class="trending-name">${escapeHtml(p.label)}</div>
       <div class="trending-stat">${p.count} post${p.count>1?"s":""} · 🔥</div>
     </div>
   `).join("");
@@ -1785,9 +1785,9 @@ function renderExplorer() {
     </div>
   `;
   $("#allPassions").innerHTML = allList.map(p => `
-    <div class="passion-tile ${p.custom ? 'passion-custom' : ''}" onclick="openPassionExplorer('${p.id}')">
-      <div class="passion-tile-emoji">${p.emoji}</div>
-      <div class="passion-tile-label">${p.label}</div>
+    <div class="passion-tile ${p.custom ? 'passion-custom' : ''}" onclick="openPassionExplorer('${escapeJsArg(p.id)}')">
+      <div class="passion-tile-emoji">${escapeHtml(p.emoji)}</div>
+      <div class="passion-tile-label">${escapeHtml(p.label)}</div>
       ${p.custom ? '<div class="passion-custom-badge">Perso</div>' : ''}
     </div>
   `).join("") + createCta;

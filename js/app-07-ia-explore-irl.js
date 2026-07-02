@@ -134,8 +134,8 @@ function filterExplore() {
     if (fp.length) {
       html += "<div style='padding:8px 14px 4px;font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;'>🔥 Passions</div>";
       fp.forEach(function(p) {
-        html += "<div onclick=\"openPassionExplorer('" + p.id + "');document.getElementById('exploreSearchResults').style.display='none';\" style='display:flex;align-items:center;gap:12px;padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border);'>" +
-          "<div style='width:38px;height:38px;border-radius:12px;background:#ede9fe;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;'>" + p.emoji + "</div>" +
+        html += "<div onclick=\"openPassionExplorer('" + escapeJsArg(p.id) + "');document.getElementById('exploreSearchResults').style.display='none';\" style='display:flex;align-items:center;gap:12px;padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border);'>" +
+          "<div style='width:38px;height:38px;border-radius:12px;background:#ede9fe;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;'>" + escapeHtml(p.emoji) + "</div>" +
           "<div style='flex:1;'><div style='font-weight:700;font-size:13px;color:var(--text);'>" + escapeHtml(p.label) + "</div></div>" +
           "<div style='font-size:11px;font-weight:700;color:var(--accent);'>Explorer →</div>" +
           "</div>";
@@ -152,7 +152,7 @@ function filterExplore() {
           passionBadges = u.passions.map(function(p) {
             var label = p.label || (typeof passionById === "function" && passionById(p.id) ? passionById(p.id).label : "");
             return "<span style='display:inline-flex;align-items:center;gap:2px;background:rgba(124,58,237,0.08);border:1px solid rgba(124,58,237,0.15);border-radius:20px;padding:1px 5px;font-size:9px;font-weight:600;color:var(--accent);margin-right:2px;white-space:nowrap;line-height:1.4;'>"
-              + (p.emoji || "✨") + (label ? " " + escapeHtml(label) : "") + "</span>";
+              + escapeHtml(p.emoji || "✨") + (label ? " " + escapeHtml(label) : "") + "</span>";
           }).join("");
         } else if (u.passion) {
           var pw = passionById(u.passion) || { emoji: "✨", label: "" };
@@ -162,10 +162,10 @@ function filterExplore() {
 
         var _photo = _userPhoto(u);
         var _avContent = _photo
-          ? "<img src='" + _photo + "' style='width:100%;height:100%;object-fit:cover;border-radius:50%;display:block;' onerror=\"this.style.display='none'\" />"
-          : "<span style='font-size:18px;line-height:1;'>" + (u.profileEmoji || u.emoji || (u.name && u.name[0]) || "?") + "</span>";
+          ? "<img src='" + safeUrlAttr(_photo) + "' style='width:100%;height:100%;object-fit:cover;border-radius:50%;display:block;' onerror=\"this.style.display='none'\" />"
+          : "<span style='font-size:18px;line-height:1;'>" + escapeHtml(u.profileEmoji || u.emoji || (u.name && u.name[0]) || "?") + "</span>";
         var _avBgColor = (u.avatar || u.color || "#8b5cf6");
-        html += "<div onclick=\"openUserProfile('" + u.id + "');document.getElementById('exploreSearchResults').style.display='none';\" style='display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border);'>" +
+        html += "<div onclick=\"openUserProfile('" + escapeJsArg(u.id) + "');document.getElementById('exploreSearchResults').style.display='none';\" style='display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border);'>" +
           "<div style='width:44px;height:44px;border-radius:50%;background:" + _avBgColor + ";display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden;border:2px solid rgba(124,58,237,0.15);'>" + _avContent + "</div>" +
           "<div style='flex:1;min-width:0;overflow:hidden;'>" +
             "<div style='font-weight:700;font-size:13px;color:var(--text);margin-bottom:3px;'>" + escapeHtml(u.name||"") + "</div>" +
