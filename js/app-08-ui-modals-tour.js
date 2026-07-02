@@ -605,6 +605,7 @@ function meClose() {
   document.body.style.overflow = "";
   try { var v = document.querySelector("#meMedia video"); if (v) v.pause(); } catch(e) {}
   _meRemoveVideoControls();
+  _meRevokePreviewUrl();
   var bar = document.getElementById("meEmojiBar"); if (bar) bar.remove();
 }
 // Bouton ✕ : en édition → revient à la capture ; en capture → ferme.
@@ -617,6 +618,7 @@ function meBackToCapture() {
   var ed = document.getElementById("mediaEditor"); if (!ed) return;
   meState.media = null; meState.mediaType = null; meState.overlays = []; meState._seq = 0;
   _meRemoveVideoControls();
+  _meRevokePreviewUrl();
   document.getElementById("meMedia").innerHTML = "";
   document.getElementById("meOverlays").innerHTML = "";
   document.getElementById("meCanvas").style.background = "#000";
@@ -936,15 +938,40 @@ async function meOnMedia(ev) {
 function meSetMedia(dataUrl, type) {
   meState.media = dataUrl; meState.mediaType = type;
   _meRemoveVideoControls(); // nettoie d'éventuels contrôles de la vidéo précédente
+  _meRevokePreviewUrl();    // libère l'éventuel blob: de l'aperçu précédent
   var box = document.getElementById("meMedia");
   if (type === "video") {
-    box.innerHTML = '<video src="' + dataUrl + '" muted playsinline loop autoplay></video>';
-    _meSetupVideoPreviewControls(box.querySelector("video"));
+    // ⚠️ Un <video src="data:video/…;base64,…"> ne se lit PAS de façon fiable
+    // (Chrome n'autoplay/ne seek pas une grosse data URI → cadre noir figé).
+    // On lit donc l'aperçu depuis un blob: URL, tout en gardant meState.media
+    // en base64 pour la publication/l'upload.
+    var blob = _meDataUrlToBlob(dataUrl);
+    var src = blob ? (meState._previewUrl = URL.createObjectURL(blob)) : dataUrl;
+    box.innerHTML = '<video src="' + src + '" muted playsinline loop autoplay></video>';
+    var vid = box.querySelector("video");
+    if (vid) { try { vid.play(); } catch (_) {} } // certains navigateurs exigent un play() explicite après le set du src
+    _meSetupVideoPreviewControls(vid);
   } else {
     box.innerHTML = '<img src="' + dataUrl + '" alt=""/>';
   }
   document.getElementById("mePlaceholder").classList.add("hidden");
   meEnterEditPhase();
+}
+// Convertit une data URL base64 en Blob (pour un aperçu vidéo via blob: URL).
+function _meDataUrlToBlob(dataUrl) {
+  try {
+    var comma = dataUrl.indexOf(",");
+    var meta = dataUrl.slice(0, comma), b64 = dataUrl.slice(comma + 1);
+    if (meta.indexOf("base64") === -1) return null;
+    var mime = (meta.match(/data:([^;]+)/) || [])[1] || "application/octet-stream";
+    var bin = atob(b64), len = bin.length, arr = new Uint8Array(len);
+    for (var i = 0; i < len; i++) arr[i] = bin.charCodeAt(i);
+    return new Blob([arr], { type: mime });
+  } catch (e) { return null; }
+}
+// Libère le blob: URL de l'aperçu courant (évite les fuites mémoire).
+function _meRevokePreviewUrl() {
+  if (meState._previewUrl) { try { URL.revokeObjectURL(meState._previewUrl); } catch (_) {} meState._previewUrl = null; }
 }
 
 // Contrôles de prévisualisation pour la vidéo en phase édition : l'utilisateur
