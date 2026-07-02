@@ -2030,6 +2030,22 @@ async function supaUpsertProfile() {
   } catch(e) { /* erreur réseau non bloquante */ }
 }
 
+// ---- DIAGNOSTIC ----
+// ⚠️ Cette DÉFINITION doit exister tant que des appels diagLog() vivent dans le
+// code (supaLoadPosts, publishPost…). Le retrait du panneau debug (commit du
+// 2026-06-26) avait supprimé la fonction avec le panneau : chaque mapping de
+// supaLoadPosts levait une ReferenceError avalée par son catch → le fil réseau
+// était VIDE pour tous les comptes. Version minimale sans panneau : buffer
+// window._diagLogs (lu par le panneau de diag d'emoji-misc) + console en debug.
+function diagLog(msg) {
+  try {
+    if (!window._diagLogs) window._diagLogs = [];
+    window._diagLogs.push(`[${new Date().toLocaleTimeString()}] ${msg}`);
+    if (window._diagLogs.length > 100) window._diagLogs.shift();
+    if (window.PASSIO_DEBUG) console.log("[DIAG]", msg);
+  } catch(e) {}
+}
+
 
 // ---- POSTS ----
 // ===== UPLOAD PHOTO/VIDÉO/AUDIO À SUPABASE STORAGE =====
