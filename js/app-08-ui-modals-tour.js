@@ -2183,7 +2183,14 @@ async function supaPublishPostWithRetry(post, maxRetries = 2) {
         else if (post.type === "audio") post.audio = mediaUrl;
       }
 
-      // STEP 2: Créer le post (avec timeout 3s)
+      // Carnet de voyage : uploader la cover + les médias d'étapes sur Storage
+      // (jamais de base64 en DB) et construire le blob jsonb `vlog`.
+      let vlogData = null;
+      if (post.type === "vlog") {
+        try { vlogData = await _buildVlogPayload(post); } catch(e) { vlogData = null; }
+      }
+
+      // STEP 2: Créer le post (timeout plus long pour un carnet — plus de médias)
       const postData = {
         id: post.id,
         author_id: MY_UID,
@@ -2195,6 +2202,7 @@ async function supaPublishPostWithRetry(post, maxRetries = 2) {
         created_at: new Date(post.createdAt).toISOString(),
         is_reel: !!post.isReel, // bobine → Bobines (exclu du feed)
         ...(post.overlays && post.overlays.length ? { overlays: post.overlays } : {}),
+        ...(vlogData ? { vlog: vlogData } : {}),
         // 🔄 Ajouter les champs de repost si applicable
         ...(post.sharedReel && { shared_from_post_id: post.sharedReel }),
         ...(post.sharedReelData && { shared_data: JSON.stringify(post.sharedReelData) }),
@@ -2203,9 +2211,17 @@ async function supaPublishPostWithRetry(post, maxRetries = 2) {
       const insertPromise = supa.from("posts").insert([postData]).select();
       const { data, error } = await Promise.race([
         insertPromise,
-        new Promise((_, reject) => setTimeout(() => reject(new Error("Insert timeout")), 3000))
+        new Promise((_, reject) => setTimeout(() => reject(new Error("Insert timeout")), post.type === "vlog" ? 8000 : 3000))
       ]);
 
+      // Colonne `vlog` absente (migration non appliquée) → réessayer SANS vlog
+      // pour ne pas perdre le post (dégradation propre : carnet local-only).
+      if (error && vlogData && /vlog/.test(error.message || "")) {
+        delete postData.vlog;
+        const retry = await supa.from("posts").insert([postData]).select();
+        if (retry.error) throw retry.error;
+        return true;
+      }
       if (error) throw error;
 
       return true;
@@ -2219,6 +2235,41 @@ async function supaPublishPostWithRetry(post, maxRetries = 2) {
   }
 
   return false;
+}
+
+// Construit le blob jsonb `vlog` d'un carnet : champs texte + cover et médias
+// d'étapes UPLOADÉS sur Storage (jamais de base64 en DB, même hygiène que les
+// vocaux / étapes CDV). Un média qui échoue à l'upload est sauté (le carnet
+// reste léger ; l'auteur garde sa copie locale base64 dans state.userPosts).
+async function _buildVlogPayload(post) {
+  async function up(b64, key, kind) {
+    if (!b64 || typeof b64 !== "string") return null;
+    if (b64.indexOf("data:") !== 0) return b64; // déjà une URL
+    try {
+      var folder = kind === "video" ? "videos" : kind === "audio" ? "audios" : "photos";
+      var url = await supaUploadMedia(post.id + "_" + key, folder, b64, kind);
+      return (url && url.indexOf("data:") !== 0) ? url : null;
+    } catch (e) { return null; }
+  }
+  var coverUrl = await up(post.cover, "cover", "image");
+  if (coverUrl) { post.cover = coverUrl; try { saveState(); } catch(e) {} }
+  var steps = [];
+  var srcSteps = Array.isArray(post.steps) ? post.steps : [];
+  for (var i = 0; i < srcSteps.length; i++) {
+    var s = srcSteps[i] || {};
+    var photo = await up(s.photo, "s" + i + "p", "image");
+    var video = await up(s.video, "s" + i + "v", "video");
+    var audio = await up(s.audio, "s" + i + "a", "audio");
+    if (photo) s.photo = photo; if (video) s.video = video; if (audio) s.audio = audio;
+    steps.push({ place: s.place || "", text: s.text || "", tip: s.tip || "",
+      photo: photo, video: video, audio: audio });
+  }
+  try { saveState(); } catch(e) {}
+  return {
+    destination: post.destination || "", dateStart: post.dateStart || null, dateEnd: post.dateEnd || null,
+    budget: post.budget || "", transport: post.transport || "", lodging: post.lodging || "",
+    season: post.season || "", tip: post.tip || "", cover: coverUrl, steps: steps,
+  };
 }
 
 // Fonction d'upload média vers Supabase Storage (avec fallback)
@@ -2274,7 +2325,7 @@ async function supaPublishPost(post) {
 async function supaLoadPosts(offset = 0) {
   try {
     const { data, error } = await supa.from("posts")
-      .select("id, author_id, passion_id, mood, content, media_url, created_at, is_reel, overlays, shared_from_post_id, shared_data, profiles!author_id(username,emoji,color,avatar_url)")
+      .select("id, author_id, passion_id, mood, content, media_url, created_at, is_reel, overlays, vlog, shared_from_post_id, shared_data, profiles!author_id(username,emoji,color,avatar_url)")
       .order("created_at", { ascending: false })
       .range(offset, offset + 59);
     if (error) return [];
@@ -2349,6 +2400,7 @@ async function supaLoadPosts(offset = 0) {
         passion: r.passion_id || "autre", mood: r.mood || "all",
         // ✅ Détecter le type basé sur l'extension du fichier dans media_url
         type: (() => {
+          if (r.vlog) return "vlog"; // carnet de voyage (colonne jsonb dédiée)
           if (!r.media_url) return "text";
           const url = r.media_url.toLowerCase();
           if (url.includes(".mp4") || url.includes("videos/")) return "video";
@@ -2388,6 +2440,14 @@ async function supaLoadPosts(offset = 0) {
             type: x.kind === "emoji" ? "emoji_reaction" : "gif_reaction", createdAt: supaTs(x.created_at) })),
         isReel: !!r.is_reel, // bobine (exclu du feed, affiché dans Bobines)
         overlays: r.overlays || null,
+        // 📔 Carnet de voyage : réhydrate les champs à plat attendus par le viewer
+        // (openVlogViewer lit post.destination/steps/cover/… directement).
+        ...(r.vlog ? (() => {
+          var v = (typeof r.vlog === "string") ? (function(){ try { return JSON.parse(r.vlog); } catch(e){ return {}; } })() : (r.vlog || {});
+          return { destination: v.destination || "", dateStart: v.dateStart || null, dateEnd: v.dateEnd || null,
+            budget: v.budget || "", transport: v.transport || "", lodging: v.lodging || "", season: v.season || "",
+            tip: v.tip || "", cover: v.cover || null, steps: Array.isArray(v.steps) ? v.steps : [] };
+        })() : {}),
         // 🔄 Repost support: parse shared_from_post_id and shared_data if applicable
         ...(r.shared_from_post_id && { sharedReel: r.shared_from_post_id }),
         ...(r.shared_data && { sharedReelData: (() => {

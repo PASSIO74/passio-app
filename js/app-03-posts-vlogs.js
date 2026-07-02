@@ -643,8 +643,9 @@ function toggleCarnetSave(postId) {
 
 // "M'inspirer", duplique la STRUCTURE (pas le contenu) pour démarrer un nouveau carnet
 function inspireFromCarnet(postId) {
-  const post = state.userPosts.find(p => p.id === postId)
-            || state.seed.posts.find(p => p.id === postId);
+  const post = (typeof findPostAnywhere === "function")
+    ? findPostAnywhere(postId)
+    : (state.userPosts.find(p => p.id === postId) || state.seed.posts.find(p => p.id === postId));
   if (!post || post.type !== "vlog") return;
   closeVlogViewer();
   // Remettre dans l'éditeur
@@ -673,8 +674,9 @@ function inspireFromCarnet(postId) {
 
 // Organiser un voyage groupé à partir d'un carnet
 function organizeGroupTrip(postId) {
-  const post = state.userPosts.find(p => p.id === postId)
-            || state.seed.posts.find(p => p.id === postId);
+  const post = (typeof findPostAnywhere === "function")
+    ? findPostAnywhere(postId)
+    : (state.userPosts.find(p => p.id === postId) || state.seed.posts.find(p => p.id === postId));
   if (!post || post.type !== "vlog") return;
   closeVlogViewer();
   setTimeout(() => {
@@ -848,8 +850,10 @@ document.addEventListener("change", (e) => {
 
 // Viewer plein écran d'un carnet
 function openVlogViewer(postId) {
-  const post = state.userPosts.find(p => p.id === postId)
-            || state.seed.posts.find(p => p.id === postId);
+  // findPostAnywhere inclut supabasePosts → ouvre aussi les carnets d'autres comptes.
+  const post = (typeof findPostAnywhere === "function")
+    ? findPostAnywhere(postId)
+    : (state.userPosts.find(p => p.id === postId) || state.seed.posts.find(p => p.id === postId));
   if (!post || post.type !== "vlog") return;
   const author = post._source === "me" || post.profileId
     ? { name: state.user.name || "Toi", profileEmoji: "🌍", avatar: "#7c3aed" }
@@ -1085,11 +1089,24 @@ function closeVlogViewer() {
   document.body.style.overflow = "";
 }
 
-// Renvoie tous les carnets disponibles (seed + perso), triés par date desc
+// Renvoie tous les carnets disponibles (seed + perso + Supabase cross-compte),
+// dédupliqués et triés par date desc. Les carnets d'AUTRES comptes arrivent via
+// supabasePosts (colonne posts.vlog) depuis le 2026-07-02.
 function allCarnets() {
+  const me = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
   const seed = (state.seed.posts || []).filter(p => p.type === "vlog").map(p => ({ ...p, _source: "seed" }));
   const mine = (state.userPosts || []).filter(p => p.type === "vlog").map(p => ({ ...p, _source: "me" }));
-  return [...mine, ...seed].sort((a, b) => b.createdAt - a.createdAt);
+  const net  = (state.supabasePosts || []).filter(p => p.type === "vlog")
+    .map(p => ({ ...p, _source: (p.authorId === me ? "me" : "seed") }));
+  const blocked = (state.user && state.user.blocked) || [];
+  const seen = new Set();
+  return [...mine, ...net, ...seed]
+    .filter(c => {
+      if (seen.has(c.id)) return false; seen.add(c.id);
+      if (blocked.length && blocked.includes(c.authorId)) return false;
+      return true;
+    })
+    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 }
 
 // Rendu de la section "Carnets" dans Explorer (avec recherche)
