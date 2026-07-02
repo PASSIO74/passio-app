@@ -143,6 +143,11 @@ test.describe("messagerie entre 2 comptes réels", () => {
   // 2026-06-17 : (a) findPostAnywhere → B peut interagir avec un vrai post de A ;
   // (b) supaInsertNotif insère bien la notif chez A ; (c) A charge ses notifs
   // (supaLoadNotifications, garanti) ; (d) best-effort : livraison realtime.
+  // Étendu le 2026-07-02 : réactions emoji/GIF portées par le POST (convention
+  // comment_id === post_id dans comment_interactions) — B réagit 😍 + GIF, A voit
+  // la pastille SANS recharger (realtime:comment_interactions →
+  // _applyCommentInteractionEvent, app-04) et la réaction survit au rechargement
+  // du fil (mappée par supaLoadPosts).
   test("interactions sur un post → l'auteur reçoit les notifications", async ({ browser }) => {
     test.setTimeout(180000);
     const t0 = Date.now();
@@ -205,6 +210,56 @@ test.describe("messagerie entre 2 comptes réels", () => {
       // 3c. Follow (supaFollowUser → supaInsertNotif "follow")
       await pageB.evaluate((aid) => supaFollowUser(aid), uidA);
       log("B a suivi A");
+
+      // 3d. Réactions emoji + GIF portées par le POST lui-même (2026-07-02) :
+      //     convention comment_id === post_id dans comment_interactions. B réagit
+      //     via les VRAIS handlers (addEmojiToPost/addGifToPost → supaCommentInteract).
+      //     Pré-requis côté A : le post doit être dans son état local pour que
+      //     _applyCommentInteractionEvent le retrouve via findPostAnywhere (comme
+      //     supaLoadPosts l'aurait mis au boot).
+      await pageA.evaluate(([pid, aid]) => {
+        state.supabasePosts = state.supabasePosts || [];
+        if (!state.supabasePosts.find((p) => p.id === pid)) {
+          state.supabasePosts.unshift({
+            id: pid, authorId: aid, authorName: "Test Alice", authorEmoji: "✨",
+            authorColor: "#8b5cf6", passion: "musique", mood: "all", type: "text",
+            text: "Post de Alice [test notif auto]", image: null,
+            createdAt: Date.now(), likes: 0, liked: false, comments: [], fromSupabase: true,
+          });
+        }
+      }, [postId, uidA]);
+      const GIF_URL = "https://media.tenor.com/e2e-test/passio.gif";
+      await pageB.evaluate(([pid, gif]) => { addEmojiToPost(pid, "😍"); addGifToPost(pid, gif); }, [postId, GIF_URL]);
+      log("B a réagi 😍 + GIF au post");
+
+      // ── A voit les réactions SANS recharger (canal realtime:comment_interactions) ──
+      await pageA.waitForFunction(
+        ([pid, buid]) => {
+          const p = findPostAnywhere(pid);
+          const rx = (p && p.reactions) || [];
+          return rx.some((x) => x.type === "emoji_reaction" && x.text === "😍" && x.authorId === buid)
+              && rx.some((x) => x.type === "gif_reaction" && x.authorId === buid);
+        },
+        [postId, uidB], { timeout: 20000 }
+      );
+      // La pastille AGRÈGE (emoji majoritaire + total, cf. _reactionItemsChipHtml) :
+      // avec 1 😍 + 1 GIF elle affiche « 😍 2 » ou « 🎬 2 » selon le tri → on
+      // vérifie le rendu (chip présent) et le compteur, pas un emoji précis.
+      const chipA = await pageA.evaluate((pid) => _postReactChipHtml(pid), postId);
+      expect(chipA, "pastille de réactions rendue chez A").toContain("cmt-react-chip");
+      expect(chipA, "pastille : 2 réactions comptées chez A").toContain("<b>2</b>");
+      log("✅ realtime OK : A voit la pastille (2 réactions) sans recharger");
+
+      // ── Persistance : un fil (re)chargé depuis Supabase porte les réactions
+      //    (supaLoadPosts mappe comment_interactions où comment_id === post_id) ──
+      const loadedPost = await loadFindWithRetry(pageA, "supaLoadPosts", postId, 20000);
+      expect(loadedPost, "post rechargé depuis Supabase").toBeTruthy();
+      const loadedRx = loadedPost.reactions || [];
+      expect(loadedRx.some((x) => x.type === "emoji_reaction" && x.text === "😍" && x.authorId === uidB),
+        "réaction 😍 persistée et chargée par supaLoadPosts").toBe(true);
+      expect(loadedRx.some((x) => x.type === "gif_reaction" && x.authorId === uidB),
+        "réaction GIF persistée et chargée par supaLoadPosts").toBe(true);
+      log("✅ réactions post persistées (chargées par supaLoadPosts)");
 
       // supaInsertNotif est fire-and-forget : laisser les inserts atterrir.
       await pageB.waitForTimeout(2500);
@@ -579,6 +634,7 @@ async function cleanupNotifs(page, postId) {
   await page.evaluate(async (pid) => {
     try { await supa.from("notifications").delete().eq("user_id", MY_UID); } catch (e) {}
     try { await supa.from("notifications").delete().eq("from_id", MY_UID); } catch (e) {}
+    try { await supa.from("comment_interactions").delete().eq("user_id", MY_UID); } catch (e) {}
     try { await supa.from("post_comments").delete().eq("post_id", pid); } catch (e) {}
     try { await supa.from("post_likes").delete().eq("post_id", pid); } catch (e) {}
     try { await supa.from("follows").delete().eq("follower_id", MY_UID); } catch (e) {}
