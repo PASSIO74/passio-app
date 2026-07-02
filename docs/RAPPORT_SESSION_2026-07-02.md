@@ -38,14 +38,32 @@ Aperçu vidéo via `blob:` URL (les grosses data URI vidéo ne se lisent pas dan
 - `npm run audit:handlers` : 641 handlers inline, 0 fonction fantôme.
 - Navigateur (preview) : parsing des 5 formats de timestamps, bouton Répondre avec apostrophe, payloads XSS neutralisés, 0 erreur console.
 
+## Lot 2 — messagerie (phase 8) + feed (phase 4)
+
+Commit `d1cd4f8`.
+
+### 7. Notification de nouveau message cassée + XSS (majeur, sécurité/UX)
+`_handleIncomingConvMessage` appelait `pushNotification(sender, body, "✉️")` alors que la signature est `(text, emoji, fromId)` : le corps du message atterrissait dans le slot emoji, et le **pseudo de l'expéditeur (contrôlé par lui) était rendu en `innerHTML` sans échappement** (XSS). Corrigé : texte complet échappé (`escapeHtml`), `fromId` correct (la notif pointe le bon expéditeur au clic).
+
+### 8. `shareLocation()` : insert conv_messages sans `from_id` d'abord (mineur, perf)
+Partager sa position insérait sans `from_id` en premier → rejet RLS systématique au 1er essai (1 requête gaspillée). Aligné sur `sendMessageToSupabase` (from_id d'abord, fallback sans).
+
+### 9. Accusés de lecture : parsing timestamp (mineur)
+`supaLoadOtherRead` et le handler realtime `conv_reads` faisaient `new Date(last_read_at).getTime()` sur une colonne `timestamptz` → passés à `supaTs()`.
+
+### 10. Tri du feed instable sans date (mineur, UX)
+`allFeedPosts()` triait sans guard `|| 0` : un post sans `createdAt` produisait un `NaN` qui éparpillait les cartes. Corrigé. Vérifié en navigateur (ordre z3/z2/z1, post sans date en dernier).
+
+**Audité sain (aucune correction nécessaire)** : pagination du feed (bouton « charger plus » + page serveur de 60), boucle de refresh 60 s branchée au boot via `startFeedRefreshLoop` (pas de doublon — `startAutoRefresh` déjà neutralisé), rendu en 2 temps (paint FAST puis idle), dédup 3 sources, ordre insert des autres `conv_messages`.
+
 ## Risques restants / à surveiller
 - Les réactions de posts déjà enregistrées AVANT ce lot (localStorage uniquement) ne se répliquent pas rétroactivement (normal).
 - `hydrateCommentInteractions` prend le serveur comme source de vérité pour les réponses : une réponse locale dont l'insert Supabase a échoué (hors-ligne) disparaît au prochain chargement.
 - Le test 2 comptes (`PASSIO_E2E_MULTI=1`) n'a pas été relancé dans cette session (coût comptes jetables) — à faire pour valider la réplication des réactions de posts en conditions réelles.
 
 ## Backlog priorisé (constaté pendant l'audit)
-- **P0** — Relancer `PASSIO_E2E_MULTI=1 npm test` (valider réactions de posts + non-régression messagerie/notifs).
-- **P0** — Rate limiting / anti-flood : aucune limite d'insertion sur comment_interactions, reports, notifications (spam possible par tout compte). Envisager des contraintes serveur (trigger quota, longueur max payload ≤ 200 c., CHECK kind IN (…)).
+- **P0** — Relancer `PASSIO_E2E_MULTI=1 npm test` (valider réactions de posts + non-régression messagerie/notifs). ⏳ lancé en tâche de fond.
+- ~~**P0** — Rate limiting / anti-flood~~ — **FAIT le 2026-07-02** : `migration_anti_flood_interactions.sql` (CHECK kind + longueurs, trigger quota 60/30/10 par min/user, RLS reports resserrée), appliquée + testée en prod.
 - **P1** — Carnets de voyage non synchronisés cross-compte (`allVlogs()` = seed + userPosts uniquement) : un carnet publié par A est invisible pour B. Nécessite schéma (steps jsonb dans posts ou table dédiée).
 - **P1** — `state.user.seenNotifIds`/caches fenêtre (`_eventCommentsCache`) : commentaires d'événements volatils (perdus au reload tant que non rechargés du serveur).
 - **P2** — Bruit `console.log` massif en prod (perf marginale, hygiène) : stripper au build.
