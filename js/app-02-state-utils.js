@@ -331,7 +331,8 @@ function uid() { return "x" + Math.random().toString(36).slice(2, 10) + Date.now
 function supaTs(s) {
   if (s == null || s === "") return Date.now();
   if (typeof s === "number") return s;
-  var str = String(s).replace(" ", "T");
+  var str = String(s).replace(" ", "T")
+    .replace(/([+\-]\d{2})$/, "$1:00"); // offset court "+00" (realtime) → "+00:00"
   var hasTz = /(Z|[+\-]\d{2}(:?\d{2})?)$/.test(str);
   var t = Date.parse(hasTz ? str : str + "Z");
   if (isNaN(t)) t = Date.parse(str);
