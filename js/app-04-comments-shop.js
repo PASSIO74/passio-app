@@ -222,21 +222,28 @@ function _renderCommentsList(allComments, postId) {
           const rSrc = r.authorId === "me" ? "me" : "seed";
 
           // Si c'est une réaction emoji, afficher différemment
+          // ⚠️ r.text est ÉCHAPPÉ : le payload de comment_interactions est librement
+          // insérable par tout compte authentifié (RLS insert user_id only) → un
+          // payload HTML brut serait un XSS stocké rendu chez tous les lecteurs.
           if (r.type === "emoji_reaction") {
             const _rAv = { avatar: ru.avatar || "#64748b", profileEmoji: ru.profileEmoji || "👤", name: ru.name, photoUrl: ru.photoUrl || null };
             return `<div class="comment-reply" style="display:flex;align-items:center;gap:6px;padding:4px 0;">
               <div class="avatar xs" style="background:${avatarBg(_rAv)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${r.authorId}','${rSrc}')">${avatarInner(_rAv)}</div>
-              <div><span style="font-size:11px;color:var(--text);font-weight:600;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span> <span style="font-size:14px;">${r.text}</span></div>
+              <div><span style="font-size:11px;color:var(--text);font-weight:600;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span> <span style="font-size:14px;">${escapeHtml(r.text || "")}</span></div>
             </div>`;
           }
 
-          // Si c'est une réaction GIF
+          // Si c'est une réaction GIF — n'affiche une image QUE si le texte est une
+          // vraie URL média (sinon texte échappé), même raison anti-XSS que ci-dessus.
           if (r.type === "gif_reaction") {
             const _rAv = { avatar: ru.avatar || "#64748b", profileEmoji: ru.profileEmoji || "👤", name: ru.name, photoUrl: ru.photoUrl || null };
+            const _gifHtml = _looksLikeMediaUrl(r.text)
+              ? `<img loading="lazy" decoding="async" src="${escapeHtml(r.text)}" style="width:90px;height:90px;border-radius:8px;margin-top:4px;object-fit:cover;" alt="GIF" />`
+              : `<span style="font-size:14px;">${escapeHtml(r.text || "")}</span>`;
             return `<div class="comment-reply" style="display:flex;align-items:flex-start;gap:6px;padding:4px 0;">
               <div class="avatar xs" style="background:${avatarBg(_rAv)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${r.authorId}','${rSrc}')">${avatarInner(_rAv)}</div>
               <div><span style="font-size:11px;color:var(--text);font-weight:600;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span><br/>
-              <img loading="lazy" decoding="async" src="${r.text}" style="width:90px;height:90px;border-radius:8px;margin-top:4px;object-fit:cover;" alt="GIF" /></div>
+              ${_gifHtml}</div>
             </div>`;
           }
 
@@ -297,13 +304,15 @@ function _cmtReactChipHtml(threadId, comment) {
   var reactions = _cmtReactions(comment);
   if (!reactions.length) return "";
   var counts = {};
-  reactions.forEach(function(r){ var e = r.text || "❤️"; counts[e] = (counts[e] || 0) + 1; });
+  // _reactKey : une URL de GIF compte comme « 🎬 » (sinon l'URL brute s'affichait
+  // dans la pastille) ; escapeHtml sur l'emoji retenu (payload libre → anti-XSS).
+  reactions.forEach(function(r){ var e = _reactKey(r.text); counts[e] = (counts[e] || 0) + 1; });
   var top = Object.keys(counts).sort(function(a, b){ return counts[b] - counts[a]; })[0] || "❤️";
   var _selfIds = [(typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : null, (state.user && state.user.id), "me"].filter(Boolean);
   var mine = reactions.some(function(r){ return _selfIds.indexOf(r.authorId) > -1; });
   return '<span class="cmt-react-chip' + (mine ? " mine" : "") + '" title="Voir qui a réagi"'
     + ' onclick="return openCommentReactors(\'' + threadId + '\',\'' + comment.id + '\', event);">'
-    + top + ' <b>' + reactions.length + '</b></span>';
+    + escapeHtml(top) + ' <b>' + reactions.length + '</b></span>';
 }
 // Popover listant les réactions emoji d'un commentaire : qui a réagi + son emoji.
 function openCommentReactors(threadId, commentId, event) {
@@ -322,10 +331,12 @@ function openCommentReactors(threadId, commentId, event) {
     var u = (typeof userById === "function" && userById(r.authorId)) || { name: "Quelqu'un", profileEmoji: "👤", avatar: "#64748b" };
     var _av = { avatar: u.avatar || "#64748b", profileEmoji: u.profileEmoji || "👤", name: u.name, photoUrl: u.photoUrl || null };
     var rSrc = (r.authorId === "me" || (typeof MY_UID !== "undefined" && r.authorId === MY_UID)) ? "me" : "seed";
+    var _face = _looksLikeMediaUrl(r.text)
+      ? '<img loading="lazy" src="' + escapeHtml(r.text) + '" style="width:30px;height:30px;border-radius:6px;object-fit:cover;"/>'
+      : '<span style="font-size:18px;">' + escapeHtml(r.text || "❤️") + '</span>';
     return '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;">'
       + '<div class="avatar sm" style="background:' + avatarBg(_av) + ';flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();closeModal&&closeModal();openUserProfile(\'' + r.authorId + '\',\'' + rSrc + '\')">' + avatarInner(_av) + '</div>'
-      + '<span style="flex:1;font-size:12px;color:var(--text);">' + escapeHtml(u.name) + '</span>'
-      + '<span style="font-size:18px;">' + (r.text || "❤️") + '</span></div>';
+      + '<span style="flex:1;font-size:12px;color:var(--text);">' + escapeHtml(u.name) + '</span>' + _face + '</div>';
   }).join("");
   pop.innerHTML = '<div style="font-size:12px;font-weight:800;color:var(--text);margin-bottom:8px;">Réactions · ' + reactions.length + '</div>' + rowsHtml;
   var btn = event && (event.currentTarget || event.target);
@@ -375,7 +386,7 @@ function _reactionItemsChipHtml(items, onclickAttr) {
   var _selfIds = [(typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : null, (state.user && state.user.id), "me"].filter(Boolean);
   var mine = items.some(function(it){ return _selfIds.indexOf(it.authorId) > -1; });
   return '<span class="cmt-react-chip' + (mine ? " mine" : "") + '" title="Voir qui a réagi" onclick="' + onclickAttr + '">'
-    + top + ' <b>' + items.length + '</b></span>';
+    + escapeHtml(top) + ' <b>' + items.length + '</b></span>';
 }
 // Popover listant les réacteurs : avatar + pseudo + emoji (ou vignette GIF) si
 // l'auteur est connu ; sinon décompte par emoji (cas des lives, sans auteur local).
@@ -391,8 +402,8 @@ function _openReactorsList(items, event) {
   var rowsHtml;
   function face(t) {
     return (typeof _looksLikeMediaUrl === "function" && _looksLikeMediaUrl(t))
-      ? '<img loading="lazy" src="' + String(t).replace(/"/g, "&quot;") + '" style="width:30px;height:30px;border-radius:6px;object-fit:cover;"/>'
-      : '<span style="font-size:18px;">' + (t || "❤️") + '</span>';
+      ? '<img loading="lazy" src="' + escapeHtml(t) + '" style="width:30px;height:30px;border-radius:6px;object-fit:cover;"/>'
+      : '<span style="font-size:18px;">' + escapeHtml(t || "❤️") + '</span>';
   }
   if (withAuthors) {
     rowsHtml = items.map(function(it){
@@ -2633,15 +2644,18 @@ function renderConvFpThread(c, displayName) {
     // Décoder le JSON du texte si nécessaire (messages média Supabase non encore décodés)
     applyMsgContentData(m);
 
+    // safeUrlAttr : ces URLs viennent du JSON décodé d'un message ENVOYÉ PAR
+    // L'AUTRE compte → sans neutralisation un correspondant pouvait sortir de
+    // l'attribut src (XSS) ou pointer un href javascript:.
     if (m.gif) {
       isMedia = true;
-      content = '<img src="' + m.gif + '" style="max-width:200px;max-height:160px;border-radius:12px;display:block;" loading="lazy"/>';
+      content = '<img src="' + safeUrlAttr(m.gif) + '" style="max-width:200px;max-height:160px;border-radius:12px;display:block;" loading="lazy"/>';
     } else if (m.video) {
       isMedia = true;
-      content = '<video src="' + m.video + '" style="max-width:200px;max-height:200px;border-radius:12px;display:block;cursor:pointer;" controls preload="none"/>';
+      content = '<video src="' + safeUrlAttr(m.video) + '" style="max-width:200px;max-height:200px;border-radius:12px;display:block;cursor:pointer;" controls preload="none"/>';
     } else if (m.img) {
       isMedia = true;
-      content = '<img loading="lazy" decoding="async" src="' + m.img + '" style="max-width:200px;max-height:200px;border-radius:12px;display:block;cursor:pointer;" onclick="openFullImg(this.src)"/>';
+      content = '<img loading="lazy" decoding="async" src="' + safeUrlAttr(m.img) + '" style="max-width:200px;max-height:200px;border-radius:12px;display:block;cursor:pointer;" onclick="openFullImg(this.src)"/>';
     } else if (m.fileUrl) {
       isMedia = true;
       var ftype = (m.fileType || 'file').toLowerCase();
@@ -2652,14 +2666,14 @@ function renderConvFpThread(c, displayName) {
                      ftype === 'audio' ? '🎵' : '📎';
       var docBg = isMe ? 'rgba(255,255,255,0.12)' : 'var(--bg-soft)';
       var docBorder = isMe ? 'rgba(255,255,255,0.2)' : 'var(--border)';
-      content = '<a href="' + escapeHtml(m.fileUrl) + '" target="_blank" rel="noopener" style="text-decoration:none;color:inherit;display:inline-block;">' +
+      content = '<a href="' + safeUrlAttr(m.fileUrl) + '" target="_blank" rel="noopener" style="text-decoration:none;color:inherit;display:inline-block;">' +
         '<div style="display:flex;align-items:center;gap:10px;padding:8px;cursor:pointer;">' +
         '<div style="width:36px;height:36px;border-radius:10px;background:' + docBg + ';border:1px solid ' + docBorder + ';display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">' + fileIcon + '</div>' +
         '<div><div style="font-size:13px;font-weight:700;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + fname + '</div>' +
         '<div style="font-size:10px;opacity:0.6;">📥 Télécharger</div></div></div></a>';
     } else if (m.location) {
       isMedia = true;
-      content = '<a href="' + escapeHtml(m.location.url || 'https://maps.google.com') + '" target="_blank" rel="noopener" style="color:inherit;text-decoration:none;">' +
+      content = '<a href="' + safeUrlAttr(m.location.url || 'https://maps.google.com') + '" target="_blank" rel="noopener" style="color:inherit;text-decoration:none;">' +
         '<div style="display:flex;align-items:center;gap:8px;padding:8px 0;">' +
         '<div style="font-size:20px;">📍</div>' +
         '<div><div style="font-size:13px;">📍 Position</div><div style="font-size:11px;opacity:0.7;">' + escapeHtml(m.location.lat + ', ' + m.location.lng) + '</div></div></div></a>';

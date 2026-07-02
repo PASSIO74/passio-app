@@ -1063,9 +1063,9 @@ function openConvFiles() {
       html += '<div class="csetting-section">Médias (' + medias.length + ')</div><div class="conv-files-grid">';
       medias.forEach(function (md) {
         if (md.kind === "video") {
-          html += '<video src="' + escapeHtml(md.src) + '" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:12px;cursor:pointer;" muted playsinline onclick="this.paused?this.play():this.pause()"></video>';
+          html += '<video src="' + safeUrlAttr(md.src) + '" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:12px;cursor:pointer;" muted playsinline onclick="this.paused?this.play():this.pause()"></video>';
         } else {
-          html += '<img src="' + escapeHtml(md.src) + '" loading="lazy" decoding="async" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:12px;cursor:pointer;" onclick="openFullImg(this.src)"/>';
+          html += '<img src="' + safeUrlAttr(md.src) + '" loading="lazy" decoding="async" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:12px;cursor:pointer;" onclick="openFullImg(this.src)"/>';
         }
       });
       html += '</div>';
@@ -1092,7 +1092,7 @@ function openConvFiles() {
           '<div style="flex:1;min-width:0;"><div style="font-size:13px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(f.name) + '</div>' +
           '<div style="font-size:10px;color:var(--muted);">📥 Télécharger</div></div></div>';
         if (f.url) {
-          html += '<a href="' + escapeHtml(f.url) + '" target="_blank" rel="noopener" style="text-decoration:none;">' + row + '</a>';
+          html += '<a href="' + safeUrlAttr(f.url) + '" target="_blank" rel="noopener" style="text-decoration:none;">' + row + '</a>';
         } else {
           window["_doc_" + f.key] = { data: f.data, name: f.name };
           html += row.replace('<div style="display:flex;align-items:center;gap:12px;', '<div onclick="_docDownload(\'' + f.key + '\')" style="display:flex;align-items:center;gap:12px;');

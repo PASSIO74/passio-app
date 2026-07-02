@@ -390,6 +390,14 @@ function escapeJsArg(s) {
     .replace(/\r|\n/g, " ");
 }
 
+// URL sûre pour un attribut src/href : n'accepte que http(s) et data:image
+// (bloque javascript: & co), et échappe les quotes pour rester dans l'attribut.
+function safeUrlAttr(u) {
+  var s = String(u == null ? "" : u).trim();
+  if (!/^(https?:\/\/|data:image\/|data:audio\/|data:video\/|blob:)/i.test(s)) return "#";
+  return escapeHtml(s);
+}
+
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, m => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m]));
 }
@@ -2478,7 +2486,7 @@ async function openPost(id) {
           ${cReplies.length > 0 ? `<span class="comment-reply-count" onclick="return toggleCommentReplies('${c.id}', event);">▼ ${cReplies.length} réponse${cReplies.length > 1 ? "s" : ""}</span>` : ""}
           ${(c.emojis || []).length > 0 ? `<span class="comment-emoji-count" onclick="return toggleCommentEmojis('${c.id}', event);">${(c.emojis || []).length} emoji</span>` : ""}
         </div>
-        ${(c.emojis || []).length > 0 ? `<div class="comment-emojis" id="emojis-${c.id}" style="display:none;padding:8px 0;border-top:1px solid rgba(124,58,237,0.1);margin-top:8px;"><div style="display:flex;gap:6px;flex-wrap:wrap;">${(c.emojis || []).map(e => `<span style="font-size:20px;padding:4px 8px;background:var(--bg-soft);border-radius:6px;cursor:default;">${e}</span>`).join("")}</div></div>` : ""}
+        ${(c.emojis || []).length > 0 ? `<div class="comment-emojis" id="emojis-${c.id}" style="display:none;padding:8px 0;border-top:1px solid rgba(124,58,237,0.1);margin-top:8px;"><div style="display:flex;gap:6px;flex-wrap:wrap;">${(c.emojis || []).map(e => `<span style="font-size:20px;padding:4px 8px;background:var(--bg-soft);border-radius:6px;cursor:default;">${escapeHtml(e)}</span>`).join("")}</div></div>` : ""}
         ${cReplies.length > 0 ? `<div class="comment-replies" id="replies-${c.id}" style="display:none;">${cReplies.map(r => {
           const ru = userById(r.authorId) || { name: "?", profileEmoji: "👤", avatar: "#64748b" };
           const rSrc = r.authorId === "me" ? "me" : "seed";
@@ -2488,7 +2496,7 @@ async function openPost(id) {
             const _rAv = { avatar: ru.avatar || "#64748b", profileEmoji: ru.profileEmoji || "👤", name: ru.name, photoUrl: ru.photoUrl || null };
             return `<div class="comment-reply" style="display:flex;align-items:center;gap:8px;padding:6px 0;">
               <div class="avatar sm" style="background:${avatarBg(_rAv)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${avatarInner(_rAv)}</div>
-              <div><span style="font-size:11px;color:var(--text);font-weight:600;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span> <span style="font-size:18px;">${r.text}</span></div>
+              <div><span style="font-size:11px;color:var(--text);font-weight:600;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span> <span style="font-size:18px;">${escapeHtml(r.text || "")}</span></div>
             </div>`;
           }
 
@@ -2498,7 +2506,7 @@ async function openPost(id) {
             return `<div class="comment-reply" style="display:flex;align-items:flex-start;gap:8px;padding:6px 0;">
               <div class="avatar sm" style="background:${avatarBg(_rAv)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${avatarInner(_rAv)}</div>
               <div><span style="font-size:11px;color:var(--text);font-weight:600;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span><br/>
-              <img loading="lazy" decoding="async" src="${r.text}" style="width:120px;height:120px;border-radius:8px;margin-top:6px;object-fit:cover;" alt="GIF" /></div>
+              <img loading="lazy" decoding="async" src="${escapeHtml(r.text || "")}" style="width:120px;height:120px;border-radius:8px;margin-top:6px;object-fit:cover;" alt="GIF" /></div>
             </div>`;
           }
 

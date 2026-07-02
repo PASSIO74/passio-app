@@ -1298,7 +1298,7 @@ function renderIRL() {
     const evLikeCount = _evL.likes || 0;
     const _evEmojiKeys = Object.keys(_evL.emojiCounts || {});
     const evStripHtml = _evEmojiKeys.length
-      ? _evEmojiKeys.slice(0, 5).map(k => '<span style="margin-right:8px;">' + k + ' ' + _evL.emojiCounts[k] + '</span>').join("")
+      ? _evEmojiKeys.slice(0, 5).map(k => '<span style="margin-right:8px;">' + escapeHtml(k) + ' ' + _evL.emojiCounts[k] + '</span>').join("")
       : "";
     const d = fmtEventDate(e.date);
     const daysLeft = Math.max(0, Math.ceil((e.date - Date.now()) / 86400000));
@@ -1483,7 +1483,7 @@ function _evReactChipHtml(eventId) {
   var top = keys.slice().sort(function(a, b){ return counts[b] - counts[a]; })[0];
   var face = top || (gifN ? "🎬" : "😊");
   return '<button class="ev-react-chip" data-evchip="' + eventId + '" onclick="event.stopPropagation();return openEventReactions(\'' + eventId + '\', event);">'
-    + face + ' <b>' + total + '</b></button>';
+    + escapeHtml(face) + ' <b>' + total + '</b></button>';
 }
 // Repeint la pastille (dans son conteneur data-evchipholder) après une réaction.
 function _patchEventReactChip(eventId) {
@@ -1568,9 +1568,10 @@ async function _fillEventReactionDetail(eventId) {
     body.innerHTML = rows.map(function(r){
       var u = (typeof userById === "function" && userById(r.userId)) || { name: "Quelqu'un", profileEmoji: "👤", avatar: "#64748b" };
       var _av = { avatar: u.avatar || "#64748b", profileEmoji: u.profileEmoji || "👤", name: u.name, photoUrl: u.photoUrl || null };
+      // escapeHtml : l'emoji vient de event_reactions (payload libre) → anti-XSS.
       var face = /^https?:\/\//.test(r.emoji)
-        ? '<img loading="lazy" src="' + r.emoji + '" style="width:30px;height:30px;border-radius:6px;object-fit:cover;"/>'
-        : '<span style="font-size:18px;">' + r.emoji + '</span>';
+        ? '<img loading="lazy" src="' + escapeHtml(r.emoji) + '" style="width:30px;height:30px;border-radius:6px;object-fit:cover;"/>'
+        : '<span style="font-size:18px;">' + escapeHtml(r.emoji || "") + '</span>';
       return '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;">'
         + '<div class="avatar sm" style="background:' + avatarBg(_av) + ';flex-shrink:0;">' + avatarInner(_av) + '</div>'
         + '<span style="flex:1;font-size:12px;color:var(--text);">' + escapeHtml(u.name) + '</span>' + face + '</div>';
@@ -1582,8 +1583,8 @@ async function _fillEventReactionDetail(eventId) {
   var counts = d.emojiCounts || {};
   var keys = Object.keys(counts);
   if (!keys.length && !(d.gifs || []).length) { body.innerHTML = "Aucune réaction pour l'instant."; return; }
-  body.innerHTML = keys.map(function(k){ return '<div style="padding:3px 0;font-size:14px;">' + k + ' × ' + counts[k] + '</div>'; }).join("")
-    + (d.gifs || []).map(function(g){ return '<img loading="lazy" src="' + g + '" style="width:60px;height:60px;border-radius:6px;object-fit:cover;margin:4px 4px 0 0;"/>'; }).join("");
+  body.innerHTML = keys.map(function(k){ return '<div style="padding:3px 0;font-size:14px;">' + escapeHtml(k) + ' × ' + counts[k] + '</div>'; }).join("")
+    + (d.gifs || []).map(function(g){ return '<img loading="lazy" src="' + escapeHtml(g) + '" style="width:60px;height:60px;border-radius:6px;object-fit:cover;margin:4px 4px 0 0;"/>'; }).join("");
 }
 
 // ════════════════════════════════════════════════════════════════════════
