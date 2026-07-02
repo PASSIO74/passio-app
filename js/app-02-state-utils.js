@@ -321,17 +321,29 @@ function $(sel, root = document) { return root.querySelector(sel); }
 function $$(sel, root = document) { return Array.from(root.querySelectorAll(sel)); }
 function uid() { return "x" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36); }
 
-function fmtTime(ts) {
-  if (!ts) return "Invalid Date";
+// Parse un timestamp Supabase (REST ou realtime) en millisecondes.
+// ⚠️ La prod mélange DEUX types de colonnes : timestamp SANS fuseau
+// ("2026-06-26T12:15:10.389", stocké en UTC → il FAUT ajouter "Z") et
+// timestamptz ("2026-06-25T16:21:51.387+00:00" → ajouter "Z" donne une
+// Invalid Date/NaN : c'était le bug « Invalid Date » sur les réponses de
+// commentaires, réactions, CDV…). On n'ajoute "Z" que si la chaîne n'a
+// PAS déjà d'indication de fuseau.
+function supaTs(s) {
+  if (s == null || s === "") return Date.now();
+  if (typeof s === "number") return s;
+  var str = String(s).replace(" ", "T");
+  var hasTz = /(Z|[+\-]\d{2}(:?\d{2})?)$/.test(str);
+  var t = Date.parse(hasTz ? str : str + "Z");
+  if (isNaN(t)) t = Date.parse(str);
+  return isNaN(t) ? Date.now() : t;
+}
 
-  let d;
-  if (typeof ts === "string") {
-    // Chaîne ISO UTC: "2026-06-08T15:50:12.753"
-    d = new Date(ts + "Z");
-  } else {
-    // Timestamp en ms (depuis Date.now())
-    d = new Date(ts);
-  }
+function fmtTime(ts) {
+  if (!ts) return "";
+
+  // Normalise (chaîne ISO avec ou sans fuseau, ou ms) en ms via supaTs.
+  if (typeof ts === "string") ts = supaTs(ts);
+  const d = new Date(ts);
 
   // ✅ JavaScript gère automatiquement le fuseau horaire!
   // getHours() retourne l'heure locale, pas UTC
@@ -359,6 +371,22 @@ function fmtEventDate(ts) {
     month: d.toLocaleDateString("fr-FR", { month: "short" }).replace(".", ""),
     time: (h < 10 ? "0" : "") + h + "h" + (m > 0 ? (m < 10 ? "0" : "") + m : ""),
   };
+}
+
+// Échappe une valeur injectée dans une chaîne JS simple-quotée D'UN ATTRIBUT
+// onclick. Contexte double : le parser HTML décode les entités AVANT le parse JS
+// — escapeHtml seul transforme ' en &#39; que le HTML re-décode en ' → SyntaxError
+// (bouton mort) dès qu'un pseudo contient une apostrophe (« L'ami »). On échappe
+// donc l'apostrophe côté JS (\') et le reste côté HTML.
+function escapeJsArg(s) {
+  return String(s == null ? "" : s)
+    .replace(/\\/g, "\\\\")
+    .replace(/'/g, "\\'")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/\r|\n/g, " ");
 }
 
 function escapeHtml(s) {
@@ -2320,7 +2348,7 @@ function renderPostHTML(p) {
           <span class="comment-action ${cLiked ? "liked" : ""}" onclick="return likeComment('${p.id}','${c.id}', event);">
             ${cLiked ? "❤️" : "🤍"} ${cLikes}
           </span>
-          <span class="comment-action" onclick="return replyToComment('${p.id}','${c.id}','${escapeHtml(cu.name)}', event);" title="Répondre">💬</span>
+          <span class="comment-action" onclick="return replyToComment('${p.id}','${c.id}','${escapeJsArg(cu.name)}', event);" title="Répondre">💬</span>
           <span class="comment-action" onclick="return showEmojiPickerForComment('${p.id}','${c.id}', event);" title="Emoji & GIF">😊</span>
           ${cReplies.length > 0 ? `<span class="comment-reply-count" onclick="event.stopPropagation();openComments('${p.id}');return false;">▼ ${cReplies.length} réponse${cReplies.length > 1 ? "s" : ""}</span>` : ""}
         </div>
@@ -2444,7 +2472,7 @@ async function openPost(id) {
           <span class="comment-action ${cLiked ? "liked" : ""}" onclick="return likeComment('${id}','${c.id}', event);">
             ${cLiked ? "❤️" : "🤍"} ${cLikes}
           </span>
-          <span class="comment-action" onclick="return replyToComment('${id}','${c.id}','${escapeHtml(cName)}', event);" title="Répondre">💬</span>
+          <span class="comment-action" onclick="return replyToComment('${id}','${c.id}','${escapeJsArg(cName)}', event);" title="Répondre">💬</span>
           <span class="comment-action" onclick="return showEmojiPickerForComment('${id}','${c.id}', event);" title="Emoji & GIF">😊</span>
           ${cReplies.length > 0 ? `<span class="comment-reply-count" onclick="return toggleCommentReplies('${c.id}', event);">▼ ${cReplies.length} réponse${cReplies.length > 1 ? "s" : ""}</span>` : ""}
           ${(c.emojis || []).length > 0 ? `<span class="comment-emoji-count" onclick="return toggleCommentEmojis('${c.id}', event);">${(c.emojis || []).length} emoji</span>` : ""}

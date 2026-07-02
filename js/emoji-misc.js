@@ -568,9 +568,25 @@ function addEmojiToPost(postId, emoji) {
     createdAt: Date.now()
   });
 
+  // Sync Supabase (convention : comment_id === post_id ⇒ réaction portée par le
+  // POST lui-même). Sans ça la réaction restait locale : aucun autre compte ne la
+  // voyait. Chargée par supaLoadPosts, propagée par realtime:comment_interactions.
+  if (typeof supaCommentInteract === "function") supaCommentInteract(postId, postId, "emoji", emoji);
+  _notifyPostReaction(post, emoji);
+
   if (typeof saveState === "function") saveState();
   updatePostReactionsUI(postId);
   return false;
+}
+
+// Notifie l'auteur du post d'une réaction reçue (cross-compte uniquement).
+function _notifyPostReaction(post, face) {
+  try {
+    var me = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
+    if (post && post.authorId && post.authorId !== me && post.fromSupabase && typeof supaInsertNotif === "function") {
+      supaInsertNotif(post.authorId, "like", post.id, "a réagi " + face + " à ton post");
+    }
+  } catch(e) {}
 }
 
 function showGifPickerForPost(postId, event) {
@@ -609,6 +625,10 @@ function addGifToPost(postId, gifUrl) {
     type: "gif_reaction",
     createdAt: Date.now()
   });
+
+  // Sync Supabase (même convention que addEmojiToPost : comment_id === post_id).
+  if (typeof supaCommentInteract === "function") supaCommentInteract(postId, postId, "gif", gifUrl);
+  _notifyPostReaction(post, "🎬");
 
   if (typeof saveState === "function") saveState();
   updatePostReactionsUI(postId);

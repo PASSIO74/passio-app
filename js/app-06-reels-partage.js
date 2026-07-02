@@ -682,7 +682,7 @@ function renderProfilesScreen() {
         </div>
         <div class="profile-card-passion" style="color:var(--muted);font-size:11px;">${postCount} post${postCount>1?"s":""} · créé le ${fmtDate(p.createdAt)}</div>
       </div>
-      <button onclick="event.stopPropagation();confirmDeleteProfile('${p.id}','${escapeHtml(passion.label)}')" style="flex-shrink:0;width:32px;height:32px;border-radius:50%;border:1px solid rgba(239,68,68,0.3);background:transparent;color:#ef4444;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;">🗑</button>
+      <button onclick="event.stopPropagation();confirmDeleteProfile('${p.id}','${escapeJsArg(passion.label)}')" style="flex-shrink:0;width:32px;height:32px;border-radius:50%;border:1px solid rgba(239,68,68,0.3);background:transparent;color:#ef4444;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;">🗑</button>
     </div>`;
   }).join("");
 
@@ -1801,7 +1801,7 @@ function renderExplorer() {
         <div class="list-row-title">${escapeHtml(u.name)}</div>
         <div class="list-row-meta">${p.emoji} ${p.label} · ${escapeHtml(u.bio || "")}</div>
       </div>
-      <button class="btn small" onclick="event.stopPropagation();toast('+ ${escapeHtml(u.name)} suivi·e')">Suivre</button>
+      <button class="btn small" onclick="event.stopPropagation();toast('+ ${escapeJsArg(u.name)} suivi·e')">Suivre</button>
     </div>`;
   }).join("");
   $("#suggestedCreators").innerHTML = seedHtml;
@@ -1844,7 +1844,7 @@ function renderExplorer() {
               <div class="list-row-title">${escapeHtml(u.name)}</div>
               <div class="list-row-meta">${p.emoji} ${p.label} · ${escapeHtml(u.bio || "")}</div>
             </div>
-            <button class="btn small" onclick="event.stopPropagation();toast('+ ${escapeHtml(u.name)} suivi·e')">Suivre</button>
+            <button class="btn small" onclick="event.stopPropagation();toast('+ ${escapeJsArg(u.name)} suivi·e')">Suivre</button>
           </div>`;
         }).join("");
         el.innerHTML = supaHtml + seedSlice;

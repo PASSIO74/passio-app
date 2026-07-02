@@ -2266,16 +2266,20 @@ async function supaLoadPosts(offset = 0) {
     if (!data || !data.length) return [];
     // Charger tous les likes + counts commentaires d'un coup
     const postIds = data.map(r => r.id);
-    let likesData = [], commentsData = [];
+    let likesData = [], commentsData = [], reactsData = [];
     try {
-      const [likesRes, commentsRes] = await Promise.all([
+      const [likesRes, commentsRes, reactsRes] = await Promise.all([
         supa.from("post_likes").select("post_id, user_id").in("post_id", postIds),
         // ⚠️ PAS d'embed profiles(...) : post_comments n'a pas de FK vers profiles
         // en prod → 400 (commentsData restait vide → posts du feed à "0 commentaire").
         supa.from("post_comments").select("post_id, id, author_id, content, created_at").in("post_id", postIds).order("created_at", { ascending: false }).limit(200),
+        // Réactions emoji/GIF portées par les POSTS (convention comment_id === post_id
+        // dans comment_interactions) → pastille « 😍 N » visible cross-compte.
+        supa.from("comment_interactions").select("comment_id, user_id, kind, payload, created_at").in("comment_id", postIds),
       ]);
       likesData = likesRes.data || [];
       commentsData = commentsRes.data || [];
+      reactsData = reactsRes.data || [];
     } catch(e) {}
     // Résout les auteurs des commentaires en une requête (sans embed).
     const commentProfs = await _resolveProfilesByIds((commentsData || []).map(c => c.author_id));
@@ -2288,7 +2292,7 @@ async function supaLoadPosts(offset = 0) {
         authorName: cp.username || "Profil",
         authorEmoji: cp.emoji || "✨",
         text: c.content || "", content: c.content || "",
-        createdAt: new Date(c.created_at + "Z").getTime(),
+        createdAt: supaTs(c.created_at),
         fromSupabase: true,
       };});
 
@@ -2298,7 +2302,7 @@ async function supaLoadPosts(offset = 0) {
         diagLog(`  - author_id: "${r.author_id}"`);
         diagLog(`  - passion_id: "${r.passion_id}"`);
         diagLog(`  - created_at (raw): ${r.created_at}`);
-        const ts = new Date(r.created_at + "Z").getTime();
+        const ts = supaTs(r.created_at);
         diagLog(`  - createdAt (ms): ${ts}`);
         diagLog(`  - Heure locale: ${new Date(ts).toLocaleString('fr-FR')}`);
         diagLog(`  - profiles?.username: "${r.profiles?.username}"`);
@@ -2357,10 +2361,15 @@ async function supaLoadPosts(offset = 0) {
           if (url.includes(".mp3") || url.includes(".wav") || url.includes("audios/")) return r.media_url;
           return null;
         })(),
-        createdAt: new Date(r.created_at + "Z").getTime(),  // ✅ Ajouter Z pour indiquer que c'est UTC!
+        createdAt: supaTs(r.created_at),  // ✅ Ajouter Z pour indiquer que c'est UTC!
         likes: postLikes.length,
         liked: postLikes.some(l => l.user_id === MY_UID),
         comments: postComments, fromSupabase: true,
+        reactions: reactsData
+          .filter(x => x.comment_id === r.id && (x.kind === "emoji" || x.kind === "gif") && x.payload)
+          .map(x => ({ id: (x.kind === "emoji" ? "semoji_" : "sgif_") + x.created_at + "_" + x.user_id,
+            authorId: x.user_id, text: x.payload,
+            type: x.kind === "emoji" ? "emoji_reaction" : "gif_reaction", createdAt: supaTs(x.created_at) })),
         isReel: !!r.is_reel, // bobine (exclu du feed, affiché dans Bobines)
         overlays: r.overlays || null,
         // 🔄 Repost support: parse shared_from_post_id and shared_data if applicable
@@ -2439,10 +2448,17 @@ async function supaLoadCommentInteractions(commentIds) {
     (res.data || []).forEach(function(r){
       var o = out[r.comment_id] || (out[r.comment_id] = { likes: 0, likedBy: [], replies: [], emojis: [] });
       if (r.kind === "like") { o.likes++; o.likedBy.push(r.user_id); }
-      else if (r.kind === "reply") o.replies.push({ id: "srep_" + r.created_at, authorId: r.user_id, text: r.payload || "", createdAt: new Date(r.created_at + "Z").getTime() });
-      else if (r.kind === "emoji" && r.payload) o.replies.push({ id: "semoji_" + r.created_at + "_" + r.user_id, authorId: r.user_id, text: r.payload, type: "emoji_reaction", createdAt: new Date(r.created_at + "Z").getTime() });
-      else if (r.kind === "gif" && r.payload) o.replies.push({ id: "sgif_" + r.created_at + "_" + r.user_id, authorId: r.user_id, text: r.payload, type: "gif_reaction", createdAt: new Date(r.created_at + "Z").getTime() });
+      else if (r.kind === "reply") o.replies.push({ id: "srep_" + r.created_at, authorId: r.user_id, text: r.payload || "", createdAt: supaTs(r.created_at) });
+      else if (r.kind === "emoji" && r.payload) o.replies.push({ id: "semoji_" + r.created_at + "_" + r.user_id, authorId: r.user_id, text: r.payload, type: "emoji_reaction", createdAt: supaTs(r.created_at) });
+      else if (r.kind === "gif" && r.payload) o.replies.push({ id: "sgif_" + r.created_at + "_" + r.user_id, authorId: r.user_id, text: r.payload, type: "gif_reaction", createdAt: supaTs(r.created_at) });
     });
+    // Résoudre les profils des auteurs d'interactions inconnus localement, sinon
+    // le renderer (userById) affiche « ? » comme pseudo sur les réponses/réactions
+    // reçues d'autres comptes. cacheRemoteProfile (via _resolveProfilesByIds)
+    // alimente state.seed.users → une seule requête, dédupliquée.
+    var unknownIds = [...new Set((res.data || []).map(function(r){ return r.user_id; }))]
+      .filter(function(id){ return id && id !== MY_UID && !(typeof userById === "function" && userById(id)); });
+    if (unknownIds.length) await _resolveProfilesByIds(unknownIds);
   } catch(e) {}
   return out;
 }
@@ -2510,7 +2526,7 @@ async function supaLoadComments(postId) {
         authorName: p.username || "Passionné",
         authorEmoji: p.emoji || "✨",
         content: r.content,
-        createdAt: new Date(r.created_at + "Z").getTime(),
+        createdAt: supaTs(r.created_at),
       };
     });
   } catch(e) { return []; }
@@ -2609,7 +2625,9 @@ async function supaLoadEvents() {
       lat: r.lat, lng: r.lng,
       city: r.city || "",
       emoji: r.emoji || "📍",
-      date: r.date_at ? new Date(r.date_at).getTime() : Date.now(),
+      // supaTs : date_at est stockée en UTC SANS fuseau → un parse local décalait
+      // l'heure affichée de l'événement (ex. -2h en été) chez tous les comptes.
+      date: r.date_at ? supaTs(r.date_at) : Date.now(),
       desc: r.description || "",
       venue: r.venue || "",
       address: r.address || "",
@@ -2757,7 +2775,7 @@ async function supaLoadEventCommentsBatch(eventIds) {
     (data || []).forEach(function(c){
       (out[c.event_id] || (out[c.event_id] = [])).push({
         id: c.id, authorId: c.author_id, author: c.author_name || "Anonyme",
-        authorName: c.author_name || "Anonyme", text: c.text || "", at: new Date(c.created_at).getTime(), fromSupabase: true
+        authorName: c.author_name || "Anonyme", text: c.text || "", at: supaTs(c.created_at), fromSupabase: true
       });
     });
     return out;
@@ -2815,7 +2833,7 @@ async function supaLoadEventComments(eventId) {
   try {
     const { data, error } = await supa.from("event_comments").select("*").eq("event_id", eventId).order("created_at", { ascending: true });
     if (error) { console.warn("load event comments:", error.message); return []; }
-    return (data || []).map(c => ({ id: c.id, authorId: c.author_id, author: c.author_name || "Anonyme", text: c.text || "", at: new Date(c.created_at).getTime() }));
+    return (data || []).map(c => ({ id: c.id, authorId: c.author_id, author: c.author_name || "Anonyme", text: c.text || "", at: supaTs(c.created_at) }));
   } catch(e) { console.warn("load event comments:", e); return []; }
 }
 // ── Likes cross-compte sur les commentaires (table comment_likes) ──
@@ -2898,14 +2916,14 @@ async function supaLoadCdvLives() {
         steps: (stepsBy[r.id] || []).map(s => ({
           id: s.id, city: s.city || "", emoji: s.emoji || "📍", content: s.content || "",
           photos: Array.isArray(s.photos) ? s.photos : [], photo: (Array.isArray(s.photos) && s.photos[0]) || null,
-          rating: s.rating || 0, budget: s.budget || "", createdAt: new Date(s.created_at).getTime(),
+          rating: s.rating || 0, budget: s.budget || "", createdAt: supaTs(s.created_at),
         })),
-        comments: (comBy[r.id] || []).map(c => ({ id: c.id, authorId: c.author_id, author: c.author_name || "Anonyme", text: c.text || "", at: new Date(c.created_at).getTime() })),
+        comments: (comBy[r.id] || []).map(c => ({ id: c.id, authorId: c.author_id, author: c.author_name || "Anonyme", text: c.text || "", at: supaTs(c.created_at) })),
         reactions: (reacBy[r.id] || []).map(x => x.emoji),
         // Garde l'auteur de chaque réaction → pastille « qui a réagi » sur les cartes live.
         reactionsBy: (reacBy[r.id] || []).map(x => ({ emoji: x.emoji, userId: x.user_id })),
         followers: followers, viewers: followers, currentViewers: followers.length,
-        createdAt: new Date(r.created_at).getTime(),
+        createdAt: supaTs(r.created_at),
         fromSupabase: true,
       };
     });
@@ -3118,7 +3136,7 @@ async function supaLoadMessages(convId) {
         fromName: (r.profiles && r.profiles.username) ? r.profiles.username : "Passionné",
         fromEmoji: (r.profiles && r.profiles.emoji) ? r.profiles.emoji : "✨",
         text: contentData && contentData.text ? contentData.text : contentText,
-        at: new Date(r.created_at + "Z").getTime(),
+        at: supaTs(r.created_at),
       };
 
       // Messages de contrôle (réaction / suppression) : pas de bulle, on les marque.
@@ -3237,7 +3255,7 @@ async function supaLoadMyConversations() {
       }
       let lastMsg = null;
       if (last) {
-        lastMsg = { id: last.id, from: last.from_id === MY_UID ? "me" : last.from_id, fromName: last.profiles?.username || "Passionné", text: last.content, at: new Date(last.created_at + "Z").getTime() };
+        lastMsg = { id: last.id, from: last.from_id === MY_UID ? "me" : last.from_id, fromName: last.profiles?.username || "Passionné", text: last.content, at: supaTs(last.created_at) };
         applyMsgContentData(lastMsg, last.content); // aperçu : "🎙 Message vocal" + sp (profil expéditeur)
       }
       // Si le dernier message reçu porte le profil/persona de l'expéditeur, il prime
@@ -3252,7 +3270,7 @@ async function supaLoadMyConversations() {
         userName: lastSp?.n || otherProf?.username || "Passionné",
         userPhoto: lastSp?.ph || otherProf?.avatar_url || null,
         userIds: members.map(m => m.user_id),
-        lastAt: last ? new Date(last.created_at + "Z").getTime() : new Date(c.created_at + "Z").getTime(),
+        lastAt: last ? supaTs(last.created_at) : supaTs(c.created_at),
         unread: 0,
         messages: lastMsg ? [lastMsg] : [],
         fromSupabase: true,
@@ -3405,7 +3423,7 @@ async function _handleIncomingConvMessage(r) {
         userName: other?.profiles?.username || "Passionné",
         userPhoto: other?.profiles?.avatar_url || null,
         userIds: (members || []).map(m => m.user_id),
-        lastAt: new Date(r.created_at + "Z").getTime(), unread: 0, messages: [], fromSupabase: true,
+        lastAt: supaTs(r.created_at), unread: 0, messages: [], fromSupabase: true,
       };
       convs.unshift(conv);
       if (window.PASSIO_REALTIME_V2 && window._subscribePrivateConv) window._subscribePrivateConv(r.conv_id);
@@ -3414,7 +3432,7 @@ async function _handleIncomingConvMessage(r) {
 
   // Profil depuis cache (0 requête si déjà connu)
   const prof = await _fetchProfile(r.from_id);
-  const msgAt = new Date(r.created_at + "Z").getTime();
+  const msgAt = supaTs(r.created_at);
   const newMsg = { id: r.id, from: r.from_id, fromName: prof.username, fromEmoji: prof.emoji, text: r.content, at: msgAt };
   applyMsgContentData(newMsg, r.content); // décode gif/media/audio/doc/location (+ sp = profil expéditeur)
 
@@ -3587,7 +3605,7 @@ function supaSubscribe() {
           userName: other?.profiles?.username || "Passionné",
           userPhoto: other?.profiles?.avatar_url || null,
           userIds: (members || []).map(m => m.user_id),
-          lastAt: new Date(convData?.created_at || Date.now()).getTime(),
+          lastAt: convData && convData.created_at ? supaTs(convData.created_at) : Date.now(),
           unread: 0,
           messages: [],
           fromSupabase: true,
@@ -3647,7 +3665,7 @@ function supaSubscribe() {
         const { data: prof } = await supa.from("profiles").select("username,emoji,color").eq("id", r.author_id).maybeSingle();
         const _mu = (r.media_url || "").toLowerCase();
         const _isVid = _mu.includes(".mp4") || _mu.includes("videos/");
-        const newPost = { id: r.id, authorId: r.author_id, authorName: prof?.username || "Passionne", authorEmoji: prof?.emoji || "✨", authorColor: prof?.color || "#8b5cf6", passion: r.passion_id || "autre", mood: r.mood || "all", type: _isVid ? "video" : "text", text: r.content || "", image: _isVid ? null : (r.media_url || null), video: _isVid ? r.media_url : null, isReel: !!r.is_reel, overlays: r.overlays || null, createdAt: new Date(r.created_at + "Z").getTime(), likes: 0, liked: false, comments: [], fromSupabase: true };
+        const newPost = { id: r.id, authorId: r.author_id, authorName: prof?.username || "Passionne", authorEmoji: prof?.emoji || "✨", authorColor: prof?.color || "#8b5cf6", passion: r.passion_id || "autre", mood: r.mood || "all", type: _isVid ? "video" : "text", text: r.content || "", image: _isVid ? null : (r.media_url || null), video: _isVid ? r.media_url : null, isReel: !!r.is_reel, overlays: r.overlays || null, createdAt: supaTs(r.created_at), likes: 0, liked: false, comments: [], fromSupabase: true };
         // ✅ Ajouter dans state.supabasePosts, pas state.seed.posts!
         if (!state.supabasePosts.find(p => p.id === newPost.id)) {
           state.supabasePosts.unshift(newPost);
@@ -3694,7 +3712,7 @@ function supaSubscribe() {
       const notif = {
         id: r.id, kind: r.kind, fromId: r.from_id, refId: r.ref_id,
         text: r.content || "", emoji: _notifEmoji(r.kind),
-        createdAt: new Date((r.created_at || "") + "Z").getTime() || Date.now(),
+        createdAt: supaTs(r.created_at),
         unread: !r.seen, fromSupabase: true,
       };
       if ((state.notifications || []).some(n => n.id === notif.id)) return;
@@ -3719,7 +3737,7 @@ function supaSubscribe() {
           const { data: prof } = await supa.from("profiles").select("username,emoji").eq("id", r.author_id).maybeSingle();
           if (!post.comments) post.comments = [];
           if (!post.comments.find(c => c.id === r.id)) {
-            post.comments.unshift({ id: r.id, authorId: r.author_id, authorName: prof?.username || "Passionne", authorEmoji: prof?.emoji || "✨", text: r.content || "", content: r.content || "", createdAt: new Date(r.created_at + "Z").getTime(), fromSupabase: true });
+            post.comments.unshift({ id: r.id, authorId: r.author_id, authorName: prof?.username || "Passionne", authorEmoji: prof?.emoji || "✨", text: r.content || "", content: r.content || "", createdAt: supaTs(r.created_at), fromSupabase: true });
           }
           try { scheduleFeedRender(); } catch(e) {}
           // Si la modale commentaires de ce post est ouverte → l'actualiser en direct.
@@ -3858,7 +3876,7 @@ async function supaLoadNotifications() {
       id: r.id, kind: r.kind, fromId: r.from_id, refId: r.ref_id,
       text: r.content || "",
       emoji: _notifEmoji(r.kind),
-      createdAt: new Date(r.created_at + "Z").getTime(),
+      createdAt: supaTs(r.created_at),
       unread: !r.seen,
       fromSupabase: true,
     }));

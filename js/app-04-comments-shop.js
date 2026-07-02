@@ -212,7 +212,7 @@ function _renderCommentsList(allComments, postId) {
           <span class="comment-action ${cLiked ? "liked" : ""}" onclick="return likeComment('${postId}','${c.id}', event);">
             ${cLiked ? "❤️" : "🤍"} ${cLikes}
           </span>
-          <span class="comment-action" onclick="return replyToComment('${postId}','${c.id}','${escapeHtml(name)}', event);" title="Répondre">💬</span>
+          <span class="comment-action" onclick="return replyToComment('${postId}','${c.id}','${escapeJsArg(name)}', event);" title="Répondre">💬</span>
           <span class="comment-action" onclick="return showEmojiPickerForComment('${postId}','${c.id}', event);" title="Emoji & GIF">😊</span>
           ${cReactChip}
           ${cReplies.length > 0 ? `<span class="comment-reply-count" onclick="return toggleCommentReplies('${c.id}', event);">▲ Masquer les réponses</span>` : ""}
@@ -576,25 +576,51 @@ function _applyCommentInteractionEvent(r, op) {
         }
       }
     }
-    if (!comment) return; // fil/commentaire pas chargé localement → rien à faire
+    if (!comment) {
+      // Réaction portée par le POST lui-même (convention comment_id === post_id) :
+      // on l'applique à post.reactions → pastille « 😍 N » mise à jour en direct.
+      if (op === "add" && r.comment_id === r.post_id && (r.kind === "emoji" || r.kind === "gif")
+          && r.payload && typeof findPostAnywhere === "function") {
+        var _post = findPostAnywhere(r.post_id);
+        if (_post) {
+          if (!Array.isArray(_post.reactions)) _post.reactions = [];
+          var _prid = (r.kind === "emoji" ? "semoji_" : "sgif_") + (r.created_at || Date.now()) + "_" + r.user_id;
+          if (!_post.reactions.find(function(x){ return x.id === _prid; })) {
+            _post.reactions.push({ id: _prid, authorId: r.user_id, text: r.payload,
+              type: r.kind === "emoji" ? "emoji_reaction" : "gif_reaction", createdAt: supaTs(r.created_at) });
+            try { saveState(); } catch(e) {}
+            if (typeof updatePostReactionsUI === "function") updatePostReactionsUI(r.post_id);
+          }
+        }
+      }
+      return; // sinon : fil/commentaire pas chargé localement → rien à faire
+    }
     comment.likedBy = comment.likedBy || []; comment.replies = comment.replies || []; comment.emojis = comment.emojis || [];
     if (r.kind === "like") {
       if (op === "add") { if (comment.likedBy.indexOf(r.user_id) < 0) { comment.likedBy.push(r.user_id); comment.likes = (comment.likes || 0) + 1; } }
       else { if (comment.likedBy.indexOf(r.user_id) > -1) { comment.likedBy = comment.likedBy.filter(function(x){ return x !== r.user_id; }); comment.likes = Math.max(0, (comment.likes || 1) - 1); } }
     } else if (r.kind === "reply" && op === "add") {
       var rid = "srep_" + r.created_at;
-      if (!comment.replies.find(function(x){ return x.id === rid; })) comment.replies.push({ id: rid, authorId: r.user_id, text: r.payload || "", createdAt: r.created_at ? new Date(r.created_at + "Z").getTime() : Date.now() });
+      if (!comment.replies.find(function(x){ return x.id === rid; })) comment.replies.push({ id: rid, authorId: r.user_id, text: r.payload || "", createdAt: supaTs(r.created_at) });
     } else if (r.kind === "emoji" && op === "add" && r.payload) {
       var eid = "semoji_" + (r.created_at || Date.now()) + "_" + r.user_id;
       if (!comment.replies.find(function(x){ return x.id === eid; }))
-        comment.replies.push({ id: eid, authorId: r.user_id, text: r.payload, type: "emoji_reaction", createdAt: r.created_at ? new Date(r.created_at + "Z").getTime() : Date.now() });
+        comment.replies.push({ id: eid, authorId: r.user_id, text: r.payload, type: "emoji_reaction", createdAt: supaTs(r.created_at) });
     } else if (r.kind === "gif" && op === "add" && r.payload) {
       var gid = "sgif_" + (r.created_at || Date.now()) + "_" + r.user_id;
       if (!comment.replies.find(function(x){ return x.id === gid; }))
-        comment.replies.push({ id: gid, authorId: r.user_id, text: r.payload, type: "gif_reaction", createdAt: r.created_at ? new Date(r.created_at + "Z").getTime() : Date.now() });
+        comment.replies.push({ id: gid, authorId: r.user_id, text: r.payload, type: "gif_reaction", createdAt: supaTs(r.created_at) });
     }
     if (typeof thread.save === "function") thread.save(); else saveState();
     if (typeof _refreshCommentThreadUI === "function") _refreshCommentThreadUI(r.post_id);
+    // Profil de l'auteur inconnu localement → le résoudre puis re-render, sinon
+    // la réponse/réaction realtime s'affiche avec « ? » comme pseudo.
+    if (op === "add" && r.user_id && typeof userById === "function" && !userById(r.user_id)
+        && typeof _resolveProfilesByIds === "function") {
+      _resolveProfilesByIds([r.user_id]).then(function(){
+        if (typeof _refreshCommentThreadUI === "function") _refreshCommentThreadUI(r.post_id);
+      }).catch(function(){});
+    }
   } catch(e) {}
 }
 
@@ -2061,8 +2087,8 @@ async function openUserProfile(authorId, source) {
     \
     <!-- BOUTONS -->\
     <div style="display:flex;gap:8px;justify-content:center;margin-bottom:16px;">\
-      <button class="btn primary" onclick="closeModal();startDirectMessage(\'' + authorId + '\',\'' + escapeHtml(user.name || "Passionné") + '\',\'' + (user.profileEmoji || "✨") + '\',\'' + (user.avatar || "#8b5cf6") + '\',\'' + (user.photoUrl || "") + '\')" style="font-size:12px;padding:10px 18px;border-radius:14px;">💬 Message</button>\
-      <button class="btn ghost" id="followBtn_' + authorId + '" onclick="toggleFollowUser(\'' + authorId + '\',\'' + escapeHtml(user.name || "") + '\')" style="font-size:12px;padding:10px 18px;border-radius:14px;' + ((state.user.following||[]).includes(authorId) ? 'background:var(--accent);color:#fff;border-color:var(--accent);' : '') + '">' + ((state.user.following||[]).includes(authorId) ? '✓ Suivi' : '➕ Suivre') + '</button>\
+      <button class="btn primary" onclick="closeModal();startDirectMessage(\'' + authorId + '\',\'' + escapeJsArg(user.name || "Passionné") + '\',\'' + (user.profileEmoji || "✨") + '\',\'' + (user.avatar || "#8b5cf6") + '\',\'' + (user.photoUrl || "") + '\')" style="font-size:12px;padding:10px 18px;border-radius:14px;">💬 Message</button>\
+      <button class="btn ghost" id="followBtn_' + authorId + '" onclick="toggleFollowUser(\'' + authorId + '\',\'' + escapeJsArg(user.name || "") + '\')" style="font-size:12px;padding:10px 18px;border-radius:14px;' + ((state.user.following||[]).includes(authorId) ? 'background:var(--accent);color:#fff;border-color:var(--accent);' : '') + '">' + ((state.user.following||[]).includes(authorId) ? '✓ Suivi' : '➕ Suivre') + '</button>\
     </div>\
     \
     <!-- STATS -->\
@@ -2083,11 +2109,11 @@ async function openUserProfile(authorId, source) {
     \
     <!-- ACTIONS RAPIDES -->\
     <div style="display:flex;gap:8px;margin-bottom:16px;">\
-      <button class="btn ghost" onclick="shareUserProfile(\'' + authorId + '\',\'' + escapeHtml(user.name || "") + '\')" style="flex:1;font-size:11px;padding:8px;">' + shareIconSvg(14) + ' Partager</button>\
-      <button class="btn ghost" onclick="reportUser(\'' + authorId + '\',\'' + escapeHtml(user.name || "") + '\')" style="flex:1;font-size:11px;padding:8px;color:#f59e0b;border-color:rgba(245,158,11,0.3);">🚩 Signaler</button>\
+      <button class="btn ghost" onclick="shareUserProfile(\'' + authorId + '\',\'' + escapeJsArg(user.name || "") + '\')" style="flex:1;font-size:11px;padding:8px;">' + shareIconSvg(14) + ' Partager</button>\
+      <button class="btn ghost" onclick="reportUser(\'' + authorId + '\',\'' + escapeJsArg(user.name || "") + '\')" style="flex:1;font-size:11px;padding:8px;color:#f59e0b;border-color:rgba(245,158,11,0.3);">🚩 Signaler</button>\
       ' + (isBlocked(authorId)
-        ? '<button class="btn ghost" onclick="unblockUser(\'' + authorId + '\',\'' + escapeHtml(user.name || "") + '\');closeModal();" style="flex:1;font-size:11px;padding:8px;">✅ Débloquer</button>'
-        : '<button class="btn ghost" onclick="blockUser(\'' + authorId + '\',\'' + escapeHtml(user.name || "") + '\')" style="flex:1;font-size:11px;padding:8px;color:#ef4444;border-color:rgba(239,68,68,0.3);">🚫 Bloquer</button>') + '\
+        ? '<button class="btn ghost" onclick="unblockUser(\'' + authorId + '\',\'' + escapeJsArg(user.name || "") + '\');closeModal();" style="flex:1;font-size:11px;padding:8px;">✅ Débloquer</button>'
+        : '<button class="btn ghost" onclick="blockUser(\'' + authorId + '\',\'' + escapeJsArg(user.name || "") + '\')" style="flex:1;font-size:11px;padding:8px;color:#ef4444;border-color:rgba(239,68,68,0.3);">🚫 Bloquer</button>') + '\
     </div>\
     \
     <!-- PUBLICATIONS -->\
@@ -2175,7 +2201,7 @@ function _blockedListHtml() {
     return `<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);">
       <div class="avatar sm" style="background:${avatarBg(u)};">${avatarInner(u)}</div>
       <div style="flex:1;font-weight:700;font-size:13px;color:var(--text);">${escapeHtml(name)}</div>
-      <button class="btn ghost" style="font-size:11px;padding:6px 12px;" onclick="unblockUser('${id}','${escapeHtml(name)}')">Débloquer</button>
+      <button class="btn ghost" style="font-size:11px;padding:6px 12px;" onclick="unblockUser('${id}','${escapeJsArg(name)}')">Débloquer</button>
     </div>`;
   }).join("");
 }
@@ -3360,7 +3386,7 @@ function _supaConvSpecificChannel(convId, displayName) {
 
       // Profil depuis cache (0 requête si déjà connu)
       const prof = await _fetchProfile(r.from_id);
-      const newMsg = { id: r.id, from: r.from_id, fromName: prof.username, fromEmoji: prof.emoji, text: r.content, at: new Date(r.created_at + "Z").getTime() };
+      const newMsg = { id: r.id, from: r.from_id, fromName: prof.username, fromEmoji: prof.emoji, text: r.content, at: supaTs(r.created_at) };
 
       const convs = getConversations();
       const c = convs.find(x => x.id === convId);

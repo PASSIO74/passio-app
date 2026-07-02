@@ -2134,7 +2134,7 @@ function loadReelComments(postId) {
           <div class="reel-comment-text">${escapeHtml(c.text || c.content || "")}</div>
           <div class="reel-comment-footer">
             <span class="reel-comment-like ${isLiked ? 'liked' : ''}" onclick="likeReelComment('${postId}', ${idx})">${isLiked ? '❤️' : '🤍'} ${likesCount}</span>
-            <span class="reel-comment-reply" onclick="replyToReelCommentBox('${postId}', ${idx}, '${escapeHtml(commenter.name)}')">💬</span>
+            <span class="reel-comment-reply" onclick="replyToReelCommentBox('${postId}', ${idx}, '${escapeJsArg(commenter.name)}')">💬</span>
             <span class="reel-comment-action" onclick="showQuickEmojiForReelComment('${postId}', ${idx}, event)" title="Réagir">😊</span>
             ${replies.length > 0 ? `<span class="reel-comment-reply-count" onclick="toggleReelCommentReplies(${idx})">${replies.length} réponse${replies.length > 1 ? 's' : ''}</span>` : ''}
           </div>
