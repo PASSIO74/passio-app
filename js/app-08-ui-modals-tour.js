@@ -3197,7 +3197,7 @@ async function supaLoadOtherRead(convId) {
     const { data } = await supa.from("conv_reads").select("user_id,last_read_at").eq("conv_id", convId).neq("user_id", MY_UID);
     if (!data || !data.length) return;
     var maxAt = 0;
-    data.forEach(function(r){ var t = new Date(r.last_read_at).getTime(); if (t > maxAt) maxAt = t; });
+    data.forEach(function(r){ var t = supaTs(r.last_read_at); if (t > maxAt) maxAt = t; });
     var c = getConversations().find(function(x){ return x.id === convId; });
     if (c && maxAt) {
       c._otherReadAt = maxAt; c._otherRead = true;
@@ -3472,11 +3472,14 @@ async function _handleIncomingConvMessage(r) {
     _playMsgSound();
     // Notif dans l'onglet 🔔 Notifications (+ badge cloche + titre onglet)
     try {
+      // Signature : pushNotification(text, emoji, fromId) — l'ancien appel
+      // (sender, body, "✉️") mettait le corps dans l'emoji et rendait le pseudo
+      // BRUT (innerHTML) comme texte. escapeHtml : pseudo contrôlé par l'expéditeur.
       var _msgSender = (prof && prof.username) ? prof.username : (conv.userName || "Quelqu'un");
-      var _msgBody = conv.isGroup
-        ? "Nouveau message dans " + (conv.groupName || "le groupe")
-        : "t'a envoyé un message";
-      pushNotification(_msgSender, _msgBody, "✉️");
+      var _msgText = conv.isGroup
+        ? "💬 Nouveau message de <b>" + escapeHtml(_msgSender) + "</b> dans <b>" + escapeHtml(conv.groupName || "le groupe") + "</b>"
+        : "✉️ <b>" + escapeHtml(_msgSender) + "</b> t'a envoyé un message";
+      pushNotification(_msgText, "✉️", r.from_id);
     } catch(e) {}
     try { renderMessages(); } catch(e) {}
   }
@@ -3550,7 +3553,7 @@ function supaSubscribe() {
       var r = payload.new; if (!r || r.user_id === MY_UID) return;
       var c = getConversations().find(function(x){ return x.id === r.conv_id || (!x.isGroup && x.userId === r.user_id); });
       if (!c) return;
-      var t = new Date(r.last_read_at).getTime();
+      var t = supaTs(r.last_read_at);
       if (t > (c._otherReadAt || 0)) {
         c._otherReadAt = t; c._otherRead = true;
         if (window._openedConvId === c.id || window._openedConvId === r.conv_id) {

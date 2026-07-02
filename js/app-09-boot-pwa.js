@@ -991,24 +991,24 @@ function shareLocation() {
       };
       var contentJson = JSON.stringify(contentData);
 
-      // Essayer SANS from_id d'abord
+      // AVEC from_id d'abord : la RLS v2 rejette TOUJOURS l'insert sans from_id
+      // (même ordre que sendMessageToSupabase — l'ancien ordre inverse échouait
+      // systématiquement au 1er essai et gaspillait une requête par position).
       supa.from("conv_messages").insert({
         id: msgId,
         conv_id: convId,
+        from_id: (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : null,
         content: _withSenderMeta(contentJson),
         created_at: new Date().toISOString()
       }).then(function(res) {
         if(res.error) {
-          // Fallback: essayer AVEC from_id
-          if (MY_UID) {
-            supa.from("conv_messages").insert({
-              id: msgId,
-              conv_id: convId,
-              from_id: MY_UID,
-              content: _withSenderMeta(contentJson),
-              created_at: new Date().toISOString()
-            }).catch(function() {});
-          }
+          // Fallback sans from_id (par prudence, ex. RLS historique)
+          supa.from("conv_messages").insert({
+            id: msgId,
+            conv_id: convId,
+            content: _withSenderMeta(contentJson),
+            created_at: new Date().toISOString()
+          }).catch(function() {});
         }
       }).catch(function(err) {
         // Continuer même en cas d'erreur

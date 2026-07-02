@@ -1747,8 +1747,9 @@ function allFeedPosts() {
     return true;
   });
 
-  // Trier par date décroissante
-  return deduplicated.sort((a, b) => b.createdAt - a.createdAt);
+  // Trier par date décroissante (guard `|| 0` : un post sans createdAt donnait
+  // NaN → ordre instable, cartes éparpillées dans le fil).
+  return deduplicated.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 }
 
 // Profils sélectionnés pour filtrer le fil (multi-sélection)
