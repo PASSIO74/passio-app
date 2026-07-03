@@ -1,4 +1,66 @@
 // ---- Affichage résultats IA ----
+// Peint le bloc de réponse (en-tête + badge de source + corps + recherches liées).
+// `bodyHtml` est déjà du HTML sûr (réponse IA échappée, ou HTML local maîtrisé).
+function _aiRenderResult(query, bodyHtml, badge) {
+  var resultContent = document.getElementById("aiResultContent");
+  if (!resultContent) return;
+  var related = aiGetRelated(query);
+  var relatedHTML = related.length
+    ? '<div class="ai-section-label" style="margin-top:18px;">Recherches liées</div>' +
+      '<div class="ai-related">' +
+        related.map(function(s) {
+          return '<button class="ai-related-btn" onclick="sendAIQuery(\'' + s.replace(/'/g, "\\'") + '\')">' + escapeHtml(s) + '</button>';
+        }).join("") +
+      '</div>'
+    : "";
+  resultContent.innerHTML =
+    '<div class="ai-result-header">' +
+      '<div class="ai-result-query">"' + escapeHtml(query) + '"</div>' +
+      '<button class="ai-result-back" onclick="aiShowHome()">‹ Retour</button>' +
+    '</div>' +
+    '<div style="display:inline-flex;align-items:center;gap:6px;background:rgba(124,58,237,0.08);border:1px solid rgba(124,58,237,0.2);border-radius:20px;padding:4px 10px;font-size:11px;color:var(--muted);margin-bottom:12px;">' +
+      badge +
+    '</div>' +
+    bodyHtml +
+    relatedHTML;
+}
+
+// Interroge l'Edge Function `ask-ai` (Claude) avec un timeout. Renvoie le texte
+// de réponse, ou null si indisponible (fonction non déployée, hors-ligne, pas de
+// session, erreur, timeout) → le client retombe alors sur le moteur local.
+async function _aiAskRemote(query, timeoutMs) {
+  try {
+    if (typeof supa === "undefined" || !supa || !window._supaReal || !supa.functions) return null;
+    var invoke = supa.functions.invoke("ask-ai", { body: { query: query } });
+    var timeout = new Promise(function(resolve) { setTimeout(function(){ resolve({ _timeout: true }); }, timeoutMs || 8000); });
+    var res = await Promise.race([invoke, timeout]);
+    if (!res || res._timeout) return null;
+    if (res.error) return null;
+    var txt = res.data && res.data.text;
+    return (typeof txt === "string" && txt.trim()) ? txt.trim() : null;
+  } catch (e) { return null; }
+}
+
+// Transforme le texte brut de l'IA en HTML sûr : échappe tout, puis rend les
+// sauts de ligne et les puces « - » simples. Pas d'HTML arbitraire de l'IA.
+function _aiTextToHtml(text) {
+  var lines = String(text).split(/\n+/).map(function(l){ return l.trim(); }).filter(Boolean);
+  var html = "";
+  var inList = false;
+  lines.forEach(function(l) {
+    var m = l.match(/^[-*•]\s+(.*)$/);
+    if (m) {
+      if (!inList) { html += '<ul style="margin:6px 0 6px 18px;padding:0;">'; inList = true; }
+      html += '<li style="margin:2px 0;">' + escapeHtml(m[1]) + '</li>';
+    } else {
+      if (inList) { html += '</ul>'; inList = false; }
+      html += '<p style="margin:6px 0;line-height:1.5;">' + escapeHtml(l) + '</p>';
+    }
+  });
+  if (inList) html += '</ul>';
+  return '<div class="ai-answer" style="font-size:14px;color:var(--text);">' + html + '</div>';
+}
+
 function sendAIQuery(forceQuery) {
   var inp = document.getElementById("aiInput");
   var query = (forceQuery || (inp ? inp.value : "")).trim();
@@ -22,33 +84,23 @@ function sendAIQuery(forceQuery) {
     '</div>' +
     '<div class="ai-loading">' +
       '<div class="ai-dot"></div><div class="ai-dot"></div><div class="ai-dot"></div>' +
-      '<span>Suggestions en cours…</span>' +
+      '<span>Réflexion en cours…</span>' +
     '</div>';
 
-  // Générer la réponse après court délai
-  setTimeout(function() {
-    var response = aiGenerateResponse(query);
-    var related = aiGetRelated(query);
-    var relatedHTML = related.length
-      ? '<div class="ai-section-label" style="margin-top:18px;">Recherches liées</div>' +
-        '<div class="ai-related">' +
-          related.map(function(s) {
-            return '<button class="ai-related-btn" onclick="sendAIQuery(\'' + s.replace(/'/g, "\\'") + '\')">' + s + '</button>';
-          }).join("") +
-        '</div>'
-      : "";
-
-    resultContent.innerHTML =
-      '<div class="ai-result-header">' +
-        '<div class="ai-result-query">"' + escapeHtml(query) + '"</div>' +
-        '<button class="ai-result-back" onclick="aiShowHome()">‹ Retour</button>' +
-      '</div>' +
-      '<div style="display:inline-flex;align-items:center;gap:6px;background:rgba(124,58,237,0.08);border:1px solid rgba(124,58,237,0.2);border-radius:20px;padding:4px 10px;font-size:11px;color:var(--muted);margin-bottom:12px;">' +
-        '✨ Suggestions locales — IA complète bientôt disponible' +
-      '</div>' +
-      response +
-      relatedHTML;
-  }, 500 + Math.random() * 400);
+  // 1) On tente l'IA Claude (Edge Function). 2) Repli automatique et transparent
+  // sur le moteur local si elle n'est pas déployée / indisponible → l'assistant
+  // marche toujours, l'IA « réelle » l'améliore quand le secret est posé.
+  _aiAskRemote(query, 9000).then(function(remote) {
+    // La requête a pu être remplacée entre-temps (l'utilisateur a reposé une
+    // question) — ne peindre que si l'écran affiche toujours CETTE requête.
+    var cur = document.querySelector("#aiResultContent .ai-result-query");
+    if (cur && cur.textContent !== '"' + query + '"') return;
+    if (remote) {
+      _aiRenderResult(query, _aiTextToHtml(remote), "✨ Assistant PASSIO");
+    } else {
+      _aiRenderResult(query, aiGenerateResponse(query), "💡 Suggestions PASSIO");
+    }
+  });
 }
 
 function aiShowHome() {
