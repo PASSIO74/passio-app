@@ -1640,9 +1640,8 @@ async function _loadEventCommentsPreviews(ids) {
   try {
     var map = await supaLoadEventCommentsBatch(ids);
     if (!map) return;
-    window._eventCommentsCache = window._eventCommentsCache || {};
     Object.keys(map).forEach(function(id){
-      window._eventCommentsCache[id] = map[id];
+      _setEventComments(id, map[id]);
       _patchEventCommentsInline(id);
     });
   } catch(e) {}
@@ -1668,6 +1667,7 @@ async function _loadEventCommentCounts(ids) {
     var counts = await supaLoadEventCommentCounts(ids);
     if (!counts) return;
     Object.keys(counts).forEach(function(id){ window._eventCommentCounts[id] = counts[id]; });
+    if (typeof _persistEventComments === "function") _persistEventComments();
     ids.forEach(function(id){
       var el = document.querySelector('[data-evc="' + id + '"]');
       if (el) el.textContent = "💬 " + _eventCmtBadge(id);
@@ -2163,7 +2163,63 @@ function shareEvent(id) {
 // COMMENTAIRES D'ÉVÉNEMENTS IRL (cross-compte via table event_comments).
 // Cache mémoire par événement pour un rendu optimiste sans flash de chargement.
 // ════════════════════════════════════════════════════════════════════════
-var _eventCommentsCache = {};
+// ⚠️ UNE seule référence : le MÊME objet que window._eventCommentsCache (lu par
+// _findCommentThread app-04, les previews de cartes et la démo). Avant, cette var
+// était un objet DISTINCT de window.* : les previews bulk chargées dans window
+// restaient invisibles pour _renderEventComments (qui lit la var), et
+// addEventComment réassignait window = var en JETANT les previews des autres
+// événements.
+var _eventCommentsCache = (window._eventCommentsCache = window._eventCommentsCache || {});
+var EVENT_COMMENTS_LS_KEY = "passio_event_comments_v1";
+
+// Cache localStorage best-effort (échec quota toléré) : les commentaires
+// d'événements ne vivaient qu'en RAM → cartes vides au reload jusqu'à la réponse
+// serveur, rien hors-ligne (P1 du rapport 2026-07-02). Le serveur reste la source
+// de vérité (_setEventComments écrase au chargement) ; les commentaires de démo
+// (_demo) sont exclus pour que les événements seed restent re-seedés.
+function _persistEventComments() {
+  clearTimeout(window._evCmtPersistT);
+  window._evCmtPersistT = setTimeout(function () {
+    try {
+      var out = {};
+      Object.keys(_eventCommentsCache).forEach(function (id) {
+        var arr = (_eventCommentsCache[id] || []).filter(function (c) { return c && !c._demo; }).slice(-30);
+        if (arr.length) out[id] = arr;
+      });
+      localStorage.setItem(EVENT_COMMENTS_LS_KEY, JSON.stringify({ comments: out, counts: window._eventCommentCounts || {} }));
+    } catch (e) {}
+  }, 400);
+}
+(function _hydrateEventCommentsFromLS() {
+  try {
+    var data = JSON.parse(localStorage.getItem(EVENT_COMMENTS_LS_KEY) || "null");
+    if (!data) return;
+    Object.keys(data.comments || {}).forEach(function (id) {
+      if (!(_eventCommentsCache[id] || []).length)
+        _eventCommentsCache[id] = (data.comments[id] || []).map(_normalizeThreadComment);
+    });
+    window._eventCommentCounts = window._eventCommentCounts || {};
+    Object.keys(data.counts || {}).forEach(function (id) {
+      if (window._eventCommentCounts[id] == null) window._eventCommentCounts[id] = data.counts[id];
+    });
+  } catch (e) {}
+})();
+
+// Applique la liste serveur EN PLACE (les références déjà distribuées — le
+// thread.comments de _findCommentThread — restent valides), en conservant les
+// commentaires optimistes locaux (ec_local_) pas encore renvoyés, puis persiste.
+function _setEventComments(eventId, serverList) {
+  var arr = _eventCommentsCache[eventId] = _eventCommentsCache[eventId] || [];
+  var localOnly = arr.filter(function (lc) {
+    return String(lc.id).indexOf("ec_local_") === 0
+      && !(serverList || []).some(function (s) { return s.text === lc.text && Math.abs((s.at || 0) - (lc.at || 0)) < 60000; });
+  });
+  var merged = (serverList || []).concat(localOnly).map(_normalizeThreadComment);
+  arr.length = 0;
+  Array.prototype.push.apply(arr, merged);
+  _persistEventComments();
+  return arr;
+}
 
 async function _loadEventComments(eventId) {
   // Cible : la page détail (#eventCommentsList) OU la feuille inline ouverte depuis
@@ -2178,17 +2234,13 @@ async function _loadEventComments(eventId) {
   if (typeof supaLoadEventComments === "function" && window._supaReal) {
     try { list = await supaLoadEventComments(eventId); } catch (e) {}
   }
-  // Conserve les commentaires optimistes locaux non encore renvoyés par le serveur.
-  var localOnly = (_eventCommentsCache[eventId] || []).filter(function (lc) {
-    return String(lc.id).indexOf("ec_local_") === 0 && !list.some(function (s) { return s.text === lc.text && Math.abs(s.at - lc.at) < 60000; });
-  });
-  _eventCommentsCache[eventId] = list.concat(localOnly).map(_normalizeThreadComment);
-  window._eventCommentsCache = _eventCommentsCache;
+  // Vérité serveur appliquée EN PLACE + optimistes locaux conservés + persistance.
+  _setEventComments(eventId, list);
   _renderEventComments(eventId);
   // Interactions cross-compte (likes + réponses + emojis) via comment_interactions :
   // hydrate puis re-render avec le renderer riche unifié.
   if (typeof hydrateCommentInteractions === "function") {
-    hydrateCommentInteractions({ comments: _eventCommentsCache[eventId] }).then(function(){ _renderEventComments(eventId); });
+    hydrateCommentInteractions({ comments: _eventCommentsCache[eventId] }).then(function(){ _persistEventComments(); _renderEventComments(eventId); });
   }
 }
 
@@ -2245,8 +2297,8 @@ async function addEventComment(eventId) {
   var name = (state.user.general && state.user.general.username) || state.user.name || "Moi";
   var myId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
   var optimistic = _normalizeThreadComment({ id: "ec_local_" + Date.now(), authorId: myId, author: name, authorName: name, text: text, at: Date.now(), createdAt: Date.now() });
-  _eventCommentsCache[eventId] = (_eventCommentsCache[eventId] || []).concat([optimistic]);
-  window._eventCommentsCache = _eventCommentsCache;
+  (_eventCommentsCache[eventId] = _eventCommentsCache[eventId] || []).push(optimistic);
+  _persistEventComments();
   _renderEventComments(eventId);
   // Met à jour le compteur 💬 de la carte (optimiste) sans attendre un re-render.
   try {
@@ -2261,7 +2313,7 @@ async function addEventComment(eventId) {
   if (typeof supaAddEventComment === "function" && window._supaReal) {
     try {
       var realId = await supaAddEventComment(eventId, text);
-      if (realId) optimistic.id = realId;
+      if (realId) { optimistic.id = realId; _persistEventComments(); }
       // Notifier l'organisateur (interaction cross-compte sur SON événement).
       if (ev && ev.organizerId && ev.organizerId !== myId && typeof supaInsertNotif === "function") {
         supaInsertNotif(ev.organizerId, "event_comment", eventId, "a commenté ton événement");

@@ -665,7 +665,8 @@ function _findCommentThread(threadId) {
         window._eventCommentsCache = window._eventCommentsCache || {};
         if (!window._eventCommentsCache[threadId]) window._eventCommentsCache[threadId] = [];
         return { kind: "event", id: threadId, comments: window._eventCommentsCache[threadId],
-          save: function(){}, targetUserId: ev.organizerId };
+          save: function(){ try { if (typeof _persistEventComments === "function") _persistEventComments(); } catch(e){} },
+          targetUserId: ev.organizerId };
       }
     } catch(e) {}
   }

@@ -97,7 +97,7 @@ Audit complet des index prod : schéma déjà solide (chemins chauds feed/likes/
 - ~~**P1** — Test E2E carnets cross-compte~~ — **FAIT** (commit `8f8aaa2`, 6/6 verts).
 - ~~**P2** — Bruit `console.log` en prod~~ — **déjà couvert** par platform.js (log/debug/info neutralisés hors debug).
 - ~~**P2** — `openVlogViewer`/`inspireFromCarnet` sur 2 sources~~ — **FAIT** : migrés vers `findPostAnywhere` (3 sources) avec la sync carnets.
-- **P1** — `state.user.seenNotifIds`/caches fenêtre (`_eventCommentsCache`) : commentaires d'événements volatils (perdus au reload tant que non rechargés du serveur).
+- ~~**P1** — caches fenêtre (`_eventCommentsCache`) : commentaires d'événements volatils~~ — **FAIT le 2026-07-02 (soir)** : (a) **bug de double référence corrigé** — la `var _eventCommentsCache` (app-07) et `window._eventCommentsCache` étaient DEUX objets distincts : les previews bulk chargées dans `window` étaient invisibles pour `_renderEventComments` (qui lit la var), et `addEventComment` réassignait `window = var` en jetant les previews des autres événements → une seule référence partagée + mutations EN PLACE (`_setEventComments`, les références distribuées par `_findCommentThread` restent valides) ; (b) **cache localStorage** `passio_event_comments_v1` (best-effort, ≤30 commentaires/événement, démo exclue, compteurs 💬 inclus) hydraté au parse → cartes peuplées dès le reload et hors-ligne, serveur = source de vérité. Vérifié en navigateur (persist → reload → hydratation normalisée) + suite 21/21.
 - **P2** — Lighthouse mobile formel (action humaine) + audit ARIA complet écran par écran.
 - **P3** — Unifier les deux renderers de commentaires quasi identiques (`_renderCommentsList` app-04 vs bloc inline `openPost` app-02) pour supprimer la duplication.
 
