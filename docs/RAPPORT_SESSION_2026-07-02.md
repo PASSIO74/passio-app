@@ -75,6 +75,16 @@ Rejoint le garde existant de platform.js (log/debug déjà neutralisés, warn/er
 
 **Phase 13 (assistant IA) auditée saine** : moteur local à base de connaissances, entrée échappée, pas d'API externe — rien à corriger tant que la « vraie » IA n'est pas branchée.
 
+## Lot 4 — validation E2E carnets + scalabilité DB
+
+### 16. Test E2E 2 comptes : carnet de voyage cross-compte (commit `8f8aaa2`)
+6ᵉ test de la suite multi-comptes : A publie un carnet (vlog + 2 étapes dont 1 photo base64 + cover), B le charge via `supaLoadPosts` (type « vlog » réhydraté, destination/étapes/tip préservés), le voit dans `allCarnets()` et l'ouvre dans le viewer. Invariant hygiène DB vérifié : cover + photos = URLs Storage, jamais de base64. **6/6 verts** (`--repeat-each=2` sans retry). Comptes `@passio-e2e.test` purgés en prod (20 → 0).
+
+### 17. Index de scalabilité (phase 17, commit `3f91751`)
+Audit complet des index prod : schéma déjà solide (chemins chauds feed/likes/commentaires/interactions/messages/follows/notifs tous couverts, grâce aux migrations de scaling antérieures). Deux ajustements (`migration_scale_indexes_2.sql`, appliquée en prod) :
+- `event_attendees(user_id)` ajouté : `supaLoadJoinedEvents` faisait `.eq("user_id")` alors que la PK `(event_id, user_id)` ne met pas user_id en tête → scan séquentiel à l'échelle.
+- `idx_conv_messages_conv_created` (ASC) retiré : doublon de `idx_conv_messages_conv` (DESC) — un btree se parcourt dans les deux sens, l'ASC alourdissait inutilement chaque écriture de message.
+
 ## Risques restants / à surveiller
 - Les réactions de posts déjà enregistrées AVANT ce lot (localStorage uniquement) ne se répliquent pas rétroactivement (normal).
 - `hydrateCommentInteractions` prend le serveur comme source de vérité pour les réponses : une réponse locale dont l'insert Supabase a échoué (hors-ligne) disparaît au prochain chargement.
@@ -84,7 +94,13 @@ Rejoint le garde existant de platform.js (log/debug déjà neutralisés, warn/er
 - ~~**P0** — Relancer `PASSIO_E2E_MULTI=1 npm test`~~ — **FAIT le 2026-07-02 (après-midi)** : 5/5 verts. Test « interactions sur un post » étendu aux réactions 😍+GIF de POST (realtime ~1 s chez A sans rechargement + persistance supaLoadPosts), comptes jetables purgés. **Bug prod majeur trouvé par la suite** : la définition de `diagLog` avait été supprimée avec le panneau debug (commit 99ad032 du 2026-06-26) → ReferenceError avalée dans le mapping de `supaLoadPosts` → **fil réseau VIDE pour tous les comptes depuis le 26 juin**. Redéfinie (minimale, sans panneau) dans app-08, déployé en prod.
 - ~~**P0** — Rate limiting / anti-flood~~ — **FAIT le 2026-07-02** : `migration_anti_flood_interactions.sql` (CHECK kind + longueurs, trigger quota 60/30/10 par min/user, RLS reports resserrée), appliquée + testée en prod.
 - ~~**P1** — Carnets de voyage non synchronisés cross-compte~~ — **FAIT le 2026-07-02** (commit `3d4139e`) : colonne `posts.vlog` jsonb (`migration_posts_vlog.sql`, **appliquée en prod**), publication + chargement branchés (app-03/06/07/08), médias d'étapes en URLs Storage (jamais de base64 en DB).
+- ~~**P1** — Test E2E carnets cross-compte~~ — **FAIT** (commit `8f8aaa2`, 6/6 verts).
+- ~~**P2** — Bruit `console.log` en prod~~ — **déjà couvert** par platform.js (log/debug/info neutralisés hors debug).
+- ~~**P2** — `openVlogViewer`/`inspireFromCarnet` sur 2 sources~~ — **FAIT** : migrés vers `findPostAnywhere` (3 sources) avec la sync carnets.
 - **P1** — `state.user.seenNotifIds`/caches fenêtre (`_eventCommentsCache`) : commentaires d'événements volatils (perdus au reload tant que non rechargés du serveur).
-- **P2** — Bruit `console.log` massif en prod (perf marginale, hygiène) : stripper au build.
-- **P2** — `openVlogViewer`/`inspireFromCarnet` cherchent dans 2 sources (cohérent tant que les carnets ne sont pas sync, à migrer vers `findPostAnywhere` avec le P1).
+- **P2** — Lighthouse mobile formel (action humaine) + audit ARIA complet écran par écran.
 - **P3** — Unifier les deux renderers de commentaires quasi identiques (`_renderCommentsList` app-04 vs bloc inline `openPost` app-02) pour supprimer la duplication.
+
+## Bilan de la session
+
+**16 correctifs** répartis sur 4 lots + 1 test E2E + 3 migrations prod (anti-flood, carnets vlog, index scale). Tous les P0 et la majorité des P1 du backlog de commercialisation sont soldés. Suite E2E : 21/21 locale + 6/6 multi-comptes réels. Modules audités et jugés sains : feed (pagination/refresh/dédup), profils/follows, assistant IA, indexation DB. Reste surtout de l'amélioration continue (Lighthouse, ARIA, dédup de code) et un point de robustesse offline sur les caches volatils.
