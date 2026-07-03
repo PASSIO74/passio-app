@@ -8,6 +8,7 @@
       if (!window.PASSIO_DEBUG) {
         console.log = function() {};
         console.debug = function() {};
+        console.info = function() {}; // même sort que log/debug (warn/error restent)
       }
     })();
 

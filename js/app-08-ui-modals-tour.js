@@ -3297,26 +3297,38 @@ async function supaLoadMyConversations() {
     const { data: convs } = await supa.from("conversations").select("*").in("id", convIds);
     if (!convs) return [];
 
-    // Batch toutes les requêtes en parallèle (fix N+1)
-    const [lastMsgsAll, membersAll] = await Promise.all([
-      Promise.all(convIds.map(cid =>
-        supa.from("conv_messages").select("id,conv_id,from_id,content,created_at,profiles(username,emoji,color,avatar_url)")
-          .eq("conv_id", cid).order("created_at", { ascending: false }).limit(5)
-      )),
-      Promise.all(convIds.map(cid =>
-        supa.from("conv_members").select("conv_id,user_id,profiles(username,emoji,color,avatar_url)").eq("conv_id", cid)
-      ))
+    // 2 requêtes TOTAL (au lieu de 2 PAR conversation : 60 requêtes au boot pour
+    // 30 convs). Les messages récents de toutes les convs partent en un seul
+    // .in() puis sont regroupés par conv_id — l'ancien code indexait par POSITION
+    // (lastMsgsAll[i] ↔ convs[i]) alors que PostgREST ne garantit pas l'ordre de
+    // `.in()` → l'aperçu pouvait être rattaché à la MAUVAISE conversation.
+    const [msgsRes, membersRes] = await Promise.all([
+      supa.from("conv_messages")
+        .select("id,conv_id,from_id,content,created_at,profiles(username,emoji,color,avatar_url)")
+        .in("conv_id", convIds).order("created_at", { ascending: false })
+        .limit(Math.min(500, Math.max(150, convIds.length * 10))),
+      supa.from("conv_members")
+        .select("conv_id,user_id,profiles(username,emoji,color,avatar_url)").in("conv_id", convIds),
     ]);
+    const msgsByConv = {};
+    (msgsRes.data || []).forEach(m => {
+      const arr = msgsByConv[m.conv_id] || (msgsByConv[m.conv_id] = []);
+      if (arr.length < 5) arr.push(m); // déjà trié récent→ancien par la requête
+    });
+    const membersByConv = {};
+    (membersRes.data || []).forEach(m => {
+      (membersByConv[m.conv_id] || (membersByConv[m.conv_id] = [])).push(m);
+    });
 
-    const result = convs.map((c, i) => {
+    const result = convs.map((c) => {
       // Premier message NON de contrôle (on saute les événements react/del qui ne
       // doivent pas servir d'aperçu de conversation).
-      const _recent = lastMsgsAll[i]?.data || [];
+      const _recent = msgsByConv[c.id] || [];
       const last = _recent.find(function(mm){
         if (!mm || typeof mm.content !== "string" || mm.content.charAt(0) !== "{") return true;
         try { var t = JSON.parse(mm.content).type; return t !== "react" && t !== "del"; } catch(e) { return true; }
       }) || _recent[0];
-      const members = membersAll[i]?.data || [];
+      const members = membersByConv[c.id] || [];
       // Identifier le partenaire de façon robuste. L'embed `profiles` peut être
       // null (pas de FK résolue) et la ligne conv_members de l'autre peut manquer
       // (insert refusé un temps par la RLS) → on retombe alors sur l'expéditeur du
