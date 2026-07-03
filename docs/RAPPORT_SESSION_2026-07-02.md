@@ -106,6 +106,22 @@ Audit complet des index prod : schéma déjà solide (chemins chauds feed/likes/
 ### 18. Vue détail d'un post unifiée sur le renderer canonique ✅
 `openPost` (app-02) maintenait ~60 lignes de rendu de commentaires en double qui divergeaient de `_renderCommentsList` : ni pastille de réactions « 😍 N », ni menu ⋯, like non résolu sur toutes les identités. Remplacé par un appel au canonique + hydratation des interactions + refresh realtime de la page détail (`#postDetailComments`). Suppression nette de la duplication, une seule source de vérité pour le rendu des commentaires sur toutes les surfaces (fil / IRL / CDV / modale / détail).
 
+## Lot 6 — accessibilité, appels, assistant IA (2026-07-03)
+
+### 19. Bottom-nav accessible au clavier + focus visible global (a11y)
+La barre de navigation était faite de `<div>` cliquables sans sémantique : invisibles aux lecteurs d'écran, inatteignables au clavier. Chaque item devient `role="button"` `tabindex="0"` `aria-label` (icônes SVG en `aria-hidden`), `<nav aria-label>`, activation clavier Entrée/Espace, `aria-current="page"` synchronisé dans `goTo`. + CSS `:focus-visible` global (anneau accent, clavier uniquement) car plusieurs éléments forçaient `outline:none`. Vérifié en navigateur (focus + Entrée navigue, aria-current suit l'écran).
+
+### 20. Config TURN dédié pour les appels WebRTC (scalabilité prod)
+Les appels avaient déjà un TURN de repli (Open Relay public, rate-limité). Ajout d'un point de config unique `PASSIO_CALL_TURN` (sur le modèle de `PASSIO_GIF_API`) : quand rempli, un TURN dédié passe en tête, l'Open Relay reste en filet ; rappel CSP inline. Vide = comportement inchangé.
+
+### 21. Assistant IA réel via Claude (Edge Function `ask-ai`) ✅
+L'onglet Assistant IA n'utilisait qu'une base de connaissances locale. Ajout d'une Edge Function `ask-ai` (authentifie le JWT, interroge l'API Anthropic — Haiku, prompt système PASSIO, `max_tokens` 600, clé en secret, `api.anthropic.com` appelé côté serveur → pas de CSP à changer). Le client tente l'IA en priorité (timeout 9 s) et **retombe automatiquement sur le moteur local** si non déployée/hors-ligne → aucune régression tant que le secret n'est pas posé. Réponse IA toujours échappée (`_aiTextToHtml`). Procédure de déploiement : `docs/EDGE_FUNCTION_ASK_AI.md` (action humaine : clé API + `functions deploy`).
+
 ## Bilan de la session
 
-**17 correctifs** répartis sur 5 lots + 1 test E2E + 3 migrations prod (anti-flood, carnets vlog, index scale). Tous les P0, P1 et le P3 de dédup du backlog de commercialisation sont soldés. Suite E2E : 20-21/21 locale + 6/6 multi-comptes réels. Modules audités et jugés sains : feed (pagination/refresh/dédup), profils/follows, assistant IA, indexation DB. Reste surtout de l'amélioration continue côté humain (Lighthouse mobile, audit ARIA écran par écran, vraie IA, TURN pour WebRTC).
+**20 correctifs/livraisons** répartis sur 6 lots + 1 test E2E + 4 fonctions/migrations prod (anti-flood, carnets vlog, index scale, Edge Function IA). **Tous les P0, P1, P2 et P3 du backlog de commercialisation sont soldés** en code. Suite E2E : 21/21 locale + 6/6 multi-comptes réels ; prod saine (0 erreur `client_errors` sur 48 h). Modules audités et jugés sains : feed, profils/follows, indexation DB.
+
+**Actions humaines restantes** (nécessitent des credentials/appareils que je n'ai pas) :
+- Déployer l'Edge Function IA : `supabase secrets set ANTHROPIC_API_KEY=…` puis `supabase functions deploy ask-ai` (sinon repli local, non bloquant).
+- Coller un TURN dédié dans `PASSIO_CALL_TURN` (+ domaine en CSP) pour les appels à l'échelle.
+- Lighthouse mobile formel + tests sur vrais appareils (iOS PWA notamment) + audit ARIA écran par écran (la nav est faite, le reste des écrans mérite une passe).
