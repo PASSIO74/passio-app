@@ -553,6 +553,93 @@ test.describe("messagerie entre 2 comptes réels", () => {
       await ctxB.close();
     }
   });
+
+  // Carnet de voyage cross-compte (2026-07-02, colonne posts.vlog jsonb) : A
+  // publie un carnet complet (destination, 2 étapes dont 1 photo base64, cover),
+  // B le charge via supaLoadPosts → type "vlog" réhydraté, présent dans
+  // allCarnets() (écran CDV) et ouvrable dans le viewer plein écran. Invariant
+  // hygiène DB : cover + photos d'étapes = URLs Storage, JAMAIS de base64.
+  test("carnet de voyage d'un autre → visible dans CDV et ouvrable cross-compte", async ({ browser }) => {
+    test.setTimeout(180000);
+    const t0 = Date.now();
+    const log = (m) => console.log(`[vlog ${(((Date.now() - t0) / 1000) | 0)}s] ${m}`);
+
+    const ctxA = await browser.newContext();
+    const ctxB = await browser.newContext();
+    const pageA = await ctxA.newPage();
+    const pageB = await ctxB.newPage();
+    pageA.on("console", (m) => { if (m.type() === "error") log("A err: " + m.text().slice(0, 160)); });
+    pageB.on("console", (m) => { if (m.type() === "error") log("B err: " + m.text().slice(0, 160)); });
+
+    const PX = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
+    let vlogId = null;
+    try {
+      const uidA = await signupAnonymous(pageA, "Test Alice");
+      const uidB = await signupAnonymous(pageB, "Test Bob");
+      expect(uidA).toBeTruthy(); expect(uidB).toBeTruthy(); expect(uidA).not.toBe(uidB);
+
+      // ── A publie un CARNET (vlog) complet ──
+      vlogId = await pageA.evaluate(async (px) => {
+        const id = "vlog_" + uid();
+        await supaPublishPostWithRetry({
+          id, authorId: MY_UID, authorName: "Test Alice", authorEmoji: "✨", authorColor: "#8b5cf6",
+          passion: "voyage", mood: "all", type: "vlog",
+          text: "Lisbonne [test auto] · carnet",
+          destination: "Lisbonne [test auto]", dateStart: "2026-07-01", dateEnd: "2026-07-03",
+          budget: "500€", transport: "avion", lodging: "auberge", season: "été", tip: "Réserver tôt",
+          cover: px,
+          steps: [
+            { place: "Alfama", text: "Vieille ville", tip: "", photo: px, video: null, audio: null },
+            { place: "Belém", text: "Pasteis de nata", tip: "Y aller tôt", photo: null, video: null, audio: null },
+          ],
+          createdAt: Date.now(), likes: 0, liked: false, comments: [],
+        });
+        return id;
+      }, PX);
+      expect(vlogId, "carnet de A publié").toBeTruthy();
+      log("carnet publié: " + vlogId);
+
+      // ── B charge le carnet depuis Supabase (type + champs réhydratés) ──
+      const bVlog = await loadFindWithRetry(pageB, "supaLoadPosts", vlogId, 25000);
+      expect(bVlog, "B charge le carnet de A").toBeTruthy();
+      expect(bVlog.type, "type vlog réhydraté chez B").toBe("vlog");
+      expect(bVlog.destination || "", "destination visible chez B").toContain("Lisbonne");
+      expect((bVlog.steps || []).length, "2 étapes visibles chez B").toBe(2);
+      expect((bVlog.steps || [])[1].tip, "tip d'étape préservé").toBe("Y aller tôt");
+      // Invariant hygiène DB : cover + photo d'étape = URLs (jamais data:)
+      const medias = [bVlog.cover].concat((bVlog.steps || []).map((s) => s.photo)).filter(Boolean);
+      expect(medias.length, "au moins un média uploadé (cover ou photo)").toBeGreaterThanOrEqual(1);
+      expect(medias.every((u) => typeof u === "string" && u.indexOf("data:") !== 0), "aucun média base64 en DB").toBe(true);
+      log("B voit le carnet · étapes=" + bVlog.steps.length + " · médias=" + JSON.stringify(medias.map((u) => (u || "").slice(0, 28))));
+
+      // ── B : le carnet apparaît dans l'écran CDV (allCarnets) et le viewer s'ouvre ──
+      const vis = await pageB.evaluate((vp) => {
+        state.supabasePosts = state.supabasePosts || [];
+        // Remplace toute copie (potentiellement périmée, chargée au boot) par le
+        // carnet connu-bon → check déterministe, pas de dépendance au timing.
+        state.supabasePosts = state.supabasePosts.filter((p) => p.id !== vp.id);
+        state.supabasePosts.unshift(vp);
+        const inCdv = allCarnets().some((c) => c.id === vp.id);
+        let viewerOpen = false;
+        try {
+          openVlogViewer(vp.id);
+          const vv = document.getElementById("vlogViewer");
+          viewerOpen = !!(vv && vv.getAttribute("data-current-post") === vp.id);
+          if (typeof closeVlogViewer === "function") closeVlogViewer();
+        } catch (e) {}
+        return { inCdv, viewerOpen };
+      }, bVlog);
+      expect(vis.inCdv, "carnet visible dans CDV chez B").toBe(true);
+      expect(vis.viewerOpen, "viewer du carnet ouvrable chez B").toBe(true);
+      log("✅ carnet cross-compte validé (CDV + viewer)");
+
+      await cleanupVlog(pageA, vlogId);
+      await cleanupVlog(pageB, null);
+    } finally {
+      await ctxA.close();
+      await ctxB.close();
+    }
+  });
 });
 
 // Parcours réel : landing → Créer un compte → inscription par e-mail/mot de passe
@@ -700,6 +787,21 @@ async function cleanupCdvLive(page, liveId) {
     try { await supa.from("profiles").delete().eq("id", MY_UID); } catch (e) {}
     try { await supa.auth.signOut(); } catch (e) {}
   }, liveId);
+}
+
+// Nettoyage du test carnet (best-effort, RLS par propriétaire).
+// vlogId=null côté B = juste profil + signout.
+async function cleanupVlog(page, vlogId) {
+  await page.evaluate(async (id) => {
+    if (id) {
+      try { await supa.from("comment_interactions").delete().eq("post_id", id); } catch (e) {}
+      try { await supa.from("post_comments").delete().eq("post_id", id); } catch (e) {}
+      try { await supa.from("post_likes").delete().eq("post_id", id); } catch (e) {}
+      try { await supa.from("posts").delete().eq("id", id); } catch (e) {}
+    }
+    try { await supa.from("profiles").delete().eq("id", MY_UID); } catch (e) {}
+    try { await supa.auth.signOut(); } catch (e) {}
+  }, vlogId);
 }
 
 // Nettoyage du test story+bobine (best-effort, RLS par propriétaire).
