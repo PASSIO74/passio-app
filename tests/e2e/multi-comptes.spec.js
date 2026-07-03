@@ -30,6 +30,7 @@ test.describe("messagerie entre 2 comptes réels", () => {
     const pageB = await ctxB.newPage();
     pageA.on("console", (msg) => { if (msg.type() === "error") log("A console.error: " + msg.text().slice(0, 200)); });
     pageB.on("console", (msg) => { if (msg.type() === "error") log("B console.error: " + msg.text().slice(0, 200)); });
+    wireHttpDiag(log, pageA, pageB);
 
     try {
       // ── 1. Inscription des deux comptes par le vrai parcours d'onboarding ──
@@ -159,15 +160,7 @@ test.describe("messagerie entre 2 comptes réels", () => {
     const pageB = await ctxB.newPage();
     pageA.on("console", (msg) => { if (msg.type() === "error") log("A console.error: " + msg.text().slice(0, 200)); });
     pageB.on("console", (msg) => { if (msg.type() === "error") log("B console.error: " + msg.text().slice(0, 200)); });
-    // Diagnostic : les « Failed to load resource: 400 » de la console ne donnent
-    // pas l'URL — on logge ici la requête + le corps d'erreur PostgREST.
-    for (const [who, pg] of [["A", pageA], ["B", pageB]]) {
-      pg.on("response", async (resp) => {
-        if (resp.status() < 400 || resp.url().indexOf("supabase.co") === -1) return;
-        let body = ""; try { body = (await resp.text()).slice(0, 300); } catch (e) {}
-        log(`${who} HTTP ${resp.status()} ${resp.request().method()} ${resp.url().slice(0, 160)} → ${body}`);
-      });
-    }
+    wireHttpDiag(log, pageA, pageB);
 
     let postId = null;
     try {
@@ -330,6 +323,7 @@ test.describe("messagerie entre 2 comptes réels", () => {
     const pageB = await ctxB.newPage();
     pageA.on("console", (msg) => { if (msg.type() === "error") log("A console.error: " + msg.text().slice(0, 200)); });
     pageB.on("console", (msg) => { if (msg.type() === "error") log("B console.error: " + msg.text().slice(0, 200)); });
+    wireHttpDiag(log, pageA, pageB);
 
     let eventId = null;
     try {
@@ -408,6 +402,7 @@ test.describe("messagerie entre 2 comptes réels", () => {
     const pageB = await ctxB.newPage();
     pageA.on("console", (m) => { if (m.type() === "error") log("A err: " + m.text().slice(0, 160)); });
     pageB.on("console", (m) => { if (m.type() === "error") log("B err: " + m.text().slice(0, 160)); });
+    wireHttpDiag(log, pageA, pageB);
 
     const PX = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
     let storyId = null, reelId = null;
@@ -485,6 +480,7 @@ test.describe("messagerie entre 2 comptes réels", () => {
     const pageB = await ctxB.newPage();
     pageA.on("console", (m) => { if (m.type() === "error") log("A err: " + m.text().slice(0, 160)); });
     pageB.on("console", (m) => { if (m.type() === "error") log("B err: " + m.text().slice(0, 160)); });
+    wireHttpDiag(log, pageA, pageB);
 
     let liveId = null;
     try {
@@ -709,6 +705,20 @@ async function signupAnonymous(page, name) {
   if (profilOk !== true) throw new Error("profil Supabase absent après upsert: " + profilOk);
   step("reboot avec session + profil Supabase OK");
   return page.evaluate(() => window.MY_UID);
+}
+
+// Diagnostic réseau : la console Chrome ne donne pas l'URL d'un « Failed to load
+// resource: 400 » — on logge la requête + le corps d'erreur PostgREST de toute
+// réponse Supabase ≥ 400. C'est ce diagnostic qui a trouvé le bug follow
+// (insert avec created_at inexistant → 400 silencieux) le 2026-07-02.
+function wireHttpDiag(log, pageA, pageB) {
+  for (const [who, pg] of [["A", pageA], ["B", pageB]]) {
+    pg.on("response", async (resp) => {
+      if (resp.status() < 400 || resp.url().indexOf("supabase.co") === -1) return;
+      let body = ""; try { body = (await resp.text()).slice(0, 300); } catch (e) {}
+      log(`${who} HTTP ${resp.status()} ${resp.request().method()} ${resp.url().slice(0, 160)} → ${body}`);
+    });
+  }
 }
 
 async function cleanup(page, convId) {
