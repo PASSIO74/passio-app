@@ -433,7 +433,17 @@ if (typeof document !== "undefined") {
 // une « bonne connexion » : sans relais, ICE peut retomber sur un lien pourri).
 // TURN public Open Relay (metered) en repli — UDP/TCP/TLS pour traverser les
 // pare-feux. Idéalement à remplacer par un TURN dédié pour la prod.
+// ⭐ TURN DÉDIÉ (production) — UN SEUL endroit à remplir. Open Relay ci-dessous
+// est un TURN PUBLIC gratuit (rate-limité, non garanti à l'échelle) ; pour la
+// prod, colle ici les credentials de TON serveur TURN (metered.ca payant, coturn
+// auto-hébergé, Twilio…). Il sera essayé EN PREMIER, l'Open Relay restant en
+// filet. ⚠️ Ajoute AUSSI le domaine à `connect-src` de la CSP (netlify.toml
+// ET _headers), sinon Chrome filtre le serveur ICE (l'appel retombe sur STUN).
+// Ex. : { urls: "turn:turn.mondomaine.com:3478", username: "u", credential: "p" }
+const PASSIO_CALL_TURN = null; // ← ta config TURN dédiée, ou null pour n'utiliser que le repli public
+
 const CALL_ICE_SERVERS = [
+  ...(PASSIO_CALL_TURN ? (Array.isArray(PASSIO_CALL_TURN) ? PASSIO_CALL_TURN : [PASSIO_CALL_TURN]) : []),
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" },
   { urls: "stun:stun2.l.google.com:19302" },
