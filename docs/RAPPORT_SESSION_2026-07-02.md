@@ -61,16 +61,16 @@ Partager sa position insérait sans `from_id` en premier → rejet RLS systémat
 
 ## Lot 3 — carnets cross-compte + recherche + perfs
 
-### 11. Carnets de voyage synchronisés cross-compte (P1 produit) ✅
+### 12. Carnets de voyage synchronisés cross-compte (P1 produit) ✅
 Migration `migration_posts_vlog.sql` (colonne `posts.vlog jsonb`, appliquée en prod). Publication : `_buildVlogPayload` uploade cover + médias d'étapes sur Storage (jamais de base64 en DB) ; chargement : `supaLoadPosts` réhydrate `type:"vlog"` + champs à plat ; `allCarnets()` inclut supabasePosts (dédup + filtre bloqués) ; viewer/inspirer/voyage groupé passent par `findPostAnywhere`. Vérifié en navigateur.
 
-### 12. Recherche : filtre PostgREST injectable/cassable (majeur)
+### 13. Recherche : filtre PostgREST injectable/cassable (majeur)
 `supaSearchUsers` interpolait la saisie brute dans `.or(username.ilike...)` → une virgule, des parenthèses ou `%` cassaient la recherche (0 résultat) voire injectaient une condition. Métacaractères neutralisés + longueur bornée. Explore : labels/emojis de passions custom échappés, ids via `escapeJsArg`, avatars via `safeUrlAttr`.
 
-### 13. Conversations : 2 requêtes au lieu de 2 par conversation (scalabilité)
+### 14. Conversations : 2 requêtes au lieu de 2 par conversation (scalabilité)
 `supaLoadMyConversations` faisait 2 requêtes PAR conv (60 au boot pour 30 convs) → 2 requêtes totales groupées par `conv_id`. Corrige un bug latent : l'indexation PAR POSITION des résultats (`lastMsgsAll[i] ↔ convs[i]`) pouvait rattacher l'aperçu à la mauvaise conversation (PostgREST ne garantit pas l'ordre d'un `.in()`).
 
-### 14. console.info muet en prod (hygiène)
+### 15. console.info muet en prod (hygiène)
 Rejoint le garde existant de platform.js (log/debug déjà neutralisés, warn/error conservés, réactivable via `passio_debug=1`). Le P2 « stripper les console.log au build » était en fait déjà couvert.
 
 **Phase 13 (assistant IA) auditée saine** : moteur local à base de connaissances, entrée échappée, pas d'API externe — rien à corriger tant que la « vraie » IA n'est pas branchée.
