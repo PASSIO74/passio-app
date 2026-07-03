@@ -2432,6 +2432,11 @@ async function openPost(id) {
         post.comments = [...supaComments.map(c => ({ ...c, text: c.content || c.text || "" })), ...localOnly]
           .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
       }
+      // Hydrate les interactions cross-compte (likes/réponses/emojis) comme la
+      // modale openComments → parité totale entre les deux vues.
+      if (typeof hydrateCommentInteractions === "function") {
+        try { await hydrateCommentInteractions(post); } catch(e) {}
+      }
     } catch(e) {}
   }
 
@@ -2458,70 +2463,13 @@ async function openPost(id) {
     media = `<div class="post-media"><video src="${post.video}" controls playsinline preload="metadata" style="width:100%;border-radius:14px;background:#000;"></video></div>`;
   }
 
-  // Tous les commentaires (Supabase + locaux)
-  const allComments = (post.comments || []).map(c => {
-    let cName, cEmoji, cAvatar, cAuthorId = c.authorId || "?";
-    const _cu = userById(cAuthorId) || {};
-    if (c.authorName) {
-      cName = c.authorName; cEmoji = c.authorEmoji || "✨"; cAvatar = _cu.avatar || "#8b5cf6";
-    } else {
-      cName = _cu.name || "?"; cEmoji = _cu.profileEmoji || "👤"; cAvatar = _cu.avatar || "#64748b";
-    }
-    const cAuthorObj = { name: cName, profileEmoji: cEmoji, avatar: cAvatar, photoUrl: _cu.photoUrl || null };
-    const cSrc = (cAuthorId === "me" || (typeof MY_UID !== "undefined" && cAuthorId === MY_UID)) ? "me" : "seed";
-    const cLiked = (c.likedBy || []).includes(state.user?.id || "me");
-    const cLikes = c.likes || 0;
-    const cReplies = c.replies || [];
-    return `<div class="comment" data-commentid="${c.id}">
-      <div class="avatar sm" style="background:${avatarBg(cAuthorObj)};cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${cAuthorId}','${cSrc}')">${avatarInner(cAuthorObj)}</div>
-      <div class="comment-body">
-        <div class="comment-author" style="cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${cAuthorId}','${cSrc}')">${escapeHtml(cName)}</div>
-        <div class="comment-text">${escapeHtml(c.text || c.content || "")}</div>
-        <div class="comment-meta">${fmtTime(c.createdAt)}</div>
-        <div class="comment-actions">
-          <span class="comment-action ${cLiked ? "liked" : ""}" onclick="return likeComment('${id}','${c.id}', event);">
-            ${cLiked ? "❤️" : "🤍"} ${cLikes}
-          </span>
-          <span class="comment-action" onclick="return replyToComment('${id}','${c.id}','${escapeJsArg(cName)}', event);" title="Répondre">💬</span>
-          <span class="comment-action" onclick="return showEmojiPickerForComment('${id}','${c.id}', event);" title="Emoji & GIF">😊</span>
-          ${cReplies.length > 0 ? `<span class="comment-reply-count" onclick="return toggleCommentReplies('${c.id}', event);">▼ ${cReplies.length} réponse${cReplies.length > 1 ? "s" : ""}</span>` : ""}
-          ${(c.emojis || []).length > 0 ? `<span class="comment-emoji-count" onclick="return toggleCommentEmojis('${c.id}', event);">${(c.emojis || []).length} emoji</span>` : ""}
-        </div>
-        ${(c.emojis || []).length > 0 ? `<div class="comment-emojis" id="emojis-${c.id}" style="display:none;padding:8px 0;border-top:1px solid rgba(124,58,237,0.1);margin-top:8px;"><div style="display:flex;gap:6px;flex-wrap:wrap;">${(c.emojis || []).map(e => `<span style="font-size:20px;padding:4px 8px;background:var(--bg-soft);border-radius:6px;cursor:default;">${escapeHtml(e)}</span>`).join("")}</div></div>` : ""}
-        ${cReplies.length > 0 ? `<div class="comment-replies" id="replies-${c.id}" style="display:none;">${cReplies.map(r => {
-          const ru = userById(r.authorId) || { name: "?", profileEmoji: "👤", avatar: "#64748b" };
-          const rSrc = r.authorId === "me" ? "me" : "seed";
-
-          // Si c'est une réaction emoji, afficher différemment
-          if (r.type === "emoji_reaction") {
-            const _rAv = { avatar: ru.avatar || "#64748b", profileEmoji: ru.profileEmoji || "👤", name: ru.name, photoUrl: ru.photoUrl || null };
-            return `<div class="comment-reply" style="display:flex;align-items:center;gap:8px;padding:6px 0;">
-              <div class="avatar sm" style="background:${avatarBg(_rAv)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${avatarInner(_rAv)}</div>
-              <div><span style="font-size:11px;color:var(--text);font-weight:600;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span> <span style="font-size:18px;">${escapeHtml(r.text || "")}</span></div>
-            </div>`;
-          }
-
-          // Si c'est une réaction GIF
-          if (r.type === "gif_reaction") {
-            const _rAv = { avatar: ru.avatar || "#64748b", profileEmoji: ru.profileEmoji || "👤", name: ru.name, photoUrl: ru.photoUrl || null };
-            return `<div class="comment-reply" style="display:flex;align-items:flex-start;gap:8px;padding:6px 0;">
-              <div class="avatar sm" style="background:${avatarBg(_rAv)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${avatarInner(_rAv)}</div>
-              <div><span style="font-size:11px;color:var(--text);font-weight:600;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span><br/>
-              <img loading="lazy" decoding="async" src="${escapeHtml(r.text || "")}" style="width:120px;height:120px;border-radius:8px;margin-top:6px;object-fit:cover;" alt="GIF" /></div>
-            </div>`;
-          }
-
-          // Réponse normale
-          const _rAvT = { avatar: ru.avatar || "#64748b", profileEmoji: ru.profileEmoji || "👤", name: ru.name, photoUrl: ru.photoUrl || null };
-          return `<div class="comment-reply" style="display:flex;align-items:flex-start;gap:8px;padding:6px 0;">
-            <div class="avatar sm" style="background:${avatarBg(_rAvT)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${avatarInner(_rAvT)}</div>
-            <div><span class="comment-reply-author" style="font-size:11px;font-weight:600;cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span> ${escapeHtml(r.text)}
-            <div style="font-size:10px;color:var(--muted);margin-top:2px;">${fmtTime(r.createdAt)}</div></div>
-          </div>`;
-        }).join("")}</div>` : ""}
-      </div>
-    </div>`;
-  }).join("");
+  // Renderer UNIFIÉ (identique au fil / IRL / CDV / modale). Le bloc inline
+  // dupliqué qui vivait ici divergeait du canonique : pas de pastille de
+  // réactions agrégées « 😍 N », pas de menu ⋯, like non résolu sur toutes mes
+  // identités (MY_UID/state.user.id/"me"). _renderCommentsList (app-04) est la
+  // source unique de vérité — plus aucune divergence à maintenir en double.
+  const allComments = (post.comments && post.comments.length)
+    ? _renderCommentsList(post.comments, id) : "";
 
   content.innerHTML = `
     <div class="post" data-postid="${id}" style="cursor:default;">
@@ -2550,12 +2498,10 @@ async function openPost(id) {
         <span class="post-react-chip-holder" data-postchip="${id}" style="margin-left:auto;">${_postReactChipHtml(id)}</span>
       </div>
     </div>
-    ${allComments ? `
-      <div style="margin-top:8px;">
-        <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin-bottom:10px;">Commentaires (${commentThreadCount(post.comments)})</div>
-        ${allComments}
-      </div>
-    ` : `<div style="font-size:13px;color:var(--muted);text-align:center;padding:20px 0;">Aucun commentaire — sois le premier 💬</div>`}
+    <div style="margin-top:8px;">
+      <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin-bottom:10px;">Commentaires (${commentThreadCount(post.comments)})</div>
+      <div id="postDetailComments" data-thread="${id}">${allComments || '<div style="font-size:13px;color:var(--muted);text-align:center;padding:20px 0;">Aucun commentaire — sois le premier 💬</div>'}</div>
+    </div>
     <div style="height:20px;"></div>
   `;
 

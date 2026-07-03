@@ -725,6 +725,16 @@ function _refreshCommentThreadUINow(threadId) {
       }
     }
   } catch(e) {}
+  // Page détail d'un post (#postDetailComments) — realtime/like/réponse s'y
+  // reflètent maintenant comme dans la modale (renderer unifié, 2026-07-03).
+  try {
+    var pd = document.getElementById("postDetailComments");
+    if (pd && pd.getAttribute("data-thread") === threadId) {
+      pd.innerHTML = thread.comments.length
+        ? _renderCommentsList(thread.comments, threadId)
+        : '<div style="font-size:13px;color:var(--muted);text-align:center;padding:20px 0;">Aucun commentaire — sois le premier 💬</div>';
+    }
+  } catch(e) {}
   // Carnet CDV ouvert dans le viewer plein écran (#vlogCommentsList).
   try {
     var vv = document.getElementById("vlogViewer");

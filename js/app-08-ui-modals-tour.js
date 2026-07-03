@@ -3843,6 +3843,8 @@ function supaSubscribe() {
               var _t = document.querySelector(".modal-title"); if (_t) _t.textContent = "Discussion (" + post.comments.length + ")";
             }
           } catch(e) {}
+          // Page détail (#postDetailComments) + autres surfaces via le refresh unifié.
+          try { if (typeof _refreshCommentThreadUI === "function") _refreshCommentThreadUI(r.post_id); } catch(e) {}
         }
       } catch(e) {}
     })
