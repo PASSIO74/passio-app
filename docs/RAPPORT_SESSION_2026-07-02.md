@@ -62,9 +62,9 @@ Partager sa position insérait sans `from_id` en premier → rejet RLS systémat
 - Le test 2 comptes (`PASSIO_E2E_MULTI=1`) n'a pas été relancé dans cette session (coût comptes jetables) — à faire pour valider la réplication des réactions de posts en conditions réelles.
 
 ## Backlog priorisé (constaté pendant l'audit)
-- **P0** — Relancer `PASSIO_E2E_MULTI=1 npm test` (valider réactions de posts + non-régression messagerie/notifs). ⏳ lancé en tâche de fond.
+- ~~**P0** — Relancer `PASSIO_E2E_MULTI=1 npm test`~~ — **FAIT le 2026-07-02 (après-midi)** : 5/5 verts. Test « interactions sur un post » étendu aux réactions 😍+GIF de POST (realtime ~1 s chez A sans rechargement + persistance supaLoadPosts), comptes jetables purgés. **Bug prod majeur trouvé par la suite** : la définition de `diagLog` avait été supprimée avec le panneau debug (commit 99ad032 du 2026-06-26) → ReferenceError avalée dans le mapping de `supaLoadPosts` → **fil réseau VIDE pour tous les comptes depuis le 26 juin**. Redéfinie (minimale, sans panneau) dans app-08, déployé en prod.
 - ~~**P0** — Rate limiting / anti-flood~~ — **FAIT le 2026-07-02** : `migration_anti_flood_interactions.sql` (CHECK kind + longueurs, trigger quota 60/30/10 par min/user, RLS reports resserrée), appliquée + testée en prod.
-- **P1** — Carnets de voyage non synchronisés cross-compte (`allVlogs()` = seed + userPosts uniquement) : un carnet publié par A est invisible pour B. Nécessite schéma (steps jsonb dans posts ou table dédiée).
+- ~~**P1** — Carnets de voyage non synchronisés cross-compte~~ — **FAIT le 2026-07-02** (commit `3d4139e`) : colonne `posts.vlog` jsonb (`migration_posts_vlog.sql`, **appliquée en prod**), publication + chargement branchés (app-03/06/07/08), médias d'étapes en URLs Storage (jamais de base64 en DB).
 - **P1** — `state.user.seenNotifIds`/caches fenêtre (`_eventCommentsCache`) : commentaires d'événements volatils (perdus au reload tant que non rechargés du serveur).
 - **P2** — Bruit `console.log` massif en prod (perf marginale, hygiène) : stripper au build.
 - **P2** — `openVlogViewer`/`inspireFromCarnet` cherchent dans 2 sources (cohérent tant que les carnets ne sont pas sync, à migrer vers `findPostAnywhere` avec le P1).
