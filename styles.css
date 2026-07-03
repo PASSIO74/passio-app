@@ -7078,3 +7078,21 @@
       font-size: 11.5px; font-weight: 700; color: var(--accent-2);
       cursor: pointer; display: inline-block; padding: 2px 0;
     }
+
+    /* ===== Accessibilité : focus clavier visible (2026-07-03) =====
+       Beaucoup d'éléments interactifs forçaient outline:none → un utilisateur au
+       clavier (Tab) ne voyait plus où il était. :focus-visible n'apparaît QU'au
+       clavier (pas au clic souris/tactile) → aucun impact visuel pour la souris. */
+    :focus-visible {
+      outline: 3px solid var(--accent);
+      outline-offset: 2px;
+      border-radius: 6px;
+    }
+    /* La nav du bas : anneau à l'intérieur pour ne pas déborder de la barre. */
+    .nav-item:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: -3px;
+      border-radius: 12px;
+    }
+    /* N'affiche jamais le contour à la souris (navigateurs sans :focus-visible). */
+    *:focus:not(:focus-visible) { outline: none; }

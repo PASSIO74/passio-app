@@ -1708,12 +1708,21 @@ function claimQuest(id) {
   renderWallet();
 }
 
-// ======== NAV CLICKS ========
+// ======== NAV CLICKS + CLAVIER ========
+// Les nav-item sont des role="button" tabindex="0" (accessibilité) : on active
+// donc aussi au clavier (Entrée / Espace), pas seulement au clic souris/tactile.
 $$(".nav-item").forEach(n => {
-  n.addEventListener("click", () => {
+  const activate = () => {
     const s = n.getAttribute("data-screen");
     if (s === "bobines") { openReels(); return; }
     if (s) goTo(s);
+  };
+  n.addEventListener("click", activate);
+  n.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
+      e.preventDefault(); // Espace ne doit pas défiler la page
+      activate();
+    }
   });
 });
 

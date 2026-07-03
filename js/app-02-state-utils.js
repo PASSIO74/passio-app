@@ -628,6 +628,9 @@ function goTo(screen) {
   $$(".nav-item").forEach(n => {
     const is = n.getAttribute("data-screen") === screen;
     n.classList.toggle("active", is);
+    // aria-current expose l'onglet actif aux lecteurs d'écran (annonce « actuel »).
+    if (is) n.setAttribute("aria-current", "page");
+    else n.removeAttribute("aria-current");
   });
   $$(".screen").forEach(s => s.classList.remove("active"));
   const el = document.getElementById("screen-" + screen);
