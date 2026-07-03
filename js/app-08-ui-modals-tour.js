@@ -3878,7 +3878,10 @@ function supaSubscribe() {
 async function supaFollowUser(targetId) {
   try {
     await supaUpsertProfile();
-    await supa.from("follows").insert({ follower_id: MY_UID, following_id: targetId, created_at: new Date().toISOString() });
+    // ⚠️ PAS de created_at : la table follows en prod n'a QUE (follower_id,
+    // following_id) — envoyer created_at = 400 PGRST204 silencieux, le follow
+    // n'était JAMAIS écrit (seule la notif partait). Découvert par le e2e 2026-07-02.
+    await supa.from("follows").insert({ follower_id: MY_UID, following_id: targetId });
     // Notifier la personne suivie (un suivi est une interaction qui doit
     // apparaître dans ses notifications).
     if (targetId && targetId !== MY_UID && typeof supaInsertNotif === "function") {

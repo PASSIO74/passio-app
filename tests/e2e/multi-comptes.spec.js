@@ -159,6 +159,15 @@ test.describe("messagerie entre 2 comptes réels", () => {
     const pageB = await ctxB.newPage();
     pageA.on("console", (msg) => { if (msg.type() === "error") log("A console.error: " + msg.text().slice(0, 200)); });
     pageB.on("console", (msg) => { if (msg.type() === "error") log("B console.error: " + msg.text().slice(0, 200)); });
+    // Diagnostic : les « Failed to load resource: 400 » de la console ne donnent
+    // pas l'URL — on logge ici la requête + le corps d'erreur PostgREST.
+    for (const [who, pg] of [["A", pageA], ["B", pageB]]) {
+      pg.on("response", async (resp) => {
+        if (resp.status() < 400 || resp.url().indexOf("supabase.co") === -1) return;
+        let body = ""; try { body = (await resp.text()).slice(0, 300); } catch (e) {}
+        log(`${who} HTTP ${resp.status()} ${resp.request().method()} ${resp.url().slice(0, 160)} → ${body}`);
+      });
+    }
 
     let postId = null;
     try {
@@ -210,6 +219,15 @@ test.describe("messagerie entre 2 comptes réels", () => {
       // 3c. Follow (supaFollowUser → supaInsertNotif "follow")
       await pageB.evaluate((aid) => supaFollowUser(aid), uidA);
       log("B a suivi A");
+
+      // La ligne follows doit RÉELLEMENT exister (le 2026-07-02, l'insert envoyait
+      // un created_at inexistant en prod → 400 silencieux : la notif partait mais
+      // le follow n'était jamais écrit, compteur d'abonnés toujours à 0).
+      const followWritten = await pageA.evaluate(async (buid) => {
+        const { data } = await supa.from("follows").select("follower_id").eq("follower_id", buid).eq("following_id", MY_UID);
+        return (data || []).length;
+      }, uidB);
+      expect(followWritten, "ligne follows écrite en base (pas seulement la notif)").toBeGreaterThanOrEqual(1);
 
       // 3d. Réactions emoji + GIF portées par le POST lui-même (2026-07-02) :
       //     convention comment_id === post_id dans comment_interactions. B réagit

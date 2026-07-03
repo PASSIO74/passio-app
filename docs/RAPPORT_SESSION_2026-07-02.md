@@ -54,6 +54,9 @@ Partager sa position insérait sans `from_id` en premier → rejet RLS systémat
 ### 10. Tri du feed instable sans date (mineur, UX)
 `allFeedPosts()` triait sans guard `|| 0` : un post sans `createdAt` produisait un `NaN` qui éparpillait les cartes. Corrigé. Vérifié en navigateur (ordre z3/z2/z1, post sans date en dernier).
 
+### 11. Follow jamais écrit en prod (majeur) — trouvé par le e2e
+`supaFollowUser` (app-08) insérait `created_at` dans `follows`, or la table prod n'a QUE `(follower_id, following_id)` → **400 PGRST204 silencieux à chaque follow** : la notif « a commencé à te suivre » partait, mais la ligne n'était jamais écrite (compteurs d'abonnés à 0, listes vides). L'autre site d'insert (app-06, sans `created_at`) fonctionnait, lui. Corrigé le 2026-07-02 (insert sans `created_at`) ; le test e2e notifs logge désormais l'URL+corps de toute réponse Supabase ≥ 400 et vérifie que la ligne `follows` existe réellement en base.
+
 **Audité sain (aucune correction nécessaire)** : pagination du feed (bouton « charger plus » + page serveur de 60), boucle de refresh 60 s branchée au boot via `startFeedRefreshLoop` (pas de doublon — `startAutoRefresh` déjà neutralisé), rendu en 2 temps (paint FAST puis idle), dédup 3 sources, ordre insert des autres `conv_messages`.
 
 ## Lot 3 — carnets cross-compte + recherche + perfs
