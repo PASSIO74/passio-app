@@ -153,11 +153,16 @@
     + "@keyframes pgCardOut{to{opacity:0;transform:scale(1.06)}}"
     + ".pg-dot.ok{background:rgba(74,222,128,.2);border-color:#4ade80}"
     + "@media (prefers-reduced-motion:reduce){#passioGate::before,#passioGate::after,.pg-logo{animation:none!important}"
-    + ".pg-card{animation-duration:.01s!important}}";
+    + ".pg-card{animation-duration:.01s!important}}"
+    // Onglet caché/prérendu : les animations CSS ne démarrent pas, or l'entrée de
+    // .pg-card part de opacity:0 (fill both) → la page ne PEINT jamais rien
+    // (constaté par Lighthouse : NO_FCP). Dans ce cas on saute l'animation.
+    + "html.pg-noanim .pg-card{animation:none!important}";
 
   var styleEl = document.createElement("style");
   styleEl.textContent = css;
   (document.head || document.documentElement).appendChild(styleEl);
+  try { if (document.hidden) document.documentElement.classList.add("pg-noanim"); } catch (e) {}
 
   // Même logo que l'app (flèche Ascension)
   var LOGO = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='gA' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%23ddd6fe'/><stop offset='1' stop-color='%23a78bfa'/></linearGradient></defs><rect width='100' height='100' rx='22' fill='url(%23gA)'/><path d='M24 24 L76 24 L24 76' stroke='%23ffffff' stroke-width='13' stroke-linecap='round' stroke-linejoin='round' fill='none'/><path d='M76 24 L76 76' stroke='%234c1d95' stroke-width='13' stroke-linecap='round' fill='none'/></svg>";
@@ -167,7 +172,10 @@
 
     var name = "";
     try {
-      var st = JSON.parse(localStorage.getItem("passio_state") || "null");
+      // ⚠️ La clé d'état est passio_mvp_state_v1 (STATE_KEY, app-02) — l'ancienne
+      // lecture de "passio_state" ne trouvait jamais rien : le « Bon retour,
+      // <prénom> » ne s'affichait jamais.
+      var st = JSON.parse(localStorage.getItem("passio_mvp_state_v1") || localStorage.getItem("passio_state") || "null");
       name = (st && st.user && st.user.name) ? st.user.name : "";
     } catch (e) {}
 
