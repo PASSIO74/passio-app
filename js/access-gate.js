@@ -128,7 +128,11 @@
     + ".pg-card{position:relative;z-index:2;width:min(360px,calc(100vw - 48px));padding:40px 28px 32px;border-radius:28px;"
     + "background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);"
     + "box-shadow:0 24px 70px rgba(0,0,0,.45);text-align:center;animation:pgIn .65s cubic-bezier(.22,1,.36,1) both}"
-    + "@keyframes pgIn{from{opacity:0;transform:translateY(26px) scale(.96)}to{opacity:1;transform:none}}"
+    // ⚠️ from opacity:.01 (pas 0) : à 0, le texte est peint UNE fois (ignoré par
+    // le paint-timing) puis le fondu se joue sur le compositeur sans repaint →
+    // Chrome n'émet JAMAIS de First Contentful Paint (Lighthouse NO_FCP, CrUX
+    // faussé). À .01 le premier paint est « contentful » — visuellement identique.
+    + "@keyframes pgIn{from{opacity:.01;transform:translateY(26px) scale(.96)}to{opacity:1;transform:none}}"
     + ".pg-logo{width:72px;height:72px;border-radius:20px;margin:0 auto 18px;display:block;"
     + "box-shadow:0 10px 30px rgba(124,58,237,.45);animation:pgPulse 2.6s ease-in-out infinite}"
     + "@keyframes pgPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}"
