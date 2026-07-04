@@ -98,7 +98,7 @@ Audit complet des index prod : schéma déjà solide (chemins chauds feed/likes/
 - ~~**P2** — Bruit `console.log` en prod~~ — **déjà couvert** par platform.js (log/debug/info neutralisés hors debug).
 - ~~**P2** — `openVlogViewer`/`inspireFromCarnet` sur 2 sources~~ — **FAIT** : migrés vers `findPostAnywhere` (3 sources) avec la sync carnets.
 - ~~**P1** — caches fenêtre (`_eventCommentsCache`) : commentaires d'événements volatils~~ — **FAIT le 2026-07-02 (soir)** : (a) **bug de double référence corrigé** — la `var _eventCommentsCache` (app-07) et `window._eventCommentsCache` étaient DEUX objets distincts : les previews bulk chargées dans `window` étaient invisibles pour `_renderEventComments` (qui lit la var), et `addEventComment` réassignait `window = var` en jetant les previews des autres événements → une seule référence partagée + mutations EN PLACE (`_setEventComments`, les références distribuées par `_findCommentThread` restent valides) ; (b) **cache localStorage** `passio_event_comments_v1` (best-effort, ≤30 commentaires/événement, démo exclue, compteurs 💬 inclus) hydraté au parse → cartes peuplées dès le reload et hors-ligne, serveur = source de vérité. Vérifié en navigateur (persist → reload → hydratation normalisée) + suite 21/21.
-- **P2** — Lighthouse mobile formel (action humaine) + audit ARIA complet écran par écran.
+- ~~**P2** — Lighthouse mobile formel~~ — **FAIT le 2026-07-03** (lot 7) : **Perf 86 / A11y 100 / Best Practices 96 / SEO 100** (FCP 2,2 s · LCP 2,3 s · TBT 400 ms · CLS 0), rapport archivé dans `docs/lighthouse-mobile-2026-07-03.json`. Reste : audit ARIA écran par écran (amélioration continue).
 - ~~**P3** — Unifier les deux renderers de commentaires~~ — **FAIT le 2026-07-03** (commit `3f53673`) : le bloc inline dupliqué de `openPost` (app-02) remplacé par `_renderCommentsList` (parité totale : pastille de réactions agrégées, menu ⋯, like multi-identités) ; hydratation des interactions cross-compte ajoutée à la vue détail ; conteneur `#postDetailComments[data-thread]` branché dans `_refreshCommentThreadUINow` + handler realtime des commentaires → la page détail se met à jour en direct (avant : figée). Vérifié en navigateur, 20/20 verts.
 
 ## Lot 5 — refactor renderer commentaires (2026-07-03)
@@ -113,6 +113,20 @@ La barre de navigation était faite de `<div>` cliquables sans sémantique : inv
 
 ### 20. Config TURN dédié pour les appels WebRTC (scalabilité prod)
 Les appels avaient déjà un TURN de repli (Open Relay public, rate-limité). Ajout d'un point de config unique `PASSIO_CALL_TURN` (sur le modèle de `PASSIO_GIF_API`) : quand rempli, un TURN dédié passe en tête, l'Open Relay reste en filet ; rappel CSP inline. Vide = comportement inchangé.
+
+## Lot 7 — premier rendu du gate, Lighthouse mobile, analyse Confirm email (2026-07-03)
+
+### 21. Le gate n'émettait JAMAIS de First Contentful Paint (perf/mesure)
+Deux causes découvertes en lançant Lighthouse (NO_FCP systématique) :
+- l'entrée de `.pg-card` partait de `opacity:0` (fill `both`) : le texte est peint UNE seule fois par le main thread (paint ignoré par le paint-timing à opacité nulle) puis le fondu se joue entièrement sur le **compositeur** sans repaint → Chrome n'émet jamais de FCP (Lighthouse échoue, **Core Web Vitals CrUX faussés** pour l'origine). Fix : départ à `opacity:.01`, visuellement identique (FCP mesuré à 636 ms en local) ;
+- onglet caché/prérendu : les animations CSS ne démarrent pas → écran violet vide tant que l'onglet n'a pas le focus. Fix : `html.pg-noanim` (posé si `document.hidden` au chargement) saute l'animation.
+Bonus corrigé au passage : le « Bon retour, \<prénom\> » du gate lisait `localStorage["passio_state"]` alors que la clé réelle est `passio_mvp_state_v1` (STATE_KEY) → il ne s'affichait jamais.
+
+### 22. Lighthouse mobile formel (P2 humain soldé)
+Sur https://passio-app.netlify.app après le fix FCP : **Performance 86 · Accessibilité 100 · Best Practices 96 · SEO 100** — FCP 2,2 s, LCP 2,3 s, TBT 400 ms, CLS 0, Speed Index 2,4 s. Rapport JSON : `docs/lighthouse-mobile-2026-07-03.json`. Piste principale du 86 : TBT (parse/exec du monolithe JS au boot).
+
+### 23. Analyse « Confirm email » : NE PAS activer sans SMTP (décision documentée)
+L'app gère déjà proprement l'activation (`onbDoAuth` : « Vérifie tes e-mails » sans session, anti-énumération `identities.length===0`, message « Email not confirmed » au login). MAIS la config auth prod (Management API) montre **aucun SMTP custom** (`smtp_host` vide) et une limite d'envoi de **2 e-mails/heure** (mailer intégré Supabase) → activer « Confirm email » aujourd'hui bloquerait les inscriptions beta (les confirmations ne partiraient plus au-delà de 2/h). **Pré-requis avant activation** : configurer un SMTP (Resend/Brevo, gratuits à ce volume) dans Dashboard → Auth → SMTP, PUIS cocher « Confirm email ». Impact e2e : le helper `signupAnonymous` dépend de la session immédiate — le jour de l'activation, passer par l'API admin (`service_role`, récupérable via `supabase projects api-keys`) avec `email_confirm:true`.
 
 ### 21. Assistant IA réel via Claude (Edge Function `ask-ai`) ✅
 L'onglet Assistant IA n'utilisait qu'une base de connaissances locale. Ajout d'une Edge Function `ask-ai` (authentifie le JWT, interroge l'API Anthropic — Haiku, prompt système PASSIO, `max_tokens` 600, clé en secret, `api.anthropic.com` appelé côté serveur → pas de CSP à changer). Le client tente l'IA en priorité (timeout 9 s) et **retombe automatiquement sur le moteur local** si non déployée/hors-ligne → aucune régression tant que le secret n'est pas posé. Réponse IA toujours échappée (`_aiTextToHtml`). Procédure de déploiement : `docs/EDGE_FUNCTION_ASK_AI.md` (action humaine : clé API + `functions deploy`).
