@@ -12,21 +12,25 @@ rien à casser, l'IA « réelle » est un simple upgrade.
 - Échec / non déployée / hors-ligne / pas de session → badge « 💡 Suggestions PASSIO » (moteur local `aiGenerateResponse`).
 - La réponse de l'IA est **toujours échappée** (`_aiTextToHtml`) : aucun HTML arbitraire injecté.
 
-## Déploiement (action manuelle — nécessite une clé API Anthropic)
+## État au 2026-07-04 : ✅ DÉPLOYÉE en prod — il ne manque QUE la clé API
 
-1. **Poser la clé API en secret** (jamais dans le code client) :
-   ```bash
-   supabase secrets set ANTHROPIC_API_KEY=sk-ant-xxxxxxxx
-   ```
-2. **Déployer la fonction** :
-   ```bash
-   supabase functions deploy ask-ai
-   ```
-3. **Vérifier** (avec une session active dans l'app, onglet Assistant IA) : une
-   question doit renvoyer le badge « ✨ Assistant PASSIO ». Sinon, logs :
-   ```bash
-   supabase functions logs ask-ai
-   ```
+La fonction est déployée et testée en réel : appel authentifié → 503
+« IA non configurée » (repli local côté app, aucun impact utilisateur),
+appel anonyme → 401. **Une seule action restante** :
+
+```bash
+supabase secrets set ANTHROPIC_API_KEY=sk-ant-xxxxxxxx
+```
+
+(clé à créer sur https://console.anthropic.com → API Keys ; prise en compte
+immédiate, AUCUN redéploiement nécessaire). Vérifier ensuite dans l'app,
+onglet Assistant IA : une question doit renvoyer le badge
+« ✨ Assistant PASSIO ». En cas de souci : `supabase functions logs ask-ai`.
+
+Pour un futur redéploiement (après modification du code) :
+```bash
+supabase functions deploy ask-ai --use-api
+```
 
 ## Réglages (dans `supabase/functions/ask-ai/index.ts`)
 
