@@ -329,8 +329,8 @@
   </div>
 
   <!-- ============ TOPBAR ============ -->
-  <div class="app-topbar">
-    <div class="topbar-left" onclick="goTo('profiles')" style="cursor:pointer;" title="Mes profils">
+  <div class="app-topbar" role="banner">
+    <div class="topbar-left" onclick="goTo('profiles')" style="cursor:pointer;" title="Mes profils" role="button" tabindex="0" aria-label="Mes profils">
       <div class="brand-logo"><img id="logoTopbar" alt="PASSIO" /></div>
       <div class="brand-text">
         <div class="brand-name">PASSIO</div>
@@ -338,15 +338,15 @@
       </div>
     </div>
     <div class="topbar-right">
-      <div class="topbar-bell" onclick="goTo('messages')" title="Messages">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;"><path d="M5 4.5 H19 A2.2 2.2 0 0 1 21.2 6.7 V14.3 A2.2 2.2 0 0 1 19 16.5 H13 L9 20 V16.5 H5 A2.2 2.2 0 0 1 2.8 14.3 V6.7 A2.2 2.2 0 0 1 5 4.5 Z"/><circle cx="9" cy="10.5" r="0.9" fill="currentColor" stroke="none"/><circle cx="12" cy="10.5" r="0.9" fill="currentColor" stroke="none"/><circle cx="15" cy="10.5" r="0.9" fill="currentColor" stroke="none"/></svg>
+      <div class="topbar-bell" onclick="goTo('messages')" title="Messages" role="button" tabindex="0" aria-label="Messages">
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;"><path d="M5 4.5 H19 A2.2 2.2 0 0 1 21.2 6.7 V14.3 A2.2 2.2 0 0 1 19 16.5 H13 L9 20 V16.5 H5 A2.2 2.2 0 0 1 2.8 14.3 V6.7 A2.2 2.2 0 0 1 5 4.5 Z"/><circle cx="9" cy="10.5" r="0.9" fill="currentColor" stroke="none"/><circle cx="12" cy="10.5" r="0.9" fill="currentColor" stroke="none"/><circle cx="15" cy="10.5" r="0.9" fill="currentColor" stroke="none"/></svg>
         <span class="bell-dot" id="msgDot"></span>
       </div>
-      <div class="topbar-bell" onclick="openNotifications()" title="Notifications">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;"><path d="M18 8.5 A6 6 0 0 0 6 8.5 C6 14 3.8 15.5 3.8 15.5 H20.2 S18 14 18 8.5 Z"/><path d="M10.2 19 A2 2 0 0 0 13.8 19"/></svg>
+      <div class="topbar-bell" onclick="openNotifications()" title="Notifications" role="button" tabindex="0" aria-label="Notifications">
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;"><path d="M18 8.5 A6 6 0 0 0 6 8.5 C6 14 3.8 15.5 3.8 15.5 H20.2 S18 14 18 8.5 Z"/><path d="M10.2 19 A2 2 0 0 0 13.8 19"/></svg>
         <span class="bell-dot" id="bellDot"></span>
       </div>
-      <div class="hamburger" onclick="toggleDevPanel()">⋯</div>
+      <div class="hamburger" onclick="toggleDevPanel()" role="button" tabindex="0" aria-label="Paramètres">⋯</div>
     </div>
   </div>
 
@@ -1499,7 +1499,7 @@
 
   <!-- ============ MODALS ============ -->
   <div id="modalBackdrop" class="modal-backdrop" onclick="closeModalOnBackdrop(event)">
-    <div class="modal" id="modalContent"></div>
+    <div class="modal" id="modalContent" role="dialog" aria-modal="true"></div>
   </div>
 
   <!-- ============ TOUR OVERLAY ============ -->
@@ -1614,7 +1614,7 @@
   </div>
 
   <!-- ============ TOASTS ============ -->
-  <div class="toast-stack" id="toastStack"></div>
+  <div class="toast-stack" id="toastStack" aria-live="polite"></div>
 
 </div>
 

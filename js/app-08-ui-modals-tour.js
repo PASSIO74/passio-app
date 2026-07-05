@@ -1708,6 +1708,21 @@ function claimQuest(id) {
   renderWallet();
 }
 
+// ======== ACTIVATION CLAVIER GÉNÉRIQUE des [role="button"] non natifs ========
+// Topbar, barre IRL, éléments générés… : tout div role="button" tabindex="0"
+// s'active à Entrée/Espace via ce délégué unique (les .nav-item ont déjà leur
+// listener dédié ci-dessous → exclus pour ne pas activer deux fois).
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Enter" && e.key !== " " && e.key !== "Spacebar") return;
+  const el = e.target && e.target.closest ? e.target.closest('[role="button"]') : null;
+  if (!el || el === document.body) return;
+  const tag = el.tagName;
+  if (tag === "BUTTON" || tag === "A" || tag === "INPUT" || tag === "TEXTAREA") return; // natifs : déjà gérés
+  if (el.classList.contains("nav-item")) return; // listener dédié plus bas
+  e.preventDefault(); // Espace ne doit pas défiler la page
+  el.click();
+});
+
 // ======== NAV CLICKS + CLAVIER ========
 // Les nav-item sont des role="button" tabindex="0" (accessibilité) : on active
 // donc aussi au clavier (Entrée / Espace), pas seulement au clic souris/tactile.
