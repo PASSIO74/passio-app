@@ -49,6 +49,12 @@ jobs:
           && mv dist/index.min.html dist/index.html \
           || echo "Minification échouée, déploiement du fichier brut"
 
+      - name: Minify app.js (fallback sur le fichier brut en cas d'erreur)
+        run: |
+          npx --yes terser dist/app.js -o dist/app.min.js --compress --mangle \
+          && mv dist/app.min.js dist/app.js \
+          || echo "Minification app.js échouée, déploiement du fichier brut"
+
       - name: Deploy to Netlify
         env:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}

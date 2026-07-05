@@ -13,6 +13,11 @@
 /
   Cache-Control: no-store, no-cache, must-revalidate
 
+# app.js : cache long — l'URL change à chaque build (app.js?v=<hash de contenu>,
+# généré par scripts/build.js), donc immutable est sûr.
+/app.js
+  Cache-Control: public, max-age=31536000, immutable
+
 # Sécurité globale
 /*
   Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com; style-src 'self' 'unsafe-inline' https://unpkg.com https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; connect-src 'self' https://njkiyoklssvefstljemx.supabase.co wss://njkiyoklssvefstljemx.supabase.co https://nominatim.openstreetmap.org https://tenor.googleapis.com https://api.giphy.com stun:stun.l.google.com:19302 stun:stun1.l.google.com:19302 stun:stun2.l.google.com:19302 turn:openrelay.metered.ca:80 turn:openrelay.metered.ca:443; worker-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'
