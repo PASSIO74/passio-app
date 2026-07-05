@@ -6,6 +6,9 @@ module.exports = defineConfig({
   testDir: "./tests/e2e",
   timeout: 45000,
   retries: 1,
+  // Après une suite multi-comptes (PASSIO_E2E_MULTI=1) : purge des comptes
+  // jetables %@passio-e2e.test en prod (best-effort, no-op sinon).
+  globalTeardown: "./tests/e2e/global-teardown.js",
   use: {
     baseURL: "http://127.0.0.1:8080",
     viewport: { width: 390, height: 844 },
