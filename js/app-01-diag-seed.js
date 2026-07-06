@@ -1,5 +1,6 @@
 /* ============================================================
    PASSIO MVP BETA · Application Logic
+   BUILD-BUMP: 2026-07-06 (force refresh cache SW tous appareils)
    ============================================================ */
 
 // jQuery replacement: $ = getElementById shortcut
