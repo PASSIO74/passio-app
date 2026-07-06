@@ -36,7 +36,8 @@ jobs:
       - name: Build dist (assemblage monolithique + assets publics)
         run: |
           node scripts/build.js dist/index.html
-          cp sw.js manifest.json _headers icon-192.png icon-512.png dist/
+          # sw.js est généré par build.js (dist/sw.js, cache auto-bumpé) — ne pas le recopier
+          cp manifest.json _headers icon-192.png icon-512.png dist/
 
       - name: Minify index.html (fallback sur le fichier brut en cas d'erreur)
         run: |
@@ -72,7 +73,8 @@ jobs:
       - name: Build dist
         run: |
           node scripts/build.js dist/index.html
-          cp sw.js manifest.json _headers icon-192.png icon-512.png dist/
+          # sw.js est généré par build.js (dist/sw.js, cache auto-bumpé) — ne pas le recopier
+          cp manifest.json _headers icon-192.png icon-512.png dist/
 
       - name: Deploy preview Netlify
         env:

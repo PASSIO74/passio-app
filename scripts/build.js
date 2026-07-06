@@ -64,7 +64,20 @@ html = html.replace(
 html = html.replace(/^([ \t]*)<script src="(js\/[^"]+)"><\/script>$/gm,
   (m, indent, file) => indent + "<script>\n" + read(file) + indent + "</script>");
 
+// 4. Service worker : bump AUTOMATIQUE de la version de cache à partir d'une
+//    signature du build (HTML final inline-CSS compris + app.js). Toute modif
+//    réelle change ce hash → les octets de dist/sw.js changent → le navigateur
+//    réinstalle le SW → les PWA déjà ouvertes se rechargent seules. Fini le
+//    « BUILD-BUMP » manuel à oublier. (En dev sans build, sw.js garde Date.now().)
+const buildId = crypto.createHash("sha1").update(html + appJs).digest("hex").slice(0, 12);
+let sw = read("sw.js");
+const swBefore = sw;
+sw = sw.replace(/const CACHE = "passio-v"\s*\+\s*Date\.now\(\);/,
+  `const CACHE = "passio-v${buildId}"; // auto-bump build`);
+if (sw === swBefore) throw new Error("Ligne CACHE de sw.js introuvable — auto-bump SW cassé");
+
 fs.mkdirSync(path.dirname(outPath), { recursive: true });
 fs.writeFileSync(outPath, html);
 fs.writeFileSync(path.join(path.dirname(outPath), "app.js"), appJs);
-console.log("Build OK →", outPath, "(", Buffer.byteLength(html), "octets ) + app.js (", Buffer.byteLength(appJs), "octets, v=" + appHash + ")");
+fs.writeFileSync(path.join(path.dirname(outPath), "sw.js"), sw);
+console.log("Build OK →", outPath, "(", Buffer.byteLength(html), "octets ) + app.js (", Buffer.byteLength(appJs), "octets, v=" + appHash + ") + sw.js (cache passio-v" + buildId + ")");

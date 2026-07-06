@@ -1,5 +1,6 @@
-// Version auto-générée à chaque modification — à incrémenter manuellement si besoin
-// BUILD-BUMP: 2026-07-06 refresh visuel styles.css (force la réinstallation du SW → CSS frais)
+// Version du cache. En PROD, scripts/build.js réécrit cette ligne avec un hash du
+// build (HTML+app.js) → réinstallation auto du SW à chaque vraie modif (plus de
+// bump manuel). En DEV (sw.js servi tel quel, sans build), Date.now() suffit.
 const CACHE = "passio-v" + Date.now();
 
 // Répond au message SKIP_WAITING
