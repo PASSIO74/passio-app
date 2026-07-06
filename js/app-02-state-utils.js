@@ -526,6 +526,19 @@ function rankOf(score) {
   return r;
 }
 
+// Célèbre un passage de rang : à appeler APRÈS une modification du score, en lui
+// passant le score AVANT le gain. Ne toaste que si le rang a réellement grimpé.
+function checkRankUp(prevScore) {
+  if (!state || !state.user) return;
+  const newRank = rankOf(state.user.score || 0);
+  const oldRank = rankOf(prevScore || 0);
+  if (newRank.label === oldRank.label) return;
+  const order = RANKS.map(r => r.label);
+  if (order.indexOf(newRank.label) <= order.indexOf(oldRank.label)) return; // pas une montée
+  try { toast("🎉 Nouveau rang débloqué : " + newRank.label + " !", "reward"); } catch (e) {}
+  try { if (typeof pushNotification === "function") pushNotification("🎉 Nouveau rang : <b>" + escapeHtml(newRank.label) + "</b>", "🏆"); } catch (e) {}
+}
+
 // ======== TOAST ========
 function toast(msg, type = "info", onClick = null) {
   const stack = $("#toastStack");
@@ -555,6 +568,7 @@ function rewardToast(amount, passia, reason) {
 function grantReward(kind, customLabel) {
   const r = REWARDS[kind];
   if (!r) return;
+  const _prevScore = state.user.score || 0;
   state.user.score += r.pts;
   state.user.passia += r.passia;
   state.transactions.unshift({
@@ -569,6 +583,7 @@ function grantReward(kind, customLabel) {
   renderTopbar();
   renderWallet();
   rewardToast(r.pts, r.passia, customLabel || r.label);
+  checkRankUp(_prevScore);
 }
 
 // 💎 VALEUR REÇUE — appelé quand QUELQU'UN D'AUTRE like un de MES posts (via le
@@ -577,6 +592,7 @@ function grantReward(kind, customLabel) {
 // donne 2 ⭐ ; tous les LIKES_PER_PASSIA likes reçus → +1 💎.
 function awardLikeReceived() {
   if (!state || !state.user) return;
+  const _prevScore = state.user.score || 0;
   state.user.score = (state.user.score || 0) + (REWARDS.like_received.pts || 2);
   state.user.likesReceived = (state.user.likesReceived || 0) + 1;
   let passia = 0;
@@ -596,6 +612,7 @@ function awardLikeReceived() {
   try { renderTopbar(); } catch (e) {}
   try { renderWallet(); } catch (e) {}
   if (passia) rewardToast(REWARDS.like_received.pts || 2, passia, "Ton contenu plaît !");
+  checkRankUp(_prevScore);
 }
 
 // ======== NAVIGATION ========

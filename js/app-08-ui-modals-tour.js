@@ -1693,6 +1693,7 @@ function claimQuest(id) {
   const q = state.quests.find(x => x.id === id);
   if (!q || q.done || q.progress < q.target) return;
   q.done = true;
+  const _prevScore = state.user.score || 0;
   state.user.score += q.reward;
   state.user.passia += q.passia;
   state.transactions.unshift({
@@ -1706,6 +1707,7 @@ function claimQuest(id) {
   renderQuests();
   renderTopbar();
   renderWallet();
+  checkRankUp(_prevScore);
 }
 
 // ======== ACTIVATION CLAVIER GÉNÉRIQUE des [role="button"] non natifs ========
