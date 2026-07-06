@@ -32,7 +32,7 @@
       --border-strong: rgba(24, 18, 48, 0.12);
 
       --danger: #dc2626;
-      --warning: #d97706;
+      --warning: #d97706;                           /* ambre : un avertissement se distingue de l'accent violet */
 
       --radius-lg: 24px;
       --radius-md: 18px;
