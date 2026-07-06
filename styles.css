@@ -6,11 +6,11 @@
       /* Passio — REFONTE ÉLÉGANTE
          Surfaces blanches propres sur fond lavande très doux.
          Le violet reste l'identité mais devient un ACCENT, pas un fond. */
-      --bg-deep: #e9e4f8;                            /* fond app : lavande clair général */
-      --bg-soft: #f3f0fb;                            /* surfaces légèrement élevées */
+      --bg-deep: #f6f5fa;                            /* fond app : quasi-blanc neutre (allégé) */
+      --bg-soft: #f2f1f7;                            /* surfaces légèrement élevées, neutres */
       --bg-card: #ffffff;                            /* cards blanches nettes */
       --bg-glass: rgba(255, 255, 255, 0.82);
-      --bg-tint: #ece7fa;                            /* aplat violet clair pour zones douces */
+      --bg-tint: #f1eefb;                            /* aplat violet TRÈS clair pour zones douces */
 
       --accent: #7c3aed;            /* violet-600, accent principal */
       --accent-soft: #8b5cf6;
@@ -40,8 +40,8 @@
 
       --shadow-soft: 0 1px 2px rgba(24, 18, 48, 0.05), 0 4px 12px rgba(24, 18, 48, 0.05);
       --shadow-strong: 0 16px 48px rgba(24, 18, 48, 0.12);
-      --shadow-glow: 0 8px 22px rgba(124, 58, 237, 0.22);
-      --shadow-glow-2: 0 8px 22px rgba(109, 40, 217, 0.20);
+      --shadow-glow: 0 4px 14px rgba(124, 58, 237, 0.16);
+      --shadow-glow-2: 0 4px 14px rgba(109, 40, 217, 0.15);
 
       --grad-hero: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
       --grad-hero-2: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);
@@ -64,9 +64,9 @@
       font-feature-settings: "kern" 1, "liga" 1, "calt" 1;
       letter-spacing: -0.005em;
       background:
-        radial-gradient(1200px 760px at 50% -8%, rgba(167, 139, 250, 0.22), transparent 60%),
-        radial-gradient(900px 600px at 90% 110%, rgba(196, 181, 253, 0.18), transparent 64%),
-        #e9e4f8;
+        radial-gradient(1200px 760px at 50% -8%, rgba(167, 139, 250, 0.10), transparent 60%),
+        radial-gradient(900px 600px at 90% 110%, rgba(196, 181, 253, 0.07), transparent 64%),
+        #f6f5fa;
       overflow: hidden;
       overscroll-behavior: none;
     }
@@ -109,8 +109,8 @@
       max-height: 100dvh;
       margin: auto;
       background:
-        radial-gradient(1100px 620px at 50% -6%, rgba(167, 139, 250, 0.20), transparent 58%),
-        #ede9fa;
+        radial-gradient(1100px 620px at 50% -6%, rgba(167, 139, 250, 0.08), transparent 58%),
+        #f6f5fa;
       box-shadow: var(--shadow-strong);
       display: flex;
       flex-direction: column;
@@ -146,7 +146,7 @@
       .mood-selector { padding: 8px 12px; gap: 8px; grid-template-columns: repeat(4, 1fr); }
       .mood-btn { padding: 8px 2px; font-size: 9.5px; }
       .mood-btn-icon { font-size: 18px; height: 20px; width: 20px; }
-      .profile-strip { padding: 14px 12px 10px; gap: 10px; }
+      .profile-strip { padding: 10px 12px 6px; gap: 10px; }
       .profile-tile { padding: 8px 4px 10px; border-radius: 18px; }
       .profile-tile-avatar { width: 60px; height: 60px; border-radius: 22px; font-size: 30px; }
       .profile-tile.active .profile-tile-avatar { font-size: 34px; }
@@ -273,8 +273,8 @@
       color: var(--text-dim);
     }
 
-    .topbar-chip.score { color: var(--accent-2); border-color: rgba(124, 58, 237, 0.22); background: var(--accent-wash); }
-    .topbar-chip.passia { color: var(--accent-2); border-color: rgba(124, 58, 237, 0.22); background: var(--accent-wash); }
+    .topbar-chip.score { color: var(--text-dim); border-color: var(--border); background: var(--bg-soft); }
+    .topbar-chip.passia { color: var(--text-dim); border-color: var(--border); background: var(--bg-soft); }
 
     .topbar-bell {
       width: 34px;
@@ -528,7 +528,7 @@
       font-size: 17px;
       font-weight: 800;
       letter-spacing: -0.02em;
-      color: var(--accent-2);
+      color: var(--text);
       margin: 12px 2px 14px;
       display: flex;
       align-items: center;
@@ -537,12 +537,11 @@
     }
     .section-title::before {
       content: "";
-      width: 4px;
-      height: 17px;
+      width: 3px;
+      height: 16px;
       border-radius: 3px;
-      background: var(--grad-hero);
+      background: var(--accent);
       flex-shrink: 0;
-      box-shadow: 0 2px 6px rgba(124, 58, 237, 0.30);
     }
     .section-title .link { margin-left: auto; }
 
@@ -1819,7 +1818,7 @@
       background: transparent;
       border: none;
       box-shadow: none;
-      margin: 2px auto 14px;
+      margin: 0 auto 8px;
       max-width: 100%;
     }
 
@@ -4043,8 +4042,8 @@
       display: flex;
       gap: 12px;
       overflow-x: auto;
-      padding: 6px 2px 10px;
-      margin: -2px -4px 10px;
+      padding: 4px 2px 6px;
+      margin: -2px -4px 6px;
       scrollbar-width: none;
     }
     .stories-row::-webkit-scrollbar { display: none; }
@@ -4084,9 +4083,9 @@
     .story-ring {
       width: 62px;
       height: 62px;
-      padding: 3px;
+      padding: 2.5px;
       border-radius: 999px;
-      background: conic-gradient(from 120deg, #8b5cf6, #7c3aed, #8b5cf6, #8b5cf6, #8b5cf6);
+      background: rgba(124, 58, 237, 0.30);
       transition: transform 200ms ease;
     }
     .story-item:active .story-ring { transform: scale(0.94); }
@@ -4802,12 +4801,10 @@
       display: flex;
       gap: 14px;
       overflow-x: auto;
-      padding: 18px 16px 14px;
+      padding: 12px 16px 8px;
       scrollbar-width: none;
       -webkit-overflow-scrolling: touch;
-      background:
-        radial-gradient(140% 100% at 0% 0%, rgba(139, 92, 246, 0.12), transparent 60%),
-        radial-gradient(140% 100% at 100% 100%, rgba(139, 92, 246, 0.12), transparent 60%);
+      background: transparent;
     }
     .profile-strip::-webkit-scrollbar { display: none; }
 
@@ -4882,7 +4879,7 @@
     }
     .profile-tile.active .profile-tile-avatar {
       border-color: #fff;
-      box-shadow: 0 0 0 2.5px var(--accent), 0 6px 16px rgba(124, 58, 237, 0.30);
+      box-shadow: 0 0 0 2px var(--accent), 0 4px 12px rgba(124, 58, 237, 0.22);
       font-size: 36px;
     }
     .profile-tile:not(.active) .profile-tile-photo {
