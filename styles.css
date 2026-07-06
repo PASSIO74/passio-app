@@ -1177,6 +1177,8 @@
     @keyframes liveBar { 0% { background-position: 0 0; } 100% { background-position: 200% 0; } }
     .cdv-live-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
     .cdv-live-badge { background: #ef4444; color: #fff; font-size: 9px; font-weight: 800; padding: 3px 8px; border-radius: 6px; animation: livePulse 1.5s ease infinite; }
+    .cdv-pinned-live-title { font-weight: 800; font-size: 13px; color: var(--text); margin: 6px 0 8px; display: flex; align-items: center; gap: 6px; }
+    .cdv-live-pinned { box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.15); }
     .cdv-live-dest { font-weight: 800; font-size: 15px; color: var(--text); }
     .cdv-live-author { font-size: 11px; color: var(--muted); }
     .cdv-live-steps { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }

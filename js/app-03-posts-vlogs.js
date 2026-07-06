@@ -1610,6 +1610,25 @@ function setStudioToVlog() {
 // Filtre actif sur l'écran CDV - multi-select (saved / mine / live)
 let cdvFilters = new Set(); // Vide par défaut = affiche TOUS les carnets
 
+// Carte compacte d'un Live épinglé en tête de la liste CDV (vue par défaut).
+// Pastille rouge animée déjà stylée (.cdv-live-badge). Clic → viewer du live.
+function _pinnedLiveCardHtml(l) {
+  const seedAuthor = userById(l.authorId);
+  const authorName = isMyLive(l) ? (state.user.name || "Toi") : (seedAuthor && seedAuthor.name) || "Passionné";
+  const viewerCount = (l.followers || l.viewers || []).length;
+  const nSteps = (l.steps || []).length;
+  return `<div class="cdv-live-card cdv-live-pinned" onclick="openCdvLiveViewer('${l.id}')" style="border-color:rgba(239,68,68,0.35);position:relative;">
+    <div class="cdv-live-header">
+      <span class="cdv-live-badge">🔴 EN DIRECT</span>
+      <div style="flex:1;min-width:0;">
+        <div class="cdv-live-dest">${escapeHtml(l.destination || "Live")}</div>
+        <div class="cdv-live-author">par ${escapeHtml(authorName)} · ${nSteps} étape${nSteps > 1 ? "s" : ""}</div>
+      </div>
+      <span style="font-size:11px;color:var(--muted);white-space:nowrap;">👁 ${viewerCount}</span>
+    </div>
+  </div>`;
+}
+
 function renderCdvScreen() {
   const list = document.getElementById("cdvList");
   if (!list) return;
@@ -1749,7 +1768,28 @@ function renderCdvScreen() {
     );
   }
 
+  // Live épinglé : si un carnet Live est en cours, on le remonte EN TÊTE de la
+  // liste CDV (uniquement en vue par défaut — pas en recherche ni sous filtre).
+  let pinnedLivesHtml = "";
+  if ((!cdvFilters || cdvFilters.size === 0) && !q) {
+    const _seenPin = new Set();
+    const _activeLives = getActiveCdvLives().filter(l => {
+      if (_seenPin.has(l.id)) return false; _seenPin.add(l.id); return true;
+    });
+    if (_activeLives.length) {
+      pinnedLivesHtml = '<div class="cdv-pinned-live-title">🔴 En direct maintenant</div>'
+        + _activeLives.map(_pinnedLiveCardHtml).join("");
+    }
+  }
+
   if (!carnets.length) {
+    // Un Live en cours reste visible même sans aucun carnet à afficher.
+    if (pinnedLivesHtml) {
+      list.innerHTML = pinnedLivesHtml;
+      const _emptyEl = document.getElementById("cdvEmpty");
+      if (_emptyEl) _emptyEl.style.display = "none";
+      return;
+    }
     list.innerHTML = "";
     const empty = document.getElementById("cdvEmpty");
     if (empty) {
@@ -1773,8 +1813,9 @@ function renderCdvScreen() {
   }
   document.getElementById("cdvEmpty").style.display = "none";
 
-  // Format "fil d'actualité" : chaque carnet est un post complet
-  list.innerHTML = carnets.map(c => {
+  // Format "fil d'actualité" : chaque carnet est un post complet.
+  // Le(s) Live(s) en cours sont épinglés en tête via pinnedLivesHtml.
+  list.innerHTML = pinnedLivesHtml + carnets.map(c => {
     const stats = vlogStats(c);
     const isMine = c._source === "me";
     const seedAuthor = userById(c.authorId);
