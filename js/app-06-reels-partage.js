@@ -316,7 +316,16 @@ function renderProfileContent() {
     var carnets = mine.filter(function(p){return p.type==="vlog";});
     myPostsDiv.innerHTML = carnets.length ? carnets.map(function(p){return renderPostHTML(Object.assign({},p,{_source:"me"}));}).join("") : emptyBlock("📔","Aucun carnet");
   } else {
-    myPostsDiv.innerHTML = mine.length ? mine.map(function(p){return renderPostHTML(Object.assign({},p,{_source:"me"}));}).join("") : emptyBlock("✏️","Rien publié");
+    // État vide guidé : au lieu d'un simple « rien publié », on invite à créer
+    // (raccourci direct vers le Studio) et on annonce le gain de points.
+    myPostsDiv.innerHTML = mine.length
+      ? mine.map(function(p){return renderPostHTML(Object.assign({},p,{_source:"me"}));}).join("")
+      : '<div class="empty profile-first-post">'
+        + '<div class="empty-icon">✨</div>'
+        + '<div class="empty-title">Publie ta première création</div>'
+        + '<div class="empty-text">Partage une photo, une vidéo ou un texte — et gagne <b>+10 pts</b> dès ta première publication.</div>'
+        + '<button class="btn primary" style="margin-top:12px;" onclick="goTo(\'studio\')">✨ Ouvrir le Studio → +10 pts</button>'
+        + '</div>';
   }
 }
 
