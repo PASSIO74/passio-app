@@ -2604,6 +2604,26 @@ function testIrlDistance() {
   toast("🧪 5 événements de test créés! Ouvre le diagnostic (F12)");
 }
 
+// Estime le nombre de jours avant le prochain rang d'après le gain moyen récent
+// (transactions à points des 30 derniers jours). Retourne null si pas assez de
+// données pour estimer, ou si le rang maximum est atteint.
+function _estimateDaysToNextRank(score, rank) {
+  if (!rank || !rank.next) return null;            // rang max
+  const remaining = rank.next - score;
+  if (remaining <= 0) return null;
+  const now = Date.now();
+  const WINDOW = 30 * 86400000;                    // 30 jours
+  const recent = (state.transactions || []).filter(t =>
+    t && t.at && (t.pts || 0) > 0 && (now - t.at) <= WINDOW);
+  if (recent.length < 2) return null;              // historique insuffisant
+  const oldest = recent.reduce((m, t) => Math.min(m, t.at), now);
+  const spanDays = Math.max(1, (now - oldest) / 86400000);
+  const totalPts = recent.reduce((a, t) => a + (t.pts || 0), 0);
+  const perDay = totalPts / spanDays;
+  if (perDay <= 0) return null;
+  return Math.max(1, Math.ceil(remaining / perDay));
+}
+
 // ======== WALLET ========
 function renderWallet() {
   const s = state.user.score || 0;
@@ -2617,6 +2637,17 @@ function renderWallet() {
   $("#scoreNum").textContent = s;
   const rNext = r.next || r.min;
   $("#nextRankText").textContent = r.next ? `Prochain rang à ${r.next} pts · ${Math.max(0, r.next - s)} à gagner` : "Rang maximum atteint 🏆";
+  // Estimation temporelle « à ce rythme, prochain rang dans ~N jours ».
+  const paceEl = $("#nextRankPace");
+  if (paceEl) {
+    const days = _estimateDaysToNextRank(s, r);
+    if (days) {
+      paceEl.textContent = `📈 À ce rythme, prochain rang dans ~${days} jour${days > 1 ? "s" : ""}`;
+      paceEl.style.display = "";
+    } else {
+      paceEl.style.display = "none";
+    }
+  }
   const pct = r.next ? Math.min(100, ((s - r.min) / (r.next - r.min)) * 100) : 100;
   const circ = 2 * Math.PI * 42;
   $("#ringFg").setAttribute("stroke-dasharray", circ.toFixed(2));
