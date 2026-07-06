@@ -309,17 +309,26 @@ function renderProfileContent() {
   var mine = state.userPosts.filter(function(p){ return selPassions.has(p.passion) || (!p.passion && sel.has(p.profileId)); });
   var tab = _activeProfileTab();
 
-  function emptyBlock(icon, title) {
-    return '<div class="empty"><div class="empty-icon">'+icon+'</div><div class="empty-title">'+title+'</div><div class="empty-text">Rien à afficher pour '+(sel.size===1?"ce profil":"ces profils")+'.</div></div>';
+  // État vide guidé — même format que l'état vide des bobines (emoji + titre +
+  // texte + bouton primaire), CTA direct vers le Studio. On reste sur la classe
+  // inline `.empty` (et non `.reels-empty`, qui est en position:absolute pour le
+  // viewer plein écran des bobines et casserait la mise en page ici).
+  function guidedEmpty(emoji, title, text) {
+    return '<div class="empty">'
+      + '<div class="empty-icon">'+emoji+'</div>'
+      + '<div class="empty-title">'+title+'</div>'
+      + '<div class="empty-text">'+text+'</div>'
+      + '<button class="btn primary" onclick="goTo(\'studio\')">✨ Créer un post</button>'
+      + '</div>';
   }
 
   if (tab==="photos") {
     var photos = mine.filter(function(p){return !p.isReel && (p.type==="photo"||p.image);});
-    myPostsDiv.innerHTML = photos.length ? '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;">'+photos.map(function(p){var src=p.image||"https://picsum.photos/seed/"+p.id+"/300/300";return '<div style="aspect-ratio:1;border-radius:8px;overflow:hidden;"><img loading="lazy" decoding="async" src="'+src+'" style="width:100%;height:100%;object-fit:cover;"/></div>';}).join("")+'</div>' : emptyBlock("📷","Aucune photo");
+    myPostsDiv.innerHTML = photos.length ? '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;">'+photos.map(function(p){var src=p.image||"https://picsum.photos/seed/"+p.id+"/300/300";return '<div style="aspect-ratio:1;border-radius:8px;overflow:hidden;"><img loading="lazy" decoding="async" src="'+src+'" style="width:100%;height:100%;object-fit:cover;"/></div>';}).join("")+'</div>' : guidedEmpty("📷","Ajoute ta première photo","Un cliché de ton univers, ton atelier, ton travail en cours.");
   } else if (tab==="videos") {
     // Vidéos « classiques » : on exclut les bobines (elles ont leur propre onglet).
     var videos = mine.filter(function(p){return p.type==="video" && !p.isReel;});
-    myPostsDiv.innerHTML = videos.length ? videos.map(function(p){return renderPostHTML(Object.assign({},p,{_source:"me"}));}).join("") : emptyBlock("🎬","Aucune vidéo");
+    myPostsDiv.innerHTML = videos.length ? videos.map(function(p){return renderPostHTML(Object.assign({},p,{_source:"me"}));}).join("") : guidedEmpty("🎬","Publie ta première vidéo","Montre ton geste, ton processus en mouvement.");
   } else if (tab==="bobines") {
     var bobines = mine.filter(function(p){return p.isReel;});
     myPostsDiv.innerHTML = bobines.length
@@ -333,18 +342,13 @@ function renderProfileContent() {
       : emptyBlock("🎞️","Aucune bobine");
   } else if (tab==="carnets") {
     var carnets = mine.filter(function(p){return p.type==="vlog";});
-    myPostsDiv.innerHTML = carnets.length ? carnets.map(function(p){return renderPostHTML(Object.assign({},p,{_source:"me"}));}).join("") : emptyBlock("📔","Aucun carnet");
+    myPostsDiv.innerHTML = carnets.length ? carnets.map(function(p){return renderPostHTML(Object.assign({},p,{_source:"me"}));}).join("") : guidedEmpty("📔","Démarre ton premier carnet","Raconte l'histoire derrière ta création, étape par étape.");
   } else {
     // État vide guidé : au lieu d'un simple « rien publié », on invite à créer
-    // (raccourci direct vers le Studio) et on annonce le gain de points.
+    // (raccourci direct vers le Studio), au même format que l'état vide des bobines.
     myPostsDiv.innerHTML = mine.length
       ? mine.map(function(p){return renderPostHTML(Object.assign({},p,{_source:"me"}));}).join("")
-      : '<div class="empty profile-first-post">'
-        + '<div class="empty-icon">✨</div>'
-        + '<div class="empty-title">Publie ta première création</div>'
-        + '<div class="empty-text">Partage une photo, une vidéo ou un texte — et gagne <b>+10 pts</b> dès ta première publication.</div>'
-        + '<button class="btn primary" style="margin-top:12px;" onclick="goTo(\'studio\')">✨ Ouvrir le Studio → +10 pts</button>'
-        + '</div>';
+      : guidedEmpty("🎨","Publie ta première création","Montre ton processus, pas juste le résultat.");
   }
 }
 
