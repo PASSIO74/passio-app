@@ -163,6 +163,25 @@ function renderMainProfile() {
     starsRankEl.textContent  = _rank.label;
     var chip = document.getElementById("mainProfileStars");
     if (chip) chip.title = _rank.next ? ("Plus que " + Math.max(0, _rank.next - _score) + " pts avant « " + (rankOf(_rank.next).label) + " »") : "Rang maximum atteint 🏆";
+
+    // Jauge de progression vers le prochain palier (même logique de rang).
+    var rpWrap = document.getElementById("mainProfileRankProgress");
+    if (rpWrap) {
+      if (_rank.next) {
+        var _span = _rank.next - _rank.min;
+        var _done = _score - _rank.min;
+        var _pct = _span > 0 ? Math.max(0, Math.min(100, (_done / _span) * 100)) : 0;
+        var _remaining = Math.max(0, _rank.next - _score);
+        var _nextLabel = rankOf(_rank.next).label;
+        var _fill = document.getElementById("mainProfileRankFill");
+        if (_fill) _fill.style.width = _pct.toFixed(1) + "%";
+        var _lbl = document.getElementById("mainProfileRankLabel");
+        if (_lbl) _lbl.innerHTML = "Plus que <b>" + _remaining + " pt" + (_remaining > 1 ? "s" : "") + "</b> → " + escapeHtml(_nextLabel);
+        rpWrap.style.display = "";
+      } else {
+        rpWrap.style.display = "none"; // rang maximum atteint
+      }
+    }
   }
 
   var postCount = state.userPosts.length;
