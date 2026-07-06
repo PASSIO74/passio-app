@@ -1,4 +1,5 @@
 // Version auto-générée à chaque modification — à incrémenter manuellement si besoin
+// BUILD-BUMP: 2026-07-06 refresh visuel styles.css (force la réinstallation du SW → CSS frais)
 const CACHE = "passio-v" + Date.now();
 
 // Répond au message SKIP_WAITING
