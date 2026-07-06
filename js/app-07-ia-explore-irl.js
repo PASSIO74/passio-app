@@ -2622,11 +2622,11 @@ function renderWallet() {
   $("#ringFg").setAttribute("stroke-dasharray", circ.toFixed(2));
   $("#ringFg").setAttribute("stroke-dashoffset", (circ * (1 - pct / 100)).toFixed(2));
   $("#passiaBalance").textContent = p;
-  // Indicateur valeur estimée (1 PSI = 0,05 € en démo)
+  // Wallet légal : pas de valeur € ni de « gain » fictif — ce sont des points de
+  // fidélité internes, non convertibles à ce jour (cf. mention sous le solde).
   const valIndic = $("#passiaValueIndicator");
   if (valIndic) {
-    const eurValue = (p * 0.05).toFixed(2).replace(".", ",");
-    valIndic.textContent = `≈ ${eurValue} € · ↗ +12 %`;
+    valIndic.textContent = "Points de fidélité";
   }
 
   // Earn guide — deux monnaies, deux logiques :

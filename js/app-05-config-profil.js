@@ -48,7 +48,8 @@ function applyConfig() {
       root.style.setProperty("--grad-hero-2", c.grad2);
       root.style.setProperty("--grad-warm", c.grad2);
       root.style.setProperty("--grad-cool", c.grad1);
-      root.style.setProperty("--warning", c.accent);
+      // --warning reste ambre (défini dans styles.css) : un avertissement doit se
+      // distinguer de l'accent violet du thème — NE PAS le forcer sur c.accent.
       // Override CSS pour les couleurs hardcodées dans le HTML/JS
       var colorOverride = document.getElementById("passio-color-override");
       if (!colorOverride) { colorOverride = document.createElement("style"); colorOverride.id = "passio-color-override"; document.head.appendChild(colorOverride); }
