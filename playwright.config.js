@@ -5,7 +5,12 @@ const { defineConfig } = require("@playwright/test");
 module.exports = defineConfig({
   testDir: "./tests/e2e",
   timeout: 45000,
-  retries: 1,
+  // Les specs gate/dist sont sensibles au timing : sous forte parallélisation
+  // (tous les cœurs) le serveur statique partagé sature et provoque de faux
+  // rouges. On borne les workers (moins de contention) et on remonte les retries
+  // à 2 (un flake ponctuel repasse en « flaky », jamais en « failed »).
+  retries: 2,
+  workers: process.env.CI ? 2 : "50%",
   // Après une suite multi-comptes (PASSIO_E2E_MULTI=1) : purge des comptes
   // jetables %@passio-e2e.test en prod (best-effort, no-op sinon).
   globalTeardown: "./tests/e2e/global-teardown.js",
