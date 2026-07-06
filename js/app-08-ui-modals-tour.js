@@ -3047,11 +3047,41 @@ async function supaRefreshCdvLives() {
     const supaIds = new Set(supaLives.map(l => l.id));
     const localOnly = (getCdvLives() || []).filter(l => !supaIds.has(l.id) && !l.fromSupabase);
     saveCdvLives([...supaLives, ...localOnly]);
+    try { _notifyNewFollowedLives(supaLives); } catch(_) {}
     try {
       const cdvScreen = document.getElementById("screen-cdv");
       if (cdvScreen && cdvScreen.classList.contains("active") && typeof renderCdvScreen === "function") renderCdvScreen();
     } catch(_) {}
   } catch(e) { console.warn("supaRefreshCdvLives:", e); }
+}
+
+// Notifie (une fois) quand un compte SUIVI démarre un Live. Dédup persistante via
+// state.user.notifiedLiveIds ; les lives déjà anciens (>15 min) au moment du 1er
+// chargement sont marqués vus sans notifier, pour éviter un flot au boot.
+function _notifyNewFollowedLives(lives) {
+  try {
+    if (!state || !state.user) return;
+    const following = [].concat(state.following || [], (state.user && state.user.following) || []);
+    if (!following.length) return;
+    state.user.notifiedLiveIds = state.user.notifiedLiveIds || [];
+    const seen = new Set(state.user.notifiedLiveIds);
+    const now = Date.now();
+    let changed = false;
+    (lives || []).forEach(function(l) {
+      if (!l || l.status !== "live" || seen.has(l.id)) return;
+      if (typeof isMyLive === "function" && isMyLive(l)) return;
+      if (!following.includes(l.authorId)) return;
+      if (typeof isBlocked === "function" && isBlocked(l.authorId)) return;
+      seen.add(l.id); state.user.notifiedLiveIds.push(l.id); changed = true;
+      // Live déjà ancien au 1er passage : marqué vu, mais pas de notif tardive.
+      if (l.createdAt && (now - l.createdAt) > 15 * 60000) return;
+      const author = (typeof userById === "function" && userById(l.authorId)) || {};
+      const name = author.name || "Un passionné que tu suis";
+      try { if (typeof pushNotification === "function") pushNotification("🔴 <b>" + escapeHtml(name) + "</b> a démarré un Live" + (l.destination ? " : " + escapeHtml(l.destination) : ""), "🔴"); } catch (e) {}
+    });
+    if (state.user.notifiedLiveIds.length > 200) state.user.notifiedLiveIds = state.user.notifiedLiveIds.slice(-200);
+    if (changed) { try { saveState(); } catch (e) {} }
+  } catch (e) {}
 }
 
 // Handler realtime CDV Lives (debounced) : un changement sur n'importe quelle
