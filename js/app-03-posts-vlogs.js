@@ -163,336 +163,96 @@ function likePost(id, skipRender = false, el = null) {
 
 // ===== DOC VIEWER, Passia (simple + complet embarqués) =====
 const DOC_PASSIA_SIMPLE = `
-<span class="doc-viewer-header-tag">VERSION SIMPLE · 5 MIN DE LECTURE</span>
-<h1>Passia expliqué simplement</h1>
-<p style="font-style: italic; color: #6b6480;">Pour ceux qui n'y connaissent rien en crypto.</p>
+<span class="doc-viewer-header-tag">VERSION SIMPLE · 3 MIN DE LECTURE</span>
+<h1>Passia, expliqué simplement</h1>
+<p style="font-style: italic; color: #6b6480;">Sans jargon, et sans rien te promettre.</p>
 <div class="doc-callout">
-  <div class="doc-callout-title">Promesse de ce document</div>
-  <p>• Aucun jargon technique. On utilise des comparaisons de la vie courante.</p>
-  <p>• Tu peux le lire en 5 minutes.</p>
-  <p>• À la fin tu sauras quoi faire (et surtout quoi NE PAS faire).</p>
-  <p>• Ce n'est pas un conseil financier, c'est juste une explication.</p>
+  <div class="doc-callout-title">L'essentiel en 4 points</div>
+  <p>• Aujourd'hui, Passia (💎) est un <b>point de fidélité interne</b> à l'app.</p>
+  <p>• Il n'a <b>aucune valeur en euros</b> et ne peut pas être revendu ou converti.</p>
+  <p>• Tu en gagnes en participant, tu en dépenses pour soutenir des créateurs dans l'app.</p>
+  <p>• Une évolution « crypto » est <b>à l'étude</b> pour l'avenir, mais rien n'est décidé.</p>
 </div>
 
-<h1>1. C'est quoi Passia, en 30 secondes ?</h1>
-<p>PASSIO est une application sociale qui sort en 2026. Dedans, il y a une « monnaie interne » qui s'appelle Passia (symbole 💎).</p>
-<p>Au début (en 2026), Passia c'est juste un compteur dans l'app. Tu en gagnes en publiant, tu en dépenses pour soutenir d'autres créateurs ou payer des trucs.</p>
-<p>À partir de à terme, Passia devient une vraie cryptomonnaie. Concrètement : ce que tu détiens devient TIEN, transférable n'importe où, et sa valeur peut monter (ou descendre). Tu ne dépends plus de PASSIO pour la garder.</p>
+<h1>1. C'est quoi Passia, aujourd'hui ?</h1>
+<p>Passia, c'est un compteur de fidélité dans PASSIO. Tu en gagnes en publiant, en aidant, en participant. Tu peux t'en servir dans l'app pour soutenir des créateurs ou débloquer certaines options.</p>
+<p>C'est un peu comme les points de fidélité d'un magasin : utiles à l'intérieur du système, mais ce n'est pas de l'argent et on ne peut pas les échanger contre des euros.</p>
+
+<h1>2. Et la « cryptomonnaie » dont on parle ?</h1>
+<p>C'est une <b>piste que nous explorons</b> pour le futur : donner un jour à la communauté une vraie souveraineté sur ce qu'elle crée. Mais c'est une réflexion, pas un produit.</p>
+<div class="doc-callout amber">
+  <div class="doc-callout-title">Ce qui est vrai à ce jour</div>
+  <p>Aucun token n'existe. Rien n'est en vente. Aucune date n'est fixée. Une telle évolution ne se ferait que dans un cadre légal strict (réglementation européenne MiCA) et après des audits de sécurité.</p>
+</div>
+
+<h1>3. Ce qu'il ne faut pas croire</h1>
+<div class="doc-callout red">
+  <div class="doc-callout-title">Passia n'est pas un investissement</div>
+  <p>Personne ne peut te promettre que Passia « prendra de la valeur ». Ne considère jamais tes Passia comme un placement, et méfie-toi de quiconque te promettrait des gains.</p>
+</div>
+<div class="doc-callout red">
+  <div class="doc-callout-title">Attention aux arnaques</div>
+  <p>Toute proposition du type « double tes Passia » (sur Discord, Telegram, X…) est une arnaque. PASSIO n'a aucun programme de ce genre et ne te demandera jamais de payer pour en recevoir.</p>
+</div>
+
+<h1>4. En résumé</h1>
 <div class="doc-callout green">
-  <div class="doc-callout-title">Une comparaison simple</div>
-  <p>Les Carrefour Pass : tu en gagnes en faisant tes courses. Tu peux les dépenser chez Carrefour. Mais si demain Carrefour ferme, tes points valent zéro.</p>
-  <p>Passia (à terme) : c'est différent. Si demain PASSIO ferme, ton Passia est toujours dans ton portefeuille personnel. Tu peux le revendre à d'autres gens.</p>
-  <p>C'est cette différence qui change tout.</p>
-</div>
-
-<h1>2. Les 2 choses à bien comprendre</h1>
-<h2>Niveau 1, Le moteur (fixe, automatique)</h2>
-<p>C'est le système de fond. Ce sont 5 « règles automatiques » qui tournent en permanence. Tu ne les choisis pas, elles sont codées dans le programme.</p>
-<p>C'est comme le moteur d'une voiture : tu n'as pas de bouton « je veux que les freins marchent ». Ils marchent, point.</p>
-<h2>Niveau 2, Tes choix à toi</h2>
-<p>Là tu as plein de choix. Tu décides comment toi tu utilises Passia. Combien tu en achètes, où tu le stockes, si tu veux le bloquer pour des avantages.</p>
-<div class="doc-callout">
-  <div class="doc-callout-title">La phrase à retenir</div>
-  <p>Le moteur de Passia est UN. Tes options d'utilisation sont MULTIPLES.</p>
-</div>
-
-<h1>3. Le moteur (les 5 règles automatiques)</h1>
-<h2>Règle 1, Le burn (la disparition automatique)</h2>
-<p>À chaque fois que quelqu'un envoie du Passia à quelqu'un d'autre, 1 % du montant part en fumée. Définitivement. Plus l'app est utilisée, plus de Passia disparaît, plus il devient rare.</p>
-<h2>Règle 2, Le buyback (le rachat automatique)</h2>
-<p>PASSIO l'entreprise, quand elle gagne de l'argent, prend une partie et l'utilise pour racheter du Passia sur le marché. Ça crée une demande continue auto-financée par l'usage.</p>
-<h2>Règle 3, Le staking (le blocage volontaire)</h2>
-<p>Si tu veux profiter du Pass Passion (l'abonnement premium), il faut « bloquer » 200 Passia pendant 30 jours. Si 1 million de gens le font, c'est 200 millions de Passia hors circulation.</p>
-<h2>Règle 4, Les cas d'usage qui se multiplient</h2>
-<p>Au début, Passia sert à 5 choses. Au fil du temps, on en rajoute (marketplace, événements, crowdfunding). Plus de cas = plus de gens qui ont besoin d'en avoir.</p>
-<h2>Règle 5, L'effet communauté</h2>
-<p>Plus une plateforme a d'utilisateurs, plus sa monnaie interne a de la valeur. Wikipédia avec 1 article = inutile. Avec 60 millions = inestimable. C'est mathématique.</p>
-<div class="doc-callout">
-  <div class="doc-callout-title">Important à comprendre</div>
-  <p>Ces 5 règles ne sont PAS des promesses commerciales. Elles sont CODÉES dans le programme. N'importe qui peut auditer le code à tout moment.</p>
-</div>
-
-<h1>4. Tes choix à toi</h1>
-<h2>Choix 1, Comment tu acquières du Passia</h2>
-<ul>
-  <li><b>A. Tu achètes des packs (le plus rapide)</b>, Boutique de l'app, 6 packs de 4,99 € à 99,99 €. Plus tu prends gros, plus le bonus est gros.</li>
-  <li><b>B. Tu en gagnes gratuitement (le plus malin)</b>, Publier, organiser un événement, recevoir un tip = autant de Passia en plus. Coûte juste ton temps.</li>
-  <li><b>C. Tu reçois l'airdrop au lancement</b>, Au lancement crypto à terme, tous les utilisateurs PASSIO actifs reçoivent ~50 Passia gratuits.</li>
-</ul>
-<h2>Choix 2, Où tu stockes ton Passia</h2>
-<ul>
-  <li><b>A. Wallet PASSIO (simple, recommandé pour débuter)</b>, L'app gère tout. Pas besoin de comprendre techniquement. Récupération possible si tu perds ton mot de passe.</li>
-  <li><b>B. Wallet personnel (souverain)</b>, Tu télécharges MetaMask, tu reçois une « phrase secrète » de 12 mots. C'est VRAIMENT à toi, indépendant de PASSIO.</li>
-</ul>
-<div class="doc-callout amber">
-  <div class="doc-callout-title">Conseil pratique</div>
-  <p>Si tu débutes : commence avec le wallet PASSIO. C'est sans risque.</p>
-  <p>Si tu prends de gros montants : passe au wallet personnel mais APPRENDS d'abord les bases (1-2h de YouTube).</p>
-</div>
-<h2>Choix 3, Si tu veux staker (= bloquer pour des avantages)</h2>
-<p>Volontaire. Si tu veux le faire, 3 niveaux :</p>
-<table>
-  <tr><th>Pass</th><th>Durée</th><th>Récompense</th><th>Avantages</th></tr>
-  <tr><td>Pass Passion</td><td>30 jours</td><td>—</td><td>Profils illimités, badge, archives</td></tr>
-  <tr><td>Pass Mécène</td><td>1 an</td><td>+5 % Passia</td><td>Tout ci-dessus + accès anticipé</td></tr>
-  <tr><td>Pass Légende</td><td>3 ans</td><td>+10 % Passia</td><td>Tout + droit de vote sur l'app</td></tr>
-</table>
-
-<h1>5. À quoi ça te sert vraiment ?</h1>
-<ul>
-  <li><b>Soutenir un créateur</b>, Tip 1 clic sur un post (10, 50, 100 Passia)</li>
-  <li><b>Payer un cours en visio</b>, Cours par un créateur, ~200 Passia (≈ 10 €)</li>
-  <li><b>Aller à un événement IRL premium</b>, Atelier, dégustation, sortie photo</li>
-  <li><b>Acheter dans la marketplace</b>, Livres, vinyles, créations artisanales</li>
-  <li><b>Crowdfunder un projet de la communauté</b>, Festival, voyage de groupe</li>
-  <li><b>Booster un événement IRL que tu organises</b></li>
-  <li><b>Débloquer un profil supplémentaire</b> (au-delà du quota gratuit de 3)</li>
-</ul>
-
-<h1>6. Les questions que tu te poses sûrement</h1>
-<h3>Est-ce que je vais devenir riche ?</h3>
-<p>Personne ne le promet. La valeur peut monter, mais peut aussi descendre. N'achète pas avec l'idée de devenir riche.</p>
-<h3>Combien je dois acheter pour démarrer ?</h3>
-<p>Le minimum utile pour utiliser PASSIO confortablement : 200 Passia (≈ 10 €). N'investis JAMAIS plus que ce que tu pourrais perdre sans regret.</p>
-<h3>Je peux le revendre quand je veux ?</h3>
-<p>Oui, à condition d'être en wallet personnel. Tu vends sur Uniswap, virement quelques jours après.</p>
-<h3>Que se passe-t-il si PASSIO ferme demain ?</h3>
-<p>Si tu es en wallet personnel : rien. Ton Passia est dans ton portefeuille, tu peux le revendre à qui tu veux. C'est ça la magie de la crypto : ton argent ne dépend pas de l'entreprise.</p>
-<h3>Crypto = pollution ?</h3>
-<p>Passia tourne sur la blockchain Polygon, 99 % moins polluante que Bitcoin. L'empreinte d'une transaction Passia est comparable à un email.</p>
-
-<h1>7. Les 5 règles d'or</h1>
-<div class="doc-callout red">
-  <div class="doc-callout-title">Règle n°1, Ne dépense jamais plus que ce que tu accepterais de perdre</div>
-  <p>Si tu n'es pas OK avec l'idée de tout perdre, n'achète pas.</p>
-</div>
-<div class="doc-callout red">
-  <div class="doc-callout-title">Règle n°2, Ne partage JAMAIS ta phrase secrète</div>
-  <p>Personne (même PASSIO) n'a besoin de tes 12 mots. Toute personne qui te les demande est un escroc.</p>
-</div>
-<div class="doc-callout red">
-  <div class="doc-callout-title">Règle n°3, Méfie-toi des « doublez votre Passia »</div>
-  <p>Sur Twitter, Discord, Telegram, ces propositions sont TOUJOURS des arnaques. PASSIO n'a aucun programme de ce type.</p>
-</div>
-<div class="doc-callout amber">
-  <div class="doc-callout-title">Règle n°4, Si tu débutes, reste simple</div>
-  <p>Mode wallet PASSIO. Petits achats. Apprends pendant 6 mois avant de passer au mode souverain.</p>
-</div>
-<div class="doc-callout amber">
-  <div class="doc-callout-title">Règle n°5, En cas de doute, demande dans la communauté</div>
-  <p>Tout le monde était nouveau un jour. Pose tes questions sans complexe.</p>
-</div>
-
-<h1>8. En résumé</h1>
-<div class="doc-callout">
-  <div class="doc-callout-title">Ce que tu dois retenir</div>
-  <p>• Passia est la « monnaie » de PASSIO, qui devient une vraie cryptomonnaie à terme.</p>
-  <p>• Le système est UN moteur fixe (5 règles automatiques) + DES choix que TOI tu fais.</p>
-  <p>• Tu peux acheter, gagner gratuitement, ou recevoir l'airdrop.</p>
-  <p>• Plus PASSIO grandit, plus le Passia peut prendre de la valeur, pas garanti.</p>
-</div>
-<p>Acheter du Passia n'est pas une décision financière classique. C'est davantage un acte d'adhésion à un projet. La question à se poser n'est pas « combien je vais gagner ? », c'est « est-ce que je crois à ce projet ? ».</p>
-<div class="doc-callout green">
-  <div class="doc-callout-title">La phrase à retenir</div>
-  <p>Tu n'achètes pas une promesse de gain. Tu participes à une communauté.</p>
-  <p>Le reste, l'évolution de la valeur, est la conséquence de l'usage qu'on en fait collectivement, pas une promesse qu'on te fait.</p>
+  <div class="doc-callout-title">À retenir</div>
+  <p>Passia = points de fidélité internes, sans valeur monétaire ni conversion à ce jour.</p>
+  <p>Tu ne participes pas pour « gagner de l'argent », mais parce que tu crois au projet et à sa communauté.</p>
+  <p>Toute évolution future sera annoncée clairement, encadrée par la loi, et n'aura jamais valeur de promesse de gain.</p>
 </div>
 `;
 
 const DOC_PASSIA_FULL = `
-<span class="doc-viewer-header-tag">DOCUMENT COMPLET · 24 PAGES</span>
-<h1>PASSIA, La cryptomonnaie des passions</h1>
-<p style="font-style: italic; color: #6b6480;">Tokenomics, mécanique de valeur, gouvernance, conformité MiCA, Document utilisateur, version 1.0.</p>
+<span class="doc-viewer-header-tag">NOTE D'INTENTION · PISTE À L'ÉTUDE</span>
+<h1>Passia — points de fidélité & réflexion sur l'avenir</h1>
+<p style="font-style: italic; color: #6b6480;">Document d'information. Ni offre, ni conseil en investissement, ni promesse de rendement.</p>
 
 <div class="doc-callout red">
-  <div class="doc-callout-title">⚠️ Avertissement légal, à lire avant tout</div>
-  <p>Ce document décrit le fonctionnement du token Passia. Il ne constitue PAS un conseil financier ni une garantie de retour. La valeur d'un token crypto peut monter, mais peut AUSSI baisser fortement. Tout achat se fait à votre propre risque.</p>
-  <p><b>Les 4 vérités à intégrer</b> : (1) un wallet n'est pas un compte bancaire ; (2) le prix peut chuter de 50-90 % en heures ; (3) PASSIO ne promet AUCUN retour ; (4) n'achetez jamais plus que ce que vous accepteriez de perdre.</p>
+  <div class="doc-callout-title">⚠️ Avertissement, à lire en premier</div>
+  <p>À ce jour, Passia est un <b>point de fidélité interne</b> à PASSIO : il n'a aucune valeur monétaire, n'est pas convertible en euros et n'est pas transférable hors de l'application.</p>
+  <p>Aucun « token » crypto n'existe et aucun n'est proposé à l'achat. Ce document décrit une <b>réflexion</b> sur une évolution possible. Il ne constitue ni une offre, ni un conseil financier, ni une garantie. Rien n'est décidé ni daté.</p>
 </div>
 
-<h1>1. Pourquoi Passia devient une cryptomonnaie</h1>
-<p>Dans la version 1 de PASSIO (avril 2026), Passia était un jeton interne stable à 0,05 €. Dans la version 2 (à terme), Passia devient un vrai token crypto sur la blockchain Polygon.</p>
-<h2>Raison 1, Donner aux créateurs une vraie souveraineté</h2>
-<p>Avec Passia stable interne, le créateur dépend de PASSIO. Avec Passia crypto, son token est dans son wallet personnel, transférable n'importe où, échangeable contre euros ou autres cryptos. PASSIO ne contrôle plus l'argent.</p>
-<h2>Raison 2, Aligner les incentives utilisateurs ↔ plateforme</h2>
-<p>Quand un utilisateur achète du Passia crypto, il devient mécaniquement bénéficiaire de la croissance, plus la communauté grandit, plus le token devient demandé, plus son Passia prend de valeur. Le succès de la plateforme est partagé.</p>
-<h2>Raison 3, Créer une réserve de valeur passion</h2>
-<p>Bitcoin = réserve contre la défiance bancaire. Ethereum = confiance smart contract. Passia ambitionne d'être la réserve de valeur de l'économie créateur passion.</p>
-<h2>Raison 4, Préparer la décentralisation progressive</h2>
-<p>À terme, les décisions clés sont votées par les détenteurs (DAO en année 5+). PASSIO devient l'infrastructure, la communauté devient le pilote.</p>
+<h1>1. Où en est-on aujourd'hui</h1>
+<p>Dans PASSIO, Passia (💎) récompense la participation : créer, aider, organiser, échanger. Il se dépense à l'intérieur de l'app (soutenir un créateur, débloquer des options). C'est un système fermé, comparable à des points de fidélité : utile dans l'app, mais sans valeur de revente.</p>
 
-<h1>2. Le token PASSIA, caractéristiques techniques</h1>
-<h2>Carte d'identité</h2>
-<table>
-  <tr><th>Attribut</th><th>Valeur</th></tr>
-  <tr><td>Nom / symbole</td><td>PASSIA / PSI</td></tr>
-  <tr><td>Blockchain</td><td>Polygon (Layer 2 Ethereum)</td></tr>
-  <tr><td>Standard</td><td>ERC-20</td></tr>
-  <tr><td>Supply totale capée</td><td>1 000 000 000 PSI (jamais plus)</td></tr>
-  <tr><td>Décimales</td><td>18</td></tr>
-  <tr><td>Audit smart contract</td><td>Trail of Bits + CertiK avant mainnet</td></tr>
-  <tr><td>Code</td><td>100 % open source sur GitHub</td></tr>
-</table>
-<h2>Distribution des 1 milliard PSI</h2>
-<table>
-  <tr><th>Allocation</th><th>Quantité</th><th>Détail</th></tr>
-  <tr><td>Récompenses communauté</td><td>40 %</td><td>Distribuées sur 8 ans</td></tr>
-  <tr><td>Vente publique</td><td>25 %</td><td>Achat utilisateurs, libération sur 5 ans</td></tr>
-  <tr><td>Trésorerie écosystème</td><td>15 %</td><td>Liquidité, partenariats, événements</td></tr>
-  <tr><td>Équipe & fondateurs</td><td>15 %</td><td>Vesting 4 ans + cliff 1 an</td></tr>
-  <tr><td>Investisseurs early</td><td>5 %</td><td>Vesting 3 ans</td></tr>
-  <tr><td>Liquidité d'amorçage</td><td>5 %</td><td>Premier marché secondaire</td></tr>
-</table>
-<div class="doc-callout green">
-  <div class="doc-callout-title">Le supply cap est inscrit dans le smart contract</div>
-  <p>Une fois le contrat déployé, AUCUN nouveau PSI ne peut être créé. C'est ce qui distingue Passia des Stars Facebook ou Coins Twitch (créables à volonté par leur émetteur).</p>
-</div>
+<h1>2. La piste que nous explorons</h1>
+<p>À long terme, nous étudions la possibilité de donner à la communauté une plus grande souveraineté sur ce qu'elle crée. L'objectif serait de moins dépendre d'un système fermé — mais uniquement <b>si</b> cela peut se faire de façon sûre et conforme à la loi.</p>
+<p>Cette réflexion peut aboutir… ou pas. Un « go / no-go » honnête fait partie du processus : il est tout à fait possible que cette évolution ne voie jamais le jour.</p>
 
-<h1>3. Comment la valeur du Passia augmente avec les utilisateurs</h1>
-<p>5 mécaniques précises codées dans le contrat. Aucune promesse marketing : règles automatiques vérifiables on-chain.</p>
-<h2>Mécanique 1, Le burn automatique (déflation)</h2>
-<p>1 % de chaque transaction Passia détruit pour toujours. À 1 milliard de transactions/an, ce sont des millions de PSI qui partent en fumée.</p>
-<h2>Mécanique 2, Le buyback PASSIO</h2>
-<p>10 % du volume des transactions est utilisé pour racheter du PSI sur le marché. Demande continue auto-financée. À 50 M$ de volume mensuel, 5 M$/mois de pression à l'achat.</p>
-<h2>Mécanique 3, Le staking Pass Passion</h2>
-<p>200 PSI bloqués 30 jours pour le Pass Passion. À 1 M abonnés, 200 M PSI hors circulation = 20 % du supply.</p>
-<h2>Mécanique 4, Cas d'usage en expansion</h2>
-<p>Plus le réseau grandit, plus les cas d'usage se multiplient (tip, cours, événements, marketplace, crowdfunding, badges). Plus de demande pour le PSI.</p>
-<h2>Mécanique 5, Effet réseau (Metcalfe)</h2>
-<p>Valeur d'un réseau ∝ utilisateurs². ×10 utilisateurs = ×100 connexions économiques.</p>
-<h2>Calcul théorique</h2>
-<table>
-  <tr><th>Phase</th><th>Utilisateurs</th><th>Valeur PSI*</th><th>Capitalisation</th></tr>
-  <tr><td>Lancement</td><td>10 k</td><td>0,05 €</td><td>5 M€</td></tr>
-  <tr><td>Année 1</td><td>100 k</td><td>0,12 €</td><td>18 M€</td></tr>
-  <tr><td>Année 3</td><td>1 M</td><td>0,40 €</td><td>120 M€</td></tr>
-  <tr><td>Année 5</td><td>5 M</td><td>1,20 €</td><td>600 M€</td></tr>
-  <tr><td>Année 10</td><td>30 M</td><td>4,80 €</td><td>3,1 Md€</td></tr>
-</table>
-<p style="font-size: 12px; font-style: italic; color: #6b6480;">* Estimations théoriques basées sur la loi de Metcalfe et les comparables crypto sociaux. PAS une promesse.</p>
-
-<h1>4. Comment acheter et utiliser du Passia</h1>
-<h2>Voie 1, Achat in-app (débutants)</h2>
-<p>Wallet → Boutique → pack. Carte ou Apple Pay. Passia dans wallet PASSIO en 60 sec. Aucune connaissance crypto requise.</p>
-<h2>Voie 2, Wallet personnel (intermédiaires)</h2>
-<p>MetaMask, Coinbase Wallet ou Rainbow. PASSIO migre votre solde. Souveraineté totale, mais perte définitive si seed perdue.</p>
-<h2>Voie 3, Gagner gratuitement</h2>
-<p>40 % du supply distribué progressivement aux utilisateurs actifs sur 8 ans (création, IRL, mentor, modération communautaire).</p>
-
-<h1>5. Le staking, gagner en bloquant son Passia</h1>
-<table>
-  <tr><th>Niveau</th><th>Durée</th><th>Récompense annuelle</th><th>Avantages</th></tr>
-  <tr><td>Pass Passion</td><td>30 jours</td><td>—</td><td>Profils illimités, archives, badge</td></tr>
-  <tr><td>Pass Mécène</td><td>1 an</td><td>+5 % en PSI</td><td>Tout ci-dessus + accès anticipé features</td></tr>
-  <tr><td>Pass Légende</td><td>3 ans</td><td>+10 % en PSI</td><td>Tout + droit de vote en gouvernance</td></tr>
-</table>
-<div class="doc-callout amber">
-  <div class="doc-callout-title">Le staking n'est PAS un placement à rendement garanti</div>
-  <p>Le rendement est en PSI, pas en euros. Si le PSI baisse, votre récompense aussi. Le staking impose une période de blocage.</p>
-</div>
-
-<h1>6. La gouvernance progressive vers une DAO</h1>
-<h2>Phase 1 (année 1-3), Centralisée transparente</h2>
-<p>PASSIO décide. Détenteurs PSI peuvent voter sur des propositions consultatives.</p>
-<h2>Phase 2 (année 3-6), Hybride</h2>
-<p>Conseil consultatif des détenteurs (7 sièges élus), droit de veto sur 5 catégories de décisions.</p>
-<h2>Phase 3 (année 6+), DAO complète</h2>
-<p>Toutes les décisions structurantes votées par détenteurs. PASSIO devient opérateur technique sous mandat.</p>
-
-<h1>7. Sécurité, protéger votre Passia</h1>
-<h2>Les 7 règles d'or</h2>
+<h1>3. Nos principes non négociables</h1>
 <ul>
-  <li>Ne partagez JAMAIS votre seed phrase. PASSIO ne vous la demandera jamais.</li>
-  <li>Stockez votre seed phrase hors ligne (papier, coffre). JAMAIS sur cloud.</li>
-  <li>Activez la 2FA partout (authentificateur, pas SMS).</li>
-  <li>Wallet matériel pour > 5 000 € de Passia (Ledger ou Trezor).</li>
-  <li>Vérifiez TOUJOURS l'adresse du contrat.</li>
-  <li>Méfiez-vous des « giveaway » et « doublez vos PSI », toujours des arnaques.</li>
-  <li>Limitez les autorisations smart contract (revoke.cash).</li>
-</ul>
-<h2>Ce que PASSIO met en place</h2>
-<ul>
-  <li>Multi-sig pour la trésorerie (5 signatures sur 9).</li>
-  <li>Time-lock 7 jours sur le contrat principal.</li>
-  <li>Bug bounty 500 k$.</li>
-  <li>Assurance Nexus Mutual sur 50 % du flottant.</li>
+  <li><b>Pas de promesse de gain.</b> Nous n'annoncerons jamais de prix, de projection de valeur ou de rendement.</li>
+  <li><b>La loi d'abord.</b> Aucune étape sans conformité au cadre européen (MiCA) et validation juridique.</li>
+  <li><b>La sécurité d'abord.</b> Aucune ouverture sans audits indépendants et garde-fous utilisateurs.</li>
+  <li><b>Transparence.</b> Les règles seraient publiques et vérifiables, pas décidées en coulisses.</li>
+  <li><b>Protection des plus vulnérables.</b> Contrôle d'âge, plafonds et prévention resteraient prioritaires.</li>
 </ul>
 
-<h1>8. Conformité réglementaire, MiCA</h1>
-<p>L'Europe a adopté le règlement MiCA en 2024. PASSIO se conforme dès le lancement.</p>
-<h2>Catégorisation MiCA du Passia</h2>
-<p>Passia = utility token. Pas de promesse de rendement. White paper publié et notifié à l'AMF. Réserve de liquidité minimale 50 % du flottant.</p>
-<h2>Conformité KYC / AML</h2>
-<p>Achats > 1 000 € : KYC obligatoire (pièce d'identité + selfie via Sumsub, 24h). Conversion crypto → euros nécessite compte bancaire personnel vérifié.</p>
-<h2>Fiscalité France</h2>
-<p>Plus-values imposées au PFU 30 % au-delà de 305 € de cessions/an. Détention seule pas imposable. Conversion crypto → euros déclenche l'imposition. PASSIO fournit récap fiscal annuel.</p>
+<h1>4. Les risques, en toute honnêteté</h1>
 <div class="doc-callout amber">
-  <div class="doc-callout-title">Juridictions exclues au lancement</div>
-  <p>États-Unis (incertitude SEC), Chine (interdiction crypto), Pays sous sanctions.</p>
+  <div class="doc-callout-title">Si une telle évolution voyait le jour</div>
+  <p>Tout actif transférable peut voir sa valeur varier fortement, y compris chuter. Il n'existerait aucune garantie de conserver ou de récupérer une quelconque valeur.</p>
 </div>
-
-<h1>9. Les 6 risques à comprendre</h1>
-<h2>Risque 1, Volatilité du marché crypto</h2>
-<p>Tous les tokens subissent les mouvements du marché global. Si Bitcoin chute, PSI suivra probablement.</p>
-<h2>Risque 2, Adoption insuffisante</h2>
-<p>Si PASSIO échoue à gagner les utilisateurs prévus, le PSI perdra de la valeur. Risque produit avant tout.</p>
-<h2>Risque 3, Risques techniques (hack, bug)</h2>
-<p>Bugs smart contract possibles malgré audits. Mitigation : audits multiples + assurance + multi-sig + time-lock.</p>
-<h2>Risque 4, Évolution réglementaire</h2>
-<p>MiCA peut évoluer. Crypto utility aujourd'hui peut être requalifiée demain.</p>
-<h2>Risque 5, Liquidité limitée au lancement</h2>
-<p>Marché secondaire restreint au début. Vendre du gros volume peut faire chuter le prix temporairement.</p>
-<h2>Risque 6, Risque de gouvernance</h2>
-<p>Transition vers DAO peut mal se passer. Votes destructeurs possibles.</p>
+<ul>
+  <li><b>Risque de marché</b> : la valeur d'un actif numérique est volatile et imprévisible.</li>
+  <li><b>Risque produit</b> : le projet dépend de son adoption ; il peut ne pas se concrétiser.</li>
+  <li><b>Risque réglementaire</b> : le cadre légal évolue et peut empêcher ou retarder toute évolution.</li>
+  <li><b>Risque technique</b> : toute technologie comporte des failles possibles.</li>
+</ul>
 <div class="doc-callout red">
-  <div class="doc-callout-title">La règle de bon sens absolue</div>
-  <p>N'achetez JAMAIS plus de Passia que ce que vous accepteriez de perdre intégralement. Pour un utilisateur normal, 1 % à 5 % de votre capacité d'épargne mensuelle est raisonnable.</p>
+  <div class="doc-callout-title">Règle de bon sens</div>
+  <p>Ne considère jamais des points de fidélité comme une épargne ou un investissement. Méfie-toi de toute promesse de gain : elle ne viendrait pas de PASSIO.</p>
 </div>
 
-<h1>10. Roadmap, du lancement à la DAO</h1>
-<ul>
-  <li><b>Phase 0, Beta MVP (avril 2026, livré)</b>, Wallet visuel, Passia stablecoin interne 0,05 €</li>
-  <li><b>Phase 1, Conformité MiCA (en phase de préparation)</b>, Audit juridique, white paper, audit smart contract</li>
-  <li><b>Phase 2, Private sale (en amont du lancement)</b>, Pré-vente PSI à 0,03 €, levée 3 à 5 M€</li>
-  <li><b>Phase 3, Lancement public (à terme)</b>, Mainnet Polygon, listing Uniswap, airdrop</li>
-  <li><b>Phase 4, Pass Passion en staking (dans une version future)</b>, Migration abonnement vers staking PSI</li>
-  <li><b>Phase 5, Conseil consultatif (plus tard)</b>, Élection 7 sièges, droit de veto sur 5 catégories</li>
-  <li><b>Phase 6, DAO complète (Q1 2030)</b>, Tous paramètres clés deviennent votables par la communauté</li>
-</ul>
+<h1>5. Ce que tu peux faire aujourd'hui</h1>
+<p>Utiliser Passia pour ce à quoi il sert : soutenir les créateurs et faire vivre la communauté dans l'app. C'est là que se trouve sa vraie utilité — pas dans une éventuelle valeur future.</p>
 
-<h1>11. FAQ utilisateur</h1>
-<h3>Est-ce que je vais devenir riche avec Passia ?</h3>
-<p>Personne ne peut le promettre. Les mécaniques créent un potentiel, pas une garantie. N'achetez pas avec l'idée de devenir riche.</p>
-<h3>Combien dois-je acheter pour démarrer ?</h3>
-<p>Minimum utile : 200 PSI (≈ 10 €). N'allez pas au-delà de ce que vous accepteriez de perdre.</p>
-<h3>Puis-je vendre mon Passia quand je veux ?</h3>
-<p>Wallet personnel : oui, sur Uniswap à tout moment. Wallet PASSIO custodial : il faut migrer d'abord (24-72h).</p>
-<h3>Que se passe-t-il si PASSIO ferme ?</h3>
-<p>Le contrat smart sur Polygon continue de fonctionner. Vous gardez accès à votre Passia dans votre wallet personnel.</p>
-<h3>Pourquoi Polygon et pas Ethereum direct ?</h3>
-<p>Transactions ultra-rapides (2-3 sec), frais faibles (centimes), empreinte carbone 99 % inférieure à Ethereum historique.</p>
-<h3>Est-ce que Passia est légal en France ?</h3>
-<p>Oui. Conformité MiCA, enregistrement PSAN, white paper notifié AMF.</p>
-
-<h1>12. Conclusion, le pacte Passia</h1>
-<h2>Ce que nous nous engageons à respecter</h2>
-<ul>
-  <li>Transparence radicale, toutes les transactions et votes publics, trésorerie auditable on-chain</li>
-  <li>Éthique avant valorisation, refus de toute décision contraire à l'ADN PASSIO même si elle ferait monter le prix</li>
-  <li>Progressivité de la décentralisation, DAO progressive selon maturité de la communauté</li>
-  <li>Protection des plus vulnérables, plafonds, mode mineur, KYC, conformité MiCA</li>
-</ul>
-<h2>Ce que nous attendons de vous</h2>
-<ul>
-  <li>L'achat conscient, comprenez ce que vous achetez, ne dépensez pas plus que vous acceptez de perdre</li>
-  <li>La participation au-delà de l'achat, créez, partagez, organisez. L'usage est la valeur</li>
-  <li>Le respect du long terme, marathon de 10 ans, pas un sprint</li>
-  <li>La défense de la mission, alertez la communauté si quelqu'un tente de la trahir</li>
-</ul>
 <div class="doc-callout">
   <div class="doc-callout-title">La phrase qui résume tout</div>
-  <p>Acheter du Passia n'est pas un investissement financier au sens classique. C'est un acte d'adhésion à un projet : faire émerger un réseau social européen géré par sa communauté.</p>
-  <p>La question à se poser n'est pas « combien je vais gagner ? » mais « est-ce que je crois à ce projet et est-ce que j'y participe ? ».</p>
+  <p>Tu ne détiens pas une promesse de gain : tu participes à une communauté. Toute évolution future sera annoncée clairement, encadrée par la loi, et sans jamais valoir promesse de rendement.</p>
 </div>
 `;
 
