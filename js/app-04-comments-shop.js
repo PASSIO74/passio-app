@@ -355,6 +355,20 @@ function _cmtRelevance(c) {
   return (c.likes || 0) + reacts + ((c.replies || []).filter(function (r) { return r && r.type !== "emoji_reaction"; }).length);
 }
 
+// #13 — Squelettes « shimmer » pendant le chargement (façon IG/FB/LinkedIn).
+function _commentSkeletonHtml(n) {
+  n = n || 4; var rows = "";
+  for (var i = 0; i < n; i++) {
+    rows += '<div class="cmt-skel">'
+      + '<div class="cmt-skel-av shimmer"></div>'
+      + '<div class="cmt-skel-lines">'
+      + '<div class="cmt-skel-line shimmer" style="width:' + (36 + (i * 17) % 40) + '%"></div>'
+      + '<div class="cmt-skel-line shimmer" style="width:' + (68 + (i * 13) % 26) + '%"></div>'
+      + '</div></div>';
+  }
+  return '<div class="cmt-skel-wrap" aria-hidden="true">' + rows + '</div>';
+}
+
 function _renderCommentsList(allComments, postId) {
   // Masquer les commentaires des utilisateurs bloqués (modération)
   var _visible = (allComments || []).filter(c => !(typeof isBlocked === "function" && isBlocked(c.authorId)));
@@ -381,11 +395,19 @@ function _renderCommentsList(allComments, postId) {
   // (gros lag, rejoué à chaque (ré)ouverture et interaction). On n'affiche que
   // les _LIMIT plus récents (l'array est trié récent→ancien) ; le reste via
   // "voir plus". Cap le coût de paint quel que soit le contexte (fil/IRL/CDV).
+  // Pagination INCRÉMENTALE (façon FB) : on montre `shown` commentaires, +30 par
+  // clic (au lieu de tout injecter d'un coup). Cap le coût de paint sur les gros
+  // fils quel que soit le contexte (fil/IRL/CDV).
   var _LIMIT = 30;
+  window._cmtShown = window._cmtShown || {};
+  var _shown = window._cmtShown[postId] || _LIMIT;
   var _olderBtn = "";
-  if (!(window._cmtExpanded && window._cmtExpanded[postId]) && _visible.length > _LIMIT) {
-    _olderBtn = '<button class="btn ghost block" style="margin:10px auto 2px;display:block;font-size:12px;" onclick="_expandComments(\'' + postId + '\')">↓ Voir les ' + (_visible.length - _LIMIT) + ' commentaires plus anciens</button>';
-    _visible = _visible.slice(0, _LIMIT);
+  if (_visible.length > _shown) {
+    var _remaining = _visible.length - _shown;
+    var _next = Math.min(_LIMIT, _remaining);
+    _olderBtn = '<button class="btn ghost block" style="margin:10px auto 2px;display:block;font-size:12px;" onclick="_showMoreComments(\'' + postId + '\')">↓ Voir ' + _next + ' commentaires de plus'
+      + (_remaining > _next ? ' · ' + _remaining + ' restants' : '') + '</button>';
+    _visible = _visible.slice(0, _shown);
   }
   var _listHtml = _visible.map(c => {
     let name, emoji, avatarColor, authorId;
@@ -498,10 +520,19 @@ function _renderCommentsList(allComments, postId) {
 }
 
 // Déplie tous les commentaires d'un fil (retire le cap de pagination) puis re-rend.
+// Affiche 30 commentaires de plus (pagination incrémentale).
+function _showMoreComments(threadId) {
+  window._cmtShown = window._cmtShown || {};
+  window._cmtShown[threadId] = (window._cmtShown[threadId] || 30) + 30;
+  if (typeof _refreshCommentThreadUINow === "function") _refreshCommentThreadUINow(threadId);
+  else if (typeof _refreshCommentThreadUI === "function") _refreshCommentThreadUI(threadId);
+}
+// Compat : ancien point d'entrée « tout afficher ».
 function _expandComments(threadId) {
-  window._cmtExpanded = window._cmtExpanded || {};
-  window._cmtExpanded[threadId] = true;
-  if (typeof _refreshCommentThreadUI === "function") _refreshCommentThreadUI(threadId);
+  window._cmtShown = window._cmtShown || {};
+  window._cmtShown[threadId] = 1e9;
+  if (typeof _refreshCommentThreadUINow === "function") _refreshCommentThreadUINow(threadId);
+  else if (typeof _refreshCommentThreadUI === "function") _refreshCommentThreadUI(threadId);
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -793,12 +824,18 @@ async function openComments(postId) {
 
   // Afficher immédiatement avec les commentaires locaux
   let localComments = (post.comments || []);
+  // Décide MAINTENANT si on va charger depuis Supabase (sinon squelette éternel
+  // en rouvrant un fil vide déjà chargé < 20 s).
+  window._cmtThreadLoadedAt = window._cmtThreadLoadedAt || {};
+  var _fresh = (Date.now() - (window._cmtThreadLoadedAt[postId] || 0)) < 20000;
+  var _willLoad = !_fresh && typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID;
+  var _emptyStateHtml = '<div class="empty"><div class="empty-icon">💭</div><div class="empty-title">Sois le premier à réagir</div></div>';
   openModal(`
     <div class="modal-handle"></div>
     <div class="modal-title">Discussion</div>
     <div class="modal-subtitle">Commente pour gagner +3 pts.</div>
-    <div id="commentsBox" style="max-height:260px;overflow-y:auto;margin-bottom:12px;">
-      ${localComments.length ? _renderCommentsList(localComments, postId) : '<div class="empty"><div class="empty-icon">💭</div><div class="empty-title">Chargement…</div></div>'}
+    <div id="commentsBox" style="max-height:260px;overflow-y:auto;margin-bottom:12px;" aria-live="polite">
+      ${localComments.length ? _renderCommentsList(localComments, postId) : (_willLoad ? _commentSkeletonHtml(4) : _emptyStateHtml)}
     </div>
     <textarea class="textarea" id="newComment" placeholder="Ajoute un commentaire…" maxlength="400" style="min-height:44px;" oninput="autoResizeTextarea(this);_syncComposerSendState(this)" onkeydown="if((event.metaKey||event.ctrlKey)&&event.key==='Enter'){event.preventDefault();submitComment('${postId}');}"></textarea>
     <div style="display:flex;align-items:center;gap:6px;margin-top:8px;">
@@ -814,9 +851,7 @@ async function openComments(postId) {
   // y a moins de 20 s (le realtime `comment_interactions` maintient déjà tout à
   // jour) : rouvrir la même discussion est alors INSTANTANÉ, sans re-fetch réseau
   // (~300-700 ms) ni re-render. C'est le correctif « ouverture fluide ».
-  window._cmtThreadLoadedAt = window._cmtThreadLoadedAt || {};
-  var _fresh = (Date.now() - (window._cmtThreadLoadedAt[postId] || 0)) < 20000;
-  if (!_fresh && typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
+  if (_willLoad) {
     try {
       const supaComments = await supaLoadComments(postId);
       if (window._openCommentsPostId !== postId) return; // l'utilisateur a fermé/changé entre-temps
