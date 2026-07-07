@@ -150,15 +150,92 @@ function _looksLikeMediaUrl(s) {
   return /\.(gif|png|jpe?g|webp)(\?|#|$)/i.test(s)
     || /(giphy\.com|tenor\.com|media\d*\.giphy|media\.tenor)/i.test(s);
 }
+// Transforme les URLs, @mentions et #hashtags en éléments cliquables (façon
+// LinkedIn/Facebook). ⚠️ Opère sur du texte DÉJÀ échappé par escapeHtml → sûr
+// (aucun HTML utilisateur brut injecté). Les @/# ne matchent que précédés d'un
+// espace/ponctuation (donc pas à l'intérieur d'une URL, ex. .../#ancre).
+function _linkifyText(safe) {
+  if (!safe) return "";
+  // @mentions
+  safe = safe.replace(/(^|[\s.,;!?()\[\]])@([A-Za-zÀ-ÿ0-9][A-Za-zÀ-ÿ0-9_'-]{1,30})/g, function (m, pre, name) {
+    return pre + '<span class="cmt-mention" onclick="return _openMentionProfile(\'' + name.replace(/'/g, "\\'") + '\', event)">@' + name + '</span>';
+  });
+  // #hashtags
+  safe = safe.replace(/(^|[\s.,;!?()\[\]])#([A-Za-zÀ-ÿ0-9][A-Za-zÀ-ÿ0-9_'-]{1,30})/g, function (m, pre, tag) {
+    return pre + '<span class="cmt-hashtag" onclick="return _openHashtag(\'' + tag.replace(/'/g, "\\'") + '\', event)">#' + tag + '</span>';
+  });
+  // URLs (en dernier : ne consomme pas les <span> déjà posés car s'arrête à « < »)
+  safe = safe.replace(/(^|[\s(])((?:https?:\/\/)[^\s<]+)/g, function (m, pre, url) {
+    var clean = url.replace(/[.,;!?)]+$/, ""); // ponctuation finale hors du lien
+    var tail = url.slice(clean.length);
+    return pre + '<a href="' + clean + '" target="_blank" rel="noopener noreferrer nofollow" class="cmt-link">' + clean + '</a>' + tail;
+  });
+  return safe;
+}
 function _commentBodyHtml(txt) {
   return _looksLikeMediaUrl(txt)
     ? '<img loading="lazy" decoding="async" src="' + txt.replace(/"/g, "&quot;") + '" style="max-width:160px;border-radius:10px;margin-top:2px;display:block;" alt="GIF" />'
-    : escapeHtml(txt || "");
+    : _linkifyText(escapeHtml(txt || ""));
+}
+// Ouvre le profil d'un pseudo @mentionné (recherche insensible à la casse dans
+// les utilisateurs connus) — best-effort.
+function _openMentionProfile(name, event) {
+  if (event && event.stopPropagation) { event.stopPropagation(); }
+  try {
+    var n = String(name || "").toLowerCase();
+    var u = (state.seed.users || []).find(function (x) { return x.name && x.name.toLowerCase() === n; });
+    if (u && typeof openUserProfile === "function") {
+      if (typeof closeModal === "function") closeModal();
+      var src = (typeof MY_UID !== "undefined" && u.id === MY_UID) ? "me" : "seed";
+      openUserProfile(u.id, src);
+    } else if (typeof toast === "function") { toast("@" + name); }
+  } catch (e) {}
+  return false;
+}
+// Ouvre l'exploration filtrée sur un hashtag — best-effort.
+function _openHashtag(tag, event) {
+  if (event && event.stopPropagation) { event.stopPropagation(); }
+  try {
+    if (typeof closeModal === "function") closeModal();
+    if (typeof goTo === "function") goTo("explore");
+    var si = document.getElementById("exploreSearch") || document.querySelector("#screen-explore input[type='search']");
+    if (si) { si.value = "#" + tag; if (typeof si.oninput === "function") si.oninput(); si.dispatchEvent(new Event("input")); }
+    else if (typeof toast === "function") toast("#" + tag);
+  } catch (e) {}
+  return false;
+}
+
+// Tri des commentaires (façon Instagram/Facebook) : « Récents » (défaut) ou
+// « Pertinents » (les plus aimés/réagis d'abord). État mémorisé par fil.
+function _setCmtSort(threadId, mode) {
+  window._cmtSort = window._cmtSort || {};
+  window._cmtSort[threadId] = mode;
+  if (typeof _refreshCommentThreadUINow === "function") _refreshCommentThreadUINow(threadId);
+  return false;
+}
+function _cmtRelevance(c) {
+  var reacts = 0; try { reacts = _cmtReactions(c).length; } catch (e) {}
+  return (c.likes || 0) + reacts + ((c.replies || []).filter(function (r) { return r && r.type !== "emoji_reaction"; }).length);
 }
 
 function _renderCommentsList(allComments, postId) {
   // Masquer les commentaires des utilisateurs bloqués (modération)
   var _visible = (allComments || []).filter(c => !(typeof isBlocked === "function" && isBlocked(c.authorId)));
+  // Tri Pertinents / Récents (le tableau arrive trié récent→ancien).
+  window._cmtSort = window._cmtSort || {};
+  var _sortMode = window._cmtSort[postId] || "recent";
+  if (_sortMode === "top") {
+    _visible = _visible.slice().sort(function (a, b) {
+      var d = _cmtRelevance(b) - _cmtRelevance(a);
+      return d !== 0 ? d : ((b.createdAt || b.at || 0) - (a.createdAt || a.at || 0));
+    });
+  }
+  var _sortBar = _visible.length >= 2
+    ? '<div class="cmt-sortbar">'
+      + '<button class="cmt-sort' + (_sortMode === "top" ? " active" : "") + '" onclick="return _setCmtSort(\'' + postId + '\',\'top\')">Pertinents</button>'
+      + '<button class="cmt-sort' + (_sortMode !== "top" ? " active" : "") + '" onclick="return _setCmtSort(\'' + postId + '\',\'recent\')">Récents</button>'
+      + '</div>'
+    : "";
   // Pagination : injecter 80+ commentaires d'un coup coûtait ~130ms de DOM
   // (gros lag, rejoué à chaque (ré)ouverture et interaction). On n'affiche que
   // les _LIMIT plus récents (l'array est trié récent→ancien) ; le reste via
@@ -169,7 +246,7 @@ function _renderCommentsList(allComments, postId) {
     _olderBtn = '<button class="btn ghost block" style="margin:10px auto 2px;display:block;font-size:12px;" onclick="_expandComments(\'' + postId + '\')">↓ Voir les ' + (_visible.length - _LIMIT) + ' commentaires plus anciens</button>';
     _visible = _visible.slice(0, _LIMIT);
   }
-  return _visible.map(c => {
+  var _listHtml = _visible.map(c => {
     let name, emoji, avatarColor, authorId;
     authorId = c.authorId || "?";
     // Normalisation cross-contexte : les commentaires IRL/CDV utilisent c.author
@@ -275,6 +352,7 @@ function _renderCommentsList(allComments, postId) {
       </div>
     </div>`;
   }).join("") + _olderBtn;
+  return _sortBar + _listHtml;
 }
 
 // Déplie tous les commentaires d'un fil (retire le cap de pagination) puis re-rend.

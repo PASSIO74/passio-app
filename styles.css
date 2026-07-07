@@ -447,6 +447,21 @@
       animation: heartBurstKf .85s ease forwards;
     }
 
+    /* Liens / mentions / hashtags dans les commentaires (façon LinkedIn/FB) */
+    .cmt-link { color: var(--accent); text-decoration: none; word-break: break-word; }
+    .cmt-link:hover { text-decoration: underline; }
+    .cmt-mention, .cmt-hashtag { color: var(--accent); font-weight: 700; cursor: pointer; }
+    .cmt-mention:hover, .cmt-hashtag:hover { text-decoration: underline; }
+
+    /* Barre de tri des commentaires (Pertinents / Récents) — façon IG/FB */
+    .cmt-sortbar { display: flex; gap: 6px; margin: 0 0 10px; }
+    .cmt-sort {
+      border: none; background: transparent; color: var(--muted);
+      font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px;
+      cursor: pointer; transition: background .15s, color .15s;
+    }
+    .cmt-sort.active { background: var(--bg-soft); color: var(--text); }
+
     /* Tous les onglets ont la même couleur, uniforme */
     .nav-bobines .nav-icon { transition: color 180ms ease, transform 200ms ease; }
     .nav-bobines:hover .nav-icon { transform: scale(1.06); }
