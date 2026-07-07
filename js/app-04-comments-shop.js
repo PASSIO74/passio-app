@@ -575,12 +575,15 @@ async function openComments(postId) {
     <div id="commentsBox" style="max-height:260px;overflow-y:auto;margin-bottom:12px;">
       ${localComments.length ? _renderCommentsList(localComments, postId) : '<div class="empty"><div class="empty-icon">💭</div><div class="empty-title">Chargement…</div></div>'}
     </div>
-    <textarea class="textarea" id="newComment" placeholder="Réponse authentique, pas vide..." maxlength="400" style="min-height:70px;"></textarea>
+    <textarea class="textarea" id="newComment" placeholder="Ajoute un commentaire…" maxlength="400" style="min-height:44px;" oninput="autoResizeTextarea(this);_syncComposerSendState(this)" onkeydown="if((event.metaKey||event.ctrlKey)&&event.key==='Enter'){event.preventDefault();submitComment('${postId}');}"></textarea>
     <div style="display:flex;align-items:center;gap:6px;margin-top:8px;">
       ${_cmtComposerToolsHtml("newComment", "submitComment", postId)}
       <button class="btn primary" style="flex:1;" onclick="submitComment('${postId}')">Publier · +3 pts</button>
     </div>
   `);
+  // Bouton d'envoi désactivé tant que le champ est vide (état initial).
+  var _nc = document.getElementById("newComment");
+  if (_nc) _syncComposerSendState(_nc);
 
   // Charger les vrais commentaires Supabase — SAUF si ce fil a déjà été chargé il
   // y a moins de 20 s (le realtime `comment_interactions` maintient déjà tout à
@@ -655,8 +658,47 @@ function submitComment(postId) {
       supaInsertNotif(commentedPost.authorId, "comment", postId, "a commenté ton post");
     }
   }
-  closeModal();
-  renderFeed();
+  // FLUIDITÉ (façon Instagram/Facebook) : NE PAS fermer la discussion. On vide le
+  // champ, on ré-affiche le fil (rapide, scroll préservé) avec le nouveau
+  // commentaire mis en avant, et on met à jour le compteur du titre. Le compteur
+  // 💬 de la carte du fil est rafraîchi en arrière-plan (la modale reste au-dessus).
+  var _ta = document.getElementById("newComment");
+  if (_ta) { _ta.value = ""; try { autoResizeTextarea(_ta); } catch (e) {} }
+  if (typeof _refreshCommentThreadUINow === "function") _refreshCommentThreadUINow(postId);
+  var _box = document.getElementById("commentsBox");
+  if (_box) { _box.scrollTop = 0; _flashNewComment(_box, _cid); } // nouveau = en tête (unshift)
+  var _tt = document.querySelector(".modal-title");
+  if (_tt) _tt.textContent = "Discussion · " + commentThreadCount(post.comments);
+  if (typeof _syncComposerSendState === "function") _syncComposerSendState(_ta);
+  if (typeof renderFeed === "function") { try { renderFeed(); } catch (e) {} }
+}
+
+// Active/désactive le bouton « Publier » selon le contenu du champ (façon IG/FB :
+// impossible d'envoyer un commentaire vide). `ta` = le textarea du composeur ; le
+// bouton d'envoi est le .btn.primary de la rangée d'outils qui suit le champ.
+function _syncComposerSendState(ta) {
+  if (!ta) return;
+  try {
+    var tools = ta.nextElementSibling;
+    var send = tools && tools.querySelector ? tools.querySelector(".btn.primary") : null;
+    if (!send) return;
+    var empty = !ta.value.trim();
+    send.disabled = empty;
+    send.style.opacity = empty ? "0.45" : "1";
+    send.style.pointerEvents = empty ? "none" : "auto";
+  } catch (e) {}
+}
+
+// Met brièvement en avant le commentaire fraîchement inséré (feedback optimiste).
+function _flashNewComment(box, id) {
+  try {
+    var el = box.querySelector('[data-commentid="' + id + '"]');
+    if (!el) return;
+    el.style.animation = "fadeIn .35s ease";
+    el.style.background = "rgba(124,58,237,0.12)";
+    el.style.borderRadius = "12px";
+    setTimeout(function () { el.style.transition = "background .8s ease"; el.style.background = "transparent"; }, 550);
+  } catch (e) {}
 }
 
 // Applique en TEMPS RÉEL une interaction de commentaire reçue d'un autre compte
