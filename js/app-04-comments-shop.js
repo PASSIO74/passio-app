@@ -203,6 +203,11 @@ function _renderCommentsList(allComments, postId) {
     const cAllReplies = c.replies || [];
     const cReplies = cAllReplies.filter(r => r.type !== "emoji_reaction");
     const cReactChip = _cmtReactChipHtml(postId, c);
+    // Réponses REPLIÉES par défaut (façon Instagram/Facebook) : « ⌵ Voir les N
+    // réponses » ; l'état ouvert/fermé est mémorisé par commentaire pour survivre
+    // aux re-renders (patch/ajout de réponse).
+    window._repliesExpanded = window._repliesExpanded || {};
+    const cRepOpen = !!window._repliesExpanded[c.id];
 
     const cMine = (authorId === "me" || (typeof MY_UID !== "undefined" && authorId === MY_UID));
     return `<div class="comment" data-commentid="${c.id}">
@@ -219,9 +224,9 @@ function _renderCommentsList(allComments, postId) {
           <span class="comment-action" onclick="return replyToComment('${postId}','${c.id}','${escapeJsArg(name)}', event);" title="Répondre">💬</span>
           <span class="comment-action" onclick="return showEmojiPickerForComment('${postId}','${c.id}', event);" title="Emoji & GIF">😊</span>
           <span class="cmt-chip-holder" data-cmtchip="${c.id}">${cReactChip}</span>
-          ${cReplies.length > 0 ? `<span class="comment-reply-count" onclick="return toggleCommentReplies('${c.id}', event);">▲ Masquer les réponses</span>` : ""}
+          ${cReplies.length > 0 ? `<span class="comment-reply-count" onclick="return toggleCommentReplies('${c.id}', event);">${cRepOpen ? "▲ Masquer les réponses" : ("⌵ Voir " + cReplies.length + " réponse" + (cReplies.length > 1 ? "s" : ""))}</span>` : ""}
         </div>
-        ${cReplies.length > 0 ? `<div class="comment-replies" id="replies-${c.id}" style="display:block;">${cReplies.map(r => {
+        ${cReplies.length > 0 ? `<div class="comment-replies" id="replies-${c.id}" style="display:${cRepOpen ? "block" : "none"};">${cReplies.map(r => {
           const ru = userById(r.authorId) || { name: "?", profileEmoji: "👤", avatar: "#64748b" };
           const rSrc = r.authorId === "me" ? "me" : "seed";
 
@@ -304,7 +309,7 @@ function _patchCmtReact(threadId, nodeId) {
   return true;
 }
 // Patch EN PLACE le bouton like d'un commentaire/réponse (holder [data-cmtlike]).
-function _patchCmtLike(threadId, nodeId) {
+function _patchCmtLike(threadId, nodeId, pop) {
   var found = (typeof _findCommentNode === "function") ? _findCommentNode(threadId, nodeId) : null;
   if (!found || !found.node) return false;
   var els = document.querySelectorAll('[data-cmtlike="' + nodeId + '"]');
@@ -312,7 +317,7 @@ function _patchCmtLike(threadId, nodeId) {
   var node = found.node;
   var _selfIds = [(typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : null, (state.user && state.user.id), "me"].filter(Boolean);
   var liked = (node.likedBy || []).some(function(x){ return _selfIds.indexOf(x) > -1; });
-  els.forEach(function(el){ el.classList.toggle("liked", liked); el.innerHTML = (liked ? "❤️" : "🤍") + " " + (node.likes || 0); });
+  els.forEach(function(el){ el.classList.toggle("liked", liked); el.innerHTML = (liked ? "❤️" : "🤍") + " " + (node.likes || 0); if (pop && typeof _likePop === "function") _likePop(el); });
   return true;
 }
 // Localise un NŒUD de commentaire — un commentaire de premier niveau OU une réponse
@@ -428,7 +433,7 @@ function likeCommentNode(threadId, nodeId, event) {
   }
   if (thread && typeof thread.save === "function") thread.save(); else { try { saveState(); } catch(e){} }
   // Patch en place (fluidité : pas de rebuild du fil, scroll & composeur préservés).
-  if (!_patchCmtLike(threadId, nodeId) && typeof _refreshCommentThreadUI === "function") _refreshCommentThreadUI(threadId);
+  if (!_patchCmtLike(threadId, nodeId, true) && typeof _refreshCommentThreadUI === "function") _refreshCommentThreadUI(threadId);
   return false;
 }
 

@@ -116,6 +116,36 @@ async function sharePostInFeed(id) {
 // Verrou anti-double-clic : empêche deux likes simultanés sur le même post
 const _likePending = new Set();
 
+// Micro-interactions de like (façon Instagram/Facebook).
+// Petit « pop » du bouton au like.
+function _likePop(el) {
+  if (!el) return;
+  try { el.classList.remove("like-pop"); void el.offsetWidth; el.classList.add("like-pop"); } catch (e) {}
+  setTimeout(function () { try { el.classList.remove("like-pop"); } catch (e) {} }, 360);
+}
+// Gros cœur qui « éclot » au centre d'un conteneur média (double-tap pour liker).
+function _heartBurst(container) {
+  if (!container) return;
+  try {
+    if (getComputedStyle(container).position === "static") container.style.position = "relative";
+    var h = document.createElement("div");
+    h.className = "heart-burst"; h.textContent = "❤️";
+    container.appendChild(h);
+    setTimeout(function () { try { h.remove(); } catch (e) {} }, 860);
+  } catch (e) {}
+}
+// Double-tap sur le média d'un post (vue détail) = LIKE (jamais unlike, comme IG)
+// + éclosion du cœur. Met à jour le bouton ❤️ en place avec un pop.
+function _dblLikeDetail(postId, ev) {
+  var cont = ev && (ev.currentTarget || ev.target);
+  _heartBurst(cont && cont.classList && cont.classList.contains("dbl-like") ? cont : (cont && cont.closest ? cont.closest(".dbl-like") : cont));
+  if (!(state.user.likedPosts || []).includes(postId)) {
+    var btn = document.querySelector("#postDetailContent .post-actions .post-action");
+    if (typeof likePostDetail === "function") likePostDetail(postId, btn);
+    _likePop(btn);
+  }
+}
+
 function likePost(id, skipRender = false, el = null) {
   if (_likePending.has(id)) return;
   _likePending.add(id);
@@ -148,6 +178,7 @@ function likePost(id, skipRender = false, el = null) {
   if (_btn) {
     _btn.classList.toggle("liked", nowLiked);
     _btn.innerHTML = (nowLiked ? "❤️" : "🤍") + " " + (post.likes || 0);
+    if (nowLiked) _likePop(_btn);
   } else if (!skipRender) {
     renderFeed();
   }

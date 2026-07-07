@@ -275,6 +275,7 @@ function likeComment(postId, commentId, event) {
     if (likeBtn) {
       likeBtn.classList.toggle('liked', !already);
       likeBtn.innerHTML = (already ? '🤍 ' : '❤️ ') + comment.likes;
+      if (!already && typeof _likePop === "function") _likePop(likeBtn);
     }
   }
   return false;
@@ -342,6 +343,8 @@ function _submitReply(arg) {
   }
   if (typeof grantReward === "function") { try { grantReward("comment"); } catch(e){} }
   var w = inp.closest(".comment-reply-input"); if (w) w.remove();
+  // Déplie automatiquement les réponses pour que la nouvelle soit visible.
+  window._repliesExpanded = window._repliesExpanded || {}; window._repliesExpanded[commentId] = true;
   // Re-render unifié → la réponse s'affiche exactement comme partout ailleurs.
   if (typeof _refreshCommentThreadUI === "function") _refreshCommentThreadUI(postId);
   return false;
@@ -355,11 +358,14 @@ function toggleCommentReplies(commentId, event) {
   if (repliesDiv) {
     var isHidden = repliesDiv.style.display === "none" || repliesDiv.style.display === "";
     repliesDiv.style.display = isHidden ? "block" : "none";
+    // Mémorise l'état pour qu'il survive aux re-renders (façon IG/FB).
+    window._repliesExpanded = window._repliesExpanded || {};
+    window._repliesExpanded[commentId] = isHidden;
     if (btn) {
       var count = repliesDiv.querySelectorAll(".comment-reply").length;
       btn.textContent = isHidden
         ? "▲ Masquer les réponses"
-        : "▼ " + count + " réponse" + (count > 1 ? "s" : "");
+        : "⌵ Voir " + count + " réponse" + (count > 1 ? "s" : "");
     }
     _diag("✅ Replies toggled");
   }
@@ -450,6 +456,7 @@ function addGifToComment(postId, commentId, gifUrl) {
   if (comment.authorId && comment.authorId !== meId && comment.fromSupabase && typeof supaInsertNotif === "function") {
     try { supaInsertNotif(comment.authorId, "comment", postId, "a répondu avec un GIF"); } catch (e) {}
   }
+  window._repliesExpanded = window._repliesExpanded || {}; window._repliesExpanded[commentId] = true;
   // Nouvelle réponse = la liste change → refresh (scroll préservé via _setThreadHtml).
   if (typeof _refreshCommentThreadUI === "function") _refreshCommentThreadUI(postId);
   if (typeof toast === "function") toast("GIF ajouté en commentaire 🎬");

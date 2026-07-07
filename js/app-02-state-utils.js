@@ -2491,7 +2491,7 @@ async function openPost(id) {
         <span class="post-mood-tag">${moodMap[post.mood] || ""}</span>
       </div>
       <div class="post-body" style="white-space:pre-wrap;">${escapeHtml(post.text || "")}</div>
-      ${media}
+      ${media ? `<div class="dbl-like" ondblclick="_dblLikeDetail('${id}', event)" title="Double-clic pour aimer ❤️">${media}</div>` : ""}
       <div class="post-actions">
         <span class="post-action ${liked ? "liked" : ""}" onclick="event.stopPropagation(); likePostDetail('${id}', this);">
           ${liked ? "❤️" : "🤍"} ${post.likes || 0}
