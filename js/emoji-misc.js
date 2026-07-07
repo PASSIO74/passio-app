@@ -341,6 +341,7 @@ function _submitReply(arg) {
   if (comment.authorId && comment.authorId !== meId && comment.fromSupabase && typeof supaInsertNotif === "function") {
     try { supaInsertNotif(comment.authorId, "comment", postId, "a répondu à ton commentaire"); } catch(e) {}
   }
+  if (typeof _notifyCommentMentions === "function") _notifyCommentMentions(postId, text);
   if (typeof grantReward === "function") { try { grantReward("comment"); } catch(e){} }
   var w = inp.closest(".comment-reply-input"); if (w) w.remove();
   // Déplie automatiquement les réponses pour que la nouvelle soit visible.

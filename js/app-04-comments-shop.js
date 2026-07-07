@@ -154,12 +154,44 @@ function _looksLikeMediaUrl(s) {
 // LinkedIn/Facebook). ⚠️ Opère sur du texte DÉJÀ échappé par escapeHtml → sûr
 // (aucun HTML utilisateur brut injecté). Les @/# ne matchent que précédés d'un
 // espace/ponctuation (donc pas à l'intérieur d'une URL, ex. .../#ancre).
+// Liste (cache 15 s) des pseudos connus, triés du plus long au plus court pour
+// matcher « @Nina Costa » avant « @Nina » (mentions multi-mots).
+function _cmtKnownNames() {
+  if (window.__cmtNamesCache && window.__cmtNamesCache.t > Date.now() - 15000) return window.__cmtNamesCache.list;
+  var list = (state.seed.users || []).map(function (u) { return u && u.name; }).filter(Boolean);
+  list.sort(function (a, b) { return b.length - a.length; });
+  window.__cmtNamesCache = { t: Date.now(), list: list };
+  return list;
+}
+// Rend les @mentions cliquables. Scan manuel (pas de regex à lookbehind, cassé
+// sur d'anciens Safari iOS) : à chaque « @ » en début de mot, on matche le plus
+// long pseudo CONNU (multi-mots « @Nina Costa »), sinon un seul mot. Opère sur du
+// texte DÉJÀ échappé ; le pseudo affiché est ré-échappé (anti-XSS).
+function _linkifyMentions(safe) {
+  var names = _cmtKnownNames();
+  var boundary = /[\s.,;!?()\[\]]/;
+  var out = "", i = 0;
+  while (i < safe.length) {
+    var ch = safe[i];
+    if (ch === "@" && (i === 0 || boundary.test(safe[i - 1]))) {
+      var after = safe.slice(i + 1), matched = null;
+      for (var k = 0; k < names.length; k++) {
+        var esc = escapeHtml(names[k]);
+        if (esc && after.toLowerCase().indexOf(esc.toLowerCase()) === 0) { matched = { raw: names[k], esc: esc }; break; }
+      }
+      if (!matched) { var tk = (after.match(/^[A-Za-zÀ-ÿ0-9_'’-]+/) || [""])[0]; if (tk) matched = { raw: tk, esc: tk }; }
+      if (matched) {
+        out += '<span class="cmt-mention" onclick="return _openMentionProfile(\'' + escapeJsArg(matched.raw) + '\', event)">@' + matched.esc + '</span>';
+        i += 1 + matched.esc.length; continue;
+      }
+    }
+    out += ch; i++;
+  }
+  return out;
+}
 function _linkifyText(safe) {
   if (!safe) return "";
-  // @mentions
-  safe = safe.replace(/(^|[\s.,;!?()\[\]])@([A-Za-zÀ-ÿ0-9][A-Za-zÀ-ÿ0-9_'-]{1,30})/g, function (m, pre, name) {
-    return pre + '<span class="cmt-mention" onclick="return _openMentionProfile(\'' + name.replace(/'/g, "\\'") + '\', event)">@' + name + '</span>';
-  });
+  safe = _linkifyMentions(safe);
   // #hashtags
   safe = safe.replace(/(^|[\s.,;!?()\[\]])#([A-Za-zÀ-ÿ0-9][A-Za-zÀ-ÿ0-9_'-]{1,30})/g, function (m, pre, tag) {
     return pre + '<span class="cmt-hashtag" onclick="return _openHashtag(\'' + tag.replace(/'/g, "\\'") + '\', event)">#' + tag + '</span>';
@@ -203,6 +235,111 @@ function _openHashtag(tag, event) {
     else if (typeof toast === "function") toast("#" + tag);
   } catch (e) {}
   return false;
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// @MENTIONS AVEC AUTOCOMPLÉTION (façon Instagram/Facebook/LinkedIn)
+// Détecte « @partiel » en cours de frappe dans n'importe quel composeur de
+// commentaire (fil / réponse / IRL / CDV) et propose une liste d'utilisateurs.
+// Sélectionner insère « @Pseudo ». Rendu cliquable ensuite par _linkifyText.
+// ════════════════════════════════════════════════════════════════════════
+var _CMT_COMPOSER_SEL = "#newComment, .reply-field, #cmtThreadInput, #cdvLiveComment, #eventCommentInput";
+function _mentionCandidates(q) {
+  var seen = {}, out = [];
+  var meIds = [(typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : null, "me"].filter(Boolean);
+  (state.seed.users || []).forEach(function (u) {
+    if (!u || !u.name) return;
+    if (meIds.indexOf(u.id) > -1) return;                     // pas soi-même
+    if (typeof isBlocked === "function" && isBlocked(u.id)) return;
+    var key = u.name.toLowerCase();
+    if (seen[key]) return;
+    if (q && key.indexOf(q) !== 0 && key.indexOf(q) < 0) return; // préfixe OU contient
+    seen[key] = 1; out.push(u);
+  });
+  // Priorité au préfixe, puis alpha ; limite courte pour rester léger.
+  out.sort(function (a, b) {
+    var ap = a.name.toLowerCase().indexOf(q) === 0 ? 0 : 1, bp = b.name.toLowerCase().indexOf(q) === 0 ? 0 : 1;
+    return ap !== bp ? ap - bp : a.name.localeCompare(b.name);
+  });
+  return out.slice(0, 6);
+}
+function _closeMentionBox() {
+  var b = document.getElementById("mention-box");
+  if (b) b.remove();
+  window._mentionTarget = null;
+}
+// Notifie les utilisateurs (réels) @mentionnés dans un commentaire/réponse.
+// Ignore les comptes démo (id « u_… ») et soi-même.
+function _notifyCommentMentions(threadId, text) {
+  if (!text || text.indexOf("@") < 0 || typeof supaInsertNotif !== "function") return;
+  var low = text.toLowerCase();
+  var meId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
+  var done = {};
+  (state.seed.users || []).forEach(function (u) {
+    if (!u || !u.name || !u.id || u.id === meId || done[u.id]) return;
+    if (String(u.id).indexOf("u_") === 0) return; // compte démo, pas de vraie notif
+    if (low.indexOf("@" + u.name.toLowerCase()) > -1) {
+      done[u.id] = 1;
+      try { supaInsertNotif(u.id, "mention", threadId, "t'a mentionné dans un commentaire"); } catch (e) {}
+    }
+  });
+}
+function _cmtMentionDetect(el) {
+  if (!el) return;
+  var val = el.value || "";
+  var pos = (typeof el.selectionStart === "number") ? el.selectionStart : val.length;
+  var before = val.slice(0, pos);
+  var m = before.match(/(^|\s)@([A-Za-zÀ-ÿ0-9_'-]{0,30})$/);
+  if (!m) { _closeMentionBox(); return; }
+  var q = m[2].toLowerCase();
+  var users = _mentionCandidates(q);
+  if (!users.length) { _closeMentionBox(); return; }
+  _showMentionBox(el, users, m[2].length);
+}
+function _showMentionBox(el, users, qLen) {
+  _closeMentionBox();
+  window._mentionTarget = el;
+  var box = document.createElement("div");
+  box.id = "mention-box";
+  box.className = "mention-box";
+  users.forEach(function (u) {
+    var av = { avatar: u.avatar || "#64748b", profileEmoji: u.profileEmoji || "👤", name: u.name, photoUrl: u.photoUrl || null };
+    var row = document.createElement("div");
+    row.className = "mention-row";
+    row.innerHTML = '<div class="avatar sm" style="background:' + avatarBg(av) + ';flex-shrink:0;">' + avatarInner(av) + '</div>'
+      + '<span class="mention-name">' + escapeHtml(u.name) + '</span>';
+    row.onmousedown = function (ev) { ev.preventDefault(); _pickCmtMention(el, u.name, qLen); };
+    box.appendChild(row);
+  });
+  // Positionnement AU-DESSUS du champ (le clavier mobile occupe le bas).
+  var r = el.getBoundingClientRect();
+  box.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 258)) + "px";
+  box.style.bottom = Math.max(8, window.innerHeight - r.top + 6) + "px";
+  document.body.appendChild(box);
+}
+function _pickCmtMention(el, name, qLen) {
+  var pos = (typeof el.selectionStart === "number") ? el.selectionStart : (el.value || "").length;
+  var val = el.value || "";
+  var start = pos - qLen - 1; // position du « @ »
+  if (start < 0) start = 0;
+  el.value = val.slice(0, start) + "@" + name + " " + val.slice(pos);
+  var np = start + name.length + 2;
+  try { el.selectionStart = el.selectionEnd = np; } catch (e) {}
+  el.focus();
+  _closeMentionBox();
+  if (typeof autoResizeTextarea === "function") { try { autoResizeTextarea(el); } catch (e) {} }
+  if (typeof _syncComposerSendState === "function") _syncComposerSendState(el);
+}
+if (!window._mentionListenerAdded) {
+  window._mentionListenerAdded = true;
+  document.addEventListener("input", function (e) {
+    var el = e.target;
+    if (el && el.matches && el.matches(_CMT_COMPOSER_SEL)) _cmtMentionDetect(el);
+  });
+  document.addEventListener("click", function (e) {
+    var box = document.getElementById("mention-box");
+    if (box && !box.contains(e.target) && e.target !== window._mentionTarget) _closeMentionBox();
+  });
 }
 
 // Tri des commentaires (façon Instagram/Facebook) : « Récents » (défaut) ou
@@ -740,6 +877,7 @@ function submitComment(postId) {
     if (commentedPost && commentedPost.authorId && commentedPost.authorId !== MY_UID && commentedPost.fromSupabase) {
       supaInsertNotif(commentedPost.authorId, "comment", postId, "a commenté ton post");
     }
+    if (typeof _notifyCommentMentions === "function") _notifyCommentMentions(postId, text);
   }
   // FLUIDITÉ (façon Instagram/Facebook) : NE PAS fermer la discussion. On vide le
   // champ, on ré-affiche le fil (rapide, scroll préservé) avec le nouveau

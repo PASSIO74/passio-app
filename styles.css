@@ -462,6 +462,19 @@
     }
     .cmt-sort.active { background: var(--bg-soft); color: var(--text); }
 
+    /* Autocomplétion @mentions (façon IG/FB/LinkedIn) */
+    .mention-box {
+      position: fixed; z-index: 100004; width: 250px; max-height: 240px; overflow-y: auto;
+      background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+      box-shadow: 0 8px 28px rgba(0, 0, 0, .3); padding: 4px;
+    }
+    .mention-row {
+      display: flex; align-items: center; gap: 9px; padding: 7px 9px;
+      border-radius: 9px; cursor: pointer;
+    }
+    .mention-row:hover { background: var(--bg-soft); }
+    .mention-name { font-size: 13px; font-weight: 600; color: var(--text); }
+
     /* Tous les onglets ont la même couleur, uniforme */
     .nav-bobines .nav-icon { transition: color 180ms ease, transform 200ms ease; }
     .nav-bobines:hover .nav-icon { transform: scale(1.06); }
