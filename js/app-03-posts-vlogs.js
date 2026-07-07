@@ -745,8 +745,12 @@ async function _renderVlogComments(postId) {
   var empty = '<div style="font-size:12px;color:var(--muted);">Aucun commentaire — sois le premier 💬</div>';
   var comments = (post && post.comments) || [];
   box.innerHTML = comments.length ? _renderCommentsList(comments, postId) : empty;
-  // Charge les commentaires Supabase (cross-compte) puis re-rend.
-  if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID && typeof supaLoadComments === "function") {
+  // Charge les commentaires Supabase (cross-compte) EN ARRIÈRE-PLAN puis re-rend
+  // sans jank (scroll préservé, no-op si inchangé). Cache 20 s partagé → réouverture
+  // instantanée (même politique que le fil, cf. openComments/openPost).
+  window._cmtThreadLoadedAt = window._cmtThreadLoadedAt || {};
+  var _fresh = (Date.now() - (window._cmtThreadLoadedAt[postId] || 0)) < 20000;
+  if (!_fresh && typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID && typeof supaLoadComments === "function") {
     try {
       var supaComments = await supaLoadComments(postId);
       if (supaComments && post) {
@@ -757,10 +761,12 @@ async function _renderVlogComments(postId) {
           .sort(function(a, b){ return (b.createdAt || 0) - (a.createdAt || 0); });
         post.comments = merged;
         if (typeof hydrateCommentInteractions === "function") { try { await hydrateCommentInteractions(post); } catch(e) {} }
+        window._cmtThreadLoadedAt[postId] = Date.now();
         var box2 = document.getElementById("vlogCommentsList");
         var vv = document.getElementById("vlogViewer");
         if (box2 && vv && vv.getAttribute("data-current-post") === postId) {
-          box2.innerHTML = post.comments.length ? _renderCommentsList(post.comments, postId) : empty;
+          if (typeof _setThreadHtml === "function") _setThreadHtml(box2, post.comments.length ? _renderCommentsList(post.comments, postId) : empty);
+          else box2.innerHTML = post.comments.length ? _renderCommentsList(post.comments, postId) : empty;
         }
       }
     } catch(e) {}

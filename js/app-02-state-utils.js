@@ -2442,24 +2442,10 @@ async function openPost(id) {
   const content = document.getElementById("postDetailContent");
   if (!page || !content) return;
 
-  // Charger les commentaires Supabase si besoin
-  if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
-    try {
-      const supaComments = await supaLoadComments(id);
-      if (supaComments && supaComments.length > 0) {
-        const supaIds = new Set(supaComments.map(c => c.id));
-        const localOnly = (post.comments || []).filter(c => !supaIds.has(c.id) && !c.fromSupabase);
-        post.comments = [...supaComments.map(c => ({ ...c, text: c.content || c.text || "" })), ...localOnly]
-          .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-      }
-      // Hydrate les interactions cross-compte (likes/réponses/emojis) comme la
-      // modale openComments → parité totale entre les deux vues.
-      if (typeof hydrateCommentInteractions === "function") {
-        try { await hydrateCommentInteractions(post); } catch(e) {}
-      }
-    } catch(e) {}
-  }
-
+  // ⚡ Les commentaires Supabase ne sont PLUS chargés en bloquant ici : la page
+  // détail s'affichait après ~700 ms (le temps du réseau) = grosse impression de
+  // lag. On rend TOUT DE SUITE avec les commentaires locaux puis on rafraîchit en
+  // arrière-plan (_loadPostDetailComments, en bas de la fonction).
   const author = (post._source === "me" || (typeof MY_UID !== "undefined" && post.authorId === MY_UID))
     ? { name: currentProfile()?.name || state.user.name, profileEmoji: currentProfile()?.emoji || "✨", avatar: currentProfile()?.color || "#8b5cf6", photoUrl: (state.user.general || {}).avatarPhoto || null }
     : (function(){ const cu = userById(post.authorId) || {}; return post.authorName ? { name: post.authorName, profileEmoji: post.authorEmoji || "✨", avatar: post.authorColor || "#8b5cf6", photoUrl: cu.photoUrl || post.authorAvatar || null } : cu; })();
@@ -2527,6 +2513,36 @@ async function openPost(id) {
 
   page.style.display = "flex";
   page.scrollTop = 0;
+
+  // Rafraîchit les commentaires depuis Supabase EN ARRIÈRE-PLAN (n'ayant plus
+  // bloqué l'affichage) puis patche #postDetailComments sans jank (scroll préservé,
+  // no-op si inchangé). Cache 20 s partagé avec openComments → rouvrir = instantané.
+  _loadPostDetailComments(id, post);
+}
+
+async function _loadPostDetailComments(id, post) {
+  if (typeof supa === "undefined" || !supa || typeof MY_UID === "undefined" || !MY_UID) return;
+  window._cmtThreadLoadedAt = window._cmtThreadLoadedAt || {};
+  if ((Date.now() - (window._cmtThreadLoadedAt[id] || 0)) < 20000) return; // déjà frais
+  try {
+    const supaComments = await supaLoadComments(id);
+    if (supaComments && supaComments.length > 0) {
+      const supaIds = new Set(supaComments.map(c => c.id));
+      const localOnly = (post.comments || []).filter(c => !supaIds.has(c.id) && !c.fromSupabase);
+      post.comments = [...supaComments.map(c => ({ ...c, text: c.content || c.text || "" })), ...localOnly]
+        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    }
+    if (typeof hydrateCommentInteractions === "function") {
+      try { await hydrateCommentInteractions(post); } catch(e) {}
+    }
+    window._cmtThreadLoadedAt[id] = Date.now();
+    const pd = document.getElementById("postDetailComments");
+    if (pd && pd.getAttribute("data-thread") === id && typeof _setThreadHtml === "function") {
+      _setThreadHtml(pd, post.comments.length
+        ? _renderCommentsList(post.comments, id)
+        : '<div style="font-size:13px;color:var(--muted);text-align:center;padding:20px 0;">Aucun commentaire — sois le premier 💬</div>');
+    }
+  } catch(e) {}
 }
 
 // Like depuis la vue détail d'un post : délègue au likePost() canonique

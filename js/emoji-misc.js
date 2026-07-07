@@ -452,9 +452,10 @@ function addGifToComment(postId, commentId, gifUrl) {
   console.log("✅ GIF reaction added + synced");
 
   if (typeof thread.save === "function") thread.save();
-  // Re-render unifié : la réponse GIF apparaît dans la liste, les réactions emoji
-  // restent agrégées dans la pastille.
-  if (typeof _refreshCommentThreadUI === "function") _refreshCommentThreadUI(postId);
+  // La réaction GIF (comme l'emoji) va dans la pastille « 🎬 N » → patch en place.
+  if (typeof _patchCmtReact !== "function" || !_patchCmtReact(postId, commentId)) {
+    if (typeof _refreshCommentThreadUI === "function") _refreshCommentThreadUI(postId);
+  }
   return false;
 }
 
@@ -607,9 +608,11 @@ function addEmojiToComment(postId, commentId, emoji) {
   if (!res.removedSame && typeof supaCommentInteract === "function") supaCommentInteract(commentId, postId, "emoji", emoji);
   console.log("✅ Emoji reaction added + synced:", emoji);
 
-  // Une réaction emoji n'est PAS un commentaire : on re-rend le fil via le renderer
-  // unifié, qui l'agrège dans la pastille « 😍 N » (et non en ligne de réponse).
-  if (typeof _refreshCommentThreadUI === "function") _refreshCommentThreadUI(postId);
+  // Patch EN PLACE la pastille « 😍 N » (fluidité : pas de rebuild du fil → scroll
+  // et composeur de réponse ouvert préservés). Fallback refresh si non visible.
+  if (typeof _patchCmtReact !== "function" || !_patchCmtReact(postId, commentId)) {
+    if (typeof _refreshCommentThreadUI === "function") _refreshCommentThreadUI(postId);
+  }
   return false;
 }
 

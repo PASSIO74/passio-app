@@ -196,8 +196,11 @@ function _renderCommentsList(allComments, postId) {
     // Sépare les VRAIES réponses (texte / GIF) des réactions emoji : une réaction
     // emoji n'est PAS un commentaire → elle ne s'affiche pas en ligne de réponse mais
     // dans une pastille « 😍 N » cliquable (cf. _cmtReactChipHtml / openCommentReactors).
+    // Réactions (emoji ET gif) = pastille « 😍 N » (comme sur les posts) ; PAS des
+    // lignes de réponse. Seules les vraies réponses (texte / GIF envoyé en réponse)
+    // restent dans la liste. Unifié avec le fil + permet le patch en place (fluidité).
     const cAllReplies = c.replies || [];
-    const cReplies = cAllReplies.filter(r => r.type !== "emoji_reaction");
+    const cReplies = cAllReplies.filter(r => r.type !== "emoji_reaction" && r.type !== "gif_reaction");
     const cReactChip = _cmtReactChipHtml(postId, c);
 
     const cMine = (authorId === "me" || (typeof MY_UID !== "undefined" && authorId === MY_UID));
@@ -209,12 +212,12 @@ function _renderCommentsList(allComments, postId) {
         <div class="comment-text">${_commentBodyHtml(c.text || c.content || "")}</div>
         <div class="comment-meta">${fmtTime(c.createdAt || c.at)}</div>
         <div class="comment-actions">
-          <span class="comment-action ${cLiked ? "liked" : ""}" onclick="return likeComment('${postId}','${c.id}', event);">
+          <span class="comment-action ${cLiked ? "liked" : ""}" data-cmtlike="${c.id}" onclick="return likeComment('${postId}','${c.id}', event);">
             ${cLiked ? "❤️" : "🤍"} ${cLikes}
           </span>
           <span class="comment-action" onclick="return replyToComment('${postId}','${c.id}','${escapeJsArg(name)}', event);" title="Répondre">💬</span>
           <span class="comment-action" onclick="return showEmojiPickerForComment('${postId}','${c.id}', event);" title="Emoji & GIF">😊</span>
-          ${cReactChip}
+          <span class="cmt-chip-holder" data-cmtchip="${c.id}">${cReactChip}</span>
           ${cReplies.length > 0 ? `<span class="comment-reply-count" onclick="return toggleCommentReplies('${c.id}', event);">▲ Masquer les réponses</span>` : ""}
         </div>
         ${cReplies.length > 0 ? `<div class="comment-replies" id="replies-${c.id}" style="display:block;">${cReplies.map(r => {
@@ -257,9 +260,9 @@ function _renderCommentsList(allComments, postId) {
             <div style="flex:1;min-width:0;"><span class="comment-reply-author" style="font-size:11px;font-weight:600;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span> ${_commentBodyHtml(r.text)}
             <div class="comment-reply-actions" style="display:flex;align-items:center;gap:10px;margin-top:2px;">
               <span style="font-size:10px;color:var(--muted);">${fmtTime(r.createdAt)}</span>
-              <span class="comment-action ${rLiked ? "liked" : ""}" style="font-size:12px;" onclick="return likeCommentNode('${postId}','${r.id}', event);" title="J'aime">${rLiked ? "❤️" : "🤍"} ${rLikes}</span>
+              <span class="comment-action ${rLiked ? "liked" : ""}" data-cmtlike="${r.id}" style="font-size:12px;" onclick="return likeCommentNode('${postId}','${r.id}', event);" title="J'aime">${rLiked ? "❤️" : "🤍"} ${rLikes}</span>
               <span class="comment-action" style="font-size:12px;" onclick="return reactToReply('${postId}','${r.id}', event);" title="Réagir">😊</span>
-              ${rReactChip}
+              <span class="cmt-chip-holder" data-cmtchip="${r.id}">${rReactChip}</span>
             </div></div>
           </div>`;
         }).join("")}</div>` : ""}
@@ -282,8 +285,33 @@ function _expandComments(threadId) {
 // clic ouvre la liste de QUI a réagi (et avec quoi). Identique partout.
 // ════════════════════════════════════════════════════════════════════════
 function _cmtReactions(comment) {
-  var arr = (comment && comment.replies || []).filter(function(r){ return r && r.type === "emoji_reaction"; });
+  var arr = (comment && comment.replies || []).filter(function(r){ return r && (r.type === "emoji_reaction" || r.type === "gif_reaction"); });
   return _dedupReactionsByAuthor(arr);
+}
+// Patch EN PLACE la pastille de réactions d'un commentaire/réponse (holder
+// [data-cmtchip]) — évite de reconstruire tout le fil à chaque tap (perte de
+// scroll, composeur de réponse ouvert détruit). Retourne false si le nœud n'est
+// pas visible → l'appelant retombe sur un refresh complet.
+function _patchCmtReact(threadId, nodeId) {
+  var found = (typeof _findCommentNode === "function") ? _findCommentNode(threadId, nodeId) : null;
+  if (!found || !found.node) return false;
+  var holders = document.querySelectorAll('[data-cmtchip="' + nodeId + '"]');
+  if (!holders.length) return false;
+  var html = _cmtReactChipHtml(threadId, found.node);
+  holders.forEach(function(h){ h.innerHTML = html; });
+  return true;
+}
+// Patch EN PLACE le bouton like d'un commentaire/réponse (holder [data-cmtlike]).
+function _patchCmtLike(threadId, nodeId) {
+  var found = (typeof _findCommentNode === "function") ? _findCommentNode(threadId, nodeId) : null;
+  if (!found || !found.node) return false;
+  var els = document.querySelectorAll('[data-cmtlike="' + nodeId + '"]');
+  if (!els.length) return false;
+  var node = found.node;
+  var _selfIds = [(typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : null, (state.user && state.user.id), "me"].filter(Boolean);
+  var liked = (node.likedBy || []).some(function(x){ return _selfIds.indexOf(x) > -1; });
+  els.forEach(function(el){ el.classList.toggle("liked", liked); el.innerHTML = (liked ? "❤️" : "🤍") + " " + (node.likes || 0); });
+  return true;
 }
 // Localise un NŒUD de commentaire — un commentaire de premier niveau OU une réponse
 // — par son id, dans n'importe quel fil (fil / IRL / CDV). Permet de réagir aussi
@@ -397,7 +425,8 @@ function likeCommentNode(threadId, nodeId, event) {
     }
   }
   if (thread && typeof thread.save === "function") thread.save(); else { try { saveState(); } catch(e){} }
-  if (typeof _refreshCommentThreadUI === "function") _refreshCommentThreadUI(threadId);
+  // Patch en place (fluidité : pas de rebuild du fil, scroll & composeur préservés).
+  if (!_patchCmtLike(threadId, nodeId) && typeof _refreshCommentThreadUI === "function") _refreshCommentThreadUI(threadId);
   return false;
 }
 
@@ -548,10 +577,16 @@ async function openComments(postId) {
     </div>
   `);
 
-  // Charger les vrais commentaires Supabase
-  if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
+  // Charger les vrais commentaires Supabase — SAUF si ce fil a déjà été chargé il
+  // y a moins de 20 s (le realtime `comment_interactions` maintient déjà tout à
+  // jour) : rouvrir la même discussion est alors INSTANTANÉ, sans re-fetch réseau
+  // (~300-700 ms) ni re-render. C'est le correctif « ouverture fluide ».
+  window._cmtThreadLoadedAt = window._cmtThreadLoadedAt || {};
+  var _fresh = (Date.now() - (window._cmtThreadLoadedAt[postId] || 0)) < 20000;
+  if (!_fresh && typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
     try {
       const supaComments = await supaLoadComments(postId);
+      if (window._openCommentsPostId !== postId) return; // l'utilisateur a fermé/changé entre-temps
       if (supaComments && supaComments.length >= 0) {
         // Merge : garder locaux non-Supabase + Supabase
         const supaIds = supaComments.map(c => c.id);
@@ -564,18 +599,20 @@ async function openComments(postId) {
         if (typeof hydrateCommentInteractions === "function") {
           try { await hydrateCommentInteractions(post); } catch(e) {}
         }
+        window._cmtThreadLoadedAt[postId] = Date.now();
+        if (window._openCommentsPostId !== postId) return;
         const box = document.getElementById("commentsBox");
         if (box) {
-          box.innerHTML = post.comments.length
+          _setThreadHtml(box, post.comments.length
             ? _renderCommentsList(post.comments, postId)
-            : '<div class="empty"><div class="empty-icon">💭</div><div class="empty-title">Sois le premier à réagir</div></div>';
+            : '<div class="empty"><div class="empty-icon">💭</div><div class="empty-title">Sois le premier à réagir</div></div>');
         }
         // Mettre à jour le titre
         const title = document.querySelector(".modal-title");
         if (title) title.textContent = `Discussion (${post.comments.length})`;
       }
     } catch(e) {}
-  } else {
+  } else if (typeof supa === "undefined" || !supa || typeof MY_UID === "undefined" || !MY_UID) {
     // Pas de Supabase : afficher les locaux
     const box = document.getElementById("commentsBox");
     if (box && localComments.length === 0) {
@@ -673,12 +710,20 @@ function _applyCommentInteractionEvent(r, op) {
         comment.replies.push({ id: gid, authorId: r.user_id, text: r.payload, type: "gif_reaction", createdAt: supaTs(r.created_at) });
     }
     if (typeof thread.save === "function") thread.save(); else saveState();
-    if (typeof _refreshCommentThreadUI === "function") _refreshCommentThreadUI(r.post_id);
+    // Fluidité : un like/une réaction d'un autre compte se patche EN PLACE (ne
+    // détruit pas un composeur de réponse ouvert ni le scroll) ; seule une nouvelle
+    // RÉPONSE (change la liste) déclenche un refresh complet.
+    var _patched = false;
+    if (r.kind === "like") _patched = _patchCmtLike(r.post_id, r.comment_id);
+    else if (r.kind === "emoji" || r.kind === "gif") _patched = _patchCmtReact(r.post_id, r.comment_id);
+    if (!_patched && typeof _refreshCommentThreadUI === "function") _refreshCommentThreadUI(r.post_id);
     // Profil de l'auteur inconnu localement → le résoudre puis re-render, sinon
     // la réponse/réaction realtime s'affiche avec « ? » comme pseudo.
     if (op === "add" && r.user_id && typeof userById === "function" && !userById(r.user_id)
         && typeof _resolveProfilesByIds === "function") {
       _resolveProfilesByIds([r.user_id]).then(function(){
+        if (r.kind === "like" && _patchCmtLike(r.post_id, r.comment_id)) return;
+        if ((r.kind === "emoji" || r.kind === "gif") && _patchCmtReact(r.post_id, r.comment_id)) return;
         if (typeof _refreshCommentThreadUI === "function") _refreshCommentThreadUI(r.post_id);
       }).catch(function(){});
     }
@@ -740,6 +785,27 @@ function _findCommentThread(threadId) {
 // Coalesce les rafraîchissements (rafales realtime : plusieurs likes/réponses
 // reçus en même temps recompilaient toute la liste à chaque event = lag). Un
 // seul rebuild par frame (~16ms, imperceptible).
+// Pose du HTML dans un conteneur de fil SANS jank : (1) no-op si le HTML est
+// identique (une réaction/like ne rebuild pas un fil inchangé) ; (2) préserve la
+// position de scroll ET le focus/valeur d'un éventuel champ de saisie en cours
+// (répondre) — avant, chaque tap remettait le scroll en haut et pouvait vider une
+// réponse à moitié tapée. C'est LE correctif de fluidité des commentaires.
+function _setThreadHtml(el, html) {
+  if (!el || el.innerHTML === html) return;
+  var sc = el.scrollTop;
+  // Sauver une saisie de réponse ouverte (champ dynamique hors innerHTML re-rendu).
+  var active = document.activeElement;
+  var save = null;
+  if (active && el.contains(active) && (active.tagName === "INPUT" || active.tagName === "TEXTAREA")) {
+    save = { id: active.id, val: active.value, s: active.selectionStart, e: active.selectionEnd };
+  }
+  el.innerHTML = html;
+  el.scrollTop = sc;
+  if (save && save.id) {
+    var again = document.getElementById(save.id);
+    if (again) { again.value = save.val; try { again.setSelectionRange(save.s, save.e); } catch(e) {} again.focus(); }
+  }
+}
 var _cmtRefreshQueued = {};
 function _refreshCommentThreadUI(threadId) {
   if (!threadId) return;
@@ -757,7 +823,7 @@ function _refreshCommentThreadUINow(threadId) {
   try {
     if (window._openCommentsPostId === threadId) {
       var box = document.getElementById("commentsBox");
-      if (box) box.innerHTML = _renderCommentsList(thread.comments, threadId);
+      if (box) _setThreadHtml(box, _renderCommentsList(thread.comments, threadId));
     }
   } catch(e) {}
   // IRL : son renderer gère DÉJÀ la page détail ET la feuille inline (#cmtThreadList).
@@ -771,7 +837,7 @@ function _refreshCommentThreadUINow(threadId) {
       var cdvBox = document.getElementById("cdvCommentsBox");
       if (cdvBox && typeof _cdvCommentsBoxHtml === "function") {
         var l = getCdvLives().find(function(x){ return x.id === threadId; });
-        if (l) cdvBox.innerHTML = _cdvCommentsBoxHtml(l);
+        if (l) _setThreadHtml(cdvBox, _cdvCommentsBoxHtml(l));
       }
     }
   } catch(e) {}
@@ -780,9 +846,9 @@ function _refreshCommentThreadUINow(threadId) {
   try {
     var pd = document.getElementById("postDetailComments");
     if (pd && pd.getAttribute("data-thread") === threadId) {
-      pd.innerHTML = thread.comments.length
+      _setThreadHtml(pd, thread.comments.length
         ? _renderCommentsList(thread.comments, threadId)
-        : '<div style="font-size:13px;color:var(--muted);text-align:center;padding:20px 0;">Aucun commentaire — sois le premier 💬</div>';
+        : '<div style="font-size:13px;color:var(--muted);text-align:center;padding:20px 0;">Aucun commentaire — sois le premier 💬</div>');
     }
   } catch(e) {}
   // Carnet CDV ouvert dans le viewer plein écran (#vlogCommentsList).
@@ -790,18 +856,18 @@ function _refreshCommentThreadUINow(threadId) {
     var vv = document.getElementById("vlogViewer");
     var vlist = document.getElementById("vlogCommentsList");
     if (vlist && vv && vv.getAttribute("data-current-post") === threadId) {
-      vlist.innerHTML = thread.comments.length
+      _setThreadHtml(vlist, thread.comments.length
         ? _renderCommentsList(thread.comments, threadId)
-        : '<div style="font-size:12px;color:var(--muted);">Aucun commentaire — sois le premier 💬</div>';
+        : '<div style="font-size:12px;color:var(--muted);">Aucun commentaire — sois le premier 💬</div>');
     }
   } catch(e) {}
   // Feuille générique inline (carte CDV/fil sans ouvrir le détail).
   try {
     var sheet = document.getElementById("cmtThreadList");
     if (sheet && sheet.getAttribute("data-thread") === threadId) {
-      sheet.innerHTML = thread.comments.length
+      _setThreadHtml(sheet, thread.comments.length
         ? _renderCommentsList(thread.comments, threadId)
-        : '<div class="empty"><div class="empty-icon">💭</div><div class="empty-title">Sois le premier à réagir</div></div>';
+        : '<div class="empty"><div class="empty-icon">💭</div><div class="empty-title">Sois le premier à réagir</div></div>');
     }
   } catch(e) {}
 }
@@ -923,7 +989,7 @@ function openCommentSheet(threadId, title) {
   } else if (thread.comments.length && typeof hydrateCommentInteractions === "function") {
     hydrateCommentInteractions({ comments: thread.comments }).then(function(){
       var b = document.getElementById("cmtThreadList");
-      if (b && b.getAttribute("data-thread") === threadId) b.innerHTML = _renderCommentsList(thread.comments, threadId);
+      if (b && b.getAttribute("data-thread") === threadId) _setThreadHtml(b, _renderCommentsList(thread.comments, threadId));
     });
   }
 }
