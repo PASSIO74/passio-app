@@ -1546,31 +1546,52 @@ function _patchEventReactChip(eventId) {
 // sync event_reactions), puis repeint la pastille.
 function applyEventEmojiReaction(eventId, emojiArr) {
   if (!emojiArr || !emojiArr.length) return;
-  window._eventLikes = window._eventLikes || {};
-  var d = window._eventLikes[eventId] || { likes: 0, liked: false, emojiCounts: {}, gifs: [] };
-  d.emojiCounts = d.emojiCounts || {};
-  emojiArr.forEach(function(e){
-    if (!e) return;
-    if (e === "❤️") { // le cœur = un like (cohérent avec le bouton ❤️)
-      var lk = document.querySelector('[data-evlike="' + eventId + '"]');
-      if (!(state.user.likedEvents || []).includes(eventId)) toggleEventLike(eventId, lk);
-      return;
-    }
-    d.emojiCounts[e] = (d.emojiCounts[e] || 0) + 1;
-    if (typeof supaAddEventReaction === "function") supaAddEventReaction(eventId, e);
-  });
-  window._eventLikes[eventId] = d;
-  _patchEventReactChip(eventId);
-  _notifyEventOrganizerReaction(eventId);
+  // Le panneau envoie une réaction à la fois (dernier tap fait foi).
+  var e = emojiArr[emojiArr.length - 1];
+  if (!e) return;
+  if (e === "❤️") { // le cœur = un like (cohérent avec le bouton ❤️)
+    var lk = document.querySelector('[data-evlike="' + eventId + '"]');
+    toggleEventLike(eventId, lk); // toggle strict (le like gère déjà 1/personne)
+    return;
+  }
+  _setEventReaction(eventId, e); // une seule réaction (emoji/gif) par personne
 }
 // Applique une réaction GIF (URL stockée dans event_reactions.emoji), repeint.
 function applyEventGifReaction(eventId, gifUrl) {
   if (!gifUrl) return;
+  _setEventReaction(eventId, gifUrl);
+}
+// Cœur commun « une seule réaction par personne » pour un événement : remplace ma
+// réaction précédente (emoji OU gif) ; re-tap de la même = toggle off. L'aperçu
+// agrégé window._eventLikes est ajusté en optimiste, l'état perso mémorisé dans
+// state.user.eventReactions (survit au reload) et Supabase resynchronisé (delete
+// de l'ancienne + insert de la nouvelle) pour rester cohérent cross-compte.
+function _setEventReaction(eventId, val) {
   window._eventLikes = window._eventLikes || {};
   var d = window._eventLikes[eventId] || { likes: 0, liked: false, emojiCounts: {}, gifs: [] };
-  d.gifs = d.gifs || []; d.gifs.push(gifUrl);
+  d.emojiCounts = d.emojiCounts || {}; d.gifs = d.gifs || [];
+  state.user.eventReactions = state.user.eventReactions || {};
+  var prev = state.user.eventReactions[eventId];
+  var isGif = function (x) { return /^https?:\/\//.test(x); };
+  // Retirer ma réaction précédente de l'agrégat + du serveur.
+  if (prev) {
+    if (isGif(prev)) d.gifs = d.gifs.filter(function (g) { return g !== prev; });
+    else { d.emojiCounts[prev] = Math.max(0, (d.emojiCounts[prev] || 1) - 1); if (!d.emojiCounts[prev]) delete d.emojiCounts[prev]; }
+    if (typeof supaRemoveEventReaction === "function") supaRemoveEventReaction(eventId, prev);
+  }
+  if (prev === val) { // re-tap de la même réaction → toggle off
+    delete state.user.eventReactions[eventId];
+    window._eventLikes[eventId] = d;
+    if (typeof saveState === "function") saveState();
+    _patchEventReactChip(eventId);
+    return;
+  }
+  // Poser la nouvelle réaction.
+  if (isGif(val)) d.gifs.push(val); else d.emojiCounts[val] = (d.emojiCounts[val] || 0) + 1;
+  state.user.eventReactions[eventId] = val;
   window._eventLikes[eventId] = d;
-  if (typeof supaAddEventReaction === "function") supaAddEventReaction(eventId, gifUrl);
+  if (typeof saveState === "function") saveState();
+  if (typeof supaAddEventReaction === "function") supaAddEventReaction(eventId, val);
   _patchEventReactChip(eventId);
   _notifyEventOrganizerReaction(eventId);
 }

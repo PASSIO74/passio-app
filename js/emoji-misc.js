@@ -280,133 +280,70 @@ function likeComment(postId, commentId, event) {
   return false;
 }
 
+// Composeur de RÉPONSE — MÊME barre que les commentaires : champ texte + bouton
+// 😊 (panneau emoji/GIF unifié `cmtComposerEmoji`, avec validation avant partage)
+// + bouton Envoyer. La réponse est poussée dans le modèle puis le fil est re-rendu
+// par le renderer unifié (`_renderCommentsList`) → réponses IDENTIQUES partout
+// (fil / IRL / CDV), GIF de réponse rendu en image, pastille de réactions incluse.
 function replyToComment(postId, commentId, authorName, event) {
   if (event) { event.stopPropagation(); event.preventDefault(); }
-  _diag("💬 replyToComment(" + postId + ", " + commentId + ")");
-  var existingInputs = document.querySelectorAll(".comment-reply-input");
-  existingInputs.forEach(function(input) { input.remove(); });
-  var inputDiv = document.createElement("div");
-  inputDiv.className = "comment-reply-input";
-  inputDiv.style.cssText = "margin-top:12px;display:flex;gap:6px;padding:10px;background:var(--bg-soft);border-radius:8px;border:2px solid var(--accent);animation:fadeIn 0.3s ease;";
-  var inputField = document.createElement("input");
-  inputField.type = "text";
-  inputField.placeholder = "Répondre à " + authorName + "…";
-  inputField.style.cssText = "flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:12px;font-size:13px;box-sizing:border-box;";
-  var sendBtn = document.createElement("button");
-  sendBtn.textContent = "✓";
-  sendBtn.style.cssText = "width:32px;height:32px;border-radius:8px;background:var(--accent);color:#fff;border:none;cursor:pointer;font-weight:bold;";
-  sendBtn.onclick = function(e) {
-    e.stopPropagation();
-    var replyText = inputField.value.trim();
-    if (!replyText) return;
-    _diag("📝 Submitting reply");
-    var thread = (typeof _findCommentThread === "function") ? _findCommentThread(postId) : null;
-    if (!thread && typeof findPostAnywhere === "function") { var _p = findPostAnywhere(postId); if (_p) thread = { comments: _p.comments || [], save: function(){ try{saveState();}catch(e){} } }; }
-    if (!thread) { _diag("❌ Thread not found"); return; }
-    var comment = thread.comments.find(c => c.id === commentId);
-    if (!comment) { _diag("❌ Comment not found"); return; }
-    // Initialiser les propriétés manquantes
-    if (!comment.replies) comment.replies = [];
-    if (!comment.likes) comment.likes = 0;
-    if (!comment.likedBy) comment.likedBy = [];
-    if (!comment.emojis) comment.emojis = [];
+  document.querySelectorAll(".comment-reply-input").forEach(function(n){ n.remove(); });
 
-    var _meId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : (state.user?.id || "me");
-    var newReply = { id: "reply_" + Date.now(), authorId: _meId, text: replyText, createdAt: Date.now() };
-    comment.replies.push(newReply);
-    _diag("✅ Reply added");
-    if (typeof thread.save === "function") thread.save(); else saveState();
-    // Sync Supabase → la réponse apparaît chez tous les comptes.
-    if (typeof supaCommentInteract === "function") supaCommentInteract(commentId, postId, "reply", replyText);
-    if (comment.authorId && comment.authorId !== _meId && comment.fromSupabase && typeof supaInsertNotif === "function") {
-      try { supaInsertNotif(comment.authorId, "comment", postId, "a répondu à ton commentaire"); } catch(e) {}
-    }
-    inputDiv.remove();
+  var inputId = "reply-input-" + commentId;
+  var arg = postId + "|" + commentId;
+  var wrap = document.createElement("div");
+  wrap.className = "comment-reply-input";
+  wrap.style.cssText = "margin-top:10px;display:flex;gap:6px;align-items:center;padding:8px;background:var(--bg-soft);border-radius:10px;border:1.5px solid var(--accent);animation:fadeIn 0.3s ease;";
+  wrap.innerHTML =
+    '<button type="button" class="cmt-tool-btn" title="Emoji & GIF" aria-label="Ajouter un emoji ou un GIF" style="background:none;border:none;font-size:18px;cursor:pointer;padding:2px 4px;line-height:1;" '
+      + 'onclick="cmtComposerEmoji(\'' + inputId + '\',event,\'_submitReply\',\'' + arg + '\')">😊</button>'
+    + '<input id="' + inputId + '" type="text" class="reply-field" placeholder="Répondre à ' + escapeHtml(authorName) + '…" '
+      + 'style="flex:1;min-width:0;padding:8px 12px;border:1px solid var(--border);border-radius:12px;font-size:16px;box-sizing:border-box;background:var(--bg-card);color:var(--text);" '
+      + 'onkeypress="if(event.key===\'Enter\'){event.preventDefault();_submitReply(\'' + arg + '\');}" />'
+    + '<button type="button" title="Envoyer" aria-label="Envoyer la réponse" '
+      + 'style="width:34px;height:34px;border-radius:9px;background:var(--accent);color:#fff;border:none;cursor:pointer;font-weight:bold;flex-shrink:0;" '
+      + 'onclick="_submitReply(\'' + arg + '\')">✓</button>';
 
-    // Créer ou mettre à jour le div replies
-    var repliesDiv = document.getElementById("replies-" + commentId);
-    if (!repliesDiv) {
-      // Créer le div replies s'il n'existe pas
-      repliesDiv = document.createElement("div");
-      repliesDiv.className = "comment-replies";
-      repliesDiv.id = "replies-" + commentId;
-      repliesDiv.style.cssText = "display:none;";
-      var commentBody = document.querySelector('[data-commentid="' + commentId + '"] .comment-body');
-      if (commentBody) commentBody.appendChild(repliesDiv);
-    }
-
-    // Ajouter la nouvelle réponse au div — avec vrai pseudo et avatar
-    var _meUser = (typeof userById === "function") ? (userById(_meId) || {}) : {};
-    var _meProf = (typeof currentProfile === "function") ? (currentProfile() || {}) : {};
-    var _meName = _meUser.name || _meProf.name || state.user?.name || "Moi";
-    // Filtrer les sentinelles génériques
-    if (_meName === "Passionné" || _meName === "Profil" || _meName === "Moi" || !_meName) {
-      var _gen = typeof state !== "undefined" && state.user?.name;
-      if (_gen && _gen !== "Passionné" && _gen !== "Profil") _meName = _gen;
-    }
-    var _meAvObj = { avatar: _meUser.avatar || _meProf.color || "#8b5cf6", profileEmoji: _meUser.profileEmoji || _meProf.emoji || "✨", name: _meName, photoUrl: _meUser.photoUrl || _meProf.photoUrl || null };
-    var replyEl = document.createElement("div");
-    replyEl.className = "comment-reply";
-    replyEl.style.cssText = "display:flex;align-items:flex-start;gap:8px;padding:6px 0;";
-    replyEl.innerHTML = '<div class="avatar sm" style="background:' + avatarBg(_meAvObj) + ';flex-shrink:0;">' + avatarInner(_meAvObj) + '</div>' +
-      '<div><span class="comment-reply-author" style="font-size:11px;font-weight:600;color:var(--text);">' + escapeHtml(_meName) + '</span> ' + escapeHtml(replyText) +
-      '<div style="font-size:10px;color:var(--muted);margin-top:2px;">À l\'instant</div></div>';
-    repliesDiv.appendChild(replyEl);
-
-    // Créer ou mettre à jour le bouton réponse
-    var replyCountBtn = document.querySelector('[data-commentid="' + commentId + '"] .comment-reply-count');
-    if (!replyCountBtn) {
-      // Créer le bouton s'il n'existe pas
-      replyCountBtn = document.createElement("span");
-      replyCountBtn.className = "comment-reply-count";
-      replyCountBtn.style.cssText = "cursor:pointer;font-size:12px;color:var(--accent);margin-left:8px;";
-      replyCountBtn.onclick = function(e) { e.stopPropagation(); toggleCommentReplies(commentId, e); };
-      var commentActions = document.querySelector('[data-commentid="' + commentId + '"] .comment-actions');
-      if (commentActions) commentActions.appendChild(replyCountBtn);
-    }
-    // Mettre à jour le nombre de réponses
-    replyCountBtn.textContent = "▲ Masquer les réponses";
-    _diag("✅ Reply button updated");
-
-    // AFFICHER LES REPLIES AUTOMATIQUEMENT
-    if (repliesDiv && repliesDiv.style.display === "none") {
-      repliesDiv.style.display = "block";
-      _diag("✅ Replies displayed automatically");
-    }
-  };
-  inputField.onkeypress = function(e) { if (e.key === 'Enter') sendBtn.click(); };
-  inputDiv.appendChild(inputField);
-  inputDiv.appendChild(sendBtn);
   var commentElement = document.querySelector('[data-commentid="' + commentId + '"]');
-  _diag("🔍 Looking for commentId: " + commentId);
-  _diag("🔍 Found element: " + (commentElement ? "YES" : "NO"));
-  if (commentElement) {
-    var commentBody = commentElement.querySelector(".comment-body");
-    _diag("🔍 Found comment-body: " + (commentBody ? "YES" : "NO"));
-    if (commentBody) {
-      // Insérer APRÈS les comment-actions (pas à la fin)
-      var commentActions = commentBody.querySelector(".comment-actions");
-      if (commentActions) {
-        commentActions.parentNode.insertBefore(inputDiv, commentActions.nextSibling);
-        _diag("✅ Input inserted AFTER comment-actions");
-      } else {
-        commentBody.appendChild(inputDiv);
-        _diag("✅ Input inserted at end of body");
-      }
-
-      inputField.focus();
-
-      // Scroll pour rendre l'input visible
-      setTimeout(function() {
-        inputDiv.scrollIntoView({ behavior: "smooth", block: "center" });
-        _diag("📍 Scrolled to input");
-      }, 100);
-    } else {
-      _diag("❌ Comment body not found!");
-    }
-  } else {
-    _diag("❌ Comment element not found!");
+  var commentBody = commentElement && commentElement.querySelector(".comment-body");
+  if (commentBody) {
+    var commentActions = commentBody.querySelector(".comment-actions");
+    if (commentActions) commentActions.parentNode.insertBefore(wrap, commentActions.nextSibling);
+    else commentBody.appendChild(wrap);
+    var f = document.getElementById(inputId);
+    if (f) f.focus();
+    setTimeout(function(){ try { wrap.scrollIntoView({ behavior: "smooth", block: "center" }); } catch(e){} }, 100);
   }
+  return false;
+}
+
+// Envoi d'une réponse (appelé par le bouton ✓, la touche Entrée et le panneau
+// GIF validé). arg = "postId|commentId".
+function _submitReply(arg) {
+  var parts = String(arg || "").split("|");
+  var postId = parts[0], commentId = parts[1];
+  var inp = document.getElementById("reply-input-" + commentId);
+  if (!inp) return false;
+  var text = (inp.value || "").trim();
+  if (!text) return false;
+  var thread = (typeof _findCommentThread === "function") ? _findCommentThread(postId) : null;
+  if (!thread && typeof findPostAnywhere === "function") { var _p = findPostAnywhere(postId); if (_p) thread = { comments: _p.comments || [], save: function(){ try{saveState();}catch(e){} } }; }
+  if (!thread) return false;
+  var comment = thread.comments.find(function(c){ return c.id === commentId; });
+  if (!comment) return false;
+  if (!Array.isArray(comment.replies)) comment.replies = [];
+  var meId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : (state.user?.id || "me");
+  comment.replies.push({ id: "reply_" + Date.now(), authorId: meId, text: text, createdAt: Date.now() });
+  if (typeof thread.save === "function") thread.save(); else saveState();
+  // Sync Supabase → la réponse apparaît chez tous les comptes.
+  if (typeof supaCommentInteract === "function") supaCommentInteract(commentId, postId, "reply", text);
+  if (comment.authorId && comment.authorId !== meId && comment.fromSupabase && typeof supaInsertNotif === "function") {
+    try { supaInsertNotif(comment.authorId, "comment", postId, "a répondu à ton commentaire"); } catch(e) {}
+  }
+  if (typeof grantReward === "function") { try { grantReward("comment"); } catch(e){} }
+  var w = inp.closest(".comment-reply-input"); if (w) w.remove();
+  // Re-render unifié → la réponse s'affiche exactement comme partout ailleurs.
+  if (typeof _refreshCommentThreadUI === "function") _refreshCommentThreadUI(postId);
   return false;
 }
 
@@ -503,26 +440,15 @@ function addGifToComment(postId, commentId, gifUrl) {
   var comment = found && found.node;
   if (!comment) return false;
 
-  // Initialiser replies si nécessaire
-  if (!comment.replies) comment.replies = [];
-
-  // Créer une nouvelle réaction GIF
-  var gifReaction = {
-    id: "gif_" + commentId + "_" + Math.random().toString(36).substr(2, 9),
-    // MY_UID (et non state.user.id souvent vide) → cohérent avec emoji/reply/like,
-    // sinon la réaction est attribuée à "me" (résolution d'auteur incohérente).
-    authorId: (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : (state.user?.id || "me"),
-    text: gifUrl,
-    type: "gif_reaction",
-    createdAt: Date.now(),
-    likes: 0,
-    likedBy: []
-  };
-  comment.replies.push(gifReaction);
+  // UNE réaction par personne : le GIF remplace ma réaction précédente (emoji ou
+  // GIF) ; re-pick du même GIF = toggle off. Réponses texte laissées intactes.
+  if (!Array.isArray(comment.replies)) comment.replies = [];
+  var res = _applyOneReaction(comment.replies, gifUrl, "gif_reaction");
   // Sync Supabase → la réaction GIF apparaît chez tous les comptes ET survit au
   // re-render/hydratation (sans ça, seul l'emoji était synchronisé : le GIF
   // disparaissait au rechargement / poll CDV 5 s).
-  if (typeof supaCommentInteract === "function") supaCommentInteract(commentId, postId, "gif", gifUrl);
+  if (typeof supaCommentRemoveReactions === "function") supaCommentRemoveReactions(commentId);
+  if (!res.removedSame && typeof supaCommentInteract === "function") supaCommentInteract(commentId, postId, "gif", gifUrl);
   console.log("✅ GIF reaction added + synced");
 
   if (typeof thread.save === "function") thread.save();
@@ -553,26 +479,49 @@ function showEmojiPickerForEvent(eventId, event) {
   return false;
 }
 
+// ════════════════════════════════════════════════════════════════════════
+// UNE SEULE RÉACTION PAR PERSONNE (emoji OU gif) — commune au fil, aux carnets
+// CDV et aux commentaires/réponses. Tape un nouvel emoji → il REMPLACE le
+// précédent ; re-tape le MÊME → il est retiré (toggle off). `arr` = post.reactions
+// ou comment.replies (les vraies réponses texte, sans type de réaction, sont
+// laissées intactes). Retourne { removedSame } : true = on a juste retiré (rien à
+// (ré)insérer ni notifier côté serveur).
+function _applyOneReaction(arr, text, type) {
+  var meIds = [(typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : null, (state.user && state.user.id), "me"].filter(Boolean);
+  var isMine = function (r) { return r && meIds.indexOf(r.authorId) > -1 && (r.type === "emoji_reaction" || r.type === "gif_reaction"); };
+  var mine = arr.filter(isMine);
+  var toggleOff = mine.length === 1 && mine[0].type === type && mine[0].text === text;
+  // Retirer TOUTES mes réactions existantes (emoji ET gif) → une seule par personne.
+  for (var i = arr.length - 1; i >= 0; i--) { if (isMine(arr[i])) arr.splice(i, 1); }
+  if (toggleOff) return { removedSame: true };
+  arr.push({
+    id: type.replace("_reaction", "") + "_" + Math.random().toString(36).substr(2, 9),
+    authorId: meIds[0] || "me",
+    text: text,
+    type: type,
+    createdAt: Date.now()
+  });
+  return { removedSame: false };
+}
+
 function addEmojiToPost(postId, emoji) {
   console.log("✨ addEmojiToPost:", postId, emoji);
   var post = findPostAnywhere(postId);
   if (!post) return false;
+  // post.reactions peut être un OBJET (réactions agrégées de bobines/messages) →
+  // le forcer en tableau, sinon .push/.splice plantait et l'emoji « ne marchait pas ».
+  if (!Array.isArray(post.reactions)) post.reactions = [];
 
-  if (!post.reactions) post.reactions = [];
-
-  post.reactions.push({
-    id: "emoji_" + postId + "_" + Math.random().toString(36).substr(2, 9),
-    authorId: (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : (state.user?.id || "me"),
-    text: emoji,
-    type: "emoji_reaction",
-    createdAt: Date.now()
-  });
-
+  var res = _applyOneReaction(post.reactions, emoji, "emoji_reaction");
   // Sync Supabase (convention : comment_id === post_id ⇒ réaction portée par le
-  // POST lui-même). Sans ça la réaction restait locale : aucun autre compte ne la
-  // voyait. Chargée par supaLoadPosts, propagée par realtime:comment_interactions.
-  if (typeof supaCommentInteract === "function") supaCommentInteract(postId, postId, "emoji", emoji);
-  _notifyPostReaction(post, emoji);
+  // POST lui-même). On efface d'abord MES réactions (journal append-only) puis on
+  // (ré)insère la nouvelle — sauf toggle off. Chargée par supaLoadPosts, propagée
+  // par realtime:comment_interactions.
+  if (typeof supaCommentRemoveReactions === "function") supaCommentRemoveReactions(postId);
+  if (!res.removedSame) {
+    if (typeof supaCommentInteract === "function") supaCommentInteract(postId, postId, "emoji", emoji);
+    _notifyPostReaction(post, emoji);
+  }
 
   if (typeof saveState === "function") saveState();
   updatePostReactionsUI(postId);
@@ -615,20 +564,15 @@ function addGifToPost(postId, gifUrl) {
   console.log("🎬 addGifToPost:", postId);
   var post = findPostAnywhere(postId);
   if (!post) return false;
+  if (!Array.isArray(post.reactions)) post.reactions = [];
 
-  if (!post.reactions) post.reactions = [];
-
-  post.reactions.push({
-    id: "gif_" + postId + "_" + Math.random().toString(36).substr(2, 9),
-    authorId: (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : (state.user?.id || "me"),
-    text: gifUrl,
-    type: "gif_reaction",
-    createdAt: Date.now()
-  });
-
+  var res = _applyOneReaction(post.reactions, gifUrl, "gif_reaction");
   // Sync Supabase (même convention que addEmojiToPost : comment_id === post_id).
-  if (typeof supaCommentInteract === "function") supaCommentInteract(postId, postId, "gif", gifUrl);
-  _notifyPostReaction(post, "🎬");
+  if (typeof supaCommentRemoveReactions === "function") supaCommentRemoveReactions(postId);
+  if (!res.removedSame) {
+    if (typeof supaCommentInteract === "function") supaCommentInteract(postId, postId, "gif", gifUrl);
+    _notifyPostReaction(post, "🎬");
+  }
 
   if (typeof saveState === "function") saveState();
   updatePostReactionsUI(postId);
@@ -652,19 +596,15 @@ function addEmojiToComment(postId, commentId, emoji) {
   var comment = found && found.node;
   if (!comment) return false;
 
-  // Chaque emoji = entrée séparée dans node.replies (avec authorId pour l'avatar).
-  if (!comment.replies) comment.replies = [];
-  var emojiReaction = {
-    id: "emoji_" + commentId + "_" + Math.random().toString(36).substr(2, 9),
-    authorId: (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : (state.user?.id || "me"),
-    text: emoji,
-    type: "emoji_reaction",
-    createdAt: Date.now()
-  };
-  comment.replies.push(emojiReaction);
+  // UNE réaction par personne : le nouvel emoji remplace le précédent (re-tap =
+  // toggle off). Les vraies réponses texte de node.replies restent intactes.
+  if (!Array.isArray(comment.replies)) comment.replies = [];
+  var res = _applyOneReaction(comment.replies, emoji, "emoji_reaction");
   if (typeof thread.save === "function") thread.save(); else saveState();
-  // Sync Supabase → la réaction emoji apparaît chez tous les comptes.
-  if (typeof supaCommentInteract === "function") supaCommentInteract(commentId, postId, "emoji", emoji);
+  // Sync Supabase → la réaction emoji apparaît chez tous les comptes (efface mes
+  // réactions précédentes d'abord, sauf toggle off).
+  if (typeof supaCommentRemoveReactions === "function") supaCommentRemoveReactions(commentId);
+  if (!res.removedSame && typeof supaCommentInteract === "function") supaCommentInteract(commentId, postId, "emoji", emoji);
   console.log("✅ Emoji reaction added + synced:", emoji);
 
   // Une réaction emoji n'est PAS un commentaire : on re-rend le fil via le renderer

@@ -1459,22 +1459,40 @@ function reportCdvLive(liveId) {
 // Enregistre une réaction emoji sur un live AVEC son auteur : `reactions` (strings,
 // pour les compteurs de la barre du viewer) ET `reactionsBy` ([{emoji,userId}], pour
 // la pastille « qui a réagi »). Auteur = MY_UID.
+// UNE réaction (non-❤️) par personne sur un live : remplace la précédente ; re-tap
+// de la même = toggle off. Met à jour reactions[] (compteurs de la barre) ET
+// reactionsBy[] ({emoji,userId} pour « qui a réagi »), et resynchronise Supabase
+// (delete de l'ancienne + insert). Le ❤️ (like) est géré à part. Retourne
+// { removedSame } (true = on a juste retiré, pas de toast).
 function _pushLiveReaction(live, emoji) {
-  if (!live) return;
-  if (!live.reactions) live.reactions = [];
-  live.reactions.push(emoji);
+  if (!live) return { removedSame: false };
+  if (!Array.isArray(live.reactions)) live.reactions = [];
   if (!Array.isArray(live.reactionsBy)) live.reactionsBy = [];
-  live.reactionsBy.push({ emoji: emoji, userId: (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me" });
+  var me = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
+  var mine = live.reactionsBy.filter(function (x) { return x && x.userId === me && x.emoji !== "❤️"; });
+  var prev = mine.length ? mine[mine.length - 1].emoji : null;
+  var toggleOff = prev === emoji;
+  // Retirer ma réaction précédente (agrégat + « qui a réagi » + serveur).
+  live.reactionsBy = live.reactionsBy.filter(function (x) { return !(x && x.userId === me && x.emoji !== "❤️"); });
+  if (prev) {
+    var idx = live.reactions.indexOf(prev);
+    if (idx > -1) live.reactions.splice(idx, 1);
+    if (typeof supaRemoveCdvLiveReaction === "function") supaRemoveCdvLiveReaction(live.id, prev);
+  }
+  if (toggleOff) return { removedSame: true };
+  live.reactions.push(emoji);
+  live.reactionsBy.push({ emoji: emoji, userId: me, at: Date.now() });
+  if (typeof supaReactCdvLive === "function") supaReactCdvLive(live.id, emoji);
+  return { removedSame: false };
 }
 
 function reactCdvLive(liveId, emoji) {
   var lives = getCdvLives();
   var live = lives.find(function(l) { return l.id === liveId; });
   if (!live) return;
-  _pushLiveReaction(live, emoji);
+  var res = _pushLiveReaction(live, emoji);
   saveCdvLives(lives);
-  if (typeof supaReactCdvLive === "function") supaReactCdvLive(liveId, emoji);
-  toast(emoji);
+  if (!res.removedSame) toast(emoji);
   // Patch la barre de réactions en place (compteurs) plutôt que reconstruire tout
   // le viewer (étapes/photos/commentaires) à chaque tap → plus de scroll perdu ni
   // de lag, et les réponses dépliées restent ouvertes.
@@ -1525,14 +1543,13 @@ function reactCdvLivePicker(liveId, event) {
     var lives = getCdvLives();
     var live = lives.find(function(l) { return l.id === liveId; });
     if (!live) return;
-    _pushLiveReaction(live, emoji);
+    var res = _pushLiveReaction(live, emoji);
     saveCdvLives(lives);
-    if (typeof supaReactCdvLive === "function") supaReactCdvLive(liveId, emoji);
     // Met à jour EN PLACE la pastille « 😍 N » de la/les carte(s) de ce live.
     if (typeof _liveReactChipHtml === "function") {
       document.querySelectorAll('[data-livechip="' + liveId + '"]').forEach(function(h){ h.innerHTML = _liveReactChipHtml(liveId); });
     }
-    if (typeof toast === "function") toast(emoji);
+    if (!res.removedSame && typeof toast === "function") toast(emoji);
   });
 }
 

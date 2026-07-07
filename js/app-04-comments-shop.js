@@ -250,11 +250,14 @@ function _renderCommentsList(allComments, postId) {
           // Réponse normale — avec sa propre action « réagir » + pastille de réactions
           const _rAvT = { avatar: ru.avatar || "#64748b", profileEmoji: ru.profileEmoji || "👤", name: ru.name, photoUrl: ru.photoUrl || null };
           const rReactChip = _cmtReactChipHtml(postId, r);
+          const rLiked = (r.likedBy || []).some(x => _selfIds.indexOf(x) > -1);
+          const rLikes = r.likes || 0;
           return `<div class="comment-reply" data-replyid="${r.id}" style="display:flex;align-items:flex-start;gap:6px;padding:4px 0;">
             <div class="avatar xs" style="background:${avatarBg(_rAvT)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${r.authorId}','${rSrc}')">${avatarInner(_rAvT)}</div>
             <div style="flex:1;min-width:0;"><span class="comment-reply-author" style="font-size:11px;font-weight:600;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span> ${_commentBodyHtml(r.text)}
             <div class="comment-reply-actions" style="display:flex;align-items:center;gap:10px;margin-top:2px;">
               <span style="font-size:10px;color:var(--muted);">${fmtTime(r.createdAt)}</span>
+              <span class="comment-action ${rLiked ? "liked" : ""}" style="font-size:12px;" onclick="return likeCommentNode('${postId}','${r.id}', event);" title="J'aime">${rLiked ? "❤️" : "🤍"} ${rLikes}</span>
               <span class="comment-action" style="font-size:12px;" onclick="return reactToReply('${postId}','${r.id}', event);" title="Réagir">😊</span>
               ${rReactChip}
             </div></div>
@@ -279,7 +282,8 @@ function _expandComments(threadId) {
 // clic ouvre la liste de QUI a réagi (et avec quoi). Identique partout.
 // ════════════════════════════════════════════════════════════════════════
 function _cmtReactions(comment) {
-  return (comment && comment.replies || []).filter(function(r){ return r && r.type === "emoji_reaction"; });
+  var arr = (comment && comment.replies || []).filter(function(r){ return r && r.type === "emoji_reaction"; });
+  return _dedupReactionsByAuthor(arr);
 }
 // Localise un NŒUD de commentaire — un commentaire de premier niveau OU une réponse
 // — par son id, dans n'importe quel fil (fil / IRL / CDV). Permet de réagir aussi
@@ -368,6 +372,35 @@ function reactToReply(threadId, replyId, event) {
   return false;
 }
 
+// Like d'un NŒUD de commentaire OU de réponse (toggle 1/personne). _findCommentNode
+// localise indifféremment un commentaire de 1er niveau ou une réponse → on peut
+// « aimer » une réponse comme un commentaire (avant : le like manquait sur les
+// réponses). Re-render unifié pour refléter le ❤️ partout.
+function likeCommentNode(threadId, nodeId, event) {
+  if (event && event.stopPropagation) { event.stopPropagation(); event.preventDefault(); }
+  var found = (typeof _findCommentNode === "function") ? _findCommentNode(threadId, nodeId) : null;
+  if (!found || !found.node) return false;
+  var node = found.node, thread = found.thread;
+  if (!Array.isArray(node.likedBy)) node.likedBy = [];
+  if (typeof node.likes !== "number") node.likes = 0;
+  var meId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : (state.user && state.user.id) || "me";
+  var already = node.likedBy.indexOf(meId) > -1;
+  if (already) {
+    node.likedBy = node.likedBy.filter(function(x){ return x !== meId; });
+    node.likes = Math.max(0, node.likes - 1);
+    if (typeof supaCommentRemoveLike === "function") supaCommentRemoveLike(nodeId);
+  } else {
+    node.likedBy.push(meId); node.likes += 1;
+    if (typeof supaCommentInteract === "function") supaCommentInteract(nodeId, threadId, "like", "");
+    if (node.authorId && node.authorId !== meId && node.fromSupabase && typeof supaInsertNotif === "function") {
+      try { supaInsertNotif(node.authorId, "like", threadId, "a aimé ta réponse"); } catch(e) {}
+    }
+  }
+  if (thread && typeof thread.save === "function") thread.save(); else { try { saveState(); } catch(e){} }
+  if (typeof _refreshCommentThreadUI === "function") _refreshCommentThreadUI(threadId);
+  return false;
+}
+
 // ════════════════════════════════════════════════════════════════════════
 // PASTILLE DE RÉACTIONS GÉNÉRIQUE (post du fil / carnet / live CDV) — EXACTEMENT
 // la même que sur les commentaires (.cmt-react-chip : 1 emoji + total, clic → qui
@@ -376,6 +409,23 @@ function reactToReply(threadId, replyId, event) {
 // Clé d'agrégation : un GIF (URL) compte comme « 🎬 », sinon l'emoji lui-même.
 function _reactKey(t) {
   return (typeof _looksLikeMediaUrl === "function" && _looksLikeMediaUrl(t)) ? "🎬" : (t || "❤️");
+}
+// UNE réaction par auteur (la PLUS RÉCENTE). Filet de sécurité central : même si
+// le journal Supabase (comment_interactions, append-only) contient plusieurs
+// réactions d'un même compte, la pastille n'en montre qu'UNE par personne —
+// « un seul emoji par post/commentaire ». Les réactions sans authorId (anonymes,
+// ex. anciens lives sans userId) sont toutes conservées.
+function _dedupReactionsByAuthor(list) {
+  var byAuthor = {}, order = [], anon = [];
+  (list || []).forEach(function (r) {
+    if (!r) return;
+    var a = r.authorId;
+    if (!a) { anon.push(r); return; }
+    var prev = byAuthor[a];
+    if (!prev) { byAuthor[a] = r; order.push(a); }
+    else if ((r.createdAt || 0) >= (prev.createdAt || 0)) byAuthor[a] = r;
+  });
+  return order.map(function (a) { return byAuthor[a]; }).concat(anon);
 }
 // items = [{authorId?, text}]. onclickAttr = handler de détail (chaîne onclick).
 function _reactionItemsChipHtml(items, onclickAttr) {
@@ -442,9 +492,8 @@ function _postReactItems(postId) {
   // post.reactions peut être un OBJET (ex. réactions agrégées des bobines/messages)
   // et non un tableau → garder Array.isArray pour éviter un crash de .filter.
   var arr = Array.isArray(post.reactions) ? post.reactions : [];
-  return arr
-    .filter(function(r){ return r && (r.type === "emoji_reaction" || r.type === "gif_reaction"); })
-    .map(function(r){ return { authorId: r.authorId, text: r.text }; });
+  var reacts = arr.filter(function(r){ return r && (r.type === "emoji_reaction" || r.type === "gif_reaction"); });
+  return _dedupReactionsByAuthor(reacts).map(function(r){ return { authorId: r.authorId, text: r.text }; });
 }
 function _postReactChipHtml(postId) {
   return _reactionItemsChipHtml(_postReactItems(postId), "return openPostReactors('" + postId + "', event);");
@@ -460,8 +509,9 @@ function _liveReactItems(liveId) {
   // ❤️ = like (compté à part) → exclu de la pastille de réactions.
   // reactionsBy [{emoji,userId}] (auteur connu) prioritaire ; sinon strings (sans auteur).
   if (Array.isArray(live.reactionsBy) && live.reactionsBy.length) {
-    return live.reactionsBy.filter(function(x){ return x && x.emoji !== "❤️"; })
-      .map(function(x){ return { authorId: x.userId, text: x.emoji }; });
+    var items = live.reactionsBy.filter(function(x){ return x && x.emoji !== "❤️"; })
+      .map(function(x, i){ return { authorId: x.userId, text: x.emoji, createdAt: x.at || i }; });
+    return _dedupReactionsByAuthor(items).map(function(r){ return { authorId: r.authorId, text: r.text }; });
   }
   var arr = Array.isArray(live.reactions) ? live.reactions : [];
   return arr.filter(function(e){ return e !== "❤️"; })
@@ -970,9 +1020,14 @@ function cmtComposerEmoji(inputId, event, submitFn, submitArg, startTab) {
   panel.appendChild(content);
 
   function _insertEmoji(e) { _cmtInsertAtCursor(inp, e); }
-  function _pickGif(url) {
-    inp.value = url; // le texte EST l'URL → rendu en image (cf. _commentBodyHtml)
+  // Envoi RÉEL du GIF (après validation). Le texte EST l'URL → rendu en image par
+  // _commentBodyHtml. Si un submitFn est fourni on l'appelle, sinon on laisse
+  // l'URL dans le champ pour que l'utilisateur valide avec le bouton Envoyer du
+  // composeur (ex. composeur de réponse).
+  function _sendGif(url) {
+    inp.value = url;
     if (submitFn && typeof window[submitFn] === "function") { try { window[submitFn](submitArg); } catch (e) {} }
+    else { inp.focus(); if (typeof toast === "function") toast("GIF prêt — appuie sur Envoyer ✓"); }
     panel.remove();
   }
 
@@ -1011,9 +1066,28 @@ function cmtComposerEmoji(inputId, event, submitFn, submitArg, startTab) {
     search.style.cssText = "width:100%;box-sizing:border-box;margin-bottom:8px;padding:8px 12px;border-radius:10px;border:1.5px solid var(--border);background:var(--bg-deep);color:var(--text);font-size:16px;outline:none;";
     search.onclick = function (e) { e.stopPropagation(); };
     var grid = document.createElement("div");
-    grid.style.cssText = "display:grid;grid-template-columns:repeat(3,1fr);gap:6px;max-height:240px;overflow-y:auto;";
+    grid.style.cssText = "display:grid;grid-template-columns:repeat(3,1fr);gap:6px;max-height:200px;overflow-y:auto;";
     content.appendChild(search);
     content.appendChild(grid);
+    // ── Zone de VALIDATION : le GIF choisi s'affiche ici + bouton Envoyer. On ne
+    // partage RIEN tant que l'utilisateur n'a pas validé (demande explicite). ──
+    var stage = document.createElement("div");
+    stage.style.cssText = "display:none;align-items:center;gap:8px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border);";
+    var stagePrev = document.createElement("img");
+    stagePrev.style.cssText = "width:44px;height:44px;border-radius:8px;object-fit:cover;flex-shrink:0;";
+    var stageSend = document.createElement("button");
+    stageSend.type = "button"; stageSend.textContent = "Envoyer ✓";
+    stageSend.style.cssText = "flex:1;border:none;border-radius:10px;background:var(--accent);color:#fff;font-weight:700;font-size:13px;padding:9px 10px;cursor:pointer;";
+    var stageCancel = document.createElement("button");
+    stageCancel.type = "button"; stageCancel.textContent = "✕";
+    stageCancel.setAttribute("aria-label", "Annuler le GIF");
+    stageCancel.style.cssText = "border:1px solid var(--border);background:var(--bg-deep);color:var(--muted);border-radius:10px;font-size:13px;padding:9px 11px;cursor:pointer;";
+    stage.appendChild(stagePrev); stage.appendChild(stageSend); stage.appendChild(stageCancel);
+    content.appendChild(stage);
+    var _staged = null;
+    function _stageGif(url) { _staged = url; stagePrev.src = url; stage.style.display = "flex"; }
+    stageSend.onclick = function (ev) { ev.stopPropagation(); if (_staged) _sendGif(_staged); };
+    stageCancel.onclick = function (ev) { ev.stopPropagation(); _staged = null; stage.style.display = "none"; };
     function fill(urls) {
       grid.innerHTML = "";
       if (!urls || !urls.length) {
@@ -1025,14 +1099,20 @@ function cmtComposerEmoji(inputId, event, submitFn, submitArg, startTab) {
       }
       urls.forEach(function (gifUrl) {
         var cellEl = document.createElement("div");
-        cellEl.style.cssText = "aspect-ratio:1/1;background:var(--bg-soft);border-radius:8px;overflow:hidden;cursor:pointer;border:1px solid var(--border);transition:border-color .15s;";
+        cellEl.style.cssText = "aspect-ratio:1/1;background:var(--bg-soft);border-radius:8px;overflow:hidden;cursor:pointer;border:2px solid var(--border);transition:border-color .15s;";
         var img = document.createElement("img");
         img.loading = "lazy"; img.decoding = "async"; img.src = gifUrl; img.alt = "GIF";
         img.style.cssText = "width:100%;height:100%;object-fit:cover;display:block;";
         cellEl.appendChild(img);
         cellEl.onmouseover = function () { this.style.borderColor = "var(--accent)"; };
-        cellEl.onmouseout = function () { this.style.borderColor = "var(--border)"; };
-        cellEl.onclick = function (evt) { evt.stopPropagation(); evt.preventDefault(); _pickGif(gifUrl); };
+        cellEl.onmouseout = function () { if (_staged !== gifUrl) this.style.borderColor = "var(--border)"; };
+        // Clic = SÉLECTION (prévisualisation), pas envoi. L'envoi se fait via « Envoyer ✓ ».
+        cellEl.onclick = function (evt) {
+          evt.stopPropagation(); evt.preventDefault();
+          grid.querySelectorAll("div").forEach(function (c) { c.style.borderColor = "var(--border)"; });
+          cellEl.style.borderColor = "var(--accent)";
+          _stageGif(gifUrl);
+        };
         grid.appendChild(cellEl);
       });
     }

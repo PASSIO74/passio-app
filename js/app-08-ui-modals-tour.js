@@ -2540,6 +2540,17 @@ async function supaCommentRemoveLike(commentId) {
     await supa.from("comment_interactions").delete().eq("comment_id", commentId).eq("user_id", MY_UID).eq("kind", "like");
   } catch(e) {}
 }
+// Retire MES réactions emoji/gif sur un post ou un commentaire (comment_id = id de
+// la cible ; pour un post, comment_id === post_id). Permet d'appliquer « une seule
+// réaction par personne » : on efface l'ancienne avant d'insérer la nouvelle, sinon
+// le journal append-only de comment_interactions accumulerait plusieurs réactions
+// du même compte (bug « plusieurs emojis sur un post »).
+async function supaCommentRemoveReactions(commentId) {
+  try {
+    if (typeof supa === "undefined" || !supa || !MY_UID || !window._supaReal) return;
+    await supa.from("comment_interactions").delete().eq("comment_id", commentId).eq("user_id", MY_UID).in("kind", ["emoji", "gif"]);
+  } catch(e) {}
+}
 // Charge les interactions de plusieurs commentaires → { [cid]: {likes,likedBy,replies,emojis} }.
 async function supaLoadCommentInteractions(commentIds) {
   var out = {};
@@ -2813,6 +2824,13 @@ async function supaReactCdvLive(liveId, emoji) {
   try { await supa.from("cdv_live_reactions").insert({ id: "lr_" + uid(), live_id: liveId, user_id: MY_UID, emoji: emoji }); }
   catch(e) { console.warn("CDV reaction:", e); }
 }
+// Retire une réaction emoji précise de MOI sur un live (une seule réaction/personne).
+// Le ❤️ (like) passe par supaToggleCdvLiveLike et n'est jamais retiré ici.
+async function supaRemoveCdvLiveReaction(liveId, emoji) {
+  if (!liveId || !emoji || typeof MY_UID === "undefined" || !MY_UID || !window._supaReal) return;
+  try { await supa.from("cdv_live_reactions").delete().eq("live_id", liveId).eq("user_id", MY_UID).eq("emoji", emoji); }
+  catch(e) {}
+}
 
 // ── Likes & réactions emoji des événements IRL (table event_reactions) ──
 // Un like = une réaction d'emoji '❤️' (toggle) ; tout autre emoji = réaction.
@@ -2833,6 +2851,14 @@ async function supaAddEventReaction(eventId, emoji) {
   if (!eventId || !emoji || typeof MY_UID === "undefined" || !MY_UID) return;
   try { await supa.from("event_reactions").insert({ event_id: eventId, user_id: MY_UID, emoji: emoji }); }
   catch(e) { /* doublon PK (event_id,user_id,emoji) ignoré */ }
+}
+// Retire une réaction (emoji ou GIF) précise de MOI sur un événement — « une seule
+// réaction par personne » : on efface l'ancienne avant d'en poser une nouvelle. Le
+// ❤️ (like) est géré à part par supaToggleEventLike et n'est jamais passé ici.
+async function supaRemoveEventReaction(eventId, emoji) {
+  if (!eventId || !emoji || typeof MY_UID === "undefined" || !MY_UID || !window._supaReal) return;
+  try { await supa.from("event_reactions").delete().eq("event_id", eventId).eq("user_id", MY_UID).eq("emoji", emoji); }
+  catch(e) {}
 }
 // Charge likes + my-liked + décompte des emojis pour un lot d'événements (1 req)
 // → { eventId: { likes, liked, emojiCounts:{emoji:n} } }.
