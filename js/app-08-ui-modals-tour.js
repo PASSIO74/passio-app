@@ -2564,6 +2564,7 @@ async function supaLoadCommentInteractions(commentIds) {
       else if (r.kind === "reply") o.replies.push({ id: "srep_" + r.created_at, authorId: r.user_id, text: r.payload || "", createdAt: supaTs(r.created_at) });
       else if (r.kind === "emoji" && r.payload) o.replies.push({ id: "semoji_" + r.created_at + "_" + r.user_id, authorId: r.user_id, text: r.payload, type: "emoji_reaction", createdAt: supaTs(r.created_at) });
       else if (r.kind === "gif" && r.payload) o.replies.push({ id: "sgif_" + r.created_at + "_" + r.user_id, authorId: r.user_id, text: r.payload, type: "gif_reaction", createdAt: supaTs(r.created_at) });
+      else if (r.kind === "pin") { if (!o._pinAt || r.created_at > o._pinAt) { o._pinAt = r.created_at; o.pinned = (r.payload === "1" || r.payload === 1 || r.payload === true); } } // #11 épingle
     });
     // Résoudre les profils des auteurs d'interactions inconnus localement, sinon
     // le renderer (userById) affiche « ? » comme pseudo sur les réponses/réactions
@@ -2585,6 +2586,7 @@ async function hydrateCommentInteractions(post) {
       var info = map[c.id]; if (!info) return;
       c.likes = info.likes || 0;
       c.likedBy = info.likedBy || [];
+      if (typeof info.pinned !== "undefined") c.pinned = info.pinned; // #11 épingle
       // Réponses serveur (texte + emoji_reaction + gif_reaction) — source de vérité.
       c.replies = (info.replies || []).slice();
     });

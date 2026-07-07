@@ -367,6 +367,10 @@ function _renderCommentsList(allComments, postId) {
       return d !== 0 ? d : ((b.createdAt || b.at || 0) - (a.createdAt || a.at || 0));
     });
   }
+  // Commentaire(s) épinglé(s) toujours en tête (tri stable → ordre relatif gardé).
+  if (_visible.some(function (c) { return c.pinned; })) {
+    _visible = _visible.slice().sort(function (a, b) { return (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0); });
+  }
   var _sortBar = _visible.length >= 2
     ? '<div class="cmt-sortbar">'
       + '<button class="cmt-sort' + (_sortMode === "top" ? " active" : "") + '" onclick="return _setCmtSort(\'' + postId + '\',\'top\')">Pertinents</button>'
@@ -424,13 +428,14 @@ function _renderCommentsList(allComments, postId) {
     const cRepOpen = !!window._repliesExpanded[c.id];
 
     const cMine = (authorId === "me" || (typeof MY_UID !== "undefined" && authorId === MY_UID));
-    return `<div class="comment" data-commentid="${c.id}">
+    return `<div class="comment${c.pinned ? " pinned" : ""}" data-commentid="${c.id}">
       <div class="avatar sm" style="background:${avatarBg(_cAv)};cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${authorId}','${cSrc}')">${avatarInner(_cAv)}</div>
       <button class="comment-menu-btn" title="Options" onclick="event.stopPropagation();return openCommentOptions('${postId}','${c.id}',${cMine ? 1 : 0}, event);"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg></button>
       <div class="comment-body">
+        ${c.pinned ? '<div class="cmt-pinned-badge">📌 Épinglé</div>' : ""}
         <div class="comment-author" style="cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${authorId}','${cSrc}')">${escapeHtml(name)}</div>
         <div class="comment-text">${_commentBodyHtml(c.text || c.content || "")}</div>
-        <div class="comment-meta">${fmtTime(c.createdAt || c.at)}</div>
+        <div class="comment-meta">${fmtTime(c.createdAt || c.at)}${c.edited ? " · modifié" : ""}</div>
         <div class="comment-actions">
           <span class="comment-action ${cLiked ? "liked" : ""}" data-cmtlike="${c.id}" onclick="return likeComment('${postId}','${c.id}', event);">
             ${cLiked ? "❤️" : "🤍"} ${cLikes}
@@ -1156,7 +1161,13 @@ function openCommentOptions(threadId, commentId, mine, event) {
     + _cmtRow("😊", "Réagir avec un emoji", "react")
     + _cmtRow("🎬", "Réagir avec un GIF", "gif")
     + _cmtRow("📋", "Copier le texte", "copy");
+  window._cmtSheetCtx.owner = (typeof _isThreadOwner === "function") ? _isThreadOwner(threadId) : false;
+  // Épingler : réservé au propriétaire du fil (auteur du post/événement/live).
+  if (window._cmtSheetCtx.owner) {
+    rows += _cmtRow(c.pinned ? "📌" : "📌", c.pinned ? "Retirer l'épingle" : "Épingler en haut", "pin");
+  }
   if (isMine) {
+    if (!_looksLikeMediaUrl(c.text || c.content || "")) rows += _cmtRow("✏️", "Modifier", "edit");
     rows += _cmtRow("🗑", "Supprimer", "delete", true);
   } else {
     rows += _cmtRow("🔕", "Masquer ce commentaire", "hide");
@@ -1187,6 +1198,8 @@ function _cmtAct(kind) {
     try { navigator.clipboard.writeText(ctx.text); toast("📋 Texte copié"); }
     catch(e) { toast("Copie impossible"); }
   }
+  else if (kind === "edit") { editCommentEntry(ctx.threadId, ctx.commentId); }
+  else if (kind === "pin") { togglePinComment(ctx.threadId, ctx.commentId); }
   else if (kind === "delete") { deleteCommentEntry(ctx.threadId, ctx.commentId); }
   else if (kind === "hide") { deleteCommentEntry(ctx.threadId, ctx.commentId, true); toast("🔕 Commentaire masqué"); }
   else if (kind === "block") { if (typeof blockUser === "function") blockUser(ctx.authorId); }
@@ -1221,6 +1234,72 @@ async function _supaDeleteCommentRow(commentId) {
     // Nettoie aussi les interactions liées (best-effort, RLS owner).
     try { await supa.from("comment_interactions").delete().eq("comment_id", commentId); } catch(e) {}
   } catch(e) {}
+}
+
+// Suis-je le propriétaire du fil (auteur du post / organisateur événement /
+// auteur du live) → autorisé à épingler un commentaire.
+function _isThreadOwner(threadId) {
+  var me = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
+  var p = (typeof findPostAnywhere === "function") ? findPostAnywhere(threadId) : null;
+  if (p) return p.authorId === me || p._source === "me" || p.authorId === "me";
+  if (typeof allEvents === "function") { var e = allEvents().find(function (x) { return x.id === threadId; }); if (e) return e.organizerId === me || !!e._mine; }
+  if (typeof getCdvLives === "function") { var l = getCdvLives().find(function (x) { return x.id === threadId; }); if (l) return l.authorId === me || (typeof isMyLive === "function" && isMyLive(l)); }
+  return false;
+}
+// ── #10 ÉDITION d'un commentaire (façon IG/FB) ── éditeur inline + sync.
+function editCommentEntry(threadId, commentId) {
+  var found = (typeof _findCommentNode === "function") ? _findCommentNode(threadId, commentId) : null;
+  if (!found || !found.node) return;
+  var node = found.node;
+  if (_looksLikeMediaUrl(node.text || node.content || "")) { toast("Un GIF ne peut pas être modifié"); return; }
+  var el = document.querySelector('[data-commentid="' + commentId + '"] .comment-text');
+  if (!el) return;
+  var cur = node.text || node.content || "";
+  el.innerHTML = "";
+  var ta = document.createElement("textarea");
+  ta.className = "cmt-edit-input"; ta.value = cur; ta.maxLength = 400;
+  var bar = document.createElement("div"); bar.className = "cmt-edit-bar";
+  var cancel = document.createElement("button"); cancel.className = "btn ghost small"; cancel.type = "button"; cancel.textContent = "Annuler";
+  var save = document.createElement("button"); save.className = "btn primary small"; save.type = "button"; save.textContent = "Enregistrer";
+  bar.appendChild(cancel); bar.appendChild(save);
+  el.appendChild(ta); el.appendChild(bar);
+  ta.focus(); try { autoResizeTextarea(ta); } catch (e) {}
+  ta.oninput = function () { try { autoResizeTextarea(ta); } catch (e) {} };
+  cancel.onclick = function (ev) { ev.stopPropagation(); _refreshCommentThreadUINow(threadId); };
+  save.onclick = function (ev) {
+    ev.stopPropagation();
+    var v = (ta.value || "").trim();
+    if (!v) { toast("Le commentaire ne peut pas être vide"); return; }
+    if (v === cur) { _refreshCommentThreadUINow(threadId); return; }
+    node.text = v; node.content = v; node.edited = true;
+    if (found.thread && typeof found.thread.save === "function") found.thread.save(); else { try { saveState(); } catch (e) {} }
+    _supaUpdateCommentRow(commentId, v);
+    _refreshCommentThreadUINow(threadId);
+    toast("✏️ Commentaire modifié");
+  };
+}
+async function _supaUpdateCommentRow(commentId, text) {
+  try {
+    if (typeof supa === "undefined" || !supa || !window._supaReal) return;
+    var table = /^ec_/.test(commentId) ? "event_comments" : /^lc_/.test(commentId) ? "cdv_live_comments" : "post_comments";
+    await supa.from(table).update({ content: text }).eq("id", commentId);
+  } catch (e) {}
+}
+// ── #11 ÉPINGLER un commentaire (l'auteur du fil le remonte en tête) ──
+// Un seul épinglé par fil. Persisté localement + sync via comment_interactions
+// (kind "pin", payload = "1"/"0") pour que les autres comptes le voient.
+function togglePinComment(threadId, commentId) {
+  var thread = _findCommentThread(threadId);
+  if (!thread) return;
+  var target = thread.comments.find(function (c) { return c.id === commentId; });
+  if (!target) return;
+  var willPin = !target.pinned;
+  thread.comments.forEach(function (c) { if (c.pinned) { c.pinned = false; if (c.id !== commentId && typeof supaCommentInteract === "function") { try { supaCommentInteract(c.id, threadId, "pin", "0"); } catch (e) {} } } });
+  target.pinned = willPin;
+  if (typeof thread.save === "function") thread.save();
+  if (typeof supaCommentInteract === "function") { try { supaCommentInteract(commentId, threadId, "pin", willPin ? "1" : "0"); } catch (e) {} }
+  _refreshCommentThreadUINow(threadId);
+  toast(willPin ? "📌 Commentaire épinglé" : "Épingle retirée");
 }
 
 // Signale un commentaire (modération) → table reports via supaReport.

@@ -475,6 +475,23 @@
     .mention-row:hover { background: var(--bg-soft); }
     .mention-name { font-size: 13px; font-weight: 600; color: var(--text); }
 
+    /* Édition inline d'un commentaire (#10) */
+    .cmt-edit-input {
+      width: 100%; box-sizing: border-box; min-height: 40px; resize: none;
+      padding: 8px 10px; border: 1.5px solid var(--accent); border-radius: 10px;
+      background: var(--bg-card); color: var(--text); font-size: 16px; font-family: inherit; outline: none;
+    }
+    .cmt-edit-bar { display: flex; gap: 6px; justify-content: flex-end; margin-top: 6px; }
+    .cmt-edit-bar .btn.small { padding: 5px 12px; font-size: 12px; }
+
+    /* Commentaire épinglé (#11) */
+    .cmt-pinned-badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em;
+      color: var(--accent); margin-bottom: 3px;
+    }
+    .comment.pinned { background: rgba(124, 58, 237, .06); border-radius: 12px; }
+
     /* Tous les onglets ont la même couleur, uniforme */
     .nav-bobines .nav-icon { transition: color 180ms ease, transform 200ms ease; }
     .nav-bobines:hover .nav-icon { transform: scale(1.06); }
