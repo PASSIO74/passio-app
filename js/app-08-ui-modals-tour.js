@@ -2548,7 +2548,7 @@ async function supaCommentRemoveLike(commentId) {
 async function supaCommentRemoveReactions(commentId) {
   try {
     if (typeof supa === "undefined" || !supa || !MY_UID || !window._supaReal) return;
-    await supa.from("comment_interactions").delete().eq("comment_id", commentId).eq("user_id", MY_UID).in("kind", ["emoji", "gif"]);
+    await supa.from("comment_interactions").delete().eq("comment_id", commentId).eq("user_id", MY_UID).eq("kind", "emoji");
   } catch(e) {}
 }
 // Charge les interactions de plusieurs commentaires → { [cid]: {likes,likedBy,replies,emojis} }.

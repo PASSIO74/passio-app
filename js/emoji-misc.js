@@ -432,30 +432,27 @@ function showEmojiPickerForComment(postId, commentId, event) {
   return false;
 }
 
+// Un GIF sur un commentaire = une RÉPONSE (image inline), PAS une réaction du
+// compteur. On l'ajoute comme réponse normale (texte = URL → rendue en image par
+// _commentBodyHtml), synchronisée comme une réponse (kind "reply"). Plusieurs GIF
+// possibles (c'est un commentaire, pas une réaction limitée à 1/personne).
 function addGifToComment(postId, commentId, gifUrl) {
-  console.log("🎬 addGifToComment:", postId, commentId);
-  // commentId peut désigner un commentaire OU une réponse (_findCommentNode gère les deux).
+  console.log("🎬 addGifToComment → réponse:", postId, commentId);
   var found = (typeof _findCommentNode === "function") ? _findCommentNode(postId, commentId) : null;
   var thread = found && found.thread;
   var comment = found && found.node;
   if (!comment) return false;
-
-  // UNE réaction par personne : le GIF remplace ma réaction précédente (emoji ou
-  // GIF) ; re-pick du même GIF = toggle off. Réponses texte laissées intactes.
   if (!Array.isArray(comment.replies)) comment.replies = [];
-  var res = _applyOneReaction(comment.replies, gifUrl, "gif_reaction");
-  // Sync Supabase → la réaction GIF apparaît chez tous les comptes ET survit au
-  // re-render/hydratation (sans ça, seul l'emoji était synchronisé : le GIF
-  // disparaissait au rechargement / poll CDV 5 s).
-  if (typeof supaCommentRemoveReactions === "function") supaCommentRemoveReactions(commentId);
-  if (!res.removedSame && typeof supaCommentInteract === "function") supaCommentInteract(commentId, postId, "gif", gifUrl);
-  console.log("✅ GIF reaction added + synced");
-
-  if (typeof thread.save === "function") thread.save();
-  // La réaction GIF (comme l'emoji) va dans la pastille « 🎬 N » → patch en place.
-  if (typeof _patchCmtReact !== "function" || !_patchCmtReact(postId, commentId)) {
-    if (typeof _refreshCommentThreadUI === "function") _refreshCommentThreadUI(postId);
+  var meId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : (state.user && state.user.id) || "me";
+  comment.replies.push({ id: "reply_" + Date.now(), authorId: meId, text: gifUrl, createdAt: Date.now() });
+  if (typeof thread.save === "function") thread.save(); else saveState();
+  if (typeof supaCommentInteract === "function") supaCommentInteract(commentId, postId, "reply", gifUrl);
+  if (comment.authorId && comment.authorId !== meId && comment.fromSupabase && typeof supaInsertNotif === "function") {
+    try { supaInsertNotif(comment.authorId, "comment", postId, "a répondu avec un GIF"); } catch (e) {}
   }
+  // Nouvelle réponse = la liste change → refresh (scroll préservé via _setThreadHtml).
+  if (typeof _refreshCommentThreadUI === "function") _refreshCommentThreadUI(postId);
+  if (typeof toast === "function") toast("GIF ajouté en commentaire 🎬");
   return false;
 }
 
@@ -489,10 +486,12 @@ function showEmojiPickerForEvent(eventId, event) {
 // (ré)insérer ni notifier côté serveur).
 function _applyOneReaction(arr, text, type) {
   var meIds = [(typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : null, (state.user && state.user.id), "me"].filter(Boolean);
-  var isMine = function (r) { return r && meIds.indexOf(r.authorId) > -1 && (r.type === "emoji_reaction" || r.type === "gif_reaction"); };
+  // UNE seule réaction EMOJI par personne. Les GIF ne sont plus des réactions (ils
+  // deviennent des commentaires/réponses) → on ne les touche PAS ici.
+  var isMine = function (r) { return r && meIds.indexOf(r.authorId) > -1 && r.type === "emoji_reaction"; };
   var mine = arr.filter(isMine);
-  var toggleOff = mine.length === 1 && mine[0].type === type && mine[0].text === text;
-  // Retirer TOUTES mes réactions existantes (emoji ET gif) → une seule par personne.
+  var toggleOff = mine.length === 1 && mine[0].text === text;
+  // Retirer MON emoji existant → un seul par personne.
   for (var i = arr.length - 1; i >= 0; i--) { if (isMine(arr[i])) arr.splice(i, 1); }
   if (toggleOff) return { removedSame: true };
   arr.push({
@@ -561,23 +560,51 @@ function showGifPickerForPost(postId, event) {
   return false;
 }
 
-function addGifToPost(postId, gifUrl) {
-  console.log("🎬 addGifToPost:", postId);
-  var post = findPostAnywhere(postId);
-  if (!post) return false;
-  if (!Array.isArray(post.reactions)) post.reactions = [];
-
-  var res = _applyOneReaction(post.reactions, gifUrl, "gif_reaction");
-  // Sync Supabase (même convention que addEmojiToPost : comment_id === post_id).
-  if (typeof supaCommentRemoveReactions === "function") supaCommentRemoveReactions(postId);
-  if (!res.removedSame) {
-    if (typeof supaCommentInteract === "function") supaCommentInteract(postId, postId, "gif", gifUrl);
-    _notifyPostReaction(post, "🎬");
+// Poste un GIF comme COMMENTAIRE (jamais comme réaction/compteur) sur un fil
+// quelconque : post du fil, événement IRL ou live CDV. Le GIF = un commentaire
+// dont le texte est l'URL, rendu en image par _commentBodyHtml. Sync selon le
+// contexte (post_comments / event_comments / cdv_live_comments).
+function _postGifComment(threadId, gifUrl) {
+  var thread = (typeof _findCommentThread === "function") ? _findCommentThread(threadId) : null;
+  if (!thread) return false;
+  if (!Array.isArray(thread.comments)) thread.comments = [];
+  var meId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : (state.user && state.user.id) || "me";
+  var p = (typeof currentProfile === "function") ? currentProfile() : null;
+  var nm = (p && p.name) || (state.user && state.user.name) || "Moi";
+  var kind = thread.kind;
+  var cid = (kind === "event" ? "ec_local_" : kind === "cdv" ? "lc_local_" : "c_") + (typeof uid === "function" ? uid() : Date.now());
+  thread.comments.unshift({
+    id: cid, authorId: meId, authorName: nm, author: nm,
+    authorEmoji: (p && p.emoji) || "✨",
+    text: gifUrl, content: gifUrl, createdAt: Date.now(), at: Date.now()
+  });
+  if (typeof thread.save === "function") thread.save();
+  try {
+    if (kind === "event" && typeof supaAddEventComment === "function") supaAddEventComment(threadId, gifUrl);
+    else if (kind === "cdv" && typeof supaAddCdvLiveComment === "function") supaAddCdvLiveComment(threadId, gifUrl);
+    else if (typeof supaAddComment === "function" && typeof MY_UID !== "undefined" && MY_UID) supaAddComment(threadId, gifUrl, cid);
+  } catch (e) {}
+  // Notifie l'auteur du fil (cross-compte).
+  try {
+    if (thread.targetUserId && thread.targetUserId !== meId && thread.fromSupabase && typeof supaInsertNotif === "function") {
+      supaInsertNotif(thread.targetUserId, "comment", threadId, "a commenté avec un GIF");
+    }
+  } catch (e) {}
+  if (typeof grantReward === "function") { try { grantReward("comment"); } catch (e) {} }
+  if (typeof _refreshCommentThreadUI === "function") _refreshCommentThreadUI(threadId);
+  if (kind === "event" && typeof _patchEventCommentsInline === "function") { try { _patchEventCommentsInline(threadId); } catch (e) {} }
+  // Met à jour le compteur 💬 sur la carte du fil (si aucune vue commentaires ouverte).
+  if (kind === "post" && typeof renderFeed === "function" && !document.getElementById("commentsBox")
+      && !(document.getElementById("postDetailPage") && document.getElementById("postDetailPage").style.display === "flex")) {
+    try { renderFeed(); } catch (e) {}
   }
-
-  if (typeof saveState === "function") saveState();
-  updatePostReactionsUI(postId);
+  if (typeof toast === "function") toast("GIF ajouté en commentaire 🎬");
   return false;
+}
+
+function addGifToPost(postId, gifUrl) {
+  console.log("🎬 addGifToPost → commentaire:", postId);
+  return _postGifComment(postId, gifUrl);
 }
 
 // Met à jour EN PLACE la pastille « 😍 N » du post (fil + détail + carte carnet),

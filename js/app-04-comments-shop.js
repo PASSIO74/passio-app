@@ -196,11 +196,12 @@ function _renderCommentsList(allComments, postId) {
     // Sépare les VRAIES réponses (texte / GIF) des réactions emoji : une réaction
     // emoji n'est PAS un commentaire → elle ne s'affiche pas en ligne de réponse mais
     // dans une pastille « 😍 N » cliquable (cf. _cmtReactChipHtml / openCommentReactors).
-    // Réactions (emoji ET gif) = pastille « 😍 N » (comme sur les posts) ; PAS des
-    // lignes de réponse. Seules les vraies réponses (texte / GIF envoyé en réponse)
-    // restent dans la liste. Unifié avec le fil + permet le patch en place (fluidité).
+    // Seules les réactions EMOJI vont dans la pastille « 😍 N ». Les réponses texte
+    // ET les GIF (réponse image, type gif_reaction OU réponse dont le texte est une
+    // URL) restent en LIGNE dans la liste des réponses (demande : le GIF = un
+    // commentaire, pas un compteur de réaction).
     const cAllReplies = c.replies || [];
-    const cReplies = cAllReplies.filter(r => r.type !== "emoji_reaction" && r.type !== "gif_reaction");
+    const cReplies = cAllReplies.filter(r => r.type !== "emoji_reaction");
     const cReactChip = _cmtReactChipHtml(postId, c);
 
     const cMine = (authorId === "me" || (typeof MY_UID !== "undefined" && authorId === MY_UID));
@@ -285,7 +286,8 @@ function _expandComments(threadId) {
 // clic ouvre la liste de QUI a réagi (et avec quoi). Identique partout.
 // ════════════════════════════════════════════════════════════════════════
 function _cmtReactions(comment) {
-  var arr = (comment && comment.replies || []).filter(function(r){ return r && (r.type === "emoji_reaction" || r.type === "gif_reaction"); });
+  // Emojis SEULEMENT dans la pastille — les GIF sont des réponses (image inline).
+  var arr = (comment && comment.replies || []).filter(function(r){ return r && r.type === "emoji_reaction"; });
   return _dedupReactionsByAuthor(arr);
 }
 // Patch EN PLACE la pastille de réactions d'un commentaire/réponse (holder
@@ -520,8 +522,11 @@ function _postReactItems(postId) {
   if (!post) return [];
   // post.reactions peut être un OBJET (ex. réactions agrégées des bobines/messages)
   // et non un tableau → garder Array.isArray pour éviter un crash de .filter.
+  // La pastille de réactions ne compte QUE les emojis. Un GIF n'est PAS une
+  // réaction : il est posté en COMMENTAIRE (rendu en image inline), jamais dans
+  // le compteur (demande utilisateur 2026-07-07).
   var arr = Array.isArray(post.reactions) ? post.reactions : [];
-  var reacts = arr.filter(function(r){ return r && (r.type === "emoji_reaction" || r.type === "gif_reaction"); });
+  var reacts = arr.filter(function(r){ return r && r.type === "emoji_reaction"; });
   return _dedupReactionsByAuthor(reacts).map(function(r){ return { authorId: r.authorId, text: r.text }; });
 }
 function _postReactChipHtml(postId) {

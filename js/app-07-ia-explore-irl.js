@@ -1528,14 +1528,14 @@ function _evReactChipHtml(eventId) {
   var d = (window._eventLikes && window._eventLikes[eventId]) || {};
   var counts = d.emojiCounts || {};
   var keys = Object.keys(counts);
-  var gifN = (d.gifs || []).length;
-  var total = keys.reduce(function(s, k){ return s + counts[k]; }, 0) + gifN;
+  // Le compteur ne compte QUE les emojis (les GIF sont des commentaires, pas des
+  // réactions — même règle que les posts/commentaires).
+  var total = keys.reduce(function(s, k){ return s + counts[k]; }, 0);
   if (!total) return "";
   // UN SEUL emoji (le plus fréquent) + le total — clic pour voir qui a réagi.
-  var top = keys.slice().sort(function(a, b){ return counts[b] - counts[a]; })[0];
-  var face = top || (gifN ? "🎬" : "😊");
+  var top = keys.slice().sort(function(a, b){ return counts[b] - counts[a]; })[0] || "😊";
   return '<button class="ev-react-chip" data-evchip="' + eventId + '" onclick="event.stopPropagation();return openEventReactions(\'' + eventId + '\', event);">'
-    + escapeHtml(face) + ' <b>' + total + '</b></button>';
+    + escapeHtml(top) + ' <b>' + total + '</b></button>';
 }
 // Repeint la pastille (dans son conteneur data-evchipholder) après une réaction.
 function _patchEventReactChip(eventId) {
@@ -1556,10 +1556,11 @@ function applyEventEmojiReaction(eventId, emojiArr) {
   }
   _setEventReaction(eventId, e); // une seule réaction (emoji/gif) par personne
 }
-// Applique une réaction GIF (URL stockée dans event_reactions.emoji), repeint.
+// Un GIF sur un événement = un COMMENTAIRE (image inline), pas une réaction du
+// compteur (comme partout ailleurs). Délègue au poste de commentaire générique.
 function applyEventGifReaction(eventId, gifUrl) {
   if (!gifUrl) return;
-  _setEventReaction(eventId, gifUrl);
+  if (typeof _postGifComment === "function") return _postGifComment(eventId, gifUrl);
 }
 // Cœur commun « une seule réaction par personne » pour un événement : remplace ma
 // réaction précédente (emoji OU gif) ; re-tap de la même = toggle off. L'aperçu
