@@ -504,6 +504,11 @@
     .cmt-skel-lines { flex: 1; display: flex; flex-direction: column; gap: 7px; padding-top: 4px; }
     .cmt-skel-line { height: 10px; border-radius: 6px; }
 
+    /* Statut d'envoi d'un commentaire (file d'attente hors-ligne, #14) */
+    .cmt-status.pending { color: var(--muted); }
+    .cmt-status.failed { color: #e0245e; font-weight: 700; cursor: pointer; }
+    .cmt-status.failed:hover { text-decoration: underline; }
+
     /* Tous les onglets ont la même couleur, uniforme */
     .nav-bobines .nav-icon { transition: color 180ms ease, transform 200ms ease; }
     .nav-bobines:hover .nav-icon { transform: scale(1.06); }

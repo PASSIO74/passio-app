@@ -2511,28 +2511,35 @@ async function supaGetLikeCount(postId) {
 }
 
 // ---- COMMENTAIRES ----
+// Renvoie true si l'insertion serveur a réussi, false sinon (offline / erreur /
+// backend pas encore prêt) → permet à la file d'attente (#14) de réessayer.
 async function supaAddComment(postId, content, commentId) {
+  if (typeof supa === "undefined" || !supa || !MY_UID || !window._supaReal) return false;
   try {
     await supaUpsertProfile();
-    await supa.from("post_comments").insert({
+    const { error } = await supa.from("post_comments").insert({
       // ⚠️ id ALIGNÉ avec le commentaire local (commentId) pour pouvoir rattacher
       // les interactions cross-compte (like/réponse/emoji) au même id partout.
       id: commentId || ("c_" + uid()), post_id: postId, author_id: MY_UID, content,
       created_at: new Date().toISOString(),
     });
-  } catch(e) { console.warn("Comment error:", e); }
+    if (error) { console.warn("Comment error:", error.message); return false; }
+    return true;
+  } catch(e) { console.warn("Comment error:", e); return false; }
 }
 
 // ───────── Interactions sur les commentaires (like / réponse / emoji) ─────────
 // Stockées dans comment_interactions (RLS owner) → propagées à tous les comptes.
 async function supaCommentInteract(commentId, postId, kind, payload) {
+  if (typeof supa === "undefined" || !supa || !MY_UID || !window._supaReal) return false;
   try {
-    if (typeof supa === "undefined" || !supa || !MY_UID || !window._supaReal) return;
-    await supa.from("comment_interactions").insert({
+    const { error } = await supa.from("comment_interactions").insert({
       id: "ci_" + uid(), comment_id: commentId, post_id: postId || null,
       user_id: MY_UID, kind: kind, payload: payload || null, created_at: new Date().toISOString(),
     });
-  } catch(e) {}
+    if (error) return false;
+    return true;
+  } catch(e) { return false; }
 }
 async function supaCommentRemoveLike(commentId) {
   try {

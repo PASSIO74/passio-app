@@ -334,10 +334,12 @@ function _submitReply(arg) {
   if (!comment) return false;
   if (!Array.isArray(comment.replies)) comment.replies = [];
   var meId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : (state.user?.id || "me");
-  comment.replies.push({ id: "reply_" + Date.now(), authorId: meId, text: text, createdAt: Date.now() });
+  var _rid = "reply_" + Date.now();
+  comment.replies.push({ id: _rid, authorId: meId, text: text, createdAt: Date.now() });
   if (typeof thread.save === "function") thread.save(); else saveState();
-  // Sync Supabase → la réponse apparaît chez tous les comptes.
-  if (typeof supaCommentInteract === "function") supaCommentInteract(commentId, postId, "reply", text);
+  // Sync Supabase via la FILE D'ATTENTE (#14) : envoi + réessai auto, statut sur la réponse.
+  if (typeof _enqueueCommentSync === "function") _enqueueCommentSync({ type: "reply", threadId: postId, parentId: commentId, nodeId: _rid, text: text });
+  else if (typeof supaCommentInteract === "function") supaCommentInteract(commentId, postId, "reply", text);
   if (comment.authorId && comment.authorId !== meId && comment.fromSupabase && typeof supaInsertNotif === "function") {
     try { supaInsertNotif(comment.authorId, "comment", postId, "a répondu à ton commentaire"); } catch(e) {}
   }

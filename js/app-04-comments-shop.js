@@ -355,6 +355,92 @@ function _cmtRelevance(c) {
   return (c.likes || 0) + reacts + ((c.replies || []).filter(function (r) { return r && r.type !== "emoji_reaction"; }).length);
 }
 
+// ════════════════════════════════════════════════════════════════════════
+// #14 — FILE D'ATTENTE HORS-LIGNE + RÉESSAI D'ENVOI (façon IG/FB/WhatsApp)
+// Un commentaire/réponse est TOUJOURS affiché en local instantanément. Sa
+// synchronisation Supabase est mise dans une file persistante (localStorage) ;
+// en cas d'échec (offline / erreur / backend pas prêt) on réessaie : à
+// l'événement `online`, au boot, et périodiquement tant qu'il reste des envois.
+// L'UI affiche « ⏳ Envoi… » puis « ⚠️ Non envoyé · Réessayer » (clic = retry).
+// ════════════════════════════════════════════════════════════════════════
+// ⚠️ Préfixe _cmtOb* OBLIGATOIRE : `_outboxLoad`/`_outboxSave` existent déjà pour
+// la file d'attente des MESSAGES (OUTBOX_KEY, plus bas) → collision de noms.
+var _CMT_OUTBOX_KEY = "passio_cmt_outbox_v1";
+var _cmtObTimer = null, _cmtObFlushing = false;
+function _cmtObLoad() { try { return JSON.parse(localStorage.getItem(_CMT_OUTBOX_KEY) || "[]"); } catch (e) { return []; } }
+function _cmtObSave(arr) { try { localStorage.setItem(_CMT_OUTBOX_KEY, JSON.stringify(arr)); } catch (e) {} }
+function _cmtObStartTimer() { if (!_cmtObTimer) _cmtObTimer = setInterval(function () { _cmtObFlush(); }, 15000); }
+function _cmtObStopTimer() { if (_cmtObTimer) { clearInterval(_cmtObTimer); _cmtObTimer = null; } }
+// Marque un commentaire/réponse local comme en attente d'envoi + l'ajoute à la file.
+function _enqueueCommentSync(op) {
+  op.opId = "ob_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7);
+  op.tries = 0; op.ts = Date.now();
+  var arr = _cmtObLoad(); arr.push(op); _cmtObSave(arr);
+  var found = _findCommentNode(op.threadId, op.nodeId);
+  if (found && found.node) { found.node._pending = true; found.node._failed = false; }
+  _cmtObStartTimer();
+  _cmtObFlush();
+}
+// Exécute UN envoi ; renvoie une Promise<boolean> (succès serveur).
+function _cmtObRun(op) {
+  try {
+    if (op.type === "post_comment" && typeof supaAddComment === "function") return Promise.resolve(supaAddComment(op.threadId, op.text, op.commentId));
+    if (op.type === "reply" && typeof supaCommentInteract === "function") return Promise.resolve(supaCommentInteract(op.parentId, op.threadId, "reply", op.text));
+  } catch (e) {}
+  return Promise.resolve(false);
+}
+function _cmtObSetStatus(threadId, nodeId, ok) {
+  var found = _findCommentNode(threadId, nodeId);
+  if (!found || !found.node) return;
+  if (ok) { found.node._pending = false; found.node._failed = false; }
+  else { found.node._pending = true; found.node._failed = true; }
+  if (found.thread && typeof found.thread.save === "function") { try { found.thread.save(); } catch (e) {} }
+  if (typeof _refreshCommentThreadUI === "function") _refreshCommentThreadUI(threadId);
+}
+async function _cmtObFlush() {
+  if (_cmtObFlushing) return;
+  var arr = _cmtObLoad();
+  if (!arr.length) { _cmtObStopTimer(); return; }
+  if (typeof navigator !== "undefined" && navigator.onLine === false) return; // hors-ligne : attendre `online`
+  if (!window._supaReal) return; // backend pas encore prêt (boot) : réessai plus tard
+  _cmtObFlushing = true;
+  try {
+    for (var i = 0; i < arr.length; i++) {
+      var op = arr[i];
+      if ((op.tries || 0) >= 8) continue; // auto-stop : le clic « Réessayer » remet tries à 0
+      var ok = false;
+      try { ok = await _cmtObRun(op); } catch (e) { ok = false; }
+      if (ok) { _cmtObSave(_cmtObLoad().filter(function (o) { return o.opId !== op.opId; })); _cmtObSetStatus(op.threadId, op.nodeId, true); }
+      else { op.tries = (op.tries || 0) + 1; _cmtObSave(_cmtObLoad().map(function (o) { return o.opId === op.opId ? op : o; })); _cmtObSetStatus(op.threadId, op.nodeId, false); }
+    }
+  } finally { _cmtObFlushing = false; }
+  var pend = _cmtObLoad().filter(function (o) { return (o.tries || 0) < 8; });
+  if (pend.length) _cmtObStartTimer(); else _cmtObStopTimer();
+}
+// Clic sur « Réessayer » : remet le compteur d'essais à zéro et relance la file.
+function _retryComment(threadId, nodeId) {
+  _cmtObSave(_cmtObLoad().map(function (o) { return (o.threadId === threadId && o.nodeId === nodeId) ? (o.tries = 0, o) : o; }));
+  var found = _findCommentNode(threadId, nodeId);
+  if (found && found.node) { found.node._failed = false; found.node._pending = true; }
+  if (typeof _refreshCommentThreadUINow === "function") _refreshCommentThreadUINow(threadId);
+  _cmtObFlush();
+  return false;
+}
+// Statut d'envoi affiché dans la méta d'un commentaire/réponse.
+function _cmtStatusHtml(threadId, node) {
+  if (!node) return "";
+  if (node._failed) return ' · <span class="cmt-status failed" onclick="event.stopPropagation();return _retryComment(\'' + threadId + '\',\'' + node.id + '\')">⚠️ Non envoyé · Réessayer</span>';
+  if (node._pending) return ' · <span class="cmt-status pending">⏳ Envoi…</span>';
+  return "";
+}
+if (!window._cmtObWired) {
+  window._cmtObWired = true;
+  try {
+    window.addEventListener("online", function () { _cmtObFlush(); });
+    setTimeout(function () { _cmtObFlush(); }, 4000); // 1re tentative après le boot
+  } catch (e) {}
+}
+
 // #13 — Squelettes « shimmer » pendant le chargement (façon IG/FB/LinkedIn).
 function _commentSkeletonHtml(n) {
   n = n || 4; var rows = "";
@@ -457,7 +543,7 @@ function _renderCommentsList(allComments, postId) {
         ${c.pinned ? '<div class="cmt-pinned-badge">📌 Épinglé</div>' : ""}
         <div class="comment-author" style="cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${authorId}','${cSrc}')">${escapeHtml(name)}</div>
         <div class="comment-text">${_commentBodyHtml(c.text || c.content || "")}</div>
-        <div class="comment-meta">${fmtTime(c.createdAt || c.at)}${c.edited ? " · modifié" : ""}</div>
+        <div class="comment-meta">${fmtTime(c.createdAt || c.at)}${c.edited ? " · modifié" : ""}${typeof _cmtStatusHtml === "function" ? _cmtStatusHtml(postId, c) : ""}</div>
         <div class="comment-actions">
           <span class="comment-action ${cLiked ? "liked" : ""}" data-cmtlike="${c.id}" onclick="return likeComment('${postId}','${c.id}', event);">
             ${cLiked ? "❤️" : "🤍"} ${cLikes}
@@ -506,7 +592,7 @@ function _renderCommentsList(allComments, postId) {
             <div class="avatar xs" style="background:${avatarBg(_rAvT)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${r.authorId}','${rSrc}')">${avatarInner(_rAvT)}</div>
             <div style="flex:1;min-width:0;"><span class="comment-reply-author" style="font-size:11px;font-weight:600;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span> ${_commentBodyHtml(r.text)}
             <div class="comment-reply-actions" style="display:flex;align-items:center;gap:10px;margin-top:2px;">
-              <span style="font-size:10px;color:var(--muted);">${fmtTime(r.createdAt)}</span>
+              <span style="font-size:10px;color:var(--muted);">${fmtTime(r.createdAt)}${typeof _cmtStatusHtml === "function" ? _cmtStatusHtml(postId, r) : ""}</span>
               <span class="comment-action ${rLiked ? "liked" : ""}" data-cmtlike="${r.id}" style="font-size:12px;" onclick="return likeCommentNode('${postId}','${r.id}', event);" title="J'aime">${rLiked ? "❤️" : "🤍"} ${rLikes}</span>
               <span class="comment-action" style="font-size:12px;" onclick="return reactToReply('${postId}','${r.id}', event);" title="Réagir">😊</span>
               <span class="cmt-chip-holder" data-cmtchip="${r.id}">${rReactChip}</span>
@@ -909,9 +995,11 @@ function submitComment(postId) {
   state.seed.users = state.seed.users.filter(u => u.id !== realAuthorId);
   state.seed.users.push(meEntry);
   grantReward("comment");
-  // Sync avec Supabase
+  // Sync avec Supabase — via la FILE D'ATTENTE (#14) : envoi + réessai auto si
+  // offline/erreur, avec statut « Envoi… / Non envoyé » sur le commentaire.
   if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
-    supaAddComment(postId, text, _cid);
+    if (typeof _enqueueCommentSync === "function") _enqueueCommentSync({ type: "post_comment", threadId: postId, commentId: _cid, nodeId: _cid, text: text });
+    else supaAddComment(postId, text, _cid);
     // Notifier l'auteur du post
     const commentedPost = findPostAnywhere(postId);
     if (commentedPost && commentedPost.authorId && commentedPost.authorId !== MY_UID && commentedPost.fromSupabase) {
