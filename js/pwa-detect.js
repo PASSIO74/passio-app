@@ -4,7 +4,7 @@
           const reg = await navigator.serviceWorker.register('./sw.js');
           // Vérifie les mises à jour immédiatement puis toutes les 60s
           reg.update();
-          setInterval(() => reg.update(), 60000);
+          setInterval(() => { if (!document.hidden) reg.update(); }, 60000);
           // Garde anti-boucle : controllerchange ET SW_UPDATED peuvent arriver
           // quasi simultanément → on ne recharge qu'UNE fois, jamais en boucle.
           let _reloaded = false;

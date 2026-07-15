@@ -54,11 +54,18 @@ const loader = ""
 html = html.slice(0, startMark) + loader + html.slice(endMark + "<!-- BUILD:APP-END -->".length);
 html = html.replace(EMOJI_TAG, "<!-- emoji-misc.js : inclus dans app.js -->");
 
-// 2. CSS
-html = html.replace(
-  '  <link rel="stylesheet" href="styles.css" />',
-  () => "  <style>\n" + read("styles.css") + "  </style>"
-);
+// 2. CSS : EXTERNALISÉ dans dist/styles.css (avant le 2026-07-15 : inline dans le
+//    HTML). index.html est servi en no-store → les ~230 Ko de CSS inline étaient
+//    re-téléchargés À CHAQUE visite. Externalisé avec cache-busting par contenu
+//    (?v=<hash>, cf. _headers : /styles.css immutable), il n'est téléchargé qu'une
+//    fois par version — et le <link> reste dans les premiers octets du HTML, donc
+//    découvert immédiatement par le preload-scanner (pas de flash sans style).
+const CSS_TAG = '  <link rel="stylesheet" href="styles.css" />';
+if (!html.includes(CSS_TAG)) throw new Error("Tag <link styles.css> introuvable dans index.html");
+const css = read("styles.css");
+const cssHash = crypto.createHash("sha1").update(css).digest("hex").slice(0, 10);
+const cssRef = "styles.css?v=" + cssHash;
+html = html.replace(CSS_TAG, '  <link rel="stylesheet" href="' + cssRef + '" />');
 
 // 3. Scripts individuels restants (uniquement src="js/…")
 html = html.replace(/^([ \t]*)<script src="(js\/[^"]+)"><\/script>$/gm,
@@ -79,5 +86,6 @@ if (sw === swBefore) throw new Error("Ligne CACHE de sw.js introuvable — auto-
 fs.mkdirSync(path.dirname(outPath), { recursive: true });
 fs.writeFileSync(outPath, html);
 fs.writeFileSync(path.join(path.dirname(outPath), "app.js"), appJs);
+fs.writeFileSync(path.join(path.dirname(outPath), "styles.css"), css);
 fs.writeFileSync(path.join(path.dirname(outPath), "sw.js"), sw);
-console.log("Build OK →", outPath, "(", Buffer.byteLength(html), "octets ) + app.js (", Buffer.byteLength(appJs), "octets, v=" + appHash + ") + sw.js (cache passio-v" + buildId + ")");
+console.log("Build OK →", outPath, "(", Buffer.byteLength(html), "octets ) + app.js (", Buffer.byteLength(appJs), "octets, v=" + appHash + ") + styles.css (", Buffer.byteLength(css), "octets, v=" + cssHash + ") + sw.js (cache passio-v" + buildId + ")");

@@ -239,38 +239,42 @@ test.describe("messagerie entre 2 comptes réels", () => {
           });
         }
       }, [postId, uidA]);
+      // ⚠️ Depuis le 2026-07-07 : un GIF est posté comme un COMMENTAIRE (texte =
+      // URL, rendu en image), JAMAIS comme une réaction de la pastille. Seuls les
+      // emojis comptent dans les réactions. Le test suit ce comportement.
       const GIF_URL = "https://media.tenor.com/e2e-test/passio.gif";
       await pageB.evaluate(([pid, gif]) => { addEmojiToPost(pid, "😍"); addGifToPost(pid, gif); }, [postId, GIF_URL]);
-      log("B a réagi 😍 + GIF au post");
+      log("B a réagi 😍 + posté un GIF (commentaire) sur le post");
 
-      // ── A voit les réactions SANS recharger (canal realtime:comment_interactions) ──
+      // ── A voit la réaction 😍 (comment_interactions) ET le commentaire GIF
+      //    (post_comments) SANS recharger — les deux via le canal realtime:db ──
       await pageA.waitForFunction(
-        ([pid, buid]) => {
+        ([pid, buid, gif]) => {
           const p = findPostAnywhere(pid);
           const rx = (p && p.reactions) || [];
+          const cs = (p && p.comments) || [];
           return rx.some((x) => x.type === "emoji_reaction" && x.text === "😍" && x.authorId === buid)
-              && rx.some((x) => x.type === "gif_reaction" && x.authorId === buid);
+              && cs.some((c) => c.authorId === buid && ((c.text || c.content || "").indexOf(gif) !== -1));
         },
-        [postId, uidB], { timeout: 20000 }
+        [postId, uidB, GIF_URL], { timeout: 20000 }
       );
-      // La pastille AGRÈGE (emoji majoritaire + total, cf. _reactionItemsChipHtml) :
-      // avec 1 😍 + 1 GIF elle affiche « 😍 2 » ou « 🎬 2 » selon le tri → on
-      // vérifie le rendu (chip présent) et le compteur, pas un emoji précis.
+      // Pastille : 1 seule réaction comptée (l'emoji — le GIF est un commentaire).
       const chipA = await pageA.evaluate((pid) => _postReactChipHtml(pid), postId);
       expect(chipA, "pastille de réactions rendue chez A").toContain("cmt-react-chip");
-      expect(chipA, "pastille : 2 réactions comptées chez A").toContain("<b>2</b>");
-      log("✅ realtime OK : A voit la pastille (2 réactions) sans recharger");
+      expect(chipA, "pastille : 1 réaction emoji comptée chez A").toContain("<b>1</b>");
+      log("✅ realtime OK : A voit la réaction 😍 + le commentaire GIF sans recharger");
 
-      // ── Persistance : un fil (re)chargé depuis Supabase porte les réactions
-      //    (supaLoadPosts mappe comment_interactions où comment_id === post_id) ──
+      // ── Persistance : un fil (re)chargé depuis Supabase porte la réaction
+      //    (supaLoadPosts mappe comment_interactions où comment_id === post_id)
+      //    et le commentaire GIF (post_comments) ──
       const loadedPost = await loadFindWithRetry(pageA, "supaLoadPosts", postId, 20000);
       expect(loadedPost, "post rechargé depuis Supabase").toBeTruthy();
       const loadedRx = loadedPost.reactions || [];
       expect(loadedRx.some((x) => x.type === "emoji_reaction" && x.text === "😍" && x.authorId === uidB),
         "réaction 😍 persistée et chargée par supaLoadPosts").toBe(true);
-      expect(loadedRx.some((x) => x.type === "gif_reaction" && x.authorId === uidB),
-        "réaction GIF persistée et chargée par supaLoadPosts").toBe(true);
-      log("✅ réactions post persistées (chargées par supaLoadPosts)");
+      expect((loadedPost.comments || []).some((c) => c.authorId === uidB && ((c.text || c.content || "").indexOf(GIF_URL) !== -1)),
+        "commentaire GIF persisté et chargé par supaLoadPosts").toBe(true);
+      log("✅ réaction + commentaire GIF persistés (chargés par supaLoadPosts)");
 
       // supaInsertNotif est fire-and-forget : laisser les inserts atterrir.
       await pageB.waitForTimeout(2500);

@@ -17,6 +17,9 @@ jobs:
         with:
           node-version: 20
 
+      - name: Audits statiques (collisions de globals)
+        run: node scripts/audit-globals.js
+
       - name: Installer Playwright
         run: |
           npm install --no-save @playwright/test
@@ -55,6 +58,12 @@ jobs:
           npx --yes terser dist/app.js -o dist/app.min.js --compress --mangle \
           && mv dist/app.min.js dist/app.js \
           || echo "Minification app.js échouée, déploiement du fichier brut"
+
+      - name: Minify styles.css (fallback sur le fichier brut en cas d'erreur)
+        run: |
+          npx --yes clean-css-cli -o dist/styles.min.css dist/styles.css \
+          && mv dist/styles.min.css dist/styles.css \
+          || echo "Minification styles.css échouée, déploiement du fichier brut"
 
       - name: Deploy to Netlify
         env:

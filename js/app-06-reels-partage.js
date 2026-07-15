@@ -566,8 +566,14 @@ function changePassionPhoto(event, profileId) {
     // Tente un upload vers Storage → stocke l'URL (sync cross-appareil sans base64)
     if (typeof supaUploadMedia === "function" && window._supaReal) {
       try {
-        const url = await supaUploadMedia(base64, "passion_" + profileId, "photo");
-        if (url) {
+        // ⚠️ Signature `(postId, folder, base64, type)` — l'ancien appel
+        // `(base64, folder, "photo")` visait une définition supprimée et
+        // renvoyait la chaîne "photo" en guise d'URL (photoUrl corrompue).
+        const url = await supaUploadMedia(profileId, "passion_photos", base64, "photo");
+        // On ne stocke QUE une vraie URL http : le fallback base64 ne doit pas
+        // partir dans user_state (payload ~1 Mo max, et _syncableState ne
+        // strippe que prof.photo, pas photoUrl).
+        if (url && url.indexOf("http") === 0) {
           prof.photoUrl = url;
           saveState();
         }

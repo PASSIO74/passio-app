@@ -369,7 +369,7 @@ var _CMT_OUTBOX_KEY = "passio_cmt_outbox_v1";
 var _cmtObTimer = null, _cmtObFlushing = false;
 function _cmtObLoad() { try { return JSON.parse(localStorage.getItem(_CMT_OUTBOX_KEY) || "[]"); } catch (e) { return []; } }
 function _cmtObSave(arr) { try { localStorage.setItem(_CMT_OUTBOX_KEY, JSON.stringify(arr)); } catch (e) {} }
-function _cmtObStartTimer() { if (!_cmtObTimer) _cmtObTimer = setInterval(function () { _cmtObFlush(); }, 15000); }
+function _cmtObStartTimer() { if (!_cmtObTimer) _cmtObTimer = setInterval(function () { if (!document.hidden) _cmtObFlush(); }, 15000); }
 function _cmtObStopTimer() { if (_cmtObTimer) { clearInterval(_cmtObTimer); _cmtObTimer = null; } }
 // Marque un commentaire/réponse local comme en attente d'envoi + l'ajoute à la file.
 function _enqueueCommentSync(op) {

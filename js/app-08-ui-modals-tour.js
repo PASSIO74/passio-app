@@ -281,6 +281,7 @@ function saveFeedback() {
 // ======== RESET ========
 function resetApp() {
   if (!confirm("Tout réinitialiser ? (onboarding, profils, posts, wallet)")) return;
+  try { discardPendingStateSave(); } catch (e) {}
   localStorage.removeItem(STATE_KEY);
   location.reload();
 }
@@ -1420,9 +1421,25 @@ function updateAppBadge() {
 // Efface le badge dès que l'utilisateur ouvre/revient sur l'app.
 // Les nouvelles notifs qui arrivent ensuite remettront le badge via updateAppBadge().
 document.addEventListener("visibilitychange", function() {
-  if (document.visibilityState === "visible" && "clearAppBadge" in navigator) {
+  if (document.visibilityState !== "visible") return;
+  if ("clearAppBadge" in navigator) {
     navigator.clearAppBadge().catch(() => {});
   }
+  // Rattrapage après l'arrière-plan : les pollings (fil 60 s, live CDV 5 s,
+  // outbox 15 s) sont suspendus quand l'onglet est caché → au retour, un refresh
+  // immédiat du fil si l'écran feed est actif (le realtime couvre le reste).
+  try {
+    const feedEl = document.getElementById("screen-feed");
+    if (feedEl && feedEl.classList.contains("active") && window._supaReal && typeof supaLoadPosts === "function") {
+      supaLoadPosts().then((posts) => {
+        if (posts && posts.length > 0) {
+          const extra = (window._feedExtraPosts || []).filter(p => !posts.some(x => x.id === p.id));
+          state.supabasePosts = posts.concat(extra);
+          renderFeed();
+        }
+      }).catch(() => {});
+    }
+  } catch (e) {}
 });
 
 // Badge des messages non-lus sur l'icône Messages du topbar (déplacée depuis la
@@ -2074,100 +2091,12 @@ function diagLog(msg) {
 
 
 // ---- POSTS ----
-// ===== UPLOAD PHOTO/VIDÉO/AUDIO À SUPABASE STORAGE =====
-async function supaUploadMedia(dataUrl, postId, type = "photo") {
-  try {
-    if (!dataUrl || !dataUrl.startsWith("data:")) {
-      console.warn("❌ DataUrl invalide");
-      return null;
-    }
-
-    console.log("📸 Conversion data URL en Blob...");
-    // Convertir data:// base64 en Blob
-    const parts = dataUrl.split(';base64,');
-    if (parts.length < 2) {
-      console.warn("❌ Format data URL incorrect");
-      return null;
-    }
-
-    const bstr = atob(parts[1]);
-    const n = bstr.length;
-    const u8arr = new Uint8Array(n);
-    for (let i = 0; i < n; i++) {
-      u8arr[i] = bstr.charCodeAt(i);
-    }
-    // Déterminer le type MIME et l'extension
-    let mimeType = "image/jpeg";
-    let extension = "jpg";
-    if (type === "video") {
-      mimeType = "video/mp4";
-      extension = "mp4";
-    } else if (type === "audio") {
-      mimeType = "audio/mpeg";
-      extension = "mp3";
-    }
-
-    const blob = new Blob([u8arr], { type: mimeType });
-    console.log(`✅ Blob ${type} créé: ${blob.size} bytes`);
-
-    // Upload à Supabase Storage
-    const fileName = `${type}s/${MY_UID}/${postId}.${extension}`;
-    console.log(`📤 Upload vers: ${fileName}`);
-
-    // Essayer upload au bucket "media" d'abord
-    let bucketUsed = "media";
-    let uploadResult = await supa.storage
-      .from("media")
-      .upload(fileName, blob, { upsert: true });
-
-    // Si le bucket "media" n'existe pas, essayer "storage"
-    if (uploadResult.error && (uploadResult.error.message.includes("not found") || uploadResult.error.message.includes("does not exist"))) {
-      console.warn("⚠️ Bucket 'media' non trouvé, essayer 'storage'...");
-      bucketUsed = "storage";
-      uploadResult = await supa.storage
-        .from("storage")
-        .upload(fileName, blob, { upsert: true });
-    }
-
-    const { data, error } = uploadResult;
-
-    if (error) {
-      console.error("❌ Upload échoué:", error);
-      console.error("   Message complet:", JSON.stringify(error, null, 2));
-      console.error("   Status HTTP:", error.status);
-      console.error("   Code erreur:", error.code);
-
-      // Diagnostic: pourquoi l'upload échoue?
-      if (error.message?.includes("not found") || error.message?.includes("does not exist")) {
-        console.error("⚠️ RAISON: Bucket Supabase Storage n'existe pas!");
-        console.error("   → Créer les buckets 'media' et 'storage' dans Supabase");
-      } else if (error.status === 401 || error.status === 403) {
-        console.error("⚠️ RAISON: Permissions Supabase Storage insuffisantes");
-        console.error("   → Vérifier les row level security (RLS) policies");
-      } else if (error.status === 413) {
-        console.error("⚠️ RAISON: Fichier trop gros pour Supabase Storage");
-      }
-
-      // Fallback: retourner le dataUrl original en base64
-      console.warn("⚠️ Fallback: utiliser base64 au lieu de Storage");
-      return dataUrl;  // Retourner les données base64 originales!
-    }
-
-    // Retourner l'URL publique du bucket utilisé
-    try {
-      const { data: { publicUrl } } = supa.storage.from(bucketUsed).getPublicUrl(fileName);
-      console.log(`✅ URL publique: ${publicUrl}`);
-      return publicUrl;
-    } catch (e) {
-      console.warn("❌ getPublicUrl échoué:", e.message);
-      return null;
-    }
-  } catch (e) {
-    console.error("❌ Upload exception:", e);
-    console.error("   Message:", e.message);
-    return null;
-  }
-}
+// ⚠️ Il y avait ici une ANCIENNE définition de supaUploadMedia (signature
+// `(dataUrl, postId, type)`, buckets "media"/"storage" inexistants) écrasée par
+// hoisting par la vraie plus bas (`(postId, folder, base64Data, mediaType)`,
+// bucket "content"). Supprimée le 2026-07-15 — elle avait cassé l'upload des
+// photos de profil-passion (appelant resté sur l'ancienne signature, corrigé
+// dans app-06). Détecteur : npm run audit:globals.
 
 // ===== PUBLICATION AVEC RETRY AUTOMATIQUE =====
 // ===== SYSTÈME DE PUBLICATION FIABLE MULTI-APPAREILS =====
@@ -2298,6 +2227,37 @@ async function _buildVlogPayload(post) {
   };
 }
 
+// Redimensionne une image base64 AVANT upload : max 1600 px (grand côté),
+// ré-encodée JPEG 0.85 (PNG conservé pour la transparence, GIF non touché pour
+// l'animation). Une photo de galerie moderne fait 3-8 Mo → ÷5-10 en stockage
+// Supabase + data mobile (envoi ET affichage du fil chez tous les lecteurs),
+// rendu identique dans l'app. La compression vidéo 720p existe déjà (media editor).
+const _UPLOAD_MAX_DIM = 1600;
+function _downscaleImageForUpload(dataUrl) {
+  return new Promise(function (resolve) {
+    try {
+      if (!/^data:image\/(jpeg|jpg|png|webp)/i.test(dataUrl)) { resolve(dataUrl); return; }
+      var img = new Image();
+      img.onload = function () {
+        try {
+          var w = img.naturalWidth, h = img.naturalHeight;
+          var scale = _UPLOAD_MAX_DIM / Math.max(w, h);
+          if (!w || !h || scale >= 1) { resolve(dataUrl); return; }
+          var c = document.createElement("canvas");
+          c.width = Math.round(w * scale); c.height = Math.round(h * scale);
+          c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+          var isPng = dataUrl.indexOf("data:image/png") === 0;
+          var out = c.toDataURL(isPng ? "image/png" : "image/jpeg", 0.85);
+          // Garde-fou : si le ré-encodage grossit (rare), on garde l'original.
+          resolve(out.length < dataUrl.length ? out : dataUrl);
+        } catch (e) { resolve(dataUrl); }
+      };
+      img.onerror = function () { resolve(dataUrl); };
+      img.src = dataUrl;
+    } catch (e) { resolve(dataUrl); }
+  });
+}
+
 // Fonction d'upload média vers Supabase Storage (avec fallback)
 async function supaUploadMedia(postId, folder, base64Data, mediaType) {
   console.log(`📤 [UPLOAD] Début upload ${folder}/${postId}`);
@@ -2309,6 +2269,11 @@ async function supaUploadMedia(postId, folder, base64Data, mediaType) {
 
   try {
     if (!supa || !supa.storage) return base64Data;
+
+    // Images (hors GIF) : downscale avant conversion en Blob.
+    if (mediaType !== "video" && mediaType !== "audio" && base64Data.indexOf("data:image/") === 0 && base64Data.indexOf("data:image/gif") !== 0) {
+      try { base64Data = await _downscaleImageForUpload(base64Data); } catch (e) {}
+    }
 
     // Convertir base64 en Blob
     const parts = base64Data.split(",");
@@ -3722,17 +3687,27 @@ function supaSubscribe() {
     // v2 (expérimental) : un canal PRIVÉ par conversation (course sur conv créée
     // en session — voir SCALE_RUNBOOK). Nécessite migration_realtime_authorization.
     (getConversations() || []).forEach(function(c) { if (c && c.id) _subscribePrivateConv(c.id); });
-  } else {
-    // v1 (défaut) : canal global, filtrage d'appartenance côté client (_handleIncomingConvMessage).
-    supa.channel("realtime:my_messages")
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "conv_messages" }, function(payload) {
-        _handleIncomingConvMessage(payload.new);
-      })
-      .subscribe();
+  }
+
+  // ── UN SEUL canal pour TOUS les postgres_changes (consolidation 2026-07-15) ──
+  // Avant : 9 canaux séparés = 9 joins realtime PAR CLIENT (ça compte dans le
+  // quota Supabase de canaux concurrents et multiplie les rejoins réseau). Les
+  // bindings multiples sur un même canal étaient déjà le pattern du canal CDV
+  // (5 tables). Chaque handler est INCHANGÉ — seule la plomberie canal change.
+  // Au repos un client n'a plus que 3 canaux : user:<uid> (messages v3),
+  // ring:<uid> (appels) et realtime:db (celui-ci).
+  const dbChan = supa.channel("realtime:db");
+
+  // v1 (si v2/v3 désactivés) : messages entrants via postgres_changes global,
+  // filtrage d'appartenance côté client (_handleIncomingConvMessage).
+  if (!window.PASSIO_REALTIME_V3 && !window.PASSIO_REALTIME_V2) {
+    dbChan.on("postgres_changes", { event: "INSERT", schema: "public", table: "conv_messages" }, function(payload) {
+      _handleIncomingConvMessage(payload.new);
+    });
   }
 
   // ── Accusés de lecture : un autre membre a lu → met à jour le ✓✓ en direct ──
-  supa.channel("realtime:conv_reads")
+  dbChan
     .on("postgres_changes", { event: "*", schema: "public", table: "conv_reads" }, function(payload) {
       var r = payload.new; if (!r || r.user_id === MY_UID) return;
       var c = getConversations().find(function(x){ return x.id === r.conv_id || (!x.isGroup && x.userId === r.user_id); });
@@ -3744,21 +3719,19 @@ function supaSubscribe() {
           try { var fp = document.getElementById("conv-fullpage"); renderConvFpThread(c, fp ? fp.getAttribute("data-display-name") : (c.userName||"")); } catch(e) {}
         }
       }
-    })
-    .subscribe();
+    });
 
   // ── Interactions de commentaires en temps réel (like / réponse / emoji) ──
-  supa.channel("realtime:comment_interactions")
+  dbChan
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "comment_interactions" }, function(payload) {
       try { if (typeof _applyCommentInteractionEvent === "function") _applyCommentInteractionEvent(payload.new, "add"); } catch(e) {}
     })
     .on("postgres_changes", { event: "DELETE", schema: "public", table: "comment_interactions" }, function(payload) {
       try { if (typeof _applyCommentInteractionEvent === "function") _applyCommentInteractionEvent(payload.old, "remove"); } catch(e) {}
-    })
-    .subscribe();
+    });
 
   // ── Nouvelle conversation créée pour moi (l'autre personne m'ajoute comme membre) ──
-  supa.channel("realtime:conv_members")
+  dbChan
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "conv_members" }, async payload => {
       const r = payload.new;
       if (!r || r.user_id !== MY_UID) return; // ce n'est pas moi qui suis ajouté
@@ -3821,14 +3794,13 @@ function supaSubscribe() {
         }
         try { renderMessages(); } catch(e) {}
       } catch(e) {}
-    })
-    .subscribe();
+    });
 
   // ── Mises à jour de profil en temps réel (photo/pseudo/emoji/couleur) ──
   // Quand un utilisateur change sa photo de profil ou son pseudo, on rafraîchit
   // le cache local (state.seed.users) → son avatar se met à jour PARTOUT à
   // l'écran (fil, commentaires, messages) sans rechargement.
-  supa.channel("realtime:profiles")
+  dbChan
     .on("postgres_changes", { event: "UPDATE", schema: "public", table: "profiles" }, payload => {
       try {
         const p = payload.new;
@@ -3840,11 +3812,10 @@ function supaSubscribe() {
         try { if (typeof scheduleFeedRender === "function") scheduleFeedRender(); } catch(e) {}
         try { if (typeof renderMessages === "function") renderMessages(); } catch(e) {}
       } catch(e) {}
-    })
-    .subscribe();
+    });
 
   // Nouveaux posts en temps reel
-  supa.channel("realtime:posts")
+  dbChan
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "posts" }, async payload => {
       const r = payload.new;
       if (r.author_id === MY_UID) return;
@@ -3859,11 +3830,10 @@ function supaSubscribe() {
           try { scheduleFeedRender(); } catch(e) {}
         }
       } catch(e) {}
-    })
-    .subscribe();
+    });
 
   // Likes en temps reel
-  supa.channel("realtime:likes")
+  dbChan
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "post_likes" }, payload => {
       const r = payload.new;
       // ⚠️ NE PAS recompter MON propre like : likePost() l'a déjà ajouté en
@@ -3884,15 +3854,14 @@ function supaSubscribe() {
       if (!r || r.user_id === MY_UID) return; // mon propre unlike déjà décompté
       const post = findPostAnywhere(r.post_id);
       if (post) { post.likes = Math.max(0, (post.likes || 1) - 1); try { patchPostLikeDom(post); } catch(e) {} }
-    })
-    .subscribe();
+    });
 
   // ── Notifications entrantes (like, comment, follow…) en temps réel ──
   // 🔧 FIX 2026-06-17 : il n'existait AUCUN canal realtime sur la table
   // notifications → les notifs n'arrivaient jamais en direct. La table est dans
   // la publication supabase_realtime (cf. migrations). mergeSupaNotifs gère
   // badge + panneau ouvert + dédup.
-  supa.channel("realtime:notifications")
+  dbChan
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications", filter: `user_id=eq.${MY_UID}` }, payload => {
       const r = payload.new;
       if (!r || r.user_id !== MY_UID) return; // pas pour moi
@@ -3910,11 +3879,10 @@ function supaSubscribe() {
       if (_seen) return;
       // Toast cliquable → emmène vers le contenu de la notif.
       try { toast(notif.text || "Nouvelle notification", "info", () => { markNotifRead(notif.id); openNotifTarget(notif); }); } catch(e) {}
-    })
-    .subscribe();
+    });
 
   // Commentaires en temps reel
-  supa.channel("realtime:comments")
+  dbChan
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "post_comments" }, async payload => {
       const r = payload.new;
       if (r.author_id === MY_UID) return;
@@ -3938,12 +3906,11 @@ function supaSubscribe() {
           try { if (typeof _refreshCommentThreadUI === "function") _refreshCommentThreadUI(r.post_id); } catch(e) {}
         }
       } catch(e) {}
-    })
-    .subscribe();
+    });
 
   // Commentaires d'événements IRL en temps réel : si la fiche de l'événement
   // concerné est ouverte, on recharge le fil. Léger (1 reload ciblé).
-  supa.channel("realtime:event_comments")
+  dbChan
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "event_comments" }, payload => {
       const r = payload.new;
       if (!r || r.author_id === MY_UID) return;
@@ -3954,18 +3921,19 @@ function supaSubscribe() {
           _loadEventComments(r.event_id);
         }
       } catch(e) {}
-    })
-    .subscribe();
+    });
 
-  // CDV Lives en temps réel : 1 canal pour les 5 tables (étapes / commentaires /
-  // réactions / suivis). Handler debounced → refresh liste + viewer ouvert.
-  supa.channel("realtime:cdv_lives")
+  // CDV Lives en temps réel : les 5 tables (étapes / commentaires / réactions /
+  // suivis). Handler debounced → refresh liste + viewer ouvert.
+  dbChan
     .on("postgres_changes", { event: "*", schema: "public", table: "cdv_lives" }, _onCdvRealtime)
     .on("postgres_changes", { event: "*", schema: "public", table: "cdv_live_steps" }, _onCdvRealtime)
     .on("postgres_changes", { event: "*", schema: "public", table: "cdv_live_comments" }, _onCdvRealtime)
     .on("postgres_changes", { event: "*", schema: "public", table: "cdv_live_reactions" }, _onCdvRealtime)
-    .on("postgres_changes", { event: "*", schema: "public", table: "cdv_live_followers" }, _onCdvRealtime)
-    .subscribe();
+    .on("postgres_changes", { event: "*", schema: "public", table: "cdv_live_followers" }, _onCdvRealtime);
+
+  // Un SEUL join pour l'ensemble des bindings ci-dessus.
+  dbChan.subscribe();
 }
 // ---- FOLLOW / UNFOLLOW ----
 async function supaFollowUser(targetId) {
@@ -4106,6 +4074,7 @@ function startFeedRefreshLoop() {
   if (_feedRefreshInterval) return;
   _feedRefreshInterval = setInterval(async () => {
     try {
+      if (document.hidden) return; // onglet en arrière-plan : pas de requête (batterie/quota)
       const posts = await supaLoadPosts();
       if (posts && posts.length > 0) {
         const extra = (window._feedExtraPosts || []).filter(p => !posts.some(x => x.id === p.id));

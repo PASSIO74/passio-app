@@ -1011,6 +1011,9 @@ function startCdvLiveRefresh(liveId) {
     // Ne pas rafraîchir pendant la saisie d'un commentaire (sinon on efface le texte).
     const ci = document.getElementById("cdvLiveComment");
     if (ci && document.activeElement === ci && ci.value) return;
+    // Onglet en arrière-plan : pas de polling (batterie/quota) — le realtime + le
+    // retour sur l'onglet rattrapent.
+    if (document.hidden) return;
 
     // Recharger ce live depuis Supabase (étapes/commentaires/réactions/suivis cross-compte).
     if (typeof supaLoadCdvLive === "function") {

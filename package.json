@@ -5,6 +5,7 @@
     "test": "playwright test",
     "test:all": "playwright test",
     "audit:handlers": "node scripts/audit-handlers.js",
+    "audit:globals": "node scripts/audit-globals.js",
     "purge:e2e": "node scripts/purge-e2e-accounts.js",
     "serve": "http-server -p 8080 -c-1 ."
   },

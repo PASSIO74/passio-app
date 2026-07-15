@@ -90,6 +90,9 @@ function loadState() {
       parsed.user.profiles = parsed.user.profiles.filter(function(p) {
         if (!p || !p.passion || seenP.has(p.passion)) return false;
         seenP.add(p.passion);
+        // Répare les photoUrl corrompues par l'ancien bug supaUploadMedia
+        // (la chaîne "photo" au lieu d'une URL) : seul http(s) est valide.
+        if (p.photoUrl && String(p.photoUrl).indexOf("http") !== 0) p.photoUrl = null;
         return true;
       });
     }
@@ -118,16 +121,44 @@ function _leanState() {
   return lean;
 }
 
-function saveState() {
+let _saveStateTimer = null;
+function _writeStateNow() {
+  _saveStateTimer = null;
   try {
     // ⚠️ Ne JAMAIS persister de base64 média dans localStorage (quota ~5 Mo).
     localStorage.setItem(STATE_KEY, JSON.stringify(_leanState()));
   } catch (e) {
     console.warn("Save failed:", e);
   }
+}
+
+// Débouncé (250 ms) : saveState() est appelé en rafale (~80 sites — like, réaction,
+// navigation…) et chaque appel refaisait un JSON.stringify SYNCHRONE de tout l'état
+// → jank sur mobile. Le flush est garanti par pagehide/beforeunload (saveStateNow),
+// qui couvrent aussi tous les location.reload().
+function saveState() {
+  clearTimeout(_saveStateTimer);
+  _saveStateTimer = setTimeout(_writeStateNow, 250);
   // Réplique l'état personnel vers Supabase (debounced) → retrouvable sur tout
   // appareil. Ignoré pendant l'hydratation (évite la boucle) et hors session.
   try { if (!window._hydratingState) _scheduleStateSync(); } catch (e) {}
+}
+
+// Sauvegarde immédiate (fermeture/rechargement de page, actions critiques).
+function saveStateNow() {
+  clearTimeout(_saveStateTimer);
+  _writeStateNow();
+  try { if (!window._hydratingState) _scheduleStateSync(); } catch (e) {}
+}
+window.addEventListener("pagehide", function () { if (_saveStateTimer) _writeStateNow(); });
+window.addEventListener("beforeunload", function () { if (_saveStateTimer) _writeStateNow(); });
+
+// ⚠️ À appeler AVANT tout removeItem(STATE_KEY) volontaire (logout, reset,
+// suppression de compte) : sinon le flush pagehide/beforeunload ressusciterait
+// l'état qu'on vient d'effacer au moment du location.reload().
+function discardPendingStateSave() {
+  clearTimeout(_saveStateTimer);
+  _saveStateTimer = null;
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -213,7 +244,10 @@ function _applyUserState(data) {
       const seen = new Set();
       state.user.profiles = state.user.profiles.filter(function(p) {
         if (!p || !p.passion || seen.has(p.passion)) return false;
-        seen.add(p.passion); return true;
+        seen.add(p.passion);
+        // Même réparation que loadState : photoUrl non-http (bug historique) → null.
+        if (p.photoUrl && String(p.photoUrl).indexOf("http") !== 0) p.photoUrl = null;
+        return true;
       });
     })();
   } finally { window._hydratingState = false; }
@@ -1035,6 +1069,7 @@ async function doLogout() {
   // dans les 2,5 s précédant le logout est perdue à la reconnexion.
   try { if (typeof supaSaveUserState === "function") await supaSaveUserState(); } catch(e) {}
   try { await supa.auth.signOut(); } catch(e) {}
+  discardPendingStateSave();
   localStorage.removeItem("passio_uid");
   localStorage.removeItem(STATE_KEY);
   toast("👋 Déconnecté — à bientôt !");
@@ -1170,6 +1205,7 @@ async function doDeleteAccount() {
     try { await supa.auth.signOut(); } catch (e) {}
   }
   // Purge locale complète
+  discardPendingStateSave();
   try {
     Object.keys(localStorage)
       .filter(function (k) { return k.indexOf("passio") !== -1 || k === "sb-njkiyoklssvefstljemx-auth-token"; })
