@@ -531,7 +531,9 @@ function changeCoverPhoto(event) {
   const file = event.target.files[0];
   if (event.target) event.target.value = "";
   if (!file) return;
-  _readAndCrop(file, { aspect: 1080 / 320, outW: 1080, outH: 320, round: false, title: "Recadre ta photo de couverture" })
+  // 16:9 — même ratio que l'affichage .main-profile-cover : la photo est
+  // visible ENTIÈRE sur le profil, telle que cadrée ici (plus le bandeau 1080×320).
+  _readAndCrop(file, { aspect: 16 / 9, outW: 1080, outH: 608, round: false, title: "Recadre ta photo de couverture" })
     .then(function(dataUrl) {
       _syncProfilePhoto("coverPhoto", "covers", dataUrl);
       toast("📷 Photo de couverture mise à jour !");
@@ -1571,11 +1573,12 @@ async function publishPost() {
 
   _publishInProgress = true;
 
-  // Validation spéciale carnet de voyage
+  // Validation spéciale carnet de voyage (libérer le verrou sinon plus aucune
+  // publication possible après une validation échouée)
   if (studioType === "vlog") {
     const dest = ($("#vlogDestination") && $("#vlogDestination").value || "").trim();
-    if (!dest) { toast("Destination obligatoire pour un carnet."); return; }
-    if (!vlogState.steps || vlogState.steps.length === 0) { toast("Ajoute au moins un jour."); return; }
+    if (!dest) { _publishInProgress = false; toast("Destination obligatoire pour un carnet."); return; }
+    if (!vlogState.steps || vlogState.steps.length === 0) { _publishInProgress = false; toast("Ajoute au moins un jour."); return; }
   }
 
   toast("⏳ Publication en cours...", "loading");
@@ -1584,14 +1587,16 @@ async function publishPost() {
   const prof = currentProfile();
   const g = state.user.general || {};
 
-  // Charger le username depuis Supabase par MY_UID (clé primaire correcte)
+  // Username manquant : résolution en ARRIÈRE-PLAN — l'await ici bloquait
+  // l'affichage optimiste du post d'un aller-retour réseau complet.
   if (!g.username && typeof supa !== "undefined" && supa && MY_UID) {
-    try {
-      const { data } = await supa.from("profiles").select("username").eq("id", MY_UID).maybeSingle();
+    supa.from("profiles").select("username").eq("id", MY_UID).maybeSingle().then(({ data }) => {
       if (data?.username) {
-        state.user.general.username = data.username;  // Sauvegarder dans state
+        state.user.general.username = data.username;
+        post.authorName = data.username;
+        saveState();
       }
-    } catch (e) {}
+    }).catch(() => {});
   }
 
   // ✅ Toujours afficher le vrai nom du profil!

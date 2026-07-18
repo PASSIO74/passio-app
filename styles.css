@@ -2446,12 +2446,20 @@
       margin-bottom: 4px;
     }
     .main-profile-cover {
-      height: 104px;
+      /* Format 16:9 (au lieu de 104px fixes) : la photo de couverture s'affiche
+         entière telle que recadrée — même ratio que le recadreur (1080×608). */
+      aspect-ratio: 16 / 9;
+      max-height: 280px;
+      width: 100%;
       background: var(--grad-hero);
       background-size: cover;
       background-position: center;
       position: relative;
       cursor: pointer;
+    }
+    /* Fallback vieux navigateurs sans aspect-ratio */
+    @supports not (aspect-ratio: 16 / 9) {
+      .main-profile-cover { height: 190px; }
     }
     .main-profile-cover-btn {
       position: absolute;

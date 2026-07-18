@@ -2286,10 +2286,12 @@ function hydrateConvsFromIDB() {
 }
 
 function saveConversations() {
-  if (conversationsState) conversationsState = deduplicateConversations(conversationsState);
-  // Debounce : évite des dizaines d'écritures localStorage en rafale
+  // Debounce : évite des dizaines d'écritures localStorage en rafale.
+  // La déduplication (parcours de TOUTES les convs + messages) est aussi dans le
+  // debounce : elle tournait en synchrone à CHAQUE appel (jank sur chaque envoi).
   clearTimeout(_saveConvTimer);
   _saveConvTimer = setTimeout(function() {
+    if (conversationsState) conversationsState = deduplicateConversations(conversationsState);
     try { localStorage.setItem("passio_conversations_v1", JSON.stringify(conversationsState)); } catch(e) {}
     // Store DURABLE (IndexedDB, sans limite ~5 Mo) : si le localStorage ci-dessus
     // échoue sur quota, les données restent sauvegardées ici sans perte.
@@ -2889,11 +2891,19 @@ function shareUserProfile(userId, name) {
 function renderMessages() {
   const list = $("#messageList");
   if (!list) return;
+  // Badge nav TOUJOURS à jour (visible depuis tous les écrans)…
+  try { if (typeof renderMsgBadge === "function") renderMsgBadge(); } catch(e) {}
+  // …mais la LISTE n'est reconstruite que si elle est visible. Elle était
+  // rebuild à chaque envoi/réception même cachée derrière la conversation
+  // plein écran ou un autre écran. goTo('messages') et closeConversation()
+  // rappellent renderMessages() → rattrapage garanti à l'affichage.
+  const _scr = document.getElementById("screen-messages");
+  const _fp = document.getElementById("conv-fullpage");
+  if ((_scr && !_scr.classList.contains("active")) || (_fp && _fp.classList.contains("active"))) return;
   const convs = getConversations();
 
   // Génère les pills lu/non lu
   renderMessageFilters();
-  try { if (typeof renderMsgBadge === "function") renderMsgBadge(); } catch(e) {}
 
   const _q = (window._msgSearchQuery || "").trim().toLowerCase();
   const _showArch = !!window._showArchived;
@@ -3151,6 +3161,11 @@ async function openConversation(convId) {
       var c2 = convs2.find(function(x) { return x.id === convId; });
       if (!c2) return;
       var remote = supaMessages || [];
+      // Signature avant fusion : si rien ne change, on ÉVITE le 2ᵉ re-render
+      // (flash visible + éléments média recréés à CHAQUE ouverture de conv).
+      var _sigOf = function(list) { return (list || []).map(function(m){ return m.id + (m.status || ""); }).join(","); };
+      var _sigBefore = _sigOf(c2.messages);
+      var _readBefore = !!c2._otherRead;
       // Créer un map des messages Supabase par ID
       var remoteMap = {};
       remote.forEach(function(m) { if (m.id) remoteMap[m.id] = m; });
@@ -3173,7 +3188,9 @@ async function openConversation(convId) {
       c2.messages.sort(function(a, b) { return (a.at || 0) - (b.at || 0); });
       c2._otherRead = true;
       saveConversations();
-      if (window._openedConvId === convId) {
+      // Re-render seulement si la fusion a réellement changé quelque chose
+      // (nouveau message, statut, ou passage non-lu → lu des accusés).
+      if (window._openedConvId === convId && (_sigOf(c2.messages) !== _sigBefore || !_readBefore)) {
         renderConvFpThread(c2, displayName);
         if (thread) thread.scrollTop = thread.scrollHeight;
       }
@@ -3261,8 +3278,9 @@ function renderConvFpThread(c, displayName) {
     // Statut d'envoi (mes messages) : 🕓 en cours, ⚠️ échec (cliquable pour réessayer).
     var statusInd = "";
     if (isMe) {
-      if (m.status === "sending") statusInd = ' <span style="opacity:0.55;">🕓</span>';
-      else if (m.status === "failed") statusInd = ' <span style="color:#ef4444;cursor:pointer;font-weight:700;" onclick="_retryMsg(\'' + c.id + '\',\'' + m.id + '\')">⚠️ réessayer</span>';
+      // Holder [data-msgst] : _setMsgStatus patche cet indicateur EN PLACE
+      // (sans re-render du fil, qui ramènerait le scroll en bas).
+      statusInd = '<span data-msgst="' + m.id + '">' + _msgStatusIndHtml(c.id, m.id, m.status) + '</span>';
     }
 
     // Temps — affiché sur chaque message avec heure exacte (HH:MM)
@@ -3849,16 +3867,27 @@ function _outboxAdd(convId, msgId, content) {
 }
 function _outboxRemove(msgId) { _outboxSave(_outboxLoad().filter(function(x){ return x.msgId !== msgId; })); }
 
-// Met à jour le statut d'un message local et rafraîchit le fil si ouvert.
+// HTML de l'indicateur d'envoi (🕓 en cours / ⚠️ échec cliquable / rien si envoyé).
+function _msgStatusIndHtml(convId, msgId, status) {
+  if (status === "sending") return ' <span style="opacity:0.55;">🕓</span>';
+  if (status === "failed") return ' <span style="color:#ef4444;cursor:pointer;font-weight:700;" onclick="_retryMsg(\'' + convId + '\',\'' + msgId + '\')">⚠️ réessayer</span>';
+  return '';
+}
+
+// Met à jour le statut d'un message local. Patch EN PLACE de l'indicateur via le
+// holder [data-msgst] : l'ancien re-render complet du fil à chaque 🕓→envoyé
+// recréait 40 bulles (médias inclus) et ramenait le scroll tout en bas.
 function _setMsgStatus(convId, msgId, status) {
   var convs = getConversations();
   var c = convs.find(function(x){ return x.id === convId; }); if (!c) return;
   var m = (c.messages || []).find(function(x){ return x.id === msgId; }); if (!m) return;
   m.status = status;
   saveConversations();
-  if (window._openedConvId === convId) {
-    try { var fp = document.getElementById("conv-fullpage"); renderConvFpThread(c, fp ? fp.getAttribute("data-display-name") : (c.userName||"")); } catch(e) {}
-  }
+  if (window._openedConvId !== convId) return;
+  var holder = document.querySelector('#convFpThread [data-msgst="' + msgId + '"]');
+  if (holder) { holder.innerHTML = _msgStatusIndHtml(convId, msgId, status); return; }
+  // Holder absent (message hors page affichée) : repli sur le re-render complet.
+  try { var fp = document.getElementById("conv-fullpage"); renderConvFpThread(c, fp ? fp.getAttribute("data-display-name") : (c.userName||"")); } catch(e) {}
 }
 
 // Envoie un message texte/enveloppe à Supabase, gère statut (sending→sent/failed)
