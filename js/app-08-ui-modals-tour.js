@@ -1703,7 +1703,9 @@ function bumpQuest(type) {
       changed = true;
     }
   });
-  if (changed) { saveState(); renderQuests(); }
+  // renderQuests seulement si le Wallet est visible : rebuild d'un écran caché =
+  // lag gratuit à chaque like/commentaire (goTo('wallet') re-rend de toute façon).
+  if (changed) { saveState(); if (typeof _walletScreenActive === "function" && _walletScreenActive()) renderQuests(); }
 }
 
 function claimQuest(id) {

@@ -603,10 +603,10 @@ function _postGifComment(threadId, gifUrl) {
   if (typeof grantReward === "function") { try { grantReward("comment"); } catch (e) {} }
   if (typeof _refreshCommentThreadUI === "function") _refreshCommentThreadUI(threadId);
   if (kind === "event" && typeof _patchEventCommentsInline === "function") { try { _patchEventCommentsInline(threadId); } catch (e) {} }
-  // Met à jour le compteur 💬 sur la carte du fil (si aucune vue commentaires ouverte).
-  if (kind === "post" && typeof renderFeed === "function" && !document.getElementById("commentsBox")
-      && !(document.getElementById("postDetailPage") && document.getElementById("postDetailPage").style.display === "flex")) {
-    try { renderFeed(); } catch (e) {}
+  // Met à jour le compteur 💬 sur la carte du fil — patch EN PLACE (l'ancien
+  // renderFeed() reconstruisait tout le fil = lag à chaque GIF posté).
+  if (kind === "post" && typeof _patchPostCommentCount === "function") {
+    try { _patchPostCommentCount(threadId); } catch (e) {}
   }
   if (typeof toast === "function") toast("GIF ajouté en commentaire 🎬");
   return false;

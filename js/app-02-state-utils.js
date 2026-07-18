@@ -599,6 +599,15 @@ function rewardToast(amount, passia, reason) {
 }
 
 // ======== REWARDS ========
+// Le Wallet n'est re-rendu par une récompense QUE s'il est à l'écran : renderWallet
+// reconstruit guide + transactions + leaderboard + quêtes (~lourd), et goTo('wallet')
+// le re-rend de toute façon à la navigation → le faire sur un écran caché = pur lag
+// (ressenti sur CHAQUE commentaire/réponse/GIF via grantReward).
+function _walletScreenActive() {
+  var el = document.getElementById("screen-wallet");
+  return !!(el && el.classList.contains("active"));
+}
+
 function grantReward(kind, customLabel) {
   const r = REWARDS[kind];
   if (!r) return;
@@ -615,7 +624,7 @@ function grantReward(kind, customLabel) {
   });
   saveState();
   renderTopbar();
-  renderWallet();
+  if (_walletScreenActive()) renderWallet();
   rewardToast(r.pts, r.passia, customLabel || r.label);
   checkRankUp(_prevScore);
 }
@@ -644,7 +653,7 @@ function awardLikeReceived() {
   });
   saveState();
   try { renderTopbar(); } catch (e) {}
-  try { renderWallet(); } catch (e) {}
+  try { if (_walletScreenActive()) renderWallet(); } catch (e) {}
   if (passia) rewardToast(REWARDS.like_received.pts || 2, passia, "Ton contenu plaît !");
   checkRankUp(_prevScore);
 }
@@ -2457,7 +2466,7 @@ function renderPostHTML(p) {
       <span class="post-action ${likeClass}" data-action="like" onclick="likePost('${p.id}', false, this)">
         ${liked ? "❤️" : "🤍"} ${p.likes || 0}
       </span>
-      <span class="post-action" onclick="openComments('${p.id}')">💬 ${commentThreadCount(p.comments)}</span>
+      <span class="post-action" data-cmtcount="${p.id}" onclick="openComments('${p.id}')">💬 ${commentThreadCount(p.comments)}</span>
       <span class="post-action" onclick="return showEmojiPickerForPost('${p.id}', event);" title="Emoji & GIF">😊</span>
       <span class="post-action" onclick="event.stopPropagation();sharePost('${p.id}')" title="Partager" aria-label="Partager">
         ${shareIconSvg(18)}
@@ -2532,7 +2541,7 @@ async function openPost(id) {
         <span class="post-action ${liked ? "liked" : ""}" onclick="event.stopPropagation(); likePostDetail('${id}', this);">
           ${liked ? "❤️" : "🤍"} ${post.likes || 0}
         </span>
-        <span class="post-action" onclick="openComments('${id}')">💬 ${commentThreadCount(post.comments)}</span>
+        <span class="post-action" data-cmtcount="${id}" onclick="openComments('${id}')">💬 ${commentThreadCount(post.comments)}</span>
         <span class="post-action" onclick="return showEmojiPickerForPost('${id}', event);" title="Emoji & GIF">😊</span>
         <span class="post-action" onclick="event.stopPropagation();sharePost('${id}')" title="Partager" aria-label="Partager">
           ${shareIconSvg(18)}

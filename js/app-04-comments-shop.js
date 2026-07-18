@@ -645,6 +645,17 @@ function _patchCmtReact(threadId, nodeId) {
   holders.forEach(function(h){ h.innerHTML = html; });
   return true;
 }
+// Patch EN PLACE le compteur « 💬 N » d'un post partout où il est affiché (carte
+// du fil [data-cmtcount] + vue détail) — remplace le renderFeed() complet qui
+// reconstruisait tout le fil derrière la modale à chaque commentaire (gros lag).
+function _patchPostCommentCount(postId) {
+  var post = (typeof findPostAnywhere === "function") ? findPostAnywhere(postId) : null;
+  if (!post) return;
+  var n = (typeof commentThreadCount === "function") ? commentThreadCount(post.comments) : (post.comments || []).length;
+  document.querySelectorAll('[data-cmtcount="' + postId + '"]').forEach(function (el) {
+    el.innerHTML = "💬 " + n;
+  });
+}
 // Patch EN PLACE le bouton like d'un commentaire/réponse (holder [data-cmtlike]).
 function _patchCmtLike(threadId, nodeId, pop) {
   var found = (typeof _findCommentNode === "function") ? _findCommentNode(threadId, nodeId) : null;
@@ -1019,7 +1030,9 @@ function submitComment(postId) {
   var _tt = document.querySelector(".modal-title");
   if (_tt) _tt.textContent = "Discussion · " + commentThreadCount(post.comments);
   if (typeof _syncComposerSendState === "function") _syncComposerSendState(_ta);
-  if (typeof renderFeed === "function") { try { renderFeed(); } catch (e) {} }
+  // Compteur 💬 de la carte/du détail patché EN PLACE (fini le renderFeed complet
+  // derrière la modale : ~100 ms de rebuild du fil à CHAQUE commentaire publié).
+  try { _patchPostCommentCount(postId); } catch (e) {}
 }
 
 // Active/désactive le bouton « Publier » selon le contenu du champ (façon IG/FB :
@@ -1337,8 +1350,9 @@ function deleteCommentEntry(threadId, commentId, localOnly) {
   var idx = thread.comments.findIndex(function(c){ return c.id === commentId; });
   if (idx > -1) thread.comments.splice(idx, 1);
   if (typeof thread.save === "function") thread.save();
-  // Reflète sur le post local (compteur de la carte fil) le cas échéant.
-  if (thread.kind === "post" && typeof renderFeed === "function") { try { renderFeed(); } catch(e){} }
+  // Reflète sur le post local (compteur de la carte fil) le cas échéant — patch
+  // en place, sans reconstruire tout le fil.
+  if (thread.kind === "post") { try { _patchPostCommentCount(threadId); } catch(e){} }
   _refreshCommentThreadUI(threadId);
   if (!localOnly) {
     _supaDeleteCommentRow(commentId);
@@ -1486,6 +1500,7 @@ function submitCommentSheet(threadId) {
       if (typeof grantReward === "function") grantReward("comment");
       if (typeof supaAddComment === "function" && typeof MY_UID !== "undefined" && MY_UID) supaAddComment(threadId, t, _cid);
       _refreshCommentThreadUI(threadId);
+      try { _patchPostCommentCount(threadId); } catch (e) {}
     }
   }
 }
