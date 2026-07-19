@@ -908,12 +908,13 @@ async function meOnMedia(ev) {
   if (!isVideo && (file.type || "").indexOf("image/") !== 0) { toast("Photo ou vidéo uniquement"); return; }
   // Une bobine est une vidéo : on refuse les photos même via la galerie.
   if (meState.mode === "bobine" && !isVideo) { toast("Une bobine est une vidéo — choisis une vidéo"); return; }
-  var LIMIT = 25 * 1024 * 1024;     // au-delà : on tente une compression au lieu de refuser
+  var COMPRESS_OVER = 8 * 1024 * 1024;  // au-delà : ré-encodage 720p (l'upload de vidéos brutes de 20-25 Mo expirait systématiquement → bobines sans vidéo en DB)
+  var LIMIT = 25 * 1024 * 1024;     // repli brut max si la compression échoue
   var HARD = 150 * 1024 * 1024;     // garde-fou mémoire absolu
   try {
     var dataUrl;
     if (isVideo) {
-      if (file.size <= LIMIT) {
+      if (file.size <= COMPRESS_OVER) {
         dataUrl = await _meReadFile(file);
       } else if (file.size <= HARD && typeof passioCompressVideo === "function") {
         try {
@@ -923,8 +924,14 @@ async function meOnMedia(ev) {
           if (!dataUrl || dataUrl.length < 1000) throw new Error("empty result");
         } catch (e) {
           _meHideProgress();
-          toast("Vidéo trop lourde à optimiser (" + Math.round(file.size / 1048576) + " Mo). Filme dans l'app ou choisis une vidéo < 25 Mo.");
-          return;
+          if (file.size <= LIMIT) {
+            // Compression indisponible mais taille encore uploadable : on garde la
+            // vidéo brute (le timeout d'upload est désormais proportionnel à la taille).
+            dataUrl = await _meReadFile(file);
+          } else {
+            toast("Vidéo trop lourde à optimiser (" + Math.round(file.size / 1048576) + " Mo). Filme dans l'app ou choisis une vidéo < 25 Mo.");
+            return;
+          }
         }
       } else {
         toast("Vidéo trop lourde (" + Math.round(file.size / 1048576) + " Mo). Filme directement dans l'app ou choisis une vidéo < 25 Mo.");
@@ -948,9 +955,20 @@ function meSetMedia(dataUrl, type) {
     // en base64 pour la publication/l'upload.
     var blob = _meDataUrlToBlob(dataUrl);
     var src = blob ? (meState._previewUrl = URL.createObjectURL(blob)) : dataUrl;
-    box.innerHTML = '<video src="' + src + '" muted playsinline loop autoplay></video>';
-    var vid = box.querySelector("video");
-    if (vid) { try { vid.play(); } catch (_) {} } // certains navigateurs exigent un play() explicite après le set du src
+    // ⚠️ Élément construit en DOM (PAS innerHTML) : l'attribut `muted` posé par le
+    // parseur HTML n'est pas toujours répercuté sur la propriété → la vidéo est
+    // traitée comme sonore → autoplay refusé → aperçu figé/noir (iOS surtout).
+    box.innerHTML = "";
+    var vid = document.createElement("video");
+    vid.muted = true; vid.defaultMuted = true; vid.loop = true; vid.autoplay = true;
+    vid.preload = "auto"; vid.playsInline = true;
+    vid.setAttribute("muted", ""); vid.setAttribute("playsinline", ""); vid.setAttribute("webkit-playsinline", "");
+    vid.src = src;
+    box.appendChild(vid);
+    // iOS ne peint pas la 1ʳᵉ image tant que la lecture n'a pas démarré → on
+    // force un micro-seek pour afficher une vraie image au lieu d'un cadre noir.
+    vid.addEventListener("loadedmetadata", function() { try { if (vid.currentTime === 0) vid.currentTime = 0.01; } catch (_) {} }, { once: true });
+    _meTryPlayPreview(vid);
     _meSetupVideoPreviewControls(vid);
   } else {
     box.innerHTML = '<img src="' + dataUrl + '" alt=""/>';
@@ -975,12 +993,35 @@ function _meRevokePreviewUrl() {
   if (meState._previewUrl) { try { URL.revokeObjectURL(meState._previewUrl); } catch (_) {} meState._previewUrl = null; }
 }
 
+// Lance la lecture de l'aperçu ; si l'autoplay est refusé malgré muted (politiques
+// mobiles), affiche un grand ▶ tappable — le tap est un geste utilisateur, donc
+// play() est alors autorisé. Sans ça : aperçu figé « impossible à prévisualiser ».
+function _meTryPlayPreview(video) {
+  if (!video) return;
+  var p;
+  try { p = video.play(); } catch (_) {}
+  if (!p || !p.catch) return;
+  p.catch(function() {
+    video.muted = true;
+    var p2; try { p2 = video.play(); } catch (_) {}
+    if (p2 && p2.catch) p2.catch(function() {
+      var canvas = document.getElementById("meCanvas"); if (!canvas || document.getElementById("mePlayOverlay")) return;
+      var btn = document.createElement("button");
+      btn.type = "button"; btn.id = "mePlayOverlay"; btn.className = "me-play-overlay";
+      btn.setAttribute("aria-label", "Lire la vidéo"); btn.textContent = "▶";
+      btn.onclick = function(e) { e.stopPropagation(); try { video.play(); } catch (_) {} btn.remove(); };
+      canvas.appendChild(btn);
+    });
+  });
+}
+
 // Contrôles de prévisualisation pour la vidéo en phase édition : l'utilisateur
 // peut RELIRE sa bobine (lecture/pause + son) avant de la valider/publier. Posés
 // dans #meCanvas au-dessus de la couche d'overlays (qui sinon intercepterait les
 // clics). Non capturés dans le média publié (publication = meState.media + overlays).
 function _meRemoveVideoControls() {
   var c = document.getElementById("mePreviewCtrls"); if (c) c.remove();
+  var o = document.getElementById("mePlayOverlay"); if (o) o.remove();
 }
 function _meSetupVideoPreviewControls(video) {
   if (!video) return;
@@ -1197,10 +1238,52 @@ async function mePublish() {
     state.userPosts = state.userPosts || [];
     state.userPosts.unshift(post);
     saveState();
-    if (typeof supaPublishPostWithRetry === "function") supaPublishPostWithRetry(post);
+    // Publication ASYNCHRONE avec retour honnête : l'ancien code affichait
+    // « Bobine publiée ! » sans attendre — en cas d'échec d'upload la bobine
+    // n'existait nulle part (base64 purgé au reload) et l'utilisateur n'en
+    // savait rien. Ici : envoi en arrière-plan, toast selon le résultat réel,
+    // et réessais automatiques tant que l'onglet est ouvert.
+    _publishReelWithFeedback(post);
     try { renderFeed(); } catch(e) {}
     setTimeout(function() { try { if (typeof openReels === "function") openReels(); } catch(e) {} }, 80);
-    toast("🎬 Bobine publiée !");
+    toast("🎬 Bobine en cours de publication…");
+  }
+}
+
+// Envoie une bobine sur Supabase et informe honnêtement l'utilisateur. En cas
+// d'échec : la copie locale (base64) reste jouable dans CETTE session, et on
+// réessaie automatiquement (retour du réseau + toutes les 45 s, 8 essais max).
+function _publishReelWithFeedback(post) {
+  if (typeof supaPublishPostWithRetry !== "function") return;
+  supaPublishPostWithRetry(post).then(function(ok) {
+    if (ok) {
+      post._pendingSync = false;
+      try { saveState(); } catch (e) {}
+      toast("✅ Bobine publiée !");
+      return;
+    }
+    post._pendingSync = true;
+    toast("⚠️ Vidéo pas encore envoyée — nouvel essai automatique. Garde l'app ouverte.");
+    _scheduleReelRetry();
+  }).catch(function() { post._pendingSync = true; _scheduleReelRetry(); });
+}
+function _scheduleReelRetry() {
+  window._reelRetryCount = (window._reelRetryCount || 0);
+  if (window._reelRetryTimer || window._reelRetryCount >= 8) return;
+  var run = function() {
+    window._reelRetryTimer = null;
+    var pending = (state.userPosts || []).filter(function(p) { return p && p._pendingSync && p.isReel; });
+    if (!pending.length) { window._reelRetryCount = 0; return; }
+    window._reelRetryCount++;
+    pending.forEach(function(p) { _publishReelWithFeedback(p); });
+  };
+  window._reelRetryTimer = setTimeout(run, 45000);
+  if (!window._reelRetryOnline) {
+    window._reelRetryOnline = true;
+    window.addEventListener("online", function() {
+      clearTimeout(window._reelRetryTimer); window._reelRetryTimer = null;
+      run();
+    });
   }
 }
 
@@ -2109,35 +2192,60 @@ async function supaPublishPostWithRetry(post, maxRetries = 2) {
   // (le JOIN profiles!author_id retourne null sinon → pas de nom d'auteur)
   try { await supaUpsertProfile(); } catch(e) {}
 
+  // Timeout d'upload PROPORTIONNEL à la taille du média : l'ancien plafond fixe
+  // (20 s vidéo) expirait systématiquement sur une vidéo de 15-25 Mo → le retry
+  // ré-uploadait tout, puis échouait pareil → bobines/posts sans média en prod.
+  // ~5 s par Mo + 15 s de marge, borné à 3 min. (Déjà une URL http → 5 s symbolique.)
+  const _uploadTimeoutMs = (b64) => {
+    if (!b64 || typeof b64 !== "string" || b64.indexOf("data:") !== 0) return 5000;
+    const mb = (b64.length * 0.75) / 1048576;
+    return Math.min(180000, 15000 + Math.ceil(mb) * 5000);
+  };
+
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       // STEP 1: Uploader les médias
       let mediaUrl = null;
+      let hadMedia = false; // le post embarque un média (base64 ou URL)
 
       if (post.type === "photo" && post.image) {
+        hadMedia = true;
         mediaUrl = await Promise.race([
           supaUploadMedia(post.id, "photos", post.image, "image"),
-          new Promise((_, reject) => setTimeout(() => reject(new Error("Upload timeout")), 12000))
+          new Promise((_, reject) => setTimeout(() => reject(new Error("Upload timeout")), _uploadTimeoutMs(post.image)))
         ]);
       } else if (post.type === "video" && post.video) {
+        hadMedia = true;
         mediaUrl = await Promise.race([
           supaUploadMedia(post.id, "videos", post.video, "video"),
-          new Promise((_, reject) => setTimeout(() => reject(new Error("Upload timeout")), 20000))
+          new Promise((_, reject) => setTimeout(() => reject(new Error("Upload timeout")), _uploadTimeoutMs(post.video)))
         ]);
       } else if (post.type === "audio" && post.audio) {
+        hadMedia = true;
         mediaUrl = await Promise.race([
           supaUploadMedia(post.id, "audios", post.audio, "audio"),
-          new Promise((_, reject) => setTimeout(() => reject(new Error("Upload timeout")), 15000))
+          new Promise((_, reject) => setTimeout(() => reject(new Error("Upload timeout")), _uploadTimeoutMs(post.audio)))
         ]);
+      }
+
+      // ⚠️ Un post MÉDIA sans URL Storage ne doit JAMAIS être inséré : la ligne
+      // serait créée avec media_url NULL (le base64 est filtré plus bas) → une
+      // bobine/vidéo invisible et irréparable. On échoue → retry (ou échec franc,
+      // remonté à l'appelant qui garde la copie locale et réessaie).
+      if (hadMedia && !(mediaUrl && typeof mediaUrl === "string" && mediaUrl.indexOf("http") === 0)) {
+        throw new Error("Upload média échoué (pas d'URL Storage)");
       }
 
       // Réécrire l'URL Storage dans le post local : le base64 est remplacé par
       // l'URL → l'affichage et la persistance (saveState) n'utilisent plus le
       // base64 (évite le quota localStorage et garde l'image après reload).
+      // saveState() tout de suite : un retry (insert lent) ne ré-uploadera pas,
+      // supaUploadMedia renvoie l'URL http telle quelle.
       if (mediaUrl && typeof mediaUrl === "string" && mediaUrl.indexOf("http") === 0) {
         if (post.type === "photo") post.image = mediaUrl;
         else if (post.type === "video") post.video = mediaUrl;
         else if (post.type === "audio") post.audio = mediaUrl;
+        try { saveState(); } catch (e) {}
       }
 
       // Carnet de voyage : uploader la cover + les médias d'étapes sur Storage
@@ -2165,10 +2273,13 @@ async function supaPublishPostWithRetry(post, maxRetries = 2) {
         ...(post.sharedReelData && { shared_data: JSON.stringify(post.sharedReelData) }),
       };
 
+      // Timeout d'insert : l'ancien 3 s était trop court juste après un gros upload
+      // (connexion encore saturée) → la ligne n'était jamais créée alors que la
+      // vidéo, elle, était bien sur Storage (bobines orphelines constatées en prod).
       const insertPromise = supa.from("posts").insert([postData]).select();
       const { data, error } = await Promise.race([
         insertPromise,
-        new Promise((_, reject) => setTimeout(() => reject(new Error("Insert timeout")), post.type === "vlog" ? 8000 : 3000))
+        new Promise((_, reject) => setTimeout(() => reject(new Error("Insert timeout")), post.type === "vlog" ? 15000 : 12000))
       ]);
 
       // Colonne `vlog` absente (migration non appliquée) → réessayer SANS vlog
@@ -2179,6 +2290,9 @@ async function supaPublishPostWithRetry(post, maxRetries = 2) {
         if (retry.error) throw retry.error;
         return true;
       }
+      // Clé dupliquée = un insert précédent (timeout côté client) a en fait réussi
+      // côté serveur → le post existe, c'est un succès.
+      if (error && (error.code === "23505" || /duplicate key/i.test(error.message || ""))) return true;
       if (error) throw error;
 
       return true;

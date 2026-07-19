@@ -1759,10 +1759,32 @@ function buildReels() {
       if (seen.has(p.id)) return false;
       seen.add(p.id);
       if (blocked.length && blocked.includes(p.authorId)) return false;
+      // Lignes fantômes : d'anciennes bobines ont été insérées en DB avec
+      // media_url NULL (upload expiré) → aucune vidéo à montrer. On les masque
+      // (sauf ma bobine en cours d'envoi, qui garde son base64 local jouable).
+      if (!(p.video || p.image || p.photo || p.coverPhotoUrl || p.cover)) return false;
       return true;
     })
     .sort(function(a, b) { return (b.createdAt || 0) - (a.createdAt || 0); })
     .slice(0, 30);
+}
+
+// blob: URL mise en cache pour lire une vidéo locale encore en base64 (bobine
+// fraîchement filmée, pas encore uploadée) : un <video src="data:…"> de
+// plusieurs Mo ne se lit pas de façon fiable (cadre noir figé, surtout mobile) —
+// même raison que l'aperçu de l'éditeur média (meSetMedia).
+function _reelVideoSrc(post) {
+  var v = post.video || "";
+  if (v.indexOf("data:") !== 0) return v;
+  window._reelBlobUrls = window._reelBlobUrls || {};
+  if (window._reelBlobUrls[post.id]) return window._reelBlobUrls[post.id];
+  try {
+    if (typeof _meDataUrlToBlob === "function") {
+      var blob = _meDataUrlToBlob(v);
+      if (blob) return (window._reelBlobUrls[post.id] = URL.createObjectURL(blob));
+    }
+  } catch (e) {}
+  return v;
 }
 
 function authorOfReel(post) {
@@ -1796,7 +1818,7 @@ function reelMediaHTML(post) {
   if (post.type === "video" && post.video) {
     const poster = post.poster ? ` poster="${post.poster}"` : "";
     const fallback = post.fallback ? ` onerror="reelVideoFallback(this, '${post.fallback}')"` : "";
-    return `<video class="reel-media" src="${post.video}"${poster}${fallback} muted playsinline loop preload="metadata"></video>`;
+    return `<video class="reel-media" src="${_reelVideoSrc(post)}"${poster}${fallback} muted playsinline loop preload="metadata"></video>`;
   }
   // Sinon : utilise la cover photo (existant pour les posts seed) ou la photo uploadée
   const src = post.photo || post.coverPhotoUrl || resolveCoverUrl(post.cover) || "";
@@ -1991,6 +2013,10 @@ function playReelAt(idx) {
   items.forEach((it, i) => {
     const vid = it.querySelector("video");
     if (!vid) return;
+    // muted en PROPRIÉTÉ : l'attribut posé par innerHTML n'est pas toujours
+    // répercuté → la vidéo est traitée comme sonore et play() est refusé
+    // (bobine figée/noire, surtout mobile). Même correctif que meSetMedia.
+    vid.muted = true; vid.defaultMuted = true;
     if (i === idx) { try { vid.currentTime = 0; vid.play().catch(()=>{}); } catch(e){} }
     else { try { vid.pause(); } catch(e){} }
   });
