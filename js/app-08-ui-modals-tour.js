@@ -702,13 +702,30 @@ function meCapturePhoto() {
   } catch(e) { toast("Impossible de prendre la photo"); }
 }
 
+// Meilleur format d'ENREGISTREMENT vidéo : mp4/H.264 D'ABORD — c'est le seul
+// format lisible PARTOUT (iPhone/Safari compris). Un webm (VP8/VP9) filmé sur
+// Android/desktop était INVISIBLE pour les testeurs iOS. webm reste le repli
+// pour les navigateurs sans encodeur H.264 (Chrome récent sait faire du mp4).
+function _passioBestVideoMime() {
+  if (!window.MediaRecorder || !MediaRecorder.isTypeSupported) return "";
+  var prefs = [
+    "video/mp4;codecs=avc1.42E01E,mp4a.40.2",
+    "video/mp4;codecs=avc1",
+    "video/mp4",
+    "video/webm;codecs=vp9,opus",
+    "video/webm;codecs=vp8,opus",
+    "video/webm",
+  ];
+  for (var i = 0; i < prefs.length; i++) {
+    try { if (MediaRecorder.isTypeSupported(prefs[i])) return prefs[i]; } catch (e) {}
+  }
+  return "";
+}
+
 // Enregistrement vidéo (maintien du déclencheur).
 function meStartRecording() {
   if (!meCam.stream || !window.MediaRecorder || meCam.recording) return;
-  var mime = (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")) ? "video/webm;codecs=vp9,opus"
-    : (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported("video/webm;codecs=vp8,opus")) ? "video/webm;codecs=vp8,opus"
-    : (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported("video/webm")) ? "video/webm"
-    : (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported("video/mp4")) ? "video/mp4" : "";
+  var mime = _passioBestVideoMime();
   meCam.chunks = [];
   // Bitrate plafonné : sans ça le navigateur enregistre à 2,5-8 Mbps → une
   // vidéo de 60 s pèse 20-30 Mo et sature le Storage (1 Go en gratuit).
@@ -873,8 +890,8 @@ function passioCompressVideo(file, opts, onProgress) {
         var at = vstream && vstream.getAudioTracks && vstream.getAudioTracks()[0];
         if (at) cstream.addTrack(at);
       } catch (e) {}
-      var mime = (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported("video/webm;codecs=vp8,opus")) ? "video/webm;codecs=vp8,opus"
-        : (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported("video/webm")) ? "video/webm" : "";
+      // mp4/H.264 en priorité (lisible sur iPhone) — même logique que meStartRecording.
+      var mime = (typeof _passioBestVideoMime === "function") ? _passioBestVideoMime() : "";
       var recOpts = { videoBitsPerSecond: bitrate, audioBitsPerSecond: 96000 };
       if (mime) recOpts.mimeType = mime;
       var rec;
@@ -914,7 +931,12 @@ async function meOnMedia(ev) {
   try {
     var dataUrl;
     if (isVideo) {
-      if (file.size <= COMPRESS_OVER) {
+      // Un webm n'est pas lisible sur iPhone : si le navigateur sait encoder en
+      // mp4, on CONVERTIT même un petit fichier (le ré-encodage sert alors de
+      // transcodage universel, pas seulement de compression).
+      var _isWebm = /webm/i.test(file.type || "");
+      var _canMp4 = (typeof _passioBestVideoMime === "function") && _passioBestVideoMime().indexOf("video/mp4") === 0;
+      if (file.size <= COMPRESS_OVER && !(_isWebm && _canMp4)) {
         dataUrl = await _meReadFile(file);
       } else if (file.size <= HARD && typeof passioCompressVideo === "function") {
         try {
@@ -2399,7 +2421,9 @@ async function supaUploadMedia(postId, folder, base64Data, mediaType) {
     const blob = new Blob([u8arr], { type: parts[0].split(":")[1].split(";")[0] });
 
     let ext = ".jpg";
-    if (mediaType === "video") ext = ".mp4";
+    // Extension fidèle au conteneur réel : un webm renommé .mp4 trompe les
+    // heuristiques de lecture (iOS surtout, qui se fie aussi à l'URL).
+    if (mediaType === "video") ext = (base64Data.indexOf("data:video/webm") === 0) ? ".webm" : ".mp4";
     else if (mediaType === "audio") ext = ".mp3";
     else if (base64Data.indexOf("data:image/webp") === 0) ext = ".webp";
     else if (base64Data.indexOf("data:image/png") === 0) ext = ".png";

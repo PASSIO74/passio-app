@@ -1732,6 +1732,19 @@ function getSeedReelPosts() {
 
 // Fallback automatique : si une source Pexels échoue, bascule sur la vidéo de secours
 // guaranteed-working (bucket Google sample). Appelé par onerror sur l'élément <video>.
+// Vidéo indécodable sur CET appareil (ex. webm hérité sur iPhone) : remplace le
+// cadre noir par un placeholder explicite. Ne se déclenche que sur une vraie
+// erreur de l'élément <video> (réseau ou codec).
+function _reelVideoError(videoEl) {
+  if (!videoEl || videoEl.dataset.errShown === "1") return;
+  videoEl.dataset.errShown = "1";
+  var ph = document.createElement("div");
+  ph.className = "reel-media";
+  ph.style.cssText = "background:linear-gradient(135deg,#4c1d95,#7c3aed);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;color:rgba(255,255,255,0.9);font-size:14px;font-weight:600;text-align:center;padding:24px;";
+  ph.innerHTML = '<span style="font-size:40px;">🎬</span>Vidéo non lisible sur cet appareil';
+  if (videoEl.parentNode) videoEl.parentNode.replaceChild(ph, videoEl);
+}
+
 function reelVideoFallback(videoEl, fallbackUrl) {
   if (!videoEl || !fallbackUrl) return;
   if (videoEl.dataset.fallbackUsed === "1") return;
@@ -1817,7 +1830,9 @@ function authorOfReel(post) {
 function reelMediaHTML(post) {
   if (post.type === "video" && post.video) {
     const poster = post.poster ? ` poster="${post.poster}"` : "";
-    const fallback = post.fallback ? ` onerror="reelVideoFallback(this, '${post.fallback}')"` : "";
+    // Sans fallback dédié : placeholder propre si l'appareil ne sait pas décoder
+    // la vidéo (ex. ancienne bobine webm lue sur iPhone) au lieu d'un cadre noir.
+    const fallback = post.fallback ? ` onerror="reelVideoFallback(this, '${post.fallback}')"` : ` onerror="_reelVideoError(this)"`;
     return `<video class="reel-media" src="${_reelVideoSrc(post)}"${poster}${fallback} muted playsinline loop preload="metadata"></video>`;
   }
   // Sinon : utilise la cover photo (existant pour les posts seed) ou la photo uploadée
