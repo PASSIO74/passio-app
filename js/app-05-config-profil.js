@@ -1872,6 +1872,7 @@ function renderReelHTML(post, idx) {
       </div>
       <div class="reel-overlay"></div>
       <span class="reel-tag-mood">${passion.emoji} ${escapeHtml(passion.label)} · ${moodLabel}</span>
+      ${post.type === "video" ? `<button class="reel-sound-btn" onclick="toggleReelsSound(event)" aria-label="Activer ou couper le son">${reelsState.soundOn ? "🔊" : "🔇"}</button>` : ""}
       <div class="reel-info">
         <div class="reel-author" onclick="_openReelAuthor('${escapeHtml(post.authorId || post.userId || '')}'); return false;" style="cursor:pointer;">
           <div class="reel-avatar" style="background:${author.color};">${author.emoji}</div>
@@ -2025,15 +2026,47 @@ function updateReelsCounter() {
 
 function playReelAt(idx) {
   const items = document.querySelectorAll("#reelsList .reel-item");
+  const soundOn = !!reelsState.soundOn;
   items.forEach((it, i) => {
     const vid = it.querySelector("video");
     if (!vid) return;
     // muted en PROPRIÉTÉ : l'attribut posé par innerHTML n'est pas toujours
     // répercuté → la vidéo est traitée comme sonore et play() est refusé
     // (bobine figée/noire, surtout mobile). Même correctif que meSetMedia.
-    vid.muted = true; vid.defaultMuted = true;
-    if (i === idx) { try { vid.currentTime = 0; vid.play().catch(()=>{}); } catch(e){} }
+    // Le SON suit le choix global (bouton 🔊 par bobine, mémorisé pour la session).
+    vid.muted = !soundOn; vid.defaultMuted = !soundOn;
+    if (i === idx) {
+      try {
+        vid.currentTime = 0;
+        vid.play().catch(() => {
+          // Autoplay AVEC son refusé (pas de geste récent) : on repasse en muet
+          // pour que la bobine joue quand même — le 🔇 reflète l'état réel.
+          if (!vid.muted) { reelsState.soundOn = false; vid.muted = true; vid.defaultMuted = true; _syncReelSoundBtns(); }
+          vid.play().catch(() => {});
+        });
+      } catch(e){}
+    }
     else { try { vid.pause(); } catch(e){} }
+  });
+}
+
+// Son des bobines : UN état pour tout le viewer (comme Instagram) — activer le
+// son sur une bobine l'active pour les suivantes, mémorisé pour la session.
+function toggleReelsSound(ev) {
+  if (ev) { ev.stopPropagation(); ev.preventDefault(); }
+  reelsState.soundOn = !reelsState.soundOn;
+  _syncReelSoundBtns();
+  const items = document.querySelectorAll("#reelsList .reel-item");
+  const cur = items[reelsState.current];
+  const vid = cur && cur.querySelector("video");
+  if (vid) {
+    vid.muted = !reelsState.soundOn; vid.defaultMuted = vid.muted;
+    if (vid.paused) { try { vid.play().catch(()=>{}); } catch(e){} }
+  }
+}
+function _syncReelSoundBtns() {
+  document.querySelectorAll("#reelsList .reel-sound-btn").forEach((b) => {
+    b.textContent = reelsState.soundOn ? "🔊" : "🔇";
   });
 }
 

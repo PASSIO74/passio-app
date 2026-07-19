@@ -5203,6 +5203,32 @@
       background: linear-gradient(180deg, rgba(0,0,0,0.45) 0%, transparent 22%, transparent 55%, rgba(0,0,0,0.78) 100%);
       pointer-events: none;
     }
+    /* Bouton son (bobine vidéo) : symétrique du tag mood, au-dessus des couches
+       média/overlay. Un état global pour tout le viewer (toggleReelsSound). */
+    .reel-sound-btn {
+      position: absolute;
+      top: 64px; right: 14px; z-index: 5;
+      width: 42px; height: 42px; border-radius: 50%;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      background: rgba(0, 0, 0, 0.45); color: #fff;
+      font-size: 17px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      backdrop-filter: blur(6px);
+    }
+    .reel-sound-btn:active { transform: scale(0.92); }
+    /* Bouton son (story vidéo) : au-dessus des zones de tap prev/next (z-index 2). */
+    .story-sound-btn {
+      position: absolute;
+      bottom: 16px; right: 14px; z-index: 5;
+      width: 42px; height: 42px; border-radius: 50%;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      background: rgba(0, 0, 0, 0.45); color: #fff;
+      font-size: 17px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      backdrop-filter: blur(6px);
+    }
+    .story-sound-btn:active { transform: scale(0.92); }
+
     .reel-tag-mood {
       position: absolute;
       top: 64px;

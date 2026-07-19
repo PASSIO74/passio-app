@@ -773,7 +773,12 @@ function _meOnRecordingStop() {
     if (dur < 500) { toast("Maintiens le bouton pour filmer ta bobine"); return; }
     if (!hasData) { toast("Enregistrement impossible — réessaie ou choisis une vidéo dans la galerie"); return; }
   } else if (dur < 700 || !hasData) { meCapturePhoto(); return; } // story : appui bref → photo
-  var blob = new Blob(meCam.chunks, { type: (meCam.chunks[0] && meCam.chunks[0].type) || "video/webm" });
+  // ⚠️ Type SANS paramètres codecs : « video/mp4;codecs=avc1…,mp4a… » contient
+  // une VIRGULE, or une data URL est coupée à la première virgule (RFC 2397) →
+  // le readAsDataURL produisait une URL invalide (aperçu noir + upload cassé
+  // dès qu'il y avait une piste audio). On garde juste « video/mp4 »/« video/webm ».
+  var recType = ((meCam.chunks[0] && meCam.chunks[0].type) || "video/webm").split(";")[0];
+  var blob = new Blob(meCam.chunks, { type: recType });
   if (!blob.size) {
     if (meState.mode === "bobine") toast("Enregistrement vide — réessaie");
     else meCapturePhoto();
@@ -870,7 +875,8 @@ function passioCompressVideo(file, opts, onProgress) {
   return new Promise(function(resolve, reject) {
     if (!window.MediaRecorder || !HTMLCanvasElement.prototype.captureStream) { reject(new Error("unsupported")); return; }
     var url = URL.createObjectURL(file);
-    function cleanup() { try { URL.revokeObjectURL(url); } catch (e) {} }
+    var actx = null; // AudioContext du routage audio (fermé au cleanup)
+    function cleanup() { try { URL.revokeObjectURL(url); } catch (e) {} try { if (actx) actx.close(); } catch (e) {} }
     var video = document.createElement("video");
     video.playsInline = true; video.preload = "auto"; video.src = url; video.volume = 0;
     video.onerror = function() { cleanup(); reject(new Error("video load failed")); };
@@ -885,11 +891,34 @@ function passioCompressVideo(file, opts, onProgress) {
       var ctx = canvas.getContext("2d");
       var cstream;
       try { cstream = canvas.captureStream(30); } catch (e) { cleanup(); reject(e); return; }
+      // AUDIO GARANTI : l'élément est routé via WebAudio vers un
+      // MediaStreamDestination dont la piste est ajoutée à l'enregistrement.
+      // createMediaElementSource DÉTOURNE la sortie de l'élément vers le graphe
+      // (rien n'est joué sur les haut-parleurs pendant l'optimisation), et comme
+      // le gain de l'élément s'applique au graphe, il faut volume=1 non-muet.
+      // L'ancien video.captureStream() perdait le son (piste absente avant play
+      // sur certains navigateurs, ou muette à cause de volume=0).
       try {
-        var vstream = video.captureStream ? video.captureStream() : (video.mozCaptureStream ? video.mozCaptureStream() : null);
-        var at = vstream && vstream.getAudioTracks && vstream.getAudioTracks()[0];
-        if (at) cstream.addTrack(at);
-      } catch (e) {}
+        var AC = window.AudioContext || window.webkitAudioContext;
+        if (AC) {
+          actx = new AC();
+          var srcNode = actx.createMediaElementSource(video);
+          var dest = actx.createMediaStreamDestination();
+          srcNode.connect(dest); // PAS connecté à actx.destination → silencieux
+          video.muted = false; video.volume = 1;
+          var at0 = dest.stream.getAudioTracks()[0];
+          if (at0) cstream.addTrack(at0);
+          try { actx.resume(); } catch (e) {}
+        }
+      } catch (e) { actx = null; }
+      if (!actx) {
+        // Repli historique (pas d'AudioContext — quasi inexistant en pratique).
+        try {
+          var vstream = video.captureStream ? video.captureStream() : (video.mozCaptureStream ? video.mozCaptureStream() : null);
+          var at = vstream && vstream.getAudioTracks && vstream.getAudioTracks()[0];
+          if (at) cstream.addTrack(at);
+        } catch (e) {}
+      }
       // mp4/H.264 en priorité (lisible sur iPhone) — même logique que meStartRecording.
       var mime = (typeof _passioBestVideoMime === "function") ? _passioBestVideoMime() : "";
       var recOpts = { videoBitsPerSecond: bitrate, audioBitsPerSecond: 96000 };
@@ -900,7 +929,8 @@ function passioCompressVideo(file, opts, onProgress) {
       rec.ondataavailable = function(ev) { if (ev.data && ev.data.size) chunks.push(ev.data); };
       rec.onstop = function() {
         cancelAnimationFrame(raf);
-        var blob = new Blob(chunks, { type: (chunks[0] && chunks[0].type) || "video/webm" });
+        // Type sans paramètres codecs (virgule interdite dans une data URL — cf. _meOnRecordingStop).
+        var blob = new Blob(chunks, { type: ((chunks[0] && chunks[0].type) || "video/webm").split(";")[0] });
         var r = new FileReader();
         r.onload = function() { cleanup(); resolve(r.result); };
         r.onerror = function() { cleanup(); reject(r.error); };
@@ -1001,10 +1031,12 @@ function meSetMedia(dataUrl, type) {
 // Convertit une data URL base64 en Blob (pour un aperçu vidéo via blob: URL).
 function _meDataUrlToBlob(dataUrl) {
   try {
-    var comma = dataUrl.indexOf(",");
-    var meta = dataUrl.slice(0, comma), b64 = dataUrl.slice(comma + 1);
-    if (meta.indexOf("base64") === -1) return null;
-    var mime = (meta.match(/data:([^;]+)/) || [])[1] || "application/octet-stream";
+    // Repère « ;base64, » (PAS la première virgule : un mime avec codecs vidéo+audio
+    // « …avc1,mp4a… » contient une virgule et cassait le découpage).
+    var mi = dataUrl.indexOf(";base64,");
+    if (mi === -1) return null;
+    var b64 = dataUrl.slice(mi + 8);
+    var mime = (dataUrl.match(/^data:([^;,]+)/) || [])[1] || "application/octet-stream";
     var bin = atob(b64), len = bin.length, arr = new Uint8Array(len);
     for (var i = 0; i < len; i++) arr[i] = bin.charCodeAt(i);
     return new Blob([arr], { type: mime });
@@ -1392,11 +1424,41 @@ function playCurrentStory() {
 
   // Couche média (photo/vidéo) si présente
   const mediaLayer = document.getElementById("storyMedia");
+  const oldSoundBtn = document.getElementById("storySoundBtn"); if (oldSoundBtn) oldSoundBtn.remove();
   if (mediaLayer) {
-    if (s.media) {
-      mediaLayer.innerHTML = (s.mediaType === "video")
-        ? `<video src="${s.media}" muted playsinline loop autoplay></video>`
-        : `<img src="${escapeHtml(s.media)}" alt="" onerror="this.style.display='none'"/>`;
+    if (s.media && s.mediaType === "video") {
+      // Vidéo construite en DOM (muted en PROPRIÉTÉ — l'attribut via innerHTML
+      // n'est pas répercuté → autoplay refusé, cf. meSetMedia) + bouton 🔊 :
+      // une story vidéo a du SON, il doit être activable (choix mémorisé session).
+      mediaLayer.innerHTML = "";
+      const sv = document.createElement("video");
+      sv.loop = true; sv.autoplay = true; sv.playsInline = true; sv.preload = "auto";
+      sv.muted = !window._storySoundOn; sv.defaultMuted = sv.muted;
+      sv.setAttribute("playsinline", ""); sv.setAttribute("webkit-playsinline", "");
+      sv.src = s.media;
+      mediaLayer.appendChild(sv);
+      const sb = document.createElement("button");
+      sb.type = "button"; sb.id = "storySoundBtn"; sb.className = "story-sound-btn";
+      sb.setAttribute("aria-label", "Activer ou couper le son");
+      sb.textContent = window._storySoundOn ? "🔊" : "🔇";
+      sb.onclick = function(e) {
+        e.stopPropagation();
+        window._storySoundOn = !window._storySoundOn;
+        sv.muted = !window._storySoundOn; sv.defaultMuted = sv.muted;
+        sb.textContent = window._storySoundOn ? "🔊" : "🔇";
+        if (sv.paused) { try { sv.play().catch(() => {}); } catch (_) {} }
+      };
+      card.appendChild(sb);
+      try {
+        sv.play().catch(function() {
+          // Autoplay avec son refusé → repli muet (le 🔇 reflète l'état réel).
+          window._storySoundOn = false; sv.muted = true; sv.defaultMuted = true;
+          sb.textContent = "🔇";
+          sv.play().catch(function() {});
+        });
+      } catch (e) {}
+    } else if (s.media) {
+      mediaLayer.innerHTML = `<img src="${escapeHtml(s.media)}" alt="" onerror="this.style.display='none'"/>`;
     } else { mediaLayer.innerHTML = ""; }
   }
 
@@ -2413,12 +2475,16 @@ async function supaUploadMedia(postId, folder, base64Data, mediaType) {
       try { base64Data = await _downscaleImageForUpload(base64Data); } catch (e) {}
     }
 
-    // Convertir base64 en Blob
-    const parts = base64Data.split(",");
-    const bstr = atob(parts[1]);
+    // Convertir base64 en Blob — découpe sur « ;base64, » (PAS la première
+    // virgule : un mime « …codecs=avc1,mp4a… » contient une virgule → l'ancien
+    // split(",") produisait un base64 invalide, atob levait, et le catch final
+    // renvoyait le base64 en douce → media_url NULL en DB).
+    const b64i = base64Data.indexOf(";base64,");
+    if (b64i === -1) return base64Data;
+    const bstr = atob(base64Data.slice(b64i + 8));
     const u8arr = new Uint8Array(bstr.length);
     for (let i = 0; i < bstr.length; i++) u8arr[i] = bstr.charCodeAt(i);
-    const blob = new Blob([u8arr], { type: parts[0].split(":")[1].split(";")[0] });
+    const blob = new Blob([u8arr], { type: (base64Data.match(/^data:([^;,]+)/) || [])[1] || "application/octet-stream" });
 
     let ext = ".jpg";
     // Extension fidèle au conteneur réel : un webm renommé .mp4 trompe les
