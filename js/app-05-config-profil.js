@@ -609,6 +609,11 @@ function _callSetupPeerConnection() {
   cs.pc = pc;
   // Pistes locales.
   (cs.localStream.getTracks() || []).forEach(t => pc.addTrack(t, cs.localStream));
+  // Codec vidéo : H.264 (matériel) > VP9 > VP8 — AVANT la négociation SDP.
+  _callPreferVideoCodecs(pc);
+  // Débits cibles posés dès maintenant (setParameters marche avant connexion) —
+  // l'encodeur démarre haut au lieu de ramper depuis ~300 kbps.
+  _callApplyMediaQuality();
   // ICE en trickle.
   pc.onicecandidate = (e) => {
     if (e.candidate) _callSend("ice", { candidate: e.candidate });
@@ -632,19 +637,21 @@ function _callSetupPeerConnection() {
 }
 
 // Force Opus en STÉRÉO haute fidélité dans le SDP (WebRTC négocie sinon de
-// l'Opus mono ~32 kbps par défaut). Ajoute stéréo + 256 kbps + FEC anti-perte.
+// l'Opus mono ~32 kbps par défaut). Ajoute stéréo + 256 kbps + FEC anti-perte
+// + DTX coupé (usedtx=0 : flux continu, évite les débuts de mots avalés).
 function _callTuneSdp(sdp) {
   if (!sdp) return sdp;
   try {
+    sdp = _callTuneSdpVideo(sdp);
     const m = sdp.match(/a=rtpmap:(\d+)\s+opus\/48000/i);
     if (!m) return sdp;
     const pt = m[1];
-    const opts = "stereo=1;sprop-stereo=1;maxaveragebitrate=256000;maxplaybackrate=48000;cbr=0;useinbandfec=1";
+    const opts = "stereo=1;sprop-stereo=1;maxaveragebitrate=256000;maxplaybackrate=48000;cbr=0;useinbandfec=1;usedtx=0";
     const fmtpRe = new RegExp("a=fmtp:" + pt + " ([^\\r\\n]*)");
     if (fmtpRe.test(sdp)) {
       sdp = sdp.replace(fmtpRe, function (full, params) {
         let p = params;
-        ["stereo", "sprop-stereo", "maxaveragebitrate", "maxplaybackrate", "cbr", "useinbandfec"].forEach(function (k) {
+        ["stereo", "sprop-stereo", "maxaveragebitrate", "maxplaybackrate", "cbr", "useinbandfec", "usedtx"].forEach(function (k) {
           p = p.replace(new RegExp(";?\\b" + k + "=[^;]*"), "");
         });
         p = p.replace(/^;|;$/g, "");
@@ -655,6 +662,54 @@ function _callTuneSdp(sdp) {
     }
     return sdp;
   } catch (e) { return sdp; }
+}
+
+// Tuning de la section VIDÉO du SDP : (1) bande passante annoncée `b=AS` (sinon
+// le pair peut plafonner notre envoi très bas) ; (2) bitrates de démarrage/min/max
+// `x-google-*` (spécifiques libwebrtc, ignorés ailleurs) — sans eux l'appel
+// démarre à ~300 kbps et met 30-60 s à monter → première minute FLOUE.
+function _callTuneSdpVideo(sdp) {
+  try {
+    const parts = sdp.split(/(?=m=)/);
+    for (let i = 0; i < parts.length; i++) {
+      if (!/^m=video/.test(parts[i])) continue;
+      let sec = parts[i];
+      if (!/\r?\nb=AS:/.test(sec)) {
+        if (/c=IN [^\r\n]+\r?\n/.test(sec)) sec = sec.replace(/(c=IN [^\r\n]+\r?\n)/, "$1b=AS:6000\r\n");
+        else sec = sec.replace(/^(m=video[^\r\n]*\r?\n)/, "$1b=AS:6000\r\n");
+      }
+      sec = sec.replace(/a=fmtp:(\d+) ([^\r\n]*)/g, function (full, pt, params) {
+        if (/apt=/.test(params)) return full;                      // rtx : ne pas toucher
+        if (/x-google-start-bitrate/.test(params)) return full;    // déjà tuné (idempotent)
+        return full + ";x-google-start-bitrate=2500;x-google-min-bitrate=800;x-google-max-bitrate=6000";
+      });
+      parts[i] = sec;
+    }
+    return parts.join("");
+  } catch (e) { return sdp; }
+}
+
+// Ordonne les codecs vidéo par qualité RÉELLE sur mobile : H.264 d'abord
+// (encodage MATÉRIEL sur quasi tous les téléphones → 1080p30 fluide sans
+// chauffer), puis VP9 (meilleure compression), puis VP8 (repli logiciel — c'est
+// lui que WebRTC choisissait par défaut, et un téléphone n'arrive PAS à
+// l'encoder en 1080p → image floue + saccades). rtx/red/ulpfec conservés.
+function _callPreferVideoCodecs(pc) {
+  try {
+    if (!window.RTCRtpReceiver || !RTCRtpReceiver.getCapabilities) return;
+    const tx = (pc.getTransceivers() || []).find(t => t.sender && t.sender.track && t.sender.track.kind === "video");
+    if (!tx || typeof tx.setCodecPreferences !== "function") return;
+    const codecs = (RTCRtpReceiver.getCapabilities("video") || {}).codecs || [];
+    if (!codecs.length) return;
+    const rank = (c) => {
+      const mt = (c.mimeType || "").toLowerCase();
+      if (mt === "video/h264") return 0;
+      if (mt === "video/vp9") return 1;
+      if (mt === "video/vp8") return 2;
+      return 3;
+    };
+    tx.setCodecPreferences(codecs.slice().sort((a, b) => rank(a) - rank(b)));
+  } catch (e) {}
 }
 
 // Envoie un message de signalisation sur le canal d'appel courant.
@@ -815,8 +870,10 @@ function _callMarkConnected() {
   // Monte la qualité (débits d'encodage) une fois la connexion établie.
   _callApplyMediaQuality();
   // Ré-affirme la qualité après quelques secondes (le 1ᵉʳ setParameters avant
-  // que le média ne circule ne « prend » pas toujours).
+  // que le média ne circule ne « prend » pas toujours), puis une dernière fois
+  // après la montée en charge du contrôle de congestion.
   setTimeout(() => { _callApplyMediaQuality(); }, 3000);
+  setTimeout(() => { _callApplyMediaQuality(); }, 10000);
   // Lecture en direct des stats (résolution / débit / fps) → affichage + console.
   _callStartStats();
   // Timer.
@@ -842,13 +899,24 @@ function _callStartStats() {
     try {
       const stats = await c.pc.getStats();
       let w = 0, h = 0, fps = 0, bytes = 0, ts = 0;
+      let pairId = null, relay = false;
+      const byId = {};
       stats.forEach((r) => {
+        byId[r.id] = r;
         if (r.type === "inbound-rtp" && r.kind === "video") {
           if (typeof r.frameWidth === "number") { w = r.frameWidth; h = r.frameHeight; }
           if (typeof r.framesPerSecond === "number") fps = r.framesPerSecond;
           if (typeof r.bytesReceived === "number") { bytes = r.bytesReceived; ts = r.timestamp; }
         }
+        if (r.type === "transport" && r.selectedCandidatePairId) pairId = r.selectedCandidatePairId;
       });
+      // Chemin réseau : si le candidat local est de type "relay", l'appel passe
+      // par le TURN public (congestionné) et non en P2P direct → qualité dégradée.
+      try {
+        const pair = pairId && byId[pairId];
+        const loc = pair && byId[pair.localCandidateId];
+        relay = !!(loc && loc.candidateType === "relay");
+      } catch (x) {}
       // Appel audio : pas de vidéo entrante → on prend le débit audio entrant.
       if (!bytes) {
         stats.forEach((r) => { if (r.type === "inbound-rtp" && r.kind === "audio" && typeof r.bytesReceived === "number") { bytes = r.bytesReceived; ts = r.timestamp; } });
@@ -861,9 +929,10 @@ function _callStartStats() {
         let txt = "";
         if (c.kind === "video" && w) txt = w + "×" + h + (fps ? " · " + Math.round(fps) + " fps" : "") + (kbps ? " · " + (kbps >= 1000 ? (kbps / 1000).toFixed(1) + " Mb/s" : kbps + " kb/s") : "");
         else if (kbps) txt = "audio · " + kbps + " kb/s";
+        if (txt && relay) txt += " · relais";
         el.textContent = txt;
       }
-      if (c.kind === "video") console.log("[call] reçu:", w + "x" + h, Math.round(fps) + "fps", kbps + "kbps");
+      if (c.kind === "video") console.log("[call] reçu:", w + "x" + h, Math.round(fps) + "fps", kbps + "kbps", relay ? "(relais TURN)" : "(P2P direct)");
     } catch (e) {}
   }, 2000);
 }
