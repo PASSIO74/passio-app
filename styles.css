@@ -4287,25 +4287,26 @@
       box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--accent);
     }
 
-    /* ===== Éditeur média (story / bobine, façon Instagram) ===== */
+    /* ===== Éditeur média (story / bobine, façon Instagram) =====
+       PLEIN ÉCRAN : la scène (.me-canvas) couvre tout l'écran, et toutes les
+       barres (haut, capture, outils, publier) sont SUPERPOSÉES dessus avec
+       un léger dégradé pour rester lisibles — comme l'appareil photo Instagram. */
     .media-editor {
       position: fixed; inset: 0; z-index: 4000;
       background: #0b0a12;
       display: none;
-      flex-direction: column;
-      align-items: center;
-      justify-content: flex-start;
-      padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
     }
-    .media-editor.open { display: flex; }
+    .media-editor.open { display: block; }
 
-    /* ---- Barre du haut ---- */
+    /* ---- Barre du haut (superposée) ---- */
     .me-topbar {
-      width: min(100%, calc((100vh - 200px) * 9 / 16));
+      position: absolute; top: 0; left: 0; right: 0; z-index: 10;
       display: flex; align-items: center; justify-content: space-between;
-      gap: 8px; padding: 10px 8px 8px;
-      flex: 0 0 auto;
+      gap: 8px; padding: calc(env(safe-area-inset-top) + 10px) 12px 14px;
+      background: linear-gradient(rgba(0,0,0,0.4), transparent);
+      pointer-events: none;
     }
+    .me-topbar > * { pointer-events: auto; }
     .me-title { color: #fff; font-weight: 800; font-size: 16px; letter-spacing: .2px; }
     .me-icon-btn {
       width: 40px; height: 40px; border-radius: 999px; border: none;
@@ -4318,17 +4319,12 @@
     .media-editor.phase-edit #meFlipBtn,
     .media-editor:not(.me-cam-on) #meFlipBtn { visibility: hidden; }
 
+    /* Scène PLEIN ÉCRAN (caméra live / média / fond dégradé + overlays) */
     .me-canvas {
-      position: relative;
-      width: min(100%, calc((100vh - 200px) * 9 / 16));
-      aspect-ratio: 9 / 16;
-      max-height: calc(100vh - 200px);
-      border-radius: 22px;
+      position: absolute; inset: 0;
       overflow: hidden;
       background: linear-gradient(135deg,#7c3aed,#a78bfa);
-      box-shadow: 0 20px 60px rgba(0,0,0,0.5);
       touch-action: none;
-      flex: 0 1 auto;
     }
     .me-cam-video {
       position: absolute; inset: 0; z-index: 0;
@@ -4342,7 +4338,8 @@
     /* Contrôles de prévisualisation vidéo (phase édition) : relire/couper le son
        avant de publier. Au-dessus de la couche d'overlays (z-index 1). */
     .me-preview-ctrls {
-      position: absolute; bottom: 12px; right: 12px; z-index: 6;
+      /* Au-dessus des barres outils + Publier superposées (phase édition) */
+      position: absolute; bottom: calc(env(safe-area-inset-bottom) + 138px); right: 12px; z-index: 6;
       display: flex; gap: 8px;
     }
     /* Grand ▶ central affiché si l'autoplay de l'aperçu est refusé (mobile) :
@@ -4366,9 +4363,9 @@
     .me-prev-btn:hover { background: rgba(0,0,0,0.75); }
     .me-prev-btn:active { transform: scale(0.92); }
 
-    /* Badge d'enregistrement vidéo */
+    /* Badge d'enregistrement vidéo (sous la barre du haut superposée) */
     .me-rec-badge {
-      position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 5;
+      position: absolute; top: calc(env(safe-area-inset-top) + 64px); left: 50%; transform: translateX(-50%); z-index: 5;
       display: none; align-items: center; gap: 7px;
       background: rgba(0,0,0,0.55); color: #fff; font-weight: 800; font-size: 13px;
       padding: 5px 12px; border-radius: 999px; backdrop-filter: blur(8px);
@@ -4404,11 +4401,12 @@
     .me-ph-icon { font-size: 40px; }
     .me-ph-title { font-size: 15px; font-weight: 700; opacity: 0.95; }
 
-    /* ---- Zone de capture (appareil photo) ---- */
+    /* ---- Zone de capture (appareil photo), superposée en bas ---- */
     .me-capture-area {
-      width: min(100%, calc((100vh - 200px) * 9 / 16));
-      flex: 1 1 auto; display: flex; flex-direction: column; align-items: center; justify-content: center;
-      gap: 10px; padding: 6px 6px 12px;
+      position: absolute; left: 0; right: 0; bottom: 0; z-index: 10;
+      display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
+      gap: 12px; padding: 28px 6px calc(env(safe-area-inset-bottom) + 20px);
+      background: linear-gradient(transparent, rgba(0,0,0,0.45));
     }
     .me-capture-hint { color: rgba(255,255,255,0.72); font-size: 12.5px; font-weight: 600; text-align: center; }
     .media-editor.me-recording .me-capture-hint { visibility: hidden; }
@@ -4502,10 +4500,11 @@
     .me-overlay.selected .me-ov-resize { display: flex; }
     .me-overlay.selected { outline: 1.5px dashed rgba(255,255,255,0.7); outline-offset: 3px; }
 
+    /* Barres d'édition superposées en bas : outils au-dessus du bouton Publier */
     .me-toolbar {
+      position: absolute; left: 0; right: 0; bottom: calc(env(safe-area-inset-bottom) + 72px); z-index: 10;
       display: flex; align-items: center; justify-content: center;
-      gap: 8px; width: min(100%, calc((100vh - 200px) * 9 / 16));
-      padding: 12px 6px 8px;
+      gap: 8px; padding: 12px 6px 8px;
     }
     .me-tool-group { display: flex; gap: 6px; }
     .me-tool {
@@ -4517,7 +4516,11 @@
       transition: background 160ms ease, transform 140ms ease;
     }
     .me-tool:active { transform: scale(0.93); background: rgba(255,255,255,0.26); }
-    .me-bottom { width: min(100%, calc((100vh - 200px) * 9 / 16)); padding: 4px 6px 10px; }
+    .me-bottom {
+      position: absolute; left: 0; right: 0; bottom: 0; z-index: 10;
+      padding: 26px 14px calc(env(safe-area-inset-bottom) + 14px);
+      background: linear-gradient(transparent, rgba(0,0,0,0.55));
+    }
 
     /* Couches média + overlays dans le viewer de story */
     .story-media-layer { position: absolute; inset: 0; z-index: 0; }
