@@ -494,9 +494,12 @@ function renderStories() {
     `;
   }).join("");
 
-  row.innerHTML = html;
+  // Perf : renderStories est rappelée par CHAQUE renderFeed (refresh 60 s,
+  // filtres, realtime) — reconstruire des bulles identiques re-décode les
+  // avatars (flash visible) et invalide le layout pour rien.
+  if (row._lastHtml !== html) { row.innerHTML = html; row._lastHtml = html; }
   const rowFeed = $("#storiesRowFeed");
-  if (rowFeed) rowFeed.innerHTML = html;
+  if (rowFeed && rowFeed !== row && rowFeed._lastHtml !== html) { rowFeed.innerHTML = html; rowFeed._lastHtml = html; }
 }
 
 // ======== CRÉATION DE STORY ========
@@ -1631,6 +1634,11 @@ document.addEventListener("visibilitychange", function() {
         if (posts && posts.length > 0) {
           const extra = (window._feedExtraPosts || []).filter(p => !posts.some(x => x.id === p.id));
           state.supabasePosts = posts.concat(extra);
+          // Même garde que startFeedRefreshLoop : re-render seulement si le
+          // contenu visible a changé pendant l'absence.
+          const sig = (typeof _feedPostsSig === "function") ? _feedPostsSig(state.supabasePosts) : null;
+          if (sig !== null && sig === window._feedRefreshSig) return;
+          if (sig !== null) window._feedRefreshSig = sig;
           renderFeed();
         }
       }).catch(() => {});
@@ -4371,6 +4379,17 @@ async function loadMoreFeedPosts() {
 // ===== SYSTÈME DE REFRESH AUTOMATIQUE DU FEED =====
 let _feedRefreshInterval = null;
 
+// Signature légère du contenu affichable du fil : id + compteurs visibles.
+// Sert à savoir si un refresh de fond apporterait un changement VISIBLE —
+// sinon on garde le DOM tel quel (zéro re-render, zéro flash d'images).
+function _feedPostsSig(posts) {
+  try {
+    return (posts || []).map(function(p) {
+      return p.id + ":" + (p.likes || 0) + ":" + ((p.comments || []).length) + ":" + ((p.reactions || []).length || 0);
+    }).join("|");
+  } catch (e) { return "err" + Date.now(); }
+}
+
 function startFeedRefreshLoop() {
   if (_feedRefreshInterval) return;
   _feedRefreshInterval = setInterval(async () => {
@@ -4380,8 +4399,14 @@ function startFeedRefreshLoop() {
       if (posts && posts.length > 0) {
         const extra = (window._feedExtraPosts || []).filter(p => !posts.some(x => x.id === p.id));
         state.supabasePosts = posts.concat(extra);
+        // Re-render UNIQUEMENT si le contenu visible a changé : le rebuild
+        // périodique du fil (innerHTML complet) faisait flasher images et
+        // stories toutes les 60 s même sans aucune nouveauté.
+        const sig = _feedPostsSig(state.supabasePosts);
+        const changed = sig !== window._feedRefreshSig;
+        window._feedRefreshSig = sig;
         const feedEl = document.getElementById("screen-feed");
-        if (feedEl && feedEl.classList.contains("active")) renderFeed();
+        if (changed && feedEl && feedEl.classList.contains("active")) renderFeed();
       }
     } catch (e) {}
   }, 60000); // Fallback 60s — les mises à jour instantanées passent par realtime:posts

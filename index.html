@@ -54,6 +54,10 @@
   <!-- Connexions anticipées (DNS+TLS) pour le SDK et le backend, chargés post-gate -->
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
   <link rel="preconnect" href="https://njkiyoklssvefstljemx.supabase.co" />
+  <!-- Perf : les tuiles passions + couvertures seed chargent depuis Unsplash dès
+       le premier paint du fil — la connexion TLS est ouverte en avance. -->
+  <link rel="preconnect" href="https://images.unsplash.com" />
+  <link rel="dns-prefetch" href="https://picsum.photos" />
 
   <!-- Supabase SDK : chargé À LA DEMANDE en tête de boot() (après le code d'accès,
        gain FCP + JS inutilisé sur la page verrouillée) — voir supabase-loader.js -->
@@ -63,11 +67,22 @@
   <script src="js/leaflet-loader.js"></script>
 
   <link rel="stylesheet" href="styles.css" />
+
+  <!-- Anti-flash mode sombre : pose data-theme AVANT le premier rendu.
+       La logique complète (toggle + écoute système) est dans passioApplyThemeMode (app-05). -->
+  <script>
+    (function () {
+      try {
+        var mode = (JSON.parse(localStorage.getItem("passio_config") || "{}").mode) || "auto";
+        var dark = mode === "dark" || (mode === "auto" && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.dataset.theme = dark ? "dark" : "light";
+      } catch (e) {}
+    })();
+  </script>
 </head>
 <body>
 
 <div class="app-shell">
-  <div class="demo-ribbon">MVP BETA</div>
 
   <!-- ============ LANDING / PITCH ============ -->
   <div id="landing" class="landing">
@@ -336,6 +351,7 @@
         <div class="brand-name">PASSIO</div>
         <div class="brand-tagline" id="currentProfilePassion">— Multi-profils</div>
       </div>
+      <span class="beta-chip">Beta</span>
     </div>
     <div class="topbar-right">
       <div class="topbar-bell" onclick="goTo('messages')" title="Messages" role="button" tabindex="0" aria-label="Messages">
@@ -741,7 +757,7 @@
           <p>Découvre des utilisateurs et des contenus selon ce que tu aimes.</p>
           <div style="position:relative;">
             <div style="display:flex;align-items:center;gap:8px;background:var(--bg-card);border:1.5px solid var(--border);border-radius:14px;padding:10px 14px;">
-              <span style="font-size:15px;">🔍</span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true" style="width:15px;height:15px;color:var(--muted);flex-shrink:0;"><circle cx="11" cy="11" r="7"/><path d="M20 20 L16.4 16.4"/></svg>
               <input type="text" id="explorerSearch" placeholder="Passion, utilisateur…" oninput="filterExplore()" onkeypress="if(event.key==='Enter')filterExplore()" autocomplete="off" style="flex:1;border:none;background:transparent;font-size:14px;color:var(--text);outline:none;"/>
               <button onclick="filterExplore()" style="background:var(--accent);color:#fff;border:none;border-radius:10px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;">OK</button>
             </div>
@@ -1001,7 +1017,7 @@
 
       <div style="display:flex;align-items:center;gap:8px;padding:4px 0 8px;">
   <div style="display:flex;align-items:center;gap:6px;flex:1;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:8px 12px;">
-    <span style="font-size:14px;">🔍</span>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true" style="width:14px;height:14px;color:var(--muted);flex-shrink:0;"><circle cx="11" cy="11" r="7"/><path d="M20 20 L16.4 16.4"/></svg>
     <input id="irlCitySearch" type="text" placeholder="Rechercher une ville, un événement…" oninput="filterIrlByCity()" style="border:none;background:transparent;font-size:13px;color:var(--text);outline:none;flex:1;"/>
   </div>
 </div>
@@ -1016,12 +1032,12 @@
       <div id="msgUserResults" style="display:none;"></div>
       <div style="display:flex;gap:8px;margin-bottom:14px;">
         <button onclick="openNewMessage()" style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:11px 12px;border-radius:14px;border:none;background:var(--grad-hero);color:#fff;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 4px 12px rgba(124,58,237,0.3);">✉️ Nouveau message</button>
-        <button onclick="openCreateGroup()" style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:11px 12px;border-radius:14px;border:none;background:var(--grad-hero);color:#fff;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 4px 12px rgba(124,58,237,0.3);">👥 Nouveau groupe</button>
+        <button onclick="openCreateGroup()" style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:11px 12px;border-radius:14px;border:1.5px solid var(--accent-5-soft);background:var(--bg-card);color:var(--accent);font-size:13px;font-weight:700;cursor:pointer;">👥 Nouveau groupe</button>
       </div>
 
       <div style="position:relative;margin-bottom:10px;">
         <input id="convGlobalSearch" type="text" class="input" autocomplete="off"
-          placeholder="🔍 Rechercher une conversation ou un message…"
+          placeholder="Rechercher une conversation ou un message…"
           oninput="_globalMsgSearch(this.value)" style="width:100%;box-sizing:border-box;" />
       </div>
       <div id="archivedToggleRow" style="margin-bottom:8px;"></div>
@@ -1043,7 +1059,7 @@
       <!-- Points d'entrée création -->
       <div style="display:flex;gap:8px;margin-bottom:12px;">
         <button onclick="setStudioToVlog()" style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:11px 12px;border-radius:14px;border:none;background:var(--grad-hero);color:#fff;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 4px 12px rgba(124,58,237,0.3);">📔 Nouveau carnet</button>
-        <button onclick="startCdvLive()" style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:11px 12px;border-radius:14px;border:none;background:linear-gradient(135deg,#ef4444,#f59e0b);color:#fff;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 4px 12px rgba(239,68,68,0.3);">🔴 Démarrer un Live</button>
+        <button onclick="startCdvLive()" class="btn-live-outline"><span class="live-dot"></span>Démarrer un Live</button>
       </div>
 
       <!-- CDV Lives en cours -->
@@ -1055,7 +1071,7 @@
         <button class="pill" data-cdvfilter="live">🔴 Lives</button>
       </div>
 
-      <input type="text" class="input" id="cdvSearchInput" placeholder="🔍 Rechercher une destination, une ville…" style="margin-bottom:14px;" oninput="renderCdvScreen()" />
+      <input type="text" class="input" id="cdvSearchInput" placeholder="Rechercher une destination, une ville…" style="margin-bottom:14px;" oninput="renderCdvScreen()" />
 
       <div id="cdvList"></div>
 
@@ -1615,7 +1631,7 @@
   <div id="emojiTabContent" style="display:flex;flex-direction:column;flex:1;overflow:hidden;">
     <!-- Barre de recherche -->
     <div style="padding:8px;flex-shrink:0;border-bottom:1px solid var(--border);">
-      <input type="text" id="emojiSearchInput" placeholder="🔍 Chercher…" oninput="window._onEmojiSearch(this.value)" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:20px;font-size:13px;box-sizing:border-box;">
+      <input type="text" id="emojiSearchInput" placeholder="Chercher…" oninput="window._onEmojiSearch(this.value)" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:20px;font-size:13px;box-sizing:border-box;">
     </div>
 
     <!-- Catégories d'emojis (icônes en haut) -->
@@ -1631,7 +1647,7 @@
   <div id="gifTabContent" style="display:none;flex-direction:column;flex:1;overflow:hidden;">
     <!-- Barre de recherche -->
     <div style="padding:8px;flex-shrink:0;border-bottom:1px solid var(--border);">
-      <input type="text" id="gifSearchInput" placeholder="🔍 Rechercher GIF…" oninput="window._onGifSearch(this.value)" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:20px;font-size:13px;box-sizing:border-box;">
+      <input type="text" id="gifSearchInput" placeholder="Rechercher GIF…" oninput="window._onGifSearch(this.value)" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:20px;font-size:13px;box-sizing:border-box;">
     </div>
 
     <!-- Grille GIF -->

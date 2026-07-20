@@ -143,14 +143,14 @@
     @media (max-width: 480px) {
       .app-shell { box-shadow: none; }
       .app-main { padding: 13px 14px 90px; }
-      .mood-selector { padding: 8px 12px; gap: 8px; grid-template-columns: repeat(4, 1fr); }
-      .mood-btn { padding: 8px 2px; font-size: 9.5px; }
-      .mood-btn-icon { font-size: 18px; height: 20px; width: 20px; }
-      .profile-strip { padding: 10px 12px 6px; gap: 10px; }
-      .profile-tile { padding: 8px 4px 10px; border-radius: 18px; }
-      .profile-tile-avatar { width: 60px; height: 60px; border-radius: 22px; font-size: 30px; }
-      .profile-tile.active .profile-tile-avatar { font-size: 34px; }
-      .profile-tile-label { font-size: 11px; max-width: 78px; }
+      .mood-selector { padding: 4px 12px 8px; gap: 6px; }
+      .mood-btn { padding: 7px 12px; font-size: 11px; }
+      .mood-btn-icon { font-size: 13px; height: 15px; width: 15px; }
+      .profile-strip { padding: 8px 12px 4px; gap: 8px; }
+      .profile-tile { padding: 4px 2px 6px; border-radius: 14px; }
+      .profile-tile-avatar { width: 46px; height: 46px; border-radius: 17px; font-size: 22px; }
+      .profile-tile.active .profile-tile-avatar { font-size: 24px; }
+      .profile-tile-label { font-size: 10px; max-width: 66px; }
       .profile-tile.active::before { font-size: 7px; padding: 2px 6px; top: -7px; }
       .app-topbar { height: 58px; padding: 6px 10px; gap: 4px; }
       .topbar-right { gap: 4px; flex-shrink: 0; }
@@ -166,15 +166,13 @@
     @media (max-width: 380px) {
       .brand-tagline { display: none; }
       .topbar-chip { padding: 3px 6px; font-size: 9.5px; }
-      .mood-btn { font-size: 9px; padding: 7px 1px; }
-      .mood-btn-icon { font-size: 16px; height: 18px; width: 18px; }
-      .profile-tile-avatar { width: 54px; height: 54px; font-size: 26px; }
-      .profile-tile-label { font-size: 10px; max-width: 66px; }
+      .mood-btn { font-size: 10.5px; padding: 6px 11px; }
+      .profile-tile-avatar { width: 42px; height: 42px; font-size: 20px; }
+      .profile-tile-label { font-size: 9.5px; max-width: 60px; }
     }
     @media (max-width: 340px) {
-      .mood-selector { grid-template-columns: repeat(4, 1fr); gap: 6px; padding: 6px 10px; }
-      .mood-btn { font-size: 8.5px; padding: 6px 0; }
-      .mood-btn-icon { font-size: 14px; height: 16px; width: 16px; }
+      .mood-selector { gap: 5px; padding: 4px 10px 6px; }
+      .mood-btn { font-size: 10px; padding: 6px 10px; }
     }
 
     /* Landing / onboarding, keep readable on small screens */
@@ -294,13 +292,14 @@
       top: 6px; right: 6px;
       min-width: 16px; height: 16px;
       border-radius: 999px;
-      background: var(--accent);
+      /* Rouge : convention universelle de notification, se détache du violet ambiant */
+      background: #ef4444;
       color: #fff;
       font-size: 9px;
       font-weight: 800;
       display: flex; align-items: center; justify-content: center;
       padding: 0 4px;
-      border: 2px solid #fff;
+      border: 2px solid var(--bg-card);
     }
     .topbar-bell .bell-dot:empty { display: none; }
 
@@ -1893,53 +1892,57 @@
     .share-ico { vertical-align: middle; }
     .btn .share-ico, button .share-ico { vertical-align: -3px; }
 
-    /* ===== Mood selector (feed) ===== */
+    /* ===== Mood selector (feed) — pills horizontales scrollables
+       (refonte 2026-07-20 : gagne ~60px de hauteur, le fil remonte) ===== */
     .mood-selector {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 8px;
-      padding: 0 12px;
+      display: flex;
+      gap: 6px;
+      padding: 0 12px 8px;
       background: transparent;
       border: none;
       box-shadow: none;
-      margin: 0 auto 8px;
+      margin: 0 auto 4px;
       max-width: 100%;
+      overflow-x: auto;
+      scrollbar-width: none;
     }
+    .mood-selector::-webkit-scrollbar { display: none; }
 
     .mood-btn {
       display: flex;
-      flex-direction: column;
+      flex-direction: row;
       align-items: center;
-      justify-content: flex-start;
-      gap: 3px;
-      padding: 6px 3px;
-      border-radius: 10px;
-      font-size: 9.5px;
+      justify-content: center;
+      gap: 6px;
+      padding: 7px 13px;
+      border-radius: 999px;
+      font-size: 11.5px;
       font-weight: 700;
       color: var(--text-dim);
-      background: transparent;
-      border: 1px solid transparent;
+      background: var(--bg-card);
+      border: 1px solid var(--border-strong);
       cursor: pointer;
       transition: all 180ms cubic-bezier(0.4,0,0.2,1);
       min-width: 0;
+      white-space: nowrap;
+      flex: 0 0 auto;
     }
     .mood-btn:hover { color: var(--text); }
 
     .mood-btn-icon {
-      font-size: 16px;
+      font-size: 13px;
       line-height: 1;
-      height: 26px;
-      width: 26px;
+      height: 15px;
+      width: 15px;
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      margin-bottom: 1px;
-      border-radius: 9px;
+      border-radius: 5px;
       overflow: hidden;
       position: relative;
-      box-shadow: 0 1px 3px rgba(24, 18, 48, 0.10);
-      border: 1px solid var(--border);
-      background: var(--bg-soft);
+      background: transparent;
+      border: none;
+      box-shadow: none;
     }
     .mood-btn-icon img {
       width: 100%;
@@ -1951,33 +1954,18 @@
       width: 15px;
       height: 15px;
       display: block;
-      color: var(--accent);
+      color: currentColor;
     }
 
     .mood-btn.active {
       color: var(--accent);
-      background: transparent;
-      border-color: transparent;
+      background: var(--accent-wash);
+      border-color: var(--accent);
       box-shadow: none;
     }
     .mood-btn.active .mood-btn-icon {
-      border-color: var(--accent);
-      box-shadow: 0 0 0 2.5px var(--accent), 0 4px 12px rgba(124, 58, 237, 0.25);
-    }
-    .mood-btn[data-mood="learn"].active {
-      background: transparent;
+      border-color: transparent;
       box-shadow: none;
-      color: var(--accent);
-    }
-    .mood-btn[data-mood="chill"].active {
-      background: transparent;
-      box-shadow: none;
-      color: var(--accent);
-    }
-    .mood-btn[data-mood="actu"].active {
-      background: transparent;
-      box-shadow: none;
-      color: var(--accent);
     }
 
     /* ===== Inputs ===== */
@@ -5090,8 +5078,8 @@
       cursor: pointer;
       user-select: none;
       transition: transform 0.25s cubic-bezier(.2,.9,.3,1.4), filter 0.25s ease, opacity 0.25s ease, box-shadow 0.25s ease;
-      padding: 8px 6px 10px;
-      border-radius: 20px;
+      padding: 4px 4px 6px;
+      border-radius: 14px;
       background: transparent;
       border: 1px solid transparent;
       position: relative;
@@ -5105,14 +5093,15 @@
     .profile-strip.has-filter .profile-tile.active { opacity: 1; filter: none; transform: translateY(-2px); }
 
     .profile-tile-avatar {
-      width: 70px;
-      height: 70px;
-      border-radius: 24px;
+      /* 70 → 46px (refonte 2026-07-20) : les tuiles restent lisibles, le fil respire */
+      width: 46px;
+      height: 46px;
+      border-radius: 17px;
       display: grid;
       place-items: center;
-      font-size: 34px;
+      font-size: 22px;
       background: var(--bg-tint);
-      border: 2px solid #fff;
+      border: 2px solid var(--bg-card);
       position: relative;
       transition: all 0.25s ease;
       box-shadow: 0 2px 8px rgba(24, 18, 48, 0.08);
@@ -5162,10 +5151,10 @@
     }
 
     .profile-tile-label {
-      font-size: 12px;
+      font-size: 10.5px;
       font-weight: 700;
       color: var(--muted);
-      max-width: 92px;
+      max-width: 76px;
       text-align: center;
       white-space: nowrap;
       overflow: hidden;
@@ -5196,30 +5185,19 @@
     }
 
     /* Demo ribbon, discreet badge bottom-left, hidden by default, only shown on landing */
-    .demo-ribbon {
-      position: absolute;
-      bottom: 84px;
-      left: 10px;
-      transform: none;
-      background: var(--grad-hero);
-      color: #ffffff;
+    /* Badge beta : chip discret dans la topbar (remplace l'ancien watermark
+       .demo-ribbon flottant qui chevauchait les cartes — refonte 2026-07-20) */
+    .beta-chip {
       font-size: 8.5px;
       font-weight: 800;
-      letter-spacing: 0.18em;
+      letter-spacing: 0.1em;
+      color: var(--accent);
+      background: var(--accent-wash);
       padding: 3px 8px;
       border-radius: 999px;
-      z-index: 11;
+      flex-shrink: 0;
       text-transform: uppercase;
-      /* Watermark beta : ne doit jamais chevaucher/bloquer le contenu interactif
-         (audit UX 2026-06-12 : le bandeau interceptait les taps et passait sur les cartes). */
-      pointer-events: none;
-      opacity: 0.55;
-      box-shadow: 0 4px 12px rgba(139, 92, 246, 0.35);
-      pointer-events: none;
-      opacity: 0.85;
-    }
-    @media (max-width: 480px) {
-      .demo-ribbon { bottom: 78px; font-size: 8px; padding: 2px 7px; }
+      align-self: center;
     }
 
     /* ============ BOBINES (REELS), MINI FAB ============ */
@@ -6553,7 +6531,10 @@
       transition: transform 140ms ease, box-shadow 200ms ease;
     }
     .msg-card:hover { transform: translateY(-1px); box-shadow: 0 2px 4px rgba(24,18,48,0.05), 0 12px 28px rgba(24,18,48,0.10); }
-    .msg-card.unread { background: var(--accent-wash); border-color: rgba(124,58,237,0.18); box-shadow: inset 3px 0 0 var(--accent); }
+    /* Non-lu façon Instagram : nom en gras + point violet, carte normale
+       (refonte 2026-07-20 — l'ancien cadre violet épais + fond teinté était trop lourd) */
+    .msg-card.unread { background: var(--bg-card); }
+    .msg-card.unread .msg-name { font-weight: 800; }
     .unread-preview { color: var(--text) !important; font-weight: 700; }
     .msg-avatar {
       width: 46px; height: 46px;
@@ -6580,12 +6561,14 @@
     }
     .msg-card.unread .msg-preview { color: var(--text); font-weight: 600; }
     .msg-badge {
-      min-width: 20px; height: 20px;
-      border-radius: 999px;
+      /* Point discret (le compte exact est dans l'aperçu ; pastille chiffrée = bruit) */
+      min-width: 9px; max-width: 9px; height: 9px;
+      border-radius: 50%;
       background: var(--accent);
-      color: #fff;
-      font-size: 11px;
+      color: transparent;
+      font-size: 0;
       font-weight: 700;
+      overflow: hidden;
       display: inline-flex;
       align-items: center; justify-content: center;
       padding: 0 6px;
@@ -7543,3 +7526,146 @@
       background: linear-gradient(135deg, #dc2626, #f472b6);
     }
     .story-label.vlive-label { color: #dc2626; font-weight: 800; }
+
+    /* ========================================================
+       REFONTE VISUELLE 2026-07-20
+       ======================================================== */
+
+    /* ── Bouton Live : outline rouge + point pulsant (live = rouge, mais
+       intégré à la charte — fini l'aplat orange hors-charte) ── */
+    .btn-live-outline {
+      flex: 1;
+      display: flex; align-items: center; justify-content: center; gap: 7px;
+      padding: 11px 12px;
+      border-radius: 14px;
+      border: 1.5px solid rgba(239, 68, 68, 0.45);
+      background: var(--bg-card);
+      color: #ef4444;
+      font-size: 13px; font-weight: 700;
+      cursor: pointer;
+      box-shadow: none;
+    }
+    .live-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: #ef4444;
+      flex-shrink: 0;
+      animation: livePulse 1.6s ease-in-out infinite;
+    }
+    @keyframes livePulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.45); }
+      55% { box-shadow: 0 0 0 5px rgba(239, 68, 68, 0); }
+    }
+
+    /* ── En-tête du fil rétractable au scroll (pattern Instagram) :
+       .app-main porte .chrome-collapsed quand on descend dans le fil ── */
+    #screen-feed .profile-strip,
+    #screen-feed .mood-selector,
+    #screen-feed .stories-row {
+      transition: max-height 260ms ease, opacity 200ms ease, margin 260ms ease, padding 260ms ease;
+      max-height: 220px;
+      overflow-y: hidden;
+    }
+    .app-main.chrome-collapsed #screen-feed .profile-strip,
+    .app-main.chrome-collapsed #screen-feed .mood-selector,
+    .app-main.chrome-collapsed #screen-feed .stories-row {
+      max-height: 0;
+      opacity: 0;
+      margin-top: 0; margin-bottom: 0;
+      padding-top: 0; padding-bottom: 0;
+      pointer-events: none;
+    }
+
+    /* ── Respect de prefers-reduced-motion ── */
+    @media (prefers-reduced-motion: reduce) {
+      .screen { animation: none; }
+      .live-dot { animation: none; }
+      #screen-feed .profile-strip,
+      #screen-feed .mood-selector,
+      #screen-feed .stories-row { transition: none; }
+    }
+
+    /* ── Desktop : halos violets doux autour de la colonne ── */
+    @media (min-width: 900px) {
+      html, body {
+        background:
+          radial-gradient(640px 420px at 12% 8%, rgba(167, 139, 250, 0.28), transparent 62%),
+          radial-gradient(760px 520px at 88% 92%, rgba(124, 58, 237, 0.20), transparent 62%),
+          radial-gradient(500px 380px at 80% 12%, rgba(196, 181, 253, 0.22), transparent 60%),
+          linear-gradient(180deg, #f4f2fb, #ebe7f6);
+      }
+    }
+
+    /* ── Squelette de la liste de conversations (même shimmer que le fil) ── */
+    .msg-skel-row {
+      display: flex; align-items: center; gap: 12px;
+      padding: 14px 16px;
+      border-radius: 18px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      margin-bottom: 10px;
+    }
+    .msg-skel-av { width: 46px; height: 46px; border-radius: 50%; flex-shrink: 0; }
+
+    /* ========================================================
+       MODE SOMBRE — html[data-theme="dark"]
+       Résolu en JS (passioApplyThemeMode, app-05) : auto = suit le
+       système via matchMedia, sinon choix explicite du Configurateur.
+       Posé très tôt par l'anti-flash inline du <head>.
+       ======================================================== */
+    html[data-theme="dark"] {
+      color-scheme: dark;
+      --bg-deep: #121019;
+      --bg-soft: #1d1a28;
+      --bg-card: #1a1724;
+      --bg-glass: rgba(26, 23, 36, 0.88);
+      --bg-tint: #241d38;
+      --accent: #a78bfa;
+      --accent-soft: #b8a3fd;
+      --accent-2: #8b5cf6;
+      --accent-2-soft: #a78bfa;
+      --accent-3: #c4b5fd;
+      --accent-3-soft: #8b5cf6;
+      --accent-4: #8b5cf6;
+      --accent-4-soft: #6d28d9;
+      --accent-5: #4c3a80;
+      --accent-5-soft: #3b2d63;
+      --accent-wash: rgba(167, 139, 250, 0.14);
+      --text: #f1eefa;
+      --text-dim: #c9c4dd;
+      --muted: #9d97b8;
+      --muted-2: #565070;
+      --border: rgba(255, 255, 255, 0.08);
+      --border-strong: rgba(255, 255, 255, 0.15);
+      --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.35), 0 4px 12px rgba(0, 0, 0, 0.35);
+      --shadow-strong: 0 16px 48px rgba(0, 0, 0, 0.55);
+      --shadow-glow: 0 4px 14px rgba(139, 92, 246, 0.25);
+      --shadow-glow-2: 0 4px 14px rgba(139, 92, 246, 0.22);
+    }
+    /* Fonds codés en dur → surfaces sombres */
+    html[data-theme="dark"],
+    html[data-theme="dark"] body {
+      background:
+        radial-gradient(1200px 760px at 50% -8%, rgba(139, 92, 246, 0.10), transparent 60%),
+        #0d0b13;
+    }
+    html[data-theme="dark"] .app-shell {
+      background:
+        radial-gradient(1100px 620px at 50% -6%, rgba(139, 92, 246, 0.10), transparent 58%),
+        #121019;
+    }
+    html[data-theme="dark"] .app-topbar { background: rgba(21, 18, 30, 0.86); }
+    html[data-theme="dark"] .app-nav { background: rgba(21, 18, 30, 0.93); }
+    html[data-theme="dark"] .hamburger { background: rgba(255, 255, 255, 0.08); color: var(--text); }
+    html[data-theme="dark"] .input,
+    html[data-theme="dark"] .textarea { background: var(--bg-card); color: var(--text); }
+    html[data-theme="dark"] .event-detail-cta { background: #1d1a28; }
+    html[data-theme="dark"] .profile-tile-avatar { border-color: #2a2440; }
+    @media (min-width: 900px) {
+      html[data-theme="dark"],
+      html[data-theme="dark"] body {
+        background:
+          radial-gradient(640px 420px at 12% 8%, rgba(139, 92, 246, 0.16), transparent 62%),
+          radial-gradient(760px 520px at 88% 92%, rgba(109, 40, 217, 0.14), transparent 62%),
+          #0d0b13;
+      }
+    }

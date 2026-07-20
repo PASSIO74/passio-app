@@ -1206,7 +1206,9 @@ function renderProfileStrip() {
     </div>';
   }).join("");
 
-  box.innerHTML = tilesHTML;
+  // Perf : appelé à chaque renderFeed — pas de rebuild si rien n'a changé
+  // (les tuiles portent des photos Unsplash : re-set innerHTML = re-décodage/flash).
+  if (box._lastHtml !== tilesHTML) { box.innerHTML = tilesHTML; box._lastHtml = tilesHTML; }
 }
 
 function toggleFollowingFilter() {

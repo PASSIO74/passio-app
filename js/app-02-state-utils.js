@@ -2103,6 +2103,22 @@ function renderFeed() {
   const hasMore = sortedPosts.length > renderLimit || window._feedServerMayHaveMore;
   const moreBtnHtml = `<div style="text-align:center;padding:14px 0 24px;"><button class="btn ghost" id="feedLoadMoreBtn" onclick="loadMoreFeedPosts()">⤵ Charger plus de posts</button></div>`;
 
+  // ── Guard no-op : si le contenu visible est STRICTEMENT le même que le
+  // dernier rendu (mêmes posts, mêmes compteurs, mêmes filtres), on ne
+  // reconstruit pas le DOM. Revenir sur le fil (goTo) ou pull-to-refresh sans
+  // nouveauté ne re-décode plus 20 cartes d'images. Le bucket 5 min force un
+  // repaint occasionnel pour rafraîchir les temps relatifs (« il y a X min »).
+  const _domSig = [
+    mood, Array.from(selectedMoods).join(","), Array.from(_activeFeedPassions).join(","),
+    _showFollowingFeed ? 1 : 0, renderLimit, hasMore ? 1 : 0,
+    Math.floor(Date.now() / 300000),
+    visible.map(function(p) {
+      return p.id + ":" + (p.likes || 0) + ":" + ((p.comments || []).length) + ":" + (Array.isArray(p.reactions) ? p.reactions.length : 0);
+    }).join("|"),
+  ].join("§");
+  if (_domSig === window._feedDomSig && list.children.length > 0) return;
+  window._feedDomSig = _domSig;
+
   // ── Peinture en 2 temps : on affiche d'abord FAST cartes (paint initial ~2×
   // plus rapide à la navigation), puis on complète jusqu'à renderLimit juste
   // après, en idle, SANS reconstruire les premières cartes (insertAdjacentHTML).
