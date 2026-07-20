@@ -3821,6 +3821,7 @@
     }
     /* La ville est plafonnée : un nom long doit rogner ICI, pas sur le CTA */
     .irl-chip.irl-locbar { flex: 0 1 auto; max-width: 30%; }
+    .irl-chip-ic { width: 17px; height: 17px; display: block; flex: 0 0 auto; }
     .irl-chip-badge {
       display: none;
       background: var(--accent);
