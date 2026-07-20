@@ -2523,6 +2523,24 @@
       gap: 6px;
       align-items: flex-end;
     }
+    /* Éditer : icône seule, très discrète (pas de fond ni de contour) */
+    .main-profile-edit-icon {
+      background: none;
+      border: 0;
+      padding: 4px;
+      font-size: 15px;
+      line-height: 1;
+      color: var(--muted);
+      opacity: 0.55;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 44px;
+      min-height: 44px;
+      transition: opacity 0.15s ease;
+    }
+    .main-profile-edit-icon:hover, .main-profile-edit-icon:focus-visible { opacity: 1; }
     .main-profile-edit-btn {
       background: var(--bg-deep);
       border: 1.5px solid var(--border);
@@ -2546,25 +2564,30 @@
       margin-bottom: 5px;
       letter-spacing: -0.01em;
     }
-    /* Pastille étoiles : points + rang, discrète et cliquable (→ Wallet) */
+    /* Pastilles étoiles + Passia : texte léger, sans fond ni contour (→ Wallet) */
+    .profile-chips-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 4px 12px;
+      margin-bottom: 8px;
+    }
     .profile-stars-chip {
       display: inline-flex;
       align-items: center;
       gap: 4px;
-      margin-bottom: 8px;
-      padding: 3px 10px;
+      padding: 2px 0;
       font-size: 11.5px;
-      font-weight: 700;
+      font-weight: 600;
       color: var(--muted);
-      background: rgba(124, 58, 237, 0.07);
-      border: 1px solid var(--border);
-      border-radius: 999px;
+      background: none;
+      border: 0;
       cursor: pointer;
       line-height: 1.4;
-      transition: background 0.15s ease, color 0.15s ease;
+      transition: color 0.15s ease;
     }
-    .profile-stars-chip b { color: var(--accent); font-weight: 800; }
-    .profile-stars-chip:hover { background: rgba(124, 58, 237, 0.14); color: var(--text); }
+    .profile-stars-chip b { color: var(--accent); font-weight: 700; }
+    .profile-stars-chip:hover { color: var(--text); }
     /* Jauge de progression vers le prochain rang/palier (profil principal) */
     .rank-progress { margin: 0 0 10px; cursor: pointer; }
     .rank-progress-bar { height: 6px; background: rgba(124, 58, 237, 0.12); border-radius: 999px; overflow: hidden; }

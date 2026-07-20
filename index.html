@@ -485,13 +485,14 @@
               <input type="file" id="avatarPhotoInput" accept="image/*" style="display:none;" onchange="changeAvatarPhoto(event)"/>
             </div>
             <div class="main-profile-actions">
-              <button class="main-profile-edit-btn" onclick="openEditMainProfile()">✏️ Éditer</button>
-              <button class="main-profile-edit-btn" onclick="shareMyProfile()">📤 Partager</button>
-              <button class="main-profile-edit-btn" id="profilePassiaChip" onclick="goTo('wallet')" title="Mon solde Passia">💎 <span id="topPassia">0</span></button>
+              <button class="main-profile-edit-icon" onclick="openEditMainProfile()" title="Éditer mon profil" aria-label="Éditer mon profil">✏️</button>
             </div>
           </div>
           <div class="main-profile-username" id="mainProfileUsername">Mon profil</div>
-          <button class="profile-stars-chip" id="mainProfileStars" onclick="goTo('wallet')" title="Tes points & ton rang" aria-label="Tes points et ton rang">⭐ <b id="profileStarsScore">0</b> · <span id="profileStarsRank">Débutant</span></button>
+          <div class="profile-chips-row">
+            <button class="profile-stars-chip" id="mainProfileStars" onclick="goTo('wallet')" title="Tes points & ton rang" aria-label="Tes points et ton rang">⭐ <b id="profileStarsScore">0</b> · <span id="profileStarsRank">Débutant</span></button>
+            <button class="profile-stars-chip" id="profilePassiaChip" onclick="goTo('wallet')" title="Mon solde Passia" aria-label="Mon solde Passia">💎 <b id="topPassia">0</b> · Passia</button>
+          </div>
           <!-- Jauge de progression vers le prochain palier/rang (réutilise rankOf) -->
           <div class="rank-progress" id="mainProfileRankProgress" onclick="goTo('wallet')" title="Ta progression vers le prochain rang" style="display:none;">
             <div class="rank-progress-bar"><div class="rank-progress-fill" id="mainProfileRankFill"></div></div>
