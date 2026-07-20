@@ -910,19 +910,17 @@
     <section class="screen" id="screen-irl">
       <div class="section-title">Passio IRL</div>
 
-      <!-- Créer un événement + filtres (discret) sur une seule ligne -->
-      <div style="display:flex;gap:8px;align-items:stretch;margin-bottom:12px;">
-        <button onclick="openCreateEvent()" style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:11px 12px;border-radius:14px;border:none;background:var(--grad-hero);color:#fff;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 4px 12px rgba(124,58,237,0.3);">📍 Créer un événement</button>
-        <button id="irlFiltersBtn" onclick="openIrlFiltersPanel()" aria-label="Filtres" title="Filtres" style="flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;padding:11px 14px;border-radius:14px;border:1px solid var(--border);background:transparent;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer;">
-          <span>🎯</span><span id="irlFiltersBadge" style="display:none;background:var(--accent);color:#fff;border-radius:999px;font-size:11px;font-weight:700;padding:1px 7px;min-width:18px;text-align:center;"></span>
+      <!-- Créer un événement + ville + filtres : une seule ligne, chips légers -->
+      <div class="irl-actionbar">
+        <button class="irl-chip irl-chip-create" onclick="openCreateEvent()">
+          <span aria-hidden="true">📍</span><span class="irl-chip-label">Créer un événement</span>
         </button>
-      </div>
-
-      <!-- Ville de référence (filtre distance) — discrète, tout le bloc ouvre le sélecteur -->
-      <div class="irl-locbar" onclick="openIrlCitySelector()" role="button" tabindex="0"
-        style="display:inline-flex;align-items:center;gap:5px;margin-bottom:10px;cursor:pointer;font-size:13px;color:var(--muted);">
-        <span>📍 Autour de</span>
-        <b id="irlUserCityName" style="color:var(--accent);border-bottom:1px dashed var(--accent);">…</b>
+        <button class="irl-chip irl-locbar" onclick="openIrlCitySelector()" title="Changer de ville">
+          <span aria-hidden="true">🌍</span><b id="irlUserCityName" class="irl-chip-label">…</b>
+        </button>
+        <button class="irl-chip" id="irlFiltersBtn" onclick="openIrlFiltersPanel()" aria-label="Filtres" title="Filtres">
+          <span aria-hidden="true">🎯</span><span id="irlFiltersBadge" class="irl-chip-badge"></span>
+        </button>
       </div>
 
       <div class="irl-map-wrap" id="irlMapWrap">

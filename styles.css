@@ -3777,6 +3777,63 @@
     }
     .cmt-sheet-ic { font-size: 18px; width: 22px; text-align: center; }
 
+    /* Barre d'actions IRL : créer / ville / filtres — 3 chips légers sur UNE ligne.
+       Volontairement sans aplat violet foncé (le CTA reste une teinte accent très diluée). */
+    .irl-actionbar {
+      display: flex;
+      align-items: stretch;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .irl-chip {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      min-width: 0;
+      flex: 0 0 auto;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      color: var(--muted);
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      line-height: 1;
+      cursor: pointer;
+      transition: border-color 160ms ease, color 160ms ease, background 160ms ease;
+    }
+    .irl-chip:hover { border-color: var(--accent); }
+    .irl-chip-label {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-weight: 600;
+    }
+    /* Le CTA prend la place restante et reste l'élément le plus lisible des trois */
+    .irl-chip-create {
+      flex: 1 1 auto;
+      color: var(--accent);
+      border-color: rgba(124, 58, 237, 0.35);
+      background: rgba(124, 58, 237, 0.07);
+    }
+    /* La ville est plafonnée : un nom long doit rogner ICI, pas sur le CTA */
+    .irl-chip.irl-locbar { flex: 0 1 auto; max-width: 30%; }
+    .irl-chip-badge {
+      display: none;
+      background: var(--accent);
+      color: #fff;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 6px;
+      min-width: 16px;
+      text-align: center;
+      line-height: 1.1;
+    }
+
     /* Map IRL */
     /* Carte interactive Leaflet */
     .irl-map-wrap {
