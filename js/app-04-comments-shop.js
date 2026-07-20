@@ -2707,11 +2707,13 @@ async function openUserProfile(authorId, source) {
     }
   }
 
-  // 🎯 Cartes passion — même visuel que « Mes profils passion » (photo/couleur,
-  // libellé, bio par passion quand elle a été publiée dans profiles.passions).
+  // 🎯 Cartes passion SÉLECTIONNABLES — même mécanique que « Mes profils
+  // passion » sur mon écran : cocher une ou plusieurs passions filtre le
+  // contenu en dessous (aucune cochée = tout est affiché). Même visuel
+  // (photo/couleur, libellé, bio par passion, photo de fond).
   const passionsHTML = userPassions.length > 0
-    ? '<div style="display:flex;flex-direction:column;gap:8px;margin:14px 0;">'
-      + '<div style="font-weight:800;font-size:14px;color:var(--text);">✨ Ses passions</div>'
+    ? '<div class="section-title" style="margin-top:14px;">Ses profils passion</div>'
+      + '<div id="visitedPassions">'
       + userPassions.map(p => {
           const pas = passionById(p.id);
           const label = (pas && pas.label) || p.label || "Passion";
@@ -2723,7 +2725,7 @@ async function openUserProfile(authorId, source) {
           const coverStyle = _pCover
             ? 'background:linear-gradient(90deg, rgba(0,0,0,0.62), rgba(0,0,0,0.30)), url(' + safeUrlAttr(_pCover) + ') center/cover;'
             : '';
-          return '<div class="profile-card ' + (_pCover ? 'has-cover' : '') + '" style="' + coverStyle + 'cursor:default;">'
+          return '<div class="profile-card ' + (_pCover ? 'has-cover' : '') + '" data-vpid="' + escapeHtml(p.id) + '" style="' + coverStyle + '" onclick="toggleVisitedPassion(\'' + escapeJsArg(p.id) + '\')">'
             + '<div class="avatar lg" style="' + avatarStyle + '">' + (_pPhoto ? '' : (p.emoji || "✨")) + '</div>'
             + '<div class="profile-card-body" style="flex:1;">'
             + '<div class="profile-card-name">' + (p.emoji || "✨") + ' ' + escapeHtml(label) + '</div>'
@@ -2736,13 +2738,6 @@ async function openUserProfile(authorId, source) {
   // 🔗 Réseaux sociaux — mêmes pastilles que sur mon profil.
   var RS_ICONS = { instagram:"📸", facebook:"👤", tiktok:"🎵", youtube:"▶️", twitter:"𝕏", linkedin:"💼", snapchat:"👻", autre:"🔗" };
   var rsLinks = Array.isArray(user.rsLinks) ? user.rsLinks : [];
-  var rsHTML = rsLinks.length
-    ? '<div class="main-profile-rs" style="justify-content:center;">'
-      + rsLinks.map(function(l) {
-          return '<a class="main-profile-rs-link" href="' + safeUrlAttr(l.url || "") + '" target="_blank" rel="noopener">' + (RS_ICONS[l.platform] || "🔗") + ' ' + escapeHtml(l.platform || "lien") + '</a>';
-        }).join("")
-      + '</div>'
-    : '';
 
   // 🔒 Compte privé : le contenu (posts/bobines/carnets) est réservé aux
   // abonnés ; l'en-tête (avatar, pseudo, passions, stats) reste visible.
@@ -2760,6 +2755,12 @@ async function openUserProfile(authorId, source) {
   if (canSeeContent && typeof supaLoadPosts === "function" && window._supaReal) {
     try {
       var serverPosts = await supaLoadPosts(0, authorId);
+      // Fusion dans le cache global : findPostAnywhere / openReelById (viewer
+      // Bobines) / commentaires doivent retrouver ces posts hors de la modale.
+      state.supabasePosts = state.supabasePosts || [];
+      (serverPosts || []).forEach(function(sp) {
+        if (!state.supabasePosts.some(function(p) { return p.id === sp.id; })) state.supabasePosts.push(sp);
+      });
       localPosts = localPosts.concat(serverPosts || []);
     } catch(e) {}
   }
@@ -2770,8 +2771,6 @@ async function openUserProfile(authorId, source) {
     return true;
   }).sort(function(a,b) { return (b.createdAt||0) - (a.createdAt||0); });
 
-  var reels = userPosts.filter(function(p) { return p.isReel && (p.video || p.image); });
-  var feedPosts = userPosts.filter(function(p) { return !p.isReel; });
   var postCount = userPosts.length;
   var likeCount = userPosts.reduce(function(s,p) { return s + (p.likes||0); }, 0);
   var followerCount = 0;
@@ -2784,29 +2783,31 @@ async function openUserProfile(authorId, source) {
     } catch(e) {}
   }
 
-  // 🎞️ Bobines en grille 3 colonnes (même rendu que l'onglet Bobines de mon profil)
-  var reelsHTML = reels.length
-    ? '<div style="font-weight:800;font-size:14px;color:var(--text);margin:16px 0 10px;">🎞️ Bobines <span style="font-weight:400;color:var(--muted);">(' + reels.length + ')</span></div>'
-      + '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;">'
-      + reels.map(function(p) {
-          var poster = p.image || p.poster || "";
-          var thumb = poster
-            ? '<img loading="lazy" decoding="async" src="' + safeUrlAttr(poster) + '" style="width:100%;height:100%;object-fit:cover;"/>'
-            : (p.video ? '<video src="' + safeUrlAttr(p.video) + '#t=0.1" muted playsinline preload="metadata" style="width:100%;height:100%;object-fit:cover;background:#000;"></video>' : '<div style="width:100%;height:100%;background:linear-gradient(135deg,#7c3aed,#a78bfa);"></div>');
-          return '<div onclick="closeModal();openReelById(\'' + escapeJsArg(p.id) + '\')" style="aspect-ratio:9/16;border-radius:8px;overflow:hidden;position:relative;cursor:pointer;">' + thumb + '<span style="position:absolute;left:6px;bottom:6px;font-size:14px;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.6));">🎞️</span></div>';
+  // État partagé de la vue « profil visité » : posts + sélections passion/type.
+  // Conventions IDENTIQUES à mon écran profil : rien de coché = aucun filtre.
+  window._visited = { authorId: authorId, posts: userPosts, passionSel: new Set(), tabSel: new Set(), locked: !canSeeContent };
+
+  // Onglets de contenu : MÊMES 5 icônes que sur mon profil (multi-sélection).
+  var _VTAB_SVGS = {
+    posts:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2.5"/><path d="M8 9h8"/><path d="M8 13h8"/><path d="M8 17h5"/></svg>',
+    photos:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"/><circle cx="8.5" cy="10" r="1.6"/><path d="M4 17l4.5 -4.5a2 2 0 0 1 2.8 0L16 17"/><path d="M14 14.5l1.6 -1.6a2 2 0 0 1 2.8 0L20 14.5"/></svg>',
+    videos:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="13" height="14" rx="2.5"/><path d="M16 10.5l4.2 -2.6a.6 .6 0 0 1 .9 .5v7.2a.6 .6 0 0 1 -.9 .5l-4.2 -2.6z"/></svg>',
+    bobines: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2.5"/><path d="M8 4v16"/><path d="M16 4v16"/><path d="M4 8h4"/><path d="M4 16h4"/><path d="M16 8h4"/><path d="M16 16h4"/></svg>',
+    carnets: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4h11a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-11a1 1 0 0 1 -1 -1v-14a1 1 0 0 1 1 -1m3 0v18"/><path d="M13 9h2.5"/><path d="M13 13h2.5"/></svg>'
+  };
+  var _VTAB_TITLES = { posts: "Posts", photos: "Photos", videos: "Vidéos", bobines: "Bobines", carnets: "Carnets" };
+  var tabsHTML = canSeeContent
+    ? '<div class="profile-tabs" id="visitedTabs" role="group" aria-label="Filtrer par type de contenu (multi-sélection)">'
+      + ["posts","photos","videos","bobines","carnets"].map(function(k) {
+          return '<button class="profile-tab" data-vtab="' + k + '" aria-pressed="false" onclick="switchVisitedTab(\'' + k + '\')" title="' + _VTAB_TITLES[k] + '" aria-label="' + _VTAB_TITLES[k] + '">' + _VTAB_SVGS[k] + '</button>';
         }).join("")
       + '</div>'
     : '';
 
-  var postsHTML = feedPosts.length > 0
-    ? feedPosts.map(renderPostHTML).join("")
-    : '<div style="text-align:center;padding:30px;color:var(--muted);font-size:12px;">Aucune publication pour l\'instant</div>';
-
-  // Contenu : soit tout, soit le verrou « compte privé ».
+  // Contenu initial : verrou « compte privé » pour un non-abonné, sinon rempli
+  // par _renderVisitedContent() juste après l'ouverture de la modale.
   var contentHTML = canSeeContent
-    ? reelsHTML
-      + '<div style="font-weight:800;font-size:14px;color:var(--text);margin:16px 0 10px;">📝 Publications <span style="font-weight:400;color:var(--muted);">(' + feedPosts.length + ')</span></div>'
-      + '<div>' + postsHTML + '</div>'
+    ? ''
     : '<div style="text-align:center;padding:36px 20px;border:1px dashed var(--border);border-radius:16px;margin-top:16px;">'
       + '<div style="font-size:34px;margin-bottom:10px;">🔒</div>'
       + '<div style="font-weight:800;font-size:15px;color:var(--text);margin-bottom:6px;">Ce compte est privé</div>'
@@ -2847,8 +2848,6 @@ async function openUserProfile(authorId, source) {
       <button class="btn ghost" id="followBtn_' + authorId + '" onclick="toggleFollowUser(\'' + authorId + '\',\'' + escapeJsArg(user.name || "") + '\')" style="flex:1;font-size:12px;padding:10px 18px;border-radius:14px;' + (isFollowing ? 'background:var(--accent);color:#fff;border-color:var(--accent);' : '') + '">' + (isFollowing ? '✓ Suivi' : '➕ Suivre') + '</button>\
     </div>\
     \
-    ' + passionsHTML + '\
-    \
     <!-- ACTIONS RAPIDES -->\
     <div style="display:flex;gap:8px;margin-bottom:4px;">\
       <button class="btn ghost" onclick="shareUserProfile(\'' + authorId + '\',\'' + escapeJsArg(user.name || "") + '\')" style="flex:1;font-size:11px;padding:8px;">' + shareIconSvg(14) + ' Partager</button>\
@@ -2858,12 +2857,99 @@ async function openUserProfile(authorId, source) {
         : '<button class="btn ghost" onclick="blockUser(\'' + authorId + '\',\'' + escapeJsArg(user.name || "") + '\')" style="flex:1;font-size:11px;padding:8px;color:#ef4444;border-color:rgba(239,68,68,0.3);">🚫 Bloquer</button>') + '\
     </div>\
     \
-    ' + contentHTML + '\
+    ' + passionsHTML + '\
+    ' + tabsHTML + '\
+    <div id="visitedContent">' + contentHTML + '</div>\
   ';
   openModal(html);
   // Passer en plein écran
   var modalEl = document.querySelector(".modal");
   if (modalEl) modalEl.classList.add("modal-fullscreen");
+  // Remplit le contenu selon les sélections (comme renderProfileContent chez moi).
+  _renderVisitedContent();
+}
+
+// ======== PROFIL VISITÉ — filtres passion + type de contenu ========
+// Même mécanique que l'écran « mon profil » : les cartes passion ET les 5
+// icônes de type sont des filtres cumulables ; rien de coché = tout affiché.
+// L'état vit dans window._visited (posé par openUserProfile).
+
+function toggleVisitedPassion(pid) {
+  var v = window._visited; if (!v) return;
+  if (v.passionSel.has(pid)) v.passionSel.delete(pid); else v.passionSel.add(pid);
+  _syncVisitedUI();
+  _renderVisitedContent();
+}
+
+function switchVisitedTab(tab) {
+  var v = window._visited; if (!v) return;
+  if (v.tabSel.has(tab)) v.tabSel.delete(tab); else v.tabSel.add(tab);
+  _syncVisitedUI();
+  _renderVisitedContent();
+}
+
+// Reflète les sélections sur les cartes passion (bordure accent, comme
+// renderProfilesScreen) et les onglets (classe active + aria-pressed).
+function _syncVisitedUI() {
+  var v = window._visited; if (!v) return;
+  document.querySelectorAll("#visitedPassions [data-vpid]").forEach(function(c) {
+    var on = v.passionSel.has(c.getAttribute("data-vpid"));
+    c.classList.toggle("selected", on);
+    c.style.border = on ? "2px solid var(--accent)" : "";
+  });
+  document.querySelectorAll("#visitedTabs .profile-tab").forEach(function(b) {
+    var on = v.tabSel.has(b.getAttribute("data-vtab"));
+    b.classList.toggle("active", on);
+    b.setAttribute("aria-pressed", on ? "true" : "false");
+  });
+}
+
+// Rend #visitedContent — équivalent de renderProfileContent pour un profil
+// visité : union des types cochés, grille 3 colonnes si la sélection vaut
+// EXACTEMENT « photos » ou « bobines », sinon liste renderPostHTML.
+function _renderVisitedContent() {
+  var v = window._visited;
+  var el = document.getElementById("visitedContent");
+  if (!v || !el || v.locked) return; // verrou compte privé : ne rien écraser
+
+  var posts = v.posts || [];
+  if (v.passionSel.size) posts = posts.filter(function(p) { return v.passionSel.has(p.passion); });
+
+  var KEYS = (typeof PROFILE_TAB_KEYS !== "undefined") ? PROFILE_TAB_KEYS : ["posts","photos","videos","bobines","carnets"];
+  var keys = KEYS.filter(function(k) { return v.tabSel.has(k); });
+  if (keys.length && typeof PROFILE_TAB_PRED !== "undefined") {
+    posts = posts.filter(function(p) { return keys.some(function(k) { return PROFILE_TAB_PRED[k](p); }); });
+  }
+  var single = keys.length === 1 ? keys[0] : null;
+
+  function _vEmpty(msg) {
+    return '<div class="empty"><div class="empty-icon">📭</div><div class="empty-title">' + msg + '</div><div class="empty-text">Rien à afficher pour cette sélection.</div></div>';
+  }
+
+  if (single === "photos") {
+    var photos = posts.filter(function(p) { return !p.isReel && (p.type === "photo" || p.image); });
+    el.innerHTML = photos.length
+      ? '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;">' + photos.map(function(p) {
+          var src = p.image || "https://picsum.photos/seed/" + p.id + "/300/300";
+          return '<div style="aspect-ratio:1;border-radius:8px;overflow:hidden;"><img loading="lazy" decoding="async" src="' + safeUrlAttr(src) + '" style="width:100%;height:100%;object-fit:cover;"/></div>';
+        }).join("") + '</div>'
+      : _vEmpty("Aucune photo");
+  } else if (single === "bobines") {
+    var bobines = posts.filter(function(p) { return p.isReel && (p.video || p.image); });
+    el.innerHTML = bobines.length
+      ? '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;">' + bobines.map(function(p) {
+          var poster = p.image || p.poster || "";
+          var thumb = poster
+            ? '<img loading="lazy" decoding="async" src="' + safeUrlAttr(poster) + '" style="width:100%;height:100%;object-fit:cover;"/>'
+            : (p.video ? '<video src="' + safeUrlAttr(p.video) + '#t=0.1" muted playsinline preload="metadata" style="width:100%;height:100%;object-fit:cover;background:#000;"></video>' : '<div style="width:100%;height:100%;background:linear-gradient(135deg,#7c3aed,#a78bfa);"></div>');
+          return '<div onclick="closeModal();openReelById(\'' + escapeJsArg(p.id) + '\')" style="aspect-ratio:9/16;border-radius:8px;overflow:hidden;position:relative;cursor:pointer;">' + thumb + '<span style="position:absolute;left:6px;bottom:6px;font-size:14px;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.6));">🎞️</span></div>';
+        }).join("") + '</div>'
+      : _vEmpty("Aucune bobine");
+  } else {
+    el.innerHTML = posts.length
+      ? posts.map(renderPostHTML).join("")
+      : _vEmpty("Aucune publication");
+  }
 }
 
 // Colonnes chargées pour un profil VISITÉ — tout ce qu'il faut pour reproduire

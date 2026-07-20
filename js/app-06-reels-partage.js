@@ -312,7 +312,9 @@ function _persistProfileTabs() {
 // Reflète la sélection sur les boutons (classe + aria-pressed).
 function _syncProfileTabButtons() {
   var sel = _profileTabSel();
-  document.querySelectorAll(".profile-tab").forEach(function(b){
+  // Scopé à MON écran profil : la vue « profil visité » (app-04) a ses propres
+  // onglets .profile-tab dans #visitedTabs, avec leur propre sélection.
+  document.querySelectorAll("#screen-profiles .profile-tab").forEach(function(b){
     var k = b.getAttribute("data-tab");
     var on = !!k && sel.has(k);
     b.classList.toggle("active", on);
