@@ -67,18 +67,6 @@
   <script src="js/leaflet-loader.js"></script>
 
   <link rel="stylesheet" href="styles.css" />
-
-  <!-- Anti-flash mode sombre : pose data-theme AVANT le premier rendu.
-       La logique complète (toggle + écoute système) est dans passioApplyThemeMode (app-05). -->
-  <script>
-    (function () {
-      try {
-        var mode = (JSON.parse(localStorage.getItem("passio_config") || "{}").mode) || "auto";
-        var dark = mode === "dark" || (mode === "auto" && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
-        document.documentElement.dataset.theme = dark ? "dark" : "light";
-      } catch (e) {}
-    })();
-  </script>
 </head>
 <body>
 

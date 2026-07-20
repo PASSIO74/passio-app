@@ -18,33 +18,9 @@ function getNavOrder() {
   return getCurrentConfig().navOrder || [...DEFAULT_NAV_ORDER];
 }
 
-// ── MODE SOMBRE (refonte 2026-07-20) ──
-// data-theme est posé très tôt par l'anti-flash inline du <head> ; ici on gère
-// le choix du Configurateur (auto/clair/sombre) + l'écoute du système en auto.
-function passioThemeIsDark() {
-  var mode = getCurrentConfig().mode || "auto";
-  if (mode === "dark") return true;
-  if (mode === "light") return false;
-  return !!(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
-}
-function passioApplyThemeMode() {
-  document.documentElement.dataset.theme = passioThemeIsDark() ? "dark" : "light";
-  if (!window._passioThemeMediaBound && window.matchMedia) {
-    window._passioThemeMediaBound = true;
-    try {
-      window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", function () {
-        if ((getCurrentConfig().mode || "auto") === "auto") applyConfig();
-      });
-    } catch (e) {}
-  }
-}
-
 function applyConfig() {
   var cfg = getCurrentConfig();
   var root = document.documentElement;
-
-  passioApplyThemeMode();
-  var effDark = passioThemeIsDark();
 
   // COULEUR
   if (cfg.accent) {
@@ -60,19 +36,10 @@ function applyConfig() {
       root.style.setProperty("--accent-4-soft", c.c4s);
       root.style.setProperty("--accent-5", c.c5);
       root.style.setProperty("--accent-5-soft", c.c5s);
-      if (!effDark) {
-        root.style.setProperty("--bg-deep", c.bgDeep);
-        root.style.setProperty("--bg-soft", c.bgSoft);
-        root.style.setProperty("--border", c.border);
-        root.style.setProperty("--border-strong", c.borderStrong);
-      } else {
-        // Mode sombre : on garde les teintes d'accent du thème mais PAS ses
-        // surfaces claires (elles écraseraient les fonds sombres de styles.css)
-        root.style.removeProperty("--bg-deep");
-        root.style.removeProperty("--bg-soft");
-        root.style.removeProperty("--border");
-        root.style.removeProperty("--border-strong");
-      }
+      root.style.setProperty("--bg-deep", c.bgDeep);
+      root.style.setProperty("--bg-soft", c.bgSoft);
+      root.style.setProperty("--border", c.border);
+      root.style.setProperty("--border-strong", c.borderStrong);
       root.style.setProperty("--shadow-soft", "0 1px 2px rgba(" + c.shadow + ",0.05), 0 8px 24px rgba(" + c.shadow + ",0.10)");
       root.style.setProperty("--shadow-strong", "0 16px 48px rgba(" + c.shadow + ",0.18)");
       root.style.setProperty("--shadow-glow", "0 8px 22px rgba(" + c.shadow + ",0.22)");
@@ -87,7 +54,7 @@ function applyConfig() {
       var colorOverride = document.getElementById("passio-color-override");
       if (!colorOverride) { colorOverride = document.createElement("style"); colorOverride.id = "passio-color-override"; document.head.appendChild(colorOverride); }
       colorOverride.textContent = "\
-        " + (effDark ? "" : ".app-shell { background: radial-gradient(circle at 50% -6%, rgba(" + c.shadow + ",0.16), transparent 58%), " + c.bgSoft + " !important; }") + "\
+        .app-shell { background: radial-gradient(circle at 50% -6%, rgba(" + c.shadow + ",0.16), transparent 58%), " + c.bgSoft + " !important; }\
         .topbar { background: linear-gradient(135deg, " + c.accent + " 0%, " + c.c3 + " 100%) !important; border-bottom-color: rgba(255,255,255,0.12) !important; }\
         .brand-name { color: #fff !important; }\
         .brand-tagline { color: rgba(255,255,255,0.82) !important; }\
@@ -108,7 +75,7 @@ function applyConfig() {
         .main-profile-avatar:not([data-has-photo=\"1\"]) { background: linear-gradient(135deg, " + c.c4 + ", " + c.c2 + ") !important; }\
         .main-profile-cover:not([data-has-photo=\"1\"]) { background: radial-gradient(130% 140% at 12% -10%, " + c.c5 + " 0%, transparent 55%), radial-gradient(120% 130% at 95% 15%, " + c.soft + " 0%, transparent 60%), radial-gradient(160% 130% at 50% 115%, " + c.c3 + " 0%, " + c.c2 + " 70%) !important; }\
       ";
-      if (c.dark && !effDark) {
+      if (c.dark) {
         root.style.setProperty("--text", "#e2e8f0");
         root.style.setProperty("--text-dim", "#cbd5e1");
         root.style.setProperty("--muted", "#94a3b8");
@@ -221,19 +188,6 @@ function openConfigurator() {
   var fontFamilyNow = cfg.fontFamily || "default";
   var fontSizeNow = cfg.fontSize || "medium";
   var radiusNow = cfg.radius || "round";
-  var modeNow = cfg.mode || "auto";
-
-  var modeHTML = [
-    { id: "auto", name: "Auto", emoji: "🌗", hint: "Suit ton appareil" },
-    { id: "light", name: "Clair", emoji: "☀️", hint: "Toujours clair" },
-    { id: "dark", name: "Sombre", emoji: "🌙", hint: "Toujours sombre" },
-  ].map(function(m) {
-    var sel = m.id === modeNow;
-    return '<div onclick="setConfig(\'mode\',\'' + m.id + '\')" style="cursor:pointer;text-align:center;padding:12px 8px;border-radius:12px;border:2px solid ' + (sel ? 'var(--accent)' : 'transparent') + ';background:' + (sel ? 'var(--accent-wash)' : 'var(--bg-card)') + ';transition:all 0.15s;">'
-      + '<div style="font-size:20px;margin-bottom:4px;">' + m.emoji + '</div>'
-      + '<div style="font-size:12px;font-weight:800;">' + m.name + '</div>'
-      + '<div style="font-size:9.5px;color:var(--muted);">' + m.hint + '</div></div>';
-  }).join("");
 
   var accentHTML = ACCENT_COLORS.map(function(c) {
     return '<div onclick="setConfig(\'accent\',\'' + c.id + '\')" style="cursor:pointer;display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;border:2px solid ' + (c.id === accentNow ? c.accent : 'transparent') + ';background:' + (c.id === accentNow ? c.bgDeep : 'var(--bg-card)') + ';margin-bottom:6px;transition:all 0.15s;"><div style="width:36px;height:36px;border-radius:10px;background:' + c.grad1 + ';flex-shrink:0;"></div><div style="font-weight:700;font-size:13px;">' + c.emoji + ' ' + c.name + '</div>' + (c.id === accentNow ? '<div style="margin-left:auto;font-size:16px;">✓</div>' : '') + '</div>';
@@ -265,8 +219,6 @@ function openConfigurator() {
       <div style="font-weight:800;font-size:18px;color:var(--text);">Configurateur</div>\
       <div style="font-size:12px;color:var(--muted);">Personnalise PASSIO à ton image</div>\
     </div>\
-    <div style="font-weight:700;font-size:13px;color:var(--text);margin-bottom:10px;">🌓 Mode d\'affichage</div>\
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px;">' + modeHTML + '</div>\
     <div style="font-weight:700;font-size:13px;color:var(--text);margin-bottom:10px;">🎨 Thème de couleur</div>\
     <div style="margin-bottom:16px;">' + accentHTML + '</div>\
     <div style="font-weight:700;font-size:13px;color:var(--text);margin-bottom:10px;">✍️ Police d\'écriture <span style="font-size:10px;color:var(--muted);font-weight:400;">glisse pour voir</span></div>\
