@@ -670,10 +670,11 @@ async function meStartCamera() {
   try {
     meStopCamera();
     var stream = await navigator.mediaDevices.getUserMedia({
-      // 720p (au lieu de 1280) : suffisant pour du social mobile, ~2× moins
-      // de pixels donc des vidéos bien plus légères (cf. bitrate ci-dessous).
-      video: { facingMode: meCam.facing, width: { ideal: 720 }, height: { ideal: 720 } },
-      audio: true
+      // 1080p : qualité « niveau Instagram » pour photos ET vidéos (le poids
+      // reste maîtrisé par le bitrate plafonné de meStartRecording). Micro
+      // TRAITÉ mono (anti-écho/bruit/gain — le stéréo désactive l'anti-écho).
+      video: { facingMode: meCam.facing, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } },
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: { ideal: 1 }, sampleRate: 48000 }
     });
     meCam.stream = stream;
     var v = document.getElementById("meCamVideo");
@@ -743,10 +744,11 @@ function meStartRecording() {
   if (!meCam.stream || !window.MediaRecorder || meCam.recording) return;
   var mime = _passioBestVideoMime();
   meCam.chunks = [];
-  // Bitrate plafonné : sans ça le navigateur enregistre à 2,5-8 Mbps → une
-  // vidéo de 60 s pèse 20-30 Mo et sature le Storage (1 Go en gratuit).
-  // 1,2 Mbps vidéo + 96 kbps audio → ~60 s ≈ 8-9 Mo, qualité sociale OK.
-  var recOpts = { videoBitsPerSecond: 1200000, audioBitsPerSecond: 96000 };
+  // Bitrate plafonné : sans ça le navigateur enregistre à 5-8 Mbps → une
+  // vidéo de 60 s pèse 40+ Mo et sature le Storage (1 Go en gratuit).
+  // 3,5 Mbps vidéo (1080p30 H.264 net) + 128 kbps audio → 60 s ≈ 27 Mo,
+  // dans le budget du timeout d'upload proportionnel (~5 s/Mo, cap 3 min).
+  var recOpts = { videoBitsPerSecond: 3500000, audioBitsPerSecond: 128000 };
   if (mime) recOpts.mimeType = mime;
   try { meCam.recorder = new MediaRecorder(meCam.stream, recOpts); }
   catch(e) {
@@ -882,12 +884,12 @@ function _meUpdateProgress(p) {
 }
 function _meHideProgress() { var d = document.getElementById("meProgressOv"); if (d) d.remove(); }
 
-// Compresse/ré-encode une vidéo côté client (canvas + MediaRecorder) en 720p à
+// Compresse/ré-encode une vidéo côté client (canvas + MediaRecorder) en 1080p à
 // bitrate plafonné. Best-effort : rejette si le navigateur ne supporte pas, pour
 // laisser l'appelant retomber sur un message clair. Préserve l'audio (volume 0).
 function passioCompressVideo(file, opts, onProgress) {
   opts = opts || {};
-  var maxDim = opts.maxDim || 720, bitrate = opts.bitrate || 1200000;
+  var maxDim = opts.maxDim || 1080, bitrate = opts.bitrate || 2500000;
   return new Promise(function(resolve, reject) {
     if (!window.MediaRecorder || !HTMLCanvasElement.prototype.captureStream) { reject(new Error("unsupported")); return; }
     var url = URL.createObjectURL(file);
@@ -937,7 +939,7 @@ function passioCompressVideo(file, opts, onProgress) {
       }
       // mp4/H.264 en priorité (lisible sur iPhone) — même logique que meStartRecording.
       var mime = (typeof _passioBestVideoMime === "function") ? _passioBestVideoMime() : "";
-      var recOpts = { videoBitsPerSecond: bitrate, audioBitsPerSecond: 96000 };
+      var recOpts = { videoBitsPerSecond: bitrate, audioBitsPerSecond: 128000 };
       if (mime) recOpts.mimeType = mime;
       var rec;
       try { rec = new MediaRecorder(cstream, recOpts); } catch (e) { cleanup(); reject(e); return; }
@@ -987,7 +989,7 @@ async function meOnMedia(ev) {
       } else if (file.size <= HARD && typeof passioCompressVideo === "function") {
         try {
           _meShowProgress("Optimisation de la vidéo…");
-          dataUrl = await passioCompressVideo(file, { maxDim: 720, bitrate: 1200000 }, _meUpdateProgress);
+          dataUrl = await passioCompressVideo(file, { maxDim: 1080, bitrate: 2500000 }, _meUpdateProgress);
           _meHideProgress();
           if (!dataUrl || dataUrl.length < 1000) throw new Error("empty result");
         } catch (e) {
@@ -2462,7 +2464,7 @@ async function _buildVlogPayload(post) {
 // l'animation). Une photo de galerie moderne fait 3-8 Mo → ÷5-10 en stockage
 // Supabase + data mobile (envoi ET affichage du fil chez tous les lecteurs),
 // rendu identique dans l'app. La compression vidéo 720p existe déjà (media editor).
-const _UPLOAD_MAX_DIM = 1600;
+const _UPLOAD_MAX_DIM = 2048;
 function _downscaleImageForUpload(dataUrl) {
   return new Promise(function (resolve) {
     try {
@@ -2477,7 +2479,7 @@ function _downscaleImageForUpload(dataUrl) {
           c.width = Math.round(w * scale); c.height = Math.round(h * scale);
           c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
           var isPng = dataUrl.indexOf("data:image/png") === 0;
-          var out = c.toDataURL(isPng ? "image/png" : "image/jpeg", 0.85);
+          var out = c.toDataURL(isPng ? "image/png" : "image/jpeg", 0.88);
           // Garde-fou : si le ré-encodage grossit (rare), on garde l'original.
           resolve(out.length < dataUrl.length ? out : dataUrl);
         } catch (e) { resolve(dataUrl); }

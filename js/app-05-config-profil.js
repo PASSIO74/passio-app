@@ -552,14 +552,15 @@ function _callMyName() {
 }
 
 // Contraintes audio « HD » : traitement activé (anti-écho / anti-bruit / gain
-// auto) + 48 kHz STÉRÉO → son riche et net.
+// auto) + 48 kHz MONO. ⚠️ NE JAMAIS demander channelCount:2 ici : une capture
+// micro STÉRÉO désactive l'annuleur d'écho du navigateur (l'AEC de Chrome ne
+// traite que le mono) → c'était LA cause de l'écho en appel et en live.
 const CALL_AUDIO_CONSTRAINTS = {
   echoCancellation: true,
   noiseSuppression: true,
   autoGainControl: true,
-  channelCount: 2,
+  channelCount: { ideal: 1 },
   sampleRate: 48000,
-  sampleSize: 16,
 };
 
 // Cible vidéo HD 1080p (idéal — repli auto sur ce que supporte la caméra).
@@ -587,16 +588,19 @@ async function _callApplyMediaQuality() {
       const params = sender.getParameters();
       if (!params.encodings || !params.encodings.length) params.encodings = [{}];
       if (sender.track.kind === "video") {
-        try { sender.track.contentHint = "detail"; } catch (e) {} // privilégie la netteté
+        // "motion" = contenu caméra : l'encodeur privilégie la fluidité. L'ancien
+        // "detail" + maintain-resolution sacrifiait le framerate dès que le CPU/
+        // réseau faiblissait → image hachée/figée perçue comme « médiocre ».
+        try { sender.track.contentHint = "motion"; } catch (e) {}
         params.encodings[0].maxBitrate = 6000000; // ~6 Mbps → 1080p HD net
         params.encodings[0].maxFramerate = 30;
-        params.encodings[0].scaleResolutionDownBy = 1; // ne JAMAIS réduire la résolution
+        params.encodings[0].scaleResolutionDownBy = 1; // démarre pleine résolution
         params.encodings[0].active = true;
-        // Garde la résolution HD : si le réseau faiblit, on baisse le fps plutôt
-        // que de flouter l'image.
-        if ("degradationPreference" in params) params.degradationPreference = "maintain-resolution";
+        // "balanced" : laisse WebRTC arbitrer résolution/fps selon le réseau —
+        // un 1080p saccadé paraît PIRE qu'un 900p fluide.
+        if ("degradationPreference" in params) params.degradationPreference = "balanced";
       } else if (sender.track.kind === "audio") {
-        params.encodings[0].maxBitrate = 256000; // Opus stéréo haute fidélité
+        params.encodings[0].maxBitrate = 128000; // Opus mono fullband (transparent voix)
       }
       try { await sender.setParameters(params); } catch (e) {}
     }
@@ -636,9 +640,12 @@ function _callSetupPeerConnection() {
   };
 }
 
-// Force Opus en STÉRÉO haute fidélité dans le SDP (WebRTC négocie sinon de
-// l'Opus mono ~32 kbps par défaut). Ajoute stéréo + 256 kbps + FEC anti-perte
-// + DTX coupé (usedtx=0 : flux continu, évite les débuts de mots avalés).
+// Force Opus fullband MONO 128 kbps dans le SDP (WebRTC négocie sinon de
+// l'Opus ~32 kbps par défaut) + FEC anti-perte + DTX coupé (usedtx=0 : flux
+// continu, évite les débuts de mots avalés). ⚠️ PAS de stereo=1 : forcer Opus
+// stéréo faisait envoyer le micro en stéréo → anti-écho court-circuité (même
+// piège que channelCount:2 dans CALL_AUDIO_CONSTRAINTS). Mono 128 kbps est
+// transparent pour la voix.
 function _callTuneSdp(sdp) {
   if (!sdp) return sdp;
   try {
@@ -646,7 +653,7 @@ function _callTuneSdp(sdp) {
     const m = sdp.match(/a=rtpmap:(\d+)\s+opus\/48000/i);
     if (!m) return sdp;
     const pt = m[1];
-    const opts = "stereo=1;sprop-stereo=1;maxaveragebitrate=256000;maxplaybackrate=48000;cbr=0;useinbandfec=1;usedtx=0";
+    const opts = "stereo=0;sprop-stereo=0;maxaveragebitrate=128000;maxplaybackrate=48000;cbr=0;useinbandfec=1;usedtx=0";
     const fmtpRe = new RegExp("a=fmtp:" + pt + " ([^\\r\\n]*)");
     if (fmtpRe.test(sdp)) {
       sdp = sdp.replace(fmtpRe, function (full, params) {
@@ -1042,10 +1049,12 @@ function _callRenderActiveUI() {
       '</div>' +
     '</div>';
   el.classList.add("active");
-  // Aperçu local.
+  // Aperçu local — muted posé en PROPRIÉTÉ : l'attribut écrit par innerHTML
+  // n'est pas toujours répercuté (même piège que meSetMedia) → l'aperçu
+  // rejouait le propre micro de l'utilisateur = écho/larsen immédiat.
   if (isVideo) {
     const lv = document.getElementById("callLocalVideo");
-    if (lv && cs.localStream) lv.srcObject = cs.localStream;
+    if (lv && cs.localStream) { lv.muted = true; lv.volume = 0; lv.srcObject = cs.localStream; }
   }
 }
 
@@ -2951,7 +2960,9 @@ async function _vliveApplyHostQuality() {
   const H = window._vliveHost;
   if (!H) return;
   const n = Math.max(1, Object.keys(H.pcs).length);
-  const videoBr = Math.max(600000, Math.min(2500000, Math.floor(8000000 / n)));
+  // Cap 4 Mb/s : à 1-2 spectateurs le 720p30 est vraiment net (2,5 Mb/s était
+  // juste) ; au-delà le budget upload (~8 Mb/s) se répartit, plancher 600 kb/s.
+  const videoBr = Math.max(600000, Math.min(4000000, Math.floor(8000000 / n)));
   for (const vid in H.pcs) {
     const pc = H.pcs[vid].pc;
     try {

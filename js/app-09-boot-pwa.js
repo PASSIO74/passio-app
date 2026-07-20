@@ -1442,10 +1442,26 @@ async function startVoiceRecord() {
   if (window._isRecording) return;
   if (!navigator.mediaDevices || !window.MediaRecorder) { toast("🎙️ Enregistrement non supporté sur cet appareil"); return; }
   try {
-    var stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    // Micro TRAITÉ (anti-écho / anti-bruit / gain auto) + mono 48 kHz : voix
+    // propre même enregistrée près d'un haut-parleur actif. Sans ces
+    // contraintes, `audio: true` livrait le micro brut (souffle + écho).
+    var stream = await navigator.mediaDevices.getUserMedia({ audio: {
+      echoCancellation: true, noiseSuppression: true, autoGainControl: true,
+      channelCount: { ideal: 1 }, sampleRate: 48000,
+    } });
     _voiceChunks = []; _voiceCancelled = false;
-    var mime = (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported("audio/webm")) ? "audio/webm" : "";
-    _voiceRecorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+    // Opus 128 kbps EXPLICITE : le débit par défaut de MediaRecorder est bas et
+    // variable selon les navigateurs (voix étouffée). audio/mp4 = repli Safari.
+    var mime = "";
+    if (MediaRecorder.isTypeSupported) {
+      if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) mime = "audio/webm;codecs=opus";
+      else if (MediaRecorder.isTypeSupported("audio/webm")) mime = "audio/webm";
+      else if (MediaRecorder.isTypeSupported("audio/mp4")) mime = "audio/mp4";
+    }
+    var vrOpts = { audioBitsPerSecond: 128000 };
+    if (mime) vrOpts.mimeType = mime;
+    try { _voiceRecorder = new MediaRecorder(stream, vrOpts); }
+    catch (e0) { _voiceRecorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream); }
     _voiceRecorder.ondataavailable = function (e) { if (e.data && e.data.size) _voiceChunks.push(e.data); };
     _voiceRecorder.onstop = function () {
       stream.getTracks().forEach(function (t) { t.stop(); });
