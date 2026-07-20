@@ -2772,14 +2772,18 @@ async function openUserProfile(authorId, source) {
   }).sort(function(a,b) { return (b.createdAt||0) - (a.createdAt||0); });
 
   var postCount = userPosts.length;
-  var likeCount = userPosts.reduce(function(s,p) { return s + (p.likes||0); }, 0);
   var followerCount = 0;
+  var followingCount = 0;
 
-  // Charger le vrai compte d'abonnés depuis Supabase
+  // Charger les vrais comptes abonnés / abonnements depuis Supabase
   if (typeof supa !== "undefined" && supa) {
     try {
-      const { count } = await supa.from("follows").select("*", { count: "exact", head: true }).eq("following_id", authorId);
-      followerCount = count || 0;
+      const [fRes, gRes] = await Promise.all([
+        supa.from("follows").select("*", { count: "exact", head: true }).eq("following_id", authorId),
+        supa.from("follows").select("*", { count: "exact", head: true }).eq("follower_id", authorId),
+      ]);
+      followerCount = fRes.count || 0;
+      followingCount = gRes.count || 0;
     } catch(e) {}
   }
 
@@ -2837,7 +2841,7 @@ async function openUserProfile(authorId, source) {
         <div class="main-profile-stats">\
           <div class="main-profile-stat"><span>' + postCount + '</span><span>posts</span></div>\
           <div class="main-profile-stat"><span>' + followerCount + '</span><span>abonnés</span></div>\
-          <div class="main-profile-stat"><span>' + likeCount + '</span><span>likes</span></div>\
+          <div class="main-profile-stat"><span>' + followingCount + '</span><span>abonnements</span></div>\
         </div>\
       </div>\
     </div>\
