@@ -228,7 +228,9 @@ function openMyPostsTab() {
   window.profilesFilterSelection = new Set((state.user.profiles || []).map(function(p){ return p.id; }));
   _persistProfileFilter();
   window.activeProfileTab = "posts";
-  document.querySelectorAll(".profile-tab").forEach(function(b, i){ b.classList.toggle("active", i === 0); });
+  window.profileTabSelection = new Set(["posts"]);
+  _persistProfileTabs();
+  _syncProfileTabButtons();
   renderProfilesScreen();
   var anchor = document.getElementById("myPosts");
   if (anchor && anchor.scrollIntoView) anchor.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -284,8 +286,57 @@ async function openFollowersList() {
   }
 }
 
-// Onglet de contenu actif (posts | photos | videos | carnets)
-function _activeProfileTab() { return window.activeProfileTab || "posts"; }
+// Onglets de contenu : MULTI-SÉLECTION (union des types cochés).
+// L'ordre fait foi pour l'affichage et la persistance.
+var PROFILE_TAB_KEYS = ["posts", "photos", "videos", "bobines", "carnets"];
+
+// Prédicats par type. « posts » = tout (l'onglet historique, non filtrant) : le
+// cocher avec d'autres donne donc l'union complète, ce qui reste cohérent.
+var PROFILE_TAB_PRED = {
+  posts:   function(p) { return true; },
+  photos:  function(p) { return !p.isReel && (p.type === "photo" || p.image); },
+  videos:  function(p) { return p.type === "video" && !p.isReel; },
+  bobines: function(p) { return !!p.isReel; },
+  carnets: function(p) { return p.type === "vlog"; }
+};
+
+// Sélection courante (Set), restaurée depuis l'état, repli sur « posts ».
+function _profileTabSel() {
+  if (!window.profileTabSelection) {
+    var saved = ((state.user || {}).contentTabIds) || [];
+    var valid = saved.filter(function(k){ return PROFILE_TAB_KEYS.indexOf(k) !== -1; });
+    window.profileTabSelection = new Set(valid.length ? valid : ["posts"]);
+  }
+  return window.profileTabSelection;
+}
+
+// Compat : anciens appelants qui voulaient UN onglet → le premier coché.
+function _activeProfileTab() {
+  var sel = _profileTabSel();
+  for (var i = 0; i < PROFILE_TAB_KEYS.length; i++) {
+    if (sel.has(PROFILE_TAB_KEYS[i])) return PROFILE_TAB_KEYS[i];
+  }
+  return "posts";
+}
+
+function _persistProfileTabs() {
+  try {
+    if (!state.user) return;
+    state.user.contentTabIds = [...(_profileTabSel())];
+    saveState();
+  } catch (e) {}
+}
+
+// Reflète la sélection sur les boutons (classe + aria-pressed).
+function _syncProfileTabButtons() {
+  var sel = _profileTabSel();
+  document.querySelectorAll(".profile-tab").forEach(function(b){
+    var k = b.getAttribute("data-tab");
+    var on = !!k && sel.has(k);
+    b.classList.toggle("active", on);
+    b.setAttribute("aria-pressed", on ? "true" : "false");
+  });
+}
 
 // Rend la zone #myPosts selon l'onglet actif ET la multi-sélection de profils.
 // Sélection vide => invite à sélectionner (pas de fallback profil actif).
@@ -307,7 +358,18 @@ function renderProfileContent() {
   var selProfiles = (state.user.profiles || []).filter(function(pr){ return sel.has(pr.id); });
   var selPassions = new Set(selProfiles.map(function(pr){ return pr.passion; }));
   var mine = state.userPosts.filter(function(p){ return selPassions.has(p.passion) || (!p.passion && sel.has(p.profileId)); });
-  var tab = _activeProfileTab();
+
+  // Multi-sélection des types : union des prédicats cochés.
+  var tabSel = _profileTabSel();
+  var tabKeys = PROFILE_TAB_KEYS.filter(function(k){ return tabSel.has(k); });
+  if (tabKeys.length === 0) {
+    myPostsDiv.innerHTML = '<div class="empty"><div class="empty-icon">🎛️</div><div class="empty-title">Choisis un type de contenu</div><div class="empty-text">Touche une ou plusieurs icônes ci-dessus (posts, photos, vidéos, bobines, carnets) pour filtrer ce que tu veux voir.</div></div>';
+    return;
+  }
+  var tab = tabKeys.length === 1 ? tabKeys[0] : null; // null = vue mixte
+  mine = mine.filter(function(p){
+    return tabKeys.some(function(k){ return PROFILE_TAB_PRED[k](p); });
+  });
 
   // État vide guidé — même format que l'état vide des bobines (emoji + titre +
   // texte + bouton primaire), CTA direct vers le Studio. On reste sur la classe
@@ -352,10 +414,14 @@ function renderProfileContent() {
   }
 }
 
+// Bascule un type de contenu (multi-sélection) : re-toucher une icône la décoche.
 function switchProfileTab(tab, btn) {
-  window.activeProfileTab = tab;
-  document.querySelectorAll(".profile-tab").forEach(function(b){b.classList.remove("active");});
-  if (btn) btn.classList.add("active");
+  if (PROFILE_TAB_KEYS.indexOf(tab) === -1) return;
+  var sel = _profileTabSel();
+  if (sel.has(tab)) sel.delete(tab); else sel.add(tab);
+  window.activeProfileTab = _activeProfileTab(); // compat
+  _persistProfileTabs();
+  _syncProfileTabButtons();
   renderProfileContent();
 }
 
@@ -681,6 +747,9 @@ function renderProfilesScreen() {
     var _valid = new Set((state.user.profiles || []).map(function(p){ return p.id; }));
     window.profilesFilterSelection = new Set(_saved.filter(function(id){ return _valid.has(id); }));
   }
+
+  // Onglets de contenu : refléter la multi-sélection restaurée sur les icônes.
+  _syncProfileTabButtons();
 
   const list = $("#profileList");
   const sub  = $("#profilesQuotaSub");
