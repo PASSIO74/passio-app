@@ -115,6 +115,14 @@ document.addEventListener("keydown", (e) => {
 });
 
 // ======== PROFILES ========
+// Initiales pour l'avatar par défaut : 2 premières lettres de mots ("Léa Moreau" → "LM")
+function _profileInitials(name) {
+  var words = String(name || "").trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return "";
+  var ini = words.slice(0, 2).map(function(w) { return w.charAt(0); }).join("");
+  return ini.toUpperCase();
+}
+
 function renderMainProfile() {
   var g = state.user.general || {};
   var cur = currentProfile();
@@ -126,17 +134,28 @@ function renderMainProfile() {
 
   var cover = document.getElementById("mainProfileCover");
   if (cover) {
-    cover.style.background = g.coverPhoto ? "url(" + g.coverPhoto + ") center/cover" : "linear-gradient(135deg, #8b5cf6, #6d28d9)";
+    // data-has-photo protège la photo uploadée des overrides !important du
+    // Configurateur (app-05) ; sans photo : mesh gradient au lieu de l'aplat vide
+    cover.dataset.hasPhoto = g.coverPhoto ? "1" : "";
+    cover.style.background = g.coverPhoto
+      ? "url(" + g.coverPhoto + ") center/cover"
+      : "radial-gradient(130% 140% at 12% -10%, #c4b5fd 0%, rgba(196,181,253,0) 55%), radial-gradient(120% 130% at 95% 15%, #8b5cf6 0%, rgba(139,92,246,0) 60%), radial-gradient(160% 130% at 50% 115%, #5b21b6 0%, #6d28d9 70%)";
   }
 
+  avatarEl.dataset.hasPhoto = g.avatarPhoto ? "1" : "";
   if (g.avatarPhoto) {
     avatarEl.style.backgroundImage = "url(" + g.avatarPhoto + ")";
     avatarEl.style.backgroundSize = "cover";
     avatarEl.style.backgroundPosition = "center";
     avatarEl.innerHTML = '<div class="main-profile-avatar-badge">📷</div><input type="file" id="avatarPhotoInput" accept="image/*" style="display:none;" onchange="changeAvatarPhoto(event)"/>';
   } else {
+    // Initiales façon Notion/Slack (identifiable sans photo) ; emoji en repli
     avatarEl.style.backgroundImage = "";
-    avatarEl.innerHTML = (g.emoji || (cur ? cur.emoji : "✨")) + '<div class="main-profile-avatar-badge">📷</div><input type="file" id="avatarPhotoInput" accept="image/*" style="display:none;" onchange="changeAvatarPhoto(event)"/>';
+    var _ini = _profileInitials(g.username || state.user.name);
+    avatarEl.innerHTML = (_ini
+        ? '<span style="font-weight:800;font-size:30px;color:#fff;letter-spacing:.02em;">' + escapeHtml(_ini) + '</span>'
+        : (g.emoji || (cur ? cur.emoji : "✨")))
+      + '<div class="main-profile-avatar-badge">📷</div><input type="file" id="avatarPhotoInput" accept="image/*" style="display:none;" onchange="changeAvatarPhoto(event)"/>';
   }
 
   usernameEl.textContent = g.username || state.user.name || "Mon profil";
@@ -470,7 +489,7 @@ function passioOpenCropper(src, opts) {
       + '<div class="pcrop-grid" style="position:absolute;inset:0;pointer-events:none;background-image:linear-gradient(rgba(255,255,255,0.35) 1px,transparent 1px),linear-gradient(rgba(255,255,255,0.35) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.35) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.35) 1px,transparent 1px);background-position:0 33.33%,0 66.66%,33.33% 0,66.66% 0;background-size:100% 1px,100% 1px,1px 100%,1px 100%;background-repeat:no-repeat;"></div>'
       + '</div>'
       + '<div style="display:flex;align-items:center;gap:10px;width:' + VW + 'px;margin-top:16px;">'
-      + '<span style="font-size:16px;">🔍</span>'
+      + '<span style="display:inline-flex;"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" aria-hidden=\"true\" style=\"width:14px;height:14px;color:var(--muted);display:block;\"><circle cx=\"11\" cy=\"11\" r=\"7\"/><path d=\"M20 20 L16.4 16.4\"/></svg></span>'
       + '<input id="pcropZoom" type="range" min="1" max="4" step="0.01" value="1" style="flex:1;accent-color:var(--accent);"/>'
       + '</div>'
       + '<div style="display:flex;gap:10px;margin-top:18px;width:' + VW + 'px;">'

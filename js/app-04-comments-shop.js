@@ -2351,7 +2351,7 @@ function openNewMessage() {
     <span class="modal-close" onclick="closeModal()">×</span>
     <div style="font-weight:800;font-size:16px;margin-bottom:14px;">✉️ Nouveau message</div>
     <div style="position:relative;">
-      <input id="_nmSearch" type="text" class="input" placeholder="🔍 Chercher un utilisateur…" autocomplete="off"
+      <input id="_nmSearch" type="text" class="input" placeholder="Chercher un utilisateur…" autocomplete="off"
         style="width:100%;box-sizing:border-box;padding-right:40px;"
         oninput="_nmDoSearch(this.value)" />
     </div>
@@ -3116,6 +3116,27 @@ function renderMessages() {
   filtered.sort((a, b) => ((b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)) || (b.lastAt - a.lastAt));
 
   if (!filtered.length) {
+    // Squelette shimmer tant que le chargement réseau initial n'est pas terminé
+    // (évite le flash « Aucune conversation » au boot). Filet anti-squelette
+    // éternel : au-delà de 8 s on bascule sur l'état vide normal.
+    if (!_q && !_showArch && !window._convNetLoaded && window._supaReal !== false) {
+      if (!window._convSkelTimeout) {
+        window._convSkelTimeout = setTimeout(function () {
+          window._convNetLoaded = true;
+          try { renderMessages(); } catch (e) {}
+        }, 8000);
+      }
+      const empt0 = $("#messagesEmpty");
+      if (empt0) empt0.style.display = "none";
+      let skel = "";
+      for (let i = 0; i < 4; i++) {
+        skel += '<div class="msg-skel-row" aria-hidden="true"><div class="skeleton msg-skel-av"></div>'
+          + '<div style="flex:1;"><div class="skeleton skel-line" style="width:' + (34 + (i * 19) % 38) + '%;margin-bottom:7px;"></div>'
+          + '<div class="skeleton skel-line" style="width:' + (58 + (i * 13) % 30) + '%;height:9px;"></div></div></div>';
+      }
+      list.innerHTML = skel;
+      return;
+    }
     list.innerHTML = "";
     const empt = $("#messagesEmpty");
     if (empt) {

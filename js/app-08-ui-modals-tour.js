@@ -4592,8 +4592,9 @@ async function supaInit() {
       }
       _primeProfileCache(conversationsState); // pr\u00e9-remplir cache \u2192 0 requ\u00eate lors de la r\u00e9ception
       saveConversations();
+      window._convNetLoaded = true; // fin du squelette de la liste de conversations
       try { renderMessages(); } catch(e) {}
-    } catch(e) { console.warn("supaInit conversations:", e); }
+    } catch(e) { window._convNetLoaded = true; console.warn("supaInit conversations:", e); }
     try { supaSubscribe(); } catch(e) { console.warn("supaSubscribe:", e); }
     // Renvoie les messages rest\u00e9s en file d'attente (\u00e9chec/hors-ligne) d'une session pr\u00e9c\u00e9dente.
     try { if (typeof _flushOutbox === "function") setTimeout(_flushOutbox, 1500); } catch(e) {}

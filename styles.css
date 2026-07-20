@@ -5889,7 +5889,7 @@
       flex-wrap: wrap;
       padding: 8px;
       margin: 4px 0 14px;
-      background: #fff;
+      background: var(--bg-card);
       border: 1px solid var(--border);
       border-radius: var(--radius-md);
       box-shadow: var(--shadow-soft);
@@ -5985,7 +5985,7 @@
       margin: 0 0 14px;
       padding: 4px;
       border-radius: 14px;
-      background: #fff;
+      background: var(--bg-card);
       border: 1px solid var(--border);
       box-shadow: var(--shadow-soft);
       scrollbar-width: none;

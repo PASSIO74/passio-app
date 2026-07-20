@@ -1561,3 +1561,29 @@ function pwaDismiss() {
   // l'installation à chaque navigation dans la même session.
   try { sessionStorage.setItem("passio_pwa_dismissed", "1"); } catch (e) {}
 }
+
+// ═══ En-tête du fil rétractable au scroll (refonte 2026-07-20) ═══
+// Descendre dans le fil replie filtres/moods/stories (classe .chrome-collapsed
+// sur .app-main, styles en fin de styles.css) ; remonter les réaffiche.
+(function () {
+  var main = document.querySelector(".app-main");
+  if (!main) return;
+  var lastY = 0, ticking = false;
+  main.addEventListener("scroll", function () {
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(function () {
+      ticking = false;
+      var feed = document.getElementById("screen-feed");
+      if (!feed || !feed.classList.contains("active")) {
+        main.classList.remove("chrome-collapsed");
+        lastY = main.scrollTop;
+        return;
+      }
+      var y = main.scrollTop, dy = y - lastY;
+      if (y > 140 && dy > 4) main.classList.add("chrome-collapsed");
+      else if (dy < -4 || y < 60) main.classList.remove("chrome-collapsed");
+      lastY = y;
+    });
+  }, { passive: true });
+})();
