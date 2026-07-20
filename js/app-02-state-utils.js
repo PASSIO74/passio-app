@@ -184,9 +184,13 @@ function _syncableState() {
     s.user = {
       ...s.user,
       profiles: s.user.profiles.map(function(p) {
-        if (p.photo && typeof p.photo === "string" && p.photo.indexOf("data:") === 0) {
+        // Idem pour la photo de FOND du profil passion (p.coverPhoto) : seule
+        // l'URL Storage (p.coverUrl) part au serveur.
+        const _isB64 = function(v) { return v && typeof v === "string" && v.indexOf("data:") === 0; };
+        if (_isB64(p.photo) || _isB64(p.coverPhoto)) {
           const c = Object.assign({}, p);
-          c.photo = null;
+          if (_isB64(c.photo)) c.photo = null;
+          if (_isB64(c.coverPhoto)) c.coverPhoto = null;
           return c;
         }
         return p;

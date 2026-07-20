@@ -578,9 +578,9 @@ function changeCoverPhoto(event) {
   const file = event.target.files[0];
   if (event.target) event.target.value = "";
   if (!file) { _reopenEditProfileAfterCover(); return; }
-  // 16:9 — même ratio que l'affichage .main-profile-cover : la photo est
-  // visible ENTIÈRE sur le profil, telle que cadrée ici (plus le bandeau 1080×320).
-  _readAndCrop(file, { aspect: 16 / 9, outW: 1080, outH: 608, round: false, title: "Recadre ta photo de couverture" })
+  // 3:2 — même ratio que l'affichage .main-profile-cover (agrandi le 2026-07-20) :
+  // la photo est visible ENTIÈRE sur le profil, telle que cadrée ici.
+  _readAndCrop(file, { aspect: 3 / 2, outW: 1080, outH: 720, round: false, title: "Recadre ta photo de couverture" })
     .then(function(dataUrl) {
       _syncProfilePhoto("coverPhoto", "covers", dataUrl);
       toast("📷 Photo de couverture mise à jour !");
@@ -640,6 +640,33 @@ function changePassionPhoto(event, profileId) {
     }
     // Flush immédiat vers user_state (sans attendre le debounce 2500ms).
     if (typeof supaSaveUserState === "function") { try { supaSaveUserState(); } catch(_e) {} }
+    })
+    .catch(function() { _reopenEditPassionAfterPhoto(); });
+}
+
+// Photo de FOND d'un profil passion (bandeau derrière la carte). Même chaîne
+// que la couverture principale : recadrage 3:2, cache local base64 puis URL
+// Storage quand l'upload aboutit (le base64 ne part pas dans user_state).
+function changePassionCoverPhoto(event, profileId) {
+  const file = event.target.files[0];
+  if (event.target) event.target.value = "";
+  if (!file) { _reopenEditPassionAfterPhoto(); return; }
+  _readAndCrop(file, { aspect: 3 / 2, outW: 1080, outH: 720, round: false, title: "Recadre la photo de fond" })
+    .then(async function(base64) {
+      const prof = state.user.profiles.find(p => p.id === profileId);
+      if (!prof) return;
+      prof.coverPhoto = base64; // cache local immédiat
+      saveState();
+      renderProfilesScreen();
+      toast("📷 Photo de fond mise à jour !");
+      _reopenEditPassionAfterPhoto();
+      if (typeof supaUploadMedia === "function" && window._supaReal) {
+        try {
+          const url = await supaUploadMedia(profileId + "_cover", "passion_covers", base64, "photo");
+          if (url && url.indexOf("http") === 0) { prof.coverUrl = url; saveState(); }
+        } catch(_e) {}
+      }
+      if (typeof supaSaveUserState === "function") { try { supaSaveUserState(); } catch(_e) {} }
     })
     .catch(function() { _reopenEditPassionAfterPhoto(); });
 }
@@ -796,29 +823,32 @@ function renderProfilesScreen() {
 
   list.innerHTML = state.user.profiles.map(p => {
     const passion    = passionById(p.passion);
-    // Compte cohérent avec le filtre de contenu : par PASSION (profileId en repli
-    // seulement pour un post sans passion). Évite le double-comptage d'un post
-    // d'une autre passion publié pendant que ce profil était actif.
-    const postCount  = state.userPosts.filter(up => up.passion === p.passion || (!up.passion && up.profileId === p.id)).length;
     const isSelected = window.profilesFilterSelection.has(p.id);
     const _pPhoto = p.photoUrl || p.photo || null;
     const hasPhoto   = !!_pPhoto;
     const avatarStyle = hasPhoto
-      ? `background:url(${_pPhoto}) center/cover;`
+      ? `background:url(${safeUrlAttr(_pPhoto)}) center/cover;`
       : `background:${p.color};`;
     const avatarContent = hasPhoto ? "" : p.emoji;
 
-    return `<div class="profile-card ${isSelected?"selected":""}" style="${isSelected ? "border:2px solid var(--accent);background:rgba(124,58,237,0.08);" : ""}" onclick="toggleProfileSelect('${p.id}')">
+    // Photo de fond du profil passion (facultative) : voile sombre par-dessus
+    // pour que le nom et la bio restent lisibles.
+    const _pCover = p.coverUrl || p.coverPhoto || null;
+    const coverStyle = _pCover
+      ? `background:linear-gradient(90deg, rgba(0,0,0,0.62), rgba(0,0,0,0.30)), url(${safeUrlAttr(_pCover)}) center/cover;`
+      : "";
+
+    return `<div class="profile-card ${isSelected?"selected":""} ${_pCover?"has-cover":""}" style="${coverStyle}${isSelected ? "border:2px solid var(--accent);" : ""}" onclick="toggleProfileSelect('${p.id}')">
       <div class="avatar lg" style="${avatarStyle}position:relative;">${avatarContent}
         <div class="passion-photo-badge" onclick="event.stopPropagation();document.getElementById('passionPhoto_${p.id}').click()">📷</div>
         <input type="file" id="passionPhoto_${p.id}" accept="image/*" style="display:none;" onchange="event.stopPropagation();changePassionPhoto(event,'${p.id}')"/>
+        <input type="file" id="passionCover_${p.id}" accept="image/*" style="display:none;" onchange="event.stopPropagation();changePassionCoverPhoto(event,'${p.id}')"/>
       </div>
       <div class="profile-card-body" style="flex:1;">
         <div class="profile-card-name">
           ${passion.emoji} ${passion.label}
         </div>
-        <div class="profile-card-passion" style="color:var(--muted);font-size:11px;">${postCount} post${postCount>1?"s":""} · créé le ${fmtDate(p.createdAt)}</div>
-        ${p.bio ? `<div class="profile-card-bio" style="color:var(--muted);font-size:11px;margin-top:2px;font-style:italic;">${escapeHtml(p.bio)}</div>` : ""}
+        ${p.bio ? `<div class="profile-card-bio">${escapeHtml(p.bio)}</div>` : ""}
       </div>
       <button class="main-profile-edit-icon" onclick="event.stopPropagation();openEditPassionProfile('${p.id}')" title="Éditer ce profil passion" aria-label="Éditer ce profil passion" style="flex-shrink:0;">✏️</button>
     </div>`;
@@ -886,6 +916,7 @@ function openEditPassionProfile(profileId) {
   if (!p) return;
   const passion = passionById(p.passion);
   const photo = p.photoUrl || p.photo || null;
+  const cover = p.coverUrl || p.coverPhoto || null;
 
   openModal(`
     <div class="modal-handle"></div>
@@ -897,6 +928,15 @@ function openEditPassionProfile(profileId) {
         <div style="width:56px;height:56px;border-radius:50%;flex-shrink:0;${photo ? "background:url(" + safeUrlAttr(photo) + ") center/cover;" : "background:" + escapeHtml(p.color || "var(--accent)") + ";display:flex;align-items:center;justify-content:center;font-size:24px;"}">${photo ? "" : escapeHtml(p.emoji || "")}</div>
         <button class="btn ghost" onclick="_editPassionPhotoFromModal('${escapeJsArg(p.id)}')">📷 Changer</button>
       </div>
+    </div>
+
+    <div class="field">
+      <span>Photo de fond</span>
+      <div style="display:flex;gap:10px;align-items:center;">
+        <div style="flex:1;height:60px;border-radius:12px;border:1px solid var(--border);${cover ? "background:url(" + safeUrlAttr(cover) + ") center/cover;" : "background:var(--bg-deep);"}"></div>
+        <button class="btn ghost" style="white-space:nowrap;" onclick="_editPassionCoverFromModal('${escapeJsArg(p.id)}')">📷 Changer</button>
+      </div>
+      ${cover ? `<button class="btn ghost" style="margin-top:6px;font-size:12px;padding:8px;color:var(--muted);" onclick="removePassionCover('${escapeJsArg(p.id)}')">Retirer la photo de fond</button>` : ""}
     </div>
 
     <label class="field">
@@ -924,6 +964,25 @@ function _editPassionPhotoFromModal(profileId) {
   window._editPassionDraft = { id: profileId, bio: document.getElementById("editPassionBio")?.value || "" };
   const inp = document.getElementById("passionPhoto_" + profileId);
   if (inp) inp.click();
+}
+
+function _editPassionCoverFromModal(profileId) {
+  window._editPassionDraft = { id: profileId, bio: document.getElementById("editPassionBio")?.value || "" };
+  const inp = document.getElementById("passionCover_" + profileId);
+  if (inp) inp.click();
+}
+
+function removePassionCover(profileId) {
+  const p = (state.user.profiles || []).find(x => x.id === profileId);
+  if (!p) return;
+  const bio = document.getElementById("editPassionBio")?.value || "";
+  delete p.coverPhoto; delete p.coverUrl;
+  p.bio = bio.trim();
+  saveState();
+  if (typeof supaSaveUserState === "function") { try { supaSaveUserState(); } catch(e) {} }
+  renderProfilesScreen();
+  openEditPassionProfile(profileId);
+  toast("Photo de fond retirée");
 }
 
 function _reopenEditPassionAfterPhoto() {

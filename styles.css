@@ -2445,10 +2445,10 @@
       margin-bottom: 4px;
     }
     .main-profile-cover {
-      /* Format 16:9 (au lieu de 104px fixes) : la photo de couverture s'affiche
-         entière telle que recadrée — même ratio que le recadreur (1080×608). */
-      aspect-ratio: 16 / 9;
-      max-height: 280px;
+      /* Format 3:2 (agrandi le 2026-07-20) : la photo de couverture s'affiche
+         entière telle que recadrée — même ratio que le recadreur (1080×720). */
+      aspect-ratio: 3 / 2;
+      max-height: 360px;
       width: 100%;
       background: var(--grad-hero);
       background-size: cover;
@@ -2457,8 +2457,8 @@
       cursor: pointer;
     }
     /* Fallback vieux navigateurs sans aspect-ratio */
-    @supports not (aspect-ratio: 16 / 9) {
-      .main-profile-cover { height: 190px; }
+    @supports not (aspect-ratio: 3 / 2) {
+      .main-profile-cover { height: 250px; }
     }
     .main-profile-body {
       padding: 0 16px 18px;
@@ -2607,23 +2607,20 @@
       color: var(--muted);
       font-style: italic;
     }
+    /* Stats sans cadre (2026-07-20) : plus de bordure ni de séparateurs, juste
+       les chiffres alignés — page profil allégée. */
     .main-profile-stats {
       display: flex;
       gap: 0;
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      overflow: hidden;
     }
     .main-profile-stat {
       flex: 1;
       display: flex;
       flex-direction: column;
       align-items: center;
-      padding: 10px 6px;
+      padding: 6px 6px 2px;
       gap: 2px;
-      border-right: 1px solid var(--border);
     }
-    .main-profile-stat:last-child { border-right: none; }
     .main-profile-stat span:first-child {
       font-size: 17px;
       font-weight: 800;
@@ -2711,6 +2708,13 @@
     .profile-card-body { flex: 1; min-width: 0; }
     .profile-card-name { font-size: 15px; font-weight: 700; }
     .profile-card-passion { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .profile-card-bio { font-size: 11.5px; color: var(--muted); margin-top: 3px; line-height: 1.4; }
+    /* Carte avec photo de fond : voile sombre appliqué en inline → on force du
+       texte clair pour garder le contraste (nom, bio et crayon). */
+    .profile-card.has-cover { border-color: transparent; }
+    .profile-card.has-cover .profile-card-name { color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,0.5); }
+    .profile-card.has-cover .profile-card-bio { color: rgba(255,255,255,0.86); text-shadow: 0 1px 3px rgba(0,0,0,0.5); }
+    .profile-card.has-cover .main-profile-edit-icon { color: #fff; opacity: 0.85; }
     .profile-card-stats { display: flex; gap: 14px; margin-top: 6px; font-size: 11px; color: var(--text-dim); }
     .profile-card-stats b { color: var(--text); font-weight: 700; }
 
