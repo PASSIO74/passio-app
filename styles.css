@@ -2656,26 +2656,39 @@
       letter-spacing: 0.05em;
     }
 
+    /* Onglets de contenu du profil : segmented control en icônes seules */
+    .profile-tabs {
+      display: flex;
+      gap: 2px;
+      margin: 18px 0 10px;
+      padding: 4px;
+      background: var(--bg-deep);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+    }
     .profile-tab {
       flex: 1;
-      padding: 10px 6px;
-      font-size: 12px;
-      font-weight: 700;
-      text-align: center;
-      background: var(--bg-card);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 44px;
+      padding: 0;
+      background: transparent;
       border: none;
-      border-right: 1px solid var(--border);
+      border-radius: 12px;
       color: var(--muted);
       cursor: pointer;
-      transition: all 0.15s;
+      transition: background 0.18s ease, color 0.18s ease, transform 0.18s ease;
     }
-    .profile-tab:last-child { border-right: none; }
+    .profile-tab svg { width: 21px; height: 21px; display: block; }
+    .profile-tab:hover { color: var(--text); background: rgba(124, 58, 237, 0.06); }
     .profile-tab.active {
-      background: transparent;
-      border-bottom: 3px solid var(--accent);
+      background: var(--bg-card);
       color: var(--accent);
-      font-weight: 700;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
     }
+    .profile-tab.active svg { stroke-width: 2; }
+    .profile-tab:active { transform: scale(0.94); }
 
     .passion-photo-badge {
       position: absolute;
