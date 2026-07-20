@@ -33,3 +33,6 @@ push_passio.bat
 # Tests
 test-results/
 playwright-report/
+
+# Vidéos de démo générées (scripts/demo-video.js) — trop lourdes pour git
+docs/demo/

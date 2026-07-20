@@ -466,6 +466,17 @@ function renderStories() {
     `;
   }
 
+  // Live vidéo : bulle « Lancer un live » + bulles 🔴 des directs en cours.
+  html += `
+    <div class="story-item" onclick="startVideoLive()" title="Lancer un live vidéo">
+      <div class="story-ring vlive-create">
+        <div class="story-inner" style="background:#18181b;">🎥</div>
+      </div>
+      <div class="story-label">Live</div>
+    </div>
+  `;
+  if (typeof _vliveChipsHtml === "function") { try { html += _vliveChipsHtml(); } catch (e) {} }
+
   html += others.map(g => {
     const allSeen = g.stories.every(s => seen.includes(s.id));
     return `
@@ -1775,6 +1786,9 @@ function openNotifTarget(n) {
       break;
     case "message":
       if (ref && typeof openConversation === "function") openConversation(ref);
+      break;
+    case "live_video":
+      if (ref && typeof joinVideoLive === "function") joinVideoLive(ref);
       break;
     default:
       // Notif locale / type inconnu : pas de cible précise, on n'ouvre rien.
@@ -4138,6 +4152,12 @@ function supaSubscribe() {
     .on("postgres_changes", { event: "*", schema: "public", table: "cdv_live_reactions" }, _onCdvRealtime)
     .on("postgres_changes", { event: "*", schema: "public", table: "cdv_live_followers" }, _onCdvRealtime);
 
+  // Lives VIDÉO : apparition/fin d'un direct → rafraîchit les bulles 🔴.
+  dbChan
+    .on("postgres_changes", { event: "*", schema: "public", table: "video_lives" }, function() {
+      try { if (typeof supaRefreshVideoLives === "function") supaRefreshVideoLives(); } catch(e) {}
+    });
+
   // Un SEUL join pour l'ensemble des bindings ci-dessus.
   dbChan.subscribe();
 }
@@ -4222,7 +4242,7 @@ async function supaLoadJoinedEvents() {
 // Emoji d'une notif dérivé de son `kind` (pas de jointure profiles : voir
 // supaLoadNotifications).
 function _notifEmoji(kind) {
-  return ({ like: "❤️", comment: "💬", follow: "➕", message: "✉️", mention: "📣", reaction: "😊", event_join: "🤝", event_comment: "💬" })[kind] || "✨";
+  return ({ like: "❤️", comment: "💬", follow: "➕", message: "✉️", mention: "📣", reaction: "😊", event_join: "🤝", event_comment: "💬", live_video: "🔴" })[kind] || "✨";
 }
 
 async function supaLoadNotifications() {
@@ -4423,6 +4443,8 @@ async function supaInit() {
         supaLoadNotifications().then(ns => { if (ns && ns.length) mergeSupaNotifs(ns); }).catch(e => {});
       // CDV Lives : fusionner les voyages en direct des autres comptes.
       if (typeof supaRefreshCdvLives === "function") supaRefreshCdvLives();
+      // Lives vidéo actifs → bulles 🔴 de la barre des stories.
+      if (typeof supaRefreshVideoLives === "function") supaRefreshVideoLives();
       // Rappel in-app des événements rejoints dans les prochaines 24 h.
       if (typeof _checkEventReminders === "function") _checkEventReminders();
       // Liste de blocage (modération) : fusion avec le cache local.

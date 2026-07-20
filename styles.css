@@ -7233,3 +7233,155 @@
     }
     /* N'affiche jamais le contour à la souris (navigateurs sans :focus-visible). */
     *:focus:not(:focus-visible) { outline: none; }
+
+    /* ════════════════════════════════════════
+       LIVE VIDÉO — overlay plein écran + bulles 🔴
+       ════════════════════════════════════════ */
+    .vlive-overlay {
+      position: fixed; inset: 0;
+      z-index: 100000;
+      display: none;
+      background: #000;
+    }
+    .vlive-overlay.active { display: block; }
+    .vlive-video {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      object-fit: cover;
+      background: #000;
+    }
+    .vlive-video.mirror { transform: scaleX(-1); }
+    .vlive-topbar {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      z-index: 5;
+      display: flex; align-items: center; gap: 8px;
+      padding: max(12px, env(safe-area-inset-top)) 12px 20px;
+      background: linear-gradient(to bottom, rgba(0,0,0,0.55), transparent);
+    }
+    .vlive-badge {
+      background: #dc2626; color: #fff;
+      font-size: 12px; font-weight: 800;
+      padding: 4px 10px; border-radius: 999px;
+      letter-spacing: 0.04em;
+      animation: vlivePulse 1.6s ease-in-out infinite;
+    }
+    @keyframes vlivePulse { 0%,100% { opacity: 1; } 50% { opacity: 0.65; } }
+    .vlive-chip {
+      background: rgba(0,0,0,0.45); color: #fff;
+      font-size: 12px; font-weight: 700;
+      padding: 4px 10px; border-radius: 999px;
+      font-variant-numeric: tabular-nums;
+    }
+    .vlive-name {
+      color: #fff; font-size: 13px; font-weight: 700;
+      flex: 1;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      text-shadow: 0 1px 4px rgba(0,0,0,0.6);
+    }
+    .vlive-close {
+      width: 44px; height: 44px;
+      border: none; border-radius: 50%;
+      background: rgba(0,0,0,0.45); color: #fff;
+      font-size: 20px;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .vlive-status {
+      position: absolute; top: 40%; left: 0; right: 0;
+      z-index: 4;
+      text-align: center;
+      color: #fff; font-size: 16px; font-weight: 700;
+      text-shadow: 0 1px 6px rgba(0,0,0,0.7);
+      pointer-events: none;
+    }
+    .vlive-unmute {
+      position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 6;
+      display: flex; align-items: center; gap: 6px;
+      border: none; border-radius: 999px;
+      background: rgba(0,0,0,0.65); color: #fff;
+      font-size: 15px; font-weight: 700;
+      padding: 12px 20px;
+      cursor: pointer;
+    }
+    .vlive-hearts {
+      position: absolute; right: 0; bottom: 120px;
+      width: 45%; height: 55%;
+      z-index: 4;
+      pointer-events: none;
+      overflow: hidden;
+    }
+    .vlive-heart {
+      position: absolute; bottom: 0;
+      font-size: 26px;
+      animation: vliveHeartUp 2.5s ease-out forwards;
+    }
+    @keyframes vliveHeartUp {
+      0%   { transform: translateY(0) scale(0.7); opacity: 0; }
+      12%  { opacity: 1; transform: translateY(-8%) scale(1.05); }
+      100% { transform: translateY(-420px) scale(1) rotate(-8deg); opacity: 0; }
+    }
+    .vlive-bottom {
+      position: absolute;
+      left: 0; right: 0; bottom: 0;
+      z-index: 5;
+      padding: 8px 10px max(10px, env(safe-area-inset-bottom));
+      background: linear-gradient(to top, rgba(0,0,0,0.6), transparent);
+    }
+    .vlive-chat-list {
+      max-height: 30vh;
+      overflow-y: auto;
+      display: flex; flex-direction: column; gap: 4px;
+      margin-bottom: 8px;
+      -webkit-mask-image: linear-gradient(to bottom, transparent, #000 18%);
+              mask-image: linear-gradient(to bottom, transparent, #000 18%);
+    }
+    .vlive-chat-msg {
+      align-self: flex-start;
+      max-width: 82%;
+      background: rgba(0,0,0,0.42);
+      color: #fff;
+      font-size: 13px; line-height: 1.35;
+      padding: 6px 10px;
+      border-radius: 12px;
+      word-break: break-word;
+    }
+    .vlive-chat-msg b { font-weight: 800; margin-right: 4px; }
+    .vlive-chat-bar {
+      display: flex; align-items: center; gap: 8px;
+    }
+    .vlive-chat-bar input {
+      flex: 1;
+      min-height: 44px;
+      border: 1px solid rgba(255,255,255,0.35);
+      border-radius: 999px;
+      background: rgba(0,0,0,0.4);
+      color: #fff;
+      font-size: 16px;   /* 16px : évite le zoom iOS au focus */
+      padding: 0 16px;
+      outline: none;
+    }
+    .vlive-chat-bar input::placeholder { color: rgba(255,255,255,0.6); }
+    .vlive-bar-btn {
+      width: 44px; height: 44px;
+      flex-shrink: 0;
+      border: none; border-radius: 50%;
+      background: rgba(255,255,255,0.18); color: #fff;
+      font-size: 18px;
+      cursor: pointer;
+      transition: transform 120ms ease;
+    }
+    .vlive-bar-btn:active { transform: scale(0.9); }
+    .vlive-bar-btn.heart { background: rgba(220,38,38,0.45); }
+    .vlive-bar-btn.off { background: rgba(220,38,38,0.6); }
+    /* Bulles de la barre des stories */
+    .story-ring.vlive-ring {
+      background: linear-gradient(45deg, #dc2626, #f97316);
+      animation: vlivePulse 1.8s ease-in-out infinite;
+    }
+    .story-ring.vlive-create {
+      background: linear-gradient(135deg, #dc2626, #f472b6);
+    }
+    .story-label.vlive-label { color: #dc2626; font-weight: 800; }

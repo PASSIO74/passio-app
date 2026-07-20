@@ -2733,3 +2733,557 @@ async function shareReelInFeed(postId) {
   }
 }
 
+
+// ════════════════════════════════════════════════════════════════════════
+// LIVE VIDÉO (façon Instagram/TikTok) — 2026-07-20
+// Un diffuseur, N spectateurs, en WebRTC P2P « maille » : le diffuseur ouvre
+// UNE PeerConnection PAR spectateur (pistes sendonly) et répartit son budget
+// d'upload entre eux (d'où la limite VLIVE_MAX_VIEWERS). Signalisation par
+// Supabase Realtime Broadcast sur le canal `vlive:<liveId>` (présence incluse
+// pour compter les spectateurs et détecter les arrivées/départs). L'annuaire
+// des lives actifs vit dans la table `video_lives` (heartbeat `last_seen`).
+// Réutilise les briques des appels : CALL_ICE_SERVERS, _callTuneSdp,
+// _callPreferVideoCodecs, _callMyName, CALL_AUDIO_CONSTRAINTS.
+//   Diffuseur : startVideoLive() → insert row + canal + presence "host".
+//   Spectateur : joinVideoLive(id) → canal + presence "viewer" → le diffuseur
+//   voit le join → offre SDP ciblée (`to`) → answer → flux.
+// ════════════════════════════════════════════════════════════════════════
+
+const VLIVE_MAX_VIEWERS = 8;          // au-delà : upload du téléphone saturé
+const VLIVE_STALE_MS = 90000;         // live sans heartbeat depuis 90 s = mort
+const VLIVE_VIDEO_QUALITY = {
+  width: { ideal: 1280, max: 1280 },  // 720p : 1080p × N spectateurs ne passe pas
+  height: { ideal: 720, max: 720 },
+  frameRate: { ideal: 30, max: 30 },
+};
+
+window._vliveHost = window._vliveHost || null;  // état diffuseur
+window._vliveView = window._vliveView || null;  // état spectateur
+window._videoLives = window._videoLives || [];  // annuaire des lives actifs (bulles)
+
+// ── Annuaire des lives actifs ──
+async function supaLoadVideoLives() {
+  try {
+    if (typeof supa === "undefined" || !supa || !window._supaReal) return [];
+    const cutoff = new Date(Date.now() - VLIVE_STALE_MS).toISOString();
+    const { data, error } = await supa.from("video_lives").select("*")
+      .eq("status", "live").gte("last_seen", cutoff)
+      .order("started_at", { ascending: false }).limit(20);
+    if (error) { console.warn("[vlive] load:", error.message); return []; }
+    return data || [];
+  } catch (e) { return []; }
+}
+
+// Recharge l'annuaire et re-rend les bulles stories si ça a changé.
+async function supaRefreshVideoLives() {
+  const rows = await supaLoadVideoLives();
+  const next = rows.filter(r => !(typeof isBlocked === "function" && isBlocked(r.author_id)));
+  const changed = JSON.stringify(next.map(r => r.id + r.status)) !== JSON.stringify((window._videoLives || []).map(r => r.id + r.status));
+  window._videoLives = next;
+  if (changed) { try { if (typeof renderStories === "function") renderStories(); } catch (e) {} }
+}
+window.supaRefreshVideoLives = supaRefreshVideoLives;
+
+// Filet : re-check périodique (les bindings realtime couvrent l'instantané,
+// ceci rattrape les lives morts sans événement `ended` — crash, batterie…).
+setInterval(() => {
+  try { if (!document.hidden && window._supaReal) supaRefreshVideoLives(); } catch (e) {}
+}, 60000);
+
+// Bulles « 🔴 LIVE » injectées en tête de la barre des stories (renderStories).
+function _vliveChipsHtml() {
+  const mine = (typeof MY_UID !== "undefined" && MY_UID) || "";
+  return (window._videoLives || []).filter(r => r.author_id !== mine).map(r => {
+    const inner = r.author_photo
+      ? '<img loading="lazy" decoding="async" src="' + (typeof safeUrlAttr === "function" ? safeUrlAttr(r.author_photo) : "") + '" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.style.display=\'none\'"/>'
+      : escapeHtml(r.author_emoji || "🔴");
+    return '' +
+      '<div class="story-item" onclick="joinVideoLive(\'' + escapeJsArg(r.id) + '\')" title="Rejoindre le live">' +
+        '<div class="story-ring vlive-ring">' +
+          '<div class="story-inner" style="background:#111;">' + inner + '</div>' +
+        '</div>' +
+        '<div class="story-label vlive-label">🔴 ' + escapeHtml((r.author_name || "Live").split(" ")[0]) + '</div>' +
+      '</div>';
+  }).join("");
+}
+
+// ── Canal + envoi ──
+function _vliveChan() {
+  const s = window._vliveHost || window._vliveView;
+  return s && s.chan;
+}
+function _vliveSend(event, data) {
+  const chan = _vliveChan();
+  if (!chan) return;
+  try { chan.send({ type: "broadcast", event: event, payload: Object.assign({ from: MY_UID }, data || {}) }); } catch (e) {}
+}
+
+// ═══════════════ DIFFUSEUR ═══════════════
+async function startVideoLive() {
+  if (window._call) { toast("Termine ton appel d'abord"); return; }
+  if (window._vliveHost) return;
+  if (window._vliveView) leaveVideoLive();
+  if (typeof RTCPeerConnection === "undefined") { toast("Ton navigateur ne gère pas le direct"); return; }
+  if (typeof supa === "undefined" || !supa || !window._supaReal || !MY_UID) { toast("Connecte-toi pour lancer un live"); return; }
+
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: CALL_AUDIO_CONSTRAINTS,
+      video: Object.assign({ facingMode: "user" }, VLIVE_VIDEO_QUALITY),
+    });
+  } catch (e) { toast("Caméra/micro indisponible ou refusé"); return; }
+
+  const id = "vl_" + String(MY_UID).slice(0, 8) + "_" + Date.now().toString(36);
+  const me = (typeof currentProfile === "function" && currentProfile()) || {};
+  const row = {
+    id: id, author_id: MY_UID, author_name: _callMyName(),
+    author_emoji: me.emoji || "🔴",
+    author_photo: (state.user && state.user.general && state.user.general.avatarPhoto) || null,
+    status: "live",
+    started_at: new Date().toISOString(), last_seen: new Date().toISOString(),
+  };
+  try {
+    const { error } = await supa.from("video_lives").insert(row);
+    if (error) { console.warn("[vlive] insert:", error.message); toast("Impossible de démarrer le live"); (stream.getTracks() || []).forEach(t => t.stop()); return; }
+  } catch (e) { toast("Impossible de démarrer le live"); (stream.getTracks() || []).forEach(t => t.stop()); return; }
+
+  window._vliveHost = { id: id, stream: stream, chan: null, pcs: {}, startedAt: Date.now(), _facing: "user", hb: null };
+  _vliveRenderUI("host", row);
+  const lv = document.getElementById("vliveVideo");
+  if (lv) { lv.srcObject = stream; lv.muted = true; try { lv.play(); } catch (e) {} }
+
+  const chan = supa.channel("vlive:" + id, { config: { broadcast: { self: false, ack: false }, presence: { key: MY_UID } } });
+  window._vliveHost.chan = chan;
+  _vliveBindHost(chan);
+  chan.subscribe((st) => {
+    if (st === "SUBSCRIBED") { try { chan.track({ uid: MY_UID, role: "host" }); } catch (e) {} }
+  });
+
+  // Heartbeat : sans lui le live est considéré mort après VLIVE_STALE_MS
+  // (c'est AUSSI le filet qui efface les bulles après un crash du diffuseur).
+  window._vliveHost.hb = setInterval(() => {
+    try { supa.from("video_lives").update({ last_seen: new Date().toISOString() }).eq("id", id).then(() => {}); } catch (e) {}
+  }, 25000);
+
+  _vliveStartTimer(Date.now());
+  _vliveNotifyFollowers(id);
+  toast("🔴 Tu es en direct !");
+}
+window.startVideoLive = startVideoLive;
+
+function _vliveBindHost(chan) {
+  // Un spectateur arrive (présence) → on lui ouvre une PeerConnection dédiée.
+  chan.on("presence", { event: "join" }, (p) => {
+    try {
+      (p.newPresences || []).forEach(np => {
+        const vid = np.uid || p.key;
+        if (vid && vid !== MY_UID && np.role === "viewer") _vliveHostAddViewer(vid);
+      });
+    } catch (e) {}
+    _vliveUpdateViewers();
+  });
+  chan.on("presence", { event: "leave" }, (p) => {
+    try {
+      const H = window._vliveHost;
+      const vid = p.key;
+      if (H && vid && H.pcs[vid]) { try { H.pcs[vid].pc.close(); } catch (e) {} delete H.pcs[vid]; _vliveApplyHostQuality(); }
+    } catch (e) {}
+    _vliveUpdateViewers();
+  });
+  chan.on("presence", { event: "sync" }, () => { _vliveUpdateViewers(); });
+  chan.on("broadcast", { event: "answer" }, async (msg) => {
+    const H = window._vliveHost;
+    const d = msg.payload || {};
+    const entry = H && H.pcs[d.from];
+    if (!entry || !d.sdp) return;
+    try {
+      await entry.pc.setRemoteDescription(new RTCSessionDescription(d.sdp));
+      (entry.pendingIce || []).forEach(c => { try { entry.pc.addIceCandidate(new RTCIceCandidate(c)); } catch (e) {} });
+      entry.pendingIce = [];
+    } catch (e) {}
+  });
+  chan.on("broadcast", { event: "ice" }, async (msg) => {
+    const H = window._vliveHost;
+    const d = msg.payload || {};
+    if (!H || d.to !== "host" || !d.candidate) return;
+    const entry = H.pcs[d.from];
+    if (!entry) return;
+    try {
+      if (!entry.pc.remoteDescription || !entry.pc.remoteDescription.type) (entry.pendingIce = entry.pendingIce || []).push(d.candidate);
+      else await entry.pc.addIceCandidate(new RTCIceCandidate(d.candidate));
+    } catch (e) {}
+  });
+  chan.on("broadcast", { event: "chat" }, (msg) => { _vliveChatMsg(msg.payload); });
+  chan.on("broadcast", { event: "heart" }, () => { _vliveSpawnHeart(); });
+}
+
+// Ouvre (ou ré-ouvre) la connexion vers UN spectateur et lui envoie l'offre.
+async function _vliveHostAddViewer(vid) {
+  const H = window._vliveHost;
+  if (!H) return;
+  if (H.pcs[vid]) { try { H.pcs[vid].pc.close(); } catch (e) {} delete H.pcs[vid]; }
+  if (Object.keys(H.pcs).length >= VLIVE_MAX_VIEWERS) { _vliveSend("full", { to: vid }); return; }
+  const pc = new RTCPeerConnection({ iceServers: CALL_ICE_SERVERS });
+  const entry = { pc: pc, pendingIce: [] };
+  H.pcs[vid] = entry;
+  (H.stream.getTracks() || []).forEach(t => pc.addTrack(t, H.stream));
+  try { _callPreferVideoCodecs(pc); } catch (e) {}
+  pc.onicecandidate = (e) => { if (e.candidate) _vliveSend("ice", { to: vid, candidate: e.candidate }); };
+  pc.onconnectionstatechange = () => {
+    const st = pc.connectionState;
+    if (st === "failed" || st === "closed") {
+      try { pc.close(); } catch (e) {}
+      const h = window._vliveHost;
+      if (h && h.pcs[vid] && h.pcs[vid].pc === pc) { delete h.pcs[vid]; _vliveApplyHostQuality(); _vliveUpdateViewers(); }
+    }
+  };
+  try {
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription({ type: offer.type, sdp: _callTuneSdp(offer.sdp) });
+    _vliveSend("offer", { to: vid, sdp: pc.localDescription });
+  } catch (e) { console.warn("[vlive] offer:", e && e.message); }
+  _vliveApplyHostQuality();
+}
+
+// Répartit le budget d'upload (~8 Mb/s) entre les spectateurs connectés.
+async function _vliveApplyHostQuality() {
+  const H = window._vliveHost;
+  if (!H) return;
+  const n = Math.max(1, Object.keys(H.pcs).length);
+  const videoBr = Math.max(600000, Math.min(2500000, Math.floor(8000000 / n)));
+  for (const vid in H.pcs) {
+    const pc = H.pcs[vid].pc;
+    try {
+      for (const sender of pc.getSenders()) {
+        if (!sender.track) continue;
+        const params = sender.getParameters();
+        if (!params.encodings || !params.encodings.length) params.encodings = [{}];
+        if (sender.track.kind === "video") {
+          try { sender.track.contentHint = "motion"; } catch (e) {}
+          params.encodings[0].maxBitrate = videoBr;
+          params.encodings[0].maxFramerate = 30;
+          params.encodings[0].active = true;
+        } else {
+          params.encodings[0].maxBitrate = 128000;
+        }
+        try { await sender.setParameters(params); } catch (e) {}
+      }
+    } catch (e) {}
+  }
+}
+
+// Notifie mes abonnés (notif in-app + push via supaInsertNotif → notify-call).
+async function _vliveNotifyFollowers(liveId) {
+  try {
+    const { data } = await supa.from("follows").select("follower_id").eq("following_id", MY_UID).limit(200);
+    const ids = [...new Set((data || []).map(r => r.follower_id))].filter(x => x && x !== MY_UID);
+    for (const fid of ids) {
+      try { await supaInsertNotif(fid, "live_video", liveId, "est en direct — rejoins le live !"); } catch (e) {}
+    }
+  } catch (e) {}
+}
+
+// Termine le live (action du diffuseur).
+async function endVideoLive() {
+  const H = window._vliveHost;
+  if (!H) { _vliveCloseUI(); return; }
+  _vliveSend("end", {});
+  try { await supa.from("video_lives").update({ status: "ended", ended_at: new Date().toISOString() }).eq("id", H.id); } catch (e) {}
+  _vliveTeardown();
+  toast("Live terminé");
+  supaRefreshVideoLives();
+}
+window.endVideoLive = endVideoLive;
+
+// ═══════════════ SPECTATEUR ═══════════════
+async function joinVideoLive(liveId) {
+  if (window._call) { toast("Termine ton appel d'abord"); return; }
+  if (window._vliveHost) { toast("Tu es déjà en direct"); return; }
+  if (window._vliveView && window._vliveView.id === liveId) return;
+  if (window._vliveView) leaveVideoLive();
+  if (typeof RTCPeerConnection === "undefined") { toast("Ton navigateur ne gère pas le direct"); return; }
+  if (typeof supa === "undefined" || !supa || !window._supaReal || !MY_UID) { toast("Connecte-toi pour rejoindre un live"); return; }
+
+  // Vérifie que le live est encore vivant (statut + heartbeat récent).
+  let row = (window._videoLives || []).find(r => r.id === liveId) || null;
+  try {
+    const { data } = await supa.from("video_lives").select("*").eq("id", liveId).maybeSingle();
+    if (data) row = data;
+  } catch (e) {}
+  if (!row || row.status !== "live" || supaTs(row.last_seen) < Date.now() - VLIVE_STALE_MS) {
+    toast("Ce live est terminé"); supaRefreshVideoLives(); return;
+  }
+
+  window._vliveView = { id: liveId, row: row, chan: null, pc: null, pendingIce: [] };
+  _vliveRenderUI("viewer", row);
+
+  const chan = supa.channel("vlive:" + liveId, { config: { broadcast: { self: false, ack: false }, presence: { key: MY_UID } } });
+  window._vliveView.chan = chan;
+  _vliveBindViewer(chan);
+  chan.subscribe((st) => {
+    if (st === "SUBSCRIBED") { try { chan.track({ uid: MY_UID, role: "viewer", name: _callMyName() }); } catch (e) {} }
+  });
+  _vliveStartTimer(supaTs(row.started_at) || Date.now());
+}
+window.joinVideoLive = joinVideoLive;
+
+function _vliveBindViewer(chan) {
+  chan.on("broadcast", { event: "offer" }, async (msg) => {
+    const V = window._vliveView;
+    const d = msg.payload || {};
+    if (!V || d.to !== MY_UID || !d.sdp) return;
+    try {
+      if (V.pc) { try { V.pc.close(); } catch (e) {} }
+      const pc = new RTCPeerConnection({ iceServers: CALL_ICE_SERVERS });
+      V.pc = pc; V.pendingIce = V.pendingIce || [];
+      pc.ontrack = (e) => {
+        V.remoteStream = e.streams[0];
+        const rv = document.getElementById("vliveVideo");
+        if (rv) { rv.srcObject = e.streams[0]; _vliveTryPlay(rv); }
+      };
+      pc.onicecandidate = (e) => { if (e.candidate) _vliveSend("ice", { to: "host", candidate: e.candidate }); };
+      pc.onconnectionstatechange = () => {
+        const st = pc.connectionState;
+        if ((st === "failed" || st === "disconnected") && window._vliveView) {
+          _vliveShowEnded("Live interrompu");
+        }
+      };
+      await pc.setRemoteDescription(new RTCSessionDescription(d.sdp));
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      _vliveSend("answer", { sdp: pc.localDescription });
+      (V.pendingIce || []).forEach(c => { try { pc.addIceCandidate(new RTCIceCandidate(c)); } catch (e) {} });
+      V.pendingIce = [];
+      const stEl = document.getElementById("vliveStatus");
+      if (stEl) stEl.textContent = "";
+    } catch (e) { console.warn("[vlive] answer:", e && e.message); }
+  });
+  chan.on("broadcast", { event: "ice" }, async (msg) => {
+    const V = window._vliveView;
+    const d = msg.payload || {};
+    if (!V || d.to !== MY_UID || !d.candidate) return;
+    try {
+      if (!V.pc || !V.pc.remoteDescription || !V.pc.remoteDescription.type) (V.pendingIce = V.pendingIce || []).push(d.candidate);
+      else await V.pc.addIceCandidate(new RTCIceCandidate(d.candidate));
+    } catch (e) {}
+  });
+  chan.on("broadcast", { event: "end" }, () => { _vliveShowEnded("Le live est terminé"); });
+  chan.on("broadcast", { event: "full" }, (msg) => {
+    const d = msg.payload || {};
+    if (d.to !== MY_UID) return;
+    toast("Ce live est complet 😅"); leaveVideoLive();
+  });
+  chan.on("broadcast", { event: "chat" }, (msg) => { _vliveChatMsg(msg.payload); });
+  chan.on("broadcast", { event: "heart" }, () => { _vliveSpawnHeart(); });
+  chan.on("presence", { event: "sync" }, () => { _vliveUpdateViewers(); });
+  chan.on("presence", { event: "join" }, () => { _vliveUpdateViewers(); });
+  chan.on("presence", { event: "leave" }, () => { _vliveUpdateViewers(); });
+}
+
+// Autoplay avec son : tenté d'abord (l'utilisateur vient de taper la bulle =
+// geste utilisateur), replié en muet + bouton 🔊 si le navigateur refuse.
+function _vliveTryPlay(v) {
+  v.muted = false;
+  const p = v.play();
+  if (p && p.catch) p.catch(() => {
+    v.muted = true;
+    try { v.play(); } catch (e) {}
+    const b = document.getElementById("vliveUnmuteBtn");
+    if (b) b.style.display = "flex";
+  });
+}
+function _vliveUnmute() {
+  const v = document.getElementById("vliveVideo");
+  if (v) { v.muted = false; try { v.play(); } catch (e) {} }
+  const b = document.getElementById("vliveUnmuteBtn");
+  if (b) b.style.display = "none";
+}
+window._vliveUnmute = _vliveUnmute;
+
+function leaveVideoLive() {
+  _vliveTeardown();
+}
+window.leaveVideoLive = leaveVideoLive;
+
+// Fin côté spectateur : message puis fermeture douce.
+function _vliveShowEnded(text) {
+  const stEl = document.getElementById("vliveStatus");
+  if (stEl) stEl.textContent = text;
+  setTimeout(() => { if (window._vliveView) leaveVideoLive(); supaRefreshVideoLives(); }, 1800);
+}
+
+// ═══════════════ COMMUN (chat, cœurs, compteur, UI) ═══════════════
+function _vliveUpdateViewers() {
+  const chan = _vliveChan();
+  const el = document.getElementById("vliveViewers");
+  if (!chan || !el) return;
+  try {
+    const st = chan.presenceState() || {};
+    let n = 0;
+    Object.keys(st).forEach(k => { (st[k] || []).forEach(p => { if (p.role === "viewer") n++; }); });
+    el.textContent = "👁 " + n;
+  } catch (e) {}
+}
+
+function _vliveChatMsg(d) {
+  if (!d || !d.text) return;
+  if (typeof isBlocked === "function" && isBlocked(d.from)) return;
+  const list = document.getElementById("vliveChatList");
+  if (!list) return;
+  const div = document.createElement("div");
+  div.className = "vlive-chat-msg";
+  div.innerHTML = "<b>" + escapeHtml(d.name || "Quelqu'un") + "</b> " + escapeHtml(String(d.text).slice(0, 200));
+  list.appendChild(div);
+  while (list.children.length > 60) list.removeChild(list.firstChild);
+  list.scrollTop = list.scrollHeight;
+}
+
+function _vliveSendChat() {
+  const inp = document.getElementById("vliveChatInput");
+  if (!inp) return;
+  const text = (inp.value || "").trim();
+  if (!text) return;
+  inp.value = "";
+  const payload = { name: _callMyName(), text: text.slice(0, 200) };
+  _vliveSend("chat", payload);
+  // broadcast self:false → écho local manuel.
+  _vliveChatMsg(Object.assign({ from: MY_UID }, payload));
+}
+window._vliveSendChat = _vliveSendChat;
+
+function _vliveHeart() {
+  const now = Date.now();
+  if (window._vliveLastHeart && now - window._vliveLastHeart < 300) return; // anti-spam
+  window._vliveLastHeart = now;
+  _vliveSend("heart", {});
+  _vliveSpawnHeart();
+}
+window._vliveHeart = _vliveHeart;
+
+function _vliveSpawnHeart() {
+  const layer = document.getElementById("vliveHearts");
+  if (!layer) return;
+  const el = document.createElement("div");
+  el.className = "vlive-heart";
+  el.textContent = ["❤️", "🧡", "💜", "💖"][Math.floor(Math.random() * 4)];
+  el.style.left = (55 + Math.random() * 35) + "%";
+  layer.appendChild(el);
+  setTimeout(() => { try { layer.removeChild(el); } catch (e) {} }, 2600);
+}
+
+let _vliveTimerInt = null;
+function _vliveStartTimer(startMs) {
+  if (_vliveTimerInt) clearInterval(_vliveTimerInt);
+  _vliveTimerInt = setInterval(() => {
+    const t = document.getElementById("vliveTimer");
+    if (!t) return;
+    const s = Math.max(0, Math.floor((Date.now() - startMs) / 1000));
+    t.textContent = String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
+  }, 1000);
+}
+
+// Micro on/off (diffuseur).
+function toggleVliveMic(btn) {
+  const H = window._vliveHost;
+  if (!H || !H.stream) return;
+  const tracks = H.stream.getAudioTracks();
+  const on = tracks[0] && tracks[0].enabled;
+  tracks.forEach(t => t.enabled = !on);
+  if (btn) { btn.classList.toggle("off", on); btn.textContent = on ? "🔇" : "🎙"; }
+}
+window.toggleVliveMic = toggleVliveMic;
+
+// Changement de caméra (diffuseur) : replaceTrack sur TOUTES les connexions.
+async function flipVliveCamera() {
+  const H = window._vliveHost;
+  if (!H) return;
+  const next = (H._facing || "user") === "user" ? "environment" : "user";
+  let ns = null;
+  try { ns = await navigator.mediaDevices.getUserMedia({ audio: false, video: Object.assign({ facingMode: { exact: next } }, VLIVE_VIDEO_QUALITY) }); }
+  catch (e1) {
+    try { ns = await navigator.mediaDevices.getUserMedia({ audio: false, video: Object.assign({ facingMode: next }, VLIVE_VIDEO_QUALITY) }); }
+    catch (e2) { toast("Une seule caméra disponible"); return; }
+  }
+  const newTrack = ns.getVideoTracks()[0];
+  if (!newTrack) return;
+  H._facing = next;
+  for (const vid in H.pcs) {
+    const sender = H.pcs[vid].pc.getSenders().find(s => s.track && s.track.kind === "video");
+    if (sender) { try { await sender.replaceTrack(newTrack); } catch (e) {} }
+  }
+  const old = H.stream.getVideoTracks()[0];
+  if (old) { H.stream.removeTrack(old); old.stop(); }
+  H.stream.addTrack(newTrack);
+  _vliveApplyHostQuality();
+  const lv = document.getElementById("vliveVideo");
+  if (lv) { lv.srcObject = H.stream; lv.style.transform = next === "environment" ? "none" : "scaleX(-1)"; }
+}
+window.flipVliveCamera = flipVliveCamera;
+
+// Démonte tout (diffuseur OU spectateur) : pistes, connexions, canal, UI.
+function _vliveTeardown() {
+  const H = window._vliveHost;
+  if (H) {
+    if (H.hb) clearInterval(H.hb);
+    try { ((H.stream && H.stream.getTracks()) || []).forEach(t => t.stop()); } catch (e) {}
+    for (const vid in H.pcs) { try { H.pcs[vid].pc.close(); } catch (e) {} }
+    try { if (H.chan) { H.chan.untrack(); supa.removeChannel(H.chan); } } catch (e) {}
+  }
+  const V = window._vliveView;
+  if (V) {
+    try { if (V.pc) V.pc.close(); } catch (e) {}
+    try { if (V.chan) { V.chan.untrack(); supa.removeChannel(V.chan); } } catch (e) {}
+  }
+  window._vliveHost = null;
+  window._vliveView = null;
+  if (_vliveTimerInt) { clearInterval(_vliveTimerInt); _vliveTimerInt = null; }
+  _vliveCloseUI();
+}
+
+// ── UI plein écran ──
+function _vliveOverlayEl() {
+  let el = document.getElementById("vliveOverlay");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "vliveOverlay";
+    el.className = "vlive-overlay";
+    document.body.appendChild(el);
+  }
+  return el;
+}
+function _vliveCloseUI() {
+  const el = document.getElementById("vliveOverlay");
+  if (el) { el.classList.remove("active"); el.innerHTML = ""; }
+}
+
+function _vliveRenderUI(mode, row) {
+  const el = _vliveOverlayEl();
+  const isHost = mode === "host";
+  const name = isHost ? "Toi" : ((row && row.author_name) || "Live");
+  el.innerHTML =
+    '<video id="vliveVideo" class="vlive-video' + (isHost ? " mirror" : "") + '" autoplay playsinline' + (isHost ? " muted" : "") + '></video>' +
+    '<div class="vlive-topbar">' +
+      '<span class="vlive-badge">🔴 EN DIRECT</span>' +
+      '<span class="vlive-chip" id="vliveViewers">👁 0</span>' +
+      '<span class="vlive-chip" id="vliveTimer">00:00</span>' +
+      '<span class="vlive-name">' + escapeHtml(name) + '</span>' +
+      '<button class="vlive-close" onclick="' + (isHost ? "endVideoLive()" : "leaveVideoLive()") + '" aria-label="Quitter">✕</button>' +
+    '</div>' +
+    '<div class="vlive-status" id="vliveStatus">' + (isHost ? "" : "Connexion au direct…") + '</div>' +
+    '<div class="vlive-hearts" id="vliveHearts"></div>' +
+    '<button id="vliveUnmuteBtn" class="vlive-unmute" style="display:none;" onclick="_vliveUnmute()">🔊 Activer le son</button>' +
+    '<div class="vlive-bottom">' +
+      '<div class="vlive-chat-list" id="vliveChatList" aria-live="polite"></div>' +
+      '<div class="vlive-chat-bar">' +
+        '<input id="vliveChatInput" placeholder="Commenter…" maxlength="200" autocomplete="off"' +
+          ' onkeydown="if(event.key===&quot;Enter&quot;){_vliveSendChat();}"/>' +
+        '<button class="vlive-bar-btn" onclick="_vliveSendChat()" aria-label="Envoyer">➤</button>' +
+        (isHost
+          ? '<button class="vlive-bar-btn" onclick="toggleVliveMic(this)" aria-label="Micro">🎙</button>' +
+            '<button class="vlive-bar-btn" onclick="flipVliveCamera()" aria-label="Changer de caméra">🔄</button>'
+          : '<button class="vlive-bar-btn heart" onclick="_vliveHeart()" aria-label="Envoyer un cœur">❤️</button>') +
+      '</div>' +
+    '</div>';
+  el.classList.add("active");
+}
