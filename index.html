@@ -474,10 +474,11 @@
       <!-- PROFIL PRINCIPAL -->
       <div class="main-profile-card" id="mainProfileCard">
         <!-- Couverture : plus de bouton « Changer » ici — tout passe par l'unique
-             point d'édition (crayon ✏️ → openEditMainProfile). L'input reste pour
+             point d'édition (⋯ → openMainProfileMenu). L'input reste pour
              que la modale puisse le déclencher. -->
         <div class="main-profile-cover" id="mainProfileCover">
           <input type="file" id="coverPhotoInput" accept="image/*" style="display:none;" onchange="changeCoverPhoto(event)"/>
+          <button class="profile-dots-btn on-cover" onclick="openMainProfileMenu(event)" title="Options du profil" aria-label="Options du profil" aria-haspopup="menu">⋯</button>
         </div>
         <div class="main-profile-body">
           <div class="main-profile-avatar-wrap">
@@ -485,9 +486,6 @@
               ✨
               <div class="main-profile-avatar-badge">📷</div>
               <input type="file" id="avatarPhotoInput" accept="image/*" style="display:none;" onchange="changeAvatarPhoto(event)"/>
-            </div>
-            <div class="main-profile-actions">
-              <button class="main-profile-edit-icon" onclick="openEditMainProfile()" title="Éditer mon profil" aria-label="Éditer mon profil">✏️</button>
             </div>
           </div>
           <div class="main-profile-username" id="mainProfileUsername">Mon profil</div>

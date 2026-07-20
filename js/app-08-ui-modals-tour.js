@@ -2242,9 +2242,22 @@ async function supaUpsertProfile() {
     // Liste de TOUTES les passions du compte → affichée telle quelle sur le
     // profil public. La passion principale (1ʳᵉ créée) reste dans `passion_id`
     // pour la rétro-compatibilité (feed, embeds, anciens clients).
+    // Depuis le 2026-07-20 chaque passion embarque AUSSI ce qu'il faut pour
+    // rendre sa carte à l'identique chez un visiteur (bio + couleur + photos).
+    // Les photos ne partent que si ce sont des URLs Storage (jamais de base64,
+    // le jsonb servirait alors des mégaoctets à chaque lecture de profil).
+    const _httpOnly = (v) => (typeof v === "string" && /^https?:\/\//.test(v)) ? v : null;
     const _passions = (state.user.profiles || []).map(pr => {
       const pas = (typeof passionById === "function") ? passionById(pr.passion) : null;
-      return { id: pr.passion, emoji: pr.emoji || (pas && pas.emoji) || "✨", label: pas ? pas.label : "" };
+      return {
+        id: pr.passion,
+        emoji: pr.emoji || (pas && pas.emoji) || "✨",
+        label: pas ? pas.label : "",
+        bio: pr.bio || "",
+        color: pr.color || "#8b5cf6",
+        photoUrl: _httpOnly(pr.photoUrl || pr.photo),
+        coverUrl: _httpOnly(pr.coverUrl || pr.coverPhoto),
+      };
     }).filter(p => p.id);
 
     const profileData = {
@@ -2255,6 +2268,11 @@ async function supaUpsertProfile() {
       passion_id: (_passions[0] && _passions[0].id) || prof.passion || null,
       passions: _passions,
       bio: g.bio || "",
+      // Compte privé : les visiteurs non abonnés ne verront pas le contenu.
+      is_private: !!g.isPrivate,
+      // Réseaux sociaux : saisis en local depuis toujours, publiés depuis le
+      // 2026-07-20 pour que le profil visité affiche les mêmes liens que le mien.
+      rs_links: Array.isArray(g.rsLinks) ? g.rsLinks : [],
     };
     // Photo de profil / couverture : on ne pousse en DB que des URLs Storage
     // (jamais de base64 — quota + egress). Les colonnes sont nullables : si la
@@ -2263,12 +2281,16 @@ async function supaUpsertProfile() {
     if (typeof g.coverPhoto === "string" && /^https?:\/\//.test(g.coverPhoto)) profileData.cover_url = g.coverPhoto;
 
     let result = await supa.from("profiles").upsert(profileData, { onConflict: "id" });
-    // Filet de sécurité : si la colonne `passions` n'existe pas encore en base
-    // (migration_profile_passions non appliquée sur ce projet), on retente sans
-    // elle pour ne pas bloquer toute la synchro du profil.
-    if (result && result.error && /passions/.test(result.error.message || "")) {
-      const { passions, ...legacy } = profileData;
-      result = await supa.from("profiles").upsert(legacy, { onConflict: "id" });
+    // Filet de sécurité : si une colonne récente n'existe pas encore en base
+    // (migration non appliquée sur ce projet), on la retire et on retente, plutôt
+    // que de perdre TOUTE la synchro du profil. Généralisé le 2026-07-20
+    // (auparavant : `passions` seule) pour couvrir is_private / rs_links.
+    for (const col of ["passions", "is_private", "rs_links"]) {
+      if (!result || !result.error) break;
+      const msg = result.error.message || "";
+      if (!msg.includes(col)) continue;
+      delete profileData[col];
+      result = await supa.from("profiles").upsert(profileData, { onConflict: "id" });
     }
 
   } catch(e) { /* erreur réseau non bloquante */ }
@@ -2551,14 +2573,26 @@ async function supaPublishPost(post) {
   try { await supaPublishPostWithRetry(post); } catch(e) {}
 }
 
-async function supaLoadPosts(offset = 0) {
+// `authorId` (2026-07-20) : restreint le chargement aux posts d'UN auteur —
+// utilisé par la vue « profil visité », qui doit montrer TOUT son contenu (y
+// compris des posts trop anciens pour la page courante du fil). Dans ce mode on
+// ne touche PAS `_feedServerMayHaveMore` (c'est l'état de pagination DU FIL).
+async function supaLoadPosts(offset = 0, authorId = null) {
   try {
-    const { data, error } = await supa.from("posts")
-      .select("id, author_id, passion_id, mood, content, media_url, created_at, is_reel, overlays, vlog, shared_from_post_id, shared_data, profiles!author_id(username,emoji,color,avatar_url)")
+    let q = supa.from("posts")
+      .select("id, author_id, passion_id, mood, content, media_url, created_at, is_reel, overlays, vlog, shared_from_post_id, shared_data, profiles!author_id(username,emoji,color,avatar_url,is_private)");
+    if (authorId) q = q.eq("author_id", authorId);
+    let { data, error } = await q
       .order("created_at", { ascending: false })
       .range(offset, offset + 59);
     if (error) return [];
-    window._feedServerMayHaveMore = ((data || []).length === 60);
+    if (!authorId) window._feedServerMayHaveMore = ((data || []).length === 60);
+    // 🔒 Comptes privés : leurs posts ne sont montrés qu'à leurs abonnés (et à
+    // eux-mêmes). Filtré côté client (le feed/bobines/profil visité passent tous
+    // par ici) — filet visuel de beta, pas une barrière RLS.
+    const _following = (state.user && state.user.following) || [];
+    data = (data || []).filter(r =>
+      !r.profiles?.is_private || r.author_id === MY_UID || _following.includes(r.author_id));
     if (!data || !data.length) return [];
     // Charger tous les likes + counts commentaires d'un coup
     const postIds = data.map(r => r.id);

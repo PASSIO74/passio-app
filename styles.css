@@ -2527,6 +2527,79 @@
       transition: opacity 0.15s ease;
     }
     .main-profile-edit-icon:hover, .main-profile-edit-icon:focus-visible { opacity: 1; }
+    /* ⋯ Bouton d'options des profils (remplace le crayon ✏️, 2026-07-20) :
+       trois points discrets en haut à droite. Sur la couverture du profil
+       principal il est posé en absolute ; sur les cartes passion il vit dans
+       le flex de la carte. */
+    .profile-dots-btn {
+      background: none;
+      border: 0;
+      padding: 0;
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      font-size: 20px;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 1px;
+      color: var(--muted);
+      opacity: 0.7;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      align-self: flex-start;
+      transition: opacity 0.15s ease, background 0.15s ease;
+    }
+    .profile-dots-btn:hover, .profile-dots-btn:focus-visible { opacity: 1; background: rgba(139,92,246,0.10); }
+    .profile-dots-btn.on-cover {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      color: #fff;
+      background: rgba(0,0,0,0.28);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      opacity: 0.9;
+    }
+    .profile-dots-btn.on-cover:hover, .profile-dots-btn.on-cover:focus-visible { background: rgba(0,0,0,0.45); opacity: 1; }
+    /* Popover du menu ⋯ (créé en JS, ancré au bouton) */
+    .profile-dots-menu {
+      position: fixed;
+      z-index: 1200;
+      min-width: 210px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      box-shadow: 0 12px 32px rgba(0,0,0,0.22);
+      padding: 6px;
+      display: flex;
+      flex-direction: column;
+      animation: dotsMenuIn 0.14s ease;
+    }
+    @keyframes dotsMenuIn {
+      from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+      to   { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    .profile-dots-item {
+      background: none;
+      border: 0;
+      border-radius: 9px;
+      padding: 10px 12px;
+      font-size: 13.5px;
+      font-weight: 600;
+      color: var(--text);
+      text-align: left;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+    }
+    .profile-dots-item:hover, .profile-dots-item:focus-visible { background: rgba(139,92,246,0.10); }
+    .profile-dots-item.danger { color: #ef4444; }
+    .profile-dots-ico { width: 20px; text-align: center; font-size: 15px; flex-shrink: 0; }
+    .profile-dots-sep { height: 1px; background: var(--border); margin: 4px 8px; }
     .main-profile-edit-btn {
       background: var(--bg-deep);
       border: 1.5px solid var(--border);
@@ -2714,7 +2787,8 @@
     .profile-card.has-cover { border-color: transparent; }
     .profile-card.has-cover .profile-card-name { color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,0.5); }
     .profile-card.has-cover .profile-card-bio { color: rgba(255,255,255,0.86); text-shadow: 0 1px 3px rgba(0,0,0,0.5); }
-    .profile-card.has-cover .main-profile-edit-icon { color: #fff; opacity: 0.85; }
+    .profile-card.has-cover .profile-dots-btn { color: #fff; opacity: 0.85; }
+    .profile-card.has-cover .profile-dots-btn:hover, .profile-card.has-cover .profile-dots-btn:focus-visible { background: rgba(255,255,255,0.16); }
     .profile-card-stats { display: flex; gap: 14px; margin-top: 6px; font-size: 11px; color: var(--text-dim); }
     .profile-card-stats b { color: var(--text); font-weight: 700; }
 

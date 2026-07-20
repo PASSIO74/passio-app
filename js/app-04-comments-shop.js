@@ -2636,13 +2636,13 @@ async function openUserProfile(authorId, source) {
     try {
       // D'abord, chercher par ID
       console.log("[openUserProfile] Cherchant dans Supabase avec id:", authorId);
-      let { data, error } = await supa.from("profiles").select("id,username,emoji,color,passion_id,passions,bio,avatar_url").eq("id", authorId).limit(1);
+      let { data, error } = await supa.from("profiles").select(VISITED_PROFILE_COLS).eq("id", authorId).limit(1);
       console.log("[openUserProfile] Supabase response (by id):", data, "error:", error);
 
       // Si pas trouvé par ID, chercher par username (en cas de confusion entre ID et username)
       if ((!data || data.length === 0) && authorId && !authorId.startsWith("u_")) {
         console.log("[openUserProfile] Pas trouvé par id, cherchant par username:", authorId);
-        const { data: dataByUsername } = await supa.from("profiles").select("id,username,emoji,color,passion_id,passions,bio,avatar_url").ilike("username", authorId).limit(1);
+        const { data: dataByUsername } = await supa.from("profiles").select(VISITED_PROFILE_COLS).ilike("username", authorId).limit(1);
         if (dataByUsername && dataByUsername.length > 0) {
           data = dataByUsername;
           console.log("[openUserProfile] Trouvé par username:", dataByUsername);
@@ -2651,7 +2651,7 @@ async function openUserProfile(authorId, source) {
 
       if (data && data.length > 0) {
         const profile = data[0];
-        user = { id: profile.id, name: profile.username || "Passionné", profileEmoji: profile.emoji || "✨", avatar: profile.color || "#8b5cf6", passion: profile.passion_id || "", passions: Array.isArray(profile.passions) ? profile.passions : undefined, bio: profile.bio || "", photoUrl: profile.avatar_url || null };
+        user = { id: profile.id, name: profile.username || "Passionné", profileEmoji: profile.emoji || "✨", avatar: profile.color || "#8b5cf6", passion: profile.passion_id || "", passions: Array.isArray(profile.passions) ? profile.passions : undefined, bio: profile.bio || "", photoUrl: profile.avatar_url || null, coverUrl: profile.cover_url || null, isPrivate: !!profile.is_private, rsLinks: Array.isArray(profile.rs_links) ? profile.rs_links : [] };
         try { cacheRemoteProfile(profile); } catch(e) {}
         state.seed.users.push(user);
         console.log("[openUserProfile] Trouvé dans Supabase et ajouté à seed.users");
@@ -2667,13 +2667,15 @@ async function openUserProfile(authorId, source) {
     return;
   }
 
-  // 🔄 Charger TOUTES les passions depuis Supabase (toujours, même si user déjà trouvé en local)
+  // 🔄 Charger le profil COMPLET depuis Supabase (toujours, même si user déjà
+  // trouvé en local) : passions enrichies (bio/photos), couverture, réseaux
+  // sociaux, mode privé — pour reproduire le MÊME visuel que « mon profil ».
   let userPassions = [];
   const _profileId = user.id || authorId;
   if (typeof supa !== "undefined" && supa && _profileId) {
     try {
       const { data } = await supa.from("profiles")
-        .select("passion_id, emoji, passions, bio, avatar_url")
+        .select(VISITED_PROFILE_COLS)
         .eq("id", _profileId)
         .maybeSingle();
       if (data) {
@@ -2685,6 +2687,9 @@ async function openUserProfile(authorId, source) {
         // Enrichir le user avec les données fraîches de Supabase
         if (data.bio && !user.bio) user.bio = data.bio;
         if (data.avatar_url && !user.photoUrl) user.photoUrl = data.avatar_url;
+        if (data.cover_url) user.coverUrl = data.cover_url;
+        user.isPrivate = !!data.is_private;
+        if (Array.isArray(data.rs_links)) user.rsLinks = data.rs_links;
       }
     } catch(e) {}
   }
@@ -2702,17 +2707,71 @@ async function openUserProfile(authorId, source) {
     }
   }
 
-  // 🎯 Créer un HTML pour afficher TOUTES les passions
+  // 🎯 Cartes passion — même visuel que « Mes profils passion » (photo/couleur,
+  // libellé, bio par passion quand elle a été publiée dans profiles.passions).
   const passionsHTML = userPassions.length > 0
-    ? '<div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-top:8px;">' +
-      userPassions.map(p => {
-        const pas = passionById(p.id);
-        return '<div style="display:flex;align-items:center;gap:4px;padding:4px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;font-size:11px;font-weight:700;">' + (p.emoji || "✨") + ' ' + (pas ? pas.label : "Passion") + '</div>';
-      }).join("") +
-      '</div>'
+    ? '<div style="display:flex;flex-direction:column;gap:8px;margin:14px 0;">'
+      + '<div style="font-weight:800;font-size:14px;color:var(--text);">✨ Ses passions</div>'
+      + userPassions.map(p => {
+          const pas = passionById(p.id);
+          const label = (pas && pas.label) || p.label || "Passion";
+          const _pPhoto = p.photoUrl || null;
+          const avatarStyle = _pPhoto
+            ? 'background:url(' + safeUrlAttr(_pPhoto) + ') center/cover;'
+            : 'background:' + (p.color || "#8b5cf6") + ';';
+          const _pCover = p.coverUrl || null;
+          const coverStyle = _pCover
+            ? 'background:linear-gradient(90deg, rgba(0,0,0,0.62), rgba(0,0,0,0.30)), url(' + safeUrlAttr(_pCover) + ') center/cover;'
+            : '';
+          return '<div class="profile-card ' + (_pCover ? 'has-cover' : '') + '" style="' + coverStyle + 'cursor:default;">'
+            + '<div class="avatar lg" style="' + avatarStyle + '">' + (_pPhoto ? '' : (p.emoji || "✨")) + '</div>'
+            + '<div class="profile-card-body" style="flex:1;">'
+            + '<div class="profile-card-name">' + (p.emoji || "✨") + ' ' + escapeHtml(label) + '</div>'
+            + (p.bio ? '<div class="profile-card-bio">' + escapeHtml(p.bio) + '</div>' : '')
+            + '</div></div>';
+        }).join("")
+      + '</div>'
     : '';
 
-  var userPosts = allFeedPosts().filter(function(p) { return p.authorId === authorId; });
+  // 🔗 Réseaux sociaux — mêmes pastilles que sur mon profil.
+  var RS_ICONS = { instagram:"📸", facebook:"👤", tiktok:"🎵", youtube:"▶️", twitter:"𝕏", linkedin:"💼", snapchat:"👻", autre:"🔗" };
+  var rsLinks = Array.isArray(user.rsLinks) ? user.rsLinks : [];
+  var rsHTML = rsLinks.length
+    ? '<div class="main-profile-rs" style="justify-content:center;">'
+      + rsLinks.map(function(l) {
+          return '<a class="main-profile-rs-link" href="' + safeUrlAttr(l.url || "") + '" target="_blank" rel="noopener">' + (RS_ICONS[l.platform] || "🔗") + ' ' + escapeHtml(l.platform || "lien") + '</a>';
+        }).join("")
+      + '</div>'
+    : '';
+
+  // 🔒 Compte privé : le contenu (posts/bobines/carnets) est réservé aux
+  // abonnés ; l'en-tête (avatar, pseudo, passions, stats) reste visible.
+  var isFollowing = (state.user.following || []).includes(authorId);
+  var canSeeContent = !user.isPrivate || isFollowing;
+
+  // 📚 TOUT le contenu de l'auteur : ce qu'on a déjà en local (fil + bobines,
+  // qu'allFeedPosts exclut) ENRICHI d'un chargement serveur ciblé (ses posts
+  // plus anciens que la page courante du fil n'étaient sinon jamais visibles).
+  var localPosts = [
+    ...(state.seed.posts || []),
+    ...(state.supabasePosts || []),
+    ...(state.userPosts || []),
+  ].filter(function(p) { return p && p.authorId === authorId; });
+  if (canSeeContent && typeof supaLoadPosts === "function" && window._supaReal) {
+    try {
+      var serverPosts = await supaLoadPosts(0, authorId);
+      localPosts = localPosts.concat(serverPosts || []);
+    } catch(e) {}
+  }
+  var seenIds = new Set();
+  var userPosts = localPosts.filter(function(p) {
+    if (!p || !p.id || seenIds.has(p.id)) return false;
+    seenIds.add(p.id);
+    return true;
+  }).sort(function(a,b) { return (b.createdAt||0) - (a.createdAt||0); });
+
+  var reels = userPosts.filter(function(p) { return p.isReel && (p.video || p.image); });
+  var feedPosts = userPosts.filter(function(p) { return !p.isReel; });
   var postCount = userPosts.length;
   var likeCount = userPosts.reduce(function(s,p) { return s + (p.likes||0); }, 0);
   var followerCount = 0;
@@ -2725,45 +2784,73 @@ async function openUserProfile(authorId, source) {
     } catch(e) {}
   }
 
-  var postsHTML = userPosts.length > 0
-    ? userPosts.map(renderPostHTML).join("")
+  // 🎞️ Bobines en grille 3 colonnes (même rendu que l'onglet Bobines de mon profil)
+  var reelsHTML = reels.length
+    ? '<div style="font-weight:800;font-size:14px;color:var(--text);margin:16px 0 10px;">🎞️ Bobines <span style="font-weight:400;color:var(--muted);">(' + reels.length + ')</span></div>'
+      + '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;">'
+      + reels.map(function(p) {
+          var poster = p.image || p.poster || "";
+          var thumb = poster
+            ? '<img loading="lazy" decoding="async" src="' + safeUrlAttr(poster) + '" style="width:100%;height:100%;object-fit:cover;"/>'
+            : (p.video ? '<video src="' + safeUrlAttr(p.video) + '#t=0.1" muted playsinline preload="metadata" style="width:100%;height:100%;object-fit:cover;background:#000;"></video>' : '<div style="width:100%;height:100%;background:linear-gradient(135deg,#7c3aed,#a78bfa);"></div>');
+          return '<div onclick="closeModal();openReelById(\'' + escapeJsArg(p.id) + '\')" style="aspect-ratio:9/16;border-radius:8px;overflow:hidden;position:relative;cursor:pointer;">' + thumb + '<span style="position:absolute;left:6px;bottom:6px;font-size:14px;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.6));">🎞️</span></div>';
+        }).join("")
+      + '</div>'
+    : '';
+
+  var postsHTML = feedPosts.length > 0
+    ? feedPosts.map(renderPostHTML).join("")
     : '<div style="text-align:center;padding:30px;color:var(--muted);font-size:12px;">Aucune publication pour l\'instant</div>';
 
+  // Contenu : soit tout, soit le verrou « compte privé ».
+  var contentHTML = canSeeContent
+    ? reelsHTML
+      + '<div style="font-weight:800;font-size:14px;color:var(--text);margin:16px 0 10px;">📝 Publications <span style="font-weight:400;color:var(--muted);">(' + feedPosts.length + ')</span></div>'
+      + '<div>' + postsHTML + '</div>'
+    : '<div style="text-align:center;padding:36px 20px;border:1px dashed var(--border);border-radius:16px;margin-top:16px;">'
+      + '<div style="font-size:34px;margin-bottom:10px;">🔒</div>'
+      + '<div style="font-weight:800;font-size:15px;color:var(--text);margin-bottom:6px;">Ce compte est privé</div>'
+      + '<div style="font-size:12px;color:var(--muted);line-height:1.5;">Abonne-toi pour voir ses publications, photos, bobines et carnets.</div>'
+      + '</div>';
+
+  // 🖼️ En-tête : MÊME visuel que le profil principal (couverture 3:2 + avatar
+  // chevauchant + pseudo + bio + réseaux + stats), via les classes existantes
+  // .main-profile-* — sans les contrôles d'édition, évidemment.
+  var coverStyle = user.coverUrl
+    ? 'background:url(' + safeUrlAttr(user.coverUrl) + ') center/cover;'
+    : 'background:linear-gradient(135deg, #8b5cf6, #6d28d9);';
+
   var html = '\
-    <span class="modal-close" onclick="closeModal()">×</span>\
+    <span class="modal-close" onclick="closeModal()" style="z-index:20;">×</span>\
     \
-    <!-- AVATAR + NOM -->\
-    <div style="text-align:center;padding-top:20px;margin-bottom:16px;">\
-      <div style="width:80px;height:80px;border-radius:50%;background:' + avatarBg(user) + ';display:flex;align-items:center;justify-content:center;font-size:38px;margin:0 auto 12px;border:4px solid #fff;box-shadow:0 6px 20px rgba(139,92,246,0.3);">' + avatarInner(user) + '</div>\
-      <div style="font-weight:900;font-size:22px;color:var(--text);">' + escapeHtml(user.name || "Passionné") + '</div>\
-      ' + passionsHTML + '\
-      ' + (user.bio ? '<div style="font-size:13px;color:var(--text-dim);margin-top:10px;line-height:1.5;max-width:280px;margin-left:auto;margin-right:auto;">' + escapeHtml(user.bio) + '</div>' : '') + '\
+    <!-- CARTE PROFIL (même structure que #mainProfileCard) -->\
+    <div class="main-profile-card" style="margin:0 -18px 4px;border-radius:0;border-left:0;border-right:0;border-top:0;">\
+      <div class="main-profile-cover" style="' + coverStyle + 'cursor:default;"></div>\
+      <div class="main-profile-body">\
+        <div class="main-profile-avatar-wrap">\
+          <div class="main-profile-avatar" style="background:' + avatarBg(user) + ';background-size:cover;background-position:center;cursor:default;">' + avatarInner(user) + '</div>\
+        </div>\
+        <div class="main-profile-username">' + escapeHtml(user.name || "Passionné") + (user.isPrivate ? ' <span title="Compte privé" style="font-size:13px;">🔒</span>' : '') + '</div>\
+        ' + (user.bio ? '<div class="main-profile-bio">' + escapeHtml(user.bio) + '</div>' : '') + '\
+        ' + (rsLinks.length ? '<div class="main-profile-rs">' + rsLinks.map(function(l) { return '<a class="main-profile-rs-link" href="' + safeUrlAttr(l.url || "") + '" target="_blank" rel="noopener">' + (RS_ICONS[l.platform] || "🔗") + ' ' + escapeHtml(l.platform || "lien") + '</a>'; }).join("") + '</div>' : '') + '\
+        <div class="main-profile-stats">\
+          <div class="main-profile-stat"><span>' + postCount + '</span><span>posts</span></div>\
+          <div class="main-profile-stat"><span>' + followerCount + '</span><span>abonnés</span></div>\
+          <div class="main-profile-stat"><span>' + likeCount + '</span><span>likes</span></div>\
+        </div>\
+      </div>\
     </div>\
     \
     <!-- BOUTONS -->\
-    <div style="display:flex;gap:8px;justify-content:center;margin-bottom:16px;">\
-      <button class="btn primary" onclick="closeModal();startDirectMessage(\'' + authorId + '\',\'' + escapeJsArg(user.name || "Passionné") + '\',\'' + (user.profileEmoji || "✨") + '\',\'' + (user.avatar || "#8b5cf6") + '\',\'' + (user.photoUrl || "") + '\')" style="font-size:12px;padding:10px 18px;border-radius:14px;">💬 Message</button>\
-      <button class="btn ghost" id="followBtn_' + authorId + '" onclick="toggleFollowUser(\'' + authorId + '\',\'' + escapeJsArg(user.name || "") + '\')" style="font-size:12px;padding:10px 18px;border-radius:14px;' + ((state.user.following||[]).includes(authorId) ? 'background:var(--accent);color:#fff;border-color:var(--accent);' : '') + '">' + ((state.user.following||[]).includes(authorId) ? '✓ Suivi' : '➕ Suivre') + '</button>\
+    <div style="display:flex;gap:8px;justify-content:center;margin:14px 0 4px;">\
+      <button class="btn primary" onclick="closeModal();startDirectMessage(\'' + authorId + '\',\'' + escapeJsArg(user.name || "Passionné") + '\',\'' + (user.profileEmoji || "✨") + '\',\'' + (user.avatar || "#8b5cf6") + '\',\'' + (user.photoUrl || "") + '\')" style="flex:1;font-size:12px;padding:10px 18px;border-radius:14px;">💬 Message</button>\
+      <button class="btn ghost" id="followBtn_' + authorId + '" onclick="toggleFollowUser(\'' + authorId + '\',\'' + escapeJsArg(user.name || "") + '\')" style="flex:1;font-size:12px;padding:10px 18px;border-radius:14px;' + (isFollowing ? 'background:var(--accent);color:#fff;border-color:var(--accent);' : '') + '">' + (isFollowing ? '✓ Suivi' : '➕ Suivre') + '</button>\
     </div>\
     \
-    <!-- STATS -->\
-    <div style="display:flex;gap:0;border:1px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:16px;">\
-      <div style="flex:1;text-align:center;padding:12px 6px;border-right:1px solid var(--border);">\
-        <div style="font-size:18px;font-weight:900;color:var(--text);">' + postCount + '</div>\
-        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;">Posts</div>\
-      </div>\
-      <div style="flex:1;text-align:center;padding:12px 6px;border-right:1px solid var(--border);">\
-        <div style="font-size:18px;font-weight:900;color:var(--text);">' + followerCount + '</div>\
-        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;">Abonnés</div>\
-      </div>\
-      <div style="flex:1;text-align:center;padding:12px 6px;">\
-        <div style="font-size:18px;font-weight:900;color:var(--text);">' + likeCount + '</div>\
-        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;">Likes</div>\
-      </div>\
-    </div>\
+    ' + passionsHTML + '\
     \
     <!-- ACTIONS RAPIDES -->\
-    <div style="display:flex;gap:8px;margin-bottom:16px;">\
+    <div style="display:flex;gap:8px;margin-bottom:4px;">\
       <button class="btn ghost" onclick="shareUserProfile(\'' + authorId + '\',\'' + escapeJsArg(user.name || "") + '\')" style="flex:1;font-size:11px;padding:8px;">' + shareIconSvg(14) + ' Partager</button>\
       <button class="btn ghost" onclick="reportUser(\'' + authorId + '\',\'' + escapeJsArg(user.name || "") + '\')" style="flex:1;font-size:11px;padding:8px;color:#f59e0b;border-color:rgba(245,158,11,0.3);">🚩 Signaler</button>\
       ' + (isBlocked(authorId)
@@ -2771,15 +2858,18 @@ async function openUserProfile(authorId, source) {
         : '<button class="btn ghost" onclick="blockUser(\'' + authorId + '\',\'' + escapeJsArg(user.name || "") + '\')" style="flex:1;font-size:11px;padding:8px;color:#ef4444;border-color:rgba(239,68,68,0.3);">🚫 Bloquer</button>') + '\
     </div>\
     \
-    <!-- PUBLICATIONS -->\
-    <div style="font-weight:800;font-size:14px;color:var(--text);margin-bottom:10px;">📝 Publications <span style="font-weight:400;color:var(--muted);">(' + postCount + ')</span></div>\
-    <div>' + postsHTML + '</div>\
+    ' + contentHTML + '\
   ';
   openModal(html);
   // Passer en plein écran
   var modalEl = document.querySelector(".modal");
   if (modalEl) modalEl.classList.add("modal-fullscreen");
 }
+
+// Colonnes chargées pour un profil VISITÉ — tout ce qu'il faut pour reproduire
+// le visuel du profil personnel (couverture, passions enrichies, réseaux
+// sociaux, mode privé). Partagé par les 3 requêtes d'openUserProfile.
+var VISITED_PROFILE_COLS = "id,username,emoji,color,passion_id,passions,bio,avatar_url,cover_url,is_private,rs_links";
 
 function toggleFollowUser(userId, userName) {
   var btn = document.getElementById("followBtn_" + userId);

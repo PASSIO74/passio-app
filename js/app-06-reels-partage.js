@@ -671,6 +671,97 @@ function changePassionCoverPhoto(event, profileId) {
     .catch(function() { _reopenEditPassionAfterPhoto(); });
 }
 
+// ⋯ MENU D'ÉDITION DES PROFILS (2026-07-20) — remplace le crayon ✏️ par trois
+// petits points discrets en haut à droite de la carte (profil principal ET
+// cartes de profil passion). Le menu est un popover ancré au bouton ; il se
+// ferme au clic extérieur, au scroll, à Escape ou après un choix.
+// Préfixe `_profileDots*` pour éviter toute collision de globals (cf. CLAUDE.md).
+function _profileDotsClose() {
+  const old = document.getElementById("profileDotsMenu");
+  if (old) old.remove();
+  document.removeEventListener("click", _profileDotsClose, true);
+  window.removeEventListener("scroll", _profileDotsClose, true);
+  window.removeEventListener("resize", _profileDotsClose, true);
+  document.removeEventListener("keydown", _profileDotsKey);
+}
+
+function _profileDotsKey(e) {
+  if (e.key === "Escape") _profileDotsClose();
+}
+
+// items = [{ icon, label, run: function, danger?:true }]
+function _profileDotsOpen(ev, items) {
+  if (ev) { ev.stopPropagation(); ev.preventDefault(); }
+  const btn = ev && ev.currentTarget;
+  const already = document.getElementById("profileDotsMenu");
+  _profileDotsClose();
+  if (already) return; // re-clic sur les ⋯ = fermeture
+
+  const menu = document.createElement("div");
+  menu.id = "profileDotsMenu";
+  menu.className = "profile-dots-menu";
+  menu.setAttribute("role", "menu");
+  items.forEach(function(it, i) {
+    const b = document.createElement("button");
+    b.className = "profile-dots-item" + (it.danger ? " danger" : "");
+    b.setAttribute("role", "menuitem");
+    b.innerHTML = '<span class="profile-dots-ico">' + escapeHtml(it.icon || "") + "</span>" + escapeHtml(it.label || "");
+    b.onclick = function(e) {
+      e.stopPropagation();
+      _profileDotsClose();
+      try { it.run(); } catch (err) {}
+    };
+    menu.appendChild(b);
+    if (it.sep && i < items.length - 1) {
+      const hr = document.createElement("div");
+      hr.className = "profile-dots-sep";
+      menu.appendChild(hr);
+    }
+  });
+  document.body.appendChild(menu);
+
+  // Ancrage sous le bouton, aligné à droite, borné à la fenêtre.
+  const r = btn ? btn.getBoundingClientRect() : { bottom: 60, right: window.innerWidth - 12 };
+  const w = menu.offsetWidth || 210;
+  let left = Math.min(r.right - w, window.innerWidth - w - 8);
+  if (left < 8) left = 8;
+  let top = r.bottom + 6;
+  const h = menu.offsetHeight || 160;
+  if (top + h > window.innerHeight - 8) top = Math.max(8, r.top - h - 6);
+  menu.style.left = left + "px";
+  menu.style.top  = top + "px";
+
+  setTimeout(function() {
+    document.addEventListener("click", _profileDotsClose, true);
+    window.addEventListener("scroll", _profileDotsClose, true);
+    window.addEventListener("resize", _profileDotsClose, true);
+    document.addEventListener("keydown", _profileDotsKey);
+  }, 0);
+}
+
+// Menu du PROFIL PRINCIPAL (⋯ en haut à droite de la couverture).
+function openMainProfileMenu(ev) {
+  _profileDotsOpen(ev, [
+    { icon: "✏️", label: "Modifier le profil", run: function() { openEditMainProfile(); } },
+    { icon: "🖼️", label: "Photo de profil",    run: function() { const i = document.getElementById("avatarPhotoInput"); if (i) i.click(); } },
+    { icon: "🌄", label: "Photo de couverture", run: function() { const i = document.getElementById("coverPhotoInput"); if (i) i.click(); }, sep: true },
+    { icon: "🎨", label: "Apparence & thème",   run: function() { if (typeof openConfigurator === "function") openConfigurator(); } }
+  ]);
+}
+
+// Menu d'un PROFIL PASSION (⋯ en haut à droite de la carte).
+function openPassionProfileMenu(ev, profileId) {
+  const p = (state.user.profiles || []).find(x => x.id === profileId);
+  if (!p) return;
+  const passion = passionById(p.passion);
+  _profileDotsOpen(ev, [
+    { icon: "✏️", label: "Modifier ce profil", run: function() { openEditPassionProfile(profileId); } },
+    { icon: "🖼️", label: "Photo du profil",    run: function() { const i = document.getElementById("passionPhoto_" + profileId); if (i) i.click(); } },
+    { icon: "🌄", label: "Photo de fond",      run: function() { const i = document.getElementById("passionCover_" + profileId); if (i) i.click(); }, sep: true },
+    { icon: "🗑", label: "Supprimer ce profil", danger: true, run: function() { confirmDeleteProfile(profileId, (passion && passion.label) || ""); } }
+  ]);
+}
+
 function openEditMainProfile() {
   const g = state.user.general || {};
   const RS_LIST = ["instagram","tiktok","facebook","youtube","twitter","linkedin","snapchat","autre"];
@@ -699,6 +790,20 @@ function openEditMainProfile() {
       <span>Biographie <span style="font-weight:400;color:var(--muted);" id="bioCount">${(g.bio||"").length}/200</span></span>
       <textarea class="textarea" id="editBio" maxlength="200" placeholder="Présente-toi en quelques mots, parle de tes passions…" style="min-height:90px;">${escapeHtml(g.bio||"")}</textarea>
     </label>
+
+    <!-- Confidentialité : compte privé (façon Instagram). L'en-tête du profil
+         (avatar, pseudo, passions, compteurs) reste public ; seul le CONTENU
+         est réservé aux abonnés. -->
+    <div class="field">
+      <span>Confidentialité</span>
+      <label style="display:flex;align-items:flex-start;gap:10px;padding:12px;border:1px solid var(--border);border-radius:12px;cursor:pointer;">
+        <input type="checkbox" id="editIsPrivate" ${g.isPrivate ? "checked" : ""} style="width:20px;height:20px;flex-shrink:0;margin-top:1px;accent-color:var(--accent);"/>
+        <span style="flex:1;">
+          <span style="display:block;font-weight:700;font-size:13px;color:var(--text);">🔒 Compte privé</span>
+          <span style="display:block;font-size:11px;color:var(--muted);line-height:1.45;margin-top:3px;">Seuls tes abonnés peuvent voir tes publications, photos, bobines et carnets. Ton pseudo, ton avatar et tes passions restent visibles pour que l'on puisse te trouver.</span>
+        </span>
+      </label>
+    </div>
 
     <div style="font-weight:700;font-size:13px;color:var(--text);margin:14px 0 10px;">🔗 Mes réseaux sociaux</div>
     <div style="display:flex;flex-direction:column;gap:8px;">
@@ -736,6 +841,7 @@ function openEditMainProfile() {
     window._editProfileDraft = null;
     const u = document.getElementById("editUsername"); if (u) u.value = draft.username || "";
     if (bioTa) { bioTa.value = draft.bio || ""; if (bioCount) bioCount.textContent = `${bioTa.value.length}/200`; }
+    const pv = document.getElementById("editIsPrivate"); if (pv) pv.checked = !!draft.isPrivate;
     (draft.rs || []).forEach(function(r) {
       const inp = document.querySelector('.rs-link-input[data-platform="' + r.platform + '"]');
       if (inp) inp.value = r.url || "";
@@ -750,6 +856,7 @@ function editCoverFromModal() {
   window._editProfileDraft = {
     username: document.getElementById("editUsername")?.value || "",
     bio: document.getElementById("editBio")?.value || "",
+    isPrivate: !!document.getElementById("editIsPrivate")?.checked,
     rs: [...document.querySelectorAll(".rs-link-input")].map(function(i) { return { platform: i.dataset.platform, url: i.value }; })
   };
   window._editProfileReopen = true;
@@ -774,6 +881,7 @@ async function saveMainProfile() {
   state.user.general.username = username;
   state.user.general.bio      = bio;
   state.user.general.rsLinks  = rsLinks;
+  state.user.general.isPrivate = !!document.getElementById("editIsPrivate")?.checked;
   state.user.general.emoji    = currentProfile()?.emoji || "✨";
   if (username) state.user.name = username;
   // ⚠️ Renommer aussi le PROFIL ACTIF : c'est lui que supaUpsertProfile publie
@@ -850,7 +958,7 @@ function renderProfilesScreen() {
         </div>
         ${p.bio ? `<div class="profile-card-bio">${escapeHtml(p.bio)}</div>` : ""}
       </div>
-      <button class="main-profile-edit-icon" onclick="event.stopPropagation();openEditPassionProfile('${p.id}')" title="Éditer ce profil passion" aria-label="Éditer ce profil passion" style="flex-shrink:0;">✏️</button>
+      <button class="profile-dots-btn" onclick="openPassionProfileMenu(event,'${p.id}')" title="Options du profil" aria-label="Options du profil" aria-haspopup="menu" style="flex-shrink:0;">⋯</button>
     </div>`;
   }).join("");
 
