@@ -54,6 +54,7 @@ Deno.serve(async (req) => {
     ["conv_messages", "from_id"],
     ["conv_members", "user_id"],
     ["notifications", "user_id"],
+    ["story_views", "user_id"],
     ["push_subscriptions", "user_id"],
     ["client_errors", "uid"],
     ["follows", "follower_id"],

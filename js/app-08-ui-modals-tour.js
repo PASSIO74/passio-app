@@ -401,7 +401,12 @@ function buildStoryGroups() {
   });
   const groups = order.map(id => map.get(id));
   groups.forEach(g => g.stories.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0)));
-  return groups;
+  // Instagram : les groupes entièrement vus passent EN FIN de barre (tri stable,
+  // l'ordre d'activité est conservé dans chaque partition). `allSeen` est posé
+  // sur le groupe pour que renderStories/le viewer n'aient pas à recalculer.
+  const seen = (state.user && state.user.seenStories) || [];
+  groups.forEach(g => { g.allSeen = g.stories.every(s => seen.includes(s.id)); });
+  return groups.filter(g => !g.allSeen).concat(groups.filter(g => g.allSeen));
 }
 
 // Miniature de la bulle d'un groupe : la story la plus récente avec un visuel,
@@ -424,7 +429,6 @@ function renderStories() {
   // Chercher #storiesRowFeed (feed) OU #storiesRow (explorer)
   const row = $("#storiesRowFeed") || $("#storiesRow");
   if (!row) return;
-  const seen = state.user.seenStories || [];
   const groups = buildStoryGroups();
   const myId = String(_myStoryAuthorId());
 
@@ -444,7 +448,8 @@ function renderStories() {
   let html;
   if (myGroup && myGroup.stories.length) {
     // J'ai déjà des stories : la bulle ouvre MON groupe ; le petit "+" en ajoute une.
-    const allSeen = myGroup.stories.every(s => seen.includes(s.id));
+    // Anneau dégradé tant que je n'ai pas regardé ma propre story, gris ensuite (Instagram).
+    const allSeen = !!myGroup.allSeen;
     html = `
       <div class="story-item" onclick="openStoryGroup('${escapeHtml(String(myGroup.authorId))}')" title="Voir ta story">
         <div class="story-ring ${allSeen ? "seen" : ""}">
@@ -478,7 +483,7 @@ function renderStories() {
   if (typeof _vliveChipsHtml === "function") { try { html += _vliveChipsHtml(); } catch (e) {} }
 
   html += others.map(g => {
-    const allSeen = g.stories.every(s => seen.includes(s.id));
+    const allSeen = !!g.allSeen;
     return `
       <div class="story-item" onclick="openStoryGroup('${escapeHtml(String(g.authorId))}')">
         <div class="story-ring ${allSeen ? "seen" : ""}">
@@ -1365,7 +1370,12 @@ function openStoryGroup(authorId) {
   storyGroups = buildStoryGroups();
   let gi = storyGroups.findIndex(g => String(g.authorId) === String(authorId));
   if (gi < 0) gi = 0;
-  openStoryViewerAt(gi, 0);
+  // Instagram : on reprend à la PREMIÈRE story non vue du groupe (au début si tout est vu).
+  const seen = (state.user && state.user.seenStories) || [];
+  const g = storyGroups[gi];
+  let ii = g ? g.stories.findIndex(s => !seen.includes(s.id)) : 0;
+  if (ii < 0) ii = 0;
+  openStoryViewerAt(gi, ii);
 }
 
 function openStoryViewerAt(groupIdx, itemIdx) {
@@ -1492,10 +1502,16 @@ function playCurrentStory() {
     </div>
   `).join("");
 
-  // Mark as seen
+  // Mark as seen — et MAJ immédiate des anneaux de la barre (gris dès la lecture,
+  // pas seulement à la fermeture du viewer). Liste bornée (stories = 24 h de vie).
+  // Poussé aussi dans story_views (Supabase) pour synchroniser les anneaux
+  // vus/non-vus entre les appareils du compte.
   if (!state.user.seenStories.includes(s.id)) {
     state.user.seenStories.push(s.id);
+    if (state.user.seenStories.length > 600) state.user.seenStories = state.user.seenStories.slice(-500);
     saveState();
+    try { renderStories(); } catch (e) {}
+    try { if (typeof supaMarkStoryView === "function") supaMarkStoryView(s.id); } catch (e) {}
   }
 
   // Animate current bar
@@ -4217,6 +4233,29 @@ async function supaReport(targetType, targetId, reason) {
   } catch(e) {}
 }
 
+// ---- STORIES : VUES SYNCHRONISÉES (cross-appareil) ----
+// Table story_views (story_id, user_id) : quelles stories J'AI vues, pour que
+// les anneaux vus/non-vus (Instagram) survivent au changement d'appareil.
+// Les ids des stories seed (« s1 »…) y passent aussi : mêmes ids partout →
+// leur état vu se synchronise comme les vraies. RLS : chacun ne lit/écrit
+// que ses propres lignes.
+async function supaMarkStoryView(storyId) {
+  if (!window._supaReal || !MY_UID || !storyId) return;
+  try {
+    await supa.from("story_views").upsert(
+      { story_id: String(storyId), user_id: MY_UID },
+      { onConflict: "story_id,user_id", ignoreDuplicates: true }
+    );
+  } catch (e) {}
+}
+async function supaLoadStoryViews() {
+  if (!window._supaReal || !MY_UID) return [];
+  try {
+    const { data } = await supa.from("story_views").select("story_id").eq("user_id", MY_UID);
+    return (data || []).map(r => r.story_id);
+  } catch (e) { return []; }
+}
+
 // ---- EVENT JOINING ----
 async function supaJoinEvent(eventId) {
   try {
@@ -4454,6 +4493,15 @@ async function supaInit() {
             state.user.blocked = [...new Set([...(state.user.blocked || []), ...bl])];
             try { saveState(); } catch(e) {}
             try { if (typeof renderFeed === "function") renderFeed(); } catch(e) {}
+          }
+        }).catch(e => {});
+      // Stories vues : fusion cross-appareil (anneaux Instagram synchronisés).
+      if (typeof supaLoadStoryViews === "function")
+        supaLoadStoryViews().then(ids => {
+          if (ids && ids.length) {
+            state.user.seenStories = [...new Set([...(state.user.seenStories || []), ...ids])];
+            try { saveState(); } catch(e) {}
+            try { if (typeof renderStories === "function") renderStories(); } catch(e) {}
           }
         }).catch(e => {});
       // Follows : restaure depuis Supabase (le code mort après return; ne s'exécutait jamais).

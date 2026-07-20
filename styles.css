@@ -4182,19 +4182,23 @@
     }
 
     .story-ring {
+      /* Story NON VUE : dégradé Instagram (jaune → orange → rose → violet). */
       width: 62px;
       height: 62px;
       padding: 2.5px;
       border-radius: 999px;
-      background: rgba(124, 58, 237, 0.30);
+      background: conic-gradient(from 200deg at 50% 50%, #feda75, #fa7e1e, #d62976, #962fbf, #4f5bd5, #feda75);
       transition: transform 200ms ease;
     }
     .story-item:active .story-ring { transform: scale(0.94); }
     .story-ring.seen {
-      background: rgba(24, 18, 48, 0.12);
+      /* Story DÉJÀ VUE : anneau gris fin et neutre. */
+      background: rgba(24, 18, 48, 0.18);
+      padding: 1.5px;
     }
     .story-ring.create {
-      background: linear-gradient(135deg, #8b5cf6, #a78bfa);
+      /* « Ta story » sans story active : avatar sans anneau + badge "+". */
+      background: transparent;
       position: relative;
     }
     .story-ring.create::after {
@@ -4227,6 +4231,8 @@
       color: #fff;
       overflow: hidden;
       position: relative;
+      /* Liseré clair entre l'anneau et l'avatar (gap Instagram). */
+      border: 2px solid var(--bg-card);
     }
     .story-inner img {
       width: 100%;
