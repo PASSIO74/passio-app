@@ -154,34 +154,16 @@ function renderMainProfile() {
 
   // Pastille étoiles : indicateur discret de points + rang (clic → Wallet pour
   // le détail). Remis à la demande de l'utilisateur, version sobre et intuitive.
+  // Allégé (2026-07-20) : on n'affiche PLUS le libellé de rang ni la jauge
+  // « Plus que X pts avant … » — seulement le chiffre. Le détail (rang,
+  // progression) reste dans le Wallet, où mène le clic.
   var starsScoreEl = document.getElementById("profileStarsScore");
-  var starsRankEl  = document.getElementById("profileStarsRank");
-  if (starsScoreEl && starsRankEl) {
+  if (starsScoreEl) {
     var _score = state.user.score || 0;
     var _rank  = (typeof rankOf === "function") ? rankOf(_score) : { label: "Débutant" };
     starsScoreEl.textContent = _score;
-    starsRankEl.textContent  = _rank.label;
     var chip = document.getElementById("mainProfileStars");
-    if (chip) chip.title = _rank.next ? ("Plus que " + Math.max(0, _rank.next - _score) + " pts avant « " + (rankOf(_rank.next).label) + " »") : "Rang maximum atteint 🏆";
-
-    // Jauge de progression vers le prochain palier (même logique de rang).
-    var rpWrap = document.getElementById("mainProfileRankProgress");
-    if (rpWrap) {
-      if (_rank.next) {
-        var _span = _rank.next - _rank.min;
-        var _done = _score - _rank.min;
-        var _pct = _span > 0 ? Math.max(0, Math.min(100, (_done / _span) * 100)) : 0;
-        var _remaining = Math.max(0, _rank.next - _score);
-        var _nextLabel = rankOf(_rank.next).label;
-        var _fill = document.getElementById("mainProfileRankFill");
-        if (_fill) _fill.style.width = _pct.toFixed(1) + "%";
-        var _lbl = document.getElementById("mainProfileRankLabel");
-        if (_lbl) _lbl.innerHTML = "Plus que <b>" + _remaining + " pt" + (_remaining > 1 ? "s" : "") + "</b> → " + escapeHtml(_nextLabel);
-        rpWrap.style.display = "";
-      } else {
-        rpWrap.style.display = "none"; // rang maximum atteint
-      }
-    }
+    if (chip) chip.title = _rank && _rank.next ? ("⭐ " + _score + " · " + _rank.label + " — plus que " + Math.max(0, _rank.next - _score) + " pts avant « " + (rankOf(_rank.next).label) + " »") : ("⭐ " + _score + " · rang maximum atteint 🏆");
   }
 
   var postCount = state.userPosts.length;
@@ -595,15 +577,24 @@ function _readAndCrop(file, cropOpts) {
 function changeCoverPhoto(event) {
   const file = event.target.files[0];
   if (event.target) event.target.value = "";
-  if (!file) return;
+  if (!file) { _reopenEditProfileAfterCover(); return; }
   // 16:9 — même ratio que l'affichage .main-profile-cover : la photo est
   // visible ENTIÈRE sur le profil, telle que cadrée ici (plus le bandeau 1080×320).
   _readAndCrop(file, { aspect: 16 / 9, outW: 1080, outH: 608, round: false, title: "Recadre ta photo de couverture" })
     .then(function(dataUrl) {
       _syncProfilePhoto("coverPhoto", "covers", dataUrl);
       toast("📷 Photo de couverture mise à jour !");
+      _reopenEditProfileAfterCover();
     })
-    .catch(function() {});
+    .catch(function() { _reopenEditProfileAfterCover(); });
+}
+
+// Rouvre la modale « Mon profil principal » si le changement de couverture a été
+// lancé depuis elle (le recadreur l'avait remplacée).
+function _reopenEditProfileAfterCover() {
+  if (!window._editProfileReopen) return;
+  window._editProfileReopen = false;
+  setTimeout(function() { if (typeof openEditMainProfile === "function") openEditMainProfile(); }, 220);
 }
 
 function changeAvatarPhoto(event) {
@@ -621,7 +612,7 @@ function changeAvatarPhoto(event) {
 function changePassionPhoto(event, profileId) {
   const file = event.target.files[0];
   if (event.target) event.target.value = "";
-  if (!file) return;
+  if (!file) { _reopenEditPassionAfterPhoto(); return; }
   _readAndCrop(file, { aspect: 1, outW: 480, outH: 480, round: true, title: "Recadre la photo du profil passion" })
     .then(async function(base64) {
     const prof = state.user.profiles.find(p => p.id === profileId);
@@ -630,6 +621,7 @@ function changePassionPhoto(event, profileId) {
     saveState();
     renderProfilesScreen();
     toast("📷 Photo du profil passion mise à jour !");
+    _reopenEditPassionAfterPhoto();
     // Tente un upload vers Storage → stocke l'URL (sync cross-appareil sans base64)
     if (typeof supaUploadMedia === "function" && window._supaReal) {
       try {
@@ -649,7 +641,7 @@ function changePassionPhoto(event, profileId) {
     // Flush immédiat vers user_state (sans attendre le debounce 2500ms).
     if (typeof supaSaveUserState === "function") { try { supaSaveUserState(); } catch(_e) {} }
     })
-    .catch(function() {});
+    .catch(function() { _reopenEditPassionAfterPhoto(); });
 }
 
 function openEditMainProfile() {
@@ -660,6 +652,16 @@ function openEditMainProfile() {
   const html = `
     <div class="modal-handle"></div>
     <div class="modal-title">✏️ Mon profil principal</div>
+
+    <!-- Photo de couverture : unique point d'entrée (le bouton « Changer » a été
+         retiré de la carte profil pour ne garder QU'UN seul onglet d'édition). -->
+    <div class="field">
+      <span>Photo de couverture</span>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <div id="editCoverPreview" style="flex:1;height:64px;border-radius:12px;border:1px solid var(--border);background:${g.coverPhoto ? "url(" + safeUrlAttr(g.coverPhoto) + ") center/cover" : "linear-gradient(135deg,#8b5cf6,#6d28d9)"};"></div>
+        <button class="btn ghost" style="white-space:nowrap;" onclick="editCoverFromModal()">📷 Changer</button>
+      </div>
+    </div>
 
     <label class="field">
       <span>Pseudo</span>
@@ -699,6 +701,33 @@ function openEditMainProfile() {
   const bioTa = document.getElementById("editBio");
   const bioCount = document.getElementById("bioCount");
   if (bioTa && bioCount) bioTa.addEventListener("input", () => bioCount.textContent = `${bioTa.value.length}/200`);
+
+  // Restaure la saisie en cours si on revient d'un changement de couverture
+  // (le recadrage ouvre sa propre modale et fermait celle-ci).
+  const draft = window._editProfileDraft;
+  if (draft) {
+    window._editProfileDraft = null;
+    const u = document.getElementById("editUsername"); if (u) u.value = draft.username || "";
+    if (bioTa) { bioTa.value = draft.bio || ""; if (bioCount) bioCount.textContent = `${bioTa.value.length}/200`; }
+    (draft.rs || []).forEach(function(r) {
+      const inp = document.querySelector('.rs-link-input[data-platform="' + r.platform + '"]');
+      if (inp) inp.value = r.url || "";
+    });
+  }
+}
+
+// Changement de couverture DEPUIS la modale d'édition : on mémorise la saisie
+// en cours (le recadreur ouvre sa propre modale et écrase celle-ci) puis on
+// rouvre la modale une fois l'opération terminée (cf. changeCoverPhoto).
+function editCoverFromModal() {
+  window._editProfileDraft = {
+    username: document.getElementById("editUsername")?.value || "",
+    bio: document.getElementById("editBio")?.value || "",
+    rs: [...document.querySelectorAll(".rs-link-input")].map(function(i) { return { platform: i.dataset.platform, url: i.value }; })
+  };
+  window._editProfileReopen = true;
+  const inp = document.getElementById("coverPhotoInput");
+  if (inp) inp.click();
 }
 
 async function saveMainProfile() {
@@ -789,8 +818,9 @@ function renderProfilesScreen() {
           ${passion.emoji} ${passion.label}
         </div>
         <div class="profile-card-passion" style="color:var(--muted);font-size:11px;">${postCount} post${postCount>1?"s":""} · créé le ${fmtDate(p.createdAt)}</div>
+        ${p.bio ? `<div class="profile-card-bio" style="color:var(--muted);font-size:11px;margin-top:2px;font-style:italic;">${escapeHtml(p.bio)}</div>` : ""}
       </div>
-      <button onclick="event.stopPropagation();confirmDeleteProfile('${p.id}','${escapeJsArg(passion.label)}')" style="flex-shrink:0;width:32px;height:32px;border-radius:50%;border:1px solid rgba(239,68,68,0.3);background:transparent;color:#ef4444;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;">🗑</button>
+      <button class="main-profile-edit-icon" onclick="event.stopPropagation();openEditPassionProfile('${p.id}')" title="Éditer ce profil passion" aria-label="Éditer ce profil passion" style="flex-shrink:0;">✏️</button>
     </div>`;
   }).join("");
 
@@ -846,6 +876,77 @@ function switchToProfile(id) {
   renderTopbar();
   renderProfilesScreen();
   renderFeed();
+}
+
+// ===== ÉDITION D'UN PROFIL PASSION (crayon sur la carte) =====
+// Un seul point d'entrée par profil passion : photo, petite bio, et la
+// suppression (déplacée ici — plus de corbeille sur la carte).
+function openEditPassionProfile(profileId) {
+  const p = (state.user.profiles || []).find(x => x.id === profileId);
+  if (!p) return;
+  const passion = passionById(p.passion);
+  const photo = p.photoUrl || p.photo || null;
+
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">✏️ ${escapeHtml(passion.emoji + " " + passion.label)}</div>
+
+    <div class="field">
+      <span>Photo du profil</span>
+      <div style="display:flex;gap:10px;align-items:center;">
+        <div style="width:56px;height:56px;border-radius:50%;flex-shrink:0;${photo ? "background:url(" + safeUrlAttr(photo) + ") center/cover;" : "background:" + escapeHtml(p.color || "var(--accent)") + ";display:flex;align-items:center;justify-content:center;font-size:24px;"}">${photo ? "" : escapeHtml(p.emoji || "")}</div>
+        <button class="btn ghost" onclick="_editPassionPhotoFromModal('${escapeJsArg(p.id)}')">📷 Changer</button>
+      </div>
+    </div>
+
+    <label class="field">
+      <span>Bio de ce profil <span style="font-weight:400;color:var(--muted);" id="passionBioCount">${(p.bio||"").length}/150</span></span>
+      <textarea class="textarea" id="editPassionBio" maxlength="150" placeholder="Décris ce que tu partages avec cette passion…" style="min-height:80px;">${escapeHtml(p.bio||"")}</textarea>
+    </label>
+
+    <div style="display:flex;gap:8px;margin-top:12px;">
+      <button class="btn ghost" onclick="closeModal()">Annuler</button>
+      <button class="btn primary" style="flex:1;" onclick="savePassionProfile('${escapeJsArg(p.id)}')">💾 Sauvegarder</button>
+    </div>
+
+    <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);">
+      <button class="btn ghost" onclick="closeModal();setTimeout(function(){confirmDeleteProfile('${escapeJsArg(p.id)}','${escapeJsArg(passion.label)}');},200);" style="width:100%;font-size:13px;padding:12px;color:#ef4444;">🗑 Supprimer ce profil</button>
+    </div>`);
+
+  const ta = document.getElementById("editPassionBio");
+  const cnt = document.getElementById("passionBioCount");
+  if (ta && cnt) ta.addEventListener("input", () => cnt.textContent = `${ta.value.length}/150`);
+}
+
+// Changement de photo depuis la modale d'édition d'un profil passion : le
+// recadreur ouvre sa propre modale → on mémorise la bio saisie et on rouvre.
+function _editPassionPhotoFromModal(profileId) {
+  window._editPassionDraft = { id: profileId, bio: document.getElementById("editPassionBio")?.value || "" };
+  const inp = document.getElementById("passionPhoto_" + profileId);
+  if (inp) inp.click();
+}
+
+function _reopenEditPassionAfterPhoto() {
+  const d = window._editPassionDraft;
+  if (!d) return;
+  window._editPassionDraft = null;
+  setTimeout(function() {
+    openEditPassionProfile(d.id);
+    const ta = document.getElementById("editPassionBio");
+    const cnt = document.getElementById("passionBioCount");
+    if (ta) { ta.value = d.bio || ""; if (cnt) cnt.textContent = ta.value.length + "/150"; }
+  }, 220);
+}
+
+function savePassionProfile(profileId) {
+  const p = (state.user.profiles || []).find(x => x.id === profileId);
+  if (!p) { closeModal(); return; }
+  p.bio = (document.getElementById("editPassionBio")?.value || "").trim();
+  saveState();
+  if (typeof supaSaveUserState === "function") { try { supaSaveUserState(); } catch(e) {} }
+  closeModal();
+  renderProfilesScreen();
+  toast("✅ Profil passion mis à jour !");
 }
 
 function confirmDeleteProfile(profileId, passionLabel) {

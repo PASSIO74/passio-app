@@ -473,8 +473,10 @@
 
       <!-- PROFIL PRINCIPAL -->
       <div class="main-profile-card" id="mainProfileCard">
-        <div class="main-profile-cover" id="mainProfileCover" onclick="document.getElementById('coverPhotoInput').click()">
-          <button class="main-profile-cover-btn" onclick="event.stopPropagation();document.getElementById('coverPhotoInput').click()">📷 Changer</button>
+        <!-- Couverture : plus de bouton « Changer » ici — tout passe par l'unique
+             point d'édition (crayon ✏️ → openEditMainProfile). L'input reste pour
+             que la modale puisse le déclencher. -->
+        <div class="main-profile-cover" id="mainProfileCover">
           <input type="file" id="coverPhotoInput" accept="image/*" style="display:none;" onchange="changeCoverPhoto(event)"/>
         </div>
         <div class="main-profile-body">
@@ -490,13 +492,8 @@
           </div>
           <div class="main-profile-username" id="mainProfileUsername">Mon profil</div>
           <div class="profile-chips-row">
-            <button class="profile-stars-chip" id="mainProfileStars" onclick="goTo('wallet')" title="Tes points & ton rang" aria-label="Tes points et ton rang">⭐ <b id="profileStarsScore">0</b> · <span id="profileStarsRank">Débutant</span></button>
-            <button class="profile-stars-chip" id="profilePassiaChip" onclick="goTo('wallet')" title="Mon solde Passia" aria-label="Mon solde Passia">💎 <b id="topPassia">0</b> · Passia</button>
-          </div>
-          <!-- Jauge de progression vers le prochain palier/rang (réutilise rankOf) -->
-          <div class="rank-progress" id="mainProfileRankProgress" onclick="goTo('wallet')" title="Ta progression vers le prochain rang" style="display:none;">
-            <div class="rank-progress-bar"><div class="rank-progress-fill" id="mainProfileRankFill"></div></div>
-            <div class="rank-progress-label" id="mainProfileRankLabel"></div>
+            <button class="profile-stars-chip" id="mainProfileStars" onclick="goTo('wallet')" title="Tes points & ton rang" aria-label="Tes points et ton rang">⭐ <b id="profileStarsScore">0</b></button>
+            <button class="profile-stars-chip" id="profilePassiaChip" onclick="goTo('wallet')" title="Mon solde Passia" aria-label="Mon solde Passia">💎 <b id="topPassia">0</b></button>
           </div>
           <div class="main-profile-bio" id="mainProfileBio">Ajoute une biographie…</div>
           <div class="main-profile-rs" id="mainProfileRs"></div>

@@ -2460,20 +2460,6 @@
     @supports not (aspect-ratio: 16 / 9) {
       .main-profile-cover { height: 190px; }
     }
-    .main-profile-cover-btn {
-      position: absolute;
-      bottom: 6px;
-      right: 8px;
-      background: rgba(0,0,0,0.45);
-      color: #fff;
-      border: none;
-      border-radius: 8px;
-      padding: 4px 8px;
-      font-size: 10px;
-      font-weight: 700;
-      cursor: pointer;
-      backdrop-filter: blur(4px);
-    }
     .main-profile-body {
       padding: 0 16px 18px;
     }
@@ -2588,12 +2574,6 @@
     }
     .profile-stars-chip b { color: var(--accent); font-weight: 700; }
     .profile-stars-chip:hover { color: var(--text); }
-    /* Jauge de progression vers le prochain rang/palier (profil principal) */
-    .rank-progress { margin: 0 0 10px; cursor: pointer; }
-    .rank-progress-bar { height: 6px; background: rgba(124, 58, 237, 0.12); border-radius: 999px; overflow: hidden; }
-    .rank-progress-fill { height: 100%; width: 0; background: linear-gradient(90deg, #8b5cf6, #7c3aed); border-radius: 999px; transition: width 0.4s ease; }
-    .rank-progress-label { font-size: 10.5px; color: var(--muted); margin-top: 4px; font-weight: 600; }
-    .rank-progress-label b { color: var(--accent); font-weight: 800; }
     .main-profile-bio {
       font-size: 13px;
       color: var(--muted);
