@@ -910,9 +910,12 @@
     <section class="screen" id="screen-irl">
       <div class="section-title">Passio IRL</div>
 
-      <!-- Bouton créer un événement — même charte que CDV -->
-      <div style="display:flex;gap:8px;margin-bottom:12px;">
+      <!-- Créer un événement + filtres (discret) sur une seule ligne -->
+      <div style="display:flex;gap:8px;align-items:stretch;margin-bottom:12px;">
         <button onclick="openCreateEvent()" style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:11px 12px;border-radius:14px;border:none;background:var(--grad-hero);color:#fff;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 4px 12px rgba(124,58,237,0.3);">📍 Créer un événement</button>
+        <button id="irlFiltersBtn" onclick="openIrlFiltersPanel()" aria-label="Filtres" title="Filtres" style="flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;padding:11px 14px;border-radius:14px;border:1px solid var(--border);background:transparent;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer;">
+          <span>🎯</span><span id="irlFiltersBadge" style="display:none;background:var(--accent);color:#fff;border-radius:999px;font-size:11px;font-weight:700;padding:1px 7px;min-width:18px;text-align:center;"></span>
+        </button>
       </div>
 
       <!-- Ville de référence (filtre distance) — discrète, tout le bloc ouvre le sélecteur -->
@@ -937,13 +940,6 @@
 
       <!-- Niveau 1 : passions (grandes tuiles) -->
       <div id="irlPassionRow"></div>
-
-      <!-- Bouton unique filtres -->
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
-        <button id="irlFiltersBtn" onclick="openIrlFiltersPanel()" style="display:flex;align-items:center;gap:7px;padding:9px 16px;border-radius:12px;border:1px solid var(--border);background:var(--bg-card);font-size:13px;font-weight:600;color:var(--text);cursor:pointer;flex:1;justify-content:center;">
-          <span>🎯</span><span>Filtres</span><span id="irlFiltersBadge" style="display:none;background:var(--accent);color:#fff;border-radius:999px;font-size:11px;font-weight:700;padding:1px 7px;min-width:18px;text-align:center;"></span>
-        </button>
-      </div>
 
       <!-- Panel filtres (bottom-sheet) — éléments toujours dans le DOM pour les sync JS -->
       <div id="irlFiltersPanel" style="display:none;position:fixed;inset:0;z-index:600;">

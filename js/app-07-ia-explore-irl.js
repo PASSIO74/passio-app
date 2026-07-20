@@ -1249,8 +1249,9 @@ function _filterIrlEvents(events) {
 
 // Nombre de filtres actifs (pour l'indicateur "X filtres · Réinitialiser").
 function _irlActiveFilterCount() {
+  // Les passions ont leurs propres tuiles visibles à l'écran : ne pas les compter
+  // ici, sinon la pastille affiche « 14 » au chargement et n'est plus discrète.
   var n = 0;
-  if (irlPassionFilters && irlPassionFilters.size) n += irlPassionFilters.size;
   if (irlFilters && irlFilters.size) n += irlFilters.size;
   if (irlDateFilters && irlDateFilters.size) n += irlDateFilters.size;
   if (irlDistanceFilter) n += 1;
@@ -1292,7 +1293,10 @@ function _updateIrlFiltersBtn() {
   var clearBtn = document.getElementById("irlFiltersClearBtn");
   var mainBtn = document.getElementById("irlFiltersBtn");
   if (badge) { badge.textContent = n > 0 ? n : ""; badge.style.display = n > 0 ? "inline-block" : "none"; }
-  if (mainBtn) mainBtn.style.borderColor = n > 0 ? "var(--accent)" : "var(--border)";
+  if (mainBtn) {
+    mainBtn.style.borderColor = n > 0 ? "var(--accent)" : "var(--border)";
+    mainBtn.style.color = n > 0 ? "var(--accent)" : "var(--muted)";
+  }
 }
 
 function renderIRL() {
