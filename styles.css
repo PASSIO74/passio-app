@@ -159,9 +159,9 @@
       .brand-logo { width: 32px; height: 32px; }
       .brand-name { font-size: 15px; }
       .brand-tagline { font-size: 9.5px; letter-spacing: 0.14em; }
-      .app-nav { height: 64px; }
+      .app-nav { height: 58px; }
       .nav-cta .nav-icon { width: 44px; height: 44px; font-size: 24px; }
-      .nav-icon { font-size: 20px; }
+      .nav-icon { font-size: 24px; }
     }
     @media (max-width: 380px) {
       .brand-tagline { display: none; }
@@ -341,7 +341,7 @@
 
     /* ============ BOTTOM NAV ============ */
     .app-nav {
-      height: 72px;
+      height: 62px;
       display: grid;
       grid-template-columns: repeat(5, 1fr);
       align-items: stretch;
@@ -367,28 +367,29 @@
       transition: color 180ms ease;
     }
     .nav-item:hover { color: var(--text-dim); }
-    .nav-label { transition: font-weight 160ms ease; }
-    .nav-item.active .nav-label { font-weight: 700; }
+    /* Barre d'onglets ICONE SEULE : les libellés restent dans le DOM pour rien
+       (les lecteurs d'écran lisent l'aria-label du .nav-item). */
+    .nav-label { display: none; }
 
     .nav-icon {
-      font-size: 22px;
+      font-size: 26px;
       line-height: 1;
       transition: transform 180ms ease;
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      width: 24px;
-      height: 24px;
+      width: 28px;
+      height: 28px;
     }
     .nav-icon svg {
-      width: 23px;
-      height: 23px;
+      width: 27px;
+      height: 27px;
       display: block;
       overflow: visible;
     }
     .nav-item.nav-cta .nav-icon svg {
-      width: 24px;
-      height: 24px;
+      width: 28px;
+      height: 28px;
     }
 
     .nav-item.active {
@@ -531,8 +532,6 @@
       box-shadow: 0 8px 20px rgba(124, 58, 237, 0.32);
       margin-top: -14px;
     }
-
-    .nav-cta .nav-label { display: none; }
 
     /* Sélecteur principal du ➕ : deux grands onglets « Studio » / « Explorer »
        côte à côte (présent en tête des écrans studio ET explore). */
