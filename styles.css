@@ -143,9 +143,9 @@
     @media (max-width: 480px) {
       .app-shell { box-shadow: none; }
       .app-main { padding: 13px 14px 90px; }
-      .mood-selector { padding: 4px 12px 8px; gap: 6px; }
-      .mood-btn { padding: 7px 12px; font-size: 11px; }
-      .mood-btn-icon { font-size: 13px; height: 15px; width: 15px; }
+      .mood-selector { padding: 8px 12px; gap: 8px; grid-template-columns: repeat(4, 1fr); }
+      .mood-btn { padding: 8px 2px; font-size: 9.5px; }
+      .mood-btn-icon { font-size: 18px; height: 20px; width: 20px; }
       .profile-strip { padding: 8px 12px 4px; gap: 8px; }
       .profile-tile { padding: 4px 2px 6px; border-radius: 14px; }
       .profile-tile-avatar { width: 46px; height: 46px; border-radius: 17px; font-size: 22px; }
@@ -1892,57 +1892,53 @@
     .share-ico { vertical-align: middle; }
     .btn .share-ico, button .share-ico { vertical-align: -3px; }
 
-    /* ===== Mood selector (feed) — pills horizontales scrollables
-       (refonte 2026-07-20 : gagne ~60px de hauteur, le fil remonte) ===== */
+    /* ===== Mood selector (feed) ===== */
     .mood-selector {
-      display: flex;
-      gap: 6px;
-      padding: 0 12px 8px;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      padding: 0 12px;
       background: transparent;
       border: none;
       box-shadow: none;
-      margin: 0 auto 4px;
+      margin: 0 auto 8px;
       max-width: 100%;
-      overflow-x: auto;
-      scrollbar-width: none;
     }
-    .mood-selector::-webkit-scrollbar { display: none; }
 
     .mood-btn {
       display: flex;
-      flex-direction: row;
+      flex-direction: column;
       align-items: center;
-      justify-content: center;
-      gap: 6px;
-      padding: 7px 13px;
-      border-radius: 999px;
-      font-size: 11.5px;
+      justify-content: flex-start;
+      gap: 3px;
+      padding: 6px 3px;
+      border-radius: 10px;
+      font-size: 9.5px;
       font-weight: 700;
       color: var(--text-dim);
-      background: var(--bg-card);
-      border: 1px solid var(--border-strong);
+      background: transparent;
+      border: 1px solid transparent;
       cursor: pointer;
       transition: all 180ms cubic-bezier(0.4,0,0.2,1);
       min-width: 0;
-      white-space: nowrap;
-      flex: 0 0 auto;
     }
     .mood-btn:hover { color: var(--text); }
 
     .mood-btn-icon {
-      font-size: 13px;
+      font-size: 16px;
       line-height: 1;
-      height: 15px;
-      width: 15px;
+      height: 26px;
+      width: 26px;
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      border-radius: 5px;
+      margin-bottom: 1px;
+      border-radius: 9px;
       overflow: hidden;
       position: relative;
-      background: transparent;
-      border: none;
-      box-shadow: none;
+      box-shadow: 0 1px 3px rgba(24, 18, 48, 0.10);
+      border: 1px solid var(--border);
+      background: var(--bg-soft);
     }
     .mood-btn-icon img {
       width: 100%;
@@ -1954,18 +1950,33 @@
       width: 15px;
       height: 15px;
       display: block;
-      color: currentColor;
+      color: var(--accent);
     }
 
     .mood-btn.active {
       color: var(--accent);
-      background: var(--accent-wash);
-      border-color: var(--accent);
+      background: transparent;
+      border-color: transparent;
       box-shadow: none;
     }
     .mood-btn.active .mood-btn-icon {
-      border-color: transparent;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2.5px var(--accent), 0 4px 12px rgba(124, 58, 237, 0.25);
+    }
+    .mood-btn[data-mood="learn"].active {
+      background: transparent;
       box-shadow: none;
+      color: var(--accent);
+    }
+    .mood-btn[data-mood="chill"].active {
+      background: transparent;
+      box-shadow: none;
+      color: var(--accent);
+    }
+    .mood-btn[data-mood="actu"].active {
+      background: transparent;
+      box-shadow: none;
+      color: var(--accent);
     }
 
     /* ===== Inputs ===== */

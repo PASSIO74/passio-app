@@ -403,7 +403,10 @@ function renderProfileContent() {
             : (p.video ? '<video src="'+p.video+'#t=0.1" muted playsinline preload="metadata" style="width:100%;height:100%;object-fit:cover;background:#000;"></video>' : '<div style="width:100%;height:100%;background:linear-gradient(135deg,#7c3aed,#a78bfa);"></div>');
           return '<div onclick="openReelById(\''+p.id+'\')" style="aspect-ratio:9/16;border-radius:8px;overflow:hidden;position:relative;cursor:pointer;">'+thumb+'<span style="position:absolute;left:6px;bottom:6px;font-size:14px;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.6));">🎞️</span></div>';
         }).join("")+'</div>'
-      : emptyBlock("🎞️","Aucune bobine");
+      // ⚠️ `emptyBlock` n'a jamais existé → ReferenceError en prod (8× le 20/07)
+      // pour tout profil sans bobine ouvrant cet onglet. guidedEmpty est le
+      // même état vide que les autres onglets.
+      : guidedEmpty("🎞️","Aucune bobine","Filme un moment de ta passion en format vertical.");
   } else if (tab==="carnets") {
     var carnets = mine.filter(function(p){return p.type==="vlog";});
     myPostsDiv.innerHTML = carnets.length ? carnets.map(function(p){return renderPostHTML(Object.assign({},p,{_source:"me"}));}).join("") : guidedEmpty("📔","Démarre ton premier carnet","Raconte l'histoire derrière ta création, étape par étape.");
