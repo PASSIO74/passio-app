@@ -362,14 +362,13 @@ function renderProfileContent() {
   // Multi-sélection des types : union des prédicats cochés.
   var tabSel = _profileTabSel();
   var tabKeys = PROFILE_TAB_KEYS.filter(function(k){ return tabSel.has(k); });
-  if (tabKeys.length === 0) {
-    myPostsDiv.innerHTML = '<div class="empty"><div class="empty-icon">🎛️</div><div class="empty-title">Choisis un type de contenu</div><div class="empty-text">Touche une ou plusieurs icônes ci-dessus (posts, photos, vidéos, bobines, carnets) pour filtrer ce que tu veux voir.</div></div>';
-    return;
+  // Aucune icône cochée = AUCUN filtre : on affiche tout (et non un état vide).
+  var tab = tabKeys.length === 1 ? tabKeys[0] : null; // null = vue mixte / non filtrée
+  if (tabKeys.length) {
+    mine = mine.filter(function(p){
+      return tabKeys.some(function(k){ return PROFILE_TAB_PRED[k](p); });
+    });
   }
-  var tab = tabKeys.length === 1 ? tabKeys[0] : null; // null = vue mixte
-  mine = mine.filter(function(p){
-    return tabKeys.some(function(k){ return PROFILE_TAB_PRED[k](p); });
-  });
 
   // État vide guidé — même format que l'état vide des bobines (emoji + titre +
   // texte + bouton primaire), CTA direct vers le Studio. On reste sur la classe
