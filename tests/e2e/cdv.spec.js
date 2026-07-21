@@ -55,17 +55,57 @@ test.describe("CDV — carnets de voyage", () => {
     await expect(page.locator("#cdvSavedPlacesBtn")).toBeHidden();
   });
 
-  test("le Studio bascule en mode carnet depuis la feuille de voyage", async ({ page }) => {
+  test("l'éditeur de carnet vit dans l'écran CDV, PAS dans le Studio", async ({ page }) => {
     await bootCdv(page);
     await page.evaluate(() => { goTo("cdv"); setStudioToVlog(); });
-    await expect(page.locator("#studioVlog")).toBeVisible({ timeout: 5000 });
+    await expect(page.locator("#cdvEditor")).toBeVisible({ timeout: 5000 });
     expect(await page.evaluate(() => studioType)).toBe("vlog");
+
+    // On est bien resté sur l'écran CDV, la liste est masquée au profit de l'éditeur.
+    await expect(page.locator("#screen-cdv")).toHaveClass(/active/);
+    await expect(page.locator("#screen-studio")).not.toHaveClass(/active/);
+    await expect(page.locator("#cdvBrowse")).toBeHidden();
+    // Le formulaire de carnet est DANS l'écran CDV.
+    expect(await page.evaluate(() => !!document.querySelector("#screen-cdv #studioVlog"))).toBe(true);
+    expect(await page.evaluate(() => !!document.querySelector("#screen-studio #studioVlog"))).toBe(false);
+    // Et le Studio n'a plus de bloc de création de CDV Live.
+    expect(await page.evaluate(() => !!document.getElementById("studiocdvlive"))).toBe(false);
+
+    // Retour : l'éditeur se referme et la liste revient.
+    await page.getByRole("button", { name: "Annuler" }).click();
+    await expect(page.locator("#cdvEditor")).toBeHidden();
+    await expect(page.locator("#cdvBrowse")).toBeVisible();
+    expect(await page.evaluate(() => studioType)).not.toBe("vlog");
+  });
+
+  test("publier un carnet le crée et revient à la liste des voyages", async ({ page }) => {
+    await bootCdv(page);
+    await page.evaluate(() => { goTo("cdv"); setStudioToVlog(); });
+    await page.fill("#vlogDestination", "Islande");
+    await page.evaluate(() => {
+      vlogState.steps = [{ id: uid(), place: "Reykjavik", text: "Bains chauds", tip: "", photo: null }];
+      renderVlogSteps();
+    });
+    await page.getByRole("button", { name: /Publier mon carnet/ }).click();
+
+    await expect.poll(
+      () => page.evaluate(() => (state.userPosts || []).filter((p) => p.type === "vlog").length),
+      { timeout: 15000 }
+    ).toBe(1);
+    const carnet = await page.evaluate(() => state.userPosts.find((p) => p.type === "vlog"));
+    expect(carnet.destination).toBe("Islande");
+    expect(carnet.steps[0].place).toBe("Reykjavik");
+
+    // On atterrit sur la liste CDV, pas dans le fil ni dans le Studio.
+    await expect(page.locator("#screen-cdv")).toHaveClass(/active/);
+    await expect(page.locator("#cdvEditor")).toBeHidden();
+    await expect(page.locator("#cdvBrowse")).toBeVisible();
   });
 
   test("le brouillon d'un carnet survit à la sortie du Studio", async ({ page }) => {
     await bootCdv(page);
     await page.evaluate(() => { goTo("cdv"); setStudioToVlog(); });
-    await expect(page.locator("#studioVlog")).toBeVisible({ timeout: 5000 });
+    await expect(page.locator("#cdvEditor")).toBeVisible({ timeout: 5000 });
 
     await page.fill("#vlogDestination", "Patagonie");
     await page.fill("#vlogTip", "Réserver les refuges 3 mois avant");
@@ -225,8 +265,8 @@ test.describe("CDV — lives", () => {
 
     await page.getByRole("button", { name: /Terminer et créer le carnet/ }).click();
     expect(await page.evaluate(() => getCdvLives()[0].status)).toBe("ended");
-    // Atterrissage DIRECT dans le Studio pré-rempli (plus de modale intermédiaire).
-    await expect(page.locator("#studioVlog")).toBeVisible({ timeout: 6000 });
+    // Atterrissage DIRECT dans l'éditeur de carnet pré-rempli (écran CDV).
+    await expect(page.locator("#cdvEditor")).toBeVisible({ timeout: 6000 });
     await expect(page.locator("#vlogDestination")).toHaveValue("Lisbonne", { timeout: 6000 });
     // La note ★ et le budget saisis en direct ne sont pas perdus à la conversion.
     const tips = await page.evaluate(() => vlogState.steps.map((s) => s.tip));
@@ -257,7 +297,7 @@ test.describe("CDV v2 — un seul « voyage »", () => {
     await page.evaluate(() => goTo("cdv"));
     await page.getByRole("button", { name: /Nouveau voyage/ }).click();
     await page.getByText("Je raconte un voyage passé").click();
-    await expect(page.locator("#studioVlog")).toBeVisible({ timeout: 6000 });
+    await expect(page.locator("#cdvEditor")).toBeVisible({ timeout: 6000 });
     expect(await page.evaluate(() => studioType)).toBe("vlog");
   });
 });

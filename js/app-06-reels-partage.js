@@ -1893,9 +1893,14 @@ async function publishPost() {
 
   _publishInProgress = true;
 
+  // ⚠️ `studioType` est remis à "text" par closeCarnetEditor() : on fige le type
+  // ICI, sinon les blocs « nettoyage du formulaire » et « navigation » plus bas
+  // (qui testaient studioType === "vlog") seraient silencieusement sautés.
+  const isVlogPublish = studioType === "vlog";
+
   // Validation spéciale carnet de voyage (libérer le verrou sinon plus aucune
   // publication possible après une validation échouée)
-  if (studioType === "vlog") {
+  if (isVlogPublish) {
     const dest = ($("#vlogDestination") && $("#vlogDestination").value || "").trim();
     if (!dest) { _publishInProgress = false; toast("Destination obligatoire pour un carnet."); return; }
     if (!vlogState.steps || vlogState.steps.length === 0) { _publishInProgress = false; toast("Ajoute au moins un jour."); return; }
@@ -1951,7 +1956,7 @@ async function publishPost() {
   };
 
   // Champs spécifiques au carnet de voyage
-  if (studioType === "vlog") {
+  if (isVlogPublish) {
     post.destination = ($("#vlogDestination").value || "").trim();
     post.dateStart = ($("#vlogDateStart") && $("#vlogDateStart").value) || null;
     post.dateEnd = ($("#vlogDateEnd") && $("#vlogDateEnd").value) || null;
@@ -1985,10 +1990,9 @@ async function publishPost() {
   if (post.isReel) {
     try { renderFeed(); } catch(e) {}
     setTimeout(() => { try { if (typeof openReels === "function") openReels(); } catch(e) {} }, 80);
-  } else if (studioType === "vlog") {
-    // Un carnet reste dans SON univers : on referme l'éditeur et on revient à la
-    // liste des voyages (avant, il passait par le fil avant de revenir sur CDV).
-    if (typeof closeCarnetEditor === "function") closeCarnetEditor();
+  } else if (isVlogPublish) {
+    // Un carnet reste dans SON univers : pas de détour par le fil (l'écran CDV
+    // est déjà actif, l'éditeur se referme à la fin de la publication).
   } else {
     goTo("feed");
     setTimeout(() => renderFeed(), 50);
@@ -2033,7 +2037,7 @@ async function publishPost() {
   $("#recStatus").textContent = "Tap pour démarrer l'enregistrement";
 
   // Clear vlog form
-  if (studioType === "vlog") {
+  if (isVlogPublish) {
     if ($("#vlogDestination")) $("#vlogDestination").value = "";
     if ($("#vlogDateStart")) $("#vlogDateStart").value = "";
     if ($("#vlogDateEnd")) $("#vlogDateEnd").value = "";
@@ -2054,7 +2058,7 @@ async function publishPost() {
   const kind = studioType === "photo" ? "publish_photo"
              : studioType === "video" ? "publish_video"
              : studioType === "audio" ? "publish_audio"
-             : studioType === "vlog"  ? "publish_vlog"
+             : isVlogPublish          ? "publish_vlog"
              : "publish_text";
   grantReward(kind);
   if (studioMood === "creation") bumpQuest("publish");
@@ -2064,7 +2068,8 @@ async function publishPost() {
   // Pas de duplication ici
 
   // Navigation immédiate
-  if (studioType === "vlog") {
+  if (isVlogPublish) {
+    if (typeof closeCarnetEditor === "function") closeCarnetEditor();
     goTo("cdv");
     pushNotification(`📔 Ton carnet <b>${escapeHtml(post.destination || "voyage")}</b> ${syncSuccess ? "est en ligne" : "est local"}`, "📔");
   } else {

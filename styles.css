@@ -7831,3 +7831,16 @@
       height: 100%; padding: 18px; text-align: center;
       font-size: 12px; line-height: 1.6; color: var(--muted);
     }
+
+/* Éditeur de carnet, désormais dans l'écran CDV (et non plus dans le Studio). */
+.cdv-editor-head {
+  display: flex; align-items: center; gap: 10px; margin-bottom: 12px;
+}
+.cdv-editor-back {
+  display: flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px; flex-shrink: 0;
+  border-radius: 50%; border: 1px solid var(--border);
+  background: var(--bg-card); color: var(--text); cursor: pointer;
+}
+.cdv-editor-back svg { width: 18px; height: 18px; }
+.cdv-editor-title { font-size: 16px; font-weight: 800; color: var(--text); }
