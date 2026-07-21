@@ -3920,9 +3920,14 @@
       margin: 0;
     }
     .irl-map { width: 100%; height: 100%; background: #e8e4f0; }
-    /* Override default Leaflet attribution font */
-    .leaflet-container { font-family: inherit; }
-    .leaflet-control-attribution { font-size: 9px !important; opacity: 0.7; }
+    /* Carte = MapLibre GL + OpenFreeMap (les sélecteurs .leaflet-* ont été
+       remplacés le 2026-07-21, cf. js/map-loader.js). */
+    .maplibregl-map { font-family: inherit; }
+    .maplibregl-ctrl-attrib { font-size: 9px !important; opacity: 0.75; }
+    .maplibregl-ctrl-attrib a { color: var(--muted); }
+    /* Les contrôles doivent passer SOUS le bouton plein écran et le bandeau d'aide. */
+    .maplibregl-ctrl-top-left { z-index: 800; }
+    .maplibregl-ctrl-group button { width: 30px; height: 30px; }
 
     .irl-map-expand {
       position: absolute;
@@ -3964,7 +3969,9 @@
       z-index: 999;
     }
 
-    /* Marqueur PASSIO custom (DivIcon) */
+    /* Marqueur PASSIO custom. MapLibre positionne l'élément qu'on lui fournit :
+       il ne doit pas hériter d'une taille imposée par le conteneur. */
+    .passio-marker-wrap { line-height: 0; }
     .passio-marker {
       width: 36px;
       height: 36px;
@@ -3982,13 +3989,17 @@
     }
     .passio-marker:hover { transform: scale(1.14); }
 
-    /* Popup Leaflet en couleurs PASSIO */
-    .leaflet-popup-content-wrapper {
+    /* Popup MapLibre en couleurs PASSIO */
+    .maplibregl-popup-content {
       border-radius: 14px !important;
       border: 1px solid rgba(139, 92, 246, 0.30);
       box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+      padding: 12px 14px !important;
+      background: var(--bg-card);
+      color: var(--text);
     }
-    .leaflet-popup-content { margin: 12px 14px !important; }
+    .maplibregl-popup-tip { border-top-color: var(--bg-card) !important; border-bottom-color: var(--bg-card) !important; }
+    .maplibregl-popup-close-button { font-size: 18px; color: var(--muted); padding: 0 6px; }
     .irl-popup-title { font-weight: 800; font-size: 14px; margin-bottom: 2px; color: var(--text); }
     .irl-popup-meta { font-size: 11px; color: var(--text-dim); margin-bottom: 8px; }
     .irl-popup-btn {
@@ -7812,3 +7823,11 @@
 }
 .cdv-story-text { font-size: 13px; color: rgba(255,255,255,.92); line-height: 1.5; margin-bottom: 6px; }
 .cdv-story-time { font-size: 11px; color: rgba(255,255,255,.6); }
+
+    /* Repli quand WebGL est indisponible : la carte MapLibre ne peut pas se
+       peindre, mais la liste d'événements reste utilisable. */
+    .irl-map-fallback {
+      display: flex; align-items: center; justify-content: center;
+      height: 100%; padding: 18px; text-align: center;
+      font-size: 12px; line-height: 1.6; color: var(--muted);
+    }

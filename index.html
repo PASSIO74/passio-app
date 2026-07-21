@@ -63,8 +63,8 @@
        gain FCP + JS inutilisé sur la page verrouillée) — voir supabase-loader.js -->
   <script src="js/supabase-loader.js"></script>
 
-  <!-- Leaflet : chargé à la demande quand une carte s'ouvre (gain ~180 Ko au démarrage) -->
-  <script src="js/leaflet-loader.js"></script>
+  <!-- MapLibre GL + OpenFreeMap : chargés à la demande quand une carte s'ouvre -->
+  <script src="js/map-loader.js"></script>
 
   <link rel="stylesheet" href="styles.css" />
 </head>
@@ -611,90 +611,10 @@
         <input type="file" id="audioInput" accept="audio/*" style="display:none;" />
       </div>
 
-      <!-- Vlog / Carnet de voyage block -->
-      <div id="studioVlog" style="display:none;">
-        <div class="vlog-editor">
-          <p class="section-subtitle" style="margin-top:0;">Récit jour par jour, sur une carte.</p>
-
-          <!-- Templates rapides -->
-          <div class="vlog-templates">
-          </div>
-
-          <label class="field"><span>Destination 🌍</span>
-            <input type="text" class="input" id="vlogDestination" placeholder="Ex: Tokyo, Maroc, Tour de la Bretagne…" maxlength="60" /></label>
-
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-            <label class="field"><span>Du</span>
-              <input type="date" class="input" id="vlogDateStart" /></label>
-            <label class="field"><span>Au</span>
-              <input type="date" class="input" id="vlogDateEnd" /></label>
-          </div>
-
-          <label class="field"><span>Photo de couverture</span>
-            <div id="vlogCoverPreview"></div>
-            <div class="upload-zone" id="vlogCoverZone">
-              <div class="upload-zone-icon">🖼</div>
-              <div class="upload-zone-title">Ajouter une cover</div>
-              <div class="upload-zone-text">Tap pour parcourir</div>
-            </div>
-            <input type="file" id="vlogCoverInput" accept="image/*" style="display:none;" />
-          </label>
-
-          <div class="section-title" style="margin-top:14px;font-size:13px;">Étapes du voyage <span class="link" onclick="addVlogStep()">+ Ajouter un jour</span></div>
-          <p class="section-subtitle">Chaque étape apparaît sur la carte.</p>
-          <div id="vlogStepsList"></div>
-
-          <div class="section-title" style="margin-top:14px;font-size:13px;">Bilan pratique (optionnel)</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-            <label class="field"><span>Budget total</span>
-              <input type="text" class="input" id="vlogBudget" placeholder="Ex: 1 200 💎 Passia" maxlength="40" /></label>
-            <label class="field"><span>Transport</span>
-              <input type="text" class="input" id="vlogTransport" placeholder="Ex: train + vélo" maxlength="40" /></label>
-          </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-            <label class="field"><span>Logement</span>
-              <input type="text" class="input" id="vlogLodging" placeholder="Ex: AirBnB · auberges" maxlength="40" /></label>
-            <label class="field"><span>Saison conseillée</span>
-              <input type="text" class="input" id="vlogSeason" placeholder="Ex: avril-juin" maxlength="40" /></label>
-          </div>
-
-          <label class="field"><span>Conseil clé pour les futurs voyageurs</span>
-            <textarea class="textarea" id="vlogTip" placeholder="Le truc à savoir absolument avant de partir…" maxlength="280" style="min-height:60px;"></textarea></label>
-        </div>
-      </div>
-
-      <!-- CDV Live block -->
-      <div id="studiocdvlive" style="display:none;">
-
-        <label class="field"><span>🌍 Destination du voyage</span>
-          <input type="text" class="input" id="cdvLiveDestInput" placeholder="Ex : Lisbonne, Road trip en Écosse, Randonnée alpestre…" maxlength="60" /></label>
-
-        <label class="field"><span>📝 Description du voyage</span>
-          <textarea class="textarea" id="cdvLiveDescInput" placeholder="De quoi parle ce voyage ? Quel est ton itinéraire ?" maxlength="300" style="min-height:60px;"></textarea></label>
-
-        <label class="field"><span>📅 Durée prévue</span>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;">
-            <button class="pill duration-btn active" onclick="selectCdvStudioDuration(this,'1j')">1 jour</button>
-            <button class="pill duration-btn" onclick="selectCdvStudioDuration(this,'weekend')">Weekend</button>
-            <button class="pill duration-btn" onclick="selectCdvStudioDuration(this,'semaine')">1 semaine</button>
-            <button class="pill duration-btn" onclick="selectCdvStudioDuration(this,'long')">+ long</button>
-          </div></label>
-
-        <label class="field"><span>🔒 Visibilité</span>
-          <div style="display:flex;gap:8px;">
-            <button class="pill visibility-btn active" onclick="selectCdvStudioVisibility(this,'public')">🌍 Public</button>
-            <button class="pill visibility-btn" onclick="selectCdvStudioVisibility(this,'followers')">👥 Abonnés</button>
-            <button class="pill visibility-btn" onclick="selectCdvStudioVisibility(this,'private')">🔒 Privé</button>
-          </div></label>
-
-        <div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.25);border-radius:10px;padding:12px;margin:12px 0;font-size:12px;color:var(--text-dim);line-height:1.5;">
-          💡 <strong>Conseil :</strong> Chaque étape que tu ajoutes apparaît en direct pour tes spectateurs. Tu peux ajouter autant d'étapes que tu veux pendant ta diffusion.
-        </div>
-
-        <button class="btn primary block" style="background:linear-gradient(135deg,#ef4444,#f59e0b);" onclick="startCdvLiveFromStudio()">
-          🔴 Lancer le CDV Live
-        </button>
-      </div>
+      <!-- ⚠️ Le carnet de voyage et le CDV Live NE se créent PLUS ici : leur
+           éditeur vit dans l'écran CDV (#cdvEditor), là où l'utilisateur consulte
+           déjà les voyages. Le Studio ne gère que texte / photo / vidéo / bobine /
+           podcast. Ne pas réintroduire de bloc vlog ou cdvlive dans cette section. -->
 
       <label class="field" id="fieldPassion">
         <span>Passion liée</span>
@@ -1043,6 +963,76 @@
 
     <!-- ===== SCREEN: CDV (Carnets de Voyage) ===== -->
     <section class="screen" id="screen-cdv">
+
+      <!-- ÉDITEUR DE CARNET — il vit ICI, pas dans le Studio : on crée son carnet
+           là où on consulte les voyages. Masqué par défaut, il remplace la liste
+           (openCarnetEditor / closeCarnetEditor, app-06). -->
+      <div id="cdvEditor" style="display:none;">
+        <div class="cdv-editor-head">
+          <button class="cdv-editor-back" onclick="closeCarnetEditor()" aria-label="Retour aux carnets">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5 L8 12 L15 19"/></svg>
+          </button>
+          <div class="cdv-editor-title">📔 Nouveau carnet</div>
+        </div>
+
+        <div id="studioVlog">
+          <div class="vlog-editor">
+            <p class="section-subtitle" style="margin-top:0;">Récit jour par jour, sur une carte.</p>
+
+            <!-- Templates rapides -->
+            <div class="vlog-templates">
+            </div>
+
+            <label class="field"><span>Destination 🌍</span>
+              <input type="text" class="input" id="vlogDestination" placeholder="Ex: Tokyo, Maroc, Tour de la Bretagne…" maxlength="60" /></label>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+              <label class="field"><span>Du</span>
+                <input type="date" class="input" id="vlogDateStart" /></label>
+              <label class="field"><span>Au</span>
+                <input type="date" class="input" id="vlogDateEnd" /></label>
+            </div>
+
+            <label class="field"><span>Photo de couverture</span>
+              <div id="vlogCoverPreview"></div>
+              <div class="upload-zone" id="vlogCoverZone">
+                <div class="upload-zone-icon">🖼</div>
+                <div class="upload-zone-title">Ajouter une cover</div>
+                <div class="upload-zone-text">Tap pour parcourir</div>
+              </div>
+              <input type="file" id="vlogCoverInput" accept="image/*" style="display:none;" />
+            </label>
+
+            <div class="section-title" style="margin-top:14px;font-size:13px;">Étapes du voyage <span class="link" onclick="addVlogStep()">+ Ajouter un jour</span></div>
+            <p class="section-subtitle">Chaque étape apparaît sur la carte.</p>
+            <div id="vlogStepsList"></div>
+
+            <div class="section-title" style="margin-top:14px;font-size:13px;">Bilan pratique (optionnel)</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+              <label class="field"><span>Budget total</span>
+                <input type="text" class="input" id="vlogBudget" placeholder="Ex: 1 200 💎 Passia" maxlength="40" /></label>
+              <label class="field"><span>Transport</span>
+                <input type="text" class="input" id="vlogTransport" placeholder="Ex: train + vélo" maxlength="40" /></label>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+              <label class="field"><span>Logement</span>
+                <input type="text" class="input" id="vlogLodging" placeholder="Ex: AirBnB · auberges" maxlength="40" /></label>
+              <label class="field"><span>Saison conseillée</span>
+                <input type="text" class="input" id="vlogSeason" placeholder="Ex: avril-juin" maxlength="40" /></label>
+            </div>
+
+            <label class="field"><span>Conseil clé pour les futurs voyageurs</span>
+              <textarea class="textarea" id="vlogTip" placeholder="Le truc à savoir absolument avant de partir…" maxlength="280" style="min-height:60px;"></textarea></label>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:8px;margin:14px 0 4px;">
+          <button class="btn ghost" onclick="closeCarnetEditor()">Annuler</button>
+          <button class="btn primary" style="flex:1;" onclick="publishPost()">✨ Publier mon carnet · +50 pts</button>
+        </div>
+      </div>
+
+      <div id="cdvBrowse">
       <div class="section-title">Carnets de voyage</div>
 
       <!-- Point d'entrée UNIQUE : un seul « voyage », le format (direct ou récit)
@@ -1071,6 +1061,7 @@
         <div class="empty-title">Aucun carnet trouvé</div>
         <div class="empty-text">Essaie une autre recherche.</div>
       </div>
+      </div><!-- /#cdvBrowse -->
     </section>
 
     <!-- ===== SCREEN: WALLET / POINTS ===== -->

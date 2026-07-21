@@ -1115,7 +1115,15 @@ function initIrlMap() {
   const el = document.getElementById("irlMap");
   if (!el) return;
   if (typeof L === "undefined") {
-    ensureLeaflet().then(function(){ initIrlMap(); if (typeof updateIrlMapMarkers === "function") updateIrlMapMarkers(); }).catch(function(){});
+    ensureLeaflet()
+      .then(function(){ initIrlMap(); if (typeof updateIrlMapMarkers === "function") updateIrlMapMarkers(); })
+      // Repli lisible : sans WebGL (vieil appareil, accélération désactivée) la
+      // carte ne peut pas s'afficher — la LISTE reste parfaitement utilisable,
+      // il faut juste le dire au lieu de laisser un cadre vide.
+      .catch(function(){
+        el.innerHTML = '<div class="irl-map-fallback">🗺 La carte n\'est pas disponible sur cet appareil.<br/>'
+          + 'La liste des événements ci-dessous fonctionne normalement.</div>';
+      });
     return;
   }
   // Vue initiale : centre de la France, zoom 5.5 → on voit tout le pays
@@ -1343,10 +1351,24 @@ function updateIrlMapMarkers() {
     points.push([lat, lng]);
   });
 
-  // Auto-zoom sur les marqueurs filtrés
+  // Auto-zoom. ⚠️ NE PAS cadrer sur TOUS les marqueurs : depuis que l'écran
+  // n'est plus pré-filtré sur les passions de l'utilisateur, la liste contient
+  // aussi des événements à Tokyo ou Rio → fitBounds ouvrait la carte au niveau
+  // MONDIAL (zoom 1,5), inutilisable pour trouver ce qui se passe à côté. On
+  // cadre donc sur les marqueurs PROCHES du point de référence, et on ne
+  // s'élargit que s'il n'y en a aucun.
+  const IRL_MAP_LOCAL_KM = 150;
   setTimeout(() => {
-    if (points.length > 0) {
-      irlMap.fitBounds(L.latLngBounds(points), { padding: [40, 40], maxZoom: 11 });
+    const ref = _irlReferenceLoc();
+    const near = points.filter(p => calculateDistance(ref.lat, ref.lng, p[0], p[1]) <= IRL_MAP_LOCAL_KM);
+    if (near.length > 1) {
+      irlMap.fitBounds(L.latLngBounds(near), { padding: [40, 40], maxZoom: 11 });
+    } else if (near.length === 1) {
+      irlMap.setView(near[0], 11);
+    } else if (points.length > 0) {
+      // Rien à proximité : on reste centré sur la zone de référence à une
+      // échelle régionale, plutôt que de sauter à l'autre bout du monde.
+      irlMap.setView([ref.lat, ref.lng], 8);
     } else if (irlSelectedCity) {
       // Pas de marqueurs mais une ville sélectionnée : centrer sur cette ville
       irlMap.setView([irlSelectedCity.coords[0], irlSelectedCity.coords[1]], 9);
@@ -1691,6 +1713,30 @@ function _renderIrlToolbar(shownCount) {
     </div>`;
 }
 
+// Taille d'une page de la liste d'événements.
+const IRL_PAGE_SIZE = 12;
+function _showMoreIrlEvents() {
+  window._irlRenderLimit = (window._irlRenderLimit || IRL_PAGE_SIZE) + IRL_PAGE_SIZE;
+  renderIRL();
+}
+// Tout changement de filtre/tri/onglet doit repartir de la PREMIÈRE page, sinon
+// on garde une limite gonflée par la consultation précédente. Plutôt que
+// d'appeler un reset depuis les ~8 points d'entrée de filtrage (et d'en oublier
+// un), on compare une signature des filtres à chaque rendu : un seul endroit.
+function _resetIrlPagingIfFiltersChanged() {
+  var sig = [
+    [...(irlPassionFilters || [])].sort().join(","),
+    [...(irlFilters || [])].sort().join(","),
+    [...(irlDateFilters || [])].sort().join(","),
+    irlDistanceFilter, irlTimeFilter, irlSearchQuery, irlSort, irlShowPast,
+    irlCustomDate ? irlCustomDate.start + "-" + irlCustomDate.end : "",
+  ].join("|");
+  if (sig !== window._irlFilterSig) {
+    window._irlFilterSig = sig;
+    window._irlRenderLimit = IRL_PAGE_SIZE;
+  }
+}
+
 function setIrlSort(v) { irlSort = v; renderIRL(); }
 function setIrlPastMode(past) {
   if (irlShowPast === !!past) return;
@@ -1717,13 +1763,32 @@ function _irlEmptyStateHtml() {
     + '<button class="btn primary" style="margin-top:10px;" onclick="openCreateEvent()">+ Créer</button></div>';
 }
 
+// Initialise/rafraîchit la carte HORS du chemin de rendu synchrone. Débouncé :
+// plusieurs renderIRL() rapprochés (filtres, realtime) ne déclenchent qu'un seul
+// travail carte.
+function _scheduleIrlMapUpdate() {
+  clearTimeout(window._irlMapT);
+  window._irlMapT = setTimeout(function () {
+    var run = function () {
+      try { initIrlMap(); } catch (e) {}
+      try { updateIrlMapMarkers(); } catch (e) {}
+    };
+    if (typeof requestIdleCallback === "function") requestIdleCallback(run, { timeout: 800 });
+    else run();
+  }, 60);
+}
+
 function renderIRL() {
   // Mettre à jour le titre de la ville (sélectionnée ou détectée)
   updateIrlCityTitle();
 
   renderIrlPassionTiles();
-  initIrlMap();
-  updateIrlMapMarkers();
+  // ⚠️ La carte est initialisée EN DIFFÉRÉ, jamais dans le chemin synchrone du
+  // rendu : l'init de MapLibre (parse de ~250 Ko + compilation des shaders WebGL)
+  // bloque le thread principal ~1 à 3 s. En l'appelant ici directement, l'écran
+  // IRL restait figé à l'arrivée alors que la LISTE, elle, est prête tout de
+  // suite. On peint donc la liste d'abord, la carte se remplit juste après.
+  _scheduleIrlMapUpdate();
 
   // Demander la position GPS EN ARRIÈRE-PLAN (ne pas bloquer le rendu initial)
   // Si elle est obtenue, elle appellera renderIRL() à nouveau avec la vraie position
@@ -1732,6 +1797,7 @@ function renderIRL() {
   }
 
   var filtered = _filterIrlEvents(allEvents());
+  _resetIrlPagingIfFiltersChanged();
 
   // Bouton filtres : badge + bordure accentuée
   _updateIrlFiltersBtn();
@@ -1762,7 +1828,16 @@ function renderIRL() {
     return;
   }
 
+  // ⚠️ Rendu INCRÉMENTAL. Depuis que l'écran n'est plus pré-filtré sur les
+  // passions de l'utilisateur, la liste passe de ~4 à ~35 cartes, chacune avec
+  // ses avatars, réactions et aperçu de commentaires : le rendu complet coûtait
+  // ~1,1 s à l'arrivée sur l'écran. On n'en peint que IRL_PAGE_SIZE, le reste
+  // via « Afficher plus » (même principe que le fil).
   const _ref = _irlReferenceLoc();
+  const total = filtered.length;
+  const shown = Math.min(total, window._irlRenderLimit || IRL_PAGE_SIZE);
+  const rest = total - shown;
+  filtered = filtered.slice(0, shown);
   list.innerHTML = filtered.map(e => {
     const passion = passionById(e.passion);
     const joined = (state.user.joinedEvents || []).includes(e.id);
@@ -1841,7 +1916,9 @@ function renderIRL() {
       </div>
       <div class="event-comments-inline" data-evcomments="${e.id}" onclick="event.stopPropagation()">${_evCommentsInlineHtml(e.id)}</div>
     </div>`;
-  }).join("");
+  }).join("") + (rest > 0
+    ? `<button class="btn ghost block" style="margin-top:10px;" onclick="_showMoreIrlEvents()">Afficher plus (${rest} restant${rest > 1 ? "s" : ""})</button>`
+    : "");
 
   // Compteurs de commentaires + likes/réactions + aperçu commentaires (lots, patch
   // DOM). UNIQUEMENT pour les vrais événements Supabase — sinon les résultats vides

@@ -548,27 +548,22 @@ function inspireFromCarnet(postId) {
     : (state.userPosts.find(p => p.id === postId) || state.seed.posts.find(p => p.id === postId));
   if (!post || post.type !== "vlog") return;
   closeVlogViewer();
-  // Remettre dans l'éditeur
+  // Ouvre l'éditeur de carnet (écran CDV) et le remplit avec la STRUCTURE.
   setTimeout(() => {
-    goTo("studio");
-    setTimeout(() => {
-      // Bascule en vue Carnet (onglet retiré → fonction dédiée)
-      activateStudioVlog();
-      // Remplit avec la structure
-      if ($("#vlogDestination")) $("#vlogDestination").value = "Mon " + (post.destination || "voyage");
-      if ($("#vlogTransport")) $("#vlogTransport").value = post.transport || "";
-      if ($("#vlogLodging")) $("#vlogLodging").value = post.lodging || "";
-      if ($("#vlogSeason")) $("#vlogSeason").value = post.season || "";
-      vlogState.cover = null;
-      if ($("#vlogCoverPreview")) $("#vlogCoverPreview").innerHTML = "";
-      vlogState.steps = (post.steps || []).map(s => ({
-        id: uid(),
-        place: s.place || "",
-        text: "", tip: "", photo: null  // on copie SEULEMENT la structure / lieux, pas le contenu perso
-      }));
-      renderVlogSteps();
-      toast("📔 Structure copiée. À toi d'écrire ton histoire.");
-    }, 200);
+    activateStudioVlog();
+    if ($("#vlogDestination")) $("#vlogDestination").value = "Mon " + (post.destination || "voyage");
+    if ($("#vlogTransport")) $("#vlogTransport").value = post.transport || "";
+    if ($("#vlogLodging")) $("#vlogLodging").value = post.lodging || "";
+    if ($("#vlogSeason")) $("#vlogSeason").value = post.season || "";
+    vlogState.cover = null;
+    if ($("#vlogCoverPreview")) $("#vlogCoverPreview").innerHTML = "";
+    vlogState.steps = (post.steps || []).map(s => ({
+      id: uid(),
+      place: s.place || "",
+      text: "", tip: "", photo: null  // on copie SEULEMENT la structure / lieux, pas le contenu perso
+    }));
+    renderVlogSteps();
+    toast("📔 Structure copiée. À toi d'écrire ton histoire.");
   }, 200);
 }
 
@@ -1657,25 +1652,22 @@ function convertLiveToCarnet(liveId) {
   const live = getCdvLives().find(l => l.id === liveId);
   if (!live) return;
   closeModal();
-  goTo("studio");
   setTimeout(() => {
     activateStudioVlog();
-    setTimeout(() => {
-      if ($("#vlogDestination")) $("#vlogDestination").value = live.destination || "";
-      vlogState.cover = null;
-      if ($("#vlogCoverPreview")) $("#vlogCoverPreview").innerHTML = "";
-      // Reprend aussi la note ★ et le budget saisis en direct (sinon ce travail
-      // était perdu à la conversion) — ils deviennent le conseil de l'étape.
-      vlogState.steps = (live.steps || []).map(s => ({
-        id: uid(),
-        place: s.city || "",
-        text: s.content || "",
-        tip: [s.budget ? "Budget " + s.budget : "", s.rating ? "★".repeat(s.rating) : ""].filter(Boolean).join(" · "),
-        photo: s.photo || (s.photos && s.photos[0]) || null,
-      }));
-      if (typeof renderVlogSteps === "function") renderVlogSteps();
-      toast("📔 Live converti en brouillon de carnet — complète-le puis publie");
-    }, 250);
+    if ($("#vlogDestination")) $("#vlogDestination").value = live.destination || "";
+    vlogState.cover = null;
+    if ($("#vlogCoverPreview")) $("#vlogCoverPreview").innerHTML = "";
+    // Reprend aussi la note ★ et le budget saisis en direct (sinon ce travail
+    // était perdu à la conversion) — ils deviennent le conseil de l'étape.
+    vlogState.steps = (live.steps || []).map(s => ({
+      id: uid(),
+      place: s.city || "",
+      text: s.content || "",
+      tip: [s.budget ? "Budget " + s.budget : "", s.rating ? "★".repeat(s.rating) : ""].filter(Boolean).join(" · "),
+      photo: s.photo || (s.photos && s.photos[0]) || null,
+    }));
+    if (typeof renderVlogSteps === "function") renderVlogSteps();
+    toast("📔 Live converti en brouillon de carnet — complète-le puis publie");
   }, 200);
 }
 
@@ -2485,11 +2477,9 @@ function renderCdvLives() {
   if (el) el.innerHTML = "";
 }
 
+// Ouvre l'éditeur de carnet (dans l'écran CDV — plus dans le Studio).
 function setStudioToVlog() {
-  goTo("studio");
-  setTimeout(() => {
-    activateStudioVlog();
-  }, 200);
+  activateStudioVlog();
 }
 
 // Filtre actif sur l'écran CDV - multi-select (saved / mine / live)

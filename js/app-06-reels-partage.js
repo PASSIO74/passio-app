@@ -1496,67 +1496,10 @@ let photoDataUrl = null;
 let audioDataUrl = null;
 let videoDataUrl = null;
 
-// ===== STUDIO CDV LIVE HELPERS =====
-var _studioCdvDuration = "semaine";
-var _studioCdvVisibility = "public";
-
-function selectCdvStudioDuration(btn, val) {
-  _studioCdvDuration = val;
-  document.querySelectorAll(".duration-btn").forEach(b => b.classList.remove("active"));
-  btn.classList.add("active");
-}
-
-function selectCdvStudioVisibility(btn, val) {
-  _studioCdvVisibility = val;
-  document.querySelectorAll(".visibility-btn").forEach(b => b.classList.remove("active"));
-  btn.classList.add("active");
-}
-
-function startCdvLiveFromStudio() {
-  const dest = document.getElementById("cdvLiveDestInput")?.value.trim();
-  if (!dest) { toast("Indique une destination"); return; }
-  const desc = document.getElementById("cdvLiveDescInput")?.value.trim() || "";
-
-  const live = {
-    id: "live_" + uid(),
-    authorId: "me",
-    destination: dest,
-    description: desc,
-    duration: _studioCdvDuration,
-    visibility: _studioCdvVisibility,
-    status: "live",
-    steps: [],
-    followers: [],
-    viewers: [],
-    currentViewers: 0,
-    reactions: [],
-    comments: [],
-    createdAt: Date.now(),
-  };
-
-  const lives = getCdvLives();
-  lives.unshift(live);
-  saveCdvLives(lives);
-  // ⚠️ SANS cet appel le live n'existe QUE sur cet appareil : aucun autre compte ne
-  // le voit, et chaque étape ajoutée est rejetée côté serveur (FK live_id absente
-  // de cdv_lives) → live fantôme. C'était le cas de tous les lives lancés depuis le
-  // Studio (l'autre point d'entrée, createCdvLive, le faisait déjà).
-  if (typeof supaPublishCdvLive === "function") supaPublishCdvLive(live);
-
-  // Reset le studio
-  document.getElementById("cdvLiveDestInput").value = "";
-  document.getElementById("cdvLiveDescInput").value = "";
-  _studioCdvDuration = "semaine";
-  _studioCdvVisibility = "public";
-
-  toast("📡 CDV Live démarré ! Ajoute une étape pour lancer la diffusion");
-  goTo("cdv");
-  setTimeout(() => {
-    renderCdvScreen();
-    renderFeed();
-    addCdvLiveStep(live.id);
-  }, 300);
-}
+// ⚠️ Le lancement d'un CDV Live depuis le Studio a été SUPPRIMÉ (2026-07-21) :
+// son formulaire dupliquait celui de `startCdvLive()` (app-03) et c'est cette
+// copie qui oubliait `supaPublishCdvLive` → tout live lancé depuis le Studio
+// restait local et invisible. Un seul chemin de création demeure : l'écran CDV.
 
 function renderStudio() {
   // Passion dropdown based on user profiles
@@ -1619,10 +1562,8 @@ $$("#studioTypeTabs .studio-type").forEach(el => {
     // en is_reel → va dans les Bobines, pas le feed).
     $("#studioVideo").style.display = (studioType === "video" || studioType === "bobine") ? "block" : "none";
     $("#studioAudio").style.display = studioType === "audio" ? "block" : "none";
-    const vlogEl = $("#studioVlog");
-    if (vlogEl) vlogEl.style.display = studioType === "vlog" ? "block" : "none";
-    const cdvliveEl = $("#studiocdvlive");
-    if (cdvliveEl) cdvliveEl.style.display = studioType === "cdvlive" ? "block" : "none";
+    // (Le carnet de voyage n'est plus un type du Studio : son éditeur vit dans
+    // l'écran CDV. Ne rien toucher ici — cf. activateStudioVlog / closeCarnetEditor.)
 
     // En mode carnet/live : masquer le textarea principal, mood, templates, passion
     // Le carnet a sa propre catégorie (voyage) et son propre mood (chill)
@@ -1646,25 +1587,42 @@ $$("#studioTypeTabs .studio-type").forEach(el => {
 // le carnet se crée depuis sa catégorie, écran CDV → « Nouveau carnet »). Remplace
 // l'ancien `document.querySelector('[data-type="vlog"]').click()` (cf. setStudioToVlog,
 // inspireFromCarnet, convertLiveToCarnet) qui n'a plus d'onglet à cliquer.
+// Ouvre l'éditeur de carnet DANS l'écran CDV (plus dans le Studio) : on crée son
+// carnet là où on consulte les voyages. `activateStudioVlog` garde son nom
+// historique — elle est appelée par inspireFromCarnet / convertLiveToCarnet /
+// setStudioToVlog — mais ne touche plus au Studio.
 function activateStudioVlog() {
-  $$("#studioTypeTabs .studio-type").forEach(e => e.classList.remove("active"));
   studioType = "vlog";
-  if ($("#studioPhoto")) $("#studioPhoto").style.display = "none";
-  if ($("#studioVideo")) $("#studioVideo").style.display = "none";
-  if ($("#studioAudio")) $("#studioAudio").style.display = "none";
+  goTo("cdv");
+  const ed = $("#cdvEditor"); if (ed) ed.style.display = "block";
+  const br = $("#cdvBrowse"); if (br) br.style.display = "none";
   const vlogEl = $("#studioVlog"); if (vlogEl) vlogEl.style.display = "block";
-  const cdvliveEl = $("#studiocdvlive"); if (cdvliveEl) cdvliveEl.style.display = "none";
+  // Le carnet n'utilise ni passion ni mood : ces champs vivent dans le Studio et
+  // doivent rester masqués si l'utilisateur y repasse ensuite.
   const mainTextField = $("#postText") && $("#postText").closest(".field");
   if (mainTextField) mainTextField.style.display = "none";
   const fp = $("#fieldPassion"); if (fp) fp.style.display = "none";
   const fm = $("#fieldMood");    if (fm) fm.style.display = "none";
-  const ft = $("#fieldTemplates"); if (ft) ft.style.display = "none";
+  // `#postPassion` reste la source de la passion du post : si le Studio n'a jamais
+  // été rendu, le select est vide → on le peuple pour ne pas publier sans passion.
+  const sel = $("#postPassion");
+  if (sel && !sel.options.length && typeof renderStudio === "function") { try { renderStudio(); } catch (e) {} }
   if (!vlogState.steps || vlogState.steps.length === 0) {
     vlogState.steps = [{ id: uid(), place: "", text: "", tip: "", photo: null, video: null, audio: null }];
-    renderVlogSteps();
   }
+  renderVlogSteps();
+  try { window.scrollTo(0, 0); } catch (e) {}
+  const main = document.querySelector(".app-main"); if (main) main.scrollTop = 0;
   // Propose de reprendre un carnet laissé en plan (autosave, cf. app-03).
   if (typeof renderVlogDraftBanner === "function") { try { renderVlogDraftBanner(); } catch (e) {} }
+}
+
+// Referme l'éditeur et revient à la liste des carnets.
+function closeCarnetEditor() {
+  const ed = $("#cdvEditor"); if (ed) ed.style.display = "none";
+  const br = $("#cdvBrowse"); if (br) br.style.display = "block";
+  if (studioType === "vlog") studioType = "text";
+  if (typeof renderCdvScreen === "function") { try { renderCdvScreen(); } catch (e) {} }
 }
 
 // Mood pill row
@@ -1734,8 +1692,6 @@ $("#photoInput").addEventListener("change", async (e) => {
     $("#studioPhoto").style.display = "block";
     $("#studioVideo").style.display = "none";
     $("#studioAudio").style.display = "none";
-    const vlogEl = $("#studioVlog"); if (vlogEl) vlogEl.style.display = "none";
-    const cdvliveEl = $("#studiocdvlive"); if (cdvliveEl) cdvliveEl.style.display = "none";
     renderPhotoPreview();
   } catch (err) {
     console.warn("compress photo:", err);
@@ -1781,8 +1737,6 @@ $("#videoInput").addEventListener("change", (e) => {
       $("#studioPhoto").style.display = "none";
       $("#studioVideo").style.display = "block";
       $("#studioAudio").style.display = "none";
-      const vlogEl = $("#studioVlog"); if (vlogEl) vlogEl.style.display = "none";
-      const cdvliveEl = $("#studiocdvlive"); if (cdvliveEl) cdvliveEl.style.display = "none";
 
       renderVideoPreview();
       toast("✅ Vidéo chargée !");
@@ -1828,7 +1782,6 @@ $("#audioInput").addEventListener("change", (e) => {
     // audio avant l'affichage du lecteur.
     $("#studioAudio").style.display = "block";
     $("#studioVideo").style.display = "none";
-    $("#studioVlog").style.display = "none";
     $("#studioPhoto").style.display = "none";
     // Afficher l'audio en lecture
     $("#recStatus").textContent = "✅ Audio chargé et prêt à publier";
@@ -1875,8 +1828,6 @@ async function toggleRecording() {
         $("#studioPhoto").style.display = "none";
         $("#studioVideo").style.display = "none";
         $("#studioAudio").style.display = "block";
-        const vlogEl = $("#studioVlog"); if (vlogEl) vlogEl.style.display = "none";
-        const cdvliveEl = $("#studiocdvlive"); if (cdvliveEl) cdvliveEl.style.display = "none";
         $("#recStatus").textContent = "Enregistrement prêt à publier";
         $("#recPlayback").innerHTML = `<audio controls src="${audioDataUrl}" style="width:100%;margin-top:6px;"></audio>
           <button class="btn small ghost" style="margin-top:6px;" onclick="clearAudio()">🗑 Supprimer</button>`;
@@ -2034,6 +1985,10 @@ async function publishPost() {
   if (post.isReel) {
     try { renderFeed(); } catch(e) {}
     setTimeout(() => { try { if (typeof openReels === "function") openReels(); } catch(e) {} }, 80);
+  } else if (studioType === "vlog") {
+    // Un carnet reste dans SON univers : on referme l'éditeur et on revient à la
+    // liste des voyages (avant, il passait par le fil avant de revenir sur CDV).
+    if (typeof closeCarnetEditor === "function") closeCarnetEditor();
   } else {
     goTo("feed");
     setTimeout(() => renderFeed(), 50);
