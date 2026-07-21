@@ -53,9 +53,18 @@ document.addEventListener("keydown", (e) => {
 // ===== MENU D'OPTIONS D'UN POST (⋯) =====
 // Bottom-sheet façon Instagram : la suppression vit ici, plus dans l'en-tête du post.
 function openPostOptions(postId) {
+  // Un carnet de voyage est modifiable (c'est un long récit : une faute dans la
+  // destination ou une étape oubliée ne doit pas obliger à tout resaisir).
+  var _p = (typeof findPostAnywhere === "function") ? findPostAnywhere(postId) : null;
+  var _editBtn = (_p && _p.type === "vlog")
+    ? '<button class="post-option" onclick="closeModal();editCarnet(\'' + escapeJsArg(postId) + '\')">'
+      + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20 H8 L19 9 L15 5 L4 16 Z"/><path d="M14 6 L18 10"/></svg>'
+      + 'Modifier le carnet</button>'
+    : "";
   openModal(`
     <div class="modal-handle"></div>
     <div class="post-options-sheet">
+      ${_editBtn}
       <button class="post-option danger" onclick="closeModal();confirmDeletePost('${postId}')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7 H20"/><path d="M9 7 V4 H15 V7"/><path d="M6 7 L7 20 H17 L18 7"/><path d="M10 11 V17"/><path d="M14 11 V17"/></svg>
         Supprimer le post

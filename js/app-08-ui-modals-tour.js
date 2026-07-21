@@ -2471,6 +2471,29 @@ async function supaPublishPostWithRetry(post, maxRetries = 2) {
   return false;
 }
 
+// Met à jour un carnet DÉJÀ publié (modification par son auteur). Réutilise
+// _buildVlogPayload : les nouveaux médias base64 partent sur Storage, ceux déjà
+// en http(s) sont conservés tels quels. RLS : la policy UPDATE de `posts` limite
+// déjà à l'auteur, on double avec .eq("author_id", MY_UID).
+async function supaUpdateVlogPost(post) {
+  try {
+    if (!post || !post.id || typeof MY_UID === "undefined" || !MY_UID || !window._supaReal) return false;
+    const vlogData = await _buildVlogPayload(post);
+    const patch = { content: post.text || "", vlog: vlogData };
+    const { error } = await supa.from("posts").update(patch).eq("id", post.id).eq("author_id", MY_UID);
+    if (error) {
+      // Colonne `vlog` absente (migration non appliquée) → au moins le texte.
+      if (/vlog/.test(error.message || "")) {
+        const r2 = await supa.from("posts").update({ content: post.text || "" }).eq("id", post.id).eq("author_id", MY_UID);
+        return !r2.error;
+      }
+      console.warn("supaUpdateVlogPost:", error.message);
+      return false;
+    }
+    return true;
+  } catch (e) { console.warn("supaUpdateVlogPost:", e); return false; }
+}
+
 // Construit le blob jsonb `vlog` d'un carnet : champs texte + cover et médias
 // d'étapes UPLOADÉS sur Storage (jamais de base64 en DB, même hygiène que les
 // vocaux / étapes CDV). Un média qui échoue à l'upload est sauté (le carnet

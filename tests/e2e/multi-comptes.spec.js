@@ -391,6 +391,137 @@ test.describe("messagerie entre 2 comptes réels", () => {
     }
   });
 
+  // IRL v2 (2026-07-21) : RSVP 3 états, liste d'attente et co-organisateurs
+  // reposent sur DEUX policies RLS ajoutées le même jour — event_attendees
+  // UPDATE (« Maj de sa propre participation ») et events UPDATE (« Update
+  // organisateurs », auteur OU co-organisateur). Une policy manquante ne lève
+  // AUCUNE erreur : l'UPDATE touche 0 ligne en silence, exactement le piège qui
+  // avait bloqué la correction d'étape CDV. Seul un test à 2 vrais comptes le voit.
+  test("RSVP, liste d'attente et co-organisateur → cross-compte réel", async ({ browser }) => {
+    test.setTimeout(180000);
+    const t0 = Date.now();
+    const log = (m) => console.log(`[irlv2 ${(((Date.now() - t0) / 1000) | 0)}s] ${m}`);
+
+    const ctxA = await browser.newContext();
+    const ctxB = await browser.newContext();
+    const pageA = await ctxA.newPage();
+    const pageB = await ctxB.newPage();
+    pageA.on("console", (msg) => { if (msg.type() === "error") log("A console.error: " + msg.text().slice(0, 200)); });
+    pageB.on("console", (msg) => { if (msg.type() === "error") log("B console.error: " + msg.text().slice(0, 200)); });
+    wireHttpDiag(log, pageA, pageB);
+
+    let eventId = null;
+    try {
+      const uidA = await signupAnonymous(pageA, "Test Alice");
+      const uidB = await signupAnonymous(pageB, "Test Bob");
+      expect(uidA).toBeTruthy(); expect(uidB).toBeTruthy();
+      log("A=" + uidA + " B=" + uidB);
+
+      // ── A publie un événement d'UNE seule place (pour tester la file) ──
+      eventId = await pageA.evaluate(async () => {
+        const id = "evt_" + uid();
+        const ok = await supaPublishEvent({
+          id, title: "Atelier complet", passion: "musique", city: "Paris",
+          emoji: "🎸", date: Date.now() + 86400000, maxAttendees: 1,
+        });
+        if (!ok) return null;
+        await supaJoinEvent(id); // l'organisateur occupe l'unique place
+        return id;
+      });
+      expect(eventId, "événement de A publié").toBeTruthy();
+      log("événement publié (1 place, prise par A): " + eventId);
+
+      // ── B le charge et tente de venir : doit basculer en liste d'attente ──
+      await pageB.evaluate(([eid, aid]) => {
+        state.seed.events = state.seed.events || [];
+        state.seed.events.unshift({
+          id: eid, authorId: aid, organizerId: aid, title: "Atelier complet",
+          passion: "musique", city: "Paris", emoji: "🎸", maxAttendees: 1,
+          date: Date.now() + 86400000, attendees: [aid], maybes: [], waitlist: [],
+          coOrganizers: [], fromSupabase: true,
+        });
+      }, [eventId, uidA]);
+      await pageB.evaluate((eid) => setEventRsvp(eid, "going"), eventId);
+      await pageB.waitForTimeout(2500);
+
+      const rsvpB = await pageB.evaluate((eid) => myRsvp(eid), eventId);
+      expect(rsvpB, "B bascule en liste d'attente sur un événement complet").toBe("waitlist");
+      log("B est en liste d'attente");
+
+      // ── La ligne serveur porte bien rsvp='waitlist' (policy INSERT + colonne) ──
+      const rowB = await pageB.evaluate(async (eid) => {
+        const { data } = await supa.from("event_attendees")
+          .select("rsvp").eq("event_id", eid).eq("user_id", MY_UID).maybeSingle();
+        return data;
+      }, eventId);
+      expect(rowB && rowB.rsvp, "rsvp persisté côté serveur").toBe("waitlist");
+
+      // ── B change d'avis en « peut-être » : c'est un UPDATE, donc la policy
+      //    « Maj de sa propre participation ». Sans elle : 0 ligne, en silence.
+      await pageB.evaluate((eid) => setEventRsvp(eid, "maybe"), eventId);
+      await pageB.waitForTimeout(2000);
+      const rowB2 = await pageB.evaluate(async (eid) => {
+        const { data } = await supa.from("event_attendees")
+          .select("rsvp").eq("event_id", eid).eq("user_id", MY_UID).maybeSingle();
+        return data;
+      }, eventId);
+      expect(rowB2 && rowB2.rsvp, "changement de RSVP persisté (policy UPDATE)").toBe("maybe");
+      log("B est passé en « peut-être » — policy UPDATE event_attendees OK");
+
+      // ── A voit B parmi les « peut-être », et PAS dans les inscrits fermes ──
+      const seenByA = await pageA.evaluate(async (eid) => {
+        const evs = await supaLoadEvents();
+        const e = evs.find((x) => x.id === eid);
+        return e ? { attendees: e.attendees, maybes: e.maybes, waitlist: e.waitlist } : null;
+      }, eventId);
+      log("vu par A: " + JSON.stringify(seenByA));
+      expect(seenByA, "événement rechargé par A").toBeTruthy();
+      expect(seenByA.maybes, "B compté comme « peut-être »").toContain(uidB);
+      expect(seenByA.attendees, "B n'occupe PAS une place").not.toContain(uidB);
+
+      // ── A nomme B co-organisateur (UPDATE events par l'auteur) ──
+      const promoted = await pageA.evaluate(async ([eid, bid]) => {
+        const ev = { id: eid, title: "Atelier complet", passion: "musique", city: "Paris",
+          emoji: "🎸", date: Date.now() + 86400000, maxAttendees: 1, coOrganizers: [bid] };
+        return await supaUpdateEvent(ev);
+      }, [eventId, uidB]);
+      expect(promoted, "A nomme B co-organisateur").toBe(true);
+      log("B est co-organisateur");
+
+      // ── B modifie l'événement : c'est LE cas que la nouvelle policy autorise
+      //    (auteur OU co-organisateur). Avec l'ancienne, l'UPDATE passait à 0 ligne.
+      const editedByCo = await pageB.evaluate(async (eid) => {
+        const ev = { id: eid, title: "Titre corrigé par le co-orga", passion: "musique",
+          city: "Paris", emoji: "🎸", date: Date.now() + 86400000, maxAttendees: 1 };
+        // supaUpdateEvent filtre sur author_id = moi : le co-organisateur doit
+        // écrire directement (c'est la policy qui l'autorise, pas la colonne).
+        const { error } = await supa.from("events").update({ title: ev.title }).eq("id", eid);
+        if (error) return "ERREUR: " + error.message;
+        const { data } = await supa.from("events").select("title").eq("id", eid).maybeSingle();
+        return data ? data.title : null;
+      }, eventId);
+      expect(editedByCo, "un co-organisateur peut modifier l'événement").toBe("Titre corrigé par le co-orga");
+      log("✅ co-organisateur : édition autorisée (policy « Update organisateurs »)");
+
+      // ── Contre-épreuve : B ne doit PAS pouvoir modifier le RSVP de A ──
+      const stolen = await pageB.evaluate(async ([eid, aid]) => {
+        await supa.from("event_attendees").update({ rsvp: "declined" })
+          .eq("event_id", eid).eq("user_id", aid);
+        const { data } = await supa.from("event_attendees")
+          .select("rsvp").eq("event_id", eid).eq("user_id", aid).maybeSingle();
+        return data ? data.rsvp : null;
+      }, [eventId, uidA]);
+      expect(stolen, "B ne peut PAS changer le RSVP de A").toBe("going");
+      log("✅ isolation des RSVP confirmée");
+
+      await cleanupEvent(pageA, eventId);
+      await cleanupEvent(pageB, eventId);
+    } finally {
+      await ctxA.close();
+      await ctxB.close();
+    }
+  });
+
   // Story + Bobine façon Instagram : A publie une story (média + overlays) et une
   // bobine (is_reel), B doit les charger depuis Supabase (overlays préservés ;
   // bobine dans les Bobines, PAS dans le feed). Valide le chemin d'écriture

@@ -1622,7 +1622,50 @@ function closeCarnetEditor() {
   const ed = $("#cdvEditor"); if (ed) ed.style.display = "none";
   const br = $("#cdvBrowse"); if (br) br.style.display = "block";
   if (studioType === "vlog") studioType = "text";
+  window._editingCarnetId = null;
+  if (typeof _syncCarnetEditorMode === "function") { try { _syncCarnetEditorMode(); } catch (e) {} }
   if (typeof renderCdvScreen === "function") { try { renderCdvScreen(); } catch (e) {} }
+}
+
+// Enregistre les modifications d'un carnet EXISTANT (met à jour la ligne au lieu
+// d'insérer un nouveau post). Appelée par publishPost quand _editingCarnetId est
+// posé — cf. editCarnet (app-03).
+async function saveCarnetEdits() {
+  const id = window._editingCarnetId;
+  const post = (typeof findPostAnywhere === "function") ? findPostAnywhere(id) : null;
+  if (!post) { toast("Carnet introuvable"); closeCarnetEditor(); return; }
+
+  const dest = ($("#vlogDestination") && $("#vlogDestination").value || "").trim();
+  if (!dest) { toast("Destination obligatoire pour un carnet."); return; }
+  if (!vlogState.steps || !vlogState.steps.length) { toast("Ajoute au moins un jour."); return; }
+
+  post.destination = dest;
+  post.dateStart = ($("#vlogDateStart") && $("#vlogDateStart").value) || null;
+  post.dateEnd = ($("#vlogDateEnd") && $("#vlogDateEnd").value) || null;
+  post.cover = vlogState.cover;
+  post.budget = ($("#vlogBudget") && $("#vlogBudget").value || "").trim();
+  post.transport = ($("#vlogTransport") && $("#vlogTransport").value || "").trim();
+  post.lodging = ($("#vlogLodging") && $("#vlogLodging").value || "").trim();
+  post.season = ($("#vlogSeason") && $("#vlogSeason").value || "").trim();
+  post.tip = ($("#vlogTip") && $("#vlogTip").value || "").trim();
+  post.steps = (vlogState.steps || []).map(s => ({
+    place: s.place || "", text: s.text || "", tip: s.tip || "",
+    photo: s.photo || null, video: s.video || null, audio: s.audio || null,
+    lat: (typeof s.lat === "number") ? s.lat : null, lng: (typeof s.lng === "number") ? s.lng : null,
+  }));
+  post.text = post.destination + (post.dateStart || post.dateEnd ? " · carnet" : "");
+  post.editedAt = Date.now();
+  saveState();
+
+  closeCarnetEditor();
+  toast("⏳ Enregistrement…", "loading");
+  let ok = false;
+  try {
+    if (typeof supaUpdateVlogPost === "function") ok = await supaUpdateVlogPost(post);
+  } catch (e) { ok = false; }
+  toast(ok ? "✅ Carnet mis à jour" : "⚠️ Modifs enregistrées en local (synchro à réessayer)",
+        ok ? "success" : "warning");
+  try { saveState(); renderCdvScreen(); } catch (e) {}
 }
 
 // Mood pill row
@@ -1889,6 +1932,12 @@ async function publishPost() {
   if (studioType === "audio" && !audioDataUrl) {
     toast("Enregistre un audio.");
     return;
+  }
+
+  // Modification d'un carnet existant : on met à jour, on n'insère pas.
+  if (studioType === "vlog" && window._editingCarnetId) {
+    _publishInProgress = false;
+    return saveCarnetEdits();
   }
 
   _publishInProgress = true;

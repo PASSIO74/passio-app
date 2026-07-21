@@ -972,7 +972,7 @@
           <button class="cdv-editor-back" onclick="closeCarnetEditor()" aria-label="Retour aux carnets">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5 L8 12 L15 19"/></svg>
           </button>
-          <div class="cdv-editor-title">📔 Nouveau carnet</div>
+          <div class="cdv-editor-title" id="cdvEditorTitle">📔 Nouveau carnet</div>
         </div>
 
         <div id="studioVlog">
@@ -1028,7 +1028,7 @@
 
         <div style="display:flex;gap:8px;margin:14px 0 4px;">
           <button class="btn ghost" onclick="closeCarnetEditor()">Annuler</button>
-          <button class="btn primary" style="flex:1;" onclick="publishPost()">✨ Publier mon carnet · +50 pts</button>
+          <button class="btn primary" style="flex:1;" id="cdvPublishBtn" onclick="publishPost()">✨ Publier mon carnet · +50 pts</button>
         </div>
       </div>
 

@@ -519,6 +519,61 @@ function toggleCarnetSave(postId) {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// MODIFIER UN CARNET PUBLIÉ
+// Un carnet, c'est un long récit : jusqu'ici le menu ⋯ ne proposait que
+// « supprimer », donc une faute dans la destination ou une étape oubliée
+// obligeait à TOUT resaisir. On recharge le carnet dans l'éditeur CDV et la
+// publication met à jour la ligne existante au lieu d'en créer une nouvelle.
+// ═══════════════════════════════════════════════════════════════════════════
+function editCarnet(postId) {
+  var post = (typeof findPostAnywhere === "function") ? findPostAnywhere(postId) : null;
+  if (!post || post.type !== "vlog") { toast("Carnet introuvable"); return; }
+  var me = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
+  if (post.authorId !== me && post.authorId !== "me") { toast("Tu ne peux modifier que tes propres carnets"); return; }
+
+  closeVlogViewer();
+  window._editingCarnetId = postId;
+  activateStudioVlog();
+
+  if ($("#vlogDestination")) $("#vlogDestination").value = post.destination || "";
+  if ($("#vlogDateStart")) $("#vlogDateStart").value = post.dateStart || "";
+  if ($("#vlogDateEnd")) $("#vlogDateEnd").value = post.dateEnd || "";
+  if ($("#vlogBudget")) $("#vlogBudget").value = post.budget || "";
+  if ($("#vlogTransport")) $("#vlogTransport").value = post.transport || "";
+  if ($("#vlogLodging")) $("#vlogLodging").value = post.lodging || "";
+  if ($("#vlogSeason")) $("#vlogSeason").value = post.season || "";
+  if ($("#vlogTip")) $("#vlogTip").value = post.tip || "";
+  vlogState.cover = post.cover || null;
+  if ($("#vlogCoverPreview")) {
+    $("#vlogCoverPreview").innerHTML = post.cover
+      ? '<img loading="lazy" decoding="async" class="vlog-cover-preview" src="' + safeUrlAttr(post.cover) + '" alt="Cover"/>'
+      : "";
+  }
+  // On garde les coordonnées déjà résolues : pas de re-géocodage inutile.
+  vlogState.steps = (post.steps || []).map(function (s) {
+    return { id: uid(), place: s.place || "", text: s.text || "", tip: s.tip || "",
+      photo: s.photo || null, video: s.video || null, audio: s.audio || null,
+      lat: (typeof s.lat === "number") ? s.lat : null, lng: (typeof s.lng === "number") ? s.lng : null };
+  });
+  if (!vlogState.steps.length) vlogState.steps = [{ id: uid(), place: "", text: "", tip: "", photo: null }];
+  renderVlogSteps();
+  _syncCarnetEditorMode();
+  // Une modification ne doit pas être confondue avec un brouillon de création.
+  var b = document.getElementById("vlogDraftBanner");
+  if (b) b.remove();
+  toast("✏️ Modifie ton carnet puis enregistre");
+}
+
+// Ajuste titre et bouton selon création / modification.
+function _syncCarnetEditorMode() {
+  var editing = !!window._editingCarnetId;
+  var t = document.getElementById("cdvEditorTitle");
+  if (t) t.textContent = editing ? "✏️ Modifier le carnet" : "📔 Nouveau carnet";
+  var b = document.getElementById("cdvPublishBtn");
+  if (b) b.textContent = editing ? "✅ Enregistrer les modifications" : "✨ Publier mon carnet · +50 pts";
+}
+
 // ⭐ Favoris des LIVES. L'onglet « Mes favoris » ne couvrait que les carnets :
 // un voyage en direct suivi puis terminé n'était plus retrouvable nulle part.
 function savedLives() {
@@ -836,6 +891,8 @@ function openVlogViewer(postId) {
         <button class="vlog-action-btn" onclick="saveItineraryPlaces('${postId}','carnet')">
           📍 Enregistrer les lieux
         </button>
+        ${(post.authorId === ((typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me") || post._source === "me")
+          ? `<button class="vlog-action-btn" onclick="editCarnet('${postId}')">✏️ Modifier</button>` : ""}
         <button class="vlog-action-btn" onclick="inspireFromCarnet('${postId}')">
           📔 M'en inspirer
         </button>
