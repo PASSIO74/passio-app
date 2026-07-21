@@ -1808,6 +1808,9 @@ function openNotifTarget(n) {
       break;
     case "event_join":
     case "event_comment":
+    case "event_update":
+    case "event_cancelled":
+    case "event_reminder":
       if (ref && typeof openEventDetails === "function") openEventDetails(ref);
       break;
     case "message":
@@ -1815,6 +1818,10 @@ function openNotifTarget(n) {
       break;
     case "live_video":
       if (ref && typeof joinVideoLive === "function") joinVideoLive(ref);
+      break;
+    // Nouvelle étape d'un carnet en direct qu'on suit → ouvre le live.
+    case "cdv_live_step":
+      if (ref && typeof openCdvLiveViewer === "function") { if (typeof goTo === "function") goTo("cdv"); openCdvLiveViewer(ref); }
       break;
     default:
       // Notif locale / type inconnu : pas de cible précise, on n'ouvre rien.
@@ -2940,29 +2947,96 @@ async function supaLoadStories() {
 }
 
 // ---- EVENTS IRL ----
+// Colonnes « récentes » de `events` (migration_events_lifecycle.sql). Retirées une
+// à une si la base ne les a pas encore (même filet que supaUpsertProfile) — un
+// insert qui échoue en entier laissait l'événement en local seulement.
+const _EVENT_OPTIONAL_COLS = ["end_at", "status", "updated_at"];
+
+function _eventRow(event) {
+  return {
+    title: event.title, passion_id: event.passion || null,
+    lat: event.lat || null, lng: event.lng || null,
+    city: event.city || "", emoji: event.emoji || "📍",
+    date_at: event.date ? new Date(event.date).toISOString() : new Date().toISOString(),
+    end_at: new Date(_eventEndAt(event)).toISOString(),
+    status: event.status || "active",
+    description: event.desc || null,
+    venue: event.venue || null,
+    address: event.address || null,
+    postal_code: event.postalCode || null,
+    price: event.price || 0,
+    max_attendees: event.maxAttendees || null,
+    contact: event.contact || null,
+    external_link: event.externalLink || null,
+    event_type: event.eventType || "Autre",
+    cover_url: event.coverUrl || null,
+  };
+}
+
+// Retire de `row` la colonne citée dans le message d'erreur PostgREST (PGRST204 /
+// « column X does not exist ») et dit s'il reste quelque chose à réessayer.
+function _stripUnknownEventCol(row, error) {
+  const msg = String((error && (error.message || error.details)) || "");
+  const hit = _EVENT_OPTIONAL_COLS.find(c => msg.includes(c));
+  if (!hit || !(hit in row)) return false;
+  delete row[hit];
+  return true;
+}
+
+// Renvoie true si la ligne est bien en base (l'appelant peut alors promettre à
+// l'utilisateur que son événement est publié — cf. bobines fantômes 2026-07-19).
 async function supaPublishEvent(event) {
   try {
     await supaUpsertProfile();
-    const { error } = await supa.from("events").insert({
-      id: event.id || uid(), author_id: MY_UID,
-      title: event.title, passion_id: event.passion || null,
-      lat: event.lat || null, lng: event.lng || null,
-      city: event.city || "", emoji: event.emoji || "📍",
-      date_at: event.date ? new Date(event.date).toISOString() : new Date().toISOString(),
-      description: event.desc || null,
-      venue: event.venue || null,
-      address: event.address || null,
-      postal_code: event.postalCode || null,
-      price: event.price || 0,
-      max_attendees: event.maxAttendees || null,
-      contact: event.contact || null,
-      external_link: event.externalLink || null,
-      event_type: event.eventType || "Autre",
-      cover_url: event.coverUrl || null,
-      organizer_id: MY_UID,
+    const row = Object.assign(_eventRow(event), {
+      id: event.id || uid(), author_id: MY_UID, organizer_id: MY_UID,
     });
-    if (error) console.warn("Event Supabase error:", error);
-  } catch(e) { console.warn("Event error:", e); }
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const { error } = await supa.from("events").insert(row);
+      if (!error) return true;
+      // Un insert qui a réussi malgré un timeout client repasse ici en doublon.
+      if (String(error.code) === "23505") return true;
+      if (!_stripUnknownEventCol(row, error)) {
+        console.warn("Event Supabase error:", error);
+        return false;
+      }
+    }
+    return false;
+  } catch(e) { console.warn("Event error:", e); return false; }
+}
+
+// Édition d'un événement par son organisateur (policy UPDATE « propre » en prod).
+async function supaUpdateEvent(event) {
+  try {
+    const row = Object.assign(_eventRow(event), { updated_at: new Date().toISOString() });
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const { error } = await supa.from("events").update(row).eq("id", event.id).eq("author_id", MY_UID);
+      if (!error) return true;
+      if (!_stripUnknownEventCol(row, error)) { console.warn("supaUpdateEvent:", error.message); return false; }
+    }
+    return false;
+  } catch(e) { return false; }
+}
+
+// Annulation « douce » : l'événement reste visible (barré) pour les inscrits.
+async function supaCancelEvent(eventId, cancelled) {
+  try {
+    const { error } = await supa.from("events")
+      .update({ status: cancelled ? "cancelled" : "active", updated_at: new Date().toISOString() })
+      .eq("id", eventId).eq("author_id", MY_UID);
+    return !error;
+  } catch(e) { return false; }
+}
+
+async function supaDeleteEvent(eventId) {
+  try {
+    // Les tables filles n'ont pas toutes un ON DELETE CASCADE en prod : on nettoie.
+    try { await supa.from("event_attendees").delete().eq("event_id", eventId); } catch(e) {}
+    try { await supa.from("event_comments").delete().eq("event_id", eventId); } catch(e) {}
+    try { await supa.from("event_reactions").delete().eq("event_id", eventId); } catch(e) {}
+    const { error } = await supa.from("events").delete().eq("id", eventId).eq("author_id", MY_UID);
+    return !error;
+  } catch(e) { return false; }
 }
 
 async function supaLoadEvents() {
@@ -3005,6 +3079,9 @@ async function supaLoadEvents() {
       externalLink: r.external_link || "",
       eventType: r.event_type || "Autre",
       coverUrl: r.cover_url || null,
+      endAt: r.end_at ? supaTs(r.end_at) : null,
+      status: r.status || "active",
+      updatedAt: r.updated_at ? supaTs(r.updated_at) : null,
       attendees: attByEvent[r.id] || [],
       fromSupabase: true,
     }));
@@ -3062,6 +3139,42 @@ async function supaAddCdvLiveStep(liveId, step) {
     if (error) console.warn("CDV step:", error.message);
     await supa.from("cdv_lives").update({ updated_at: new Date().toISOString() }).eq("id", liveId);
   } catch(e) { console.warn("CDV step:", e); }
+}
+
+// Modifier une étape existante (auteur uniquement — la RLS de cdv_live_steps
+// exige author_id = auth.uid()). Réutilise le même pipeline d'upload que l'insert :
+// les photos base64 partent sur Storage, seules des URLs vont en DB.
+async function supaUpdateCdvLiveStep(liveId, step) {
+  try {
+    if (!step || !step.id || !MY_UID) return;
+    const photoUrls = [];
+    const photos = Array.isArray(step.photos) ? step.photos : [];
+    for (let i = 0; i < photos.length; i++) {
+      const p = photos[i];
+      if (typeof p !== "string" || !p) continue;
+      if (p.indexOf("data:") === 0) {
+        if (typeof supaUploadMedia === "function") {
+          const url = await supaUploadMedia(step.id + "_e" + Date.now() + "_" + i, "cdv_steps", p, "photo");
+          if (url && url.indexOf("data:") !== 0) photoUrls.push(url);
+        }
+      } else photoUrls.push(p);
+    }
+    const { error } = await supa.from("cdv_live_steps").update({
+      city: step.city || "", emoji: step.emoji || "📍", content: step.content || "",
+      photos: photoUrls, rating: step.rating || 0, budget: step.budget || "",
+    }).eq("id", step.id).eq("author_id", MY_UID);
+    if (error) console.warn("CDV step update:", error.message);
+    await supa.from("cdv_lives").update({ updated_at: new Date().toISOString() }).eq("id", liveId);
+  } catch (e) { console.warn("CDV step update:", e); }
+}
+
+async function supaDeleteCdvLiveStep(liveId, stepId) {
+  try {
+    if (!stepId || !MY_UID) return;
+    const { error } = await supa.from("cdv_live_steps").delete().eq("id", stepId).eq("author_id", MY_UID);
+    if (error) console.warn("CDV step delete:", error.message);
+    await supa.from("cdv_lives").update({ updated_at: new Date().toISOString() }).eq("id", liveId);
+  } catch (e) { console.warn("CDV step delete:", e); }
 }
 
 async function supaAddCdvLiveComment(liveId, text) {
@@ -4325,7 +4438,7 @@ async function supaLoadJoinedEvents() {
 // Emoji d'une notif dérivé de son `kind` (pas de jointure profiles : voir
 // supaLoadNotifications).
 function _notifEmoji(kind) {
-  return ({ like: "❤️", comment: "💬", follow: "➕", message: "✉️", mention: "📣", reaction: "😊", event_join: "🤝", event_comment: "💬", live_video: "🔴" })[kind] || "✨";
+  return ({ like: "❤️", comment: "💬", follow: "➕", message: "✉️", mention: "📣", reaction: "😊", event_join: "🤝", event_comment: "💬", event_update: "📝", event_cancelled: "🚫", event_reminder: "⏰", live_video: "🔴", cdv_live_step: "📍" })[kind] || "✨";
 }
 
 async function supaLoadNotifications() {
@@ -4667,19 +4780,22 @@ async function supaInit() {
 
 // ===== NOUVELLES FONCTIONNALITÉS =====
 
-// Filtre ville IRL
+// Recherche IRL. ⚠️ Avant, elle se contentait de masquer des cartes en CSS : la
+// carte Leaflet, le compteur de résultats et l'état vide continuaient de compter
+// les événements invisibles, et chercher un LIEU ou une DESCRIPTION ne marchait
+// pas. Elle passe désormais par le pipeline de filtres commun (irlSearchQuery),
+// débouncée pour ne pas re-rendre à chaque frappe.
 function filterIrlByCity() {
-  var q = ((document.getElementById("irlCitySearch")||{}).value||"").trim().toLowerCase();
-  var empty = document.getElementById("irlSearchEmpty");
-  var visible = 0;
-  document.querySelectorAll("#eventList .event-card").forEach(function(card) {
-    var city = (card.getAttribute("data-city")||"").toLowerCase();
-    var title = (card.getAttribute("data-title")||"").toLowerCase();
-    var show = !q || city.includes(q) || title.includes(q);
-    card.style.display = show ? "" : "none";
-    if (show) visible++;
-  });
-  if (empty) empty.style.display = (!q || visible > 0) ? "none" : "block";
+  var q = ((document.getElementById("irlCitySearch") || {}).value || "").trim().toLowerCase();
+  clearTimeout(window._irlSearchT);
+  window._irlSearchT = setTimeout(function () {
+    if (typeof irlSearchQuery === "undefined") return;
+    if (irlSearchQuery === q) return;
+    irlSearchQuery = q;
+    var empty = document.getElementById("irlSearchEmpty");
+    if (empty) empty.style.display = "none"; // l'état vide est géré par _irlEmptyStateHtml
+    if (typeof renderIRL === "function") renderIRL();
+  }, 220);
 }
 
 // Historique IA

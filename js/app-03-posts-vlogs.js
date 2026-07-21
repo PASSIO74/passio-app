@@ -949,7 +949,52 @@ function renderCarnetsExplore() {
 function getCdvLives() {
   try { return JSON.parse(localStorage.getItem("passio_cdv_lives") || "[]"); } catch(e) { return []; }
 }
-function saveCdvLives(lives) { localStorage.setItem("passio_cdv_lives", JSON.stringify(lives)); }
+// Écriture tolérante au quota : les étapes portent des photos base64 tant qu'elles
+// ne sont pas uploadées sur Storage → un carnet live photo-lourd faisait sauter
+// localStorage (QuotaExceededError NON catchée = étape perdue en silence, alors
+// que la sync Supabase, elle, avait réussi). On dégrade : purge des lives terminés
+// les plus anciens, puis retry ; en dernier recours on garde au moins les lives actifs.
+function saveCdvLives(lives) {
+  var arr = Array.isArray(lives) ? lives : [];
+  try { localStorage.setItem("passio_cdv_lives", JSON.stringify(arr)); return true; }
+  catch (e) {
+    try {
+      var slim = arr.filter(function (l) { return l && l.status === "live"; })
+        .concat(arr.filter(function (l) { return !l || l.status !== "live"; }).slice(0, 10));
+      localStorage.setItem("passio_cdv_lives", JSON.stringify(slim));
+      return true;
+    } catch (e2) {
+      if (typeof toast === "function") toast("⚠️ Stockage local plein — le live est sur le serveur mais pas en cache");
+      return false;
+    }
+  }
+}
+
+// Compte de personnes qui suivent un live, robuste à toutes les formes historiques
+// (tableau d'ids, ancien nombre fictif, absent). À utiliser PARTOUT plutôt que
+// `(l.followers || l.viewers || []).length` qui donnait `undefined` sur un nombre.
+function cdvLiveFollowerCount(l) {
+  if (!l) return 0;
+  if (Array.isArray(l.followers)) return l.followers.length;
+  if (Array.isArray(l.viewers)) return l.viewers.length;
+  if (typeof l.followers === "number") return 0; // ancien compteur fictif → ignoré
+  return 0;
+}
+
+// Un live "abonnés" ne doit être visible que par les abonnés (et son auteur) ;
+// un live "privé" seulement par son auteur. Centralisé ici — l'ancien filtrage
+// ne testait que `private`, donc un live « 👥 Abonnés » était visible de tous.
+function canSeeCdvLive(l) {
+  if (!l) return false;
+  if (typeof isBlocked === "function" && isBlocked(l.authorId)) return false;
+  if (isMyLive(l)) return true;
+  if (l.visibility === "private") return false;
+  if (l.visibility === "followers") {
+    var following = [].concat(state.following || [], (state.user && state.user.following) || []);
+    return following.indexOf(l.authorId) > -1;
+  }
+  return true;
+}
 
 // Un live publié localement a authorId "me" ; rechargé depuis Supabase il a MY_UID.
 function isMyLive(l) {
@@ -958,8 +1003,7 @@ function isMyLive(l) {
 
 // Récupérer les lives actifs (global, pour tous)
 function getActiveCdvLives() {
-  return getCdvLives().filter(l => l.status === "live" && l.visibility !== "private"
-    && !(typeof isBlocked === "function" && isBlocked(l.authorId)));
+  return getCdvLives().filter(l => l.status === "live" && canSeeCdvLive(l));
 }
 
 // Récupérer les lives des people qu'on suit
@@ -969,33 +1013,13 @@ function getFollowingCdvLives() {
   return allLives.filter(l => l.status === "live" && myFollowing.includes(l.authorId));
 }
 
-// Incrémenter le compteur de spectateurs
-function addCdvLiveViewer(liveId) {
-  const lives = getCdvLives();
-  const live = lives.find(l => l.id === liveId);
-  if (!live) return;
-  if (!live.currentViewers) live.currentViewers = 0;
-  if (!live.viewers) live.viewers = [];
-
-  const userId = state.user?.id || "me";
-  if (!live.viewers.includes(userId)) {
-    live.viewers.push(userId);
-    live.currentViewers = live.viewers.length;
-  }
-  saveCdvLives(lives);
-}
-
-// Retirer un spectateur
-function removeCdvLiveViewer(liveId) {
-  const lives = getCdvLives();
-  const live = lives.find(l => l.id === liveId);
-  if (!live) return;
-
-  const userId = state.user?.id || "me";
-  live.viewers = (live.viewers || []).filter(v => v !== userId);
-  live.currentViewers = live.viewers.length;
-  saveCdvLives(lives);
-}
+// ⚠️ Le "compteur de spectateurs" local était une fiction : il poussait MON id dans
+// live.viewers de MA copie localStorage — invisible des autres, jamais décrémenté,
+// et comptabilisé ensuite comme un abonné. Le seul chiffre honnête est le nombre de
+// personnes qui SUIVENT le live (table cdv_live_followers, cross-compte). Ces deux
+// fonctions restent des no-op pour ne casser aucun appelant existant.
+function addCdvLiveViewer() { /* no-op : voir cdvLiveFollowerCount() */ }
+function removeCdvLiveViewer() { /* no-op : voir cdvLiveFollowerCount() */ }
 
 // Auto-refresh du CDV Live toutes les 5 secondes (tant que la modal est ouverte)
 let cdvLiveRefreshInterval = null;
@@ -1104,7 +1128,13 @@ function createCdvLive() {
     visibility: _cdvVisibility,
     status: "live",
     steps: [],
-    followers: Math.floor(Math.random()*10+1),
+    // followers est un TABLEAU d'ids partout ailleurs (toggleFollowCdvLive,
+    // supaLoadCdvLives). L'ancienne valeur `Math.floor(Math.random()*10+1)` était
+    // (a) un compteur fictif et (b) un NOMBRE → `(l.followers||[]).length` valait
+    // `undefined` → « 👁 undefined suivent » sur toutes les cartes.
+    followers: [],
+    viewers: [],
+    currentViewers: 0,
     reactions: [],
     comments: [],
     createdAt: Date.now(),
@@ -1119,51 +1149,57 @@ function createCdvLive() {
   setTimeout(() => addCdvLiveStep(live.id), 300);
 }
 
-function addCdvLiveStep(liveId) {
+function addCdvLiveStep(liveId, stepId) {
+  // ⚠️ RESET des brouillons de la composition : ces variables sont GLOBALES et
+  // n'étaient remises à zéro qu'en cas de publication réussie. Si l'utilisateur
+  // fermait la modale (« Plus tard » / ×), ses photos, sa note ★ et son budget
+  // se retrouvaient collés à l'étape SUIVANTE, d'un autre lieu voire d'un autre live.
+  var _edit = stepId ? (getCdvLives().find(function (l) { return l.id === liveId; }) || { steps: [] })
+    .steps.find(function (s) { return s.id === stepId; }) : null;
+  _liveStepPhotos = _edit && Array.isArray(_edit.photos) ? _edit.photos.slice() : [];
+  _stepEmoji = (_edit && _edit.emoji) || "📍";
+  _stepRating = (_edit && _edit.rating) || 0;
+  _stepBudget = (_edit && _edit.budget) || "";
+  var _types = [["📍", "Lieu"], ["🍽", "Restaurant"], ["🏨", "Hébergement"], ["🎯", "Activité"], ["🚗", "Transport"], ["💡", "Conseil"], ["⚠️", "Alerte"]];
+  var _budgets = [["free", "Gratuit"], ["€", "€"], ["€€", "€€"], ["€€€", "€€€"]];
   openModal(`
     <div class="modal-handle"></div>
-    <div class="modal-title">📍 Ajouter une étape live</div>
+    <div class="modal-title">${_edit ? "✏️ Modifier l'étape" : "📍 Ajouter une étape live"}</div>
 
     <label class="field"><span>📍 Où es-tu ?</span>
-      <input type="text" class="input" id="liveStepCity" placeholder="Ville, lieu, spot…" maxlength="60"/>
+      <input type="text" class="input" id="liveStepCity" placeholder="Ville, lieu, spot…" maxlength="60" value="${escapeHtml((_edit && _edit.city) || "")}"/>
     </label>
 
     <label class="field"><span>🎭 Type d'étape</span>
       <div style="display:flex;gap:6px;flex-wrap:wrap;">
-        <button class="pill step-type-btn active" onclick="selectStepType(this,'📍')">📍 Lieu</button>
-        <button class="pill step-type-btn" onclick="selectStepType(this,'🍽')">🍽 Restaurant</button>
-        <button class="pill step-type-btn" onclick="selectStepType(this,'🏨')">🏨 Hébergement</button>
-        <button class="pill step-type-btn" onclick="selectStepType(this,'🎯')">🎯 Activité</button>
-        <button class="pill step-type-btn" onclick="selectStepType(this,'🚗')">🚗 Transport</button>
-        <button class="pill step-type-btn" onclick="selectStepType(this,'💡')">💡 Conseil</button>
-        <button class="pill step-type-btn" onclick="selectStepType(this,'⚠️')">⚠️ Alerte</button>
+        ${_types.map(function (t) {
+          return `<button class="pill step-type-btn${_stepEmoji === t[0] ? " active" : ""}" onclick="selectStepType(this,'${t[0]}')">${t[0]} ${t[1]}</button>`;
+        }).join("")}
       </div>
     </label>
 
     <label class="field"><span>✍️ Raconte ce moment</span>
-      <textarea class="textarea" id="liveStepContent" placeholder="Ce que tu vois, ressens, fais… tes conseils pour ceux qui viendront après toi" maxlength="500" style="min-height:80px;"></textarea>
+      <textarea class="textarea" id="liveStepContent" placeholder="Ce que tu vois, ressens, fais… tes conseils pour ceux qui viendront après toi" maxlength="500" style="min-height:80px;">${escapeHtml((_edit && _edit.content) || "")}</textarea>
     </label>
 
     <label class="field"><span>⭐ Note ce lieu (optionnel)</span>
       <div style="display:flex;gap:4px;" id="liveStepRating">
-        <span class="rating-star" onclick="setStepRating(1)" style="font-size:24px;cursor:pointer;">☆</span>
-        <span class="rating-star" onclick="setStepRating(2)" style="font-size:24px;cursor:pointer;">☆</span>
-        <span class="rating-star" onclick="setStepRating(3)" style="font-size:24px;cursor:pointer;">☆</span>
-        <span class="rating-star" onclick="setStepRating(4)" style="font-size:24px;cursor:pointer;">☆</span>
-        <span class="rating-star" onclick="setStepRating(5)" style="font-size:24px;cursor:pointer;">☆</span>
+        ${[1, 2, 3, 4, 5].map(function (n) {
+          var on = n <= _stepRating;
+          return `<span class="rating-star" onclick="setStepRating(${n})" style="font-size:24px;cursor:pointer;color:${on ? "#f59e0b" : "var(--muted)"};">${on ? "★" : "☆"}</span>`;
+        }).join("")}
       </div>
     </label>
 
     <label class="field"><span>💰 Budget (optionnel)</span>
       <div style="display:flex;gap:6px;">
-        <button class="pill budget-btn" onclick="selectBudget(this,'free')">Gratuit</button>
-        <button class="pill budget-btn" onclick="selectBudget(this,'€')">€</button>
-        <button class="pill budget-btn" onclick="selectBudget(this,'€€')">€€</button>
-        <button class="pill budget-btn" onclick="selectBudget(this,'€€€')">€€€</button>
+        ${_budgets.map(function (b) {
+          return `<button class="pill budget-btn${_stepBudget === b[0] ? " active" : ""}" onclick="selectBudget(this,'${b[0]}')">${b[1]}</button>`;
+        }).join("")}
       </div>
     </label>
 
-    <label class="field"><span>📷 Photos (optionnel)</span>
+    <label class="field"><span>📷 Photos (optionnel · ${CDV_STEP_MAX_PHOTOS} max)</span>
       <div id="liveStepPhotoPreview" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;"></div>
       <div class="upload-zone" onclick="document.getElementById('liveStepPhotoInput').click()" style="padding:12px;">
         <div class="upload-zone-icon" style="font-size:18px;">📷</div>
@@ -1173,10 +1209,11 @@ function addCdvLiveStep(liveId) {
     </label>
 
     <div style="display:flex;gap:8px;margin-top:14px;">
-      <button class="btn ghost" onclick="closeModal()">Plus tard</button>
-      <button class="btn primary" style="flex:1;" onclick="saveCdvLiveStep('${liveId}')">📡 Publier l'étape</button>
+      <button class="btn ghost" onclick="closeModal()">${_edit ? "Annuler" : "Plus tard"}</button>
+      <button class="btn primary" style="flex:1;" onclick="saveCdvLiveStep('${liveId}'${stepId ? ",'" + stepId + "'" : ""})">${_edit ? "✅ Enregistrer" : "📡 Publier l'étape"}</button>
     </div>
   `);
+  previewLiveStepPhotosRefresh();
 }
 
 var _stepEmoji = "📍";
@@ -1190,39 +1227,54 @@ function setStepRating(n) {
 }
 
 let _liveStepPhotos = [];
+// Garde-fous : sans limite, 6 photos de téléphone en base64 (~8 Mo chacune) partaient
+// dans localStorage["passio_cdv_lives"] → QuotaExceededError et étape perdue.
+const CDV_STEP_MAX_PHOTOS = 6;
+const CDV_STEP_MAX_PHOTO_BYTES = 8 * 1024 * 1024;
 function previewLiveStepPhotos(event) {
   var files = event.target.files;
   if (!files || !files.length) return;
   Array.from(files).forEach(function(file) {
+    if (_liveStepPhotos.length >= CDV_STEP_MAX_PHOTOS) { toast("Maximum " + CDV_STEP_MAX_PHOTOS + " photos par étape"); return; }
+    if (file.size > CDV_STEP_MAX_PHOTO_BYTES) { toast("Photo trop lourde (" + Math.round(file.size / 1048576) + " Mo, limite 8 Mo)"); return; }
     var reader = new FileReader();
     reader.onload = function(e) {
-      _liveStepPhotos.push(e.target.result);
-      var prev = document.getElementById("liveStepPhotoPreview");
-      if (prev) {
-        prev.innerHTML = _liveStepPhotos.map(function(p, i) {
-          return '<div style="position:relative;display:inline-block;"><img loading="lazy" decoding="async" src="' + p + '" style="width:70px;height:70px;border-radius:10px;object-fit:cover;"/><span onclick="_liveStepPhotos.splice(' + i + ',1);previewLiveStepPhotosRefresh();" style="position:absolute;top:-4px;right:-4px;width:18px;height:18px;border-radius:50%;background:#ef4444;color:#fff;font-size:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;">×</span></div>';
-        }).join("");
-      }
+      // Downscale avant stockage (même hygiène que les uploads du fil) : une photo
+      // de 4000 px ne sert à rien dans une étape et fait exploser le cache local.
+      var done = function (src) {
+        if (_liveStepPhotos.length >= CDV_STEP_MAX_PHOTOS) return;
+        _liveStepPhotos.push(src);
+        previewLiveStepPhotosRefresh();
+      };
+      if (typeof _downscaleImageForUpload === "function") {
+        _downscaleImageForUpload(e.target.result).then(done).catch(function () { done(e.target.result); });
+      } else { done(e.target.result); }
     };
     reader.readAsDataURL(file);
   });
+  event.target.value = ""; // re-sélectionner la même photo doit re-déclencher change
 }
 function previewLiveStepPhotosRefresh() {
   var prev = document.getElementById("liveStepPhotoPreview");
-  if (prev) {
-    prev.innerHTML = _liveStepPhotos.map(function(p, i) {
-      return '<div style="position:relative;display:inline-block;"><img loading="lazy" decoding="async" src="' + p + '" style="width:70px;height:70px;border-radius:10px;object-fit:cover;"/><span onclick="_liveStepPhotos.splice(' + i + ',1);previewLiveStepPhotosRefresh();" style="position:absolute;top:-4px;right:-4px;width:18px;height:18px;border-radius:50%;background:#ef4444;color:#fff;font-size:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;">×</span></div>';
-    }).join("");
-  }
+  if (!prev) return;
+  prev.innerHTML = _liveStepPhotos.map(function(p, i) {
+    return '<div style="position:relative;display:inline-block;"><img loading="lazy" decoding="async" src="' + safeUrlAttr(p) + '" style="width:70px;height:70px;border-radius:10px;object-fit:cover;"/><span onclick="_liveStepPhotos.splice(' + i + ',1);previewLiveStepPhotosRefresh();" style="position:absolute;top:-4px;right:-4px;width:18px;height:18px;border-radius:50%;background:#ef4444;color:#fff;font-size:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;">×</span></div>';
+  }).join("");
 }
 
-function saveCdvLiveStep(liveId) {
+function saveCdvLiveStep(liveId, stepId) {
   const city = document.getElementById("liveStepCity")?.value.trim();
   const content = document.getElementById("liveStepContent")?.value.trim();
   if (!city && !content) { toast("Ajoute au moins un lieu ou un texte"); return; }
 
+  const lives = getCdvLives();
+  const live = lives.find(l => l.id === liveId);
+  if (!live) { toast("Live introuvable"); return; }
+  if (!Array.isArray(live.steps)) live.steps = [];
+
+  const existing = stepId ? live.steps.find(s => s.id === stepId) : null;
   const step = {
-    id: "ls_" + uid(),
+    id: existing ? existing.id : "ls_" + uid(),
     city: city || "Quelque part",
     emoji: _stepEmoji || "📍",
     content: content || "",
@@ -1230,34 +1282,142 @@ function saveCdvLiveStep(liveId) {
     photo: _liveStepPhotos[0] || null,
     rating: _stepRating || 0,
     budget: _stepBudget || "",
-    createdAt: Date.now(),
+    createdAt: existing ? (existing.createdAt || Date.now()) : Date.now(),
+    editedAt: existing ? Date.now() : null,
   };
   _liveStepPhotos = [];
   _stepEmoji = "📍";
   _stepRating = 0;
   _stepBudget = "";
 
-  const lives = getCdvLives();
-  const live = lives.find(l => l.id === liveId);
-  if (!live) return;
-  live.steps.push(step);
-  saveCdvLives(lives);
-  if (typeof supaAddCdvLiveStep === "function") supaAddCdvLiveStep(liveId, step);
-  closeModal();
-  toast("📍 Étape publiée en direct !");
+  if (existing) {
+    live.steps[live.steps.indexOf(existing)] = step;
+    saveCdvLives(lives);
+    if (typeof supaUpdateCdvLiveStep === "function") supaUpdateCdvLiveStep(liveId, step);
+    closeModal();
+    toast("✅ Étape modifiée");
+  } else {
+    live.steps.push(step);
+    saveCdvLives(lives);
+    if (typeof supaAddCdvLiveStep === "function") supaAddCdvLiveStep(liveId, step);
+    if (typeof grantReward === "function") { try { grantReward("comment"); } catch (e) {} }
+    closeModal();
+    toast("📍 Étape publiée en direct !");
+    _notifyCdvLiveFollowers(live, step);
+  }
   renderCdvLives();
+  if (typeof renderCdvScreen === "function") { try { renderCdvScreen(); } catch (e) {} }
 }
 
-function endCdvLive(liveId) {
+// Supprimer une étape (auteur uniquement) — confirmation puis suppression locale
+// + serveur. Sans ça, une faute de frappe ou une photo ratée restait à vie.
+function deleteCdvLiveStep(liveId, stepId) {
+  const lives = getCdvLives();
+  const live = lives.find(l => l.id === liveId);
+  if (!live || !isMyLive(live)) return;
+  if (!confirm("Supprimer cette étape ? C'est définitif.")) return;
+  live.steps = (live.steps || []).filter(s => s.id !== stepId);
+  saveCdvLives(lives);
+  if (typeof supaDeleteCdvLiveStep === "function") supaDeleteCdvLiveStep(liveId, stepId);
+  toast("🗑 Étape supprimée");
+  openCdvLiveViewer(liveId);
+}
+
+// Prévient les personnes qui SUIVENT ce live qu'une nouvelle étape est publiée
+// (c'est tout l'intérêt du « suivre » : avant, suivre n'apportait rien du tout).
+function _notifyCdvLiveFollowers(live, step) {
+  try {
+    if (!live || !Array.isArray(live.followers) || typeof supaInsertNotif !== "function") return;
+    var me = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
+    var label = "a publié une nouvelle étape" + (step && step.city ? " : " + step.city : "");
+    live.followers.forEach(function (uidF) {
+      if (!uidF || uidF === me) return;
+      try { supaInsertNotif(uidF, "cdv_live_step", live.id, label); } catch (e) {}
+    });
+  } catch (e) {}
+}
+
+// Carte de l'itinéraire d'un live (marqueurs numérotés dans l'ordre des étapes).
+// Séparée de initVlogMiniMap (qui cible l'id fixe #vlogViewerMap) pour pouvoir
+// vivre dans la modale plein écran du live.
+function _initCdvLiveMap(el, places) {
+  if (!el || !places || !places.length) return;
+  if (typeof L === "undefined") {
+    if (typeof ensureLeaflet === "function") ensureLeaflet().then(function () { _initCdvLiveMap(el, places); }).catch(function () {});
+    return;
+  }
+  if (el._leafletMap) { try { el._leafletMap.remove(); } catch (e) {} el._leafletMap = null; }
+  try {
+    var map = L.map(el, { zoomControl: true, attributionControl: false })
+      .setView(places[places.length - 1].ll, places.length === 1 ? 12 : 10);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 18 }).addTo(map);
+    var bounds = [];
+    places.forEach(function (p) {
+      var icon = L.divIcon({
+        className: "passio-marker-wrap",
+        html: '<div class="passio-marker">' + p.dayNum + '</div>',
+        iconSize: [36, 36], iconAnchor: [18, 18], popupAnchor: [0, -16],
+      });
+      L.marker(p.ll, { icon: icon }).addTo(map)
+        .bindPopup("<b>Étape " + p.dayNum + "</b><br/>" + escapeHtml(p.place));
+      bounds.push(p.ll);
+    });
+    // Trace le trajet entre les étapes : l'itinéraire se lit d'un coup d'œil.
+    if (bounds.length > 1) {
+      L.polyline(bounds, { color: "#7c3aed", weight: 3, opacity: 0.7, dashArray: "6 6" }).addTo(map);
+      map.fitBounds(L.latLngBounds(bounds), { padding: [40, 40], maxZoom: 12 });
+    }
+    el._leafletMap = map;
+    setTimeout(function () { try { map.invalidateSize(); } catch (e) {} }, 120);
+    setTimeout(function () { try { map.invalidateSize(); } catch (e) {} }, 420);
+  } catch (e) { console.warn("Carte live CDV : init impossible", e); }
+}
+
+// Terminer un live est IRRÉVERSIBLE (plus d'étapes possibles) : on confirme, et on
+// enchaîne directement sur la conversion en carnet — le moment où l'auteur a le
+// plus envie de finaliser son récit. Avant : un tap sur « Terminer » suffisait.
+function confirmEndCdvLive(liveId) {
+  const live = getCdvLives().find(l => l.id === liveId);
+  if (!live || !isMyLive(live)) return;
+  const n = (live.steps || []).length;
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">Terminer ce carnet en direct ?</div>
+    <div style="font-size:13px;color:var(--text-dim);line-height:1.55;margin-bottom:14px;">
+      « ${escapeHtml(live.destination || "Voyage")} » passera en <b>terminé</b> : tu ne pourras plus ajouter d'étape.
+      Tes ${n} étape${n > 1 ? "s" : ""} et les commentaires restent visibles.
+    </div>
+    <button class="btn block" style="background:#dc2626;color:#fff;border-color:#dc2626;margin-bottom:8px;" onclick="endCdvLive('${liveId}', true)">Oui, terminer</button>
+    <button class="btn ghost block" onclick="closeModal()">Annuler</button>
+  `);
+}
+
+function endCdvLive(liveId, offerCarnet) {
   const lives = getCdvLives();
   const live = lives.find(l => l.id === liveId);
   if (!live) return;
   live.status = "ended";
+  live.endedAt = Date.now();
   saveCdvLives(lives);
   if (typeof supaUpdateCdvLiveStatus === "function") supaUpdateCdvLiveStatus(liveId, "ended");
-  toast("✅ CDV Live terminé — il apparaît maintenant comme un carnet complet");
+  closeModal();
+  toast("✅ CDV Live terminé");
   renderCdvLives();
   renderCdvScreen();
+  // Proposition immédiate de transformer le direct en carnet publiable.
+  if (offerCarnet && (live.steps || []).length) {
+    setTimeout(function () {
+      openModal(`
+        <div class="modal-handle"></div>
+        <div class="modal-title">📔 En faire un carnet ?</div>
+        <div style="font-size:13px;color:var(--text-dim);line-height:1.55;margin-bottom:14px;">
+          Tes ${(live.steps || []).length} étapes deviennent un carnet de voyage complet (carte, bilan pratique, conseil clé) — bien plus consulté qu'un live terminé.
+        </div>
+        <button class="btn primary block" style="margin-bottom:8px;" onclick="convertLiveToCarnet('${liveId}')">📔 Créer le carnet</button>
+        <button class="btn ghost block" onclick="closeModal()">Plus tard</button>
+      `);
+    }, 400);
+  }
 }
 
 // Convertit un Live (de préférence terminé) en brouillon de carnet éditable
@@ -1273,11 +1433,13 @@ function convertLiveToCarnet(liveId) {
       if ($("#vlogDestination")) $("#vlogDestination").value = live.destination || "";
       vlogState.cover = null;
       if ($("#vlogCoverPreview")) $("#vlogCoverPreview").innerHTML = "";
+      // Reprend aussi la note ★ et le budget saisis en direct (sinon ce travail
+      // était perdu à la conversion) — ils deviennent le conseil de l'étape.
       vlogState.steps = (live.steps || []).map(s => ({
         id: uid(),
         place: s.city || "",
         text: s.content || "",
-        tip: "",
+        tip: [s.budget ? "Budget " + s.budget : "", s.rating ? "★".repeat(s.rating) : ""].filter(Boolean).join(" · "),
         photo: s.photo || (s.photos && s.photos[0]) || null,
       }));
       if (typeof renderVlogSteps === "function") renderVlogSteps();
@@ -1306,10 +1468,32 @@ function _cdvCommentsBoxHtml(live) {
 // Barre de réactions (❤️🔥😍 + partage) du viewer de live — extraite pour pouvoir
 // la patcher en place lors du refresh 5s sans reconstruire tout le viewer.
 function _cdvReactBarHtml(liveId, live) {
-  var cnt = function(e){ return (live.reactions || []).filter(function(r){ return r === e; }).length || ""; };
-  return '<button class="btn ghost" onclick="reactCdvLive(\'' + liveId + '\',\'❤️\')" style="flex:1;font-size:13px;padding:8px;">❤️ ' + cnt("❤️") + '</button>'
-    + '<button class="btn ghost" onclick="reactCdvLive(\'' + liveId + '\',\'🔥\')" style="flex:1;font-size:13px;padding:8px;">🔥 ' + cnt("🔥") + '</button>'
-    + '<button class="btn ghost" onclick="reactCdvLive(\'' + liveId + '\',\'😍\')" style="flex:1;font-size:13px;padding:8px;">😍 ' + cnt("😍") + '</button>'
+  var me = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
+  // Emojis : compteur = personnes DISTINCTES (une réaction par personne, cf. la
+  // règle produit). L'agrégat brut `reactions` peut contenir des doublons hérités.
+  var by = Array.isArray(live.reactionsBy) ? live.reactionsBy : [];
+  var cnt = function (e) {
+    if (by.length) {
+      var users = {};
+      by.forEach(function (x) { if (x && x.emoji === e) users[x.userId] = 1; });
+      return Object.keys(users).length || "";
+    }
+    return (live.reactions || []).filter(function (r) { return r === e; }).length || "";
+  };
+  var mineNow = function (e) {
+    return by.some(function (x) { return x && x.userId === me && x.emoji === e; }) ? " active" : "";
+  };
+  // ❤️ = LIKE (toggle strict, 1 par compte, persisté dans cdv_live_reactions via
+  // supaToggleCdvLiveLike) — le même bouton que sur les cartes. Avant, il passait
+  // par reactCdvLive() qui empilait un ❤️ de plus À CHAQUE TAP sans jamais pouvoir
+  // le retirer, et sans jamais être compté comme un like.
+  var lk = (window._liveLikes && window._liveLikes[liveId]) || { likes: 0, liked: false };
+  var liked = ((state.user && state.user.likedLives) || []).indexOf(liveId) > -1 || lk.liked;
+  return '<button class="btn ghost' + (liked ? " active" : "") + '" data-livelike="' + liveId
+      + '" onclick="likeCdvLiveCard(\'' + liveId + '\', this)" style="flex:1;font-size:13px;padding:8px;">'
+      + (liked ? "❤️" : "🤍") + " " + (lk.likes || 0) + '</button>'
+    + '<button class="btn ghost' + mineNow("🔥") + '" onclick="reactCdvLive(\'' + liveId + '\',\'🔥\')" style="flex:1;font-size:13px;padding:8px;">🔥 ' + cnt("🔥") + '</button>'
+    + '<button class="btn ghost' + mineNow("😍") + '" onclick="reactCdvLive(\'' + liveId + '\',\'😍\')" style="flex:1;font-size:13px;padding:8px;">😍 ' + cnt("😍") + '</button>'
     + '<button class="btn ghost" onclick="shareCdvLive(\'' + liveId + '\')" style="flex:1;font-size:13px;padding:8px;" title="Partager ce live">' + shareIconSvg(16) + '</button>';
 }
 // Patch LÉGER du viewer de live ouvert (compteur de suivis, réactions, et bloc
@@ -1319,7 +1503,7 @@ function _cdvReactBarHtml(liveId, live) {
 function _patchCdvLiveViewer(live, patchComments) {
   if (!live) return;
   var vc = document.getElementById("cdvViewerCount");
-  if (vc) vc.textContent = "👁 " + ((live.followers || live.viewers || []).length) + " suivent";
+  if (vc) vc.textContent = "👁 " + cdvLiveFollowerCount(live) + " suivent";
   var rb = document.getElementById("cdvReactBar");
   if (rb) rb.innerHTML = _cdvReactBarHtml(live.id, live);
   if (patchComments) {
@@ -1344,38 +1528,55 @@ function openCdvLiveViewer(liveId) {
 
   const isMine = isMyLive(live);
   const isLive = live.status === "live";
-
-  // Ajouter le spectateur actuel au compteur
-  if (isLive && !isMine) {
-    addCdvLiveViewer(liveId);
-  }
+  if (!canSeeCdvLive(live)) { toast("Ce carnet en direct n'est pas accessible"); return; }
+  if (!Array.isArray(live.steps)) live.steps = [];
 
   // Nombre réel de personnes qui suivent (plus de valeur fictive aléatoire).
-  var viewerCount = (live.followers || live.viewers || []).length;
+  var viewerCount = cdvLiveFollowerCount(live);
 
   let stepsHTML = live.steps.map(function(s) {
     var photosHTML = "";
+    // ⚠️ photos = contenu d'un AUTRE compte (cdv_live_steps.photos) → safeUrlAttr
+    // obligatoire (bloque javascript: et la sortie d'attribut), cf. CLAUDE.md.
     if (s.photos && s.photos.length > 1) {
-      photosHTML = '<div style="display:flex;gap:4px;overflow-x:auto;margin-top:6px;scrollbar-width:none;">' + s.photos.map(function(p) { return '<img loading="lazy" decoding="async" src="' + p + '" style="height:120px;border-radius:8px;object-fit:cover;flex-shrink:0;"/>'; }).join("") + '</div>';
+      photosHTML = '<div style="display:flex;gap:4px;overflow-x:auto;margin-top:6px;scrollbar-width:none;">' + s.photos.map(function(p) { return '<img loading="lazy" decoding="async" src="' + safeUrlAttr(p) + '" style="height:120px;border-radius:8px;object-fit:cover;flex-shrink:0;"/>'; }).join("") + '</div>';
     } else if (s.photo) {
-      photosHTML = '<img loading="lazy" decoding="async" src="' + s.photo + '" style="width:100%;border-radius:10px;margin-top:6px;max-height:200px;object-fit:cover;"/>';
+      photosHTML = '<img loading="lazy" decoding="async" src="' + safeUrlAttr(s.photo) + '" style="width:100%;border-radius:10px;margin-top:6px;max-height:200px;object-fit:cover;"/>';
     }
     var ratingHTML = s.rating ? '<span style="font-size:12px;color:#f59e0b;margin-left:8px;">' + "★".repeat(s.rating) + "☆".repeat(5-s.rating) + '</span>' : "";
     var budgetHTML = s.budget ? '<span style="font-size:10px;background:var(--bg-deep);border-radius:6px;padding:2px 6px;margin-left:6px;">' + s.budget + '</span>' : "";
+    // L'auteur peut corriger ou retirer une étape (faute de frappe, mauvaise photo).
+    var ownerTools = isMine
+      ? '<div style="display:flex;gap:10px;margin-top:6px;">'
+        + '<span onclick="event.stopPropagation();addCdvLiveStep(\'' + liveId + '\',\'' + s.id + '\')" style="font-size:11px;color:var(--muted);cursor:pointer;">✏️ Modifier</span>'
+        + '<span onclick="event.stopPropagation();deleteCdvLiveStep(\'' + liveId + '\',\'' + s.id + '\')" style="font-size:11px;color:#ef4444;cursor:pointer;">🗑 Supprimer</span>'
+        + '</div>'
+      : "";
     return '<div style="display:flex;gap:10px;padding:12px 0;border-bottom:1px solid var(--border);">\
-      <div style="font-size:24px;flex-shrink:0;">' + s.emoji + '</div>\
+      <div style="font-size:24px;flex-shrink:0;">' + escapeHtml(s.emoji || "📍") + '</div>\
       <div style="flex:1;min-width:0;">\
         <div style="display:flex;align-items:center;flex-wrap:wrap;">\
           <span style="font-weight:700;font-size:13px;color:var(--text);">' + escapeHtml(s.city) + '</span>' + ratingHTML + budgetHTML + '\
         </div>\
-        <div style="font-size:11px;color:var(--muted);margin-bottom:4px;">' + fmtTime(s.createdAt) + '</div>\
+        <div style="font-size:11px;color:var(--muted);margin-bottom:4px;">' + fmtTime(s.createdAt) + (s.editedAt ? " · modifiée" : "") + '</div>\
         ' + (s.content ? '<div style="font-size:12px;color:var(--text-dim);line-height:1.5;">' + escapeHtml(s.content) + '</div>' : "") + '\
-        ' + photosHTML + '\
+        ' + photosHTML + ownerTools + '\
       </div>\
     </div>';
   }).join("");
 
   if (!live.steps.length) stepsHTML = '<div style="text-align:center;padding:30px;color:var(--muted);"><div style="font-size:32px;margin-bottom:8px;">🧳</div>L\'aventure commence bientôt…</div>';
+
+  // Itinéraire sur carte, comme dans le viewer de carnet : chaque étape géolocalisée
+  // devient un marqueur numéroté. C'était la grande absente du live (le format le
+  // plus « carte » de l'app n'en avait aucune, contrairement à Polarsteps/Google Maps).
+  var mapPlaces = (live.steps || [])
+    .map(function (s, i) { return { place: s.city || "", dayNum: i + 1, ll: s.city && typeof cityToLatLng === "function" ? cityToLatLng(s.city) : null }; })
+    .filter(function (s) { return s.ll; });
+  if (!mapPlaces.length && live.destination && typeof cityToLatLng === "function") {
+    var dll = cityToLatLng(live.destination);
+    if (dll) mapPlaces.push({ place: live.destination, dayNum: 1, ll: dll });
+  }
 
   var commentsHTML = _cdvCommentsBoxHtml(live);
 
@@ -1397,6 +1598,7 @@ function openCdvLiveViewer(liveId) {
     \
     <div id="cdvReactBar" style="display:flex;gap:6px;margin-bottom:14px;">' + _cdvReactBarHtml(liveId, live) + '</div>\
     \
+    ' + (mapPlaces.length ? '<div class="vlog-mini-map" id="cdvLiveMap" style="margin-bottom:14px;"></div>' : '') + '\
     <div style="font-weight:800;font-size:13px;color:var(--text);margin-bottom:8px;">📍 Étapes</div>\
     ' + stepsHTML + '\
     \
@@ -1411,7 +1613,7 @@ function openCdvLiveViewer(liveId) {
     ' + (isMine && isLive ? '\
       <div style="display:flex;gap:8px;margin-top:16px;padding-top:14px;border-top:1px solid var(--border);">\
         <button class="btn primary" style="flex:1;" onclick="closeModal();addCdvLiveStep(\'' + liveId + '\')">📍 Ajouter une étape</button>\
-        <button class="btn ghost" style="border-color:rgba(239,68,68,0.4);color:#ef4444;" onclick="closeModal();endCdvLive(\'' + liveId + '\')">Terminer</button>\
+        <button class="btn ghost" style="border-color:rgba(239,68,68,0.4);color:#ef4444;" onclick="confirmEndCdvLive(\'' + liveId + '\')">Terminer</button>\
       </div>' : (!isMine ? '\
       <div style="margin-top:14px;">\
         <button class="btn primary block" onclick="toggleFollowCdvLive(\'' + liveId + '\',this)" style="background:linear-gradient(135deg,#ef4444,#f59e0b);">📡 Suivre ce voyage</button>\
@@ -1430,6 +1632,15 @@ function openCdvLiveViewer(liveId) {
     if (isLive) {
       startCdvLiveRefresh(liveId);
     }
+  }
+  // Compteur ❤️ réel (par personne) sur le bouton like du viewer.
+  if (typeof _loadCdvLiveLikes === "function") _loadCdvLiveLikes([liveId]);
+  // Carte de l'itinéraire (Leaflet chargé à la demande).
+  if (mapPlaces.length) {
+    setTimeout(function () {
+      var el = document.getElementById("cdvLiveMap");
+      if (el && typeof _initCdvLiveMap === "function") _initCdvLiveMap(el, mapPlaces);
+    }, 200);
   }
   // Interactions cross-compte des commentaires (likes + réponses + emojis) via
   // comment_interactions : hydrate puis re-render le bloc seul.
@@ -1527,6 +1738,12 @@ function _pushLiveReaction(live, emoji) {
 }
 
 function reactCdvLive(liveId, emoji) {
+  // ❤️ = like (toggle strict), jamais une réaction empilable.
+  if (emoji === "❤️") {
+    var lkEl = document.querySelector('[data-livelike="' + liveId + '"]');
+    likeCdvLiveCard(liveId, lkEl);
+    return;
+  }
   var lives = getCdvLives();
   var live = lives.find(function(l) { return l.id === liveId; });
   if (!live) return;
@@ -1557,7 +1774,7 @@ function likeCdvLiveCard(liveId, el) {
   }
   window._liveLikes[liveId] = cur;
   if (typeof saveState === "function") saveState();
-  if (el) { el.classList.toggle("liked", cur.liked); el.innerHTML = (cur.liked ? "❤️" : "🤍") + " " + (cur.likes || 0); }
+  if (el) { el.classList.toggle("liked", cur.liked); el.classList.toggle("active", cur.liked); el.innerHTML = (cur.liked ? "❤️" : "🤍") + " " + (cur.likes || 0); }
   if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID && window._supaReal && typeof supaToggleCdvLiveLike === "function") {
     supaToggleCdvLiveLike(liveId);
     if (cur.liked) {
@@ -1616,8 +1833,10 @@ async function _loadCdvLiveLikes(ids) {
       var d = data[id];
       if ((state.user.likedLives || []).indexOf(id) > -1) d.liked = true;
       window._liveLikes[id] = d;
-      var lk = document.querySelector('[data-livelike="' + id + '"]');
-      if (lk) { lk.classList.toggle("liked", d.liked); lk.innerHTML = (d.liked ? "❤️" : "🤍") + " " + (d.likes || 0); }
+      document.querySelectorAll('[data-livelike="' + id + '"]').forEach(function (lk) {
+        lk.classList.toggle("liked", d.liked); lk.classList.toggle("active", d.liked);
+        lk.innerHTML = (d.liked ? "❤️" : "🤍") + " " + (d.likes || 0);
+      });
     });
   } catch (e) {}
 }
@@ -1672,7 +1891,7 @@ let cdvFilters = new Set(); // Vide par défaut = affiche TOUS les carnets
 function _pinnedLiveCardHtml(l) {
   const seedAuthor = userById(l.authorId);
   const authorName = isMyLive(l) ? (state.user.name || "Toi") : (seedAuthor && seedAuthor.name) || "Passionné";
-  const viewerCount = (l.followers || l.viewers || []).length;
+  const viewerCount = cdvLiveFollowerCount(l);
   const nSteps = (l.steps || []).length;
   return `<div class="cdv-live-card cdv-live-pinned" onclick="openCdvLiveViewer('${l.id}')" style="border-color:rgba(239,68,68,0.35);position:relative;">
     <div class="cdv-live-header">
@@ -1700,151 +1919,79 @@ function renderCdvScreen() {
     p.classList.toggle("active", cdvFilters && cdvFilters.has(filterType));
   });
 
-  // Filtre multi-select: affiche seulement si "live" est l'UNIQUE filtre actif
-  const showLiveOnly = cdvFilters && cdvFilters.size === 1 && cdvFilters.has("live");
-  if (showLiveOnly) {
-    // Affiche les lives en cours ET les lives terminés
-    const lives = getCdvLives().filter(l =>
-      !(typeof isBlocked === "function" && isBlocked(l.authorId)) &&
-      (isMyLive(l) || (state.following || []).includes(l.authorId) || l.visibility === "public"));
-    if (!lives.length) {
-      list.innerHTML = "";
-      document.getElementById("cdvEmpty").style.display = "block";
-      return;
-    }
-    document.getElementById("cdvEmpty").style.display = "none";
+  const q = (($("#cdvSearchInput") && $("#cdvSearchInput").value) || "").toLowerCase().trim();
+  const hasFilters = !!(cdvFilters && cdvFilters.size > 0);
+  // Les 3 pastilles sont des filtres CUMULABLES. Avant, « 🔴 Lives » n'était pris
+  // en compte QUE s'il était le seul actif : cocher « Mes carnets » + « Lives »
+  // faisait disparaître les lives sans le dire. Désormais la sélection est
+  // additive : Lives ajoute les lives, Mes carnets / Favoris ajoutent des carnets,
+  // et « Mes carnets » restreint aussi les lives aux miens.
+  const wantLives = !hasFilters ? false : cdvFilters.has("live");
+  const wantMine = cdvFilters.has("mine");
+  const wantSaved = cdvFilters.has("saved");
 
-    // Dédupliquer par ID pour éviter les doublons
+  let livesHtml = "";
+  let liveIdsShown = [];
+  if (wantLives) {
     const seenIds = new Set();
-    const uniqueLives = lives.filter(l => {
-      if (seenIds.has(l.id)) return false;
-      seenIds.add(l.id);
-      return true;
-    });
+    const lives = getCdvLives()
+      .filter(l => canSeeCdvLive(l))
+      .filter(l => (wantMine ? isMyLive(l) : true))
+      .filter(l => !q || _cdvLiveMatchesQuery(l, q))
+      .filter(l => { if (seenIds.has(l.id)) return false; seenIds.add(l.id); return true; });
 
-    // Lives en cours d'abord
-    const active = uniqueLives.filter(l => l.status === "live");
-    const ended = uniqueLives.filter(l => l.status === "ended");
+    const active = lives.filter(l => l.status === "live");
+    const ended = lives.filter(l => l.status !== "live");
+    liveIdsShown = active.concat(ended).map(l => l.id);
 
-    let html = active.length ? `<div style="font-weight:700;font-size:13px;color:var(--text);margin:14px 0 8px;">✨ ${active.length} live${active.length>1?"s":""} en cours</div>` : "";
-    html += active.map(l => {
-      const isNew = l.createdAt && Date.now() - l.createdAt < 60000;
-      const seedAuthor = userById(l.authorId);
-      const authorName = isMyLive(l) ? (state.user.name || "Toi") : (seedAuthor && seedAuthor.name) || "Passionné";
-      const viewerCount = (l.followers || l.viewers || []).length;
-      const myId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
-      const isFollowing = (l.followers || []).includes(myId);
-
-      return `<div class="cdv-live-card" onclick="openCdvLiveViewer('${l.id}')" style="border-color:rgba(239,68,68,0.3);position:relative;">
-        ${isNew ? '<div style="position:absolute;top:10px;right:10px;background:#ef4444;color:#fff;font-size:9px;font-weight:700;padding:3px 7px;border-radius:12px;">NOUVEAU</div>' : ''}
-        <div class="cdv-live-header">
-          <span class="cdv-live-badge">🔴 EN DIRECT</span>
-          <div style="flex:1;">
-            <div class="cdv-live-dest">${escapeHtml(l.destination)}</div>
-            <div class="cdv-live-author">par ${escapeHtml(authorName)} · ${l.steps.length} étape${l.steps.length>1?"s":""}</div>
-          </div>
-        </div>
-        ${l.steps.length ? `
-          <div class="cdv-live-steps">
-            ${l.steps.slice(-5).map(s => `
-              <div class="cdv-live-step">
-                <div class="cdv-live-step-emoji">${s.emoji}</div>
-                <div class="cdv-live-step-city">${escapeHtml(s.city)}</div>
-                <div class="cdv-live-step-time">${fmtTime(s.createdAt)}</div>
-              </div>`).join("")}
-          </div>` : `<div style="text-align:center;padding:10px;color:var(--muted);font-size:11px;">En attente de la première étape…</div>`}
-        <div class="cdv-live-footer">
-          <div class="cdv-live-count">👁 ${viewerCount} regardent</div>
-          ${isMyLive(l) ? `<button class="cdv-live-follow-btn" onclick="event.stopPropagation();addCdvLiveStep('${l.id}')">+ Étape</button>` : `<button class="cdv-live-follow-btn" onclick="event.stopPropagation();toggleFollowCdvLive('${l.id}',this)" style="background:${isFollowing ? '#8b5cf6' : 'var(--border)'};color:${isFollowing ? '#fff' : 'var(--text)'};">${isFollowing ? '✓ En suivi' : '📡 Suivre'}</button>`}
-        </div>
-        <div class="post-actions" onclick="event.stopPropagation()">
-          ${_liveLikeSpanHtml(l)}
-          <span class="post-action" onclick="event.stopPropagation();openCommentSheet('${l.id}','💬 ${escapeHtml((l.destination||'').replace(/'/g,'’')).slice(0,40)}')">💬 ${commentThreadCount(l.comments)}</span>
-          <span class="post-action" onclick="return reactCdvLivePicker('${l.id}', event);" title="Réagir">😊</span>
-          <span class="post-action" onclick="event.stopPropagation();shareCdvLive('${l.id}')" title="Partager" aria-label="Partager">${shareIconSvg(18)}</span>
-          <span class="post-react-chip-holder" data-livechip="${l.id}" style="margin-left:auto;">${_liveReactChipHtml(l.id)}</span>
-        </div>
-      </div>`;
-    }).join("");
-
-    if (ended.length) html += `<div style="font-weight:700;font-size:13px;color:var(--text);margin:14px 0 8px;">✅ Lives terminés</div>`;
-    html += ended.map(l => `
-      <div class="cdv-live-card" onclick="openCdvLiveViewer('${l.id}')" style="border-color:var(--border);">
-        <div class="cdv-live-header">
-          <span style="font-size:10px;font-weight:700;color:var(--muted);background:var(--bg-deep);padding:3px 8px;border-radius:6px;">✅ TERMINÉ</span>
-          <div style="flex:1;">
-            <div class="cdv-live-dest">${escapeHtml(l.destination)}</div>
-            <div class="cdv-live-author">${l.steps.length} étape${l.steps.length>1?"s":""}</div>
-          </div>
-        </div>
-        <div class="post-actions" onclick="event.stopPropagation()">
-          ${_liveLikeSpanHtml(l)}
-          <span class="post-action" onclick="event.stopPropagation();openCommentSheet('${l.id}','💬 ${escapeHtml((l.destination||'').replace(/'/g,'’')).slice(0,40)}')">💬 ${commentThreadCount(l.comments)}</span>
-          <span class="post-action" onclick="return reactCdvLivePicker('${l.id}', event);" title="Réagir">😊</span>
-          <span class="post-action" onclick="event.stopPropagation();shareCdvLive('${l.id}')" title="Partager" aria-label="Partager">${shareIconSvg(18)}</span>
-          <span class="post-react-chip-holder" data-livechip="${l.id}" style="margin-left:auto;">${_liveReactChipHtml(l.id)}</span>
-        </div>
-      </div>`).join("");
-
-    list.innerHTML = html;
-    // Likes ❤️ par utilisateur distinct (chargés en lot, patch DOM sans re-render).
-    _loadCdvLiveLikes(active.concat(ended).map(function(l){ return l.id; }));
-    return;
+    if (active.length) livesHtml += `<div style="font-weight:700;font-size:13px;color:var(--text);margin:14px 0 8px;">✨ ${active.length} live${active.length > 1 ? "s" : ""} en cours</div>`;
+    livesHtml += active.map(_cdvActiveLiveCardHtml).join("");
+    if (ended.length) livesHtml += `<div style="font-weight:700;font-size:13px;color:var(--text);margin:14px 0 8px;">✅ Lives terminés</div>`;
+    livesHtml += ended.map(_cdvEndedLiveCardHtml).join("");
   }
 
-  const q = (($("#cdvSearchInput") && $("#cdvSearchInput").value) || "").toLowerCase().trim();
   let carnets = allCarnets();
 
-  // Filtre multi-select: si des filtres sont sélectionnés, afficher UNIQUEMENT ceux-ci
-  if (cdvFilters && cdvFilters.size > 0) {
-    const saved = cdvFilters.has("saved") ? savedCarnets() : [];
-    const myCarnets = cdvFilters.has("mine") ? carnets.filter(c => c._source === "me") : [];
-
-    // Combiner les résultats de TOUS les filtres sélectionnés
-    const filtered = new Set();
-
-    if (cdvFilters.has("saved")) {
-      saved.forEach(id => {
-        const c = carnets.find(x => x.id === id);
-        if (c) filtered.add(c);
-      });
+  // Carnets : « Lives » seul = pas de carnets ; sinon union des filtres cochés.
+  if (hasFilters) {
+    if (!wantMine && !wantSaved) {
+      carnets = [];
+    } else {
+      const savedIds = wantSaved ? savedCarnets() : [];
+      const filtered = new Set();
+      if (wantSaved) savedIds.forEach(id => { const c = carnets.find(x => x.id === id); if (c) filtered.add(c); });
+      if (wantMine) carnets.filter(c => c._source === "me").forEach(c => filtered.add(c));
+      carnets = Array.from(filtered);
     }
-
-    if (cdvFilters.has("mine")) {
-      myCarnets.forEach(c => filtered.add(c));
-    }
-
-    carnets = Array.from(filtered);
   }
 
-  if (q) {
-    carnets = carnets.filter(c =>
-      (c.destination || "").toLowerCase().includes(q) ||
-      (c.text || "").toLowerCase().includes(q) ||
-      (c.steps || []).some(s => (s.place || "").toLowerCase().includes(q))
-    );
-  }
+  if (q) carnets = carnets.filter(c => _cdvCarnetMatchesQuery(c, q));
 
   // Live épinglé : si un carnet Live est en cours, on le remonte EN TÊTE de la
-  // liste CDV (uniquement en vue par défaut — pas en recherche ni sous filtre).
+  // liste CDV. En recherche, les lives correspondants restent épinglés (avant, ils
+  // disparaissaient dès la première lettre tapée alors que c'est LE contenu chaud).
   let pinnedLivesHtml = "";
-  if ((!cdvFilters || cdvFilters.size === 0) && !q) {
+  if (!hasFilters) {
     const _seenPin = new Set();
-    const _activeLives = getActiveCdvLives().filter(l => {
-      if (_seenPin.has(l.id)) return false; _seenPin.add(l.id); return true;
-    });
+    const _activeLives = getActiveCdvLives()
+      .filter(l => !q || _cdvLiveMatchesQuery(l, q))
+      .filter(l => { if (_seenPin.has(l.id)) return false; _seenPin.add(l.id); return true; });
     if (_activeLives.length) {
       pinnedLivesHtml = '<div class="cdv-pinned-live-title">🔴 En direct maintenant</div>'
         + _activeLives.map(_pinnedLiveCardHtml).join("");
+      liveIdsShown = liveIdsShown.concat(_activeLives.map(l => l.id));
     }
   }
 
+  const headHtml = pinnedLivesHtml + livesHtml;
+
   if (!carnets.length) {
-    // Un Live en cours reste visible même sans aucun carnet à afficher.
-    if (pinnedLivesHtml) {
-      list.innerHTML = pinnedLivesHtml;
+    // Un Live (épinglé ou filtré) reste visible même sans aucun carnet à afficher.
+    if (headHtml) {
+      list.innerHTML = headHtml;
       const _emptyEl = document.getElementById("cdvEmpty");
       if (_emptyEl) _emptyEl.style.display = "none";
+      if (liveIdsShown.length) _loadCdvLiveLikes(liveIdsShown);
       return;
     }
     list.innerHTML = "";
@@ -1853,8 +2000,8 @@ function renderCdvScreen() {
       let icon = "📔", title = "Aucun carnet trouvé", text = "", cta = "";
       if (q) {
         title = "Aucun résultat";
-        text = "Aucun carnet ne correspond à « " + escapeHtml(q) + " ». Essaie une autre destination.";
-      } else if (cdvFilters && cdvFilters.size > 0) {
+        text = "Rien ne correspond à « " + escapeHtml(q) + " ». Essaie une autre destination, un lieu d'étape ou un pseudo.";
+      } else if (hasFilters) {
         title = "Aucun carnet dans ce filtre";
         text = "Retire les filtres ou crée ton premier carnet.";
         cta = '<button class="btn primary" style="margin-top:12px;" onclick="setStudioToVlog()">📔 Créer un carnet</button>';
@@ -1871,8 +2018,8 @@ function renderCdvScreen() {
   document.getElementById("cdvEmpty").style.display = "none";
 
   // Format "fil d'actualité" : chaque carnet est un post complet.
-  // Le(s) Live(s) en cours sont épinglés en tête via pinnedLivesHtml.
-  list.innerHTML = pinnedLivesHtml + carnets.map(c => {
+  // Le(s) Live(s) en cours sont épinglés en tête via headHtml.
+  list.innerHTML = headHtml + carnets.map(c => {
     const stats = vlogStats(c);
     const isMine = c._source === "me";
     const seedAuthor = userById(c.authorId);
@@ -1902,10 +2049,11 @@ function renderCdvScreen() {
           <div class="cdv-feed-author-meta">a publié un carnet de voyage · ${escapeHtml(since)}</div>
         </div>
         ${isSaved ? `<span class="cdv-feed-saved-badge">⭐ Sauvegardé</span>` : ""}
+        ${isMine ? `<span class="post-action" onclick="event.stopPropagation();openPostOptions('${c.id}')" title="Options" aria-label="Options du carnet" style="margin-left:6px;">⋯</span>` : ""}
       </div>
 
       <div class="cdv-feed-cover-wrap">
-        ${c.cover ? `<img loading="lazy" decoding="async" class="cdv-feed-cover" src="${c.cover}" alt="" onerror="this.onerror=null;this.src='https://picsum.photos/seed/cdv-${c.id}/1280/720';"/>` : ""}
+        ${c.cover ? `<img loading="lazy" decoding="async" class="cdv-feed-cover" src="${safeUrlAttr(c.cover)}" alt="" onerror="this.onerror=null;this.src='https://picsum.photos/seed/cdv-${c.id}/1280/720';"/>` : ""}
         <div class="cdv-feed-cover-overlay"></div>
         <div class="cdv-feed-cover-meta">
           <span class="cdv-feed-tag">📔 CARNET DE VOYAGE</span>
@@ -1940,5 +2088,92 @@ function renderCdvScreen() {
       </div>
     </article>`;
   }).join("");
+
+  // Likes ❤️ par utilisateur distinct (chargés en lot, patch DOM sans re-render).
+  if (liveIdsShown.length) _loadCdvLiveLikes(liveIdsShown);
+}
+
+// ── Recherche CDV ────────────────────────────────────────────────────────────
+// La recherche ne couvrait que destination / texte / lieux d'étapes d'un CARNET :
+// impossible de retrouver un live, un auteur, un conseil ou un bilan pratique.
+function _cdvLiveMatchesQuery(l, q) {
+  if (!q) return true;
+  var author = (isMyLive(l) ? (state.user.name || "") : ((userById(l.authorId) || {}).name || ""));
+  var hay = [l.destination, l.description, author]
+    .concat((l.steps || []).map(function (s) { return (s.city || "") + " " + (s.content || ""); }))
+    .join(" ").toLowerCase();
+  return hay.indexOf(q) > -1;
+}
+
+function _cdvCarnetMatchesQuery(c, q) {
+  if (!q) return true;
+  var author = (c._source === "me" ? (state.user.name || "") : ((userById(c.authorId) || {}).name || ""));
+  var hay = [c.destination, c.text, c.tip, c.budget, c.transport, c.lodging, c.season, author]
+    .concat((c.steps || []).map(function (s) { return (s.place || "") + " " + (s.text || "") + " " + (s.tip || ""); }))
+    .join(" ").toLowerCase();
+  return hay.indexOf(q) > -1;
+}
+
+// ── Cartes de live de la liste CDV (extraites de renderCdvScreen) ────────────
+function _cdvActiveLiveCardHtml(l) {
+  const isNew = l.createdAt && Date.now() - l.createdAt < 60000;
+  const seedAuthor = userById(l.authorId);
+  const authorName = isMyLive(l) ? (state.user.name || "Toi") : (seedAuthor && seedAuthor.name) || "Passionné";
+  const viewerCount = cdvLiveFollowerCount(l);
+  const myId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
+  const isFollowing = (Array.isArray(l.followers) ? l.followers : []).includes(myId);
+  const steps = l.steps || [];
+  return `<div class="cdv-live-card" onclick="openCdvLiveViewer('${l.id}')" style="border-color:rgba(239,68,68,0.3);position:relative;">
+    ${isNew ? '<div style="position:absolute;top:10px;right:10px;background:#ef4444;color:#fff;font-size:9px;font-weight:700;padding:3px 7px;border-radius:12px;">NOUVEAU</div>' : ''}
+    <div class="cdv-live-header">
+      <span class="cdv-live-badge">🔴 EN DIRECT</span>
+      <div style="flex:1;">
+        <div class="cdv-live-dest">${escapeHtml(l.destination || "Live")}</div>
+        <div class="cdv-live-author">par ${escapeHtml(authorName)} · ${steps.length} étape${steps.length > 1 ? "s" : ""}</div>
+      </div>
+    </div>
+    ${steps.length ? `
+      <div class="cdv-live-steps">
+        ${steps.slice(-5).map(s => `
+          <div class="cdv-live-step">
+            <div class="cdv-live-step-emoji">${escapeHtml(s.emoji || "📍")}</div>
+            <div class="cdv-live-step-city">${escapeHtml(s.city || "")}</div>
+            <div class="cdv-live-step-time">${fmtTime(s.createdAt)}</div>
+          </div>`).join("")}
+      </div>` : `<div style="text-align:center;padding:10px;color:var(--muted);font-size:11px;">En attente de la première étape…</div>`}
+    <div class="cdv-live-footer">
+      <div class="cdv-live-count">👁 ${viewerCount} suivent</div>
+      ${isMyLive(l)
+        ? `<button class="cdv-live-follow-btn" onclick="event.stopPropagation();addCdvLiveStep('${l.id}')">+ Étape</button>`
+        : `<button class="cdv-live-follow-btn" onclick="event.stopPropagation();toggleFollowCdvLive('${l.id}',this)" style="background:${isFollowing ? '#8b5cf6' : 'var(--border)'};color:${isFollowing ? '#fff' : 'var(--text)'};">${isFollowing ? '✓ En suivi' : '📡 Suivre'}</button>`}
+    </div>
+    ${_cdvLiveActionsHtml(l)}
+  </div>`;
+}
+
+function _cdvEndedLiveCardHtml(l) {
+  const steps = l.steps || [];
+  return `<div class="cdv-live-card" onclick="openCdvLiveViewer('${l.id}')" style="border-color:var(--border);">
+    <div class="cdv-live-header">
+      <span style="font-size:10px;font-weight:700;color:var(--muted);background:var(--bg-deep);padding:3px 8px;border-radius:6px;">✅ TERMINÉ</span>
+      <div style="flex:1;">
+        <div class="cdv-live-dest">${escapeHtml(l.destination || "Live")}</div>
+        <div class="cdv-live-author">${steps.length} étape${steps.length > 1 ? "s" : ""}</div>
+      </div>
+    </div>
+    ${_cdvLiveActionsHtml(l)}
+  </div>`;
+}
+
+// Barre d'engagement commune aux cartes live (charte unifiée du fil).
+function _cdvLiveActionsHtml(l) {
+  const title = escapeJsArg("💬 " + (l.destination || "Live").slice(0, 40));
+  return `<div class="post-actions" onclick="event.stopPropagation()">
+    ${_liveLikeSpanHtml(l)}
+    <span class="post-action" onclick="event.stopPropagation();openCommentSheet('${l.id}','${title}')">💬 ${commentThreadCount(l.comments)}</span>
+    <span class="post-action" onclick="return reactCdvLivePicker('${l.id}', event);" title="Réagir">😊</span>
+    <span class="post-action" onclick="event.stopPropagation();shareCdvLive('${l.id}')" title="Partager" aria-label="Partager">${shareIconSvg(18)}</span>
+    <span class="post-react-chip-holder" data-livechip="${l.id}" style="margin-left:auto;">${_liveReactChipHtml(l.id)}</span>
+  </div>`;
 }
 

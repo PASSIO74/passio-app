@@ -7584,3 +7584,84 @@
       margin-bottom: 10px;
     }
     .msg-skel-av { width: 46px; height: 46px; border-radius: 50%; flex-shrink: 0; }
+
+    /* ═══════════════════════════════════════════════════════════════
+       IRL — barre d'outils de la liste, états de carte, autocomplétion
+       (refonte ergonomie du 2026-07-21)
+       ═══════════════════════════════════════════════════════════════ */
+    .sr-only {
+      position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+      overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+    }
+
+    .irl-toolbar { margin: 2px 0 10px; }
+    .irl-toolbar-row {
+      display: flex; align-items: center; gap: 8px; justify-content: space-between;
+    }
+    .irl-seg {
+      display: inline-flex; background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: 12px; padding: 3px; gap: 2px;
+    }
+    .irl-seg-btn {
+      border: none; background: transparent; color: var(--muted);
+      font-size: 12px; font-weight: 700; padding: 7px 14px; border-radius: 9px;
+      cursor: pointer; min-height: 34px;
+    }
+    .irl-seg-btn.active { background: var(--accent); color: #fff; }
+    .irl-sort select {
+      border: 1px solid var(--border); background: var(--bg-card); color: var(--text);
+      font-size: 12px; font-weight: 700; border-radius: 12px; padding: 8px 10px;
+      min-height: 34px; cursor: pointer;
+    }
+    .irl-toolbar-count {
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+      font-size: 12px; color: var(--muted); margin-top: 8px;
+    }
+    .irl-toolbar-count b { color: var(--text); }
+    /* L'alerte « X masqués » est le garde-fou contre le piège historique où les
+       filtres cachaient 90 % des événements en silence. */
+    .irl-showall {
+      border: 1px solid var(--accent); background: transparent; color: var(--accent);
+      font-size: 11px; font-weight: 800; border-radius: 999px; padding: 5px 12px;
+      cursor: pointer; min-height: 30px;
+    }
+    .irl-showall:hover { background: var(--accent); color: #fff; }
+
+    .irl-tile-mine { font-size: 9px; vertical-align: super; color: var(--accent); }
+
+    .event-card-banner {
+      font-size: 11px; font-weight: 800; border-radius: 10px;
+      padding: 6px 10px; margin-bottom: 8px;
+    }
+    .event-card-banner.cancelled { background: rgba(239,68,68,0.12); color: #ef4444; }
+    .event-card-banner.live { background: rgba(124,58,237,0.12); color: var(--accent); }
+    .event-card.is-cancelled .event-title { text-decoration: line-through; opacity: 0.7; }
+    .event-card.is-past { opacity: 0.78; }
+
+    .event-detail-urgency.cancelled { background: rgba(239,68,68,0.12); color: #ef4444; }
+    .event-detail-urgency.live { background: rgba(124,58,237,0.12); color: var(--accent); }
+    .event-detail-urgency.past { background: rgba(100,116,139,0.12); color: var(--muted); }
+
+    /* Récap d'après-événement : le pont entre « j'y étais » et « je publie ». */
+    .event-recap-cta {
+      border: 1px dashed var(--accent); border-radius: 14px;
+      padding: 12px 14px; margin: 10px 0;
+      background: rgba(124,58,237,0.05);
+    }
+    .event-recap-title { font-size: 14px; font-weight: 800; }
+    .event-recap-text { font-size: 12px; color: var(--muted); margin-top: 2px; line-height: 1.5; }
+
+    .irl-suggest {
+      border: 1px solid var(--border); border-radius: 12px; overflow: hidden;
+      background: var(--bg-card); margin: -6px 0 12px; max-height: 240px; overflow-y: auto;
+    }
+    .irl-suggest-item {
+      display: block; width: 100%; text-align: left; border: none; background: transparent;
+      padding: 10px 12px; cursor: pointer; border-bottom: 1px solid var(--border);
+      font-size: 13px; color: var(--text);
+    }
+    .irl-suggest-item:last-child { border-bottom: none; }
+    .irl-suggest-item:hover { background: rgba(124,58,237,0.07); }
+    .irl-suggest-item b { display: block; font-weight: 700; }
+    .irl-suggest-item span { display: block; font-size: 11px; color: var(--muted); margin-top: 1px; }
+    .irl-suggest-empty { padding: 10px 12px; font-size: 12px; color: var(--muted); }

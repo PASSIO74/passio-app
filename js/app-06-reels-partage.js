@@ -1537,6 +1537,11 @@ function startCdvLiveFromStudio() {
   const lives = getCdvLives();
   lives.unshift(live);
   saveCdvLives(lives);
+  // ⚠️ SANS cet appel le live n'existe QUE sur cet appareil : aucun autre compte ne
+  // le voit, et chaque étape ajoutée est rejetée côté serveur (FK live_id absente
+  // de cdv_lives) → live fantôme. C'était le cas de tous les lives lancés depuis le
+  // Studio (l'autre point d'entrée, createCdvLive, le faisait déjà).
+  if (typeof supaPublishCdvLive === "function") supaPublishCdvLive(live);
 
   // Reset le studio
   document.getElementById("cdvLiveDestInput").value = "";

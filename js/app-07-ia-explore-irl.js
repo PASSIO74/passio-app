@@ -307,31 +307,39 @@ let irlTimeFilter = ""; // Filtre d'heure (format: "HH:MM")
 let irlUserLocation = null; // Position actuelle de l'utilisateur { lat, lng }
 let irlUserLocationError = false; // Erreur d'obtention de position
 let irlSelectedCity = null; // Ville sélectionnée pour chercher des événements (null = ta position)
-let irlPassionFiltersInitialized = false; // Flag pour tracker la première initialisation
+let irlSort = "soon";                     // "soon" | "near" | "popular"
+let irlSearchQuery = "";                  // recherche texte (titre/ville/lieu/desc)
+let irlShowPast = false;                  // onglet « Passés » (événements terminés)
 
-// Initialiser irlPassionFilters avec les profils de l'utilisateur
-// Si pas de profils, afficher TOUS les événements
-function initializeIrlPassionFilters() {
-  // Ne réinitialiser que la première fois
-  if (irlPassionFiltersInitialized) {
-    return;
-  }
+// ⚠️ NE PLUS pré-cocher les passions de l'utilisateur au premier rendu.
+// Avant (jusqu'au 2026-07-21) : un compte avec UN profil « musique » voyait
+// irlPassionFilters = {musique} ET une barre de passions ne contenant QUE ses
+// propres passions → 31 des 35 événements à venir étaient masqués, sans aucun
+// moyen de le savoir ni de les afficher (aucune tuile à cocher pour les autres
+// passions, et le compteur de filtres excluait volontairement les passions).
+// Défaut = AUCUN filtre = tout est visible ; les passions de l'utilisateur sont
+// simplement remontées en tête de la barre.
+// (fonction supprimée : plus aucun appelant, le défaut est « aucun filtre »)
 
-  irlPassionFiltersInitialized = true;
+// ===== Cycle de vie d'un événement (début / fin / annulation) =====
+// Durée par défaut d'un événement sans fin explicite. Sans cette notion, un
+// événement disparaissait de l'écran à la SECONDE où il commençait : impossible
+// de retrouver l'adresse du truc auquel on se rend. (Colonne end_at, 2026-07-21.)
+const IRL_DEFAULT_DURATION_MS = 2 * 3600000;
 
-  const userPassionIds = (state.user.profiles || []).map(p => p.passion).filter(Boolean);
+function _eventEndAt(ev) {
+  if (!ev) return 0;
+  if (typeof ev.endAt === "number" && ev.endAt > ev.date) return ev.endAt;
+  if (ev.durationH) return ev.date + Math.round(parseFloat(ev.durationH) * 3600000);
+  return ev.date + IRL_DEFAULT_DURATION_MS;
+}
 
-  if (userPassionIds.length > 0) {
-    // L'utilisateur a des profils, afficher seulement ceux-ci par défaut
-    userPassionIds.forEach(p => irlPassionFilters.add(p));
-    _diag("[IRL Init] Profils de l'utilisateur: " + Array.from(irlPassionFilters).join(", "));
-  } else {
-    // Pas de profils créés, afficher TOUTES les passions
-    const events = allEvents();
-    const allPassions = [...new Set(events.map(e => e.passion).filter(Boolean))];
-    allPassions.forEach(p => irlPassionFilters.add(p));
-    _diag("[IRL Init] Toutes les passions: " + Array.from(irlPassionFilters).join(", "));
-  }
+function _eventIsCancelled(ev) { return !!ev && ev.status === "cancelled"; }
+function _eventIsLive(ev) { const n = Date.now(); return !!ev && ev.date <= n && _eventEndAt(ev) > n; }
+function _eventIsOver(ev) { return !!ev && _eventEndAt(ev) <= Date.now(); }
+function _isMyEvent(ev) {
+  const meId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
+  return !!ev && (ev._mine || ev.organizerId === meId || ev.authorId === meId || ev.organizerId === "me");
 }
 
 // Note: Les event listeners pour les filtres de passion et type sont gérés
@@ -694,6 +702,34 @@ function cityToLatLng(city) {
   return null;
 }
 
+// « le havre » → « Le Havre » (l'ancienne capitalisation ne traitait que la
+// première lettre : « Le havre », « Saint-étienne », « New york »…).
+function _prettyCityName(key) {
+  return String(key || "").split(/([ \-'])/).map(part =>
+    /^[ \-']$/.test(part) ? part : part.charAt(0).toUpperCase() + part.slice(1)
+  ).join("");
+}
+
+// Liste de villes SANS doublons d'alias : le dictionnaire contient « nîmes » et
+// « nimes », « québec » et « quebec », « boulogne » et « boulogne-billancourt »…
+// → le sélecteur affichait deux fois la même ville. On dédoublonne par
+// coordonnées en gardant le libellé le plus complet (accentué de préférence).
+function _irlCityList() {
+  if (window._irlCityListCache) return window._irlCityListCache;
+  const byCoord = {};
+  Object.keys(FRANCE_CITIES).forEach(key => {
+    const c = FRANCE_CITIES[key];
+    const k = c[0].toFixed(3) + "," + c[1].toFixed(3);
+    const prev = byCoord[k];
+    const score = (/[àâäéèêëîïôöùûüçÀÂÄÉÈÊËÎÏÔÖÙÛÜÇ]/.test(key) ? 100 : 0) + key.length;
+    if (!prev || score > prev.score) byCoord[k] = { id: key, score, coords: c };
+  });
+  window._irlCityListCache = Object.keys(byCoord).map(k => ({
+    id: byCoord[k].id, name: _prettyCityName(byCoord[k].id), coords: byCoord[k].coords,
+  })).sort((a, b) => a.name.localeCompare(b.name, "fr"));
+  return window._irlCityListCache;
+}
+
 // Trouver la ville la plus proche des coordonnées GPS
 function getClosestCity(lat, lng) {
   if (!lat || !lng) return "France";
@@ -706,7 +742,7 @@ function getClosestCity(lat, lng) {
     const dist = calculateDistance(lat, lng, coords[0], coords[1]);
     if (dist < closestDistance) {
       closestDistance = dist;
-      closestCity = cityName.charAt(0).toUpperCase() + cityName.slice(1); // Capitalize
+      closestCity = _prettyCityName(cityName);
     }
   }
 
@@ -732,11 +768,7 @@ function updateIrlCityTitle() {
 
 // Sélecteur de ville pour IRL
 function openIrlCitySelector() {
-  const citiesList = Object.keys(FRANCE_CITIES).map(name => ({
-    name: name.charAt(0).toUpperCase() + name.slice(1),
-    id: name,
-    coords: FRANCE_CITIES[name]
-  })).sort((a, b) => a.name.localeCompare(b.name));
+  const citiesList = _irlCityList();
 
   let html = `
     <div class="modal-handle"></div>
@@ -746,8 +778,8 @@ function openIrlCitySelector() {
   `;
 
   citiesList.forEach(city => {
-    html += `<button class="pill" onclick="selectIrlCity('${city.id}', '${city.name}')" style="width:100%;justify-content:center;">
-      ${city.name}
+    html += `<button class="pill" onclick="selectIrlCity('${escapeJsArg(city.id)}', '${escapeJsArg(city.name)}')" style="width:100%;justify-content:center;">
+      ${escapeHtml(city.name)}
     </button>`;
   });
 
@@ -859,7 +891,7 @@ async function searchIrlAddressSuggestions(query) {
   irlAddressSearchTimeout = setTimeout(async () => {
     try {
       // Rechercher sur Nominatim
-      const response = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query + ", France")}&format=json&limit=8&addressdetails=1`);
+      const response = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=8&addressdetails=1`);
       const results = await response.json();
 
       if (!results || results.length === 0) {
@@ -867,15 +899,19 @@ async function searchIrlAddressSuggestions(query) {
         return;
       }
 
-      // Afficher les suggestions
+      // Afficher les suggestions.
+      // ⚠️ `display_name` vient d'un service TIERS : il doit être échappé pour le
+      // HTML (escapeHtml) ET pour l'argument JS de l'onclick (escapeJsArg). Sans
+      // ça, un lieu contenant une apostrophe (« Saint-Michel-l'Observatoire »)
+      // cassait le bouton, et une donnée hostile pouvait injecter du markup.
       let html = "";
-      results.forEach((result, index) => {
-        const name = result.display_name.split(",")[0];
-        const fullName = result.display_name.split(",").slice(0, 2).join(",").trim();
+      results.forEach((result) => {
+        const name = String(result.display_name || "").split(",")[0];
+        const fullName = String(result.display_name || "").split(",").slice(0, 2).join(",").trim();
         html += `
-          <div onclick="selectIrlAddressSuggestion('${name}', ${result.lat}, ${result.lon})" style="padding:8px 10px;border-bottom:1px solid #eee;cursor:pointer;font-size:12px;transition:background 0.2s;" onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background='transparent';">
-            <div style="font-weight:500;color:#333;">${name}</div>
-            <div style="font-size:11px;color:#888;">${fullName.substring(fullName.indexOf(",") + 1).trim()}</div>
+          <div onclick="selectIrlAddressSuggestion('${escapeJsArg(name)}', ${parseFloat(result.lat)}, ${parseFloat(result.lon)})" style="padding:8px 10px;border-bottom:1px solid #eee;cursor:pointer;font-size:12px;transition:background 0.2s;" onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background='transparent';">
+            <div style="font-weight:500;color:#333;">${escapeHtml(name)}</div>
+            <div style="font-size:11px;color:#888;">${escapeHtml(fullName.substring(fullName.indexOf(",") + 1).trim())}</div>
           </div>
         `;
       });
@@ -932,7 +968,7 @@ async function geocodeIrlAddress() {
 
   try {
     // Utiliser Nominatim (OpenStreetMap) pour le géocodage
-    const response = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address + ", France")}&format=json&limit=1`);
+    const response = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1`);
     const results = await response.json();
 
     if (!results || results.length === 0) {
@@ -970,6 +1006,20 @@ async function geocodeIrlAddress() {
 
 function updateIrlMapMarkers() {
   if (!irlMap || !irlMarkersLayer) return;
+
+  // ⚠️ Rien ne doit bouger sur la carte quand l'utilisateur like, commente ou
+  // rejoint un événement : renderIRL() est rappelée à chaque interaction et
+  // reconstruisait TOUS les marqueurs + refaisait un fitBounds → la vue sautait
+  // et le zoom manuel était perdu à chaque clic. On ne reconstruit que si
+  // l'ensemble filtré a réellement changé. (Corrigé le 2026-07-21.)
+  var _filteredNow = _filterIrlEvents(allEvents());
+  var _sig = _filteredNow.map(function(e) { return e.id; }).join(",")
+    + "|" + (irlSelectedCity ? irlSelectedCity.name : "")
+    + "|" + (irlUserLocation ? irlUserLocation.lat.toFixed(3) + "," + irlUserLocation.lng.toFixed(3) : "");
+  if (_sig === window._irlMapSig) return;
+  var _isFirstDraw = !window._irlMapSig;
+  window._irlMapSig = _sig;
+
   irlMarkersLayer.clearLayers();
 
   // Ajouter un marqueur pour la position actuelle
@@ -1029,7 +1079,7 @@ function updateIrlMapMarkers() {
   }
 
   // Même filtrage que la liste (helper partagé) → carte et liste cohérentes.
-  var filtered = _filterIrlEvents(allEvents());
+  var filtered = _filteredNow;
 
   const points = [];
   filtered.forEach(ev => {
@@ -1049,10 +1099,11 @@ function updateIrlMapMarkers() {
     });
     const m = L.marker([lat, lng], { icon }).addTo(irlMarkersLayer);
     const d = fmtEventDate(ev.date);
+    const dk = _eventDistanceKm(ev);
     m.bindPopup(`
       <div class="irl-popup-title">${escapeHtml(ev.title || "Événement")}</div>
-      <div class="irl-popup-meta">${passion.emoji || ""} ${escapeHtml(passion.label || "")} · ${escapeHtml(ev.city || "")} · ${d.day} ${d.month} à ${d.time}</div>
-      <button class="irl-popup-btn" onclick="openEventDetails('${ev.id}')">Voir l'événement</button>
+      <div class="irl-popup-meta">${passion.emoji || ""} ${escapeHtml(passion.label || "")} · ${escapeHtml(ev.city || "")} · ${d.day} ${d.month} à ${d.time}${dk != null && dk < 20000 ? " · " + _fmtDistance(dk) : ""}</div>
+      <button class="irl-popup-btn" onclick="openEventDetails('${escapeJsArg(ev.id)}')">Voir l'événement</button>
     `);
     points.push([lat, lng]);
   });
@@ -1095,38 +1146,45 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
+// Barre de passions : TOUTES les passions qui ont au moins un événement à venir,
+// celles de l'utilisateur en tête (repère ✨). Avant, la barre ne listait que les
+// passions de l'utilisateur : les événements des autres passions étaient
+// définitivement inatteignables depuis l'écran.
 function renderIrlPassionTiles() {
   const row = $("#irlPassionRow");
   if (!row) return;
-  const events = allEvents();
+  // Base de comptage = les événements après TOUS les filtres SAUF la passion,
+  // pour que le badge annonce ce qu'un clic va réellement afficher.
+  const saved = irlPassionFilters;
+  irlPassionFilters = new Set();
+  const pool = _filterIrlEvents(allEvents());
+  irlPassionFilters = saved;
 
-  // Passions de l'utilisateur (basée sur ses profils créés)
-  const userPassionIds = (state.user.profiles || []).map(p => p.passion).filter(Boolean);
-
-  // Si l'utilisateur a des profils, afficher seulement ces passions
-  // Sinon, afficher toutes les passions
-  let passionIds = [];
-  if (userPassionIds.length > 0) {
-    passionIds = userPassionIds;
-  } else {
-    passionIds = [...new Set(events.map(e => e.passion).filter(Boolean))];
-  }
+  const mine = new Set((state.user.profiles || []).map(p => p.passion).filter(Boolean));
+  const counts = {};
+  pool.forEach(e => { if (e.passion) counts[e.passion] = (counts[e.passion] || 0) + 1; });
+  // Les passions sélectionnées restent affichées même si elles tombent à 0 (sinon
+  // la tuile active disparaît et on ne peut plus la décocher).
+  const passionIds = [...new Set(Object.keys(counts).concat([...irlPassionFilters]))]
+    .sort((a, b) => {
+      const ma = mine.has(a) ? 0 : 1, mb = mine.has(b) ? 0 : 1;
+      if (ma !== mb) return ma - mb;
+      return (counts[b] || 0) - (counts[a] || 0);
+    });
 
   row.className = "msg-filter-tiles"; // réutilise le même style que la messagerie
 
-  let html = "";
-
-  passionIds.forEach(pid => {
+  row.innerHTML = passionIds.map(pid => {
     const p = passionById(pid) || { label: pid, emoji: "✨" };
-    const cnt = events.filter(e => e.passion === pid).length;
+    const cnt = counts[pid] || 0;
     const isActive = irlPassionFilters.has(pid);
-    html += `<button class="msg-tile ${isActive ? 'active' : ''}" data-irlpassion="${pid}">
-      <span class="msg-tile-icon">${p.emoji}</span>
+    return `<button class="msg-tile ${isActive ? "active" : ""}" data-irlpassion="${escapeHtml(pid)}"
+        aria-pressed="${isActive}" title="${escapeHtml(p.label)}${mine.has(pid) ? " — une de tes passions" : ""}">
+      <span class="msg-tile-icon">${p.emoji}${mine.has(pid) ? '<span class="irl-tile-mine" aria-hidden="true">✦</span>' : ""}</span>
       <span class="msg-tile-label">${escapeHtml(p.label)}</span>
       ${cnt > 0 ? `<span class="msg-tile-badge">${cnt}</span>` : ""}
     </button>`;
-  });
-  row.innerHTML = html;
+  }).join("");
 }
 
 var irlDateFilters = new Set(); // Vide par défaut = afficher TOUS les événements futurs
@@ -1190,7 +1248,13 @@ function _irlReferenceLoc() {
 // pour qu'ils ne divergent jamais. (Factorisé le 2026-06-24.)
 function _filterIrlEvents(events) {
   var now = Date.now();
-  var filtered = events.filter(function(e) { return e.date > now; });
+  // On garde les événements EN COURS (commencés mais pas finis) : c'est
+  // précisément le moment où l'utilisateur a besoin de l'adresse et du fil de
+  // discussion. Les événements terminés ne sortent que via l'onglet « Passés ».
+  var filtered = events.filter(function(e) {
+    return irlShowPast ? true : _eventEndAt(e) > now;
+  });
+  if (irlShowPast) filtered = filtered.filter(function(e) { return _eventIsOver(e); });
 
   // 1. Passion (multi-select) — vide = toutes
   if (irlPassionFilters && irlPassionFilters.size > 0) {
@@ -1244,14 +1308,63 @@ function _filterIrlEvents(events) {
       return m >= sMin && m <= eMin;
     });
   }
-  return filtered;
+  // 6. Recherche texte (titre / ville / lieu / description / passion) — avant, la
+  // recherche masquait juste des cartes en CSS : le compteur, la carte et l'état
+  // vide continuaient de compter les événements invisibles.
+  if (irlSearchQuery) {
+    var q = irlSearchQuery;
+    filtered = filtered.filter(function(e) {
+      var p = passionById(e.passion) || {};
+      return [e.title, e.city, e.venue, e.address, e.desc, e.eventType, p.label]
+        .some(function(v) { return String(v || "").toLowerCase().indexOf(q) > -1; });
+    });
+  }
+  return _sortIrlEvents(filtered);
+}
+
+// Tri de la liste : imminent (défaut) / le plus proche / le plus populaire.
+function _sortIrlEvents(list) {
+  var ref = _irlReferenceLoc();
+  if (irlSort === "near") {
+    return list.slice().sort(function(a, b) {
+      var da = _eventDistanceKm(a, ref), db = _eventDistanceKm(b, ref);
+      if (da == null) return 1;
+      if (db == null) return -1;
+      return da - db || a.date - b.date;
+    });
+  }
+  if (irlSort === "popular") {
+    return list.slice().sort(function(a, b) {
+      return ((b.attendees || []).length - (a.attendees || []).length) || a.date - b.date;
+    });
+  }
+  // "soon" : le prochain d'abord ; en mode « Passés », le plus récent d'abord.
+  return list.slice().sort(function(a, b) { return irlShowPast ? b.date - a.date : a.date - b.date; });
+}
+
+// Distance en km entre un événement et le point de référence, ou null si le lieu
+// n'est pas géolocalisable.
+function _eventDistanceKm(ev, ref) {
+  var loc = eventLatLng(ev);
+  if (!loc) return null;
+  var r = ref || _irlReferenceLoc();
+  return calculateDistance(r.lat, r.lng, loc[0], loc[1]);
+}
+
+function _fmtDistance(km) {
+  if (km == null) return "";
+  if (km < 1) return Math.round(km * 1000) + " m";
+  if (km < 10) return km.toFixed(1).replace(".", ",") + " km";
+  return Math.round(km) + " km";
 }
 
 // Nombre de filtres actifs (pour l'indicateur "X filtres · Réinitialiser").
+// ⚠️ Les passions COMPTENT désormais : elles ne sont plus pré-cochées, donc une
+// passion active est bien un choix de l'utilisateur — et c'est le filtre qui
+// masque le plus d'événements, il doit être visible dans la pastille.
 function _irlActiveFilterCount() {
-  // Les passions ont leurs propres tuiles visibles à l'écran : ne pas les compter
-  // ici, sinon la pastille affiche « 14 » au chargement et n'est plus discrète.
   var n = 0;
+  if (irlPassionFilters && irlPassionFilters.size) n += irlPassionFilters.size;
   if (irlFilters && irlFilters.size) n += irlFilters.size;
   if (irlDateFilters && irlDateFilters.size) n += irlDateFilters.size;
   if (irlDistanceFilter) n += 1;
@@ -1267,6 +1380,9 @@ function clearAllIrlFilters() {
   irlDistanceFilter = "";
   irlTimeFilter = "";
   irlCustomDate = null;
+  irlSearchQuery = "";
+  var searchEl = document.getElementById("irlCitySearch");
+  if (searchEl) searchEl.value = "";
   var distSel = document.getElementById("irlDistanceFilter");
   if (distSel) distSel.value = "";
   var timeBtn = document.getElementById("irlTimeFilterBtn");
@@ -1299,12 +1415,72 @@ function _updateIrlFiltersBtn() {
   }
 }
 
+// Barre au-dessus de la liste : compte de résultats, tri, onglet « Passés » et —
+// surtout — l'alerte « N événements masqués par tes filtres · Tout voir ».
+// Sans elle, un utilisateur filtré ne pouvait pas savoir qu'il ratait 90 % des
+// événements (c'était le cas au chargement jusqu'au 2026-07-21).
+function _renderIrlToolbar(shownCount) {
+  var box = document.getElementById("irlFilterStatus");
+  if (!box) return;
+  var now = Date.now();
+  var universe = allEvents().filter(function(e) {
+    return irlShowPast ? _eventIsOver(e) : _eventEndAt(e) > now;
+  }).length;
+  var hidden = Math.max(0, universe - shownCount);
+  var nFilters = _irlActiveFilterCount() + (irlSearchQuery ? 1 : 0);
+
+  box.style.display = "block";
+  box.className = "irl-toolbar";
+  box.innerHTML = `
+    <div class="irl-toolbar-row">
+      <div class="irl-seg" role="tablist" aria-label="Période">
+        <button class="irl-seg-btn ${irlShowPast ? "" : "active"}" role="tab" aria-selected="${!irlShowPast}" onclick="setIrlPastMode(false)">À venir</button>
+        <button class="irl-seg-btn ${irlShowPast ? "active" : ""}" role="tab" aria-selected="${irlShowPast}" onclick="setIrlPastMode(true)">Passés</button>
+      </div>
+      <label class="irl-sort">
+        <span class="sr-only">Trier</span>
+        <select onchange="setIrlSort(this.value)" aria-label="Trier les événements">
+          <option value="soon"${irlSort === "soon" ? " selected" : ""}>⏱ Imminents</option>
+          <option value="near"${irlSort === "near" ? " selected" : ""}>📍 Les plus proches</option>
+          <option value="popular"${irlSort === "popular" ? " selected" : ""}>🔥 Les plus courus</option>
+        </select>
+      </label>
+    </div>
+    <div class="irl-toolbar-count">
+      <b>${shownCount}</b> événement${shownCount > 1 ? "s" : ""}${nFilters ? " · " + nFilters + " filtre" + (nFilters > 1 ? "s" : "") : ""}
+      ${hidden > 0 ? `<button class="irl-showall" onclick="clearAllIrlFilters()">${hidden} masqué${hidden > 1 ? "s" : ""} · Tout voir</button>` : ""}
+    </div>`;
+}
+
+function setIrlSort(v) { irlSort = v; renderIRL(); }
+function setIrlPastMode(past) {
+  if (irlShowPast === !!past) return;
+  irlShowPast = !!past;
+  renderIRL();
+}
+
+// État vide : le message dépend de la RAISON du vide (filtres vs. vraiment aucun
+// événement), sinon on invite à « créer le premier » alors qu'il y en a 35.
+function _irlEmptyStateHtml() {
+  var filtered = _irlActiveFilterCount() > 0 || irlSearchQuery;
+  if (irlShowPast) {
+    return '<div class="empty"><div class="empty-icon">🕰</div><div class="empty-title">Aucun événement passé</div>'
+      + '<div class="empty-text">Tes souvenirs IRL apparaîtront ici après ton premier événement.</div>'
+      + '<button class="btn primary" style="margin-top:10px;" onclick="setIrlPastMode(false)">Voir les événements à venir</button></div>';
+  }
+  if (filtered) {
+    return '<div class="empty"><div class="empty-icon">🔍</div><div class="empty-title">Rien avec ces filtres</div>'
+      + '<div class="empty-text">Élargis la zone, la date ou la passion pour voir plus d\'événements.</div>'
+      + '<button class="btn primary" style="margin-top:10px;" onclick="clearAllIrlFilters()">✕ Tout afficher</button></div>';
+  }
+  return '<div class="empty"><div class="empty-icon">🗓</div><div class="empty-title">Aucun événement</div>'
+    + '<div class="empty-text">Crée le premier pour +30 pts.</div>'
+    + '<button class="btn primary" style="margin-top:10px;" onclick="openCreateEvent()">+ Créer</button></div>';
+}
+
 function renderIRL() {
   // Mettre à jour le titre de la ville (sélectionnée ou détectée)
   updateIrlCityTitle();
-
-  // Initialiser les filtres passion avec les profils de l'utilisateur (SYNCHRONE - pas d'attente)
-  initializeIrlPassionFilters();
 
   renderIrlPassionTiles();
   initIrlMap();
@@ -1320,6 +1496,7 @@ function renderIRL() {
 
   // Bouton filtres : badge + bordure accentuée
   _updateIrlFiltersBtn();
+  _renderIrlToolbar(filtered.length);
 
   // Sync pills date (multi-select) - carousel
   document.querySelectorAll("#irlDateCarousel .pill").forEach(function(p) {
@@ -1331,9 +1508,6 @@ function renderIRL() {
     btn.classList.toggle("active", irlFilters && irlFilters.has(btn.getAttribute("data-irlfilter")));
   });
 
-  // Trier par date croissante (prochain en premier)
-  filtered.sort(function(a, b) { return a.date - b.date; });
-
   // Données de démo (commentaires + réactions) pour les événements seed, afin de
   // VOIR la fonctionnalité tant qu'il n'y a pas encore de vrais utilisateurs.
   // Doit tourner AVANT de construire le markup (les cartes lisent ces caches).
@@ -1341,10 +1515,11 @@ function renderIRL() {
 
   const list = $("#eventList");
   if (filtered.length === 0) {
-    list.innerHTML = '<div class="empty"><div class="empty-icon">🗓</div><div class="empty-title">Aucun événement</div><div class="empty-text">Crée le premier pour +30 pts.</div><button class="btn primary" style="margin-top:10px;" onclick="openCreateEvent()">+ Créer</button></div>';
+    list.innerHTML = _irlEmptyStateHtml();
     return;
   }
 
+  const _ref = _irlReferenceLoc();
   list.innerHTML = filtered.map(e => {
     const passion = passionById(e.passion);
     const joined = (state.user.joinedEvents || []).includes(e.id);
@@ -1352,22 +1527,26 @@ function renderIRL() {
     const _evL = (window._eventLikes && window._eventLikes[e.id]) || { likes: 0, liked: false, emojiCounts: {} };
     const evLiked = (state.user.likedEvents || []).includes(e.id) || _evL.liked;
     const evLikeCount = _evL.likes || 0;
-    const _evEmojiKeys = Object.keys(_evL.emojiCounts || {});
-    const evStripHtml = _evEmojiKeys.length
-      ? _evEmojiKeys.slice(0, 5).map(k => '<span style="margin-right:8px;">' + escapeHtml(k) + ' ' + _evL.emojiCounts[k] + '</span>').join("")
-      : "";
     const d = fmtEventDate(e.date);
+    const cancelled = _eventIsCancelled(e);
+    const over = _eventIsOver(e);
+    const live = _eventIsLive(e);
     const daysLeft = Math.max(0, Math.ceil((e.date - Date.now()) / 86400000));
-    const urgency = daysLeft === 0 ? "🔴 Aujourd'hui" : daysLeft === 1 ? "🟠 Demain" : daysLeft <= 7 ? "🟢 Dans " + daysLeft + "j" : "";
+    const urgency = cancelled ? "" : live ? "🟣 En cours" : over ? "" :
+      daysLeft === 0 ? "🔴 Aujourd'hui" : daysLeft === 1 ? "🟠 Demain" : daysLeft <= 7 ? "🟢 Dans " + daysLeft + "j" : "";
     const atts = (e.attendees || []).slice(0, 4);
     const attAvatars = atts.map(aid => {
       const u = userById(aid) || { avatar: "#64748b", profileEmoji: "?" };
-      return `<div class="avatar sm" style="background:${avatarBg(u)};cursor:pointer;" onclick="openUserProfile('${aid}')">${avatarInner(u)}</div>`;
+      return `<div class="avatar sm" style="background:${avatarBg(u)};cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${escapeJsArg(aid)}')">${avatarInner(u)}</div>`;
     }).join("");
     const timeStr = e.time || d.time || "";
-    const venue = e.venue ? `· ${e.venue}` : "";
+    // ⚠️ Le « · » de séparation est ajouté ICI et NULLE PART AILLEURS (le bug
+    // historique « Lyon · · Café des Arts » venait d'un `· ` déjà collé au venue).
+    const venueStr = e.venue ? " · " + escapeHtml(e.venue) : "";
+    const distKm = _eventDistanceKm(e, _ref);
+    const distStr = distKm != null && distKm < 20000 ? " · " + _fmtDistance(distKm) : "";
     const priceTag = e.price !== undefined && e.price !== null && e.price !== "" ? `<span class="pill" style="padding:2px 7px;font-size:10px;">${e.price == 0 ? "Gratuit 🎉" : e.price + " 💎 Passia"}</span>` : "";
-    const typeTag = e.eventType ? `<span class="pill" style="padding:2px 7px;font-size:10px;">${e.eventType}</span>` : "";
+    const typeTag = e.eventType ? `<span class="pill" style="padding:2px 7px;font-size:10px;">${escapeHtml(e.eventType)}</span>` : "";
     const attCount = (e.attendees || []).length;
     const isFull = e.maxAttendees && attCount >= e.maxAttendees && !joined;
     const spotsTag = e.maxAttendees
@@ -1375,7 +1554,18 @@ function renderIRL() {
           ? `<span class="pill" style="padding:2px 7px;font-size:10px;color:#ef4444;border-color:rgba(239,68,68,0.4);">⚠️ Complet</span>`
           : `<span style="font-size:10px;color:var(--muted);">${attCount}/${e.maxAttendees} places</span>`)
       : "";
-    return `<div class="event-card" data-city="${escapeHtml((e.city||'').toLowerCase())}" data-title="${escapeHtml((e.title||'').toLowerCase())}" onclick="openEventDetails('${e.id}')">
+    // Le CTA raconte l'état réel : annulé > terminé > complet > inscrit > rejoindre.
+    const cta = cancelled
+      ? `<span class="pill" style="color:#ef4444;border-color:rgba(239,68,68,.4);">Annulé</span>`
+      : over
+        ? `<button class="btn small ghost" onclick="event.stopPropagation();openEventDetails('${escapeJsArg(e.id)}')">Revoir</button>`
+        : `<button class="btn small ${joined ? "ghost" : "primary"}" ${isFull ? "disabled" : ""} onclick="event.stopPropagation();toggleJoinEvent('${escapeJsArg(e.id)}')">${joined ? "✓ Inscrit" : isFull ? "Complet" : "+ Rejoindre"}</button>`;
+    return `<div class="event-card${cancelled ? " is-cancelled" : ""}${over ? " is-past" : ""}" role="button" tabindex="0"
+      data-evid="${escapeHtml(e.id)}"
+      data-city="${escapeHtml((e.city||'').toLowerCase())}" data-title="${escapeHtml((e.title||'').toLowerCase())}"
+      onclick="openEventDetails('${escapeJsArg(e.id)}')"
+      onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openEventDetails('${escapeJsArg(e.id)}');}">
+      ${cancelled ? '<div class="event-card-banner cancelled">🚫 Événement annulé par l\'organisateur</div>' : live ? '<div class="event-card-banner live">🟣 C\'est maintenant</div>' : ""}
       <div style="display:flex;gap:10px;">
         <div class="event-date-block">
           <div class="event-date-day">${d.day}</div>
@@ -1384,15 +1574,15 @@ function renderIRL() {
         </div>
         <div style="flex:1;min-width:0;">
           <div class="event-title">${escapeHtml(e.title)}</div>
-          <div class="event-meta">${passion.emoji} ${passion.label} · 📍 ${escapeHtml(e.city || "")}${venue ? " · " + escapeHtml(venue) : ""}${urgency ? ' · <span style="font-weight:700;">' + urgency + '</span>' : ""}</div>
+          <div class="event-meta">${passion.emoji} ${escapeHtml(passion.label)} · 📍 ${escapeHtml(e.city || "")}${venueStr}${distStr}${urgency ? ' · <span style="font-weight:700;">' + urgency + '</span>' : ""}</div>
           <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px;">${priceTag}${typeTag}${spotsTag}</div>
         </div>
-        ${e._mine ? '<span class="pill active" style="height:fit-content;flex-shrink:0;">Organisé</span>' : ""}
+        ${_isMyEvent(e) ? '<span class="pill active" style="height:fit-content;flex-shrink:0;">Organisé</span>' : ""}
       </div>
       <div style="font-size:12px;color:var(--text-dim);margin-top:8px;line-height:1.5;">${escapeHtml((e.desc || "").slice(0, 120))}${(e.desc||"").length > 120 ? "…" : ""}</div>
       <div class="event-footer">
-        <div class="attendees">${attAvatars}<span class="pill" style="margin-left:6px;padding:3px 8px;">${(e.attendees || []).length} inscrit${(e.attendees||[]).length>1?"s":""}</span></div>
-        <button class="btn small ${joined ? "ghost" : "primary"}" ${isFull ? "disabled" : ""} onclick="event.stopPropagation();toggleJoinEvent('${e.id}')">${joined ? "✓ Inscrit" : isFull ? "Complet" : "+ Rejoindre"}</button>
+        <div class="attendees">${attAvatars}<span class="pill" style="margin-left:6px;padding:3px 8px;">${attCount} inscrit${attCount > 1 ? "s" : ""}</span></div>
+        ${cta}
       </div>
       <div class="post-actions" onclick="event.stopPropagation()">
         <span class="post-action ${evLiked ? "liked" : ""}" data-evlike="${e.id}" onclick="event.stopPropagation();toggleEventLike('${e.id}', this)">${evLiked ? "❤️" : "🤍"} ${evLikeCount}</span>
@@ -1758,6 +1948,7 @@ function toggleJoinEvent(id) {
   // compteur d'inscrits et les avatars ne se mettaient jamais à jour localement.
   const ev = _findCanonicalEvent(id) || allEvents().find(e => e.id === id);
   if (!ev) return;
+  if (_eventIsCancelled(ev)) { toast("Cet événement a été annulé"); return; }
   const meId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
   const joined = (state.user.joinedEvents || []).includes(id);
   if (joined) {
@@ -1782,7 +1973,30 @@ function toggleJoinEvent(id) {
     }
   }
   saveState();
-  renderIRL();
+  // Patch EN PLACE de la carte concernée : un renderIRL() complet renvoyait le
+  // scroll en haut de la liste (et, avant le guard de signature, recadrait la
+  // carte Leaflet). Même principe que les commentaires du fil.
+  _patchEventCardJoin(id);
+}
+
+// Met à jour la ligne « inscrits » + le bouton d'une carte sans reconstruire la liste.
+function _patchEventCardJoin(id) {
+  // Si le filtre « Inscrit » est actif, la carte doit APPARAÎTRE/DISPARAÎTRE :
+  // un patch en place ne suffit pas, on refait la liste.
+  if (irlFilters && irlFilters.has("joined")) { renderIRL(); return; }
+  const ev = _findCanonicalEvent(id) || allEvents().find(e => e.id === id);
+  const card = document.querySelector('#eventList .event-card[data-evid="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]');
+  if (!ev || !card) { renderIRL(); return; }
+  const joined = (state.user.joinedEvents || []).includes(id);
+  const atts = ev.attendees || [];
+  const isFull = ev.maxAttendees && atts.length >= ev.maxAttendees && !joined;
+  const footer = card.querySelector(".event-footer");
+  if (!footer) { renderIRL(); return; }
+  footer.innerHTML = `<div class="attendees">${atts.slice(0, 4).map(aid => {
+      const u = userById(aid) || { avatar: "#64748b", profileEmoji: "?" };
+      return `<div class="avatar sm" style="background:${avatarBg(u)};cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${escapeJsArg(aid)}')">${avatarInner(u)}</div>`;
+    }).join("")}<span class="pill" style="margin-left:6px;padding:3px 8px;">${atts.length} inscrit${atts.length > 1 ? "s" : ""}</span></div>
+    <button class="btn small ${joined ? "ghost" : "primary"}" ${isFull ? "disabled" : ""} onclick="event.stopPropagation();toggleJoinEvent('${escapeJsArg(id)}')">${joined ? "✓ Inscrit" : isFull ? "Complet" : "+ Rejoindre"}</button>`;
 }
 
 function filterIrlByDistance() {
@@ -2070,13 +2284,29 @@ function openEventDetails(id) {
     ev.externalLink ? infoRow("🔗", "Plus d'infos", `<a href="${escapeHtml(ev.externalLink)}" target="_blank" class="event-detail-info-link">${escapeHtml(ev.externalLink.replace(/^https?:\/\//, "").slice(0, 45))}</a>`) : "",
   ].filter(Boolean).join("");
 
-  document.getElementById("eventDetailContent").innerHTML = `
-    <div class="event-detail-urgency ${urgencyClass}">${urgencyText}</div>
+  const cancelled = _eventIsCancelled(ev);
+  const over = _eventIsOver(ev);
+  const live = _eventIsLive(ev);
+  const mine = _isMyEvent(ev);
 
-    <div style="display:flex;gap:8px;margin:10px 0;">
-      <button class="btn ghost block" onclick="downloadEventIcs('${ev.id}')" style="font-size:12px;">📅 Ajouter au calendrier</button>
-      <button class="btn ghost block" onclick="shareEvent('${ev.id}')" style="font-size:12px;">${shareIconSvg(14)} Partager</button>
+  document.getElementById("eventDetailContent").innerHTML = `
+    ${cancelled ? '<div class="event-detail-urgency cancelled">🚫 Cet événement a été annulé par l\'organisateur</div>'
+      : live ? '<div class="event-detail-urgency live">🟣 C\'est maintenant — bon moment !</div>'
+      : over ? '<div class="event-detail-urgency past">🕰 Événement terminé</div>'
+      : `<div class="event-detail-urgency ${urgencyClass}">${urgencyText}</div>`}
+
+    <div style="display:flex;gap:8px;margin:10px 0;flex-wrap:wrap;">
+      ${over ? "" : `<button class="btn ghost block" onclick="downloadEventIcs('${escapeJsArg(ev.id)}')" style="font-size:12px;">📅 Ajouter au calendrier</button>`}
+      <button class="btn ghost block" onclick="shareEvent('${escapeJsArg(ev.id)}')" style="font-size:12px;">${shareIconSvg(14)} Partager</button>
+      ${mine ? `<button class="btn ghost block" onclick="openEventManage('${escapeJsArg(ev.id)}')" style="font-size:12px;">⚙️ Gérer</button>` : ""}
     </div>
+
+    ${over && !cancelled ? `
+      <div class="event-recap-cta">
+        <div class="event-recap-title">📸 Tu y étais ?</div>
+        <div class="event-recap-text">Partage tes photos et ton ressenti — ça fait vivre l'événement après coup.</div>
+        <button class="btn primary block" style="margin-top:8px;font-size:12px;" onclick="shareEventExperience('${escapeJsArg(ev.id)}')">Partager mon expérience</button>
+      </div>` : ""}
 
     <div class="event-detail-info-card">${infoRows}</div>
 
@@ -2104,6 +2334,8 @@ function openEventDetails(id) {
       ${_cmtComposerToolsHtml("eventCommentInput", "addEventComment", ev.id)}
       <button class="btn primary" onclick="addEventComment('${ev.id}')" style="font-size:13px;padding:10px 14px;">Envoyer</button>
     </div>
+
+    ${mine ? "" : `<button class="btn ghost block" style="margin-top:18px;font-size:12px;color:var(--muted);" onclick="reportEvent('${escapeJsArg(ev.id)}')">⚠️ Signaler cet événement</button>`}
   `;
 
   _loadEventComments(ev.id);
@@ -2121,13 +2353,38 @@ function openEventDetails(id) {
 function _refreshEventDetailCta(ev, joined) {
   const cta = document.getElementById("eventDetailCta");
   if (!cta) return;
+  if (_eventIsCancelled(ev)) {
+    cta.innerHTML = `<button class="btn ghost block" disabled>🚫 Événement annulé</button>`;
+    return;
+  }
+  if (_eventIsOver(ev)) {
+    cta.innerHTML = `<button class="btn primary block" onclick="shareEventExperience('${escapeJsArg(ev.id)}')">📸 Partager mon expérience</button>`;
+    return;
+  }
   const spotsLeft = ev.maxAttendees ? ev.maxAttendees - (ev.attendees || []).length : null;
   const isFull = spotsLeft !== null && spotsLeft <= 0 && !joined;
   cta.innerHTML = `
-    <button class="btn ${joined ? "ghost" : "primary"} block" ${isFull ? "disabled" : ""} onclick="toggleJoinEventDetail('${ev.id}')">
+    <button class="btn ${joined ? "ghost" : "primary"} block" ${isFull ? "disabled" : ""} onclick="toggleJoinEventDetail('${escapeJsArg(ev.id)}')">
       ${joined ? "✓ Inscrit — Se désinscrire" : isFull ? "⚠️ Complet" : "+ Rejoindre · +25 pts · +5 💎"}
     </button>
   `;
+}
+
+// Récap d'après-événement : ouvre le Studio pré-rempli avec le contexte de
+// l'événement. C'est le chaînon manquant entre « je participe » et « je partage
+// mon contenu » — le cœur de la promesse PASSIO.
+function shareEventExperience(id) {
+  const ev = _findCanonicalEvent(id) || allEvents().find(e => e.id === id);
+  if (!ev) return;
+  closeEventDetail();
+  const d = fmtEventDate(ev.date);
+  const prefill = `📍 ${ev.title}${ev.city ? " · " + ev.city : ""} (${d.day} ${d.month})\n\n`;
+  goTo("studio");
+  setTimeout(() => {
+    const ta = document.getElementById("postText") || document.querySelector("#screen-studio textarea");
+    if (ta) { ta.value = prefill; ta.focus(); ta.dispatchEvent(new Event("input", { bubbles: true })); }
+    toast("📸 Ajoute tes photos et raconte !");
+  }, 250);
 }
 
 function toggleJoinEventDetail(id) {
@@ -2215,6 +2472,33 @@ function downloadEventIcs(id) {
     toast("📅 Événement ajouté à ton calendrier (rappel J-1 inclus)");
   } catch (e) { toast("Export calendrier impossible"); }
 }
+
+// ⚠️ Le lien « #irl-event-<id> » n'était lu par PERSONNE : partager un événement
+// donnait un lien qui ouvrait bêtement l'accueil. On l'ouvre désormais au boot et
+// à chaque changement de hash. (Corrigé le 2026-07-21.)
+function _openIrlEventFromHash() {
+  const m = /#irl-event-([\w-]+)/.exec(location.hash || "");
+  if (!m) return false;
+  const id = m[1];
+  const open = () => {
+    if (typeof goTo === "function") goTo("irl");
+    if (typeof openEventDetails === "function") openEventDetails(id);
+  };
+  // L'événement peut n'arriver qu'avec le chargement Supabase : on retente.
+  if (allEvents().some(e => e.id === id)) { open(); return true; }
+  let tries = 0;
+  const t = setInterval(() => {
+    if (allEvents().some(e => e.id === id)) { clearInterval(t); open(); }
+    else if (++tries > 12) { clearInterval(t); toast("Événement introuvable ou supprimé"); }
+  }, 700);
+  return true;
+}
+window.addEventListener("hashchange", _openIrlEventFromHash);
+(function _irlDeepLinkBoot() {
+  if (!/#irl-event-/.test(location.hash || "")) return;
+  // Après le gate + le boot (les événements Supabase arrivent en différé).
+  setTimeout(_openIrlEventFromHash, 1200);
+})();
 
 // Partage d'un événement : Web Share API si dispo, sinon copie du lien.
 function shareEvent(id) {
@@ -2431,19 +2715,34 @@ function removeEventCover() {
   if (fileInput) fileInput.value = "";
 }
 
-function openCreateEvent() {
+function openCreateEvent(editId) {
+  const ed = editId ? _findCanonicalEvent(editId) : null;
+  if (editId && !ed) { toast("Événement introuvable"); return; }
+  window._evPickedCoords = ed && ed.lat ? { lat: ed.lat, lng: ed.lng } : null;
+
+  // Toutes les passions sont proposées (les miennes en tête) : restreindre le
+  // choix aux profils créés empêchait d'organiser un événement « photo » quand on
+  // n'avait qu'un profil « musique ».
   const myPassionIds = (state.user.profiles || []).map(pr => pr.passion).filter(Boolean);
-  const myPassions = allPassions().filter(p => myPassionIds.includes(p.id));
-  const passionOptions = (myPassions.length ? myPassions : allPassions())
-    .map(p => `<option value="${p.id}">${p.emoji} ${p.label}</option>`).join("");
+  const sortedPassions = allPassions().slice().sort((a, b) =>
+    (myPassionIds.includes(a.id) ? 0 : 1) - (myPassionIds.includes(b.id) ? 0 : 1));
+  const selPassion = ed ? ed.passion : "";
+  const passionOptions = sortedPassions
+    .map(p => `<option value="${escapeHtml(p.id)}"${p.id === selPassion ? " selected" : ""}>${p.emoji} ${escapeHtml(p.label)}${myPassionIds.includes(p.id) ? " ✦" : ""}</option>`).join("");
 
   const eventTypes = ["Atelier", "Jam session", "Concert", "Exposition", "Sport & activité", "Randonnée", "Dégustation", "Book club", "Cours", "Marché", "Soirée", "Rencontre", "Conférence", "Compétition", "Autre"];
-  const typeOptions = eventTypes.map(t => `<option value="${t}">${t}</option>`).join("");
+  const typeOptions = eventTypes.map(t => `<option value="${t}"${ed && ed.eventType === t ? " selected" : ""}>${t}</option>`).join("");
+  const v = (x, d) => escapeHtml(String(ed && ed[x] != null && ed[x] !== "" ? ed[x] : (d == null ? "" : d)));
+  // Date pré-remplie DANS le markup (et non via un setTimeout après ouverture) :
+  // le champ était vide pendant les premières millisecondes et une soumission
+  // rapide échouait sur « Choisis une date ».
+  const _localDay = (ts) => new Date(ts - new Date(ts).getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  const dateValue = ed ? _localDay(ed.date) : _localDay(Date.now() + 7 * 86400000);
 
   openModal(`
     <div class="modal-handle"></div>
-    <div class="modal-title">✨ Créer un événement IRL</div>
-    <div class="modal-subtitle">Rejoins ou crée des moments réels avec ta communauté. +30 pts · +5 💎</div>
+    <div class="modal-title">${editId ? "✏️ Modifier l'événement" : "✨ Créer un événement IRL"}</div>
+    <div class="modal-subtitle">${editId ? "Les inscrits seront prévenus de tes changements." : "Rejoins ou crée des moments réels avec ta communauté. +30 pts · +5 💎"}</div>
 
     <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.12em;color:var(--accent);margin:14px 0 8px;">🖼 Photo de couverture</div>
     <div id="evCoverPreviewWrap" style="width:100%;height:140px;border-radius:14px;overflow:hidden;background:linear-gradient(135deg,#4c1d95,#7c3aed);display:flex;align-items:center;justify-content:center;margin-bottom:10px;position:relative;cursor:pointer;" onclick="document.getElementById('evCoverFile').click()">
@@ -2460,7 +2759,7 @@ function openCreateEvent() {
 
     <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.12em;color:var(--accent);margin:14px 0 8px;">📝 Infos principales</div>
     <label class="field"><span>Titre *</span>
-      <input type="text" class="input" id="evTitle" placeholder="Ex : Jam session guitare débutants" maxlength="80"/>
+      <input type="text" class="input" id="evTitle" placeholder="Ex : Jam session guitare débutants" maxlength="80" value="${v("title")}"/>
     </label>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
       <label class="field"><span>Passion *</span>
@@ -2470,61 +2769,221 @@ function openCreateEvent() {
         <select class="input" id="evType">${typeOptions}</select>
       </label>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
       <label class="field"><span>Date *</span>
-        <input type="date" class="input" id="evDate"/>
+        <input type="date" class="input" id="evDate" value="${dateValue}" min="${ed ? "" : _localDay(Date.now())}"/>
       </label>
       <label class="field"><span>Heure</span>
-        <input type="time" class="input" id="evTime" value="18:00"/>
+        <input type="time" class="input" id="evTime" value="${v("time", "18:00")}"/>
+      </label>
+      <label class="field"><span>Durée</span>
+        <select class="input" id="evDuration">
+          ${[1,2,3,4,6,8,12,24].map(h => `<option value="${h}"${(ed && Math.round((_eventEndAt(ed) - ed.date)/3600000) === h) || (!ed && h === 2) ? " selected" : ""}>${h < 24 ? h + " h" : "Journée"}</option>`).join("")}
+        </select>
       </label>
     </div>
 
     <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.12em;color:var(--accent);margin:14px 0 8px;">📍 Lieu</div>
+    <!-- Autocomplétion : sans elle, la ville était saisie à la main puis
+         géocodée « au mieux » — un lieu mal orthographié n'apparaissait jamais
+         sur la carte, et l'événement devenait invisible en filtre distance. -->
+    <label class="field"><span>Chercher le lieu ou l'adresse</span>
+      <input type="text" class="input" id="evPlaceSearch" autocomplete="off" placeholder="Tape une adresse, un bar, une salle…" oninput="_evPlaceSuggest(this.value)"/>
+    </label>
+    <div id="evPlaceSuggestions" class="irl-suggest" style="display:none;"></div>
+    <div id="evPlacePicked" style="display:${ed && ed.lat ? "flex" : "none"};align-items:center;gap:6px;font-size:12px;color:#16a34a;font-weight:700;margin:-4px 0 10px;">📍 <span>Position précise enregistrée</span></div>
+
     <label class="field"><span>Nom du lieu</span>
-      <input type="text" class="input" id="evVenue" placeholder="Café du Coin, Parc, Studio…" maxlength="80"/>
+      <input type="text" class="input" id="evVenue" placeholder="Café du Coin, Parc, Studio…" maxlength="80" value="${v("venue")}"/>
     </label>
     <label class="field"><span>Adresse</span>
-      <input type="text" class="input" id="evAddress" placeholder="12 rue de la Paix" maxlength="100"/>
+      <input type="text" class="input" id="evAddress" placeholder="12 rue de la Paix" maxlength="100" value="${v("address")}"/>
     </label>
     <div style="display:grid;grid-template-columns:1fr 2fr;gap:10px;">
       <label class="field"><span>Code postal</span>
-        <input type="text" class="input" id="evPostal" placeholder="75001" maxlength="10"/>
+        <input type="text" class="input" id="evPostal" placeholder="75001" maxlength="10" value="${v("postalCode")}"/>
       </label>
       <label class="field"><span>Ville *</span>
-        <input type="text" class="input" id="evCity" placeholder="Paris" maxlength="60"/>
+        <input type="text" class="input" id="evCity" placeholder="Paris" maxlength="60" value="${v("city")}"/>
       </label>
     </div>
 
     <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.12em;color:var(--accent);margin:14px 0 8px;">ℹ️ Détails</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
       <label class="field"><span>Prix en Passia 💎 (0 = gratuit)</span>
-        <input type="number" class="input" id="evPrice" placeholder="0" min="0" max="99999" value="0"/>
+        <input type="number" class="input" id="evPrice" placeholder="0" min="0" max="99999" value="${v("price", 0)}"/>
       </label>
       <label class="field"><span>Places max</span>
-        <input type="number" class="input" id="evMax" placeholder="Illimité" min="1" max="9999"/>
+        <input type="number" class="input" id="evMax" placeholder="Illimité" min="1" max="9999" value="${v("maxAttendees")}"/>
       </label>
     </div>
     <label class="field"><span>Contact (tél ou email)</span>
-      <input type="text" class="input" id="evContact" placeholder="06 12 34 56 78" maxlength="80"/>
+      <input type="text" class="input" id="evContact" placeholder="06 12 34 56 78" maxlength="80" value="${v("contact")}"/>
     </label>
     <label class="field"><span>Lien (Eventbrite, site…)</span>
-      <input type="url" class="input" id="evLink" placeholder="https://…" maxlength="200"/>
+      <input type="url" class="input" id="evLink" placeholder="https://…" maxlength="200" value="${v("externalLink")}"/>
     </label>
     <label class="field"><span>Description</span>
-      <textarea class="textarea" id="evDesc" placeholder="Programme, ambiance, quoi apporter…" maxlength="800" style="min-height:90px;"></textarea>
+      <textarea class="textarea" id="evDesc" placeholder="Programme, ambiance, quoi apporter…" maxlength="800" style="min-height:90px;">${v("desc")}</textarea>
     </label>
 
-    <button class="btn primary block" style="margin-top:8px;" onclick="submitEvent()">🎉 Publier · +30 pts</button>
+    <button class="btn primary block" style="margin-top:8px;" onclick="submitEvent(${editId ? "'" + escapeJsArg(editId) + "'" : ""})">${editId ? "💾 Enregistrer les modifications" : "🎉 Publier · +30 pts"}</button>
   `);
 
   setTimeout(() => {
-    const d = new Date(Date.now() + 7 * 86400000);
-    const inp = document.getElementById("evDate");
-    if (inp) inp.value = d.toISOString().slice(0, 10);
+    // Couverture existante en édition
+    if (ed && ed.coverUrl) {
+      const img = document.getElementById("evCoverPreviewImg");
+      const ph = document.getElementById("evCoverPreviewPlaceholder");
+      const rm = document.getElementById("evCoverRemoveBtn");
+      const dt = document.getElementById("evCoverData");
+      if (img) { img.src = ed.coverUrl; img.style.display = "block"; }
+      if (ph) ph.style.display = "none";
+      if (rm) rm.style.display = "block";
+      if (dt) dt.value = ed.coverUrl;
+    }
   }, 20);
 }
 
-async function submitEvent() {
+// ===== Autocomplétion de lieu du formulaire (Nominatim) =====
+// Remplit venue/adresse/CP/ville ET mémorise les coordonnées EXACTES : c'est ce
+// qui garantit que le marqueur tombe au bon endroit et que le filtre distance
+// fonctionne. Sans « , France » forcé → les événements à l'étranger marchent.
+let _evPlaceT;
+function _evPlaceSuggest(query) {
+  const box = document.getElementById("evPlaceSuggestions");
+  if (!box) return;
+  clearTimeout(_evPlaceT);
+  if (!query || query.trim().length < 3) { box.style.display = "none"; return; }
+  _evPlaceT = setTimeout(async () => {
+    let results = [];
+    try {
+      const r = await fetch("https://nominatim.openstreetmap.org/search?q="
+        + encodeURIComponent(query) + "&format=json&limit=6&addressdetails=1");
+      results = await r.json();
+    } catch (e) { results = []; }
+    if (!results || !results.length) {
+      box.innerHTML = '<div class="irl-suggest-empty">Aucun lieu trouvé</div>';
+      box.style.display = "block";
+      return;
+    }
+    window._evSuggestCache = results;
+    box.innerHTML = results.map((res, i) => {
+      const head = String(res.display_name || "").split(",")[0];
+      const rest = String(res.display_name || "").split(",").slice(1).join(",").trim();
+      return `<button type="button" class="irl-suggest-item" onclick="_evPlacePick(${i})">
+        <b>${escapeHtml(head)}</b><span>${escapeHtml(rest.slice(0, 70))}</span>
+      </button>`;
+    }).join("");
+    box.style.display = "block";
+  }, 300);
+}
+
+function _evPlacePick(i) {
+  const res = (window._evSuggestCache || [])[i];
+  if (!res) return;
+  const a = res.address || {};
+  const set = (id, val) => { const el = document.getElementById(id); if (el && val) el.value = val; };
+  const head = String(res.display_name || "").split(",")[0];
+  // Un POI (bar, salle) donne un nom ; une adresse pure donne juste un numéro.
+  if (!/^\d/.test(head)) set("evVenue", head);
+  set("evAddress", [a.house_number, a.road].filter(Boolean).join(" ") || (/^\d/.test(head) ? head : ""));
+  set("evPostal", a.postcode);
+  set("evCity", a.city || a.town || a.village || a.municipality || a.county || "");
+  window._evPickedCoords = { lat: parseFloat(res.lat), lng: parseFloat(res.lon) };
+  const box = document.getElementById("evPlaceSuggestions");
+  if (box) box.style.display = "none";
+  const ok = document.getElementById("evPlacePicked");
+  if (ok) ok.style.display = "flex";
+  toast("📍 " + head);
+}
+
+// ===== Gestion d'un événement par son organisateur =====
+function openEventManage(id) {
+  const ev = _findCanonicalEvent(id) || allEvents().find(e => e.id === id);
+  if (!ev) return;
+  if (!_isMyEvent(ev)) { toast("Seul l'organisateur peut gérer cet événement"); return; }
+  const cancelled = _eventIsCancelled(ev);
+  const n = (ev.attendees || []).length;
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">⚙️ Gérer l'événement</div>
+    <div class="modal-subtitle">${escapeHtml(ev.title || "")} · ${n} inscrit${n > 1 ? "s" : ""}</div>
+    <button class="btn ghost block" style="margin-top:12px;" onclick="closeModal();openCreateEvent('${escapeJsArg(id)}')">✏️ Modifier les informations</button>
+    <button class="btn ghost block" style="margin-top:8px;" onclick="closeModal();_messageEventAttendees('${escapeJsArg(id)}')">📣 Prévenir les inscrits</button>
+    <button class="btn ghost block" style="margin-top:8px;" onclick="toggleCancelEvent('${escapeJsArg(id)}')">${cancelled ? "↩️ Réactiver l'événement" : "🚫 Annuler l'événement"}</button>
+    <button class="btn ghost block" style="margin-top:8px;color:#ef4444;border-color:rgba(239,68,68,.35);" onclick="deleteEventConfirm('${escapeJsArg(id)}')">🗑 Supprimer définitivement</button>
+    <button class="btn secondary block" style="margin-top:12px;" onclick="closeModal()">Fermer</button>
+  `);
+}
+
+// Annulation « douce » : l'événement reste visible et barré pour les inscrits,
+// qui reçoivent une notification. Supprimer purement l'événement les laissait
+// venir sur place sans jamais savoir que c'était annulé.
+async function toggleCancelEvent(id) {
+  const ev = _findCanonicalEvent(id);
+  if (!ev) return;
+  const cancel = !_eventIsCancelled(ev);
+  if (cancel && !confirm("Annuler cet événement ? Les inscrits seront prévenus.")) return;
+  ev.status = cancel ? "cancelled" : "active";
+  saveState();
+  closeModal();
+  renderIRL();
+  if (window._supaReal && typeof supaCancelEvent === "function") {
+    const ok = await supaCancelEvent(id, cancel);
+    if (!ok) { toast("⚠️ Changement non synchronisé"); return; }
+  }
+  if (cancel) _notifyEventAttendees(ev, "a annulé un événement auquel tu participais");
+  toast(cancel ? "🚫 Événement annulé — inscrits prévenus" : "✅ Événement réactivé");
+}
+
+async function deleteEventConfirm(id) {
+  const ev = _findCanonicalEvent(id);
+  if (!ev) return;
+  if (!confirm("Supprimer définitivement « " + (ev.title || "") + " » ? Cette action est irréversible.")) return;
+  if (window._supaReal && typeof supaDeleteEvent === "function") await supaDeleteEvent(id);
+  state.userEvents = (state.userEvents || []).filter(e => e.id !== id);
+  state.seed.events = (state.seed.events || []).filter(e => e.id !== id);
+  state.user.joinedEvents = (state.user.joinedEvents || []).filter(x => x !== id);
+  saveState();
+  closeModal();
+  closeEventDetail();
+  window._irlMapSig = null; // la carte doit perdre son marqueur
+  renderIRL();
+  toast("🗑 Événement supprimé");
+}
+
+// Message groupé aux inscrits (annonce de dernière minute, changement de lieu…).
+function _messageEventAttendees(id) {
+  const ev = _findCanonicalEvent(id);
+  if (!ev) return;
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">📣 Prévenir les inscrits</div>
+    <div class="modal-subtitle">${(ev.attendees || []).length} personne(s) recevront une notification.</div>
+    <label class="field"><span>Message</span>
+      <textarea class="textarea" id="evBroadcast" maxlength="200" placeholder="Ex : on se retrouve finalement devant l'entrée nord !"></textarea>
+    </label>
+    <button class="btn primary block" onclick="_sendEventBroadcast('${escapeJsArg(id)}')">Envoyer</button>
+  `);
+}
+
+function _sendEventBroadcast(id) {
+  const ev = _findCanonicalEvent(id);
+  const txt = (document.getElementById("evBroadcast")?.value || "").trim();
+  if (!ev || !txt) { toast("Écris un message"); return; }
+  _notifyEventAttendees(ev, escapeHtml(txt.slice(0, 200)));
+  closeModal();
+  toast("📣 Message envoyé aux inscrits");
+}
+
+// Signalement d'un événement (parité avec posts / profils / lives CDV).
+function reportEvent(id) {
+  if (typeof supaReport === "function") supaReport("event", id, "");
+  toast("⚠️ Signalement envoyé — merci");
+}
+
+async function submitEvent(editId) {
   const g = (id) => document.getElementById(id);
   const title = (g("evTitle")?.value || "").trim();
   const passion = g("evPassion")?.value || "";
@@ -2542,6 +3001,8 @@ async function submitEvent() {
   const eventType = g("evType")?.value || "Autre";
   const coverUrl = (g("evCoverData")?.value || "").trim() || null;
 
+  const durationH = parseFloat(g("evDuration")?.value || "2") || 2;
+
   if (title.length < 3) { toast("Titre trop court (3 caractères min)"); return; }
   if (!city) { toast("Indique une ville"); return; }
   if (!date) { toast("Choisis une date"); return; }
@@ -2549,36 +3010,95 @@ async function submitEvent() {
 
   const ts = new Date(date + "T" + time).getTime();
   if (isNaN(ts)) { toast("Date invalide"); return; }
+  // Créer un événement DANS LE PASSÉ n'avait aucun garde-fou : il partait en base
+  // puis était filtré à l'affichage → l'organisateur ne le retrouvait jamais.
+  if (!editId && ts < Date.now() - 3600000) { toast("⏰ Cette date est déjà passée"); return; }
+
+  const meId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
+  const existing = editId ? _findCanonicalEvent(editId) : null;
+  if (editId && !existing) { toast("Événement introuvable"); return; }
 
   const p = passionById(passion) || { emoji: "✨" };
-  const ev = {
-    id: uid(), title, passion,
+  const ev = Object.assign(existing || {}, {
+    id: editId || uid(), title, passion,
     emoji: p.emoji, date: ts, time, city,
     venue, address, postalCode, desc,
     price, maxAttendees, contact, externalLink, eventType,
     coverUrl,
-    organizerId: "me", attendees: ["me"],
-    lat: null, lng: null,
-  };
-  // Coordonnées : ville connue (dictionnaire) sinon géocodage Nominatim de l'adresse
-  // complète → le marqueur apparaît même pour une ville hors dictionnaire.
-  const known = cityToLatLng(city);
-  if (known) { ev.lat = known[0]; ev.lng = known[1]; }
+    durationH,
+    endAt: ts + Math.round(durationH * 3600000),
+    status: (existing && existing.status) || "active",
+    organizerId: (existing && existing.organizerId) || meId,
+    attendees: (existing && existing.attendees) || [meId],
+    lat: (existing && existing.lat) || null,
+    lng: (existing && existing.lng) || null,
+  });
+
+  // Coordonnées : ① choisies via l'autocomplétion d'adresse (les plus précises),
+  // ② dictionnaire de villes, ③ géocodage Nominatim de l'adresse complète.
+  const picked = window._evPickedCoords;
+  if (picked && picked.lat) { ev.lat = picked.lat; ev.lng = picked.lng; }
   else {
-    const geo = await _geocodeAddress([address, postalCode, city, "France"].filter(Boolean).join(", "));
-    if (geo) { ev.lat = geo.lat; ev.lng = geo.lng; }
+    const known = cityToLatLng(city);
+    if (known) { ev.lat = known[0]; ev.lng = known[1]; }
+    else {
+      // Ne PAS forcer « France » : un événement à Lisbonne ou Berlin n'était
+      // jamais géolocalisé (donc absent de la carte) à cause de ce suffixe.
+      const geo = await _geocodeAddress([venue, address, postalCode, city].filter(Boolean).join(", "));
+      if (geo) { ev.lat = geo.lat; ev.lng = geo.lng; }
+    }
   }
-  state.userEvents = state.userEvents || [];
-  state.userEvents.unshift(ev);
-  state.user.joinedEvents = state.user.joinedEvents || [];
-  state.user.joinedEvents.push(ev.id);
-  grantReward("event_create");
-  saveState();
-  // Sync Supabase (coords incluses)
-  if (typeof supaPublishEvent === "function") supaPublishEvent(ev);
+  window._evPickedCoords = null;
+
   closeModal();
+  toast(editId ? "💾 Enregistrement…" : "📤 Publication en cours…");
+
+  // Photo de couverture : upload sur Storage AVANT l'insert. Avant, le data URL
+  // base64 partait tel quel dans events.cover_url → des centaines de Ko de base64
+  // en base, rechargés à chaque supaLoadEvents pour TOUS les comptes.
+  if (coverUrl && coverUrl.indexOf("data:") === 0 && typeof supaUploadMedia === "function" && window._supaReal) {
+    try {
+      const up = await supaUploadMedia(ev.id, "events", coverUrl, "photo");
+      ev.coverUrl = (up && up.indexOf("http") === 0) ? up : null;
+    } catch (e) { ev.coverUrl = null; }
+  }
+
+  if (!editId) {
+    state.userEvents = state.userEvents || [];
+    state.userEvents.unshift(ev);
+    state.user.joinedEvents = state.user.joinedEvents || [];
+    if (!state.user.joinedEvents.includes(ev.id)) state.user.joinedEvents.push(ev.id);
+    grantReward("event_create");
+  }
+  saveState();
   renderIRL();
-  toast("🎉 Événement créé !");
+
+  // Sync Supabase — on ne ment plus sur le résultat (même leçon que les bobines
+  // fantômes du 2026-07-19 : « publié ! » alors que rien n'était en base).
+  let ok = true;
+  if (window._supaReal) {
+    ok = editId
+      ? await supaUpdateEvent(ev)
+      : await supaPublishEvent(ev);
+    // L'organisateur DOIT être une vraie ligne event_attendees, sinon son propre
+    // événement affichait « 0 inscrit » chez tous les autres comptes.
+    if (ok && !editId && typeof supaJoinEvent === "function") supaJoinEvent(ev.id);
+    if (ok && editId) _notifyEventAttendees(ev, "a modifié un événement auquel tu participes");
+  }
+  renderIRL();
+  toast(ok
+    ? (editId ? "✅ Événement mis à jour" : "🎉 Événement publié !")
+    : "⚠️ Enregistré ici, mais pas encore envoyé — réessaie quand tu auras du réseau");
+}
+
+// Notifie tous les inscrits (hors moi) d'un changement sur l'événement.
+function _notifyEventAttendees(ev, text) {
+  const meId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
+  if (typeof supaInsertNotif !== "function") return;
+  (ev.attendees || []).forEach(function(uidTo) {
+    if (!uidTo || uidTo === meId || uidTo === "me") return;
+    try { supaInsertNotif(uidTo, "event_update", ev.id, text); } catch (e) {}
+  });
 }
 
 // Géocode une adresse libre via Nominatim → { lat, lng } ou null.
