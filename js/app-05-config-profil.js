@@ -64,7 +64,7 @@ function applyConfig() {
         .nav-item.active { color: " + c.accent + " !important; }\
         .btn.primary { background: linear-gradient(135deg, " + c.accent + ", " + c.c3 + ") !important; }\
         .pill.active { background: " + c.accent + " !important; }\
-        .mood-btn.active .mood-btn-icon { border-color: " + c.accent + " !important; box-shadow: 0 0 0 3px rgba(" + c.shadow + ",0.18) !important; }\
+        .mood-btn.active { color: " + c.accent + " !important; border-bottom-color: " + c.accent + " !important; }\
         .profile-tile.active .profile-tile-avatar { box-shadow: 0 4px 18px rgba(" + c.shadow + ",0.45) !important; }\
         .story-ring:not(.seen):not(.create) { background: linear-gradient(135deg, " + c.accent + ", " + c.c3 + ") !important; }\
         .kpi.score .kpi-value { color: " + c.accent + " !important; }\
