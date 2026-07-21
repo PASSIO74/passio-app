@@ -334,12 +334,67 @@ function _eventEndAt(ev) {
   return ev.date + IRL_DEFAULT_DURATION_MS;
 }
 
+// ===== RSVP en 3 états + liste d'attente + check-in =====
+// Un booléen « inscrit / pas inscrit » ment : beaucoup de gens sont intéressés
+// sans être sûrs. Trois états honnêtes (going / maybe / declined) + une file
+// d'attente quand c'est complet (cf. Partiful, Luma, Eventbrite).
+const RSVP_LABELS = {
+  going:    { label: "Je viens",       short: "✓ Je viens",   emoji: "✅" },
+  maybe:    { label: "Peut-être",      short: "🤔 Peut-être", emoji: "🤔" },
+  declined: { label: "Je ne peux pas", short: "Je ne peux pas", emoji: "🙁" },
+  waitlist: { label: "Liste d'attente", short: "⏳ En attente", emoji: "⏳" },
+};
+
+// Mon état pour un événement. `state.user.eventRsvp` est la mémoire locale ;
+// `joinedEvents` reste maintenu pour toute la compatibilité existante.
+function myRsvp(eventId) {
+  const m = (state.user.eventRsvp || {})[eventId];
+  if (m) return m;
+  return (state.user.joinedEvents || []).includes(eventId) ? "going" : null;
+}
+
+function _setMyRsvpLocal(eventId, rsvp) {
+  state.user.eventRsvp = state.user.eventRsvp || {};
+  if (!rsvp) delete state.user.eventRsvp[eventId];
+  else state.user.eventRsvp[eventId] = rsvp;
+  // « Inscrit » (filtre + rappels) = je viens OU peut-être.
+  const joined = rsvp === "going" || rsvp === "maybe";
+  state.user.joinedEvents = (state.user.joinedEvents || []).filter(x => x !== eventId);
+  if (joined) state.user.joinedEvents.push(eventId);
+}
+
+// Places restantes (null = illimité). Seuls les « je viens » occupent une place.
+function _eventSpotsLeft(ev) {
+  if (!ev || !ev.maxAttendees) return null;
+  return Math.max(0, ev.maxAttendees - (ev.attendees || []).length);
+}
+function _eventIsFull(ev) { const s = _eventSpotsLeft(ev); return s !== null && s <= 0; }
+
 function _eventIsCancelled(ev) { return !!ev && ev.status === "cancelled"; }
 function _eventIsLive(ev) { const n = Date.now(); return !!ev && ev.date <= n && _eventEndAt(ev) > n; }
 function _eventIsOver(ev) { return !!ev && _eventEndAt(ev) <= Date.now(); }
 function _isMyEvent(ev) {
   const meId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
   return !!ev && (ev._mine || ev.organizerId === meId || ev.authorId === meId || ev.organizerId === "me");
+}
+// Co-organisateur : mêmes droits d'édition que l'organisateur (un événement porté
+// par une seule personne meurt avec elle — cf. Meetup).
+function _canManageEvent(ev) {
+  const meId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
+  return _isMyEvent(ev) || ((ev && ev.coOrganizers) || []).indexOf(meId) > -1;
+}
+
+// ===== Check-in sur place =====
+// Fenêtre de pointage : 1 h avant le début et jusqu'à la fin. Au-delà, pointer
+// n'a plus de sens (et récompenserait un simple clic depuis le canapé).
+const CHECKIN_RADIUS_M = 500;
+function _canCheckIn(ev) {
+  if (!ev || _eventIsCancelled(ev)) return false;
+  const now = Date.now();
+  return now >= ev.date - 3600000 && now <= _eventEndAt(ev);
+}
+function _hasCheckedIn(ev) {
+  return !!(state.user.checkedInEvents || []).includes(ev && ev.id);
 }
 
 // Note: Les event listeners pour les filtres de passion et type sont gérés
@@ -1548,18 +1603,23 @@ function renderIRL() {
     const priceTag = e.price !== undefined && e.price !== null && e.price !== "" ? `<span class="pill" style="padding:2px 7px;font-size:10px;">${e.price == 0 ? "Gratuit 🎉" : e.price + " 💎 Passia"}</span>` : "";
     const typeTag = e.eventType ? `<span class="pill" style="padding:2px 7px;font-size:10px;">${escapeHtml(e.eventType)}</span>` : "";
     const attCount = (e.attendees || []).length;
-    const isFull = e.maxAttendees && attCount >= e.maxAttendees && !joined;
+    const maybeCount = (e.maybes || []).length;
+    const waitCount = (e.waitlist || []).length;
+    const isFull = _eventIsFull(e);
+    const myState = myRsvp(e.id);
     const spotsTag = e.maxAttendees
       ? (isFull
-          ? `<span class="pill" style="padding:2px 7px;font-size:10px;color:#ef4444;border-color:rgba(239,68,68,0.4);">⚠️ Complet</span>`
+          ? `<span class="pill" style="padding:2px 7px;font-size:10px;color:#ef4444;border-color:rgba(239,68,68,0.4);">⚠️ Complet${waitCount ? " · " + waitCount + " en attente" : ""}</span>`
           : `<span style="font-size:10px;color:var(--muted);">${attCount}/${e.maxAttendees} places</span>`)
       : "";
-    // Le CTA raconte l'état réel : annulé > terminé > complet > inscrit > rejoindre.
+    // Le CTA raconte l'état réel : annulé > terminé > mon RSVP > complet > rejoindre.
     const cta = cancelled
       ? `<span class="pill" style="color:#ef4444;border-color:rgba(239,68,68,.4);">Annulé</span>`
       : over
         ? `<button class="btn small ghost" onclick="event.stopPropagation();openEventDetails('${escapeJsArg(e.id)}')">Revoir</button>`
-        : `<button class="btn small ${joined ? "ghost" : "primary"}" ${isFull ? "disabled" : ""} onclick="event.stopPropagation();toggleJoinEvent('${escapeJsArg(e.id)}')">${joined ? "✓ Inscrit" : isFull ? "Complet" : "+ Rejoindre"}</button>`;
+        : myState
+          ? `<button class="btn small ghost" onclick="event.stopPropagation();openEventRsvpSheet('${escapeJsArg(e.id)}')">${RSVP_LABELS[myState].short}</button>`
+          : `<button class="btn small primary" onclick="event.stopPropagation();openEventRsvpSheet('${escapeJsArg(e.id)}')">${isFull ? "⏳ Liste d'attente" : "+ Rejoindre"}</button>`;
     return `<div class="event-card${cancelled ? " is-cancelled" : ""}${over ? " is-past" : ""}" role="button" tabindex="0"
       data-evid="${escapeHtml(e.id)}"
       data-city="${escapeHtml((e.city||'').toLowerCase())}" data-title="${escapeHtml((e.title||'').toLowerCase())}"
@@ -1581,7 +1641,7 @@ function renderIRL() {
       </div>
       <div style="font-size:12px;color:var(--text-dim);margin-top:8px;line-height:1.5;">${escapeHtml((e.desc || "").slice(0, 120))}${(e.desc||"").length > 120 ? "…" : ""}</div>
       <div class="event-footer">
-        <div class="attendees">${attAvatars}<span class="pill" style="margin-left:6px;padding:3px 8px;">${attCount} inscrit${attCount > 1 ? "s" : ""}</span></div>
+        <div class="attendees">${attAvatars}<span class="pill" style="margin-left:6px;padding:3px 8px;">${attCount} inscrit${attCount > 1 ? "s" : ""}${maybeCount ? " · " + maybeCount + " 🤔" : ""}</span></div>
         ${cta}
       </div>
       <div class="post-actions" onclick="event.stopPropagation()">
@@ -1943,40 +2003,206 @@ async function _loadEventCommentCounts(ids) {
   } catch (e) {}
 }
 
+// Bascule rapide depuis une carte : rien → je viens (ou liste d'attente si
+// complet) ; déjà positionné → retrait. Le choix fin des 3 états se fait via
+// setEventRsvp (fiche détail + feuille de choix).
 function toggleJoinEvent(id) {
+  const cur = myRsvp(id);
+  const ev = _findCanonicalEvent(id) || allEvents().find(e => e.id === id);
+  if (!ev) return;
+  if (cur) { setEventRsvp(id, null); return; }
+  setEventRsvp(id, _eventIsFull(ev) ? "waitlist" : "going");
+}
+
+// Cœur du système de participation. `rsvp` : "going" | "maybe" | "declined" |
+// "waitlist" | null (= retrait complet).
+async function setEventRsvp(id, rsvp) {
   // Muter l'objet canonique (state), pas une copie de allEvents() — sinon le
   // compteur d'inscrits et les avatars ne se mettaient jamais à jour localement.
   const ev = _findCanonicalEvent(id) || allEvents().find(e => e.id === id);
   if (!ev) return;
-  if (_eventIsCancelled(ev)) { toast("Cet événement a été annulé"); return; }
+  if (_eventIsCancelled(ev) && rsvp) { toast("Cet événement a été annulé"); return; }
   const meId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
-  const joined = (state.user.joinedEvents || []).includes(id);
-  if (joined) {
-    state.user.joinedEvents = state.user.joinedEvents.filter(x => x !== id);
-    // Retire mon uid ET l'ancien marqueur "me" (la liste chargée depuis Supabase
-    // contient MY_UID) pour ne pas laisser de doublon.
-    ev.attendees = (ev.attendees || []).filter(x => x !== meId && x !== "me");
+  const prev = myRsvp(id);
+  if (prev === rsvp) return;
+
+  // Complet : on ne peut pas passer « je viens » de force, on entre en file.
+  if (rsvp === "going" && _eventIsFull(ev) && prev !== "going") {
+    rsvp = "waitlist";
+    toast("⏳ C'est complet — tu es sur liste d'attente");
+  }
+
+  const strip = (arr) => (arr || []).filter(x => x !== meId && x !== "me");
+  ev.attendees = strip(ev.attendees);
+  ev.maybes = strip(ev.maybes);
+  ev.waitlist = strip(ev.waitlist);
+  if (rsvp === "going") ev.attendees.push(meId);
+  else if (rsvp === "maybe") ev.maybes.push(meId);
+  else if (rsvp === "waitlist") ev.waitlist.push(meId);
+
+  _setMyRsvpLocal(id, rsvp);
+  saveState();
+  _patchEventCardJoin(id);
+  _refreshEventDetailIfOpen(id);
+
+  if (!rsvp) {
     toast("Désinscrit");
-    supaLeaveEvent(id);
-  } else {
-    state.user.joinedEvents = state.user.joinedEvents || [];
-    state.user.joinedEvents.push(id);
-    ev.attendees = (ev.attendees || []).filter(x => x !== meId && x !== "me");
-    ev.attendees.push(meId);
+    if (window._supaReal) await supaLeaveEvent(id);
+    // Une place se libère → on promeut le premier de la file (et on le prévient).
+    if (prev === "going") _promoteNextWaitlisted(ev);
+    _leaveEventConversation(ev);
+    return;
+  }
+
+  if (rsvp === "going" && prev !== "going") {
     grantReward("event_join");
     bumpQuest("join");
     pushNotification(`🤝 Tu rejoins <b>${escapeHtml(ev.title)}</b>`, "🤝");
-    supaJoinEvent(id);
-    // Notifier l'organisateur (interaction cross-compte sur SON événement).
-    if (ev.fromSupabase && ev.organizerId && ev.organizerId !== meId && typeof supaInsertNotif === "function") {
-      supaInsertNotif(ev.organizerId, "event_join", id, "a rejoint ton événement");
-    }
+  } else {
+    toast(RSVP_LABELS[rsvp] ? RSVP_LABELS[rsvp].emoji + " " + RSVP_LABELS[rsvp].label : "Enregistré");
   }
+
+  if (window._supaReal) await supaSetEventRsvp(id, rsvp);
+  // Notifier l'organisateur (interaction cross-compte sur SON événement).
+  if (rsvp === "going" && ev.fromSupabase && ev.organizerId && ev.organizerId !== meId && typeof supaInsertNotif === "function") {
+    supaInsertNotif(ev.organizerId, "event_join", id, "a rejoint ton événement");
+  }
+  // Les participants (je viens / peut-être) rejoignent la discussion de groupe.
+  if (rsvp === "going" || rsvp === "maybe") _joinEventConversation(ev);
+  else _leaveEventConversation(ev);
+}
+
+// Promotion automatique du premier de la liste d'attente quand une place se
+// libère. Fait par le client qui se désinscrit : c'est le seul moment où l'on
+// sait, sans serveur, qu'une place vient de s'ouvrir.
+async function _promoteNextWaitlisted(ev) {
+  if (!ev || !ev.maxAttendees) return;
+  let next = (ev.waitlist || [])[0] || null;
+  if (window._supaReal && ev.fromSupabase && typeof supaFirstWaitlisted === "function") {
+    next = await supaFirstWaitlisted(ev.id) || next;
+  }
+  if (!next) return;
+  ev.waitlist = (ev.waitlist || []).filter(x => x !== next);
+  ev.attendees = (ev.attendees || []).concat([next]);
   saveState();
-  // Patch EN PLACE de la carte concernée : un renderIRL() complet renvoyait le
-  // scroll en haut de la liste (et, avant le guard de signature, recadrait la
-  // carte Leaflet). Même principe que les commentaires du fil.
-  _patchEventCardJoin(id);
+  if (window._supaReal && typeof supaPromoteFromWaitlist === "function") {
+    await supaPromoteFromWaitlist(ev.id, next);
+  }
+  if (typeof supaInsertNotif === "function") {
+    supaInsertNotif(next, "event_update", ev.id, "une place s'est libérée, tu es inscrit·e !");
+  }
+  _patchEventCardJoin(ev.id);
+}
+
+// ===== Discussion de groupe des participants =====
+// S'inscrire fait entrer dans une conversation de groupe dédiée : c'est ce qui
+// transforme une liste d'inscrits en vrai groupe (Meetup, Facebook Events).
+async function _joinEventConversation(ev) {
+  if (!ev || !window._supaReal) return;
+  try {
+    if (!ev.convId) {
+      // Seul un gestionnaire crée la conversation (évite N créations parallèles).
+      if (!_canManageEvent(ev)) return;
+      const convId = await supaCreateEventConversation(ev);
+      if (!convId) return;
+      ev.convId = convId;
+      saveState();
+      await supaUpdateEvent(ev);
+    } else {
+      await supaJoinEventConversation(ev.convId);
+    }
+    _ensureLocalEventConv(ev);
+  } catch (e) {}
+}
+
+async function _leaveEventConversation(ev) {
+  if (!ev || !ev.convId || !window._supaReal) return;
+  if (_canManageEvent(ev)) return; // l'organisateur reste dans son groupe
+  try { await supaLeaveEventConversation(ev.convId); } catch (e) {}
+}
+
+// Miroir local de la conversation de groupe (la messagerie lit conversationsState).
+function _ensureLocalEventConv(ev) {
+  if (!ev || !ev.convId || typeof getConversations !== "function") return;
+  try {
+    const convs = getConversations();
+    if (convs.some(c => c.id === ev.convId)) return;
+    convs.unshift({
+      id: ev.convId,
+      isGroup: true,
+      groupName: "📍 " + String(ev.title || "Événement").slice(0, 40),
+      groupPassions: ev.passion ? [ev.passion] : [],
+      userIds: (ev.attendees || []).slice(0, 30),
+      userId: (ev.attendees || [])[0] || null,
+      passion: ev.passion || null,
+      eventId: ev.id,
+      unread: 0,
+      lastAt: Date.now(),
+      messages: [],
+    });
+    conversationsState = convs;
+    saveConversations();
+  } catch (e) {}
+}
+
+// Ouvre la discussion de groupe de l'événement depuis sa fiche.
+async function openEventChat(id) {
+  const ev = _findCanonicalEvent(id) || allEvents().find(e => e.id === id);
+  if (!ev) return;
+  if (!myRsvp(id) && !_canManageEvent(ev)) { toast("Rejoins l'événement pour accéder à la discussion"); return; }
+  if (!ev.convId) {
+    toast("Ouverture de la discussion…");
+    await _joinEventConversation(ev);
+  }
+  if (!ev.convId) { toast("Discussion indisponible hors connexion"); return; }
+  _ensureLocalEventConv(ev);
+  closeEventDetail();
+  goTo("messages");
+  setTimeout(() => { try { openConversation(ev.convId); } catch (e) {} }, 150);
+}
+
+// ===== Check-in sur place =====
+// Pointer son arrivée récompense la présence RÉELLE (et non un clic depuis le
+// canapé) : on vérifie la position à CHECKIN_RADIUS_M de l'adresse.
+function checkInEvent(id) {
+  const ev = _findCanonicalEvent(id) || allEvents().find(e => e.id === id);
+  if (!ev) return;
+  if (_hasCheckedIn(ev)) { toast("✅ Tu as déjà pointé ton arrivée"); return; }
+  if (!_canCheckIn(ev)) { toast("⏰ Le pointage ouvre 1 h avant le début"); return; }
+  const loc = eventLatLng(ev);
+  const done = () => {
+    state.user.checkedInEvents = state.user.checkedInEvents || [];
+    if (!state.user.checkedInEvents.includes(id)) state.user.checkedInEvents.push(id);
+    if (myRsvp(id) !== "going") _setMyRsvpLocal(id, "going");
+    grantReward("event_join");
+    saveState();
+    if (window._supaReal && typeof supaCheckInEvent === "function") supaCheckInEvent(id);
+    toast("🎉 Arrivée confirmée — bon moment !");
+    _refreshEventDetailIfOpen(id);
+  };
+  if (!loc || !navigator.geolocation) { done(); return; }
+  toast("📍 Vérification de ta position…");
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      const dKm = calculateDistance(pos.coords.latitude, pos.coords.longitude, loc[0], loc[1]);
+      if (dKm * 1000 > CHECKIN_RADIUS_M) {
+        toast("Tu sembles à " + _fmtDistance(dKm) + " du lieu — rapproche-toi pour pointer");
+        return;
+      }
+      done();
+    },
+    // GPS refusé/indisponible : on ne bloque pas la personne, on fait confiance.
+    () => done(),
+    { timeout: 8000, enableHighAccuracy: true }
+  );
+}
+
+// Re-rend la fiche détail si c'est bien cet événement qui est ouvert.
+function _refreshEventDetailIfOpen(id) {
+  const page = document.getElementById("eventDetailPage");
+  if (page && page.style.display !== "none" && window._openEventDetailId === id) {
+    openEventDetails(id);
+  }
 }
 
 // Met à jour la ligne « inscrits » + le bouton d'une carte sans reconstruire la liste.
@@ -2209,8 +2435,14 @@ function calculateDistance(lat1, lng1, lat2, lng2) {
 }
 
 function openEventDetails(id) {
-  // Ajouter à l'historique pour que le bouton back fonctionne
-  pushOverlayToHistory("event", id);
+  // Ajouter à l'historique pour que le bouton back fonctionne. ⚠️ PAS lors d'un
+  // simple re-rendu de la fiche déjà ouverte (_refreshEventDetailIfOpen), sinon
+  // chaque changement de RSVP empilait une entrée d'historique et il fallait
+  // taper « retour » dix fois pour sortir.
+  const _isRerender = window._openEventDetailId === id
+    && (document.getElementById("eventDetailPage") || {}).style
+    && document.getElementById("eventDetailPage").style.display !== "none";
+  if (!_isRerender) pushOverlayToHistory("event", id);
 
   const ev = allEvents().find(e => e.id === id);
   if (!ev) return;

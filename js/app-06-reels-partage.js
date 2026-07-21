@@ -1663,6 +1663,8 @@ function activateStudioVlog() {
     vlogState.steps = [{ id: uid(), place: "", text: "", tip: "", photo: null, video: null, audio: null }];
     renderVlogSteps();
   }
+  // Propose de reprendre un carnet laissé en plan (autosave, cf. app-03).
+  if (typeof renderVlogDraftBanner === "function") { try { renderVlogDraftBanner(); } catch (e) {} }
 }
 
 // Mood pill row
@@ -2015,6 +2017,15 @@ async function publishPost() {
     post.text = post.destination + (post.dateStart || post.dateEnd ? " · carnet" : "");
   }
 
+  // Album d'événement : le Studio a été ouvert depuis « Partager mon expérience »
+  // sur la fiche d'un événement (window._pendingEventPost) → on rattache le post
+  // à cet événement pour qu'il remonte dans son album. Le drapeau est à usage
+  // UNIQUE (sinon toutes les publications suivantes seraient rattachées aussi).
+  if (window._pendingEventPost) {
+    post.eventId = window._pendingEventPost;
+    window._pendingEventPost = null;
+  }
+
   // Ajouter au state local IMMÉDIATEMENT (optimistic update)
   state.userPosts.unshift(post);
   saveState();
@@ -2079,6 +2090,9 @@ async function publishPost() {
     if ($("#vlogCoverPreview")) $("#vlogCoverPreview").innerHTML = "";
     vlogState.cover = null;
     vlogState.steps = [];
+    // Le carnet est publié : le brouillon n'a plus lieu d'être.
+    if (typeof clearVlogDraft === "function") clearVlogDraft();
+    var _db = document.getElementById("vlogDraftBanner"); if (_db) _db.remove();
   }
 
   // Reward

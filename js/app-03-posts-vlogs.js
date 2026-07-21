@@ -28,7 +28,10 @@ function sharePost(id) {
     const btn = document.getElementById("_shareOutBtn");
     if (!btn) return;
     btn.addEventListener("click", function() {
-      const shareUrl = "https://passio-app.netlify.app";
+      // Un carnet partagé doit OUVRIR le carnet, pas la page d'accueil.
+      const shareUrl = post.type === "vlog"
+        ? (location.origin + location.pathname + "#carnet-" + id)
+        : "https://passio-app.netlify.app";
       if (navigator.share) {
         navigator.share({ title: "PASSIO", text: txt, url: shareUrl }).catch(() => {});
       } else {
@@ -317,6 +320,90 @@ const vlogState = {
   cover: null,
   steps: [],
 };
+
+// ── BROUILLON AUTOMATIQUE DU CARNET ──────────────────────────────────────────
+// Un carnet, c'est 20 minutes d'écriture (destination, dates, N étapes, bilan,
+// conseil). Rien n'était sauvegardé : un `goTo` involontaire, un onglet fermé ou
+// un rechargement PWA et TOUT était perdu — la première cause d'abandon possible
+// sur cette fonctionnalité. On persiste donc en continu (sans les médias base64,
+// trop lourds pour localStorage : seule l'URL d'un média déjà uploadé est gardée).
+const VLOG_DRAFT_KEY = "passio_vlog_draft_v1";
+const VLOG_DRAFT_FIELDS = ["vlogDestination", "vlogDateStart", "vlogDateEnd", "vlogBudget", "vlogTransport", "vlogLodging", "vlogSeason", "vlogTip"];
+
+function saveVlogDraft() {
+  try {
+    var fields = {};
+    VLOG_DRAFT_FIELDS.forEach(function (id) { var el = $("#" + id); if (el) fields[id] = el.value || ""; });
+    var keep = function (v) { return typeof v === "string" && v.indexOf("data:") !== 0 ? v : null; };
+    var steps = (vlogState.steps || []).map(function (s) {
+      return { place: s.place || "", text: s.text || "", tip: s.tip || "",
+        photo: keep(s.photo), video: keep(s.video), audio: keep(s.audio) };
+    });
+    var hasContent = Object.keys(fields).some(function (k) { return fields[k]; })
+      || steps.some(function (s) { return s.place || s.text || s.tip; });
+    if (!hasContent) { localStorage.removeItem(VLOG_DRAFT_KEY); return; }
+    localStorage.setItem(VLOG_DRAFT_KEY, JSON.stringify({ fields: fields, steps: steps, cover: keep(vlogState.cover), at: Date.now() }));
+  } catch (e) {}
+}
+
+function getVlogDraft() {
+  try { return JSON.parse(localStorage.getItem(VLOG_DRAFT_KEY) || "null"); } catch (e) { return null; }
+}
+function clearVlogDraft() { try { localStorage.removeItem(VLOG_DRAFT_KEY); } catch (e) {} }
+
+// Restaure le brouillon dans le Studio (appelé depuis la bannière de reprise).
+function restoreVlogDraft() {
+  var d = getVlogDraft();
+  if (!d) return;
+  VLOG_DRAFT_FIELDS.forEach(function (id) { var el = $("#" + id); if (el && d.fields && d.fields[id] != null) el.value = d.fields[id]; });
+  vlogState.cover = d.cover || null;
+  if (d.cover && $("#vlogCoverPreview")) $("#vlogCoverPreview").innerHTML = '<img loading="lazy" decoding="async" class="vlog-cover-preview" src="' + safeUrlAttr(d.cover) + '" alt="Cover"/>';
+  vlogState.steps = (d.steps || []).map(function (s) { return Object.assign({ id: uid() }, s); });
+  if (!vlogState.steps.length) vlogState.steps = [{ id: uid(), place: "", text: "", tip: "", photo: null }];
+  renderVlogSteps();
+  var b = document.getElementById("vlogDraftBanner");
+  if (b) b.remove();
+  toast("📔 Brouillon restauré");
+}
+
+function discardVlogDraft() {
+  clearVlogDraft();
+  var b = document.getElementById("vlogDraftBanner");
+  if (b) b.remove();
+  toast("Brouillon supprimé");
+}
+
+// Bannière « reprendre le brouillon » en tête de la vue Carnet du Studio.
+function renderVlogDraftBanner() {
+  var host = $("#studioVlog");
+  var old = document.getElementById("vlogDraftBanner");
+  if (old) old.remove();
+  var d = getVlogDraft();
+  if (!host || !d) return;
+  var when = (typeof fmtTime === "function") ? fmtTime(d.at) : "";
+  var dest = (d.fields && d.fields.vlogDestination) || "carnet sans titre";
+  var div = document.createElement("div");
+  div.id = "vlogDraftBanner";
+  div.style.cssText = "background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.3);border-radius:12px;padding:12px;margin-bottom:12px;";
+  div.innerHTML = '<div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:4px;">📝 Brouillon en cours</div>'
+    + '<div style="font-size:12px;color:var(--text-dim);margin-bottom:10px;">« ' + escapeHtml(dest) + ' » · ' + escapeHtml(when) + '</div>'
+    + '<div style="display:flex;gap:8px;">'
+    + '<button class="btn primary" style="flex:1;font-size:12px;padding:8px;" onclick="restoreVlogDraft()">Reprendre</button>'
+    + '<button class="btn ghost" style="font-size:12px;padding:8px;" onclick="discardVlogDraft()">Supprimer</button>'
+    + '</div>';
+  host.insertBefore(div, host.firstChild);
+}
+
+// Autosave : toute frappe dans la vue Carnet du Studio (champs bilan + étapes).
+document.addEventListener("input", function (e) {
+  var t = e.target;
+  if (!t || !t.id && !t.closest) return;
+  var inVlog = (t.id && VLOG_DRAFT_FIELDS.indexOf(t.id) > -1) || (t.closest && t.closest(".vlog-step"));
+  if (!inVlog) return;
+  clearTimeout(window._vlogDraftTimer);
+  window._vlogDraftTimer = setTimeout(saveVlogDraft, 600);
+});
+window.addEventListener("pagehide", function () { try { if (studioType === "vlog") saveVlogDraft(); } catch (e) {} });
 
 // Templates de pré-remplissage
 const VLOG_TEMPLATES = {
@@ -1699,6 +1786,39 @@ function shareCdvLive(liveId) {
     toast("🔗 " + url);
   }
 }
+
+// Ouvre la cible d'un lien partagé #cdv-live-<id> / #carnet-<id>.
+// ⚠️ Ces liens EXISTAIENT (shareCdvLive les fabrique depuis le début) mais AUCUN
+// routage ne les lisait : ouvrir un lien partagé retombait sur l'accueil, donc le
+// partage d'un carnet/live ne ramenait personne sur le contenu. Appelé au boot
+// (après le chargement des lives) et à chaque changement de hash.
+function _openCdvDeepLink() {
+  try {
+    var h = (location.hash || "").replace(/^#/, "");
+    if (!h) return false;
+    var mLive = h.match(/^cdv-live-(.+)$/);
+    if (mLive) {
+      var lid = decodeURIComponent(mLive[1]);
+      if (!getCdvLives().some(function (l) { return l.id === lid; })) return false;
+      if (typeof goTo === "function") goTo("cdv");
+      setTimeout(function () { openCdvLiveViewer(lid); }, 120);
+      history.replaceState(null, "", location.pathname + location.search);
+      return true;
+    }
+    var mCar = h.match(/^carnet-(.+)$/);
+    if (mCar) {
+      var cid = decodeURIComponent(mCar[1]);
+      var post = (typeof findPostAnywhere === "function") ? findPostAnywhere(cid) : null;
+      if (!post) return false;
+      if (typeof goTo === "function") goTo("cdv");
+      setTimeout(function () { openVlogViewer(cid); }, 120);
+      history.replaceState(null, "", location.pathname + location.search);
+      return true;
+    }
+  } catch (e) {}
+  return false;
+}
+window.addEventListener("hashchange", function () { _openCdvDeepLink(); });
 
 // Signalement d'un Live (modération) — réutilise supaReport (table reports).
 function reportCdvLive(liveId) {

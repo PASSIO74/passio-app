@@ -2424,6 +2424,8 @@ async function supaPublishPostWithRetry(post, maxRetries = 2) {
         // 🔄 Ajouter les champs de repost si applicable
         ...(post.sharedReel && { shared_from_post_id: post.sharedReel }),
         ...(post.sharedReelData && { shared_data: JSON.stringify(post.sharedReelData) }),
+        // Album d'événement : le post remonte sur la fiche de l'événement.
+        ...(post.eventId ? { event_id: post.eventId } : {}),
       };
 
       // Timeout d'insert : l'ancien 3 s était trop court juste après un gros upload
@@ -2442,6 +2444,14 @@ async function supaPublishPostWithRetry(post, maxRetries = 2) {
         const retry = await supa.from("posts").insert([postData]).select();
         if (retry.error) throw retry.error;
         return true;
+      }
+      // Colonne `event_id` absente (migration IRL v2 non appliquée) → réessayer
+      // sans le rattachement à l'événement plutôt que de perdre le post.
+      if (error && postData.event_id && /event_id/.test(error.message || "")) {
+        delete postData.event_id;
+        const retry = await supa.from("posts").insert([postData]).select();
+        if (!retry.error || String(retry.error.code) === "23505") return true;
+        throw retry.error;
       }
       // Clé dupliquée = un insert précédent (timeout côté client) a en fait réussi
       // côté serveur → le post existe, c'est un succès.
@@ -2950,7 +2960,7 @@ async function supaLoadStories() {
 // Colonnes « récentes » de `events` (migration_events_lifecycle.sql). Retirées une
 // à une si la base ne les a pas encore (même filet que supaUpsertProfile) — un
 // insert qui échoue en entier laissait l'événement en local seulement.
-const _EVENT_OPTIONAL_COLS = ["end_at", "status", "updated_at"];
+const _EVENT_OPTIONAL_COLS = ["end_at", "status", "updated_at", "co_organizers", "series_id", "recurrence", "conv_id"];
 
 function _eventRow(event) {
   return {
@@ -2970,6 +2980,10 @@ function _eventRow(event) {
     external_link: event.externalLink || null,
     event_type: event.eventType || "Autre",
     cover_url: event.coverUrl || null,
+    co_organizers: event.coOrganizers || [],
+    series_id: event.seriesId || null,
+    recurrence: event.recurrence || "none",
+    conv_id: event.convId || null,
   };
 }
 
@@ -3048,13 +3062,28 @@ async function supaLoadEvents() {
     // Charger les vrais participants (compteurs/avatars cross-compte). Sans ça,
     // supaLoadEvents renvoyait attendees:[] → tout événement affichait "0 inscrit"
     // même si plusieurs comptes l'avaient rejoint. (Corrigé le 2026-06-18.)
-    const attByEvent = {};
+    // `attendees` = les VENANTS fermes uniquement (rsvp 'going') ; les « peut-être »
+    // et la liste d'attente sont comptés à part pour ne pas gonfler le compteur ni
+    // remplir les places réservées.
+    const attByEvent = {}, maybeByEvent = {}, waitByEvent = {}, checkedByEvent = {};
     if (rows.length) {
       try {
         const { data: atts } = await supa.from("event_attendees")
-          .select("event_id,user_id").in("event_id", rows.map(r => r.id));
-        (atts || []).forEach(a => { (attByEvent[a.event_id] = attByEvent[a.event_id] || []).push(a.user_id); });
-      } catch(e) {}
+          .select("event_id,user_id,rsvp,checked_in_at").in("event_id", rows.map(r => r.id));
+        (atts || []).forEach(a => {
+          const bucket = a.rsvp === "maybe" ? maybeByEvent : a.rsvp === "waitlist" ? waitByEvent
+            : a.rsvp === "declined" ? null : attByEvent;
+          if (bucket) (bucket[a.event_id] = bucket[a.event_id] || []).push(a.user_id);
+          if (a.checked_in_at) (checkedByEvent[a.event_id] = checkedByEvent[a.event_id] || []).push(a.user_id);
+        });
+      } catch(e) {
+        // Colonne rsvp absente (migration non appliquée) : repli sur l'ancien modèle.
+        try {
+          const { data: atts } = await supa.from("event_attendees")
+            .select("event_id,user_id").in("event_id", rows.map(r => r.id));
+          (atts || []).forEach(a => { (attByEvent[a.event_id] = attByEvent[a.event_id] || []).push(a.user_id); });
+        } catch(e2) {}
+      }
     }
     return rows.map(r => ({
       id: r.id,
@@ -3082,7 +3111,14 @@ async function supaLoadEvents() {
       endAt: r.end_at ? supaTs(r.end_at) : null,
       status: r.status || "active",
       updatedAt: r.updated_at ? supaTs(r.updated_at) : null,
+      coOrganizers: Array.isArray(r.co_organizers) ? r.co_organizers : [],
+      seriesId: r.series_id || null,
+      recurrence: r.recurrence || "none",
+      convId: r.conv_id || null,
       attendees: attByEvent[r.id] || [],
+      maybes: maybeByEvent[r.id] || [],
+      waitlist: waitByEvent[r.id] || [],
+      checkedIn: checkedByEvent[r.id] || [],
       fromSupabase: true,
     }));
   } catch(e) { return []; }
@@ -4413,25 +4449,142 @@ async function supaLoadStoryViews() {
   } catch (e) { return []; }
 }
 
-// ---- EVENT JOINING ----
-async function supaJoinEvent(eventId) {
+// ---- EVENT JOINING / RSVP / LISTE D'ATTENTE / CHECK-IN ----
+// `rsvp` : 'going' | 'maybe' | 'declined' | 'waitlist'. La PK est (event_id,user_id)
+// → on tente l'UPDATE d'abord, puis l'INSERT (l'inverse générerait une erreur de
+// doublon à chaque changement d'avis).
+async function supaSetEventRsvp(eventId, rsvp) {
   try {
     await supaUpsertProfile();
-    await supa.from("event_attendees").insert({ event_id: eventId, user_id: MY_UID, created_at: new Date().toISOString() });
-  } catch(e) {}
+    const upd = await supa.from("event_attendees")
+      .update({ rsvp: rsvp }).eq("event_id", eventId).eq("user_id", MY_UID).select();
+    if (!upd.error && upd.data && upd.data.length) return true;
+    const ins = await supa.from("event_attendees")
+      .insert({ event_id: eventId, user_id: MY_UID, rsvp: rsvp, created_at: new Date().toISOString() });
+    if (!ins.error) return true;
+    if (String(ins.error.code) === "23505") return true;
+    // Colonne `rsvp` absente : repli sur l'ancien modèle (présence = je viens).
+    if (/rsvp/.test(ins.error.message || "")) {
+      const f = await supa.from("event_attendees")
+        .insert({ event_id: eventId, user_id: MY_UID, created_at: new Date().toISOString() });
+      return !f.error || String(f.error.code) === "23505";
+    }
+    return false;
+  } catch(e) { return false; }
 }
+
+async function supaJoinEvent(eventId) { return supaSetEventRsvp(eventId, "going"); }
 
 async function supaLeaveEvent(eventId) {
   try {
     await supa.from("event_attendees").delete().eq("event_id", eventId).eq("user_id", MY_UID);
-  } catch(e) {}
+    return true;
+  } catch(e) { return false; }
+}
+
+// Pointage d'arrivée sur place (check-in).
+async function supaCheckInEvent(eventId) {
+  try {
+    const { error } = await supa.from("event_attendees")
+      .update({ checked_in_at: new Date().toISOString(), rsvp: "going" })
+      .eq("event_id", eventId).eq("user_id", MY_UID);
+    return !error;
+  } catch(e) { return false; }
+}
+
+// Promotion d'un membre de la liste d'attente (place libérée / geste de l'orga).
+async function supaPromoteFromWaitlist(eventId, userId) {
+  try {
+    const { error } = await supa.from("event_attendees")
+      .update({ rsvp: "going" }).eq("event_id", eventId).eq("user_id", userId);
+    return !error;
+  } catch(e) { return false; }
+}
+
+// Le PREMIER inscrit sur liste d'attente (ordre d'arrivée), ou null.
+async function supaFirstWaitlisted(eventId) {
+  try {
+    const { data } = await supa.from("event_attendees")
+      .select("user_id,created_at").eq("event_id", eventId).eq("rsvp", "waitlist")
+      .order("created_at", { ascending: true }).limit(1);
+    return (data && data[0]) ? data[0].user_id : null;
+  } catch(e) { return null; }
+}
+
+// Mes participations AVEC leur état (pour rehydrater les RSVP au boot).
+async function supaLoadMyRsvps() {
+  try {
+    const { data, error } = await supa.from("event_attendees")
+      .select("event_id,rsvp,checked_in_at").eq("user_id", MY_UID);
+    if (error) throw error;
+    const out = {};
+    (data || []).forEach(r => { out[r.event_id] = { rsvp: r.rsvp || "going", checkedIn: !!r.checked_in_at }; });
+    return out;
+  } catch(e) {
+    // Repli sans la colonne rsvp.
+    try {
+      const { data } = await supa.from("event_attendees").select("event_id").eq("user_id", MY_UID);
+      const out = {};
+      (data || []).forEach(r => { out[r.event_id] = { rsvp: "going", checkedIn: false }; });
+      return out;
+    } catch(e2) { return {}; }
+  }
 }
 
 async function supaLoadJoinedEvents() {
+  const rsvps = await supaLoadMyRsvps();
+  // « Inscrit » = je viens ou peut-être (pas les refus ni la liste d'attente).
+  return Object.keys(rsvps).filter(id => rsvps[id].rsvp === "going" || rsvps[id].rsvp === "maybe");
+}
+
+// ---- ALBUM D'ÉVÉNEMENT : posts rattachés à un événement ----
+async function supaLoadEventPosts(eventId) {
   try {
-    const { data } = await supa.from("event_attendees").select("event_id").eq("user_id", MY_UID);
-    return (data || []).map(r => r.event_id);
+    const { data, error } = await supa.from("posts")
+      .select("*").eq("event_id", eventId).order("created_at", { ascending: false }).limit(40);
+    if (error) return [];
+    const profs = await _resolveProfilesByIds((data || []).map(r => r.author_id));
+    return (data || []).map(r => ({
+      id: r.id, authorId: r.author_id,
+      authorName: (profs[r.author_id] || {}).username || "Passionné",
+      text: r.content || "", image: r.media_url || null,
+      createdAt: supaTs(r.created_at), eventId: r.event_id,
+    }));
   } catch(e) { return []; }
+}
+
+// ---- DISCUSSION DE GROUPE DES PARTICIPANTS ----
+// Créée à la demande, puis mémorisée dans events.conv_id : tous les inscrits
+// rejoignent la même conversation (le levier n°1 de participation réelle).
+async function supaCreateEventConversation(ev) {
+  try {
+    await supaUpsertProfile();
+    const convId = "evgrp_" + (ev.id || uid());
+    const r = await supa.from("conversations").insert({
+      id: convId, is_group: true,
+      group_name: "📍 " + String(ev.title || "Événement").slice(0, 40),
+      passion_id: ev.passion || null, created_by: MY_UID,
+    });
+    if (r.error && String(r.error.code) !== "23505") return null;
+    await supa.from("conv_members").insert({ conv_id: convId, user_id: MY_UID });
+    return convId;
+  } catch(e) { return null; }
+}
+
+async function supaJoinEventConversation(convId) {
+  if (!convId) return false;
+  try {
+    const { error } = await supa.from("conv_members").insert({ conv_id: convId, user_id: MY_UID });
+    return !error || String(error.code) === "23505";
+  } catch(e) { return false; }
+}
+
+async function supaLeaveEventConversation(convId) {
+  if (!convId) return false;
+  try {
+    await supa.from("conv_members").delete().eq("conv_id", convId).eq("user_id", MY_UID);
+    return true;
+  } catch(e) { return false; }
 }
 
 // ---- NOTIFICATIONS SUPABASE ----
@@ -4654,8 +4807,12 @@ async function supaInit() {
       // les notifs re\u00e7ues d'autres comptes. On les charge ici (chemin vivant).
       if (typeof supaLoadNotifications === "function")
         supaLoadNotifications().then(ns => { if (ns && ns.length) mergeSupaNotifs(ns); }).catch(e => {});
-      // CDV Lives : fusionner les voyages en direct des autres comptes.
-      if (typeof supaRefreshCdvLives === "function") supaRefreshCdvLives();
+      // CDV Lives : fusionner les voyages en direct des autres comptes, puis
+      // honorer un éventuel lien partagé #cdv-live-<id> / #carnet-<id>.
+      if (typeof supaRefreshCdvLives === "function") {
+        const _p = supaRefreshCdvLives();
+        if (_p && _p.then) _p.then(function () { if (typeof _openCdvDeepLink === "function") _openCdvDeepLink(); });
+      }
       // Lives vidéo actifs → bulles 🔴 de la barre des stories.
       if (typeof supaRefreshVideoLives === "function") supaRefreshVideoLives();
       // Rappel in-app des événements rejoints dans les prochaines 24 h.
