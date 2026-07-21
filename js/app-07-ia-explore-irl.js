@@ -310,6 +310,7 @@ let irlSelectedCity = null; // Ville sélectionnée pour chercher des événemen
 let irlSort = "soon";                     // "soon" | "near" | "popular"
 let irlSearchQuery = "";                  // recherche texte (titre/ville/lieu/desc)
 let irlShowPast = false;                  // onglet « Passés » (événements terminés)
+let irlCalendarOn = false;                // vue calendrier (mois) au lieu de la liste
 
 // ⚠️ NE PLUS pré-cocher les passions de l'utilisateur au premier rendu.
 // Avant (jusqu'au 2026-07-21) : un compte avec UN profil « musique » voyait
@@ -1492,14 +1493,18 @@ function _renderIrlToolbar(shownCount) {
         <button class="irl-seg-btn ${irlShowPast ? "" : "active"}" role="tab" aria-selected="${!irlShowPast}" onclick="setIrlPastMode(false)">À venir</button>
         <button class="irl-seg-btn ${irlShowPast ? "active" : ""}" role="tab" aria-selected="${irlShowPast}" onclick="setIrlPastMode(true)">Passés</button>
       </div>
-      <label class="irl-sort">
-        <span class="sr-only">Trier</span>
-        <select onchange="setIrlSort(this.value)" aria-label="Trier les événements">
-          <option value="soon"${irlSort === "soon" ? " selected" : ""}>⏱ Imminents</option>
-          <option value="near"${irlSort === "near" ? " selected" : ""}>📍 Les plus proches</option>
-          <option value="popular"${irlSort === "popular" ? " selected" : ""}>🔥 Les plus courus</option>
-        </select>
-      </label>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <button class="irl-cal-toggle${irlCalendarOn ? " active" : ""}" onclick="toggleIrlCalendar()"
+          aria-pressed="${irlCalendarOn}" aria-label="Vue calendrier" title="Vue calendrier">🗓</button>
+        <label class="irl-sort">
+          <span class="sr-only">Trier</span>
+          <select onchange="setIrlSort(this.value)" aria-label="Trier les événements">
+            <option value="soon"${irlSort === "soon" ? " selected" : ""}>⏱ Imminents</option>
+            <option value="near"${irlSort === "near" ? " selected" : ""}>📍 Les plus proches</option>
+            <option value="popular"${irlSort === "popular" ? " selected" : ""}>🔥 Les plus courus</option>
+          </select>
+        </label>
+      </div>
     </div>
     <div class="irl-toolbar-count">
       <b>${shownCount}</b> événement${shownCount > 1 ? "s" : ""}${nFilters ? " · " + nFilters + " filtre" + (nFilters > 1 ? "s" : "") : ""}
@@ -1563,12 +1568,16 @@ function renderIRL() {
     btn.classList.toggle("active", irlFilters && irlFilters.has(btn.getAttribute("data-irlfilter")));
   });
 
+  // Vue calendrier : elle remplace la liste (la carte reste au-dessus).
+  renderIrlCalendar();
+
   // Données de démo (commentaires + réactions) pour les événements seed, afin de
   // VOIR la fonctionnalité tant qu'il n'y a pas encore de vrais utilisateurs.
   // Doit tourner AVANT de construire le markup (les cartes lisent ces caches).
   _seedDemoEventInteractions(filtered);
 
   const list = $("#eventList");
+  if (irlCalendarOn) { if (list) list.innerHTML = ""; return; }
   if (filtered.length === 0) {
     list.innerHTML = _irlEmptyStateHtml();
     return;
@@ -2205,24 +2214,55 @@ function _refreshEventDetailIfOpen(id) {
   }
 }
 
+// Feuille de choix du niveau de participation. Un « peut-être » assumé vaut mieux
+// qu'un faux « je viens » : l'organisateur sait à quoi s'attendre.
+function openEventRsvpSheet(id) {
+  const ev = _findCanonicalEvent(id) || allEvents().find(e => e.id === id);
+  if (!ev) return;
+  if (_eventIsCancelled(ev)) { toast("Cet événement a été annulé"); return; }
+  const cur = myRsvp(id);
+  const full = _eventIsFull(ev);
+  const spots = _eventSpotsLeft(ev);
+  const opt = (key, desc) => `
+    <button class="btn ${cur === key ? "primary" : "ghost"} block" style="margin-bottom:8px;text-align:left;"
+      onclick="closeModal();setEventRsvp('${escapeJsArg(id)}', '${key}')">
+      ${RSVP_LABELS[key].emoji} <b>${RSVP_LABELS[key].label}</b>
+      <span style="display:block;font-size:11px;opacity:.75;font-weight:500;">${desc}</span>
+    </button>`;
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">${escapeHtml(ev.title || "Événement")}</div>
+    <div class="modal-subtitle">${spots === null ? "Places illimitées" : full ? "⚠️ Complet — file d'attente ouverte" : spots + " place" + (spots > 1 ? "s" : "") + " restante" + (spots > 1 ? "s" : "")}</div>
+    <div style="margin-top:14px;">
+      ${full && cur !== "going"
+        ? opt("waitlist", "Tu seras inscrit·e automatiquement si une place se libère")
+        : opt("going", "Tu comptes dans les places et tu rejoins la discussion du groupe")}
+      ${opt("maybe", "Tu suis l'événement sans bloquer de place")}
+      ${opt("declined", "Tu ne participes pas — l'organisateur est fixé")}
+    </div>
+    ${cur ? `<button class="btn secondary block" style="margin-top:6px;" onclick="closeModal();setEventRsvp('${escapeJsArg(id)}', null)">Retirer ma réponse</button>` : ""}
+  `);
+}
+
 // Met à jour la ligne « inscrits » + le bouton d'une carte sans reconstruire la liste.
 function _patchEventCardJoin(id) {
-  // Si le filtre « Inscrit » est actif, la carte doit APPARAÎTRE/DISPARAÎTRE :
-  // un patch en place ne suffit pas, on refait la liste.
+  // Si un filtre dépendant de ma participation est actif, la carte doit
+  // APPARAÎTRE/DISPARAÎTRE : un patch en place ne suffit pas, on refait la liste.
   if (irlFilters && irlFilters.has("joined")) { renderIRL(); return; }
   const ev = _findCanonicalEvent(id) || allEvents().find(e => e.id === id);
   const card = document.querySelector('#eventList .event-card[data-evid="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]');
   if (!ev || !card) { renderIRL(); return; }
-  const joined = (state.user.joinedEvents || []).includes(id);
   const atts = ev.attendees || [];
-  const isFull = ev.maxAttendees && atts.length >= ev.maxAttendees && !joined;
+  const maybeCount = (ev.maybes || []).length;
+  const myState = myRsvp(id);
+  const full = _eventIsFull(ev);
   const footer = card.querySelector(".event-footer");
   if (!footer) { renderIRL(); return; }
   footer.innerHTML = `<div class="attendees">${atts.slice(0, 4).map(aid => {
       const u = userById(aid) || { avatar: "#64748b", profileEmoji: "?" };
       return `<div class="avatar sm" style="background:${avatarBg(u)};cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${escapeJsArg(aid)}')">${avatarInner(u)}</div>`;
-    }).join("")}<span class="pill" style="margin-left:6px;padding:3px 8px;">${atts.length} inscrit${atts.length > 1 ? "s" : ""}</span></div>
-    <button class="btn small ${joined ? "ghost" : "primary"}" ${isFull ? "disabled" : ""} onclick="event.stopPropagation();toggleJoinEvent('${escapeJsArg(id)}')">${joined ? "✓ Inscrit" : isFull ? "Complet" : "+ Rejoindre"}</button>`;
+    }).join("")}<span class="pill" style="margin-left:6px;padding:3px 8px;">${atts.length} inscrit${atts.length > 1 ? "s" : ""}${maybeCount ? " · " + maybeCount + " 🤔" : ""}</span></div>
+    <button class="btn small ${myState ? "ghost" : "primary"}" onclick="event.stopPropagation();openEventRsvpSheet('${escapeJsArg(id)}')">${myState ? RSVP_LABELS[myState].short : full ? "⏳ Liste d'attente" : "+ Rejoindre"}</button>`;
 }
 
 function filterIrlByDistance() {
@@ -2493,14 +2533,18 @@ function openEventDetails(id) {
     ? `<span style="font-size:11px;color:${spotsLeft <= 3 ? "#ef4444" : "var(--muted)"};">${spotsLeft <= 0 ? "⚠️ Complet" : spotsLeft <= 3 ? `⚡ Plus que ${spotsLeft} place${spotsLeft > 1 ? "s" : ""}` : `${spotsLeft} places disponibles`}</span>`
     : "";
 
-  const participantsHtml = atts.slice(0, 12).map(aid => {
+  // Trombinoscope réutilisable (venants / peut-être / liste d'attente). Une pastille
+  // ✅ marque ceux qui ont pointé leur arrivée.
+  const _faces = (list, max) => (list || []).slice(0, max || 12).map(aid => {
     const u = userById(aid) || { name: aid === "me" ? (currentProfile()?.name || "Moi") : "Participant", avatar: "#8b5cf6", profileEmoji: "✨" };
     const firstName = (u.name || "?").split(" ")[0];
-    return `<div class="event-detail-participant" style="cursor:pointer;" onclick="openUserProfile('${aid}')">
-      <div class="avatar sm" style="background:${avatarBg(u)};">${avatarInner(u)}</div>
+    const here = (ev.checkedIn || []).indexOf(aid) > -1;
+    return `<div class="event-detail-participant" style="cursor:pointer;" onclick="openUserProfile('${escapeJsArg(aid)}')">
+      <div class="avatar sm" style="background:${avatarBg(u)};position:relative;">${avatarInner(u)}${here ? '<span class="ev-here-dot" title="Sur place">✅</span>' : ""}</div>
       <div class="event-detail-participant-name">${escapeHtml(firstName)}</div>
     </div>`;
-  }).join("") + (atts.length > 12 ? `<div class="event-detail-participant"><span style="font-size:12px;color:var(--muted);">+${atts.length - 12} autres</span></div>` : "");
+  }).join("") + ((list || []).length > (max || 12) ? `<div class="event-detail-participant"><span style="font-size:12px;color:var(--muted);">+${(list || []).length - (max || 12)} autres</span></div>` : "");
+  const participantsHtml = _faces(atts, 12);
 
   const addressFull = [ev.address, ev.postalCode, ev.city].filter(Boolean).join(", ");
   const mapsLink = addressFull ? `<a href="https://maps.google.com/?q=${encodeURIComponent(addressFull)}" target="_blank" class="event-detail-info-link">📍 Voir sur Google Maps →</a>` : "";
@@ -2533,6 +2577,21 @@ function openEventDetails(id) {
       ${mine ? `<button class="btn ghost block" onclick="openEventManage('${escapeJsArg(ev.id)}')" style="font-size:12px;">⚙️ Gérer</button>` : ""}
     </div>
 
+    <!-- Discussion de groupe : le vrai moteur de participation (Meetup / FB Events). -->
+    ${cancelled ? "" : `
+      <button class="btn ghost block" style="font-size:12px;margin-bottom:8px;" onclick="openEventChat('${escapeJsArg(ev.id)}')">
+        💬 Discussion des participants${myRsvp(ev.id) || mine ? "" : " · réservée aux inscrits"}
+      </button>`}
+
+    <!-- Check-in : récompense la présence RÉELLE, pas un clic. -->
+    ${_canCheckIn(ev) ? `
+      <button class="btn ${_hasCheckedIn(ev) ? "ghost" : "primary"} block" style="font-size:12px;margin-bottom:8px;"
+        ${_hasCheckedIn(ev) ? "disabled" : ""} onclick="checkInEvent('${escapeJsArg(ev.id)}')">
+        ${_hasCheckedIn(ev) ? "✅ Arrivée confirmée" : "📍 Je suis sur place · +25 pts"}
+      </button>` : ""}
+
+    ${ev.recurrence && ev.recurrence !== "none" ? `<div class="event-detail-recurrence">🔁 Événement récurrent — ${escapeHtml(RECURRENCE_LABELS[ev.recurrence] || ev.recurrence)}</div>` : ""}
+
     ${over && !cancelled ? `
       <div class="event-recap-cta">
         <div class="event-recap-title">📸 Tu y étais ?</div>
@@ -2557,6 +2616,23 @@ function openEventDetails(id) {
     ${spotsHtml ? `<div style="margin-bottom:8px;">${spotsHtml}</div>` : ""}
     <div class="event-detail-participants">${participantsHtml || "<span style='font-size:13px;color:var(--muted);'>Aucun inscrit pour l'instant — sois le premier !</span>"}</div>
 
+    ${(ev.maybes || []).length ? `
+      <div class="event-detail-section-title">🤔 Peut-être (${ev.maybes.length})</div>
+      <div class="event-detail-participants">${_faces(ev.maybes, 8)}</div>` : ""}
+
+    ${(ev.waitlist || []).length ? `
+      <div class="event-detail-section-title">⏳ Liste d'attente (${ev.waitlist.length})</div>
+      <div class="event-detail-participants">${_faces(ev.waitlist, 8)}</div>
+      ${mine ? `<div style="font-size:11px;color:var(--muted);margin-top:4px;">Ils seront inscrits automatiquement dès qu'une place se libère.</div>` : ""}` : ""}
+
+    ${(ev.coOrganizers || []).length ? `
+      <div class="event-detail-section-title">🤝 Co-organisateurs</div>
+      <div class="event-detail-participants">${_faces(ev.coOrganizers, 8)}</div>` : ""}
+
+    <!-- Album de l'événement : les publications faites après coup. -->
+    <div class="event-detail-section-title">📸 Album de l'événement</div>
+    <div id="eventAlbum" class="event-album"><div class="event-album-empty">Chargement…</div></div>
+
     <div class="event-detail-section-title">💬 Commentaires</div>
     <div id="eventCommentsList" style="display:flex;flex-direction:column;gap:10px;margin-bottom:10px;">
       <div style="font-size:12px;color:var(--muted);">Chargement…</div>
@@ -2571,6 +2647,7 @@ function openEventDetails(id) {
   `;
 
   _loadEventComments(ev.id);
+  _loadEventAlbum(ev.id);
   _refreshEventDetailCta(ev, joined);
 
   const shareBtn = document.getElementById("eventDetailShareBtn");
@@ -2604,19 +2681,84 @@ function _refreshEventDetailCta(ev, joined) {
 
 // Récap d'après-événement : ouvre le Studio pré-rempli avec le contexte de
 // l'événement. C'est le chaînon manquant entre « je participe » et « je partage
-// mon contenu » — le cœur de la promesse PASSIO.
+// mon contenu » — le cœur de la promesse PASSIO. Le post publié sera rattaché à
+// l'événement (window._pendingEventPost, lu par publishPost) et remontera dans
+// son album.
 function shareEventExperience(id) {
   const ev = _findCanonicalEvent(id) || allEvents().find(e => e.id === id);
   if (!ev) return;
   closeEventDetail();
+  window._pendingEventPost = id;
   const d = fmtEventDate(ev.date);
   const prefill = `📍 ${ev.title}${ev.city ? " · " + ev.city : ""} (${d.day} ${d.month})\n\n`;
   goTo("studio");
   setTimeout(() => {
     const ta = document.getElementById("postText") || document.querySelector("#screen-studio textarea");
     if (ta) { ta.value = prefill; ta.focus(); ta.dispatchEvent(new Event("input", { bubbles: true })); }
+    const sel = document.getElementById("postPassion");
+    if (sel && ev.passion) { try { sel.value = ev.passion; } catch (e) {} }
     toast("📸 Ajoute tes photos et raconte !");
   }, 250);
+}
+
+// ===== Album de l'événement =====
+// Les posts publiés via « Partager mon expérience » (colonne posts.event_id),
+// fusionnés avec mes posts locaux pas encore synchronisés.
+async function _loadEventAlbum(eventId) {
+  const box = document.getElementById("eventAlbum");
+  if (!box) return;
+  let items = (state.userPosts || []).filter(p => p.eventId === eventId).map(p => ({
+    id: p.id, image: p.image || null, text: p.text || "", authorName: p.authorName || "Moi",
+  }));
+  if (window._supaReal && typeof supaLoadEventPosts === "function") {
+    try {
+      const remote = await supaLoadEventPosts(eventId);
+      const seen = new Set(items.map(i => i.id));
+      (remote || []).forEach(r => { if (!seen.has(r.id)) items.push(r); });
+    } catch (e) {}
+  }
+  // La fiche a pu être fermée ou changée pendant la requête.
+  if (window._openEventDetailId !== eventId) return;
+  const box2 = document.getElementById("eventAlbum");
+  if (!box2) return;
+  if (!items.length) {
+    box2.innerHTML = '<div class="event-album-empty">Aucune photo pour l\'instant — sois le premier à partager ton expérience.</div>';
+    return;
+  }
+  box2.innerHTML = items.slice(0, 12).map(p => p.image
+    ? `<div class="event-album-cell" onclick="openPost('${escapeJsArg(p.id)}')">
+         <img loading="lazy" decoding="async" src="${safeUrlAttr(p.image)}" alt=""/>
+       </div>`
+    : `<div class="event-album-cell is-text" onclick="openPost('${escapeJsArg(p.id)}')">
+         <span>${escapeHtml((p.text || "").slice(0, 60))}</span>
+       </div>`
+  ).join("");
+}
+
+// ===== Événements récurrents =====
+// Les occurrences sont de VRAIS événements partageant un `seriesId` : chacune a
+// ses inscrits, ses commentaires et sa discussion, et tout le reste de l'app
+// (filtres, carte, rappels) fonctionne sans cas particulier.
+const RECURRENCE_LABELS = {
+  none: "Une seule fois", weekly: "Chaque semaine",
+  biweekly: "Une semaine sur deux", monthly: "Chaque mois",
+};
+const RECURRENCE_STEP_DAYS = { weekly: 7, biweekly: 14, monthly: 0 /* mois calendaire */ };
+const RECURRENCE_MAX_OCCURRENCES = 12;
+
+function _recurrenceDates(startTs, rule, count) {
+  const out = [];
+  if (!rule || rule === "none") return out;
+  for (let i = 1; i < Math.min(count || RECURRENCE_MAX_OCCURRENCES, RECURRENCE_MAX_OCCURRENCES); i++) {
+    if (rule === "monthly") {
+      const d = new Date(startTs);
+      d.setMonth(d.getMonth() + i);
+      out.push(d.getTime());
+    } else {
+      out.push(startTs + i * (RECURRENCE_STEP_DAYS[rule] || 7) * 86400000);
+    }
+  }
+  return out;
 }
 
 function toggleJoinEventDetail(id) {
@@ -2667,6 +2809,153 @@ function _checkEventReminders() {
     });
     localStorage.setItem("passio_event_reminded", JSON.stringify(reminded));
   } catch (e) {}
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// DIGEST HEBDOMADAIRE « ça se passe près de toi »
+// ════════════════════════════════════════════════════════════════════════
+// Le principal moteur de retour dans l'app (Nextdoor, Strava). Calculé côté
+// client au boot — pas de cron serveur nécessaire — et envoyé UNE fois par
+// semaine ISO (dédup localStorage). Notification système en plus si la
+// permission a déjà été accordée (jamais de prompt intempestif ici).
+const IRL_DIGEST_KEY = "passio_irl_digest_week";
+const IRL_DIGEST_RADIUS_KM = 60;
+
+function _isoWeekKey(d) {
+  const t = new Date(d || Date.now());
+  t.setHours(0, 0, 0, 0);
+  // Jeudi de la semaine courante → année ISO fiable.
+  t.setDate(t.getDate() + 3 - ((t.getDay() + 6) % 7));
+  const week1 = new Date(t.getFullYear(), 0, 4);
+  const week = 1 + Math.round(((t - week1) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7);
+  return t.getFullYear() + "-W" + String(week).padStart(2, "0");
+}
+
+function _irlWeeklyDigest() {
+  try {
+    const wk = _isoWeekKey();
+    if (localStorage.getItem(IRL_DIGEST_KEY) === wk) return;
+
+    const now = Date.now();
+    const ref = _irlReferenceLoc();
+    const myPassions = new Set((state.user.profiles || []).map(p => p.passion).filter(Boolean));
+    const soon = allEvents().filter(e => {
+      if (_eventIsCancelled(e) || _eventEndAt(e) <= now || e.date > now + 7 * 86400000) return false;
+      if ((state.user.joinedEvents || []).includes(e.id)) return false; // déjà inscrit
+      const d = _eventDistanceKm(e, ref);
+      return d == null || d <= IRL_DIGEST_RADIUS_KM;
+    });
+    if (!soon.length) return;
+
+    // Les passions de l'utilisateur d'abord, puis les plus courus.
+    soon.sort((a, b) => {
+      const pa = myPassions.has(a.passion) ? 0 : 1, pb = myPassions.has(b.passion) ? 0 : 1;
+      if (pa !== pb) return pa - pb;
+      return (b.attendees || []).length - (a.attendees || []).length;
+    });
+
+    localStorage.setItem(IRL_DIGEST_KEY, wk);
+    const top = soon[0];
+    const city = irlSelectedCity ? irlSelectedCity.name
+      : (irlUserLocation ? getClosestCity(irlUserLocation.lat, irlUserLocation.lng) : "près de toi");
+    const text = `📍 <b>${soon.length} événement${soon.length > 1 ? "s" : ""}</b> cette semaine ${escapeHtml(city === "près de toi" ? city : "à " + city)} — à commencer par <b>${escapeHtml(top.title || "")}</b>`;
+    if (typeof pushNotification === "function") pushNotification(text, "📍");
+
+    // Notification système : uniquement si l'utilisateur l'a DÉJÀ acceptée.
+    if (typeof Notification !== "undefined" && Notification.permission === "granted"
+        && navigator.serviceWorker && navigator.serviceWorker.ready) {
+      navigator.serviceWorker.ready.then(reg => {
+        reg.showNotification("PASSIO — ça bouge près de toi", {
+          body: `${soon.length} événement${soon.length > 1 ? "s" : ""} cette semaine · ${top.title || ""}`,
+          icon: "./icons/icon-192.png", tag: "irl-digest", data: { url: "./#irl-event-" + top.id },
+        });
+      }).catch(() => {});
+    }
+  } catch (e) {}
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// VUE CALENDRIER (mois) — 3ᵉ mode d'affichage à côté de la liste et la carte
+// ════════════════════════════════════════════════════════════════════════
+let irlCalMonth = null; // timestamp du 1er du mois affiché
+
+function toggleIrlCalendar() {
+  irlCalendarOn = !irlCalendarOn;
+  if (irlCalendarOn && !irlCalMonth) irlCalMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime();
+  renderIRL();
+}
+
+function irlCalShift(delta) {
+  const d = new Date(irlCalMonth || Date.now());
+  d.setMonth(d.getMonth() + delta);
+  irlCalMonth = new Date(d.getFullYear(), d.getMonth(), 1).getTime();
+  renderIrlCalendar();
+}
+
+// Un clic sur un jour applique un filtre de date « ce jour-là » (réutilise le
+// filtre « custom » existant → aucun chemin de filtrage parallèle à maintenir).
+function irlCalPickDay(ts) {
+  const start = new Date(ts); start.setHours(0, 0, 0, 0);
+  const end = new Date(ts); end.setHours(23, 59, 59, 999);
+  irlCustomDate = { start: start.getTime(), end: end.getTime() };
+  irlDateFilters = irlDateFilters || new Set();
+  irlDateFilters.clear();
+  irlDateFilters.add("custom");
+  irlCalendarOn = false; // on bascule sur la liste filtrée : c'est ce qu'on veut voir
+  renderIRL();
+  toast("📅 " + start.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" }));
+}
+
+function renderIrlCalendar() {
+  const box = document.getElementById("irlCalendar");
+  if (!box) return;
+  if (!irlCalendarOn) { box.style.display = "none"; box.innerHTML = ""; return; }
+  box.style.display = "block";
+
+  const first = new Date(irlCalMonth || Date.now());
+  first.setDate(1); first.setHours(0, 0, 0, 0);
+  const year = first.getFullYear(), month = first.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const startOffset = (first.getDay() + 6) % 7; // lundi = 0
+
+  // Les événements du mois, filtres courants appliqués SAUF la date (sinon un
+  // filtre « cette semaine » viderait tout le calendrier).
+  const savedDates = irlDateFilters, savedCustom = irlCustomDate, savedPast = irlShowPast;
+  irlDateFilters = new Set(); irlCustomDate = null; irlShowPast = false;
+  const evs = _filterIrlEvents(allEvents());
+  irlDateFilters = savedDates; irlCustomDate = savedCustom; irlShowPast = savedPast;
+
+  const byDay = {};
+  evs.forEach(e => {
+    const d = new Date(e.date);
+    if (d.getFullYear() !== year || d.getMonth() !== month) return;
+    (byDay[d.getDate()] = byDay[d.getDate()] || []).push(e);
+  });
+
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  let cells = "";
+  for (let i = 0; i < startOffset; i++) cells += '<div class="irl-cal-cell empty"></div>';
+  for (let day = 1; day <= daysInMonth; day++) {
+    const list = byDay[day] || [];
+    const ts = new Date(year, month, day).getTime();
+    const isToday = ts === today.getTime();
+    const isPast = ts < today.getTime();
+    cells += `<button class="irl-cal-cell${isToday ? " today" : ""}${isPast ? " past" : ""}${list.length ? " has" : ""}"
+      ${list.length ? `onclick="irlCalPickDay(${ts})"` : "disabled"}
+      aria-label="${day} ${first.toLocaleDateString("fr-FR", { month: "long" })}${list.length ? " — " + list.length + " événement(s)" : ""}">
+      <span class="irl-cal-num">${day}</span>
+      ${list.length ? `<span class="irl-cal-dots">${list.slice(0, 3).map(e => `<i title="${escapeHtml(e.title || "")}">${(passionById(e.passion) || {}).emoji || "•"}</i>`).join("")}${list.length > 3 ? `<b>+${list.length - 3}</b>` : ""}</span>` : ""}
+    </button>`;
+  }
+
+  box.innerHTML = `
+    <div class="irl-cal-head">
+      <button class="irl-cal-nav" onclick="irlCalShift(-1)" aria-label="Mois précédent">‹</button>
+      <b>${first.toLocaleDateString("fr-FR", { month: "long", year: "numeric" })}</b>
+      <button class="irl-cal-nav" onclick="irlCalShift(1)" aria-label="Mois suivant">›</button>
+    </div>
+    <div class="irl-cal-dow">${["L", "M", "M", "J", "V", "S", "D"].map(d => `<span>${d}</span>`).join("")}</div>
+    <div class="irl-cal-grid">${cells}</div>`;
 }
 
 // Export d'un événement au format iCalendar (.ics) → import dans Google/Apple/Outlook.
@@ -3014,6 +3303,19 @@ function openCreateEvent(editId) {
         </select>
       </label>
     </div>
+    <!-- Récurrence : les clubs (le cœur de cible) se retrouvent chaque semaine ;
+         sans ça il fallait recréer l'événement à la main à chaque fois. -->
+    ${editId ? "" : `
+      <div style="display:grid;grid-template-columns:2fr 1fr;gap:10px;">
+        <label class="field"><span>🔁 Se répète</span>
+          <select class="input" id="evRecurrence" onchange="_evSyncRecurrenceUi()">
+            ${Object.keys(RECURRENCE_LABELS).map(k => `<option value="${k}">${RECURRENCE_LABELS[k]}</option>`).join("")}
+          </select>
+        </label>
+        <label class="field" id="evOccWrap" style="display:none;"><span>Occurrences</span>
+          <input type="number" class="input" id="evOccurrences" min="2" max="${RECURRENCE_MAX_OCCURRENCES}" value="6"/>
+        </label>
+      </div>`}
 
     <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.12em;color:var(--accent);margin:14px 0 8px;">📍 Lieu</div>
     <!-- Autocomplétion : sans elle, la ville était saisie à la main puis
@@ -3077,6 +3379,13 @@ function openCreateEvent(editId) {
   }, 20);
 }
 
+// Le nombre d'occurrences n'a de sens que si une répétition est choisie.
+function _evSyncRecurrenceUi() {
+  const sel = document.getElementById("evRecurrence");
+  const wrap = document.getElementById("evOccWrap");
+  if (sel && wrap) wrap.style.display = (sel.value && sel.value !== "none") ? "" : "none";
+}
+
 // ===== Autocomplétion de lieu du formulaire (Nominatim) =====
 // Remplit venue/adresse/CP/ville ET mémorise les coordonnées EXACTES : c'est ce
 // qui garantit que le marqueur tombe au bon endroit et que le filtre distance
@@ -3134,19 +3443,127 @@ function _evPlacePick(i) {
 function openEventManage(id) {
   const ev = _findCanonicalEvent(id) || allEvents().find(e => e.id === id);
   if (!ev) return;
-  if (!_isMyEvent(ev)) { toast("Seul l'organisateur peut gérer cet événement"); return; }
+  if (!_canManageEvent(ev)) { toast("Seul l'organisateur peut gérer cet événement"); return; }
   const cancelled = _eventIsCancelled(ev);
   const n = (ev.attendees || []).length;
+  const seriesCount = ev.seriesId ? allEvents().filter(e => e.seriesId === ev.seriesId).length : 0;
+  const checked = (ev.checkedIn || []).length;
   openModal(`
     <div class="modal-handle"></div>
     <div class="modal-title">⚙️ Gérer l'événement</div>
-    <div class="modal-subtitle">${escapeHtml(ev.title || "")} · ${n} inscrit${n > 1 ? "s" : ""}</div>
+    <div class="modal-subtitle">${escapeHtml(ev.title || "")} · ${n} inscrit${n > 1 ? "s" : ""}${checked ? " · " + checked + " sur place" : ""}</div>
     <button class="btn ghost block" style="margin-top:12px;" onclick="closeModal();openCreateEvent('${escapeJsArg(id)}')">✏️ Modifier les informations</button>
     <button class="btn ghost block" style="margin-top:8px;" onclick="closeModal();_messageEventAttendees('${escapeJsArg(id)}')">📣 Prévenir les inscrits</button>
+    <button class="btn ghost block" style="margin-top:8px;" onclick="closeModal();openEventCoOrganizers('${escapeJsArg(id)}')">🤝 Co-organisateurs (${(ev.coOrganizers || []).length})</button>
+    ${(ev.waitlist || []).length ? `<button class="btn ghost block" style="margin-top:8px;" onclick="closeModal();openEventWaitlist('${escapeJsArg(id)}')">⏳ Liste d'attente (${ev.waitlist.length})</button>` : ""}
     <button class="btn ghost block" style="margin-top:8px;" onclick="toggleCancelEvent('${escapeJsArg(id)}')">${cancelled ? "↩️ Réactiver l'événement" : "🚫 Annuler l'événement"}</button>
+    ${seriesCount > 1 ? `<button class="btn ghost block" style="margin-top:8px;" onclick="cancelEventSeries('${escapeJsArg(id)}')">🔁 Annuler toute la série (${seriesCount} dates)</button>` : ""}
     <button class="btn ghost block" style="margin-top:8px;color:#ef4444;border-color:rgba(239,68,68,.35);" onclick="deleteEventConfirm('${escapeJsArg(id)}')">🗑 Supprimer définitivement</button>
     <button class="btn secondary block" style="margin-top:12px;" onclick="closeModal()">Fermer</button>
   `);
+}
+
+// ===== Co-organisateurs =====
+// Un événement porté par une seule personne meurt avec elle : on partage les
+// droits d'édition (policy « Update organisateurs » côté RLS).
+function openEventCoOrganizers(id) {
+  const ev = _findCanonicalEvent(id) || allEvents().find(e => e.id === id);
+  if (!ev) return;
+  const meId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
+  const co = ev.coOrganizers || [];
+  // Candidats : les participants (hors moi), c'est là que se trouvent les motivés.
+  const candidates = (ev.attendees || []).concat(ev.maybes || [])
+    .filter(u => u && u !== meId && u !== "me");
+  const row = (uidx) => {
+    const u = userById(uidx) || { name: "Participant", avatar: "#8b5cf6", profileEmoji: "✨" };
+    const isCo = co.indexOf(uidx) > -1;
+    return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);">
+      <div class="avatar sm" style="background:${avatarBg(u)};">${avatarInner(u)}</div>
+      <span style="flex:1;font-size:13px;">${escapeHtml(u.name || "Participant")}</span>
+      <button class="btn small ${isCo ? "ghost" : "primary"}" onclick="toggleEventCoOrganizer('${escapeJsArg(id)}','${escapeJsArg(uidx)}')">${isCo ? "Retirer" : "Ajouter"}</button>
+    </div>`;
+  };
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">🤝 Co-organisateurs</div>
+    <div class="modal-subtitle">Ils pourront modifier l'événement et prévenir les inscrits.</div>
+    <div style="margin-top:12px;max-height:320px;overflow-y:auto;">
+      ${[...new Set(co.concat(candidates))].map(row).join("")
+        || '<div style="font-size:13px;color:var(--muted);padding:12px 0;">Aucun participant à promouvoir pour l\'instant.</div>'}
+    </div>
+    <button class="btn secondary block" style="margin-top:12px;" onclick="closeModal()">Fermer</button>
+  `);
+}
+
+async function toggleEventCoOrganizer(id, userId) {
+  const ev = _findCanonicalEvent(id);
+  if (!ev || !_canManageEvent(ev)) return;
+  ev.coOrganizers = ev.coOrganizers || [];
+  const isCo = ev.coOrganizers.indexOf(userId) > -1;
+  ev.coOrganizers = isCo ? ev.coOrganizers.filter(x => x !== userId) : ev.coOrganizers.concat([userId]);
+  saveState();
+  if (window._supaReal) await supaUpdateEvent(ev);
+  if (!isCo && typeof supaInsertNotif === "function") {
+    supaInsertNotif(userId, "event_update", id, "t'a nommé·e co-organisateur·ice");
+  }
+  toast(isCo ? "Co-organisateur retiré" : "🤝 Co-organisateur ajouté");
+  openEventCoOrganizers(id);
+}
+
+// ===== Liste d'attente (vue organisateur) =====
+function openEventWaitlist(id) {
+  const ev = _findCanonicalEvent(id) || allEvents().find(e => e.id === id);
+  if (!ev) return;
+  const wl = ev.waitlist || [];
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">⏳ Liste d'attente</div>
+    <div class="modal-subtitle">Dans l'ordre d'arrivée. Ils sont promus automatiquement dès qu'une place se libère.</div>
+    <div style="margin-top:12px;max-height:320px;overflow-y:auto;">
+      ${wl.map((u, i) => {
+        const p = userById(u) || { name: "Participant", avatar: "#8b5cf6", profileEmoji: "✨" };
+        return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);">
+          <span style="font-size:12px;color:var(--muted);width:18px;">${i + 1}</span>
+          <div class="avatar sm" style="background:${avatarBg(p)};">${avatarInner(p)}</div>
+          <span style="flex:1;font-size:13px;">${escapeHtml(p.name || "Participant")}</span>
+          <button class="btn small primary" onclick="promoteWaitlisted('${escapeJsArg(id)}','${escapeJsArg(u)}')">Inscrire</button>
+        </div>`;
+      }).join("") || '<div style="font-size:13px;color:var(--muted);padding:12px 0;">Personne en attente.</div>'}
+    </div>
+    <button class="btn secondary block" style="margin-top:12px;" onclick="closeModal()">Fermer</button>
+  `);
+}
+
+async function promoteWaitlisted(id, userId) {
+  const ev = _findCanonicalEvent(id);
+  if (!ev || !_canManageEvent(ev)) return;
+  ev.waitlist = (ev.waitlist || []).filter(x => x !== userId);
+  ev.attendees = (ev.attendees || []).concat([userId]);
+  saveState();
+  if (window._supaReal && typeof supaPromoteFromWaitlist === "function") await supaPromoteFromWaitlist(id, userId);
+  if (typeof supaInsertNotif === "function") supaInsertNotif(userId, "event_update", id, "t'a inscrit·e depuis la liste d'attente !");
+  toast("✅ Participant inscrit");
+  openEventWaitlist(id);
+}
+
+// Annule TOUTES les dates à venir d'une série récurrente d'un coup.
+async function cancelEventSeries(id) {
+  const ref = _findCanonicalEvent(id);
+  if (!ref || !ref.seriesId) return;
+  const all = allEvents().filter(e => e.seriesId === ref.seriesId && !_eventIsOver(e));
+  if (!confirm("Annuler les " + all.length + " dates à venir de cette série ? Les inscrits seront prévenus.")) return;
+  closeModal();
+  for (const e of all) {
+    const canon = _findCanonicalEvent(e.id);
+    if (!canon || _eventIsCancelled(canon)) continue;
+    canon.status = "cancelled";
+    if (window._supaReal && typeof supaCancelEvent === "function") await supaCancelEvent(canon.id, true);
+    _notifyEventAttendees(canon, "a annulé un événement auquel tu participais");
+  }
+  saveState();
+  window._irlMapSig = null;
+  renderIRL();
+  toast("🚫 Série annulée — inscrits prévenus");
 }
 
 // Annulation « douce » : l'événement reste visible et barré pour les inscrits,
@@ -3246,6 +3663,9 @@ async function submitEvent(editId) {
   // puis était filtré à l'affichage → l'organisateur ne le retrouvait jamais.
   if (!editId && ts < Date.now() - 3600000) { toast("⏰ Cette date est déjà passée"); return; }
 
+  const recurrence = editId ? null : (g("evRecurrence")?.value || "none");
+  const occurrences = parseInt(g("evOccurrences")?.value || "6") || 6;
+
   const meId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
   const existing = editId ? _findCanonicalEvent(editId) : null;
   if (editId && !existing) { toast("Événement introuvable"); return; }
@@ -3260,8 +3680,15 @@ async function submitEvent(editId) {
     durationH,
     endAt: ts + Math.round(durationH * 3600000),
     status: (existing && existing.status) || "active",
+    recurrence: editId ? (existing.recurrence || "none") : (recurrence || "none"),
+    seriesId: editId ? (existing.seriesId || null) : (recurrence && recurrence !== "none" ? "s_" + uid() : null),
+    coOrganizers: (existing && existing.coOrganizers) || [],
+    convId: (existing && existing.convId) || null,
     organizerId: (existing && existing.organizerId) || meId,
     attendees: (existing && existing.attendees) || [meId],
+    maybes: (existing && existing.maybes) || [],
+    waitlist: (existing && existing.waitlist) || [],
+    checkedIn: (existing && existing.checkedIn) || [],
     lat: (existing && existing.lat) || null,
     lng: (existing && existing.lng) || null,
   });
@@ -3295,11 +3722,27 @@ async function submitEvent(editId) {
     } catch (e) { ev.coverUrl = null; }
   }
 
+  // Occurrences suivantes d'un événement récurrent : de VRAIS événements qui
+  // partagent le seriesId (chacun a ses inscrits et sa discussion).
+  const extraOccurrences = [];
+  if (!editId && recurrence && recurrence !== "none") {
+    _recurrenceDates(ts, recurrence, occurrences).forEach(t => {
+      extraOccurrences.push(Object.assign({}, ev, {
+        id: uid(), date: t, endAt: t + Math.round(durationH * 3600000),
+        attendees: [meId], maybes: [], waitlist: [], checkedIn: [], convId: null,
+      }));
+    });
+  }
+
   if (!editId) {
     state.userEvents = state.userEvents || [];
     state.userEvents.unshift(ev);
+    extraOccurrences.forEach(o => state.userEvents.unshift(o));
     state.user.joinedEvents = state.user.joinedEvents || [];
-    if (!state.user.joinedEvents.includes(ev.id)) state.user.joinedEvents.push(ev.id);
+    [ev].concat(extraOccurrences).forEach(o => {
+      if (!state.user.joinedEvents.includes(o.id)) state.user.joinedEvents.push(o.id);
+      _setMyRsvpLocal(o.id, "going");
+    });
     grantReward("event_create");
   }
   saveState();
@@ -3316,10 +3759,16 @@ async function submitEvent(editId) {
     // événement affichait « 0 inscrit » chez tous les autres comptes.
     if (ok && !editId && typeof supaJoinEvent === "function") supaJoinEvent(ev.id);
     if (ok && editId) _notifyEventAttendees(ev, "a modifié un événement auquel tu participes");
+    // Les occurrences suivantes partent ensuite (en série, pour ne pas saturer).
+    for (const o of extraOccurrences) {
+      const okOcc = await supaPublishEvent(o);
+      if (okOcc && typeof supaJoinEvent === "function") supaJoinEvent(o.id);
+    }
   }
   renderIRL();
   toast(ok
-    ? (editId ? "✅ Événement mis à jour" : "🎉 Événement publié !")
+    ? (editId ? "✅ Événement mis à jour"
+      : extraOccurrences.length ? `🎉 ${extraOccurrences.length + 1} dates publiées !` : "🎉 Événement publié !")
     : "⚠️ Enregistré ici, mais pas encore envoyé — réessaie quand tu auras du réseau");
 }
 

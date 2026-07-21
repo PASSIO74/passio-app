@@ -7665,3 +7665,79 @@
     .irl-suggest-item b { display: block; font-weight: 700; }
     .irl-suggest-item span { display: block; font-size: 11px; color: var(--muted); margin-top: 1px; }
     .irl-suggest-empty { padding: 10px 12px; font-size: 12px; color: var(--muted); }
+
+    /* ═══════════════════════════════════════════════════════════════
+       IRL v2 — album, calendrier, RSVP, check-in (2026-07-21)
+       ═══════════════════════════════════════════════════════════════ */
+
+    /* Album de l'événement : le contenu publié après coup par les participants. */
+    .event-album {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin-bottom: 6px;
+    }
+    .event-album-cell {
+      position: relative; aspect-ratio: 1; border-radius: 10px; overflow: hidden;
+      cursor: pointer; background: var(--bg-deep);
+    }
+    .event-album-cell img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .event-album-cell.is-text {
+      display: flex; align-items: center; justify-content: center; padding: 8px;
+      font-size: 11px; color: var(--text-dim); text-align: center; line-height: 1.4;
+    }
+    .event-album-empty {
+      grid-column: 1 / -1; font-size: 12px; color: var(--muted);
+      padding: 14px; text-align: center; border: 1px dashed var(--border); border-radius: 12px;
+    }
+
+    .event-detail-recurrence {
+      font-size: 12px; font-weight: 700; color: var(--accent);
+      background: rgba(124,58,237,0.08); border-radius: 10px;
+      padding: 8px 10px; margin-bottom: 8px;
+    }
+
+    /* Pastille « sur place » sur l'avatar d'un participant ayant pointé. */
+    .ev-here-dot {
+      position: absolute; right: -3px; bottom: -3px; font-size: 10px; line-height: 1;
+      background: var(--bg-card); border-radius: 50%; padding: 1px;
+    }
+
+    /* ── Vue calendrier ── */
+    .irl-cal-toggle {
+      border: 1px solid var(--border); background: var(--bg-card); color: var(--muted);
+      border-radius: 12px; font-size: 15px; cursor: pointer;
+      min-width: 38px; min-height: 34px; padding: 0 8px;
+    }
+    .irl-cal-toggle.active { border-color: var(--accent); color: var(--accent); background: rgba(124,58,237,0.08); }
+
+    #irlCalendar {
+      border: 1px solid var(--border); border-radius: 16px;
+      background: var(--bg-card); padding: 12px; margin-bottom: 12px;
+    }
+    .irl-cal-head {
+      display: flex; align-items: center; justify-content: space-between;
+      font-size: 14px; margin-bottom: 10px; text-transform: capitalize;
+    }
+    .irl-cal-nav {
+      border: 1px solid var(--border); background: transparent; color: var(--text);
+      border-radius: 10px; min-width: 34px; min-height: 34px; font-size: 18px; cursor: pointer;
+    }
+    .irl-cal-dow, .irl-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
+    .irl-cal-dow span {
+      text-align: center; font-size: 10px; font-weight: 800;
+      color: var(--muted); padding-bottom: 4px;
+    }
+    .irl-cal-cell {
+      aspect-ratio: 1; border: 1px solid transparent; background: transparent;
+      border-radius: 10px; display: flex; flex-direction: column; align-items: center;
+      justify-content: flex-start; gap: 1px; padding: 4px 2px; cursor: default;
+      font-family: inherit; color: var(--text); overflow: hidden;
+    }
+    .irl-cal-cell.empty { visibility: hidden; }
+    .irl-cal-cell.past { opacity: 0.35; }
+    .irl-cal-cell.has { cursor: pointer; background: rgba(124,58,237,0.07); border-color: var(--border); }
+    .irl-cal-cell.has:hover { border-color: var(--accent); }
+    .irl-cal-cell.today { border-color: var(--accent); }
+    .irl-cal-cell.today .irl-cal-num { color: var(--accent); font-weight: 800; }
+    .irl-cal-num { font-size: 11px; font-weight: 600; }
+    .irl-cal-dots { display: flex; align-items: center; gap: 1px; font-size: 9px; line-height: 1; }
+    .irl-cal-dots i { font-style: normal; }
+    .irl-cal-dots b { font-size: 8px; color: var(--muted); }

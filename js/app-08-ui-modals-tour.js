@@ -4817,6 +4817,30 @@ async function supaInit() {
       if (typeof supaRefreshVideoLives === "function") supaRefreshVideoLives();
       // Rappel in-app des événements rejoints dans les prochaines 24 h.
       if (typeof _checkEventReminders === "function") _checkEventReminders();
+      // RSVP (je viens / peut-être / liste d'attente) + check-ins : rechargés
+      // depuis le serveur pour être cohérents d'un appareil à l'autre.
+      if (typeof supaLoadMyRsvps === "function") {
+        supaLoadMyRsvps().then(function(map) {
+          if (!map) return;
+          state.user.eventRsvp = state.user.eventRsvp || {};
+          state.user.checkedInEvents = state.user.checkedInEvents || [];
+          Object.keys(map).forEach(function(evId) {
+            state.user.eventRsvp[evId] = map[evId].rsvp;
+            if (map[evId].checkedIn && state.user.checkedInEvents.indexOf(evId) === -1)
+              state.user.checkedInEvents.push(evId);
+          });
+          state.user.joinedEvents = Object.keys(state.user.eventRsvp)
+            .filter(function(k) { return state.user.eventRsvp[k] === "going" || state.user.eventRsvp[k] === "maybe"; });
+          saveState();
+          try {
+            var s = document.getElementById("screen-irl");
+            if (s && s.classList.contains("active") && typeof renderIRL === "function") renderIRL();
+          } catch(_) {}
+        }).catch(function(){});
+      }
+      // Digest hebdo « ça se passe près de toi » (dédup par semaine ISO). Laissé
+      // en dernier : il a besoin des événements Supabase déjà fusionnés.
+      if (typeof _irlWeeklyDigest === "function") setTimeout(_irlWeeklyDigest, 4000);
       // Liste de blocage (modération) : fusion avec le cache local.
       if (typeof supaLoadBlocks === "function")
         supaLoadBlocks().then(bl => {
