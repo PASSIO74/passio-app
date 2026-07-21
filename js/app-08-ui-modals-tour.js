@@ -2471,6 +2471,43 @@ async function supaPublishPostWithRetry(post, maxRetries = 2) {
   return false;
 }
 
+// ── Co-auteurs d'un CARNET (table post_collaborators) ──
+// Même principe que les co-voyageurs d'un live, appliqué au récit : la policy
+// UPDATE de `posts` passe par can_edit_post(id) (SECURITY DEFINER) et un
+// trigger gèle author_id, donc un co-auteur écrit sans pouvoir s'approprier
+// le carnet. Cf. migration_carnet_collaborators.sql.
+async function supaAddCarnetCollaborator(postId, userId) {
+  try {
+    if (!postId || !userId || !MY_UID) return false;
+    const { error } = await supa.from("post_collaborators")
+      .insert({ post_id: postId, user_id: userId, added_by: MY_UID });
+    if (error && error.code !== "23505") { console.warn("carnet collab:", error.message); return false; }
+    return true;
+  } catch (e) { console.warn("carnet collab:", e); return false; }
+}
+
+async function supaRemoveCarnetCollaborator(postId, userId) {
+  try { await supa.from("post_collaborators").delete().eq("post_id", postId).eq("user_id", userId); }
+  catch (e) { console.warn("carnet collab remove:", e); }
+}
+
+// Charge les co-auteurs des carnets visibles → { postId: [userId, …] }.
+// ⚠️ Renvoie NULL (et pas {}) en cas d'échec ou hors-ligne : l'appelant doit
+// pouvoir distinguer « le serveur dit : aucun co-auteur » de « je n'ai pas pu
+// demander ». Sans ça, une coupure réseau effaçait les co-auteurs connus
+// localement et faisait disparaître les crédits du carnet.
+async function supaLoadCarnetCollaborators(postIds) {
+  try {
+    if (!postIds || !postIds.length || !window._supaReal) return null;
+    const { data, error } = await supa.from("post_collaborators").select("*").in("post_id", postIds);
+    if (error || !data) return null;
+    const m = {};
+    postIds.forEach((id) => { m[id] = []; });   // réponse explicite : liste vide
+    data.forEach((r) => { (m[r.post_id] = m[r.post_id] || []).push(r.user_id); });
+    return m;
+  } catch (e) { return null; }
+}
+
 // Met à jour un carnet DÉJÀ publié (modification par son auteur). Réutilise
 // _buildVlogPayload : les nouveaux médias base64 partent sur Storage, ceux déjà
 // en http(s) sont conservés tels quels. RLS : la policy UPDATE de `posts` limite
@@ -2480,11 +2517,14 @@ async function supaUpdateVlogPost(post) {
     if (!post || !post.id || typeof MY_UID === "undefined" || !MY_UID || !window._supaReal) return false;
     const vlogData = await _buildVlogPayload(post);
     const patch = { content: post.text || "", vlog: vlogData };
-    const { error } = await supa.from("posts").update(patch).eq("id", post.id).eq("author_id", MY_UID);
+    // ⚠️ PAS de .eq("author_id", MY_UID) ici : un CO-AUTEUR doit pouvoir
+    // enregistrer. C'est la policy UPDATE (can_edit_post) qui autorise ou non,
+    // et le trigger posts_freeze_author qui protège la propriété.
+    const { error } = await supa.from("posts").update(patch).eq("id", post.id);
     if (error) {
       // Colonne `vlog` absente (migration non appliquée) → au moins le texte.
       if (/vlog/.test(error.message || "")) {
-        const r2 = await supa.from("posts").update({ content: post.text || "" }).eq("id", post.id).eq("author_id", MY_UID);
+        const r2 = await supa.from("posts").update({ content: post.text || "" }).eq("id", post.id);
         return !r2.error;
       }
       console.warn("supaUpdateVlogPost:", error.message);

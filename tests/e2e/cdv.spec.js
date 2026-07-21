@@ -19,7 +19,9 @@ async function bootCdv(page) {
       "supaAddCdvLiveComment", "supaReactCdvLive", "supaRemoveCdvLiveReaction", "supaToggleCdvLiveLike",
       "supaUpdateCdvLiveStatus", "supaFollowCdvLive", "supaUnfollowCdvLive", "supaRefreshCdvLives",
       "supaLoadCdvLive", "supaLoadCdvLives", "supaLoadCdvLiveLikes", "supaUpdateCdvLiveStepCoords",
-      "supaAddCdvCollaborator", "supaRemoveCdvCollaborator"].forEach((fn) => { window[fn] = async () => null; });
+      "supaAddCdvCollaborator", "supaRemoveCdvCollaborator", "supaUpdateVlogPost",
+      "supaAddCarnetCollaborator", "supaRemoveCarnetCollaborator",
+      "supaLoadCarnetCollaborators"].forEach((fn) => { window[fn] = async () => null; });
     // Géocodage : réseau interdit en test → réponse déterministe.
     window._geocodeAddress = async (q) => (/ursa|lisbonne|cascais|porto|sintra/i.test(q) ? { lat: 38.72, lng: -9.14 } : null);
     localStorage.removeItem("passio_cdv_lives");
@@ -463,6 +465,136 @@ test.describe("CDV v2 — réutiliser un itinéraire", () => {
     expect(places).toHaveLength(1);
     expect(places[0].name).toBe("Florence");
     expect(places[0].fromTrip).toBe("Toscane");
+  });
+});
+
+test.describe("CDV v2 — modifier un carnet publié", () => {
+  // Crée un carnet local appartenant au compte de test.
+  async function seedCarnet(page) {
+    return page.evaluate(() => {
+      const p = {
+        id: "vlog_edit", authorId: window.MY_UID || "me", type: "vlog", destination: "Norvège",
+        text: "Norvège", createdAt: Date.now(), likes: 0, comments: [], budget: "800",
+        steps: [{ place: "Bergen", text: "Pluie", tip: "" }],
+      };
+      state.userPosts.unshift(p); saveState();
+      goTo("cdv"); renderCdvScreen();
+      return p.id;
+    });
+  }
+
+  test("le menu ⋯ propose « Modifier » sur un carnet, pas sur un post ordinaire", async ({ page }) => {
+    await bootCdv(page);
+    const id = await seedCarnet(page);
+    await page.evaluate((i) => openPostOptions(i), id);
+    await expect(page.locator(".modal")).toContainText("Modifier le carnet");
+    await page.evaluate(() => closeModal());
+
+    // Un post texte n'a pas d'entrée « Modifier ».
+    const tid = await page.evaluate(() => {
+      const p = { id: "txt_1", authorId: window.MY_UID || "me", type: "text", text: "hello", createdAt: Date.now(), comments: [] };
+      state.userPosts.unshift(p); saveState(); return p.id;
+    });
+    await page.evaluate((i) => openPostOptions(i), tid);
+    await expect(page.locator(".modal")).not.toContainText("Modifier le carnet");
+  });
+
+  test("modifier un carnet met à jour le post au lieu d'en créer un second", async ({ page }) => {
+    await bootCdv(page);
+    const id = await seedCarnet(page);
+    const before = await page.evaluate(() => state.userPosts.filter((p) => p.type === "vlog").length);
+    expect(before).toBe(1);
+
+    await page.evaluate((i) => editCarnet(i), id);
+    await expect(page.locator("#cdvEditor")).toBeVisible({ timeout: 5000 });
+    // Le formulaire est PRÉ-REMPLI et l'UI passe en mode édition.
+    await expect(page.locator("#vlogDestination")).toHaveValue("Norvège");
+    await expect(page.locator("#cdvEditorTitle")).toContainText("Modifier");
+    await expect(page.locator("#cdvPublishBtn")).toContainText("Enregistrer");
+
+    await page.fill("#vlogDestination", "Norvège — fjords de l'ouest");
+    await page.getByRole("button", { name: /Enregistrer les modifications/ }).click();
+
+    await expect.poll(
+      () => page.evaluate(() => state.userPosts.filter((p) => p.type === "vlog").length),
+      { timeout: 10000 }
+    ).toBe(1); // toujours UN seul carnet
+    const p = await page.evaluate(() => state.userPosts.find((x) => x.type === "vlog"));
+    expect(p.id).toBe(id);                      // même post
+    expect(p.destination).toBe("Norvège — fjords de l'ouest");
+    expect(p.steps[0].place).toBe("Bergen");    // le reste est conservé
+    expect(p.editedAt).toBeTruthy();
+
+    // L'éditeur se referme et repasse en mode création pour la prochaine fois.
+    await expect(page.locator("#cdvEditor")).toBeHidden();
+    expect(await page.evaluate(() => window._editingCarnetId)).toBeFalsy();
+    await expect(page.locator("#cdvEditorTitle")).toContainText("Nouveau carnet");
+  });
+
+  test("annuler une modification ne touche pas le carnet", async ({ page }) => {
+    await bootCdv(page);
+    const id = await seedCarnet(page);
+    await page.evaluate((i) => editCarnet(i), id);
+    await page.fill("#vlogDestination", "Jamais enregistré");
+    await page.getByRole("button", { name: "Annuler" }).click();
+    const p = await page.evaluate(() => state.userPosts.find((x) => x.type === "vlog"));
+    expect(p.destination).toBe("Norvège");
+    expect(await page.evaluate(() => window._editingCarnetId)).toBeFalsy();
+  });
+});
+
+test.describe("CDV v2 — carnets collaboratifs", () => {
+  test("un co-auteur peut modifier le carnet d'un autre compte", async ({ page }) => {
+    await bootCdv(page);
+    const id = await page.evaluate(() => {
+      const p = {
+        id: "vlog_collab", authorId: "u_autre", type: "vlog", destination: "Pérou",
+        text: "Pérou", createdAt: Date.now(), likes: 0, comments: [], collaborators: [],
+        steps: [{ place: "Cusco", text: "", tip: "" }],
+      };
+      state.supabasePosts = state.supabasePosts || [];
+      state.supabasePosts.unshift(p); saveState();
+      goTo("cdv"); renderCdvScreen();
+      return p.id;
+    });
+
+    expect(await page.evaluate((i) => canEditCarnet(findPostAnywhere(i)), id)).toBe(false);
+    await page.evaluate((i) => {
+      findPostAnywhere(i).collaborators = [window.MY_UID || "me"];
+    }, id);
+    expect(await page.evaluate((i) => canEditCarnet(findPostAnywhere(i)), id)).toBe(true);
+
+    await page.evaluate((i) => editCarnet(i), id);
+    await expect(page.locator("#cdvEditor")).toBeVisible({ timeout: 5000 });
+    await expect(page.locator("#vlogDestination")).toHaveValue("Pérou");
+  });
+
+  test("l'auteur invite puis retire un co-auteur, et les crédits s'affichent", async ({ page }) => {
+    await bootCdv(page);
+    const id = await page.evaluate(() => {
+      const p = {
+        id: "vlog_credits", authorId: window.MY_UID || "me", type: "vlog", destination: "Corse",
+        text: "Corse", createdAt: Date.now(), likes: 0, comments: [],
+        steps: [{ place: "Bonifacio", text: "", tip: "" }],
+      };
+      state.userPosts.unshift(p); saveState();
+      // Auteur connu pour l'affichage du crédit.
+      state.seed.users.push({ id: "u_lea", name: "Léa", profileEmoji: "🎵", avatar: "#8b5cf6" });
+      goTo("cdv"); renderCdvScreen();
+      return p.id;
+    });
+
+    await page.evaluate((i) => addCarnetCollaborator(i, "u_lea", "Léa"), id);
+    expect(await page.evaluate((i) => carnetCollaborators(findPostAnywhere(i)), id)).toEqual(["u_lea"]);
+    await expect(page.locator(".modal")).toContainText("Co-auteurs du carnet");
+    await page.evaluate(() => closeModal());
+
+    // Crédité dans le viewer : « par Moi · avec Léa ».
+    await page.evaluate((i) => openVlogViewer(i), id);
+    await expect(page.locator(".vlog-viewer-author")).toContainText("avec Léa");
+
+    await page.evaluate((i) => removeCarnetCollaborator(i, "u_lea"), id);
+    expect(await page.evaluate((i) => carnetCollaborators(findPostAnywhere(i)), id)).toEqual([]);
   });
 });
 

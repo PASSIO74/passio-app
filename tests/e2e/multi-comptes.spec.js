@@ -771,6 +771,179 @@ test.describe("messagerie entre 2 comptes réels", () => {
       await ctxB.close();
     }
   });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CDV v2 — ce test est la SEULE preuve possible des règles RLS ajoutées le
+  // 2026-07-21. Tout le reste de la suite CDV tourne avec Supabase neutralisé :
+  // les policies suivantes n'ont jamais été exercées avec une vraie session.
+  //   · cdv_live_collaborators : INSERT gardé par un EXISTS sur cdv_lives
+  //   · cdv_live_steps         : policy UPDATE (elle n'existait pas du tout)
+  //   · cdv_live_steps.lat/lng : colonnes ajoutées, aller-retour à vérifier
+  //   · post_collaborators + can_edit_post : co-écriture d'un carnet
+  // Précédent : un live « fantôme » (jamais publié côté serveur) était invisible
+  // en local et n'a été trouvé que par une exécution à deux comptes.
+  // ═══════════════════════════════════════════════════════════════════════════
+  test("CDV v2 : co-voyageur, édition d'étape, coordonnées et carnet co-écrit", async ({ browser }) => {
+    test.setTimeout(240000);
+    const t0 = Date.now();
+    const log = (m) => console.log(`[cdv2 ${(((Date.now() - t0) / 1000) | 0)}s] ${m}`);
+
+    const ctxA = await browser.newContext();
+    const ctxB = await browser.newContext();
+    const pageA = await ctxA.newPage();
+    const pageB = await ctxB.newPage();
+    pageA.on("console", (m) => { if (m.type() === "error") log("A err: " + m.text().slice(0, 160)); });
+    pageB.on("console", (m) => { if (m.type() === "error") log("B err: " + m.text().slice(0, 160)); });
+
+    let liveId = null, vlogId = null;
+    try {
+      const uidA = await signupAnonymous(pageA, "Test Alice");
+      const uidB = await signupAnonymous(pageB, "Test Bob");
+      expect(uidA).toBeTruthy(); expect(uidB).toBeTruthy(); expect(uidA).not.toBe(uidB);
+      log("A=" + uidA + " B=" + uidB);
+
+      // ── 1. A démarre un voyage et publie une étape GÉOLOCALISÉE ──
+      liveId = await pageA.evaluate(async () => {
+        const id = "live_" + uid();
+        await supaPublishCdvLive({ id, authorId: "me", destination: "CDV v2 auto",
+          description: "e2e", duration: "weekend", visibility: "public", status: "live" });
+        await supaAddCdvLiveStep(id, { id: "ls_" + uid(), city: "Lisbonne", emoji: "📍",
+          content: "étape A", photos: [], rating: 4, budget: "€€", lat: 38.7223, lng: -9.1393 });
+        return id;
+      });
+      expect(liveId, "live de A publié").toBeTruthy();
+
+      // Les colonnes lat/lng doivent revenir du serveur (migration_cdv_v2).
+      const aLive = await loadFindWithRetry(pageA, "supaLoadCdvLives", liveId, 20000);
+      expect(aLive, "A recharge son live").toBeTruthy();
+      expect(aLive.steps.length, "1 étape").toBe(1);
+      expect(aLive.steps[0].lat, "latitude persistée en base").toBeCloseTo(38.7223, 3);
+      expect(aLive.steps[0].lng, "longitude persistée en base").toBeCloseTo(-9.1393, 3);
+      log("✅ coordonnées d'étape persistées (colonnes lat/lng)");
+
+      // ── 2. A modifie SON étape : la policy UPDATE n'existait pas avant ──
+      const stepId = aLive.steps[0].id;
+      const edited = await pageA.evaluate(async ([lid, sid]) => {
+        await supaUpdateCdvLiveStep(lid, { id: sid, city: "Lisbonne (corrigé)", emoji: "📍",
+          content: "étape A corrigée", photos: [], rating: 5, budget: "€€€", lat: 38.7, lng: -9.1 });
+        const { data } = await supa.from("cdv_live_steps").select("city, rating").eq("id", sid).maybeSingle();
+        return data;
+      }, [liveId, stepId]);
+      expect(edited, "étape relue").toBeTruthy();
+      expect(edited.city, "correction d'étape écrite en base").toBe("Lisbonne (corrigé)");
+      expect(edited.rating).toBe(5);
+      log("✅ édition d'étape autorisée (policy cdv_steps_update_own)");
+
+      // ── 3. Contre-épreuve : B (non invité) ne doit PAS pouvoir la modifier ──
+      const hijack = await pageB.evaluate(async (sid) => {
+        await supa.from("cdv_live_steps").update({ city: "PIRATE" }).eq("id", sid);
+        const { data } = await supa.from("cdv_live_steps").select("city").eq("id", sid).maybeSingle();
+        return data ? data.city : null;
+      }, stepId);
+      expect(hijack, "B ne peut pas modifier l'étape de A").toBe("Lisbonne (corrigé)");
+      log("✅ isolation des étapes confirmée");
+
+      // ── 4. A invite B comme co-voyageur (policy avec EXISTS sur cdv_lives) ──
+      const invited = await pageA.evaluate(async ([lid, bid]) => {
+        const ok = await supaAddCdvCollaborator(lid, bid);
+        const { data } = await supa.from("cdv_live_collaborators").select("user_id").eq("live_id", lid);
+        return { ok, rows: (data || []).map((r) => r.user_id) };
+      }, [liveId, uidB]);
+      expect(invited.ok, "invitation acceptée par la RLS").toBe(true);
+      expect(invited.rows, "B enregistré comme co-voyageur").toContain(uidB);
+      log("✅ co-voyageur inscrit en base");
+
+      // ── 5. B publie SA propre étape sur le voyage de A ──
+      const bStep = await pageB.evaluate(async (lid) => {
+        const sid = "ls_" + uid();
+        await supaAddCdvLiveStep(lid, { id: sid, city: "Porto", emoji: "🍽",
+          content: "étape du co-voyageur", photos: [], rating: 4, budget: "€", lat: 41.15, lng: -8.62 });
+        const { data } = await supa.from("cdv_live_steps").select("id, author_id, city").eq("id", sid).maybeSingle();
+        return data;
+      }, liveId);
+      expect(bStep, "étape de B écrite").toBeTruthy();
+      expect(bStep.author_id, "l'étape est signée par B").toBe(uidB);
+      expect(bStep.city).toBe("Porto");
+      log("✅ un co-voyageur publie sur le voyage d'un autre");
+
+      // Le voyage de A contient bien les deux étapes, des deux auteurs.
+      const merged = await loadFindWithRetry(pageA, "supaLoadCdvLives", liveId, 20000);
+      expect(merged.steps.length, "2 étapes, 2 auteurs").toBe(2);
+      expect(merged.collaborators, "co-voyageur renvoyé par le loader").toContain(uidB);
+
+      // ── 6. B ne doit PAS pouvoir supprimer l'étape de A ──
+      const delAttempt = await pageB.evaluate(async (sid) => {
+        await supa.from("cdv_live_steps").delete().eq("id", sid);
+        const { data } = await supa.from("cdv_live_steps").select("id").eq("id", sid).maybeSingle();
+        return !!data;
+      }, stepId);
+      expect(delAttempt, "l'étape de A survit à la tentative de B").toBe(true);
+      log("✅ un co-voyageur ne peut pas effacer les étapes des autres");
+
+      // ── 7. CARNET CO-ÉCRIT : A publie, invite B, B modifie ──
+      vlogId = await pageA.evaluate(async () => {
+        const id = "p_" + uid();
+        const post = { id, authorId: MY_UID, type: "vlog", text: "Carnet co-écrit [test auto]",
+          destination: "Carnet co-écrit", dateStart: null, dateEnd: null, cover: null,
+          budget: "500", transport: "train", lodging: "auberge", season: "été",
+          tip: "conseil", createdAt: Date.now(), passion: null, mood: "chill",
+          steps: [{ place: "Cusco", text: "arrivée", tip: "", photo: null, lat: -13.53, lng: -71.97 }] };
+        const ok = await supaPublishPostWithRetry(post);
+        return ok ? id : null;
+      });
+      expect(vlogId, "carnet de A publié").toBeTruthy();
+
+      const collabOk = await pageA.evaluate(async ([pid, bid]) => {
+        return await supaAddCarnetCollaborator(pid, bid);
+      }, [vlogId, uidB]);
+      expect(collabOk, "B invité comme co-auteur du carnet").toBe(true);
+
+      // B modifie le carnet de A : c'est can_edit_post() qui l'autorise.
+      const coEdit = await pageB.evaluate(async (pid) => {
+        const { error } = await supa.from("posts").update({ content: "réécrit par le co-auteur" }).eq("id", pid);
+        if (error) return "ERREUR: " + error.message;
+        const { data } = await supa.from("posts").select("content, author_id").eq("id", pid).maybeSingle();
+        return data;
+      }, vlogId);
+      expect(typeof coEdit, "pas d'erreur RLS à l'écriture du co-auteur").toBe("object");
+      expect(coEdit.content, "le co-auteur a bien écrit").toBe("réécrit par le co-auteur");
+      expect(coEdit.author_id, "la propriété du carnet n'a pas changé").toBe(uidA);
+      log("✅ carnet co-écrit (policy can_edit_post)");
+
+      // ── 8. Le trigger doit empêcher B de s'approprier le carnet ──
+      const steal = await pageB.evaluate(async ([pid, bid]) => {
+        await supa.from("posts").update({ author_id: bid }).eq("id", pid);
+        const { data } = await supa.from("posts").select("author_id").eq("id", pid).maybeSingle();
+        return data ? data.author_id : null;
+      }, [vlogId, uidB]);
+      expect(steal, "author_id reste celui de A (trigger posts_freeze_author)").toBe(uidA);
+      log("✅ propriété du carnet immuable");
+
+      // ── 9. Un ÉTRANGER au carnet ne doit pas pouvoir l'écrire ──
+      const strangerEdit = await pageB.evaluate(async (pid) => {
+        // B se retire lui-même de la co-écriture, puis retente.
+        await supa.from("post_collaborators").delete().eq("post_id", pid).eq("user_id", MY_UID);
+        await supa.from("posts").update({ content: "PIRATE" }).eq("id", pid);
+        const { data } = await supa.from("posts").select("content").eq("id", pid).maybeSingle();
+        return data ? data.content : null;
+      }, vlogId);
+      expect(strangerEdit, "sans invitation, plus d'écriture possible").toBe("réécrit par le co-auteur");
+      log("✅ retrait d'un co-auteur : droit d'écriture révoqué");
+
+      // ── Nettoyage ──
+      await pageA.evaluate(async ([lid, pid]) => {
+        try { await supa.from("cdv_live_collaborators").delete().eq("live_id", lid); } catch (e) {}
+        try { await supa.from("cdv_live_steps").delete().eq("live_id", lid); } catch (e) {}
+        try { await supa.from("cdv_lives").delete().eq("id", lid); } catch (e) {}
+        try { await supa.from("post_collaborators").delete().eq("post_id", pid); } catch (e) {}
+        try { await supa.from("posts").delete().eq("id", pid); } catch (e) {}
+      }, [liveId, vlogId]);
+      log("nettoyage effectué");
+    } finally {
+      await ctxA.close();
+      await ctxB.close();
+    }
+  });
 });
 
 // Parcours réel : landing → Créer un compte → inscription par e-mail/mot de passe

@@ -526,11 +526,27 @@ function toggleCarnetSave(postId) {
 // obligeait à TOUT resaisir. On recharge le carnet dans l'éditeur CDV et la
 // publication met à jour la ligne existante au lieu d'en créer une nouvelle.
 // ═══════════════════════════════════════════════════════════════════════════
+// Co-auteurs d'un carnet (cache local alimenté par supaLoadCarnetCollaborators).
+function carnetCollaborators(post) {
+  if (!post) return [];
+  if (Array.isArray(post.collaborators)) return post.collaborators;
+  var c = window._carnetCollabs && window._carnetCollabs[post.id];
+  return Array.isArray(c) ? c : [];
+}
+
+// Qui peut modifier un carnet : son auteur OU un co-auteur (miroir client de la
+// policy `can_edit_post`).
+function canEditCarnet(post) {
+  if (!post) return false;
+  var me = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
+  if (post.authorId === me || post.authorId === "me" || post._source === "me") return true;
+  return carnetCollaborators(post).indexOf(me) > -1;
+}
+
 function editCarnet(postId) {
   var post = (typeof findPostAnywhere === "function") ? findPostAnywhere(postId) : null;
   if (!post || post.type !== "vlog") { toast("Carnet introuvable"); return; }
-  var me = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
-  if (post.authorId !== me && post.authorId !== "me") { toast("Tu ne peux modifier que tes propres carnets"); return; }
+  if (!canEditCarnet(post)) { toast("Tu ne peux modifier que tes carnets (ou ceux où tu es co-auteur)"); return; }
 
   closeVlogViewer();
   window._editingCarnetId = postId;
@@ -563,6 +579,96 @@ function editCarnet(postId) {
   var b = document.getElementById("vlogDraftBanner");
   if (b) b.remove();
   toast("✏️ Modifie ton carnet puis enregistre");
+}
+
+// ── Co-auteurs d'un carnet : inviter / retirer (auteur uniquement) ──
+function openCarnetCollaborators(postId) {
+  var post = (typeof findPostAnywhere === "function") ? findPostAnywhere(postId) : null;
+  if (!post) return;
+  var me = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
+  var isOwner = post.authorId === me || post.authorId === "me" || post._source === "me";
+  if (!isOwner) { toast("Seul l'auteur du carnet peut gérer les co-auteurs"); return; }
+
+  var cols = carnetCollaborators(post);
+  var listHtml = cols.length
+    ? cols.map(function (uidC) {
+        var u = (typeof userById === "function" && userById(uidC)) || {};
+        return '<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);">'
+          + '<div class="avatar" style="background:' + (u.avatar || "#7c3aed") + ';width:30px;height:30px;font-size:14px;">' + (u.profileEmoji || "🌍") + '</div>'
+          + '<div style="flex:1;font-size:13px;color:var(--text);">' + escapeHtml(u.name || "Passionné") + '</div>'
+          + '<span onclick="removeCarnetCollaborator(\'' + escapeJsArg(postId) + '\',\'' + escapeJsArg(uidC) + '\')" style="cursor:pointer;color:#ef4444;font-size:12px;">Retirer</span>'
+          + '</div>';
+      }).join("")
+    : '<div style="font-size:12px;color:var(--muted);padding:8px 0;">Personne pour l\'instant. Invite les personnes avec qui tu as voyagé : elles pourront compléter et corriger le carnet.</div>';
+
+  openModal(
+    '<div class="modal-handle"></div>'
+    + '<span class="modal-close" onclick="closeModal()">×</span>'
+    + '<div class="modal-title">👥 Co-auteurs du carnet</div>'
+    + '<div id="carnetCollabList">' + listHtml + '</div>'
+    + '<label class="field" style="margin-top:12px;"><span>Inviter quelqu\'un</span>'
+    + '<input type="text" class="input" id="carnetCollabSearch" placeholder="Pseudo…" oninput="searchCarnetCollaborator(\'' + escapeJsArg(postId) + '\', this.value)"/></label>'
+    + '<div id="carnetCollabResults" style="display:flex;flex-direction:column;gap:6px;"></div>'
+  );
+}
+
+async function searchCarnetCollaborator(postId, q) {
+  var box = document.getElementById("carnetCollabResults");
+  if (!box) return;
+  q = (q || "").trim();
+  if (q.length < 2) { box.innerHTML = ""; return; }
+  box.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:6px;">Recherche…</div>';
+  var users = [];
+  try { if (typeof supaSearchUsers === "function") users = (await supaSearchUsers(q)) || []; } catch (e) {}
+  if (!users.length) {
+    users = ((state.seed && state.seed.users) || [])
+      .filter(function (u) { return (u.name || "").toLowerCase().indexOf(q.toLowerCase()) > -1; })
+      .slice(0, 6)
+      .map(function (u) { return { id: u.id, username: u.name, emoji: u.profileEmoji, color: u.avatar }; });
+  }
+  var post = (typeof findPostAnywhere === "function") ? findPostAnywhere(postId) : null;
+  var already = carnetCollaborators(post);
+  var me = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
+  users = users.filter(function (u) { return u.id !== me && already.indexOf(u.id) < 0; });
+  if (!users.length) { box.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:6px;">Aucun compte trouvé</div>'; return; }
+  box.innerHTML = users.slice(0, 6).map(function (u) {
+    return '<div style="display:flex;align-items:center;gap:8px;border:1px solid var(--border);border-radius:10px;padding:8px;">'
+      + '<div class="avatar" style="background:' + (u.color || "#7c3aed") + ';width:28px;height:28px;font-size:13px;">' + (u.emoji || "✨") + '</div>'
+      + '<div style="flex:1;font-size:13px;color:var(--text);">' + escapeHtml(u.username || "Passionné") + '</div>'
+      + '<button class="btn primary" style="font-size:11px;padding:6px 10px;" onclick="addCarnetCollaborator(\'' + escapeJsArg(postId) + '\',\'' + escapeJsArg(u.id) + '\',\'' + escapeJsArg(u.username || "Passionné") + '\')">Inviter</button>'
+      + '</div>';
+  }).join("");
+}
+
+async function addCarnetCollaborator(postId, userId, name) {
+  var post = (typeof findPostAnywhere === "function") ? findPostAnywhere(postId) : null;
+  if (!post) return;
+  window._carnetCollabs = window._carnetCollabs || {};
+  var cur = carnetCollaborators(post).slice();
+  if (cur.indexOf(userId) > -1) return;
+  cur.push(userId);
+  post.collaborators = cur;
+  window._carnetCollabs[postId] = cur;
+  try { saveState(); } catch (e) {}
+  if (typeof supaAddCarnetCollaborator === "function") await supaAddCarnetCollaborator(postId, userId);
+  if (typeof supaInsertNotif === "function") {
+    try { supaInsertNotif(userId, "comment", postId, "t'a invité·e à co-écrire son carnet"); } catch (e) {}
+  }
+  toast("👥 " + (name || "Invité") + " peut désormais compléter ce carnet");
+  openCarnetCollaborators(postId);
+}
+
+function removeCarnetCollaborator(postId, userId) {
+  var post = (typeof findPostAnywhere === "function") ? findPostAnywhere(postId) : null;
+  if (!post) return;
+  var cur = carnetCollaborators(post).filter(function (x) { return x !== userId; });
+  post.collaborators = cur;
+  window._carnetCollabs = window._carnetCollabs || {};
+  window._carnetCollabs[postId] = cur;
+  try { saveState(); } catch (e) {}
+  if (typeof supaRemoveCarnetCollaborator === "function") supaRemoveCarnetCollaborator(postId, userId);
+  toast("Co-auteur retiré");
+  openCarnetCollaborators(postId);
 }
 
 // Ajuste titre et bouton selon création / modification.
@@ -857,7 +963,13 @@ function openVlogViewer(postId) {
     <div class="vlog-viewer-body">
       <div class="vlog-viewer-title">${escapeHtml(post.destination || "Carnet de voyage")}</div>
       <div class="vlog-viewer-dates">${escapeHtml(fmtRange(post.dateStart, post.dateEnd))}</div>
-      <div class="vlog-viewer-author">par ${escapeHtml(author.name)}</div>
+      <div class="vlog-viewer-author">par ${escapeHtml(author.name)}${(function () {
+        // Crédits des co-auteurs : un voyage à plusieurs se raconte à plusieurs.
+        var cols = carnetCollaborators(post);
+        if (!cols.length) return "";
+        var names = cols.map(function (u) { return ((typeof userById === "function" && userById(u)) || {}).name || "un co-voyageur"; });
+        return " · avec " + escapeHtml(names.join(", "));
+      })()}</div>
 
       <div class="vlog-stats-bar">
         <div class="vlog-stat"><div class="vlog-stat-num">${stats.durée}</div><div class="vlog-stat-label">Jours</div></div>
@@ -891,8 +1003,9 @@ function openVlogViewer(postId) {
         <button class="vlog-action-btn" onclick="saveItineraryPlaces('${postId}','carnet')">
           📍 Enregistrer les lieux
         </button>
+        ${canEditCarnet(post) ? `<button class="vlog-action-btn" onclick="editCarnet('${postId}')">✏️ Modifier</button>` : ""}
         ${(post.authorId === ((typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me") || post._source === "me")
-          ? `<button class="vlog-action-btn" onclick="editCarnet('${postId}')">✏️ Modifier</button>` : ""}
+          ? `<button class="vlog-action-btn" onclick="openCarnetCollaborators('${postId}')">👥 Co-auteurs</button>` : ""}
         <button class="vlog-action-btn" onclick="inspireFromCarnet('${postId}')">
           📔 M'en inspirer
         </button>
@@ -926,6 +1039,23 @@ function openVlogViewer(postId) {
 
   // Charge / rend les commentaires du carnet (même système que le fil/IRL)
   _renderVlogComments(postId);
+
+  // Co-auteurs (cross-compte) : chargés en arrière-plan puis crédités en tête.
+  if (typeof supaLoadCarnetCollaborators === "function") {
+    supaLoadCarnetCollaborators([postId]).then(function (m) {
+      // null = requête impossible (hors-ligne / erreur) → on GARDE ce qu'on sait.
+      if (!m || !Array.isArray(m[postId])) return;
+      var cols = m[postId];
+      window._carnetCollabs = window._carnetCollabs || {};
+      var known = carnetCollaborators(post);
+      window._carnetCollabs[postId] = cols;
+      post.collaborators = cols;
+      var vw = document.getElementById("vlogViewer");
+      // Re-render seulement si la liste a réellement changé (pas de clignotement).
+      if (cols.join(",") !== known.join(",") && vw && vw.classList.contains("open")
+          && vw.getAttribute("data-current-post") === postId) openVlogViewer(postId);
+    }).catch(function () {});
+  }
 
   // Initialise la mini-carte si on a des points géolocalisés
   if (hasMap) {

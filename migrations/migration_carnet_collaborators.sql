@@ -64,12 +64,32 @@ REVOKE ALL ON FUNCTION can_edit_post(TEXT) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION can_edit_post(TEXT) TO authenticated, anon;
 
 -- La policy UPDATE de `posts` accepte désormais les co-auteurs.
--- ⚠️ On garde le WITH CHECK sur la même règle : un co-auteur ne doit pas
--- pouvoir se réattribuer le post en changeant author_id.
+-- Ancienne définition : USING (author_id = auth.uid()::text), sans WITH CHECK.
 DROP POLICY IF EXISTS "Update propre" ON posts;
 CREATE POLICY "Update propre" ON posts FOR UPDATE
   USING (can_edit_post(id))
   WITH CHECK (can_edit_post(id));
+
+-- ⚠️ Un WITH CHECK sur can_edit_post(id) NE protège PAS la propriété : l'id ne
+-- changeant pas, un co-auteur pourrait réécrire author_id et s'approprier le
+-- carnet. La propriété est donc rendue IMMUABLE par trigger — elle ne change
+-- jamais via l'API, quel que soit l'appelant.
+CREATE OR REPLACE FUNCTION posts_freeze_author()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF NEW.author_id IS DISTINCT FROM OLD.author_id THEN
+    NEW.author_id := OLD.author_id;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_posts_freeze_author ON posts;
+CREATE TRIGGER trg_posts_freeze_author
+  BEFORE UPDATE ON posts
+  FOR EACH ROW EXECUTE FUNCTION posts_freeze_author();
 
 -- Realtime : un ajout de co-auteur se propage comme le reste.
 DO $$
