@@ -185,6 +185,17 @@ function renderMainProfile() {
     if (chip) chip.title = _rank && _rank.next ? ("⭐ " + _score + " · " + _rank.label + " — plus que " + Math.max(0, _rank.next - _score) + " pts avant « " + (rankOf(_rank.next).label) + " »") : ("⭐ " + _score + " · rang maximum atteint 🏆");
   }
 
+  // Pastille badges : uniquement quand il y en a au moins un (une pastille « 0 »
+  // ne raconte rien et encombre la ligne d'identité).
+  var badgeChip = document.getElementById("mainProfileBadges");
+  if (badgeChip && typeof myBadgeCount === "function") {
+    var _nb = myBadgeCount();
+    badgeChip.style.display = _nb ? "inline-flex" : "none";
+    var _nbEl = document.getElementById("profileBadgeCount");
+    if (_nbEl) _nbEl.textContent = _nb;
+    badgeChip.title = "🏅 " + _nb + " badge" + (_nb > 1 ? "s" : "") + " — voir le détail";
+  }
+
   var postCount = state.userPosts.length;
   document.getElementById("mainStatPosts").textContent = postCount;
   var ppEl = document.getElementById("topPassia"); if (ppEl) ppEl.textContent = state.user.passia || 0;

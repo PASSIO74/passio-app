@@ -495,6 +495,10 @@
           <div class="main-profile-username" id="mainProfileUsername">Mon profil</div>
           <div class="profile-chips-row">
             <button class="profile-stars-chip" id="mainProfileStars" onclick="goTo('wallet')" title="Tes points & ton rang" aria-label="Tes points et ton rang">⭐ <b id="profileStarsScore">0</b></button>
+            <!-- Badges d'assiduité : jalons concrets (sorties, villes, pays), à
+                 côté des étoiles qui mesurent l'activité globale. Masqué tant
+                 qu'aucun badge n'est acquis — cf. renderMainProfile. -->
+            <button class="profile-stars-chip" id="mainProfileBadges" onclick="openBadgesSheet()" style="display:none;" title="Tes badges" aria-label="Tes badges">🏅 <b id="profileBadgeCount">0</b></button>
             <button class="profile-stars-chip" id="profilePassiaChip" onclick="goTo('wallet')" title="Mon solde Passia" aria-label="Mon solde Passia">💎 <b id="topPassia">0</b></button>
           </div>
           <div class="main-profile-bio" id="mainProfileBio">Ajoute une biographie…</div>

@@ -2451,6 +2451,9 @@ function checkInEvent(id) {
     if (window._supaReal && typeof supaCheckInEvent === "function") supaCheckInEvent(id);
     toast("🎉 Arrivée confirmée — bon moment !");
     _refreshEventDetailIfOpen(id);
+    // Pointer son arrivée est l'action qui débloque le plus de badges (sorties,
+    // fiabilité, villes) : c'est le bon moment pour les annoncer.
+    if (typeof _announceNewBadges === "function") _announceNewBadges();
   };
   if (!loc || !navigator.geolocation) { done(); return; }
   toast("📍 Vérification de ta position…");
@@ -2848,12 +2851,26 @@ function openEventDetails(id) {
         💬 Discussion des participants${myRsvp(ev.id) || mine ? "" : " · réservée aux inscrits"}
       </button>`}
 
-    <!-- Check-in : récompense la présence RÉELLE, pas un clic. -->
+    <!-- Check-in : récompense la présence RÉELLE, pas un clic. Deux chemins —
+         la position GPS, ou le QR/code affiché à l'accueil par l'organisateur. -->
     ${_canCheckIn(ev) ? `
       <button class="btn ${_hasCheckedIn(ev) ? "ghost" : "primary"} block" style="font-size:12px;margin-bottom:8px;"
         ${_hasCheckedIn(ev) ? "disabled" : ""} onclick="checkInEvent('${escapeJsArg(ev.id)}')">
         ${_hasCheckedIn(ev) ? "✅ Arrivée confirmée" : "📍 Je suis sur place · +25 pts"}
+      </button>
+      ${_hasCheckedIn(ev) ? "" : `<button class="btn ghost block" style="font-size:12px;margin-bottom:8px;" onclick="openCheckinCodeEntry('${escapeJsArg(ev.id)}')">📲 J'ai un code d'accueil</button>`}` : ""}
+
+    <!-- Côté organisateur : le QR à montrer à l'entrée. Disponible dès le jour J
+         (et pas seulement pendant la fenêtre de pointage) pour préparer l'accueil. -->
+    ${_canManageEvent(ev) && !over && !cancelled ? `
+      <button class="btn ghost block" style="font-size:12px;margin-bottom:8px;" onclick="openEventCheckinQr('${escapeJsArg(ev.id)}')">
+        📲 QR d'accueil des participants
       </button>` : ""}
+
+    <!-- Retour d'expérience : invite à noter (ou rappel de ma note) une fois
+         l'événement terminé, + la moyenne publique dès qu'il y a des avis. -->
+    ${_eventFeedbackPromptHtml(ev)}
+    <div data-evrating="${escapeHtml(ev.id)}">${_eventRatingSummaryHtml(ev)}</div>
 
     ${ev.recurrence && ev.recurrence !== "none" ? `<div class="event-detail-recurrence">🔁 Événement récurrent — ${escapeHtml(RECURRENCE_LABELS[ev.recurrence] || ev.recurrence)}</div>` : ""}
 
@@ -2913,6 +2930,9 @@ function openEventDetails(id) {
 
   _loadEventComments(ev.id);
   _loadEventAlbum(ev.id);
+  // Moyenne des notes : seulement pour un événement terminé (avant, il n'y a rien
+  // à noter — autant s'épargner la requête sur le chemin chaud).
+  if (over) _loadEventRatings(ev.id);
   _refreshEventDetailCta(ev, joined);
 
   const shareBtn = document.getElementById("eventDetailShareBtn");
@@ -3045,9 +3065,19 @@ function closeEventDetail() {
   window._openEventDetailId = null;
 }
 
-// Rappel in-app pour les événements rejoints qui ont lieu dans les prochaines
-// 24 h : pousse une notification locale UNE seule fois par événement (dédup via
-// localStorage). Appelé au boot. Complète l'alarme J-1 du fichier .ics.
+// Cadence de rappels des événements rejoints — J-7 / J-1 / H-2 (2026-07-21).
+// Avant : UN seul rappel à J-1. Or les trois paliers ne servent pas la même chose,
+// c'est la cadence standard d'Eventbrite/Luma : J-7 laisse le temps de s'organiser
+// (ou de se désinscrire, ce qui libère une place), J-1 est le rappel classique, et
+// H-2 est celui qui fait effectivement VENIR (« pars maintenant »).
+// Chaque palier est notifié UNE fois : la dédup porte sur `<eventId>:<palier>` et
+// non plus sur l'id seul, sinon le premier palier atteint bloquerait les suivants.
+var EVENT_REMINDER_TIERS = [
+  { key: "d7", ms: 7 * 86400000, label: "dans une semaine" },
+  { key: "d1", ms: 24 * 3600000, label: "demain" },
+  { key: "h2", ms: 2 * 3600000,  label: "dans 2 h" },
+];
+
 function _checkEventReminders() {
   try {
     var reminded = JSON.parse(localStorage.getItem("passio_event_reminded") || "[]");
@@ -3055,21 +3085,42 @@ function _checkEventReminders() {
     var joined = (state.user && state.user.joinedEvents) || [];
     if (!joined.length) return;
     var events = allEvents();
-    events.forEach(function(e) {
+
+    events.forEach(function (e) {
       if (joined.indexOf(e.id) === -1) return;
+      if (_eventIsCancelled(e)) return;          // ne pas rappeler un événement annulé
       var diff = e.date - now;
-      if (diff > 0 && diff <= 24 * 3600000 && reminded.indexOf(e.id) === -1) {
-        var d = fmtEventDate(e.date);
-        var when = diff <= 12 * 3600000 ? "aujourd'hui" : "demain";
-        if (typeof pushNotification === "function") {
-          pushNotification("⏰ Rappel : <b>" + escapeHtml(e.title) + "</b> " + when + " à " + (e.time || d.time || "") + (e.city ? " · " + escapeHtml(e.city) : ""), "⏰");
-        }
-        reminded.push(e.id);
+      if (diff <= 0) return;
+
+      // Le palier le PLUS PROCHE encore devant nous : à J-3 on veut « demain »
+      // quand il arrivera, pas re-tirer le J-7 qu'on a manqué.
+      var tier = null;
+      for (var i = 0; i < EVENT_REMINDER_TIERS.length; i++) {
+        if (diff <= EVENT_REMINDER_TIERS[i].ms) tier = EVENT_REMINDER_TIERS[i];
       }
+      if (!tier) return;
+
+      var mark = e.id + ":" + tier.key;
+      if (reminded.indexOf(mark) > -1) return;
+
+      var d = fmtEventDate(e.date);
+      // À moins de 24 h, « demain » devient faux passé minuit : on recale.
+      var when = tier.key === "d1"
+        ? (diff <= 12 * 3600000 ? "aujourd'hui" : "demain")
+        : tier.label;
+      if (typeof pushNotification === "function") {
+        pushNotification("⏰ Rappel : <b>" + escapeHtml(e.title) + "</b> " + when
+          + " à " + (e.time || d.time || "")
+          + (e.city ? " · " + escapeHtml(e.city) : ""), "⏰");
+      }
+      reminded.push(mark);
     });
-    // Purge les ids trop vieux pour ne pas faire gonfler le cache.
-    reminded = reminded.filter(function(id) {
-      var ev = events.find(function(x) { return x.id === id; });
+
+    // Purge les marques dont l'événement est passé depuis plus de 7 jours (ou a
+    // disparu) pour ne pas faire gonfler le cache indéfiniment.
+    reminded = reminded.filter(function (mark) {
+      var id = String(mark).split(":")[0];
+      var ev = events.find(function (x) { return x.id === id; });
       return ev && ev.date > now - 7 * 86400000;
     });
     localStorage.setItem("passio_event_reminded", JSON.stringify(reminded));
@@ -4396,3 +4447,671 @@ function inviteAllFollowingToEvent(eventId) {
   toast(ids.length + " invitation" + (ids.length > 1 ? "s envoyées" : " envoyée") + " 💌");
   _renderEventInviteList();
 }
+
+/* ============================================================================
+   BADGES D'ASSIDUITE (2026-07-21)
+   ----------------------------------------------------------------------------
+   Mecanique de retention de Timeleft/Meetup : ce qui ramene quelqu'un a un 2e
+   puis un 3e evenement, ce n'est pas la notification, c'est la PROGRESSION
+   visible. Le systeme d'etoiles (RANKS) mesure deja l'activite globale ; les
+   badges, eux, racontent des jalons CONCRETS et nommes (« 5 sorties », « 3 pays »).
+
+   Entierement DERIVE de l'etat existant (aucune table, aucune colonne) :
+   check-ins, evenements rejoints/crees, carnets, pays du passeport. Un badge ne
+   se « gagne » donc jamais deux fois et ne peut pas se desynchroniser.
+   ========================================================================== */
+
+// Les compteurs bruts sur lesquels reposent tous les badges.
+function myEngagementStats() {
+  var u = (state && state.user) || {};
+  var me = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
+
+  var evs = (typeof allEvents === "function") ? allEvents() : [];
+  var joined = u.joinedEvents || [];
+  var checkedIn = u.checkedInEvents || [];
+
+  // « Sorties » = evenements rejoints DEJA PASSES (s'inscrire n'est pas y aller).
+  var attended = evs.filter(function (e) {
+    return e && joined.indexOf(e.id) > -1 && _eventIsOver(e);
+  }).length;
+
+  var organized = evs.filter(function (e) {
+    return e && (e.organizerId === me || e.authorId === me);
+  }).length;
+
+  // Villes distinctes des evenements auxquels j'ai participe.
+  var cities = {};
+  evs.forEach(function (e) {
+    if (e && joined.indexOf(e.id) > -1 && _eventIsOver(e) && e.city) cities[String(e.city).toLowerCase()] = 1;
+  });
+
+  var passport = (typeof cdvPassportStats === "function") ? cdvPassportStats() : { trips: [], km: 0, countries: [] };
+
+  return {
+    attended: attended,
+    checkedIn: checkedIn.length,
+    organized: organized,
+    cities: Object.keys(cities).length,
+    trips: passport.trips.length,
+    km: passport.km,
+    countries: passport.countries.length,
+  };
+}
+
+// Chaque badge : un palier atteint ou non. `goal` sert a afficher la progression
+// (« 3/5 ») sur les badges encore verrouilles — c'est ca qui donne envie.
+var PASSIO_BADGES = [
+  { id: "first_out",  emoji: "\u{1F44B}", label: "Première sortie", desc: "Participer à un événement",        stat: "attended",  goal: 1 },
+  { id: "regular",    emoji: "\u{1F501}", label: "Habitué·e",       desc: "5 sorties à ton actif",            stat: "attended",  goal: 5 },
+  { id: "veteran",    emoji: "\u{1F3C5}", label: "Vétéran",         desc: "15 sorties à ton actif",           stat: "attended",  goal: 15 },
+  { id: "reliable",   emoji: "\u{2705}",  label: "Fiable",          desc: "Pointer son arrivée 3 fois",       stat: "checkedIn", goal: 3 },
+  { id: "host",       emoji: "\u{1F3AA}", label: "Organisateur",    desc: "Créer un événement",               stat: "organized", goal: 1 },
+  { id: "host_pro",   emoji: "\u{1F31F}", label: "Hôte confirmé·e", desc: "Créer 5 événements",               stat: "organized", goal: 5 },
+  { id: "explorer",   emoji: "\u{1F5FA}", label: "Explorateur",     desc: "Sortir dans 3 villes différentes", stat: "cities",    goal: 3 },
+  { id: "traveler",   emoji: "\u{1F9F3}", label: "Voyageur",        desc: "Publier un premier voyage",        stat: "trips",     goal: 1 },
+  { id: "globetrot",  emoji: "\u{1F30D}", label: "Globe-trotteur",  desc: "Traverser 3 pays",                 stat: "countries", goal: 3 },
+  { id: "long_haul",  emoji: "\u{1F6E3}", label: "Grand rouleur",   desc: "Parcourir 1 000 km cumulés",       stat: "km",        goal: 1000 },
+];
+
+// Renvoie les badges enrichis de leur progression. `earned` est vrai des que le
+// compteur atteint l'objectif — rien n'est stocke, donc rien ne peut deriver.
+function myBadges() {
+  var s = myEngagementStats();
+  return PASSIO_BADGES.map(function (b) {
+    var have = s[b.stat] || 0;
+    return {
+      id: b.id, emoji: b.emoji, label: b.label, desc: b.desc,
+      have: have, goal: b.goal, earned: have >= b.goal,
+      pct: Math.max(0, Math.min(100, Math.round((have / b.goal) * 100))),
+    };
+  });
+}
+
+function myBadgeCount() {
+  return myBadges().filter(function (b) { return b.earned; }).length;
+}
+
+// Detecte les badges NOUVELLEMENT obtenus et les annonce. Appele apres les actions
+// qui peuvent en debloquer un (check-in, participation, publication de voyage).
+// La memoire des badges deja annonces evite de re-feter au moindre re-render.
+function _announceNewBadges() {
+  try {
+    if (!state || !state.user) return;
+    var known = state.user.badgesSeen || [];
+    var fresh = myBadges().filter(function (b) {
+      return b.earned && known.indexOf(b.id) === -1;
+    });
+    if (!fresh.length) return;
+    state.user.badgesSeen = known.concat(fresh.map(function (b) { return b.id; }));
+    saveState();
+    fresh.forEach(function (b, i) {
+      setTimeout(function () {
+        if (typeof pushNotification === "function") {
+          pushNotification("Badge débloqué : <b>" + escapeHtml(b.label) + "</b> — " + escapeHtml(b.desc), b.emoji);
+        }
+        if (typeof toast === "function") toast(b.emoji + " Badge débloqué : " + b.label);
+      }, i * 900);
+    });
+  } catch (e) {}
+}
+
+// Marque les badges deja obtenus comme « vus » SANS les annoncer : au tout premier
+// passage d'un compte existant, on ne veut pas 6 toasts d'un coup pour des jalons
+// franchis il y a des mois. Appele au boot.
+function _seedBadgesSeen() {
+  try {
+    if (!state || !state.user || state.user.badgesSeen) return;
+    state.user.badgesSeen = myBadges().filter(function (b) { return b.earned; })
+      .map(function (b) { return b.id; });
+    saveState();
+  } catch (e) {}
+}
+
+function openBadgesSheet() {
+  var list = myBadges();
+  var earned = list.filter(function (b) { return b.earned; });
+  var locked = list.filter(function (b) { return !b.earned; });
+
+  var card = function (b) {
+    return '<div class="badge-card' + (b.earned ? " earned" : "") + '">'
+      + '<div class="badge-emoji">' + b.emoji + '</div>'
+      + '<div style="flex:1;min-width:0;">'
+      + '<div class="badge-label">' + escapeHtml(b.label) + '</div>'
+      + '<div class="badge-desc">' + escapeHtml(b.desc) + '</div>'
+      + (b.earned ? "" : '<div class="badge-bar"><i style="width:' + b.pct + '%"></i></div>')
+      + '</div>'
+      + '<div class="badge-count">' + (b.earned ? "\u{2713}" : b.have + "/" + b.goal) + '</div>'
+      + '</div>';
+  };
+
+  openModal('<span class="modal-close" onclick="closeModal()">×</span>'
+    + '<div class="modal-title">\u{1F3C5} Mes badges</div>'
+    + '<div style="font-size:12px;color:var(--muted);margin-bottom:14px;">'
+    + earned.length + ' badge' + (earned.length > 1 ? "s" : "") + ' sur ' + list.length + '</div>'
+    + (earned.length ? earned.map(card).join("") : '<div style="text-align:center;padding:16px;color:var(--muted);font-size:12px;">Ton premier badge t\'attend à ta première sortie \u{1F44B}</div>')
+    + (locked.length ? '<div style="font-weight:800;font-size:13px;color:var(--text);margin:16px 0 8px;">À débloquer</div>' + locked.map(card).join("") : ""));
+}
+
+/* ============================================================================
+   IRL — RETOUR D'EXPÉRIENCE APRÈS L'ÉVÉNEMENT (2026-07-21)
+   ----------------------------------------------------------------------------
+   La boucle d'Eventbrite/Meetup qui manquait : un événement se terminait dans le
+   silence. Une note (1-5) + un mot libre donnent à l'organisateur une raison de
+   recommencer, et aux futurs inscrits un signal de qualité.
+
+   Stockage : colonnes `rating` / `feedback` / `rated_at` de `event_attendees`
+   (migration_event_feedback.sql, appliquée en prod) — une ligne existe déjà par
+   participant, et sa policy UPDATE « owner » autorise déjà chacun à écrire la
+   sienne. Miroir local dans state.user.eventRatings pour l'affichage hors-ligne.
+   ========================================================================== */
+
+// Ma note sur un événement (locale d'abord, c'est elle qui pilote l'UI).
+function myEventRating(eventId) {
+  var m = (state.user && state.user.eventRatings) || {};
+  return m[eventId] || null;
+}
+
+// Qui peut noter : un participant (going/check-in) d'un événement TERMINÉ et non
+// annulé. L'organisateur ne note pas son propre événement.
+function _canRateEvent(ev) {
+  if (!ev || !_eventIsOver(ev) || _eventIsCancelled(ev)) return false;
+  if (_isMyEvent(ev)) return false;
+  return myRsvp(ev.id) === "going" || _hasCheckedIn(ev);
+}
+
+function openEventFeedback(eventId) {
+  var ev = _findCanonicalEvent(eventId) || allEvents().find(function (e) { return e.id === eventId; });
+  if (!ev) return;
+  var mine = myEventRating(eventId) || { rating: 0, feedback: "" };
+  window._ratingDraft = mine.rating || 0;
+
+  openModal('<span class="modal-close" onclick="closeModal()">×</span>'
+    + '<div class="modal-title">⭐ Ton retour</div>'
+    + '<div style="font-size:12px;color:var(--muted);margin-bottom:14px;">'
+    + escapeHtml(ev.title || "") + '</div>'
+    + '<div id="evRatingStars" style="display:flex;gap:6px;justify-content:center;margin-bottom:14px;">'
+    + _evRatingStarsHtml(window._ratingDraft) + '</div>'
+    + '<textarea class="input" id="evFeedbackText" rows="3" maxlength="500" '
+    + 'placeholder="Un mot sur ce moment ? (optionnel)" style="width:100%;resize:vertical;">'
+    + escapeHtml(mine.feedback || "") + '</textarea>'
+    + '<button class="btn primary block" style="margin-top:12px;" '
+    + 'onclick="submitEventFeedback(\'' + escapeJsArg(eventId) + '\')">Envoyer mon retour</button>'
+    + (mine.rating ? '<div style="font-size:11px;color:var(--muted);text-align:center;margin-top:8px;">Tu peux modifier ton retour à tout moment.</div>' : ''));
+}
+
+function _evRatingStarsHtml(n) {
+  var out = "";
+  for (var i = 1; i <= 5; i++) {
+    out += '<span class="ev-rating-star' + (i <= n ? " on" : "") + '" role="button" tabindex="0"'
+      + ' aria-label="' + i + ' étoile' + (i > 1 ? "s" : "") + '"'
+      + ' onclick="setEventRatingDraft(' + i + ')"'
+      + ' onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();setEventRatingDraft(' + i + ');}">'
+      + (i <= n ? "★" : "☆") + '</span>';
+  }
+  return out;
+}
+
+function setEventRatingDraft(n) {
+  window._ratingDraft = n;
+  var box = document.getElementById("evRatingStars");
+  if (box) box.innerHTML = _evRatingStarsHtml(n);
+}
+
+function submitEventFeedback(eventId) {
+  var n = window._ratingDraft || 0;
+  if (!n) { toast("Choisis une note d'abord ⭐"); return; }
+  var txt = ((document.getElementById("evFeedbackText") || {}).value || "").trim().slice(0, 500);
+
+  state.user.eventRatings = state.user.eventRatings || {};
+  state.user.eventRatings[eventId] = { rating: n, feedback: txt, at: Date.now() };
+  saveState();
+  closeModal();
+  toast("Merci pour ton retour ⭐");
+
+  if (window._supaReal && typeof supaRateEvent === "function") supaRateEvent(eventId, n, txt);
+
+  // Le retour notifie l'organisateur : c'est le signal qu'il attend.
+  var ev = _findCanonicalEvent(eventId) || allEvents().find(function (e) { return e.id === eventId; });
+  var orga = ev && (ev.organizerId || ev.authorId);
+  if (ev && orga && orga !== MY_UID && typeof supaInsertNotif === "function") {
+    supaInsertNotif(orga, "event_feedback", eventId,
+      "a noté <b>" + escapeHtml((ev.title || "ton événement").slice(0, 60)) + "</b> " + n + "/5");
+  }
+  _refreshEventDetailIfOpen(eventId);
+}
+
+// Invite à noter : bandeau sur la fiche d'un événement terminé auquel j'ai
+// participé et que je n'ai pas encore noté.
+function _eventFeedbackPromptHtml(ev) {
+  if (!_canRateEvent(ev)) return "";
+  var mine = myEventRating(ev.id);
+  if (mine) {
+    return '<div class="event-feedback-done">'
+      + '<span>Ton retour : ' + "★".repeat(mine.rating) + "☆".repeat(5 - mine.rating) + '</span>'
+      + '<button class="btn small ghost" onclick="openEventFeedback(\'' + escapeJsArg(ev.id) + '\')">Modifier</button>'
+      + '</div>';
+  }
+  return '<div class="event-feedback-prompt">'
+    + '<div style="flex:1;min-width:0;font-size:12px;font-weight:600;">C\'était comment ?</div>'
+    + '<button class="btn small primary" onclick="openEventFeedback(\'' + escapeJsArg(ev.id) + '\')">⭐ Noter</button>'
+    + '</div>';
+}
+
+// Agrégat public : note moyenne d'un événement terminé (cache window._eventRatings,
+// rempli par _loadEventRatings). Rien tant qu'il n'y a aucune note — une moyenne
+// sur 0 avis ne veut rien dire et ferait fuir.
+function _eventRatingSummaryHtml(ev) {
+  var agg = (window._eventRatings && window._eventRatings[ev.id]) || null;
+  if (!agg || !agg.count) return "";
+  var avg = Math.round(agg.avg * 10) / 10;
+  var full = Math.round(agg.avg);
+  return '<div class="event-rating-summary">'
+    + '<span class="ev-rating-stars-static">' + "★".repeat(full) + "☆".repeat(5 - full) + '</span>'
+    + '<b>' + String(avg).replace(".", ",") + '</b>'
+    + '<span style="color:var(--muted);">· ' + agg.count + " avis" + '</span>'
+    + '</div>';
+}
+
+// Charge les notes d'un événement depuis Supabase et re-rend la fiche si besoin.
+async function _loadEventRatings(eventId) {
+  if (!window._supaReal || typeof supaLoadEventRatings !== "function") return;
+  var agg = await supaLoadEventRatings(eventId);
+  if (!agg) return;
+  window._eventRatings = window._eventRatings || {};
+  window._eventRatings[eventId] = agg;
+  var holder = document.querySelector('[data-evrating="' + eventId + '"]');
+  if (holder) holder.innerHTML = _eventRatingSummaryHtml({ id: eventId });
+}
+
+/* ============================================================================
+   QR — GÉNÉRATEUR AUTONOME (2026-07-21)
+   ----------------------------------------------------------------------------
+   Le check-in par QR de Luma suppose de PRODUIRE un QR. Deux voies étaient
+   fermées : un service d'images externe (la CSP prod n'autorise aucun host
+   d'images tiers, et ce serait une fuite de données) et une lib CDN (même
+   problème + poids). D'où cet encodeur minimal, ~150 lignes, sans dépendance.
+
+   Portée volontairement réduite à ce dont l'app a besoin : mode OCTET, niveau de
+   correction M, versions 1 à 6 (jusqu'à 106 octets) — un jeton de check-in fait
+   ~40 caractères. Un contenu trop long lève une erreur explicite plutôt que de
+   produire un QR silencieusement illisible.
+
+   ⚠️ NE PAS étendre la table au-delà de la version 6 sans implémenter le bloc
+   d'INFORMATION DE VERSION (18 bits près des motifs de repérage), obligatoire à
+   partir de la version 7 : sans lui les modules réservés sont réutilisés pour les
+   données, tout le placement se décale et le QR devient illisible (constaté en
+   comparant module par module avec une implémentation de référence).
+
+   Vérifié par ALLER-RETOUR réel : le QR produit est redécodé par BarcodeDetector
+   dans le navigateur (cf. la session de vérification du 2026-07-21).
+   ========================================================================== */
+
+var _QR_EC_BLOCKS_M = {
+  // version: [nb de blocs, nb de codewords de données par bloc] (niveau M).
+  1: [1, 16], 2: [1, 28], 3: [1, 44], 4: [2, 32], 5: [2, 43], 6: [4, 27],
+};
+var _QR_EC_CODEWORDS_M = { 1: 10, 2: 16, 3: 26, 4: 18, 5: 24, 6: 16 };
+var _QR_ALIGN_POS = {
+  1: [], 2: [6, 18], 3: [6, 22], 4: [6, 26], 5: [6, 30], 6: [6, 34],
+};
+var _QR_MAX_VERSION = 6;
+
+// Arithmétique de Galois GF(256) — le cœur de Reed-Solomon.
+var _qrExp = new Array(512), _qrLog = new Array(256);
+(function () {
+  var x = 1;
+  for (var i = 0; i < 255; i++) { _qrExp[i] = x; _qrLog[x] = i; x <<= 1; if (x & 0x100) x ^= 0x11d; }
+  for (var j = 255; j < 512; j++) _qrExp[j] = _qrExp[j - 255];
+})();
+function _qrMul(a, b) { return (a === 0 || b === 0) ? 0 : _qrExp[_qrLog[a] + _qrLog[b]]; }
+
+// Codewords de correction d'erreur pour un bloc de données.
+function _qrEcc(data, ecLen) {
+  var gen = [1];
+  for (var i = 0; i < ecLen; i++) {
+    var next = gen.concat([0]);
+    for (var j = 0; j < gen.length; j++) next[j + 1] ^= _qrMul(gen[j], _qrExp[i]);
+    gen = next;
+  }
+  var rem = data.concat(new Array(ecLen).fill(0));
+  for (var k = 0; k < data.length; k++) {
+    var coef = rem[k];
+    if (!coef) continue;
+    for (var m = 0; m < gen.length; m++) rem[k + m] ^= _qrMul(gen[m], coef);
+  }
+  return rem.slice(data.length);
+}
+
+// Capacité en codewords de données (niveau M) pour une version.
+function _qrDataCodewords(v) {
+  var b = _QR_EC_BLOCKS_M[v], total = 0;
+  for (var i = 0; i < b.length; i += 2) total += b[i] * b[i + 1];
+  return total;
+}
+
+// Construit la matrice booléenne du QR. Renvoie { size, modules }.
+function qrEncode(text) {
+  // UTF-8 : un jeton de check-in est ASCII, mais on ne veut pas casser sur un
+  // accent. TextEncoder donne le compte d'octets EXACT ; le repli manuel couvre
+  // les très vieux moteurs (`unescape` est déprécié et ambigu selon l'hôte).
+  var bytes = [];
+  if (typeof TextEncoder !== "undefined") {
+    bytes = Array.from(new TextEncoder().encode(String(text)));
+  } else {
+    var s = String(text);
+    for (var ci = 0; ci < s.length; ci++) {
+      var cp = s.charCodeAt(ci);
+      if (cp < 0x80) bytes.push(cp);
+      else if (cp < 0x800) bytes.push(0xc0 | (cp >> 6), 0x80 | (cp & 0x3f));
+      else bytes.push(0xe0 | (cp >> 12), 0x80 | ((cp >> 6) & 0x3f), 0x80 | (cp & 0x3f));
+    }
+  }
+
+  // Plus petite version qui contient le message (4 bits de mode + longueur + data).
+  var version = 0;
+  for (var v = 1; v <= _QR_MAX_VERSION; v++) {
+    // Le compteur de longueur tient sur 8 bits en mode octet jusqu'à la v9.
+    if (4 + 8 + bytes.length * 8 <= _qrDataCodewords(v) * 8) { version = v; break; }
+  }
+  if (!version) throw new Error("QR : contenu trop long (" + bytes.length + " octets, max 106)");
+
+  var size = 17 + version * 4;
+  var lenBits = 8;
+
+  // ---- flux binaire ----
+  var bits = [];
+  var push = function (val, n) { for (var b = n - 1; b >= 0; b--) bits.push((val >> b) & 1); };
+  push(4, 4);                      // mode octet
+  push(bytes.length, lenBits);
+  bytes.forEach(function (b) { push(b, 8); });
+
+  var capacity = _qrDataCodewords(version) * 8;
+  push(0, Math.min(4, capacity - bits.length));      // terminateur
+  while (bits.length % 8) bits.push(0);
+  var pad = [0xec, 0x11], p = 0;
+  while (bits.length < capacity) { push(pad[p++ % 2], 8); }
+
+  var codewords = [];
+  for (var c = 0; c < bits.length; c += 8) {
+    var byte = 0;
+    for (var d = 0; d < 8; d++) byte = (byte << 1) | bits[c + d];
+    codewords.push(byte);
+  }
+
+  // ---- découpage en blocs + entrelacement ----
+  var spec = _QR_EC_BLOCKS_M[version], ecLen = _QR_EC_CODEWORDS_M[version];
+  var blocks = [], eccs = [], off = 0;
+  for (var s = 0; s < spec.length; s += 2) {
+    for (var n = 0; n < spec[s]; n++) {
+      var blk = codewords.slice(off, off + spec[s + 1]);
+      off += spec[s + 1];
+      blocks.push(blk);
+      eccs.push(_qrEcc(blk, ecLen));
+    }
+  }
+  var interleaved = [];
+  var maxLen = Math.max.apply(null, blocks.map(function (b) { return b.length; }));
+  for (var q = 0; q < maxLen; q++) blocks.forEach(function (b) { if (q < b.length) interleaved.push(b[q]); });
+  for (var r = 0; r < ecLen; r++) eccs.forEach(function (e) { interleaved.push(e[r]); });
+
+  // ---- matrice ----
+  var mod = [], reserved = [];
+  for (var y = 0; y < size; y++) { mod.push(new Array(size).fill(0)); reserved.push(new Array(size).fill(0)); }
+
+  var setFinder = function (ox, oy) {
+    for (var dy = -1; dy <= 7; dy++) for (var dx = -1; dx <= 7; dx++) {
+      var x = ox + dx, y = oy + dy;
+      if (x < 0 || y < 0 || x >= size || y >= size) continue;
+      var on = (dx >= 0 && dx <= 6 && (dy === 0 || dy === 6)) ||
+               (dy >= 0 && dy <= 6 && (dx === 0 || dx === 6)) ||
+               (dx >= 2 && dx <= 4 && dy >= 2 && dy <= 4);
+      mod[y][x] = on ? 1 : 0; reserved[y][x] = 1;
+    }
+  };
+  setFinder(0, 0); setFinder(size - 7, 0); setFinder(0, size - 7);
+
+  // Motifs de synchronisation.
+  for (var t = 8; t < size - 8; t++) {
+    if (!reserved[6][t]) { mod[6][t] = (t % 2 === 0) ? 1 : 0; reserved[6][t] = 1; }
+    if (!reserved[t][6]) { mod[t][6] = (t % 2 === 0) ? 1 : 0; reserved[t][6] = 1; }
+  }
+
+  // Motifs d'alignement.
+  var pos = _QR_ALIGN_POS[version];
+  pos.forEach(function (ay) {
+    pos.forEach(function (ax) {
+      if (reserved[ay] && reserved[ay][ax]) return;
+      for (var dy = -2; dy <= 2; dy++) for (var dx = -2; dx <= 2; dx++) {
+        var x = ax + dx, y = ay + dy;
+        if (x < 0 || y < 0 || x >= size || y >= size) continue;
+        mod[y][x] = (Math.max(Math.abs(dx), Math.abs(dy)) !== 1) ? 1 : 0;
+        reserved[y][x] = 1;
+      }
+    });
+  });
+
+  // Zones réservées au format (remplies après le masquage) + module noir fixe.
+  for (var f = 0; f < 9; f++) {
+    if (f !== 6) { reserved[8][f] = 1; reserved[f][8] = 1; }
+  }
+  reserved[8][6] = 1; reserved[6][8] = 1; reserved[8][8] = 1;
+  for (var g = 0; g < 8; g++) { reserved[8][size - 1 - g] = 1; reserved[size - 1 - g][8] = 1; }
+  mod[size - 8][8] = 1; reserved[size - 8][8] = 1;
+
+  // ---- placement des données en zigzag, masque 0 appliqué à la volée ----
+  var bitIdx = 0, dirUp = true;
+  for (var col = size - 1; col > 0; col -= 2) {
+    if (col === 6) col--;                        // la colonne de sync ne compte pas
+    for (var row = 0; row < size; row++) {
+      var yy = dirUp ? size - 1 - row : row;
+      for (var cc = 0; cc < 2; cc++) {
+        var xx = col - cc;
+        if (reserved[yy][xx]) continue;
+        var bit = 0;
+        if (bitIdx < interleaved.length * 8) {
+          bit = (interleaved[bitIdx >> 3] >> (7 - (bitIdx & 7))) & 1;
+        }
+        bitIdx++;
+        if (((yy + xx) % 2) === 0) bit ^= 1;      // masque 0 : (row + col) % 2 == 0
+        mod[yy][xx] = bit;
+      }
+    }
+    dirUp = !dirUp;
+  }
+
+  // ---- information de format (niveau M = 00, masque 0) ----
+  var fmt = 0x5412; // valeur pré-calculée pour EC=M, masque=0 (BCH + XOR 0x5412)
+  var fbits = [];
+  for (var fb = 14; fb >= 0; fb--) fbits.push((fmt >> fb) & 1);
+  // Copie 1 (autour du finder haut-gauche)
+  var seq1 = [[8,0],[8,1],[8,2],[8,3],[8,4],[8,5],[8,7],[8,8],[7,8],[5,8],[4,8],[3,8],[2,8],[1,8],[0,8]];
+  seq1.forEach(function (p2, i2) { mod[p2[0]][p2[1]] = fbits[i2]; });
+  // Copie 2 : bits 0-6 en colonne 8 (lignes size-1 → size-7), bits 7-14 en ligne 8
+  // (colonnes size-8 → size-1). ⚠️ La boucle verticale s'arrête à 7 modules, PAS 8 :
+  // la 8ᵉ position (size-8, 8) est le « module noir » fixe, et l'écraser rendait le
+  // QR illisible (écart constaté module par module contre une implémentation de
+  // référence — c'était le seul défaut du générateur).
+  for (var h = 0; h < 7; h++) mod[size - 1 - h][8] = fbits[h];
+  for (var k2 = 7; k2 < 15; k2++) mod[8][size - 15 + k2] = fbits[k2];
+
+  return { size: size, modules: mod, version: version };
+}
+
+// Rend un QR en SVG (net à toute taille, aucun canvas, insérable tel quel).
+function qrSvg(text, px) {
+  var q = qrEncode(text);
+  var quiet = 4, total = q.size + quiet * 2;
+  var rects = "";
+  for (var y = 0; y < q.size; y++) {
+    for (var x = 0; x < q.size; x++) {
+      if (q.modules[y][x]) rects += '<rect x="' + (x + quiet) + '" y="' + (y + quiet) + '" width="1" height="1"/>';
+    }
+  }
+  return '<svg xmlns="http://www.w3.org/2000/svg" width="' + (px || 220) + '" height="' + (px || 220) + '"'
+    + ' viewBox="0 0 ' + total + ' ' + total + '" shape-rendering="crispEdges" role="img" aria-label="QR code">'
+    + '<rect width="' + total + '" height="' + total + '" fill="#fff"/>'
+    + '<g fill="#000">' + rects + '</g></svg>';
+}
+
+/* ============================================================================
+   IRL — CHECK-IN PAR QR (2026-07-21)
+   ----------------------------------------------------------------------------
+   Le pointage d'arrivée de Luma. Le sens de lecture est INVERSÉ par rapport à la
+   billetterie classique, et c'est délibéré :
+
+     l'ORGANISATEUR affiche un QR à l'accueil, les PARTICIPANTS le scannent.
+
+   Pourquoi pas l'inverse (l'orga scanne chaque participant) ? Parce que la policy
+   RLS de `event_attendees` est « owner » : chacun ne peut écrire QUE sa propre
+   ligne. Faire pointer les autres par l'organisateur imposerait d'ouvrir cette
+   policy — un vrai risque pour un gain nul. Ici chaque participant écrit sa
+   propre ligne : aucune RLS à toucher, et AUCUN scanner à embarquer (l'appareil
+   photo natif du téléphone ouvre le lien tout seul).
+
+   ⚠️ Le code n'est PAS un secret cryptographique : il est dérivé de l'id de
+   l'événement, donc quelqu'un de déterminé pourrait le fabriquer. C'est assumé —
+   le pointage est un confort, pas un contrôle d'accès (le chemin GPS existant
+   fait déjà confiance à l'utilisateur quand la géolocalisation est refusée).
+   ========================================================================== */
+
+// Code d'accueil court et stable, dérivé de l'id de l'événement (6 caractères
+// lisibles à voix haute : ni 0/O ni 1/I).
+var _CHK_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+function _eventCheckinCode(ev) {
+  var id = String((ev && ev.id) || "");
+  var h1 = 0x811c9dc5, h2 = 0x01000193;
+  for (var i = 0; i < id.length; i++) {
+    h1 = ((h1 ^ id.charCodeAt(i)) * 16777619) >>> 0;
+    h2 = ((h2 + id.charCodeAt(i) * (i + 7)) * 2654435761) >>> 0;
+  }
+  var out = "";
+  for (var k = 0; k < 6; k++) {
+    var src = (k < 3 ? h1 : h2) >>> ((k % 3) * 5);
+    out += _CHK_ALPHABET[src % _CHK_ALPHABET.length];
+  }
+  return out;
+}
+
+// L'URL que porte le QR : elle ouvre l'app directement sur le pointage.
+function _eventCheckinUrl(ev) {
+  var base = location.origin + location.pathname;
+  return base + "#irl-checkin-" + ev.id + "-" + _eventCheckinCode(ev);
+}
+
+// Vue ORGANISATEUR : le QR à afficher à l'accueil (écran de téléphone, projeté,
+// ou imprimé). Le code en clair sert de repli quand un appareil photo peine.
+function openEventCheckinQr(eventId) {
+  var ev = _findCanonicalEvent(eventId) || allEvents().find(function (e) { return e.id === eventId; });
+  if (!ev) return;
+  if (!_canManageEvent(ev)) { toast("Réservé à l'organisateur"); return; }
+
+  var code = _eventCheckinCode(ev);
+  var svg;
+  try {
+    svg = qrSvg(_eventCheckinUrl(ev), 240);
+  } catch (e) {
+    // Un QR illisible serait pire que pas de QR : on assume le repli code seul.
+    svg = '<div style="font-size:12px;color:var(--muted);padding:20px;">QR indisponible — utilise le code ci-dessous.</div>';
+  }
+
+  openModal('<span class="modal-close" onclick="closeModal()">×</span>'
+    + '<div class="modal-title">📲 Accueil des participants</div>'
+    + '<div style="font-size:12px;color:var(--muted);margin-bottom:14px;">'
+    + escapeHtml(ev.title || "") + '</div>'
+    + '<div class="checkin-qr-frame">' + svg + '</div>'
+    + '<div style="text-align:center;margin-top:12px;">'
+    + '<div style="font-size:11px;color:var(--muted);margin-bottom:4px;">ou code à saisir</div>'
+    + '<div class="checkin-code">' + escapeHtml(code) + '</div>'
+    + '</div>'
+    + '<div style="font-size:12px;color:var(--text-dim);line-height:1.6;margin-top:14px;text-align:center;">'
+    + 'Montre cet écran à l\'entrée : chacun le scanne avec son appareil photo et '
+    + 'son arrivée est pointée automatiquement.</div>'
+    + '<button class="btn ghost block" style="margin-top:12px;" '
+    + 'onclick="_copyCheckinLink(\'' + escapeJsArg(eventId) + '\')">🔗 Copier le lien de pointage</button>');
+}
+
+function _copyCheckinLink(eventId) {
+  var ev = _findCanonicalEvent(eventId) || allEvents().find(function (e) { return e.id === eventId; });
+  if (!ev) return;
+  var url = _eventCheckinUrl(ev);
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(url).then(function () { toast("Lien copié 🔗"); },
+      function () { toast(url); });
+  } else { toast(url); }
+}
+
+// Vue PARTICIPANT : saisie manuelle du code affiché à l'accueil (repli quand on
+// n'a pas pu scanner).
+function openCheckinCodeEntry(eventId) {
+  var ev = _findCanonicalEvent(eventId) || allEvents().find(function (e) { return e.id === eventId; });
+  if (!ev) return;
+  openModal('<span class="modal-close" onclick="closeModal()">×</span>'
+    + '<div class="modal-title">📲 Pointer mon arrivée</div>'
+    + '<div style="font-size:12px;color:var(--muted);margin-bottom:14px;">'
+    + 'Saisis le code affiché à l\'accueil de « ' + escapeHtml(ev.title || "") + ' ».</div>'
+    + '<input type="text" class="input" id="checkinCodeInput" maxlength="6" autocomplete="off" '
+    + 'placeholder="ABC123" style="text-transform:uppercase;letter-spacing:4px;text-align:center;font-size:20px;font-weight:800;" '
+    + 'onkeypress="if(event.key===\'Enter\')submitCheckinCode(\'' + escapeJsArg(eventId) + '\')"/>'
+    + '<button class="btn primary block" style="margin-top:12px;" '
+    + 'onclick="submitCheckinCode(\'' + escapeJsArg(eventId) + '\')">Valider</button>');
+  setTimeout(function () {
+    var el = document.getElementById("checkinCodeInput");
+    if (el) el.focus();
+  }, 120);
+}
+
+function submitCheckinCode(eventId) {
+  var ev = _findCanonicalEvent(eventId) || allEvents().find(function (e) { return e.id === eventId; });
+  if (!ev) return;
+  var val = ((document.getElementById("checkinCodeInput") || {}).value || "")
+    .trim().toUpperCase().replace(/\s/g, "");
+  if (val !== _eventCheckinCode(ev)) { toast("Code incorrect — vérifie avec l'organisateur"); return; }
+  closeModal();
+  _checkInViaCode(ev);
+}
+
+// Pointage validé par code/QR : on court-circuite la vérification GPS (être
+// devant le QR de l'accueil EST la preuve de présence, et c'en est une meilleure
+// qu'une position à 500 m près).
+function _checkInViaCode(ev) {
+  if (_hasCheckedIn(ev)) { toast("✅ Tu as déjà pointé ton arrivée"); return; }
+  if (!_canCheckIn(ev)) { toast("⏰ Le pointage ouvre 1 h avant le début"); return; }
+  state.user.checkedInEvents = state.user.checkedInEvents || [];
+  if (state.user.checkedInEvents.indexOf(ev.id) === -1) state.user.checkedInEvents.push(ev.id);
+  if (myRsvp(ev.id) !== "going") _setMyRsvpLocal(ev.id, "going");
+  grantReward("event_join");
+  saveState();
+  if (window._supaReal && typeof supaCheckInEvent === "function") supaCheckInEvent(ev.id);
+  toast("🎉 Arrivée confirmée — bon moment !");
+  _refreshEventDetailIfOpen(ev.id);
+  if (typeof _announceNewBadges === "function") _announceNewBadges();
+}
+
+// Lien profond #irl-checkin-<eventId>-<code> (celui que porte le QR).
+function _openIrlCheckinFromHash() {
+  var m = /#irl-checkin-(.+)-([A-Z0-9]{6})$/.exec(location.hash || "");
+  if (!m) return false;
+  var id = m[1], code = m[2];
+  var run = function () {
+    var ev = _findCanonicalEvent(id) || allEvents().find(function (e) { return e.id === id; });
+    if (!ev) return false;
+    if (typeof goTo === "function") goTo("irl");
+    if (typeof openEventDetails === "function") openEventDetails(id);
+    if (code !== _eventCheckinCode(ev)) { toast("Lien de pointage invalide"); return true; }
+    _checkInViaCode(ev);
+    return true;
+  };
+  if (run()) return true;
+  // L'événement peut n'arriver qu'avec le chargement Supabase : on retente.
+  var tries = 0;
+  var t = setInterval(function () {
+    if (run()) clearInterval(t);
+    else if (++tries > 12) { clearInterval(t); toast("Événement introuvable ou supprimé"); }
+  }, 700);
+  return true;
+}
+window.addEventListener("hashchange", _openIrlCheckinFromHash);
+(function _irlCheckinDeepLinkBoot() {
+  if (!/#irl-checkin-/.test(location.hash || "")) return;
+  setTimeout(_openIrlCheckinFromHash, 1200);
+})();

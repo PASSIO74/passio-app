@@ -1814,6 +1814,8 @@ function openNotifTarget(n) {
     // Invitation directe reçue d'un abonnement (mécanique Partiful) : on ouvre la
     // fiche, où le sélecteur de RSVP attend déjà.
     case "event_invite":
+    // Note reçue sur MON événement → la fiche, qui porte la moyenne.
+    case "event_feedback":
       if (ref && typeof openEventDetails === "function") openEventDetails(ref);
       break;
     case "message":
@@ -4601,6 +4603,37 @@ async function supaCheckInEvent(eventId) {
   } catch(e) { return false; }
 }
 
+// Retour d'expérience : note 1-5 + mot libre sur MA ligne event_attendees
+// (colonnes ajoutées par migration_event_feedback.sql, appliquée en prod). La
+// policy UPDATE « owner » existante suffit — rien à assouplir.
+// ⚠️ Si les colonnes manquaient (base pas encore migrée), on retire `feedback`
+// puis on retente en note seule, comme le fait supaPublishEvent pour ses colonnes.
+async function supaRateEvent(eventId, rating, feedback) {
+  try {
+    const payload = { rating: rating, feedback: feedback || null, rated_at: new Date().toISOString() };
+    let { error } = await supa.from("event_attendees").update(payload)
+      .eq("event_id", eventId).eq("user_id", MY_UID);
+    if (error && /column .* does not exist/i.test(error.message || "")) {
+      const r2 = await supa.from("event_attendees").update({ rating: rating })
+        .eq("event_id", eventId).eq("user_id", MY_UID);
+      error = r2.error;
+    }
+    return !error;
+  } catch (e) { return false; }
+}
+
+// Agrégat des notes d'un événement : { avg, count }. Null si indisponible.
+async function supaLoadEventRatings(eventId) {
+  try {
+    const { data, error } = await supa.from("event_attendees")
+      .select("rating").eq("event_id", eventId).not("rating", "is", null);
+    if (error) return null;
+    const notes = (data || []).map(r => r.rating).filter(n => typeof n === "number");
+    if (!notes.length) return { avg: 0, count: 0 };
+    return { avg: notes.reduce((a, b) => a + b, 0) / notes.length, count: notes.length };
+  } catch (e) { return null; }
+}
+
 // Promotion d'un membre de la liste d'attente (place libérée / geste de l'orga).
 async function supaPromoteFromWaitlist(eventId, userId) {
   try {
@@ -4700,7 +4733,7 @@ async function supaLeaveEventConversation(convId) {
 // Emoji d'une notif dérivé de son `kind` (pas de jointure profiles : voir
 // supaLoadNotifications).
 function _notifEmoji(kind) {
-  return ({ like: "❤️", comment: "💬", follow: "➕", message: "✉️", mention: "📣", reaction: "😊", event_join: "🤝", event_comment: "💬", event_update: "📝", event_cancelled: "🚫", event_reminder: "⏰", event_invite: "💌", live_video: "🔴", cdv_live_step: "📍" })[kind] || "✨";
+  return ({ like: "❤️", comment: "💬", follow: "➕", message: "✉️", mention: "📣", reaction: "😊", event_join: "🤝", event_comment: "💬", event_update: "📝", event_cancelled: "🚫", event_reminder: "⏰", event_invite: "💌", event_feedback: "⭐", live_video: "🔴", cdv_live_step: "📍" })[kind] || "✨";
 }
 
 async function supaLoadNotifications() {
@@ -4924,8 +4957,12 @@ async function supaInit() {
       }
       // Lives vidéo actifs → bulles 🔴 de la barre des stories.
       if (typeof supaRefreshVideoLives === "function") supaRefreshVideoLives();
-      // Rappel in-app des événements rejoints dans les prochaines 24 h.
+      // Rappels in-app des événements rejoints : cadence J-7 / J-1 / H-2.
       if (typeof _checkEventReminders === "function") _checkEventReminders();
+      // Badges déjà acquis marqués « vus » SANS notification au premier boot :
+      // un compte existant ne doit pas recevoir 6 annonces d'un coup pour des
+      // jalons franchis il y a des mois. Les suivants seront annoncés en direct.
+      if (typeof _seedBadgesSeen === "function") _seedBadgesSeen();
       // RSVP (je viens / peut-être / liste d'attente) + check-ins : rechargés
       // depuis le serveur pour être cohérents d'un appareil à l'autre.
       if (typeof supaLoadMyRsvps === "function") {

@@ -7916,3 +7916,123 @@
   border-bottom: 1px solid var(--border);
 }
 .event-invite-row:last-child { border-bottom: none; }
+
+/* ===========================================================================
+   BADGES D'ASSIDUITÉ (2026-07-21)
+   ========================================================================= */
+.badge-card {
+  display: flex; align-items: center; gap: 12px;
+  padding: 11px 12px; margin-bottom: 8px;
+  border-radius: 12px; border: 1px solid var(--border);
+  background: var(--bg-card);
+}
+.badge-card.earned {
+  border-color: rgba(124, 58, 237, 0.35);
+  background: rgba(124, 58, 237, 0.06);
+}
+.badge-emoji { font-size: 24px; flex-shrink: 0; filter: grayscale(1); opacity: 0.45; }
+.badge-card.earned .badge-emoji { filter: none; opacity: 1; }
+.badge-label { font-size: 13px; font-weight: 700; color: var(--text); }
+.badge-desc { font-size: 11px; color: var(--muted); margin-top: 1px; }
+.badge-count {
+  font-size: 12px; font-weight: 800; color: var(--muted);
+  flex-shrink: 0; min-width: 34px; text-align: right;
+}
+.badge-card.earned .badge-count { color: var(--accent); }
+/* Barre de progression des badges encore verrouillés : c'est elle qui donne
+   envie d'aller au bout ("3/5" seul ne se ressent pas). */
+.badge-bar {
+  height: 4px; border-radius: 999px; background: var(--bg-deep);
+  margin-top: 6px; overflow: hidden;
+}
+.badge-bar i { display: block; height: 100%; background: var(--accent); border-radius: 999px; }
+
+/* ===========================================================================
+   IRL — retour d'expérience & check-in par QR (2026-07-21)
+   ========================================================================= */
+.event-feedback-prompt,
+.event-feedback-done {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; margin-bottom: 8px;
+  border-radius: 12px; border: 1px solid var(--border);
+  background: var(--bg-deep);
+  font-size: 12px; color: var(--text-dim);
+}
+.event-feedback-done span { flex: 1; color: #f59e0b; font-weight: 700; letter-spacing: 1px; }
+
+.ev-rating-star {
+  font-size: 32px; line-height: 1; cursor: pointer;
+  color: var(--border); user-select: none;
+}
+.ev-rating-star.on { color: #f59e0b; }
+.ev-rating-star:focus-visible { outline: 2px solid var(--accent); border-radius: 4px; }
+
+.event-rating-summary {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 12px; margin-bottom: 8px;
+}
+.ev-rating-stars-static { color: #f59e0b; letter-spacing: 1px; }
+
+/* QR d'accueil : fond blanc obligatoire quel que soit le thème — un QR sur fond
+   sombre n'est pas lu par la plupart des appareils photo. */
+.checkin-qr-frame {
+  display: flex; align-items: center; justify-content: center;
+  padding: 14px; border-radius: 14px; background: #fff;
+  border: 1px solid var(--border);
+}
+.checkin-qr-frame svg { display: block; width: 100%; height: auto; max-width: 260px; }
+.checkin-code {
+  font-size: 26px; font-weight: 800; letter-spacing: 6px;
+  color: var(--text); font-variant-numeric: tabular-nums;
+}
+
+/* ===========================================================================
+   CDV — rétrospective animée de l'itinéraire (2026-07-21)
+   ========================================================================= */
+.cdv-replay {
+  position: fixed; inset: 0; z-index: 9999;
+  background: #0b0b12; display: flex; flex-direction: column;
+}
+.cdv-replay-bars {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 3;
+  display: flex; gap: 4px; padding: 10px 12px;
+  padding-top: calc(10px + env(safe-area-inset-top, 0px));
+}
+.cdv-replay-bars i {
+  flex: 1; height: 3px; border-radius: 999px;
+  background: rgba(255, 255, 255, 0.28);
+}
+.cdv-replay-bars i.on { background: #fff; }
+.cdv-replay-bars i.done { background: rgba(255, 255, 255, 0.75); }
+.cdv-replay-close {
+  position: absolute; z-index: 4;
+  top: calc(24px + env(safe-area-inset-top, 0px)); right: 12px;
+  width: 36px; height: 36px; border-radius: 50%;
+  border: none; background: rgba(0, 0, 0, 0.45); color: #fff;
+  font-size: 22px; line-height: 1; cursor: pointer;
+}
+.cdv-replay-map { flex: 1; min-height: 0; }
+.cdv-replay-card {
+  background: rgba(12, 12, 20, 0.94); color: #fff;
+  padding: 14px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+.cdv-replay-head { margin-bottom: 10px; }
+.cdv-replay-title { font-size: 15px; font-weight: 800; }
+.cdv-replay-sub { font-size: 11px; color: rgba(255, 255, 255, 0.6); margin-top: 2px; }
+.cdv-replay-step { display: flex; gap: 12px; align-items: center; min-height: 62px; }
+.cdv-replay-photo {
+  width: 62px; height: 62px; border-radius: 10px;
+  object-fit: cover; flex-shrink: 0;
+}
+.cdv-replay-place { font-size: 14px; font-weight: 700; }
+.cdv-replay-country { font-size: 11px; color: rgba(255, 255, 255, 0.65); margin-top: 2px; }
+.cdv-replay-text {
+  font-size: 12px; line-height: 1.5;
+  color: rgba(255, 255, 255, 0.78); margin-top: 4px;
+}
+/* Étape en cours pendant la rétrospective : elle doit ressortir des précédentes. */
+.passio-marker.current {
+  background: #f59e0b;
+  box-shadow: 0 0 0 6px rgba(245, 158, 11, 0.28);
+}

@@ -987,6 +987,7 @@ function openVlogViewer(postId) {
       ${tripSt.countries.length ? `<div class="cdv-stat-flags">${tripSt.countries.map(c => `<span>${cdvCountryFlag(c)} ${escapeHtml(c)}</span>`).join("")}</div>` : ""}
 
       ${hasMap ? `<div class="vlog-mini-map" id="vlogViewerMap"></div>` : `<div class="vlog-map-empty">📍 Lieux non géolocalisables sur la carte</div>`}
+      ${mapPlaces.length > 1 ? `<button class="btn ghost block" style="font-size:12px;margin-bottom:12px;" onclick="closeModal();openCdvRouteReplay('${escapeJsArg(postId)}','carnet')">🎬 Rejouer l'itinéraire</button>` : ""}
 
       ${post.tip ? `<div class="vlog-viewer-tip">
         <div class="vlog-viewer-tip-label">⭐ LE CONSEIL CLÉ</div>
@@ -2030,6 +2031,7 @@ function openCdvLiveViewer(liveId) {
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">\
       <div style="font-weight:800;font-size:13px;color:var(--text);flex:1;">📍 Étapes</div>\
       ' + (live.steps.length ? '<button class="pill" onclick="closeModal();openCdvStepStory(\'' + liveId + '\',0)" style="font-size:11px;">▶ Plein écran</button>' : '') + '\
+      ' + (mapPlaces.length > 1 ? '<button class="pill" onclick="closeModal();openCdvRouteReplay(\'' + liveId + '\',\'live\')" style="font-size:11px;">🎬 Rejouer</button>' : '') + '\
     </div>\
     ' + stepsHTML + '\
     \
@@ -3275,4 +3277,193 @@ function openCdvPassport() {
     + flagsHtml
     + '<div style="font-weight:800;font-size:13px;color:var(--text);margin:16px 0 8px;">✈️ Mes ' + p.trips.length + ' voyage' + (p.trips.length > 1 ? "s" : "") + '</div>'
     + tripsHtml);
+}
+
+/* ============================================================================
+   CDV — RÉTROSPECTIVE ANIMÉE DE L'ITINÉRAIRE (2026-07-21)
+   ----------------------------------------------------------------------------
+   Le « flyover » de FindPenguins / le récap de Relive : le trajet se REJOUE, la
+   ligne se trace d'étape en étape et la carte suit. C'est le format le plus
+   partagé de ces apps, parce qu'il transforme une liste en récit.
+
+   Aucune vidéo n'est encodée (ce serait lourd et lent sur mobile) : on anime la
+   carte MapLibre déjà chargée, ce qui est instantané et fonctionne hors-ligne
+   une fois les tuiles en cache.
+
+   ⚠️ Le shim L (map-loader.js) n'expose pas de mise à jour de tracé : on
+   reconstruit les couches à chaque étape via clearLayers() puis re-ajout. À une
+   étape toutes les ~2 s c'est imperceptible, et ça évite d'élargir le shim.
+   ========================================================================== */
+
+var CDV_REPLAY_STEP_MS = 2200;
+
+// Points rejouables d'un voyage (live OU carnet) : uniquement les étapes
+// géolocalisées, dans l'ordre.
+function _cdvReplayPoints(trip) {
+  return (trip.steps || [])
+    .map(function (s, i) {
+      var ll = cdvStepLatLng(s);
+      return ll ? {
+        ll: ll, n: i + 1,
+        place: s.city || s.place || "",
+        text: s.content || s.text || "",
+        photo: (Array.isArray(s.photos) && s.photos[0]) || s.photo || "",
+        country: s.country || "",
+      } : null;
+    })
+    .filter(Boolean);
+}
+
+// Point d'entrée unique : `kind` vaut "live" ou "carnet".
+function openCdvRouteReplay(id, kind) {
+  var trip = null;
+  if (kind === "carnet") {
+    trip = (typeof findPostAnywhere === "function") ? findPostAnywhere(id) : null;
+  } else {
+    trip = getCdvLives().find(function (l) { return l.id === id; });
+  }
+  if (!trip) { toast("Voyage introuvable"); return; }
+
+  var pts = _cdvReplayPoints(trip);
+  if (pts.length < 2) { toast("Il faut au moins 2 étapes géolocalisées pour rejouer l'itinéraire 📍"); return; }
+
+  var st = cdvTripStats(trip.steps || [], { start: trip.dateStart, end: trip.dateEnd });
+  var title = trip.destination || "Mon voyage";
+
+  var ov = document.createElement("div");
+  ov.id = "cdvReplayOverlay";
+  ov.className = "cdv-replay";
+  ov.innerHTML =
+      '<div class="cdv-replay-bars">'
+    +   pts.map(function (_, i) { return '<i data-rb="' + i + '"></i>'; }).join("")
+    + '</div>'
+    + '<button class="cdv-replay-close" aria-label="Fermer">×</button>'
+    + '<div class="cdv-replay-map" id="cdvReplayMap"></div>'
+    + '<div class="cdv-replay-card">'
+    +   '<div class="cdv-replay-head">'
+    +     '<div class="cdv-replay-title">' + escapeHtml(title) + '</div>'
+    +     '<div class="cdv-replay-sub" id="cdvReplayStats">'
+    +       (st.km ? st.km + " km · " : "") + pts.length + " étapes"
+    +       (st.countries.length ? " · " + st.countries.length + " pays" : "")
+    +     '</div>'
+    +   '</div>'
+    +   '<div class="cdv-replay-step" id="cdvReplayStep"></div>'
+    + '</div>';
+  document.body.appendChild(ov);
+
+  var state_ = { i: 0, timer: null, map: null, done: false };
+
+  var cleanup = function () {
+    state_.done = true;
+    if (state_.timer) clearTimeout(state_.timer);
+    try { if (state_.map) state_.map.remove(); } catch (e) {}
+    document.removeEventListener("keydown", onKey);
+    if (ov.parentNode) ov.parentNode.removeChild(ov);
+  };
+  function onKey(e) {
+    if (e.key === "Escape") cleanup();
+    else if (e.key === "ArrowRight") show(state_.i + 1);
+    else if (e.key === "ArrowLeft") show(state_.i - 1);
+  }
+  document.addEventListener("keydown", onKey);
+  ov.querySelector(".cdv-replay-close").onclick = cleanup;
+
+  // Tap gauche / droite pour naviguer à la main (même grammaire que les stories).
+  ov.querySelector(".cdv-replay-map").onclick = function (e) {
+    var r = this.getBoundingClientRect();
+    show(state_.i + ((e.clientX - r.left) < r.width * 0.3 ? -1 : 1));
+  };
+
+  function paint(upto) {
+    if (!state_.map) return;
+    state_.map.clearLayers();
+    var seen = pts.slice(0, upto + 1);
+    seen.forEach(function (p, idx) {
+      var isLast = idx === upto;
+      var icon = L.divIcon({
+        className: "passio-marker-wrap",
+        html: '<div class="passio-marker' + (isLast ? " current" : "") + '">' + p.n + '</div>',
+        iconSize: [36, 36], iconAnchor: [18, 18],
+      });
+      L.marker(p.ll, { icon: icon }).addTo(state_.map);
+    });
+    if (seen.length > 1) {
+      L.polyline(seen.map(function (p) { return p.ll; }),
+        { color: "#7c3aed", weight: 4, opacity: 0.85 }).addTo(state_.map);
+    }
+    state_.map.setView(pts[upto].ll, seen.length > 1 ? 8 : 10);
+  }
+
+  function show(i) {
+    if (state_.done) return;
+    if (i < 0) i = 0;
+    if (i >= pts.length) { finish(); return; }
+    state_.i = i;
+    var p = pts[i];
+
+    ov.querySelectorAll("[data-rb]").forEach(function (b, idx) {
+      b.className = idx < i ? "done" : (idx === i ? "on" : "");
+    });
+
+    var card = document.getElementById("cdvReplayStep");
+    if (card) {
+      card.innerHTML =
+          (p.photo ? '<img class="cdv-replay-photo" src="' + safeUrlAttr(p.photo) + '" alt="" loading="lazy"/>' : "")
+        + '<div style="flex:1;min-width:0;">'
+        +   '<div class="cdv-replay-place">' + p.n + ". " + escapeHtml(p.place || "Étape") + '</div>'
+        +   (p.country ? '<div class="cdv-replay-country">' + cdvCountryFlag(p.country) + " " + escapeHtml(p.country) + '</div>' : "")
+        +   (p.text ? '<div class="cdv-replay-text">' + escapeHtml(p.text.slice(0, 160)) + (p.text.length > 160 ? "…" : "") + '</div>' : "")
+        + '</div>';
+    }
+    paint(i);
+
+    if (state_.timer) clearTimeout(state_.timer);
+    state_.timer = setTimeout(function () { show(i + 1); }, CDV_REPLAY_STEP_MS);
+  }
+
+  function finish() {
+    if (state_.timer) clearTimeout(state_.timer);
+    ov.querySelectorAll("[data-rb]").forEach(function (b) { b.className = "done"; });
+    var card = document.getElementById("cdvReplayStep");
+    if (card) {
+      card.innerHTML = '<div style="flex:1;text-align:center;">'
+        + '<div style="font-size:22px;margin-bottom:6px;">🏁</div>'
+        + '<div class="cdv-replay-place">' + escapeHtml(title) + '</div>'
+        + '<div class="cdv-replay-text">'
+        + (st.km ? st.km + " km parcourus · " : "") + pts.length + " étapes"
+        + (st.days ? " · " + st.days + (st.days > 1 ? " jours" : " jour") : "")
+        + '</div></div>';
+    }
+    // Cadre le trajet ENTIER : la dernière image doit montrer le voyage complet.
+    try {
+      if (state_.map && typeof L !== "undefined") {
+        state_.map.fitBounds(L.latLngBounds(pts.map(function (p) { return p.ll; })), { padding: [50, 50], maxZoom: 10 });
+      }
+    } catch (e) {}
+  }
+
+  // La carte d'abord (elle conditionne tout le rendu), puis la lecture.
+  var startReplay = function () {
+    var el = document.getElementById("cdvReplayMap");
+    if (!el || state_.done) return;
+    try {
+      state_.map = L.map(el, { zoomControl: false, attributionControl: false })
+        .setView(pts[0].ll, 10);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 18 }).addTo(state_.map);
+      setTimeout(function () { try { state_.map.invalidateSize(); } catch (e) {} }, 150);
+    } catch (e) {
+      toast("Carte indisponible sur cet appareil");
+      cleanup();
+      return;
+    }
+    show(0);
+  };
+
+  if (typeof L === "undefined") {
+    if (typeof ensureLeaflet === "function") ensureLeaflet().then(startReplay).catch(function () {
+      toast("Carte indisponible");
+      cleanup();
+    });
+    else { toast("Carte indisponible"); cleanup(); }
+  } else startReplay();
 }
