@@ -775,7 +775,11 @@ async function _geoFetchJson(url) {
 }
 
 // Forme unifiée renvoyée par les deux fournisseurs :
-// { label, name, lat, lng, city, postcode, context }
+// { label, name, lat, lng, city, postcode, context, country }
+// ⚠️ `country` a été ajouté le 2026-07-21 pour le « passeport » du CDV (compteur
+// de pays visités, à la Polarsteps). Les entrées déjà en cache localStorage n'ont
+// pas le champ : tout consommateur doit tolérer un country absent (le cache expire
+// de lui-même au bout de 7 jours).
 function _geoFromBan(f) {
   const p = (f && f.properties) || {};
   const c = (f && f.geometry && f.geometry.coordinates) || [];
@@ -784,6 +788,7 @@ function _geoFromBan(f) {
     lat: c[1], lng: c[0],
     city: p.city || p.municipality || "", postcode: p.postcode || "",
     context: p.context || "",
+    country: "France", // la Base Adresse Nationale ne couvre que la France
   };
 }
 
@@ -798,6 +803,7 @@ function _geoFromPhoton(f) {
     city: p.city || p.town || p.village || p.county || "",
     postcode: p.postcode || "",
     context: [p.state, p.country].filter(Boolean).join(", "),
+    country: p.country || "",
   };
 }
 
@@ -1903,6 +1909,7 @@ function renderIRL() {
         ${_isMyEvent(e) ? '<span class="pill active" style="height:fit-content;flex-shrink:0;">Organisé</span>' : ""}
       </div>
       <div style="font-size:12px;color:var(--text-dim);margin-top:8px;line-height:1.5;">${escapeHtml((e.desc || "").slice(0, 120))}${(e.desc||"").length > 120 ? "…" : ""}</div>
+      ${_eventSocialProofHtml(e)}
       <div class="event-footer">
         <div class="attendees">${attAvatars}<span class="pill" style="margin-left:6px;padding:3px 8px;">${attCount} inscrit${attCount > 1 ? "s" : ""}${maybeCount ? " · " + maybeCount + " 🤔" : ""}</span></div>
         ${cta}
@@ -2830,8 +2837,10 @@ function openEventDetails(id) {
     <div style="display:flex;gap:8px;margin:10px 0;flex-wrap:wrap;">
       ${over ? "" : `<button class="btn ghost block" onclick="downloadEventIcs('${escapeJsArg(ev.id)}')" style="font-size:12px;">📅 Ajouter au calendrier</button>`}
       <button class="btn ghost block" onclick="shareEvent('${escapeJsArg(ev.id)}')" style="font-size:12px;">${shareIconSvg(14)} Partager</button>
+      ${over ? "" : `<button class="btn ghost block" onclick="openEventInvite('${escapeJsArg(ev.id)}')" style="font-size:12px;">💌 Inviter</button>`}
       ${mine ? `<button class="btn ghost block" onclick="openEventManage('${escapeJsArg(ev.id)}')" style="font-size:12px;">⚙️ Gérer</button>` : ""}
     </div>
+    ${_eventSocialProofHtml(ev)}
 
     <!-- Discussion de groupe : le vrai moteur de participation (Meetup / FB Events). -->
     ${cancelled ? "" : `
@@ -4216,3 +4225,174 @@ function renderWallet() {
   renderQuests();
 }
 
+
+/* ============================================================================
+   IRL — PREUVE SOCIALE & INVITATIONS DIRECTES (2026-07-21)
+   ----------------------------------------------------------------------------
+   Les deux mecaniques qui font le taux de reponse de Partiful et de Luma, et qui
+   manquaient a PASSIO :
+
+   1. PREUVE SOCIALE — « Marie et Tom y vont ». Le nombre brut d'inscrits ne dit
+      rien ; savoir qu'on connait quelqu'un sur place est LE declencheur du RSVP
+      (et le frein n°1 leve : « je ne connaitrai personne »). On n'invente rien :
+      on croise `ev.attendees` avec `state.user.following`, deja charge.
+
+   2. INVITATION DIRECTE — inviter nommement ses abonnements. Un evenement pousse
+      passivement dans un fil n'atteint personne ; Partiful a bati son produit sur
+      l'invitation nominative. Reutilise supaInsertNotif (kind "event_invite",
+      route vers openEventDetails) — aucune table, aucune migration.
+   ========================================================================== */
+
+// Les personnes que JE suis et qui participent (ou hesitent). Renvoie des uids.
+// `maybes` est inclus a part : « 2 y vont, 1 hesite » est une info differente.
+function _eventFriendsGoing(ev) {
+  if (!ev) return { going: [], maybe: [] };
+  var me = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
+  var follows = (state.user && state.user.following) || [];
+  if (!follows.length) return { going: [], maybe: [] };
+  var pick = function (list) {
+    return (list || []).filter(function (id) {
+      return id && id !== me && id !== "me" && follows.indexOf(id) > -1;
+    });
+  };
+  return { going: pick(ev.attendees), maybe: pick(ev.maybes) };
+}
+
+// Bandeau « X et Y y vont » — avatars empiles + phrase. Rien si je ne connais
+// personne (ne JAMAIS afficher une phrase vide ou « 0 de tes abonnements »).
+function _eventSocialProofHtml(ev) {
+  var f = _eventFriendsGoing(ev);
+  var all = f.going.concat(f.maybe);
+  if (!all.length) return "";
+
+  var names = f.going.slice(0, 2).map(function (id) {
+    return ((typeof userById === "function" && userById(id)) || {}).name || "Quelqu'un";
+  });
+  var phrase;
+  if (f.going.length === 0) {
+    phrase = f.maybe.length + " personne" + (f.maybe.length > 1 ? "s" : "") + " que tu suis hésite" + (f.maybe.length > 1 ? "nt" : "");
+  } else if (f.going.length <= 2) {
+    phrase = names.join(" et ") + (f.going.length > 1 ? " y vont" : " y va");
+  } else {
+    phrase = names.join(", ") + " et " + (f.going.length - 2) + " autre" + (f.going.length - 2 > 1 ? "s" : "") + " y vont";
+  }
+  if (f.going.length && f.maybe.length) phrase += " · " + f.maybe.length + " hésite" + (f.maybe.length > 1 ? "nt" : "");
+
+  var avatars = all.slice(0, 3).map(function (id) {
+    var u = (typeof userById === "function" && userById(id)) || { avatar: "#64748b", profileEmoji: "?" };
+    return '<div class="avatar sm" style="background:' + avatarBg(u) + ';margin-left:-6px;border:2px solid var(--bg-card);">' + avatarInner(u) + '</div>';
+  }).join("");
+
+  return '<div class="event-social-proof">'
+    + '<div style="display:flex;padding-left:6px;">' + avatars + '</div>'
+    + '<span>' + escapeHtml(phrase) + '</span>'
+    + '</div>';
+}
+
+/* ---------------------------------------------------------------------------
+   INVITATIONS DIRECTES
+   ------------------------------------------------------------------------- */
+
+// Qui puis-je inviter : mes abonnements, moins ceux qui ont deja repondu (quel
+// que soit le RSVP — relancer quelqu'un qui a decline est un anti-pattern) et
+// moins ceux que j'ai deja invites sur CET evenement.
+function _eventInvitables(ev) {
+  var me = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
+  var already = []
+    .concat(ev.attendees || [], ev.maybes || [], ev.declined || [], ev.waitlist || [])
+    .concat(_eventInvitesSent(ev.id));
+  return ((state.user && state.user.following) || []).filter(function (id) {
+    return id && id !== me && already.indexOf(id) === -1 && !(typeof isBlocked === "function" && isBlocked(id));
+  });
+}
+
+// Memoire LOCALE des invitations envoyees (pas de table : une invitation est une
+// notification, et on veut seulement eviter le double envoi depuis cet appareil).
+function _eventInvitesSent(eventId) {
+  var m = (state.user && state.user.eventInvitesSent) || {};
+  return m[eventId] || [];
+}
+function _rememberEventInvite(eventId, userId) {
+  if (!state.user) return;
+  state.user.eventInvitesSent = state.user.eventInvitesSent || {};
+  var l = state.user.eventInvitesSent[eventId] || [];
+  if (l.indexOf(userId) === -1) l.push(userId);
+  state.user.eventInvitesSent[eventId] = l;
+  saveState();
+}
+
+function openEventInvite(eventId) {
+  var ev = _findCanonicalEvent(eventId) || allEvents().find(function (e) { return e.id === eventId; });
+  if (!ev) { toast("Événement introuvable"); return; }
+  window._inviteEventId = eventId;
+  openModal('<span class="modal-close" onclick="closeModal()">×</span>'
+    + '<div class="modal-title">💌 Inviter des amis</div>'
+    + '<div style="font-size:12px;color:var(--muted);margin-bottom:12px;">'
+    + escapeHtml(ev.title || "") + '</div>'
+    + '<input type="text" class="input" id="eventInviteSearch" placeholder="Rechercher parmi tes abonnements…" '
+    + 'oninput="_renderEventInviteList()" style="margin-bottom:10px;"/>'
+    + '<div id="eventInviteList"></div>');
+  _renderEventInviteList();
+}
+
+function _renderEventInviteList() {
+  var box = document.getElementById("eventInviteList");
+  if (!box) return;
+  var eventId = window._inviteEventId;
+  var ev = _findCanonicalEvent(eventId) || allEvents().find(function (e) { return e.id === eventId; });
+  if (!ev) return;
+
+  var q = ((document.getElementById("eventInviteSearch") || {}).value || "").trim().toLowerCase();
+  var ids = _eventInvitables(ev).filter(function (id) {
+    if (!q) return true;
+    var u = (typeof userById === "function" && userById(id)) || {};
+    return (u.name || "").toLowerCase().indexOf(q) > -1;
+  });
+
+  if (!ids.length) {
+    var sent = _eventInvitesSent(eventId).length;
+    box.innerHTML = '<div style="text-align:center;padding:24px;color:var(--muted);font-size:12px;">'
+      + (q ? "Aucun résultat pour « " + escapeHtml(q) + " »"
+           : sent ? "Tu as invité tout le monde 🎉"
+                  : "Abonne-toi à des passionnés pour pouvoir les inviter ici.")
+      + '</div>';
+    return;
+  }
+
+  box.innerHTML = ids.slice(0, 50).map(function (id) {
+    var u = (typeof userById === "function" && userById(id)) || { avatar: "#64748b", profileEmoji: "?", name: "Passionné" };
+    return '<div class="event-invite-row">'
+      + '<div class="avatar sm" style="background:' + avatarBg(u) + ';">' + avatarInner(u) + '</div>'
+      + '<div style="flex:1;min-width:0;font-size:13px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'
+      + escapeHtml(u.name || "Passionné") + '</div>'
+      + '<button class="btn small primary" data-invite="' + escapeHtml(id) + '" '
+      + 'onclick="inviteToEvent(\'' + escapeJsArg(eventId) + '\',\'' + escapeJsArg(id) + '\',this)">Inviter</button>'
+      + '</div>';
+  }).join("");
+}
+
+function inviteToEvent(eventId, userId, btn) {
+  var ev = _findCanonicalEvent(eventId) || allEvents().find(function (e) { return e.id === eventId; });
+  if (!ev) return;
+  if (btn) { btn.disabled = true; btn.textContent = "✓ Invité"; btn.classList.remove("primary"); btn.classList.add("ghost"); }
+  _rememberEventInvite(eventId, userId);
+
+  // L'invitation EST la notification (kind "event_invite" → openEventDetails).
+  // ⚠️ supaInsertNotif échappe déjà le pseudo de l'émetteur (XSS notifications).
+  if (typeof supaInsertNotif === "function") {
+    supaInsertNotif(userId, "event_invite", eventId,
+      "t'invite à <b>" + escapeHtml((ev.title || "un événement").slice(0, 60)) + "</b>");
+  }
+  toast("Invitation envoyée 💌");
+}
+
+// Invite d'un coup tous ceux que je suis et qui ne se sont pas encore prononcés.
+function inviteAllFollowingToEvent(eventId) {
+  var ev = _findCanonicalEvent(eventId) || allEvents().find(function (e) { return e.id === eventId; });
+  if (!ev) return;
+  var ids = _eventInvitables(ev);
+  if (!ids.length) { toast("Personne de nouveau à inviter"); return; }
+  ids.slice(0, 30).forEach(function (id) { inviteToEvent(eventId, id, null); });
+  toast(ids.length + " invitation" + (ids.length > 1 ? "s envoyées" : " envoyée") + " 💌");
+  _renderEventInviteList();
+}

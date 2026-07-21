@@ -950,6 +950,8 @@ function openVlogViewer(postId) {
   // Lieux jamais géocodés (carnets antérieurs, destinations hors France) : on
   // complète en tâche de fond puis on re-rend — la carte se remplit toute seule.
   if ((post.steps || []).some(s => s && s.place && typeof s.lat !== "number")) _cdvBackfillCarnetCoords(post);
+  // Pays traversés (bandeau de stats) : même logique, en tâche de fond.
+  if (typeof _cdvBackfillCarnetCountries === "function") _cdvBackfillCarnetCountries(post);
   // Fallback : si aucune étape n'a pu être géolocalisée, on essaie la destination du carnet
   if (mapPlaces.length === 0 && post.destination) {
     const destLL = cityToLatLng(post.destination);
@@ -957,6 +959,9 @@ function openVlogViewer(postId) {
   }
   const hasMap = mapPlaces.length > 0;
   const isSaved = isCarnetSaved(postId);
+  // Km parcourus + pays traversés (les deux chiffres signature d'un carnet de
+  // voyage), calculés depuis les mêmes coordonnées que la carte ci-dessus.
+  const tripSt = cdvTripStats(post.steps || [], { start: post.dateStart, end: post.dateEnd });
 
   const html = `
     ${post.cover ? `<img loading="lazy" decoding="async" class="vlog-viewer-cover" src="${post.cover}" alt="${escapeHtml(post.destination || '')}" onerror="this.onerror=null;this.src='https://picsum.photos/seed/vlog-${postId}/1280/720';"/>` : `<div class="vlog-viewer-cover"></div>`}
@@ -974,9 +979,12 @@ function openVlogViewer(postId) {
       <div class="vlog-stats-bar">
         <div class="vlog-stat"><div class="vlog-stat-num">${stats.durée}</div><div class="vlog-stat-label">Jours</div></div>
         <div class="vlog-stat"><div class="vlog-stat-num">${stats.nbDays}</div><div class="vlog-stat-label">Étapes</div></div>
+        ${tripSt.km ? `<div class="vlog-stat"><div class="vlog-stat-num">${tripSt.km >= 1000 ? (tripSt.km / 1000).toFixed(1).replace(".", ",") + "k" : tripSt.km}</div><div class="vlog-stat-label">Km</div></div>` : ""}
+        ${tripSt.countries.length ? `<div class="vlog-stat"><div class="vlog-stat-num">${tripSt.countries.length}</div><div class="vlog-stat-label">Pays</div></div>` : ""}
         <div class="vlog-stat"><div class="vlog-stat-num">${stats.coutJour ? stats.coutJour + "€" : "—"}</div><div class="vlog-stat-label">Coût/jour</div></div>
         <div class="vlog-stat"><div class="vlog-stat-num">${stats.nbPhotos}</div><div class="vlog-stat-label">Photos</div></div>
       </div>
+      ${tripSt.countries.length ? `<div class="cdv-stat-flags">${tripSt.countries.map(c => `<span>${cdvCountryFlag(c)} ${escapeHtml(c)}</span>`).join("")}</div>` : ""}
 
       ${hasMap ? `<div class="vlog-mini-map" id="vlogViewerMap"></div>` : `<div class="vlog-map-empty">📍 Lieux non géolocalisables sur la carte</div>`}
 
@@ -2014,6 +2022,8 @@ function openCdvLiveViewer(liveId) {
       ' + (live.duration ? '<span>📅 ' + live.duration + '</span>' : '') + '\
     </div>\
     \
+    <div id="cdvTripStats">' + _cdvTripStatsHtml(cdvTripStats(live.steps)) + '</div>\
+    \
     <div id="cdvReactBar" style="display:flex;gap:6px;margin-bottom:14px;">' + _cdvReactBarHtml(liveId, live) + '</div>\
     \
     ' + (mapPlaces.length ? '<div class="vlog-mini-map" id="cdvLiveMap" style="margin-bottom:14px;"></div>' : '') + '\
@@ -2057,6 +2067,9 @@ function openCdvLiveViewer(liveId) {
   }
   // Compteur ❤️ réel (par personne) sur le bouton like du viewer.
   if (typeof _loadCdvLiveLikes === "function") _loadCdvLiveLikes([liveId]);
+  // Pays des étapes (compteur du bandeau de stats) : géocodage inverse en tâche
+  // de fond, une seule fois par live, puis re-render du seul bandeau.
+  if (typeof _cdvBackfillCountries === "function") _cdvBackfillCountries(live);
   // Carte de l'itinéraire (Leaflet chargé à la demande).
   if (mapPlaces.length) {
     setTimeout(function () {
@@ -2707,6 +2720,15 @@ function renderCdvScreen() {
     spBtn.textContent = "📍 Mes lieux (" + n + ")";
   }
 
+  // Bouton « Passeport » : idem, seulement si j'ai au moins un voyage. Le libellé
+  // porte le chiffre qui donne envie de l'ouvrir (km cumulés, sinon nb de voyages).
+  const ppBtn = document.getElementById("cdvPassportBtn");
+  if (ppBtn) {
+    const pp = cdvPassportStats();
+    ppBtn.style.display = pp.trips.length ? "inline-flex" : "none";
+    ppBtn.textContent = "🛂 Passeport" + (pp.km ? " · " + (pp.km >= 1000 ? (pp.km / 1000).toFixed(1).replace(".", ",") + "k" : pp.km) + " km" : "");
+  }
+
   // Sync filter pills (multi-select)
   document.querySelectorAll("#cdvFilterRow .pill").forEach(p => {
     const filterType = p.getAttribute("data-cdvfilter");
@@ -2976,3 +2998,281 @@ function _cdvLiveActionsHtml(l) {
   </div>`;
 }
 
+
+/* ============================================================================
+   CDV — STATISTIQUES DE VOYAGE & PASSEPORT (2026-07-21)
+   ----------------------------------------------------------------------------
+   C'est LA signature des leaders du carnet de voyage (Polarsteps, FindPenguins) :
+   le voyage ne se resume pas a une liste d'etapes, il produit des CHIFFRES dont on
+   est fier et qu'on partage (km parcourus, jours, villes, pays). PASSIO avait deja
+   les etapes geolocalisees (lat/lng depuis le CDV v2) mais n'en tirait rien.
+
+   Tout est calcule A PARTIR DES DONNEES EXISTANTES — aucune migration, aucune
+   colonne : les km viennent de la polyline des etapes deja tracee sur la carte.
+   ========================================================================== */
+
+// Distance orthodromique entre deux points [lat, lng], en km (rayon moyen 6371).
+function _kmBetween(a, b) {
+  if (!a || !b) return 0;
+  var R = 6371, rad = Math.PI / 180;
+  var dLat = (b[0] - a[0]) * rad, dLng = (b[1] - a[1]) * rad;
+  var la1 = a[0] * rad, la2 = b[0] * rad;
+  var h = Math.sin(dLat / 2) * Math.sin(dLat / 2)
+        + Math.sin(dLng / 2) * Math.sin(dLng / 2) * Math.cos(la1) * Math.cos(la2);
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
+// Statistiques d'UN voyage (live OU carnet — les deux formes d'etape sont gerees
+// par cdvStepLatLng, qui lit s.city comme s.place).
+// opts : { start, end } (timestamps) pour un carnet dont les dates sont portees
+// par le post et non par les etapes.
+function cdvTripStats(steps, opts) {
+  steps = Array.isArray(steps) ? steps : [];
+  opts = opts || {};
+  var pts = [], cities = {}, countries = {}, photos = 0, budgets = [];
+  var tMin = null, tMax = null;
+
+  steps.forEach(function (s) {
+    if (!s) return;
+    var ll = (typeof cdvStepLatLng === "function") ? cdvStepLatLng(s) : null;
+    if (ll) pts.push(ll);
+    var name = (s.city || s.place || "").trim();
+    if (name) cities[name.toLowerCase()] = name;
+    if (s.country) countries[String(s.country).toLowerCase()] = s.country;
+    if (Array.isArray(s.photos)) photos += s.photos.length;
+    else if (s.photo) photos += 1;
+    if (s.budget && s.budget !== "free") budgets.push(s.budget);
+    var t = s.createdAt || s.at || 0;
+    if (t) { if (tMin === null || t < tMin) tMin = t; if (tMax === null || t > tMax) tMax = t; }
+  });
+
+  var km = 0;
+  for (var i = 1; i < pts.length; i++) km += _kmBetween(pts[i - 1], pts[i]);
+
+  // Duree : les dates explicites du carnet priment sur les horodatages d'etape.
+  var start = opts.start || tMin, end = opts.end || tMax;
+  var days = 0;
+  if (start && end && end >= start) days = Math.max(1, Math.round((end - start) / 86400000) + 1);
+  else if (start) days = 1;
+
+  // Budget « dominant » : les etapes portent un PALIER (€/€€/€€€), pas un montant —
+  // on ne peut donc pas sommer, on remonte le palier le plus frequent.
+  var tally = {}, budget = "";
+  budgets.forEach(function (b) { tally[b] = (tally[b] || 0) + 1; });
+  Object.keys(tally).forEach(function (b) { if (!budget || tally[b] > tally[budget]) budget = b; });
+
+  return {
+    steps: steps.length,
+    km: Math.round(km),
+    days: days,
+    cities: Object.keys(cities).map(function (k) { return cities[k]; }),
+    countries: Object.keys(countries).map(function (k) { return countries[k]; }),
+    photos: photos,
+    budget: budget,
+    geolocated: pts.length,
+  };
+}
+
+// Drapeau d'un pays (les noms viennent de Photon, en francais). Purement decoratif :
+// un pays inconnu du dictionnaire retombe sur la mappemonde, jamais sur du vide.
+var CDV_COUNTRY_FLAGS = {
+  "france": "\u{1F1EB}\u{1F1F7}", "espagne": "\u{1F1EA}\u{1F1F8}", "spain": "\u{1F1EA}\u{1F1F8}",
+  "italie": "\u{1F1EE}\u{1F1F9}", "italy": "\u{1F1EE}\u{1F1F9}", "portugal": "\u{1F1F5}\u{1F1F9}",
+  "allemagne": "\u{1F1E9}\u{1F1EA}", "germany": "\u{1F1E9}\u{1F1EA}", "belgique": "\u{1F1E7}\u{1F1EA}",
+  "belgium": "\u{1F1E7}\u{1F1EA}", "suisse": "\u{1F1E8}\u{1F1ED}", "switzerland": "\u{1F1E8}\u{1F1ED}",
+  "royaume-uni": "\u{1F1EC}\u{1F1E7}", "united kingdom": "\u{1F1EC}\u{1F1E7}", "irlande": "\u{1F1EE}\u{1F1EA}",
+  "pays-bas": "\u{1F1F3}\u{1F1F1}", "netherlands": "\u{1F1F3}\u{1F1F1}", "grece": "\u{1F1EC}\u{1F1F7}",
+  "grèce": "\u{1F1EC}\u{1F1F7}", "greece": "\u{1F1EC}\u{1F1F7}", "maroc": "\u{1F1F2}\u{1F1E6}",
+  "morocco": "\u{1F1F2}\u{1F1E6}", "tunisie": "\u{1F1F9}\u{1F1F3}", "algérie": "\u{1F1E9}\u{1F1FF}",
+  "sénégal": "\u{1F1F8}\u{1F1F3}", "états-unis": "\u{1F1FA}\u{1F1F8}",
+  "united states": "\u{1F1FA}\u{1F1F8}", "canada": "\u{1F1E8}\u{1F1E6}", "mexique": "\u{1F1F2}\u{1F1FD}",
+  "brésil": "\u{1F1E7}\u{1F1F7}", "brazil": "\u{1F1E7}\u{1F1F7}", "argentine": "\u{1F1E6}\u{1F1F7}",
+  "pérou": "\u{1F1F5}\u{1F1EA}", "colombie": "\u{1F1E8}\u{1F1F4}", "japon": "\u{1F1EF}\u{1F1F5}",
+  "japan": "\u{1F1EF}\u{1F1F5}", "chine": "\u{1F1E8}\u{1F1F3}", "china": "\u{1F1E8}\u{1F1F3}",
+  "thaïlande": "\u{1F1F9}\u{1F1ED}", "thailand": "\u{1F1F9}\u{1F1ED}", "vietnam": "\u{1F1FB}\u{1F1F3}",
+  "indonésie": "\u{1F1EE}\u{1F1E9}", "inde": "\u{1F1EE}\u{1F1F3}", "india": "\u{1F1EE}\u{1F1F3}",
+  "corée du sud": "\u{1F1F0}\u{1F1F7}", "australie": "\u{1F1E6}\u{1F1FA}", "australia": "\u{1F1E6}\u{1F1FA}",
+  "nouvelle-zélande": "\u{1F1F3}\u{1F1FF}", "islande": "\u{1F1EE}\u{1F1F8}", "iceland": "\u{1F1EE}\u{1F1F8}",
+  "norvège": "\u{1F1F3}\u{1F1F4}", "suède": "\u{1F1F8}\u{1F1EA}", "finlande": "\u{1F1EB}\u{1F1EE}",
+  "danemark": "\u{1F1E9}\u{1F1F0}", "pologne": "\u{1F1F5}\u{1F1F1}", "croatie": "\u{1F1ED}\u{1F1F7}",
+  "autriche": "\u{1F1E6}\u{1F1F9}", "turquie": "\u{1F1F9}\u{1F1F7}", "égypte": "\u{1F1EA}\u{1F1EC}",
+  "afrique du sud": "\u{1F1FF}\u{1F1E6}", "kenya": "\u{1F1F0}\u{1F1EA}", "madagascar": "\u{1F1F2}\u{1F1EC}",
+};
+function cdvCountryFlag(name) {
+  return CDV_COUNTRY_FLAGS[String(name || "").toLowerCase().trim()] || "\u{1F30D}";
+}
+
+// Bandeau de statistiques. `compact` = version 3 tuiles pour une carte ;
+// sinon les 6 tuiles du viewer.
+function _cdvTripStatsHtml(st, compact) {
+  if (!st || !st.steps) return "";
+  var tiles = [];
+  if (st.km > 0) tiles.push(["\u{1F6E3}", st.km >= 1000 ? (st.km / 1000).toFixed(1).replace(".", ",") + "k" : st.km, "km"]);
+  if (st.days > 0) tiles.push(["\u{1F4C5}", st.days, st.days > 1 ? "jours" : "jour"]);
+  tiles.push(["\u{1F4CD}", st.steps, st.steps > 1 ? "étapes" : "étape"]);
+  if (!compact) {
+    if (st.cities.length) tiles.push(["\u{1F3D9}", st.cities.length, st.cities.length > 1 ? "villes" : "ville"]);
+    if (st.countries.length) tiles.push(["\u{1F30D}", st.countries.length, "pays"]);
+    if (st.photos) tiles.push(["\u{1F4F7}", st.photos, st.photos > 1 ? "photos" : "photo"]);
+  }
+  if (!tiles.length) return "";
+
+  var cells = tiles.map(function (t) {
+    return '<div class="cdv-stat">'
+      + '<div class="cdv-stat-ico">' + t[0] + '</div>'
+      + '<div class="cdv-stat-val">' + escapeHtml(String(t[1])) + '</div>'
+      + '<div class="cdv-stat-lbl">' + escapeHtml(t[2]) + '</div>'
+      + '</div>';
+  }).join("");
+
+  var flags = (!compact && st.countries.length)
+    ? '<div class="cdv-stat-flags">' + st.countries.map(function (c) {
+        return '<span title="' + escapeHtml(c) + '">' + cdvCountryFlag(c) + " " + escapeHtml(c) + '</span>';
+      }).join("") + '</div>'
+    : "";
+
+  return '<div class="cdv-stats' + (compact ? " compact" : "") + '">' + cells + '</div>' + flags;
+}
+
+// Complete en TACHE DE FOND le pays de chaque etape geolocalisee (geocodage
+// inverse, mutualise par le cache 7 jours de passioReverseGeocode). Sans ca, le
+// compteur de pays resterait vide sur tout l'historique.
+// /!\ Un seul passage par live (garde _countriesDone) : le viewer est re-rendu
+// toutes les 5 s par le refresh temps reel.
+// Remplit `country` sur les etapes qui n'en ont pas. Mutation EN PLACE, renvoie
+// true si quelque chose a change. Commun aux lives et aux carnets.
+async function _cdvFillStepCountries(steps) {
+  if (typeof passioReverseGeocode !== "function") return false;
+  var todo = (steps || []).filter(function (s) { return s && !s.country; });
+  var changed = false;
+  for (var i = 0; i < todo.length; i++) {
+    var ll = cdvStepLatLng(todo[i]);
+    if (!ll) continue;
+    try {
+      var r = await passioReverseGeocode(ll[0], ll[1]);
+      if (r && r.country) { todo[i].country = r.country; changed = true; }
+    } catch (e) {}
+  }
+  return changed;
+}
+
+// Variante CARNET : le post n'est pas persiste par saveCdvLives, et le geocodage
+// inverse est cache 7 jours — remplir la copie en memoire suffit, le bandeau se
+// recalcule a chaque ouverture pour un cout nul.
+async function _cdvBackfillCarnetCountries(post) {
+  if (!post || post._countriesDone) return;
+  post._countriesDone = true;
+  var changed = await _cdvFillStepCountries(post.steps || []);
+  if (!changed) return;
+  if (typeof openVlogViewer === "function" && document.querySelector('.modal [class*="vlog-viewer-body"]')) {
+    var st = cdvTripStats(post.steps || [], { start: post.dateStart, end: post.dateEnd });
+    var holder = document.querySelector(".modal .cdv-stat-flags");
+    if (holder) {
+      holder.innerHTML = st.countries.map(function (c) {
+        return '<span>' + cdvCountryFlag(c) + " " + escapeHtml(c) + '</span>';
+      }).join("");
+    }
+  }
+}
+
+async function _cdvBackfillCountries(live) {
+  if (!live || live._countriesDone) return;
+  live._countriesDone = true;
+  var steps = (live.steps || []).filter(function (s) { return s && !s.country; });
+  if (!steps.length) return;
+  var changed = await _cdvFillStepCountries(steps);
+  if (!changed) return;
+  var lives = getCdvLives();
+  var target = lives.find(function (l) { return l.id === live.id; });
+  if (target) {
+    (target.steps || []).forEach(function (s) {
+      var src = steps.find(function (x) { return x.id === s.id; });
+      if (src && src.country) s.country = src.country;
+    });
+    saveCdvLives(lives);
+  }
+  // Rafraichit le bandeau si le viewer de CE live est toujours ouvert.
+  var band = document.getElementById("cdvTripStats");
+  if (band && document.querySelector('.modal[data-live-id="' + live.id + '"]')) {
+    band.innerHTML = _cdvTripStatsHtml(cdvTripStats(live.steps));
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   PASSEPORT — l'agregat de TOUS mes voyages (lives + carnets).
+   C'est le « profil de voyageur » de FindPenguins : le chiffre cumule est ce qui
+   donne envie de repartir, et c'est l'ecran le plus partage de ces apps.
+   ------------------------------------------------------------------------- */
+function cdvPassportStats() {
+  var me = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
+  var trips = [];
+
+  (getCdvLives() || []).forEach(function (l) {
+    if (l && isMyLive(l)) trips.push({ kind: "live", id: l.id, title: l.destination || "Voyage", steps: l.steps || [], at: l.createdAt });
+  });
+  (typeof allCarnets === "function" ? allCarnets() : []).forEach(function (p) {
+    if (!p) return;
+    var a = p.authorId || p.author;
+    if (a !== me && a !== "me") return;
+    trips.push({ kind: "carnet", id: p.id, title: p.destination || "Carnet", steps: p.steps || [], at: p.dateStart || p.at, start: p.dateStart, end: p.dateEnd });
+  });
+
+  var km = 0, days = 0, steps = 0, photos = 0;
+  var cities = {}, countries = {};
+  trips.forEach(function (t) {
+    var st = cdvTripStats(t.steps, { start: t.start, end: t.end });
+    t.stats = st;
+    km += st.km; days += st.days; steps += st.steps; photos += st.photos;
+    st.cities.forEach(function (c) { cities[c.toLowerCase()] = c; });
+    st.countries.forEach(function (c) { countries[c.toLowerCase()] = c; });
+  });
+
+  return {
+    trips: trips.sort(function (a, b) { return (b.at || 0) - (a.at || 0); }),
+    km: Math.round(km), days: days, steps: steps, photos: photos,
+    cities: Object.keys(cities).map(function (k) { return cities[k]; }),
+    countries: Object.keys(countries).map(function (k) { return countries[k]; }),
+  };
+}
+
+function openCdvPassport() {
+  var p = cdvPassportStats();
+  if (!p.trips.length) {
+    toast("Ton passeport se remplira des ton premier voyage ✈️");
+    return;
+  }
+  var tripsHtml = p.trips.map(function (t) {
+    var s = t.stats;
+    var bits = [];
+    if (s.km) bits.push(s.km + " km");
+    if (s.days) bits.push(s.days + (s.days > 1 ? " jours" : " jour"));
+    if (s.steps) bits.push(s.steps + (s.steps > 1 ? " étapes" : " étape"));
+    var open = t.kind === "live"
+      ? 'closeModal();openCdvLiveViewer(\'' + escapeJsArg(t.id) + '\')'
+      : 'closeModal();openVlogViewer(\'' + escapeJsArg(t.id) + '\')';
+    return '<div class="cdv-passport-trip" onclick="' + open + '">'
+      + '<div class="cdv-passport-trip-ico">' + (t.kind === "live" ? "\u{1F4E1}" : "\u{1F4D4}") + '</div>'
+      + '<div style="flex:1;min-width:0;">'
+      + '<div class="cdv-passport-trip-title">' + escapeHtml(t.title) + '</div>'
+      + '<div class="cdv-passport-trip-sub">' + escapeHtml(bits.join(" · ") || "Aucune étape géolocalisée") + '</div>'
+      + '</div><div style="color:var(--muted);">›</div></div>';
+  }).join("");
+
+  // ⚠️ Les drapeaux sont DÉJÀ émis par _cdvTripStatsHtml (mode non compact) : on
+  // ne rajoute ici QUE le message d'attente quand aucun pays n'est encore connu,
+  // sinon la liste des pays s'affiche en double.
+  var flagsHtml = p.countries.length
+    ? ""
+    : '<div style="font-size:11px;color:var(--muted);text-align:center;padding:6px 0;">Les pays apparaissent dès que tes étapes sont géolocalisées \u{1F4CD}</div>';
+
+  openModal('<span class="modal-close" onclick="closeModal()">×</span>'
+    + '<div style="font-weight:800;font-size:18px;color:var(--text);margin-bottom:2px;">\u{1F6C2} Mon passeport</div>'
+    + '<div style="font-size:12px;color:var(--muted);margin-bottom:14px;">Tout ce que tu as parcouru sur PASSIO</div>'
+    + _cdvTripStatsHtml({
+        steps: p.steps, km: p.km, days: p.days, cities: p.cities,
+        countries: p.countries, photos: p.photos, budget: "", geolocated: 1,
+      })
+    + flagsHtml
+    + '<div style="font-weight:800;font-size:13px;color:var(--text);margin:16px 0 8px;">✈️ Mes ' + p.trips.length + ' voyage' + (p.trips.length > 1 ? "s" : "") + '</div>'
+    + tripsHtml);
+}

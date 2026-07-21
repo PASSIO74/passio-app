@@ -7844,3 +7844,75 @@
 }
 .cdv-editor-back svg { width: 18px; height: 18px; }
 .cdv-editor-title { font-size: 16px; font-weight: 800; color: var(--text); }
+
+/* ===========================================================================
+   CDV — bandeau de statistiques de voyage & passeport (2026-07-21)
+   Les chiffres d'un voyage (km, jours, étapes, villes, pays, photos) sont ce
+   qu'on montre en premier chez Polarsteps/FindPenguins : la tuile doit être
+   lisible d'un coup d'œil et tenir sur une ligne scrollable en mobile.
+   ========================================================================= */
+.cdv-stats {
+  display: flex; gap: 8px; margin-bottom: 12px;
+  overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+}
+.cdv-stats::-webkit-scrollbar { display: none; }
+.cdv-stat {
+  flex: 1 0 auto; min-width: 72px; text-align: center;
+  padding: 10px 8px; border-radius: 12px;
+  background: var(--bg-deep); border: 1px solid var(--border);
+}
+.cdv-stat-ico { font-size: 15px; line-height: 1; margin-bottom: 4px; }
+.cdv-stat-val { font-size: 17px; font-weight: 800; color: var(--text); line-height: 1.1; }
+.cdv-stat-lbl { font-size: 10px; color: var(--muted); margin-top: 2px; }
+.cdv-stats.compact .cdv-stat { padding: 7px 6px; min-width: 60px; }
+.cdv-stats.compact .cdv-stat-val { font-size: 14px; }
+
+/* Pays traversés : des pastilles drapeau + nom, sur une ligne qui passe à la
+   ligne (un grand voyageur peut en avoir beaucoup). */
+.cdv-stat-flags {
+  display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px;
+}
+.cdv-stat-flags span {
+  font-size: 11px; font-weight: 600; color: var(--text-dim);
+  background: var(--bg-deep); border: 1px solid var(--border);
+  border-radius: 999px; padding: 4px 10px;
+}
+
+/* Passeport : la liste des voyages, chaque ligne ouvre le live ou le carnet. */
+.cdv-passport-trip {
+  display: flex; align-items: center; gap: 10px;
+  padding: 11px 12px; margin-bottom: 8px;
+  border-radius: 12px; border: 1px solid var(--border);
+  background: var(--bg-card); cursor: pointer;
+}
+.cdv-passport-trip:active { transform: scale(0.99); }
+.cdv-passport-trip-ico { font-size: 20px; flex-shrink: 0; }
+.cdv-passport-trip-title {
+  font-size: 13px; font-weight: 700; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cdv-passport-trip-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+/* ===========================================================================
+   IRL — preuve sociale & invitations (2026-07-21)
+   « Marie et Tom y vont » : la ligne doit se lire avant le CTA, sans crier —
+   c'est un fait rassurant, pas une alerte. Fond accent très dilué.
+   ========================================================================= */
+.event-social-proof {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 8px; padding: 7px 10px;
+  border-radius: 10px;
+  background: rgba(124, 58, 237, 0.07);
+  border: 1px solid rgba(124, 58, 237, 0.18);
+  font-size: 11.5px; font-weight: 600; color: var(--text-dim);
+  line-height: 1.4;
+}
+.event-social-proof .avatar.sm { width: 22px; height: 22px; font-size: 10px; }
+
+/* Liste d'invitation : une ligne = un abonnement + son bouton. */
+.event-invite-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 4px;
+  border-bottom: 1px solid var(--border);
+}
+.event-invite-row:last-child { border-bottom: none; }

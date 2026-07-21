@@ -1041,6 +1041,10 @@
       <div style="display:flex;gap:8px;margin-bottom:12px;">
         <button onclick="openNewTripSheet()" style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:11px 12px;border-radius:14px;border:none;background:var(--grad-hero);color:#fff;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 4px 12px rgba(124,58,237,0.3);">✈️ Nouveau voyage</button>
         <button onclick="openSavedPlaces()" id="cdvSavedPlacesBtn" class="pill" style="display:none;white-space:nowrap;">📍 Mes lieux</button>
+        <!-- Passeport : l'agrégat km/jours/villes/pays de TOUS mes voyages (le
+             « profil de voyageur » de Polarsteps/FindPenguins). Masqué tant que
+             l'utilisateur n'a aucun voyage — cf. _syncCdvPassportBtn(). -->
+        <button onclick="openCdvPassport()" id="cdvPassportBtn" class="pill" style="display:none;white-space:nowrap;">🛂 Passeport</button>
       </div>
 
       <!-- CDV Lives en cours -->

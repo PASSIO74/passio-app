@@ -1811,6 +1811,9 @@ function openNotifTarget(n) {
     case "event_update":
     case "event_cancelled":
     case "event_reminder":
+    // Invitation directe reçue d'un abonnement (mécanique Partiful) : on ouvre la
+    // fiche, où le sélecteur de RSVP attend déjà.
+    case "event_invite":
       if (ref && typeof openEventDetails === "function") openEventDetails(ref);
       break;
     case "message":
@@ -4697,7 +4700,7 @@ async function supaLeaveEventConversation(convId) {
 // Emoji d'une notif dérivé de son `kind` (pas de jointure profiles : voir
 // supaLoadNotifications).
 function _notifEmoji(kind) {
-  return ({ like: "❤️", comment: "💬", follow: "➕", message: "✉️", mention: "📣", reaction: "😊", event_join: "🤝", event_comment: "💬", event_update: "📝", event_cancelled: "🚫", event_reminder: "⏰", live_video: "🔴", cdv_live_step: "📍" })[kind] || "✨";
+  return ({ like: "❤️", comment: "💬", follow: "➕", message: "✉️", mention: "📣", reaction: "😊", event_join: "🤝", event_comment: "💬", event_update: "📝", event_cancelled: "🚫", event_reminder: "⏰", event_invite: "💌", live_video: "🔴", cdv_live_step: "📍" })[kind] || "✨";
 }
 
 async function supaLoadNotifications() {
