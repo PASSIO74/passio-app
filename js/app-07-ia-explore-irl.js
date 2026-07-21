@@ -699,6 +699,169 @@ const FRANCE_CITIES = {
   "amman":          [31.9454, 35.9284],
 };
 
+// ════════════════════════════════════════════════════════════════════════
+// GÉOCODAGE — 100 % GRATUIT, SANS CLÉ D'API (2026-07-21)
+// ════════════════════════════════════════════════════════════════════════
+// ⚠️ Nominatim (l'ancien fournisseur unique) interdit l'usage commercial
+// intensif et limite à 1 requête/seconde : intenable dès qu'il y a du monde.
+// Remplacé par deux services libres, sans inscription ni clé :
+//
+//   1. BAN — api-adresse.data.gouv.fr (Base Adresse Nationale, data.gouv.fr).
+//      Open data sous licence ODbL, usage commercial EXPLICITEMENT autorisé,
+//      pas de quota par clé. Excellent sur la France : renvoie directement
+//      ville, code postal et coordonnées structurés.
+//   2. Photon — photon.komoot.io (OpenStreetMap). Gratuit, sans clé, mondial.
+//      Utilisé en repli quand la BAN ne trouve rien (adresse à l'étranger).
+//
+// Trois garde-fous maison réduisent le trafic d'un ordre de grandeur :
+// cache mémoire + localStorage (7 j), file d'attente qui espace les appels,
+// et le dictionnaire FRANCE_CITIES qui répond instantanément et hors-ligne.
+const GEO_CACHE_KEY = "passio_geo_cache_v1";
+const GEO_CACHE_TTL = 7 * 86400000;
+const GEO_MIN_INTERVAL_MS = 350; // fair-use : jamais deux appels rapprochés
+const GEO_CACHE_MAX = 250;
+
+let _geoCache = null;
+let _geoLastCall = 0;
+let _geoChain = Promise.resolve();
+
+function _geoCacheLoad() {
+  if (_geoCache) return _geoCache;
+  try {
+    const raw = JSON.parse(localStorage.getItem(GEO_CACHE_KEY) || "{}");
+    const now = Date.now();
+    _geoCache = {};
+    Object.keys(raw).forEach(k => { if (raw[k] && now - raw[k].at < GEO_CACHE_TTL) _geoCache[k] = raw[k]; });
+  } catch (e) { _geoCache = {}; }
+  return _geoCache;
+}
+
+function _geoCacheGet(key) {
+  const c = _geoCacheLoad()[key];
+  return c ? c.v : undefined;
+}
+
+function _geoCacheSet(key, value) {
+  const c = _geoCacheLoad();
+  c[key] = { at: Date.now(), v: value };
+  // Borne la taille : on jette les entrées les plus anciennes.
+  const keys = Object.keys(c);
+  if (keys.length > GEO_CACHE_MAX) {
+    keys.sort((a, b) => c[a].at - c[b].at).slice(0, keys.length - GEO_CACHE_MAX).forEach(k => delete c[k]);
+  }
+  try { localStorage.setItem(GEO_CACHE_KEY, JSON.stringify(c)); } catch (e) {}
+}
+
+// Sérialise les appels réseau et les espace d'au moins GEO_MIN_INTERVAL_MS.
+function _geoThrottle(fn) {
+  _geoChain = _geoChain.then(async () => {
+    const wait = GEO_MIN_INTERVAL_MS - (Date.now() - _geoLastCall);
+    if (wait > 0) await new Promise(r => setTimeout(r, wait));
+    _geoLastCall = Date.now();
+    return fn();
+  }).catch(() => null);
+  return _geoChain;
+}
+
+async function _geoFetchJson(url) {
+  try {
+    const r = await Promise.race([
+      fetch(url, { headers: { Accept: "application/json" } }),
+      new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), 8000)),
+    ]);
+    if (!r || !r.ok) return null;
+    return await r.json();
+  } catch (e) { return null; }
+}
+
+// Forme unifiée renvoyée par les deux fournisseurs :
+// { label, name, lat, lng, city, postcode, context }
+function _geoFromBan(f) {
+  const p = (f && f.properties) || {};
+  const c = (f && f.geometry && f.geometry.coordinates) || [];
+  return {
+    label: p.label || "", name: p.name || p.label || "",
+    lat: c[1], lng: c[0],
+    city: p.city || p.municipality || "", postcode: p.postcode || "",
+    context: p.context || "",
+  };
+}
+
+function _geoFromPhoton(f) {
+  const p = (f && f.properties) || {};
+  const c = (f && f.geometry && f.geometry.coordinates) || [];
+  const name = p.name || [p.housenumber, p.street].filter(Boolean).join(" ") || p.city || "";
+  return {
+    label: [name, p.city, p.country].filter(Boolean).join(", "),
+    name: name,
+    lat: c[1], lng: c[0],
+    city: p.city || p.town || p.village || p.county || "",
+    postcode: p.postcode || "",
+    context: [p.state, p.country].filter(Boolean).join(", "),
+  };
+}
+
+// Suggestions d'adresse/lieu. BAN d'abord (France, structuré, autorisé en
+// commercial), Photon en repli mondial.
+async function passioGeoSuggest(query, limit) {
+  const q = String(query || "").trim();
+  if (q.length < 3) return [];
+  const key = "s:" + q.toLowerCase() + ":" + (limit || 6);
+  const hit = _geoCacheGet(key);
+  if (hit !== undefined) return hit;
+
+  let out = [];
+  const ban = await _geoThrottle(() => _geoFetchJson(
+    "https://api-adresse.data.gouv.fr/search/?limit=" + (limit || 6) + "&q=" + encodeURIComponent(q)));
+  if (ban && ban.features && ban.features.length) out = ban.features.map(_geoFromBan);
+
+  if (!out.length) {
+    const ph = await _geoThrottle(() => _geoFetchJson(
+      "https://photon.komoot.io/api/?lang=fr&limit=" + (limit || 6) + "&q=" + encodeURIComponent(q)));
+    if (ph && ph.features) out = ph.features.map(_geoFromPhoton);
+  }
+
+  out = out.filter(r => typeof r.lat === "number" && typeof r.lng === "number");
+  _geoCacheSet(key, out);
+  return out;
+}
+
+// Géocodage simple : le meilleur résultat, ou null.
+async function passioGeocode(query) {
+  const q = String(query || "").trim();
+  if (!q) return null;
+  const key = "g:" + q.toLowerCase();
+  const hit = _geoCacheGet(key);
+  if (hit !== undefined) return hit;
+  const res = await passioGeoSuggest(q, 1);
+  const best = res && res[0] ? res[0] : null;
+  _geoCacheSet(key, best);
+  return best;
+}
+
+// Géocodage inverse : le vrai nom de la commune à ces coordonnées. Bien plus
+// juste que « la plus proche des 200 villes du dictionnaire », qui annonçait
+// Lyon à quelqu'un habitant à 60 km de Lyon.
+async function passioReverseGeocode(lat, lng) {
+  if (typeof lat !== "number" || typeof lng !== "number") return null;
+  const key = "r:" + lat.toFixed(3) + "," + lng.toFixed(3);
+  const hit = _geoCacheGet(key);
+  if (hit !== undefined) return hit;
+
+  let out = null;
+  const ban = await _geoThrottle(() => _geoFetchJson(
+    "https://api-adresse.data.gouv.fr/reverse/?lat=" + lat + "&lon=" + lng));
+  if (ban && ban.features && ban.features[0]) out = _geoFromBan(ban.features[0]);
+
+  if (!out || !out.city) {
+    const ph = await _geoThrottle(() => _geoFetchJson(
+      "https://photon.komoot.io/reverse?lang=fr&lat=" + lat + "&lon=" + lng));
+    if (ph && ph.features && ph.features[0]) out = _geoFromPhoton(ph.features[0]);
+  }
+  _geoCacheSet(key, out);
+  return out;
+}
+
 // Demande la position actuelle de l'utilisateur
 function requestUserLocation() {
   // SI DÉJÀ obtenue, ne pas redemander
@@ -724,9 +887,11 @@ function requestUserLocation() {
       _diag("[GEO] ✅ Position obtenue: " + irlUserLocation.lat.toFixed(4) + ", " + irlUserLocation.lng.toFixed(4));
       _diag("[GEO] 📍 Précision: " + Math.round(position.coords.accuracy) + "m");
 
-      // Afficher la ville de l'utilisateur
+      // Affichage immédiat depuis le dictionnaire, puis nom exact de la commune
+      // dès que le géocodage inverse (gratuit, mis en cache) répond.
       const cityName = getClosestCity(irlUserLocation.lat, irlUserLocation.lng);
       updateIrlCityTitle();
+      _resolveUserCityName();
       _diag("[GEO] 🏙️ Ville détectée: " + cityName);
 
       renderIRL(); // Re-render avec la nouvelle position
@@ -786,6 +951,18 @@ function _irlCityList() {
   return window._irlCityListCache;
 }
 
+// Nom RÉEL de la commune où se trouve l'utilisateur, résolu une fois puis mis en
+// cache. `getClosestCity` (dictionnaire) reste le repli instantané et hors-ligne,
+// mais il annonçait « Lyon » à quelqu'un vivant à 60 km de Lyon : ici on affiche
+// sa vraie commune dès que la réponse arrive.
+async function _resolveUserCityName() {
+  if (!irlUserLocation) return;
+  const r = await passioReverseGeocode(irlUserLocation.lat, irlUserLocation.lng);
+  if (!r || !r.city) return;
+  window._irlResolvedCity = r.city;
+  updateIrlCityTitle();
+}
+
 // Trouver la ville la plus proche des coordonnées GPS
 function getClosestCity(lat, lng) {
   if (!lat || !lng) return "France";
@@ -814,7 +991,8 @@ function updateIrlCityTitle() {
   if (irlSelectedCity) {
     displayName = irlSelectedCity.name;
   } else if (irlUserLocation) {
-    displayName = getClosestCity(irlUserLocation.lat, irlUserLocation.lng);
+    // Commune réelle (géocodage inverse) si déjà résolue, sinon repli dictionnaire.
+    displayName = window._irlResolvedCity || getClosestCity(irlUserLocation.lat, irlUserLocation.lng);
   } else if (irlUserLocationError) {
     displayName = "Paris (approx)";
   }
@@ -834,12 +1012,13 @@ function openIrlCitySelector() {
   `;
 
   citiesList.forEach(city => {
-    html += `<button class="pill" onclick="selectIrlCity('${escapeJsArg(city.id)}', '${escapeJsArg(city.name)}')" style="width:100%;justify-content:center;">
+    html += `<button class="pill" data-localcity="1" onclick="selectIrlCity('${escapeJsArg(city.id)}', '${escapeJsArg(city.name)}')" style="width:100%;justify-content:center;">
       ${escapeHtml(city.name)}
     </button>`;
   });
 
   html += `
+      <div id="irlCityRemote" style="display:contents;"></div>
     </div>
     <div style="display:flex;gap:8px;">
       <button class="btn secondary block" onclick="closeModal()">Annuler</button>
@@ -849,20 +1028,55 @@ function openIrlCitySelector() {
 
   openModal(html);
 
-  // Filtre en temps réel
+  // Filtre en temps réel sur le dictionnaire local (instantané), COMPLÉTÉ par une
+  // recherche géocodée : le dictionnaire ne contient que ~200 villes, une commune
+  // absente était donc introuvable alors qu'elle est parfaitement géocodable.
   const searchInput = document.getElementById("irlCitySearchInput");
   const citiesGrid = document.getElementById("irlCitiesGrid");
   if (searchInput && citiesGrid) {
+    let remoteT;
     searchInput.addEventListener("input", (e) => {
-      const query = e.target.value.toLowerCase();
-      const buttons = citiesGrid.querySelectorAll("button");
-      buttons.forEach(btn => {
-        const text = btn.textContent.toLowerCase();
-        btn.style.display = text.includes(query) ? "block" : "none";
+      const query = (e.target.value || "").toLowerCase().trim();
+      let localHits = 0;
+      citiesGrid.querySelectorAll("button[data-localcity]").forEach(btn => {
+        const show = btn.textContent.toLowerCase().includes(query);
+        btn.style.display = show ? "block" : "none";
+        if (show) localHits++;
       });
+      const remoteBox = document.getElementById("irlCityRemote");
+      if (remoteBox) remoteBox.innerHTML = "";
+      clearTimeout(remoteT);
+      if (query.length < 3) return;
+      remoteT = setTimeout(async () => {
+        const res = await passioGeoSuggest(query, 6);
+        const box = document.getElementById("irlCityRemote");
+        if (!box || searchInput.value.toLowerCase().trim() !== query) return;
+        // On ne propose que des communes, et pas celles déjà listées localement.
+        const seen = new Set();
+        const cities = res.filter(r => {
+          const c = (r.city || "").toLowerCase();
+          if (!c || seen.has(c) || FRANCE_CITIES[c]) return false;
+          seen.add(c);
+          return true;
+        });
+        if (!cities.length) return;
+        box.innerHTML = '<div style="grid-column:1/-1;font-size:11px;color:var(--muted);margin:6px 0 2px;">Autres communes</div>'
+          + cities.map(c => `<button class="pill" style="width:100%;justify-content:center;"
+              onclick="selectIrlGeoCity('${escapeJsArg(c.city)}', ${c.lat}, ${c.lng})">${escapeHtml(c.city)}</button>`).join("");
+      }, 320);
     });
     setTimeout(() => searchInput.focus(), 100);
   }
+}
+
+// Sélection d'une commune trouvée par géocodage (hors dictionnaire local).
+function selectIrlGeoCity(name, lat, lng) {
+  irlSelectedCity = { id: "geo", name: name, coords: [lat, lng] };
+  _diag("[IRL] 🏙️ Ville géocodée: " + name);
+  updateIrlCityTitle();
+  closeModal();
+  renderIRL();
+  toast("📍 " + name);
 }
 
 // Sélectionner une ville spécifique
@@ -945,39 +1159,23 @@ async function searchIrlAddressSuggestions(query) {
 
   // Attendre 300ms avant de faire la requête (pour éviter trop d'appels)
   irlAddressSearchTimeout = setTimeout(async () => {
-    try {
-      // Rechercher sur Nominatim
-      const response = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=8&addressdetails=1`);
-      const results = await response.json();
+    const results = await passioGeoSuggest(query, 8);
+    if (!results.length) { suggestionsDiv.style.display = "none"; return; }
 
-      if (!results || results.length === 0) {
-        suggestionsDiv.style.display = "none";
-        return;
-      }
-
-      // Afficher les suggestions.
-      // ⚠️ `display_name` vient d'un service TIERS : il doit être échappé pour le
-      // HTML (escapeHtml) ET pour l'argument JS de l'onclick (escapeJsArg). Sans
-      // ça, un lieu contenant une apostrophe (« Saint-Michel-l'Observatoire »)
-      // cassait le bouton, et une donnée hostile pouvait injecter du markup.
-      let html = "";
-      results.forEach((result) => {
-        const name = String(result.display_name || "").split(",")[0];
-        const fullName = String(result.display_name || "").split(",").slice(0, 2).join(",").trim();
-        html += `
-          <div onclick="selectIrlAddressSuggestion('${escapeJsArg(name)}', ${parseFloat(result.lat)}, ${parseFloat(result.lon)})" style="padding:8px 10px;border-bottom:1px solid #eee;cursor:pointer;font-size:12px;transition:background 0.2s;" onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background='transparent';">
-            <div style="font-weight:500;color:#333;">${escapeHtml(name)}</div>
-            <div style="font-size:11px;color:#888;">${escapeHtml(fullName.substring(fullName.indexOf(",") + 1).trim())}</div>
-          </div>
-        `;
-      });
-
-      suggestionsDiv.innerHTML = html;
-      suggestionsDiv.style.display = "block";
-    } catch (error) {
-      console.error("Erreur recherche adresse:", error);
-      suggestionsDiv.style.display = "none";
-    }
+    // ⚠️ Les libellés viennent d'un service TIERS : ils doivent être échappés
+    // pour le HTML (escapeHtml) ET pour l'argument JS de l'onclick (escapeJsArg).
+    // Sans ça, un lieu contenant une apostrophe (« Saint-Michel-l'Observatoire »)
+    // cassait le bouton, et une donnée hostile pouvait injecter du markup.
+    suggestionsDiv.innerHTML = results.map(r => {
+      const name = r.name || r.label || "";
+      const sub = [r.postcode, r.city, r.context].filter(Boolean).join(" · ");
+      return `
+        <div onclick="selectIrlAddressSuggestion('${escapeJsArg(name)}', ${r.lat}, ${r.lng})" style="padding:8px 10px;border-bottom:1px solid #eee;cursor:pointer;font-size:12px;transition:background 0.2s;" onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background='transparent';">
+          <div style="font-weight:500;color:#333;">${escapeHtml(name)}</div>
+          <div style="font-size:11px;color:#888;">${escapeHtml(sub.slice(0, 60))}</div>
+        </div>`;
+    }).join("");
+    suggestionsDiv.style.display = "block";
   }, 300);
 }
 
@@ -1022,42 +1220,23 @@ async function geocodeIrlAddress() {
   const address = input.value.trim();
   _diag("[GEO] 🔍 Géocodage de: " + address);
 
-  try {
-    // Utiliser Nominatim (OpenStreetMap) pour le géocodage
-    const response = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1`);
-    const results = await response.json();
-
-    if (!results || results.length === 0) {
-      toast("Adresse non trouvée");
-      _diag("[GEO] ❌ Adresse non trouvée: " + address);
-      return;
-    }
-
-    const result = results[0];
-    const lat = parseFloat(result.lat);
-    const lng = parseFloat(result.lon);
-
-    // Mettre à jour la position sélectionnée
-    irlSelectedCity = {
-      id: "custom",
-      name: result.display_name.split(",")[0] || address,
-      coords: [lat, lng]
-    };
-
-    _diag("[GEO] ✅ Position trouvée: " + irlSelectedCity.name);
-
-    // Fermer le popup
-    if (irlMap) irlMap.closePopup();
-
-    // Re-render pour mettre à jour
-    renderIRL();
-
-    toast(`📍 ${irlSelectedCity.name}`);
-  } catch (error) {
-    console.error("Erreur géocodage:", error);
-    toast("Erreur de géolocalisation");
-    _diag("[GEO] ❌ Erreur: " + error.message);
+  const result = await passioGeocode(address);
+  if (!result) {
+    toast("Adresse non trouvée");
+    _diag("[GEO] ❌ Adresse non trouvée: " + address);
+    return;
   }
+
+  irlSelectedCity = {
+    id: "custom",
+    name: result.city || result.name || address,
+    coords: [result.lat, result.lng],
+  };
+  _diag("[GEO] ✅ Position trouvée: " + irlSelectedCity.name);
+
+  if (irlMap) irlMap.closePopup();
+  renderIRL();
+  toast(`📍 ${irlSelectedCity.name}`);
 }
 
 function updateIrlMapMarkers() {
@@ -3397,25 +3576,20 @@ function _evPlaceSuggest(query) {
   clearTimeout(_evPlaceT);
   if (!query || query.trim().length < 3) { box.style.display = "none"; return; }
   _evPlaceT = setTimeout(async () => {
-    let results = [];
-    try {
-      const r = await fetch("https://nominatim.openstreetmap.org/search?q="
-        + encodeURIComponent(query) + "&format=json&limit=6&addressdetails=1");
-      results = await r.json();
-    } catch (e) { results = []; }
-    if (!results || !results.length) {
+    const results = await passioGeoSuggest(query, 6);
+    // La saisie a pu continuer pendant la requête : ne pas écraser un rendu plus récent.
+    const cur = document.getElementById("evPlaceSearch");
+    if (cur && cur.value.trim() !== query.trim()) return;
+    if (!results.length) {
       box.innerHTML = '<div class="irl-suggest-empty">Aucun lieu trouvé</div>';
       box.style.display = "block";
       return;
     }
     window._evSuggestCache = results;
-    box.innerHTML = results.map((res, i) => {
-      const head = String(res.display_name || "").split(",")[0];
-      const rest = String(res.display_name || "").split(",").slice(1).join(",").trim();
-      return `<button type="button" class="irl-suggest-item" onclick="_evPlacePick(${i})">
-        <b>${escapeHtml(head)}</b><span>${escapeHtml(rest.slice(0, 70))}</span>
-      </button>`;
-    }).join("");
+    box.innerHTML = results.map((res, i) =>
+      `<button type="button" class="irl-suggest-item" onclick="_evPlacePick(${i})">
+        <b>${escapeHtml(res.name || res.label)}</b><span>${escapeHtml([res.postcode, res.city, res.context].filter(Boolean).join(" · ").slice(0, 70))}</span>
+      </button>`).join("");
     box.style.display = "block";
   }, 300);
 }
@@ -3423,15 +3597,14 @@ function _evPlaceSuggest(query) {
 function _evPlacePick(i) {
   const res = (window._evSuggestCache || [])[i];
   if (!res) return;
-  const a = res.address || {};
   const set = (id, val) => { const el = document.getElementById(id); if (el && val) el.value = val; };
-  const head = String(res.display_name || "").split(",")[0];
-  // Un POI (bar, salle) donne un nom ; une adresse pure donne juste un numéro.
+  const head = res.name || res.label || "";
+  // Un POI (bar, salle) donne un nom ; une adresse pure commence par un numéro.
   if (!/^\d/.test(head)) set("evVenue", head);
-  set("evAddress", [a.house_number, a.road].filter(Boolean).join(" ") || (/^\d/.test(head) ? head : ""));
-  set("evPostal", a.postcode);
-  set("evCity", a.city || a.town || a.village || a.municipality || a.county || "");
-  window._evPickedCoords = { lat: parseFloat(res.lat), lng: parseFloat(res.lon) };
+  set("evAddress", /^\d/.test(head) ? head : "");
+  set("evPostal", res.postcode);
+  set("evCity", res.city);
+  window._evPickedCoords = { lat: res.lat, lng: res.lng };
   const box = document.getElementById("evPlaceSuggestions");
   if (box) box.style.display = "none";
   const ok = document.getElementById("evPlacePicked");
@@ -3782,15 +3955,11 @@ function _notifyEventAttendees(ev, text) {
   });
 }
 
-// Géocode une adresse libre via Nominatim → { lat, lng } ou null.
+// Géocode une adresse libre → { lat, lng } ou null. Passe par la couche
+// gratuite BAN/Photon (cache + throttle inclus).
 async function _geocodeAddress(query) {
-  if (!query) return null;
-  try {
-    const r = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`);
-    const j = await r.json();
-    if (j && j[0]) return { lat: parseFloat(j[0].lat), lng: parseFloat(j[0].lon) };
-  } catch (e) {}
-  return null;
+  const r = await passioGeocode(query);
+  return r ? { lat: r.lat, lng: r.lng } : null;
 }
 
 // Coordonnées d'un événement : coords stockées (géocodage) sinon dictionnaire ville.

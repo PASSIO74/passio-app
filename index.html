@@ -1045,10 +1045,12 @@
     <section class="screen" id="screen-cdv">
       <div class="section-title">Carnets de voyage</div>
 
-      <!-- Points d'entrée création -->
+      <!-- Point d'entrée UNIQUE : un seul « voyage », le format (direct ou récit)
+           se choisit dans la feuille — avant, deux boutons concurrents obligeaient
+           à comprendre la différence Carnet / Live AVANT de commencer. -->
       <div style="display:flex;gap:8px;margin-bottom:12px;">
-        <button onclick="setStudioToVlog()" style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:11px 12px;border-radius:14px;border:none;background:var(--grad-hero);color:#fff;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 4px 12px rgba(124,58,237,0.3);">📔 Nouveau carnet</button>
-        <button onclick="startCdvLive()" class="btn-live-outline"><span class="live-dot"></span>Démarrer un Live</button>
+        <button onclick="openNewTripSheet()" style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:11px 12px;border-radius:14px;border:none;background:var(--grad-hero);color:#fff;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 4px 12px rgba(124,58,237,0.3);">✈️ Nouveau voyage</button>
+        <button onclick="openSavedPlaces()" id="cdvSavedPlacesBtn" class="pill" style="display:none;white-space:nowrap;">📍 Mes lieux</button>
       </div>
 
       <!-- CDV Lives en cours -->

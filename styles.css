@@ -7741,3 +7741,74 @@
     .irl-cal-dots { display: flex; align-items: center; gap: 1px; font-size: 9px; line-height: 1; }
     .irl-cal-dots i { font-style: normal; }
     .irl-cal-dots b { font-size: 8px; color: var(--muted); }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CDV v2 (2026-07-21) — feuille « Nouveau voyage » + story de voyage
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Choix du format de voyage (direct / récit) dans la feuille unique. */
+.cdv-trip-choice {
+  display: flex; align-items: flex-start; gap: 12px;
+  border: 1px solid var(--border); border-radius: 14px;
+  padding: 14px; margin-bottom: 10px; cursor: pointer;
+  background: var(--bg-card); transition: border-color .15s, transform .1s;
+}
+.cdv-trip-choice:active { transform: scale(.99); }
+.cdv-trip-choice:hover { border-color: var(--accent); }
+.cdv-trip-choice-emoji { font-size: 26px; line-height: 1; flex-shrink: 0; }
+.cdv-trip-choice-title { font-size: 14px; font-weight: 800; color: var(--text); margin-bottom: 3px; }
+.cdv-trip-choice-sub { font-size: 12px; color: var(--text-dim); line-height: 1.45; }
+
+/* Étape cliquable → ouvre la story plein écran. */
+.cdv-live-step { cursor: pointer; }
+
+/* ── Story de voyage : une étape = un écran vertical ── */
+.cdv-story-overlay {
+  position: fixed; inset: 0; z-index: 9000; display: none;
+  flex-direction: column; background: #000; overflow: hidden;
+  padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom);
+}
+.cdv-story-bars {
+  position: absolute; top: calc(8px + env(safe-area-inset-top)); left: 10px; right: 10px;
+  display: flex; gap: 4px; z-index: 3;
+}
+.cdv-story-bar { flex: 1; height: 3px; border-radius: 2px; background: rgba(255,255,255,.3); overflow: hidden; }
+.cdv-story-bar i { display: block; height: 100%; background: #fff; border-radius: 2px; }
+.cdv-story-bar i.cdv-story-bar-active { animation: cdvStoryFill 5s linear forwards; }
+@keyframes cdvStoryFill { from { width: 0%; } to { width: 100%; } }
+
+.cdv-story-head {
+  position: absolute; top: calc(20px + env(safe-area-inset-top)); left: 14px; right: 14px;
+  display: flex; align-items: center; gap: 10px; z-index: 3;
+  text-shadow: 0 1px 4px rgba(0,0,0,.6);
+}
+.cdv-story-title { flex: 1; font-size: 14px; font-weight: 800; color: #fff; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cdv-story-count { font-size: 12px; color: rgba(255,255,255,.75); }
+.cdv-story-close { font-size: 28px; line-height: 1; color: #fff; cursor: pointer; padding: 0 6px; }
+
+.cdv-story-media { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.cdv-story-media-empty {
+  display: flex; align-items: center; justify-content: center; font-size: 88px;
+  background: linear-gradient(160deg, #4c1d95, #7c3aed 60%, #db2777);
+}
+
+/* Zones de navigation : tiers gauche = précédent, reste = suivant (comme IG). */
+.cdv-story-nav { position: absolute; top: 0; bottom: 0; z-index: 2; }
+.cdv-story-prev { left: 0; width: 33%; }
+.cdv-story-next { left: 33%; right: 0; }
+
+.cdv-story-foot {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 3;
+  padding: 40px 18px calc(24px + env(safe-area-inset-bottom));
+  background: linear-gradient(to top, rgba(0,0,0,.85), rgba(0,0,0,0));
+  pointer-events: none;
+}
+.cdv-story-place { font-size: 17px; font-weight: 800; color: #fff; margin-bottom: 6px; }
+.cdv-story-star { font-size: 12px; color: #fbbf24; margin-left: 8px; }
+.cdv-story-chip {
+  font-size: 11px; color: #fff; background: rgba(255,255,255,.2);
+  border-radius: 6px; padding: 2px 7px; margin-left: 6px;
+}
+.cdv-story-text { font-size: 13px; color: rgba(255,255,255,.92); line-height: 1.5; margin-bottom: 6px; }
+.cdv-story-time { font-size: 11px; color: rgba(255,255,255,.6); }

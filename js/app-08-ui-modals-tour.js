@@ -2495,8 +2495,14 @@ async function _buildVlogPayload(post) {
     var video = await up(s.video, "s" + i + "v", "video");
     var audio = await up(s.audio, "s" + i + "a", "audio");
     if (photo) s.photo = photo; if (video) s.video = video; if (audio) s.audio = audio;
+    // Coordonnées réelles de l'étape (GPS ou géocodage) → carte fiable pour tous
+    // les lecteurs, y compris hors du dictionnaire de villes françaises.
+    if (typeof s.lat !== "number" && s.place && typeof cdvGeocodePlace === "function") {
+      try { var g = await cdvGeocodePlace(s.place); if (g) { s.lat = g.lat; s.lng = g.lng; } } catch (e) {}
+    }
     steps.push({ place: s.place || "", text: s.text || "", tip: s.tip || "",
-      photo: photo, video: video, audio: audio });
+      photo: photo, video: video, audio: audio,
+      lat: (typeof s.lat === "number") ? s.lat : null, lng: (typeof s.lng === "number") ? s.lng : null });
   }
   try { saveState(); } catch(e) {}
   return {
@@ -3171,6 +3177,8 @@ async function supaAddCdvLiveStep(liveId, step) {
       id: stepId, live_id: liveId, author_id: MY_UID,
       city: step.city || "", emoji: step.emoji || "📍", content: step.content || "",
       photos: photoUrls, rating: step.rating || 0, budget: step.budget || "",
+      lat: (typeof step.lat === "number") ? step.lat : null,
+      lng: (typeof step.lng === "number") ? step.lng : null,
     });
     if (error) console.warn("CDV step:", error.message);
     await supa.from("cdv_lives").update({ updated_at: new Date().toISOString() }).eq("id", liveId);
@@ -3198,10 +3206,21 @@ async function supaUpdateCdvLiveStep(liveId, step) {
     const { error } = await supa.from("cdv_live_steps").update({
       city: step.city || "", emoji: step.emoji || "📍", content: step.content || "",
       photos: photoUrls, rating: step.rating || 0, budget: step.budget || "",
+      lat: (typeof step.lat === "number") ? step.lat : null,
+      lng: (typeof step.lng === "number") ? step.lng : null,
     }).eq("id", step.id).eq("author_id", MY_UID);
     if (error) console.warn("CDV step update:", error.message);
     await supa.from("cdv_lives").update({ updated_at: new Date().toISOString() }).eq("id", liveId);
   } catch (e) { console.warn("CDV step update:", e); }
+}
+
+// Complète les coordonnées d'une étape géocodée après coup (tâche de fond).
+async function supaUpdateCdvLiveStepCoords(stepId, lat, lng) {
+  try {
+    if (!stepId || !MY_UID || typeof lat !== "number") return;
+    await supa.from("cdv_live_steps").update({ lat: lat, lng: lng })
+      .eq("id", stepId).eq("author_id", MY_UID);
+  } catch (e) {}
 }
 
 async function supaDeleteCdvLiveStep(liveId, stepId) {
@@ -3417,6 +3436,25 @@ async function supaUnfollowCdvLive(liveId) {
   catch(e) { console.warn("CDV unfollow:", e); }
 }
 
+// ── Co-voyageurs d'un live (table cdv_live_collaborators) ──
+// Un collaborateur publie ses étapes SOUS SON PROPRE author_id : la policy
+// INSERT de cdv_live_steps (author_id = auth.uid()) reste satisfaite, rien à
+// assouplir côté RLS.
+async function supaAddCdvCollaborator(liveId, userId) {
+  try {
+    if (!liveId || !userId || !MY_UID) return false;
+    const { error } = await supa.from("cdv_live_collaborators")
+      .insert({ live_id: liveId, user_id: userId, added_by: MY_UID });
+    if (error && error.code !== "23505") { console.warn("CDV collab:", error.message); return false; }
+    return true;
+  } catch (e) { console.warn("CDV collab:", e); return false; }
+}
+
+async function supaRemoveCdvCollaborator(liveId, userId) {
+  try { await supa.from("cdv_live_collaborators").delete().eq("live_id", liveId).eq("user_id", userId); }
+  catch (e) { console.warn("CDV collab remove:", e); }
+}
+
 async function supaLoadCdvLives() {
   try {
     const { data: lives, error } = await supa.from("cdv_lives").select("*").order("created_at", { ascending: false }).limit(50);
@@ -3424,11 +3462,13 @@ async function supaLoadCdvLives() {
     const rows = lives || [];
     if (!rows.length) return [];
     const ids = rows.map(r => r.id);
-    const [stepsRes, comRes, reacRes, folRes] = await Promise.all([
+    const [stepsRes, comRes, reacRes, folRes, colRes] = await Promise.all([
       supa.from("cdv_live_steps").select("*").in("live_id", ids).order("created_at", { ascending: true }),
       supa.from("cdv_live_comments").select("*").in("live_id", ids).order("created_at", { ascending: true }),
       supa.from("cdv_live_reactions").select("*").in("live_id", ids),
       supa.from("cdv_live_followers").select("*").in("live_id", ids),
+      // Table récente : si la migration n'est pas passée, on dégrade sans casser.
+      supa.from("cdv_live_collaborators").select("*").in("live_id", ids).then(r => r, () => ({ data: [] })),
     ]);
     const groupBy = (res, key) => {
       const m = {}; (res.data || []).forEach(x => { (m[x[key]] = m[x[key]] || []).push(x); }); return m;
@@ -3437,6 +3477,7 @@ async function supaLoadCdvLives() {
     const comBy = groupBy(comRes, "live_id");
     const reacBy = groupBy(reacRes, "live_id");
     const folBy = groupBy(folRes, "live_id");
+    const colBy = groupBy(colRes || { data: [] }, "live_id");
     return rows.map(r => {
       const followers = (folBy[r.id] || []).map(f => f.user_id);
       return {
@@ -3445,15 +3486,17 @@ async function supaLoadCdvLives() {
         duration: r.duration || "", visibility: r.visibility || "public",
         status: r.status || "live",
         steps: (stepsBy[r.id] || []).map(s => ({
-          id: s.id, city: s.city || "", emoji: s.emoji || "📍", content: s.content || "",
+          id: s.id, authorId: s.author_id, city: s.city || "", emoji: s.emoji || "📍", content: s.content || "",
           photos: Array.isArray(s.photos) ? s.photos : [], photo: (Array.isArray(s.photos) && s.photos[0]) || null,
           rating: s.rating || 0, budget: s.budget || "", createdAt: supaTs(s.created_at),
+          lat: (typeof s.lat === "number") ? s.lat : null, lng: (typeof s.lng === "number") ? s.lng : null,
         })),
         comments: (comBy[r.id] || []).map(c => ({ id: c.id, authorId: c.author_id, author: c.author_name || "Anonyme", text: c.text || "", at: supaTs(c.created_at) })),
         reactions: (reacBy[r.id] || []).map(x => x.emoji),
         // Garde l'auteur de chaque réaction → pastille « qui a réagi » sur les cartes live.
         reactionsBy: (reacBy[r.id] || []).map(x => ({ emoji: x.emoji, userId: x.user_id })),
         followers: followers, viewers: followers, currentViewers: followers.length,
+        collaborators: (colBy[r.id] || []).map(c => c.user_id),
         createdAt: supaTs(r.created_at),
         fromSupabase: true,
       };

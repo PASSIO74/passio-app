@@ -18,9 +18,14 @@ async function bootCdv(page) {
     ["supaPublishCdvLive", "supaAddCdvLiveStep", "supaUpdateCdvLiveStep", "supaDeleteCdvLiveStep",
       "supaAddCdvLiveComment", "supaReactCdvLive", "supaRemoveCdvLiveReaction", "supaToggleCdvLiveLike",
       "supaUpdateCdvLiveStatus", "supaFollowCdvLive", "supaUnfollowCdvLive", "supaRefreshCdvLives",
-      "supaLoadCdvLive", "supaLoadCdvLives", "supaLoadCdvLiveLikes"].forEach((fn) => { window[fn] = async () => null; });
+      "supaLoadCdvLive", "supaLoadCdvLives", "supaLoadCdvLiveLikes", "supaUpdateCdvLiveStepCoords",
+      "supaAddCdvCollaborator", "supaRemoveCdvCollaborator"].forEach((fn) => { window[fn] = async () => null; });
+    // Géocodage : réseau interdit en test → réponse déterministe.
+    window._geocodeAddress = async (q) => (/ursa|lisbonne|cascais|porto|sintra/i.test(q) ? { lat: 38.72, lng: -9.14 } : null);
     localStorage.removeItem("passio_cdv_lives");
     localStorage.removeItem("passio_vlog_draft_v1");
+    localStorage.removeItem("passio_cdv_geo_v1");
+    window._cdvGeoCacheObj = null;
   });
 }
 
@@ -41,26 +46,25 @@ async function seedLive(page, over = {}) {
 }
 
 test.describe("CDV — carnets de voyage", () => {
-  test("l'écran CDV s'ouvre avec ses deux points d'entrée de création", async ({ page }) => {
+  test("l'écran CDV s'ouvre sur son point d'entrée unique", async ({ page }) => {
     await bootCdv(page);
     await page.evaluate(() => goTo("cdv"));
     await expect(page.locator("#screen-cdv")).toHaveClass(/active/);
-    await expect(page.getByRole("button", { name: /Nouveau carnet/ })).toBeVisible();
-    await expect(page.getByRole("button", { name: /Démarrer un Live/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Nouveau voyage/ })).toBeVisible();
+    // « Mes lieux » reste caché tant qu'aucun itinéraire n'a été enregistré.
+    await expect(page.locator("#cdvSavedPlacesBtn")).toBeHidden();
   });
 
-  test("« Nouveau carnet » bascule le Studio en mode carnet", async ({ page }) => {
+  test("le Studio bascule en mode carnet depuis la feuille de voyage", async ({ page }) => {
     await bootCdv(page);
-    await page.evaluate(() => goTo("cdv"));
-    await page.getByRole("button", { name: /Nouveau carnet/ }).click();
+    await page.evaluate(() => { goTo("cdv"); setStudioToVlog(); });
     await expect(page.locator("#studioVlog")).toBeVisible({ timeout: 5000 });
     expect(await page.evaluate(() => studioType)).toBe("vlog");
   });
 
   test("le brouillon d'un carnet survit à la sortie du Studio", async ({ page }) => {
     await bootCdv(page);
-    await page.evaluate(() => { goTo("cdv"); });
-    await page.getByRole("button", { name: /Nouveau carnet/ }).click();
+    await page.evaluate(() => { goTo("cdv"); setStudioToVlog(); });
     await expect(page.locator("#studioVlog")).toBeVisible({ timeout: 5000 });
 
     await page.fill("#vlogDestination", "Patagonie");
@@ -83,7 +87,8 @@ test.describe("CDV — lives", () => {
   test("un live créé affiche un compteur de suivis chiffré (jamais « undefined »)", async ({ page }) => {
     await bootCdv(page);
     await page.evaluate(() => goTo("cdv"));
-    await page.getByRole("button", { name: /Démarrer un Live/ }).click();
+    await page.getByRole("button", { name: /Nouveau voyage/ }).click();
+    await page.getByText("Je pars maintenant").click();
     await page.fill("#cdvLiveDest", "Kyoto");
     await page.getByRole("button", { name: /Lancer le Live/ }).click();
     // La modale « ajouter une étape » s'ouvre automatiquement → on la ferme.
@@ -210,16 +215,232 @@ test.describe("CDV — lives", () => {
     await expect(page.locator(".modal[data-live-id]")).toContainText("Lisbonne");
   });
 
-  test("terminer un live demande confirmation puis propose le carnet", async ({ page }) => {
+  test("terminer un live demande confirmation puis enchaîne sur le carnet", async ({ page }) => {
     await bootCdv(page);
-    const id = await seedLive(page, { steps: [{ id: "s1", city: "Porto", emoji: "📍", content: "Ribeira", photos: [], createdAt: Date.now() }] });
+    const id = await seedLive(page, { steps: [{ id: "s1", city: "Porto", emoji: "📍", content: "Ribeira", photos: [], rating: 4, budget: "€€", createdAt: Date.now() }] });
 
     await page.evaluate((i) => confirmEndCdvLive(i), id);
     await expect(page.locator(".modal")).toContainText("Terminer ce carnet en direct ?");
     expect(await page.evaluate(() => getCdvLives()[0].status)).toBe("live"); // rien tant qu'on n'a pas confirmé
 
-    await page.getByRole("button", { name: /Oui, terminer/ }).click();
+    await page.getByRole("button", { name: /Terminer et créer le carnet/ }).click();
     expect(await page.evaluate(() => getCdvLives()[0].status)).toBe("ended");
-    await expect(page.locator(".modal")).toContainText("En faire un carnet ?", { timeout: 5000 });
+    // Atterrissage DIRECT dans le Studio pré-rempli (plus de modale intermédiaire).
+    await expect(page.locator("#studioVlog")).toBeVisible({ timeout: 6000 });
+    await expect(page.locator("#vlogDestination")).toHaveValue("Lisbonne", { timeout: 6000 });
+    // La note ★ et le budget saisis en direct ne sont pas perdus à la conversion.
+    const tips = await page.evaluate(() => vlogState.steps.map((s) => s.tip));
+    expect(tips[0]).toContain("€€");
+    expect(tips[0]).toContain("★");
+  });
+});
+
+// ═══ CDV v2 : voyage unifié, géoloc, collaboratif, story, itinéraires ═══
+test.describe("CDV v2 — un seul « voyage »", () => {
+  test("l'entrée unique propose les deux formats et reprend un voyage en cours", async ({ page }) => {
+    await bootCdv(page);
+    await page.evaluate(() => goTo("cdv"));
+    await page.getByRole("button", { name: /Nouveau voyage/ }).click();
+    await expect(page.locator(".modal")).toContainText("Je pars maintenant");
+    await expect(page.locator(".modal")).toContainText("Je raconte un voyage passé");
+    await page.evaluate(() => closeModal());
+
+    // Avec un live en cours, la feuille propose de le reprendre directement.
+    await seedLive(page);
+    await page.evaluate(() => openNewTripSheet());
+    await expect(page.locator(".modal")).toContainText("Voyage en cours");
+    await expect(page.locator(".modal")).toContainText("Lisbonne");
+  });
+
+  test("« Je raconte un voyage passé » ouvre le Studio en mode carnet", async ({ page }) => {
+    await bootCdv(page);
+    await page.evaluate(() => goTo("cdv"));
+    await page.getByRole("button", { name: /Nouveau voyage/ }).click();
+    await page.getByText("Je raconte un voyage passé").click();
+    await expect(page.locator("#studioVlog")).toBeVisible({ timeout: 6000 });
+    expect(await page.evaluate(() => studioType)).toBe("vlog");
+  });
+});
+
+test.describe("CDV v2 — géolocalisation des étapes", () => {
+  test("une étape hors du dictionnaire de villes finit quand même sur la carte", async ({ page }) => {
+    await bootCdv(page);
+    const id = await seedLive(page);
+    // Un spot précis (plage, refuge, restaurant) n'est dans aucun dictionnaire :
+    // sans géocodage l'étape était simplement absente de la carte.
+    expect(await page.evaluate(() => cityToLatLng("Praia da Ursa"))).toBeNull();
+
+    await page.evaluate((i) => addCdvLiveStep(i), id);
+    await page.fill("#liveStepCity", "Praia da Ursa");
+    await page.getByRole("button", { name: /Publier l'étape/ }).click();
+
+    await expect.poll(
+      () => page.evaluate(() => typeof getCdvLives()[0].steps[0].lat),
+      { timeout: 8000 }
+    ).toBe("number");
+    const ll = await page.evaluate(() => cdvStepLatLng(getCdvLives()[0].steps[0]));
+    expect(ll).toEqual([38.72, -9.14]);
+  });
+
+  test("cdvStepLatLng gère GPS, dictionnaire et absence de lieu", async ({ page }) => {
+    await bootCdv(page);
+    const res = await page.evaluate(() => ({
+      gps: cdvStepLatLng({ city: "Nulle part", lat: 10, lng: 20 }),
+      dict: cdvStepLatLng({ city: "Lyon" }),
+      none: cdvStepLatLng({ city: "Zzzzz inconnu" }),
+    }));
+    expect(res.gps).toEqual([10, 20]);       // le GPS prime
+    expect(Array.isArray(res.dict)).toBe(true); // repli dictionnaire
+    expect(res.none).toBeNull();
+  });
+});
+
+test.describe("CDV v2 — voyage collaboratif", () => {
+  test("un co-voyageur peut publier une étape, pas modifier celles des autres", async ({ page }) => {
+    await bootCdv(page);
+    // Live d'un AUTRE compte, sur lequel je suis invité.
+    const id = await seedLive(page, {
+      authorId: "u_autre",
+      collaborators: [],
+      steps: [{ id: "s_owner", authorId: "u_autre", city: "Porto", emoji: "📍", content: "", photos: [], createdAt: Date.now() }],
+    });
+
+    expect(await page.evaluate(() => canEditLive(getCdvLives()[0]))).toBe(false);
+    await page.evaluate(() => {
+      const l = getCdvLives(); l[0].collaborators = [window.MY_UID || "me"]; saveCdvLives(l);
+    });
+    expect(await page.evaluate(() => canEditLive(getCdvLives()[0]))).toBe(true);
+
+    // Je publie MON étape sur SON voyage.
+    await page.evaluate((i) => addCdvLiveStep(i), id);
+    await page.fill("#liveStepCity", "Sintra");
+    await page.getByRole("button", { name: /Publier l'étape/ }).click();
+    const steps = await page.evaluate(() => getCdvLives()[0].steps);
+    expect(steps).toHaveLength(2);
+    expect(steps[1].authorId).toBe(await page.evaluate(() => window.MY_UID || "me"));
+
+    // Mais je ne peux pas supprimer l'étape de l'auteur.
+    page.on("dialog", (d) => d.accept());
+    await page.evaluate((i) => deleteCdvLiveStep(i, "s_owner"), id);
+    expect(await page.evaluate(() => getCdvLives()[0].steps.length)).toBe(2);
+  });
+
+  test("l'auteur invite et retire un co-voyageur", async ({ page }) => {
+    await bootCdv(page);
+    const id = await seedLive(page);
+    await page.evaluate((i) => addCdvCollaborator(i, "u_lea", "Léa"), id);
+    expect(await page.evaluate(() => cdvCollaborators(getCdvLives()[0]))).toEqual(["u_lea"]);
+    await expect(page.locator(".modal")).toContainText("Co-voyageurs");
+    await page.evaluate((i) => removeCdvCollaborator(i, "u_lea"), id);
+    expect(await page.evaluate(() => cdvCollaborators(getCdvLives()[0]))).toEqual([]);
+  });
+});
+
+test.describe("CDV v2 — story de voyage", () => {
+  test("les étapes se parcourent en plein écran, avant/arrière et fermeture", async ({ page }) => {
+    await bootCdv(page);
+    const id = await seedLive(page, {
+      steps: [
+        { id: "s1", city: "Lisbonne", emoji: "📍", content: "Alfama", photos: [], createdAt: Date.now() },
+        { id: "s2", city: "Cascais", emoji: "🍽", content: "Poisson grillé", photos: [], createdAt: Date.now() },
+      ],
+    });
+
+    await page.evaluate((i) => openCdvStepStory(i, 0), id);
+    const ov = page.locator("#cdvStoryOverlay");
+    await expect(ov).toBeVisible();
+    await expect(ov).toContainText("Lisbonne");
+    await expect(ov).toContainText("1/2");
+
+    await page.evaluate(() => cdvStoryNext());
+    await expect(ov).toContainText("Cascais");
+    await expect(ov).toContainText("2/2");
+    await page.evaluate(() => cdvStoryPrev());
+    await expect(ov).toContainText("1/2");
+
+    await page.evaluate(() => closeCdvStepStory());
+    await expect(ov).toBeHidden();
+    expect(await page.evaluate(() => document.body.style.overflow)).toBe("");
+  });
+
+  test("passer la dernière étape ferme la story", async ({ page }) => {
+    await bootCdv(page);
+    const id = await seedLive(page, { steps: [{ id: "s1", city: "Porto", emoji: "📍", content: "", photos: [], createdAt: Date.now() }] });
+    await page.evaluate((i) => openCdvStepStory(i, 0), id);
+    await expect(page.locator("#cdvStoryOverlay")).toBeVisible();
+    await page.evaluate(() => cdvStoryNext());
+    await expect(page.locator("#cdvStoryOverlay")).toBeHidden();
+  });
+});
+
+test.describe("CDV v2 — réutiliser un itinéraire", () => {
+  test("enregistrer les lieux d'un voyage, les revoir, en retirer un", async ({ page }) => {
+    await bootCdv(page);
+    const id = await seedLive(page, {
+      steps: [
+        { id: "s1", city: "Lisbonne", emoji: "📍", content: "Alfama au coucher du soleil", photos: [], rating: 5, budget: "€€", lat: 38.7, lng: -9.1, createdAt: Date.now() },
+        { id: "s2", city: "Cascais", emoji: "🍽", content: "", photos: [], createdAt: Date.now() },
+      ],
+    });
+
+    await page.evaluate((i) => saveItineraryPlaces(i, "live"), id);
+    const places = await page.evaluate(() => savedPlaces());
+    expect(places).toHaveLength(2);
+    expect(places[0].name).toBe("Lisbonne");
+    expect(places[0].lat).toBe(38.7);
+    expect(places[0].fromTrip).toContain("Lisbonne");
+
+    // Le bouton « Mes lieux » n'apparaît que lorsque la collection existe.
+    await page.evaluate(() => renderCdvScreen());
+    await expect(page.locator("#cdvSavedPlacesBtn")).toBeVisible();
+    await expect(page.locator("#cdvSavedPlacesBtn")).toContainText("(2)");
+
+    // Pas de doublon si on ré-enregistre le même voyage.
+    await page.evaluate((i) => saveItineraryPlaces(i, "live"), id);
+    expect(await page.evaluate(() => savedPlaces().length)).toBe(2);
+
+    await page.evaluate(() => openSavedPlaces());
+    await expect(page.locator(".modal")).toContainText("Alfama au coucher du soleil");
+    await page.evaluate(() => removeSavedPlace(savedPlaces()[0].id));
+    expect(await page.evaluate(() => savedPlaces().length)).toBe(1);
+  });
+
+  test("les lieux d'un carnet sont enregistrables depuis son viewer", async ({ page }) => {
+    await bootCdv(page);
+    const pid = await page.evaluate(() => {
+      const p = {
+        id: "vlog_test", authorId: window.MY_UID || "me", type: "vlog", destination: "Toscane",
+        text: "Toscane", createdAt: Date.now(), likes: 0, comments: [],
+        steps: [{ place: "Florence", text: "Duomo", tip: "", lat: 43.77, lng: 11.25 }],
+      };
+      state.userPosts.unshift(p); saveState();
+      goTo("cdv"); renderCdvScreen();
+      return p.id;
+    });
+    await page.evaluate((i) => openVlogViewer(i), pid);
+    await page.getByRole("button", { name: /Enregistrer les lieux/ }).click();
+    const places = await page.evaluate(() => savedPlaces());
+    expect(places).toHaveLength(1);
+    expect(places[0].name).toBe("Florence");
+    expect(places[0].fromTrip).toBe("Toscane");
+  });
+});
+
+test.describe("CDV v2 — favoris", () => {
+  test("un voyage en direct se sauvegarde et se retrouve dans « Mes favoris »", async ({ page }) => {
+    await bootCdv(page);
+    const id = await seedLive(page, { authorId: "u_autre" });
+    expect(await page.evaluate((i) => isLiveSaved(i), id)).toBe(false);
+
+    await page.evaluate((i) => toggleLiveSave(i), id);
+    expect(await page.evaluate((i) => isLiveSaved(i), id)).toBe(true);
+
+    // Le filtre « ⭐ Mes favoris » seul doit faire apparaître le live sauvegardé.
+    await page.evaluate(() => { cdvFilters = new Set(["saved"]); renderCdvScreen(); });
+    await expect(page.locator("#cdvList")).toContainText("Lisbonne");
+
+    await page.evaluate((i) => toggleLiveSave(i), id);
+    await page.evaluate(() => renderCdvScreen());
+    await expect(page.locator("#cdvList")).not.toContainText("Lisbonne");
   });
 });

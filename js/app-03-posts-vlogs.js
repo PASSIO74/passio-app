@@ -519,6 +519,28 @@ function toggleCarnetSave(postId) {
   }
 }
 
+// ⭐ Favoris des LIVES. L'onglet « Mes favoris » ne couvrait que les carnets :
+// un voyage en direct suivi puis terminé n'était plus retrouvable nulle part.
+function savedLives() {
+  return (state.user && state.user.savedLives) || [];
+}
+function isLiveSaved(liveId) {
+  return savedLives().indexOf(liveId) > -1;
+}
+function toggleLiveSave(liveId, el) {
+  state.user.savedLives = state.user.savedLives || [];
+  var i = state.user.savedLives.indexOf(liveId);
+  if (i === -1) { state.user.savedLives.push(liveId); toast("⭐ Voyage sauvegardé dans tes favoris"); }
+  else { state.user.savedLives.splice(i, 1); toast("Voyage retiré des favoris"); }
+  saveState();
+  // Patch en place (toutes les cartes du même live) plutôt qu'un re-render global.
+  var saved = isLiveSaved(liveId);
+  document.querySelectorAll('[data-livesave="' + liveId + '"]').forEach(function (n) {
+    n.textContent = saved ? "⭐" : "☆";
+    n.setAttribute("title", saved ? "Sauvegardé" : "Sauvegarder");
+  });
+}
+
 // "M'inspirer", duplique la STRUCTURE (pas le contenu) pour démarrer un nouveau carnet
 function inspireFromCarnet(postId) {
   const post = (typeof findPostAnywhere === "function")
@@ -767,8 +789,11 @@ function openVlogViewer(postId) {
   const stats = vlogStats(post);
   // Conserve l'index original de l'étape pour le numéro affiché sur la carte
   const mapPlaces = (post.steps || [])
-    .map((s, i) => ({ place: s.place || "", dayNum: i + 1, ll: s.place ? cityToLatLng(s.place) : null }))
+    .map((s, i) => ({ place: s.place || "", dayNum: i + 1, ll: cdvStepLatLng(s) }))
     .filter(s => s.ll);
+  // Lieux jamais géocodés (carnets antérieurs, destinations hors France) : on
+  // complète en tâche de fond puis on re-rend — la carte se remplit toute seule.
+  if ((post.steps || []).some(s => s && s.place && typeof s.lat !== "number")) _cdvBackfillCarnetCoords(post);
   // Fallback : si aucune étape n'a pu être géolocalisée, on essaie la destination du carnet
   if (mapPlaces.length === 0 && post.destination) {
     const destLL = cityToLatLng(post.destination);
@@ -812,6 +837,9 @@ function openVlogViewer(postId) {
       <div class="vlog-viewer-actions">
         <button class="vlog-action-btn ${isSaved ? "saved" : ""}" onclick="toggleCarnetSave('${postId}')">
           ${isSaved ? "⭐ Sauvegardé" : "☆ Sauvegarder"}
+        </button>
+        <button class="vlog-action-btn" onclick="saveItineraryPlaces('${postId}','carnet')">
+          📍 Enregistrer les lieux
         </button>
         <button class="vlog-action-btn" onclick="inspireFromCarnet('${postId}')">
           📔 M'en inspirer
@@ -1088,6 +1116,107 @@ function isMyLive(l) {
   return !!l && (l.authorId === "me" || (typeof MY_UID !== "undefined" && MY_UID && l.authorId === MY_UID));
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// CO-VOYAGEURS (CDV v2) — on voyage rarement seul
+// L'auteur invite des comptes qui peuvent alors publier leurs propres étapes
+// sur SON voyage (chacun signe les siennes → la RLS de cdv_live_steps, qui
+// exige author_id = auth.uid(), reste satisfaite telle quelle).
+// ═══════════════════════════════════════════════════════════════════════════
+function cdvCollaborators(l) {
+  return (l && Array.isArray(l.collaborators)) ? l.collaborators : [];
+}
+
+// Qui peut publier/modifier une étape : l'auteur OU un co-voyageur.
+function canEditLive(l) {
+  if (!l) return false;
+  if (isMyLive(l)) return true;
+  var me = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
+  return cdvCollaborators(l).indexOf(me) > -1;
+}
+
+function openCdvCollaborators(liveId) {
+  var live = getCdvLives().find(function (l) { return l.id === liveId; });
+  if (!live || !isMyLive(live)) return;
+  var cols = cdvCollaborators(live);
+  var listHtml = cols.length
+    ? cols.map(function (uidC) {
+        var u = (typeof userById === "function" && userById(uidC)) || {};
+        return '<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);">'
+          + '<div class="avatar" style="background:' + (u.avatar || "#7c3aed") + ';width:30px;height:30px;font-size:14px;">' + (u.profileEmoji || "🌍") + '</div>'
+          + '<div style="flex:1;font-size:13px;color:var(--text);">' + escapeHtml(u.name || "Passionné") + '</div>'
+          + '<span onclick="removeCdvCollaborator(\'' + liveId + '\',\'' + escapeJsArg(uidC) + '\')" style="cursor:pointer;color:#ef4444;font-size:12px;">Retirer</span>'
+          + '</div>';
+      }).join("")
+    : '<div style="font-size:12px;color:var(--muted);padding:8px 0;">Personne pour l\'instant. Invite les gens avec qui tu voyages : ils pourront publier leurs propres étapes sur ce voyage.</div>';
+
+  openModal(
+    '<div class="modal-handle"></div>'
+    + '<span class="modal-close" onclick="closeModal()">×</span>'
+    + '<div class="modal-title">👥 Co-voyageurs</div>'
+    + '<div id="cdvCollabList">' + listHtml + '</div>'
+    + '<label class="field" style="margin-top:12px;"><span>Inviter quelqu\'un</span>'
+    + '<input type="text" class="input" id="cdvCollabSearch" placeholder="Pseudo du voyageur…" oninput="searchCdvCollaborator(\'' + liveId + '\', this.value)"/></label>'
+    + '<div id="cdvCollabResults" style="display:flex;flex-direction:column;gap:6px;"></div>'
+  );
+}
+
+// Recherche de comptes à inviter (réutilise supaSearchUsers, comme la messagerie).
+async function searchCdvCollaborator(liveId, q) {
+  var box = document.getElementById("cdvCollabResults");
+  if (!box) return;
+  q = (q || "").trim();
+  if (q.length < 2) { box.innerHTML = ""; return; }
+  box.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:6px;">Recherche…</div>';
+  var users = [];
+  try { if (typeof supaSearchUsers === "function") users = (await supaSearchUsers(q)) || []; } catch (e) {}
+  // Repli local (comptes de démo / déjà connus) pour ne jamais rendre une page vide.
+  if (!users.length) {
+    users = ((state.seed && state.seed.users) || [])
+      .filter(function (u) { return (u.name || "").toLowerCase().indexOf(q.toLowerCase()) > -1; })
+      .slice(0, 6)
+      .map(function (u) { return { id: u.id, username: u.name, emoji: u.profileEmoji, color: u.avatar }; });
+  }
+  var live = getCdvLives().find(function (l) { return l.id === liveId; }) || {};
+  var already = cdvCollaborators(live);
+  var me = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
+  users = users.filter(function (u) { return u.id !== me && already.indexOf(u.id) < 0; });
+  if (!users.length) { box.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:6px;">Aucun compte trouvé</div>'; return; }
+  box.innerHTML = users.slice(0, 6).map(function (u) {
+    return '<div style="display:flex;align-items:center;gap:8px;border:1px solid var(--border);border-radius:10px;padding:8px;">'
+      + '<div class="avatar" style="background:' + (u.color || "#7c3aed") + ';width:28px;height:28px;font-size:13px;">' + (u.emoji || "✨") + '</div>'
+      + '<div style="flex:1;font-size:13px;color:var(--text);">' + escapeHtml(u.username || "Passionné") + '</div>'
+      + '<button class="btn primary" style="font-size:11px;padding:6px 10px;" onclick="addCdvCollaborator(\'' + liveId + '\',\'' + escapeJsArg(u.id) + '\',\'' + escapeJsArg(u.username || "Passionné") + '\')">Inviter</button>'
+      + '</div>';
+  }).join("");
+}
+
+async function addCdvCollaborator(liveId, userId, name) {
+  var lives = getCdvLives();
+  var live = lives.find(function (l) { return l.id === liveId; });
+  if (!live || !isMyLive(live)) return;
+  if (!Array.isArray(live.collaborators)) live.collaborators = [];
+  if (live.collaborators.indexOf(userId) > -1) return;
+  live.collaborators.push(userId);
+  saveCdvLives(lives);
+  if (typeof supaAddCdvCollaborator === "function") await supaAddCdvCollaborator(liveId, userId);
+  if (typeof supaInsertNotif === "function") {
+    try { supaInsertNotif(userId, "cdv_live_step", liveId, "t'a invité·e à co-écrire son voyage"); } catch (e) {}
+  }
+  toast("👥 " + (name || "Invité") + " peut désormais publier des étapes");
+  openCdvCollaborators(liveId);
+}
+
+function removeCdvCollaborator(liveId, userId) {
+  var lives = getCdvLives();
+  var live = lives.find(function (l) { return l.id === liveId; });
+  if (!live) return;
+  live.collaborators = cdvCollaborators(live).filter(function (x) { return x !== userId; });
+  saveCdvLives(lives);
+  if (typeof supaRemoveCdvCollaborator === "function") supaRemoveCdvCollaborator(liveId, userId);
+  toast("Co-voyageur retiré");
+  openCdvCollaborators(liveId);
+}
+
 // Récupérer les lives actifs (global, pour tous)
 function getActiveCdvLives() {
   return getCdvLives().filter(l => l.status === "live" && canSeeCdvLive(l));
@@ -1247,6 +1376,8 @@ function addCdvLiveStep(liveId, stepId) {
   _stepEmoji = (_edit && _edit.emoji) || "📍";
   _stepRating = (_edit && _edit.rating) || 0;
   _stepBudget = (_edit && _edit.budget) || "";
+  _stepLat = (_edit && typeof _edit.lat === "number") ? _edit.lat : null;
+  _stepLng = (_edit && typeof _edit.lng === "number") ? _edit.lng : null;
   var _types = [["📍", "Lieu"], ["🍽", "Restaurant"], ["🏨", "Hébergement"], ["🎯", "Activité"], ["🚗", "Transport"], ["💡", "Conseil"], ["⚠️", "Alerte"]];
   var _budgets = [["free", "Gratuit"], ["€", "€"], ["€€", "€€"], ["€€€", "€€€"]];
   openModal(`
@@ -1255,6 +1386,7 @@ function addCdvLiveStep(liveId, stepId) {
 
     <label class="field"><span>📍 Où es-tu ?</span>
       <input type="text" class="input" id="liveStepCity" placeholder="Ville, lieu, spot…" maxlength="60" value="${escapeHtml((_edit && _edit.city) || "")}"/>
+      <button class="pill${_stepLat != null ? " active" : ""}" id="cdvGeoBtn" onclick="cdvUseMyPosition()" style="margin-top:6px;width:100%;">${_stepLat != null ? "📍 Position enregistrée ✓" : "📍 Ma position"}</button>
     </label>
 
     <label class="field"><span>🎭 Type d'étape</span>
@@ -1362,6 +1494,10 @@ function saveCdvLiveStep(liveId, stepId) {
   const existing = stepId ? live.steps.find(s => s.id === stepId) : null;
   const step = {
     id: existing ? existing.id : "ls_" + uid(),
+    // Chaque étape est signée : sur un voyage à plusieurs, on sait qui a publié
+    // quoi, et seul l'auteur d'une étape peut la modifier (comme la RLS).
+    authorId: existing ? (existing.authorId || ((typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me"))
+                       : ((typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me"),
     city: city || "Quelque part",
     emoji: _stepEmoji || "📍",
     content: content || "",
@@ -1369,6 +1505,8 @@ function saveCdvLiveStep(liveId, stepId) {
     photo: _liveStepPhotos[0] || null,
     rating: _stepRating || 0,
     budget: _stepBudget || "",
+    lat: (typeof _stepLat === "number") ? _stepLat : (existing && typeof existing.lat === "number" ? existing.lat : null),
+    lng: (typeof _stepLng === "number") ? _stepLng : (existing && typeof existing.lng === "number" ? existing.lng : null),
     createdAt: existing ? (existing.createdAt || Date.now()) : Date.now(),
     editedAt: existing ? Date.now() : null,
   };
@@ -1376,6 +1514,8 @@ function saveCdvLiveStep(liveId, stepId) {
   _stepEmoji = "📍";
   _stepRating = 0;
   _stepBudget = "";
+  _stepLat = null;
+  _stepLng = null;
 
   if (existing) {
     live.steps[live.steps.indexOf(existing)] = step;
@@ -1392,6 +1532,11 @@ function saveCdvLiveStep(liveId, stepId) {
     toast("📍 Étape publiée en direct !");
     _notifyCdvLiveFollowers(live, step);
   }
+  // Pas de GPS ? On géocode le nom du lieu en tâche de fond (monde entier) pour
+  // que l'étape apparaisse quand même sur la carte, sans retarder la publication.
+  if (step.lat == null && step.city && step.city !== "Quelque part") {
+    _cdvBackfillStepCoords(liveId, step.id, step.city);
+  }
   renderCdvLives();
   if (typeof renderCdvScreen === "function") { try { renderCdvScreen(); } catch (e) {} }
 }
@@ -1401,7 +1546,11 @@ function saveCdvLiveStep(liveId, stepId) {
 function deleteCdvLiveStep(liveId, stepId) {
   const lives = getCdvLives();
   const live = lives.find(l => l.id === liveId);
-  if (!live || !isMyLive(live)) return;
+  if (!live || !canEditLive(live)) return;
+  // On ne supprime que SES propres étapes (la RLS l'impose de toute façon).
+  const me = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
+  const st = (live.steps || []).find(s => s.id === stepId);
+  if (st && st.authorId && st.authorId !== me) { toast("Seul l'auteur de cette étape peut la supprimer"); return; }
   if (!confirm("Supprimer cette étape ? C'est définitif.")) return;
   live.steps = (live.steps || []).filter(s => s.id !== stepId);
   saveCdvLives(lives);
@@ -1427,10 +1576,11 @@ function _notifyCdvLiveFollowers(live, step) {
 // Carte de l'itinéraire d'un live (marqueurs numérotés dans l'ordre des étapes).
 // Séparée de initVlogMiniMap (qui cible l'id fixe #vlogViewerMap) pour pouvoir
 // vivre dans la modale plein écran du live.
-function _initCdvLiveMap(el, places) {
+function _initCdvLiveMap(el, places, opts) {
+  opts = opts || {};
   if (!el || !places || !places.length) return;
   if (typeof L === "undefined") {
-    if (typeof ensureLeaflet === "function") ensureLeaflet().then(function () { _initCdvLiveMap(el, places); }).catch(function () {});
+    if (typeof ensureLeaflet === "function") ensureLeaflet().then(function () { _initCdvLiveMap(el, places, opts); }).catch(function () {});
     return;
   }
   if (el._leafletMap) { try { el._leafletMap.remove(); } catch (e) {} el._leafletMap = null; }
@@ -1450,8 +1600,9 @@ function _initCdvLiveMap(el, places) {
       bounds.push(p.ll);
     });
     // Trace le trajet entre les étapes : l'itinéraire se lit d'un coup d'œil.
+    // (Désactivé pour une simple collection de lieux, qui n'est pas un trajet.)
     if (bounds.length > 1) {
-      L.polyline(bounds, { color: "#7c3aed", weight: 3, opacity: 0.7, dashArray: "6 6" }).addTo(map);
+      if (opts.connect !== false) L.polyline(bounds, { color: "#7c3aed", weight: 3, opacity: 0.7, dashArray: "6 6" }).addTo(map);
       map.fitBounds(L.latLngBounds(bounds), { padding: [40, 40], maxZoom: 12 });
     }
     el._leafletMap = map;
@@ -1474,7 +1625,8 @@ function confirmEndCdvLive(liveId) {
       « ${escapeHtml(live.destination || "Voyage")} » passera en <b>terminé</b> : tu ne pourras plus ajouter d'étape.
       Tes ${n} étape${n > 1 ? "s" : ""} et les commentaires restent visibles.
     </div>
-    <button class="btn block" style="background:#dc2626;color:#fff;border-color:#dc2626;margin-bottom:8px;" onclick="endCdvLive('${liveId}', true)">Oui, terminer</button>
+    <button class="btn primary block" style="margin-bottom:8px;" onclick="endCdvLive('${liveId}', true)">Terminer et créer le carnet</button>
+    <button class="btn ghost block" style="margin-bottom:8px;" onclick="endCdvLive('${liveId}', false)">Terminer seulement</button>
     <button class="btn ghost block" onclick="closeModal()">Annuler</button>
   `);
 }
@@ -1491,19 +1643,11 @@ function endCdvLive(liveId, offerCarnet) {
   toast("✅ CDV Live terminé");
   renderCdvLives();
   renderCdvScreen();
-  // Proposition immédiate de transformer le direct en carnet publiable.
+  // Le direct devient un carnet SANS étape intermédiaire : l'utilisateur atterrit
+  // directement dans le Studio pré-rempli avec ses étapes (modèle Polarsteps —
+  // le voyage est un seul objet dont le récit se finalise à l'arrivée).
   if (offerCarnet && (live.steps || []).length) {
-    setTimeout(function () {
-      openModal(`
-        <div class="modal-handle"></div>
-        <div class="modal-title">📔 En faire un carnet ?</div>
-        <div style="font-size:13px;color:var(--text-dim);line-height:1.55;margin-bottom:14px;">
-          Tes ${(live.steps || []).length} étapes deviennent un carnet de voyage complet (carte, bilan pratique, conseil clé) — bien plus consulté qu'un live terminé.
-        </div>
-        <button class="btn primary block" style="margin-bottom:8px;" onclick="convertLiveToCarnet('${liveId}')">📔 Créer le carnet</button>
-        <button class="btn ghost block" onclick="closeModal()">Plus tard</button>
-      `);
-    }, 400);
+    setTimeout(function () { convertLiveToCarnet(liveId); }, 250);
   }
 }
 
@@ -1620,6 +1764,8 @@ function openCdvLiveViewer(liveId) {
 
   // Nombre réel de personnes qui suivent (plus de valeur fictive aléatoire).
   var viewerCount = cdvLiveFollowerCount(live);
+  const canEdit = canEditLive(live);
+  const hasCollabs = cdvCollaborators(live).length > 0;
 
   let stepsHTML = live.steps.map(function(s) {
     var photosHTML = "";
@@ -1632,8 +1778,14 @@ function openCdvLiveViewer(liveId) {
     }
     var ratingHTML = s.rating ? '<span style="font-size:12px;color:#f59e0b;margin-left:8px;">' + "★".repeat(s.rating) + "☆".repeat(5-s.rating) + '</span>' : "";
     var budgetHTML = s.budget ? '<span style="font-size:10px;background:var(--bg-deep);border-radius:6px;padding:2px 6px;margin-left:6px;">' + s.budget + '</span>' : "";
-    // L'auteur peut corriger ou retirer une étape (faute de frappe, mauvaise photo).
-    var ownerTools = isMine
+    // Chacun corrige SES étapes (la RLS impose author_id = auth.uid()) ; sur un
+    // voyage à plusieurs, on affiche aussi qui a publié l'étape.
+    var _me = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
+    var stepMine = !s.authorId || s.authorId === _me || (isMine && !hasCollabs);
+    var byLabel = (hasCollabs && s.authorId && s.authorId !== live.authorId)
+      ? '<span style="font-size:10px;color:var(--muted);margin-left:6px;">· par ' + escapeHtml(((typeof userById === "function" && userById(s.authorId)) || {}).name || "un co-voyageur") + '</span>'
+      : "";
+    var ownerTools = stepMine
       ? '<div style="display:flex;gap:10px;margin-top:6px;">'
         + '<span onclick="event.stopPropagation();addCdvLiveStep(\'' + liveId + '\',\'' + s.id + '\')" style="font-size:11px;color:var(--muted);cursor:pointer;">✏️ Modifier</span>'
         + '<span onclick="event.stopPropagation();deleteCdvLiveStep(\'' + liveId + '\',\'' + s.id + '\')" style="font-size:11px;color:#ef4444;cursor:pointer;">🗑 Supprimer</span>'
@@ -1645,7 +1797,7 @@ function openCdvLiveViewer(liveId) {
         <div style="display:flex;align-items:center;flex-wrap:wrap;">\
           <span style="font-weight:700;font-size:13px;color:var(--text);">' + escapeHtml(s.city) + '</span>' + ratingHTML + budgetHTML + '\
         </div>\
-        <div style="font-size:11px;color:var(--muted);margin-bottom:4px;">' + fmtTime(s.createdAt) + (s.editedAt ? " · modifiée" : "") + '</div>\
+        <div style="font-size:11px;color:var(--muted);margin-bottom:4px;">' + fmtTime(s.createdAt) + (s.editedAt ? " · modifiée" : "") + byLabel + '</div>\
         ' + (s.content ? '<div style="font-size:12px;color:var(--text-dim);line-height:1.5;">' + escapeHtml(s.content) + '</div>' : "") + '\
         ' + photosHTML + ownerTools + '\
       </div>\
@@ -1658,7 +1810,7 @@ function openCdvLiveViewer(liveId) {
   // devient un marqueur numéroté. C'était la grande absente du live (le format le
   // plus « carte » de l'app n'en avait aucune, contrairement à Polarsteps/Google Maps).
   var mapPlaces = (live.steps || [])
-    .map(function (s, i) { return { place: s.city || "", dayNum: i + 1, ll: s.city && typeof cityToLatLng === "function" ? cityToLatLng(s.city) : null }; })
+    .map(function (s, i) { return { place: s.city || "", dayNum: i + 1, ll: cdvStepLatLng(s) }; })
     .filter(function (s) { return s.ll; });
   if (!mapPlaces.length && live.destination && typeof cityToLatLng === "function") {
     var dll = cityToLatLng(live.destination);
@@ -1686,7 +1838,10 @@ function openCdvLiveViewer(liveId) {
     <div id="cdvReactBar" style="display:flex;gap:6px;margin-bottom:14px;">' + _cdvReactBarHtml(liveId, live) + '</div>\
     \
     ' + (mapPlaces.length ? '<div class="vlog-mini-map" id="cdvLiveMap" style="margin-bottom:14px;"></div>' : '') + '\
-    <div style="font-weight:800;font-size:13px;color:var(--text);margin-bottom:8px;">📍 Étapes</div>\
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">\
+      <div style="font-weight:800;font-size:13px;color:var(--text);flex:1;">📍 Étapes</div>\
+      ' + (live.steps.length ? '<button class="pill" onclick="closeModal();openCdvStepStory(\'' + liveId + '\',0)" style="font-size:11px;">▶ Plein écran</button>' : '') + '\
+    </div>\
     ' + stepsHTML + '\
     \
     <div style="font-weight:800;font-size:13px;color:var(--text);margin:14px 0 8px;">💬 Commentaires</div>\
@@ -1697,18 +1852,19 @@ function openCdvLiveViewer(liveId) {
       <button class="btn primary" onclick="addCdvLiveComment(\'' + liveId + '\')" style="font-size:12px;padding:8px 12px;">Envoyer</button>\
     </div>\
     \
-    ' + (isMine && isLive ? '\
-      <div style="display:flex;gap:8px;margin-top:16px;padding-top:14px;border-top:1px solid var(--border);">\
-        <button class="btn primary" style="flex:1;" onclick="closeModal();addCdvLiveStep(\'' + liveId + '\')">📍 Ajouter une étape</button>\
-        <button class="btn ghost" style="border-color:rgba(239,68,68,0.4);color:#ef4444;" onclick="confirmEndCdvLive(\'' + liveId + '\')">Terminer</button>\
-      </div>' : (!isMine ? '\
-      <div style="margin-top:14px;">\
+    <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:8px;">\
+      ' + (canEdit && isLive ? '\
+        <div style="display:flex;gap:8px;">\
+          <button class="btn primary" style="flex:1;" onclick="closeModal();addCdvLiveStep(\'' + liveId + '\')">📍 Ajouter une étape</button>\
+          ' + (isMine ? '<button class="btn ghost" style="border-color:rgba(239,68,68,0.4);color:#ef4444;" onclick="confirmEndCdvLive(\'' + liveId + '\')">Terminer</button>' : '') + '\
+        </div>' : '') + '\
+      ' + (isMine ? '<button class="btn ghost block" onclick="openCdvCollaborators(\'' + liveId + '\')">👥 Co-voyageurs' + (hasCollabs ? ' (' + cdvCollaborators(live).length + ')' : '') + '</button>' : '') + '\
+      ' + (isMine && !isLive ? '<button class="btn primary block" onclick="convertLiveToCarnet(\'' + liveId + '\')">📔 Convertir en carnet de voyage</button>' : '') + '\
+      ' + (live.steps.length ? '<button class="btn ghost block" onclick="saveItineraryPlaces(\'' + liveId + '\',\'live\')">📍 Enregistrer les lieux</button>' : '') + '\
+      ' + (!isMine ? '\
         <button class="btn primary block" onclick="toggleFollowCdvLive(\'' + liveId + '\',this)" style="background:linear-gradient(135deg,#ef4444,#f59e0b);">📡 Suivre ce voyage</button>\
-        <button onclick="reportCdvLive(\'' + liveId + '\')" style="display:block;margin:10px auto 0;background:none;border:none;color:var(--muted);font-size:11px;cursor:pointer;">⚠️ Signaler ce live</button>\
-      </div>' : (isMine && !isLive ? '\
-      <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);">\
-        <button class="btn primary block" onclick="convertLiveToCarnet(\'' + liveId + '\')">📔 Convertir en carnet de voyage</button>\
-      </div>' : ''))) + '\
+        <button onclick="reportCdvLive(\'' + liveId + '\')" style="display:block;margin:4px auto 0;background:none;border:none;color:var(--muted);font-size:11px;cursor:pointer;">⚠️ Signaler ce live</button>' : '') + '\
+    </div>\
   ';
   openModal(html);
   var modalEl = document.querySelector(".modal");
@@ -1785,6 +1941,339 @@ function shareCdvLive(liveId) {
   } else {
     toast("🔗 " + url);
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// UN SEUL « VOYAGE » (CDV v2) — modèle Polarsteps
+// Avant : deux boutons concurrents (« Nouveau carnet » / « Démarrer un Live »)
+// obligeaient à trancher AVANT d'écrire une ligne, entre deux objets qui
+// racontent pourtant la même chose. Désormais une seule entrée « Nouveau
+// voyage » ; le format se choisit selon UN critère compréhensible : est-ce que
+// je pars maintenant, ou est-ce que je raconte un voyage déjà fait ?
+// ═══════════════════════════════════════════════════════════════════════════
+function openNewTripSheet() {
+  var mine = getCdvLives().filter(function (l) { return isMyLive(l) && l.status === "live"; });
+  var resume = mine.length
+    ? '<div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.28);border-radius:12px;padding:12px;margin-bottom:12px;">'
+      + '<div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:6px;">🔴 Voyage en cours</div>'
+      + '<div style="font-size:12px;color:var(--text-dim);margin-bottom:10px;">« ' + escapeHtml(mine[0].destination || "Voyage") + ' » · ' + ((mine[0].steps || []).length) + ' étape(s)</div>'
+      + '<button class="btn primary block" style="font-size:12px;padding:9px;" onclick="closeModal();addCdvLiveStep(\'' + mine[0].id + '\')">📍 Ajouter une étape</button>'
+      + '</div>'
+    : "";
+  openModal(
+    '<div class="modal-handle"></div>'
+    + '<div class="modal-title">✈️ Nouveau voyage</div>'
+    + resume
+    + '<div class="cdv-trip-choice" onclick="closeModal();startCdvLive()">'
+    +   '<div class="cdv-trip-choice-emoji">🔴</div>'
+    +   '<div><div class="cdv-trip-choice-title">Je pars maintenant</div>'
+    +   '<div class="cdv-trip-choice-sub">Publie tes étapes en direct, tes abonnés suivent le voyage au fil des jours. À la fin, tout devient un carnet.</div></div>'
+    + '</div>'
+    + '<div class="cdv-trip-choice" onclick="closeModal();setStudioToVlog()">'
+    +   '<div class="cdv-trip-choice-emoji">📔</div>'
+    +   '<div><div class="cdv-trip-choice-title">Je raconte un voyage passé</div>'
+    +   '<div class="cdv-trip-choice-sub">Rédige le carnet complet d\'un coup : étapes, carte, budget, conseils.</div></div>'
+    + '</div>'
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// STORY DE VOYAGE (CDV v2) — consommation plein écran façon Instagram/TikTok
+// Les étapes ne se lisaient qu'en LISTE, un format qui ne retient personne.
+// Ici : une étape = un écran vertical, barres de progression en haut, tap à
+// droite/gauche pour naviguer, avance auto sur les étapes sans photo.
+// L'overlay est construit en JS (mêmes conventions que #vliveOverlay).
+// ═══════════════════════════════════════════════════════════════════════════
+var _cdvStory = { liveId: null, steps: [], i: 0, timer: null };
+
+function openCdvStepStory(liveId, startIndex) {
+  var live = getCdvLives().find(function (l) { return l.id === liveId; });
+  if (!live || !canSeeCdvLive(live)) return;
+  var steps = (live.steps || []).slice();
+  if (!steps.length) { toast("Ce voyage n'a pas encore d'étape"); return; }
+  _cdvStory = { liveId: liveId, steps: steps, i: Math.max(0, Math.min(startIndex || 0, steps.length - 1)), timer: null, title: live.destination || "Voyage" };
+
+  var ov = document.getElementById("cdvStoryOverlay");
+  if (!ov) {
+    ov = document.createElement("div");
+    ov.id = "cdvStoryOverlay";
+    ov.className = "cdv-story-overlay";
+    document.body.appendChild(ov);
+  }
+  ov.style.display = "flex";
+  document.body.style.overflow = "hidden";
+  _renderCdvStory();
+}
+
+function _renderCdvStory() {
+  var ov = document.getElementById("cdvStoryOverlay");
+  if (!ov) return;
+  var s = _cdvStory.steps[_cdvStory.i];
+  if (!s) { closeCdvStepStory(); return; }
+
+  var bars = _cdvStory.steps.map(function (_, i) {
+    var fill = i < _cdvStory.i ? "100%" : (i === _cdvStory.i ? "100%" : "0%");
+    var anim = i === _cdvStory.i ? " cdv-story-bar-active" : "";
+    return '<div class="cdv-story-bar"><i style="width:' + fill + ';"' + (anim ? ' class="' + anim.trim() + '"' : '') + '></i></div>';
+  }).join("");
+
+  var photo = (s.photos && s.photos[0]) || s.photo || null;
+  var media = photo
+    ? '<img class="cdv-story-media" src="' + safeUrlAttr(photo) + '" alt=""/>'
+    : '<div class="cdv-story-media cdv-story-media-empty"><span>' + escapeHtml(s.emoji || "📍") + '</span></div>';
+
+  var rating = s.rating ? '<span class="cdv-story-star">' + "★".repeat(s.rating) + '</span>' : "";
+  var budget = s.budget ? '<span class="cdv-story-chip">' + escapeHtml(s.budget) + '</span>' : "";
+
+  ov.innerHTML =
+    '<div class="cdv-story-bars">' + bars + '</div>'
+    + '<div class="cdv-story-head">'
+    +   '<div class="cdv-story-title">' + escapeHtml(_cdvStory.title) + '</div>'
+    +   '<div class="cdv-story-count">' + (_cdvStory.i + 1) + '/' + _cdvStory.steps.length + '</div>'
+    +   '<span class="cdv-story-close" onclick="closeCdvStepStory()" role="button" aria-label="Fermer">×</span>'
+    + '</div>'
+    + media
+    + '<div class="cdv-story-nav cdv-story-prev" onclick="cdvStoryPrev()" role="button" aria-label="Étape précédente"></div>'
+    + '<div class="cdv-story-nav cdv-story-next" onclick="cdvStoryNext()" role="button" aria-label="Étape suivante"></div>'
+    + '<div class="cdv-story-foot">'
+    +   '<div class="cdv-story-place">' + escapeHtml(s.emoji || "📍") + ' ' + escapeHtml(s.city || "") + rating + budget + '</div>'
+    +   (s.content ? '<div class="cdv-story-text">' + escapeHtml(s.content) + '</div>' : "")
+    +   '<div class="cdv-story-time">' + fmtTime(s.createdAt) + '</div>'
+    + '</div>';
+
+  // Avance automatique (5 s), comme une story — mise en pause au tap long
+  // n'est pas nécessaire ici : les zones de navigation couvrent tout l'écran.
+  clearTimeout(_cdvStory.timer);
+  _cdvStory.timer = setTimeout(cdvStoryNext, 5000);
+}
+
+function cdvStoryNext() {
+  if (_cdvStory.i >= _cdvStory.steps.length - 1) { closeCdvStepStory(); return; }
+  _cdvStory.i++;
+  _renderCdvStory();
+}
+function cdvStoryPrev() {
+  if (_cdvStory.i <= 0) return;
+  _cdvStory.i--;
+  _renderCdvStory();
+}
+function closeCdvStepStory() {
+  clearTimeout(_cdvStory.timer);
+  var ov = document.getElementById("cdvStoryOverlay");
+  if (ov) { ov.style.display = "none"; ov.innerHTML = ""; }
+  document.body.style.overflow = "";
+}
+document.addEventListener("keydown", function (e) {
+  var ov = document.getElementById("cdvStoryOverlay");
+  if (!ov || ov.style.display !== "flex") return;
+  if (e.key === "Escape") closeCdvStepStory();
+  else if (e.key === "ArrowRight") cdvStoryNext();
+  else if (e.key === "ArrowLeft") cdvStoryPrev();
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LIEUX ENREGISTRÉS — « copier cet itinéraire »
+// Un carnet ne servait qu'à être lu : rien ne permettait de RÉUTILISER les
+// lieux d'un voyage qui a plu. On peut désormais capturer tout l'itinéraire en
+// un tap, le revoir sur une carte, et le transformer en événement IRL.
+// ═══════════════════════════════════════════════════════════════════════════
+function savedPlaces() { return (state.user && state.user.savedPlaces) || []; }
+
+function saveItineraryPlaces(id, kind) {
+  var src = kind === "live"
+    ? (getCdvLives().find(function (l) { return l.id === id; }) || null)
+    : (typeof findPostAnywhere === "function" ? findPostAnywhere(id) : null);
+  if (!src) { toast("Voyage introuvable"); return; }
+  var from = src.destination || "Voyage";
+  state.user.savedPlaces = state.user.savedPlaces || [];
+  var existing = {};
+  state.user.savedPlaces.forEach(function (p) { existing[(p.name || "").toLowerCase()] = 1; });
+  var added = 0;
+  (src.steps || []).forEach(function (s) {
+    var name = (s.city || s.place || "").trim();
+    if (!name || existing[name.toLowerCase()]) return;
+    existing[name.toLowerCase()] = 1;
+    var ll = cdvStepLatLng(s);
+    state.user.savedPlaces.push({
+      id: "pl_" + uid(), name: name, note: (s.content || s.text || "").slice(0, 160),
+      tip: s.tip || "", budget: s.budget || "", rating: s.rating || 0,
+      lat: ll ? ll[0] : null, lng: ll ? ll[1] : null,
+      fromTrip: from, fromId: id, at: Date.now(),
+    });
+    added++;
+  });
+  if (state.user.savedPlaces.length > 300) state.user.savedPlaces = state.user.savedPlaces.slice(-300);
+  saveState();
+  closeModal();
+  toast(added ? "📍 " + added + " lieu" + (added > 1 ? "x" : "") + " enregistré" + (added > 1 ? "s" : "") : "Ces lieux sont déjà dans ta liste");
+  if (typeof renderCdvScreen === "function") { try { renderCdvScreen(); } catch (e) {} }
+}
+
+function removeSavedPlace(placeId) {
+  state.user.savedPlaces = savedPlaces().filter(function (p) { return p.id !== placeId; });
+  saveState();
+  openSavedPlaces();
+  if (typeof renderCdvScreen === "function") { try { renderCdvScreen(); } catch (e) {} }
+}
+
+function openSavedPlaces() {
+  var places = savedPlaces();
+  if (!places.length) {
+    openModal('<div class="modal-handle"></div><div class="modal-title">📍 Mes lieux</div>'
+      + '<div class="empty" style="padding:20px;"><div class="empty-icon">🗺</div>'
+      + '<div class="empty-title">Aucun lieu enregistré</div>'
+      + '<div class="empty-text">Ouvre un carnet qui te plaît et tape « Enregistrer les lieux » : tu retrouveras tout ici, avec la carte.</div></div>');
+    return;
+  }
+  var hasMap = places.some(function (p) { return typeof p.lat === "number"; });
+  openModal(
+    '<div class="modal-handle"></div>'
+    + '<span class="modal-close" onclick="closeModal()">×</span>'
+    + '<div class="modal-title">📍 Mes lieux <span style="font-size:12px;color:var(--muted);font-weight:600;">(' + places.length + ')</span></div>'
+    + (hasMap ? '<div class="vlog-mini-map" id="savedPlacesMap" style="margin-bottom:12px;"></div>' : '')
+    + '<div style="display:flex;flex-direction:column;gap:8px;">'
+    + places.slice().reverse().map(function (p) {
+        return '<div style="border:1px solid var(--border);border-radius:12px;padding:10px 12px;">'
+          + '<div style="display:flex;align-items:center;gap:8px;">'
+          +   '<div style="flex:1;min-width:0;"><div style="font-weight:700;font-size:13px;color:var(--text);">📍 ' + escapeHtml(p.name) + '</div>'
+          +   '<div style="font-size:11px;color:var(--muted);">' + escapeHtml(p.fromTrip || "") + (p.budget ? " · " + escapeHtml(p.budget) : "") + (p.rating ? " · " + "★".repeat(p.rating) : "") + '</div></div>'
+          +   '<span onclick="removeSavedPlace(\'' + p.id + '\')" style="cursor:pointer;color:#ef4444;font-size:12px;">🗑</span>'
+          + '</div>'
+          + (p.note ? '<div style="font-size:12px;color:var(--text-dim);margin-top:6px;line-height:1.45;">' + escapeHtml(p.note) + '</div>' : "")
+          + (p.tip ? '<div style="font-size:11px;color:var(--muted);margin-top:4px;">💡 ' + escapeHtml(p.tip) + '</div>' : "")
+          + '</div>';
+      }).join("")
+    + '</div>'
+    + '<button class="btn ghost block" style="margin-top:12px;" onclick="closeModal()">Fermer</button>'
+  );
+  if (hasMap) {
+    setTimeout(function () {
+      var el = document.getElementById("savedPlacesMap");
+      if (!el) return;
+      var pts = places.filter(function (p) { return typeof p.lat === "number"; })
+        .map(function (p, i) { return { place: p.name, dayNum: i + 1, ll: [p.lat, p.lng] }; });
+      if (typeof _initCdvLiveMap === "function") _initCdvLiveMap(el, pts, { connect: false });
+    }, 200);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// GÉOLOCALISATION DES ÉTAPES (CDV v2)
+// `cityToLatLng` est un dictionnaire de ~220 villes FRANÇAISES : « Lisbonne »,
+// « Kyoto » ou le nom d'un spot n'y figurent pas → l'étape disparaissait
+// simplement de la carte. On stocke désormais de VRAIES coordonnées :
+//   1. GPS de l'appareil (bouton « 📍 Ma position ») — précis, instantané ;
+//   2. sinon géocodage Nominatim mondial du nom saisi (en tâche de fond) ;
+//   3. sinon repli sur le dictionnaire (rétro-compat des étapes existantes).
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Coordonnées d'une étape (live OU carnet), quelle que soit sa forme.
+function cdvStepLatLng(s) {
+  if (!s) return null;
+  if (typeof s.lat === "number" && typeof s.lng === "number") return [s.lat, s.lng];
+  var name = s.city || s.place || "";
+  return (name && typeof cityToLatLng === "function") ? cityToLatLng(name) : null;
+}
+
+// Cache de géocodage (mémoire + localStorage) : Nominatim demande de ne pas
+// marteler son service, et un même lieu revient d'étape en étape.
+function _cdvGeoCache() {
+  if (!window._cdvGeoCacheObj) {
+    try { window._cdvGeoCacheObj = JSON.parse(localStorage.getItem("passio_cdv_geo_v1") || "{}"); }
+    catch (e) { window._cdvGeoCacheObj = {}; }
+  }
+  return window._cdvGeoCacheObj;
+}
+function _cdvGeoCacheSet(key, val) {
+  var c = _cdvGeoCache();
+  c[key] = val;
+  try { localStorage.setItem("passio_cdv_geo_v1", JSON.stringify(c)); } catch (e) {}
+}
+
+// Géocode un nom de lieu (monde entier) → {lat,lng} ou null. Best-effort.
+async function cdvGeocodePlace(name) {
+  var key = String(name || "").trim().toLowerCase();
+  if (!key) return null;
+  var cache = _cdvGeoCache();
+  if (cache[key] !== undefined) return cache[key];
+  var res = null;
+  try {
+    if (typeof _geocodeAddress === "function") res = await _geocodeAddress(key);
+  } catch (e) { res = null; }
+  // Repli dictionnaire France si le réseau échoue.
+  if (!res && typeof cityToLatLng === "function") {
+    var ll = cityToLatLng(key);
+    if (ll) res = { lat: ll[0], lng: ll[1] };
+  }
+  _cdvGeoCacheSet(key, res);
+  return res;
+}
+
+// Position GPS de l'appareil pour l'étape en cours de saisie. Remplit aussi le
+// champ « Où es-tu ? » par géocodage inverse s'il est vide.
+var _stepLat = null, _stepLng = null;
+function cdvUseMyPosition() {
+  var btn = document.getElementById("cdvGeoBtn");
+  if (!navigator.geolocation) { toast("Géolocalisation indisponible sur cet appareil"); return; }
+  if (btn) { btn.disabled = true; btn.textContent = "📍 Localisation…"; }
+  navigator.geolocation.getCurrentPosition(function (pos) {
+    _stepLat = pos.coords.latitude;
+    _stepLng = pos.coords.longitude;
+    if (btn) { btn.disabled = false; btn.textContent = "📍 Position enregistrée ✓"; btn.classList.add("active"); }
+    toast("📍 Position enregistrée");
+    var inp = document.getElementById("liveStepCity");
+    if (inp && !inp.value.trim()) _cdvReverseGeocode(_stepLat, _stepLng, inp);
+  }, function () {
+    if (btn) { btn.disabled = false; btn.textContent = "📍 Ma position"; }
+    toast("Position refusée ou indisponible");
+  }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
+}
+
+// Géocodage INVERSE : coordonnées → nom de lieu lisible (pré-remplit le champ).
+// ⚠️ Passe par passioReverseGeocode (BAN + Photon, gratuits et sans clé) : l'appel
+// direct à Nominatim qui existait ici est désormais BLOQUÉ par la CSP de prod, en
+// plus d'enfreindre sa politique d'usage. (Migré le 2026-07-21.)
+async function _cdvReverseGeocode(lat, lng, inputEl) {
+  try {
+    if (typeof passioReverseGeocode !== "function") return;
+    var r = await passioReverseGeocode(lat, lng);
+    var name = (r && (r.city || r.name)) || "";
+    if (name && inputEl && !inputEl.value.trim()) inputEl.value = name;
+  } catch (e) {}
+}
+
+// Complète en tâche de fond les coordonnées d'une étape enregistrée sans GPS,
+// puis rafraîchit la carte si le viewer est ouvert. Ne bloque JAMAIS la
+// publication : l'étape part tout de suite, la carte se précise après.
+async function _cdvBackfillStepCoords(liveId, stepId, name) {
+  var geo = await cdvGeocodePlace(name);
+  if (!geo) return;
+  var lives = getCdvLives();
+  var live = lives.find(function (l) { return l.id === liveId; });
+  if (!live) return;
+  var st = (live.steps || []).find(function (s) { return s.id === stepId; });
+  if (!st || typeof st.lat === "number") return;
+  st.lat = geo.lat; st.lng = geo.lng;
+  saveCdvLives(lives);
+  if (typeof supaUpdateCdvLiveStepCoords === "function") supaUpdateCdvLiveStepCoords(stepId, geo.lat, geo.lng);
+  if (document.querySelector('.modal[data-live-id="' + liveId + '"]')) openCdvLiveViewer(liveId);
+}
+
+// Idem pour les étapes d'un CARNET : géocode tous les lieux non résolus puis
+// re-rend le viewer (les coordonnées sont persistées dans le post → jsonb vlog).
+async function _cdvBackfillCarnetCoords(post) {
+  if (!post || !Array.isArray(post.steps)) return;
+  var changed = false;
+  for (var i = 0; i < post.steps.length; i++) {
+    var s = post.steps[i];
+    if (!s || typeof s.lat === "number" || !s.place) continue;
+    var geo = await cdvGeocodePlace(s.place);
+    if (geo) { s.lat = geo.lat; s.lng = geo.lng; changed = true; }
+  }
+  if (!changed) return;
+  try { saveState(); } catch (e) {}
+  var vw = document.getElementById("vlogViewer");
+  if (vw && vw.classList.contains("open") && vw.getAttribute("data-current-post") === post.id) openVlogViewer(post.id);
 }
 
 // Ouvre la cible d'un lien partagé #cdv-live-<id> / #carnet-<id>.
@@ -2033,6 +2522,14 @@ function renderCdvScreen() {
   const liveListEl = document.getElementById("cdvLiveList");
   if (liveListEl) liveListEl.innerHTML = "";
 
+  // Bouton « Mes lieux » : visible seulement quand la collection n'est pas vide.
+  const spBtn = document.getElementById("cdvSavedPlacesBtn");
+  if (spBtn) {
+    const n = savedPlaces().length;
+    spBtn.style.display = n ? "inline-flex" : "none";
+    spBtn.textContent = "📍 Mes lieux (" + n + ")";
+  }
+
   // Sync filter pills (multi-select)
   document.querySelectorAll("#cdvFilterRow .pill").forEach(p => {
     const filterType = p.getAttribute("data-cdvfilter");
@@ -2052,11 +2549,15 @@ function renderCdvScreen() {
 
   let livesHtml = "";
   let liveIdsShown = [];
-  if (wantLives) {
+  // « ⭐ Mes favoris » couvre aussi les voyages en direct sauvegardés.
+  if (wantLives || wantSaved) {
     const seenIds = new Set();
     const lives = getCdvLives()
       .filter(l => canSeeCdvLive(l))
-      .filter(l => (wantMine ? isMyLive(l) : true))
+      .filter(l => {
+        if (wantLives && (!wantMine || isMyLive(l))) return true;
+        return wantSaved && isLiveSaved(l.id);   // favoris : même sans le filtre Lives
+      })
       .filter(l => !q || _cdvLiveMatchesQuery(l, q))
       .filter(l => { if (seenIds.has(l.id)) return false; seenIds.add(l.id); return true; });
 
@@ -2254,8 +2755,8 @@ function _cdvActiveLiveCardHtml(l) {
     </div>
     ${steps.length ? `
       <div class="cdv-live-steps">
-        ${steps.slice(-5).map(s => `
-          <div class="cdv-live-step">
+        ${steps.slice(-5).map((s) => `
+          <div class="cdv-live-step" onclick="event.stopPropagation();openCdvStepStory('${l.id}', ${steps.indexOf(s)})" title="Voir en plein écran">
             <div class="cdv-live-step-emoji">${escapeHtml(s.emoji || "📍")}</div>
             <div class="cdv-live-step-city">${escapeHtml(s.city || "")}</div>
             <div class="cdv-live-step-time">${fmtTime(s.createdAt)}</div>
@@ -2263,7 +2764,7 @@ function _cdvActiveLiveCardHtml(l) {
       </div>` : `<div style="text-align:center;padding:10px;color:var(--muted);font-size:11px;">En attente de la première étape…</div>`}
     <div class="cdv-live-footer">
       <div class="cdv-live-count">👁 ${viewerCount} suivent</div>
-      ${isMyLive(l)
+      ${canEditLive(l)
         ? `<button class="cdv-live-follow-btn" onclick="event.stopPropagation();addCdvLiveStep('${l.id}')">+ Étape</button>`
         : `<button class="cdv-live-follow-btn" onclick="event.stopPropagation();toggleFollowCdvLive('${l.id}',this)" style="background:${isFollowing ? '#8b5cf6' : 'var(--border)'};color:${isFollowing ? '#fff' : 'var(--text)'};">${isFollowing ? '✓ En suivi' : '📡 Suivre'}</button>`}
     </div>
@@ -2293,6 +2794,7 @@ function _cdvLiveActionsHtml(l) {
     <span class="post-action" onclick="event.stopPropagation();openCommentSheet('${l.id}','${title}')">💬 ${commentThreadCount(l.comments)}</span>
     <span class="post-action" onclick="return reactCdvLivePicker('${l.id}', event);" title="Réagir">😊</span>
     <span class="post-action" onclick="event.stopPropagation();shareCdvLive('${l.id}')" title="Partager" aria-label="Partager">${shareIconSvg(18)}</span>
+    <span class="post-action" data-livesave="${l.id}" onclick="event.stopPropagation();toggleLiveSave('${l.id}', this)" title="${isLiveSaved(l.id) ? "Sauvegardé" : "Sauvegarder"}">${isLiveSaved(l.id) ? "⭐" : "☆"}</span>
     <span class="post-react-chip-holder" data-livechip="${l.id}" style="margin-left:auto;">${_liveReactChipHtml(l.id)}</span>
   </div>`;
 }
