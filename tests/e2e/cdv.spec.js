@@ -53,8 +53,11 @@ test.describe("CDV — carnets de voyage", () => {
     await page.evaluate(() => goTo("cdv"));
     await expect(page.locator("#screen-cdv")).toHaveClass(/active/);
     await expect(page.getByRole("button", { name: /Nouveau voyage/ })).toBeVisible();
-    // « Mes lieux » reste caché tant qu'aucun itinéraire n'a été enregistré.
-    await expect(page.locator("#cdvSavedPlacesBtn")).toBeHidden();
+    // « Mes lieux » et « Mon passeport » restent VISIBLES même à zéro (2026-07-22) :
+    // les masquer rendait ces deux fonctions introuvables pour qui ne les connaît
+    // pas — chacune a désormais un état vide qui explique à quoi elle sert.
+    await expect(page.locator("#cdvSavedPlacesBtn")).toBeVisible();
+    await expect(page.locator("#cdvPassportBtn")).toBeVisible();
   });
 
   test("l'éditeur de carnet vit dans l'écran CDV, PAS dans le Studio", async ({ page }) => {
@@ -432,10 +435,10 @@ test.describe("CDV v2 — réutiliser un itinéraire", () => {
     expect(places[0].lat).toBe(38.7);
     expect(places[0].fromTrip).toContain("Lisbonne");
 
-    // Le bouton « Mes lieux » n'apparaît que lorsque la collection existe.
+    // Le bouton porte le compteur dès qu'il y a des lieux.
     await page.evaluate(() => renderCdvScreen());
     await expect(page.locator("#cdvSavedPlacesBtn")).toBeVisible();
-    await expect(page.locator("#cdvSavedPlacesBtn")).toContainText("(2)");
+    await expect(page.locator("#cdvSavedPlacesBtn")).toContainText("· 2");
 
     // Pas de doublon si on ré-enregistre le même voyage.
     await page.evaluate((i) => saveItineraryPlaces(i, "live"), id);
@@ -465,6 +468,170 @@ test.describe("CDV v2 — réutiliser un itinéraire", () => {
     expect(places).toHaveLength(1);
     expect(places[0].name).toBe("Florence");
     expect(places[0].fromTrip).toBe("Toscane");
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MES LIEUX v2 (2026-07-22) — la liste d'envies : statut + actions + ajout manuel.
+// v1 était une liste morte (« on ne comprend pas à quoi ça sert ») ; ce qui la
+// rend utile, c'est de pouvoir COCHER un lieu visité et d'en SORTIR (étape,
+// événement, itinéraire).
+// ═══════════════════════════════════════════════════════════════════════════
+test.describe("CDV — Mes lieux (liste d'envies)", () => {
+  async function seedPlaces(page) {
+    await bootCdv(page);
+    return page.evaluate(() => {
+      state.user.savedPlaces = [
+        { id: "pl_a", name: "Lisbonne", note: "Alfama", status: "wish", fromTrip: "Portugal", lat: 38.7, lng: -9.1, country: "Portugal", at: 1 },
+        { id: "pl_b", name: "Cascais", note: "", status: "wish", fromTrip: "Portugal", at: 2 },
+      ];
+      saveState(); goTo("cdv"); renderCdvScreen();
+    });
+  }
+
+  test("l'état vide EXPLIQUE à quoi sert la liste au lieu d'être invisible", async ({ page }) => {
+    await bootCdv(page);
+    await page.evaluate(() => openSavedPlaces());
+    await expect(page.locator(".modal")).toContainText("liste d'envies");
+    await expect(page.locator(".modal")).toContainText("Enregistrer les lieux");
+    await expect(page.getByRole("button", { name: /Ajouter un lieu/ })).toBeVisible();
+  });
+
+  test("marquer un lieu visité bascule son statut sans le supprimer", async ({ page }) => {
+    await seedPlaces(page);
+    await page.evaluate(() => openSavedPlaces());
+    await page.evaluate(() => toggleSavedPlaceDone("pl_a"));
+    expect(await page.evaluate(() => savedPlaces().find(p => p.id === "pl_a").status)).toBe("done");
+    expect(await page.evaluate(() => savedPlaces().length)).toBe(2);
+    // Toggle inverse.
+    await page.evaluate(() => toggleSavedPlaceDone("pl_a"));
+    expect(await page.evaluate(() => savedPlaces().find(p => p.id === "pl_a").status)).toBe("wish");
+  });
+
+  test("les filtres À visiter / Visités et la recherche trient la liste", async ({ page }) => {
+    await seedPlaces(page);
+    await page.evaluate(() => {
+      state.user.savedPlaces.push({ id: "pl_c", name: "Porto", status: "done", fromTrip: "Portugal", at: 3 });
+      state.user.savedPlaces.push({ id: "pl_d", name: "Sintra", status: "wish", fromTrip: "Portugal", at: 4 });
+      saveState();
+      openSavedPlaces();
+    });
+    expect(await page.evaluate(() => _splVisiblePlaces().length)).toBe(4);
+    await page.evaluate(() => _splSetFilter("done"));
+    expect(await page.evaluate(() => _splVisiblePlaces().map(p => p.name))).toEqual(["Porto"]);
+    await page.evaluate(() => _splSetFilter("wish"));
+    expect(await page.evaluate(() => _splVisiblePlaces().length)).toBe(3);
+    await page.evaluate(() => { _splSetFilter("all"); _splSetQuery("sintra"); });
+    expect(await page.evaluate(() => _splVisiblePlaces().map(p => p.name))).toEqual(["Sintra"]);
+    await page.evaluate(() => _splSetQuery(""));
+  });
+
+  test("un lieu s'ajoute à la main et rejoint la liste immédiatement", async ({ page }) => {
+    await bootCdv(page);
+    await page.evaluate(() => { window.passioGeocode = async () => null; openAddSavedPlace(); });
+    await page.fill("#splNewName", "Cap Fréhel");
+    await page.fill("#splNewNote", "Coucher de soleil");
+    await page.getByRole("button", { name: /Ajouter à ma liste/ }).click();
+    await page.waitForTimeout(200);
+    const pl = await page.evaluate(() => savedPlaces());
+    expect(pl).toHaveLength(1);
+    expect(pl[0].name).toBe("Cap Fréhel");
+    expect(pl[0].status).toBe("wish");
+    // Et la modale « Mes lieux » est bien réaffichée avec le lieu.
+    await expect(page.locator("#splList")).toContainText("Cap Fréhel");
+  });
+
+  test("« Étape » exige un voyage en direct, puis pré-remplit le composeur", async ({ page }) => {
+    await seedPlaces(page);
+    // Sans live en cours : refus explicite, aucune modale d'étape.
+    await page.evaluate(() => addSavedPlaceToLive("pl_a"));
+    await expect(page.locator("#liveStepCity")).toHaveCount(0);
+
+    const id = await seedLive(page);
+    await page.evaluate(() => openSavedPlaces());
+    await page.evaluate(() => addSavedPlaceToLive("pl_a"));
+    await page.waitForTimeout(150);
+    await expect(page.locator("#liveStepCity")).toHaveValue("Lisbonne");
+    expect(await page.evaluate(() => _stepLat)).toBe(38.7);
+    expect(id).toBeTruthy();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PASSEPORT v2 (2026-07-22) — niveau, records, récap annuel, badges, partage.
+// ═══════════════════════════════════════════════════════════════════════════
+test.describe("CDV — Passeport", () => {
+  test("un passeport vierge explique la mécanique et propose de partir", async ({ page }) => {
+    await bootCdv(page);
+    await page.evaluate(() => openCdvPassport());
+    await expect(page.locator(".modal")).toContainText("passeport est encore vierge");
+    await expect(page.getByRole("button", { name: /Commencer un voyage/ })).toBeVisible();
+  });
+
+  test("les niveaux de voyageur progressent avec les km cumulés", async ({ page }) => {
+    await bootCdv(page);
+    const r = await page.evaluate(() => [
+      cdvTravelLevel(0).level.name,
+      cdvTravelLevel(600).level.name,
+      cdvTravelLevel(600).next.name,
+      cdvTravelLevel(600).remaining,
+      cdvTravelLevel(999999).next,
+    ]);
+    expect(r[0]).toBe("Premier départ");
+    expect(r[1]).toBe("Baroudeur");
+    expect(r[2]).toBe("Grand rouleur");
+    expect(r[3]).toBe(400);
+    expect(r[4]).toBeNull();   // dernier palier : plus de « prochain niveau »
+  });
+
+  test("le passeport agrège les voyages, leur niveau et le récap annuel", async ({ page }) => {
+    await bootCdv(page);
+    await seedLive(page, {
+      id: "live_pp", destination: "Portugal", createdAt: Date.UTC(2026, 2, 1),
+      steps: [
+        { id: "s1", city: "Lisbonne", country: "Portugal", photos: ["u"], lat: 38.72, lng: -9.14, createdAt: Date.UTC(2026, 2, 1) },
+        { id: "s2", city: "Porto", country: "Portugal", photos: [], lat: 41.15, lng: -8.61, createdAt: Date.UTC(2026, 2, 4) },
+      ],
+    });
+    const p = await page.evaluate(() => cdvPassportStats());
+    expect(p.trips).toHaveLength(1);
+    expect(p.km).toBeGreaterThan(250);          // Lisbonne → Porto ≈ 275 km
+    expect(p.cities.sort()).toEqual(["Lisbonne", "Porto"]);
+    expect(p.countries).toEqual(["Portugal"]);
+    expect(p.years[0].year).toBe(2026);
+    expect(p.years[0].trips).toBe(1);
+    expect(p.longest.id).toBe("live_pp");
+
+    await page.evaluate(() => openCdvPassport());
+    await expect(page.locator(".cdv-pp-hero")).toBeVisible();
+    await expect(page.locator(".cdv-pp-next")).toContainText(/Encore .* km avant|Niveau maximum/);
+    await expect(page.locator(".modal")).toContainText("Mes records");
+    await expect(page.locator(".modal")).toContainText("Plus long voyage");
+    await expect(page.locator(".cdv-pp-badges .cdv-pp-badge").first()).toBeVisible();
+    // Le bouton de l'écran CDV porte les km cumulés.
+    await page.evaluate(() => { closeModal(); renderCdvScreen(); });
+    await expect(page.locator("#cdvPassportBtn")).toContainText("km");
+  });
+
+  test("le partage du passeport produit un résumé chiffré", async ({ page }) => {
+    await bootCdv(page);
+    await seedLive(page, {
+      id: "live_share", destination: "Portugal",
+      steps: [
+        { id: "s1", city: "Lisbonne", country: "Portugal", lat: 38.72, lng: -9.14, createdAt: Date.now() },
+        { id: "s2", city: "Porto", country: "Portugal", lat: 41.15, lng: -8.61, createdAt: Date.now() },
+      ],
+    });
+    const txt = await page.evaluate(() => {
+      let captured = "";
+      navigator.share = undefined;
+      navigator.clipboard.writeText = (t) => { captured = t; return Promise.resolve(); };
+      shareCdvPassport();
+      return captured;
+    });
+    expect(txt).toContain("passeport PASSIO");
+    expect(txt).toMatch(/\d+ km/);
+    expect(txt).toContain("2 villes");
   });
 });
 

@@ -2281,12 +2281,38 @@ document.addEventListener("keydown", function (e) {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// LIEUX ENREGISTRÉS — « copier cet itinéraire »
-// Un carnet ne servait qu'à être lu : rien ne permettait de RÉUTILISER les
-// lieux d'un voyage qui a plu. On peut désormais capturer tout l'itinéraire en
-// un tap, le revoir sur une carte, et le transformer en événement IRL.
+// MES LIEUX — la LISTE D'ENVIES de voyage (refonte 2026-07-22)
+// ---------------------------------------------------------------------------
+// v1 n'était qu'une liste morte : on capturait les lieux d'un carnet et… rien.
+// Aucune raison d'y revenir, donc « on ne comprend pas à quoi ça sert ».
+// v2 en fait le pendant de la wishlist de Polarsteps / des « Saved » de Google
+// Maps : chaque lieu a un STATUT (à visiter → visité) et surtout des ACTIONS
+// qui le sortent de la liste — y aller (itinéraire), en faire une étape de mon
+// voyage en cours, ou organiser un événement IRL sur place.
+// Rien de nouveau en base : tout vit dans state.user.savedPlaces.
 // ═══════════════════════════════════════════════════════════════════════════
 function savedPlaces() { return (state.user && state.user.savedPlaces) || []; }
+
+// Statut d'un lieu. Les entrées de la v1 n'en ont pas → « à visiter » par défaut.
+function _splStatus(p) { return (p && p.status === "done") ? "done" : "wish"; }
+
+function savedPlacesStats() {
+  var list = savedPlaces(), wish = 0, done = 0, countries = {}, trips = {};
+  list.forEach(function (p) {
+    if (_splStatus(p) === "done") done++; else wish++;
+    if (p.country) countries[String(p.country).toLowerCase()] = p.country;
+    if (p.fromTrip) trips[p.fromTrip] = 1;
+  });
+  return {
+    total: list.length, wish: wish, done: done,
+    countries: Object.keys(countries).map(function (k) { return countries[k]; }),
+    trips: Object.keys(trips).length,
+  };
+}
+
+function _splFind(id) {
+  return savedPlaces().find(function (p) { return p.id === id; }) || null;
+}
 
 function saveItineraryPlaces(id, kind) {
   var src = kind === "live"
@@ -2306,8 +2332,10 @@ function saveItineraryPlaces(id, kind) {
     state.user.savedPlaces.push({
       id: "pl_" + uid(), name: name, note: (s.content || s.text || "").slice(0, 160),
       tip: s.tip || "", budget: s.budget || "", rating: s.rating || 0,
+      emoji: s.emoji || "\u{1F4CD}", country: s.country || "",
+      status: "wish",
       lat: ll ? ll[0] : null, lng: ll ? ll[1] : null,
-      fromTrip: from, fromId: id, at: Date.now(),
+      fromTrip: from, fromId: id, fromKind: kind === "live" ? "live" : "carnet", at: Date.now(),
     });
     added++;
   });
@@ -2321,40 +2349,233 @@ function saveItineraryPlaces(id, kind) {
 function removeSavedPlace(placeId) {
   state.user.savedPlaces = savedPlaces().filter(function (p) { return p.id !== placeId; });
   saveState();
-  openSavedPlaces();
+  _splRender();
   if (typeof renderCdvScreen === "function") { try { renderCdvScreen(); } catch (e) {} }
 }
 
-function openSavedPlaces() {
-  var places = savedPlaces();
-  if (!places.length) {
-    openModal('<div class="modal-handle"></div><div class="modal-title">📍 Mes lieux</div>'
-      + '<div class="empty" style="padding:20px;"><div class="empty-icon">🗺</div>'
-      + '<div class="empty-title">Aucun lieu enregistré</div>'
-      + '<div class="empty-text">Ouvre un carnet qui te plaît et tape « Enregistrer les lieux » : tu retrouveras tout ici, avec la carte.</div></div>');
+// « Je l'ai fait ✓ » — le geste qui transforme la liste en journal : sans lui,
+// une wishlist ne fait que grossir et finit par ne plus rien vouloir dire.
+function toggleSavedPlaceDone(placeId) {
+  var p = _splFind(placeId);
+  if (!p) return;
+  p.status = _splStatus(p) === "done" ? "wish" : "done";
+  p.doneAt = p.status === "done" ? Date.now() : 0;
+  saveState();
+  _splRender();
+  if (p.status === "done") toast("✅ " + p.name + " : visité !");
+}
+
+// Itinéraire : on ouvre l'app de cartes du téléphone. Les coordonnées priment
+// (un nom de spot est souvent ambigu), sinon on cherche le nom + le voyage.
+function _splMapsUrl(p) {
+  var q = (typeof p.lat === "number" && typeof p.lng === "number")
+    ? (p.lat + "," + p.lng)
+    : ((p.name || "") + (p.country ? " " + p.country : ""));
+  return "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(q);
+}
+function openSavedPlaceRoute(placeId) {
+  var p = _splFind(placeId);
+  if (!p) return;
+  window.open(_splMapsUrl(p), "_blank", "noopener");
+}
+
+// Transformer un lieu en ÉTAPE de mon voyage en cours : c'est le trajet naturel
+// « je l'avais repéré → j'y suis ». Le composeur d'étape est simplement
+// pré-rempli (nom + coordonnées connues).
+function addSavedPlaceToLive(placeId) {
+  var p = _splFind(placeId);
+  if (!p) return;
+  var mine = (typeof getCdvLives === "function" ? getCdvLives() : [])
+    .filter(function (l) { return l && l.status === "live" && isMyLive(l); });
+  if (!mine.length) {
+    toast("Démarre un voyage en direct pour y ajouter cette étape ✈️");
     return;
   }
+  closeModal();
+  addCdvLiveStep(mine[0].id);
+  setTimeout(function () {
+    var inp = document.getElementById("liveStepCity");
+    if (inp) inp.value = p.name;
+    if (typeof p.lat === "number") {
+      _stepLat = p.lat; _stepLng = p.lng;
+      var b = document.getElementById("cdvGeoBtn");
+      if (b) { b.classList.add("active"); b.textContent = "\u{1F4CD} Position du lieu ✓"; }
+    }
+    if (p.rating) { try { setStepRating(p.rating); } catch (e) {} }
+  }, 60);
+}
+
+// Organiser un événement IRL sur place : le lieu repéré devient une sortie.
+function createEventAtSavedPlace(placeId) {
+  var p = _splFind(placeId);
+  if (!p || typeof openCreateEvent !== "function") return;
+  closeModal();
+  openCreateEvent();
+  setTimeout(function () {
+    var venue = document.getElementById("evVenue");
+    var city = document.getElementById("evCity");
+    if (venue) venue.value = p.name;
+    if (city && p.name) city.value = p.name;
+    if (typeof p.lat === "number") window._evPickedCoords = { lat: p.lat, lng: p.lng };
+  }, 60);
+}
+
+/* --- Ajout manuel ---------------------------------------------------------
+   Une liste d'envies qu'on ne peut remplir qu'en copiant le carnet d'un autre
+   reste inutilisable : on doit pouvoir y jeter un lieu entendu ailleurs. Le
+   géocodage part en tâche de fond (le lieu apparaît tout de suite dans la
+   liste, il rejoint la carte quelques centaines de ms plus tard). */
+function openAddSavedPlace() {
+  openModal('<div class="modal-handle"></div>'
+    + '<div class="modal-title">\u{1F4CD} Ajouter un lieu</div>'
+    + '<div class="modal-subtitle">Un endroit dont on t\'a parlé, repéré ailleurs… garde-le ici pour ton prochain voyage.</div>'
+    + '<label class="field"><span>Nom du lieu *</span>'
+    + '<input type="text" class="input" id="splNewName" maxlength="70" placeholder="Cap Fréhel, Ryokan Kyoto, plage de Praia…"/></label>'
+    + '<label class="field"><span>Pourquoi ? (optionnel)</span>'
+    + '<textarea class="textarea" id="splNewNote" maxlength="200" placeholder="Coucher de soleil, prix, à faire tôt le matin…" style="min-height:64px;"></textarea></label>'
+    + '<div style="display:flex;gap:8px;margin-top:12px;">'
+    + '<button class="btn ghost" onclick="openSavedPlaces()">Annuler</button>'
+    + '<button class="btn primary" style="flex:1;" onclick="submitAddSavedPlace()">➕ Ajouter à ma liste</button></div>');
+  setTimeout(function () { var i = document.getElementById("splNewName"); if (i) i.focus(); }, 80);
+}
+
+async function submitAddSavedPlace() {
+  var nameEl = document.getElementById("splNewName");
+  var noteEl = document.getElementById("splNewNote");
+  var name = ((nameEl && nameEl.value) || "").trim();
+  if (!name) { toast("Donne un nom à ce lieu"); return; }
+  var pl = {
+    id: "pl_" + uid(), name: name, note: ((noteEl && noteEl.value) || "").trim().slice(0, 200),
+    tip: "", budget: "", rating: 0, emoji: "\u{1F4CD}", country: "", status: "wish",
+    lat: null, lng: null, fromTrip: "Ajouté à la main", fromId: "", at: Date.now(),
+  };
+  state.user.savedPlaces = savedPlaces().concat([pl]);
+  saveState();
+  toast("\u{1F4CD} " + name + " ajouté à ta liste");
+  openSavedPlaces();
+  if (typeof renderCdvScreen === "function") { try { renderCdvScreen(); } catch (e) {} }
+  try {
+    if (typeof passioGeocode === "function") {
+      var g = await passioGeocode(name);
+      if (g && typeof g.lat === "number") {
+        var target = _splFind(pl.id);
+        if (target) {
+          target.lat = g.lat; target.lng = g.lng; target.country = g.country || "";
+          saveState();
+          if (document.getElementById("splList")) _splRender();
+        }
+      }
+    }
+  } catch (e) {}
+}
+
+/* --- Rendu ---------------------------------------------------------------- */
+function _splSetFilter(f) { window._splFilter = f; _splRender(); }
+function _splSetQuery(q) { window._splQuery = String(q || "").toLowerCase().trim(); _splRender(); }
+
+function _splVisiblePlaces() {
+  var f = window._splFilter || "all";
+  var q = window._splQuery || "";
+  return savedPlaces().slice().reverse().filter(function (p) {
+    if (f === "wish" && _splStatus(p) !== "wish") return false;
+    if (f === "done" && _splStatus(p) !== "done") return false;
+    if (!q) return true;
+    return ((p.name || "") + " " + (p.fromTrip || "") + " " + (p.note || "")
+      + " " + (p.tip || "") + " " + (p.country || "")).toLowerCase().indexOf(q) > -1;
+  });
+}
+
+function _splCardHtml(p) {
+  var done = _splStatus(p) === "done";
+  var meta = [];
+  if (p.country) meta.push(cdvCountryFlag(p.country) + " " + escapeHtml(p.country));
+  if (p.fromTrip) meta.push(escapeHtml(p.fromTrip));
+  if (p.budget && p.budget !== "free") meta.push(escapeHtml(p.budget));
+  if (p.rating) meta.push("★".repeat(p.rating));
+  var jsId = escapeJsArg(p.id);
+  return '<div class="spl-card' + (done ? " done" : "") + '">'
+    + '<div class="spl-card-head">'
+    +   '<div class="spl-card-ico">' + escapeHtml(p.emoji || "\u{1F4CD}") + '</div>'
+    +   '<div style="flex:1;min-width:0;">'
+    +     '<div class="spl-card-name"><span>' + escapeHtml(p.name) + '</span>' + (done ? '<span class="spl-done-tag">✅ visité</span>' : "") + '</div>'
+    +     (meta.length ? '<div class="spl-card-meta">' + meta.join(" · ") + '</div>' : "")
+    +   '</div>'
+    +   '<button class="spl-del" onclick="removeSavedPlace(\'' + jsId + '\')" aria-label="Retirer de ma liste">\u{1F5D1}</button>'
+    + '</div>'
+    + (p.note ? '<div class="spl-card-note">' + escapeHtml(p.note) + '</div>' : "")
+    + (p.tip ? '<div class="spl-card-tip">\u{1F4A1} ' + escapeHtml(p.tip) + '</div>' : "")
+    + '<div class="spl-actions">'
+    +   '<button class="spl-act' + (done ? " on" : "") + '" onclick="toggleSavedPlaceDone(\'' + jsId + '\')">' + (done ? "↩ À visiter" : "✅ Visité") + '</button>'
+    +   '<button class="spl-act" onclick="openSavedPlaceRoute(\'' + jsId + '\')">\u{1F9ED} Y aller</button>'
+    +   '<button class="spl-act" onclick="addSavedPlaceToLive(\'' + jsId + '\')">\u{1F4E1} Étape</button>'
+    +   '<button class="spl-act" onclick="createEventAtSavedPlace(\'' + jsId + '\')">\u{1F389} Événement</button>'
+    + '</div>'
+    + '</div>';
+}
+
+function _splRender() {
+  var listEl = document.getElementById("splList");
+  if (!listEl) return;
+  var st = savedPlacesStats();
+
+  var statsEl = document.getElementById("splStats");
+  if (statsEl) {
+    statsEl.innerHTML = st.total
+      ? _cdvStatTilesHtml([
+          ["✨", st.wish, "à visiter"],
+          ["✅", st.done, "visité" + (st.done > 1 ? "s" : "")],
+          ["\u{1F30D}", st.countries.length, "pays"],
+        ], true)
+      : "";
+  }
+
+  var filtersEl = document.getElementById("splFilters");
+  if (filtersEl) {
+    var f = window._splFilter || "all";
+    filtersEl.innerHTML = st.total > 2
+      ? [["all", "Tout", st.total], ["wish", "✨ À visiter", st.wish], ["done", "✅ Visités", st.done]]
+          .map(function (o) {
+            return '<button class="pill' + (f === o[0] ? " active" : "") + '" onclick="_splSetFilter(\'' + o[0] + '\')">'
+              + escapeHtml(o[1]) + ' <b style="opacity:.6;">' + o[2] + '</b></button>';
+          }).join("")
+      : "";
+  }
+
+  if (!st.total) {
+    listEl.innerHTML = '<div class="empty" style="padding:18px 12px;"><div class="empty-icon">\u{1F5FA}</div>'
+      + '<div class="empty-title">Ta liste d\'envies est vide</div>'
+      + '<div class="empty-text">Ouvre le carnet ou le live d\'un voyage qui te plaît puis tape « Enregistrer les lieux » : chaque étape devient une adresse à retrouver ici — avec sa carte, son budget et la note du voyageur.<br><br>Tu peux aussi ajouter un lieu à la main juste en dessous.</div></div>';
+    return;
+  }
+
+  var vis = _splVisiblePlaces();
+  listEl.innerHTML = vis.length
+    ? vis.map(_splCardHtml).join("")
+    : '<div style="text-align:center;color:var(--muted);font-size:12px;padding:18px 0;">Aucun lieu ne correspond.</div>';
+}
+
+function openSavedPlaces() {
+  if (!window._splFilter) window._splFilter = "all";
+  window._splQuery = "";
+  var places = savedPlaces();
   var hasMap = places.some(function (p) { return typeof p.lat === "number"; });
   openModal(
     '<div class="modal-handle"></div>'
-    + '<span class="modal-close" onclick="closeModal()">×</span>'
-    + '<div class="modal-title">📍 Mes lieux <span style="font-size:12px;color:var(--muted);font-weight:600;">(' + places.length + ')</span></div>'
-    + (hasMap ? '<div class="vlog-mini-map" id="savedPlacesMap" style="margin-bottom:12px;"></div>' : '')
-    + '<div style="display:flex;flex-direction:column;gap:8px;">'
-    + places.slice().reverse().map(function (p) {
-        return '<div style="border:1px solid var(--border);border-radius:12px;padding:10px 12px;">'
-          + '<div style="display:flex;align-items:center;gap:8px;">'
-          +   '<div style="flex:1;min-width:0;"><div style="font-weight:700;font-size:13px;color:var(--text);">📍 ' + escapeHtml(p.name) + '</div>'
-          +   '<div style="font-size:11px;color:var(--muted);">' + escapeHtml(p.fromTrip || "") + (p.budget ? " · " + escapeHtml(p.budget) : "") + (p.rating ? " · " + "★".repeat(p.rating) : "") + '</div></div>'
-          +   '<span onclick="removeSavedPlace(\'' + p.id + '\')" style="cursor:pointer;color:#ef4444;font-size:12px;">🗑</span>'
-          + '</div>'
-          + (p.note ? '<div style="font-size:12px;color:var(--text-dim);margin-top:6px;line-height:1.45;">' + escapeHtml(p.note) + '</div>' : "")
-          + (p.tip ? '<div style="font-size:11px;color:var(--muted);margin-top:4px;">💡 ' + escapeHtml(p.tip) + '</div>' : "")
-          + '</div>';
-      }).join("")
+    + '<div class="modal-title">\u{1F4CD} Mes lieux</div>'
+    + '<div class="modal-subtitle">Ta liste d\'envies : les adresses repérées dans les voyages des autres, prêtes pour ton prochain départ.</div>'
+    + '<div id="splStats"></div>'
+    + (hasMap ? '<div class="vlog-mini-map" id="savedPlacesMap" style="margin-bottom:12px;"></div>' : "")
+    + (places.length > 5
+        ? '<input type="text" class="input" id="splSearch" placeholder="Rechercher un lieu, un voyage…" oninput="_splSetQuery(this.value)" style="margin-bottom:8px;"/>'
+        : "")
+    + '<div class="spl-filters" id="splFilters"></div>'
+    + '<div class="spl-list" id="splList"></div>'
+    + '<div style="display:flex;gap:8px;margin-top:12px;">'
+    +   '<button class="btn ghost" style="flex:1;" onclick="openAddSavedPlace()">➕ Ajouter un lieu</button>'
+    +   '<button class="btn ghost" onclick="closeModal()">Fermer</button>'
     + '</div>'
-    + '<button class="btn ghost block" style="margin-top:12px;" onclick="closeModal()">Fermer</button>'
   );
+  _splRender();
   if (hasMap) {
     setTimeout(function () {
       var el = document.getElementById("savedPlacesMap");
@@ -2737,21 +2958,27 @@ function renderCdvScreen() {
   const liveListEl = document.getElementById("cdvLiveList");
   if (liveListEl) liveListEl.innerHTML = "";
 
-  // Bouton « Mes lieux » : visible seulement quand la collection n'est pas vide.
+  // ⚠️ Les deux boutons sont désormais TOUJOURS visibles (2026-07-22) : les
+  // masquer tant que la collection était vide rendait ces deux fonctions
+  // invisibles pour ceux qui n'en avaient jamais entendu parler — or c'est
+  // justement l'état où il faut expliquer à quoi elles servent (chacune a un
+  // état vide pédagogique avec son CTA).
   const spBtn = document.getElementById("cdvSavedPlacesBtn");
   if (spBtn) {
     const n = savedPlaces().length;
-    spBtn.style.display = n ? "inline-flex" : "none";
-    spBtn.textContent = "📍 Mes lieux (" + n + ")";
+    spBtn.style.display = "inline-flex";
+    spBtn.textContent = n ? "📍 Mes lieux · " + n : "📍 Mes lieux";
   }
 
-  // Bouton « Passeport » : idem, seulement si j'ai au moins un voyage. Le libellé
-  // porte le chiffre qui donne envie de l'ouvrir (km cumulés, sinon nb de voyages).
+  // Le libellé du passeport porte le chiffre qui donne envie de l'ouvrir
+  // (km cumulés), sinon une invitation explicite.
   const ppBtn = document.getElementById("cdvPassportBtn");
   if (ppBtn) {
     const pp = cdvPassportStats();
-    ppBtn.style.display = pp.trips.length ? "inline-flex" : "none";
-    ppBtn.textContent = "🛂 Passeport" + (pp.km ? " · " + (pp.km >= 1000 ? (pp.km / 1000).toFixed(1).replace(".", ",") + "k" : pp.km) + " km" : "");
+    ppBtn.style.display = "inline-flex";
+    ppBtn.textContent = pp.km
+      ? "🛂 Passeport · " + _cdvKmLabel(pp.km) + " km"
+      : (pp.trips.length ? "🛂 Passeport · " + pp.trips.length + " voyage" + (pp.trips.length > 1 ? "s" : "") : "🛂 Mon passeport");
   }
 
   // Sync filter pills (multi-select)
@@ -3140,13 +3367,7 @@ function _cdvTripStatsHtml(st, compact) {
   }
   if (!tiles.length) return "";
 
-  var cells = tiles.map(function (t) {
-    return '<div class="cdv-stat">'
-      + '<div class="cdv-stat-ico">' + t[0] + '</div>'
-      + '<div class="cdv-stat-val">' + escapeHtml(String(t[1])) + '</div>'
-      + '<div class="cdv-stat-lbl">' + escapeHtml(t[2]) + '</div>'
-      + '</div>';
-  }).join("");
+  var cells = _cdvStatTilesHtml(tiles, compact, true);
 
   var flags = (!compact && st.countries.length)
     ? '<div class="cdv-stat-flags">' + st.countries.map(function (c) {
@@ -3155,6 +3376,22 @@ function _cdvTripStatsHtml(st, compact) {
     : "";
 
   return '<div class="cdv-stats' + (compact ? " compact" : "") + '">' + cells + '</div>' + flags;
+}
+
+// Rangée de tuiles chiffrées, réutilisable hors voyage (Mes lieux, passeport).
+// `tiles` = [[emoji, valeur, libellé], …]. `cellsOnly` sert à _cdvTripStatsHtml,
+// qui enveloppe lui-même dans .cdv-stats.
+function _cdvStatTilesHtml(tiles, compact, cellsOnly) {
+  var cells = (tiles || []).map(function (t) {
+    return '<div class="cdv-stat">'
+      + '<div class="cdv-stat-ico">' + t[0] + '</div>'
+      + '<div class="cdv-stat-val">' + escapeHtml(String(t[1])) + '</div>'
+      + '<div class="cdv-stat-lbl">' + escapeHtml(t[2]) + '</div>'
+      + '</div>';
+  }).join("");
+  if (cellsOnly) return cells;
+  if (!cells) return "";
+  return '<div class="cdv-stats' + (compact ? " compact" : "") + '">' + cells + '</div>';
 }
 
 // Complete en TACHE DE FOND le pays de chaque etape geolocalisee (geocodage
@@ -3250,20 +3487,88 @@ function cdvPassportStats() {
     st.countries.forEach(function (c) { countries[c.toLowerCase()] = c; });
   });
 
+  trips.sort(function (a, b) { return (b.at || 0) - (a.at || 0); });
+
+  // Agregats par ANNEE : « 2026 : 3 voyages, 1 240 km » est ce qui fait relire
+  // son passeport (le meme ressort que le recap annuel de Spotify).
+  var byYear = {};
+  trips.forEach(function (t) {
+    var y = t.at ? new Date(t.at).getFullYear() : 0;
+    if (!y) return;
+    if (!byYear[y]) byYear[y] = { year: y, trips: 0, km: 0, days: 0, countries: {} };
+    byYear[y].trips++;
+    byYear[y].km += t.stats.km;
+    byYear[y].days += t.stats.days;
+    t.stats.countries.forEach(function (c) { byYear[y].countries[c.toLowerCase()] = 1; });
+  });
+  var years = Object.keys(byYear).map(function (y) {
+    var o = byYear[y];
+    return { year: o.year, trips: o.trips, km: Math.round(o.km), days: o.days, countries: Object.keys(o.countries).length };
+  }).sort(function (a, b) { return b.year - a.year; });
+
+  // Le voyage « record » : celui qu'on montre en premier quand on partage.
+  var longest = trips.slice().sort(function (a, b) { return b.stats.km - a.stats.km; })[0] || null;
+
   return {
-    trips: trips.sort(function (a, b) { return (b.at || 0) - (a.at || 0); }),
+    trips: trips,
     km: Math.round(km), days: days, steps: steps, photos: photos,
     cities: Object.keys(cities).map(function (k) { return cities[k]; }),
     countries: Object.keys(countries).map(function (k) { return countries[k]; }),
+    years: years,
+    longest: (longest && longest.stats.km) ? longest : null,
   };
+}
+
+/* ---------------------------------------------------------------------------
+   NIVEAUX DE VOYAGEUR — la progression, pas juste un compteur.
+   Un chiffre brut (« 640 km ») ne dit pas si c'est beaucoup : un PALIER nommé et
+   la distance qui reste avant le suivant donnent un objectif. Entierement derive
+   des km cumules : rien n'est stocke, rien ne peut se desynchroniser.
+   ------------------------------------------------------------------------- */
+var CDV_TRAVEL_LEVELS = [
+  { km: 0,     emoji: "\u{1F331}", name: "Premier départ" },
+  { km: 100,   emoji: "\u{1F9ED}", name: "Curieux" },
+  { km: 500,   emoji: "\u{1F392}", name: "Baroudeur" },
+  { km: 1000,  emoji: "\u{1F6E3}", name: "Grand rouleur" },
+  { km: 3000,  emoji: "\u{2708}",  name: "Bourlingueur" },
+  { km: 10000, emoji: "\u{1F30D}", name: "Globe-trotteur" },
+  { km: 40000, emoji: "\u{1F30F}", name: "Tour du monde" },
+];
+
+function cdvTravelLevel(km) {
+  km = km || 0;
+  var cur = CDV_TRAVEL_LEVELS[0], next = null;
+  for (var i = 0; i < CDV_TRAVEL_LEVELS.length; i++) {
+    if (km >= CDV_TRAVEL_LEVELS[i].km) cur = CDV_TRAVEL_LEVELS[i];
+    else { next = CDV_TRAVEL_LEVELS[i]; break; }
+  }
+  var pct = next ? Math.round(((km - cur.km) / (next.km - cur.km)) * 100) : 100;
+  return { level: cur, next: next, pct: Math.max(2, Math.min(100, pct)), remaining: next ? next.km - km : 0 };
+}
+
+function _cdvKmLabel(km) {
+  return km >= 1000 ? (km / 1000).toFixed(1).replace(".", ",") + "k" : String(km);
 }
 
 function openCdvPassport() {
   var p = cdvPassportStats();
+
+  // Passeport vierge : on EXPLIQUE et on propose de partir, plutot qu'un toast
+  // qui laissait l'utilisateur devant une porte fermee sans savoir quoi faire.
   if (!p.trips.length) {
-    toast("Ton passeport se remplira des ton premier voyage ✈️");
+    openModal('<div class="modal-handle"></div>'
+      + '<div class="modal-title">\u{1F6C2} Mon passeport</div>'
+      + '<div class="modal-subtitle">Le récapitulatif de tout ce que tu as parcouru sur PASSIO.</div>'
+      + '<div class="empty" style="padding:18px 12px;"><div class="empty-icon">\u{1F30D}</div>'
+      + '<div class="empty-title">Ton passeport est encore vierge</div>'
+      + '<div class="empty-text">Dès ton premier voyage — un live en direct ou un carnet raconté après coup — PASSIO calcule tout seul tes kilomètres, tes jours sur la route, tes villes et tes pays à partir de tes étapes. Tu montes de niveau à mesure que tu roules.</div></div>'
+      + '<div style="display:flex;gap:8px;margin-top:8px;">'
+      + '<button class="btn primary" style="flex:1;" onclick="closeModal();' + (typeof openNewTripSheet === "function" ? "openNewTripSheet()" : "goTo(\'cdv\')") + '">✈️ Commencer un voyage</button>'
+      + '<button class="btn ghost" onclick="closeModal()">Fermer</button></div>');
     return;
   }
+
+  var lvl = cdvTravelLevel(p.km);
   var tripsHtml = p.trips.map(function (t) {
     var s = t.stats;
     var bits = [];
@@ -3288,16 +3593,127 @@ function openCdvPassport() {
     ? ""
     : '<div style="font-size:11px;color:var(--muted);text-align:center;padding:6px 0;">Les pays apparaissent dès que tes étapes sont géolocalisées \u{1F4CD}</div>';
 
-  openModal('<span class="modal-close" onclick="closeModal()">×</span>'
-    + '<div style="font-weight:800;font-size:18px;color:var(--text);margin-bottom:2px;">\u{1F6C2} Mon passeport</div>'
-    + '<div style="font-size:12px;color:var(--muted);margin-bottom:14px;">Tout ce que tu as parcouru sur PASSIO</div>'
+  // Carte de NIVEAU : le chiffre seul ne dit pas si c'est beaucoup — le palier
+  // nomme et la barre « il te reste X km » donnent un cap.
+  var heroHtml = '<div class="cdv-pp-hero">'
+    + '<div class="cdv-pp-hero-top">'
+    +   '<div class="cdv-pp-hero-ico">' + lvl.level.emoji + '</div>'
+    +   '<div style="flex:1;min-width:0;">'
+    +     '<div class="cdv-pp-hero-lvl">' + escapeHtml(lvl.level.name) + '</div>'
+    +     '<div class="cdv-pp-hero-km">' + _cdvKmLabel(p.km) + ' km parcourus · ' + p.trips.length + ' voyage' + (p.trips.length > 1 ? "s" : "") + '</div>'
+    +   '</div>'
+    + '</div>'
+    + '<div class="cdv-pp-bar"><i style="width:' + lvl.pct + '%;"></i></div>'
+    + '<div class="cdv-pp-next">' + (lvl.next
+        ? "Encore " + _cdvKmLabel(lvl.remaining) + " km avant « " + escapeHtml(lvl.next.name) + " » " + lvl.next.emoji
+        : "Niveau maximum atteint — respect \u{1F3C6}") + '</div>'
+    + '</div>';
+
+  // Villes : la preuve concrete derriere le compteur (« 12 villes » ne se
+  // visualise pas, « Lisbonne · Porto · Faro » oui).
+  var citiesHtml = p.cities.length
+    ? '<div class="cdv-pp-sec-title">\u{1F3D9} Mes villes</div>'
+      + '<div class="cdv-stat-flags">'
+      + p.cities.slice(0, 24).map(function (c) { return '<span>' + escapeHtml(c) + '</span>'; }).join("")
+      + (p.cities.length > 24 ? '<span>+' + (p.cities.length - 24) + '</span>' : "")
+      + '</div>'
+    : "";
+
+  // Records + recap annuel : ce qu'on relit et ce qu'on partage.
+  var recordsHtml = "";
+  if (p.longest) {
+    recordsHtml += '<div class="cdv-pp-rec" onclick="closeModal();'
+      + (p.longest.kind === "live" ? "openCdvLiveViewer('" : "openVlogViewer('") + escapeJsArg(p.longest.id) + '\')">'
+      + '<span class="cdv-pp-rec-k">\u{1F3C6} Plus long voyage</span>'
+      + '<span class="cdv-pp-rec-v">' + escapeHtml(p.longest.title) + ' · ' + p.longest.stats.km + ' km</span></div>';
+  }
+  if (p.days) {
+    recordsHtml += '<div class="cdv-pp-rec"><span class="cdv-pp-rec-k">\u{1F4C5} Jours sur la route</span>'
+      + '<span class="cdv-pp-rec-v">' + p.days + ' jour' + (p.days > 1 ? "s" : "") + '</span></div>';
+  }
+  if (p.photos) {
+    recordsHtml += '<div class="cdv-pp-rec"><span class="cdv-pp-rec-k">\u{1F4F7} Photos rapportées</span>'
+      + '<span class="cdv-pp-rec-v">' + p.photos + '</span></div>';
+  }
+  var nPlaces = (typeof savedPlaces === "function") ? savedPlaces().length : 0;
+  recordsHtml += '<div class="cdv-pp-rec" onclick="closeModal();openSavedPlaces()">'
+    + '<span class="cdv-pp-rec-k">\u{1F4CD} Lieux gardés pour plus tard</span>'
+    + '<span class="cdv-pp-rec-v">' + nPlaces + ' ›</span></div>';
+  if (recordsHtml) recordsHtml = '<div class="cdv-pp-sec-title">\u{1F3AF} Mes records</div>' + recordsHtml;
+
+  var yearsHtml = p.years.length > 1
+    ? '<div class="cdv-pp-sec-title">\u{1F5D3} Année par année</div>'
+      + p.years.map(function (y) {
+          var bits = [y.trips + " voyage" + (y.trips > 1 ? "s" : "")];
+          if (y.km) bits.push(y.km + " km");
+          if (y.countries) bits.push(y.countries + " pays");
+          return '<div class="cdv-pp-year"><b>' + y.year + '</b><span>' + escapeHtml(bits.join(" · ")) + '</span></div>';
+        }).join("")
+    : "";
+
+  // Badges de voyage : la progression VERROUILLEE est ce qui donne envie de
+  // repartir. Reutilise myBadges() (app-07) — aucun etat en plus.
+  var badgesHtml = "";
+  if (typeof myBadges === "function") {
+    var travelIds = { traveler: 1, globetrot: 1, long_haul: 1, explorer: 1 };
+    var bs = myBadges().filter(function (b) { return travelIds[b.id]; });
+    if (bs.length) {
+      badgesHtml = '<div class="cdv-pp-sec-title">\u{1F3C5} Mes badges de voyage</div>'
+        + '<div class="cdv-pp-badges">'
+        + bs.map(function (b) {
+            return '<div class="cdv-pp-badge' + (b.earned ? " on" : "") + '">'
+              + '<div class="cdv-pp-badge-ico">' + b.emoji + '</div>'
+              + '<div class="cdv-pp-badge-lbl">' + escapeHtml(b.label) + '</div>'
+              + '<div class="cdv-pp-badge-sub">' + (b.earned ? "Débloqué ✓" : b.have + " / " + b.goal) + '</div>'
+              + (b.earned ? "" : '<div class="cdv-pp-badge-bar"><i style="width:' + b.pct + '%;"></i></div>')
+              + '</div>';
+          }).join("")
+        + '</div>';
+    }
+  }
+
+  openModal('<div class="modal-handle"></div>'
+    + '<div class="modal-title">\u{1F6C2} Mon passeport</div>'
+    + '<div class="modal-subtitle">Tes voyages PASSIO additionnés : distance, jours, villes et pays sont calculés tout seuls à partir de tes étapes.</div>'
+    + heroHtml
     + _cdvTripStatsHtml({
         steps: p.steps, km: p.km, days: p.days, cities: p.cities,
         countries: p.countries, photos: p.photos, budget: "", geolocated: 1,
       })
     + flagsHtml
-    + '<div style="font-weight:800;font-size:13px;color:var(--text);margin:16px 0 8px;">✈️ Mes ' + p.trips.length + ' voyage' + (p.trips.length > 1 ? "s" : "") + '</div>'
-    + tripsHtml);
+    + citiesHtml
+    + recordsHtml
+    + yearsHtml
+    + badgesHtml
+    + '<div class="cdv-pp-sec-title">✈️ Mes ' + p.trips.length + ' voyage' + (p.trips.length > 1 ? "s" : "") + '</div>'
+    + tripsHtml
+    + '<div style="display:flex;gap:8px;margin-top:12px;">'
+    +   '<button class="btn primary" style="flex:1;" onclick="shareCdvPassport()">📤 Partager mon passeport</button>'
+    +   '<button class="btn ghost" onclick="closeModal()">Fermer</button>'
+    + '</div>');
+}
+
+// Partage : un passeport ne vaut que s'il se montre. Texte court, chiffré, prêt
+// à coller — navigator.share sur mobile, presse-papiers ailleurs.
+function shareCdvPassport() {
+  var p = cdvPassportStats();
+  var lvl = cdvTravelLevel(p.km);
+  var bits = [];
+  if (p.km) bits.push(p.km + " km");
+  if (p.trips.length) bits.push(p.trips.length + " voyage" + (p.trips.length > 1 ? "s" : ""));
+  if (p.cities.length) bits.push(p.cities.length + " ville" + (p.cities.length > 1 ? "s" : ""));
+  if (p.countries.length) bits.push(p.countries.length + " pays");
+  var txt = "\u{1F6C2} Mon passeport PASSIO — " + lvl.level.emoji + " " + lvl.level.name
+    + "\n" + bits.join(" · ")
+    + (p.countries.length ? "\n" + p.countries.map(cdvCountryFlag).join(" ") : "");
+  if (navigator.share) {
+    navigator.share({ title: "Mon passeport PASSIO", text: txt }).catch(function () {});
+    return;
+  }
+  try {
+    navigator.clipboard.writeText(txt);
+    toast("Passeport copié — colle-le où tu veux 📋");
+  } catch (e) { toast("Partage indisponible sur cet appareil"); }
 }
 
 /* ============================================================================
