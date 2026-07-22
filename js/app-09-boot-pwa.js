@@ -1562,6 +1562,73 @@ function pwaDismiss() {
   try { sessionStorage.setItem("passio_pwa_dismissed", "1"); } catch (e) {}
 }
 
+// ═══ Cadrage bas : hauteur RÉELLE du viewport (--app-vh, 2026-07-22) ═══
+// Bug corrigé : « certaines fois, à l'ouverture, la barre d'onglets est cachée
+// par la barre système du téléphone ». `100dvh` est résolu par plusieurs
+// navigateurs mobiles avec le GRAND viewport au tout premier paint (barre
+// d'URL / barre système considérées absentes) ; comme body est en
+// overflow:hidden, plus aucun scroll ni resize ne vient corriger ensuite et le
+// shell reste trop haut pour toute la session. On mesure donc nous-mêmes le
+// PLUS PETIT viewport visible et on l'impose via --app-vh (styles.css).
+function _measureAppVh() {
+  var h = window.innerHeight || document.documentElement.clientHeight || 0;
+  var vv = window.visualViewport;
+  // vv.height suit la barre d'URL ET la barre système : on prend le minimum.
+  // Ignoré si l'utilisateur a zoomé (pinch) : vv.height n'est alors plus le
+  // viewport de mise en page.
+  if (vv && (!vv.scale || vv.scale <= 1.05)) {
+    var vh = Math.round(vv.height);
+    if (vh > 0 && vh < h) h = vh;
+  }
+  return h;
+}
+
+function syncAppViewportHeight() {
+  var h = _measureAppVh();
+  if (!h) return;
+  var root = document.documentElement;
+  var prev = parseFloat(root.style.getPropertyValue("--app-vh")) || 0;
+  // Clavier virtuel ouvert : ne PAS figer une hauteur amputée (sinon le shell
+  // reste rétréci après la fermeture du clavier).
+  var ae = document.activeElement;
+  var typing = !!(ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.isContentEditable));
+  if (typing && prev && h < prev * 0.75) return;
+  if (Math.abs(h - prev) < 1) return;
+  root.style.setProperty("--app-vh", h + "px");
+}
+
+(function () {
+  var raf = 0;
+  function schedule() {
+    // Page cachée : rAF est GELÉ par le navigateur (une rotation ou une barre
+    // système apparue en arrière-plan ne serait jamais prise en compte) →
+    // mesure directe, il n'y a de toute façon aucun rendu à ménager.
+    if (document.hidden) { syncAppViewportHeight(); return; }
+    if (raf) return;
+    raf = requestAnimationFrame(function () { raf = 0; syncAppViewportHeight(); });
+  }
+  syncAppViewportHeight();
+  // Les navigateurs mobiles stabilisent leurs barres APRÈS le premier paint :
+  // quelques re-mesures différées valent mieux qu'une seule au chargement.
+  [60, 300, 900].forEach(function (d) { setTimeout(syncAppViewportHeight, d); });
+  window.addEventListener("resize", schedule);
+  window.addEventListener("orientationchange", function () { setTimeout(syncAppViewportHeight, 200); });
+  window.addEventListener("pageshow", schedule);
+  document.addEventListener("visibilitychange", function () { if (!document.hidden) schedule(); });
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener("resize", schedule);
+    window.visualViewport.addEventListener("scroll", schedule);
+  }
+  // Filet : certains navigateurs mobiles changent la géométrie SANS émettre de
+  // resize (c'est précisément le cas qui laissait la barre d'onglets sous la
+  // barre système). Au premier contact tactile on re-vérifie — une lecture de
+  // innerHeight, corrigée seulement en cas de divergence réelle.
+  document.addEventListener("touchstart", function () {
+    var cur = parseFloat(document.documentElement.style.getPropertyValue("--app-vh")) || 0;
+    if (!cur || Math.abs(_measureAppVh() - cur) > 2) schedule();
+  }, { passive: true });
+})();
+
 // ═══ En-tête du fil rétractable au scroll (refonte 2026-07-20) ═══
 // Descendre dans le fil replie filtres/moods/stories (classe .chrome-collapsed
 // sur .app-main, styles en fin de styles.css) ; remonter les réaffiche.
