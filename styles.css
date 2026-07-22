@@ -1269,7 +1269,16 @@
       animation: liveBar 2s linear infinite;
     }
     @keyframes liveBar { 0% { background-position: 0 0; } 100% { background-position: 200% 0; } }
-    .cdv-live-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+    /* ⋯ discret (modifier / supprimer un voyage). Reste au-dessus du dégradé
+       animé de la carte, et l'en-tête lui laisse la place à droite. */
+    .cdv-live-menu-btn {
+      position: absolute; top: 7px; right: 6px; z-index: 3;
+      width: 28px; height: 28px; border: none; background: none; cursor: pointer;
+      color: var(--muted); font-size: 17px; line-height: 1; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center; padding: 0;
+    }
+    .cdv-live-menu-btn:hover { background: var(--bg-deep); color: var(--text); }
+    .cdv-live-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; padding-right: 26px; }
     .cdv-live-badge { background: #ef4444; color: #fff; font-size: 9px; font-weight: 800; padding: 3px 8px; border-radius: 6px; animation: livePulse 1.5s ease infinite; }
     .cdv-pinned-live-title { font-weight: 800; font-size: 13px; color: var(--text); margin: 6px 0 8px; display: flex; align-items: center; gap: 6px; }
     .cdv-live-pinned { box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.15); }
@@ -7875,8 +7884,61 @@
    passeport une PROGRESSION (niveau + barre), les deux ressorts qui font
    revenir sur un récap de voyage.
    ========================================================================= */
+/* --- Les 3 entrées de l'écran CDV (2026-07-22) ---------------------------
+   Même gabarit pour les trois, largeur strictement égale, toute la largeur :
+   avant, le CTA prenait tout l'espace et les deux autres, en pastilles, se
+   tronquaient dès qu'un chiffre s'ajoutait à leur libellé. */
+.cdv-entry-row {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 8px; margin-bottom: 12px;
+}
+.cdv-entry {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 4px; min-width: 0; min-height: 62px; padding: 9px 6px;
+  border-radius: 14px; border: 1px solid var(--border); background: var(--bg-card);
+  color: var(--text); font-size: 11.5px; font-weight: 700; line-height: 1.2;
+  cursor: pointer; text-align: center;
+}
+.cdv-entry.primary {
+  border: none; background: var(--grad-hero); color: #fff;
+  box-shadow: 0 4px 12px rgba(124, 58, 237, 0.3);
+}
+.cdv-entry:active { transform: scale(0.97); }
+.cdv-entry-ico { font-size: 19px; line-height: 1; display: flex; align-items: center; justify-content: center; height: 22px; }
+.cdv-entry-lbl { display: block; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Le chiffre (lieux, km) vit sur SA ligne : collé au libellé il le faisait
+   déborder dès qu'il grandissait (« Passeport · 1 voyage » tronqué). */
+.cdv-entry-sub { display: block; width: 100%; font-size: 10px; font-weight: 700; opacity: 0.65; line-height: 1.2; }
+.cdv-entry-sub:empty { display: none; }
+
 .spl-filters { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
 .spl-filters:empty { display: none; }
+
+/* Les 3 tuiles SONT des filtres cumulables (2026-07-22) : elles affichaient
+   des chiffres sans être cliquables, alors que c'est là qu'on veut trier. */
+.spl-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin-bottom: 10px; }
+.spl-tile {
+  display: flex; flex-direction: column; align-items: center; gap: 1px;
+  padding: 8px 4px; min-height: 62px; cursor: pointer; text-align: center;
+  border: 1px solid var(--border); border-radius: 13px; background: var(--bg-card);
+}
+.spl-tile.on { border-color: var(--accent); background: rgba(124, 58, 237, 0.09); }
+.spl-tile:active { transform: scale(0.97); }
+.spl-tile-ico { font-size: 15px; line-height: 1.1; }
+.spl-tile-val { font-size: 16px; font-weight: 800; color: var(--text); line-height: 1.15; }
+.spl-tile.on .spl-tile-val { color: var(--accent); }
+.spl-tile-lbl { font-size: 10px; color: var(--muted); }
+
+.spl-map-legend { font-size: 10.5px; color: var(--muted); margin-bottom: 10px; text-align: center; }
+
+/* Repère commun carte ↔ liste. */
+.spl-card-num {
+  flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 800; color: #fff; background: var(--accent);
+  margin-top: 1px;
+}
+.spl-card-num.none { background: var(--bg-deep); color: var(--muted); border: 1px dashed var(--border); }
 .spl-list { display: flex; flex-direction: column; gap: 8px; }
 
 .spl-card {

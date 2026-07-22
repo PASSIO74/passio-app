@@ -2470,22 +2470,66 @@ async function submitAddSavedPlace() {
 }
 
 /* --- Rendu ---------------------------------------------------------------- */
-function _splSetFilter(f) { window._splFilter = f; _splRender(); }
+// Les 3 tuiles « À visiter / Visités / Pays » sont des FILTRES CUMULABLES
+// (2026-07-22) : elles affichaient des chiffres mais n'étaient pas cliquables,
+// alors que c'est exactement là qu'on a envie de trier. Sélection vide = tout.
+// « Pays » n'est pas un statut : la tuile déplie la liste des pays, eux-mêmes
+// multi-sélectionnables. Le filtrage vaut pour la LISTE **et** la CARTE.
+// ⚠️ Les Sets sont stockés sous des clés DIFFÉRENTES du nom des fonctions :
+// une `function X` de script classique EST `window.X`, donc `window._splStatusSel = new Set()`
+// écraserait la fonction elle-même dès le premier appel.
+function _splStatusSel() {
+  if (!(window._splSelStatus instanceof Set)) window._splSelStatus = new Set();
+  return window._splSelStatus;
+}
+function _splCountrySel() {
+  if (!(window._splSelCountry instanceof Set)) window._splSelCountry = new Set();
+  return window._splSelCountry;
+}
+function _splToggleStatus(s) {
+  var sel = _splStatusSel();
+  if (sel.has(s)) sel.delete(s); else sel.add(s);
+  _splRender();
+}
+function _splToggleCountriesPanel() {
+  window._splCountriesOpen = !window._splCountriesOpen;
+  _splRender();
+}
+function _splToggleCountry(c) {
+  var key = String(c || "").toLowerCase();
+  var sel = _splCountrySel();
+  if (sel.has(key)) sel.delete(key); else sel.add(key);
+  window._splCountriesOpen = true;
+  _splRender();
+}
+function _splClearFilters() {
+  _splStatusSel().clear(); _splCountrySel().clear();
+  window._splCountriesOpen = false;
+  _splRender();
+}
+// Compat : l'ancienne API à filtre unique (utilisée par la suite E2E).
+function _splSetFilter(f) {
+  var sel = _splStatusSel();
+  sel.clear();
+  if (f === "wish" || f === "done") sel.add(f);
+  window._splFilter = f;
+  _splRender();
+}
 function _splSetQuery(q) { window._splQuery = String(q || "").toLowerCase().trim(); _splRender(); }
 
 function _splVisiblePlaces() {
-  var f = window._splFilter || "all";
+  var st = _splStatusSel(), ct = _splCountrySel();
   var q = window._splQuery || "";
   return savedPlaces().slice().reverse().filter(function (p) {
-    if (f === "wish" && _splStatus(p) !== "wish") return false;
-    if (f === "done" && _splStatus(p) !== "done") return false;
+    if (st.size && !st.has(_splStatus(p))) return false;
+    if (ct.size && !ct.has(String(p.country || "").toLowerCase())) return false;
     if (!q) return true;
     return ((p.name || "") + " " + (p.fromTrip || "") + " " + (p.note || "")
       + " " + (p.tip || "") + " " + (p.country || "")).toLowerCase().indexOf(q) > -1;
   });
 }
 
-function _splCardHtml(p) {
+function _splCardHtml(p, num) {
   var done = _splStatus(p) === "done";
   var meta = [];
   if (p.country) meta.push(cdvCountryFlag(p.country) + " " + escapeHtml(p.country));
@@ -2493,8 +2537,15 @@ function _splCardHtml(p) {
   if (p.budget && p.budget !== "free") meta.push(escapeHtml(p.budget));
   if (p.rating) meta.push("★".repeat(p.rating));
   var jsId = escapeJsArg(p.id);
-  return '<div class="spl-card' + (done ? " done" : "") + '">'
+  // Le numéro REPREND celui du marqueur de la carte (même valeur, même ordre) :
+  // sans lui, impossible de savoir quelle épingle correspond à quelle ligne.
+  // Les lieux sans coordonnées n'ont pas d'épingle → pas de numéro.
+  var numHtml = num
+    ? '<div class="spl-card-num" title="Repère ' + num + ' sur la carte">' + num + '</div>'
+    : '<div class="spl-card-num none" title="Ce lieu n\'est pas encore placé sur la carte">·</div>';
+  return '<div class="spl-card' + (done ? " done" : "") + '"' + (num ? ' data-splnum="' + num + '"' : "") + '>'
     + '<div class="spl-card-head">'
+    +   numHtml
     +   '<div class="spl-card-ico">' + escapeHtml(p.emoji || "\u{1F4CD}") + '</div>'
     +   '<div style="flex:1;min-width:0;">'
     +     '<div class="spl-card-name"><span>' + escapeHtml(p.name) + '</span>' + (done ? '<span class="spl-done-tag">✅ visité</span>' : "") + '</div>'
@@ -2518,27 +2569,42 @@ function _splRender() {
   if (!listEl) return;
   var st = savedPlacesStats();
 
+  var statusSel = _splStatusSel(), countrySel = _splCountrySel();
+
+  // Les 3 tuiles SONT les filtres (multi-sélection).
   var statsEl = document.getElementById("splStats");
   if (statsEl) {
-    statsEl.innerHTML = st.total
-      ? _cdvStatTilesHtml([
-          ["✨", st.wish, "à visiter"],
-          ["✅", st.done, "visité" + (st.done > 1 ? "s" : "")],
-          ["\u{1F30D}", st.countries.length, "pays"],
-        ], true)
-      : "";
+    if (!st.total) { statsEl.innerHTML = ""; }
+    else {
+      var tile = function (key, ico, val, lbl, on, act) {
+        return '<button type="button" class="spl-tile' + (on ? " on" : "") + '" aria-pressed="' + (on ? "true" : "false")
+          + '" onclick="' + act + '"><div class="spl-tile-ico">' + ico + '</div>'
+          + '<div class="spl-tile-val">' + val + '</div>'
+          + '<div class="spl-tile-lbl">' + escapeHtml(lbl) + '</div></button>';
+      };
+      statsEl.innerHTML = '<div class="spl-tiles">'
+        + tile("wish", "✨", st.wish, "à visiter", statusSel.has("wish"), "_splToggleStatus('wish')")
+        + tile("done", "✅", st.done, "visité" + (st.done > 1 ? "s" : ""), statusSel.has("done"), "_splToggleStatus('done')")
+        + tile("country", "\u{1F30D}", st.countries.length, "pays", countrySel.size > 0 || window._splCountriesOpen, "_splToggleCountriesPanel()")
+        + '</div>';
+    }
   }
 
+  // Panneau des pays : ouvert par la tuile 🌍, chaque pays est cumulable.
   var filtersEl = document.getElementById("splFilters");
   if (filtersEl) {
-    var f = window._splFilter || "all";
-    filtersEl.innerHTML = st.total > 2
-      ? [["all", "Tout", st.total], ["wish", "✨ À visiter", st.wish], ["done", "✅ Visités", st.done]]
-          .map(function (o) {
-            return '<button class="pill' + (f === o[0] ? " active" : "") + '" onclick="_splSetFilter(\'' + o[0] + '\')">'
-              + escapeHtml(o[1]) + ' <b style="opacity:.6;">' + o[2] + '</b></button>';
-          }).join("")
-      : "";
+    var parts = [];
+    if ((window._splCountriesOpen || countrySel.size) && st.countries.length) {
+      parts = st.countries.slice().sort().map(function (c) {
+        var on = countrySel.has(String(c).toLowerCase());
+        return '<button class="pill' + (on ? " active" : "") + '" onclick="_splToggleCountry(\'' + escapeJsArg(c) + '\')">'
+          + cdvCountryFlag(c) + " " + escapeHtml(c) + '</button>';
+      });
+    }
+    if (statusSel.size || countrySel.size) {
+      parts.push('<button class="pill" onclick="_splClearFilters()">✕ Tout voir</button>');
+    }
+    filtersEl.innerHTML = parts.join("");
   }
 
   if (!st.total) {
@@ -2548,15 +2614,48 @@ function _splRender() {
     return;
   }
 
+  // Numérotation COMMUNE liste ↔ carte : on numérote les lieux géolocalisés
+  // dans l'ordre d'affichage, et la carte reçoit exactement ces numéros.
   var vis = _splVisiblePlaces();
+  var pts = [], n = 0, cards = [];
+  vis.forEach(function (p) {
+    var num = 0;
+    if (typeof p.lat === "number" && typeof p.lng === "number") {
+      num = ++n;
+      pts.push({ place: p.name, dayNum: num, ll: [p.lat, p.lng] });
+    }
+    cards.push(_splCardHtml(p, num));
+  });
   listEl.innerHTML = vis.length
-    ? vis.map(_splCardHtml).join("")
-    : '<div style="text-align:center;color:var(--muted);font-size:12px;padding:18px 0;">Aucun lieu ne correspond.</div>';
+    ? cards.join("")
+    : '<div style="text-align:center;color:var(--muted);font-size:12px;padding:18px 0;">Aucun lieu ne correspond à ces filtres.</div>';
+  _splSyncMap(pts);
+}
+
+// La carte suit les filtres. Débouncée + signature : `_initCdvLiveMap` DÉTRUIT
+// et reconstruit la carte, ce qui serait insoutenable à chaque frappe dans la
+// recherche (et referait clignoter les tuiles pour rien).
+function _splSyncMap(pts) {
+  var el = document.getElementById("savedPlacesMap");
+  if (!el) return;
+  if (!pts.length) { el.style.display = "none"; el._splSig = ""; return; }
+  el.style.display = "";
+  var sig = pts.map(function (p) { return p.dayNum + ":" + p.ll[0] + "," + p.ll[1]; }).join("|");
+  if (el._splSig === sig) return;
+  el._splSig = sig;
+  clearTimeout(window._splMapTimer);
+  window._splMapTimer = setTimeout(function () {
+    var target = document.getElementById("savedPlacesMap");
+    if (!target || target._splSig !== sig) return;
+    if (typeof _initCdvLiveMap === "function") _initCdvLiveMap(target, pts, { connect: false });
+  }, 220);
 }
 
 function openSavedPlaces() {
   if (!window._splFilter) window._splFilter = "all";
   window._splQuery = "";
+  _splStatusSel().clear(); _splCountrySel().clear();
+  window._splCountriesOpen = false;
   var places = savedPlaces();
   var hasMap = places.some(function (p) { return typeof p.lat === "number"; });
   openModal(
@@ -2564,7 +2663,10 @@ function openSavedPlaces() {
     + '<div class="modal-title">\u{1F4CD} Mes lieux</div>'
     + '<div class="modal-subtitle">Ta liste d\'envies : les adresses repérées dans les voyages des autres, prêtes pour ton prochain départ.</div>'
     + '<div id="splStats"></div>'
-    + (hasMap ? '<div class="vlog-mini-map" id="savedPlacesMap" style="margin-bottom:12px;"></div>' : "")
+    + (hasMap
+        ? '<div class="vlog-mini-map" id="savedPlacesMap" style="margin-bottom:6px;"></div>'
+          + '<div class="spl-map-legend">Les numéros des épingles correspondent aux lieux listés ci-dessous.</div>'
+        : "")
     + (places.length > 5
         ? '<input type="text" class="input" id="splSearch" placeholder="Rechercher un lieu, un voyage…" oninput="_splSetQuery(this.value)" style="margin-bottom:8px;"/>'
         : "")
@@ -2575,16 +2677,9 @@ function openSavedPlaces() {
     +   '<button class="btn ghost" onclick="closeModal()">Fermer</button>'
     + '</div>'
   );
+  // La carte est peuplée par `_splRender` (mêmes numéros que la liste, et elle
+  // suit les filtres) — plus d'initialisation séparée qui divergeait.
   _splRender();
-  if (hasMap) {
-    setTimeout(function () {
-      var el = document.getElementById("savedPlacesMap");
-      if (!el) return;
-      var pts = places.filter(function (p) { return typeof p.lat === "number"; })
-        .map(function (p, i) { return { place: p.name, dayNum: i + 1, ll: [p.lat, p.lng] }; });
-      if (typeof _initCdvLiveMap === "function") _initCdvLiveMap(el, pts, { connect: false });
-    }, 200);
-  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -2938,6 +3033,7 @@ function _pinnedLiveCardHtml(l) {
   const viewerCount = cdvLiveFollowerCount(l);
   const nSteps = (l.steps || []).length;
   return `<div class="cdv-live-card cdv-live-pinned" onclick="openCdvLiveViewer('${l.id}')" style="border-color:rgba(239,68,68,0.35);position:relative;">
+    ${_cdvLiveMenuBtnHtml(l)}
     <div class="cdv-live-header">
       <span class="cdv-live-badge">🔴 EN DIRECT</span>
       <div style="flex:1;min-width:0;">
@@ -2963,11 +3059,14 @@ function renderCdvScreen() {
   // invisibles pour ceux qui n'en avaient jamais entendu parler — or c'est
   // justement l'état où il faut expliquer à quoi elles servent (chacune a un
   // état vide pédagogique avec son CTA).
+  // ⚠️ Seul le LIBELLÉ est réécrit (l'icône du bouton est un span à part, et
+  // celle du passeport un SVG : un textContent sur le bouton les effacerait).
   const spBtn = document.getElementById("cdvSavedPlacesBtn");
   if (spBtn) {
     const n = savedPlaces().length;
-    spBtn.style.display = "inline-flex";
-    spBtn.textContent = n ? "📍 Mes lieux · " + n : "📍 Mes lieux";
+    spBtn.style.display = "";
+    const lbl = document.getElementById("cdvSavedPlacesLbl");
+    if (lbl) lbl.textContent = n ? n + " lieu" + (n > 1 ? "x" : "") : "";
   }
 
   // Le libellé du passeport porte le chiffre qui donne envie de l'ouvrir
@@ -2975,10 +3074,11 @@ function renderCdvScreen() {
   const ppBtn = document.getElementById("cdvPassportBtn");
   if (ppBtn) {
     const pp = cdvPassportStats();
-    ppBtn.style.display = "inline-flex";
-    ppBtn.textContent = pp.km
-      ? "🛂 Passeport · " + _cdvKmLabel(pp.km) + " km"
-      : (pp.trips.length ? "🛂 Passeport · " + pp.trips.length + " voyage" + (pp.trips.length > 1 ? "s" : "") : "🛂 Mon passeport");
+    ppBtn.style.display = "";
+    const plbl = document.getElementById("cdvPassportLbl");
+    if (plbl) plbl.textContent = pp.km
+      ? _cdvKmLabel(pp.km) + " km"
+      : (pp.trips.length ? pp.trips.length + " voyage" + (pp.trips.length > 1 ? "s" : "") : "");
   }
 
   // Sync filter pills (multi-select)
@@ -3194,7 +3294,8 @@ function _cdvActiveLiveCardHtml(l) {
   const isFollowing = (Array.isArray(l.followers) ? l.followers : []).includes(myId);
   const steps = l.steps || [];
   return `<div class="cdv-live-card" onclick="openCdvLiveViewer('${l.id}')" style="border-color:rgba(239,68,68,0.3);position:relative;">
-    ${isNew ? '<div style="position:absolute;top:10px;right:10px;background:#ef4444;color:#fff;font-size:9px;font-weight:700;padding:3px 7px;border-radius:12px;">NOUVEAU</div>' : ''}
+    ${_cdvLiveMenuBtnHtml(l)}
+    ${isNew ? '<div style="position:absolute;top:11px;right:38px;background:#ef4444;color:#fff;font-size:9px;font-weight:700;padding:3px 7px;border-radius:12px;">NOUVEAU</div>' : ''}
     <div class="cdv-live-header">
       <span class="cdv-live-badge">🔴 EN DIRECT</span>
       <div style="flex:1;">
@@ -3223,7 +3324,8 @@ function _cdvActiveLiveCardHtml(l) {
 
 function _cdvEndedLiveCardHtml(l) {
   const steps = l.steps || [];
-  return `<div class="cdv-live-card" onclick="openCdvLiveViewer('${l.id}')" style="border-color:var(--border);">
+  return `<div class="cdv-live-card" onclick="openCdvLiveViewer('${l.id}')" style="border-color:var(--border);position:relative;">
+    ${_cdvLiveMenuBtnHtml(l)}
     <div class="cdv-live-header">
       <span style="font-size:10px;font-weight:700;color:var(--muted);background:var(--bg-deep);padding:3px 8px;border-radius:6px;">✅ TERMINÉ</span>
       <div style="flex:1;">
@@ -3233,6 +3335,122 @@ function _cdvEndedLiveCardHtml(l) {
     </div>
     ${_cdvLiveActionsHtml(l)}
   </div>`;
+}
+
+// ── ⋯ Options d'un live (2026-07-22) ────────────────────────────────────────
+// Un live n'était ni modifiable ni supprimable : une faute de frappe dans la
+// destination ou un live lancé par erreur restaient là pour toujours. Le ⋯ est
+// DISCRET (coin haut droit, gris) et n'ouvre pas le viewer (stopPropagation).
+function _cdvLiveMenuBtnHtml(l) {
+  return `<button class="cdv-live-menu-btn" onclick="event.stopPropagation();openCdvLiveMenu('${l.id}')"
+    title="Options" aria-label="Options du voyage">⋯</button>`;
+}
+
+function openCdvLiveMenu(liveId) {
+  const live = getCdvLives().find(l => l.id === liveId);
+  if (!live) return;
+  // ⚠️ La RLS de `cdv_lives` limite UPDATE/DELETE à l'AUTEUR : proposer
+  // « Modifier »/« Supprimer » à un co-voyageur donnerait un échec silencieux
+  // côté serveur (0 ligne touchée) alors que l'app dirait « mis à jour ».
+  // Un co-voyageur garde l'ajout d'étape (sa propre ligne, policy owner).
+  const mine = isMyLive(live);
+  const collab = !mine && typeof canEditLive === "function" && canEditLive(live);
+  const ended = live.status === "ended";
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">${escapeHtml(live.destination || "Voyage")}</div>
+    <div class="modal-subtitle">${ended ? "Voyage terminé" : "Voyage en direct"} · ${(live.steps || []).length} étape${(live.steps || []).length > 1 ? "s" : ""}</div>
+    ${mine ? `
+      <button class="btn ghost block" style="margin-bottom:8px;" onclick="editCdvLive('${liveId}')">✏️ Modifier le voyage</button>
+      ${!ended ? `<button class="btn ghost block" style="margin-bottom:8px;" onclick="addCdvLiveStep('${liveId}')">➕ Ajouter une étape</button>
+      <button class="btn ghost block" style="margin-bottom:8px;" onclick="confirmEndCdvLive('${liveId}')">⏹ Terminer le direct</button>` : ""}
+      <button class="btn ghost block" style="margin-bottom:8px;color:#ef4444;" onclick="confirmDeleteCdvLive('${liveId}')">🗑 Supprimer le voyage</button>
+    ` : `
+      ${collab && !ended ? `<button class="btn ghost block" style="margin-bottom:8px;" onclick="addCdvLiveStep('${liveId}')">➕ Ajouter une étape</button>` : ""}
+      <button class="btn ghost block" style="margin-bottom:8px;" onclick="shareCdvLive('${liveId}')">🔗 Partager</button>
+      ${collab ? "" : `<button class="btn ghost block" style="margin-bottom:8px;color:#ef4444;" onclick="reportCdvLive('${liveId}')">⚠️ Signaler ce voyage</button>`}
+    `}
+    <button class="btn ghost block" onclick="closeModal()">Annuler</button>
+  `);
+}
+
+// Modifier destination / description / visibilité. Les étapes ne bougent pas.
+function editCdvLive(liveId) {
+  const live = getCdvLives().find(l => l.id === liveId);
+  if (!live || !isMyLive(live)) { toast("Voyage introuvable"); return; }
+  _cdvVisibility = live.visibility || "public";
+  _cdvDuration = live.duration || "semaine";
+  const vis = [["public", "🌍 Public"], ["followers", "👥 Abonnés"], ["private", "🔒 Privé"]];
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">✏️ Modifier le voyage</div>
+    <label class="field"><span>🌍 Destination</span>
+      <input type="text" class="input" id="cdvEditDest" maxlength="60" value="${escapeHtml(live.destination || "")}"/>
+    </label>
+    <label class="field"><span>📝 Description</span>
+      <textarea class="textarea" id="cdvEditDesc" maxlength="300" style="min-height:60px;">${escapeHtml(live.description || "")}</textarea>
+    </label>
+    <label class="field"><span>🔒 Visibilité</span>
+      <div style="display:flex;gap:8px;">
+        ${vis.map(v => `<button class="pill cdv-vis-btn${_cdvVisibility === v[0] ? " active" : ""}" onclick="selectCdvVisibility(this,'${v[0]}')">${v[1]}</button>`).join("")}
+      </div>
+    </label>
+    <div style="display:flex;gap:8px;margin-top:14px;">
+      <button class="btn ghost" onclick="closeModal()">Annuler</button>
+      <button class="btn primary" style="flex:1;" onclick="saveCdvLiveEdits('${liveId}')">Enregistrer</button>
+    </div>
+  `);
+}
+
+function saveCdvLiveEdits(liveId) {
+  const lives = getCdvLives();
+  const live = lives.find(l => l.id === liveId);
+  if (!live) return;
+  const dest = (document.getElementById("cdvEditDest")?.value || "").trim();
+  if (!dest) { toast("Indique une destination"); return; }
+  live.destination = dest;
+  live.description = (document.getElementById("cdvEditDesc")?.value || "").trim();
+  live.visibility = _cdvVisibility;
+  live.updatedAt = Date.now();
+  saveCdvLives(lives);
+  if (typeof supaUpdateCdvLive === "function") {
+    supaUpdateCdvLive(liveId, {
+      destination: live.destination, description: live.description, visibility: live.visibility,
+    });
+  }
+  closeModal();
+  toast("✅ Voyage mis à jour");
+  renderCdvLives();
+  if (typeof renderCdvScreen === "function") { try { renderCdvScreen(); } catch (e) {} }
+}
+
+// Supprimer est IRRÉVERSIBLE (étapes, commentaires, réactions partent avec).
+function confirmDeleteCdvLive(liveId) {
+  const live = getCdvLives().find(l => l.id === liveId);
+  if (!live || !isMyLive(live)) return;
+  const n = (live.steps || []).length;
+  openModal(`
+    <div class="modal-handle"></div>
+    <div class="modal-title">Supprimer ce voyage ?</div>
+    <div style="font-size:13px;color:var(--text-dim);line-height:1.55;margin-bottom:14px;">
+      « ${escapeHtml(live.destination || "Voyage")} », ses ${n} étape${n > 1 ? "s" : ""} et les commentaires
+      seront <b>définitivement supprimés</b>, pour toi comme pour ceux qui te suivent.
+    </div>
+    <button class="btn block" style="margin-bottom:8px;background:#ef4444;color:#fff;" onclick="deleteCdvLive('${liveId}')">🗑 Supprimer définitivement</button>
+    <button class="btn ghost block" onclick="closeModal()">Annuler</button>
+  `);
+}
+
+function deleteCdvLive(liveId) {
+  const lives = getCdvLives();
+  const live = lives.find(l => l.id === liveId);
+  if (!live || !isMyLive(live)) return;
+  saveCdvLives(lives.filter(l => l.id !== liveId));
+  if (typeof supaDeleteCdvLive === "function") supaDeleteCdvLive(liveId);
+  closeModal();
+  toast("🗑 Voyage supprimé");
+  renderCdvLives();
+  if (typeof renderCdvScreen === "function") { try { renderCdvScreen(); } catch (e) {} }
 }
 
 // Barre d'engagement commune aux cartes live (charte unifiée du fil).

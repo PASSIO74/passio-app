@@ -17,7 +17,8 @@ async function bootCdv(page) {
     // Neutralise TOUTE la sync CDV : la suite doit rester locale.
     ["supaPublishCdvLive", "supaAddCdvLiveStep", "supaUpdateCdvLiveStep", "supaDeleteCdvLiveStep",
       "supaAddCdvLiveComment", "supaReactCdvLive", "supaRemoveCdvLiveReaction", "supaToggleCdvLiveLike",
-      "supaUpdateCdvLiveStatus", "supaFollowCdvLive", "supaUnfollowCdvLive", "supaRefreshCdvLives",
+      "supaUpdateCdvLiveStatus", "supaUpdateCdvLive", "supaDeleteCdvLive",
+      "supaFollowCdvLive", "supaUnfollowCdvLive", "supaRefreshCdvLives",
       "supaLoadCdvLive", "supaLoadCdvLives", "supaLoadCdvLiveLikes", "supaUpdateCdvLiveStepCoords",
       "supaAddCdvCollaborator", "supaRemoveCdvCollaborator", "supaUpdateVlogPost",
       "supaAddCarnetCollaborator", "supaRemoveCarnetCollaborator",
@@ -438,7 +439,9 @@ test.describe("CDV v2 — réutiliser un itinéraire", () => {
     // Le bouton porte le compteur dès qu'il y a des lieux.
     await page.evaluate(() => renderCdvScreen());
     await expect(page.locator("#cdvSavedPlacesBtn")).toBeVisible();
-    await expect(page.locator("#cdvSavedPlacesBtn")).toContainText("· 2");
+    // Le compteur vit sur SA ligne depuis le 2026-07-22 (« 2 lieux »), pour ne
+    // plus faire déborder le libellé du bouton.
+    await expect(page.locator("#cdvSavedPlacesBtn")).toContainText("2 lieux");
 
     // Pas de doublon si on ré-enregistre le même voyage.
     await page.evaluate((i) => saveItineraryPlaces(i, "live"), id);
@@ -781,5 +784,147 @@ test.describe("CDV v2 — favoris", () => {
     await page.evaluate((i) => toggleLiveSave(i), id);
     await page.evaluate(() => renderCdvScreen());
     await expect(page.locator("#cdvList")).not.toContainText("Lisbonne");
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Refonte du 2026-07-22 : entrées de même gabarit, numéros carte ↔ liste,
+// tuiles-filtres cumulables, et ⋯ modifier/supprimer sur un voyage.
+// ═══════════════════════════════════════════════════════════════════════════
+test.describe("CDV — les 3 entrées de l'écran", () => {
+  test("les 3 boutons occupent toute la largeur, à parts strictement égales", async ({ page }) => {
+    await bootCdv(page);
+    await page.evaluate(() => { goTo("cdv"); renderCdvScreen(); });
+    const boxes = await page.evaluate(() => {
+      const row = document.querySelector(".cdv-entry-row");
+      return {
+        row: row.getBoundingClientRect().width,
+        btns: [...row.querySelectorAll(".cdv-entry")].map((b) => {
+          const r = b.getBoundingClientRect();
+          return { w: Math.round(r.width), h: Math.round(r.height) };
+        }),
+      };
+    });
+    expect(boxes.btns).toHaveLength(3);
+    // Largeurs égales (à 1px près) et hauteurs identiques.
+    const w = boxes.btns.map((b) => b.w);
+    expect(Math.max(...w) - Math.min(...w)).toBeLessThanOrEqual(1);
+    expect(new Set(boxes.btns.map((b) => b.h)).size).toBe(1);
+    // Et la rangée remplit bien la largeur disponible.
+    expect(w[0] * 3).toBeGreaterThan(boxes.row * 0.9);
+  });
+
+  test("le passeport a une icône dessinée, et son libellé porte les km", async ({ page }) => {
+    await bootCdv(page);
+    await page.evaluate(() => { goTo("cdv"); renderCdvScreen(); });
+    // Icône = SVG (le 🛂 « contrôle des passeports » ne ressemblait pas à un passeport).
+    expect(await page.locator("#cdvPassportBtn svg").count()).toBe(1);
+    // Le libellé se met à jour SANS effacer l'icône (piège du textContent).
+    await page.evaluate(() => {
+      window.cdvPassportStats = () => ({ km: 1234, trips: [1, 2], countries: [], cities: [], years: [] });
+      renderCdvScreen();
+    });
+    await expect(page.locator("#cdvPassportLbl")).toContainText("km");
+    expect(await page.locator("#cdvPassportBtn svg").count()).toBe(1);
+  });
+});
+
+test.describe("CDV — Mes lieux : numéros et filtres cumulables", () => {
+  async function seedNumbered(page) {
+    await bootCdv(page);
+    await page.evaluate(() => {
+      state.user.savedPlaces = [
+        { id: "p1", name: "Lisbonne", status: "wish", country: "Portugal", lat: 38.7, lng: -9.1, at: 1 },
+        { id: "p2", name: "Cascais", status: "done", country: "Portugal", lat: 38.7, lng: -9.4, at: 2 },
+        { id: "p3", name: "Kyoto", status: "wish", country: "Japon", lat: 35.0, lng: 135.7, at: 3 },
+        { id: "p4", name: "Sans GPS", status: "wish", country: "", at: 4 },
+      ];
+      saveState(); goTo("cdv"); renderCdvScreen(); openSavedPlaces();
+    });
+  }
+
+  test("chaque ligne porte le numéro de son épingle, dans le même ordre", async ({ page }) => {
+    await seedNumbered(page);
+    const nums = await page.$$eval("#splList .spl-card-num", (els) => els.map((e) => e.textContent.trim()));
+    // 3 lieux géolocalisés numérotés 1..3 dans l'ordre d'affichage, le 4e sans épingle.
+    expect(nums).toEqual(["·", "1", "2", "3"]);
+    const names = await page.$$eval("#splList .spl-card-name > span:first-child", (els) => els.map((e) => e.textContent.trim()));
+    expect(names).toEqual(["Sans GPS", "Kyoto", "Cascais", "Lisbonne"]);
+  });
+
+  test("les tuiles À visiter / Visités / Pays filtrent en multi-sélection, liste ET carte", async ({ page }) => {
+    await seedNumbered(page);
+    // Les 3 tuiles sont de vrais boutons cliquables.
+    expect(await page.locator(".spl-tile").count()).toBe(3);
+
+    await page.evaluate(() => _splToggleStatus("done"));
+    expect(await page.evaluate(() => _splVisiblePlaces().map((p) => p.name))).toEqual(["Cascais"]);
+
+    // Cumul : « à visiter » s'AJOUTE à « visités » (union), il ne le remplace pas.
+    await page.evaluate(() => _splToggleStatus("wish"));
+    expect(await page.evaluate(() => _splVisiblePlaces().length)).toBe(4);
+
+    // Le pays est un filtre à part, cumulable avec le statut.
+    await page.evaluate(() => { _splToggleStatus("wish"); _splToggleCountry("Portugal"); });
+    expect(await page.evaluate(() => _splVisiblePlaces().map((p) => p.name))).toEqual(["Cascais"]);
+
+    // La carte suit : un seul point → une seule épingle, numérotée 1.
+    await page.waitForTimeout(320);
+    const nums = await page.$$eval("#splList .spl-card-num", (els) => els.map((e) => e.textContent.trim()));
+    expect(nums).toEqual(["1"]);
+
+    // « Tout voir » remet la sélection à zéro.
+    await page.evaluate(() => _splClearFilters());
+    expect(await page.evaluate(() => _splVisiblePlaces().length)).toBe(4);
+  });
+});
+
+test.describe("CDV — ⋯ modifier / supprimer un voyage", () => {
+  test("le ⋯ de ma carte ouvre les options et n'ouvre PAS le viewer", async ({ page }) => {
+    await bootCdv(page);
+    await seedLive(page);
+    await page.locator(".cdv-live-card .cdv-live-menu-btn").first().click();
+    await expect(page.locator(".modal")).toContainText("Modifier le voyage");
+    await expect(page.locator(".modal")).toContainText("Supprimer le voyage");
+    // Le viewer plein écran ne s'est pas ouvert.
+    expect(await page.locator(".modal.modal-fullscreen").count()).toBe(0);
+  });
+
+  test("modifier change destination, description et visibilité sans toucher aux étapes", async ({ page }) => {
+    await bootCdv(page);
+    const id = await seedLive(page, { steps: [{ id: "s1", city: "Belém", emoji: "📍", createdAt: Date.now() }] });
+    await page.evaluate((i) => editCdvLive(i), id);
+    await page.fill("#cdvEditDest", "Porto");
+    await page.fill("#cdvEditDesc", "Nouvelle version");
+    await page.evaluate(() => document.querySelectorAll(".cdv-vis-btn")[2].click()); // 🔒 Privé
+    await page.evaluate((i) => saveCdvLiveEdits(i), id);
+    const live = await page.evaluate((i) => getCdvLives().find((l) => l.id === i), id);
+    expect(live.destination).toBe("Porto");
+    expect(live.description).toBe("Nouvelle version");
+    expect(live.visibility).toBe("private");
+    expect(live.steps).toHaveLength(1);
+  });
+
+  test("supprimer retire le voyage de la liste, mais pas sans confirmation", async ({ page }) => {
+    await bootCdv(page);
+    const id = await seedLive(page);
+    await page.evaluate((i) => confirmDeleteCdvLive(i), id);
+    // Tant qu'on n'a pas confirmé, le voyage est intact.
+    expect(await page.evaluate((i) => !!getCdvLives().find((l) => l.id === i), id)).toBe(true);
+    await page.evaluate((i) => deleteCdvLive(i), id);
+    expect(await page.evaluate((i) => !!getCdvLives().find((l) => l.id === i), id)).toBe(false);
+    // Plus aucune carte de voyage en direct dans la liste.
+    expect(await page.locator("#cdvList .cdv-live-card").count()).toBe(0);
+  });
+
+  test("le voyage d'un autre compte ne propose ni modification ni suppression", async ({ page }) => {
+    await bootCdv(page);
+    const id = await seedLive(page, { authorId: "u_autre" });
+    await page.evaluate((i) => openCdvLiveMenu(i), id);
+    await expect(page.locator(".modal")).toContainText("Signaler");
+    await expect(page.locator(".modal")).not.toContainText("Supprimer le voyage");
+    // Et l'appel direct est refusé côté modèle (la RLS l'exige côté serveur).
+    await page.evaluate((i) => deleteCdvLive(i), id);
+    expect(await page.evaluate((i) => !!getCdvLives().find((l) => l.id === i), id)).toBe(true);
   });
 });

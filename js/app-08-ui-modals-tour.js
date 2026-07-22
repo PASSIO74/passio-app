@@ -3215,6 +3215,29 @@ async function supaPublishCdvLive(live) {
   } catch(e) { console.warn("CDV live publish:", e); }
 }
 
+// Modifier / supprimer un live (2026-07-22). La RLS de `cdv_lives` est
+// « propriété de l'auteur » : l'UPDATE/DELETE d'un autre compte touche 0 ligne
+// en silence — c'est la base qui tranche, on ne re-filtre pas côté client.
+async function supaUpdateCdvLive(liveId, fields) {
+  try {
+    const payload = Object.assign({}, fields || {}, { updated_at: new Date().toISOString() });
+    const { error } = await supa.from("cdv_lives").update(payload).eq("id", liveId);
+    if (error) console.warn("CDV live update:", error.message);
+  } catch (e) { console.warn("CDV live update:", e); }
+}
+
+async function supaDeleteCdvLive(liveId) {
+  try {
+    // Étapes / commentaires / réactions / suivis partent avec la ligne parente :
+    // les 4 FK vers `cdv_lives` sont en ON DELETE CASCADE (vérifié en prod le
+    // 2026-07-22). Ne PAS tenter de les supprimer d'abord : leurs policies DELETE
+    // sont « propriété de l'auteur de la ligne » → celles des autres comptes
+    // résisteraient en silence.
+    const { error } = await supa.from("cdv_lives").delete().eq("id", liveId);
+    if (error) console.warn("CDV live delete:", error.message);
+  } catch (e) { console.warn("CDV live delete:", e); }
+}
+
 async function supaUpdateCdvLiveStatus(liveId, status) {
   try { await supa.from("cdv_lives").update({ status: status, updated_at: new Date().toISOString() }).eq("id", liveId); }
   catch(e) { console.warn("CDV live status:", e); }
