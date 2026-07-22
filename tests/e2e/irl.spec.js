@@ -448,6 +448,32 @@ test.describe("IRL — création, récurrence et vues", () => {
     await expect(page.locator("#irlDistLabel")).toHaveText("Toutes distances");
   });
 
+  test("le volet Horaire règle la plage SUR PLACE (pas de modale par-dessus)", async ({ page }) => {
+    await bootIrl(page);
+    await seedEvents(page, [{ title: "Un event" }]);
+    await page.evaluate(() => openIrlFiltersPanel());
+    await page.locator("#irlFtabTime").click();
+    await expect(page.locator("#irlPaneTime")).toHaveClass(/on/);
+    // Aucune modale ne s'ouvre : le réglage est dans le volet.
+    await expect(page.locator("#modalBackdrop.active")).toHaveCount(0);
+    await expect(page.locator("#irlTimeClearBtn")).toBeHidden();
+
+    // Une pastille = un tap, le filtre est posé sans « Appliquer ».
+    await page.locator("#irlPaneTime .irl-time-quick .pill").nth(2).click();
+    expect(await page.evaluate(() => irlTimeFilter)).toBe("18:00 - 23:00");
+    await expect(page.locator("#irlDisplayStart")).toHaveText("18:00");
+    await expect(page.locator("#irlFtabTime")).toHaveClass(/has/);
+    await expect(page.locator("#irlTimeClearBtn")).toBeVisible();
+
+    // Les listes d'heures appliquent aussi immédiatement.
+    await page.selectOption("#irlStartHour", "8");
+    expect(await page.evaluate(() => irlTimeFilter)).toBe("08:00 - 23:00");
+
+    await page.locator("#irlTimeClearBtn").click();
+    expect(await page.evaluate(() => irlTimeFilter)).toBe("");
+    await expect(page.locator("#irlFtabTime")).not.toHaveClass(/has/);
+  });
+
   test("le digest hebdo ne se déclenche qu'une fois par semaine", async ({ page }) => {
     await bootIrl(page);
     await seedEvents(page, [{ title: "Tout près", date: Date.now() + 2 * 86400000 }]);

@@ -1546,6 +1546,7 @@ function setIrlFilterTab(tab) {
   window._irlFilterTab = tab;
   _syncIrlFilterTabs();
   if (tab === "date") _renderIrlInlineCal();
+  if (tab === "time") _syncIrlTimeUI();
 }
 
 function _syncIrlFilterTabs() {
@@ -1694,6 +1695,37 @@ function _syncIrlDistanceUI() {
       : "Aucune limite de distance";
   }
   if (clear) clear.style.display = irlDistanceFilter ? "block" : "none";
+}
+
+// --- Plage horaire (en ligne dans le volet) -----------------------------
+// Les deux <select> sont peuplés à la volée : 48 <option> figées dans le
+// markup pour un volet rarement ouvert, ce serait 48 nœuds pour rien.
+function _syncIrlTimeUI() {
+  var s = document.getElementById("irlStartHour");
+  var e = document.getElementById("irlEndHour");
+  if (!s || !e) return;
+  if (!s.options.length) {
+    var opts = "";
+    for (var i = 0; i <= 23; i++) opts += '<option value="' + i + '">' + String(i).padStart(2, "0") + ":00</option>";
+    s.innerHTML = opts;
+    e.innerHTML = opts;
+  }
+  var start = 0, end = 23;
+  if (irlTimeFilter && irlTimeFilter.includes(" - ")) {
+    var p = irlTimeFilter.split(" - ");
+    start = parseInt(p[0].split(":")[0]) || 0;
+    end = parseInt(p[1].split(":")[0]) || 23;
+  }
+  s.value = start;
+  e.value = end;
+  var ds = document.getElementById("irlDisplayStart");
+  var de = document.getElementById("irlDisplayEnd");
+  if (ds) ds.textContent = String(start).padStart(2, "0") + ":00";
+  if (de) de.textContent = String(end).padStart(2, "0") + ":00";
+  var sum = document.getElementById("irlTimeSum");
+  if (sum) sum.textContent = irlTimeFilter ? "Événements entre " + irlTimeFilter : "Aucune contrainte d'horaire";
+  var clear = document.getElementById("irlTimeClearBtn");
+  if (clear) clear.style.display = irlTimeFilter ? "block" : "none";
 }
 
 // Libellé du point de référence du filtre distance (même règle que
@@ -1918,6 +1950,7 @@ function clearAllIrlFilters() {
   var timeBtn = document.getElementById("irlTimeFilterBtn");
   if (timeBtn) timeBtn.textContent = "🕐 Horaire";
   _syncIrlDistanceUI();
+  _syncIrlTimeUI();
   renderIRL();
   _renderIrlInlineCal();
 }
@@ -1930,6 +1963,7 @@ function openIrlFiltersPanel() {
   if (!window._irlFilterTab) window._irlFilterTab = "date";
   _syncIrlFilterTabs();
   _syncIrlDistanceUI();
+  _syncIrlTimeUI();
   _renderIrlInlineCal();
 }
 
@@ -2052,6 +2086,7 @@ function renderIRL() {
   _syncIrlDateBtn();
   _syncIrlFilterTabs();
   _syncIrlDistanceUI();
+  _syncIrlTimeUI();
 
   // Sync filter buttons (Mes events / Inscrit) - multi-select
   document.querySelectorAll("[data-irlfilter]").forEach(function(btn) {
@@ -2800,76 +2835,12 @@ function filterIrlByDistance() {
   renderIRL();
 }
 
+// La plage horaire se règle DANS le volet « Horaire » (2026-07-22) : la modale
+// qui s'ouvrait par-dessus la feuille de filtres imposait deux manipulations
+// (ouvrir l'onglet, puis ouvrir la modale) là où le calendrier et le curseur de
+// distance sont immédiats. Point d'entrée conservé : il sélectionne l'onglet.
 function openIrlTimePicker() {
-  // Parser le filtre actuel au format "HH:MM - HH:MM" ou sinon utiliser valeurs par défaut
-  let startHour = 0, endHour = 23;
-
-  if (irlTimeFilter && irlTimeFilter.includes(" - ")) {
-    const parts = irlTimeFilter.split(" - ");
-    startHour = parseInt(parts[0].split(":")[0]) || 0;
-    endHour = parseInt(parts[1].split(":")[0]) || 23;
-  }
-
-  // Générer les options pour les selects
-  let hourOptions = '';
-  for (let i = 0; i <= 23; i++) {
-    hourOptions += `<option value="${i}">${String(i).padStart(2, '0')}:00</option>`;
-  }
-
-  let html = `
-    <div class="modal-handle"></div>
-    <div class="modal-title">🕐 Choisir une plage horaire</div>
-
-    <div style="text-align:center;margin-bottom:20px;">
-      <div style="font-size:32px;font-weight:800;">
-        <span id="irlDisplayStart" style="color:#3b82f6;">${String(startHour).padStart(2, '0')}:00</span>
-        <span style="color:var(--text);margin:0 12px;">→</span>
-        <span id="irlDisplayEnd" style="color:#3b82f6;">${String(endHour).padStart(2, '0')}:00</span>
-      </div>
-    </div>
-
-    <!-- Dropdowns simples -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px;">
-      <div>
-        <label style="display:block;font-weight:700;font-size:12px;margin-bottom:6px;">📍 Début</label>
-        <select id="irlStartHour" class="input" onchange="irlUpdateTime()" style="width:100%;">
-          ${hourOptions}
-        </select>
-      </div>
-      <div>
-        <label style="display:block;font-weight:700;font-size:12px;margin-bottom:6px;">📍 Fin</label>
-        <select id="irlEndHour" class="input" onchange="irlUpdateTime()" style="width:100%;">
-          ${hourOptions}
-        </select>
-      </div>
-    </div>
-
-    <!-- Prédéfinis rapides -->
-    <div style="margin-bottom:20px;">
-      <div style="font-weight:700;font-size:12px;color:var(--text);margin-bottom:8px;">⚡ Prédéfinis</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
-        <button class="pill" onclick="irlSetQuick(6,12)">06h → 12h</button>
-        <button class="pill" onclick="irlSetQuick(12,18)">12h → 18h</button>
-        <button class="pill" onclick="irlSetQuick(18,23)">18h → 23h</button>
-        <button class="pill" onclick="irlSetQuick(0,23)">00h → 23h</button>
-      </div>
-    </div>
-
-    <div style="display:flex;gap:8px;">
-      <button class="btn secondary block" onclick="clearIrlTimeFilter();closeModal()">Effacer</button>
-      <button class="btn primary block" onclick="applyIrlTimeRange();closeModal()">✓ Appliquer</button>
-    </div>
-  `;
-
-  openModal(html);
-
-  // Initialiser les dropdowns avec les valeurs actuelles
-  setTimeout(() => {
-    const startSelect = document.getElementById("irlStartHour");
-    const endSelect = document.getElementById("irlEndHour");
-    if (startSelect) startSelect.value = startHour;
-    if (endSelect) endSelect.value = endHour;
-  }, 100);
+  setIrlFilterTab("time");
 }
 
 // ===== INTERFACE HORAIRE SIMPLIFIÉE AVEC SELECTS =====
@@ -2895,6 +2866,10 @@ function irlUpdateTime() {
   const displayEnd = document.getElementById("irlDisplayEnd");
   if (displayStart) displayStart.textContent = String(start).padStart(2, '0') + ":00";
   if (displayEnd) displayEnd.textContent = String(end).padStart(2, '0') + ":00";
+
+  // Plus de bouton « Appliquer » : le filtre suit le réglage, comme le
+  // calendrier et le curseur de distance.
+  applyIrlTimeRange(true);
 }
 
 function irlSetQuick(start, end) {
@@ -2936,13 +2911,13 @@ function updateIrlDoubleRange() {
   // Fonction maintenant remplacée par updateIrlStart() et updateIrlEnd()
 }
 
-function applyIrlTimeRange() {
+function applyIrlTimeRange(silent) {
   // Lire depuis les NOUVEAUX selects
   const startSelect = document.getElementById("irlStartHour");
   const endSelect = document.getElementById("irlEndHour");
 
   if (!startSelect || !endSelect) {
-    toast("❌ Erreur: sélects non trouvés");
+    if (!silent) toast("❌ Erreur: sélects non trouvés");
     return;
   }
 
@@ -2961,11 +2936,11 @@ function applyIrlTimeRange() {
   const btn = document.getElementById("irlTimeFilterBtn");
   if (btn) btn.textContent = "🕐 " + irlTimeFilter;
 
-  console.log("[IRL Filter] Plage horaire appliquée:", irlTimeFilter);
-  toast("✓ Filtre appliqué: " + irlTimeFilter);
+  if (!silent) toast("✓ Filtre appliqué: " + irlTimeFilter);
 
   // Recharger les événements filtrés
   renderIRL();
+  _syncIrlTimeUI();
 }
 
 // 🔧 FIX AUDIT 2026-06-10 : bouton "Effacer" du filtre horaire IRL
@@ -2975,8 +2950,8 @@ function clearIrlTimeFilter() {
   irlTimeFilter = "";
   const btn = document.getElementById("irlTimeFilterBtn");
   if (btn) btn.textContent = "🕐 Heure";
-  toast("Filtre horaire effacé");
   renderIRL();
+  _syncIrlTimeUI();
 }
 
 function setIrlQuickTime(hour) {

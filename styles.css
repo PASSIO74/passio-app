@@ -8312,3 +8312,18 @@
   display: flex; justify-content: space-between;
   margin-top: 6px; font-size: 10.5px; font-weight: 600; color: var(--muted);
 }
+
+/* Volet Horaire : la plage se règle sur place (pastilles + 2 listes d'heures),
+   plus de modale par-dessus la feuille de filtres. */
+.irl-time-quick {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px; margin-bottom: 12px;
+}
+.irl-time-quick .pill { justify-content: center; width: 100%; }
+.irl-time-selects { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.irl-time-selects label { display: block; }
+.irl-time-selects span {
+  display: block; font-size: 11px; font-weight: 700;
+  color: var(--muted); margin-bottom: 5px;
+}
+.irl-time-selects select { width: 100%; }

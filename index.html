@@ -940,9 +940,32 @@
             </div>
           </div>
 
-          <!-- Volet HORAIRE : inchangé (sélecteur de plage horaire existant). -->
+          <!-- Volet HORAIRE : la plage se règle SUR PLACE (comme le calendrier et
+               le curseur). Avant, l'onglet n'affichait qu'un bouton qui ouvrait
+               une modale — deux manipulations pour un filtre. -->
           <div class="irl-fpane" id="irlPaneTime" role="tabpanel" aria-labelledby="irlFtabTime">
-            <button id="irlTimeFilterBtn" style="width:100%;padding:12px;border-radius:12px;border:1px solid var(--border);background:var(--bg-card);font-size:13px;color:var(--text);cursor:pointer;font-weight:600;text-align:left;" onclick="openIrlTimePicker()">🕐 Horaire</button>
+            <div class="irl-dist-val">
+              <span id="irlDisplayStart">00:00</span>
+              <span style="color:var(--muted);margin:0 8px;">→</span>
+              <span id="irlDisplayEnd">23:00</span>
+            </div>
+            <div class="irl-time-quick">
+              <button type="button" class="pill" onclick="irlSetQuick(6,12)">🌅 06h → 12h</button>
+              <button type="button" class="pill" onclick="irlSetQuick(12,18)">☀️ 12h → 18h</button>
+              <button type="button" class="pill" onclick="irlSetQuick(18,23)">🌙 18h → 23h</button>
+              <button type="button" class="pill" onclick="clearIrlTimeFilter()">Toute la journée</button>
+            </div>
+            <div class="irl-time-selects">
+              <label><span>Début</span><select id="irlStartHour" class="input" onchange="irlUpdateTime()"></select></label>
+              <label><span>Fin</span><select id="irlEndHour" class="input" onchange="irlUpdateTime()"></select></label>
+            </div>
+            <div class="irl-fsum">
+              <span id="irlTimeSum">Aucune contrainte d'horaire</span>
+              <button id="irlTimeClearBtn" class="irl-fsum-clear" onclick="clearIrlTimeFilter()" style="display:none;" aria-label="Retirer le filtre horaire">✕</button>
+            </div>
+            <!-- Conservé (masqué) : plusieurs fonctions historiques y écrivent le
+                 libellé du filtre horaire ; le retirer ferait des no-op muets. -->
+            <button id="irlTimeFilterBtn" hidden aria-hidden="true" tabindex="-1"></button>
           </div>
 
           <!-- Type -->
