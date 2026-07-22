@@ -928,3 +928,32 @@ test.describe("CDV — ⋯ modifier / supprimer un voyage", () => {
     expect(await page.evaluate((i) => !!getCdvLives().find((l) => l.id === i), id)).toBe(true);
   });
 });
+
+test.describe("CDV — ⋯ dans le voyage OUVERT", () => {
+  test("le viewer plein écran a le ⋯, un seul ×, et on y revient en annulant", async ({ page }) => {
+    await bootCdv(page);
+    const id = await seedLive(page, { steps: [{ id: "s1", city: "Belém", emoji: "📍", createdAt: Date.now() }] });
+    await page.evaluate((i) => openCdvLiveViewer(i), id);
+
+    // Le ⋯ est là, et openModal n'injecte qu'UNE croix (le viewer en remettait une).
+    await expect(page.locator(".modal .cdv-viewer-menu-btn")).toBeVisible();
+    expect(await page.locator(".modal .modal-close").count()).toBe(1);
+
+    await page.locator(".modal .cdv-viewer-menu-btn").click();
+    await expect(page.locator(".modal")).toContainText("Modifier le voyage");
+    await expect(page.locator(".modal")).toContainText("Supprimer le voyage");
+
+    // ⚠️ openModal n'empile pas : « Annuler » doit ramener au voyage ouvert,
+    // pas refermer tout et renvoyer sur la liste.
+    await page.getByRole("button", { name: "Annuler" }).click();
+    await expect(page.locator(`.modal.modal-fullscreen[data-live-id="${id}"]`)).toHaveCount(1);
+
+    // Idem après une modification : on revient au voyage, avec le nouveau titre.
+    await page.locator(".modal .cdv-viewer-menu-btn").click();
+    await page.getByRole("button", { name: /Modifier le voyage/ }).click();
+    await page.fill("#cdvEditDest", "Lisbonne & Sintra");
+    await page.getByRole("button", { name: "Enregistrer" }).click();
+    await expect(page.locator(`.modal.modal-fullscreen[data-live-id="${id}"]`)).toHaveCount(1);
+    await expect(page.locator(".modal")).toContainText("Lisbonne & Sintra");
+  });
+});

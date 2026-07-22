@@ -2023,9 +2023,9 @@ function openCdvLiveViewer(liveId) {
   var commentsHTML = _cdvCommentsBoxHtml(live);
 
   const html = '\
-    <span class="modal-close" onclick="closeModal()">×</span>\
+    <button class="cdv-viewer-menu-btn" onclick="openCdvLiveMenu(\'' + liveId + '\', true)" title="Options" aria-label="Options du voyage">⋯</button>\
     \
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">\
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;padding-right:86px;">\
       ' + (isLive ? '<span class="cdv-live-badge">🔴 EN DIRECT</span>' : '<span style="font-size:10px;font-weight:700;color:var(--muted);background:var(--bg-deep);padding:3px 8px;border-radius:6px;">✅ TERMINÉ</span>') + '\
       <div style="font-weight:800;font-size:18px;color:var(--text);">📡 ' + escapeHtml(live.destination) + '</div>\
     </div>\
@@ -3346,9 +3346,14 @@ function _cdvLiveMenuBtnHtml(l) {
     title="Options" aria-label="Options du voyage">⋯</button>`;
 }
 
-function openCdvLiveMenu(liveId) {
+// ⚠️ `openModal` n'empile pas : ouvrir ce menu depuis le viewer plein écran
+// REMPLACE le viewer. On mémorise donc d'où l'on vient pour y revenir en
+// annulant (et après une modification) — sinon un simple « Annuler » renvoyait
+// l'utilisateur sur la liste, en refermant le voyage qu'il était en train de lire.
+function openCdvLiveMenu(liveId, fromViewer) {
   const live = getCdvLives().find(l => l.id === liveId);
   if (!live) return;
+  window._cdvMenuFromViewer = !!fromViewer;
   // ⚠️ La RLS de `cdv_lives` limite UPDATE/DELETE à l'AUTEUR : proposer
   // « Modifier »/« Supprimer » à un co-voyageur donnerait un échec silencieux
   // côté serveur (0 ligne touchée) alors que l'app dirait « mis à jour ».
@@ -3370,8 +3375,16 @@ function openCdvLiveMenu(liveId) {
       <button class="btn ghost block" style="margin-bottom:8px;" onclick="shareCdvLive('${liveId}')">🔗 Partager</button>
       ${collab ? "" : `<button class="btn ghost block" style="margin-bottom:8px;color:#ef4444;" onclick="reportCdvLive('${liveId}')">⚠️ Signaler ce voyage</button>`}
     `}
-    <button class="btn ghost block" onclick="closeModal()">Annuler</button>
+    <button class="btn ghost block" onclick="_closeCdvLiveMenu('${liveId}')">Annuler</button>
   `);
+}
+
+// Referme le menu : retour au viewer si c'est de là qu'on venait.
+function _closeCdvLiveMenu(liveId) {
+  const back = window._cdvMenuFromViewer;
+  window._cdvMenuFromViewer = false;
+  closeModal();
+  if (back && liveId && getCdvLives().some(l => l.id === liveId)) openCdvLiveViewer(liveId);
 }
 
 // Modifier destination / description / visibilité. Les étapes ne bougent pas.
@@ -3396,7 +3409,7 @@ function editCdvLive(liveId) {
       </div>
     </label>
     <div style="display:flex;gap:8px;margin-top:14px;">
-      <button class="btn ghost" onclick="closeModal()">Annuler</button>
+      <button class="btn ghost" onclick="_closeCdvLiveMenu('${liveId}')">Annuler</button>
       <button class="btn primary" style="flex:1;" onclick="saveCdvLiveEdits('${liveId}')">Enregistrer</button>
     </div>
   `);
@@ -3418,10 +3431,14 @@ function saveCdvLiveEdits(liveId) {
       destination: live.destination, description: live.description, visibility: live.visibility,
     });
   }
+  const back = window._cdvMenuFromViewer;
+  window._cdvMenuFromViewer = false;
   closeModal();
   toast("✅ Voyage mis à jour");
   renderCdvLives();
   if (typeof renderCdvScreen === "function") { try { renderCdvScreen(); } catch (e) {} }
+  // Retour au voyage ouvert, avec le nouveau titre visible tout de suite.
+  if (back) openCdvLiveViewer(liveId);
 }
 
 // Supprimer est IRRÉVERSIBLE (étapes, commentaires, réactions partent avec).
@@ -3437,7 +3454,7 @@ function confirmDeleteCdvLive(liveId) {
       seront <b>définitivement supprimés</b>, pour toi comme pour ceux qui te suivent.
     </div>
     <button class="btn block" style="margin-bottom:8px;background:#ef4444;color:#fff;" onclick="deleteCdvLive('${liveId}')">🗑 Supprimer définitivement</button>
-    <button class="btn ghost block" onclick="closeModal()">Annuler</button>
+    <button class="btn ghost block" onclick="_closeCdvLiveMenu('${liveId}')">Annuler</button>
   `);
 }
 
@@ -3447,6 +3464,7 @@ function deleteCdvLive(liveId) {
   if (!live || !isMyLive(live)) return;
   saveCdvLives(lives.filter(l => l.id !== liveId));
   if (typeof supaDeleteCdvLive === "function") supaDeleteCdvLive(liveId);
+  window._cdvMenuFromViewer = false; // le voyage n'existe plus : ne pas y revenir
   closeModal();
   toast("🗑 Voyage supprimé");
   renderCdvLives();
