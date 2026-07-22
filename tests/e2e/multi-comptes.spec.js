@@ -944,6 +944,191 @@ test.describe("messagerie entre 2 comptes réels", () => {
       await ctxB.close();
     }
   });
+
+  // Interactions réparées le 2026-07-22 : like d'un COMMENTAIRE et like/réaction
+  // d'un ÉVÉNEMENT. Les tests locaux (interactions.spec.js) prouvent le rendu ;
+  // eux seuls ne peuvent PAS prouver que l'écriture passe la RLS ni que l'autre
+  // compte la voit — c'est l'objet de ce test. Il couvre aussi la règle « UNE
+  // réaction emoji par personne » côté SERVEUR (remplacement = delete + insert) :
+  // en local elle n'est vérifiée que sur l'agrégat en mémoire.
+  test("like d'un commentaire et like/réaction d'un événement → cross-compte réel", async ({ browser }) => {
+    test.setTimeout(180000);
+    const t0 = Date.now();
+    const log = (m) => console.log(`[inter ${(((Date.now() - t0) / 1000) | 0)}s] ${m}`);
+
+    const ctxA = await browser.newContext();
+    const ctxB = await browser.newContext();
+    const pageA = await ctxA.newPage();
+    const pageB = await ctxB.newPage();
+    pageA.on("console", (msg) => { if (msg.type() === "error") log("A console.error: " + msg.text().slice(0, 200)); });
+    pageB.on("console", (msg) => { if (msg.type() === "error") log("B console.error: " + msg.text().slice(0, 200)); });
+    wireHttpDiag(log, pageA, pageB);
+
+    let postId = null, eventId = null;
+    try {
+      const uidA = await signupAnonymous(pageA, "Test Alice");
+      const uidB = await signupAnonymous(pageB, "Test Bob");
+      expect(uidA).toBeTruthy(); expect(uidB).toBeTruthy(); expect(uidA).not.toBe(uidB);
+      log("A=" + uidA + " B=" + uidB);
+
+      // ── 1. A publie un post ET y laisse un commentaire ──────────────────────
+      postId = await pageA.evaluate(async () => {
+        const id = "post_" + uid();
+        const { error } = await supa.from("posts").insert([{
+          id, author_id: MY_UID, passion_id: "musique", mood: "all",
+          content: "Post de Alice [test interactions auto]", media_url: null,
+          created_at: new Date().toISOString(),
+        }]);
+        return error ? null : id;
+      });
+      expect(postId, "post de A inséré").toBeTruthy();
+
+      const commentId = await pageA.evaluate(async (pid) => {
+        const cid = "c_" + uid();
+        const ok = await supaAddComment(pid, "Commentaire d'Alice [test auto]", cid);
+        return ok ? cid : null;
+      }, postId);
+      expect(commentId, "commentaire d'A inséré").toBeTruthy();
+      log("post + commentaire d'A: " + postId + " / " + commentId);
+
+      // ── 2. B like le COMMENTAIRE d'A via le vrai handler ────────────────────
+      // likeComment → supaCommentInteract(kind:"like"). Si la RLS refusait
+      // l'insert, l'UI locale de B afficherait quand même ❤️ (optimiste) : seul
+      // un second compte peut révéler que rien n'a été écrit.
+      await pageB.evaluate(([pid, aid, cid]) => {
+        state.supabasePosts = state.supabasePosts || [];
+        state.supabasePosts.unshift({
+          id: pid, authorId: aid, authorName: "Test Alice", authorEmoji: "✨",
+          authorColor: "#8b5cf6", passion: "musique", mood: "all", type: "text",
+          text: "Post de Alice [test interactions auto]", image: null,
+          createdAt: Date.now(), likes: 0, liked: false, fromSupabase: true,
+          comments: [{ id: cid, authorId: aid, authorName: "Test Alice", text: "Commentaire d'Alice [test auto]", createdAt: Date.now(), fromSupabase: true, likes: 0, likedBy: [], replies: [] }],
+        });
+      }, [postId, uidA, commentId]);
+
+      await pageB.evaluate(([pid, cid]) => likeComment(pid, cid, null), [postId, commentId]);
+      log("B a liké le commentaire d'A");
+
+      // A recharge les interactions : le like doit être EN BASE et attribué à B.
+      // supaLoadCommentInteractions renvoie un AGRÉGAT par commentaire
+      // ({ likes, likedBy[], replies[] }), pas les lignes brutes.
+      const cmtAgg = await (async () => {
+        const start = Date.now();
+        while (Date.now() - start < 20000) {
+          const d = await pageA.evaluate(async (cid) => {
+            const m = await supaLoadCommentInteractions([cid]);
+            return (m && m[cid]) ? m[cid] : null;
+          }, commentId);
+          if (d && d.likes) return d;
+          await pageA.waitForTimeout(1500);
+        }
+        return null;
+      })();
+      expect(cmtAgg, "interactions du commentaire lisibles par A").toBeTruthy();
+      expect(cmtAgg.likes, "le like de commentaire est écrit en base (RLS OK)").toBeGreaterThanOrEqual(1);
+      expect(cmtAgg.likedBy, "le like est attribué à B").toContain(uidB);
+      log("✅ like de commentaire visible par A (likes=" + cmtAgg.likes + ")");
+
+      // Et A le voit remonter dans SON modèle via l'hydratation normale.
+      const hydrated = await pageA.evaluate(async ([pid, aid, cid]) => {
+        const post = {
+          id: pid, authorId: aid, fromSupabase: true,
+          comments: [{ id: cid, authorId: aid, text: "Commentaire d'Alice [test auto]", createdAt: Date.now(), likes: 0, likedBy: [], replies: [] }],
+        };
+        await hydrateCommentInteractions(post);
+        return post.comments[0].likes || 0;
+      }, [postId, uidA, commentId]);
+      expect(hydrated, "hydrateCommentInteractions remonte le like de B chez A").toBeGreaterThanOrEqual(1);
+      log("✅ compteur de like du commentaire hydraté chez A: " + hydrated);
+
+      // ── 3. A crée un événement, B le like puis y réagit ─────────────────────
+      // Insert direct (même schéma que le test « rejoindre l'événement d'un
+      // autre ») : supaPublishEvent applique des règles de formulaire qui ne nous
+      // intéressent pas ici — on veut seulement une ligne events valide à liker.
+      eventId = await pageA.evaluate(async () => {
+        const id = "evt_" + uid();
+        const { error } = await supa.from("events").insert({
+          id, author_id: MY_UID, organizer_id: MY_UID, title: "Event Alice [test auto]",
+          passion_id: "musique", city: "Annecy", emoji: "🎸",
+          date_at: new Date(Date.now() + 86400000).toISOString(),
+          created_at: new Date().toISOString(),
+        });
+        return error ? null : id;
+      });
+      expect(eventId, "événement d'A publié").toBeTruthy();
+      log("événement d'A: " + eventId);
+
+      // B like l'événement (toggleEventLike → supaToggleEventLike/event_reactions).
+      await pageB.evaluate((eid) => toggleEventLike(eid, null), eventId);
+      // Puis B réagit 🔥, PUIS remplace par 🎉 : côté serveur il ne doit rester
+      // qu'UNE réaction non-❤️ de B (l'ancienne doit avoir été supprimée).
+      await pageB.evaluate((eid) => _setEventReaction(eid, "🔥"), eventId);
+      await pageB.waitForTimeout(800);
+      await pageB.evaluate((eid) => _setEventReaction(eid, "🎉"), eventId);
+      await pageB.waitForTimeout(1500);
+      log("B a liké + réagi 🔥 puis 🎉 sur l'événement d'A");
+
+      // A relit les réactions depuis Supabase.
+      const evAgg = await (async () => {
+        const start = Date.now();
+        while (Date.now() - start < 20000) {
+          const d = await pageA.evaluate(async (eid) => {
+            const r = await supaLoadEventReactions([eid]);
+            return (r && r[eid]) ? r[eid] : null;
+          }, eventId);
+          if (d && d.likes) return d;
+          await pageA.waitForTimeout(1500);
+        }
+        return null;
+      })();
+      expect(evAgg, "réactions de l'événement lisibles par A").toBeTruthy();
+      expect(evAgg.likes, "le ❤️ de B est compté chez A").toBeGreaterThanOrEqual(1);
+      log("✅ like d'événement cross-compte: " + JSON.stringify(evAgg.emojiCounts || {}));
+
+      // Détail par utilisateur : B ne doit avoir QUE ❤️ (le like) + 🎉, jamais 🔥.
+      const detail = await pageA.evaluate(async (eid) => await supaLoadEventReactionDetail(eid), eventId);
+      const fromB = (detail || []).filter((r) => r.userId === uidB).map((r) => r.emoji).sort();
+      expect(fromB, "B n'a laissé qu'une réaction emoji, la dernière (🎉)").toEqual(expect.arrayContaining(["🎉"]));
+      expect(fromB.includes("🔥"), "la réaction 🔥 remplacée a bien été SUPPRIMÉE en base").toBe(false);
+      log("✅ règle « 1 réaction par personne » vérifiée en base: " + JSON.stringify(fromB));
+
+      // ── 4. Nettoyage ───────────────────────────────────────────────────────
+      // B d'abord (ses lignes référencent le post/l'événement d'A), puis A.
+      // ⚠️ ORDRE : A porte ICI un post ET un événement. Les helpers existants
+      // (cleanupEvent / cleanupNotifs) terminent chacun par la suppression du
+      // profil + signOut — enchaîner les deux laissait le post d'A orphelin (la
+      // 2e passe s'exécutait déconnectée, donc bloquée par la RLS) et le DELETE
+      // du profil échouait en 409 (FK posts_author_id_fkey). On fait donc UNE
+      // seule passe, tout supprimer avant le profil.
+      await pageB.evaluate(async (eid) => {
+        try { await supa.from("event_reactions").delete().eq("user_id", MY_UID); } catch (e) {}
+        try { await supa.from("comment_interactions").delete().eq("user_id", MY_UID); } catch (e) {}
+        try { await supa.from("event_attendees").delete().eq("user_id", MY_UID); } catch (e) {}
+        try { await supa.from("notifications").delete().eq("from_id", MY_UID); } catch (e) {}
+        try { await supa.from("notifications").delete().eq("user_id", MY_UID); } catch (e) {}
+        try { await supa.from("profiles").delete().eq("id", MY_UID); } catch (e) {}
+        try { await supa.auth.signOut(); } catch (e) {}
+      }, eventId);
+      await pageA.evaluate(async ([pid, eid]) => {
+        try { await supa.from("notifications").delete().eq("user_id", MY_UID); } catch (e) {}
+        try { await supa.from("notifications").delete().eq("from_id", MY_UID); } catch (e) {}
+        try { await supa.from("comment_interactions").delete().eq("comment_id", pid); } catch (e) {}
+        try { await supa.from("comment_interactions").delete().eq("user_id", MY_UID); } catch (e) {}
+        try { await supa.from("event_reactions").delete().eq("event_id", eid); } catch (e) {}
+        try { await supa.from("event_attendees").delete().eq("event_id", eid); } catch (e) {}
+        try { await supa.from("events").delete().eq("id", eid); } catch (e) {}
+        try { await supa.from("post_comments").delete().eq("post_id", pid); } catch (e) {}
+        try { await supa.from("post_likes").delete().eq("post_id", pid); } catch (e) {}
+        try { await supa.from("posts").delete().eq("id", pid); } catch (e) {}
+        try { await supa.from("profiles").delete().eq("id", MY_UID); } catch (e) {}
+        try { await supa.auth.signOut(); } catch (e) {}
+      }, [postId, eventId]);
+      log("nettoyage effectué");
+    } finally {
+      await ctxA.close();
+      await ctxB.close();
+    }
+  });
 });
 
 // Parcours réel : landing → Créer un compte → inscription par e-mail/mot de passe

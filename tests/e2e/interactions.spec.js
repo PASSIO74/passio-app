@@ -31,6 +31,20 @@ async function bootInteractions(page) {
       "supaTrack"].forEach((fn) => { window[fn] = async () => null; });
     localStorage.removeItem("passio_cdv_lives");
   });
+  // Garde anti-course : sous charge (suite complète), des tâches différées du boot
+  // pouvaient encore re-rendre un écran APRÈS le début du test et écraser le DOM
+  // que l'on venait de mesurer. On attend que les renderers utilisés ici soient
+  // tous prêts avant d'agir.
+  // ⚠️ `state` est déclaré `let state = null` (app-01) : un `let` de haut niveau
+  // ne crée PAS de propriété sur window — tester `window.state` renvoie toujours
+  // undefined et le garde n'aurait jamais pu passer. On passe par le binding
+  // global via typeof, comme le reste de la suite.
+  await page.waitForFunction(
+    () => ["renderCdvScreen", "renderIRL", "renderFeed", "openVlogViewer", "addEmojiToPost"]
+      .every((f) => typeof window[f] === "function")
+      && typeof state !== "undefined" && !!state && !!state.onboarded,
+    null, { timeout: 20000 }
+  );
 }
 
 // Rend le fil non vide : sans passion sélectionnée, le fil est vide PAR DESIGN.
