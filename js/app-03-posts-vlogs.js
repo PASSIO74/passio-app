@@ -178,11 +178,19 @@ function likePost(id, skipRender = false, el = null) {
     var art = document.querySelector('[data-postid="' + id + '"]');
     return art ? art.querySelector('[data-action="like"]') : null;
   })();
+  // Boutons portant data-postlike (carte carnet CDV, viewer de carnet…) : le même
+  // post peut être visible sur plusieurs surfaces à la fois → on les repeint TOUS.
+  var _all = document.querySelectorAll('[data-postlike="' + id + '"]');
+  [].forEach.call(_all, function (n) {
+    n.classList.toggle("liked", nowLiked);
+    n.innerHTML = (nowLiked ? "❤️" : "🤍") + " " + (post.likes || 0);
+    if (nowLiked) _likePop(n);
+  });
   if (_btn) {
     _btn.classList.toggle("liked", nowLiked);
     _btn.innerHTML = (nowLiked ? "❤️" : "🤍") + " " + (post.likes || 0);
     if (nowLiked) _likePop(_btn);
-  } else if (!skipRender) {
+  } else if (!_all.length && !skipRender) {
     renderFeed();
   }
 
@@ -1021,6 +1029,13 @@ function openVlogViewer(postId) {
         <button class="vlog-action-btn primary" onclick="organizeGroupTrip('${postId}')">
           🤝 Organiser un voyage groupé
         </button>
+      </div>
+
+      <div class="post-actions" style="margin-top:20px;">
+        <span class="post-action ${(state.user.likedPosts || []).indexOf(postId) > -1 ? "liked" : ""}" data-postlike="${postId}" onclick="event.stopPropagation();likePost('${postId}', true, this)">${(state.user.likedPosts || []).indexOf(postId) > -1 ? "❤️" : "🤍"} ${post.likes || 0}</span>
+        <span class="post-action" onclick="return showEmojiPickerForPost('${postId}', event);" title="Emoji & GIF">😊</span>
+        <span class="post-action" onclick="event.stopPropagation();sharePost('${postId}')" title="Partager" aria-label="Partager">${shareIconSvg(18)}</span>
+        <span class="post-react-chip-holder" data-postchip="${postId}" style="margin-left:auto;">${_postReactChipHtml(postId)}</span>
       </div>
 
       <div class="vlog-viewer-comments" style="margin-top:24px;border-top:1px solid var(--border);padding-top:16px;">
@@ -2577,7 +2592,14 @@ function likeCdvLiveCard(liveId, el) {
   }
   window._liveLikes[liveId] = cur;
   if (typeof saveState === "function") saveState();
-  if (el) { el.classList.toggle("liked", cur.liked); el.classList.toggle("active", cur.liked); el.innerHTML = (cur.liked ? "❤️" : "🤍") + " " + (cur.likes || 0); }
+  // Tous les exemplaires : un live peut être affiché en même temps sur sa carte
+  // épinglée, sur sa carte de liste et dans le viewer ouvert par-dessus.
+  var _els = document.querySelectorAll('[data-livelike="' + liveId + '"]');
+  if (!_els.length && el) _els = [el];
+  [].forEach.call(_els, function (n) {
+    n.classList.toggle("liked", cur.liked); n.classList.toggle("active", cur.liked);
+    n.innerHTML = (cur.liked ? "❤️" : "🤍") + " " + (cur.likes || 0);
+  });
   if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID && window._supaReal && typeof supaToggleCdvLiveLike === "function") {
     supaToggleCdvLiveLike(liveId);
     if (cur.liked) {
@@ -2703,6 +2725,7 @@ function _pinnedLiveCardHtml(l) {
       </div>
       <span style="font-size:11px;color:var(--muted);white-space:nowrap;">👁 ${viewerCount}</span>
     </div>
+    ${_cdvLiveActionsHtml(l)}
   </div>`;
 }
 
@@ -2899,9 +2922,7 @@ function renderCdvScreen() {
       </div>
 
       <div class="post-actions" onclick="event.stopPropagation()">
-        <span class="post-action ${isLiked ? "liked" : ""}" onclick="likePost('${c.id}')">
-          ${isLiked ? "❤️" : "🤍"} ${c.likes || 0}
-        </span>
+        <span class="post-action ${isLiked ? "liked" : ""}" data-postlike="${c.id}" onclick="event.stopPropagation();likePost('${c.id}', true, this)">${isLiked ? "❤️" : "🤍"} ${c.likes || 0}</span>
         <span class="post-action" onclick="openComments('${c.id}')">💬 ${commentThreadCount(c.comments)}</span>
         <span class="post-action" onclick="return showEmojiPickerForPost('${c.id}', event);" title="Emoji & GIF">😊</span>
         <span class="post-action" onclick="event.stopPropagation();sharePost('${c.id}')" title="Partager" aria-label="Partager">${shareIconSvg(18)}</span>

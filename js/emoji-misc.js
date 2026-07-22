@@ -268,14 +268,16 @@ function likeComment(postId, commentId, event) {
   _diag("✅ Like toggle: " + comment.likes + " likes");
   if (typeof thread.save === "function") thread.save(); else saveState();
 
-  // Update visuel du like
-  var commentEl = document.querySelector('[data-commentid="' + commentId + '"]');
-  if (commentEl) {
-    var likeBtn = commentEl.querySelector('.comment-actions .comment-action');
-    if (likeBtn) {
-      likeBtn.classList.toggle('liked', !already);
-      likeBtn.innerHTML = (already ? '🤍 ' : '❤️ ') + comment.likes;
-      if (!already && typeof _likePop === "function") _likePop(likeBtn);
+  // Update visuel du like — via le patch CENTRAL `_patchCmtLike`, qui cible TOUS
+  // les exemplaires du bouton ([data-cmtlike], querySelectorAll). L'ancien patch
+  // maison prenait le PREMIER [data-commentid] du document : quand le même
+  // commentaire est rendu deux fois (vue détail du post EN DESSOUS + modale de
+  // discussion, viewer de carnet, fiche événement…), il repeignait la copie
+  // cachée et le bouton réellement visible restait figé → « le like ne marche
+  // pas » alors que le modèle était bien à jour.
+  if (typeof _patchCmtLike === "function") {
+    if (!_patchCmtLike(postId, commentId, !already) && typeof _refreshCommentThreadUI === "function") {
+      _refreshCommentThreadUI(postId);
     }
   }
   return false;

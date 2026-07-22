@@ -1939,7 +1939,9 @@ function renderReelHTML(post, idx) {
   const author = authorOfReel(post);
   const passion = passionById(post.passion) || { label: post.passion, emoji: "✨" };
   const moodLabel = ({ creation: "Création", learn: "Apprendre", chill: "Chill", actu: "Actu" })[post.mood] || "Tout";
-  const isLiked = reelsState.liked.has(post.id);
+  // Source de vérité = l'état persisté des likes (partagé avec le fil), pas le Set
+  // volatil du viewer : un post aimé dans le fil doit apparaître aimé en Bobines.
+  const isLiked = ((state.user.likedPosts || []).indexOf(post.id) > -1) || reelsState.liked.has(post.id);
   const isTipped = reelsState.tipped.has(post.id);
   const txt = post.text || post.caption || "";
   return `
@@ -1962,11 +1964,11 @@ function renderReelHTML(post, idx) {
         <div class="reel-caption">${escapeHtml(txt).slice(0, 220)}${txt.length > 220 ? "…" : ""}</div>
       </div>
       <div class="reel-actions">
-        <button class="reel-action-btn ${isLiked ? "liked" : ""}" onclick="toggleReelLike('${post.id}', this)" aria-label="Aimer">
+        <button class="reel-action-btn ${isLiked ? "liked" : ""}" data-reellike="${post.id}" onclick="toggleReelLike('${post.id}', this)" aria-label="Aimer">
           <span class="reel-action-icon">
             <svg viewBox="0 0 24 24"><path d="M12 21 C5.5 16 2 12.5 2 8.5 C2 5.5 4.5 3 7.5 3 C9.5 3 11 4 12 5.5 C13 4 14.5 3 16.5 3 C19.5 3 22 5.5 22 8.5 C22 12.5 18.5 16 12 21 Z"/></svg>
           </span>
-          <span class="reel-action-label">J'aime</span>
+          <span class="reel-action-label">${post.likes || 0}</span>
         </button>
         <button class="reel-action-btn" onclick="openReelComments('${post.id}')" aria-label="Commenter">
           <span class="reel-action-icon">
@@ -2179,16 +2181,25 @@ function maybePromptPause() {
   }
 }
 
+// Like d'une bobine — DÉLÈGUE au like canonique des posts (`likePost`) : une
+// bobine EST un post (is_reel). Avant, cette fonction ne faisait que basculer une
+// classe CSS et un Set en mémoire : aucun compteur, rien de persisté (perdu au
+// rechargement), rien envoyé à Supabase, et l'auteur n'était jamais notifié — le
+// même contenu apparaissait « aimé » dans les Bobines et « non aimé » dans le fil.
+// Aimer ne rapporte RIEN à celui qui like (anti-farm) : les 💎 se gagnent en
+// RECEVANT des likes (awardLikeReceived).
 function toggleReelLike(postId, btn) {
-  if (reelsState.liked.has(postId)) {
-    reelsState.liked.delete(postId);
-    btn.classList.remove("liked");
-  } else {
-    reelsState.liked.add(postId);
-    btn.classList.add("liked");
-    // Aimer une bobine ne rapporte RIEN à celui qui like (anti-farm) : les 💎
-    // se gagnent uniquement en RECEVANT des likes (awardLikeReceived).
-  }
+  if (typeof likePost === "function") likePost(postId, true, null);
+  var post = (typeof findPostAnywhere === "function") ? findPostAnywhere(postId) : null;
+  var liked = (state.user.likedPosts || []).indexOf(postId) > -1;
+  // reelsState.liked reste alimenté : d'autres écrans du viewer le consultent.
+  if (liked) reelsState.liked.add(postId); else reelsState.liked.delete(postId);
+  document.querySelectorAll('[data-reellike="' + postId + '"]').forEach(function (el) {
+    el.classList.toggle("liked", liked);
+    var lab = el.querySelector(".reel-action-label");
+    if (lab) lab.textContent = (post && post.likes) || 0;
+  });
+  if (liked && typeof _likePop === "function") _likePop(btn);
 }
 
 function tipReel(postId, btn) {
@@ -2414,7 +2425,11 @@ function likeReelComment(postId, commentIdx) {
   if (!reel || !reel.comments || !reel.comments[commentIdx]) return;
 
   const comment = reel.comments[commentIdx];
-  const userId = state.user?.id || "me";
+  // MY_UID en priorité (comme likeComment/likeCommentNode) : avec state.user.id
+  // ou "me", le même compte était vu comme DEUX personnes différentes selon la
+  // surface → un like posé ici restait « non aimé » ailleurs, et re-liker depuis
+  // le fil ajoutait une seconde entrée (compteur doublé).
+  const userId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : (state.user?.id || "me");
 
   if (!comment.likedBy) comment.likedBy = [];
   if (!comment.likes) comment.likes = 0;
@@ -2423,9 +2438,15 @@ function likeReelComment(postId, commentIdx) {
   if (idx > -1) {
     comment.likedBy.splice(idx, 1);
     comment.likes = Math.max(0, comment.likes - 1);
+    if (typeof supaCommentRemoveLike === "function") supaCommentRemoveLike(comment.id);
   } else {
     comment.likedBy.push(userId);
     comment.likes++;
+    // Sync cross-compte : sans elle, le like restait dans ce seul navigateur.
+    if (typeof supaCommentInteract === "function") supaCommentInteract(comment.id, postId, "like", "");
+    if (comment.authorId && comment.authorId !== userId && comment.fromSupabase && typeof supaInsertNotif === "function") {
+      try { supaInsertNotif(comment.authorId, "like", postId, "a aimé ton commentaire"); } catch (e) {}
+    }
   }
 
   saveState();

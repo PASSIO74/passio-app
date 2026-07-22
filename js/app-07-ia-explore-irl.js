@@ -1976,7 +1976,15 @@ function toggleEventLike(id, el) {
   }
   window._eventLikes[id] = cur;
   if (typeof saveState === "function") saveState();
-  if (el) { el.classList.toggle("liked", cur.liked); el.innerHTML = (cur.liked ? "❤️" : "🤍") + " " + (cur.likes || 0); }
+  // Patch TOUS les exemplaires du bouton : le même événement est affiché à la fois
+  // dans la liste et dans sa fiche (et la fiche se superpose à la liste) — ne
+  // repeindre que `el` laissait l'autre copie sur l'ancien compteur.
+  var _els = document.querySelectorAll('[data-evlike="' + id + '"]');
+  if (!_els.length && el) _els = [el];
+  [].forEach.call(_els, function (n) {
+    n.classList.toggle("liked", cur.liked);
+    n.innerHTML = (cur.liked ? "❤️" : "🤍") + " " + (cur.likes || 0);
+  });
   if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID && window._supaReal && typeof supaToggleEventLike === "function") {
     supaToggleEventLike(id);
     if (cur.liked) {
@@ -2038,7 +2046,18 @@ function _seedDemoEventInteractions(events) {
         counts[em] = cnt;
         for (var n = 0; n < cnt; n++) detail.push({ userId: _DEMO_EV_USERS[(h + k * 3 + n) % _DEMO_EV_USERS.length], emoji: em });
       }
-      window._eventLikes[e.id] = { likes: h % 9, liked: (state.user.likedEvents || []).includes(e.id), emojiCounts: counts, gifs: [] };
+      // Ma propre interaction est REJOUÉE par-dessus l'agrégat de démo : elle vit
+      // dans state.user (persistée), alors que ces compteurs sont régénérés à
+      // chaque chargement depuis le hash de l'id. Sans ça, mon ❤️ et ma réaction
+      // emoji sur un événement de démo disparaissaient au rechargement.
+      var _iLiked = (state.user.likedEvents || []).includes(e.id);
+      var _myReact = (state.user.eventReactions || {})[e.id];
+      var _gifs = [];
+      if (_myReact) {
+        if (/^https?:\/\//.test(_myReact)) _gifs.push(_myReact);
+        else { counts[_myReact] = (counts[_myReact] || 0) + 1; detail.push({ userId: MY_UID || "me", emoji: _myReact }); }
+      }
+      window._eventLikes[e.id] = { likes: (h % 9) + (_iLiked ? 1 : 0), liked: _iLiked, emojiCounts: counts, gifs: _gifs };
       window._eventReactDetail[e.id] = detail;
     }
   });
@@ -2065,8 +2084,9 @@ function _evReactChipHtml(eventId) {
 }
 // Repeint la pastille (dans son conteneur data-evchipholder) après une réaction.
 function _patchEventReactChip(eventId) {
-  var holder = document.querySelector('[data-evchipholder="' + eventId + '"]');
-  if (holder) holder.innerHTML = _evReactChipHtml(eventId);
+  // querySelectorAll : la pastille existe sur la carte ET sur la fiche.
+  var _html = _evReactChipHtml(eventId);
+  document.querySelectorAll('[data-evchipholder="' + eventId + '"]').forEach(function (h) { h.innerHTML = _html; });
 }
 // Applique une ou plusieurs réactions emoji (tableau) à un événement (optimiste +
 // sync event_reactions), puis repeint la pastille.
@@ -2914,6 +2934,17 @@ function openEventDetails(id) {
     <!-- Album de l'événement : les publications faites après coup. -->
     <div class="event-detail-section-title">📸 Album de l'événement</div>
     <div id="eventAlbum" class="event-album"><div class="event-album-empty">Chargement…</div></div>
+
+    <!-- Barre d'engagement : la fiche n'avait NI like NI réaction emoji (alors que
+         la carte de la liste, elle, les a) — on pouvait seulement commenter. Mêmes
+         handlers que la carte, donc mêmes compteurs et même règle « 1 réaction par
+         personne ». -->
+    <div class="post-actions" style="margin-top:18px;">
+      <span class="post-action ${(state.user.likedEvents || []).indexOf(ev.id) > -1 ? "liked" : ""}" data-evlike="${ev.id}" onclick="event.stopPropagation();toggleEventLike('${escapeJsArg(ev.id)}', this)">${(state.user.likedEvents || []).indexOf(ev.id) > -1 ? "❤️" : "🤍"} ${((window._eventLikes || {})[ev.id] || {}).likes || 0}</span>
+      <span class="post-action" onclick="return showEmojiPickerForEvent('${escapeJsArg(ev.id)}', event);" title="Réagir">😊</span>
+      <span class="post-action" onclick="event.stopPropagation();shareEvent('${escapeJsArg(ev.id)}')" title="Partager" aria-label="Partager">${shareIconSvg(18)}</span>
+      <span class="event-react-chip-holder" data-evchipholder="${ev.id}" style="margin-left:auto;">${_evReactChipHtml(ev.id)}</span>
+    </div>
 
     <div class="event-detail-section-title">💬 Commentaires</div>
     <div id="eventCommentsList" style="display:flex;flex-direction:column;gap:10px;margin-bottom:10px;">
