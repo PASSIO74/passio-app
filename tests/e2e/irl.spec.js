@@ -60,7 +60,8 @@ async function seedEvents(page, events) {
     if (typeof irlFilters !== "undefined") irlFilters.clear();
     irlSearchQuery = "";
     irlShowPast = false;
-    irlCalendarOn = false;
+    state.user.irlExtraPassions = [];
+    window._irlExtraOpen = false;
     goTo("irl");
     renderIRL();
   }, events);
@@ -80,31 +81,52 @@ test.describe("IRL — découverte et filtres", () => {
     await expect(cards(page)).toHaveCount(5);
     // Aucune pastille de filtre : rien n'est masqué, et ça se voit.
     await expect(page.locator("#irlFiltersBadge")).toBeHidden();
-    await expect(page.locator(".irl-showall")).toHaveCount(0);
   });
 
-  test("la barre liste TOUTES les passions ayant un événement, les miennes en tête", async ({ page }) => {
+  test("la barre affiche MES passions ; les autres s'ajoutent depuis le panneau", async ({ page }) => {
     await bootIrl(page);
     await seedEvents(page, [{ passion: "sport" }, { passion: "musique" }, { passion: "art" }]);
-    const tiles = page.locator("#irlPassionRow .msg-tile");
-    await expect(tiles).toHaveCount(3);
-    // « musique » est la passion du profil de test → première, marquée ✦.
+    const tiles = page.locator("#irlPassionRow .msg-tile[data-irlpassion]");
+    // Le compte de test n'a qu'un profil « musique » : une seule tuile principale…
+    await expect(tiles).toHaveCount(1);
     await expect(tiles.first()).toHaveAttribute("data-irlpassion", "musique");
     await expect(tiles.first().locator(".irl-tile-mine")).toBeVisible();
+    // …mais TOUS les événements restent visibles (aucun filtre par défaut).
+    await expect(cards(page)).toHaveCount(3);
+
+    // Le panneau « Autres » liste les passions restantes, à cocher.
+    await page.locator("#irlExtraToggle").click();
+    await expect(page.locator("#irlExtraPanel .irl-extra-chip")).toHaveCount(2);
+    await page.locator("#irlExtraPanel .irl-extra-chip", { hasText: "Sport" }).click();
+    await expect(tiles).toHaveCount(2);
+    // Cocher AJOUTE la tuile, ça ne filtre pas : la liste est inchangée.
+    await expect(cards(page)).toHaveCount(3);
   });
 
-  test("filtrer annonce le nombre d'événements MASQUÉS et permet de tout revoir", async ({ page }) => {
+  test("décocher une passion ajoutée retire aussi son filtre", async ({ page }) => {
+    await bootIrl(page);
+    await seedEvents(page, [{ passion: "musique" }, { passion: "sport" }, { passion: "art" }]);
+    await page.evaluate(() => { toggleIrlExtraPassion("sport"); });
+    await page.locator('[data-irlpassion="sport"]').click();
+    await expect(cards(page)).toHaveCount(1);
+    await page.evaluate(() => { toggleIrlExtraPassion("sport"); });
+    // Sans le nettoyage du filtre, on filtrerait sur une tuile disparue = liste
+    // vide sans moyen de la débloquer.
+    await expect(cards(page)).toHaveCount(3);
+    expect(await page.evaluate(() => irlPassionFilters.size)).toBe(0);
+  });
+
+  test("filtrer par passion réduit la liste et la pastille de filtres le dit", async ({ page }) => {
     await bootIrl(page);
     await seedEvents(page, [
       { passion: "musique" }, { passion: "sport" }, { passion: "cuisine" }, { passion: "art" },
     ]);
     await page.locator('[data-irlpassion="musique"]').click();
     await expect(cards(page)).toHaveCount(1);
-    // Le garde-fou contre le piège historique : on DIT ce qui est caché.
-    await expect(page.locator(".irl-showall")).toContainText("3 masqués");
     await expect(page.locator("#irlFiltersBadge")).toHaveText("1");
-    await page.locator(".irl-showall").click();
+    await page.evaluate(() => clearAllIrlFilters());
     await expect(cards(page)).toHaveCount(4);
+    await expect(page.locator("#irlFiltersBadge")).toBeHidden();
   });
 
   test("la recherche filtre sur le lieu et la description, pas seulement le titre", async ({ page }) => {
@@ -117,8 +139,6 @@ test.describe("IRL — découverte et filtres", () => {
     await page.fill("#irlCitySearch", "jazz");
     await expect(cards(page)).toHaveCount(1);
     await expect(cards(page).first()).toContainText("Concert");
-    // Le compteur suit le filtre (avant : masquage CSS, compteurs faux).
-    await expect(page.locator(".irl-toolbar-count")).toContainText("1 événement");
     await page.fill("#irlCitySearch", "café des arts");
     await expect(cards(page)).toHaveCount(1);
   });
@@ -159,7 +179,7 @@ test.describe("IRL — découverte et filtres", () => {
       { title: "Paris", lat: 48.8566, lng: 2.3522 },
       { title: "Lyon", lat: 45.764, lng: 4.8357 },
     ]);
-    await page.selectOption(".irl-sort select", "near");
+    await page.evaluate(() => setIrlSort("near"));
     await expect(cards(page).nth(0)).toContainText("Paris");
     await expect(cards(page).nth(1)).toContainText("Lyon");
     await expect(cards(page).nth(2)).toContainText("Marseille");
@@ -177,7 +197,7 @@ test.describe("IRL — cycle de vie d'un événement", () => {
     await expect(page.locator(".event-card-banner.live")).toContainText("maintenant");
   });
 
-  test("un événement TERMINÉ sort de « à venir » et se retrouve dans « Passés »", async ({ page }) => {
+  test("un événement TERMINÉ sort de « à venir » et reste joignable en mode passé", async ({ page }) => {
     await bootIrl(page);
     await seedEvents(page, [
       { title: "Fini", date: Date.now() - 3 * 86400000, endAt: Date.now() - 3 * 86400000 + 7200000 },
@@ -185,7 +205,8 @@ test.describe("IRL — cycle de vie d'un événement", () => {
     ]);
     await expect(cards(page)).toHaveCount(1);
     await expect(cards(page).first()).toContainText("À venir");
-    await page.locator(".irl-seg-btn", { hasText: "Passés" }).click();
+    // L'onglet « Passés » a été retiré de l'UI (2026-07-22) ; le mode existe encore.
+    await page.evaluate(() => setIrlPastMode(true));
     await expect(cards(page)).toHaveCount(1);
     await expect(cards(page).first()).toContainText("Fini");
   });
@@ -298,12 +319,17 @@ test.describe("IRL — participation (RSVP, liste d'attente, check-in)", () => {
     await seedEvents(page, [{ title: "A" }, { title: "B" }]);
     // La carte est initialisée EN DIFFÉRÉ puis recadrée : on attend qu'elle se
     // STABILISE (deux mesures identiques), sinon on compare à un état transitoire.
+    // Stabilité exigée sur 3 relevés consécutifs ET sur le zoom + le centre :
+    // avec un seul relevé identique sur le seul zoom, un palier momentané de
+    // l'animation de recadrage suffisait à faire croire que la carte était posée
+    // (le recadrage se poursuivait ensuite et faisait échouer la comparaison).
     await page.waitForFunction(() => {
       if (!window.irlMap || !irlMap.getZoom()) return false;
-      const z = irlMap.getZoom();
-      const stable = window.__lastZ === z;
-      window.__lastZ = z;
-      return stable;
+      const c = irlMap.getCenter();
+      const sig = [irlMap.getZoom(), c.lat, c.lng].join(",");
+      window.__stableRuns = (window.__lastSig === sig) ? (window.__stableRuns || 0) + 1 : 0;
+      window.__lastSig = sig;
+      return window.__stableRuns >= 3;
     }, null, { timeout: 30000, polling: 500 });
     const before = await page.evaluate(() => ({ z: irlMap.getZoom(), lat: irlMap.getCenter().lat }));
     await page.evaluate(() => setEventRsvp("ev0", "going"));
@@ -367,19 +393,29 @@ test.describe("IRL — création, récurrence et vues", () => {
     expect(info.gapsDays).toEqual([7, 7, 7]);
   });
 
-  test("la vue calendrier remplace la liste et un jour cliqué la filtre", async ({ page }) => {
+  test("le filtre de date tient dans UN bouton calendrier (plus de pastilles)", async ({ page }) => {
     await bootIrl(page);
     const d = new Date();
     d.setDate(d.getDate() + 2);
     d.setHours(18, 0, 0, 0);
     await seedEvents(page, [{ title: "Le bon jour", date: d.getTime() }, { title: "Autre", date: d.getTime() + 5 * 86400000 }]);
-    await page.locator(".irl-cal-toggle").click();
-    await expect(page.locator("#irlCalendar")).toBeVisible();
-    await expect(cards(page)).toHaveCount(0);
-    await page.locator("#irlCalendar .irl-cal-cell.has").first().click();
-    await expect(page.locator("#irlCalendar")).toBeHidden();
+    await page.evaluate(() => openIrlFiltersPanel());
+    await expect(page.locator("#irlDateBtnLabel")).toHaveText("Toutes les dates");
+    await expect(page.locator("#irlDateClearBtn")).toBeHidden();
+    // Les 5 pastilles Aujourd'hui/Demain/… ont disparu.
+    await expect(page.locator("#irlDateCarousel")).toHaveCount(0);
+
+    const iso = await page.evaluate((ts) => new Date(ts).toISOString().split("T")[0], d.getTime());
+    await page.locator("#irlDateBtn").click();
+    await page.fill("#irlCalStart", iso);
+    await page.locator("#modalBackdrop button", { hasText: "Appliquer" }).click();
     await expect(cards(page)).toHaveCount(1);
     await expect(cards(page).first()).toContainText("Le bon jour");
+    await expect(page.locator("#irlDateClearBtn")).toBeVisible();
+
+    await page.evaluate(() => clearIrlDateFilter());
+    await expect(cards(page)).toHaveCount(2);
+    await expect(page.locator("#irlDateBtnLabel")).toHaveText("Toutes les dates");
   });
 
   test("le digest hebdo ne se déclenche qu'une fois par semaine", async ({ page }) => {

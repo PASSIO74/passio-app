@@ -309,8 +309,7 @@ let irlUserLocationError = false; // Erreur d'obtention de position
 let irlSelectedCity = null; // Ville sélectionnée pour chercher des événements (null = ta position)
 let irlSort = "soon";                     // "soon" | "near" | "popular"
 let irlSearchQuery = "";                  // recherche texte (titre/ville/lieu/desc)
-let irlShowPast = false;                  // onglet « Passés » (événements terminés)
-let irlCalendarOn = false;                // vue calendrier (mois) au lieu de la liste
+let irlShowPast = false;                  // événements terminés (plus d'onglet : filtre interne)
 
 // ⚠️ NE PLUS pré-cocher les passions de l'utilisateur au premier rendu.
 // Avant (jusqu'au 2026-07-21) : un compte avec UN profil « musique » voyait
@@ -1409,10 +1408,40 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
-// Barre de passions : TOUTES les passions qui ont au moins un événement à venir,
-// celles de l'utilisateur en tête (repère ✨). Avant, la barre ne listait que les
-// passions de l'utilisateur : les événements des autres passions étaient
-// définitivement inatteignables depuis l'écran.
+// Barre de passions (refondue le 2026-07-22) : en PRINCIPAL, les passions de mes
+// profils — c'est mon écran, il doit ressembler à mes centres d'intérêt. Les
+// autres passions restent atteignables (les événements des autres ne doivent
+// jamais être inatteignables, c'était le bug du 2026-07-21) mais via un petit
+// panneau « + Autres passions » à cocher : une passion cochée vient s'ajouter à
+// la barre principale, où elle se comporte exactement comme les miennes.
+// ⚠️ Cocher dans le panneau AJOUTE la tuile, ça ne filtre pas : c'est le clic sur
+// la tuile qui filtre (aria-pressed). Les deux gestes sont distincts.
+function _irlMyPassions() {
+  return [...new Set((state.user.profiles || []).map(p => p.passion).filter(Boolean))];
+}
+function _irlExtraPassions() {
+  if (!Array.isArray(state.user.irlExtraPassions)) state.user.irlExtraPassions = [];
+  return state.user.irlExtraPassions;
+}
+function toggleIrlExtraPassion(pid) {
+  const extra = _irlExtraPassions();
+  const i = extra.indexOf(pid);
+  if (i > -1) {
+    extra.splice(i, 1);
+    // Retirer la tuile doit aussi retirer son filtre, sinon on filtre sur une
+    // passion qui n'est plus affichée (donc plus décochable).
+    if (irlPassionFilters) irlPassionFilters.delete(pid);
+  } else {
+    extra.push(pid);
+  }
+  saveState();
+  renderIRL();
+}
+function toggleIrlExtraPanel() {
+  window._irlExtraOpen = !window._irlExtraOpen;
+  renderIrlPassionTiles();
+}
+
 function renderIrlPassionTiles() {
   const row = $("#irlPassionRow");
   if (!row) return;
@@ -1423,31 +1452,67 @@ function renderIrlPassionTiles() {
   const pool = _filterIrlEvents(allEvents());
   irlPassionFilters = saved;
 
-  const mine = new Set((state.user.profiles || []).map(p => p.passion).filter(Boolean));
   const counts = {};
   pool.forEach(e => { if (e.passion) counts[e.passion] = (counts[e.passion] || 0) + 1; });
-  // Les passions sélectionnées restent affichées même si elles tombent à 0 (sinon
-  // la tuile active disparaît et on ne peut plus la décocher).
-  const passionIds = [...new Set(Object.keys(counts).concat([...irlPassionFilters]))]
-    .sort((a, b) => {
-      const ma = mine.has(a) ? 0 : 1, mb = mine.has(b) ? 0 : 1;
-      if (ma !== mb) return ma - mb;
-      return (counts[b] || 0) - (counts[a] || 0);
-    });
 
-  row.className = "msg-filter-tiles"; // réutilise le même style que la messagerie
+  const mine = _irlMyPassions();
+  const mineSet = new Set(mine);
+  const extra = _irlExtraPassions().filter(pid => !mineSet.has(pid));
+  // Une passion filtrée reste toujours affichée, même si elle n'est ni mienne ni
+  // cochée (sinon la tuile active disparaît et le filtre devient indécochable).
+  const shown = [...new Set(mine.concat(extra, [...irlPassionFilters]))];
 
-  row.innerHTML = passionIds.map(pid => {
+  const tileHtml = (pid) => {
     const p = passionById(pid) || { label: pid, emoji: "✨" };
     const cnt = counts[pid] || 0;
     const isActive = irlPassionFilters.has(pid);
+    const isMine = mineSet.has(pid);
     return `<button class="msg-tile ${isActive ? "active" : ""}" data-irlpassion="${escapeHtml(pid)}"
-        aria-pressed="${isActive}" title="${escapeHtml(p.label)}${mine.has(pid) ? " — une de tes passions" : ""}">
-      <span class="msg-tile-icon">${p.emoji}${mine.has(pid) ? '<span class="irl-tile-mine" aria-hidden="true">✦</span>' : ""}</span>
+        aria-pressed="${isActive}" title="${escapeHtml(p.label)}${isMine ? " — une de tes passions" : ""}">
+      <span class="msg-tile-icon">${p.emoji}${isMine ? '<span class="irl-tile-mine" aria-hidden="true">✦</span>' : ""}</span>
       <span class="msg-tile-label">${escapeHtml(p.label)}</span>
       ${cnt > 0 ? `<span class="msg-tile-badge">${cnt}</span>` : ""}
     </button>`;
-  }).join("");
+  };
+
+  // Panneau « autres passions » : tout ce qui a au moins un événement et qui
+  // n'est pas déjà dans la barre.
+  const others = Object.keys(counts)
+    .filter(pid => !mineSet.has(pid) && extra.indexOf(pid) === -1)
+    .sort((a, b) => (counts[b] || 0) - (counts[a] || 0));
+  const open = !!window._irlExtraOpen;
+  const nExtra = extra.length;
+
+  row.className = "irl-passion-zone";
+  row.innerHTML = `
+    <div class="msg-filter-tiles">
+      ${shown.map(tileHtml).join("")}
+      <button class="msg-tile irl-tile-more${open ? " active" : ""}" id="irlExtraToggle"
+        aria-expanded="${open}" onclick="toggleIrlExtraPanel()" title="Ajouter d'autres passions">
+        <span class="msg-tile-icon">＋</span>
+        <span class="msg-tile-label">Autres</span>
+        ${nExtra > 0 ? `<span class="msg-tile-badge">${nExtra}</span>` : ""}
+      </button>
+    </div>
+    ${open ? `<div class="irl-extra-panel" id="irlExtraPanel">
+      <div class="irl-extra-title">Ajouter des passions à ma barre</div>
+      <div class="irl-extra-list">
+        ${extra.map(pid => _irlExtraChipHtml(pid, counts, true)).join("")}
+        ${others.map(pid => _irlExtraChipHtml(pid, counts, false)).join("")}
+        ${!extra.length && !others.length ? '<span class="irl-extra-empty">Aucune autre passion avec des événements pour le moment.</span>' : ""}
+      </div>
+    </div>` : ""}`;
+}
+
+function _irlExtraChipHtml(pid, counts, checked) {
+  const p = passionById(pid) || { label: pid, emoji: "✨" };
+  const cnt = counts[pid] || 0;
+  return `<button class="irl-extra-chip${checked ? " on" : ""}" role="checkbox" aria-checked="${checked}"
+      onclick="toggleIrlExtraPassion('${escapeJsArg(pid)}')">
+    <span class="irl-extra-box" aria-hidden="true">${checked ? "✓" : ""}</span>
+    <span>${p.emoji} ${escapeHtml(p.label)}</span>
+    ${cnt > 0 ? `<b>${cnt}</b>` : ""}
+  </button>`;
 }
 
 var irlDateFilters = new Set(); // Vide par défaut = afficher TOUS les événements futurs
@@ -1491,12 +1556,39 @@ function applyIrlCalendar() {
   irlDateFilters.add("custom");
   irlCustomDate = { start: new Date(start).getTime(), end: end ? new Date(end + "T23:59:59").getTime() : new Date(start + "T23:59:59").getTime() };
 
-  // Mettre à jour le bouton actif
-  var customBtn = document.querySelector('#irlDateCarousel [data-irldate="custom"]');
-  if (customBtn) customBtn.classList.add("active");
-
   closeModal();
   renderIRL();
+}
+
+// Retire complètement le filtre de date (le ✕ à côté du bouton calendrier).
+function clearIrlDateFilter() {
+  if (irlDateFilters) irlDateFilters.clear();
+  irlCustomDate = null;
+  renderIRL();
+}
+
+// Le filtre de date n'a plus qu'UN bouton (icône calendrier) : son libellé
+// affiche la période choisie, et le ✕ n'apparaît que s'il y a quelque chose à
+// retirer. Remplace les 5 pastilles Aujourd'hui/Demain/… (2026-07-22).
+function _syncIrlDateBtn() {
+  var label = document.getElementById("irlDateBtnLabel");
+  var btn = document.getElementById("irlDateBtn");
+  var clear = document.getElementById("irlDateClearBtn");
+  if (!label || !btn) return;
+  var active = !!(irlDateFilters && irlDateFilters.size);
+  var txt = "Toutes les dates";
+  if (active && irlCustomDate) {
+    var f = function(ts) { return new Date(ts).toLocaleDateString("fr-FR", { day: "numeric", month: "short" }); };
+    var sameDay = new Date(irlCustomDate.start).toDateString() === new Date(irlCustomDate.end).toDateString();
+    txt = sameDay ? f(irlCustomDate.start) : f(irlCustomDate.start) + " → " + f(irlCustomDate.end);
+  } else if (active) {
+    var names = { today: "Aujourd'hui", tomorrow: "Demain", week: "Cette semaine", month: "Ce mois" };
+    txt = [...irlDateFilters].map(function(k) { return names[k] || k; }).join(" · ");
+  }
+  label.textContent = txt;
+  btn.style.borderColor = active ? "var(--accent)" : "var(--border)";
+  btn.style.color = active ? "var(--accent)" : "var(--text)";
+  if (clear) clear.style.display = active ? "block" : "none";
 }
 
 // Point de référence pour le filtre distance : ville sélectionnée > GPS > Paris.
@@ -1678,46 +1770,13 @@ function _updateIrlFiltersBtn() {
   }
 }
 
-// Barre au-dessus de la liste : compte de résultats, tri, onglet « Passés » et —
-// surtout — l'alerte « N événements masqués par tes filtres · Tout voir ».
-// Sans elle, un utilisateur filtré ne pouvait pas savoir qu'il ratait 90 % des
-// événements (c'était le cas au chargement jusqu'au 2026-07-21).
-function _renderIrlToolbar(shownCount) {
-  var box = document.getElementById("irlFilterStatus");
-  if (!box) return;
-  var now = Date.now();
-  var universe = allEvents().filter(function(e) {
-    return irlShowPast ? _eventIsOver(e) : _eventEndAt(e) > now;
-  }).length;
-  var hidden = Math.max(0, universe - shownCount);
-  var nFilters = _irlActiveFilterCount() + (irlSearchQuery ? 1 : 0);
-
-  box.style.display = "block";
-  box.className = "irl-toolbar";
-  box.innerHTML = `
-    <div class="irl-toolbar-row">
-      <div class="irl-seg" role="tablist" aria-label="Période">
-        <button class="irl-seg-btn ${irlShowPast ? "" : "active"}" role="tab" aria-selected="${!irlShowPast}" onclick="setIrlPastMode(false)">À venir</button>
-        <button class="irl-seg-btn ${irlShowPast ? "active" : ""}" role="tab" aria-selected="${irlShowPast}" onclick="setIrlPastMode(true)">Passés</button>
-      </div>
-      <div style="display:flex;align-items:center;gap:6px;">
-        <button class="irl-cal-toggle${irlCalendarOn ? " active" : ""}" onclick="toggleIrlCalendar()"
-          aria-pressed="${irlCalendarOn}" aria-label="Vue calendrier" title="Vue calendrier">🗓</button>
-        <label class="irl-sort">
-          <span class="sr-only">Trier</span>
-          <select onchange="setIrlSort(this.value)" aria-label="Trier les événements">
-            <option value="soon"${irlSort === "soon" ? " selected" : ""}>⏱ Imminents</option>
-            <option value="near"${irlSort === "near" ? " selected" : ""}>📍 Les plus proches</option>
-            <option value="popular"${irlSort === "popular" ? " selected" : ""}>🔥 Les plus courus</option>
-          </select>
-        </label>
-      </div>
-    </div>
-    <div class="irl-toolbar-count">
-      <b>${shownCount}</b> événement${shownCount > 1 ? "s" : ""}${nFilters ? " · " + nFilters + " filtre" + (nFilters > 1 ? "s" : "") : ""}
-      ${hidden > 0 ? `<button class="irl-showall" onclick="clearAllIrlFilters()">${hidden} masqué${hidden > 1 ? "s" : ""} · Tout voir</button>` : ""}
-    </div>`;
-}
+// ⚠️ La barre d'outils au-dessus de la liste (onglets « À venir / Passés », vue
+// calendrier, tri, et la ligne « N événements · X filtres · N masqués ») a été
+// SUPPRIMÉE le 2026-07-22 : trop d'informations concurrentes pour un écran qui a
+// déjà une barre de passions, une barre de recherche et un panneau de filtres
+// avec sa pastille de compte. Le tri reste sur « imminents » (irlSort), et les
+// événements passés restent joignables par code (setIrlPastMode) — juste plus
+// d'onglet dédié. Ne PAS réintroduire un bandeau de comptage sans demande.
 
 // Taille d'une page de la liste d'événements.
 const IRL_PAGE_SIZE = 12;
@@ -1807,20 +1866,14 @@ function renderIRL() {
 
   // Bouton filtres : badge + bordure accentuée
   _updateIrlFiltersBtn();
-  _renderIrlToolbar(filtered.length);
 
-  // Sync pills date (multi-select) - carousel
-  document.querySelectorAll("#irlDateCarousel .pill").forEach(function(p) {
-    p.classList.toggle("active", irlDateFilters && irlDateFilters.has(p.getAttribute("data-irldate")));
-  });
+  // Sync du bouton de date (icône calendrier) du panneau de filtres
+  _syncIrlDateBtn();
 
   // Sync filter buttons (Mes events / Inscrit) - multi-select
   document.querySelectorAll("[data-irlfilter]").forEach(function(btn) {
     btn.classList.toggle("active", irlFilters && irlFilters.has(btn.getAttribute("data-irlfilter")));
   });
-
-  // Vue calendrier : elle remplace la liste (la carte reste au-dessus).
-  renderIrlCalendar();
 
   // Données de démo (commentaires + réactions) pour les événements seed, afin de
   // VOIR la fonctionnalité tant qu'il n'y a pas encore de vrais utilisateurs.
@@ -1828,7 +1881,6 @@ function renderIRL() {
   _seedDemoEventInteractions(filtered);
 
   const list = $("#eventList");
-  if (irlCalendarOn) { if (list) list.innerHTML = ""; return; }
   if (filtered.length === 0) {
     list.innerHTML = _irlEmptyStateHtml();
     return;
@@ -3219,90 +3271,6 @@ function _irlWeeklyDigest() {
       }).catch(() => {});
     }
   } catch (e) {}
-}
-
-// ════════════════════════════════════════════════════════════════════════
-// VUE CALENDRIER (mois) — 3ᵉ mode d'affichage à côté de la liste et la carte
-// ════════════════════════════════════════════════════════════════════════
-let irlCalMonth = null; // timestamp du 1er du mois affiché
-
-function toggleIrlCalendar() {
-  irlCalendarOn = !irlCalendarOn;
-  if (irlCalendarOn && !irlCalMonth) irlCalMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime();
-  renderIRL();
-}
-
-function irlCalShift(delta) {
-  const d = new Date(irlCalMonth || Date.now());
-  d.setMonth(d.getMonth() + delta);
-  irlCalMonth = new Date(d.getFullYear(), d.getMonth(), 1).getTime();
-  renderIrlCalendar();
-}
-
-// Un clic sur un jour applique un filtre de date « ce jour-là » (réutilise le
-// filtre « custom » existant → aucun chemin de filtrage parallèle à maintenir).
-function irlCalPickDay(ts) {
-  const start = new Date(ts); start.setHours(0, 0, 0, 0);
-  const end = new Date(ts); end.setHours(23, 59, 59, 999);
-  irlCustomDate = { start: start.getTime(), end: end.getTime() };
-  irlDateFilters = irlDateFilters || new Set();
-  irlDateFilters.clear();
-  irlDateFilters.add("custom");
-  irlCalendarOn = false; // on bascule sur la liste filtrée : c'est ce qu'on veut voir
-  renderIRL();
-  toast("📅 " + start.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" }));
-}
-
-function renderIrlCalendar() {
-  const box = document.getElementById("irlCalendar");
-  if (!box) return;
-  if (!irlCalendarOn) { box.style.display = "none"; box.innerHTML = ""; return; }
-  box.style.display = "block";
-
-  const first = new Date(irlCalMonth || Date.now());
-  first.setDate(1); first.setHours(0, 0, 0, 0);
-  const year = first.getFullYear(), month = first.getMonth();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const startOffset = (first.getDay() + 6) % 7; // lundi = 0
-
-  // Les événements du mois, filtres courants appliqués SAUF la date (sinon un
-  // filtre « cette semaine » viderait tout le calendrier).
-  const savedDates = irlDateFilters, savedCustom = irlCustomDate, savedPast = irlShowPast;
-  irlDateFilters = new Set(); irlCustomDate = null; irlShowPast = false;
-  const evs = _filterIrlEvents(allEvents());
-  irlDateFilters = savedDates; irlCustomDate = savedCustom; irlShowPast = savedPast;
-
-  const byDay = {};
-  evs.forEach(e => {
-    const d = new Date(e.date);
-    if (d.getFullYear() !== year || d.getMonth() !== month) return;
-    (byDay[d.getDate()] = byDay[d.getDate()] || []).push(e);
-  });
-
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  let cells = "";
-  for (let i = 0; i < startOffset; i++) cells += '<div class="irl-cal-cell empty"></div>';
-  for (let day = 1; day <= daysInMonth; day++) {
-    const list = byDay[day] || [];
-    const ts = new Date(year, month, day).getTime();
-    const isToday = ts === today.getTime();
-    const isPast = ts < today.getTime();
-    cells += `<button class="irl-cal-cell${isToday ? " today" : ""}${isPast ? " past" : ""}${list.length ? " has" : ""}"
-      ${list.length ? `onclick="irlCalPickDay(${ts})"` : "disabled"}
-      aria-label="${day} ${first.toLocaleDateString("fr-FR", { month: "long" })}${list.length ? " — " + list.length + " événement(s)" : ""}">
-      <span class="irl-cal-num">${day}</span>
-      ${list.length ? `<span class="irl-cal-dots">${list.slice(0, 3).map(e => `<i title="${escapeHtml(e.title || "")}">${(passionById(e.passion) || {}).emoji || "•"}</i>`).join("")}${list.length > 3 ? `<b>+${list.length - 3}</b>` : ""}</span>` : ""}
-    </button>`;
-  }
-
-  box.innerHTML = `
-    <div class="irl-cal-head">
-      <button class="irl-cal-nav" onclick="irlCalShift(-1)" aria-label="Mois précédent">‹</button>
-      <b>${first.toLocaleDateString("fr-FR", { month: "long", year: "numeric" })}</b>
-      <button class="irl-cal-nav" onclick="irlCalShift(1)" aria-label="Mois suivant">›</button>
-    </div>
-    <div class="irl-cal-dow">${["L", "M", "M", "J", "V", "S", "D"].map(d => `<span>${d}</span>`).join("")}</div>
-    <div class="irl-cal-grid">${cells}</div>`;
 }
 
 // Export d'un événement au format iCalendar (.ics) → import dans Google/Apple/Outlook.

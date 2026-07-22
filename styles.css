@@ -7605,40 +7605,43 @@
       overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
     }
 
-    .irl-toolbar { margin: 2px 0 10px; }
-    .irl-toolbar-row {
-      display: flex; align-items: center; gap: 8px; justify-content: space-between;
-    }
-    .irl-seg {
-      display: inline-flex; background: var(--bg-card); border: 1px solid var(--border);
-      border-radius: 12px; padding: 3px; gap: 2px;
-    }
-    .irl-seg-btn {
-      border: none; background: transparent; color: var(--muted);
-      font-size: 12px; font-weight: 700; padding: 7px 14px; border-radius: 9px;
-      cursor: pointer; min-height: 34px;
-    }
-    .irl-seg-btn.active { background: var(--accent); color: #fff; }
-    .irl-sort select {
-      border: 1px solid var(--border); background: var(--bg-card); color: var(--text);
-      font-size: 12px; font-weight: 700; border-radius: 12px; padding: 8px 10px;
-      min-height: 34px; cursor: pointer;
-    }
-    .irl-toolbar-count {
-      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-      font-size: 12px; color: var(--muted); margin-top: 8px;
-    }
-    .irl-toolbar-count b { color: var(--text); }
-    /* L'alerte « X masqués » est le garde-fou contre le piège historique où les
-       filtres cachaient 90 % des événements en silence. */
-    .irl-showall {
-      border: 1px solid var(--accent); background: transparent; color: var(--accent);
-      font-size: 11px; font-weight: 800; border-radius: 999px; padding: 5px 12px;
-      cursor: pointer; min-height: 30px;
-    }
-    .irl-showall:hover { background: var(--accent); color: #fff; }
+    /* La barre d'outils de la liste (onglets À venir/Passés, vue calendrier, tri,
+       ligne « N événements · X filtres · N masqués ») a été retirée le
+       2026-07-22 : l'écran était surchargé d'informations concurrentes. */
 
     .irl-tile-mine { font-size: 9px; vertical-align: super; color: var(--accent); }
+
+    /* Barre de passions : mes profils en principal + panneau « Autres » à cocher */
+    /* Aligné à gauche (et non space-around comme la messagerie) : un compte n'a
+       souvent qu'un ou deux profils passion, l'écartement les faisait flotter. */
+    .irl-passion-zone .msg-filter-tiles { justify-content: flex-start; gap: 10px; }
+    .irl-tile-more .msg-tile-icon { font-weight: 700; color: var(--muted); }
+    .irl-tile-more.active .msg-tile-icon { color: var(--accent); }
+    .irl-extra-panel {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: 14px; padding: 12px; margin: 8px 0 4px;
+    }
+    .irl-extra-title {
+      font-size: 11px; font-weight: 800; color: var(--muted);
+      text-transform: uppercase; letter-spacing: .06em; margin-bottom: 10px;
+    }
+    .irl-extra-list { display: flex; flex-wrap: wrap; gap: 6px; }
+    .irl-extra-chip {
+      display: inline-flex; align-items: center; gap: 6px;
+      border: 1px solid var(--border); background: transparent; color: var(--text);
+      font-size: 12px; font-weight: 600; border-radius: 999px;
+      padding: 7px 12px; min-height: 34px; cursor: pointer;
+    }
+    .irl-extra-chip.on { border-color: var(--accent); color: var(--accent); background: rgba(124,58,237,0.07); }
+    .irl-extra-chip b { font-size: 10px; color: var(--muted); font-weight: 700; }
+    .irl-extra-chip.on b { color: var(--accent); }
+    .irl-extra-box {
+      width: 15px; height: 15px; border-radius: 5px; border: 1.5px solid var(--border);
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 10px; line-height: 1; flex-shrink: 0;
+    }
+    .irl-extra-chip.on .irl-extra-box { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .irl-extra-empty { font-size: 12px; color: var(--muted); }
 
     .event-card-banner {
       font-size: 11px; font-weight: 800; border-radius: 10px;
@@ -7710,48 +7713,6 @@
       position: absolute; right: -3px; bottom: -3px; font-size: 10px; line-height: 1;
       background: var(--bg-card); border-radius: 50%; padding: 1px;
     }
-
-    /* ── Vue calendrier ── */
-    .irl-cal-toggle {
-      border: 1px solid var(--border); background: var(--bg-card); color: var(--muted);
-      border-radius: 12px; font-size: 15px; cursor: pointer;
-      min-width: 38px; min-height: 34px; padding: 0 8px;
-    }
-    .irl-cal-toggle.active { border-color: var(--accent); color: var(--accent); background: rgba(124,58,237,0.08); }
-
-    #irlCalendar {
-      border: 1px solid var(--border); border-radius: 16px;
-      background: var(--bg-card); padding: 12px; margin-bottom: 12px;
-    }
-    .irl-cal-head {
-      display: flex; align-items: center; justify-content: space-between;
-      font-size: 14px; margin-bottom: 10px; text-transform: capitalize;
-    }
-    .irl-cal-nav {
-      border: 1px solid var(--border); background: transparent; color: var(--text);
-      border-radius: 10px; min-width: 34px; min-height: 34px; font-size: 18px; cursor: pointer;
-    }
-    .irl-cal-dow, .irl-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
-    .irl-cal-dow span {
-      text-align: center; font-size: 10px; font-weight: 800;
-      color: var(--muted); padding-bottom: 4px;
-    }
-    .irl-cal-cell {
-      aspect-ratio: 1; border: 1px solid transparent; background: transparent;
-      border-radius: 10px; display: flex; flex-direction: column; align-items: center;
-      justify-content: flex-start; gap: 1px; padding: 4px 2px; cursor: default;
-      font-family: inherit; color: var(--text); overflow: hidden;
-    }
-    .irl-cal-cell.empty { visibility: hidden; }
-    .irl-cal-cell.past { opacity: 0.35; }
-    .irl-cal-cell.has { cursor: pointer; background: rgba(124,58,237,0.07); border-color: var(--border); }
-    .irl-cal-cell.has:hover { border-color: var(--accent); }
-    .irl-cal-cell.today { border-color: var(--accent); }
-    .irl-cal-cell.today .irl-cal-num { color: var(--accent); font-weight: 800; }
-    .irl-cal-num { font-size: 11px; font-weight: 600; }
-    .irl-cal-dots { display: flex; align-items: center; gap: 1px; font-size: 9px; line-height: 1; }
-    .irl-cal-dots i { font-style: normal; }
-    .irl-cal-dots b { font-size: 8px; color: var(--muted); }
 
 /* ═══════════════════════════════════════════════════════════════════════════
    CDV v2 (2026-07-21) — feuille « Nouveau voyage » + story de voyage
