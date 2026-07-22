@@ -393,7 +393,7 @@ test.describe("IRL — création, récurrence et vues", () => {
     expect(info.gapsDays).toEqual([7, 7, 7]);
   });
 
-  test("le filtre de date tient dans UN bouton calendrier (plus de pastilles)", async ({ page }) => {
+  test("le volet Date est un calendrier en ligne : 1 tap = un jour", async ({ page }) => {
     await bootIrl(page);
     const d = new Date();
     d.setDate(d.getDate() + 2);
@@ -402,20 +402,50 @@ test.describe("IRL — création, récurrence et vues", () => {
     await page.evaluate(() => openIrlFiltersPanel());
     await expect(page.locator("#irlDateBtnLabel")).toHaveText("Toutes les dates");
     await expect(page.locator("#irlDateClearBtn")).toBeHidden();
-    // Les 5 pastilles Aujourd'hui/Demain/… ont disparu.
+    // Les 5 pastilles Aujourd'hui/Demain/… ont disparu, le bouton-vers-modale aussi.
     await expect(page.locator("#irlDateCarousel")).toHaveCount(0);
+    await expect(page.locator("#irlDateBtn")).toHaveCount(0);
+    // Le volet Date est ouvert par défaut et le calendrier est déjà peint.
+    await expect(page.locator("#irlPaneDate")).toHaveClass(/on/);
+    await expect(page.locator("#irlCalGrid .irl-cal-day:not(.empty)").first()).toBeVisible();
+    // Les jours qui portent un événement sont pointés.
+    await expect(page.locator("#irlCalGrid .irl-cal-day.has-ev")).not.toHaveCount(0);
 
-    const iso = await page.evaluate((ts) => new Date(ts).toISOString().split("T")[0], d.getTime());
-    await page.locator("#irlDateBtn").click();
-    await page.fill("#irlCalStart", iso);
-    await page.locator("#modalBackdrop button", { hasText: "Appliquer" }).click();
+    await page.locator(`#irlCalGrid .irl-cal-day:not(.empty)`, { hasText: new RegExp(`^${d.getDate()}$`) }).first().click();
     await expect(cards(page)).toHaveCount(1);
     await expect(cards(page).first()).toContainText("Le bon jour");
     await expect(page.locator("#irlDateClearBtn")).toBeVisible();
+    await expect(page.locator("#irlFtabDate")).toHaveClass(/has/);
 
-    await page.evaluate(() => clearIrlDateFilter());
+    await page.locator("#irlDateClearBtn").click();
     await expect(cards(page)).toHaveCount(2);
     await expect(page.locator("#irlDateBtnLabel")).toHaveText("Toutes les dates");
+  });
+
+  test("le volet Distance est un curseur et affiche « entre 0 et X km »", async ({ page }) => {
+    await bootIrl(page);
+    await seedEvents(page, [
+      { title: "Paris", lat: 48.8566, lng: 2.3522 },
+      { title: "Marseille", lat: 43.2965, lng: 5.3698 },
+    ]);
+    await page.evaluate(() => openIrlFiltersPanel());
+    await page.locator("#irlFtabDist").click();
+    await expect(page.locator("#irlPaneDist")).toHaveClass(/on/);
+    await expect(page.locator("#irlPaneDate")).not.toHaveClass(/on/);
+    await expect(page.locator("#irlDistLabel")).toHaveText("Toutes distances");
+    // L'ancien <select> à 10 options n'existe plus.
+    await expect(page.locator("select#irlDistanceFilter")).toHaveCount(0);
+
+    // Index 4 = 50 km : Marseille (~660 km de Paris) sort de la liste.
+    await page.locator("#irlDistanceRange").fill("4");
+    await expect(page.locator("#irlDistLabel")).toHaveText("entre 0 et 50 km");
+    await expect(cards(page)).toHaveCount(1);
+    await expect(cards(page).first()).toContainText("Paris");
+    await expect(page.locator("#irlFtabDist")).toHaveClass(/has/);
+
+    await page.locator("#irlDistClearBtn").click();
+    await expect(cards(page)).toHaveCount(2);
+    await expect(page.locator("#irlDistLabel")).toHaveText("Toutes distances");
   });
 
   test("le digest hebdo ne se déclenche qu'une fois par semaine", async ({ page }) => {

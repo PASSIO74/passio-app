@@ -1532,6 +1532,178 @@ function setIrlDateFilter(val, btn) {
   renderIRL();
 }
 
+// ===== Panneau de filtres : 3 onglets carrés (Date / Distance / Horaire) =====
+// Un seul volet visible à la fois (2026-07-22). Avant, les 3 réglages étaient
+// empilés — un bouton, un <select> natif et un second bouton — ce qui donnait
+// trois contrôles d'apparence différente pour trois filtres de même rang.
+
+// Paliers du curseur de distance. L'index 0 = aucune limite ; les autres
+// reprennent EXACTEMENT les valeurs de l'ancien <select> (le filtrage lit
+// toujours `irlDistanceFilter` en km, rien d'autre ne change).
+const IRL_DISTANCE_STEPS = ["", "5", "10", "25", "50", "100", "250", "500", "1000", "5000"];
+
+function setIrlFilterTab(tab) {
+  window._irlFilterTab = tab;
+  _syncIrlFilterTabs();
+  if (tab === "date") _renderIrlInlineCal();
+}
+
+function _syncIrlFilterTabs() {
+  var tab = window._irlFilterTab || "date";
+  var map = {
+    date:     { btn: "irlFtabDate", pane: "irlPaneDate", on: !!(irlDateFilters && irlDateFilters.size) },
+    distance: { btn: "irlFtabDist", pane: "irlPaneDist", on: !!irlDistanceFilter },
+    time:     { btn: "irlFtabTime", pane: "irlPaneTime", on: !!irlTimeFilter },
+  };
+  Object.keys(map).forEach(function (k) {
+    var cfg = map[k];
+    var btn = document.getElementById(cfg.btn);
+    var pane = document.getElementById(cfg.pane);
+    if (btn) {
+      btn.classList.toggle("sel", k === tab);
+      btn.classList.toggle("has", cfg.on);
+      btn.setAttribute("aria-selected", k === tab ? "true" : "false");
+    }
+    if (pane) pane.classList.toggle("on", k === tab);
+  });
+}
+
+// --- Calendrier en ligne ------------------------------------------------
+// Le volet Date affiche un VRAI calendrier (mois navigable) : 1 tap = un jour,
+// un 2ᵉ tap plus loin = une période. Les jours qui portent au moins un
+// événement sont pointés, sinon on choisit à l'aveugle.
+function _irlCalMonthDate() {
+  if (!window._irlCalMonth) {
+    var base = (irlCustomDate && irlCustomDate.start) ? new Date(irlCustomDate.start) : new Date();
+    window._irlCalMonth = new Date(base.getFullYear(), base.getMonth(), 1);
+  }
+  return window._irlCalMonth;
+}
+
+function irlCalNavMonth(delta) {
+  var m = _irlCalMonthDate();
+  window._irlCalMonth = new Date(m.getFullYear(), m.getMonth() + delta, 1);
+  _renderIrlInlineCal();
+}
+
+// Jours (timestamp minuit) portant au moins un événement à venir.
+function _irlEventDaySet() {
+  var set = {};
+  try {
+    allEvents().forEach(function (e) {
+      var ts = e && e.date;              // même champ que le filtre de date
+      if (!ts) return;
+      var d = new Date(ts);
+      set[new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()] = 1;
+    });
+  } catch (err) { /* pas d'événements = pas de pastilles */ }
+  return set;
+}
+
+function _renderIrlInlineCal() {
+  var grid = document.getElementById("irlCalGrid");
+  var lbl = document.getElementById("irlCalMonthLbl");
+  if (!grid) return;
+
+  var m = _irlCalMonthDate();
+  if (lbl) {
+    var t = m.toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
+    lbl.textContent = t.charAt(0).toUpperCase() + t.slice(1);
+  }
+
+  var today = new Date();
+  var todayTs = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+  var first = new Date(m.getFullYear(), m.getMonth(), 1);
+  var lead = (first.getDay() + 6) % 7; // semaine qui commence le LUNDI
+  var days = new Date(m.getFullYear(), m.getMonth() + 1, 0).getDate();
+  var withEvents = _irlEventDaySet();
+  var selStart = irlCustomDate ? _startOfDayTs(irlCustomDate.start) : null;
+  var selEnd = irlCustomDate ? _startOfDayTs(irlCustomDate.end) : null;
+
+  var html = "";
+  for (var i = 0; i < lead; i++) html += '<span class="irl-cal-day empty"></span>';
+  for (var d = 1; d <= days; d++) {
+    var ts = new Date(m.getFullYear(), m.getMonth(), d).getTime();
+    var cls = "irl-cal-day";
+    if (ts === todayTs) cls += " today";
+    if (selStart != null && ts >= selStart && ts <= selEnd) {
+      cls += " sel";
+      if (ts === selStart) cls += " sel-start";
+      if (ts === selEnd) cls += " sel-end";
+    }
+    if (withEvents[ts]) cls += " has-ev";
+    if (ts < todayTs) cls += " past";
+    html += '<button type="button" class="' + cls + '" onclick="irlCalPick(' + ts + ')">' + d + "</button>";
+  }
+  grid.innerHTML = html;
+}
+
+// 1ᵉʳ tap = un jour ; 2ᵉ tap postérieur = fin de période ; tap antérieur ou
+// 3ᵉ tap = on repart d'un jour unique (règle des sélecteurs de séjour).
+function irlCalPick(ts) {
+  if (!irlDateFilters) irlDateFilters = new Set();
+  var start = irlCustomDate ? _startOfDayTs(irlCustomDate.start) : null;
+  if (window._irlCalPending && start != null && ts > start) {
+    irlCustomDate = { start: start, end: _endOfDayTs(ts) };
+    window._irlCalPending = false;
+  } else {
+    irlCustomDate = { start: ts, end: _endOfDayTs(ts) };
+    window._irlCalPending = true;
+  }
+  irlDateFilters.add("custom");
+  renderIRL();
+  _renderIrlInlineCal();
+}
+
+function _startOfDayTs(ts) {
+  var d = new Date(ts);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+}
+function _endOfDayTs(ts) {
+  var d = new Date(ts);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999).getTime();
+}
+
+// --- Curseur de distance ------------------------------------------------
+function setIrlDistanceFromRange(idx) {
+  irlDistanceFilter = IRL_DISTANCE_STEPS[parseInt(idx, 10) || 0] || "";
+  _syncIrlDistanceUI();
+  // Le glissement produit un événement par pixel : on ne re-rend qu'à l'arrêt.
+  clearTimeout(window._irlDistT);
+  window._irlDistT = setTimeout(function () { renderIRL(); }, 180);
+}
+
+function clearIrlDistanceFilter() {
+  irlDistanceFilter = "";
+  _syncIrlDistanceUI();
+  renderIRL();
+}
+
+function _syncIrlDistanceUI() {
+  var range = document.getElementById("irlDistanceRange");
+  var lbl = document.getElementById("irlDistLabel");
+  var sum = document.getElementById("irlDistSum");
+  var clear = document.getElementById("irlDistClearBtn");
+  var idx = IRL_DISTANCE_STEPS.indexOf(irlDistanceFilter || "");
+  if (idx < 0) idx = 0;
+  if (range && String(range.value) !== String(idx)) range.value = idx;
+  if (lbl) lbl.textContent = irlDistanceFilter ? "entre 0 et " + irlDistanceFilter + " km" : "Toutes distances";
+  if (sum) {
+    sum.textContent = irlDistanceFilter
+      ? "Autour de " + _irlReferenceLabel() + " · " + irlDistanceFilter + " km max"
+      : "Aucune limite de distance";
+  }
+  if (clear) clear.style.display = irlDistanceFilter ? "block" : "none";
+}
+
+// Libellé du point de référence du filtre distance (même règle que
+// _irlReferenceLoc : ville choisie > GPS > Paris).
+function _irlReferenceLabel() {
+  if (typeof irlSelectedCity !== "undefined" && irlSelectedCity) return irlSelectedCity.name;
+  var el = document.getElementById("irlUserCityName");
+  return (el && el.textContent && el.textContent !== "…") ? el.textContent : "ta position";
+}
+
 function openIrlCalendar() {
   openModal('\
     <div class="modal-handle"></div>\
@@ -1564,7 +1736,9 @@ function applyIrlCalendar() {
 function clearIrlDateFilter() {
   if (irlDateFilters) irlDateFilters.clear();
   irlCustomDate = null;
+  window._irlCalPending = false;
   renderIRL();
+  _renderIrlInlineCal();
 }
 
 // Le filtre de date n'a plus qu'UN bouton (icône calendrier) : son libellé
@@ -1572,9 +1746,9 @@ function clearIrlDateFilter() {
 // retirer. Remplace les 5 pastilles Aujourd'hui/Demain/… (2026-07-22).
 function _syncIrlDateBtn() {
   var label = document.getElementById("irlDateBtnLabel");
-  var btn = document.getElementById("irlDateBtn");
+  var btn = document.getElementById("irlDateBtn"); // n'existe plus (calendrier en ligne)
   var clear = document.getElementById("irlDateClearBtn");
-  if (!label || !btn) return;
+  if (!label) return;
   var active = !!(irlDateFilters && irlDateFilters.size);
   var txt = "Toutes les dates";
   if (active && irlCustomDate) {
@@ -1586,8 +1760,10 @@ function _syncIrlDateBtn() {
     txt = [...irlDateFilters].map(function(k) { return names[k] || k; }).join(" · ");
   }
   label.textContent = txt;
-  btn.style.borderColor = active ? "var(--accent)" : "var(--border)";
-  btn.style.color = active ? "var(--accent)" : "var(--text)";
+  if (btn) {
+    btn.style.borderColor = active ? "var(--accent)" : "var(--border)";
+    btn.style.color = active ? "var(--accent)" : "var(--text)";
+  }
   if (clear) clear.style.display = active ? "block" : "none";
 }
 
@@ -1736,20 +1912,25 @@ function clearAllIrlFilters() {
   irlTimeFilter = "";
   irlCustomDate = null;
   irlSearchQuery = "";
+  window._irlCalPending = false;
   var searchEl = document.getElementById("irlCitySearch");
   if (searchEl) searchEl.value = "";
-  var distSel = document.getElementById("irlDistanceFilter");
-  if (distSel) distSel.value = "";
   var timeBtn = document.getElementById("irlTimeFilterBtn");
   if (timeBtn) timeBtn.textContent = "🕐 Horaire";
-  var citySearch = document.getElementById("irlCitySearch");
-  if (citySearch) citySearch.value = "";
+  _syncIrlDistanceUI();
   renderIRL();
+  _renderIrlInlineCal();
 }
 
 function openIrlFiltersPanel() {
   var panel = document.getElementById("irlFiltersPanel");
   if (panel) panel.style.display = "block";
+  // Le calendrier n'est peint qu'à l'ouverture (et à chaque changement) : inutile
+  // de reconstruire 42 cellules à chaque renderIRL alors que le panneau est fermé.
+  if (!window._irlFilterTab) window._irlFilterTab = "date";
+  _syncIrlFilterTabs();
+  _syncIrlDistanceUI();
+  _renderIrlInlineCal();
 }
 
 function closeIrlFiltersPanel() {
@@ -1867,8 +2048,10 @@ function renderIRL() {
   // Bouton filtres : badge + bordure accentuée
   _updateIrlFiltersBtn();
 
-  // Sync du bouton de date (icône calendrier) du panneau de filtres
+  // Sync du panneau de filtres (résumé de la date, onglets, curseur de distance)
   _syncIrlDateBtn();
+  _syncIrlFilterTabs();
+  _syncIrlDistanceUI();
 
   // Sync filter buttons (Mes events / Inscrit) - multi-select
   document.querySelectorAll("[data-irlfilter]").forEach(function(btn) {
@@ -2603,9 +2786,17 @@ function _patchEventCardJoin(id) {
     <button class="btn small ${myState ? "ghost" : "primary"}" onclick="event.stopPropagation();openEventRsvpSheet('${escapeJsArg(id)}')">${myState ? RSVP_LABELS[myState].short : full ? "⏳ Liste d'attente" : "+ Rejoindre"}</button>`;
 }
 
+// Le <select> à 10 options a été remplacé par le curseur `#irlDistanceRange`
+// (2026-07-22) ; la fonction reste le point d'entrée « relire l'UI et filtrer ».
 function filterIrlByDistance() {
-  const distanceSelect = document.getElementById("irlDistanceFilter");
-  irlDistanceFilter = (distanceSelect && distanceSelect.value) ? distanceSelect.value : "";
+  const range = document.getElementById("irlDistanceRange");
+  if (range) {
+    irlDistanceFilter = IRL_DISTANCE_STEPS[parseInt(range.value, 10) || 0] || "";
+  } else {
+    const legacy = document.getElementById("irlDistanceFilter");
+    irlDistanceFilter = (legacy && legacy.value) ? legacy.value : "";
+  }
+  _syncIrlDistanceUI();
   renderIRL();
 }
 

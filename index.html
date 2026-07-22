@@ -883,36 +883,67 @@
           <div style="width:36px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 18px;"></div>
           <div style="font-size:17px;font-weight:800;color:var(--text);margin-bottom:18px;text-align:center;">🎯 Filtres</div>
 
-          <!-- Date : un seul bouton (icône calendrier) au lieu des 5 pastilles -->
-          <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">📅 Date</div>
-          <div style="display:flex;gap:8px;align-items:center;margin-bottom:18px;">
-            <button id="irlDateBtn" onclick="openIrlCalendar()" style="flex:1;display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:12px;border:1px solid var(--border);background:var(--bg-card);font-size:13px;font-weight:600;color:var(--text);cursor:pointer;text-align:left;">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true" style="width:16px;height:16px;flex-shrink:0;">
-                <rect x="3" y="5" width="18" height="16" rx="3"/><path d="M8 3v4M16 3v4M3 10h18"/>
+          <!-- Date / Distance / Horaire : 3 onglets carrés. Un seul volet ouvert à
+               la fois — les trois réglages empilés (bouton + select + bouton)
+               noyaient l'essentiel. La pastille sur l'onglet dit lequel filtre. -->
+          <div class="irl-ftabs" role="tablist" aria-label="Filtres">
+            <button class="irl-ftab" id="irlFtabDate" role="tab" aria-selected="true" aria-controls="irlPaneDate" onclick="setIrlFilterTab('date')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="3" y="5" width="18" height="16" rx="3.5"/><path d="M8 2.8v4M16 2.8v4M3 10h18"/>
+                <rect x="6.6" y="13" width="3.2" height="3.2" rx="1" fill="currentColor" stroke="none"/>
               </svg>
-              <span id="irlDateBtnLabel">Toutes les dates</span>
+              <span>Date</span><i class="irl-ftab-dot" aria-hidden="true"></i>
             </button>
-            <button id="irlDateClearBtn" onclick="clearIrlDateFilter()" style="display:none;padding:10px 12px;border-radius:12px;border:1px solid var(--border);background:var(--bg-card);color:var(--muted);font-size:13px;cursor:pointer;" aria-label="Retirer le filtre de date">✕</button>
+            <button class="irl-ftab" id="irlFtabDist" role="tab" aria-selected="false" aria-controls="irlPaneDist" onclick="setIrlFilterTab('distance')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11z"/><circle cx="12" cy="10" r="2.6"/>
+              </svg>
+              <span>Distance</span><i class="irl-ftab-dot" aria-hidden="true"></i>
+            </button>
+            <button class="irl-ftab" id="irlFtabTime" role="tab" aria-selected="false" aria-controls="irlPaneTime" onclick="setIrlFilterTab('time')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="8.6"/><path d="M12 7.2V12l3.2 2"/>
+              </svg>
+              <span>Horaire</span><i class="irl-ftab-dot" aria-hidden="true"></i>
+            </button>
           </div>
 
-          <!-- Distance -->
-          <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">📍 Distance</div>
-          <select id="irlDistanceFilter" onchange="filterIrlByDistance()" oninput="filterIrlByDistance()" style="width:100%;padding:10px 12px;border-radius:12px;border:1px solid var(--border);background:var(--bg-card);font-size:13px;font-weight:600;color:var(--text);cursor:pointer;margin-bottom:18px;">
-            <option value="">Toutes distances</option>
-            <option value="5">5 km</option>
-            <option value="10">10 km</option>
-            <option value="25">25 km</option>
-            <option value="50">50 km</option>
-            <option value="100">100 km</option>
-            <option value="250">250 km</option>
-            <option value="500">500 km</option>
-            <option value="1000">1000 km</option>
-            <option value="5000">5000 km</option>
-          </select>
+          <!-- Volet DATE : le calendrier s'ouvre directement, pas de bouton qui
+               ouvre une modale qui ouvre un champ date. 1 tap = un jour,
+               2 taps = une période. -->
+          <div class="irl-fpane on" id="irlPaneDate" role="tabpanel" aria-labelledby="irlFtabDate">
+            <div class="irl-cal">
+              <div class="irl-cal-head">
+                <button type="button" class="irl-cal-nav" onclick="irlCalNavMonth(-1)" aria-label="Mois précédent">‹</button>
+                <b id="irlCalMonthLbl">—</b>
+                <button type="button" class="irl-cal-nav" onclick="irlCalNavMonth(1)" aria-label="Mois suivant">›</button>
+              </div>
+              <div class="irl-cal-dow" aria-hidden="true"><span>L</span><span>M</span><span>M</span><span>J</span><span>V</span><span>S</span><span>D</span></div>
+              <div class="irl-cal-grid" id="irlCalGrid"></div>
+            </div>
+            <div class="irl-fsum">
+              <span id="irlDateBtnLabel">Toutes les dates</span>
+              <button id="irlDateClearBtn" class="irl-fsum-clear" onclick="clearIrlDateFilter()" style="display:none;" aria-label="Retirer le filtre de date">✕</button>
+            </div>
+          </div>
 
-          <!-- Heure -->
-          <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">🕐 Horaire</div>
-          <button id="irlTimeFilterBtn" style="width:100%;padding:10px 12px;border-radius:12px;border:1px solid var(--border);background:var(--bg-card);font-size:13px;color:var(--text);cursor:pointer;font-weight:600;text-align:left;margin-bottom:18px;" onclick="openIrlTimePicker()">🕐 Horaire</button>
+          <!-- Volet DISTANCE : curseur (l'ancien <select> à 10 options était un
+               menu déroulant natif de plus). La valeur se lit « entre 0 et X km ». -->
+          <div class="irl-fpane" id="irlPaneDist" role="tabpanel" aria-labelledby="irlFtabDist">
+            <div class="irl-dist-val" id="irlDistLabel">Toutes distances</div>
+            <input type="range" class="irl-range" id="irlDistanceRange" min="0" max="9" step="1" value="0"
+              oninput="setIrlDistanceFromRange(this.value)" aria-label="Distance maximale" />
+            <div class="irl-dist-scale"><span>Partout</span><span>5000 km</span></div>
+            <div class="irl-fsum">
+              <span id="irlDistSum">Aucune limite de distance</span>
+              <button id="irlDistClearBtn" class="irl-fsum-clear" onclick="clearIrlDistanceFilter()" style="display:none;" aria-label="Retirer le filtre de distance">✕</button>
+            </div>
+          </div>
+
+          <!-- Volet HORAIRE : inchangé (sélecteur de plage horaire existant). -->
+          <div class="irl-fpane" id="irlPaneTime" role="tabpanel" aria-labelledby="irlFtabTime">
+            <button id="irlTimeFilterBtn" style="width:100%;padding:12px;border-radius:12px;border:1px solid var(--border);background:var(--bg-card);font-size:13px;color:var(--text);cursor:pointer;font-weight:600;text-align:left;" onclick="openIrlTimePicker()">🕐 Horaire</button>
+          </div>
 
           <!-- Type -->
           <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">👤 Mes événements</div>
