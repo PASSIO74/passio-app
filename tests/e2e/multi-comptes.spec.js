@@ -663,6 +663,25 @@ test.describe("messagerie entre 2 comptes réels", () => {
       expect((aLive.followers || []).includes(uidB), "B figure dans les followers chez A").toBe(true);
       log("✅ CDV Live cross-compte validé (étape + commentaire + réaction + suivi)");
 
+      // ── Interactions PAR ÉTAPE cross-compte (table step_interactions) ──
+      // B commente ET réagit sur l'ÉTAPE précise (pas le live entier) ; A les
+      // recharge via supaLoadStepInteractions → preuve que le commentaire/la
+      // réaction d'un jour précis d'un autre compte sont bien partagés.
+      const stepId = bLive.steps[0].id;
+      const stepThread = "cdvstep:" + liveId + ":" + stepId;
+      await pageB.evaluate(async (t) => {
+        await supaAddStepComment(t, "sc_" + uid(), "Trop belle cette étape ! [test auto]", "Test Bob", "🌍");
+        await supaSetStepReaction(t, "😍", "Test Bob", "🌍");
+      }, stepThread);
+      await pageB.waitForTimeout(1200);
+      const aStep = await pageA.evaluate((t) => supaLoadStepInteractions([t]), stepThread);
+      expect(aStep[stepThread], "A charge les interactions d'étape").toBeTruthy();
+      expect((aStep[stepThread].comments || []).some((c) => (c.text || "").indexOf("Trop belle") !== -1), "commentaire d'étape de B visible chez A").toBe(true);
+      expect((aStep[stepThread].reactions || []).some((r) => r.text === "😍"), "réaction d'étape de B visible chez A").toBe(true);
+      log("✅ step_interactions cross-compte validé (commentaire + réaction d'étape)");
+      // Nettoyage des interactions d'étape (pas de FK → pas de cascade).
+      await pageB.evaluate((t) => supa.from("step_interactions").delete().eq("thread_id", t), stepThread).catch(() => {});
+
       // ── Realtime : A ajoute une 2e étape, B la reçoit SANS recharger manuellement
       //    (canal postgres_changes "realtime:cdv_lives" → _onCdvRealtime → refresh) ──
       await pageA.evaluate((id) => supaAddCdvLiveStep(id, { id: "ls_" + uid(), city: "Sintra", emoji: "📍", content: "Étape realtime [test auto]", photos: [], rating: 4, budget: "€" }), liveId);

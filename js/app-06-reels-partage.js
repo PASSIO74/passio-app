@@ -2313,7 +2313,11 @@ function followUserFromExplorer(userId, userName) {
   state.user.following.push(userId);
   saveState();
   toast("✅ " + userName + " suivi·e !");
-  if (typeof supa !== "undefined" && supa && MY_UID) {
+  // Passer par le chemin CANONIQUE (supaFollowUser) : il garantit la FK
+  // (supaUpsertProfile avant l'insert) ET notifie la personne suivie — le raw
+  // insert précédent écrivait le follow mais la cible n'en était jamais avertie.
+  if (typeof supaFollowUser === "function") { try { supaFollowUser(userId); } catch (e) {} }
+  else if (typeof supa !== "undefined" && supa && MY_UID) {
     supa.from("follows").insert({ follower_id: MY_UID, following_id: userId }).catch(() => {});
   }
 }
