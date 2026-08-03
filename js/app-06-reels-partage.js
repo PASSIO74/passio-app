@@ -1608,6 +1608,9 @@ function activateStudioVlog() {
   const ed = $("#cdvEditor"); if (ed) ed.style.display = "block";
   const br = $("#cdvBrowse"); if (br) br.style.display = "none";
   const vlogEl = $("#studioVlog"); if (vlogEl) vlogEl.style.display = "block";
+  // Visibilité par défaut = public (editCarnet la remplace ensuite si on modifie
+  // un carnet existant, car il appelle activateStudioVlog AVANT de poser les champs).
+  if (typeof _setVlogVisibility === "function") { try { _setVlogVisibility("public"); } catch (e) {} }
   // Le carnet n'utilise ni passion ni mood : ces champs vivent dans le Studio et
   // doivent rester masqués si l'utilisateur y repasse ensuite.
   const mainTextField = $("#postText") && $("#postText").closest(".field");
@@ -1660,10 +1663,11 @@ async function saveCarnetEdits() {
   post.season = ($("#vlogSeason") && $("#vlogSeason").value || "").trim();
   post.tip = ($("#vlogTip") && $("#vlogTip").value || "").trim();
   post.steps = (vlogState.steps || []).map(s => ({
-    place: s.place || "", text: s.text || "", tip: s.tip || "",
+    place: s.place || "", text: s.text || "", tip: s.tip || "", budget: s.budget || "",
     photo: s.photo || null, video: s.video || null, audio: s.audio || null,
     lat: (typeof s.lat === "number") ? s.lat : null, lng: (typeof s.lng === "number") ? s.lng : null,
   }));
+  post.visibility = _vlogVisibility || "public";
   post.text = post.destination + (post.dateStart || post.dateEnd ? " · carnet" : "");
   post.editedAt = Date.now();
   saveState();
@@ -2022,9 +2026,10 @@ async function publishPost() {
     post.dateEnd = ($("#vlogDateEnd") && $("#vlogDateEnd").value) || null;
     post.cover = vlogState.cover;
     post.steps = (vlogState.steps || []).map(s => ({
-      place: s.place || "", text: s.text || "", tip: s.tip || "",
+      place: s.place || "", text: s.text || "", tip: s.tip || "", budget: s.budget || "",
       photo: s.photo || null, video: s.video || null, audio: s.audio || null
     }));
+    post.visibility = _vlogVisibility || "public";
     post.budget = ($("#vlogBudget") && $("#vlogBudget").value || "").trim();
     post.transport = ($("#vlogTransport") && $("#vlogTransport").value || "").trim();
     post.lodging = ($("#vlogLodging") && $("#vlogLodging").value || "").trim();

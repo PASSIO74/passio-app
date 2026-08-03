@@ -3167,6 +3167,11 @@ function openEventDetails(id) {
         💬 Discussion des participants${myRsvp(ev.id) || mine ? "" : " · réservée aux inscrits"}
       </button>`}
 
+    <!-- Pont IRL → CDV : raconter ce moment sous forme de voyage en direct. -->
+    <button class="btn ghost block" style="font-size:12px;margin-bottom:8px;" onclick="startTripFromEvent('${escapeJsArg(ev.id)}')">
+      🧳 Raconter ce moment en carnet de voyage
+    </button>
+
     <!-- Check-in : récompense la présence RÉELLE, pas un clic. Deux chemins —
          la position GPS, ou le QR/code affiché à l'accueil par l'organisateur. -->
     ${_canCheckIn(ev) ? `

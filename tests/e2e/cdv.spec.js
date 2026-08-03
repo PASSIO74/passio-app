@@ -188,12 +188,15 @@ test.describe("CDV — lives", () => {
 
     await page.evaluate((i) => addCdvLiveStep(i), id);
     await page.fill("#liveStepCity", "Sintra");
-    await page.evaluate(() => { setStepRating(5); selectBudget(document.querySelector(".budget-btn"), "€€€"); });
+    // Budget = montant en euros (nombre) depuis le 2026-08-03, plus de paliers €/€€/€€€.
+    await page.fill("#liveStepBudget", "80");
+    await page.evaluate(() => { setStepRating(5); });
     await page.evaluate(() => closeModal()); // abandon : rien ne doit fuiter
 
     await page.evaluate((i) => addCdvLiveStep(i), id);
     expect(await page.evaluate(() => _stepRating)).toBe(0);
     expect(await page.evaluate(() => _stepBudget)).toBe("");
+    expect(await page.evaluate(() => _stepVideo)).toBeNull();
     expect(await page.evaluate(() => _liveStepPhotos.length)).toBe(0);
   });
 
@@ -274,10 +277,12 @@ test.describe("CDV — lives", () => {
     // Atterrissage DIRECT dans l'éditeur de carnet pré-rempli (écran CDV).
     await expect(page.locator("#cdvEditor")).toBeVisible({ timeout: 6000 });
     await expect(page.locator("#vlogDestination")).toHaveValue("Lisbonne", { timeout: 6000 });
-    // La note ★ et le budget saisis en direct ne sont pas perdus à la conversion.
-    const tips = await page.evaluate(() => vlogState.steps.map((s) => s.tip));
-    expect(tips[0]).toContain("€€");
-    expect(tips[0]).toContain("★");
+    // La note ★ (dans le conseil) et le budget (dans son propre champ, item
+    // 2026-08-03 : le budget d'étape a QUITTÉ le conseil pour un champ dédié) ne
+    // sont pas perdus à la conversion.
+    const steps = await page.evaluate(() => vlogState.steps.map((s) => ({ tip: s.tip, budget: s.budget })));
+    expect(steps[0].budget).toContain("€€");
+    expect(steps[0].tip).toContain("★");
   });
 });
 

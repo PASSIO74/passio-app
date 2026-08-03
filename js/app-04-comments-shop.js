@@ -1160,6 +1160,35 @@ function _applyCommentInteractionEvent(r, op) {
 // Retourne { kind, id, comments (référence mutable), save(), targetUserId } ou null.
 function _findCommentThread(threadId) {
   if (!threadId) return null;
+  // 0) Étape d'un voyage (CDV live OU carnet) — commenter/partager CHAQUE étape.
+  //    Le fil est scopé à l'étape ; les commentaires vivent dans un STORE À PART
+  //    (state.user.stepComments[threadId]) et PAS sur l'objet étape, sinon le
+  //    rafraîchissement serveur du live (toutes les 5 s, qui remplace live.steps)
+  //    les effacerait. On réutilise tout le système unifié (renderer, composeur,
+  //    panneau emoji/GIF).
+  if (typeof threadId === "string" && (threadId.indexOf("cdvstep:") === 0 || threadId.indexOf("carnetstep:") === 0)) {
+    var _target = null;
+    if (threadId.indexOf("cdvstep:") === 0 && typeof getCdvLives === "function") {
+      try {
+        var _pp = threadId.split(":"); // cdvstep:<liveId>:<stepId>
+        var _lv = getCdvLives().find(function (l) { return l.id === _pp[1]; });
+        var _st = _lv && (_lv.steps || []).find(function (s) { return s.id === _pp[2]; });
+        _target = (_st && (_st.authorId || (_lv && _lv.authorId))) || (_lv && _lv.authorId) || null;
+        if (!_lv) return null;
+      } catch (e) {}
+    } else if (threadId.indexOf("carnetstep:") === 0 && typeof findPostAnywhere === "function") {
+      try {
+        var _cp = threadId.split(":"); // carnetstep:<postId>:<stepIndex>
+        var _cpost = findPostAnywhere(_cp[1]);
+        if (!_cpost) return null;
+        _target = _cpost.authorId;
+      } catch (e) {}
+    }
+    state.user.stepComments = state.user.stepComments || {};
+    if (!Array.isArray(state.user.stepComments[threadId])) state.user.stepComments[threadId] = [];
+    return { kind: "step", id: threadId, comments: state.user.stepComments[threadId],
+      save: function () { try { saveState(); } catch (e) {} }, targetUserId: _target };
+  }
   // 1) Post du fil
   if (typeof findPostAnywhere === "function") {
     var post = findPostAnywhere(threadId);
@@ -1244,6 +1273,16 @@ function _refreshCommentThreadUINow(threadId) {
       if (box) _setThreadHtml(box, _renderCommentsList(thread.comments, threadId));
     }
   } catch(e) {}
+  // Étape d'un voyage (CDV live / carnet) : feuille dédiée #stepCommentsBox.
+  if (thread.kind === "step") {
+    try {
+      if (window._openStepThreadId === threadId) {
+        var sbox = document.getElementById("stepCommentsBox");
+        if (sbox) _setThreadHtml(sbox, thread.comments.length ? _renderCommentsList(thread.comments, threadId) : '<div class="empty"><div class="empty-icon">💭</div><div class="empty-title">Sois le premier à commenter cette étape</div></div>');
+      }
+    } catch (e) {}
+    return;
+  }
   // IRL : son renderer gère DÉJÀ la page détail ET la feuille inline (#cmtThreadList).
   if (thread.kind === "event") {
     try { if (typeof _renderEventComments === "function") _renderEventComments(threadId); } catch(e) {}
@@ -1773,9 +1812,34 @@ function emojiReactPanel(event, onEmoji, onGif) {
   panel.style.cssText = "position:fixed;background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:10px;z-index:100002;box-shadow:0 6px 24px rgba(0,0,0,0.28);width:288px;box-sizing:border-box;";
 
   var cl = null;
+  var _staged = null; // { kind:"emoji"|"gif", val }
   function close() { panel.remove(); try { document.removeEventListener("click", cl); } catch (e) {} }
-  function pickEmoji(e) { try { if (onEmoji) onEmoji(e); } catch (err) {} close(); }
-  function pickGif(url) { try { if (onGif) onGif(url); } catch (err) {} close(); }
+  function commit() {
+    if (!_staged) return;
+    try {
+      if (_staged.kind === "emoji" && onEmoji) onEmoji(_staged.val);
+      else if (_staged.kind === "gif" && onGif) onGif(_staged.val);
+    } catch (err) {}
+    close();
+  }
+  // Ligne de VALIDATION : l'emoji OU le gif choisi s'affiche ici + « Envoyer ✓ ».
+  // Rien n'est appliqué tant qu'on n'a pas validé (demande explicite : prévisualiser
+  // le choix sur une ligne avant de l'envoyer, PARTOUT — même panneau qu'ailleurs).
+  var stage = document.createElement("div");
+  stage.style.cssText = "display:none;align-items:center;gap:8px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border);";
+  var stageFace = document.createElement("div");
+  stageFace.style.cssText = "width:40px;height:40px;border-radius:8px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:26px;background:var(--bg-deep);overflow:hidden;";
+  var stageSend = document.createElement("button");
+  stageSend.type = "button"; stageSend.textContent = "Envoyer ✓";
+  stageSend.style.cssText = "flex:1;border:none;border-radius:10px;background:var(--accent);color:#fff;font-weight:700;font-size:13px;padding:9px 10px;cursor:pointer;";
+  var stageCancel = document.createElement("button");
+  stageCancel.type = "button"; stageCancel.textContent = "✕"; stageCancel.setAttribute("aria-label", "Annuler le choix");
+  stageCancel.style.cssText = "border:1px solid var(--border);background:var(--bg-deep);color:var(--muted);border-radius:10px;font-size:13px;padding:9px 11px;cursor:pointer;";
+  stage.appendChild(stageFace); stage.appendChild(stageSend); stage.appendChild(stageCancel);
+  stageSend.onclick = function (ev) { ev.stopPropagation(); commit(); };
+  stageCancel.onclick = function (ev) { ev.stopPropagation(); _staged = null; stage.style.display = "none"; };
+  function pickEmoji(e) { _staged = { kind: "emoji", val: e }; stageFace.textContent = e; stageFace.innerHTML = e; stage.style.display = "flex"; }
+  function pickGif(url) { _staged = { kind: "gif", val: url }; stageFace.innerHTML = '<img src="' + url + '" style="width:100%;height:100%;object-fit:cover;"/>'; stage.style.display = "flex"; }
 
   var content = document.createElement("div");
 
@@ -1855,6 +1919,7 @@ function emojiReactPanel(event, onEmoji, onGif) {
     panel.appendChild(content);
     showEmoji();
   }
+  panel.appendChild(stage); // ligne de validation (prévisualiser avant d'envoyer)
 
   if (btn && btn.getBoundingClientRect) {
     var r = btn.getBoundingClientRect();

@@ -2568,7 +2568,7 @@ async function _buildVlogPayload(post) {
     if (typeof s.lat !== "number" && s.place && typeof cdvGeocodePlace === "function") {
       try { var g = await cdvGeocodePlace(s.place); if (g) { s.lat = g.lat; s.lng = g.lng; } } catch (e) {}
     }
-    steps.push({ place: s.place || "", text: s.text || "", tip: s.tip || "",
+    steps.push({ place: s.place || "", text: s.text || "", tip: s.tip || "", budget: s.budget || "",
       photo: photo, video: video, audio: audio,
       lat: (typeof s.lat === "number") ? s.lat : null, lng: (typeof s.lng === "number") ? s.lng : null });
   }
@@ -2577,6 +2577,9 @@ async function _buildVlogPayload(post) {
     destination: post.destination || "", dateStart: post.dateStart || null, dateEnd: post.dateEnd || null,
     budget: post.budget || "", transport: post.transport || "", lodging: post.lodging || "",
     season: post.season || "", tip: post.tip || "", cover: coverUrl, steps: steps,
+    // Visibilité du carnet (public / followers / private) : stockée DANS le blob
+    // jsonb `vlog` (pas de nouvelle colonne). Filtrée côté client par canSeeCarnet().
+    visibility: post.visibility || "public",
   };
 }
 
@@ -2808,7 +2811,8 @@ async function supaLoadPosts(offset = 0, authorId = null) {
           var v = (typeof r.vlog === "string") ? (function(){ try { return JSON.parse(r.vlog); } catch(e){ return {}; } })() : (r.vlog || {});
           return { destination: v.destination || "", dateStart: v.dateStart || null, dateEnd: v.dateEnd || null,
             budget: v.budget || "", transport: v.transport || "", lodging: v.lodging || "", season: v.season || "",
-            tip: v.tip || "", cover: v.cover || null, steps: Array.isArray(v.steps) ? v.steps : [] };
+            tip: v.tip || "", cover: v.cover || null, steps: Array.isArray(v.steps) ? v.steps : [],
+            visibility: v.visibility || "public" };
         })() : {}),
         // 🔄 Repost support: parse shared_from_post_id and shared_data if applicable
         ...(r.shared_from_post_id && { sharedReel: r.shared_from_post_id }),
@@ -3243,6 +3247,17 @@ async function supaUpdateCdvLiveStatus(liveId, status) {
   catch(e) { console.warn("CDV live status:", e); }
 }
 
+// Upload la vidéo d'une étape CDV sur Storage (bucket content, dossier cdv_steps).
+// Renvoie l'URL, ou null (base64 sauté → l'expéditeur garde sa copie locale).
+async function _uploadCdvStepVideo(key, video) {
+  try {
+    if (typeof video !== "string" || !video) return null;
+    if (video.indexOf("data:") !== 0) return video; // déjà une URL
+    if (typeof supaUploadMedia !== "function") return null;
+    var url = await supaUploadMedia(key + "_v", "cdv_steps", video, "video");
+    return (url && url.indexOf("data:") !== 0) ? url : null;
+  } catch (e) { return null; }
+}
 async function supaAddCdvLiveStep(liveId, step) {
   try {
     const stepId = step.id || ("ls_" + uid());
@@ -3264,13 +3279,22 @@ async function supaAddCdvLiveStep(liveId, step) {
         photoUrls.push(p); // déjà une URL
       }
     }
-    const { error } = await supa.from("cdv_live_steps").insert({
+    // Vidéo d'étape → Storage (jamais de base64 en DB), même hygiène que les photos.
+    var videoUrl = await _uploadCdvStepVideo(stepId, step.video);
+    var row = {
       id: stepId, live_id: liveId, author_id: MY_UID,
       city: step.city || "", emoji: step.emoji || "📍", content: step.content || "",
       photos: photoUrls, rating: step.rating || 0, budget: step.budget || "",
       lat: (typeof step.lat === "number") ? step.lat : null,
       lng: (typeof step.lng === "number") ? step.lng : null,
-    });
+    };
+    if (videoUrl) row.video = videoUrl;
+    var { error } = await supa.from("cdv_live_steps").insert(row);
+    // Filet si la colonne `video` n'existe pas encore en prod : ré-insérer sans elle.
+    if (error && /video/i.test(error.message || "") && row.video) {
+      delete row.video;
+      ({ error } = await supa.from("cdv_live_steps").insert(row));
+    }
     if (error) console.warn("CDV step:", error.message);
     await supa.from("cdv_lives").update({ updated_at: new Date().toISOString() }).eq("id", liveId);
   } catch(e) { console.warn("CDV step:", e); }
@@ -3294,12 +3318,19 @@ async function supaUpdateCdvLiveStep(liveId, step) {
         }
       } else photoUrls.push(p);
     }
-    const { error } = await supa.from("cdv_live_steps").update({
+    var videoUrl = await _uploadCdvStepVideo(step.id + "_e" + Date.now(), step.video);
+    var patch = {
       city: step.city || "", emoji: step.emoji || "📍", content: step.content || "",
       photos: photoUrls, rating: step.rating || 0, budget: step.budget || "",
       lat: (typeof step.lat === "number") ? step.lat : null,
       lng: (typeof step.lng === "number") ? step.lng : null,
-    }).eq("id", step.id).eq("author_id", MY_UID);
+    };
+    if (videoUrl) patch.video = videoUrl;
+    var { error } = await supa.from("cdv_live_steps").update(patch).eq("id", step.id).eq("author_id", MY_UID);
+    if (error && /video/i.test(error.message || "") && patch.video) {
+      delete patch.video;
+      ({ error } = await supa.from("cdv_live_steps").update(patch).eq("id", step.id).eq("author_id", MY_UID));
+    }
     if (error) console.warn("CDV step update:", error.message);
     await supa.from("cdv_lives").update({ updated_at: new Date().toISOString() }).eq("id", liveId);
   } catch (e) { console.warn("CDV step update:", e); }
@@ -3579,6 +3610,7 @@ async function supaLoadCdvLives() {
         steps: (stepsBy[r.id] || []).map(s => ({
           id: s.id, authorId: s.author_id, city: s.city || "", emoji: s.emoji || "📍", content: s.content || "",
           photos: Array.isArray(s.photos) ? s.photos : [], photo: (Array.isArray(s.photos) && s.photos[0]) || null,
+          video: s.video || null,
           rating: s.rating || 0, budget: s.budget || "", createdAt: supaTs(s.created_at),
           lat: (typeof s.lat === "number") ? s.lat : null, lng: (typeof s.lng === "number") ? s.lng : null,
         })),

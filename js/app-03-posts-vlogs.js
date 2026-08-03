@@ -344,7 +344,7 @@ function saveVlogDraft() {
     VLOG_DRAFT_FIELDS.forEach(function (id) { var el = $("#" + id); if (el) fields[id] = el.value || ""; });
     var keep = function (v) { return typeof v === "string" && v.indexOf("data:") !== 0 ? v : null; };
     var steps = (vlogState.steps || []).map(function (s) {
-      return { place: s.place || "", text: s.text || "", tip: s.tip || "",
+      return { place: s.place || "", text: s.text || "", tip: s.tip || "", budget: s.budget || "",
         photo: keep(s.photo), video: keep(s.video), audio: keep(s.audio) };
     });
     var hasContent = Object.keys(fields).some(function (k) { return fields[k]; })
@@ -564,6 +564,7 @@ function editCarnet(postId) {
   if ($("#vlogDateStart")) $("#vlogDateStart").value = post.dateStart || "";
   if ($("#vlogDateEnd")) $("#vlogDateEnd").value = post.dateEnd || "";
   if ($("#vlogBudget")) $("#vlogBudget").value = post.budget || "";
+  _setVlogVisibility(post.visibility || "public");
   if ($("#vlogTransport")) $("#vlogTransport").value = post.transport || "";
   if ($("#vlogLodging")) $("#vlogLodging").value = post.lodging || "";
   if ($("#vlogSeason")) $("#vlogSeason").value = post.season || "";
@@ -576,7 +577,7 @@ function editCarnet(postId) {
   }
   // On garde les coordonnées déjà résolues : pas de re-géocodage inutile.
   vlogState.steps = (post.steps || []).map(function (s) {
-    return { id: uid(), place: s.place || "", text: s.text || "", tip: s.tip || "",
+    return { id: uid(), place: s.place || "", text: s.text || "", tip: s.tip || "", budget: s.budget || "",
       photo: s.photo || null, video: s.video || null, audio: s.audio || null,
       lat: (typeof s.lat === "number") ? s.lat : null, lng: (typeof s.lng === "number") ? s.lng : null };
   });
@@ -764,6 +765,61 @@ function organizeGroupTrip(postId) {
   }, 200);
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// PONT IRL ↔ CDV (2026-08-03) — connecter les deux mondes.
+// Un voyage (live ou carnet) peut engendrer une SORTIE réelle près de son lieu ;
+// une SORTIE peut lancer le récit d'un voyage. Les deux réutilisent les
+// composeurs existants (openCreateEvent / startCdvLive), rien de neuf en base.
+// ═══════════════════════════════════════════════════════════════════════════
+// CDV → IRL : « Organiser une sortie ici » depuis un live OU un carnet.
+function organizeEventFromTrip(kind, id) {
+  var dest = "", coords = null, nSteps = 0, firstPlace = "";
+  if (kind === "live") {
+    var live = getCdvLives().find(function (l) { return l.id === id; });
+    if (!live) return;
+    dest = live.destination || "";
+    var steps = live.steps || []; nSteps = steps.length;
+    for (var i = 0; i < steps.length; i++) { var ll = cdvStepLatLng(steps[i]); if (ll) { coords = { lat: ll[0], lng: ll[1] }; firstPlace = steps[i].city || ""; break; } }
+  } else {
+    var post = (typeof findPostAnywhere === "function") ? findPostAnywhere(id) : null;
+    if (!post) return;
+    dest = post.destination || "";
+    var psteps = post.steps || []; nSteps = psteps.length;
+    for (var j = 0; j < psteps.length; j++) { var pll = cdvStepLatLng(psteps[j]); if (pll) { coords = { lat: pll[0], lng: pll[1] }; firstPlace = psteps[j].place || ""; break; } }
+  }
+  if (typeof openCreateEvent !== "function") { toast("Va dans IRL pour créer l'événement"); return; }
+  closeModal();
+  try { if (typeof closeVlogViewer === "function") closeVlogViewer(); } catch (e) {}
+  setTimeout(function () {
+    openCreateEvent();
+    setTimeout(function () {
+      var city = (dest || firstPlace || "").split(/[·,]/)[0].trim();
+      var t = document.getElementById("evTitle"); if (t) t.value = "Sortie : " + (dest || firstPlace || "entre passionnés");
+      var c = document.getElementById("evCity"); if (c) c.value = city;
+      var v = document.getElementById("evVenue"); if (v && firstPlace) v.value = firstPlace;
+      var d = document.getElementById("evDesc"); if (d) d.value = "Une rencontre inspirée du voyage « " + (dest || "…") + " »" + (nSteps ? " (" + nSteps + " étape" + (nSteps > 1 ? "s" : "") + ")" : "") + ". Viens le vivre en vrai !";
+      if (coords) window._evPickedCoords = { lat: coords.lat, lng: coords.lng };
+    }, 250);
+  }, 220);
+}
+// IRL → CDV : « Raconter ce moment » depuis un événement → démarre un CDV Live
+// pré-rempli avec le lieu de l'événement comme destination.
+function startTripFromEvent(eventId) {
+  var ev = (typeof allEvents === "function") ? allEvents().find(function (e) { return e.id === eventId; }) : null;
+  if (!ev) return;
+  if (typeof startCdvLive !== "function") { toast("Va dans CDV pour démarrer un voyage"); return; }
+  closeModal();
+  setTimeout(function () {
+    startCdvLive();
+    setTimeout(function () {
+      var dest = document.getElementById("cdvLiveDest");
+      if (dest) dest.value = ev.city || ev.venue || ev.title || "";
+      var desc = document.getElementById("cdvLiveDesc");
+      if (desc) desc.value = "Carnet démarré pour « " + (ev.title || "l'événement") + " »" + (ev.city ? " à " + ev.city : "") + ".";
+    }, 250);
+  }, 220);
+}
+
 // Stats calculées du carnet
 function vlogStats(post) {
   const nbDays = (post.steps || []).length;
@@ -801,6 +857,35 @@ function updateVlogStep(stepId, field, value) {
   const s = (vlogState.steps || []).find(x => x.id === stepId);
   if (!s) return;
   s[field] = value;
+}
+
+// Visibilité du carnet en cours d'édition (public / followers / private).
+var _vlogVisibility = "public";
+function _setVlogVisibility(v) {
+  _vlogVisibility = v || "public";
+  _syncVlogVisibilityPills();
+}
+function _syncVlogVisibilityPills() {
+  document.querySelectorAll("#vlogVisibilityRow .pill").forEach(function (b) {
+    b.classList.toggle("active", b.getAttribute("data-vlogvis") === (_vlogVisibility || "public"));
+  });
+}
+// Qui peut voir un carnet publié (filet client ; enforcement serveur = RLS compte).
+// public → tout le monde ; followers → l'auteur + ses abonnés ; private → l'auteur.
+function canSeeCarnet(post) {
+  if (!post || post.type !== "vlog") return true;
+  var vis = post.visibility || "public";
+  if (vis === "public") return true;
+  var me = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
+  var mine = post.authorId === me || post.authorId === "me" || post._source === "me"
+    || (typeof canEditCarnet === "function" && canEditCarnet(post));
+  if (mine) return true;
+  if (vis === "private") return false;
+  if (vis === "followers") {
+    var following = (state.user && state.user.following) || [];
+    return following.indexOf(post.authorId) > -1;
+  }
+  return true;
 }
 
 function renderVlogSteps() {
@@ -851,7 +936,13 @@ function renderVlogSteps() {
       <input type="file" id="vlogStepVideo_${s.id}" accept="video/*" style="display:none;" onchange="onVlogStepMediaChange(event, '${s.id}', 'video')" />
       <input type="file" id="vlogStepAudio_${s.id}" accept="audio/*" style="display:none;" onchange="onVlogStepMediaChange(event, '${s.id}', 'audio')" />
       <textarea class="textarea" placeholder="Note du jour : ce que tu as vu, ressenti, mangé…" maxlength="400" style="min-height:60px;margin-top:6px;" oninput="updateVlogStep('${s.id}', 'text', this.value)">${escapeHtml(s.text || '')}</textarea>
-      <input type="text" class="input" placeholder="💡 Conseil pratique (optionnel)" value="${escapeHtml(s.tip || '')}" maxlength="160" oninput="updateVlogStep('${s.id}', 'tip', this.value)" style="margin-top:6px;font-size:12px;" />
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px;">
+        <div style="position:relative;">
+          <input type="number" inputmode="decimal" min="0" step="1" class="input" placeholder="💰 Budget du jour" value="${escapeHtml(_cdvBudgetAmount(s.budget))}" oninput="updateVlogStep('${s.id}', 'budget', this.value ? this.value + ' €' : '')" style="font-size:12px;padding-right:26px;" />
+          <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);color:var(--muted);font-weight:700;pointer-events:none;font-size:12px;">€</span>
+        </div>
+        <input type="text" class="input" placeholder="💡 Conseil (optionnel)" value="${escapeHtml(s.tip || '')}" maxlength="160" oninput="updateVlogStep('${s.id}', 'tip', this.value)" style="font-size:12px;" />
+      </div>
     </div>
   `).join("");
 }
@@ -932,17 +1023,26 @@ function openVlogViewer(postId) {
     return (da || db).toLocaleDateString("fr-FR", opts);
   };
 
-  const stepsHTML = (post.steps || []).map((st, i) => `
+  const stepsHTML = (post.steps || []).map((st, i) => {
+    var _bLbl = _cdvBudgetLabel(st.budget);
+    var _threadId = "carnetstep:" + postId + ":" + i;
+    return `
     <div class="vlog-viewer-step">
-      <span class="vlog-viewer-step-day">JOUR ${i + 1}</span>
+      <span class="vlog-viewer-step-day"><span class="vlog-viewer-step-num">${i + 1}</span> JOUR ${i + 1}</span>
       ${st.place ? `<div class="vlog-viewer-step-place">📍 ${escapeHtml(st.place)}</div>` : ""}
       ${st.photo ? `<img loading="lazy" decoding="async" class="vlog-viewer-step-photo" src="${st.photo}" alt="" onerror="this.onerror=null;this.src='https://picsum.photos/seed/vlog-step-${i}-${postId}/720/480';"/>` : ""}
-      ${st.video ? `<video class="vlog-viewer-step-photo" src="${st.video}" controls playsinline preload="metadata" style="background:#000;"></video>` : ""}
-      ${st.audio ? `<audio src="${st.audio}" controls style="width:100%;margin:6px 0;"></audio>` : ""}
+      ${st.video ? `<video class="vlog-viewer-step-photo" src="${safeUrlAttr(st.video)}" controls playsinline preload="metadata" style="background:#000;"></video>` : ""}
+      ${st.audio ? `<audio src="${safeUrlAttr(st.audio)}" controls style="width:100%;margin:6px 0;"></audio>` : ""}
       ${st.text ? `<div class="vlog-viewer-step-text">${escapeHtml(st.text)}</div>` : ""}
+      ${_bLbl ? `<div class="vlog-viewer-step-tip" style="background:var(--bg-deep);">💰 Budget du jour : ${escapeHtml(_bLbl)}</div>` : ""}
       ${st.tip ? `<div class="vlog-viewer-step-tip">💡 ${escapeHtml(st.tip)}</div>` : ""}
+      <div class="cdv-step-actions" style="display:flex;align-items:center;gap:16px;margin-top:8px;">
+        <span data-cmtcount="${_threadId}" onclick="event.stopPropagation();openCarnetStepComments('${escapeJsArg(postId)}',${i})" style="font-size:12px;color:var(--muted);cursor:pointer;">💬 ${_stepCommentCount(_threadId)}</span>
+        <span onclick="event.stopPropagation();shareCarnetStep('${escapeJsArg(postId)}',${i})" style="font-size:12px;color:var(--muted);cursor:pointer;">↗ Partager</span>
+      </div>
     </div>
-  `).join("");
+  `;
+  }).join("");
 
   const practical = [];
   if (post.budget) practical.push(["Budget", post.budget]);
@@ -1019,6 +1119,9 @@ function openVlogViewer(postId) {
         </button>
         <button class="vlog-action-btn" onclick="saveItineraryPlaces('${postId}','carnet')">
           📍 Enregistrer les lieux
+        </button>
+        <button class="vlog-action-btn" onclick="organizeEventFromTrip('carnet','${postId}')">
+          📅 Organiser une sortie ici
         </button>
         ${canEditCarnet(post) ? `<button class="vlog-action-btn" onclick="editCarnet('${postId}')">✏️ Modifier</button>` : ""}
         ${(post.authorId === ((typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me") || post._source === "me")
@@ -1222,6 +1325,8 @@ function allCarnets() {
     .filter(c => {
       if (seen.has(c.id)) return false; seen.add(c.id);
       if (blocked.length && blocked.includes(c.authorId)) return false;
+      // Visibilité par carnet (public / abonnés / privé) — filet client.
+      if (typeof canSeeCarnet === "function" && !canSeeCarnet(c)) return false;
       return true;
     })
     .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
@@ -1579,13 +1684,13 @@ function addCdvLiveStep(liveId, stepId) {
   var _edit = stepId ? (getCdvLives().find(function (l) { return l.id === liveId; }) || { steps: [] })
     .steps.find(function (s) { return s.id === stepId; }) : null;
   _liveStepPhotos = _edit && Array.isArray(_edit.photos) ? _edit.photos.slice() : [];
+  _stepVideo = (_edit && _edit.video) || null;
   _stepEmoji = (_edit && _edit.emoji) || "📍";
   _stepRating = (_edit && _edit.rating) || 0;
   _stepBudget = (_edit && _edit.budget) || "";
   _stepLat = (_edit && typeof _edit.lat === "number") ? _edit.lat : null;
   _stepLng = (_edit && typeof _edit.lng === "number") ? _edit.lng : null;
   var _types = [["📍", "Lieu"], ["🍽", "Restaurant"], ["🏨", "Hébergement"], ["🎯", "Activité"], ["🚗", "Transport"], ["💡", "Conseil"], ["⚠️", "Alerte"]];
-  var _budgets = [["free", "Gratuit"], ["€", "€"], ["€€", "€€"], ["€€€", "€€€"]];
   openModal(`
     <div class="modal-handle"></div>
     <div class="modal-title">${_edit ? "✏️ Modifier l'étape" : "📍 Ajouter une étape live"}</div>
@@ -1616,11 +1721,10 @@ function addCdvLiveStep(liveId, stepId) {
       </div>
     </label>
 
-    <label class="field"><span>💰 Budget (optionnel)</span>
-      <div style="display:flex;gap:6px;">
-        ${_budgets.map(function (b) {
-          return `<button class="pill budget-btn${_stepBudget === b[0] ? " active" : ""}" onclick="selectBudget(this,'${b[0]}')">${b[1]}</button>`;
-        }).join("")}
+    <label class="field"><span>💰 Budget de l'étape (€, optionnel)</span>
+      <div style="position:relative;">
+        <input type="number" inputmode="decimal" min="0" step="1" class="input" id="liveStepBudget" placeholder="Ex : 45" value="${escapeHtml(_cdvBudgetAmount(_stepBudget))}" oninput="_stepBudget = this.value" style="padding-right:30px;"/>
+        <span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);color:var(--muted);font-weight:700;pointer-events:none;">€</span>
       </div>
     </label>
 
@@ -1633,19 +1737,72 @@ function addCdvLiveStep(liveId, stepId) {
       <input type="file" id="liveStepPhotoInput" accept="image/*" multiple style="display:none;" onchange="previewLiveStepPhotos(event)"/>
     </label>
 
+    <label class="field"><span>🎥 Vidéo (optionnel)</span>
+      <div id="liveStepVideoPreview" style="margin-bottom:6px;"></div>
+      <div class="upload-zone" onclick="document.getElementById('liveStepVideoInput').click()" style="padding:12px;">
+        <div class="upload-zone-icon" style="font-size:18px;">🎥</div>
+        <div class="upload-zone-title" style="font-size:12px;">Ajouter une vidéo</div>
+      </div>
+      <input type="file" id="liveStepVideoInput" accept="video/*" style="display:none;" onchange="pickLiveStepVideo(event)"/>
+    </label>
+
     <div style="display:flex;gap:8px;margin-top:14px;">
       <button class="btn ghost" onclick="closeModal()">${_edit ? "Annuler" : "Plus tard"}</button>
       <button class="btn primary" style="flex:1;" onclick="saveCdvLiveStep('${liveId}'${stepId ? ",'" + stepId + "'" : ""})">${_edit ? "✅ Enregistrer" : "📡 Publier l'étape"}</button>
     </div>
   `);
   previewLiveStepPhotosRefresh();
+  previewLiveStepVideoRefresh();
 }
 
 var _stepEmoji = "📍";
 var _stepRating = 0;
 var _stepBudget = "";
+var _stepVideo = null;
+// Budget d'étape : depuis le 2026-08-03 on saisit un MONTANT EN EUROS (nombre)
+// au lieu des paliers €/€€/€€€. _cdvBudgetAmount extrait le nombre d'une valeur
+// stockée (tolère l'ancien format palier → chaîne vide, et un montant déjà « 45 €ｷ »).
+// _cdvBudgetLabel produit l'étiquette d'affichage (« 45 € » ; l'ancien palier reste
+// rendu tel quel pour ne pas casser les voyages déjà publiés).
+function _cdvBudgetAmount(b) {
+  if (b == null) return "";
+  var s = String(b).trim();
+  if (!s || s === "free") return "";
+  var m = s.match(/\d[\d\s.,]*/);
+  return m ? m[0].replace(/\s/g, "").replace(",", ".") : "";
+}
+function _cdvBudgetLabel(b) {
+  if (b == null) return "";
+  var s = String(b).trim();
+  if (!s) return "";
+  if (s === "free") return "Gratuit";
+  // Ancien format palier (que des €) : afficher tel quel.
+  if (/^€+$/.test(s)) return s;
+  var amt = _cdvBudgetAmount(s);
+  return amt ? (amt + " €") : escapeHtml(s);
+}
 function selectStepType(btn, emoji) { _stepEmoji = emoji; document.querySelectorAll(".step-type-btn").forEach(function(b){b.classList.remove("active");}); btn.classList.add("active"); }
-function selectBudget(btn, val) { _stepBudget = val; document.querySelectorAll(".budget-btn").forEach(function(b){b.classList.remove("active");}); btn.classList.add("active"); }
+// Vidéo d'étape (une seule, taille limitée). Stockée en data URL puis uploadée sur
+// Storage à la publication (supaAddCdvLiveStep) — jamais de base64 en DB.
+const CDV_STEP_MAX_VIDEO_BYTES = 25 * 1024 * 1024;
+function pickLiveStepVideo(event) {
+  var file = event.target.files && event.target.files[0];
+  event.target.value = "";
+  if (!file) return;
+  if (file.size > CDV_STEP_MAX_VIDEO_BYTES) { toast("Vidéo trop lourde (" + Math.round(file.size / 1048576) + " Mo, limite 25 Mo)"); return; }
+  var reader = new FileReader();
+  reader.onload = function (e) { _stepVideo = e.target.result; previewLiveStepVideoRefresh(); };
+  reader.readAsDataURL(file);
+}
+function previewLiveStepVideoRefresh() {
+  var prev = document.getElementById("liveStepVideoPreview");
+  if (!prev) return;
+  if (!_stepVideo) { prev.innerHTML = ""; return; }
+  prev.innerHTML = '<div style="position:relative;display:inline-block;width:100%;">'
+    + '<video src="' + safeUrlAttr(_stepVideo) + '" controls playsinline preload="metadata" style="width:100%;max-height:180px;border-radius:10px;background:#000;"></video>'
+    + '<span onclick="_stepVideo=null;previewLiveStepVideoRefresh();" style="position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:50%;background:rgba(0,0,0,0.6);color:#fff;font-size:12px;display:flex;align-items:center;justify-content:center;cursor:pointer;">×</span>'
+    + '</div>';
+}
 function setStepRating(n) {
   _stepRating = n;
   document.querySelectorAll(".rating-star").forEach(function(s, i) { s.textContent = i < n ? "★" : "☆"; s.style.color = i < n ? "#f59e0b" : "var(--muted)"; });
@@ -1690,6 +1847,10 @@ function previewLiveStepPhotosRefresh() {
 function saveCdvLiveStep(liveId, stepId) {
   const city = document.getElementById("liveStepCity")?.value.trim();
   const content = document.getElementById("liveStepContent")?.value.trim();
+  // Montant du budget lu à l'enregistrement (nombre en euros ; l'input met déjà
+  // _stepBudget à jour en direct, on relit par sécurité). Stocké normalisé « 45 € ».
+  var _bAmt = _cdvBudgetAmount(document.getElementById("liveStepBudget")?.value ?? _stepBudget);
+  var _budgetVal = _bAmt ? (_bAmt + " €") : "";
   if (!city && !content) { toast("Ajoute au moins un lieu ou un texte"); return; }
 
   const lives = getCdvLives();
@@ -1709,14 +1870,17 @@ function saveCdvLiveStep(liveId, stepId) {
     content: content || "",
     photos: _liveStepPhotos.length ? [..._liveStepPhotos] : [],
     photo: _liveStepPhotos[0] || null,
+    video: _stepVideo || (existing && existing.video) || null,
     rating: _stepRating || 0,
-    budget: _stepBudget || "",
+    budget: _budgetVal,
     lat: (typeof _stepLat === "number") ? _stepLat : (existing && typeof existing.lat === "number" ? existing.lat : null),
     lng: (typeof _stepLng === "number") ? _stepLng : (existing && typeof existing.lng === "number" ? existing.lng : null),
     createdAt: existing ? (existing.createdAt || Date.now()) : Date.now(),
     editedAt: existing ? Date.now() : null,
+    comments: existing && Array.isArray(existing.comments) ? existing.comments : [],
   };
   _liveStepPhotos = [];
+  _stepVideo = null;
   _stepEmoji = "📍";
   _stepRating = 0;
   _stepBudget = "";
@@ -1763,6 +1927,106 @@ function deleteCdvLiveStep(liveId, stepId) {
   if (typeof supaDeleteCdvLiveStep === "function") supaDeleteCdvLiveStep(liveId, stepId);
   toast("🗑 Étape supprimée");
   openCdvLiveViewer(liveId);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// COMMENTER / PARTAGER CHAQUE ÉTAPE (CDV live & carnet) — item du 2026-08-03.
+// Le fil est scopé à l'étape (thread id « cdvstep:<liveId>:<stepId> » ou
+// « carnetstep:<postId>:<index> », résolu par _findCommentThread) et réutilise
+// TOUT le système de commentaires unifié : renderer _renderCommentsList, composeur
+// avec le MÊME panneau emoji/GIF (cmtComposerEmoji) et le même bouton d'envoi.
+// ═══════════════════════════════════════════════════════════════════════════
+function _stepCommentCount(threadId) {
+  try { return ((state.user.stepComments || {})[threadId] || []).length; } catch (e) { return 0; }
+}
+function openCdvStepComments(liveId, stepId) {
+  var live = getCdvLives().find(function (l) { return l.id === liveId; });
+  var idx = live ? (live.steps || []).findIndex(function (s) { return s.id === stepId; }) : -1;
+  var step = live && idx > -1 ? live.steps[idx] : null;
+  var title = "Étape " + (idx > -1 ? idx + 1 : "") + (step && step.city ? " · " + step.city : "");
+  _openStepCommentsSheet("cdvstep:" + liveId + ":" + stepId, title);
+}
+function openCarnetStepComments(postId, stepIndex) {
+  var post = (typeof findPostAnywhere === "function") ? findPostAnywhere(postId) : null;
+  var step = post && Array.isArray(post.steps) ? post.steps[stepIndex] : null;
+  var title = "Jour " + (stepIndex + 1) + (step && step.place ? " · " + step.place : "");
+  _openStepCommentsSheet("carnetstep:" + postId + ":" + stepIndex, title);
+}
+function _openStepCommentsSheet(threadId, title) {
+  var thread = (typeof _findCommentThread === "function") ? _findCommentThread(threadId) : null;
+  if (!thread) { toast("Étape introuvable"); return; }
+  window._openStepThreadId = threadId;
+  var comments = thread.comments || [];
+  var listHtml = comments.length
+    ? _renderCommentsList(comments, threadId)
+    : '<div class="empty"><div class="empty-icon">💭</div><div class="empty-title">Sois le premier à commenter cette étape</div></div>';
+  openModal(
+    '<div class="modal-handle"></div>'
+    + '<div class="modal-title">' + escapeHtml(title || "Étape") + '</div>'
+    + '<div class="modal-subtitle">Commente ce moment précis du voyage.</div>'
+    + '<div id="stepCommentsBox" style="max-height:260px;overflow-y:auto;margin-bottom:12px;" aria-live="polite">' + listHtml + '</div>'
+    + '<textarea class="textarea" id="cmtThreadInput" placeholder="Ajoute un commentaire…" maxlength="400" style="min-height:44px;" oninput="autoResizeTextarea(this);_syncComposerSendState(this)" onkeydown="if((event.metaKey||event.ctrlKey)&&event.key===\'Enter\'){event.preventDefault();submitStepComment(\'' + escapeJsArg(threadId) + '\');}"></textarea>'
+    + '<div style="display:flex;align-items:center;gap:6px;margin-top:8px;">'
+    +   _cmtComposerToolsHtml("cmtThreadInput", "submitStepComment", threadId)
+    +   '<button class="btn primary" style="flex:1;" onclick="submitStepComment(\'' + escapeJsArg(threadId) + '\')">Publier</button>'
+    + '</div>'
+  );
+  var _ta = document.getElementById("cmtThreadInput");
+  if (_ta && typeof _syncComposerSendState === "function") _syncComposerSendState(_ta);
+}
+function submitStepComment(threadId) {
+  var inp = document.getElementById("cmtThreadInput");
+  var text = inp ? inp.value.trim() : "";
+  if (text.length < 2) { toast("Trop court"); return; }
+  var thread = (typeof _findCommentThread === "function") ? _findCommentThread(threadId) : null;
+  if (!thread) return;
+  var meId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
+  var p = (typeof currentProfile === "function") ? currentProfile() : null;
+  var _cid = "c_" + uid();
+  thread.comments.unshift({
+    id: _cid, authorId: meId,
+    authorName: (p && p.name) || state.user.name || "Moi",
+    authorEmoji: (p && p.emoji) || "✨",
+    text: text, content: text, createdAt: Date.now(),
+  });
+  // S'assurer que userById() résout l'auteur.
+  try {
+    var meEntry = { id: meId, name: (p && p.name) || state.user.name || "Moi", profileEmoji: (p && p.emoji) || "✨", avatar: (p && p.color) || "#8b5cf6" };
+    state.seed.users = state.seed.users.filter(function (u) { return u.id !== meId; });
+    state.seed.users.push(meEntry);
+  } catch (e) {}
+  if (typeof thread.save === "function") thread.save();
+  if (typeof grantReward === "function") { try { grantReward("comment"); } catch (e) {} }
+  if (inp) { inp.value = ""; try { autoResizeTextarea(inp); } catch (e) {} }
+  if (typeof _refreshCommentThreadUINow === "function") _refreshCommentThreadUINow(threadId);
+  var box = document.getElementById("stepCommentsBox");
+  if (box) { box.scrollTop = 0; if (typeof _flashNewComment === "function") _flashNewComment(box, _cid); }
+  // Compteur 💬 patché en place sur la/les carte(s) de l'étape.
+  var n = _stepCommentCount(threadId);
+  document.querySelectorAll('[data-cmtcount="' + threadId + '"]').forEach(function (el) { el.innerHTML = "💬 " + n; });
+  if (typeof _syncComposerSendState === "function") _syncComposerSendState(inp);
+}
+// Partager une étape : lien profond (#cdv-live-<id> / #carnet-<id>) + résumé.
+function shareCdvStep(liveId, stepId) {
+  var live = getCdvLives().find(function (l) { return l.id === liveId; });
+  var idx = live ? (live.steps || []).findIndex(function (s) { return s.id === stepId; }) : -1;
+  var step = live && idx > -1 ? live.steps[idx] : null;
+  var label = step ? ((step.emoji || "📍") + " Étape " + (idx + 1) + " · " + (step.city || "")) : "cette étape";
+  _shareStepLink(label, (live ? live.destination : "") , location.origin + location.pathname + "#cdv-live-" + liveId);
+}
+function shareCarnetStep(postId, stepIndex) {
+  var post = (typeof findPostAnywhere === "function") ? findPostAnywhere(postId) : null;
+  var step = post && Array.isArray(post.steps) ? post.steps[stepIndex] : null;
+  var label = step ? ("📍 Jour " + (stepIndex + 1) + " · " + (step.place || "")) : "cette étape";
+  _shareStepLink(label, (post ? post.destination : ""), location.origin + location.pathname + "#carnet-" + postId);
+}
+function _shareStepLink(label, trip, url) {
+  var txt = label + (trip ? " — voyage « " + trip + " » sur PASSIO" : " sur PASSIO");
+  if (navigator.share) {
+    navigator.share({ title: "PASSIO", text: txt, url: url }).catch(function () {});
+  } else if (navigator.clipboard) {
+    navigator.clipboard.writeText(txt + " " + url).then(function () { toast("Lien copié 📋"); }).catch(function () { toast("Impossible de copier"); });
+  } else { toast("Partage indisponible"); }
 }
 
 // Prévient les personnes qui SUIVENT ce live qu'une nouvelle étape est publiée
@@ -1874,8 +2138,10 @@ function convertLiveToCarnet(liveId) {
       id: uid(),
       place: s.city || "",
       text: s.content || "",
-      tip: [s.budget ? "Budget " + s.budget : "", s.rating ? "★".repeat(s.rating) : ""].filter(Boolean).join(" · "),
+      budget: s.budget || "",
+      tip: [s.rating ? "★".repeat(s.rating) : ""].filter(Boolean).join(" · "),
       photo: s.photo || (s.photos && s.photos[0]) || null,
+      video: s.video || null,
     }));
     if (typeof renderVlogSteps === "function") renderVlogSteps();
     toast("📔 Live converti en brouillon de carnet — complète-le puis publie");
@@ -1970,7 +2236,7 @@ function openCdvLiveViewer(liveId) {
   const canEdit = canEditLive(live);
   const hasCollabs = cdvCollaborators(live).length > 0;
 
-  let stepsHTML = live.steps.map(function(s) {
+  let stepsHTML = live.steps.map(function(s, i) {
     var photosHTML = "";
     // ⚠️ photos = contenu d'un AUTRE compte (cdv_live_steps.photos) → safeUrlAttr
     // obligatoire (bloque javascript: et la sortie d'attribut), cf. CLAUDE.md.
@@ -1979,8 +2245,11 @@ function openCdvLiveViewer(liveId) {
     } else if (s.photo) {
       photosHTML = '<img loading="lazy" decoding="async" src="' + safeUrlAttr(s.photo) + '" style="width:100%;border-radius:10px;margin-top:6px;max-height:200px;object-fit:cover;"/>';
     }
+    // Vidéo d'étape (item 7). Contenu potentiellement d'un autre compte → safeUrlAttr.
+    var videoHTML = s.video ? '<video controls playsinline preload="metadata" src="' + safeUrlAttr(s.video) + '" style="width:100%;border-radius:10px;margin-top:6px;max-height:220px;background:#000;"></video>' : "";
     var ratingHTML = s.rating ? '<span style="font-size:12px;color:#f59e0b;margin-left:8px;">' + "★".repeat(s.rating) + "☆".repeat(5-s.rating) + '</span>' : "";
-    var budgetHTML = s.budget ? '<span style="font-size:10px;background:var(--bg-deep);border-radius:6px;padding:2px 6px;margin-left:6px;">' + s.budget + '</span>' : "";
+    var _bLbl = _cdvBudgetLabel(s.budget);
+    var budgetHTML = _bLbl ? '<span style="font-size:10px;background:var(--bg-deep);border-radius:6px;padding:2px 6px;margin-left:6px;">💰 ' + escapeHtml(_bLbl) + '</span>' : "";
     // Chacun corrige SES étapes (la RLS impose author_id = auth.uid()) ; sur un
     // voyage à plusieurs, on affiche aussi qui a publié l'étape.
     var _me = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
@@ -1989,20 +2258,30 @@ function openCdvLiveViewer(liveId) {
       ? '<span style="font-size:10px;color:var(--muted);margin-left:6px;">· par ' + escapeHtml(((typeof userById === "function" && userById(s.authorId)) || {}).name || "un co-voyageur") + '</span>'
       : "";
     var ownerTools = stepMine
-      ? '<div style="display:flex;gap:10px;margin-top:6px;">'
-        + '<span onclick="event.stopPropagation();addCdvLiveStep(\'' + liveId + '\',\'' + s.id + '\')" style="font-size:11px;color:var(--muted);cursor:pointer;">✏️ Modifier</span>'
+      ? '<span onclick="event.stopPropagation();addCdvLiveStep(\'' + liveId + '\',\'' + s.id + '\')" style="font-size:11px;color:var(--muted);cursor:pointer;">✏️ Modifier</span>'
         + '<span onclick="event.stopPropagation();deleteCdvLiveStep(\'' + liveId + '\',\'' + s.id + '\')" style="font-size:11px;color:#ef4444;cursor:pointer;">🗑 Supprimer</span>'
-        + '</div>'
       : "";
+    // Item 5 : commenter / partager CHAQUE étape. Le fil de commentaires est scopé à
+    // l'étape (thread id « cdvstep:<liveId>:<stepId> », résolu par _findCommentThread)
+    // et réutilise TOUT le système unifié (renderer, composeur, panneau emoji/GIF).
+    var _cn = _stepCommentCount("cdvstep:" + liveId + ":" + s.id);
+    var stepActions = '<div class="cdv-step-actions" style="display:flex;align-items:center;gap:14px;margin-top:8px;">'
+      + '<span data-cmtcount="cdvstep:' + liveId + ':' + s.id + '" onclick="event.stopPropagation();openCdvStepComments(\'' + liveId + '\',\'' + s.id + '\')" style="font-size:11px;color:var(--muted);cursor:pointer;">💬 ' + _cn + '</span>'
+      + '<span onclick="event.stopPropagation();shareCdvStep(\'' + liveId + '\',\'' + s.id + '\')" style="font-size:11px;color:var(--muted);cursor:pointer;">↗ Partager</span>'
+      + ownerTools
+      + '</div>';
     return '<div style="display:flex;gap:10px;padding:12px 0;border-bottom:1px solid var(--border);">\
-      <div style="font-size:24px;flex-shrink:0;">' + escapeHtml(s.emoji || "📍") + '</div>\
+      <div style="flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:2px;">\
+        <div class="cdv-step-num-badge" style="width:22px;height:22px;border-radius:50%;background:var(--accent);color:#fff;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;">' + (i + 1) + '</div>\
+        <div style="font-size:20px;">' + escapeHtml(s.emoji || "📍") + '</div>\
+      </div>\
       <div style="flex:1;min-width:0;">\
         <div style="display:flex;align-items:center;flex-wrap:wrap;">\
           <span style="font-weight:700;font-size:13px;color:var(--text);">' + escapeHtml(s.city) + '</span>' + ratingHTML + budgetHTML + '\
         </div>\
         <div style="font-size:11px;color:var(--muted);margin-bottom:4px;">' + fmtTime(s.createdAt) + (s.editedAt ? " · modifiée" : "") + byLabel + '</div>\
         ' + (s.content ? '<div style="font-size:12px;color:var(--text-dim);line-height:1.5;">' + escapeHtml(s.content) + '</div>' : "") + '\
-        ' + photosHTML + ownerTools + '\
+        ' + photosHTML + videoHTML + stepActions + '\
       </div>\
     </div>';
   }).join("");
@@ -2067,6 +2346,7 @@ function openCdvLiveViewer(liveId) {
       ' + (isMine ? '<button class="btn ghost block" onclick="openCdvCollaborators(\'' + liveId + '\')">👥 Co-voyageurs' + (hasCollabs ? ' (' + cdvCollaborators(live).length + ')' : '') + '</button>' : '') + '\
       ' + (isMine && !isLive ? '<button class="btn primary block" onclick="convertLiveToCarnet(\'' + liveId + '\')">📔 Convertir en carnet de voyage</button>' : '') + '\
       ' + (live.steps.length ? '<button class="btn ghost block" onclick="saveItineraryPlaces(\'' + liveId + '\',\'live\')">📍 Enregistrer les lieux</button>' : '') + '\
+      <button class="btn ghost block" onclick="organizeEventFromTrip(\'live\',\'' + liveId + '\')">📅 Organiser une sortie ici</button>\
       ' + (!isMine ? '\
         <button class="btn primary block" onclick="toggleFollowCdvLive(\'' + liveId + '\',this)" style="background:linear-gradient(135deg,#ef4444,#f59e0b);">📡 Suivre ce voyage</button>\
         <button onclick="reportCdvLive(\'' + liveId + '\')" style="display:block;margin:4px auto 0;background:none;border:none;color:var(--muted);font-size:11px;cursor:pointer;">⚠️ Signaler ce live</button>' : '') + '\
@@ -2232,7 +2512,7 @@ function _renderCdvStory() {
     : '<div class="cdv-story-media cdv-story-media-empty"><span>' + escapeHtml(s.emoji || "📍") + '</span></div>';
 
   var rating = s.rating ? '<span class="cdv-story-star">' + "★".repeat(s.rating) + '</span>' : "";
-  var budget = s.budget ? '<span class="cdv-story-chip">' + escapeHtml(s.budget) + '</span>' : "";
+  var budget = s.budget ? '<span class="cdv-story-chip">💰 ' + escapeHtml(_cdvBudgetLabel(s.budget)) + '</span>' : "";
 
   ov.innerHTML =
     '<div class="cdv-story-bars">' + bars + '</div>'
