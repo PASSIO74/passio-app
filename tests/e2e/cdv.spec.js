@@ -284,6 +284,56 @@ test.describe("CDV — lives", () => {
     expect(steps[0].budget).toContain("€€");
     expect(steps[0].tip).toContain("★");
   });
+
+  // Commenter / partager / réagir CHAQUE journée une par une (2026-08-03).
+  // Chaque étape (live) et chaque JOUR (carnet) a ses 3 actions, scopées au thread
+  // « cdvstep:<liveId>:<stepId> » / « carnetstep:<postId>:<index> ». Les réactions
+  // et commentaires vivent dans un store À PART (state.user.stepReactions /
+  // .stepComments) pour survivre au refresh serveur du live (qui remplace steps).
+  test("chaque étape d'un live a réagir · commenter · partager, indépendamment", async ({ page }) => {
+    await bootCdv(page);
+    const id = await seedLive(page, { steps: [
+      { id: "s1", city: "Paris", emoji: "🗼", content: "Jour 1", createdAt: Date.now() },
+      { id: "s2", city: "Lyon", emoji: "🍷", content: "Jour 2", createdAt: Date.now() },
+    ] });
+    await page.evaluate((i) => openCdvLiveViewer(i), id);
+
+    // Les 3 actions sont présentes sur CHACUNE des 2 étapes.
+    expect(await page.locator('.cdv-step-actions span[onclick*="reactCdvStep"]').count()).toBe(2);
+    expect(await page.locator('.cdv-step-actions span[onclick*="openCdvStepComments"]').count()).toBe(2);
+    expect(await page.locator('.cdv-step-actions span[onclick*="shareCdvStep"]').count()).toBe(2);
+
+    // Réagir à l'étape 2 : UNE réaction par personne (re-taper le même la retire).
+    const react = await page.evaluate((i) => {
+      const tid = "cdvstep:" + i + ":s2";
+      _applyStepReaction(tid, "🔥");
+      const add = _stepReactions(tid).map((r) => r.text);
+      _applyStepReaction(tid, "😍");            // remplace
+      const rep = _stepReactions(tid).map((r) => r.text);
+      const chip = document.querySelector('[data-stepreact="' + tid + '"]').innerHTML;
+      _applyStepReaction(tid, "😍");            // toggle off
+      const off = _stepReactions(tid).length;
+      // L'étape 1 n'a PAS été touchée (indépendance des journées).
+      const s1 = _stepReactions("cdvstep:" + i + ":s1").length;
+      return { add, rep, chipHasHeart: /😍/.test(chip), off, s1 };
+    }, id);
+    expect(react.add).toEqual(["🔥"]);
+    expect(react.rep).toEqual(["😍"]);
+    expect(react.chipHasHeart).toBe(true);
+    expect(react.off).toBe(0);
+    expect(react.s1).toBe(0);
+
+    // Commenter l'étape 1 : atterrit dans le store scopé à CETTE étape, pas l'autre.
+    await page.evaluate((i) => { openCdvStepComments(i, "s1"); }, id);
+    await page.locator("#cmtThreadInput").fill("Superbe première journée !");
+    await page.evaluate((i) => submitStepComment("cdvstep:" + i + ":s1"), id);
+    const cmt = await page.evaluate((i) => ({
+      s1: (state.user.stepComments["cdvstep:" + i + ":s1"] || []).length,
+      s2: (state.user.stepComments["cdvstep:" + i + ":s2"] || []).length,
+    }), id);
+    expect(cmt.s1).toBe(1);
+    expect(cmt.s2).toBe(0);
+  });
 });
 
 // ═══ CDV v2 : voyage unifié, géoloc, collaboratif, story, itinéraires ═══

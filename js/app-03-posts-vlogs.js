@@ -1037,6 +1037,8 @@ function openVlogViewer(postId) {
       ${_bLbl ? `<div class="vlog-viewer-step-tip" style="background:var(--bg-deep);">💰 Budget du jour : ${escapeHtml(_bLbl)}</div>` : ""}
       ${st.tip ? `<div class="vlog-viewer-step-tip">💡 ${escapeHtml(st.tip)}</div>` : ""}
       <div class="cdv-step-actions" style="display:flex;align-items:center;gap:16px;margin-top:8px;">
+        <span onclick="event.stopPropagation();reactCarnetStep('${escapeJsArg(postId)}',${i},event)" style="font-size:12px;color:var(--muted);cursor:pointer;">😊 Réagir</span>
+        <span data-stepreact="${_threadId}">${_stepReactChipHtml(_threadId)}</span>
         <span data-cmtcount="${_threadId}" onclick="event.stopPropagation();openCarnetStepComments('${escapeJsArg(postId)}',${i})" style="font-size:12px;color:var(--muted);cursor:pointer;">💬 ${_stepCommentCount(_threadId)}</span>
         <span onclick="event.stopPropagation();shareCarnetStep('${escapeJsArg(postId)}',${i})" style="font-size:12px;color:var(--muted);cursor:pointer;">↗ Partager</span>
       </div>
@@ -2031,6 +2033,51 @@ function _shareStepLink(label, trip, url) {
   } else { toast("Partage indisponible"); }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// RÉAGIR À CHAQUE ÉTAPE / JOUR (le « etc » de commenter/partager par journée).
+// Même logique locale que les commentaires d'étape (store à part scopé au thread,
+// pour survivre au refresh serveur du live qui remplace live.steps toutes les 5 s)
+// et UNE réaction par personne (comme partout dans l'app). Réutilise le popover
+// emoji (_emojiReactPopover), le dédup par auteur (_dedupReactionsByAuthor) et la
+// pastille + liste des réacteurs (_reactionItemsChipHtml / _openReactorsList).
+// ═══════════════════════════════════════════════════════════════════════════
+function _stepReactions(threadId) {
+  state.user.stepReactions = state.user.stepReactions || {};
+  if (!Array.isArray(state.user.stepReactions[threadId])) state.user.stepReactions[threadId] = [];
+  return state.user.stepReactions[threadId];
+}
+function _stepReactChipHtml(threadId) {
+  var items = (typeof _dedupReactionsByAuthor === "function") ? _dedupReactionsByAuthor(_stepReactions(threadId)) : _stepReactions(threadId);
+  if (!items.length || typeof _reactionItemsChipHtml !== "function") return "";
+  return _reactionItemsChipHtml(items, "event.stopPropagation();openStepReactors('" + escapeJsArg(threadId) + "',event)");
+}
+function openStepReactors(threadId, event) {
+  var items = (typeof _dedupReactionsByAuthor === "function") ? _dedupReactionsByAuthor(_stepReactions(threadId)) : _stepReactions(threadId);
+  if (typeof _openReactorsList === "function") _openReactorsList(items, event);
+}
+// UNE réaction par personne : re-taper le même emoji le retire, un autre le remplace.
+function _applyStepReaction(threadId, emoji) {
+  var arr = _stepReactions(threadId);
+  var me = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
+  var p = (typeof currentProfile === "function") ? currentProfile() : null;
+  var mineIdx = -1;
+  for (var i = 0; i < arr.length; i++) { if (arr[i] && arr[i].authorId === me) { mineIdx = i; break; } }
+  var wasSame = mineIdx > -1 && arr[mineIdx].text === emoji;
+  if (mineIdx > -1) arr.splice(mineIdx, 1);
+  if (!wasSame) arr.push({ authorId: me, authorName: (p && p.name) || state.user.name || "Moi", text: emoji, createdAt: Date.now() });
+  try { saveState(); } catch (e) {}
+  // Pastille patchée EN PLACE partout où l'étape est affichée (pas de re-render du viewer).
+  document.querySelectorAll('[data-stepreact="' + threadId + '"]').forEach(function (el) { el.innerHTML = _stepReactChipHtml(threadId); });
+}
+function reactCdvStep(liveId, stepId, event) {
+  var tid = "cdvstep:" + liveId + ":" + stepId;
+  if (typeof _emojiReactPopover === "function") _emojiReactPopover(event, function (e) { _applyStepReaction(tid, e); });
+}
+function reactCarnetStep(postId, stepIndex, event) {
+  var tid = "carnetstep:" + postId + ":" + stepIndex;
+  if (typeof _emojiReactPopover === "function") _emojiReactPopover(event, function (e) { _applyStepReaction(tid, e); });
+}
+
 // Prévient les personnes qui SUIVENT ce live qu'une nouvelle étape est publiée
 // (c'est tout l'intérêt du « suivre » : avant, suivre n'apportait rien du tout).
 function _notifyCdvLiveFollowers(live, step) {
@@ -2267,7 +2314,10 @@ function openCdvLiveViewer(liveId) {
     // l'étape (thread id « cdvstep:<liveId>:<stepId> », résolu par _findCommentThread)
     // et réutilise TOUT le système unifié (renderer, composeur, panneau emoji/GIF).
     var _cn = _stepCommentCount("cdvstep:" + liveId + ":" + s.id);
+    var _stid = "cdvstep:" + liveId + ":" + s.id;
     var stepActions = '<div class="cdv-step-actions" style="display:flex;align-items:center;gap:14px;margin-top:8px;">'
+      + '<span onclick="event.stopPropagation();reactCdvStep(\'' + liveId + '\',\'' + s.id + '\',event)" style="font-size:11px;color:var(--muted);cursor:pointer;">😊 Réagir</span>'
+      + '<span data-stepreact="' + _stid + '">' + _stepReactChipHtml(_stid) + '</span>'
       + '<span data-cmtcount="cdvstep:' + liveId + ':' + s.id + '" onclick="event.stopPropagation();openCdvStepComments(\'' + liveId + '\',\'' + s.id + '\')" style="font-size:11px;color:var(--muted);cursor:pointer;">💬 ' + _cn + '</span>'
       + '<span onclick="event.stopPropagation();shareCdvStep(\'' + liveId + '\',\'' + s.id + '\')" style="font-size:11px;color:var(--muted);cursor:pointer;">↗ Partager</span>'
       + ownerTools
