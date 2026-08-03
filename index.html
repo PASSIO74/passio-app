@@ -914,7 +914,7 @@
           <div class="irl-fpane on" id="irlPaneDate" role="tabpanel" aria-labelledby="irlFtabDate">
             <div class="irl-cal">
               <div class="irl-cal-head">
-                <button type="button" class="irl-cal-nav" onclick="irlCalNavMonth(-1)" aria-label="Mois précédent">‹</button>
+                <button type="button" class="irl-cal-nav" id="irlCalPrev" onclick="irlCalNavMonth(-1)" aria-label="Mois précédent">‹</button>
                 <b id="irlCalMonthLbl">—</b>
                 <button type="button" class="irl-cal-nav" onclick="irlCalNavMonth(1)" aria-label="Mois suivant">›</button>
               </div>
@@ -950,10 +950,10 @@
               <span id="irlDisplayEnd">23:00</span>
             </div>
             <div class="irl-time-quick">
-              <button type="button" class="pill" onclick="irlSetQuick(6,12)">🌅 06h → 12h</button>
-              <button type="button" class="pill" onclick="irlSetQuick(12,18)">☀️ 12h → 18h</button>
-              <button type="button" class="pill" onclick="irlSetQuick(18,23)">🌙 18h → 23h</button>
-              <button type="button" class="pill" onclick="clearIrlTimeFilter()">Toute la journée</button>
+              <button type="button" class="pill" data-irltime="6-12" onclick="irlSetQuick(6,12)">🌅 06h → 12h</button>
+              <button type="button" class="pill" data-irltime="12-18" onclick="irlSetQuick(12,18)">☀️ 12h → 18h</button>
+              <button type="button" class="pill" data-irltime="18-23" onclick="irlSetQuick(18,23)">🌙 18h → 23h</button>
+              <button type="button" class="pill" data-irltime="" onclick="clearIrlTimeFilter()">Toute la journée</button>
             </div>
             <div class="irl-time-selects">
               <label><span>Début</span><select id="irlStartHour" class="input" onchange="irlUpdateTime()"></select></label>
@@ -975,10 +975,13 @@
             <button class="pill" data-irlfilter="joined" style="flex:1;justify-content:center;">Inscrit</button>
           </div>
 
-          <!-- Actions -->
+          <!-- Actions. Le bouton principal annonce le RÉSULTAT (« Voir les 12
+               événements ») : les filtres s'appliquent en direct, « Appliquer »
+               laissait croire qu'il fallait valider, et rien ne disait combien
+               d'événements restaient avant de refermer la feuille. -->
           <div style="display:flex;gap:8px;">
-            <button class="btn secondary block" onclick="clearAllIrlFilters()">✕ Réinitialiser</button>
-            <button class="btn primary block" onclick="closeIrlFiltersPanel()">✓ Appliquer</button>
+            <button class="btn secondary block" id="irlFiltersResetBtn" onclick="clearAllIrlFilters()">✕ Réinitialiser</button>
+            <button class="btn primary block" id="irlFiltersDoneBtn" onclick="closeIrlFiltersPanel()">Voir les événements</button>
           </div>
         </div>
       </div>

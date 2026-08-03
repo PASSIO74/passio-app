@@ -474,6 +474,56 @@ test.describe("IRL — création, récurrence et vues", () => {
     await expect(page.locator("#irlFtabTime")).not.toHaveClass(/has/);
   });
 
+  test("le filtre horaire porte sur l'heure AFFICHÉE sur la carte", async ({ page }) => {
+    await bootIrl(page);
+    // `date` (timestamp) et `time` peuvent diverger sur les événements de démo :
+    // la carte affiche 20:00, le filtre lisait midi → l'événement disparaissait.
+    const noon = new Date();
+    noon.setDate(noon.getDate() + 2);
+    noon.setHours(12, 0, 0, 0);
+    await seedEvents(page, [
+      { title: "Soirée concert", date: noon.getTime(), time: "20:00" },
+      { title: "Café du matin", date: noon.getTime(), time: "09:00" },
+    ]);
+    await expect(cards(page).filter({ hasText: "Soirée concert" }).first()).toContainText("20:00");
+
+    await page.evaluate(() => { irlSetQuick(18, 23); });
+    await expect(cards(page)).toHaveCount(1);
+    await expect(cards(page).first()).toContainText("Soirée concert");
+
+    await page.evaluate(() => { irlSetQuick(6, 12); });
+    await expect(cards(page)).toHaveCount(1);
+    await expect(cards(page).first()).toContainText("Café du matin");
+  });
+
+  test("le calendrier interdit les jours passés et le pied annonce le résultat", async ({ page }) => {
+    await bootIrl(page);
+    await seedEvents(page, [{ title: "A" }, { title: "B" }, { title: "C" }]);
+    await page.evaluate(() => openIrlFiltersPanel());
+
+    // Pied de la feuille : compte réel + « Réinitialiser » éteint tant qu'aucun
+    // filtre n'est posé.
+    await expect(page.locator("#irlFiltersDoneBtn")).toHaveText("Voir les 3 événements");
+    await expect(page.locator("#irlFiltersResetBtn")).toBeDisabled();
+
+    // Le mois courant est le plancher : « ‹ » est éteint et ne recule pas.
+    await expect(page.locator("#irlCalPrev")).toBeDisabled();
+    const month = await page.locator("#irlCalMonthLbl").textContent();
+    await page.evaluate(() => irlCalNavMonth(-1));
+    await expect(page.locator("#irlCalMonthLbl")).toHaveText(month);
+
+    // Un jour déjà passé ne peut pas être choisi (il ne renverrait jamais rien).
+    const past = page.locator("#irlCalGrid .irl-cal-day.past");
+    if (await past.count()) await expect(past.first()).toBeDisabled();
+
+    // Un filtre posé rallume « Réinitialiser » et met le compte à jour.
+    await page.evaluate(() => { irlSetQuick(0, 1); });
+    await expect(page.locator("#irlFiltersResetBtn")).toBeEnabled();
+    await expect(page.locator("#irlFiltersDoneBtn")).toHaveText("Aucun résultat");
+    await page.locator("#irlFiltersResetBtn").click();
+    await expect(page.locator("#irlFiltersDoneBtn")).toHaveText("Voir les 3 événements");
+  });
+
   test("le digest hebdo ne se déclenche qu'une fois par semaine", async ({ page }) => {
     await bootIrl(page);
     await seedEvents(page, [{ title: "Tout près", date: Date.now() + 2 * 86400000 }]);

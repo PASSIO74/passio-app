@@ -1350,7 +1350,7 @@ function updateIrlMapMarkers() {
     const dk = _eventDistanceKm(ev);
     m.bindPopup(`
       <div class="irl-popup-title">${escapeHtml(ev.title || "Événement")}</div>
-      <div class="irl-popup-meta">${passion.emoji || ""} ${escapeHtml(passion.label || "")} · ${escapeHtml(ev.city || "")} · ${d.day} ${d.month} à ${d.time}${dk != null && dk < 20000 ? " · " + _fmtDistance(dk) : ""}</div>
+      <div class="irl-popup-meta">${passion.emoji || ""} ${escapeHtml(passion.label || "")} · ${escapeHtml(ev.city || "")} · ${d.day} ${d.month} à ${_eventTimeLabel(ev)}${dk != null && dk < 20000 ? " · " + _fmtDistance(dk) : ""}</div>
       <button class="irl-popup-btn" onclick="openEventDetails('${escapeJsArg(ev.id)}')">Voir l'événement</button>
     `);
     points.push([lat, lng]);
@@ -1583,7 +1583,15 @@ function _irlCalMonthDate() {
 
 function irlCalNavMonth(delta) {
   var m = _irlCalMonthDate();
-  window._irlCalMonth = new Date(m.getFullYear(), m.getMonth() + delta, 1);
+  var next = new Date(m.getFullYear(), m.getMonth() + delta, 1);
+  // Plancher au mois courant : au-delà, le calendrier n'offrirait que des jours
+  // morts (la liste ne contient que les événements à venir).
+  if (!irlShowPast) {
+    var now = new Date();
+    var floor = new Date(now.getFullYear(), now.getMonth(), 1);
+    if (next < floor) return;
+  }
+  window._irlCalMonth = next;
   _renderIrlInlineCal();
 }
 
@@ -1633,10 +1641,24 @@ function _renderIrlInlineCal() {
       if (ts === selEnd) cls += " sel-end";
     }
     if (withEvents[ts]) cls += " has-ev";
+    // Un jour passé ne peut RIEN donner tant qu'on regarde les événements à
+    // venir : on le grise et on le rend inerte plutôt que de laisser choisir une
+    // date qui ne renverra jamais rien.
+    var dead = ts < todayTs && !irlShowPast;
     if (ts < todayTs) cls += " past";
-    html += '<button type="button" class="' + cls + '" onclick="irlCalPick(' + ts + ')">' + d + "</button>";
+    html += '<button type="button" class="' + cls + '"' + (dead ? " disabled" : "")
+      + ' onclick="irlCalPick(' + ts + ')">' + d + "</button>";
   }
   grid.innerHTML = html;
+
+  // Reculer avant le mois courant n'ouvre que des jours morts.
+  var prev = document.getElementById("irlCalPrev");
+  if (prev) {
+    var atFloor = !irlShowPast
+      && m.getFullYear() === today.getFullYear() && m.getMonth() === today.getMonth();
+    prev.disabled = atFloor;
+    prev.style.opacity = atFloor ? ".35" : "1";
+  }
 }
 
 // 1ᵉʳ tap = un jour ; 2ᵉ tap postérieur = fin de période ; tap antérieur ou
@@ -1697,6 +1719,27 @@ function _syncIrlDistanceUI() {
   if (clear) clear.style.display = irlDistanceFilter ? "block" : "none";
 }
 
+// Pied de la feuille de filtres : le bouton principal annonce le résultat, et
+// « Réinitialiser » s'éteint quand il n'y a rien à réinitialiser (un bouton
+// toujours actif qui ne fait rien est un bouton qui ment).
+function _syncIrlFiltersFooter(count) {
+  var done = document.getElementById("irlFiltersDoneBtn");
+  var reset = document.getElementById("irlFiltersResetBtn");
+  var n = (typeof count === "number") ? count : null;
+  if (done) {
+    done.textContent = n === null ? "Voir les événements"
+      : n === 0 ? "Aucun résultat"
+      : n === 1 ? "Voir 1 événement"
+      : "Voir les " + n + " événements";
+  }
+  if (reset) {
+    var active = _irlActiveFilterCount() > 0 || !!irlSearchQuery;
+    reset.disabled = !active;
+    reset.style.opacity = active ? "1" : ".45";
+    reset.style.pointerEvents = active ? "" : "none";
+  }
+}
+
 // --- Plage horaire (en ligne dans le volet) -----------------------------
 // Les deux <select> sont peuplés à la volée : 48 <option> figées dans le
 // markup pour un volet rarement ouvert, ce serait 48 nœuds pour rien.
@@ -1726,6 +1769,12 @@ function _syncIrlTimeUI() {
   if (sum) sum.textContent = irlTimeFilter ? "Événements entre " + irlTimeFilter : "Aucune contrainte d'horaire";
   var clear = document.getElementById("irlTimeClearBtn");
   if (clear) clear.style.display = irlTimeFilter ? "block" : "none";
+  // La pastille qui correspond à la plage réglée est cochée : sans ça, revenir
+  // sur l'onglet ne dit pas quel prédéfini est en cours.
+  var key = irlTimeFilter ? start + "-" + end : "";
+  document.querySelectorAll("#irlPaneTime [data-irltime]").forEach(function (b) {
+    b.classList.toggle("active", b.getAttribute("data-irltime") === key);
+  });
 }
 
 // Libellé du point de référence du filtre distance (même règle que
@@ -1806,6 +1855,33 @@ function _irlReferenceLoc() {
   return { lat: 48.8566, lng: 2.3522 }; // fallback Paris
 }
 
+// L'heure d'un événement, en minutes depuis minuit. ⚠️ POINT UNIQUE : un
+// événement porte DEUX sources d'heure — le champ `time` (« 20:00 ») et l'heure
+// de son timestamp `date`. Elles concordent pour un événement créé dans l'app
+// (`date` est construit depuis `time`) et pour un événement Supabase (pas de
+// `time` du tout), mais PAS pour les événements de démo, dont la date est
+// générée (`Date.now() + n jours`) et le `time` écrit à la main. Le filtre
+// horaire lisait le timestamp alors que la carte AFFICHE `time` : une carte
+// marquée « 20:00 » disparaissait d'un filtre 18h→23h. On tranche pour l'heure
+// AFFICHÉE — c'est celle sur laquelle l'utilisateur croit filtrer.
+function _eventTimeMinutes(e) {
+  var m = /^\s*(\d{1,2})\s*[:hH]\s*(\d{2})?/.exec((e && e.time) || "");
+  if (m) {
+    var h = parseInt(m[1], 10);
+    var mi = parseInt(m[2] || "0", 10);
+    if (h >= 0 && h <= 23 && mi >= 0 && mi <= 59) return h * 60 + mi;
+  }
+  var d = new Date((e && e.date) || NaN);
+  return isNaN(d.getTime()) ? 0 : d.getHours() * 60 + d.getMinutes();
+}
+
+// Libellé « HH:MM » dérivé de la MÊME source que le filtre, pour que ce qui est
+// affiché et ce qui est filtré ne puissent pas diverger.
+function _eventTimeLabel(e) {
+  var mins = _eventTimeMinutes(e);
+  return String(Math.floor(mins / 60)).padStart(2, "0") + ":" + String(mins % 60).padStart(2, "0");
+}
+
 // Applique les 5 filtres IRL (passion / type / date / distance / heure) + retire le
 // passé. Partagé entre la liste (renderIRL) et les marqueurs (updateIrlMapMarkers)
 // pour qu'ils ne divergent jamais. (Factorisé le 2026-06-24.)
@@ -1860,14 +1936,14 @@ function _filterIrlEvents(events) {
       return calculateDistance(ref.lat, ref.lng, loc[0], loc[1]) <= maxKm;
     });
   }
-  // 5. Heure (plage "HH:00 - HH:00")
+  // 5. Heure (plage "HH:00 - HH:00") — via _eventTimeMinutes : l'heure LUE sur
+  // la carte est celle qui filtre (cf. le commentaire de la fonction).
   if (irlTimeFilter && irlTimeFilter.includes(" - ")) {
     var parts = irlTimeFilter.split(" - ");
     var sMin = parseInt(parts[0].split(":")[0]) * 60;
     var eMin = parseInt(parts[1].split(":")[0]) * 60 + 59;
     filtered = filtered.filter(function(e) {
-      var d = new Date(e.date);
-      var m = d.getHours() * 60 + d.getMinutes();
+      var m = _eventTimeMinutes(e);
       return m >= sMin && m <= eMin;
     });
   }
@@ -1965,6 +2041,7 @@ function openIrlFiltersPanel() {
   _syncIrlDistanceUI();
   _syncIrlTimeUI();
   _renderIrlInlineCal();
+  _syncIrlFiltersFooter(_filterIrlEvents(allEvents()).length);
 }
 
 function closeIrlFiltersPanel() {
@@ -2087,6 +2164,7 @@ function renderIRL() {
   _syncIrlFilterTabs();
   _syncIrlDistanceUI();
   _syncIrlTimeUI();
+  _syncIrlFiltersFooter(filtered.length);
 
   // Sync filter buttons (Mes events / Inscrit) - multi-select
   document.querySelectorAll("[data-irlfilter]").forEach(function(btn) {
@@ -2133,7 +2211,7 @@ function renderIRL() {
       const u = userById(aid) || { avatar: "#64748b", profileEmoji: "?" };
       return `<div class="avatar sm" style="background:${avatarBg(u)};cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${escapeJsArg(aid)}')">${avatarInner(u)}</div>`;
     }).join("");
-    const timeStr = e.time || d.time || "";
+    const timeStr = _eventTimeLabel(e);
     // ⚠️ Le « · » de séparation est ajouté ICI et NULLE PART AILLEURS (le bug
     // historique « Lyon · · Café des Arts » venait d'un `· ` déjà collé au venue).
     const venueStr = e.venue ? " · " + escapeHtml(e.venue) : "";
@@ -3028,7 +3106,7 @@ function openEventDetails(id) {
 
   const dateObj = new Date(ev.date);
   const dateStr = dateObj.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
-  const timeStr = ev.time || dateObj.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+  const timeStr = _eventTimeLabel(ev);
 
   const atts = ev.attendees || [];
   const maxStr = ev.maxAttendees ? ` / ${ev.maxAttendees} max` : "";
@@ -3359,7 +3437,7 @@ function _checkEventReminders() {
         : tier.label;
       if (typeof pushNotification === "function") {
         pushNotification("⏰ Rappel : <b>" + escapeHtml(e.title) + "</b> " + when
-          + " à " + (e.time || d.time || "")
+          + " à " + _eventTimeLabel(e)
           + (e.city ? " · " + escapeHtml(e.city) : ""), "⏰");
       }
       reminded.push(mark);
