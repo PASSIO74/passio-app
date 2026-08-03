@@ -3376,6 +3376,61 @@ async function supaRemoveCdvLiveReaction(liveId, emoji) {
   catch(e) {}
 }
 
+// ── Interactions PAR ÉTAPE / PAR JOUR (table step_interactions, cross-compte) ──
+// thread_id = « cdvstep:<liveId>:<stepId> » ou « carnetstep:<postId>:<index> ».
+// kind = 'comment' (content = texte) | 'reaction' (content = emoji).
+async function supaAddStepComment(threadId, commentId, text, authorName, authorEmoji) {
+  if (!threadId || !text || typeof MY_UID === "undefined" || !MY_UID || !window._supaReal) return false;
+  try {
+    const { error } = await supa.from("step_interactions").insert({
+      id: commentId || ("sc_" + uid()), thread_id: threadId, user_id: MY_UID,
+      kind: "comment", content: text, author_name: authorName || null, author_emoji: authorEmoji || null,
+    });
+    if (error) { console.warn("step comment:", error.message); return false; }
+    return true;
+  } catch(e) { console.warn("step comment:", e); return false; }
+}
+// UNE réaction par personne : on efface d'abord MES réactions sur ce thread.
+async function supaSetStepReaction(threadId, emoji, authorName, authorEmoji) {
+  if (!threadId || typeof MY_UID === "undefined" || !MY_UID || !window._supaReal) return false;
+  try {
+    await supa.from("step_interactions").delete().eq("thread_id", threadId).eq("user_id", MY_UID).eq("kind", "reaction");
+    if (!emoji) return true; // toggle off = suppression seule
+    const { error } = await supa.from("step_interactions").insert({
+      id: "sr_" + uid(), thread_id: threadId, user_id: MY_UID,
+      kind: "reaction", content: emoji, author_name: authorName || null, author_emoji: authorEmoji || null,
+    });
+    if (error) { console.warn("step reaction:", error.message); return false; }
+    return true;
+  } catch(e) { console.warn("step reaction:", e); return false; }
+}
+// Charge les interactions d'un lot de threads → { threadId: { comments:[], reactions:[] } }
+// aux formats des stores locaux (state.user.stepComments / stepReactions).
+async function supaLoadStepInteractions(threadIds) {
+  var out = {};
+  if (!threadIds || !threadIds.length || !window._supaReal) return out;
+  var uniq = Array.from(new Set(threadIds.filter(Boolean)));
+  if (!uniq.length) return out;
+  try {
+    const { data, error } = await supa.from("step_interactions")
+      .select("id,thread_id,user_id,kind,content,author_name,author_emoji,created_at")
+      .in("thread_id", uniq).order("created_at", { ascending: true });
+    if (error) { console.warn("step interactions load:", error.message); return out; }
+    (data || []).forEach(function (r) {
+      var t = r.thread_id; if (!t) return;
+      out[t] = out[t] || { comments: [], reactions: [] };
+      if (r.kind === "reaction") {
+        out[t].reactions.push({ authorId: r.user_id, authorName: r.author_name || "Voyageur",
+          text: r.content, createdAt: supaTs(r.created_at) });
+      } else {
+        out[t].comments.unshift({ id: r.id, authorId: r.user_id, authorName: r.author_name || "Voyageur",
+          authorEmoji: r.author_emoji || "✨", text: r.content, content: r.content, createdAt: supaTs(r.created_at) });
+      }
+    });
+    return out;
+  } catch(e) { console.warn("step interactions load:", e); return out; }
+}
+
 // ── Likes & réactions emoji des événements IRL (table event_reactions) ──
 // Un like = une réaction d'emoji '❤️' (toggle) ; tout autre emoji = réaction.
 async function supaToggleEventLike(eventId) {
@@ -4526,6 +4581,15 @@ function supaSubscribe() {
     .on("postgres_changes", { event: "*", schema: "public", table: "cdv_live_comments" }, _onCdvRealtime)
     .on("postgres_changes", { event: "*", schema: "public", table: "cdv_live_reactions" }, _onCdvRealtime)
     .on("postgres_changes", { event: "*", schema: "public", table: "cdv_live_followers" }, _onCdvRealtime);
+
+  // Interactions PAR ÉTAPE / PAR JOUR (commentaires + réactions), cross-compte.
+  dbChan
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "step_interactions" }, function(payload) {
+      try { if (typeof _onStepInteraction === "function") _onStepInteraction(payload); } catch(e) {}
+    })
+    .on("postgres_changes", { event: "DELETE", schema: "public", table: "step_interactions" }, function(payload) {
+      try { if (typeof _onStepInteraction === "function") _onStepInteraction(payload); } catch(e) {}
+    });
 
   // Lives VIDÉO : apparition/fin d'un direct → rafraîchit les bulles 🔴.
   dbChan

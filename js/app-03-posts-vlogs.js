@@ -1192,6 +1192,10 @@ function openVlogViewer(postId) {
   if (hasMap) {
     setTimeout(() => initVlogMiniMap(mapPlaces), 200);
   }
+  // Commentaires + réactions PAR JOUR, cross-compte (table step_interactions).
+  if (typeof _hydrateStepInteractions === "function") {
+    _hydrateStepInteractions((post.steps || []).map((st, i) => "carnetstep:" + postId + ":" + i));
+  }
 }
 
 // Rend les commentaires d'un carnet dans le viewer plein écran (#vlogCommentsList).
@@ -1987,12 +1991,18 @@ function submitStepComment(threadId) {
   var meId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
   var p = (typeof currentProfile === "function") ? currentProfile() : null;
   var _cid = "c_" + uid();
+  var _aName = (p && p.name) || state.user.name || "Moi";
+  var _aEmoji = (p && p.emoji) || "✨";
   thread.comments.unshift({
     id: _cid, authorId: meId,
-    authorName: (p && p.name) || state.user.name || "Moi",
-    authorEmoji: (p && p.emoji) || "✨",
+    authorName: _aName,
+    authorEmoji: _aEmoji,
     text: text, content: text, createdAt: Date.now(),
   });
+  // Cross-compte : le commentaire d'étape est propagé via step_interactions
+  // (l'id local _cid = id serveur → dédup à l'hydratation/realtime).
+  if (typeof supaAddStepComment === "function") { try { supaAddStepComment(threadId, _cid, text, _aName, _aEmoji); } catch (e) {} }
+  _notifyStepAuthor(threadId, "a commenté ton étape");
   // S'assurer que userById() résout l'auteur.
   try {
     var meEntry = { id: meId, name: (p && p.name) || state.user.name || "Moi", profileEmoji: (p && p.emoji) || "✨", avatar: (p && p.color) || "#8b5cf6" };
@@ -2060,14 +2070,101 @@ function _applyStepReaction(threadId, emoji) {
   var arr = _stepReactions(threadId);
   var me = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
   var p = (typeof currentProfile === "function") ? currentProfile() : null;
+  var _aName = (p && p.name) || state.user.name || "Moi";
+  var _aEmoji = (p && p.emoji) || "✨";
   var mineIdx = -1;
   for (var i = 0; i < arr.length; i++) { if (arr[i] && arr[i].authorId === me) { mineIdx = i; break; } }
   var wasSame = mineIdx > -1 && arr[mineIdx].text === emoji;
   if (mineIdx > -1) arr.splice(mineIdx, 1);
-  if (!wasSame) arr.push({ authorId: me, authorName: (p && p.name) || state.user.name || "Moi", text: emoji, createdAt: Date.now() });
+  var finalEmoji = wasSame ? null : emoji;
+  if (finalEmoji) arr.push({ authorId: me, authorName: _aName, text: finalEmoji, createdAt: Date.now() });
   try { saveState(); } catch (e) {}
-  // Pastille patchée EN PLACE partout où l'étape est affichée (pas de re-render du viewer).
+  // Cross-compte : propage MA réaction (ou son retrait) via step_interactions.
+  if (typeof supaSetStepReaction === "function") { try { supaSetStepReaction(threadId, finalEmoji, _aName, _aEmoji); } catch (e) {} }
+  if (finalEmoji) _notifyStepAuthor(threadId, "a réagi " + finalEmoji + " à ton étape");
+  _patchStepReactChip(threadId);
+}
+// Pastille patchée EN PLACE partout où l'étape est affichée (pas de re-render du viewer).
+function _patchStepReactChip(threadId) {
   document.querySelectorAll('[data-stepreact="' + threadId + '"]').forEach(function (el) { el.innerHTML = _stepReactChipHtml(threadId); });
+}
+// Notifie l'auteur du voyage (live ou carnet) qu'on a interagi avec une de ses étapes.
+function _notifyStepAuthor(threadId, label) {
+  try {
+    if (typeof supaInsertNotif !== "function") return;
+    var me = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
+    var parts = String(threadId).split(":");
+    var target = null, refId = null;
+    if (parts[0] === "cdvstep" && typeof getCdvLives === "function") {
+      var lv = getCdvLives().find(function (l) { return l.id === parts[1]; });
+      if (lv) { target = lv.authorId; refId = "cdv_live_" + lv.id; }
+    } else if (parts[0] === "carnetstep" && typeof findPostAnywhere === "function") {
+      var po = findPostAnywhere(parts[1]);
+      if (po) { target = po.authorId; refId = "carnet_" + po.id; }
+    }
+    if (target && target !== me && target !== "me") supaInsertNotif(target, "cdv_live_step", refId, label);
+  } catch (e) {}
+}
+// Fusionne les interactions serveur d'un thread dans les stores locaux, en traitant
+// le serveur comme AUTORITAIRE (chaque thread présent dans map a été chargé en
+// entier) tout en préservant MES entrées en vol (pas encore round-trippées).
+// map = { threadId: { comments:[], reactions:[] } } — un thread listé mais vide
+// signifie « plus aucune interaction côté serveur » (sinon on ne pourrait jamais
+// faire disparaître une réaction retirée par un autre compte).
+function _mergeStepInteractions(map) {
+  if (!map) return;
+  state.user.stepComments = state.user.stepComments || {};
+  state.user.stepReactions = state.user.stepReactions || {};
+  var me = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
+  Object.keys(map).forEach(function (tid) {
+    var srv = map[tid] || { comments: [], reactions: [] };
+    // Commentaires : union dédupliquée par id (jamais supprimés → aucun risque de
+    // perdre une entrée locale synchronisée), triés du + récent au + ancien.
+    var cLocal = Array.isArray(state.user.stepComments[tid]) ? state.user.stepComments[tid] : [];
+    var byId = {};
+    cLocal.concat(srv.comments || []).forEach(function (c) { if (c && c.id) byId[c.id] = (byId[c.id] && (byId[c.id].createdAt || 0) >= (c.createdAt || 0)) ? byId[c.id] : c; });
+    state.user.stepComments[tid] = Object.keys(byId).map(function (k) { return byId[k]; })
+      .sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
+    // Réactions : le serveur fait FOI (permet le retrait par un autre compte) mais
+    // on conserve MA réaction en vol si elle n'est pas encore remontée du serveur.
+    var rSrv = srv.reactions || [];
+    var mineOnSrv = rSrv.some(function (r) { return r && r.authorId === me; });
+    var rLocalMine = (Array.isArray(state.user.stepReactions[tid]) ? state.user.stepReactions[tid] : [])
+      .filter(function (r) { return r && r.authorId === me; })[0];
+    var merged = rSrv.slice();
+    if (!mineOnSrv && rLocalMine) merged.push(rLocalMine);
+    state.user.stepReactions[tid] = (typeof _dedupReactionsByAuthor === "function") ? _dedupReactionsByAuthor(merged) : merged;
+    // Rafraîchit l'UI ouverte pour ce thread.
+    _patchStepReactChip(tid);
+    var n = _stepCommentCount(tid);
+    document.querySelectorAll('[data-cmtcount="' + tid + '"]').forEach(function (el) { el.innerHTML = "💬 " + n; });
+    if (window._openStepThreadId === tid && typeof _refreshCommentThreadUINow === "function") { try { _refreshCommentThreadUINow(tid); } catch (e) {} }
+  });
+  try { saveState(); } catch (e) {}
+}
+// Hydrate les interactions de toutes les étapes d'un voyage depuis Supabase.
+// Chaque thread demandé devient une clé de la map (vide si le serveur n'a rien) →
+// le merge peut faire disparaître ce qui a été retiré côté serveur.
+function _hydrateStepInteractions(threadIds) {
+  if (typeof supaLoadStepInteractions !== "function" || !threadIds || !threadIds.length) return;
+  supaLoadStepInteractions(threadIds).then(function (map) {
+    var full = {};
+    threadIds.forEach(function (t) { if (t) full[t] = (map && map[t]) || { comments: [], reactions: [] }; });
+    _mergeStepInteractions(full);
+  }).catch(function () {});
+}
+// Handler realtime : une interaction d'étape est arrivée d'un autre compte.
+// (Debouncé par thread pour ne pas re-hydrater à chaque ligne d'une rafale.)
+var _stepRtQueued = {};
+function _onStepInteraction(payload) {
+  try {
+    var r = (payload && (payload.new || payload.old)) || null;
+    var tid = r && r.thread_id;
+    if (!tid) return;
+    if (_stepRtQueued[tid]) return;
+    _stepRtQueued[tid] = true;
+    setTimeout(function () { _stepRtQueued[tid] = false; _hydrateStepInteractions([tid]); }, 400);
+  } catch (e) {}
 }
 function reactCdvStep(liveId, stepId, event) {
   var tid = "cdvstep:" + liveId + ":" + stepId;
@@ -2417,6 +2514,10 @@ function openCdvLiveViewer(liveId) {
   }
   // Compteur ❤️ réel (par personne) sur le bouton like du viewer.
   if (typeof _loadCdvLiveLikes === "function") _loadCdvLiveLikes([liveId]);
+  // Commentaires + réactions PAR ÉTAPE, cross-compte (table step_interactions).
+  if (typeof _hydrateStepInteractions === "function") {
+    _hydrateStepInteractions((live.steps || []).map(function (s) { return "cdvstep:" + liveId + ":" + s.id; }));
+  }
   // Pays des étapes (compteur du bandeau de stats) : géocodage inverse en tâche
   // de fond, une seule fois par live, puis re-render du seul bandeau.
   if (typeof _cdvBackfillCountries === "function") _cdvBackfillCountries(live);
