@@ -4588,6 +4588,93 @@ function _eventSocialProofHtml(ev) {
     + '</div>';
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// PONT IRL ↔ CDV — « Sorties près d'ici » (2026-08-03)
+// Bandeau CONTEXTUEL affiché dans un carnet / live de voyage : les événements IRL
+// réels autour du lieu du voyage (preuve sociale + 1 tap pour rejoindre), sinon un
+// état vide qui invite à organiser la première sortie. C'est LA connexion IRL↔CDV
+// la plus intuitive : la valeur apparaît toute seule, au bon endroit, sans bouton
+// à chercher. Ne crée rien en base — croise `allEvents()` avec les coordonnées du
+// voyage (les mêmes que la carte).
+// ═══════════════════════════════════════════════════════════════════════════
+const TRIP_NEARBY_MAX_KM = 60;
+// refLL = [lat, lng] (1re étape géolocalisée du voyage). Renvoie les événements à
+// venir (non annulés, non passés, auteur non bloqué) dans le rayon, triés par
+// distance, chacun annoté de `_tripDistKm`.
+function _tripNearbyEvents(refLL, maxKm) {
+  if (!refLL || typeof refLL[0] !== "number" || typeof allEvents !== "function") return [];
+  var now = Date.now();
+  var limit = maxKm || TRIP_NEARBY_MAX_KM;
+  var out = [];
+  allEvents().forEach(function (e) {
+    if (!e) return;
+    if (typeof _eventIsCancelled === "function" && _eventIsCancelled(e)) return;
+    var end = (typeof _eventEndAt === "function") ? _eventEndAt(e) : (e.date || 0);
+    if (end < now) return; // déjà terminé
+    if (typeof isBlocked === "function" && isBlocked(e.organizerId || e.authorId)) return;
+    var loc = (typeof eventLatLng === "function") ? eventLatLng(e) : (typeof e.lat === "number" ? [e.lat, e.lng] : null);
+    if (!loc) return;
+    var d = (typeof _kmBetween === "function") ? _kmBetween(refLL, loc) : 0;
+    if (d > limit) return;
+    e._tripDistKm = d;
+    out.push(e);
+  });
+  return out.sort(function (a, b) { return a._tripDistKm - b._tripDistKm; });
+}
+// Libellé de date compact (« Aujourd'hui », « Demain », « sam. 12 août »).
+function _tripEventWhenLabel(ev) {
+  if (typeof _eventIsLive === "function" && _eventIsLive(ev)) return "En cours";
+  var days = Math.ceil((ev.date - Date.now()) / 86400000);
+  if (days <= 0) return "Aujourd'hui";
+  if (days === 1) return "Demain";
+  try { return new Date(ev.date).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" }); }
+  catch (e) { return ""; }
+}
+// Le bandeau complet, prêt à insérer dans un viewer de carnet/live.
+// kind = "carnet" | "live" ; id = postId/liveId (pour « Organiser une sortie ici »).
+function _tripNearbyEventsBandHtml(kind, id, refLL) {
+  if (!refLL || typeof refLL[0] !== "number") return ""; // sans coordonnées, rien à croiser
+  var idArg = escapeJsArg(String(id));
+  var head = '<div class="trip-nearby-head"><span>🤝 Sorties près d\'ici</span>'
+    + '<span class="trip-nearby-add" onclick="event.stopPropagation();organizeEventFromTrip(\'' + kind + '\',\'' + idArg + '\')">+ Organiser</span></div>';
+  var evs = _tripNearbyEvents(refLL, TRIP_NEARBY_MAX_KM);
+  if (!evs.length) {
+    return '<div class="trip-nearby">' + head
+      + '<div class="trip-nearby-empty">Personne n\'a encore organisé de sortie ici. <b>Sois le premier</b> à réunir des passionnés sur place.</div>'
+      + '<button class="btn primary block" style="margin-top:10px;font-size:12px;" onclick="event.stopPropagation();organizeEventFromTrip(\'' + kind + '\',\'' + idArg + '\')">📅 Organiser la première sortie</button>'
+      + '</div>';
+  }
+  var rows = evs.slice(0, 3).map(function (e) {
+    var when = _tripEventWhenLabel(e);
+    var dist = (e._tripDistKm != null) ? (e._tripDistKm < 1 ? "< 1 km" : Math.round(e._tripDistKm) + " km") : "";
+    var pass = (typeof passionById === "function" && passionById(e.passion)) || { emoji: "✨" };
+    var n = (e.attendees || []).length;
+    var proof = (typeof _eventSocialProofHtml === "function") ? _eventSocialProofHtml(e) : "";
+    return '<div class="trip-nearby-ev" onclick="openNearbyEventFromTrip(\'' + escapeJsArg(String(e.id)) + '\')">'
+      + '<div class="trip-nearby-ev-emoji">' + escapeHtml(e.emoji || pass.emoji || "🤝") + '</div>'
+      + '<div style="flex:1;min-width:0;">'
+      +   '<div class="trip-nearby-ev-title">' + escapeHtml(e.title || "Sortie") + '</div>'
+      +   '<div class="trip-nearby-ev-meta">' + escapeHtml(when) + (dist ? ' · ' + dist : '') + (n ? ' · ' + n + ' inscrit' + (n > 1 ? "s" : "") : '') + '</div>'
+      +   proof
+      + '</div>'
+      + '<div class="trip-nearby-ev-go">›</div>'
+      + '</div>';
+  }).join("");
+  var more = evs.length > 3
+    ? '<div class="trip-nearby-more" onclick="event.stopPropagation();closeAnyTripViewer();goTo(\'irl\')">Voir les ' + evs.length + ' sorties autour →</div>'
+    : "";
+  return '<div class="trip-nearby">' + head + rows + more + '</div>';
+}
+// Ferme le viewer de voyage (carnet OU live) puis ouvre la fiche de l'événement.
+function closeAnyTripViewer() {
+  try { if (typeof closeVlogViewer === "function") closeVlogViewer(); } catch (e) {}
+  try { if (typeof closeModal === "function") closeModal(); } catch (e) {}
+}
+function openNearbyEventFromTrip(eventId) {
+  closeAnyTripViewer();
+  setTimeout(function () { if (typeof openEventDetails === "function") openEventDetails(eventId); }, 130);
+}
+
 /* ---------------------------------------------------------------------------
    INVITATIONS DIRECTES
    ------------------------------------------------------------------------- */

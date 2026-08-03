@@ -962,3 +962,58 @@ test.describe("CDV — ⋯ dans le voyage OUVERT", () => {
     await expect(page.locator(".modal")).toContainText("Lisbonne & Sintra");
   });
 });
+
+// Pont IRL↔CDV : le bandeau « Sorties près d'ici » dans un voyage (2026-08-03).
+// Croise les événements IRL réels avec le lieu du voyage — preuve sociale + 1 tap.
+test.describe("CDV↔IRL — Sorties près d'ici", () => {
+  // Injecte 1 événement à Lisbonne (auquel un abonnement participe) + 1 loin (Paris).
+  async function seedEventsNearLisbon(page) {
+    await page.evaluate(() => {
+      state.user.following = Array.from(new Set([...(state.user.following || []), "u_lea"]));
+      state.seed.events = (state.seed.events || []).filter((e) => !/^ev_tn_/.test(e.id));
+      const base = { organizerId: "u_lea", authorId: "u_lea", passion: "music", emoji: "🎸",
+        status: "active", date: Date.now() + 3 * 86400000, durationH: 3, maybes: [], city: "Lisbonne" };
+      state.seed.events.push(Object.assign({}, base, { id: "ev_tn_near", title: "Jam au bord du Tage", lat: 38.7225, lng: -9.14, attendees: ["u_lea", "u_x"] }));
+      state.seed.events.push(Object.assign({}, base, { id: "ev_tn_far", title: "Trop loin (Paris)", lat: 48.8566, lng: 2.3522, attendees: ["u_x"] }));
+    });
+  }
+
+  test("un voyage géolocalisé affiche les sorties proches, avec preuve sociale, et pas les lointaines", async ({ page }) => {
+    await bootCdv(page);
+    await seedEventsNearLisbon(page);
+    const id = await seedLive(page, { steps: [{ id: "s1", city: "Lisbonne", emoji: "📍", lat: 38.7223, lng: -9.1393, createdAt: Date.now() }] });
+    await page.evaluate((i) => openCdvLiveViewer(i), id);
+
+    const band = page.locator(".modal .trip-nearby");
+    await expect(band).toBeVisible();
+    await expect(band).toContainText("Sorties près d'ici");
+    await expect(band).toContainText("Jam au bord du Tage");
+    await expect(band).toContainText("y va"); // preuve sociale (Léa)
+    await expect(band).not.toContainText("Trop loin"); // hors rayon → exclu
+  });
+
+  test("tap sur une sortie ferme le voyage et ouvre la fiche de l'événement", async ({ page }) => {
+    await bootCdv(page);
+    await seedEventsNearLisbon(page);
+    const id = await seedLive(page, { steps: [{ id: "s1", city: "Lisbonne", emoji: "📍", lat: 38.7223, lng: -9.1393, createdAt: Date.now() }] });
+    await page.evaluate((i) => openCdvLiveViewer(i), id);
+
+    await page.locator(".modal .trip-nearby-ev").first().click();
+    // openNearbyEventFromTrip ferme le viewer puis ouvre la fiche en différé (~130 ms).
+    await expect.poll(() => page.evaluate(() => window._openEventDetailId), { timeout: 4000 }).toBe("ev_tn_near");
+  });
+
+  test("un voyage sans sortie autour propose d'organiser la première", async ({ page }) => {
+    await bootCdv(page);
+    await seedEventsNearLisbon(page); // les événements sont à Lisbonne, pas à Tokyo
+    const id = await seedLive(page, { destination: "Tokyo", steps: [{ id: "s1", city: "Tokyo", emoji: "📍", lat: 35.6762, lng: 139.6503, createdAt: Date.now() }] });
+    await page.evaluate((i) => openCdvLiveViewer(i), id);
+
+    const band = page.locator(".modal .trip-nearby");
+    await expect(band).toBeVisible();
+    await expect(band).toContainText("Sois le premier");
+    // Le bouton d'organisation ouvre le composeur d'événement pré-rempli.
+    await band.getByRole("button", { name: /Organiser la première/ }).click();
+    await expect(page.locator("#evTitle")).toHaveValue(/Tokyo/, { timeout: 4000 });
+  });
+});

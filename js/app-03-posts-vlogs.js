@@ -1097,6 +1097,8 @@ function openVlogViewer(postId) {
       ${hasMap ? `<div class="vlog-mini-map" id="vlogViewerMap"></div>` : `<div class="vlog-map-empty">📍 Lieux non géolocalisables sur la carte</div>`}
       ${mapPlaces.length > 1 ? `<button class="btn ghost block" style="font-size:12px;margin-bottom:12px;" onclick="closeModal();openCdvRouteReplay('${escapeJsArg(postId)}','carnet')">🎬 Rejouer l'itinéraire</button>` : ""}
 
+      ${typeof _tripNearbyEventsBandHtml === "function" ? _tripNearbyEventsBandHtml('carnet', postId, mapPlaces[0] ? mapPlaces[0].ll : null) : ""}
+
       ${post.tip ? `<div class="vlog-viewer-tip">
         <div class="vlog-viewer-tip-label">⭐ LE CONSEIL CLÉ</div>
         ${escapeHtml(post.tip)}
@@ -2322,6 +2324,7 @@ function openCdvLiveViewer(liveId) {
     <div id="cdvReactBar" style="display:flex;gap:6px;margin-bottom:14px;">' + _cdvReactBarHtml(liveId, live) + '</div>\
     \
     ' + (mapPlaces.length ? '<div class="vlog-mini-map" id="cdvLiveMap" style="margin-bottom:14px;"></div>' : '') + '\
+    ' + (typeof _tripNearbyEventsBandHtml === "function" ? _tripNearbyEventsBandHtml('live', liveId, mapPlaces[0] ? mapPlaces[0].ll : null) : '') + '\
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">\
       <div style="font-weight:800;font-size:13px;color:var(--text);flex:1;">📍 Étapes</div>\
       ' + (live.steps.length ? '<button class="pill" onclick="closeModal();openCdvStepStory(\'' + liveId + '\',0)" style="font-size:11px;">▶ Plein écran</button>' : '') + '\
