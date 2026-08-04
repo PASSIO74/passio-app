@@ -298,10 +298,24 @@ test.describe("CDV — lives", () => {
     ] });
     await page.evaluate((i) => openCdvLiveViewer(i), id);
 
-    // Les 3 actions sont présentes sur CHACUNE des 2 étapes.
-    expect(await page.locator('.cdv-step-actions span[onclick*="reactCdvStep"]').count()).toBe(2);
-    expect(await page.locator('.cdv-step-actions span[onclick*="openCdvStepComments"]').count()).toBe(2);
-    expect(await page.locator('.cdv-step-actions span[onclick*="shareCdvStep"]').count()).toBe(2);
+    // La barre CANONIQUE .post-actions (identique aux posts/événements) est présente
+    // sur CHACUNE des 2 étapes : ❤️ like · 💬 commenter · 😊 emoji/GIF · partage.
+    expect(await page.locator('.post-actions span[onclick*="toggleStepLike"]').count()).toBe(2);
+    expect(await page.locator('.post-actions span[onclick*="openStepComments"]').count()).toBe(2);
+    expect(await page.locator('.post-actions span[onclick*="showStepEmojiPicker"]').count()).toBe(2);
+    expect(await page.locator('.post-actions span[onclick*="shareCdvStep"]').count()).toBe(2);
+
+    // ❤️ like d'une étape = toggle 1/personne, indépendant par journée.
+    const likes = await page.evaluate((i) => {
+      const t = "cdvstep:" + i + ":s1";
+      toggleStepLike(t); const on = _stepLikeCount(t);
+      toggleStepLike(t); const off = _stepLikeCount(t);
+      const other = _stepLikeCount("cdvstep:" + i + ":s2");
+      return { on, off, other };
+    }, id);
+    expect(likes.on).toBe(1);
+    expect(likes.off).toBe(0);
+    expect(likes.other).toBe(0);
 
     // Réagir à l'étape 2 : UNE réaction par personne (re-taper le même la retire).
     const react = await page.evaluate((i) => {

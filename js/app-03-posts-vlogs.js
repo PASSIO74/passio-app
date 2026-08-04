@@ -1036,12 +1036,7 @@ function openVlogViewer(postId) {
       ${st.text ? `<div class="vlog-viewer-step-text">${escapeHtml(st.text)}</div>` : ""}
       ${_bLbl ? `<div class="vlog-viewer-step-tip" style="background:var(--bg-deep);">💰 Budget du jour : ${escapeHtml(_bLbl)}</div>` : ""}
       ${st.tip ? `<div class="vlog-viewer-step-tip">💡 ${escapeHtml(st.tip)}</div>` : ""}
-      <div class="cdv-step-actions" style="display:flex;align-items:center;gap:16px;margin-top:8px;">
-        <span onclick="event.stopPropagation();reactCarnetStep('${escapeJsArg(postId)}',${i},event)" style="font-size:12px;color:var(--muted);cursor:pointer;">😊 Réagir</span>
-        <span data-stepreact="${_threadId}">${_stepReactChipHtml(_threadId)}</span>
-        <span data-cmtcount="${_threadId}" onclick="event.stopPropagation();openCarnetStepComments('${escapeJsArg(postId)}',${i})" style="font-size:12px;color:var(--muted);cursor:pointer;">💬 ${_stepCommentCount(_threadId)}</span>
-        <span onclick="event.stopPropagation();shareCarnetStep('${escapeJsArg(postId)}',${i})" style="font-size:12px;color:var(--muted);cursor:pointer;">↗ Partager</span>
-      </div>
+      ${_stepActionsBarHtml(_threadId, "shareCarnetStep('" + escapeJsArg(postId) + "'," + i + ")")}
     </div>
   `;
   }).join("");
@@ -2015,9 +2010,10 @@ function submitStepComment(threadId) {
   if (typeof _refreshCommentThreadUINow === "function") _refreshCommentThreadUINow(threadId);
   var box = document.getElementById("stepCommentsBox");
   if (box) { box.scrollTop = 0; if (typeof _flashNewComment === "function") _flashNewComment(box, _cid); }
-  // Compteur 💬 patché en place sur la/les carte(s) de l'étape.
+  // Compteur 💬 patché en place sur la/les carte(s) de l'étape + aperçu inline.
   var n = _stepCommentCount(threadId);
   document.querySelectorAll('[data-cmtcount="' + threadId + '"]').forEach(function (el) { el.innerHTML = "💬 " + n; });
+  if (typeof _patchStepCommentsPreview === "function") _patchStepCommentsPreview(threadId);
   if (typeof _syncComposerSendState === "function") _syncComposerSendState(inp);
 }
 // Partager une étape : lien profond (#cdv-live-<id> / #carnet-<id>) + résumé.
@@ -2067,6 +2063,9 @@ function openStepReactors(threadId, event) {
 }
 // UNE réaction par personne : re-taper le même emoji le retire, un autre le remplace.
 function _applyStepReaction(threadId, emoji) {
+  // Le ❤️ = un LIKE (cohérent avec le bouton ❤️ de la barre, comme les événements) :
+  // il ne va JAMAIS dans la pastille de réactions.
+  if (emoji === "❤️") { if (typeof toggleStepLike === "function") toggleStepLike(threadId); return; }
   var arr = _stepReactions(threadId);
   var me = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
   var p = (typeof currentProfile === "function") ? currentProfile() : null;
@@ -2134,8 +2133,19 @@ function _mergeStepInteractions(map) {
     var merged = rSrv.slice();
     if (!mineOnSrv && rLocalMine) merged.push(rLocalMine);
     state.user.stepReactions[tid] = (typeof _dedupReactionsByAuthor === "function") ? _dedupReactionsByAuthor(merged) : merged;
+    // Likes (kind='like') : même règle — serveur autoritaire, mon like en vol préservé.
+    state.user.stepLikes = state.user.stepLikes || {};
+    var lSrv = srv.likes || [];
+    var meLikedSrv = lSrv.some(function (l) { return l && l.authorId === me; });
+    var lLocalMine = (Array.isArray(state.user.stepLikes[tid]) ? state.user.stepLikes[tid] : [])
+      .filter(function (l) { return l && (l.authorId === me || l.authorId === "me"); })[0];
+    var mergedL = lSrv.slice();
+    if (!meLikedSrv && lLocalMine) mergedL.push(lLocalMine);
+    state.user.stepLikes[tid] = mergedL;
     // Rafraîchit l'UI ouverte pour ce thread.
     _patchStepReactChip(tid);
+    _patchStepLikeBtn(tid);
+    _patchStepCommentsPreview(tid);
     var n = _stepCommentCount(tid);
     document.querySelectorAll('[data-cmtcount="' + tid + '"]').forEach(function (el) { el.innerHTML = "💬 " + n; });
     if (window._openStepThreadId === tid && typeof _refreshCommentThreadUINow === "function") { try { _refreshCommentThreadUINow(tid); } catch (e) {} }
@@ -2149,7 +2159,7 @@ function _hydrateStepInteractions(threadIds) {
   if (typeof supaLoadStepInteractions !== "function" || !threadIds || !threadIds.length) return;
   supaLoadStepInteractions(threadIds).then(function (map) {
     var full = {};
-    threadIds.forEach(function (t) { if (t) full[t] = (map && map[t]) || { comments: [], reactions: [] }; });
+    threadIds.forEach(function (t) { if (t) full[t] = (map && map[t]) || { comments: [], reactions: [], likes: [] }; });
     _mergeStepInteractions(full);
   }).catch(function () {});
 }
@@ -2166,13 +2176,154 @@ function _onStepInteraction(payload) {
     setTimeout(function () { _stepRtQueued[tid] = false; _hydrateStepInteractions([tid]); }, 400);
   } catch (e) {}
 }
-function reactCdvStep(liveId, stepId, event) {
-  var tid = "cdvstep:" + liveId + ":" + stepId;
-  if (typeof _emojiReactPopover === "function") _emojiReactPopover(event, function (e) { _applyStepReaction(tid, e); });
+// Réagir à une étape : DÉSORMAIS le MÊME panneau segmenté emoji + GIF que les
+// posts et les événements (grille complète + onglet GIF + prévisualisation). Ces
+// deux wrappers restent pour la rétro-compat (anciens onclick / tests).
+function reactCdvStep(liveId, stepId, event) { return showStepEmojiPicker("cdvstep:" + liveId + ":" + stepId, event); }
+function reactCarnetStep(postId, stepIndex, event) { return showStepEmojiPicker("carnetstep:" + postId + ":" + stepIndex, event); }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BARRE D'INTERACTIONS UNIFIÉE PAR ÉTAPE / JOUR — parité TOTALE avec le reste de
+// l'app (demande « je veux la même chose de partout », 2026-08-03). Chaque étape
+// (live) et chaque jour (carnet) porte la barre CANONIQUE .post-actions : ❤️ like ·
+// 💬 commenter · 😊 emoji/GIF · partage (shareIconSvg) · pastille de réactions ·
+// aperçu des commentaires inline — exactement comme un post du fil ou un événement.
+// Le GIF choisi via 😊 = un COMMENTAIRE (image inline), jamais une réaction du
+// compteur (même règle que partout). Tout est cross-compte via step_interactions.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── ❤️ LIKE d'une étape/jour. Cross-compte via step_interactions kind='like' (la
+// colonne kind est libre → AUCUNE migration). Un like par personne (toggle), stocké
+// à part des réactions emoji comme pour les événements (like ≠ pastille de réactions).
+function _stepLikes(threadId) {
+  state.user.stepLikes = state.user.stepLikes || {};
+  if (!Array.isArray(state.user.stepLikes[threadId])) state.user.stepLikes[threadId] = [];
+  return state.user.stepLikes[threadId];
 }
-function reactCarnetStep(postId, stepIndex, event) {
-  var tid = "carnetstep:" + postId + ":" + stepIndex;
-  if (typeof _emojiReactPopover === "function") _emojiReactPopover(event, function (e) { _applyStepReaction(tid, e); });
+function _stepLikeCount(threadId) { return _stepLikes(threadId).length; }
+function _iLikedStep(threadId) {
+  var me = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
+  return _stepLikes(threadId).some(function (l) { return l && (l.authorId === me || l.authorId === "me"); });
+}
+function _patchStepLikeBtn(threadId) {
+  var liked = _iLikedStep(threadId), n = _stepLikeCount(threadId);
+  document.querySelectorAll('[data-steplike="' + threadId + '"]').forEach(function (el) {
+    el.classList.toggle("liked", liked);
+    el.innerHTML = (liked ? "❤️" : "🤍") + " " + n;
+  });
+}
+function toggleStepLike(threadId, el) {
+  var arr = _stepLikes(threadId);
+  var me = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
+  var idx = arr.findIndex(function (l) { return l && (l.authorId === me || l.authorId === "me"); });
+  var nowLiked;
+  if (idx > -1) { arr.splice(idx, 1); nowLiked = false; }
+  else {
+    var p = (typeof currentProfile === "function") ? currentProfile() : null;
+    arr.push({ authorId: me, authorName: (p && p.name) || state.user.name || "Moi", createdAt: Date.now() });
+    nowLiked = true;
+    if (typeof grantReward === "function") { try { grantReward("like"); } catch (e) {} }
+  }
+  try { saveState(); } catch (e) {}
+  if (typeof supaToggleStepLike === "function") { try { supaToggleStepLike(threadId); } catch (e) {} }
+  if (nowLiked) _notifyStepAuthor(threadId, "a aimé ton étape");
+  _patchStepLikeBtn(threadId);
+}
+
+// 😊 d'une étape : MÊME panneau segmenté (😊 Emoji | 🎬 GIF) que showEmojiPickerForPost.
+// Emoji → réaction d'étape (le ❤️ est routé vers le like, comme pour les événements) ;
+// GIF → commentaire d'étape (image inline).
+function showStepEmojiPicker(threadId, event) {
+  if (typeof emojiReactPanel === "function") {
+    return emojiReactPanel(event,
+      function (e) { _applyStepReaction(threadId, e); },
+      function (url) { _postStepGifComment(threadId, url); });
+  }
+  return false;
+}
+
+// Un GIF sur une étape = un COMMENTAIRE (jamais une réaction du compteur). Même
+// chemin d'écriture cross-compte que submitStepComment (supaAddStepComment), id
+// local aligné sur l'id serveur pour la dédup à l'hydratation/realtime.
+function _postStepGifComment(threadId, gifUrl) {
+  var thread = (typeof _findCommentThread === "function") ? _findCommentThread(threadId) : null;
+  if (!thread) return false;
+  if (!Array.isArray(thread.comments)) thread.comments = [];
+  var meId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
+  var p = (typeof currentProfile === "function") ? currentProfile() : null;
+  var nm = (p && p.name) || state.user.name || "Moi";
+  var em = (p && p.emoji) || "✨";
+  var cid = "sc_" + uid();
+  thread.comments.unshift({ id: cid, authorId: meId, authorName: nm, author: nm, authorEmoji: em,
+    text: gifUrl, content: gifUrl, createdAt: Date.now() });
+  if (typeof thread.save === "function") thread.save();
+  if (typeof supaAddStepComment === "function") { try { supaAddStepComment(threadId, cid, gifUrl, nm, em); } catch (e) {} }
+  _notifyStepAuthor(threadId, "a commenté ton étape");
+  if (typeof grantReward === "function") { try { grantReward("comment"); } catch (e) {} }
+  if (typeof _refreshCommentThreadUI === "function") _refreshCommentThreadUI(threadId);
+  var n = _stepCommentCount(threadId);
+  document.querySelectorAll('[data-cmtcount="' + threadId + '"]').forEach(function (el) { el.innerHTML = "💬 " + n; });
+  _patchStepCommentsPreview(threadId);
+  if (typeof toast === "function") toast("GIF ajouté en commentaire 🎬");
+  return false;
+}
+
+// Ouvre le fil de commentaires d'une étape à partir de son SEUL thread id (le titre
+// est dérivé du live/carnet). Les wrappers openCdvStepComments/openCarnetStepComments
+// restent (appelés par des tests) mais délèguent le même rendu.
+function openStepComments(threadId) {
+  var title = "Étape";
+  try {
+    var parts = String(threadId).split(":");
+    if (parts[0] === "cdvstep" && typeof getCdvLives === "function") {
+      var lv = getCdvLives().find(function (l) { return l.id === parts[1]; });
+      var idx = lv ? (lv.steps || []).findIndex(function (s) { return s.id === parts[2]; }) : -1;
+      var st = lv && idx > -1 ? lv.steps[idx] : null;
+      title = "Étape " + (idx > -1 ? idx + 1 : "") + (st && st.city ? " · " + st.city : "");
+    } else if (parts[0] === "carnetstep" && typeof findPostAnywhere === "function") {
+      var po = findPostAnywhere(parts[1]);
+      var i2 = parseInt(parts[2], 10);
+      var s2 = po && Array.isArray(po.steps) ? po.steps[i2] : null;
+      title = "Jour " + (i2 + 1) + (s2 && s2.place ? " · " + s2.place : "");
+    }
+  } catch (e) {}
+  _openStepCommentsSheet(threadId, title);
+}
+
+// Aperçu des commentaires INLINE sous l'étape (2 derniers), comme sur les cartes
+// événement/fil. Rend les GIF en image via _commentBodyHtml. Réutilise les classes
+// CSS .ev-cmt-preview / .ev-cmt-toggle (déjà stylées, cohérence visuelle).
+function _stepCommentsPreviewHtml(threadId) {
+  var arr = (state.user.stepComments && state.user.stepComments[threadId]) || [];
+  if (!arr.length) return "";
+  var sorted = arr.slice().sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
+  var items = sorted.slice(0, 2).map(function (c) {
+    var nm = c.authorName || c.author || "?";
+    var body = (typeof _commentBodyHtml === "function") ? _commentBodyHtml(c.text || c.content || "") : escapeHtml(c.text || c.content || "");
+    return '<div class="ev-cmt-preview"><b>' + escapeHtml(nm) + '</b> ' + body + '</div>';
+  }).join("");
+  var more = arr.length > 2
+    ? '<div style="margin-top:2px;"><span class="ev-cmt-toggle" onclick="event.stopPropagation();openStepComments(\'' + escapeJsArg(threadId) + '\')">▼ Voir les ' + arr.length + ' commentaires</span></div>'
+    : "";
+  return items + more;
+}
+function _patchStepCommentsPreview(threadId) {
+  document.querySelectorAll('[data-stepcomments="' + threadId + '"]').forEach(function (el) { el.innerHTML = _stepCommentsPreviewHtml(threadId); });
+}
+
+// LA barre canonique d'une étape (une seule source pour le live ET le carnet).
+// shareCall = expression JS prête (déjà échappée) appelée au clic sur le partage.
+function _stepActionsBarHtml(threadId, shareCall) {
+  var tid = escapeJsArg(threadId);
+  var liked = _iLikedStep(threadId), likeN = _stepLikeCount(threadId), cn = _stepCommentCount(threadId);
+  return '<div class="post-actions" onclick="event.stopPropagation()" style="margin-top:8px;">'
+    + '<span class="post-action ' + (liked ? "liked" : "") + '" data-steplike="' + threadId + '" onclick="event.stopPropagation();toggleStepLike(\'' + tid + '\',this)">' + (liked ? "❤️" : "🤍") + ' ' + likeN + '</span>'
+    + '<span class="post-action" data-cmtcount="' + threadId + '" onclick="event.stopPropagation();openStepComments(\'' + tid + '\')">💬 ' + cn + '</span>'
+    + '<span class="post-action" onclick="return showStepEmojiPicker(\'' + tid + '\',event);" title="Emoji & GIF">😊</span>'
+    + '<span class="post-action" onclick="event.stopPropagation();' + shareCall + '" title="Partager" aria-label="Partager">' + shareIconSvg(18) + '</span>'
+    + '<span class="step-react-chip-holder" data-stepreact="' + threadId + '" style="margin-left:auto;">' + _stepReactChipHtml(threadId) + '</span>'
+    + '</div>'
+    + '<div class="event-comments-inline" data-stepcomments="' + threadId + '" onclick="event.stopPropagation()">' + _stepCommentsPreviewHtml(threadId) + '</div>';
 }
 
 // Prévient les personnes qui SUIVENT ce live qu'une nouvelle étape est publiée
@@ -2410,15 +2561,9 @@ function openCdvLiveViewer(liveId) {
     // Item 5 : commenter / partager CHAQUE étape. Le fil de commentaires est scopé à
     // l'étape (thread id « cdvstep:<liveId>:<stepId> », résolu par _findCommentThread)
     // et réutilise TOUT le système unifié (renderer, composeur, panneau emoji/GIF).
-    var _cn = _stepCommentCount("cdvstep:" + liveId + ":" + s.id);
     var _stid = "cdvstep:" + liveId + ":" + s.id;
-    var stepActions = '<div class="cdv-step-actions" style="display:flex;align-items:center;gap:14px;margin-top:8px;">'
-      + '<span onclick="event.stopPropagation();reactCdvStep(\'' + liveId + '\',\'' + s.id + '\',event)" style="font-size:11px;color:var(--muted);cursor:pointer;">😊 Réagir</span>'
-      + '<span data-stepreact="' + _stid + '">' + _stepReactChipHtml(_stid) + '</span>'
-      + '<span data-cmtcount="cdvstep:' + liveId + ':' + s.id + '" onclick="event.stopPropagation();openCdvStepComments(\'' + liveId + '\',\'' + s.id + '\')" style="font-size:11px;color:var(--muted);cursor:pointer;">💬 ' + _cn + '</span>'
-      + '<span onclick="event.stopPropagation();shareCdvStep(\'' + liveId + '\',\'' + s.id + '\')" style="font-size:11px;color:var(--muted);cursor:pointer;">↗ Partager</span>'
-      + ownerTools
-      + '</div>';
+    var stepActions = _stepActionsBarHtml(_stid, "shareCdvStep('" + escapeJsArg(liveId) + "','" + escapeJsArg(s.id) + "')")
+      + (ownerTools ? '<div style="display:flex;gap:14px;margin-top:6px;">' + ownerTools + '</div>' : '');
     return '<div style="display:flex;gap:10px;padding:12px 0;border-bottom:1px solid var(--border);">\
       <div style="flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:2px;">\
         <div class="cdv-step-num-badge" style="width:22px;height:22px;border-radius:50%;background:var(--accent);color:#fff;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;">' + (i + 1) + '</div>\

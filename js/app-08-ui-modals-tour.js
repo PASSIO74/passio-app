@@ -3404,8 +3404,26 @@ async function supaSetStepReaction(threadId, emoji, authorName, authorEmoji) {
     return true;
   } catch(e) { console.warn("step reaction:", e); return false; }
 }
-// Charge les interactions d'un lot de threads → { threadId: { comments:[], reactions:[] } }
-// aux formats des stores locaux (state.user.stepComments / stepReactions).
+// ❤️ LIKE d'une étape (kind='like'). La colonne kind est libre (pas de contrainte
+// CHECK) → aucune migration. Un like par personne (toggle : delete si présent).
+async function supaToggleStepLike(threadId) {
+  if (!threadId || typeof MY_UID === "undefined" || !MY_UID || !window._supaReal) return false;
+  try {
+    const { data: existing } = await supa.from("step_interactions")
+      .select("id").eq("thread_id", threadId).eq("user_id", MY_UID).eq("kind", "like").maybeSingle();
+    if (existing) {
+      await supa.from("step_interactions").delete().eq("thread_id", threadId).eq("user_id", MY_UID).eq("kind", "like");
+      return false;
+    }
+    const { error } = await supa.from("step_interactions").insert({
+      id: "sl_" + uid(), thread_id: threadId, user_id: MY_UID, kind: "like", content: "❤️",
+    });
+    if (error) { console.warn("step like:", error.message); return false; }
+    return true;
+  } catch(e) { console.warn("step like:", e); return false; }
+}
+// Charge les interactions d'un lot de threads → { threadId: { comments:[], reactions:[], likes:[] } }
+// aux formats des stores locaux (state.user.stepComments / stepReactions / stepLikes).
 async function supaLoadStepInteractions(threadIds) {
   var out = {};
   if (!threadIds || !threadIds.length || !window._supaReal) return out;
@@ -3418,10 +3436,13 @@ async function supaLoadStepInteractions(threadIds) {
     if (error) { console.warn("step interactions load:", error.message); return out; }
     (data || []).forEach(function (r) {
       var t = r.thread_id; if (!t) return;
-      out[t] = out[t] || { comments: [], reactions: [] };
+      out[t] = out[t] || { comments: [], reactions: [], likes: [] };
       if (r.kind === "reaction") {
         out[t].reactions.push({ authorId: r.user_id, authorName: r.author_name || "Voyageur",
           text: r.content, createdAt: supaTs(r.created_at) });
+      } else if (r.kind === "like") {
+        out[t].likes.push({ authorId: r.user_id, authorName: r.author_name || "Voyageur",
+          createdAt: supaTs(r.created_at) });
       } else {
         out[t].comments.unshift({ id: r.id, authorId: r.user_id, authorName: r.author_name || "Voyageur",
           authorEmoji: r.author_emoji || "✨", text: r.content, content: r.content, createdAt: supaTs(r.created_at) });
