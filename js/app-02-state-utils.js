@@ -2259,26 +2259,11 @@ function commentLikeInfo(id) {
   window._commentLikeData = window._commentLikeData || {};
   return window._commentLikeData[id] || { liked: false, count: 0 };
 }
-function commentLikeBtnHtml(id) {
-  var info = commentLikeInfo(id);
-  return '<button class="cmt-like-btn ' + (info.liked ? "liked" : "") + '" data-cmtlike="' + id + '" onclick="return toggleCommentLike(\'' + id + '\', this, event)" style="background:none;border:none;cursor:pointer;font-size:12px;color:' + (info.liked ? "#ef4444" : "var(--muted)") + ';padding:2px 4px;">' + (info.liked ? "❤️" : "🤍") + ' <span>' + (info.count || 0) + '</span></button>';
-}
-function toggleCommentLike(id, btn, event) {
-  if (event && event.stopPropagation) event.stopPropagation();
-  window._commentLikeData = window._commentLikeData || {};
-  var cur = window._commentLikeData[id] || { liked: false, count: 0 };
-  cur.liked = !cur.liked;
-  cur.count = Math.max(0, (cur.count || 0) + (cur.liked ? 1 : -1));
-  window._commentLikeData[id] = cur;
-  if (btn) {
-    btn.style.color = cur.liked ? "#ef4444" : "var(--muted)";
-    btn.innerHTML = (cur.liked ? "❤️" : "🤍") + ' <span>' + cur.count + '</span>';
-  }
-  // Sync cross-compte (optimiste : l'UI est déjà à jour).
-  if (cur.liked) { if (typeof supaLikeComment === "function") supaLikeComment(id); }
-  else { if (typeof supaUnlikeComment === "function") supaUnlikeComment(id); }
-  return false;
-}
+// NB : le bouton like inline (commentLikeBtnHtml) et son handler (toggleCommentLike)
+// ont été retirés le 2026-08-04 — code mort : plus aucune surface ne les émettait
+// depuis l'unification des likes de commentaires via comment_interactions
+// (cf. _cl/sortComments plus bas qui lisent c.likes). commentLikeInfo/_commentLikeData
+// restent utilisés comme repli de l'ancien cache comment_likes.
 // Hydrate les compteurs réels depuis Supabase pour un lot d'ids, puis re-render.
 async function hydrateCommentLikes(ids, rerender) {
   ids = (ids || []).filter(Boolean);
