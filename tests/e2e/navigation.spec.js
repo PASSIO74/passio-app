@@ -81,25 +81,16 @@ test("bottom-nav : libellés, clics réels et écran attendu", async ({ page }) 
   }
   // Barre du bas = exactement 5 onglets
   expect(await page.locator("#appNav .nav-item").count(), "5 onglets dans la barre").toBe(5);
-  // Messages relogé dans le topbar (icône à côté des notifs)
-  await page.click(".topbar-right .topbar-bell:first-child");
+  // Messages relogé dans le topbar (icône aria-label="Messages")
+  await page.click('.topbar-right .topbar-bell[aria-label="Messages"]');
   await page.waitForFunction(() => {
     const el = document.getElementById("screen-messages");
     return el && el.classList.contains("active");
   }, null, { timeout: 5000 });
-  // Explorer relogé dans le ➕ Créer : sélecteur segmenté Studio | Explorer
-  await page.evaluate(() => goTo("studio"));
-  await expect(page.locator("#screen-studio .create-hub-tabs"), "sélecteur Studio/Explorer").toBeVisible();
-  await expect(page.locator("#screen-studio .create-hub-tab.active"), "onglet Studio actif").toHaveText(/Studio/);
-  await page.locator("#screen-studio .create-hub-tab", { hasText: "Explorer" }).click();
+  // Explorer relogé dans la loupe du topbar (aria-label="Explorer")
+  await page.click('.topbar-right .topbar-bell[aria-label="Explorer"]');
   await page.waitForFunction(() => {
     const el = document.getElementById("screen-explore");
-    return el && el.classList.contains("active");
-  }, null, { timeout: 5000 });
-  // et retour vers Studio depuis l'écran explore
-  await page.locator("#screen-explore .create-hub-tab", { hasText: "Studio" }).click();
-  await page.waitForFunction(() => {
-    const el = document.getElementById("screen-studio");
     return el && el.classList.contains("active");
   }, null, { timeout: 5000 });
 
