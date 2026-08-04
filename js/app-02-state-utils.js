@@ -1997,6 +1997,75 @@ function renderFeedCdvLives() {
   }, { passive: true });
 })();
 
+// ══════════════════════════════════════════════════════════════════════════
+// CLASSEMENT DU FIL PAR PERTINENCE (2026-08-04)
+// Le fil est DÉJÀ filtré en amont (passions sélectionnées + suivis) ; ce
+// classement ne change QUE l'ordre à l'intérieur de ce set — jamais ce qui est
+// visible. C'est le différenciateur d'un réseau de PASSIONS : on remonte le
+// contenu le plus pertinent pour MOI plutôt que le simple « plus récent ».
+// Repli chronologique strict via localStorage.passio_feed_rank="0" (soupape).
+// Signaux :
+//   • fraîcheur — dominante (décroissance douce τ≈48 h) : le fil reste vivant
+//   • affinité — +1 passion que JE pratique (profil), +1 auteur que je suis
+//   • engagement — likes + 2×commentaires + réactions, log-compressé, plafonné
+// ⚠️ Les scores utilisent le MÊME bucket 5 min que le guard _feedDomSig de
+// renderFeed → l'ordre est STABLE dans la fenêtre du guard (pas de repaint
+// parasite entre deux rendus rapprochés). Ne pas remplacer nowBucket par un
+// Date.now() continu sans revoir le guard.
+// ══════════════════════════════════════════════════════════════════════════
+function _myPassionSet() {
+  var s = new Set();
+  var profs = (state.user && state.user.profiles) || [];
+  for (var i = 0; i < profs.length; i++) {
+    if (profs[i] && profs[i].passion) s.add(profs[i].passion);
+  }
+  return s;
+}
+function feedPostScore(p, nowBucket, myPassions, followingSet) {
+  // Fraîcheur : âge en heures via buckets 5 min (12/h), décroissance exp τ=48 h.
+  var postB = Math.floor((p.createdAt || 0) / 300000);
+  var ageHours = Math.max(0, nowBucket - postB) / 12;
+  var recency = Math.exp(-ageHours / 48); // 1.0 (frais) → 0.37 (48 h) → 0.14 (96 h)
+
+  // Affinité : 0 à 2 (passion pratiquée, auteur suivi).
+  var affinity = 0;
+  if (p.passion && myPassions.has(p.passion)) affinity += 1;
+  if (p.authorId && followingSet.has(p.authorId)) affinity += 1;
+
+  // Engagement : commentaires > réactions ; log-compressé, plafonné (un vieux
+  // post viral ne doit pas écraser la fraîcheur).
+  var likes = p.likes || 0;
+  var comments = (p.comments || []).length;
+  var reactions = Array.isArray(p.reactions) ? p.reactions.length : 0;
+  var engagement = Math.min(3, Math.log(1 + likes + 2 * comments + reactions));
+
+  return recency * 1.0 + affinity * 0.35 + engagement * 0.12;
+}
+function rankFeedPosts(posts) {
+  var arr = (posts || []).slice();
+  var off = false;
+  try { off = localStorage.getItem("passio_feed_rank") === "0"; } catch (e) {}
+  if (off) {
+    return arr.sort(function(a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
+  }
+  var nowBucket = Math.floor(Date.now() / 300000);
+  var myPassions = _myPassionSet();
+  var following = (state.user && state.user.following) || state.following || [];
+  var followingSet = new Set(following);
+  // Les posts ici sont déjà des copies (allFeedPosts fait {...p}) → mutation sûre.
+  for (var i = 0; i < arr.length; i++) {
+    arr[i]._feedScore = feedPostScore(arr[i], nowBucket, myPassions, followingSet);
+  }
+  arr.sort(function(a, b) {
+    var d = b._feedScore - a._feedScore;
+    if (d) return d;
+    d = (b.createdAt || 0) - (a.createdAt || 0); // ex-æquo : plus récent d'abord
+    if (d) return d;
+    return String(a.id) < String(b.id) ? -1 : 1; // tri stable & déterministe
+  });
+  return arr;
+}
+
 function renderFeed() {
   // 🎯 Masquer le skeleton loader
   const skeleton = $("#feedSkeleton");
@@ -2091,12 +2160,9 @@ function renderFeed() {
   var emptyEl2 = $("#feedEmpty");
   if (emptyEl2) emptyEl2.style.display = "none";
 
-  // ✅ TRIER LES POSTS: les plus récents en premier!
-  const sortedPosts = posts.sort((a, b) => {
-    const dateA = a.createdAt || 0;
-    const dateB = b.createdAt || 0;
-    return dateB - dateA;  // Descendant = récents d'abord
-  });
+  // ✅ CLASSEMENT PAR PERTINENCE (fraîcheur + affinité passion/suivis + engagement).
+  // Repli chronologique strict via localStorage.passio_feed_rank="0". Voir rankFeedPosts.
+  const sortedPosts = rankFeedPosts(posts);
 
   const renderLimit = window._feedRenderLimit || 20;
   const visible = sortedPosts.slice(0, renderLimit);
