@@ -31,6 +31,11 @@
   --grad-soft:linear-gradient(135deg,rgba(124,58,237,.1),rgba(109,40,217,.03));
 }
 *{box-sizing:border-box}
+/* L'attribut [hidden] DOIT toujours masquer, même sur les éléments qui portent
+   un display:grid/flex (login, #app, drawer, alerts, badges). Sans !important,
+   la règle d'auteur display:grid l'emporte sur le [hidden] de la feuille UA →
+   l'écran de connexion restait affiché par-dessus l'app après login. */
+[hidden]{display:none!important}
 html,body{height:100%}
 body{margin:0;font-family:var(--font);background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased;font-size:14px;line-height:1.5}
 body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;

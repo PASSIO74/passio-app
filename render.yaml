@@ -1,0 +1,44 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# Déploiement du Centre de pilotage Passio sur Render (https://render.com)
+# ---------------------------------------------------------------------------
+# Blueprint : sur render.com → New → Blueprint → connecte le dépôt passio-app.
+# Render lit ce fichier, crée le service et te demande les 2 secrets marqués
+# « sync: false » (clé service_role + mot de passe admin). Déploie → tu obtiens
+# une URL https (ex. passio-pilotage.onrender.com) ouvrable depuis ton téléphone.
+#
+# Note : sur l'offre gratuite, le service se met en veille après inactivité
+# (1er accès = ~30 s de réveil) et le stockage local est éphémère (les statuts
+# de bugs / sessions / audit se réinitialisent au redémarrage — la télémétrie,
+# elle, est rechargée depuis Supabase). Pour de la persistance, passe en offre
+# payante avec un disque monté sur /opt/render/project/src/dashboard/data.
+# ═══════════════════════════════════════════════════════════════════════════
+services:
+  - type: web
+    name: passio-pilotage
+    runtime: node
+    rootDir: dashboard
+    plan: free
+    region: frankfurt
+    buildCommand: npm install
+    startCommand: node server/index.js
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: DASH_ENV
+        value: production            # cookies Secure, mutations code désactivées
+      - key: DASH_ADMIN_USER
+        value: benjamin
+      - key: DASH_ADMIN_PASSWORD
+        sync: false                  # à saisir dans Render (mets un mot de passe FORT)
+      - key: DASH_SESSION_SECRET
+        generateValue: true          # secret de session généré automatiquement
+      - key: DASH_SESSION_HOURS
+        value: "12"
+      - key: SUPABASE_URL
+        value: https://njkiyoklssvefstljemx.supabase.co
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false                  # à coller dans Render (clé service_role)
+      - key: DASH_ALLOW_MUTATIONS
+        value: "false"               # pas de dépôt git en ligne : lecture seule
+      - key: DASH_EVENT_BUFFER
+        value: "5000"

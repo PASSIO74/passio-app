@@ -46,6 +46,9 @@ const asyncH = (fn) => (req, res) => Promise.resolve(fn(req, res)).catch((e) => 
   res.status(e.code || 500).json({ error: e.message || "Erreur serveur" });
 });
 
+// ─── Santé (sans auth, pour les health-checks d'hébergeur) ─────────────────
+api.get("/health", (req, res) => res.json({ ok: true, env: config.dashEnv, supabase: supabaseReady }));
+
 // ─── Auth ────────────────────────────────────────────────────────────────
 api.post("/login", asyncH(auth.login));
 api.post("/logout", auth.logout);
