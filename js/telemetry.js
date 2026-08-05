@@ -9,11 +9,14 @@
  * CHARGEMENT : classique dans <head>, APRÈS platform.js (réutilise window.supa).
  * Ne dépend d'aucun autre script app-*, ne casse rien s'ils manquent (guards).
  *
- * OPT-IN (RGPD) : inactif par défaut. Activé si :
- *   • localStorage.passio_telemetry === "1", OU
- *   • URL contient ?telemetry=1  (persiste le flag), OU
- *   • hôte localhost / 127.0.0.1.
- *   ?telemetry=0 désactive et purge la file.
+ * ACTIVATION : en production, ACTIVE par défaut (suivi continu de la beta) avec
+ * OPT-OUT, données minimisées (aucun PII — voir plus bas). À refléter dans la
+ * politique de confidentialité.
+ *   • ?telemetry=0  (ou localStorage.passio_telemetry="0") → désactive DURABLEMENT ;
+ *   • ?telemetry=1  → force la capture complète (debug ciblé) ;
+ *   • localhost / 127.0.0.1 → toujours actif ;
+ *   • PASSIO_TELEMETRY_SAMPLE ∈ [0,1] → fraction d'appareils capturés (1 = tous) ;
+ *   • PASSIO_TELEMETRY_DEFAULT_ON = false → repli opt-in strict (seul ?telemetry=1).
  *
  * CONFIDENTIALITÉ : jamais de mot de passe, token, clé, e-mail, code d'accès ni
  * contenu de message privé. `meta` est filtré par liste blanche + scrubber ;
@@ -24,15 +27,36 @@
 
   var APP_VERSION = (window.PASSIO_APP_VERSION || "2026.08.0");
 
-  // ─── Opt-in ───────────────────────────────────────────────────────────────
+  // ─── Activation (opt-out en prod) ──────────────────────────────────────────
+  var TELEMETRY_DEFAULT_ON = (window.PASSIO_TELEMETRY_DEFAULT_ON !== false); // false = opt-in strict
+  var TELEMETRY_SAMPLE = (typeof window.PASSIO_TELEMETRY_SAMPLE === "number") ? window.PASSIO_TELEMETRY_SAMPLE : 1;
+
+  function _deviceIdRaw() {
+    try {
+      var d = localStorage.getItem("passio_device_id");
+      if (!d) { d = "dev_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 18); localStorage.setItem("passio_device_id", d); }
+      return d;
+    } catch (e) { return "dev_ephemere"; }
+  }
+  // Décision d'échantillonnage STABLE par appareil (toujours dedans ou dehors).
+  function _sampledIn(frac) {
+    if (frac >= 1) return true;
+    if (frac <= 0) return false;
+    var d = _deviceIdRaw(), h = 0;
+    for (var i = 0; i < d.length; i++) h = (h * 31 + d.charCodeAt(i)) >>> 0;
+    return (h % 10000) / 10000 < frac;
+  }
   function readEnabled() {
     try {
       var q = new URLSearchParams(location.search);
-      if (q.get("telemetry") === "1") { localStorage.setItem("passio_telemetry", "1"); }
-      if (q.get("telemetry") === "0") { localStorage.removeItem("passio_telemetry"); return false; }
-      if (localStorage.getItem("passio_telemetry") === "1") return true;
-    } catch (e) {}
-    return location.hostname === "localhost" || location.hostname === "127.0.0.1";
+      if (q.get("telemetry") === "1") { localStorage.setItem("passio_telemetry", "1"); return true; } // capture complète forcée
+      if (q.get("telemetry") === "0") { localStorage.setItem("passio_telemetry", "0"); return false; } // opt-out durable
+      var stored = localStorage.getItem("passio_telemetry");
+      if (stored === "1") return true;
+      if (stored === "0") return false;                            // l'utilisateur a refusé
+      if (location.hostname === "localhost" || location.hostname === "127.0.0.1") return true;
+      return TELEMETRY_DEFAULT_ON && _sampledIn(TELEMETRY_SAMPLE); // défaut prod : actif (échantillonné)
+    } catch (e) { return false; }
   }
   var ENABLED = readEnabled();
 
@@ -77,14 +101,7 @@
     for (var i = 0; i < 16; i++) s += a[(Math.random() * a.length) | 0];
     return Date.now().toString(36) + "-" + s;
   }
-  function deviceId() {
-    try {
-      var d = localStorage.getItem("passio_device_id");
-      if (!d) { d = "dev_" + uid16(); localStorage.setItem("passio_device_id", d); }
-      return d;
-    } catch (e) { return "dev_ephemere"; }
-  }
-  var DEVICE_ID = deviceId();
+  var DEVICE_ID = _deviceIdRaw();
   var SESSION_ID = "s_" + uid16();       // une session logique par onglet/chargement
   var ENV = detectEnv();
   var PLATFORM = detectPlatform();
@@ -254,7 +271,8 @@
     },
     setEnabled: function (on) {
       ENABLED = !!on;
-      try { on ? localStorage.setItem("passio_telemetry", "1") : localStorage.removeItem("passio_telemetry"); } catch (e) {}
+      // Persiste le choix : "1" = capture, "0" = opt-out durable (respecté aux prochains chargements).
+      try { localStorage.setItem("passio_telemetry", on ? "1" : "0"); } catch (e) {}
     },
     flush: flush,
   };

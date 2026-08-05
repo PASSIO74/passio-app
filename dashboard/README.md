@@ -68,9 +68,13 @@ fonctionne (auth, git, tests, UI) mais aucun événement Passio n'est reçu.
 2. **Instrumentation** : déjà en place — `js/telemetry.js` est chargé dans
    `index.html` et branché sur la navigation, les clics, les appels API, les
    erreurs et quelques actions clés (publication, message, like, commentaire, RSVP).
-3. **Opt-in par appareil** (RGPD) : ouvrir Passio avec `?telemetry=1` sur chaque
-   appareil de test, ex. `https://passio-app.netlify.app/?telemetry=1`
-   (persiste ensuite ; `?telemetry=0` désactive). En localhost c'est automatique.
+3. **Activation** : en production, la télémétrie est **active par défaut** (suivi
+   continu de la beta) avec **opt-out** — `?telemetry=0` désactive durablement,
+   `?telemetry=1` force la capture complète. Réglages : `window.PASSIO_TELEMETRY_SAMPLE`
+   (fraction d'appareils, 1 = tous) et `window.PASSIO_TELEMETRY_DEFAULT_ON=false`
+   (repli opt-in strict). Données minimisées (aucun PII) — **à mentionner dans la
+   politique de confidentialité**, idéalement avec un bouton d'opt-out en Réglages
+   (`PassioTelemetry.setEnabled(false)`).
 
 ## 4. Déroulé d'un test à deux appareils
 
