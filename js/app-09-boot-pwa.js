@@ -899,6 +899,7 @@ function _processAttach(input, kind, file) {
 }
 
 function sendMessageToSupabase(msgId, convId, fileUrl, fileType, fileName, kind) {
+  try { window.tel && tel.action("send_message", { kind: kind || "text", hasFile: !!fileUrl }); } catch (e) {}
   // ⛔ NE JAMAIS stocker de base64 en DB (data: URL = média non uploadé sur
   // Storage). Un seul message de 5 Mo a fait gonfler conv_messages à 24 Mo en
   // beta. Si l'upload Storage a échoué, on insère uniquement les métadonnées

@@ -157,6 +157,7 @@ function likePost(id, skipRender = false, el = null) {
   const post = findPostAnywhere(id);
   if (!post) { _likePending.delete(id); return; }
   const liked = state.user.likedPosts.includes(id);
+  try { window.tel && tel.action(liked ? "unlike_post" : "like_post", { postId: id }); } catch (e) {}
   if (liked) {
     state.user.likedPosts = state.user.likedPosts.filter(x => x !== id);
     post.likes = Math.max(0, (post.likes || 1) - 1);

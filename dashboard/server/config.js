@@ -1,0 +1,56 @@
+// Configuration centralisée — lue une seule fois au démarrage.
+import "dotenv/config";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const ROOT = path.resolve(__dirname, "..");
+
+/** Résout un chemin de dépôt relatif par rapport à la racine du dashboard. */
+function resolveRepo(p) {
+  if (!p) return path.resolve(ROOT, "..");
+  return path.isAbsolute(p) ? p : path.resolve(ROOT, p);
+}
+
+/** @type {("admin"|"developer"|"tester"|"observer")[]} */
+export const ROLES = ["admin", "developer", "tester", "observer"];
+
+function parseExtraUsers(str) {
+  if (!str) return [];
+  return str.split(",").map((chunk) => {
+    const [user, password, role] = chunk.split(":");
+    return { user: (user || "").trim(), password: (password || "").trim(), role: ROLES.includes((role || "").trim()) ? role.trim() : "observer" };
+  }).filter((u) => u.user && u.password);
+}
+
+const env = process.env;
+
+export const config = {
+  root: ROOT,
+  port: Number(env.PORT || 4610),
+  dashEnv: env.DASH_ENV || "development",
+  isProd: (env.DASH_ENV || "development") === "production",
+
+  sessionSecret: env.DASH_SESSION_SECRET || "dev-insecure-secret-change-me",
+  sessionHours: Number(env.DASH_SESSION_HOURS || 12),
+  adminUser: env.DASH_ADMIN_USER || "admin",
+  adminPassword: env.DASH_ADMIN_PASSWORD || "admin",
+  extraUsers: parseExtraUsers(env.DASH_EXTRA_USERS),
+
+  supabaseUrl: env.SUPABASE_URL || "",
+  supabaseServiceKey: env.SUPABASE_SERVICE_ROLE_KEY || "",
+  supabaseAnonKey: env.SUPABASE_ANON_KEY || "",
+
+  repoPath: resolveRepo(env.PASSIO_REPO_PATH),
+  // Les mutations de code sont TOUJOURS refusées en production (sécurité).
+  allowMutations: env.DASH_ALLOW_MUTATIONS === "true" && (env.DASH_ENV || "development") !== "production",
+
+  anthropicKey: env.ANTHROPIC_API_KEY || "",
+  anthropicModel: env.ANTHROPIC_MODEL || "claude-opus-4-8",
+
+  eventBuffer: Number(env.DASH_EVENT_BUFFER || 5000),
+  dataDir: path.join(ROOT, "data"),
+};
+
+/** Indique si la collecte Supabase est configurée (sinon mode démo/local). */
+export const supabaseReady = Boolean(config.supabaseUrl && config.supabaseServiceKey);

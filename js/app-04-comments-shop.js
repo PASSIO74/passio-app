@@ -1000,6 +1000,7 @@ function submitComment(postId) {
   if (text.length < 2) { toast("Trop court"); return; }
   let post = findPostAnywhere(postId);
   if (!post) return;
+  try { window.tel && tel.action("comment_post", { postId: postId, len: text.length }); } catch (e) {}
   if (!post.comments) post.comments = [];
   const realAuthorId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
   const p = currentProfile();

@@ -48,6 +48,10 @@
   <!-- PWA : installation automatique adaptée à l'appareil ET au navigateur -->
   <script src="js/platform.js"></script>
 
+  <!-- Télémétrie (centre de pilotage) : opt-in via ?telemetry=1, sans PII.
+       Chargée après platform.js dont elle réutilise window.supa. -->
+  <script src="js/telemetry.js"></script>
+
   <!-- Service Worker registration + auto-update -->
   <script src="js/pwa-detect.js"></script>
 

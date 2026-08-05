@@ -2346,6 +2346,7 @@ function diagLog(msg) {
 // TIMEOUT COURT: Supabase répond ou on considère que c'est un problème réseau
 
 async function supaPublishPostWithRetry(post, maxRetries = 2) {
+  try { window.tel && tel.action(post && post.is_reel ? "publish_reel" : "publish_post", { passion: post && post.passion }); } catch (e) {}
   // S'assurer que le profil existe en DB avant de publier
   // (le JOIN profiles!author_id retourne null sinon → pas de nom d'auteur)
   try { await supaUpsertProfile(); } catch(e) {}
