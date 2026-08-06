@@ -177,7 +177,9 @@ function trimEvent(e) { return { id: e.id, ts: e.ts, type: e.type, action: e.act
 function renderFixResult(r) {
   const copyBtn = `<button class="btn btn-primary btn-block" onclick='window.__copy(${JSON.stringify(r.prompt || "")},"Instructions pour Claude Code")'>${icon("copy")} Copier tout pour Claude Code</button>`;
   let html = "";
-  if (r.error) {
+  if (r.error && r.authNeeded) {
+    html = `<div class="fix-note err">${icon("alertTriangle")} Claude Code doit être reconnecté (c'est gratuit).<br><b>Ouvre une invite de commandes, tape <span class="md-inline">claude</span> et connecte-toi</b>, puis reviens cliquer sur la clé ${icon("wrench")}.</div>${copyBtn}`;
+  } else if (r.error) {
     html = `<div class="fix-note err">${icon("alertTriangle")} L'analyse automatique a échoué (${esc(r.error)}). Tu peux quand même copier les instructions ci-dessous et les coller dans Claude Code.</div>${copyBtn}`;
   } else if (r.analysis) {
     html = `<div class="fix-note ok">${icon("checkCircle")} Claude a analysé le problème. Lis « En clair » ci-dessous, puis copie tout et colle-le dans Claude Code pour appliquer le correctif.</div>
@@ -719,18 +721,46 @@ VIEWS.settings = async () => {
       <div class="card card-pad"><h4 style="margin-top:0">Collecte</h4><div class="detail-grid">${detail("Supabase", ov.ingest.supabaseReady ? "connecté" : "non configuré")}${detail("Realtime", ov.ingest.realtimeOk ? "actif" : "inactif")}${detail("Événements en mémoire", num(ov.ingest.buffered))}</div>
       <div class="section-title">Activer la télémétrie sur un appareil</div><p class="muted" style="font-size:13px">Ouvre Passio avec <span class="mono">?telemetry=1</span> sur chaque appareil de test (opt-in RGPD). Ex :</p><div class="stack">https://passio-app.netlify.app/?telemetry=1</div></div>
     </div>
-    <div class="card card-pad" style="margin-top:14px"><h4 style="margin-top:0">${icon("wrench")} Réparation automatique par Claude</h4>
-      <div class="claude-status ${S.me.claudeLive ? "on" : "off"}">${icon(S.me.claudeLive ? "checkCircle" : "alertTriangle")}<div><strong>${S.me.claudeLive ? "Active" : "Inactive"}</strong><div class="muted" style="font-size:12.5px">${S.me.claudeLive ? "Le bouton « Réparer » écrit le diagnostic et le correctif directement à l'écran, sans copier-coller." : "Le bouton « Réparer » prépare le texte à coller dans Claude Code. Ajoute ta clé pour l'analyse automatique."}</div></div></div>
-      ${S.me.claudeLive ? "" : `<div class="section-title" style="margin-top:16px">Pour l'activer (2 minutes)</div>
-      <ol class="setup-steps">
-        <li>Récupère une clé sur <span class="mono">console.anthropic.com</span> → API Keys → « Create Key ».</li>
-        <li>Ouvre le fichier <span class="mono">dashboard/.env</span> et colle-la après <span class="mono">ANTHROPIC_API_KEY=</span></li>
-        <li>Redémarre le centre de pilotage (ferme puis rouvre le raccourci, ou relance <span class="mono">npm start</span>).</li>
-      </ol>
-      <p class="muted" style="font-size:12.5px">Ta clé reste sur ton ordinateur (fichier <span class="mono">.env</span> ignoré par Git). Elle n'est jamais envoyée ailleurs que chez Anthropic pour l'analyse.</p>`}</div>
+    <div class="card card-pad" style="margin-top:14px" id="claudeCard">${claudeSettingsHtml()}</div>
     <div class="card card-pad" style="margin-top:14px"><h4 style="margin-top:0">Apparence</h4><button class="btn" id="setTheme">${icon("moon")} Basculer le thème</button></div>`);
   $("#setTheme").onclick = toggleTheme;
+  wireClaudeCard();
 };
+function claudeSettingsHtml() {
+  const via = S.me.claudeVia; // "api" | "cli" | "manuel"
+  const on = S.me.claudeLive;
+  const label = via === "cli" ? "Active — via Claude Code (gratuit)" : via === "api" ? "Active — via clé API" : "Inactive";
+  const desc = on
+    ? "Le bouton « Réparer » écrit le diagnostic et le correctif directement à l'écran, sans copier-coller."
+    : "Le bouton « Réparer » prépare le texte à coller dans Claude Code. Active l'analyse automatique ci-dessous — gratuitement.";
+  return `<h4 style="margin-top:0">${icon("wrench")} Réparation automatique par Claude</h4>
+    <div class="claude-status ${on ? "on" : "off"}">${icon(on ? "checkCircle" : "alertTriangle")}<div><strong>${label}</strong><div class="muted" style="font-size:12.5px">${desc}</div></div></div>
+    ${on ? "" : `<div class="section-title" style="margin-top:16px">Activer gratuitement (recommandé)</div>
+    <p class="muted" style="font-size:13px;margin-top:0">Utilise Claude Code déjà installé sur cet ordinateur — avec ton abonnement, <b>sans payer au message</b> :</p>
+    <ol class="setup-steps">
+      <li>Ouvre une <b>invite de commandes</b> (touche Windows → tape « cmd » → Entrée).</li>
+      <li>Tape <span class="mono">claude</span> puis Entrée, et connecte-toi avec ton compte si c'est demandé.</li>
+      <li>Reviens ici et clique <b>« Revérifier »</b> ci-dessous.</li>
+    </ol>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="btn btn-primary" id="claudeRecheck">${icon("refresh")} Revérifier</button><span class="muted" id="claudeRecheckMsg" style="font-size:12.5px"></span></div>
+    <details class="fix-details" style="margin-top:14px"><summary>Autre option : clé API (payante)</summary><ol class="setup-steps"><li>Clé sur <span class="mono">console.anthropic.com</span> → API Keys.</li><li>Colle-la après <span class="mono">ANTHROPIC_API_KEY=</span> dans <span class="mono">dashboard/.env</span>, puis redémarre.</li></ol></details>`}`;
+}
+function wireClaudeCard() {
+  const btn = $("#claudeRecheck");
+  if (!btn) return;
+  btn.onclick = async () => {
+    const msg = $("#claudeRecheckMsg"); btn.disabled = true; if (msg) msg.textContent = "Vérification…";
+    try {
+      const r = await api.post("/claude/recheck", {});
+      S.me.claudeLive = r.cli.available || r.apiKey;
+      S.me.claudeVia = r.apiKey ? "api" : r.cli.available ? "cli" : "manuel";
+      $("#claudeCard").innerHTML = claudeSettingsHtml(); wireClaudeCard();
+      if (S.me.claudeLive) toast("Réparation automatique activée ✓");
+      else if (msg) msg.textContent = "Toujours pas connecté. Lance « claude » dans un terminal et connecte-toi.";
+      renderNav();
+    } catch (e) { if (msg) msg.textContent = e.message; btn.disabled = false; }
+  };
+}
 
 // ─── Export ──────────────────────────────────────────────────────────────────
 function download(name, content, mime) { const b = new Blob([content], { type: mime }); const u = URL.createObjectURL(b); const a = document.createElement("a"); a.href = u; a.download = name; a.click(); URL.revokeObjectURL(u); }

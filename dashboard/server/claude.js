@@ -8,6 +8,7 @@ import { config } from "./config.js";
 import { store } from "./store.js";
 import { readSnippet, blameFile } from "./git.js";
 import { audit } from "./audit.js";
+import { runClaudeCli, claudeCliState, liveFixAvailable } from "./claudecli.js";
 
 /** Construit le contexte complet d'un bug (fiche + code + chronologie). */
 export async function buildContext(bugId, sessionEvents = []) {
@@ -79,8 +80,8 @@ export function buildPrompt(ctx) {
   return lines.join("\n");
 }
 
-/** Appelle l'API Anthropic à partir d'un prompt déjà assemblé. */
-async function callClaude(prompt) {
+/** Appelle l'API Anthropic (clé) à partir d'un prompt déjà assemblé. */
+async function callClaudeApi(prompt) {
   const resp = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "content-type": "application/json", "x-api-key": config.anthropicKey, "anthropic-version": "2023-06-01" },
@@ -91,41 +92,62 @@ async function callClaude(prompt) {
   return (data.content || []).map((c) => c.text).join("\n");
 }
 
-/** Appelle l'API Anthropic si configurée. Sinon indique le mode manuel. */
+/**
+ * Analyse « en direct » un prompt en choisissant la source disponible :
+ *  1. clé API Anthropic (si configurée) ;
+ *  2. sinon le `claude` local GRATUIT (abonnement Claude Code).
+ * Retourne { analysis, via } ou { error, authNeeded, via }.
+ */
+async function liveAnalyze(prompt) {
+  if (config.anthropicKey) {
+    try { return { analysis: await callClaudeApi(prompt), via: "api" }; }
+    catch (e) { return { error: e.message, via: "api" }; }
+  }
+  if (claudeCliState().available) {
+    return { ...(await runClaudeCli(prompt)), via: "cli" };
+  }
+  return { error: "Aucune source d'analyse disponible.", via: "none" };
+}
+
+/** Appelle la source d'analyse disponible (rétro-compat pour analyze()). */
+async function callClaude(prompt) {
+  const r = await liveAnalyze(prompt);
+  if (r.error) throw new Error(r.error);
+  return r.analysis;
+}
+
+/** Analyse un bug. Utilise la clé API OU le `claude` local gratuit. Sinon mode manuel. */
 export async function analyze(bugId, extra = {}, actor = null) {
   const ctx = await buildContext(bugId);
   if (!ctx) return { error: "Bug introuvable." };
   const prompt = buildPrompt(ctx) + (extra.note ? `\n\n## Note du testeur\n${extra.note}` : "");
-  audit("claude_context", { bugId, apiUsed: Boolean(config.anthropicKey) }, actor);
+  audit("claude_context", { bugId, via: config.anthropicKey ? "api" : claudeCliState().available ? "cli" : "manuel" }, actor);
 
-  if (!config.anthropicKey) {
+  if (!liveFixAvailable()) {
     return { configured: false, prompt,
-      hint: "ANTHROPIC_API_KEY non configurée : copie ce prompt dans Claude Code, ou renseigne la clé dans .env pour l'analyse en direct." };
+      hint: "Copie ce prompt dans Claude Code. Pour une analyse automatique ici : soit connecte le `claude` local (gratuit), soit ajoute ANTHROPIC_API_KEY dans .env." };
   }
-  try {
-    return { configured: true, prompt, analysis: await callClaude(prompt), model: config.anthropicModel };
-  } catch (e) {
-    return { configured: true, error: e.message, prompt };
-  }
+  const r = await liveAnalyze(prompt);
+  if (r.error) return { configured: true, error: r.error, authNeeded: r.authNeeded, via: r.via, prompt };
+  return { configured: true, prompt, analysis: r.analysis, via: r.via };
 }
 
 /**
  * Réparation « en un clic » : accepte un bug groupé (bugId) OU un événement d'erreur
- * brut (event). Retourne un prompt prêt à copier + l'analyse en direct si une clé API
- * est configurée. C'est le point d'entrée du bouton « Réparer avec Claude ».
+ * brut (event). Retourne un prompt prêt à copier + l'analyse en direct si une source
+ * est disponible (clé API OU `claude` local GRATUIT). Point d'entrée du bouton « Réparer ».
  */
 export async function quickFix({ bugId, event, note } = {}, actor = null) {
   const ctx = bugId ? await buildContext(bugId) : buildContextFromEvent(event);
   if (!ctx) return { error: "Problème introuvable." };
   const prompt = buildPrompt(ctx) + (note ? `\n\n## Note du testeur\n${note}` : "");
-  audit("claude_quickfix", { bugId: bugId || null, apiUsed: Boolean(config.anthropicKey) }, actor);
-  const base = { prompt, apiConfigured: Boolean(config.anthropicKey), title: ctx.bug.title };
-  if (!config.anthropicKey) {
-    return { ...base, hint: "Copie ce texte et colle-le dans Claude Code (ou dans l'app Claude) : il corrigera le problème. Pour une réponse automatique ici, ajoute ANTHROPIC_API_KEY dans le fichier .env." };
+  const via = config.anthropicKey ? "api" : claudeCliState().available ? "cli" : "manuel";
+  audit("claude_quickfix", { bugId: bugId || null, via }, actor);
+  const base = { prompt, apiConfigured: liveFixAvailable(), via, title: ctx.bug.title };
+  if (!liveFixAvailable()) {
+    return { ...base, hint: "Copie ce texte et colle-le dans Claude Code : il corrigera le problème. Pour une réponse automatique ici, connecte le `claude` local (gratuit) ou ajoute une clé API." };
   }
-  try {
-    return { ...base, analysis: await callClaude(prompt), model: config.anthropicModel };
-  } catch (e) {
-    return { ...base, error: e.message };
-  }
+  const r = await liveAnalyze(prompt);
+  if (r.error) return { ...base, error: r.error, authNeeded: r.authNeeded };
+  return { ...base, analysis: r.analysis };
 }

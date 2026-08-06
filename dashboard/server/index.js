@@ -19,6 +19,7 @@ import * as checklist from "./checklist.js";
 import * as dbwatch from "./dbwatch.js";
 import { signups } from "./signups.js";
 import { accounts } from "./accounts.js";
+import { detectClaudeCli, claudeCliState } from "./claudecli.js";
 import * as testusers from "./testusers.js";
 import * as alerts from "./alerts.js";
 
@@ -149,6 +150,9 @@ api.post("/claude/context", auth.requireCap("claude"), asyncH(async (req, res) =
 api.post("/claude/analyze", auth.requireCap("claude"), asyncH(async (req, res) => res.json(await claude.analyze(req.body?.bugId, { note: req.body?.note }, req.session.u))));
 // Réparation en un clic : depuis un bug groupé (bugId) ou un événement d'erreur brut (event).
 api.post("/claude/quickfix", auth.requireCap("claude"), asyncH(async (req, res) => res.json(await claude.quickFix({ bugId: req.body?.bugId, event: req.body?.event, note: req.body?.note }, req.session.u))));
+// État de la source d'analyse + re-détection à la demande (après avoir connecté `claude`).
+api.get("/claude/status", auth.requireAuth, (req, res) => res.json({ cli: claudeCliState(), apiKey: Boolean(config.anthropicKey) }));
+api.post("/claude/recheck", auth.requireCap("claude"), asyncH(async (req, res) => { await detectClaudeCli(); res.json({ cli: claudeCliState(), apiKey: Boolean(config.anthropicKey) }); }));
 
 // ─── Utilisateurs de test ───────────────────────────────────────────────────
 api.get("/test-users", auth.requireCap("test_users"), asyncH(async (req, res) => res.json(await testusers.list())));
@@ -196,6 +200,8 @@ app.listen(config.port, () => {
   console.log(`  ▸ Supabase : ${supabaseReady ? "connecté (service_role)" : "NON configuré → mode local (voir .env)"}`);
   console.log(`  ▸ Mutations git : ${config.allowMutations ? "autorisées (hors prod)" : "désactivées"}\n`);
   startIngest();
+  // Détection du `claude` local (analyse gratuite via l'abonnement Claude Code).
+  detectClaudeCli().then((ok) => console.log(`  ▸ Claude Code local : ${ok ? "détecté (analyse gratuite dispo)" : "absent"}${config.anthropicKey ? " · clé API aussi configurée" : ""}`));
   // Ouverture auto du navigateur quand lancé par le raccourci (une seule fois).
   if (process.env.DASH_OPEN_BROWSER === "1") {
     const url = `http://localhost:${config.port}`;
