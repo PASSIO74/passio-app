@@ -306,14 +306,23 @@ function deviceCard(d) {
 
 // ── Utilisateurs ────────────────────────────────────────────────────────────
 VIEWS.users = async () => {
-  mount(`<h2 class="page-title">Utilisateurs</h2><p class="page-sub">Profils réels observés via la télémétrie (les comptes de test sont exclus). ${hasCap("test_users") ? "Gestion des comptes de test ci-dessous." : ""}</p>
-    <div class="table-wrap"><table><thead><tr><th>Profil</th><th>Appareils</th><th>Dernière activité</th><th>Statut</th></tr></thead><tbody id="userRows"></tbody></table></div>
+  mount(`<h2 class="page-title">Utilisateurs</h2><p class="page-sub">Tous les comptes réels jamais créés (table <span class="mono">profiles</span>), enrichis de l'activité télémétrie. Les comptes de test sont exclus. ${hasCap("test_users") ? "Gestion des comptes de test ci-dessous." : ""}</p>
+    <div class="table-wrap"><table><thead><tr><th>Profil</th><th>Créé le</th><th>Appareils</th><th>Dernière activité</th><th>Statut</th></tr></thead><tbody id="userRows"></tbody></table></div>
     ${hasCap("test_users") ? `<div class="section-title">Comptes de test</div><div class="card card-pad" id="testUsers"><span class="spinner"></span></div>` : ""}`);
-  async function refresh() {
-    const map = new Map();
-    S.buffer.forEach((e) => { if (e.user_id) { const u = map.get(e.user_id) || { id: e.user_id, label: e.user_label, devices: new Set(), last: 0 }; u.label = e.user_label || u.label; if (e.device_id) u.devices.add(e.device_id); u.last = Math.max(u.last, e.ts); map.set(e.user_id, u); } });
-    const users = [...map.values()].sort((a, b) => b.last - a.last);
-    $("#userRows").innerHTML = users.map((u) => `<tr><td><strong>${nameFor(u.id, u.label)}</strong></td><td>${u.devices.size}</td><td class="muted">${ago(u.last)}</td><td><span class="pill ${Date.now() - u.last < 3e5 ? "ok" : "info"}">${Date.now() - u.last < 3e5 ? "actif" : "inactif"}</span></td></tr>`).join("") || '<tr><td colspan="4" class="empty">Aucun profil réel observé pour le moment.</td></tr>';
+  // Liste de référence = TOUS les comptes créés (profiles), chargée une fois.
+  let accounts = [];
+  try { const r = await api.get("/accounts"); accounts = (r && r.users) || []; if (r && r.error) toast(r.error); } catch (e) { toast(e.message); }
+  function refresh() {
+    // Activité live (appareils + dernier événement) agrégée depuis la télémétrie.
+    const act = new Map();
+    S.buffer.forEach((e) => { if (e.user_id) { const u = act.get(e.user_id) || { label: e.user_label, devices: new Set(), last: 0 }; u.label = e.user_label || u.label; if (e.device_id) u.devices.add(e.device_id); u.last = Math.max(u.last, e.ts); act.set(e.user_id, u); } });
+    // Fusion : chaque compte réel + son activité éventuelle. Les comptes observés
+    // en télémétrie mais absents de `profiles` (rare) sont ajoutés à la fin.
+    const rows = accounts.map((a) => { const t = act.get(a.id); return { id: a.id, label: a.name, created: a.createdAt ? Date.parse(a.createdAt) : 0, devices: t ? t.devices.size : 0, last: t ? t.last : 0 }; });
+    const known = new Set(accounts.map((a) => a.id));
+    act.forEach((t, id) => { if (!known.has(id)) rows.push({ id, label: t.label, created: 0, devices: t.devices.size, last: t.last }); });
+    rows.sort((a, b) => (b.last - a.last) || (b.created - a.created));
+    $("#userRows").innerHTML = rows.map((u) => `<tr><td><strong>${nameFor(u.id, u.label)}</strong></td><td class="muted">${u.created ? new Date(u.created).toLocaleDateString("fr-FR") : "—"}</td><td>${u.devices || "—"}</td><td class="muted">${u.last ? ago(u.last) : "—"}</td><td><span class="pill ${u.last && Date.now() - u.last < 3e5 ? "ok" : "info"}">${u.last && Date.now() - u.last < 3e5 ? "actif" : "inactif"}</span></td></tr>`).join("") || '<tr><td colspan="5" class="empty">Aucun compte créé pour le moment.</td></tr>';
   }
   S.refresh = refresh; refresh();
   if (hasCap("test_users")) loadTestUsers();

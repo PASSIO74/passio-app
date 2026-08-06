@@ -18,6 +18,7 @@ import * as sessions from "./sessions.js";
 import * as checklist from "./checklist.js";
 import * as dbwatch from "./dbwatch.js";
 import { signups } from "./signups.js";
+import { accounts } from "./accounts.js";
 import * as testusers from "./testusers.js";
 import * as alerts from "./alerts.js";
 
@@ -76,6 +77,7 @@ api.get("/events", auth.requireAuth, (req, res) => {
 // ─── Appareils / sessions d'activité / parcours ─────────────────────────────
 api.get("/names", auth.requireAuth, (req, res) => res.json(store.clientNames()));
 api.get("/signups", auth.requireAuth, asyncH(async (req, res) => res.json(await signups())));
+api.get("/accounts", auth.requireAuth, asyncH(async (req, res) => res.json(await accounts())));
 api.get("/devices", auth.requireAuth, (req, res) => res.json(store.deviceList()));
 api.get("/activity-sessions", auth.requireAuth, (req, res) => res.json(store.sessionList()));
 api.get("/journey/:session", auth.requireAuth, (req, res) => res.json(store.userJourney(req.params.session)));
