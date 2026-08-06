@@ -39,4 +39,4 @@ docs/demo/
 
 # Médias lourds (marketing / livrables investisseurs) — hors dépôt de code
 *.mp4
-livrables_investisseurs/*.pdf
+livrables_investisseurs/**/*.pdf
