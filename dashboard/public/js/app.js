@@ -131,7 +131,8 @@ function closeDrawer() { $("#drawer").hidden = true; $("#drawerScrim").hidden = 
 
 // ── Vue d'ensemble ──────────────────────────────────────────────────────────
 VIEWS.overview = async (view) => {
-  mount(`<div id="ovHealth"></div>
+  mount(`<div id="ovSignups"></div>
+    <div id="ovHealth"></div>
     <div class="grid kpi-grid" id="ovKpis"></div>
     <div class="cols cols-2" style="margin-top:16px">
       <div class="card chart-card"><h4>Activité en temps réel</h4><div class="chart-meta">Événements · erreurs · API — 30 dernières minutes</div><canvas class="chart" id="chartActivity"></canvas><div id="chartLegend" style="display:flex;gap:14px;margin-top:8px;font-size:12px"></div></div>
@@ -143,7 +144,28 @@ VIEWS.overview = async (view) => {
     </div>`);
 
   async function refresh() {
-    const [ov, ts, ready] = await Promise.all([api.get("/overview"), api.get("/timeseries?minutes=30"), api.get("/readiness")]);
+    const [ov, ts, ready, su] = await Promise.all([api.get("/overview"), api.get("/timeseries?minutes=30"), api.get("/readiness"), api.get("/signups").catch(() => null)]);
+    // Hero — créations de compte (développement commercial)
+    if (su) {
+      $("#ovSignups").innerHTML = `<div class="hero-signups">
+        <div class="hero-left">
+          <div class="hero-label">${icon("users")} Comptes créés — développement commercial</div>
+          <div class="hero-num">${num(su.total)}</div>
+          <div class="hero-caption">${su.configured ? "Total des comptes réels inscrits sur Passio" : "Supabase non configuré (mode local)"}</div>
+          <div class="hero-deltas">
+            <span class="hero-delta up">${icon("zap")} <b>+${num(su.today)}</b> aujourd'hui</span>
+            <span class="hero-delta"><b>+${num(su.week)}</b> cette semaine</span>
+            <span class="hero-delta"><b>+${num(su.month)}</b> ce mois</span>
+          </div>
+        </div>
+        <div class="hero-chart"><div class="hc-title">Nouveaux comptes · 14 jours</div><canvas class="chart" id="signupChart"></canvas></div>
+      </div>`;
+      const cum = []; let run = 0;
+      (su.series || []).forEach((d) => { run += d.n; cum.push({ t: d.t, c: run }); });
+      const base = su.total - run;   // niveau avant la fenêtre de 14 jours
+      const curve = cum.map((d) => ({ t: d.t, total: base + d.c }));
+      if (curve.length) lineChart($("#signupChart"), curve, [{ key: "total", color: "#a78bfa" }], { height: 90 });
+    }
     // Santé
     const h = ov.health;
     $("#ovHealth").innerHTML = `<div class="health-banner ${h.level}"><div class="h-ring" style="background:var(--grad-soft);color:${h.level === "operational" ? "var(--ok)" : h.level === "critical" ? "var(--err)" : "var(--warn)"}">${h.apiErrorRate}%<br><span style="font-size:8px">err API</span></div><div><h3>Santé globale : ${h.label}</h3><p>${h.errors5m} erreur(s) sur 5 min · ${ov.totals.apiSuccessRate}% de requêtes API réussies · ${ov.ingest.realtimeOk ? "realtime connecté" : ov.ingest.supabaseReady ? "realtime en reconnexion" : "Supabase non configuré (mode local)"}</p></div></div>`;
