@@ -719,6 +719,15 @@ VIEWS.settings = async () => {
       <div class="card card-pad"><h4 style="margin-top:0">Collecte</h4><div class="detail-grid">${detail("Supabase", ov.ingest.supabaseReady ? "connecté" : "non configuré")}${detail("Realtime", ov.ingest.realtimeOk ? "actif" : "inactif")}${detail("Événements en mémoire", num(ov.ingest.buffered))}</div>
       <div class="section-title">Activer la télémétrie sur un appareil</div><p class="muted" style="font-size:13px">Ouvre Passio avec <span class="mono">?telemetry=1</span> sur chaque appareil de test (opt-in RGPD). Ex :</p><div class="stack">https://passio-app.netlify.app/?telemetry=1</div></div>
     </div>
+    <div class="card card-pad" style="margin-top:14px"><h4 style="margin-top:0">${icon("wrench")} Réparation automatique par Claude</h4>
+      <div class="claude-status ${S.me.claudeLive ? "on" : "off"}">${icon(S.me.claudeLive ? "checkCircle" : "alertTriangle")}<div><strong>${S.me.claudeLive ? "Active" : "Inactive"}</strong><div class="muted" style="font-size:12.5px">${S.me.claudeLive ? "Le bouton « Réparer » écrit le diagnostic et le correctif directement à l'écran, sans copier-coller." : "Le bouton « Réparer » prépare le texte à coller dans Claude Code. Ajoute ta clé pour l'analyse automatique."}</div></div></div>
+      ${S.me.claudeLive ? "" : `<div class="section-title" style="margin-top:16px">Pour l'activer (2 minutes)</div>
+      <ol class="setup-steps">
+        <li>Récupère une clé sur <span class="mono">console.anthropic.com</span> → API Keys → « Create Key ».</li>
+        <li>Ouvre le fichier <span class="mono">dashboard/.env</span> et colle-la après <span class="mono">ANTHROPIC_API_KEY=</span></li>
+        <li>Redémarre le centre de pilotage (ferme puis rouvre le raccourci, ou relance <span class="mono">npm start</span>).</li>
+      </ol>
+      <p class="muted" style="font-size:12.5px">Ta clé reste sur ton ordinateur (fichier <span class="mono">.env</span> ignoré par Git). Elle n'est jamais envoyée ailleurs que chez Anthropic pour l'analyse.</p>`}</div>
     <div class="card card-pad" style="margin-top:14px"><h4 style="margin-top:0">Apparence</h4><button class="btn" id="setTheme">${icon("moon")} Basculer le thème</button></div>`);
   $("#setTheme").onclick = toggleTheme;
 };
