@@ -36,3 +36,7 @@ playwright-report/
 
 # Vidéos de démo générées (scripts/demo-video.js) — trop lourdes pour git
 docs/demo/
+
+# Médias lourds (marketing / livrables investisseurs) — hors dépôt de code
+*.mp4
+livrables_investisseurs/*.pdf
