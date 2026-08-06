@@ -73,6 +73,7 @@ api.get("/events", auth.requireAuth, (req, res) => {
 });
 
 // ─── Appareils / sessions d'activité / parcours ─────────────────────────────
+api.get("/names", auth.requireAuth, (req, res) => res.json(store.clientNames()));
 api.get("/devices", auth.requireAuth, (req, res) => res.json(store.deviceList()));
 api.get("/activity-sessions", auth.requireAuth, (req, res) => res.json(store.sessionList()));
 api.get("/journey/:session", auth.requireAuth, (req, res) => res.json(store.userJourney(req.params.session)));

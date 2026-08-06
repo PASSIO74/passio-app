@@ -38,6 +38,10 @@ export async function startIngest() {
     realtime: { params: { eventsPerSecond: 20 } },
   });
 
+  // 0) Comptes de test à EXCLURE (faux profils @passio-e2e.test) — avant tout ingest.
+  await loadTestUids();
+  setInterval(loadTestUids, 10 * 60_000).unref();   // rafraîchit toutes les 10 min
+
   // 1) Historique récent (les 1000 derniers événements).
   try {
     const { data, error } = await admin
@@ -70,6 +74,35 @@ export async function startIngest() {
 
   // 3) Polling de secours (toutes les 5 s) : rattrape ce que le realtime a raté.
   setInterval(pollIncrement, 5000).unref();
+
+  // 4) Résolution des pseudos (profiles.username) : au boot puis toutes les 30 s.
+  resolveNames();
+  setInterval(resolveNames, 30_000).unref();
+}
+
+// Résout les pseudos réels (profiles.username) des utilisateurs observés,
+// pour afficher un NOM plutôt qu'un identifiant dans le tableau de bord.
+async function resolveNames() {
+  if (!admin) return;
+  const uids = store.unresolvedUids().slice(0, 100);
+  if (!uids.length) return;
+  try {
+    const { data } = await admin.from("profiles").select("id,username").in("id", uids);
+    const map = {};
+    (data || []).forEach((r) => { if (r.username) map[r.id] = r.username; });
+    if (Object.keys(map).length) store.setResolvedNames(map);
+  } catch (e) { /* non bloquant */ }
+}
+
+// Charge les uids des comptes de test (e-mail @passio-e2e.test) à exclure.
+async function loadTestUids() {
+  if (!admin) return;
+  try {
+    const { data } = await admin.auth.admin.listUsers({ page: 1, perPage: 200 });
+    const ids = (data?.users || []).filter((u) => /@passio-e2e\.test$/i.test(u.email || "")).map((u) => u.id);
+    store.setTestUids(ids);
+    if (ids.length) console.log(`[ingest] ${ids.length} comptes de test exclus.`);
+  } catch (e) { /* non bloquant */ }
 }
 
 async function pollIncrement() {

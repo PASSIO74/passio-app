@@ -361,10 +361,14 @@
       var path = "";
       try { var u = new URL(url, location.href); path = u.host + u.pathname; } catch (e) { path = String(url).split("?")[0]; }
       var t0 = (performance && performance.now) ? performance.now() : Date.now();
+      // ⛔ NE PAS chronométrer nos PROPRES envois de télémétrie (ni le monitoring
+      // d'erreurs) : sinon chaque insert crée un événement api → réinséré →
+      // boucle qui noie les vraies données (telemetry_events apparaissait 90×).
+      var _selfCall = /telemetry_events|client_errors/i.test(path);
       return orig.apply(this, arguments).then(function (res) {
         var dt = ((performance && performance.now) ? performance.now() : Date.now()) - t0;
         // n'enregistre que les appels applicatifs pertinents (Supabase + API)
-        if (/supabase|functions|api/i.test(path)) {
+        if (/supabase|functions|api/i.test(path) && !_selfCall) {
           Telemetry.api({
             action: method + " " + path.replace(/\/rest\/v1\//, "/"),
             endpoint: path, http_status: res.status,
@@ -376,7 +380,7 @@
         return res;
       }, function (err) {
         var dt = ((performance && performance.now) ? performance.now() : Date.now()) - t0;
-        if (/supabase|functions|api/i.test(path)) {
+        if (/supabase|functions|api/i.test(path) && !_selfCall) {
           Telemetry.api({
             action: method + " " + path, endpoint: path,
             duration_ms: dt, status: "error", severity: "error",

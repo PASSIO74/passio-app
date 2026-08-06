@@ -93,12 +93,33 @@ class Store {
     this.sessions = new Map();           // sessions d'activité (par session_id)
     this.users = new Map();
     this.bugs = new Map();               // fingerprint -> bug live
+    this.testUids = new Set();           // comptes de test à EXCLURE (faux profils)
+    this.resolvedNames = {};             // uid -> pseudo (résolu depuis profiles)
     // statut/notes de bug persistés (survivent au redémarrage)
     this.bugMeta = new JsonDb("bug-meta", {});
   }
 
+  /** Définit les identifiants des comptes de test à ne jamais compter. */
+  setTestUids(ids) { this.testUids = new Set(ids || []); }
+
+  /** Enregistre des pseudos résolus (uid -> username). */
+  setResolvedNames(obj) { Object.assign(this.resolvedNames, obj || {}); }
+  /** uids observés sans pseudo connu (à résoudre via profiles). */
+  unresolvedUids() {
+    const out = [];
+    for (const [uid, u] of this.users) if (!u.label && !this.resolvedNames[uid] && !this.testUids.has(uid)) out.push(uid);
+    return out;
+  }
+  /** Carte uid -> nom lisible pour le client (pseudo d'événement ou résolu). */
+  clientNames() {
+    const out = { ...this.resolvedNames };
+    for (const [uid, u] of this.users) if (u.label) out[uid] = u.label;
+    return out;
+  }
+
   /** @param {TelemetryEvent} ev */
   add(ev) {
+    if (ev.user_id && this.testUids.has(ev.user_id)) return false; // faux profil → ignoré
     if (ev.event_id) {
       if (this.seen.has(ev.event_id)) return false;
       this.seen.add(ev.event_id);

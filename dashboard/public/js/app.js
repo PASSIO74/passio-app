@@ -15,6 +15,9 @@ const S = {
   currentView: "overview",
   refresh: null,              // fonction de rafraîchissement de la vue active
   testLog: [],
+  names: {},                  // uid -> pseudo public (résolu au fil des événements)
+  alias: {},                  // uid -> "Visiteur N" pour les inconnus (stable)
+  aliasN: 0,
 };
 const $ = (s, r = document) => r.querySelector(s);
 const LIVE = new Set(["overview", "activity", "devices", "users", "content", "messaging", "services", "performance", "bugs"]);
@@ -33,6 +36,39 @@ function dotColor(ev) { return ev.type === "error" ? SEV_COLOR[ev.severity] || "
 function toast(msg) { const t = $("#toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(() => (t.hidden = true), 2600); }
 async function copy(text, label) { try { await navigator.clipboard.writeText(text); toast((label || "Copié") + " ✓"); } catch { toast("Copie impossible"); } }
 function num(n) { return (n == null ? "—" : n.toLocaleString("fr-FR")); }
+
+// ─── Lisibilité : noms de profil au lieu d'identifiants ───────────────────────
+// Libellés lisibles des actions métier (au lieu de "publish_post" etc.).
+const ACTION_FR = {
+  publish_post: "Publication", publish_reel: "Bobine publiée", like_post: "J'aime",
+  unlike_post: "J'aime retiré", comment_post: "Commentaire", send_message: "Message envoyé",
+  event_join: "Inscription événement", event_leave: "Désinscription", screen_view: "Écran consulté",
+  window_error: "Erreur", unhandled_rejection: "Erreur (promesse)", heartbeat: "Présence",
+  start: "Début de session", end: "Fin de session", hidden: "Onglet masqué", visible: "Onglet visible",
+};
+function actionLabel(ev) {
+  if (ev.action && ACTION_FR[ev.action]) return ACTION_FR[ev.action];
+  if (ev.type === "api") return "Requête " + (ev.endpoint || "").split("/").pop().replace(/\?.*/, "") || "API";
+  return ACTION_FR[ev.action] || ev.action || TYPE_FR[ev.type] || ev.type;
+}
+// Mémorise le pseudo d'un uid dès qu'on le voit.
+function learnName(ev) { if (ev && ev.user_id && ev.user_label) S.names[ev.user_id] = ev.user_label; }
+function learnNames(list) { (list || []).forEach(learnName); }
+// Nom lisible d'un utilisateur : pseudo connu, sinon « Visiteur N » (jamais l'uid brut).
+function who(ev) {
+  const label = ev.user_label || (ev.user_id && S.names[ev.user_id]);
+  if (label) return esc(label);
+  if (ev.user_id) { if (!S.alias[ev.user_id]) S.alias[ev.user_id] = "Visiteur " + (++S.aliasN); return S.alias[ev.user_id]; }
+  return "Anonyme";
+}
+function nameFor(uid, fallbackLabel) {
+  if (fallbackLabel) return esc(fallbackLabel);
+  if (uid && S.names[uid]) return esc(S.names[uid]);
+  if (uid) { if (!S.alias[uid]) S.alias[uid] = "Visiteur " + (++S.aliasN); return S.alias[uid]; }
+  return "Anonyme";
+}
+// Appareil lisible : « iOS · Safari » plutôt qu'un id hexadécimal.
+function deviceLabel(d) { return `${d.platform || "?"} · ${d.browser || "?"}`; }
 
 // ─── Navigation ──────────────────────────────────────────────────────────────
 const NAV = [
@@ -139,25 +175,21 @@ VIEWS.overview = async (view) => {
 
 // ── Ligne de flux réutilisable ──────────────────────────────────────────────
 function feedRow(ev) {
-  const who = ev.user_label ? esc(ev.user_label) : (ev.user_id ? "user " + esc(ev.user_id).slice(0, 6) : "anonyme");
-  const label = ev.action || TYPE_FR[ev.type] || ev.type;
-  const meta = [ev.screen && "@" + ev.screen, ev.endpoint && esc(ev.endpoint), ev.duration_ms != null && ev.duration_ms + "ms", ev.http_status && "HTTP " + ev.http_status].filter(Boolean).join(" · ");
-  return `<div class="feed-row" data-ev='${esc(JSON.stringify({ id: ev.id }))}' onclick='window.__evDetail(${JSON.stringify(ev.id)})'>
+  const meta = [ev.screen && "écran " + ev.screen, ev.duration_ms != null && ev.duration_ms + " ms", ev.http_status && "HTTP " + ev.http_status].filter(Boolean).join(" · ");
+  return `<div class="feed-row" onclick='window.__evDetail(${JSON.stringify(ev.id)})'>
     <span class="fr-time">${hhmmss(ev.ts)}</span>
     <span class="fr-dot" style="background:${dotColor(ev)}"></span>
-    <span class="fr-main"><b>${esc(label)}</b> <span class="muted">· ${who} · ${ev.platform}/${ev.browser}</span><div class="fr-meta">${meta || TYPE_FR[ev.type] || ""}</div></span>
+    <span class="fr-main"><b>${esc(actionLabel(ev))}</b> <span class="muted">· ${who(ev)} · ${ev.platform}/${ev.browser}</span><div class="fr-meta">${meta || ""}</div></span>
     <span class="fr-right"><span class="pill ${ev.type === "error" ? "error" : ev.status}">${TYPE_FR[ev.type] || ev.type}</span></span></div>`;
 }
 window.__evDetail = (id) => {
   const ev = S.buffer.find((e) => e.id === id); if (!ev) return;
   openDrawer("Détail de l'événement", `
     <div class="detail-grid">
-      ${detail("Type", (TYPE_FR[ev.type] || ev.type) + (ev.action ? " · " + esc(ev.action) : ""))}
+      ${detail("Type", (TYPE_FR[ev.type] || ev.type) + " · " + esc(actionLabel(ev)))}
       ${detail("Horodatage", new Date(ev.ts).toLocaleString("fr-FR"))}
-      ${detail("Utilisateur", esc(ev.user_label || ev.user_id || "anonyme"))}
-      ${detail("Session", `<span class="mono">${esc(ev.session_id || "—")}</span>`)}
-      ${detail("Appareil", `<span class="mono">${esc(ev.device_id || "—")}</span>`)}
-      ${detail("Plateforme", `${ev.platform} / ${ev.browser} · v${esc(ev.app_version)}`)}
+      ${detail("Profil", who(ev))}
+      ${detail("Appareil", esc(deviceLabel(ev)) + " · v" + esc(ev.app_version))}
       ${detail("Écran", esc(ev.screen || "—"))}
       ${detail("Environnement", ev.env)}
       ${detail("Statut", `<span class="pill ${ev.type === "error" ? "error" : ev.status}">${ev.status}</span>`)}
@@ -224,17 +256,17 @@ VIEWS.devices = async () => {
   mount(`<h2 class="page-title">Appareils</h2><p class="page-sub">Vue temps réel des appareils connectés. Idéal pour observer tes deux appareils de test côte à côte.</p>
     <div class="feed-toolbar"><span class="muted" style="font-size:13px">Comparer :</span><select class="select" id="cmpA"></select><select class="select" id="cmpB"></select></div>
     <div class="device-compare" id="cmp"></div>
-    <div class="section-title">Tous les appareils</div><div class="table-wrap"><table><thead><tr><th>Appareil</th><th>Utilisateur</th><th>OS / Navigateur</th><th>Écran actuel</th><th>Connexion</th><th>Erreurs</th><th>Dernière activité</th></tr></thead><tbody id="devRows"></tbody></table></div>`);
+    <div class="section-title">Tous les appareils</div><div class="table-wrap"><table><thead><tr><th>Profil</th><th>Appareil</th><th>Écran actuel</th><th>Connexion</th><th>Erreurs</th><th>Dernière activité</th></tr></thead><tbody id="devRows"></tbody></table></div>`);
   async function refresh() {
     const devs = await api.get("/devices");
     if ($("#cmpA").options.length === 0 && devs.length) {
-      const opts = devs.map((d) => `<option value="${d.deviceId}">${esc(d.userLabel || d.deviceId.slice(0, 12))} · ${d.platform}</option>`).join("");
+      const opts = devs.map((d) => `<option value="${d.deviceId}">${nameFor(d.userId, d.userLabel)} · ${d.platform}/${d.browser}</option>`).join("");
       $("#cmpA").innerHTML = opts; $("#cmpB").innerHTML = opts;
       if (devs[1]) $("#cmpB").value = devs[1].deviceId;
       $("#cmpA").onchange = $("#cmpB").onchange = () => drawCompare(devs);
     }
     drawCompare(devs);
-    $("#devRows").innerHTML = devs.map((d) => `<tr onclick="location.hash='#activity'"><td><span class="pill ${d.online ? "ok" : "info"}">${d.online ? "en ligne" : "hors ligne"}</span> <span class="mono">${esc(d.deviceId.slice(0, 14))}</span></td><td>${esc(d.userLabel || "—")}</td><td>${d.platform} / ${d.browser}</td><td>${esc(d.screen || "—")}</td><td>${esc(d.connection || "—")}</td><td>${d.errorCount || 0}</td><td class="muted">${ago(d.lastSeen)}</td></tr>`).join("") || '<tr><td colspan="7" class="empty">Aucun appareil.</td></tr>';
+    $("#devRows").innerHTML = devs.map((d) => `<tr onclick="location.hash='#activity'"><td><span class="pill ${d.online ? "ok" : "info"}">${d.online ? "en ligne" : "hors ligne"}</span> <strong>${nameFor(d.userId, d.userLabel)}</strong></td><td>${esc(deviceLabel(d))}</td><td>${esc(d.screen || "—")}</td><td>${esc(d.connection || "—")}</td><td>${d.errorCount || 0}</td><td class="muted">${ago(d.lastSeen)}</td></tr>`).join("") || '<tr><td colspan="6" class="empty">Aucun appareil.</td></tr>';
   }
   function drawCompare(devs) {
     const a = devs.find((d) => d.deviceId === $("#cmpA").value) || devs[0];
@@ -245,22 +277,21 @@ VIEWS.devices = async () => {
 };
 function deviceCard(d) {
   const sess = S.buffer.filter((e) => e.device_id === d.deviceId).slice(-6).reverse();
-  return `<div class="card device-card"><div class="dc-head"><div class="dc-os">${(d.platform || "?").slice(0, 3).toUpperCase()}</div><div><strong>${esc(d.userLabel || "Anonyme")}</strong><div class="muted" style="font-size:12px">${d.platform} · ${d.browser} · v${esc(d.appVersion || "?")}</div></div><span class="pill ${d.online ? "ok" : "info"}" style="margin-left:auto">${d.online ? "en ligne" : ago(d.lastSeen)}</span></div>
-    <div class="detail-grid" style="margin:8px 0">${detail("Écran", esc(d.screen || "—"))}${detail("Taille", esc(d.screenSize || "—"))}${detail("Connexion", esc(d.connection || "—"))}${detail("Erreurs", d.errorCount || 0)}${detail("Env.", d.env)}${detail("Session", `<span class="mono">${esc((d.sessionId || "").slice(0, 10))}</span>`)}</div>
+  return `<div class="card device-card"><div class="dc-head"><div class="dc-os">${(d.platform || "?").slice(0, 3).toUpperCase()}</div><div><strong>${nameFor(d.userId, d.userLabel)}</strong><div class="muted" style="font-size:12px">${d.platform} · ${d.browser} · v${esc(d.appVersion || "?")}</div></div><span class="pill ${d.online ? "ok" : "info"}" style="margin-left:auto">${d.online ? "en ligne" : ago(d.lastSeen)}</span></div>
+    <div class="detail-grid" style="margin:8px 0">${detail("Écran", esc(d.screen || "—"))}${detail("Taille", esc(d.screenSize || "—"))}${detail("Connexion", esc(d.connection || "—"))}${detail("Erreurs", d.errorCount || 0)}${detail("Environnement", d.env)}</div>
     <div class="section-title" style="margin:10px 0 6px">Activité récente</div>${sess.map(feedRow).join("") || '<div class="muted" style="font-size:12px">—</div>'}</div>`;
 }
 
 // ── Utilisateurs ────────────────────────────────────────────────────────────
 VIEWS.users = async () => {
-  mount(`<h2 class="page-title">Utilisateurs</h2><p class="page-sub">Utilisateurs vus via la télémétrie (identité minimisée). ${hasCap("test_users") ? "Gestion des comptes de test ci-dessous." : ""}</p>
-    <div class="table-wrap"><table><thead><tr><th>Utilisateur</th><th>Appareils</th><th>Dernière activité</th><th>Statut</th></tr></thead><tbody id="userRows"></tbody></table></div>
+  mount(`<h2 class="page-title">Utilisateurs</h2><p class="page-sub">Profils réels observés via la télémétrie (les comptes de test sont exclus). ${hasCap("test_users") ? "Gestion des comptes de test ci-dessous." : ""}</p>
+    <div class="table-wrap"><table><thead><tr><th>Profil</th><th>Appareils</th><th>Dernière activité</th><th>Statut</th></tr></thead><tbody id="userRows"></tbody></table></div>
     ${hasCap("test_users") ? `<div class="section-title">Comptes de test</div><div class="card card-pad" id="testUsers"><span class="spinner"></span></div>` : ""}`);
   async function refresh() {
-    const devs = await api.get("/devices");
     const map = new Map();
     S.buffer.forEach((e) => { if (e.user_id) { const u = map.get(e.user_id) || { id: e.user_id, label: e.user_label, devices: new Set(), last: 0 }; u.label = e.user_label || u.label; if (e.device_id) u.devices.add(e.device_id); u.last = Math.max(u.last, e.ts); map.set(e.user_id, u); } });
     const users = [...map.values()].sort((a, b) => b.last - a.last);
-    $("#userRows").innerHTML = users.map((u) => `<tr><td><strong>${esc(u.label || "—")}</strong> <span class="mono muted">${esc(u.id.slice(0, 8))}</span></td><td>${u.devices.size}</td><td class="muted">${ago(u.last)}</td><td><span class="pill ${Date.now() - u.last < 3e5 ? "ok" : "info"}">${Date.now() - u.last < 3e5 ? "actif" : "inactif"}</span></td></tr>`).join("") || '<tr><td colspan="4" class="empty">Aucun utilisateur observé.</td></tr>';
+    $("#userRows").innerHTML = users.map((u) => `<tr><td><strong>${nameFor(u.id, u.label)}</strong></td><td>${u.devices.size}</td><td class="muted">${ago(u.last)}</td><td><span class="pill ${Date.now() - u.last < 3e5 ? "ok" : "info"}">${Date.now() - u.last < 3e5 ? "actif" : "inactif"}</span></td></tr>`).join("") || '<tr><td colspan="4" class="empty">Aucun profil réel observé pour le moment.</td></tr>';
   }
   S.refresh = refresh; refresh();
   if (hasCap("test_users")) loadTestUsers();
@@ -450,24 +481,56 @@ window.__stopTest = async () => { await api.post("/tests/stop", {}); toast("Arr�
 
 // ── Claude Code ─────────────────────────────────────────────────────────────
 VIEWS.claude = async (view, params) => {
-  mount(`<h2 class="page-title">Assistant Claude Code</h2><p class="page-sub">Prépare un contexte de diagnostic à partir d'un bug réel, puis copie-le ou lance l'analyse.</p>
-    <div class="feed-toolbar"><label class="muted" style="font-size:13px">Bug :</label><select class="select" id="clBug" style="min-width:280px"></select><button class="btn" id="clBuild">${icon("claude")} Construire le contexte</button><button class="btn btn-primary" id="clAnalyze">${icon("zap")} Analyser en direct</button></div>
+  mount(`<h2 class="page-title">Assistant Claude Code</h2><p class="page-sub">Prépare un contexte de diagnostic à partir d'un bug réel, puis copie-le dans Claude Code (ou lance l'analyse en direct si une clé API est configurée).</p>
+    <div id="clWrap"><div class="empty"><span class="spinner"></span></div></div>`);
+  let bugs = [];
+  try { bugs = await api.get("/bugs"); } catch (e) { $("#clWrap").innerHTML = `<div class="empty">Erreur de chargement : ${esc(e.message)}</div>`; return; }
+
+  if (!bugs.length) {
+    $("#clWrap").innerHTML = `<div class="card card-pad"><div class="empty">${icon("claude")}<p>Aucun bug détecté pour l'instant.</p><p class="muted" style="font-size:13px">Dès qu'une erreur remonte (onglet « Bugs &amp; erreurs »), reviens ici : tu génères un contexte complet (stack, code, chronologie) prêt pour Claude Code.</p></div></div>`;
+    return;
+  }
+
+  $("#clWrap").innerHTML = `
+    <div class="feed-toolbar">
+      <label class="muted" style="font-size:13px">Bug :</label>
+      <select class="select" id="clBug" style="min-width:300px">${bugs.map((b) => `<option value="${b.id}">[${b.severity}] ${esc(b.title).slice(0, 70)} (${b.count}×)</option>`).join("")}</select>
+      <button class="btn btn-primary" id="clBuild">${icon("claude")} Construire le contexte</button>
+      <button class="btn" id="clAnalyze" title="Nécessite ANTHROPIC_API_KEY">${icon("zap")} Analyser en direct</button>
+    </div>
     <div id="clStatus"></div>
-    <div class="cols cols-2"><div class="card chart-card"><h4>Prompt généré <button class="btn btn-sm" style="float:right" id="clCopy">${icon("copy")} Copier</button></h4><textarea id="clPrompt" rows="20" style="font-family:var(--mono);font-size:12px" placeholder="Sélectionne un bug puis « Construire le contexte »…"></textarea></div>
-    <div class="card chart-card"><h4>Analyse de Claude</h4><div id="clOut" class="stack" style="max-height:520px">L'analyse en direct nécessite ANTHROPIC_API_KEY dans .env. Sinon, copie le prompt dans Claude Code.</div></div></div>`);
-  const bugs = await api.get("/bugs");
-  $("#clBug").innerHTML = bugs.length ? bugs.map((b) => `<option value="${b.id}">[${b.severity}] ${esc(b.title).slice(0, 70)} (${b.count})</option>`).join("") : '<option value="">Aucun bug</option>';
-  if (params[0]) $("#clBug").value = params[0];
-  const build = async () => { const r = await api.post("/claude/context", { bugId: $("#clBug").value }); $("#clPrompt").value = r.prompt; $("#clStatus").innerHTML = `<p class="page-sub">${r.apiConfigured ? "API configurée — l'analyse en direct est disponible." : "Mode manuel : copie le prompt dans Claude Code (ANTHROPIC_API_KEY absente)."}</p>`; };
+    <label class="field" style="max-width:640px"><span>Note pour Claude (optionnel — ce que tu faisais, ce que tu attendais)</span><input id="clNote" placeholder="Ex : j'envoyais un message vocal et l'écran s'est figé" /></label>
+    <div class="cols cols-2">
+      <div class="card chart-card"><h4>Prompt généré <button class="btn btn-sm" style="float:right" id="clCopy">${icon("copy")} Copier</button></h4>
+        <textarea id="clPrompt" rows="20" style="font-family:var(--mono);font-size:12px;width:100%" placeholder="Choisis un bug puis « Construire le contexte »…"></textarea></div>
+      <div class="card chart-card"><h4>Analyse de Claude</h4>
+        <div id="clOut" class="stack" style="max-height:520px">L'analyse en direct nécessite <span class="mono">ANTHROPIC_API_KEY</span> dans <span class="mono">.env</span>. Sinon : « Construire le contexte » puis « Copier », et colle dans Claude Code.</div></div>
+    </div>`;
+
+  if (params[0]) { const opt = [...$("#clBug").options].find((o) => o.value === params[0]); if (opt) $("#clBug").value = params[0]; }
+
+  async function build() {
+    const bugId = $("#clBug").value; if (!bugId) return toast("Aucun bug sélectionné");
+    $("#clStatus").innerHTML = '<p class="page-sub"><span class="spinner"></span> Construction du contexte…</p>';
+    try {
+      const r = await api.post("/claude/context", { bugId });
+      $("#clPrompt").value = r.prompt + ($("#clNote").value.trim() ? "\n\n## Note du testeur\n" + $("#clNote").value.trim() : "");
+      $("#clStatus").innerHTML = `<p class="page-sub">${r.apiConfigured ? "Contexte prêt. API configurée : tu peux « Analyser en direct »." : "Contexte prêt. Clique « Copier » et colle-le dans Claude Code (pas de clé API configurée)."}</p>`;
+    } catch (e) { $("#clStatus").innerHTML = `<p class="page-sub sev-error">Erreur : ${esc(e.message)}</p>`; toast(e.message); }
+  }
+  $("#clBug").onchange = build;
   $("#clBuild").onclick = build;
-  $("#clCopy").onclick = () => copy($("#clPrompt").value, "Prompt");
+  $("#clCopy").onclick = () => { const v = $("#clPrompt").value.trim(); v ? copy(v, "Prompt") : toast("Construis d'abord le contexte"); };
   $("#clAnalyze").onclick = async () => {
+    const bugId = $("#clBug").value; if (!bugId) return toast("Aucun bug sélectionné");
     $("#clOut").innerHTML = '<span class="spinner"></span> Analyse en cours…';
-    const r = await api.post("/claude/analyze", { bugId: $("#clBug").value });
-    if (r.prompt && !$("#clPrompt").value) $("#clPrompt").value = r.prompt;
-    $("#clOut").innerHTML = r.analysis ? esc(r.analysis) : `<div class="muted">${esc(r.hint || r.error || "Non configuré.")}</div>`;
+    try {
+      const r = await api.post("/claude/analyze", { bugId, note: $("#clNote").value.trim() });
+      if (r.prompt && !$("#clPrompt").value) $("#clPrompt").value = r.prompt;
+      $("#clOut").innerHTML = r.analysis ? esc(r.analysis) : `<div class="muted">${esc(r.hint || r.error || "Analyse indisponible (configure ANTHROPIC_API_KEY dans .env).")}</div>`;
+    } catch (e) { $("#clOut").innerHTML = `<div class="sev-error">Erreur : ${esc(e.message)}</div>`; }
   };
-  if (params[0]) build();
+  build();
 };
 
 // ── Modifications Git ───────────────────────────────────────────────────────
@@ -567,6 +630,7 @@ function exportCsv(rows, name) {
 let refreshThrottle = 0;
 function onLiveEvent(ev) {
   if (S.paused) return;
+  learnName(ev);
   S.buffer.push(ev);
   if (S.buffer.length > 2000) S.buffer.shift();
   if (LIVE.has(S.currentView) && S.refresh) {
@@ -627,7 +691,10 @@ async function showApp() {
   $("#alertsBtn").innerHTML = icon("alerts");
   renderNav();
   // Amorçage : buffer initial + alertes
-  try { S.buffer = (await api.get("/events?limit=500")).reverse(); } catch {}
+  try { S.buffer = (await api.get("/events?limit=500")).reverse(); learnNames(S.buffer); } catch {}
+  try { Object.assign(S.names, await api.get("/names")); } catch {}
+  // Rafraîchit les pseudos résolus par le serveur toutes les 30 s.
+  setInterval(async () => { try { Object.assign(S.names, await api.get("/names")); if (LIVE.has(S.currentView) && S.refresh) S.refresh(); } catch {} }, 30000);
   try { S.alerts = await api.get("/alerts"); updateAlertBadges(); } catch {}
   // SSE
   connectStream({
