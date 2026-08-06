@@ -71,34 +71,46 @@ function nameFor(uid, fallbackLabel) {
 function deviceLabel(d) { return `${d.platform || "?"} · ${d.browser || "?"}`; }
 
 // ─── Navigation ──────────────────────────────────────────────────────────────
+// [id, libellé, icône, capacité requise?, groupe]
+// Groupe "essentiel" = ce qu'un utilisateur non-technique regarde tous les jours.
+// Groupe "avance"    = outils de dev/QA, regroupés plus bas et repliables.
 const NAV = [
-  ["overview", "Vue d'ensemble", "overview"],
-  ["activity", "Activité en direct", "activity"],
-  ["sessions", "Sessions de test", "sessions"],
-  ["devices", "Appareils", "devices"],
-  ["users", "Utilisateurs", "users"],
-  ["content", "Contenus", "content"],
-  ["messaging", "Messagerie", "messaging"],
-  ["bugs", "Bugs & erreurs", "bugs"],
-  ["performance", "Performances", "performance"],
-  ["services", "Services", "services"],
-  ["database", "Base de données", "database", "db"],
-  ["tests", "Tests", "tests"],
-  ["claude", "Claude Code", "claude", "claude"],
-  ["git", "Modifications Git", "git", "git_read"],
-  ["flags", "Feature flags", "flags", "flags"],
-  ["alerts", "Alertes", "alerts"],
-  ["reports", "Rapports", "reports"],
-  ["checklist", "Tests fonctionnels", "tests"],
-  ["audit", "Journal d'audit", "audit", "audit"],
-  ["settings", "Paramètres", "settings"],
+  ["overview", "Accueil", "home", null, "essentiel"],
+  ["activity", "Tout ce qui se passe", "activity", null, "essentiel"],
+  ["users", "Comptes & connexions", "users", null, "essentiel"],
+  ["content", "Contenus & interactions", "heart", null, "essentiel"],
+  ["bugs", "Problèmes", "bugs", null, "essentiel"],
+  ["claude", "Réparer avec Claude", "wrench", "claude", "essentiel"],
+
+  ["sessions", "Sessions de test", "sessions", null, "avance"],
+  ["devices", "Appareils", "devices", null, "avance"],
+  ["messaging", "Messagerie", "messaging", null, "avance"],
+  ["performance", "Performances", "performance", null, "avance"],
+  ["services", "Services", "services", null, "avance"],
+  ["database", "Base de données", "database", "db", "avance"],
+  ["tests", "Tests automatiques", "tests", null, "avance"],
+  ["checklist", "Tests fonctionnels", "reports", null, "avance"],
+  ["git", "Modifications Git", "git", "git_read", "avance"],
+  ["flags", "Feature flags", "flags", "flags", "avance"],
+  ["alerts", "Alertes", "alerts", null, "avance"],
+  ["reports", "Rapports", "reports", null, "avance"],
+  ["audit", "Journal d'audit", "audit", "audit", "avance"],
+  ["settings", "Paramètres", "settings", null, "avance"],
 ];
 function hasCap(cap) { return !cap || (S.me && S.me.caps.includes(cap)); }
+const navLink = ([id, label, ic]) =>
+  `<a href="#${id}" data-id="${id}">${icon(ic)}<span>${label}</span>${id === "bugs" ? '<span class="nav-badge" id="navBugs" hidden></span>' : ""}${id === "alerts" ? '<span class="nav-badge" id="navAlerts" hidden></span>' : ""}</a>`;
 
 function renderNav() {
-  $("#nav").innerHTML = NAV.filter(([, , , cap]) => hasCap(cap)).map(([id, label, ic]) =>
-    `<a href="#${id}" data-id="${id}">${icon(ic)}<span>${label}</span>${id === "bugs" ? '<span class="nav-badge" id="navBugs" hidden></span>' : ""}${id === "alerts" ? '<span class="nav-badge" id="navAlerts" hidden></span>' : ""}</a>`
-  ).join("");
+  const ess = NAV.filter((n) => n[4] === "essentiel" && hasCap(n[3]));
+  const adv = NAV.filter((n) => n[4] === "avance" && hasCap(n[3]));
+  const advOpen = localStorage.getItem("dash_adv_open") === "1";
+  $("#nav").innerHTML =
+    `<div class="nav-group-label">L'essentiel</div>${ess.map(navLink).join("")}` +
+    (adv.length ? `<button class="nav-group-toggle${advOpen ? " open" : ""}" id="advToggle">${icon("settings")}<span>Outils avancés</span><span class="nav-caret">${icon("route")}</span></button>
+       <div class="nav-adv${advOpen ? " open" : ""}" id="navAdv">${adv.map(navLink).join("")}</div>` : "");
+  const t = $("#advToggle");
+  if (t) t.onclick = () => { const el = $("#navAdv"); const now = !el.classList.contains("open"); el.classList.toggle("open", now); t.classList.toggle("open", now); localStorage.setItem("dash_adv_open", now ? "1" : "0"); };
 }
 const TITLES = Object.fromEntries(NAV.map(([id, label]) => [id, label]));
 
@@ -110,6 +122,9 @@ function route() {
   if (!VIEWS[base] || !hasCap((NAV.find((n) => n[0] === base) || [])[3])) { location.hash = "overview"; return; }
   S.currentView = base; S.refresh = null;
   $$(".nav a").forEach((a) => a.classList.toggle("active", a.dataset.id === base));
+  // Si la vue active est un outil avancé, déplie le groupe pour la rendre visible.
+  const navItem = NAV.find((n) => n[0] === base);
+  if (navItem && navItem[4] === "avance") { $("#navAdv")?.classList.add("open"); $("#advToggle")?.classList.add("open"); }
   $("#topbarTitle").textContent = TITLES[base] || "";
   document.getElementById("app").classList.remove("nav-open");
   const view = $("#view"); view.scrollTop = 0; view.focus();
@@ -125,72 +140,131 @@ function openDrawer(title, html) {
 }
 function closeDrawer() { $("#drawer").hidden = true; $("#drawerScrim").hidden = true; }
 
+// ─── Réparation « en un clic » avec Claude ────────────────────────────────────
+// Petit rendu Markdown → HTML (sûr : on échappe d'abord, puis on stylise).
+function mdToHtml(md) {
+  let s = esc(md || "");
+  s = s.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => `<pre class="md-code">${code.replace(/\n$/, "")}</pre>`);
+  s = s.replace(/`([^`]+)`/g, '<code class="md-inline">$1</code>');
+  s = s.replace(/^### (.*)$/gm, "<h5>$1</h5>").replace(/^## (.*)$/gm, "<h4>$1</h4>").replace(/^# (.*)$/gm, "<h3>$1</h3>");
+  s = s.replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>");
+  s = s.replace(/^\s*[-*] (.*)$/gm, "<li>$1</li>").replace(/(<li>[\s\S]*?<\/li>)/g, "<ul>$1</ul>").replace(/<\/ul>\s*<ul>/g, "");
+  s = s.replace(/^(\d+)\. (.*)$/gm, "<li>$2</li>");
+  s = s.replace(/\n{2,}/g, "</p><p>").replace(/\n/g, "<br>");
+  return `<p>${s}</p>`;
+}
+
+// Point d'entrée UNIQUE du bouton « Réparer avec Claude », partout dans l'app.
+// payload : { bugId } (bug groupé) OU { event } (une erreur brute du flux).
+async function fixWithClaude(payload, title) {
+  if (!hasCap("claude")) return toast("Réparation Claude non disponible pour ce rôle.");
+  fixWithClaude._last = payload; fixWithClaude._lastTitle = title;
+  openDrawer(`${icon("wrench")} Réparer ce problème`,
+    `<div class="fix-intro">${esc(title || "Problème détecté")}</div>
+     <div class="empty" id="fixBody"><span class="spinner"></span><p style="margin-top:10px">Claude analyse le problème…</p></div>`);
+  try {
+    const r = await api.post("/claude/quickfix", payload);
+    renderFixResult(r);
+  } catch (e) {
+    $("#fixBody").outerHTML = `<div class="fix-body"><div class="fix-note err">${icon("alertTriangle")} Impossible de contacter l'assistant : ${esc(e.message)}</div></div>`;
+  }
+}
+window.__fixWithClaude = fixWithClaude;
+window.__fixEvent = (id) => { const ev = S.buffer.find((e) => e.id === id); if (ev) fixWithClaude({ event: trimEvent(ev) }, actionLabel(ev)); };
+window.__fixBug = (id, title) => fixWithClaude({ bugId: id }, title);
+function trimEvent(e) { return { id: e.id, ts: e.ts, type: e.type, action: e.action, screen: e.screen, message: e.message, stack: e.stack, severity: e.severity, endpoint: e.endpoint, http_status: e.http_status, session_id: e.session_id, app_version: e.app_version, user_id: e.user_id, device_id: e.device_id }; }
+
+function renderFixResult(r) {
+  const copyBtn = `<button class="btn btn-primary btn-block" onclick='window.__copy(${JSON.stringify(r.prompt || "")},"Instructions pour Claude Code")'>${icon("copy")} Copier tout pour Claude Code</button>`;
+  let html = "";
+  if (r.error) {
+    html = `<div class="fix-note err">${icon("alertTriangle")} L'analyse automatique a échoué (${esc(r.error)}). Tu peux quand même copier les instructions ci-dessous et les coller dans Claude Code.</div>${copyBtn}`;
+  } else if (r.analysis) {
+    html = `<div class="fix-note ok">${icon("checkCircle")} Claude a analysé le problème. Lis « En clair » ci-dessous, puis copie tout et colle-le dans Claude Code pour appliquer le correctif.</div>
+      <div class="fix-analysis">${mdToHtml(r.analysis)}</div>${copyBtn}`;
+  } else {
+    html = `<div class="fix-note">${icon("sparkles")} ${esc(r.hint || "Instructions prêtes.")}</div>${copyBtn}
+      <details class="fix-details"><summary>Voir les instructions envoyées à Claude</summary><pre class="md-code">${esc(r.prompt || "")}</pre></details>`;
+  }
+  // Zone « préciser & relancer » (facultatif).
+  html += `<div class="fix-more">
+      <input id="fixNote" class="select" style="width:100%" placeholder="Ajouter une précision (ex : ça arrive quand j'envoie un vocal)…" />
+      <button class="btn btn-sm" id="fixRelaunch">${icon("refresh")} Relancer l'analyse</button>
+    </div>`;
+  const body = $("#fixBody");
+  if (body) body.outerHTML = `<div class="fix-body" id="fixBody">${html}</div>`;
+  const rl = $("#fixRelaunch");
+  if (rl) rl.onclick = () => { const note = $("#fixNote").value.trim(); fixWithClaude({ ...fixWithClaude._last, note }, fixWithClaude._lastTitle); };
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 //  VUES
 // ═══════════════════════════════════════════════════════════════════════════
 
-// ── Vue d'ensemble ──────────────────────────────────────────────────────────
+// ── Accueil (vue d'ensemble simplifiée, sans jargon) ─────────────────────────
 VIEWS.overview = async (view) => {
-  mount(`<div id="ovSignups"></div>
-    <div id="ovHealth"></div>
-    <div class="grid kpi-grid" id="ovKpis"></div>
+  mount(`<div id="ovState"></div>
+    <div class="home-cards" id="ovCards"></div>
     <div class="cols cols-2" style="margin-top:16px">
-      <div class="card chart-card"><h4>Activité en temps réel</h4><div class="chart-meta">Événements · erreurs · API — 30 dernières minutes</div><canvas class="chart" id="chartActivity"></canvas><div id="chartLegend" style="display:flex;gap:14px;margin-top:8px;font-size:12px"></div></div>
-      <div class="card chart-card"><h4>Latence API</h4><div class="chart-meta">Temps de réponse moyen (ms) par minute</div><canvas class="chart" id="chartLatency"></canvas></div>
-    </div>
-    <div class="cols cols-3" style="margin-top:16px">
-      <div class="card chart-card"><h4>Derniers événements</h4><div class="chart-meta">Flux live · <a href="#activity">tout voir</a></div><div id="ovFeed"></div></div>
-      <div class="card card-pad"><h4 style="margin:0 0 12px">Score de préparation</h4><div style="display:flex;gap:16px;align-items:center"><div class="readiness-ring"><canvas id="ovGauge"></canvas><div class="r-num"><b id="ovScore">—</b><div class="muted" style="font-size:11px">sur 100</div></div></div><div id="ovFactors" style="flex:1;min-width:0"></div></div></div>
+      <div class="card chart-card"><h4>${icon("activity")} Ce qui se passe en direct</h4><div class="chart-meta">Les dernières actions des utilisateurs · <a href="#activity">tout voir</a></div><div id="ovFeed"></div></div>
+      <div class="card chart-card"><h4>${icon("trending")} Nouveaux comptes — 14 derniers jours</h4><div class="chart-meta">Chaque point = un jour</div><canvas class="chart" id="signupChart" style="margin-top:8px"></canvas><div id="ovSignupLegend" class="muted" style="font-size:12px;margin-top:8px"></div></div>
     </div>`);
 
   async function refresh() {
-    const [ov, ts, ready, su] = await Promise.all([api.get("/overview"), api.get("/timeseries?minutes=30"), api.get("/readiness"), api.get("/signups").catch(() => null)]);
-    // Hero — créations de compte (développement commercial)
-    if (su) {
-      $("#ovSignups").innerHTML = `<div class="hero-signups">
-        <div class="hero-left">
-          <div class="hero-label">${icon("users")} Comptes créés — développement commercial</div>
-          <div class="hero-num">${num(su.total)}</div>
-          <div class="hero-caption">${su.configured ? "Total des comptes réels inscrits sur Passio" : "Supabase non configuré (mode local)"}</div>
-          <div class="hero-deltas">
-            <span class="hero-delta up">${icon("zap")} <b>+${num(su.today)}</b> aujourd'hui</span>
-            <span class="hero-delta"><b>+${num(su.week)}</b> cette semaine</span>
-            <span class="hero-delta"><b>+${num(su.month)}</b> ce mois</span>
-          </div>
-        </div>
-        <div class="hero-chart"><div class="hc-title">Nouveaux comptes · 14 jours</div><canvas class="chart" id="signupChart"></canvas></div>
-      </div>`;
+    const [ov, su, bugs] = await Promise.all([api.get("/overview"), api.get("/signups").catch(() => null), api.get("/bugs").catch(() => [])]);
+    const t = ov.totals, h = ov.health;
+    const openBugs = (bugs || []).filter((b) => b.status !== "corrige" && b.status !== "ignore");
+    const worst = openBugs.slice().sort((a, b) => (b.severity === "critical") - (a.severity === "critical") || b.count - a.count)[0];
+
+    // ── Bandeau d'état, en français simple ──────────────────────────────────
+    const problems = openBugs.length;
+    let level = "ok", title = "Tout fonctionne bien", sub = "Aucun problème détecté. Tu peux tester tranquillement.";
+    if (t.criticalBugs || h.level === "critical") { level = "bad"; title = `${t.criticalBugs || problems} problème${(t.criticalBugs || problems) > 1 ? "s" : ""} important${(t.criticalBugs || problems) > 1 ? "s" : ""} à corriger`; sub = "Clique sur « Réparer avec Claude » : il explique et corrige."; }
+    else if (problems || h.errors5m) { level = "warn"; title = `${problems || h.errors5m} petit${(problems || h.errors5m) > 1 ? "s" : ""} problème${(problems || h.errors5m) > 1 ? "s" : ""} détecté${(problems || h.errors5m) > 1 ? "s" : ""}`; sub = "Rien de bloquant. Tu peux le réparer en un clic quand tu veux."; }
+    const fixBtn = worst && hasCap("claude")
+      ? `<button class="btn btn-primary state-fix" onclick='window.__fixBug(${JSON.stringify(worst.id)},${JSON.stringify(worst.title)})'>${icon("wrench")} Réparer avec Claude</button>`
+      : problems ? `<a class="btn btn-primary state-fix" href="#bugs">${icon("wrench")} Voir les problèmes</a>` : "";
+    $("#ovState").innerHTML = `<div class="state-banner ${level}">
+      <div class="state-ico">${icon(level === "ok" ? "checkCircle" : "alertTriangle")}</div>
+      <div class="state-txt"><h2>${esc(title)}</h2><p>${esc(sub)}</p></div>
+      <div class="state-live"><span class="live-dot"></span>EN DIRECT</div>
+      ${fixBtn}</div>`;
+
+    // ── Les 3 chiffres qui comptent ─────────────────────────────────────────
+    const partages = t.publications;
+    const interactions = t.reactions + t.comments + t.messages;
+    const cards = [
+      { ic: "users", accent: "a", label: "Comptes créés", big: num(su ? su.total : t.users),
+        sub: su && su.configured ? `<b class="up">+${num(su.today)}</b> aujourd'hui · +${num(su.week)} cette semaine · +${num(su.month)} ce mois`
+          : "Total des inscrits sur Passio",
+        foot: `${icon("wifi")} ${num(t.onlineUsers)} connecté${t.onlineUsers > 1 ? "s" : ""} en ce moment` },
+      { ic: "heart", accent: "b", label: "Contenus partagés", big: num(partages),
+        sub: "Publications, bobines et stories créées",
+        foot: `${icon("sparkles")} ${num(interactions)} interaction${interactions > 1 ? "s" : ""} (j'aime, commentaires, messages)` },
+      { ic: "activity", accent: "c", label: "En ce moment", big: num(t.onlineUsers),
+        sub: `personne${t.onlineUsers > 1 ? "s" : ""} en train d'utiliser l'app`,
+        foot: `${icon("zap")} ${num(t.actionsPerMin)} action${t.actionsPerMin > 1 ? "s" : ""} par minute · ${num(t.activeUsers)} actif${t.activeUsers > 1 ? "s" : ""}` },
+    ];
+    $("#ovCards").innerHTML = cards.map((c) => `<div class="home-card ${c.accent}">
+      <div class="hc-top"><span class="hc-ico">${icon(c.ic)}</span><span class="hc-label">${c.label}</span></div>
+      <div class="hc-big">${c.big}</div>
+      <div class="hc-sub">${c.sub}</div>
+      <div class="hc-foot">${c.foot}</div></div>`).join("");
+
+    // ── Flux live simplifié ─────────────────────────────────────────────────
+    $("#ovFeed").innerHTML = S.buffer.slice(-9).reverse().map(feedRow).join("") || '<div class="empty" style="padding:24px">En attente… Ouvre Passio sur un téléphone pour voir l\'activité apparaître ici.</div>';
+
+    // ── Courbe des inscriptions ─────────────────────────────────────────────
+    if (su && su.configured) {
       const cum = []; let run = 0;
       (su.series || []).forEach((d) => { run += d.n; cum.push({ t: d.t, c: run }); });
-      const base = su.total - run;   // niveau avant la fenêtre de 14 jours
+      const base = su.total - run;
       const curve = cum.map((d) => ({ t: d.t, total: base + d.c }));
-      if (curve.length) lineChart($("#signupChart"), curve, [{ key: "total", color: "#a78bfa" }], { height: 90 });
+      if (curve.length) lineChart($("#signupChart"), curve, [{ key: "total", color: "#a78bfa" }], { height: 150 });
+      $("#ovSignupLegend").textContent = `${num(su.total)} comptes au total · +${num(su.week)} sur 7 jours`;
+    } else {
+      $("#ovSignupLegend").innerHTML = "Supabase non connecté (mode local) — les inscriptions réelles s'afficheront ici une fois configuré.";
     }
-    // Santé
-    const h = ov.health;
-    $("#ovHealth").innerHTML = `<div class="health-banner ${h.level}"><div class="h-ring" style="background:var(--grad-soft);color:${h.level === "operational" ? "var(--ok)" : h.level === "critical" ? "var(--err)" : "var(--warn)"}">${h.apiErrorRate}%<br><span style="font-size:8px">err API</span></div><div><h3>Santé globale : ${h.label}</h3><p>${h.errors5m} erreur(s) sur 5 min · ${ov.totals.apiSuccessRate}% de requêtes API réussies · ${ov.ingest.realtimeOk ? "realtime connecté" : ov.ingest.supabaseReady ? "realtime en reconnexion" : "Supabase non configuré (mode local)"}</p></div></div>`;
-    // KPIs
-    const t = ov.totals;
-    const K = [
-      ["users", "Utilisateurs", num(t.users), t.onlineUsers + " en ligne"],
-      ["wifi", "Appareils connectés", num(t.onlineDevices), t.sessions + " sessions actives"],
-      ["activity", "Actifs (5 min)", num(t.activeUsers), t.actionsPerMin + " actions/min"],
-      ["content", "Publications", num(t.publications), "posts + bobines"],
-      ["messaging", "Messages", num(t.messages), t.comments + " commentaires"],
-      ["zap", "Réactions", num(t.reactions), t.notifications + " notifs"],
-      ["performance", "Latence moyenne", t.avgLatency + " ms", t.apiSuccessRate + "% succès API"],
-      ["bugs", "Bugs ouverts", num(t.openBugs), t.criticalBugs + " critiques"],
-    ];
-    $("#ovKpis").innerHTML = K.map(([ic, l, v, s], i) => `<div class="kpi${i === 7 && t.criticalBugs ? " accent" : ""}"><div class="kpi-label">${icon(ic)}${l}</div><div class="kpi-value">${v}</div><div class="kpi-sub">${s}</div></div>`).join("");
-    // Charts
-    lineChart($("#chartActivity"), ts, [{ key: "events", color: "#8b5cf6", label: "Événements" }, { key: "api", color: "#38bdf8", label: "API", fill: false }, { key: "errors", color: "#ef4444", label: "Erreurs", fill: false }]);
-    $("#chartLegend").innerHTML = [["Événements", "#8b5cf6"], ["API", "#38bdf8"], ["Erreurs", "#ef4444"]].map(([l, c]) => `<span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:3px;background:${c}"></span>${l}</span>`).join("");
-    lineChart($("#chartLatency"), ts, [{ key: "latency", color: "#a78bfa", label: "Latence" }]);
-    // Feed
-    $("#ovFeed").innerHTML = S.buffer.slice(-8).reverse().map(feedRow).join("") || '<div class="empty" style="padding:24px">En attente d\'événements…</div>';
-    // Readiness
-    gauge($("#ovGauge"), ready.score); $("#ovScore").textContent = ready.score;
-    bars($("#ovFactors"), ready.factors.map((f) => ({ label: f.label, value: f.score, max: 100, display: Math.round(f.score) })));
   }
   S.refresh = refresh; refresh();
 };
@@ -198,11 +272,13 @@ VIEWS.overview = async (view) => {
 // ── Ligne de flux réutilisable ──────────────────────────────────────────────
 function feedRow(ev) {
   const meta = [ev.screen && "écran " + ev.screen, ev.duration_ms != null && ev.duration_ms + " ms", ev.http_status && "HTTP " + ev.http_status].filter(Boolean).join(" · ");
+  const fix = ev.type === "error" && hasCap("claude")
+    ? `<button class="fix-btn" title="Réparer avec Claude" onclick='event.stopPropagation();window.__fixEvent(${JSON.stringify(ev.id)})'>${icon("wrench")}</button>` : "";
   return `<div class="feed-row" onclick='window.__evDetail(${JSON.stringify(ev.id)})'>
     <span class="fr-time">${hhmmss(ev.ts)}</span>
     <span class="fr-dot" style="background:${dotColor(ev)}"></span>
     <span class="fr-main"><b>${esc(actionLabel(ev))}</b> <span class="muted">· ${who(ev)} · ${ev.platform}/${ev.browser}</span><div class="fr-meta">${meta || ""}</div></span>
-    <span class="fr-right"><span class="pill ${ev.type === "error" ? "error" : ev.status}">${TYPE_FR[ev.type] || ev.type}</span></span></div>`;
+    <span class="fr-right">${fix}<span class="pill ${ev.type === "error" ? "error" : ev.status}">${TYPE_FR[ev.type] || ev.type}</span></span></div>`;
 }
 window.__evDetail = (id) => {
   const ev = S.buffer.find((e) => e.id === id); if (!ev) return;
@@ -306,7 +382,7 @@ function deviceCard(d) {
 
 // ── Utilisateurs ────────────────────────────────────────────────────────────
 VIEWS.users = async () => {
-  mount(`<h2 class="page-title">Utilisateurs</h2><p class="page-sub">Tous les comptes réels jamais créés (table <span class="mono">profiles</span>), enrichis de l'activité télémétrie. Les comptes de test sont exclus. ${hasCap("test_users") ? "Gestion des comptes de test ci-dessous." : ""}</p>
+  mount(`<h2 class="page-title">Comptes & connexions</h2><p class="page-sub">Tous les comptes réels créés sur Passio, avec leur activité récente. Les comptes de test sont exclus. ${hasCap("test_users") ? "Gestion des comptes de test en bas de page." : ""}</p>
     <div class="table-wrap"><table><thead><tr><th>Profil</th><th>Créé le</th><th>Appareils</th><th>Dernière activité</th><th>Statut</th></tr></thead><tbody id="userRows"></tbody></table></div>
     ${hasCap("test_users") ? `<div class="section-title">Comptes de test</div><div class="card card-pad" id="testUsers"><span class="spinner"></span></div>` : ""}`);
   // Liste de référence = TOUS les comptes créés (profiles), chargée une fois.
@@ -337,8 +413,8 @@ async function loadTestUsers() {
 window.__delTestUser = async (id) => { if (!confirm("Supprimer ce compte de test ?")) return; try { await api.del("/test-users/" + id); toast("Compte supprimé"); loadTestUsers(); } catch (e) { toast(e.message); } };
 
 // ── Contenus & Messagerie (vues filtrées du flux) ───────────────────────────
-VIEWS.content = () => filteredFeed("Contenus", "Publications, commentaires, likes et réactions en direct.", (e) => /publish_|comment_post|like_post|react|story|reel|carnet|event_/.test(e.action || ""));
-VIEWS.messaging = () => filteredFeed("Messagerie", "Métadonnées de messages uniquement — aucun contenu privé n'est collecté (RGPD).", (e) => /send_message|conv_|message|call/.test(e.action || e.endpoint || ""));
+VIEWS.content = () => filteredFeed("Contenus & interactions", "Tout ce que les gens publient et partagent — publications, bobines, stories, j'aime, commentaires et réactions, en direct.", (e) => /publish_|comment_post|like_post|react|story|reel|carnet|event_/.test(e.action || ""));
+VIEWS.messaging = () => filteredFeed("Messagerie", "Uniquement des indications d'activité — aucun contenu de message privé n'est lu (RGPD).", (e) => /send_message|conv_|message|call/.test(e.action || e.endpoint || ""));
 function filteredFeed(title, sub, pred) {
   mount(`<h2 class="page-title">${title}</h2><p class="page-sub">${sub}</p><div class="feed" id="feed"></div>`);
   const apply = () => { $("#feed").innerHTML = S.buffer.filter(pred).slice(-200).reverse().map(feedRow).join("") || '<div class="empty">Aucun événement correspondant pour le moment.</div>'; };
@@ -348,11 +424,11 @@ function filteredFeed(title, sub, pred) {
 // ── Bugs & erreurs ──────────────────────────────────────────────────────────
 const BUG_STATUS = ["nouveau", "a_analyser", "en_cours", "correctif_propose", "en_test", "corrige", "rouvert", "ignore"];
 VIEWS.bugs = async () => {
-  mount(`<h2 class="page-title">Bugs & erreurs</h2><p class="page-sub">Erreurs regroupées automatiquement par empreinte (stack + message + version).</p>
-    <div class="table-wrap"><table><thead><tr><th>Gravité</th><th>Bug</th><th>Occ.</th><th>Users</th><th>Statut</th><th>Écrans</th><th>Vu</th></tr></thead><tbody id="bugRows"></tbody></table></div>`);
+  mount(`<h2 class="page-title">Problèmes détectés</h2><p class="page-sub">Chaque ligne = un problème rencontré par un utilisateur. Clique une ligne pour les détails, ou le bouton ${icon("wrench")} pour le réparer avec Claude en un clic.</p>
+    <div class="table-wrap"><table><thead><tr><th>Gravité</th><th>Problème</th><th>Fois</th><th>Users</th><th>Statut</th><th>Vu</th><th>Réparer</th></tr></thead><tbody id="bugRows"></tbody></table></div>`);
   async function refresh() {
     const bugs = await api.get("/bugs");
-    $("#bugRows").innerHTML = bugs.map((b) => `<tr onclick="window.__bug('${b.id}')"><td><span class="pill ${b.severity}">${b.severity}</span></td><td><strong>${esc(b.title)}</strong><div class="muted" style="font-size:11px">${esc(b.codeRef ? b.codeRef.file + (b.codeRef.line ? ":" + b.codeRef.line : "") : b.action || "")}</div></td><td>${b.count}</td><td>${b.users}</td><td><span class="pill ${b.status}">${b.status.replace(/_/g, " ")}</span></td><td class="muted" style="font-size:11px">${b.screens.slice(0, 3).join(", ") || "—"}</td><td class="muted">${ago(b.lastSeen)}</td></tr>`).join("") || '<tr><td colspan="7" class="empty">Aucune erreur détectée. 🎉</td></tr>';
+    $("#bugRows").innerHTML = bugs.map((b) => `<tr onclick="window.__bug('${b.id}')"><td><span class="pill ${b.severity}">${b.severity}</span></td><td><strong>${esc(b.title)}</strong><div class="muted" style="font-size:11px">${esc(b.codeRef ? b.codeRef.file + (b.codeRef.line ? ":" + b.codeRef.line : "") : b.action || "")}</div></td><td>${b.count}</td><td>${b.users}</td><td><span class="pill ${b.status}">${b.status.replace(/_/g, " ")}</span></td><td class="muted">${ago(b.lastSeen)}</td><td>${hasCap("claude") ? `<button class="fix-btn big" title="Réparer avec Claude" onclick='event.stopPropagation();window.__fixBug(${JSON.stringify(b.id)},${JSON.stringify(b.title)})'>${icon("wrench")}</button>` : "—"}</td></tr>`).join("") || '<tr><td colspan="7" class="empty">Aucun problème détecté. 🎉</td></tr>';
     const open = bugs.filter((b) => b.status !== "corrige" && b.status !== "ignore").length;
     const nb = $("#navBugs"); if (nb) { nb.hidden = !open; nb.textContent = open; }
   }
@@ -383,7 +459,7 @@ window.__bug = async (id) => {
         <button class="btn btn-sm" onclick='window.__copy(${JSON.stringify(b.stack || "")},"Stack")'>${icon("copy")} Stack</button>
         ${b.snippet ? `<button class="btn btn-sm" onclick='window.__copy(${JSON.stringify(b.snippet.lines.map((l) => l.code).join("\n"))},"Code")'>${icon("copy")} Extrait</button>` : ""}
         <button class="btn btn-sm" onclick='window.__copy(${JSON.stringify(JSON.stringify(b, null, 2))},"Contexte complet")'>${icon("copy")} Contexte complet</button>
-        ${hasCap("claude") ? `<button class="btn btn-sm btn-primary" onclick="window.__claudeFromBug('${b.id}')">${icon("claude")} Envoyer à Claude Code</button>` : ""}
+        ${hasCap("claude") ? `<button class="btn btn-sm btn-primary" onclick='window.__fixBug(${JSON.stringify(b.id)},${JSON.stringify(b.title)})'>${icon("wrench")} Réparer avec Claude</button>` : ""}
       </div>`);
     $("#bugStatus").onchange = async (e) => { await api.patch("/bugs/" + id, { status: e.target.value }); toast("Statut mis à jour"); if (S.currentView === "bugs") S.refresh?.(); };
   } catch (e) { openDrawer("Erreur", `<div class="empty">${esc(e.message)}</div>`); }
@@ -512,7 +588,7 @@ window.__stopTest = async () => { await api.post("/tests/stop", {}); toast("Arr�
 
 // ── Claude Code ─────────────────────────────────────────────────────────────
 VIEWS.claude = async (view, params) => {
-  mount(`<h2 class="page-title">Assistant Claude Code</h2><p class="page-sub">Prépare un contexte de diagnostic à partir d'un bug réel, puis copie-le dans Claude Code (ou lance l'analyse en direct si une clé API est configurée).</p>
+  mount(`<h2 class="page-title">Réparer avec Claude</h2><p class="page-sub">Choisis un problème : Claude t'explique la cause en clair et te donne le correctif prêt à coller dans Claude Code. Astuce : depuis n'importe où, le bouton ${icon("wrench")} lance la réparation en un clic.</p>
     <div id="clWrap"><div class="empty"><span class="spinner"></span></div></div>`);
   let bugs = [];
   try { bugs = await api.get("/bugs"); } catch (e) { $("#clWrap").innerHTML = `<div class="empty">Erreur de chargement : ${esc(e.message)}</div>`; return; }
@@ -613,7 +689,9 @@ VIEWS.alerts = async () => {
   $("#alList").innerHTML = alerts.length ? alerts.map(alertItem).join("") : '<div class="empty">Aucune alerte. Tout va bien.</div>';
 };
 function alertItem(a) {
-  return `<div class="alert-item ${a.level} ${a.acknowledged ? "ack" : ""}"><div class="a-title">${esc(a.title)}</div><div class="a-msg">${esc(a.message || "")}</div><div class="a-time">${new Date(a.ts).toLocaleString("fr-FR")}${a.acknowledged ? " · vu" : hasCap("alerts") ? ` · <a href="#" onclick="window.__ackAlert('${a.id}');return false">marquer comme vu</a>` : ""}</div></div>`;
+  const fix = hasCap("claude") && (a.level === "critical" || a.level === "high")
+    ? `<button class="fix-btn" title="Réparer avec Claude" onclick='window.__fixWithClaude({event:{message:${JSON.stringify(a.title)},stack:${JSON.stringify(a.message || "")},severity:"error",type:"error"}},${JSON.stringify(a.title)})'>${icon("wrench")}</button>` : "";
+  return `<div class="alert-item ${a.level} ${a.acknowledged ? "ack" : ""}"><div class="a-row"><div class="a-title">${esc(a.title)}</div>${fix}</div><div class="a-msg">${esc(a.message || "")}</div><div class="a-time">${new Date(a.ts).toLocaleString("fr-FR")}${a.acknowledged ? " · vu" : hasCap("alerts") ? ` · <a href="#" onclick="window.__ackAlert('${a.id}');return false">marquer comme vu</a>` : ""}</div></div>`;
 }
 window.__ackAlert = async (id) => { await api.post(`/alerts/${id}/ack`, {}); const a = S.alerts.find((x) => x.id === id); if (a) a.acknowledged = true; if (S.currentView === "alerts") VIEWS.alerts($("#view")); updateAlertBadges(); };
 

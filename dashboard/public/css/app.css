@@ -281,3 +281,78 @@ tbody tr:last-child td{border-bottom:none}
   .detail-grid{grid-template-columns:1fr}
 }
 @media(max-width:560px){.view{padding:14px}.topbar{padding:10px 12px}}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   REFONTE « USAGE SIMPLE » — navigation groupée, accueil, réparation Claude
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ─── Navigation : groupes ─── */
+.nav-group-label{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted-2);font-weight:700;padding:6px 11px 4px;margin-top:2px}
+.nav-group-toggle{display:flex;align-items:center;gap:11px;width:100%;padding:9px 11px;margin-top:10px;border:none;background:transparent;color:var(--muted);font-size:13.5px;font-weight:600;cursor:pointer;border-radius:10px;text-align:left;font-family:inherit}
+.nav-group-toggle:hover{background:var(--card);color:var(--text)}
+.nav-group-toggle svg{width:18px;height:18px;flex:none}
+.nav-group-toggle .nav-caret{margin-left:auto;transition:transform .2s;opacity:.7}
+.nav-group-toggle.open .nav-caret{transform:rotate(90deg)}
+.nav-adv{display:none;flex-direction:column;gap:2px;margin-top:2px}
+.nav-adv.open{display:flex;animation:slideIn .2s}
+
+/* ─── Accueil : bandeau d'état ─── */
+.state-banner{display:flex;align-items:center;gap:16px;padding:18px 22px;border-radius:var(--radius-lg);margin-bottom:18px;border:1px solid var(--border);position:relative;overflow:hidden;flex-wrap:wrap}
+.state-banner .state-ico{width:46px;height:46px;border-radius:14px;display:grid;place-items:center;flex:none}
+.state-banner .state-ico svg{width:26px;height:26px}
+.state-banner .state-txt{flex:1;min-width:200px}
+.state-banner .state-txt h2{margin:0;font-size:19px}
+.state-banner .state-txt p{margin:3px 0 0;color:var(--muted);font-size:13.5px}
+.state-banner.ok{background:linear-gradient(120deg,rgba(34,197,94,.16),transparent 65%)}
+.state-banner.ok .state-ico{background:rgba(34,197,94,.16);color:var(--ok)}
+.state-banner.warn{background:linear-gradient(120deg,rgba(245,158,11,.18),transparent 65%)}
+.state-banner.warn .state-ico{background:rgba(245,158,11,.18);color:var(--warn)}
+.state-banner.bad{background:linear-gradient(120deg,rgba(239,68,68,.2),transparent 65%);border-color:rgba(239,68,68,.4)}
+.state-banner.bad .state-ico{background:rgba(239,68,68,.2);color:var(--err)}
+.state-live{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:800;letter-spacing:.1em;color:var(--muted);text-transform:uppercase}
+.live-dot{width:9px;height:9px;border-radius:50%;background:var(--err);box-shadow:0 0 0 4px rgba(239,68,68,.18);animation:pulse 1.6s infinite}
+.state-fix{font-size:14px;padding:11px 18px}
+
+/* ─── Accueil : 3 grandes tuiles ─── */
+.home-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+@media(max-width:900px){.home-cards{grid-template-columns:1fr}}
+.home-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px 22px;position:relative;overflow:hidden;transition:.15s}
+.home-card:hover{border-color:var(--accent);box-shadow:var(--glow);transform:translateY(-2px)}
+.home-card::after{content:"";position:absolute;right:-30px;top:-30px;width:150px;height:150px;border-radius:50%;opacity:.5;pointer-events:none}
+.home-card.a::after{background:radial-gradient(circle,rgba(167,139,250,.3),transparent 70%)}
+.home-card.b::after{background:radial-gradient(circle,rgba(244,114,182,.28),transparent 70%)}
+.home-card.c::after{background:radial-gradient(circle,rgba(56,189,248,.26),transparent 70%)}
+.home-card .hc-top{display:flex;align-items:center;gap:10px;position:relative;z-index:1}
+.home-card .hc-ico{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;background:var(--grad-soft);color:var(--accent);flex:none}
+.home-card .hc-ico svg{width:19px;height:19px}
+.home-card .hc-label{font-size:14px;font-weight:700}
+.home-card .hc-big{font-size:clamp(40px,6vw,58px);font-weight:800;line-height:1.05;letter-spacing:-.03em;margin:12px 0 4px;font-variant-numeric:tabular-nums;position:relative;z-index:1}
+.home-card .hc-sub{color:var(--muted);font-size:13px;position:relative;z-index:1}
+.home-card .hc-sub .up{color:var(--ok)}
+.home-card .hc-foot{margin-top:14px;padding-top:12px;border-top:1px solid var(--border-soft);font-size:12.5px;color:var(--muted);display:flex;align-items:center;gap:7px;position:relative;z-index:1}
+.home-card .hc-foot svg{width:15px;height:15px;color:var(--accent);flex:none}
+
+/* ─── Bouton « Réparer » (petite clé partout) ─── */
+.fix-btn{display:inline-grid;place-items:center;width:30px;height:30px;border-radius:9px;border:1px solid rgba(139,92,246,.4);background:var(--grad-soft);color:var(--accent);cursor:pointer;transition:.13s;flex:none}
+.fix-btn:hover{background:var(--grad-accent);color:#fff;border-color:transparent;transform:translateY(-1px)}
+.fix-btn svg{width:16px;height:16px}
+.fix-btn.big{width:34px;height:34px}
+.a-row{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+
+/* ─── Tiroir de réparation ─── */
+.fix-intro{font-size:15px;font-weight:600;margin-bottom:16px;padding:12px 14px;background:var(--card-2);border:1px solid var(--border);border-radius:var(--radius-sm)}
+.fix-body{display:flex;flex-direction:column;gap:14px}
+.fix-note{display:flex;gap:10px;align-items:flex-start;font-size:13.5px;line-height:1.5;padding:12px 14px;border-radius:var(--radius-sm);background:var(--card-2);border:1px solid var(--border)}
+.fix-note svg{width:20px;height:20px;flex:none;margin-top:1px}
+.fix-note.ok{background:rgba(34,197,94,.1);border-color:rgba(34,197,94,.3)}.fix-note.ok svg{color:var(--ok)}
+.fix-note.err{background:rgba(239,68,68,.1);border-color:rgba(239,68,68,.3)}.fix-note.err svg{color:var(--err)}
+.fix-analysis{font-size:13.5px;line-height:1.6}
+.fix-analysis h3{font-size:16px;margin:16px 0 6px}.fix-analysis h4{font-size:14.5px;margin:16px 0 6px;color:var(--accent)}.fix-analysis h5{font-size:13px;margin:12px 0 4px}
+.fix-analysis p{margin:8px 0}.fix-analysis ul{margin:8px 0;padding-left:20px}.fix-analysis li{margin:3px 0}
+.fix-analysis b{color:var(--text)}
+.md-code{background:#0b0914;border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;font-family:var(--mono);font-size:11.5px;line-height:1.5;white-space:pre-wrap;word-break:break-word;color:var(--text);overflow-x:auto;max-height:340px;overflow-y:auto}
+:root[data-theme="light"] .md-code{background:#faf8ff}
+.md-inline{font-family:var(--mono);font-size:12px;background:var(--card-2);padding:1px 5px;border-radius:5px;color:var(--accent)}
+.fix-details{font-size:12.5px;color:var(--muted)}.fix-details summary{cursor:pointer;padding:6px 0}
+.fix-more{display:flex;gap:8px;align-items:center;margin-top:6px;padding-top:14px;border-top:1px solid var(--border-soft);flex-wrap:wrap}
+.fix-more input{flex:1;min-width:160px}

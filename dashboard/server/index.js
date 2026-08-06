@@ -147,6 +147,8 @@ api.post("/claude/context", auth.requireCap("claude"), asyncH(async (req, res) =
   res.json({ prompt: claude.buildPrompt(ctx), context: ctx, apiConfigured: Boolean(config.anthropicKey) });
 }));
 api.post("/claude/analyze", auth.requireCap("claude"), asyncH(async (req, res) => res.json(await claude.analyze(req.body?.bugId, { note: req.body?.note }, req.session.u))));
+// Réparation en un clic : depuis un bug groupé (bugId) ou un événement d'erreur brut (event).
+api.post("/claude/quickfix", auth.requireCap("claude"), asyncH(async (req, res) => res.json(await claude.quickFix({ bugId: req.body?.bugId, event: req.body?.event, note: req.body?.note }, req.session.u))));
 
 // ─── Utilisateurs de test ───────────────────────────────────────────────────
 api.get("/test-users", auth.requireCap("test_users"), asyncH(async (req, res) => res.json(await testusers.list())));

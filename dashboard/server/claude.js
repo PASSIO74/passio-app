@@ -23,12 +23,35 @@ export async function buildContext(bugId, sessionEvents = []) {
   return { bug, snippet, commits, timeline };
 }
 
+/** Construit un contexte léger à partir d'UN événement d'erreur (pas d'un bug groupé). */
+export function buildContextFromEvent(ev) {
+  if (!ev) return null;
+  // Tente de localiser le fichier:ligne dans la stack (js/app-0X.js, etc.).
+  let codeRef = null;
+  const m = String(ev.stack || ev.message || "").match(/((?:js\/)?[\w.-]+\.js):(\d+)/);
+  if (m) codeRef = { file: m[1].replace(/^\//, ""), line: Number(m[2]) };
+  const snippet = codeRef?.file ? readSnippet(codeRef.file, codeRef.line) : null;
+  const bug = {
+    title: ev.message || (ev.action ? "Problème : " + ev.action : "Erreur observée"),
+    severity: ev.severity || (ev.type === "error" ? "error" : "warn"),
+    status: "nouveau", count: 1, users: ev.user_id ? 1 : 0, devices: ev.device_id ? 1 : 0,
+    versions: ev.app_version ? [ev.app_version] : [], screens: ev.screen ? [ev.screen] : [],
+    endpoint: ev.endpoint, httpStatus: ev.http_status, message: ev.message, stack: ev.stack, codeRef,
+  };
+  const timeline = ev.session_id
+    ? store.userJourney(ev.session_id).slice(-25).map((e) => ({ ts: e.ts, type: e.type, action: e.action, screen: e.screen, status: e.status }))
+    : [];
+  return { bug, snippet, commits: [], timeline };
+}
+
 /** Assemble le PROMPT texte destiné à Claude Code. */
 export function buildPrompt(ctx) {
   const { bug, snippet, commits, timeline } = ctx;
   const lines = [];
   lines.push("Tu es Claude Code sur le projet PASSIO (PWA vanilla JS + Supabase).");
-  lines.push("Analyse ce bug détecté en conditions réelles et propose un correctif SÛR.\n");
+  lines.push("Analyse ce problème détecté en conditions réelles et propose un correctif SÛR.");
+  lines.push("IMPORTANT : commence TOUJOURS ta réponse par une section « ## En clair » de 2-3 phrases");
+  lines.push("expliquant le problème et la solution SANS jargon technique (le lecteur ne connaît rien au code).\n");
   lines.push("## Bug");
   lines.push(`- Titre : ${bug.title}`);
   lines.push(`- Gravité : ${bug.severity} · Statut : ${bug.status}`);
@@ -56,6 +79,18 @@ export function buildPrompt(ctx) {
   return lines.join("\n");
 }
 
+/** Appelle l'API Anthropic à partir d'un prompt déjà assemblé. */
+async function callClaude(prompt) {
+  const resp = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-api-key": config.anthropicKey, "anthropic-version": "2023-06-01" },
+    body: JSON.stringify({ model: config.anthropicModel, max_tokens: 2000, messages: [{ role: "user", content: prompt }] }),
+  });
+  if (!resp.ok) { const t = await resp.text(); throw new Error(`API ${resp.status}: ${t.slice(0, 300)}`); }
+  const data = await resp.json();
+  return (data.content || []).map((c) => c.text).join("\n");
+}
+
 /** Appelle l'API Anthropic si configurée. Sinon indique le mode manuel. */
 export async function analyze(bugId, extra = {}, actor = null) {
   const ctx = await buildContext(bugId);
@@ -68,16 +103,29 @@ export async function analyze(bugId, extra = {}, actor = null) {
       hint: "ANTHROPIC_API_KEY non configurée : copie ce prompt dans Claude Code, ou renseigne la clé dans .env pour l'analyse en direct." };
   }
   try {
-    const resp = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "content-type": "application/json", "x-api-key": config.anthropicKey, "anthropic-version": "2023-06-01" },
-      body: JSON.stringify({ model: config.anthropicModel, max_tokens: 2000, messages: [{ role: "user", content: prompt }] }),
-    });
-    if (!resp.ok) { const t = await resp.text(); return { configured: true, error: `API ${resp.status}: ${t.slice(0, 300)}`, prompt }; }
-    const data = await resp.json();
-    const text = (data.content || []).map((c) => c.text).join("\n");
-    return { configured: true, prompt, analysis: text, model: config.anthropicModel };
+    return { configured: true, prompt, analysis: await callClaude(prompt), model: config.anthropicModel };
   } catch (e) {
     return { configured: true, error: e.message, prompt };
+  }
+}
+
+/**
+ * Réparation « en un clic » : accepte un bug groupé (bugId) OU un événement d'erreur
+ * brut (event). Retourne un prompt prêt à copier + l'analyse en direct si une clé API
+ * est configurée. C'est le point d'entrée du bouton « Réparer avec Claude ».
+ */
+export async function quickFix({ bugId, event, note } = {}, actor = null) {
+  const ctx = bugId ? await buildContext(bugId) : buildContextFromEvent(event);
+  if (!ctx) return { error: "Problème introuvable." };
+  const prompt = buildPrompt(ctx) + (note ? `\n\n## Note du testeur\n${note}` : "");
+  audit("claude_quickfix", { bugId: bugId || null, apiUsed: Boolean(config.anthropicKey) }, actor);
+  const base = { prompt, apiConfigured: Boolean(config.anthropicKey), title: ctx.bug.title };
+  if (!config.anthropicKey) {
+    return { ...base, hint: "Copie ce texte et colle-le dans Claude Code (ou dans l'app Claude) : il corrigera le problème. Pour une réponse automatique ici, ajoute ANTHROPIC_API_KEY dans le fichier .env." };
+  }
+  try {
+    return { ...base, analysis: await callClaude(prompt), model: config.anthropicModel };
+  } catch (e) {
+    return { ...base, error: e.message };
   }
 }
