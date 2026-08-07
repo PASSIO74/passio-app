@@ -52,7 +52,9 @@ export function buildPrompt(ctx) {
   lines.push("Tu es Claude Code sur le projet PASSIO (PWA vanilla JS + Supabase).");
   lines.push("Analyse ce problème détecté en conditions réelles et propose un correctif SÛR.");
   lines.push("IMPORTANT : commence TOUJOURS ta réponse par une section « ## En clair » de 2-3 phrases");
-  lines.push("expliquant le problème et la solution SANS jargon technique (le lecteur ne connaît rien au code).\n");
+  lines.push("expliquant le problème et la solution SANS jargon technique (le lecteur ne connaît rien au code).");
+  lines.push("Sois RAPIDE et DIRECT : appuie-toi sur le contexte fourni ci-dessous (code, stack, chronologie).");
+  lines.push("Ne relis au plus qu'un ou deux fichiers ciblés si c'est indispensable, n'explore pas tout le dépôt.\n");
   lines.push("## Bug");
   lines.push(`- Titre : ${bug.title}`);
   lines.push(`- Gravité : ${bug.severity} · Statut : ${bug.status}`);

@@ -9,6 +9,7 @@
 // ni d'injection).
 // ═══════════════════════════════════════════════════════════════════════════
 import { spawn } from "node:child_process";
+import os from "node:os";
 import { config } from "./config.js";
 
 let _state = { checked: false, installed: false, loggedIn: false, available: false, version: "" };
@@ -53,14 +54,20 @@ export function liveFixAvailable() { return Boolean(config.anthropicKey) || _sta
  * Lance une analyse via le `claude` local. Retourne { analysis } en cas de succès,
  * ou { error, authNeeded } si un souci survient (ex. session à reconnecter).
  */
-export function runClaudeCli(prompt, { timeoutMs = 150000 } = {}) {
+export function runClaudeCli(prompt, { timeoutMs = 120000 } = {}) {
   return new Promise((resolve) => {
     let out = "", err = "", done = false;
     const finish = (v) => { if (!done) { done = true; resolve(v); } };
     let p;
     try {
-      p = spawn("claude", ["-p", "--output-format", "json", "--permission-mode", "plan"],
-        { shell: true, cwd: config.repoPath, windowsHide: true });
+      // Bouton « instantané » → réponse DIRECTE à partir du contexte déjà fourni
+      // (extrait de code, stack, chronologie, commits sont dans le prompt). On coupe
+      // TOUS les outils (sinon Claude lisait ~24 fichiers = 200 s) et on tourne dans un
+      // dossier neutre (os.tmpdir) pour ne pas charger l'énorme CLAUDE.md du dépôt.
+      // Modèle rapide (sonnet par défaut). C'est le même principe que le mode clé API.
+      p = spawn("claude", ["-p", "--output-format", "json", "--model", config.claudeCliModel,
+        "--disallowedTools", "Bash", "Glob", "Grep", "Task", "WebFetch", "WebSearch", "Read", "Edit", "Write", "NotebookEdit", "TodoWrite"],
+        { shell: true, cwd: os.tmpdir(), windowsHide: true });
     } catch (e) { return finish({ error: e.message }); }
     const timer = setTimeout(() => { try { p.kill(); } catch {} finish({ error: "L'analyse a pris trop de temps (délai dépassé)." }); }, timeoutMs);
     p.stdout.on("data", (d) => (out += d));

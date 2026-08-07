@@ -161,7 +161,7 @@ async function fixWithClaude(payload, title) {
   fixWithClaude._last = payload; fixWithClaude._lastTitle = title;
   openDrawer(`${icon("wrench")} Réparer ce problème`,
     `<div class="fix-intro">${esc(title || "Problème détecté")}</div>
-     <div class="empty" id="fixBody"><span class="spinner"></span><p style="margin-top:10px">Claude analyse le problème…</p></div>`);
+     <div class="empty" id="fixBody"><span class="spinner"></span><p style="margin-top:10px">Claude analyse le problème…</p><p class="muted" style="font-size:12px">Environ 30 à 60 secondes — laisse le panneau ouvert.</p></div>`);
   try {
     const r = await api.post("/claude/quickfix", payload);
     renderFixResult(r);

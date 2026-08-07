@@ -47,6 +47,9 @@ export const config = {
 
   anthropicKey: env.ANTHROPIC_API_KEY || "",
   anthropicModel: env.ANTHROPIC_MODEL || "claude-opus-4-8",
+  // Modèle du `claude` local pour la réparation en 1 clic. Sonnet = rapide (le
+  // bouton doit répondre vite) ; surchargeable via CLAUDE_CLI_MODEL (ex. "opus").
+  claudeCliModel: env.CLAUDE_CLI_MODEL || "sonnet",
 
   eventBuffer: Number(env.DASH_EVENT_BUFFER || 5000),
   dataDir: path.join(ROOT, "data"),
