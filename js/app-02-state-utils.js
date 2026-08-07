@@ -675,6 +675,8 @@ function pushOverlayToHistory(overlayType, overlayId = "") {
 }
 
 function goTo(screen) {
+  // Fermer le panneau d'outils contextuel s'il était ouvert (on change d'écran).
+  if (window.ContextualTools && ContextualTools.isOpen()) ContextualTools.close();
   // Ajouter à l'historique seulement si ce n'est pas un retour en arrière
   if (!isNavigatingBack) {
     // Ne pas ajouter si c'est le même écran
@@ -718,6 +720,12 @@ function goTo(screen) {
 
 // Fonction générique pour fermer les overlays
 function closeCurrentOverlay() {
+  // Panneau d'outils contextuel (IRL/CDV…) : priorité haute pour que le bouton
+  // retour et Escape le ferment avant tout le reste.
+  if (window.ContextualTools && ContextualTools.isOpen()) {
+    ContextualTools.close();
+    return true;
+  }
   // Vérifier et fermer les overlays dans cet ordre de priorité
   if (reelsState && reelsState.open) {
     closeReels();

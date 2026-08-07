@@ -54,11 +54,14 @@ test.describe("CDV — carnets de voyage", () => {
     await page.evaluate(() => goTo("cdv"));
     await expect(page.locator("#screen-cdv")).toHaveClass(/active/);
     await expect(page.getByRole("button", { name: /Nouveau voyage/ })).toBeVisible();
-    // « Mes lieux » et « Mon passeport » restent VISIBLES même à zéro (2026-07-22) :
-    // les masquer rendait ces deux fonctions introuvables pour qui ne les connaît
-    // pas — chacune a désormais un état vide qui explique à quoi elle sert.
-    await expect(page.locator("#cdvSavedPlacesBtn")).toBeVisible();
-    await expect(page.locator("#cdvPassportBtn")).toBeVisible();
+    // Content-first (2026-08-07) : « Mes lieux » et « Passeport » ne sont plus sur
+    // l'écran mais dans le panneau d'outils contextuel (ContextualTools). Ils
+    // restent accessibles — et chacun garde son état vide pédagogique.
+    await expect(page.locator("#cdvToolsBtn")).toBeVisible();
+    await page.evaluate(() => ContextualTools.open("cdv"));
+    await expect(page.locator("#ctxToolsBody")).toContainText("Mes lieux");
+    await expect(page.locator("#ctxToolsBody")).toContainText("Passeport");
+    await page.evaluate(() => ContextualTools.close());
   });
 
   test("l'éditeur de carnet vit dans l'écran CDV, PAS dans le Studio", async ({ page }) => {
@@ -505,12 +508,10 @@ test.describe("CDV v2 — réutiliser un itinéraire", () => {
     expect(places[0].lat).toBe(38.7);
     expect(places[0].fromTrip).toContain("Lisbonne");
 
-    // Le bouton porte le compteur dès qu'il y a des lieux.
-    await page.evaluate(() => renderCdvScreen());
-    await expect(page.locator("#cdvSavedPlacesBtn")).toBeVisible();
-    // Le compteur vit sur SA ligne depuis le 2026-07-22 (« 2 lieux »), pour ne
-    // plus faire déborder le libellé du bouton.
-    await expect(page.locator("#cdvSavedPlacesBtn")).toContainText("2 lieux");
+    // Le compteur s'affiche dans l'item « Mes lieux » du panneau d'outils.
+    await page.evaluate(() => { renderCdvScreen(); ContextualTools.open("cdv"); });
+    await expect(page.locator("#ctxToolsBody")).toContainText("2 lieux");
+    await page.evaluate(() => ContextualTools.close());
 
     // Pas de doublon si on ré-enregistre le même voyage.
     await page.evaluate((i) => saveItineraryPlaces(i, "live"), id);
@@ -680,9 +681,10 @@ test.describe("CDV — Passeport", () => {
     await expect(page.locator(".modal")).toContainText("Mes records");
     await expect(page.locator(".modal")).toContainText("Plus long voyage");
     await expect(page.locator(".cdv-pp-badges .cdv-pp-badge").first()).toBeVisible();
-    // Le bouton de l'écran CDV porte les km cumulés.
-    await page.evaluate(() => { closeModal(); renderCdvScreen(); });
-    await expect(page.locator("#cdvPassportBtn")).toContainText("km");
+    // L'item « Passeport » du panneau d'outils porte les km cumulés.
+    await page.evaluate(() => { closeModal(); renderCdvScreen(); ContextualTools.open("cdv"); });
+    await expect(page.locator("#ctxToolsBody")).toContainText("km");
+    await page.evaluate(() => ContextualTools.close());
   });
 
   test("le partage du passeport produit un résumé chiffré", async ({ page }) => {
@@ -860,41 +862,39 @@ test.describe("CDV v2 — favoris", () => {
 // Refonte du 2026-07-22 : entrées de même gabarit, numéros carte ↔ liste,
 // tuiles-filtres cumulables, et ⋯ modifier/supprimer sur un voyage.
 // ═══════════════════════════════════════════════════════════════════════════
-test.describe("CDV — les 3 entrées de l'écran", () => {
-  test("les 3 boutons occupent toute la largeur, à parts strictement égales", async ({ page }) => {
+// Refonte content-first (2026-08-07) : la rangée d'entrée se réduit à l'ACTION
+// principale (Nouveau voyage) pleine largeur + un déclencheur « Outils ». « Mes
+// lieux » et « Passeport » vivent dans le panneau contextuel.
+test.describe("CDV — entrée content-first + panneau d'outils", () => {
+  test("l'action principale prend la largeur, le déclencheur Outils reste compact", async ({ page }) => {
     await bootCdv(page);
     await page.evaluate(() => { goTo("cdv"); renderCdvScreen(); });
     const boxes = await page.evaluate(() => {
-      const row = document.querySelector(".cdv-entry-row");
+      const row = document.querySelector(".cdv-entry-row-lean");
+      const primary = row.querySelector(".cdv-entry.primary");
+      const trigger = row.querySelector("#cdvToolsBtn");
       return {
-        row: row.getBoundingClientRect().width,
-        btns: [...row.querySelectorAll(".cdv-entry")].map((b) => {
-          const r = b.getBoundingClientRect();
-          return { w: Math.round(r.width), h: Math.round(r.height) };
-        }),
+        row: Math.round(row.getBoundingClientRect().width),
+        primary: Math.round(primary.getBoundingClientRect().width),
+        trigger: Math.round(trigger.getBoundingClientRect().width),
       };
     });
-    expect(boxes.btns).toHaveLength(3);
-    // Largeurs égales (à 1px près) et hauteurs identiques.
-    const w = boxes.btns.map((b) => b.w);
-    expect(Math.max(...w) - Math.min(...w)).toBeLessThanOrEqual(1);
-    expect(new Set(boxes.btns.map((b) => b.h)).size).toBe(1);
-    // Et la rangée remplit bien la largeur disponible.
-    expect(w[0] * 3).toBeGreaterThan(boxes.row * 0.9);
+    // « Nouveau voyage » domine (> la moitié), « Outils » reste petit (< 40%).
+    expect(boxes.primary).toBeGreaterThan(boxes.row * 0.5);
+    expect(boxes.trigger).toBeLessThan(boxes.row * 0.4);
   });
 
-  test("le passeport a une icône dessinée, et son libellé porte les km", async ({ page }) => {
+  test("le panneau d'outils expose Mes lieux + Passeport (icône dessinée + km)", async ({ page }) => {
     await bootCdv(page);
-    await page.evaluate(() => { goTo("cdv"); renderCdvScreen(); });
-    // Icône = SVG (le 🛂 « contrôle des passeports » ne ressemblait pas à un passeport).
-    expect(await page.locator("#cdvPassportBtn svg").count()).toBe(1);
-    // Le libellé se met à jour SANS effacer l'icône (piège du textContent).
     await page.evaluate(() => {
       window.cdvPassportStats = () => ({ km: 1234, trips: [1, 2], countries: [], cities: [], years: [] });
-      renderCdvScreen();
+      goTo("cdv"); renderCdvScreen(); ContextualTools.open("cdv");
     });
-    await expect(page.locator("#cdvPassportLbl")).toContainText("km");
-    expect(await page.locator("#cdvPassportBtn svg").count()).toBe(1);
+    // L'item Passeport garde son icône SVG dessinée, et son sous-libellé les km.
+    expect(await page.locator("#ctxToolsBody .ctx-item-ico svg").count()).toBeGreaterThanOrEqual(1);
+    await expect(page.locator("#ctxToolsBody")).toContainText("km");
+    await expect(page.locator("#ctxToolsBody")).toContainText("Mes lieux");
+    await page.evaluate(() => ContextualTools.close());
   });
 });
 

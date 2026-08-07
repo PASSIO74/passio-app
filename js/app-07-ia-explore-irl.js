@@ -2060,6 +2060,46 @@ function _updateIrlFiltersBtn() {
     mainBtn.style.borderColor = n > 0 ? "var(--accent)" : "var(--border)";
     mainBtn.style.color = n > 0 ? "var(--accent)" : "var(--muted)";
   }
+  // Pastille du déclencheur « Outils » (panneau contextuel). Même compteur que
+  // l'ancien bouton Filtres : nb total de filtres actifs.
+  var tBadge = document.getElementById("irlToolsBadge");
+  if (tBadge) { tBadge.textContent = n > 0 ? n : ""; tBadge.style.display = n > 0 ? "block" : "none"; }
+  // Si le panneau est ouvert sur IRL, rafraîchir les états actifs (mine/inscrit).
+  if (window.ContextualTools) ContextualTools.refresh("irl");
+}
+
+// Contenu du panneau contextuel IRL (lu à CHAUD par js/contextual-nav.js).
+// Regroupe les commandes secondaires sorties de l'écran : ville, filtres
+// (date/distance/horaire) et « Mes événements / Inscrit ». Ce sont les MÊMES
+// handlers et le MÊME état (irlFilters, délégation [data-irlfilter]).
+function irlToolsSections() {
+  var city = (typeof _irlReferenceLabel === "function") ? _irlReferenceLabel() : "ta position";
+  var advCount = 0;
+  try {
+    if (typeof irlDateFilters !== "undefined" && irlDateFilters && irlDateFilters.size) advCount += irlDateFilters.size;
+    if (typeof irlDistanceFilter !== "undefined" && irlDistanceFilter) advCount += 1;
+    if (typeof irlTimeFilter !== "undefined" && irlTimeFilter) advCount += 1;
+  } catch (_) {}
+  var hasMine = !!(typeof irlFilters !== "undefined" && irlFilters && irlFilters.has("mine"));
+  var hasJoined = !!(typeof irlFilters !== "undefined" && irlFilters && irlFilters.has("joined"));
+  var funnel = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18l-7 8v6l-4-2v-4z"/></svg>';
+  return {
+    title: "Outils · IRL",
+    sections: [
+      { title: "Autour de moi", items: [
+        { icon: "🌍", label: "Ville", sub: city, onClick: "closeCtxTools();openIrlCitySelector()" }
+      ] },
+      { title: "Filtres", items: [
+        { icon: funnel, label: "Date, distance, horaire",
+          sub: advCount ? (advCount + " filtre" + (advCount > 1 ? "s" : "") + " actif" + (advCount > 1 ? "s" : "")) : "Tout afficher",
+          badge: advCount || "", onClick: "closeCtxTools();openIrlFiltersPanel()" }
+      ] },
+      { title: "Mes événements", items: [
+        { icon: "👤", label: "Mes événements", data: { irlfilter: "mine" }, active: hasMine },
+        { icon: "✅", label: "Où je suis inscrit", data: { irlfilter: "joined" }, active: hasJoined }
+      ] }
+    ]
+  };
 }
 
 // ⚠️ La barre d'outils au-dessus de la liste (onglets « À venir / Passés », vue

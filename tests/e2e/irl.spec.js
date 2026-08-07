@@ -80,7 +80,7 @@ test.describe("IRL — découverte et filtres", () => {
     ]);
     await expect(cards(page)).toHaveCount(5);
     // Aucune pastille de filtre : rien n'est masqué, et ça se voit.
-    await expect(page.locator("#irlFiltersBadge")).toBeHidden();
+    await expect(page.locator("#irlToolsBadge")).toBeHidden();
   });
 
   test("la barre affiche MES passions ; les autres s'ajoutent depuis le panneau", async ({ page }) => {
@@ -123,10 +123,10 @@ test.describe("IRL — découverte et filtres", () => {
     ]);
     await page.locator('[data-irlpassion="musique"]').click();
     await expect(cards(page)).toHaveCount(1);
-    await expect(page.locator("#irlFiltersBadge")).toHaveText("1");
+    await expect(page.locator("#irlToolsBadge")).toHaveText("1");
     await page.evaluate(() => clearAllIrlFilters());
     await expect(cards(page)).toHaveCount(4);
-    await expect(page.locator("#irlFiltersBadge")).toBeHidden();
+    await expect(page.locator("#irlToolsBadge")).toBeHidden();
   });
 
   test("la recherche filtre sur le lieu et la description, pas seulement le titre", async ({ page }) => {

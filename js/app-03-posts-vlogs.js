@@ -4368,6 +4368,36 @@ function _cdvKmLabel(km) {
   return km >= 1000 ? (km / 1000).toFixed(1).replace(".", ",") + "k" : String(km);
 }
 
+// Contenu du panneau contextuel CDV (lu à CHAUD par js/contextual-nav.js).
+// « Mes lieux » et « Passeport » — des destinations bilan, pas des actions de
+// création — sortent de l'écran vers ce panneau, avec leurs compteurs live.
+// Mêmes handlers openSavedPlaces / openCdvPassport.
+function cdvToolsSections() {
+  var nPlaces = 0;
+  try { if (typeof savedPlaces === "function") nPlaces = savedPlaces().length; } catch (_) {}
+  var ppSub = "";
+  try {
+    if (typeof cdvPassportStats === "function") {
+      var pp = cdvPassportStats();
+      if (pp && pp.km) ppSub = ((typeof _cdvKmLabel === "function") ? _cdvKmLabel(pp.km) : pp.km) + " km parcourus";
+      else if (pp && pp.trips && pp.trips.length) ppSub = pp.trips.length + " voyage" + (pp.trips.length > 1 ? "s" : "");
+      else ppSub = "Encore vierge — pars !";
+    }
+  } catch (_) {}
+  var ppIcon = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><rect x="4" y="2.5" width="16" height="19" rx="2.4" fill="#1e3a8a"/><rect x="6.1" y="4.6" width="13.9" height="14.8" rx="1.4" fill="#2563eb" opacity=".55"/><circle cx="12.6" cy="10.4" r="3.9" fill="none" stroke="#fbbf24" stroke-width="1.3"/><ellipse cx="12.6" cy="10.4" rx="1.7" ry="3.9" fill="none" stroke="#fbbf24" stroke-width="1.1"/><path d="M8.8 10.4h7.6" stroke="#fbbf24" stroke-width="1.1" stroke-linecap="round"/><path d="M9.4 16.2h6.4M10.6 18.2h4" stroke="#fbbf24" stroke-width="1.2" stroke-linecap="round" opacity=".85"/></svg>';
+  return {
+    title: "Outils · Voyages",
+    sections: [
+      { title: "Mes contenus", items: [
+        { icon: "📍", label: "Mes lieux",
+          sub: nPlaces ? (nPlaces + " lieu" + (nPlaces > 1 ? "x" : "") + " repéré" + (nPlaces > 1 ? "s" : "")) : "Ta liste d'envies",
+          onClick: "closeCtxTools();openSavedPlaces()" },
+        { icon: ppIcon, label: "Passeport", sub: ppSub, onClick: "closeCtxTools();openCdvPassport()" }
+      ] }
+    ]
+  };
+}
+
 function openCdvPassport() {
   var p = cdvPassportStats();
 
