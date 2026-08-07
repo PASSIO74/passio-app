@@ -2190,7 +2190,7 @@ function renderFeed() {
   // après, en idle, SANS reconstruire les premières cartes (insertAdjacentHTML).
   // Le nombre total affiché est inchangé — seul l'instant du paint diffère.
   const FAST = Math.min(12, visible.length);
-  list.innerHTML = visible.slice(0, FAST).map(renderPostHTML).join("")
+  list.innerHTML = visible.slice(0, FAST).map(_renderPostHTMLSafe).join("")
     + (visible.length <= FAST && hasMore ? moreBtnHtml : "");
 
   // Jeton de rendu : si renderFeed est rappelé (filtre/refresh) avant que le
@@ -2201,7 +2201,7 @@ function renderFeed() {
       if (window._feedRenderToken !== _token) return;          // rendu obsolète
       if (!document.body.contains(list)) return;
       list.insertAdjacentHTML("beforeend",
-        visible.slice(FAST).map(renderPostHTML).join("") + (hasMore ? moreBtnHtml : ""));
+        visible.slice(FAST).map(_renderPostHTMLSafe).join("") + (hasMore ? moreBtnHtml : ""));
     };
     (window.requestIdleCallback || function(f){ return setTimeout(f, 50); })(_fill, { timeout: 300 });
   }
@@ -2366,6 +2366,13 @@ function commentSortBarHtml(current, onpick) {
   return '<div style="display:flex;gap:6px;margin-bottom:8px;">' + pill("recent", "🕐 Récents") + pill("liked", "❤️ Aimés") + '</div>';
 }
 
+// Rend UNE carte de post sans jamais faire echouer tout le fil : un post
+// malforme (tableau attendu = undefined, .map/.includes sur du vide) est saute
+// au lieu de vider #feedList entier (TypeError qui remontait jusqu'a renderFeed).
+function _renderPostHTMLSafe(p) {
+  try { return renderPostHTML(p); }
+  catch (e) { try { if (typeof diagLog === "function") diagLog("renderPostHTML fail", (p && p.id) || "?", e && e.message); } catch (_) {} return ""; }
+}
 function renderPostHTML(p) {
   // ✅ AFFICHER TOUJOURS LE VRAI NOM DU PROFIL!
   let authorName = p.authorName;
@@ -2394,7 +2401,7 @@ function renderPostHTML(p) {
   };
   const passion = passionById(p.passion);
   const moodMap = { creation: "🎨 Création", learn: "📚 Apprendre", chill: "😌 Chill", irl: "🤝 IRL" };
-  const liked = state.user.likedPosts.includes(p.id);
+  const liked = (state.user.likedPosts || []).includes(p.id);
   const likeClass = liked ? "liked" : "";
 
   let media = "";
