@@ -1112,6 +1112,8 @@ let irlMapInitialized = false;
 let irlMarkersAddedOnce = false;
 
 function initIrlMap() {
+  // Appliquer l'état peek mémorisé AVANT tout (défaut replié = content-first).
+  _syncIrlMapPeek();
   if (irlMap) {
     // Déjà initialisée, on force juste un redraw au cas où la taille du conteneur ait changé
     setTimeout(() => irlMap.invalidateSize(), 60);
@@ -1395,6 +1397,37 @@ function toggleIrlMapFullscreen() {
   wrap.classList.toggle("fullscreen");
   // Laisse Leaflet s'adapter à la nouvelle taille
   setTimeout(() => { if (irlMap) irlMap.invalidateSize(); }, 320);
+}
+
+// Déplier / replier la carte (« peek » content-first). État mémorisé.
+function toggleIrlMapPeek() {
+  const wrap = document.getElementById("irlMapWrap");
+  if (!wrap) return;
+  const nowPeek = wrap.classList.toggle("peek");
+  const btn = document.getElementById("irlMapCollapseBtn");
+  if (btn) {
+    btn.setAttribute("aria-expanded", nowPeek ? "false" : "true");
+    btn.setAttribute("aria-label", nowPeek ? "Déplier la carte" : "Replier la carte");
+  }
+  try { localStorage.setItem("passio_irl_map_peek", nowPeek ? "1" : "0"); } catch (_) {}
+  // invalidateSize APRÈS la transition height (280ms) pour que Leaflet recadre.
+  setTimeout(() => { if (irlMap) irlMap.invalidateSize(); }, 300);
+}
+
+// Applique l'état peek mémorisé (défaut : replié = content-first). Appelé à
+// chaque init/refresh de la carte.
+function _syncIrlMapPeek() {
+  const wrap = document.getElementById("irlMapWrap");
+  if (!wrap || wrap.classList.contains("fullscreen")) return;
+  let pref = null;
+  try { pref = localStorage.getItem("passio_irl_map_peek"); } catch (_) {}
+  const peek = pref !== "0";           // null (jamais choisi) → peek par défaut
+  wrap.classList.toggle("peek", peek);
+  const btn = document.getElementById("irlMapCollapseBtn");
+  if (btn) {
+    btn.setAttribute("aria-expanded", peek ? "false" : "true");
+    btn.setAttribute("aria-label", peek ? "Déplier la carte" : "Replier la carte");
+  }
 }
 
 // Échap pour sortir du plein écran de la carte

@@ -542,3 +542,43 @@ test.describe("IRL — création, récurrence et vues", () => {
     expect(second).toBe(0);
   });
 });
+
+test.describe("IRL — carte repliable (peek, content-first)", () => {
+  test("la carte démarre repliée ; le bouton la déplie/replie et l'état est mémorisé", async ({ page }) => {
+    await bootIrl(page);
+    await seedEvents(page, [{ passion: "musique" }, { passion: "sport" }]);
+    const wrap = page.locator("#irlMapWrap");
+    const btn = page.locator("#irlMapCollapseBtn");
+
+    // Par défaut : repliée (les événements sont visibles d'emblée).
+    await expect(wrap).toHaveClass(/peek/);
+    await expect(btn).toHaveAttribute("aria-expanded", "false");
+
+    // Déplier.
+    await btn.click();
+    await expect(wrap).not.toHaveClass(/peek/);
+    await expect(btn).toHaveAttribute("aria-expanded", "true");
+    expect(await page.evaluate(() => localStorage.getItem("passio_irl_map_peek"))).toBe("0");
+
+    // Replier.
+    await btn.click();
+    await expect(wrap).toHaveClass(/peek/);
+    expect(await page.evaluate(() => localStorage.getItem("passio_irl_map_peek"))).toBe("1");
+
+    // La liste d'événements reste intacte quel que soit l'état de la carte.
+    await expect(cards(page)).toHaveCount(2);
+  });
+
+  test("le filtre « Mes events / Inscrit » ne vit plus que dans le panneau d'outils", async ({ page }) => {
+    await bootIrl(page);
+    await seedEvents(page, [{ passion: "musique" }]);
+    // Retiré du panneau de filtres…
+    await page.evaluate(() => openIrlFiltersPanel());
+    await expect(page.locator("#irlEventTypeFilter")).toHaveCount(0);
+    await page.evaluate(() => closeIrlFiltersPanel());
+    // …et présent (une seule fois) dans le panneau d'outils.
+    await page.locator("#irlToolsBtn").click();
+    await expect(page.locator('#ctxToolsBody [data-irlfilter="mine"]')).toHaveCount(1);
+    await expect(page.locator('#ctxToolsBody [data-irlfilter="joined"]')).toHaveCount(1);
+  });
+});

@@ -850,9 +850,15 @@
         <b id="irlUserCityName" hidden aria-hidden="true">…</b>
       </div>
 
-      <div class="irl-map-wrap" id="irlMapWrap">
+      <!-- Content-first : la carte démarre en « peek » (repliée, ~130px) pour que
+           les événements soient visibles d'emblée ; on la déplie à la demande.
+           L'état est mémorisé (localStorage passio_irl_map_peek). -->
+      <div class="irl-map-wrap peek" id="irlMapWrap">
         <div id="irlMap" class="irl-map"></div>
-        <button class="irl-map-expand" id="irlMapExpandBtn" onclick="toggleIrlMapFullscreen()" aria-label="Agrandir la carte">
+        <button class="irl-map-collapse" id="irlMapCollapseBtn" onclick="toggleIrlMapPeek()" aria-label="Déplier la carte" aria-expanded="false" title="Déplier / replier la carte">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+        <button class="irl-map-expand" id="irlMapExpandBtn" onclick="toggleIrlMapFullscreen()" aria-label="Carte en plein écran">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M4 9 V4 H9"/>
             <path d="M20 9 V4 H15"/>
@@ -958,12 +964,11 @@
             <button id="irlTimeFilterBtn" hidden aria-hidden="true" tabindex="-1"></button>
           </div>
 
-          <!-- Type -->
-          <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">👤 Mes événements</div>
-          <div id="irlEventTypeFilter" style="display:flex;gap:6px;margin-bottom:24px;">
-            <button class="pill" data-irlfilter="mine" style="flex:1;justify-content:center;">Mes events</button>
-            <button class="pill" data-irlfilter="joined" style="flex:1;justify-content:center;">Inscrit</button>
-          </div>
+          <!-- « Mes events / Inscrit » ne vit plus ici (dédup 2026-08-07) : ces
+               deux filtres sont désormais UNIQUEMENT dans le panneau d'outils
+               (section « Mes événements » de irlToolsSections). Le panneau de
+               filtres se concentre sur date / distance / horaire. Même état
+               partagé (irlFilters, délégation [data-irlfilter]). -->
 
           <!-- Actions. Le bouton principal annonce le RÉSULTAT (« Voir les 12
                événements ») : les filtres s'appliquent en direct, « Appliquer »

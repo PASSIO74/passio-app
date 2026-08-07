@@ -3943,6 +3943,9 @@
       isolation: isolate;
       z-index: 0;
     }
+    /* « Peek » : carte repliée par défaut, les événements remontent. La
+       transition height (sur .irl-map-wrap) anime le dépliage. */
+    .irl-map-wrap.peek { height: 132px; }
     .irl-map-wrap.fullscreen {
       position: fixed;
       inset: 0;
@@ -3952,6 +3955,34 @@
       border-radius: 0;
       margin: 0;
     }
+    /* Bouton déplier/replier — à gauche du plein écran (top-right). En peek le
+       chevron pointe vers le bas (« déplier »), déplié il pointe vers le haut. */
+    .irl-map-collapse {
+      position: absolute;
+      top: 10px;
+      right: 56px;
+      width: 38px;
+      height: 38px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.96);
+      border: 1px solid rgba(139, 92, 246, 0.35);
+      cursor: pointer;
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--accent);
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.14);
+      transition: transform 160ms ease, background 180ms ease;
+    }
+    .irl-map-collapse:hover { background: #fff; transform: scale(1.05); }
+    .irl-map-collapse svg { width: 20px; height: 20px; transition: transform 260ms cubic-bezier(0.4, 0, 0.2, 1); }
+    /* Déplié (pas .peek) → chevron retourné vers le haut. */
+    .irl-map-wrap:not(.peek) .irl-map-collapse svg { transform: rotate(180deg); }
+    /* En plein écran, replier n'a pas de sens : on masque le bouton. */
+    .irl-map-wrap.fullscreen .irl-map-collapse { display: none; }
+    /* Le bandeau d'aide n'apparaît qu'en carte dépliée (bruit en peek). */
+    .irl-map-wrap.peek .irl-map-hint { display: none; }
     .irl-map { width: 100%; height: 100%; background: #e8e4f0; }
     /* Carte = MapLibre GL + OpenFreeMap (les sélecteurs .leaflet-* ont été
        remplacés le 2026-07-21, cf. js/map-loader.js). */
