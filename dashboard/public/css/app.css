@@ -368,3 +368,9 @@ tbody tr:last-child td{border-bottom:none}
 .setup-steps{margin:6px 0 10px;padding-left:22px;font-size:13.5px;line-height:1.7}
 .setup-steps li{margin:5px 0}
 .setup-steps .mono{background:var(--card-2);padding:1px 5px;border-radius:5px}
+
+/* ─── Liste « Réparer avec Claude » ─── */
+.problem-card{display:flex;align-items:center;gap:14px;margin-bottom:10px;flex-wrap:wrap}
+.problem-card .pc-main{flex:1;min-width:200px}
+.problem-card .pc-title{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.problem-card .pc-actions{display:flex;gap:8px;flex-wrap:wrap}

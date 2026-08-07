@@ -54,7 +54,7 @@ export function buildPrompt(ctx) {
   lines.push("IMPORTANT : commence TOUJOURS ta réponse par une section « ## En clair » de 2-3 phrases");
   lines.push("expliquant le problème et la solution SANS jargon technique (le lecteur ne connaît rien au code).");
   lines.push("Sois RAPIDE et DIRECT : appuie-toi sur le contexte fourni ci-dessous (code, stack, chronologie).");
-  lines.push("Ne relis au plus qu'un ou deux fichiers ciblés si c'est indispensable, n'explore pas tout le dépôt.\n");
+  lines.push("Ne parle JAMAIS de tes outils ni de leur absence ; commence directement par « ## En clair ».\n");
   lines.push("## Bug");
   lines.push(`- Titre : ${bug.title}`);
   lines.push(`- Gravité : ${bug.severity} · Statut : ${bug.status}`);

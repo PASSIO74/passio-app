@@ -172,9 +172,13 @@ async function fixWithClaude(payload, title) {
 window.__fixWithClaude = fixWithClaude;
 window.__fixEvent = (id) => { const ev = S.buffer.find((e) => e.id === id); if (ev) fixWithClaude({ event: trimEvent(ev) }, actionLabel(ev)); };
 window.__fixBug = (id, title) => fixWithClaude({ bugId: id }, title);
+// Réparer depuis une alerte : on retrouve l'alerte par id (jamais de texte dans l'onclick).
+window.__fixAlert = (id) => { const a = S.alerts.find((x) => x.id === id); if (a) fixWithClaude({ event: { message: a.title, stack: a.message || "", severity: "error", type: "error" } }, a.title); };
 function trimEvent(e) { return { id: e.id, ts: e.ts, type: e.type, action: e.action, screen: e.screen, message: e.message, stack: e.stack, severity: e.severity, endpoint: e.endpoint, http_status: e.http_status, session_id: e.session_id, app_version: e.app_version, user_id: e.user_id, device_id: e.device_id }; }
 
 function renderFixResult(r) {
+  // Affiche le vrai libellé du problème dans l'intro (on ne le passe plus via l'onclick).
+  const intro = $("#drawerBody .fix-intro"); if (intro && r.title) intro.textContent = r.title;
   const copyBtn = `<button class="btn btn-primary btn-block" onclick='window.__copy(${JSON.stringify(r.prompt || "")},"Instructions pour Claude Code")'>${icon("copy")} Copier tout pour Claude Code</button>`;
   let html = "";
   if (r.error && r.authNeeded) {
@@ -224,7 +228,7 @@ VIEWS.overview = async (view) => {
     if (t.criticalBugs || h.level === "critical") { level = "bad"; title = `${t.criticalBugs || problems} problème${(t.criticalBugs || problems) > 1 ? "s" : ""} important${(t.criticalBugs || problems) > 1 ? "s" : ""} à corriger`; sub = "Clique sur « Réparer avec Claude » : il explique et corrige."; }
     else if (problems || h.errors5m) { level = "warn"; title = `${problems || h.errors5m} petit${(problems || h.errors5m) > 1 ? "s" : ""} problème${(problems || h.errors5m) > 1 ? "s" : ""} détecté${(problems || h.errors5m) > 1 ? "s" : ""}`; sub = "Rien de bloquant. Tu peux le réparer en un clic quand tu veux."; }
     const fixBtn = worst && hasCap("claude")
-      ? `<button class="btn btn-primary state-fix" onclick='window.__fixBug(${JSON.stringify(worst.id)},${JSON.stringify(worst.title)})'>${icon("wrench")} Réparer avec Claude</button>`
+      ? `<button class="btn btn-primary state-fix" onclick="window.__fixBug('${worst.id}')">${icon("wrench")} Réparer avec Claude</button>`
       : problems ? `<a class="btn btn-primary state-fix" href="#bugs">${icon("wrench")} Voir les problèmes</a>` : "";
     $("#ovState").innerHTML = `<div class="state-banner ${level}">
       <div class="state-ico">${icon(level === "ok" ? "checkCircle" : "alertTriangle")}</div>
@@ -430,7 +434,7 @@ VIEWS.bugs = async () => {
     <div class="table-wrap"><table><thead><tr><th>Gravité</th><th>Problème</th><th>Fois</th><th>Users</th><th>Statut</th><th>Vu</th><th>Réparer</th></tr></thead><tbody id="bugRows"></tbody></table></div>`);
   async function refresh() {
     const bugs = await api.get("/bugs");
-    $("#bugRows").innerHTML = bugs.map((b) => `<tr onclick="window.__bug('${b.id}')"><td><span class="pill ${b.severity}">${b.severity}</span></td><td><strong>${esc(b.title)}</strong><div class="muted" style="font-size:11px">${esc(b.codeRef ? b.codeRef.file + (b.codeRef.line ? ":" + b.codeRef.line : "") : b.action || "")}</div></td><td>${b.count}</td><td>${b.users}</td><td><span class="pill ${b.status}">${b.status.replace(/_/g, " ")}</span></td><td class="muted">${ago(b.lastSeen)}</td><td>${hasCap("claude") ? `<button class="fix-btn big" title="Réparer avec Claude" onclick='event.stopPropagation();window.__fixBug(${JSON.stringify(b.id)},${JSON.stringify(b.title)})'>${icon("wrench")}</button>` : "—"}</td></tr>`).join("") || '<tr><td colspan="7" class="empty">Aucun problème détecté. 🎉</td></tr>';
+    $("#bugRows").innerHTML = bugs.map((b) => `<tr onclick="window.__bug('${b.id}')"><td><span class="pill ${b.severity}">${b.severity}</span></td><td><strong>${esc(b.title)}</strong><div class="muted" style="font-size:11px">${esc(b.codeRef ? b.codeRef.file + (b.codeRef.line ? ":" + b.codeRef.line : "") : b.action || "")}</div></td><td>${b.count}</td><td>${b.users}</td><td><span class="pill ${b.status}">${b.status.replace(/_/g, " ")}</span></td><td class="muted">${ago(b.lastSeen)}</td><td>${hasCap("claude") ? `<button class="fix-btn big" title="Réparer avec Claude" onclick="event.stopPropagation();window.__fixBug('${b.id}')">${icon("wrench")}</button>` : "—"}</td></tr>`).join("") || '<tr><td colspan="7" class="empty">Aucun problème détecté. 🎉</td></tr>';
     const open = bugs.filter((b) => b.status !== "corrige" && b.status !== "ignore").length;
     const nb = $("#navBugs"); if (nb) { nb.hidden = !open; nb.textContent = open; }
   }
@@ -461,7 +465,7 @@ window.__bug = async (id) => {
         <button class="btn btn-sm" onclick='window.__copy(${JSON.stringify(b.stack || "")},"Stack")'>${icon("copy")} Stack</button>
         ${b.snippet ? `<button class="btn btn-sm" onclick='window.__copy(${JSON.stringify(b.snippet.lines.map((l) => l.code).join("\n"))},"Code")'>${icon("copy")} Extrait</button>` : ""}
         <button class="btn btn-sm" onclick='window.__copy(${JSON.stringify(JSON.stringify(b, null, 2))},"Contexte complet")'>${icon("copy")} Contexte complet</button>
-        ${hasCap("claude") ? `<button class="btn btn-sm btn-primary" onclick='window.__fixBug(${JSON.stringify(b.id)},${JSON.stringify(b.title)})'>${icon("wrench")} Réparer avec Claude</button>` : ""}
+        ${hasCap("claude") ? `<button class="btn btn-sm btn-primary" onclick="window.__fixBug('${b.id}')">${icon("wrench")} Réparer avec Claude</button>` : ""}
       </div>`);
     $("#bugStatus").onchange = async (e) => { await api.patch("/bugs/" + id, { status: e.target.value }); toast("Statut mis à jour"); if (S.currentView === "bugs") S.refresh?.(); };
   } catch (e) { openDrawer("Erreur", `<div class="empty">${esc(e.message)}</div>`); }
@@ -588,58 +592,36 @@ VIEWS.tests = async () => {
 window.__runTest = async (id) => { try { S.testLog = []; await api.post("/tests/run", { id }); toast("Test lancé"); VIEWS.tests($("#view")); } catch (e) { toast(e.message); } };
 window.__stopTest = async () => { await api.post("/tests/stop", {}); toast("Arrêt demandé"); };
 
-// ── Claude Code ─────────────────────────────────────────────────────────────
+// ── Réparer avec Claude (liste simple des problèmes → 1 clic) ────────────────
 VIEWS.claude = async (view, params) => {
-  mount(`<h2 class="page-title">Réparer avec Claude</h2><p class="page-sub">Choisis un problème : Claude t'explique la cause en clair et te donne le correctif prêt à coller dans Claude Code. Astuce : depuis n'importe où, le bouton « Réparer avec Claude » lance la réparation en un clic.</p>
-    <div id="clWrap"><div class="empty"><span class="spinner"></span></div></div>`);
+  const via = S.me.claudeVia;
+  const statusHtml = S.me.claudeLive
+    ? `<div class="fix-note ok" style="margin-bottom:16px">${icon("checkCircle")} Réparation automatique <b>active</b>${via === "cli" ? " — via Claude Code (gratuit)" : via === "api" ? " — via clé API" : ""}. Clique « Réparer » sur un problème : Claude t'explique en clair et donne le correctif (~30-60 s).</div>`
+    : `<div class="fix-note" style="margin-bottom:16px">${icon("alertTriangle")} Réparation automatique <b>inactive</b>. Tu peux quand même copier les instructions pour Claude Code. Pour l'activer gratuitement : <a href="#settings">Paramètres → Réparation automatique</a>.</div>`;
+  mount(`<h2 class="page-title">Réparer avec Claude</h2><p class="page-sub">La liste des problèmes détectés. Clique « Réparer » : Claude t'explique la cause <b>en clair</b> et te donne le correctif.</p>
+    ${statusHtml}<div id="clWrap"><div class="empty"><span class="spinner"></span></div></div>`);
   let bugs = [];
   try { bugs = await api.get("/bugs"); } catch (e) { $("#clWrap").innerHTML = `<div class="empty">Erreur de chargement : ${esc(e.message)}</div>`; return; }
 
   if (!bugs.length) {
-    $("#clWrap").innerHTML = `<div class="card card-pad"><div class="empty">${icon("claude")}<p>Aucun bug détecté pour l'instant.</p><p class="muted" style="font-size:13px">Dès qu'une erreur remonte (onglet « Bugs &amp; erreurs »), reviens ici : tu génères un contexte complet (stack, code, chronologie) prêt pour Claude Code.</p></div></div>`;
+    $("#clWrap").innerHTML = `<div class="card card-pad"><div class="empty">${icon("checkCircle")}<p>Aucun problème pour l'instant. 🎉</p><p class="muted" style="font-size:13px">Dès qu'une erreur est rencontrée par un utilisateur, elle apparaît ici avec un bouton « Réparer ».</p></div></div>`;
     return;
   }
 
-  $("#clWrap").innerHTML = `
-    <div class="feed-toolbar">
-      <label class="muted" style="font-size:13px">Bug :</label>
-      <select class="select" id="clBug" style="min-width:300px">${bugs.map((b) => `<option value="${b.id}">[${b.severity}] ${esc(b.title).slice(0, 70)} (${b.count}×)</option>`).join("")}</select>
-      <button class="btn btn-primary" id="clBuild">${icon("claude")} Construire le contexte</button>
-      <button class="btn" id="clAnalyze" title="Nécessite ANTHROPIC_API_KEY">${icon("zap")} Analyser en direct</button>
-    </div>
-    <div id="clStatus"></div>
-    <label class="field" style="max-width:640px"><span>Note pour Claude (optionnel — ce que tu faisais, ce que tu attendais)</span><input id="clNote" placeholder="Ex : j'envoyais un message vocal et l'écran s'est figé" /></label>
-    <div class="cols cols-2">
-      <div class="card chart-card"><h4>Prompt généré <button class="btn btn-sm" style="float:right" id="clCopy">${icon("copy")} Copier</button></h4>
-        <textarea id="clPrompt" rows="20" style="font-family:var(--mono);font-size:12px;width:100%" placeholder="Choisis un bug puis « Construire le contexte »…"></textarea></div>
-      <div class="card chart-card"><h4>Analyse de Claude</h4>
-        <div id="clOut" class="stack" style="max-height:520px">L'analyse en direct nécessite <span class="mono">ANTHROPIC_API_KEY</span> dans <span class="mono">.env</span>. Sinon : « Construire le contexte » puis « Copier », et colle dans Claude Code.</div></div>
-    </div>`;
+  const open = bugs.filter((b) => b.status !== "corrige" && b.status !== "ignore");
+  const list = open.length ? open : bugs;
+  $("#clWrap").innerHTML = list.map((b) => `<div class="card card-pad problem-card">
+      <div class="pc-main">
+        <div class="pc-title"><span class="pill ${b.severity}">${b.severity === "critical" ? "critique" : b.severity}</span> <strong>${esc(b.title)}</strong></div>
+        <div class="muted" style="font-size:12.5px;margin-top:4px">${b.count} fois · ${b.users} utilisateur${b.users > 1 ? "s" : ""}${b.screens && b.screens.length ? " · écran " + esc(b.screens.slice(0, 2).join(", ")) : ""}${b.codeRef ? " · " + esc(b.codeRef.file) : ""}</div>
+      </div>
+      <div class="pc-actions">
+        <button class="btn" onclick="window.__bug('${b.id}')">${icon("filter")} Détails</button>
+        <button class="btn btn-primary" onclick="window.__fixBug('${b.id}')">${icon("wrench")} Réparer</button>
+      </div>
+    </div>`).join("");
 
-  if (params[0]) { const opt = [...$("#clBug").options].find((o) => o.value === params[0]); if (opt) $("#clBug").value = params[0]; }
-
-  async function build() {
-    const bugId = $("#clBug").value; if (!bugId) return toast("Aucun bug sélectionné");
-    $("#clStatus").innerHTML = '<p class="page-sub"><span class="spinner"></span> Construction du contexte…</p>';
-    try {
-      const r = await api.post("/claude/context", { bugId });
-      $("#clPrompt").value = r.prompt + ($("#clNote").value.trim() ? "\n\n## Note du testeur\n" + $("#clNote").value.trim() : "");
-      $("#clStatus").innerHTML = `<p class="page-sub">${r.apiConfigured ? "Contexte prêt. API configurée : tu peux « Analyser en direct »." : "Contexte prêt. Clique « Copier » et colle-le dans Claude Code (pas de clé API configurée)."}</p>`;
-    } catch (e) { $("#clStatus").innerHTML = `<p class="page-sub sev-error">Erreur : ${esc(e.message)}</p>`; toast(e.message); }
-  }
-  $("#clBug").onchange = build;
-  $("#clBuild").onclick = build;
-  $("#clCopy").onclick = () => { const v = $("#clPrompt").value.trim(); v ? copy(v, "Prompt") : toast("Construis d'abord le contexte"); };
-  $("#clAnalyze").onclick = async () => {
-    const bugId = $("#clBug").value; if (!bugId) return toast("Aucun bug sélectionné");
-    $("#clOut").innerHTML = '<span class="spinner"></span> Analyse en cours…';
-    try {
-      const r = await api.post("/claude/analyze", { bugId, note: $("#clNote").value.trim() });
-      if (r.prompt && !$("#clPrompt").value) $("#clPrompt").value = r.prompt;
-      $("#clOut").innerHTML = r.analysis ? esc(r.analysis) : `<div class="muted">${esc(r.hint || r.error || "Analyse indisponible (configure ANTHROPIC_API_KEY dans .env).")}</div>`;
-    } catch (e) { $("#clOut").innerHTML = `<div class="sev-error">Erreur : ${esc(e.message)}</div>`; }
-  };
-  build();
+  if (params[0]) { const b = list.find((x) => x.id === params[0]); if (b) fixWithClaude({ bugId: b.id }, b.title); }
 };
 
 // ── Modifications Git ───────────────────────────────────────────────────────
@@ -692,7 +674,7 @@ VIEWS.alerts = async () => {
 };
 function alertItem(a) {
   const fix = hasCap("claude") && (a.level === "critical" || a.level === "high")
-    ? `<button class="fix-btn" title="Réparer avec Claude" onclick='window.__fixWithClaude({event:{message:${JSON.stringify(a.title)},stack:${JSON.stringify(a.message || "")},severity:"error",type:"error"}},${JSON.stringify(a.title)})'>${icon("wrench")}</button>` : "";
+    ? `<button class="fix-btn" title="Réparer avec Claude" onclick="window.__fixAlert('${a.id}')">${icon("wrench")}</button>` : "";
   return `<div class="alert-item ${a.level} ${a.acknowledged ? "ack" : ""}"><div class="a-row"><div class="a-title">${esc(a.title)}</div>${fix}</div><div class="a-msg">${esc(a.message || "")}</div><div class="a-time">${new Date(a.ts).toLocaleString("fr-FR")}${a.acknowledged ? " · vu" : hasCap("alerts") ? ` · <a href="#" onclick="window.__ackAlert('${a.id}');return false">marquer comme vu</a>` : ""}</div></div>`;
 }
 window.__ackAlert = async (id) => { await api.post(`/alerts/${id}/ack`, {}); const a = S.alerts.find((x) => x.id === id); if (a) a.acknowledged = true; if (S.currentView === "alerts") VIEWS.alerts($("#view")); updateAlertBadges(); };
