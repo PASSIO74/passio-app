@@ -91,7 +91,7 @@ export function logout(req, res) {
 
 export function me(req, res) {
   if (!req.session) return res.status(401).json({ error: "non authentifié" });
-  res.json({ user: req.session.u, role: req.session.role, caps: capsFor(req.session.role), env: config.dashEnv, allowMutations: config.allowMutations, claudeLive: liveFixAvailable(), claudeVia: config.anthropicKey ? "api" : claudeCliState().available ? "cli" : "manuel" });
+  res.json({ user: req.session.u, role: req.session.role, caps: capsFor(req.session.role), env: config.dashEnv, allowMutations: config.allowMutations, claudeLive: liveFixAvailable(), claudeVia: config.anthropicKey ? "api" : claudeCliState().available ? "cli" : "manuel", claudeInstalled: claudeCliState().installed });
 }
 
 // Middleware : injecte req.session si cookie valide.

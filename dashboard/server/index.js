@@ -201,7 +201,7 @@ app.listen(config.port, () => {
   console.log(`  ▸ Mutations git : ${config.allowMutations ? "autorisées (hors prod)" : "désactivées"}\n`);
   startIngest();
   // Détection du `claude` local (analyse gratuite via l'abonnement Claude Code).
-  detectClaudeCli().then((ok) => console.log(`  ▸ Claude Code local : ${ok ? "détecté (analyse gratuite dispo)" : "absent"}${config.anthropicKey ? " · clé API aussi configurée" : ""}`));
+  detectClaudeCli().then(() => { const s = claudeCliState(); console.log(`  ▸ Claude Code local : ${s.loggedIn ? "connecté (analyse gratuite dispo)" : s.installed ? "installé mais NON connecté (lancer: claude auth login)" : "absent"}${config.anthropicKey ? " · clé API aussi configurée" : ""}`); });
   // Ouverture auto du navigateur quand lancé par le raccourci (une seule fois).
   if (process.env.DASH_OPEN_BROWSER === "1") {
     const url = `http://localhost:${config.port}`;

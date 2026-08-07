@@ -11,30 +11,42 @@
 import { spawn } from "node:child_process";
 import { config } from "./config.js";
 
-let _state = { checked: false, available: false, version: "" };
+let _state = { checked: false, installed: false, loggedIn: false, available: false, version: "" };
 
-/** Détecte une fois si le binaire `claude` répond. */
-export async function detectClaudeCli() {
-  const ok = await new Promise((resolve) => {
-    let out = "";
-    let done = false;
+/** Lance `claude <args>` (sans stdin) et renvoie { ran, code, out, err }. */
+function runCli(args, timeoutMs = 12000) {
+  return new Promise((resolve) => {
+    let out = "", err = "", done = false;
     const finish = (v) => { if (!done) { done = true; resolve(v); } };
-    try {
-      const p = spawn("claude", ["--version"], { shell: true, cwd: config.repoPath, windowsHide: true });
-      p.stdout.on("data", (d) => (out += d));
-      p.on("error", () => finish(false));
-      p.on("close", (code) => { _state.version = out.trim(); finish(code === 0 && /Claude Code/i.test(out)); });
-      setTimeout(() => { try { p.kill(); } catch {} finish(false); }, 8000);
-    } catch { finish(false); }
+    let p;
+    try { p = spawn("claude", args, { shell: true, cwd: config.repoPath, windowsHide: true }); }
+    catch { return finish({ ran: false }); }
+    p.stdout.on("data", (d) => (out += d));
+    p.stderr.on("data", (d) => (err += d));
+    p.on("error", () => finish({ ran: false }));
+    p.on("close", (code) => finish({ ran: true, code, out, err }));
+    setTimeout(() => { try { p.kill(); } catch {} finish({ ran: false }); }, timeoutMs);
   });
-  _state = { checked: true, available: ok, version: _state.version };
-  return ok;
+}
+
+/**
+ * Détecte le `claude` local ET son état de connexion RÉEL (`claude auth status`).
+ * available = installé ET connecté → c'est la seule condition d'analyse gratuite.
+ */
+export async function detectClaudeCli() {
+  const st = await runCli(["auth", "status"]);
+  let installed = false, loggedIn = false;
+  if (st.ran) { installed = true; try { loggedIn = JSON.parse(st.out).loggedIn === true; } catch {} }
+  let version = _state.version;
+  if (installed && !version) { const v = await runCli(["--version"], 8000); if (v.ran) version = (v.out || "").trim(); }
+  _state = { checked: true, installed, loggedIn, available: loggedIn, version };
+  return loggedIn;
 }
 
 /** État connu (sans relancer la détection). */
 export function claudeCliState() { return { ..._state }; }
 
-/** true si on peut faire une analyse « en direct » (clé API OU CLI local). */
+/** true si on peut faire une analyse « en direct » (clé API OU CLI local connecté). */
 export function liveFixAvailable() { return Boolean(config.anthropicKey) || _state.available; }
 
 /**
