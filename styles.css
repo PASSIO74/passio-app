@@ -3871,8 +3871,9 @@
     }
     .cmt-sheet-ic { font-size: 18px; width: 22px; text-align: center; }
 
-    /* Barre d'actions IRL : créer / ville / filtres — 3 chips légers sur UNE ligne.
-       Volontairement sans aplat violet foncé (le CTA reste une teinte accent très diluée). */
+    /* Barre d'actions IRL : action principale (Créer) + déclencheur Outils.
+       Même présentation que la barre CDV (Nouveau voyage / Outils) : onglet
+       principal en violet foncé plein (var(--grad-hero)), Outils en .ctx-trigger. */
     .irl-actionbar {
       display: flex;
       align-items: stretch;
@@ -3906,13 +3907,19 @@
       white-space: nowrap;
       font-weight: 600;
     }
-    /* Le CTA prend la place restante et reste l'élément le plus lisible des trois */
+    /* Onglet principal : violet foncé plein, calqué sur .cdv-entry.primary
+       (Nouveau voyage) pour une présentation identique entre IRL et CDV. */
     .irl-chip-create {
       flex: 1 1 auto;
-      color: var(--accent);
-      border-color: rgba(124, 58, 237, 0.35);
-      background: rgba(124, 58, 237, 0.07);
+      border: none;
+      background: var(--grad-hero);
+      color: #fff;
+      box-shadow: 0 4px 12px rgba(124, 58, 237, 0.3);
+      font-weight: 700;
     }
+    .irl-chip-create:hover { border-color: transparent; }
+    .irl-chip-create .irl-chip-label { font-weight: 700; }
+    .irl-chip-create:active { transform: scale(0.97); }
     /* La ville est plafonnée : un nom long doit rogner ICI, pas sur le CTA */
     .irl-chip.irl-locbar { flex: 0 1 auto; max-width: 30%; }
     .irl-chip-ic { width: 17px; height: 17px; display: block; flex: 0 0 auto; }
