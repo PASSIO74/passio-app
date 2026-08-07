@@ -381,3 +381,16 @@ tbody tr:last-child td{border-bottom:none}
 .problem-card .pc-main{flex:1;min-width:200px}
 .problem-card .pc-title{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .problem-card .pc-actions{display:flex;gap:8px;flex-wrap:wrap}
+
+/* ─── Vérification des interactions cross-device ─── */
+.inter-summary{margin-bottom:16px}
+.inter-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px}
+.inter-tile{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px 16px;transition:.15s}
+.inter-tile:hover{border-color:var(--accent);box-shadow:var(--glow)}
+.inter-tile .it-head{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;color:var(--muted)}
+.inter-tile .it-head svg{width:16px;height:16px;color:var(--accent);flex:none}
+.inter-tile .it-rate{font-size:30px;font-weight:800;line-height:1.1;margin:8px 0 2px;font-variant-numeric:tabular-nums}
+.inter-tile .it-sub{font-size:12.5px;font-weight:600}
+.inter-tile .it-foot{margin-top:8px;padding-top:8px;border-top:1px solid var(--border-soft);font-size:11.5px;color:var(--muted)}
+.it-row-ico{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:6px;background:var(--grad-soft);color:var(--accent);vertical-align:middle}
+.it-row-ico svg{width:13px;height:13px}

@@ -254,6 +254,10 @@
     track: track,
     nav: function (screen) { window._telScreen = screen; track("nav", "screen_view", { screen: screen }); },
     action: function (name, meta) { track("action", name, { meta: meta }); },
+    // Réception d'un événement realtime venu d'un AUTRE appareil (preuve de
+    // livraison cross-device). type dédié "rt_recv" → n'entre dans aucun compteur
+    // d'activité existant ; le centre de pilotage l'apparie à l'émission par cible.
+    recv: function (name, meta) { track("rt_recv", name, { meta: meta }); },
     click: function (label, meta) { track("click", label, { meta: meta }); },
     perf: function (name, ms, meta) { track("perf", name, { duration_ms: ms, status: ms > 2000 ? "slow" : "ok", meta: meta }); },
     api: function (f) { track("api", f && f.action || "request", f); },

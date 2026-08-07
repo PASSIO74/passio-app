@@ -10,6 +10,9 @@ import { config, supabaseReady } from "./config.js";
 import { store, normalize } from "./store.js";
 import { broadcast } from "./sse.js";
 import { onEvent as alertsOnEvent } from "./alerts.js";
+import { onEvent as interactionsOnEvent } from "./interactions.js";
+
+let interactionsDirty = false;
 
 let admin = null;
 let lastSeenIso = new Date(Date.now() - 60 * 60_000).toISOString();
@@ -25,7 +28,17 @@ function ingestOne(row) {
   if (ev.ts) { const iso = new Date(ev.ts).toISOString(); if (iso > lastSeenIso) lastSeenIso = iso; }
   broadcast("event", ev);
   try { alertsOnEvent(ev); } catch (e) { /* ignore */ }
+  // Vérification cross-device des interactions : signal coalescé (le client
+  // rappelle /api/interactions), pour ne pas rediffuser l'instantané à chaque like.
+  try { if (interactionsOnEvent(ev)) interactionsDirty = true; } catch (e) { /* ignore */ }
 }
+
+// Diffuse un signal « interactions à rafraîchir » au plus une fois par seconde.
+setInterval(() => {
+  if (!interactionsDirty) return;
+  interactionsDirty = false;
+  broadcast("interaction", { t: Date.now() });
+}, 1000).unref();
 
 export async function startIngest() {
   if (!supabaseReady) {

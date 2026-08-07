@@ -2346,7 +2346,7 @@ function diagLog(msg) {
 // TIMEOUT COURT: Supabase répond ou on considère que c'est un problème réseau
 
 async function supaPublishPostWithRetry(post, maxRetries = 2) {
-  try { window.tel && tel.action(post && post.is_reel ? "publish_reel" : "publish_post", { passion: post && post.passion }); } catch (e) {}
+  try { window.tel && tel.action(post && post.is_reel ? "publish_reel" : "publish_post", { passion: post && post.passion, postId: post && post.id }); } catch (e) {}
   // S'assurer que le profil existe en DB avant de publier
   // (le JOIN profiles!author_id retourne null sinon → pas de nom d'auteur)
   try { await supaUpsertProfile(); } catch(e) {}
@@ -2873,6 +2873,9 @@ async function supaAddComment(postId, content, commentId) {
 // Stockées dans comment_interactions (RLS owner) → propagées à tous les comptes.
 async function supaCommentInteract(commentId, postId, kind, payload) {
   if (typeof supa === "undefined" || !supa || !MY_UID || !window._supaReal) return false;
+  // Émission d'une interaction de commentaire (like/réponse/emoji) — sur un POST,
+  // comment_id === post_id. Apparié à recv_cint (autre appareil) par le pilotage.
+  try { window.tel && tel.action("cint", { commentId: commentId, postId: postId || null, ck: kind }); } catch (e) {}
   try {
     const { error } = await supa.from("comment_interactions").insert({
       id: "ci_" + uid(), comment_id: commentId, post_id: postId || null,
@@ -4189,6 +4192,8 @@ async function _handleIncomingConvMessage(r) {
   if (!r || !r.conv_id) return;
   if (r.from_id === MY_UID) return; // nos propres messages sont déjà dans l'UI (optimistic)
   if (typeof isBlocked === "function" && isBlocked(r.from_id)) return; // expéditeur bloqué (modération)
+  // Preuve de livraison cross-device : ce message vient d'un AUTRE appareil.
+  try { window.tel && tel.recv("message", { convId: r.conv_id }); } catch (e) {}
 
   // Messages de contrôle (pas de bulle) : suppression « pour tous » et réactions.
   try {
@@ -4396,6 +4401,7 @@ function supaSubscribe() {
   // ── Interactions de commentaires en temps réel (like / réponse / emoji) ──
   dbChan
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "comment_interactions" }, function(payload) {
+      try { if (payload.new && payload.new.user_id !== MY_UID) tel && tel.recv("cint", { commentId: payload.new.comment_id }); } catch(e) {}
       try { if (typeof _applyCommentInteractionEvent === "function") _applyCommentInteractionEvent(payload.new, "add"); } catch(e) {}
     })
     .on("postgres_changes", { event: "DELETE", schema: "public", table: "comment_interactions" }, function(payload) {
@@ -4491,6 +4497,7 @@ function supaSubscribe() {
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "posts" }, async payload => {
       const r = payload.new;
       if (r.author_id === MY_UID) return;
+      try { tel && tel.recv("post", { postId: r.id, authorId: r.author_id }); } catch(e) {}
       try {
         const { data: prof } = await supa.from("profiles").select("username,emoji,color").eq("id", r.author_id).maybeSingle();
         const _mu = (r.media_url || "").toLowerCase();
@@ -4511,6 +4518,7 @@ function supaSubscribe() {
       // ⚠️ NE PAS recompter MON propre like : likePost() l'a déjà ajouté en
       // optimiste. Sinon +1 optimiste + +1 echo realtime = « double like ».
       if (!r || r.user_id === MY_UID) return;
+      try { tel && tel.recv("like", { postId: r.post_id }); } catch(e) {}
       const post = findPostAnywhere(r.post_id);
       if (post) {
         post.likes = (post.likes || 0) + 1;
@@ -4524,6 +4532,7 @@ function supaSubscribe() {
     .on("postgres_changes", { event: "DELETE", schema: "public", table: "post_likes" }, payload => {
       const r = payload.old;
       if (!r || r.user_id === MY_UID) return; // mon propre unlike déjà décompté
+      try { tel && tel.recv("unlike", { postId: r.post_id }); } catch(e) {}
       const post = findPostAnywhere(r.post_id);
       if (post) { post.likes = Math.max(0, (post.likes || 1) - 1); try { patchPostLikeDom(post); } catch(e) {} }
     });
@@ -4558,6 +4567,7 @@ function supaSubscribe() {
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "post_comments" }, async payload => {
       const r = payload.new;
       if (r.author_id === MY_UID) return;
+      try { tel && tel.recv("comment", { postId: r.post_id, commentId: r.id }); } catch(e) {}
       try {
         const post = findPostAnywhere(r.post_id);
         if (post) {

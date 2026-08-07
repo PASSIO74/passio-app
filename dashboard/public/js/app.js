@@ -79,6 +79,7 @@ const NAV = [
   ["activity", "Tout ce qui se passe", "activity", null, "essentiel"],
   ["users", "Comptes & connexions", "users", null, "essentiel"],
   ["content", "Contenus & interactions", "heart", null, "essentiel"],
+  ["interactions", "Vérif. interactions", "wifi", null, "essentiel"],
   ["bugs", "Problèmes", "bugs", null, "essentiel"],
   ["claude", "Réparer avec Claude", "wrench", "claude", "essentiel"],
 
@@ -439,6 +440,91 @@ function filteredFeed(title, sub, pred) {
   S.refresh = apply; apply();
 }
 
+// ── Vérification des interactions cross-device ──────────────────────────────
+// Icônes maison (pas d'emoji) par type d'interaction logique.
+const INTER_ICON = { like: "heart", unlike: "heart", comment: "messaging", cint: "sparkles", message: "messaging", publish: "content", rsvp: "sessions" };
+function fmtLatency(ms) { if (ms == null) return "—"; return ms < 1000 ? ms + " ms" : (ms / 1000).toFixed(ms < 10000 ? 2 : 1) + " s"; }
+
+VIEWS.interactions = async () => {
+  mount(`<h2 class="page-title">Vérification des interactions</h2>
+    <p class="page-sub">Chaque like, commentaire, réaction, message ou publication émis sur un appareil est-il bien <b>reçu en temps réel sur les autres appareils</b> ? Parfait pour tester à deux appareils : agis sur l'un, la livraison sur l'autre apparaît ici en direct.</p>
+    <div class="inter-summary" id="iSummary"></div>
+    <div class="inter-tiles" id="iTiles"></div>
+    <div class="feed-toolbar" style="margin-top:16px">
+      <select class="select" id="iKind"><option value="">Tous les types</option></select>
+      <label class="chip-toggle" id="iFailBtn">${icon("alertTriangle")} <span>Seulement les non-livrés</span></label>
+      <button class="btn btn-sm" id="iRefresh">${icon("refresh")} Actualiser</button>
+      <span class="muted" style="margin-left:auto;font-size:12px" id="iCount"></span>
+    </div>
+    <div class="table-wrap"><table><thead><tr><th>Heure</th><th>Interaction</th><th>Émise par</th><th>Livraison cross-device</th></tr></thead><tbody id="iRows"></tbody></table></div>`);
+
+  let data = { stats: [], recent: [], totals: {} };
+  let kindInit = false, failOnly = false;
+
+  async function refresh() {
+    try { data = await api.get("/interactions?limit=150"); }
+    catch (e) { $("#iRows").innerHTML = `<tr><td colspan="4" class="empty">${esc(e.message)}</td></tr>`; return; }
+    const T = data.totals || {};
+    const gRate = T.deliveryRate;
+    const gCls = gRate == null ? "info" : gRate >= 90 ? "ok" : gRate >= 50 ? "warn" : "error";
+    $("#iSummary").innerHTML = `<div class="state-banner ${gRate == null ? "" : gRate >= 90 ? "ok" : gRate >= 50 ? "warn" : "bad"}">
+      <div class="state-ico">${icon("wifi")}</div>
+      <div class="state-txt"><h2>${gRate == null ? "En attente d'interactions" : gRate + "% livrées sur les autres appareils"}</h2>
+        <p>${num(T.delivered || 0)} livrées · ${num(T.pending || 0)} en attente · <b class="${T.unconfirmed ? "sev-error" : ""}">${num(T.unconfirmed || 0)} non reçues ailleurs</b> · latence médiane ${fmtLatency(T.medianLatency)}</p></div>
+      <div class="state-live"><span class="live-dot"></span>EN DIRECT</div></div>`;
+
+    const verif = (data.stats || []).filter((s) => s.verifiable);
+    $("#iTiles").innerHTML = verif.map((s) => {
+      const rate = s.deliveryRate;
+      const col = rate == null ? "var(--muted)" : rate >= 90 ? "var(--ok)" : rate >= 50 ? "var(--warn)" : "var(--err)";
+      return `<div class="inter-tile">
+        <div class="it-head">${icon(INTER_ICON[s.kind] || "activity")}<span>${esc(s.label)}</span></div>
+        <div class="it-rate" style="color:${col}">${rate == null ? "—" : rate + "%"}</div>
+        <div class="it-sub">${s.delivered}/${s.delivered + s.unconfirmed} livrés cross-device</div>
+        <div class="it-foot">${s.emitted} émis · ${s.pending} en attente · méd. ${fmtLatency(s.medianLatency)}</div>
+      </div>`;
+    }).join("") || '<div class="empty" style="grid-column:1/-1">Aucune interaction observée. Fais un like ou envoie un message depuis Passio (deux appareils = idéal).</div>';
+
+    if (!kindInit && verif.length) {
+      $("#iKind").innerHTML = '<option value="">Tous les types</option>' + verif.map((s) => `<option value="${s.kind}">${esc(s.label)}</option>`).join("");
+      kindInit = true;
+    }
+    renderRows();
+  }
+  function renderRows() {
+    const kf = $("#iKind").value;
+    let rows = data.recent || [];
+    if (kf) rows = rows.filter((r) => r.kind === kf);
+    if (failOnly) rows = rows.filter((r) => r.status === "unconfirmed" || r.status === "pending");
+    $("#iRows").innerHTML = rows.map(interRow).join("") || '<tr><td colspan="4" class="empty">Aucune interaction correspondante.</td></tr>';
+    $("#iCount").textContent = rows.length + " interaction" + (rows.length > 1 ? "s" : "");
+  }
+  $("#iKind").onchange = renderRows;
+  $("#iFailBtn").onclick = () => { failOnly = !failOnly; $("#iFailBtn").classList.toggle("on", failOnly); renderRows(); };
+  $("#iRefresh").onclick = refresh;
+  S.refresh = refresh; refresh();
+};
+
+function interRow(r) {
+  let deliv;
+  if (r.status === "delivered") {
+    const names = [...new Set(r.receipts.map((x) => x.label).filter(Boolean))].map((n) => esc(n));
+    deliv = `<span class="pill ok">${icon("checkCircle")} Reçu sur ${r.receiptCount} appareil${r.receiptCount > 1 ? "s" : ""}</span> <span class="muted">${fmtLatency(r.bestLatency)}${names.length ? " · " + names.join(", ") : ""}</span>`;
+  } else if (r.status === "pending") {
+    deliv = `<span class="pill warn">${icon("clock")} En attente…</span>`;
+  } else if (r.status === "unconfirmed") {
+    deliv = `<span class="pill error">${icon("alertTriangle")} Non reçu ailleurs</span> <span class="muted">aucun autre appareil ne l'a reçu${r.idCorrelated ? "" : " (appariement par le temps)"}</span>`;
+  } else {
+    deliv = `<span class="pill info">Émis</span> <span class="muted">propagation non suivie</span>`;
+  }
+  const target = r.target ? `<span class="mono" style="font-size:11px;opacity:.6">${esc(String(r.target).slice(0, 8))}</span>` : "";
+  return `<tr>
+    <td class="muted">${hhmmss(r.ts)}</td>
+    <td><span class="it-row-ico">${icon(INTER_ICON[r.kind] || "activity")}</span> <b>${esc(r.kindLabel)}</b> ${target}</td>
+    <td>${nameFor(r.emitter.user, r.emitter.label)}</td>
+    <td>${deliv}</td></tr>`;
+}
+
 // ── Bugs & erreurs ──────────────────────────────────────────────────────────
 const BUG_STATUS = ["nouveau", "a_analyser", "en_cours", "correctif_propose", "en_test", "corrige", "rouvert", "ignore"];
 VIEWS.bugs = async () => {
@@ -782,6 +868,15 @@ function onLiveEvent(ev) {
     if (now - refreshThrottle > 1200) { refreshThrottle = now; S.refresh(); }
   }
 }
+// Signal « interactions à rafraîchir » (coalescé côté serveur) : ne rappelle
+// l'API que si la vue de vérification est ouverte, avec un léger debounce.
+let interSignalT = 0;
+function onInteractionSignal() {
+  if (S.currentView !== "interactions" || !S.refresh) return;
+  const now = Date.now();
+  if (now - interSignalT < 800) return;
+  interSignalT = now; S.refresh();
+}
 function onAlert(a) {
   S.alerts.unshift(a); updateAlertBadges();
   toast("⚠ " + a.title);
@@ -843,7 +938,7 @@ async function showApp() {
   // SSE
   connectStream({
     open: () => setSse(true), error: () => setSse(false),
-    event: onLiveEvent, alert: onAlert, test: onTest, ping: () => setSse(true),
+    event: onLiveEvent, interaction: onInteractionSignal, alert: onAlert, test: onTest, ping: () => setSse(true),
   });
   // Événements UI
   window.addEventListener("hashchange", route);

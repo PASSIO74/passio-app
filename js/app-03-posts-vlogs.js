@@ -56,6 +56,8 @@ async function sharePostInFeed(id) {
   const post = findPostAnywhere(id);
   if (!post) { toast("Le contenu original n'est plus disponible."); closeModal(); return; }
 
+  try { window.tel && tel.action("share_post", { postId: id }); } catch (e) {}
+
   const prof = currentProfile();
   const g = state.user.general || {};
   let authorName = g.username || prof?.name || "Moi";

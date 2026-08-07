@@ -22,6 +22,7 @@ import { accounts } from "./accounts.js";
 import { detectClaudeCli, claudeCliState } from "./claudecli.js";
 import * as testusers from "./testusers.js";
 import * as alerts from "./alerts.js";
+import { snapshot as interactionsSnapshot } from "./interactions.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -74,6 +75,9 @@ api.get("/events", auth.requireAuth, (req, res) => {
   const { type, severity, user, device, session, env, screen, status, q, limit } = req.query;
   res.json(store.recent({ type, severity, user, device, session, env, screen, status, q }, Number(limit) || 200));
 });
+
+// ─── Interactions (vérification cross-device temps réel) ────────────────────
+api.get("/interactions", auth.requireAuth, (req, res) => res.json(interactionsSnapshot(Number(req.query.limit) || 120)));
 
 // ─── Appareils / sessions d'activité / parcours ─────────────────────────────
 api.get("/names", auth.requireAuth, (req, res) => res.json(store.clientNames()));
