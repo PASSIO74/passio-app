@@ -443,6 +443,16 @@ function filteredFeed(title, sub, pred) {
 // ── Vérification des interactions cross-device ──────────────────────────────
 // Icônes maison (pas d'emoji) par type d'interaction logique.
 const INTER_ICON = { like: "heart", unlike: "heart", comment: "messaging", cint: "sparkles", message: "messaging", publish: "content", rsvp: "sessions" };
+// Chemin realtime concerné par type → contexte de diagnostic pour Claude.
+const INTER_DIAG = {
+  like: { table: "post_likes", chan: "realtime:db" },
+  unlike: { table: "post_likes (DELETE)", chan: "realtime:db" },
+  comment: { table: "post_comments", chan: "realtime:db" },
+  cint: { table: "comment_interactions", chan: "realtime:db" },
+  message: { table: "conv_messages", chan: "user:<uid> (v3) / conv:<id> (v2) / realtime:db (v1)" },
+  publish: { table: "posts", chan: "realtime:db" },
+};
+let INTER_LAST = []; // dernières interactions rendues (pour __fixInteraction)
 function fmtLatency(ms) { if (ms == null) return "—"; return ms < 1000 ? ms + " ms" : (ms / 1000).toFixed(ms < 10000 ? 2 : 1) + " s"; }
 
 VIEWS.interactions = async () => {
@@ -464,6 +474,7 @@ VIEWS.interactions = async () => {
   async function refresh() {
     try { data = await api.get("/interactions?limit=150"); }
     catch (e) { $("#iRows").innerHTML = `<tr><td colspan="4" class="empty">${esc(e.message)}</td></tr>`; return; }
+    INTER_LAST = data.recent || [];
     const T = data.totals || {};
     const gRate = T.deliveryRate;
     const gCls = gRate == null ? "info" : gRate >= 90 ? "ok" : gRate >= 50 ? "warn" : "error";
@@ -513,7 +524,10 @@ function interRow(r) {
   } else if (r.status === "pending") {
     deliv = `<span class="pill warn">${icon("clock")} En attente…</span>`;
   } else if (r.status === "unconfirmed") {
-    deliv = `<span class="pill error">${icon("alertTriangle")} Non reçu ailleurs</span> <span class="muted">aucun autre appareil ne l'a reçu${r.idCorrelated ? "" : " (appariement par le temps)"}</span>`;
+    const fix = hasCap("claude")
+      ? `<button class="fix-btn" title="Réparer avec Claude" onclick='event.stopPropagation();window.__fixInteraction(${JSON.stringify(r.id)})'>${icon("wrench")}</button>`
+      : "";
+    deliv = `<span class="pill error">${icon("alertTriangle")} Non reçu ailleurs</span> <span class="muted">aucun autre appareil ne l'a reçu${r.idCorrelated ? "" : " (appariement par le temps)"}</span> ${fix}`;
   } else {
     deliv = `<span class="pill info">Émis</span> <span class="muted">propagation non suivie</span>`;
   }
@@ -522,8 +536,46 @@ function interRow(r) {
     <td class="muted">${hhmmss(r.ts)}</td>
     <td><span class="it-row-ico">${icon(INTER_ICON[r.kind] || "activity")}</span> <b>${esc(r.kindLabel)}</b> ${target}</td>
     <td>${nameFor(r.emitter.user, r.emitter.label)}</td>
-    <td>${deliv}</td></tr>`;
+    <td class="td-deliv">${deliv}</td></tr>`;
 }
+
+// Réparer un échec de livraison cross-device : on construit un « événement »
+// diagnostic (chemin realtime, table, causes connues) et on ouvre le même
+// tiroir « Réparer avec Claude » que pour les bugs. On ne passe que l'id.
+window.__fixInteraction = (id) => {
+  const r = INTER_LAST.find((x) => x.id === id);
+  if (!r) return toast("Interaction introuvable (rafraîchis).");
+  const d = INTER_DIAG[r.kind] || {};
+  const emitter = nameFor(r.emitter.user, r.emitter.label);
+  const diag = [
+    "Livraison temps réel cross-device ÉCHOUÉE (Supabase Realtime).",
+    "",
+    `- Interaction : ${r.kindLabel}`,
+    `- Émise par : ${emitter}${r.emitter.device ? " (appareil " + r.emitter.device + ")" : ""}${r.screen ? " depuis l'écran " + r.screen : ""}`,
+    r.target ? `- Cible : ${r.target}` : "",
+    `- Constat : aucun autre appareil n'a reçu cette interaction en temps réel${r.idCorrelated ? "" : " (appariement heuristique par le temps)"}.`,
+    "",
+    "Chemin realtime concerné :",
+    `- Table Supabase : ${d.table || "?"}`,
+    `- Canal client : ${d.chan || "realtime:db"}`,
+    "- Handler client : js/app-08-ui-modals-tour.js (fonction supaSubscribe, canal « realtime:db » ; messages via _handleIncomingConvMessage).",
+    "- Émission : js/telemetry.js (tel.recv, type « rt_recv ») pose la preuve de réception uniquement pour un événement venu d'un AUTRE compte.",
+    "",
+    "Causes probables à vérifier, dans l'ordre :",
+    `1. La table ${d.table || "concernée"} n'est pas (ou plus) dans la publication « supabase_realtime » (ALTER PUBLICATION supabase_realtime ADD TABLE ...).`,
+    "2. RLS : l'autre compte n'a pas le droit de SELECT la ligne → Realtime ne la lui diffuse pas.",
+    "3. Le canal n'est pas SUBSCRIBED sur l'appareil récepteur, ou un filtre user_id est trop strict.",
+    "4. Messages : migration realtime v2/v3 (broadcast) non appliquée → repli v1 défaillant.",
+    "5. Appareil récepteur hors-ligne / onglet en arrière-plan au moment de l'émission (à écarter avant de conclure à un bug).",
+  ].filter(Boolean).join("\n");
+  fixWithClaude({ event: {
+    type: "error", severity: "warn",
+    action: "delivery_failed_" + r.kind,
+    message: `Interaction « ${r.kindLabel} » non reçue sur les autres appareils (livraison temps réel échouée).`,
+    screen: r.screen || null,
+    stack: diag,
+  } }, `Livraison échouée : ${r.kindLabel}`);
+};
 
 // ── Bugs & erreurs ──────────────────────────────────────────────────────────
 const BUG_STATUS = ["nouveau", "a_analyser", "en_cours", "correctif_propose", "en_test", "corrige", "rouvert", "ignore"];
