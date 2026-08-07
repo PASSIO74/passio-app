@@ -178,7 +178,7 @@ function renderFixResult(r) {
   const copyBtn = `<button class="btn btn-primary btn-block" onclick='window.__copy(${JSON.stringify(r.prompt || "")},"Instructions pour Claude Code")'>${icon("copy")} Copier tout pour Claude Code</button>`;
   let html = "";
   if (r.error && r.authNeeded) {
-    html = `<div class="fix-note err">${icon("alertTriangle")} Claude Code doit être reconnecté (c'est gratuit).<br><b>Ouvre une invite de commandes, tape <span class="md-inline">claude</span> et connecte-toi</b>, puis reviens cliquer sur la clé ${icon("wrench")}.</div>${copyBtn}`;
+    html = `<div class="fix-note err">${icon("alertTriangle")} Claude Code doit être reconnecté (c'est gratuit).<br>Ouvre une <b>invite de commandes</b> et tape exactement <span class="md-inline">claude auth login</span>, connecte-toi dans la page web, puis reviens cliquer sur la clé ${icon("wrench")}.</div>${copyBtn}`;
   } else if (r.error) {
     html = `<div class="fix-note err">${icon("alertTriangle")} L'analyse automatique a échoué (${esc(r.error)}). Tu peux quand même copier les instructions ci-dessous et les coller dans Claude Code.</div>${copyBtn}`;
   } else if (r.analysis) {
@@ -208,8 +208,8 @@ VIEWS.overview = async (view) => {
   mount(`<div id="ovState"></div>
     <div class="home-cards" id="ovCards"></div>
     <div class="cols cols-2" style="margin-top:16px">
-      <div class="card chart-card"><h4>${icon("activity")} Ce qui se passe en direct</h4><div class="chart-meta">Les dernières actions des utilisateurs · <a href="#activity">tout voir</a></div><div id="ovFeed"></div></div>
-      <div class="card chart-card"><h4>${icon("trending")} Nouveaux comptes — 14 derniers jours</h4><div class="chart-meta">Chaque point = un jour</div><canvas class="chart" id="signupChart" style="margin-top:8px"></canvas><div id="ovSignupLegend" class="muted" style="font-size:12px;margin-top:8px"></div></div>
+      <div class="card chart-card"><h4>Ce qui se passe en direct</h4><div class="chart-meta">Les dernières actions des utilisateurs · <a href="#activity">tout voir</a></div><div id="ovFeed"></div></div>
+      <div class="card chart-card"><h4>Nouveaux comptes — 14 derniers jours</h4><div class="chart-meta">Chaque point = un jour</div><canvas class="chart" id="signupChart" style="margin-top:8px"></canvas><div id="ovSignupLegend" class="muted" style="font-size:12px;margin-top:8px"></div></div>
     </div>`);
 
   async function refresh() {
@@ -426,7 +426,7 @@ function filteredFeed(title, sub, pred) {
 // ── Bugs & erreurs ──────────────────────────────────────────────────────────
 const BUG_STATUS = ["nouveau", "a_analyser", "en_cours", "correctif_propose", "en_test", "corrige", "rouvert", "ignore"];
 VIEWS.bugs = async () => {
-  mount(`<h2 class="page-title">Problèmes détectés</h2><p class="page-sub">Chaque ligne = un problème rencontré par un utilisateur. Clique une ligne pour les détails, ou le bouton ${icon("wrench")} pour le réparer avec Claude en un clic.</p>
+  mount(`<h2 class="page-title">Problèmes détectés</h2><p class="page-sub">Chaque ligne = un problème rencontré par un utilisateur. Clique une ligne pour les détails, ou le bouton « Réparer » pour le corriger avec Claude en un clic.</p>
     <div class="table-wrap"><table><thead><tr><th>Gravité</th><th>Problème</th><th>Fois</th><th>Users</th><th>Statut</th><th>Vu</th><th>Réparer</th></tr></thead><tbody id="bugRows"></tbody></table></div>`);
   async function refresh() {
     const bugs = await api.get("/bugs");
@@ -590,7 +590,7 @@ window.__stopTest = async () => { await api.post("/tests/stop", {}); toast("Arr�
 
 // ── Claude Code ─────────────────────────────────────────────────────────────
 VIEWS.claude = async (view, params) => {
-  mount(`<h2 class="page-title">Réparer avec Claude</h2><p class="page-sub">Choisis un problème : Claude t'explique la cause en clair et te donne le correctif prêt à coller dans Claude Code. Astuce : depuis n'importe où, le bouton ${icon("wrench")} lance la réparation en un clic.</p>
+  mount(`<h2 class="page-title">Réparer avec Claude</h2><p class="page-sub">Choisis un problème : Claude t'explique la cause en clair et te donne le correctif prêt à coller dans Claude Code. Astuce : depuis n'importe où, le bouton « Réparer avec Claude » lance la réparation en un clic.</p>
     <div id="clWrap"><div class="empty"><span class="spinner"></span></div></div>`);
   let bugs = [];
   try { bugs = await api.get("/bugs"); } catch (e) { $("#clWrap").innerHTML = `<div class="empty">Erreur de chargement : ${esc(e.message)}</div>`; return; }
@@ -736,12 +736,14 @@ function claudeSettingsHtml() {
   return `<h4 style="margin-top:0">${icon("wrench")} Réparation automatique par Claude</h4>
     <div class="claude-status ${on ? "on" : "off"}">${icon(on ? "checkCircle" : "alertTriangle")}<div><strong>${label}</strong><div class="muted" style="font-size:12.5px">${desc}</div></div></div>
     ${on ? "" : `<div class="section-title" style="margin-top:16px">Activer gratuitement (recommandé)</div>
-    <p class="muted" style="font-size:13px;margin-top:0">Utilise Claude Code déjà installé sur cet ordinateur — avec ton abonnement, <b>sans payer au message</b> :</p>
+    <p class="muted" style="font-size:13px;margin-top:0">${S.me.claudeInstalled ? "Claude Code est bien installé sur cet ordinateur, il faut juste le <b>connecter</b> (gratuit, avec ton abonnement) :" : "Utilise Claude Code avec ton abonnement, <b>sans payer au message</b> :"}</p>
     <ol class="setup-steps">
       <li>Ouvre une <b>invite de commandes</b> (touche Windows → tape « cmd » → Entrée).</li>
-      <li>Tape <span class="mono">claude</span> puis Entrée, et connecte-toi avec ton compte si c'est demandé.</li>
+      <li>Copie-colle cette commande exacte, puis Entrée : <span class="mono">claude auth login</span></li>
+      <li>Une page web s'ouvre → connecte-toi avec ton compte et autorise.</li>
       <li>Reviens ici et clique <b>« Revérifier »</b> ci-dessous.</li>
     </ol>
+    <p class="muted" style="font-size:12px;margin-top:-4px">⚠️ Ouvrir juste <span class="mono">claude</span> ne suffit pas : c'est bien <span class="mono">claude auth login</span> qui reconnecte.</p>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="btn btn-primary" id="claudeRecheck">${icon("refresh")} Revérifier</button><span class="muted" id="claudeRecheckMsg" style="font-size:12.5px"></span></div>
     <details class="fix-details" style="margin-top:14px"><summary>Autre option : clé API (payante)</summary><ol class="setup-steps"><li>Clé sur <span class="mono">console.anthropic.com</span> → API Keys.</li><li>Colle-la après <span class="mono">ANTHROPIC_API_KEY=</span> dans <span class="mono">dashboard/.env</span>, puis redémarre.</li></ol></details>`}`;
 }
@@ -857,7 +859,13 @@ async function showApp() {
   $("#menuToggle").onclick = () => document.getElementById("app").classList.toggle("nav-open");
   $("#drawerClose").onclick = closeDrawer; $("#drawerScrim").onclick = closeDrawer;
   $("#alertsBtn").onclick = () => location.hash = "alerts";
-  $("#globalSearch").addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.value.trim()) { location.hash = "activity"; setTimeout(() => { const u = $("#fUser"); if (u) { u.value = e.target.value.trim(); u.dispatchEvent(new Event("input")); } }, 60); } });
+  const runGlobalSearch = () => {
+    const q = $("#globalSearch").value.trim(); if (!q) return;
+    location.hash = "activity";
+    setTimeout(() => { const u = $("#fUser"); if (u) { u.value = q; u.dispatchEvent(new Event("input")); } }, 60);
+  };
+  $("#globalSearch").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); runGlobalSearch(); } });
+  $("#globalSearchBtn").onclick = runGlobalSearch;
   $("#fullscreenBtn").onclick = () => { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.(); };
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeDrawer(); } });
   // Rafraîchissement périodique doux des vues non-live basées sur agrégats

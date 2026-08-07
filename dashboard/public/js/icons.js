@@ -50,6 +50,10 @@ const P = {
 };
 export function icon(name, cls = "") {
   const d = P[name] || P.overview;
-  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${cls}" aria-hidden="true"><path d="${d}"/></svg>`;
+  // width/height="1em" = filet anti-ballonnement : sans taille intrinsèque, un SVG
+  // avec viewBox et sans règle CSS de dimension s'étire à 100 % de son conteneur
+  // (icônes de 445 px dans les en-têtes, 979 px dans les .page-sub). 1em = taille du
+  // texte par défaut ; toute règle CSS `... svg{width:…}` reste prioritaire.
+  return `<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${cls}" aria-hidden="true"><path d="${d}"/></svg>`;
 }
 export const ICONS = P;
