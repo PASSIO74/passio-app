@@ -54,21 +54,28 @@ export function liveFixAvailable() { return Boolean(config.anthropicKey) || _sta
  * Lance une analyse via le `claude` local. Retourne { analysis } en cas de succès,
  * ou { error, authNeeded } si un souci survient (ex. session à reconnecter).
  */
-export function runClaudeCli(prompt, { timeoutMs = 120000 } = {}) {
+export function runClaudeCli(prompt, { deep = false, timeoutMs } = {}) {
   return new Promise((resolve) => {
     let out = "", err = "", done = false;
     const finish = (v) => { if (!done) { done = true; resolve(v); } };
     let p;
     try {
-      // Bouton « instantané » → réponse DIRECTE à partir du contexte déjà fourni
-      // (extrait de code, stack, chronologie, commits sont dans le prompt). On coupe
-      // TOUS les outils (sinon Claude lisait ~24 fichiers = 200 s) et on tourne dans un
-      // dossier neutre (os.tmpdir) pour ne pas charger l'énorme CLAUDE.md du dépôt.
-      // Modèle rapide (sonnet par défaut). C'est le même principe que le mode clé API.
-      p = spawn("claude", ["-p", "--output-format", "json", "--model", config.claudeCliModel,
-        "--disallowedTools", "Bash", "Glob", "Grep", "Task", "WebFetch", "WebSearch", "Read", "Edit", "Write", "NotebookEdit", "TodoWrite"],
-        { shell: true, cwd: os.tmpdir(), windowsHide: true });
+      // Deux modes :
+      // • RAPIDE (défaut, ~40 s) : réponse directe à partir du contexte déjà fourni
+      //   (code, stack, chronologie sont dans le prompt). TOUS les outils coupés, dossier
+      //   neutre (os.tmpdir) pour ne pas charger l'énorme CLAUDE.md, modèle sonnet.
+      // • APPROFONDI (opt-in, ~2-3 min) : Claude LIT le vrai code du dépôt (Read/Grep/Glob,
+      //   lecture seule — jamais Edit/Write) pour un correctif EXACT applicable ; cwd = dépôt,
+      //   modèle plus fin. Timeout plus long.
+      const args = deep
+        ? ["-p", "--output-format", "json", "--model", config.claudeCliModelDeep,
+           "--disallowedTools", "Bash", "Task", "WebFetch", "WebSearch", "Edit", "Write", "NotebookEdit", "TodoWrite"]
+        : ["-p", "--output-format", "json", "--model", config.claudeCliModel,
+           "--disallowedTools", "Bash", "Glob", "Grep", "Task", "WebFetch", "WebSearch", "Read", "Edit", "Write", "NotebookEdit", "TodoWrite"];
+      p = spawn("claude", args,
+        { shell: true, cwd: deep ? config.repoPath : os.tmpdir(), windowsHide: true });
     } catch (e) { return finish({ error: e.message }); }
+    timeoutMs = timeoutMs || (deep ? 420000 : 120000);
     const timer = setTimeout(() => { try { p.kill(); } catch {} finish({ error: "L'analyse a pris trop de temps (délai dépassé)." }); }, timeoutMs);
     p.stdout.on("data", (d) => (out += d));
     p.stderr.on("data", (d) => (err += d));

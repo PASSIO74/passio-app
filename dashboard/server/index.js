@@ -149,7 +149,7 @@ api.post("/claude/context", auth.requireCap("claude"), asyncH(async (req, res) =
 }));
 api.post("/claude/analyze", auth.requireCap("claude"), asyncH(async (req, res) => res.json(await claude.analyze(req.body?.bugId, { note: req.body?.note }, req.session.u))));
 // Réparation en un clic : depuis un bug groupé (bugId) ou un événement d'erreur brut (event).
-api.post("/claude/quickfix", auth.requireCap("claude"), asyncH(async (req, res) => res.json(await claude.quickFix({ bugId: req.body?.bugId, event: req.body?.event, note: req.body?.note }, req.session.u))));
+api.post("/claude/quickfix", auth.requireCap("claude"), asyncH(async (req, res) => res.json(await claude.quickFix({ bugId: req.body?.bugId, event: req.body?.event, note: req.body?.note, deep: req.body?.deep === true }, req.session.u))));
 // État de la source d'analyse + re-détection à la demande (après avoir connecté `claude`).
 api.get("/claude/status", auth.requireAuth, (req, res) => res.json({ cli: claudeCliState(), apiKey: Boolean(config.anthropicKey) }));
 api.post("/claude/recheck", auth.requireCap("claude"), asyncH(async (req, res) => { await detectClaudeCli(); res.json({ cli: claudeCliState(), apiKey: Boolean(config.anthropicKey) }); }));

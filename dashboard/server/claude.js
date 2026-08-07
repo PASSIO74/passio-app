@@ -45,16 +45,22 @@ export function buildContextFromEvent(ev) {
   return { bug, snippet, commits: [], timeline };
 }
 
-/** Assemble le PROMPT texte destiné à Claude Code. */
-export function buildPrompt(ctx) {
+/** Assemble le PROMPT texte destiné à Claude Code. deep = Claude peut lire le vrai code. */
+export function buildPrompt(ctx, { deep = false } = {}) {
   const { bug, snippet, commits, timeline } = ctx;
   const lines = [];
   lines.push("Tu es Claude Code sur le projet PASSIO (PWA vanilla JS + Supabase).");
   lines.push("Analyse ce problème détecté en conditions réelles et propose un correctif SÛR.");
   lines.push("IMPORTANT : commence TOUJOURS ta réponse par une section « ## En clair » de 2-3 phrases");
   lines.push("expliquant le problème et la solution SANS jargon technique (le lecteur ne connaît rien au code).");
-  lines.push("Sois RAPIDE et DIRECT : appuie-toi sur le contexte fourni ci-dessous (code, stack, chronologie).");
-  lines.push("Ne parle JAMAIS de tes outils ni de leur absence ; commence directement par « ## En clair ».\n");
+  if (deep) {
+    lines.push("LIS les vrais fichiers du dépôt (Read/Grep) autour de la localisation indiquée pour donner un");
+    lines.push("patch git EXACT et directement applicable (vrais noms de fonctions/variables/chemins). Ne modifie AUCUN fichier.");
+  } else {
+    lines.push("Sois RAPIDE et DIRECT : appuie-toi sur le contexte fourni ci-dessous (code, stack, chronologie).");
+    lines.push("Ne parle JAMAIS de tes outils ni de leur absence ; commence directement par « ## En clair ».");
+  }
+  lines.push("");
   lines.push("## Bug");
   lines.push(`- Titre : ${bug.title}`);
   lines.push(`- Gravité : ${bug.severity} · Statut : ${bug.status}`);
@@ -100,13 +106,13 @@ async function callClaudeApi(prompt) {
  *  2. sinon le `claude` local GRATUIT (abonnement Claude Code).
  * Retourne { analysis, via } ou { error, authNeeded, via }.
  */
-async function liveAnalyze(prompt) {
+async function liveAnalyze(prompt, { deep = false } = {}) {
   if (config.anthropicKey) {
     try { return { analysis: await callClaudeApi(prompt), via: "api" }; }
     catch (e) { return { error: e.message, via: "api" }; }
   }
   if (claudeCliState().available) {
-    return { ...(await runClaudeCli(prompt)), via: "cli" };
+    return { ...(await runClaudeCli(prompt, { deep })), via: "cli" };
   }
   return { error: "Aucune source d'analyse disponible.", via: "none" };
 }
@@ -139,17 +145,17 @@ export async function analyze(bugId, extra = {}, actor = null) {
  * brut (event). Retourne un prompt prêt à copier + l'analyse en direct si une source
  * est disponible (clé API OU `claude` local GRATUIT). Point d'entrée du bouton « Réparer ».
  */
-export async function quickFix({ bugId, event, note } = {}, actor = null) {
+export async function quickFix({ bugId, event, note, deep = false } = {}, actor = null) {
   const ctx = bugId ? await buildContext(bugId) : buildContextFromEvent(event);
   if (!ctx) return { error: "Problème introuvable." };
-  const prompt = buildPrompt(ctx) + (note ? `\n\n## Note du testeur\n${note}` : "");
+  const prompt = buildPrompt(ctx, { deep }) + (note ? `\n\n## Note du testeur\n${note}` : "");
   const via = config.anthropicKey ? "api" : claudeCliState().available ? "cli" : "manuel";
-  audit("claude_quickfix", { bugId: bugId || null, via }, actor);
-  const base = { prompt, apiConfigured: liveFixAvailable(), via, title: ctx.bug.title };
+  audit("claude_quickfix", { bugId: bugId || null, via, deep }, actor);
+  const base = { prompt, apiConfigured: liveFixAvailable(), via, deep, title: ctx.bug.title };
   if (!liveFixAvailable()) {
     return { ...base, hint: "Copie ce texte et colle-le dans Claude Code : il corrigera le problème. Pour une réponse automatique ici, connecte le `claude` local (gratuit) ou ajoute une clé API." };
   }
-  const r = await liveAnalyze(prompt);
+  const r = await liveAnalyze(prompt, { deep });
   if (r.error) return { ...base, error: r.error, authNeeded: r.authNeeded };
   return { ...base, analysis: r.analysis };
 }

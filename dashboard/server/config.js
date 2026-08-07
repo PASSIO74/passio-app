@@ -50,6 +50,8 @@ export const config = {
   // Modèle du `claude` local pour la réparation en 1 clic. Sonnet = rapide (le
   // bouton doit répondre vite) ; surchargeable via CLAUDE_CLI_MODEL (ex. "opus").
   claudeCliModel: env.CLAUDE_CLI_MODEL || "sonnet",
+  // Modèle du mode « Analyse approfondie » (lit le vrai code) : qualité max.
+  claudeCliModelDeep: env.CLAUDE_CLI_MODEL_DEEP || "opus",
 
   eventBuffer: Number(env.DASH_EVENT_BUFFER || 5000),
   dataDir: path.join(ROOT, "data"),

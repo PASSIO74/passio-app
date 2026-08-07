@@ -359,6 +359,13 @@ tbody tr:last-child td{border-bottom:none}
 .fix-details{font-size:12.5px;color:var(--muted)}.fix-details summary{cursor:pointer;padding:6px 0}
 .fix-more{display:flex;gap:8px;align-items:center;margin-top:6px;padding-top:14px;border-top:1px solid var(--border-soft);flex-wrap:wrap}
 .fix-more input{flex:1;min-width:160px}
+/* Barre d'actions épinglée en haut du tiroir → « Copier » toujours visible. */
+.fix-actions{position:sticky;top:-18px;z-index:3;display:flex;flex-direction:column;gap:8px;
+  margin:0 -18px;padding:12px 18px;background:var(--bg-2);border-bottom:1px solid var(--border)}
+.fix-copy{font-size:15px;padding:14px;box-shadow:var(--glow)}
+.fix-copy svg{width:18px;height:18px}
+.fix-deep{justify-content:center;border-color:var(--accent);color:var(--accent);background:var(--grad-soft)}
+.fix-deep:hover{background:var(--grad-accent);color:#fff;border-color:transparent}
 
 /* ─── Statut « Réparation Claude » (Paramètres) ─── */
 .claude-status{display:flex;gap:12px;align-items:flex-start;padding:13px 15px;border-radius:var(--radius-sm);border:1px solid var(--border);margin-top:6px}

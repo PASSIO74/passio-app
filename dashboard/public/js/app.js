@@ -159,9 +159,13 @@ function mdToHtml(md) {
 async function fixWithClaude(payload, title) {
   if (!hasCap("claude")) return toast("Réparation Claude non disponible pour ce rôle.");
   fixWithClaude._last = payload; fixWithClaude._lastTitle = title;
+  const deep = payload && payload.deep;
+  const load = deep
+    ? `<span class="spinner"></span><p style="margin-top:10px">Analyse approfondie en cours… Claude lit ton vrai code.</p><p class="muted" style="font-size:12px">Jusqu'à 3-5 minutes — laisse le panneau ouvert.</p>`
+    : `<span class="spinner"></span><p style="margin-top:10px">Claude analyse le problème…</p><p class="muted" style="font-size:12px">Environ 30 à 60 secondes — laisse le panneau ouvert.</p>`;
   openDrawer(`${icon("wrench")} Réparer ce problème`,
     `<div class="fix-intro">${esc(title || "Problème détecté")}</div>
-     <div class="empty" id="fixBody"><span class="spinner"></span><p style="margin-top:10px">Claude analyse le problème…</p><p class="muted" style="font-size:12px">Environ 30 à 60 secondes — laisse le panneau ouvert.</p></div>`);
+     <div class="empty" id="fixBody">${load}</div>`);
   try {
     const r = await api.post("/claude/quickfix", payload);
     renderFixResult(r);
@@ -179,28 +183,36 @@ function trimEvent(e) { return { id: e.id, ts: e.ts, type: e.type, action: e.act
 function renderFixResult(r) {
   // Affiche le vrai libellé du problème dans l'intro (on ne le passe plus via l'onclick).
   const intro = $("#drawerBody .fix-intro"); if (intro && r.title) intro.textContent = r.title;
-  const copyBtn = `<button class="btn btn-primary btn-block" onclick='window.__copy(${JSON.stringify(r.prompt || "")},"Instructions pour Claude Code")'>${icon("copy")} Copier tout pour Claude Code</button>`;
-  let html = "";
+  // Bouton COPIER — bien visible, épinglé en haut (accessible sans faire défiler).
+  const copyBtn = `<button class="btn btn-primary btn-block fix-copy" onclick='window.__copy(${JSON.stringify(r.prompt || "")},"Instructions pour Claude Code")'>${icon("copy")} Copier tout pour Claude Code</button>`;
+  const wasDeep = fixWithClaude._last && fixWithClaude._last.deep;
+  const canDeep = !wasDeep && r.via === "cli" && !r.authNeeded;
+  const deepBtn = canDeep ? `<button class="btn btn-block fix-deep" id="fixDeep">${icon("sparkles")} Analyse approfondie — lit ton vrai code (~3-5 min)</button>` : "";
+  const actions = `<div class="fix-actions">${copyBtn}${deepBtn}</div>`;
+
+  let note = "", content = "";
   if (r.error && r.authNeeded) {
-    html = `<div class="fix-note err">${icon("alertTriangle")} Claude Code doit être reconnecté (c'est gratuit).<br>Ouvre une <b>invite de commandes</b> et tape exactement <span class="md-inline">claude auth login</span>, connecte-toi dans la page web, puis reviens cliquer sur la clé ${icon("wrench")}.</div>${copyBtn}`;
+    note = `<div class="fix-note err">${icon("alertTriangle")} Claude Code doit être reconnecté (c'est gratuit).<br>Ouvre une <b>invite de commandes</b> et tape exactement <span class="md-inline">claude auth login</span>, connecte-toi dans la page web, puis reviens cliquer sur la clé ${icon("wrench")}.</div>`;
   } else if (r.error) {
-    html = `<div class="fix-note err">${icon("alertTriangle")} L'analyse automatique a échoué (${esc(r.error)}). Tu peux quand même copier les instructions ci-dessous et les coller dans Claude Code.</div>${copyBtn}`;
+    note = `<div class="fix-note err">${icon("alertTriangle")} L'analyse automatique a échoué (${esc(r.error)}). Tu peux quand même copier les instructions et les coller dans Claude Code.</div>`;
   } else if (r.analysis) {
-    html = `<div class="fix-note ok">${icon("checkCircle")} Claude a analysé le problème. Lis « En clair » ci-dessous, puis copie tout et colle-le dans Claude Code pour appliquer le correctif.</div>
-      <div class="fix-analysis">${mdToHtml(r.analysis)}</div>${copyBtn}`;
+    note = `<div class="fix-note ok">${icon("checkCircle")} ${wasDeep ? "Analyse approfondie terminée (Claude a lu ton code)." : "Claude a analysé le problème."} Lis « En clair » ci-dessous, puis <b>Copie tout</b> et colle-le dans Claude Code pour appliquer le correctif.</div>`;
+    content = `<div class="fix-analysis">${mdToHtml(r.analysis)}</div>`;
   } else {
-    html = `<div class="fix-note">${icon("sparkles")} ${esc(r.hint || "Instructions prêtes.")}</div>${copyBtn}
-      <details class="fix-details"><summary>Voir les instructions envoyées à Claude</summary><pre class="md-code">${esc(r.prompt || "")}</pre></details>`;
+    note = `<div class="fix-note">${icon("sparkles")} ${esc(r.hint || "Instructions prêtes.")}</div>`;
+    content = `<details class="fix-details"><summary>Voir les instructions envoyées à Claude</summary><pre class="md-code">${esc(r.prompt || "")}</pre></details>`;
   }
-  // Zone « préciser & relancer » (facultatif).
-  html += `<div class="fix-more">
+  const more = `<div class="fix-more">
       <input id="fixNote" class="select" style="width:100%" placeholder="Ajouter une précision (ex : ça arrive quand j'envoie un vocal)…" />
-      <button class="btn btn-sm" id="fixRelaunch">${icon("refresh")} Relancer l'analyse</button>
+      <button class="btn btn-sm" id="fixRelaunch">${icon("refresh")} Relancer</button>
     </div>`;
+  const html = note + actions + content + more;
   const body = $("#fixBody");
   if (body) body.outerHTML = `<div class="fix-body" id="fixBody">${html}</div>`;
   const rl = $("#fixRelaunch");
-  if (rl) rl.onclick = () => { const note = $("#fixNote").value.trim(); fixWithClaude({ ...fixWithClaude._last, note }, fixWithClaude._lastTitle); };
+  if (rl) rl.onclick = () => { const note2 = $("#fixNote").value.trim(); fixWithClaude({ ...fixWithClaude._last, note: note2 }, fixWithClaude._lastTitle); };
+  const dp = $("#fixDeep");
+  if (dp) dp.onclick = () => fixWithClaude({ ...fixWithClaude._last, deep: true }, fixWithClaude._lastTitle);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
