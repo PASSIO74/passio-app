@@ -1,0 +1,37 @@
+# PASSIO — Historique projet (archivé depuis CLAUDE.md)
+
+> Extrait de CLAUDE.md le 2026-08-07 pour alléger le contexte de session. Travaux terminés + logs d’optimisation. À lire si tu touches un de ces domaines.
+
+## État au 2026-06-11 (voir docs/RAPPORT_SESSION_2026-06-10.md pour le détail)
+
+Fait : access gate en prod, 14 bugs corrigés, RGPD (suppression de compte réelle + politique de confidentialité), policies DELETE appliquées en prod Supabase, suite E2E gate.
+
+## Backlog prioritaire
+
+1. ~~Tests utilisateur multi-comptes~~ — **fait le 2026-06-12, test E2E vert de bout en bout** (`tests/e2e/multi-comptes.spec.js`, opt-in : `PASSIO_E2E_MULTI=1 npm test` ; inscription réelle × 2, conversation, texte dans les deux sens, vocal rendu dans le lecteur intégré, réception realtime ~1 s). **4 bugs critiques de prod trouvés et corrigés** : (a) RLS conv_members — migration `migration_fix_conv_members_insert.sql` appliquée en prod le 2026-06-11 ; (b) `initApp()` (emoji-misc) écrasait l'onboarding des nouveaux utilisateurs ~1,4 s après le chargement (tour lancé de force) ; (c) deadlock verrou auth supabase-js (`onAuthStateChange` → supaInit, et `onbSkipAuth` qui dépendait de la résolution de `signInAnonymously`) ; (d) `supaSubscribe()` + chargement des conversations Supabase étaient dans du code mort après un `return` dans `supaInit` → **aucun destinataire ne recevait jamais rien**.
+2. ~~Réception des messages vocaux côté destinataire~~ — fait le 2026-06-11 : décodage unifié via `applyMsgContentData()` (app-04), utilisé par renderConvFpThread, supaLoadMessages, le handler realtime et l'aperçu de conversation. Reste à valider avec 2 comptes réels (point 1).
+3. ~~Galerie "Pièces jointes" d'une conversation~~ — fait le 2026-06-11 : panneau `#convFilesPanel` (médias / vocaux / fichiers, état vide), `openConvFiles()`/`closeConvFiles()` (app-09).
+4. ~~Edge Function Supabase `delete-account`~~ — fait le 2026-06-11 : code (`supabase/functions/delete-account/index.ts`), appel branché dans `doDeleteAccount` (app-02), **déployée en prod via le Dashboard** et testée (compte jetable supprimé, auth comprise).
+5. ~~GIFs hardcodés~~ — fait le 2026-06-12 : API Tenor/Giphy via `passioFetchGifs`/`passioGifPanel` (emoji-misc.js), recherche + cache 10 min + fallback liste locale. Clé à coller dans `PASSIO_GIF_API` (1 endroit). CSP mise à jour (tenor/giphy).
+6. ~~Redesign / audit visuel~~ — fait le 2026-06-12 : `scripts/capture-screens.js` (16 captures `docs/screenshots/`), UI jugée qualité commerciale ; seul fix : `.demo-ribbon` (MVP BETA) → watermark non-bloquant. Redesign approfondi écran par écran = amélioration continue.
+7. ~~Accessibilité~~ — fait le 2026-06-11/12 : `user-scalable=no`/`maximum-scale` retirés, champs à 16px, `--muted` AA, touch 44px. Audit aria complet = amélioration continue.
+8. ~~Perf~~ — fait : transfert prod 201 Ko brotli (<500), `loading="lazy"` partout, **pagination des conversations** (30/page + `_loadMoreConvs`, app-04) en plus du fil et des messages. Reste (humain) : Lighthouse mobile formel.
+
+**Contrôle qualité des 16 missions** : voir `docs/CONTROLE_16_MISSIONS.md` (audit 2026-06-12, 14 ✅ / 1 ⚠️ m6 / 0 ❌, verdict « prêt à commercialiser en beta ») et `docs/CHECKLIST_COMMERCIALISATION.md`. Tests : `npm run test:all` (18 verts). Audit handlers : `npm run audit:handlers`. Audit collisions de globals : `npm run audit:globals` (aussi dans le CI, AVANT les tests Playwright).
+
+## Optimisations 2026-07-15
+
+- **`styles.css` EXTERNALISÉ en prod** (même mécanique que app.js) : `scripts/build.js` remplace le `<link>` par `styles.css?v=<hash de contenu>` + écrit `dist/styles.css` (immutable via `_headers`, minifié par clean-css-cli dans le workflow). Avant : ~230 Ko de CSS inline dans un index.html servi `no-store` = re-téléchargés à CHAQUE visite. HTML dist : 364 Ko → ~134 Ko. Le hash CSS étant dans le HTML, le buildId du SW se bump tout seul quand le CSS change.
+- **`saveState()` est DÉBOUNCÉ (250 ms)** : ~80 sites d'appel faisaient chacun un `JSON.stringify` synchrone de tout l'état (jank mobile). Flush garanti par `pagehide`/`beforeunload`. ⚠️ Avant tout `removeItem(STATE_KEY)` volontaire (logout, reset, delete account), appeler `discardPendingStateSave()` (app-02) sinon le flush de fermeture RESSUSCITE l'état effacé au `location.reload()`. `saveStateNow()` = écriture immédiate.
+- **Pollings suspendus quand `document.hidden`** (fil 60 s, live CDV 5 s, outbox commentaires 15 s, `reg.update()` SW 60 s — batterie + quota API) ; rattrapage au retour : le listener `visibilitychange` (app-08) refresh le fil si l'écran feed est actif.
+- **UN SEUL canal realtime `realtime:db`** pour TOUS les postgres_changes (conv_reads, comment_interactions, conv_members, profiles, posts, post_likes, notifications, post_comments, event_comments + les 5 tables cdv_*) — avant : 9-10 canaux/client (quota Supabase de canaux concurrents, rejoins multipliés). Handlers INCHANGÉS ; bindings multiples `.on().on()…` puis UN `dbChan.subscribe()` (pattern qu'utilisait déjà le canal CDV). Au repos un client n'a que 3 canaux : `user:<uid>` (messages v3), `ring:<uid>` (appels), `realtime:db`. Livraison validée par la suite multi-comptes (6/6).
+- **Images redimensionnées AVANT upload** : `_downscaleImageForUpload` (app-08, appelée dans `supaUploadMedia`) — max 1600 px grand côté, JPEG 0.85 (PNG gardé pour la transparence, GIF non touché). ÷5-10 sur le stockage Storage + la data mobile (envoi et affichage du fil).
+- **Index DB prod vérifiés** (pg_indexes) : tous les chemins chauds sont couverts (posts created_at/author_id, post_comments post_id+date, notifications user_id+date, conv_messages conv_id+date, conv_members user_id…) — rien à ajouter.
+- **Test multi-comptes « notifications » remis à jour** : il assertait encore une `gif_reaction` dans `post.reactions` (comportement d'AVANT la refonte « GIF = commentaire » du 2026-07-07 ; il n'avait jamais été rejoué depuis) → il vérifie désormais réaction 😍 (pastille `<b>1</b>`) + commentaire GIF dans `post.comments`, les deux livrés en realtime via `realtime:db`.
+- **Non fait (choix assumé)** : externaliser le seed démo (~80 Ko de app-01) en JSON fetché — `buildSeed()` est une dépendance SYNCHRONE de l'init de l'état ; le rendre async = risque boot élevé pour ~6 % de parse en moins, déjà derrière le gate.
+
+## Optimisations rendu 2026-07-20
+
+- **Guards no-op sur les re-rendus du fil** : `renderFeed` (app-02) calcule une signature du contenu visible (`window._feedDomSig` : posts ids + compteurs + filtres + bucket 5 min pour rafraîchir les temps relatifs) et SKIP le rebuild DOM si rien n'a changé (re-navigation goTo('feed'), pull-to-refresh sans nouveauté = zéro re-décodage d'images). `renderStories` (app-08) et `renderProfileStrip` (app-06) comparent le HTML généré à `el._lastHtml` avant d'écrire (ils sont rappelés par CHAQUE renderFeed → le flash des avatars/tuiles Unsplash toutes les 60 s venait de là). Le refresh 60 s (`startFeedRefreshLoop`) et le rattrapage `visibilitychange` ne rappellent `renderFeed` que si `_feedPostsSig` (app-08) a changé. ⚠️ Si un nouveau code écrit directement dans `#feedList`/`#storiesRowFeed`/`#profileStrip`, invalider le guard (`window._feedDomSig = null` / `el._lastHtml = null`) sinon le prochain render légitime peut être sauté.
+- Preconnect `images.unsplash.com` + dns-prefetch `picsum.photos` (index.html) ; icônes PWA en cache 7 j (`_headers`).
+
