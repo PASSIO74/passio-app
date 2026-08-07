@@ -3990,6 +3990,15 @@
     .irl-map-wrap.fullscreen .irl-map-collapse { display: none; }
     /* Le bandeau d'aide n'apparaît qu'en carte dépliée (bruit en peek). */
     .irl-map-wrap.peek .irl-map-hint { display: none; }
+
+    /* Carte IRL épurée : aucune écriture sur la carte affichée dans l'écran
+       (attribution OpenFreeMap/OpenStreetMap + bandeau d'aide masqués). ⚠️
+       L'attribution ODbL est une OBLIGATION LÉGALE (cf. js/map-loader.js) : on
+       ne la RETIRE pas, on la garde en PLEIN ÉCRAN — là où la carte a la place —
+       et on la cache seulement sur la vignette compacte de l'écran. */
+    .irl-map-wrap:not(.fullscreen) .maplibregl-ctrl-attrib,
+    .irl-map-wrap:not(.fullscreen) .maplibregl-ctrl-bottom-right,
+    .irl-map-wrap:not(.fullscreen) .irl-map-hint { display: none !important; }
     .irl-map { width: 100%; height: 100%; background: #e8e4f0; }
     /* Carte = MapLibre GL + OpenFreeMap (les sélecteurs .leaflet-* ont été
        remplacés le 2026-07-21, cf. js/map-loader.js). */
