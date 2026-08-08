@@ -1,6 +1,9 @@
-// Click sur les pills filter de CDV - multi-select
+// Click sur les filtres CDV (multi-select). Depuis le 2026-08-08 ces filtres
+// vivent dans le panneau « Outils » (ContextualTools → cdvToolsSections) : la
+// délégation n'est donc PLUS scopée à #cdvFilterRow (supprimé) mais au seul
+// attribut [data-cdvfilter], comme la délégation IRL [data-irlfilter].
 document.addEventListener("click", (e) => {
-  const t = e.target.closest("#cdvFilterRow [data-cdvfilter]");
+  const t = e.target.closest("[data-cdvfilter]");
   if (!t) return;
 
   const filterType = t.getAttribute("data-cdvfilter");
@@ -12,8 +15,14 @@ document.addEventListener("click", (e) => {
     cdvFilters.add(filterType);
   }
 
-  console.log("[CDV] Filtres sélectionnés:", Array.from(cdvFilters));
+  // Reflet immédiat de l'état actif sur l'item cliqué (le panneau reste ouvert).
+  t.classList.toggle("active");
+  const ap = t.getAttribute("aria-pressed");
+  if (ap !== null) t.setAttribute("aria-pressed", ap === "true" ? "false" : "true");
+
   renderCdvScreen();
+  // Rafraîchit les sous-titres/compteurs des items si le panneau est ouvert.
+  if (window.ContextualTools) ContextualTools.refresh("cdv");
 });
 
 // Carrousel des carnets de voyage en haut du Fil, point d'entrée principal

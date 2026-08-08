@@ -3663,11 +3663,14 @@ function renderCdvScreen() {
       : (pp.trips.length ? pp.trips.length + " voyage" + (pp.trips.length > 1 ? "s" : "") : "");
   }
 
-  // Sync filter pills (multi-select)
-  document.querySelectorAll("#cdvFilterRow .pill").forEach(p => {
-    const filterType = p.getAttribute("data-cdvfilter");
-    p.classList.toggle("active", cdvFilters && cdvFilters.has(filterType));
-  });
+  // Pastille du déclencheur « Outils » : nb de filtres actifs (les filtres vivent
+  // désormais dans le panneau contextuel, plus dans une pill-row à l'écran).
+  const _nCdvFilters = (cdvFilters && cdvFilters.size) || 0;
+  const _cdvToolsBadge = document.getElementById("cdvToolsBadge");
+  if (_cdvToolsBadge) {
+    _cdvToolsBadge.textContent = _nCdvFilters > 0 ? _nCdvFilters : "";
+    _cdvToolsBadge.style.display = _nCdvFilters > 0 ? "block" : "none";
+  }
 
   const q = (($("#cdvSearchInput") && $("#cdvSearchInput").value) || "").toLowerCase().trim();
   const hasFilters = !!(cdvFilters && cdvFilters.size > 0);
@@ -4385,9 +4388,35 @@ function cdvToolsSections() {
     }
   } catch (_) {}
   var ppIcon = '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><rect x="4" y="2.5" width="16" height="19" rx="2.4" fill="#1e3a8a"/><rect x="6.1" y="4.6" width="13.9" height="14.8" rx="1.4" fill="#2563eb" opacity=".55"/><circle cx="12.6" cy="10.4" r="3.9" fill="none" stroke="#fbbf24" stroke-width="1.3"/><ellipse cx="12.6" cy="10.4" rx="1.7" ry="3.9" fill="none" stroke="#fbbf24" stroke-width="1.1"/><path d="M8.8 10.4h7.6" stroke="#fbbf24" stroke-width="1.1" stroke-linecap="round"/><path d="M9.4 16.2h6.4M10.6 18.2h4" stroke="#fbbf24" stroke-width="1.2" stroke-linecap="round" opacity=".85"/></svg>';
+  // Filtres « Mes favoris / Mes carnets / Lives » — déplacés ici depuis l'écran
+  // (2026-08-08). MÊME état (Set cdvFilters) et MÊME délégation [data-cdvfilter]
+  // que les anciennes pills : items data-driven, actifs reflétés par `active`.
+  var hasSaved = !!(typeof cdvFilters !== "undefined" && cdvFilters && cdvFilters.has("saved"));
+  var hasMine = !!(typeof cdvFilters !== "undefined" && cdvFilters && cdvFilters.has("mine"));
+  var hasLive = !!(typeof cdvFilters !== "undefined" && cdvFilters && cdvFilters.has("live"));
+  var nSaved = 0, nMine = 0, nLive = 0;
+  try {
+    if (typeof savedCarnets === "function") nSaved = savedCarnets().length;
+    if (typeof isLiveSaved === "function" && typeof getCdvLives === "function") {
+      nSaved += getCdvLives().filter(function (l) { return isLiveSaved(l.id); }).length;
+    }
+  } catch (_) {}
+  try { if (typeof allCarnets === "function") nMine = allCarnets().filter(function (c) { return c._source === "me"; }).length; } catch (_) {}
+  try { if (typeof getActiveCdvLives === "function") nLive = getActiveCdvLives().length; } catch (_) {}
   return {
     title: "Outils · Voyages",
     sections: [
+      { title: "Filtres", items: [
+        { icon: "⭐", label: "Mes favoris",
+          sub: nSaved ? (nSaved + " sauvegardé" + (nSaved > 1 ? "s" : "")) : "Ce que tu as gardé",
+          data: { cdvfilter: "saved" }, active: hasSaved },
+        { icon: "📔", label: "Mes carnets",
+          sub: nMine ? (nMine + " carnet" + (nMine > 1 ? "s" : "")) : "Tes voyages à toi",
+          data: { cdvfilter: "mine" }, active: hasMine },
+        { icon: "🔴", label: "Lives",
+          sub: nLive ? (nLive + " en direct") : "Voyages en direct",
+          data: { cdvfilter: "live" }, active: hasLive }
+      ] },
       { title: "Mes contenus", items: [
         { icon: "📍", label: "Mes lieux",
           sub: nPlaces ? (nPlaces + " lieu" + (nPlaces > 1 ? "x" : "") + " repéré" + (nPlaces > 1 ? "s" : "")) : "Ta liste d'envies",
