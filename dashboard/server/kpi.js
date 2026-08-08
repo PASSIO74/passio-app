@@ -18,6 +18,57 @@ const PAGE = 1000;                // PostgREST plafonne CHAQUE réponse à 1000 
 const MAX_PAGES = 25;            // borne dure : 25 000 lignes / minute max
 let cache = null, cacheAt = 0;
 
+/**
+ * Cœur de calcul PUR (testable, sans I/O) : à partir de lignes
+ * { user_id, received_at(ISO) }, calcule DAU/WAU/MAU, habitude, retour 7 j
+ * et la série 14 j. Comptage d'utilisateurs DISTINCTS par fenêtre.
+ * @param {{user_id:string, received_at:string}[]} rows
+ * @param {number} now  epoch ms de référence
+ * @param {boolean} partial  lecture tronquée (borne de sécurité atteinte)
+ */
+export function computeKpi(rows, now = Date.now(), partial = false) {
+  const inWin = (from, to) => {
+    const s = new Set();
+    for (const r of rows) {
+      if (!r || !r.user_id) continue;
+      const t = Date.parse(r.received_at);
+      if (isNaN(t)) continue;
+      const age = now - t;
+      if (age >= from && age < to) s.add(r.user_id);
+    }
+    return s;
+  };
+  const dau = inWin(0, DAY);
+  const wau = inWin(0, 7 * DAY);
+  const mau = inWin(0, 30 * DAY);
+  const prev7 = inWin(7 * DAY, 14 * DAY);
+  const last7 = inWin(0, 7 * DAY);
+  let returned = 0;
+  for (const u of prev7) if (last7.has(u)) returned++;
+  const returnRate7 = prev7.size ? Math.round((returned / prev7.size) * 100) : null;
+  const stickiness = mau.size ? Math.round((dau.size / mau.size) * 100) : null;
+
+  const series = [];
+  for (let i = 13; i >= 0; i--) {
+    const start = new Date(now - i * DAY); start.setHours(0, 0, 0, 0);
+    const s0 = start.getTime(), s1 = s0 + DAY;
+    const set = new Set();
+    for (const r of rows) { if (!r || !r.user_id) continue; const t = Date.parse(r.received_at); if (t >= s0 && t < s1) set.add(r.user_id); }
+    series.push({ t: start.toISOString().slice(5, 10), n: set.size });
+  }
+
+  return {
+    confidence: partial ? "partial" : "high",
+    partial,
+    windowDays: 30,
+    dau: dau.size, wau: wau.size, mau: mau.size,
+    stickiness, returnRate7,
+    returnBase: prev7.size, returnCount: returned,
+    series,
+    retentionCohort: null,   // J1/J7/J30 par cohorte → UNKNOWN (requête dédiée à venir)
+  };
+}
+
 export async function kpi() {
   const admin = getAdmin();
   if (!admin) return { configured: false };
@@ -44,50 +95,7 @@ export async function kpi() {
     }
     const partial = page >= MAX_PAGES;  // borne de sécurité atteinte → lecture tronquée
 
-    // Ensembles d'utilisateurs distincts par fenêtre.
-    const inWin = (from, to) => {
-      const s = new Set();
-      for (const r of rows) {
-        const t = Date.parse(r.received_at);
-        if (isNaN(t)) continue;
-        const age = now - t;
-        if (age >= from && age < to) s.add(r.user_id);
-      }
-      return s;
-    };
-    const dau = inWin(0, DAY);
-    const wau = inWin(0, 7 * DAY);
-    const mau = inWin(0, 30 * DAY);
-    const prev7 = inWin(7 * DAY, 14 * DAY);
-    const last7 = inWin(0, 7 * DAY);
-    let returned = 0;
-    for (const u of prev7) if (last7.has(u)) returned++;
-    const returnRate7 = prev7.size ? Math.round((returned / prev7.size) * 100) : null;
-    const stickiness = mau.size ? Math.round((dau.size / mau.size) * 100) : null;
-
-    // Série 14 j : DAU par jour calendaire.
-    const series = [];
-    for (let i = 13; i >= 0; i--) {
-      const start = new Date(now - i * DAY); start.setHours(0, 0, 0, 0);
-      const s0 = start.getTime(), s1 = s0 + DAY;
-      const set = new Set();
-      for (const r of rows) { const t = Date.parse(r.received_at); if (t >= s0 && t < s1) set.add(r.user_id); }
-      series.push({ t: start.toISOString().slice(5, 10), n: set.size });
-    }
-
-    cache = {
-      configured: true,
-      confidence: partial ? "partial" : "high",
-      partial,
-      windowDays: 30,
-      dau: dau.size, wau: wau.size, mau: mau.size,
-      stickiness, returnRate7,
-      returnBase: prev7.size, returnCount: returned,
-      series,
-      // Explicitement non calculé (honnêteté) :
-      retentionCohort: null,   // J1/J7/J30 par cohorte → UNKNOWN (requête dédiée à venir)
-      updatedAt: now,
-    };
+    cache = { configured: true, ...computeKpi(rows, now, partial), updatedAt: now };
     cacheAt = now;
     return cache;
   } catch (e) {
