@@ -1138,6 +1138,56 @@ function toggleTheme() {
 }
 
 // ─── Boot ────────────────────────────────────────────────────────────────────
+// ── Palette de commandes (Ctrl/⌘-K) ──────────────────────────────────────────
+// Navigation clavier vers n'importe quelle vue + actions rapides. Se construit
+// une fois, respecte les capacités du rôle (hasCap).
+function setupCommandPalette() {
+  if (document.getElementById("cmdPalette")) return;
+  const el = document.createElement("div");
+  el.id = "cmdPalette"; el.className = "cmd-palette"; el.hidden = true;
+  el.innerHTML = `<div class="cmd-scrim"></div>
+    <div class="cmd-box" role="dialog" aria-modal="true" aria-label="Palette de commandes">
+      <input id="cmdInput" class="cmd-input" placeholder="Aller à… (tape pour filtrer, ↑↓ puis Entrée)" aria-label="Commande" autocomplete="off" />
+      <div id="cmdList" class="cmd-list" role="listbox"></div>
+    </div>`;
+  document.body.appendChild(el);
+  const pal = el, inp = el.querySelector("#cmdInput"), list = el.querySelector("#cmdList");
+  let filtered = [], sel = 0;
+
+  const items = () => [
+    ...NAV.filter((n) => hasCap(n[3])).map((n) => ({ label: n[1], ic: n[2], kind: "Aller à", run: () => (location.hash = n[0]) })),
+    { label: "Basculer le thème clair / sombre", ic: "moon", kind: "Action", run: toggleTheme },
+    { label: "Plein écran (supervision)", ic: "maximize", kind: "Action", run: () => (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.()) },
+    { label: "Se déconnecter", ic: "logout", kind: "Action", run: async () => { await api.post("/logout", {}); location.reload(); } },
+  ];
+  function render(q) {
+    const ql = q.trim().toLowerCase();
+    filtered = items().filter((it) => it.label.toLowerCase().includes(ql));
+    if (sel >= filtered.length) sel = filtered.length - 1;
+    if (sel < 0) sel = 0;
+    list.innerHTML = filtered.map((it, i) =>
+      `<div class="cmd-row${i === sel ? " sel" : ""}" role="option" aria-selected="${i === sel}" data-i="${i}">${icon(it.ic)}<span class="cmd-label">${esc(it.label)}</span><span class="cmd-kind">${it.kind}</span></div>`
+    ).join("") || `<div class="cmd-empty">Aucun résultat</div>`;
+  }
+  function open() { pal.hidden = false; inp.value = ""; sel = 0; render(""); setTimeout(() => inp.focus(), 0); }
+  function close() { pal.hidden = true; }
+  function activate(it) { if (!it) return; close(); it.run(); }
+
+  el.querySelector(".cmd-scrim").onclick = close;
+  inp.addEventListener("input", () => { sel = 0; render(inp.value); });
+  inp.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown") { e.preventDefault(); sel = Math.min(sel + 1, filtered.length - 1); render(inp.value); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); sel = Math.max(sel - 1, 0); render(inp.value); }
+    else if (e.key === "Enter") { e.preventDefault(); activate(filtered[sel]); }
+    else if (e.key === "Escape") { e.preventDefault(); close(); }
+  });
+  list.addEventListener("click", (e) => { const row = e.target.closest("[data-i]"); if (row) activate(filtered[Number(row.dataset.i)]); });
+  // Raccourci global : Ctrl/⌘-K bascule la palette.
+  document.addEventListener("keydown", (e) => {
+    if ((e.ctrlKey || e.metaKey) && (e.key === "k" || e.key === "K")) { e.preventDefault(); pal.hidden ? open() : close(); }
+  });
+}
+
 async function boot() {
   document.documentElement.dataset.theme = localStorage.getItem("dash_theme") || "dark";
   try {
@@ -1191,6 +1241,7 @@ async function showApp() {
   $("#globalSearchBtn").onclick = runGlobalSearch;
   $("#fullscreenBtn").onclick = () => { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.(); };
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeDrawer(); } });
+  setupCommandPalette();
   // Rafraîchissement périodique doux des vues non-live basées sur agrégats
   setInterval(() => { if (["overview", "performance", "services"].includes(S.currentView) && S.refresh) S.refresh(); }, 10000);
   route();
