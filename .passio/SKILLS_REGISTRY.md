@@ -65,6 +65,14 @@
 | `preview` | Lance le dev server + vérifie dans le navigateur | ACTIF |
 | `ship` | Séquence de mise en prod (tests → build → commit → push) | ACTIF |
 
+## Contrôle / Orchestration (plan de contrôle AI Engineering OS)
+| Skill | Mission | Statut |
+|---|---|---|
+| `passio-orchestrator` | Cerveau de routage : classifie domaine+risque, charge le contexte `.passio/`, route vers les skills/subagents, séquence, déclenche council-mode (décision à fort impact) et red team (feature majeure) | ACTIF |
+| `passio-feature` | Workflow feature de A à Z (produit→archi→DB/RLS→sécu→UX→impl→tests→télémétrie→perf→red team→doc), enchaîne les skills existantes | ACTIF |
+| `passio-audit` | Audit transverse priorisé P0→P4, sorties dans `reports/`, réutilise `xss-audit`/`rls-audit`/`migration-checker`/`passio-red-team` | ACTIF |
+| `passio-health` | Santé technique sur preuves réelles (syntaxe/build/globals/handlers/tests/schéma/erreurs prod) → verdict GO/NO-GO | ACTIF |
+
 ## Manques identifiés (candidats — cf. `PASSIO_CONTROL_CENTER_ROADMAP.md`)
 - Aucun skill **exécutif transverse** (synthèse produit+tech+growth en une vue) → cf. agent `passio-executive-intelligence` (PLANIFIÉ).
 - Aucun skill **décision** (structurer un arbitrage avec trade-offs) → agent `passio-decision-engine` (PLANIFIÉ).

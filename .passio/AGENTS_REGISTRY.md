@@ -9,6 +9,7 @@
 | `audit-passio` | Relit un diff/fichier JS, chasse les régressions maison (findPostAnywhere, supaTs, escapeJsArg, collisions globals, catch large) | Qualité / Sécurité | **Lecture seule** (Read, Grep, Glob, Bash) | ACTIF |
 | `migration-checker` | Vérifie la cohérence schéma prod RÉEL ↔ `migrations/`, audite les RLS avant migration | Data / DB | Lecture seule sur prod | ACTIF |
 | `growth-analyst` | Interroge `telemetry_events` + tables pour insights croissance/rétention/engagement | Data / Croissance | Lecture seule | ACTIF |
+| `passio-red-team` | Attaque adversariale d'une feature majeure (autorisation, fuite cross-profil, XSS stocké, uploads, abus/race, business logic) → findings priorisés | Sécurité / Trust & Safety | **Lecture seule** (Read, Grep, Glob, Bash) | ACTIF |
 
 ## Agents génériques (harnais)
 | Agent | Usage | Accès |
