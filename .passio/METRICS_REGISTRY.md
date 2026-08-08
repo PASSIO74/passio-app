@@ -18,11 +18,12 @@ Instrumentation automatique (`js/telemetry.js`) : **navigation** (wrap `goTo`), 
 | Inscriptions / comptes | `signups()`, `accounts()` | Supabase (service_role) | à la demande | RÉEL |
 | **Readiness score** (0-100) | Pondération : stabilité 20, bugs critiques 25, tests fonctionnels 25, couverture checklist 15, dispo API 15 | `/readiness` | temps réel | RÉEL (aide à la décision, **pas** une garantie — mention explicite dans l'API) |
 
-## KPI produit — statut honnête
+## KPI produit — statut honnête (mis à jour 2026-08-08)
 | KPI candidat | Statut | Pourquoi |
 |---|---|---|
-| DAU / WAU / MAU | **UNKNOWN** | Pas d'agrégat calculé ; la télémétrie a la matière (navigation/actions) mais l'agrégation n'est pas branchée. |
-| Rétention J1 / J7 / J30 | **UNKNOWN** | Cohortes non calculées. Priorité roadmap (`PASSIO_TECHNICAL_ROADMAP.md` P1). |
+| DAU / WAU / MAU | **RÉEL** | Calculés sur `telemetry_events` (utilisateurs identifiés distincts par fenêtre), `dashboard/server/kpi.js` → vue « KPI produit ». Pagination `.range()` (plafond PostgREST 1000). |
+| Habitude (DAU/MAU) · Taux de retour 7 j | **RÉEL** | Idem `kpi.js` (`computeKpi`, testé). |
+| Rétention J1 / J7 / J30 (cohorte) | **RÉEL (avec garde)** | `dashboard/server/retention.js` : `profiles.created_at` × retour télémétrie. Cohorte comptée seulement si fenêtre écoulée ET couverte par la télémétrie ; sinon « insuffisant »/inconnu, jamais un faux 0 %. Aujourd'hui surtout « insuffisant » (télémétrie ~3 j de recul). |
 | K-factor / viralité | **UNKNOWN** | Invitations/parrainage non instrumentés en agrégat. |
 | Passions par utilisateur | **UNKNOWN** | Dérivable de `profile_passions` mais non exposé. |
 | Profils par utilisateur / taux de bascule | **UNKNOWN** | Bascule de profil non marquée en télémétrie (candidat `telemetry-event`). |
