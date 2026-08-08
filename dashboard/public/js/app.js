@@ -336,7 +336,9 @@ VIEWS.kpi = async (view) => {
     <div class="card chart-card" style="margin-top:16px"><h4>Utilisateurs actifs par jour — 14 derniers jours</h4><div class="chart-meta">Chaque point = utilisateurs identifiés distincts ce jour-là</div><canvas class="chart" id="dauChart" style="margin-top:8px"></canvas></div>`);
 
   async function refresh() {
-    let k; try { k = await api.get("/kpi"); } catch (e) { $("#kpiCards").innerHTML = `<div class="empty">Erreur : ${esc(e.message)}</div>`; return; }
+    let k, ret;
+    try { [k, ret] = await Promise.all([api.get("/kpi"), api.get("/retention").catch(() => null)]); }
+    catch (e) { $("#kpiCards").innerHTML = `<div class="empty">Erreur : ${esc(e.message)}</div>`; return; }
     if (!k || k.configured === false) {
       $("#kpiProv").innerHTML = "";
       $("#kpiCards").innerHTML = `<div class="empty" style="grid-column:1/-1;padding:28px">${icon("database")} Supabase non connecté (mode local) — les KPI réels s'afficheront ici une fois <span class="mono">.env</span> renseigné.</div>`;
@@ -362,8 +364,16 @@ VIEWS.kpi = async (view) => {
       { label: "Actifs sur 30 j (MAU)", big: val(k.mau), sub: "utilisateurs identifiés distincts · 30 j" },
       { label: "Habitude (DAU/MAU)", big: pct(k.stickiness), sub: "plus c'est haut, plus l'usage est quotidien" },
       { label: "Taux de retour 7 j", big: pct(k.returnRate7), sub: k.returnBase ? `${num(k.returnCount)} / ${num(k.returnBase)} actifs de la semaine précédente revenus` : "base insuffisante" },
-      { label: "Rétention par cohorte (J1/J7/J30)", big: '<span class="muted">inconnu</span>', sub: "non calculée — nécessite une requête dédiée (roadmap)", unknown: true },
     ];
+    // Rétention par cohorte : réelle (profiles.created_at × retour télémétrie),
+    // ou « données insuffisantes » tant que la fenêtre n'est pas couverte.
+    const retCard = (label, w) => {
+      const r = ret && !ret.error && ret.configured !== false ? ret["j" + w] : null;
+      if (!r) return { label, big: '<span class="muted">inconnu</span>', sub: ret && ret.error ? "lecture impossible" : "Supabase requis", unknown: true };
+      if (r.insufficient) return { label, big: '<span class="muted">insuffisant</span>', sub: `${num(r.base)} cohorte-users éligibles (min ${ret.minCohort}) · télémétrie ${num(ret.coverageDays)} j`, unknown: true };
+      return { label, big: r.rate + " %", sub: `${num(r.retained)} / ${num(r.base)} revenus dans les ${w} j après inscription` };
+    };
+    cards.push(retCard("Rétention J1 (cohorte)", 1), retCard("Rétention J7 (cohorte)", 7), retCard("Rétention J30 (cohorte)", 30));
     $("#kpiCards").innerHTML = cards.map((c) => `<div class="kpi${c.unknown ? " kpi-unknown" : ""}">
       <div class="kpi-label">${esc(c.label)}</div>
       <div class="kpi-value">${c.big}</div>

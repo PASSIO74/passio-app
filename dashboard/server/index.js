@@ -24,6 +24,7 @@ import * as testusers from "./testusers.js";
 import * as alerts from "./alerts.js";
 import { snapshot as interactionsSnapshot } from "./interactions.js";
 import { kpi } from "./kpi.js";
+import { retention } from "./retention.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -82,6 +83,7 @@ api.get("/interactions", auth.requireAuth, (req, res) => res.json(interactionsSn
 
 // ─── KPI produit (utilisateurs actifs réels, calculés sur telemetry_events) ──
 api.get("/kpi", auth.requireAuth, asyncH(async (req, res) => res.json(await kpi())));
+api.get("/retention", auth.requireAuth, asyncH(async (req, res) => res.json(await retention())));
 
 // ─── Appareils / sessions d'activité / parcours ─────────────────────────────
 api.get("/names", auth.requireAuth, (req, res) => res.json(store.clientNames()));
