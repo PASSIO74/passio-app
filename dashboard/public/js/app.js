@@ -76,6 +76,7 @@ function deviceLabel(d) { return `${d.platform || "?"} · ${d.browser || "?"}`; 
 // Groupe "avance"    = outils de dev/QA, regroupés plus bas et repliables.
 const NAV = [
   ["overview", "Accueil", "home", null, "essentiel"],
+  ["brief", "Brief exécutif", "reports", null, "essentiel"],
   ["activity", "Tout ce qui se passe", "activity", null, "essentiel"],
   ["users", "Comptes & connexions", "users", null, "essentiel"],
   ["content", "Contenus & interactions", "heart", null, "essentiel"],
@@ -371,6 +372,92 @@ VIEWS.kpi = async (view) => {
     if (k.series && k.series.length) lineChart($("#dauChart"), k.series, [{ key: "n", color: "#a78bfa" }], { height: 160 });
   }
   S.refresh = refresh; refresh();
+};
+
+// ── Brief exécutif (« état en 1 minute », copiable) ──────────────────────────
+VIEWS.brief = async (view) => {
+  mount(`<div class="brief-head">
+      <div><h3 style="margin:0">Brief exécutif</h3><p class="page-sub" style="margin:2px 0 0">Synthèse en une minute, composée de signaux réels. Les valeurs manquantes sont marquées « inconnu », jamais inventées.</p></div>
+      <button class="btn btn-primary" id="briefCopy">${icon("copy")} Copier le brief</button>
+    </div>
+    <div id="briefBody"><div class="empty" style="padding:28px"><span class="spinner"></span></div></div>`);
+
+  async function refresh() {
+    const [ov, rd, k, alerts, bugs] = await Promise.all([
+      api.get("/overview").catch(() => null),
+      api.get("/readiness").catch(() => null),
+      api.get("/kpi").catch(() => null),
+      api.get("/alerts").catch(() => []),
+      api.get("/bugs").catch(() => []),
+    ]);
+    if (!ov) { $("#briefBody").innerHTML = `<div class="empty">Données indisponibles.</div>`; return; }
+    const t = ov.totals, h = ov.health, ing = ov.ingest || {};
+    const dataReal = !!ing.supabaseReady, hasData = (ing.buffered || 0) > 0;
+    const lastSeen = ing.lastSeenIso ? Date.parse(ing.lastSeenIso) : null;
+    const openBugs = (bugs || []).filter((b) => b.status !== "corrige" && b.status !== "ignore");
+    const worst = openBugs.slice().sort((a, b) => (b.severity === "critical") - (a.severity === "critical") || b.count - a.count)[0];
+    const unack = (alerts || []).filter((a) => !a.acknowledged);
+    const kpiOk = k && k.configured !== false && !k.error;
+    const kv = (n) => (n == null ? "inconnu" : num(n));
+    const lowFactors = (rd && rd.factors || []).filter((f) => f.score < 60);
+
+    // Prochaines actions dérivées de signaux réels (pas d'invention).
+    const actions = [];
+    if (!dataReal) actions.push("Connecter Supabase (renseigner dashboard/.env) pour recevoir les données réelles.");
+    if (t.criticalBugs) actions.push(`Corriger ${t.criticalBugs} bug${t.criticalBugs > 1 ? "s" : ""} critique${t.criticalBugs > 1 ? "s" : ""}${worst ? ` — ex. « ${worst.title} »` : ""}.`);
+    if (unack.length) actions.push(`Traiter ${unack.length} alerte${unack.length > 1 ? "s" : ""} non acquittée${unack.length > 1 ? "s" : ""}.`);
+    lowFactors.forEach((f) => actions.push(`Améliorer « ${f.label} » (${f.score}/100).`));
+    if (!actions.length) actions.push("Rien de bloquant — poursuivre les tests et l'observation.");
+
+    const sev = { critical: "crit", high: "err", warn: "warn", info: "info" };
+    const secCard = (title, ic, rows) => `<div class="card card-pad brief-sec"><div class="brief-sec-h">${icon(ic)} ${title}</div>${rows}</div>`;
+    const line = (l, v) => `<div class="brief-line"><span>${esc(l)}</span><b>${v}</b></div>`;
+
+    $("#briefBody").innerHTML = `
+      <div class="prov-strip" style="margin-bottom:14px">
+        <div class="prov-item"><span class="prov-ic">${icon("database")}</span><span class="prov-k">Données</span><span class="prov-v">${dataReal ? '<span class="prov-pill ok">RÉEL</span>' : '<span class="prov-pill off">LOCAL</span>'}</span></div>
+        <div class="prov-item"><span class="prov-ic">${icon("clock")}</span><span class="prov-k">Fraîcheur</span><span class="prov-v">${hasData && lastSeen ? "il y a " + ago(lastSeen) : "aucun signal"}</span></div>
+        <span class="prov-note">Brief généré à ${hhmmss(Date.now())}</span>
+      </div>
+      <div class="cols cols-2">
+        ${secCard("État général", "activity",
+          line("Santé", `<span class="pill ${h.level === "operational" ? "ok" : h.level === "critical" ? "error" : "warn"}">${esc(h.label)}</span>`) +
+          line("Readiness", rd ? `${rd.score}/100` : "inconnu") +
+          line("Erreurs (5 min)", num(h.errors5m)) +
+          line("Succès API", (t.apiSuccessRate ?? 0) + " %"))}
+        ${secCard("Ce qui compte", "trending",
+          line("Actifs 24h / 7j / 30j (DAU/WAU/MAU)", kpiOk ? `${kv(k.dau)} / ${kv(k.wau)} / ${kv(k.mau)}` : "inconnu") +
+          line("Connectés maintenant", num(t.onlineUsers)) +
+          line("Actions / min", num(t.actionsPerMin)) +
+          line("Publications / interactions", `${num(t.publications)} / ${num(t.reactions + t.comments + t.messages)}`))}
+      </div>
+      <div class="cols cols-2" style="margin-top:14px">
+        ${secCard("Alertes & problèmes", "alertTriangle",
+          line("Alertes non traitées", num(unack.length)) +
+          line("Bugs ouverts (critiques)", `${num(openBugs.length)} (${num(t.criticalBugs)})`) +
+          (worst ? `<div class="brief-worst">${icon("bugs")} ${esc(worst.title)} <span class="muted">· ${num(worst.count)}×</span></div>` : `<div class="muted" style="font-size:12.5px;margin-top:6px">Aucun problème ouvert.</div>`))}
+        ${secCard("Prochaines actions", "sparkles",
+          `<ol class="brief-actions">${actions.map((a) => `<li>${esc(a)}</li>`).join("")}</ol>`)}
+      </div>`;
+
+    // Version texte copiable (pour un point d'équipe / investisseur).
+    briefText = [
+      `PASSIO — Brief exécutif · ${new Date().toLocaleString("fr-FR")}`,
+      `Données : ${dataReal ? "RÉEL (Supabase)" : "LOCAL (non connecté)"}${hasData && lastSeen ? ` · dernier signal il y a ${ago(lastSeen)}` : ""}`,
+      ``,
+      `ÉTAT : ${h.label} · Readiness ${rd ? rd.score + "/100" : "inconnu"} · Erreurs 5min ${h.errors5m} · Succès API ${t.apiSuccessRate ?? 0}%`,
+      `ACTIFS : DAU ${kv(k?.dau)} · WAU ${kv(k?.wau)} · MAU ${kv(k?.mau)}${kpiOk ? "" : " (inconnu — Supabase requis)"}`,
+      `EN DIRECT : ${t.onlineUsers} connectés · ${t.actionsPerMin} actions/min · ${t.publications} publications`,
+      `ALERTES : ${unack.length} non traitées`,
+      `PROBLÈMES : ${openBugs.length} ouverts (${t.criticalBugs} critiques)${worst ? ` — ex. « ${worst.title} »` : ""}`,
+      ``,
+      `PROCHAINES ACTIONS :`,
+      ...actions.map((a, i) => `  ${i + 1}. ${a}`),
+    ].join("\n");
+  }
+  let briefText = "";
+  $("#briefCopy").onclick = () => briefText ? copy(briefText, "Brief exécutif") : toast("Brief pas encore prêt");
+  S.refresh = refresh; await refresh();
 };
 
 // ── Ligne de flux réutilisable ──────────────────────────────────────────────
