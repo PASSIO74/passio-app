@@ -26,25 +26,25 @@ Priorité **P0–P4** · Impact (H/M/B) · Difficulté (H/M/B) · Statut : ✅ F
 | Playbooks (carte → skills) | ✅ | `.passio/playbooks/README.md` |
 | Gouvernance des agents (frontières READ/SAFE/SENSITIVE/DESTRUCTIVE) | ✅ | `.passio/context/AGENT_MODEL.md`, `VISION.md` |
 
-## WAVE 4 — Qualité du dashboard ⬜
+## WAVE 4 — Qualité du dashboard 🔄 (3/4)
 | Item | P | Impact | Diff. | Dépendances | Validation |
 |---|---|---|---|---|---|
-| Home « statut en 1 minute » (santé, changements, priorités, alertes) | P1 | H | M | métriques existantes | Ouvrir → comprendre l'état en < 1 min |
-| Provenance visible sur chaque métrique (source/fraîcheur/env/confiance/RÉEL-MOCK) | P1 | H | M | `METRICS_REGISTRY.md` | Aucune donnée sans badge de provenance |
-| Command palette (Ctrl/Cmd-K) | P2 | M | M | — | Navigation clavier vers tout module |
-| Accessibilité (contraste, focus, clavier) | P2 | M | M | skill `a11y` | Passe AA |
+| ✅ Home « statut en 1 minute » | P1 | H | M | métriques existantes | Accueil + **Brief exécutif** copiable (`b99928f`), bandeau honnête « pas de données » (`f4bd7d1`) |
+| ✅ Provenance visible sur chaque métrique (source/fraîcheur/confiance/RÉEL-LOCAL) | P1 | H | M | `METRICS_REGISTRY.md` | Bandeau de provenance sur Accueil / KPI / Brief (`f4bd7d1`, `2931f5d`) |
+| ✅ Command palette (Ctrl/⌘-K) | P2 | M | M | — | Navigation clavier vers toute vue + actions (`a3dbcdd`) |
+| Accessibilité (contraste, focus, clavier) | P2 | M | M | skill `a11y` | Passe AA — ⬜ à faire |
 
-## WAVE 5 — Données ⬜
+## WAVE 5 — Données 🔄 (KPI/rétention faits ; sources & cron à venir)
 | Item | P | Impact | Diff. | Dépendances | Validation |
 |---|---|---|---|---|---|
 | Registre de sources vivant (statut/last-success/last-failure) | P2 | M | B | `INTEGRATIONS_REGISTRY.md` | Panneau « Sources » avec état réel |
-| Agrégats KPI produit (DAU/WAU, rétention J1/J7/J30) | P1 | H | H | télémétrie (matière présente) | KPI RÉELS remplacent les `UNKNOWN` |
+| ✅ Agrégats KPI produit (DAU/WAU/MAU, habitude, retour 7j, rétention J1/J7/J30) | P1 | H | H | télémétrie | RÉEL : `kpi.js` + `retention.js` (`2931f5d`, `c39ff77`), tests 28/28, rétention gardée « insuffisant » tant que la fenêtre n'est pas couverte |
 | Cron `purge_telemetry(30)` (rétention) | P2 | M | B | pg_cron | Rétention appliquée |
 
 ## WAVE 6 — Intelligence ⬜
 | Item | P | Impact | Diff. | Dépendances | Validation |
 |---|---|---|---|---|---|
-| Chaîne DONNÉE → SIGNAL → INSIGHT → PRIORITÉ → ACTION (explicite, séparée) | P2 | H | H | KPI agrégés | Recommandations avec évidence + confiance |
+| 🔄 Chaîne DONNÉE → SIGNAL → INSIGHT → PRIORITÉ → ACTION | P2 | H | H | KPI agrégés | Amorcée : le **Brief exécutif** dérive des « prochaines actions » de signaux réels (`b99928f`). Reste : insights/priorités formalisés avec confiance |
 | Registre de décisions actionnable (états OPEN→CLOSED) | P2 | M | M | `context/DECISIONS.md` | Décision créée/suivie dans le dashboard |
 | Registre de risques piloté (heatmap actionnable) | P2 | M | M | `context/KNOWN_RISKS.md` | Risques P0-P3 suivis, revus, datés |
 

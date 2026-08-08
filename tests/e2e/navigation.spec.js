@@ -37,10 +37,16 @@ test("tour des 8 écrans : zéro erreur JS, chaque écran devient actif", async 
       goTo(s);
       return performance.now() - t0;
     }, scr);
+    // Garde d'activation (l'écran doit devenir actif). 15 s et non 5 s : ce
+    // sondage EXTERNE ne tourne que quand le thread principal se libère, et
+    // l'init MapLibre à froid (IRL/CDV) le bloque 1-3 s en local, davantage sur
+    // un runner CI throttlé — d'où des timeouts CI alors que l'écran s'affiche.
+    // La vraie garantie de perf reste l'assertion sur la MÉDIANE (< 1500 ms,
+    // mesurée in-page via performance.now, insensible à l'ordonnancement) ci-dessous.
     await page.waitForFunction((s) => {
       const el = document.getElementById("screen-" + s);
       return el && el.classList.contains("active");
-    }, scr, { timeout: 5000 });
+    }, scr, { timeout: 15000 });
     return Math.round(ms);
   }
 
