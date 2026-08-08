@@ -79,6 +79,7 @@ const NAV = [
   ["activity", "Tout ce qui se passe", "activity", null, "essentiel"],
   ["users", "Comptes & connexions", "users", null, "essentiel"],
   ["content", "Contenus & interactions", "heart", null, "essentiel"],
+  ["kpi", "KPI produit", "trending", null, "essentiel"],
   ["interactions", "Vérif. interactions", "wifi", null, "essentiel"],
   ["bugs", "Problèmes", "bugs", null, "essentiel"],
   ["claude", "Réparer avec Claude", "wrench", "claude", "essentiel"],
@@ -322,6 +323,52 @@ VIEWS.overview = async (view) => {
     } else {
       $("#ovSignupLegend").innerHTML = "Supabase non connecté (mode local) — les inscriptions réelles s'afficheront ici une fois configuré.";
     }
+  }
+  S.refresh = refresh; refresh();
+};
+
+// ── KPI produit (utilisateurs actifs réels) ──────────────────────────────────
+VIEWS.kpi = async (view) => {
+  mount(`<p class="page-sub">Utilisateurs identifiés réellement actifs, calculés sur <span class="mono">telemetry_events</span> (pas le flux live borné). Les valeurs non calculables restent marquées « inconnu » — jamais inventées.</p>
+    <div id="kpiProv"></div>
+    <div class="grid kpi-grid" id="kpiCards"></div>
+    <div class="card chart-card" style="margin-top:16px"><h4>Utilisateurs actifs par jour — 14 derniers jours</h4><div class="chart-meta">Chaque point = utilisateurs identifiés distincts ce jour-là</div><canvas class="chart" id="dauChart" style="margin-top:8px"></canvas></div>`);
+
+  async function refresh() {
+    let k; try { k = await api.get("/kpi"); } catch (e) { $("#kpiCards").innerHTML = `<div class="empty">Erreur : ${esc(e.message)}</div>`; return; }
+    if (!k || k.configured === false) {
+      $("#kpiProv").innerHTML = "";
+      $("#kpiCards").innerHTML = `<div class="empty" style="grid-column:1/-1;padding:28px">${icon("database")} Supabase non connecté (mode local) — les KPI réels s'afficheront ici une fois <span class="mono">.env</span> renseigné.</div>`;
+      return;
+    }
+    if (k.error) { $("#kpiCards").innerHTML = `<div class="empty" style="grid-column:1/-1">Lecture impossible : ${esc(k.error)}</div>`; return; }
+
+    // Provenance + confiance (honnêteté sur la fiabilité de la mesure).
+    const conf = k.confidence === "partial"
+      ? `<span class="prov-pill off">confiance partielle</span>`
+      : `<span class="prov-pill ok">confiance élevée</span>`;
+    $("#kpiProv").innerHTML = `<div class="prov-strip">
+      <div class="prov-item"><span class="prov-ic">${icon("database")}</span><span class="prov-k">Source</span><span class="prov-v">telemetry_events · utilisateurs identifiés</span></div>
+      <div class="prov-item"><span class="prov-k">Fiabilité</span><span class="prov-v">${conf}</span></div>
+      <span class="prov-note">${k.partial ? "Lecture tronquée (25 000 lignes max) — MAU sous-estimé · " : ""}vue à ${hhmmss(k.updatedAt)}</span>
+    </div>`;
+
+    const val = (n) => (n == null ? '<span class="muted">inconnu</span>' : num(n));
+    const pct = (n) => (n == null ? '<span class="muted">inconnu</span>' : n + " %");
+    const cards = [
+      { label: "Actifs aujourd'hui (DAU)", big: val(k.dau), sub: "utilisateurs identifiés distincts · 24 h" },
+      { label: "Actifs sur 7 j (WAU)", big: val(k.wau), sub: "utilisateurs identifiés distincts · 7 j" },
+      { label: "Actifs sur 30 j (MAU)", big: val(k.mau), sub: "utilisateurs identifiés distincts · 30 j" },
+      { label: "Habitude (DAU/MAU)", big: pct(k.stickiness), sub: "plus c'est haut, plus l'usage est quotidien" },
+      { label: "Taux de retour 7 j", big: pct(k.returnRate7), sub: k.returnBase ? `${num(k.returnCount)} / ${num(k.returnBase)} actifs de la semaine précédente revenus` : "base insuffisante" },
+      { label: "Rétention par cohorte (J1/J7/J30)", big: '<span class="muted">inconnu</span>', sub: "non calculée — nécessite une requête dédiée (roadmap)", unknown: true },
+    ];
+    $("#kpiCards").innerHTML = cards.map((c) => `<div class="kpi${c.unknown ? " kpi-unknown" : ""}">
+      <div class="kpi-label">${esc(c.label)}</div>
+      <div class="kpi-value">${c.big}</div>
+      <div class="kpi-sub">${c.sub}</div></div>`).join("");
+
+    if (k.series && k.series.length) lineChart($("#dauChart"), k.series, [{ key: "n", color: "#a78bfa" }], { height: 160 });
   }
   S.refresh = refresh; refresh();
 };

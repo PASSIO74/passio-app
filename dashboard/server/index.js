@@ -23,6 +23,7 @@ import { detectClaudeCli, claudeCliState } from "./claudecli.js";
 import * as testusers from "./testusers.js";
 import * as alerts from "./alerts.js";
 import { snapshot as interactionsSnapshot } from "./interactions.js";
+import { kpi } from "./kpi.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -78,6 +79,9 @@ api.get("/events", auth.requireAuth, (req, res) => {
 
 // ─── Interactions (vérification cross-device temps réel) ────────────────────
 api.get("/interactions", auth.requireAuth, (req, res) => res.json(interactionsSnapshot(Number(req.query.limit) || 120)));
+
+// ─── KPI produit (utilisateurs actifs réels, calculés sur telemetry_events) ──
+api.get("/kpi", auth.requireAuth, asyncH(async (req, res) => res.json(await kpi())));
 
 // ─── Appareils / sessions d'activité / parcours ─────────────────────────────
 api.get("/names", auth.requireAuth, (req, res) => res.json(store.clientNames()));
