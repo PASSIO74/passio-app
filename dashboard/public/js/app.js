@@ -90,6 +90,7 @@ const NAV = [
   ["messaging", "Messagerie", "messaging", null, "avance"],
   ["performance", "Performances", "performance", null, "avance"],
   ["services", "Services", "services", null, "avance"],
+  ["sources", "Sources de données", "server", null, "avance"],
   ["database", "Base de données", "database", "db", "avance"],
   ["tests", "Tests automatiques", "tests", null, "avance"],
   ["checklist", "Tests fonctionnels", "reports", null, "avance"],
@@ -1024,6 +1025,59 @@ VIEWS.reports = async () => {
   const list = await api.get("/test-sessions");
   $("#repSel").innerHTML = list.length ? list.map((s) => `<option value="${s.id}">${esc(s.name)} (${s.status})</option>`).join("") : '<option value="">Aucune session</option>';
   $("#repOpen").onclick = (e) => { if ($("#repSel").value) location.hash = "sessions/" + $("#repSel").value; };
+};
+
+// ── Sources de données (état live des intégrations) ──────────────────────────
+VIEWS.sources = async () => {
+  mount(`<h2 class="page-title">Sources de données</h2>
+    <p class="page-sub">État réel de chaque intégration alimentant le pilotage. Aucune donnée n'est affichée sans provenance ; « inconnu » et « non configuré » sont explicites.</p>
+    <div class="table-wrap"><table><thead><tr><th>Source</th><th>État</th><th>Détail</th><th>Fraîcheur</th></tr></thead><tbody id="srcRows"></tbody></table></div>
+    <p class="muted" style="font-size:12px;margin-top:12px">Référence : <span class="mono">.passio/INTEGRATIONS_REGISTRY.md</span> — <span class="prov-pill ok" style="vertical-align:middle">Connecté</span> = données de prod réelles · <span class="prov-pill off" style="vertical-align:middle">Non connecté / absent</span></p>`);
+
+  const [ov, cs] = await Promise.all([
+    api.get("/overview").catch(() => ({ ingest: {} })),
+    api.get("/claude/status").catch(() => null),
+  ]);
+  const git = hasCap("git_read") ? await api.get("/git/status").catch(() => null) : null;
+  const ing = ov.ingest || {};
+  const lastSeen = ing.lastSeenIso ? Date.parse(ing.lastSeenIso) : null;
+
+  // état → { cls, label } ; ok=vert, warn=orange, off=neutre (config), unknown=neutre
+  const P = { ok: ["ok", "Connecté"], active: ["ok", "Actif"], warn: ["warn", "Dégradé"], off: ["info", "Non connecté"], absent: ["info", "Absent"], unknown: ["info", "Inconnu"] };
+  const rows = [];
+  const push = (name, stateKey, detail, fresh, labelOverride) => {
+    const [cls, lbl] = P[stateKey] || P.unknown;
+    rows.push(`<tr><td><b>${esc(name)}</b></td><td><span class="pill ${cls}">${esc(labelOverride || lbl)}</span></td><td>${detail}</td><td class="muted nowrap">${fresh || "—"}</td></tr>`);
+  };
+
+  push("Supabase (Postgres · Auth · Storage)", ing.supabaseReady ? "ok" : "off",
+    ing.supabaseReady ? "Clé <span class='mono'>service_role</span> côté serveur (jamais exposée au navigateur)" : "Mode local — renseigner <span class='mono'>dashboard/.env</span>", "—");
+  push("Télémétrie (<span class='mono'>telemetry_events</span>)", (ing.buffered || 0) > 0 ? "ok" : ing.supabaseReady ? "unknown" : "off",
+    `${num(ing.buffered || 0)} événements en mémoire`, lastSeen ? "il y a " + ago(lastSeen) : "aucun signal", (ing.buffered || 0) > 0 ? "Reçoit" : undefined);
+  push("Realtime (postgres_changes)", ing.realtimeOk ? "active" : ing.supabaseReady ? "warn" : "off",
+    ing.realtimeOk ? "Abonné aux INSERT" : ing.supabaseReady ? "Repli sur polling (5 s)" : "Nécessite Supabase", "—",
+    ing.realtimeOk ? "Actif" : ing.supabaseReady ? "Secours" : "Non connecté");
+  // Assistant Claude (analyse de bug)
+  const cli = cs && cs.cli || {};
+  const claudeState = cli.loggedIn ? "ok" : cs && cs.apiKey ? "ok" : cli.installed ? "warn" : "off";
+  const claudeDetail = cli.loggedIn ? `CLI connectée (analyse gratuite)${cli.version ? " · " + esc(cli.version) : ""}`
+    : cs && cs.apiKey ? "Clé API configurée"
+    : cli.installed ? "CLI installée mais non connectée (<span class='mono'>claude auth login</span>)"
+    : "Ni CLI ni clé API — mode « copier le prompt »";
+  push("Assistant Claude (réparation)", claudeState, claudeDetail, "—", cli.loggedIn || (cs && cs.apiKey) ? "Disponible" : cli.installed ? "À reconnecter" : "Indisponible");
+  // Git (si autorisé)
+  if (git) {
+    const dirty = (git.files || []).length;
+    push("Dépôt Git (local)", dirty ? "warn" : "ok",
+      `Branche <span class='mono'>${esc(git.branch || "?")}</span> · ${num(dirty)} fichier(s) modifié(s)${git.ahead ? ` · ${git.ahead} en avance` : ""}`, "—",
+      dirty ? "Modifs en cours" : "Propre");
+  }
+  // Intégrations connues NON configurées (honnêteté : on le dit, on ne masque pas).
+  push("SMTP (confirmation e-mail)", "absent", "Non configuré — <b>P0</b> confidentialité (cf. KNOWN_RISKS R1)", "—", "Non configuré");
+  push("Paiements (Stripe)", "absent", "Hors périmètre actuel — exploration/ADR", "—");
+  push("Analytics tiers (PostHog/GA)", "absent", "Non branché — télémétrie maison utilisée", "—");
+
+  $("#srcRows").innerHTML = rows.join("");
 };
 
 // ── Paramètres ──────────────────────────────────────────────────────────────
