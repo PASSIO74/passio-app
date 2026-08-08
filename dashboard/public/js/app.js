@@ -222,7 +222,8 @@ function renderFixResult(r) {
 
 // ── Accueil (vue d'ensemble simplifiée, sans jargon) ─────────────────────────
 VIEWS.overview = async (view) => {
-  mount(`<div id="ovState"></div>
+  mount(`<div id="ovProv"></div>
+    <div id="ovState"></div>
     <div class="home-cards" id="ovCards"></div>
     <div class="cols cols-2" style="margin-top:16px">
       <div class="card chart-card"><h4>Ce qui se passe en direct</h4><div class="chart-meta">Les dernières actions des utilisateurs · <a href="#activity">tout voir</a></div><div id="ovFeed"></div></div>
@@ -235,18 +236,55 @@ VIEWS.overview = async (view) => {
     const openBugs = (bugs || []).filter((b) => b.status !== "corrige" && b.status !== "ignore");
     const worst = openBugs.slice().sort((a, b) => (b.severity === "critical") - (a.severity === "critical") || b.count - a.count)[0];
 
-    // ── Bandeau d'état, en français simple ──────────────────────────────────
+    // ── Provenance des données (RÉEL vs LOCAL, temps réel, fraîcheur) ─────────
+    // Principe : jamais afficher une donnée sans dire d'où elle vient ni quand.
+    const ing = ov.ingest || {};
+    const dataReal = !!ing.supabaseReady;
+    const hasData = (ing.buffered || 0) > 0;
+    const lastSeen = ing.lastSeenIso ? Date.parse(ing.lastSeenIso) : null;
+    const provItem = (ic, k, v) => `<div class="prov-item"><span class="prov-ic">${icon(ic)}</span><span class="prov-k">${k}</span><span class="prov-v">${v}</span></div>`;
+    $("#ovProv").innerHTML = `<div class="prov-strip">
+      ${provItem("database", "Données", dataReal ? `<span class="prov-pill ok">RÉEL · Supabase</span>` : `<span class="prov-pill off">LOCAL · non connecté</span>`)}
+      ${provItem("wifi", "Temps réel", ing.realtimeOk ? `<span class="prov-pill ok">actif</span>` : dataReal ? `<span class="prov-pill off">secours (polling)</span>` : `<span class="prov-pill off">—</span>`)}
+      ${provItem("clock", "Fraîcheur", hasData && lastSeen ? `dernier signal il y a ${ago(lastSeen)}` : "aucun signal reçu")}
+      ${provItem("server", "En mémoire", `${num(ing.buffered || 0)} évén.`)}
+      <span class="prov-note">Source : télémétrie Passio (PII-safe, opt-out) · vue à ${hhmmss(ov.updatedAt)}</span>
+    </div>`;
+
+    // ── Bandeau d'état, en français simple (honnête sur la dispo des données) ─
+    // §91 : « pilotage sans données » ≠ « Passio en bonne santé ». Ne jamais
+    // afficher « tout va bien » quand on ne reçoit simplement rien.
     const problems = openBugs.length;
-    let level = "ok", title = "Tout fonctionne bien", sub = "Aucun problème détecté. Tu peux tester tranquillement.";
-    if (t.criticalBugs || h.level === "critical") { level = "bad"; title = `${t.criticalBugs || problems} problème${(t.criticalBugs || problems) > 1 ? "s" : ""} important${(t.criticalBugs || problems) > 1 ? "s" : ""} à corriger`; sub = "Clique sur « Réparer avec Claude » : il explique et corrige."; }
-    else if (problems || h.errors5m) { level = "warn"; title = `${problems || h.errors5m} petit${(problems || h.errors5m) > 1 ? "s" : ""} problème${(problems || h.errors5m) > 1 ? "s" : ""} détecté${(problems || h.errors5m) > 1 ? "s" : ""}`; sub = "Rien de bloquant. Tu peux le réparer en un clic quand tu veux."; }
-    const fixBtn = worst && hasCap("claude")
+    let level, title, sub, banIco;
+    if (!dataReal) {
+      level = "nodata"; banIco = "database";
+      title = "Centre de pilotage en mode local";
+      sub = "Supabase n'est pas connecté : aucune donnée réelle de Passio n'est reçue. Cela ne dit rien de la santé de Passio — renseigne .env pour brancher les données.";
+    } else if (!hasData) {
+      level = "nodata"; banIco = "database";
+      title = "En attente de données";
+      sub = "Connecté à Supabase, mais aucun événement reçu pour l'instant. Ouvre Passio sur un appareil pour voir l'activité apparaître ici.";
+    } else if (t.criticalBugs || h.level === "critical") {
+      level = "bad"; banIco = "alertTriangle";
+      title = `${t.criticalBugs || problems} problème${(t.criticalBugs || problems) > 1 ? "s" : ""} important${(t.criticalBugs || problems) > 1 ? "s" : ""} à corriger`;
+      sub = "Clique sur « Réparer avec Claude » : il explique et corrige.";
+    } else if (problems || h.errors5m) {
+      level = "warn"; banIco = "alertTriangle";
+      title = `${problems || h.errors5m} petit${(problems || h.errors5m) > 1 ? "s" : ""} problème${(problems || h.errors5m) > 1 ? "s" : ""} détecté${(problems || h.errors5m) > 1 ? "s" : ""}`;
+      sub = "Rien de bloquant. Tu peux le réparer en un clic quand tu veux.";
+    } else {
+      level = "ok"; banIco = "checkCircle";
+      title = "Tout fonctionne bien";
+      sub = "Aucun problème détecté. Tu peux tester tranquillement.";
+    }
+    const liveTag = (dataReal && hasData) ? `<div class="state-live"><span class="live-dot"></span>EN DIRECT</div>` : "";
+    const fixBtn = (dataReal && hasData && worst && hasCap("claude"))
       ? `<button class="btn btn-primary state-fix" onclick="window.__fixBug('${worst.id}')">${icon("wrench")} Réparer avec Claude</button>`
-      : problems ? `<a class="btn btn-primary state-fix" href="#bugs">${icon("wrench")} Voir les problèmes</a>` : "";
+      : (dataReal && hasData && problems) ? `<a class="btn btn-primary state-fix" href="#bugs">${icon("wrench")} Voir les problèmes</a>` : "";
     $("#ovState").innerHTML = `<div class="state-banner ${level}">
-      <div class="state-ico">${icon(level === "ok" ? "checkCircle" : "alertTriangle")}</div>
+      <div class="state-ico">${icon(banIco)}</div>
       <div class="state-txt"><h2>${esc(title)}</h2><p>${esc(sub)}</p></div>
-      <div class="state-live"><span class="live-dot"></span>EN DIRECT</div>
+      ${liveTag}
       ${fixBtn}</div>`;
 
     // ── Les 3 chiffres qui comptent ─────────────────────────────────────────
