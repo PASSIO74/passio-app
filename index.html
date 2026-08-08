@@ -1115,9 +1115,10 @@
         </button>
         <button type="button" class="ctx-trigger" id="cdvToolsBtn"
           onclick="ContextualTools.open('cdv', this)" aria-haspopup="dialog"
-          aria-label="Outils : mes lieux, passeport" title="Mes lieux & passeport">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11z"/><circle cx="12" cy="10" r="2.6"/>
+          aria-label="Outils : mes favoris, mes carnets, lives, mes lieux, passeport" title="Filtres, mes lieux & passeport">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+            <path d="M4 7h11"/><path d="M19 7h1"/><circle cx="17" cy="7" r="2"/>
+            <path d="M4 17h9"/><path d="M17 17h3"/><circle cx="15" cy="17" r="2"/>
           </svg><span>Outils</span>
           <span id="cdvToolsBadge" class="ctx-trigger-badge"></span>
         </button>
@@ -1126,11 +1127,10 @@
       <!-- CDV Lives en cours -->
       <div id="cdvLiveList"></div>
 
-      <div class="pill-row" id="cdvFilterRow">
-        <button class="pill" data-cdvfilter="saved">⭐ Mes favoris</button>
-        <button class="pill" data-cdvfilter="mine">Mes carnets</button>
-        <button class="pill" data-cdvfilter="live">🔴 Lives</button>
-      </div>
+      <!-- Filtres « Mes favoris / Mes carnets / Lives » déplacés dans le panneau
+           contextuel « Outils » (js/contextual-nav.js → cdvToolsSections, section
+           « Filtres ») le 2026-08-08 pour dégager l'écran (content-first). Mêmes
+           handlers/état : délégation [data-cdvfilter] (non scopée), Set cdvFilters. -->
 
       <input type="text" class="input" id="cdvSearchInput" placeholder="Rechercher une destination, une ville…" style="margin-bottom:14px;" oninput="renderCdvScreen()" />
 

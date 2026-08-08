@@ -3907,8 +3907,10 @@
       white-space: nowrap;
       font-weight: 600;
     }
-    /* Onglet principal : violet foncé plein, calqué sur .cdv-entry.primary
-       (Nouveau voyage) pour une présentation identique entre IRL et CDV. */
+    /* Onglet principal : violet foncé plein, STRICTEMENT identique à
+       .cdv-entry.primary en mode lean (Nouveau voyage) — mêmes rayon (14px),
+       hauteur (46px), taille de police (14px), gap (8px) et padding, pour une
+       présentation rigoureusement identique entre IRL et CDV (2026-08-08). */
     .irl-chip-create {
       flex: 1 1 auto;
       border: none;
@@ -3916,9 +3918,17 @@
       color: #fff;
       box-shadow: 0 4px 12px rgba(124, 58, 237, 0.3);
       font-weight: 700;
+      gap: 8px;
+      min-height: 46px;
+      padding: 9px 6px;
+      border-radius: 14px;
+      font-size: 14px;
     }
     .irl-chip-create:hover { border-color: transparent; }
     .irl-chip-create .irl-chip-label { font-weight: 700; }
+    /* Icône (emoji) calée sur .cdv-entry-ico (18px) plutôt que sur les 13px
+       hérités de .irl-chip. */
+    .irl-chip-create span[aria-hidden="true"] { font-size: 18px; line-height: 1; }
     .irl-chip-create:active { transform: scale(0.97); }
     /* La ville est plafonnée : un nom long doit rogner ICI, pas sur le CTA */
     .irl-chip.irl-locbar { flex: 0 1 auto; max-width: 30%; }
