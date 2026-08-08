@@ -25,6 +25,7 @@ import * as alerts from "./alerts.js";
 import { snapshot as interactionsSnapshot } from "./interactions.js";
 import { kpi } from "./kpi.js";
 import { retention } from "./retention.js";
+import { computeReadiness } from "./readiness.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -178,22 +179,7 @@ api.get("/audit", auth.requireCap("audit"), (req, res) => res.json(listAudit(Num
 
 // ─── Readiness score (section 25) ───────────────────────────────────────────
 api.get("/readiness", auth.requireAuth, (req, res) => {
-  const ov = store.overview();
-  const chk = checklist.listChecklist();
-  const passed = chk.filter((c) => c.status === "reussi").length;
-  const failed = chk.filter((c) => c.status === "echoue").length;
-  const tested = chk.filter((c) => c.status !== "non_teste").length;
-  const bugs = store.bugList();
-  const crit = bugs.filter((b) => b.severity === "critical" && b.status !== "corrige" && b.status !== "ignore").length;
-  const factors = [
-    { label: "Stabilité (erreurs 5 min)", weight: 20, score: Math.max(0, 100 - ov.health.errors5m * 15) },
-    { label: "Bugs critiques ouverts", weight: 25, score: Math.max(0, 100 - crit * 34) },
-    { label: "Réussite des tests fonctionnels", weight: 25, score: tested ? Math.round((passed / (passed + failed || 1)) * 100) : 0 },
-    { label: "Couverture checklist", weight: 15, score: Math.round((tested / chk.length) * 100) },
-    { label: "Disponibilité API", weight: 15, score: ov.totals.apiSuccessRate },
-  ];
-  const total = Math.round(factors.reduce((a, f) => a + f.score * f.weight, 0) / factors.reduce((a, f) => a + f.weight, 0));
-  res.json({ score: total, factors, note: "Indicateur d'aide à la décision, pas une garantie." });
+  res.json(computeReadiness({ overview: store.overview(), checklist: checklist.listChecklist(), bugs: store.bugList() }));
 });
 
 app.use("/api", api);
