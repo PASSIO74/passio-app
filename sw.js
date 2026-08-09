@@ -140,12 +140,29 @@ self.addEventListener("fetch", e => {
     e.respondWith(
       fetch(e.request, { cache: "no-store" })
         .then(res => {
-          if (res.ok) {
-            caches.open(CACHE).then(c => c.put(e.request, res.clone()));
+          // Cloner AVANT que le body soit lu (le clone est asynchrone via
+          // caches.open ; res part vers le navigateur en parallèle).
+          if (res && res.ok) {
+            const copy = res.clone();
+            caches.open(CACHE).then(c => c.put(e.request, copy)).catch(() => {});
           }
           return res;
         })
-        .catch(() => caches.match("./index.html"))
+        // ⚠️ respondWith NE DOIT JAMAIS résoudre sur undefined/null : Safari
+        // affiche « Returned response is null » et refuse la page. On garantit
+        // donc TOUJOURS une Response réelle en dernier recours.
+        .catch(() =>
+          caches.match("./index.html")
+            .then(cached => cached || caches.match(e.request))
+            .then(cached => cached || new Response(
+              "<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>" +
+              "<title>PASSIO</title><body style='font-family:system-ui;margin:0;display:flex;min-height:100vh;align-items:center;justify-content:center;text-align:center;padding:2rem;color:#333'>" +
+              "<div><p style='font-size:1.1rem'>Connexion interrompue.</p>" +
+              "<p><a href='./' style='color:#7c3aed;font-weight:600'>Recharger PASSIO</a></p></div></body>",
+              { status: 200, headers: { "Content-Type": "text/html; charset=utf-8" } }
+            ))
+            .catch(() => new Response("", { status: 503 }))
+        )
     );
     return;
   }
@@ -154,7 +171,10 @@ self.addEventListener("fetch", e => {
   e.respondWith(
     caches.match(e.request).then(cached => {
       const network = fetch(e.request).then(res => {
-        if (res.ok) caches.open(CACHE).then(c => c.put(e.request, res.clone()));
+        if (res && res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE).then(c => c.put(e.request, copy)).catch(() => {});
+        }
         return res;
       }).catch(() => {
         // Réseau absent : on sert depuis le cache et on notifie l'app
@@ -166,6 +186,8 @@ self.addEventListener("fetch", e => {
         return cached || new Response("", { status: 503 });
       });
       return cached || network;
-    })
+    // caches.match peut rejeter (Safari navigation privée) → on tente le réseau,
+    // et on ne laisse JAMAIS respondWith recevoir un rejet non géré.
+    }).catch(() => fetch(e.request).catch(() => new Response("", { status: 503 })))
   );
 });
