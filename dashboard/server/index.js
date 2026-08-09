@@ -26,6 +26,7 @@ import { snapshot as interactionsSnapshot } from "./interactions.js";
 import { kpi } from "./kpi.js";
 import { retention } from "./retention.js";
 import { computeReadiness } from "./readiness.js";
+import { qaReport } from "./qa.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -81,6 +82,9 @@ api.get("/events", auth.requireAuth, (req, res) => {
 
 // ─── Interactions (vérification cross-device temps réel) ────────────────────
 api.get("/interactions", auth.requireAuth, (req, res) => res.json(interactionsSnapshot(Number(req.query.limit) || 120)));
+
+// ─── Campagne QA (rapport de la campagne multi-comptes) ─────────────────────
+api.get("/qa-report", auth.requireAuth, (req, res) => res.json(qaReport()));
 
 // ─── KPI produit (utilisateurs actifs réels, calculés sur telemetry_events) ──
 api.get("/kpi", auth.requireAuth, asyncH(async (req, res) => res.json(await kpi())));

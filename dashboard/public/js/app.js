@@ -82,6 +82,7 @@ const NAV = [
   ["content", "Contenus & interactions", "heart", null, "essentiel"],
   ["kpi", "KPI produit", "trending", null, "essentiel"],
   ["interactions", "Vérif. interactions", "wifi", null, "essentiel"],
+  ["qa", "Campagne QA", "tests", null, "essentiel"],
   ["bugs", "Problèmes", "bugs", null, "essentiel"],
   ["claude", "Réparer avec Claude", "wrench", "claude", "essentiel"],
 
@@ -696,6 +697,116 @@ VIEWS.interactions = async () => {
   $("#iKind").onchange = renderRows;
   $("#iFailBtn").onclick = () => { failOnly = !failOnly; $("#iFailBtn").classList.toggle("on", failOnly); renderRows(); };
   $("#iRefresh").onclick = refresh;
+  S.refresh = refresh; refresh();
+};
+
+// ─── Campagne QA (rapport de la campagne multi-comptes) ───────────────────────
+const QA_SEV = { CRITICAL: "error", HIGH: "error", MEDIUM: "warn", LOW: "info" };
+const qaPill = (st) => st === "PASS" ? '<span class="pill ok">PASS</span>'
+  : st === "FAIL" ? '<span class="pill error">FAIL</span>'
+  : st === "WARN" ? '<span class="pill warn">WARN</span>'
+  : '<span class="pill info">' + esc(st || "—") + '</span>';
+const qaLat = (ms) => (ms == null ? "—" : (ms >= 1000 ? (ms / 1000).toFixed(1) + "s" : Math.round(ms) + "ms"));
+
+VIEWS.qa = async (view) => {
+  mount(`<h2 class="page-title">Campagne QA — transfert de données multi-comptes</h2>
+    <p class="page-sub">Rapport de la dernière campagne : ~10 comptes réels jouent une matrice de transferts cross-compte (message, publication, like, commentaire, réaction, follow, événement, notifications, RLS). Chaque scénario valide TOUTE la chaîne — action → base → realtime → autre appareil → rendu — et sa latence. Un 200 ne suffit pas : « PASS » = donnée reçue, identique, unique, persistée.</p>
+    <div id="qaBody"><div class="empty"><span class="spinner"></span> Chargement du rapport…</div></div>`);
+
+  async function refresh() {
+    let d;
+    try { d = await api.get("/qa-report"); }
+    catch (e) { $("#qaBody").innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
+    if (!d || d.configured === false) {
+      $("#qaBody").innerHTML = `<div class="state-banner"><div class="state-ico">${icon("tests")}</div>
+        <div class="state-txt"><h2>Aucune campagne QA exécutée</h2>
+        <p>${esc((d && (d.message || d.error)) || "Lance la campagne pour peupler cette vue.")}</p>
+        <p class="muted" style="font-size:12px;margin-top:6px">PowerShell : <code>$env:PASSIO_QA_CAMPAIGN="1"; $env:PASSIO_E2E_MULTI="1"; npm test -- qa-campaign</code></p></div></div>`;
+      return;
+    }
+    const t = d.totals || {}, c = d.conclusion || {};
+    const rateCls = t.successRate >= 90 ? "ok" : t.successRate >= 70 ? "warn" : "bad";
+    const yn = (b) => b ? '<span class="pill ok">OUI</span>' : '<span class="pill error">NON</span>';
+    const risk = c.risquePerte || "?";
+    const riskCls = risk === "FAIBLE" ? "ok" : risk === "MOYEN" ? "warn" : "error";
+    const readyUsers = (d.users || []).filter((u) => u.ready).length;
+
+    $("#qaBody").innerHTML = `
+      <div class="state-banner ${rateCls}">
+        <div class="state-ico">${icon("tests")}</div>
+        <div class="state-txt">
+          <h2>${t.successRate ?? 0}% de réussite · ${t.pass || 0}/${t.total || 0} scénarios</h2>
+          <p>${readyUsers} comptes · ${num(t.delivered || 0)} transferts livrés · <b class="${t.lost ? "sev-error" : ""}">${num(t.lost || 0)} perdus</b> · <b class="${t.duplicated ? "sev-error" : ""}">${num(t.duplicated || 0)} dupliqués</b> · latence médiane ${qaLat(t.medianLatencyMs)} (p95 ${qaLat(t.p95LatencyMs)})</p>
+          <p class="muted" style="font-size:12px">Généré ${d.generatedAt ? new Date(d.generatedAt).toLocaleString("fr-FR") : "—"} · durée ${Math.round((d.durationMs || 0) / 1000)}s · v${esc(d.appVersion || "?")}</p>
+        </div>
+      </div>
+
+      <h3 class="section-title" style="margin-top:18px">Conclusion — la question prioritaire</h3>
+      <div class="qa-verdict">
+        <div class="qa-vitem">Transfert de données fiable ${yn(c.transfertFiable)}</div>
+        <div class="qa-vitem">Synchro multi-appareils ${yn(c.syncMultiAppareils)}</div>
+        <div class="qa-vitem">Realtime fiable ${yn(c.realtimeFiable)}</div>
+        <div class="qa-vitem">Centre de pilotage cohérent ${yn(c.centrePilotageCoherent)}</div>
+        <div class="qa-vitem">Risque de perte <span class="pill ${riskCls}">${esc(risk)}</span></div>
+        <div class="qa-vitem">Prêt pour tests utilisateurs ${yn(c.pretTestsUtilisateurs)}</div>
+      </div>
+
+      <div class="inter-tiles" style="margin-top:16px">
+        ${(d.featureStats || []).map((f) => {
+          const col = f.fail ? "var(--err)" : f.warn ? "var(--warn)" : "var(--ok)";
+          return `<div class="inter-tile">
+            <div class="it-head"><span>${esc(f.feature)}</span></div>
+            <div class="it-rate" style="color:${col}">${f.pass}/${f.total}</div>
+            <div class="it-sub">${f.fail} FAIL · ${f.warn} WARN</div>
+            <div class="it-foot">latence méd. ${qaLat(f.medianLatencyMs)}</div>
+          </div>`;
+        }).join("") || '<div class="empty" style="grid-column:1/-1">Aucune statistique.</div>'}
+      </div>
+
+      <h3 class="section-title" style="margin-top:20px">Matrice de communication (messagerie realtime)</h3>
+      <div class="table-wrap"><table><thead><tr><th>Émetteur</th><th>Destinataire</th><th>Statut</th><th>Latence bout-en-bout</th></tr></thead>
+        <tbody>${(d.matrix || []).map((m) => `<tr><td>${esc(m.fromLabel || m.from)}</td><td>${esc(m.toLabel || m.to)}</td><td>${qaPill(m.status)}</td><td class="muted">${qaLat(m.latencyMs)}</td></tr>`).join("") || '<tr><td colspan="4" class="empty">Aucun échange.</td></tr>'}</tbody></table></div>
+
+      <h3 class="section-title" style="margin-top:20px">Journal des transferts (${(d.scenarios || []).length} scénarios)</h3>
+      <div class="feed-toolbar" style="margin-top:8px">
+        <label class="chip-toggle" id="qaFailOnly">${icon("alertTriangle")} <span>Seulement FAIL/WARN</span></label>
+        <span class="muted" style="margin-left:auto;font-size:12px" id="qaCount"></span>
+      </div>
+      <div class="table-wrap"><table><thead><tr><th>ID</th><th>Fonction / type</th><th>De → Vers</th><th>Latence</th><th>Statut</th><th>Attendu → Obtenu</th></tr></thead>
+        <tbody id="qaRows"></tbody></table></div>
+
+      ${(d.bugs || []).length ? `<h3 class="section-title" style="margin-top:20px">Anomalies (${d.bugs.length})</h3>
+      <div class="table-wrap"><table><thead><tr><th>ID</th><th>Sévérité</th><th>Fonction</th><th>Scénario</th><th>Attendu</th><th>Obtenu</th></tr></thead>
+        <tbody>${d.bugs.map((b) => `<tr><td class="mono">${esc(b.id)}</td><td><span class="pill ${QA_SEV[b.severity] || "info"}">${esc(b.severity)}</span></td><td>${esc(b.feature)}</td><td class="mono" style="font-size:11px">${esc(b.scenario)}</td><td>${esc(b.expected || "")}</td><td class="sev-error">${esc(b.got || b.error || "")}</td></tr>`).join("")}</tbody></table></div>` : ""}
+
+      <h3 class="section-title" style="margin-top:20px">Contrôles d'intégrité</h3>
+      <ul class="qa-integrity">${(d.integrity || []).map((i) => `<li>${i.ok ? "✅" : "❌"} ${esc(i.check)} <span class="muted">— ${esc(i.detail)}</span></li>`).join("") || "<li class='muted'>Aucun contrôle.</li>"}</ul>
+
+      <h3 class="section-title" style="margin-top:20px">Comptes de test (${readyUsers}) & graphe de follow (${(d.followGraph || []).filter((e) => e.ok !== false).length} liens)</h3>
+      <div class="table-wrap"><table><thead><tr><th>#</th><th>Profil</th><th>Suit</th></tr></thead>
+        <tbody>${(d.users || []).map((u) => {
+          const outs = (d.followGraph || []).filter((e) => e.from === u.index && e.ok !== false).map((e) => esc(e.toLabel || e.to)).join(", ");
+          return `<tr><td>U${u.index + 1}</td><td>${esc(u.label)}${u.ready ? "" : ' <span class="pill error">absent</span>'}</td><td class="muted">${outs || "—"}</td></tr>`;
+        }).join("")}</tbody></table></div>`;
+
+    // Journal filtrable.
+    let failOnly = false;
+    const rowsHtml = (list) => list.map((s) => `<tr>
+      <td class="mono" style="font-size:11px">${esc(s.id)}</td>
+      <td><b>${esc(s.feature)}</b> <span class="muted">${esc(s.type)}</span></td>
+      <td>${s.fromLabel ? esc(s.fromLabel) : "—"}${s.toLabel ? " → " + esc(s.toLabel) : ""}</td>
+      <td class="muted">${qaLat(s.latencyMs)}</td>
+      <td>${qaPill(s.status)}</td>
+      <td style="font-size:12px"><span class="muted">${esc(s.expected || "")}</span> → ${s.status === "FAIL" ? '<span class="sev-error">' : ""}${esc(s.got || s.error || "")}${s.status === "FAIL" ? "</span>" : ""}</td>
+    </tr>`).join("");
+    const renderRows = () => {
+      const list = (d.scenarios || []).filter((s) => !failOnly || s.status === "FAIL" || s.status === "WARN");
+      $("#qaRows").innerHTML = rowsHtml(list) || '<tr><td colspan="6" class="empty">Aucun scénario.</td></tr>';
+      $("#qaCount").textContent = list.length + " scénario" + (list.length > 1 ? "s" : "");
+    };
+    $("#qaFailOnly").onclick = () => { failOnly = !failOnly; $("#qaFailOnly").classList.toggle("on", failOnly); renderRows(); };
+    renderRows();
+  }
   S.refresh = refresh; refresh();
 };
 
