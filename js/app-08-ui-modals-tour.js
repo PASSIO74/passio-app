@@ -2879,7 +2879,10 @@ async function supaCommentInteract(commentId, postId, kind, payload) {
   try {
     const { error } = await supa.from("comment_interactions").insert({
       id: "ci_" + uid(), comment_id: commentId, post_id: postId || null,
-      user_id: MY_UID, kind: kind, payload: payload || null, created_at: new Date().toISOString(),
+      // payload ≤ 500 : contrainte serveur ci_payload_len_check (migration_anti_flood_interactions).
+      // Sans troncature, une réponse longue serait rejetée en silence (erreur avalée → return false).
+      user_id: MY_UID, kind: kind, payload: payload ? String(payload).slice(0, 500) : null,
+      created_at: new Date().toISOString(),
     });
     if (error) return false;
     return true;
