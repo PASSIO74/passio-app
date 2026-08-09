@@ -15,4 +15,8 @@
 | R9 | Fuite de données cross-profil | Confidentialité | Faible | Élevé | Difficile | `MULTI_PROFILE.md`, tests cross-profil. |
 | R10 | Deux sessions Claude parallèles mélangent des commits | Ops | Faible | Moyen | Facile | Committer au fil de l'eau, hook add ciblé. |
 
+## Remédiations appliquées
+
+- **2026-08-09 — Durcissement advisors (prod).** `migrations/migration_security_hardening.sql` : 3 vues SECURITY DEFINER (`telemetry_last24h`, `client_errors_top_24h`, `client_errors_par_heure`) passées en `security_invoker` (erreurs advisor corrigées) ; EXECUTE révoqué à `PUBLIC/anon/authenticated` sur les fonctions trigger/maintenance (`purge_telemetry`, `rate_limit_insert`, `broadcast_conv_message_to_users`, `posts_freeze_author`) — **`purge_telemetry` n'était appelable par n'importe qui** ; `search_path` épinglé. Non-régression : `multi-comptes` (messagerie + notifications) vert. Restent, **volontairement**, les WARN sur `post_is_visible`/`can_edit_post`/`comment_target_visible` (helpers de policies RLS → `authenticated` doit garder EXECUTE) et `auth_leaked_password_protection` (toggle Auth gratuit → `docs/SETUP_SMTP_AUTH.md`).
+
 Revoir à chaque `/passio-audit` et `/passio-launch-review`.
