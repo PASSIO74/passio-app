@@ -1296,6 +1296,9 @@ async function showApp() {
   $("#fullscreenBtn").onclick = () => { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.(); };
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeDrawer(); } });
   setupCommandPalette();
+  // Lien d'évitement : donne le focus au contenu sans déclencher le routeur par hash.
+  const skip = $("#skipLink");
+  if (skip) skip.addEventListener("click", (e) => { e.preventDefault(); const v = $("#view"); v.focus(); v.scrollIntoView(); });
   // Rafraîchissement périodique doux des vues non-live basées sur agrégats
   setInterval(() => { if (["overview", "performance", "services"].includes(S.currentView) && S.refresh) S.refresh(); }, 10000);
   route();
