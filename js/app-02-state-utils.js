@@ -2516,7 +2516,11 @@ function renderPostHTML(p) {
   const commentsPreview = (p.comments || []).slice(0, 2).map(c => {
     const cu = userById(c.authorId) || { name: "?", profileEmoji: "👤", avatar: "#64748b" };
     const cSrc = c.authorId === "me" ? "me" : "seed";
-    const cLiked = (c.likedBy || []).includes(state.user?.id || "me");
+    // « Aimé par moi » : likeComment() enregistre le like sous MY_UID (souvent ≠
+    // state.user.id, parfois vide) → comparer likedBy à TOUTES mes identités,
+    // sinon le ❤️ de l'aperçu du fil repassait en 🤍 (like « qui ne marche pas »).
+    const _cSelfIds = [(typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : null, state.user?.id, "me"].filter(Boolean);
+    const cLiked = (c.likedBy || []).some(x => _cSelfIds.indexOf(x) > -1);
     const cLikes = c.likes || 0;
     const cReplies = c.replies || [];
 
@@ -2527,7 +2531,7 @@ function renderPostHTML(p) {
         <div class="comment-text">${escapeHtml(c.text)}</div>
         <div class="comment-meta">${fmtTime(c.createdAt)}</div>
         <div class="comment-actions">
-          <span class="comment-action ${cLiked ? "liked" : ""}" onclick="return likeComment('${p.id}','${c.id}', event);">
+          <span class="comment-action ${cLiked ? "liked" : ""}" data-cmtlike="${c.id}" onclick="return likeComment('${p.id}','${c.id}', event);">
             ${cLiked ? "❤️" : "🤍"} ${cLikes}
           </span>
           <span class="comment-action" onclick="return replyToComment('${p.id}','${c.id}','${escapeJsArg(cu.name)}', event);" title="Répondre">💬</span>

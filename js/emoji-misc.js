@@ -307,7 +307,14 @@ function replyToComment(postId, commentId, authorName, event) {
       + 'style="width:34px;height:34px;border-radius:9px;background:var(--accent);color:#fff;border:none;cursor:pointer;font-weight:bold;flex-shrink:0;" '
       + 'onclick="_submitReply(\'' + arg + '\')">✓</button>';
 
-  var commentElement = document.querySelector('[data-commentid="' + commentId + '"]');
+  // Ancre le champ au commentaire RÉELLEMENT cliqué : le même commentaire peut
+  // être rendu deux fois (aperçu du fil SOUS la modale + fil de discussion) et
+  // querySelector('[data-commentid]') renvoie la 1re copie du document — souvent
+  // celle cachée derrière la modale → le champ de réponse s'ouvrait invisible
+  // (« répondre ne marche pas »). event.target.closest('.comment') cible la bonne.
+  var commentElement = null;
+  if (event && event.target && event.target.closest) commentElement = event.target.closest('.comment[data-commentid="' + commentId + '"]');
+  if (!commentElement) commentElement = document.querySelector('[data-commentid="' + commentId + '"]');
   var commentBody = commentElement && commentElement.querySelector(".comment-body");
   if (commentBody) {
     var commentActions = commentBody.querySelector(".comment-actions");
@@ -358,8 +365,13 @@ function _submitReply(arg) {
 function toggleCommentReplies(commentId, event) {
   if (event) { event.stopPropagation(); event.preventDefault(); }
   _diag("📂 toggleCommentReplies(" + commentId + ")");
-  var repliesDiv = document.getElementById("replies-" + commentId);
-  var btn = document.querySelector('[data-commentid="' + commentId + '"] .comment-reply-count');
+  // Cible le commentaire RÉELLEMENT cliqué : le fil peut être rendu deux fois
+  // (détail SOUS la modale + modale) → l'ID `replies-<id>` est dupliqué et
+  // getElementById renvoie la 1re copie (souvent cachée) → « voir les réponses »
+  // dépliait la mauvaise. On cherche d'abord dans le commentaire cliqué.
+  var scope = (event && event.target && event.target.closest) ? event.target.closest('.comment[data-commentid="' + commentId + '"]') : null;
+  var repliesDiv = (scope && scope.querySelector('#replies-' + CSS.escape(commentId))) || document.getElementById("replies-" + commentId);
+  var btn = (scope && scope.querySelector('.comment-reply-count')) || document.querySelector('[data-commentid="' + commentId + '"] .comment-reply-count');
   if (repliesDiv) {
     var isHidden = repliesDiv.style.display === "none" || repliesDiv.style.display === "";
     repliesDiv.style.display = isHidden ? "block" : "none";

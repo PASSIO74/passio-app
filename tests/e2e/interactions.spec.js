@@ -157,6 +157,53 @@ test.describe("Interactions — like d'un commentaire", () => {
     await visible.click();
     await expect(visible).toHaveText(/🤍\s*0/);
   });
+
+  // Régression 2026-08-09 : dans l'APERÇU du fil (2 commentaires sous la carte),
+  // le bouton like du commentaire n'avait pas de [data-cmtlike] → le patch central
+  // _patchCmtLike ne le repeignait jamais et l'état « aimé » était calculé sans
+  // MY_UID → le like semblait « ne pas fonctionner » sur cette surface.
+  test("aperçu du fil : liker un commentaire met à jour le bouton visible", async ({ page }) => {
+    await bootInteractions(page);
+    const id = await showFeed(page);
+    const cid = await page.evaluate((i) => {
+      const p = findPostAnywhere(i);
+      p.comments = p.comments || [];
+      p.comments.unshift({ id: "c_prev_1", authorId: "u_autre", authorName: "Alice", text: "coucou", createdAt: Date.now(), likes: 0, likedBy: [] });
+      window._feedDomSig = null; renderFeed();
+      return "c_prev_1";
+    }, id);
+
+    const like = page.locator(`#feedList [data-postid="${id}"] .comment[data-commentid="${cid}"] [data-cmtlike="${cid}"]`);
+    await expect(like).toHaveText(/🤍\s*0/);
+    await like.click();
+    expect(await page.evaluate((i) => findPostAnywhere(i).comments.find(c => c.id === "c_prev_1").likes, id)).toBe(1);
+    await expect(like).toHaveText(/❤️\s*1/);
+    // L'état survit à un re-rendu du fil (calcul « aimé » sur toutes mes identités).
+    await page.evaluate(() => { window._feedDomSig = null; renderFeed(); });
+    await expect(page.locator(`#feedList [data-postid="${id}"] [data-cmtlike="${cid}"]`)).toHaveText(/❤️\s*1/);
+  });
+
+  // Régression 2026-08-09 : « répondre » depuis la modale insérait le champ dans
+  // la 1re copie [data-commentid] du document — souvent l'aperçu du fil CACHÉ sous
+  // la modale → le champ s'ouvrait invisible (« répondre ne marche pas »).
+  test("répondre depuis la modale ouvre le champ dans la copie visible", async ({ page }) => {
+    await bootInteractions(page);
+    const id = await showFeed(page);
+    const cid = await page.evaluate(async (i) => {
+      const p = findPostAnywhere(i);
+      p.comments = p.comments || [];
+      p.comments.unshift({ id: "c_rep_1", authorId: "u_autre", authorName: "Alice", text: "salut", createdAt: Date.now(), likes: 0, likedBy: [] });
+      window._feedDomSig = null; renderFeed();
+      await openComments(i);
+      return "c_rep_1";
+    }, id);
+
+    await expect(page.locator(`[data-commentid="${cid}"]`)).toHaveCount(2); // aperçu + modale
+    await page.locator(`#commentsBox [data-commentid="${cid}"] .comment-action[title="Répondre"]`).click();
+    // Le champ apparaît DANS la modale (copie cliquée), pas dans l'aperçu caché.
+    await expect(page.locator(`#commentsBox [data-commentid="${cid}"] .comment-reply-input`)).toHaveCount(1);
+    await expect(page.locator(`#feedList [data-commentid="${cid}"] .comment-reply-input`)).toHaveCount(0);
+  });
 });
 
 test.describe("Interactions — événement IRL", () => {
