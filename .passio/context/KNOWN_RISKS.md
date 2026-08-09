@@ -17,6 +17,9 @@
 
 ## Remédiations appliquées
 
+- **2026-08-09 — 🔴 FUITE CRITIQUE de messages privés corrigée (prod).** `migrations/migration_rls_private_dms_stories.sql` : `conv_messages` / `conv_members` / `conversations` avaient une policy SELECT `USING true` → **tout compte authentifié pouvait lire TOUS les DM de tout le monde** (texte + URLs de vocaux) via une requête brute. Corrigé : lecture réservée aux membres (helper `is_conv_member` SECURITY DEFINER anti-récursion). Idem `stories` (fuite des stories de comptes privés) → alignées sur la policy « comptes privés » des posts. Non-régression prouvée : `confidentialite.spec.js` (tiers bloqué + membre OK) + `multi-comptes` messagerie/vocal vert. **Reste `follows`/`event_attendees` en lecture publique = choix assumé (graphe social / RSVP publics, façon IG).** `notifications` déjà scellé (`user_id=auth.uid()`).
+
+
 - **2026-08-09 — Durcissement advisors (prod).** `migrations/migration_security_hardening.sql` : 3 vues SECURITY DEFINER (`telemetry_last24h`, `client_errors_top_24h`, `client_errors_par_heure`) passées en `security_invoker` (erreurs advisor corrigées) ; EXECUTE révoqué à `PUBLIC/anon/authenticated` sur les fonctions trigger/maintenance (`purge_telemetry`, `rate_limit_insert`, `broadcast_conv_message_to_users`, `posts_freeze_author`) — **`purge_telemetry` n'était appelable par n'importe qui** ; `search_path` épinglé. Non-régression : `multi-comptes` (messagerie + notifications) vert. Restent, **volontairement**, les WARN sur `post_is_visible`/`can_edit_post`/`comment_target_visible` (helpers de policies RLS → `authenticated` doit garder EXECUTE) et `auth_leaked_password_protection` (toggle Auth gratuit → `docs/SETUP_SMTP_AUTH.md`).
 
 Revoir à chaque `/passio-audit` et `/passio-launch-review`.
