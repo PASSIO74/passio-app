@@ -3660,23 +3660,127 @@ window.addEventListener("hashchange", _openIrlEventFromHash);
 })();
 
 // Partage d'un événement : Web Share API si dispo, sinon copie du lien.
+// Partage d'un événement : mêmes deux options que sharePost (app-03) —
+// « dans mon feed » (crée un post-repost cliquable) ou « en dehors » (Web Share
+// / copie du lien profond). Le partage in-feed est demandé au même niveau que
+// les carnets CDV.
 function shareEvent(id) {
   const ev = allEvents().find(e => e.id === id);
-  if (!ev) return;
+  if (!ev) { toast("Événement introuvable."); return; }
   const url = location.origin + location.pathname + "#irl-event-" + id;
   const d = fmtEventDate(ev.date);
   const text = `${ev.title} · ${ev.city || ""} · ${d.day} ${d.month}`;
-  if (navigator.share) {
-    navigator.share({ title: ev.title, text, url }).catch(() => {});
+
+  const html = `
+    <div class="modal-title">${shareIconSvg(20)} Partager cet événement</div>
+    <div style="background:var(--bg-soft);border-radius:14px;padding:12px 14px;margin-bottom:16px;font-size:13px;color:var(--text-dim);line-height:1.5;">
+      📍 ${escapeHtml(ev.title || "Événement")}${ev.city ? " · " + escapeHtml(ev.city) : ""}<br>${escapeHtml(d.day + " " + d.month)}
+    </div>
+    <button class="btn primary block" id="_shareEvInFeedBtn" onclick="shareEventInFeed('${escapeJsArg(id)}')" style="margin-bottom:10px;">
+      ➕ Partager dans mon feed
+    </button>
+    <button class="btn secondary block" id="_shareEvOutBtn">
+      ${shareIconSvg(16)} Partager en dehors
+    </button>
+  `;
+  openModal(html);
+  // Listener propre : pas d'injection de texte utilisateur dans un onclick inline.
+  setTimeout(() => {
+    const btn = document.getElementById("_shareEvOutBtn");
+    if (!btn) return;
+    btn.addEventListener("click", function () {
+      if (navigator.share) {
+        navigator.share({ title: ev.title, text, url }).catch(() => {});
+      } else if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url + "\n" + text).then(
+          () => toast("🔗 Lien de l'événement copié"),
+          () => toast("Copie impossible")
+        );
+      } else {
+        toast("🔗 " + url);
+      }
+    });
+  }, 0);
+}
+
+// Crée un post « repost » de l'événement dans le feed (miroir de sharePostInFeed
+// app-03). L'aperçu cliquable est porté par sharedReelData.kind==="event", qui se
+// synchronise via la colonne shared_data (pas de FK, pas de changement de schéma)
+// et se re-parse au chargement Supabase — donc visible cross-compte.
+async function shareEventInFeed(id) {
+  const btn = document.getElementById("_shareEvInFeedBtn");
+  if (btn) { btn.disabled = true; btn.textContent = "Partage en cours…"; }
+
+  if (typeof MY_UID === "undefined" || !MY_UID) {
+    toast("Connexion requise pour partager cet événement.");
+    closeModal();
     return;
   }
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(url + "\n" + text).then(
-      () => toast("🔗 Lien de l'événement copié"),
-      () => toast("Copie impossible")
-    );
-  } else {
-    toast("🔗 " + url);
+
+  const ev = allEvents().find(e => e.id === id);
+  if (!ev) { toast("Événement introuvable."); closeModal(); return; }
+
+  try { window.tel && tel.action("share_event", { eventId: id }); } catch (e) {}
+
+  const prof = currentProfile();
+  const g = state.user.general || {};
+  let authorName = g.username || (prof && prof.name) || "Moi";
+
+  if (!g.username && typeof supa !== "undefined" && supa && MY_UID) {
+    try {
+      const { data } = await supa.from("profiles").select("username").eq("id", MY_UID).maybeSingle();
+      if (data && data.username) { state.user.general.username = data.username; authorName = data.username; }
+    } catch (e) {}
+  }
+
+  const passion = passionById(ev.passion) || { label: ev.passion || "", emoji: "📍" };
+  const d = fmtEventDate(ev.date);
+  const dateStr = d.day + " " + d.month + (d.time ? " · " + d.time : "");
+
+  // Texte stocké EN CLAIR : renderPostHTML l'échappe une fois (pas de double
+  // échappement).
+  const newPost = {
+    id: "post_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9),
+    type: "text",
+    authorId: MY_UID,
+    authorName: authorName,
+    authorEmoji: (prof && prof.emoji) || g.emoji || "✨",
+    authorColor: (prof && prof.color) || g.color || "#8b5cf6",
+    text: `📍 A partagé un événement\n\n${ev.title}\n${passion.emoji} ${passion.label}${ev.city ? " · " + ev.city : ""} · ${dateStr}`,
+    passion: ev.passion || null,
+    mood: "irl",
+    createdAt: Date.now(),
+    timestamp: Date.now(),
+    likes: 0,
+    comments: [],
+    sharedReelData: {
+      kind: "event",
+      id: ev.id,
+      title: ev.title || "Événement",
+      city: ev.city || "",
+      venue: ev.venue || "",
+      date: ev.date || null,
+      passion: ev.passion || null,
+    },
+  };
+
+  if (!state.userPosts) state.userPosts = [];
+  state.userPosts.push(newPost);
+  saveState();
+
+  closeModal();
+  setTimeout(() => { goTo("feed"); setTimeout(() => renderFeed(), 100); }, 100);
+  toast("✅ Événement partagé dans ton feed.");
+
+  if (typeof supa !== "undefined" && supa) {
+    try {
+      const syncPromise = supaPublishPostWithRetry(newPost);
+      const timeout = new Promise(resolve => setTimeout(() => resolve(false), 5000));
+      const ok = await Promise.race([syncPromise, timeout]);
+      if (!ok) console.warn("⚠️ [SHARE-EVENT] Sync timeout — partagé localement uniquement");
+    } catch (e) {
+      console.warn("⚠️ [SHARE-EVENT] Erreur sync:", e.message);
+    }
   }
 }
 

@@ -2439,6 +2439,27 @@ function renderPostHTML(p) {
       </div>
     </div>`;
   }
+  // Événement IRL partagé dans le feed (shareEventInFeed, app-07) → carte
+  // compacte cliquable vers la fiche. Porté par sharedReelData.kind==="event".
+  if (p.sharedReelData && p.sharedReelData.kind === "event") {
+    const se = p.sharedReelData;
+    const sd = (typeof fmtEventDate === "function" && se.date) ? fmtEventDate(se.date) : null;
+    const sp = passionById(se.passion) || { label: "", emoji: "📍" };
+    media = `<div class="post-vlog-card" onclick="event.stopPropagation();openEventDetails('${escapeJsArg(se.id)}')" style="cursor:pointer;">
+      <div style="display:flex;gap:12px;align-items:center;padding:14px;background:var(--bg-soft);border:1px solid var(--border);border-radius:14px;">
+        <div class="event-date-block" style="flex-shrink:0;">
+          <div class="event-date-day">${sd ? escapeHtml(sd.day) : "📍"}</div>
+          <div class="event-date-month">${sd ? escapeHtml(sd.month) : ""}</div>
+        </div>
+        <div style="flex:1;min-width:0;">
+          <span class="cdv-feed-tag" style="display:inline-block;margin-bottom:4px;">📍 ÉVÉNEMENT IRL</span>
+          <div style="font-weight:800;font-size:15px;line-height:1.25;">${escapeHtml(se.title || "Événement")}</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:3px;">${sp.emoji} ${escapeHtml(sp.label)}${se.city ? " · 📍 " + escapeHtml(se.city) : ""}</div>
+        </div>
+        <span class="btn small primary" style="flex-shrink:0;pointer-events:none;">Voir</span>
+      </div>
+    </div>`;
+  }
   const shouldCover = p.type === "photo" || (p.cover && p.type !== "vlog");
   if (shouldCover) {
     // ✅ VALIDATION PHOTO - Vérifier que l'URL est valide
