@@ -26,18 +26,18 @@ Priorité **P0–P4** · Impact (H/M/B) · Difficulté (H/M/B) · Statut : ✅ F
 | Playbooks (carte → skills) | ✅ | `.passio/playbooks/README.md` |
 | Gouvernance des agents (frontières READ/SAFE/SENSITIVE/DESTRUCTIVE) | ✅ | `.passio/context/AGENT_MODEL.md`, `VISION.md` |
 
-## WAVE 4 — Qualité du dashboard 🔄 (3/4)
+## WAVE 4 — Qualité du dashboard ✅ (4/4)
 | Item | P | Impact | Diff. | Dépendances | Validation |
 |---|---|---|---|---|---|
 | ✅ Home « statut en 1 minute » | P1 | H | M | métriques existantes | Accueil + **Brief exécutif** copiable (`b99928f`), bandeau honnête « pas de données » (`f4bd7d1`) |
 | ✅ Provenance visible sur chaque métrique (source/fraîcheur/confiance/RÉEL-LOCAL) | P1 | H | M | `METRICS_REGISTRY.md` | Bandeau de provenance sur Accueil / KPI / Brief (`f4bd7d1`, `2931f5d`) |
 | ✅ Command palette (Ctrl/⌘-K) | P2 | M | M | — | Navigation clavier vers toute vue + actions (`a3dbcdd`) |
-| Accessibilité (contraste, focus, clavier) | P2 | M | M | skill `a11y` | Passe AA — ⬜ à faire |
+| ✅ Accessibilité (focus clavier, reduced-motion, lien d'évitement) | P2 | M | M | skill `a11y` | `:focus-visible` cohérent, `prefers-reduced-motion`, skip-link (`081fe36`). Reste : audit contraste AA au rendu |
 
 ## WAVE 5 — Données 🔄 (KPI/rétention faits ; sources & cron à venir)
 | Item | P | Impact | Diff. | Dépendances | Validation |
 |---|---|---|---|---|---|
-| Registre de sources vivant (statut/last-success/last-failure) | P2 | M | B | `INTEGRATIONS_REGISTRY.md` | Panneau « Sources » avec état réel |
+| ✅ Registre de sources vivant | P2 | M | B | `INTEGRATIONS_REGISTRY.md` | Vue « Sources de données » : état réel Supabase/télémétrie/realtime/Claude/Git + intégrations non configurées honnêtes (`02fe49f`) |
 | ✅ Agrégats KPI produit (DAU/WAU/MAU, habitude, retour 7j, rétention J1/J7/J30) | P1 | H | H | télémétrie | RÉEL : `kpi.js` + `retention.js` (`2931f5d`, `c39ff77`), tests 28/28, rétention gardée « insuffisant » tant que la fenêtre n'est pas couverte |
 | Cron `purge_telemetry(30)` (rétention) | P2 | M | B | pg_cron | Rétention appliquée |
 
