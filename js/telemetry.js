@@ -392,6 +392,54 @@
     click: function (label, meta) { track("click", label, { meta: meta }); },
     perf: function (name, ms, meta) { track("perf", name, { duration_ms: ms, status: ms > 2000 ? "slow" : "ok", meta: meta }); },
     api: function (f) { track("api", f && f.action || "request", f); },
+    // ── Suivi des liens partagés (funnel honnête) ─────────────────────────────
+    // linkCreate : à l'instant où l'app FABRIQUE une URL partageable. Renvoie un
+    // identifiant de lien stable (à insérer dans l'URL via tagUrl) qui permettra
+    // d'apparier, côté pilotage, la CRÉATION à une ÉVENTUELLE ouverture confirmée.
+    linkCreate: function (kind, target) {
+      var id = "lk_" + uid16();
+      track("link", "link_create", {
+        correlation_id: id, severity: "info", status: "ok", message: "Lien créé",
+        meta: {
+          link_id: id,
+          link_kind: String(kind || "app").slice(0, 24),
+          link_target: target != null ? String(target).slice(0, 40) : null,
+        },
+      });
+      return id;
+    },
+    // linkShare : le lien vient d'être copié ou envoyé via un canal (clipboard,
+    // whatsapp, email, sms, natif…). N'affirme rien sur l'ouverture.
+    linkShare: function (id, channel) {
+      if (!id) return;
+      track("link", "link_share", {
+        correlation_id: id, severity: "info", status: "ok",
+        message: "Lien partagé (" + (channel || "?") + ")",
+        meta: { link_id: id, link_channel: String(channel || "?").slice(0, 24) },
+      });
+      flush();
+    },
+    // tagUrl : insère le marqueur de suivi ?plk=<id> AVANT le hash de l'URL, sans
+    // toucher au routage par hash de l'app (deep-links #reel/#irl-event conservés).
+    tagUrl: function (url, id) {
+      if (!id) return url;
+      try {
+        var u = new URL(url, location.href);
+        u.searchParams.set("plk", id);
+        return u.toString();
+      } catch (e) {
+        var s = String(url || ""), hash = "", hi = s.indexOf("#");
+        if (hi >= 0) { hash = s.slice(hi); s = s.slice(0, hi); }
+        s += (s.indexOf("?") >= 0 ? "&" : "?") + "plk=" + encodeURIComponent(id);
+        return s + hash;
+      }
+    },
+    // linkFromUrl : relit l'identifiant de suivi d'une URL taguée (pour émettre un
+    // link_share depuis une fonction qui ne reçoit que l'URL).
+    linkFromUrl: function (url) {
+      try { return new URL(url, location.href).searchParams.get("plk") || null; }
+      catch (e) { var m = /[?&]plk=([^&#]+)/.exec(String(url || "")); return m ? decodeURIComponent(m[1]) : null; }
+    },
     error: function (err, ctx) {
       var e = err || {};
       track("error", (ctx && ctx.action) || "js_error", {
@@ -420,6 +468,28 @@
 
   // 1) Cycle de vie / session
   track("session", "start", { meta: { referrer: document.referrer ? "external" : "direct", online: navigator.onLine } });
+
+  // 1quater) OUVERTURE DE LIEN CONFIRMÉE. Si l'URL porte le marqueur ?plk=<id>,
+  // c'est que la page a RÉELLEMENT chargé sur l'appareil cible et que ce code
+  // s'exécute → preuve honnête d'ouverture (aucune supposition : sans ce signal,
+  // le pilotage ne prétend jamais qu'un lien a été ouvert). On nettoie ensuite le
+  // marqueur de la barre d'adresse pour ne pas le re-partager par erreur.
+  (function captureLinkOpen() {
+    try {
+      var plk = new URLSearchParams(location.search).get("plk");
+      if (!plk) return;
+      track("link", "link_open", {
+        correlation_id: plk, severity: "info", status: "ok",
+        message: "Ouverture de lien confirmée (page chargée)",
+        meta: { link_id: plk, referrer: document.referrer ? "external" : "direct", online: navigator.onLine },
+      });
+      flush();
+      if (window.history && history.replaceState) {
+        var u = new URL(location.href); u.searchParams.delete("plk");
+        history.replaceState(null, "", u.pathname + u.search + u.hash);
+      }
+    } catch (e) {}
+  })();
   document.addEventListener("visibilitychange", function () {
     track("lifecycle", document.hidden ? "hidden" : "visible");
     if (document.hidden) flush({ keepalive: true });

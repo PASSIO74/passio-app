@@ -20,7 +20,7 @@ const S = {
   aliasN: 0,
 };
 const $ = (s, r = document) => r.querySelector(s);
-const LIVE = new Set(["overview", "activity", "devices", "users", "content", "messaging", "services", "performance", "bugs"]);
+const LIVE = new Set(["overview", "activity", "devices", "users", "content", "links", "messaging", "services", "performance", "bugs"]);
 
 // ─── Utilitaires ─────────────────────────────────────────────────────────────
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -31,8 +31,8 @@ function ago(ts) {
   if (s < 86400) return Math.floor(s / 3600) + "h"; return Math.floor(s / 86400) + "j";
 }
 const SEV_COLOR = { critical: "var(--crit)", error: "var(--err)", warn: "var(--warn)", info: "var(--info)", debug: "var(--muted-2)" };
-const TYPE_FR = { nav: "Navigation", action: "Action", click: "Clic", error: "Erreur", api: "API", perf: "Perf", session: "Session", lifecycle: "Cycle de vie", connectivity: "Connexion", db: "Base" };
-function dotColor(ev) { return ev.type === "error" ? SEV_COLOR[ev.severity] || "var(--err)" : ev.type === "connectivity" ? (SEV_COLOR[ev.severity] || "var(--warn)") : ev.status === "error" ? "var(--err)" : ev.status === "slow" ? "var(--warn)" : ev.type === "api" ? "var(--info)" : "var(--accent)"; }
+const TYPE_FR = { nav: "Navigation", action: "Action", click: "Clic", error: "Erreur", api: "API", perf: "Perf", session: "Session", lifecycle: "Cycle de vie", connectivity: "Connexion", link: "Lien", db: "Base" };
+function dotColor(ev) { return ev.type === "error" ? SEV_COLOR[ev.severity] || "var(--err)" : ev.type === "connectivity" ? (SEV_COLOR[ev.severity] || "var(--warn)") : (ev.type === "link" && ev.action === "link_open") ? "var(--ok)" : ev.status === "error" ? "var(--err)" : ev.status === "slow" ? "var(--warn)" : ev.type === "api" ? "var(--info)" : ev.type === "link" ? "#c084fc" : "var(--accent)"; }
 function toast(msg) { const t = $("#toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(() => (t.hidden = true), 2600); }
 async function copy(text, label) { try { await navigator.clipboard.writeText(text); toast((label || "Copié") + " ✓"); } catch { toast("Copie impossible"); } }
 function num(n) { return (n == null ? "—" : n.toLocaleString("fr-FR")); }
@@ -47,6 +47,8 @@ const ACTION_FR = {
   start: "Début de session", end: "Fin de session", hidden: "Onglet masqué", visible: "Onglet visible",
   offline: "Hors ligne", online: "Reconnecté", send_failed: "Envoi échoué (réseau)",
   recovered: "Connexion rétablie", server_reject: "Lot rejeté (serveur)",
+  link_create: "Lien créé", link_share: "Lien partagé", link_copy: "Lien copié",
+  link_open: "Lien ouvert (confirmé)", link_load_error: "Échec d'ouverture du lien",
 };
 function actionLabel(ev) {
   if (ev.action && ACTION_FR[ev.action]) return ACTION_FR[ev.action];
@@ -82,6 +84,7 @@ const NAV = [
   ["activity", "Tout ce qui se passe", "activity", null, "essentiel"],
   ["users", "Comptes & connexions", "users", null, "essentiel"],
   ["content", "Contenus & interactions", "heart", null, "essentiel"],
+  ["links", "Liens partagés", "share", null, "essentiel"],
   ["kpi", "KPI produit", "trending", null, "essentiel"],
   ["interactions", "Vérif. interactions", "wifi", null, "essentiel"],
   ["qa", "Campagne QA", "tests", null, "essentiel"],
@@ -641,6 +644,154 @@ function filteredFeed(title, sub, pred) {
   const apply = () => { $("#feed").innerHTML = S.buffer.filter(pred).slice(-200).reverse().map(feedRow).join("") || '<div class="empty">Aucun événement correspondant pour le moment.</div>'; };
   S.refresh = apply; apply();
 }
+
+// ── Liens partagés (cycle de vie création → partage → ouverture confirmée) ───
+// Sémantique HONNÊTE des statuts : chaque étape est adossée à un signal RÉEL.
+const LINK_STATUS = {
+  created:      { pill: "info",  label: "créé",                 desc: "généré, pas encore partagé" },
+  shared:       { pill: "warn",  label: "partagé · non confirmé", desc: "envoyé, aucun signal d'ouverture reçu" },
+  opened:       { pill: "ok",    label: "ouvert (confirmé)",    desc: "la page a chargé sur l'appareil cible" },
+  opened_error: { pill: "error", label: "ouverture en échec",   desc: "page atteinte mais chargement en erreur" },
+  unknown:      { pill: "info",  label: "inconnu",              desc: "" },
+};
+const LINK_KIND_FR = { reel: "Bobine", profile: "Profil", post: "Publication", event: "Événement", carnet: "Carnet", app: "Application" };
+const shortLink = (id) => "#" + String(id || "").replace(/^lk_/, "").slice(0, 8);
+const linkKind = (l) => LINK_KIND_FR[l.kind] || l.kind || "Lien";
+// Ligne de timeline au format demandé : « HH:MM:SS — Lien #abc — Événement ».
+function linkTimelineRow(ev) {
+  const id = ev.correlation_id || (ev.meta && ev.meta.link_id) || "?";
+  const dev = ev.platform ? ` · ${ev.platform}${ev.browser ? "/" + ev.browser : ""}` : "";
+  let txt, cls;
+  if (ev.action === "link_create") { txt = `Lien ${shortLink(id)} créé${ev.meta && ev.meta.link_kind ? " (" + (LINK_KIND_FR[ev.meta.link_kind] || ev.meta.link_kind) + ")" : ""}`; cls = "info"; }
+  else if (ev.action === "link_share" || ev.action === "link_copy") { txt = `Lien ${shortLink(id)} partagé${ev.meta && ev.meta.link_channel ? " (" + ev.meta.link_channel + ")" : ""}`; cls = "accent"; }
+  else if (ev.action === "link_open") { txt = `Lien ${shortLink(id)} — Ouverture confirmée (page chargée)${dev}`; cls = "ok"; }
+  else if (ev.action === "link_load_error") { txt = `Lien ${shortLink(id)} — Échec de chargement${dev}`; cls = "error"; }
+  else { txt = `Lien ${shortLink(id)} — ${esc(actionLabel(ev))}`; cls = "info"; }
+  return `<div class="tl-row" onclick='window.__linkDetail(${JSON.stringify(id)})'>
+    <span class="tl-time">${hhmmss(ev.ts)}</span><span class="tl-dot ${cls}"></span>
+    <span class="tl-txt">${esc(txt)}</span></div>`;
+}
+
+VIEWS.links = async () => {
+  mount(`<h2 class="page-title">Liens partagés</h2>
+    <p class="page-sub">Cycle de vie de chaque lien généré par Passio : <b>créé → partagé → ouverture confirmée</b>. Principe d'honnêteté : on ne prétend <u>jamais</u> qu'un lien a été « cliqué ». Une ouverture n'est comptée que si la page a <b>réellement chargé</b> sur l'appareil cible et renvoyé un signal (marqueur <span class="mono">?plk</span>). Un lien partagé sans signal reste « non confirmé ».</p>
+    <div id="lkProv"></div>
+    <div class="grid kpi-grid" id="lkFunnel"></div>
+    <div class="cols cols-2" style="margin-top:16px">
+      <div class="card chart-card"><h4>Activité des liens en direct</h4><div class="chart-meta">Les événements de liens au fil de l'eau · format horodaté</div><div id="lkTimeline" class="timeline"></div></div>
+      <div class="card chart-card"><h4>Répartition par statut</h4><div class="chart-meta">Où en sont les liens dans l'entonnoir</div><div id="lkBreakdown"></div></div>
+    </div>
+    <div class="feed-toolbar" style="margin-top:16px">
+      <select class="select" id="lkStatus"><option value="">Tous statuts</option><option value="created">Créés</option><option value="shared">Partagés · non confirmés</option><option value="opened">Ouverts (confirmés)</option><option value="opened_error">Ouverture en échec</option></select>
+      <select class="select" id="lkKind"><option value="">Tous types</option></select>
+      <button class="btn btn-sm" id="lkExport">${icon("download")} Exporter</button>
+      <span class="muted" style="margin-left:auto;font-size:12px" id="lkCount"></span>
+    </div>
+    <div class="table-wrap"><table><thead><tr><th>Statut</th><th>Lien</th><th>Type / cible</th><th>Créé par</th><th>Partages</th><th>Ouvertures</th><th>Dernière activité</th></tr></thead><tbody id="lkRows"></tbody></table></div>`);
+
+  let data = { funnel: {}, links: [] };
+  let kindInit = false;
+  const readF = () => ({ status: $("#lkStatus").value, kind: $("#lkKind").value });
+
+  async function refresh() {
+    try { data = await api.get("/links?limit=400"); }
+    catch (e) { $("#lkRows").innerHTML = `<tr><td colspan="7" class="empty">${esc(e.message)}</td></tr>`; return; }
+    const f = data.funnel || {};
+    // Provenance (comme partout : jamais un chiffre sans dire d'où il vient).
+    $("#lkProv").innerHTML = `<div class="prov-strip">
+      <div class="prov-item"><span class="prov-ic">${icon("share")}</span><span class="prov-k">Liens suivis</span><span class="prov-v">${num(f.total || 0)}</span></div>
+      <div class="prov-item"><span class="prov-k">Aujourd'hui</span><span class="prov-v">${num(f.createdToday || 0)} créés · ${num(f.openedToday || 0)} ouverts</span></div>
+      <div class="prov-item"><span class="prov-ic">${icon("clock")}</span><span class="prov-k">Dernière activité</span><span class="prov-v">${f.lastActivity ? "il y a " + ago(f.lastActivity) : "—"}</span></div>
+      <span class="prov-note">Chaque ouverture = un signal réel reçu (jamais supposé)</span></div>`;
+
+    // Entonnoir : cartes chiffrées honnêtes.
+    const openRate = f.openRate == null ? '<span class="muted">n/a</span>' : f.openRate + " %";
+    const cards = [
+      { ic: "share",        l: "Liens créés",             v: num(f.created || 0),  s: "générés depuis l'app" },
+      { ic: "external",     l: "Partagés",                v: num(f.shared || 0),   s: "copiés ou envoyés" },
+      { ic: "checkCircle",  l: "Ouvertures confirmées",   v: num(f.opened || 0),   s: "page réellement chargée", ok: true },
+      { ic: "alertTriangle",l: "Partagés · non confirmés",v: num(f.sharedUnconfirmed || 0), s: "aucun signal d'ouverture", warn: (f.sharedUnconfirmed || 0) > 0 },
+      { ic: "trending",     l: "Taux d'ouverture",        v: openRate,             s: "des liens partagés, confirmés ouverts" },
+    ];
+    $("#lkFunnel").innerHTML = cards.map((c) => `<div class="kpi${c.ok ? " kpi-ok" : ""}${c.warn ? " kpi-warn" : ""}">
+      <div class="kpi-label">${icon(c.ic)} ${c.l}</div><div class="kpi-value">${c.v}</div><div class="kpi-sub">${c.s}</div></div>`).join("");
+
+    // Répartition par statut (barres proportionnelles).
+    const byStatus = {};
+    (data.links || []).forEach((l) => { byStatus[l.status] = (byStatus[l.status] || 0) + 1; });
+    const totalL = (data.links || []).length || 1;
+    const order = ["opened", "shared", "created", "opened_error"];
+    $("#lkBreakdown").innerHTML = order.filter((s) => byStatus[s]).map((s) => {
+      const cfg = LINK_STATUS[s]; const n = byStatus[s]; const pctv = Math.round((n / totalL) * 100);
+      return `<div class="lk-bar-row"><span class="pill ${cfg.pill}">${cfg.label}</span>
+        <div class="lk-bar"><div class="lk-bar-fill ${cfg.pill}" style="width:${pctv}%"></div></div>
+        <span class="lk-bar-n">${n}</span></div>`;
+    }).join("") || '<div class="empty" style="padding:18px">Aucun lien suivi pour l\'instant. Partage une bobine ou un profil depuis Passio (le lien portera un marqueur de suivi).</div>';
+
+    if (!kindInit) {
+      const kinds = [...new Set((data.links || []).map((l) => l.kind).filter(Boolean))];
+      if (kinds.length) { $("#lkKind").innerHTML = '<option value="">Tous types</option>' + kinds.map((k) => `<option value="${esc(k)}">${esc(LINK_KIND_FR[k] || k)}</option>`).join(""); kindInit = true; }
+    }
+    renderTimeline();
+    renderRows();
+  }
+  function renderTimeline() {
+    const evs = S.buffer.filter((e) => e.type === "link").slice(-40).reverse();
+    $("#lkTimeline").innerHTML = evs.map(linkTimelineRow).join("") || '<div class="empty" style="padding:20px">En attente d\'activité de liens. Les créations, partages et ouvertures apparaîtront ici en direct.</div>';
+  }
+  function renderRows() {
+    const f = readF();
+    let rows = (data.links || []).filter((l) => (!f.status || l.status === f.status) && (!f.kind || l.kind === f.kind));
+    $("#lkRows").innerHTML = rows.map(linkRow).join("") || '<tr><td colspan="7" class="empty">Aucun lien correspondant.</td></tr>';
+    $("#lkCount").textContent = rows.length + " lien" + (rows.length > 1 ? "s" : "");
+  }
+  $("#lkStatus").onchange = renderRows; $("#lkKind").onchange = renderRows;
+  $("#lkExport").onclick = () => exportJson(data.links || [], "liens-passio");
+  S.refresh = () => { renderTimeline(); if (!S.paused) refresh(); };
+  refresh();
+};
+function linkRow(l) {
+  const cfg = LINK_STATUS[l.status] || LINK_STATUS.unknown;
+  const opens = l.openCount ? `<b class="${l.errorOpens && l.errorOpens === l.openCount ? "sev-error" : "sev-ok"}">${l.openCount}</b> <span class="muted">· ${l.openDevices} appareil${l.openDevices > 1 ? "s" : ""}</span>` : '<span class="muted">aucune</span>';
+  const chans = (l.channels || []).length ? `<span class="muted">· ${l.channels.map(esc).join(", ")}</span>` : "";
+  return `<tr onclick='window.__linkDetail(${JSON.stringify(l.id)})'>
+    <td><span class="pill ${cfg.pill}">${cfg.label}</span></td>
+    <td class="mono">${shortLink(l.id)}${l.orphan ? ' <span class="pill info" title="Ouverture sans création connue">orphelin</span>' : ""}</td>
+    <td>${esc(linkKind(l))}${l.target ? ` <span class="muted mono" style="font-size:11px">${esc(String(l.target).slice(0, 14))}</span>` : ""}</td>
+    <td>${l.createdBy || l.createdByLabel ? nameFor(l.createdBy, l.createdByLabel) : '<span class="muted">—</span>'}</td>
+    <td>${l.shareCount || 0} ${chans}</td>
+    <td>${opens}</td>
+    <td class="muted">${ago(l.lastEvent)}</td></tr>`;
+}
+window.__linkDetail = async (id) => {
+  openDrawer("Chargement…", '<div class="empty"><span class="spinner"></span></div>');
+  let l;
+  try { l = await api.get("/links/" + encodeURIComponent(id)); }
+  catch (e) { return openDrawer("Erreur", `<div class="empty">${esc(e.message)}</div>`); }
+  if (!l) return openDrawer("Lien", '<div class="empty">Lien introuvable.</div>');
+  const cfg = LINK_STATUS[l.status] || LINK_STATUS.unknown;
+  const openRows = (l.opens || []).slice().reverse().map((o) => `<div class="tl-row">
+    <span class="tl-time">${hhmmss(o.ts)}</span><span class="tl-dot ${o.status === "error" ? "error" : "ok"}"></span>
+    <span class="tl-txt">${o.status === "error" ? "Échec de chargement" : "Ouverture confirmée"} <span class="muted">· ${esc(o.platform || "?")}${o.browser ? "/" + esc(o.browser) : ""}${o.userLabel ? " · " + esc(o.userLabel) : o.user ? " · " + nameFor(o.user) : ""}</span></span></div>`).join("");
+  const shareRows = (l.shares || []).slice().reverse().map((s) => `<div class="tl-row">
+    <span class="tl-time">${hhmmss(s.ts)}</span><span class="tl-dot accent"></span>
+    <span class="tl-txt">Partagé <span class="muted">· ${esc(s.channel || "?")}</span></span></div>`).join("");
+  openDrawer(`Lien ${shortLink(l.id)} · <span class="pill ${cfg.pill}">${cfg.label}</span>`, `
+    <div class="detail-grid">
+      ${detail("Identifiant", `<span class="mono">${esc(l.id)}</span>`)}
+      ${detail("Type", esc(linkKind(l)))}
+      ${l.target ? detail("Cible", `<span class="mono">${esc(l.target)}</span>`) : ""}
+      ${detail("Créé le", l.createdAt ? new Date(l.createdAt).toLocaleString("fr-FR") : '<span class="muted">inconnu (ouverture orpheline)</span>')}
+      ${detail("Créé par", l.createdBy || l.createdByLabel ? nameFor(l.createdBy, l.createdByLabel) : "—")}
+      ${detail("Partages", `${l.shareCount || 0}${(l.channels || []).length ? " · " + l.channels.map(esc).join(", ") : ""}`)}
+      ${detail("Ouvertures confirmées", `${l.openCount || 0} sur ${l.openDevices || 0} appareil(s)${l.errorOpens ? " · " + l.errorOpens + " en échec" : ""}`)}
+    </div>
+    <div class="fix-note ${l.openCount ? "ok" : "" }" style="margin-top:12px">${icon(l.openCount ? "checkCircle" : "alertTriangle")} ${esc(cfg.desc || "")}${!l.openCount && l.shareCount ? " — ce lien a été partagé mais aucune ouverture n'a été confirmée pour l'instant." : ""}</div>
+    ${shareRows ? `<div class="section-title">Partages</div><div class="timeline">${shareRows}</div>` : ""}
+    ${openRows ? `<div class="section-title">Ouvertures</div><div class="timeline">${openRows}</div>` : ""}
+    <div class="copy-row"><button class="btn btn-sm" onclick='window.__copy(${JSON.stringify(l.id)},"Identifiant du lien")'>${icon("copy")} Copier l'ID</button>
+    <a class="btn btn-sm" href="#activity">${icon("activity")} Voir dans le flux</a></div>`);
+};
 
 // ── Vérification des interactions cross-device ──────────────────────────────
 // Icônes maison (pas d'emoji) par type d'interaction logique.

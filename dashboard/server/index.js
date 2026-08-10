@@ -83,6 +83,10 @@ api.get("/events", auth.requireAuth, (req, res) => {
 // ─── Interactions (vérification cross-device temps réel) ────────────────────
 api.get("/interactions", auth.requireAuth, (req, res) => res.json(interactionsSnapshot(Number(req.query.limit) || 120)));
 
+// ─── Liens partagés (cycle de vie création → partage → ouverture confirmée) ──
+api.get("/links", auth.requireAuth, (req, res) => res.json({ funnel: store.linkFunnel(), links: store.linkList(Number(req.query.limit) || 300) }));
+api.get("/links/:id", auth.requireAuth, (req, res) => { const l = store.link(req.params.id); l ? res.json(l) : res.status(404).json({ error: "Lien introuvable" }); });
+
 // ─── Campagne QA (rapport de la campagne multi-comptes) ─────────────────────
 api.get("/qa-report", auth.requireAuth, (req, res) => res.json(qaReport()));
 

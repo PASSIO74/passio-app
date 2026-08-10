@@ -95,6 +95,7 @@ class Store {
     this.sessions = new Map();           // sessions d'activité (par session_id)
     this.users = new Map();
     this.bugs = new Map();               // fingerprint -> bug live
+    this.links = new Map();              // linkId -> cycle de vie d'un lien partagé
     this.testUids = new Set();           // comptes de test à EXCLURE (faux profils)
     this.resolvedNames = {};             // uid -> pseudo (résolu depuis profiles)
     // statut/notes de bug persistés (survivent au redémarrage)
@@ -136,6 +137,7 @@ class Store {
     this._touchDevice(ev);
     this._touchSession(ev);
     this._touchUser(ev);
+    if (ev.type === "link") this._touchLink(ev);
     if (this._isProblem(ev)) this._recordBug(ev);
     return true;
   }
@@ -192,6 +194,112 @@ class Store {
     if (!u) { u = { userId: ev.user_id, devices: new Set(), firstSeen: ev.ts }; this.users.set(ev.user_id, u); }
     u.lastSeen = ev.ts; u.label = ev.user_label || u.label;
     if (ev.device_id) u.devices.add(ev.device_id);
+  }
+
+  // ── Suivi du cycle de vie des liens partagés ────────────────────────────────
+  // PRINCIPE D'HONNÊTETÉ : on ne prétend JAMAIS qu'un lien a été « cliqué ».
+  // On distingue des étapes prouvées par un signal réel :
+  //   créé (link_create) → partagé/copié (link_share) → OUVERTURE CONFIRMÉE
+  //   (link_open : la page a réellement chargé sur l'appareil cible et a émis le
+  //   marqueur ?plk) → échec de chargement (link_load_error). Un lien partagé
+  //   sans signal d'ouverture reste « non confirmé », jamais « ouvert ».
+  _touchLink(ev) {
+    const id = ev.correlation_id || (ev.meta && ev.meta.link_id);
+    if (!id) return;
+    let l = this.links.get(id);
+    if (!l) {
+      l = {
+        id, kind: null, target: null, createdAt: null,
+        createdBy: null, createdByLabel: null, createdDevice: null, createdPlatform: null,
+        shareCount: 0, channels: new Set(), shares: [],
+        opens: [], openDevices: new Set(), openCount: 0, errorOpens: 0,
+        firstOpen: null, lastOpen: null, lastEvent: ev.ts,
+      };
+      this.links.set(id, l);
+      // Borne la carte (les liens les plus anciens sont évincés).
+      if (this.links.size > 8000) { const first = this.links.keys().next().value; this.links.delete(first); }
+    }
+    l.lastEvent = ev.ts;
+    const m = ev.meta || {};
+    if (ev.action === "link_create") {
+      l.createdAt = l.createdAt || ev.ts;
+      l.kind = m.link_kind || l.kind;
+      l.target = m.link_target || l.target;
+      l.createdBy = ev.user_id || l.createdBy;
+      l.createdByLabel = ev.user_label || l.createdByLabel;
+      l.createdDevice = ev.device_id || l.createdDevice;
+      l.createdPlatform = ev.platform || l.createdPlatform;
+    } else if (ev.action === "link_share" || ev.action === "link_copy") {
+      l.shareCount++;
+      if (m.link_channel) l.channels.add(m.link_channel);
+      l.shares.push({ ts: ev.ts, channel: m.link_channel || "?" });
+      if (l.shares.length > 50) l.shares.shift();
+      if (!l.createdBy && ev.user_id) { l.createdBy = ev.user_id; l.createdByLabel = ev.user_label; }
+    } else if (ev.action === "link_open" || ev.action === "link_load_error") {
+      const err = ev.action === "link_load_error" || ev.status === "error";
+      l.opens.push({
+        ts: ev.ts, device: ev.device_id, platform: ev.platform, browser: ev.browser,
+        user: ev.user_id, userLabel: ev.user_label, status: err ? "error" : "ok",
+        session: ev.session_id,
+      });
+      if (l.opens.length > 100) l.opens.shift();
+      if (ev.device_id) l.openDevices.add(ev.device_id);
+      l.openCount++;
+      if (err) l.errorOpens++;
+      l.firstOpen = l.firstOpen || ev.ts;
+      l.lastOpen = ev.ts;
+    }
+  }
+
+  // Étape la plus avancée PROUVÉE par un signal (jamais de supposition).
+  _linkStatus(l) {
+    if (l.openCount > 0) return (l.errorOpens && l.errorOpens === l.openCount) ? "opened_error" : "opened";
+    if (l.shareCount > 0) return "shared";     // partagé mais AUCUN signal d'ouverture → non confirmé
+    if (l.createdAt) return "created";
+    return "unknown";
+  }
+
+  _linkDto(l, full = false) {
+    const dto = {
+      id: l.id, kind: l.kind, target: l.target, status: this._linkStatus(l),
+      orphan: !l.createdAt,                     // ouverture sans création connue de notre côté
+      createdAt: l.createdAt, createdBy: l.createdBy, createdByLabel: l.createdByLabel,
+      createdPlatform: l.createdPlatform,
+      shareCount: l.shareCount, channels: [...l.channels],
+      openCount: l.openCount, openDevices: l.openDevices.size, errorOpens: l.errorOpens,
+      firstOpen: l.firstOpen, lastOpen: l.lastOpen, lastEvent: l.lastEvent,
+    };
+    if (full) { dto.shares = l.shares.slice(); dto.opens = l.opens.slice(); }
+    return dto;
+  }
+
+  linkList(limit = 300) {
+    return [...this.links.values()].map((l) => this._linkDto(l))
+      .sort((a, b) => b.lastEvent - a.lastEvent).slice(0, limit);
+  }
+  link(id) { const l = this.links.get(id); return l ? this._linkDto(l, true) : null; }
+
+  /** Entonnoir des liens : chiffres honnêtes, chaque étape adossée à un signal réel. */
+  linkFunnel() {
+    const now = Date.now(), DAY = 24 * 60 * 60_000;
+    const all = [...this.links.values()];
+    const created = all.filter((l) => l.createdAt).length;
+    const shared = all.filter((l) => l.shareCount > 0).length;
+    const openedOk = all.filter((l) => l.openCount > 0 && l.errorOpens < l.openCount).length;
+    const openedErr = all.filter((l) => l.openCount > 0 && l.errorOpens === l.openCount).length;
+    const sharedUnconfirmed = all.filter((l) => l.shareCount > 0 && l.openCount === 0).length;
+    const orphanOpens = all.filter((l) => !l.createdAt && l.openCount > 0).length;
+    const totalOpens = all.reduce((a, l) => a + l.openCount, 0);
+    const sharedThenOpened = all.filter((l) => l.shareCount > 0 && l.openCount > 0).length;
+    return {
+      total: all.length, created, shared,
+      opened: openedOk, openedError: openedErr, sharedUnconfirmed, orphanOpens, totalOpens,
+      // Taux d'ouverture confirmée PARMI les liens partagés (dénominateur honnête).
+      openRate: shared ? Math.round((sharedThenOpened / shared) * 100) : null,
+      createdToday: all.filter((l) => l.createdAt && now - l.createdAt < DAY).length,
+      openedToday: all.filter((l) => l.firstOpen && now - l.firstOpen < DAY).length,
+      lastActivity: all.length ? Math.max(...all.map((l) => l.lastEvent)) : null,
+    };
   }
 
   _recordBug(ev) {
@@ -282,6 +390,7 @@ class Store {
         apiSuccessRate: totalApis ? Math.round(((totalApis - apiErrors) / totalApis) * 100) : 100,
       },
       health: this.health(),
+      links: this.linkFunnel(),
       updatedAt: now,
     };
   }

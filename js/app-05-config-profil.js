@@ -2646,7 +2646,11 @@ function openReelShareModal(postId) {
   const reel = findPostAnywhere(postId);
   if (!reel) return;
 
-  const url = `${location.origin}${location.pathname}#reel=${encodeURIComponent(postId)}`;
+  // Lien suivi : on FABRIQUE l'URL puis on la tague (?plk=<id>) pour que le centre
+  // de pilotage apparie cette création à une éventuelle ouverture confirmée.
+  const rawUrl = `${location.origin}${location.pathname}#reel=${encodeURIComponent(postId)}`;
+  const _lk = (window.tel && tel.linkCreate) ? tel.linkCreate("reel", postId) : "";
+  const url = (_lk && tel.tagUrl) ? tel.tagUrl(rawUrl, _lk) : rawUrl;
   const author = authorOfReel(reel);
   const passion = passionById(reel.passion) || { label: reel.passion, emoji: "✨" };
   const moodLabel = ({ creation: "Création", learn: "Apprendre", chill: "Chill", actu: "Actu" })[reel.mood] || "Tout";
@@ -2673,7 +2677,7 @@ function openReelShareModal(postId) {
       <button class="btn secondary" onclick="shareReelVia('facebook', '${postId}', '${encodedUrl}', '${encodedText}')" style="font-size:13px;">
         📘 Facebook
       </button>
-      <button class="btn secondary" onclick="shareReelEmail('${postId}', '${encodedText}')" style="font-size:13px;">
+      <button class="btn secondary" onclick="shareReelEmail('${postId}', '${encodedText}', '${encodedUrl}')" style="font-size:13px;">
         📧 Email
       </button>
       <button class="btn secondary" onclick="shareReelSMS('${postId}', '${encodedUrl}')" style="font-size:13px;">

@@ -68,6 +68,20 @@ export function onEvent(ev) {
     });
   }
 
+  // Liens partagés : ouverture confirmée (info) ou échec de chargement (warn).
+  // Le cooldown par clé (60 s/lien) évite l'avalanche si un lien est ouvert en boucle.
+  if (ev.type === "link") {
+    const linkId = ev.correlation_id || (ev.meta && ev.meta.link_id) || "?";
+    if (ev.action === "link_open" && ev.status !== "error") {
+      emit({ level: "info", key: "linkopen:" + linkId, title: "Lien ouvert",
+        message: `Un lien partagé vient d'être ouvert${ev.platform ? " (" + ev.platform + (ev.browser ? " · " + ev.browser : "") + ")" : ""}.`,
+        meta: { link: linkId, platform: ev.platform, browser: ev.browser } });
+    } else if (ev.action === "link_load_error" || (ev.action === "link_open" && ev.status === "error")) {
+      emit({ level: "warn", key: "linkerr:" + linkId, title: "Échec d'ouverture d'un lien",
+        message: ev.message || "Un lien n'a pas pu se charger correctement.", meta: { link: linkId } });
+    }
+  }
+
   // API lente / en échec
   if (ev.type === "api") {
     if (ev.status === "error" && ev.http_status >= 500) {

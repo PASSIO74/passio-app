@@ -2,12 +2,19 @@ function copyReelLink(postId, encodedUrl) {
   const url = decodeURIComponent(encodedUrl);
   if (navigator.clipboard) {
     navigator.clipboard.writeText(url).then(() => {
+      _telLinkShare(url, "clipboard");
       toast("🔗 Lien copié!");
       closeModal();
     });
   } else {
     toast("Copie impossible sur ce navigateur");
   }
+}
+
+// Émet le signal « lien partagé » (canal donné) au centre de pilotage, à partir
+// d'une URL taguée. Guardé : ne casse rien si la télémétrie est absente/désactivée.
+function _telLinkShare(url, channel) {
+  try { if (window.tel && tel.linkShare) { var id = tel.linkFromUrl(url); if (id) tel.linkShare(id, channel); } } catch (e) {}
 }
 
 function shareReelVia(platform, postId, encodedUrl, encodedText) {
@@ -32,16 +39,18 @@ function shareReelVia(platform, postId, encodedUrl, encodedText) {
       return;
   }
 
+  _telLinkShare(url, platform);
   window.open(shareUrl, "_blank", "width=600,height=400");
   toast(`Ouverture ${platform}...`);
   closeModal();
 }
 
-function shareReelEmail(postId, encodedText) {
+function shareReelEmail(postId, encodedText, encodedUrl) {
   const reel = findPostAnywhere(postId);
   if (!reel) return;
 
-  const url = `${location.origin}${location.pathname}#reel=${encodeURIComponent(postId)}`;
+  // Réutilise l'URL taguée du modal (suivi du lien) ; repli si absente.
+  const url = encodedUrl ? decodeURIComponent(encodedUrl) : `${location.origin}${location.pathname}#reel=${encodeURIComponent(postId)}`;
   const author = authorOfReel(reel);
   const passion = passionById(reel.passion) || { label: reel.passion, emoji: "✨" };
   const text = reel.text || reel.caption || "";
@@ -49,6 +58,7 @@ function shareReelEmail(postId, encodedText) {
   const subject = encodeURIComponent(`Regarde cette bobine PASSIO de ${author.name}!`);
   const body = encodeURIComponent(`Salut!\n\nJe viens de découvrir cette super bobine sur PASSIO:\n\n${passion.emoji} ${author.name} – ${passion.label}\n"${text.slice(0, 150)}${text.length > 150 ? "…" : ""}"\n\nViens la voir ici: ${url}\n\nPASSIO - Partage tes passions!`);
 
+  _telLinkShare(url, "email");
   const mailtoLink = `mailto:?subject=${subject}&body=${body}`;
   window.location.href = mailtoLink;
   toast("📧 Ouverture de ton client email...");
@@ -62,6 +72,7 @@ function shareReelSMS(postId, encodedUrl) {
 
   const text = reel.text || reel.caption || "";
   const smsBody = encodeURIComponent(`Regarde cette bobine PASSIO: ${text.slice(0, 30)}... ${url}`);
+  _telLinkShare(url, "sms");
   const smsLink = `sms:?body=${smsBody}`;
   window.location.href = smsLink;
   toast("📱 Ouverture SMS...");
@@ -443,10 +454,15 @@ function switchProfileTab(tab, btn) {
 
 function shareMyProfile() {
   var name = ((state.user.general||{}).username || state.user.name || "Passionné");
+  // Lien de profil suivi (?plk) : apparie le partage à une ouverture confirmée.
+  var _lk = (window.tel && tel.linkCreate) ? tel.linkCreate("profile", (window.MY_UID || name)) : "";
+  var url = (_lk && tel.tagUrl) ? tel.tagUrl(window.location.href, _lk) : window.location.href;
   if (navigator.share) {
-    navigator.share({title:name+" sur PASSIO",text:"Découvre mon profil sur PASSIO !",url:window.location.href});
+    _telLinkShare(url, "native");
+    navigator.share({title:name+" sur PASSIO",text:"Découvre mon profil sur PASSIO !",url:url});
   } else {
-    if (navigator.clipboard) navigator.clipboard.writeText(window.location.href);
+    if (navigator.clipboard) navigator.clipboard.writeText(url);
+    _telLinkShare(url, "clipboard");
     toast("📤 Lien copié !");
   }
 }
