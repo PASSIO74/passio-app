@@ -153,11 +153,35 @@
   }
   // Types échantillonnés (bruit potentiel). 1 = tout garder.
   var SAMPLE = { click: 1, api: 1, perf: 1, nav: 1, action: 1, heartbeat: 1 };
+  // Types JAMAIS échantillonnés ni plafonnés : ce sont EXACTEMENT les signaux de
+  // problème qu'on ne veut pas rater (une erreur / une coupure réseau doit
+  // toujours remonter, même si l'appareil a déjà atteint le plafond/minute).
+  var CRITICAL_TYPE = { error: 1, connectivity: 1 };
 
   // ─── File + envoi ──────────────────────────────────────────────────────────
   var queue = [];
   var MAX_QUEUE = 300;
   var flushTimer = null;
+  var retryTimer = null;
+  var sending = false;          // un envoi réseau est en cours
+  var sendFailures = 0;         // échecs d'envoi CONSÉCUTIFS (appareil injoignable)
+  var offlineSince = 0;         // ms epoch du passage hors-ligne (0 = en ligne)
+  var BACKLOG_KEY = "passio_tel_backlog";  // file persistée (survit reload/coupure)
+
+  // Persiste la file : si l'appareil est en coupure et que l'onglet se ferme,
+  // les événements (dont les erreurs de connexion) sont rejoués au prochain
+  // chargement → l'incident devient VISIBLE au lieu d'être perdu.
+  function persistBacklog() {
+    try { localStorage.setItem(BACKLOG_KEY, JSON.stringify(queue.slice(-MAX_QUEUE))); } catch (e) {}
+  }
+  function loadBacklog() {
+    try {
+      var raw = localStorage.getItem(BACKLOG_KEY);
+      if (!raw) return;
+      var arr = JSON.parse(raw);
+      if (Array.isArray(arr) && arr.length) queue = arr.concat(queue).slice(-MAX_QUEUE);
+    } catch (e) {}
+  }
 
   function currentUser() {
     var id = window.MY_UID || null;
@@ -182,39 +206,146 @@
   function enqueue(ev) {
     queue.push(ev);
     if (queue.length > MAX_QUEUE) queue.splice(0, queue.length - MAX_QUEUE);
+    persistBacklog();                      // durable : rien n'est perdu même en coupure
     if (queue.length >= 12) flush();
     else if (!flushTimer) flushTimer = setTimeout(flush, 3000);
   }
 
-  function flush() {
-    if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
-    if (!queue.length) return;
-    if (!window.supa) return;              // en attente du client (garde la file)
-    var batch = queue.splice(0, queue.length);
+  // Config d'envoi (URL + clé anon) exposée par app-08 ; runtime, pas au load.
+  function supaCfg() { return window.PASSIO_SUPABASE || null; }
+  // Jeton d'accès de l'utilisateur (persisté par le SDK Supabase dans localStorage).
+  // Nécessaire pour que la RLS `user_id = auth.uid()` accepte les événements
+  // d'un compte connecté ; repli sur la clé anon (événements user_id NULL).
+  function authToken(cfg) {
     try {
-      window.supa.from("telemetry_events").insert(batch).then(function () {}, function () {
-        // échec réseau : on ne rejoue pas indéfiniment (best-effort, non bloquant)
-      });
+      var ref = (String(cfg.url).match(/https?:\/\/([^.]+)\./) || [])[1];
+      var raw = ref && localStorage.getItem("sb-" + ref + "-auth-token");
+      if (raw) {
+        var j = JSON.parse(raw);
+        var tok = j && (j.access_token || (j.currentSession && j.currentSession.access_token));
+        if (tok) return tok;
+      }
     } catch (e) {}
+    return cfg.anon;
   }
 
-  // Vide la file dès que le client Supabase est prêt (boot différé).
-  (function waitSupa() {
-    var tries = 0;
-    var iv = setInterval(function () {
-      tries++;
-      if (window.supa) flush();
-      if (window.supa || tries > 60) clearInterval(iv);
-    }, 500);
-  })();
+  // Envoi d'un lot par POST REST direct + keepalive (survit à la fermeture de
+  // l'onglet, contrairement au client SDK). La file n'est vidée qu'en cas de
+  // succès → une coupure garde les événements pour un rejeu ultérieur.
+  function flush(opts) {
+    opts = opts || {};
+    if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
+    if (!queue.length) return;
+    var cfg = supaCfg();
+    if (!cfg) return;                      // config pas prête → file persistée, on réessaiera
+    if (!opts.keepalive && sending) return;
+    var batch = queue.slice(0, opts.keepalive ? 20 : 60);  // keepalive : lots plus petits (limite 64 Ko)
+    if (!batch.length) return;
+    if (!opts.keepalive) sending = true;
+    var req;
+    try {
+      req = fetch(cfg.url + "/rest/v1/telemetry_events", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: cfg.anon,
+          Authorization: "Bearer " + authToken(cfg),
+          Prefer: "return=minimal",
+        },
+        body: JSON.stringify(batch),
+        keepalive: !!opts.keepalive,
+      });
+    } catch (e) { sending = false; onSendFailure(0, batch.length, opts); return; }
+    req.then(function (res) {
+      sending = false;
+      if (res && res.ok) {
+        queue.splice(0, batch.length);     // retire ce qui est parti
+        persistBacklog();
+        onSendSuccess();
+        if (queue.length && !opts.keepalive) flush();   // écoule le reste
+      } else {
+        onSendReject(res ? res.status : 0, batch.length, opts);
+      }
+    }, function () { sending = false; onSendFailure(0, batch.length, opts); });
+  }
+
+  // Réponse serveur non-OK : distingue un REJET définitif (RLS/validation 4xx →
+  // le lot ne passera jamais, on le retire pour ne pas bloquer la file) d'une
+  // panne temporaire (réseau/5xx → on garde et on réessaie en backoff).
+  function onSendReject(status, n, opts) {
+    var permanent = status >= 400 && status < 500 && status !== 408 && status !== 429;
+    if (permanent) {
+      queue.splice(0, n); persistBacklog();
+      track("connectivity", "server_reject", {
+        severity: "warn", status: "error", http_status: status,
+        message: "Lot de télémétrie rejeté par le serveur (HTTP " + status + ")",
+        meta: { dropped: n },
+      });
+      if (queue.length && !opts.keepalive) flush();
+      return;
+    }
+    onSendFailure(status, n, opts);
+  }
+
+  // Panne d'envoi (réseau/serveur) : l'appareil est probablement injoignable.
+  // On trace l'échec (il partira au rétablissement) et on réessaie en backoff.
+  function onSendFailure(httpStatus /*, n, opts */) {
+    sending = false;
+    sendFailures++;
+    if (!offlineSince) offlineSince = Date.now();
+    persistBacklog();
+    if (sendFailures === 1 || sendFailures === 3 || sendFailures % 10 === 0) {
+      track("connectivity", "send_failed", {
+        severity: sendFailures >= 3 ? "error" : "warn", status: "error", http_status: httpStatus,
+        message: "Échec d'envoi de la télémétrie #" + sendFailures + " (appareil peut-être hors ligne)",
+        meta: { failed_sends: sendFailures, online: navigator.onLine, backlog: queue.length },
+      });
+    }
+    var delay = Math.min(60000, 3000 * Math.pow(2, Math.min(sendFailures - 1, 5)));  // 3s→60s
+    if (!retryTimer) retryTimer = setTimeout(function () { retryTimer = null; flush(); }, delay);
+  }
+
+  // Envoi réussi : si on sortait d'une série d'échecs, trace la RÉCUPÉRATION
+  // (fenêtre de coupure) pour que l'incident soit visible dans le dashboard.
+  function onSendSuccess() {
+    if (sendFailures >= 3 || offlineSince) {
+      track("connectivity", "recovered", {
+        severity: "warn", status: "ok",
+        message: "Connexion rétablie après " + sendFailures + " échec(s) d'envoi",
+        meta: { failed_sends: sendFailures, offline_ms: offlineSince ? Date.now() - offlineSince : null, backlog: queue.length },
+      });
+    }
+    sendFailures = 0; offlineSince = 0;
+    if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
+  }
+
+  // Rejoue le backlog persistant au boot, puis vide la file dès que la config
+  // d'envoi est prête (app-08 pose window.PASSIO_SUPABASE en différé).
+  // Respecte l'opt-out : si la télémétrie est désactivée, on purge le backlog
+  // au lieu de le rejouer.
+  if (ENABLED) {
+    loadBacklog();
+    (function waitCfg() {
+      var tries = 0;
+      var iv = setInterval(function () {
+        tries++;
+        if (supaCfg()) flush();
+        if ((supaCfg() && !queue.length) || tries > 120) clearInterval(iv);
+      }, 500);
+    })();
+  } else {
+    try { localStorage.removeItem(BACKLOG_KEY); } catch (e) {}
+  }
 
   // ─── API publique ───────────────────────────────────────────────────────────
   function track(type, action, fields) {
     if (!ENABLED) return;
     fields = fields || {};
-    var st = SAMPLE[action] != null ? SAMPLE[action] : (SAMPLE[type] != null ? SAMPLE[type] : 1);
-    if (st < 1 && Math.random() > st) return;
-    if (overCap()) return;
+    if (!CRITICAL_TYPE[type]) {            // erreurs & connexion : jamais filtrées
+      var st = SAMPLE[action] != null ? SAMPLE[action] : (SAMPLE[type] != null ? SAMPLE[type] : 1);
+      if (st < 1 && Math.random() > st) return;
+      if (overCap()) return;
+    }
     var u = currentUser();
     var ev = {
       event_id: uid16(),
@@ -288,12 +419,30 @@
   // ─── Hooks automatiques ─────────────────────────────────────────────────────
 
   // 1) Cycle de vie / session
-  track("session", "start", { meta: { referrer: document.referrer ? "external" : "direct" } });
+  track("session", "start", { meta: { referrer: document.referrer ? "external" : "direct", online: navigator.onLine } });
   document.addEventListener("visibilitychange", function () {
     track("lifecycle", document.hidden ? "hidden" : "visible");
-    if (document.hidden) flush();
+    if (document.hidden) flush({ keepalive: true });
   });
-  window.addEventListener("pagehide", function () { track("session", "end"); flush(); });
+  window.addEventListener("pagehide", function () { track("session", "end"); flush({ keepalive: true }); });
+
+  // 1bis) Connectivité réseau : capture EXPLICITE des coupures (le signal le plus
+  // demandé — un testeur qui perd le réseau doit apparaître, pas disparaître).
+  window.addEventListener("offline", function () {
+    if (!offlineSince) offlineSince = Date.now();
+    track("connectivity", "offline", {
+      severity: "warn", status: "error",
+      message: "Appareil passé hors ligne", meta: { online: false },
+    });
+    persistBacklog();
+  });
+  window.addEventListener("online", function () {
+    track("connectivity", "online", {
+      severity: "info", status: "ok", message: "Appareil de nouveau en ligne",
+      meta: { online: true, offline_ms: offlineSince ? Date.now() - offlineSince : null, backlog: queue.length },
+    });
+    flush();   // tente d'écouler le backlog dès le retour du réseau
+  });
 
   // 2) Heartbeat de présence (l'appareil est « en ligne » pour le dashboard)
   setInterval(function () {

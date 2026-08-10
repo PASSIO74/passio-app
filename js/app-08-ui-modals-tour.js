@@ -2179,6 +2179,12 @@ async function boot() {
 // =====================================================
 const SUPABASE_URL = "https://njkiyoklssvefstljemx.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5qa2l5b2tsc3N2ZWZzdGxqZW14Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2OTc3MDQsImV4cCI6MjA5NDI3MzcwNH0.wbFAexVW75vlXZ7mRRxeZ28zKevOAYYe0lda0F22dTM";
+// Exposé pour la télémétrie (js/telemetry.js, chargé AVANT ce fichier) : lui
+// permet d'envoyer ses lots par un POST REST direct avec `keepalive` + backlog
+// persistant, INDÉPENDAMMENT du client SDK. Sans ça, un testeur en coupure
+// réseau perd ses événements (queue en mémoire vidée à la fermeture) → ses
+// problèmes de connexion n'apparaissaient JAMAIS dans le centre de pilotage.
+window.PASSIO_SUPABASE = { url: SUPABASE_URL, anon: SUPABASE_KEY };
 // CDN optionnel devant Supabase Storage (cache au bord → soulage l'egress du
 // forfait gratuit). VIDE = désactivé (URL Supabase directe, comportement actuel).
 // Pour activer : déployer cloudflare/passio-cdn-worker.js puis coller ici l'URL

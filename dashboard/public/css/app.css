@@ -227,6 +227,8 @@ td{padding:10px 14px;border-bottom:1px solid var(--border-soft)}
 tbody tr{cursor:pointer;transition:background .1s}
 tbody tr:hover{background:var(--card-2)}
 tbody tr:last-child td{border-bottom:none}
+tbody tr.row-alert{background:rgba(239,68,68,.06);box-shadow:inset 3px 0 0 var(--err)}
+tbody tr.row-alert:hover{background:rgba(239,68,68,.1)}
 .mono{font-family:var(--mono);font-size:12px}
 .muted{color:var(--muted)}
 .nowrap{white-space:nowrap}

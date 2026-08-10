@@ -42,6 +42,8 @@ export function normalize(row) {
     browser: row.browser || "other",
     app_version: row.app_version || "?",
     env: row.env || "production",
+    connection: row.connection || null,
+    screen_size: row.screen_size || null,
     screen: row.screen || null,
     endpoint: row.endpoint || null,
     http_status: row.http_status ?? null,
@@ -134,8 +136,19 @@ class Store {
     this._touchDevice(ev);
     this._touchSession(ev);
     this._touchUser(ev);
-    if (ev.type === "error") this._recordBug(ev);
+    if (this._isProblem(ev)) this._recordBug(ev);
     return true;
+  }
+
+  /** Un événement « à problème » : erreur JS, coupure de connexion ou appel
+   *  API en échec. Élargit la notion de bug pour que TOUT problème rencontré
+   *  par un testeur remonte dans « Problèmes » — pas seulement les erreurs JS
+   *  (un testeur en coupure réseau était auparavant totalement invisible). */
+  _isProblem(ev) {
+    if (ev.type === "error") return true;
+    if (ev.type === "connectivity") return ev.severity === "error" || ev.severity === "warn";
+    if (ev.type === "api" && ev.status === "error") return true;
+    return false;
   }
 
   _touchDevice(ev) {
@@ -144,12 +157,19 @@ class Store {
     if (!d) { d = { deviceId: ev.device_id, firstSeen: ev.ts, errorCount: 0 }; this.devices.set(ev.device_id, d); }
     d.lastSeen = ev.ts;
     d.platform = ev.platform; d.browser = ev.browser; d.appVersion = ev.app_version;
-    d.env = ev.env; d.connection = ev.meta?.connection || d.connection;
-    d.screenSize = ev.meta?.screen_size || d.screenSize;
+    d.env = ev.env;
+    if (ev.connection) d.connection = ev.connection;
+    if (ev.screen_size) d.screenSize = ev.screen_size;
     if (ev.user_id) { d.userId = ev.user_id; d.userLabel = ev.user_label || d.userLabel; }
     if (ev.session_id) d.sessionId = ev.session_id;
     if (ev.screen) d.screen = ev.screen;
-    if (ev.type === "error") d.errorCount = (d.errorCount || 0) + 1;
+    if (this._isProblem(ev)) { d.errorCount = (d.errorCount || 0) + 1; d.lastProblem = ev.ts; }
+    // Suit l'état de connexion pour repérer un appareil « en difficulté ».
+    if (ev.type === "connectivity") {
+      if (ev.action === "offline" || ev.action === "send_failed") d.offline = true;
+      else if (ev.action === "online" || ev.action === "recovered") d.offline = false;
+      d.lastConnEvent = ev.action;
+    }
   }
 
   _touchSession(ev) {
@@ -159,7 +179,7 @@ class Store {
     s.last = ev.ts; s.eventCount++;
     s.userId = ev.user_id || s.userId; s.userLabel = ev.user_label || s.userLabel;
     s.platform = ev.platform; s.browser = ev.browser; s.appVersion = ev.app_version; s.env = ev.env;
-    if (ev.type === "error") s.errorCount++;
+    if (this._isProblem(ev)) s.errorCount++;
     if (ev.type === "nav" && ev.screen && s.screens[s.screens.length - 1] !== ev.screen) {
       s.screens.push(ev.screen);
       if (s.screens.length > 100) s.screens.shift();
@@ -251,6 +271,10 @@ class Store {
         reactions: count((e) => /react|like_post/.test(e.action || "") || (e.type === "api" && /(post_likes|comment_interactions|event_reactions)/.test(e.endpoint || "") && e.http_status === 201)),
         notifications: count((e) => /notif/.test(e.action || "") || (e.type === "api" && /notifications/.test(e.endpoint || "") && e.http_status === 201)),
         errors: count((e) => e.type === "error"),
+        // Problèmes de connexion des testeurs (coupures, échecs d'envoi) sur 30 min.
+        connectivityIssues: events.filter((e) => e.type === "connectivity" && e.severity !== "info" && now - e.ts < 30 * 60_000).length,
+        // Appareils « en difficulté » : un problème (erreur/coupure) récent.
+        strugglingDevices: [...this.devices.values()].filter((d) => d.lastProblem && now - d.lastProblem < ACTIVE_MS).length,
         criticalBugs: criticalBugs.length,
         openBugs: openBugs.length,
         actionsPerMin: last5.length ? Math.round(last5.length / 5) : 0,
@@ -266,15 +290,17 @@ class Store {
   health() {
     const now = Date.now();
     const win = this.events.filter((e) => now - e.ts < 5 * 60_000);
-    const errs = win.filter((e) => e.type === "error").length;
+    // Erreurs JS + problèmes de connexion : une coupture réseau doit peser sur la santé.
+    const errs = win.filter((e) => e.type === "error" || (e.type === "connectivity" && e.severity !== "info")).length;
+    const connErrs = win.filter((e) => e.type === "connectivity" && e.severity === "error").length;
     const critical = [...this.bugs.values()].some((b) => b.severity === "critical" && now - b.lastSeen < 5 * 60_000);
     const apis = win.filter((e) => e.type === "api");
     const apiErrRate = apis.length ? apis.filter((e) => e.status === "error").length / apis.length : 0;
     let level = "operational", label = "Opérationnel";
     if (critical || apiErrRate > 0.4) { level = "critical"; label = "Critique"; }
-    else if (errs > 8 || apiErrRate > 0.15) { level = "degraded"; label = "Dégradé"; }
-    else if (errs > 2 || apiErrRate > 0.05) { level = "minor"; label = "Légèrement dégradé"; }
-    return { level, label, errors5m: errs, apiErrorRate: Math.round(apiErrRate * 100) };
+    else if (errs > 8 || apiErrRate > 0.15 || connErrs >= 3) { level = "degraded"; label = "Dégradé"; }
+    else if (errs > 2 || apiErrRate > 0.05 || connErrs >= 1) { level = "minor"; label = "Légèrement dégradé"; }
+    return { level, label, errors5m: errs, apiErrorRate: Math.round(apiErrRate * 100), connErrors5m: connErrs };
   }
 
   /** Série temporelle par minute (N dernières minutes) pour un graphe. */
@@ -307,7 +333,10 @@ class Store {
       online: now - d.lastSeen < ONLINE_MS,
       active: now - d.lastSeen < ACTIVE_MS,
       idleMs: now - d.lastSeen,
-    })).sort((a, b) => b.lastSeen - a.lastSeen);
+      // « En difficulté » : a rencontré un problème (erreur/coupure) récemment.
+      struggling: !!(d.lastProblem && now - d.lastProblem < ACTIVE_MS),
+      netTrouble: !!d.offline,
+    })).sort((a, b) => (Number(b.struggling) - Number(a.struggling)) || (b.lastSeen - a.lastSeen));
   }
 
   sessionList() {

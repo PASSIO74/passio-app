@@ -54,6 +54,20 @@ export function onEvent(ev) {
     }
   }
 
+  // Problème de connexion d'un testeur (coupure réseau, échecs d'envoi répétés).
+  // C'est le signal le plus demandé : un testeur qui perd le réseau doit
+  // APPARAÎTRE, pas disparaître silencieusement du dashboard.
+  if (ev.type === "connectivity" && ev.severity !== "info") {
+    const who = ev.user_label || "Un testeur";
+    const level = ev.severity === "error" ? "high" : "warn";
+    emit({
+      level, key: "conn:" + (ev.device_id || ev.user_id || ev.user_label || "?"),
+      title: "Problème de connexion d'un testeur",
+      message: `${who} — ${ev.message || ev.action}`,
+      meta: { user: ev.user_label, device: ev.device_id, screen: ev.screen, action: ev.action },
+    });
+  }
+
   // API lente / en échec
   if (ev.type === "api") {
     if (ev.status === "error" && ev.http_status >= 500) {

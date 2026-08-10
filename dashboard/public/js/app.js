@@ -31,8 +31,8 @@ function ago(ts) {
   if (s < 86400) return Math.floor(s / 3600) + "h"; return Math.floor(s / 86400) + "j";
 }
 const SEV_COLOR = { critical: "var(--crit)", error: "var(--err)", warn: "var(--warn)", info: "var(--info)", debug: "var(--muted-2)" };
-const TYPE_FR = { nav: "Navigation", action: "Action", click: "Clic", error: "Erreur", api: "API", perf: "Perf", session: "Session", lifecycle: "Cycle de vie", db: "Base" };
-function dotColor(ev) { return ev.type === "error" ? SEV_COLOR[ev.severity] || "var(--err)" : ev.status === "error" ? "var(--err)" : ev.status === "slow" ? "var(--warn)" : ev.type === "api" ? "var(--info)" : "var(--accent)"; }
+const TYPE_FR = { nav: "Navigation", action: "Action", click: "Clic", error: "Erreur", api: "API", perf: "Perf", session: "Session", lifecycle: "Cycle de vie", connectivity: "Connexion", db: "Base" };
+function dotColor(ev) { return ev.type === "error" ? SEV_COLOR[ev.severity] || "var(--err)" : ev.type === "connectivity" ? (SEV_COLOR[ev.severity] || "var(--warn)") : ev.status === "error" ? "var(--err)" : ev.status === "slow" ? "var(--warn)" : ev.type === "api" ? "var(--info)" : "var(--accent)"; }
 function toast(msg) { const t = $("#toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(() => (t.hidden = true), 2600); }
 async function copy(text, label) { try { await navigator.clipboard.writeText(text); toast((label || "Copié") + " ✓"); } catch { toast("Copie impossible"); } }
 function num(n) { return (n == null ? "—" : n.toLocaleString("fr-FR")); }
@@ -45,6 +45,8 @@ const ACTION_FR = {
   event_join: "Inscription événement", event_leave: "Désinscription", screen_view: "Écran consulté",
   window_error: "Erreur", unhandled_rejection: "Erreur (promesse)", heartbeat: "Présence",
   start: "Début de session", end: "Fin de session", hidden: "Onglet masqué", visible: "Onglet visible",
+  offline: "Hors ligne", online: "Reconnecté", send_failed: "Envoi échoué (réseau)",
+  recovered: "Connexion rétablie", server_reject: "Lot rejeté (serveur)",
 };
 function actionLabel(ev) {
   if (ev.action && ACTION_FR[ev.action]) return ACTION_FR[ev.action];
@@ -228,6 +230,7 @@ function renderFixResult(r) {
 VIEWS.overview = async (view) => {
   mount(`<div id="ovProv"></div>
     <div id="ovState"></div>
+    <div id="ovConn"></div>
     <div class="home-cards" id="ovCards"></div>
     <div class="cols cols-2" style="margin-top:16px">
       <div class="card chart-card"><h4>Ce qui se passe en direct</h4><div class="chart-meta">Les dernières actions des utilisateurs · <a href="#activity">tout voir</a></div><div id="ovFeed"></div></div>
@@ -290,6 +293,17 @@ VIEWS.overview = async (view) => {
       <div class="state-txt"><h2>${esc(title)}</h2><p>${esc(sub)}</p></div>
       ${liveTag}
       ${fixBtn}</div>`;
+
+    // ── Problèmes de CONNEXION des testeurs (bandeau dédié, très visible) ─────
+    // §demande Benjamin : une coupure réseau d'un testeur doit APPARAÎTRE.
+    const strug = t.strugglingDevices || 0, connIss = t.connectivityIssues || 0;
+    if (dataReal && (strug || connIss)) {
+      $("#ovConn").innerHTML = `<div class="state-banner warn" style="margin-top:12px">
+        <div class="state-ico">${icon("wifi")}</div>
+        <div class="state-txt"><h2>${strug ? `${num(strug)} testeur${strug > 1 ? "s" : ""} en difficulté de connexion` : `${num(connIss)} incident${connIss > 1 ? "s" : ""} de connexion`}</h2>
+          <p>${connIss ? `${num(connIss)} coupure${connIss > 1 ? "s" : ""}/échec${connIss > 1 ? "s" : ""} d'envoi sur 30 min. ` : ""}Détail dans « Appareils » et « Problèmes ».</p></div>
+        <a class="btn btn-primary state-fix" href="#devices">${icon("devices")} Voir les appareils</a></div>`;
+    } else { $("#ovConn").innerHTML = ""; }
 
     // ── Les 3 chiffres qui comptent ─────────────────────────────────────────
     const partages = t.publications;
@@ -513,7 +527,7 @@ const detail = (l, v) => `<div><div class="dl">${l}</div><div class="dv">${v}</d
 VIEWS.activity = async (view, params) => {
   if (params[0] === "session") return renderJourney(params[1]);
   mount(`<div class="feed-toolbar">
-      <select class="select" id="fType"><option value="">Tous types</option>${["nav", "action", "click", "api", "error", "session", "lifecycle", "perf"].map((t) => `<option value="${t}">${TYPE_FR[t]}</option>`).join("")}</select>
+      <select class="select" id="fType"><option value="">Tous types</option>${["nav", "action", "click", "api", "error", "connectivity", "session", "lifecycle", "perf"].map((t) => `<option value="${t}">${TYPE_FR[t]}</option>`).join("")}</select>
       <select class="select" id="fSev"><option value="">Toute gravité</option>${["critical", "error", "warn", "info"].map((t) => `<option value="${t}">${t}</option>`).join("")}</select>
       <select class="select" id="fEnv"><option value="">Tout env.</option><option>production</option><option>preview</option><option>development</option></select>
       <input class="select" id="fUser" placeholder="Utilisateur…" style="width:140px" />
@@ -567,7 +581,11 @@ VIEWS.devices = async () => {
       $("#cmpA").onchange = $("#cmpB").onchange = () => drawCompare(devs);
     }
     drawCompare(devs);
-    $("#devRows").innerHTML = devs.map((d) => `<tr onclick="location.hash='#activity'"><td><span class="pill ${d.online ? "ok" : "info"}">${d.online ? "en ligne" : "hors ligne"}</span> <strong>${nameFor(d.userId, d.userLabel)}</strong></td><td>${esc(deviceLabel(d))}</td><td>${esc(d.screen || "—")}</td><td>${esc(d.connection || "—")}</td><td>${d.errorCount || 0}</td><td class="muted">${ago(d.lastSeen)}</td></tr>`).join("") || '<tr><td colspan="6" class="empty">Aucun appareil.</td></tr>';
+    $("#devRows").innerHTML = devs.map((d) => {
+      const statusPill = d.netTrouble ? `<span class="pill error">réseau ⚠</span>` : d.struggling ? `<span class="pill warn">en difficulté</span>` : `<span class="pill ${d.online ? "ok" : "info"}">${d.online ? "en ligne" : "hors ligne"}</span>`;
+      const conn = d.netTrouble ? `<span class="sev-error">${esc(d.connection || "coupé")}</span>` : esc(d.connection || "—");
+      return `<tr class="${d.struggling || d.netTrouble ? "row-alert" : ""}" onclick="location.hash='#activity'"><td>${statusPill} <strong>${nameFor(d.userId, d.userLabel)}</strong></td><td>${esc(deviceLabel(d))}</td><td>${esc(d.screen || "—")}</td><td>${conn}</td><td>${d.errorCount ? `<span class="sev-error">${d.errorCount}</span>` : 0}</td><td class="muted">${ago(d.lastSeen)}</td></tr>`;
+    }).join("") || '<tr><td colspan="6" class="empty">Aucun appareil.</td></tr>';
   }
   function drawCompare(devs) {
     const a = devs.find((d) => d.deviceId === $("#cmpA").value) || devs[0];

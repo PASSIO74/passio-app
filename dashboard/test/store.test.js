@@ -58,3 +58,37 @@ test("health reflète les erreurs récentes", () => {
   const h = store.health();
   assert.ok(["operational", "minor", "degraded", "critical"].includes(h.level));
 });
+
+test("un problème de connexion remonte en bug + marque l'appareil en difficulté", () => {
+  store.add(ev({ event_id: "c1", type: "connectivity", action: "offline", severity: "warn",
+    status: "error", message: "Appareil passé hors ligne", device_id: "dConn", user_id: "uConn", user_label: "Testeur" }));
+  // devient un « problème » visible dans la liste des bugs
+  const bug = store.bugList().find((b) => b.type === "connectivity");
+  assert.ok(bug, "un problème de connexion est listé");
+  // l'appareil est marqué en difficulté / réseau coupé
+  const dev = store.deviceList().find((d) => d.deviceId === "dConn");
+  assert.ok(dev.struggling, "appareil signalé en difficulté");
+  assert.ok(dev.netTrouble, "réseau coupé signalé");
+  assert.ok(dev.errorCount >= 1, "compteur d'erreurs incrémenté");
+});
+
+test("un échec d'appel API compte comme problème", () => {
+  store.add(ev({ event_id: "a1", type: "api", action: "GET x/posts", status: "error",
+    severity: "warn", http_status: 0, endpoint: "x/rest/v1/posts", device_id: "dApi" }));
+  const bug = store.bugList().find((b) => b.type === "api");
+  assert.ok(bug, "un échec API est listé comme problème");
+});
+
+test("overview expose les indicateurs de connexion", () => {
+  const ov = store.overview();
+  assert.equal(typeof ov.totals.connectivityIssues, "number");
+  assert.equal(typeof ov.totals.strugglingDevices, "number");
+  assert.ok(ov.totals.connectivityIssues >= 1);
+});
+
+test("un événement de reconnexion (info) ne bloque PAS l'appareil", () => {
+  store.add(ev({ event_id: "c2", type: "connectivity", action: "online", severity: "info",
+    status: "ok", message: "Appareil de nouveau en ligne", device_id: "dConn", user_id: "uConn" }));
+  const dev = store.deviceList().find((d) => d.deviceId === "dConn");
+  assert.equal(dev.netTrouble, false, "réseau rétabli");
+});
