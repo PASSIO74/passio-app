@@ -140,12 +140,22 @@
     + "background:rgba(167,139,250,.16);border:1px solid rgba(167,139,250,.35);border-radius:999px;padding:4px 12px;margin-bottom:14px}"
     + ".pg-title{color:#fff;font-size:22px;font-weight:800;margin:0 0 6px}"
     + ".pg-sub{color:rgba(221,214,254,.75);font-size:13.5px;line-height:1.5;margin:0 0 26px}"
-    + ".pg-dots{display:flex;justify-content:center;gap:14px;margin-bottom:22px;cursor:pointer}"
+    // ⚠️ iOS Safari n'ouvre JAMAIS le clavier pour un <input> hors-écran/invisible
+    // (opacity:0, left:-9999px), MÊME au focus dans un geste utilisateur : le
+    // testeur iPhone voyait le gate mais ne pouvait pas saisir le code (« ça bug »).
+    // Correctif : l'input est un CALQUE présent à l'écran, superposé aux cases,
+    // rendu invisible par des couleurs transparentes (pas par opacity:0) et
+    // font-size:16px (empêche le zoom-jump iOS au focus). Taper une case = taper
+    // l'input → clavier iOS garanti. Android/desktop restent identiques.
+    + ".pg-otp{position:relative;margin-bottom:22px}"
+    + ".pg-dots{display:flex;justify-content:center;gap:14px}"
     + ".pg-dot{width:52px;height:60px;border-radius:16px;background:rgba(255,255,255,.08);border:1.5px solid rgba(255,255,255,.18);"
-    + "display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:800;color:#fff;transition:all .18s ease}"
+    + "display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:800;color:#fff;transition:all .18s ease;pointer-events:none}"
     + ".pg-dot.filled{background:rgba(167,139,250,.22);border-color:#a78bfa;box-shadow:0 0 0 3px rgba(167,139,250,.18)}"
     + ".pg-dot.active{border-color:#c4b5fd;box-shadow:0 0 0 3px rgba(196,181,253,.22)}"
-    + ".pg-input{position:absolute;opacity:0;pointer-events:none;left:-9999px}"
+    + ".pg-input{position:absolute;inset:0;width:100%;height:100%;margin:0;padding:0;border:0;outline:none;"
+    + "background:transparent;color:transparent;-webkit-text-fill-color:transparent;caret-color:transparent;"
+    + "font-size:16px;text-align:center;-webkit-appearance:none;appearance:none;cursor:pointer;z-index:4}"
     + ".pg-err{min-height:18px;font-size:12.5px;color:#fca5a5;margin-bottom:8px;opacity:0;transition:opacity .2s}"
     + ".pg-err.show{opacity:1}"
     + ".pg-card.shake{animation:pgShake .45s ease}"
@@ -191,8 +201,10 @@
         '<div class="pg-badge">Beta privée</div>' +
         '<h1 class="pg-title">' + (name ? "Bon retour, " + escapeHtmlGate(name) + " 👋" : "Bienvenue sur PASSIO") + "</h1>" +
         '<p class="pg-sub">L’application n’est pas encore ouverte au public.<br/>Saisis ton code d’accès pour continuer.</p>' +
-        '<div class="pg-dots" id="pgDots"></div>' +
-        '<input class="pg-input" id="pgInput" type="tel" inputmode="numeric" autocomplete="one-time-code" maxlength="' + CODE_LEN + '" aria-label="Code d’accès"/>' +
+        '<div class="pg-otp" id="pgOtp">' +
+          '<div class="pg-dots" id="pgDots"></div>' +
+          '<input class="pg-input" id="pgInput" type="tel" inputmode="numeric" autocomplete="one-time-code" maxlength="' + CODE_LEN + '" aria-label="Code d’accès"/>' +
+        '</div>' +
         '<div class="pg-err" id="pgErr">Code incorrect. Réessaie.</div>' +
         '<div class="pg-foot">Accès réservé · PASSIO © ' + new Date().getFullYear() + "</div>" +
       "</div>";
@@ -222,7 +234,11 @@
     }
 
     function focusInput() { try { input.focus({ preventScroll: true }); } catch (e) { input.focus(); } render(); }
-    dotsWrap.addEventListener("click", focusInput);
+    // L'input recouvre les cases (calque transparent) : un tap dessus focus
+    // NATIVEMENT dans le geste → clavier iOS. On garde un focus explicite sur le
+    // reste du gate (hors input) pour desktop/robustesse.
+    var otp = gate.querySelector("#pgOtp");
+    if (otp) otp.addEventListener("click", focusInput);
     gate.addEventListener("click", function (ev) { if (ev.target === gate) focusInput(); });
     input.addEventListener("blur", render);
     input.addEventListener("focus", render);
