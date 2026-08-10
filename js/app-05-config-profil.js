@@ -2805,6 +2805,16 @@ const VLIVE_VIDEO_QUALITY = {
 };
 const VLIVE_REACTIONS = ["❤️", "🔥", "👏", "😂", "😮"];  // palette réactions live (IG/TikTok-style)
 const VLIVE_CHATLOG_MAX = 25;         // messages rejoués aux arrivants tardifs
+// ── Scaling GRATUIT par relais P2P (arbre de profondeur 1) ──
+// Sans serveur média (SFU) on ne peut PAS atteindre l'échelle Twitch. Mais on
+// dépasse le plafond du mesh en faisant re-diffuser le flux par les spectateurs
+// DIRECTS : chaque spectateur direct « prêt » sert jusqu'à VLIVE_FANOUT enfants.
+// Capacité ≈ VLIVE_MAX_VIEWERS × (1 + VLIVE_FANOUT). Le chemin direct (host↔
+// spectateur) est INCHANGÉ ; le relais n'utilise que des events dédiés (r*) →
+// aucune régression sur le cas courant. Le chat/réactions/présence passent par
+// le broadcast du canal (touchent tout le monde) : seule la VIDÉO est relayée.
+const VLIVE_FANOUT = 3;               // enfants servis par spectateur-relais
+const VLIVE_RELAY_BR = 1200000;       // débit vidéo d'un relais (uplink spectateur)
 
 window._vliveHost = window._vliveHost || null;  // état diffuseur
 window._vliveView = window._vliveView || null;  // état spectateur
@@ -2930,7 +2940,7 @@ async function startVideoLive() {
     if (error) { console.warn("[vlive] insert:", error.message); toast("Impossible de démarrer le live"); (stream.getTracks() || []).forEach(t => t.stop()); return; }
   } catch (e) { toast("Impossible de démarrer le live"); (stream.getTracks() || []).forEach(t => t.stop()); return; }
 
-  window._vliveHost = { id: id, stream: stream, chan: null, pcs: {}, startedAt: Date.now(), _facing: "user", hb: null, title: title || "", chatLog: [], peak: 0 };
+  window._vliveHost = { id: id, stream: stream, chan: null, pcs: {}, startedAt: Date.now(), _facing: "user", hb: null, title: title || "", chatLog: [], peak: 0, tree: {}, paused: false };
   _vliveRenderUI("host", row);
   const lv = document.getElementById("vliveVideo");
   if (lv) { lv.srcObject = stream; lv.muted = true; try { lv.play(); } catch (e) {} }
@@ -2955,16 +2965,18 @@ async function startVideoLive() {
 window.startVideoLive = startVideoLive;
 
 function _vliveBindHost(chan) {
-  // Un spectateur arrive (présence) → on lui ouvre une PeerConnection dédiée,
-  // on lui rejoue l'historique du chat et on annonce son arrivée (preuve sociale).
+  // Un spectateur arrive (présence) → on lui attribue un parent (host en direct
+  // OU un spectateur-relais si l'hôte est saturé), on lui rejoue l'historique du
+  // chat et on annonce son arrivée (preuve sociale).
   chan.on("presence", { event: "join" }, (p) => {
     try {
       (p.newPresences || []).forEach(np => {
         const vid = np.uid || p.key;
         if (vid && vid !== MY_UID && np.role === "viewer") {
-          _vliveHostAddViewer(vid);
+          _vliveHostAssign(vid);
           const H = window._vliveHost;
           if (H && H.chatLog && H.chatLog.length) _vliveSend("history", { to: vid, msgs: H.chatLog.slice(-VLIVE_CHATLOG_MAX) });
+          if (H && H.paused) _vliveSend("pause", { on: true });
           const nm = (np.name || "Quelqu'un").split(" ")[0];
           _vliveSend("sys", { text: nm + " a rejoint 👋" });
           _vliveSysMsg(nm + " a rejoint 👋");
@@ -2977,9 +2989,29 @@ function _vliveBindHost(chan) {
     try {
       const H = window._vliveHost;
       const vid = p.key;
-      if (H && vid && H.pcs[vid]) { try { H.pcs[vid].pc.close(); } catch (e) {} delete H.pcs[vid]; _vliveApplyHostQuality(); }
+      if (!H || !vid) { _vliveUpdateViewers(); return; }
+      if (H.pcs[vid]) { try { H.pcs[vid].pc.close(); } catch (e) {} delete H.pcs[vid]; _vliveApplyHostQuality(); }
+      // Ce spectateur relayait vers des enfants → ils deviennent orphelins :
+      // on les ré-attribue (host direct si place, sinon autre relais).
+      const node = H.tree[vid];
+      if (node && node.kids && node.kids.length) {
+        const orphans = node.kids.slice();
+        orphans.forEach(k => { if (H.tree[k]) H.tree[k].parent = null; });
+        orphans.forEach(k => _vliveHostAssign(k));
+      }
+      // Détache ce nœud de son parent-relais éventuel.
+      if (node && node.parent && node.parent !== "host" && H.tree[node.parent]) {
+        H.tree[node.parent].kids = (H.tree[node.parent].kids || []).filter(x => x !== vid);
+      }
+      delete H.tree[vid];
     } catch (e) {}
     _vliveUpdateViewers();
+  });
+  // Un spectateur signale que sa connexion est établie → éligible comme relais.
+  chan.on("broadcast", { event: "ready" }, (msg) => {
+    const H = window._vliveHost;
+    const from = (msg.payload || {}).from;
+    if (H && from && H.tree[from]) { H.tree[from].ready = true; _vliveAssignPending(); }
   });
   chan.on("presence", { event: "sync" }, () => { _vliveUpdateViewers(); });
   chan.on("broadcast", { event: "answer" }, async (msg) => {
@@ -3066,6 +3098,61 @@ async function _vliveApplyHostQuality() {
   }
 }
 
+// Attribue un parent au nouveau spectateur : l'hôte en direct tant qu'il a de la
+// place, sinon un spectateur-relais prêt. Sinon « complet ».
+function _vliveHostAssign(vid) {
+  const H = window._vliveHost;
+  if (!H || !vid || vid === MY_UID) return;
+  if (H.pcs[vid]) return; // déjà servi en direct
+  if (Object.keys(H.pcs).length < VLIVE_MAX_VIEWERS) {
+    H.tree[vid] = { parent: "host", ready: false, kids: [] };
+    _vliveHostAddViewer(vid); // chemin direct existant (offer/answer/ice)
+    return;
+  }
+  const relay = _vliveFindRelay();
+  if (relay) {
+    H.tree[vid] = { parent: relay, ready: false, kids: [] };
+    H.tree[relay].kids = H.tree[relay].kids || [];
+    if (H.tree[relay].kids.indexOf(vid) < 0) H.tree[relay].kids.push(vid);
+    _vliveSend("assign", { to: vid, parent: relay });
+    _vliveSend("serve", { to: relay, child: vid });
+    return;
+  }
+  // Aucun relais prêt (ex. burst juste après le lancement, avant que les directs
+  // soient connectés) → on met en attente et on assignera dès qu'un relais est
+  // prêt. Filet : au bout de VLIVE_STALE_MS toujours sans place → « complet ».
+  if (H.tree[vid] && H.tree[vid].parent === null && H.tree[vid].pending) return; // déjà en attente
+  H.tree[vid] = { parent: null, ready: false, kids: [], pending: true, since: Date.now() };
+  setTimeout(() => {
+    const HH = window._vliveHost;
+    const n = HH && HH.tree[vid];
+    if (n && n.pending) { _vliveSend("full", { to: vid }); delete HH.tree[vid]; }
+  }, 15000);
+}
+
+// Assigne les spectateurs en attente dès qu'un slot (host ou relais) se libère.
+function _vliveAssignPending() {
+  const H = window._vliveHost;
+  if (!H) return;
+  const waiting = Object.keys(H.tree).filter(id => H.tree[id] && H.tree[id].pending);
+  waiting.forEach(id => { if (H.tree[id]) { H.tree[id].pending = false; _vliveHostAssign(id); } });
+}
+
+// Cherche le meilleur relais : un spectateur DIRECT (profondeur 1), connecté et
+// prêt, avec un slot enfant libre — celui qui en a le moins.
+function _vliveFindRelay() {
+  const H = window._vliveHost;
+  if (!H) return null;
+  let best = null, bestKids = VLIVE_FANOUT;
+  for (const id in H.tree) {
+    const n = H.tree[id];
+    if (!n || n.parent !== "host" || !n.ready || !H.pcs[id]) continue;
+    const kc = (n.kids || []).length;
+    if (kc < bestKids) { best = id; bestKids = kc; }
+  }
+  return best;
+}
+
 // Notifie mes abonnés (notif in-app + push via supaInsertNotif → notify-call).
 async function _vliveNotifyFollowers(liveId, title) {
   const msg = title
@@ -3136,16 +3223,22 @@ function _vliveBindViewer(chan) {
     try {
       if (V.pc) { try { V.pc.close(); } catch (e) {} }
       const pc = new RTCPeerConnection({ iceServers: CALL_ICE_SERVERS });
-      V.pc = pc; V.pendingIce = V.pendingIce || [];
+      V.pc = pc; V.pendingIce = V.pendingIce || []; V.servedBy = "host";
       pc.ontrack = (e) => {
         V.remoteStream = e.streams[0];
         const rv = document.getElementById("vliveVideo");
         if (rv) { rv.srcObject = e.streams[0]; _vliveTryPlay(rv); }
+        _vliveFlushPendingKids(); // flux reçu → je peux relayer vers mes enfants
       };
       pc.onicecandidate = (e) => { if (e.candidate) _vliveSend("ice", { to: "host", candidate: e.candidate }); };
       pc.onconnectionstatechange = () => {
         const st = pc.connectionState;
-        if (st === "connected") { V._reconns = 0; const s = document.getElementById("vliveStatus"); if (s) s.textContent = ""; }
+        if (st === "connected") {
+          V._reconns = 0;
+          const s = document.getElementById("vliveStatus"); if (s) s.textContent = "";
+          // Signale à l'hôte que je suis connecté → utilisable comme relais.
+          if (!V._readySent) { V._readySent = true; _vliveSend("ready", {}); }
+        }
         // "disconnected" est souvent transitoire (WebRTC ré-essaie seul) → on
         // n'agit que sur "failed", en tentant d'abord une reconnexion douce.
         if (st === "failed" && window._vliveView === V) _vliveViewerReconnect();
@@ -3179,15 +3272,147 @@ function _vliveBindViewer(chan) {
   chan.on("broadcast", { event: "react" }, (msg) => { _vliveSpawnReaction((msg.payload || {}).emoji); });
   chan.on("broadcast", { event: "heart" }, () => { _vliveSpawnReaction("❤️"); });
   chan.on("broadcast", { event: "sys" }, (msg) => { _vliveSysMsg((msg.payload || {}).text); });
+  chan.on("broadcast", { event: "pause" }, (msg) => { _vliveShowPaused(!!(msg.payload || {}).on, false); });
   // Rejeu de l'historique du chat à l'arrivée (envoyé par le host, ciblé).
   chan.on("broadcast", { event: "history" }, (msg) => {
     const d = msg.payload || {};
     if (d.to !== MY_UID || !Array.isArray(d.msgs)) return;
     d.msgs.forEach(m => _vliveChatMsg(m, true));
   });
+  // ── RELAIS (scaling gratuit) ──
+  // L'hôte est saturé : il m'a assigné à un spectateur-relais. J'attends son
+  // roffer (rien à faire ici, informatif — le flux arrivera via roffer).
+  chan.on("broadcast", { event: "assign" }, (msg) => {
+    const d = msg.payload || {};
+    if (d.to !== MY_UID) return;
+    const s = document.getElementById("vliveStatus");
+    if (s && !((window._vliveView || {}).remoteStream)) s.textContent = "Connexion au direct…";
+  });
+  // Je reçois une OFFRE d'un spectateur-relais (je suis un enfant relayé).
+  chan.on("broadcast", { event: "roffer" }, async (msg) => {
+    const V = window._vliveView;
+    const d = msg.payload || {};
+    if (!V || d.to !== MY_UID || !d.sdp || !d.srv) return;
+    try {
+      if (V.pc) { try { V.pc.close(); } catch (e) {} }
+      const pc = new RTCPeerConnection({ iceServers: CALL_ICE_SERVERS });
+      V.pc = pc; V.pendingIce = V.pendingIce || []; V.servedBy = d.srv;
+      pc.ontrack = (e) => {
+        V.remoteStream = e.streams[0];
+        const rv = document.getElementById("vliveVideo");
+        if (rv) { rv.srcObject = e.streams[0]; _vliveTryPlay(rv); }
+      };
+      pc.onicecandidate = (e) => { if (e.candidate) _vliveSend("rice", { to: d.srv, candidate: e.candidate }); };
+      pc.onconnectionstatechange = () => {
+        const st = pc.connectionState;
+        if (st === "connected") { V._reconns = 0; const s = document.getElementById("vliveStatus"); if (s) s.textContent = ""; }
+        if (st === "failed" && window._vliveView === V) _vliveViewerReconnect();
+      };
+      await pc.setRemoteDescription(new RTCSessionDescription(d.sdp));
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      _vliveSend("ranswer", { to: d.srv, sdp: pc.localDescription });
+      (V.pendingIce || []).forEach(c => { try { pc.addIceCandidate(new RTCIceCandidate(c)); } catch (e) {} });
+      V.pendingIce = [];
+      const stEl = document.getElementById("vliveStatus"); if (stEl) stEl.textContent = "";
+    } catch (e) { console.warn("[vlive] ranswer:", e && e.message); }
+  });
+  // L'hôte me demande de RELAYER vers un enfant (je suis un spectateur direct).
+  chan.on("broadcast", { event: "serve" }, (msg) => {
+    const d = msg.payload || {};
+    if (d.to !== MY_UID || !d.child) return;
+    _vliveRelayServe(d.child);
+  });
+  // Réponse SDP d'un de mes enfants relayés.
+  chan.on("broadcast", { event: "ranswer" }, async (msg) => {
+    const V = window._vliveView;
+    const d = msg.payload || {};
+    if (!V || d.to !== MY_UID || !d.sdp || !d.from) return;
+    const k = V.kids && V.kids[d.from];
+    if (!k) return;
+    try {
+      await k.pc.setRemoteDescription(new RTCSessionDescription(d.sdp));
+      (k.pendingIce || []).forEach(c => { try { k.pc.addIceCandidate(new RTCIceCandidate(c)); } catch (e) {} });
+      k.pendingIce = [];
+    } catch (e) {}
+  });
+  // ICE relais : vers MON parent-relais (V.pc) OU depuis un de MES enfants.
+  chan.on("broadcast", { event: "rice" }, async (msg) => {
+    const V = window._vliveView;
+    const d = msg.payload || {};
+    if (!V || d.to !== MY_UID || !d.candidate) return;
+    if (d.from && d.from === V.servedBy) {
+      try {
+        if (!V.pc || !V.pc.remoteDescription || !V.pc.remoteDescription.type) (V.pendingIce = V.pendingIce || []).push(d.candidate);
+        else await V.pc.addIceCandidate(new RTCIceCandidate(d.candidate));
+      } catch (e) {}
+      return;
+    }
+    const k = V.kids && V.kids[d.from];
+    if (k) {
+      try {
+        if (!k.pc.remoteDescription || !k.pc.remoteDescription.type) (k.pendingIce = k.pendingIce || []).push(d.candidate);
+        else await k.pc.addIceCandidate(new RTCIceCandidate(d.candidate));
+      } catch (e) {}
+    }
+  });
   chan.on("presence", { event: "sync" }, () => { _vliveUpdateViewers(); });
   chan.on("presence", { event: "join" }, () => { _vliveUpdateViewers(); });
   chan.on("presence", { event: "leave" }, () => { _vliveUpdateViewers(); });
+}
+
+// ── Spectateur-RELAIS : je re-diffuse le flux reçu vers mes enfants ──
+// Sert un enfant : si mon flux n'est pas encore arrivé, je le mets en file et je
+// le sers dès réception (ontrack → _vliveFlushPendingKids).
+function _vliveRelayServe(child) {
+  const V = window._vliveView;
+  if (!V || !child) return;
+  if (!V.remoteStream) { V.pendingKids = V.pendingKids || []; if (V.pendingKids.indexOf(child) < 0) V.pendingKids.push(child); return; }
+  V.kids = V.kids || {};
+  if (V.kids[child]) { try { V.kids[child].pc.close(); } catch (e) {} delete V.kids[child]; }
+  const pc = new RTCPeerConnection({ iceServers: CALL_ICE_SERVERS });
+  const entry = { pc: pc, pendingIce: [] };
+  V.kids[child] = entry;
+  (V.remoteStream.getTracks() || []).forEach(t => { try { pc.addTrack(t, V.remoteStream); } catch (e) {} });
+  try { _callPreferVideoCodecs(pc); } catch (e) {}
+  pc.onicecandidate = (e) => { if (e.candidate) _vliveSend("rice", { to: child, candidate: e.candidate }); };
+  pc.onconnectionstatechange = () => {
+    const st = pc.connectionState;
+    if ((st === "failed" || st === "closed") && V.kids && V.kids[child] && V.kids[child].pc === pc) {
+      try { pc.close(); } catch (e) {} delete V.kids[child];
+    }
+  };
+  (async () => {
+    try {
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription({ type: offer.type, sdp: _callTuneSdp(offer.sdp) });
+      _vliveRelayLimitBitrate(pc);
+      _vliveSend("roffer", { to: child, srv: MY_UID, sdp: pc.localDescription });
+    } catch (e) { console.warn("[vlive] roffer:", e && e.message); }
+  })();
+}
+
+// Flux enfin reçu → je sers les enfants en attente.
+function _vliveFlushPendingKids() {
+  const V = window._vliveView;
+  if (!V || !V.pendingKids || !V.pendingKids.length) return;
+  const q = V.pendingKids.slice();
+  V.pendingKids = [];
+  q.forEach(c => _vliveRelayServe(c));
+}
+
+// Plafonne le débit re-uploadé vers un enfant (uplink du spectateur limité).
+async function _vliveRelayLimitBitrate(pc) {
+  try {
+    for (const sender of pc.getSenders()) {
+      if (!sender.track) continue;
+      const params = sender.getParameters();
+      if (!params.encodings || !params.encodings.length) params.encodings = [{}];
+      if (sender.track.kind === "video") { params.encodings[0].maxBitrate = VLIVE_RELAY_BR; params.encodings[0].maxFramerate = 30; }
+      else { params.encodings[0].maxBitrate = 96000; }
+      try { await sender.setParameters(params); } catch (e) {}
+    }
+  } catch (e) {}
 }
 
 // Autoplay avec son : tenté d'abord (l'utilisateur vient de taper la bulle =
@@ -3355,6 +3580,34 @@ function toggleVliveMic(btn) {
 }
 window.toggleVliveMic = toggleVliveMic;
 
+// Pause / reprise du direct (diffuseur) : gèle la vidéo + coupe le micro sans
+// démonter les connexions (le live reste « vivant » ; les spectateurs voient un
+// écran « en pause »). Reprise = réactive les pistes.
+function toggleVlivePause(btn) {
+  const H = window._vliveHost;
+  if (!H || !H.stream) return;
+  H.paused = !H.paused;
+  const on = H.paused;
+  try { (H.stream.getVideoTracks() || []).forEach(t => t.enabled = !on); } catch (e) {}
+  try { (H.stream.getAudioTracks() || []).forEach(t => t.enabled = !on); } catch (e) {}
+  _vliveSend("pause", { on: on });
+  if (btn) { btn.classList.toggle("off", on); btn.textContent = on ? "▶️" : "⏸"; btn.setAttribute("aria-label", on ? "Reprendre" : "Mettre en pause"); }
+  // Micro : si on reprend, remet le bouton micro cohérent (réactivé ci-dessus).
+  const micBtn = btn && btn.parentElement && btn.parentElement.querySelector('[aria-label="Micro"]');
+  if (micBtn && !on) { micBtn.classList.remove("off"); micBtn.textContent = "🎙"; }
+  _vliveShowPaused(on, true);
+  toast(on ? "⏸ Live en pause" : "▶️ Live repris");
+}
+window.toggleVlivePause = toggleVlivePause;
+
+// Affiche/masque l'écran « en pause » (hôte : aperçu ; spectateur : sur réception).
+function _vliveShowPaused(on, isHost) {
+  const el = document.getElementById("vlivePaused");
+  if (!el) return;
+  el.querySelector("span").textContent = isHost ? "Live en pause (toi)" : "Le live est en pause";
+  el.style.display = on ? "flex" : "none";
+}
+
 // Changement de caméra (diffuseur) : replaceTrack sur TOUTES les connexions.
 async function flipVliveCamera() {
   const H = window._vliveHost;
@@ -3394,6 +3647,8 @@ function _vliveTeardown() {
   const V = window._vliveView;
   if (V) {
     try { if (V.pc) V.pc.close(); } catch (e) {}
+    // Ferme mes connexions d'enfants relayés le cas échéant.
+    if (V.kids) { for (const c in V.kids) { try { V.kids[c].pc.close(); } catch (e) {} } }
     try { if (V.chan) { V.chan.untrack(); supa.removeChannel(V.chan); } } catch (e) {}
   }
   window._vliveHost = null;
@@ -3445,6 +3700,7 @@ function _vliveRenderUI(mode, row) {
     '</div>' +
     (title ? '<div class="vlive-title-pill">' + escapeHtml(title) + '</div>' : "") +
     '<div class="vlive-status" id="vliveStatus">' + (isHost ? "" : "Connexion au direct…") + '</div>' +
+    '<div class="vlive-paused" id="vlivePaused" style="display:none;">⏸<span>Le live est en pause</span></div>' +
     '<div class="vlive-hearts" id="vliveHearts"></div>' +
     '<button id="vliveUnmuteBtn" class="vlive-unmute" style="display:none;" onclick="_vliveUnmute()">🔊 Activer le son</button>' +
     '<div class="vlive-bottom">' +
@@ -3455,7 +3711,8 @@ function _vliveRenderUI(mode, row) {
           ' onkeydown="if(event.key===&quot;Enter&quot;){_vliveSendChat();}"/>' +
         '<button class="vlive-bar-btn" onclick="_vliveSendChat()" aria-label="Envoyer">➤</button>' +
         (isHost
-          ? '<button class="vlive-bar-btn" onclick="toggleVliveMic(this)" aria-label="Micro">🎙</button>' +
+          ? '<button class="vlive-bar-btn" id="vlivePauseBtn" onclick="toggleVlivePause(this)" aria-label="Mettre en pause">⏸</button>' +
+            '<button class="vlive-bar-btn" onclick="toggleVliveMic(this)" aria-label="Micro">🎙</button>' +
             '<button class="vlive-bar-btn" onclick="flipVliveCamera()" aria-label="Changer de caméra">🔄</button>'
           : '<button class="vlive-bar-btn heart" onclick="_vliveHeart()" aria-label="Envoyer un cœur">❤️</button>') +
       '</div>' +

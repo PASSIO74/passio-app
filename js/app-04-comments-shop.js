@@ -1602,8 +1602,12 @@ function cmtComposerEmoji(inputId, event, submitFn, submitArg, startTab) {
   var inp = document.getElementById(inputId);
   if (!inp) return false;
   var btn = event && (event.currentTarget || event.target);
-  var emojis = window._PASSIO_EMOJI_LIST
-    || ["😀","😂","😍","🥰","😎","😭","😡","👍","🙏","🔥","❤️","🎉","✨","💯","😅","🤔","😴","🥳","😇","🙌","👏","😢","😱","🤗","😋","🤩","😉","😘","🤤","😏"];
+  // Set emoji COMPLET (280+, catégorisé + recherchable) partagé avec la
+  // messagerie ; repli sur la liste courte si app-09 pas encore chargé.
+  var emojis = (typeof EMOJIS !== "undefined" && EMOJIS && EMOJIS.length)
+    ? EMOJIS
+    : (window._PASSIO_EMOJI_LIST
+      || ["😀","😂","😍","🥰","😎","😭","😡","👍","🙏","🔥","❤️","🎉","✨","💯","😅","🤔","😴","🥳","😇","🙌","👏","😢","😱","🤗","😋","🤩","😉","😘","🤤","😏"]);
   var panel = document.createElement("div");
   panel.id = "cmt-emoji-composer";
   // z-index 100002 : AU-DESSUS du .modal-backdrop (10001, viewer CDV) et de la
@@ -1643,19 +1647,46 @@ function cmtComposerEmoji(inputId, event, submitFn, submitArg, startTab) {
   function showEmoji() {
     styleTab(tabEmoji, true); styleTab(tabGif, false);
     content.innerHTML = "";
+    // ── Recherche emoji (filtre par labels d'EMOJI_DATA, comme la messagerie) ──
+    var search = document.createElement("input");
+    search.type = "search";
+    search.placeholder = "Rechercher un emoji…";
+    search.setAttribute("aria-label", "Rechercher un emoji");
+    search.style.cssText = "width:100%;box-sizing:border-box;margin-bottom:8px;padding:8px 12px;border-radius:10px;border:1.5px solid var(--border);background:var(--bg-deep);color:var(--text);font-size:16px;outline:none;";
+    search.onclick = function (e) { e.stopPropagation(); };
     var grid = document.createElement("div");
     grid.style.cssText = "display:flex;flex-wrap:wrap;gap:2px;max-height:200px;overflow-y:auto;";
-    emojis.forEach(function (e) {
-      var b = document.createElement("span");
-      b.textContent = e;
-      // Emojis plus petits + cellule plus compacte
-      b.style.cssText = "cursor:pointer;font-size:18px;line-height:1;padding:5px;border-radius:8px;transition:background .15s,transform .1s;";
-      b.onmouseover = function () { this.style.background = "rgba(124,58,237,0.18)"; this.style.transform = "scale(1.18)"; };
-      b.onmouseout = function () { this.style.background = "transparent"; this.style.transform = "scale(1)"; };
-      b.onclick = function (ev) { ev.stopPropagation(); _insertEmoji(e); };
-      grid.appendChild(b);
-    });
+    content.appendChild(search);
     content.appendChild(grid);
+    function renderGrid(list) {
+      grid.innerHTML = "";
+      if (!list.length) {
+        var empty = document.createElement("div");
+        empty.style.cssText = "width:100%;padding:18px;text-align:center;color:var(--muted);font-size:13px;";
+        empty.textContent = "Aucun emoji trouvé";
+        grid.appendChild(empty);
+        return;
+      }
+      list.forEach(function (e) {
+        var b = document.createElement("span");
+        b.textContent = e;
+        b.style.cssText = "cursor:pointer;font-size:18px;line-height:1;padding:5px;border-radius:8px;transition:background .15s,transform .1s;";
+        b.onmouseover = function () { this.style.background = "rgba(124,58,237,0.18)"; this.style.transform = "scale(1.18)"; };
+        b.onmouseout = function () { this.style.background = "transparent"; this.style.transform = "scale(1)"; };
+        b.onclick = function (ev) { ev.stopPropagation(); _insertEmoji(e); };
+        grid.appendChild(b);
+      });
+    }
+    search.oninput = function () {
+      var q = (search.value || "").toLowerCase().trim();
+      if (!q) { renderGrid(emojis); return; }
+      // Filtre par labels quand EMOJI_DATA est dispo, sinon sous-chaîne brute.
+      var list = (typeof EMOJI_DATA !== "undefined" && EMOJI_DATA && EMOJI_DATA.length)
+        ? EMOJI_DATA.filter(function (d) { return d.labels && d.labels.indexOf(q) !== -1; }).map(function (d) { return d.emoji; })
+        : emojis.filter(function (e) { return e.indexOf(q) !== -1; });
+      renderGrid(list);
+    };
+    renderGrid(emojis);
   }
 
   function showGif() {
