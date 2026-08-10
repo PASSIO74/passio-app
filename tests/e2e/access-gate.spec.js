@@ -14,7 +14,7 @@ test("au premier lancement, l'écran de code bloque toute l'app", async ({ page 
 test("un mauvais code est rejeté avec un message d'erreur", async ({ page }) => {
   await page.goto("/index.html");
   await expect(page.locator("#passioGate")).toBeVisible();
-  await page.locator("#pgDots").click();
+  await page.locator("#pgInput").click();
   await page.keyboard.type("0000");
   await expect(page.locator("#pgErr")).toHaveClass(/show/);
   await expect(page.locator(".app-shell")).toBeHidden();
@@ -25,7 +25,7 @@ test("un mauvais code est rejeté avec un message d'erreur", async ({ page }) =>
 
 test("le bon code déverrouille l'app et pose le jeton de session", async ({ page }) => {
   await page.goto("/index.html");
-  await page.locator("#pgDots").click();
+  await page.locator("#pgInput").click();
   await page.keyboard.type(GATE_CODE);
   await expect(page.locator("#landing")).toBeVisible({ timeout: 10000 });
   const token = await page.evaluate((k) => sessionStorage.getItem(k), GATE_KEY);
@@ -41,7 +41,7 @@ test("un jeton falsifié ne déverrouille pas l'app", async ({ page }) => {
 
 test("une fois déverrouillé, le rechargement dans le même onglet ne redemande pas le code", async ({ page }) => {
   await page.goto("/index.html");
-  await page.locator("#pgDots").click();
+  await page.locator("#pgInput").click();
   await page.keyboard.type(GATE_CODE);
   await expect(page.locator("#landing")).toBeVisible({ timeout: 10000 });
   await page.reload();
