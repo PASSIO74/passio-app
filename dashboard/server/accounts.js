@@ -23,7 +23,7 @@ export async function accounts() {
       .limit(5000);
     if (error) throw error;
     const users = (data || [])
-      .filter((r) => !store.testUids.has(r.id))
+      .filter((r) => !store.isExcludedUid(r.id))
       .map((r) => ({
         id: r.id,
         name: r.username || null,

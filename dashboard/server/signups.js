@@ -16,7 +16,7 @@ export async function signups() {
     // Toutes les dates de création (hors comptes de test).
     const { data, error } = await admin.from("profiles").select("id,created_at").order("created_at", { ascending: false }).limit(5000);
     if (error) throw error;
-    const rows = (data || []).filter((r) => r.created_at && !store.testUids.has(r.id));
+    const rows = (data || []).filter((r) => r.created_at && !store.isExcludedUid(r.id));
     const ts = rows.map((r) => Date.parse(r.created_at)).filter((t) => !isNaN(t));
     const now = Date.now();
     const since = (ms) => ts.filter((t) => now - t < ms).length;

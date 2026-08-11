@@ -9,6 +9,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 import { getAdmin } from "./ingest.js";
 import { store } from "./store.js";
+import { config } from "./config.js";
 
 const DAY = 86_400_000;
 const WINDOWS = [1, 7, 30];
@@ -76,8 +77,9 @@ export async function retention() {
   try {
     const now = Date.now();
     // 1) Début de la télémétrie (borne d'éligibilité des cohortes).
-    const { data: firstRows, error: e0 } = await admin
-      .from("telemetry_events").select("received_at").order("received_at", { ascending: true }).limit(1);
+    let firstQ = admin.from("telemetry_events").select("received_at");
+    if (config.onlyProdEvents) firstQ = firstQ.eq("env", "production");
+    const { data: firstRows, error: e0 } = await firstQ.order("received_at", { ascending: true }).limit(1);
     if (e0) throw e0;
     const telemetryStart = firstRows?.[0]?.received_at ? Date.parse(firstRows[0].received_at) : null;
 
@@ -88,7 +90,7 @@ export async function retention() {
         .order("created_at", { ascending: false }).range(page * PAGE, page * PAGE + PAGE - 1);
       if (error) throw error;
       const batch = data || [];
-      for (const r of batch) if (r.id && !store.testUids.has(r.id)) profRaw.push(r);
+      for (const r of batch) if (r.id && !store.isExcludedUid(r.id)) profRaw.push(r);
       if (batch.length < PAGE) break;
     }
 
@@ -97,12 +99,14 @@ export async function retention() {
     if (telemetryStart != null) {
       const sinceIso = new Date(telemetryStart).toISOString();
       for (let page = 0; page < MAX_PAGES; page++) {
-        const { data, error } = await admin.from("telemetry_events").select("user_id,received_at")
-          .gte("received_at", sinceIso).not("user_id", "is", null)
+        let actQ = admin.from("telemetry_events").select("user_id,received_at")
+          .gte("received_at", sinceIso).not("user_id", "is", null);
+        if (config.onlyProdEvents) actQ = actQ.eq("env", "production");
+        const { data, error } = await actQ
           .order("received_at", { ascending: false }).range(page * PAGE, page * PAGE + PAGE - 1);
         if (error) throw error;
         const batch = data || [];
-        for (const r of batch) if (r.user_id && !store.testUids.has(r.user_id)) activity.push(r);
+        for (const r of batch) if (r.user_id && !store.isExcludedUid(r.user_id)) activity.push(r);
         if (batch.length < PAGE) break;
       }
     }

@@ -96,7 +96,8 @@ class Store {
     this.users = new Map();
     this.bugs = new Map();               // fingerprint -> bug live
     this.links = new Map();              // linkId -> cycle de vie d'un lien partagé
-    this.testUids = new Set();           // comptes de test à EXCLURE (faux profils)
+    this.testUids = new Set();           // comptes de test à EXCLURE (faux profils @passio-e2e.test)
+    this.internalUids = new Set(config.internalUids); // exclusion interne OPTIONNELLE (vide par défaut → tes comptes comptent comme testeurs)
     this.resolvedNames = {};             // uid -> pseudo (résolu depuis profiles)
     // statut/notes de bug persistés (survivent au redémarrage)
     this.bugMeta = new JsonDb("bug-meta", {});
@@ -105,12 +106,16 @@ class Store {
   /** Définit les identifiants des comptes de test à ne jamais compter. */
   setTestUids(ids) { this.testUids = new Set(ids || []); }
 
+  /** Un uid à ne JAMAIS compter comme testeur : compte jetable e2e OU compte
+   *  interne (le tien). Filtre unique réutilisé par tous les modules. */
+  isExcludedUid(uid) { return !!uid && (this.testUids.has(uid) || this.internalUids.has(uid)); }
+
   /** Enregistre des pseudos résolus (uid -> username). */
   setResolvedNames(obj) { Object.assign(this.resolvedNames, obj || {}); }
   /** uids observés sans pseudo connu (à résoudre via profiles). */
   unresolvedUids() {
     const out = [];
-    for (const [uid, u] of this.users) if (!u.label && !this.resolvedNames[uid] && !this.testUids.has(uid)) out.push(uid);
+    for (const [uid, u] of this.users) if (!u.label && !this.resolvedNames[uid] && !this.isExcludedUid(uid)) out.push(uid);
     return out;
   }
   /** Carte uid -> nom lisible pour le client (pseudo d'événement ou résolu). */
@@ -122,7 +127,11 @@ class Store {
 
   /** @param {TelemetryEvent} ev */
   add(ev) {
-    if (ev.user_id && this.testUids.has(ev.user_id)) return false; // faux profil → ignoré
+    // Ne compter que les VRAIS testeurs :
+    //  • env≠production = runs e2e / dev local (des milliers de faux appareils) → ignoré ;
+    //  • compte jetable e2e OU compte interne (le tien) → ignoré.
+    if (config.onlyProdEvents && ev.env !== "production") return false;
+    if (this.isExcludedUid(ev.user_id)) return false;
     if (ev.event_id) {
       if (this.seen.has(ev.event_id)) return false;
       this.seen.add(ev.event_id);

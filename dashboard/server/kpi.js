@@ -12,6 +12,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 import { getAdmin } from "./ingest.js";
 import { store } from "./store.js";
+import { config } from "./config.js";
 
 const DAY = 86_400_000;
 const PAGE = 1000;                // PostgREST plafonne CHAQUE réponse à 1000 lignes
@@ -81,16 +82,18 @@ export async function kpi() {
     const rows = [];
     let page = 0, truncated = false;
     for (; page < MAX_PAGES; page++) {
-      const { data, error } = await admin
+      let q = admin
         .from("telemetry_events")
         .select("user_id,received_at")
         .gt("received_at", sinceIso)
-        .not("user_id", "is", null)
+        .not("user_id", "is", null);
+      if (config.onlyProdEvents) q = q.eq("env", "production"); // écarte les runs e2e / dev
+      const { data, error } = await q
         .order("received_at", { ascending: false })
         .range(page * PAGE, page * PAGE + PAGE - 1);
       if (error) throw error;
       const batch = data || [];
-      for (const r of batch) if (r.user_id && !store.testUids.has(r.user_id)) rows.push(r);
+      for (const r of batch) if (r.user_id && !store.isExcludedUid(r.user_id)) rows.push(r);
       if (batch.length < PAGE) break;   // dernière page atteinte
     }
     const partial = page >= MAX_PAGES;  // borne de sécurité atteinte → lecture tronquée

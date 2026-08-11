@@ -55,6 +55,17 @@ export const config = {
 
   eventBuffer: Number(env.DASH_EVENT_BUFFER || 5000),
   dataDir: path.join(ROOT, "data"),
+
+  // ── Ne montrer que les VRAIS testeurs ────────────────────────────────────
+  // N'ingérer que les événements de PRODUCTION : les runs e2e et le dev local
+  // émettent en env=development (des milliers de faux appareils jetables) et
+  // sont écartés d'office. Mettre DASH_ONLY_PROD_EVENTS=false pour tout voir.
+  onlyProdEvents: env.DASH_ONLY_PROD_EVENTS !== "false",
+  // Exclusion interne OPTIONNELLE : vide par défaut → tes propres comptes
+  // comptent comme des testeurs (choix explicite). Ne renseigner DASH_INTERNAL_UIDS
+  // (dans .env, hors git) que si tu veux un jour retirer des comptes des métriques.
+  internalUids: (env.DASH_INTERNAL_UIDS || "")
+    .split(",").map((s) => s.trim()).filter(Boolean),
 };
 
 /** Indique si la collecte Supabase est configurée (sinon mode démo/local). */
