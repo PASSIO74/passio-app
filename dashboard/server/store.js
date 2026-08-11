@@ -471,8 +471,9 @@ class Store {
   // qui a ouvert l'app ». On expose TOUT ce que la télémétrie connaît réellement :
   // plateforme, navigateur, OS, taille d'écran, connexion, environnement, nb de
   // sessions/événements, écrans parcourus, lien(s) d'arrivée, et — s'il a créé un
-  // compte — l'identité liée. AUCUN numéro de téléphone n'existe : Passio
-  // s'authentifie par e-mail et la télémétrie masque le PII par conception.
+  // compte — l'identité liée. La télémétrie masque le PII par conception : AUCUN
+  // numéro ici. Le numéro (saisi à l'inscription) vit dans auth.users et n'est
+  // réuni aux infos de connexion que dans la vue « Comptes » (voir accounts.js).
   visitorList() {
     const now = Date.now();
     // Agrégats par appareil : sessions, événements, écrans distincts parcourus.

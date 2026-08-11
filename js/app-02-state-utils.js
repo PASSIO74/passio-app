@@ -1315,6 +1315,8 @@ function switchAuthTab(mode) {
   document.getElementById("authTabSignin").classList.toggle("active", mode === "signin");
   document.getElementById("authTabSignup").classList.toggle("active", mode === "signup");
   document.getElementById("authPasswordConfirmWrap").style.display = mode === "signup" ? "" : "none";
+  const phoneWrap = document.getElementById("authPhoneWrap");
+  if (phoneWrap) phoneWrap.style.display = mode === "signup" ? "" : "none";
   document.getElementById("authSubmitBtn").textContent = mode === "signin" ? "Se connecter" : "Créer mon compte";
   // "Mot de passe oublié ?" pertinent uniquement en connexion
   const forgot = document.getElementById("authForgotLink");
@@ -1406,10 +1408,20 @@ function _showAuthMsg(text, type) {
   el.className = "onb-auth-msg " + type;
 }
 
+// Normalise un numéro de téléphone : garde le « + » de tête (international) et
+// les chiffres, supprime espaces/points/tirets/parenthèses. Renvoie "" si vide.
+function normalizePhone(raw) {
+  const s = String(raw || "").trim();
+  if (!s) return "";
+  const plus = s[0] === "+" ? "+" : "";
+  return plus + s.replace(/[^\d]/g, "");
+}
+
 async function onbDoAuth() {
   const email = (document.getElementById("authEmail")?.value || "").trim();
   const pwd = document.getElementById("authPassword")?.value || "";
   const pwd2 = document.getElementById("authPasswordConfirm")?.value || "";
+  const phone = normalizePhone(document.getElementById("authPhone")?.value || "");
   const btn = document.getElementById("authSubmitBtn");
 
   // Validation de format stricte (en plus de la confirmation par e-mail Supabase).
@@ -1417,6 +1429,12 @@ async function onbDoAuth() {
   if (!EMAIL_RE.test(email)) { _showAuthMsg("Adresse e-mail invalide.", "error"); return; }
   if (pwd.length < 6) { _showAuthMsg("Le mot de passe doit contenir au moins 6 caractères.", "error"); return; }
   if (_authMode === "signup" && pwd !== pwd2) { _showAuthMsg("Les mots de passe ne correspondent pas.", "error"); return; }
+  // Numéro obligatoire à la création (demandé au même titre que l'e-mail) :
+  // 8 à 15 chiffres, éventuellement précédés d'un indicatif « + » international.
+  if (_authMode === "signup") {
+    const digits = phone.replace(/\D/g, "");
+    if (digits.length < 8 || digits.length > 15) { _showAuthMsg("Numéro de téléphone invalide.", "error"); return; }
+  }
 
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="auth-loading"></span>' + (_authMode === "signin" ? "Connexion…" : "Création…"); }
 
@@ -1425,7 +1443,18 @@ async function onbDoAuth() {
     if (_authMode === "signin") {
       result = await supa.auth.signInWithPassword({ email, password: pwd });
     } else {
-      result = await supa.auth.signUp({ email, password: pwd });
+      // Le numéro voyage dans user_metadata (auth.users) : jamais exposé aux
+      // autres comptes (contrairement à `profiles`, en lecture publique), lisible
+      // seulement côté serveur via service_role (centre de pilotage).
+      result = await supa.auth.signUp({ email, password: pwd, options: { data: { phone } } });
+      // Copie locale pour le profil et les prochaines synchros.
+      try {
+        if (typeof state !== "undefined") {
+          state.user = state.user || {};
+          state.user.general = state.user.general || {};
+          state.user.general.phone = phone;
+        }
+      } catch (e) {}
     }
     const { data, error } = result;
     if (error) {
