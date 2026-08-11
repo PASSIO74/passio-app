@@ -476,3 +476,16 @@ tbody tr.row-alert:hover{background:rgba(239,68,68,.1)}
 .lk-bar-fill.ok{background:var(--ok)} .lk-bar-fill.warn{background:var(--warn)}
 .lk-bar-fill.error{background:var(--err)} .lk-bar-fill.info{background:var(--info)}
 .lk-bar-n{text-align:right;font-variant-numeric:tabular-nums;font-weight:600;font-size:13px}
+
+/* ─── Aperçu « Liens partagés » sur l'accueil ────────────────────────────────── */
+.ovlk-head{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.ovlk-head strong{display:inline-flex;align-items:center;gap:7px}
+.ovlk-head svg{width:16px;height:16px;color:var(--accent)}
+.ovlk-row{display:flex;align-items:center;flex-wrap:wrap;gap:6px 4px}
+.ovlk-seg{display:flex;flex-direction:column;align-items:center;min-width:78px;padding:6px 10px;background:var(--bg-2);border-radius:var(--radius-sm);flex:1 1 auto}
+.ovlk-seg .ovlk-n{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.ovlk-seg .ovlk-n.ok{color:var(--ok)} .ovlk-seg .ovlk-n.warn{color:var(--warn)}
+.ovlk-seg .ovlk-l{font-size:11px;color:var(--muted);text-align:center;margin-top:2px}
+.ovlk-arrow{color:var(--muted-2);display:inline-flex;opacity:.5}
+.ovlk-arrow svg{width:15px;height:15px}
+.ovlk-rate{background:var(--grad-soft,var(--card-2))}
