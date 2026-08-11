@@ -30,7 +30,9 @@ function sharePost(id) {
     btn.addEventListener("click", function() {
       // Un carnet partagé doit OUVRIR le carnet, pas la page d'accueil.
       const shareUrl = post.type === "vlog"
-        ? (location.origin + location.pathname + "#carnet-" + id)
+        ? ((window.tel && tel.shareLink)
+            ? tel.shareLink(location.origin + location.pathname + "#carnet-" + id, "carnet", id, navigator.share ? "native" : "clipboard")
+            : (location.origin + location.pathname + "#carnet-" + id))
         : "https://passio-app.netlify.app";
       if (navigator.share) {
         navigator.share({ title: "PASSIO", text: txt, url: shareUrl }).catch(() => {});
@@ -2034,6 +2036,7 @@ function shareCarnetStep(postId, stepIndex) {
   _shareStepLink(label, (post ? post.destination : ""), location.origin + location.pathname + "#carnet-" + postId);
 }
 function _shareStepLink(label, trip, url) {
+  if (window.tel && tel.shareLink) url = tel.shareLink(url, "cdv_step", null, navigator.share ? "native" : "clipboard");
   var txt = label + (trip ? " — voyage « " + trip + " » sur PASSIO" : " sur PASSIO");
   if (navigator.share) {
     navigator.share({ title: "PASSIO", text: txt, url: url }).catch(function () {});
@@ -2718,6 +2721,7 @@ function shareCdvLive(liveId) {
   var live = lives.find(function(l) { return l.id === liveId; });
   if (!live) return;
   var url = location.origin + location.pathname + "#cdv-live-" + liveId;
+  if (window.tel && tel.shareLink) url = tel.shareLink(url, "cdv_live", liveId, navigator.share ? "native" : "clipboard");
   var title = "📡 " + (live.destination || "Carnet de voyage en direct") + " sur PASSIO";
   var text = (live.destination ? live.destination + " · " : "") + (live.steps ? live.steps.length : 0) + " étape" + ((live.steps && live.steps.length > 1) ? "s" : "");
   if (navigator.share) {

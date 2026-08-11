@@ -3754,7 +3754,8 @@ function _vliveShare() {
   const id = s.id;
   const who = (window._vliveHost ? _callMyName() : ((s.row && s.row.author_name) || "")).split(" ")[0];
   const title = (window._vliveHost && s.title) || (s.row && s.row.title) || "";
-  const url = location.origin + "/?live=" + encodeURIComponent(id);
+  const rawUrl = location.origin + "/?live=" + encodeURIComponent(id);
+  const url = (window.tel && tel.shareLink) ? tel.shareLink(rawUrl, "live", id, navigator.share ? "native" : "clipboard") : rawUrl;
   const txt = "🔴 " + (who ? who + " est en direct" : "En direct") + (title ? " : " + title : "") + " sur PASSIO";
   try {
     if (navigator.share) { navigator.share({ title: "PASSIO — Live", text: txt, url: url }).catch(() => {}); return; }

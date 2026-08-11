@@ -3667,7 +3667,8 @@ window.addEventListener("hashchange", _openIrlEventFromHash);
 function shareEvent(id) {
   const ev = allEvents().find(e => e.id === id);
   if (!ev) { toast("Événement introuvable."); return; }
-  const url = location.origin + location.pathname + "#irl-event-" + id;
+  const rawUrl = location.origin + location.pathname + "#irl-event-" + id;
+  const url = (window.tel && tel.shareLink) ? tel.shareLink(rawUrl, "event", id, navigator.share ? "native" : "clipboard") : rawUrl;
   const d = fmtEventDate(ev.date);
   const text = `${ev.title} · ${ev.city || ""} · ${d.day} ${d.month}`;
 
@@ -5547,6 +5548,7 @@ function _copyCheckinLink(eventId) {
   var ev = _findCanonicalEvent(eventId) || allEvents().find(function (e) { return e.id === eventId; });
   if (!ev) return;
   var url = _eventCheckinUrl(ev);
+  if (window.tel && tel.shareLink) url = tel.shareLink(url, "checkin", ev.id, "clipboard");
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(url).then(function () { toast("Lien copié 🔗"); },
       function () { toast(url); });

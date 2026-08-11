@@ -3172,7 +3172,8 @@ function openBlockedList() {
 }
 
 function shareUserProfile(userId, name) {
-  const url = location.origin + location.pathname + "#user-" + userId;
+  const rawUrl = location.origin + location.pathname + "#user-" + userId;
+  const url = (window.tel && tel.shareLink) ? tel.shareLink(rawUrl, "profile", userId, navigator.share ? "native" : "clipboard") : rawUrl;
   const data = { title: name || "Profil PASSIO", text: "Découvre " + (name || "ce profil") + " sur PASSIO", url };
   if (navigator.share) {
     navigator.share(data).catch(() => {});

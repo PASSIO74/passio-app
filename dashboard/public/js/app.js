@@ -235,6 +235,7 @@ VIEWS.overview = async (view) => {
     <div id="ovState"></div>
     <div id="ovConn"></div>
     <div class="home-cards" id="ovCards"></div>
+    <div id="ovLinks"></div>
     <div class="cols cols-2" style="margin-top:16px">
       <div class="card chart-card"><h4>Ce qui se passe en direct</h4><div class="chart-meta">Les dernières actions des utilisateurs · <a href="#activity">tout voir</a></div><div id="ovFeed"></div></div>
       <div class="card chart-card"><h4>Nouveaux comptes — 14 derniers jours</h4><div class="chart-meta">Chaque point = un jour</div><canvas class="chart" id="signupChart" style="margin-top:8px"></canvas><div id="ovSignupLegend" class="muted" style="font-size:12px;margin-top:8px"></div></div>
@@ -328,6 +329,26 @@ VIEWS.overview = async (view) => {
       <div class="hc-big">${c.big}</div>
       <div class="hc-sub">${c.sub}</div>
       <div class="hc-foot">${c.foot}</div></div>`).join("");
+
+    // ── Suivi des liens partagés (entonnoir honnête, aperçu accueil) ─────────
+    const lk = ov.links || {};
+    if (dataReal && (lk.total || 0) > 0) {
+      const seg = (label, val, cls) => `<div class="ovlk-seg"><span class="ovlk-n ${cls || ""}">${num(val)}</span><span class="ovlk-l">${label}</span></div>`;
+      $("#ovLinks").innerHTML = `<div class="card card-pad ovlk" style="margin-top:14px">
+        <div class="ovlk-head"><strong>${icon("share")} Liens partagés</strong>
+          <span class="muted" style="font-size:12px">${num(lk.createdToday || 0)} créés · ${num(lk.openedToday || 0)} ouverts aujourd'hui · <a href="#links">détail</a></span></div>
+        <div class="ovlk-row">
+          ${seg("créés", lk.created || 0)}
+          <span class="ovlk-arrow">${icon("route")}</span>
+          ${seg("partagés", lk.shared || 0)}
+          <span class="ovlk-arrow">${icon("route")}</span>
+          ${seg("ouvertures confirmées", lk.opened || 0, "ok")}
+          <span class="ovlk-arrow">${icon("route")}</span>
+          ${seg("non confirmés", lk.sharedUnconfirmed || 0, (lk.sharedUnconfirmed || 0) > 0 ? "warn" : "")}
+          <div class="ovlk-seg ovlk-rate"><span class="ovlk-n">${lk.openRate == null ? "n/a" : lk.openRate + " %"}</span><span class="ovlk-l">taux d'ouverture</span></div>
+        </div>
+        <div class="muted" style="font-size:11.5px;margin-top:8px">Une ouverture n'est comptée que sur signal réel reçu — jamais supposée.</div></div>`;
+    } else { $("#ovLinks").innerHTML = ""; }
 
     // ── Flux live simplifié ─────────────────────────────────────────────────
     $("#ovFeed").innerHTML = S.buffer.slice(-9).reverse().map(feedRow).join("") || '<div class="empty" style="padding:24px">En attente… Ouvre Passio sur un téléphone pour voir l\'activité apparaître ici.</div>';

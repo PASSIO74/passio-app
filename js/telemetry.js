@@ -156,7 +156,9 @@
   // Types JAMAIS échantillonnés ni plafonnés : ce sont EXACTEMENT les signaux de
   // problème qu'on ne veut pas rater (une erreur / une coupure réseau doit
   // toujours remonter, même si l'appareil a déjà atteint le plafond/minute).
-  var CRITICAL_TYPE = { error: 1, connectivity: 1 };
+  // « link » inclus : une création/partage/ouverture de lien est un signal rare et
+  // précieux (funnel du centre de pilotage) — jamais échantillonné ni plafonné.
+  var CRITICAL_TYPE = { error: 1, connectivity: 1, link: 1 };
 
   // ─── File + envoi ──────────────────────────────────────────────────────────
   var queue = [];
@@ -165,6 +167,8 @@
   var retryTimer = null;
   var sending = false;          // un envoi réseau est en cours
   var sendFailures = 0;         // échecs d'envoi CONSÉCUTIFS (appareil injoignable)
+  var authRetries = 0;          // rejets d'auth CONSÉCUTIFS (token expiré, ≠ coupure)
+  var AUTH_MAX_RETRIES = 6;     // grâce (~30 s) laissée au SDK pour rafraîchir le token
   var offlineSince = 0;         // ms epoch du passage hors-ligne (0 = en ligne)
   var BACKLOG_KEY = "passio_tel_backlog";  // file persistée (survit reload/coupure)
 
@@ -213,20 +217,53 @@
 
   // Config d'envoi (URL + clé anon) exposée par app-08 ; runtime, pas au load.
   function supaCfg() { return window.PASSIO_SUPABASE || null; }
-  // Jeton d'accès de l'utilisateur (persisté par le SDK Supabase dans localStorage).
-  // Nécessaire pour que la RLS `user_id = auth.uid()` accepte les événements
-  // d'un compte connecté ; repli sur la clé anon (événements user_id NULL).
-  function authToken(cfg) {
+
+  // Session persistée par le SDK Supabase dans localStorage (lue SANS dépendre du
+  // SDK — telemetry.js reste autonome). Gère le format v2 (champs à plat) et v1
+  // (imbriqué dans currentSession).
+  function readStoredSession(cfg) {
     try {
       var ref = (String(cfg.url).match(/https?:\/\/([^.]+)\./) || [])[1];
       var raw = ref && localStorage.getItem("sb-" + ref + "-auth-token");
-      if (raw) {
-        var j = JSON.parse(raw);
-        var tok = j && (j.access_token || (j.currentSession && j.currentSession.access_token));
-        if (tok) return tok;
+      if (!raw) return null;
+      var j = JSON.parse(raw);
+      var s = (j && j.currentSession) ? j.currentSession : j;   // v1 vs v2
+      if (s && s.access_token) return s;
+    } catch (e) {}
+    return null;
+  }
+
+  // Nudge non bloquant : demande au SDK (s'il est chargé) de rafraîchir la session.
+  // getSession() est dédupliqué par le verrou interne du SDK → aucun double refresh
+  // même si son timer d'auto-refresh tourne déjà. Anti-rafale 15 s. Effet : au
+  // prochain essai d'envoi, localStorage portera un access_token frais.
+  var _lastRefreshNudge = 0;
+  function nudgeSessionRefresh() {
+    var now = Date.now();
+    if (now - _lastRefreshNudge < 15000) return;
+    _lastRefreshNudge = now;
+    try {
+      var sb = window.supa;
+      if (sb && sb.auth && typeof sb.auth.getSession === "function") {
+        var p = sb.auth.getSession();
+        if (p && typeof p.then === "function") p.then(function () {}, function () {});
       }
     } catch (e) {}
-    return cfg.anon;
+  }
+
+  // Jeton d'accès pour la RLS `user_id = auth.uid()` (compte connecté).
+  // ⚠️ Un onglet resté en arrière-plan peut porter un token EXPIRÉ dans localStorage
+  // tant que le SDK ne l'a pas rafraîchi → PostgREST renverrait 401 (JWT invalide)
+  // et le lot serait rejeté. On DÉTECTE l'expiration pour demander au SDK un refresh
+  // immédiat (le prochain essai relira un token frais). On renvoie tout de même le
+  // token courant : un repli sur la clé anon échouerait de toute façon (event.user_id
+  // non-null ≠ auth.uid() NULL sous la policy « user_id IS NULL OR user_id=auth.uid() »).
+  function authToken(cfg) {
+    var s = readStoredSession(cfg);
+    if (!s) return cfg.anon;                    // pré-auth : insert user_id NULL toléré
+    var expMs = (typeof s.expires_at === "number") ? s.expires_at * 1000 : 0;
+    if (expMs && Date.now() >= expMs - 10000) nudgeSessionRefresh();  // marge d'horloge 10 s
+    return s.access_token || cfg.anon;
   }
 
   // Envoi d'un lot par POST REST direct + keepalive (survit à la fermeture de
@@ -273,6 +310,11 @@
   // le lot ne passera jamais, on le retire pour ne pas bloquer la file) d'une
   // panne temporaire (réseau/5xx → on garde et on réessaie en backoff).
   function onSendReject(status, n, opts) {
+    // 401/403 = quasi toujours un JWT expiré / en cours de rafraîchissement (timing
+    // d'auth), PAS une donnée invalide NI une panne réseau : on GARDE le lot et on
+    // réessaie APRÈS refresh du token — sans le compter comme une coupure (aucun
+    // événement offline/recovered parasite pour un simple retour d'arrière-plan).
+    if (status === 401 || status === 403) { onAuthReject(status, n, opts); return; }
     var permanent = status >= 400 && status < 500 && status !== 408 && status !== 429;
     if (permanent) {
       queue.splice(0, n); persistBacklog();
@@ -285,6 +327,31 @@
       return;
     }
     onSendFailure(status, n, opts);
+  }
+
+  // Rejet d'AUTH (token périmé) : le SDK rafraîchit la session en tâche de fond (et
+  // notre nudge l'a demandé). On relance un envoi en léger backoff, borné, SANS
+  // toucher aux compteurs de connectivité. Au-delà de la grâce (session réellement
+  // révoquée ?), on abandonne le lot pour ne pas bloquer la file indéfiniment.
+  function onAuthReject(status, n, opts) {
+    sending = false;
+    nudgeSessionRefresh();
+    if (authRetries >= AUTH_MAX_RETRIES) {
+      authRetries = 0;
+      queue.splice(0, n); persistBacklog();
+      track("connectivity", "server_reject", {
+        severity: "warn", status: "error", http_status: status,
+        message: "Lot de télémétrie rejeté (auth) après " + AUTH_MAX_RETRIES + " essais (HTTP " + status + ")",
+        meta: { dropped: n },
+      });
+      if (queue.length && !opts.keepalive) flush();
+      return;
+    }
+    authRetries++;
+    persistBacklog();                     // le lot reste en file (rien de retiré)
+    if (opts.keepalive) return;           // page en fermeture → rejoué au prochain load
+    var delay = Math.min(15000, 1500 * authRetries);   // 1.5 s → 15 s
+    if (!retryTimer) retryTimer = setTimeout(function () { retryTimer = null; flush(); }, delay);
   }
 
   // Panne d'envoi (réseau/serveur) : l'appareil est probablement injoignable.
@@ -315,7 +382,7 @@
         meta: { failed_sends: sendFailures, offline_ms: offlineSince ? Date.now() - offlineSince : null, backlog: queue.length },
       });
     }
-    sendFailures = 0; offlineSince = 0;
+    sendFailures = 0; offlineSince = 0; authRetries = 0;
     if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
   }
 
@@ -439,6 +506,16 @@
     linkFromUrl: function (url) {
       try { return new URL(url, location.href).searchParams.get("plk") || null; }
       catch (e) { var m = /[?&]plk=([^&#]+)/.exec(String(url || "")); return m ? decodeURIComponent(m[1]) : null; }
+    },
+    // shareLink : raccourci « tout-en-un » pour un point de partage à action unique.
+    // Crée le lien, tague l'URL et enregistre le partage en un appel ; renvoie
+    // l'URL taguée À DIFFUSER. Idéal quand création et partage sont simultanés
+    // (carnet, live, profil, événement, invitation beta…).
+    shareLink: function (rawUrl, kind, target, channel) {
+      var id = this.linkCreate(kind, target);
+      var url = this.tagUrl(rawUrl, id);
+      this.linkShare(id, channel || "?");
+      return url;
     },
     error: function (err, ctx) {
       var e = err || {};

@@ -237,14 +237,17 @@ function endTour() {
 // ======== SHARE / FEEDBACK ========
 function shareBeta() {
   $("#devPanel").classList.remove("active");
-  const link = window.location.href;
+  // Lien beta SUIVI : c'est LE lien envoyé aux testeurs → on le tague (?plk) pour
+  // apparier l'envoi à une ouverture réellement confirmée dans le centre de pilotage.
+  const rawLink = window.location.href;
+  const link = (window.tel && tel.linkCreate) ? tel.tagUrl(rawLink, tel.linkCreate("beta", "invite")) : rawLink;
   openModal(`
     <div class="modal-handle"></div>
     <div class="modal-title">Partager la beta</div>
     <div class="modal-subtitle">Envoie ce lien à tes bêta-testeurs. Leurs données restent sur leur appareil.</div>
     <div class="share-box">${escapeHtml(link)}</div>
     <div style="display:flex;gap:8px;">
-      <button class="btn primary block" onclick="navigator.clipboard && navigator.clipboard.writeText('${link}');toast('Lien copié');closeModal();">📋 Copier le lien</button>
+      <button class="btn primary block" onclick="navigator.clipboard && navigator.clipboard.writeText('${link}');window.tel&&tel.linkFromUrl&&tel.linkShare(tel.linkFromUrl('${link}'),'clipboard');toast('Lien copié');closeModal();">📋 Copier le lien</button>
     </div>
     <div class="section-title" style="margin-top:14px;">Message prêt-à-envoyer</div>
     <textarea class="textarea" readonly style="min-height:120px;">Salut ! Je te partage la beta de PASSIO, le réseau social basé sur les passions que je prépare. 5 min de test, je veux tes retours honnêtes. 👉 ${link}</textarea>
