@@ -20,7 +20,7 @@ const S = {
   aliasN: 0,
 };
 const $ = (s, r = document) => r.querySelector(s);
-const LIVE = new Set(["overview", "activity", "devices", "users", "content", "links", "messaging", "services", "performance", "bugs"]);
+const LIVE = new Set(["overview", "activity", "devices", "users", "content", "links", "visitors", "messaging", "services", "performance", "bugs"]);
 
 // ─── Utilitaires ─────────────────────────────────────────────────────────────
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -85,6 +85,7 @@ const NAV = [
   ["users", "Comptes & connexions", "users", null, "essentiel"],
   ["content", "Contenus & interactions", "heart", null, "essentiel"],
   ["links", "Liens partagés", "share", null, "essentiel"],
+  ["visitors", "Visiteurs", "route", null, "essentiel"],
   ["kpi", "KPI produit", "trending", null, "essentiel"],
   ["interactions", "Vérif. interactions", "wifi", null, "essentiel"],
   ["qa", "Campagne QA", "tests", null, "essentiel"],
@@ -812,6 +813,125 @@ window.__linkDetail = async (id) => {
     ${openRows ? `<div class="section-title">Ouvertures</div><div class="timeline">${openRows}</div>` : ""}
     <div class="copy-row"><button class="btn btn-sm" onclick='window.__copy(${JSON.stringify(l.id)},"Identifiant du lien")'>${icon("copy")} Copier l'ID</button>
     <a class="btn btn-sm" href="#activity">${icon("activity")} Voir dans le flux</a></div>`);
+};
+
+// ── Visiteurs : qui ouvre le lien Netlify / l'app, et qui crée un compte ─────
+const PLATFORM_FR = { ios: "iPhone / iPad", android: "Android", windows: "Windows", mac: "Mac", linux: "Linux", other: "Autre" };
+const platLabel = (p) => PLATFORM_FR[p] || p || "Autre";
+const ENV_FR = { production: "Production", preview: "Préversion", development: "Dev local" };
+const shortDev = (id) => "#" + String(id || "").replace(/^dev_/, "").slice(-6);
+// Un visiteur = un appareil. Registre live joint aux comptes (profiles) créés.
+VIEWS.visitors = async () => {
+  mount(`<h2 class="page-title">Visiteurs &amp; ouvertures</h2>
+    <p class="page-sub">Chaque ligne est <b>un appareil</b> ayant ouvert Passio (au plus proche d'« une personne »). On affiche <b>tout ce qui est réellement connu</b> : système, navigateur, taille d'écran, connexion, environnement, écrans parcourus, lien d'arrivée, et — si la personne a créé un compte — son profil. <b>Aucun numéro de téléphone</b> n'est disponible : Passio s'authentifie par <b>e-mail</b>, jamais par téléphone, et la télémétrie <b>masque le PII par conception</b> (aucun e-mail, aucun contenu).</p>
+    <div id="viProv"></div>
+    <div class="grid kpi-grid" id="viFunnel"></div>
+    <div class="feed-toolbar" style="margin-top:16px">
+      <input class="select" id="viSearch" placeholder="Rechercher (profil, OS, navigateur, écran…)" style="width:230px">
+      <select class="select" id="viEnv"><option value="">Tout environnement</option><option value="production">Production</option><option value="preview">Préversion</option><option value="development">Dev local</option></select>
+      <select class="select" id="viSeg"><option value="">Tous les visiteurs</option><option value="signed">A créé un compte</option><option value="anon">Sans compte</option><option value="link">Arrivé par un lien</option><option value="online">En ligne maintenant</option><option value="trouble">A rencontré un souci</option></select>
+      <button class="btn btn-sm" id="viExport">${icon("download")} Exporter</button>
+      <span class="muted" style="margin-left:auto;font-size:12px" id="viCount"></span>
+    </div>
+    <div class="table-wrap"><table><thead><tr><th>Visiteur</th><th>Appareil</th><th>Écran</th><th>Arrivé par</th><th>Activité</th><th>1re visite</th><th>Dernière</th><th>Statut</th></tr></thead><tbody id="viRows"></tbody></table></div>`);
+
+  let data = { funnel: {}, visitors: [] };
+  const created = new Map();   // userId -> createdAt (compte réel)
+  try {
+    const acc = await api.get("/accounts").catch(() => null);
+    (acc && acc.users || []).forEach((u) => { if (u.name) S.names[u.id] = u.name; if (u.createdAt) created.set(u.id, Date.parse(u.createdAt)); });
+  } catch (e) { /* comptes optionnels */ }
+
+  async function refresh() {
+    try { data = await api.get("/visitors"); }
+    catch (e) { $("#viRows").innerHTML = `<tr><td colspan="8" class="empty">${esc(e.message)}</td></tr>`; return; }
+    window.__visitorsCache = data.visitors || [];
+    (data.visitors || []).forEach((v) => { if (v.userId && v.userLabel) S.names[v.userId] = v.userLabel; });
+    const f = data.funnel || {};
+    $("#viProv").innerHTML = `<div class="prov-strip">
+      <div class="prov-item"><span class="prov-ic">${icon("devices")}</span><span class="prov-k">Appareils suivis</span><span class="prov-v">${num(f.total || 0)}</span></div>
+      <div class="prov-item"><span class="prov-k">Aujourd'hui</span><span class="prov-v">${num(f.today || 0)} nouveaux</span></div>
+      <div class="prov-item"><span class="prov-ic">${icon("clock")}</span><span class="prov-k">Dernière ouverture</span><span class="prov-v">${f.lastSeen ? "il y a " + ago(f.lastSeen) : "—"}</span></div>
+      <span class="prov-note">1 appareil ≈ 1 personne · identité connue seulement après création d'un compte</span></div>`;
+    const cards = [
+      { ic: "route",       l: "Visiteurs (appareils)", v: num(f.total || 0),    s: "ont ouvert l'app au moins une fois" },
+      { ic: "share",       l: "Arrivés par un lien",   v: num(f.viaLink || 0),  s: "ouverture confirmée via ?plk" },
+      { ic: "users",       l: "Comptes créés",         v: num(f.signedUp || 0), s: "visiteurs devenus membres", ok: (f.signedUp || 0) > 0 },
+      { ic: "activity",    l: "En ligne maintenant",   v: num(f.online || 0),   s: "actifs il y a < 70 s" },
+      { ic: "check",       l: "En production",         v: num(f.prod || 0),     s: "hors préversion / dev local" },
+    ];
+    $("#viFunnel").innerHTML = cards.map((c) => `<div class="kpi${c.ok ? " kpi-ok" : ""}">
+      <div class="kpi-label">${icon(c.ic)} ${c.l}</div><div class="kpi-value">${c.v}</div><div class="kpi-sub">${c.s}</div></div>`).join("");
+    renderRows();
+  }
+
+  function passSeg(v, seg) {
+    if (seg === "signed") return v.signedUp;
+    if (seg === "anon") return !v.signedUp;
+    if (seg === "link") return (v.viaLinks || []).length > 0;
+    if (seg === "online") return v.online;
+    if (seg === "trouble") return v.errorCount > 0 || v.netTrouble;
+    return true;
+  }
+  function renderRows() {
+    const q = $("#viSearch").value.trim().toLowerCase();
+    const env = $("#viEnv").value, seg = $("#viSeg").value;
+    let rows = (data.visitors || []).filter((v) => (!env || v.env === env) && passSeg(v, seg));
+    if (q) rows = rows.filter((v) => {
+      const name = v.userLabel || (v.userId && S.names[v.userId]) || "";
+      return (name + " " + platLabel(v.platform) + " " + (v.browser || "") + " " + (v.screen || "") + " " + (v.screens || []).join(" ") + " " + v.deviceId).toLowerCase().includes(q);
+    });
+    $("#viRows").innerHTML = rows.map(visitorRow).join("") || '<tr><td colspan="8" class="empty">Aucun visiteur correspondant. Ouvre le lien Netlify sur un appareil pour le voir apparaître ici en direct.</td></tr>';
+    $("#viCount").textContent = rows.length + " visiteur" + (rows.length > 1 ? "s" : "");
+  }
+  $("#viSearch").oninput = renderRows; $("#viEnv").onchange = renderRows; $("#viSeg").onchange = renderRows;
+  $("#viExport").onclick = () => exportJson(data.visitors || [], "visiteurs-passio");
+  S.refresh = () => { if (!S.paused) refresh(); };
+  window.__viCreated = created;
+  refresh();
+};
+function visitorRow(v) {
+  const name = v.signedUp
+    ? `<strong>${nameFor(v.userId, v.userLabel)}</strong> <span class="pill ok" style="font-size:10px">membre</span>`
+    : `<span class="muted">Visiteur ${shortDev(v.deviceId)}</span>`;
+  const dev = `${esc(platLabel(v.platform))} <span class="muted">· ${esc(v.browser || "?")}</span>${v.screenSize ? ` <span class="muted mono" style="font-size:11px">${esc(v.screenSize)}</span>` : ""}${v.env && v.env !== "production" ? ` <span class="pill info" style="font-size:10px">${esc(ENV_FR[v.env] || v.env)}</span>` : ""}`;
+  const via = (v.viaLinks || []).length ? `<span class="mono" title="Lien d'arrivée">${shortLink(v.viaLink)}</span>${v.viaLinks.length > 1 ? ` <span class="muted">+${v.viaLinks.length - 1}</span>` : ""}` : '<span class="muted">direct</span>';
+  const act = `${num(v.sessions || 0)} sess. <span class="muted">· ${num(v.events || 0)} év.</span>${v.errorCount ? ` <span class="pill error" style="font-size:10px" title="Problèmes rencontrés">${v.errorCount}</span>` : ""}`;
+  const status = v.online ? '<span class="pill ok">en ligne</span>' : v.netTrouble ? '<span class="pill error">réseau</span>' : v.active ? '<span class="pill accent">actif</span>' : '<span class="pill info">hors ligne</span>';
+  return `<tr onclick='window.__visitorDetail(${JSON.stringify(v.deviceId)})' style="cursor:pointer">
+    <td>${name}</td><td>${dev}</td><td>${v.screen ? esc(v.screen) : '<span class="muted">—</span>'}</td>
+    <td>${via}</td><td>${act}</td>
+    <td class="muted" title="${v.firstSeen ? new Date(v.firstSeen).toLocaleString("fr-FR") : ""}">${v.firstSeen ? ago(v.firstSeen) : "—"}</td>
+    <td class="muted">${v.lastSeen ? ago(v.lastSeen) : "—"}</td><td>${status}</td></tr>`;
+}
+window.__visitorDetail = (deviceId) => {
+  const v = (window.__visitorsCache || []).find((x) => x.deviceId === deviceId);
+  if (!v) return;
+  const created = (window.__viCreated && window.__viCreated.get(v.userId)) || null;
+  const rows = [
+    ["Identité", v.signedUp ? `${nameFor(v.userId, v.userLabel)} <span class="pill ok" style="font-size:10px">compte créé</span>` : '<span class="muted">Anonyme — n\'a pas (encore) créé de compte</span>'],
+    ["Appareil (anonyme)", `<span class="mono">${esc(v.deviceId)}</span>`],
+    ["Système", esc(platLabel(v.platform))],
+    ["Navigateur", esc(v.browser || "?")],
+    ["Taille d'écran", v.screenSize ? `<span class="mono">${esc(v.screenSize)}</span>` : "—"],
+    ["Connexion", v.connection ? esc(v.connection) : "—"],
+    ["Environnement", esc(ENV_FR[v.env] || v.env)],
+    ["Version de l'app", `<span class="mono">${esc(v.appVersion || "?")}</span>`],
+    ["Arrivé par", (v.viaLinks || []).length ? v.viaLinks.map((id) => `<a class="mono" onclick='window.__linkDetail(${JSON.stringify(id)})' style="cursor:pointer">${shortLink(id)}</a>`).join(" ") : '<span class="muted">accès direct (pas de lien suivi)</span>'],
+    ["Sessions", num(v.sessions || 0)],
+    ["Événements", num(v.events || 0)],
+    ["Problèmes rencontrés", v.errorCount ? `<span class="sev-error">${v.errorCount}</span>` : "aucun"],
+    ["1re visite", v.firstSeen ? new Date(v.firstSeen).toLocaleString("fr-FR") : "—"],
+    ["Dernière activité", v.lastSeen ? new Date(v.lastSeen).toLocaleString("fr-FR") + ` (il y a ${ago(v.lastSeen)})` : "—"],
+    ["Compte créé le", created ? new Date(created).toLocaleString("fr-FR") : (v.signedUp ? '<span class="muted">date inconnue</span>' : "—")],
+  ];
+  const screens = (v.screens || []).length ? `<div class="section-title">Écrans parcourus (${v.screens.length})</div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px">${v.screens.map((s) => `<span class="pill info">${esc(s)}</span>`).join("")}</div>` : "";
+  openDrawer(`${v.signedUp ? nameFor(v.userId, v.userLabel) : "Visiteur " + shortDev(v.deviceId)} · ${v.online ? '<span class="pill ok">en ligne</span>' : '<span class="pill info">hors ligne</span>'}`,
+    `<div class="detail-grid">${rows.map(([k, val]) => detail(k, val)).join("")}</div>
+     ${screens}
+     <div class="fix-note" style="margin-top:12px">${icon("alertTriangle")} Numéro de téléphone indisponible : Passio n'en collecte pas (inscription par e-mail). Les données ci-dessus sont tout ce que la télémétrie connaît, PII masqué par conception.</div>
+     <div class="copy-row"><button class="btn btn-sm" onclick='window.__copy(${JSON.stringify(v.deviceId)},"Identifiant d\\u0027appareil")'>${icon("copy")} Copier l'ID appareil</button></div>`);
 };
 
 // ── Vérification des interactions cross-device ──────────────────────────────

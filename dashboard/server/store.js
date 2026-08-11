@@ -457,6 +457,81 @@ class Store {
     return this.events.filter((e) => e.session_id === sessionId).sort((a, b) => a.ts - b.ts);
   }
 
+  // ── Visiteurs : « qui ouvre l'app / le lien », un enregistrement par appareil ──
+  // Unité = l'APPAREIL (device_id anonyme stable), au plus proche d'« une personne
+  // qui a ouvert l'app ». On expose TOUT ce que la télémétrie connaît réellement :
+  // plateforme, navigateur, OS, taille d'écran, connexion, environnement, nb de
+  // sessions/événements, écrans parcourus, lien(s) d'arrivée, et — s'il a créé un
+  // compte — l'identité liée. AUCUN numéro de téléphone n'existe : Passio
+  // s'authentifie par e-mail et la télémétrie masque le PII par conception.
+  visitorList() {
+    const now = Date.now();
+    // Agrégats par appareil : sessions, événements, écrans distincts parcourus.
+    const perDev = new Map();
+    for (const s of this.sessions.values()) {
+      if (!s.deviceId) continue;
+      let a = perDev.get(s.deviceId);
+      if (!a) { a = { sessions: 0, events: 0, screens: new Set() }; perDev.set(s.deviceId, a); }
+      a.sessions++; a.events += s.eventCount || 0;
+      (s.screens || []).forEach((sc) => a.screens.add(sc));
+    }
+    // Lien(s) d'arrivée : ouvertures confirmées (?plk) attribuées à cet appareil.
+    const linkByDev = new Map();
+    for (const l of this.links.values()) {
+      for (const o of (l.opens || [])) {
+        if (!o.device) continue;
+        let set = linkByDev.get(o.device);
+        if (!set) { set = new Set(); linkByDev.set(o.device, set); }
+        set.add(l.id);
+      }
+    }
+    return [...this.devices.values()].map((d) => {
+      const agg = perDev.get(d.deviceId) || { sessions: 0, events: 0, screens: new Set() };
+      const viaLinks = [...(linkByDev.get(d.deviceId) || [])];
+      return {
+        deviceId: d.deviceId,
+        firstSeen: d.firstSeen, lastSeen: d.lastSeen,
+        online: now - d.lastSeen < ONLINE_MS,
+        active: now - d.lastSeen < ACTIVE_MS,
+        idleMs: now - d.lastSeen,
+        platform: d.platform || "other",
+        browser: d.browser || "other",
+        appVersion: d.appVersion || "?",
+        env: d.env || "production",
+        connection: d.connection || null,
+        screenSize: d.screenSize || null,
+        screen: d.screen || null,
+        sessions: agg.sessions,
+        events: agg.events,
+        screens: [...agg.screens],
+        userId: d.userId || null,
+        userLabel: d.userLabel || null,
+        signedUp: !!d.userId,
+        viaLinks, viaLink: viaLinks[0] || null,
+        errorCount: d.errorCount || 0,
+        netTrouble: !!d.offline,
+      };
+    }).sort((a, b) => (Number(b.online) - Number(a.online)) || (b.lastSeen - a.lastSeen));
+  }
+
+  /** Entonnoir des visiteurs : ouverture app → arrivée par lien → compte créé. */
+  visitorFunnel() {
+    const now = Date.now(), DAY = 24 * 60 * 60_000;
+    const devs = [...this.devices.values()];
+    // Appareils arrivés via une ouverture de lien confirmée (?plk).
+    const viaLink = new Set();
+    for (const l of this.links.values()) for (const dev of l.openDevices) viaLink.add(dev);
+    return {
+      total: devs.length,
+      prod: devs.filter((d) => (d.env || "production") === "production").length,
+      viaLink: viaLink.size,
+      signedUp: devs.filter((d) => d.userId).length,
+      online: devs.filter((d) => now - d.lastSeen < ONLINE_MS).length,
+      today: devs.filter((d) => now - d.firstSeen < DAY).length,
+      lastSeen: devs.length ? Math.max(...devs.map((d) => d.lastSeen)) : null,
+    };
+  }
+
   _status(id) { return (this.bugMeta.get()[id] || {}).status || "nouveau"; }
 
   bugList() {

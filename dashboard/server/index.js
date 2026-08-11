@@ -99,6 +99,7 @@ api.get("/names", auth.requireAuth, (req, res) => res.json(store.clientNames()))
 api.get("/signups", auth.requireAuth, asyncH(async (req, res) => res.json(await signups())));
 api.get("/accounts", auth.requireAuth, asyncH(async (req, res) => res.json(await accounts())));
 api.get("/devices", auth.requireAuth, (req, res) => res.json(store.deviceList()));
+api.get("/visitors", auth.requireAuth, (req, res) => res.json({ funnel: store.visitorFunnel(), visitors: store.visitorList() }));
 api.get("/activity-sessions", auth.requireAuth, (req, res) => res.json(store.sessionList()));
 api.get("/journey/:session", auth.requireAuth, (req, res) => res.json(store.userJourney(req.params.session)));
 

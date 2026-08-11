@@ -92,3 +92,35 @@ test("un événement de reconnexion (info) ne bloque PAS l'appareil", () => {
   const dev = store.deviceList().find((d) => d.deviceId === "dConn");
   assert.equal(dev.netTrouble, false, "réseau rétabli");
 });
+
+test("visitorList : un visiteur par appareil, avec identité si compte créé", () => {
+  // Visiteur anonyme (aucun user_id) arrivant sur l'app.
+  store.add(ev({ event_id: "v1", type: "nav", action: "screen_view", screen: "feed",
+    user_id: null, user_label: null, session_id: "sv1", device_id: "dVisit",
+    platform: "android", browser: "chrome", screen_size: "412x915", connection: "4g" }));
+  const anon = store.visitorList().find((v) => v.deviceId === "dVisit");
+  assert.ok(anon, "l'appareil visiteur est listé");
+  assert.equal(anon.signedUp, false, "anonyme tant qu'aucun compte");
+  assert.equal(anon.platform, "android");
+  assert.equal(anon.screenSize, "412x915");
+  assert.ok(anon.screens.includes("feed"), "écran parcouru retenu");
+  // Le même appareil crée un compte : l'identité doit se lier.
+  store.add(ev({ event_id: "v2", type: "action", action: "like_post",
+    user_id: "uVisit", user_label: "Chloé", session_id: "sv1", device_id: "dVisit", platform: "android" }));
+  const named = store.visitorList().find((v) => v.deviceId === "dVisit");
+  assert.equal(named.signedUp, true, "devient membre après compte");
+  assert.equal(named.userLabel, "Chloé");
+});
+
+test("visitorFunnel : total, signedUp et attribution de lien", () => {
+  // Ouverture confirmée d'un lien par un appareil (marqueur ?plk).
+  store.add(ev({ event_id: "lk1", type: "link", action: "link_open", status: "ok",
+    correlation_id: "lkTest", user_id: null, user_label: null,
+    session_id: "sLk", device_id: "dLink", platform: "ios", browser: "safari" }));
+  const f = store.visitorFunnel();
+  assert.ok(f.total >= 2, "compte tous les appareils vus");
+  assert.ok(f.signedUp >= 1, "au moins un compte créé");
+  assert.ok(f.viaLink >= 1, "au moins un appareil arrivé par un lien");
+  const via = store.visitorList().find((v) => v.deviceId === "dLink");
+  assert.ok((via.viaLinks || []).includes("lkTest"), "lien d'arrivée attribué à l'appareil");
+});
