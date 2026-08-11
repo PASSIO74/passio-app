@@ -12,6 +12,8 @@ const S = {
   paused: false,
   filters: {},
   alerts: [],
+  notifs: [],                 // centre de notifications (tout ce qui se passe)
+  notifSeen: 0,               // ts au-delà duquel les notifs sont « non lues »
   currentView: "overview",
   refresh: null,              // fonction de rafraîchissement de la vue active
   testLog: [],
@@ -36,6 +38,13 @@ function dotColor(ev) { return ev.type === "error" ? SEV_COLOR[ev.severity] || "
 function toast(msg) { const t = $("#toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(() => (t.hidden = true), 2600); }
 async function copy(text, label) { try { await navigator.clipboard.writeText(text); toast((label || "Copié") + " ✓"); } catch { toast("Copie impossible"); } }
 function num(n) { return (n == null ? "—" : n.toLocaleString("fr-FR")); }
+// Numéro de téléphone lisible : « +33 6 12 34 56 78 » ou « 06 12 34 56 78 ».
+function fmtPhone(p) {
+  const s = String(p || "").trim();
+  if (!s) return "";
+  if (s[0] === "+") { const cc = s.slice(0, 3), rest = s.slice(3).replace(/(.{2})/g, "$1 ").trim(); return cc + " " + rest; }
+  return s.replace(/(.{2})/g, "$1 ").trim();
+}
 
 // ─── Lisibilité : noms de profil au lieu d'identifiants ───────────────────────
 // Libellés lisibles des actions métier (au lieu de "publish_post" etc.).
@@ -628,23 +637,23 @@ function deviceCard(d) {
 
 // ── Utilisateurs ────────────────────────────────────────────────────────────
 VIEWS.users = async () => {
-  mount(`<h2 class="page-title">Comptes & connexions</h2><p class="page-sub">Tous les comptes réels créés sur Passio, avec leur activité récente. Les comptes de test sont exclus. ${hasCap("test_users") ? "Gestion des comptes de test en bas de page." : ""}</p>
-    <div class="table-wrap"><table><thead><tr><th>Profil</th><th>Créé le</th><th>Appareils</th><th>Dernière activité</th><th>Statut</th></tr></thead><tbody id="userRows"></tbody></table></div>
+  mount(`<h2 class="page-title">Comptes & connexions</h2><p class="page-sub">Tous les comptes réels créés sur Passio, avec leurs <b>informations de connexion</b> (numéro de téléphone saisi à l'inscription, e-mail, dernière connexion) et leur activité récente. Le numéro n'est jamais exposé aux autres comptes — il est lu ici via la clé service_role. Les comptes de test sont exclus. ${hasCap("test_users") ? "Gestion des comptes de test en bas de page." : ""}</p>
+    <div class="table-wrap"><table><thead><tr><th>Profil</th><th>Téléphone</th><th>E-mail</th><th>Créé le</th><th>Dernière connexion</th><th>Dernière activité</th><th>Statut</th></tr></thead><tbody id="userRows"></tbody></table></div>
     ${hasCap("test_users") ? `<div class="section-title">Comptes de test</div><div class="card card-pad" id="testUsers"><span class="spinner"></span></div>` : ""}`);
-  // Liste de référence = TOUS les comptes créés (profiles), chargée une fois.
+  // Liste de référence = TOUS les comptes créés (profiles + auth), chargée une fois.
   let accounts = [];
   try { const r = await api.get("/accounts"); accounts = (r && r.users) || []; if (r && r.error) toast(r.error); } catch (e) { toast(e.message); }
   function refresh() {
     // Activité live (appareils + dernier événement) agrégée depuis la télémétrie.
     const act = new Map();
     S.buffer.forEach((e) => { if (e.user_id) { const u = act.get(e.user_id) || { label: e.user_label, devices: new Set(), last: 0 }; u.label = e.user_label || u.label; if (e.device_id) u.devices.add(e.device_id); u.last = Math.max(u.last, e.ts); act.set(e.user_id, u); } });
-    // Fusion : chaque compte réel + son activité éventuelle. Les comptes observés
-    // en télémétrie mais absents de `profiles` (rare) sont ajoutés à la fin.
-    const rows = accounts.map((a) => { const t = act.get(a.id); return { id: a.id, label: a.name, created: a.createdAt ? Date.parse(a.createdAt) : 0, devices: t ? t.devices.size : 0, last: t ? t.last : 0 }; });
+    // Fusion : chaque compte réel (avec ses infos de connexion) + son activité éventuelle.
+    // Les comptes observés en télémétrie mais absents de `profiles` (rare) sont ajoutés à la fin.
+    const rows = accounts.map((a) => { const t = act.get(a.id); return { id: a.id, label: a.name, phone: a.phone || "", email: a.email || "", created: a.createdAt ? Date.parse(a.createdAt) : 0, lastSignIn: a.lastSignInAt ? Date.parse(a.lastSignInAt) : 0, devices: t ? t.devices.size : 0, last: t ? t.last : 0 }; });
     const known = new Set(accounts.map((a) => a.id));
-    act.forEach((t, id) => { if (!known.has(id)) rows.push({ id, label: t.label, created: 0, devices: t.devices.size, last: t.last }); });
-    rows.sort((a, b) => (b.last - a.last) || (b.created - a.created));
-    $("#userRows").innerHTML = rows.map((u) => `<tr><td><strong>${nameFor(u.id, u.label)}</strong></td><td class="muted">${u.created ? new Date(u.created).toLocaleDateString("fr-FR") : "—"}</td><td>${u.devices || "—"}</td><td class="muted">${u.last ? ago(u.last) : "—"}</td><td><span class="pill ${u.last && Date.now() - u.last < 3e5 ? "ok" : "info"}">${u.last && Date.now() - u.last < 3e5 ? "actif" : "inactif"}</span></td></tr>`).join("") || '<tr><td colspan="5" class="empty">Aucun compte créé pour le moment.</td></tr>';
+    act.forEach((t, id) => { if (!known.has(id)) rows.push({ id, label: t.label, phone: "", email: "", created: 0, lastSignIn: 0, devices: t.devices.size, last: t.last }); });
+    rows.sort((a, b) => (b.last - a.last) || (b.lastSignIn - a.lastSignIn) || (b.created - a.created));
+    $("#userRows").innerHTML = rows.map((u) => `<tr><td><strong>${nameFor(u.id, u.label)}</strong></td><td class="mono">${u.phone ? esc(fmtPhone(u.phone)) : "—"}</td><td class="muted">${u.email ? esc(u.email) : "—"}</td><td class="muted">${u.created ? new Date(u.created).toLocaleDateString("fr-FR") : "—"}</td><td class="muted">${u.lastSignIn ? ago(u.lastSignIn) : "—"}</td><td class="muted">${u.last ? ago(u.last) : "—"}</td><td><span class="pill ${u.last && Date.now() - u.last < 3e5 ? "ok" : "info"}">${u.last && Date.now() - u.last < 3e5 ? "actif" : "inactif"}</span></td></tr>`).join("") || '<tr><td colspan="7" class="empty">Aucun compte créé pour le moment.</td></tr>';
   }
   S.refresh = refresh; refresh();
   if (hasCap("test_users")) loadTestUsers();
@@ -1568,8 +1577,10 @@ function exportCsv(rows, name) {
 // ═══════════════════════════════════════════════════════════════════════════
 let refreshThrottle = 0;
 function onLiveEvent(ev) {
-  if (S.paused) return;
   learnName(ev);
+  // Le centre de notifications reçoit TOUT, même quand le flux est en pause.
+  pushNotif(notifFromEvent(ev));
+  if (S.paused) return;
   S.buffer.push(ev);
   if (S.buffer.length > 2000) S.buffer.shift();
   if (LIVE.has(S.currentView) && S.refresh) {
@@ -1590,12 +1601,100 @@ function onAlert(a) {
   S.alerts.unshift(a); updateAlertBadges();
   toast("⚠ " + a.title);
   if (S.currentView === "alerts") $("#alList").insertAdjacentHTML("afterbegin", alertItem(a));
+  // Les alertes (anomalies) remontent AUSSI dans le centre de notifications.
+  const n = notifFromAlert(a); if (n) pushNotif(n);
 }
 function updateAlertBadges() {
   const open = S.alerts.filter((a) => !a.acknowledged).length;
-  const c = $("#alertsCount"); if (c) { c.hidden = !open; c.textContent = open; }
   const nb = $("#navAlerts"); if (nb) { nb.hidden = !open; nb.textContent = open; }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  CENTRE DE NOTIFICATIONS — « tout ce qui se passe » (cloche de la barre haute)
+//  Alimenté par le flux SSE (onLiveEvent) + les alertes. Chaque notification
+//  porte une VUE cible : cliquer une ligne ouvre la page concernée.
+// ═══════════════════════════════════════════════════════════════════════════
+const NF_COLOR = { critical: "var(--crit)", high: "var(--err)", warn: "var(--warn)", info: "var(--accent)" };
+// Bruit pur de plomberie télémétrique : jamais une « chose qui se passe ».
+const NOTIF_SKIP_ACTIONS = new Set(["heartbeat", "hidden", "visible"]);
+const _nfCoalesce = new Map();   // clé (user|type|action|écran) -> ts, anti-rafale
+
+// Transforme un événement du flux en notification, ou null si on l'écarte.
+function notifFromEvent(ev) {
+  if (!ev) return null;
+  const t = ev.type, a = ev.action;
+  if (a && NOTIF_SKIP_ACTIONS.has(a)) return null;
+  // API qui répond bien = plomberie ; on ne garde que les erreurs / lenteurs.
+  if (t === "api" && ev.status !== "error" && !(ev.http_status >= 500) && !(ev.duration_ms > 2500)) return null;
+
+  let view = "activity", level = "info", ic = "activity";
+  if (t === "error") { view = "bugs"; level = ev.severity === "critical" ? "critical" : "high"; ic = "bugs"; }
+  else if (t === "connectivity") { view = "users"; level = ev.severity === "error" ? "high" : "warn"; ic = "wifi"; }
+  else if (t === "link") { view = "links"; ic = "share"; level = (a === "link_load_error" || ev.status === "error") ? "warn" : "info"; }
+  else if (t === "api") { view = "performance"; ic = "performance"; level = (ev.status === "error" || ev.http_status >= 500) ? "high" : "warn"; }
+  else if (t === "session" || t === "lifecycle") {
+    if (a === "offline" || a === "send_failed" || a === "server_reject") { view = "users"; level = "warn"; ic = "wifi"; }
+    else { view = "visitors"; ic = "route"; }   // début de session / connexion / reconnexion
+  }
+  else if (a === "publish_post" || a === "publish_reel") { view = "content"; ic = "content"; }
+  else if (a === "like_post" || a === "unlike_post" || a === "comment_post") { view = "content"; ic = "heart"; }
+  else if (a === "send_message") { view = "messaging"; ic = "messaging"; }
+  else if (a === "event_join" || a === "event_leave") { view = "content"; ic = "content"; }
+  else if (t === "nav" || a === "screen_view" || t === "click") { view = "activity"; ic = "activity"; }
+
+  // Anti-rafale : une même action répétée par le même utilisateur en < 2,5 s = 1 notif.
+  const now = ev.ts || Date.now();
+  const key = (ev.user_id || ev.device_id || "?") + "|" + t + "|" + (a || "") + "|" + (ev.screen || "");
+  if (_nfCoalesce.get(key) && now - _nfCoalesce.get(key) < 2500) return null;
+  _nfCoalesce.set(key, now);
+  if (_nfCoalesce.size > 500) _nfCoalesce.clear();
+
+  const sub = [ev.platform && ev.browser ? ev.platform + "/" + ev.browser : "", ev.screen ? "écran " + ev.screen : ""].filter(Boolean).join(" · ");
+  return { id: ev.id || ("nf_" + now + "_" + Math.random().toString(36).slice(2)), ts: now, title: actionLabel(ev), who: who(ev), sub, view, level, ic };
+}
+
+// Transforme une alerte (anomalie) en notification cliquable.
+function notifFromAlert(a) {
+  const m = a.meta || {};
+  let view = "alerts", ic = "alertTriangle";
+  if (m.bug) { view = "bugs"; ic = "bugs"; }
+  else if (m.endpoint) { view = "performance"; ic = "performance"; }
+  else if (m.link) { view = "links"; ic = "share"; }
+  else if (m.device || m.user) { view = "users"; ic = "wifi"; }
+  return { id: a.id || ("nf_al_" + Date.now()), ts: a.ts || Date.now(), title: a.title || "Alerte", who: esc(a.message || ""), sub: "", view, level: a.level || "warn", ic };
+}
+
+function pushNotif(n) {
+  if (!n) return;
+  S.notifs.unshift(n);
+  if (S.notifs.length > 200) S.notifs.pop();
+  updateNotifBadge();
+  if (isNotifOpen()) renderNotifList();
+}
+function updateNotifBadge() {
+  const n = S.notifs.filter((x) => x.ts > S.notifSeen).length;
+  const c = $("#notifCount"); if (c) { c.hidden = !n; c.textContent = n > 99 ? "99+" : String(n); }
+}
+function notifRow(n) {
+  return `<button class="notif-row lvl-${esc(n.level)}" data-view="${esc(n.view)}">
+    <span class="nf-dot" style="background:${NF_COLOR[n.level] || "var(--accent)"}"></span>
+    <span class="nf-ic">${icon(n.ic || "activity")}</span>
+    <span class="nf-body"><span class="nf-title">${esc(n.title)}</span><span class="nf-sub">${n.who || ""}${n.sub ? " · " + esc(n.sub) : ""}</span></span>
+    <span class="nf-time">${ago(n.ts)}</span></button>`;
+}
+function renderNotifList() {
+  const el = $("#notifList"); if (!el) return;
+  el.innerHTML = S.notifs.length
+    ? S.notifs.map(notifRow).join("")
+    : '<div class="empty" style="padding:28px">Rien pour l\'instant. Les événements apparaîtront ici en direct.</div>';
+}
+function isNotifOpen() { const p = $("#notifPanel"); return p && !p.hidden; }
+function openNotifPanel() {
+  renderNotifList();
+  $("#notifPanel").hidden = false; $("#notifScrim").hidden = false;
+  S.notifSeen = Date.now(); updateNotifBadge();
+}
+function closeNotifPanel() { const p = $("#notifPanel"); if (p) p.hidden = true; const s = $("#notifScrim"); if (s) s.hidden = true; }
 function onTest(t) {
   if (t.phase === "log") { S.testLog.push(esc(t.text)); if (S.testLog.length > 800) S.testLog.shift(); }
   else if (t.phase === "start") S.testLog.push(`<b>▶ ${esc(t.label)}</b>\n`);
@@ -1686,10 +1785,13 @@ async function showApp() {
   $("#themeBtn").innerHTML = icon(document.documentElement.dataset.theme === "dark" ? "sun" : "moon");
   $("#logoutBtn").innerHTML = icon("logout");
   $("#fullscreenBtn").innerHTML = icon("maximize");
-  $("#alertsBtn").innerHTML = icon("alerts");
+  $("#notifBtn").innerHTML = icon("alerts");
   renderNav();
   // Amorçage : buffer initial + alertes
   try { S.buffer = (await api.get("/events?limit=500")).reverse(); learnNames(S.buffer); } catch {}
+  // Amorce le centre de notifications avec le contexte récent (déjà « vu » : pas de badge).
+  S.notifs = S.buffer.slice(-80).reverse().map(notifFromEvent).filter(Boolean).slice(0, 50);
+  S.notifSeen = Date.now(); updateNotifBadge();
   try { Object.assign(S.names, await api.get("/names")); } catch {}
   // Rafraîchit les pseudos résolus par le serveur toutes les 30 s.
   setInterval(async () => { try { Object.assign(S.names, await api.get("/names")); if (LIVE.has(S.currentView) && S.refresh) S.refresh(); } catch {} }, 30000);
@@ -1706,7 +1808,15 @@ async function showApp() {
   $("#themeBtn").onclick = toggleTheme;
   $("#menuToggle").onclick = () => document.getElementById("app").classList.toggle("nav-open");
   $("#drawerClose").onclick = closeDrawer; $("#drawerScrim").onclick = closeDrawer;
-  $("#alertsBtn").onclick = () => location.hash = "alerts";
+  // Centre de notifications : la cloche ouvre le panneau ; une ligne ouvre sa page.
+  $("#notifBtn").onclick = openNotifPanel;
+  $("#notifClose").onclick = closeNotifPanel;
+  $("#notifScrim").onclick = closeNotifPanel;
+  $("#notifClear").onclick = () => { S.notifs = []; S.notifSeen = Date.now(); renderNotifList(); updateNotifBadge(); };
+  $("#notifList").addEventListener("click", (e) => {
+    const row = e.target.closest(".notif-row"); if (!row) return;
+    const v = row.dataset.view; closeNotifPanel(); if (v) location.hash = v;
+  });
   const runGlobalSearch = () => {
     const q = $("#globalSearch").value.trim(); if (!q) return;
     location.hash = "activity";
@@ -1715,7 +1825,7 @@ async function showApp() {
   $("#globalSearch").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); runGlobalSearch(); } });
   $("#globalSearchBtn").onclick = runGlobalSearch;
   $("#fullscreenBtn").onclick = () => { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.(); };
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeDrawer(); } });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeDrawer(); closeNotifPanel(); } });
   setupCommandPalette();
   // Lien d'évitement : donne le focus au contenu sans déclencher le routeur par hash.
   const skip = $("#skipLink");

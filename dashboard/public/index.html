@@ -49,7 +49,7 @@
         </div>
         <div class="topbar-right">
           <span id="envBadge" class="env-badge">—</span>
-          <button class="icon-btn" id="alertsBtn" aria-label="Alertes" title="Alertes"><span id="alertsCount" class="badge-count" hidden>0</span></button>
+          <button class="icon-btn" id="notifBtn" aria-label="Notifications — tout ce qui se passe" title="Notifications — tout ce qui se passe"><span id="notifCount" class="badge-count" hidden>0</span></button>
           <button class="icon-btn" id="themeBtn" aria-label="Thème clair/sombre" title="Thème"></button>
           <button class="icon-btn" id="fullscreenBtn" aria-label="Plein écran" title="Plein écran (supervision)"></button>
           <div class="user-chip" id="userChip"><span id="userName">—</span><small id="userRole"></small></div>
@@ -66,10 +66,18 @@
     </div>
     <div id="drawerScrim" class="drawer-scrim" hidden></div>
 
-    <!-- Panneau d'alertes -->
-    <div id="alertsPanel" class="alerts-panel" hidden>
-      <div class="drawer-head"><strong>Alertes</strong><button class="icon-btn" id="alertsClose" aria-label="Fermer">&times;</button></div>
-      <div id="alertsList" class="alerts-list"></div>
+    <!-- Panneau de notifications (tout ce qui se passe, en direct) -->
+    <div id="notifScrim" class="drawer-scrim" hidden></div>
+    <div id="notifPanel" class="alerts-panel notif-panel" hidden aria-label="Notifications">
+      <div class="drawer-head">
+        <strong>Notifications</strong>
+        <div class="notif-head-actions">
+          <button class="btn btn-sm" id="notifClear">Tout effacer</button>
+          <button class="icon-btn" id="notifClose" aria-label="Fermer">&times;</button>
+        </div>
+      </div>
+      <div class="notif-sub">Tout ce qui se passe en direct. Clique une ligne pour ouvrir la page concernée.</div>
+      <div id="notifList" class="notif-list"></div>
     </div>
 
     <div id="toast" class="toast" hidden></div>
