@@ -653,7 +653,13 @@ VIEWS.users = async () => {
     const known = new Set(accounts.map((a) => a.id));
     act.forEach((t, id) => { if (!known.has(id)) rows.push({ id, label: t.label, phone: "", email: "", created: 0, lastSignIn: 0, devices: t.devices.size, last: t.last }); });
     rows.sort((a, b) => (b.last - a.last) || (b.lastSignIn - a.lastSignIn) || (b.created - a.created));
-    $("#userRows").innerHTML = rows.map((u) => `<tr><td><strong>${nameFor(u.id, u.label)}</strong></td><td class="mono">${u.phone ? esc(fmtPhone(u.phone)) : "—"}</td><td class="muted">${u.email ? esc(u.email) : "—"}</td><td class="muted">${u.created ? new Date(u.created).toLocaleDateString("fr-FR") : "—"}</td><td class="muted">${u.lastSignIn ? ago(u.lastSignIn) : "—"}</td><td class="muted">${u.last ? ago(u.last) : "—"}</td><td><span class="pill ${u.last && Date.now() - u.last < 3e5 ? "ok" : "info"}">${u.last && Date.now() - u.last < 3e5 ? "actif" : "inactif"}</span></td></tr>`).join("") || '<tr><td colspan="7" class="empty">Aucun compte créé pour le moment.</td></tr>';
+    // Deux comptes DISTINCTS peuvent porter le même pseudo (« Ben sur portable » ×2) :
+    // le pseudo n'identifie PAS un compte, seul l'uid le fait. On affiche donc toujours
+    // un identifiant court (#uid) sous le nom, et un tag « doublon » quand le pseudo est
+    // partagé, pour lever toute ambiguïté visuelle dans la supervision.
+    const _labelCounts = rows.reduce((m, u) => { const k = (u.label || "").trim().toLowerCase(); if (k) m[k] = (m[k] || 0) + 1; return m; }, {});
+    const _shortUid = (id) => "#" + String(id || "").replace(/^u_/, "").slice(0, 8);
+    $("#userRows").innerHTML = rows.map((u) => { const dup = (u.label || "").trim() && _labelCounts[(u.label || "").trim().toLowerCase()] > 1; return `<tr><td><strong>${nameFor(u.id, u.label)}</strong>${dup ? ' <span class="tag" title="Plusieurs comptes distincts portent ce pseudo">doublon</span>' : ""}<div class="mono muted" style="font-size:10px;margin-top:2px">${esc(_shortUid(u.id))}</div></td><td class="mono">${u.phone ? esc(fmtPhone(u.phone)) : "—"}</td><td class="muted">${u.email ? esc(u.email) : "—"}</td><td class="muted">${u.created ? new Date(u.created).toLocaleDateString("fr-FR") : "—"}</td><td class="muted">${u.lastSignIn ? ago(u.lastSignIn) : "—"}</td><td class="muted">${u.last ? ago(u.last) : "—"}</td><td><span class="pill ${u.last && Date.now() - u.last < 3e5 ? "ok" : "info"}">${u.last && Date.now() - u.last < 3e5 ? "actif" : "inactif"}</span></td></tr>`; }).join("") || '<tr><td colspan="7" class="empty">Aucun compte créé pour le moment.</td></tr>';
   }
   S.refresh = refresh; refresh();
   if (hasCap("test_users")) loadTestUsers();

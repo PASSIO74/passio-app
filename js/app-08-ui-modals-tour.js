@@ -2890,7 +2890,10 @@ async function supaCommentInteract(commentId, postId, kind, payload) {
       id: "ci_" + uid(), comment_id: commentId, post_id: postId || null,
       // payload ≤ 500 : contrainte serveur ci_payload_len_check (migration_anti_flood_interactions).
       // Sans troncature, une réponse longue serait rejetée en silence (erreur avalée → return false).
-      user_id: MY_UID, kind: kind, payload: payload ? String(payload).slice(0, 500) : null,
+      // ⚠️ slice(0,500) UTF-16 peut couper une paire de substitution en plein milieu
+      // d'un emoji (ex. 😍 = 2 unités) → demi-surrogate orphelin = « ￿ » à l'affichage.
+      // _truncU16Safe retire ce demi-caractère en fin de chaîne (intégrité emoji).
+      user_id: MY_UID, kind: kind, payload: payload ? _truncU16Safe(String(payload), 500) : null,
       created_at: new Date().toISOString(),
     });
     if (error) return false;

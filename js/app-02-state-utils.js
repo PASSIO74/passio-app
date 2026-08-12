@@ -440,6 +440,22 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, m => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m]));
 }
 
+// Tronque une chaîne à `max` unités UTF-16 SANS couper une paire de substitution.
+// slice(0,max) brut peut laisser un demi-surrogate (high sans low) quand la coupe
+// tombe au milieu d'un emoji (😍 = 2 unités, 👨‍👩‍👧 = plusieurs) → caractère « ￿ ».
+// On retire ce demi-caractère orphelin en fin de chaîne. Préserve l'intégrité des
+// emojis stockés (payloads de commentaires/réactions bornés serveur).
+function _truncU16Safe(str, max) {
+  var s = String(str == null ? "" : str);
+  if (s.length <= max) return s;
+  var cut = s.slice(0, max);
+  var last = cut.charCodeAt(cut.length - 1);
+  // High surrogate seul en fin (0xD800–0xDBFF) → on le retire (sa moitié basse est hors coupe).
+  if (last >= 0xD800 && last <= 0xDBFF) cut = cut.slice(0, -1);
+  return cut;
+}
+window._truncU16Safe = _truncU16Safe;
+
 // Compte unifié des commentaires d'un fil (fil / IRL / CDV) : commentaires de
 // premier niveau + TOUTES les réponses, mais SANS les réactions emoji/GIF (qui
 // ne sont pas des commentaires — elles s'affichent en pastille « 😍 N »). Utilisé
@@ -1084,6 +1100,37 @@ function openLogoutConfirm() {
   ');
 }
 
+// Caches persistants LIÉS AU COMPTE (jamais au device). Ils DOIVENT être purgés
+// à la déconnexion, sinon le compte suivant connecté DANS LE MÊME NAVIGATEUR
+// hérite des données du précédent : conversations privées (localStorage + IndexedDB),
+// profil de config, historique IA, brouillon de vlog… (fuite d'isolation inter-comptes
+// corrigée le 2026-08-12). On NE touche PAS aux clés device/consentement
+// (passio_gate_* = sessionStorage, passio_telemetry opt-out, passio_realtime_* flags
+// de test, passio_parental_code) qui n'appartiennent pas à un compte.
+var ACCOUNT_SCOPED_KEYS = [
+  STATE_KEY,                 // profils, posts perso, notifications, likes…
+  "passio_uid",              // id (anonyme) du compte courant
+  "passio_conversations_v1", // messagerie (vocaux base64 inclus) — cache localStorage
+  "passio_config",           // config de profil
+  "passio_ai_history",       // historique de l'assistant IA
+  "passio_vlog_draft_v1",    // brouillon de publication
+  "passio_oauth_pending",    // jeton transitoire de retour OAuth
+];
+
+// Efface TOUTE trace du compte courant côté device (localStorage + IndexedDB).
+// best-effort : ne throw jamais. Renvoie une promesse résolue quand IndexedDB est vidé.
+function purgeAccountScopedData() {
+  try { ACCOUNT_SCOPED_KEYS.forEach(function (k) { localStorage.removeItem(k); }); } catch (e) {}
+  // Les conversations ont un second store DURABLE (IndexedDB, idb-store.js) que
+  // localStorage.removeItem ne touche pas : sans ça, hydrateConvsFromIDB() au boot
+  // ré-injecte les messages du compte précédent chez le suivant.
+  try {
+    if (typeof idbConvClear === "function") return Promise.resolve(idbConvClear()).catch(function () {});
+  } catch (e) {}
+  return Promise.resolve();
+}
+window.purgeAccountScopedData = purgeAccountScopedData;
+
 async function doLogout() {
   // Flush immédiat : pousse les changements en attente (debounce 2500ms non encore
   // déclenché) vers Supabase AVANT la déconnexion. Sans ça, toute modification faite
@@ -1091,8 +1138,9 @@ async function doLogout() {
   try { if (typeof supaSaveUserState === "function") await supaSaveUserState(); } catch(e) {}
   try { await supa.auth.signOut(); } catch(e) {}
   discardPendingStateSave();
-  localStorage.removeItem("passio_uid");
-  localStorage.removeItem(STATE_KEY);
+  // ⚠️ Isolation inter-comptes : purge complète des caches liés au compte, y compris
+  // les conversations en IndexedDB (sinon fuite de messages privés vers le compte suivant).
+  try { await purgeAccountScopedData(); } catch(e) {}
   toast("👋 Déconnecté — à bientôt !");
   setTimeout(() => location.reload(), 1200);
 }
@@ -1232,6 +1280,8 @@ async function doDeleteAccount() {
       .filter(function (k) { return k.indexOf("passio") !== -1 || k === "sb-njkiyoklssvefstljemx-auth-token"; })
       .forEach(function (k) { localStorage.removeItem(k); });
   } catch (e) {}
+  // Conversations durables en IndexedDB : non couvertes par le nettoyage localStorage.
+  try { if (typeof idbConvClear === "function") await Promise.resolve(idbConvClear()).catch(function () {}); } catch (e) {}
   try { sessionStorage.clear(); } catch (e) {}
   toast("✅ Compte supprimé. Au revoir 💜");
   setTimeout(function () { location.reload(); }, 1500);
