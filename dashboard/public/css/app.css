@@ -102,7 +102,9 @@ button{font-family:inherit}
 .topbar-right{display:flex;align-items:center;gap:6px}
 .env-badge{font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;background:var(--grad-soft);border:1px solid var(--border);color:var(--accent);text-transform:uppercase;letter-spacing:.05em}
 .env-badge.production{background:rgba(239,68,68,.14);border-color:rgba(239,68,68,.4);color:#fca5a5}
-.badge-count{position:absolute;top:2px;right:2px;background:var(--err);color:#fff;font-size:9px;min-width:15px;height:15px;border-radius:20px;display:grid;place-items:center;font-weight:700;padding:0 3px}
+.badge-count{position:absolute;top:0;right:0;background:var(--err);color:#fff;font-size:10px;line-height:1;min-width:17px;height:17px;border-radius:20px;display:grid;place-items:center;font-weight:800;padding:0 4px;box-shadow:0 0 0 2px var(--bg),0 1px 4px rgba(0,0,0,.4)}
+@keyframes badgePop{0%{transform:scale(.4);opacity:.4}55%{transform:scale(1.3)}100%{transform:scale(1)}}
+.badge-count.pop{animation:badgePop .38s cubic-bezier(.3,1.4,.5,1)}
 .user-chip{display:flex;flex-direction:column;line-height:1.15;padding:0 8px;max-width:140px}
 .user-chip span{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .user-chip small{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}

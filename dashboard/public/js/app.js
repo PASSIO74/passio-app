@@ -1673,7 +1673,11 @@ function pushNotif(n) {
 }
 function updateNotifBadge() {
   const n = S.notifs.filter((x) => x.ts > S.notifSeen).length;
-  const c = $("#notifCount"); if (c) { c.hidden = !n; c.textContent = n > 99 ? "99+" : String(n); }
+  const c = $("#notifCount"); if (!c) return;
+  const prev = c.hidden ? 0 : parseInt(c.textContent, 10) || 0;
+  c.hidden = !n; c.textContent = n > 99 ? "99+" : String(n);
+  // Petit « pop » rouge quand une notification apparaît (le chiffre grandit).
+  if (n > prev) { c.classList.remove("pop"); void c.offsetWidth; c.classList.add("pop"); }
 }
 function notifRow(n) {
   return `<button class="notif-row lvl-${esc(n.level)}" data-view="${esc(n.view)}">
@@ -1689,10 +1693,14 @@ function renderNotifList() {
     : '<div class="empty" style="padding:28px">Rien pour l\'instant. Les événements apparaîtront ici en direct.</div>';
 }
 function isNotifOpen() { const p = $("#notifPanel"); return p && !p.hidden; }
+function markNotifsSeen() {
+  S.notifSeen = Date.now();
+  try { localStorage.setItem("dash_notif_seen", String(S.notifSeen)); } catch {}
+}
 function openNotifPanel() {
   renderNotifList();
   $("#notifPanel").hidden = false; $("#notifScrim").hidden = false;
-  S.notifSeen = Date.now(); updateNotifBadge();
+  markNotifsSeen(); updateNotifBadge();
 }
 function closeNotifPanel() { const p = $("#notifPanel"); if (p) p.hidden = true; const s = $("#notifScrim"); if (s) s.hidden = true; }
 function onTest(t) {
@@ -1785,13 +1793,16 @@ async function showApp() {
   $("#themeBtn").innerHTML = icon(document.documentElement.dataset.theme === "dark" ? "sun" : "moon");
   $("#logoutBtn").innerHTML = icon("logout");
   $("#fullscreenBtn").innerHTML = icon("maximize");
-  $("#notifBtn").innerHTML = icon("alerts");
+  // Garder le badge : innerHTML = icône + span compteur (sinon le span est écrasé).
+  $("#notifBtn").innerHTML = icon("alerts") + '<span id="notifCount" class="badge-count" hidden>0</span>';
   renderNav();
   // Amorçage : buffer initial + alertes
   try { S.buffer = (await api.get("/events?limit=500")).reverse(); learnNames(S.buffer); } catch {}
-  // Amorce le centre de notifications avec le contexte récent (déjà « vu » : pas de badge).
+  // Amorce le centre de notifications avec le contexte récent. Le seuil « vu » est
+  // mémorisé (localStorage) : au chargement, le badge rouge montre déjà les notifs
+  // non vues depuis la dernière ouverture du panneau.
   S.notifs = S.buffer.slice(-80).reverse().map(notifFromEvent).filter(Boolean).slice(0, 50);
-  S.notifSeen = Date.now(); updateNotifBadge();
+  S.notifSeen = Number(localStorage.getItem("dash_notif_seen") || 0); updateNotifBadge();
   try { Object.assign(S.names, await api.get("/names")); } catch {}
   // Rafraîchit les pseudos résolus par le serveur toutes les 30 s.
   setInterval(async () => { try { Object.assign(S.names, await api.get("/names")); if (LIVE.has(S.currentView) && S.refresh) S.refresh(); } catch {} }, 30000);
@@ -1812,7 +1823,7 @@ async function showApp() {
   $("#notifBtn").onclick = openNotifPanel;
   $("#notifClose").onclick = closeNotifPanel;
   $("#notifScrim").onclick = closeNotifPanel;
-  $("#notifClear").onclick = () => { S.notifs = []; S.notifSeen = Date.now(); renderNotifList(); updateNotifBadge(); };
+  $("#notifClear").onclick = () => { S.notifs = []; markNotifsSeen(); renderNotifList(); updateNotifBadge(); };
   $("#notifList").addEventListener("click", (e) => {
     const row = e.target.closest(".notif-row"); if (!row) return;
     const v = row.dataset.view; closeNotifPanel(); if (v) location.hash = v;
