@@ -900,6 +900,19 @@ function _processAttach(input, kind, file) {
 
 function sendMessageToSupabase(msgId, convId, fileUrl, fileType, fileName, kind) {
   try { window.tel && tel.action("send_message", { kind: kind || "text", hasFile: !!fileUrl, convId: convId }); } catch (e) {}
+  // Traçage bout-en-bout : chaîne de validation « handler → requête → enregistré ».
+  // L'étape « requête » est auto-taguée par le hook fetch ; on consigne ici le
+  // résultat métier réel (enregistrement en base) + le verdict final.
+  var _flowCid = null;
+  try { if (window.tel && tel.flowStart) _flowCid = tel.flowStart("send_message", { convId: convId, kind: kind || "text" }); } catch (e) {}
+  function _flowSaved(ok, detail) {
+    try {
+      if (!_flowCid || !window.tel) return;
+      tel.step(_flowCid, "saved", ok ? "ok" : "error", detail ? { detail: String(detail).slice(0, 120) } : null);
+      tel.flowEnd(_flowCid, ok ? "ok" : "error");
+      _flowCid = null;
+    } catch (e) {}
+  }
   // ⛔ NE JAMAIS stocker de base64 en DB (data: URL = média non uploadé sur
   // Storage). Un seul message de 5 Mo a fait gonfler conv_messages à 24 Mo en
   // beta. Si l'upload Storage a échoué, on insère uniquement les métadonnées
@@ -943,15 +956,19 @@ function sendMessageToSupabase(msgId, convId, fileUrl, fileType, fileName, kind)
       }).then(function(res2) {
         if (!res2.error) {
           _diag("handleAttachFile: ✅ Supabase OK (fallback sans from_id)");
+          _flowSaved(true);
         } else {
           _diag("handleAttachFile: ❌ Échec définitif - " + res2.error.message);
+          _flowSaved(false, res2.error.message);
         }
-      }).catch(function() {});
+      }).catch(function(e2) { _flowSaved(false, e2 && e2.message); });
     } else {
       _diag("handleAttachFile: ✅ Supabase OK (avec from_id)");
+      _flowSaved(true);
     }
   }).catch(function(err) {
     _diag("handleAttachFile: Catch - " + err.message);
+    _flowSaved(false, err && err.message);
   });
 }
 

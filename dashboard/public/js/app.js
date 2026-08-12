@@ -22,7 +22,7 @@ const S = {
   aliasN: 0,
 };
 const $ = (s, r = document) => r.querySelector(s);
-const LIVE = new Set(["overview", "activity", "devices", "users", "content", "links", "visitors", "messaging", "services", "performance", "bugs"]);
+const LIVE = new Set(["overview", "activity", "devices", "users", "content", "links", "visitors", "messaging", "services", "performance", "bugs", "traces"]);
 
 // ─── Utilitaires ─────────────────────────────────────────────────────────────
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -96,6 +96,7 @@ const NAV = [
   ["links", "Liens partagés", "share", null, "essentiel"],
   ["visitors", "Visiteurs", "route", null, "essentiel"],
   ["kpi", "KPI produit", "trending", null, "essentiel"],
+  ["traces", "Traçage des actions", "route", null, "essentiel"],
   ["interactions", "Vérif. interactions", "wifi", null, "essentiel"],
   ["qa", "Campagne QA", "tests", null, "essentiel"],
   ["bugs", "Problèmes", "bugs", null, "essentiel"],
@@ -1025,6 +1026,135 @@ VIEWS.interactions = async () => {
   S.refresh = refresh; refresh();
 };
 
+// ─── Traçage bout-en-bout (chaîne de validation par action) ───────────────────
+// Verdict final : libellé + classe de couleur (réutilise les pills existantes).
+const TRACE_FINAL = {
+  success: { label: "Succès", cls: "ok" }, slow: { label: "Succès (lent)", cls: "warn" },
+  partial: { label: "Partiel", cls: "warn" }, failed: { label: "Échec", cls: "error" },
+  dead_click: { label: "Clic sans effet", cls: "error" }, unconfirmed: { label: "Non confirmé", cls: "warn" },
+  running: { label: "En cours", cls: "info" },
+};
+// Symbole + classe par statut d'étape.
+const STEP_UI = {
+  ok: { s: "✓", cls: "ok" }, fail: { s: "✗", cls: "error" }, slow: { s: "◔", cls: "warn" },
+  pending: { s: "…", cls: "info" }, unconfirmed: { s: "?", cls: "muted" }, missing: { s: "✗", cls: "error" },
+};
+let TRACE_LAST = [];  // dernières traces rendues (pour le détail sans re-fetch de liste)
+function traceFinalPill(f) { const u = TRACE_FINAL[f] || { label: f, cls: "info" }; return `<span class="pill ${u.cls}">${esc(u.label)}</span>`; }
+function traceDot(step) {
+  const u = STEP_UI[step.status] || STEP_UI.pending;
+  return `<span class="trace-step ${u.cls}" title="${esc(step.label)} : ${esc(step.status)}"><b>${u.s}</b> ${esc(step.label)}</span>`;
+}
+function traceChain(steps) { return `<div class="trace-chain">${steps.map(traceDot).join('<span class="trace-arrow">→</span>')}</div>`; }
+function traceRow(t) {
+  const dur = t.durationMs == null ? "—" : (t.durationMs < 1000 ? t.durationMs + " ms" : (t.durationMs / 1000).toFixed(2) + " s");
+  return `<tr class="trace-row" data-cid="${esc(t.cid)}" style="cursor:pointer">
+    <td class="muted mono">${hhmmss(t.startedAt)}</td>
+    <td><b>${esc(t.actionLabel)}</b>${t.duplicate ? ' <span class="pill error">doublon</span>' : ""}<div class="muted" style="font-size:12px">${nameFor(t.user, t.label)}${t.screen ? " · " + esc(t.screen) : ""}</div></td>
+    <td>${traceChain(t.steps)}</td>
+    <td>${traceFinalPill(t.final)}</td>
+    <td class="muted mono">${dur}</td>
+  </tr>`;
+}
+
+VIEWS.traces = async () => {
+  mount(`<h2 class="page-title">Traçage des actions (bout en bout)</h2>
+    <p class="page-sub">Chaque action importante est suivie du <b>clic</b> jusqu'à son <b>résultat métier réel</b> : gestionnaire → requête → enregistrement → livraison. Un verdict honnête par action — jamais un « succès » non prouvé. <span class="muted">(Aujourd'hui instrumenté : envoi de message ; toute action wrappée par <code>tel.flowStart</code> apparaît ici automatiquement.)</span></p>
+    <div id="trSummary"></div>
+    <div id="trIncidents"></div>
+    <div class="feed-toolbar" style="margin-top:16px">
+      <label class="chip-toggle" id="trFailBtn">${icon("alertTriangle")} <span>Seulement les problèmes</span></label>
+      <button class="btn btn-sm" id="trRefresh">${icon("refresh")} Actualiser</button>
+      <span class="muted" style="margin-left:auto;font-size:12px" id="trCount"></span>
+    </div>
+    <div class="table-wrap"><table><thead><tr><th>Heure</th><th>Action</th><th>Chaîne de validation</th><th>Verdict</th><th>Durée</th></tr></thead><tbody id="trRows"></tbody></table></div>`);
+
+  let data = { totals: {}, incidents: [], recent: [] };
+  let failOnly = false;
+  const PROBLEM = new Set(["failed", "partial", "dead_click", "unconfirmed"]);
+
+  async function refresh() {
+    try { data = await api.get("/traces?limit=150"); }
+    catch (e) { $("#trRows").innerHTML = `<tr><td colspan="5" class="empty">${esc(e.message)}</td></tr>`; return; }
+    TRACE_LAST = data.recent || [];
+    const T = data.totals || {};
+    const rate = T.successRate;
+    const cls = rate == null ? "" : rate >= 90 ? "ok" : rate >= 50 ? "warn" : "bad";
+    $("#trSummary").innerHTML = `<div class="state-banner ${cls}">
+      <div class="state-ico">${icon("route")}</div>
+      <div class="state-txt"><h2>${rate == null ? "En attente d'actions tracées" : rate + "% des actions abouties"}</h2>
+        <p>${num(T.success || 0)} succès · <b class="${T.partial ? "sev-warn" : ""}">${num(T.partial || 0)} partiels</b> · <b class="${T.failed ? "sev-error" : ""}">${num(T.failed || 0)} échecs</b> · ${num(T.dead_click || 0)} clics sans effet · ${num(T.running || 0)} en cours${T.duplicate ? " · " + num(T.duplicate) + " doublon(s)" : ""}</p></div>
+      <div class="state-live"><span class="live-dot"></span>EN DIRECT</div></div>`;
+
+    const inc = data.incidents || [];
+    $("#trIncidents").innerHTML = !inc.length ? "" : `<div class="tr-incidents">${inc.map((g) => `
+      <div class="tr-incident ${g.final === "failed" ? "bad" : "warn"}" data-cid="${esc(g.sampleCid)}">
+        <div class="tri-head">${icon("alertTriangle")} <b>${esc(g.actionLabel)}</b> — étape « ${esc(g.stepLabel || g.final)} »</div>
+        <div class="tri-sub">${g.count} occurrence${g.count > 1 ? "s" : ""} · ${g.users} utilisateur${g.users > 1 ? "s" : ""} · dernier ${ago(g.lastAt)}</div>
+        <div class="tri-actions"><button class="btn btn-sm" data-fix="${esc(g.sampleCid)}">${icon("wrench")} Diagnostiquer avec Claude</button></div>
+      </div>`).join("")}</div>`;
+
+    renderRows();
+  }
+  function renderRows() {
+    let rows = data.recent || [];
+    if (failOnly) rows = rows.filter((r) => PROBLEM.has(r.final));
+    $("#trRows").innerHTML = rows.map(traceRow).join("") || '<tr><td colspan="5" class="empty">Aucune action tracée pour l\'instant. Envoie un message depuis Passio (idéalement à deux appareils) : la chaîne complète apparaîtra ici.</td></tr>';
+    $("#trCount").textContent = rows.length + " action" + (rows.length > 1 ? "s" : "");
+  }
+  $("#trFailBtn").onclick = () => { failOnly = !failOnly; $("#trFailBtn").classList.toggle("on", failOnly); renderRows(); };
+  $("#trRefresh").onclick = refresh;
+  // Délégation : ouvrir le détail d'une trace, ou lancer la réparation d'un incident.
+  $("#view").onclick = (e) => {
+    const fix = e.target.closest("[data-fix]"); if (fix) { e.stopPropagation(); return traceFixByCid(fix.dataset.fix); }
+    const incident = e.target.closest(".tr-incident"); if (incident) return traceDetail(incident.dataset.cid);
+    const row = e.target.closest(".trace-row"); if (row) return traceDetail(row.dataset.cid);
+  };
+  S.refresh = refresh; refresh();
+};
+
+// Détail d'une trace : chaîne complète + prompt Claude prêt à copier + réparation.
+async function traceDetail(cid) {
+  openDrawer(`${icon("route")} Détail de l'action`, `<div class="empty"><span class="spinner"></span></div>`);
+  let payload;
+  try { payload = await api.get(`/traces/${encodeURIComponent(cid)}`); }
+  catch (e) { $("#drawerBody").innerHTML = `<div class="fix-note err">${esc(e.message)}</div>`; return; }
+  const t = payload.trace;
+  const dur = t.durationMs == null ? "—" : (t.durationMs < 1000 ? t.durationMs + " ms" : (t.durationMs / 1000).toFixed(2) + " s");
+  const stepsHtml = t.steps.map((s) => {
+    const u = STEP_UI[s.status] || STEP_UI.pending;
+    const st = { ok: "OK", fail: "ÉCHEC", slow: "LENT", pending: "en attente", unconfirmed: "non confirmé", missing: "non atteinte" }[s.status] || s.status;
+    return `<li class="tstep ${u.cls}"><span class="tstep-ico">${u.s}</span><span class="tstep-label">${esc(s.label)}</span><span class="tstep-status">${st}${s.http_status ? " · HTTP " + s.http_status : ""}</span></li>`;
+  }).join("");
+  const problem = ["failed", "partial", "dead_click"].includes(t.final);
+  $("#drawerBody").innerHTML = `
+    <div class="fix-intro"><b>${esc(t.actionLabel)}</b> · ${traceFinalPill(t.final)}${t.duplicate ? ' <span class="pill error">doublon</span>' : ""}</div>
+    <div class="muted" style="font-size:13px;margin:6px 0 14px">${nameFor(t.user, t.label)}${t.screen ? " · écran " + esc(t.screen) : ""}${t.target ? " · cible " + esc(t.target) : ""} · ${hhmmss(t.startedAt)} · durée ${dur}</div>
+    <ul class="tsteps">${stepsHtml}</ul>
+    <div class="drawer-actions" style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-sm" id="trCopyPrompt">${icon("reports")} Copier le prompt Claude Code</button>
+      ${problem && hasCap("claude") ? `<button class="btn btn-sm btn-primary" id="trFix">${icon("wrench")} Réparer avec Claude</button>` : ""}
+    </div>`;
+  $("#trCopyPrompt").onclick = () => copy(payload.prompt, "Prompt Claude copié");
+  const fixBtn = $("#trFix");
+  if (fixBtn) fixBtn.onclick = () => traceFix(t, payload.prompt);
+}
+// Réparation depuis un incident groupé (on a juste le cid échantillon).
+async function traceFixByCid(cid) {
+  try { const p = await api.get(`/traces/${encodeURIComponent(cid)}`); traceFix(p.trace, p.prompt); }
+  catch (e) { toast(e.message); }
+}
+// Réparation d'une trace : synthétise un événement d'erreur pour l'assistant Claude.
+function traceFix(t, prompt) {
+  const failStep = t.steps.find((s) => s.status === "fail") || t.steps.find((s) => s.status === "missing");
+  const ev = {
+    type: "error", action: t.action, severity: "error", screen: t.screen,
+    message: `Action « ${t.actionLabel} » — étape « ${failStep ? failStep.label : t.final} » en échec`,
+    stack: prompt,
+  };
+  fixWithClaude({ event: ev }, `${t.actionLabel} — ${failStep ? failStep.label : t.final}`);
+}
+
 // ─── Campagne QA (rapport de la campagne multi-comptes) ───────────────────────
 const QA_SEV = { CRITICAL: "error", HIGH: "error", MEDIUM: "warn", LOW: "info" };
 const qaPill = (st) => st === "PASS" ? '<span class="pill ok">PASS</span>'
@@ -1603,6 +1733,14 @@ function onInteractionSignal() {
   if (now - interSignalT < 800) return;
   interSignalT = now; S.refresh();
 }
+// Signal « traces à rafraîchir » (coalescé côté serveur) : idem, ciblé sur la vue.
+let traceSignalT = 0;
+function onTraceSignal() {
+  if (S.currentView !== "traces" || !S.refresh) return;
+  const now = Date.now();
+  if (now - traceSignalT < 800) return;
+  traceSignalT = now; S.refresh();
+}
 function onAlert(a) {
   S.alerts.unshift(a); updateAlertBadges();
   toast("⚠ " + a.title);
@@ -1816,7 +1954,7 @@ async function showApp() {
   // SSE
   connectStream({
     open: () => setSse(true), error: () => setSse(false),
-    event: onLiveEvent, interaction: onInteractionSignal, alert: onAlert, test: onTest, ping: () => setSse(true),
+    event: onLiveEvent, interaction: onInteractionSignal, trace: onTraceSignal, alert: onAlert, test: onTest, ping: () => setSse(true),
   });
   // Événements UI
   window.addEventListener("hashchange", route);

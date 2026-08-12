@@ -11,8 +11,10 @@ import { store, normalize } from "./store.js";
 import { broadcast } from "./sse.js";
 import { onEvent as alertsOnEvent } from "./alerts.js";
 import { onEvent as interactionsOnEvent } from "./interactions.js";
+import { onEvent as tracesOnEvent } from "./traces.js";
 
 let interactionsDirty = false;
+let tracesDirty = false;
 
 let admin = null;
 let lastSeenIso = new Date(Date.now() - 60 * 60_000).toISOString();
@@ -31,6 +33,9 @@ function ingestOne(row) {
   // Vérification cross-device des interactions : signal coalescé (le client
   // rappelle /api/interactions), pour ne pas rediffuser l'instantané à chaque like.
   try { if (interactionsOnEvent(ev)) interactionsDirty = true; } catch (e) { /* ignore */ }
+  // Traçage bout-en-bout : chaîne de validation par action (même logique de
+  // signal coalescé — le client rappelle /api/traces à réception).
+  try { if (tracesOnEvent(ev)) tracesDirty = true; } catch (e) { /* ignore */ }
 }
 
 // Diffuse un signal « interactions à rafraîchir » au plus une fois par seconde.
@@ -38,6 +43,13 @@ setInterval(() => {
   if (!interactionsDirty) return;
   interactionsDirty = false;
   broadcast("interaction", { t: Date.now() });
+}, 1000).unref();
+
+// Signal « traces à rafraîchir » (coalescé, ≤ 1×/s).
+setInterval(() => {
+  if (!tracesDirty) return;
+  tracesDirty = false;
+  broadcast("trace", { t: Date.now() });
 }, 1000).unref();
 
 export async function startIngest() {

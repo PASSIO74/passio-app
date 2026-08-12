@@ -444,6 +444,19 @@
     return ev.correlation_id || ev.event_id;
   }
 
+  // ─── Traçage bout-en-bout (chaîne de validation d'une action) ──────────────
+  // Un flow relie, via un correlation_id unique, toutes les étapes d'UNE action :
+  // clic → gestionnaire → requête réseau → enregistrement → (livraison). Le hook
+  // fetch tague automatiquement l'appel réseau qui suit le démarrage du flow, si
+  // bien qu'une action wrappée par flowStart capture son étape réseau sans effort.
+  var FLOW_AMBIENT_MS = 6000;   // fenêtre pendant laquelle un fetch hérite du cid
+  var _activeFlow = null;       // { cid, until }
+  function _flowMeta(base, extra) {
+    var m = {}; if (base) for (var k in base) if (Object.prototype.hasOwnProperty.call(base, k)) m[k] = base[k];
+    if (extra) for (var k2 in extra) if (Object.prototype.hasOwnProperty.call(extra, k2)) m[k2] = extra[k2];
+    return m;
+  }
+
   var Telemetry = {
     version: APP_VERSION,
     enabled: ENABLED,
@@ -452,6 +465,37 @@
     track: track,
     nav: function (screen) { window._telScreen = screen; track("nav", "screen_view", { screen: screen }); },
     action: function (name, meta) { track("action", name, { meta: meta }); },
+    // flowStart : ouvre une chaîne de validation. Renvoie le correlation_id à
+    // repasser à step()/flowEnd(). Émet l'étape « handler » (gestionnaire lancé).
+    flowStart: function (action, meta) {
+      if (!ENABLED) return null;
+      var cid = "fl_" + uid16();
+      _activeFlow = { cid: cid, until: Date.now() + FLOW_AMBIENT_MS };
+      track("flow", "start", { correlation_id: cid, status: "ok", severity: "info",
+        meta: _flowMeta(meta, { flow_action: String(action || "action").slice(0, 60), step: "handler" }) });
+      return cid;
+    },
+    // step : consigne une étape nommée du flow (status "ok"|"error"|"slow").
+    step: function (cid, key, status, meta) {
+      if (!cid) return;
+      track("flow", "step", { correlation_id: cid, status: status || "ok",
+        severity: status === "error" ? "error" : "info",
+        meta: _flowMeta(meta, { step: String(key || "step").slice(0, 40) }) });
+    },
+    // flowEnd : clôt le flow (et lève l'ambiance de corrélation réseau).
+    flowEnd: function (cid, status, meta) {
+      if (!cid) return;
+      if (_activeFlow && _activeFlow.cid === cid) _activeFlow = null;
+      track("flow", "end", { correlation_id: cid, status: status || "ok",
+        severity: status === "error" ? "error" : "info",
+        meta: _flowMeta(meta, { step: "done" }) });
+    },
+    // _ambientFlowCid : correlation_id du flow actif si encore dans la fenêtre
+    // (utilisé par le hook fetch pour taguer l'étape réseau). Interne.
+    _ambientFlowCid: function () {
+      if (_activeFlow && Date.now() <= _activeFlow.until) return _activeFlow.cid;
+      _activeFlow = null; return null;
+    },
     // Réception d'un événement realtime venu d'un AUTRE appareil (preuve de
     // livraison cross-device). type dédié "rt_recv" → n'entre dans aucun compteur
     // d'activité existant ; le centre de pilotage l'apparie à l'émission par cible.
@@ -675,6 +719,8 @@
             duration_ms: dt,
             status: res.ok ? (dt > 1500 ? "slow" : "ok") : "error",
             severity: res.ok ? (dt > 1500 ? "warn" : "info") : "warn",
+            // Étape « requête » de la chaîne de validation : hérite du flow actif.
+            correlation_id: Telemetry._ambientFlowCid(),
           });
         }
         return res;
@@ -685,6 +731,7 @@
             action: method + " " + path, endpoint: path,
             duration_ms: dt, status: "error", severity: "error",
             http_status: 0, message: err && err.message,
+            correlation_id: Telemetry._ambientFlowCid(),
           });
         }
         throw err;

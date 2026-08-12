@@ -23,6 +23,7 @@ import { detectClaudeCli, claudeCliState } from "./claudecli.js";
 import * as testusers from "./testusers.js";
 import * as alerts from "./alerts.js";
 import { snapshot as interactionsSnapshot } from "./interactions.js";
+import { snapshot as tracesSnapshot, trace as traceOne } from "./traces.js";
 import { kpi } from "./kpi.js";
 import { retention } from "./retention.js";
 import { computeReadiness } from "./readiness.js";
@@ -82,6 +83,14 @@ api.get("/events", auth.requireAuth, (req, res) => {
 
 // ─── Interactions (vérification cross-device temps réel) ────────────────────
 api.get("/interactions", auth.requireAuth, (req, res) => res.json(interactionsSnapshot(Number(req.query.limit) || 120)));
+
+// ─── Traçage bout-en-bout (chaîne de validation par action) ─────────────────
+api.get("/traces", auth.requireAuth, (req, res) => res.json(tracesSnapshot(Number(req.query.limit) || 100)));
+api.get("/traces/:cid", auth.requireAuth, (req, res) => {
+  const t = traceOne(req.params.cid);
+  if (!t) return res.status(404).json({ error: "Trace introuvable (expirée ?)" });
+  res.json({ trace: t, prompt: claude.buildTracePrompt(t) });
+});
 
 // ─── Liens partagés (cycle de vie création → partage → ouverture confirmée) ──
 api.get("/links", auth.requireAuth, (req, res) => res.json({ funnel: store.linkFunnel(), links: store.linkList(Number(req.query.limit) || 300) }));

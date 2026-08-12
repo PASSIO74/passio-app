@@ -88,6 +88,47 @@ export function buildPrompt(ctx, { deep = false } = {}) {
   return lines.join("\n");
 }
 
+// Verdict lisible d'une trace bout-en-bout.
+const TRACE_FINAL_FR = {
+  success: "SUCCÈS", slow: "SUCCÈS (lent)", partial: "PARTIEL", failed: "ÉCHEC",
+  dead_click: "CLIC MORT (sans effet)", unconfirmed: "NON CONFIRMÉ", running: "EN COURS",
+};
+const STEP_STATUS_FR = { ok: "OK", fail: "ÉCHEC", slow: "LENT", pending: "en attente", unconfirmed: "non confirmé", missing: "NON ATTEINTE" };
+
+/**
+ * Prompt Claude Code pour une chaîne de validation d'action (trace bout-en-bout).
+ * Fournit l'étape EXACTE en échec + la chaîne complète, sans PII.
+ */
+export function buildTracePrompt(t) {
+  const lines = [];
+  lines.push("Tu es Claude Code sur le projet PASSIO (PWA vanilla JS + Supabase).");
+  lines.push("Une action utilisateur a été tracée de bout en bout dans le centre de pilotage et n'a PAS abouti.");
+  lines.push("Diagnostique l'étape en échec et propose un correctif SÛR (aucune modification de fichier maintenant).");
+  lines.push("Commence TOUJOURS par « ## En clair » : 2-3 phrases sans jargon.");
+  lines.push("");
+  lines.push("## Action tracée");
+  lines.push(`- Action : ${t.actionLabel} (\`${t.action}\`) · fonctionnalité : ${t.feature}`);
+  lines.push(`- Écran : ${t.screen || "?"} · cible : ${t.target || "?"}`);
+  lines.push(`- Verdict final : ${TRACE_FINAL_FR[t.final] || t.final}${t.duplicate ? " · DOUBLON détecté" : ""}`);
+  if (t.durationMs != null) lines.push(`- Durée observée : ${t.durationMs} ms`);
+  lines.push("");
+  lines.push("## Chaîne de validation (étape par étape)");
+  for (const s of t.steps) {
+    const st = STEP_STATUS_FR[s.status] || s.status;
+    const extra = s.http_status ? ` (HTTP ${s.http_status})` : "";
+    lines.push(`- ${s.label} : ${st}${extra}`);
+  }
+  const failStep = t.steps.find((s) => s.status === "fail") || t.steps.find((s) => s.status === "missing");
+  if (failStep) lines.push(`\n→ Première étape défaillante : « ${failStep.label} ».`);
+  lines.push("\n## Pistes projet (rappel des invariants)");
+  lines.push("- UPDATE/DELETE Supabase touchant 0 ligne = RLS manquante · insert conv_messages exige from_id=auth.uid().");
+  lines.push("- Jamais de base64 en DB (→ Storage) · supaTs() pour les timestamps · realtime = publication + canal.");
+  lines.push("\n## Attendu de ta réponse");
+  lines.push("1. Cause probable  2. Fichiers à inspecter (chemins réels)  3. Explication  4. Correctif (git diff)");
+  lines.push("5. Tests / vérifications à relancer  6. Risques et non-régression");
+  return lines.join("\n");
+}
+
 /** Appelle l'API Anthropic (clé) à partir d'un prompt déjà assemblé. */
 async function callClaudeApi(prompt) {
   const resp = await fetch("https://api.anthropic.com/v1/messages", {
