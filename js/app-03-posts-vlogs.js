@@ -162,6 +162,9 @@ function likePost(id, skipRender = false, el = null) {
   if (!post) { _likePending.delete(id); return; }
   const liked = state.user.likedPosts.includes(id);
   try { window.tel && tel.action(liked ? "unlike_post" : "like_post", { postId: id }); } catch (e) {}
+  // Traçage bout-en-bout : l'écriture REST Supabase qui suit est auto-taguée
+  // comme étape « requête = confirmation » par le hook fetch (voir traces.js).
+  try { window.tel && tel.flowStart && tel.flowStart(liked ? "unlike_post" : "like_post", { postId: id }); } catch (e) {}
   if (liked) {
     state.user.likedPosts = state.user.likedPosts.filter(x => x !== id);
     post.likes = Math.max(0, (post.likes || 1) - 1);

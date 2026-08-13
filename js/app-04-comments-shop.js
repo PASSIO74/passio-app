@@ -1010,6 +1010,7 @@ function submitComment(postId) {
   let post = findPostAnywhere(postId);
   if (!post) return;
   try { window.tel && tel.action("comment_post", { postId: postId, len: text.length }); } catch (e) {}
+  try { window.tel && tel.flowStart && tel.flowStart("comment_post", { postId: postId }); } catch (e) {}
   if (!post.comments) post.comments = [];
   const realAuthorId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
   const p = currentProfile();

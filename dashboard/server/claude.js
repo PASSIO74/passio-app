@@ -129,6 +129,57 @@ export function buildTracePrompt(t) {
   return lines.join("\n");
 }
 
+/**
+ * Prompt « Diagnostiquer toute la plateforme » : assemble un état de santé
+ * synthétique (santé globale, incidents, chaînes d'actions en échec, livraison
+ * cross-device, erreurs récentes, dette d'instrumentation) en UN prompt actionnable.
+ * Ne contient que des métadonnées agrégées (aucun PII, aucun contenu privé).
+ */
+export function buildPlatformDiagnosis(d = {}) {
+  const { overview = {}, traces = {}, interactions = {}, coverage = {}, bugs = [], errors = [] } = d;
+  const L = [];
+  L.push("Tu es Claude Code, ingénieur en chef du projet PASSIO (PWA vanilla JS + Supabase).");
+  L.push("Voici l'état de santé RÉEL de la plateforme, agrégé par le centre de pilotage.");
+  L.push("Diagnostique en priorité ce qui casse un résultat métier, propose un plan d'action ORDONNÉ par risque/impact.");
+  L.push("Commence par « ## En clair » (2-3 phrases sans jargon), puis « ## Priorités » (liste ordonnée), puis les détails.");
+  L.push("Ne modifie aucun fichier ; pour chaque priorité, donne : cause probable, fichiers à inspecter, correctif, test.");
+  L.push("");
+  const tt = traces.totals || {};
+  const it = interactions.totals || {};
+  L.push("## Santé globale");
+  if (overview.health) L.push(`- Santé : ${overview.health}`);
+  if (typeof tt.successRate === "number") L.push(`- Actions abouties (bout en bout) : ${tt.successRate}% · ${tt.failed || 0} échecs · ${tt.partial || 0} partiels · ${tt.dead_click || 0} clics sans effet · ${tt.duplicate || 0} doublons`);
+  if (typeof it.deliveryRate === "number") L.push(`- Livraison cross-device (temps réel) : ${it.deliveryRate}% · ${it.unconfirmed || 0} non reçues`);
+  L.push(`- Bugs actifs : ${bugs.length} · erreurs récentes distinctes : ${errors.length}`);
+  L.push("");
+  if ((traces.incidents || []).length) {
+    L.push("## Actions dont la chaîne casse (déduplication par action + étape)");
+    traces.incidents.slice(0, 12).forEach((g) => L.push(`- ${g.actionLabel} — étape « ${g.stepLabel || g.final} » : ${g.count} occ. · ${g.users} utilisateur(s)`));
+    L.push("");
+  }
+  const badInter = (interactions.stats || []).filter((s) => s.verifiable && s.deliveryRate != null && s.deliveryRate < 90);
+  if (badInter.length) {
+    L.push("## Interactions mal livrées en temps réel");
+    badInter.forEach((s) => L.push(`- ${s.label} : ${s.deliveryRate}% livrées (${s.unconfirmed} non reçues)`));
+    L.push("");
+  }
+  if (bugs.length) {
+    L.push("## Bugs actifs (top gravité)");
+    bugs.slice(0, 10).forEach((b) => L.push(`- [${b.severity}] ${b.title} — ${b.count}× · ${b.users} utilisateur(s)${b.codeRef ? " · " + b.codeRef.file + (b.codeRef.line ? ":" + b.codeRef.line : "") : ""}`));
+    L.push("");
+  }
+  if ((coverage.uninstrumented || []).length) {
+    L.push("## Dette d'instrumentation (actions SANS contrat de résultat)");
+    L.push("Ces actions se produisent mais ne sont pas tracées bout en bout — angle mort :");
+    coverage.uninstrumented.slice(0, 15).forEach((u) => L.push(`- ${u.action} (${u.count}×)`));
+    L.push("");
+  }
+  L.push("## Attendu");
+  L.push("1. « ## En clair »  2. « ## Priorités » (ordonnées)  3. Pour chaque priorité : cause, fichiers, correctif (git diff si possible), tests, risques.");
+  L.push("Rappels d'invariants : RLS par propriétaire (UPDATE/DELETE 0 ligne = policy manquante), jamais de base64 en DB, supaTs() pour les dates, escapeHtml/escapeJsArg/safeUrlAttr selon le contexte.");
+  return L.join("\n");
+}
+
 /** Appelle l'API Anthropic (clé) à partir d'un prompt déjà assemblé. */
 async function callClaudeApi(prompt) {
   const resp = await fetch("https://api.anthropic.com/v1/messages", {

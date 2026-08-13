@@ -38,35 +38,63 @@ const MAX_TRACES = 400;          // borne mémoire du journal
 //   role "deliver" = livraison au destinataire (best-effort, cross-device) ;
 //   role "step"    = étape intermédiaire (son échec casse le flux).
 // L'ordre du tableau = l'ordre d'affichage attendu de la chaîne.
+const S_HANDLER = { key: "handler", label: "Gestionnaire déclenché", role: "step" };
+const S_REQUEST_STEP = { key: "request", label: "Requête envoyée au serveur", role: "step" };
+const S_REQUEST_CONFIRM = { key: "request", label: "Écriture serveur confirmée", role: "confirm" };
+const S_DELIVER = { key: "delivered", label: "Reçu sur les autres appareils", role: "deliver" };
+
 const CONTRACTS = {
+  // Message : contrat riche — l'enregistrement est confirmé explicitement (step
+  // « saved » émis par app-09), distinct de la requête réseau.
   send_message: {
     label: "Message envoyé", feature: "messaging",
     steps: [
-      { key: "handler", label: "Gestionnaire déclenché", role: "step" },
-      { key: "request", label: "Requête envoyée au serveur", role: "step" },
+      S_HANDLER, S_REQUEST_STEP,
       { key: "saved", label: "Message enregistré", role: "confirm" },
       { key: "delivered", label: "Reçu par le destinataire", role: "deliver" },
     ],
   },
+  // Actions « write = résultat » : l'appel REST Supabase EST la confirmation
+  // métier (insert/delete/upsert). La requête porte donc le rôle « confirm ».
+  like_post:    { label: "J'aime", feature: "feed", steps: [S_HANDLER, S_REQUEST_CONFIRM, S_DELIVER] },
+  unlike_post:  { label: "J'aime retiré", feature: "feed", steps: [S_HANDLER, S_REQUEST_CONFIRM] },
+  comment_post: { label: "Commentaire", feature: "feed", steps: [S_HANDLER, S_REQUEST_CONFIRM, S_DELIVER] },
+  cint:         { label: "Réaction / like de commentaire", feature: "feed", steps: [S_HANDLER, S_REQUEST_CONFIRM] },
+  event_join:   { label: "Inscription événement", feature: "irl", steps: [S_HANDLER, S_REQUEST_CONFIRM] },
+  event_leave:  { label: "Désinscription événement", feature: "irl", steps: [S_HANDLER, S_REQUEST_CONFIRM] },
+  // Publication : upload(s) média + insert `posts` = plusieurs requêtes ; on
+  // s'appuie sur un « saved » explicite (émis par supaPublishPostWithRetry) plutôt
+  // que sur l'auto-tag réseau, trop imprécis ici.
+  publish_post: { label: "Publication", feature: "feed", steps: [S_HANDLER, { key: "saved", label: "Publication enregistrée", role: "confirm" }, S_DELIVER] },
+  publish_reel: { label: "Bobine publiée", feature: "feed", steps: [S_HANDLER, { key: "saved", label: "Bobine enregistrée", role: "confirm" }, S_DELIVER] },
+  share_post:   { label: "Partage de publication", feature: "feed", steps: [S_HANDLER, S_REQUEST_CONFIRM] },
   // Contrat générique : toute action wrappée par tel.flowStart sans contrat
-  // dédié affiche au moins handler → requête → confirmation.
+  // dédié affiche au moins handler → requête (confirmation).
   _default: {
     label: "Action", feature: "app",
-    steps: [
-      { key: "handler", label: "Gestionnaire déclenché", role: "step" },
-      { key: "request", label: "Requête envoyée au serveur", role: "step" },
-      { key: "done", label: "Résultat confirmé", role: "confirm" },
-    ],
+    steps: [S_HANDLER, S_REQUEST_CONFIRM],
   },
 };
 
 function contractFor(action) { return CONTRACTS[action] || CONTRACTS._default; }
 
-// Cible métier d'un flow (pour dédup + appariement de livraison).
-function targetOf(meta) {
+// Cible métier d'un flow (pour dédup + appariement de livraison), selon l'action.
+function targetOf(meta, action) {
   meta = meta || {};
-  return meta.convId || meta.postId || meta.commentId || meta.target || null;
+  if (action === "send_message") return meta.convId || null;
+  if (action === "cint") return meta.commentId || null;
+  return meta.postId || meta.eventId || meta.target || null;
 }
+
+// Réception realtime (rt_recv) → action(s) de flow appariable(s) + champ de cible.
+// Une preuve de réception sur un AUTRE appareil confirme l'étape « delivered ».
+const RECV_MAP = {
+  message: { actions: ["send_message"], field: "convId" },
+  like:    { actions: ["like_post"], field: "postId" },
+  comment: { actions: ["comment_post"], field: "postId" },
+  cint:    { actions: ["cint"], field: "commentId" },
+  post:    { actions: ["publish_post", "publish_reel"], field: "postId" },
+};
 
 class TraceTracker {
   constructor() {
@@ -92,7 +120,7 @@ class TraceTracker {
       device: ev.device_id || null,
       session: ev.session_id || null,
       screen: ev.screen || null,
-      target: targetOf(ev.meta),
+      target: targetOf(ev.meta, action),
       startedAt: ev.ts,
       lastAt: ev.ts,
       steps: {},            // key -> { status, ts, meta, http_status }
@@ -179,17 +207,18 @@ class TraceTracker {
     return true;
   }
 
-  // Livraison cross-device (best-effort) : un rt_recv « message » sur un AUTRE
-  // appareil, apparié par convId au send_message le plus récent. Honnête : on ne
-  // marque « delivered » que si un signal de réception réel est observé.
+  // Livraison cross-device (best-effort) : un rt_recv sur un AUTRE appareil,
+  // apparié par cible (convId/postId/commentId) au flow le plus récent de l'action
+  // correspondante. Honnête : on ne marque « delivered » qu'avec un signal réel.
   _onReceive(ev) {
-    if (ev.action !== "message") return false;
-    const target = (ev.meta && ev.meta.convId) || null;
+    const map = RECV_MAP[ev.action];
+    if (!map) return false;
+    const target = (ev.meta && ev.meta[map.field]) || null;
     if (!target) return false;
     const recvDevice = ev.device_id || null;
     for (let i = this.order.length - 1; i >= 0; i--) {
       const flow = this.flows.get(this.order[i]);
-      if (!flow || flow.action !== "send_message") continue;
+      if (!flow || !map.actions.includes(flow.action)) continue;
       if (flow.target !== target) continue;
       if (ev.ts < flow.startedAt) continue;
       if (ev.ts - flow.startedAt > FLOW_WINDOW_MS) break;
@@ -215,7 +244,8 @@ class TraceTracker {
         status = s.status;
         if (status === "fail") sawFail = true;
         if (status === "slow") sawSlow = true;
-        if (spec.role === "confirm" && status === "ok") confirmOk = true;
+        // Une confirmation « lente » reste une confirmation (l'écriture a abouti).
+        if (spec.role === "confirm" && (status === "ok" || status === "slow")) confirmOk = true;
       } else if (spec.role === "deliver") {
         // Livraison non observée : « en attente » puis « non confirmée ». Purement
         // INFORMATIF — on ne peut pas prouver qu'un destinataire n'a rien reçu (test
@@ -328,6 +358,50 @@ class TraceTracker {
     const names = (store && typeof store.clientNames === "function") ? store.clientNames() : {};
     return this._dto(flow, now, names);
   }
+}
+
+// Actions purement UI (aucune écriture serveur attendue) → exclues de la dette.
+const NON_WRITE_ACTIONS = new Set(["tools_open", "share_post", "share_event"]);
+
+/**
+ * Rapport de couverture d'instrumentation : quelles actions métier ont un
+ * CONTRAT de résultat (chaîne de validation) et lesquelles se produisent SANS
+ * (dette). Calculé honnêtement sur les données réelles déjà ingérées.
+ */
+export function coverage() {
+  // Flows tracés par action (preuve que le contrat est réellement câblé côté app).
+  const flowByAction = {};
+  for (const cid of traces.order) {
+    const f = traces.flows.get(cid);
+    if (f) flowByAction[f.action] = (flowByAction[f.action] || 0) + 1;
+  }
+  // Actions métier observées dans la télémétrie brute (type "action").
+  const seen = {};
+  const events = (store && Array.isArray(store.events)) ? store.events : [];
+  for (const ev of events) {
+    if (ev.type === "action" && ev.action) seen[ev.action] = (seen[ev.action] || 0) + 1;
+  }
+  const contractActions = Object.keys(CONTRACTS).filter((k) => k !== "_default");
+  const catalogue = contractActions.map((a) => ({
+    action: a, label: CONTRACTS[a].label, feature: CONTRACTS[a].feature,
+    observed: seen[a] || 0, tracedFlows: flowByAction[a] || 0,
+    // « câblé » = au moins un flow réel observé (le flowStart existe côté app).
+    wired: (flowByAction[a] || 0) > 0,
+  })).sort((a, b) => b.observed - a.observed);
+  // Dette : actions vues mais SANS contrat de résultat (ni exclusion UI).
+  const uninstrumented = Object.keys(seen)
+    .filter((a) => !CONTRACTS[a] && !NON_WRITE_ACTIONS.has(a))
+    .map((a) => ({ action: a, count: seen[a] }))
+    .sort((a, b) => b.count - a.count);
+  return {
+    updatedAt: Date.now(),
+    totals: {
+      contracts: contractActions.length,
+      wired: catalogue.filter((c) => c.wired).length,
+      uninstrumented: uninstrumented.length,
+    },
+    catalogue, uninstrumented,
+  };
 }
 
 export const traces = new TraceTracker();

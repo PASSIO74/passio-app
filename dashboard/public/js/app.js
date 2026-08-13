@@ -1059,7 +1059,9 @@ function traceRow(t) {
 
 VIEWS.traces = async () => {
   mount(`<h2 class="page-title">Traçage des actions (bout en bout)</h2>
-    <p class="page-sub">Chaque action importante est suivie du <b>clic</b> jusqu'à son <b>résultat métier réel</b> : gestionnaire → requête → enregistrement → livraison. Un verdict honnête par action — jamais un « succès » non prouvé. <span class="muted">(Aujourd'hui instrumenté : envoi de message ; toute action wrappée par <code>tel.flowStart</code> apparaît ici automatiquement.)</span></p>
+    <p class="page-sub">Chaque action importante est suivie du <b>clic</b> jusqu'à son <b>résultat métier réel</b> : gestionnaire → requête → enregistrement → livraison. Un verdict honnête par action — jamais un « succès » non prouvé. <span class="muted">(Instrumenté : message, j'aime, commentaire, réaction, publication/bobine, RSVP événement. Toute action wrappée par <code>tel.flowStart</code> apparaît automatiquement.)</span></p>
+    <div class="tr-hero"><button class="btn btn-primary btn-lg" id="trDiagnose">${icon("wrench")} Diagnostiquer toute la plateforme</button>
+      <span class="muted" id="trDiagHint" style="font-size:12.5px">Assemble l'état de santé réel (incidents, chaînes cassées, livraison, dette) en un diagnostic Claude Code.</span></div>
     <div id="trSummary"></div>
     <div id="trIncidents"></div>
     <div class="feed-toolbar" style="margin-top:16px">
@@ -1067,7 +1069,9 @@ VIEWS.traces = async () => {
       <button class="btn btn-sm" id="trRefresh">${icon("refresh")} Actualiser</button>
       <span class="muted" style="margin-left:auto;font-size:12px" id="trCount"></span>
     </div>
-    <div class="table-wrap"><table><thead><tr><th>Heure</th><th>Action</th><th>Chaîne de validation</th><th>Verdict</th><th>Durée</th></tr></thead><tbody id="trRows"></tbody></table></div>`);
+    <div class="table-wrap"><table><thead><tr><th>Heure</th><th>Action</th><th>Chaîne de validation</th><th>Verdict</th><th>Durée</th></tr></thead><tbody id="trRows"></tbody></table></div>
+    <div id="trCoverage"></div>`);
+  $("#trDiagnose").onclick = diagnosePlatform;
 
   let data = { totals: {}, incidents: [], recent: [] };
   let failOnly = false;
@@ -1095,6 +1099,23 @@ VIEWS.traces = async () => {
       </div>`).join("")}</div>`;
 
     renderRows();
+    renderCoverage();
+  }
+  async function renderCoverage() {
+    let cov;
+    try { cov = await api.get("/coverage"); } catch (e) { return; }
+    const cat = (cov.catalogue || []).map((c) => `<tr>
+      <td><b>${esc(c.label)}</b> <span class="muted mono" style="font-size:11px">${esc(c.action)}</span></td>
+      <td class="muted">${esc(c.feature)}</td>
+      <td>${c.wired ? '<span class="pill ok">câblé</span>' : '<span class="pill info">en attente</span>'}</td>
+      <td class="mono">${num(c.observed)}</td>
+      <td class="mono">${num(c.tracedFlows)}</td></tr>`).join("");
+    const debt = (cov.uninstrumented || []).length
+      ? `<div class="tr-debt">${icon("alertTriangle")} <b>${cov.uninstrumented.length} action(s) sans contrat de résultat</b> (angle mort — se produisent mais non tracées bout en bout) : ${cov.uninstrumented.slice(0, 12).map((u) => `<span class="pill info">${esc(u.action)} · ${num(u.count)}</span>`).join(" ")}</div>`
+      : `<div class="muted" style="font-size:12.5px;margin-top:8px">${icon("checkCircle")} Aucune action observée sans contrat de résultat.</div>`;
+    $("#trCoverage").innerHTML = `<details class="tr-cov"><summary>${icon("reports")} Couverture d'instrumentation — ${cov.totals.wired}/${cov.totals.contracts} contrats câblés · ${cov.totals.uninstrumented} en dette</summary>
+      <div class="table-wrap" style="margin-top:10px"><table><thead><tr><th>Action</th><th>Module</th><th>État</th><th>Observées</th><th>Tracées</th></tr></thead><tbody>${cat || '<tr><td colspan="5" class="empty">Aucun contrat.</td></tr>'}</tbody></table></div>
+      ${debt}</details>`;
   }
   function renderRows() {
     let rows = data.recent || [];
@@ -1112,6 +1133,33 @@ VIEWS.traces = async () => {
   };
   S.refresh = refresh; refresh();
 };
+
+// « Diagnostiquer toute la plateforme » : assemble l'état de santé réel en un
+// prompt Claude Code (copiable, ou lancé directement si l'assistant est branché).
+async function diagnosePlatform() {
+  openDrawer(`${icon("wrench")} Diagnostic global`, `<div class="empty"><span class="spinner"></span><p style="margin-top:10px">Assemblage de l'état de santé réel…</p></div>`);
+  let d;
+  try { d = await api.get("/diagnose"); }
+  catch (e) { $("#drawerBody").innerHTML = `<div class="fix-note err">${esc(e.message)}</div>`; return; }
+  const s = d.summary || {};
+  const chip = (label, val, bad) => `<div class="diag-kpi ${bad ? "bad" : ""}"><div class="diag-kpi-v">${val}</div><div class="diag-kpi-l">${label}</div></div>`;
+  $("#drawerBody").innerHTML = `
+    <div class="diag-kpis">
+      ${chip("Actions abouties", s.successRate == null ? "—" : s.successRate + "%", s.successRate != null && s.successRate < 90)}
+      ${chip("Livraison temps réel", s.deliveryRate == null ? "—" : s.deliveryRate + "%", s.deliveryRate != null && s.deliveryRate < 90)}
+      ${chip("Chaînes cassées", s.incidents || 0, s.incidents > 0)}
+      ${chip("Bugs actifs", s.bugs || 0, s.bugs > 0)}
+      ${chip("Dette instrumentation", s.uninstrumented || 0, s.uninstrumented > 0)}
+    </div>
+    <div class="drawer-actions" style="margin:14px 0;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-sm" id="diagCopy">${icon("reports")} Copier le prompt Claude Code</button>
+      ${hasCap("claude") ? `<button class="btn btn-sm btn-primary" id="diagRun">${icon("wrench")} Lancer l'analyse</button>` : ""}
+    </div>
+    <pre class="md-code" style="max-height:340px;overflow:auto;white-space:pre-wrap">${esc(d.prompt)}</pre>`;
+  $("#diagCopy").onclick = () => copy(d.prompt, "Prompt de diagnostic copié");
+  const run = $("#diagRun");
+  if (run) run.onclick = () => fixWithClaude({ event: { type: "error", severity: "error", message: "Diagnostic global de la plateforme", stack: d.prompt } }, "Diagnostic global de la plateforme");
+}
 
 // Détail d'une trace : chaîne complète + prompt Claude prêt à copier + réparation.
 async function traceDetail(cid) {

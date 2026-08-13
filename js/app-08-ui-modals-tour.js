@@ -2356,6 +2356,14 @@ function diagLog(msg) {
 
 async function supaPublishPostWithRetry(post, maxRetries = 2) {
   try { window.tel && tel.action(post && post.is_reel ? "publish_reel" : "publish_post", { passion: post && post.passion, postId: post && post.id }); } catch (e) {}
+  // Traçage bout-en-bout : chaîne « handler → publication enregistrée ». On confirme
+  // via un « saved » explicite au VRAI résultat (l'upload + insert peut échouer/retry).
+  var _pubCid = null;
+  try { if (window.tel && tel.flowStart) _pubCid = tel.flowStart(post && post.is_reel ? "publish_reel" : "publish_post", { postId: post && post.id, passion: post && post.passion }); } catch (e) {}
+  function _pubDone(ok) {
+    try { if (_pubCid && window.tel) { tel.step(_pubCid, "saved", ok ? "ok" : "error"); tel.flowEnd(_pubCid, ok ? "ok" : "error"); _pubCid = null; } } catch (e) {}
+    return ok;
+  }
   // S'assurer que le profil existe en DB avant de publier
   // (le JOIN profiles!author_id retourne null sinon → pas de nom d'auteur)
   try { await supaUpsertProfile(); } catch(e) {}
@@ -2458,32 +2466,32 @@ async function supaPublishPostWithRetry(post, maxRetries = 2) {
         delete postData.vlog;
         const retry = await supa.from("posts").insert([postData]).select();
         if (retry.error) throw retry.error;
-        return true;
+        return _pubDone(true);
       }
       // Colonne `event_id` absente (migration IRL v2 non appliquée) → réessayer
       // sans le rattachement à l'événement plutôt que de perdre le post.
       if (error && postData.event_id && /event_id/.test(error.message || "")) {
         delete postData.event_id;
         const retry = await supa.from("posts").insert([postData]).select();
-        if (!retry.error || String(retry.error.code) === "23505") return true;
+        if (!retry.error || String(retry.error.code) === "23505") return _pubDone(true);
         throw retry.error;
       }
       // Clé dupliquée = un insert précédent (timeout côté client) a en fait réussi
       // côté serveur → le post existe, c'est un succès.
-      if (error && (error.code === "23505" || /duplicate key/i.test(error.message || ""))) return true;
+      if (error && (error.code === "23505" || /duplicate key/i.test(error.message || ""))) return _pubDone(true);
       if (error) throw error;
 
-      return true;
+      return _pubDone(true);
 
     } catch (e) {
-      if (attempt === maxRetries) return false;
+      if (attempt === maxRetries) return _pubDone(false);
 
       // Attendre avant retry
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
   }
 
-  return false;
+  return _pubDone(false);
 }
 
 // ── Co-auteurs d'un CARNET (table post_collaborators) ──
@@ -2885,6 +2893,7 @@ async function supaCommentInteract(commentId, postId, kind, payload) {
   // Émission d'une interaction de commentaire (like/réponse/emoji) — sur un POST,
   // comment_id === post_id. Apparié à recv_cint (autre appareil) par le pilotage.
   try { window.tel && tel.action("cint", { commentId: commentId, postId: postId || null, ck: kind }); } catch (e) {}
+  try { window.tel && tel.flowStart && tel.flowStart("cint", { commentId: commentId, postId: postId || null }); } catch (e) {}
   try {
     const { error } = await supa.from("comment_interactions").insert({
       id: "ci_" + uid(), comment_id: commentId, post_id: postId || null,

@@ -166,3 +166,86 @@ test("api non taguée (sans correlation_id) n'est rattachée à aucun flow", () 
   const r = traces.onEvent(ev("api", "GET /x", { endpoint: "x/y", http_status: 200 }));
   assert.equal(r, false);
 });
+
+// ─── Contrats « write = confirmation » (like, commentaire, RSVP, réaction) ────
+
+test("like_post : handler + requête OK (la requête EST la confirmation) = success", () => {
+  reset();
+  const cid = "lk_ok";
+  const t0 = Date.now();
+  traces.onEvent(ev("flow", "start", { correlation_id: cid, ts: t0, meta: { flow_action: "like_post", postId: "p1" } }));
+  traces.onEvent(ev("api", "POST /post_likes", { correlation_id: cid, ts: t0 + 60, endpoint: "x/post_likes", http_status: 201 }));
+  const tr = traces.trace(cid);
+  assert.equal(tr.final, "success");
+  assert.equal(tr.steps.find((s) => s.key === "request").role, "confirm");
+});
+
+test("like_post : requête refusée (HTTP 403 RLS) = failed", () => {
+  reset();
+  const cid = "lk_fail";
+  const old = Date.now() - 20_000;
+  traces.onEvent(ev("flow", "start", { correlation_id: cid, ts: old, meta: { flow_action: "like_post", postId: "p2" } }));
+  traces.onEvent(ev("api", "POST /post_likes", { correlation_id: cid, ts: old + 50, endpoint: "x/post_likes", http_status: 403, status: "error" }));
+  const tr = traces.trace(cid);
+  assert.equal(tr.final, "failed");
+});
+
+test("like_post : clic sans aucune requête (figé) = dead_click", () => {
+  reset();
+  const cid = "lk_dead";
+  traces.onEvent(ev("flow", "start", { correlation_id: cid, ts: Date.now() - 20_000, meta: { flow_action: "like_post", postId: "p3" } }));
+  assert.equal(traces.trace(cid).final, "dead_click");
+});
+
+test("requête lente mais réussie = success (lent), pas « non confirmé »", () => {
+  reset();
+  const cid = "lk_slow";
+  const old = Date.now() - 20_000;
+  traces.onEvent(ev("flow", "start", { correlation_id: cid, ts: old, meta: { flow_action: "like_post", postId: "p4" } }));
+  traces.onEvent(ev("api", "POST /post_likes", { correlation_id: cid, ts: old + 2000, endpoint: "x/post_likes", http_status: 201, status: "slow" }));
+  assert.equal(traces.trace(cid).final, "slow");
+});
+
+test("publish : saved explicite OK = success (auto-tag réseau ignoré)", () => {
+  reset();
+  const cid = "pub_ok";
+  const t0 = Date.now();
+  traces.onEvent(ev("flow", "start", { correlation_id: cid, ts: t0, meta: { flow_action: "publish_post", postId: "post9" } }));
+  // bruit réseau (upsert profil / upload) auto-tagué « request » : hors contrat publish → ignoré
+  traces.onEvent(ev("api", "POST /profiles", { correlation_id: cid, ts: t0 + 100, endpoint: "x/profiles", http_status: 200 }));
+  traces.onEvent(ev("flow", "step", { correlation_id: cid, ts: t0 + 3000, meta: { step: "saved" } }));
+  traces.onEvent(ev("flow", "end", { correlation_id: cid, ts: t0 + 3010 }));
+  const tr = traces.trace(cid);
+  assert.equal(tr.final, "success");
+  // le contrat publish n'affiche pas d'étape « request »
+  assert.equal(tr.steps.some((s) => s.key === "request"), false);
+});
+
+test("livraison cross-device d'un LIKE : rt_recv like sur autre appareil confirme delivered", () => {
+  reset();
+  const cid = "lk_deliv";
+  const t0 = Date.now();
+  traces.onEvent(ev("flow", "start", { correlation_id: cid, ts: t0, device_id: "dA", meta: { flow_action: "like_post", postId: "p7" } }));
+  traces.onEvent(ev("api", "POST /post_likes", { correlation_id: cid, ts: t0 + 40, endpoint: "x/post_likes", http_status: 201 }));
+  traces.onEvent(ev("rt_recv", "like", { ts: t0 + 250, device_id: "dB", meta: { postId: "p7" } }));
+  assert.equal(traces.trace(cid).steps.find((s) => s.key === "delivered").status, "ok");
+});
+
+test("cint : cible = commentId (pas postId) pour l'appariement", () => {
+  reset();
+  const cid = "cint1";
+  const t0 = Date.now();
+  traces.onEvent(ev("flow", "start", { correlation_id: cid, ts: t0, meta: { flow_action: "cint", commentId: "cmt1", postId: "p8" } }));
+  assert.equal(traces.trace(cid).target, "cmt1");
+});
+
+test("event_join : cible = eventId ; requête OK = success", () => {
+  reset();
+  const cid = "ev1";
+  const t0 = Date.now();
+  traces.onEvent(ev("flow", "start", { correlation_id: cid, ts: t0, meta: { flow_action: "event_join", eventId: "e42" } }));
+  traces.onEvent(ev("api", "POST /event_attendees", { correlation_id: cid, ts: t0 + 30, endpoint: "x/event_attendees", http_status: 201 }));
+  const tr = traces.trace(cid);
+  assert.equal(tr.target, "e42");
+  assert.equal(tr.final, "success");
+});

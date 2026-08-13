@@ -449,7 +449,7 @@
   // clic → gestionnaire → requête réseau → enregistrement → (livraison). Le hook
   // fetch tague automatiquement l'appel réseau qui suit le démarrage du flow, si
   // bien qu'une action wrappée par flowStart capture son étape réseau sans effort.
-  var FLOW_AMBIENT_MS = 6000;   // fenêtre pendant laquelle un fetch hérite du cid
+  var FLOW_AMBIENT_MS = 4000;   // fenêtre pendant laquelle un fetch hérite du cid
   var _activeFlow = null;       // { cid, until }
   function _flowMeta(base, extra) {
     var m = {}; if (base) for (var k in base) if (Object.prototype.hasOwnProperty.call(base, k)) m[k] = base[k];

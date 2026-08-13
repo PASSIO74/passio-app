@@ -2724,6 +2724,7 @@ function toggleJoinEvent(id) {
   const ev = _findCanonicalEvent(id) || allEvents().find(e => e.id === id);
   if (!ev) return;
   try { window.tel && tel.action(cur ? "event_leave" : "event_join", { eventId: id }); } catch (e) {}
+  try { window.tel && tel.flowStart && tel.flowStart(cur ? "event_leave" : "event_join", { eventId: id }); } catch (e) {}
   if (cur) { setEventRsvp(id, null); return; }
   setEventRsvp(id, _eventIsFull(ev) ? "waitlist" : "going");
 }

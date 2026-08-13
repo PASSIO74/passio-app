@@ -23,7 +23,7 @@ import { detectClaudeCli, claudeCliState } from "./claudecli.js";
 import * as testusers from "./testusers.js";
 import * as alerts from "./alerts.js";
 import { snapshot as interactionsSnapshot } from "./interactions.js";
-import { snapshot as tracesSnapshot, trace as traceOne } from "./traces.js";
+import { snapshot as tracesSnapshot, trace as traceOne, coverage as tracesCoverage } from "./traces.js";
 import { kpi } from "./kpi.js";
 import { retention } from "./retention.js";
 import { computeReadiness } from "./readiness.js";
@@ -90,6 +90,28 @@ api.get("/traces/:cid", auth.requireAuth, (req, res) => {
   const t = traceOne(req.params.cid);
   if (!t) return res.status(404).json({ error: "Trace introuvable (expirée ?)" });
   res.json({ trace: t, prompt: claude.buildTracePrompt(t) });
+});
+
+// ─── Couverture d'instrumentation (catalogue des contrats + dette) ──────────
+api.get("/coverage", auth.requireAuth, (req, res) => res.json(tracesCoverage()));
+
+// ─── Diagnostic global : « Diagnostiquer toute la plateforme » (prompt prêt) ─
+api.get("/diagnose", auth.requireAuth, (req, res) => {
+  const bundle = {
+    overview: store.overview(),
+    traces: tracesSnapshot(200),
+    interactions: interactionsSnapshot(200),
+    coverage: tracesCoverage(),
+    bugs: store.bugList().slice(0, 20),
+    errors: store.recent({ type: "error" }, 40),
+  };
+  res.json({ prompt: claude.buildPlatformDiagnosis(bundle), summary: {
+    successRate: bundle.traces.totals.successRate,
+    deliveryRate: bundle.interactions.totals.deliveryRate,
+    incidents: (bundle.traces.incidents || []).length,
+    bugs: bundle.bugs.length,
+    uninstrumented: bundle.coverage.totals.uninstrumented,
+  }, apiConfigured: Boolean(config.anthropicKey) });
 });
 
 // ─── Liens partagés (cycle de vie création → partage → ouverture confirmée) ──
