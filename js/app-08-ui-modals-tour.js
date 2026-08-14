@@ -2848,17 +2848,34 @@ async function supaLoadPosts(offset = 0, authorId = null) {
 }
 
 // ---- LIKES ----
+// L'UI est déjà optimiste (likePost repeint le bouton avant l'aller-retour) :
+// cette fonction n'a donc qu'un seul travail, écrire — et DIRE quand elle échoue.
+// ⚠️ Le SDK Supabase ne LÈVE PAS sur un refus RLS ni sur une contrainte : il
+// renvoie { error }. Sans lire ce champ, un like refusé restait rouge à l'écran
+// sans la moindre trace côté client (le catch ne voyait que les pannes réseau).
 async function supaToggleLike(postId) {
+  const _fail = function (where, err) {
+    const m = (err && (err.message || err.msg)) || String(err || "");
+    console.warn("Like error (" + where + "):", m);
+    try { if (typeof diagLog === "function") diagLog("supaToggleLike " + where + ": " + m); } catch (e) {}
+  };
   try {
-    const { data: existing } = await supa.from("post_likes").select("post_id").eq("post_id", postId).eq("user_id", MY_UID).maybeSingle();
+    const { data: existing, error: selErr } = await supa.from("post_likes")
+      .select("post_id").eq("post_id", postId).eq("user_id", MY_UID).maybeSingle();
+    if (selErr) { _fail("select", selErr); return false; }
     if (existing) {
-      await supa.from("post_likes").delete().eq("post_id", postId).eq("user_id", MY_UID);
+      const { error } = await supa.from("post_likes").delete().eq("post_id", postId).eq("user_id", MY_UID);
+      if (error) _fail("delete", error);
       return false;
-    } else {
-      await supa.from("post_likes").insert({ post_id: postId, user_id: MY_UID });
-      return true;
     }
-  } catch(e) { return false; }
+    // upsert plutôt qu'insert : la clé primaire en prod est (post_id, user_id).
+    // Un double-clic ou deux onglets en course produisaient un 23505 avalé ici et
+    // compté comme ÉCHEC par le traçage — alors que l'état voulu était atteint.
+    const { error } = await supa.from("post_likes")
+      .upsert({ post_id: postId, user_id: MY_UID }, { onConflict: "post_id,user_id" });
+    if (error) { _fail("insert", error); return false; }
+    return true;
+  } catch(e) { _fail("network", e); return false; }
 }
 
 async function supaGetLikeCount(postId) {
