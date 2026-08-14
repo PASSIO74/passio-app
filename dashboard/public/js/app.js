@@ -1147,10 +1147,12 @@ VIEWS.integrity = async () => {
     </div>
     <div id="igList"></div>`);
 
-  async function refresh() {
+  // `force` : le bouton « Relancer » doit réellement réinterroger la base,
+  // pas relire le cache serveur de 30 s.
+  async function refresh(force) {
     $("#igList").innerHTML = `<div class="empty"><span class="spinner"></span><p style="margin-top:10px">Vérification de l'intégrité…</p></div>`;
     let d;
-    try { d = await api.get("/reconcile"); }
+    try { d = await api.get("/reconcile" + (force === true ? "?force=1" : "")); }
     catch (e) { $("#igList").innerHTML = `<div class="fix-note err">${esc(e.message)}</div>`; return; }
     if (!d.configured) { $("#igList").innerHTML = `<div class="empty">Supabase non configuré : l'intégrité ne peut pas être vérifiée.</div>`; return; }
     INTEG_LAST = d.checks || [];
@@ -1160,7 +1162,7 @@ VIEWS.integrity = async () => {
       <div class="state-ico">${icon("database")}</div>
       <div class="state-txt"><h2>${T.anomalies ? `${T.anomalies} règle(s) en anomalie · ${num(T.affectedRows)} ligne(s) concernée(s)` : `Aucune anomalie active sur ${T.rules} règles`}</h2>
         <p>${T.critical || 0} critique(s)${T.residues ? ` · ${T.residues} résidu(s) sans récidive (${num(T.residueRows)} ligne(s))` : ""} · ${T.failed ? `<b class="sev-warn">${T.failed} règle(s) NON vérifiée(s)</b> · ` : ""}${num(T.seedRefs || 0)} référence(s) au contenu de démo (normal, exclu des anomalies)</p></div></div>`;
-    $("#igMeta").textContent = "Vérifié " + hhmmss(d.updatedAt);
+    $("#igMeta").textContent = "Vérifié " + hhmmss(d.updatedAt) + (d.cached ? " (en cache)" : "");
 
     $("#igList").innerHTML = `<div class="ig-grid">${INTEG_LAST.map((c, i) => {
       const badge = c.status === "ok" ? '<span class="pill ok">conforme</span>'
@@ -1184,7 +1186,7 @@ VIEWS.integrity = async () => {
       </div>`;
     }).join("")}</div>`;
   }
-  $("#igRefresh").onclick = refresh;
+  $("#igRefresh").onclick = () => refresh(true);
   $("#view").onclick = (e) => {
     const b = e.target.closest("[data-ig]"); if (!b) return;
     integrityFix(INTEG_LAST[Number(b.dataset.ig)]);
@@ -1217,7 +1219,7 @@ async function diagnosePlatform() {
       ${chip("Livraison temps réel", s.deliveryRate == null ? "—" : s.deliveryRate + "%", s.deliveryRate != null && s.deliveryRate < 90)}
       ${chip("Chaînes cassées", s.incidents || 0, s.incidents > 0)}
       ${chip("Bugs actifs", s.bugs || 0, s.bugs > 0)}
-      ${chip("Intégrité (anomalies)", s.integrityAnomalies == null ? "—" : s.integrityAnomalies, s.integrityAnomalies > 0)}
+      ${chip("Intégrité (anomalies)", s.integrityEvaluated === false ? "n/é" : s.integrityAnomalies == null ? "—" : s.integrityAnomalies, s.integrityAnomalies > 0)}
       ${chip("Dette instrumentation", s.uninstrumented || 0, s.uninstrumented > 0)}
     </div>
     <div class="drawer-actions" style="margin:14px 0;display:flex;gap:8px;flex-wrap:wrap">

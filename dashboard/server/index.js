@@ -97,7 +97,7 @@ api.get("/traces/:cid", auth.requireAuth, (req, res) => {
 api.get("/coverage", auth.requireAuth, (req, res) => res.json(tracesCoverage()));
 
 // ─── Réconciliation (intégrité des données : échecs silencieux) ─────────────
-api.get("/reconcile", auth.requireCap("db"), asyncH(async (req, res) => res.json(await reconcile())));
+api.get("/reconcile", auth.requireCap("db"), asyncH(async (req, res) => res.json(await reconcile({ force: req.query.force === "1" }))));
 api.post("/reconcile/prompt", auth.requireCap("db"), (req, res) => {
   const c = req.body?.check;
   if (!c || !c.label) return res.status(400).json({ error: "check requis" });
@@ -106,10 +106,19 @@ api.post("/reconcile/prompt", auth.requireCap("db"), (req, res) => {
 
 // ─── Diagnostic global : « Diagnostiquer toute la plateforme » (prompt prêt) ─
 api.get("/diagnose", auth.requireAuth, asyncH(async (req, res) => {
-  // L'intégrité des données fait partie du diagnostic ; si elle échoue (Supabase
-  // indisponible), on le DIT au lieu de prétendre que tout va bien.
+  // L'intégrité des données fait partie du diagnostic, MAIS elle expose des
+  // identifiants issus de la base : elle suit donc la même permission que
+  // /reconcile (capacité `db`). Un rôle sans cette capacité reçoit un diagnostic
+  // qui DIT que l'intégrité n'a pas été évaluée, au lieu de la passer sous
+  // silence (un blanc lu comme « tout va bien » serait un mensonge).
+  const mayReadDb = auth.can(req.session.role, "db");
   let integrity = null;
-  try { integrity = await reconcile(); } catch (e) { integrity = { error: e.message }; }
+  if (mayReadDb) {
+    // Si elle échoue (Supabase indisponible), on le DIT au lieu de prétendre que tout va bien.
+    try { integrity = await reconcile(); } catch (e) { integrity = { error: e.message }; }
+  } else {
+    integrity = { error: "non évaluée : ce rôle n'a pas accès à la base (capacité `db`)" };
+  }
   const bundle = {
     overview: store.overview(),
     traces: tracesSnapshot(200),
@@ -126,6 +135,7 @@ api.get("/diagnose", auth.requireAuth, asyncH(async (req, res) => {
     bugs: bundle.bugs.length,
     uninstrumented: bundle.coverage.totals.uninstrumented,
     integrityAnomalies: integrity?.totals?.anomalies ?? null,
+    integrityEvaluated: mayReadDb,
   }, apiConfigured: Boolean(config.anthropicKey) });
 }));
 

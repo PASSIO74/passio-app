@@ -173,7 +173,17 @@ const RULES = [
  * elle est remontée telle quelle (une règle qu'on n'a PAS pu vérifier n'est
  * jamais présentée comme « conforme »).
  */
-export async function reconcile() {
+// Cache court : une passe complète = ~14 requêtes Supabase. La vue la déclenche
+// à chaque ouverture, et /diagnose l'appelle aussi ; sans cache, naviguer entre
+// les onglets martèlerait la prod pour un état qui bouge lentement. `force`
+// (bouton « Relancer la vérification ») contourne toujours le cache.
+const CACHE_MS = 30_000;
+let _cache = null;
+
+export async function reconcile({ force = false } = {}) {
+  if (!force && _cache && Date.now() - _cache.at < CACHE_MS) {
+    return { ..._cache.value, cached: true, cacheAgeMs: Date.now() - _cache.at };
+  }
   const admin = getAdmin();
   if (!admin) return { configured: false, updatedAt: Date.now(), checks: [], totals: { anomalies: 0, rules: RULES.length, failed: 0 } };
 
@@ -209,7 +219,7 @@ export async function reconcile() {
   const anomalies = checks.filter((c) => c.status === "error" || c.status === "warn");
   const residues = checks.filter((c) => c.status === "residue");
   const failed = checks.filter((c) => c.status === "unknown");
-  return {
+  const value = {
     configured: true,
     updatedAt: Date.now(),
     checks,
@@ -224,6 +234,10 @@ export async function reconcile() {
       critical: checks.filter((c) => c.status === "error").length,
     },
   };
+  // On ne met en cache qu'une passe COMPLÈTE : si des règles n'ont pas pu être
+  // vérifiées (Supabase indisponible), on ne fige pas cet état dégradé 30 s.
+  if (!failed.length) _cache = { at: Date.now(), value };
+  return { ...value, cached: false };
 }
 
 /** Prompt Claude Code pour une anomalie d'intégrité précise. */
