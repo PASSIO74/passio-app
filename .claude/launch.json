@@ -1,0 +1,19 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "passio",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["http-server", "-c-1", "."],
+      "port": 8080,
+      "autoPort": true
+    },
+    {
+      "name": "pilotage",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["server/index.js"],
+      "cwd": "dashboard",
+      "port": 4610
+    }
+  ]
+}

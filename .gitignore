@@ -19,8 +19,28 @@ deploy/
 dist/
 archive/
 node_modules/
-.claude/
 supabase/.temp/
+
+# Configuration Claude Code — versionnée SÉLECTIVEMENT.
+# Les skills et subagents sont du savoir projet (invariants, procédures) : ils doivent
+# survivre à un changement de machine et ne pas dépendre d'une session locale.
+# En revanche settings.local.json contient des JWT et une clé service_role en clair
+# (dans les commandes autorisées) : il ne doit JAMAIS être committé.
+.claude/*
+!.claude/agents/
+!.claude/skills/
+!.claude/settings.json
+!.claude/launch.json
+!.claude/stage-edited-file.js
+.claude/settings.local.json
+# Les règles ci-dessus sont ancrées à la racine ; le .claude/ du dashboard (config de
+# preview locale) reste, lui, entièrement ignoré.
+dashboard/.claude/
+
+# Dossiers de revue générés (scripts/dossier-revue.js) — artefacts transitoires,
+# ils contiennent une copie du code à un instant T. Le générateur, lui, est versionné.
+.passio/reviews/*
+!.passio/reviews/README.md
 
 # Netlify cache
 .netlify/
