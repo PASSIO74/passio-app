@@ -1077,7 +1077,7 @@ test.describe("messagerie entre 2 comptes réels", () => {
       expect(eventId, "événement d'A publié").toBeTruthy();
       log("événement d'A: " + eventId);
 
-      // B like l'événement (toggleEventLike → supaToggleEventLike/event_reactions).
+      // B like l'événement (toggleEventLike → supaSetEventLike/event_reactions).
       await pageB.evaluate((eid) => toggleEventLike(eid, null), eventId);
       // Puis B réagit 🔥, PUIS remplace par 🎉 : côté serveur il ne doit rester
       // qu'UNE réaction non-❤️ de B (l'ancienne doit avoir été supprimée).

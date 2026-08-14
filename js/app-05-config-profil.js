@@ -2351,7 +2351,7 @@ function loadReelComments(postId) {
           commentHTML += `
             <div class="reel-reply-item">
               <span class="reel-reply-author" onclick="openUserProfile('${r.authorId}')">${escapeHtml(replyAuthor.name)}</span>
-              <img loading="lazy" decoding="async" src="${escapeHtml(r.text || "")}" style="width:100%;max-width:150px;height:auto;border-radius:6px;margin-top:6px;object-fit:cover;" alt="GIF" />
+              <img loading="lazy" decoding="async" src="${safeUrlAttr(r.text || "")}" style="width:100%;max-width:150px;height:auto;border-radius:6px;margin-top:6px;object-fit:cover;" alt="GIF" />
             </div>
           `;
         } else {

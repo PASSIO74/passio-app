@@ -592,7 +592,7 @@ function _renderCommentsList(allComments, postId) {
           if (r.type === "gif_reaction") {
             const _rAv = { avatar: ru.avatar || "#64748b", profileEmoji: ru.profileEmoji || "👤", name: ru.name, photoUrl: ru.photoUrl || null };
             const _gifHtml = _looksLikeMediaUrl(r.text)
-              ? `<img loading="lazy" decoding="async" src="${escapeHtml(r.text)}" style="width:90px;height:90px;border-radius:8px;margin-top:4px;object-fit:cover;" alt="GIF" />`
+              ? `<img loading="lazy" decoding="async" src="${safeUrlAttr(r.text)}" style="width:90px;height:90px;border-radius:8px;margin-top:4px;object-fit:cover;" alt="GIF" />`
               : `<span style="font-size:14px;">${escapeHtml(r.text || "")}</span>`;
             return `<div class="comment-reply" style="display:flex;align-items:flex-start;gap:6px;padding:4px 0;">
               <div class="avatar xs" style="background:${avatarBg(_rAv)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${r.authorId}','${rSrc}')">${avatarInner(_rAv)}</div>
@@ -2610,15 +2610,21 @@ function searchUsers(query) {
       if (u.passions && u.passions.length > 0) {
         passionBadges = u.passions.map(function(p) {
           var label = p.label || (typeof passionById === "function" && passionById(p.id) ? passionById(p.id).label : "");
+          // ⚠️ p.emoji vient du jsonb `profiles.passions` d'un AUTRE compte : brut,
+          // il s'exécutait (`<img src=x onerror=…>`) dès l'affichage du résultat.
           return "<span style='background:rgba(124,58,237,0.10);border:1px solid rgba(124,58,237,0.18);border-radius:20px;padding:1px 6px;font-size:10px;font-weight:600;color:var(--accent);margin-right:2px;'>"
-            + (p.emoji || "✨") + (label ? " " + escapeHtml(label) : "") + "</span>";
+            + escapeHtml(p.emoji || "✨") + (label ? " " + escapeHtml(label) : "") + "</span>";
         }).join("");
       } else if (u.passion) {
         var pw = passionById(u.passion) || { emoji: "✨", label: "" };
         passionBadges = "<span style='background:rgba(124,58,237,0.10);border:1px solid rgba(124,58,237,0.18);border-radius:20px;padding:1px 6px;font-size:10px;font-weight:600;color:var(--accent);'>"
           + pw.emoji + (pw.label ? " " + escapeHtml(pw.label) : "") + "</span>";
       }
-      return "<div class='msg-user-result-row' data-uid='" + u.id + "' data-name='" + nameEsc + "' data-emoji='" + emoji + "' data-avatar='" + escapeHtml(u.avatar||"#8b5cf6") + "' data-photo='" + escapeHtml(u.photoUrl || '') + "' onclick='_pickMsgUser(this)' style='display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border);'>" +
+      // ⚠️ data-emoji recevait `profiles.emoji` BRUT dans un attribut simple-quoté :
+      // une valeur du type `' onmouseover='…` refermait l'attribut et ouvrait un
+      // gestionnaire d'événement. Tout ce qui entre ici doit être échappé, y compris
+      // l'identifiant.
+      return "<div class='msg-user-result-row' data-uid='" + escapeHtml(u.id || "") + "' data-name='" + nameEsc + "' data-emoji='" + escapeHtml(emoji) + "' data-avatar='" + escapeHtml(u.avatar||"#8b5cf6") + "' data-photo='" + escapeHtml(u.photoUrl || '') + "' onclick='_pickMsgUser(this)' style='display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border);'>" +
         "<div style='width:38px;height:38px;border-radius:50%;background:" + avatarBg(u) + ";display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;'>" + avatarInner(u) + "</div>" +
         "<div style='flex:1;min-width:0;'>" +
           "<div style='font-weight:700;font-size:13px;color:var(--text);margin-bottom:3px;'>" + nameEsc + "</div>" +

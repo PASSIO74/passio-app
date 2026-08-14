@@ -733,14 +733,43 @@ function _userPhoto(u) {
   return u.photoUrl || u.avatarPhoto || u.avatar_url || null;
 }
 // Style `background:` d'un avatar : la photo si dispo, sinon la couleur.
+// URL destinée à `url('…')` DANS un attribut style. Le contenu vient de `profiles`
+// d'un AUTRE utilisateur : une apostrophe suffisait à refermer l'url(), puis
+// l'attribut style, puis à ouvrir un gestionnaire d'événement. Politique de schéma
+// (comme safeUrlAttr) + neutralisation de tout ce qui peut refermer quoi que ce soit.
+function _cssUrl(u) {
+  const s = String(u || "").trim();
+  // data:image en base64 : l'alphabet est clos, rien à neutraliser — mais on exige
+  // la forme exacte, sinon on refuse (un « data:image/x;… » libre serait un vecteur).
+  if (/^data:image\/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=]+$/i.test(s)) return s;
+  if (!/^(https?:\/\/|blob:)/i.test(s)) return null;
+  return s.replace(/[()'"\\<>;\s]/g, function (c) {
+    return "%" + c.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0");
+  });
+}
+// Couleur/dégradé posé dans un attribut style. Même origine, même exigence : on
+// refuse tout ce qui permettrait de sortir de la déclaration ou d'aller chercher
+// une ressource externe.
+function _cssColor(c) {
+  const s = String(c || "").trim();
+  if (!s || /["'<>;{}]|url\s*\(|expression\s*\(|@import/i.test(s)) return "#8b5cf6";
+  return s;
+}
+// Style `background:` d'un avatar : la photo si dispo, sinon la couleur.
 function avatarBg(u) {
   const ph = _userPhoto(u);
-  return ph ? ("url('" + ph + "') center/cover") : ((u && (u.avatar || u.color)) || "#8b5cf6");
+  const safe = ph ? _cssUrl(ph) : null;
+  if (safe) return "url('" + safe + "') center/cover";
+  return _cssColor((u && (u.avatar || u.color)) || "#8b5cf6");
 }
 // Contenu interne d'un avatar : rien si photo (elle remplit le fond), sinon emoji.
+// ⚠️ La valeur est insérée telle quelle en HTML par ses 38 appelants : c'est ICI
+// qu'il faut échapper. `profiles.emoji` est un champ libre — un utilisateur pouvait
+// y placer `<img src=x onerror=…>` et le faire exécuter chez quiconque le croisait.
 function avatarInner(u) {
   if (_userPhoto(u)) return "";
-  return (u && (u.profileEmoji || u.emoji)) || ((u && u.name && u.name[0]) || "?");
+  const raw = (u && (u.profileEmoji || u.emoji)) || ((u && u.name && u.name[0]) || "?");
+  return escapeHtml(raw);
 }
 
 // Met en cache / rafraîchit un profil DISTANT dans state.seed.users à partir

@@ -15,7 +15,7 @@ rien — il peut se tromper sur une prémisse, et ça arrive.
 | # | Domaine | État | Confirmées / remontées |
 |---|---------|------|------------------------|
 | 1 | Écritures Supabase — échecs silencieux | **fait** (2026-08-14) | 5 vérifiées / 14 remontées — 9 restent à vérifier |
-| 2 | Affichage de contenu d'autrui — XSS stockés | à faire | — |
+| 2 | Affichage de contenu d'autrui — XSS stockés | **fait** (2026-08-14), 2e passe à prévoir | 6 / 6 |
 | 3 | Authentification, identité, isolation entre comptes | à faire | — |
 | 4 | État local, persistance, sync cross-appareil | **fait** (2026-08-14) | 6 / 7 |
 | 5 | Messagerie et livraison temps réel | à faire | — |
@@ -28,6 +28,47 @@ rien — il peut se tromper sur une prémisse, et ça arrive.
 `index.html` (111 Ko), le schéma SQL et les policies RLS de production (nécessitent
 un export dédié depuis la prod, pas une extraction de fonctions), et le dashboard
 `dashboard/` (application distincte, avec sa propre suite de 77 tests).
+
+---
+
+## Manche 3 — Affichage de contenu d'autrui, XSS stockés (2026-08-14)
+
+Relecteur : ChatGPT **modèle « Moyen »** (le quota Pro de l'espace de travail est
+épuisé jusqu'au 11 septembre 2026), 1 min 18 s, sur 9 fonctions.
+Qualité remarquable malgré le modèle réduit : il **refuse** de qualifier d'XSS le
+`javascript:` dans un `<img src>` — les navigateurs modernes ne l'exécutent pas —
+et sépare explicitement « mauvais helper par contrat » de « XSS démontré ».
+
+| # | Emplacement | Défaut | Verdict |
+|---|-------------|--------|---------|
+| 1 | `searchUsers` (app-04:2621) | `profiles.emoji` d'un autre compte injecté BRUT dans `data-emoji='…'`. Charge utile `' onmouseover='…` → sortie d'attribut, gestionnaire d'événement, exécution | **confirmé — XSS stocké** |
+| 2 | `searchUsers` (app-04:2614) | `p.emoji` du jsonb `profiles.passions` rendu en HTML brut → `<img src=x onerror=…>` s'exécute **sans clic**, au simple affichage du résultat | **confirmé — XSS stocké** |
+| 3 | `loadReelComments` (app-05:2354) | URL de GIF (`comment_interactions.text`) passée à `escapeHtml` au lieu de `safeUrlAttr` | **confirmé** — mauvais helper, non exploitable dans `<img src>` |
+| 4 | `_renderCommentsList` (app-04:595) | idem, mais précédé de `_looksLikeMediaUrl` qui exige `^https?://` | **confirmé** — non exploitable, corrigé par contrat |
+| 5-6 | `_fillEventReactionDetail` (app-07:2614, 2628) | idem sur `event_reactions` | **confirmé** — même classement |
+| — | `safeUrlAttr`, `escapeJsArg` eux-mêmes | Cherché un contournement | **aucun trouvé** — l'ordre des opérations d'`escapeJsArg` est correct |
+
+### Trouvé en propre en remontant la chaîne — plus large que la revue
+
+Le relecteur ne voyait que `searchUsers`. Or la cause est en amont, dans deux
+helpers **partagés par 38 appelants chacun** (`js/app-02-state-utils.js`) :
+
+- `avatarInner(u)` renvoyait `profiles.emoji` **brut**, inséré tel quel en HTML par
+  ses 38 appelants. Le XSS n'était donc pas cantonné à la recherche d'utilisateurs :
+  il visait n'importe quel écran affichant l'avatar d'autrui.
+- `avatarBg(u)` construisait `url('<photo>')` dans un attribut `style` sans aucune
+  neutralisation : une apostrophe dans l'URL refermait l'`url()`, puis l'attribut.
+  La couleur (`profiles.color`, champ libre) permettait en plus un
+  `red;background-image:url(//evil.tld/x)`.
+
+Corrigés à la source : `_cssUrl` (politique de schéma + pourcent-encodage de tout
+ce qui peut refermer quelque chose ; `data:image` base64 validé strictement),
+`_cssColor` (refus de `"'<>;{}`, `url(`, `expression(`, `@import`) et
+`escapeHtml` dans `avatarInner`. Vérifié dans le navigateur : cas nominaux intacts
+(URL Supabase réelle, emoji, initiale), quatre charges utiles neutralisées.
+
+**Base de production inspectée : aucune valeur malveillante présente.** La faille
+n'a pas été exploitée.
 
 ---
 

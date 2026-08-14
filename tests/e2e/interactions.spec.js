@@ -26,9 +26,9 @@ async function bootInteractions(page) {
     window.supaSetPostLike = async () => ({ ok: true, error: null });
     ["supaAddComment", "supaCommentInteract", "supaCommentRemoveLike",
       "supaCommentRemoveReactions", "supaLoadComments", "supaLoadCommentInteractions",
-      "supaInsertNotif", "supaToggleEventLike", "supaAddEventReaction", "supaRemoveEventReaction",
+      "supaInsertNotif", "supaSetEventLike", "supaAddEventReaction", "supaRemoveEventReaction",
       "supaLoadEventReactions", "supaLoadEventComments", "supaAddEventComment",
-      "supaToggleCdvLiveLike", "supaLoadCdvLiveLikes", "supaReactCdvLive",
+      "supaSetCdvLiveLike", "supaSetStepLike", "supaLoadCdvLiveLikes", "supaReactCdvLive",
       "supaRemoveCdvLiveReaction", "supaAddCdvLiveComment", "supaPublishCdvLive",
       "supaAddCdvLiveStep", "supaRefreshCdvLives", "supaLoadCdvLives",
       "supaTrack"].forEach((fn) => { window[fn] = async () => null; });
@@ -162,7 +162,18 @@ test.describe("Interactions — like d'un post", () => {
 
   test("contenu de démo : aucune écriture serveur (elle partirait en orphelin)", async ({ page }) => {
     await bootInteractions(page);
-    const id = await showFeed(page);
+    // ⚠️ On choisit EXPLICITEMENT un post de démo (présent dans state.seed.posts),
+    // au lieu de prendre le premier post rendu : le classement du fil peut placer
+    // un post utilisateur en tête, et l'écriture serveur est alors parfaitement
+    // légitime — le test échouait alors sans qu'aucun code soit en cause.
+    const id = await page.evaluate(() => {
+      const demo = (state.seed.posts || []).find((p) => p.type !== "vlog");
+      _activeFeedPassions.add(demo.passion);
+      window._feedDomSig = null;
+      renderFeed();
+      return demo.id;
+    });
+    await expect(page.locator(`[data-postid="${id}"]`)).toHaveCount(1);
     await page.evaluate(() => {
       supa = {}; MY_UID = "u_moi";
       window.__likeCalls = [];

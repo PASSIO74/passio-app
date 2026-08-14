@@ -2611,7 +2611,7 @@ async function _fillEventReactionDetail(eventId) {
       var _av = { avatar: u.avatar || "#64748b", profileEmoji: u.profileEmoji || "👤", name: u.name, photoUrl: u.photoUrl || null };
       // escapeHtml : l'emoji vient de event_reactions (payload libre) → anti-XSS.
       var face = /^https?:\/\//.test(r.emoji)
-        ? '<img loading="lazy" src="' + escapeHtml(r.emoji) + '" style="width:30px;height:30px;border-radius:6px;object-fit:cover;"/>'
+        ? '<img loading="lazy" src="' + safeUrlAttr(r.emoji) + '" style="width:30px;height:30px;border-radius:6px;object-fit:cover;"/>'
         : '<span style="font-size:18px;">' + escapeHtml(r.emoji || "") + '</span>';
       return '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;">'
         + '<div class="avatar sm" style="background:' + avatarBg(_av) + ';flex-shrink:0;">' + avatarInner(_av) + '</div>'
@@ -2625,7 +2625,7 @@ async function _fillEventReactionDetail(eventId) {
   var keys = Object.keys(counts);
   if (!keys.length && !(d.gifs || []).length) { body.innerHTML = "Aucune réaction pour l'instant."; return; }
   body.innerHTML = keys.map(function(k){ return '<div style="padding:3px 0;font-size:14px;">' + escapeHtml(k) + ' × ' + counts[k] + '</div>'; }).join("")
-    + (d.gifs || []).map(function(g){ return '<img loading="lazy" src="' + escapeHtml(g) + '" style="width:60px;height:60px;border-radius:6px;object-fit:cover;margin:4px 4px 0 0;"/>'; }).join("");
+    + (d.gifs || []).map(function(g){ return '<img loading="lazy" src="' + safeUrlAttr(g) + '" style="width:60px;height:60px;border-radius:6px;object-fit:cover;margin:4px 4px 0 0;"/>'; }).join("");
 }
 
 // ════════════════════════════════════════════════════════════════════════

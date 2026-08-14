@@ -16,7 +16,7 @@ async function bootCdv(page) {
   await page.evaluate(() => {
     // Neutralise TOUTE la sync CDV : la suite doit rester locale.
     ["supaPublishCdvLive", "supaAddCdvLiveStep", "supaUpdateCdvLiveStep", "supaDeleteCdvLiveStep",
-      "supaAddCdvLiveComment", "supaReactCdvLive", "supaRemoveCdvLiveReaction", "supaToggleCdvLiveLike",
+      "supaAddCdvLiveComment", "supaReactCdvLive", "supaRemoveCdvLiveReaction", "supaSetCdvLiveLike",
       "supaUpdateCdvLiveStatus", "supaUpdateCdvLive", "supaDeleteCdvLive",
       "supaFollowCdvLive", "supaUnfollowCdvLive", "supaRefreshCdvLives",
       "supaLoadCdvLive", "supaLoadCdvLives", "supaLoadCdvLiveLikes", "supaUpdateCdvLiveStepCoords",
