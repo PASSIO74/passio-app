@@ -16,7 +16,7 @@ rien — il peut se tromper sur une prémisse, et ça arrive.
 |---|---------|------|------------------------|
 | 1 | Écritures Supabase — échecs silencieux | **fait** (2026-08-14) | 5 vérifiées / 14 remontées — 9 restent à vérifier |
 | 2 | Affichage de contenu d'autrui — XSS stockés | **fait** (2026-08-14), 2e passe à prévoir | 6 / 6 |
-| 3 | Authentification, identité, isolation entre comptes | **fait** (2026-08-14), à refaire avec le dossier complété | 2 / 2 démontrés |
+| 3 | Authentification, identité, isolation entre comptes | **fait** — 2 manches (2026-08-14) | 4 / 4 démontrés |
 | 4 | État local, persistance, sync cross-appareil | **fait** (2026-08-14) | 6 / 7 |
 | 5 | Messagerie et livraison temps réel | à faire | — |
 | 6 | Médias — upload, Storage, downscale | à faire | — |
@@ -28,6 +28,40 @@ rien — il peut se tromper sur une prémisse, et ça arrive.
 `index.html` (111 Ko), le schéma SQL et les policies RLS de production (nécessitent
 un export dédié depuis la prod, pas une extraction de fonctions), et le dashboard
 `dashboard/` (application distincte, avec sa propre suite de 77 tests).
+
+---
+
+## Manche 5 — Identité et isolation, SECONDE manche avec le dossier complété (2026-08-14)
+
+Relecteur : ChatGPT « Moyen », 39 s. Verdict d'entrée : « la seconde manche change
+le verdict, mais **je ne valide toujours pas “isolation garantie”** ».
+
+| # | Défaut | Verdict |
+|---|--------|---------|
+| 1 | **La fenêtre de 1,2 s.** `doLogout` purge puis `setTimeout(reload, 1200)`. Pendant ce délai l'application TOURNE ENCORE avec l'état du compte sortant en mémoire : tout `saveState()` réarme le timer et réécrit `passio_mvp_state_v1` APRÈS la purge, et le beacon `pagehide` que j'avais ajouté le matin même recréait `passio_pending_user_state_<A>`. `discardPendingStateSave()` ne désamorçait que le timer DÉJÀ armé — le commentaire du code décrivait pourtant exactement ce piège | **confirmé — résurrection du compte sortant** |
+| 2 | `MY_UID` / `window.MY_UID` / `passio_uid` ne sont pas remis à null par `doLogout` : pendant la fenêtre, les écritures partent encore sous l'identité de A | **confirmé** |
+| 3 | `_profileCache` (app-04) n'est jamais vidé ; le rechargement l'emporte, mais rien ne garantit que le rechargement aboutisse | **confirmé — portée limitée, corrigé quand même** |
+
+**Correctif : un verrou `_accountPurged`**, posé EN PREMIER par
+`purgeAccountScopedData`, qui neutralise `saveState`, `saveStateNow`, les handlers
+`pagehide`/`beforeunload`, `_scheduleStateSync`, `_queuePendingUserState` et
+`supaSaveUserStateBeacon`. Plus l'effacement de l'identité et du cache profils.
+
+### Trouvé en propre — inventaire exhaustif des clés de stockage
+
+L'app écrit 18 clés ; `ACCOUNT_SCOPED_KEYS` n'en purgeait que 7. Quatre portant du
+CONTENU de compte survivaient : `passio_cdv_lives` (**carnets de voyage — vrai
+contenu utilisateur**), `passio_cdv_geo_v1` (lieux géocodés), `passio_passion_requests`,
+`passio_event_reminded`. Ajoutées.
+
+Écartées **délibérément**, avec la raison écrite dans le code :
+`passio_parental_code` et `passio_limit_sec` — le contrôle parental est posé sur
+l'APPAREIL par un parent ; le purger à la déconnexion offrirait à l'enfant un
+contournement en un clic.
+
+Vérifié dans le navigateur : après la purge PUIS une salve de `saveState`,
+`saveStateNow`, beacon, `pagehide` et `beforeunload`, **rien n'est revenu** ;
+`MY_UID` est nul ; les clés d'appareil survivent.
 
 ---
 

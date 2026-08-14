@@ -89,7 +89,10 @@ const DOMAINES = {
   },
   "auth-identite": {
     libelle: "Authentification, identité et isolation entre comptes",
-    fichiers: [],
+    // idb-store.js entier (3 Ko) : `idbConvClear` n'y est pas une fonction
+    // top-level, l'extraction par ancre ne l'attrape pas — et c'est précisément
+    // la fonction qui vide le store durable des conversations à la déconnexion.
+    fichiers: ["js/idb-store.js"],
     // Ancres relevées sur le code (les noms maison ne suivent pas la convention
     // supaSignIn/signOut qu'on pourrait deviner).
     ancres: [

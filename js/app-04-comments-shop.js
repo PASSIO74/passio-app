@@ -2286,6 +2286,10 @@ const SEED_CONVERSATIONS = [
 let conversationsState = null;
 let _saveConvTimer = null;          // debounce localStorage
 const _profileCache = new Map();    // cache profils → évite requêtes répétées
+// Vidé à la déconnexion par purgeAccountScopedData (app-02). Le rechargement qui
+// suit emporterait ce cache de toute façon, mais il peut échouer ou tarder : les
+// profils consultés par le compte sortant ne doivent pas rester en mémoire.
+function _clearProfileCache() { try { _profileCache.clear(); } catch (e) {} }
 
 // Cache pré-rempli depuis les convs déjà connues
 function _primeProfileCache(convs) {

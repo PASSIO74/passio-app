@@ -136,7 +136,16 @@ function _writeStateNow() {
 // navigation…) et chaque appel refaisait un JSON.stringify SYNCHRONE de tout l'état
 // → jank sur mobile. Le flush est garanti par pagehide/beforeunload (saveStateNow),
 // qui couvrent aussi tous les location.reload().
+// Verrou de déconnexion. Entre la purge et le location.reload() il s'écoule 1,2 s
+// pendant lesquelles l'application TOURNE ENCORE avec l'état du compte sortant en
+// mémoire : n'importe quel saveState(), n'importe quel flush pagehide, réécrivait
+// ce que la purge venait d'effacer. discardPendingStateSave() ne désamorçait que le
+// timer déjà armé — il ne pouvait rien contre une NOUVELLE écriture, ni contre le
+// beacon d'état ajouté depuis. Une fois ce verrou posé, plus rien ne s'écrit.
+let _accountPurged = false;
+
 function saveState() {
+  if (_accountPurged) return;
   clearTimeout(_saveStateTimer);
   _saveStateTimer = setTimeout(_writeStateNow, 250);
   // Réplique l'état personnel vers Supabase (debounced) → retrouvable sur tout
@@ -146,12 +155,13 @@ function saveState() {
 
 // Sauvegarde immédiate (fermeture/rechargement de page, actions critiques).
 function saveStateNow() {
+  if (_accountPurged) return;
   clearTimeout(_saveStateTimer);
   _writeStateNow();
   try { if (!window._hydratingState) _scheduleStateSync(); } catch (e) {}
 }
-window.addEventListener("pagehide", function () { if (_saveStateTimer) _writeStateNow(); });
-window.addEventListener("beforeunload", function () { if (_saveStateTimer) _writeStateNow(); });
+window.addEventListener("pagehide", function () { if (!_accountPurged && _saveStateTimer) _writeStateNow(); });
+window.addEventListener("beforeunload", function () { if (!_accountPurged && _saveStateTimer) _writeStateNow(); });
 
 // ⚠️ À appeler AVANT tout removeItem(STATE_KEY) volontaire (logout, reset,
 // suppression de compte) : sinon le flush pagehide/beforeunload ressusciterait
@@ -238,6 +248,7 @@ let _stateSyncTimer = null;
 // re-poste TOUT l'état à chaque bascule d'application sur mobile — pour rien.
 let _stateDirty = false;
 function _scheduleStateSync() {
+  if (_accountPurged) return;
   _stateDirty = true;
   if (typeof MY_UID === "undefined" || !MY_UID) return;
   if (_stateSyncTimer) clearTimeout(_stateSyncTimer);
@@ -262,6 +273,7 @@ function _pendingUserStateKey(uid) {
 // besoin : baisser le drapeau « état sale » alors que le stockage a échoué (quota
 // dépassé) fabrique un faux état propre, où plus personne ne retentera l'envoi.
 function _queuePendingUserState(payload) {
+  if (_accountPurged) return false;   // déconnexion en cours : ne rien remettre en file
   try {
     localStorage.setItem(_pendingUserStateKey(payload && payload.user_id), JSON.stringify(payload));
     return true;
@@ -357,6 +369,10 @@ function _readStoredAccessToken() {
 // On persiste aussi le blob en file de secours : si le keepalive échoue (payload
 // > ~64 Ko, réseau réellement coupé), le rejeu au boot le récupère.
 function supaSaveUserStateBeacon() {
+  // Le location.reload() de la déconnexion déclenche pagehide : sans ce garde, le
+  // beacon repartait avec l'état du compte SORTANT et recréait sa file en
+  // localStorage, juste après la purge.
+  if (_accountPurged) return;
   try {
     const cfg = window.PASSIO_SUPABASE;
     if (!cfg || !cfg.url || !cfg.anon) return;
@@ -1377,11 +1393,33 @@ var ACCOUNT_SCOPED_KEYS = [
   "passio_ai_history",       // historique de l'assistant IA
   "passio_vlog_draft_v1",    // brouillon de publication
   "passio_oauth_pending",    // jeton transitoire de retour OAuth
+  // Ajoutés le 2026-08-14 après inventaire exhaustif des clés réellement écrites
+  // par l'application : ces quatre-là portent du CONTENU de compte et survivaient
+  // à la déconnexion.
+  "passio_cdv_lives",        // carnets de voyage (étapes, photos) — vrai contenu
+  "passio_cdv_geo_v1",       // cache de géocodage des lieux visités — données de lieu
+  "passio_passion_requests", // demandes de passion faites par la personne
+  "passio_event_reminded",   // événements pour lesquels un rappel a été posé
+  // ⚠️ NE PAS ajouter ici, et c'est délibéré :
+  //   passio_parental_code / passio_limit_sec — le contrôle parental est posé sur
+  //     l'APPAREIL par un parent ; le purger à la déconnexion offrirait à l'enfant
+  //     un contournement en un clic.
+  //   passio_device_id, passio_telemetry, passio_pwa_*, passio_logo_variant,
+  //     passio_debug — propres à l'appareil, sans lien avec un compte.
 ];
 
 // Efface TOUTE trace du compte courant côté device (localStorage + IndexedDB).
 // best-effort : ne throw jamais. Renvoie une promesse résolue quand IndexedDB est vidé.
 function purgeAccountScopedData() {
+  // ⚠️ EN PREMIER : le verrou. Tout ce qui suit serait vain si une écriture
+  // survenait pendant les 1,2 s qui séparent la purge du rechargement.
+  _accountPurged = true;
+  _stateDirty = false;
+  discardPendingStateSave();
+  // L'identité aussi : les fonctions d'écriture testent `!MY_UID` et s'abstiennent.
+  try { MY_UID = null; window.MY_UID = null; } catch (e) {}
+  // Caches en mémoire : le rechargement les emporte, mais il peut échouer ou tarder.
+  try { if (typeof _clearProfileCache === "function") _clearProfileCache(); } catch (e) {}
   try { ACCOUNT_SCOPED_KEYS.forEach(function (k) { localStorage.removeItem(k); }); } catch (e) {}
   // ⚠️ Les files de sauvegarde en attente sont suffixées par compte : elles ne
   // peuvent donc pas figurer en dur dans la liste ci-dessus. Chacune contient le
