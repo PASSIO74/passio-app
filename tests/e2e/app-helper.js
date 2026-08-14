@@ -63,6 +63,7 @@ async function bootOnboarded(page, errors, nProfiles = 1) {
     if (l) l.classList.remove("active");
     window.supaPublishPostWithRetry = async () => false;
     window.supaToggleLike = () => {};
+    window.supaSetPostLike = async () => ({ ok: true, error: null });
     window.supaAddComment = () => {};
     window.supaInsertNotif = () => {};
     window.supaUpsertProfile = async () => {};

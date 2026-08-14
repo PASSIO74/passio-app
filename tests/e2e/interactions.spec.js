@@ -21,6 +21,9 @@ const { bootOnboarded } = require("./app-helper");
 async function bootInteractions(page) {
   await bootOnboarded(page);
   await page.evaluate(() => {
+    // ⚠️ supaSetPostLike est stubbé à part : il doit répondre { ok:true }, pas
+    // `null` — un like dont l'écriture n'est pas confirmée est désormais ANNULÉ.
+    window.supaSetPostLike = async () => ({ ok: true, error: null });
     ["supaToggleLike", "supaAddComment", "supaCommentInteract", "supaCommentRemoveLike",
       "supaCommentRemoveReactions", "supaLoadComments", "supaLoadCommentInteractions",
       "supaInsertNotif", "supaToggleEventLike", "supaAddEventReaction", "supaRemoveEventReaction",
@@ -58,6 +61,37 @@ async function showFeed(page) {
   });
 }
 
+// Injecte dans le fil un post « qui existe en base » (fromSupabase) et arme une
+// session Supabase factice : c'est la SEULE configuration où likePost écrit côté
+// serveur (le contenu de démo, lui, n'écrit rien). `writeResult` = réponse de
+// l'écriture. En mode `manual`, elle ne répond QUE sur appel de __releaseWrite() :
+// c'est le seul moyen fiable d'observer l'état optimiste avant la réponse — un
+// délai en millisecondes rend le test instable dès que la machine est chargée.
+async function seedServerPost(page, { writeResult = { ok: true, error: null }, manual = false } = {}) {
+  return page.evaluate(([res, isManual]) => {
+    const passion = allFeedPosts().filter((p) => p.type !== "vlog")[0].passion;
+    state.supabasePosts = state.supabasePosts || [];
+    state.supabasePosts.unshift({
+      id: "p_srv_test", authorId: "u_autre", authorName: "Autre", authorEmoji: "✨",
+      passion, mood: "all", type: "text", text: "post serveur", createdAt: Date.now(),
+      likes: 4, liked: false, comments: [], fromSupabase: true,
+    });
+    _activeFeedPassions.add(passion);
+    window._feedDomSig = null;
+    renderFeed();
+    // `supa` et `MY_UID` sont des liaisons de script (let) : on les affecte
+    // directement, `window.X = …` ne les toucherait pas (cf. le piège `state`).
+    supa = {}; MY_UID = "u_moi";
+    window.__likeCalls = [];
+    window.supaSetPostLike = function (postId, want) {
+      window.__likeCalls.push({ postId, want });
+      if (!isManual) return Promise.resolve(res);
+      return new Promise((r) => { window.__releaseWrite = function () { r(res); }; });
+    };
+    return "p_srv_test";
+  }, [writeResult, manual]);
+}
+
 test.describe("Interactions — like d'un post", () => {
   test("fil : le bouton ❤️ bascule dans les deux sens et persiste au re-rendu", async ({ page }) => {
     await bootInteractions(page);
@@ -73,6 +107,73 @@ test.describe("Interactions — like d'un post", () => {
     await page.evaluate(() => { window._feedDomSig = null; renderFeed(); });
     await expect(page.locator(`[data-postid="${id}"] [data-action="like"]`))
       .toHaveText(new RegExp(`❤️\\s*${before + 1}`));
+  });
+
+  test("écriture serveur refusée : le ❤️ optimiste est ANNULÉ (bouton + état)", async ({ page }) => {
+    await bootInteractions(page);
+    const id = await seedServerPost(page, { writeResult: { ok: false, error: { message: "RLS", code: "42501" } }, manual: true });
+    const btn = page.locator(`[data-postid="${id}"] [data-action="like"]`);
+
+    await btn.click();
+    await expect(btn).toHaveText(/❤️\s*5/);   // optimiste : immédiat, sans attendre le réseau
+    await page.evaluate(() => window.__releaseWrite());
+    await expect(btn).toHaveText(/🤍\s*4/);   // puis annulé quand le serveur refuse
+    expect(await page.evaluate(() => state.user.likedPosts.includes("p_srv_test"))).toBe(false);
+    expect(await page.evaluate(() => findPostAnywhere("p_srv_test").likes)).toBe(4);
+    expect(await page.evaluate(() => findPostAnywhere("p_srv_test").liked)).toBe(false);
+  });
+
+  test("fil reconstruit pendant l'attente : l'annulation touche le bouton VISIBLE", async ({ page }) => {
+    // Le cœur du bug rapporté : garder la référence du bouton à travers l'attente
+    // réseau. Si le fil est reconstruit entre le clic et la réponse, ce nœud est
+    // détaché — le repeindre ne se voit nulle part.
+    await bootInteractions(page);
+    const id = await seedServerPost(page, { writeResult: { ok: false, error: { message: "réseau" } }, manual: true });
+    await page.locator(`[data-postid="${id}"] [data-action="like"]`).click();
+    await expect(page.locator(`[data-postid="${id}"] [data-action="like"]`)).toHaveText(/❤️\s*5/);
+
+    // Reconstruction complète du fil pendant que l'écriture est en vol : le bouton
+    // cliqué est détaché, seul un nœud retrouvé APRÈS coup peut encore être vu.
+    await page.evaluate(() => { window._feedDomSig = null; renderFeed(); });
+    await page.evaluate(() => window.__releaseWrite());
+    await expect(page.locator(`[data-postid="${id}"] [data-action="like"]`)).toHaveText(/🤍\s*4/);
+  });
+
+  test("l'écriture serveur reçoit l'INTENTION de l'utilisateur, jamais son inverse", async ({ page }) => {
+    // L'ancien supaToggleLike relisait post_likes pour déduire le sens : dès que
+    // la base et l'état local divergeaient, le clic écrivait l'inverse de ce que
+    // l'utilisateur voyait.
+    await bootInteractions(page);
+    const id = await seedServerPost(page);
+    const btn = page.locator(`[data-postid="${id}"] [data-action="like"]`);
+
+    await btn.click();
+    await expect(btn).toHaveText(/❤️\s*5/);
+    // Lève le verrou anti-double-clic explicitement : l'attendre en temps réel
+    // (800 ms) rend le test instable dès que la machine est chargée, et ce n'est
+    // pas le verrou qu'on teste ici mais le SENS de l'écriture.
+    await page.evaluate(() => _likePending.clear());
+    await btn.click();
+    await expect(btn).toHaveText(/🤍\s*4/);
+    expect(await page.evaluate(() => window.__likeCalls)).toEqual([
+      { postId: id, want: true }, { postId: id, want: false },
+    ]);
+  });
+
+  test("contenu de démo : aucune écriture serveur (elle partirait en orphelin)", async ({ page }) => {
+    await bootInteractions(page);
+    const id = await showFeed(page);
+    await page.evaluate(() => {
+      supa = {}; MY_UID = "u_moi";
+      window.__likeCalls = [];
+      window.supaSetPostLike = function (postId, want) {
+        window.__likeCalls.push({ postId, want });
+        return Promise.resolve({ ok: true, error: null });
+      };
+    });
+    await page.locator(`[data-postid="${id}"] [data-action="like"]`).click();
+    await expect(page.locator(`[data-postid="${id}"] [data-action="like"]`)).toHaveText(/❤️/);
+    expect(await page.evaluate(() => window.__likeCalls)).toEqual([]);
   });
 
   test("carte carnet CDV : le ❤️ met à jour le BOUTON, pas seulement l'état", async ({ page }) => {

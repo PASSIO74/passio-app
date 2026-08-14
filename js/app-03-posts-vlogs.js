@@ -153,62 +153,174 @@ function _dblLikeDetail(postId, ev) {
   }
 }
 
+// Repeint TOUS les boutons ❤️ d'un post, RETROUVÉS dans le DOM au moment de
+// l'appel — jamais via une référence mémorisée. ⚠️ Ne JAMAIS garder un nœud à
+// travers un `await` : entre le clic et la réponse serveur, le fil peut être
+// reconstruit (post reçu en realtime, retour sur l'écran) ; le bouton d'origine
+// est alors détaché et le repeindre revient à peindre un fantôme, invisible pour
+// l'utilisateur. Renvoie le nombre de boutons effectivement repeints.
+function _paintPostLike(id, liked, count, el, pop) {
+  var done = [];
+  function paint(n) {
+    if (!n || done.indexOf(n) > -1) return;
+    done.push(n);
+    n.classList.toggle("liked", liked);
+    n.innerHTML = (liked ? "❤️" : "🤍") + " " + count;
+    if (liked && pop) _likePop(n);
+  }
+  // Fil et toute surface qui rend une carte de post.
+  document.querySelectorAll('[data-postid="' + id + '"] [data-action="like"]').forEach(paint);
+  // Cartes carnet CDV, viewer de carnet… (le même post peut être visible sur
+  // plusieurs surfaces à la fois).
+  document.querySelectorAll('[data-postlike="' + id + '"]').forEach(paint);
+  // Vue détail : son ❤️ ne porte aucun attribut, mais sa barre d'actions contient
+  // la pastille data-postchip et le like en est la PREMIÈRE action (même
+  // convention que _dblLikeDetail). Garde : on ne repeint que si le contenu a
+  // bien la forme d'un compteur de like.
+  document.querySelectorAll('[data-postchip="' + id + '"]').forEach(function (chip) {
+    var bar = chip.closest ? chip.closest(".post-actions") : null;
+    var first = bar ? bar.querySelector(".post-action") : null;
+    if (first && /[❤🤍]/.test(first.textContent || "")) paint(first);
+  });
+  if (el && el.isConnected) paint(el);
+  // Bobines : structure différente (icône + label séparé), pas de innerHTML.
+  document.querySelectorAll('[data-reellike="' + id + '"]').forEach(function (n) {
+    n.classList.toggle("liked", liked);
+    var lab = n.querySelector(".reel-action-label");
+    if (lab) lab.textContent = count;
+    done.push(n);
+  });
+  return done.length;
+}
+
+// Applique (ou révoque) MON like dans l'état local. Isolé de l'écriture réseau :
+// l'annulation rejoue exactement l'inverse, en delta (et non par restauration
+// d'un instantané, qui écraserait un like reçu d'autrui entre-temps).
+// ⚠️ post.liked ET state.user.likedPosts doivent rester en phase : le fil rend
+// depuis likedPosts, patchPostLikeDom (echo realtime) depuis post.liked.
+function _applyLikeLocally(id, liked) {
+  var post = findPostAnywhere(id);
+  var list = state.user.likedPosts || (state.user.likedPosts = []);
+  var at = list.indexOf(id);
+  if (liked && at === -1) list.push(id);
+  if (!liked && at > -1) list.splice(at, 1);
+  if (post) {
+    post.liked = liked;
+    post.likes = Math.max(0, (post.likes || 0) + (liked ? 1 : -1));
+  }
+  saveState();
+  return post;
+}
+
+// Écrit MON like en base, dans le sens VOULU par l'utilisateur. Renvoie { ok, error }.
+//
+// ⚠️ Remplace supaToggleLike (app-08), qui relisait d'abord post_likes pour
+// DÉDUIRE le sens de l'écriture : dès que l'état local et la base divergeaient
+// (like perdu hors-ligne, action faite depuis un autre appareil), le clic écrivait
+// l'INVERSE de ce que l'utilisateur voyait — sans la moindre erreur. Et comme le
+// hook fetch tague la PREMIÈRE requête du flow, le centre de pilotage affichait
+// « écriture serveur confirmée » alors que c'était la LECTURE qui était taguée.
+// Ici : une seule requête, l'écriture, et la confirmation est explicite.
+//
+// Deuxième correctif : le SDK Supabase ne LÈVE PAS sur un refus RLS, il renvoie
+// { error }. Sans lire ce champ, un ❤️ rejeté restait allumé jusqu'au prochain
+// chargement, où il disparaissait sans explication.
+//
+// Idempotent : post_likes a pour clé primaire (post_id, user_id) → ré-aimer un
+// post déjà aimé renvoie 23505, l'état voulu est atteint, c'est un succès ; un
+// delete qui ne touche aucune ligne l'est aussi.
+async function supaSetPostLike(postId, want, cid) {
+  var out = { ok: false, error: null };
+  try {
+    if (typeof supa === "undefined" || !supa || typeof MY_UID === "undefined" || !MY_UID) {
+      out.error = { message: "session absente" };
+    } else if (want) {
+      var ins = await supa.from("post_likes").insert({ post_id: postId, user_id: MY_UID });
+      var dup = ins && ins.error && String(ins.error.code) === "23505";
+      out = { ok: !!(!ins || !ins.error || dup), error: (ins && ins.error) || null };
+    } else {
+      var del = await supa.from("post_likes").delete().eq("post_id", postId).eq("user_id", MY_UID);
+      out = { ok: !!(!del || !del.error), error: (del && del.error) || null };
+    }
+  } catch (e) { out = { ok: false, error: e }; }
+  // Confirmation EXPLICITE de l'enregistrement pour le traçage : le contrat ne
+  // peut plus prendre une lecture (ni une notification) pour une écriture.
+  try {
+    if (window.tel && cid) {
+      tel.step(cid, "saved", out.ok ? "ok" : "error",
+        out.ok ? null : { detail: String((out.error && out.error.message) || out.error || "").slice(0, 120) });
+      tel.flowEnd(cid, out.ok ? "ok" : "error");
+    }
+  } catch (e) {}
+  return out;
+}
+
 function likePost(id, skipRender = false, el = null) {
-  if (_likePending.has(id)) return;
+  const post = findPostAnywhere(id);
+  // Clics sans effet : ils étaient avalés en silence — l'utilisateur voyait un
+  // bouton qui ne réagit pas, et le centre de pilotage ne voyait RIEN (pas même
+  // un « clic mort », puisqu'on sortait avant d'ouvrir la chaîne de validation).
+  if (!post) {
+    try { window.tel && tel.action("like_ignored", { postId: id, reason: "post_introuvable" }); } catch (e) {}
+    toast("Ce contenu n'est plus disponible.");
+    return;
+  }
+  if (_likePending.has(id)) {
+    try { window.tel && tel.action("like_ignored", { postId: id, reason: "anti_double_clic" }); } catch (e) {}
+    return;
+  }
   _likePending.add(id);
   setTimeout(() => _likePending.delete(id), 800);
 
-  const post = findPostAnywhere(id);
-  if (!post) { _likePending.delete(id); return; }
   const liked = state.user.likedPosts.includes(id);
-  try { window.tel && tel.action(liked ? "unlike_post" : "like_post", { postId: id }); } catch (e) {}
-  // Traçage bout-en-bout : l'écriture REST Supabase qui suit est auto-taguée
-  // comme étape « requête = confirmation » par le hook fetch (voir traces.js).
-  try { window.tel && tel.flowStart && tel.flowStart(liked ? "unlike_post" : "like_post", { postId: id }); } catch (e) {}
-  if (liked) {
-    state.user.likedPosts = state.user.likedPosts.filter(x => x !== id);
-    post.likes = Math.max(0, (post.likes || 1) - 1);
-    post.liked = false;
-  } else {
-    state.user.likedPosts.push(id);
-    post.likes = (post.likes || 0) + 1;
-    post.liked = true;
+  const want = !liked;                       // état VOULU par l'utilisateur
+  // Pas d'écriture serveur pour le contenu de DÉMO : ses identifiants (p48,
+  // pac_yoga, reel_seed_*) n'existent dans aucune table, la ligne écrite n'est
+  // donc jamais recomptée nulle part — 28 des 66 likes de la prod étaient de ces
+  // orphelins (le like partait en base et disparaissait au rechargement). Les
+  // posts locaux non encore synchronisés gardent leur écriture : la publication
+  // conserve l'identifiant local, la ligne redevient valide une fois le post
+  // envoyé. Ouvrir une chaîne de validation pour un post de démo produirait en
+  // plus un faux « clic mort » au pilotage.
+  const isDemoPost = !post.fromSupabase && (state.seed.posts || []).some(p => p.id === id);
+  const willWrite = typeof supa !== "undefined" && supa
+    && typeof MY_UID !== "undefined" && MY_UID && !isDemoPost;
+
+  try { window.tel && tel.action(want ? "like_post" : "unlike_post", { postId: id }); } catch (e) {}
+  var _cid = null;
+  if (willWrite) {
+    try { if (window.tel && tel.flowStart) _cid = tel.flowStart(want ? "like_post" : "unlike_post", { postId: id }); } catch (e) {}
+  }
+
+  // Mise à jour optimiste : l'affichage ne dépend JAMAIS du réseau.
+  _applyLikeLocally(id, want);
+  if (want) {
     bumpQuest("like");
     try { supaTrack("like_post", { passion: post.passion }); } catch(_) {}
   }
-  saveState();
+  // Repeint en place plutôt que reconstruire le fil (perte de scroll, panels
+  // ouverts, saisies en cours). Repli sur renderFeed() si aucun bouton n'a été
+  // trouvé dans le DOM.
+  const painted = _paintPostLike(id, want, post.likes || 0, el, true);
+  if (!painted && !skipRender) renderFeed();
 
-  // Mise à jour en place : évite de reconstruire tout le fil (perte de scroll,
-  // panels ouverts, états de saisie). On cherche le bouton via el (passé par
-  // l'onclick inline) ou via data-postid dans le DOM.
-  const nowLiked = !liked;
-  var _btn = el || (function() {
-    var art = document.querySelector('[data-postid="' + id + '"]');
-    return art ? art.querySelector('[data-action="like"]') : null;
-  })();
-  // Boutons portant data-postlike (carte carnet CDV, viewer de carnet…) : le même
-  // post peut être visible sur plusieurs surfaces à la fois → on les repeint TOUS.
-  var _all = document.querySelectorAll('[data-postlike="' + id + '"]');
-  [].forEach.call(_all, function (n) {
-    n.classList.toggle("liked", nowLiked);
-    n.innerHTML = (nowLiked ? "❤️" : "🤍") + " " + (post.likes || 0);
-    if (nowLiked) _likePop(n);
-  });
-  if (_btn) {
-    _btn.classList.toggle("liked", nowLiked);
-    _btn.innerHTML = (nowLiked ? "❤️" : "🤍") + " " + (post.likes || 0);
-    if (nowLiked) _likePop(_btn);
-  } else if (!_all.length && !skipRender) {
-    renderFeed();
-  }
+  if (!willWrite) return;
 
-  // Sync avec Supabase
-  if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
-    supaToggleLike(id);
-    if (!liked && post && post.authorId && post.authorId !== MY_UID && post.fromSupabase) {
-      supaInsertNotif(post.authorId, "like", id, "a aimé ton post");
+  // Écriture serveur : on envoie l'INTENTION, on ne la re-déduit pas de la base.
+  supaSetPostLike(id, want, _cid).then(function (res) {
+    if (res && res.ok) {
+      if (want && post.fromSupabase && post.authorId && post.authorId !== MY_UID) {
+        supaInsertNotif(post.authorId, "like", id, "a aimé ton post");
+      }
+      return;
     }
-  }
+    // Échec RÉEL de l'écriture → on annule l'affichage optimiste. Laisser un ❤️
+    // qui n'existe pas en base, c'est le faire disparaître au prochain
+    // chargement, sans que personne ne comprenne pourquoi.
+    const p2 = _applyLikeLocally(id, !want);
+    _paintPostLike(id, !want, p2 ? (p2.likes || 0) : 0, null, false);
+    toast(want ? "Ton j'aime n'a pas pu être enregistré." : "Le retrait du j'aime n'a pas pu être enregistré.");
+  });
 }
 
 // ===== DOC VIEWER, Passia (simple + complet embarqués) =====
