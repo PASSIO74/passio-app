@@ -19,7 +19,7 @@ rien — il peut se tromper sur une prémisse, et ça arrive.
 | 3 | Authentification, identité, isolation entre comptes | **fait** — 2 manches (2026-08-14) | 4 / 4 démontrés |
 | 4 | État local, persistance, sync cross-appareil | **fait** (2026-08-14) | 6 / 7 |
 | 5 | Messagerie et livraison temps réel | **fait** (2026-08-14) | 3 / 3 |
-| 6 | Médias — upload, Storage, downscale | à faire | — |
+| 6 | Médias — upload, Storage, downscale | **fait** (2026-08-14) | 5 / 6 (1 écarté après vérification) |
 | 7 | Fil — classement et rendu | à faire | — |
 | 8 | PWA — service worker, cache, mise à jour | à faire | — |
 | 9 | Télémétrie — fuite de PII | à faire | — |
@@ -28,6 +28,26 @@ rien — il peut se tromper sur une prémisse, et ça arrive.
 `index.html` (111 Ko), le schéma SQL et les policies RLS de production (nécessitent
 un export dédié depuis la prod, pas une extraction de fonctions), et le dashboard
 `dashboard/` (application distincte, avec sa propre suite de 77 tests).
+
+---
+
+## Manche 7 — Médias : upload, Storage, réduction d'image (2026-08-14)
+
+Relecteur : ChatGPT « Moyen », sur 9 fonctions. 6 défauts démontrés.
+
+| # | Défaut | Verdict |
+|---|--------|---------|
+| 1 | `reelMediaHTML` interpole **quatre** valeurs sans échappement, dont `post.fallback` **à l'intérieur d'un attribut `onerror`** — une bobine vient de n'importe quel compte, ces champs sont libres côté serveur | **confirmé — XSS stocké.** `safeUrlAttr` sur `src`/`poster`, `escapeJsArg` sur `fallback` |
+| 2 | Orphelin Storage : `supaUploadMedia` upload le fichier PUIS échoue à obtenir l'URL publique, et repart avec le base64 → l'appelant croit l'upload raté, le fichier reste en ligne, référencé par personne, facturé | **confirmé** — le fichier est retiré avant de rendre la main |
+| 3 | Orphelin Storage : story dont l'insert est refusé APRÈS un upload réussi | **confirmé** — retrait ciblé de ce que CET appel a uploadé |
+| 4 | WebP transparent réduit → ré-encodé en **JPEG** → fond noir, sans aucun signal | **confirmé** — PNG et WebP gardent leur format ; repli sur l'original si le navigateur ne sait pas encoder |
+| 5 | HEIC (iPhone) stocké sous extension `.jpg` : média en ligne mais indécodable | **confirmé** — extension fidèle au type réel |
+| 6 | `data:` écrit dans une colonne SQL | **ÉCARTÉ après vérification.** Le relecteur signale honnêtement ne pouvoir trancher qu'avec deux consommateurs sous les yeux. J'ai audité **les douze** appelants de `supaUploadMedia` : tous filtrent (`http`/`data:`), et le chemin principal de publication **lève** si l'upload ne rend pas d'URL Storage. Le risque est réellement fermé |
+
+Vérification du correctif XSS **par le parseur HTML**, pas par expression
+régulière — ma première mesure donnait un faux positif sur `onload=`, présent mais
+entité. Le parseur confirme : aucun attribut `onload` créé, `poster` retombe sur
+`#`, l'apostrophe du `fallback` est échappée, l'URL Supabase nominale intacte.
 
 ---
 

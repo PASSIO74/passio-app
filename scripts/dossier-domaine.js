@@ -134,7 +134,14 @@ const DOMAINES = {
   "medias-storage": {
     libelle: "Médias — upload, Storage, downscale",
     fichiers: [],
-    ancres: [/^supaUploadMedia$/, /^downscale/, /^fileToDataUrl$/, /^supaPublishStory$/],
+    // Ancres relevées sur le code. On prend la chaîne complète : conversion,
+    // réduction, upload Storage, puis les DEUX consommateurs qui décident quoi
+    // faire quand l'upload échoue (story et étape CDV vidéo).
+    ancres: [
+      /^supaUploadMedia$/, /^_downscaleImageForUpload$/, /^_uploadCdvStepVideo$/,
+      /^_meDataUrlToBlob$/, /^_passioDataUrlToFile$/, /^supaPublishStory$/,
+      /^_looksLikeMediaUrl$/, /^_reelVideoSrc$/, /^reelMediaHTML$/,
+    ],
     focus:
       "Jamais de base64 en base (→ Storage). Cherche les uploads dont l'échec passe inaperçu, les médias qui restent " +
       "en data: URL, et les fichiers orphelins créés quand l'insert qui suit échoue.",

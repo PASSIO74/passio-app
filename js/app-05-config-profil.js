@@ -1923,19 +1923,27 @@ function authorOfReel(post) {
 }
 
 function reelMediaHTML(post) {
+  // ⚠️ Une bobine peut venir de N'IMPORTE QUEL compte : `video`, `poster` et
+  // `fallback` sont des champs libres côté serveur. Trois contextes distincts,
+  // trois helpers — se tromper ici, c'est exécuter le code d'un inconnu :
+  //   src/poster → safeUrlAttr (politique d'URL + sortie d'attribut)
+  //   fallback   → escapeJsArg : il atterrit DANS une chaîne JS simple-quotée à
+  //                l'intérieur d'un attribut onerror ; le HTML décode avant que JS
+  //                ne parse, donc escapeHtml seul ne protège pas.
   if (post.type === "video" && post.video) {
-    const poster = post.poster ? ` poster="${post.poster}"` : "";
+    const poster = post.poster ? ` poster="${safeUrlAttr(post.poster)}"` : "";
     // Sans fallback dédié : placeholder propre si l'appareil ne sait pas décoder
     // la vidéo (ex. ancienne bobine webm lue sur iPhone) au lieu d'un cadre noir.
-    const fallback = post.fallback ? ` onerror="reelVideoFallback(this, '${post.fallback}')"` : ` onerror="_reelVideoError(this)"`;
-    return `<video class="reel-media" src="${_reelVideoSrc(post)}"${poster}${fallback} muted playsinline loop preload="metadata"></video>`;
+    const fallback = post.fallback ? ` onerror="reelVideoFallback(this, '${escapeJsArg(post.fallback)}')"` : ` onerror="_reelVideoError(this)"`;
+    return `<video class="reel-media" src="${safeUrlAttr(_reelVideoSrc(post))}"${poster}${fallback} muted playsinline loop preload="metadata"></video>`;
   }
   // Sinon : utilise la cover photo (existant pour les posts seed) ou la photo uploadée
   const src = post.photo || post.coverPhotoUrl || resolveCoverUrl(post.cover) || "";
   if (!src) {
     return `<div class="reel-media" style="background: linear-gradient(135deg, ${COLORS_PASSION_BG[post.passion] || "#4c1d95"}, #7c3aed);"></div>`;
   }
-  return `<img class="reel-media" src="${typeof passioThumb === 'function' ? passioThumb(src, 720) : src}" alt="" loading="lazy" onerror="this.onerror=null;this.src='https://picsum.photos/seed/' + Math.random() + '/720/1280';"/>`;
+  const vignette = (typeof passioThumb === 'function') ? passioThumb(src, 720) : src;
+  return `<img class="reel-media" src="${safeUrlAttr(vignette)}" alt="" loading="lazy" onerror="this.onerror=null;this.src='https://picsum.photos/seed/' + Math.random() + '/720/1280';"/>`;
 }
 
 function resolveCoverUrl(cover) {

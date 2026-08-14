@@ -2652,8 +2652,18 @@ function _downscaleImageForUpload(dataUrl) {
           var c = document.createElement("canvas");
           c.width = Math.round(w * scale); c.height = Math.round(h * scale);
           c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
-          var isPng = dataUrl.indexOf("data:image/png") === 0;
-          var out = c.toDataURL(isPng ? "image/png" : "image/jpeg", 0.88);
+          // ⚠️ Le format de sortie doit préserver la TRANSPARENCE. Un WebP à fond
+          // transparent ré-encodé en JPEG ressort avec un fond noir : le logo ou
+          // le badge de la personne est abîmé sans que rien ne le signale. PNG et
+          // WebP gardent donc leur format ; seul le reste passe en JPEG.
+          var estPng  = dataUrl.indexOf("data:image/png") === 0;
+          var estWebp = dataUrl.indexOf("data:image/webp") === 0;
+          var format = estPng ? "image/png" : (estWebp ? "image/webp" : "image/jpeg");
+          var out = c.toDataURL(format, 0.88);
+          // Repli : si le navigateur ne sait pas encoder ce format, toDataURL rend
+          // silencieusement du PNG. On garde alors l'original plutôt qu'un fichier
+          // dont le type ne correspond plus à ce qu'on croit envoyer.
+          if (out.indexOf("data:" + format) !== 0) { resolve(dataUrl); return; }
           // Garde-fou : si le ré-encodage grossit (rare), on garde l'original.
           resolve(out.length < dataUrl.length ? out : dataUrl);
         } catch (e) { resolve(dataUrl); }
@@ -2699,6 +2709,15 @@ async function supaUploadMedia(postId, folder, base64Data, mediaType) {
     else if (mediaType === "audio") ext = ".mp3";
     else if (base64Data.indexOf("data:image/webp") === 0) ext = ".webp";
     else if (base64Data.indexOf("data:image/png") === 0) ext = ".png";
+    else if (base64Data.indexOf("data:image/gif") === 0) ext = ".gif";
+    // ⚠️ Tout autre type d'image tombait sur « .jpg » par défaut : un HEIC d'iPhone
+    // se retrouvait servi en .jpg, que la plupart des navigateurs refusent de
+    // décoder — média en ligne mais invisible, sans le moindre signal. On rend
+    // l'extension fidèle au type réel plutôt que de mentir sur le contenu.
+    else {
+      var _mime = (base64Data.match(/^data:image\/([a-z0-9.+-]+)/i) || [])[1];
+      if (_mime && !/^(jpeg|jpg)$/i.test(_mime)) ext = "." + _mime.toLowerCase();
+    }
     const filePath = `${folder}/${MY_UID}/${postId}${ext}`;
 
     const { error } = await supa.storage.from("content").upload(filePath, blob, {
@@ -2708,11 +2727,18 @@ async function supaUploadMedia(postId, folder, base64Data, mediaType) {
 
     if (error) return base64Data;
 
+    // ⚠️ ORPHELIN. À partir d'ici le fichier EST dans Storage. Si l'on repart avec
+    // le base64, l'appelant considérera l'upload échoué et n'écrira jamais l'URL :
+    // le fichier restera en ligne, référencé par personne, facturé pour toujours.
+    // On le retire donc avant de rendre la main.
+    var _obtenue = null;
     try {
       const { data: publicUrl } = supa.storage.from("content").getPublicUrl(filePath);
-      if (publicUrl?.publicUrl) return cdnUrl(publicUrl.publicUrl);
-    } catch (e) { return base64Data; }
-
+      if (publicUrl?.publicUrl) _obtenue = cdnUrl(publicUrl.publicUrl);
+    } catch (e) {}
+    if (_obtenue) return _obtenue;
+    try { await supa.storage.from("content").remove([filePath]); } catch (e) {}
+    console.warn("upload : URL publique introuvable, fichier retiré de Storage —", filePath);
     return base64Data;
 
   } catch (e) {
@@ -3055,10 +3081,12 @@ async function supaPublishStory(story) {
     await supaUpsertProfile();
     // Uploader le média (photo/vidéo) en Storage — jamais de base64 en DB.
     var mediaUrl = null, mediaType = story.mediaType || null;
+    var _uploadeIci = false;   // a-t-on créé un fichier Storage dans CET appel ?
     if (story.media && typeof story.media === "string") {
       if (story.media.startsWith("data:") && typeof supaUploadMedia === "function") {
         var folder = (mediaType === "video") ? "videos" : "photos";
         try { mediaUrl = await supaUploadMedia(story.id, folder, story.media, mediaType || "photo"); } catch(e) {}
+        if (mediaUrl && mediaUrl.indexOf("data:") !== 0) _uploadeIci = true;
         if (mediaUrl && mediaUrl.indexOf("data:") === 0) mediaUrl = null;
         if (mediaUrl) { story.media = mediaUrl; try { saveState(); renderStories(); } catch(e) {} }
       } else if (story.media.indexOf("data:") !== 0) {
@@ -3086,6 +3114,19 @@ async function supaPublishStory(story) {
     // Le SDK ne lève pas sur refus RLS : sans lire res.error, une story rejetée
     // restait « publiée » côté auteur et invisible pour tout le monde.
     const ok = _writeVerdict(res, { label: "publication de story" }).ok;
+    // ⚠️ ORPHELIN. L'insert vient d'être refusé alors que le média est DÉJÀ dans
+    // Storage : plus aucune ligne ne le référencera jamais, et il reste facturé.
+    // On ne retire que ce que CET appel a uploadé — une story qui portait déjà une
+    // URL ne doit pas voir son fichier supprimé sous elle.
+    if (!ok && _uploadeIci && mediaUrl) {
+      try {
+        var _chemin = String(mediaUrl).split("/content/")[1];
+        if (_chemin) {
+          await supa.storage.from("content").remove([_chemin.split("?")[0]]);
+          console.warn("story refusée : média orphelin retiré de Storage —", _chemin);
+        }
+      } catch (e) {}
+    }
     try { window.tel && tel.settle(_cid, "saved", ok, res && res.error); } catch (e) {}
     return ok;
   } catch(e) { console.warn("publication de story :", e && e.message); try { window.tel && tel.settle(_cid, "saved", false, e); } catch (_) {} return false; }
