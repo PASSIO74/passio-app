@@ -581,3 +581,14 @@ tbody tr.row-alert:hover{background:rgba(239,68,68,.1)}
 .ig-age{font-size:11.5px;color:var(--muted-2);margin-top:2px}
 .ig-residue{margin-top:9px;font-size:12px;color:var(--info);line-height:1.5;display:flex;gap:6px;align-items:flex-start}
 .ig-residue svg{width:14px;height:14px;flex:none;margin-top:2px}
+
+/* ─── Corrélation aux changements récents (hypothèses) ──────────────────── */
+.tsus{margin-top:16px;border:1px solid var(--border);border-radius:12px;padding:12px 14px;background:var(--card-2)}
+.tsus-head{display:flex;align-items:center;gap:7px;font-weight:600;font-size:13px;margin-bottom:9px}
+.tsus-head svg{width:15px;height:15px;color:var(--muted)}
+.tsus-row{padding:8px 0;border-top:1px solid var(--border-soft);font-size:12.5px;line-height:1.6}
+.tsus-row:first-of-type{border-top:0}
+.tsus-row code{background:var(--card);border:1px solid var(--border-soft);border-radius:5px;padding:1px 6px;font-size:11.5px}
+.tsus-sub{font-size:11.5px;color:var(--muted);margin-top:3px}
+.tsus-none{font-size:12.5px;color:var(--muted);line-height:1.5}
+.tsus-warn{margin-top:9px;font-size:11.5px;color:var(--warn)}

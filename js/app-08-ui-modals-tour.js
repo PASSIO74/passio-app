@@ -3041,6 +3041,10 @@ async function supaLoadComments(postId) {
 
 // ---- STORIES ----
 async function supaPublishStory(story) {
+  // Upload média + insert = plusieurs requêtes → confirmation explicite, comme
+  // pour la publication (l'auto-tag réseau désignerait l'upload, pas le résultat).
+  var _cid = null;
+  try { if (window.tel && tel.flowStart) _cid = tel.flowStart("publish_story", { postId: story && story.id }); } catch (e) {}
   try {
     await supaUpsertProfile();
     // Uploader le média (photo/vidéo) en Storage — jamais de base64 en DB.
@@ -3065,7 +3069,11 @@ async function supaPublishStory(story) {
       overlays: (story.overlays && story.overlays.length) ? story.overlays : null,
       created_at: new Date().toISOString(),
     });
-  } catch(e) { console.warn("Story error:", e); }
+    // Le SDK ne lève pas sur refus RLS : sans lire res.error, une story rejetée
+    // restait « publiée » côté auteur et invisible pour tout le monde.
+    if (res && res.error) console.warn("Story error:", res.error.message);
+    try { window.tel && tel.settle(_cid, "saved", !!(!res || !res.error), res && res.error); } catch (e) {}
+  } catch(e) { console.warn("Story error:", e); try { window.tel && tel.settle(_cid, "saved", false, e); } catch (_) {} }
 }
 
 async function supaLoadStories() {
@@ -4674,25 +4682,38 @@ function supaSubscribe() {
   dbChan.subscribe();
 }
 // ---- FOLLOW / UNFOLLOW ----
+// Traçage : plusieurs requêtes en jeu (upsert profil, insert, notif) → l'étape
+// réseau auto-taguée désignerait la mauvaise ; on confirme donc explicitement,
+// et SUR LE VRAI RÉSULTAT. ⚠️ Le SDK Supabase ne LÈVE PAS sur un refus RLS : il
+// renvoie { error }. Sans lire ce champ, un follow rejeté était avalé en silence
+// (le catch ne voit que les pannes réseau) — précisément l'angle mort visé.
 async function supaFollowUser(targetId) {
+  var _cid = null;
+  try { if (window.tel && tel.flowStart) _cid = tel.flowStart("follow_user", { target: targetId }); } catch (e) {}
   try {
     await supaUpsertProfile();
     // ⚠️ PAS de created_at : la table follows en prod n'a QUE (follower_id,
     // following_id) — envoyer created_at = 400 PGRST204 silencieux, le follow
     // n'était JAMAIS écrit (seule la notif partait). Découvert par le e2e 2026-07-02.
-    await supa.from("follows").insert({ follower_id: MY_UID, following_id: targetId });
+    const res = await supa.from("follows").insert({ follower_id: MY_UID, following_id: targetId });
+    // Clé dupliquée = on suivait déjà : l'état voulu est atteint, c'est un succès.
+    const dup = res && res.error && String(res.error.code) === "23505";
+    try { window.tel && tel.settle(_cid, "saved", !!(!res || !res.error || dup), res && res.error); } catch (e) {}
     // Notifier la personne suivie (un suivi est une interaction qui doit
     // apparaître dans ses notifications).
     if (targetId && targetId !== MY_UID && typeof supaInsertNotif === "function") {
       supaInsertNotif(targetId, "follow", MY_UID, "a commencé à te suivre");
     }
-  } catch(e) {}
+  } catch(e) { try { window.tel && tel.settle(_cid, "saved", false, e); } catch (_) {} }
 }
 
 async function supaUnfollowUser(targetId) {
+  var _cid = null;
+  try { if (window.tel && tel.flowStart) _cid = tel.flowStart("unfollow_user", { target: targetId }); } catch (e) {}
   try {
-    await supa.from("follows").delete().eq("follower_id", MY_UID).eq("following_id", targetId);
-  } catch(e) {}
+    const res = await supa.from("follows").delete().eq("follower_id", MY_UID).eq("following_id", targetId);
+    try { window.tel && tel.settle(_cid, "saved", !!(!res || !res.error), res && res.error); } catch (e) {}
+  } catch(e) { try { window.tel && tel.settle(_cid, "saved", false, e); } catch (_) {} }
 }
 
 async function supaLoadFollowing() {
@@ -4703,10 +4724,16 @@ async function supaLoadFollowing() {
 }
 
 // ---- MODÉRATION : BLOCAGE / SIGNALEMENT ----
+// Modération : un blocage qui échoue en silence laisse l'utilisateur exposé à
+// quelqu'un qu'il croit avoir bloqué — l'échec le plus coûteux à ne pas voir.
 async function supaBlockUser(targetId) {
+  var _cid = null;
+  try { if (window.tel && tel.flowStart) _cid = tel.flowStart("block_user", { target: targetId }); } catch (e) {}
   try {
-    await supa.from("blocks").insert({ blocker_id: MY_UID, blocked_id: targetId, created_at: new Date().toISOString() });
-  } catch(e) {}
+    const res = await supa.from("blocks").insert({ blocker_id: MY_UID, blocked_id: targetId, created_at: new Date().toISOString() });
+    const dup = res && res.error && String(res.error.code) === "23505";  // déjà bloqué = état voulu atteint
+    try { window.tel && tel.settle(_cid, "saved", !!(!res || !res.error || dup), res && res.error); } catch (e) {}
+  } catch(e) { try { window.tel && tel.settle(_cid, "saved", false, e); } catch (_) {} }
 }
 async function supaUnblockUser(targetId) {
   try {

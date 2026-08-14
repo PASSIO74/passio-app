@@ -25,6 +25,7 @@ import * as alerts from "./alerts.js";
 import { snapshot as interactionsSnapshot } from "./interactions.js";
 import { snapshot as tracesSnapshot, trace as traceOne, coverage as tracesCoverage } from "./traces.js";
 import { reconcile, buildReconcilePrompt } from "./reconcile.js";
+import { suspectsFor, suspectsPromptBlock } from "./correlate.js";
 import { kpi } from "./kpi.js";
 import { retention } from "./retention.js";
 import { computeReadiness } from "./readiness.js";
@@ -87,11 +88,17 @@ api.get("/interactions", auth.requireAuth, (req, res) => res.json(interactionsSn
 
 // ─── Traçage bout-en-bout (chaîne de validation par action) ─────────────────
 api.get("/traces", auth.requireAuth, (req, res) => res.json(tracesSnapshot(Number(req.query.limit) || 100)));
-api.get("/traces/:cid", auth.requireAuth, (req, res) => {
+api.get("/traces/:cid", auth.requireAuth, asyncH(async (req, res) => {
   const t = traceOne(req.params.cid);
   if (!t) return res.status(404).json({ error: "Trace introuvable (expirée ?)" });
-  res.json({ trace: t, prompt: claude.buildTracePrompt(t) });
-});
+  // Corrélation aux changements récents : réservée aux rôles qui peuvent déjà
+  // lire le dépôt (elle expose sujets de commits, auteurs et chemins de fichiers).
+  let suspects = null;
+  if (auth.can(req.session.role, "git_read")) {
+    try { suspects = await suspectsFor(t.startedAt, t.feature); } catch (e) { suspects = null; }
+  }
+  res.json({ trace: t, suspects, prompt: claude.buildTracePrompt(t, suspects ? suspectsPromptBlock(suspects) : "") });
+}));
 
 // ─── Couverture d'instrumentation (catalogue des contrats + dette) ──────────
 api.get("/coverage", auth.requireAuth, (req, res) => res.json(tracesCoverage()));

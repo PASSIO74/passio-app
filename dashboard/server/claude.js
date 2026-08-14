@@ -99,7 +99,7 @@ const STEP_STATUS_FR = { ok: "OK", fail: "ÉCHEC", slow: "LENT", pending: "en at
  * Prompt Claude Code pour une chaîne de validation d'action (trace bout-en-bout).
  * Fournit l'étape EXACTE en échec + la chaîne complète, sans PII.
  */
-export function buildTracePrompt(t) {
+export function buildTracePrompt(t, suspectsBlock = "") {
   const lines = [];
   lines.push("Tu es Claude Code sur le projet PASSIO (PWA vanilla JS + Supabase).");
   lines.push("Une action utilisateur a été tracée de bout en bout dans le centre de pilotage et n'a PAS abouti.");
@@ -120,6 +120,7 @@ export function buildTracePrompt(t) {
   }
   const failStep = t.steps.find((s) => s.status === "fail") || t.steps.find((s) => s.status === "missing");
   if (failStep) lines.push(`\n→ Première étape défaillante : « ${failStep.label} ».`);
+  if (suspectsBlock) { lines.push(""); lines.push(suspectsBlock); }
   lines.push("\n## Pistes projet (rappel des invariants)");
   lines.push("- UPDATE/DELETE Supabase touchant 0 ligne = RLS manquante · insert conv_messages exige from_id=auth.uid().");
   lines.push("- Jamais de base64 en DB (→ Storage) · supaTs() pour les timestamps · realtime = publication + canal.");

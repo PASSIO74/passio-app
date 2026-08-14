@@ -1246,10 +1246,22 @@ async function traceDetail(cid) {
     return `<li class="tstep ${u.cls}"><span class="tstep-ico">${u.s}</span><span class="tstep-label">${esc(s.label)}</span><span class="tstep-status">${st}${s.http_status ? " · HTTP " + s.http_status : ""}</span></li>`;
   }).join("");
   const problem = ["failed", "partial", "dead_click"].includes(t.final);
+  // Corrélation aux changements récents — présentée comme une HYPOTHÈSE.
+  const sp = payload.suspects;
+  const suspectsHtml = !sp || !problem ? "" : `<div class="tsus">
+    <div class="tsus-head">${icon("git")} Changements récents pouvant expliquer</div>
+    ${sp.suspects.length ? sp.suspects.map((s) => `<div class="tsus-row">
+        <span class="pill ${s.confidence === "élevée" ? "error" : "warn"}">${esc(s.confidence)}</span>
+        <code>${esc(s.hash)}</code> ${esc(s.subject)}
+        <div class="tsus-sub">${s.minutesBefore} min avant · ${s.fileCount} fichier(s)${s.sameArea ? " · même zone fonctionnelle" : ""}</div>
+      </div>`).join("") : `<div class="tsus-none">${esc(sp.note)}</div>`}
+    ${sp.suspects.length ? `<div class="tsus-warn">Corrélation ≠ causalité : à confirmer en lisant le diff.</div>` : ""}
+  </div>`;
   $("#drawerBody").innerHTML = `
     <div class="fix-intro"><b>${esc(t.actionLabel)}</b> · ${traceFinalPill(t.final)}${t.duplicate ? ' <span class="pill error">doublon</span>' : ""}</div>
     <div class="muted" style="font-size:13px;margin:6px 0 14px">${nameFor(t.user, t.label)}${t.screen ? " · écran " + esc(t.screen) : ""}${t.target ? " · cible " + esc(t.target) : ""} · ${hhmmss(t.startedAt)} · durée ${dur}</div>
     <ul class="tsteps">${stepsHtml}</ul>
+    ${suspectsHtml}
     <div class="drawer-actions" style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn btn-sm" id="trCopyPrompt">${icon("reports")} Copier le prompt Claude Code</button>
       ${problem && hasCap("claude") ? `<button class="btn btn-sm btn-primary" id="trFix">${icon("wrench")} Réparer avec Claude</button>` : ""}

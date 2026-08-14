@@ -41,6 +41,30 @@ export async function log(n = 20) {
   return stdout.trim().split("\n").filter(Boolean).map((l) => { const [hash, author, date, ...s] = l.split("|"); return { hash, author, date, subject: s.join("|") }; });
 }
 
+/**
+ * Commits récents avec date ABSOLUE et fichiers touchés — matière première de
+ * la corrélation « un incident est-il apparu juste après un changement ? ».
+ * (`log()` renvoie des dates relatives, inexploitables pour comparer à un ts.)
+ */
+export async function commitsSince(sinceMs, max = 40) {
+  const iso = new Date(sinceMs).toISOString();
+  const { stdout } = await git([
+    "log", `-${max}`, `--since=${iso}`, "--name-only",
+    "--pretty=format:%x00%H|%h|%an|%aI|%s",
+  ]);
+  // Séparateur d'enregistrement = %x00 : un sujet de commit peut contenir
+  // n'importe quoi (y compris des lignes vides), un séparateur texte serait fragile.
+  return stdout.split("\0").map((block) => block.trim()).filter(Boolean).map((block) => {
+    const [head, ...rest] = block.split("\n");
+    const [full, hash, author, dateIso, ...subj] = head.split("|");
+    return {
+      full, hash, author, subject: subj.join("|"),
+      at: new Date(dateIso).getTime(),
+      files: rest.map((f) => f.trim()).filter(Boolean),
+    };
+  }).filter((c) => Number.isFinite(c.at));
+}
+
 export async function diff(file) {
   const args = ["diff", "--no-color"]; if (file) args.push("--", file);
   const { stdout } = await git(args);

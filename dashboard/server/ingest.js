@@ -11,7 +11,7 @@ import { store, normalize } from "./store.js";
 import { broadcast } from "./sse.js";
 import { onEvent as alertsOnEvent } from "./alerts.js";
 import { onEvent as interactionsOnEvent } from "./interactions.js";
-import { onEvent as tracesOnEvent } from "./traces.js";
+import { onEvent as tracesOnEvent, sealExisting as tracesSealExisting } from "./traces.js";
 
 let interactionsDirty = false;
 let tracesDirty = false;
@@ -78,10 +78,16 @@ export async function startIngest() {
     (data || []).reverse().forEach((row) => {
       const ev = normalize(row);
       store.add(ev);
+      // Rejoue aussi l'historique dans le traçage : sinon l'onglet « Traçage des
+      // actions » repart vide à chaque redémarrage du serveur.
+      try { tracesOnEvent(ev); } catch (e) { /* ignore */ }
       const iso = new Date(ev.ts).toISOString();
       if (iso > lastSeenIso) lastSeenIso = iso;
     });
-    console.log(`[ingest] ${(data || []).length} événements historiques chargés.`);
+    // …mais on scelle ces flux : un redémarrage ne doit PAS refaire sonner
+    // toutes les alertes des dernières heures.
+    const sealed = tracesSealExisting();
+    console.log(`[ingest] ${(data || []).length} événements historiques chargés (${sealed} action(s) tracée(s), sans ré-alerte).`);
   } catch (e) {
     console.error("[ingest] chargement historique échoué:", e.message,
       "\n→ La table telemetry_events existe-t-elle ? Applique migrations/migration_telemetry.sql.");

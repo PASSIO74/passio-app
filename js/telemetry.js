@@ -482,6 +482,20 @@
         severity: status === "error" ? "error" : "info",
         meta: _flowMeta(meta, { step: String(key || "step").slice(0, 40) }) });
     },
+    // settle : consigne l'étape de confirmation ET clôt le flow en un appel.
+    // `err` accepte une erreur Supabase ({ message, code }) ou une Error.
+    // ⚠️ Les clés de meta passent par la liste noire PII : « code » y figure
+    // (→ `rc`), tout comme « message » (→ `detail`, redacté comme le reste).
+    settle: function (cid, key, ok, err) {
+      if (!cid) return;
+      var meta = null;
+      if (!ok && err) {
+        meta = { detail: String(err.message || err).slice(0, 120) };
+        if (err.code != null) meta.rc = String(err.code).slice(0, 20);
+      }
+      this.step(cid, key, ok ? "ok" : "error", meta);
+      this.flowEnd(cid, ok ? "ok" : "error");
+    },
     // flowEnd : clôt le flow (et lève l'ambiance de corrélation réseau).
     flowEnd: function (cid, status, meta) {
       if (!cid) return;

@@ -200,6 +200,18 @@ test("drain : succès et « non confirmé » sont consommés SANS alerte", () =>
   assert.ok(traces.flows.get("dv3").reported, "mais il doit être consommé");
 });
 
+test("sealExisting : l'historique rejoué au démarrage ne refait pas sonner les alertes", () => {
+  reset();
+  const old = Date.now() - 20_000;
+  traces.onEvent(ev("flow", "start", { correlation_id: "sl1", ts: old, meta: { flow_action: "like_post", postId: "pa" } }));
+  traces.onEvent(ev("flow", "start", { correlation_id: "sl2", ts: old, meta: { flow_action: "like_post", postId: "pb" } }));
+
+  assert.equal(traces.sealExisting(), 2);
+  assert.equal(traces.drainNewVerdicts().length, 0, "aucune alerte pour de l'historique rejoué");
+  // …mais les traces restent VISIBLES dans l'onglet.
+  assert.equal(traces.snapshot().recent.length, 2);
+});
+
 test("drain : l'étape en échec est identifiable pour le message d'alerte", () => {
   reset();
   const old = Date.now() - 20_000;

@@ -68,6 +68,12 @@ const CONTRACTS = {
   publish_post: { label: "Publication", feature: "feed", steps: [S_HANDLER, { key: "saved", label: "Publication enregistrée", role: "confirm" }, S_DELIVER] },
   publish_reel: { label: "Bobine publiée", feature: "feed", steps: [S_HANDLER, { key: "saved", label: "Bobine enregistrée", role: "confirm" }, S_DELIVER] },
   share_post:   { label: "Partage de publication", feature: "feed", steps: [S_HANDLER, S_REQUEST_CONFIRM] },
+  // Actions à confirmation EXPLICITE : plusieurs requêtes en jeu (upsert profil,
+  // upload, notification) → l'auto-tag réseau désignerait la mauvaise.
+  follow_user:   { label: "Abonnement", feature: "social", steps: [S_HANDLER, { key: "saved", label: "Abonnement enregistré", role: "confirm" }] },
+  unfollow_user: { label: "Désabonnement", feature: "social", steps: [S_HANDLER, { key: "saved", label: "Désabonnement enregistré", role: "confirm" }] },
+  block_user:    { label: "Blocage", feature: "moderation", steps: [S_HANDLER, { key: "saved", label: "Blocage enregistré", role: "confirm" }] },
+  publish_story: { label: "Story publiée", feature: "feed", steps: [S_HANDLER, { key: "saved", label: "Story enregistrée", role: "confirm" }] },
   // Contrat générique : toute action wrappée par tel.flowStart sans contrat
   // dédié affiche au moins handler → requête (confirmation).
   _default: {
@@ -377,6 +383,21 @@ class TraceTracker {
     return out;
   }
 
+  /**
+   * Marque tous les flux connus comme déjà signalés.
+   *
+   * Appelé après le rejeu de l'historique au démarrage : sans ça, un simple
+   * redémarrage du serveur ferait re-sonner toutes les alertes des dernières
+   * heures. On veut l'historique VISIBLE dans l'onglet, pas ré-alerté.
+   */
+  sealExisting() {
+    for (const cid of this.order) {
+      const f = this.flows.get(cid);
+      if (f) f.reported = true;
+    }
+    return this.order.length;
+  }
+
   /** Une trace complète par correlation_id (vue détaillée / prompt Claude). */
   trace(cid) {
     const flow = this.flows.get(cid);
@@ -436,4 +457,5 @@ export function onEvent(ev) { try { return traces.onEvent(ev); } catch (e) { ret
 export function snapshot(limit) { return traces.snapshot(limit); }
 export function trace(cid) { return traces.trace(cid); }
 export function drainNewVerdicts() { try { return traces.drainNewVerdicts(); } catch (e) { return []; } }
+export function sealExisting() { try { return traces.sealExisting(); } catch (e) { return 0; } }
 export { CONTRACTS, contractFor };
