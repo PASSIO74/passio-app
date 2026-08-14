@@ -20,7 +20,7 @@ async function boot(page) {
   await page.evaluate(() => {
     // Doit répondre { ok:true } : un like non confirmé côté serveur est annulé.
     window.supaSetPostLike = async () => ({ ok: true, error: null });
-    ["supaToggleLike", "supaAddComment", "supaCommentInteract", "supaInsertNotif",
+    ["supaAddComment", "supaCommentInteract", "supaInsertNotif",
       "supaUpsertProfile", "supaTrack", "supaSaveUserState"].forEach((fn) => { window[fn] = async () => null; });
   });
   await page.waitForFunction(

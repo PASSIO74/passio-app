@@ -24,7 +24,7 @@ async function bootInteractions(page) {
     // ⚠️ supaSetPostLike est stubbé à part : il doit répondre { ok:true }, pas
     // `null` — un like dont l'écriture n'est pas confirmée est désormais ANNULÉ.
     window.supaSetPostLike = async () => ({ ok: true, error: null });
-    ["supaToggleLike", "supaAddComment", "supaCommentInteract", "supaCommentRemoveLike",
+    ["supaAddComment", "supaCommentInteract", "supaCommentRemoveLike",
       "supaCommentRemoveReactions", "supaLoadComments", "supaLoadCommentInteractions",
       "supaInsertNotif", "supaToggleEventLike", "supaAddEventReaction", "supaRemoveEventReaction",
       "supaLoadEventReactions", "supaLoadEventComments", "supaAddEventComment",

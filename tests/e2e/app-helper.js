@@ -62,7 +62,8 @@ async function bootOnboarded(page, errors, nProfiles = 1) {
     const l = document.getElementById("landing");
     if (l) l.classList.remove("active");
     window.supaPublishPostWithRetry = async () => false;
-    window.supaToggleLike = () => {};
+    // ⚠️ supaSetPostLike doit répondre { ok:true } : un like dont l'écriture
+    // serveur n'est pas confirmée est désormais ANNULÉ à l'écran.
     window.supaSetPostLike = async () => ({ ok: true, error: null });
     window.supaAddComment = () => {};
     window.supaInsertNotif = () => {};

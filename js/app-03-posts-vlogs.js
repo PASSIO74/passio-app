@@ -214,7 +214,7 @@ function _applyLikeLocally(id, liked) {
 
 // Écrit MON like en base, dans le sens VOULU par l'utilisateur. Renvoie { ok, error }.
 //
-// ⚠️ Remplace supaToggleLike (app-08), qui relisait d'abord post_likes pour
+// ⚠️ Remplace l'ancien supaToggleLike (app-08, supprimé), qui relisait post_likes pour
 // DÉDUIRE le sens de l'écriture : dès que l'état local et la base divergeaient
 // (like perdu hors-ligne, action faite depuis un autre appareil), le clic écrivait
 // l'INVERSE de ce que l'utilisateur voyait — sans la moindre erreur. Et comme le

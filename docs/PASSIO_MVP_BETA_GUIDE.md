@@ -14,7 +14,7 @@ Nouveautés majeures par rapport à la v2 :
 ### 🔗 Backend Supabase (temps réel)
 - Connexion à une vraie base de données Supabase (URL + clé configurées)
 - Sync des posts, stories, événements, commentaires entre utilisateurs
-- Likes temps réel (`supaToggleLike`, `supaGetLikeCount`)
+- Likes temps réel (`supaSetPostLike`, `supaGetLikeCount`)
 - Messagerie multi-utilisateurs persistée en base
 - Notifications poussées via abonnements Supabase Realtime
 - Recherche d'utilisateurs dans la base (`supaSearchUsers`)
