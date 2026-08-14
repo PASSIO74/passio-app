@@ -2343,8 +2343,15 @@ function deduplicateConversations(convs) {
     } else {
       // Fusionner les messages par ID uniquement (plus de comparaison text+timestamp fragile)
       var main = seen[key];
-      var mainIds = new Set((main.messages||[]).map(function(x){ return x.id; }).filter(Boolean));
-      var extraMsgs = (c.messages || []).filter(function(m){ return m.id && !mainIds.has(m.id); });
+      // Même règle que _unionConvsById : un message sans id doit être conservé,
+      // pas jeté. Clé de contenu en repli (émetteur + horodatage + début du texte).
+      var _cle = function (m) {
+        if (!m) return null;
+        if (m.id) return "id:" + m.id;
+        return "sig:" + (m.from || "") + "|" + (m.at || 0) + "|" + String(m.text || "").slice(0, 40);
+      };
+      var mainIds = new Set((main.messages||[]).map(_cle).filter(Boolean));
+      var extraMsgs = (c.messages || []).filter(function(m){ var k = _cle(m); return k && !mainIds.has(k); });
       if (extraMsgs.length) {
         main.messages = [...(main.messages||[]), ...extraMsgs].sort(function(a,b){ return (a.at||0)-(b.at||0); });
       }
@@ -2382,9 +2389,38 @@ function _unionConvsById(a, b) {
     if (!c || !c.id) return;
     var ex = byId[c.id];
     if (!ex) { byId[c.id] = Object.assign({}, c, { messages: (c.messages || []).slice() }); return; }
+    // ⚠️ Un message SANS id était purement et simplement ignoré ici : il n'entrait
+    // jamais dans `ids`, et la boucle suivante le rejetait. Les messages des
+    // conversations de démo n'ont pas d'id, et rien ne garantit qu'un message
+    // venu d'ailleurs en ait toujours un. On leur fabrique une clé de contenu
+    // (émetteur + horodatage + début du texte) : deux copies du même message se
+    // dédupliquent, une copie unique n'est plus perdue.
+    var cle = function (m) {
+      if (!m) return null;
+      if (m.id) return "id:" + m.id;
+      return "sig:" + (m.from || "") + "|" + (m.at || 0) + "|" + String(m.text || "").slice(0, 40);
+    };
     var ids = {};
-    (ex.messages || []).forEach(function(m) { if (m && m.id) ids[m.id] = 1; });
-    (c.messages || []).forEach(function(m) { if (m && m.id && !ids[m.id]) { ex.messages.push(m); ids[m.id] = 1; } });
+    (ex.messages || []).forEach(function(m) { var k = cle(m); if (k) ids[k] = 1; });
+    var parCle = {};
+    (ex.messages || []).forEach(function(m) { var k = cle(m); if (k) parCle[k] = m; });
+    (c.messages || []).forEach(function(m) {
+      var k = cle(m);
+      if (!k) return;
+      if (!ids[k]) { ex.messages.push(m); ids[k] = 1; parCle[k] = m; return; }
+      // Message présent des DEUX côtés : la copie retenue est celle d'IndexedDB, et
+      // l'autre était jetée avec tout ce qu'elle portait en plus (réactions posées
+      // depuis, statut de lecture, média résolu). On ne peut pas arbitrer « la plus
+      // récente » — un message ne porte aucun horodatage de modification — alors on
+      // ne tranche pas : on ADOPTE les champs que la copie retenue n'a pas. Union
+      // strictement additive, aucune donnée ne peut être perdue par ce chemin.
+      var garde = parCle[k];
+      if (!garde || garde === m) return;
+      Object.keys(m).forEach(function (champ) {
+        var absent = garde[champ] === undefined || garde[champ] === null || garde[champ] === "";
+        if (absent) garde[champ] = m[champ];
+      });
+    });
     if ((c.lastAt || 0) > (ex.lastAt || 0)) { ex.lastAt = c.lastAt; }
   });
   return Object.keys(byId).map(function(k) {

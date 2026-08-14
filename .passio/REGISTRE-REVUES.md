@@ -18,7 +18,7 @@ rien — il peut se tromper sur une prémisse, et ça arrive.
 | 2 | Affichage de contenu d'autrui — XSS stockés | **fait** (2026-08-14), 2e passe à prévoir | 6 / 6 |
 | 3 | Authentification, identité, isolation entre comptes | **fait** — 2 manches (2026-08-14) | 4 / 4 démontrés |
 | 4 | État local, persistance, sync cross-appareil | **fait** (2026-08-14) | 6 / 7 |
-| 5 | Messagerie et livraison temps réel | **en cours** (2026-08-14) | 1 confirmé (perte de messages) |
+| 5 | Messagerie et livraison temps réel | **fait** (2026-08-14) | 3 / 3 |
 | 6 | Médias — upload, Storage, downscale | à faire | — |
 | 7 | Fil — classement et rendu | à faire | — |
 | 8 | PWA — service worker, cache, mise à jour | à faire | — |
@@ -28,6 +28,32 @@ rien — il peut se tromper sur une prémisse, et ça arrive.
 `index.html` (111 Ko), le schéma SQL et les policies RLS de production (nécessitent
 un export dédié depuis la prod, pas une extraction de fonctions), et le dashboard
 `dashboard/` (application distincte, avec sa propre suite de 77 tests).
+
+---
+
+## Manche 6 — Messagerie et livraison temps réel (2026-08-14)
+
+Relecteur : ChatGPT « Moyen », 1 min 7 s, sur 9 fonctions + `idb-store.js` entier.
+
+| # | Défaut | Verdict |
+|---|--------|---------|
+| 1 | **`hydrateConvsFromIDB` ne lisait JAMAIS localStorage.** Elle faisait `var current = conversationsState \|\| []` alors qu'elle tourne en tête de `boot()`, quand `conversationsState` est encore null : la « fusion sans perte » se réduisait à `_unionConvsById(idbConvs, [])`. Et comme `conversationsState` se retrouvait rempli juste après, `getConversations()` n'allait plus jamais consulter localStorage non plus. Or `idbConvSave` est best-effort et `saveConversations` ne vérifie pas son retour → **un message écrit dans localStorage mais pas dans IndexedDB disparaissait définitivement au démarrage suivant** | **confirmé — perte de données** |
+| 2 | À identifiant égal, la copie d'IndexedDB gagne et l'autre est jetée avec ce qu'elle portait en plus (réactions posées depuis, statut de lecture) | **confirmé** |
+| 3 | *(trouvé en propre)* `_unionConvsById` et `deduplicateConversations` ignoraient tout message **dépourvu d'`id`** — et les messages des conversations de démo n'en ont pas | **confirmé** |
+
+**Correctifs.** ① `getConversations()` comme second opérande, ce qui force la lecture
+de localStorage. ② Clé de repli par contenu (émetteur + horodatage + début du texte)
+pour les messages sans id : une copie unique n'est plus perdue, deux copies
+identiques se dédupliquent toujours. ③ À clé égale, **union strictement additive** :
+on adopte les champs que la copie retenue n'a pas, sans arbitrer laquelle est « la
+plus récente » — un message ne porte aucun horodatage de modification, inventer une
+règle d'arbitrage introduirait un bug plutôt que d'en corriger un. **Dette assumée
+et documentée** : une vraie réconciliation par message demanderait une colonne de
+version.
+
+Vérifié dans le navigateur, marqueur du nouveau code contrôlé d'abord : message
+présent seulement dans localStorage préservé ; messages sans id conservés des deux
+côtés ; pas de doublon ; réactions et statut de lecture adoptés.
 
 ---
 
