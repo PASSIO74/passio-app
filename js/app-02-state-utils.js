@@ -201,33 +201,235 @@ function _syncableState() {
 }
 
 let _stateSyncTimer = null;
+// Drapeau « l'état a changé depuis la dernière sauvegarde aboutie ». saveState() est
+// l'entonnoir unique des mutations (il appelle _scheduleStateSync), donc c'est ici
+// qu'on le lève. Sans lui, le beacon de passage en arrière-plan re-sérialise et
+// re-poste TOUT l'état à chaque bascule d'application sur mobile — pour rien.
+let _stateDirty = false;
 function _scheduleStateSync() {
+  _stateDirty = true;
   if (typeof MY_UID === "undefined" || !MY_UID) return;
   if (_stateSyncTimer) clearTimeout(_stateSyncTimer);
   _stateSyncTimer = setTimeout(() => { _stateSyncTimer = null; supaSaveUserState(); }, 2500);
+}
+
+// File de secours : dernière sauvegarde d'état qui N'A PAS abouti (réseau coupé,
+// onglet passé en arrière-plan pile pendant le POST → « Failed to fetch » / HTTP 0).
+// On la persiste verbatim (avec son updated_at d'origine) pour la rejouer au prochain
+// boot sans jamais écraser une version serveur plus récente (garde par timestamp).
+//
+// ⚠️ La clé est SUFFIXÉE PAR COMPTE. Avec une clé unique partagée, deux comptes de la
+// même origine se marchaient dessus : à la connexion de B, le rejeu constatait
+// `pending.user_id !== MY_UID` et SUPPRIMAIT la file de A — la sauvegarde de A était
+// détruite par le simple fait qu'un autre compte se connecte.
+const PENDING_USER_STATE_PREFIX = "passio_pending_user_state";
+function _pendingUserStateKey(uid) {
+  return PENDING_USER_STATE_PREFIX + (uid ? "_" + uid : "");
+}
+
+// Renvoie true SEULEMENT si la mise en file a réellement abouti. L'appelant en a
+// besoin : baisser le drapeau « état sale » alors que le stockage a échoué (quota
+// dépassé) fabrique un faux état propre, où plus personne ne retentera l'envoi.
+function _queuePendingUserState(payload) {
+  try {
+    localStorage.setItem(_pendingUserStateKey(payload && payload.user_id), JSON.stringify(payload));
+    return true;
+  } catch (_e) { return false; }
+}
+
+// N'efface QUE le payload qu'on a soi-même acquitté. Sans cette comparaison, la
+// réponse tardive d'un ancien envoi supprimait une sauvegarde PLUS RÉCENTE mise en
+// file entre-temps (page revenue au premier plan, état modifié, re-beacon) : le
+// serveur restait à l'ancien blob, la file était vide, et l'état se croyait propre.
+function _clearPendingUserState(uid, onlyIfTs) {
+  try {
+    const key = _pendingUserStateKey(uid || (typeof MY_UID !== "undefined" ? MY_UID : null));
+    if (onlyIfTs) {
+      const raw = localStorage.getItem(key);
+      if (raw) {
+        const cur = JSON.parse(raw);
+        if (cur && cur.updated_at && cur.updated_at !== onlyIfTs) return;  // file plus récente : on n'y touche pas
+      }
+    }
+    localStorage.removeItem(key);
+  } catch (_e) {}
+}
+
+// Marque _stateSyncedAt (mémoire + snapshot localStorage) : évite la fenêtre où le
+// serveur a updated_at=T_sync mais localStorage croit encore être à T_old, ce qui
+// déclencherait une restauration serveur au prochain boot.
+// ⚠️ Ne RECULE jamais le marqueur : l'acquittement tardif d'un envoi ancien ne doit
+// pas rétrograder la synchro déjà constatée par un envoi plus récent.
+function _markStateSynced(ts) {
+  const prev = state._stateSyncedAt ? new Date(state._stateSyncedAt).getTime() : 0;
+  if (ts && new Date(ts).getTime() < prev) return;
+  state._stateSyncedAt = ts;
+  _stateDirty = false;
+  try {
+    const raw = localStorage.getItem(STATE_KEY);
+    if (raw) {
+      const snap = JSON.parse(raw);
+      snap._stateSyncedAt = ts;
+      localStorage.setItem(STATE_KEY, JSON.stringify(snap));
+    }
+  } catch (_e) {}
 }
 
 async function supaSaveUserState() {
   try {
     if (typeof supa === "undefined" || !supa || !window._supaReal) return;
     if (typeof MY_UID === "undefined" || !MY_UID) return;
+    // Le beacon de passage en arrière-plan a pu envoyer cette même génération d'état
+    // juste avant que le timer de debounce n'arrive à échéance : sans cette garde, le
+    // retour du bfcache déclenchait un SECOND upsert du MÊME état, mais horodaté
+    // maintenant — capable d'écraser ce qu'un autre appareil a écrit entre-temps.
+    if (!_stateDirty) return;
     const payload = { user_id: MY_UID, data: _syncableState(), updated_at: new Date().toISOString() };
     const { error } = await supa.from("user_state").upsert(payload, { onConflict: "user_id" });
     if (!error) {
-      state._stateSyncedAt = payload.updated_at;
-      // Persiste _stateSyncedAt dans localStorage immédiatement : évite la fenêtre
-      // où le serveur a updated_at=T_sync mais localStorage croit encore être à T_old,
-      // ce qui déclencherait une restauration depuis le serveur au prochain boot.
-      try {
-        const raw = localStorage.getItem(STATE_KEY);
-        if (raw) {
-          const snap = JSON.parse(raw);
-          snap._stateSyncedAt = payload.updated_at;
-          localStorage.setItem(STATE_KEY, JSON.stringify(snap));
-        }
-      } catch(_e) {}
+      _markStateSynced(payload.updated_at);
+      _clearPendingUserState(MY_UID, payload.updated_at);   // n'efface QUE ce qu'on vient d'acquitter
+    } else {
+      // Échec serveur (réseau/RLS) : on garde le blob pour un rejeu au prochain boot.
+      _queuePendingUserState(payload);
     }
-  } catch (e) { console.warn("supaSaveUserState:", e && e.message); }
+  } catch (e) {
+    // « Failed to fetch » (requête avortée par le passage en arrière-plan) atterrit ici.
+    try {
+      if (typeof MY_UID !== "undefined" && MY_UID) {
+        _queuePendingUserState({ user_id: MY_UID, data: _syncableState(), updated_at: new Date().toISOString() });
+      }
+    } catch (_e2) {}
+    console.warn("supaSaveUserState:", e && e.message);
+  }
+}
+
+// Jeton d'accès lu SANS le SDK (synchrone) — nécessaire dans un handler pagehide où
+// l'on ne peut pas attendre une promesse. Même source que telemetry.js : la session
+// persistée par le SDK dans localStorage (« sb-<ref>-auth-token »), formats v1/v2.
+function _readStoredAccessToken() {
+  try {
+    const cfg = window.PASSIO_SUPABASE;
+    if (!cfg || !cfg.url) return null;
+    const ref = (String(cfg.url).match(/https?:\/\/([^.]+)\./) || [])[1];
+    const raw = ref && localStorage.getItem("sb-" + ref + "-auth-token");
+    if (!raw) return null;
+    const j = JSON.parse(raw);
+    const s = (j && j.currentSession) ? j.currentSession : j;   // v1 vs v2
+    return (s && s.access_token) || null;
+  } catch (_e) { return null; }
+}
+
+// Sauvegarde de DERNIÈRE CHANCE au passage en arrière-plan / fermeture d'onglet.
+// POST REST direct avec keepalive:true → la requête SURVIT au déchargement de la page
+// (contrairement au client SDK, dont la socket est tuée → « Failed to fetch » / HTTP 0).
+// On persiste aussi le blob en file de secours : si le keepalive échoue (payload
+// > ~64 Ko, réseau réellement coupé), le rejeu au boot le récupère.
+function supaSaveUserStateBeacon() {
+  try {
+    const cfg = window.PASSIO_SUPABASE;
+    if (!cfg || !cfg.url || !cfg.anon) return;
+    if (typeof MY_UID === "undefined" || !MY_UID) return;
+    if (typeof state === "undefined" || !state || !state.onboarded) return;
+    // Rien n'a bougé depuis la dernière sauvegarde aboutie → rien à envoyer. Cette
+    // garde sert aussi de dédoublonnage : pagehide ET visibilitychange(hidden) tirent
+    // tous les deux à la fermeture, le second trouve le drapeau déjà retombé.
+    if (!_stateDirty) return;
+    const payload = { user_id: MY_UID, data: _syncableState(), updated_at: new Date().toISOString() };
+    const queued = _queuePendingUserState(payload);   // filet : rejoué au boot si le keepalive rate
+    // Le timer de debounce déjà armé porte la MÊME génération d'état : le laisser
+    // courir produirait un second upsert, ré-horodaté, au retour du bfcache.
+    if (_stateSyncTimer) { clearTimeout(_stateSyncTimer); _stateSyncTimer = null; }
+    // Retombée du drapeau : seulement si le filet a réellement pris. On ne peut pas
+    // attendre la confirmation réseau (le .then ne s'exécute pas quand la page est
+    // déchargée), mais baisser le drapeau alors que la mise en file a échoué (quota
+    // dépassé) fabriquerait un faux état propre — plus personne ne retenterait.
+    if (queued) _stateDirty = false;
+    const token = _readStoredAccessToken() || cfg.anon;
+    const body = JSON.stringify(payload);
+    // Au-delà de la limite keepalive (~64 Ko), le navigateur rejetterait la requête :
+    // on ne la tente pas (le blob reste en file, rejoué au boot).
+    // ⚠️ La limite porte sur des OCTETS, pas sur des caractères : body.length compte
+    // des unités UTF-16, et un état riche en emoji/accents dépasse 64 Ko d'octets bien
+    // avant 60 000 caractères — la garde laissait alors passer une requête vouée au rejet.
+    let bodyBytes;
+    try { bodyBytes = new TextEncoder().encode(body).length; }
+    catch (_e) { bodyBytes = body.length * 3; }   // majorant sûr si TextEncoder manque
+    if (bodyBytes > 60000) return;
+    fetch(cfg.url + "/rest/v1/user_state?on_conflict=user_id", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: cfg.anon,
+        Authorization: "Bearer " + token,
+        Prefer: "resolution=merge-duplicates,return=minimal",
+      },
+      body: body,
+      keepalive: true,
+    }).then(function (res) {
+      // Acquittement CIBLÉ : si l'utilisateur est revenu et a re-sauvegardé entre-temps,
+      // la file contient déjà un blob plus récent — cette réponse tardive ne doit pas
+      // l'effacer.
+      if (res && res.ok) { _markStateSynced(payload.updated_at); _clearPendingUserState(payload.user_id, payload.updated_at); }
+    }, function () {}).catch(function () {});
+  } catch (e) { console.warn("supaSaveUserStateBeacon:", e && e.message); }
+}
+
+// Rejeu au boot d'une sauvegarde restée en file (session précédente coupée en plein
+// vol). Garde anti-écrasement : on ne pousse QUE si le blob en attente est plus récent
+// que la ligne serveur — sinon un autre appareil (ou le keepalive qui a fini par
+// aboutir) a déjà écrit une version au moins aussi neuve, on jette la file.
+let _flushingPendingState = false;
+async function _flushPendingUserState() {
+  // Le rejeu est branché sur deux chemins (boot et supaInit/SIGNED_IN) qui peuvent se
+  // chevaucher : sans ce verrou, deux SELECT puis deux upserts concurrents du même blob.
+  if (_flushingPendingState) return;
+  try {
+    if (typeof MY_UID === "undefined" || !MY_UID) return;
+    // Clé suffixée par compte : on ne lit QUE sa propre file et on ne détruit jamais
+    // celle d'un autre compte de la même origine.
+    const raw = localStorage.getItem(_pendingUserStateKey(MY_UID));
+    if (!raw) return;
+    _flushingPendingState = true;
+    if (typeof supa === "undefined" || !supa || !window._supaReal) return;
+    let pending;
+    try { pending = JSON.parse(raw); } catch (_e) { _clearPendingUserState(MY_UID); return; }
+    if (!pending || pending.user_id !== MY_UID || !pending.data) { _clearPendingUserState(MY_UID); return; }
+
+    // ÉCRITURE CONDITIONNELLE (compare-et-remplace), pas un upsert aveugle. Un SELECT
+    // suivi d'un upsert laisse la place à une écriture concurrente entre les deux : le
+    // temps de l'aller-retour, un autre appareil peut poser un état plus récent, que
+    // l'upsert écraserait ensuite sans le voir. Ici la comparaison est faite PAR LA
+    // BASE, dans la requête d'écriture elle-même : la ligne n'est remplacée que si son
+    // updated_at est encore antérieur au nôtre. Elle protège aussi du décalage
+    // d'horloge dans le sens dangereux — un client en retard ne peut plus rien écraser.
+    const { data: upd, error: upErr } = await supa.from("user_state")
+      .update({ data: pending.data, updated_at: pending.updated_at })
+      .eq("user_id", MY_UID)
+      .lt("updated_at", pending.updated_at)
+      .select("updated_at");
+    if (upErr) return;   // réseau/RLS encore KO : on garde la file pour un prochain essai
+
+    if (!upd || upd.length === 0) {
+      // Zéro ligne touchée : soit le serveur est déjà au moins aussi récent (rien à
+      // rejouer), soit la ligne n'existe pas encore (premier appareil du compte).
+      const { data: row, error: selErr } = await supa.from("user_state").select("user_id").eq("user_id", MY_UID).maybeSingle();
+      if (selErr) return;
+      if (row) { _clearPendingUserState(MY_UID, pending.updated_at); return; }  // serveur plus récent : file obsolète
+      const { error: insErr } = await supa.from("user_state").insert(pending);
+      if (insErr) return;
+    }
+
+    // ⚠️ Le rejeu vient de rendre le SERVEUR plus récent que l'état VIVANT : sans
+    // réappliquer le blob ici, l'application continue avec l'état chargé au boot tout
+    // en se croyant synchronisée — et la prochaine sauvegarde réécrase le rejeu (les
+    // follows tout juste restaurés disparaissaient à la modification suivante).
+    try { _applyUserState(pending.data); } catch (_e) {}
+    _markStateSynced(pending.updated_at);
+    _clearPendingUserState(MY_UID, pending.updated_at);
+    try { if (typeof renderEverything === "function") renderEverything(); } catch (_e) {}
+  } catch (e) { console.warn("_flushPendingUserState:", e && e.message); }
+  finally { _flushingPendingState = false; }
 }
 
 // Applique un blob serveur sur l'état local (sans toucher au seed ni aux posts

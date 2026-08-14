@@ -2065,6 +2065,9 @@ async function boot() {
       // ça reconstitue le compte ; le profil par défaut ci-dessous ne sert plus
       // que de filet ultime si le serveur n'a vraiment rien.
       try { if (typeof supaLoadUserState === "function") await supaLoadUserState(); } catch(e) {}
+      // Rejoue une sauvegarde d'état restée en file (session précédente coupée en plein
+      // vol) — après le load pour respecter la garde anti-écrasement par timestamp.
+      try { if (typeof _flushPendingUserState === "function") _flushPendingUserState(); } catch(e) {}
       // supaLoadUserState a pu ré-appliquer un état serveur sans le flag → on le
       // re-garantit (on a une session valide, donc accès).
       state.onboarded = true;
@@ -3033,7 +3036,7 @@ async function supaPublishStory(story) {
         mediaUrl = story.media;
       }
     }
-    await supa.from("stories").insert({
+    const res = await supa.from("stories").insert({
       id: story.id || uid(), author_id: MY_UID,
       passion_id: story.passion || null,
       content: story.text || story.content || "",
@@ -5068,6 +5071,8 @@ async function supaInit() {
         const restored = await supaLoadUserState();
         if (restored) { try { renderEverything(); } catch(e) {} }
       }
+      // Rejeu d'une sauvegarde restée en file (coupée au dernier passage en arrière-plan).
+      try { if (typeof _flushPendingUserState === "function") _flushPendingUserState(); } catch(e) {}
     } catch(e) {}
 
     // 0bis. PROFIL STABLE PAR COMPTE/EMAIL : la ligne `profiles` (cl\u00e9 = uid du
@@ -5233,10 +5238,19 @@ async function supaInit() {
     try { if (typeof _flushOutbox === "function") setTimeout(_flushOutbox, 1500); } catch(e) {}
     // Sauvegarder imm\u00e9diatement avant fermeture de page (flush le debounce)
     window.addEventListener("beforeunload", saveConversationsNow, { once: false });
-    // Flush le debounce du state-sync avant fermeture \u2192 \u00e9vite de perdre les follows
-    // et autres changements locaux non encore envoy\u00e9s \u00e0 Supabase (user_state).
-    window.addEventListener("beforeunload", function() {
-      if (typeof supaSaveUserState === "function") supaSaveUserState();
+    // Flush le state-sync au passage en arri\u00e8re-plan / fermeture \u2192 \u00e9vite de perdre les
+    // follows et autres changements locaux non encore envoy\u00e9s \u00e0 Supabase (user_state).
+    // \u26a0\ufe0f On utilise pagehide + visibilitychange(hidden) et un POST keepalive (beacon),
+    // PAS un appel SDK sur beforeunload : sur mobile la page est gel\u00e9e/d\u00e9charg\u00e9e pendant
+    // que la requ\u00eate SDK est en vol \u2192 socket tu\u00e9e \u2192 \u00ab Failed to fetch \u00bb / HTTP 0, l'\u00e9tat
+    // \u00e9tait perdu en silence. Le beacon survit au d\u00e9chargement ; un \u00e9chec r\u00e9siduel est
+    // rejou\u00e9 au boot par _flushPendingUserState.
+    var _beaconUserState = function() {
+      try { if (typeof supaSaveUserStateBeacon === "function") supaSaveUserStateBeacon(); } catch (e) {}
+    };
+    window.addEventListener("pagehide", _beaconUserState, { once: false });
+    document.addEventListener("visibilitychange", function() {
+      if (document.visibilityState === "hidden") _beaconUserState();
     }, { once: false });
 
     console.log("\u2705 [INIT] Initialisation Supabase compl\u00e8te");
