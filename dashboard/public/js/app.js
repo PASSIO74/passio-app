@@ -97,6 +97,7 @@ const NAV = [
   ["visitors", "Visiteurs", "route", null, "essentiel"],
   ["kpi", "KPI produit", "trending", null, "essentiel"],
   ["traces", "Traçage des actions", "route", null, "essentiel"],
+  ["integrity", "Intégrité des données", "database", "db", "essentiel"],
   ["interactions", "Vérif. interactions", "wifi", null, "essentiel"],
   ["qa", "Campagne QA", "tests", null, "essentiel"],
   ["bugs", "Problèmes", "bugs", null, "essentiel"],
@@ -1134,6 +1135,67 @@ VIEWS.traces = async () => {
   S.refresh = refresh; refresh();
 };
 
+// ─── Intégrité des données (réconciliation : échecs silencieux) ───────────────
+let INTEG_LAST = [];
+VIEWS.integrity = async () => {
+  mount(`<h2 class="page-title">Intégrité des données</h2>
+    <p class="page-sub">Le traçage prouve qu'une action a abouti ; cette page vérifie que la base est <b>cohérente</b>. Elle cherche les données perdues, orphelines ou bloquées <b>qu'aucune erreur n'a signalées</b> — les échecs silencieux. Lecture seule, aucun contenu privé n'est lu.</p>
+    <div id="igSummary"></div>
+    <div class="feed-toolbar" style="margin-top:14px">
+      <button class="btn btn-sm" id="igRefresh">${icon("refresh")} Relancer la vérification</button>
+      <span class="muted" style="margin-left:auto;font-size:12px" id="igMeta"></span>
+    </div>
+    <div id="igList"></div>`);
+
+  async function refresh() {
+    $("#igList").innerHTML = `<div class="empty"><span class="spinner"></span><p style="margin-top:10px">Vérification de l'intégrité…</p></div>`;
+    let d;
+    try { d = await api.get("/reconcile"); }
+    catch (e) { $("#igList").innerHTML = `<div class="fix-note err">${esc(e.message)}</div>`; return; }
+    if (!d.configured) { $("#igList").innerHTML = `<div class="empty">Supabase non configuré : l'intégrité ne peut pas être vérifiée.</div>`; return; }
+    INTEG_LAST = d.checks || [];
+    const T = d.totals || {};
+    const cls = T.critical ? "bad" : T.anomalies ? "warn" : "ok";
+    $("#igSummary").innerHTML = `<div class="state-banner ${cls}">
+      <div class="state-ico">${icon("database")}</div>
+      <div class="state-txt"><h2>${T.anomalies ? `${T.anomalies} règle(s) en anomalie · ${num(T.affectedRows)} ligne(s) concernée(s)` : `Base cohérente sur ${T.rules} règles`}</h2>
+        <p>${T.critical || 0} critique(s) · ${T.failed ? `<b class="sev-warn">${T.failed} règle(s) NON vérifiée(s)</b> · ` : ""}${num(T.seedRefs || 0)} référence(s) au contenu de démo (normal, exclu des anomalies)</p></div></div>`;
+    $("#igMeta").textContent = "Vérifié " + hhmmss(d.updatedAt);
+
+    $("#igList").innerHTML = `<div class="ig-grid">${INTEG_LAST.map((c, i) => {
+      const badge = c.status === "ok" ? '<span class="pill ok">conforme</span>'
+        : c.status === "unknown" ? '<span class="pill warn">non vérifiée</span>'
+        : c.status === "error" ? '<span class="pill error">critique</span>' : '<span class="pill warn">à surveiller</span>';
+      return `<div class="ig-card ${c.status}">
+        <div class="ig-head">${badge} <b>${esc(c.label)}</b></div>
+        ${c.error ? `<div class="ig-err">${icon("alertTriangle")} ${esc(c.error)}</div>` : ""}
+        ${c.status === "ok" ? `<div class="ig-ok">${icon("checkCircle")} Aucune anomalie${c.seedRefs ? ` (${num(c.seedRefs)} réf. de démo ignorées)` : ""}</div>`
+          : c.count != null ? `<div class="ig-count">${num(c.count)} <span>ligne(s) réellement concernée(s)</span>${c.seedRefs ? `<span class="ig-seed"> · ${num(c.seedRefs)} réf. de démo (normal)</span>` : ""}</div>` : ""}
+        <div class="ig-impact">${esc(c.impact)}</div>
+        ${c.partial ? `<div class="ig-partial">${icon("alertTriangle")} Analyse partielle (borne de lecture atteinte) : ce chiffre est un minorant.</div>` : ""}
+        ${c.samples?.length ? `<div class="ig-samples">Exemples : ${c.samples.slice(0, 6).map((s) => `<code>${esc(s)}</code>`).join(" ")}</div>` : ""}
+        ${c.status !== "ok" && hasCap("claude") ? `<div class="ig-actions"><button class="btn btn-sm" data-ig="${i}">${icon("wrench")} Analyser & réparer avec Claude</button></div>` : ""}
+      </div>`;
+    }).join("")}</div>`;
+  }
+  $("#igRefresh").onclick = refresh;
+  $("#view").onclick = (e) => {
+    const b = e.target.closest("[data-ig]"); if (!b) return;
+    integrityFix(INTEG_LAST[Number(b.dataset.ig)]);
+  };
+  S.refresh = null; refresh();
+};
+
+// Analyse/réparation d'une anomalie d'intégrité : prompt dédié (simulation d'abord).
+async function integrityFix(check) {
+  if (!check) return;
+  let prompt = "";
+  try { prompt = (await api.post("/reconcile/prompt", { check })).prompt; }
+  catch (e) { return toast(e.message); }
+  fixWithClaude({ event: { type: "error", severity: "error", action: check.id,
+    message: `Intégrité : ${check.label} (${check.count} ligne(s))`, stack: prompt } }, check.label);
+}
+
 // « Diagnostiquer toute la plateforme » : assemble l'état de santé réel en un
 // prompt Claude Code (copiable, ou lancé directement si l'assistant est branché).
 async function diagnosePlatform() {
@@ -1149,6 +1211,7 @@ async function diagnosePlatform() {
       ${chip("Livraison temps réel", s.deliveryRate == null ? "—" : s.deliveryRate + "%", s.deliveryRate != null && s.deliveryRate < 90)}
       ${chip("Chaînes cassées", s.incidents || 0, s.incidents > 0)}
       ${chip("Bugs actifs", s.bugs || 0, s.bugs > 0)}
+      ${chip("Intégrité (anomalies)", s.integrityAnomalies == null ? "—" : s.integrityAnomalies, s.integrityAnomalies > 0)}
       ${chip("Dette instrumentation", s.uninstrumented || 0, s.uninstrumented > 0)}
     </div>
     <div class="drawer-actions" style="margin:14px 0;display:flex;gap:8px;flex-wrap:wrap">

@@ -553,3 +553,26 @@ tbody tr.row-alert:hover{background:rgba(239,68,68,.1)}
 .diag-kpi-v{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}
 .diag-kpi.bad .diag-kpi-v{color:var(--err)}
 .diag-kpi-l{font-size:11px;color:var(--muted);margin-top:2px}
+
+/* ─── Intégrité des données (réconciliation) ────────────────────────────── */
+.ig-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;margin-top:14px}
+.ig-card{border:1px solid var(--border);border-left:3px solid var(--ok);border-radius:12px;padding:14px 16px;background:var(--card)}
+.ig-card.warn{border-left-color:var(--warn)}
+.ig-card.error{border-left-color:var(--err)}
+.ig-card.unknown{border-left-color:var(--muted-2)}
+.ig-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13.5px}
+.ig-count{font-size:22px;font-weight:700;margin:10px 0 4px;font-variant-numeric:tabular-nums}
+.ig-count span{font-size:12px;font-weight:500;color:var(--muted)}
+.ig-count .ig-seed{font-size:11.5px;color:var(--muted-2)}
+.ig-card.error .ig-count{color:var(--err)}
+.ig-card.warn .ig-count{color:var(--warn)}
+.ig-ok{margin:9px 0 4px;font-size:12.5px;color:var(--ok);display:flex;align-items:center;gap:6px}
+.ig-ok svg{width:15px;height:15px}
+.ig-err{margin:8px 0;font-size:12.5px;color:var(--warn)}
+.ig-impact{font-size:12.5px;color:var(--muted);line-height:1.5;margin-top:6px}
+.ig-partial{margin-top:8px;font-size:12px;color:var(--warn)}
+.ig-partial svg{width:14px;height:14px;vertical-align:-2px}
+.ig-samples{margin-top:9px;font-size:11.5px;color:var(--muted);line-height:2}
+.ig-samples code{background:var(--card-2);border:1px solid var(--border-soft);border-radius:5px;padding:2px 6px;font-size:11px}
+.ig-actions{margin-top:12px}
+.ig-actions .btn{width:100%}

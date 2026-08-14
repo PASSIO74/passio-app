@@ -24,6 +24,7 @@ import * as testusers from "./testusers.js";
 import * as alerts from "./alerts.js";
 import { snapshot as interactionsSnapshot } from "./interactions.js";
 import { snapshot as tracesSnapshot, trace as traceOne, coverage as tracesCoverage } from "./traces.js";
+import { reconcile, buildReconcilePrompt } from "./reconcile.js";
 import { kpi } from "./kpi.js";
 import { retention } from "./retention.js";
 import { computeReadiness } from "./readiness.js";
@@ -95,8 +96,20 @@ api.get("/traces/:cid", auth.requireAuth, (req, res) => {
 // ─── Couverture d'instrumentation (catalogue des contrats + dette) ──────────
 api.get("/coverage", auth.requireAuth, (req, res) => res.json(tracesCoverage()));
 
+// ─── Réconciliation (intégrité des données : échecs silencieux) ─────────────
+api.get("/reconcile", auth.requireCap("db"), asyncH(async (req, res) => res.json(await reconcile())));
+api.post("/reconcile/prompt", auth.requireCap("db"), (req, res) => {
+  const c = req.body?.check;
+  if (!c || !c.label) return res.status(400).json({ error: "check requis" });
+  res.json({ prompt: buildReconcilePrompt(c) });
+});
+
 // ─── Diagnostic global : « Diagnostiquer toute la plateforme » (prompt prêt) ─
-api.get("/diagnose", auth.requireAuth, (req, res) => {
+api.get("/diagnose", auth.requireAuth, asyncH(async (req, res) => {
+  // L'intégrité des données fait partie du diagnostic ; si elle échoue (Supabase
+  // indisponible), on le DIT au lieu de prétendre que tout va bien.
+  let integrity = null;
+  try { integrity = await reconcile(); } catch (e) { integrity = { error: e.message }; }
   const bundle = {
     overview: store.overview(),
     traces: tracesSnapshot(200),
@@ -104,6 +117,7 @@ api.get("/diagnose", auth.requireAuth, (req, res) => {
     coverage: tracesCoverage(),
     bugs: store.bugList().slice(0, 20),
     errors: store.recent({ type: "error" }, 40),
+    integrity,
   };
   res.json({ prompt: claude.buildPlatformDiagnosis(bundle), summary: {
     successRate: bundle.traces.totals.successRate,
@@ -111,8 +125,9 @@ api.get("/diagnose", auth.requireAuth, (req, res) => {
     incidents: (bundle.traces.incidents || []).length,
     bugs: bundle.bugs.length,
     uninstrumented: bundle.coverage.totals.uninstrumented,
+    integrityAnomalies: integrity?.totals?.anomalies ?? null,
   }, apiConfigured: Boolean(config.anthropicKey) });
-});
+}));
 
 // ─── Liens partagés (cycle de vie création → partage → ouverture confirmée) ──
 api.get("/links", auth.requireAuth, (req, res) => res.json({ funnel: store.linkFunnel(), links: store.linkList(Number(req.query.limit) || 300) }));

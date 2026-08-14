@@ -136,7 +136,7 @@ export function buildTracePrompt(t) {
  * Ne contient que des métadonnées agrégées (aucun PII, aucun contenu privé).
  */
 export function buildPlatformDiagnosis(d = {}) {
-  const { overview = {}, traces = {}, interactions = {}, coverage = {}, bugs = [], errors = [] } = d;
+  const { overview = {}, traces = {}, interactions = {}, coverage = {}, bugs = [], errors = [], integrity = null } = d;
   const L = [];
   L.push("Tu es Claude Code, ingénieur en chef du projet PASSIO (PWA vanilla JS + Supabase).");
   L.push("Voici l'état de santé RÉEL de la plateforme, agrégé par le centre de pilotage.");
@@ -162,6 +162,17 @@ export function buildPlatformDiagnosis(d = {}) {
     L.push("## Interactions mal livrées en temps réel");
     badInter.forEach((s) => L.push(`- ${s.label} : ${s.deliveryRate}% livrées (${s.unconfirmed} non reçues)`));
     L.push("");
+  }
+  if (integrity && integrity.checks) {
+    const bad = integrity.checks.filter((c) => c.status === "error" || c.status === "warn");
+    const unknown = integrity.checks.filter((c) => c.status === "unknown");
+    L.push("## Intégrité des données (réconciliation — échecs silencieux)");
+    if (!bad.length && !unknown.length) L.push(`- Aucune incohérence sur ${integrity.checks.length} règles vérifiées.`);
+    bad.forEach((c) => L.push(`- [${c.status}] ${c.label} : ${c.count} ligne(s)${c.partial ? " (analyse partielle, minorant)" : ""} — ${c.impact}${c.samples?.length ? " · ex. " + c.samples.slice(0, 5).join(", ") : ""}`));
+    unknown.forEach((c) => L.push(`- [non vérifiée] ${c.label} : ${c.error}`));
+    L.push("");
+  } else if (integrity && integrity.error) {
+    L.push(`## Intégrité des données\n- ⚠️ NON VÉRIFIÉE : ${integrity.error}\n`);
   }
   if (bugs.length) {
     L.push("## Bugs actifs (top gravité)");
