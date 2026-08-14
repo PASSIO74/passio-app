@@ -113,8 +113,20 @@ const DOMAINES = {
   },
   "messages-realtime": {
     libelle: "Messagerie et livraison temps réel",
-    fichiers: [],
-    ancres: [/^sendMessage/, /^saveConversations/, /^hydrateConvs/, /^_subscribeRealtime/, /^supaInitRealtime/],
+    // idb-store.js entier : les conversations ont un SECOND store durable, et la
+    // perte de messages se joue dans la fusion entre les deux.
+    fichiers: ["js/idb-store.js"],
+    // Ancres relevées sur le code. On prend la chaîne COMPLÈTE d'un message :
+    // envoi → persistance locale (localStorage + IndexedDB) → fusion → rendu,
+    // plus l'abonnement realtime. Sans le maillon de fusion (`_unionConvsById`,
+    // `deduplicateConversations`), un relecteur ne peut pas juger la perte de
+    // messages — c'est la leçon de la manche identité.
+    ancres: [
+      /^sendMessageFp$/, /^saveConversations$/, /^saveConversationsNow$/,
+      /^hydrateConvsFromIDB$/, /^_unionConvsById$/, /^deduplicateConversations$/,
+      /^purgeConvDuplicates$/, /^getConversations$/, /^openConversation$/,
+      /^_supaConvSpecificChannel$/, /^_subscribeTyping$/, /^startDirectMessage$/,
+    ],
     focus:
       "Livraison cross-compte, ordre des messages, doublons, perte au rechargement. Jamais de requête dans " +
       "`onAuthStateChange` (deadlock). Jamais de base64 en base.",

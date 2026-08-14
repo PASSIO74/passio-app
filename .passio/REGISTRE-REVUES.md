@@ -18,7 +18,7 @@ rien — il peut se tromper sur une prémisse, et ça arrive.
 | 2 | Affichage de contenu d'autrui — XSS stockés | **fait** (2026-08-14), 2e passe à prévoir | 6 / 6 |
 | 3 | Authentification, identité, isolation entre comptes | **fait** — 2 manches (2026-08-14) | 4 / 4 démontrés |
 | 4 | État local, persistance, sync cross-appareil | **fait** (2026-08-14) | 6 / 7 |
-| 5 | Messagerie et livraison temps réel | à faire | — |
+| 5 | Messagerie et livraison temps réel | **en cours** (2026-08-14) | 1 confirmé (perte de messages) |
 | 6 | Médias — upload, Storage, downscale | à faire | — |
 | 7 | Fil — classement et rendu | à faire | — |
 | 8 | PWA — service worker, cache, mise à jour | à faire | — |

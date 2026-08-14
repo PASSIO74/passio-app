@@ -2406,7 +2406,15 @@ function hydrateConvsFromIDB() {
       if (window.idbConvSave) window.idbConvSave(getConversations());
       return;
     }
-    var current = conversationsState || [];
+    // ⚠️ getConversations(), PAS `conversationsState || []`. Cette fonction tourne en
+    // tête de boot(), quand conversationsState est encore null : la « fusion sans
+    // perte » se réduisait alors à _unionConvsById(idbConvs, []) — localStorage
+    // n'était JAMAIS lu. Et comme conversationsState se retrouvait rempli juste
+    // après, getConversations() n'allait plus jamais le consulter non plus.
+    // Or idbConvSave est best-effort (il résout false sans que saveConversations
+    // le vérifie) : un message écrit dans localStorage mais pas dans IndexedDB
+    // disparaissait définitivement au démarrage suivant.
+    var current = (typeof getConversations === "function") ? (getConversations() || []) : (conversationsState || []);
     conversationsState = deduplicateConversations(_unionConvsById(idbConvs, current));
     try { if (typeof renderMessages === "function") renderMessages(); } catch(e) {}
   }).catch(function() {});
