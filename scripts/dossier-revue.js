@@ -295,7 +295,13 @@ function main() {
   }
 
   const horodatage = new Date();
-  const dateIso = horodatage.toISOString().slice(0, 10);
+  // Date LOCALE pour le nom du dossier : en UTC, une génération faite en soirée
+  // (ou tôt le matin selon le fuseau) porterait la date de la veille.
+  const dateIso = [
+    horodatage.getFullYear(),
+    String(horodatage.getMonth() + 1).padStart(2, "0"),
+    String(horodatage.getDate()).padStart(2, "0"),
+  ].join("-");
   const nomDossier = `${dateIso}-${slug(args.titre)}`;
   const sortie = path.resolve(RACINE, args.sortie || path.join(".passio", "reviews", nomDossier));
   fs.mkdirSync(sortie, { recursive: true });
