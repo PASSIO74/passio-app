@@ -165,10 +165,13 @@ export function buildPlatformDiagnosis(d = {}) {
   }
   if (integrity && integrity.checks) {
     const bad = integrity.checks.filter((c) => c.status === "error" || c.status === "warn");
+    const residue = integrity.checks.filter((c) => c.status === "residue");
     const unknown = integrity.checks.filter((c) => c.status === "unknown");
+    const days = (t) => Math.floor((Date.now() - t) / 86400_000);
     L.push("## Intégrité des données (réconciliation — échecs silencieux)");
-    if (!bad.length && !unknown.length) L.push(`- Aucune incohérence sur ${integrity.checks.length} règles vérifiées.`);
-    bad.forEach((c) => L.push(`- [${c.status}] ${c.label} : ${c.count} ligne(s)${c.partial ? " (analyse partielle, minorant)" : ""} — ${c.impact}${c.samples?.length ? " · ex. " + c.samples.slice(0, 5).join(", ") : ""}`));
+    if (!bad.length && !unknown.length && !residue.length) L.push(`- Aucune incohérence sur ${integrity.checks.length} règles vérifiées.`);
+    bad.forEach((c) => L.push(`- [${c.status}] ${c.label} : ${c.count} ligne(s)${c.partial ? " (analyse partielle, minorant)" : ""}${c.lastAt ? `, dernière il y a ${days(c.lastAt)} j` : ""} — ${c.impact}${c.samples?.length ? " · ex. " + c.samples.slice(0, 5).join(", ") : ""}`));
+    residue.forEach((c) => L.push(`- [résidu] ${c.label} : ${c.count} ligne(s), dernière il y a ${c.lastAt ? days(c.lastAt) : "?"} j, AUCUNE récidive récente → défaut probablement déjà corrigé, ne proposer qu'un nettoyage de données (vérifier l'historique git avant tout correctif de code).`));
     unknown.forEach((c) => L.push(`- [non vérifiée] ${c.label} : ${c.error}`));
     L.push("");
   } else if (integrity && integrity.error) {

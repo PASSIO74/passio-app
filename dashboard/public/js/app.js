@@ -1158,19 +1158,25 @@ VIEWS.integrity = async () => {
     const cls = T.critical ? "bad" : T.anomalies ? "warn" : "ok";
     $("#igSummary").innerHTML = `<div class="state-banner ${cls}">
       <div class="state-ico">${icon("database")}</div>
-      <div class="state-txt"><h2>${T.anomalies ? `${T.anomalies} règle(s) en anomalie · ${num(T.affectedRows)} ligne(s) concernée(s)` : `Base cohérente sur ${T.rules} règles`}</h2>
-        <p>${T.critical || 0} critique(s) · ${T.failed ? `<b class="sev-warn">${T.failed} règle(s) NON vérifiée(s)</b> · ` : ""}${num(T.seedRefs || 0)} référence(s) au contenu de démo (normal, exclu des anomalies)</p></div></div>`;
+      <div class="state-txt"><h2>${T.anomalies ? `${T.anomalies} règle(s) en anomalie · ${num(T.affectedRows)} ligne(s) concernée(s)` : `Aucune anomalie active sur ${T.rules} règles`}</h2>
+        <p>${T.critical || 0} critique(s)${T.residues ? ` · ${T.residues} résidu(s) sans récidive (${num(T.residueRows)} ligne(s))` : ""} · ${T.failed ? `<b class="sev-warn">${T.failed} règle(s) NON vérifiée(s)</b> · ` : ""}${num(T.seedRefs || 0)} référence(s) au contenu de démo (normal, exclu des anomalies)</p></div></div>`;
     $("#igMeta").textContent = "Vérifié " + hhmmss(d.updatedAt);
 
     $("#igList").innerHTML = `<div class="ig-grid">${INTEG_LAST.map((c, i) => {
       const badge = c.status === "ok" ? '<span class="pill ok">conforme</span>'
         : c.status === "unknown" ? '<span class="pill warn">non vérifiée</span>'
+        : c.status === "residue" ? '<span class="pill info">résidu (sans récidive)</span>'
         : c.status === "error" ? '<span class="pill error">critique</span>' : '<span class="pill warn">à surveiller</span>';
+      // Datation : une anomalie ancienne sans récidive n'a pas la même urgence.
+      const dated = c.lastAt
+        ? `<div class="ig-age">Dernière occurrence ${ago(c.lastAt)} · ${c.recentCount || 0} sur 7 j</div>` : "";
       return `<div class="ig-card ${c.status}">
         <div class="ig-head">${badge} <b>${esc(c.label)}</b></div>
         ${c.error ? `<div class="ig-err">${icon("alertTriangle")} ${esc(c.error)}</div>` : ""}
         ${c.status === "ok" ? `<div class="ig-ok">${icon("checkCircle")} Aucune anomalie${c.seedRefs ? ` (${num(c.seedRefs)} réf. de démo ignorées)` : ""}</div>`
           : c.count != null ? `<div class="ig-count">${num(c.count)} <span>ligne(s) réellement concernée(s)</span>${c.seedRefs ? `<span class="ig-seed"> · ${num(c.seedRefs)} réf. de démo (normal)</span>` : ""}</div>` : ""}
+        ${dated}
+        ${c.status === "residue" ? `<div class="ig-residue">${icon("checkCircle")} Aucune récidive depuis 7 j : défaut probablement déjà corrigé, seul le nettoyage des données reste utile.</div>` : ""}
         <div class="ig-impact">${esc(c.impact)}</div>
         ${c.partial ? `<div class="ig-partial">${icon("alertTriangle")} Analyse partielle (borne de lecture atteinte) : ce chiffre est un minorant.</div>` : ""}
         ${c.samples?.length ? `<div class="ig-samples">Exemples : ${c.samples.slice(0, 6).map((s) => `<code>${esc(s)}</code>`).join(" ")}</div>` : ""}

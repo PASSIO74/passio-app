@@ -66,6 +66,38 @@ test("le prompt de réparation exige une SIMULATION avant toute écriture", () =
   assert.match(p, /jamais supprimer une donnée récupérable/i);
 });
 
+test("un RÉSIDU (sans récidive) oriente vers le nettoyage, pas vers un correctif de code", () => {
+  const p = buildReconcilePrompt({
+    label: "Bobines sans média", status: "residue", count: 7,
+    impact: "Une bobine sans URL Storage est invisible.",
+    lastAt: Date.now() - 38 * 86400_000, recentCount: 0, samples: [],
+  });
+  assert.match(p, /il y a 38 jour\(s\)/);
+  assert.match(p, /RÉSIDU/);
+  assert.match(p, /déjà corrigé/i);
+  // Doit exiger de vérifier l'historique git AVANT de proposer un correctif.
+  assert.match(p, /git log -S/);
+});
+
+test("une anomalie ACTIVE ne porte pas la mention « résidu »", () => {
+  const p = buildReconcilePrompt({
+    label: "Messages sans conversation", status: "error", count: 3,
+    impact: "Le message n'atteindra jamais son destinataire.",
+    lastAt: Date.now() - 3600_000, recentCount: 3, samples: [],
+  });
+  assert.match(p, /il y a 0 jour\(s\)/);
+  assert.ok(!/RÉSIDU/.test(p), "ne doit pas être présenté comme un résidu");
+});
+
+test("une anomalie non datable ne présume rien (ni résidu, ni récidive)", () => {
+  const p = buildReconcilePrompt({
+    label: "J'aime sans publication", status: "warn", count: 2,
+    impact: "Compteurs faussés par un j'aime orphelin.", lastAt: null, samples: [],
+  });
+  assert.ok(!/Dernière occurrence/.test(p));
+  assert.ok(!/RÉSIDU/.test(p));
+});
+
 test("une analyse partielle est signalée comme minorant dans le prompt", () => {
   const p = buildReconcilePrompt({
     label: "X", count: 5000, impact: "…………………………………………", samples: [], partial: true,
