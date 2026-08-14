@@ -2300,8 +2300,15 @@ function _primeProfileCache(convs) {
 async function _fetchProfile(userId) {
   if (_profileCache.has(userId)) return _profileCache.get(userId);
   try {
-    const { data } = await supa.from("profiles").select("username,emoji,color,avatar_url").eq("id", userId).maybeSingle();
-    const prof = data ? { username: data.username || "Passionné", emoji: data.emoji || "✨", color: data.color || "#8b5cf6", photoUrl: data.avatar_url || null } : { username: "Passionné", emoji: "✨", color: "#8b5cf6", photoUrl: null };
+    const { data, error } = await supa.from("profiles").select("username,emoji,color,avatar_url").eq("id", userId).maybeSingle();
+    const repli = { username: "Passionné", emoji: "✨", color: "#8b5cf6", photoUrl: null };
+    // ⚠️ `error` n'était pas lu : une coupure réseau ou un refus RLS momentané
+    // donnait `data` vide, et le repli anonyme était MIS EN CACHE. Toute la session
+    // affichait alors « Passionné ✨ » sans photo pour cette personne, jusqu'au
+    // rechargement — un incident d'une seconde empoisonnait l'affichage durablement.
+    // On ne met en cache que ce qu'on a réellement obtenu.
+    if (error) { console.warn("profil " + userId + " :", error.message); return repli; }
+    const prof = data ? { username: data.username || "Passionné", emoji: data.emoji || "✨", color: data.color || "#8b5cf6", photoUrl: data.avatar_url || null } : repli;
     _profileCache.set(userId, prof);
     // Propage la photo partout (fil, profils, autres conversations).
     try { if (data && typeof cacheRemoteProfile === "function") cacheRemoteProfile({ id: userId, username: data.username, emoji: data.emoji, color: data.color, avatar_url: data.avatar_url }); } catch(e) {}

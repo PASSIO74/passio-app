@@ -90,7 +90,19 @@ const DOMAINES = {
   "auth-identite": {
     libelle: "Authentification, identité et isolation entre comptes",
     fichiers: [],
-    ancres: [/^supaSignIn/, /^supaSignUp/, /^supaSignOut/, /^logout/, /^switchProfile/, /^supaUpsertProfile$/],
+    // Ancres relevées sur le code (les noms maison ne suivent pas la convention
+    // supaSignIn/signOut qu'on pourrait deviner).
+    ancres: [
+      /^doLogout$/, /^openLogoutConfirm$/, /^onbDoAuth$/, /^onbGoogleAuth$/, /^onbSkipAuth$/,
+      /^exitLandingAsAuth$/, /^currentProfile$/, /^cacheRemoteProfile$/, /^supaUpsertProfile$/,
+      /^_primeProfileCache$/, /^_fetchProfile$/, /^hydrateConvsFromIDB$/,
+      // ⚠️ Sans purgeAccountScopedData, le relecteur voit `doLogout` DÉLÉGUER toute
+      // l'isolation à une fonction absente du dossier : il ne peut alors rien
+      // conclure sur la fuite entre comptes, qui est justement la question centrale
+      // du domaine. Un dossier doit contenir la fonction qui fait le travail, pas
+      // seulement celle qui l'appelle.
+      /^purgeAccountScopedData$/, /^idbConvClear$/, /^discardPendingStateSave$/,
+    ],
     focus:
       "L'identité est le user_id, jamais l'appareil. Cherche ce qui SURVIT à une déconnexion et pourrait fuiter vers " +
       "le compte suivant sur le même appareil (localStorage, IndexedDB, caches en mémoire), et tout endroit où un " +

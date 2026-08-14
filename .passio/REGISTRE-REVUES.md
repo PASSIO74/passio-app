@@ -16,7 +16,7 @@ rien — il peut se tromper sur une prémisse, et ça arrive.
 |---|---------|------|------------------------|
 | 1 | Écritures Supabase — échecs silencieux | **fait** (2026-08-14) | 5 vérifiées / 14 remontées — 9 restent à vérifier |
 | 2 | Affichage de contenu d'autrui — XSS stockés | **fait** (2026-08-14), 2e passe à prévoir | 6 / 6 |
-| 3 | Authentification, identité, isolation entre comptes | à faire | — |
+| 3 | Authentification, identité, isolation entre comptes | **fait** (2026-08-14), à refaire avec le dossier complété | 2 / 2 démontrés |
 | 4 | État local, persistance, sync cross-appareil | **fait** (2026-08-14) | 6 / 7 |
 | 5 | Messagerie et livraison temps réel | à faire | — |
 | 6 | Médias — upload, Storage, downscale | à faire | — |
@@ -28,6 +28,35 @@ rien — il peut se tromper sur une prémisse, et ça arrive.
 `index.html` (111 Ko), le schéma SQL et les policies RLS de production (nécessitent
 un export dédié depuis la prod, pas une extraction de fonctions), et le dashboard
 `dashboard/` (application distincte, avec sa propre suite de 77 tests).
+
+---
+
+## Manche 4 — Identité et isolation entre comptes (2026-08-14)
+
+Relecteur : ChatGPT « Moyen », 28 s, sur 12 fonctions.
+
+**Leçon de méthode, à retenir.** Le relecteur a refusé de conclure sur la question
+centrale du domaine — la fuite entre comptes — parce que `doLogout` **délègue**
+toute l'isolation à `purgeAccountScopedData()`, qui **n'était pas dans le dossier**.
+Il écrit noir sur blanc qu'il ne peut affirmer ni que `passio_mvp_state_v1` est
+purgé, ni qu'IndexedDB est vidé, et refuse d'inventer. C'est le bon comportement,
+et c'est ma faute : **un dossier doit contenir la fonction qui fait le travail, pas
+seulement celle qui l'appelle.** Ancres corrigées (`purgeAccountScopedData`,
+`idbConvClear`, `discardPendingStateSave`) → ce domaine mérite une seconde manche.
+
+| # | Emplacement | Défaut | Verdict |
+|---|-------------|--------|---------|
+| 1 | `onbSkipAuth` (app-02:1831) | `onbNext()` est appelé AVANT `await signInAnonymously()`, et `MY_UID` n'est affecté qu'après. Pendant la fenêtre, `MY_UID` porte encore l'identifiant du **compte précédent de l'appareil** (restauré depuis `passio_uid` au boot) | **confirmé** — l'avance de l'UI est un compromis assumé et documenté (verrou auth de supabase-js), mais l'identité résiduelle ne l'est pas. `MY_UID` et `passio_uid` sont désormais effacés AVANT d'avancer : les fonctions d'écriture testent `!MY_UID` et s'abstiennent |
+| 2 | `_fetchProfile` (app-04:2300) | `error` n'était pas lu : une coupure réseau ou un refus RLS momentané donnait `data` vide, et le repli anonyme était **mis en cache**. Toute la session affichait « Passionné ✨ » sans photo pour cette personne, jusqu'au rechargement | **confirmé** — on ne met plus en cache ce qu'on n'a pas obtenu |
+
+### Trouvé en propre — une fuite que j'avais moi-même introduite
+
+En relisant `purgeAccountScopedData` (que le relecteur ne pouvait pas voir), j'ai
+constaté que la clé `passio_pending_user_state_<uid>` **introduite ce matin même**
+n'y figurait pas. Le blob d'état COMPLET du compte A (profils, notifications,
+likes…) restait donc sur l'appareil après sa déconnexion, lisible pendant que B
+l'utilisait. La purge balaie désormais toutes les clés portant ce préfixe — vérifié
+dans le navigateur : deux files purgées, une clé sans rapport intacte.
 
 ---
 

@@ -1383,6 +1383,20 @@ var ACCOUNT_SCOPED_KEYS = [
 // best-effort : ne throw jamais. Renvoie une promesse résolue quand IndexedDB est vidé.
 function purgeAccountScopedData() {
   try { ACCOUNT_SCOPED_KEYS.forEach(function (k) { localStorage.removeItem(k); }); } catch (e) {}
+  // ⚠️ Les files de sauvegarde en attente sont suffixées par compte : elles ne
+  // peuvent donc pas figurer en dur dans la liste ci-dessus. Chacune contient le
+  // blob d'état COMPLET (profils, notifications, likes…) — le laisser sur
+  // l'appareil après une déconnexion, c'est le laisser lisible par le compte
+  // suivant. doLogout pousse déjà l'état avant de partir : il n'y a rien à
+  // sauver ici, seulement quelque chose à ne pas abandonner derrière soi.
+  try {
+    const aPurger = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.indexOf(PENDING_USER_STATE_PREFIX) === 0) aPurger.push(k);
+    }
+    aPurger.forEach(function (k) { localStorage.removeItem(k); });
+  } catch (e) {}
   // Les conversations ont un second store DURABLE (IndexedDB, idb-store.js) que
   // localStorage.removeItem ne touche pas : sans ça, hydrateConvsFromIDB() au boot
   // ré-injecte les messages du compte précédent chez le suivant.
@@ -1822,6 +1836,15 @@ async function onbSkipAuth() {
   // bloquée par le verrou auth interne de supabase-js (constaté 2026-06-12, selon
   // le timing) — l'onboarding restait figé sur l'écran auth. L'UI avance tout de
   // suite ; MY_UID est posé par le retour ci-dessous OU par onAuthStateChange (boot).
+  //
+  // ⚠️ Mais pendant cette fenêtre, MY_UID peut encore porter l'identifiant du compte
+  // PRÉCÉDENT de cet appareil (restauré depuis passio_uid au boot). Une écriture
+  // partie là partirait sous une identité qui n'est plus la nôtre. On l'efface donc
+  // AVANT d'avancer : les fonctions d'écriture testent toutes `!MY_UID` et
+  // s'abstiennent — ne rien écrire vaut mieux qu'écrire sous le nom d'un autre.
+  MY_UID = null;
+  window.MY_UID = null;
+  try { localStorage.removeItem("passio_uid"); } catch (e) {}
   onbNext();
   try {
     if (supa && supa.auth && typeof supa.auth.signInAnonymously === "function") {
