@@ -350,6 +350,33 @@ class TraceTracker {
     };
   }
 
+  /**
+   * Verdicts NOUVELLEMENT figés et problématiques, une seule fois chacun.
+   *
+   * Un verdict n'existe qu'une fois le flux settled (l'action a eu le temps
+   * d'aboutir) : on ne peut donc pas alerter depuis l'ingestion événement par
+   * événement, d'où ce drain appelé périodiquement. Chaque flux n'est rendu
+   * qu'UNE fois (`reported`) — sinon la même action serait re-signalée à chaque
+   * passage. Les verdicts sains ou non concluants sont consommés silencieusement.
+   */
+  drainNewVerdicts() {
+    const now = Date.now();
+    const names = (store && typeof store.clientNames === "function") ? store.clientNames() : {};
+    const out = [];
+    for (const cid of this.order) {
+      const flow = this.flows.get(cid);
+      if (!flow || flow.reported) continue;
+      const { final } = this._chain(flow, now);
+      if (final === "running") continue;      // pas encore figé : on repassera
+      flow.reported = true;                   // consommé, quel que soit le verdict
+      // « unconfirmed » n'est PAS une alerte : le plus souvent l'onglet s'est
+      // fermé avant la confirmation — accuser à tort serait du bruit.
+      if (final === "success" || final === "unconfirmed") continue;
+      out.push(this._dto(flow, now, names));
+    }
+    return out;
+  }
+
   /** Une trace complète par correlation_id (vue détaillée / prompt Claude). */
   trace(cid) {
     const flow = this.flows.get(cid);
@@ -408,4 +435,5 @@ export const traces = new TraceTracker();
 export function onEvent(ev) { try { return traces.onEvent(ev); } catch (e) { return false; } }
 export function snapshot(limit) { return traces.snapshot(limit); }
 export function trace(cid) { return traces.trace(cid); }
+export function drainNewVerdicts() { try { return traces.drainNewVerdicts(); } catch (e) { return []; } }
 export { CONTRACTS, contractFor };

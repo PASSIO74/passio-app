@@ -6,6 +6,7 @@
 import { store } from "./store.js";
 import { broadcast } from "./sse.js";
 import { JsonDb } from "./jsondb.js";
+import { drainNewVerdicts } from "./traces.js";
 
 const db = new JsonDb("alerts", { items: [] });
 const cooldown = new Map();           // évite le spam d'une même alerte
@@ -91,6 +92,54 @@ export function onEvent(ev) {
     }
   }
 }
+
+// ─── Chaînes d'actions cassées (traçage bout-en-bout) ──────────────────────
+// Le verdict d'une action n'est connu qu'une fois le flux FIGÉ : il ne peut pas
+// être évalué depuis onEvent(), d'où ce balayage périodique. Sans lui, un clic
+// mort n'existe que si quelqu'un ouvre l'onglet — or c'est précisément le genre
+// de panne qu'il faut apprendre SANS aller la chercher.
+const VERDICT_ALERT = {
+  // Un bouton qui ne déclenche rien est une panne d'usage, pas un détail.
+  dead_click: { level: "high", title: "Clic sans effet" },
+  failed: { level: "high", title: "Action en échec" },
+  // Enregistré mais avec une étape défaillante : donnée à moitié partie.
+  partial: { level: "warn", title: "Action partiellement aboutie" },
+  slow: { level: "warn", title: "Action anormalement lente" },
+};
+
+export function sweepTraces() {
+  let verdicts;
+  try { verdicts = drainNewVerdicts(); } catch (e) { return; }
+  for (const v of verdicts) {
+    const spec = VERDICT_ALERT[v.final];
+    if (!spec) continue;
+    const failStep = (v.steps || []).find((s) => s.status === "fail")
+      || (v.steps || []).find((s) => s.status === "missing");
+    const stepLabel = failStep ? failStep.label : v.final;
+    emit({
+      level: spec.level,
+      // Clé = action + étape : 50 échecs du même envoi de message = 1 alerte,
+      // mais un échec d'étape DIFFÉRENTE reste distingué.
+      key: `trace:${v.final}:${v.action}:${failStep ? failStep.key : "-"}`,
+      title: `${spec.title} — ${v.actionLabel}`,
+      message: `Étape « ${stepLabel} »${failStep?.http_status ? ` (HTTP ${failStep.http_status})` : ""}`
+        + `${v.screen ? ` · écran ${v.screen}` : ""}${v.durationMs != null ? ` · ${v.durationMs} ms` : ""}`,
+      meta: { cid: v.cid, action: v.action, step: failStep?.key || null, screen: v.screen, user: v.label, view: "traces" },
+    });
+  }
+  // Un doublon est un signal distinct : l'action a pu ABOUTIR deux fois.
+  for (const v of verdicts) {
+    if (!v.duplicate) continue;
+    emit({ level: "warn", key: `tracedup:${v.action}`,
+      title: `Doublon — ${v.actionLabel}`,
+      message: "Une même intention a produit plusieurs exécutions (double clic, relance ou bouton non désactivé).",
+      meta: { cid: v.cid, action: v.action, view: "traces" } });
+  }
+}
+
+// Balayage périodique (5 s) : assez réactif pour une beta, assez espacé pour
+// ne rien coûter. `unref()` : ne maintient jamais le process en vie.
+setInterval(sweepTraces, 5000).unref();
 
 // Recalcule l'empreinte comme store (dupliquée volontairement, fonction pure).
 import crypto from "node:crypto";

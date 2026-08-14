@@ -1920,7 +1920,10 @@ function notifFromEvent(ev) {
 function notifFromAlert(a) {
   const m = a.meta || {};
   let view = "alerts", ic = "alertTriangle";
-  if (m.bug) { view = "bugs"; ic = "bugs"; }
+  // Une alerte qui DÉCLARE sa destination l'emporte : sinon une alerte de
+  // chaîne d'action (qui porte aussi un utilisateur) atterrirait sur « Comptes ».
+  if (m.view) { view = m.view; ic = m.view === "traces" ? "route" : ic; }
+  else if (m.bug) { view = "bugs"; ic = "bugs"; }
   else if (m.endpoint) { view = "performance"; ic = "performance"; }
   else if (m.link) { view = "links"; ic = "share"; }
   else if (m.device || m.user) { view = "users"; ic = "wifi"; }

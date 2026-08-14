@@ -167,6 +167,54 @@ test("api non taguée (sans correlation_id) n'est rattachée à aucun flow", () 
   assert.equal(r, false);
 });
 
+// ─── Drain des verdicts (source des alertes automatiques) ────────────────────
+
+test("drain : un verdict problématique figé est rendu UNE seule fois", () => {
+  reset();
+  const old = Date.now() - 20_000;
+  traces.onEvent(ev("flow", "start", { correlation_id: "dv1", ts: old, meta: { flow_action: "like_post", postId: "pz" } }));
+
+  const first = traces.drainNewVerdicts();
+  assert.equal(first.length, 1);
+  assert.equal(first[0].final, "dead_click");
+  // Deuxième passage : déjà consommé, sinon la même panne serait re-signalée en boucle.
+  assert.equal(traces.drainNewVerdicts().length, 0);
+});
+
+test("drain : une action encore EN COURS n'est pas rendue (on repassera)", () => {
+  reset();
+  traces.onEvent(ev("flow", "start", { correlation_id: "dv2", ts: Date.now(), meta: { flow_action: "like_post", postId: "py" } }));
+  assert.equal(traces.drainNewVerdicts().length, 0);
+  // …et elle n'est pas marquée consommée : une fois figée, elle remonte.
+  const f = traces.flows.get("dv2");
+  assert.ok(!f.reported, "un flux en cours ne doit pas être marqué consommé");
+});
+
+test("drain : succès et « non confirmé » sont consommés SANS alerte", () => {
+  reset();
+  const t0 = Date.now();
+  traces.onEvent(ev("flow", "start", { correlation_id: "dv3", ts: t0, meta: { flow_action: "like_post", postId: "px" } }));
+  traces.onEvent(ev("api", "POST /post_likes", { correlation_id: "dv3", ts: t0 + 20, endpoint: "x/post_likes", http_status: 201 }));
+  traces.onEvent(ev("flow", "end", { correlation_id: "dv3", ts: t0 + 30 }));
+  assert.equal(traces.drainNewVerdicts().length, 0, "un succès ne doit pas alerter");
+  assert.ok(traces.flows.get("dv3").reported, "mais il doit être consommé");
+});
+
+test("drain : l'étape en échec est identifiable pour le message d'alerte", () => {
+  reset();
+  const old = Date.now() - 20_000;
+  traces.onEvent(ev("flow", "start", { correlation_id: "dv4", ts: old, meta: { flow_action: "send_message", convId: "cz" } }));
+  traces.onEvent(ev("api", "POST /conv_messages", { correlation_id: "dv4", ts: old + 40, endpoint: "x/conv_messages", http_status: 403, status: "error" }));
+  traces.onEvent(ev("flow", "step", { correlation_id: "dv4", ts: old + 50, status: "error", meta: { step: "saved" } }));
+
+  const [v] = traces.drainNewVerdicts();
+  assert.equal(v.final, "failed");
+  const fail = v.steps.find((s) => s.status === "fail");
+  assert.ok(fail, "au moins une étape en échec");
+  assert.equal(fail.key, "request");
+  assert.equal(fail.http_status, 403);
+});
+
 // ─── Contrats « write = confirmation » (like, commentaire, RSVP, réaction) ────
 
 test("like_post : handler + requête OK (la requête EST la confirmation) = success", () => {
