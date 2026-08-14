@@ -200,6 +200,37 @@ function _syncableState() {
   return s;
 }
 
+// ---- VERDICT D'UNE ÉCRITURE SUPABASE ----
+// Deux pièges se cumulent et se ressemblent à l'œil nu :
+//  ① le SDK ne LÈVE PAS sur un refus RLS — il renvoie { error }. Un `await` dont
+//    personne ne lit le retour rend l'échec invisible ;
+//  ② un UPDATE/DELETE que la policy filtre renvoie { data: [], error: null }.
+//    « Aucune erreur » n'est donc PAS « c'est fait » : la ligne peut exister et
+//    être restée intacte. Il faut demander `.select()` et COMPTER les lignes.
+// `expectRows` : mettre à true quand zéro ligne touchée signifie l'échec (on
+// modifie une ligne censée exister). `dupOk` : un 23505 signifie que l'état voulu
+// est déjà atteint — succès, sauf si l'intention portait sur le CONTENU de la ligne.
+function _writeVerdict(res, opts) {
+  opts = opts || {};
+  const label = opts.label || "écriture";
+  const err = res && res.error;
+  if (err) {
+    if (opts.dupOk && String(err.code) === "23505") return { ok: true, error: null, rows: 0 };
+    const msg = err.message || String(err);
+    console.warn(label + " : " + msg);
+    try { if (typeof diagLog === "function") diagLog(label + " KO: " + msg); } catch (_e) {}
+    return { ok: false, error: err, rows: 0 };
+  }
+  const rows = (res && Array.isArray(res.data)) ? res.data.length : null;
+  if (opts.expectRows && rows === 0) {
+    const m = label + " : 0 ligne touchée (policy RLS, ou ligne déjà absente)";
+    console.warn(m);
+    try { if (typeof diagLog === "function") diagLog(m); } catch (_e) {}
+    return { ok: false, error: { message: "0 ligne touchée" }, rows: 0 };
+  }
+  return { ok: true, error: null, rows: rows };
+}
+
 let _stateSyncTimer = null;
 // Drapeau « l'état a changé depuis la dernière sauvegarde aboutie ». saveState() est
 // l'entonnoir unique des mutations (il appelle _scheduleStateSync), donc c'est ici

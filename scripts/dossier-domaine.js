@@ -39,7 +39,21 @@ const DOMAINES = {
   "securite-xss": {
     libelle: "Affichage de contenu d'autrui — échappement et XSS stockés",
     fichiers: [],
-    ancres: [/^escapeHtml$/, /^escapeJsArg$/, /^safeUrlAttr$/, /^renderComments?/, /^renderPost/, /^commentHtml/, /^_renderInteractions/],
+    // Ancres relevées sur le code, pas devinées : les trois helpers eux-mêmes, puis
+    // les fonctions de rendu qui manipulent le PLUS de contenu d'autrui (mesuré par
+    // le nombre d'appels d'échappement qu'elles contiennent). 150 fonctions
+    // échappent du contenu dans ce dépôt : les inclure toutes noierait le relecteur.
+    // Resserré sur le chemin le PLUS exposé : les tables dont le payload est
+    // librement insérable par n'importe quel compte authentifié
+    // (comment_interactions, event_reactions, messages média). Les gros rendus
+    // d'écran — openEventDetails, openVlogViewer, renderExplorer… — pèsent à eux
+    // seuls près de 400 Ko : ils feront une seconde manche, sinon le relecteur ne
+    // lit plus, il survole.
+    ancres: [
+      /^escapeHtml$/, /^escapeJsArg$/, /^safeUrlAttr$/,
+      /^_renderCommentsList$/, /^loadReelComments$/, /^_fillEventReactionDetail$/,
+      /^_renderGroupMembersModal$/, /^searchUsers$/, /^_splCardHtml$/,
+    ],
     focus:
       "Tout payload de `comment_interactions`, `event_reactions` ou de message média est librement insérable par n'importe quel compte authentifié. " +
       "Cherche un chemin d'affichage où un de ces payloads atteint le DOM sans passer par le bon helper. " +

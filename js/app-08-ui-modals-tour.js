@@ -2325,7 +2325,14 @@ async function supaUpsertProfile() {
       result = await supa.from("profiles").upsert(profileData, { onConflict: "id" });
     }
 
-  } catch(e) { /* erreur réseau non bloquante */ }
+    // ⚠️ CONFIDENTIALITÉ. La boucle ci-dessus ne rattrape QUE le cas « colonne
+    // absente ». Un refus RLS, une contrainte ou une panne PostgREST arrivaient
+    // ici sans log, sans retour et sans exception : `is_private` voyage dans ce
+    // payload, donc un compte pouvait rester PUBLIC en base pendant que
+    // l'utilisateur voyait le cadenas à l'écran. On rend le verdict.
+    const v = _writeVerdict(result, { label: "profil (upsert)" });
+    return v.ok;
+  } catch(e) { console.warn("profil (upsert) :", e && e.message); return false; }
 }
 
 // ---- DIAGNOSTIC ----
@@ -2431,7 +2438,17 @@ async function supaPublishPostWithRetry(post, maxRetries = 2) {
       // (jamais de base64 en DB) et construire le blob jsonb `vlog`.
       let vlogData = null;
       if (post.type === "vlog") {
-        try { vlogData = await _buildVlogPayload(post); } catch(e) { vlogData = null; }
+        // ⚠️ Ne PAS retomber sur `null` en silence. Le champ `vlog` était alors omis
+        // du payload et le post s'insérait quand même : le carnet arrivait en base
+        // dépouillé de ses étapes, de sa couverture et de ses métadonnées, avec un
+        // succès officiel à la clé. Une exception ici (ReferenceError, upload qui
+        // remonte) doit faire ÉCHOUER la publication — le brouillon reste, on retente.
+        try {
+          vlogData = await _buildVlogPayload(post);
+        } catch(e) {
+          console.warn("carnet : construction du contenu impossible —", e && e.message);
+          return _pubDone(false);
+        }
       }
 
       // STEP 2: Créer le post (timeout plus long pour un carnet — plus de médias)
@@ -2512,9 +2529,15 @@ async function supaAddCarnetCollaborator(postId, userId) {
   } catch (e) { console.warn("carnet collab:", e); return false; }
 }
 
+// ⚠️ RÉVOCATION DE DROITS : le résultat doit être lu. Cette ligne participe
+// directement à `can_edit_post` — la croire supprimée alors qu'elle existe encore
+// laisse un collaborateur écarté de l'écran continuer à modifier le carnet.
 async function supaRemoveCarnetCollaborator(postId, userId) {
-  try { await supa.from("post_collaborators").delete().eq("post_id", postId).eq("user_id", userId); }
-  catch (e) { console.warn("carnet collab remove:", e); }
+  try {
+    const res = await supa.from("post_collaborators").delete()
+      .eq("post_id", postId).eq("user_id", userId).select("user_id");
+    return _writeVerdict(res, { label: "retrait de co-auteur du carnet" }).ok;
+  } catch (e) { console.warn("retrait de co-auteur du carnet :", e && e.message); return false; }
 }
 
 // Charge les co-auteurs des carnets visibles → { postId: [userId, …] }.
@@ -2546,12 +2569,18 @@ async function supaUpdateVlogPost(post) {
     // ⚠️ PAS de .eq("author_id", MY_UID) ici : un CO-AUTEUR doit pouvoir
     // enregistrer. C'est la policy UPDATE (can_edit_post) qui autorise ou non,
     // et le trigger posts_freeze_author qui protège la propriété.
-    const { error } = await supa.from("posts").update(patch).eq("id", post.id);
+    // ⚠️ `.select()` + comptage : la policy can_edit_post peut filtrer l'UPDATE et
+    // renvoyer { data: [], error: null }. Un co-auteur dont les droits viennent
+    // d'être révoqués, l'éditeur resté ouvert, recevait alors « enregistré » alors
+    // que le carnet serveur gardait son ancienne version.
+    const res = await supa.from("posts").update(patch).eq("id", post.id).select("id");
+    const error = res.error;
+    if (!error) return _writeVerdict(res, { expectRows: true, label: "enregistrement du carnet" }).ok;
     if (error) {
       // Colonne `vlog` absente (migration non appliquée) → au moins le texte.
       if (/vlog/.test(error.message || "")) {
-        const r2 = await supa.from("posts").update({ content: post.text || "" }).eq("id", post.id);
-        return !r2.error;
+        const r2 = await supa.from("posts").update({ content: post.text || "" }).eq("id", post.id).select("id");
+        return _writeVerdict(r2, { expectRows: true, label: "enregistrement du carnet (texte seul)" }).ok;
       }
       console.warn("supaUpdateVlogPost:", error.message);
       return false;
@@ -3035,6 +3064,14 @@ async function supaPublishStory(story) {
       } else if (story.media.indexOf("data:") !== 0) {
         mediaUrl = story.media;
       }
+      // ⚠️ L'upload a échoué (mediaUrl est resté null alors que la story PORTE un
+      // média) : insérer quand même créait une story vide côté serveur, correcte
+      // chez son auteur et muette pour tout le monde. On échoue franchement.
+      if (!mediaUrl) {
+        console.warn("story : média non uploadé, publication abandonnée");
+        try { window.tel && tel.settle(_cid, "saved", false, { message: "média non uploadé" }); } catch (e) {}
+        return false;
+      }
     }
     const res = await supa.from("stories").insert({
       id: story.id || uid(), author_id: MY_UID,
@@ -3048,9 +3085,10 @@ async function supaPublishStory(story) {
     });
     // Le SDK ne lève pas sur refus RLS : sans lire res.error, une story rejetée
     // restait « publiée » côté auteur et invisible pour tout le monde.
-    if (res && res.error) console.warn("Story error:", res.error.message);
-    try { window.tel && tel.settle(_cid, "saved", !!(!res || !res.error), res && res.error); } catch (e) {}
-  } catch(e) { console.warn("Story error:", e); try { window.tel && tel.settle(_cid, "saved", false, e); } catch (_) {} }
+    const ok = _writeVerdict(res, { label: "publication de story" }).ok;
+    try { window.tel && tel.settle(_cid, "saved", ok, res && res.error); } catch (e) {}
+    return ok;
+  } catch(e) { console.warn("publication de story :", e && e.message); try { window.tel && tel.settle(_cid, "saved", false, e); } catch (_) {} return false; }
 }
 
 async function supaLoadStories() {
@@ -3127,14 +3165,19 @@ async function supaPublishEvent(event) {
   } catch(e) { console.warn("Event error:", e); return false; }
 }
 
-// Édition d'un événement par son organisateur (policy UPDATE « propre » en prod).
+// Édition d'un événement par son organisateur OU un co-organisateur.
+// ⚠️ PAS de `.eq("author_id", MY_UID)` : ce filtre écartait la ligne AVANT que la
+// policy RLS ne statue, donc un co-organisateur touchait 0 ligne — `error` restait
+// null, la fonction renvoyait `true`, et les notifications d'édition partaient pour
+// un changement que la base n'avait pas enregistré. C'est la RLS qui autorise
+// (auteur ou co-organisateur) ; ici on COMPTE les lignes réellement modifiées.
 async function supaUpdateEvent(event) {
   try {
     const row = Object.assign(_eventRow(event), { updated_at: new Date().toISOString() });
     for (let attempt = 0; attempt < 4; attempt++) {
-      const { error } = await supa.from("events").update(row).eq("id", event.id).eq("author_id", MY_UID);
-      if (!error) return true;
-      if (!_stripUnknownEventCol(row, error)) { console.warn("supaUpdateEvent:", error.message); return false; }
+      const res = await supa.from("events").update(row).eq("id", event.id).select("id");
+      if (!res.error) return _writeVerdict(res, { expectRows: true, label: "édition d'événement" }).ok;
+      if (!_stripUnknownEventCol(row, res.error)) { console.warn("supaUpdateEvent:", res.error.message); return false; }
     }
     return false;
   } catch(e) { return false; }
@@ -3143,22 +3186,30 @@ async function supaUpdateEvent(event) {
 // Annulation « douce » : l'événement reste visible (barré) pour les inscrits.
 async function supaCancelEvent(eventId, cancelled) {
   try {
-    const { error } = await supa.from("events")
+    const res = await supa.from("events")
       .update({ status: cancelled ? "cancelled" : "active", updated_at: new Date().toISOString() })
-      .eq("id", eventId).eq("author_id", MY_UID);
-    return !error;
+      .eq("id", eventId).select("id");
+    return _writeVerdict(res, { expectRows: true, label: "annulation d'événement" }).ok;
   } catch(e) { return false; }
 }
 
 async function supaDeleteEvent(eventId) {
   try {
     // Les tables filles n'ont pas toutes un ON DELETE CASCADE en prod : on nettoie.
-    try { await supa.from("event_attendees").delete().eq("event_id", eventId); } catch(e) {}
-    try { await supa.from("event_comments").delete().eq("event_id", eventId); } catch(e) {}
-    try { await supa.from("event_reactions").delete().eq("event_id", eventId); } catch(e) {}
-    const { error } = await supa.from("events").delete().eq("id", eventId).eq("author_id", MY_UID);
-    return !error;
-  } catch(e) { return false; }
+    // ⚠️ Pas d'atomicité possible côté client : si une suppression fille échoue, on
+    // s'arrête AVANT de toucher le parent, plutôt que de détruire une partie des
+    // lignes puis de buter sur une FK — ce qui laissait un événement à moitié
+    // démoli, ni supprimé ni intact. L'organisateur peut retenter.
+    for (const table of ["event_attendees", "event_comments", "event_reactions"]) {
+      const r = await supa.from(table).delete().eq("event_id", eventId);
+      if (r && r.error) {
+        console.warn("suppression d'événement : " + table + " a refusé — " + r.error.message);
+        return false;
+      }
+    }
+    const res = await supa.from("events").delete().eq("id", eventId).eq("author_id", MY_UID).select("id");
+    return _writeVerdict(res, { expectRows: true, label: "suppression d'événement" }).ok;
+  } catch(e) { console.warn("suppression d'événement :", e && e.message); return false; }
 }
 
 async function supaLoadEvents() {
@@ -3239,14 +3290,17 @@ async function supaLoadEvents() {
 async function supaPublishCdvLive(live) {
   try {
     await supaUpsertProfile();
-    const { error } = await supa.from("cdv_lives").insert({
+    const res = await supa.from("cdv_lives").insert({
       id: live.id, author_id: MY_UID,
       destination: live.destination || "", description: live.description || "",
       duration: live.duration || "", visibility: live.visibility || "public",
       status: live.status || "live",
     });
-    if (error) console.warn("CDV live publish:", error.message);
-  } catch(e) { console.warn("CDV live publish:", e); }
+    // Sans contrat de retour, un refus laissait le voyage vivre en local pendant
+    // que les étapes suivantes se faisaient rejeter par la clé étrangère : au
+    // rechargement, ou sur un autre appareil, tout avait disparu.
+    return _writeVerdict(res, { label: "publication de live CDV", dupOk: true }).ok;
+  } catch(e) { console.warn("publication de live CDV :", e && e.message); return false; }
 }
 
 // Modifier / supprimer un live (2026-07-22). La RLS de `cdv_lives` est
@@ -3325,9 +3379,14 @@ async function supaAddCdvLiveStep(liveId, step) {
       delete row.video;
       ({ error } = await supa.from("cdv_live_steps").insert(row));
     }
-    if (error) console.warn("CDV step:", error.message);
+    // Contrat de retour : sans lui, une étape rejetée (souvent parce que la ligne
+    // parente n'existe pas) restait affichée localement et disparaissait au
+    // rechargement. On ne touche pas non plus `updated_at` du parent si l'étape
+    // n'existe pas — ça ferait mentir la date de dernière activité du voyage.
+    if (error) { console.warn("étape de live CDV :", error.message); return false; }
     await supa.from("cdv_lives").update({ updated_at: new Date().toISOString() }).eq("id", liveId);
-  } catch(e) { console.warn("CDV step:", e); }
+    return true;
+  } catch(e) { console.warn("étape de live CDV :", e && e.message); return false; }
 }
 
 // Modifier une étape existante (auteur uniquement — la RLS de cdv_live_steps
@@ -3399,7 +3458,7 @@ async function supaReactCdvLive(liveId, emoji) {
   catch(e) { console.warn("CDV reaction:", e); }
 }
 // Retire une réaction emoji précise de MOI sur un live (une seule réaction/personne).
-// Le ❤️ (like) passe par supaToggleCdvLiveLike et n'est jamais retiré ici.
+// Le ❤️ (like) passe par supaSetCdvLiveLike et n'est jamais retiré ici.
 async function supaRemoveCdvLiveReaction(liveId, emoji) {
   if (!liveId || !emoji || typeof MY_UID === "undefined" || !MY_UID || !window._supaReal) return;
   try { await supa.from("cdv_live_reactions").delete().eq("live_id", liveId).eq("user_id", MY_UID).eq("emoji", emoji); }
@@ -3424,7 +3483,13 @@ async function supaAddStepComment(threadId, commentId, text, authorName, authorE
 async function supaSetStepReaction(threadId, emoji, authorName, authorEmoji) {
   if (!threadId || typeof MY_UID === "undefined" || !MY_UID || !window._supaReal) return false;
   try {
-    await supa.from("step_interactions").delete().eq("thread_id", threadId).eq("user_id", MY_UID).eq("kind", "reaction");
+    // ⚠️ L'erreur de ce DELETE n'était pas lue : s'il échouait et que l'INSERT
+    // réussissait, DEUX réactions de la même personne persistaient — invariant
+    // « une réaction par personne » rompu, et la corruption restait invisible car
+    // l'affichage déduplique en gardant la plus récente.
+    const del = await supa.from("step_interactions").delete()
+      .eq("thread_id", threadId).eq("user_id", MY_UID).eq("kind", "reaction").select("id");
+    if (!_writeVerdict(del, { label: "réaction d'étape (retrait de l'ancienne)" }).ok) return false;
     if (!emoji) return true; // toggle off = suppression seule
     const { error } = await supa.from("step_interactions").insert({
       id: "sr_" + uid(), thread_id: threadId, user_id: MY_UID,
@@ -3436,21 +3501,24 @@ async function supaSetStepReaction(threadId, emoji, authorName, authorEmoji) {
 }
 // ❤️ LIKE d'une étape (kind='like'). La colonne kind est libre (pas de contrainte
 // CHECK) → aucune migration. Un like par personne (toggle : delete si présent).
-async function supaToggleStepLike(threadId) {
+// ⚠️ `want` est l'INTENTION de l'utilisateur (true = aimer, false = retirer), pas
+// une déduction. L'ancienne version relisait la table puis décidait : dès que le
+// local et la base divergeaient (action faite sur un autre appareil, rollback
+// incomplet, état périmé), elle faisait l'INVERSE de ce que la personne demandait.
+// Même fiche que le like de post, corrigé le 2026-08-14.
+async function supaSetStepLike(threadId, want) {
   if (!threadId || typeof MY_UID === "undefined" || !MY_UID || !window._supaReal) return false;
   try {
-    const { data: existing } = await supa.from("step_interactions")
-      .select("id").eq("thread_id", threadId).eq("user_id", MY_UID).eq("kind", "like").maybeSingle();
-    if (existing) {
-      await supa.from("step_interactions").delete().eq("thread_id", threadId).eq("user_id", MY_UID).eq("kind", "like");
-      return false;
+    if (!want) {
+      const del = await supa.from("step_interactions").delete()
+        .eq("thread_id", threadId).eq("user_id", MY_UID).eq("kind", "like").select("id");
+      return _writeVerdict(del, { label: "like d'étape (retrait)" }).ok;
     }
-    const { error } = await supa.from("step_interactions").insert({
+    const ins = await supa.from("step_interactions").insert({
       id: "sl_" + uid(), thread_id: threadId, user_id: MY_UID, kind: "like", content: "❤️",
     });
-    if (error) { console.warn("step like:", error.message); return false; }
-    return true;
-  } catch(e) { console.warn("step like:", e); return false; }
+    return _writeVerdict(ins, { label: "like d'étape", dupOk: true }).ok;
+  } catch(e) { console.warn("like d'étape :", e && e.message); return false; }
 }
 // Charge les interactions d'un lot de threads → { threadId: { comments:[], reactions:[], likes:[] } }
 // aux formats des stores locaux (state.user.stepComments / stepReactions / stepLikes).
@@ -3484,31 +3552,36 @@ async function supaLoadStepInteractions(threadIds) {
 
 // ── Likes & réactions emoji des événements IRL (table event_reactions) ──
 // Un like = une réaction d'emoji '❤️' (toggle) ; tout autre emoji = réaction.
-async function supaToggleEventLike(eventId) {
+// `want` = l'INTENTION (cf. supaSetStepLike) — jamais une relecture de la base.
+async function supaSetEventLike(eventId, want) {
   if (!eventId || typeof MY_UID === "undefined" || !MY_UID) return false;
   try {
-    const { data: existing } = await supa.from("event_reactions")
-      .select("emoji").eq("event_id", eventId).eq("user_id", MY_UID).eq("emoji", "❤️").maybeSingle();
-    if (existing) {
-      await supa.from("event_reactions").delete().eq("event_id", eventId).eq("user_id", MY_UID).eq("emoji", "❤️");
-      return false;
+    if (!want) {
+      const del = await supa.from("event_reactions").delete()
+        .eq("event_id", eventId).eq("user_id", MY_UID).eq("emoji", "❤️").select("emoji");
+      return _writeVerdict(del, { label: "like d'événement (retrait)" }).ok;
     }
-    await supa.from("event_reactions").insert({ event_id: eventId, user_id: MY_UID, emoji: "❤️" });
-    return true;
-  } catch(e) { return false; }
+    const ins = await supa.from("event_reactions").insert({ event_id: eventId, user_id: MY_UID, emoji: "❤️" });
+    return _writeVerdict(ins, { label: "like d'événement", dupOk: true }).ok;
+  } catch(e) { console.warn("like d'événement :", e && e.message); return false; }
 }
 async function supaAddEventReaction(eventId, emoji) {
-  if (!eventId || !emoji || typeof MY_UID === "undefined" || !MY_UID) return;
-  try { await supa.from("event_reactions").insert({ event_id: eventId, user_id: MY_UID, emoji: emoji }); }
-  catch(e) { /* doublon PK (event_id,user_id,emoji) ignoré */ }
+  if (!eventId || !emoji || typeof MY_UID === "undefined" || !MY_UID) return false;
+  try {
+    const res = await supa.from("event_reactions").insert({ event_id: eventId, user_id: MY_UID, emoji: emoji });
+    return _writeVerdict(res, { label: "réaction d'événement", dupOk: true }).ok;
+  } catch(e) { console.warn("réaction d'événement :", e && e.message); return false; }
 }
 // Retire une réaction (emoji ou GIF) précise de MOI sur un événement — « une seule
 // réaction par personne » : on efface l'ancienne avant d'en poser une nouvelle. Le
-// ❤️ (like) est géré à part par supaToggleEventLike et n'est jamais passé ici.
+// ❤️ (like) est géré à part par supaSetEventLike et n'est jamais passé ici.
 async function supaRemoveEventReaction(eventId, emoji) {
-  if (!eventId || !emoji || typeof MY_UID === "undefined" || !MY_UID || !window._supaReal) return;
-  try { await supa.from("event_reactions").delete().eq("event_id", eventId).eq("user_id", MY_UID).eq("emoji", emoji); }
-  catch(e) {}
+  if (!eventId || !emoji || typeof MY_UID === "undefined" || !MY_UID || !window._supaReal) return false;
+  try {
+    const res = await supa.from("event_reactions").delete()
+      .eq("event_id", eventId).eq("user_id", MY_UID).eq("emoji", emoji).select("emoji");
+    return _writeVerdict(res, { label: "retrait de réaction d'événement" }).ok;
+  } catch(e) { console.warn("retrait de réaction d'événement :", e && e.message); return false; }
 }
 // Charge likes + my-liked + décompte des emojis pour un lot d'événements (1 req)
 // → { eventId: { likes, liked, emojiCounts:{emoji:n} } }.
@@ -3561,18 +3634,18 @@ async function supaLoadEventCommentsBatch(eventIds) {
 }
 
 // ── Like ❤️ d'un live CDV en TOGGLE strict (1 par compte), via cdv_live_reactions ──
-async function supaToggleCdvLiveLike(liveId) {
+// `want` = l'INTENTION (cf. supaSetStepLike) — jamais une relecture de la base.
+async function supaSetCdvLiveLike(liveId, want) {
   if (!liveId || typeof MY_UID === "undefined" || !MY_UID) return false;
   try {
-    const { data: existing } = await supa.from("cdv_live_reactions")
-      .select("id").eq("live_id", liveId).eq("user_id", MY_UID).eq("emoji", "❤️").limit(1).maybeSingle();
-    if (existing) {
-      await supa.from("cdv_live_reactions").delete().eq("live_id", liveId).eq("user_id", MY_UID).eq("emoji", "❤️");
-      return false;
+    if (!want) {
+      const del = await supa.from("cdv_live_reactions").delete()
+        .eq("live_id", liveId).eq("user_id", MY_UID).eq("emoji", "❤️").select("id");
+      return _writeVerdict(del, { label: "like de live CDV (retrait)" }).ok;
     }
-    await supa.from("cdv_live_reactions").insert({ id: "lr_" + uid(), live_id: liveId, user_id: MY_UID, emoji: "❤️" });
-    return true;
-  } catch(e) { return false; }
+    const ins = await supa.from("cdv_live_reactions").insert({ id: "lr_" + uid(), live_id: liveId, user_id: MY_UID, emoji: "❤️" });
+    return _writeVerdict(ins, { label: "like de live CDV", dupOk: true }).ok;
+  } catch(e) { console.warn("like de live CDV :", e && e.message); return false; }
 }
 // Likes ❤️ d'un lot de lives (comptés par UTILISATEUR distinct) → { liveId:{likes,liked} }.
 async function supaLoadCdvLiveLikes(liveIds) {
@@ -3615,15 +3688,23 @@ async function supaLoadEventComments(eventId) {
   } catch(e) { console.warn("load event comments:", e); return []; }
 }
 // ── Likes cross-compte sur les commentaires (table comment_likes) ──
+// ⚠️ Le doublon de clé n'arrive PAS dans le catch : le SDK ne lève pas, il renvoie
+// { error }. L'ancien `await` sans lecture du retour rendait donc invisible aussi
+// bien le doublon que le refus RLS — le like restait affiché puis disparaissait.
 async function supaLikeComment(commentId) {
-  if (!commentId || typeof MY_UID === "undefined" || !MY_UID) return;
-  try { await supa.from("comment_likes").insert({ comment_id: commentId, user_id: MY_UID }); }
-  catch(e) { /* doublon PK ignoré */ }
+  if (!commentId || typeof MY_UID === "undefined" || !MY_UID) return false;
+  try {
+    const res = await supa.from("comment_likes").insert({ comment_id: commentId, user_id: MY_UID });
+    return _writeVerdict(res, { label: "like de commentaire", dupOk: true }).ok;
+  } catch(e) { console.warn("like de commentaire :", e && e.message); return false; }
 }
 async function supaUnlikeComment(commentId) {
-  if (!commentId || typeof MY_UID === "undefined" || !MY_UID) return;
-  try { await supa.from("comment_likes").delete().eq("comment_id", commentId).eq("user_id", MY_UID); }
-  catch(e) {}
+  if (!commentId || typeof MY_UID === "undefined" || !MY_UID) return false;
+  try {
+    const res = await supa.from("comment_likes").delete()
+      .eq("comment_id", commentId).eq("user_id", MY_UID).select("comment_id");
+    return _writeVerdict(res, { label: "retrait du like de commentaire" }).ok;
+  } catch(e) { console.warn("retrait du like de commentaire :", e && e.message); return false; }
 }
 // Charge les likes d'un lot de commentaires (1 requête) → { id: {count, liked} }.
 async function supaLoadCommentLikes(commentIds) {
@@ -3678,9 +3759,14 @@ async function supaAddCdvCollaborator(liveId, userId) {
   } catch (e) { console.warn("CDV collab:", e); return false; }
 }
 
+// Même exigence que pour le carnet : une révocation crue à tort laisse le
+// collaborateur contribuer au voyage.
 async function supaRemoveCdvCollaborator(liveId, userId) {
-  try { await supa.from("cdv_live_collaborators").delete().eq("live_id", liveId).eq("user_id", userId); }
-  catch (e) { console.warn("CDV collab remove:", e); }
+  try {
+    const res = await supa.from("cdv_live_collaborators").delete()
+      .eq("live_id", liveId).eq("user_id", userId).select("user_id");
+    return _writeVerdict(res, { label: "retrait de collaborateur du live CDV" }).ok;
+  } catch (e) { console.warn("retrait de collaborateur du live CDV :", e && e.message); return false; }
 }
 
 async function supaLoadCdvLives() {
@@ -4675,13 +4761,17 @@ async function supaFollowUser(targetId) {
     const res = await supa.from("follows").insert({ follower_id: MY_UID, following_id: targetId });
     // Clé dupliquée = on suivait déjà : l'état voulu est atteint, c'est un succès.
     const dup = res && res.error && String(res.error.code) === "23505";
-    try { window.tel && tel.settle(_cid, "saved", !!(!res || !res.error || dup), res && res.error); } catch (e) {}
-    // Notifier la personne suivie (un suivi est une interaction qui doit
-    // apparaître dans ses notifications).
-    if (targetId && targetId !== MY_UID && typeof supaInsertNotif === "function") {
+    const ok = !!(!res || !res.error || dup);
+    try { window.tel && tel.settle(_cid, "saved", ok, res && res.error); } catch (e) {}
+    // ⚠️ La notification ne part QUE si la relation existe vraiment, et seulement
+    // si on vient de la créer. Hors de toute condition, elle annonçait un suivi
+    // qu'un refus RLS avait empêché — et un doublon (état local périmé) renotifiait
+    // à chaque nouvelle tentative.
+    if (ok && !dup && targetId && targetId !== MY_UID && typeof supaInsertNotif === "function") {
       supaInsertNotif(targetId, "follow", MY_UID, "a commencé à te suivre");
     }
-  } catch(e) { try { window.tel && tel.settle(_cid, "saved", false, e); } catch (_) {} }
+    return ok;
+  } catch(e) { try { window.tel && tel.settle(_cid, "saved", false, e); } catch (_) {} return false; }
 }
 
 async function supaUnfollowUser(targetId) {
@@ -4712,10 +4802,15 @@ async function supaBlockUser(targetId) {
     try { window.tel && tel.settle(_cid, "saved", !!(!res || !res.error || dup), res && res.error); } catch (e) {}
   } catch(e) { try { window.tel && tel.settle(_cid, "saved", false, e); } catch (_) {} }
 }
+// Renvoie true seulement si le déblocage a réellement eu lieu : `state.user.blocked`
+// pilote le filtrage des contenus, commentaires, messages et notifications — un
+// déblocage cru à tort réapparaissait bloqué à la prochaine réhydratation.
 async function supaUnblockUser(targetId) {
   try {
-    await supa.from("blocks").delete().eq("blocker_id", MY_UID).eq("blocked_id", targetId);
-  } catch(e) {}
+    const res = await supa.from("blocks").delete()
+      .eq("blocker_id", MY_UID).eq("blocked_id", targetId).select("blocked_id");
+    return _writeVerdict(res, { label: "déblocage" }).ok;
+  } catch(e) { console.warn("déblocage :", e && e.message); return false; }
 }
 async function supaLoadBlocks() {
   try {
@@ -4723,14 +4818,18 @@ async function supaLoadBlocks() {
     return (data || []).map(r => r.blocked_id);
   } catch(e) { return []; }
 }
+// Renvoie true seulement si le signalement est réellement en base. Sans ce verdict,
+// une policy INSERT absente ou cassée faisait disparaître le signalement sans le
+// moindre signal — l'utilisateur croyait avoir alerté, personne ne recevait rien.
 async function supaReport(targetType, targetId, reason) {
   try {
-    await supa.from("reports").insert({
+    const res = await supa.from("reports").insert({
       id: "r_" + uid(), reporter_id: MY_UID || null,
       target_type: targetType, target_id: String(targetId || ""),
       reason: String(reason || "").slice(0, 500), created_at: new Date().toISOString(),
     });
-  } catch(e) {}
+    return _writeVerdict(res, { label: "signalement" }).ok;
+  } catch(e) { console.warn("signalement :", e && e.message); return false; }
 }
 
 // ---- STORIES : VUES SYNCHRONISÉES (cross-appareil) ----
@@ -4769,7 +4868,15 @@ async function supaSetEventRsvp(eventId, rsvp) {
     const ins = await supa.from("event_attendees")
       .insert({ event_id: eventId, user_id: MY_UID, rsvp: rsvp, created_at: new Date().toISOString() });
     if (!ins.error) return true;
-    if (String(ins.error.code) === "23505") return true;
+    // ⚠️ Un 23505 ici ne prouve QUE l'existence de la ligne, pas que son `rsvp`
+    // vaut ce qu'on demande. On arrive dans cette branche parce que l'UPDATE a
+    // touché 0 ligne : la ligne existe donc mais la policy l'a filtrée. La
+    // considérer comme un succès faisait passer l'utilisateur pour « inscrit »
+    // alors qu'il restait en liste d'attente ou en « peut-être ».
+    if (String(ins.error.code) === "23505") {
+      console.warn("RSVP : la ligne existe mais l'UPDATE n'a touché aucune ligne (policy ?) — rsvp inchangé");
+      return false;
+    }
     // Colonne `rsvp` absente : repli sur l'ancien modèle (présence = je viens).
     if (/rsvp/.test(ins.error.message || "")) {
       const f = await supa.from("event_attendees")
@@ -4784,18 +4891,23 @@ async function supaJoinEvent(eventId) { return supaSetEventRsvp(eventId, "going"
 
 async function supaLeaveEvent(eventId) {
   try {
-    await supa.from("event_attendees").delete().eq("event_id", eventId).eq("user_id", MY_UID);
-    return true;
+    // Le résultat n'était jamais lu : la fonction répondait `true` même quand la
+    // policy filtrait la suppression — la place restait occupée côté serveur.
+    const res = await supa.from("event_attendees").delete()
+      .eq("event_id", eventId).eq("user_id", MY_UID).select("event_id");
+    return _writeVerdict(res, { label: "désinscription d'événement" }).ok;
   } catch(e) { return false; }
 }
 
 // Pointage d'arrivée sur place (check-in).
 async function supaCheckInEvent(eventId) {
   try {
-    const { error } = await supa.from("event_attendees")
+    // `expectRows` : pointer suppose une ligne d'inscription. Zéro ligne = la
+    // personne s'est désinscrite ailleurs, ou la policy filtre — pas un succès.
+    const res = await supa.from("event_attendees")
       .update({ checked_in_at: new Date().toISOString(), rsvp: "going" })
-      .eq("event_id", eventId).eq("user_id", MY_UID);
-    return !error;
+      .eq("event_id", eventId).eq("user_id", MY_UID).select("event_id");
+    return _writeVerdict(res, { expectRows: true, label: "check-in" }).ok;
   } catch(e) { return false; }
 }
 
@@ -4807,14 +4919,15 @@ async function supaCheckInEvent(eventId) {
 async function supaRateEvent(eventId, rating, feedback) {
   try {
     const payload = { rating: rating, feedback: feedback || null, rated_at: new Date().toISOString() };
-    let { error } = await supa.from("event_attendees").update(payload)
-      .eq("event_id", eventId).eq("user_id", MY_UID);
-    if (error && /column .* does not exist/i.test(error.message || "")) {
-      const r2 = await supa.from("event_attendees").update({ rating: rating })
-        .eq("event_id", eventId).eq("user_id", MY_UID);
-      error = r2.error;
+    let res = await supa.from("event_attendees").update(payload)
+      .eq("event_id", eventId).eq("user_id", MY_UID).select("event_id");
+    if (res.error && /column .* does not exist/i.test(res.error.message || "")) {
+      res = await supa.from("event_attendees").update({ rating: rating })
+        .eq("event_id", eventId).eq("user_id", MY_UID).select("event_id");
     }
-    return !error;
+    // Noter suppose une ligne de participation : zéro ligne = note non enregistrée,
+    // elle disparaissait au rechargement après avoir été annoncée comme prise.
+    return _writeVerdict(res, { expectRows: true, label: "note d'événement" }).ok;
   } catch (e) { return false; }
 }
 
@@ -4833,9 +4946,11 @@ async function supaLoadEventRatings(eventId) {
 // Promotion d'un membre de la liste d'attente (place libérée / geste de l'orga).
 async function supaPromoteFromWaitlist(eventId, userId) {
   try {
-    const { error } = await supa.from("event_attendees")
-      .update({ rsvp: "going" }).eq("event_id", eventId).eq("user_id", userId);
-    return !error;
+    // La personne a pu quitter la liste d'attente entre la sélection et l'UPDATE :
+    // zéro ligne = promotion non appliquée, il ne faut pas l'annoncer.
+    const res = await supa.from("event_attendees")
+      .update({ rsvp: "going" }).eq("event_id", eventId).eq("user_id", userId).select("event_id");
+    return _writeVerdict(res, { expectRows: true, label: "promotion depuis la liste d'attente" }).ok;
   } catch(e) { return false; }
 }
 

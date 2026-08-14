@@ -239,8 +239,26 @@ async function supaSetPostLike(postId, want, cid) {
       var dup = ins && ins.error && String(ins.error.code) === "23505";
       out = { ok: !!(!ins || !ins.error || dup), error: (ins && ins.error) || null };
     } else {
-      var del = await supa.from("post_likes").delete().eq("post_id", postId).eq("user_id", MY_UID);
-      out = { ok: !!(!del || !del.error), error: (del && del.error) || null };
+      // ⚠️ « Zéro ligne supprimée » n'est un succès idempotent que si la ligne était
+      // DÉJÀ absente. Sous RLS, ça peut aussi vouloir dire « ligne présente mais
+      // invisible à la policy DELETE » : le like restait alors en base et
+      // réapparaissait au rechargement, sans que rien ne l'ait signalé. On demande
+      // donc les lignes supprimées et on vérifie qu'il n'en restait pas une.
+      var del = await supa.from("post_likes").delete()
+        .eq("post_id", postId).eq("user_id", MY_UID).select("post_id");
+      if (del && del.error) {
+        out = { ok: false, error: del.error };
+      } else if (del && Array.isArray(del.data) && del.data.length === 0) {
+        // Rien supprimé : la ligne existait-elle ? Si oui, la policy l'a filtrée.
+        var chk = await supa.from("post_likes").select("post_id")
+          .eq("post_id", postId).eq("user_id", MY_UID).maybeSingle();
+        var restante = !!(chk && chk.data);
+        out = restante
+          ? { ok: false, error: { message: "like non retiré (policy DELETE)" } }
+          : { ok: true, error: null };
+      } else {
+        out = { ok: true, error: null };
+      }
     }
   } catch (e) { out = { ok: false, error: e }; }
   // Confirmation EXPLICITE de l'enregistrement pour le traçage : le contrat ne
@@ -2346,7 +2364,9 @@ function toggleStepLike(threadId, el) {
     if (typeof grantReward === "function") { try { grantReward("like"); } catch (e) {} }
   }
   try { saveState(); } catch (e) {}
-  if (typeof supaToggleStepLike === "function") { try { supaToggleStepLike(threadId); } catch (e) {} }
+  // On transmet l'INTENTION (nowLiked), jamais l'id seul : côté serveur, re-déduire
+  // l'action d'une relecture l'inverse dès que le local et la base divergent.
+  if (typeof supaSetStepLike === "function") { try { supaSetStepLike(threadId, nowLiked); } catch (e) {} }
   if (nowLiked) _notifyStepAuthor(threadId, "a aimé ton étape");
   _patchStepLikeBtn(threadId);
 }
@@ -2602,7 +2622,7 @@ function _cdvReactBarHtml(liveId, live) {
     return by.some(function (x) { return x && x.userId === me && x.emoji === e; }) ? " active" : "";
   };
   // ❤️ = LIKE (toggle strict, 1 par compte, persisté dans cdv_live_reactions via
-  // supaToggleCdvLiveLike) — le même bouton que sur les cartes. Avant, il passait
+  // supaSetCdvLiveLike) — le même bouton que sur les cartes. Avant, il passait
   // par reactCdvLive() qui empilait un ❤️ de plus À CHAQUE TAP sans jamais pouvoir
   // le retirer, et sans jamais être compté comme un like.
   var lk = (window._liveLikes && window._liveLikes[liveId]) || { likes: 0, liked: false };
@@ -3617,8 +3637,8 @@ function likeCdvLiveCard(liveId, el) {
     n.classList.toggle("liked", cur.liked); n.classList.toggle("active", cur.liked);
     n.innerHTML = (cur.liked ? "❤️" : "🤍") + " " + (cur.likes || 0);
   });
-  if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID && window._supaReal && typeof supaToggleCdvLiveLike === "function") {
-    supaToggleCdvLiveLike(liveId);
+  if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID && window._supaReal && typeof supaSetCdvLiveLike === "function") {
+    supaSetCdvLiveLike(liveId, cur.liked);   // l'INTENTION, jamais une relecture de la base
     if (cur.liked) {
       var lv = getCdvLives().find(function(l){ return l.id === liveId; });
       if (lv && lv.authorId && lv.authorId !== MY_UID && typeof supaInsertNotif === "function") {

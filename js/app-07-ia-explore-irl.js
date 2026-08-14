@@ -2406,8 +2406,8 @@ function toggleEventLike(id, el) {
     n.classList.toggle("liked", cur.liked);
     n.innerHTML = (cur.liked ? "❤️" : "🤍") + " " + (cur.likes || 0);
   });
-  if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID && window._supaReal && typeof supaToggleEventLike === "function") {
-    supaToggleEventLike(id);
+  if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID && window._supaReal && typeof supaSetEventLike === "function") {
+    supaSetEventLike(id, cur.liked);   // l'INTENTION, jamais une relecture de la base
     if (cur.liked) {
       var ev = _findCanonicalEvent(id) || (typeof allEvents === "function" ? allEvents().find(function(x){ return x.id === id; }) : null);
       if (ev && ev.organizerId && ev.organizerId !== MY_UID && ev.fromSupabase && typeof supaInsertNotif === "function") {
