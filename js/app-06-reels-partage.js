@@ -178,7 +178,7 @@ function renderMainProfile() {
   var links = g.rsLinks || [];
   // Réseaux sociaux : afficher seulement s'il y en a (sinon rien)
   rsEl.innerHTML = links.length
-    ? links.map(function(l) { return '<a class="main-profile-rs-link" href="' + escapeHtml(l.url) + '" target="_blank">' + (RS_ICONS[l.platform]||"🔗") + " " + escapeHtml(l.platform) + '</a>'; }).join("")
+    ? links.map(function(l) { return '<a class="main-profile-rs-link" href="' + safeUrlAttr(l.url) + '" target="_blank" rel="noopener noreferrer">' + (RS_ICONS[l.platform]||"🔗") + " " + escapeHtml(l.platform) + '</a>'; }).join("")
     : "";
   rsEl.style.display = links.length ? "" : "none";
 
@@ -261,7 +261,7 @@ function openMyPostsTab() {
 
 // Une ligne de personne (avatar + nom), clic -> ouvre son profil
 function _personRowHTML(id, u) {
-  return '<div onclick="closeModal();openUserProfile(\'' + id + '\')" style="display:flex;align-items:center;gap:10px;padding:8px;border:1px solid var(--border);border-radius:12px;cursor:pointer;">'
+  return '<div onclick="closeModal();openUserProfile(\'' + escapeJsArg(id) + '\')" style="display:flex;align-items:center;gap:10px;padding:8px;border:1px solid var(--border);border-radius:12px;cursor:pointer;">'
     + '<div style="width:40px;height:40px;border-radius:50%;background:' + avatarBg(u) + ';display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">' + avatarInner(u) + '</div>'
     + '<div style="font-weight:700;font-size:14px;color:var(--text);">' + escapeHtml(u.name || 'Utilisateur') + '</div></div>';
 }
@@ -423,7 +423,7 @@ function renderProfileContent() {
           var thumb = poster
             ? '<img loading="lazy" decoding="async" src="'+poster+'" style="width:100%;height:100%;object-fit:cover;"/>'
             : (p.video ? '<video src="'+p.video+'#t=0.1" muted playsinline preload="metadata" style="width:100%;height:100%;object-fit:cover;background:#000;"></video>' : '<div style="width:100%;height:100%;background:linear-gradient(135deg,#7c3aed,#a78bfa);"></div>');
-          return '<div onclick="openReelById(\''+p.id+'\')" style="aspect-ratio:9/16;border-radius:8px;overflow:hidden;position:relative;cursor:pointer;">'+thumb+'<span style="position:absolute;left:6px;bottom:6px;font-size:14px;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.6));">🎞️</span></div>';
+          return '<div onclick="openReelById(\''+escapeJsArg(p.id)+'\')" style="aspect-ratio:9/16;border-radius:8px;overflow:hidden;position:relative;cursor:pointer;">'+thumb+'<span style="position:absolute;left:6px;bottom:6px;font-size:14px;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.6));">🎞️</span></div>';
         }).join("")+'</div>'
       // ⚠️ `emptyBlock` n'a jamais existé → ReferenceError en prod (8× le 20/07)
       // pour tout profil sans bobine ouvrant cet onglet. guidedEmpty est le
@@ -863,7 +863,7 @@ function openEditMainProfile() {
         const existing = links.find(l => l.platform === platform);
         return `<div style="display:flex;align-items:center;gap:8px;">
           <span style="width:24px;text-align:center;font-size:16px;">${icons[platform]||"🔗"}</span>
-          <input type="url" class="input rs-link-input" data-platform="${platform}"
+          <input type="url" class="input rs-link-input" data-platform="${escapeHtml(platform)}"
             placeholder="${platform.charAt(0).toUpperCase()+platform.slice(1)} URL"
             value="${escapeHtml(existing?.url||"")}"
             style="flex:1;font-size:12px;padding:8px 12px;"/>
@@ -997,11 +997,11 @@ function renderProfilesScreen() {
       ? `background:linear-gradient(90deg, rgba(0,0,0,0.62), rgba(0,0,0,0.30)), url(${safeUrlAttr(_pCover)}) center/cover;`
       : "";
 
-    return `<div class="profile-card ${isSelected?"selected":""} ${_pCover?"has-cover":""}" style="${coverStyle}${isSelected ? "border:2px solid var(--accent);" : ""}" onclick="toggleProfileSelect('${p.id}')">
+    return `<div class="profile-card ${isSelected?"selected":""} ${_pCover?"has-cover":""}" style="${coverStyle}${isSelected ? "border:2px solid var(--accent);" : ""}" onclick="toggleProfileSelect('${escapeJsArg(p.id)}')">
       <div class="avatar lg" style="${avatarStyle}position:relative;">${avatarContent}
-        <div class="passion-photo-badge" onclick="event.stopPropagation();document.getElementById('passionPhoto_${p.id}').click()">📷</div>
-        <input type="file" id="passionPhoto_${p.id}" accept="image/*" style="display:none;" onchange="event.stopPropagation();changePassionPhoto(event,'${p.id}')"/>
-        <input type="file" id="passionCover_${p.id}" accept="image/*" style="display:none;" onchange="event.stopPropagation();changePassionCoverPhoto(event,'${p.id}')"/>
+        <div class="passion-photo-badge" onclick="event.stopPropagation();document.getElementById('passionPhoto_${escapeJsArg(p.id)}').click()">📷</div>
+        <input type="file" id="passionPhoto_${p.id}" accept="image/*" style="display:none;" onchange="event.stopPropagation();changePassionPhoto(event,'${escapeJsArg(p.id)}')"/>
+        <input type="file" id="passionCover_${p.id}" accept="image/*" style="display:none;" onchange="event.stopPropagation();changePassionCoverPhoto(event,'${escapeJsArg(p.id)}')"/>
       </div>
       <div class="profile-card-body" style="flex:1;">
         <div class="profile-card-name">
@@ -1009,7 +1009,7 @@ function renderProfilesScreen() {
         </div>
         ${p.bio ? `<div class="profile-card-bio">${escapeHtml(p.bio)}</div>` : ""}
       </div>
-      <button class="profile-dots-btn" onclick="openPassionProfileMenu(event,'${p.id}')" title="Options du profil" aria-label="Options du profil" aria-haspopup="menu" style="flex-shrink:0;">⋯</button>
+      <button class="profile-dots-btn" onclick="openPassionProfileMenu(event,'${escapeJsArg(p.id)}')" title="Options du profil" aria-label="Options du profil" aria-haspopup="menu" style="flex-shrink:0;">⋯</button>
     </div>`;
   }).join("");
 
@@ -1182,7 +1182,7 @@ function confirmDeleteProfile(profileId, passionLabel) {
     </div>\
     <div style="display:flex;gap:8px;">\
       <button class="btn ghost" onclick="closeModal()" style="flex:1;">Annuler</button>\
-      <button class="btn primary" onclick="deleteProfile(\'' + profileId + '\')" style="flex:1;background:#ef4444;">Supprimer</button>\
+      <button class="btn primary" onclick="deleteProfile(\'' + escapeJsArg(profileId) + '\')" style="flex:1;background:#ef4444;">Supprimer</button>\
     </div>\
   ');
 }
@@ -1243,13 +1243,13 @@ function renderProfileStrip() {
       : null;
     const fallback = "https://picsum.photos/seed/" + p.passion + "/200/200";
     const avatarContent = photoUrl
-      ? '<img loading="lazy" decoding="async" class="profile-tile-photo" src="' + photoUrl + '" alt="' + label + '" onerror="this.onerror=null;this.src=\'' + fallback + '\'"/><span class="profile-tile-emoji-badge">' + p.emoji + '</span>'
+      ? '<img loading="lazy" decoding="async" class="profile-tile-photo" src="' + photoUrl + '" alt="' + escapeHtml(label) + '" onerror="this.onerror=null;this.src=\'' + escapeJsArg(fallback) + '\'"/><span class="profile-tile-emoji-badge">' + p.emoji + '</span>'
       : p.emoji;
     const count = postCountByPassion[p.passion] || 0;
     const countBadge = count > 0
       ? '<span style="position:absolute;top:-5px;right:-5px;background:var(--accent);color:#fff;font-size:9px;font-weight:800;border-radius:8px;padding:1px 5px;min-width:16px;text-align:center;border:2px solid var(--bg);line-height:14px;">' + count + '</span>'
       : '';
-    return '<div class="profile-tile ' + (isSelected ? "active" : "") + '" onclick="toggleProfileFilter(\'' + p.passion + '\')" title="' + label + '" style="opacity:' + (isDimmed ? '0.3' : '1') + ';transform:' + (isSelected ? 'scale(1.07)' : 'scale(1)') + ';transition:all 0.2s;">\
+    return '<div class="profile-tile ' + (isSelected ? "active" : "") + '" onclick="toggleProfileFilter(\'' + escapeJsArg(p.passion) + '\')" title="' + escapeHtml(label) + '" style="opacity:' + (isDimmed ? '0.3' : '1') + ';transform:' + (isSelected ? 'scale(1.07)' : 'scale(1)') + ';transition:all 0.2s;">\
       <div class="profile-tile-avatar" style="position:relative;">' + avatarContent + countBadge + '</div>\
       <div class="profile-tile-label" style="font-weight:' + (isSelected ? '800' : '600') + ';color:' + (isSelected ? 'var(--accent)' : '') + ';">' + label + '</div>\
     </div>';
@@ -1416,7 +1416,7 @@ function openCreateProfile(_paidSlotConfirmed) {
     </div>
     <div class="passion-grid new-profile-passion-grid" id="newProfileGrid">
       ${pool.map(p => `
-        <div class="passion-tile ${p.custom ? 'passion-custom' : ''}" data-passion="${p.id}" onclick="selectNewProfilePassion('${p.id}')">
+        <div class="passion-tile ${p.custom ? 'passion-custom' : ''}" data-passion="${escapeHtml(p.id)}" onclick="selectNewProfilePassion('${escapeJsArg(p.id)}')">
           <div class="passion-tile-emoji">${p.emoji}</div>
           <div class="passion-tile-label">${escapeHtml(p.label)}</div>
           ${p.custom ? '<div class="passion-custom-badge">Perso</div>' : ''}
@@ -1545,13 +1545,13 @@ function renderStudio() {
   if (drafts.length === 0) {
     dl.innerHTML = `<div class="empty"><div class="empty-icon">📝</div><div class="empty-title">Aucun brouillon</div><div class="empty-text">Tes brouillons apparaîtront ici.</div></div>`;
   } else {
-    dl.innerHTML = drafts.map(d => `<div class="list-row" onclick="loadDraft('${escapeHtml(d.id)}')">
+    dl.innerHTML = drafts.map(d => `<div class="list-row" onclick="loadDraft('${escapeJsArg(escapeHtml(d.id))}')">
       <div style="font-size:22px;">${d.type === "photo" ? "📷" : d.type === "audio" ? "🎙" : "✍️"}</div>
       <div class="list-row-body">
         <div class="list-row-title">${escapeHtml((d.text || "").slice(0, 60)) || "(vide)"}</div>
         <div class="list-row-meta">${passionById(d.passion).label} · ${fmtTime(d.at)}</div>
       </div>
-      <button class="btn small ghost" onclick="event.stopPropagation();deleteDraft('${escapeHtml(d.id)}')">🗑</button>
+      <button class="btn small ghost" onclick="event.stopPropagation();deleteDraft('${escapeJsArg(escapeHtml(d.id))}')">🗑</button>
     </div>`).join("");
   }
 }
@@ -1859,7 +1859,7 @@ $("#audioInput").addEventListener("change", (e) => {
     $("#studioPhoto").style.display = "none";
     // Afficher l'audio en lecture
     $("#recStatus").textContent = "✅ Audio chargé et prêt à publier";
-    $("#recPlayback").innerHTML = `<audio controls src="${audioDataUrl}" style="width:100%;margin-top:6px;"></audio>`;
+    $("#recPlayback").innerHTML = `<audio controls src="${escapeHtml(audioDataUrl)}" style="width:100%;margin-top:6px;"></audio>`;
     toast("✅ Audio chargé!");
   };
   reader.readAsDataURL(f);
@@ -1903,7 +1903,7 @@ async function toggleRecording() {
         $("#studioVideo").style.display = "none";
         $("#studioAudio").style.display = "block";
         $("#recStatus").textContent = "Enregistrement prêt à publier";
-        $("#recPlayback").innerHTML = `<audio controls src="${audioDataUrl}" style="width:100%;margin-top:6px;"></audio>
+        $("#recPlayback").innerHTML = `<audio controls src="${escapeHtml(audioDataUrl)}" style="width:100%;margin-top:6px;"></audio>
           <button class="btn small ghost" style="margin-top:6px;" onclick="clearAudio()">🗑 Supprimer</button>`;
       };
       reader.readAsDataURL(blob);
@@ -2208,7 +2208,7 @@ function loadDraft(id) {
   if (studioType === "photo") renderPhotoPreview();
   if (studioType === "video") renderVideoPreview();
   if (studioType === "audio" && audioDataUrl) {
-    $("#recPlayback").innerHTML = `<audio controls src="${audioDataUrl}" style="width:100%;margin-top:6px;"></audio>`;
+    $("#recPlayback").innerHTML = `<audio controls src="${escapeHtml(audioDataUrl)}" style="width:100%;margin-top:6px;"></audio>`;
   }
   toast("Brouillon chargé");
 }
@@ -2260,7 +2260,7 @@ function renderExplorer() {
   // Suggested creators : seed en premier, puis vrais utilisateurs Supabase chargés async
   const seedHtml = state.seed.users.slice(0, 4).map(u => {
     const p = passionById(u.passion);
-    return `<div class="list-row" onclick="openUserProfile('${u.id}')">
+    return `<div class="list-row" onclick="openUserProfile('${escapeJsArg(u.id)}')">
       <div class="avatar" style="background:${avatarBg(u)};">${avatarInner(u)}</div>
       <div class="list-row-body">
         <div class="list-row-title">${escapeHtml(u.name)}</div>
@@ -2291,19 +2291,19 @@ function renderExplorer() {
           const avatarColor = u.color || "#8b5cf6";
           const emoji = u.emoji || "✨";
           const _av = { avatar: avatarColor, profileEmoji: emoji, photoUrl: u.avatar_url || null };
-          return `<div class="list-row" onclick="openUserProfile('${u.id}')">
+          return `<div class="list-row" onclick="openUserProfile('${escapeJsArg(u.id)}')">
             <div class="avatar" style="background:${avatarBg(_av)};">${avatarInner(_av)}</div>
             <div class="list-row-body">
               <div class="list-row-title">${name}</div>
               <div class="list-row-meta">${p.emoji} ${p.label}${bio ? " · " + bio.slice(0, 40) : ""}</div>
             </div>
-            <button class="btn small" onclick="event.stopPropagation();followUserFromExplorer('${u.id}','${name}')">Suivre</button>
+            <button class="btn small" onclick="event.stopPropagation();followUserFromExplorer('${escapeJsArg(u.id)}','${escapeJsArg(name)}')">Suivre</button>
           </div>`;
         }).join("");
         // Remplacer la section avec seed (4) + vrais users (jusqu'à 8)
         const seedSlice = state.seed.users.slice(0, 4).map(u => {
           const p = passionById(u.passion);
-          return `<div class="list-row" onclick="openUserProfile('${u.id}')">
+          return `<div class="list-row" onclick="openUserProfile('${escapeJsArg(u.id)}')">
             <div class="avatar" style="background:${avatarBg(u)};">${avatarInner(u)}</div>
             <div class="list-row-body">
               <div class="list-row-title">${escapeHtml(u.name)}</div>
@@ -2518,7 +2518,7 @@ function aiGenerateResponse(query) {
     filtered = filtered.slice(0, 5);
     var uCards = filtered.map(function(u) {
       var p = passionById(u.passion) || { emoji:"✨", label:"" };
-      return '<div class="ai-card" onclick="openUserProfile(\'' + u.id + '\')">' +
+      return '<div class="ai-card" onclick="openUserProfile(\'' + escapeJsArg(u.id) + '\')">' +
         '<div style="display:flex;align-items:center;gap:8px;">' +
           '<div style="width:32px;height:32px;border-radius:50%;background:' + avatarBg(u) + ';display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;">' + avatarInner(u) + '</div>' +
           '<div><div class="ai-card-title" style="margin:0;">' + escapeHtml(u.name) + '</div><div class="ai-card-meta">' + p.emoji + ' ' + p.label + '</div></div>' +
@@ -2614,7 +2614,7 @@ function aiGenerateResponse(query) {
     if (passionCreators.length) {
       html += '<div class="ai-section-label" style="margin-top:10px;">👤 Créateurs sur PASSIO</div>';
       passionCreators.forEach(function(u) {
-        html += '<div class="ai-card" onclick="openUserProfile(\'' + u.id + '\')">' +
+        html += '<div class="ai-card" onclick="openUserProfile(\'' + escapeJsArg(u.id) + '\')">' +
           '<div style="display:flex;align-items:center;gap:8px;">' +
             '<div style="width:30px;height:30px;border-radius:50%;background:' + avatarBg(u) + ';display:flex;align-items:center;justify-content:center;font-size:14px;">' + avatarInner(u) + '</div>' +
             '<div><div class="ai-card-title" style="margin:0;">' + escapeHtml(u.name) + '</div><div class="ai-card-meta">' + escapeHtml(u.bio || "") + '</div></div>' +
@@ -2646,7 +2646,7 @@ function aiGenerateResponse(query) {
   if (matchedPassions.length) {
     var html2 = '<div><div class="ai-section-label">🎯 Passions trouvées</div>';
     matchedPassions.forEach(function(p) {
-      html2 += '<div class="ai-card" onclick="openPassionExplorer(\'' + p.id + '\')">' +
+      html2 += '<div class="ai-card" onclick="openPassionExplorer(\'' + escapeJsArg(p.id) + '\')">' +
         '<div class="ai-card-title">' + p.emoji + ' ' + p.label + '</div>' +
         '<div class="ai-card-meta">Explore les créateurs et posts → cliquer pour voir</div>' +
       '</div>';

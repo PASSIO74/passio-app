@@ -247,7 +247,7 @@ function shareBeta() {
     <div class="modal-subtitle">Envoie ce lien à tes bêta-testeurs. Leurs données restent sur leur appareil.</div>
     <div class="share-box">${escapeHtml(link)}</div>
     <div style="display:flex;gap:8px;">
-      <button class="btn primary block" onclick="navigator.clipboard && navigator.clipboard.writeText('${link}');window.tel&&tel.linkFromUrl&&tel.linkShare(tel.linkFromUrl('${link}'),'clipboard');toast('Lien copié');closeModal();">📋 Copier le lien</button>
+      <button class="btn primary block" onclick="navigator.clipboard && navigator.clipboard.writeText('${escapeJsArg(link)}');window.tel&&tel.linkFromUrl&&tel.linkShare(tel.linkFromUrl('${escapeJsArg(link)}'),'clipboard');toast('Lien copié');closeModal();">📋 Copier le lien</button>
     </div>
     <div class="section-title" style="margin-top:14px;">Message prêt-à-envoyer</div>
     <textarea class="textarea" readonly style="min-height:120px;">Salut ! Je te partage la beta de PASSIO, le réseau social basé sur les passions que je prépare. 5 min de test, je veux tes retours honnêtes. 👉 ${link}</textarea>
@@ -423,7 +423,7 @@ function _storyBubbleInner(g) {
   if (withPhoto) {
     const photoUrl = `https://images.unsplash.com/${withPhoto.photo}?w=160&h=160&fit=crop&crop=entropy&auto=format&q=75`;
     const fallback = `https://picsum.photos/seed/${withPhoto.id}/160/160`;
-    return `<img loading="lazy" decoding="async" src="${photoUrl}" alt="${escapeHtml(g.name)}" onerror="this.onerror=null;this.src='${fallback}'"/>`;
+    return `<img loading="lazy" decoding="async" src="${photoUrl}" alt="${escapeHtml(g.name)}" onerror="this.onerror=null;this.src='${escapeJsArg(fallback)}'"/>`;
   }
   return g.emoji || "✨";
 }
@@ -445,7 +445,7 @@ function renderStories() {
   const myEmoji = (myGroup && myGroup.emoji) || me.emoji || "✨";
   const myAvatar = (state.user && state.user.general && state.user.general.avatarPhoto) || me.avatarPhoto || "";
   const myAvatarHtml = myAvatar
-    ? `<img loading="lazy" decoding="async" src="${escapeHtml(myAvatar)}" alt="Moi" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.style.display='none'"/>`
+    ? `<img loading="lazy" decoding="async" src="${safeUrlAttr(myAvatar)}" alt="Moi" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.style.display='none'"/>`
     : myEmoji;
 
   let html;
@@ -454,7 +454,7 @@ function renderStories() {
     // Anneau dégradé tant que je n'ai pas regardé ma propre story, gris ensuite (Instagram).
     const allSeen = !!myGroup.allSeen;
     html = `
-      <div class="story-item" onclick="openStoryGroup('${escapeHtml(String(myGroup.authorId))}')" title="Voir ta story">
+      <div class="story-item" onclick="openStoryGroup('${escapeJsArg(escapeHtml(String(myGroup.authorId)))}')" title="Voir ta story">
         <div class="story-ring ${allSeen ? "seen" : ""}">
           <div class="story-inner" style="background:${myColor};">${myAvatarHtml}</div>
         </div>
@@ -488,9 +488,9 @@ function renderStories() {
   html += others.map(g => {
     const allSeen = !!g.allSeen;
     return `
-      <div class="story-item" onclick="openStoryGroup('${escapeHtml(String(g.authorId))}')">
+      <div class="story-item" onclick="openStoryGroup('${escapeJsArg(g.authorId)}')">
         <div class="story-ring ${allSeen ? "seen" : ""}">
-          <div class="story-inner" style="background: ${g.color};">${_storyBubbleInner(g)}</div>
+          <div class="story-inner" style="background: ${_cssColor(g.color)};">${_storyBubbleInner(g)}</div>
         </div>
         <div class="story-label">${escapeHtml(g.name.split(" ")[0])}</div>
       </div>
@@ -519,7 +519,7 @@ let _storyBg = STORY_BGS[0];
 function openStoryComposer() {
   _storyBg = STORY_BGS[0];
   const swatches = STORY_BGS.map((bg, i) =>
-    `<button class="story-bg-swatch ${i === 0 ? "active" : ""}" data-bg="${bg}" style="background:${bg};" onclick="selectStoryBg(this)" aria-label="Fond ${i + 1}"></button>`
+    `<button class="story-bg-swatch ${i === 0 ? "active" : ""}" data-bg="${escapeHtml(bg)}" style="background:${bg};" onclick="selectStoryBg(this)" aria-label="Fond ${i + 1}"></button>`
   ).join("");
   openModal(`
     <div class="modal-handle"></div>
@@ -1047,7 +1047,7 @@ function meSetMedia(dataUrl, type) {
     _meTryPlayPreview(vid);
     _meSetupVideoPreviewControls(vid);
   } else {
-    box.innerHTML = '<img src="' + dataUrl + '" alt=""/>';
+    box.innerHTML = '<img src="' + escapeHtml(dataUrl) + '" alt=""/>';
   }
   document.getElementById("mePlaceholder").classList.add("hidden");
   meEnterEditPhase();
@@ -1407,18 +1407,24 @@ function openStoryViewer(idx) {
 
 // HTML des overlays (texte/emoji/GIF positionnés) pour les viewers story & bobine.
 function _storyOverlaysHtml(overlays) {
+  // ⚠️ `overlays` arrive TEL QUEL d'une story Supabase (app-08 : `overlays:
+  // r.overlays`), donc d'un autre compte : position, échelle, rotation, taille et
+  // couleur atterrissaient brutes dans un attribut style. Un `"` dans o.x fermait
+  // l'attribut. On force le type numérique (jamais une chaîne) et on passe la
+  // couleur par _cssColor.
+  var _nb = function(v, parDefaut) { var n = Number(v); return Number.isFinite(n) ? n : parDefaut; };
   return (overlays || []).map(function(o) {
-    var s = o.scale || 1, r = o.rot || 0;
+    var s = _nb(o.scale, 1), r = _nb(o.rot, 0);
     var tr = "transform:translate(-50%,-50%) scale(" + s + ") rotate(" + r + "deg);";
-    var pos = "left:" + (o.x != null ? o.x : 50) + "%;top:" + (o.y != null ? o.y : 50) + "%;" + tr;
+    var pos = "left:" + _nb(o.x, 50) + "%;top:" + _nb(o.y, 50) + "%;" + tr;
     if (o.type === "text") {
-      return '<div class="story-ov" style="' + pos + 'color:' + (o.color || "#fff") + ';font-size:' + (o.size || 26) + 'px;font-weight:800;">' + escapeHtml(o.text || "") + '</div>';
+      return '<div class="story-ov" style="' + pos + 'color:' + _cssColor(o.color || "#fff") + ';font-size:' + _nb(o.size, 26) + 'px;font-weight:800;">' + escapeHtml(o.text || "")+ '</div>';
     }
     if (o.type === "emoji") {
-      return '<div class="story-ov emoji" style="' + pos + 'font-size:' + (o.size || 52) + 'px;">' + escapeHtml(o.emoji || "") + '</div>';
+      return '<div class="story-ov emoji" style="' + pos + 'font-size:' + _nb(o.size, 52) + 'px;">' + escapeHtml(o.emoji || "") + '</div>';
     }
     if (o.type === "gif") {
-      return '<div class="story-ov gif" style="' + pos + '"><img src="' + escapeHtml(o.url || "") + '" alt="GIF"/></div>';
+      return '<div class="story-ov gif" style="' + pos + '"><img src="' + safeUrlAttr(o.url || "") + '" alt="GIF"/></div>';
     }
     return "";
   }).join("");
@@ -1487,7 +1493,7 @@ function playCurrentStory() {
         });
       } catch (e) {}
     } else if (s.media) {
-      mediaLayer.innerHTML = `<img src="${escapeHtml(s.media)}" alt="" onerror="this.style.display='none'"/>`;
+      mediaLayer.innerHTML = `<img src="${safeUrlAttr(s.media)}" alt="" onerror="this.style.display='none'"/>`;
     } else { mediaLayer.innerHTML = ""; }
   }
 
@@ -1671,7 +1677,7 @@ function _notifListHtml(notifs) {
       <div class="empty-text">Tu es à jour, profite.</div>
     </div>`;
   return notifs.map(n => `
-    <div class="notif-row ${n.unread ? "unread" : ""}" onclick="clickNotif('${n.id}')">
+    <div class="notif-row ${n.unread ? "unread" : ""}" onclick="clickNotif('${escapeJsArg(n.id)}')">
       <div class="notif-icon">${n.emoji || "✨"}</div>
       <div class="notif-body">
         <div class="notif-text">${n.text}</div>
@@ -1907,7 +1913,7 @@ function renderQuests() {
           </div>
           ${q.done
             ? `<div style="font-size:18px;">✅</div>`
-            : `<button class="quest-claim" ${ready ? "" : "disabled"} onclick="claimQuest('${q.id}')">${ready ? "Réclamer" : q.progress + "/" + q.target}</button>`
+            : `<button class="quest-claim" ${ready ? "" : "disabled"} onclick="claimQuest('${escapeJsArg(q.id)}')">${ready ? "Réclamer" : q.progress + "/" + q.target}</button>`
           }
         </div>
       `;

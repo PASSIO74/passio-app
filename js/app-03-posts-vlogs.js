@@ -15,7 +15,7 @@ function sharePost(id) {
     <div style="background:var(--bg-soft);border-radius:14px;padding:12px 14px;margin-bottom:16px;font-size:13px;color:var(--text-dim);line-height:1.5;">
       ${escapeHtml(txt)}${txt.length >= 100 ? "…" : ""}
     </div>
-    <button class="btn primary block" id="_shareInFeedBtn" onclick="sharePostInFeed('${id}')" style="margin-bottom:10px;">
+    <button class="btn primary block" id="_shareInFeedBtn" onclick="sharePostInFeed('${escapeJsArg(id)}')" style="margin-bottom:10px;">
       ➕ Partager dans mon feed
     </button>
     <button class="btn secondary block" id="_shareOutBtn">
@@ -746,7 +746,7 @@ function openCarnetCollaborators(postId) {
     ? cols.map(function (uidC) {
         var u = (typeof userById === "function" && userById(uidC)) || {};
         return '<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);">'
-          + '<div class="avatar" style="background:' + (u.avatar || "#7c3aed") + ';width:30px;height:30px;font-size:14px;">' + (u.profileEmoji || "🌍") + '</div>'
+          + '<div class="avatar" style="background:' + _cssColor(u.avatar || "#7c3aed") + ';width:30px;height:30px;font-size:14px;">' + escapeHtml(u.profileEmoji || "🌍") + '</div>'
           + '<div style="flex:1;font-size:13px;color:var(--text);">' + escapeHtml(u.name || "Passionné") + '</div>'
           + '<span onclick="removeCarnetCollaborator(\'' + escapeJsArg(postId) + '\',\'' + escapeJsArg(uidC) + '\')" style="cursor:pointer;color:#ef4444;font-size:12px;">Retirer</span>'
           + '</div>';
@@ -785,7 +785,7 @@ async function searchCarnetCollaborator(postId, q) {
   if (!users.length) { box.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:6px;">Aucun compte trouvé</div>'; return; }
   box.innerHTML = users.slice(0, 6).map(function (u) {
     return '<div style="display:flex;align-items:center;gap:8px;border:1px solid var(--border);border-radius:10px;padding:8px;">'
-      + '<div class="avatar" style="background:' + (u.color || "#7c3aed") + ';width:28px;height:28px;font-size:13px;">' + (u.emoji || "✨") + '</div>'
+      + '<div class="avatar" style="background:' + _cssColor(u.color || "#7c3aed") + ';width:28px;height:28px;font-size:13px;">' + escapeHtml(u.emoji || "✨") + '</div>'
       + '<div style="flex:1;font-size:13px;color:var(--text);">' + escapeHtml(u.username || "Passionné") + '</div>'
       + '<button class="btn primary" style="font-size:11px;padding:6px 10px;" onclick="addCarnetCollaborator(\'' + escapeJsArg(postId) + '\',\'' + escapeJsArg(u.id) + '\',\'' + escapeJsArg(u.username || "Passionné") + '\')">Inviter</button>'
       + '</div>';
@@ -1040,51 +1040,51 @@ function renderVlogSteps() {
     return;
   }
   list.innerHTML = steps.map((s, i) => `
-    <div class="vlog-step" data-stepid="${s.id}">
+    <div class="vlog-step" data-stepid="${escapeHtml(s.id)}">
       <div class="vlog-step-head">
         <span class="vlog-step-num">${i + 1}</span>
         <span class="vlog-step-title">Jour ${i + 1}</span>
         <div class="vlog-step-reorder">
-          <button class="vlog-step-arrow" onclick="moveVlogStep('${s.id}', -1)" ${i === 0 ? "disabled" : ""} aria-label="Monter">
+          <button class="vlog-step-arrow" onclick="moveVlogStep('${escapeJsArg(s.id)}', -1)" ${i === 0 ? "disabled" : ""} aria-label="Monter">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 14 L12 8 L18 14"/></svg>
           </button>
-          <button class="vlog-step-arrow" onclick="moveVlogStep('${s.id}', 1)" ${i === steps.length - 1 ? "disabled" : ""} aria-label="Descendre">
+          <button class="vlog-step-arrow" onclick="moveVlogStep('${escapeJsArg(s.id)}', 1)" ${i === steps.length - 1 ? "disabled" : ""} aria-label="Descendre">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 10 L12 16 L18 10"/></svg>
           </button>
         </div>
-        <button class="vlog-step-remove" onclick="removeVlogStep('${s.id}')" aria-label="Supprimer ce jour">
+        <button class="vlog-step-remove" onclick="removeVlogStep('${escapeJsArg(s.id)}')" aria-label="Supprimer ce jour">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5 L19 19"/><path d="M19 5 L5 19"/></svg>
         </button>
       </div>
-      <input type="text" class="input" placeholder="Lieu (ex: Lisbonne · Alfama)" value="${escapeHtml(s.place || '')}" maxlength="60" oninput="updateVlogStep('${s.id}', 'place', this.value)" style="margin-bottom:6px;" />
+      <input type="text" class="input" placeholder="Lieu (ex: Lisbonne · Alfama)" value="${escapeHtml(s.place || '')}" maxlength="60" oninput="updateVlogStep('${escapeJsArg(s.id)}', 'place', this.value)" style="margin-bottom:6px;" />
       ${s.photo ? `<img loading="lazy" decoding="async" class="vlog-step-photo-thumb" src="${safeUrlAttr(s.photo)}" alt=""/>` : ''}
       ${s.video ? `<video class="vlog-step-photo-thumb" src="${safeUrlAttr(s.video)}" controls playsinline preload="metadata" style="max-height:160px;"></video>` : ''}
       ${s.audio ? `<audio src="${safeUrlAttr(s.audio)}" controls style="width:100%;margin:6px 0;"></audio>` : ''}
       <div class="vlog-step-media-row">
-        <button class="vlog-step-media-btn" onclick="document.getElementById('vlogStepPhoto_${s.id}').click()" title="Ajouter / changer la photo">
+        <button class="vlog-step-media-btn" onclick="document.getElementById('vlogStepPhoto_${escapeJsArg(s.id)}').click()" title="Ajouter / changer la photo">
           <span style="font-size:14px;">📷</span>
           <span>${s.photo ? "Changer photo" : "Photo"}</span>
         </button>
-        <button class="vlog-step-media-btn" onclick="document.getElementById('vlogStepVideo_${s.id}').click()" title="Ajouter / changer la vidéo">
+        <button class="vlog-step-media-btn" onclick="document.getElementById('vlogStepVideo_${escapeJsArg(s.id)}').click()" title="Ajouter / changer la vidéo">
           <span style="font-size:14px;">🎥</span>
           <span>${s.video ? "Changer vidéo" : "Vidéo"}</span>
         </button>
-        <button class="vlog-step-media-btn" onclick="document.getElementById('vlogStepAudio_${s.id}').click()" title="Ajouter / changer l'audio">
+        <button class="vlog-step-media-btn" onclick="document.getElementById('vlogStepAudio_${escapeJsArg(s.id)}').click()" title="Ajouter / changer l'audio">
           <span style="font-size:14px;">🎙</span>
           <span>${s.audio ? "Changer audio" : "Audio"}</span>
         </button>
-        ${s.photo || s.video || s.audio ? `<button class="vlog-step-media-btn vlog-step-media-clear" onclick="clearVlogStepMedia('${s.id}')" title="Retirer le média">✕</button>` : ''}
+        ${s.photo || s.video || s.audio ? `<button class="vlog-step-media-btn vlog-step-media-clear" onclick="clearVlogStepMedia('${escapeJsArg(s.id)}')" title="Retirer le média">✕</button>` : ''}
       </div>
-      <input type="file" id="vlogStepPhoto_${s.id}" accept="image/*" style="display:none;" onchange="onVlogStepMediaChange(event, '${s.id}', 'photo')" />
-      <input type="file" id="vlogStepVideo_${s.id}" accept="video/*" style="display:none;" onchange="onVlogStepMediaChange(event, '${s.id}', 'video')" />
-      <input type="file" id="vlogStepAudio_${s.id}" accept="audio/*" style="display:none;" onchange="onVlogStepMediaChange(event, '${s.id}', 'audio')" />
-      <textarea class="textarea" placeholder="Note du jour : ce que tu as vu, ressenti, mangé…" maxlength="400" style="min-height:60px;margin-top:6px;" oninput="updateVlogStep('${s.id}', 'text', this.value)">${escapeHtml(s.text || '')}</textarea>
+      <input type="file" id="vlogStepPhoto_${s.id}" accept="image/*" style="display:none;" onchange="onVlogStepMediaChange(event, '${escapeJsArg(s.id)}', 'photo')" />
+      <input type="file" id="vlogStepVideo_${s.id}" accept="video/*" style="display:none;" onchange="onVlogStepMediaChange(event, '${escapeJsArg(s.id)}', 'video')" />
+      <input type="file" id="vlogStepAudio_${s.id}" accept="audio/*" style="display:none;" onchange="onVlogStepMediaChange(event, '${escapeJsArg(s.id)}', 'audio')" />
+      <textarea class="textarea" placeholder="Note du jour : ce que tu as vu, ressenti, mangé…" maxlength="400" style="min-height:60px;margin-top:6px;" oninput="updateVlogStep('${escapeJsArg(s.id)}', 'text', this.value)">${escapeHtml(s.text || '')}</textarea>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px;">
         <div style="position:relative;">
-          <input type="number" inputmode="decimal" min="0" step="1" class="input" placeholder="💰 Budget du jour" value="${escapeHtml(_cdvBudgetAmount(s.budget))}" oninput="updateVlogStep('${s.id}', 'budget', this.value ? this.value + ' €' : '')" style="font-size:12px;padding-right:26px;" />
+          <input type="number" inputmode="decimal" min="0" step="1" class="input" placeholder="💰 Budget du jour" value="${escapeHtml(_cdvBudgetAmount(s.budget))}" oninput="updateVlogStep('${escapeJsArg(s.id)}', 'budget', this.value ? this.value + ' €' : '')" style="font-size:12px;padding-right:26px;" />
           <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);color:var(--muted);font-weight:700;pointer-events:none;font-size:12px;">€</span>
         </div>
-        <input type="text" class="input" placeholder="💡 Conseil (optionnel)" value="${escapeHtml(s.tip || '')}" maxlength="160" oninput="updateVlogStep('${s.id}', 'tip', this.value)" style="font-size:12px;" />
+        <input type="text" class="input" placeholder="💡 Conseil (optionnel)" value="${escapeHtml(s.tip || '')}" maxlength="160" oninput="updateVlogStep('${escapeJsArg(s.id)}', 'tip', this.value)" style="font-size:12px;" />
       </div>
     </div>
   `).join("");
@@ -1140,7 +1140,7 @@ document.addEventListener("change", (e) => {
     reader.onload = (ev) => {
       vlogState.cover = ev.target.result;
       const prev = $("#vlogCoverPreview");
-      if (prev) prev.innerHTML = `<img loading="lazy" decoding="async" class="vlog-cover-preview" src="${ev.target.result}" alt="Cover"/>`;
+      if (prev) prev.innerHTML = `<img loading="lazy" decoding="async" class="vlog-cover-preview" src="${escapeHtml(ev.target.result)}" alt="Cover"/>`;
     };
     reader.readAsDataURL(f);
   }
@@ -1173,7 +1173,7 @@ function openVlogViewer(postId) {
     <div class="vlog-viewer-step">
       <span class="vlog-viewer-step-day"><span class="vlog-viewer-step-num">${i + 1}</span> JOUR ${i + 1}</span>
       ${st.place ? `<div class="vlog-viewer-step-place">📍 ${escapeHtml(st.place)}</div>` : ""}
-      ${st.photo ? `<img loading="lazy" decoding="async" class="vlog-viewer-step-photo" src="${st.photo}" alt="" onerror="this.onerror=null;this.src='https://picsum.photos/seed/vlog-step-${i}-${postId}/720/480';"/>` : ""}
+      ${st.photo ? `<img loading="lazy" decoding="async" class="vlog-viewer-step-photo" src="${safeUrlAttr(st.photo)}" alt="" onerror="this.onerror=null;this.src='https://picsum.photos/seed/vlog-step-${i}-${encodeURIComponent(postId)}/720/480';"/>` : ""}
       ${st.video ? `<video class="vlog-viewer-step-photo" src="${safeUrlAttr(st.video)}" controls playsinline preload="metadata" style="background:#000;"></video>` : ""}
       ${st.audio ? `<audio src="${safeUrlAttr(st.audio)}" controls style="width:100%;margin:6px 0;"></audio>` : ""}
       ${st.text ? `<div class="vlog-viewer-step-text">${escapeHtml(st.text)}</div>` : ""}
@@ -1212,7 +1212,7 @@ function openVlogViewer(postId) {
   const tripSt = cdvTripStats(post.steps || [], { start: post.dateStart, end: post.dateEnd });
 
   const html = `
-    ${post.cover ? `<img loading="lazy" decoding="async" class="vlog-viewer-cover" src="${safeUrlAttr(post.cover)}" alt="${escapeHtml(post.destination || '')}" onerror="this.onerror=null;this.src='https://picsum.photos/seed/vlog-${postId}/1280/720';"/>` : `<div class="vlog-viewer-cover"></div>`}
+    ${post.cover ? `<img loading="lazy" decoding="async" class="vlog-viewer-cover" src="${safeUrlAttr(post.cover)}" alt="${escapeHtml(post.destination || '')}" onerror="this.onerror=null;this.src='https://picsum.photos/seed/vlog-${encodeURIComponent(postId)}/1280/720';"/>` : `<div class="vlog-viewer-cover"></div>`}
     <div class="vlog-viewer-body">
       <div class="vlog-viewer-title">${escapeHtml(post.destination || "Carnet de voyage")}</div>
       <div class="vlog-viewer-dates">${escapeHtml(fmtRange(post.dateStart, post.dateEnd))}</div>
@@ -1256,31 +1256,31 @@ function openVlogViewer(postId) {
         </div>` : ""}
 
       <div class="vlog-viewer-actions">
-        <button class="vlog-action-btn ${isSaved ? "saved" : ""}" onclick="toggleCarnetSave('${postId}')">
+        <button class="vlog-action-btn ${isSaved ? "saved" : ""}" onclick="toggleCarnetSave('${escapeJsArg(postId)}')">
           ${isSaved ? "⭐ Sauvegardé" : "☆ Sauvegarder"}
         </button>
-        <button class="vlog-action-btn" onclick="saveItineraryPlaces('${postId}','carnet')">
+        <button class="vlog-action-btn" onclick="saveItineraryPlaces('${escapeJsArg(postId)}','carnet')">
           📍 Enregistrer les lieux
         </button>
-        <button class="vlog-action-btn" onclick="organizeEventFromTrip('carnet','${postId}')">
+        <button class="vlog-action-btn" onclick="organizeEventFromTrip('carnet','${escapeJsArg(postId)}')">
           📅 Organiser une sortie ici
         </button>
-        ${canEditCarnet(post) ? `<button class="vlog-action-btn" onclick="editCarnet('${postId}')">✏️ Modifier</button>` : ""}
+        ${canEditCarnet(post) ? `<button class="vlog-action-btn" onclick="editCarnet('${escapeJsArg(postId)}')">✏️ Modifier</button>` : ""}
         ${(post.authorId === ((typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me") || post._source === "me")
-          ? `<button class="vlog-action-btn" onclick="openCarnetCollaborators('${postId}')">👥 Co-auteurs</button>` : ""}
-        <button class="vlog-action-btn" onclick="inspireFromCarnet('${postId}')">
+          ? `<button class="vlog-action-btn" onclick="openCarnetCollaborators('${escapeJsArg(postId)}')">👥 Co-auteurs</button>` : ""}
+        <button class="vlog-action-btn" onclick="inspireFromCarnet('${escapeJsArg(postId)}')">
           📔 M'en inspirer
         </button>
-        <button class="vlog-action-btn primary" onclick="organizeGroupTrip('${postId}')">
+        <button class="vlog-action-btn primary" onclick="organizeGroupTrip('${escapeJsArg(postId)}')">
           🤝 Organiser un voyage groupé
         </button>
       </div>
 
       <div class="post-actions" style="margin-top:20px;">
-        <span class="post-action ${(state.user.likedPosts || []).indexOf(postId) > -1 ? "liked" : ""}" data-postlike="${postId}" onclick="event.stopPropagation();likePost('${postId}', true, this)">${(state.user.likedPosts || []).indexOf(postId) > -1 ? "❤️" : "🤍"} ${post.likes || 0}</span>
-        <span class="post-action" onclick="return showEmojiPickerForPost('${postId}', event);" title="Emoji & GIF">😊</span>
-        <span class="post-action" onclick="event.stopPropagation();sharePost('${postId}')" title="Partager" aria-label="Partager">${shareIconSvg(18)}</span>
-        <span class="post-react-chip-holder" data-postchip="${postId}" style="margin-left:auto;">${_postReactChipHtml(postId)}</span>
+        <span class="post-action ${(state.user.likedPosts || []).indexOf(postId) > -1 ? "liked" : ""}" data-postlike="${escapeHtml(postId)}" onclick="event.stopPropagation();likePost('${escapeJsArg(postId)}', true, this)">${(state.user.likedPosts || []).indexOf(postId) > -1 ? "❤️" : "🤍"} ${post.likes || 0}</span>
+        <span class="post-action" onclick="return showEmojiPickerForPost('${escapeJsArg(postId)}', event);" title="Emoji & GIF">😊</span>
+        <span class="post-action" onclick="event.stopPropagation();sharePost('${escapeJsArg(postId)}')" title="Partager" aria-label="Partager">${shareIconSvg(18)}</span>
+        <span class="post-react-chip-holder" data-postchip="${escapeHtml(postId)}" style="margin-left:auto;">${_postReactChipHtml(postId)}</span>
       </div>
 
       <div class="vlog-viewer-comments" style="margin-top:24px;border-top:1px solid var(--border);padding-top:16px;">
@@ -1289,9 +1289,9 @@ function openVlogViewer(postId) {
           <div style="font-size:12px;color:var(--muted);">Chargement…</div>
         </div>
         <div style="display:flex;gap:6px;align-items:center;">
-          <input type="text" class="input" id="vlogCommentInput" placeholder="Écris un commentaire…" maxlength="500" style="flex:1;font-size:13px;padding:10px 12px;" onkeypress="if(event.key==='Enter')submitVlogComment('${postId}')"/>
+          <input type="text" class="input" id="vlogCommentInput" placeholder="Écris un commentaire…" maxlength="500" style="flex:1;font-size:13px;padding:10px 12px;" onkeypress="if(event.key==='Enter')submitVlogComment('${escapeJsArg(postId)}')"/>
           ${_cmtComposerToolsHtml("vlogCommentInput", "submitVlogComment", postId)}
-          <button class="btn primary" onclick="submitVlogComment('${postId}')" style="font-size:13px;padding:10px 14px;">Envoyer</button>
+          <button class="btn primary" onclick="submitVlogComment('${escapeJsArg(postId)}')" style="font-size:13px;padding:10px 14px;">Envoyer</button>
         </div>
       </div>
     </div>
@@ -1498,8 +1498,8 @@ function renderCarnetsExplore() {
   list.innerHTML = carnets.map(c => {
     const stats = vlogStats(c);
     const author = c._source === "me" ? state.user.name : (userById(c.authorId) || { name: "Anonyme" }).name;
-    return `<div class="carnet-explore-card" onclick="openVlogViewer('${c.id}')">
-      ${c.cover ? `<img loading="lazy" decoding="async" class="carnet-explore-cover" src="${c.cover}" alt=""/>` : `<div class="carnet-explore-cover" style="background:linear-gradient(135deg,#4c1d95,#7c3aed);"></div>`}
+    return `<div class="carnet-explore-card" onclick="openVlogViewer('${escapeJsArg(c.id)}')">
+      ${c.cover ? `<img loading="lazy" decoding="async" class="carnet-explore-cover" src="${safeUrlAttr(c.cover)}" alt=""/>` : `<div class="carnet-explore-cover" style="background:linear-gradient(135deg,#4c1d95,#7c3aed);"></div>`}
       <div class="carnet-explore-body">
         <div class="carnet-explore-dest">📍 ${escapeHtml(c.destination || "Carnet")}</div>
         <div class="carnet-explore-meta">
@@ -1599,9 +1599,9 @@ function openCdvCollaborators(liveId) {
     ? cols.map(function (uidC) {
         var u = (typeof userById === "function" && userById(uidC)) || {};
         return '<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);">'
-          + '<div class="avatar" style="background:' + (u.avatar || "#7c3aed") + ';width:30px;height:30px;font-size:14px;">' + (u.profileEmoji || "🌍") + '</div>'
+          + '<div class="avatar" style="background:' + _cssColor(u.avatar || "#7c3aed") + ';width:30px;height:30px;font-size:14px;">' + escapeHtml(u.profileEmoji || "🌍") + '</div>'
           + '<div style="flex:1;font-size:13px;color:var(--text);">' + escapeHtml(u.name || "Passionné") + '</div>'
-          + '<span onclick="removeCdvCollaborator(\'' + liveId + '\',\'' + escapeJsArg(uidC) + '\')" style="cursor:pointer;color:#ef4444;font-size:12px;">Retirer</span>'
+          + '<span onclick="removeCdvCollaborator(\'' + escapeJsArg(liveId) + '\',\'' + escapeJsArg(uidC) + '\')" style="cursor:pointer;color:#ef4444;font-size:12px;">Retirer</span>'
           + '</div>';
       }).join("")
     : '<div style="font-size:12px;color:var(--muted);padding:8px 0;">Personne pour l\'instant. Invite les gens avec qui tu voyages : ils pourront publier leurs propres étapes sur ce voyage.</div>';
@@ -1612,7 +1612,7 @@ function openCdvCollaborators(liveId) {
     + '<div class="modal-title">👥 Co-voyageurs</div>'
     + '<div id="cdvCollabList">' + listHtml + '</div>'
     + '<label class="field" style="margin-top:12px;"><span>Inviter quelqu\'un</span>'
-    + '<input type="text" class="input" id="cdvCollabSearch" placeholder="Pseudo du voyageur…" oninput="searchCdvCollaborator(\'' + liveId + '\', this.value)"/></label>'
+    + '<input type="text" class="input" id="cdvCollabSearch" placeholder="Pseudo du voyageur…" oninput="searchCdvCollaborator(\'' + escapeJsArg(liveId) + '\', this.value)"/></label>'
     + '<div id="cdvCollabResults" style="display:flex;flex-direction:column;gap:6px;"></div>'
   );
 }
@@ -1640,9 +1640,9 @@ async function searchCdvCollaborator(liveId, q) {
   if (!users.length) { box.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:6px;">Aucun compte trouvé</div>'; return; }
   box.innerHTML = users.slice(0, 6).map(function (u) {
     return '<div style="display:flex;align-items:center;gap:8px;border:1px solid var(--border);border-radius:10px;padding:8px;">'
-      + '<div class="avatar" style="background:' + (u.color || "#7c3aed") + ';width:28px;height:28px;font-size:13px;">' + (u.emoji || "✨") + '</div>'
+      + '<div class="avatar" style="background:' + _cssColor(u.color || "#7c3aed") + ';width:28px;height:28px;font-size:13px;">' + escapeHtml(u.emoji || "✨") + '</div>'
       + '<div style="flex:1;font-size:13px;color:var(--text);">' + escapeHtml(u.username || "Passionné") + '</div>'
-      + '<button class="btn primary" style="font-size:11px;padding:6px 10px;" onclick="addCdvCollaborator(\'' + liveId + '\',\'' + escapeJsArg(u.id) + '\',\'' + escapeJsArg(u.username || "Passionné") + '\')">Inviter</button>'
+      + '<button class="btn primary" style="font-size:11px;padding:6px 10px;" onclick="addCdvCollaborator(\'' + escapeJsArg(liveId) + '\',\'' + escapeJsArg(u.id) + '\',\'' + escapeJsArg(u.username || "Passionné") + '\')">Inviter</button>'
       + '</div>';
   }).join("");
 }
@@ -1849,7 +1849,7 @@ function addCdvLiveStep(liveId, stepId) {
     <label class="field"><span>🎭 Type d'étape</span>
       <div style="display:flex;gap:6px;flex-wrap:wrap;">
         ${_types.map(function (t) {
-          return `<button class="pill step-type-btn${_stepEmoji === t[0] ? " active" : ""}" onclick="selectStepType(this,'${t[0]}')">${t[0]} ${t[1]}</button>`;
+          return `<button class="pill step-type-btn${_stepEmoji === t[0] ? " active" : ""}" onclick="selectStepType(this,'${escapeJsArg(t[0])}')">${t[0]} ${t[1]}</button>`;
         }).join("")}
       </div>
     </label>
@@ -1894,7 +1894,7 @@ function addCdvLiveStep(liveId, stepId) {
 
     <div style="display:flex;gap:8px;margin-top:14px;">
       <button class="btn ghost" onclick="closeModal()">${_edit ? "Annuler" : "Plus tard"}</button>
-      <button class="btn primary" style="flex:1;" onclick="saveCdvLiveStep('${liveId}'${stepId ? ",'" + stepId + "'" : ""})">${_edit ? "✅ Enregistrer" : "📡 Publier l'étape"}</button>
+      <button class="btn primary" style="flex:1;" onclick="saveCdvLiveStep('${escapeJsArg(liveId)}'${stepId ? ",'" + escapeJsArg(stepId) + "'" : ""})">${_edit ? "✅ Enregistrer" : "📡 Publier l'étape"}</button>
     </div>
   `);
   previewLiveStepPhotosRefresh();
@@ -2463,13 +2463,13 @@ function _stepActionsBarHtml(threadId, shareCall) {
   var tid = escapeJsArg(threadId);
   var liked = _iLikedStep(threadId), likeN = _stepLikeCount(threadId), cn = _stepCommentCount(threadId);
   return '<div class="post-actions" onclick="event.stopPropagation()" style="margin-top:8px;">'
-    + '<span class="post-action ' + (liked ? "liked" : "") + '" data-steplike="' + threadId + '" onclick="event.stopPropagation();toggleStepLike(\'' + tid + '\',this)">' + (liked ? "❤️" : "🤍") + ' ' + likeN + '</span>'
-    + '<span class="post-action" data-cmtcount="' + threadId + '" onclick="event.stopPropagation();openStepComments(\'' + tid + '\')">💬 ' + cn + '</span>'
-    + '<span class="post-action" onclick="return showStepEmojiPicker(\'' + tid + '\',event);" title="Emoji & GIF">😊</span>'
+    + '<span class="post-action ' + (liked ? "liked" : "") + '" data-steplike="' + escapeHtml(threadId) + '" onclick="event.stopPropagation();toggleStepLike(\'' + escapeJsArg(tid) + '\',this)">' + (liked ? "❤️" : "🤍") + ' ' + likeN + '</span>'
+    + '<span class="post-action" data-cmtcount="' + escapeHtml(threadId) + '" onclick="event.stopPropagation();openStepComments(\'' + escapeJsArg(tid) + '\')">💬 ' + cn + '</span>'
+    + '<span class="post-action" onclick="return showStepEmojiPicker(\'' + escapeJsArg(tid) + '\',event);" title="Emoji & GIF">😊</span>'
     + '<span class="post-action" onclick="event.stopPropagation();' + shareCall + '" title="Partager" aria-label="Partager">' + shareIconSvg(18) + '</span>'
-    + '<span class="step-react-chip-holder" data-stepreact="' + threadId + '" style="margin-left:auto;">' + _stepReactChipHtml(threadId) + '</span>'
+    + '<span class="step-react-chip-holder" data-stepreact="' + escapeHtml(threadId) + '" style="margin-left:auto;">' + _stepReactChipHtml(threadId) + '</span>'
     + '</div>'
-    + '<div class="event-comments-inline" data-stepcomments="' + threadId + '" onclick="event.stopPropagation()">' + _stepCommentsPreviewHtml(threadId) + '</div>';
+    + '<div class="event-comments-inline" data-stepcomments="' + escapeHtml(threadId) + '" onclick="event.stopPropagation()">' + _stepCommentsPreviewHtml(threadId) + '</div>';
 }
 
 // Prévient les personnes qui SUIVENT ce live qu'une nouvelle étape est publiée
@@ -2538,8 +2538,8 @@ function confirmEndCdvLive(liveId) {
       « ${escapeHtml(live.destination || "Voyage")} » passera en <b>terminé</b> : tu ne pourras plus ajouter d'étape.
       Tes ${n} étape${n > 1 ? "s" : ""} et les commentaires restent visibles.
     </div>
-    <button class="btn primary block" style="margin-bottom:8px;" onclick="endCdvLive('${liveId}', true)">Terminer et créer le carnet</button>
-    <button class="btn ghost block" style="margin-bottom:8px;" onclick="endCdvLive('${liveId}', false)">Terminer seulement</button>
+    <button class="btn primary block" style="margin-bottom:8px;" onclick="endCdvLive('${escapeJsArg(liveId)}', true)">Terminer et créer le carnet</button>
+    <button class="btn ghost block" style="margin-bottom:8px;" onclick="endCdvLive('${escapeJsArg(liveId)}', false)">Terminer seulement</button>
     <button class="btn ghost block" onclick="closeModal()">Annuler</button>
   `);
 }
@@ -2633,11 +2633,11 @@ function _cdvReactBarHtml(liveId, live) {
   var lk = (window._liveLikes && window._liveLikes[liveId]) || { likes: 0, liked: false };
   var liked = ((state.user && state.user.likedLives) || []).indexOf(liveId) > -1 || lk.liked;
   return '<button class="btn ghost' + (liked ? " active" : "") + '" data-livelike="' + liveId
-      + '" onclick="likeCdvLiveCard(\'' + liveId + '\', this)" style="flex:1;font-size:13px;padding:8px;">'
+      + '" onclick="likeCdvLiveCard(\'' + escapeJsArg(liveId) + '\', this)" style="flex:1;font-size:13px;padding:8px;">'
       + (liked ? "❤️" : "🤍") + " " + (lk.likes || 0) + '</button>'
-    + '<button class="btn ghost' + mineNow("🔥") + '" onclick="reactCdvLive(\'' + liveId + '\',\'🔥\')" style="flex:1;font-size:13px;padding:8px;">🔥 ' + cnt("🔥") + '</button>'
-    + '<button class="btn ghost' + mineNow("😍") + '" onclick="reactCdvLive(\'' + liveId + '\',\'😍\')" style="flex:1;font-size:13px;padding:8px;">😍 ' + cnt("😍") + '</button>'
-    + '<button class="btn ghost" onclick="shareCdvLive(\'' + liveId + '\')" style="flex:1;font-size:13px;padding:8px;" title="Partager ce live">' + shareIconSvg(16) + '</button>';
+    + '<button class="btn ghost' + mineNow("🔥") + '" onclick="reactCdvLive(\'' + escapeJsArg(liveId) + '\',\'🔥\')" style="flex:1;font-size:13px;padding:8px;">🔥 ' + cnt("🔥") + '</button>'
+    + '<button class="btn ghost' + mineNow("😍") + '" onclick="reactCdvLive(\'' + escapeJsArg(liveId) + '\',\'😍\')" style="flex:1;font-size:13px;padding:8px;">😍 ' + cnt("😍") + '</button>'
+    + '<button class="btn ghost" onclick="shareCdvLive(\'' + escapeJsArg(liveId) + '\')" style="flex:1;font-size:13px;padding:8px;" title="Partager ce live">' + shareIconSvg(16) + '</button>';
 }
 // Patch LÉGER du viewer de live ouvert (compteur de suivis, réactions, et bloc
 // commentaires si demandé) — SANS reconstruire les étapes/photos ni perdre le
@@ -2701,8 +2701,8 @@ function openCdvLiveViewer(liveId) {
       ? '<span style="font-size:10px;color:var(--muted);margin-left:6px;">· par ' + escapeHtml(((typeof userById === "function" && userById(s.authorId)) || {}).name || "un co-voyageur") + '</span>'
       : "";
     var ownerTools = stepMine
-      ? '<span onclick="event.stopPropagation();addCdvLiveStep(\'' + liveId + '\',\'' + s.id + '\')" style="font-size:11px;color:var(--muted);cursor:pointer;">✏️ Modifier</span>'
-        + '<span onclick="event.stopPropagation();deleteCdvLiveStep(\'' + liveId + '\',\'' + s.id + '\')" style="font-size:11px;color:#ef4444;cursor:pointer;">🗑 Supprimer</span>'
+      ? '<span onclick="event.stopPropagation();addCdvLiveStep(\'' + escapeJsArg(liveId) + '\',\'' + escapeJsArg(s.id) + '\')" style="font-size:11px;color:var(--muted);cursor:pointer;">✏️ Modifier</span>'
+        + '<span onclick="event.stopPropagation();deleteCdvLiveStep(\'' + escapeJsArg(liveId) + '\',\'' + escapeJsArg(s.id) + '\')" style="font-size:11px;color:#ef4444;cursor:pointer;">🗑 Supprimer</span>'
       : "";
     // Item 5 : commenter / partager CHAQUE étape. Le fil de commentaires est scopé à
     // l'étape (thread id « cdvstep:<liveId>:<stepId> », résolu par _findCommentThread)
@@ -2742,7 +2742,7 @@ function openCdvLiveViewer(liveId) {
   var commentsHTML = _cdvCommentsBoxHtml(live);
 
   const html = '\
-    <button class="cdv-viewer-menu-btn" onclick="openCdvLiveMenu(\'' + liveId + '\', true)" title="Options" aria-label="Options du voyage">⋯</button>\
+    <button class="cdv-viewer-menu-btn" onclick="openCdvLiveMenu(\'' + escapeJsArg(liveId) + '\', true)" title="Options" aria-label="Options du voyage">⋯</button>\
     \
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;padding-right:86px;">\
       ' + (isLive ? '<span class="cdv-live-badge">🔴 EN DIRECT</span>' : '<span style="font-size:10px;font-weight:700;color:var(--muted);background:var(--bg-deep);padding:3px 8px;border-radius:6px;">✅ TERMINÉ</span>') + '\
@@ -2773,24 +2773,24 @@ function openCdvLiveViewer(liveId) {
     <div style="font-weight:800;font-size:13px;color:var(--text);margin:14px 0 8px;">💬 Commentaires</div>\
     <div id="cdvCommentsBox">' + commentsHTML + '</div>\
     <div style="display:flex;gap:6px;margin-top:8px;align-items:center;">\
-      <input type="text" class="input" id="cdvLiveComment" placeholder="Écris un commentaire…" style="flex:1;font-size:12px;padding:8px 12px;" onkeypress="if(event.key===\'Enter\')addCdvLiveComment(\'' + liveId + '\')"/>\
+      <input type="text" class="input" id="cdvLiveComment" placeholder="Écris un commentaire…" style="flex:1;font-size:12px;padding:8px 12px;" onkeypress="if(event.key===\'Enter\')addCdvLiveComment(\'' + escapeJsArg(liveId) + '\')"/>\
       ' + _cmtComposerToolsHtml("cdvLiveComment", "addCdvLiveComment", liveId) + '\
-      <button class="btn primary" onclick="addCdvLiveComment(\'' + liveId + '\')" style="font-size:12px;padding:8px 12px;">Envoyer</button>\
+      <button class="btn primary" onclick="addCdvLiveComment(\'' + escapeJsArg(liveId) + '\')" style="font-size:12px;padding:8px 12px;">Envoyer</button>\
     </div>\
     \
     <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:8px;">\
       ' + (canEdit && isLive ? '\
         <div style="display:flex;gap:8px;">\
-          <button class="btn primary" style="flex:1;" onclick="closeModal();addCdvLiveStep(\'' + liveId + '\')">📍 Ajouter une étape</button>\
+          <button class="btn primary" style="flex:1;" onclick="closeModal();addCdvLiveStep(\'' + escapeJsArg(liveId) + '\')">📍 Ajouter une étape</button>\
           ' + (isMine ? '<button class="btn ghost" style="border-color:rgba(239,68,68,0.4);color:#ef4444;" onclick="confirmEndCdvLive(\'' + liveId + '\')">Terminer</button>' : '') + '\
         </div>' : '') + '\
-      ' + (isMine ? '<button class="btn ghost block" onclick="openCdvCollaborators(\'' + liveId + '\')">👥 Co-voyageurs' + (hasCollabs ? ' (' + cdvCollaborators(live).length + ')' : '') + '</button>' : '') + '\
+      ' + (isMine ? '<button class="btn ghost block" onclick="openCdvCollaborators(\'' + escapeJsArg(liveId) + '\')">👥 Co-voyageurs' + (hasCollabs ? ' (' + cdvCollaborators(live).length + ')' : '') + '</button>' : '') + '\
       ' + (isMine && !isLive ? '<button class="btn primary block" onclick="convertLiveToCarnet(\'' + liveId + '\')">📔 Convertir en carnet de voyage</button>' : '') + '\
       ' + (live.steps.length ? '<button class="btn ghost block" onclick="saveItineraryPlaces(\'' + liveId + '\',\'live\')">📍 Enregistrer les lieux</button>' : '') + '\
-      <button class="btn ghost block" onclick="organizeEventFromTrip(\'live\',\'' + liveId + '\')">📅 Organiser une sortie ici</button>\
+      <button class="btn ghost block" onclick="organizeEventFromTrip(\'live\',\'' + escapeJsArg(liveId) + '\')">📅 Organiser une sortie ici</button>\
       ' + (!isMine ? '\
-        <button class="btn primary block" onclick="toggleFollowCdvLive(\'' + liveId + '\',this)" style="background:linear-gradient(135deg,#ef4444,#f59e0b);">📡 Suivre ce voyage</button>\
-        <button onclick="reportCdvLive(\'' + liveId + '\')" style="display:block;margin:4px auto 0;background:none;border:none;color:var(--muted);font-size:11px;cursor:pointer;">⚠️ Signaler ce live</button>' : '') + '\
+        <button class="btn primary block" onclick="toggleFollowCdvLive(\'' + escapeJsArg(liveId) + '\',this)" style="background:linear-gradient(135deg,#ef4444,#f59e0b);">📡 Suivre ce voyage</button>\
+        <button onclick="reportCdvLive(\'' + escapeJsArg(liveId) + '\')" style="display:block;margin:4px auto 0;background:none;border:none;color:var(--muted);font-size:11px;cursor:pointer;">⚠️ Signaler ce live</button>' : '') + '\
     </div>\
   ';
   openModal(html);
@@ -2892,7 +2892,7 @@ function openNewTripSheet() {
     ? '<div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.28);border-radius:12px;padding:12px;margin-bottom:12px;">'
       + '<div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:6px;">🔴 Voyage en cours</div>'
       + '<div style="font-size:12px;color:var(--text-dim);margin-bottom:10px;">« ' + escapeHtml(mine[0].destination || "Voyage") + ' » · ' + ((mine[0].steps || []).length) + ' étape(s)</div>'
-      + '<button class="btn primary block" style="font-size:12px;padding:9px;" onclick="closeModal();addCdvLiveStep(\'' + mine[0].id + '\')">📍 Ajouter une étape</button>'
+      + '<button class="btn primary block" style="font-size:12px;padding:9px;" onclick="closeModal();addCdvLiveStep(\'' + escapeJsArg(mine[0].id) + '\')">📍 Ajouter une étape</button>'
       + '</div>'
     : "";
   openModal(
@@ -3277,15 +3277,15 @@ function _splCardHtml(p, num) {
     +     '<div class="spl-card-name"><span>' + escapeHtml(p.name) + '</span>' + (done ? '<span class="spl-done-tag">✅ visité</span>' : "") + '</div>'
     +     (meta.length ? '<div class="spl-card-meta">' + meta.join(" · ") + '</div>' : "")
     +   '</div>'
-    +   '<button class="spl-del" onclick="removeSavedPlace(\'' + jsId + '\')" aria-label="Retirer de ma liste">\u{1F5D1}</button>'
+    +   '<button class="spl-del" onclick="removeSavedPlace(\'' + escapeJsArg(jsId) + '\')" aria-label="Retirer de ma liste">\u{1F5D1}</button>'
     + '</div>'
     + (p.note ? '<div class="spl-card-note">' + escapeHtml(p.note) + '</div>' : "")
     + (p.tip ? '<div class="spl-card-tip">\u{1F4A1} ' + escapeHtml(p.tip) + '</div>' : "")
     + '<div class="spl-actions">'
-    +   '<button class="spl-act' + (done ? " on" : "") + '" onclick="toggleSavedPlaceDone(\'' + jsId + '\')">' + (done ? "↩ À visiter" : "✅ Visité") + '</button>'
-    +   '<button class="spl-act" onclick="openSavedPlaceRoute(\'' + jsId + '\')">\u{1F9ED} Y aller</button>'
-    +   '<button class="spl-act" onclick="addSavedPlaceToLive(\'' + jsId + '\')">\u{1F4E1} Étape</button>'
-    +   '<button class="spl-act" onclick="createEventAtSavedPlace(\'' + jsId + '\')">\u{1F389} Événement</button>'
+    +   '<button class="spl-act' + (done ? " on" : "") + '" onclick="toggleSavedPlaceDone(\'' + escapeJsArg(jsId) + '\')">' + (done ? "↩ À visiter" : "✅ Visité") + '</button>'
+    +   '<button class="spl-act" onclick="openSavedPlaceRoute(\'' + escapeJsArg(jsId) + '\')">\u{1F9ED} Y aller</button>'
+    +   '<button class="spl-act" onclick="addSavedPlaceToLive(\'' + escapeJsArg(jsId) + '\')">\u{1F4E1} Étape</button>'
+    +   '<button class="spl-act" onclick="createEventAtSavedPlace(\'' + escapeJsArg(jsId) + '\')">\u{1F389} Événement</button>'
     + '</div>'
     + '</div>';
 }
@@ -3683,7 +3683,7 @@ function _liveLikeSpanHtml(l) {
   var c = (window._liveLikes && window._liveLikes[l.id]) || { likes: 0, liked: false };
   var liked = (state.user.likedLives || []).indexOf(l.id) > -1 || c.liked;
   return '<span class="post-action ' + (liked ? "liked" : "") + '" data-livelike="' + l.id
-    + '" onclick="event.stopPropagation();likeCdvLiveCard(\'' + l.id + '\', this)">'
+    + '" onclick="event.stopPropagation();likeCdvLiveCard(\'' + escapeJsArg(l.id) + '\', this)">'
     + (liked ? "❤️" : "🤍") + " " + (c.likes || 0) + '</span>';
 }
 
@@ -3758,7 +3758,7 @@ function _pinnedLiveCardHtml(l) {
   const authorName = isMyLive(l) ? (state.user.name || "Toi") : (seedAuthor && seedAuthor.name) || "Passionné";
   const viewerCount = cdvLiveFollowerCount(l);
   const nSteps = (l.steps || []).length;
-  return `<div class="cdv-live-card cdv-live-pinned" onclick="openCdvLiveViewer('${l.id}')" style="border-color:rgba(239,68,68,0.35);position:relative;">
+  return `<div class="cdv-live-card cdv-live-pinned" onclick="openCdvLiveViewer('${escapeJsArg(l.id)}')" style="border-color:rgba(239,68,68,0.35);position:relative;">
     ${_cdvLiveMenuBtnHtml(l)}
     <div class="cdv-live-header">
       <span class="cdv-live-badge">🔴 EN DIRECT</span>
@@ -3939,9 +3939,12 @@ function renderCdvScreen() {
     const dates = fmtRange(c.dateStart, c.dateEnd);
     const since = c.createdAt ? fmtTime(c.createdAt) : "";
 
-    return `<article class="cdv-feed-card" onclick="openVlogViewer('${c.id}')">
+    // ⚠️ Carnet d'un AUTRE compte : `id` file dans une chaîne JS, `color` dans un
+    // attribut style et `emoji` (champ LIBRE) en HTML — trois contextes, trois
+    // helpers. Chacun était brut ici.
+    return `<article class="cdv-feed-card" onclick="openVlogViewer('${escapeJsArg(c.id)}')">
       <div class="cdv-feed-header">
-        <div class="avatar" style="background:${authorColor};">${authorEmoji}</div>
+        <div class="avatar" style="background:${_cssColor(authorColor)};">${escapeHtml(authorEmoji)}</div>
         <div class="cdv-feed-author">
           <div class="cdv-feed-author-name">
             ${escapeHtml(authorName)}
@@ -3950,11 +3953,11 @@ function renderCdvScreen() {
           <div class="cdv-feed-author-meta">a publié un carnet de voyage · ${escapeHtml(since)}</div>
         </div>
         ${isSaved ? `<span class="cdv-feed-saved-badge">⭐ Sauvegardé</span>` : ""}
-        ${isMine ? `<span class="post-action" onclick="event.stopPropagation();openPostOptions('${c.id}')" title="Options" aria-label="Options du carnet" style="margin-left:6px;">⋯</span>` : ""}
+        ${isMine ? `<span class="post-action" onclick="event.stopPropagation();openPostOptions('${escapeJsArg(c.id)}')" title="Options" aria-label="Options du carnet" style="margin-left:6px;">⋯</span>` : ""}
       </div>
 
       <div class="cdv-feed-cover-wrap">
-        ${c.cover ? `<img loading="lazy" decoding="async" class="cdv-feed-cover" src="${safeUrlAttr(c.cover)}" alt="" onerror="this.onerror=null;this.src='https://picsum.photos/seed/cdv-${c.id}/1280/720';"/>` : ""}
+        ${c.cover ? `<img loading="lazy" decoding="async" class="cdv-feed-cover" src="${safeUrlAttr(c.cover)}" alt="" onerror="this.onerror=null;this.src='https://picsum.photos/seed/cdv-${encodeURIComponent(c.id)}/1280/720';"/>` : ""}
         <div class="cdv-feed-cover-overlay"></div>
         <div class="cdv-feed-cover-meta">
           <span class="cdv-feed-tag">📔 CARNET DE VOYAGE</span>
@@ -3978,12 +3981,12 @@ function renderCdvScreen() {
       </div>
 
       <div class="post-actions" onclick="event.stopPropagation()">
-        <span class="post-action ${isLiked ? "liked" : ""}" data-postlike="${c.id}" onclick="event.stopPropagation();likePost('${c.id}', true, this)">${isLiked ? "❤️" : "🤍"} ${c.likes || 0}</span>
-        <span class="post-action" onclick="openComments('${c.id}')">💬 ${commentThreadCount(c.comments)}</span>
-        <span class="post-action" onclick="return showEmojiPickerForPost('${c.id}', event);" title="Emoji & GIF">😊</span>
-        <span class="post-action" onclick="event.stopPropagation();sharePost('${c.id}')" title="Partager" aria-label="Partager">${shareIconSvg(18)}</span>
-        <span class="post-action" onclick="toggleCarnetSave('${c.id}');renderCdvScreen()" title="${isSaved ? "Sauvegardé" : "Sauvegarder"}">${isSaved ? "⭐" : "☆"}</span>
-        <span class="post-react-chip-holder" data-postchip="${c.id}" style="margin-left:auto;">${_postReactChipHtml(c.id)}</span>
+        <span class="post-action ${isLiked ? "liked" : ""}" data-postlike="${escapeHtml(c.id)}" onclick="event.stopPropagation();likePost('${escapeJsArg(c.id)}', true, this)">${isLiked ? "❤️" : "🤍"} ${c.likes || 0}</span>
+        <span class="post-action" onclick="openComments('${escapeJsArg(c.id)}')">💬 ${commentThreadCount(c.comments)}</span>
+        <span class="post-action" onclick="return showEmojiPickerForPost('${escapeJsArg(c.id)}', event);" title="Emoji & GIF">😊</span>
+        <span class="post-action" onclick="event.stopPropagation();sharePost('${escapeJsArg(c.id)}')" title="Partager" aria-label="Partager">${shareIconSvg(18)}</span>
+        <span class="post-action" onclick="toggleCarnetSave('${escapeJsArg(c.id)}');renderCdvScreen()" title="${isSaved ? "Sauvegardé" : "Sauvegarder"}">${isSaved ? "⭐" : "☆"}</span>
+        <span class="post-react-chip-holder" data-postchip="${escapeHtml(c.id)}" style="margin-left:auto;">${_postReactChipHtml(c.id)}</span>
       </div>
     </article>`;
   }).join("");
@@ -4022,7 +4025,7 @@ function _cdvActiveLiveCardHtml(l) {
   const myId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
   const isFollowing = (Array.isArray(l.followers) ? l.followers : []).includes(myId);
   const steps = l.steps || [];
-  return `<div class="cdv-live-card" onclick="openCdvLiveViewer('${l.id}')" style="border-color:rgba(239,68,68,0.3);position:relative;">
+  return `<div class="cdv-live-card" onclick="openCdvLiveViewer('${escapeJsArg(l.id)}')" style="border-color:rgba(239,68,68,0.3);position:relative;">
     ${_cdvLiveMenuBtnHtml(l)}
     ${isNew ? '<div style="position:absolute;top:11px;right:38px;background:#ef4444;color:#fff;font-size:9px;font-weight:700;padding:3px 7px;border-radius:12px;">NOUVEAU</div>' : ''}
     <div class="cdv-live-header">
@@ -4035,7 +4038,7 @@ function _cdvActiveLiveCardHtml(l) {
     ${steps.length ? `
       <div class="cdv-live-steps">
         ${steps.slice(-5).map((s) => `
-          <div class="cdv-live-step" onclick="event.stopPropagation();openCdvStepStory('${l.id}', ${steps.indexOf(s)})" title="Voir en plein écran">
+          <div class="cdv-live-step" onclick="event.stopPropagation();openCdvStepStory('${escapeJsArg(l.id)}', ${steps.indexOf(s)})" title="Voir en plein écran">
             <div class="cdv-live-step-emoji">${escapeHtml(s.emoji || "📍")}</div>
             <div class="cdv-live-step-city">${escapeHtml(s.city || "")}</div>
             <div class="cdv-live-step-time">${fmtTime(s.createdAt)}</div>
@@ -4044,8 +4047,8 @@ function _cdvActiveLiveCardHtml(l) {
     <div class="cdv-live-footer">
       <div class="cdv-live-count">👁 ${viewerCount} suivent</div>
       ${canEditLive(l)
-        ? `<button class="cdv-live-follow-btn" onclick="event.stopPropagation();addCdvLiveStep('${l.id}')">+ Étape</button>`
-        : `<button class="cdv-live-follow-btn" onclick="event.stopPropagation();toggleFollowCdvLive('${l.id}',this)" style="background:${isFollowing ? '#8b5cf6' : 'var(--border)'};color:${isFollowing ? '#fff' : 'var(--text)'};">${isFollowing ? '✓ En suivi' : '📡 Suivre'}</button>`}
+        ? `<button class="cdv-live-follow-btn" onclick="event.stopPropagation();addCdvLiveStep('${escapeJsArg(l.id)}')">+ Étape</button>`
+        : `<button class="cdv-live-follow-btn" onclick="event.stopPropagation();toggleFollowCdvLive('${escapeJsArg(l.id)}',this)" style="background:${isFollowing ? '#8b5cf6' : 'var(--border)'};color:${isFollowing ? '#fff' : 'var(--text)'};">${isFollowing ? '✓ En suivi' : '📡 Suivre'}</button>`}
     </div>
     ${_cdvLiveActionsHtml(l)}
   </div>`;
@@ -4053,7 +4056,7 @@ function _cdvActiveLiveCardHtml(l) {
 
 function _cdvEndedLiveCardHtml(l) {
   const steps = l.steps || [];
-  return `<div class="cdv-live-card" onclick="openCdvLiveViewer('${l.id}')" style="border-color:var(--border);position:relative;">
+  return `<div class="cdv-live-card" onclick="openCdvLiveViewer('${escapeJsArg(l.id)}')" style="border-color:var(--border);position:relative;">
     ${_cdvLiveMenuBtnHtml(l)}
     <div class="cdv-live-header">
       <span style="font-size:10px;font-weight:700;color:var(--muted);background:var(--bg-deep);padding:3px 8px;border-radius:6px;">✅ TERMINÉ</span>
@@ -4071,7 +4074,7 @@ function _cdvEndedLiveCardHtml(l) {
 // destination ou un live lancé par erreur restaient là pour toujours. Le ⋯ est
 // DISCRET (coin haut droit, gris) et n'ouvre pas le viewer (stopPropagation).
 function _cdvLiveMenuBtnHtml(l) {
-  return `<button class="cdv-live-menu-btn" onclick="event.stopPropagation();openCdvLiveMenu('${l.id}')"
+  return `<button class="cdv-live-menu-btn" onclick="event.stopPropagation();openCdvLiveMenu('${escapeJsArg(l.id)}')"
     title="Options" aria-label="Options du voyage">⋯</button>`;
 }
 
@@ -4095,16 +4098,16 @@ function openCdvLiveMenu(liveId, fromViewer) {
     <div class="modal-title">${escapeHtml(live.destination || "Voyage")}</div>
     <div class="modal-subtitle">${ended ? "Voyage terminé" : "Voyage en direct"} · ${(live.steps || []).length} étape${(live.steps || []).length > 1 ? "s" : ""}</div>
     ${mine ? `
-      <button class="btn ghost block" style="margin-bottom:8px;" onclick="editCdvLive('${liveId}')">✏️ Modifier le voyage</button>
-      ${!ended ? `<button class="btn ghost block" style="margin-bottom:8px;" onclick="addCdvLiveStep('${liveId}')">➕ Ajouter une étape</button>
-      <button class="btn ghost block" style="margin-bottom:8px;" onclick="confirmEndCdvLive('${liveId}')">⏹ Terminer le direct</button>` : ""}
-      <button class="btn ghost block" style="margin-bottom:8px;color:#ef4444;" onclick="confirmDeleteCdvLive('${liveId}')">🗑 Supprimer le voyage</button>
+      <button class="btn ghost block" style="margin-bottom:8px;" onclick="editCdvLive('${escapeJsArg(liveId)}')">✏️ Modifier le voyage</button>
+      ${!ended ? `<button class="btn ghost block" style="margin-bottom:8px;" onclick="addCdvLiveStep('${escapeJsArg(liveId)}')">➕ Ajouter une étape</button>
+      <button class="btn ghost block" style="margin-bottom:8px;" onclick="confirmEndCdvLive('${escapeJsArg(liveId)}')">⏹ Terminer le direct</button>` : ""}
+      <button class="btn ghost block" style="margin-bottom:8px;color:#ef4444;" onclick="confirmDeleteCdvLive('${escapeJsArg(liveId)}')">🗑 Supprimer le voyage</button>
     ` : `
-      ${collab && !ended ? `<button class="btn ghost block" style="margin-bottom:8px;" onclick="addCdvLiveStep('${liveId}')">➕ Ajouter une étape</button>` : ""}
-      <button class="btn ghost block" style="margin-bottom:8px;" onclick="shareCdvLive('${liveId}')">🔗 Partager</button>
-      ${collab ? "" : `<button class="btn ghost block" style="margin-bottom:8px;color:#ef4444;" onclick="reportCdvLive('${liveId}')">⚠️ Signaler ce voyage</button>`}
+      ${collab && !ended ? `<button class="btn ghost block" style="margin-bottom:8px;" onclick="addCdvLiveStep('${escapeJsArg(liveId)}')">➕ Ajouter une étape</button>` : ""}
+      <button class="btn ghost block" style="margin-bottom:8px;" onclick="shareCdvLive('${escapeJsArg(liveId)}')">🔗 Partager</button>
+      ${collab ? "" : `<button class="btn ghost block" style="margin-bottom:8px;color:#ef4444;" onclick="reportCdvLive('${escapeJsArg(liveId)}')">⚠️ Signaler ce voyage</button>`}
     `}
-    <button class="btn ghost block" onclick="_closeCdvLiveMenu('${liveId}')">Annuler</button>
+    <button class="btn ghost block" onclick="_closeCdvLiveMenu('${escapeJsArg(liveId)}')">Annuler</button>
   `);
 }
 
@@ -4134,12 +4137,12 @@ function editCdvLive(liveId) {
     </label>
     <label class="field"><span>🔒 Visibilité</span>
       <div style="display:flex;gap:8px;">
-        ${vis.map(v => `<button class="pill cdv-vis-btn${_cdvVisibility === v[0] ? " active" : ""}" onclick="selectCdvVisibility(this,'${v[0]}')">${v[1]}</button>`).join("")}
+        ${vis.map(v => `<button class="pill cdv-vis-btn${_cdvVisibility === v[0] ? " active" : ""}" onclick="selectCdvVisibility(this,'${escapeJsArg(v[0])}')">${v[1]}</button>`).join("")}
       </div>
     </label>
     <div style="display:flex;gap:8px;margin-top:14px;">
-      <button class="btn ghost" onclick="_closeCdvLiveMenu('${liveId}')">Annuler</button>
-      <button class="btn primary" style="flex:1;" onclick="saveCdvLiveEdits('${liveId}')">Enregistrer</button>
+      <button class="btn ghost" onclick="_closeCdvLiveMenu('${escapeJsArg(liveId)}')">Annuler</button>
+      <button class="btn primary" style="flex:1;" onclick="saveCdvLiveEdits('${escapeJsArg(liveId)}')">Enregistrer</button>
     </div>
   `);
 }
@@ -4182,8 +4185,8 @@ function confirmDeleteCdvLive(liveId) {
       « ${escapeHtml(live.destination || "Voyage")} », ses ${n} étape${n > 1 ? "s" : ""} et les commentaires
       seront <b>définitivement supprimés</b>, pour toi comme pour ceux qui te suivent.
     </div>
-    <button class="btn block" style="margin-bottom:8px;background:#ef4444;color:#fff;" onclick="deleteCdvLive('${liveId}')">🗑 Supprimer définitivement</button>
-    <button class="btn ghost block" onclick="_closeCdvLiveMenu('${liveId}')">Annuler</button>
+    <button class="btn block" style="margin-bottom:8px;background:#ef4444;color:#fff;" onclick="deleteCdvLive('${escapeJsArg(liveId)}')">🗑 Supprimer définitivement</button>
+    <button class="btn ghost block" onclick="_closeCdvLiveMenu('${escapeJsArg(liveId)}')">Annuler</button>
   `);
 }
 
@@ -4205,11 +4208,11 @@ function _cdvLiveActionsHtml(l) {
   const title = escapeJsArg("💬 " + (l.destination || "Live").slice(0, 40));
   return `<div class="post-actions" onclick="event.stopPropagation()">
     ${_liveLikeSpanHtml(l)}
-    <span class="post-action" onclick="event.stopPropagation();openCommentSheet('${l.id}','${title}')">💬 ${commentThreadCount(l.comments)}</span>
-    <span class="post-action" onclick="return reactCdvLivePicker('${l.id}', event);" title="Réagir">😊</span>
-    <span class="post-action" onclick="event.stopPropagation();shareCdvLive('${l.id}')" title="Partager" aria-label="Partager">${shareIconSvg(18)}</span>
-    <span class="post-action" data-livesave="${l.id}" onclick="event.stopPropagation();toggleLiveSave('${l.id}', this)" title="${isLiveSaved(l.id) ? "Sauvegardé" : "Sauvegarder"}">${isLiveSaved(l.id) ? "⭐" : "☆"}</span>
-    <span class="post-react-chip-holder" data-livechip="${l.id}" style="margin-left:auto;">${_liveReactChipHtml(l.id)}</span>
+    <span class="post-action" onclick="event.stopPropagation();openCommentSheet('${escapeJsArg(l.id)}','${escapeJsArg(title)}')">💬 ${commentThreadCount(l.comments)}</span>
+    <span class="post-action" onclick="return reactCdvLivePicker('${escapeJsArg(l.id)}', event);" title="Réagir">😊</span>
+    <span class="post-action" onclick="event.stopPropagation();shareCdvLive('${escapeJsArg(l.id)}')" title="Partager" aria-label="Partager">${shareIconSvg(18)}</span>
+    <span class="post-action" data-livesave="${escapeHtml(l.id)}" onclick="event.stopPropagation();toggleLiveSave('${escapeJsArg(l.id)}', this)" title="${isLiveSaved(l.id) ? "Sauvegardé" : "Sauvegarder"}">${isLiveSaved(l.id) ? "⭐" : "☆"}</span>
+    <span class="post-react-chip-holder" data-livechip="${escapeHtml(l.id)}" style="margin-left:auto;">${_liveReactChipHtml(l.id)}</span>
   </div>`;
 }
 

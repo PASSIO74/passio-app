@@ -20,6 +20,14 @@ jobs:
       - name: Audits statiques (collisions de globals)
         run: node scripts/audit-globals.js
 
+      - name: Audits statiques (handlers inline fantômes)
+        run: node scripts/audit-handlers.js
+
+      # Échoue si une donnée atteint un src/href, un on* ou un style SANS le
+      # désinfectant du contexte, et hors du socle relu (scripts/echappement-socle.json).
+      - name: Audits statiques (échappement contextuel)
+        run: node scripts/audit-echappement.js --ci
+
       - name: Installer Playwright
         run: |
           npm install --no-save @playwright/test

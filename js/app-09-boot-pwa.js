@@ -49,7 +49,7 @@ function pwaShowOverlay() {
         <div style="font-size:44px;margin-bottom:10px;">🍎</div>
         <div style="font-size:16px;font-weight:800;color:#1e1b4b;margin-bottom:8px;">Installer PASSIO</div>
         <div style="font-size:13px;color:#6b7280;margin-bottom:16px;">Sur iPhone/iPad, seul <strong>Safari</strong> peut installer les apps web.</div>
-        <button class="pwa-btn-install" onclick="window.location.href='${safariUrl}'" style="margin-bottom:10px;">
+        <button class="pwa-btn-install" onclick="window.location.href='${escapeJsArg(safariUrl)}'" style="margin-bottom:10px;">
           🧭&nbsp;&nbsp;Ouvrir dans Safari pour installer
         </button>
         <button class="pwa-btn-skip" onclick="pwaDismiss()">Continuer sans installer</button>
@@ -1095,8 +1095,8 @@ function openConvFiles() {
         var durStr = Math.floor(v.dur / 60) + ":" + String(v.dur % 60).padStart(2, "0");
         var dateStr = v.at ? new Date(v.at).toLocaleDateString("fr-FR") : "";
         html += '<div style="display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--border);">' +
-          '<button id="pb_' + v.aid + '" onclick="_playVoiceById(\'' + v.aid + '\')" style="width:34px;height:34px;border-radius:50%;background:rgba(139,92,246,0.12);border:none;color:var(--accent);cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">▶</button>' +
-          '<div style="flex:1;height:28px;background:rgba(139,92,246,0.12);border-radius:8px;overflow:hidden;cursor:pointer;" onclick="_playVoiceById(\'' + v.aid + '\')"><div id="wf_' + v.aid + '" style="height:100%;background:var(--accent);border-radius:8px;width:0%;transition:width 0.15s;"></div></div>' +
+          '<button id="pb_' + v.aid + '" onclick="_playVoiceById(\'' + escapeJsArg(v.aid) + '\')" style="width:34px;height:34px;border-radius:50%;background:rgba(139,92,246,0.12);border:none;color:var(--accent);cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">▶</button>' +
+          '<div style="flex:1;height:28px;background:rgba(139,92,246,0.12);border-radius:8px;overflow:hidden;cursor:pointer;" onclick="_playVoiceById(\'' + escapeJsArg(v.aid) + '\')"><div id="wf_' + v.aid + '" style="height:100%;background:var(--accent);border-radius:8px;width:0%;transition:width 0.15s;"></div></div>' +
           '<span id="dur_' + v.aid + '" style="font-size:11px;color:var(--muted);flex-shrink:0;min-width:30px;text-align:right;">' + durStr + '</span>' +
           (dateStr ? '<span style="font-size:11px;color:var(--muted);flex-shrink:0;">' + dateStr + '</span>' : '') +
           '</div>';
@@ -1113,7 +1113,7 @@ function openConvFiles() {
           html += '<a href="' + safeUrlAttr(f.url) + '" target="_blank" rel="noopener" style="text-decoration:none;">' + row + '</a>';
         } else {
           window["_doc_" + f.key] = { data: f.data, name: f.name };
-          html += row.replace('<div style="display:flex;align-items:center;gap:12px;', '<div onclick="_docDownload(\'' + f.key + '\')" style="display:flex;align-items:center;gap:12px;');
+          html += row.replace('<div style="display:flex;align-items:center;gap:12px;', '<div onclick="_docDownload(\'' + escapeJsArg(f.key) + '\')" style="display:flex;align-items:center;gap:12px;');
         }
       });
     }
@@ -1148,49 +1148,49 @@ function openConvSettings(convId) {
 
     content.innerHTML =
       '<div class="csetting-section">CONVERSATION</div>' +
-      (isDM ? '<div class="csetting-item" onclick="closeConvSettings();openUserProfile(\'' + uid + '\',\'seed\')">' +
+      (isDM ? '<div class="csetting-item" onclick="closeConvSettings();openUserProfile(\'' + escapeJsArg(uid) + '\',\'seed\')">' +
         '<div class="csetting-icon">👤</div><div class="csetting-label">Voir le profil</div></div>' : '') +
-      '<div class="csetting-item" onclick="_toggleMuteConv(\'' + convId + '\')">' +
+      '<div class="csetting-item" onclick="_toggleMuteConv(\'' + escapeJsArg(convId) + '\')">' +
         '<div class="csetting-icon">' + (c._muted ? '🔕' : '🔔') + '</div>' +
         '<div class="csetting-label">' + (c._muted ? 'Activer les notifications' : 'Couper les notifications') + '</div></div>' +
       '<div class="csetting-item" onclick="openConvFiles()">' +
         '<div class="csetting-icon">📎</div><div class="csetting-label">Pièces jointes & médias</div></div>' +
-      '<div class="csetting-item" onclick="_togglePinConv(\'' + convId + '\')">' +
+      '<div class="csetting-item" onclick="_togglePinConv(\'' + escapeJsArg(convId) + '\')">' +
         '<div class="csetting-icon">📌</div><div class="csetting-label">' + (c.pinned ? 'Désépingler la conversation' : 'Épingler en haut de la liste') + '</div></div>' +
-      '<div class="csetting-item" onclick="_openConvBgPicker(\'' + convId + '\')">' +
+      '<div class="csetting-item" onclick="_openConvBgPicker(\'' + escapeJsArg(convId) + '\')">' +
         '<div class="csetting-icon">🎨</div><div class="csetting-label">Fond de conversation</div></div>' +
-      (c.isGroup ? '<div class="csetting-item" onclick="closeConvSettings();pickGroupPhoto(\'' + convId + '\')">' +
+      (c.isGroup ? '<div class="csetting-item" onclick="closeConvSettings();pickGroupPhoto(\'' + escapeJsArg(convId) + '\')">' +
         '<div class="csetting-icon">🖼️</div><div class="csetting-label">Changer la photo du groupe</div></div>' : '') +
-      '<div class="csetting-item" onclick="_markConvUnread(\'' + convId + '\')">' +
+      '<div class="csetting-item" onclick="_markConvUnread(\'' + escapeJsArg(convId) + '\')">' +
         '<div class="csetting-icon">📩</div><div class="csetting-label">Marquer comme non lu</div></div>' +
       (function(){ var on = !((state.user.general||{}).readReceipts === false);
-        return '<div class="csetting-item" onclick="_toggleReadReceipts(\'' + convId + '\')">' +
+        return '<div class="csetting-item" onclick="_toggleReadReceipts(\'' + escapeJsArg(convId) + '\')">' +
           '<div class="csetting-icon">' + (on ? '👁️' : '🚫') + '</div>' +
           '<div class="csetting-label">Accusés de lecture<span style="color:var(--muted);font-weight:600;"> · ' + (on ? 'activés' : 'désactivés') + '</span></div></div>'; })() +
 
       '<div class="csetting-section">ACTIONS</div>' +
-      '<div class="csetting-item" onclick="_toggleArchiveConv(\'' + convId + '\')">' +
+      '<div class="csetting-item" onclick="_toggleArchiveConv(\'' + escapeJsArg(convId) + '\')">' +
         '<div class="csetting-icon">' + (c.archived ? '📤' : '📥') + '</div><div class="csetting-label">' + (c.archived ? 'Désarchiver' : 'Archiver la conversation') + '</div></div>' +
-      '<div class="csetting-item" onclick="_searchConv(\'' + convId + '\')">' +
+      '<div class="csetting-item" onclick="_searchConv(\'' + escapeJsArg(convId) + '\')">' +
         '<div class="csetting-icon">🔍</div><div class="csetting-label">Rechercher dans la conversation</div></div>' +
-      '<div class="csetting-item" onclick="_exportConv(\'' + convId + '\')">' +
+      '<div class="csetting-item" onclick="_exportConv(\'' + escapeJsArg(convId) + '\')">' +
         '<div class="csetting-icon">📤</div><div class="csetting-label">Exporter la conversation</div></div>' +
-      '<div class="csetting-item" onclick="_clearConvMessages(\'' + convId + '\')">' +
+      '<div class="csetting-item" onclick="_clearConvMessages(\'' + escapeJsArg(convId) + '\')">' +
         '<div class="csetting-icon">🗑️</div><div class="csetting-label" style="color:var(--muted);">Effacer les messages</div></div>' +
 
       (isDM ?
         '<div class="csetting-section">CONFIDENTIALITÉ</div>' +
         (blocked ?
-          '<div class="csetting-item" onclick="closeConvSettings();unblockUser(\'' + uid + '\',\'' + uname + '\')">' +
+          '<div class="csetting-item" onclick="closeConvSettings();unblockUser(\'' + escapeJsArg(uid) + '\',\'' + escapeJsArg(uname) + '\')">' +
             '<div class="csetting-icon">✅</div><div class="csetting-label">Débloquer ' + escapeHtml(c.userName || '') + '</div></div>'
           :
-          '<div class="csetting-item" onclick="_blockFromConv(\'' + convId + '\')">' +
+          '<div class="csetting-item" onclick="_blockFromConv(\'' + escapeJsArg(convId) + '\')">' +
             '<div class="csetting-icon">🚫</div><div class="csetting-label" style="color:#ef4444;">Bloquer ' + escapeHtml(c.userName || '') + '</div></div>') +
-        '<div class="csetting-item" onclick="closeConvSettings();reportUser(\'' + uid + '\',\'' + uname + '\')">' +
+        '<div class="csetting-item" onclick="closeConvSettings();reportUser(\'' + escapeJsArg(uid) + '\',\'' + escapeJsArg(uname) + '\')">' +
           '<div class="csetting-icon">🚩</div><div class="csetting-label" style="color:#ef4444;">Signaler</div></div>'
         : '') +
 
-      '<div class="csetting-item" onclick="_deleteConv(\'' + convId + '\')">' +
+      '<div class="csetting-item" onclick="_deleteConv(\'' + escapeJsArg(convId) + '\')">' +
         '<div class="csetting-icon">❌</div><div class="csetting-label" style="color:#ef4444;">Supprimer la conversation</div></div>';
 
     // 🔑 FIX : openConversation pose des styles inline (display:none, transform,
@@ -1355,7 +1355,7 @@ function _openConvBgPicker(convId) {
   if (!c) return;
   var swatches = CONV_BGS.map(function(b, i) {
     var sel = (c.bg || "var(--bg-deep)") === b.css;
-    return '<div onclick="_setConvBg(\'' + convId + '\',' + i + ')" style="cursor:pointer;border-radius:14px;overflow:hidden;border:2px solid ' + (sel ? 'var(--accent)' : 'transparent') + ';">' +
+    return '<div onclick="_setConvBg(\'' + escapeJsArg(convId) + '\',' + i + ')" style="cursor:pointer;border-radius:14px;overflow:hidden;border:2px solid ' + (sel ? 'var(--accent)' : 'transparent') + ';">' +
       '<div style="height:62px;background:' + b.css + ';"></div>' +
       '<div style="font-size:11px;text-align:center;padding:6px 0;color:var(--text);font-weight:600;">' + b.label + '</div></div>';
   }).join("");
@@ -1426,7 +1426,7 @@ function openFullImg(src) {
   // tout ce que safeUrlAttr n'accepte pas (http(s), data:image|audio|video, blob:).
   var esc = safeUrlAttr(src);
   if (esc === "#") return;
-  v.innerHTML = '<img id="_fiv_img" src="' + esc + '" style="max-width:94vw;max-height:90vh;border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,0.6);transition:transform .15s ease;will-change:transform;" alt=""/>' +
+  v.innerHTML = '<img id="_fiv_img" src="' + escapeHtml(esc) + '" style="max-width:94vw;max-height:90vh;border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,0.6);transition:transform .15s ease;will-change:transform;" alt=""/>' +
     '<div style="position:absolute;top:max(16px,env(safe-area-inset-top));right:16px;display:flex;gap:8px;">' +
       '<button id="_fiv_dl" aria-label="Télécharger" style="width:38px;height:38px;border-radius:50%;border:none;background:rgba(255,255,255,0.14);color:#fff;font-size:17px;cursor:pointer;">⬇️</button>' +
       '<button id="_fiv_close" aria-label="Fermer" style="width:38px;height:38px;border-radius:50%;border:none;background:rgba(255,255,255,0.14);color:#fff;font-size:20px;cursor:pointer;">✕</button>' +

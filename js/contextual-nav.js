@@ -117,7 +117,7 @@
     var sub = it.sub ? '<span class="ctx-item-sub">' + esc(it.sub) + '</span>' : "";
     var chevron = it.data ? "" : '<span class="ctx-item-go" aria-hidden="true">›</span>';
     var aria = it.data ? ' role="button" aria-pressed="' + (it.active ? "true" : "false") + '"' : "";
-    return '<button type="button" class="' + cls + '"' + attrs + onclick + aria + '>' +
+    return '<button type="button" class="' + escapeHtml(cls) + '"' + attrs + onclick + aria + '>' +
       '<span class="ctx-item-ico" aria-hidden="true">' + (it.icon || "") + '</span>' +
       '<span class="ctx-item-body"><span class="ctx-item-label">' + esc(it.label) + '</span>' + sub + '</span>' +
       badge + chevron +

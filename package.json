@@ -6,6 +6,7 @@
     "test:all": "playwright test",
     "audit:handlers": "node scripts/audit-handlers.js",
     "audit:globals": "node scripts/audit-globals.js",
+    "audit:echappement": "node scripts/audit-echappement.js --ci",
     "purge:e2e": "node scripts/purge-e2e-accounts.js",
     "revue": "node scripts/dossier-revue.js",
     "serve": "http-server -p 8080 -c-1 ."

@@ -3,7 +3,7 @@
 // 📤 / 🔁 / 🔗 / boîte+flèche. Hérite de la couleur via currentColor.
 function shareIconSvg(size) {
   var s = size || 18;
-  return '<svg class="share-ico" viewBox="0 0 24 24" width="' + s + '" height="' + s + '" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+  return '<svg class="share-ico" viewBox="0 0 24 24" width="' + escapeHtml(s) + '" height="' + escapeHtml(s) + '" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
     + '<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>'
     + '<line x1="8.6" y1="10.7" x2="15.4" y2="6.3"/><line x1="8.6" y1="13.3" x2="15.4" y2="17.7"/></svg>';
 }
@@ -1170,17 +1170,17 @@ function openScreenTime() {
       <div style="font-size:13px;font-weight:800;margin-bottom:10px;">⏳ Limite journalière</div>\
       <div style="display:flex;gap:8px;align-items:center;justify-content:center;margin-bottom:12px;">\
         <div style="text-align:center;">\
-          <input type="number" id="limitH" value="' + lH + '" min="0" max="23" style="width:56px;padding:10px 4px;text-align:center;font-size:22px;font-weight:900;border:2px solid var(--border);border-radius:12px;background:var(--bg-card);color:var(--text);"/>\
+          <input type="number" id="limitH" value="' + escapeHtml(lH) + '" min="0" max="23" style="width:56px;padding:10px 4px;text-align:center;font-size:22px;font-weight:900;border:2px solid var(--border);border-radius:12px;background:var(--bg-card);color:var(--text);"/>\
           <div style="font-size:10px;color:var(--muted);margin-top:4px;">heures</div>\
         </div>\
         <span style="font-size:24px;font-weight:900;color:var(--muted);">:</span>\
         <div style="text-align:center;">\
-          <input type="number" id="limitM" value="' + lM + '" min="0" max="59" style="width:56px;padding:10px 4px;text-align:center;font-size:22px;font-weight:900;border:2px solid var(--border);border-radius:12px;background:var(--bg-card);color:var(--text);"/>\
+          <input type="number" id="limitM" value="' + escapeHtml(lM) + '" min="0" max="59" style="width:56px;padding:10px 4px;text-align:center;font-size:22px;font-weight:900;border:2px solid var(--border);border-radius:12px;background:var(--bg-card);color:var(--text);"/>\
           <div style="font-size:10px;color:var(--muted);margin-top:4px;">minutes</div>\
         </div>\
         <span style="font-size:24px;font-weight:900;color:var(--muted);">:</span>\
         <div style="text-align:center;">\
-          <input type="number" id="limitS" value="' + lS + '" min="0" max="59" style="width:56px;padding:10px 4px;text-align:center;font-size:22px;font-weight:900;border:2px solid var(--border);border-radius:12px;background:var(--bg-card);color:var(--text);"/>\
+          <input type="number" id="limitS" value="' + escapeHtml(lS) + '" min="0" max="59" style="width:56px;padding:10px 4px;text-align:center;font-size:22px;font-weight:900;border:2px solid var(--border);border-radius:12px;background:var(--bg-card);color:var(--text);"/>\
           <div style="font-size:10px;color:var(--muted);margin-top:4px;">secondes</div>\
         </div>\
       </div>\
@@ -1904,8 +1904,8 @@ function renderPassionGrid() {
   const all = allPassions();
   const tiles = all.map(p => `
     <div class="passion-tile ${selectedPassions.includes(p.id) ? "selected" : ""} ${p.custom ? "passion-custom" : ""}"
-         data-passion="${p.id}"
-         onclick="togglePassion('${p.id}')">
+         data-passion="${escapeHtml(p.id)}"
+         onclick="togglePassion('${escapeJsArg(p.id)}')">
       <div class="passion-tile-emoji">${p.emoji}</div>
       <div class="passion-tile-label">${escapeHtml(p.label)}</div>
       ${p.custom ? '<div class="passion-custom-badge">custom</div>' : ''}
@@ -1984,7 +1984,7 @@ function openCreateCustomPassion() {
       <span class="field-label">Choisis un symbole</span>
       <div class="emoji-palette" id="customEmojiPalette">
         ${palette.map((opt, i) => `
-          <button type="button" class="emoji-chip ${i === 0 ? 'selected' : ''}" data-emoji="${opt.emoji}" data-color="${opt.color}" onclick="selectCustomEmoji('${opt.emoji}','${opt.color}')">${opt.emoji}</button>
+          <button type="button" class="emoji-chip ${i === 0 ? 'selected' : ''}" data-emoji="${escapeHtml(opt.emoji)}" data-color="${escapeHtml(opt.color)}" onclick="selectCustomEmoji('${escapeJsArg(opt.emoji)}','${escapeJsArg(opt.color)}')">${opt.emoji}</button>
         `).join("")}
       </div>
     </div>
@@ -2358,7 +2358,7 @@ function renderFeedCdvLives() {
       margin-bottom:12px;
       cursor:pointer;
       transition:all 0.2s;
-    " onclick="openCdvLiveViewer('${l.id}')" onmouseover="this.style.background='linear-gradient(135deg,rgba(239,68,68,0.15),rgba(245,158,11,0.15))'" onmouseout="this.style.background='linear-gradient(135deg,rgba(239,68,68,0.1),rgba(245,158,11,0.1))'">
+    " onclick="openCdvLiveViewer('${escapeJsArg(l.id)}')" onmouseover="this.style.background='linear-gradient(135deg,rgba(239,68,68,0.15),rgba(245,158,11,0.15))'" onmouseout="this.style.background='linear-gradient(135deg,rgba(239,68,68,0.1),rgba(245,158,11,0.1))'">
       <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px;">
         <span style="background:#ef4444;color:#fff;font-size:9px;font-weight:700;padding:3px 7px;border-radius:6px;animation:livePulse 1.5s ease infinite;">🔴 EN DIRECT</span>
         <span style="font-weight:700;font-size:13px;color:var(--text);">📡 ${escapeHtml(l.destination)}</span>
@@ -2728,7 +2728,7 @@ function renderPostCover(p, passion) {
     const fallback2 = `https://loremflickr.com/900/560/${encodeURIComponent(coverKey.replace(/_/g, ','))}`;
     const pc = passion.color || "#8b5cf6";
     // Double onerror chain: unsplash → picsum (always works) → loremflickr (themed) → gradient
-    const onerr = `this.onerror=function(){this.onerror=function(){this.style.display='none';};this.src='${fallback2}';};this.src='${fallback1}';`;
+    const onerr = `this.onerror=function(){this.onerror=function(){this.style.display='none';};this.src='${escapeJsArg(fallback2)}';};this.src='${escapeJsArg(fallback1)}';`;
     return `<div class="post-media post-cover-photo" style="
       background:
         radial-gradient(circle at 30% 30%, ${pc}55, transparent 55%),
@@ -2800,7 +2800,7 @@ function commentSortBarHtml(current, onpick) {
   current = current || "recent";
   function pill(mode, label) {
     var active = current === mode;
-    return '<button onclick="' + onpick + '(\'' + mode + '\')" style="background:' + (active ? "var(--accent)" : "var(--bg-deep)") + ';color:' + (active ? "#fff" : "var(--muted)") + ';border:none;border-radius:999px;font-size:11px;font-weight:700;padding:4px 10px;cursor:pointer;">' + label + '</button>';
+    return '<button onclick="' + onpick + '(\'' + escapeJsArg(mode) + '\')" style="background:' + (active ? "var(--accent)" : "var(--bg-deep)") + ';color:' + (active ? "#fff" : "var(--muted)") + ';border:none;border-radius:999px;font-size:11px;font-weight:700;padding:4px 10px;cursor:pointer;">' + label + '</button>';
   }
   return '<div style="display:flex;gap:6px;margin-bottom:8px;">' + pill("recent", "🕐 Récents") + pill("liked", "❤️ Aimés") + '</div>';
 }
@@ -2855,8 +2855,8 @@ function renderPostHTML(p) {
     const dates = fmtRange(p.dateStart, p.dateEnd);
     const nbDays = (p.steps || []).length;
     const coverSrc = p.cover || "";
-    media = `<div class="post-vlog-card" onclick="openVlogViewer('${p.id}')">
-      ${coverSrc ? `<img loading="lazy" decoding="async" class="post-vlog-cover" src="${coverSrc}" alt="${escapeHtml(p.destination || '')}" onerror="this.onerror=null;this.src='https://picsum.photos/seed/vlog-feed-${p.id}/1280/720';"/>` : `<div class="post-vlog-cover"></div>`}
+    media = `<div class="post-vlog-card" onclick="openVlogViewer('${escapeJsArg(p.id)}')">
+      ${coverSrc ? `<img loading="lazy" decoding="async" class="post-vlog-cover" src="${safeUrlAttr(coverSrc)}" alt="${escapeHtml(p.destination || '')}" onerror="this.onerror=null;this.src='https://picsum.photos/seed/vlog-feed-${encodeURIComponent(p.id)}/1280/720';"/>` : `<div class="post-vlog-cover"></div>`}
       <div class="post-vlog-overlay"></div>
       <div class="post-vlog-meta">
         <span class="post-vlog-tag">📔 CARNET DE VOYAGE</span>
@@ -2955,19 +2955,19 @@ function renderPostHTML(p) {
     const cLikes = c.likes || 0;
     const cReplies = c.replies || [];
 
-    return `<div class="comment" data-commentid="${c.id}">
-      <div class="avatar sm" style="background:${avatarBg(cu)};cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${c.authorId}','${cSrc}')">${avatarInner(cu)}</div>
+    return `<div class="comment" data-commentid="${escapeHtml(c.id)}">
+      <div class="avatar sm" style="background:${avatarBg(cu)};cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${escapeJsArg(c.authorId)}','${escapeJsArg(cSrc)}')">${avatarInner(cu)}</div>
       <div class="comment-body">
-        <div class="comment-author" style="cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${c.authorId}','${cSrc}')">${escapeHtml(cu.name)}</div>
+        <div class="comment-author" style="cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${escapeJsArg(c.authorId)}','${escapeJsArg(cSrc)}')">${escapeHtml(cu.name)}</div>
         <div class="comment-text">${escapeHtml(c.text)}</div>
         <div class="comment-meta">${fmtTime(c.createdAt)}</div>
         <div class="comment-actions">
-          <span class="comment-action ${cLiked ? "liked" : ""}" data-cmtlike="${c.id}" onclick="return likeComment('${p.id}','${c.id}', event);">
+          <span class="comment-action ${cLiked ? "liked" : ""}" data-cmtlike="${escapeHtml(c.id)}" onclick="return likeComment('${escapeJsArg(p.id)}','${escapeJsArg(c.id)}', event);">
             ${cLiked ? "❤️" : "🤍"} ${cLikes}
           </span>
-          <span class="comment-action" onclick="return replyToComment('${p.id}','${c.id}','${escapeJsArg(cu.name)}', event);" title="Répondre">💬</span>
-          <span class="comment-action" onclick="return showEmojiPickerForComment('${p.id}','${c.id}', event);" title="Emoji & GIF">😊</span>
-          ${cReplies.length > 0 ? `<span class="comment-reply-count" onclick="event.stopPropagation();openComments('${p.id}');return false;">▼ ${cReplies.length} réponse${cReplies.length > 1 ? "s" : ""}</span>` : ""}
+          <span class="comment-action" onclick="return replyToComment('${escapeJsArg(p.id)}','${escapeJsArg(c.id)}','${escapeJsArg(cu.name)}', event);" title="Répondre">💬</span>
+          <span class="comment-action" onclick="return showEmojiPickerForComment('${escapeJsArg(p.id)}','${escapeJsArg(c.id)}', event);" title="Emoji & GIF">😊</span>
+          ${cReplies.length > 0 ? `<span class="comment-reply-count" onclick="event.stopPropagation();openComments('${escapeJsArg(p.id)}');return false;">▼ ${cReplies.length} réponse${cReplies.length > 1 ? "s" : ""}</span>` : ""}
         </div>
       </div>
     </div>`;
@@ -2978,10 +2978,10 @@ function renderPostHTML(p) {
   const truncated = fullText.length > 220;
   const displayText = truncated ? fullText.slice(0, 220) + "…" : fullText;
 
-  return `<article class="post" data-postid="${p.id}">
+  return `<article class="post" data-postid="${escapeHtml(p.id)}">
     <div class="post-header">
-      <div class="avatar" style="background:${avatarBg(author)};cursor:pointer;" onclick="openUserProfile('${p.authorId}','${p._source}')">${avatarInner(author)}</div>
-      <div class="post-author" style="cursor:pointer;" onclick="openUserProfile('${p.authorId}','${p._source}')">
+      <div class="avatar" style="background:${avatarBg(author)};cursor:pointer;" onclick="openUserProfile('${escapeJsArg(p.authorId)}','${escapeJsArg(p._source)}')">${avatarInner(author)}</div>
+      <div class="post-author" style="cursor:pointer;" onclick="openUserProfile('${escapeJsArg(p.authorId)}','${escapeJsArg(p._source)}')">
         <div class="post-author-name">${escapeHtml(author.name || "Moi")}</div>
         <div class="post-author-meta">
           ${passion.emoji} ${passion.label} · ${fmtTime(p.createdAt)}
@@ -2992,31 +2992,31 @@ function renderPostHTML(p) {
           ` : ""}
         </div>
       </div>
-      ${p._source === "me" ? `<button class="post-menu-btn" onclick="event.stopPropagation();openPostOptions('${p.id}')" aria-label="Options du post" title="Options">
+      ${p._source === "me" ? `<button class="post-menu-btn" onclick="event.stopPropagation();openPostOptions('${escapeJsArg(p.id)}')" aria-label="Options du post" title="Options">
         <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>
       </button>` : ""}
       <span class="post-mood-tag">${moodMap[p.mood] || ""}</span>
     </div>
 
-    <div class="post-body" onclick="openPost('${p.id}')" style="cursor:pointer;">
+    <div class="post-body" onclick="openPost('${escapeJsArg(p.id)}')" style="cursor:pointer;">
       ${escapeHtml(displayText)}
       ${truncated ? `<span style="color:var(--accent);font-weight:700;"> Lire la suite</span>` : ""}
     </div>
-    <div onclick="openPost('${p.id}')" style="cursor:pointer;">${media}</div>
+    <div onclick="openPost('${escapeJsArg(p.id)}')" style="cursor:pointer;">${media}</div>
 
     <div class="post-actions">
-      <span class="post-action ${likeClass}" data-action="like" onclick="likePost('${p.id}', false, this)">
+      <span class="post-action ${likeClass}" data-action="like" onclick="likePost('${escapeJsArg(p.id)}', false, this)">
         ${liked ? "❤️" : "🤍"} ${p.likes || 0}
       </span>
-      <span class="post-action" data-cmtcount="${p.id}" onclick="openComments('${p.id}')">💬 ${commentThreadCount(p.comments)}</span>
-      <span class="post-action" onclick="return showEmojiPickerForPost('${p.id}', event);" title="Emoji & GIF">😊</span>
-      <span class="post-action" onclick="event.stopPropagation();sharePost('${p.id}')" title="Partager" aria-label="Partager">
+      <span class="post-action" data-cmtcount="${escapeHtml(p.id)}" onclick="openComments('${escapeJsArg(p.id)}')">💬 ${commentThreadCount(p.comments)}</span>
+      <span class="post-action" onclick="return showEmojiPickerForPost('${escapeJsArg(p.id)}', event);" title="Emoji & GIF">😊</span>
+      <span class="post-action" onclick="event.stopPropagation();sharePost('${escapeJsArg(p.id)}')" title="Partager" aria-label="Partager">
         ${shareIconSvg(18)}
       </span>
-      <span class="post-react-chip-holder" data-postchip="${p.id}" style="margin-left:auto;">${_postReactChipHtml(p.id)}</span>
+      <span class="post-react-chip-holder" data-postchip="${escapeHtml(p.id)}" style="margin-left:auto;">${_postReactChipHtml(p.id)}</span>
     </div>
 
-    ${commentsPreview ? `<div style="margin-top:8px;" onclick="openPost('${p.id}')" style="cursor:pointer;">${commentsPreview}</div>` : ""}
+    ${commentsPreview ? `<div style="margin-top:8px;" onclick="openPost('${escapeJsArg(p.id)}')" style="cursor:pointer;">${commentsPreview}</div>` : ""}
   </article>`;
 }
 
@@ -3065,35 +3065,35 @@ async function openPost(id) {
     ? _renderCommentsList(post.comments, id) : "";
 
   content.innerHTML = `
-    <div class="post" data-postid="${id}" style="cursor:default;">
+    <div class="post" data-postid="${escapeHtml(id)}" style="cursor:default;">
       <div class="post-header">
-        <div class="avatar" style="background:${avatarBg(author)};cursor:pointer;" onclick="openUserProfile('${post.authorId}','${post._source || "seed"}')">${avatarInner(author)}</div>
-        <div class="post-author" style="cursor:pointer;" onclick="openUserProfile('${post.authorId}','${post._source || "seed"}')">
+        <div class="avatar" style="background:${avatarBg(author)};cursor:pointer;" onclick="openUserProfile('${escapeJsArg(post.authorId)}','${escapeJsArg(post._source || "seed")}')">${avatarInner(author)}</div>
+        <div class="post-author" style="cursor:pointer;" onclick="openUserProfile('${escapeJsArg(post.authorId)}','${escapeJsArg(post._source || "seed")}')">
           <div class="post-author-name">${escapeHtml(author.name || "Utilisateur")}</div>
           <div class="post-author-meta">${passion.emoji} ${passion.label} · ${fmtTime(post.createdAt)}</div>
         </div>
-        ${(state.userPosts || []).some(function(up){ return up.id === id; }) ? `<button class="post-menu-btn" onclick="event.stopPropagation();openPostOptions('${id}')" aria-label="Options du post" title="Options">
+        ${(state.userPosts || []).some(function(up){ return up.id === id; }) ? `<button class="post-menu-btn" onclick="event.stopPropagation();openPostOptions('${escapeJsArg(id)}')" aria-label="Options du post" title="Options">
           <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>
         </button>` : ""}
         <span class="post-mood-tag">${moodMap[post.mood] || ""}</span>
       </div>
       <div class="post-body" style="white-space:pre-wrap;">${escapeHtml(post.text || "")}</div>
-      ${media ? `<div class="dbl-like" ondblclick="_dblLikeDetail('${id}', event)" title="Double-clic pour aimer ❤️">${media}</div>` : ""}
+      ${media ? `<div class="dbl-like" ondblclick="_dblLikeDetail('${escapeJsArg(id)}', event)" title="Double-clic pour aimer ❤️">${media}</div>` : ""}
       <div class="post-actions">
-        <span class="post-action ${liked ? "liked" : ""}" onclick="event.stopPropagation(); likePostDetail('${id}', this);">
+        <span class="post-action ${liked ? "liked" : ""}" onclick="event.stopPropagation(); likePostDetail('${escapeJsArg(id)}', this);">
           ${liked ? "❤️" : "🤍"} ${post.likes || 0}
         </span>
-        <span class="post-action" data-cmtcount="${id}" onclick="openComments('${id}')">💬 ${commentThreadCount(post.comments)}</span>
-        <span class="post-action" onclick="return showEmojiPickerForPost('${id}', event);" title="Emoji & GIF">😊</span>
-        <span class="post-action" onclick="event.stopPropagation();sharePost('${id}')" title="Partager" aria-label="Partager">
+        <span class="post-action" data-cmtcount="${escapeHtml(id)}" onclick="openComments('${escapeJsArg(id)}')">💬 ${commentThreadCount(post.comments)}</span>
+        <span class="post-action" onclick="return showEmojiPickerForPost('${escapeJsArg(id)}', event);" title="Emoji & GIF">😊</span>
+        <span class="post-action" onclick="event.stopPropagation();sharePost('${escapeJsArg(id)}')" title="Partager" aria-label="Partager">
           ${shareIconSvg(18)}
         </span>
-        <span class="post-react-chip-holder" data-postchip="${id}" style="margin-left:auto;">${_postReactChipHtml(id)}</span>
+        <span class="post-react-chip-holder" data-postchip="${escapeHtml(id)}" style="margin-left:auto;">${_postReactChipHtml(id)}</span>
       </div>
     </div>
     <div style="margin-top:8px;">
       <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin-bottom:10px;">Commentaires (${commentThreadCount(post.comments)})</div>
-      <div id="postDetailComments" data-thread="${id}">${allComments || '<div style="font-size:13px;color:var(--muted);text-align:center;padding:20px 0;">Aucun commentaire — sois le premier 💬</div>'}</div>
+      <div id="postDetailComments" data-thread="${escapeHtml(id)}">${allComments || '<div style="font-size:13px;color:var(--muted);text-align:center;padding:20px 0;">Aucun commentaire — sois le premier 💬</div>'}</div>
     </div>
     <div style="height:20px;"></div>
   `;

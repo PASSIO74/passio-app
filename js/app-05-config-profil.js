@@ -190,7 +190,7 @@ function openConfigurator() {
   var radiusNow = cfg.radius || "round";
 
   var accentHTML = ACCENT_COLORS.map(function(c) {
-    return '<div onclick="setConfig(\'accent\',\'' + c.id + '\')" style="cursor:pointer;display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;border:2px solid ' + (c.id === accentNow ? c.accent : 'transparent') + ';background:' + (c.id === accentNow ? c.bgDeep : 'var(--bg-card)') + ';margin-bottom:6px;transition:all 0.15s;"><div style="width:36px;height:36px;border-radius:10px;background:' + c.grad1 + ';flex-shrink:0;"></div><div style="font-weight:700;font-size:13px;">' + c.emoji + ' ' + c.name + '</div>' + (c.id === accentNow ? '<div style="margin-left:auto;font-size:16px;">✓</div>' : '') + '</div>';
+    return '<div onclick="setConfig(\'accent\',\'' + escapeJsArg(c.id) + '\')" style="cursor:pointer;display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;border:2px solid ' + (c.id === accentNow ? c.accent : 'transparent') + ';background:' + (c.id === accentNow ? c.bgDeep : 'var(--bg-card)') + ';margin-bottom:6px;transition:all 0.15s;"><div style="width:36px;height:36px;border-radius:10px;background:' + c.grad1 + ';flex-shrink:0;"></div><div style="font-weight:700;font-size:13px;">' + c.emoji + ' ' + c.name + '</div>' + (c.id === accentNow ? '<div style="margin-left:auto;font-size:16px;">✓</div>' : '') + '</div>';
   }).join("");
 
   var currentFF = FONT_FAMILIES.find(function(f) { return f.id === fontFamilyNow; }) || FONT_FAMILIES[0];
@@ -204,11 +204,11 @@ function openConfigurator() {
   </div>';
 
   var fontSizeHTML = FONT_SIZES.map(function(f) {
-    return '<div onclick="setConfig(\'fontSize\',\'' + f.id + '\')" style="cursor:pointer;text-align:center;padding:12px 8px;border-radius:12px;border:2px solid ' + (f.id === fontSizeNow ? 'var(--accent)' : 'transparent') + ';background:' + (f.id === fontSizeNow ? 'var(--bg-deep)' : 'var(--bg-card)') + ';transition:all 0.15s;"><div style="font-size:' + (f.px+4) + 'px;font-weight:800;margin-bottom:4px;">Aa</div><div style="font-size:10px;color:var(--muted);">' + f.name + '</div></div>';
+    return '<div onclick="setConfig(\'fontSize\',\'' + escapeJsArg(f.id) + '\')" style="cursor:pointer;text-align:center;padding:12px 8px;border-radius:12px;border:2px solid ' + (f.id === fontSizeNow ? 'var(--accent)' : 'transparent') + ';background:' + (f.id === fontSizeNow ? 'var(--bg-deep)' : 'var(--bg-card)') + ';transition:all 0.15s;"><div style="font-size:' + (f.px+4) + 'px;font-weight:800;margin-bottom:4px;">Aa</div><div style="font-size:10px;color:var(--muted);">' + f.name + '</div></div>';
   }).join("");
 
   var radiusHTML = BORDER_RADIUS.map(function(r) {
-    return '<div onclick="setConfig(\'radius\',\'' + r.id + '\')" style="cursor:pointer;text-align:center;padding:12px 8px;border-radius:' + r.val + ';border:2px solid ' + (r.id === radiusNow ? 'var(--accent)' : 'transparent') + ';background:' + (r.id === radiusNow ? 'var(--bg-deep)' : 'var(--bg-card)') + ';transition:all 0.15s;"><div style="width:32px;height:32px;background:var(--accent);border-radius:' + r.val + ';margin:0 auto 6px;"></div><div style="font-size:10px;color:var(--muted);">' + r.name + '</div></div>';
+    return '<div onclick="setConfig(\'radius\',\'' + escapeJsArg(r.id) + '\')" style="cursor:pointer;text-align:center;padding:12px 8px;border-radius:' + r.val + ';border:2px solid ' + (r.id === radiusNow ? 'var(--accent)' : 'transparent') + ';background:' + (r.id === radiusNow ? 'var(--bg-deep)' : 'var(--bg-card)') + ';transition:all 0.15s;"><div style="width:32px;height:32px;background:var(--accent);border-radius:' + r.val + ';margin:0 auto 6px;"></div><div style="font-size:10px;color:var(--muted);">' + r.name + '</div></div>';
   }).join("");
 
   var html = '\
@@ -326,7 +326,7 @@ function renderNavOrderList() {
   if (!list) return;
   var order = getNavOrder();
   list.innerHTML = order.map(function(id, i) {
-    return '<div class="nav-order-item" draggable="true" data-nav-id="' + id + '" style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--bg-card);border:1.5px solid var(--border);border-radius:12px;cursor:grab;user-select:none;touch-action:none;"><span style="font-size:14px;color:var(--muted);font-weight:800;width:20px;text-align:center;">' + (i+1) + '</span><span style="flex:1;font-weight:700;font-size:13px;">' + (NAV_LABELS[id]||id) + '</span><span style="font-size:16px;color:var(--muted);cursor:grab;">☰</span></div>';
+    return '<div class="nav-order-item" draggable="true" data-nav-id="' + escapeHtml(id) + '" style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--bg-card);border:1.5px solid var(--border);border-radius:12px;cursor:grab;user-select:none;touch-action:none;"><span style="font-size:14px;color:var(--muted);font-weight:800;width:20px;text-align:center;">' + (i+1) + '</span><span style="flex:1;font-weight:700;font-size:13px;">' + (NAV_LABELS[id]||id) + '</span><span style="font-size:16px;color:var(--muted);cursor:grab;">☰</span></div>';
   }).join("");
   var dragSrc = null;
   list.querySelectorAll(".nav-order-item").forEach(function(item) {
@@ -1036,7 +1036,7 @@ function _callRenderActiveUI() {
     (isVideo ? '<video id="callRemoteVideo" class="call-remote-video" autoplay playsinline></video>' : '<audio id="callRemoteAudio" autoplay></audio>') +
     (isVideo ? '<video id="callLocalVideo" class="call-local-video" autoplay playsinline muted></video>' : '') +
     '<div class="call-card ' + (isVideo ? 'call-card-video' : '') + '">' +
-      (isVideo ? '' : '<div class="call-avatar" style="background:' + (cs.peer.color || "#7c3aed") + ';">' + (cs.peer.emoji || "🙂") + '</div>') +
+      (isVideo ? '' : '<div class="call-avatar" style="background:' + _cssColor(cs.peer.color || "#7c3aed") + ';">' + escapeHtml(cs.peer.emoji || "🙂") + '</div>') +
       '<div class="call-name">' + escapeHtml(cs.peer.name || "Contact") + '</div>' +
       '<div class="call-status" id="callStatusText">' + (cs.role === "caller" ? "Appel en cours…" : "Connexion…") + '</div>' +
       '<div class="call-timer" id="callTimer">00:00</div>' +
@@ -1219,16 +1219,16 @@ function openCreateGroup() {
   const myPassionIds = (state.user.profiles || []).map(pr => pr.passion).filter(Boolean);
   const passions = allPassions().filter(p => myPassionIds.includes(p.id));
   const userOptions = seedUsers.slice(0, 10).map(u =>
-    `<div class="group-user-option" data-uid="${u.id}" onclick="toggleGroupUser(this)">
-      <input type="checkbox" value="${u.id}" />
+    `<div class="group-user-option" data-uid="${escapeHtml(u.id)}" onclick="toggleGroupUser(this)">
+      <input type="checkbox" value="${escapeHtml(u.id)}" />
       <span class="msg-avatar" style="background:${avatarBg(u)};width:36px;height:36px;font-size:18px;flex-shrink:0;">${avatarInner(u)}</span>
       <span style="flex:1;font-size:13px;">${escapeHtml(u.name)}</span>
       <span class="grp-check"></span>
     </div>`
   ).join("");
   const passionOptions = passions.map(p =>
-    `<div class="group-passion-option" data-pid="${p.id}" onclick="toggleGroupPassion(this)">
-      <input type="checkbox" value="${p.id}" />
+    `<div class="group-passion-option" data-pid="${escapeHtml(p.id)}" onclick="toggleGroupPassion(this)">
+      <input type="checkbox" value="${escapeHtml(p.id)}" />
       <span>${p.emoji} ${escapeHtml(p.label)}</span>
     </div>`
   ).join("");
@@ -1338,7 +1338,7 @@ function _renderGroupMembersModal(convId) {
         '<div style="font-weight:700;font-size:13px;">' + escapeHtml(u.name) + '</div>' +
         '<div style="font-size:11px;color:var(--muted);">' + (passion ? passion.emoji + ' ' + passion.label : '') + '</div>' +
       '</div>' +
-      '<button class="btn ghost" style="font-size:10px;padding:5px 10px;color:#ef4444;border-color:rgba(239,68,68,0.3);" onclick="removeGroupMember(\'' + convId + '\',\'' + uid + '\')">Retirer</button>' +
+      '<button class="btn ghost" style="font-size:10px;padding:5px 10px;color:#ef4444;border-color:rgba(239,68,68,0.3);" onclick="removeGroupMember(\'' + escapeJsArg(convId) + '\',\'' + escapeJsArg(uid) + '\')">Retirer</button>' +
     '</div>';
   }).join("");
 
@@ -1360,7 +1360,7 @@ function _renderGroupMembersModal(convId) {
       return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);">' +
         '<div style="width:36px;height:36px;border-radius:50%;background:' + avatarBg(u) + ';display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;">' + avatarInner(u) + '</div>' +
         '<span style="flex:1;font-size:13px;font-weight:600;">' + escapeHtml(u.name) + '</span>' +
-        '<button class="btn primary" style="font-size:11px;padding:5px 12px;" onclick="addGroupMember(\'' + convId + '\',\'' + u.id + '\')">+ Ajouter</button>' +
+        '<button class="btn primary" style="font-size:11px;padding:5px 12px;" onclick="addGroupMember(\'' + escapeJsArg(convId) + '\',\'' + escapeJsArg(u.id) + '\')">+ Ajouter</button>' +
       '</div>';
     }).join("");
   }
@@ -1368,12 +1368,12 @@ function _renderGroupMembersModal(convId) {
   // Avatar groupe (photo ou emoji)
   var grpAvatarHTML;
   if (c.groupPhoto) {
-    grpAvatarHTML = '<div style="position:relative;width:72px;height:72px;margin:0 auto 12px;cursor:pointer;" onclick="pickGroupPhoto(\'' + convId + '\')">' +
-      '<div style="width:72px;height:72px;border-radius:50%;background:url(' + c.groupPhoto + ') center/cover;border:3px solid var(--accent);"></div>' +
+    grpAvatarHTML = '<div style="position:relative;width:72px;height:72px;margin:0 auto 12px;cursor:pointer;" onclick="pickGroupPhoto(\'' + escapeJsArg(convId) + '\')">' +
+      '<div style="width:72px;height:72px;border-radius:50%;background:url(\'' + (_cssUrl(c.groupPhoto) || "") + '\') center/cover;border:3px solid var(--accent);"></div>' +
       '<div style="position:absolute;bottom:0;right:0;width:24px;height:24px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:13px;border:2px solid var(--bg-card);">📷</div>' +
     '</div>';
   } else {
-    grpAvatarHTML = '<div style="position:relative;width:72px;height:72px;margin:0 auto 12px;cursor:pointer;" onclick="pickGroupPhoto(\'' + convId + '\')">' +
+    grpAvatarHTML = '<div style="position:relative;width:72px;height:72px;margin:0 auto 12px;cursor:pointer;" onclick="pickGroupPhoto(\'' + escapeJsArg(convId) + '\')">' +
       '<div style="width:72px;height:72px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:32px;">👥</div>' +
       '<div style="position:absolute;bottom:0;right:0;width:24px;height:24px;border-radius:50%;background:var(--bg-deep);display:flex;align-items:center;justify-content:center;font-size:13px;border:2px solid var(--bg-card);">📷</div>' +
     '</div>';
@@ -1384,7 +1384,7 @@ function _renderGroupMembersModal(convId) {
     grpAvatarHTML +
     '<div class="modal-title" style="margin-top:0;">👥 ' + escapeHtml(c.groupName || "Groupe") + '</div>' +
     '<div style="font-size:12px;color:var(--muted);margin-bottom:10px;">' + (memberIds.length + 1) + ' membre' + (memberIds.length + 1 > 1 ? 's' : '') + '</div>' +
-    '<div onclick="editGroupDescription(\'' + convId + '\')" style="cursor:pointer;font-size:13px;color:' + (c.groupDesc ? 'var(--text)' : 'var(--muted)') + ';background:var(--bg-deep);border-radius:10px;padding:9px 12px;margin-bottom:10px;">' +
+    '<div onclick="editGroupDescription(\'' + escapeJsArg(convId) + '\')" style="cursor:pointer;font-size:13px;color:' + (c.groupDesc ? 'var(--text)' : 'var(--muted)') + ';background:var(--bg-deep);border-radius:10px;padding:9px 12px;margin-bottom:10px;">' +
       (c.groupDesc ? escapeHtml(c.groupDesc) : '📝 Ajouter une description…') + '</div>' +
     '<div style="margin-bottom:12px;">' + passionsHTML + '</div>' +
     // Onglets
@@ -1406,8 +1406,8 @@ function _renderGroupMembersModal(convId) {
       '<div id="grpAddList" style="max-height:240px;overflow-y:auto;">' + buildNonMembersHTML("") + '</div>' +
     '</div>' +
     '<div style="display:flex;gap:8px;margin-top:12px;">' +
-      '<button class="btn ghost" onclick="closeModal();openConversation(\'' + convId + '\')" style="flex:1;">← Retour</button>' +
-      '<button class="btn ghost" onclick="leaveGroup(\'' + convId + '\')" style="flex:1;color:#ef4444;border-color:rgba(239,68,68,0.3);">Quitter</button>' +
+      '<button class="btn ghost" onclick="closeModal();openConversation(\'' + escapeJsArg(convId) + '\')" style="flex:1;">← Retour</button>' +
+      '<button class="btn ghost" onclick="leaveGroup(\'' + escapeJsArg(convId) + '\')" style="flex:1;color:#ef4444;border-color:rgba(239,68,68,0.3);">Quitter</button>' +
     '</div>'
   );
 
@@ -1506,7 +1506,7 @@ function filterGroupAddList(query) {
     return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);">' +
       '<div style="width:36px;height:36px;border-radius:50%;background:' + avatarBg(u) + ';display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;">' + avatarInner(u) + '</div>' +
       '<span style="flex:1;font-size:13px;font-weight:600;">' + escapeHtml(u.name) + '</span>' +
-      '<button class="btn primary" style="font-size:11px;padding:5px 12px;" onclick="addGroupMember(\'' + convId + '\',\'' + u.id + '\')">+ Ajouter</button>' +
+      '<button class="btn primary" style="font-size:11px;padding:5px 12px;" onclick="addGroupMember(\'' + escapeJsArg(convId) + '\',\'' + escapeJsArg(u.id) + '\')">+ Ajouter</button>' +
     '</div>';
   }).join("");
 }
@@ -1979,8 +1979,8 @@ function renderReelHTML(post, idx) {
       <span class="reel-tag-mood">${passion.emoji} ${escapeHtml(passion.label)} · ${moodLabel}</span>
       ${post.type === "video" ? `<button class="reel-sound-btn" onclick="toggleReelsSound(event)" aria-label="Activer ou couper le son">${reelsState.soundOn ? "🔊" : "🔇"}</button>` : ""}
       <div class="reel-info">
-        <div class="reel-author" onclick="_openReelAuthor('${escapeHtml(post.authorId || post.userId || '')}'); return false;" style="cursor:pointer;">
-          <div class="reel-avatar" style="background:${author.color};">${author.emoji}</div>
+        <div class="reel-author" onclick="_openReelAuthor('${escapeJsArg(post.authorId || post.userId || '')}'); return false;" style="cursor:pointer;">
+          <div class="reel-avatar" style="background:${_cssColor(author.color)};">${escapeHtml(author.emoji)}</div>
           <div class="reel-author-meta">
             <div class="reel-author-name">${escapeHtml(author.name)}</div>
             <div class="reel-passion">${passion.emoji} ${escapeHtml(passion.label)}</div>
@@ -1989,25 +1989,25 @@ function renderReelHTML(post, idx) {
         <div class="reel-caption">${escapeHtml(txt).slice(0, 220)}${txt.length > 220 ? "…" : ""}</div>
       </div>
       <div class="reel-actions">
-        <button class="reel-action-btn ${isLiked ? "liked" : ""}" data-reellike="${post.id}" onclick="toggleReelLike('${post.id}', this)" aria-label="Aimer">
+        <button class="reel-action-btn ${isLiked ? "liked" : ""}" data-reellike="${escapeHtml(post.id)}" onclick="toggleReelLike('${escapeJsArg(post.id)}', this)" aria-label="Aimer">
           <span class="reel-action-icon">
             <svg viewBox="0 0 24 24"><path d="M12 21 C5.5 16 2 12.5 2 8.5 C2 5.5 4.5 3 7.5 3 C9.5 3 11 4 12 5.5 C13 4 14.5 3 16.5 3 C19.5 3 22 5.5 22 8.5 C22 12.5 18.5 16 12 21 Z"/></svg>
           </span>
           <span class="reel-action-label">${post.likes || 0}</span>
         </button>
-        <button class="reel-action-btn" onclick="openReelComments('${post.id}')" aria-label="Commenter">
+        <button class="reel-action-btn" onclick="openReelComments('${escapeJsArg(post.id)}')" aria-label="Commenter">
           <span class="reel-action-icon">
             <svg viewBox="0 0 24 24"><path d="M21 12 C21 16 16.5 19 12 19 C10.8 19 9.7 18.85 8.7 18.55 L4 20 L5.5 16 C4 14.85 3 13.5 3 12 C3 8 7.5 5 12 5 C16.5 5 21 8 21 12 Z"/></svg>
           </span>
           <span class="reel-action-label">Commentaire</span>
         </button>
-        <button class="reel-action-btn ${isTipped ? "tipped" : ""}" onclick="tipReel('${post.id}', this)" aria-label="Soutenir">
+        <button class="reel-action-btn ${isTipped ? "tipped" : ""}" onclick="tipReel('${escapeJsArg(post.id)}', this)" aria-label="Soutenir">
           <span class="reel-action-icon">
             <svg viewBox="0 0 24 24"><path d="M12 3 L14.6 9 L21 9.6 L16 14 L17.5 20.5 L12 17 L6.5 20.5 L8 14 L3 9.6 L9.4 9 Z"/></svg>
           </span>
           <span class="reel-action-label">Soutenir</span>
         </button>
-        <button class="reel-action-btn" onclick="shareReel('${post.id}')" aria-label="Partager">
+        <button class="reel-action-btn" onclick="shareReel('${escapeJsArg(post.id)}')" aria-label="Partager">
           <span class="reel-action-icon">
             <svg viewBox="0 0 24 24"><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M8 11 L16 7"/><path d="M8 13 L16 17"/></svg>
           </span>
@@ -2324,17 +2324,17 @@ function loadReelComments(postId) {
 
     let commentHTML = `
       <div class="reel-comment-item">
-        <div class="reel-comment-avatar" style="background:${avatarBg(commenter)};" onclick="openUserProfile('${c.authorId}')" title="${escapeHtml(commenter.name)}">${avatarInner(commenter)}</div>
+        <div class="reel-comment-avatar" style="background:${avatarBg(commenter)};" onclick="openUserProfile('${escapeJsArg(c.authorId)}')" title="${escapeHtml(commenter.name)}">${avatarInner(commenter)}</div>
         <div class="reel-comment-body">
           <div class="reel-comment-header">
-            <span class="reel-comment-name" onclick="openUserProfile('${c.authorId}')">${escapeHtml(commenter.name)}</span>
+            <span class="reel-comment-name" onclick="openUserProfile('${escapeJsArg(c.authorId)}')">${escapeHtml(commenter.name)}</span>
             <span class="reel-comment-badge">${timeStr}</span>
           </div>
           <div class="reel-comment-text">${escapeHtml(c.text || c.content || "")}</div>
           <div class="reel-comment-footer">
-            <span class="reel-comment-like ${isLiked ? 'liked' : ''}" onclick="likeReelComment('${postId}', ${idx})">${isLiked ? '❤️' : '🤍'} ${likesCount}</span>
-            <span class="reel-comment-reply" onclick="replyToReelCommentBox('${postId}', ${idx}, '${escapeJsArg(commenter.name)}')">💬</span>
-            <span class="reel-comment-action" onclick="showQuickEmojiForReelComment('${postId}', ${idx}, event)" title="Réagir">😊</span>
+            <span class="reel-comment-like ${isLiked ? 'liked' : ''}" onclick="likeReelComment('${escapeJsArg(postId)}', ${idx})">${isLiked ? '❤️' : '🤍'} ${likesCount}</span>
+            <span class="reel-comment-reply" onclick="replyToReelCommentBox('${escapeJsArg(postId)}', ${idx}, '${escapeJsArg(commenter.name)}')">💬</span>
+            <span class="reel-comment-action" onclick="showQuickEmojiForReelComment('${escapeJsArg(postId)}', ${idx}, event)" title="Réagir">😊</span>
             ${replies.length > 0 ? `<span class="reel-comment-reply-count" onclick="toggleReelCommentReplies(${idx})">${replies.length} réponse${replies.length > 1 ? 's' : ''}</span>` : ''}
           </div>
         </div>
@@ -2351,21 +2351,21 @@ function loadReelComments(postId) {
         if (r.type === "emoji_reaction") {
           commentHTML += `
             <div class="reel-reply-item">
-              <span class="reel-reply-author" onclick="openUserProfile('${r.authorId}')">${escapeHtml(replyAuthor.name)}</span>
+              <span class="reel-reply-author" onclick="openUserProfile('${escapeJsArg(r.authorId)}')">${escapeHtml(replyAuthor.name)}</span>
               <span style="font-size:18px;margin-left:6px;letter-spacing:1px;">${escapeHtml(r.text || "")}</span>
             </div>
           `;
         } else if (r.type === "gif_reaction") {
           commentHTML += `
             <div class="reel-reply-item">
-              <span class="reel-reply-author" onclick="openUserProfile('${r.authorId}')">${escapeHtml(replyAuthor.name)}</span>
+              <span class="reel-reply-author" onclick="openUserProfile('${escapeJsArg(r.authorId)}')">${escapeHtml(replyAuthor.name)}</span>
               <img loading="lazy" decoding="async" src="${safeUrlAttr(r.text || "")}" style="width:100%;max-width:150px;height:auto;border-radius:6px;margin-top:6px;object-fit:cover;" alt="GIF" />
             </div>
           `;
         } else {
           commentHTML += `
             <div class="reel-reply-item">
-              <span class="reel-reply-author" onclick="openUserProfile('${r.authorId}')">${escapeHtml(replyAuthor.name)}</span>
+              <span class="reel-reply-author" onclick="openUserProfile('${escapeJsArg(r.authorId)}')">${escapeHtml(replyAuthor.name)}</span>
               <div class="reel-reply-text">${escapeHtml(r.text)}</div>
             </div>
           `;
@@ -2533,10 +2533,10 @@ function showEmojiPickerForReelComment(postId, commentIdx) {
     <div class="modal-title">Réagir au commentaire</div>
     <div id="_reelEmojiPreviewRow" style="display:flex;align-items:center;gap:8px;min-height:38px;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border);">
       <span id="_reelEmojiPreview" style="font-size:24px;flex:1;letter-spacing:2px;"></span>
-      <button id="_reelEmojiValidate" onclick="_reelEmojiConfirm('${postId}',${commentIdx})" style="background:var(--accent);color:#fff;border:none;border-radius:8px;padding:6px 16px;font-size:15px;font-weight:700;cursor:pointer;opacity:0.4;pointer-events:none;">✓ Valider</button>
+      <button id="_reelEmojiValidate" onclick="_reelEmojiConfirm('${escapeJsArg(postId)}',${commentIdx})" style="background:var(--accent);color:#fff;border:none;border-radius:8px;padding:6px 16px;font-size:15px;font-weight:700;cursor:pointer;opacity:0.4;pointer-events:none;">✓ Valider</button>
     </div>
     <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin:4px 0;max-height:200px;overflow-y:auto;">
-      ${emojis.map(emoji => `<button class="btn secondary" onclick="_reelEmojiPick('${emoji}')" style="padding:8px;font-size:22px;border:none;">${emoji}</button>`).join("")}
+      ${emojis.map(emoji => `<button class="btn secondary" onclick="_reelEmojiPick('${escapeJsArg(emoji)}')" style="padding:8px;font-size:22px;border:none;">${emoji}</button>`).join("")}
     </div>
   `);
 
@@ -2561,7 +2561,7 @@ function showGifPickerForReelComment(postId, commentIdx) {
   openModal(`
     <div class="modal-title">GIF de réaction</div>
     <input type="search" placeholder="Rechercher un GIF…" aria-label="Rechercher un GIF"
-      oninput="_reelGifSearch('${postId}', ${commentIdx}, this.value)"
+      oninput="_reelGifSearch('${escapeJsArg(postId)}', ${commentIdx}, this.value)"
       style="width:100%;box-sizing:border-box;margin:10px 0 4px;padding:8px 12px;border-radius:10px;border:1.5px solid var(--border);background:var(--bg-deep);color:var(--text);font-size:16px;outline:none;" />
     <div id="reelGifGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0;max-height:300px;overflow-y:auto;">
       <div style="grid-column:1/-1;text-align:center;color:var(--muted);padding:18px;">Chargement…</div>
@@ -2576,7 +2576,10 @@ function _fillReelGifGrid(postId, commentIdx, query) {
     const grid = document.getElementById("reelGifGrid");
     if (!grid) return; // modal refermé entre-temps
     grid.innerHTML = urls.length
-      ? urls.map(gif => `<img loading="lazy" decoding="async" src="${escapeHtml(gif)}" alt="GIF" style="width:100%;height:120px;object-fit:cover;border-radius:8px;cursor:pointer;" onclick="addGifReactionToReelComment('${postId}', ${commentIdx}, '${escapeHtml(gif)}')" />`).join("")
+      // ⚠️ Le MÊME `gif` va dans deux contextes différents, donc deux helpers
+      // différents : escapeHtml dans l'onclick était le piège documenté — le HTML
+      // décode `&#39;` AVANT le parse JS, l'apostrophe rouvre la chaîne.
+      ? urls.map(gif => `<img loading="lazy" decoding="async" src="${safeUrlAttr(gif)}" alt="GIF" style="width:100%;height:120px;object-fit:cover;border-radius:8px;cursor:pointer;" onclick="addGifReactionToReelComment('${escapeJsArg(postId)}', ${Number(commentIdx) || 0}, '${escapeJsArg(gif)}')" />`).join("")
       : '<div style="grid-column:1/-1;text-align:center;color:var(--muted);padding:18px;">Aucun GIF trouvé</div>';
   });
 }
@@ -2673,31 +2676,31 @@ function openReelShareModal(postId) {
     <div class="modal-title">${shareIconSvg(20)} Partager cette bobine</div>
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
-      <button class="btn secondary" onclick="shareReelVia('whatsapp', '${postId}', '${encodedUrl}', '${encodedText}')" style="font-size:13px;">
+      <button class="btn secondary" onclick="shareReelVia('whatsapp', '${escapeJsArg(postId)}', '${escapeJsArg(encodedUrl)}', '${escapeJsArg(encodedText)}')" style="font-size:13px;">
         💬 WhatsApp
       </button>
-      <button class="btn secondary" onclick="shareReelVia('telegram', '${postId}', '${encodedUrl}', '${encodedText}')" style="font-size:13px;">
+      <button class="btn secondary" onclick="shareReelVia('telegram', '${escapeJsArg(postId)}', '${escapeJsArg(encodedUrl)}', '${escapeJsArg(encodedText)}')" style="font-size:13px;">
         ✈️ Telegram
       </button>
-      <button class="btn secondary" onclick="shareReelVia('twitter', '${postId}', '${encodedUrl}', '${encodedText}')" style="font-size:13px;">
+      <button class="btn secondary" onclick="shareReelVia('twitter', '${escapeJsArg(postId)}', '${escapeJsArg(encodedUrl)}', '${escapeJsArg(encodedText)}')" style="font-size:13px;">
         𝕏 Twitter
       </button>
-      <button class="btn secondary" onclick="shareReelVia('facebook', '${postId}', '${encodedUrl}', '${encodedText}')" style="font-size:13px;">
+      <button class="btn secondary" onclick="shareReelVia('facebook', '${escapeJsArg(postId)}', '${escapeJsArg(encodedUrl)}', '${escapeJsArg(encodedText)}')" style="font-size:13px;">
         📘 Facebook
       </button>
-      <button class="btn secondary" onclick="shareReelEmail('${postId}', '${encodedText}', '${encodedUrl}')" style="font-size:13px;">
+      <button class="btn secondary" onclick="shareReelEmail('${escapeJsArg(postId)}', '${escapeJsArg(encodedText)}', '${escapeJsArg(encodedUrl)}')" style="font-size:13px;">
         📧 Email
       </button>
-      <button class="btn secondary" onclick="shareReelSMS('${postId}', '${encodedUrl}')" style="font-size:13px;">
+      <button class="btn secondary" onclick="shareReelSMS('${escapeJsArg(postId)}', '${escapeJsArg(encodedUrl)}')" style="font-size:13px;">
         📱 SMS
       </button>
     </div>
 
-    <button class="btn primary block" onclick="shareReelInFeed('${postId}')" style="margin-bottom:8px;">
+    <button class="btn primary block" onclick="shareReelInFeed('${escapeJsArg(postId)}')" style="margin-bottom:8px;">
       ➕ Partager dans le Feed
     </button>
 
-    <button class="btn secondary block" onclick="copyReelLink('${postId}', '${encodedUrl}')">
+    <button class="btn secondary block" onclick="copyReelLink('${escapeJsArg(postId)}', '${escapeJsArg(encodedUrl)}')">
       📋 Copier le lien
     </button>
   `;

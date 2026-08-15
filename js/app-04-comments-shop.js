@@ -78,7 +78,7 @@ function openPostOptions(postId) {
     <div class="modal-handle"></div>
     <div class="post-options-sheet">
       ${_editBtn}
-      <button class="post-option danger" onclick="closeModal();confirmDeletePost('${postId}')">
+      <button class="post-option danger" onclick="closeModal();confirmDeletePost('${escapeJsArg(postId)}')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7 H20"/><path d="M9 7 V4 H15 V7"/><path d="M6 7 L7 20 H17 L18 7"/><path d="M10 11 V17"/><path d="M14 11 V17"/></svg>
         Supprimer le post
       </button>
@@ -107,7 +107,7 @@ function confirmDeletePost(postId) {
       Cette action est <b>définitive</b>. Le post et ses commentaires seront supprimés. Tes points et Passia gagnés à la publication restent acquis.
     </div>
     ${preview ? `<div style="background:rgba(139,92,246,0.06);padding:10px 12px;border-radius:10px;margin-bottom:14px;font-size:12px;color:var(--text-dim);font-style:italic;line-height:1.5;">« ${escapeHtml(preview)} »</div>` : ""}
-    <button class="btn block" style="background:#dc2626;color:#fff;border-color:#dc2626;margin-bottom:8px;" onclick="deletePost('${postId}')">
+    <button class="btn block" style="background:#dc2626;color:#fff;border-color:#dc2626;margin-bottom:8px;" onclick="deletePost('${escapeJsArg(postId)}')">
       Oui, supprimer définitivement
     </button>
     <button class="btn ghost block" onclick="closeModal()">Annuler</button>
@@ -451,7 +451,7 @@ function _retryComment(threadId, nodeId) {
 // Statut d'envoi affiché dans la méta d'un commentaire/réponse.
 function _cmtStatusHtml(threadId, node) {
   if (!node) return "";
-  if (node._failed) return ' · <span class="cmt-status failed" onclick="event.stopPropagation();return _retryComment(\'' + threadId + '\',\'' + node.id + '\')">⚠️ Non envoyé · Réessayer</span>';
+  if (node._failed) return ' · <span class="cmt-status failed" onclick="event.stopPropagation();return _retryComment(\'' + escapeJsArg(threadId) + '\',\'' + escapeJsArg(node.id) + '\')">⚠️ Non envoyé · Réessayer</span>';
   if (node._pending) return ' · <span class="cmt-status pending">⏳ Envoi…</span>';
   return "";
 }
@@ -495,8 +495,8 @@ function _renderCommentsList(allComments, postId) {
   }
   var _sortBar = _visible.length >= 2
     ? '<div class="cmt-sortbar">'
-      + '<button class="cmt-sort' + (_sortMode === "top" ? " active" : "") + '" onclick="return _setCmtSort(\'' + postId + '\',\'top\')">Pertinents</button>'
-      + '<button class="cmt-sort' + (_sortMode !== "top" ? " active" : "") + '" onclick="return _setCmtSort(\'' + postId + '\',\'recent\')">Récents</button>'
+      + '<button class="cmt-sort' + (_sortMode === "top" ? " active" : "") + '" onclick="return _setCmtSort(\'' + escapeJsArg(postId) + '\',\'top\')">Pertinents</button>'
+      + '<button class="cmt-sort' + (_sortMode !== "top" ? " active" : "") + '" onclick="return _setCmtSort(\'' + escapeJsArg(postId) + '\',\'recent\')">Récents</button>'
       + '</div>'
     : "";
   // Pagination : injecter 80+ commentaires d'un coup coûtait ~130ms de DOM
@@ -513,7 +513,7 @@ function _renderCommentsList(allComments, postId) {
   if (_visible.length > _shown) {
     var _remaining = _visible.length - _shown;
     var _next = Math.min(_LIMIT, _remaining);
-    _olderBtn = '<button class="btn ghost block" style="margin:10px auto 2px;display:block;font-size:12px;" onclick="_showMoreComments(\'' + postId + '\')">↓ Voir ' + _next + ' commentaires de plus'
+    _olderBtn = '<button class="btn ghost block" style="margin:10px auto 2px;display:block;font-size:12px;" onclick="_showMoreComments(\'' + escapeJsArg(postId) + '\')">↓ Voir ' + _next + ' commentaires de plus'
       + (_remaining > _next ? ' · ' + _remaining + ' restants' : '') + '</button>';
     _visible = _visible.slice(0, _shown);
   }
@@ -558,22 +558,22 @@ function _renderCommentsList(allComments, postId) {
     const cRepOpen = !!window._repliesExpanded[c.id];
 
     const cMine = (authorId === "me" || (typeof MY_UID !== "undefined" && authorId === MY_UID));
-    return `<div class="comment${c.pinned ? " pinned" : ""}" data-commentid="${c.id}">
-      <div class="avatar sm" style="background:${avatarBg(_cAv)};cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${authorId}','${cSrc}')">${avatarInner(_cAv)}</div>
-      <button class="comment-menu-btn" title="Options" onclick="event.stopPropagation();return openCommentOptions('${postId}','${c.id}',${cMine ? 1 : 0}, event);"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg></button>
+    return `<div class="comment${c.pinned ? " pinned" : ""}" data-commentid="${escapeHtml(c.id)}">
+      <div class="avatar sm" style="background:${avatarBg(_cAv)};cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${escapeJsArg(authorId)}','${escapeJsArg(cSrc)}')">${avatarInner(_cAv)}</div>
+      <button class="comment-menu-btn" title="Options" onclick="event.stopPropagation();return openCommentOptions('${escapeJsArg(postId)}','${escapeJsArg(c.id)}',${cMine ? 1 : 0}, event);"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg></button>
       <div class="comment-body">
         ${c.pinned ? '<div class="cmt-pinned-badge">📌 Épinglé</div>' : ""}
-        <div class="comment-author" style="cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${authorId}','${cSrc}')">${escapeHtml(name)}</div>
+        <div class="comment-author" style="cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${escapeJsArg(authorId)}','${escapeJsArg(cSrc)}')">${escapeHtml(name)}</div>
         <div class="comment-text">${_commentBodyHtml(c.text || c.content || "")}</div>
         <div class="comment-meta">${fmtTime(c.createdAt || c.at)}${c.edited ? " · modifié" : ""}${typeof _cmtStatusHtml === "function" ? _cmtStatusHtml(postId, c) : ""}</div>
         <div class="comment-actions">
-          <span class="comment-action ${cLiked ? "liked" : ""}" data-cmtlike="${c.id}" onclick="return likeComment('${postId}','${c.id}', event);">
+          <span class="comment-action ${cLiked ? "liked" : ""}" data-cmtlike="${escapeHtml(c.id)}" onclick="return likeComment('${escapeJsArg(postId)}','${escapeJsArg(c.id)}', event);">
             ${cLiked ? "❤️" : "🤍"} ${cLikes}
           </span>
-          <span class="comment-action" onclick="return replyToComment('${postId}','${c.id}','${escapeJsArg(name)}', event);" title="Répondre">💬</span>
-          <span class="comment-action" onclick="return showEmojiPickerForComment('${postId}','${c.id}', event);" title="Emoji & GIF">😊</span>
-          <span class="cmt-chip-holder" data-cmtchip="${c.id}">${cReactChip}</span>
-          ${cReplies.length > 0 ? `<span class="comment-reply-count" onclick="return toggleCommentReplies('${c.id}', event);">${cRepOpen ? "▲ Masquer les réponses" : ("⌵ Voir " + cReplies.length + " réponse" + (cReplies.length > 1 ? "s" : ""))}</span>` : ""}
+          <span class="comment-action" onclick="return replyToComment('${escapeJsArg(postId)}','${escapeJsArg(c.id)}','${escapeJsArg(name)}', event);" title="Répondre">💬</span>
+          <span class="comment-action" onclick="return showEmojiPickerForComment('${escapeJsArg(postId)}','${escapeJsArg(c.id)}', event);" title="Emoji & GIF">😊</span>
+          <span class="cmt-chip-holder" data-cmtchip="${escapeHtml(c.id)}">${cReactChip}</span>
+          ${cReplies.length > 0 ? `<span class="comment-reply-count" onclick="return toggleCommentReplies('${escapeJsArg(c.id)}', event);">${cRepOpen ? "▲ Masquer les réponses" : ("⌵ Voir " + cReplies.length + " réponse" + (cReplies.length > 1 ? "s" : ""))}</span>` : ""}
         </div>
         ${cReplies.length > 0 ? `<div class="comment-replies" id="replies-${c.id}" style="display:${cRepOpen ? "block" : "none"};">${cReplies.map(r => {
           const ru = userById(r.authorId) || { name: "?", profileEmoji: "👤", avatar: "#64748b" };
@@ -586,8 +586,8 @@ function _renderCommentsList(allComments, postId) {
           if (r.type === "emoji_reaction") {
             const _rAv = { avatar: ru.avatar || "#64748b", profileEmoji: ru.profileEmoji || "👤", name: ru.name, photoUrl: ru.photoUrl || null };
             return `<div class="comment-reply" style="display:flex;align-items:center;gap:6px;padding:4px 0;">
-              <div class="avatar xs" style="background:${avatarBg(_rAv)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${r.authorId}','${rSrc}')">${avatarInner(_rAv)}</div>
-              <div><span style="font-size:11px;color:var(--text);font-weight:600;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span> <span style="font-size:14px;">${escapeHtml(r.text || "")}</span></div>
+              <div class="avatar xs" style="background:${avatarBg(_rAv)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${escapeJsArg(r.authorId)}','${escapeJsArg(rSrc)}')">${avatarInner(_rAv)}</div>
+              <div><span style="font-size:11px;color:var(--text);font-weight:600;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${escapeJsArg(r.authorId)}','${escapeJsArg(rSrc)}')">${escapeHtml(ru.name)}</span> <span style="font-size:14px;">${escapeHtml(r.text || "")}</span></div>
             </div>`;
           }
 
@@ -599,8 +599,8 @@ function _renderCommentsList(allComments, postId) {
               ? `<img loading="lazy" decoding="async" src="${safeUrlAttr(r.text)}" style="width:90px;height:90px;border-radius:8px;margin-top:4px;object-fit:cover;" alt="GIF" />`
               : `<span style="font-size:14px;">${escapeHtml(r.text || "")}</span>`;
             return `<div class="comment-reply" style="display:flex;align-items:flex-start;gap:6px;padding:4px 0;">
-              <div class="avatar xs" style="background:${avatarBg(_rAv)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${r.authorId}','${rSrc}')">${avatarInner(_rAv)}</div>
-              <div><span style="font-size:11px;color:var(--text);font-weight:600;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span><br/>
+              <div class="avatar xs" style="background:${avatarBg(_rAv)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${escapeJsArg(r.authorId)}','${escapeJsArg(rSrc)}')">${avatarInner(_rAv)}</div>
+              <div><span style="font-size:11px;color:var(--text);font-weight:600;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${escapeJsArg(r.authorId)}','${escapeJsArg(rSrc)}')">${escapeHtml(ru.name)}</span><br/>
               ${_gifHtml}</div>
             </div>`;
           }
@@ -610,14 +610,14 @@ function _renderCommentsList(allComments, postId) {
           const rReactChip = _cmtReactChipHtml(postId, r);
           const rLiked = (r.likedBy || []).some(x => _selfIds.indexOf(x) > -1);
           const rLikes = r.likes || 0;
-          return `<div class="comment-reply" data-replyid="${r.id}" style="display:flex;align-items:flex-start;gap:6px;padding:4px 0;">
-            <div class="avatar xs" style="background:${avatarBg(_rAvT)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${r.authorId}','${rSrc}')">${avatarInner(_rAvT)}</div>
-            <div style="flex:1;min-width:0;"><span class="comment-reply-author" style="font-size:11px;font-weight:600;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${r.authorId}','${rSrc}')">${escapeHtml(ru.name)}</span> ${_commentBodyHtml(r.text)}
+          return `<div class="comment-reply" data-replyid="${escapeHtml(r.id)}" style="display:flex;align-items:flex-start;gap:6px;padding:4px 0;">
+            <div class="avatar xs" style="background:${avatarBg(_rAvT)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${escapeJsArg(r.authorId)}','${escapeJsArg(rSrc)}')">${avatarInner(_rAvT)}</div>
+            <div style="flex:1;min-width:0;"><span class="comment-reply-author" style="font-size:11px;font-weight:600;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${escapeJsArg(r.authorId)}','${escapeJsArg(rSrc)}')">${escapeHtml(ru.name)}</span> ${_commentBodyHtml(r.text)}
             <div class="comment-reply-actions" style="display:flex;align-items:center;gap:10px;margin-top:2px;">
               <span style="font-size:10px;color:var(--muted);">${fmtTime(r.createdAt)}${typeof _cmtStatusHtml === "function" ? _cmtStatusHtml(postId, r) : ""}</span>
-              <span class="comment-action ${rLiked ? "liked" : ""}" data-cmtlike="${r.id}" style="font-size:12px;" onclick="return likeCommentNode('${postId}','${r.id}', event);" title="J'aime">${rLiked ? "❤️" : "🤍"} ${rLikes}</span>
-              <span class="comment-action" style="font-size:12px;" onclick="return reactToReply('${postId}','${r.id}', event);" title="Réagir">😊</span>
-              <span class="cmt-chip-holder" data-cmtchip="${r.id}">${rReactChip}</span>
+              <span class="comment-action ${rLiked ? "liked" : ""}" data-cmtlike="${escapeHtml(r.id)}" style="font-size:12px;" onclick="return likeCommentNode('${escapeJsArg(postId)}','${escapeJsArg(r.id)}', event);" title="J'aime">${rLiked ? "❤️" : "🤍"} ${rLikes}</span>
+              <span class="comment-action" style="font-size:12px;" onclick="return reactToReply('${escapeJsArg(postId)}','${escapeJsArg(r.id)}', event);" title="Réagir">😊</span>
+              <span class="cmt-chip-holder" data-cmtchip="${escapeHtml(r.id)}">${rReactChip}</span>
             </div></div>
           </div>`;
         }).join("")}</div>` : ""}
@@ -720,7 +720,7 @@ function _cmtReactChipHtml(threadId, comment) {
   var _selfIds = [(typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : null, (state.user && state.user.id), "me"].filter(Boolean);
   var mine = reactions.some(function(r){ return _selfIds.indexOf(r.authorId) > -1; });
   return '<span class="cmt-react-chip' + (mine ? " mine" : "") + '" title="Voir qui a réagi"'
-    + ' onclick="return openCommentReactors(\'' + threadId + '\',\'' + comment.id + '\', event);">'
+    + ' onclick="return openCommentReactors(\'' + escapeJsArg(threadId) + '\',\'' + escapeJsArg(comment.id) + '\', event);">'
     + escapeHtml(top) + ' <b>' + reactions.length + '</b></span>';
 }
 // Popover listant les réactions emoji d'un commentaire : qui a réagi + son emoji.
@@ -741,10 +741,10 @@ function openCommentReactors(threadId, commentId, event) {
     var _av = { avatar: u.avatar || "#64748b", profileEmoji: u.profileEmoji || "👤", name: u.name, photoUrl: u.photoUrl || null };
     var rSrc = (r.authorId === "me" || (typeof MY_UID !== "undefined" && r.authorId === MY_UID)) ? "me" : "seed";
     var _face = _looksLikeMediaUrl(r.text)
-      ? '<img loading="lazy" src="' + escapeHtml(r.text) + '" style="width:30px;height:30px;border-radius:6px;object-fit:cover;"/>'
+      ? '<img loading="lazy" src="' + safeUrlAttr(r.text) + '" style="width:30px;height:30px;border-radius:6px;object-fit:cover;"/>'
       : '<span style="font-size:18px;">' + escapeHtml(r.text || "❤️") + '</span>';
     return '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;">'
-      + '<div class="avatar sm" style="background:' + avatarBg(_av) + ';flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();closeModal&&closeModal();openUserProfile(\'' + r.authorId + '\',\'' + rSrc + '\')">' + avatarInner(_av) + '</div>'
+      + '<div class="avatar sm" style="background:' + avatarBg(_av) + ';flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();closeModal&&closeModal();openUserProfile(\'' + escapeJsArg(r.authorId) + '\',\'' + escapeJsArg(rSrc) + '\')">' + avatarInner(_av) + '</div>'
       + '<span style="flex:1;font-size:12px;color:var(--text);">' + escapeHtml(u.name) + '</span>' + _face + '</div>';
   }).join("");
   pop.innerHTML = '<div style="font-size:12px;font-weight:800;color:var(--text);margin-bottom:8px;">Réactions · ' + reactions.length + '</div>' + rowsHtml;
@@ -858,7 +858,7 @@ function _openReactorsList(items, event) {
   var rowsHtml;
   function face(t) {
     return (typeof _looksLikeMediaUrl === "function" && _looksLikeMediaUrl(t))
-      ? '<img loading="lazy" src="' + escapeHtml(t) + '" style="width:30px;height:30px;border-radius:6px;object-fit:cover;"/>'
+      ? '<img loading="lazy" src="' + safeUrlAttr(t) + '" style="width:30px;height:30px;border-radius:6px;object-fit:cover;"/>'
       : '<span style="font-size:18px;">' + escapeHtml(t || "❤️") + '</span>';
   }
   if (withAuthors) {
@@ -867,7 +867,7 @@ function _openReactorsList(items, event) {
       var _av = { avatar: u.avatar || "#64748b", profileEmoji: u.profileEmoji || "👤", name: u.name, photoUrl: u.photoUrl || null };
       var rSrc = (it.authorId === "me" || (typeof MY_UID !== "undefined" && it.authorId === MY_UID)) ? "me" : "seed";
       return '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;">'
-        + '<div class="avatar sm" style="background:' + avatarBg(_av) + ';flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();closeModal&&closeModal();openUserProfile(\'' + it.authorId + '\',\'' + rSrc + '\')">' + avatarInner(_av) + '</div>'
+        + '<div class="avatar sm" style="background:' + avatarBg(_av) + ';flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();closeModal&&closeModal();openUserProfile(\'' + escapeJsArg(it.authorId) + '\',\'' + escapeJsArg(rSrc) + '\')">' + avatarInner(_av) + '</div>'
         + '<span style="flex:1;font-size:12px;color:var(--text);">' + escapeHtml(u.name) + '</span>' + face(it.text) + '</div>';
     }).join("");
   } else {
@@ -956,10 +956,10 @@ async function openComments(postId) {
     <div id="commentsBox" style="max-height:260px;overflow-y:auto;margin-bottom:12px;" aria-live="polite">
       ${localComments.length ? _renderCommentsList(localComments, postId) : (_willLoad ? _commentSkeletonHtml(4) : _emptyStateHtml)}
     </div>
-    <textarea class="textarea" id="newComment" placeholder="Ajoute un commentaire…" maxlength="400" style="min-height:44px;" oninput="autoResizeTextarea(this);_syncComposerSendState(this)" onkeydown="if((event.metaKey||event.ctrlKey)&&event.key==='Enter'){event.preventDefault();submitComment('${postId}');}"></textarea>
+    <textarea class="textarea" id="newComment" placeholder="Ajoute un commentaire…" maxlength="400" style="min-height:44px;" oninput="autoResizeTextarea(this);_syncComposerSendState(this)" onkeydown="if((event.metaKey||event.ctrlKey)&&event.key==='Enter'){event.preventDefault();submitComment('${escapeJsArg(postId)}');}"></textarea>
     <div style="display:flex;align-items:center;gap:6px;margin-top:8px;">
       ${_cmtComposerToolsHtml("newComment", "submitComment", postId)}
-      <button class="btn primary" style="flex:1;" onclick="submitComment('${postId}')">Publier · +3 pts</button>
+      <button class="btn primary" style="flex:1;" onclick="submitComment('${escapeJsArg(postId)}')">Publier · +3 pts</button>
     </div>
   `);
   // Bouton d'envoi désactivé tant que le champ est vide (état initial).
@@ -1383,7 +1383,7 @@ function openCommentOptions(threadId, commentId, mine, event) {
   return false;
 }
 function _cmtRow(icon, label, action, danger) {
-  return '<button class="cmt-sheet-row' + (danger ? " danger" : "") + '" onclick="_cmtAct(\'' + action + '\')">'
+  return '<button class="cmt-sheet-row' + (danger ? " danger" : "") + '" onclick="_cmtAct(\'' + escapeJsArg(action) + '\')">'
     + '<span class="cmt-sheet-ic">' + icon + '</span>' + escapeHtml(label) + '</button>';
 }
 function _closeCmtSheet() { var o = document.getElementById("cmtSheet"); if (o) o.remove(); }
@@ -1523,11 +1523,11 @@ function openCommentSheet(threadId, title) {
     '<div class="modal-handle"></div>'
     + '<div class="modal-title">' + (title || "💬 Commentaires") + '</div>'
     + '<div class="modal-subtitle">Commente pour gagner +3 pts.</div>'
-    + '<div id="cmtThreadList" data-thread="' + threadId + '" style="max-height:52vh;overflow-y:auto;margin-bottom:12px;">' + initial + '</div>'
+    + '<div id="cmtThreadList" data-thread="' + escapeHtml(threadId) + '" style="max-height:52vh;overflow-y:auto;margin-bottom:12px;">' + initial + '</div>'
     + '<div style="display:flex;gap:6px;align-items:center;">'
-    + '<input type="text" class="input" id="cmtThreadInput" placeholder="Écris un commentaire…" maxlength="500" style="flex:1;" onkeypress="if(event.key===\'Enter\')submitCommentSheet(\'' + threadId + '\')"/>'
+    + '<input type="text" class="input" id="cmtThreadInput" placeholder="Écris un commentaire…" maxlength="500" style="flex:1;" onkeypress="if(event.key===\'Enter\')submitCommentSheet(\'' + escapeJsArg(threadId) + '\')"/>'
     + _cmtComposerToolsHtml("cmtThreadInput", "submitCommentSheet", threadId)
-    + '<button class="btn primary" onclick="submitCommentSheet(\'' + threadId + '\')">Envoyer</button>'
+    + '<button class="btn primary" onclick="submitCommentSheet(\'' + escapeJsArg(threadId) + '\')">Envoyer</button>'
     + '</div>'
   );
   // Hydrate / charge les commentaires distants selon le contexte.
@@ -1578,9 +1578,11 @@ function submitCommentSheet(threadId) {
 // `submitFn`/`submitArg` = la fonction d'envoi propre à chaque contexte.
 // ════════════════════════════════════════════════════════════════════════
 function _cmtComposerToolsHtml(inputId, submitFn, submitArg) {
-  var arg = submitArg != null ? "'" + String(submitArg).replace(/'/g, "\\'") + "'" : "null";
+  // ⚠️ L'échappement maison ne traitait QUE l'apostrophe : un guillemet double
+  // dans submitArg fermait l'attribut onclick lui-même. escapeJsArg couvre les deux.
+  var arg = submitArg != null ? "'" + escapeJsArg(submitArg) + "'" : "null";
   // UN SEUL bouton 😊 (toolbar allégée) : le panneau emoji contient un onglet GIF.
-  return '<button type="button" class="cmt-tool-btn" title="Emoji & GIF" aria-label="Ajouter un emoji ou un GIF" onclick="cmtComposerEmoji(\'' + inputId + '\',event,\'' + submitFn + '\',' + arg + ')">😊</button>';
+  return '<button type="button" class="cmt-tool-btn" title="Emoji & GIF" aria-label="Ajouter un emoji ou un GIF" onclick="cmtComposerEmoji(\'' + escapeJsArg(inputId) + '\',event,\'' + escapeJsArg(submitFn) + '\',' + arg + ')">😊</button>';
 }
 
 function _cmtInsertAtCursor(inp, text) {
@@ -2044,7 +2046,7 @@ function renderShop() {
   grid.innerHTML = PASSIA_PACKS.map(p => {
     const total = p.base + p.bonus;
     const cls = p.popular ? "popular" : (p.mega ? "mega" : "");
-    return `<div class="pack-card ${cls}" onclick="openBuyModal('${p.id}')">
+    return `<div class="pack-card ${cls}" onclick="openBuyModal('${escapeJsArg(p.id)}')">
       <div class="pack-emoji">${p.emoji}</div>
       <div class="pack-name">${escapeHtml(p.name)}</div>
       <div class="pack-amount">
@@ -2062,7 +2064,7 @@ function renderShop() {
   const passList = $("#passList");
   if (passList) {
     passList.innerHTML = PASSIA_PASSES.map(p => `
-      <div class="pass-card ${p.annual ? 'annual' : ''}" onclick="openBuyPassModal('${p.id}')">
+      <div class="pass-card ${p.annual ? 'annual' : ''}" onclick="openBuyPassModal('${escapeJsArg(p.id)}')">
         <div class="pass-card-head">
           <div class="pass-card-title">${escapeHtml(p.title)}</div>
           <div class="pass-card-badge">${escapeHtml(p.badge)}</div>
@@ -2096,22 +2098,22 @@ function openBuyModal(packId) {
       <div class="pay-modal-amount-sub">${p.bonus > 0 ? `${p.base} + ${p.bonus} bonus offerts ·` : ""} ${p.price.toFixed(2).replace('.', ',')} €</div>
     </div>
     <div style="font-size:13px;color:var(--text-dim);margin-bottom:10px;text-align:center;">Choisis ton moyen de paiement</div>
-    <button class="pay-method" onclick="confirmPurchase('${p.id}', 'apple')">
+    <button class="pay-method" onclick="confirmPurchase('${escapeJsArg(p.id)}', 'apple')">
       <span class="pay-method-icon">🍎</span>
       Apple Pay
       <span class="pay-method-arrow">›</span>
     </button>
-    <button class="pay-method" onclick="confirmPurchase('${p.id}', 'google')">
+    <button class="pay-method" onclick="confirmPurchase('${escapeJsArg(p.id)}', 'google')">
       <span class="pay-method-icon">🅖</span>
       Google Pay
       <span class="pay-method-arrow">›</span>
     </button>
-    <button class="pay-method" onclick="confirmPurchase('${p.id}', 'card')">
+    <button class="pay-method" onclick="confirmPurchase('${escapeJsArg(p.id)}', 'card')">
       <span class="pay-method-icon">💳</span>
       Carte bancaire (Visa, Mastercard)
       <span class="pay-method-arrow">›</span>
     </button>
-    <button class="pay-method" onclick="confirmPurchase('${p.id}', 'paypal')">
+    <button class="pay-method" onclick="confirmPurchase('${escapeJsArg(p.id)}', 'paypal')">
       <span class="pay-method-icon">🅿️</span>
       PayPal
       <span class="pay-method-arrow">›</span>
@@ -2141,12 +2143,12 @@ function openBuyPassModal(passId) {
       <b>Sans engagement.</b> ${p.annual ? "Renouvellement annuel automatique, annulable à tout moment depuis ton wallet." : "Renouvellement mensuel automatique, annulable en 1 clic."}
     </div>
     <div style="font-size:13px;color:var(--text-dim);margin-bottom:10px;text-align:center;">Choisis ton moyen de paiement</div>
-    <button class="pay-method" onclick="confirmPassPurchase('${p.id}', 'apple')">
+    <button class="pay-method" onclick="confirmPassPurchase('${escapeJsArg(p.id)}', 'apple')">
       <span class="pay-method-icon">🍎</span>
       Apple Pay
       <span class="pay-method-arrow">›</span>
     </button>
-    <button class="pay-method" onclick="confirmPassPurchase('${p.id}', 'card')">
+    <button class="pay-method" onclick="confirmPassPurchase('${escapeJsArg(p.id)}', 'card')">
       <span class="pay-method-icon">💳</span>
       Carte bancaire
       <span class="pay-method-arrow">›</span>
@@ -2591,7 +2593,7 @@ function _nmUserRow(id, name, emoji, color, photoUrl) {
   var esc = escapeHtml(name || "Passionné");
   var _u = { avatar: color, profileEmoji: emoji, photoUrl: photoUrl || null };
   // data-* attributes pour éviter les problèmes de quotes dans onclick
-  return `<div class="_nm-row" data-uid="${escapeHtml(id)}" data-name="${esc}" data-emoji="${escapeHtml(emoji)}" data-color="${escapeHtml(color)}" data-photo="${escapeHtml(photoUrl || '')}"
+  return `<div class="_nm-row" data-uid="${escapeHtml(id)}" data-name="${escapeHtml(esc)}" data-emoji="${escapeHtml(emoji)}" data-color="${escapeHtml(color)}" data-photo="${escapeHtml(photoUrl || '')}"
     style="display:flex;align-items:center;gap:12px;padding:11px 4px;cursor:pointer;border-bottom:1px solid var(--border);">
     <div style="width:40px;height:40px;border-radius:14px;background:${avatarBg(_u)};display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">${avatarInner(_u)}</div>
     <div style="font-weight:700;font-size:14px;color:var(--text);flex:1;">${esc}</div>
@@ -2901,7 +2903,7 @@ async function openUserProfile(authorId, source) {
           const _pPhoto = p.photoUrl || null;
           const avatarStyle = _pPhoto
             ? 'background:url(' + safeUrlAttr(_pPhoto) + ') center/cover;'
-            : 'background:' + (p.color || "#8b5cf6") + ';';
+            : 'background:' + _cssColor(p.color || "#8b5cf6") + ';';
           const _pCover = p.coverUrl || null;
           const coverStyle = _pCover
             ? 'background:linear-gradient(90deg, rgba(0,0,0,0.62), rgba(0,0,0,0.30)), url(' + safeUrlAttr(_pCover) + ') center/cover;'
@@ -2984,7 +2986,7 @@ async function openUserProfile(authorId, source) {
   var tabsHTML = canSeeContent
     ? '<div class="profile-tabs" id="visitedTabs" role="group" aria-label="Filtrer par type de contenu (multi-sélection)">'
       + ["posts","photos","videos","bobines","carnets"].map(function(k) {
-          return '<button class="profile-tab" data-vtab="' + k + '" aria-pressed="false" onclick="switchVisitedTab(\'' + k + '\')" title="' + _VTAB_TITLES[k] + '" aria-label="' + _VTAB_TITLES[k] + '">' + _VTAB_SVGS[k] + '</button>';
+          return '<button class="profile-tab" data-vtab="' + escapeHtml(k) + '" aria-pressed="false" onclick="switchVisitedTab(\'' + escapeJsArg(k) + '\')" title="' + escapeHtml(_VTAB_TITLES[k]) + '" aria-label="' + escapeHtml(_VTAB_TITLES[k]) + '">' + _VTAB_SVGS[k] + '</button>';
         }).join("")
       + '</div>'
     : '';
@@ -3029,17 +3031,17 @@ async function openUserProfile(authorId, source) {
     \
     <!-- BOUTONS -->\
     <div style="display:flex;gap:8px;justify-content:center;margin:14px 0 4px;">\
-      <button class="btn primary" onclick="closeModal();startDirectMessage(\'' + authorId + '\',\'' + escapeJsArg(user.name || "Passionné") + '\',\'' + (user.profileEmoji || "✨") + '\',\'' + (user.avatar || "#8b5cf6") + '\',\'' + (user.photoUrl || "") + '\')" style="flex:1;font-size:12px;padding:10px 18px;border-radius:14px;">💬 Message</button>\
-      <button class="btn ghost" id="followBtn_' + authorId + '" onclick="toggleFollowUser(\'' + authorId + '\',\'' + escapeJsArg(user.name || "") + '\')" style="flex:1;font-size:12px;padding:10px 18px;border-radius:14px;' + (isFollowing ? 'background:var(--accent);color:#fff;border-color:var(--accent);' : '') + '">' + (isFollowing ? '✓ Suivi' : '➕ Suivre') + '</button>\
+      <button class="btn primary" onclick="closeModal();startDirectMessage(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "Passionné") + '\',\'' + (user.profileEmoji || "✨") + '\',\'' + (user.avatar || "#8b5cf6") + '\',\'' + (user.photoUrl || "") + '\')" style="flex:1;font-size:12px;padding:10px 18px;border-radius:14px;">💬 Message</button>\
+      <button class="btn ghost" id="followBtn_' + authorId + '" onclick="toggleFollowUser(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "") + '\')" style="flex:1;font-size:12px;padding:10px 18px;border-radius:14px;' + (isFollowing ? 'background:var(--accent);color:#fff;border-color:var(--accent);' : '') + '">' + (isFollowing ? '✓ Suivi' : '➕ Suivre') + '</button>\
     </div>\
     \
     <!-- ACTIONS RAPIDES -->\
     <div style="display:flex;gap:8px;margin-bottom:4px;">\
-      <button class="btn ghost" onclick="shareUserProfile(\'' + authorId + '\',\'' + escapeJsArg(user.name || "") + '\')" style="flex:1;font-size:11px;padding:8px;">' + shareIconSvg(14) + ' Partager</button>\
-      <button class="btn ghost" onclick="reportUser(\'' + authorId + '\',\'' + escapeJsArg(user.name || "") + '\')" style="flex:1;font-size:11px;padding:8px;color:#f59e0b;border-color:rgba(245,158,11,0.3);">🚩 Signaler</button>\
+      <button class="btn ghost" onclick="shareUserProfile(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "") + '\')" style="flex:1;font-size:11px;padding:8px;">' + shareIconSvg(14) + ' Partager</button>\
+      <button class="btn ghost" onclick="reportUser(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "") + '\')" style="flex:1;font-size:11px;padding:8px;color:#f59e0b;border-color:rgba(245,158,11,0.3);">🚩 Signaler</button>\
       ' + (isBlocked(authorId)
-        ? '<button class="btn ghost" onclick="unblockUser(\'' + authorId + '\',\'' + escapeJsArg(user.name || "") + '\');closeModal();" style="flex:1;font-size:11px;padding:8px;">✅ Débloquer</button>'
-        : '<button class="btn ghost" onclick="blockUser(\'' + authorId + '\',\'' + escapeJsArg(user.name || "") + '\')" style="flex:1;font-size:11px;padding:8px;color:#ef4444;border-color:rgba(239,68,68,0.3);">🚫 Bloquer</button>') + '\
+        ? '<button class="btn ghost" onclick="unblockUser(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "") + '\');closeModal();" style="flex:1;font-size:11px;padding:8px;">✅ Débloquer</button>'
+        : '<button class="btn ghost" onclick="blockUser(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "") + '\')" style="flex:1;font-size:11px;padding:8px;color:#ef4444;border-color:rgba(239,68,68,0.3);">🚫 Bloquer</button>') + '\
     </div>\
     \
     ' + passionsHTML + '\
@@ -3217,7 +3219,7 @@ function _blockedListHtml() {
     return `<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);">
       <div class="avatar sm" style="background:${avatarBg(u)};">${avatarInner(u)}</div>
       <div style="flex:1;font-weight:700;font-size:13px;color:var(--text);">${escapeHtml(name)}</div>
-      <button class="btn ghost" style="font-size:11px;padding:6px 12px;" onclick="unblockUser('${id}','${escapeJsArg(name)}')">Débloquer</button>
+      <button class="btn ghost" style="font-size:11px;padding:6px 12px;" onclick="unblockUser('${escapeJsArg(id)}','${escapeJsArg(name)}')">Débloquer</button>
     </div>`;
   }).join("");
 }
@@ -3380,7 +3382,7 @@ function renderMessages() {
       ? `<div class="msg-passion" style="font-size:11px;color:var(--muted);">👥 ${((c.userIds||[]).length || 0)} membres</div>`
       : "";
 
-    return `<div class="msg-card ${c.unread > 0 ? "unread" : ""}" onclick="openConversation('${c.id}')">
+    return `<div class="msg-card ${c.unread > 0 ? "unread" : ""}" onclick="openConversation('${escapeJsArg(c.id)}')">
       <div class="msg-avatar" style="${avatarStyle}">${_convAvInner}</div>
       <div class="msg-body">
         <div class="msg-head">
@@ -3462,13 +3464,16 @@ async function openConversation(convId) {
   // Avatar header — photo de groupe ou couleur+emoji
   var avatarHtml;
   if (c.isGroup && c.groupPhoto) {
-    avatarHtml = `<div onclick="pickGroupPhoto('${convId}')" style="position:relative;flex-shrink:0;cursor:pointer;">
-      <div class="conv-fp-head-avatar" style="background:url(${c.groupPhoto}) center/cover;font-size:0;"></div>
+    // ⚠️ La photo de groupe est posée par N'IMPORTE QUEL membre : elle entrait
+    // brute dans un url() CSS, où une parenthèse ou un guillemet suffisait à sortir
+    // de la déclaration puis de l'attribut. _cssUrl pourcent-encode les deux.
+    avatarHtml = `<div onclick="pickGroupPhoto('${escapeJsArg(convId)}')" style="position:relative;flex-shrink:0;cursor:pointer;">
+      <div class="conv-fp-head-avatar" style="background:url('${_cssUrl(c.groupPhoto) || ""}') center/cover;font-size:0;"></div>
       <div style="position:absolute;bottom:-1px;right:-1px;width:14px;height:14px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:8px;border:1.5px solid var(--bg-soft);">📷</div>
     </div>`;
   } else {
     const _hu = { avatar: displayAvatar, profileEmoji: displayEmoji, photoUrl: (userById(c.userId) || {}).photoUrl || c.userPhoto || u.photoUrl || null };
-    avatarHtml = `<div class="conv-fp-head-avatar" style="background:${avatarBg(_hu)};" onclick="${c.isGroup ? '' : `openUserProfile('${c.userId}','seed')`}">${avatarInner(_hu)}</div>`;
+    avatarHtml = `<div class="conv-fp-head-avatar" style="background:${avatarBg(_hu)};" onclick="${c.isGroup ? '' : `openUserProfile('${escapeJsArg(c.userId)}','seed')`}">${avatarInner(_hu)}</div>`;
   }
 
   // ── Header ──
@@ -3478,21 +3483,21 @@ async function openConversation(convId) {
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
     </button>
     ${avatarHtml}
-    <div class="conv-fp-head-info" onclick="${c.isGroup ? '' : `openUserProfile('${c.userId}','seed')`}">
+    <div class="conv-fp-head-info" onclick="${c.isGroup ? '' : `openUserProfile('${escapeJsArg(c.userId)}','seed')`}">
       <div class="conv-fp-name">${escapeHtml(displayName)}</div>
       <div class="conv-fp-passion">${c.isGroup ? `👥 ${(c.userIds||[]).length} membres` : 'Voir le profil'}</div>
     </div>
     <div class="conv-actions">
-      ${c.isGroup ? `<button class="conv-action-btn" onclick="showGroupMembers('${convId}')" title="Membres">
+      ${c.isGroup ? `<button class="conv-action-btn" onclick="showGroupMembers('${escapeJsArg(convId)}')" title="Membres">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
       </button>` : ''}
-      ${c.isGroup ? '' : `<button class="conv-action-btn" onclick="startCall('${convId}','voice')" title="Appel audio">
+      ${c.isGroup ? '' : `<button class="conv-action-btn" onclick="startCall('${escapeJsArg(convId)}','voice')" title="Appel audio">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.62 3.38 2 2 0 0 1 3.6 1.2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.91 9a16 16 0 0 0 6 6l.92-.92a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
       </button>
-      <button class="conv-action-btn" onclick="startCall('${convId}','video')" title="Appel vidéo">
+      <button class="conv-action-btn" onclick="startCall('${escapeJsArg(convId)}','video')" title="Appel vidéo">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
       </button>`}
-      <button class="conv-action-btn" onclick="openConvSettings('${convId}')" title="Paramètres">
+      <button class="conv-action-btn" onclick="openConvSettings('${escapeJsArg(convId)}')" title="Paramètres">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
       </button>
     </div>`;
@@ -3663,7 +3668,7 @@ function renderConvFpThread(c, displayName) {
     if (isMe) {
       // Holder [data-msgst] : _setMsgStatus patche cet indicateur EN PLACE
       // (sans re-render du fil, qui ramènerait le scroll en bas).
-      statusInd = '<span data-msgst="' + m.id + '">' + _msgStatusIndHtml(c.id, m.id, m.status) + '</span>';
+      statusInd = '<span data-msgst="' + escapeHtml(m.id) + '">' + _msgStatusIndHtml(c.id, m.id, m.status) + '</span>';
     }
 
     // Temps — affiché sur chaque message avec heure exacte (HH:MM)
@@ -3729,8 +3734,8 @@ function renderConvFpThread(c, displayName) {
       var waveBg = isMe ? 'rgba(255,255,255,0.2)' : 'rgba(139,92,246,0.12)';
       var waveFill = isMe ? 'rgba(255,255,255,0.6)' : 'var(--accent)';
       content = '<div style="display:flex;align-items:center;gap:8px;min-width:180px;max-width:240px;">' +
-        '<button style="width:34px;height:34px;border-radius:50%;background:' + (isMe?'rgba(255,255,255,0.2)':'rgba(139,92,246,0.12)') + ';border:none;color:' + (isMe?'#fff':'var(--accent)') + ';cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center;flex-shrink:0;" onclick="_playVoiceById(\'' + aid + '\')" id="pb_' + aid + '">▶</button>' +
-        '<div style="flex:1;height:28px;background:' + waveBg + ';border-radius:8px;overflow:hidden;cursor:pointer;" onclick="_playVoiceById(\'' + aid + '\')"><div id="wf_' + aid + '" style="height:100%;background:' + waveFill + ';border-radius:8px;width:0%;transition:width 0.15s;"></div></div>' +
+        '<button style="width:34px;height:34px;border-radius:50%;background:' + (isMe?'rgba(255,255,255,0.2)':'rgba(139,92,246,0.12)') + ';border:none;color:' + (isMe?'#fff':'var(--accent)') + ';cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center;flex-shrink:0;" onclick="_playVoiceById(\'' + escapeJsArg(aid) + '\')" id="pb_' + aid + '">▶</button>' +
+        '<div style="flex:1;height:28px;background:' + waveBg + ';border-radius:8px;overflow:hidden;cursor:pointer;" onclick="_playVoiceById(\'' + escapeJsArg(aid) + '\')"><div id="wf_' + aid + '" style="height:100%;background:' + waveFill + ';border-radius:8px;width:0%;transition:width 0.15s;"></div></div>' +
         '<span id="dur_' + aid + '" style="font-size:11px;opacity:0.75;flex-shrink:0;min-width:30px;text-align:right;">' + vDurStr + '</span>' +
         '<button class="voice-speed-btn" onclick="_cycleVoiceSpeed()" style="flex-shrink:0;background:' + (isMe?'rgba(255,255,255,0.18)':'rgba(139,92,246,0.12)') + ';border:none;color:' + (isMe?'#fff':'var(--accent)') + ';font-size:10px;font-weight:800;border-radius:8px;padding:2px 6px;cursor:pointer;">' + (((window._voiceSpeed||1) % 1 === 0) ? (window._voiceSpeed||1) : String(window._voiceSpeed).replace(".",",")) + '×</button>' +
         '</div>';
@@ -3739,7 +3744,7 @@ function renderConvFpThread(c, displayName) {
       var fname = escapeHtml(m.fileName || 'Fichier');
       var docBg = isMe ? 'rgba(255,255,255,0.12)' : 'var(--bg-soft)';
       var docBorder = isMe ? 'rgba(255,255,255,0.2)' : 'var(--border)';
-      content = '<div style="display:flex;align-items:center;gap:10px;padding:4px 0;cursor:pointer;" onclick="_docDownload(\'' + (m.id||i) + '\')">' +
+      content = '<div style="display:flex;align-items:center;gap:10px;padding:4px 0;cursor:pointer;" onclick="_docDownload(\'' + escapeJsArg((m.id||i)) + '\')">' +
         '<div style="width:36px;height:36px;border-radius:10px;background:' + docBg + ';border:1px solid ' + docBorder + ';display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">📄</div>' +
         '<div><div style="font-size:13px;font-weight:700;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + fname + '</div>' +
         '<div style="font-size:10px;opacity:0.6;">' + escapeHtml((m.fileType||'') + (m.fileSize ? ' · '+m.fileSize : '')) + '</div></div></div>';
@@ -3773,7 +3778,7 @@ function renderConvFpThread(c, displayName) {
     // Bloc citation (réponse à un message)
     var replyHtml = "";
     if (m.replyTo && (m.replyTo.t || m.replyTo.n)) {
-      replyHtml = '<div class="conv-reply-quote" onclick="_jumpToMsg(\'' + (m.replyTo.id||'') + '\')">' +
+      replyHtml = '<div class="conv-reply-quote" onclick="_jumpToMsg(\'' + escapeJsArg((m.replyTo.id||'')) + '\')">' +
         '<span class="conv-reply-name">' + escapeHtml(m.replyTo.n || '') + '</span>' +
         '<span class="conv-reply-text">' + escapeHtml((m.replyTo.t || '📎 Pièce jointe').slice(0,80)) + '</span></div>';
     }
@@ -3787,7 +3792,7 @@ function renderConvFpThread(c, displayName) {
     }
 
     parts.push(
-      '<div class="conv-bubble-wrap ' + (isMe?'me':'them') + '" data-mid="' + (m.id||'') + '" data-me="' + (isMe?'1':'0') + '">' +
+      '<div class="conv-bubble-wrap ' + (isMe?'me':'them') + '" data-mid="' + escapeHtml((m.id||'')) + '" data-me="' + (isMe?'1':'0') + '">' +
         senderLine +
         '<div class="conv-bubble ' + (isMe?'me':'them') + '"' + bubbleStyle + '>' + replyHtml + content + '</div>' +
         reactHtml +
@@ -3885,7 +3890,7 @@ function _openMsgActions(convId, msgId) {
   var m = r.m, isMe = (m.from === "me");
   var reacts = ["❤️","😂","👍","😮","😢","🔥"];
   var reactRow = '<div style="display:flex;justify-content:space-around;padding:6px 4px 12px;">' +
-    reacts.map(function(e){ return '<span onclick="_reactAndClose(\'' + convId + '\',\'' + msgId + '\',\'' + e + '\')" style="font-size:26px;cursor:pointer;">' + e + '</span>'; }).join('') + '</div>';
+    reacts.map(function(e){ return '<span onclick="_reactAndClose(\'' + escapeJsArg(convId) + '\',\'' + escapeJsArg(msgId) + '\',\'' + escapeJsArg(e) + '\')" style="font-size:26px;cursor:pointer;">' + e + '</span>'; }).join('') + '</div>';
   function item(icon, label, fn, danger) {
     return '<div class="csetting-item" onclick="' + fn + '"><div class="csetting-icon">' + icon + '</div>' +
       '<div class="csetting-label"' + (danger?' style="color:#ef4444;"':'') + '>' + label + '</div></div>';
@@ -3973,7 +3978,7 @@ function _forwardPick(convId, msgId) {
   var convs = getConversations().filter(function(c){ return !c.archived; }).sort(function(a,b){ return (b.lastAt||0)-(a.lastAt||0); }).slice(0, 30);
   var rows = convs.map(function(c){
     var name = c.isGroup ? (c.groupName || "Groupe") : (c.userName || "Conversation");
-    return '<div class="csetting-item" onclick="_forwardTo(\'' + c.id + '\')"><div class="csetting-icon">' + (c.isGroup?'👥':'💬') + '</div>' +
+    return '<div class="csetting-item" onclick="_forwardTo(\'' + escapeJsArg(c.id) + '\')"><div class="csetting-icon">' + (c.isGroup?'👥':'💬') + '</div>' +
       '<div class="csetting-label">' + escapeHtml(name) + '</div></div>';
   }).join("");
   openModal('<div class="modal-handle"></div><div class="modal-title">↪️ Transférer vers…</div>' +
@@ -4253,7 +4258,7 @@ function _outboxRemove(msgId) { _outboxSave(_outboxLoad().filter(function(x){ re
 // HTML de l'indicateur d'envoi (🕓 en cours / ⚠️ échec cliquable / rien si envoyé).
 function _msgStatusIndHtml(convId, msgId, status) {
   if (status === "sending") return ' <span style="opacity:0.55;">🕓</span>';
-  if (status === "failed") return ' <span style="color:#ef4444;cursor:pointer;font-weight:700;" onclick="_retryMsg(\'' + convId + '\',\'' + msgId + '\')">⚠️ réessayer</span>';
+  if (status === "failed") return ' <span style="color:#ef4444;cursor:pointer;font-weight:700;" onclick="_retryMsg(\'' + escapeJsArg(convId) + '\',\'' + escapeJsArg(msgId) + '\')">⚠️ réessayer</span>';
   return '';
 }
 

@@ -1,0 +1,249 @@
+{
+  "_lisezmoi": "Signalements en contexte À RISQUE (url/on*/style) relus et jugés sans danger. Chaque entrée DOIT porter une raison vérifiable. Régénérer : node scripts/audit-echappement.js --socle",
+  "acceptes": [
+    {
+      "cle": "js/app-02-state-utils.js | url | primary",
+      "raison": "URL Unsplash bâtie à partir de COVER_PHOTOS (catalogue en dur, app-02) ; la clé de couverture est validée par une recherche dans ce catalogue avant usage."
+    },
+    {
+      "cle": "js/app-02-state-utils.js | onclick | onerr",
+      "raison": "Chaîne de repli d'image assemblée sur place à partir d'URLs Unsplash/picsum internes."
+    },
+    {
+      "cle": "js/app-02-state-utils.js | style | statusColor",
+      "raison": "Ternaire entre trois littéraux de couleur (app-02:1944)."
+    },
+    {
+      "cle": "js/app-02-state-utils.js | onclick | onpick",
+      "raison": "Nom de fonction globale passé par l'appelant (littéral du code), jamais une donnée."
+    },
+    {
+      "cle": "js/app-03-posts-vlogs.js | onclick | steps.indexOf(s)",
+      "raison": "Index numérique de l étape dans le tableau (Array.indexOf)."
+    },
+    {
+      "cle": "js/app-03-posts-vlogs.js | onclick | shareCall",
+      "raison": "Expression JS assemblée par l'appelant, déjà échappée à la construction (commentaire app-03:2461)."
+    },
+    {
+      "cle": "js/app-03-posts-vlogs.js | style | fill",
+      "raison": "Largeur en pourcentage calculée (progression d'une story)."
+    },
+    {
+      "cle": "js/app-03-posts-vlogs.js | onclick | act",
+      "raison": "Chaîne d'appel construite dans la fonction, sans donnée d'autrui."
+    },
+    {
+      "cle": "js/app-03-posts-vlogs.js | onclick | open",
+      "raison": "Chaîne d'appel dont le seul argument variable passe déjà par escapeJsArg (app-03:4603)."
+    },
+    {
+      "cle": "js/app-03-posts-vlogs.js | style | lvl.pct",
+      "raison": "Pourcentage calculé d'une barre de niveau."
+    },
+    {
+      "cle": "js/app-03-posts-vlogs.js | style | b.pct",
+      "raison": "Pourcentage calculé d'une barre de badge."
+    },
+    {
+      "cle": "js/app-04-comments-shop.js | url | cSeed",
+      "raison": "Repli picsum : cSeed = encodeURIComponent(c.id)."
+    },
+    {
+      "cle": "js/app-04-comments-shop.js | onclick | cSeed",
+      "raison": "Repli picsum du onerror : cSeed = encodeURIComponent(c.id)."
+    },
+    {
+      "cle": "js/app-04-comments-shop.js | style | avatarStyle",
+      "raison": "Chaîne assemblée juste au-dessus : url() par safeUrlAttr, couleur par _cssColor."
+    },
+    {
+      "cle": "js/app-04-comments-shop.js | url | clean",
+      "raison": "Lien détecté dans un texte DÉJÀ passé par escapeHtml (_commentBodyHtml) : les quotes sont encodées avant extraction, et le motif impose le préfixe http(s)."
+    },
+    {
+      "cle": "js/app-04-comments-shop.js | style | (36 + (i * 17) % 40)",
+      "raison": "Hauteur de barre d'onde calculée à partir de l'index de boucle."
+    },
+    {
+      "cle": "js/app-04-comments-shop.js | style | (68 + (i * 13) % 26)",
+      "raison": "Hauteur de barre d'onde calculée à partir de l'index de boucle."
+    },
+    {
+      "cle": "js/app-04-comments-shop.js | onclick | onclickAttr",
+      "raison": "Handler fourni par l'appelant sous forme de chaîne de code (commentaire app-04:836)."
+    },
+    {
+      "cle": "js/app-04-comments-shop.js | onclick | arg",
+      "raison": "arg est assemblé juste au-dessus avec escapeJsArg (app-04:1580), quotes simples ET doubles couvertes."
+    },
+    {
+      "cle": "js/app-04-comments-shop.js | style | coverStyle",
+      "raison": "Chaîne assemblée juste au-dessus, url() par safeUrlAttr."
+    },
+    {
+      "cle": "js/app-04-comments-shop.js | style | (34 + (i * 19) % 38)",
+      "raison": "Hauteur de barre d'onde calculée à partir de l'index de boucle."
+    },
+    {
+      "cle": "js/app-04-comments-shop.js | style | (58 + (i * 13) % 30)",
+      "raison": "Hauteur de barre d'onde calculée à partir de l'index de boucle."
+    },
+    {
+      "cle": "js/app-04-comments-shop.js | style | docBg",
+      "raison": "Ternaire entre deux littéraux CSS (app-04:3713)."
+    },
+    {
+      "cle": "js/app-04-comments-shop.js | style | docBorder",
+      "raison": "Ternaire entre deux littéraux CSS (app-04:3716)."
+    },
+    {
+      "cle": "js/app-04-comments-shop.js | style | waveBg",
+      "raison": "Ternaire entre deux littéraux CSS (app-04:3732)."
+    },
+    {
+      "cle": "js/app-04-comments-shop.js | style | waveFill",
+      "raison": "Ternaire entre deux littéraux CSS (app-04:3733)."
+    },
+    {
+      "cle": "js/app-04-comments-shop.js | style | extraBubbleStyle",
+      "raison": "Concaténation de littéraux border-radius selon la place du message dans le groupe."
+    },
+    {
+      "cle": "js/app-04-comments-shop.js | onclick | fn",
+      "raison": "Paramètre `fn` de la fabrique item() : littéral de code écrit à l'appel."
+    },
+    {
+      "cle": "js/app-05-config-profil.js | style | COLORS_PASSION_BG[post.passion] || \"#4c1d95\"",
+      "raison": "Recherche dans une table de couleurs en dur : une passion inconnue retombe sur le littéral."
+    },
+    {
+      "cle": "js/app-05-config-profil.js | onclick | commentIdx",
+      "raison": "Index numérique dans reel.comments (window.replyingToCommentIdx)."
+    },
+    {
+      "cle": "js/app-05-config-profil.js | url | f.url",
+      "raison": "Feuille de style Google Fonts issue de la constante FONT_FAMILIES."
+    },
+    {
+      "cle": "js/app-05-config-profil.js | style | (c.id === accentNow ? c.accent : 'transparent')",
+      "raison": "Couleur d'accent issue de la constante ACCENT_COLORS (app-04:4494)."
+    },
+    {
+      "cle": "js/app-05-config-profil.js | style | (c.id === accentNow ? c.bgDeep : 'var(--bg-card)')",
+      "raison": "Couleur issue de la constante ACCENT_COLORS (app-04:4494)."
+    },
+    {
+      "cle": "js/app-05-config-profil.js | style | c.grad1",
+      "raison": "Dégradé issu de la même constante ACCENT_COLORS."
+    },
+    {
+      "cle": "js/app-05-config-profil.js | style | currentFF.family",
+      "raison": "Famille de police issue de la constante FONT_FAMILIES."
+    },
+    {
+      "cle": "js/app-05-config-profil.js | style | (f.px+4)",
+      "raison": "Taille en pixels calculée à partir de la constante FONT_SIZES."
+    },
+    {
+      "cle": "js/app-05-config-profil.js | style | r.val",
+      "raison": "Rayon issu de la constante BORDER_RADIUS."
+    },
+    {
+      "cle": "js/app-05-config-profil.js | url | e(c5)",
+      "raison": "Logo SVG en data: URL ; e() est un alias local de encodeURIComponent (app-05:373) appliqué à des couleurs lues dans les variables CSS."
+    },
+    {
+      "cle": "js/app-06-reels-partage.js | style | g.coverPhoto ? \"url(\" + safeUrlAttr(g.coverPhoto) + \") center/cover\" : \"linear-gradient(13",
+      "raison": "Les deux branches sont couvertes : safeUrlAttr d'un côté, littéral de l'autre."
+    },
+    {
+      "cle": "js/app-06-reels-partage.js | style | coverStyle",
+      "raison": "Chaîne assemblée juste au-dessus, url() par safeUrlAttr."
+    },
+    {
+      "cle": "js/app-06-reels-partage.js | style | avatarStyle",
+      "raison": "Chaîne assemblée juste au-dessus, url() par safeUrlAttr."
+    },
+    {
+      "cle": "js/app-06-reels-partage.js | style | photo ? \"background:url(\" + safeUrlAttr(photo) + \") center/cover;\" : \"background:\" + escap",
+      "raison": "Les deux branches sont couvertes : safeUrlAttr d'un côté, escapeHtml de l'autre — aucune sortie d'attribut possible."
+    },
+    {
+      "cle": "js/app-06-reels-partage.js | style | cover ? \"background:url(\" + safeUrlAttr(cover) + \") center/cover;\" : \"background:var(--bg-",
+      "raison": "Les deux branches sont couvertes : safeUrlAttr d'un côté, variable CSS de l'autre."
+    },
+    {
+      "cle": "js/app-06-reels-partage.js | url | photoDataUrl",
+      "raison": "data: URL produite localement par l'éditeur (aperçu avant publication)."
+    },
+    {
+      "cle": "js/app-06-reels-partage.js | url | videoDataUrl",
+      "raison": "data: URL produite localement par l'éditeur."
+    },
+    {
+      "cle": "js/app-06-reels-partage.js | url | src",
+      "raison": "Onglet « photos » du profil : mine = state.userPosts, donc MES publications."
+    },
+    {
+      "cle": "js/app-06-reels-partage.js | url | poster",
+      "raison": "Onglet « bobines » du profil : même source locale."
+    },
+    {
+      "cle": "js/app-06-reels-partage.js | url | p.video",
+      "raison": "Onglet « bobines » du profil : même source locale."
+    },
+    {
+      "cle": "js/app-06-reels-partage.js | url | photoUrl",
+      "raison": "URL Unsplash bâtie à partir de passion.photo (catalogue des passions, local)."
+    },
+    {
+      "cle": "js/app-07-ia-explore-irl.js | url | escapeHtml(ev.contact)",
+      "raison": "Le href est préfixé en dur par « tel: » : le schéma n'est pas choisi par la donnée, et escapeHtml empêche la sortie d'attribut."
+    },
+    {
+      "cle": "js/app-07-ia-explore-irl.js | style | _avBgColor",
+      "raison": "Variable affectée par _cssColor(...) à sa déclaration (app-07:221)."
+    },
+    {
+      "cle": "js/app-07-ia-explore-irl.js | onclick | ts",
+      "raison": "Horodatage numérique (Number) passé sans quotes à irlCalPick."
+    },
+    {
+      "cle": "js/app-07-ia-explore-irl.js | style | b.pct",
+      "raison": "Pourcentage calculé d'une barre de badge."
+    },
+    {
+      "cle": "js/app-08-ui-modals-tour.js | style | m.color",
+      "raison": "Cartes d humeur des étapes du tour : données internes au code — et la branche step.moodCards n est alimentée NULLE PART dans le dépôt (code mort)."
+    },
+    {
+      "cle": "js/app-08-ui-modals-tour.js | url | photoUrl",
+      "raison": "URL Unsplash bâtie à partir de story.photo, champ des stories de DÉMO (le mapping Supabase, app-08:3142, ne renvoie que media/mediaType, jamais photo)."
+    },
+    {
+      "cle": "js/app-08-ui-modals-tour.js | style | myColor",
+      "raison": "Couleur de MON profil (app-08:444)."
+    },
+    {
+      "cle": "js/app-08-ui-modals-tour.js | style | bg",
+      "raison": "Fond de story issu de la constante STORY_BGS."
+    },
+    {
+      "cle": "js/app-08-ui-modals-tour.js | style | _storyBg",
+      "raison": "Fond de story choisi dans STORY_BGS (repli sur STORY_BGS[0])."
+    },
+    {
+      "cle": "js/app-08-ui-modals-tour.js | style | pct",
+      "raison": "Pourcentage calculé d'une barre de quête."
+    },
+    {
+      "cle": "js/app-08-ui-modals-tour.js | style | pos",
+      "raison": "Position d'une superposition, forcée en Number par _nb() (app-08:1415) — jamais une chaîne."
+    },
+    {
+      "cle": "js/app-09-boot-pwa.js | style | b.css",
+      "raison": "Fond de conversation issu de la constante CONV_BGS."
+    }
+  ]
+}

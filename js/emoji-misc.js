@@ -299,13 +299,13 @@ function replyToComment(postId, commentId, authorName, event) {
   wrap.style.cssText = "margin-top:10px;display:flex;gap:6px;align-items:center;padding:8px;background:var(--bg-soft);border-radius:10px;border:1.5px solid var(--accent);animation:fadeIn 0.3s ease;";
   wrap.innerHTML =
     '<button type="button" class="cmt-tool-btn" title="Emoji & GIF" aria-label="Ajouter un emoji ou un GIF" style="background:none;border:none;font-size:18px;cursor:pointer;padding:2px 4px;line-height:1;" '
-      + 'onclick="cmtComposerEmoji(\'' + inputId + '\',event,\'_submitReply\',\'' + arg + '\')">😊</button>'
-    + '<input id="' + inputId + '" type="text" class="reply-field" placeholder="Répondre à ' + escapeHtml(authorName) + '…" '
+      + 'onclick="cmtComposerEmoji(\'' + escapeJsArg(inputId) + '\',event,\'_submitReply\',\'' + escapeJsArg(arg) + '\')">😊</button>'
+    + '<input id="' + escapeHtml(inputId) + '" type="text" class="reply-field" placeholder="Répondre à ' + escapeHtml(authorName) + '…" '
       + 'style="flex:1;min-width:0;padding:8px 12px;border:1px solid var(--border);border-radius:12px;font-size:16px;box-sizing:border-box;background:var(--bg-card);color:var(--text);" '
-      + 'onkeypress="if(event.key===\'Enter\'){event.preventDefault();_submitReply(\'' + arg + '\');}" />'
+      + 'onkeypress="if(event.key===\'Enter\'){event.preventDefault();_submitReply(\'' + escapeJsArg(arg) + '\');}" />'
     + '<button type="button" title="Envoyer" aria-label="Envoyer la réponse" '
       + 'style="width:34px;height:34px;border-radius:9px;background:var(--accent);color:#fff;border:none;cursor:pointer;font-weight:bold;flex-shrink:0;" '
-      + 'onclick="_submitReply(\'' + arg + '\')">✓</button>';
+      + 'onclick="_submitReply(\'' + escapeJsArg(arg) + '\')">✓</button>';
 
   // Ancre le champ au commentaire RÉELLEMENT cliqué : le même commentaire peut
   // être rendu deux fois (aperçu du fil SOUS la modale + fil de discussion) et

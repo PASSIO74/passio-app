@@ -216,7 +216,9 @@ function filterExplore() {
         var _avContent = _photo
           ? "<img src='" + safeUrlAttr(_photo) + "' style='width:100%;height:100%;object-fit:cover;border-radius:50%;display:block;' onerror=\"this.style.display='none'\" />"
           : "<span style='font-size:18px;line-height:1;'>" + escapeHtml(u.profileEmoji || u.emoji || (u.name && u.name[0]) || "?") + "</span>";
-        var _avBgColor = (u.avatar || u.color || "#8b5cf6");
+        // Attribut style en quotes SIMPLES : une apostrophe dans la couleur d'un
+        // autre compte en sortait. _cssColor refuse quotes, url( et expression(.
+        var _avBgColor = _cssColor(u.avatar || u.color || "#8b5cf6");
         html += "<div onclick=\"openUserProfile('" + escapeJsArg(u.id) + "');document.getElementById('exploreSearchResults').style.display='none';\" style='display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border);'>" +
           "<div style='width:44px;height:44px;border-radius:50%;background:" + _avBgColor + ";display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden;border:2px solid rgba(124,58,237,0.15);'>" + _avContent + "</div>" +
           "<div style='flex:1;min-width:0;overflow:hidden;'>" +
@@ -255,7 +257,7 @@ function openPassionExplorer(pid) {
 
   var profileBtn = hasProfile
     ? '<span class="pill active">Ton profil</span>'
-    : '<button class="btn small primary" onclick="quickCreateProfile(\'' + pid + '\')">+ Créer profil</button>';
+    : '<button class="btn small primary" onclick="quickCreateProfile(\'' + escapeJsArg(pid) + '\')">+ Créer profil</button>';
 
   var html = '\
     <div class="modal-handle"></div>\
@@ -1067,7 +1069,7 @@ function openIrlCitySelector() {
         if (!cities.length) return;
         box.innerHTML = '<div style="grid-column:1/-1;font-size:11px;color:var(--muted);margin:6px 0 2px;">Autres communes</div>'
           + cities.map(c => `<button class="pill" style="width:100%;justify-content:center;"
-              onclick="selectIrlGeoCity('${escapeJsArg(c.city)}', ${c.lat}, ${c.lng})">${escapeHtml(c.city)}</button>`).join("");
+              onclick="selectIrlGeoCity('${escapeJsArg(c.city)}', ${Number(c.lat)}, ${Number(c.lng)})">${escapeHtml(c.city)}</button>`).join("");
       }, 320);
     });
     setTimeout(() => searchInput.focus(), 100);
@@ -1185,7 +1187,7 @@ async function searchIrlAddressSuggestions(query) {
       const name = r.name || r.label || "";
       const sub = [r.postcode, r.city, r.context].filter(Boolean).join(" · ");
       return `
-        <div onclick="selectIrlAddressSuggestion('${escapeJsArg(name)}', ${r.lat}, ${r.lng})" style="padding:8px 10px;border-bottom:1px solid #eee;cursor:pointer;font-size:12px;transition:background 0.2s;" onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background='transparent';">
+        <div onclick="selectIrlAddressSuggestion('${escapeJsArg(name)}', ${Number(r.lat)}, ${Number(r.lng)})" style="padding:8px 10px;border-bottom:1px solid #eee;cursor:pointer;font-size:12px;transition:background 0.2s;" onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background='transparent';">
           <div style="font-weight:500;color:#333;">${escapeHtml(name)}</div>
           <div style="font-size:11px;color:#888;">${escapeHtml(sub.slice(0, 60))}</div>
         </div>`;
@@ -1501,7 +1503,7 @@ function renderIrlPassionTiles() {
     const isActive = irlPassionFilters.has(pid);
     const isMine = mineSet.has(pid);
     return `<button class="msg-tile ${isActive ? "active" : ""}" data-irlpassion="${escapeHtml(pid)}"
-        aria-pressed="${isActive}" title="${escapeHtml(p.label)}${isMine ? " — une de tes passions" : ""}">
+        aria-pressed="${escapeHtml(isActive)}" title="${escapeHtml(p.label)}${isMine ? " — une de tes passions" : ""}">
       <span class="msg-tile-icon">${p.emoji}${isMine ? '<span class="irl-tile-mine" aria-hidden="true">✦</span>' : ""}</span>
       <span class="msg-tile-label">${escapeHtml(p.label)}</span>
       ${cnt > 0 ? `<span class="msg-tile-badge">${cnt}</span>` : ""}
@@ -1521,7 +1523,7 @@ function renderIrlPassionTiles() {
     <div class="msg-filter-tiles">
       ${shown.map(tileHtml).join("")}
       <button class="msg-tile irl-tile-more${open ? " active" : ""}" id="irlExtraToggle"
-        aria-expanded="${open}" onclick="toggleIrlExtraPanel()" title="Ajouter d'autres passions">
+        aria-expanded="${escapeHtml(open)}" onclick="toggleIrlExtraPanel()" title="Ajouter d'autres passions">
         <span class="msg-tile-icon">＋</span>
         <span class="msg-tile-label">Autres</span>
         ${nExtra > 0 ? `<span class="msg-tile-badge">${nExtra}</span>` : ""}
@@ -1540,7 +1542,7 @@ function renderIrlPassionTiles() {
 function _irlExtraChipHtml(pid, counts, checked) {
   const p = passionById(pid) || { label: pid, emoji: "✨" };
   const cnt = counts[pid] || 0;
-  return `<button class="irl-extra-chip${checked ? " on" : ""}" role="checkbox" aria-checked="${checked}"
+  return `<button class="irl-extra-chip${checked ? " on" : ""}" role="checkbox" aria-checked="${escapeHtml(checked)}"
       onclick="toggleIrlExtraPassion('${escapeJsArg(pid)}')">
     <span class="irl-extra-box" aria-hidden="true">${checked ? "✓" : ""}</span>
     <span>${p.emoji} ${escapeHtml(p.label)}</span>
@@ -1679,7 +1681,7 @@ function _renderIrlInlineCal() {
     // date qui ne renverra jamais rien.
     var dead = ts < todayTs && !irlShowPast;
     if (ts < todayTs) cls += " past";
-    html += '<button type="button" class="' + cls + '"' + (dead ? " disabled" : "")
+    html += '<button type="button" class="' + escapeHtml(cls) + '"' + (dead ? " disabled" : "")
       + ' onclick="irlCalPick(' + ts + ')">' + d + "</button>";
   }
   grid.innerHTML = html;
@@ -2336,13 +2338,13 @@ function renderIRL() {
         ${cta}
       </div>
       <div class="post-actions" onclick="event.stopPropagation()">
-        <span class="post-action ${evLiked ? "liked" : ""}" data-evlike="${e.id}" onclick="event.stopPropagation();toggleEventLike('${e.id}', this)">${evLiked ? "❤️" : "🤍"} ${evLikeCount}</span>
-        <span class="post-action" data-evc="${e.id}" onclick="event.stopPropagation();openCommentSheet('${e.id}','💬 ${escapeHtml((e.title||'').replace(/'/g,'’')).slice(0,40)}')">💬 ${_eventCmtBadge(e.id)}</span>
-        <span class="post-action" onclick="return showEmojiPickerForEvent('${e.id}', event);" title="Réagir">😊</span>
-        <span class="post-action" onclick="event.stopPropagation();shareEvent('${e.id}')" title="Partager" aria-label="Partager">${shareIconSvg(18)}</span>
-        <span class="event-react-chip-holder" data-evchipholder="${e.id}" style="margin-left:auto;">${_evReactChipHtml(e.id)}</span>
+        <span class="post-action ${evLiked ? "liked" : ""}" data-evlike="${escapeHtml(e.id)}" onclick="event.stopPropagation();toggleEventLike('${escapeJsArg(e.id)}', this)">${evLiked ? "❤️" : "🤍"} ${evLikeCount}</span>
+        <span class="post-action" data-evc="${escapeHtml(e.id)}" onclick="event.stopPropagation();openCommentSheet('${escapeJsArg(e.id)}','💬 ${escapeJsArg(String(e.title||'').slice(0,40))}')">💬 ${_eventCmtBadge(e.id)}</span>
+        <span class="post-action" onclick="return showEmojiPickerForEvent('${escapeJsArg(e.id)}', event);" title="Réagir">😊</span>
+        <span class="post-action" onclick="event.stopPropagation();shareEvent('${escapeJsArg(e.id)}')" title="Partager" aria-label="Partager">${shareIconSvg(18)}</span>
+        <span class="event-react-chip-holder" data-evchipholder="${escapeHtml(e.id)}" style="margin-left:auto;">${_evReactChipHtml(e.id)}</span>
       </div>
-      <div class="event-comments-inline" data-evcomments="${e.id}" onclick="event.stopPropagation()">${_evCommentsInlineHtml(e.id)}</div>
+      <div class="event-comments-inline" data-evcomments="${escapeHtml(e.id)}" onclick="event.stopPropagation()">${_evCommentsInlineHtml(e.id)}</div>
     </div>`;
   }).join("") + (rest > 0
     ? `<button class="btn ghost block" style="margin-top:10px;" onclick="_showMoreIrlEvents()">Afficher plus (${rest} restant${rest > 1 ? "s" : ""})</button>`
@@ -2500,7 +2502,7 @@ function _evReactChipHtml(eventId) {
   if (!total) return "";
   // UN SEUL emoji (le plus fréquent) + le total — clic pour voir qui a réagi.
   var top = keys.slice().sort(function(a, b){ return counts[b] - counts[a]; })[0] || "😊";
-  return '<button class="ev-react-chip" data-evchip="' + eventId + '" onclick="event.stopPropagation();return openEventReactions(\'' + eventId + '\', event);">'
+  return '<button class="ev-react-chip" data-evchip="' + escapeHtml(eventId) + '" onclick="event.stopPropagation();return openEventReactions(\'' + escapeJsArg(eventId) + '\', event);">'
     + escapeHtml(top) + ' <b>' + total + '</b></button>';
 }
 // Repeint la pastille (dans son conteneur data-evchipholder) après une réaction.
@@ -2639,7 +2641,7 @@ function _evCommentsInlineHtml(eventId) {
   if (!arr.length) return "";
   window._evCommentsHidden = window._evCommentsHidden || {};
   if (window._evCommentsHidden[eventId]) {
-    return '<span class="ev-cmt-toggle" onclick="event.stopPropagation();return toggleEventComments(\'' + eventId + '\');">💬 Afficher les ' + arr.length + ' commentaire' + (arr.length > 1 ? "s" : "") + '</span>';
+    return '<span class="ev-cmt-toggle" onclick="event.stopPropagation();return toggleEventComments(\'' + escapeJsArg(eventId) + '\');">💬 Afficher les ' + arr.length + ' commentaire' + (arr.length > 1 ? "s" : "") + '</span>';
   }
   var sorted = arr.slice().sort(function(a, b){ return (b.at || b.createdAt || 0) - (a.at || a.createdAt || 0); });
   window._evCommentsExpanded = window._evCommentsExpanded || {};
@@ -2652,10 +2654,10 @@ function _evCommentsInlineHtml(eventId) {
   }).join("");
   var links = "";
   if (arr.length > 2) {
-    links += '<span class="ev-cmt-toggle" onclick="event.stopPropagation();return toggleEventCommentsExpand(\'' + eventId + '\');">'
+    links += '<span class="ev-cmt-toggle" onclick="event.stopPropagation();return toggleEventCommentsExpand(\'' + escapeJsArg(eventId) + '\');">'
       + (expanded ? "▲ Réduire" : ("▼ Voir les " + arr.length + " commentaires")) + '</span>';
   }
-  links += '<span class="ev-cmt-toggle" style="margin-left:10px;" onclick="event.stopPropagation();return toggleEventComments(\'' + eventId + '\');">Masquer</span>';
+  links += '<span class="ev-cmt-toggle" style="margin-left:10px;" onclick="event.stopPropagation();return toggleEventComments(\'' + escapeJsArg(eventId) + '\');">Masquer</span>';
   return items + '<div style="margin-top:2px;">' + links + '</div>';
 }
 function _patchEventCommentsInline(eventId) {
@@ -2934,7 +2936,7 @@ function openEventRsvpSheet(id) {
   const spots = _eventSpotsLeft(ev);
   const opt = (key, desc) => `
     <button class="btn ${cur === key ? "primary" : "ghost"} block" style="margin-bottom:8px;text-align:left;"
-      onclick="closeModal();setEventRsvp('${escapeJsArg(id)}', '${key}')">
+      onclick="closeModal();setEventRsvp('${escapeJsArg(id)}', '${escapeJsArg(key)}')">
       ${RSVP_LABELS[key].emoji} <b>${RSVP_LABELS[key].label}</b>
       <span style="display:block;font-size:11px;opacity:.75;font-weight:500;">${desc}</span>
     </button>`;
@@ -3155,7 +3157,11 @@ function openEventDetails(id) {
   const coverEl = document.getElementById("eventDetailCover");
   if (!coverEl) return;
   if (ev.coverUrl) {
-    coverEl.innerHTML = `<img loading="lazy" decoding="async" class="event-detail-cover" src="${escapeHtml(ev.coverUrl)}" onerror="this.parentElement.innerHTML='<div class=\\'event-detail-cover-placeholder\\'>${ev.emoji || passion.emoji}</div>'" alt=""/>`;
+    // ⚠️ `emoji` est un champ LIBRE d'un autre compte, et il atterrissait brut dans
+    // une chaîne JS simple-quotée à l'intérieur d'un onerror : une apostrophe
+    // suffisait à en sortir. C'est le contexte d'escapeJsArg, pas d'escapeHtml.
+    const coverFb = escapeJsArg(ev.emoji || passion.emoji || "✨");
+    coverEl.innerHTML = `<img loading="lazy" decoding="async" class="event-detail-cover" src="${safeUrlAttr(ev.coverUrl)}" onerror="this.parentElement.innerHTML='<div class=\\'event-detail-cover-placeholder\\'>${coverFb}</div>'" alt=""/>`;
   } else {
     coverEl.innerHTML = `<div class="event-detail-cover-placeholder">${escapeHtml(ev.emoji || passion.emoji)}</div>`;
   }
@@ -3214,7 +3220,9 @@ function openEventDetails(id) {
     ev.venue ? infoRow("🏠", "Lieu", escapeHtml(ev.venue)) : "",
     infoRow("💎", "Prix", priceStr),
     ev.contact ? infoRow("📞", "Contact", `<a href="tel:${escapeHtml(ev.contact)}" style="color:var(--accent);font-weight:700;">${escapeHtml(ev.contact)}</a>`) : "",
-    ev.externalLink ? infoRow("🔗", "Plus d'infos", `<a href="${escapeHtml(ev.externalLink)}" target="_blank" class="event-detail-info-link">${escapeHtml(ev.externalLink.replace(/^https?:\/\//, "").slice(0, 45))}</a>`) : "",
+    // ⚠️ `externalLink` vient de l'événement d'un AUTRE compte. escapeHtml ferme
+    // l'attribut mais PAS le schéma : un `javascript:` restait cliquable ici.
+    ev.externalLink ? infoRow("🔗", "Plus d'infos", `<a href="${safeUrlAttr(ev.externalLink)}" target="_blank" rel="noopener noreferrer" class="event-detail-info-link">${escapeHtml(String(ev.externalLink).replace(/^https?:\/\//, "").slice(0, 45))}</a>`) : "",
   ].filter(Boolean).join("");
 
   const cancelled = _eventIsCancelled(ev);
@@ -3285,7 +3293,7 @@ function openEventDetails(id) {
     ` : ""}
 
     <div class="event-detail-section-title">Organisateur·ice</div>
-    <div class="event-detail-organizer" style="cursor:pointer;" onclick="openUserProfile('${ev.organizerId || "me"}')">
+    <div class="event-detail-organizer" style="cursor:pointer;" onclick="openUserProfile('${escapeJsArg(ev.organizerId || "me")}')">
       <div class="avatar sm" style="background:${avatarBg(organizer)};">${avatarInner(organizer)}</div>
       <div style="font-size:14px;font-weight:700;">${escapeHtml(organizer.name || "?")}</div>
     </div>
@@ -3316,10 +3324,10 @@ function openEventDetails(id) {
          handlers que la carte, donc mêmes compteurs et même règle « 1 réaction par
          personne ». -->
     <div class="post-actions" style="margin-top:18px;">
-      <span class="post-action ${(state.user.likedEvents || []).indexOf(ev.id) > -1 ? "liked" : ""}" data-evlike="${ev.id}" onclick="event.stopPropagation();toggleEventLike('${escapeJsArg(ev.id)}', this)">${(state.user.likedEvents || []).indexOf(ev.id) > -1 ? "❤️" : "🤍"} ${((window._eventLikes || {})[ev.id] || {}).likes || 0}</span>
+      <span class="post-action ${(state.user.likedEvents || []).indexOf(ev.id) > -1 ? "liked" : ""}" data-evlike="${escapeHtml(ev.id)}" onclick="event.stopPropagation();toggleEventLike('${escapeJsArg(ev.id)}', this)">${(state.user.likedEvents || []).indexOf(ev.id) > -1 ? "❤️" : "🤍"} ${((window._eventLikes || {})[ev.id] || {}).likes || 0}</span>
       <span class="post-action" onclick="return showEmojiPickerForEvent('${escapeJsArg(ev.id)}', event);" title="Réagir">😊</span>
       <span class="post-action" onclick="event.stopPropagation();shareEvent('${escapeJsArg(ev.id)}')" title="Partager" aria-label="Partager">${shareIconSvg(18)}</span>
-      <span class="event-react-chip-holder" data-evchipholder="${ev.id}" style="margin-left:auto;">${_evReactChipHtml(ev.id)}</span>
+      <span class="event-react-chip-holder" data-evchipholder="${escapeHtml(ev.id)}" style="margin-left:auto;">${_evReactChipHtml(ev.id)}</span>
     </div>
 
     <div class="event-detail-section-title">💬 Commentaires</div>
@@ -3327,9 +3335,9 @@ function openEventDetails(id) {
       <div style="font-size:12px;color:var(--muted);">Chargement…</div>
     </div>
     <div style="display:flex;gap:6px;align-items:center;">
-      <input type="text" class="input" id="eventCommentInput" placeholder="Écris un commentaire…" maxlength="500" style="flex:1;font-size:13px;padding:10px 12px;" onkeypress="if(event.key==='Enter')addEventComment('${ev.id}')"/>
+      <input type="text" class="input" id="eventCommentInput" placeholder="Écris un commentaire…" maxlength="500" style="flex:1;font-size:13px;padding:10px 12px;" onkeypress="if(event.key==='Enter')addEventComment('${escapeJsArg(ev.id)}')"/>
       ${_cmtComposerToolsHtml("eventCommentInput", "addEventComment", ev.id)}
-      <button class="btn primary" onclick="addEventComment('${ev.id}')" style="font-size:13px;padding:10px 14px;">Envoyer</button>
+      <button class="btn primary" onclick="addEventComment('${escapeJsArg(ev.id)}')" style="font-size:13px;padding:10px 14px;">Envoyer</button>
     </div>
 
     ${mine ? "" : `<button class="btn ghost block" style="margin-top:18px;font-size:12px;color:var(--muted);" onclick="reportEvent('${escapeJsArg(ev.id)}')">⚠️ Signaler cet événement</button>`}
@@ -3996,7 +4004,7 @@ function openCreateEvent(editId) {
     .map(p => `<option value="${escapeHtml(p.id)}"${p.id === selPassion ? " selected" : ""}>${p.emoji} ${escapeHtml(p.label)}${myPassionIds.includes(p.id) ? " ✦" : ""}</option>`).join("");
 
   const eventTypes = ["Atelier", "Jam session", "Concert", "Exposition", "Sport & activité", "Randonnée", "Dégustation", "Book club", "Cours", "Marché", "Soirée", "Rencontre", "Conférence", "Compétition", "Autre"];
-  const typeOptions = eventTypes.map(t => `<option value="${t}"${ed && ed.eventType === t ? " selected" : ""}>${t}</option>`).join("");
+  const typeOptions = eventTypes.map(t => `<option value="${escapeHtml(t)}"${ed && ed.eventType === t ? " selected" : ""}>${t}</option>`).join("");
   const v = (x, d) => escapeHtml(String(ed && ed[x] != null && ed[x] !== "" ? ed[x] : (d == null ? "" : d)));
   // Date pré-remplie DANS le markup (et non via un setTimeout après ouverture) :
   // le champ était vide pendant les premières millisecondes et une soumission
@@ -4024,7 +4032,7 @@ function openCreateEvent(editId) {
 
     <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.12em;color:var(--accent);margin:14px 0 8px;">📝 Infos principales</div>
     <label class="field"><span>Titre *</span>
-      <input type="text" class="input" id="evTitle" placeholder="Ex : Jam session guitare débutants" maxlength="80" value="${v("title")}"/>
+      <input type="text" class="input" id="evTitle" placeholder="Ex : Jam session guitare débutants" maxlength="80" value="${escapeHtml(v("title"))}"/>
     </label>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
       <label class="field"><span>Passion *</span>
@@ -4036,14 +4044,14 @@ function openCreateEvent(editId) {
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
       <label class="field"><span>Date *</span>
-        <input type="date" class="input" id="evDate" value="${dateValue}" min="${ed ? "" : _localDay(Date.now())}"/>
+        <input type="date" class="input" id="evDate" value="${escapeHtml(dateValue)}" min="${escapeHtml(ed ? "" : _localDay(Date.now()))}"/>
       </label>
       <label class="field"><span>Heure</span>
-        <input type="time" class="input" id="evTime" value="${v("time", "18:00")}"/>
+        <input type="time" class="input" id="evTime" value="${escapeHtml(v("time", "18:00"))}"/>
       </label>
       <label class="field"><span>Durée</span>
         <select class="input" id="evDuration">
-          ${[1,2,3,4,6,8,12,24].map(h => `<option value="${h}"${(ed && Math.round((_eventEndAt(ed) - ed.date)/3600000) === h) || (!ed && h === 2) ? " selected" : ""}>${h < 24 ? h + " h" : "Journée"}</option>`).join("")}
+          ${[1,2,3,4,6,8,12,24].map(h => `<option value="${escapeHtml(h)}"${(ed && Math.round((_eventEndAt(ed) - ed.date)/3600000) === h) || (!ed && h === 2) ? " selected" : ""}>${h < 24 ? h + " h" : "Journée"}</option>`).join("")}
         </select>
       </label>
     </div>
@@ -4053,7 +4061,7 @@ function openCreateEvent(editId) {
       <div style="display:grid;grid-template-columns:2fr 1fr;gap:10px;">
         <label class="field"><span>🔁 Se répète</span>
           <select class="input" id="evRecurrence" onchange="_evSyncRecurrenceUi()">
-            ${Object.keys(RECURRENCE_LABELS).map(k => `<option value="${k}">${RECURRENCE_LABELS[k]}</option>`).join("")}
+            ${Object.keys(RECURRENCE_LABELS).map(k => `<option value="${escapeHtml(k)}">${RECURRENCE_LABELS[k]}</option>`).join("")}
           </select>
         </label>
         <label class="field" id="evOccWrap" style="display:none;"><span>Occurrences</span>
@@ -4072,34 +4080,34 @@ function openCreateEvent(editId) {
     <div id="evPlacePicked" style="display:${ed && ed.lat ? "flex" : "none"};align-items:center;gap:6px;font-size:12px;color:#16a34a;font-weight:700;margin:-4px 0 10px;">📍 <span>Position précise enregistrée</span></div>
 
     <label class="field"><span>Nom du lieu</span>
-      <input type="text" class="input" id="evVenue" placeholder="Café du Coin, Parc, Studio…" maxlength="80" value="${v("venue")}"/>
+      <input type="text" class="input" id="evVenue" placeholder="Café du Coin, Parc, Studio…" maxlength="80" value="${escapeHtml(v("venue"))}"/>
     </label>
     <label class="field"><span>Adresse</span>
-      <input type="text" class="input" id="evAddress" placeholder="12 rue de la Paix" maxlength="100" value="${v("address")}"/>
+      <input type="text" class="input" id="evAddress" placeholder="12 rue de la Paix" maxlength="100" value="${escapeHtml(v("address"))}"/>
     </label>
     <div style="display:grid;grid-template-columns:1fr 2fr;gap:10px;">
       <label class="field"><span>Code postal</span>
-        <input type="text" class="input" id="evPostal" placeholder="75001" maxlength="10" value="${v("postalCode")}"/>
+        <input type="text" class="input" id="evPostal" placeholder="75001" maxlength="10" value="${escapeHtml(v("postalCode"))}"/>
       </label>
       <label class="field"><span>Ville *</span>
-        <input type="text" class="input" id="evCity" placeholder="Paris" maxlength="60" value="${v("city")}"/>
+        <input type="text" class="input" id="evCity" placeholder="Paris" maxlength="60" value="${escapeHtml(v("city"))}"/>
       </label>
     </div>
 
     <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.12em;color:var(--accent);margin:14px 0 8px;">ℹ️ Détails</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
       <label class="field"><span>Prix en Passia 💎 (0 = gratuit)</span>
-        <input type="number" class="input" id="evPrice" placeholder="0" min="0" max="99999" value="${v("price", 0)}"/>
+        <input type="number" class="input" id="evPrice" placeholder="0" min="0" max="99999" value="${escapeHtml(v("price", 0))}"/>
       </label>
       <label class="field"><span>Places max</span>
-        <input type="number" class="input" id="evMax" placeholder="Illimité" min="1" max="9999" value="${v("maxAttendees")}"/>
+        <input type="number" class="input" id="evMax" placeholder="Illimité" min="1" max="9999" value="${escapeHtml(v("maxAttendees"))}"/>
       </label>
     </div>
     <label class="field"><span>Contact (tél ou email)</span>
-      <input type="text" class="input" id="evContact" placeholder="06 12 34 56 78" maxlength="80" value="${v("contact")}"/>
+      <input type="text" class="input" id="evContact" placeholder="06 12 34 56 78" maxlength="80" value="${escapeHtml(v("contact"))}"/>
     </label>
     <label class="field"><span>Lien (Eventbrite, site…)</span>
-      <input type="url" class="input" id="evLink" placeholder="https://…" maxlength="200" value="${v("externalLink")}"/>
+      <input type="url" class="input" id="evLink" placeholder="https://…" maxlength="200" value="${escapeHtml(v("externalLink"))}"/>
     </label>
     <label class="field"><span>Description</span>
       <textarea class="textarea" id="evDesc" placeholder="Programme, ambiance, quoi apporter…" maxlength="800" style="min-height:90px;">${v("desc")}</textarea>
@@ -4692,7 +4700,7 @@ function renderWallet() {
     const rc = ["gold", "silver", "bronze"][i] || "";
     return `<div class="lb-row">
       <div class="lb-rank ${rc}">${i + 1}</div>
-      <div class="avatar sm" style="background:${e.color};">${e.emoji || e.name[0]}</div>
+      <div class="avatar sm" style="background:${_cssColor(e.color)};">${escapeHtml(e.emoji || e.name[0])}</div>
       <div class="lb-body">
         <div class="lb-name">${escapeHtml(e.name)}${e.me ? ' <span class="pill active" style="padding:1px 6px;font-size:9px;">Moi</span>' : ""}</div>
         <div class="lb-passion">${escapeHtml(e.passion)}</div>
@@ -4816,12 +4824,12 @@ function _tripNearbyEventsBandHtml(kind, id, refLL) {
   if (!refLL || typeof refLL[0] !== "number") return ""; // sans coordonnées, rien à croiser
   var idArg = escapeJsArg(String(id));
   var head = '<div class="trip-nearby-head"><span>🤝 Sorties près d\'ici</span>'
-    + '<span class="trip-nearby-add" onclick="event.stopPropagation();organizeEventFromTrip(\'' + kind + '\',\'' + idArg + '\')">+ Organiser</span></div>';
+    + '<span class="trip-nearby-add" onclick="event.stopPropagation();organizeEventFromTrip(\'' + escapeJsArg(kind) + '\',\'' + escapeJsArg(idArg) + '\')">+ Organiser</span></div>';
   var evs = _tripNearbyEvents(refLL, TRIP_NEARBY_MAX_KM);
   if (!evs.length) {
     return '<div class="trip-nearby">' + head
       + '<div class="trip-nearby-empty">Personne n\'a encore organisé de sortie ici. <b>Sois le premier</b> à réunir des passionnés sur place.</div>'
-      + '<button class="btn primary block" style="margin-top:10px;font-size:12px;" onclick="event.stopPropagation();organizeEventFromTrip(\'' + kind + '\',\'' + idArg + '\')">📅 Organiser la première sortie</button>'
+      + '<button class="btn primary block" style="margin-top:10px;font-size:12px;" onclick="event.stopPropagation();organizeEventFromTrip(\'' + escapeJsArg(kind) + '\',\'' + escapeJsArg(idArg) + '\')">📅 Organiser la première sortie</button>'
       + '</div>';
   }
   var rows = evs.slice(0, 3).map(function (e) {
@@ -5459,12 +5467,12 @@ function qrSvg(text, px) {
   var rects = "";
   for (var y = 0; y < q.size; y++) {
     for (var x = 0; x < q.size; x++) {
-      if (q.modules[y][x]) rects += '<rect x="' + (x + quiet) + '" y="' + (y + quiet) + '" width="1" height="1"/>';
+      if (q.modules[y][x]) rects += '<rect x="' + escapeHtml((x + quiet)) + '" y="' + escapeHtml((y + quiet)) + '" width="1" height="1"/>';
     }
   }
   return '<svg xmlns="http://www.w3.org/2000/svg" width="' + (px || 220) + '" height="' + (px || 220) + '"'
     + ' viewBox="0 0 ' + total + ' ' + total + '" shape-rendering="crispEdges" role="img" aria-label="QR code">'
-    + '<rect width="' + total + '" height="' + total + '" fill="#fff"/>'
+    + '<rect width="' + escapeHtml(total) + '" height="' + escapeHtml(total) + '" fill="#fff"/>'
     + '<g fill="#000">' + rects + '</g></svg>';
 }
 
