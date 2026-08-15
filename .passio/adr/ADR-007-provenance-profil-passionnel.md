@@ -1,6 +1,6 @@
 # ADR-007 — Provenance du profil passionnel dans les données
 
-- **Statut** : Proposé — décision produit en attente de Benjamin
+- **Statut** : **Accepté — option C** (Benjamin a délégué la décision le 2026-08-15)
 - **Date** : 2026-08-15
 - **Origine** : constat F6 de l'analyse croisée (`PASSIO_INITIAL_JOINT_AUDIT.md`)
 
@@ -38,7 +38,17 @@ Trois conséquences, par ordre de gravité décroissante :
 
 **D — B puis C.** Provenance complète et vérifiée.
 
-## Recommandation
+## Décision retenue : **C**
+
+Benjamin a délégué l'arbitrage. Retenu : **contraindre l'existant, ne pas étendre aux interactions.**
+
+Ce qui a emporté la décision : l'option C corrige un défaut **réel et déjà mesurable** (rien n'empêche aujourd'hui une passion fantôme née d'une faute de frappe), pour un coût faible et un risque nul — les 10 valeurs présentes en prod sont toutes dans la liste canonique de 19, aucun nettoyage n'est nécessaire. L'option B, elle, engagerait une migration sur dix tables et une modification de toutes les écritures **pour une fonctionnalité qui n'existe pas encore**. On ne paie pas aujourd'hui le prix d'un besoin hypothétique.
+
+Mise en œuvre : `migrations/migration_passions_referentiel.sql` (préparée).
+
+Conséquence à assumer : ajouter une passion dans l'app exigera désormais une migration **d'abord**. C'est le prix de l'intégrité référentielle, et il est modeste — la liste bouge rarement.
+
+### Recommandation d'origine (conservée pour la traçabilité)
 
 **C d'abord, B ensuite si le produit l'exige.**
 
