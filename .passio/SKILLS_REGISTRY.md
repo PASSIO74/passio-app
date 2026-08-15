@@ -72,6 +72,7 @@
 | `passio-feature` | Workflow feature de A à Z (produit→archi→DB/RLS→sécu→UX→impl→tests→télémétrie→perf→red team→doc), enchaîne les skills existantes | ACTIF |
 | `passio-audit` | Audit transverse priorisé P0→P4, sorties dans `reports/`, réutilise `xss-audit`/`rls-audit`/`migration-checker`/`passio-red-team` | ACTIF |
 | `passio-health` | Santé technique sur preuves réelles (syntaxe/build/globals/handlers/tests/schéma/erreurs prod) → verdict GO/NO-GO | ACTIF |
+| `zero-autorisation` | Interdit toute demande d'autorisation, de confirmation ou d'arbitrage, dans toute session. Convertit chaque question en décision prise + annoncée. Distingue « informer » (obligatoire) de « demander » (interdit). | ACTIF |
 | `reprise-autonome` | Reprend le travail seul après interruption (crédits épuisés, session fermée, nuit) : retrouve l'état par les faits, relance le cron de reprise, enchaîne sans demander. Distingue ce qu'on fait de ce qu'on prépare sans exécuter (migrations, RLS). | ACTIF |
 | `revue-croisee` | Analyse croisée réelle avec ChatGPT (Claude-in-Chrome) : dossier factuel → challenge adversarial → **vérification de chaque hypothèse dans le dépôt** → livrable conjoint. Contient la mécanique navigateur (pièges vécus le 2026-08-15). | ACTIF |
 

@@ -251,7 +251,17 @@ api.get("/audit", auth.requireCap("audit"), (req, res) => res.json(listAudit(Num
 
 // ─── Readiness score (section 25) ───────────────────────────────────────────
 api.get("/readiness", auth.requireAuth, (req, res) => {
-  res.json(computeReadiness({ overview: store.overview(), checklist: checklist.listChecklist(), bugs: store.bugList() }));
+  // `authz` n'est PAS encore alimenté : il n'existe aucune ingestion des résultats
+  // de tests/e2e/authz-critical.spec.js. On le passe donc explicitement à null,
+  // ce qui rend le domaine « autorisation » INCONNU — et empêche la santé globale
+  // d'afficher un vert franc. C'est délibéré : un domaine critique non mesuré ne
+  // doit jamais être compté comme sain (cf. F7, analyse croisée du 2026-08-15).
+  res.json(computeReadiness({
+    overview: store.overview(),
+    checklist: checklist.listChecklist(),
+    bugs: store.bugList(),
+    authz: null,
+  }));
 });
 
 app.use("/api", api);
