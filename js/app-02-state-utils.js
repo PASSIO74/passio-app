@@ -2898,7 +2898,7 @@ function renderPostHTML(p) {
       // ✅ Ajouter fallback si l'image échoue à charger
       media = `<div class="post-media">
         <img
-          src="${passioThumb(p.image, 700)}"
+          src="${safeUrlAttr(passioThumb(p.image, 700))}"
           alt="post"
           loading="lazy" decoding="async"
           onerror="this.onerror=null;this.style.background='#eee';this.style.minHeight='200px';"
@@ -2915,7 +2915,7 @@ function renderPostHTML(p) {
       media = `<div class="post-audio">
         🎙 <audio
           controls
-          src="${p.audio}"
+          src="${safeUrlAttr(p.audio)}"
           onerror="console.error('Audio failed:', this.src);"
           style="width:100%;"
         ></audio>
@@ -2931,7 +2931,7 @@ function renderPostHTML(p) {
     if (p.video && p.video.trim()) {
       media = `<div class="post-media">
         <video
-          src="${p.video}"
+          src="${safeUrlAttr(p.video)}"
           controls
           playsinline
           preload="metadata"
@@ -3044,16 +3044,16 @@ async function openPost(id) {
   let media = "";
   if (post.type === "photo" || (post.cover && post.type !== "vlog" && post.type !== "audio")) {
     media = post.image
-      ? `<div class="post-media"><img loading="lazy" decoding="async" src="${passioThumb(post.image, 700)}" alt="post" style="width:100%;border-radius:14px;"/></div>`
+      ? `<div class="post-media"><img loading="lazy" decoding="async" src="${safeUrlAttr(passioThumb(post.image, 700))}" alt="post" style="width:100%;border-radius:14px;"/></div>`
       : renderPostCover(post, passion);
   }
   if (post.type === "audio") {
     media = post.audio
-      ? `<div class="post-audio">🎙 <audio controls src="${post.audio}" style="flex:1;"></audio></div>`
+      ? `<div class="post-audio">🎙 <audio controls src="${safeUrlAttr(post.audio)}" style="flex:1;"></audio></div>`
       : `<div class="post-audio" style="padding:14px;background:var(--bg-card);border-radius:13px;border:1px solid var(--border);gap:10px;">🎙 <div style="flex:1;font-size:13px;color:var(--text-dim);">Podcast de ${escapeHtml(author.name || "un créateur")} · Mode démo</div></div>`;
   }
   if (post.type === "video" && post.video) {
-    media = `<div class="post-media"><video src="${post.video}" controls playsinline preload="metadata" style="width:100%;border-radius:14px;background:#000;"></video></div>`;
+    media = `<div class="post-media"><video src="${safeUrlAttr(post.video)}" controls playsinline preload="metadata" style="width:100%;border-radius:14px;background:#000;"></video></div>`;
   }
 
   // Renderer UNIFIÉ (identique au fil / IRL / CDV / modale). Le bloc inline

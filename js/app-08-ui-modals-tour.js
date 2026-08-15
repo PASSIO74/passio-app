@@ -417,7 +417,7 @@ function buildStoryGroups() {
 function _storyBubbleInner(g) {
   const withMedia = g.stories.slice().reverse().find(s => s.media && s.mediaType !== "video");
   if (withMedia) {
-    return `<img loading="lazy" decoding="async" src="${escapeHtml(withMedia.media)}" alt="${escapeHtml(g.name)}" onerror="this.style.display='none'"/>`;
+    return `<img loading="lazy" decoding="async" src="${safeUrlAttr(withMedia.media)}" alt="${escapeHtml(g.name)}" onerror="this.style.display='none'"/>`;
   }
   const withPhoto = g.stories.slice().reverse().find(s => s.photo);
   if (withPhoto) {
@@ -1172,7 +1172,7 @@ function _meRenderOverlay(ov) {
   var content = document.createElement("span");
   if (ov.type === "text") { content.textContent = ov.text; el.style.color = ov.color; if (ov.size) el.style.fontSize = ov.size + "px"; }
   else if (ov.type === "emoji") { content.textContent = ov.emoji; }
-  else if (ov.type === "gif") { content.innerHTML = '<img src="' + ov.url + '" alt="GIF"/>'; }
+  else if (ov.type === "gif") { content.innerHTML = '<img src="' + safeUrlAttr(ov.url) + '" alt="GIF"/>'; }
   el.appendChild(content);
   var del = document.createElement("button"); del.className = "me-ov-del me-ov-ctrl"; del.textContent = "✕";
   del.onclick = function(e) { e.stopPropagation(); meRemoveOverlay(ov.id); };

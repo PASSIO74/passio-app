@@ -1420,7 +1420,12 @@ function openFullImg(src) {
   var v = document.createElement("div");
   v.id = "fullImgViewer";
   v.style.cssText = "position:fixed;inset:0;z-index:99999;background:rgba(10,6,30,0.92);display:flex;align-items:center;justify-content:center;backdrop-filter:blur(6px);animation:fadeIn .2s ease;overflow:hidden;touch-action:none;";
-  var esc = src.replace(/"/g, "&quot;");
+  // ⚠️ `src` vient d'un média de conversation, donc d'un AUTRE compte. N'échapper
+  // que les guillemets laissait passer le schéma : le bouton « Télécharger » pose
+  // `src` en href et clique dessus — un `javascript:` s'y exécuterait. On refuse
+  // tout ce que safeUrlAttr n'accepte pas (http(s), data:image|audio|video, blob:).
+  var esc = safeUrlAttr(src);
+  if (esc === "#") return;
   v.innerHTML = '<img id="_fiv_img" src="' + esc + '" style="max-width:94vw;max-height:90vh;border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,0.6);transition:transform .15s ease;will-change:transform;" alt=""/>' +
     '<div style="position:absolute;top:max(16px,env(safe-area-inset-top));right:16px;display:flex;gap:8px;">' +
       '<button id="_fiv_dl" aria-label="Télécharger" style="width:38px;height:38px;border-radius:50%;border:none;background:rgba(255,255,255,0.14);color:#fff;font-size:17px;cursor:pointer;">⬇️</button>' +

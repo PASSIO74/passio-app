@@ -39,8 +39,12 @@ function renderVlogCarousel() {
 
   html += carnets.map(c => {
     const stats = vlogStats(c);
-    return `<div class="vlog-card-mini" onclick="openVlogViewer('${c.id}')">
-      <img loading="lazy" decoding="async" class="vlog-card-mini-cover" src="${c.cover || `https://picsum.photos/seed/vlog-mini-${c.id}/360/240`}" alt="${escapeHtml(c.destination || '')}" onerror="this.onerror=null;this.src='https://picsum.photos/seed/vlog-mini-${c.id}/360/240';"/>
+    // ⚠️ Un carnet peut venir d'un AUTRE compte (allCarnets lit state.supabasePosts) :
+    // `cover` atterrit dans un src et `id` dans deux chaînes JS (onclick + onerror).
+    // Sans helper, une apostrophe suffisait à sortir de l'attribut.
+    const cSeed = encodeURIComponent(String(c.id || ""));
+    return `<div class="vlog-card-mini" onclick="openVlogViewer('${escapeJsArg(c.id)}')">
+      <img loading="lazy" decoding="async" class="vlog-card-mini-cover" src="${safeUrlAttr(c.cover || `https://picsum.photos/seed/vlog-mini-${cSeed}/360/240`)}" alt="${escapeHtml(c.destination || '')}" onerror="this.onerror=null;this.src='https://picsum.photos/seed/vlog-mini-${cSeed}/360/240';"/>
       <div class="vlog-card-mini-overlay"></div>
       <span class="vlog-card-mini-tag">📔 CARNET</span>
       <div class="vlog-card-mini-meta">
@@ -224,7 +228,7 @@ function _linkifyText(safe) {
 }
 function _commentBodyHtml(txt) {
   return _looksLikeMediaUrl(txt)
-    ? '<img loading="lazy" decoding="async" src="' + txt.replace(/"/g, "&quot;") + '" style="max-width:160px;border-radius:10px;margin-top:2px;display:block;" alt="GIF" />'
+    ? '<img loading="lazy" decoding="async" src="' + safeUrlAttr(txt) + '" style="max-width:160px;border-radius:10px;margin-top:2px;display:block;" alt="GIF" />'
     : _linkifyText(escapeHtml(txt || ""));
 }
 // Ouvre le profil d'un pseudo @mentionné (recherche insensible à la casse dans
@@ -1881,7 +1885,7 @@ function emojiReactPanel(event, onEmoji, onGif) {
   stageSend.onclick = function (ev) { ev.stopPropagation(); commit(); };
   stageCancel.onclick = function (ev) { ev.stopPropagation(); _staged = null; stage.style.display = "none"; };
   function pickEmoji(e) { _staged = { kind: "emoji", val: e }; stageFace.textContent = e; stageFace.innerHTML = e; stage.style.display = "flex"; }
-  function pickGif(url) { _staged = { kind: "gif", val: url }; stageFace.innerHTML = '<img src="' + url + '" style="width:100%;height:100%;object-fit:cover;"/>'; stage.style.display = "flex"; }
+  function pickGif(url) { _staged = { kind: "gif", val: url }; stageFace.innerHTML = '<img src="' + safeUrlAttr(url) + '" style="width:100%;height:100%;object-fit:cover;"/>'; stage.style.display = "flex"; }
 
   var content = document.createElement("div");
 

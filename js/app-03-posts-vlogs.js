@@ -1057,9 +1057,9 @@ function renderVlogSteps() {
         </button>
       </div>
       <input type="text" class="input" placeholder="Lieu (ex: Lisbonne · Alfama)" value="${escapeHtml(s.place || '')}" maxlength="60" oninput="updateVlogStep('${s.id}', 'place', this.value)" style="margin-bottom:6px;" />
-      ${s.photo ? `<img loading="lazy" decoding="async" class="vlog-step-photo-thumb" src="${s.photo}" alt=""/>` : ''}
-      ${s.video ? `<video class="vlog-step-photo-thumb" src="${s.video}" controls playsinline preload="metadata" style="max-height:160px;"></video>` : ''}
-      ${s.audio ? `<audio src="${s.audio}" controls style="width:100%;margin:6px 0;"></audio>` : ''}
+      ${s.photo ? `<img loading="lazy" decoding="async" class="vlog-step-photo-thumb" src="${safeUrlAttr(s.photo)}" alt=""/>` : ''}
+      ${s.video ? `<video class="vlog-step-photo-thumb" src="${safeUrlAttr(s.video)}" controls playsinline preload="metadata" style="max-height:160px;"></video>` : ''}
+      ${s.audio ? `<audio src="${safeUrlAttr(s.audio)}" controls style="width:100%;margin:6px 0;"></audio>` : ''}
       <div class="vlog-step-media-row">
         <button class="vlog-step-media-btn" onclick="document.getElementById('vlogStepPhoto_${s.id}').click()" title="Ajouter / changer la photo">
           <span style="font-size:14px;">📷</span>
@@ -1212,7 +1212,7 @@ function openVlogViewer(postId) {
   const tripSt = cdvTripStats(post.steps || [], { start: post.dateStart, end: post.dateEnd });
 
   const html = `
-    ${post.cover ? `<img loading="lazy" decoding="async" class="vlog-viewer-cover" src="${post.cover}" alt="${escapeHtml(post.destination || '')}" onerror="this.onerror=null;this.src='https://picsum.photos/seed/vlog-${postId}/1280/720';"/>` : `<div class="vlog-viewer-cover"></div>`}
+    ${post.cover ? `<img loading="lazy" decoding="async" class="vlog-viewer-cover" src="${safeUrlAttr(post.cover)}" alt="${escapeHtml(post.destination || '')}" onerror="this.onerror=null;this.src='https://picsum.photos/seed/vlog-${postId}/1280/720';"/>` : `<div class="vlog-viewer-cover"></div>`}
     <div class="vlog-viewer-body">
       <div class="vlog-viewer-title">${escapeHtml(post.destination || "Carnet de voyage")}</div>
       <div class="vlog-viewer-dates">${escapeHtml(fmtRange(post.dateStart, post.dateEnd))}</div>
