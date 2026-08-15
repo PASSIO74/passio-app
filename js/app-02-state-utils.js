@@ -2183,11 +2183,28 @@ function onbFinish() {
 // handlers ne regardaient que seed + userPosts → impossible d'ouvrir/commenter/
 // réagir sur un vrai post d'un autre compte, et les notifs de like ne partaient
 // pas. Centralisé le 2026-06-17. Voir [[project_passio]].
+// ⚠️ PRIORITÉ ≠ CELLE DU FIL. Un post publié vit SIMULTANÉMENT dans `userPosts`
+// (copie locale conservée à la publication) et dans `supabasePosts` (copie serveur
+// revenue au chargement). Cette fonction rend la copie LOCALE, tandis que
+// `allFeedPosts` dédoublonne dans l'ordre seed → supabase → me et affiche donc la
+// copie SERVEUR. Conséquence : MUTER l'objet rendu ici ne change rien à l'écran.
+// Pour lire, c'est sans importance ; pour ÉCRIRE, passer par allPostCopies(id).
 function findPostAnywhere(id) {
   return (state.seed.posts || []).find(p => p.id === id)
       || (state.userPosts || []).find(p => p.id === id)
       || (state.supabasePosts || []).find(p => p.id === id)
       || null;
+}
+
+// Toutes les copies d'un post portant cet id, à travers les trois sources. À
+// utiliser dès qu'on MODIFIE un post : sinon la mutation atterrit sur une copie
+// que le fil n'affiche pas (le ❤️ passait rouge, le compteur restait figé).
+function allPostCopies(id) {
+  var out = [];
+  [state.seed && state.seed.posts, state.userPosts, state.supabasePosts].forEach(function (src) {
+    (src || []).forEach(function (p) { if (p && p.id === id) out.push(p); });
+  });
+  return out;
 }
 
 // ======== MODÉRATION ========
@@ -2216,13 +2233,25 @@ function allFeedPosts() {
 
   // Dédup par ID + masquer auteurs bloqués (modération) + exclure les bobines
   // (isReel) : elles vivent dans le viewer Bobines, pas dans le fil.
+  // ⚠️ ORDRE : filtrer D'ABORD, dédoublonner ENSUITE. L'ancienne version marquait
+  // l'id comme « vu » AVANT de tester isReel et le blocage : si la première copie
+  // rencontrée était rejetée, elle avait déjà consommé l'id et TOUTES les autres
+  // copies étaient écartées comme doublons — le post disparaissait entièrement du
+  // fil. Cas réel : la copie seed marquée bobine et la copie serveur normale.
   const blocked = state.user.blocked || [];
+  // La modération, elle, s'applique à l'ID ENTIER : si UNE copie porte un auteur
+  // bloqué, aucune copie ne doit passer. Corriger l'ordre ne doit pas ouvrir une
+  // porte dérobée où une seconde copie ferait réapparaître un contenu masqué.
+  const idsBloques = new Set();
+  if (blocked.length) {
+    allPosts.forEach(p => { if (p && blocked.includes(p.authorId)) idsBloques.add(p.id); });
+  }
   const seenIds = new Set();
   const deduplicated = allPosts.filter(p => {
+    if (p.isReel) return false;
+    if (idsBloques.has(p.id)) return false;
     if (seenIds.has(p.id)) return false;
     seenIds.add(p.id);
-    if (p.isReel) return false;
-    if (blocked.length && blocked.includes(p.authorId)) return false;
     return true;
   });
 

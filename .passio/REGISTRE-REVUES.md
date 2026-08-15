@@ -20,7 +20,7 @@ rien — il peut se tromper sur une prémisse, et ça arrive.
 | 4 | État local, persistance, sync cross-appareil | **fait** (2026-08-14) | 6 / 7 |
 | 5 | Messagerie et livraison temps réel | **fait** (2026-08-14) | 3 / 3 |
 | 6 | Médias — upload, Storage, downscale | **fait** (2026-08-14) | 5 / 6 (1 écarté après vérification) |
-| 7 | Fil — classement et rendu | à faire | — |
+| 7 | Fil — classement et rendu | **fait** (2026-08-14) | 2 / 2 corrigés (4 ouverts, documentés) |
 | 8 | PWA — service worker, cache, mise à jour | à faire | — |
 | 9 | Télémétrie — fuite de PII | à faire | — |
 
@@ -28,6 +28,38 @@ rien — il peut se tromper sur une prémisse, et ça arrive.
 `index.html` (111 Ko), le schéma SQL et les policies RLS de production (nécessitent
 un export dédié depuis la prod, pas une extraction de fonctions), et le dashboard
 `dashboard/` (application distincte, avec sa propre suite de 77 tests).
+
+---
+
+## Manche 8 — Fil d'actualité (2026-08-14)
+
+Relecteur : ChatGPT « Moyen », sur 7 fonctions. **Convergence notable** : il a
+identifié de son côté la divergence `allFeedPosts` / `findPostAnywhere` que je
+venais de trouver en lisant le même code — deux chemins indépendants, même verdict.
+
+| # | Défaut | Verdict |
+|---|--------|---------|
+| 1 | **Un post disparaît entièrement du fil.** `allFeedPosts` marquait l'id comme « vu » AVANT de tester `isReel` et le blocage : si la première copie rencontrée était rejetée, elle avait déjà consommé l'id et toutes les autres copies étaient écartées comme doublons. Cas réel : copie seed marquée bobine + copie serveur normale | **confirmé — reproduit : 0 post affiché** |
+| 2 | **Le compteur de ❤️ ne bougeait pas.** Un post publié vit à la fois dans `userPosts` et dans `supabasePosts` ; `allFeedPosts` affiche la copie SERVEUR, `findPostAnywhere` rend la copie LOCALE. `_applyLikeLocally` incrémentait donc un compteur invisible : le cœur passait rouge, le nombre restait figé | **confirmé — reproduit : 3 → 3 au lieu de 3 → 4** |
+
+**Correctifs.** ① Filtrer d'abord, dédoublonner ensuite — **sans affaiblir la
+modération** : si UNE copie porte un auteur bloqué, aucune copie ne passe (sinon
+corriger l'ordre aurait ouvert une porte dérobée faisant réapparaître un contenu
+masqué). ② Nouveau `allPostCopies(id)` qui rend toutes les copies ; `_applyLikeLocally`
+les met toutes à jour. Avertissement ajouté sur `findPostAnywhere` : sa priorité
+n'est PAS celle du fil — pour lire c'est sans importance, pour **écrire** il faut
+`allPostCopies`.
+
+Vérifié dans le navigateur, marqueur du nouveau code contrôlé d'abord : post
+retrouvé (0 → 1), blocage tenant sur toutes les copies (0), bobine toujours exclue
+(0), compteur 3 → 4 → 3 avec les deux copies synchrones.
+
+**Ouverts, non corrigés, documentés** : signature de rendu construite depuis
+l'ordre d'itération d'un `Set` (repeint sans changement fonctionnel) ; course de
+rollback du like ; type réel de `createdAt` (timestamp vs timestamptz) ; ordre
+d'appel entre `renderFeed` et `renderFeedCdvLives`. Le relecteur les classe
+explicitement comme non démontrables sans `index.html` ni le schéma — je ne les
+transforme pas en correctifs sur une supposition.
 
 ---
 

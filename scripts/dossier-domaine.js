@@ -81,7 +81,13 @@ const DOMAINES = {
   fil: {
     libelle: "Fil d'actualité — classement et rendu",
     fichiers: [],
-    ancres: [/^rankFeedPosts$/, /^renderFeed/, /^likePost$/, /^findPostAnywhere$/, /^_feedDom/],
+    // Ancres relevées sur le code. Chaîne complète : quels posts entrent dans le
+    // fil, comment ils sont classés, comment le DOM est peint (et l'invariant de
+    // signature qui fait sauter le prochain rendu), et le like local.
+    ancres: [
+      /^rankFeedPosts$/, /^renderFeed$/, /^renderFeedCdvLives$/,
+      /^allFeedPosts$/, /^findPostAnywhere$/, /^likePost$/, /^_applyLikeLocally$/,
+    ],
     focus:
       "Le classement doit rester stable et explicable. Côté rendu : écrire dans #feedList ou #storiesRowFeed sans " +
       "invalider `_feedDomSig`/`_lastHtml` fait sauter le prochain render (guard no-op). Cherche aussi les recherches " +
@@ -148,8 +154,11 @@ const DOMAINES = {
   },
   "pwa-offline": {
     libelle: "PWA — service worker, cache, mise à jour",
-    fichiers: ["js/pwa-detect.js", "js/platform.js", "manifest.json"],
-    ancres: [/^registerSW/, /^_swUpdate/, /^checkForUpdate/],
+    // Ici les fichiers ENTIERS valent mieux que des ancres : toute la logique vit
+    // dans sw.js (8 Ko) et pwa-detect.js (2 Ko), et un service worker se juge sur
+    // sa stratégie de cache complète, pas sur une fonction isolée.
+    fichiers: ["sw.js", "js/pwa-detect.js", "js/platform.js", "manifest.json"],
+    ancres: [],
     focus:
       "Une version en cache qui ne se met jamais à jour, un service worker qui sert du contenu périmé, " +
       "une installation qui échoue silencieusement.",

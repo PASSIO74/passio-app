@@ -204,10 +204,15 @@ function _applyLikeLocally(id, liked) {
   var at = list.indexOf(id);
   if (liked && at === -1) list.push(id);
   if (!liked && at > -1) list.splice(at, 1);
-  if (post) {
-    post.liked = liked;
-    post.likes = Math.max(0, (post.likes || 0) + (liked ? 1 : -1));
-  }
+  // ⚠️ TOUTES les copies, pas seulement celle que findPostAnywhere renvoie. Un post
+  // publié existe à la fois dans userPosts et dans supabasePosts ; le fil affiche
+  // la copie SERVEUR alors que findPostAnywhere rend la copie LOCALE. On incrémentait
+  // donc un compteur invisible : le cœur passait rouge, le nombre ne bougeait pas.
+  var copies = (typeof allPostCopies === "function") ? allPostCopies(id) : (post ? [post] : []);
+  copies.forEach(function (p) {
+    p.liked = liked;
+    p.likes = Math.max(0, (p.likes || 0) + (liked ? 1 : -1));
+  });
   saveState();
   return post;
 }
