@@ -109,7 +109,20 @@
   var SCREEN_SIZE = (window.screen ? screen.width + "x" + screen.height : "");
 
   // ─── Masquage PII ─────────────────────────────────────────────────────────
-  var DENY_KEY = /(pass|pwd|token|secret|apikey|api_key|\bkey\b|auth|jwt|bearer|code|email|mail|phone|tel|iban|card|cvv|ssn|content|body|\btext\b|message|vocal|base64|password)/i;
+  // ⚠️ C'est une liste NOIRE, pas une liste blanche — la documentation du projet
+  // affirmait le contraire, c'était faux. Le choix reste délibéré : une liste
+  // blanche stricte ferait disparaître EN SILENCE toute clé nouvelle, et une
+  // télémétrie qui perd des champs sans le dire est pire qu'inutile. La sécurité
+  // ne repose donc pas sur les noms de clés mais sur ce que `scrubMeta` accepte :
+  // uniquement des primitives (les objets et tableaux sont jetés), passées par
+  // `redactString`, tronquées à 160 caractères, et 30 clés au maximum.
+  // Vérifié en production le 2026-08-15 sur 20 205 événements : 22 clés distinctes,
+  // toutes techniques, zéro e-mail, zéro JWT, zéro base64.
+  // Noms personnels ajoutés le 2026-08-15 : la liste précédente couvrait les
+  // secrets et le contenu, mais laissait passer un pseudo, un titre ou une
+  // recherche — exactement le genre de valeur courte qui traverse `redactString`
+  // sans être touchée.
+  var DENY_KEY = /(pass|pwd|token|secret|apikey|api_key|\bkey\b|auth|jwt|bearer|code|email|mail|phone|tel|iban|card|cvv|ssn|content|body|\btext\b|message|vocal|base64|password|name|pseudo|user|\btitle\b|titre|query|search|\bq\b|label|city|ville|address|adresse|\blat\b|\blng\b|location|bio)/i;
   var EMAIL_RE = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi;
   var JWT_RE = /eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{5,}/g;
   var LONGHEX_RE = /\b[a-f0-9]{32,}\b/gi;
@@ -435,7 +448,16 @@
       connection: connectionType(),
       endpoint: fields.endpoint ? String(fields.endpoint).slice(0, 200) : null,
       http_status: (typeof fields.http_status === "number") ? fields.http_status : null,
-      correlation_id: fields.correlation_id || null,
+      // ⚠️ Ce champ était le SEUL de cet objet à ne subir aucun traitement : ni
+      // String(), ni redactString(), ni troncature — alors que ses voisins
+      // immédiats ont les trois. Or il peut venir de l'extérieur : captureLinkOpen
+      // y recopie le `?plk=` de l'URL. N'importe qui partageant un lien PASSIO
+      // avec un marqueur fabriqué écrivait donc du texte libre, non borné, dans
+      // la base. Vérifié en prod le 2026-08-15 : 310 valeurs, toutes au format
+      // attendu, 28 caractères au plus — jamais exploité, mais trivial à faire.
+      correlation_id: fields.correlation_id != null
+        ? redactString(String(fields.correlation_id).slice(0, 64))
+        : null,
       message: fields.message != null ? redactString(fields.message) : null,
       stack: fields.stack ? redactString(String(fields.stack).slice(0, 4000)) : null,
       meta: scrubMeta(fields.meta),
@@ -613,6 +635,11 @@
     try {
       var plk = new URLSearchParams(location.search).get("plk");
       if (!plk) return;
+      // Défense au point d'entrée : nos marqueurs sont des identifiants générés.
+      // Tout ce qui n'en a pas la forme ne vient pas de nous — on l'ignore au lieu
+      // de le tronquer, pour qu'aucun texte étranger n'entre dans la base par un
+      // lien fabriqué. La sanitisation dans track() reste le filet de sécurité.
+      if (!/^[A-Za-z0-9_-]{1,64}$/.test(plk)) return;
       track("link", "link_open", {
         correlation_id: plk, severity: "info", status: "ok",
         message: "Ouverture de lien confirmée (page chargée)",

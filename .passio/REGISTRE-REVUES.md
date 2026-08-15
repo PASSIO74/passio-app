@@ -22,7 +22,7 @@ rien — il peut se tromper sur une prémisse, et ça arrive.
 | 6 | Médias — upload, Storage, downscale | **fait** (2026-08-14) | 5 / 6 (1 écarté après vérification) |
 | 7 | Fil — classement et rendu | **fait** (2026-08-14) | 2 / 2 corrigés (4 ouverts, documentés) |
 | 8 | PWA — service worker, cache, mise à jour | **fait** (2026-08-15) | 1 corrigé, 2 écartés après vérification |
-| 9 | Télémétrie — fuite de PII | à faire | — |
+| 9 | Télémétrie — fuite de PII | **fait** (2026-08-15) | 2 / 2 |
 
 **Hors périmètre de cette méthode**, à traiter autrement : `styles.css` (298 Ko),
 `index.html` (111 Ko), le schéma SQL et les policies RLS de production (nécessitent
