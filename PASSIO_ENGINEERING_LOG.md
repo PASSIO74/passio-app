@@ -35,8 +35,19 @@ Correctif dans `js/telemetry.js` : ne transmettre que ce qui **peut** satisfaire
 
 **Après** : 1 envoi, HTTP 201, `user_id=[null]`, les deux événements sauvés. De 100 % de perte à 100 % de livraison — et la tempête de retries disparaît (batterie et réseau gaspillés chez chaque visiteur).
 
+### `F7` — le score de santé n'est plus une moyenne
+`readiness.js` calculait une moyenne pondérée. Deux défauts mesurés sur le code lui-même : **trois bugs critiques ouverts affichaient encore 75/100** (`max(0, 100−3×34) = 0`, puis `(0×25 + 100×75)/100 = 75`), et **aucun facteur d'autorisation n'existait** — une fuite cross-compte totale n'aurait pas déplacé le score d'un point.
+
+Remplacé par `santé = pire domaine critique`, un seul bug critique rougit, 8 canaris sur 9 = ROUGE (pas 89 %), la performance ne peut qu'ambrer, un domaine non mesuré vaut INCONNU. Second chiffre **CONFIANCE**. Le `score` historique reste exposé mais ne peut plus contredire le statut. Le domaine autorisation est alimenté par le dernier passage réel d'AUTHZ-CRITICAL lancé depuis le dashboard ; tant qu'il n'a pas tourné, il vaut INCONNU.
+
+### Décision produit obtenue
+`author_name` = **nom ACTUEL du profil** (Benjamin). La migration est donc repensée : dénormalisation maintenue vraie par deux triggers (réécriture à l'écriture + propagation au renommage) plutôt qu'une jointure sur les chemins chauds. Vérifié en prod : **aucun index** n'existait sur `author_id`/`user_id` dans les 4 tables — ajoutés en `CONCURRENTLY`.
+
+### Déploiement vérifié
+CI verte (le gate AUTHZ-CRITICAL passe depuis un runner GitHub), déploiement réussi, et **correctif confirmé live en prod**. Piège rencontré : la CI minifie, Terser renomme les variables locales — chercher `authUserId` dans le HTML servi renvoie 0 alors que le correctif est bien là. Seuls les **littéraux** (regex, chaînes) sont des marqueurs valables en prod.
+
 ### Reste à faire
-Attribution préservée au changement de compte (file partitionnée par identité) : ici on **désattribue** au lieu de détruire, ce qui est strictement mieux mais pas optimal. Vider la file de A avant l'invalidation de sa session préserverait l'attribution.
+Attribution préservée au changement de compte (file partitionnée par identité) : ici on **désattribue** au lieu de détruire, ce qui est strictement mieux mais pas optimal. Version skew PWA (F5) et provenance `passion_id` des interactions (F6) non instruits. Vider la file de A avant l'invalidation de sa session préserverait l'attribution.
 
 ### Skills créés
 `revue-croisee` (protocole d'analyse croisée + mécanique navigateur non devinable), `reprise-autonome` (travail continu sans supervision).
