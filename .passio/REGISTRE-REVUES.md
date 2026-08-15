@@ -21,13 +21,35 @@ rien — il peut se tromper sur une prémisse, et ça arrive.
 | 5 | Messagerie et livraison temps réel | **fait** (2026-08-14) | 3 / 3 |
 | 6 | Médias — upload, Storage, downscale | **fait** (2026-08-14) | 5 / 6 (1 écarté après vérification) |
 | 7 | Fil — classement et rendu | **fait** (2026-08-14) | 2 / 2 corrigés (4 ouverts, documentés) |
-| 8 | PWA — service worker, cache, mise à jour | à faire | — |
+| 8 | PWA — service worker, cache, mise à jour | **fait** (2026-08-15) | 1 corrigé, 2 écartés après vérification |
 | 9 | Télémétrie — fuite de PII | à faire | — |
 
 **Hors périmètre de cette méthode**, à traiter autrement : `styles.css` (298 Ko),
 `index.html` (111 Ko), le schéma SQL et les policies RLS de production (nécessitent
 un export dédié depuis la prod, pas une extraction de fonctions), et le dashboard
 `dashboard/` (application distincte, avec sa propre suite de 77 tests).
+
+---
+
+## Manche 9 — PWA : service worker, cache, mise à jour (2026-08-15)
+
+Relecteur : ChatGPT « Moyen », sur `sw.js`, `pwa-detect.js`, `platform.js` et
+`manifest.json` **entiers**. Pour ce domaine les fichiers complets valent mieux que
+des extraits : un service worker se juge sur sa stratégie de cache entière.
+
+| # | Remarque | Verdict |
+|---|----------|---------|
+| 1 | Le stale-while-revalidate sert l'ANCIEN script au premier chargement et ne rafraîchit que pour la fois d'après | **confirmé — corrigé**. C'est le piège qui a produit **trois faux échecs de débogage** dans cette session : les correctifs étaient bons, c'est du code périmé qui était testé. Les `.js` **sans chaîne de version** passent désormais en réseau-d'abord |
+| 2 | « Le nommage des caches empêche-t-il le mélange de versions ? » → **Non** : ancien SW actif + HTML réseau B + assets cache A | **exact sur la politique du SW, mais sans effet en prod.** Vérifié : le build produit `app.js?v=93f3893599` et `styles.css?v=5ea897dc79`. L'URL change à chaque déploiement → le cache manque → réseau. **La protection vient du HASH, pas du worker** : si les `?v=` disparaissaient du build, le mélange reviendrait en silence. Écrit dans `sw.js` |
+| 3 | Des données de compte pourraient persister dans Cache Storage, que `purgeAccountScopedData` ne touche pas | **écarté après vérification.** Le relecteur dit lui-même la fuite « non démontrable avec le dossier ». Le `fetch` handler ignore tout hôte différent (`url.hostname !== self.location.hostname`) et **tout** le contenu de compte vient de Supabase — donc rien de personnel n'entre dans Cache Storage. Aucune correction justifiée |
+
+**Vérifié dans le navigateur, de bout en bout** : fichier modifié sur le disque →
+son marqueur apparaît **dès la première requête** (avant le correctif, la copie
+en cache revenait) ; URL versionnée `?v=` → toujours servie depuis le cache, donc
+le hors-ligne est préservé. Le build passe et l'auto-bump du cache SW tient.
+
+*(Note : ma première mesure interrogeait le mauvais cache — il y en avait deux
+pendant la transition du SW. Erreur de test, pas de code.)*
 
 ---
 

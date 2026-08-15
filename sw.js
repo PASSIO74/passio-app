@@ -167,6 +167,33 @@ self.addEventListener("fetch", e => {
     return;
   }
 
+  // Scripts SANS chaîne de version → réseau d'abord.
+  // En prod, app.js et styles.css portent un hash de contenu (`?v=93f3893599`) :
+  // leur URL change à chaque déploiement, le cache manque naturellement, et le
+  // stale-while-revalidate ci-dessous reste à la fois sûr et utile hors-ligne.
+  // Sans hash — c'est le cas des js/app-*.js servis tels quels en dev — cette même
+  // stratégie renvoie indéfiniment l'ANCIEN script au premier chargement, et ne
+  // rafraîchit que pour la fois d'après. Le 2026-08-14, ça a produit trois faux
+  // échecs de débogage d'affilée : les correctifs étaient bons, c'est du code
+  // périmé qui était testé. Un piège qui coûte des heures et ne se voit pas.
+  // ⚠️ La protection de la prod vient donc du HASH, pas de ce worker : si les
+  // chaînes `?v=` disparaissaient un jour du build, le mélange de versions
+  // reviendrait en silence.
+  if (url.pathname.endsWith(".js") && !url.search) {
+    e.respondWith(
+      fetch(e.request)
+        .then(res => {
+          if (res && res.ok) {
+            const copy = res.clone();
+            caches.open(CACHE).then(c => c.put(e.request, copy)).catch(() => {});
+          }
+          return res;
+        })
+        .catch(() => caches.match(e.request).then(c => c || new Response("", { status: 503 })))
+    );
+    return;
+  }
+
   // Icônes, manifest et assets → stale-while-revalidate
   e.respondWith(
     caches.match(e.request).then(cached => {
