@@ -4,6 +4,45 @@
 
 ---
 
+## 2026-08-15 — Boucle 2 : analyse croisée réelle, puis correction de CI-GATE-001 et TEL-IDENT-002
+
+### Analyse croisée
+Deux tours complets avec ChatGPT (compte pro, fil « Analyse croisée PASSIO »). Elle a corrigé **trois erreurs de mon analyse** : F3 n'était pas une race applicative (le flake portait sur le clic de setup) ; `server_reject` n'est pas indépendant ; et surtout mon « 49 % des événements ont perdu leur attribution » était faux — la ventilation par type montre que les NULL sont concentrés sur `session` (99 %) et `perf` (100 %), le comportemental étant à 0 %.
+
+Livrables : `PASSIO_INITIAL_JOINT_AUDIT.md`, `PASSIO_CONTROL_CENTER_AUDIT.md`.
+
+### `CI-GATE-001` — corrigé
+`tests/e2e/authz-critical.spec.js` : 9 invariants d'autorisation vérifiés par appels REST bruts, **non skippable**, vert en 2,7 s. Étape dédiée en tête du workflow.
+
+Le blocage supposé (« il faut des identifiants de test en secrets CI ») **n'existait pas** : l'inscription passe par la clé anon, déjà publique côté client par conception Supabase.
+
+Découverte incidente : `posts.author_id` référence `profiles(id)` — un compte sans profil ne peut pas publier (409). Garde d'intégrité utile, trouvé en écrivant le test.
+
+### `TEL-IDENT-002` — cause racine prouvée, corrigée, mesurée
+
+`tests/e2e/telemetrie-preauth.spec.js` tranche par observation réseau sur navigateur vierge. **Avant** :
+
+```
+MY_UID = window.MY_UID = passio_uid = u_m8nq4h2b   (aucune session)
+20 envois → 20 × HTTP 401
+lot de 2 · user_id=[null,"u_m8nq4h2b"] · types=session/perf
+lot de 1 · user_id=["u_m8nq4h2b"] · types=connectivity
+```
+
+Trois choses prouvées d'un coup : la fenêtre pré-auth est **100 % perdue** ; l'**empoisonnement de lot** est réel (l'événement `null` légitime meurt avec le poison, dans le même insert multi-lignes) ; et l'alarme `server_reject` porte elle-même l'identité fabriquée, donc **se fait rejeter par la cause exacte qu'elle signale**.
+
+Correctif dans `js/telemetry.js` : ne transmettre que ce qui **peut** satisfaire la policy — un UUID d'authentification ; tout le reste part à `NULL`, valeur explicitement tolérée. Désinfection aussi **au flush**, ce qui couvre du même coup le backlog estampillé sous un compte puis rejoué sous un autre.
+
+**Après** : 1 envoi, HTTP 201, `user_id=[null]`, les deux événements sauvés. De 100 % de perte à 100 % de livraison — et la tempête de retries disparaît (batterie et réseau gaspillés chez chaque visiteur).
+
+### Reste à faire
+Attribution préservée au changement de compte (file partitionnée par identité) : ici on **désattribue** au lieu de détruire, ce qui est strictement mieux mais pas optimal. Vider la file de A avant l'invalidation de sa session préserverait l'attribution.
+
+### Skills créés
+`revue-croisee` (protocole d'analyse croisée + mécanique navigateur non devinable), `reprise-autonome` (travail continu sans supervision).
+
+---
+
 ## 2026-08-15 — Boucle 1 : Phase 0 (baseline) + Phase 1a (exploration)
 
 ### Contexte

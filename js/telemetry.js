@@ -200,8 +200,29 @@
     } catch (e) {}
   }
 
+  // La policy d'insertion est : user_id IS NULL OR user_id = auth.uid()::text.
+  // Or `window.MY_UID` ne contient PAS toujours un identifiant d'authentification :
+  // avant toute connexion, l'app s'en forge un localement (« u_ » + aléatoire,
+  // getMyUserId dans app-08, puis emoji-misc 100 ms après le chargement). Un tel
+  // identifiant n'est ni NULL ni auth.uid() : il ne satisfera JAMAIS la policy.
+  //
+  // Mesuré le 2026-08-15 sur un navigateur vierge (tests/e2e/telemetrie-preauth) :
+  // 20 envois, 20 × HTTP 401. Et comme un lot part en UN SEUL insert multi-lignes,
+  // le compagnon légitime `user_id: null` du même lot mourait avec lui — y compris
+  // l'alarme `server_reject`, qui portait elle aussi l'identité fabriquée et se
+  // faisait donc rejeter par la cause exacte qu'elle signalait.
+  //
+  // On ne transmet donc que ce qui PEUT satisfaire la policy : un UUID d'auth.
+  // Tout le reste part à NULL — valeur explicitement tolérée. L'événement survit,
+  // rattachable par appareil et par session, au lieu d'être détruit avec ses voisins.
+  var UUID_AUTH = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  function authUserId() {
+    var id = window.MY_UID;
+    return (typeof id === "string" && UUID_AUTH.test(id)) ? id : null;
+  }
+
   function currentUser() {
-    var id = window.MY_UID || null;
+    var id = authUserId();
     var label = null;
     try {
       // pseudo public affichable, jamais l'e-mail
@@ -291,6 +312,22 @@
     if (!opts.keepalive && sending) return;
     var batch = queue.slice(0, opts.keepalive ? 20 : 60);  // keepalive : lots plus petits (limite 64 Ko)
     if (!batch.length) return;
+    // Un lot part en UN SEUL insert multi-lignes : une ligne refusée par la RLS
+    // annule TOUTES les autres. Il suffit donc d'un événement dont l'identité ne
+    // correspond plus à la session courante pour détruire ses 59 voisins légitimes.
+    // Deux cas produisent ça : une identité fabriquée en pré-auth, et un backlog
+    // estampillé sous un compte puis rejoué sous un autre (déconnexion, changement
+    // de compte, expiration) — qu'aucun rafraîchissement de jeton ne réconciliera.
+    // On désattribue plutôt que de perdre : NULL est explicitement toléré.
+    var moi = authUserId();
+    batch = batch.map(function (ev) {
+      if (ev && ev.user_id != null && ev.user_id !== moi) {
+        var copie = {}; for (var k in ev) if (Object.prototype.hasOwnProperty.call(ev, k)) copie[k] = ev[k];
+        copie.user_id = null; copie.user_label = null;   // le pseudo suivrait l'identité qu'on vient de retirer
+        return copie;
+      }
+      return ev;
+    });
     if (!opts.keepalive) sending = true;
     var req;
     try {
