@@ -33,6 +33,13 @@ jobs:
           npm install --no-save @playwright/test
           npx playwright install --with-deps chromium
 
+      # Gate d'autorisation (incident CI-GATE-001) : lancé EN PREMIER et à part,
+      # pour que la séparation entre comptes soit prouvée avant tout le reste et
+      # qu'un rouge ici soit lisible immédiatement, sans le chercher dans 150
+      # résultats. Ne nécessite aucun secret : l'inscription passe par la clé anon.
+      - name: Gate d'autorisation (AUTHZ-CRITICAL)
+        run: npx playwright test tests/e2e/authz-critical.spec.js
+
       - name: Lancer les tests
         run: npx playwright test
 
