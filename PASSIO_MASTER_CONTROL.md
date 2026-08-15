@@ -42,7 +42,16 @@
 | `TEL-IDENT-002` | **P1** | Télémétrie / observabilité | **Fenêtre pré-auth 100 % perdue** (mesuré : 20 envois → 20 × HTTP 401), **empoisonnement de lot** (l'événement `null` légitime meurt avec le poison dans le même insert multi-lignes), et **l'alarme `server_reject` rejetée par la cause qu'elle signale**. | L'app se forge une identité locale `u_xxxx` avant toute authentification (`getMyUserId` app-08, puis `emoji-misc` à 100 ms). `telemetry.js` la recopiait dans `user_id`. Un tel id n'est ni `NULL` ni `auth.uid()` : il ne satisfait jamais `WITH CHECK (user_id IS NULL OR user_id = auth.uid()::text)`. | **FIXED_LOCALLY** | `js/telemetry.js` : ne transmettre qu'un UUID d'authentification, tout le reste à `NULL` ; désinfection aussi **au flush** (couvre le backlog rejoué sous un autre compte). | ✅ `tests/e2e/telemetrie-preauth.spec.js` — après : 1 envoi, HTTP 201, les 2 événements sauvés |
 | `RACE-LIKE-003` | **P3** | Fil / affichage optimiste | `interactions.spec.js:126` flaky : `element was detached from the DOM`. Le test porte sur l'annulation d'un affichage optimiste pendant que le fil est reconstruit et qu'une écriture est en vol. | non établie — peut être une fragilité du test OU une vraie race re-render / rollback | DETECTED | — | le test existe |
 
-**Observation honnête sur `TEL-IDENT-002`** : la perte n'est pas silencieuse — un événement `connectivity/server_reject` est émis avec le nombre d'événements abandonnés. Le défaut est l'abandon lui-même, pas l'opacité.
+### Issus de l'analyse croisée (détail : `PASSIO_INITIAL_JOINT_AUDIT.md`)
+
+| ID | Sév. | Sujet | Statut |
+|---|---|---|---|
+| `F4` | P2 élevé | Usurpation par champs d'affichage dénormalisés (`author_name`, `author_photo`) — texte libre non recoupé avec `profiles`, affiché tel quel | **Migration PRÊTE, NON APPLIQUÉE** — `migrations/migration_identite_affichage_canonique.sql`. Décision produit obtenue : **nom ACTUEL du profil** → 2 triggers (réécriture à l'écriture + propagation au renommage) plutôt qu'une jointure sur les chemins chauds. Index manquants ajoutés |
+| `F5` | P1–P2 | Version skew PWA — tout push déploie, donc un onglet ouvert traverse le déploiement | **COUVERT** — `tests/e2e/version-skew.spec.js`, 5 assertions, 1,8 s. L'architecture était déjà saine ; le test empêche sa dégradation. Assertions mutation-testées (4 mutations détectées) |
+| `F6` | — | Provenance du profil passionnel : `passion_id` existe sur les contenus, absent de **toutes** les tables d'interaction, et sans aucune contrainte | **DÉCISION PRODUIT EN ATTENTE** — `.passio/adr/ADR-007` |
+| `F7` | P1 | Score de santé en moyenne pondérée : 3 bugs critiques ouverts affichaient encore 75/100, aucun facteur d'autorisation | **CORRIGÉ** — `santé = pire domaine critique` + second chiffre CONFIANCE |
+
+**Correction d'une affirmation antérieure sur `TEL-IDENT-002`** : j'avais écrit que la perte n'était pas silencieuse, un `server_reject` étant émis. C'est **faux** — cet événement emprunte la même file, la même auth et la même policy, et se faisait donc rejeter par la cause exacte qu'il signalait. Vérifié par observation réseau.
 
 ## COUVERTURE FONCTIONNELLE
 
