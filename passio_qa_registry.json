@@ -1,0 +1,100 @@
+{
+  "$comment": "Source de verite MACHINE de la qualification PASSIO. Vue humaine : PASSIO_MASTER_CONTROL.md. Vue temps reel : dashboard/. Regle : aucune valeur inventee ; un champ non mesure vaut null et porte un statut explicite.",
+  "schema_version": 1,
+  "generated_at": "2026-08-15",
+  "commit": "f3684a90a16ba2f0a5c54def4140d82231aed892",
+  "branch": "main",
+  "working_tree": "clean",
+  "environment": {
+    "prod_url": "https://passio-app.netlify.app",
+    "supabase_ref": "njkiyoklssvefstljemx",
+    "supabase_region": "West EU (Ireland)"
+  },
+  "scores": {
+    "global_health": { "value": null, "status": "NON_CALCULE", "reason": "Composantes non arretees ; en attente de l'audit conjoint." },
+    "functional": { "value": null, "status": "NON_MESURE", "reason": "Cartographie fonctionnelle inexistante ; aucun denominateur fiable." },
+    "performance": { "value": null, "status": "NON_MESURE", "reason": "Aucune mesure p50/p95 d'interaction." },
+    "security": { "value": null, "status": "PARTIEL", "reason": "RLS active sur 34/34 tables verifiee ; pas de test d'intrusion applicatif rejoue." },
+    "test": { "value": null, "status": "PARTIEL", "reason": "146/159 executes par defaut ; les 12 skippes sont precisement les tests cross-compte." }
+  },
+  "baseline": {
+    "date": "2026-08-15",
+    "checks": [
+      { "id": "SYNTAX", "command": "node --check js/*.js", "result": "PASS", "detail": "19 fichiers" },
+      { "id": "AUDIT_GLOBALS", "command": "npm run audit:globals", "result": "PASS", "detail": "1330 declarations, 19 fichiers, 0 collision" },
+      { "id": "AUDIT_HANDLERS", "command": "npm run audit:handlers", "result": "PASS", "detail": "796 handlers, 1265 appels, 1937 definitions, 0 fantome" },
+      { "id": "AUDIT_ECHAPPEMENT", "command": "npm run audit:echappement", "result": "PASS", "detail": "75 signalements, tous dans le socle relu" },
+      { "id": "BUILD", "command": "node scripts/build.js dist/index.html", "result": "PASS", "detail": "index 205827 o, app.js 1835114 o, styles.css 305265 o" },
+      { "id": "E2E_DEFAULT", "command": "npx playwright test", "result": "PARTIAL", "detail": "146 passes, 1 flaky, 12 skippes, 4.3 min" },
+      { "id": "E2E_CROSS_ACCOUNT", "command": "PASSIO_E2E_MULTI=1 npx playwright test multi-comptes confidentialite", "result": "PASS", "detail": "11 passes, 3.5 min, 0 compte e2e residuel apres purge" },
+      { "id": "DASHBOARD_TESTS", "command": "cd dashboard && npm test", "result": "PASS", "detail": "89 passes, 0 echec" },
+      { "id": "RLS_PROD", "command": "pg_class / pg_policies", "result": "PASS", "detail": "34/34 tables avec RLS activee, 1 a 5 policies chacune" },
+      { "id": "PROD_LANDING", "command": "curl https://passio-app.netlify.app/", "result": "PASS", "detail": "HTTP 200, 123864 octets, 0.76 s" }
+    ]
+  },
+  "incidents": [
+    {
+      "id": "CI-GATE-001",
+      "severity": "P1",
+      "domain": "ci_release_gate",
+      "status": "ROOT_CAUSE_FOUND",
+      "problem": "Chaque deploiement en production est valide par une suite qui n'exerce ni les RLS, ni la visibilite cross-compte, ni le realtime, ni la confidentialite.",
+      "root_cause": ".github/workflows/deploy.yml lance `npx playwright test` sans PASSIO_E2E_MULTI ni PASSIO_QA_CAMPAIGN ; multi-comptes.spec.js, confidentialite.spec.js et qa-campaign.spec.js s'auto-skippent.",
+      "evidence": "12 tests skippes dans la suite par defaut ; test.skip(!process.env.PASSIO_E2E_MULTI) aux lignes 20/21 des specs concernees ; workflow lu.",
+      "fix": null,
+      "fix_blocked_by": "Necessite des identifiants de compte de test en secrets GitHub et une decision sur l'ecriture en base de production depuis la CI.",
+      "regression_test": "specs deja existantes et vertes en local",
+      "verified": false
+    },
+    {
+      "id": "TEL-IDENT-002",
+      "severity": "P2",
+      "domain": "telemetrie_observabilite",
+      "status": "ROOT_CAUSE_FOUND",
+      "problem": "Les lots de telemetrie sont rejetes (42501) puis abandonnes lors d'un changement d'identite (deconnexion, changement de compte, expiration de session).",
+      "root_cause": "js/telemetry.js estampille user_id a la mise en file (window.MY_UID) alors que le jeton d'Authorization est lu au flush. La policy reelle est WITH CHECK (user_id IS NULL OR user_id = auth.uid()::text) : si l'identite a change entre les deux, aucun rafraichissement de jeton ne peut reconcilier, le lot brule ses AUTH_MAX_RETRIES puis est abandonne.",
+      "evidence": "Rafales de HTTP 403/401 code 42501 observees pendant la suite cross-compte du 2026-08-15 ; policy verifiee via pg_policies.",
+      "impact": "Angle mort de l'observabilite exactement sur les scenarios multi-compte / multi-appareil que le centre de pilotage est cense prouver.",
+      "mitigation_existante": "La perte n'est pas silencieuse : un evenement connectivity/server_reject est emis avec le nombre d'evenements abandonnes.",
+      "fix": "Piste : au flush, remettre user_id a NULL (valeur autorisee par la policy) pour tout evenement dont l'auteur ne correspond plus a la session courante.",
+      "regression_test": null,
+      "verified": false
+    },
+    {
+      "id": "RACE-LIKE-003",
+      "severity": "P3",
+      "domain": "fil_affichage_optimiste",
+      "status": "DETECTED",
+      "problem": "tests/e2e/interactions.spec.js:126 flaky : 'element was detached from the DOM' lors du clic sur le bouton de like.",
+      "root_cause": null,
+      "evidence": "1 flaky sur la suite du 2026-08-15 ; le test porte sur l'annulation d'un affichage optimiste pendant la reconstruction du fil avec une ecriture en vol.",
+      "fix": null,
+      "regression_test": "tests/e2e/interactions.spec.js:126",
+      "verified": false
+    }
+  ],
+  "cross_account_proof": {
+    "date": "2026-08-15",
+    "mode": "base de production reelle, comptes crees puis purges",
+    "scenarios_passed": 11,
+    "residual_test_accounts": 0,
+    "verified_in_database": [
+      "like de commentaire cross-compte (compteur hydrate chez l'auteur)",
+      "like et reaction d'evenement cross-compte",
+      "regle 1 reaction par personne verifiee en base",
+      "messagerie entre 2 comptes reels"
+    ],
+    "not_proven": [
+      "latence de propagation (aucune mesure)",
+      "multi-appareil reel (les tests utilisent deux contextes de navigateur, pas deux appareils)",
+      "role d'un troisieme compte temoin C sur l'ensemble des interactions"
+    ]
+  },
+  "joint_audit": {
+    "status": "BLOQUE",
+    "reason": "Aucun navigateur Chrome connecte (list_connected_browsers vide) et ChatGPT deconnecte dans le navigateur integre. L'authentification a la place du fondateur n'est pas realisable.",
+    "dossier_pret": true,
+    "chatgpt_consulted": false,
+    "deliverables_pending": ["PASSIO_INITIAL_JOINT_AUDIT.md", "PASSIO_CONTROL_CENTER_AUDIT.md"]
+  }
+}
