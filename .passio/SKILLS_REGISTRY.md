@@ -72,6 +72,7 @@
 | `passio-feature` | Workflow feature de A à Z (produit→archi→DB/RLS→sécu→UX→impl→tests→télémétrie→perf→red team→doc), enchaîne les skills existantes | ACTIF |
 | `passio-audit` | Audit transverse priorisé P0→P4, sorties dans `reports/`, réutilise `xss-audit`/`rls-audit`/`migration-checker`/`passio-red-team` | ACTIF |
 | `passio-health` | Santé technique sur preuves réelles (syntaxe/build/globals/handlers/tests/schéma/erreurs prod) → verdict GO/NO-GO | ACTIF |
+| `revue-croisee` | Analyse croisée réelle avec ChatGPT (Claude-in-Chrome) : dossier factuel → challenge adversarial → **vérification de chaque hypothèse dans le dépôt** → livrable conjoint. Contient la mécanique navigateur (pièges vécus le 2026-08-15). | ACTIF |
 
 ## Manques identifiés (candidats — cf. `PASSIO_CONTROL_CENTER_ROADMAP.md`)
 - Aucun skill **exécutif transverse** (synthèse produit+tech+growth en une vue) → cf. agent `passio-executive-intelligence` (PLANIFIÉ).
