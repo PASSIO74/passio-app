@@ -10,6 +10,7 @@ import { audit } from "./audit.js";
 
 // Liste blanche : id → { label, cmd, args }. Rien d'autre n'est exécutable.
 export const TEST_SUITES = {
+  authz:      { label: "Autorisation — séparation entre comptes (AUTHZ-CRITICAL)", cmd: "npx", args: ["playwright", "test", "tests/e2e/authz-critical.spec.js"] },
   smoke:      { label: "Smoke + access-gate (E2E)", cmd: "npm", args: ["test"] },
   handlers:   { label: "Audit des handlers onclick", cmd: "npm", args: ["run", "audit:handlers"] },
   globals:    { label: "Audit des collisions de globals", cmd: "npm", args: ["run", "audit:globals"] },
@@ -20,6 +21,35 @@ export const TEST_SUITES = {
 };
 
 let running = null;   // { id, proc, startedAt, output }
+
+// ─── Dernier résultat d'AUTHZ-CRITICAL ──────────────────────────────────────
+// Le domaine « autorisation » du score de santé doit venir d'une VÉRIFICATION
+// RÉELLE, pas d'une supposition. Tant que ce noyau n'a pas tourné ici, il vaut
+// INCONNU — et la santé globale ne peut pas afficher un vert franc (cf. F7).
+// On ne conserve que le verdict et sa date : aucune donnée de test.
+let dernierAuthz = null;   // { pass, total, verifieLe, code }
+
+export function authzSnapshot() {
+  if (!dernierAuthz) return null;
+  const minutes = Math.round((Date.now() - dernierAuthz.at) / 60000);
+  return {
+    pass: dernierAuthz.pass,
+    total: dernierAuthz.total,
+    verifieLe: minutes < 1 ? "à l'instant" : `il y a ${minutes} min`,
+  };
+}
+
+// Playwright résume en fin de sortie : « N passed », « N failed ».
+// Le noyau est UN test portant 9 assertions : c'est le verdict du fichier qui
+// compte, pas un décompte d'assertions qu'on ne peut pas lire de l'extérieur.
+function capterAuthz(sortie, code) {
+  const passed = /(\d+)\s+passed/.exec(sortie);
+  const failed = /(\d+)\s+failed/.exec(sortie);
+  const p = passed ? Number(passed[1]) : 0;
+  const f = failed ? Number(failed[1]) : 0;
+  if (!p && !f) return;                       // sortie illisible : on n'invente pas
+  dernierAuthz = { pass: p, total: p + f, at: Date.now(), code };
+}
 
 export function listSuites() {
   return Object.entries(TEST_SUITES).map(([id, s]) => ({ id, label: s.label, cmd: [s.cmd, ...s.args].join(" ") }));
@@ -47,6 +77,7 @@ export function runSuite(id, actor) {
   proc.stdout.on("data", (c) => push(c, "out"));
   proc.stderr.on("data", (c) => push(c, "err"));
   proc.on("close", (code) => {
+    if (id === "authz") capterAuthz(running.output.join(""), code);
     broadcast("test", { phase: "end", id, code });
     audit("run_tests_done", { id, code }, actor);
     running = null;
