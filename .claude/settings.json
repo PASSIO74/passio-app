@@ -1,5 +1,19 @@
 {
   "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "bash",
+            "command": "node \"C:/Users/BENJAMIN/Desktop/PASSIO/.claude/scripts/garde-commandes.js\"",
+            "timeout": 10,
+            "statusMessage": "Contrôle des commandes destructives"
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "Edit|Write",
@@ -12,65 +26,28 @@
           }
         ]
       }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "bash",
+            "command": "node \"C:/Users/BENJAMIN/Desktop/PASSIO/.claude/scripts/compact-permissions.js\" --quiet",
+            "timeout": 15,
+            "async": true,
+            "statusMessage": "Compactage des permissions"
+          }
+        ]
+      }
     ]
   },
   "permissions": {
     "defaultMode": "bypassPermissions",
-    "allow": [
-      "PowerShell",
-      "Bash(node --check *)",
-      "Bash(node -c *)",
-      "Bash(node scripts/build.js *)",
-      "Bash(node scripts/audit-handlers.js *)",
-      "PowerShell(node --check *)",
-      "PowerShell(node -c *)",
-      "PowerShell(node scripts/build.js *)",
-      "PowerShell(node scripts/audit-handlers.js *)",
-      "PowerShell(git status *)",
-      "PowerShell(git log *)",
-      "PowerShell(git diff *)",
-      "PowerShell(git show *)",
-      "PowerShell(git fetch *)",
-      "PowerShell(git branch *)",
-      "PowerShell(git ls-files *)",
-      "PowerShell(git rev-parse *)",
-      "PowerShell(git add *)",
-      "PowerShell(git commit *)",
-      "PowerShell(git push *)",
-      "PowerShell(git pull *)",
-      "PowerShell(git -C *)",
-      "PowerShell(gh run *)",
-      "PowerShell(gh pr *)",
-      "PowerShell(gh auth status*)",
-      "PowerShell(supabase db *)",
-      "PowerShell(supabase functions *)",
-      "PowerShell(supabase projects *)",
-      "PowerShell(supabase --version*)",
-      "PowerShell(npm test*)",
-      "PowerShell(npm run test:all*)",
-      "PowerShell(npm run audit:handlers*)",
-      "PowerShell(npx playwright *)",
-      "PowerShell(Select-String *)",
-      "PowerShell(Get-Content *)",
-      "PowerShell(Get-ChildItem *)",
-      "PowerShell(Test-Path *)",
-      "PowerShell(Get-Command *)",
-      "PowerShell(Get-Item *)",
-      "PowerShell(Measure-Object *)",
-      "mcp__Claude_Preview__preview_eval",
-      "mcp__Claude_Preview__preview_console_logs",
-      "mcp__Claude_Preview__preview_logs",
-      "mcp__Claude_Preview__preview_screenshot",
-      "mcp__Claude_Preview__preview_snapshot",
-      "mcp__Claude_Preview__preview_inspect",
-      "mcp__Claude_Preview__preview_network",
-      "mcp__Claude_Preview__preview_list",
-      "mcp__Claude_Preview__preview_resize",
-      "mcp__Claude_Preview__preview_click",
-      "mcp__Claude_Preview__preview_fill",
-      "mcp__Claude_Preview__preview_stop",
-      "mcp__ccd_session__mark_chapter",
-      "mcp__ccd_session__spawn_task"
+    "deny": [
+      "Read(./.env)",
+      "Read(./dashboard/.env)",
+      "Read(./.claude/settings.local.json)"
     ]
   }
 }

@@ -32,6 +32,8 @@ supabase/.temp/
 !.claude/settings.json
 !.claude/launch.json
 !.claude/stage-edited-file.js
+!.claude/scripts/
+!.claude/scripts/*.js
 .claude/settings.local.json
 # Les règles ci-dessus sont ancrées à la racine ; le .claude/ du dashboard (config de
 # preview locale) reste, lui, entièrement ignoré.

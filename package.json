@@ -9,7 +9,9 @@
     "audit:echappement": "node scripts/audit-echappement.js --ci",
     "purge:e2e": "node scripts/purge-e2e-accounts.js",
     "revue": "node scripts/dossier-revue.js",
-    "serve": "http-server -p 8080 -c-1 ."
+    "serve": "http-server -p 8080 -c-1 .",
+    "permissions:compact": "node .claude/scripts/compact-permissions.js",
+    "skills:lint": "node .claude/scripts/skills-lint.js"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0",

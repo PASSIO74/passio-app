@@ -57,7 +57,36 @@ Ces règles transverses valent pour TOUTE modification. Le subagent `audit-passi
 - **Build** : exactement 9 fichiers app-*.js entre les marqueurs BUILD:APP. Prod = app.js + styles.css externalisés (hash de contenu).
 - **openModal n’empile pas** : ouvrir une modale depuis une autre la REMPLACE (mémoriser d’où l’on vient) ; `openModal` injecte déjà un `×`.
 
-## Hook d'indexation (`.claude/settings.json`)
+## Hooks & permissions (`.claude/settings.json`)
+
+Trois hooks, chacun pour un problème distinct :
+
+| Hook | Script | Rôle |
+|---|---|---|
+| `PreToolUse` (Bash\|PowerShell) | `.claude/scripts/garde-commandes.js` | seul mécanisme capable de voir le **milieu** d'une commande (`… && rm -rf /`, `DELETE` sans `WHERE`, `DROP TABLE`, `git add .env`). Une règle de permission ne matche qu'un préfixe. |
+| `PostToolUse` (Edit\|Write) | `.claude/stage-edited-file.js` | `git add` du seul fichier modifié. |
+| `SessionStart` | `.claude/scripts/compact-permissions.js --quiet` | empêche l'allowlist de regonfler (voir ci-dessous). |
+
+**Architecture des permissions : `allow` large + garde-fou étroit.** Des `allow`
+étroits interrompent sur l'ordinaire (`npm test`) *et* ratent quand même le
+dangereux caché en milieu de ligne. Le couple allow-large + `garde-commandes.js`
+donne zéro friction sur l'ordinaire et attrape le destructif réel.
+
+⚠️ **Piège mesuré le 2026-08-15** : `settings.local.json` avait atteint 654 règles /
+71 Ko, dont **542 commandes littérales complètes** — inutiles, car sur `Bash`/
+`PowerShell` l'argument est une commande *libre* : un littéral ne re-matche jamais
+la commande suivante, l'allowlist gonflait sans jamais réduire les interruptions
+(9 entrées portaient un JWT en clair). Distinction à garder en tête :
+`Skill(nom)`, `Read(chemin)`, `mcp__…` ont un argument **identifiant stable** → un
+littéral y est parfaitement réutilisable. `npm run permissions:compact` applique
+la règle (70 → 6 Ko) et tourne au `SessionStart`.
+
+**Capitalisation** : quand une procédure se révèle réutilisable, ou quand une
+instruction doit être répétée, la transformer en outil durable plutôt qu'en
+rappel — skill, script, hook ou règle selon la portée : `/skill-optimizer`
+(`npm run skills:lint` pour l'état factuel de la bibliothèque).
+
+---
 
 Le hook `PostToolUse` (Edit|Write) exécute `.claude/stage-edited-file.js`, qui fait **uniquement** `git add <le fichier qui vient d'être modifié>`. Il remplace l'ancien `git add -A && git commit -m "auto: …" && git push origin main`, dangereux à deux titres : ① `git add -A` indexait TOUT le dépôt — quand deux sessions Claude travaillent en parallèle sur ce dossier, chacune ramassait les fichiers en cours de l'autre (le 2026-07-21, trois commits ont mélangé des travaux CDV et IRL distincts) ; ② le `push origin main` **déployait en production à chaque frappe**, seul le garde `commit-msg` (qui refuse les messages « auto: ») l'empêchant — une protection fragile et non intentionnelle. Le script ignore silencieusement tout fichier hors dépôt (scratchpad) et tout payload illisible. **Committer et pousser restent des gestes explicites.**
 
@@ -104,7 +133,7 @@ npm run revue -- --titre "Ce que fait le changement" --tests
 
 Le script est en lecture seule sur le dépôt (il n'écrit que dans son dossier de sortie) et n'a aucun accès prod. Chaque piège a une **portée** : les invariants DOM/globals ne valent que pour `js/app-*.js`, pas pour les modules Node — sinon le rapport se noie dans les faux positifs. Détail : `.passio/reviews/README.md`.
 
-⚠️ **`.claude/` est désormais versionné SÉLECTIVEMENT** (skills + subagents = savoir projet, ils doivent survivre à un changement de machine). `.claude/settings.local.json` reste exclu : il contient des JWT et une clé `sb_secret_…` en clair dans ses commandes autorisées. Ne jamais le committer.
+⚠️ **`.claude/` est désormais versionné SÉLECTIVEMENT** (skills + subagents = savoir projet, ils doivent survivre à un changement de machine). `.claude/settings.local.json` reste exclu : il a longtemps contenu des JWT et une clé `sb_secret_…` en clair dans ses commandes autorisées (9 entrées, purgées le 2026-08-15 par `npm run permissions:compact`, qui refuse désormais de conserver toute règle porteuse de secret). Il reste hors versionnement : c'est un fichier de poste, pas du savoir projet.
 
 ## 📚 Références projet
 - `docs/PIEGES_CONNUS.md` — les 56 fiches détaillées (extrait de ce fichier le 2026-08-07).
