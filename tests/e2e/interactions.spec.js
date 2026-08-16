@@ -80,11 +80,17 @@ async function bootInteractions(page) {
 async function attendreFilStable(page, id) {
   const sel = `[data-postid="${id}"] [data-action="like"]`;
   await page.waitForSelector(sel, { timeout: 15000 });
-  await page.waitForFunction((s) => {
+  // Compteurs de diagnostic : quand cette attente expire, on veut savoir POURQUOI.
+  // « Le nœud a été remplacé 900 fois » et « le nœud a disparu du DOM » appellent
+  // des corrections opposées ; sans le chiffre, on choisit à pile ou face.
+  await page.evaluate(() => { window.__filRef = null; window.__filStable = 0; window.__filDiag = { sondages: 0, remplacements: 0, absences: 0 }; });
+  try {
+    await page.waitForFunction((s) => {
     const n = document.querySelector(s);
-    if (!n) { window.__filRef = null; window.__filStable = 0; return false; }
+    const d = window.__filDiag; if (d) d.sondages++;
+    if (!n) { if (d) d.absences++; window.__filRef = null; window.__filStable = 0; return false; }
     if (window.__filRef === n) { window.__filStable = (window.__filStable || 0) + 1; }
-    else { window.__filRef = n; window.__filStable = 1; }
+    else { if (d && window.__filRef) d.remplacements++; window.__filRef = n; window.__filStable = 1; }
     return window.__filStable >= 3;
     // ⚠️ polling par INTERVALLE, jamais "raf" : requestAnimationFrame ne se
     // déclenche pas sur une page qui ne compose pas de frames — ce qui est le
@@ -92,6 +98,12 @@ async function attendreFilStable(page, id) {
     // attente expirait alors que le fil était parfaitement stable : le garde
     // ne s'exécutait tout simplement jamais.
   }, sel, { polling: 50, timeout: 15000 });
+  } catch (e) {
+    const d = await page.evaluate(() => window.__filDiag).catch(() => null);
+    throw new Error(`attendreFilStable a expiré sur ${sel}\n`
+      + `diagnostic : ${d ? `${d.sondages} sondages, ${d.remplacements} remplacements de nœud, ${d.absences} absences` : "indisponible"}\n`
+      + `(remplacements élevés = le fil se re-rend en boucle ; absences élevées = le post n'est plus dans le DOM)\n${e.message}`);
+  }
 }
 
 // Rend le fil non vide : sans passion sélectionnée, le fil est vide PAR DESIGN.
