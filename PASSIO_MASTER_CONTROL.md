@@ -114,9 +114,25 @@ J'avais déclaré ce sujet **clos** au motif que le profilage CPU ne désignait 
 | `app-01-diag-seed` | 96 Ko | 98 % |
 | **Total** | **1 714 Ko** | **20 % — soit 1 367 Ko jamais exécutés** |
 
-Le coût de parse/compile, lui, s'applique à **100 %** du fichier. Il y a donc bien un levier, et il est massif.
+**⚠️ Correction — j'ai écrit ici que « le levier existe, et il est massif ». C'était faux, et la mesure suivante l'a démenti.**
 
-**Prochaine étape retenue** (et pas davantage) : extraire **un seul** module expérimental — candidat naturel `app-06-reels-partage`, le moins exécuté — et le charger dynamiquement. Si le retirer du démarrage ne déplace pas les 2 575 ms de tâches longues, alors le sujet sera vraiment clos, sur une preuve et non sur une intuition.
+Coût d'injection réel, fichier par fichier (CPU ×4, réseau chaud, cache de code neutralisé) :
+
+```
+cumul des 9 fichiers = 133 ms
+   24 ms  app-06-reels-partage      ← le candidat au découpage
+   19 ms  app-01-diag-seed
+   15 ms  app-03-posts-vlogs
+    8 ms  app-08-ui-modals-tour     (281 Ko, et 8 ms)
+```
+
+**133 ms sur 2 575 ms de tâches longues, soit 5 %.** Extraire `app-06` économiserait au mieux **24 ms**.
+
+La raison tient à V8 : le **pré-parse est paresseux**. Une fonction n'est analysée en profondeur qu'au premier appel — donc les 1 367 Ko jamais exécutés ne coûtent presque rien. La couverture à 20 % est un chiffre **exact mais non actionnable** : elle mesure ce qui n'est pas exécuté, pas ce qui coûte.
+
+**Sujet du découpage : CLOS, cette fois sur une preuve.** C'était exactement le critère demandé par la revue croisée — « si retirer ce chunk ne déplace pas les 2 575 ms, tu auras une vraie raison de fermer le sujet ».
+
+**Ce qui reste ouvert** : les ~2 440 ms restants ne viennent donc **pas** du chargement des scripts. Ils sont dans le travail de démarrage lui-même — construction du DOM, calcul de styles, mise en page, et le `boot()` de l'app. C'est là qu'il faudra chercher, et nulle part ailleurs.
 
 ⚠️ **Piège de mesure rencontré** : un premier calcul annonçait « 100 % exécuté » sur tous les fichiers. Les plages de couverture V8 sont **imbriquées** — additionner les plages `count > 0` compte l'enveloppe du fichier entier. Il faut une carte d'octets et démarquer les plages `count === 0`.
 
