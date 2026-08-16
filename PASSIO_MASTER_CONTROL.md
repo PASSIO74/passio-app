@@ -41,6 +41,7 @@
 | `CI-GATE-001` | **P1** | CI / release gate | La CI valide chaque déploiement prod avec une suite qui **n'exerce ni les RLS, ni le cross-compte, ni le realtime, ni la confidentialité**. | `.github/workflows/deploy.yml` lance `npx playwright test` sans `PASSIO_E2E_MULTI` / `PASSIO_QA_CAMPAIGN` → `multi-comptes.spec.js`, `confidentialite.spec.js`, `qa-campaign.spec.js` sont skippés (les 12 « skipped »). | **FIXED_LOCALLY** | Noyau `tests/e2e/authz-critical.spec.js` : 9 invariants d'autorisation, non skippable, **aucun secret CI requis** (inscription par la clé anon). Étape dédiée en tête du workflow. | ✅ vert en 2,7 s contre la base réelle |
 | `TEL-IDENT-002` | **P1** | Télémétrie / observabilité | **Fenêtre pré-auth 100 % perdue** (mesuré : 20 envois → 20 × HTTP 401), **empoisonnement de lot** (l'événement `null` légitime meurt avec le poison dans le même insert multi-lignes), et **l'alarme `server_reject` rejetée par la cause qu'elle signale**. | L'app se forge une identité locale `u_xxxx` avant toute authentification (`getMyUserId` app-08, puis `emoji-misc` à 100 ms). `telemetry.js` la recopiait dans `user_id`. Un tel id n'est ni `NULL` ni `auth.uid()` : il ne satisfait jamais `WITH CHECK (user_id IS NULL OR user_id = auth.uid()::text)`. | **FIXED_LOCALLY** | `js/telemetry.js` : ne transmettre qu'un UUID d'authentification, tout le reste à `NULL` ; désinfection aussi **au flush** (couvre le backlog rejoué sous un autre compte). | ✅ `tests/e2e/telemetrie-preauth.spec.js` — après : 1 envoi, HTTP 201, les 2 événements sauvés |
 | `TEL-NOISE-004` | **P2** | Télémétrie / hygiène des données | **79 % de la table de télémétrie était du bruit de test** : `development` 40 625 événements contre `production` 10 532 (mesuré le 2026-08-16). | Une seule base Supabase, et la télémétrie **active par défaut** sur localhost : les ~15 specs e2e écrivaient en production à chaque exécution. Aggravé par le correctif `TEL-IDENT-002`, qui a transformé du bruit *rejeté* en bruit *stocké*. | **✅ CLOS le 2026-08-16** | En local, opt-in explicite (`?telemetry=1`). **Purge exécutée : 44 960 lignes `development` supprimées**, `production = 10 532` intacte, vacuum passé. | ✅ 2 tests en sens inverse : un envoi forcé part (201) / aucun envoi non sollicité |
+| `SYNC-B64-005` | **P1** | Performance / synchro d'état | `user_state` : p95 = 2 844 ms, **max 43 199 ms** sur le 2ᵉ endpoint le plus appelé (757 appels). État médian 1 288 o, **plus gros état 4 731 kB** — facteur 3 700×. | `avatarPhoto` + `coverPhoto` stockées en **base64** (2 352 kB chacune) dans l'état synchronisé, soit 99,7 % du blob renvoyé à chaque synchro. Violation d'ADR-004. `_syncableState()` expurgeait déjà le base64 **mais seulement pour les profils passion**, pas pour les photos du compte. | **FIXED_LOCALLY** | Expurgation étendue aux photos du compte, à la frontière de synchronisation (un seul endroit, couvre tous les producteurs). Aucune mutation de données : la prochaine synchro réécrit l'état expurgé. | ✅ `tests/e2e/etat-sync-base64.spec.js`, **mutation-testé** (échoue sans le correctif) |
 | `RACE-LIKE-003` | **P3** | Fil / affichage optimiste | `interactions.spec.js:126` flaky : `element was detached from the DOM`. Le test porte sur l'annulation d'un affichage optimiste pendant que le fil est reconstruit et qu'une écriture est en vol. | non établie — peut être une fragilité du test OU une vraie race re-render / rollback | DETECTED | — | le test existe |
 
 ### Issus de l'analyse croisée (détail : `PASSIO_INITIAL_JOINT_AUDIT.md`)
@@ -92,9 +93,18 @@ C'est là qu'est le sujet : le fil principal est bloqué ~2,5 s cumulées au dé
 
 **Conséquence pour la suite** : toute optimisation doit viser le **découpage du travail de démarrage**, pas la réduction du poids. Mesurer d'abord quelle tâche coûte 496 ms avant de toucher à quoi que ce soit.
 
+### Latences réelles des appels API (télémétrie de production)
+
+| Endpoint | n | p50 | p95 | max | Verdict |
+|---|---|---|---|---|---|
+| `/rest/v1/user_state` | 757 | 156 ms | **2 844 ms** | **43 199 ms** | ❌ défaut réel → `SYNC-B64-005`, corrigé |
+| `/functions/v1/notify-call` | 70 | 894 ms | 4 337 ms | 4 674 ms | ✅ **pas un défaut** — appelé en *fire-and-forget*, en complément du ring realtime qui couvre le cas app ouverte. Ce chemin ne sert qu'à réveiller une app fermée, où la latence de la push domine de toute façon |
+| `/rest/v1/follows` | 351 | 99 ms | 1 275 ms | 6 438 ms | à surveiller |
+| `/rest/v1/profiles` | 773 | 80 ms | 1 130 ms | 8 849 ms | à surveiller |
+
 ### Toujours non mesuré
 
-Les latences d'interaction (like, commentaire, publication, message) — aucun p50/p75/p95 n'existe. Toute affirmation de réactivité resterait non fondée.
+La latence **perçue** des interactions (temps entre le tap et le retour visuel pour un like, un commentaire, une publication) — distincte de la latence réseau ci-dessus, qui est masquée par l'affichage optimiste. Aucun p50/p95 n'existe sur ce ressenti ; toute affirmation de réactivité resterait non fondée.
 
 ## TESTS DE SYNCHRONISATION A ↔ B ↔ C
 

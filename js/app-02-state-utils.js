@@ -190,13 +190,31 @@ function _syncableState() {
   // La photo reste dans localStorage (s.user n'est pas modifié en mémoire) ; seule
   // la copie envoyée au serveur est expurgée. L'URL Storage (prof.photoUrl) elle,
   // est conservée pour la synchronisation cross-appareil.
+  const _isB64 = function (v) { return v && typeof v === "string" && v.indexOf("data:") === 0; };
+
+  // ⚠️ Le même traitement pour les photos du COMPTE (s.user.general), qui étaient
+  // passées au travers : l'expurgation ci-dessous ne couvrait que les profils
+  // passion. Mesuré en prod le 2026-08-16 — un compte portait 4 705 kB de base64
+  // dans son état (avatarPhoto 2 352 kB + coverPhoto 2 352 kB), soit 99,7 % du
+  // blob, renvoyé à CHAQUE synchronisation. Conséquence sur `user_state`, le
+  // 2ᵉ endpoint le plus appelé : p95 = 2 844 ms et un maximum à 43 secondes.
+  //
+  // La photo reste intacte en mémoire et dans localStorage : seule la copie
+  // envoyée au serveur est expurgée. L'URL Storage, elle, part normalement —
+  // c'est elle qui porte la synchronisation cross-appareil (profiles.avatar_url).
+  if (s.user && s.user.general && (_isB64(s.user.general.avatarPhoto) || _isB64(s.user.general.coverPhoto))) {
+    const g = Object.assign({}, s.user.general);
+    if (_isB64(g.avatarPhoto)) g.avatarPhoto = null;
+    if (_isB64(g.coverPhoto)) g.coverPhoto = null;
+    s.user = Object.assign({}, s.user, { general: g });
+  }
+
   if (s.user && Array.isArray(s.user.profiles)) {
     s.user = {
       ...s.user,
       profiles: s.user.profiles.map(function(p) {
         // Idem pour la photo de FOND du profil passion (p.coverPhoto) : seule
         // l'URL Storage (p.coverUrl) part au serveur.
-        const _isB64 = function(v) { return v && typeof v === "string" && v.indexOf("data:") === 0; };
         if (_isB64(p.photo) || _isB64(p.coverPhoto)) {
           const c = Object.assign({}, p);
           if (_isB64(c.photo)) c.photo = null;

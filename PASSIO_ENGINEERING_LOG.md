@@ -4,6 +4,39 @@
 
 ---
 
+## 2026-08-16 — Boucle 5 : la performance, mesurée puis corrigée à la source
+
+### Le poids n'était pas le problème — et le chiffre fautif venait de moi
+« 1,84 Mo de JS », écrit dans l'audit conjoint, était la **source non minifiée**. Réel servi : **≈ 355 Ko** transférés (HTML 33 Ko + app.js 287 Ko + CSS 34 Ko). Aucune optimisation de poids ne se justifie.
+
+Le coût est sur le processeur : sous bridage CPU ×4, **11 tâches longues cumulant 2 575 ms**, la plus longue à 496 ms.
+
+### Profilage : un résultat NÉGATIF, et il compte
+Profil CPU au niveau fonction : aucune fonction applicative ne domine (`_measureAppVh` 32 ms, `defaultState` 13 ms — négligeables). Le temps part dans `(program)`, c'est-à-dire le parse/compile V8 du monolithe et le layout.
+
+Conclusion : **il n'y a pas de gain facile**. Le seul levier serait le découpage par univers, qui casserait le modèle de hoisting — exactement ce que l'analyse croisée recommandait de ne pas faire. Le sujet est donc **clos**, pas laissé ouvert en « l'app est lente ». *(Réserve : le profil inclut la surcharge de l'instrumentation Playwright — les valeurs absolues sont majorées.)*
+
+### La vraie trouvaille est venue des données de production
+`p50`/`p95` calculés sur la télémétrie réelle. Le pire endpoint n'était pas devinable :
+
+```
+/functions/v1/…    n= 70   p50= 894   p95= 4337
+/rest/v1/user_state n=757  p50= 156   p95= 2844   max= 43199
+```
+
+`user_state` — 80 lignes, 10 Mo. **État médian 1 288 octets, plus gros état 4 731 kB** : un facteur 3 700×. Dans ce blob, `avatarPhoto` et `coverPhoto` en **base64, 2 352 kB chacune** — 99,7 % du contenu, renvoyé à chaque synchronisation.
+
+Violation directe d'un invariant documenté (ADR-004 : jamais de base64 en base). Et le plus instructif : **`_syncableState()` expurgeait déjà le base64… mais seulement pour les profils passion**, pas pour les photos du compte. Quelqu'un avait identifié la classe de bug et traité un seul des deux emplacements. La mesure a trouvé le survivant.
+
+Correctif à la **frontière de synchronisation** — un seul endroit qui couvre tous les producteurs présents et futurs, même raisonnement que pour la télémétrie. Une seule ligne sur 80 était concernée ; aucune mutation de données n'est nécessaire, la prochaine synchronisation de cet appareil réécrira l'état expurgé par-dessus.
+
+`tests/e2e/etat-sync-base64.spec.js` vérifie les deux emplacements, que les URL Storage passent bien (les expurger casserait la synchro cross-appareil) et que la photo reste intacte en mémoire. **Mutation-testé** : sans le correctif, il échoue sur la bonne assertion.
+
+### Piège de vérification rencontré
+`git checkout <fichier>` restaure depuis l'**index** — or le hook `PostToolUse` y a déjà indexé la modification. Le premier test de mutation a donc tourné *avec* le correctif et l'a déclaré valide à tort. Il faut `git checkout HEAD -- <fichier>`.
+
+---
+
 ## 2026-08-16 — Boucle 4 : les trois migrations appliquées en production
 
 Benjamin a levé la réserve (« fait tout ») : les migrations préparées la nuit précédente sont passées en prod, chacune avec contrôle avant/après.
