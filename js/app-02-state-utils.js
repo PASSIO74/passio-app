@@ -336,7 +336,33 @@ function _markStateSynced(ts) {
   } catch (_e) {}
 }
 
+// Sérialisation des sauvegardes — incident SYNC-CLOCK-011.
+// 17 points d'appel déclenchent `supaSaveUserState`, et la plupart sont des
+// « flush immédiat » qui court-circuitent le debounce. Le garde `!_stateDirty`
+// ne protège PAS de la concurrence : le drapeau ne retombe qu'APRÈS l'await, si
+// bien que deux upserts aveugles peuvent voler en même temps. Rien ne garantit
+// alors leur ordre de commit — le plus ANCIEN peut écraser le plus RÉCENT, sur
+// un seul appareil, sans le moindre décalage d'horloge.
+// On chaîne donc au lieu de paralléliser, et on rejoue une fois à la fin si
+// l'état a encore bougé pendant l'envoi (sinon la dernière modification, celle
+// qui a justement déclenché l'appel bloqué, ne partirait jamais).
+let _savingUserState = null;
+let _saveUserStateAgain = false;
+
 async function supaSaveUserState() {
+  if (_savingUserState) { _saveUserStateAgain = true; return _savingUserState; }
+  _savingUserState = _supaSaveUserStateOnce();
+  try { await _savingUserState; }
+  finally {
+    _savingUserState = null;
+    if (_saveUserStateAgain) {
+      _saveUserStateAgain = false;
+      if (_stateDirty) await supaSaveUserState();
+    }
+  }
+}
+
+async function _supaSaveUserStateOnce() {
   try {
     if (typeof supa === "undefined" || !supa || !window._supaReal) return;
     if (typeof MY_UID === "undefined" || !MY_UID) return;
@@ -345,14 +371,32 @@ async function supaSaveUserState() {
     // retour du bfcache déclenchait un SECOND upsert du MÊME état, mais horodaté
     // maintenant — capable d'écraser ce qu'un autre appareil a écrit entre-temps.
     if (!_stateDirty) return;
-    const payload = { user_id: MY_UID, data: _syncableState(), updated_at: new Date().toISOString() };
-    const { error } = await supa.from("user_state").upsert(payload, { onConflict: "user_id" });
+    // ⚠️ `updated_at` N'EST PLUS ENVOYÉ. C'est la base qui horodate
+    // (trigger trg_user_state_horodatage). Le client n'a pas à être cru sur
+    // l'heure : c'est cette valeur qui arbitre la fusion au démarrage, et un
+    // appareil en avance gagnait donc définitivement contre tous les autres.
+    // On relit la valeur serveur pour marquer la synchro sur elle.
+    const payload = { user_id: MY_UID, data: _syncableState() };
+    const { data: ligne, error } = await supa.from("user_state")
+      .upsert(payload, { onConflict: "user_id" })
+      .select("updated_at")
+      .maybeSingle();
     if (!error) {
-      _markStateSynced(payload.updated_at);
-      _clearPendingUserState(MY_UID, payload.updated_at);   // n'efface QUE ce qu'on vient d'acquitter
+      // Repli sur l'horloge locale UNIQUEMENT si la relecture n'a rien rendu
+      // (ancienne base sans trigger, ou `return=minimal` imposé) : mieux vaut un
+      // marqueur approximatif que pas de marqueur du tout, qui relancerait une
+      // restauration serveur à chaque démarrage.
+      const tsServeur = (ligne && ligne.updated_at) || new Date().toISOString();
+      _markStateSynced(tsServeur);
+      _clearPendingUserState(MY_UID);   // la sauvegarde a abouti : plus rien à rejouer
     } else {
       // Échec serveur (réseau/RLS) : on garde le blob pour un rejeu au prochain boot.
-      _queuePendingUserState(payload);
+      // ⚠️ `updated_at` est REMIS ICI, et seulement ici : la file est un objet
+      // LOCAL, dont l'horodatage ne sert qu'à l'ordonner et à l'acquitter
+      // (`_clearPendingUserState`). Il ne fait plus autorité côté serveur — au
+      // rejeu, le trigger l'écrase. C'est la distinction qui manquait : une heure
+      // locale peut servir de repère local, jamais d'arbitre partagé.
+      _queuePendingUserState(Object.assign({ updated_at: new Date().toISOString() }, payload));
     }
   } catch (e) {
     // « Failed to fetch » (requête avortée par le passage en arrière-plan) atterrit ici.
@@ -400,8 +444,12 @@ function supaSaveUserStateBeacon() {
     // garde sert aussi de dédoublonnage : pagehide ET visibilitychange(hidden) tirent
     // tous les deux à la fermeture, le second trouve le drapeau déjà retombé.
     if (!_stateDirty) return;
-    const payload = { user_id: MY_UID, data: _syncableState(), updated_at: new Date().toISOString() };
-    const queued = _queuePendingUserState(payload);   // filet : rejoué au boot si le keepalive rate
+    // `updated_at` sert ICI de repère LOCAL (ordonnancement de la file,
+    // acquittement ciblé) mais n'est PAS envoyé : la base horodate. Deux objets
+    // distincts, donc, là où il n'y en avait qu'un — c'est toute la correction.
+    const marqueurLocal = new Date().toISOString();
+    const payload = { user_id: MY_UID, data: _syncableState() };
+    const queued = _queuePendingUserState(Object.assign({ updated_at: marqueurLocal }, payload));   // filet : rejoué au boot si le keepalive rate
     // Le timer de debounce déjà armé porte la MÊME génération d'état : le laisser
     // courir produirait un second upsert, ré-horodaté, au retour du bfcache.
     if (_stateSyncTimer) { clearTimeout(_stateSyncTimer); _stateSyncTimer = null; }
@@ -435,7 +483,14 @@ function supaSaveUserStateBeacon() {
       // Acquittement CIBLÉ : si l'utilisateur est revenu et a re-sauvegardé entre-temps,
       // la file contient déjà un blob plus récent — cette réponse tardive ne doit pas
       // l'effacer.
-      if (res && res.ok) { _markStateSynced(payload.updated_at); _clearPendingUserState(payload.user_id, payload.updated_at); }
+      // ⚠️ On efface la file — l'écriture a abouti — mais on NE marque PAS la
+      // synchro : la réponse est `return=minimal`, on ne connaît donc pas la
+      // valeur retenue par la base, et inscrire une heure locale à sa place
+      // remettrait exactement l'autorité qu'on vient de lui retirer.
+      // Conséquence assumée : au prochain démarrage, le serveur paraîtra plus
+      // récent et son état sera restauré. C'est sans perte — il contient
+      // précisément ce que ce beacon vient d'envoyer.
+      if (res && res.ok) { _clearPendingUserState(payload.user_id, marqueurLocal); }
     }, function () {}).catch(function () {});
   } catch (e) { console.warn("supaSaveUserStateBeacon:", e && e.message); }
 }
@@ -468,10 +523,17 @@ async function _flushPendingUserState() {
     // BASE, dans la requête d'écriture elle-même : la ligne n'est remplacée que si son
     // updated_at est encore antérieur au nôtre. Elle protège aussi du décalage
     // d'horloge dans le sens dangereux — un client en retard ne peut plus rien écraser.
+    // ⚠️ La comparaison se fait entre DEUX VALEURS SERVEUR, jamais entre une heure
+    // client et une heure serveur. `_stateSyncedAt` est désormais la dernière
+    // valeur relue de la base : « la ligne n'a pas bougé depuis que je l'ai vue »
+    // est un test vérifiable ; « ma montre est plus récente que la ligne » ne
+    // l'est pas. Sans ça, l'horodatage serveur aurait FAIT PERDRE ses reprises
+    // hors-ligne à tout appareil dont l'horloge retarde de quelques secondes.
+    const baseServeur = (typeof state !== "undefined" && state && state._stateSyncedAt) || pending.updated_at;
     const { data: upd, error: upErr } = await supa.from("user_state")
-      .update({ data: pending.data, updated_at: pending.updated_at })
+      .update({ data: pending.data })       // le trigger horodate : rien à imposer
       .eq("user_id", MY_UID)
-      .lt("updated_at", pending.updated_at)
+      .lte("updated_at", baseServeur)
       .select("updated_at");
     if (upErr) return;   // réseau/RLS encore KO : on garde la file pour un prochain essai
 
@@ -481,7 +543,9 @@ async function _flushPendingUserState() {
       const { data: row, error: selErr } = await supa.from("user_state").select("user_id").eq("user_id", MY_UID).maybeSingle();
       if (selErr) return;
       if (row) { _clearPendingUserState(MY_UID, pending.updated_at); return; }  // serveur plus récent : file obsolète
-      const { error: insErr } = await supa.from("user_state").insert(pending);
+      // Insertion sans `updated_at` : la base horodate. Envoyer la valeur de la
+      // file reviendrait à réintroduire l'autorité client par la porte de secours.
+      const { error: insErr } = await supa.from("user_state").insert({ user_id: pending.user_id, data: pending.data });
       if (insErr) return;
     }
 
@@ -490,7 +554,10 @@ async function _flushPendingUserState() {
     // en se croyant synchronisée — et la prochaine sauvegarde réécrase le rejeu (les
     // follows tout juste restaurés disparaissaient à la modification suivante).
     try { _applyUserState(pending.data); } catch (_e) {}
-    _markStateSynced(pending.updated_at);
+    // Marquer sur la valeur RENDUE PAR LA BASE quand on l'a : c'est elle qui sera
+    // comparée au prochain démarrage. Repli sur l'heure de la file si le chemin
+    // « insert » est passé (pas de RETURNING lu) — approximatif mais local.
+    _markStateSynced((upd && upd[0] && upd[0].updated_at) || pending.updated_at);
     _clearPendingUserState(MY_UID, pending.updated_at);
     try { if (typeof renderEverything === "function") renderEverything(); } catch (_e) {}
   } catch (e) { console.warn("_flushPendingUserState:", e && e.message); }
