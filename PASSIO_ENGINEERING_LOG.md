@@ -38,11 +38,27 @@ D'où un export par l'API REST, exécuté sur la production : **32 tables (1 104
 
 `supabase db dump | tail` a renvoyé 0 alors que `supabase` sortait en 1 : **un code de sortie lu après un pipe mesure le dernier maillon**. J'ai failli déclarer un incident « l'outil ment sur son succès » qui n'existait pas. Corrigé par une seconde mesure sans pipe, avant d'écrire quoi que ce soit.
 
+### La latence perçue : instrumentée, pas encore observée
+
+Troisième blanc du readiness. La télémétrie date maintenant chaque clic depuis la **phase de capture** (donc avant tout handler) et joint le délai jusqu'à la **première image peinte** — deux `requestAnimationFrame` enchaînés — dans `meta.ms`.
+
+Ce que ça mesure et ce que ça ne mesure pas : le temps jusqu'au premier rendu, **pas** jusqu'au résultat confirmé par le serveur. Un « j'aime » optimiste peint en 20 ms et se confirme en 300 ; c'est 20 qui est ressenti. L'événement part **après** la peinture pour ne pas doubler le volume de la table, avec un délai de secours d'une seconde — sans quoi tout clic suivi d'un passage en arrière-plan disparaîtrait, `requestAnimationFrame` ne se déclenchant jamais sur un onglet caché.
+
+**Le chiffre n'existe pas encore, et le readiness le dit** : 28 ms relevés en local ne disent rien d'un téléphone sur réseau mobile. Il faut du trafic.
+
+### Le test qui ne testait rien
+
+Les deux tests de latence ont été soumis à mutation avant commit. Le premier a tué la sienne (champ renommé `tel_ms` — un nom que le filtre PII rejette en silence, faute très plausible).
+
+**Le second ne l'a pas tuée.** Il prétendait vérifier le comportement en onglet caché en forçant `document.visibilityState` par `defineProperty` ; il restait vert **après suppression du filet de sécurité qu'il gardait**, parce qu'en headless `requestAnimationFrame` continue de tourner malgré cette propriété. Un test creux, du type que `audit:tests` n'attrape pas — il vérifiait bien du code de production, simplement pas celui qu'il annonçait.
+
+Réécrit pour neutraliser `requestAnimationFrame` lui-même, et surtout pour **asserter que le chemin visé est bien emprunté** (`window.__rafDemandes > 0`) : sans cette vérification, on retombe dans le même piège d'un cran plus loin. Il tue maintenant sa mutation. La règle en est tirée dans le skill `new-test`.
+
 ### Fichiers touchés
-`scripts/couverture-{interactions,rapport,mesure}.js`, `scripts/serve-couverture.js`, `scripts/sauvegarde-donnees.js`, `playwright.config.js`, `package.json`, `.gitignore`, `docs/RECUPERATION.md`, `PASSIO_FUNCTIONAL_MAP.md`, `PASSIO_PRODUCTION_READINESS.md`, `passio_qa_registry.json`. **Aucun fichier applicatif** (`js/`, `index.html`, `styles.css`) — le déploiement est identique à l'existant.
+`scripts/couverture-{interactions,rapport,mesure}.js`, `scripts/serve-couverture.js`, `scripts/sauvegarde-donnees.js`, `playwright.config.js`, `package.json`, `.gitignore`, `docs/RECUPERATION.md`, `js/telemetry.js`, `tests/e2e/latence-percue.spec.js`, `PASSIO_FUNCTIONAL_MAP.md`, `PASSIO_PRODUCTION_READINESS.md`, `passio_qa_registry.json`, skills `new-test` et `sauvegarde`.
 
 ### Vérifications exécutées
-Suite complète `PASSIO_E2E_MULTI=1` : **175 passés, 1 flaky, 1 skipped**. Les 4 audits statiques verts. Chemin par défaut de Playwright revérifié après la modification de configuration.
+Suite complète `PASSIO_E2E_MULTI=1`, deux fois — avant la modification de télémétrie (**175 passés, 1 flaky**) et après (**176 passés, 2 flaky, 1 skipped** sur 179). Flaky : publication d'étape CDV, et annulation du ❤️ optimiste ; verts au réessai, à surveiller. Les 4 audits statiques verts, build prod OK, 0 compte e2e résiduel.
 
 ---
 

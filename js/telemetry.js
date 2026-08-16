@@ -783,7 +783,39 @@
         || (t.id ? "#" + t.id : "")
         || (t.textContent || "").trim().slice(0, 40)
         || t.tagName.toLowerCase();
-      Telemetry.click(String(label).slice(0, 60), { tag: t.tagName.toLowerCase() });
+
+      // ─── Latence perçue : du tap à la première image peinte ────────────────
+      // On est en phase de CAPTURE : `t0` précède tout handler applicatif. Deux
+      // rAF enchaînés rendent la main APRÈS la peinture de la frame suivante ;
+      // l'écart est donc le délai au bout duquel l'utilisateur voit quelque
+      // chose bouger.
+      //
+      // Ce que ça mesure, précisément : le temps jusqu'au premier rendu, PAS le
+      // temps jusqu'au résultat confirmé par le serveur. Un « j'aime » optimiste
+      // peint en 20 ms et se confirme en 300 ; c'est bien 20 qui est ressenti.
+      //
+      // L'événement est émis APRÈS la peinture pour ne pas doubler le volume de
+      // la table. Filet indispensable : `requestAnimationFrame` ne se déclenche
+      // JAMAIS sur un onglet caché — sans le délai de secours, tout clic suivi
+      // d'un passage en arrière-plan disparaîtrait purement et simplement.
+      var t0 = (window.performance && performance.now) ? performance.now() : Date.now();
+      var emis = false;
+      var emettre = function (ms) {
+        if (emis) return;
+        emis = true;
+        Telemetry.click(String(label).slice(0, 60), { tag: t.tagName.toLowerCase(), ms: ms });
+      };
+      if (window.requestAnimationFrame) {
+        requestAnimationFrame(function () {
+          requestAnimationFrame(function () {
+            var t1 = (window.performance && performance.now) ? performance.now() : Date.now();
+            emettre(Math.round(t1 - t0));
+          });
+        });
+        setTimeout(function () { emettre(null); }, 1000);
+      } else {
+        emettre(null);
+      }
     } catch (err) {}
   }, true);
 

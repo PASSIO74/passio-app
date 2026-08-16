@@ -22,13 +22,13 @@ Ce qui a changé, c'est ce sur quoi ce verdict repose. Avant : « aucun bug évi
 | **Performance — base** | ✅ **TRAITÉ** | 10 policies réellement coûteuses corrigées (11,6 → 1,1 ms mesuré). 7 clés étrangères indexées |
 | **Résilience au déploiement** | ✅ **GARDÉ** | `index.html` non cacheable + assets à hash de contenu ; garde-fou mutation-testé contre la dégradation de cet équilibre |
 | **Tests** | ⚠️ **SOLIDE, couverture mesurée à 15,2 %** | 175 e2e passés (1 flaky, 1 skipped) + 94 backend, 4 audits statiques dont un contre les tests creux. La couverture fonctionnelle est désormais **mesurée** : 66 interactions sur 435 s'exécutent pendant la suite — et c'est un **plafond**, un appel interne y comptant autant qu'un clic |
-| **Latence perçue** | ❌ **NON MESURÉ** | Aucun p50/p95 entre le tap et le retour visuel. Toute affirmation de réactivité serait non fondée |
+| **Latence perçue** | ⚠️ **INSTRUMENTÉE, pas encore observée** | Chaque clic transporte désormais son délai jusqu'à la **première image peinte** (`meta.ms`, deux `requestAnimationFrame` depuis la phase de capture), vérifié par deux tests dont un tueur de mutant. Mais **aucun p50/p95 n'est encore calculé** : il faut du trafic réel. 28 ms relevés en local ne disent rien d'un téléphone sur réseau mobile |
 | **Montée en charge** | ⚠️ **PARTIEL** | Requêtes chaudes vérifiées par plan d'exécution réel. Mais aucun test à volume : les tables comptent des dizaines de lignes, pas des dizaines de milliers |
 | **Récupération** | ⚠️ **SAUVEGARDÉ, non restauré** | Archive complète produisible et vérifiée : 32 tables (1 104 lignes), 4 comptes, 220 fichiers Storage (173,6 Mo), décomptes confrontés au serveur. Mais **aucune restauration n'a été exécutée**, et la reconstruction du schéma repose sur des migrations connues pour diverger de la production. `docs/RECUPERATION.md` |
 
 ## Ce qui ferait passer à PUBLIC BETA READY
 
-1. **Latence perçue mesurée** sur du trafic réel — instrumentation puis observation, pas un test synthétique.
+1. **Latence perçue mesurée** sur du trafic réel. L'**instrumentation est en place** depuis le 2026-08-16 (délai tap → première peinture, joint à chaque clic) ; ne manque plus que l'observation. Requête de dépouillement : `meta->>'ms'` sur `telemetry_events` où `type='click'` et `env='production'`.
 2. ~~Couverture fonctionnelle établie~~ — **fait le 2026-08-16 : 15,2 %** (66/435), méthode et limites dans `PASSIO_FUNCTIONAL_MAP.md` §5. Reste à décider ce qu'on veut en faire : ce chiffre est une base de discussion, pas un objectif à remonter pour lui-même.
 3. **Une restauration de sauvegarde réellement exécutée.** La sauvegarde, elle, existe et est vérifiée depuis le 2026-08-16 ; ce qui manque est une **base cible** pour recharger l'archive — un second projet Supabase ou Docker. C'est une décision, pas du développement.
 4. **Un test à volume** : 10 k à 100 k lignes sur les chemins chauds, pour vérifier que les plans tiennent.

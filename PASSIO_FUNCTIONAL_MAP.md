@@ -87,6 +87,6 @@ Provenance du profil passionnel : `passion_id` est présent sur `posts`, `storie
 
 **Ce que 15,2 % dit du projet.** La suite couvre les chemins qui portent le risque — autorisation, cross-compte, publication, messagerie, RSVP, commentaires — et laisse de côté l'essentiel de la surface secondaire : options, panneaux, éditeurs, reprises d'erreur. Ce n'est pas un mauvais choix de tests ; c'est une **priorisation par le risque**, qu'on peut maintenant discuter sur pièces au lieu d'en débattre à l'estime.
 
-**La latence perçue** — le temps entre le tap et le retour visuel. Distincte de la latence réseau, que l'affichage optimiste masque précisément. Elle demande d'instrumenter puis d'observer du trafic réel.
+**La latence perçue** — le temps entre le tap et le retour visuel. Distincte de la latence réseau, que l'affichage optimiste masque précisément. **Instrumentée depuis le 2026-08-16** (`meta.ms` sur chaque clic) ; reste à observer sur du trafic réel avant d'annoncer un p50 ou un p95.
 
 Ces deux blancs sont écrits ici plutôt que comblés par une estimation. C'est la même règle que partout ailleurs dans cette qualification : `NON MESURÉ` vaut mieux qu'un chiffre de complaisance.

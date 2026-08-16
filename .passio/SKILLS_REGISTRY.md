@@ -76,6 +76,7 @@
 | `zero-autorisation` | Interdit toute demande d'autorisation, de confirmation ou d'arbitrage, dans toute session. Convertit chaque question en décision prise + annoncée. Distingue « informer » (obligatoire) de « demander » (interdit). | ACTIF |
 | `reprise-autonome` | Reprend le travail seul après interruption (crédits épuisés, session fermée, nuit) : retrouve l'état par les faits, relance le cron de reprise, enchaîne sans demander. Distingue ce qu'on fait de ce qu'on prépare sans exécuter (migrations, RLS). | ACTIF |
 | `revue-croisee` | Analyse croisée réelle avec ChatGPT (Claude-in-Chrome) : dossier factuel → challenge adversarial → **vérification de chaque hypothèse dans le dépôt** → livrable conjoint. Contient la mécanique navigateur (pièges vécus le 2026-08-15). | ACTIF |
+| `sauvegarde` | Sauvegarder la prod (données + comptes + médias) et préparer une restauration. Contient le savoir non devinable : `supabase db dump` exige Docker et laisse un fichier de 0 octet en échouant ; les comptes sont hors du schéma `public` ; les médias pèsent 97 % du contenu réel. Rappelle que la restauration n'a **jamais** été exécutée. | ACTIF |
 
 ## Manques identifiés (candidats — cf. `PASSIO_CONTROL_CENTER_ROADMAP.md`)
 - Aucun skill **exécutif transverse** (synthèse produit+tech+growth en une vue) → cf. agent `passio-executive-intelligence` (PLANIFIÉ).
