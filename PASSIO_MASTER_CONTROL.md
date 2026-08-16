@@ -95,7 +95,30 @@ Mesuré avec un bridage CPU ×4 (approximation d'un mobile milieu de gamme) :
 
 C'est là qu'est le sujet : le fil principal est bloqué ~2,5 s cumulées au démarrage, avec une tâche de près d'une demi-seconde. Sur un mobile modeste, l'app paraît figée pendant ce temps.
 
-**Conséquence pour la suite** : toute optimisation doit viser le **découpage du travail de démarrage**, pas la réduction du poids. Mesurer d'abord quelle tâche coûte 496 ms avant de toucher à quoi que ce soit.
+**Conséquence pour la suite** : toute optimisation doit viser le **découpage du travail de démarrage**, pas la réduction du poids.
+
+### Couverture JS au démarrage — mesurée le 2026-08-16, et elle rouvre le sujet
+
+J'avais déclaré ce sujet **clos** au motif que le profilage CPU ne désignait aucune fonction coupable. La revue croisée a objecté que je l'avais fermé « parce que la solution évidente était risquée, pas parce que le problème était insignifiant ». La mesure lui donne raison :
+
+| Fichier | Taille | Exécuté avant le 1ᵉʳ écran |
+|---|---|---|
+| `app-06-reels-partage` | 134 Ko | **12 %** |
+| `app-04-comments-shop` | 251 Ko | **13 %** |
+| `app-08-ui-modals-tour` | 281 Ko | **13 %** |
+| `app-03-posts-vlogs` | 261 Ko | 16 % |
+| `app-05-config-profil` | 180 Ko | 16 % |
+| `app-02-state-utils` | 161 Ko | 17 % |
+| `app-07-ia-explore-irl` | 268 Ko | 18 % |
+| `app-09-boot-pwa` | 80 Ko | 26 % |
+| `app-01-diag-seed` | 96 Ko | 98 % |
+| **Total** | **1 714 Ko** | **20 % — soit 1 367 Ko jamais exécutés** |
+
+Le coût de parse/compile, lui, s'applique à **100 %** du fichier. Il y a donc bien un levier, et il est massif.
+
+**Prochaine étape retenue** (et pas davantage) : extraire **un seul** module expérimental — candidat naturel `app-06-reels-partage`, le moins exécuté — et le charger dynamiquement. Si le retirer du démarrage ne déplace pas les 2 575 ms de tâches longues, alors le sujet sera vraiment clos, sur une preuve et non sur une intuition.
+
+⚠️ **Piège de mesure rencontré** : un premier calcul annonçait « 100 % exécuté » sur tous les fichiers. Les plages de couverture V8 sont **imbriquées** — additionner les plages `count > 0` compte l'enveloppe du fichier entier. Il faut une carte d'octets et démarquer les plages `count === 0`.
 
 ### Latences réelles des appels API (télémétrie de production)
 

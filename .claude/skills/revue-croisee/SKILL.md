@@ -69,6 +69,28 @@ Puis `.slice(90,180)`, etc. Les tranches sont tronquées vers 100 éléments : p
 
 **Insertions longues.** Un texte de plusieurs milliers de caractères peut figer le rendu : l'appel CDP expire alors que **l'insertion a réussi**. Toujours vérifier l'état avant de réessayer, sinon on double le message.
 
+**Envoyer — la seule séquence fiable.** Ni le clic sur le bouton d'envoi (les coordonnées rapportées par la page ne correspondent pas à celles de l'outil), ni un `keydown` isolé ne suffisent. Ce qui marche :
+
+```js
+ed.focus();
+const s = getSelection(), r = document.createRange();
+r.selectNodeContents(ed); r.collapse(false);       // ← curseur À LA FIN
+s.removeAllRanges(); s.addRange(r);
+const o = { key:'Enter', code:'Enter', keyCode:13, which:13,
+            bubbles:true, cancelable:true, composed:true };
+ed.dispatchEvent(new KeyboardEvent('keydown', o));
+ed.dispatchEvent(new KeyboardEvent('keypress', o));   // les TROIS
+ed.dispatchEvent(new KeyboardEvent('keyup', o));
+```
+
+Vérifier ensuite que le composeur est vide **et** que le nombre de messages a augmenté. Un texte long fait grandir le composeur au point de le pousser hors écran (`getBoundingClientRect().top` très négatif) — c'est pourquoi les clics tombent à côté.
+
+**⚠️ Une réponse « bloquée » ne l'est presque jamais.** Le flux d'affichage casse fréquemment : le message reste à 5, 60 ou 200 caractères, `stop-button` disparaît, et rien ne bouge pendant des minutes. **La réponse est pourtant complète côté serveur.** Un simple `navigate` vers l'URL de la conversation la révèle entière.
+
+Vécu le 2026-08-16 : trois réponses jugées « interrompues » faisaient en réalité 16 517 et 2 745 caractères. Sans le rechargement, la conclusion aurait été « ChatGPT est inutilisable ici » — et une revue entière aurait été perdue. **Toujours recharger avant de conclure à une coupure.**
+
+**Conversation trop longue.** Au-delà de ~60 000 caractères, l'onglet devient irrécupérable (le rendu ne répond plus, même à `1+1`). Ouvrir un fil NEUF avec un dossier auto-suffisant plutôt que d'insister.
+
 **Captures d'écran.** Inutiles ici, et elles échouent si le panneau n'est pas affiché. Passer par l'arbre d'accessibilité et le DOM.
 
 ## Continuité
