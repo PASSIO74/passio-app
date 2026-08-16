@@ -34,6 +34,20 @@ Les deux tests de latence écrits la boucle précédente utilisaient `?telemetry
 
 L'instrumentation de latence fonctionne (27 ms relevés). Mais **aucun clic de production depuis le déploiement** : le dernier date de 15 h 01, le déploiement de 18 h 30. Le readiness continue donc de porter « instrumentée, pas encore observée ». Il n'y a pas de chiffre à donner, et je n'en fabrique pas.
 
+### Le flaky du « j'aime » : trouvé, et c'était le harnais
+
+Les tests de like ont floté aux **trois** exécutions complètes de la nuit. Un motif, pas du hasard.
+
+Le diagnostic posé en boucle 13 visait `waitForFunction` — mais l'échec tombait plus tôt, sur `waitForSelector` : le bouton n'apparaissait jamais. Diagnostic étendu à cette attente, puis reproduction sous charge (8 workers × 4 répétitions). Verdict littéral : **`{"dansEtat":false,"nbSupabase":54}`**.
+
+54, c'est exactement le nombre de posts de la table de production. Une requête du boot encore en vol se résolvait **après** le seed et **remplaçait** `state.supabasePosts`, emportant le post injecté. Le fixture apparaissait puis disparaissait.
+
+Correction à la cause : attendre que cette requête ait atterri **avant** de semer — après elle, plus personne ne remplace le tableau. Le seed est aussi devenu idempotent (rejouable sans doublon) avec un réessai en second rideau, et une attente bornée pour rester valide hors ligne.
+
+**Ce n'est pas un défaut produit** : injecter un post à la main dans une structure que l'application possède et reconstruit est une construction de test ; un vrai post arrive *par* cette requête, jamais à côté d'elle. Dit autrement, on ne rend pas un test vert en le contournant — on lui donne le fixture qu'il croyait avoir.
+
+Mesure, dans les conditions **identiques** à celles de l'échec (8 × 4) : 1 puis 2 échecs sur 68 avant, **68/68 deux fois de suite** après.
+
 ### Le garde-fou de commit refusait des messages légitimes
 
 `.git/hooks/commit-msg` (local, non versionné) refuse un sujet commençant par `@` ou `'` — séquelle du commit « `@ feat(cdv): …` » du 2026-07-22, irrattrapable sur une branche protégée. Utile, et mal ciblé : il annonce vérifier **le sujet** mais grep **tout le fichier**. Le message de cette boucle contenait une ligne de corps commençant par `'dispatchEvent'` — refusé à tort.

@@ -79,7 +79,20 @@ async function bootInteractions(page) {
 // toujours trop long sinon.
 async function attendreFilStable(page, id) {
   const sel = `[data-postid="${id}"] [data-action="like"]`;
-  await page.waitForSelector(sel, { timeout: 15000 });
+  try {
+    await page.waitForSelector(sel, { timeout: 15000 });
+  } catch (e) {
+    // Le post était là (le seed l'a vu) et il n'y est plus. Dire LEQUEL des deux
+    // a lâché : l'état applicatif, ou seulement son rendu.
+    const etat = await page.evaluate(() => ({
+      dansEtat: (state.supabasePosts || []).some((p) => p.id === "p_srv_test"),
+      nbSupabase: (state.supabasePosts || []).length,
+      nbNoeuds: document.querySelectorAll("[data-postid]").length,
+    })).catch(() => null);
+    throw new Error(`le post semé a DISPARU du fil après y être entré\n`
+      + `état : ${etat ? JSON.stringify(etat) : "indisponible"}\n`
+      + `(dansEtat=false ⇒ state.supabasePosts a été remplacé ; dansEtat=true ⇒ le rendu l'omet)\n${e.message}`);
+  }
   // Compteurs de diagnostic : quand cette attente expire, on veut savoir POURQUOI.
   // « Le nœud a été remplacé 900 fois » et « le nœud a disparu du DOM » appellent
   // des corrections opposées ; sans le chiffre, on choisit à pile ou face.
@@ -129,6 +142,9 @@ async function seedServerPost(page, { writeResult = { ok: true, error: null }, m
   return page.evaluate(([res, isManual]) => {
     const passion = allFeedPosts().filter((p) => p.type !== "vlog")[0].passion;
     state.supabasePosts = state.supabasePosts || [];
+    // Idempotent : le seed peut être rejoué (cf. seedServerPostStable), et deux
+    // exemplaires du même post fausseraient tous les compteurs.
+    state.supabasePosts = state.supabasePosts.filter((p) => p.id !== "p_srv_test");
     state.supabasePosts.unshift({
       id: "p_srv_test", authorId: "u_autre", authorName: "Autre", authorEmoji: "✨",
       passion, mood: "all", type: "text", text: "post serveur", createdAt: Date.now(),
@@ -150,9 +166,52 @@ async function seedServerPost(page, { writeResult = { ok: true, error: null }, m
   }, [writeResult, manual]);
 }
 
-// Variante stabilisée : à utiliser dès qu'on va CLIQUER sur le post semé.
+/**
+ * Variante stabilisée : à utiliser dès qu'on va CLIQUER sur le post semé.
+ *
+ * La course, mesurée et non supposée. Le seed injecte le post dans
+ * `state.supabasePosts`, puis neutralise `supa`. Entre les deux, une requête du
+ * boot encore EN VOL se résout et **remplace** le tableau : le post semé
+ * disparaît du fil. Diagnostic relevé sous charge le 2026-08-16 —
+ * `{"dansEtat":false,"nbSupabase":54}`, soit exactement le nombre de posts de la
+ * table de production. C'est bien la requête du boot qui écrase le fixture.
+ *
+ * Le remède attaque la cause : on attend que cette requête ait ATTERRI avant de
+ * semer. Après elle, plus personne ne remplace le tableau. Le réessai reste en
+ * second rideau pour les cas non couverts.
+ *
+ * Rien de tout cela ne masque un défaut produit : injecter un post à la main
+ * dans une structure que l'application possède et reconstruit est une
+ * construction de TEST. Un vrai post arrive PAR cette requête, jamais à côté.
+ */
 async function seedServerPostStable(page, opts) {
-  const id = await seedServerPost(page, opts);
+  const sel = `[data-postid="p_srv_test"] [data-action="like"]`;
+  let id = null;
+
+  // Sans réseau (ou si la requête échoue), le tableau reste vide : on n'attend
+  // pas indéfiniment, on sème quand même. L'échec de cette attente n'est pas
+  // l'échec du test.
+  await page.waitForFunction(() => (state.supabasePosts || []).length > 0,
+    null, { polling: 50, timeout: 8000 }).catch(() => {});
+  for (let essai = 1; essai <= 4; essai++) {
+    id = await seedServerPost(page, opts);
+    try {
+      await page.waitForSelector(sel, { timeout: 4000 });
+      break;
+    } catch (e) {
+      if (essai === 4) {
+        const etat = await page.evaluate(() => ({
+          dansEtat: (state.supabasePosts || []).some((p) => p.id === "p_srv_test"),
+          nbPosts: (state.supabasePosts || []).length,
+          nbNoeuds: document.querySelectorAll("[data-postid]").length,
+        })).catch(() => null);
+        throw new Error(`le post semé n'a jamais atteint le fil après 4 tentatives\n`
+          + `état : ${etat ? JSON.stringify(etat) : "indisponible"}\n`
+          + `(dansEtat=false ⇒ une requête du boot a remplacé state.supabasePosts ; `
+          + `dansEtat=true ⇒ le rendu ne l'affiche pas)`);
+      }
+    }
+  }
   await attendreFilStable(page, id);
   return id;
 }
