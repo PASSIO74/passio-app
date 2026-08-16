@@ -4,6 +4,48 @@
 
 ---
 
+## 2026-08-16 — Boucle 13 : deux blancs comblés — la couverture et la sauvegarde
+
+Les sept points du plan étaient clos. Restaient les quatre conditions du passage à `PUBLIC BETA READY`. Deux ont bougé cette nuit ; les deux autres demandent du trafic réel, pas du travail.
+
+### La couverture fonctionnelle : 66 sur 435, soit 15,2 %
+
+La cartographie refusait d'annoncer un taux, faute de savoir le calculer — position juste à l'époque, plus tenable une fois l'outil écrit.
+
+**Méthode.** Un serveur sert l'application **octet pour octet** et ajoute en fin de `<body>` un enregistreur qui enveloppe les 435 fonctions atteignables par un geste utilisateur. **Aucun fichier de `tests/` n'a été touché**, ni pour produire le chiffre, ni pour l'améliorer. Sans `PASSIO_COUVERTURE=1`, la suite tourne exactement comme avant — vérifié après coup.
+
+**Ce que le chiffre vaut.** Une interaction compte comme couverte dès que sa fonction s'exécute, **même appelée depuis une autre fonction plutôt que par un clic**. C'est la définition la plus généreuse possible : 15,2 % est un **plafond**, pas une borne prudente.
+
+**Trois pièges écartés avant publication.** Une mesure vide se confond avec une couverture nulle → `reuseExistingServer:false` fait *échouer* le démarrage si le port est pris, et le cas s'est présenté dès la première exécution. Une fonction `const f = …` au niveau racine n'est pas une propriété de `window` et compterait comme jamais exécutée (piège connu de `state`) → vérifié, **0 des 435** est dans ce cas. Enfin le dénominateur doit être recalculable : **les 445 annoncés en boucle 12 n'ont pas pu être reproduits**, la règle écrite en donne 435. Mon propre chiffre, corrigé par mon propre outil.
+
+### La sauvegarde : de « aucune » à « complète et vérifiée »
+
+Le readiness portait `NON VÉRIFIÉ` sur la récupération — seul domaine à zéro preuve, coût d'échec total.
+
+**Ce qui bloquait réellement** : `supabase db dump` lance `pg_dump` dans un conteneur. Sans Docker, il échoue. Il sort proprement en code 1, mais laisse à destination **un fichier de 0 octet** — un script qui vérifierait la seule présence du fichier conclurait au succès.
+
+D'où un export par l'API REST, exécuté sur la production : **32 tables (1 104 lignes), 4 comptes, 220 fichiers Storage (173,6 Mo)**. Trois trous comblés en regardant plutôt qu'en supposant : les **comptes** ne sont pas dans `public` (sans eux, l'archive est un jeu de lignes sans auteur) ; les **médias** pèsent 173,6 Mo contre 5,14 Mo de base, soit 97 % du contenu réel ; et PostgREST expose aussi les **vues**, dont trois étaient exportées comme des tables — discriminant vérifié contre `pg_class`, pas deviné.
+
+**Ce qui n'est toujours pas acquis, et reste écrit tel quel** : aucune restauration n'a été exécutée. Ni Docker, ni `psql`, ni base cible ici. Et reconstruire le schéma supposerait de rejouer `migrations/`, connu pour diverger de la production — c'est l'étape qui échouera en premier, donc celle qu'il faut essayer à froid. `docs/RECUPERATION.md`.
+
+### Deux vérifications de contrôle
+
+**Le téléphone à l'inscription n'avait jamais servi.** Aucun des 4 comptes ne porte de numéro. Ni défaut ni preuve : deux comptes viennent de Google (pas de formulaire), un précède la fonctionnalité, le dernier a été créé six minutes après le commit — probablement avant la fin du déploiement. Vérifié une fois pour de bon, par le même chemin REST que l'application : le numéro est **stocké et relisible côté serveur**. Compte jetable purgé, 0 résiduel.
+
+**Le registre était périmé sur `NOTIF-FORGE-009`.** Il le disait « migration prête, non appliquée » ; le journal le disait appliqué. Tranché en interrogeant la base plutôt qu'en croyant l'un des deux documents : la production ne porte plus qu'**une seule** policy INSERT, `with_check (from_id = (select auth.uid())::text)`. Incident clos, registre corrigé. **Plus aucun incident ouvert.**
+
+### Un piège de vérification de plus, à mon compte
+
+`supabase db dump | tail` a renvoyé 0 alors que `supabase` sortait en 1 : **un code de sortie lu après un pipe mesure le dernier maillon**. J'ai failli déclarer un incident « l'outil ment sur son succès » qui n'existait pas. Corrigé par une seconde mesure sans pipe, avant d'écrire quoi que ce soit.
+
+### Fichiers touchés
+`scripts/couverture-{interactions,rapport,mesure}.js`, `scripts/serve-couverture.js`, `scripts/sauvegarde-donnees.js`, `playwright.config.js`, `package.json`, `.gitignore`, `docs/RECUPERATION.md`, `PASSIO_FUNCTIONAL_MAP.md`, `PASSIO_PRODUCTION_READINESS.md`, `passio_qa_registry.json`. **Aucun fichier applicatif** (`js/`, `index.html`, `styles.css`) — le déploiement est identique à l'existant.
+
+### Vérifications exécutées
+Suite complète `PASSIO_E2E_MULTI=1` : **175 passés, 1 flaky, 1 skipped**. Les 4 audits statiques verts. Chemin par défaut de Playwright revérifié après la modification de configuration.
+
+---
+
 ## 2026-08-16 — Boucle 12 : les deux derniers livrables du plan
 
 ### Ce qui manquait
