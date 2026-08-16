@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════════════
-// SYNC-CLOCK-011 — l'horloge du client ne fait plus autorité sur `user_state`.
+// SYNC-CLOCK-012 — l'horloge du client ne fait plus autorité sur `user_state`.
 //
 // LE DÉFAUT (2026-08-16)
 // `user_state` porte l'état personnel synchronisé entre appareils. Le client y
@@ -34,7 +34,7 @@
 const { test, expect } = require("@playwright/test");
 const { GATE_TOKEN, GATE_KEY } = require("./gate-helper");
 
-test.describe("SYNC-CLOCK-011 — horodatage serveur de user_state", () => {
+test.describe("SYNC-CLOCK-012 — horodatage serveur de user_state", () => {
   test("une date envoyée par le client est ignorée ; une écriture légitime passe", async ({ page }) => {
     test.setTimeout(120000);
 
@@ -58,7 +58,7 @@ test.describe("SYNC-CLOCK-011 — horodatage serveur de user_state", () => {
     const ecrire = (updatedAt) =>
       page.evaluate(async ([tok, uid, ts]) => {
         const cfg = window.PASSIO_SUPABASE;
-        const corps = { user_id: uid, data: { marqueur: "clock-011" } };
+        const corps = { user_id: uid, data: { marqueur: "clock-012" } };
         if (ts) corps.updated_at = ts;
         const res = await fetch(cfg.url + "/rest/v1/user_state?on_conflict=user_id", {
           method: "POST",
@@ -95,7 +95,7 @@ test.describe("SYNC-CLOCK-011 — horodatage serveur de user_state", () => {
     const legitime = await ecrire(null);
     expect(legitime.statut, "une écriture sans updated_at reste acceptée").toBeLessThan(300);
     expect(legitime.ligne && legitime.ligne.data && legitime.ligne.data.marqueur,
-      "la donnée est bien enregistrée").toBe("clock-011");
+      "la donnée est bien enregistrée").toBe("clock-012");
     expect(new Date(legitime.ligne.updated_at).getTime(),
       "et elle est horodatée par la base").toBeGreaterThan(Date.now() - 120000);
 

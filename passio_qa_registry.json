@@ -1,7 +1,7 @@
 {
  "$comment": "Source de verite MACHINE de la qualification PASSIO. Vue humaine : PASSIO_MASTER_CONTROL.md. Journal : PASSIO_ENGINEERING_LOG.md. Regle : aucune valeur inventee ; un champ non mesure vaut null et porte un statut explicite.",
  "schema_version": 1,
- "generated_at": "2026-08-16T20:04:25.314Z",
+ "generated_at": "2026-08-16T20:06:44.759Z",
  "commit": "b5a8051",
  "branch": "main",
  "working_tree": "clean",
@@ -292,6 +292,40 @@
    "fix": "scripts/purge-e2e-storage.js, branche sur le global-teardown apres la purge des comptes. Garde-fou : seuls les fichiers de moins de 1 Ko d un compte inexistant sont supprimes - une vraie photo ne pese jamais 37 octets, donc effacer du contenu utilisateur est mecaniquement impossible.",
    "verified": true,
    "preuve": "244 -> 70 fichiers a la purge ; puis suite complete relancee : 70 -> 70, zero petit fichier restant (les 6 crees pendant l execution ont ete nettoyes par le teardown)."
+  },
+  {
+   "id": "SYNC-CLOCK-012",
+   "severity": "P1",
+   "domain": "synchronisation multi-appareils",
+   "status": "CLOS",
+   "problem": "L horloge du CLIENT faisait autorite sur user_state : le client ecrivait lui-meme updated_at, et cette valeur arbitrait la fusion au demarrage. Un appareil en avance d une heure gagnait definitivement — les modifications des autres appareils etaient ecrasees en silence, et leur drapeau « etat sale » ne retombait jamais (garde monotone qui refuse de reculer).",
+   "cause": "La colonne avait DEFAULT now() mais AUCUN trigger : la valeur envoyee par le client gagnait. Approfondi par la revue croisee ChatGPT : l horloge n etait qu un symptome. La classe reelle est « ecriture obsolete qui ecrase une plus recente », atteignable SANS decalage d horloge — 17 points d appel declenchent supaSaveUserState (la plupart en flush immediat hors debounce) et le garde !_stateDirty ne protege pas de la concurrence, le drapeau ne retombant qu APRES l await.",
+   "fix": "Trigger BEFORE INSERT OR UPDATE imposant now() (frontiere en BASE : deploiement a chaque push sans staging, et le beacon ecrit hors du SDK). Client : plus d updated_at envoye, relecture de la valeur serveur, serialisation des sauvegardes. Rejeu de la file : comparaison entre DEUX valeurs serveur (.lte) et non client-vs-serveur — sans quoi le correctif aurait fait perdre ses reprises hors-ligne a tout appareil dont l horloge retarde. Beacon : n inscrit plus de marqueur de synchro (reponse return=minimal, valeur serveur inconnue).",
+   "preuve_avant": "trigger desactive -> 3 653 jours d avance acceptes, test ROUGE",
+   "preuve_apres": "trigger actif -> 0 jour, test VERT",
+   "mutation_teste": true,
+   "test_permanent": "tests/e2e/user-state-horodatage.spec.js",
+   "regression": "17/17 sur etat-sync-base64, audit-identite-emoji, conv-suppression, smoke, telemetrie-preauth, authz-critical ; 0 compte e2e residuel",
+   "commit": "ea6d507",
+   "risque_residuel": "L ecriture reste « dernier ecrivain gagne » sur un blob : deux appareils modifiant deux champs independants, le second ecrase le premier. Horodater cote serveur supprime l AUTORITE FAUSSE, pas le besoin d un controle d anciennete par revision (CAS). Non fait : change la semantique d ecriture du chemin le plus sensible, et exige un chemin de resolution de conflit inexistant.",
+   "note": "Le commit ea6d507 et son message portent l ancien numero SYNC-CLOCK-011 : une session Claude Code parallele avait pris 011 (STORAGE-BRUIT-011) au meme moment. Renumerote en 012 dans le code et le registre.",
+   "verified": true
+  },
+  {
+   "id": "TEST-DIST-013",
+   "severity": "P2",
+   "domain": "qualification / artefact de production",
+   "status": "CLOS",
+   "problem": "Sur 175 tests, TROIS seulement visaient l artefact reellement deploye (/dist/index.html), et ces trois ne couvrent que le gate et le demarrage. Le fil, la publication, la messagerie, la confidentialite etaient prouves uniquement sur le programme de developpement.",
+   "cause": "En dev l app est 19 fichiers JS charges separement ; en prod scripts/build.js en assemble un monolithe injecte apres le gate. Deux programmes, une seule suite. 30 des 31 specs codent en dur page.goto('/index.html').",
+   "fix": "scripts/servir-dist.js + PASSIO_CIBLE=dist : la suite entiere tourne sur le monolithe construit SANS qu un seul test soit modifie (c est la racine servie qui change). Port parametrable PASSIO_PORT pour cohabiter avec une session parallele.",
+   "preuve_avant": "3 tests sur 175 touchaient l artefact",
+   "preuve_apres": "169 passes, 12 ignores, 0 echec en 7,4 min sur l artefact construit",
+   "mutation_teste": false,
+   "test_permanent": "toute la suite, via PASSIO_CIBLE=dist",
+   "commit": "cda3245",
+   "risque_residuel": "Ne prouve rien APRES minification, que seule la CI applique (html-minifier-terser). Le minifieur renomme les identifiants — piege deja rencontre. Et le mode dist n est pas encore branche dans la CI.",
+   "verified": true
   }
  ],
  "dette_signalee_non_traitee": [

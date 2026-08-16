@@ -1,9 +1,11 @@
 -- ═══════════════════════════════════════════════════════════════════════════
 -- user_state.updated_at DEVIENT AUTORITAIRE CÔTÉ SERVEUR
--- Incident SYNC-CLOCK-011 (2026-08-16). Revue croisée ChatGPT du même jour.
+-- Incident SYNC-CLOCK-012 (2026-08-16). Revue croisée ChatGPT du même jour.
 --
--- ⚠️ PRÉPARÉE. À appliquer sous supervision, puis à vérifier immédiatement par
---    tests/e2e/user-state-horodatage.spec.js.
+-- ✅ APPLIQUÉE EN PRODUCTION le 2026-08-16, puis vérifiée par A/B immédiat :
+--    trigger désactivé → 3 653 jours d'avance acceptés (test ROUGE)
+--    trigger actif     → 0 jour (test VERT)
+--    Garde permanente : tests/e2e/user-state-horodatage.spec.js.
 --
 -- LE PROBLÈME
 -- `user_state` porte l'état personnel du compte, synchronisé entre appareils.

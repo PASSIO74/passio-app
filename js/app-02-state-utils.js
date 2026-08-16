@@ -336,7 +336,7 @@ function _markStateSynced(ts) {
   } catch (_e) {}
 }
 
-// Sérialisation des sauvegardes — incident SYNC-CLOCK-011.
+// Sérialisation des sauvegardes — incident SYNC-CLOCK-012.
 // 17 points d'appel déclenchent `supaSaveUserState`, et la plupart sont des
 // « flush immédiat » qui court-circuitent le debounce. Le garde `!_stateDirty`
 // ne protège PAS de la concurrence : le drapeau ne retombe qu'APRÈS l'await, si
