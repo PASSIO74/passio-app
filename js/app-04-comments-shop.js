@@ -2389,10 +2389,66 @@ function getConversations() {
 // Fusionne deux listes de conversations par id, en unissant les messages par id
 // (aucune perte). Gère les groupes (que deduplicateConversations ne déduplique
 // pas par id). Utilisé pour fusionner IndexedDB + état courant à l'hydratation.
+// ─── JOURNAL DES SUPPRESSIONS (pierres tombales locales) ────────────────────
+// ADR-008. Les conversations vivent dans DEUX stores : localStorage (écriture
+// synchrone) et IndexedDB (asynchrone, best-effort, résultat jamais lu). Au
+// boot, _unionConvsById fusionne les deux — et cette union, qui existe pour ne
+// jamais perdre un message, défaisait les suppressions : si l'onglet se ferme
+// entre les deux écritures, la suppression n'existe que d'un côté et l'autre
+// store la ressuscite. Reproduit le 2026-08-16 : une conversation et un message
+// privé supprimés revenaient après redémarrage.
+//
+// Le journal donne aux deux stores ce qui leur manquait : de quoi distinguer
+// « jamais existé » de « supprimé ». La propriété qu'on ne veut PAS perdre est
+// préservée — la fusion continue de ne rien faire disparaître qui n'ait été
+// explicitement supprimé ici.
+//
+// BORNÉ, délibérément : identifiants seuls, TTL 30 jours, 2000 entrées au plus.
+// Sans ces bornes, ce journal deviendrait le prochain blob de 4,7 Mo
+// (cf. SYNC-B64-005). Au-delà de 30 jours, le store distant fait autorité.
+var CONV_TOMB_KEY = "passio_conv_deleted_v1";
+var CONV_TOMB_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+var CONV_TOMB_MAX = 2000;
+
+function convTombLoad() {
+  try {
+    var raw = localStorage.getItem(CONV_TOMB_KEY);
+    if (!raw) return {};
+    var j = JSON.parse(raw) || {};
+    var limite = Date.now() - CONV_TOMB_TTL_MS, garde = {}, n = 0;
+    Object.keys(j).forEach(function (k) { if (typeof j[k] === "number" && j[k] > limite) { garde[k] = j[k]; n++; } });
+    // Si le plafond est dépassé, on garde les plus RÉCENTES : une suppression
+    // ancienne a déjà été propagée partout, une récente peut encore être défaite.
+    if (n > CONV_TOMB_MAX) {
+      var tri = Object.keys(garde).sort(function (x, y) { return garde[y] - garde[x]; }).slice(0, CONV_TOMB_MAX);
+      var reduit = {}; tri.forEach(function (k) { reduit[k] = garde[k]; });
+      return reduit;
+    }
+    return garde;
+  } catch (e) { return {}; }
+}
+
+// kind = "conv" | "msg". L'identifiant est préfixé pour qu'une conversation et
+// un message ne puissent jamais se masquer l'un l'autre.
+function convTombAdd(kind, id) {
+  if (!id) return;
+  try {
+    var j = convTombLoad();
+    j[kind + ":" + id] = Date.now();
+    localStorage.setItem(CONV_TOMB_KEY, JSON.stringify(j));
+  } catch (e) {}
+}
+
+function convTombHas(journal, kind, id) {
+  return !!(id && journal && journal[kind + ":" + id]);
+}
+
 function _unionConvsById(a, b) {
+  var _tomb = convTombLoad();
   var byId = {};
   [].concat(a || [], b || []).forEach(function(c) {
     if (!c || !c.id) return;
+    if (convTombHas(_tomb, "conv", c.id)) return;   // conversation supprimée : ne ressuscite pas
     var ex = byId[c.id];
     if (!ex) { byId[c.id] = Object.assign({}, c, { messages: (c.messages || []).slice() }); return; }
     // ⚠️ Un message SANS id était purement et simplement ignoré ici : il n'entrait
@@ -2430,6 +2486,10 @@ function _unionConvsById(a, b) {
     if ((c.lastAt || 0) > (ex.lastAt || 0)) { ex.lastAt = c.lastAt; }
   });
   return Object.keys(byId).map(function(k) {
+    // Filtrage des messages supprimés en UN SEUL point, à la sortie : les deux
+    // branches ci-dessus (première copie et copies fusionnées) y passent
+    // forcément. Le faire dans chaque branche laisserait un chemin non couvert.
+    byId[k].messages = byId[k].messages.filter(function (m) { return !convTombHas(_tomb, "msg", m && m.id); });
     byId[k].messages.sort(function(x, y) { return (x.at || 0) - (y.at || 0); });
     return byId[k];
   });
@@ -3943,6 +4003,7 @@ function _deleteMsgForMe(convId, msgId) {
   closeModal();
   var r = _msgById(convId, msgId); if (!r || !r.m) return;
   r.c.messages = (r.c.messages || []).filter(function(x){ return x.id !== msgId; });
+  convTombAdd("msg", msgId);        // sinon la fusion au boot le ressuscite (ADR-008)
   saveConversations();
   var fp = document.getElementById("conv-fullpage");
   renderConvFpThread(r.c, fp ? fp.getAttribute("data-display-name") : "");
@@ -3956,6 +4017,7 @@ function _deleteMsgForAll(convId, msgId) {
   closeModal();
   var r = _msgById(convId, msgId); if (!r || !r.m || r.m.from !== "me") return;
   r.c.messages = (r.c.messages || []).filter(function(x){ return x.id !== msgId; });
+  convTombAdd("msg", msgId);        // sinon la fusion au boot le ressuscite (ADR-008)
   saveConversations();
   var fp = document.getElementById("conv-fullpage");
   renderConvFpThread(r.c, fp ? fp.getAttribute("data-display-name") : "");

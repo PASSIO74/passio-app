@@ -1566,6 +1566,7 @@ function leaveGroup(convId) {
     try { supa.from("conv_members").delete().eq("conv_id", convId).eq("user_id", MY_UID).then(function(){}, function(){}); } catch(e) {}
   }
   conversationsState = (getConversations() || []).filter(function(c){ return c.id !== convId; });
+  if (typeof convTombAdd === "function") convTombAdd("conv", convId);  // sinon la fusion au boot la ressuscite (ADR-008)
   saveConversationsNow();
   closeModal();
   try { if (typeof closeConversation === "function") closeConversation(); } catch(e) {}

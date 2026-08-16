@@ -1418,6 +1418,7 @@ var ACCOUNT_SCOPED_KEYS = [
   "passio_cdv_geo_v1",       // cache de géocodage des lieux visités — données de lieu
   "passio_passion_requests", // demandes de passion faites par la personne
   "passio_event_reminded",   // événements pour lesquels un rappel a été posé
+  "passio_conv_deleted_v1",  // journal des suppressions de conversations/messages (ADR-008)
   // ⚠️ NE PAS ajouter ici, et c'est délibéré :
   //   passio_parental_code / passio_limit_sec — le contrôle parental est posé sur
   //     l'APPAREIL par un parent ; le purger à la déconnexion offrirait à l'enfant

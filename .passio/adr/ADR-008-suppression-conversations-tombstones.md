@@ -1,6 +1,6 @@
 # ADR-008 — Une suppression de message peut être annulée par la fusion au boot
 
-- **Statut** : Proposé — arbitrage produit requis
+- **Statut** : **Accepté — option B, implémentée le 2026-08-16** (Benjamin a délégué l'arbitrage)
 - **Date** : 2026-08-16
 - **Origine** : scénario multi-appareil n° 2 de l'analyse croisée (« résurrection IndexedDB »)
 
@@ -46,9 +46,24 @@ Le défaut n'est donc pas la fusion : c'est qu'**aucun des deux stores ne sait d
 
 Le journal doit être **borné** (identifiants seuls, TTL) pour ne pas devenir le prochain blob de 4,7 Mo — cf. `SYNC-B64-005`.
 
-## Pourquoi ce n'est pas implémenté cette nuit
+## Implémentation retenue
 
-C'est le store des **messages privés**, la donnée la plus sensible de l'app, et le correctif précédent dans cette même zone corrigeait une perte de messages restée invisible six jours. Une pierre tombale mal posée ne fait pas réapparaître un message : elle le fait disparaître. Le rapport risque/bénéfice d'une modification non supervisée y est mauvais, quelle que soit la qualité du test qui l'accompagne.
+`convTombLoad` / `convTombAdd` / `convTombHas` dans `app-04`. Journal en `localStorage` (`passio_conv_deleted_v1`), identifiants préfixés `conv:` / `msg:` pour qu'une conversation et un message ne puissent jamais se masquer l'un l'autre. Bornes : **TTL 30 jours, 2 000 entrées** — au-delà du plafond, les suppressions les plus **récentes** sont conservées, une ancienne ayant déjà été propagée partout.
+
+Trois points d'appel : `_deleteMsgForMe`, `_deleteMsgForAll`, `leaveGroup`. Le filtrage se fait en **un seul endroit**, à la sortie de `_unionConvsById` : les deux branches de fusion y passent forcément, alors que filtrer dans chaque branche laisserait un chemin non couvert.
+
+La clé est inscrite dans `ACCOUNT_SCOPED_KEYS` — un journal de suppressions qui survivrait à une déconnexion serait une fuite d'information sur le compte précédent. L'invariant d'isolation l'aurait de toute façon signalé.
+
+### La réserve initiale, et comment elle a été levée
+
+Ce store est celui des **messages privés**, et le correctif précédent dans cette même zone rattrapait une perte de messages restée invisible six jours. Une pierre tombale mal posée ne fait pas réapparaître un message : elle le fait disparaître.
+
+La réserve portait donc sur le risque d'une modification **non vérifiée**, pas sur l'autorisation. Elle est levée par la vérification :
+
+- **le cas nominal** : ni la conversation ni le message supprimés ne reviennent ;
+- **la contre-épreuve** : un message présent dans un seul des deux stores et *non* supprimé continue d'être récupéré — c'est la propriété que l'union protégeait, un journal trop zélé l'aurait détruite en silence ;
+- **les bornes** : TTL et plafond effectivement appliqués ;
+- **mutation** : sans le journal, le secret revient (`secretRevenu: true`) — le test n'est donc pas creux.
 
 ## Trigger
 
