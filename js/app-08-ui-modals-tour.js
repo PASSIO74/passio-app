@@ -4663,10 +4663,7 @@ function supaSubscribe() {
         const _isVid = _mu.includes(".mp4") || _mu.includes("videos/");
         const newPost = { id: r.id, authorId: r.author_id, authorName: prof?.username || "Passionne", authorEmoji: prof?.emoji || "✨", authorColor: prof?.color || "#8b5cf6", passion: r.passion_id || "autre", mood: r.mood || "all", type: _isVid ? "video" : "text", text: r.content || "", image: _isVid ? null : (r.media_url || null), video: _isVid ? r.media_url : null, isReel: !!r.is_reel, overlays: r.overlays || null, createdAt: supaTs(r.created_at), likes: 0, liked: false, comments: [], fromSupabase: true };
         // ✅ Ajouter dans state.supabasePosts, pas state.seed.posts!
-        if (!state.supabasePosts.find(p => p.id === newPost.id)) {
-          state.supabasePosts.unshift(newPost);
-          try { scheduleFeedRender(); } catch(e) {}
-        }
+        if (feedAddRealtimePost(newPost)) { try { scheduleFeedRender(); } catch(e) {} }
       } catch(e) {}
     });
 
@@ -5121,6 +5118,35 @@ async function supaLoadNotifications() {
 // ── Pagination du feed : rendre 20 de plus, et recharger une page serveur si besoin
 window._feedRenderLimit = 20;
 window._feedExtraPosts = [];
+
+// Insère un post reçu en TEMPS RÉEL. Renvoie true s'il a été ajouté.
+//
+// Il ne suffit PAS de l'ajouter à `state.supabasePosts` : `startFeedRefreshLoop`
+// fait `state.supabasePosts = posts.concat(extra)`, où `posts` est un instantané
+// serveur pris AVANT l'arrivée du post et `extra` ne contient que
+// `_feedExtraPosts`. Un post arrivé pendant qu'une requête était en vol était
+// donc écrasé par la réponse de cette requête : il s'affichait, puis s'effaçait
+// jusqu'au cycle suivant. Auto-réparant, donc jamais signalé comme une perte —
+// mais visible, et exactement le scintillement qui fait douter de l'app.
+//
+// `_feedExtraPosts` est fait pour survivre à cet écrasement (il protégeait déjà
+// les pages de pagination) et il est dédupliqué par id à chaque rafraîchissement,
+// donc l'y ajouter ne peut pas créer de doublon.
+//
+// ⚠️ Cette fonction existe pour être TESTABLE : tant que la logique vivait dans
+// le callback `postgres_changes`, un test ne pouvait que la recopier — et un test
+// qui recopie le code qu'il vérifie ne garde rien.
+function feedAddRealtimePost(newPost) {
+  if (!newPost || !newPost.id) return false;
+  try {
+    state.supabasePosts = state.supabasePosts || [];
+    if (state.supabasePosts.find(function (p) { return p.id === newPost.id; })) return false;
+    state.supabasePosts.unshift(newPost);
+    window._feedExtraPosts = (window._feedExtraPosts || []).concat([newPost]);
+    return true;
+  } catch (e) { return false; }
+}
+window.feedAddRealtimePost = feedAddRealtimePost;
 async function loadMoreFeedPosts() {
   const btn = document.getElementById("feedLoadMoreBtn");
   if (btn) { btn.disabled = true; btn.textContent = "Chargement…"; }

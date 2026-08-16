@@ -4,6 +4,29 @@
 
 ---
 
+## 2026-08-16 — Boucle 7 : advisors, index oubliés, et une course fetch/temps réel
+
+### Remesurer APRÈS avoir corrigé
+Advisors Supabase interrogés après mes migrations. Deux enseignements opposés.
+
+**Ce qui va** : mes deux fonctions `SECURITY DEFINER` n'apparaissent pas — le `revoke execute` a pris ; la table `passions` non plus — RLS active avec sa policy. Les 9 avertissements de sécurité sont ceux déjà documentés comme délibérés.
+
+**Ce que j'avais laissé** : sur 7 clés étrangères sans index de couverture, **cinq venaient de ma propre migration des passions**, posées quelques heures plus tôt. Corrigé et vérifié (7 index).
+
+**Ce que je n'ai pas fait, et pourquoi** : 85 `auth_rls_initplan` (`auth.uid()` réévalué par ligne) + 42 `multiple_permissive_policies`. Correctif mécanique mais portant sur ~85 policies — la seule frontière de sécurité de l'app. Impact nul aujourd'hui, réel à l'échelle. Et les 13 index « inutilisés » restent en place : sur une beta à faible trafic, c'est une absence de preuve, pas une preuve d'absence.
+
+### `FEED-RT-007` — un post temps réel effacé par une requête plus ancienne
+Scénario multi-appareil n° 1 de l'analyse croisée. `startFeedRefreshLoop` écrase `state.supabasePosts` avec un instantané serveur pris **avant** l'arrivée du post ; seul `_feedExtraPosts` survit, et le handler temps réel ne l'alimentait pas. Le post s'affichait puis s'effaçait jusqu'au cycle suivant — auto-réparant, donc jamais remonté comme une perte.
+
+Prouvé en A/B : `survitAvantCorrectif: false`, `survitApresCorrectif: true`.
+
+**Le point de méthode de cette boucle** : mon premier test passait… en recopiant les deux lignes du correctif au lieu d'appeler le vrai code. Il aurait passé même après retrait de la correction. D'où l'extraction de `feedAddRealtimePost()` — non pas par goût du découpage, mais parce qu'**une logique enfermée dans un callback ne peut être testée qu'en la recopiant, et un test qui recopie ce qu'il vérifie ne garde rien.**
+
+### Vérifié correct, non modifié
+L'idempotence de la publication : un conflit de clé primaire au réessai est déjà interprété comme « déjà enregistré », à cinq endroits. Troisième résultat négatif de la nuit.
+
+---
+
 ## 2026-08-16 — Boucle 6 : isolation en invariant, et la suppression qui ne tenait pas
 
 ### L'isolation à la déconnexion devient un invariant
