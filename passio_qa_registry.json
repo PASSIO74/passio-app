@@ -101,10 +101,15 @@
     },
     "verdict_poids": "Le telechargement n est PAS le probleme.",
     "boot_cpu_x4": {
-      "landing_ms": 3946,
-      "taches_longues": 11,
-      "cumul_ms": 2575,
-      "plus_longue_ms": 496
+      "landing_ms": 1501,
+      "dcl_ms": 623,
+      "fcp_ms": 296,
+      "taches_longues": 6,
+      "cumul_ms": 728,
+      "plus_longue_ms": 145,
+      "conditions": "machine AU REPOS, mediane de 3 mesures",
+      "correction": "Les valeurs publiees pendant plusieurs heures (landing 3946, cumul 2575, max 496) etaient GONFLEES ~3,5x : la mesure tournait pendant la suite complete en arriere-plan.",
+      "verdict": "Aucun probleme de demarrage a traiter. FCP 296 ms, landing 1,5 s, aucune tache au-dela de 145 ms sous bridage x4."
     },
     "couverture_js_au_premier_ecran": {
       "total_ko": 1714,
@@ -160,9 +165,13 @@
         "app-08-ui-modals-tour": 8
       },
       "verdict": "Le chargement des scripts represente 5 % des 2 575 ms de taches longues. Extraire app-06 economiserait 24 ms. Le decoupage N EST PAS le levier.",
-      "pourquoi": "V8 pre-parse paresseusement : une fonction n est analysee en profondeur qu au premier appel. Les 1 367 Ko jamais executes ne coutent donc presque rien. La couverture a 20 % est exacte mais NON ACTIONNABLE.",
-      "reste_a_chercher": "Les ~2 440 ms restants sont dans le travail de demarrage lui-meme : DOM, styles, mise en page, boot()."
-    }
+      "pourquoi": "V8 pre-parse paresseusement : une fonction n est analysee en profondeur qu au premier appel. Les 1 367 Ko jamais executes ne coutent donc presque rien. La couverture a 20 % est exacte mais NON ACTIONNABLE."
+    },
+    "hypotheses_infirmees": [
+      "Decoupage du JS : cout d injection des 9 fichiers = 133 ms au total. V8 pre-parse paresseusement.",
+      "CSS trop lourd : A/B en retirant styles.css → cumul des taches longues PASSE DE 969 A 2457 ms. Le CSS fait GAGNER du travail (il masque les ecrans au lieu de les mettre en page).",
+      "Couverture CSS a 9 % lue comme un levier : meme piege que la couverture JS a 20 %."
+    ]
   },
   "incidents": [
     {
@@ -282,11 +291,6 @@
       "sujet": "node20_ci_deprecie",
       "nb": 2,
       "motif": "Modifier les actions, c est modifier le chemin de deploiement. Le bump se verifie sur une PR."
-    },
-    {
-      "sujet": "cout_boot_hors_scripts",
-      "nb": 1,
-      "motif": "~2 440 ms de taches longues non expliquees par le chargement des scripts (mesure : 133 ms seulement). A chercher du cote DOM/styles/mise en page et du boot() applicatif. Le decoupage JS est CLOS sur preuve."
     }
   ],
   "decisions": [
@@ -327,6 +331,7 @@
     "Un test qui RECOPIE le code qu il verifie : il fait croire a un succes, et rien ne le signale.",
     "Une reponse ChatGPT qui parait bloquee : elle est complete cote serveur, un rechargement la revele.",
     "Couverture V8 : les plages sont IMBRIQUEES, additionner celles a count>0 donne 100 % partout. Carte d octets obligatoire.",
-    "Couverture a 20 % lue comme un levier : ce qui n est pas EXECUTE ne coute pas forcement. Mesurer le cout, pas l inutilisation."
+    "Couverture a 20 % lue comme un levier : ce qui n est pas EXECUTE ne coute pas forcement. Mesurer le cout, pas l inutilisation.",
+    "Mesurer la performance sur une machine CHARGEE : baseline gonflee 3,5x, et deux investigations entieres menees sur une premisse fausse. Machine au repos, repetee, mediane."
   ]
 }

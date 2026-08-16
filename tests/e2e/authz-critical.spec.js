@@ -202,7 +202,59 @@ test.describe("AUTHZ-CRITICAL — séparation entre comptes", () => {
       log("usurpation neutralisée à l'UPDATE aussi");
       await rest(B.token, `video_lives?id=eq.${liveId}`, { method: "DELETE" }).catch(() => {});
 
-      // ── 9. Sans jeton, aucune donnée privée ────────────────────────────────
+      // ── 9. B ne peut pas fabriquer une notification AU NOM de A ────────────
+      //    La table était scellée en lecture (`user_id = auth.uid()`) mais son
+      //    INSERT valait `true`, en double : n'importe qui pouvait déposer une
+      //    notification vers n'importe qui, au nom de n'importe qui, avec un
+      //    contenu et un lien arbitraires. Pas une fuite — on ne lit toujours
+      //    pas les notifications d'autrui — mais une usurpation dans le seul
+      //    canal où l'utilisateur fait confiance à ce qu'il voit.
+      //
+      //    La contrainte portait sur le mauvais côté : une notification est
+      //    cross-compte PAR NATURE (A aime le post de B → A écrit la ligne dont
+      //    B est le destinataire), donc `user_id` ne pouvait pas être contraint.
+      //    C'est l'AUTEUR qu'il fallait contraindre.
+      const notifForgee = await rest(B.token, "notifications", {
+        method: "POST",
+        body: JSON.stringify({
+          id: `n_forge_${Date.now()}`, user_id: A.uid, kind: "like",
+          from_id: A.uid, content: "message fabriqué", seen: false,
+          created_at: new Date().toISOString(),
+        }),
+      });
+      expect(notifForgee.status, "B signe une notification du nom de A → doit être refusé")
+        .toBeGreaterThanOrEqual(400);
+      log(`notification usurpée refusée (HTTP ${notifForgee.status})`);
+
+      // Contre-épreuve : notifier autrui reste possible SOUS SA PROPRE identité.
+      // Sans elle, une policy qui casserait toutes les notifications passerait
+      // ce test pour de mauvaises raisons.
+      //    ⚠️ `return=minimal` et non `representation` : avec une représentation,
+      //    PostgREST fait `INSERT … RETURNING`, et ce RETURNING retombe sous la
+      //    policy SELECT (`user_id = auth.uid()`). B insérant POUR A ne peut pas
+      //    relire la ligne, donc la requête entière échoue en 403 — alors que
+      //    l'insertion elle-même est parfaitement légitime. L'app ne demande
+      //    aucune représentation ici (`supaInsertNotif` fait un `.insert()` nu).
+      const notifId = `n_ok_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      const notifLegitime = await rest(B.token, "notifications", {
+        method: "POST",
+        headers: { Prefer: "return=minimal" },
+        body: JSON.stringify({
+          id: notifId, user_id: A.uid, kind: "like",
+          from_id: B.uid, content: "B a aimé", seen: false,
+          created_at: new Date().toISOString(),
+        }),
+      });
+      expect(notifLegitime.status, "CONTRE-ÉPREUVE : B notifie A sous sa propre identité → doit passer")
+        .toBeLessThan(300);
+      // Et le destinataire, LUI, la voit bien : c'est la preuve que la ligne existe.
+      const recue = await rest(A.token, `notifications?id=eq.${notifId}&select=id,from_id`);
+      expect(Array.isArray(recue.body) && recue.body.length, "A reçoit la notification").toBe(1);
+      expect(recue.body[0].from_id, "et elle porte bien l'identité de B").toBe(B.uid);
+      log("notification légitime acceptée et reçue par A");
+      await rest(A.token, `notifications?id=eq.${notifId}`, { method: "DELETE" }).catch(() => {});
+
+      // ── 10. Sans jeton, aucune donnée privée ───────────────────────────────
       const anon = await rest(null, "conv_messages?select=id&limit=1");
       expect(Array.isArray(anon.body) ? anon.body.length : 0,
         "un client sans session lit des messages privés → doit être vide").toBe(0);

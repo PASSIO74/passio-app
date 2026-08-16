@@ -80,20 +80,26 @@ Ce qui est couvert par des tests aujourd'hui (par nom de spec, sans prétendre �
 
 355 Ko pour une application sociale complète : **le téléchargement n'est pas le problème.** Aucune optimisation de poids ne se justifie sur cette base.
 
-### Le vrai coût est sur le processeur
+### Coût processeur — ⚠️ CHIFFRES CORRIGÉS le 2026-08-16
 
-Mesuré avec un bridage CPU ×4 (approximation d'un mobile milieu de gamme) :
+**Les valeurs publiées ici pendant plusieurs heures étaient fausses, gonflées d'environ 3,5×.** La mesure d'origine tournait pendant que la suite complète s'exécutait en arrière-plan : elle mesurait la charge de la machine autant que celle de l'application.
 
-| Indicateur | Valeur |
-|---|---|
-| Landing affichée | 3 946 ms |
-| DOMContentLoaded | 2 064 ms |
-| Chargement complet | 2 966 ms |
-| Durée de chargement des JS | 1 297 ms |
-| **Tâches longues** | **11, cumulant 2 575 ms** |
-| **Plus longue tâche** | **496 ms** |
+Baseline réelle, **machine au repos**, bridage CPU ×4, **médiane de 3 mesures** :
 
-C'est là qu'est le sujet : le fil principal est bloqué ~2,5 s cumulées au démarrage, avec une tâche de près d'une demi-seconde. Sur un mobile modeste, l'app paraît figée pendant ce temps.
+| Indicateur | Publié à tort | **Réel** |
+|---|---|---|
+| Landing affichée | 3 946 ms | **1 501 ms** |
+| DOMContentLoaded | 2 064 ms | **623 ms** |
+| First Contentful Paint | — | **296 ms** |
+| Tâches longues | 11 | **6** |
+| Cumul | 2 575 ms | **728 ms** |
+| Plus longue tâche | 496 ms | **145 ms** |
+
+**Conséquence : il n'y a pas de problème de démarrage à traiter.** Sous bridage ×4 — soit un mobile modeste — l'app peint en 296 ms et atteint la landing en 1,5 s, sans aucune tâche dépassant 145 ms. Toute la piste « 2,5 s de fil principal bloqué » reposait sur une mesure contaminée.
+
+**Ce que cette erreur a coûté** : deux investigations complètes menées sur une prémisse fausse — la couverture JS (levier annoncé « massif », puis mesuré à 24 ms) et l'hypothèse CSS (infirmée par A/B, retirer le CSS *dégrade* de 1 488 ms). Aucune n'aurait eu lieu avec la bonne baseline.
+
+**Règle qui en découle** : une mesure de performance n'a de valeur que sur machine au repos, répétée, et médiane — jamais une exécution unique en parallèle d'autre chose.
 
 **Conséquence pour la suite** : toute optimisation doit viser le **découpage du travail de démarrage**, pas la réduction du poids.
 
