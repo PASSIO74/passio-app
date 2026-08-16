@@ -275,9 +275,9 @@
     {
       "sujet": "auth_rls_initplan",
       "nb": 85,
-      "statut": "3 CORRIGEES, 7 PREPAREES, 73 SANS OBJET",
-      "motif": "Decompte reel : 80 policies portaient encore auth.uid() nu, dont 7 SELECT et 73 ECRITURES. Une ecriture touche UNE ligne : « par ligne » y signifie « une fois » — les 73 sont un non-sujet. Les 3 de messagerie sont corrigees (11,636 ms -> 1,136 ms). Les 7 lectures restantes sont dans migration_rls_initplan_lectures.sql, prete et non appliquee.",
-      "correction": "J avais ecrit que le planificateur remontait DEJA auth.uid() « parce que la fonction est STABLE », en m appuyant sur posts. FAUX : la policy de posts utilisait deja (select auth.uid()). Contre-epreuve : stories, meme forme mais appel nu, n a AUCUN InitPlan. C est l enveloppe qui produit l InitPlan."
+      "statut": "CLOS — 10 policies reelles, toutes traitees",
+      "motif": "Les 85 avertissements se ramenaient a 10 policies : 3 de messagerie (corrigees, 11,636 -> 1,136 ms) et 7 de lecture (corrigees ce jour). Les 73 autres sont des ECRITURES, ou « reevalue par ligne » signifie « evalue une fois » puisqu une ecriture touche une ligne — non-sujet.",
+      "preuve_semantique": "Definitions normalisees comparees avant/apres : diff VIDE. Seule la forme d appel a change. InitPlan verifie present sur stories."
     },
     {
       "sujet": "multiple_permissive_policies",
