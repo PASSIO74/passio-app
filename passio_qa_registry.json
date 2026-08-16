@@ -1,7 +1,7 @@
 {
  "$comment": "Source de verite MACHINE de la qualification PASSIO. Vue humaine : PASSIO_MASTER_CONTROL.md. Journal : PASSIO_ENGINEERING_LOG.md. Regle : aucune valeur inventee ; un champ non mesure vaut null et porte un statut explicite.",
  "schema_version": 1,
- "generated_at": "2026-08-16T17:42:42.227Z",
+ "generated_at": "2026-08-16T20:04:25.314Z",
  "commit": "b5a8051",
  "branch": "main",
  "working_tree": "clean",
@@ -270,6 +270,28 @@
    "verified": true,
    "note": "Le registre a porte MIGRATION_PRETE_NON_APPLIQUEE apres l application reelle : ecart entre le journal (qui la disait appliquee) et ce fichier, tranche en interrogeant la base plutot qu en croyant l un des deux documents.",
    "preuve": "pg_policies au 2026-08-16 : une seule policy INSERT sur notifications, notifications_insert_own_author, with_check (from_id = (select auth.uid())::text). Les deux policies INSERT valant true ont disparu."
+  },
+  {
+   "id": "MEDIA-COMPTE-SUPPRIME-010",
+   "severity": "P2",
+   "domain": "confidentialite",
+   "status": "CONSTATE_NON_TRAITE",
+   "problem": "La suppression d un compte n emporte pas ses medias. Verifie le 2026-08-16 en recuperant l URL publique d une photo d un compte disparu, SANS aucun jeton : http 200, 249 415 octets. 19 fichiers (81 Mo) sont dans ce cas.",
+   "cause": "Le seau `content` est public par conception (les URLs sont donc publiques, ce n est pas le point) et aucune suppression de compte ne declenche de nettoyage du Storage.",
+   "fix": "Non decide. Deux voies : purger les medias a la suppression du compte, ou passer le seau en URLs signees. La seconde change l architecture d affichage - c est un arbitrage produit.",
+   "verified": false,
+   "note": "Les 19 fichiers ne sont PAS des fixtures (videos de 30 Mo, avatars). Le script de purge les compte et les affiche, il n y touche pas : leur sort est une decision humaine."
+  },
+  {
+   "id": "STORAGE-BRUIT-011",
+   "severity": "P3",
+   "domain": "observabilite",
+   "status": "CLOS",
+   "problem": "La suite e2e abandonnait ses fixtures dans le seau PUBLIC `content` : 174 GIF de 37 octets accumules sous des dossiers de comptes supprimes, une douzaine de plus par execution.",
+   "cause": "purge_e2e_accounts.sql nettoie 23 tables et les comptes, mais ne peut PAS toucher aux fichiers : Supabase interdit le DELETE direct sur storage.objects (trigger protect_delete). Le nettoyage passe obligatoirement par l API Storage.",
+   "fix": "scripts/purge-e2e-storage.js, branche sur le global-teardown apres la purge des comptes. Garde-fou : seuls les fichiers de moins de 1 Ko d un compte inexistant sont supprimes - une vraie photo ne pese jamais 37 octets, donc effacer du contenu utilisateur est mecaniquement impossible.",
+   "verified": true,
+   "preuve": "244 -> 70 fichiers a la purge ; puis suite complete relancee : 70 -> 70, zero petit fichier restant (les 6 crees pendant l execution ont ete nettoyes par le teardown)."
   }
  ],
  "dette_signalee_non_traitee": [
@@ -346,6 +368,16 @@
    "piege": "Une mesure vide ressemble a un resultat nul.",
    "vecu": "En mode couverture, un http-server deja lance aurait ete reutilise et la suite aurait mesure 0 interaction — indiscernable d une couverture nulle.",
    "parade": "reuseExistingServer:false : le port occupe fait ECHOUER le demarrage au lieu de produire un zero."
+  },
+  {
+   "piege": "Compter les orphelins du Storage sur les seules colonnes qui RESSEMBLENT a des URLs.",
+   "vecu": "Une premiere requete annoncait 221 orphelins / 108 Mo en ignorant les colonnes jsonb (posts.vlog, overlays, cdv_live_steps.photos) et conv_messages.content. Recompte en cherchant chaque nom de fichier dans l integralite des lignes : 198 orphelins / 35 Mo.",
+   "parade": "Chercher le nom de fichier dans la representation texte de la LIGNE ENTIERE (table::text), jamais dans une liste de colonnes choisie a la main."
+  },
+  {
+   "piege": "Supposer qu on peut nettoyer le Storage en SQL.",
+   "vecu": "`delete from storage.objects` est refuse par Supabase (trigger storage.protect_delete). Une purge ecrite en SQL aurait echoue silencieusement dans un script best-effort.",
+   "parade": "Passer par l API Storage. Et verifier qu une suppression rend bien le fichier inaccessible."
   }
  ],
  "recuperation": {

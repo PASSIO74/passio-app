@@ -12,6 +12,7 @@
     "couverture:mesure": "node scripts/couverture-mesure.js",
     "sauvegarde": "node scripts/sauvegarde-donnees.js",
     "purge:e2e": "node scripts/purge-e2e-accounts.js",
+    "purge:storage": "node scripts/purge-e2e-storage.js",
     "revue": "node scripts/dossier-revue.js",
     "chatgpt": "node scripts/chatgpt.js",
     "serve": "http-server -p 8080 -c-1 .",

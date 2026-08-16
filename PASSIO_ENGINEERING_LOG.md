@@ -4,6 +4,38 @@
 
 ---
 
+## 2026-08-16 — Boucle 15 : le stockage, troisième table remplie par ses propres tests
+
+Après la télémétrie et les erreurs, le même motif une troisième fois — et cette fois il coûte du disque et laisse des fichiers dans un seau **public**.
+
+### 174 fichiers de test dans le seau public
+
+Sur 244 fichiers du Storage, **198 n'étaient référencés par aucune ligne** de la base. Le chiffre brut ne veut rien dire tant qu'on n'a pas regardé : une première requête en annonçait 221 pour 108 Mo, parce qu'elle ignorait les colonnes `jsonb` (`posts.vlog`, `overlays`, `cdv_live_steps.photos`) et `conv_messages.content`. Recompté en cherchant chaque nom de fichier dans **l'intégralité** des lignes : 198 orphelins, 35 Mo.
+
+Leur nature saute aux yeux dès qu'on regarde les tailles : **90 fichiers créés le jour même pesaient 3 330 octets à eux tous** — des GIF de 37 octets, le 1×1 transparent des fixtures de test, rangés sous des dossiers d'UUID de comptes jetables. Le `global-teardown` supprimait les comptes ; les fichiers restaient.
+
+### Pourquoi la purge existante ne pouvait pas les nettoyer
+
+`purge_e2e_accounts.sql` vide 23 tables puis supprime les comptes. Ajouter `delete from storage.objects` échoue : **Supabase l'interdit** par un trigger (`storage.protect_delete` — « Direct deletion from storage tables is not allowed »). Le nettoyage des médias passe obligatoirement par l'API Storage. D'où `scripts/purge-e2e-storage.js`, branché sur le teardown après la purge des comptes.
+
+**Le garde-fou central est le seuil de taille** : on ne supprime que des fichiers de moins de 1 Ko appartenant à un compte qui n'existe plus. Une vraie photo ne pèse jamais 37 octets — ce seuil rend *mécaniquement* impossible d'effacer du contenu d'utilisateur, y compris si la détection d'orphelin se trompe.
+
+Résultat mesuré : 174 fichiers supprimés (244 → 70), puis suite complète relancée — **70 → 70, zéro petit fichier restant**. Les 6 fichiers créés pendant l'exécution ont été nettoyés par le teardown. La fuite est fermée et la fermeture est prouvée.
+
+### Ce que je ne traite pas, et pourquoi
+
+**19 fichiers, 81 Mo, appartiennent à des comptes supprimés et sont conservés.** Ce ne sont pas des fixtures : des vidéos de 30 Mo, des avatars, des photos. Le script les compte et les affiche, il n'y touche pas — leur sort est une décision humaine, pas la conséquence d'un script de nettoyage de tests.
+
+Et ils posent une question qui dépasse le ménage. Vérifié en récupérant l'URL publique **sans aucun jeton** : `http 200`, 249 415 octets. **Le média d'un compte supprimé reste servi publiquement.** Le seau `content` est public par conception, donc toute URL l'est ; le point n'est pas là. Le point est que **la suppression d'un compte n'emporte pas ses médias**, qui restent accessibles indéfiniment à qui a connu l'adresse. Pour un réseau social qui vise une beta publique, c'est un sujet de confidentialité à trancher — noté dans le registre, pas corrigé à la volée.
+
+### Fichiers touchés
+`scripts/purge-e2e-storage.js` (nouveau), `tests/e2e/global-teardown.js`, `package.json`, `PASSIO_ENGINEERING_LOG.md`, `passio_qa_registry.json`.
+
+### Vérifications exécutées
+Suite complète `PASSIO_E2E_MULTI=1` : **180 passés, 1 flaky** (notification cross-compte), 1 skipped. Comptage Storage avant/après la suite : 70 → 70.
+
+---
+
 ## 2026-08-16 — Boucle 14 : l'observabilité se mesurait elle-même
 
 Le plan était clos, les quatre conditions du readiness soit traitées soit bloquées sur une décision. Restait à regarder ce que la production dit d'elle-même. Elle disait surtout du bruit — le nôtre.
