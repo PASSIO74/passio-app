@@ -24,6 +24,7 @@ const sentinel = await import("../server/sentinel.js");
 const {
   triage, sanitizeObserved, buildJobPrompt, consider, _reset, _setAnalyzer,
   _setAvailability, _settings, sentinelState, listDiagnoses, extractVerdict,
+  cooldownKey, repoRevision,
 } = sentinel;
 
 _setAvailability(() => true);
@@ -64,10 +65,24 @@ test("triage : une alerte manuelle (levée à la main) n'est pas analysée", () 
 test("triage : la même cause n'est ré-analysée qu'après le cooldown", () => {
   _reset();
   const now = Date.now();
-  const seen = { "trace:failed:like:request": now };
   const a = alert({ key: "trace:failed:like:request" });
+  const seen = { [cooldownKey(a)]: now };
   assert.equal(triage(a, now + 60_000, seen).reason, "cooldown");
   assert.equal(triage(a, now + _settings.cooldownMs + 1, seen).take, true);
+});
+
+test("le cooldown est levé par un nouveau commit (la cause change de contexte)", () => {
+  _reset();
+  const now = Date.now();
+  const a = alert({ key: "trace:failed:like:request" });
+  const rev = repoRevision();
+  // Un dépôt git est présent ici : la clé doit porter la révision, sinon une
+  // régression apparue APRÈS un commit resterait muette 6 h.
+  assert.ok(rev, "la révision du dépôt doit être lisible depuis .git");
+  assert.equal(cooldownKey(a), "trace:failed:like:request@" + rev);
+  // La même cause vue sur une AUTRE révision n'est plus la même clé.
+  const seenAutreRevision = { "trace:failed:like:request@0000dead": now };
+  assert.equal(triage(a, now + 1000, seenAutreRevision).take, true);
 });
 
 test("triage : le mode approfondi est réservé aux contextes structurés", () => {
@@ -204,6 +219,48 @@ test("l'état exposé dit la vérité sur ce qui a été écarté", async () => 
   assert.equal(st.skipped.level, 2);
   assert.equal(st.total, 0);
   assert.equal(st.settings.levels.includes("info"), false);
+});
+
+// ─── La sandbox du processus Claude (frontière de sécurité) ──────────────────
+// Ces assertions verrouillent le profil fail-closed. Elles ont une raison d'être
+// précise : avant le 2026-08-16 la restriction reposait sur une LISTE NOIRE
+// d'outils intégrés, et un appel réel au CLI a montré qu'elle laissait passer
+// PowerShell (la liste interdisait « Bash ») et tout le MCP Supabase, dont
+// execute_sql, avec bypassPermissions actif. Ne jamais revenir à une liste noire.
+
+test("sandbox : le mode approfondi n'obtient QUE Read, Grep, Glob", async () => {
+  const { buildCliArgs } = await import("../server/claudecli.js");
+  const a = buildCliArgs(true);
+  const tools = a[a.indexOf("--tools") + 1];
+  assert.equal(tools, "Read,Grep,Glob");
+  assert.ok(!/Bash|PowerShell|Edit|Write|Task/.test(tools));
+});
+
+test("sandbox : le mode rapide n'obtient aucun outil capable d'agir", async () => {
+  const { buildCliArgs } = await import("../server/claudecli.js");
+  const a = buildCliArgs(false);
+  const tools = a[a.indexOf("--tools") + 1];
+  // Un outil inerte, et surtout PAS la chaîne vide : elle rend la liste complète.
+  assert.equal(tools, "TodoWrite");
+  assert.notEqual(tools, "", "`--tools \"\"` ouvre en réalité TOUS les outils");
+  // Comparaison sur les noms EXACTS (« TodoWrite » contient « Write »).
+  const names = tools.split(",");
+  for (const interdit of ["Read", "Bash", "PowerShell", "Edit", "Write", "Task", "Glob", "Grep"]) {
+    assert.ok(!names.includes(interdit), `le mode rapide ne doit pas disposer de ${interdit}`);
+  }
+});
+
+test("sandbox : personnalisations et serveurs MCP neutralisés dans les deux modes", async () => {
+  const { buildCliArgs } = await import("../server/claudecli.js");
+  for (const deep of [true, false]) {
+    const a = buildCliArgs(deep);
+    assert.ok(a.includes("--safe-mode"), "CLAUDE.md, skills, plugins, hooks, agents désactivés");
+    assert.ok(a.includes("--strict-mcp-config"), "aucun serveur MCP (sinon execute_sql sur la prod)");
+    assert.ok(a.includes("--no-session-persistence"), "pas de trace disque du texte hostile analysé");
+    assert.ok(a.includes("--no-chrome"));
+    assert.ok(!a.includes("--dangerously-skip-permissions"));
+    assert.ok(!a.includes("--add-dir"));
+  }
 });
 
 // ─── Intégration : le câblage alerte → sentinelle ────────────────────────────

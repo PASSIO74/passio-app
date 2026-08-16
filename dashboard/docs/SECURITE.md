@@ -55,10 +55,31 @@ La sentinelle (`server/sentinel.js`) lance Claude **toute seule**, sans geste
 humain. C'est la seule partie du dashboard qui agisse sans déclencheur humain :
 elle est donc bornée sur quatre axes.
 
-- **Lecture seule, sans exception.** L'analyse passe par `runClaudeCli`, lancé
-  sans `Edit`/`Write`/`Bash`. Aucun patch appliqué, aucune branche créée, aucun
-  push — la sentinelle produit une cause et un correctif *proposé*. Appliquer
-  reste le processus §4, avec validation humaine.
+- **Sandbox fail-closed du processus Claude.** C'est LE point, et il a été
+  corrigé le 2026-08-16 après vérification par un appel réel au CLI. Le code
+  d'origine se reposait sur `--disallowedTools`, une **liste noire d'outils
+  intégrés** ; en interrogeant le processus enfant sur ses outils réels, il
+  disposait de **`PowerShell`** (la liste interdisait « Bash », or l'outil shell
+  s'appelle PowerShell sous Windows) et de **tout le MCP Supabase du projet**,
+  `execute_sql` et `apply_migration` compris — avec `defaultMode:
+  bypassPermissions` dans `.claude/settings.json`, donc auto-approuvés. Une liste
+  noire ne peut pas être exhaustive : les outils MCP ne sont pas des intégrés, et
+  un nom d'outil peut changer de plateforme en plateforme. Profil actuel, verrouillé
+  par test (`buildCliArgs`) : `--tools` en **liste blanche** (`Read,Grep,Glob` en
+  approfondi, un seul outil inerte en rapide), `--safe-mode` (CLAUDE.md, skills,
+  plugins, hooks, agents désactivés), `--strict-mcp-config` sans `--mcp-config`
+  (**aucun** serveur MCP), `--no-session-persistence`, `--no-chrome`. Vérifié par
+  appel réel : le mode rapide ne peut pas lire un fichier, le mode approfondi ne
+  peut pas exécuter de commande.
+  ⚠️ `--tools ""` est documenté « aucun outil » mais rend en fait la liste
+  complète, Bash/Edit/Write inclus. Une liste blanche vide ou invalide **ouvre**
+  au lieu de fermer.
+- **Environnement du processus enfant filtré.** `spawn` hérite de `process.env` :
+  les clés du dashboard (`SUPABASE_SERVICE_ROLE_KEY`, secret de session, mot de
+  passe admin…) en sont retirées nommément avant le lancement.
+- **Aucune écriture.** Aucun patch appliqué, aucune branche créée, aucun push —
+  la sentinelle produit une cause et un correctif *proposé*. Appliquer reste le
+  processus §4, avec validation humaine.
 - **Injection de prompt.** Un message d'erreur vient du navigateur d'un
   utilisateur : c'est une donnée hostile. Tout texte observé passe par
   `sanitizeObserved` (clôtures de bloc cassées, faux tours de parole neutralisés,
@@ -67,10 +88,14 @@ elle est donc bornée sur quatre axes.
   **mode approfondi** — celui où Claude lit le dépôt — n'est ouvert qu'aux
   alertes dont le contexte est *calculé côté serveur* (trace, bug groupé). Une
   alerte bâtie sur du texte libre client n'obtient jamais l'accès aux fichiers.
-- **Budget.** Une panne produit des rafales. Déduplication par clé d'alerte
-  (cooldown 6 h, persisté), une analyse à la fois, plafond horaire (8 par
-  défaut), file bornée, espacement minimal de 90 s. Au démarrage, l'arriéré
-  d'alertes n'est jamais rejoué.
+- **Budget.** Une panne produit des rafales. Déduplication par cause **et
+  révision du dépôt** (cooldown 6 h, persisté — la révision évite qu'une
+  régression apparue après un commit reste muette 6 h), une analyse à la fois,
+  plafond horaire (8 par défaut) avec sous-plafond des analyses approfondies
+  (3/h, au-delà la sentinelle dégrade en analyse rapide plutôt que de renoncer),
+  file bornée, espacement minimal de 90 s. Au démarrage, l'arriéré d'alertes
+  n'est jamais rejoué. Sous Windows, un dépassement de délai tue l'**arbre** de
+  processus (`taskkill /T`), sinon un `claude` orphelin survit et consomme le quota.
 - **Diffusion.** `/api/sentinel*` exige la capacité `claude` : un diagnostic
   contient des chemins et des extraits de code du dépôt, ce n'est pas de la
   supervision ordinaire. `tester` et `observer` n'y ont pas accès. Chaque

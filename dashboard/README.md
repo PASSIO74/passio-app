@@ -90,8 +90,16 @@ Chaque diagnostic commence par « En clair » et porte un **verdict explicite** 
 *défaut réel*, *comportement attendu* (beaucoup de « bugs » du pilotage sont des
 garde-fous qui font leur travail) ou *données insuffisantes*.
 
-**Elle ne corrige rien.** L'analyse tourne en lecture seule ; le correctif est
-proposé, jamais appliqué (voir [`docs/SECURITE.md`](docs/SECURITE.md) §4 bis).
+⚠️ **« Aucun diagnostic » ne veut pas dire « tout va bien ».** Un débogueur
+déclenché par des alertes est aveugle à tout ce qui n'en produit pas : bouton qui
+n'émet plus rien, résultat faux en HTTP 200, contenu disparu en silence, ou
+télémétrie elle-même interrompue. Ces pannes-là ressemblent au calme. La santé se
+lit sur l'Accueil (fraîcheur de l'ingestion, taux de réussite), pas ici.
+
+**Elle ne corrige rien.** Le processus Claude qu'elle lance ne dispose que d'une
+liste blanche d'outils (rien en analyse rapide, lecture seule en approfondie),
+sans personnalisations ni serveurs MCP ; le correctif est proposé, jamais
+appliqué (voir [`docs/SECURITE.md`](docs/SECURITE.md) §4 bis).
 Elle a besoin d'une source d'analyse : le `claude` local connecté (gratuit,
 abonnement Claude Code) ou `ANTHROPIC_API_KEY`. Sans source, elle reste inerte
 et le dit.
@@ -104,6 +112,7 @@ Réglages (`.env`, tous facultatifs) :
 | `DASH_SENTINEL_LEVELS` | `critical,high` | niveaux d'alerte analysés |
 | `DASH_SENTINEL_COOLDOWN_MIN` | `360` | délai avant de ré-analyser la même cause |
 | `DASH_SENTINEL_MAX_PER_HOUR` | `8` | plafond d'analyses par heure |
+| `DASH_SENTINEL_MAX_DEEP_PER_HOUR` | `3` | sous-plafond des analyses approfondies (au-delà : dégradées en rapides) |
 | `DASH_SENTINEL_MIN_GAP_S` | `90` | espacement minimal entre deux analyses |
 | `DASH_SENTINEL_DEEP` | actif | `false` pour interdire la lecture du dépôt |
 

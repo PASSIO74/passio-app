@@ -1750,6 +1750,12 @@ VIEWS.sentinel = async () => {
       elle explique et propose.</p>
     <div id="sentState"></div>
     <div id="sentList" class="empty">Chargement…</div>`);
+  // Délégation : les lignes sont réinsérées en direct par le flux SSE, un
+  // gestionnaire par ligne se perdrait au premier rafraîchissement.
+  $("#sentList").onclick = (e) => {
+    const row = e.target.closest("[data-sent-id]");
+    if (row) window.__openSentinel(row.dataset.sentId);
+  };
   S.refresh = async () => {
     const r = await api.get("/sentinel?limit=50").catch((e) => ({ error: e.message }));
     if (r.error) { $("#sentList").innerHTML = `<div class="empty">${esc(r.error)}</div>`; return; }
@@ -1758,8 +1764,16 @@ VIEWS.sentinel = async () => {
     $("#sentList").className = "";
     $("#sentList").innerHTML = r.diagnoses.length
       ? r.diagnoses.map(sentItem).join("")
-      : `<div class="empty">Aucun diagnostic pour l'instant. C'est bon signe : la sentinelle n'analyse que les alertes
-           <b>critiques</b> et <b>élevées</b>. Elle se déclenchera d'elle-même au prochain vrai problème.</div>`;
+      // ⚠️ Ne JAMAIS écrire ici « aucun diagnostic = tout va bien ». Un débogueur
+      // déclenché par des alertes est aveugle à tout ce qui ne produit pas
+      // d'alerte : bouton qui n'émet plus rien, résultat faux en HTTP 200,
+      // contenu disparu en silence, ou pipeline de télémétrie lui-même cassé —
+      // ces pannes-là ressemblent exactement au calme. La santé se lit sur
+      // l'Accueil (fraîcheur de l'ingestion, taux de réussite), pas ici.
+      : `<div class="empty">Aucun diagnostic pour l'instant. Cela ne veut pas dire que tout va bien :
+           la sentinelle ne voit que ce qui déclenche une alerte <b>critique</b> ou <b>élevée</b>.
+           Une panne silencieuse (bouton qui n'émet plus rien, télémétrie interrompue) ne produit
+           aucune alerte — c'est l'<a href="#overview">Accueil</a> qui répond à « est-ce que ça va ».</div>`;
   };
   await S.refresh();
 };
@@ -1796,7 +1810,11 @@ function sentItem(d) {
   const v = SENT_VERDICT[d.verdict];
   const head = (d.analysis || "").match(/##\s*En clair\s*\n+([\s\S]{0,320}?)(?:\n##|$)/i);
   const gist = d.error ? "" : (head ? head[1].trim().replace(/\s+/g, " ") : (d.analysis || "").slice(0, 220));
-  return `<div class="sent-item ${d.level}" onclick="window.__openSentinel('${esc(d.id)}')">
+  // Identifiant en attribut de DONNÉE, pas dans un `onclick` : dans un attribut
+  // de gestionnaire, le HTML décode `&#39;` AVANT que JS ne parse, donc escapeHtml
+  // seul n'y suffit pas (piège maison connu). L'id est serveur, mais on ne laisse
+  // pas traîner le motif.
+  return `<div class="sent-item ${d.level}" data-sent-id="${esc(d.id)}">
       <div class="a-row">
         <div class="a-title">${esc(d.title)}</div>
         ${v ? `<span class="pill ${v.cls}">${v.label}</span>` : d.error ? '<span class="pill error">Analyse en échec</span>' : ""}

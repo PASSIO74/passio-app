@@ -9,25 +9,39 @@
 // contexte, lance Claude Code, et publie le diagnostic dans le flux temps réel.
 //
 // ─── Ce qu'elle NE fait PAS, délibérément ─────────────────────────────────────
-// Elle ne corrige RIEN toute seule. L'analyse tourne en lecture seule (le CLI est
-// lancé sans Edit/Write/Bash), aucun patch n'est appliqué, aucune branche créée,
+// Elle ne corrige RIEN toute seule : aucun patch appliqué, aucune branche créée,
 // aucun push. Un correctif automatique sur une prod qu'on ne regarde pas est une
 // panne qui s'écrit elle-même : la sentinelle produit la CAUSE et le patch
 // PROPOSÉ, l'application reste un geste humain (voir docs/SECURITE.md).
 //
-// ─── Trois garde-fous qui comptent ────────────────────────────────────────────
-// 1. INJECTION. Un message d'erreur vient du navigateur d'un utilisateur : c'est
+// ─── Quatre garde-fous qui comptent ───────────────────────────────────────────
+// 1. SANDBOX (le vrai sujet, cf. `claudecli.js`). Le processus Claude lancé sans
+//    surveillance ne dispose QUE d'une liste blanche d'outils : rien du tout en
+//    analyse rapide, Read/Grep/Glob en analyse approfondie. Personnalisations et
+//    serveurs MCP neutralisés. Ce point prime sur tous les autres : sans lui, le
+//    reste ne protège rien.
+// 2. INJECTION. Un message d'erreur vient du navigateur d'un utilisateur : c'est
 //    de la donnée hostile. Tout texte observé est neutralisé (clôtures de bloc
-//    cassées, longueur bornée) et encadré d'une consigne explicite. Les alertes
-//    à texte libre non structuré ne déclenchent JAMAIS le mode approfondi (celui
-//    où Claude lit le dépôt).
-// 2. BUDGET. Une panne produit des rafales d'alertes ; sans plafond, la
+//    cassées, longueur bornée) et encadré d'une consigne explicite. C'est de
+//    l'HYGIÈNE de prompt, PAS une frontière — la frontière, c'est la sandbox.
+//    Les alertes à texte libre ne déclenchent jamais le mode approfondi.
+// 3. BUDGET. Une panne produit des rafales d'alertes ; sans plafond, la
 //    sentinelle brûlerait le quota Claude en quelques minutes. Déduplication par
-//    clé d'alerte (cooldown long, persisté), file bornée, une analyse à la fois,
-//    plafond horaire.
-// 3. DÉMARRAGE. Au boot, on n'analyse pas l'arriéré : seules les alertes émises
+//    cause ET révision du dépôt (cooldown long, persisté), file bornée, une
+//    analyse à la fois, plafond horaire, sous-plafond pour l'approfondi.
+// 4. DÉMARRAGE. Au boot, on n'analyse pas l'arriéré : seules les alertes émises
 //    APRÈS le démarrage comptent (sinon chaque redémarrage relance 500 analyses).
+//
+// ─── Son angle mort, à ne jamais oublier ──────────────────────────────────────
+// Elle ne voit QUE ce qui déclenche une alerte. Un bouton qui n'émet plus rien,
+// un résultat faux en HTTP 200, une télémétrie interrompue : zéro alerte, donc
+// zéro diagnostic — et ça ressemble exactement au calme. « Aucun diagnostic » ne
+// veut jamais dire « tout va bien » ; la santé se mesure ailleurs (fraîcheur de
+// l'ingestion, taux de réussite bout en bout).
 // ═══════════════════════════════════════════════════════════════════════════
+import fs from "node:fs";
+import path from "node:path";
+import { config } from "./config.js";
 import { JsonDb } from "./jsondb.js";
 import { broadcast } from "./sse.js";
 import { onAlert } from "./alerts.js";
@@ -48,6 +62,10 @@ const SETTINGS = {
   // Une même cause (clé d'alerte) n'est ré-analysée qu'après ce délai.
   cooldownMs: Number(env.DASH_SENTINEL_COOLDOWN_MIN || 360) * 60_000,   // 6 h
   maxPerHour: Number(env.DASH_SENTINEL_MAX_PER_HOUR || 8),
+  // Sous-plafond des analyses APPROFONDIES : ce sont elles qui durent (jusqu à
+  // 7 min) et qui mangent le quota de l abonnement partagé avec le travail
+  // interactif. Au-dela, la sentinelle degrade en analyse rapide.
+  maxDeepPerHour: Number(env.DASH_SENTINEL_MAX_DEEP_PER_HOUR || 3),
   minGapMs: Number(env.DASH_SENTINEL_MIN_GAP_S || 90) * 1000,
   queueMax: Number(env.DASH_SENTINEL_QUEUE_MAX || 20),
   keep: Number(env.DASH_SENTINEL_KEEP || 100),
@@ -63,7 +81,8 @@ const rt = {
   running: null,          // { id, title, startedAt }
   lastRunAt: 0,
   runsWindow: [],         // horodatages des analyses de la dernière heure
-  skipped: { cooldown: 0, budget: 0, level: 0, queue: 0, unavailable: 0 },
+  deepWindow: [],         // idem, limité aux analyses APPROFONDIES (quota)
+  skipped: { cooldown: 0, budget: 0, deepBudget: 0, level: 0, queue: 0, unavailable: 0 },
   total: 0,
 };
 
@@ -122,6 +141,38 @@ function dataBlock(title, body) {
 // ═══════════════════════════════════════════════════════════════════════════
 //  TRIAGE — quelles alertes méritent une analyse automatique
 // ═══════════════════════════════════════════════════════════════════════════
+// Révision du dépôt, lue à même `.git` (aucun processus lancé), cache 60 s.
+// Elle entre dans la clé de cooldown : sans elle, « même cause pendant 6 h »
+// masquerait une régression DIFFÉRENTE apparue après un commit — le moment
+// précis où l'on a le plus besoin d'un diagnostic frais.
+let _rev = { v: "", at: 0 };
+export function repoRevision(now = Date.now()) {
+  if (now - _rev.at < 60_000) return _rev.v;
+  _rev.at = now;
+  try {
+    const gitDir = path.join(config.repoPath, ".git");
+    const head = fs.readFileSync(path.join(gitDir, "HEAD"), "utf8").trim();
+    if (head.startsWith("ref:")) {
+      const ref = head.slice(4).trim();
+      try { _rev.v = fs.readFileSync(path.join(gitDir, ref), "utf8").trim().slice(0, 8); }
+      catch {
+        // Référence empaquetée (packed-refs) : on la cherche là.
+        const packed = fs.readFileSync(path.join(gitDir, "packed-refs"), "utf8");
+        const line = packed.split("\n").find((l) => l.endsWith(" " + ref));
+        _rev.v = line ? line.slice(0, 8) : "";
+      }
+    } else _rev.v = head.slice(0, 8);
+  } catch { _rev.v = ""; }   // pas un dépôt git : on retombe sur la clé nue
+  return _rev.v;
+}
+
+/** Clé de déduplication : la cause ET la révision du code. */
+export function cooldownKey(alert) {
+  const base = alert.key || alert.title;
+  const rev = repoRevision();
+  return rev ? `${base}@${rev}` : base;
+}
+
 /**
  * Décide du sort d'une alerte.
  * @returns {{take:true, kind:string, deep:boolean} | {take:false, reason:string}}
@@ -130,7 +181,7 @@ export function triage(alert, now = Date.now(), seen = db.get().seen) {
   if (!alert || alert.manual) return { take: false, reason: "manuelle" };
   if (!SETTINGS.levels.includes(alert.level)) return { take: false, reason: "level" };
 
-  const key = alert.key || alert.title;
+  const key = cooldownKey(alert);
   const last = seen[key];
   if (last && now - last < SETTINGS.cooldownMs) return { take: false, reason: "cooldown" };
 
@@ -160,10 +211,17 @@ const PREAMBLE = [
   "  volontaires (filtre env=production, résidus datés de 7 j, contenu de démo,",
   "  capacité `db` sur les routes d'intégrité, mutations refusées en prod).",
   "",
+  "Sans reproduction, tu produis une HYPOTHÈSE causale, pas un diagnostic prouvé :",
+  "sépare ce que les données montrent de ce que tu en déduis. Méfie-toi du biais",
+  "« le dernier commit est le coupable » — les commits récents te sont donnés comme",
+  "piste, pas comme conclusion.",
+  "",
   "Format de réponse imposé :",
   "## En clair — 2-3 phrases sans jargon.",
   "## Verdict — l'un de : DÉFAUT RÉEL / COMPORTEMENT ATTENDU / INSUFFISAMMENT DE DONNÉES.",
-  "## Cause probable · ## Fichiers · ## Correctif proposé · ## Vérification · ## Risques",
+  "## Preuves — ce que les données établissent, factuellement.",
+  "## Hypothèse — ta cause probable, et ce qui manque pour la prouver.",
+  "## Fichiers · ## Correctif proposé · ## Vérification · ## Risques",
 ].join("\n");
 
 /** Contexte générique : l'alerte + les erreurs récentes qui l'entourent. */
@@ -240,12 +298,23 @@ export function consider(alert, now = Date.now()) {
 
   // Le cooldown est posé À L'ENTRÉE (pas à la fin) : pendant une rafale, les 40
   // alertes suivantes de la même cause ne doivent pas s'empiler dans la file.
-  const key = alert.key || alert.title;
+  const key = cooldownKey(alert);
   db.update((d) => { d.seen[key] = now; });
+
+  // Le mode approfondi lance un Claude qui peut tourner plusieurs minutes et qui
+  // consomme le quota de l'abonnement. Au-delà de son propre plafond horaire, on
+  // DÉGRADE en analyse rapide au lieu de renoncer : un diagnostic moins fin vaut
+  // mieux que pas de diagnostic, et le quota reste disponible pour le travail
+  // interactif.
+  let deep = verdict.deep;
+  if (deep && rt.deepWindow.filter((t) => now - t < 3600_000).length >= SETTINGS.maxDeepPerHour) {
+    deep = false;
+    rt.skipped.deepBudget++;
+  }
 
   const job = {
     id: "sd_" + now.toString(36) + Math.random().toString(36).slice(2, 6),
-    alert, kind: verdict.kind, deep: verdict.deep,
+    alert, kind: verdict.kind, deep,
     queuedAt: now, key,
   };
   rt.queue.push(job);
@@ -268,6 +337,7 @@ async function pump() {
   rt.running = { id: job.id, title: job.alert.title, startedAt: now, deep: job.deep };
   rt.lastRunAt = now;
   rt.runsWindow.push(now);
+  if (job.deep) rt.deepWindow = rt.deepWindow.filter((t) => now - t < 3600_000).concat(now);
   broadcast("sentinel_state", sentinelState());
 
   let result;
@@ -364,9 +434,9 @@ export function startSentinel() {
 
 /** Remise à zéro de l'état vivant — usage TESTS uniquement. */
 export function _reset({ startedAt = Date.now() } = {}) {
-  rt.queue.length = 0; rt.running = null; rt.lastRunAt = 0; rt.runsWindow.length = 0;
+  rt.queue.length = 0; rt.running = null; rt.lastRunAt = 0; rt.runsWindow.length = 0; rt.deepWindow.length = 0;
   rt.total = 0; rt.started = true; rt.startedAt = startedAt;
-  rt.skipped = { cooldown: 0, budget: 0, level: 0, queue: 0, unavailable: 0 };
+  rt.skipped = { cooldown: 0, budget: 0, deepBudget: 0, level: 0, queue: 0, unavailable: 0 };
   pumping = false;
   db.update((d) => { d.seen = {}; d.diagnoses = []; });
 }

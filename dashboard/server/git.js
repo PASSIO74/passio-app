@@ -84,8 +84,14 @@ export async function blameFile(file, n = 5) {
 export function readSnippet(file, line, radius = 12) {
   try {
     const clean = file.replace(/^\/+/, "").split("?")[0];
-    const abs = path.join(config.repoPath, clean);
-    if (!abs.startsWith(config.repoPath)) return null;          // anti path-traversal
+    const abs = path.resolve(config.repoPath, clean);
+    // Anti path-traversal. Le chemin vient d'une STACK TRACE de navigateur, donc
+    // d'une source hostile, et `extractCodeRef` accepte « . » et « / » : « ../ »
+    // peut arriver jusqu'ici. Le test de préfixe nu était insuffisant — il laissait
+    // passer un dossier VOISIN (…/PASSIO-autre/x.js commence bien par …/PASSIO).
+    // Il faut le séparateur, et l'égalité stricte pour la racine elle-même.
+    const root = path.resolve(config.repoPath);
+    if (abs !== root && !abs.startsWith(root + path.sep)) return null;
     if (!fs.existsSync(abs)) return null;
     const lines = fs.readFileSync(abs, "utf8").split("\n");
     const from = Math.max(1, (line || 1) - radius);
