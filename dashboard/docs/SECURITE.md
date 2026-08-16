@@ -74,6 +74,20 @@ elle est donc bornée sur quatre axes.
   ⚠️ `--tools ""` est documenté « aucun outil » mais rend en fait la liste
   complète, Bash/Edit/Write inclus. Une liste blanche vide ou invalide **ouvre**
   au lieu de fermer.
+- **Le dossier de travail n'est PAS une frontière de fichiers.** Mesuré : avec
+  `--tools Read,Grep,Glob` et `cwd` = dépôt, un chemin absolu hors dépôt est
+  refusé, mais `../../AppData/…` est lu sans obstacle ; les règles de permission
+  passées par `--settings` n'ont pas rétabli la frontière (en `-p`, un mode non
+  permissif refuse tout, dépôt inclus). Conséquence assumée : **les analyses
+  automatiques n'ont aucun accès disque par défaut** (`DASH_SENTINEL_DEEP`
+  désactivé). L'extrait de code fourni au modèle est lu par le **serveur**, dont
+  le confinement, lui, est vérifiable (`readSnippet`). L'analyse approfondie
+  reste disponible pour un humain qui la déclenche et lit le résultat.
+- **Sortie bornée.** Une consigne hostile peut réclamer une réponse gigantesque :
+  la sortie du CLI est coupée à 400 Ko (processus interrompu) et le diagnostic
+  persisté à 60 Ko. Les diagnostics vivent dans un fichier unique, indexés par un
+  identifiant **généré côté serveur** — aucune donnée observée n'entre dans un
+  chemin de fichier.
 - **Environnement du processus enfant filtré.** `spawn` hérite de `process.env` :
   les clés du dashboard (`SUPABASE_SERVICE_ROLE_KEY`, secret de session, mot de
   passe admin…) en sont retirées nommément avant le lancement.

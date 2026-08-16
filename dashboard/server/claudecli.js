@@ -135,8 +135,20 @@ export function runClaudeCli(prompt, { deep = false, timeoutMs } = {}) {
       }
       finish({ error: "L'analyse a pris trop de temps (délai dépassé)." });
     }, timeoutMs);
-    p.stdout.on("data", (d) => (out += d));
-    p.stderr.on("data", (d) => (err += d));
+    // Borne de sortie. Une consigne hostile peut demander une réponse
+    // gigantesque ; sans plafond, elle grossirait la mémoire du serveur puis le
+    // fichier de diagnostics. On coupe net au-delà.
+    const MAX_OUT = 400_000;
+    p.stdout.on("data", (d) => {
+      if (out.length > MAX_OUT) return;
+      out += d;
+      if (out.length > MAX_OUT) {
+        out = out.slice(0, MAX_OUT);
+        try { p.kill(); } catch {}
+        finish({ error: "Réponse anormalement longue, analyse interrompue." });
+      }
+    });
+    p.stderr.on("data", (d) => { if (err.length < 20_000) err += d; });
     p.on("error", (e) => { clearTimeout(timer); finish({ error: e.message }); });
     p.on("close", () => {
       clearTimeout(timer);

@@ -69,8 +69,22 @@ const SETTINGS = {
   minGapMs: Number(env.DASH_SENTINEL_MIN_GAP_S || 90) * 1000,
   queueMax: Number(env.DASH_SENTINEL_QUEUE_MAX || 20),
   keep: Number(env.DASH_SENTINEL_KEEP || 100),
-  // Mode approfondi (Claude lit le vrai code). Coupable via .env si besoin.
-  deep: env.DASH_SENTINEL_DEEP !== "false",
+  // ─── Mode approfondi : DÉSACTIVÉ par défaut, et ce n'est pas de la prudence
+  // de principe. Mesuré le 2026-08-16 : avec `--tools Read,Grep,Glob` et
+  // cwd = dépôt, un chemin ABSOLU hors dépôt est bien refusé, mais un chemin
+  // RELATIF remontant (`../../AppData/…`) est lu sans difficulté. Le répertoire
+  // de travail n'est donc PAS une frontière de système de fichiers, et les
+  // règles de permission par `--settings` n'ont pas permis de la rétablir (en
+  // `-p`, un mode non permissif refuse tout, y compris le dépôt).
+  // Conséquence : un texte hostile arrivant dans le prompt pourrait faire lire
+  // un fichier quelconque du poste et en recopier le contenu dans le diagnostic.
+  // La sentinelle tournant SANS personne devant l'écran, elle ne prend pas ce
+  // risque : ses analyses automatiques n'ont aucun accès disque. Le contexte
+  // (extrait de source lu par le SERVEUR, lui confiné, stack, commits,
+  // chronologie) est déjà dans le prompt. `DASH_SENTINEL_DEEP=true` pour
+  // l'activer en connaissance de cause ; le bouton « Analyse approfondie »,
+  // lui, reste inchangé : c'est un humain qui le déclenche et qui lit le résultat.
+  deep: env.DASH_SENTINEL_DEEP === "true",
 };
 
 // ─── État vivant (mémoire) ───────────────────────────────────────────────────
@@ -359,7 +373,9 @@ async function pump() {
     title: job.alert.title,
     subject: job.alert.message || "",
     meta: job.alert.meta || {},
-    analysis: result?.analysis || null,
+    // Le diagnostic est persisté : on le borne aussi ici, indépendamment de la
+    // borne du CLI (l'analyse peut aussi venir de l'API).
+    analysis: result?.analysis ? String(result.analysis).slice(0, 60_000) : null,
     error: result?.error || null,
     via: result?.via || null,
     verdict: extractVerdict(result?.analysis),

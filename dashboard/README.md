@@ -114,7 +114,17 @@ Réglages (`.env`, tous facultatifs) :
 | `DASH_SENTINEL_MAX_PER_HOUR` | `8` | plafond d'analyses par heure |
 | `DASH_SENTINEL_MAX_DEEP_PER_HOUR` | `3` | sous-plafond des analyses approfondies (au-delà : dégradées en rapides) |
 | `DASH_SENTINEL_MIN_GAP_S` | `90` | espacement minimal entre deux analyses |
-| `DASH_SENTINEL_DEEP` | actif | `false` pour interdire la lecture du dépôt |
+| `DASH_SENTINEL_DEEP` | **inactif** | `true` pour autoriser l'analyse approfondie (Claude lit le code) — voir l'avertissement ci-dessous |
+
+⚠️ **Pourquoi l'analyse approfondie automatique est désactivée par défaut.** Mesuré
+le 2026-08-16 : avec `--tools Read,Grep,Glob` et le dépôt comme dossier de travail,
+un chemin absolu hors dépôt est bien refusé, mais un chemin **relatif** remontant
+(`../../AppData/…`) est lu sans difficulté — le dossier de travail n'est pas une
+frontière de système de fichiers, et les règles de permission par `--settings` n'ont
+pas permis de la rétablir. Un texte hostile arrivé dans le prompt pourrait donc faire
+lire un fichier quelconque du poste. La sentinelle tournant sans personne devant
+l'écran, elle s'en abstient. Le bouton « Analyse approfondie », lui, reste disponible :
+c'est un humain qui le déclenche et qui lit le résultat.
 
 ## 4. Déroulé d'un test à deux appareils
 

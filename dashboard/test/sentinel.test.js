@@ -85,9 +85,21 @@ test("le cooldown est levé par un nouveau commit (la cause change de contexte)"
   assert.equal(triage(a, now + 1000, seenAutreRevision).take, true);
 });
 
+test("par défaut, AUCUNE analyse automatique n'a accès au disque", () => {
+  // Mesuré : avec Read/Grep/Glob et cwd = dépôt, un chemin relatif « ../../ »
+  // sort du dépôt. Le répertoire de travail n'est pas une frontière. Tant qu'on
+  // ne sait pas confiner, l'automate n'a pas de disque — c'est le défaut, et il
+  // ne doit pas se remettre à true par accident.
+  assert.equal(_settings.deep, false, "le mode approfondi doit rester opt-in explicite");
+  for (const meta of [{ cid: "c1" }, { bug: "b1" }, { screen: "feed" }]) {
+    assert.equal(triage(alert({ meta })).deep, false);
+  }
+});
+
 test("triage : le mode approfondi est réservé aux contextes structurés", () => {
   _reset();
-  // Trace et bug : contexte calculé côté serveur → lecture du dépôt permise.
+  // Trace et bug : contexte calculé côté serveur → seuls éligibles SI l'opt-in
+  // approfondi est activé. Le texte libre client ne l'est jamais.
   assert.deepEqual(triage(alert({ meta: { cid: "c1" } })), { take: true, kind: "trace", deep: _settings.deep });
   assert.deepEqual(triage(alert({ meta: { bug: "b1" } })), { take: true, kind: "bug", deep: _settings.deep });
   // Texte libre venu du client → JAMAIS d'accès aux fichiers.
