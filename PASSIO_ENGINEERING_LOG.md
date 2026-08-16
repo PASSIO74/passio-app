@@ -4,6 +4,28 @@
 
 ---
 
+## 2026-08-16 — Boucle 8 : outiller la détection des tests creux
+
+### Tentative de revue croisée — interrompue, et rapportée comme telle
+Un quatrième tour a été envoyé à ChatGPT pour faire challenger les décisions de la nuit, **en particulier les renoncements** (les 85 policies, la file de télémétrie non partitionnée, les index « inutilisés » conservés, l'option C maintenue, le sujet performance déclaré clos). Le message est parti (5 969 caractères, il est dans le fil) ; la réponse s'est interrompue après 5 caractères et l'onglet est devenu irrécupérable — la conversation dépasse 60 000 caractères et le rendu ne répond plus, même à `1+1`.
+
+**Aucune analyse reçue, donc aucune rapportée.** Reprendre la boucle exigera un fil neuf.
+
+### `audit-tests-creux.js` — répondre soi-même à la question posée
+La question la plus utile du tour 4 était : comment détecter les tests creux à l'échelle d'une suite de 161 tests, sans les relire un par un ? Faute de réponse, elle a été traitée directement.
+
+Le script croise les identifiants appelés dans les `page.evaluate` avec les fonctions réellement définies dans `js/`. Un spec qui n'en touche aucune ne peut, par construction, que vérifier ses propres constructions.
+
+**Le travail n'a pas été d'écrire la détection, mais de la rendre crédible.** En version brute elle signalait `cadrage.spec.js` (qui boote la vraie app puis mesure du CSS) et `version-skew.spec.js` (qui vérifie des artefacts de build) — deux faux positifs. Trois exemptions plus tard : **0 faux positif sur 23 specs, et un spec creux fabriqué bien détecté.**
+
+C'est la leçon des 133 fausses anomalies du tableau d'intégrité, appliquée à soi-même : un outil qui crie au loup finit désactivé, et un outil désactivé ne vaut rien.
+
+Câblé dans la CI **avant** l'installation de Playwright — il échoue vite et pour une raison lisible.
+
+Ce qu'il ne prétend pas faire : mesurer la couverture. Il attrape le cas franc, celui qui coûte le plus cher parce qu'il est invisible.
+
+---
+
 ## 2026-08-16 — Boucle 7 : advisors, index oubliés, et une course fetch/temps réel
 
 ### Remesurer APRÈS avoir corrigé
