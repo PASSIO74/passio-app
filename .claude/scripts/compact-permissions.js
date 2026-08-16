@@ -35,7 +35,10 @@ const target =
  *  spécifique pour re-matcher un jour (ex. un message de commit entier). */
 const PREFIXE_MAX = 60;
 
-const SECRET = /eyJhbGciOi[A-Za-z0-9_\-]{20,}|sb_secret_|service_role|SUPABASE_SERVICE_ROLE|ghp_[A-Za-z0-9]{20,}/;
+/** Le point fait partie d'un JWT (`header.payload.signature`) : l'exclure de la
+ *  classe laissait passer un jeton à en-tête court. Constaté sur fixture le
+ *  2026-08-15 — les 9 vrais jetons du dépôt matchaient par chance. */
+const SECRET = /eyJhbGciOi[A-Za-z0-9_.\-]{20,}|sb_secret_|service_role|SUPABASE_SERVICE_ROLE|ghp_[A-Za-z0-9]{20,}|sbp_[a-f0-9]{20,}/;
 
 /** Socle : ce que Benjamin fait réellement tous les jours sur PASSIO.
  *  Large volontairement — le garde-fou destructif est le hook PreToolUse

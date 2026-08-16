@@ -35,7 +35,6 @@
             "shell": "bash",
             "command": "node \"C:/Users/BENJAMIN/Desktop/PASSIO/.claude/scripts/compact-permissions.js\" --quiet",
             "timeout": 15,
-            "async": true,
             "statusMessage": "Compactage des permissions"
           }
         ]

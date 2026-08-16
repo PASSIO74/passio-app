@@ -24,6 +24,16 @@ async function bootInteractions(page) {
     // ⚠️ supaSetPostLike est stubbé à part : il doit répondre { ok:true }, pas
     // `null` — un like dont l'écriture n'est pas confirmée est désormais ANNULÉ.
     window.supaSetPostLike = async () => ({ ok: true, error: null });
+    // ⚠️ supaLoadPosts manquait à la liste ci-dessous, et c'était LA cause des
+    // flakes de ce fichier (trois tests différents, l. 112/126/142, sur trois
+    // exécutions complètes en août 2026). Plusieurs chemins font
+    // `state.supabasePosts = posts.concat(extra)` : un chargement différé qui
+    // se termine APRÈS seedServerPost remplaçait le tableau en bloc et faisait
+    // disparaître le post semé. Le symptôme (« element detached », « not
+    // stable ») ressemblait à une course de rendu — c'en était une de DONNÉES.
+    // Renvoie [] et non null : les appelants font `.concat()` sur le résultat.
+    window.supaLoadPosts = async () => [];
+    window.supaLoadEventPosts = async () => [];
     ["supaAddComment", "supaCommentInteract", "supaCommentRemoveLike",
       "supaCommentRemoveReactions", "supaLoadComments", "supaLoadCommentInteractions",
       "supaInsertNotif", "supaSetEventLike", "supaAddEventReaction", "supaRemoveEventReaction",
@@ -50,15 +60,51 @@ async function bootInteractions(page) {
   );
 }
 
+// Attend que le fil ait CESSÉ de se re-rendre.
+//
+// Le garde de bootInteractions vérifie que les renderers EXISTENT ; il ne dit
+// rien de ceux qui vont encore s'exécuter. Sous charge (suite complète), une
+// tâche différée du boot re-rend le fil APRÈS le retour du helper : le nœud que
+// le locator vient de résoudre est alors détaché, et le clic échoue avec
+// « element is not stable » ou « element was detached from the DOM ».
+//
+// Symptôme observé les 15/08 sur trois exécutions complètes : trois tests
+// DIFFÉRENTS de ce fichier (l. 112, 126, 142) ont floté à tour de rôle. Ce
+// n'était donc pas un bug produit mais la fragilité commune de leur mise en
+// place — un flaky qui érode la confiance dans le gate, et un gate auquel on ne
+// croit plus finit désactivé.
+//
+// On attend que le MÊME nœud DOM survive à trois rafraîchissements consécutifs.
+// Pas de délai fixe : un délai est toujours trop court sur machine chargée et
+// toujours trop long sinon.
+async function attendreFilStable(page, id) {
+  const sel = `[data-postid="${id}"] [data-action="like"]`;
+  await page.waitForSelector(sel, { timeout: 15000 });
+  await page.waitForFunction((s) => {
+    const n = document.querySelector(s);
+    if (!n) { window.__filRef = null; window.__filStable = 0; return false; }
+    if (window.__filRef === n) { window.__filStable = (window.__filStable || 0) + 1; }
+    else { window.__filRef = n; window.__filStable = 1; }
+    return window.__filStable >= 3;
+    // ⚠️ polling par INTERVALLE, jamais "raf" : requestAnimationFrame ne se
+    // déclenche pas sur une page qui ne compose pas de frames — ce qui est le
+    // cas en headless, et plus encore sous charge parallèle. Avec "raf" cette
+    // attente expirait alors que le fil était parfaitement stable : le garde
+    // ne s'exécutait tout simplement jamais.
+  }, sel, { polling: 50, timeout: 15000 });
+}
+
 // Rend le fil non vide : sans passion sélectionnée, le fil est vide PAR DESIGN.
 async function showFeed(page) {
-  return page.evaluate(() => {
+  const id = await page.evaluate(() => {
     const posts = allFeedPosts().filter((p) => p.type !== "vlog");
     _activeFeedPassions.add(posts[0].passion);
     window._feedDomSig = null;
     renderFeed();
     return document.querySelector("#feedList [data-postid]").getAttribute("data-postid");
   });
+  await attendreFilStable(page, id);
+  return id;
 }
 
 // Injecte dans le fil un post « qui existe en base » (fromSupabase) et arme une
@@ -92,6 +138,13 @@ async function seedServerPost(page, { writeResult = { ok: true, error: null }, m
   }, [writeResult, manual]);
 }
 
+// Variante stabilisée : à utiliser dès qu'on va CLIQUER sur le post semé.
+async function seedServerPostStable(page, opts) {
+  const id = await seedServerPost(page, opts);
+  await attendreFilStable(page, id);
+  return id;
+}
+
 test.describe("Interactions — like d'un post", () => {
   test("fil : le bouton ❤️ bascule dans les deux sens et persiste au re-rendu", async ({ page }) => {
     await bootInteractions(page);
@@ -111,7 +164,7 @@ test.describe("Interactions — like d'un post", () => {
 
   test("écriture serveur refusée : le ❤️ optimiste est ANNULÉ (bouton + état)", async ({ page }) => {
     await bootInteractions(page);
-    const id = await seedServerPost(page, { writeResult: { ok: false, error: { message: "RLS", code: "42501" } }, manual: true });
+    const id = await seedServerPostStable(page, { writeResult: { ok: false, error: { message: "RLS", code: "42501" } }, manual: true });
     const btn = page.locator(`[data-postid="${id}"] [data-action="like"]`);
 
     await btn.click();
@@ -128,7 +181,7 @@ test.describe("Interactions — like d'un post", () => {
     // réseau. Si le fil est reconstruit entre le clic et la réponse, ce nœud est
     // détaché — le repeindre ne se voit nulle part.
     await bootInteractions(page);
-    const id = await seedServerPost(page, { writeResult: { ok: false, error: { message: "réseau" } }, manual: true });
+    const id = await seedServerPostStable(page, { writeResult: { ok: false, error: { message: "réseau" } }, manual: true });
     await page.locator(`[data-postid="${id}"] [data-action="like"]`).click();
     await expect(page.locator(`[data-postid="${id}"] [data-action="like"]`)).toHaveText(/❤️\s*5/);
 
@@ -144,7 +197,7 @@ test.describe("Interactions — like d'un post", () => {
     // la base et l'état local divergeaient, le clic écrivait l'inverse de ce que
     // l'utilisateur voyait.
     await bootInteractions(page);
-    const id = await seedServerPost(page);
+    const id = await seedServerPostStable(page);
     const btn = page.locator(`[data-postid="${id}"] [data-action="like"]`);
 
     await btn.click();
@@ -153,6 +206,10 @@ test.describe("Interactions — like d'un post", () => {
     // (800 ms) rend le test instable dès que la machine est chargée, et ce n'est
     // pas le verrou qu'on teste ici mais le SENS de l'écriture.
     await page.evaluate(() => _likePending.clear());
+    // Le premier clic a repeint le bouton : le nœud a pu être remplacé. On
+    // attend qu'il se soit re-stabilisé avant le second clic, sinon celui-ci
+    // part sur un nœud en train d'être détaché (« element is not stable »).
+    await attendreFilStable(page, id);
     await btn.click();
     await expect(btn).toHaveText(/🤍\s*4/);
     expect(await page.evaluate(() => window.__likeCalls)).toEqual([
