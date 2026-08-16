@@ -129,6 +129,14 @@ Exécutés réellement le 2026-08-15 (base prod, comptes créés puis purgés) :
 
 **Non prouvé à ce jour** : la latence de propagation (aucune mesure), le multi-appareil réel (les tests utilisent deux contextes de navigateur, pas deux appareils), le rôle d'un troisième compte témoin C sur l'ensemble des interactions.
 
+## DETTE D'INFRASTRUCTURE (signalée, non traitée)
+
+| Sujet | Détail | Pourquoi non traité |
+|---|---|---|
+| `auth_rls_initplan` × 85 | `auth.uid()` réévalué à chaque ligne. Correctif mécanique : `(select auth.uid())`. Impact **nul** aux volumes actuels, **réel à l'échelle** | Touche ~85 policies, la seule frontière de sécurité de l'app. Se fait table par table, avec la suite cross-compte après chacune |
+| Node 20 déprécié en CI | `actions/checkout@v4` et `actions/setup-node@v4` visent Node 20, forcés sur Node 24 par GitHub. Le repli disparaîtra | Modifier les actions, c'est modifier le **chemin de déploiement**. Le bump se vérifie sur une PR, pas en fin de nuit |
+| `unused_index` × 13 | Signalés par les advisors | Sur une beta à faible trafic, « inutilisé » = « pas encore utilisé ». Ce serait agir sur une absence de preuve |
+
 ## PROCHAINES PRIORITÉS
 
 1. **Débloquer la boucle croisée ChatGPT** (prérequis du fondateur : connecter l'extension Claude-in-Chrome). Le dossier est prêt.
