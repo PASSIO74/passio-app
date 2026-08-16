@@ -21,12 +21,29 @@
 const { test, expect } = require("@playwright/test");
 const { GATE_TOKEN, GATE_KEY } = require("./gate-helper");
 
-/** Capture les lignes réellement POSTées vers telemetry_events. */
-function interceptePayloads(page) {
+/**
+ * Capture les lignes POSTées vers telemetry_events — et les ARRÊTE avant la base.
+ *
+ * `?telemetry=1` force la capture, et il n'existe qu'UNE base Supabase : sans
+ * interception, chaque exécution déposerait une dizaine de lignes `development`
+ * dans la table de PRODUCTION. Le dashboard les filtre, mais la table, son coût
+ * et toute analyse SQL directe, non — 128 lignes s'y étaient déjà réaccumulées
+ * après la purge du 2026-08-16.
+ *
+ * Répondre 201 plutôt qu'échouer : un refus déclencherait la file de reprise du
+ * client, qui rejouerait le lot indéfiniment. Ce test n'a besoin que du contenu
+ * envoyé, jamais de sa persistance.
+ */
+async function interceptePayloads(page) {
   const lignes = [];
-  page.on("request", (req) => {
-    if (req.method() !== "POST" || !req.url().includes("/rest/v1/telemetry_events")) return;
-    try { lignes.push(...JSON.parse(req.postData() || "[]")); } catch (e) { /* payload illisible */ }
+  // `page.route` est asynchrone : ne pas l'attendre laisserait `goto` partir
+  // avant que l'interception soit posée, et les premiers lots fileraient en base.
+  await page.route("**/rest/v1/telemetry_events*", async (route) => {
+    const req = route.request();
+    if (req.method() === "POST") {
+      try { lignes.push(...JSON.parse(req.postData() || "[]")); } catch (e) { /* payload illisible */ }
+    }
+    await route.fulfill({ status: 201, contentType: "application/json", body: "[]" });
   });
   return lignes;
 }
@@ -36,7 +53,7 @@ test.describe("Latence perçue", () => {
     test.setTimeout(90000);
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
-    const lignes = interceptePayloads(page);
+    const lignes = await interceptePayloads(page);
 
     await page.addInitScript(([k, t]) => sessionStorage.setItem(k, t), [GATE_KEY, GATE_TOKEN]);
     await page.goto("/index.html?telemetry=1");
@@ -76,7 +93,7 @@ test.describe("Latence perçue", () => {
     test.setTimeout(90000);
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
-    const lignes = interceptePayloads(page);
+    const lignes = await interceptePayloads(page);
 
     await page.addInitScript(([k, t]) => sessionStorage.setItem(k, t), [GATE_KEY, GATE_TOKEN]);
 

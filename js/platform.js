@@ -20,6 +20,28 @@
     (function() {
       var sent = 0;
       var pending = [];
+
+      // ─── Ne pas remonter depuis localhost ────────────────────────────────
+      // Il n'existe qu'UNE base : ce qui part d'ici atterrit dans la table de
+      // PRODUCTION. Or la suite e2e provoque des erreurs VOLONTAIRES — le spec
+      // d'échappement vérifie qu'une charge hostile rend le handler non
+      // compilable, et le `SyntaxError` qui en résulte EST la preuve que
+      // l'attaque est inerte.
+      //
+      // Mesuré le 2026-08-16 : « Unexpected token ')' » occupait la PREMIÈRE
+      // place du monitoring avec 55 occurrences et 55 clients distincts, toutes
+      // venant de 127.0.0.1. Une vraie erreur d'un vrai testeur serait passée
+      // inaperçue dessous — c'est exactement ce qu'une table d'erreurs ne doit
+      // jamais faire. Même raisonnement que pour la télémétrie (localhost en
+      // opt-in strict depuis ce jour-là).
+      //
+      // `?monitoring=1` force la remontée pour déboguer la chaîne elle-même.
+      var MONITORING_ACTIF = (function() {
+        try {
+          if (new URLSearchParams(location.search).get("monitoring") === "1") return true;
+          return location.hostname !== "localhost" && location.hostname !== "127.0.0.1";
+        } catch (e) { return true; }   // en cas de doute, on remonte
+      })();
       function doInsert(payload) {
         try { window.supa.from("client_errors").insert(payload).then(function(){}, function(){}); } catch (e) {}
       }
@@ -29,6 +51,7 @@
       }
       function report(message, source, line, col, stackText) {
         try {
+          if (!MONITORING_ACTIF) return;
           if (sent >= 5) return; // max 5 erreurs par session (anti-spam)
           sent++;
           var payload = {

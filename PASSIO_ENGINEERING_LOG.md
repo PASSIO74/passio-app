@@ -4,6 +4,50 @@
 
 ---
 
+## 2026-08-16 — Boucle 14 : l'observabilité se mesurait elle-même
+
+Le plan était clos, les quatre conditions du readiness soit traitées soit bloquées sur une décision. Restait à regarder ce que la production dit d'elle-même. Elle disait surtout du bruit — le nôtre.
+
+### La table d'erreurs était occupée par ses propres tests
+
+En tête du monitoring de production : « `Uncaught SyntaxError: Failed to execute 'dispatchEvent' … Unexpected token ')'` » — **55 occurrences, 55 clients distincts, la plus récente du jour**. De quoi croire à une panne de masse.
+
+Origine réelle : `source = 127.0.0.1`, pile portant `eval at evaluate` et `NodeList.forEach`. La signature de Playwright. Et l'erreur elle-même est **souhaitable** : `echappement.spec.js` secoue le DOM avec une charge hostile ; correctement échappée, elle rend le handler inline non compilable, et ce `SyntaxError` **est la preuve que l'attaque est inerte**.
+
+Le défaut n'était donc pas l'erreur mais sa destination. `report()` dans `platform.js` avait un plafond anti-spam de 5 par session et **aucune barrière d'environnement** : chaque exécution locale écrivait dans la table de PRODUCTION. Corrigé sur le modèle retenu pour la télémétrie le matin même — localhost ne remonte plus, `?monitoring=1` force la remontée pour déboguer la chaîne.
+
+Deux directions testées, parce qu'un filtre qui bloquerait *tout le monde* ressemblerait à un filtre qui marche : 0 remontée en local, 1 avec l'indicateur, message transmis. Mutation appliquée (garde retirée) → le premier test tombe. La règle d'hier tient.
+
+### Ce que le nettoyage a révélé
+
+Après purge de 70 lignes locales puis de 5 piles Playwright restantes : **34 erreurs, aucune postérieure au 11 août, et la plus récente est encore du bruit local**. Autrement dit — et c'est une information, pas une absence d'information — **aucune erreur réelle de production depuis cinq jours**. Elle était invisible sous le bruit.
+
+Au passage, un candidat qui semblait sérieux s'est dégonflé à la lecture : `Cannot read properties of null (reading 'getZoom')`, 5 clients distincts, récent. Sa pile portait `predicate` — le nom interne de `waitForFunction`. Encore Playwright. **Lire la pile avant de crier au bug** : c'est ce qui sépare un incident d'une fausse alerte.
+
+### Mes propres tests polluaient aussi
+
+Les deux tests de latence écrits la boucle précédente utilisaient `?telemetry=1` et déposaient une dizaine de lignes `development` dans la table de production à chaque exécution — 128 s'y étaient réaccumulées après la purge du matin. Rendus hermétiques par interception réseau (`page.route`, réponse 201 pour ne pas déclencher la file de reprise). Vérifié en comptant avant/après : **138 → 138, zéro ligne écrite**, tests toujours verts.
+
+`telemetrie-preauth.spec.js` continue d'écrire, délibérément : son objet même est le vrai aller-retour serveur (l'incident TEL-IDENT-002 se mesurait en codes HTTP). Le dégrader pour gagner deux lignes serait un mauvais échange, et c'est écrit plutôt que corrigé en silence.
+
+### Toujours pas de p50/p95
+
+L'instrumentation de latence fonctionne (27 ms relevés). Mais **aucun clic de production depuis le déploiement** : le dernier date de 15 h 01, le déploiement de 18 h 30. Le readiness continue donc de porter « instrumentée, pas encore observée ». Il n'y a pas de chiffre à donner, et je n'en fabrique pas.
+
+### Le garde-fou de commit refusait des messages légitimes
+
+`.git/hooks/commit-msg` (local, non versionné) refuse un sujet commençant par `@` ou `'` — séquelle du commit « `@ feat(cdv): …` » du 2026-07-22, irrattrapable sur une branche protégée. Utile, et mal ciblé : il annonce vérifier **le sujet** mais grep **tout le fichier**. Le message de cette boucle contenait une ligne de corps commençant par `'dispatchEvent'` — refusé à tort.
+
+Recadré sur la première ligne, c'est-à-dire sur ce qu'il documente déjà. Vérifié sur trois cas : sujet `@` → refusé, `auto:` → refusé, message légitime à corps apostrophé → accepté. La protection est intacte, le faux positif a disparu. **Ce hook n'étant pas versionné, il devra être refait sur toute autre machine.**
+
+### Fichiers touchés
+`js/platform.js`, `tests/e2e/monitoring-bruit.spec.js` (nouveau), `tests/e2e/latence-percue.spec.js`, `PASSIO_ENGINEERING_LOG.md`. Hors dépôt : `.git/hooks/commit-msg`.
+
+### Données de production modifiées
+Purge de `telemetry_events` (138 lignes `development`) et de `client_errors` (75 lignes de bruit local et Playwright). Aucune donnée d'utilisateur réel touchée ; précédent établi les 11 et 16 août.
+
+---
+
 ## 2026-08-16 — Boucle 13 : deux blancs comblés — la couverture et la sauvegarde
 
 Les sept points du plan étaient clos. Restaient les quatre conditions du passage à `PUBLIC BETA READY`. Deux ont bougé cette nuit ; les deux autres demandent du trafic réel, pas du travail.
