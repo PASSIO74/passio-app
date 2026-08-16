@@ -4844,6 +4844,25 @@ async function supaBlockUser(targetId) {
     const res = await supa.from("blocks").insert({ blocker_id: MY_UID, blocked_id: targetId, created_at: new Date().toISOString() });
     const dup = res && res.error && String(res.error.code) === "23505";  // déjà bloqué = état voulu atteint
     try { window.tel && tel.settle(_cid, "saved", !!(!res || !res.error || dup), res && res.error); } catch (e) {}
+
+    // ⚠️ RETIRER LA PERSONNE DE MES ABONNÉS — sans ça, bloquer ne retire aucun accès.
+    //
+    // `blockUser` supprimait bien MON abonnement vers elle, mais pas le SIEN vers
+    // moi. Or la visibilité d'un compte privé est décidée côté serveur par
+    // `post_is_visible`, qui accorde l'accès sur exactement cette ligne :
+    //     exists (select 1 from follows f
+    //             where f.follower_id = auth.uid() and f.following_id = p.author_id)
+    // Un compte privé qui bloquait un abonné continuait donc de lui montrer tous
+    // ses posts — c'est-à-dire précisément ce que bloquer est censé empêcher, et
+    // dans le seul scénario où ça compte vraiment.
+    //
+    // La base l'autorisait déjà : `follows` porte une policy DELETE
+    // `following_id = auth.uid()`, faite pour qu'on puisse retirer un abonné.
+    // Le client ne s'en servait simplement pas.
+    const rf = await supa.from("follows").delete().eq("following_id", MY_UID).eq("follower_id", targetId);
+    // Le SDK ne LÈVE PAS sur un refus RLS : sans lire `{ error }`, l'échec serait
+    // invisible et le blocage paraîtrait complet alors qu'il ne l'est pas.
+    if (rf && rf.error) console.warn("blocage : retrait d'abonné refusé —", rf.error.message);
   } catch(e) { try { window.tel && tel.settle(_cid, "saved", false, e); } catch (_) {} }
 }
 // Renvoie true seulement si le déblocage a réellement eu lieu : `state.user.blocked`
