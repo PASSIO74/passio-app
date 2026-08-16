@@ -89,6 +89,48 @@ export function runSuite(id, actor) {
   return { started: id };
 }
 
+/**
+ * Variante attendue d'une suite, pour la réparation automatique. Partage le MÊME
+ * verrou que `runSuite` : sans ça, une vérification automatique et un test lancé
+ * à la main se marcheraient dessus (Playwright, un seul port de serveur local).
+ * @param {string} id  @param {string} cwd  répertoire d'exécution (worktree isolé)
+ * @returns {Promise<{code:number, output:string}>}
+ */
+export function runSuiteAwait(id, cwd, actor, timeoutMs = 900_000) {
+  return new Promise((resolve, reject) => {
+    if (running) { const e = new Error("Un test est déjà en cours."); e.code = 409; return reject(e); }
+    const suite = TEST_SUITES[id];
+    if (!suite) { const e = new Error("Suite inconnue (hors liste blanche)."); e.code = 400; return reject(e); }
+    audit("run_tests_auto", { id, cwd }, actor);
+    const proc = spawn(suite.cmd, suite.args, { cwd: cwd || config.repoPath, shell: process.platform === "win32", env: { ...process.env, CI: "1", FORCE_COLOR: "0" } });
+    running = { id, proc, startedAt: Date.now(), output: [] };
+    broadcast("test", { phase: "start", id, label: suite.label + " (vérification automatique)" });
+    let out = "";
+    const push = (c, stream) => {
+      const text = c.toString();
+      out += text; if (out.length > 400_000) out = out.slice(-400_000);
+      running.output.push(text); if (running.output.length > 4000) running.output.shift();
+      broadcast("test", { phase: "log", id, stream, text });
+    };
+    const timer = setTimeout(() => { try { proc.kill(); } catch {} }, timeoutMs);
+    proc.stdout.on("data", (c) => push(c, "out"));
+    proc.stderr.on("data", (c) => push(c, "err"));
+    proc.on("close", (code) => {
+      clearTimeout(timer);
+      if (id === "authz") capterAuthz(out, code);
+      broadcast("test", { phase: "end", id, code });
+      running = null;
+      resolve({ code: code === null ? -1 : code, output: out });
+    });
+    proc.on("error", (err) => {
+      clearTimeout(timer);
+      broadcast("test", { phase: "end", id, code: -1, error: err.message });
+      running = null;
+      resolve({ code: -1, output: out + "\n" + err.message });
+    });
+  });
+}
+
 export function stopRun(actor) {
   if (!running) return { stopped: false };
   try { running.proc.kill(); } catch {}

@@ -1786,7 +1786,13 @@ function renderSentinelState(st) {
     : !st.enabled ? "Moteur en veille — tu l'as désactivé." : "";
   const running = st.running
     ? `<div class="sent-running"><span class="spinner"></span> Analyse en cours : ${esc(st.running.title || "")}${st.running.deep ? " (approfondie, elle lit le code)" : ""}</div>`
-    : "";
+    : st.repairing
+      ? `<div class="sent-running"><span class="spinner"></span> Réparation en cours : ${esc(st.repairing.title || "")} — écriture du correctif puis tests, dans un dossier isolé</div>`
+      : "";
+  const rep = st.repair || {};
+  const repLigne = rep.possible
+    ? `Réparation automatique active · ${rep.runsLastHour}/${rep.maxPerHour} sur l'heure · vérifications : ${(rep.suites || []).join(", ")}`
+    : `Réparation automatique inactive${rep.raison ? " — " + rep.raison : ""} (elle se contente alors de diagnostiquer)`;
   el.innerHTML = `
     <div class="sent-state ${on ? "on" : "off"}">
       <div class="sent-state-main">
@@ -1795,6 +1801,7 @@ function renderSentinelState(st) {
         <span class="muted">· ${st.total} diagnostic(s) depuis le démarrage · ${st.runsLastHour}/${st.settings.maxPerHour} sur la dernière heure${st.queued ? ` · ${st.queued} en attente` : ""}</span>
       </div>
       ${why ? `<div class="muted" style="font-size:12px;margin-top:6px">${why}</div>` : ""}
+      <div class="muted" style="font-size:12px;margin-top:6px">${esc(repLigne)}</div>
       ${running}
       ${hasCap("settings") ? `<button class="btn" id="sentToggle" style="margin-top:10px">${st.enabled ? "Mettre en veille" : "Réactiver"}</button>` : ""}
     </div>`;
@@ -1804,6 +1811,14 @@ function renderSentinelState(st) {
     try { const r = await api.post("/sentinel/toggle", { enabled: !st.enabled }); renderSentinelState(r.state); toast(r.enabled ? "Sentinelle active" : "Sentinelle en veille"); }
     catch (e) { toast(e.message); t.disabled = false; }
   };
+}
+
+// Résumé d'une tentative de réparation, en une ligne lisible.
+function sentRepair(r) {
+  if (!r) return "";
+  if (r.ok) return `<span class="pill ok">Correctif vérifié · ${esc(r.branch || "")}</span>`;
+  if (!r.attempted) return `<span class="pill info">Réparation non tentée · ${esc(r.raison || "")}</span>`;
+  return `<span class="pill warn">Correctif rejeté · ${esc(r.raison || "")}</span>`;
 }
 
 function sentItem(d) {
@@ -1820,8 +1835,50 @@ function sentItem(d) {
         ${v ? `<span class="pill ${v.cls}">${v.label}</span>` : d.error ? '<span class="pill error">Analyse en échec</span>' : ""}
       </div>
       <div class="a-msg">${esc(gist || d.error || "")}</div>
+      ${d.repair ? `<div style="margin-top:7px">${sentRepair(d.repair)}</div>` : ""}
       <div class="a-time">${new Date(d.ts).toLocaleString("fr-FR")} · ${SENT_KIND[d.kind] || d.kind}${d.deep ? " · lecture du code" : ""} · ${Math.round((d.durationMs || 0) / 1000)} s</div>
     </div>`;
+}
+
+// Bloc « réparation » du tiroir : ce qui a été tenté, ce qui a été vérifié, et
+// le seul bouton de toute la chaîne — fusionner. Il reste humain à dessein.
+function sentRepairBlock(d) {
+  const r = d.repair;
+  if (!r) return "";
+  const etapes = (r.steps || []).map((s) =>
+    `<li>${s.ok ? "✓" : "✗"} ${esc(s.key)}${s.detail && !s.ok ? ` — <span class="muted">${esc(String(s.detail).slice(0, 300))}</span>` : ""}</li>`).join("");
+  if (r.ok) {
+    return `<div class="sent-repair ok">
+      <b>Correctif écrit et vérifié.</b>
+      <div class="muted" style="font-size:12px;margin:6px 0">
+        Branche <span class="mono">${esc(r.branch)}</span> · ${esc((r.files || []).join(", "))} · ${r.changedLines} ligne(s) · ${Math.round((r.durationMs || 0) / 1000)} s
+      </div>
+      <ul class="sent-steps">${etapes}</ul>
+      <p class="muted" style="font-size:12px">Écrit par un modèle en réaction à des données d'observation, et vérifié par la suite de tests — mais <b>pas relu par un humain</b>. Regarde le diff avant de fusionner.</p>
+      ${hasCap("git_mutate") ? `<button class="btn btn-primary" id="sentMerge" data-id="${esc(d.id)}">Fusionner dans main</button>` : ""}
+      <span id="sentMergeMsg" class="muted" style="font-size:12px;margin-left:8px"></span>
+    </div>`;
+  }
+  return `<div class="sent-repair off">
+    <b>${r.attempted ? "Correctif rejeté" : "Réparation non tentée"}</b>
+    <div class="muted" style="font-size:12px;margin-top:4px">${esc(r.raison || "")}</div>
+    ${etapes ? `<ul class="sent-steps">${etapes}</ul>` : ""}
+    ${r.detail ? `<pre class="md-code">${esc(String(r.detail).slice(0, 1500))}</pre>` : ""}
+  </div>`;
+}
+
+function wireSentinelMerge(d) {
+  const b = $("#sentMerge");
+  if (!b) return;
+  b.onclick = async () => {
+    const msg = $("#sentMergeMsg");
+    b.disabled = true; if (msg) msg.textContent = "Fusion…";
+    try {
+      const r = await api.post(`/sentinel/${encodeURIComponent(d.id)}/merge`, { confirm: true });
+      if (msg) msg.textContent = `Fusionné dans main (${r.merged}). Non poussé : le déploiement reste ta décision.`;
+      toast("Correctif fusionné dans main");
+    } catch (e) { if (msg) msg.textContent = e.message; b.disabled = false; }
+  };
 }
 
 window.__openSentinel = async (id) => {
@@ -1835,8 +1892,10 @@ window.__openSentinel = async (id) => {
          ${new Date(d.ts).toLocaleString("fr-FR")} · ${SENT_KIND[d.kind] || d.kind}${d.deep ? " · Claude a lu le code du dépôt" : ""}
          ${v ? ` · <span class="pill ${v.cls}">${v.label}</span>` : ""}
        </div>
+       ${sentRepairBlock(d)}
        ${d.error ? `<div class="empty">L'analyse a échoué : ${esc(d.error)}</div>` : `<div class="fix-analysis">${mdToHtml(d.analysis)}</div>`}
-       <p class="muted" style="font-size:12px;margin-top:14px">Diagnostic produit automatiquement, en lecture seule. Aucun fichier n'a été modifié.</p>`);
+       <p class="muted" style="font-size:12px;margin-top:14px">Diagnostic produit automatiquement. Ton dépôt de travail n'a pas été touché : un correctif, s'il y en a un, vit sur sa propre branche.</p>`);
+    wireSentinelMerge(d);
   } catch (e) { openDrawer(`${icon("sparkles")} Diagnostic`, `<div class="empty">${esc(e.message)}</div>`); }
 };
 

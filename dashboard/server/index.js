@@ -31,6 +31,7 @@ import { retention } from "./retention.js";
 import { computeReadiness } from "./readiness.js";
 import { qaReport } from "./qa.js";
 import * as sentinel from "./sentinel.js";
+import { mergeRepair } from "./repair.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -260,6 +261,15 @@ api.get("/sentinel/:id", auth.requireCap("claude"), (req, res) => {
 });
 api.post("/sentinel/toggle", auth.requireCap("settings"), (req, res) =>
   res.json({ enabled: sentinel.setEnabled(req.body?.enabled !== false, req.session.u), state: sentinel.sentinelState() }));
+// Fusion d'un correctif vérifié : geste HUMAIN, confirmation explicite exigée,
+// même capacité que les autres mutations git. Ne pousse pas — déployer reste une
+// décision distincte, prise en regardant ce qu'on déploie.
+api.post("/sentinel/:id/merge", auth.requireCap("git_mutate"), asyncH(async (req, res) => {
+  if (!req.body?.confirm) return res.status(400).json({ error: "Confirmation explicite requise (confirm:true)." });
+  const d = sentinel.getDiagnosis(req.params.id);
+  if (!d || !d.repair?.ok) return res.status(404).json({ error: "Aucun correctif vérifié pour ce diagnostic." });
+  res.json(await mergeRepair(d.repair.branch, req.session.u));
+}));
 
 // ─── Audit ───────────────────────────────────────────────────────────────
 api.get("/audit", auth.requireCap("audit"), (req, res) => res.json(listAudit(Number(req.query.limit) || 300, { action: req.query.action, actor: req.query.actor })));

@@ -24,13 +24,18 @@ const sentinel = await import("../server/sentinel.js");
 const {
   triage, sanitizeObserved, buildJobPrompt, consider, _reset, _setAnalyzer,
   _setAvailability, _settings, sentinelState, listDiagnoses, extractVerdict,
-  cooldownKey, repoRevision,
+  cooldownKey, repoRevision, _setRepairer,
 } = sentinel;
 
 _setAvailability(() => true);
 // L espacement minimal entre deux analyses (90 s en vrai) n a pas de sens ici :
 // on teste la logique, pas l horloge.
 _settings.minGapMs = 0;
+// La réparation est testée dans repair.test.js. Ici on remplace le réparateur par
+// un espion : on vérifie le CÂBLAGE (quand il est appelé, quand il ne l est pas)
+// sans jamais toucher à git.
+let reparations = [];
+_setRepairer(async (record) => { reparations.push(record.id); return { attempted: true, raison: "espion de test" }; });
 
 /** Fabrique d'alerte (forme exacte produite par alerts.js). */
 function alert(over = {}) {
@@ -231,6 +236,35 @@ test("l'état exposé dit la vérité sur ce qui a été écarté", async () => 
   assert.equal(st.skipped.level, 2);
   assert.equal(st.total, 0);
   assert.equal(st.settings.levels.includes("info"), false);
+});
+
+// ─── Déclenchement de la réparation ──────────────────────────────────────────
+
+test("un DÉFAUT RÉEL déclenche la réparation, et le rapport est attaché", async () => {
+  _reset(); reparations = [];
+  _setAnalyzer(async () => ({ analysis: "## Verdict\nDÉFAUT RÉEL", via: "test" }));
+  consider(alert({ level: "critical", key: "k_fix" }));
+  await settle(600);
+  assert.equal(reparations.length, 1, "un défaut réel doit lancer une tentative de réparation");
+  assert.equal(listDiagnoses()[0].repair.raison, "espion de test");
+});
+
+test("on ne « répare » PAS un comportement attendu ni un manque de données", async () => {
+  for (const verdict of ["COMPORTEMENT ATTENDU", "INSUFFISAMMENT DE DONNÉES"]) {
+    _reset(); reparations = [];
+    _setAnalyzer(async () => ({ analysis: "## Verdict\n" + verdict, via: "test" }));
+    consider(alert({ level: "critical", key: "k_" + verdict.slice(0, 4) }));
+    await settle(400);
+    assert.equal(reparations.length, 0, `« ${verdict} » ne doit rien déclencher`);
+  }
+});
+
+test("une analyse en échec ne déclenche aucune réparation", async () => {
+  _reset(); reparations = [];
+  _setAnalyzer(async () => ({ error: "délai dépassé" }));
+  consider(alert({ level: "critical", key: "k_norep" }));
+  await settle(400);
+  assert.equal(reparations.length, 0, "sans diagnostic, aucun correctif ne peut être fondé");
 });
 
 // ─── La sandbox du processus Claude (frontière de sécurité) ──────────────────

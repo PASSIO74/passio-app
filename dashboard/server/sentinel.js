@@ -51,6 +51,7 @@ import { suspectsFor, suspectsPromptBlock } from "./correlate.js";
 import { buildContext, buildPrompt, buildTracePrompt, liveAnalyze } from "./claude.js";
 import { liveFixAvailable } from "./claudecli.js";
 import { audit } from "./audit.js";
+import { attemptRepair, repairState } from "./repair.js";
 
 const db = new JsonDb("sentinel", { enabled: null, seen: {}, diagnoses: [] });
 
@@ -93,6 +94,7 @@ const rt = {
   startedAt: 0,
   queue: [],
   running: null,          // { id, title, startedAt }
+  repairing: null,        // réparation en cours (diagnostic -> patch -> tests)
   lastRunAt: 0,
   runsWindow: [],         // horodatages des analyses de la dernière heure
   deepWindow: [],         // idem, limité aux analyses APPROFONDIES (quota)
@@ -106,6 +108,9 @@ export function _setAnalyzer(fn) { analyzer = fn; }
 /** Disponibilité d'une source d'analyse — injectable pour les tests. */
 let available = () => liveFixAvailable();
 export function _setAvailability(fn) { available = fn; }
+/** Réparateur injectable — les tests vérifient le CÂBLAGE sans écrire dans git. */
+let repairer = (record, an) => attemptRepair(record, an);
+export function _setRepairer(fn) { repairer = fn; }
 
 export function isEnabled() {
   const v = db.get().enabled;
@@ -393,6 +398,24 @@ async function pump() {
   audit("sentinel_diagnose", { id: record.id, kind: record.kind, key: record.key, ok: !record.error }, "sentinelle");
   broadcast("sentinel", record);
   broadcast("sentinel_state", sentinelState());
+
+  // ─── Réparation ───────────────────────────────────────────────────────────
+  // Uniquement sur un DÉFAUT RÉEL auto-déclaré : on ne « corrige » pas un
+  // comportement attendu, et on ne bricole pas sur des données insuffisantes.
+  // Séquentiel à dessein : les vérifications prennent des minutes et ne doivent
+  // pas se chevaucher (Playwright, un seul serveur local).
+  if (record.verdict === "defect" && !record.error) {
+    rt.repairing = { id: record.id, title: record.title, startedAt: Date.now() };
+    broadcast("sentinel_state", sentinelState());
+    let rep;
+    try { rep = await repairer(record, analyzer); }
+    catch (e) { rep = { attempted: true, raison: "erreur inattendue : " + (e.message || String(e)) }; }
+    rt.repairing = null;
+    record.repair = rep;
+    db.update((d) => { const x = d.diagnoses.find((y) => y.id === record.id); if (x) x.repair = rep; });
+    broadcast("sentinel", record);
+    broadcast("sentinel_state", sentinelState());
+  }
   if (rt.queue.length) setTimeout(() => pump(), 250).unref?.();
   return record;
 }
@@ -418,6 +441,8 @@ export function sentinelState() {
     started: rt.started,
     available: available(),
     running: rt.running,
+    repairing: rt.repairing,
+    repair: repairState(),
     queued: rt.queue.length,
     total: rt.total,
     skipped: { ...rt.skipped },
@@ -450,7 +475,7 @@ export function startSentinel() {
 
 /** Remise à zéro de l'état vivant — usage TESTS uniquement. */
 export function _reset({ startedAt = Date.now() } = {}) {
-  rt.queue.length = 0; rt.running = null; rt.lastRunAt = 0; rt.runsWindow.length = 0; rt.deepWindow.length = 0;
+  rt.queue.length = 0; rt.running = null; rt.repairing = null; rt.lastRunAt = 0; rt.runsWindow.length = 0; rt.deepWindow.length = 0;
   rt.total = 0; rt.started = true; rt.startedAt = startedAt;
   rt.skipped = { cooldown: 0, budget: 0, deepBudget: 0, level: 0, queue: 0, unavailable: 0 };
   pumping = false;
