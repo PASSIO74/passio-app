@@ -248,7 +248,11 @@ export async function attemptRepair(diagnosis, analyzer) {
   // Ne jamais partir d'un dépôt en cours d'édition : le worktree est créé depuis
   // HEAD, donc un travail non committé ne serait PAS dans le correctif testé —
   // on croirait vérifier ton code alors qu'on en vérifie une autre version.
-  const st = await git(["status", "--porcelain"]);
+  // `--untracked-files=no` à dessein : seuls les fichiers SUIVIS et modifiés
+  // posent problème (ils ne sont pas dans HEAD, donc pas dans ce qu'on teste).
+  // Un fichier non suivi — journal, dossier de données, brouillon — ne change
+  // rien à la version vérifiée et ne doit pas bloquer la réparation pour toujours.
+  const st = await git(["status", "--porcelain", "--untracked-files=no"]);
   if (st.out.trim()) return { attempted: false, raison: "des modifications non committées sont en cours dans le dépôt" };
 
   const fichiers = filesForDiagnosis(diagnosis);
