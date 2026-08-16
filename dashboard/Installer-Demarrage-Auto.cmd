@@ -1,13 +1,16 @@
 @echo off
-chcp 65001 >nul
-REM ═══════════════════════════════════════════════════════════════════════════
-REM  Installe (ou retire) le démarrage automatique du centre de pilotage.
-REM  Aucun droit administrateur : on dépose simplement un raccourci dans le
-REM  dossier Démarrage de TA session Windows. Rien n'est touché dans le système.
+REM ===========================================================================
+REM  Installe (ou retire) le demarrage automatique du centre de pilotage.
+REM  Aucun droit administrateur : on depose un raccourci dans le dossier
+REM  Demarrage de TA session Windows. Rien n'est touche dans le systeme.
 REM
 REM    Installer-Demarrage-Auto.cmd            -> installe
 REM    Installer-Demarrage-Auto.cmd /retirer   -> retire
-REM ═══════════════════════════════════════════════════════════════════════════
+REM
+REM  NOTE : ce fichier est volontairement en ASCII pur. Un .cmd contenant des
+REM  accents ou des caracteres de cadre est mal decoupe par l'interpreteur de
+REM  commandes Windows, qui tente alors d'executer des morceaux de commentaire.
+REM ===========================================================================
 setlocal
 set "ICI=%~dp0"
 set "DEMARRAGE=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup"
@@ -28,7 +31,7 @@ if exist "%CIBLE%" (
   start "" wscript.exe "%ICI%Sentinelle-Demarrage.vbs"
   echo   Ouvre http://localhost:4610
 ) else (
-  echo   ECHEC : le raccourci n a pas pu etre cree.
+  echo   ECHEC : le raccourci n'a pas pu etre cree.
 )
 goto :fin
 
@@ -37,7 +40,7 @@ if exist "%CIBLE%" (
   del "%CIBLE%"
   echo   Demarrage automatique retire.
 ) else (
-  echo   Rien a retirer : le demarrage automatique n etait pas installe.
+  echo   Rien a retirer : le demarrage automatique n'etait pas installe.
 )
 
 :fin

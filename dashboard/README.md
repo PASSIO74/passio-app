@@ -76,6 +76,24 @@ fonctionne (auth, git, tests, UI) mais aucun événement Passio n'est reçu.
    politique de confidentialité**, idéalement avec un bouton d'opt-out en Réglages
    (`PassioTelemetry.setEnabled(false)`).
 
+## 2 bis. Présence permanente (rien à relancer)
+
+```bash
+cd dashboard && Installer-Demarrage-Auto.cmd
+```
+
+Dépose un raccourci dans le dossier Démarrage de ta session — **aucun droit
+administrateur, rien de touché dans le système**. À chaque ouverture de session,
+`supervise.mjs` démarre sans fenêtre et maintient le serveur en vie : s'il meurt,
+il le relance (2 s, 5 s, 15 s, 30 s puis 60 s au plus, pour ne pas boucler sur une
+erreur de démarrage). Journal borné dans `data/supervise.log`.
+
+| Commande | Effet |
+|---|---|
+| `Installer-Demarrage-Auto.cmd` | installe et lance tout de suite |
+| `Installer-Demarrage-Auto.cmd /retirer` | retire le démarrage automatique |
+| `Arreter-Pilotage.cmd` | arrête superviseur + serveur (repart à la prochaine session) |
+
 ## 3 bis. Sentinelle — le débogage sans rien faire
 
 Onglet **Sentinelle**. Elle tourne en permanence dès que le dashboard est lancé :
@@ -96,10 +114,38 @@ n'émet plus rien, résultat faux en HTTP 200, contenu disparu en silence, ou
 télémétrie elle-même interrompue. Ces pannes-là ressemblent au calme. La santé se
 lit sur l'Accueil (fraîcheur de l'ingestion, taux de réussite), pas ici.
 
-**Elle ne corrige rien.** Le processus Claude qu'elle lance ne dispose que d'une
-liste blanche d'outils (rien en analyse rapide, lecture seule en approfondie),
-sans personnalisations ni serveurs MCP ; le correctif est proposé, jamais
-appliqué (voir [`docs/SECURITE.md`](docs/SECURITE.md) §4 bis).
+### Elle répare aussi
+
+Sur un verdict **défaut réel** — et seulement celui-là — elle enchaîne toute seule :
+demande de correctif → application dans un **worktree git isolé** (ton dossier de
+travail n'est jamais touché, jamais déplacé) → syntaxe → audits → tests e2e.
+
+- **Vert** : le correctif est committé sur sa branche `sentinelle/<date>-<id>` et
+  t'attend. Un bouton « Fusionner dans main » dans le tiroir du diagnostic. Rien
+  n'est poussé : déployer se décide en regardant ce qu'on déploie.
+- **Rouge** : la branche est **supprimée** et le motif affiché. On ne garde jamais
+  un correctif « probablement bon ».
+
+Périmètre du patch, verrouillé par test : `js/*.js`, `styles.css`, `index.html`,
+`sw.js` — et **jamais `tests/`** (sinon un correctif paresseux se rendrait vert en
+réécrivant le test), ni la CI, les migrations, les scripts, le dashboard. Ni
+création, ni suppression, ni renommage de fichier. 120 lignes et 3 fichiers au
+plus : au-delà ce n'est plus une réparation, c'est une refonte, et ça mérite un
+humain. Le modèle a le droit de répondre « pas de correctif sûr » — c'est une
+sortie légitime, pas un échec.
+
+La réparation est refusée si des fichiers **suivis** sont modifiés dans le dépôt :
+le worktree part de `HEAD`, on vérifierait donc une autre version que la tienne.
+
+| Variable | Défaut | Rôle |
+|---|---|---|
+| `DASH_SENTINEL_REPAIR` | actif | `off` pour diagnostiquer sans jamais écrire de correctif |
+| `DASH_REPAIR_SUITES` | `globals,handlers,smoke` | vérifications exigées avant de garder un correctif |
+| `DASH_REPAIR_MAX_LINES` / `_MAX_FILES` / `_MAX_PER_HOUR` | `120` / `3` / `2` | bornes du correctif |
+
+**Ce qu'elle ne fait jamais** : pousser, déployer, toucher `main` sans ton clic. Le
+processus Claude qu'elle lance ne dispose que d'une liste blanche d'outils, sans
+personnalisations ni serveurs MCP (voir [`docs/SECURITE.md`](docs/SECURITE.md) §4 bis).
 Elle a besoin d'une source d'analyse : le `claude` local connecté (gratuit,
 abonnement Claude Code) ou `ANTHROPIC_API_KEY`. Sans source, elle reste inerte
 et le dit.
