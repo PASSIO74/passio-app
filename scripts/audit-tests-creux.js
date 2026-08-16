@@ -49,9 +49,17 @@ const UI = /\.(click|fill|press|tap|selectOption|check|hover|dblclick)\s*\(|getB
 // signaler serait un faux positif, et un outil qui crie au loup finit ignoré.
 const BOOT = /\b(bootOnboarded|bootInteractions|signupAnonymous)\s*\(/;
 
-// Specs dont l'objet est un ARTEFACT (build, en-têtes, service worker) et non
-// l'application en train de tourner. Légitimement sans code de production.
-const ARTEFACTS = new Set(["version-skew.spec.js"]);
+// Specs dont l'objet n'est PAS l'application en train de tourner, et qui sont
+// donc légitimement sans code de production :
+//   - un ARTEFACT (build, en-têtes, service worker) ;
+//   - une frontière tenue par la BASE (policy RLS, trigger), vérifiée par appels
+//     REST bruts. Ces specs-là sont même les plus précieux : ils prouvent que la
+//     garantie tient quel que soit le client, y compris un client hostile qui
+//     n'exécuterait aucune de nos fonctions.
+const ARTEFACTS = new Set([
+  "version-skew.spec.js",
+  "user-state-horodatage.spec.js",   // trigger trg_user_state_horodatage (SYNC-CLOCK-012)
+]);
 
 // ── 2. Ce que chaque spec touche réellement ─────────────────────────────────
 const dir = path.join(ROOT, "tests", "e2e");
