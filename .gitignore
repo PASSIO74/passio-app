@@ -44,6 +44,12 @@ dashboard/.claude/
 .passio/reviews/*
 !.passio/reviews/README.md
 
+# Archives de sauvegarde (scripts/sauvegarde-donnees.js) : contenu RÉEL des
+# utilisateurs — messages, photos, et avec --avec-comptes les e-mails. Rien de
+# tout cela ne doit entrer dans un dépôt, a fortiori public. Le script est
+# versionné, ses sorties jamais.
+.passio/sauvegardes/
+
 # Netlify cache
 .netlify/
 

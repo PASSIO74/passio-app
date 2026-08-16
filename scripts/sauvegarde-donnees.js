@@ -19,7 +19,15 @@
 // ② chaque table est recomptée côté serveur après export et l'écart fait
 // échouer le script.
 //
-//   node scripts/sauvegarde-donnees.js [--sortie <dossier>] [--avec-telemetrie]
+// ⚠ LES COMPTES NE SONT PAS DANS `public`. `auth.users` porte les e-mails, les
+// fournisseurs d'identité et les identifiants auxquels TOUTES les autres tables
+// se réfèrent. Sans eux, une archive du schéma public est un jeu de lignes
+// orphelines : les posts existent, plus personne ne les a écrits. D'où
+// `--avec-comptes`, qui les exporte via l'API d'administration. Cette option
+// écrit des DONNÉES PERSONNELLES sur le disque — `.passio/sauvegardes/` est
+// exclu de git pour cette raison précise.
+//
+//   node scripts/sauvegarde-donnees.js [--sortie <dossier>] [--avec-telemetrie] [--avec-comptes]
 //   node scripts/sauvegarde-donnees.js --verifier <dossier>
 // ═══════════════════════════════════════════════════════════════════════════
 "use strict";
@@ -105,7 +113,69 @@ async function exporter(cfg, table, tri, flux) {
   return total;
 }
 
-async function sauvegarder(dossier, avecTelemetrie) {
+/**
+ * Comptes d'authentification, via l'API d'administration (service_role).
+ * Ils ne passent pas par PostgREST : le schéma `auth` n'est pas exposé.
+ */
+async function exporterComptes(cfg, dossier) {
+  const tout = [];
+  for (let page = 1; ; page++) {
+    const r = await fetch(`${cfg.url}/auth/v1/admin/users?page=${page}&per_page=200`, { headers: entetes(cfg.cle) });
+    if (!r.ok) throw new Error(`comptes : HTTP ${r.status} ${await r.text()}`);
+    const d = await r.json();
+    const lot = d.users || [];
+    tout.push(...lot);
+    if (lot.length < 200) break;
+  }
+  const f = path.join(dossier, "_auth_users.ndjson");
+  fs.writeFileSync(f, tout.map((u) => JSON.stringify(u)).join("\n") + (tout.length ? "\n" : ""));
+  return { comptes: tout.length, octets: fs.statSync(f).size };
+}
+
+/**
+ * Fichiers du Storage. En volume, c'est l'essentiel du contenu réel : les
+ * lignes de base pèsent quelques mégaoctets, les photos et vocaux plusieurs
+ * centaines. Une archive qui les laisse derrière n'est pas une sauvegarde.
+ * La liste n'est pas récursive côté API : on descend les dossiers à la main.
+ */
+async function exporterMedias(cfg, dossier, journal) {
+  const base = path.join(dossier, "_storage");
+  const seaux = await (await fetch(`${cfg.url}/storage/v1/bucket`, { headers: entetes(cfg.cle) })).json();
+  let fichiers = 0, octets = 0, echecs = 0;
+
+  for (const seau of seaux) {
+    const aVisiter = [""];
+    while (aVisiter.length) {
+      const prefixe = aVisiter.shift();
+      let debut = 0;
+      for (;;) {
+        const r = await fetch(`${cfg.url}/storage/v1/object/list/${seau.name}`, {
+          method: "POST", headers: entetes(cfg.cle, { "Content-Type": "application/json" }),
+          body: JSON.stringify({ prefix: prefixe, limit: 100, offset: debut, sortBy: { column: "name", order: "asc" } }),
+        });
+        if (!r.ok) throw new Error(`storage ${seau.name} : HTTP ${r.status}`);
+        const lot = await r.json();
+        for (const o of lot) {
+          const chemin = prefixe ? `${prefixe}/${o.name}` : o.name;
+          // Un « dossier » se reconnaît à l'absence de métadonnées d'objet.
+          if (!o.id) { aVisiter.push(chemin); continue; }
+          const g = await fetch(`${cfg.url}/storage/v1/object/${seau.name}/${encodeURI(chemin)}`, { headers: entetes(cfg.cle) });
+          if (!g.ok) { echecs++; journal.push({ seau: seau.name, chemin, http: g.status }); continue; }
+          const buf = Buffer.from(await g.arrayBuffer());
+          const dest = path.join(base, seau.name, chemin);
+          fs.mkdirSync(path.dirname(dest), { recursive: true });
+          fs.writeFileSync(dest, buf);
+          fichiers++; octets += buf.length;
+        }
+        if (lot.length < 100) break;
+        debut += 100;
+      }
+    }
+  }
+  return { fichiers, octets, echecs };
+}
+
+async function sauvegarder(dossier, avecTelemetrie, avecComptes, avecMedias) {
   const cfg = env();
   fs.mkdirSync(dossier, { recursive: true });
   const toutes = await tables(cfg);
@@ -136,6 +206,29 @@ async function sauvegarder(dossier, avecTelemetrie) {
       (attendu !== null && attendu !== ecrit ? `  ⚠ serveur en annonce ${attendu}` : ""));
   }
 
+  if (avecMedias) {
+    const journal = [];
+    const m = await exporterMedias(cfg, dossier, journal);
+    manifeste.medias = { fichiers: m.fichiers, octets: m.octets, echecs: m.echecs, detail_echecs: journal };
+    console.log(`  ${"_storage".padEnd(26)} ${String(m.fichiers).padStart(6)} fichiers, ${(m.octets / 1048576).toFixed(1)} Mo` +
+      (m.echecs ? `  ⚠ ${m.echecs} échec(s)` : ""));
+    if (m.echecs) manifeste.ecarts.push({ table: "_storage", attendu: m.fichiers + m.echecs, exporte: m.fichiers });
+  } else {
+    manifeste.medias = null;
+    console.log("\n⚠ Médias NON sauvegardés (Storage). En volume, c'est l'essentiel");
+    console.log("  du contenu utilisateur. Ajouter --avec-medias.");
+  }
+
+  if (avecComptes) {
+    const c = await exporterComptes(cfg, dossier);
+    manifeste.comptes = c.comptes;
+    console.log(`  ${"_auth_users".padEnd(26)} ${String(c.comptes).padStart(6)} comptes  (DONNÉES PERSONNELLES)`);
+  } else {
+    manifeste.comptes = null;
+    console.log("\n⚠ Comptes NON sauvegardés (auth.users). Sans eux, les lignes exportées");
+    console.log("  n'ont plus d'auteur identifiable. Ajouter --avec-comptes.");
+  }
+
   fs.writeFileSync(path.join(dossier, "manifeste.json"), JSON.stringify(manifeste, null, 1));
   const lignes = Object.values(manifeste.tables).reduce((s, x) => s + x.exporte, 0);
   const octets = Object.values(manifeste.tables).reduce((s, x) => s + x.octets, 0);
@@ -159,7 +252,24 @@ function verifier(dossier) {
     if (contenu && lignes.length !== info.exporte) { console.error(`  ${t} : ${lignes.length} lignes, manifeste ${info.exporte}`); pb++; continue; }
     for (const l of lignes) { try { JSON.parse(l); } catch { console.error(`  ${t} : ligne JSON illisible`); pb++; break; } }
   }
-  console.log(pb ? `\n${pb} anomalie(s).` : `\nArchive relue : ${Object.keys(man.tables).length} tables, toutes lisibles et conformes au manifeste.`);
+  if (man.medias == null) console.log("  ⚠ archive SANS les médias (Storage).");
+  else {
+    // Recompter les fichiers sur le disque : le manifeste dit ce que le script
+    // croit avoir écrit, l'arborescence dit ce qui est réellement là.
+    const base = path.join(dossier, "_storage");
+    const compter = (d) => fs.existsSync(d) ? fs.readdirSync(d, { withFileTypes: true })
+      .reduce((s, e) => s + (e.isDirectory() ? compter(path.join(d, e.name)) : 1), 0) : 0;
+    const n = compter(base);
+    if (n !== man.medias.fichiers) { console.error(`  _storage : ${n} fichiers sur disque, manifeste ${man.medias.fichiers}`); pb++; }
+  }
+  if (man.comptes == null) {
+    console.log("  ⚠ archive SANS les comptes : restaurable en données, pas en identités.");
+  } else {
+    const f = path.join(dossier, "_auth_users.ndjson");
+    const n = fs.existsSync(f) ? fs.readFileSync(f, "utf8").trimEnd().split("\n").filter(Boolean).length : -1;
+    if (n !== man.comptes) { console.error(`  _auth_users : ${n} lignes, manifeste ${man.comptes}`); pb++; }
+  }
+  console.log(pb ? `\n${pb} anomalie(s).` : `\nArchive relue : ${Object.keys(man.tables).length} tables${man.comptes != null ? ` + ${man.comptes} comptes` : ""}, toutes lisibles et conformes au manifeste.`);
   process.exit(pb ? 1 : 0);
 }
 
@@ -170,5 +280,8 @@ else {
   const is = args.indexOf("--sortie");
   const dossier = is !== -1 ? args[is + 1]
     : path.join(__dirname, "..", ".passio", "sauvegardes", new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-"));
-  sauvegarder(dossier, args.includes("--avec-telemetrie")).catch((e) => { console.error("ÉCHEC :", e.message); process.exit(1); });
+  const tout = args.includes("--complete");
+  sauvegarder(dossier, args.includes("--avec-telemetrie"),
+    tout || args.includes("--avec-comptes"), tout || args.includes("--avec-medias"))
+    .catch((e) => { console.error("ÉCHEC :", e.message); process.exit(1); });
 }
