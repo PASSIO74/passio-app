@@ -4,6 +4,40 @@
 
 ---
 
+## 2026-08-16 — Boucles 9 à 11 : deux fermetures P1, et trois de mes conclusions démenties
+
+*(Rattrapage : ces trois boucles n'avaient pas été consignées au fil de l'eau, contrairement à la règle. Le manquement est noté ici plutôt que masqué par une réécriture de l'historique.)*
+
+### Ce qui a été fermé
+
+**`NOTIF-FORGE-009` (P1) — appliqué en prod.** `notifications` était scellée en lecture et grande ouverte en écriture : `INSERT` valait `true`, en double. N'importe quel compte pouvait déposer une notification vers n'importe qui, au nom de n'importe qui. La contrainte portait sur le mauvais côté — une notification est cross-compte par nature, donc `user_id` ne *pouvait* pas être contraint ; c'est l'auteur qu'il fallait tenir. Gate à 13 invariants.
+
+**`auth_rls_initplan` — 3 policies corrigées, gain mesuré 11,6 → 1,1 ms** sur `conv_messages` (50 lignes). Les 7 policies de lecture restantes sont préparées.
+
+**Registre machine remis à niveau.** Il était resté à 3 incidents pendant que le tableau humain en comptait 9 — deux sources de vérité divergentes, ce que le cadrage interdit.
+
+### Trois conclusions à moi, démenties par la mesure
+
+**La baseline de performance était fausse.** Publié : landing 3 946 ms, 2 575 ms de tâches longues. Réel, machine au repos, médiane de 3 : **1 501 ms et 728 ms**. Gonflé 3,5× parce que ma mesure d'origine tournait pendant la suite complète. Il n'y a pas de problème de démarrage — et deux investigations entières (couverture JS, hypothèse CSS) avaient été menées sur cette prémisse fausse.
+
+**Le découpage du JS n'est pas un levier.** Coût d'injection des 9 fichiers : **133 ms au total**, dont 24 pour le candidat. V8 pré-parse paresseusement : les 1 367 Ko jamais exécutés ne coûtent presque rien. La couverture à 20 % était exacte mais non actionnable.
+
+**« Le planificateur remonte déjà `auth.uid()` » était faux.** La policy de `posts` utilisait déjà `(select auth.uid())` — c'est l'enveloppe qui produisait l'`InitPlan`. Contre-épreuve : `stories`, même forme mais appel nu, n'en a aucun. Erreur d'attribution : j'avais lu un plan optimisé sans vérifier pourquoi il l'était.
+
+### Deux erreurs d'exécution, rattrapées par le contrôle
+
+Un `drop policy` sur un **nom deviné** n'a rien supprimé : les anciennes policies sont restées, se combinant en OU, bénéfice nul. J'avais pourtant écrit cette précaution exacte dans la migration des notifications deux heures plus tôt.
+
+Et la contre-épreuve du test de notification échouait en 403 — pas la migration, mais `Prefer: return=representation` qui fait retomber le `RETURNING` sous la policy `SELECT`.
+
+### Le motif de recherche que la nuit a dégagé
+
+Trois défauts se sont révélés être **le survivant d'un correctif incomplet** : le base64 expurgé pour les profils passion mais pas pour le compte, `supaLoadPosts` absent d'une liste de 24 stubs, et 3 policies alors que 4 autres avaient déjà l'enveloppe.
+
+**Quand un correctif existe quelque part, chercher où il n'a pas été appliqué.** Plus productif que relire du code au hasard — et c'est ce qui a produit le cadrage « 85 avertissements = 10 policies réelles ».
+
+---
+
 ## 2026-08-16 — Boucle 8 : outiller la détection des tests creux
 
 ### Tentative de revue croisée — interrompue, et rapportée comme telle
