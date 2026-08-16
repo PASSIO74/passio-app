@@ -539,6 +539,19 @@ class Store {
       online: devs.filter((d) => now - d.lastSeen < ONLINE_MS).length,
       today: devs.filter((d) => now - d.firstSeen < DAY).length,
       lastSeen: devs.length ? Math.max(...devs.map((d) => d.lastSeen)) : null,
+      // ⚠️ RUPTURE DE SÉRIE au 2026-08-15 — ne pas comparer avant/après.
+      //
+      // Un appareil n'apparaît ici que s'il a produit au moins un événement
+      // CONSERVÉ. Or jusqu'au 2026-08-15, la télémétrie pré-authentification
+      // partait sous une identité fabriquée (« u_… ») que la RLS rejetait
+      // systématiquement : un visiteur qui n'a jamais créé de compte ne laissait
+      // donc AUCUNE trace, et n'était pas compté.
+      //
+      // Conséquence : avant cette date, `total` sous-estimait précisément la
+      // population que cet entonnoir sert à mesurer, et le taux de conversion
+      // visiteurs → comptes était donc SURESTIMÉ. Les deux bornes sont
+      // correctes depuis. Voir TEL-IDENT-002 dans PASSIO_MASTER_CONTROL.md.
+      rupture: { depuis: "2026-08-15", motif: "télémétrie pré-auth rejetée avant cette date : visiteurs non convertis invisibles, conversion surestimée" },
     };
   }
 
