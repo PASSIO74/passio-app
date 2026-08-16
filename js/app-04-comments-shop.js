@@ -4068,7 +4068,25 @@ function _forwardTo(targetConvId) {
   if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
     var raw = content ? JSON.stringify(content) : (localMsg.text || "");
     var payload = (typeof _withSenderMeta === "function") ? _withSenderMeta(raw) : raw;
-    try { supa.from("conv_messages").insert({ id: localMsg.id, conv_id: targetConvId, from_id: MY_UID, content: payload, created_at: new Date().toISOString() }).then(function(){}, function(){}); } catch(e) {}
+    // ⚠️ Le verdict de l'écriture DOIT être lu. Ce chemin avalait les deux
+    // callbacks (`.then(function(){}, function(){})`) : un transfert dont
+    // l'insertion échouait restait affiché comme envoyé, sans statut d'échec ni
+    // renvoi — et disparaissait au rechargement. C'est exactement le mode de
+    // défaillance que l'invariant maison décrit, et le chemin d'envoi principal
+    // (`sendMessageToSupabase`, quelques lignes plus bas) le traite déjà
+    // correctement : statut « failed » + mise en file de renvoi.
+    // Le transfert n'avait simplement jamais reçu ce traitement.
+    try {
+      supa.from("conv_messages")
+        .insert({ id: localMsg.id, conv_id: targetConvId, from_id: MY_UID, content: payload, created_at: new Date().toISOString() })
+        .then(function (res) {
+          if (res && res.error) { _setMsgStatus(targetConvId, localMsg.id, "failed"); _outboxAdd(targetConvId, localMsg.id, payload); }
+          else { _setMsgStatus(targetConvId, localMsg.id, "sent"); _outboxRemove(localMsg.id); }
+        })
+        .catch(function () { _setMsgStatus(targetConvId, localMsg.id, "failed"); _outboxAdd(targetConvId, localMsg.id, payload); });
+    } catch (e) {
+      _setMsgStatus(targetConvId, localMsg.id, "failed"); _outboxAdd(targetConvId, localMsg.id, payload);
+    }
   }
   try { renderMessages(); } catch(e) {}
   toast("↪️ Transféré");
