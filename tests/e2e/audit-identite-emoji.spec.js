@@ -109,4 +109,55 @@ test.describe("Audit identité / isolation / emoji (2026-08-12)", () => {
     expect(r.afterCfg).toBeNull();       // config de profil purgée
     expect(r.afterIdb).toBe(0);          // conversations IndexedDB purgées → pas de fuite vers B
   });
+
+  test("isolation inter-comptes : AUCUNE clé de compte ne survit, y compris celles ajoutées plus tard", async ({ page }) => {
+    // Le test précédent vérifie deux clés nommées. Celui-ci vérifie l'INVARIANT :
+    // après une déconnexion, il ne doit rester dans localStorage que des clés
+    // appartenant à l'APPAREIL — jamais au compte.
+    //
+    // La différence compte. Un test qui nomme ses clés ne voit pas arriver la
+    // prochaine : le jour où une fonctionnalité écrit `passio_ma_nouveauté` avec
+    // du contenu de compte et oublie de l'inscrire dans ACCOUNT_SCOPED_KEYS, il
+    // reste vert pendant que la donnée fuit vers le compte suivant. Celui-ci
+    // échoue tant que la nouvelle clé n'a pas été classée.
+    //
+    // Cas le plus sensible couvert ici : les files d'état en attente
+    // (`passio_pending_user_state*`), suffixées par compte — donc impossibles à
+    // lister en dur — et qui contiennent le blob d'état COMPLET (profils,
+    // notifications, likes). Le code les purge ; rien ne le vérifiait.
+    await boot(page);
+    const r = await page.evaluate(async () => {
+      // Clés APPAREIL, légitimement conservées (cf. le commentaire d'ACCOUNT_SCOPED_KEYS) :
+      // identité machine, consentement, drapeaux de test, contrôle parental.
+      const DEVICE = [
+        "passio_device_id", "passio_telemetry", "passio_logo_variant", "passio_debug",
+        "passio_parental_code", "passio_limit_sec", "dash_adv_open",
+      ];
+      const estAppareil = (k) => DEVICE.includes(k)
+        || k.indexOf("passio_pwa") === 0 || k.indexOf("passio_realtime_") === 0
+        || k.indexOf("passio_gate") === 0;
+
+      // On sème du contenu de compte dans TOUTES les clés déclarées, plus une
+      // file d'état en attente suffixée (le cas que la liste ne peut pas nommer).
+      (window.ACCOUNT_SCOPED_KEYS || []).forEach((k) => localStorage.setItem(k, '{"secret":"donnée de A"}'));
+      localStorage.setItem("passio_pending_user_state_u_compteA", '{"data":{"user":{"secret":"A"}}}');
+      localStorage.setItem("passio_pending_user_state_u_compteB", '{"data":{"user":{"secret":"A2"}}}');
+      // Et une clé appareil, qui doit SURVIVRE.
+      localStorage.setItem("passio_device_id", "dev-xyz");
+
+      await purgeAccountScopedData();
+
+      const restantes = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.indexOf("passio") === 0 && !estAppareil(k)) restantes.push(k);
+      }
+      return { restantes, deviceSurvit: localStorage.getItem("passio_device_id") };
+    });
+
+    expect(r.restantes, `clés de compte survivant à la déconnexion : ${JSON.stringify(r.restantes)}`).toEqual([]);
+    // Et la purge ne doit pas emporter ce qui appartient à l'appareil : effacer
+    // le contrôle parental offrirait à un enfant un contournement en un clic.
+    expect(r.deviceSurvit, "les clés d'appareil doivent survivre à la déconnexion").toBe("dev-xyz");
+  });
 });
