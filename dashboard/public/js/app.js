@@ -461,7 +461,12 @@ VIEWS.brief = async (view) => {
     const unack = (alerts || []).filter((a) => !a.acknowledged);
     const kpiOk = k && k.configured !== false && !k.error;
     const kv = (n) => (n == null ? "inconnu" : num(n));
-    const lowFactors = (rd && rd.factors || []).filter((f) => f.score < 60);
+    // ⚠️ `f.score` vaut null pour un domaine NON MESURÉ, et `null < 60` est vrai
+    // en JavaScript : sans ce garde, chaque domaine non instrumenté s'affichait
+    // « Améliorer « X » (null/100) ». Un blanc ne se traite pas comme un mauvais
+    // score — l'un demande d'instrumenter, l'autre de corriger.
+    const lowFactors = (rd && rd.factors || []).filter((f) => typeof f.score === "number" && f.score < 60);
+    const nonMesures = (rd && rd.domaines || []).filter((d) => d.etat === "inconnu");
 
     // Prochaines actions dérivées de signaux réels (pas d'invention).
     const actions = [];
@@ -469,6 +474,9 @@ VIEWS.brief = async (view) => {
     if (t.criticalBugs) actions.push(`Corriger ${t.criticalBugs} bug${t.criticalBugs > 1 ? "s" : ""} critique${t.criticalBugs > 1 ? "s" : ""}${worst ? ` — ex. « ${worst.title} »` : ""}.`);
     if (unack.length) actions.push(`Traiter ${unack.length} alerte${unack.length > 1 ? "s" : ""} non acquittée${unack.length > 1 ? "s" : ""}.`);
     lowFactors.forEach((f) => actions.push(`Améliorer « ${f.label} » (${f.score}/100).`));
+    // Un domaine critique non mesuré n'est pas un problème à corriger : c'est un
+    // angle mort à instrumenter. La distinction change l'action.
+    nonMesures.filter((d) => d.critique).forEach((d) => actions.push(`Instrumenter « ${d.label} » — non mesuré, donc la santé globale ne peut pas être affirmée.`));
     if (!actions.length) actions.push("Rien de bloquant — poursuivre les tests et l'observation.");
 
     const sev = { critical: "crit", high: "err", warn: "warn", info: "info" };
@@ -484,7 +492,22 @@ VIEWS.brief = async (view) => {
       <div class="cols cols-2">
         ${secCard("État général", "activity",
           line("Santé", `<span class="pill ${h.level === "operational" ? "ok" : h.level === "critical" ? "error" : "warn"}">${esc(h.label)}</span>`) +
-          line("Readiness", rd ? `${rd.score}/100` : "inconnu") +
+          // Le STATUT prime sur le chiffre : la santé est le pire domaine
+          // critique, pas une moyenne. Et la CONFIANCE dit combien de domaines
+          // sont réellement mesurés — « vert » avec 50 % de confiance signifie
+          // « aucun signal négatif », pas « tout va bien ».
+          line("Santé technique", rd
+            ? `<span class="pill ${rd.statut === "vert" ? "ok" : rd.statut === "rouge" ? "error" : "warn"}">${esc((rd.statut || "").toUpperCase())}</span>`
+              + ` <span class="muted" style="font-size:12px">confiance ${rd.confiance}%</span>`
+            : "inconnu") +
+          (rd && rd.cause ? line("Cause", `<span class="muted">${esc(rd.cause.label)} — ${esc(rd.cause.detail)}</span>`) : "") +
+          (rd && rd.domaines ? line("Autorisation",
+            (() => {
+              const a = rd.domaines.find((d) => d.cle === "autorisation");
+              if (!a) return "inconnu";
+              const cls = a.etat === "vert" ? "ok" : a.etat === "rouge" ? "error" : "warn";
+              return `<span class="pill ${cls}">${esc(a.etat.toUpperCase())}</span> <span class="muted" style="font-size:12px">${esc(a.detail)}</span>`;
+            })()) : "") +
           line("Erreurs (5 min)", num(h.errors5m)) +
           line("Succès API", (t.apiSuccessRate ?? 0) + " %"))}
         ${secCard("Ce qui compte", "trending",

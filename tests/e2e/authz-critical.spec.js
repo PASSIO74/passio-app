@@ -164,7 +164,45 @@ test.describe("AUTHZ-CRITICAL — séparation entre comptes", () => {
         "la télémétrie ne doit être lisible par aucun client").toBe(0);
       log("télémétrie : non lisible côté client");
 
-      // ── 8. Sans jeton, aucune donnée privée ────────────────────────────────
+      // ── 8. B ne peut pas AFFICHER l'identité d'un autre (F4) ───────────────
+      //    Les policies ne contraignent que l'identifiant : `author_name`,
+      //    `author_photo` et `author_emoji` étaient du texte libre, jamais
+      //    recoupé avec `profiles`, et rendus tels quels. Un compte pouvait donc
+      //    publier sous SON author_id avec le NOM et la PHOTO d'un tiers. Ce
+      //    n'est pas une XSS — l'échappement tient — c'est une usurpation.
+      //    Le trigger `identite_affichage_canonique` (BEFORE INSERT OR UPDATE)
+      //    réécrit ces champs depuis la source canonique. On le prouve ici.
+      const liveId = `vl_authz_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      const usurpe = await rest(B.token, "video_lives", {
+        method: "POST",
+        body: JSON.stringify({
+          id: liveId, author_id: B.uid, status: "live",
+          started_at: new Date().toISOString(), last_seen: new Date().toISOString(),
+          author_name: "e2e_authz_a", author_photo: "https://exemple.test/victime.jpg",
+        }),
+      });
+      expect(usurpe.status, "B crée un live").toBeLessThan(300);
+      const ligne = Array.isArray(usurpe.body) ? usurpe.body[0] : usurpe.body;
+      expect(ligne.author_name, "le nom proposé par le client doit être RÉÉCRIT depuis profiles")
+        .toBe("e2e_authz_b");
+      expect(ligne.author_photo, "la photo proposée par le client doit être écrasée")
+        .not.toBe("https://exemple.test/victime.jpg");
+      log("usurpation d'identité d'affichage neutralisée à l'INSERT");
+
+      // Et l'UPDATE ne doit pas rouvrir la porte : fermer l'INSERT seul
+      // laisserait la séquence « créer correctement, puis renommer vers la
+      // victime ».
+      const renomme = await rest(B.token, `video_lives?id=eq.${liveId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ author_name: "e2e_authz_a" }),
+      });
+      const apres = Array.isArray(renomme.body) ? renomme.body[0] : renomme.body;
+      expect(apres && apres.author_name, "le nom doit être RÉÉCRIT aussi à l'UPDATE")
+        .toBe("e2e_authz_b");
+      log("usurpation neutralisée à l'UPDATE aussi");
+      await rest(B.token, `video_lives?id=eq.${liveId}`, { method: "DELETE" }).catch(() => {});
+
+      // ── 9. Sans jeton, aucune donnée privée ────────────────────────────────
       const anon = await rest(null, "conv_messages?select=id&limit=1");
       expect(Array.isArray(anon.body) ? anon.body.length : 0,
         "un client sans session lit des messages privés → doit être vide").toBe(0);

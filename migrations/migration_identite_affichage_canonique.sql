@@ -94,12 +94,17 @@ create trigger trg_identite_affichage before insert or update on public.step_int
 -- Vérifié le 2026-08-15 : AUCUN index n'existe sur ces colonnes. À faible
 -- volume c'est indolore, mais c'est précisément ce qui casse à l'échelle — et
 -- la sémantique « nom actuel » rend le renommage écrivain, donc chaud.
--- CONCURRENTLY : ne verrouille pas les tables en écriture pendant la création.
--- (À lancer HORS transaction : `supabase db query` les passe une par une.)
-create index concurrently if not exists idx_video_lives_author       on public.video_lives(author_id);
-create index concurrently if not exists idx_event_comments_author    on public.event_comments(author_id);
-create index concurrently if not exists idx_cdv_live_comments_author on public.cdv_live_comments(author_id);
-create index concurrently if not exists idx_step_interactions_user   on public.step_interactions(user_id);
+-- ⚠️ Index SIMPLES, pas CONCURRENTLY : `supabase db query` enveloppe le fichier
+-- dans une transaction, et `CREATE INDEX CONCURRENTLY` y est interdit (25001) —
+-- le fichier entier était rejeté. Aux volumes actuels (la plus grosse de ces
+-- tables porte 16 lignes) le verrou d'écriture dure des microsecondes, donc
+-- l'index simple est sans conséquence.
+-- Le jour où ces tables comptent des dizaines de milliers de lignes, il faudra
+-- repasser en CONCURRENTLY et lancer ces quatre ordres UN PAR UN, hors fichier.
+create index if not exists idx_video_lives_author       on public.video_lives(author_id);
+create index if not exists idx_event_comments_author    on public.event_comments(author_id);
+create index if not exists idx_cdv_live_comments_author on public.cdv_live_comments(author_id);
+create index if not exists idx_step_interactions_user   on public.step_interactions(user_id);
 
 -- ── 2. AU RENOMMAGE : propagation à tout l'historique ───────────────────────
 -- C'est ce qui donne la sémantique « nom ACTUEL » sans jointure en lecture.

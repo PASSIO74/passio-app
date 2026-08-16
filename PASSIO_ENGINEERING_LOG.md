@@ -4,6 +4,22 @@
 
 ---
 
+## 2026-08-16 — Boucle 4 : les trois migrations appliquées en production
+
+Benjamin a levé la réserve (« fait tout ») : les migrations préparées la nuit précédente sont passées en prod, chacune avec contrôle avant/après.
+
+**Référentiel des passions** (ADR-007, option C) — 19 passions, **5 clés étrangères**, RLS en lecture seule vérifiées en base. Aucune policy d'écriture : un client ne peut pas déclarer une passion pour la légitimer ensuite.
+
+**Identité d'affichage canonique** — 4 triggers d'écriture, 1 de propagation, 4 index, 2 fonctions. Le fichier a d'abord été **rejeté en bloc** : `CREATE INDEX CONCURRENTLY` est interdit dans le bloc transactionnel du CLI (25001). Rejet atomique, donc rien d'appliqué à moitié. Repassé en index simples — la plus grosse de ces tables porte 16 lignes, le verrou dure des microsecondes. Le fichier documente qu'il faudra revenir à `CONCURRENTLY`, un ordre à la fois, quand les volumes le justifieront.
+
+Backfill : **22 lignes réalignées** (video_lives 5, event_comments 15, step_interactions 2). Il y avait donc bien des noms d'affichage divergents de la source canonique.
+
+**Purge du bruit de télémétrie** — 44 960 lignes `development` supprimées, `production = 10 532` intacte, vacuum passé.
+
+**Invariant anti-usurpation ajouté au gate** — maintenant que le trigger existe, `authz-critical.spec.js` le prouve : un compte qui insère un live avec le nom et la photo d'un tiers voit ces champs **réécrits** depuis son propre profil, à l'INSERT comme à l'UPDATE. Le gate compte 11 invariants.
+
+---
+
 ## 2026-08-16 — Boucle 3 : hygiène de la télémétrie et stabilisation du harnais
 
 ### `TEL-NOISE-004` — 79 % de la table de télémétrie était du bruit de test
