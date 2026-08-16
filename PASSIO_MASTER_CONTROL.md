@@ -103,6 +103,21 @@ C'est là qu'est le sujet : le fil principal est bloqué ~2,5 s cumulées au dé
 | `/rest/v1/follows` | 351 | 99 ms | 1 275 ms | 6 438 ms | à surveiller |
 | `/rest/v1/profiles` | 773 | 80 ms | 1 130 ms | 8 849 ms | à surveiller |
 
+### Advisors Supabase (mesurés le 2026-08-16)
+
+**Sécurité — 9 avertissements, tous déjà documentés comme délibérés** (2026-08-09) : 4 helpers de policies RLS × 2 rôles (`authenticated` doit garder `EXECUTE`, sinon les policies cassent) + `auth_leaked_password_protection`, un simple bascule Auth gratuit encore à activer.
+
+**Vérification de mes propres migrations** : mes deux fonctions `SECURITY DEFINER` de cette nuit (`identite_affichage_canonique`, `propager_identite_affichage`) **n'apparaissent pas** — le `revoke execute` a bien pris. La table `passions` non plus : RLS active avec sa policy.
+
+**Performance — 147 avertissements** :
+
+| Type | Nb | Traitement |
+|---|---|---|
+| `auth_rls_initplan` | **85** | ⏳ **Scale readiness, non fait.** `auth.uid()` réévalué à chaque ligne au lieu d'une fois. Correctif mécanique — envelopper en `(select auth.uid())` — mais il touche ~85 policies, la seule frontière de sécurité de l'app. Impact **nul aujourd'hui** (tables minuscules), réel à l'échelle. À faire sous supervision, suite cross-compte après CHAQUE table |
+| `multiple_permissive_policies` | 42 | même chantier, même prudence |
+| `unindexed_foreign_keys` | 7 | ✅ **corrigé** — `migration_index_cles_etrangeres.sql`. Dont **5 introduites par ma propre migration des passions**, posée sans index de couverture |
+| `unused_index` | 13 | ❌ **volontairement non traité.** Sur une beta à faible trafic, « inutilisé » = « pas encore utilisé » : `pg_stat_user_indexes` est quasi vide. Supprimer sur cette base, c'est supprimer sur une absence de preuve, pas une preuve d'absence |
+
 ### Toujours non mesuré
 
 La latence **perçue** des interactions (temps entre le tap et le retour visuel pour un like, un commentaire, une publication) — distincte de la latence réseau ci-dessus, qui est masquée par l'affichage optimiste. Aucun p50/p95 n'existe sur ce ressenti ; toute affirmation de réactivité resterait non fondée.
