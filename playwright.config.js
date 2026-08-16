@@ -20,10 +20,23 @@ module.exports = defineConfig({
     locale: "fr-FR",
     actionTimeout: 15000, // un clic qui ne trouve pas son élément doit échouer vite et dire lequel, pas geler le test
   },
-  webServer: {
-    command: "http-server -p 8080 -a 127.0.0.1 -c-1 .",
-    url: "http://127.0.0.1:8080/index.html",
-    reuseExistingServer: true,
-    timeout: 30000,
-  },
+  // Mesure de couverture fonctionnelle (PASSIO_COUVERTURE=1) : le serveur
+  // statique est remplacé par un serveur qui sert les MÊMES octets plus un
+  // enregistreur d'appels. Aucun test n'est modifié, aucune assertion déplacée.
+  // `reuseExistingServer` passe à false : réutiliser un http-server déjà lancé
+  // rendrait la mesure vide en silence — le pire des résultats, un zéro qu'on
+  // prendrait pour une absence de couverture au lieu d'une absence de mesure.
+  webServer: process.env.PASSIO_COUVERTURE === "1"
+    ? {
+        command: "node scripts/serve-couverture.js",
+        url: "http://127.0.0.1:8080/index.html",
+        reuseExistingServer: false,
+        timeout: 30000,
+      }
+    : {
+        command: "http-server -p 8080 -a 127.0.0.1 -c-1 .",
+        url: "http://127.0.0.1:8080/index.html",
+        reuseExistingServer: true,
+        timeout: 30000,
+      },
 });

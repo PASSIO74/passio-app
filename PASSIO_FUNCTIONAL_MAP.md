@@ -2,14 +2,15 @@
 
 > **Inventaire mesuré** du 2026-08-16, produit par lecture du dépôt réel (`index.html`, `js/app-0*.js`, `tests/e2e/`, schéma Supabase de production). Aucun chiffre n'est estimé.
 >
-> **Ce document ne prétend PAS donner un taux de couverture fonctionnelle.** Établir qu'une interaction est « couverte » exige de relier chaque interaction au test qui l'exerce — travail qui n'a pas été fait. Annoncer un pourcentage sur la base du nombre de specs serait exactement le genre de chiffre que le reste de cette qualification s'interdit. Voir « Ce qui reste non mesuré ».
+> **La couverture fonctionnelle est désormais mesurée : 66 interactions sur 435, soit 15,2 %** (2026-08-16, suite complète `PASSIO_E2E_MULTI=1`). Elle ne l'était pas lors de la première rédaction de ce document ; la méthode et ses limites sont en section 5.
 
 ## 1. Surface applicative
 
 | Élément | Compté | Source |
 |---|---|---|
 | Écrans | **8** | `id="screen-*"` dans `index.html` |
-| Interactions distinctes | **445** | fonctions appelées depuis un handler inline (`onclick`, `onchange`, `oninput`, `onsubmit`, `onkeyup`, `onkeydown`) |
+| Interactions distinctes | **435** | `node scripts/couverture-interactions.js` — fonctions appelées depuis un handler inline (`onclick`, `onchange`, `oninput`, `onkeydown`), sur 757 handlers |
+| — dont exercées par la suite | **66** (15,2 %) | `npm run couverture` |
 | Tables en production | **34** | `information_schema`, toutes sous RLS |
 | Specs e2e | **25** | `tests/e2e/*.spec.js` |
 | Tests déclarés | **175** | dont 12 opt-in (cross-compte, confidentialité, campagne QA) |
@@ -70,9 +71,21 @@ Cette section liste des propriétés **vérifiées**, pas des fonctionnalités p
 
 Provenance du profil passionnel : `passion_id` est présent sur `posts`, `stories`, `events`, `conversations`, `profiles` — et **sur aucune table d'interaction**. « X a publié en tant que motard » est donc prouvable en base ; « X a commenté en tant que motard » ne l'est pas. Décision assumée : `.passio/adr/ADR-007`.
 
-## 5. Ce qui reste non mesuré
+## 5. Couverture fonctionnelle — la mesure et ce qu'elle vaut
 
-**Le taux de couverture fonctionnelle.** Il faudrait relier chacune des 445 interactions au test qui l'exerce. Le nombre de specs ne s'y substitue pas : 52 tests sur CDV ne disent rien du nombre d'interactions CDV couvertes.
+**66 interactions sur 435 s'exécutent au moins une fois pendant la suite complète : 15,2 %.**
+
+**Comment.** Un serveur (`scripts/serve-couverture.js`) sert l'application **octet pour octet** et ajoute en fin de `<body>` un enregistreur qui enveloppe les 435 fonctions et note celles qui s'exécutent. **Aucun fichier de `tests/` n'a été touché** — ni pour produire ce chiffre, ni pour l'améliorer. Sans `PASSIO_COUVERTURE=1`, la suite tourne exactement comme avant.
+
+**Ce que le chiffre veut dire — et ce qu'il ne veut pas dire.** Il compte une interaction comme couverte dès que sa fonction s'exécute, **même appelée depuis une autre fonction plutôt que par un clic**. C'est la définition la plus généreuse possible : le taux de vérification par assertion est forcément **plus bas que 15,2 %**. Ce n'est pas une borne inférieure prudente, c'est un plafond.
+
+**Pourquoi ce n'est pas une mesure creuse.** Trois pièges ont été écartés avant de publier le chiffre :
+
+- *Une mesure vide se confondrait avec une couverture nulle.* En mode couverture, `reuseExistingServer` passe à `false` : si le port est déjà pris, Playwright **refuse de démarrer** au lieu de mesurer zéro. Le cas s'est présenté à la première exécution et le garde-fou a joué.
+- *Les fonctions déclarées `const f = …` au niveau racine ne sont pas des propriétés de `window`* — l'enveloppe ne pourrait pas s'y poser, et elles compteraient comme jamais exécutées (c'est le piège connu de `state`). Vérification faite : **0 interaction sur 435 est dans ce cas** (422 `function`, 2 `window.x =`, 11 déclarées ailleurs mais bien observées à l'exécution). Aucun angle mort.
+- *Le dénominateur doit être recalculable.* Il est produit par un script versionné, pas compté à la main. Au passage, **le chiffre de 445 annoncé dans la première version de ce document n'a pas pu être reproduit** ; la règle appliquée ici donne 435 et elle est écrite dans le script. Un nombre que personne ne sait refaire n'a pas sa place dans cette qualification, fût-il le mien.
+
+**Ce que 15,2 % dit du projet.** La suite couvre les chemins qui portent le risque — autorisation, cross-compte, publication, messagerie, RSVP, commentaires — et laisse de côté l'essentiel de la surface secondaire : options, panneaux, éditeurs, reprises d'erreur. Ce n'est pas un mauvais choix de tests ; c'est une **priorisation par le risque**, qu'on peut maintenant discuter sur pièces au lieu d'en débattre à l'estime.
 
 **La latence perçue** — le temps entre le tap et le retour visuel. Distincte de la latence réseau, que l'affichage optimiste masque précisément. Elle demande d'instrumenter puis d'observer du trafic réel.
 
