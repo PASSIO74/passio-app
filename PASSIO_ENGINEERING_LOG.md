@@ -4,6 +4,35 @@
 
 ---
 
+## 2026-08-16 — Boucle 6 : isolation en invariant, et la suppression qui ne tenait pas
+
+### L'isolation à la déconnexion devient un invariant
+Le test existant nommait deux clés. Un test qui nomme ses clés ne voit pas arriver la suivante : le jour où une fonctionnalité écrit une clé de compte oubliée dans `ACCOUNT_SCOPED_KEYS`, il reste vert pendant que la donnée fuit vers le compte suivant. Réécrit en invariant — après déconnexion, il ne doit subsister que des clés d'**appareil**.
+
+Couvre enfin les files `passio_pending_user_state*`, suffixées par compte donc impossibles à lister en dur, et qui portent le blob d'état complet. Vérifie aussi l'inverse : la purge ne doit pas emporter le contrôle parental, sous peine d'offrir un contournement en un clic.
+
+Double vérification d'absence de test creux : `ACCOUNT_SCOPED_KEYS` est bien exposée (11 clés — sans quoi le semis n'aurait rien écrit), et une clé volontairement oubliée est bien détectée.
+
+### `CONV-RESUR-006` — une suppression de message pouvait être annulée
+Scénario multi-appareil n° 2 de l'analyse croisée, **reproduit** : une conversation et un message privé supprimés revenaient après redémarrage. `localStorage` s'écrit en synchrone, IndexedDB en asynchrone best-effort (résultat jamais lu) ; la fusion au boot, faite pour ne jamais perdre un message, défaisait les suppressions.
+
+Ce n'était pas une erreur de conception — l'union corrigeait l'inverse. Le défaut : aucun des deux stores ne distinguait « jamais existé » de « supprimé ».
+
+Corrigé par un journal de suppressions **borné** (TTL 30 j, 2 000 entrées), filtrage en un seul point à la sortie de la fusion, clé inscrite dans `ACCOUNT_SCOPED_KEYS`.
+
+**Le test qui compte le plus n'est pas le principal, c'est la contre-épreuve** : un message présent dans un seul store et *non* supprimé doit continuer d'être récupéré. C'est la propriété que l'union protégeait, et un journal trop zélé l'aurait détruite en silence. C'est le vrai risque de ce correctif, pas l'inverse.
+
+Réserve initiale levée par la vérification, pas par l'attente : le risque portait sur une modification **non vérifiée** du store des messages privés.
+
+### Décisions déléguées, tranchées
+- **ADR-007** reste en **option C**. La délégation ne crée pas un besoin qui n'existe pas.
+- **ADR-008** : option B **implémentée**.
+
+### Bilan
+160 e2e passés (0 flaky), 12 cross-compte, 3 audits, build OK. `origin/main` à jour.
+
+---
+
 ## 2026-08-16 — Boucle 5 : la performance, mesurée puis corrigée à la source
 
 ### Le poids n'était pas le problème — et le chiffre fautif venait de moi
