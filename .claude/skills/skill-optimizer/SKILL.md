@@ -10,13 +10,20 @@ Objectif : que Benjamin ne redise jamais demain ce qui peut être structuré auj
 ## 1. Mesurer avant de décider
 
 ```bash
-node .claude/scripts/skills-lint.js
+npm run skills:check
 ```
 
-Donne l'état factuel : nombre de skills, budget de listing consommé, descriptions
-trop vagues, SKILL.md obèses, déclencheurs qui se chevauchent. **Ne jamais juger la
-bibliothèque à l'œil** — au 2026-08-15 elle paraissait redondante (8 skills « produit »)
-alors que le chevauchement maximal mesuré était de 21 % : aucune fusion n'était justifiée.
+- `skills:lint` — état factuel : budget de listing consommé, descriptions trop
+  vagues, SKILL.md obèses, déclencheurs qui se chevauchent.
+- `skills:routing` — rejoue des intentions réelles de Benjamin et vérifie que le
+  skill attendu arrive en tête. **À relancer après toute retouche de
+  `description`** : c'est elle, et elle seule, qui déclenche un skill.
+  Proxy lexical, pas la sélection du modèle : un vert ne prouve pas la
+  perfection, un **rouge prouve une régression**.
+
+**Ne jamais juger la bibliothèque à l'œil** — au 2026-08-15 elle paraissait
+redondante (8 skills « produit ») alors que le chevauchement maximal mesuré était
+de 21 % : aucune fusion n'était justifiée.
 
 ## 2. RÉUTILISER > AMÉLIORER > CRÉER
 
@@ -57,7 +64,8 @@ conversations ?* Si non → elle ne va pas dans le noyau global.
 - une seule responsabilité identifiable ;
 - SKILL.md court ; le volume part en `references/` ;
 - l'étape déterministe est un script, pas une explication ;
-- relancer `skills-lint.js` : zéro régression de budget, zéro chevauchement neuf.
+- relancer `npm run skills:check` : budget tenu, aucun chevauchement neuf,
+  routage toujours à 100 %.
 
 ## 5. Après coup
 

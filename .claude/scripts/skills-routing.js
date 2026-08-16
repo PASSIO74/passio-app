@@ -21,7 +21,9 @@
 const fs = require("fs");
 const path = require("path");
 
-const RACINE = path.join(__dirname, "..", "skills");
+/** SKILLS_DIR permet de pointer une copie — indispensable pour vérifier que ce
+ *  test sait ROUGIR (un test qui ne peut pas échouer ne prouve rien). */
+const RACINE = process.env.SKILLS_DIR || path.join(__dirname, "..", "skills");
 
 /** Intentions telles que Benjamin les formule réellement → skill attendu. */
 const CAS = [
