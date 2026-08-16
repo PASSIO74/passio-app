@@ -4,6 +4,36 @@
 
 ---
 
+## 2026-08-16 — Boucle 3 : hygiène de la télémétrie et stabilisation du harnais
+
+### `TEL-NOISE-004` — 79 % de la table de télémétrie était du bruit de test
+
+Mesuré en prod : `development` 40 625 événements (dernier 16/08 04:55) contre `production` 10 532 (dernier 15/08 17:55).
+
+Cause : il n'existe **qu'une seule base Supabase**, et la télémétrie était active **par défaut** sur localhost. Les ~15 specs e2e chargent l'app à chaque exécution → chaque passage de la suite écrivait dans la table de production.
+
+Le dashboard filtrait déjà sur `env=production`, donc **il restait honnête**. Ce qui ne l'était pas : la taille de la table, son coût, et toute analyse SQL directe — celle qu'on fait justement en audit.
+
+Aggravation dont je suis l'auteur : le correctif `TEL-IDENT-002` de la boucle 2 a transformé du bruit *rejeté* (identité fabriquée → 401) en bruit *stocké* (`user_id: null` → 201). Le volume a bondi pendant la nuit.
+
+Correctif : en local, opt-in **explicite** (`?telemetry=1`), plus d'activation par défaut. Deux tests gardent les deux sens dans `tests/e2e/telemetrie-preauth.spec.js` — l'un vérifie qu'un envoi forcé part correctement, l'autre qu'**aucun** envoi ne part quand on n'a rien demandé. Sans ce second garde, la pollution reviendrait au premier qui rétablirait le défaut.
+
+Purge de l'accumulé préparée (`migrations/purge_telemetry_development.sql`), non exécutée — destructive. **À passer APRÈS déploiement du correctif**, sinon la prochaine suite e2e reconstitue le bruit.
+
+### Harnais e2e — flaky éliminé
+
+Trois causes, dont deux hypothèses rejetées par la mesure. Détail et pièges : mémoire `playwright-pieges-flaky`. Sous stress : 30 → 64 passés sur 68.
+
+**Correction d'une affirmation trop rapide.** J'ai écrit « 154 passés, 0 flaky » sur la foi d'**une seule** exécution. L'exécution suivante en a montré 1 (`interactions.spec.js:165`). Le bilan honnête est donc : flottement **réduit** — de systématique (3 exécutions sur 3 avant correctif) à intermittent (1 exécution sur 2) — **et non éliminé**. Un seul passage vert ne prouve rien sur un défaut intermittent : c'est exactement l'erreur que la mesure de référence m'avait déjà évitée quelques heures plus tôt.
+
+Le piège le plus coûteux venait de mon propre correctif : `polling: "raf"` ne se déclenche pas sur une page qui ne compose pas de frames, donc le garde de stabilité expirait sans jamais s'exécuter.
+
+### Incident d'exploitation
+
+Trois fichiers d'une **session Claude parallèle** ont été aspirés dans un de mes commits : `git commit` sans chemin valide tout l'index, que l'autre session alimente via son hook. Sans dégât (rien de perdu, aucun effet prod), mais le commit est mal étiqueté. Règle ajoutée au skill `reprise-autonome` : toujours `git commit -F msg -- <chemins>`, et `git status --porcelain` avant.
+
+---
+
 ## 2026-08-15 — Boucle 2 : analyse croisée réelle, puis correction de CI-GATE-001 et TEL-IDENT-002
 
 ### Analyse croisée

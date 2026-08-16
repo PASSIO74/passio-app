@@ -93,4 +93,33 @@ test.describe("Télémétrie — fenêtre pré-authentification", () => {
 
     await ctx.close();
   });
+
+  test("sans forçage, localhost n'écrit RIEN dans la table de production", async ({ browser }) => {
+    // Il n'existe qu'une seule base Supabase : ce qui part de localhost atterrit
+    // en PRODUCTION. Les ~15 specs e2e chargent l'app à chaque exécution ; quand
+    // la télémétrie y était active par défaut, elles remplissaient la table.
+    // Mesuré le 2026-08-16 avant correctif : 40 625 événements `development`
+    // contre 10 532 `production` — 79 % de bruit de test.
+    //
+    // Ce garde-fou est l'inverse du précédent : il vérifie qu'AUCUN envoi ne
+    // part quand on n'a rien demandé. Sans lui, la pollution reviendrait au
+    // premier qui rétablirait le défaut « actif en local ».
+    const ctx = await browser.newContext();
+    const page = await ctx.newPage();
+
+    const envois = [];
+    page.on("request", (req) => {
+      if (req.method() === "POST" && req.url().includes("/rest/v1/telemetry_events")) {
+        envois.push(req.url());
+      }
+    });
+
+    await page.addInitScript(([k, t]) => sessionStorage.setItem(k, t), [GATE_KEY, GATE_TOKEN]);
+    await page.goto("/index.html");            // ← pas de ?telemetry=1
+    await page.waitForSelector("#landing.active", { timeout: 30000 });
+    await page.waitForTimeout(8000);           // laisser passer les flushs éventuels
+
+    expect(envois.length, `envois de télémétrie non sollicités depuis localhost : ${envois.length}`).toBe(0);
+    await ctx.close();
+  });
 });

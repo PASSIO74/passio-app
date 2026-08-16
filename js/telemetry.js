@@ -54,7 +54,21 @@
       var stored = localStorage.getItem("passio_telemetry");
       if (stored === "1") return true;
       if (stored === "0") return false;                            // l'utilisateur a refusé
-      if (location.hostname === "localhost" || location.hostname === "127.0.0.1") return true;
+      // En local : opt-in EXPLICITE, jamais par défaut.
+      //
+      // Il n'existe qu'une seule base Supabase : ce qui est émis depuis
+      // localhost atterrit dans la table de PRODUCTION. Or les ~15 specs e2e
+      // chargent l'app sur localhost à chaque exécution. Mesuré le 2026-08-16 :
+      // 40 625 événements `development` contre 10 532 `production` — 79 % de la
+      // table était du bruit de test. Le dashboard filtre bien sur
+      // `env=production`, donc il restait honnête ; mais la table, son coût et
+      // toute analyse SQL directe, non.
+      //
+      // Les cas explicites sont déjà traités au-dessus : `?telemetry=1` et le
+      // choix mémorisé continuent de fonctionner. Pour déboguer la télémétrie
+      // en local, ouvrir `?telemetry=1` — c'est ce que fait
+      // tests/e2e/telemetrie-preauth.spec.js, qui reste donc valide.
+      if (location.hostname === "localhost" || location.hostname === "127.0.0.1") return false;
       return TELEMETRY_DEFAULT_ON && _sampledIn(TELEMETRY_SAMPLE); // défaut prod : actif (échantillonné)
     } catch (e) { return false; }
   }
