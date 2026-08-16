@@ -529,6 +529,17 @@ async function _flushPendingUserState() {
     // est un test vérifiable ; « ma montre est plus récente que la ligne » ne
     // l'est pas. Sans ça, l'horodatage serveur aurait FAIT PERDRE ses reprises
     // hors-ligne à tout appareil dont l'horloge retarde de quelques secondes.
+    //
+    // ⚠️⚠️ CE N'EST PAS UNE GARANTIE D'ORDRE, et il ne faut pas la lire comme
+    // telle (correction apportée par la revue croisée du 2026-08-16, vérifiée
+    // sur la base : `now()` renvoie l'heure de DÉBUT DE TRANSACTION, pas celle
+    // du commit — mesuré identique de part et d'autre d'un pg_sleep(0.3) pendant
+    // que clock_timestamp() avançait de 306 ms). Une transaction démarrée avant
+    // mais committée après en portera donc un `updated_at` ANTÉRIEUR.
+    // `updated_at` est une métadonnée temporelle autoritaire, pas une horloge
+    // logique. Le seul ordre réellement fiable serait une révision monotone
+    // portée par la ligne (compare-et-remplace) — voir le risque résiduel de
+    // SYNC-CLOCK-012 dans passio_qa_registry.json.
     const baseServeur = (typeof state !== "undefined" && state && state._stateSyncedAt) || pending.updated_at;
     const { data: upd, error: upErr } = await supa.from("user_state")
       .update({ data: pending.data })       // le trigger horodate : rien à imposer

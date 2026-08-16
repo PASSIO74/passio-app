@@ -45,6 +45,20 @@
 -- mieux, puisqu'il ne peut plus mentir. Il n'y a donc pas de fenêtre
 -- expand/contract à gérer.
 --
+-- ⚠️ `updated_at` N'EST PAS UNE HORLOGE D'ORDRE — correction du 2026-08-16
+-- `now()` renvoie l'heure de DÉBUT DE TRANSACTION, pas celle du commit. Vérifié
+-- sur cette base : identique de part et d'autre d'un pg_sleep(0.3), pendant que
+-- clock_timestamp() avançait de 306 ms. Une transaction démarrée avant mais
+-- committée après portera donc un `updated_at` ANTÉRIEUR à celle qui l'a
+-- précédée au commit. `clock_timestamp()` ne réglerait rien non plus : ce serait
+-- l'heure d'exécution du trigger, toujours pas l'ordre de commit.
+-- Vocabulaire à tenir, dans le code comme dans les commentaires :
+--   updated_at = métadonnée temporelle autoritaire ;
+--   ordre logique = une révision monotone portée par la ligne, qui n'existe pas
+--   encore ici. Ne jamais appeler `updated_at` « version » ou « marqueur
+--   monotone » : ça ferait reposer une décision de précédence sur une propriété
+--   que la base ne garantit pas.
+--
 -- CE QUE ÇA NE RÈGLE PAS — à écrire ici plutôt que de le laisser croire
 -- L'écriture reste un « dernier écrivain gagne » sur un blob. Deux appareils qui
 -- modifient deux champs indépendants au même moment : le second écrase toujours

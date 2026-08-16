@@ -1,7 +1,7 @@
 {
  "$comment": "Source de verite MACHINE de la qualification PASSIO. Vue humaine : PASSIO_MASTER_CONTROL.md. Journal : PASSIO_ENGINEERING_LOG.md. Regle : aucune valeur inventee ; un champ non mesure vaut null et porte un statut explicite.",
  "schema_version": 1,
- "generated_at": "2026-08-16T20:06:44.759Z",
+ "generated_at": "2026-08-16T20:09:07.152Z",
  "commit": "b5a8051",
  "branch": "main",
  "working_tree": "clean",
@@ -307,7 +307,7 @@
    "test_permanent": "tests/e2e/user-state-horodatage.spec.js",
    "regression": "17/17 sur etat-sync-base64, audit-identite-emoji, conv-suppression, smoke, telemetrie-preauth, authz-critical ; 0 compte e2e residuel",
    "commit": "ea6d507",
-   "risque_residuel": "L ecriture reste « dernier ecrivain gagne » sur un blob : deux appareils modifiant deux champs independants, le second ecrase le premier. Horodater cote serveur supprime l AUTORITE FAUSSE, pas le besoin d un controle d anciennete par revision (CAS). Non fait : change la semantique d ecriture du chemin le plus sensible, et exige un chemin de resolution de conflit inexistant.",
+   "risque_residuel": "L ecriture reste « dernier ecrivain gagne » sur un blob : deux appareils modifiant deux champs independants, le second ecrase le premier. Horodater cote serveur supprime l AUTORITE FAUSSE, pas le besoin d un controle d anciennete par revision (CAS). Non fait : change la semantique d ecriture du chemin le plus sensible, et exige un chemin de resolution de conflit inexistant. ⚠️ Correction du 2026-08-16 apportee par la revue croisee et VERIFIEE sur la base : now() renvoie l heure de DEBUT DE TRANSACTION, pas celle du commit (identique de part et d autre d un pg_sleep(0.3) pendant que clock_timestamp avancait de 306 ms). updated_at n est donc PAS une horloge d ordre : une transaction demarree avant mais committee apres porte un horodatage anterieur. La garde .lte du rejeu reste tres superieure a une comparaison client-vs-serveur, mais elle n est pas une garantie de precedence. Vocabulaire impose : updated_at = metadonnee temporelle ; ordre logique = revision monotone, qui n existe pas encore.",
    "note": "Le commit ea6d507 et son message portent l ancien numero SYNC-CLOCK-011 : une session Claude Code parallele avait pris 011 (STORAGE-BRUIT-011) au meme moment. Renumerote en 012 dans le code et le registre.",
    "verified": true
   },
