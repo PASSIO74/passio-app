@@ -39,6 +39,7 @@ const CAS = [
   ["la vidéo uploadée ne s'affiche pas", "storage"],
   ["vérifie l'échappement, injection XSS", "xss-audit"],
   ["relis mon code avant de pousser", "review"],
+  ["je bosse en parallèle sur plusieurs sessions, ne mélange pas", "passio-multi-session"],
   ["montre-moi dans le navigateur que ça marche", "preview"],
   ["y a des erreurs en prod ?", "prod-errors"],
   ["les gens reviennent pas, churn", "retention"],
