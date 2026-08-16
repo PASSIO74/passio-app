@@ -62,13 +62,39 @@ Ce qui est couvert par des tests aujourd'hui (par nom de spec, sans prétendre �
 
 ## PERFORMANCE
 
-| Flux | Actuel | Cible | Statut |
-|---|---|---|---|
-| Chargement de la page d'accueil prod | 123 864 o / 0,76 s | à définir | mesuré |
-| Poids JS applicatif servi | app.js 1,84 Mo avant minification CI (terser) — **poids réellement servi non mesuré** | à définir | NON MESURÉ |
-| Démarrage app, navigation, fil, like, commentaire, publication, message | — | — | **NON MESURÉ** |
+**Mesuré le 2026-08-16.** Le chiffre « 1,84 Mo de JS » qui circulait dans l'audit conjoint était la **source non minifiée** — il ne décrivait rien de ce que l'utilisateur télécharge.
 
-Aucun p50/p75/p95 d'interaction n'existe à ce jour. Toute affirmation de rapidité serait non fondée.
+### Ce qui est réellement servi en production
+
+| Ressource | Brut (minifié) | **Transféré (compressé)** |
+|---|---|---|
+| `index.html` | 124 194 o | **33 466 o** |
+| `app.js` | 1 109 340 o | **287 164 o** |
+| `styles.css` | 199 224 o | **34 221 o** |
+| **Total** | 1,43 Mo | **≈ 355 Ko** |
+
+355 Ko pour une application sociale complète : **le téléchargement n'est pas le problème.** Aucune optimisation de poids ne se justifie sur cette base.
+
+### Le vrai coût est sur le processeur
+
+Mesuré avec un bridage CPU ×4 (approximation d'un mobile milieu de gamme) :
+
+| Indicateur | Valeur |
+|---|---|
+| Landing affichée | 3 946 ms |
+| DOMContentLoaded | 2 064 ms |
+| Chargement complet | 2 966 ms |
+| Durée de chargement des JS | 1 297 ms |
+| **Tâches longues** | **11, cumulant 2 575 ms** |
+| **Plus longue tâche** | **496 ms** |
+
+C'est là qu'est le sujet : le fil principal est bloqué ~2,5 s cumulées au démarrage, avec une tâche de près d'une demi-seconde. Sur un mobile modeste, l'app paraît figée pendant ce temps.
+
+**Conséquence pour la suite** : toute optimisation doit viser le **découpage du travail de démarrage**, pas la réduction du poids. Mesurer d'abord quelle tâche coûte 496 ms avant de toucher à quoi que ce soit.
+
+### Toujours non mesuré
+
+Les latences d'interaction (like, commentaire, publication, message) — aucun p50/p75/p95 n'existe. Toute affirmation de réactivité resterait non fondée.
 
 ## TESTS DE SYNCHRONISATION A ↔ B ↔ C
 
