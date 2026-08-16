@@ -4,6 +4,23 @@
 
 ---
 
+## 2026-08-16 — Boucle 12 : les deux derniers livrables du plan
+
+### Ce qui manquait
+Le plan initial listait sept livrables. Cinq existaient ; `PASSIO_FUNCTIONAL_MAP.md` et `PASSIO_PRODUCTION_READINESS.md` manquaient encore. Produits ici à partir du dépôt réel — 8 écrans, **445 interactions distinctes** relevées depuis les handlers inline, 34 tables, 25 specs, 175 tests déclarés.
+
+### Le choix qui compte dans la cartographie
+Elle **ne donne pas de taux de couverture fonctionnelle**, et le dit. L établir exigerait de relier chacune des 445 interactions au test qui l exerce. Le nombre de specs ne s y substitue pas : 52 tests sur CDV ne disent rien du nombre d interactions CDV couvertes. Annoncer un pourcentage aurait été exactement le chiffre de complaisance que le reste de cette qualification s interdit.
+
+Ce qu elle donne à la place : la liste des propriétés **réellement prouvées**, chacune avec le test qui la prouve.
+
+### Verdict de production readiness
+**CONTROLLED BETA READY**, inchangé — mais ce sur quoi il repose a changé. Autorisation, confidentialité, intégrité et cross-compte sont **prouvés**. Trois domaines restent faibles : latence perçue (non mesurée), montée en charge (plans vérifiés mais aucun test à volume), et **récupération — aucune restauration de sauvegarde jamais exécutée**, seul domaine à zéro preuve.
+
+Quatre conditions pour passer à PUBLIC BETA, aucune ne demandant de refactoring : latence réelle, couverture établie, une restauration éprouvée, un test à volume.
+
+---
+
 ## 2026-08-16 — Boucles 9 à 11 : deux fermetures P1, et trois de mes conclusions démenties
 
 *(Rattrapage : ces trois boucles n'avaient pas été consignées au fil de l'eau, contrairement à la règle. Le manquement est noté ici plutôt que masqué par une réécriture de l'historique.)*
