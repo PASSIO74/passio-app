@@ -141,14 +141,18 @@ node scripts/chatgpt.js etat                                    # quel canal Cha
 ```
 
 **Le canal ChatGPT passe par `scripts/chatgpt.js`** (skill `/chatgpt`), pas par le
-pilotage du DOM de chatgpt.com : appel HTTP direct (`OPENAI_API_KEY`), fils
-persistants dans `.passio/chatgpt/` (gitignoré), et surtout une **garde qui refuse
-l'envoi** dès qu'un JWT, une clé `sb_secret_`/`sk-`, une affectation
-`SERVICE_ROLE_KEY=…` ou un mot de passe apparaît dans le contenu — le chemin
-navigateur, lui, n'a aucune garde. Sans clé posée, le script s'arrête et renvoie
-vers le repli navigateur (`.claude/skills/chatgpt/references/navigateur.md`, 8
-pièges vécus) : **ne jamais écrire que ChatGPT a été consulté si l'échange n'a pas
-eu lieu.**
+pilotage du DOM de chatgpt.com. Transport retenu le 2026-08-16 : **`codex`, compris
+dans l'abonnement ChatGPT déjà payé** — aucun frais supplémentaire, aucune clé API
+(l'API OpenAI est facturée au jeton : implémentée en repli, à ne pas activer sans
+décision de Benjamin). Fils persistants dans `.passio/chatgpt/` (gitignoré), et une
+**garde qui refuse l'envoi** dès qu'un JWT, une clé `sb_secret_`/`sk-`, une
+affectation `SERVICE_ROLE_KEY=…` ou un mot de passe apparaît — le chemin navigateur,
+lui, n'a aucune garde. ⚠️ Codex est un **agent doté d'outils de lecture**, pas un
+onglet : il est lancé sur un **dossier de travail vide**, jamais sur le dépôt, sinon
+il lirait `dashboard/.env` et sa clé `service_role`. Sans transport connecté, le
+script s'arrête et renvoie vers le repli navigateur
+(`.claude/skills/chatgpt/references/navigateur.md`, 8 pièges vécus) : **ne jamais
+écrire que ChatGPT a été consulté si l'échange n'a pas eu lieu.**
 
 `scripts/dossier-revue.js` produit dans `.passio/reviews/<date>-<slug>/` : spécification, `diff.patch`, **fichiers concernés en entier** (un relecteur qui ne voit que des hunks juge la forme, pas le fond), vérifications réellement exécutées avec leurs sorties brutes (un test rouge est rapporté rouge), migrations touchées, conventions du projet, et pièges connus détectés par motif. `DOSSIER-COMPLET.md` regroupe le tout en un fichier à coller dans un chat. Sans `--tests`, Playwright n'est PAS lancé et le dossier le dit — ça ne vaut alors pas validation de bout en bout.
 

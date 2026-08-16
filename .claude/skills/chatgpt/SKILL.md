@@ -32,33 +32,44 @@ node scripts/chatgpt.js "ta question" --fil archi
 | Fil / mémoire | `.passio/chatgpt/<fil>.json`, illimité, relisible | onglet mortel > 60 k caractères |
 | Gros dossier | `--fichier` (un `DOSSIER-COMPLET.md` entier) | insertion qui fige le rendu |
 | Garde secrets | **refus automatique** avant tout envoi réseau | aucune — tout ce qui est collé part |
-| Coût | au jeton (`OPENAI_API_KEY`) | inclus dans l'abonnement ChatGPT |
-| Prérequis | une clé API | Chrome + panneau Claude connecté au **même** compte |
+| Coût | **0 € via `codex`** (abonnement déjà payé) | 0 € |
+| Prérequis | `codex login` une fois | Chrome + panneau Claude connecté au **même** compte |
 
-Le seul avantage réel du navigateur est le coût. Il reste donc le repli, pas le
-défaut.
+### Le transport retenu : `codex`, compris dans l'abonnement
 
-### Mise en route (une fois)
+Décidé le 2026-08-16 : **aucun frais supplémentaire.** Le CLI Codex se connecte
+avec le compte ChatGPT et consomme les crédits du plan, pas une facturation au
+jeton. `transportDisponible()` le préfère automatiquement à l'API.
 
 ```bash
+codex login              # « Sign in with ChatGPT » — Benjamin uniquement
 node scripts/chatgpt.js etat
 ```
 
-Dit exactement quel transport est prêt et ce qui manque. Si aucune clé n'est
-posée :
+Le CLI est installé (`codex-cli 0.147.0`) et la chaîne est vérifiée jusqu'au bout :
+le processus démarre, reçoit l'invite, et échoue sur `401 Unauthorized` faute de
+session. **`codex login` est la seule pièce manquante, et elle ne se délègue pas.**
 
-1. clé sur `https://platform.openai.com/api-keys` — facturation au jeton,
-   **indépendante de l'abonnement ChatGPT Plus** (les deux ne partagent rien) ;
-2. `setx OPENAI_API_KEY "sk-…"` puis rouvrir le terminal ;
-3. modèle : `gpt-5` par défaut, `OPENAI_MODEL` ou `--modele` pour changer.
+L'API (`OPENAI_API_KEY`) reste implémentée en repli, mais elle est **facturée au
+jeton** : ne pas la poser sans décision explicite de Benjamin.
 
-**Variante sans facturation au jeton** : le CLI Codex (`npm i -g @openai/codex`
-puis `codex login`, connexion avec le compte ChatGPT) réutilise l'abonnement.
-`scripts/chatgpt.js --transport codex` l'appelle, mais ce chemin **n'a jamais été
-exécuté sur cette machine** — le vérifier au premier usage avant de compter dessus.
+Tant qu'aucun transport n'est connecté, le script s'arrête proprement et renvoie
+vers le navigateur : **ne jamais faire semblant d'avoir consulté ChatGPT.**
 
-Tant qu'aucune clé n'est posée, le script s'arrête proprement et renvoie vers le
-navigateur : **ne jamais faire semblant d'avoir consulté ChatGPT.**
+### ⚠️ Codex n'est pas ChatGPT dans un onglet
+
+C'est un **agent doté d'outils de lecture**. Lancé sur le dépôt, il irait lire des
+fichiers — dont `dashboard/.env` et sa clé `service_role` — et le contenu
+remonterait chez OpenAI hors de toute garde. D'où deux choix dans `appelCodex` :
+
+- **dossier de travail vide** (`-C` sur un répertoire temporaire), jamais la racine
+  du dépôt ; `--sandbox read-only`, `--ephemeral` ;
+- l'asymétrie qui fait la valeur du croisement (il n'a pas le dépôt, il challenge
+  le dossier qu'on lui donne) n'est préservée que par ça.
+
+Rappel de la leçon Sentinelle : **le `cwd` n'est pas une frontière de fichiers**,
+c'est une réduction de surface. La vraie garde reste de ne rien mettre de sensible
+dans l'invite — ce que fait `detecterSecrets`.
 
 ## Usage courant
 

@@ -6,9 +6,10 @@
  * flux d'affichage qui casse, onglet irrécupérable au-delà de ~60 000 caractères)
  * par un appel direct. Aucune dépendance : fetch natif (Node >= 18).
  *
- * Trois transports, du plus fiable au moins fiable :
- *   1. api    — OPENAI_API_KEY (facturation au jeton, indépendante de l'abonnement)
- *   2. codex  — CLI `codex exec` (réutilise l'abonnement ChatGPT ; non vérifié ici)
+ * Trois transports, dans l'ordre de préférence (le gratuit d'abord) :
+ *   1. codex  — CLI `codex exec`, compris dans l'abonnement ChatGPT déjà payé.
+ *               Choisi le 2026-08-16 : aucune facturation supplémentaire.
+ *   2. api    — OPENAI_API_KEY, facturée au jeton. Repli seulement.
  *   3. chrome — Claude-in-Chrome, hors de ce script (voir la skill /chatgpt)
  *
  * Les fils sont persistés dans .passio/chatgpt/<fil>.json (+ transcription .md).
@@ -178,26 +179,108 @@ async function appelApi(messages, options) {
   }
 }
 
-function appelCodex(invite) {
+/**
+ * Sur Windows, `codex` installé par npm est un **script .cmd**, que `spawn` sans
+ * shell ne sait pas exécuter (ENOENT — mesuré le 2026-08-16 : l'état annonçait
+ * « CLI absent » alors que le binaire répondait en ligne de commande). On résout
+ * le chemin réel, puis on passe par cmd.exe en guillemetant nous-mêmes : même
+ * piège que le `C:\Program Files\nodejs\node.exe` coupé en deux côté Sentinelle.
+ */
+function cheminCodex() {
+  const ou = require("child_process").spawnSync(
+    process.platform === "win32" ? "where" : "which", ["codex"], { encoding: "utf8" });
+  if (ou.status !== 0) return null;
+  const chemins = (ou.stdout || "").split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+  if (!chemins.length) return null;
+  // `where` liste d'abord le shim sans extension, inexécutable par spawn : préférer .cmd/.exe.
+  return chemins.find((c) => /\.(cmd|exe|bat)$/i.test(c)) || chemins[0];
+}
+
+function argsCodex(exe, args) {
+  if (process.platform === "win32" && /\.(cmd|bat)$/i.test(exe)) {
+    const ligne = [exe].concat(args).map((a) => (/[\s"]/.test(a) ? `"${a.replace(/"/g, '\\"')}"` : a)).join(" ");
+    return { commande: process.env.ComSpec || "cmd.exe", args: ["/d", "/s", "/c", ligne], verbatim: true };
+  }
+  return { commande: exe, args, verbatim: false };
+}
+
+/**
+ * Transport codex — réutilise l'abonnement ChatGPT (aucune facturation au jeton).
+ *
+ * ⚠️ Codex n'est PAS ChatGPT dans un navigateur : c'est un agent qui dispose
+ * d'outils de lecture. Deux conséquences, toutes deux voulues ici :
+ *   ① on l'exécute avec un dossier de travail VIDE (jamais le dépôt) — sinon il
+ *     part lire les fichiers, dont `dashboard/.env` et sa clé service_role, et
+ *     le contenu remonte chez OpenAI hors de toute garde. Leçon Sentinelle du
+ *     2026-08-16 : le cwd n'est pas une frontière de fichiers, c'est une
+ *     réduction de surface, pas une preuve — la vraie garde reste de ne rien
+ *     mettre de sensible dans l'invite.
+ *   ② l'asymétrie qui fait la valeur du croisement (il n'a pas le dépôt, il
+ *     challenge le dossier qu'on lui donne) n'est préservée que par ①.
+ *
+ * Flags vérifiés contre codex-cli 0.147.0 (`codex exec --help`).
+ */
+function appelCodex(invite, options) {
   return new Promise((resolve, reject) => {
-    // Non vérifié sur cette machine (codex absent) : les erreurs de CLI remontent telles quelles.
-    const enfant = spawn("codex", ["exec", "--sandbox", "read-only", "--skip-git-repo-check", "-"], {
-      cwd: RACINE, shell: false
-    });
-    let sortie = "", erreur = "";
-    enfant.stdout.on("data", (d) => { sortie += d; });
+    const bac = fs.mkdtempSync(path.join(require("os").tmpdir(), "chatgpt-codex-"));
+    const sortieFichier = path.join(bac, "reponse.txt");
+    const args = ["exec",
+      "--sandbox", "read-only",        // aucune écriture, aucune commande mutante
+      "--skip-git-repo-check",         // le bac vide n'est pas un dépôt git
+      "--ephemeral",                   // pas de session persistée : notre fil fait foi
+      "--color", "never",
+      "-C", bac,                       // dossier de travail VIDE, surtout pas RACINE
+      "-o", sortieFichier,
+      "-"];                            // invite lue sur stdin
+    if (options && options.modeleExplicite) args.splice(1, 0, "-m", options.modele);
+
+    const exe = cheminCodex();
+    if (!exe) { try { fs.rmSync(bac, { recursive: true, force: true }); } catch (_) {}
+      return reject(new Error("codex introuvable — installer avec npm i -g @openai/codex")); }
+    const lancement = argsCodex(exe, args);
+    const enfant = spawn(lancement.commande, lancement.args,
+      { cwd: bac, shell: false, windowsVerbatimArguments: lancement.verbatim });
+    let erreur = "", flux = "";
+    enfant.stdout.on("data", (d) => { flux += d; });
     enfant.stderr.on("data", (d) => { erreur += d; });
-    enfant.on("error", (e) => reject(new Error(`codex injoignable : ${e.message}`)));
+    enfant.on("error", (e) => reject(new Error(`codex injoignable : ${e.message} — installer avec npm i -g @openai/codex`)));
     enfant.on("close", (code) => {
-      if (code !== 0) return reject(new Error(`codex a rendu ${code} — ${erreur.slice(0, 500)}`));
-      resolve({ texte: sortie.trim(), usage: null, modele: "codex-cli" });
+      let texte = "";
+      try { texte = fs.readFileSync(sortieFichier, "utf8").trim(); } catch (_) {}
+      try { fs.rmSync(bac, { recursive: true, force: true }); } catch (_) {}
+      if (code !== 0 || !texte) {
+        // Codex ré-imprime la bannière PUIS l'invite PUIS l'échec : la cause est à
+        // la FIN du flux, jamais au début. Couper par la tête masquait l'erreur.
+        const brut = (erreur + "\n" + flux).trim();
+        const queue = brut.length > 700 ? "…" + brut.slice(-700) : brut;
+        const aide = /not logged in|unauthor|401|credential|auth/i.test(brut)
+          ? "\n   → session absente : lancer `codex login` (« Sign in with ChatGPT ») puis réessayer."
+          : /usage limit|rate limit|quota/i.test(brut)
+          ? "\n   → limite d'usage du plan ChatGPT atteinte : attendre la réinitialisation."
+          : "";
+        return reject(new Error(`codex a rendu ${code}${queue ? " — " + queue : " sans réponse"}${aide}`));
+      }
+      resolve({ texte, usage: null, modele: (options && options.modeleExplicite ? options.modele : "codex (plan ChatGPT)") });
     });
     enfant.stdin.write(invite);
     enfant.stdin.end();
   });
 }
 
+function codexConnecte() {
+  const exe = cheminCodex();
+  if (!exe) return null;                          // CLI absent
+  const l = argsCodex(exe, ["login", "status"]);
+  const r = require("child_process").spawnSync(l.commande, l.args,
+    { encoding: "utf8", shell: false, windowsVerbatimArguments: l.verbatim });
+  if (r.error) return null;
+  return !/not logged in/i.test((r.stdout || "") + (r.stderr || ""));
+}
+
+// Priorité au transport qui ne coûte rien de plus : l'abonnement ChatGPT déjà payé
+// passe avant la facturation au jeton.
 function transportDisponible() {
+  if (codexConnecte() === true) return "codex";
   if (process.env.OPENAI_API_KEY) return "api";
   return null;
 }
@@ -208,23 +291,23 @@ function transportDisponible() {
 
 function cmdEtat() {
   const aCle = !!process.env.OPENAI_API_KEY;
+  const codex = codexConnecte();   // null = CLI absent, false = pas connecté, true = prêt
   console.log("État du canal ChatGPT\n");
-  console.log(`  api    ${aCle ? "✅ prête" : "❌ OPENAI_API_KEY absente"}`);
-  if (aCle) console.log(`         modèle par défaut : ${MODELE_DEFAUT} (OPENAI_MODEL pour changer)`);
-  console.log(`  codex  ${aExecutable("codex") ? "⚠️  CLI présent (jamais vérifié depuis ce script)" : "❌ CLI absent — npm i -g @openai/codex puis codex login"}`);
+  console.log(`  codex  ${codex === null ? "❌ CLI absent — npm i -g @openai/codex"
+    : codex ? "✅ prêt (compris dans l'abonnement ChatGPT, aucun frais au jeton)"
+    : "⚠️  CLI installé mais pas connecté — lancer `codex login`"}   ← préféré`);
+  console.log(`  api    ${aCle ? `✅ prête — modèle ${MODELE_DEFAUT} (facturée au jeton)` : "❌ OPENAI_API_KEY absente (facturation au jeton — non retenue)"}`);
   console.log("  chrome ↪ hors script : Claude-in-Chrome, voir .claude/skills/chatgpt/references/navigateur.md");
   const fils = listerFils();
   console.log(`\n  fils enregistrés : ${fils.length}${fils.length ? " — " + fils.map((f) => f.nom).join(", ") : ""}`);
-  if (!aCle) {
-    console.log("\nPour activer le canal direct :");
-    console.log("  1. clé sur https://platform.openai.com/api-keys (facturation au jeton, ≠ abonnement ChatGPT)");
-    console.log("  2. setx OPENAI_API_KEY \"sk-…\"   puis rouvrir le terminal");
+  if (codex === false) {
+    console.log("\nDernière étape, à faire par Benjamin (l'authentification ne se délègue pas) :");
+    console.log("  codex login          → « Sign in with ChatGPT », le compte déjà payé");
+    console.log("  codex login status   → doit ne plus afficher « Not logged in »");
+  } else if (codex === null) {
+    console.log("\nPour activer le canal sans frais supplémentaires :");
+    console.log("  npm i -g @openai/codex   puis   codex login");
   }
-}
-
-function aExecutable(nom) {
-  const res = require("child_process").spawnSync(process.platform === "win32" ? "where" : "which", [nom], { encoding: "utf8" });
-  return res.status === 0;
 }
 
 function listerFils() {
@@ -306,7 +389,10 @@ async function cmdDemander(question, opts) {
   const t0 = Date.now();
   console.error(`… ${opts.transport}/${opts.modele}, fil « ${opts.fil} », ${taille} caractères`);
   const rep = opts.transport === "codex"
-    ? await appelCodex(messages.map((m) => `[${m.role}]\n${m.content}`).join("\n\n"))
+    ? await appelCodex(messages.map((m) => {
+        const etiq = { system: "CADRAGE", user: "CLAUDE CODE", assistant: "TOI (tour précédent)" }[m.role];
+        return `### ${etiq}\n${m.content}`;
+      }).join("\n\n"), opts)
     : await appelApi(messages, opts);
 
   fil.titre = fil.titre || opts.fil;
@@ -332,7 +418,7 @@ function analyser(argv) {
     const a = argv[i];
     if (a === "--fil") opts.fil = argv[++i];
     else if (a === "--fichier") opts.fichiers.push(argv[++i]);
-    else if (a === "--modele") opts.modele = argv[++i];
+    else if (a === "--modele") { opts.modele = argv[++i]; opts.modeleExplicite = true; }
     else if (a === "--transport") opts.transport = argv[++i];
     else if (a === "--systeme") opts.systeme = argv[++i];
     else if (a === "--effort") opts.effort = argv[++i];
