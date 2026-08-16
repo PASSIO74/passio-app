@@ -76,6 +76,37 @@ fonctionne (auth, git, tests, UI) mais aucun événement Passio n'est reçu.
    politique de confidentialité**, idéalement avec un bouton d'opt-out en Réglages
    (`PassioTelemetry.setEnabled(false)`).
 
+## 3 bis. Sentinelle — le débogage sans rien faire
+
+Onglet **Sentinelle**. Elle tourne en permanence dès que le dashboard est lancé :
+elle écoute les alertes, retient celles qui comptent, appelle Claude Code, et
+publie la cause dans le flux temps réel (toast + cloche + page). Aucun clic.
+
+| Ce qu'elle analyse | Ce qu'elle ignore |
+|---|---|
+| Alertes **critiques** et **élevées** : erreur critique, bug touchant plusieurs utilisateurs, pic d'erreurs, chaîne d'action cassée (clic mort, échec), API en 5xx | `warn` et `info` (lenteurs, liens ouverts…), alertes levées à la main, toute cause déjà analysée dans les 6 dernières heures |
+
+Chaque diagnostic commence par « En clair » et porte un **verdict explicite** :
+*défaut réel*, *comportement attendu* (beaucoup de « bugs » du pilotage sont des
+garde-fous qui font leur travail) ou *données insuffisantes*.
+
+**Elle ne corrige rien.** L'analyse tourne en lecture seule ; le correctif est
+proposé, jamais appliqué (voir [`docs/SECURITE.md`](docs/SECURITE.md) §4 bis).
+Elle a besoin d'une source d'analyse : le `claude` local connecté (gratuit,
+abonnement Claude Code) ou `ANTHROPIC_API_KEY`. Sans source, elle reste inerte
+et le dit.
+
+Réglages (`.env`, tous facultatifs) :
+
+| Variable | Défaut | Rôle |
+|---|---|---|
+| `DASH_SENTINEL` | actif | `off` pour démarrer en veille |
+| `DASH_SENTINEL_LEVELS` | `critical,high` | niveaux d'alerte analysés |
+| `DASH_SENTINEL_COOLDOWN_MIN` | `360` | délai avant de ré-analyser la même cause |
+| `DASH_SENTINEL_MAX_PER_HOUR` | `8` | plafond d'analyses par heure |
+| `DASH_SENTINEL_MIN_GAP_S` | `90` | espacement minimal entre deux analyses |
+| `DASH_SENTINEL_DEEP` | actif | `false` pour interdire la lecture du dépôt |
+
 ## 4. Déroulé d'un test à deux appareils
 
 1. `npm start` le dashboard, se connecter.

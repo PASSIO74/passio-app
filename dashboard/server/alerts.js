@@ -17,6 +17,12 @@ const NOTIFY_SINKS = [
   // { type: "email", to: "...", enabled: false },
 ];
 
+// Abonnés internes au flux d'alertes (la sentinelle de débogage automatique).
+// Un abonné qui échoue ne doit JAMAIS empêcher l'alerte de partir vers le
+// dashboard : l'alerte est le signal primaire, l'analyse n'est qu'un bonus.
+const subscribers = [];
+export function onAlert(fn) { subscribers.push(fn); return () => { const i = subscribers.indexOf(fn); if (i >= 0) subscribers.splice(i, 1); }; }
+
 function emit(alert) {
   const key = alert.key || alert.title;
   const now = Date.now();
@@ -25,6 +31,7 @@ function emit(alert) {
   const record = { id: "al_" + now.toString(36), ts: now, acknowledged: false, ...alert };
   db.update((d) => { d.items.unshift(record); if (d.items.length > 500) d.items.pop(); });
   broadcast("alert", record);
+  for (const fn of subscribers) { try { fn(record); } catch (e) { console.error("[alerts] abonné en échec:", e.message); } }
   // Extension future : router vers NOTIFY_SINKS activés.
   for (const sink of NOTIFY_SINKS) { if (sink.enabled) { /* TODO brancher le canal */ } }
   return record;

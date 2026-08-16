@@ -54,7 +54,9 @@ export const config = {
   claudeCliModelDeep: env.CLAUDE_CLI_MODEL_DEEP || "opus",
 
   eventBuffer: Number(env.DASH_EVENT_BUFFER || 5000),
-  dataDir: path.join(ROOT, "data"),
+  // Dossier des petites bases JSON. Surchargeable pour que les TESTS n'écrasent
+  // pas les données réelles du dashboard (alertes, diagnostics, sessions).
+  dataDir: env.DASH_DATA_DIR ? path.resolve(ROOT, env.DASH_DATA_DIR) : path.join(ROOT, "data"),
 
   // ── Ne montrer que les VRAIS testeurs ────────────────────────────────────
   // N'ingérer que les événements de PRODUCTION : les runs e2e et le dev local

@@ -30,6 +30,10 @@ export function connectStream(handlers) {
     es.addEventListener("event", (e) => handlers.event && handlers.event(JSON.parse(e.data)));
     es.addEventListener("interaction", (e) => handlers.interaction && handlers.interaction(JSON.parse(e.data)));
     es.addEventListener("alert", (e) => handlers.alert && handlers.alert(JSON.parse(e.data)));
+    es.addEventListener("trace", (e) => handlers.trace && handlers.trace(JSON.parse(e.data)));
+    // Sentinelle : diagnostic automatique terminé / changement d'état du moteur.
+    es.addEventListener("sentinel", (e) => handlers.sentinel && handlers.sentinel(JSON.parse(e.data)));
+    es.addEventListener("sentinel_state", (e) => handlers.sentinelState && handlers.sentinelState(JSON.parse(e.data)));
     es.addEventListener("test", (e) => handlers.test && handlers.test(JSON.parse(e.data)));
     es.addEventListener("ping", (e) => handlers.ping && handlers.ping(JSON.parse(e.data)));
     es.onerror = () => { handlers.error && handlers.error(); /* EventSource se reconnecte seul */ };

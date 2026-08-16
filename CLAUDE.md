@@ -104,6 +104,8 @@ App INDÉPENDANTE de supervision/test temps réel, dans `dashboard/` (Node/Expre
 
 **Diagnostic global** : bouton « Diagnostiquer toute la plateforme » → `/api/diagnose` assemble santé, chaînes cassées dédupliquées, livraison, intégrité, bugs et dette en un prompt Claude Code actionnable.
 
+**Sentinelle — débogage automatique permanent** (`dashboard/server/sentinel.js`, onglet « Sentinelle », 2026-08-16) : le pilotage se débogue seul. Elle s'abonne au flux d'alertes (`onAlert` dans `alerts.js`), retient les niveaux `critical`/`high`, construit le contexte (trace bout-en-bout, bug groupé, ou signal brut), appelle Claude Code et publie le diagnostic en SSE (`sentinel`) → toast + cloche + page. Zéro geste humain. **Elle ne corrige RIEN** : analyse en lecture seule, correctif proposé jamais appliqué. Trois garde-fous non négociables : ① **injection** — tout texte observé passe par `sanitizeObserved` + bloc « DONNÉES OBSERVÉES », et le mode approfondi (Claude lit le dépôt) est réservé aux contextes **calculés côté serveur** (trace/bug), jamais au texte libre venu du client ; ② **budget** — dédup par clé d'alerte (cooldown 6 h persisté), 1 analyse à la fois, 8/h, espacement 90 s, arriéré de démarrage jamais rejoué ; ③ **diffusion** — `/api/sentinel*` exige la capacité `claude` (un diagnostic contient du code du dépôt). Chaque diagnostic porte un **verdict** : défaut réel / comportement attendu / données insuffisantes. Réglages `DASH_SENTINEL_*` (voir `dashboard/README.md` §3 bis). Tests : `dashboard/test/sentinel.test.js` (17, dont un test d'intégration erreur réelle → diagnostic).
+
 
 ## 🗂️ Pièges connus — index (détail complet : docs/PIEGES_CONNUS.md)
 

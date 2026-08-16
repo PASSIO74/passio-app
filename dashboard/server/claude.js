@@ -213,7 +213,7 @@ async function callClaudeApi(prompt) {
  *  2. sinon le `claude` local GRATUIT (abonnement Claude Code).
  * Retourne { analysis, via } ou { error, authNeeded, via }.
  */
-async function liveAnalyze(prompt, { deep = false } = {}) {
+export async function liveAnalyze(prompt, { deep = false } = {}) {
   if (config.anthropicKey) {
     try { return { analysis: await callClaudeApi(prompt), via: "api" }; }
     catch (e) { return { error: e.message, via: "api" }; }

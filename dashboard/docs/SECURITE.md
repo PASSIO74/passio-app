@@ -49,6 +49,33 @@ Garde-fous techniques :
 - Confirmation explicite (`confirm:true`) requise côté API et case à cocher côté UI.
 - Chaque création de branche / application de patch / revert est **auditée**.
 
+## 4 bis. Sentinelle (débogage automatique)
+
+La sentinelle (`server/sentinel.js`) lance Claude **toute seule**, sans geste
+humain. C'est la seule partie du dashboard qui agisse sans déclencheur humain :
+elle est donc bornée sur quatre axes.
+
+- **Lecture seule, sans exception.** L'analyse passe par `runClaudeCli`, lancé
+  sans `Edit`/`Write`/`Bash`. Aucun patch appliqué, aucune branche créée, aucun
+  push — la sentinelle produit une cause et un correctif *proposé*. Appliquer
+  reste le processus §4, avec validation humaine.
+- **Injection de prompt.** Un message d'erreur vient du navigateur d'un
+  utilisateur : c'est une donnée hostile. Tout texte observé passe par
+  `sanitizeObserved` (clôtures de bloc cassées, faux tours de parole neutralisés,
+  caractères de contrôle retirés, 600 caractères max) et est encadré d'un bloc
+  « DONNÉES OBSERVÉES » qui interdit explicitement de le suivre. Surtout : le
+  **mode approfondi** — celui où Claude lit le dépôt — n'est ouvert qu'aux
+  alertes dont le contexte est *calculé côté serveur* (trace, bug groupé). Une
+  alerte bâtie sur du texte libre client n'obtient jamais l'accès aux fichiers.
+- **Budget.** Une panne produit des rafales. Déduplication par clé d'alerte
+  (cooldown 6 h, persisté), une analyse à la fois, plafond horaire (8 par
+  défaut), file bornée, espacement minimal de 90 s. Au démarrage, l'arriéré
+  d'alertes n'est jamais rejoué.
+- **Diffusion.** `/api/sentinel*` exige la capacité `claude` : un diagnostic
+  contient des chemins et des extraits de code du dépôt, ce n'est pas de la
+  supervision ordinaire. `tester` et `observer` n'y ont pas accès. Chaque
+  diagnostic et chaque bascule du moteur sont **audités**.
+
 ## 5. Exécution de tests
 
 - **Liste blanche stricte** (`server/tests.js`) : seules les suites déclarées sont

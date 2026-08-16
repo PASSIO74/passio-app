@@ -30,6 +30,7 @@ import { kpi } from "./kpi.js";
 import { retention } from "./retention.js";
 import { computeReadiness } from "./readiness.js";
 import { qaReport } from "./qa.js";
+import * as sentinel from "./sentinel.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -246,6 +247,20 @@ api.get("/alerts", auth.requireAuth, (req, res) => res.json(alerts.listAlerts())
 api.post("/alerts/:id/ack", auth.requireCap("alerts"), (req, res) => res.json({ ok: alerts.acknowledge(req.params.id) }));
 api.post("/alerts/manual", auth.requireCap("alerts"), (req, res) => res.json(alerts.raiseManual(req.body || {})));
 
+// ─── Sentinelle (débogage automatique permanent) ────────────────────────────
+// Même capacité que l'assistant Claude : un diagnostic contient du code du
+// dépôt, des chemins de fichiers et des extraits — ce n'est pas de la donnée
+// de supervision ordinaire. Un rôle qui n'a pas droit à « Réparer avec Claude »
+// n'a pas droit à ses diagnostics automatiques non plus.
+api.get("/sentinel", auth.requireCap("claude"), (req, res) =>
+  res.json({ state: sentinel.sentinelState(), diagnoses: sentinel.listDiagnoses(Number(req.query.limit) || 50) }));
+api.get("/sentinel/:id", auth.requireCap("claude"), (req, res) => {
+  const d = sentinel.getDiagnosis(req.params.id);
+  d ? res.json(d) : res.status(404).json({ error: "Diagnostic introuvable" });
+});
+api.post("/sentinel/toggle", auth.requireCap("settings"), (req, res) =>
+  res.json({ enabled: sentinel.setEnabled(req.body?.enabled !== false, req.session.u), state: sentinel.sentinelState() }));
+
 // ─── Audit ───────────────────────────────────────────────────────────────
 api.get("/audit", auth.requireCap("audit"), (req, res) => res.json(listAudit(Number(req.query.limit) || 300, { action: req.query.action, actor: req.query.actor })));
 
@@ -279,7 +294,14 @@ app.listen(config.port, () => {
   console.log(`  ▸ Mutations git : ${config.allowMutations ? "autorisées (hors prod)" : "désactivées"}\n`);
   startIngest();
   // Détection du `claude` local (analyse gratuite via l'abonnement Claude Code).
-  detectClaudeCli().then(() => { const s = claudeCliState(); console.log(`  ▸ Claude Code local : ${s.loggedIn ? "connecté (analyse gratuite dispo)" : s.installed ? "installé mais NON connecté (lancer: claude auth login)" : "absent"}${config.anthropicKey ? " · clé API aussi configurée" : ""}`); });
+  // La sentinelle n'est armée QU'APRÈS la détection : sans source d'analyse elle
+  // ne ferait qu'empiler des échecs. Elle démarre donc dans la continuité du
+  // `detectClaudeCli`, jamais avant.
+  detectClaudeCli().then(() => {
+    const s = claudeCliState();
+    console.log(`  ▸ Claude Code local : ${s.loggedIn ? "connecté (analyse gratuite dispo)" : s.installed ? "installé mais NON connecté (lancer: claude auth login)" : "absent"}${config.anthropicKey ? " · clé API aussi configurée" : ""}`);
+    sentinel.startSentinel();
+  });
   // Ouverture auto du navigateur quand lancé par le raccourci (une seule fois).
   if (process.env.DASH_OPEN_BROWSER === "1") {
     const url = `http://localhost:${config.port}`;

@@ -303,6 +303,25 @@ tbody tr.row-alert:hover{background:rgba(239,68,68,.1)}
 .alert-item .a-time{color:var(--muted-2);font-size:11px;margin-top:6px}
 .alert-item.ack{opacity:.5}
 
+/* ─── Sentinelle (débogage automatique) ─── */
+.sent-state{border:1px solid var(--border);border-radius:var(--radius-sm);padding:13px 15px;background:var(--card);margin-bottom:14px}
+.sent-state-main{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px}
+.sent-dot{width:9px;height:9px;border-radius:50%;background:var(--muted-2);flex:none}
+.sent-state.on{border-color:rgba(34,197,94,.4)}
+.sent-state.on .sent-dot{background:var(--ok);box-shadow:0 0 0 0 rgba(34,197,94,.6);animation:sentPulse 2.4s ease-out infinite}
+@keyframes sentPulse{70%{box-shadow:0 0 0 7px rgba(34,197,94,0)}100%{box-shadow:0 0 0 0 rgba(34,197,94,0)}}
+.sent-running{margin-top:10px;display:flex;align-items:center;gap:9px;font-size:12.5px;color:var(--muted)}
+#sentList{display:flex;flex-direction:column;gap:8px}
+.sent-item{border:1px solid var(--border);border-left-width:3px;border-radius:var(--radius-sm);padding:11px 13px;background:var(--card);cursor:pointer;transition:border-color .15s,transform .1s}
+.sent-item:hover{border-color:var(--accent)}
+.sent-item:active{transform:scale(.995)}
+.sent-item.critical{border-left-color:var(--crit)} .sent-item.high{border-left-color:var(--err)}
+.sent-item.warn{border-left-color:var(--warn)} .sent-item.info{border-left-color:var(--info)}
+.sent-item .a-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.sent-item .a-title{font-weight:600;font-size:13px}
+.sent-item .a-msg{color:var(--muted);font-size:12px;margin-top:3px;line-height:1.45}
+.sent-item .a-time{color:var(--muted-2);font-size:11px;margin-top:7px}
+
 /* ─── Centre de notifications ─── */
 .notif-panel{width:min(440px,96vw)}
 .notif-head-actions{display:flex;align-items:center;gap:6px}

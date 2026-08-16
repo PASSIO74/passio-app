@@ -101,6 +101,7 @@ const NAV = [
   ["interactions", "Vérif. interactions", "wifi", null, "essentiel"],
   ["qa", "Campagne QA", "tests", null, "essentiel"],
   ["bugs", "Problèmes", "bugs", null, "essentiel"],
+  ["sentinel", "Sentinelle", "sparkles", "claude", "essentiel"],
   ["claude", "Réparer avec Claude", "wrench", "claude", "essentiel"],
 
   ["sessions", "Sessions de test", "sessions", null, "avance"],
@@ -1732,6 +1733,95 @@ function alertItem(a) {
 }
 window.__ackAlert = async (id) => { await api.post(`/alerts/${id}/ack`, {}); const a = S.alerts.find((x) => x.id === id); if (a) a.acknowledged = true; if (S.currentView === "alerts") VIEWS.alerts($("#view")); updateAlertBadges(); };
 
+// ── Sentinelle (débogage automatique permanent) ─────────────────────────────
+// Cette page ne demande AUCUN geste : elle montre ce que la sentinelle a déjà
+// diagnostiqué toute seule. Le seul bouton est l'interrupteur du moteur.
+const SENT_VERDICT = {
+  defect: { label: "Défaut réel", cls: "error" },
+  expected: { label: "Comportement attendu", cls: "ok" },
+  insufficient: { label: "Données insuffisantes", cls: "warn" },
+};
+const SENT_KIND = { trace: "chaîne d'action", bug: "bug groupé", generic: "signal brut" };
+
+VIEWS.sentinel = async () => {
+  mount(`<h2 class="page-title">Sentinelle</h2>
+    <p class="page-sub">Le débogage automatique. Elle écoute les alertes en continu, analyse les problèmes sérieux
+      avec Claude Code et publie la cause ici — sans que tu aies rien à lancer. Elle ne modifie jamais le code :
+      elle explique et propose.</p>
+    <div id="sentState"></div>
+    <div id="sentList" class="empty">Chargement…</div>`);
+  S.refresh = async () => {
+    const r = await api.get("/sentinel?limit=50").catch((e) => ({ error: e.message }));
+    if (r.error) { $("#sentList").innerHTML = `<div class="empty">${esc(r.error)}</div>`; return; }
+    S.sentinel = r.state;
+    renderSentinelState(r.state);
+    $("#sentList").className = "";
+    $("#sentList").innerHTML = r.diagnoses.length
+      ? r.diagnoses.map(sentItem).join("")
+      : `<div class="empty">Aucun diagnostic pour l'instant. C'est bon signe : la sentinelle n'analyse que les alertes
+           <b>critiques</b> et <b>élevées</b>. Elle se déclenchera d'elle-même au prochain vrai problème.</div>`;
+  };
+  await S.refresh();
+};
+
+function renderSentinelState(st) {
+  const el = $("#sentState"); if (!el || !st) return;
+  const on = st.enabled && st.available;
+  const why = !st.available
+    ? "Aucune source d'analyse : lance <span class=\"mono\">claude</span> dans un terminal et connecte-toi (gratuit avec ton abonnement), ou ajoute une clé API."
+    : !st.enabled ? "Moteur en veille — tu l'as désactivé." : "";
+  const running = st.running
+    ? `<div class="sent-running"><span class="spinner"></span> Analyse en cours : ${esc(st.running.title || "")}${st.running.deep ? " (approfondie, elle lit le code)" : ""}</div>`
+    : "";
+  el.innerHTML = `
+    <div class="sent-state ${on ? "on" : "off"}">
+      <div class="sent-state-main">
+        <span class="sent-dot"></span>
+        <b>${on ? "Sentinelle active" : "Sentinelle inactive"}</b>
+        <span class="muted">· ${st.total} diagnostic(s) depuis le démarrage · ${st.runsLastHour}/${st.settings.maxPerHour} sur la dernière heure${st.queued ? ` · ${st.queued} en attente` : ""}</span>
+      </div>
+      ${why ? `<div class="muted" style="font-size:12px;margin-top:6px">${why}</div>` : ""}
+      ${running}
+      ${hasCap("settings") ? `<button class="btn" id="sentToggle" style="margin-top:10px">${st.enabled ? "Mettre en veille" : "Réactiver"}</button>` : ""}
+    </div>`;
+  const t = $("#sentToggle");
+  if (t) t.onclick = async () => {
+    t.disabled = true;
+    try { const r = await api.post("/sentinel/toggle", { enabled: !st.enabled }); renderSentinelState(r.state); toast(r.enabled ? "Sentinelle active" : "Sentinelle en veille"); }
+    catch (e) { toast(e.message); t.disabled = false; }
+  };
+}
+
+function sentItem(d) {
+  const v = SENT_VERDICT[d.verdict];
+  const head = (d.analysis || "").match(/##\s*En clair\s*\n+([\s\S]{0,320}?)(?:\n##|$)/i);
+  const gist = d.error ? "" : (head ? head[1].trim().replace(/\s+/g, " ") : (d.analysis || "").slice(0, 220));
+  return `<div class="sent-item ${d.level}" onclick="window.__openSentinel('${esc(d.id)}')">
+      <div class="a-row">
+        <div class="a-title">${esc(d.title)}</div>
+        ${v ? `<span class="pill ${v.cls}">${v.label}</span>` : d.error ? '<span class="pill error">Analyse en échec</span>' : ""}
+      </div>
+      <div class="a-msg">${esc(gist || d.error || "")}</div>
+      <div class="a-time">${new Date(d.ts).toLocaleString("fr-FR")} · ${SENT_KIND[d.kind] || d.kind}${d.deep ? " · lecture du code" : ""} · ${Math.round((d.durationMs || 0) / 1000)} s</div>
+    </div>`;
+}
+
+window.__openSentinel = async (id) => {
+  openDrawer(`${icon("sparkles")} Diagnostic automatique`, '<div class="empty"><span class="spinner"></span></div>');
+  try {
+    const d = await api.get("/sentinel/" + encodeURIComponent(id));
+    const v = SENT_VERDICT[d.verdict];
+    openDrawer(`${icon("sparkles")} ${esc(d.title)}`,
+      `<div class="fix-intro">${esc(d.subject || "")}</div>
+       <div class="muted" style="font-size:12px;margin-bottom:10px">
+         ${new Date(d.ts).toLocaleString("fr-FR")} · ${SENT_KIND[d.kind] || d.kind}${d.deep ? " · Claude a lu le code du dépôt" : ""}
+         ${v ? ` · <span class="pill ${v.cls}">${v.label}</span>` : ""}
+       </div>
+       ${d.error ? `<div class="empty">L'analyse a échoué : ${esc(d.error)}</div>` : `<div class="fix-analysis">${mdToHtml(d.analysis)}</div>`}
+       <p class="muted" style="font-size:12px;margin-top:14px">Diagnostic produit automatiquement, en lecture seule. Aucun fichier n'a été modifié.</p>`);
+  } catch (e) { openDrawer(`${icon("sparkles")} Diagnostic`, `<div class="empty">${esc(e.message)}</div>`); }
+};
+
 // ── Audit ───────────────────────────────────────────────────────────────────
 VIEWS.audit = async () => {
   mount(`<h2 class="page-title">Journal d'audit</h2><p class="page-sub">Toutes les actions sensibles, tracées.</p><div class="table-wrap"><table><thead><tr><th>Horodatage</th><th>Action</th><th>Acteur</th><th>Détails</th></tr></thead><tbody id="auRows"></tbody></table></div>`);
@@ -1902,6 +1992,28 @@ function onAlert(a) {
   // Les alertes (anomalies) remontent AUSSI dans le centre de notifications.
   const n = notifFromAlert(a); if (n) pushNotif(n);
 }
+// La sentinelle vient de terminer un diagnostic : il doit arriver À L'ÉCRAN sans
+// que personne ne rafraîchisse. Toast + cloche + insertion en tête si la page
+// Sentinelle est ouverte.
+function onSentinelDiagnosis(d) {
+  if (!d) return;
+  const v = SENT_VERDICT[d.verdict];
+  toast(`${d.error ? "⚠" : "✓"} Sentinelle : ${d.title}${v ? " — " + v.label : ""}`);
+  pushNotif({
+    id: d.id, ts: d.ts, title: "Diagnostic automatique : " + d.title,
+    who: v ? v.label : (d.error ? "analyse en échec" : "cause identifiée"),
+    sub: "", view: "sentinel", level: d.verdict === "expected" ? "info" : d.level || "warn", ic: "sparkles",
+  });
+  if (S.currentView === "sentinel") {
+    const list = $("#sentList");
+    if (list) { if (list.classList.contains("empty")) { list.className = ""; list.innerHTML = ""; } list.insertAdjacentHTML("afterbegin", sentItem(d)); }
+  }
+}
+function onSentinelState(st) {
+  S.sentinel = st;
+  if (S.currentView === "sentinel") renderSentinelState(st);
+}
+
 function updateAlertBadges() {
   const open = S.alerts.filter((a) => !a.acknowledged).length;
   const nb = $("#navAlerts"); if (nb) { nb.hidden = !open; nb.textContent = open; }
@@ -2112,6 +2224,7 @@ async function showApp() {
   connectStream({
     open: () => setSse(true), error: () => setSse(false),
     event: onLiveEvent, interaction: onInteractionSignal, trace: onTraceSignal, alert: onAlert, test: onTest, ping: () => setSse(true),
+    sentinel: onSentinelDiagnosis, sentinelState: onSentinelState,
   });
   // Événements UI
   window.addEventListener("hashchange", route);
