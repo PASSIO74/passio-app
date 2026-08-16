@@ -50,7 +50,19 @@ Ce n'est pas de la timidité : c'est que ces deux-là n'ont pas de filet automat
 
 ## Discipline de boucle
 
-À chaque tour : mesurer avant d'affirmer · `NON MESURÉ` plutôt qu'un chiffre de complaisance · committer avec `git commit -F fichier` (jamais de here-string, le `@` parasite) · mettre à jour `PASSIO_ENGINEERING_LOG.md` · créer un skill dès qu'un savoir non devinable serait perdu, et l'inscrire dans `.passio/SKILLS_REGISTRY.md`.
+À chaque tour : mesurer avant d'affirmer · `NON MESURÉ` plutôt qu'un chiffre de complaisance · mettre à jour `PASSIO_ENGINEERING_LOG.md` · créer un skill dès qu'un savoir non devinable serait perdu, et l'inscrire dans `.passio/SKILLS_REGISTRY.md`.
+
+### Committer sans aspirer le travail d'une autre session
+
+```bash
+git commit -F message.txt -- chemin/un chemin/deux
+```
+
+**Toujours les chemins explicites.** `git commit` sans chemin valide **tout l'index** — or une session Claude parallèle y indexe ses propres fichiers en continu (hook `PostToolUse`). Vécu le 2026-08-15 : trois fichiers d'une autre session sont partis dans un commit dont le message ne parlait que de tests.
+
+Et `-F fichier`, jamais une here-string : le `@` de PowerShell parasite le message.
+
+Avant de committer, `git status --porcelain` : si des fichiers inconnus sont indexés, une autre session travaille — ne committer que les siens.
 
 ## Au retour de Benjamin
 
