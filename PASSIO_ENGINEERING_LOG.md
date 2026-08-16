@@ -57,6 +57,16 @@ Réécrit pour neutraliser `requestAnimationFrame` lui-même, et surtout pour **
 ### Fichiers touchés
 `scripts/couverture-{interactions,rapport,mesure}.js`, `scripts/serve-couverture.js`, `scripts/sauvegarde-donnees.js`, `playwright.config.js`, `package.json`, `.gitignore`, `docs/RECUPERATION.md`, `js/telemetry.js`, `tests/e2e/latence-percue.spec.js`, `PASSIO_FUNCTIONAL_MAP.md`, `PASSIO_PRODUCTION_READINESS.md`, `passio_qa_registry.json`, skills `new-test` et `sauvegarde`.
 
+### Le flaky : diagnostiqué, pas expliqué
+
+Deux exécutions complètes ont produit un flaky sur `interactions.spec.js`, avec pour seule information `TimeoutError: waitForFunction 15000ms`. L'attente en cause est `attendreFilStable`, et les causes possibles appellent des corrections **opposées** : un fil qui se re-rend en boucle n'est pas un post disparu du DOM.
+
+**Non reproduit** : 8 workers × 3 répétitions (51 tests), verts deux fois de suite. Aucune cause n'est donc avancée. À la place, l'attente compte désormais ses sondages, ses remplacements de nœud et ses absences, et les rapporte dans le message d'échec — la prochaine occurrence désignera sa cause au lieu de nous laisser deviner.
+
+### Le déploiement, vérifié dans le bon artefact
+
+`origin/main` à jour ne vaut pas prod à jour. Vérification faite sur le contenu réellement servi : `{tag:t.tagName.toLowerCase(),ms:e}` et le `requestAnimationFrame` imbriqué sont présents. **J'ai d'abord cherché dans `app.js`** — mauvais artefact, `telemetry.js` étant inliné dans `index.html` au build (et `/js/telemetry.js` répond 404 en production). C'est le piège déjà consigné, refait une fois de plus : chercher un littéral, oui, mais dans le fichier qui le contient.
+
 ### Vérifications exécutées
 Suite complète `PASSIO_E2E_MULTI=1`, deux fois — avant la modification de télémétrie (**175 passés, 1 flaky**) et après (**176 passés, 2 flaky, 1 skipped** sur 179). Flaky : publication d'étape CDV, et annulation du ❤️ optimiste ; verts au réessai, à surveiller. Les 4 audits statiques verts, build prod OK, 0 compte e2e résiduel.
 

@@ -31,9 +31,11 @@ Ce qui a changé, c'est ce sur quoi ce verdict repose. Avant : « aucun bug évi
 1. **Latence perçue mesurée** sur du trafic réel. L'**instrumentation est en place** depuis le 2026-08-16 (délai tap → première peinture, joint à chaque clic) ; ne manque plus que l'observation. Requête de dépouillement : `meta->>'ms'` sur `telemetry_events` où `type='click'` et `env='production'`.
 2. ~~Couverture fonctionnelle établie~~ — **fait le 2026-08-16 : 15,2 %** (66/435), méthode et limites dans `PASSIO_FUNCTIONAL_MAP.md` §5. Reste à décider ce qu'on veut en faire : ce chiffre est une base de discussion, pas un objectif à remonter pour lui-même.
 3. **Une restauration de sauvegarde réellement exécutée.** La sauvegarde, elle, existe et est vérifiée depuis le 2026-08-16 ; ce qui manque est une **base cible** pour recharger l'archive — un second projet Supabase ou Docker. C'est une décision, pas du développement.
-4. **Un test à volume** : 10 k à 100 k lignes sur les chemins chauds, pour vérifier que les plans tiennent.
+4. **Un test à volume** : 10 k à 100 k lignes sur les chemins chauds, pour vérifier que les plans tiennent. Le script est écrit (`scripts/test-volume.sql`, transaction annulée, jamais sur la production).
 
 Aucun des quatre ne demande de refactoring. Tous demandent du temps, ou des données que seule la beta produira.
+
+**Et deux d'entre eux — 3 et 4 — sont bloqués par exactement la même chose : une base qui ne soit pas la production.** Un second projet Supabase (gratuit, à détruire après) ou Docker Desktop débloquerait les deux d'un coup, et rien d'autre ne les débloquera. C'est une décision, pas du développement — et la seule de cette liste qui ne s'achète pas avec du temps.
 
 ## Ce qui a été délibérément NON fait
 
