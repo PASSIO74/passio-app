@@ -78,7 +78,13 @@ export function repairState() {
 // ─── Utilitaires git (sans dépendance) ───────────────────────────────────────
 function run(cmd, args, opts = {}) {
   return new Promise((resolve) => {
-    const p = spawn(cmd, args, { cwd: opts.cwd || config.repoPath, shell: process.platform === "win32", windowsHide: true, env: { ...process.env, ...(opts.env || {}) } });
+    const shell = process.platform === "win32";
+    // Avec `shell: true`, les arguments sont concaténés sans échappement : un
+    // exécutable dont le chemin contient une espace (`C:\Program Files\nodejs\
+    // node.exe`, le cas normal sous Windows) est coupé en deux et la commande
+    // échoue avec « 'C:\Program' n'est pas reconnu ». On guillemette.
+    const exe = shell && /\s/.test(cmd) && !cmd.startsWith('"') ? `"${cmd}"` : cmd;
+    const p = spawn(exe, args, { cwd: opts.cwd || config.repoPath, shell, windowsHide: true, env: { ...process.env, ...(opts.env || {}) } });
     let out = "", err = "";
     p.stdout.on("data", (d) => { if (out.length < 200_000) out += d; });
     p.stderr.on("data", (d) => { if (err.length < 60_000) err += d; });
