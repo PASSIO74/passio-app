@@ -13,6 +13,7 @@
     "sauvegarde": "node scripts/sauvegarde-donnees.js",
     "purge:e2e": "node scripts/purge-e2e-accounts.js",
     "revue": "node scripts/dossier-revue.js",
+    "chatgpt": "node scripts/chatgpt.js",
     "serve": "http-server -p 8080 -c-1 .",
     "sessions": "node .claude/scripts/session-registre.js",
     "permissions:compact": "node .claude/scripts/compact-permissions.js",

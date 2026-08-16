@@ -64,3 +64,8 @@ playwright-report/
 
 # Vidéos de démo générées (scripts/demo-video.js) — trop lourdes pour git
 docs/demo/
+
+# Fils de conversation ChatGPT (scripts/chatgpt.js) : journal de travail local,
+# volumineux et contenant des copies de code à un instant T. Le script est
+# versionné, ses fils jamais.
+.passio/chatgpt/

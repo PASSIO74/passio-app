@@ -136,8 +136,19 @@ App INDÉPENDANTE de supervision/test temps réel, dans `dashboard/` (Node/Expre
 Les **changements à risque** (auth/identité, RLS/migrations, affichage de contenu d'autrui, PII, paiement, modération) passent par une revue d'un modèle tiers **en lecture seule**. Répartition stricte : l'agent principal seul détient le dépôt, `main`, Supabase, les tests et le déploiement ; le relecteur n'a **aucun accès** — il reçoit un dossier, rien d'autre. Ses remarques sont examinées et vérifiées contre le code réel avant toute fusion, jamais appliquées telles quelles.
 
 ```bash
-npm run revue -- --titre "Ce que fait le changement" --tests
+npm run revue -- --titre "Ce que fait le changement" --tests    # produire le dossier
+node scripts/chatgpt.js etat                                    # quel canal ChatGPT est prêt
 ```
+
+**Le canal ChatGPT passe par `scripts/chatgpt.js`** (skill `/chatgpt`), pas par le
+pilotage du DOM de chatgpt.com : appel HTTP direct (`OPENAI_API_KEY`), fils
+persistants dans `.passio/chatgpt/` (gitignoré), et surtout une **garde qui refuse
+l'envoi** dès qu'un JWT, une clé `sb_secret_`/`sk-`, une affectation
+`SERVICE_ROLE_KEY=…` ou un mot de passe apparaît dans le contenu — le chemin
+navigateur, lui, n'a aucune garde. Sans clé posée, le script s'arrête et renvoie
+vers le repli navigateur (`.claude/skills/chatgpt/references/navigateur.md`, 8
+pièges vécus) : **ne jamais écrire que ChatGPT a été consulté si l'échange n'a pas
+eu lieu.**
 
 `scripts/dossier-revue.js` produit dans `.passio/reviews/<date>-<slug>/` : spécification, `diff.patch`, **fichiers concernés en entier** (un relecteur qui ne voit que des hunks juge la forme, pas le fond), vérifications réellement exécutées avec leurs sorties brutes (un test rouge est rapporté rouge), migrations touchées, conventions du projet, et pièges connus détectés par motif. `DOSSIER-COMPLET.md` regroupe le tout en un fichier à coller dans un chat. Sans `--tests`, Playwright n'est PAS lancé et le dossier le dit — ça ne vaut alors pas validation de bout en bout.
 

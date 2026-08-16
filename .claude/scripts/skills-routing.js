@@ -52,7 +52,10 @@ const CAS = [
   ["ajoute un panneau au dashboard", "dashboard-widget"],
   ["instrumente cette action, mesure-la", "telemetry-event"],
   ["écris un test pour couvrir ça", "new-test"],
-  ["demande à ChatGPT, analyse croisée", "revue-croisee"],
+  // Depuis le 2026-08-16 le canal (/chatgpt) et le protocole d'audit
+  // (/revue-croisee) sont deux skills distinctes : le routage doit les séparer.
+  ["demande à ChatGPT ce qu'il en pense, second avis", "chatgpt"],
+  ["analyse croisée complète, audit à double regard avant jalon", "revue-croisee"],
   ["fais-en un skill, capitalise ça", "skill-optimizer"],
   ["range les skills, audite ma bibliothèque", "skill-optimizer"],
 ];
