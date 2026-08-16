@@ -275,7 +275,8 @@
     {
       "sujet": "auth_rls_initplan",
       "nb": 85,
-      "motif": "Touche ~85 policies, la seule frontiere de securite. Impact nul aux volumes actuels, reel a l echelle. A faire table par table, avec la suite cross-compte apres chacune."
+      "statut": "REDUIT A 3, TRAITE",
+      "motif": "Les 85 avertissements ne sont PAS 85 problemes. Mesure du plan reel : sur posts, le planificateur remonte DEJA auth.uid() en InitPlan (fonction STABLE comparee a une colonne). Sur conv_messages, aucun InitPlan car auth.uid() est ARGUMENT d une fonction qui prend aussi une colonne. Sur les 7 policies concernees, 4 utilisaient deja (select auth.uid()) : seules les 3 de la messagerie avaient garde la forme nue. Corrigees, mesure 11,636 ms -> 1,136 ms sur 50 lignes."
     },
     {
       "sujet": "multiple_permissive_policies",
@@ -332,6 +333,7 @@
     "Une reponse ChatGPT qui parait bloquee : elle est complete cote serveur, un rechargement la revele.",
     "Couverture V8 : les plages sont IMBRIQUEES, additionner celles a count>0 donne 100 % partout. Carte d octets obligatoire.",
     "Couverture a 20 % lue comme un levier : ce qui n est pas EXECUTE ne coute pas forcement. Mesurer le cout, pas l inutilisation.",
-    "Mesurer la performance sur une machine CHARGEE : baseline gonflee 3,5x, et deux investigations entieres menees sur une premisse fausse. Machine au repos, repetee, mediane."
+    "Mesurer la performance sur une machine CHARGEE : baseline gonflee 3,5x, et deux investigations entieres menees sur une premisse fausse. Machine au repos, repetee, mediane.",
+    "drop policy avec un nom DEVINE ne supprime rien : les anciennes policies restent, se combinent en OU, et le benefice est nul. Balayer pg_policies pour obtenir les vrais noms."
   ]
 }
