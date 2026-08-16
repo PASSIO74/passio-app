@@ -275,8 +275,9 @@
     {
       "sujet": "auth_rls_initplan",
       "nb": 85,
-      "statut": "REDUIT A 3, TRAITE",
-      "motif": "Les 85 avertissements ne sont PAS 85 problemes. Mesure du plan reel : sur posts, le planificateur remonte DEJA auth.uid() en InitPlan (fonction STABLE comparee a une colonne). Sur conv_messages, aucun InitPlan car auth.uid() est ARGUMENT d une fonction qui prend aussi une colonne. Sur les 7 policies concernees, 4 utilisaient deja (select auth.uid()) : seules les 3 de la messagerie avaient garde la forme nue. Corrigees, mesure 11,636 ms -> 1,136 ms sur 50 lignes."
+      "statut": "3 CORRIGEES, 7 PREPAREES, 73 SANS OBJET",
+      "motif": "Decompte reel : 80 policies portaient encore auth.uid() nu, dont 7 SELECT et 73 ECRITURES. Une ecriture touche UNE ligne : « par ligne » y signifie « une fois » — les 73 sont un non-sujet. Les 3 de messagerie sont corrigees (11,636 ms -> 1,136 ms). Les 7 lectures restantes sont dans migration_rls_initplan_lectures.sql, prete et non appliquee.",
+      "correction": "J avais ecrit que le planificateur remontait DEJA auth.uid() « parce que la fonction est STABLE », en m appuyant sur posts. FAUX : la policy de posts utilisait deja (select auth.uid()). Contre-epreuve : stories, meme forme mais appel nu, n a AUCUN InitPlan. C est l enveloppe qui produit l InitPlan."
     },
     {
       "sujet": "multiple_permissive_policies",

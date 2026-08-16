@@ -4,11 +4,18 @@
 -- CE QUE CETTE MIGRATION N'EST PAS : le traitement des 85 avertissements
 -- `auth_rls_initplan`. Ces 85 ne sont pas 85 problèmes. Mesuré le 2026-08-16 :
 --
---   posts         → le planificateur remonte DÉJÀ auth.uid() en InitPlan
---                   (« Filter: author_id = ((InitPlan 1).col1)::text »), parce
---                   que la fonction est STABLE et comparée directement à une
---                   colonne. L'avertissement est théoriquement juste, mais sans
---                   effet ici.
+--   posts         → InitPlan présent (« Filter: author_id = ((InitPlan 1).col1) »).
+--
+--                   ⚠️ CORRECTION du 2026-08-16 : j'ai d'abord attribué cet
+--                   InitPlan à une optimisation du planificateur — « la fonction
+--                   est STABLE, donc Postgres la remonte ». C'était FAUX. La
+--                   policy de `posts` utilisait déjà `(select auth.uid())` ;
+--                   c'est l'enveloppe qui produisait l'InitPlan.
+--                   Contre-épreuve décisive : `stories`, dont la policy a la
+--                   MÊME forme mais avec `auth.uid()` nu, n'a AUCUN InitPlan —
+--                   l'appel y est développé inline dans le filtre.
+--                   Donc les ~80 policies nues ne sont PAS remontées, et
+--                   l'avertissement est valide pour toutes.
 --
 --   conv_messages → AUCUN InitPlan. `auth.uid()` est développé À L'INTÉRIEUR du
 --                   filtre, parce qu'il est ARGUMENT d'une fonction qui prend
