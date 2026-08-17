@@ -1,7 +1,28 @@
 -- ═══════════════════════════════════════════════════════════════════════════
--- STORAGE — cloisonner l'écriture. PRÉPARÉE, NON APPLIQUÉE.
+-- STORAGE — cloisonner l'écriture. ✅ APPLIQUÉE EN PRODUCTION le 2026-08-17.
 --
--- ⚠️ Modifie des policies RLS. Ne pas appliquer sans dérouler « VÉRIFIER APRÈS ».
+-- État constaté en base après application (`pg_policies`) : une seule policy par
+-- commande, `passio_media_insert_cloisonne` et `passio_media_update_cloisonne`
+-- portant toutes deux `storage_chemin_autorise(bucket_id, name)`.
+--
+-- VÉRIFICATIONS DÉROULÉES, avec leurs résultats — la section « VÉRIFIER APRÈS »
+-- plus bas dit quoi faire, celle-ci dit ce qui a été fait :
+--   (a) une policy par commande                                    ✅ conforme
+--   (b) chemin légitime : dépôt dans son propre dossier            ✅ 200
+--       et `posts.media_url` ne contient AUCUN `data:` (0 sur tout
+--       l'historique). ⚠️ Ce dernier point ne prouve rien sur le
+--       trafic réel : aucun média n'a été publié en production
+--       depuis l'application (le dernier date du 2026-08-14). La
+--       preuve vient de la suite e2e, pas de la production.
+--   (c) `upsert` sur SA PROPRE clé                                 ✅ 200
+--       (et `PUT`, l'autre forme d'écrasement du SDK)              ✅ 200
+--       re-dépôt SANS upsert → 400, conflit attendu                ✅
+--   (d) intrusions refusées — dépôt chez autrui, `move`, `copy`,
+--       conversation dont on n'est pas membre                      ✅ ≥ 400
+--       (assertions 11 de `tests/e2e/authz-critical.spec.js`)
+--   (e) chemin fabriqué `photos/<moi>/../<autrui>/x.png`           ✅ 400
+--       → la RLS voit bien le nom NORMALISÉ. Ce point était marqué
+--         « non vérifiable avant application » : il est tranché.
 --
 -- Version 2 (2026-08-17) — corrigée après une revue croisée par un second modèle
 -- (canal `codex`, fil « securite ») dont trois objections ont été VÉRIFIÉES et

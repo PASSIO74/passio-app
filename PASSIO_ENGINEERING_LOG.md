@@ -4,6 +4,31 @@
 
 ---
 
+## 2026-08-17 — Boucle 20 : la migration Storage est appliquée, et vérifiée
+
+La migration préparée en boucle 18 a été **appliquée en production** par l'autre session, qui a aussi câblé le test d'intrusion dans le gate. Constaté en base avant toute autre chose : une seule policy par commande, `INSERT` et `UPDATE` portant tous deux `storage_chemin_autorise()`. C'est bien la version 2 — celle qui ferme aussi le renommage.
+
+Restait à dérouler la section « vérifier après » que j'avais écrite pour ce moment précis. C'est fait, point par point.
+
+**Les intrusions sont refusées.** Le gate passe : dépôt chez autrui, `move`, `copy`, pièce jointe dans une conversation dont on n'est pas membre — tous ≥ 400. Et la contre-épreuve, qui est le vrai risque de cette policy, passe aussi : déposer dans son propre dossier → 200.
+
+**L'`upsert` n'est pas cassé.** Le point que la revue croisée disait indécidable sans mesure. L'application envoie ses médias avec `upsert: true` ; un refus aurait cassé la republication d'un média **en silence**, le code retombant sur le base64. Mesuré : premier dépôt 200, re-dépôt sans upsert 400 (conflit attendu), **upsert sur sa propre clé 200**, et `PUT` — l'autre forme d'écrasement du SDK — **200** aussi.
+
+**Le chemin fabriqué est refusé.** J'avais laissé ce point ouvert en écrivant « non vérifiable avant application ». Il l'est maintenant : `photos/<moi>/../<autrui>/x.png` → **400**. La RLS voit donc le nom **normalisé**, pas le nom brut. La question était réelle — le serveur normalise avant d'enregistrer, et rien ne garantissait a priori dans quel ordre.
+
+### Une preuve dont je borne la portée
+
+`posts.media_url` ne contient **aucun** `data:` — zéro sur tout l'historique. Mais ce contrôle ne prouve rien sur le trafic réel : **aucun média n'a été publié en production depuis l'application** de la migration, le dernier datant du 2026-08-14. La preuve que le chemin légitime fonctionne vient de la suite e2e, pas de la production. Écrit tel quel dans la migration et dans le registre, plutôt que compté comme un vert de plus.
+
+### État du registre
+
+**Plus aucun incident ouvert** : les quatorze sont clos, infirmés, ou corrigés et vérifiés. `STORAGE-ECRITURE-014` passe à `CLOS` avec ses preuves ; `MEDIA-COMPTE-SUPPRIME-010` reste `INFIRME_PARTIELLEMENT` — le parcours produit est bon, seuls les 19 médias issus de suppressions administratives restent à traiter.
+
+### Fichiers touchés
+`migrations/migration_storage_cloisonnement.sql` (annoté des résultats — le SQL n'a pas bougé), `passio_qa_registry.json`, `PASSIO_PRODUCTION_READINESS.md`, `PASSIO_ENGINEERING_LOG.md`.
+
+---
+
 ## 2026-08-17 — Boucle 19 : « supprimer mon compte » marche, et je m'étais trompé
 
 ### Le temps réel : rien à signaler, et c'est une information

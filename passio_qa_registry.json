@@ -1,7 +1,7 @@
 {
  "$comment": "Source de verite MACHINE de la qualification PASSIO. Vue humaine : PASSIO_MASTER_CONTROL.md. Journal : PASSIO_ENGINEERING_LOG.md. Regle : aucune valeur inventee ; un champ non mesure vaut null et porte un statut explicite.",
  "schema_version": 1,
- "generated_at": "2026-08-17T08:11:18.425Z",
+ "generated_at": "2026-08-17T08:35:03.078Z",
  "commit": "b5a8051",
  "branch": "main",
  "working_tree": "clean",
@@ -340,11 +340,11 @@
    "id": "STORAGE-ECRITURE-014",
    "severity": "P2",
    "domain": "securite",
-   "status": "MIGRATION_PRETE_NON_APPLIQUEE",
+   "status": "CLOS",
    "problem": "La policy d INSERT du Storage n imposait AUCUNE contrainte de chemin ni de type. Verifie empiriquement le 2026-08-17 avec un compte jetable, puis nettoye : deposer un text/html dans un seau de medias = 200 ; deposer sous le dossier d un AUTRE compte = 200 ; relire les deux sans jeton = 200. Les seaux n ont ni file_size_limit ni allowed_mime_types. Et le cloisonnement ne tient pas non plus par renommage : move et copy vers le dossier d un autre compte renvoient 200 (mesure du 2026-08-17).",
    "cause": "with check (bucket_id in (content,attachments) and auth.role() = authenticated) — l appartenance du chemin n etait jamais verifiee.",
    "fix": "migrations/migration_storage_cloisonnement.sql (version 2). Ferme INSERT ET UPDATE : move/copy sont des UPDATE du nom, et l ancienne policy UPDATE portait un using sans with check — Postgres reutilise alors using pour la nouvelle ligne, et l owner ne change pas lors d un renommage. Fermer l INSERT seul n aurait RIEN ferme.",
-   "verified": false,
+   "verified": true,
    "gravite_nuancee": "Supabase sert les fichiers en text/plain : un HTML depose ne s execute pas, ce n est PAS un XSS stocke. Ce qui reste : ecriture sous le dossier d autrui (qui fausse toute attribution par dossier) et hebergement public gratuit de fichiers arbitraires sur le domaine du projet.",
    "note": "Contre-epreuve faite avant d ecrire la migration : sur les 70 fichiers reels, aucun ne violerait la nouvelle regle au moment de son envoi. Les non-conformes actuels pointent vers des comptes ou des conversations supprimes.",
    "revue_croisee": {
@@ -357,7 +357,9 @@
     "objections_nuancees": [
      "le chemin avec ../ est normalise par le serveur AVANT enregistrement (mesure) : la RLS devrait voir le nom normalise. Non verifiable avant application — inscrit en verification (e)."
     ]
-   }
+   },
+   "preuve": "Migration appliquee en production le 2026-08-17. pg_policies : une seule policy par commande, INSERT et UPDATE portant toutes deux storage_chemin_autorise(). Verifications derroulees : depot chez autrui, move, copy, conversation non membre -> tous >= 400 ; depot dans son propre dossier -> 200 ; upsert et PUT sur sa propre cle -> 200 ; chemin fabrique avec ../ -> 400, donc la RLS voit le nom NORMALISE (point qui etait marque non verifiable avant application).",
+   "limite_de_la_preuve": "Le controle « aucun data: dans posts.media_url » est vrai (0 sur tout l historique) mais ne prouve rien sur le trafic reel : aucun media n a ete publie en production depuis l application. La preuve du chemin legitime vient de la suite e2e."
   }
  ],
  "dette_signalee_non_traitee": [
