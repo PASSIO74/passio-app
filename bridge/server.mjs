@@ -109,7 +109,10 @@ function commandForSpawn(exe, args) {
       const s = String(value);
       return `"${s.replace(/([\\]*)"/g, "$1$1\\\"").replace(/(\\+)$/g, "$1$1")}"`;
     };
-    const line = [exe, ...args].map(quote).join(" ");
+    // cmd /s retire le PREMIER et le DERNIER guillemet de la ligne. Sans paire
+    // englobante, "claude.cmd" "-p" "..." arrive comme claude.cmd" "-p" "...
+    // et cmd repond "n'est pas reconnu". Mesure du 2026-08-17.
+    const line = `"${[exe, ...args].map(quote).join(" ")}"`;
     return {
       command: process.env.ComSpec || "cmd.exe",
       args: ["/d", "/s", "/c", line],

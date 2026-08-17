@@ -6,13 +6,38 @@ import { fileURLToPath } from "node:url";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, "..");
 
+// Depuis le correctif CVE-2024-27980 de Node, spawnSync REFUSE un .cmd/.bat sans
+// shell (EINVAL). On ne remet pas shell:true pour autant : on reprend le motif de
+// server.mjs (commandForSpawn) et on passe par ComSpec avec des argv fixes.
+function spawnFixed(command, args, cwd) {
+  if (process.platform === "win32" && /\.(cmd|bat)$/i.test(command)) {
+    // cmd /s retire le PREMIER et le DERNIER guillemet de la ligne : sans paire
+    // englobante, "chemin.cmd" "--version" devient chemin.cmd" "--version.
+    const quote = (value) => `"${String(value).replace(/"/g, '\\"')}"`;
+    const line = `"${[command, ...args].map(quote).join(" ")}"`;
+    return spawnSync(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", line], {
+      cwd,
+      encoding: "utf8",
+      shell: false,
+      windowsHide: true,
+      windowsVerbatimArguments: true
+    });
+  }
+  return spawnSync(command, args, { cwd, encoding: "utf8", shell: false, windowsHide: true });
+}
+
+// Un shim npm s'appelle claude.cmd sur Windows : on le localise avec where.exe
+// (executable natif, donc sans shell) plutot que de deviner le nom.
+function resolveCli(name) {
+  if (process.platform !== "win32") return name;
+  const r = spawnSync("where", [name], { encoding: "utf8", shell: false, windowsHide: true });
+  if (r.status !== 0) return `${name}.cmd`;
+  const candidates = (r.stdout || "").split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+  return candidates.find((p) => /\.(cmd|exe|bat)$/i.test(p)) || candidates[0] || `${name}.cmd`;
+}
+
 function run(command, args = [], cwd = REPO) {
-  const r = spawnSync(command, args, {
-    cwd,
-    encoding: "utf8",
-    shell: false,
-    windowsHide: true
-  });
+  const r = spawnFixed(command, args, cwd);
   return {
     ok: r.status === 0,
     code: r.status,
@@ -29,8 +54,8 @@ function check(name, command, args, detail) {
 
 check("Git", "git", ["--version"]);
 check("Depot Passio", "git", ["rev-parse", "--show-toplevel"]);
-check("Claude Code", process.platform === "win32" ? "claude.cmd" : "claude", ["--version"], "CLI Claude introuvable ou non executable");
-check("Codex", process.platform === "win32" ? "codex.cmd" : "codex", ["--version"], "CLI Codex introuvable ou non executable");
+check("Claude Code", resolveCli("claude"), ["--version"], "CLI Claude introuvable ou non executable");
+check("Codex", resolveCli("codex"), ["--version"], "CLI Codex introuvable ou non executable");
 
 const repo = run("git", ["rev-parse", "--show-toplevel"]);
 if (repo.ok && path.resolve(repo.text.split(/\r?\n/)[0]) !== REPO) {
