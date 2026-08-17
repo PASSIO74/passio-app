@@ -1,11 +1,11 @@
 {
   "name": "passio-bridge-mcp",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "scripts": {
     "check": "node check.mjs",
-    "start": "node server.mjs"
+    "start": "node --import ./pilotage-preload.mjs server.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "^2.0.0",
