@@ -1,8 +1,8 @@
 # Passio Bridge MCP
 
 Passio Bridge fait de ChatGPT le poste de pilotage de PASSIO sans exposer un shell arbitraire.
-Il expose un petit serveur MCP local en **stdio**. Le serveur délègue l'analyse et l'exécution à
-Claude Code dans le vrai dépôt, et conserve le protocole de revue croisée Codex déjà présent
+Il expose un petit serveur MCP local en **stdio**. Le serveur delegue l'analyse et l'execution a
+Claude Code dans le vrai depot, et conserve le protocole de revue croisee Codex deja present
 (`npm run revue` + `scripts/chatgpt.js`) pour les changements critiques.
 
 ## Architecture
@@ -22,56 +22,76 @@ Claude Code
    |          |
    |        Codex
    |
-worktree + branche dédiés
+worktree + branche dedies
 ```
 
-Le Bridge n'expose **aucun outil shell libre**, ne fusionne jamais `main` et n'est pas un outil
-de déploiement. Les tâches d'implémentation sont créées dans des worktrees **à côté du dépôt**
-(par défaut `<parent>/.passio-bridge-worktrees/passio-app/`), sur une branche `bridge/...` distincte.
-L'état des tâches reste dans `.passio/bridge/` et est gitignoré. L'emplacement des worktrees peut
-être surchargé avec `PASSIO_BRIDGE_WORKTREES`.
+## Mode de securite actuel (0.2.0)
 
-## Outils MCP exposés
+Le Bridge **ne doit pas encore lancer Claude depuis le compte Windows principal**. Tant que
+`PASSIO_BRIDGE_ISOLATED=1` n'est pas present, seul `passio_status` fonctionne. Les trois outils
+qui lancent Claude (`passio_analyze`, `passio_implement`, `passio_continue`) echouent ferme.
 
-- `passio_status` — état Git et tâches Bridge, lecture seule.
-- `passio_analyze` — analyse du dépôt par Claude Code en mode plan/lecture.
-- `passio_implement` — crée un worktree + branche, fait exécuter la mission par Claude Code,
-  teste, committe le périmètre et pousse uniquement sa branche.
-- `passio_continue` — reprend une tâche Bridge et la session Claude correspondante.
+Ce blocage est volontaire : un agent Claude lance depuis un tunnel distant peut lire des fichiers
+hors du depot et executer des commandes. Un simple prompt "ne touche pas a la prod" n'est pas une
+frontiere de securite.
 
-`passio_implement` accepte `risk=normal|critical`. En `critical`, Claude reçoit l'instruction
-obligatoire de passer par la revue croisée existante et de vérifier chaque objection Codex sur
-le dépôt réel avant de conclure.
+`PASSIO_BRIDGE_ISOLATED=1` est reserve a un **worker dedie** (compte Windows separe ou VM) qui :
 
-## Garde-fous
+- ne contient aucune cle `SUPABASE_SERVICE_ROLE_KEY`, `.env` personnel ou secret utilisateur ;
+- n'est pas lie a la production Supabase ;
+- ne dispose que du depot/worktree PASSIO necessaire ;
+- utilise des credentials GitHub limites au depot et au push de branches non protegees ;
+- contient Claude Code + Codex authentifies pour ce worker uniquement.
 
-Le prompt imposé à Claude interdit notamment :
+Ne pas poser ce flag sur le compte Windows principal juste pour faire passer le diagnostic.
 
-- le merge automatique de `main` ;
-- le force-push ;
-- le déploiement automatique ;
-- les écritures destructives directes en production hors instruction explicite et garde-fous projet ;
-- le mélange avec les autres worktrees.
+## Outils MCP exposes
 
-Les hooks et règles de `CLAUDE.md` restent applicables. Le Bridge est une façade de coordination,
-pas un remplacement des protections déjà présentes dans PASSIO.
+- `passio_status` — etat Git, taches Bridge et etat d'isolation. Toujours disponible, lecture seule.
+- `passio_analyze` — analyse du depot par Claude Code en mode plan. **Bloque sans worker isole.**
+- `passio_implement` — cree un worktree + branche, fait executer la mission par Claude Code,
+  teste, committe le perimetre et pousse uniquement sa branche. **Bloque sans worker isole.**
+- `passio_continue` — reprend une tache Bridge et la session Claude correspondante. **Bloque sans worker isole.**
 
-## Prérequis locaux
+`passio_implement` accepte `risk=normal|critical`. En `critical`, Claude recoit l'instruction
+obligatoire de passer par la revue croisee existante et de verifier chaque objection Codex sur
+le depot reel avant de conclure.
+
+## Garde-fous techniques
+
+Le Bridge n'expose aucun outil shell generique et ne fusionne jamais `main`.
+
+Pour les processus Claude lances par le Bridge :
+
+- l'environnement enfant est construit par **liste blanche** ; `process.env` n'est plus transmis en bloc ;
+- aucune cle Supabase/OpenAI/GitHub applicative n'est explicitement transmise ;
+- `bypassPermissions` n'est plus utilise ; les implementations utilisent `acceptEdits` ;
+- `WebFetch` et `WebSearch` sont desactives sur les implementations pour reduire les chemins
+  d'exfiltration en cas d'injection de prompt ;
+- les modifications partent dans un worktree et une branche `bridge/...` dedies ;
+- les hooks/regles PASSIO restent applicables dans le worker ;
+- aucun merge automatique, force-push ou deploiement n'est demande par le Bridge.
+
+Ces protections ne remplacent **pas** l'isolation OS : un agent capable d'executer des commandes
+reste puissant. La vraie frontiere pour l'ouverture du tunnel est le worker dedie sans secrets ni prod.
+
+## Prerequis locaux
 
 - Node.js 20+
 - Git
-- Claude Code CLI installé et authentifié
-- Codex CLI installé/authentifié pour la revue croisée existante
-- le dépôt PASSIO à jour
+- Claude Code CLI installe et authentifie
+- Codex CLI installe/authentifie pour la revue croisee existante
+- le depot PASSIO a jour
 
-Depuis la racine du dépôt :
+Depuis la racine du depot :
 
 ```bash
 npm run bridge:install
 npm run bridge:check
 ```
 
-Le diagnostic doit afficher tous les prérequis `OK` avant d'activer le Bridge dans ChatGPT.
+Sur la machine principale, le resultat attendu est : 4/4 prerequis CLI verts **et**
+`Worker isole — non active`. C'est un etat sain pour tester uniquement le tunnel et `passio_status`.
 
 ## Test local MCP
 
@@ -82,58 +102,66 @@ npm run bridge:start
 ```
 
 Le processus parle MCP sur stdin/stdout : il est normal qu'il n'ouvre aucune page Web ni aucun
-port HTTP. Pour une inspection interactive, utiliser le MCP Inspector avec la commande locale
-`node <CHEMIN_PASSIO>/bridge/server.mjs`.
+port HTTP. Une poignee de main `initialize` puis `tools/list` doit exposer les quatre outils.
 
-## Connexion à ChatGPT via Secure MCP Tunnel
+## Connexion a ChatGPT via Secure MCP Tunnel — phase 1
 
-ChatGPT ne se connecte pas directement à `localhost`. Le Secure MCP Tunnel d'OpenAI sert de
-pont sortant entre la machine locale et l'app MCP ChatGPT.
+Le premier tunnel doit etre ouvert **en mode status-only**, donc sans
+`PASSIO_BRIDGE_ISOLATED=1`. Cela permet de verifier :
 
-Séquence d'activation :
+```text
+ChatGPT -> Secure MCP Tunnel -> Passio Bridge -> passio_status
+```
 
-1. Créer/obtenir un tunnel MCP dans l'espace OpenAI concerné.
+sans donner a ChatGPT la capacite de lancer Claude sur le compte principal.
+
+Sequence :
+
+1. Creer/obtenir un tunnel MCP dans l'espace OpenAI Business concerne.
 2. Installer/configurer `tunnel-client` avec un profil stdio.
-3. Définir comme commande MCP :
+3. Definir comme commande MCP :
 
 ```text
 node <CHEMIN_ABSOLU_PASSIO>/bridge/server.mjs
 ```
 
 4. Lancer le diagnostic du tunnel, puis le client du tunnel.
-5. Dans ChatGPT en mode développeur, créer l'app MCP et sélectionner la connexion **Tunnel**.
-6. Vérifier que les quatre outils `passio_*` apparaissent avant toute mission d'écriture.
+5. Dans ChatGPT en mode developpeur, creer l'app MCP et selectionner la connexion **Tunnel**.
+6. Scanner les outils et verifier que les quatre `passio_*` apparaissent.
+7. Appeler uniquement `passio_status`. Il doit retourner `isolation: "BLOCKING: disabled"`.
+8. Verifier qu'un appel a `passio_analyze` est refuse par la garde d'isolation.
 
-Le `tunnel-client` doit rester en fonctionnement sur la machine qui possède le dépôt et Claude
-Code : sans lui, ChatGPT ne peut pas joindre le Bridge local.
+Ne passer a la phase 2 qu'apres cette preuve negative.
 
-## Important — permissions du plan ChatGPT
+## Phase 2 — worker dedie
 
-La capacité MCP disponible dépend du plan/espace ChatGPT. Au moment de la création de ce Bridge
-(août 2026), les apps MCP personnalisées avec actions d'écriture/modification complètes sont
-prises en charge dans les espaces Business et Enterprise/Edu en mode développeur. Les capacités
-MCP Pro sont plus limitées pour les actions d'écriture. Vérifier les capacités du workspace au
-moment de l'activation avant de considérer `passio_implement` comme appelable depuis ChatGPT.
-
-## Premier test recommandé
-
-Commencer sans écriture :
+Creer ensuite un compte Windows separe ou une VM sans secrets personnels ni acces prod, y cloner
+PASSIO et y installer Claude/Codex. C'est **dans ce worker uniquement** que le processus du tunnel
+peut recevoir :
 
 ```text
-passio_status
+PASSIO_BRIDGE_ISOLATED=1
 ```
 
-puis :
+Avant de l'activer, verifier explicitement l'absence de :
 
-```text
-passio_analyze({ question: "Résume l'état technique actuel de PASSIO et cite les preuves dans le dépôt." })
-```
+- `dashboard/.env` / service role ;
+- session Supabase CLI liee a la prod ;
+- fichiers utilisateurs ou sauvegardes PASSIO ;
+- credentials GitHub trop larges ;
+- variables d'environnement sensibles.
 
-Ensuite tester une modification sans impact produit, sur une branche Bridge dédiée. Ne commencer
-par une migration, une policy RLS ou la production que lorsque le chemin complet
-ChatGPT -> Bridge -> Claude -> tests -> branche est observé et compris.
+Puis refaire `npm run bridge:check`, la poignee de main MCP, `passio_status`, et seulement ensuite
+un `passio_analyze` sur une question non sensible. Le premier `passio_implement` doit etre une
+modification sans impact produit et rester sur une branche non fusionnee.
+
+## Package lock
+
+`bridge/package-lock.json` doit etre **committe**, pas ignore : il fige exactement les versions du
+SDK MCP/Zod installees et rend le worker reproductible. S'il a ete genere lors de `npm install`,
+l'ajouter a la branche Bridge apres inspection.
 
 ## Politique de publication
 
-Le Bridge pousse une **branche**, jamais `main`. La validation/fusion reste un geste séparé. Cela
-permet à ChatGPT/GitHub/CI de relire le résultat avant qu'il puisse devenir la version de production.
+Le Bridge pousse une **branche**, jamais `main`. La validation/fusion reste un geste separe. Cela
+permet a ChatGPT/GitHub/CI de relire le resultat avant qu'il puisse devenir la version de production.
