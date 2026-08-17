@@ -50,6 +50,9 @@ dashboard/.claude/
 # versionné, ses sorties jamais.
 .passio/sauvegardes/
 
+# Passio Bridge MCP — état de tâches et worktrees locaux, jamais versionnés.
+.passio/bridge/
+
 # Netlify cache
 .netlify/
 
