@@ -22,7 +22,10 @@
     "skills:lint": "node .claude/scripts/skills-lint.js",
     "skills:routing": "node .claude/scripts/skills-routing.js",
     "skills:check": "npm run skills:lint && npm run skills:routing",
-    "schema:baseline": "node scripts/schema-baseline.js"
+    "schema:baseline": "node scripts/schema-baseline.js",
+    "bridge:install": "npm --prefix bridge install",
+    "bridge:check": "npm --prefix bridge run check",
+    "bridge:start": "npm --prefix bridge start"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0",
