@@ -26,8 +26,10 @@ worktree + branche dédiés
 ```
 
 Le Bridge n'expose **aucun outil shell libre**, ne fusionne jamais `main` et n'est pas un outil
-de déploiement. Les tâches d'implémentation sont créées dans `.passio/bridge/worktrees/`, sur
-une branche `bridge/...` distincte. L'état local `.passio/bridge/` est gitignoré.
+de déploiement. Les tâches d'implémentation sont créées dans des worktrees **à côté du dépôt**
+(par défaut `<parent>/.passio-bridge-worktrees/passio-app/`), sur une branche `bridge/...` distincte.
+L'état des tâches reste dans `.passio/bridge/` et est gitignoré. L'emplacement des worktrees peut
+être surchargé avec `PASSIO_BRIDGE_WORKTREES`.
 
 ## Outils MCP exposés
 
@@ -65,9 +67,8 @@ pas un remplacement des protections déjà présentes dans PASSIO.
 Depuis la racine du dépôt :
 
 ```bash
-cd bridge
-npm install
-npm run check
+npm run bridge:install
+npm run bridge:check
 ```
 
 Le diagnostic doit afficher tous les prérequis `OK` avant d'activer le Bridge dans ChatGPT.
@@ -77,8 +78,7 @@ Le diagnostic doit afficher tous les prérequis `OK` avant d'activer le Bridge d
 Démarrer le serveur directement :
 
 ```bash
-cd bridge
-npm start
+npm run bridge:start
 ```
 
 Le processus parle MCP sur stdin/stdout : il est normal qu'il n'ouvre aucune page Web ni aucun
