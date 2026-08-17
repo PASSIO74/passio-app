@@ -21,7 +21,8 @@
     "permissions:compact": "node .claude/scripts/compact-permissions.js",
     "skills:lint": "node .claude/scripts/skills-lint.js",
     "skills:routing": "node .claude/scripts/skills-routing.js",
-    "skills:check": "npm run skills:lint && npm run skills:routing"
+    "skills:check": "npm run skills:lint && npm run skills:routing",
+    "schema:baseline": "node scripts/schema-baseline.js"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0",
