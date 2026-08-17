@@ -1,7 +1,7 @@
 {
  "$comment": "Source de verite MACHINE de la qualification PASSIO. Vue humaine : PASSIO_MASTER_CONTROL.md. Journal : PASSIO_ENGINEERING_LOG.md. Regle : aucune valeur inventee ; un champ non mesure vaut null et porte un statut explicite.",
  "schema_version": 1,
- "generated_at": "2026-08-17T06:04:47.905Z",
+ "generated_at": "2026-08-17T06:19:21.105Z",
  "commit": "b5a8051",
  "branch": "main",
  "working_tree": "clean",
@@ -332,6 +332,18 @@
    "commit": "cda3245",
    "risque_residuel": "Ne prouve rien APRES minification, que seule la CI applique (html-minifier-terser). Le minifieur renomme les identifiants — piege deja rencontre. Et le mode dist n est pas encore branche dans la CI.",
    "verified": true
+  },
+  {
+   "id": "STORAGE-ECRITURE-014",
+   "severity": "P2",
+   "domain": "securite",
+   "status": "MIGRATION_PRETE_NON_APPLIQUEE",
+   "problem": "La policy d INSERT du Storage n imposait AUCUNE contrainte de chemin ni de type. Verifie empiriquement le 2026-08-17 avec un compte jetable, puis nettoye : deposer un text/html dans un seau de medias = 200 ; deposer sous le dossier d un AUTRE compte = 200 ; relire les deux sans jeton = 200. Les seaux n ont ni file_size_limit ni allowed_mime_types.",
+   "cause": "with check (bucket_id in (content,attachments) and auth.role() = authenticated) — l appartenance du chemin n etait jamais verifiee.",
+   "fix": "migrations/migration_storage_cloisonnement.sql — deux regles distinctes car les conventions de chemin DIFFERENT : content range par uid, attachments par conv_id. Une contrainte uniforme casserait la messagerie.",
+   "verified": false,
+   "gravite_nuancee": "Supabase sert les fichiers en text/plain : un HTML depose ne s execute pas, ce n est PAS un XSS stocke. Ce qui reste : ecriture sous le dossier d autrui (qui fausse toute attribution par dossier) et hebergement public gratuit de fichiers arbitraires sur le domaine du projet.",
+   "note": "Contre-epreuve faite avant d ecrire la migration : sur les 70 fichiers reels, aucun ne violerait la nouvelle regle au moment de son envoi. Les non-conformes actuels pointent vers des comptes ou des conversations supprimes."
   }
  ],
  "dette_signalee_non_traitee": [

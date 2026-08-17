@@ -4,6 +4,52 @@
 
 ---
 
+## 2026-08-17 — Boucle 17 : le Storage acceptait n'importe quoi, de n'importe qui
+
+### Les premières mesures réelles de latence perçue
+
+Sept clics de production portent désormais `meta.ms` : **16, 18, 19, 22, 29, 33, 62 ms**, sur un Android/Chrome réel — navigation entre écrans et filtres d'humeur. La chaîne fonctionne donc de bout en bout **en production**, et pas seulement dans les tests.
+
+Sept points depuis un seul appareil n'autorisent **aucun percentile**. Le readiness reste sur « instrumentée, premiers points » et n'annoncera un p50/p95 qu'avec de quoi le calculer. Ce qu'on peut dire : rien dans ces valeurs ne contredit une interface qui répond vite.
+
+### Une question jamais posée : les seaux publics le sont-ils aussi en écriture ?
+
+La lecture publique est un choix d'architecture assumé. L'écriture, elle, n'avait jamais été regardée. La policy disait :
+
+```
+with check (bucket_id in ('content','attachments') and auth.role() = 'authenticated')
+```
+
+**Aucune contrainte de chemin, aucune de type.** Et les deux seaux n'ont ni `file_size_limit` ni `allowed_mime_types`.
+
+Vérifié plutôt que déduit, avec un compte jetable puis nettoyage complet : déposer un `text/html` dans un seau de médias → **200**. Déposer un fichier **sous le dossier d'un autre compte** → **200**. Relire les deux **sans aucun jeton** → **200**.
+
+**Nuance qui abaisse la gravité, et qu'il faut dire** : Supabase a servi le HTML en `text/plain`. Un fichier déposé ne s'exécute donc pas dans le navigateur — ce n'est **pas** un XSS stocké. Restent deux choses réelles : n'importe quel compte peut écrire sous le dossier de n'importe qui (ce qui fausse au passage toute attribution par dossier — c'est exactement ainsi que raisonne `purge-e2e-storage.js`), et n'importe quel compte peut obtenir une URL publique permanente, sur le domaine du projet, pour un fichier de n'importe quel type et n'importe quelle taille. Sur une beta ouverte, c'est un hébergement gratuit offert à tout venant.
+
+### Le piège que la contre-épreuve a évité
+
+Le réflexe naturel — « le second segment du chemin doit être l'uid de l'auteur » — **aurait cassé la messagerie**. Les deux seaux n'ont pas la même convention :
+
+```
+content     : <categorie>/<uid>/<fichier>
+attachments : attachments/<conv_id>/<fichier>
+```
+
+Vérifié sur les 70 fichiers réels avant d'écrire quoi que ce soit : la convention est uniforme dans chaque seau, et les fichiers qui ne « matchent » pas aujourd'hui pointent vers des comptes ou des conversations **supprimés** — pas vers un autre format. La règle proposée n'aurait donc refusé aucun envoi légitime au moment où il a eu lieu.
+
+Second piège écarté : pour `attachments`, la condition passe par `is_conv_member` (vérifié `SECURITY DEFINER`) plutôt que par un `select … from conv_members`. La RLS de cette table s'appliquerait **dans la sous-requête** — une policy de lecture plus stricte demain renverrait un ensemble vide, c'est-à-dire les pièces jointes cassées pour tout le monde, sans un mot dans les journaux.
+
+### Préparée, non appliquée
+
+`migrations/migration_storage_cloisonnement.sql` est écrite, commentée, avec sa section « vérifier après » et le test d'intrusion prêt à coller dans `authz-critical` — **une fois la migration appliquée, jamais avant** : un rouge connu dans le gate finit par faire désactiver le gate. Conformément aux règles de la nuit, **elle n'est pas appliquée** : c'est un changement de RLS.
+
+Elle ne referme pas la lecture. Les seaux restent publics, donc `MEDIA-COMPTE-SUPPRIME-010` reste ouvert : fermer la lecture demande des URLs signées, soit une autre architecture d'affichage.
+
+### Fichiers touchés
+`migrations/migration_storage_cloisonnement.sql` (nouveau, **non appliqué**), `passio_qa_registry.json`, `PASSIO_ENGINEERING_LOG.md`.
+
+---
+
 ## 2026-08-17 — Boucle 16 : mon propre gate bloquait `main`
 
 La CI était **rouge sur `main`**. Cause : `audit:tests` signalait `user-state-horodatage.spec.js` — « n'appelle aucune fonction de production ».
