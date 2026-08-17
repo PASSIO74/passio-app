@@ -247,6 +247,12 @@ function appelCodex(invite, options) {
       "--ignore-user-config",          // ← voir ci-dessous : coupe MCP/hooks/instructions globales
       "--ignore-rules",
       "--color", "never",
+      // Raisonnement au maximum : `--ignore-user-config` coupe aussi le réglage
+      // global, le défaut retomberait sinon sur l'effort « medium ». Le croisement
+      // ne vaut que si l'autre modèle réfléchit vraiment (2026-08-17).
+      // Valeurs acceptées (mesurées contre l'API le 2026-08-17, un intrus renvoie
+      // un 400 qui les énumère) : none|minimal|low|medium|high|xhigh|max.
+      "-c", `model_reasoning_effort="${(options && options.effort) || "max"}"`,
       "-C", bac,                       // dossier de travail VIDE, surtout pas RACINE
       "-o", sortieFichier,
       "-"];                            // invite lue sur stdin
