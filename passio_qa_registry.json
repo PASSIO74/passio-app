@@ -1,7 +1,7 @@
 {
  "$comment": "Source de verite MACHINE de la qualification PASSIO. Vue humaine : PASSIO_MASTER_CONTROL.md. Journal : PASSIO_ENGINEERING_LOG.md. Regle : aucune valeur inventee ; un champ non mesure vaut null et porte un statut explicite.",
  "schema_version": 1,
- "generated_at": "2026-08-16T20:09:07.152Z",
+ "generated_at": "2026-08-17T06:04:47.905Z",
  "commit": "b5a8051",
  "branch": "main",
  "working_tree": "clean",
@@ -276,11 +276,17 @@
    "severity": "P2",
    "domain": "confidentialite",
    "status": "CONSTATE_NON_TRAITE",
-   "problem": "La suppression d un compte n emporte pas ses medias. Verifie le 2026-08-16 en recuperant l URL publique d une photo d un compte disparu, SANS aucun jeton : http 200, 249 415 octets. 19 fichiers (81 Mo) sont dans ce cas.",
-   "cause": "Le seau `content` est public par conception (les URLs sont donc publiques, ce n est pas le point) et aucune suppression de compte ne declenche de nettoyage du Storage.",
-   "fix": "Non decide. Deux voies : purger les medias a la suppression du compte, ou passer le seau en URLs signees. La seconde change l architecture d affichage - c est un arbitrage produit.",
+   "problem": "La suppression d un compte ne cascade pas. Restent en base et en Storage, mesure du 2026-08-17 : 76 lignes user_state, 54 notifications, et 19 fichiers medias (81 Mo). Les medias sont TOUJOURS SERVIS : verifie en recuperant l URL publique d une photo d un compte disparu, sans aucun jeton, http 200 / 249 415 octets.",
+   "cause": "Aucun mecanisme ne nettoie a la suppression d un compte. Les tables de CONTENU sont propres (posts, commentaires, likes, messages, stories, evenements : 0 ligne orpheline) parce que la purge e2e les couvre ; l etat personnel, les notifications et les fichiers, non. Le seau `content` etant public par conception, un media orphelin reste lisible indefiniment.",
+   "fix": "Non decide. Trois voies, non exclusives : cascade de suppression cote base (trigger ou fonction d effacement de compte) ; purge des medias par l API Storage a la meme occasion ; et, pour la lecture, URLs signees au lieu d un seau public - mais celle-la change l architecture d affichage et se decide au niveau produit.",
    "verified": false,
-   "note": "Les 19 fichiers ne sont PAS des fixtures (videos de 30 Mo, avatars). Le script de purge les compte et les affiche, il n y touche pas : leur sort est une decision humaine."
+   "note": "Rien n a ete supprime : ce sont des donnees d utilisateurs, pas des fixtures. Le script purge-e2e-storage.js les compte et les affiche a chaque execution, il n y touche pas.",
+   "mesure": {
+    "user_state": 76,
+    "notifications": 54,
+    "fichiers_storage": 19,
+    "octets_storage": 85000000
+   }
   },
   {
    "id": "STORAGE-BRUIT-011",
