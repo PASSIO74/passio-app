@@ -4,6 +4,25 @@
 
 ---
 
+## 2026-08-17 — Boucle 16 : mon propre gate bloquait `main`
+
+La CI était **rouge sur `main`**. Cause : `audit:tests` signalait `user-state-horodatage.spec.js` — « n'appelle aucune fonction de production ».
+
+Le constat était exact, et le verdict faux. Ce spec vérifie un **trigger en base** (`trg_user_state_horodatage`) par appels REST bruts, exactement comme `authz-critical` vérifie des policies RLS. Ces specs-là sont même les plus précieux : ils prouvent que la garantie tient **quel que soit le client**, y compris un client hostile qui n'exécuterait aucune de nos fonctions. Les signaler comme creux était un faux positif — et un outil qui crie au loup finit ignoré, ce qui est précisément ce que ce gate est censé empêcher.
+
+L'allowlist accueille donc une seconde catégorie, nommée explicitement : les **frontières tenues par la base**, à côté des artefacts de build. Le spec n'est pas de moi ; le gate si.
+
+### Ce que rendre la CI verte impliquait
+
+Débloquer `main` n'est pas neutre ici : la CI verte **déclenche le déploiement**, et la file d'attente contenait un changement de synchronisation d'une autre session (`ea6d507`, l'horloge du client ne fait plus autorité sur `user_state`) dont la garantie repose sur un trigger. Déployer le client sans le trigger aurait été le pire des deux mondes.
+
+Vérifié avant de pousser, dans la base de production : `trg_user_state_horodatage BEFORE INSERT OR UPDATE ON public.user_state`, actif. La dépendance existe, le déploiement est sûr de ce côté.
+
+### Fichiers touchés
+`scripts/audit-tests-creux.js`, `PASSIO_ENGINEERING_LOG.md`.
+
+---
+
 ## 2026-08-16 — Boucle 15 : le stockage, troisième table remplie par ses propres tests
 
 Après la télémétrie et les erreurs, le même motif une troisième fois — et cette fois il coûte du disque et laisse des fichiers dans un seau **public**.
