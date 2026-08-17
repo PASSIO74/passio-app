@@ -4,6 +4,39 @@
 
 ---
 
+## 2026-08-17 — Boucle 19 : « supprimer mon compte » marche, et je m'étais trompé
+
+### Le temps réel : rien à signaler, et c'est une information
+
+Vérification jamais faite : les 17 tables auxquelles l'application s'abonne sont-elles publiées ? **Zéro manquante.** Une table écoutée mais non publiée serait une fonctionnalité qui ne se met jamais à jour en direct, sans la moindre erreur — la panne silencieuse type. Elle n'existe pas ici. Résultat négatif, noté comme tel.
+
+### Le 15,2 % devient une liste de 35
+
+Un taux global ne dit pas quoi faire. `scripts/couverture-risque.js` sépare, parmi les 369 interactions non exercées, celles qui **touchent réellement aux données** : **7 qui suppriment, 28 qui écrivent**. Le reste n'écrit rien directement. L'analyse est non transitive et le dit — c'est une borne inférieure, pas un inventaire.
+
+Et en tête des sept : `doDeleteAccount`.
+
+### Ce que j'ai cru, et ce qui est vrai
+
+Le commentaire de `doDeleteAccount` affirmait que l'Edge Function de suppression « n'est pas déployée », que l'échec est silencieux, et qu'une purge manuelle sous 30 jours s'applique. Le code client, lui, ne touche jamais au Storage. J'en avais conclu, à la boucle 17, que la suppression de compte **ne cascade pas** — et je l'ai écrit dans le readiness.
+
+**C'était faux.** L'Edge Function est déployée, active, en version 4. Vérifié de bout en bout sur un compte jetable : elle supprime le compte — reconnexion refusée ensuite — **et les médias**, servis `200` avant l'appel, `400` après. Le parcours produit est complet.
+
+Ce qui reste vrai, mais autrement : le résidu mesuré (76 `user_state`, 54 notifications, 19 médias) ne vient **pas** du parcours produit. Il vient des suppressions **administratives** qui le contournent — `purge_e2e_accounts.sql` supprime `auth.users` directement, les nettoyages manuels aussi. C'est un artefact d'exploitation, pas un défaut vécu par un utilisateur. L'incident est rétrogradé, pas effacé : les 19 médias restent lisibles, et aligner les outils d'administration sur l'Edge Function reste à faire.
+
+**La cause de mon erreur est un commentaire périmé**, au pire endroit possible : il donnait à lire une suppression incomplète là où elle est complète. Corrigé, avec la mesure et la date.
+
+### Un test là où il n'y en avait aucun
+
+`tests/e2e/suppression-compte.spec.js` (opt-in) crée un compte, y dépose une donnée et un média, déclenche la suppression, puis vérifie **ce que verrait un tiers** : média plus servi, reconnexion refusée. Nécessaire parce qu'une Edge Function se redéploie sans que le dépôt bouge d'une ligne — le dépôt vert ne prouverait rien.
+
+Mutation-testé, et la première mutation était trop faible : remplacer le `POST` par un `GET` faisait échouer l'assertion sur le **code de retour**, pas sur le résultat. La bonne mutation — fabriquer un `{ status: 200 }` sans appeler quoi que ce soit — fait tomber le test sur « le média ne doit plus être servi ». C'est celle-là qui prouve que le test regarde l'effet et non la forme de l'appel.
+
+### Fichiers touchés
+`tests/e2e/suppression-compte.spec.js` (nouveau), `scripts/couverture-risque.js` (nouveau), `js/app-02-state-utils.js` (commentaire), `passio_qa_registry.json`, `PASSIO_PRODUCTION_READINESS.md`, `PASSIO_ENGINEERING_LOG.md`.
+
+---
+
 ## 2026-08-17 — Boucle 18 : la revue croisée a démoli ma propre migration
 
 La règle du projet veut qu'un changement de RLS passe par un second modèle. Le canal `codex` étant opérationnel, la migration Storage de la boucle 17 y est passée — dossier factuel, mesures, et cinq questions précises, dont celles où j'étais le moins sûr.

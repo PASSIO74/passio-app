@@ -1678,9 +1678,17 @@ async function doDeleteAccount() {
     try { await supa.from("follows").delete().eq("following_id", MY_UID); } catch (e) {}
     try { await supa.from("blocks").delete().eq("blocker_id", MY_UID); } catch (e) {}
     try { await supa.from("blocks").delete().eq("blocked_id", MY_UID); } catch (e) {}
-    // Suppression du compte auth (e-mail) côté serveur — best-effort : tant que
-    // l'Edge Function n'est pas déployée (docs/EDGE_FUNCTION_DELETE_ACCOUNT.md),
-    // l'échec est silencieux et la purge manuelle sous 30 jours s'applique.
+    // Suppression du compte auth côté serveur. L'Edge Function `delete-account`
+    // EST déployée et active — vérifié de bout en bout le 2026-08-17 : elle
+    // supprime le compte (reconnexion impossible ensuite) ET les MÉDIAS du
+    // Storage, que ce code client ne touche jamais.
+    //
+    // Le commentaire précédent affirmait le contraire (« tant que l'Edge
+    // Function n'est pas déployée… la purge manuelle sous 30 jours s'applique »).
+    // Il était périmé et trompeur au pire endroit : il donnait à lire une
+    // suppression incomplète là où elle est complète. Non-régression :
+    // `tests/e2e/suppression-compte.spec.js` (opt-in PASSIO_E2E_MULTI) —
+    // nécessaire parce qu'une Edge Function se redéploie sans que le dépôt bouge.
     try { await supa.functions.invoke("delete-account"); } catch (e) {}
     try { await supa.auth.signOut(); } catch (e) {}
   }

@@ -10,6 +10,7 @@
     "audit:tests": "node scripts/audit-tests-creux.js --ci",
     "couverture": "node scripts/couverture-rapport.js",
     "couverture:mesure": "node scripts/couverture-mesure.js",
+    "couverture:risque": "node scripts/couverture-risque.js",
     "sauvegarde": "node scripts/sauvegarde-donnees.js",
     "purge:e2e": "node scripts/purge-e2e-accounts.js",
     "purge:storage": "node scripts/purge-e2e-storage.js",

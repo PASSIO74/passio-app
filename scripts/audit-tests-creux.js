@@ -52,13 +52,16 @@ const BOOT = /\b(bootOnboarded|bootInteractions|signupAnonymous)\s*\(/;
 // Specs dont l'objet n'est PAS l'application en train de tourner, et qui sont
 // donc légitimement sans code de production :
 //   - un ARTEFACT (build, en-têtes, service worker) ;
-//   - une frontière tenue par la BASE (policy RLS, trigger), vérifiée par appels
-//     REST bruts. Ces specs-là sont même les plus précieux : ils prouvent que la
-//     garantie tient quel que soit le client, y compris un client hostile qui
-//     n'exécuterait aucune de nos fonctions.
+//   - une frontière tenue par le SERVEUR (policy RLS, trigger, Edge Function),
+//     vérifiée par appels REST bruts. Ces specs-là sont même les plus précieux :
+//     ils prouvent que la garantie tient quel que soit le client, y compris un
+//     client hostile qui n'exécuterait aucune de nos fonctions. Et une frontière
+//     serveur peut se redéployer sans que le dépôt bouge d'une ligne — raison de
+//     plus pour la tester depuis l'extérieur.
 const ARTEFACTS = new Set([
   "version-skew.spec.js",
   "user-state-horodatage.spec.js",   // trigger trg_user_state_horodatage (SYNC-CLOCK-012)
+  "suppression-compte.spec.js",      // Edge Function delete-account (compte + médias)
 ]);
 
 // ── 2. Ce que chaque spec touche réellement ─────────────────────────────────

@@ -1,7 +1,7 @@
 {
  "$comment": "Source de verite MACHINE de la qualification PASSIO. Vue humaine : PASSIO_MASTER_CONTROL.md. Journal : PASSIO_ENGINEERING_LOG.md. Regle : aucune valeur inventee ; un champ non mesure vaut null et porte un statut explicite.",
  "schema_version": 1,
- "generated_at": "2026-08-17T06:54:28.071Z",
+ "generated_at": "2026-08-17T08:11:18.425Z",
  "commit": "b5a8051",
  "branch": "main",
  "working_tree": "clean",
@@ -275,18 +275,21 @@
    "id": "MEDIA-COMPTE-SUPPRIME-010",
    "severity": "P2",
    "domain": "confidentialite",
-   "status": "CONSTATE_NON_TRAITE",
+   "status": "INFIRME_PARTIELLEMENT",
    "problem": "La suppression d un compte ne cascade pas. Restent en base et en Storage, mesure du 2026-08-17 : 76 lignes user_state, 54 notifications, et 19 fichiers medias (81 Mo). Les medias sont TOUJOURS SERVIS : verifie en recuperant l URL publique d une photo d un compte disparu, sans aucun jeton, http 200 / 249 415 octets.",
    "cause": "Aucun mecanisme ne nettoie a la suppression d un compte. Les tables de CONTENU sont propres (posts, commentaires, likes, messages, stories, evenements : 0 ligne orpheline) parce que la purge e2e les couvre ; l etat personnel, les notifications et les fichiers, non. Le seau `content` etant public par conception, un media orphelin reste lisible indefiniment.",
    "fix": "Non decide. Trois voies, non exclusives : cascade de suppression cote base (trigger ou fonction d effacement de compte) ; purge des medias par l API Storage a la meme occasion ; et, pour la lecture, URLs signees au lieu d un seau public - mais celle-la change l architecture d affichage et se decide au niveau produit.",
    "verified": false,
-   "note": "Rien n a ete supprime : ce sont des donnees d utilisateurs, pas des fixtures. Le script purge-e2e-storage.js les compte et les affiche a chaque execution, il n y touche pas.",
+   "note": "Le commentaire de doDeleteAccount (app-02) affirmait que l Edge Function n etait PAS deployee. Perime et trompeur : c est lui qui a motive ce constat errone. Corrige, et couvert par tests/e2e/suppression-compte.spec.js.",
    "mesure": {
     "user_state": 76,
     "notifications": 54,
     "fichiers_storage": 19,
     "octets_storage": 85000000
-   }
+   },
+   "correction_2026_08_17": "CADRAGE FAUX de ma part. Verifie de bout en bout : le parcours applicatif « Supprimer mon compte » est COMPLET. L Edge Function delete-account est deployee, active, et supprime le compte (reconnexion impossible ensuite) ET les medias du Storage - que le code client ne touche jamais. Mesure : media servi 200 avant, 400 apres ; reconnexion refusee.",
+   "ce_qui_reste_vrai": "Le residu mesure (76 user_state, 54 notifications, 19 medias) ne vient PAS du parcours produit mais des suppressions ADMINISTRATIVES qui le contournent : purge_e2e_accounts.sql supprime auth.users directement, et les nettoyages manuels aussi. C est un artefact d exploitation, pas un defaut vecu par un utilisateur.",
+   "reste_a_trancher": "Les 19 medias de comptes supprimes administrativement restent publiquement lisibles. Soit les purger, soit aligner les outils d administration sur l Edge Function (qui, elle, fait le travail)."
   },
   {
    "id": "STORAGE-BRUIT-011",
