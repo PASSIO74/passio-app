@@ -4,14 +4,17 @@ import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import * as z from "zod/v4";
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, "..");
 const BRIDGE_ROOT = path.join(REPO, ".passio", "bridge");
-const WORKTREES = path.join(BRIDGE_ROOT, "worktrees");
+// Ne jamais imbriquer un git worktree dans le worktree principal. Par défaut ils
+// vivent a cote du depot; PASSIO_BRIDGE_WORKTREES permet un autre emplacement local.
+const WORKTREES = process.env.PASSIO_BRIDGE_WORKTREES
+  ? path.resolve(process.env.PASSIO_BRIDGE_WORKTREES)
+  : path.join(path.dirname(REPO), ".passio-bridge-worktrees", path.basename(REPO));
 const TASKS = path.join(BRIDGE_ROOT, "tasks");
 const MAX_OUTPUT = 240_000;
 
@@ -67,27 +70,46 @@ function resolveClaude() {
   return candidates.find((p) => /\.(cmd|exe|bat)$/i.test(p)) || candidates[0] || "claude";
 }
 
+function commandForSpawn(exe, args) {
+  if (process.platform === "win32" && /\.(cmd|bat)$/i.test(exe)) {
+    const quote = (value) => {
+      const s = String(value);
+      return /[\s"&|<>^()]/.test(s) ? `"${s.replace(/"/g, '\\"')}"` : s;
+    };
+    const line = [exe, ...args].map(quote).join(" ");
+    return {
+      command: process.env.ComSpec || "cmd.exe",
+      args: ["/d", "/s", "/c", line],
+      windowsVerbatimArguments: true
+    };
+  }
+  return { command: exe, args, windowsVerbatimArguments: false };
+}
+
 function safeEnv() {
-  // Claude Code a besoin de son environnement utilisateur pour son auth et ses outils,
-  // mais le Bridge ne rajoute aucun secret et n'accepte jamais d'env arbitraire du client.
+  // Le Bridge n'accepte jamais de variables d'environnement arbitraires venant du client.
+  // Claude conserve toutefois son environnement local normal afin que son auth et les
+  // garde-fous/procedures PASSIO deja installes continuent a fonctionner.
   return { ...process.env, PASSIO_BRIDGE: "1" };
 }
 
 function runClaude({ cwd, prompt, planOnly = false, sessionId = null, maxTurns = 60 }) {
   const claude = resolveClaude();
-  const args = ["-p", prompt, "--output-format", "json", "--max-turns", String(maxTurns)];
-  if (sessionId) args.push("--resume", sessionId);
-  if (planOnly) args.push("--permission-mode", "plan");
-  else args.push("--permission-mode", "bypassPermissions");
+  const claudeArgs = ["-p", prompt, "--output-format", "json", "--max-turns", String(maxTurns)];
+  if (sessionId) claudeArgs.push("--resume", sessionId);
+  if (planOnly) claudeArgs.push("--permission-mode", "plan");
+  else claudeArgs.push("--permission-mode", "bypassPermissions");
+  const cmd = commandForSpawn(claude, claudeArgs);
 
   return new Promise((resolve, reject) => {
     let stdout = "";
     let stderr = "";
-    const child = spawn(claude, args, {
+    const child = spawn(cmd.command, cmd.args, {
       cwd,
       env: safeEnv(),
-      shell: process.platform === "win32",
-      windowsHide: true
+      shell: false,
+      windowsHide: true,
+      windowsVerbatimArguments: cmd.windowsVerbatimArguments
     });
     child.stdout.on("data", (d) => { if (stdout.length < MAX_OUTPUT) stdout += d.toString(); });
     child.stderr.on("data", (d) => { if (stderr.length < MAX_OUTPUT) stderr += d.toString(); });
@@ -153,114 +175,122 @@ function implementationPrompt(title, instruction, risk) {
   return `Tu travailles sur PASSIO via Passio Bridge.\n\nOBJECTIF: ${title}\n\nINSTRUCTION UTILISATEUR:\n${instruction}\n\n${riskInstruction(risk)}\n\nREGLES BRIDGE NON NEGOCIABLES:\n- Lis CLAUDE.md et respecte tous les garde-fous du projet.\n- Tu es dans un worktree dedie; ne touche pas aux autres worktrees.\n- Ne merge jamais main et ne force jamais un push.\n- Ne deploie pas et n'effectue aucune ecriture directe destructive en production. Les operations prod a risque doivent rester bloquees sauf si l'instruction les exige explicitement ET que les garde-fous projet les autorisent.\n- Teste le comportement positif ET negatif pertinent.\n- A la fin, committe uniquement ton perimetre et pousse TA branche sur origin.\n- Dans ton rapport final, donne: branche, commit, fichiers modifies, tests executes/resultats, revue Codex si declenchee, risques residuels, et ce qui n'a pas pu etre prouve.\n- Ne demande pas de confirmation a Benjamin: choisis l'option la plus sure qui satisfait l'objectif et va au bout.`;
 }
 
+function createServer() {
+  const server = new McpServer({
+    name: "passio-bridge",
+    version: "0.1.0"
+  }, {
+    instructions: "Pilote PASSIO via Claude Code. Utilise passio_analyze pour lire/analyser, passio_implement pour une modification isolee, passio_continue pour reprendre une tache. Classe risk=critical pour toute frontiere de securite ou de donnees."
+  });
+
+  server.registerTool(
+    "passio_status",
+    {
+      description: "Lire l'etat Git et les taches locales du Passio Bridge. Aucune modification.",
+      inputSchema: z.object({})
+    },
+    async () => {
+      const tasks = fs.readdirSync(TASKS).filter((f) => f.endsWith(".json")).slice(-20).map((f) => {
+        try {
+          const t = JSON.parse(fs.readFileSync(path.join(TASKS, f), "utf8"));
+          return { id: t.id, title: t.title, branch: t.branch, status: t.status, updatedAt: t.updatedAt };
+        } catch (_) { return null; }
+      }).filter(Boolean);
+      return textResult({ repo: REPO, worktreesRoot: WORKTREES, ...repoSnapshot(REPO), tasks });
+    }
+  );
+
+  server.registerTool(
+    "passio_analyze",
+    {
+      description: "Demander a Claude Code une analyse en mode plan/lecture du depot Passio, sans modifier les fichiers.",
+      inputSchema: z.object({
+        question: z.string().min(1).max(20000),
+        maxTurns: z.number().int().min(1).max(80).default(30)
+      })
+    },
+    async ({ question, maxTurns }) => {
+      const prompt = `Analyse PASSIO sans modifier aucun fichier. Lis CLAUDE.md et le code necessaire. Reponds avec faits verifies, incertitudes, risques et recommandation. Question: ${question}`;
+      const out = await runClaude({ cwd: REPO, prompt, planOnly: true, maxTurns });
+      if (out.code !== 0 || out.parsed?.is_error) return textResult({ error: true, stderr: out.stderr, raw: out.stdout }, true);
+      return textResult({ sessionId: out.parsed?.session_id || null, result: out.parsed?.result || out.stdout });
+    }
+  );
+
+  server.registerTool(
+    "passio_implement",
+    {
+      description: "Executer une modification Passio dans un worktree et une branche dedies via Claude Code. Ne merge pas main. Pour les sujets critiques, impose la revue croisee Codex existante.",
+      inputSchema: z.object({
+        title: z.string().min(3).max(160),
+        instruction: z.string().min(1).max(30000),
+        risk: z.enum(["normal", "critical"]).default("normal"),
+        maxTurns: z.number().int().min(5).max(120).default(80)
+      })
+    },
+    async ({ title, instruction, risk, maxTurns }) => {
+      const wt = createWorktree(title);
+      const task = {
+        id: wt.id,
+        title,
+        instruction,
+        risk,
+        branch: wt.branch,
+        worktree: wt.dir,
+        status: "running",
+        createdAt: new Date().toISOString(),
+        sessionId: null
+      };
+      saveTask(task);
+
+      const out = await runClaude({ cwd: wt.dir, prompt: implementationPrompt(title, instruction, risk), maxTurns });
+      task.sessionId = out.parsed?.session_id || null;
+      task.status = out.code === 0 && !out.parsed?.is_error ? "completed" : "failed";
+      task.result = out.parsed?.result || out.stdout;
+      task.stderr = out.stderr;
+      task.snapshot = repoSnapshot(wt.dir);
+      saveTask(task);
+
+      return textResult({
+        taskId: task.id,
+        status: task.status,
+        branch: task.branch,
+        sessionId: task.sessionId,
+        result: task.result,
+        git: task.snapshot,
+        stderr: task.stderr || undefined
+      }, task.status !== "completed");
+    }
+  );
+
+  server.registerTool(
+    "passio_continue",
+    {
+      description: "Reprendre une tache Passio Bridge existante dans son worktree et sa session Claude Code.",
+      inputSchema: z.object({
+        taskId: z.string().min(1).max(120),
+        instruction: z.string().min(1).max(30000),
+        maxTurns: z.number().int().min(3).max(120).default(60)
+      })
+    },
+    async ({ taskId, instruction, maxTurns }) => {
+      const task = loadTask(taskId);
+      if (!fs.existsSync(task.worktree)) return textResult(`Worktree absent pour ${taskId}: ${task.worktree}`, true);
+      const prompt = `Continue la tache Passio Bridge \"${task.title}\". Nouvelle instruction: ${instruction}\nRespecte les memes regles de securite et de perimetre. Teste, committe uniquement ton perimetre et pousse ta branche; ne merge jamais main.`;
+      const out = await runClaude({ cwd: task.worktree, prompt, sessionId: task.sessionId, maxTurns });
+      task.sessionId = out.parsed?.session_id || task.sessionId;
+      task.status = out.code === 0 && !out.parsed?.is_error ? "completed" : "failed";
+      task.result = out.parsed?.result || out.stdout;
+      task.stderr = out.stderr;
+      task.snapshot = repoSnapshot(task.worktree);
+      saveTask(task);
+      return textResult({ taskId, status: task.status, branch: task.branch, sessionId: task.sessionId, result: task.result, git: task.snapshot }, task.status !== "completed");
+    }
+  );
+
+  return server;
+}
+
 requireGitRepo();
-
-const server = new McpServer({ name: "passio-bridge", version: "0.1.0" });
-
-server.registerTool(
-  "passio_status",
-  {
-    description: "Lire l'etat Git et les taches locales du Passio Bridge. Aucune modification.",
-    inputSchema: z.object({})
-  },
-  async () => {
-    const tasks = fs.readdirSync(TASKS).filter((f) => f.endsWith(".json")).slice(-20).map((f) => {
-      try {
-        const t = JSON.parse(fs.readFileSync(path.join(TASKS, f), "utf8"));
-        return { id: t.id, title: t.title, branch: t.branch, status: t.status, updatedAt: t.updatedAt };
-      } catch (_) { return null; }
-    }).filter(Boolean);
-    return textResult({ repo: REPO, ...repoSnapshot(REPO), tasks });
-  }
-);
-
-server.registerTool(
-  "passio_analyze",
-  {
-    description: "Demander a Claude Code une analyse en mode plan/lecture du depot Passio, sans modifier les fichiers.",
-    inputSchema: z.object({
-      question: z.string().min(1).max(20000),
-      maxTurns: z.number().int().min(1).max(80).default(30)
-    })
-  },
-  async ({ question, maxTurns }) => {
-    const prompt = `Analyse PASSIO sans modifier aucun fichier. Lis CLAUDE.md et le code necessaire. Reponds avec faits verifies, incertitudes, risques et recommandation. Question: ${question}`;
-    const out = await runClaude({ cwd: REPO, prompt, planOnly: true, maxTurns });
-    if (out.code !== 0 || out.parsed?.is_error) return textResult({ error: true, stderr: out.stderr, raw: out.stdout }, true);
-    return textResult({ sessionId: out.parsed?.session_id || null, result: out.parsed?.result || out.stdout });
-  }
-);
-
-server.registerTool(
-  "passio_implement",
-  {
-    description: "Executer une modification Passio dans un worktree et une branche dedies via Claude Code. Ne merge pas main. Pour les sujets critiques, impose la revue croisee Codex existante.",
-    inputSchema: z.object({
-      title: z.string().min(3).max(160),
-      instruction: z.string().min(1).max(30000),
-      risk: z.enum(["normal", "critical"]).default("normal"),
-      maxTurns: z.number().int().min(5).max(120).default(80)
-    })
-  },
-  async ({ title, instruction, risk, maxTurns }) => {
-    const wt = createWorktree(title);
-    const task = {
-      id: wt.id,
-      title,
-      instruction,
-      risk,
-      branch: wt.branch,
-      worktree: wt.dir,
-      status: "running",
-      createdAt: new Date().toISOString(),
-      sessionId: null
-    };
-    saveTask(task);
-
-    const out = await runClaude({ cwd: wt.dir, prompt: implementationPrompt(title, instruction, risk), maxTurns });
-    task.sessionId = out.parsed?.session_id || null;
-    task.status = out.code === 0 && !out.parsed?.is_error ? "completed" : "failed";
-    task.result = out.parsed?.result || out.stdout;
-    task.stderr = out.stderr;
-    task.snapshot = repoSnapshot(wt.dir);
-    saveTask(task);
-
-    return textResult({
-      taskId: task.id,
-      status: task.status,
-      branch: task.branch,
-      sessionId: task.sessionId,
-      result: task.result,
-      git: task.snapshot,
-      stderr: task.stderr || undefined
-    }, task.status !== "completed");
-  }
-);
-
-server.registerTool(
-  "passio_continue",
-  {
-    description: "Reprendre une tache Passio Bridge existante dans son worktree et sa session Claude Code.",
-    inputSchema: z.object({
-      taskId: z.string().min(1).max(120),
-      instruction: z.string().min(1).max(30000),
-      maxTurns: z.number().int().min(3).max(120).default(60)
-    })
-  },
-  async ({ taskId, instruction, maxTurns }) => {
-    const task = loadTask(taskId);
-    if (!fs.existsSync(task.worktree)) return textResult(`Worktree absent pour ${taskId}: ${task.worktree}`, true);
-    const prompt = `Continue la tache Passio Bridge \"${task.title}\". Nouvelle instruction: ${instruction}\nRespecte les memes regles de securite et de perimetre. Teste, committe uniquement ton perimetre et pousse ta branche; ne merge jamais main.`;
-    const out = await runClaude({ cwd: task.worktree, prompt, sessionId: task.sessionId, maxTurns });
-    task.sessionId = out.parsed?.session_id || task.sessionId;
-    task.status = out.code === 0 && !out.parsed?.is_error ? "completed" : "failed";
-    task.result = out.parsed?.result || out.stdout;
-    task.stderr = out.stderr;
-    task.snapshot = repoSnapshot(task.worktree);
-    saveTask(task);
-    return textResult({ taskId, status: task.status, branch: task.branch, sessionId: task.sessionId, result: task.result, git: task.snapshot }, task.status !== "completed");
-  }
-);
-
 console.error(`Passio Bridge MCP 0.1.0 - repo ${REPO}`);
-serveStdio(() => server);
+void serveStdio(createServer);
