@@ -259,6 +259,71 @@ test.describe("AUTHZ-CRITICAL — séparation entre comptes", () => {
       expect(Array.isArray(anon.body) ? anon.body.length : 0,
         "un client sans session lit des messages privés → doit être vide").toBe(0);
       log("client anonyme : aucune donnée privée");
+
+      // ── 11. Storage : l'écriture est cloisonnée par dossier ────────────────
+      //    Ajouté le 2026-08-17, LE JOUR où la migration correspondante a été
+      //    appliquée en production (jamais avant : un rouge connu dans le gate
+      //    finit par faire désactiver le gate).
+      //
+      //    Type MIME `image/png` et non `text/plain` : si une liste de types
+      //    autorisés est posée un jour, un test en `text/plain` serait refusé
+      //    pour le TYPE et resterait vert alors même que le cloisonnement de
+      //    CHEMIN serait cassé. On isole une propriété à la fois.
+      const PNG_1x1 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4"
+        + "2mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+      const stor = (token, chemin, init = {}) =>
+        page.evaluate(async ([tok, p, i, b64]) => {
+          const cfg = window.PASSIO_SUPABASE;
+          const corps = i.json ? JSON.stringify(i.json)
+            : Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+          const res = await fetch(cfg.url + "/storage/v1/" + p, {
+            method: i.method || "POST",
+            headers: {
+              apikey: cfg.anon,
+              ...(tok ? { Authorization: "Bearer " + tok } : {}),
+              "Content-Type": i.json ? "application/json" : "image/png",
+              ...(i.headers || {}),
+            },
+            body: corps,
+          });
+          return res.status;
+        }, [token, chemin, init, PNG_1x1]);
+
+      const sien = `photos/${B.uid}/authz_${Date.now()}.png`;
+
+      // CONTRE-ÉPREUVE D'ABORD — c'est le vrai risque de cette policy. Un envoi
+      // légitime refusé ne se voit PAS à l'écran : le code retombe en base64 et
+      // recopie le média EN BASE (défaut SYNC-B64-005). Un test qui ne vérifie
+      // que les refus resterait vert avec le Storage entièrement cassé.
+      expect(await stor(B.token, `object/content/${sien}`),
+        "B dépose dans SON dossier → doit passer").toBeLessThan(300);
+
+      expect(await stor(B.token, `object/content/photos/${A.uid}/vole.png`),
+        "B écrit chez A → refusé").toBeGreaterThanOrEqual(400);
+
+      // `move` et `copy` ne passent PAS par l'INSERT — renommer est un UPDATE
+      // de la colonne `name`. Une policy d'INSERT seule ne fermait donc rien
+      // (mesuré en production le 2026-08-17 : HTTP 200 avant correctif).
+      expect(await stor(B.token, "object/move", { json: { bucketId: "content",
+        sourceKey: sien, destinationKey: `photos/${A.uid}/deplace.png` } }),
+        "B DÉPLACE son fichier chez A → refusé").toBeGreaterThanOrEqual(400);
+
+      expect(await stor(B.token, "object/copy", { json: { bucketId: "content",
+        sourceKey: sien, destinationKey: `photos/${A.uid}/copie.png` } }),
+        "B COPIE son fichier chez A → refusé").toBeGreaterThanOrEqual(400);
+
+      // Le serveur normalise `../` AVANT d'enregistrer : la RLS doit donc voir
+      // le nom normalisé, celui du dossier de la victime.
+      expect(await stor(B.token, `object/content/photos/${B.uid}/../${A.uid}/trav.png`),
+        "B via un chemin fabriqué → refusé").toBeGreaterThanOrEqual(400);
+
+      // `attachments` est rangé par conversation, pas par uid : le cloisonnement
+      // y passe par l'appartenance à la conversation.
+      expect(await stor(B.token, `object/attachments/attachments/conv_absente_${Date.now()}/x.png`),
+        "B dépose dans une conversation dont il n'est pas membre → refusé").toBeGreaterThanOrEqual(400);
+
+      log("storage : écriture cloisonnée (dépôt, move, copy, chemin fabriqué, conv)");
+      await stor(B.token, `object/content/${sien}`, { method: "DELETE" }).catch(() => {});
     } finally {
       // ── Nettoyage : A retire son propre post. Les comptes e2e sont purgés
       //    par `npm run purge:e2e` (suppression service_role).
