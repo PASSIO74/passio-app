@@ -4,6 +4,47 @@
 
 ---
 
+## 2026-08-17 — Boucle 18 : la revue croisée a démoli ma propre migration
+
+La règle du projet veut qu'un changement de RLS passe par un second modèle. Le canal `codex` étant opérationnel, la migration Storage de la boucle 17 y est passée — dossier factuel, mesures, et cinq questions précises, dont celles où j'étais le moins sûr.
+
+**Trois objections sont revenues. Deux étaient justes, et l'une invalidait la migration.** Chacune a été vérifiée avant d'être retenue.
+
+### ① `move` et `copy` ne passent pas par l'INSERT — la migration ne fermait rien
+
+Objection : renommer un objet est un **UPDATE** de sa colonne `name`, pas un INSERT.
+
+Vérifié en production, compte jetable puis nettoyage : déposer dans son propre dossier → 200, puis **déplacer ce fichier vers le dossier d'un autre compte → 200**. `copy` aussi.
+
+La cause est nette une fois qu'on la regarde : l'ancienne policy UPDATE portait `using (owner = auth.uid())` et **aucun `with check`**. Postgres réutilise alors `using` pour la nouvelle ligne — et l'owner ne change pas lors d'un renommage. La version 1 fermait la porte d'entrée en laissant la fenêtre ouverte.
+
+Corrigé : la condition de chemin est désormais une **fonction unique**, appliquée à l'INSERT *et* à l'UPDATE. Deux expressions recopiées finissent toujours par diverger.
+
+### ② `allowed_mime_types` aurait réintroduit un défaut déjà corrigé
+
+Objection : rien ne prouve que le client envoie les types que je liste.
+
+Vérifié dans le code, et c'est pire que l'objection. Trois chemins d'envoi légitimes portent un type hors de ma liste : le repli explicite sur `application/octet-stream` (app-08 ~2709), un `file.type` **vide** quand le navigateur ne sait pas typer (app-09 ~874), et `audio/webm;codecs=opus` dont le suffixe n'est pas retiré — contrairement à la ligne 957 du même fichier, qui le fait.
+
+Et l'échec serait silencieux au pire endroit possible : `if (error) return base64Data` recopie le média **en base**. Poser cette liste aurait donc réintroduit `SYNC-B64-005`, le défaut de base64 en base corrigé la veille. La liste est retirée ; seule la limite de taille reste. L'ordre correct est écrit dans la migration : normaliser le type à l'émission, mesurer ce qui arrive, poser la liste ensuite.
+
+### ③ Mon test d'intrusion se serait auto-validé
+
+Objection : le test annexé utilisait `Content-Type: text/plain`. Avec une liste MIME, il aurait été refusé **pour le type** — donc vert — alors même que le cloisonnement de chemin serait cassé. Un test qui passe pour la mauvaise raison. Corrigé : `image/png`, et une propriété isolée à la fois.
+
+### Ce que j'ai nuancé plutôt que retenu
+
+Le chemin fabriqué (`photos/<moi>/../<victime>/x.png`) est **normalisé par le serveur avant enregistrement** : la clé finale est bien celle du dossier de la victime. La RLS devrait donc voir le nom normalisé et refuser. Je ne peux pas le confirmer avant application — c'est inscrit comme vérification à faire, pas comme fait acquis.
+
+### Ce que cette boucle dit du protocole
+
+La revue croisée n'a pas produit une liste de suggestions polies : elle a **invalidé le cœur d'une migration que j'estimais prête**, et la mesure lui a donné raison en trente secondes. Sans elle, j'aurais livré un correctif qui ferme l'INSERT, laisse `move` ouvert, et casse l'envoi de médias au passage — avec le repli base64 pour masquer la casse.
+
+### Fichiers touchés
+`migrations/migration_storage_cloisonnement.sql` (version 2, **toujours non appliquée**), `passio_qa_registry.json`, `PASSIO_ENGINEERING_LOG.md`.
+
+---
+
 ## 2026-08-17 — Boucle 17 : le Storage acceptait n'importe quoi, de n'importe qui
 
 ### Les premières mesures réelles de latence perçue
