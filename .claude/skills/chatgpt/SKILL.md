@@ -58,18 +58,32 @@ vers le navigateur : **ne jamais faire semblant d'avoir consulté ChatGPT.**
 
 ### ⚠️ Codex n'est pas ChatGPT dans un onglet
 
-C'est un **agent doté d'outils de lecture**. Lancé sur le dépôt, il irait lire des
-fichiers — dont `dashboard/.env` et sa clé `service_role` — et le contenu
-remonterait chez OpenAI hors de toute garde. D'où deux choix dans `appelCodex` :
+C'est un **agent doté d'outils de lecture**, et cette phrase est à prendre au pied
+de la lettre. Test canari du 2026-08-17, à retenir tel quel :
 
-- **dossier de travail vide** (`-C` sur un répertoire temporaire), jamais la racine
-  du dépôt ; `--sandbox read-only`, `--ephemeral` ;
-- l'asymétrie qui fait la valeur du croisement (il n'a pas le dépôt, il challenge
-  le dossier qu'on lui donne) n'est préservée que par ça.
+> Lancé avec `--sandbox read-only` dans un dossier temporaire vide, il a lu un
+> fichier canari placé dans `C:\Users\BENJAMIN\`, **puis** `package.json` dans le
+> dépôt. Interrogé, il a répondu que son premier échec venait de **son propre
+> refus, pas du bac à sable**.
 
-Rappel de la leçon Sentinelle : **le `cwd` n'est pas une frontière de fichiers**,
-c'est une réduction de surface. La vraie garde reste de ne rien mettre de sensible
-dans l'invite — ce que fait `detecterSecrets`.
+Donc : **`read-only` n'interdit que l'écriture, pas la lecture du disque, et le
+`cwd` n'est une frontière pour rien.** Même leçon que la Sentinelle, re-mesurée
+sur un autre outil. `dashboard/.env` et sa clé `service_role` sont à sa portée
+s'il décide de regarder.
+
+Ce que les garde-fous font réellement :
+
+| Garde-fou | Ce qu'il apporte | Ce qu'il n'apporte PAS |
+|---|---|---|
+| `-C <bac vide>` | supprime la *raison* d'aller lire, préserve l'asymétrie du croisement | aucun confinement |
+| `--sandbox read-only` | aucune écriture, aucune commande mutante | ne bloque aucune lecture |
+| `--ignore-user-config` `--ignore-rules` | coupe MCP, hooks et instructions globales (aucun MCP configuré aujourd'hui, mais demain ?) | — |
+| env filtré (`envFiltre`) | un secret en variable d'environnement ne fuit plus | — |
+| `detecterSecrets` | refuse l'envoi d'un secret **dans l'invite** | ne voit pas ce que l'agent va chercher lui-même |
+
+**La règle qui protège vraiment : lui donner une invite auto-suffisante et ne
+jamais lui demander d'aller explorer le dépôt.** S'il faut du code dans le
+dossier, c'est `--fichier` qui le fournit — ça passe alors par la garde secrets.
 
 ## Usage courant
 

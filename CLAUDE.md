@@ -148,8 +148,13 @@ décision de Benjamin). Fils persistants dans `.passio/chatgpt/` (gitignoré), e
 **garde qui refuse l'envoi** dès qu'un JWT, une clé `sb_secret_`/`sk-`, une
 affectation `SERVICE_ROLE_KEY=…` ou un mot de passe apparaît — le chemin navigateur,
 lui, n'a aucune garde. ⚠️ Codex est un **agent doté d'outils de lecture**, pas un
-onglet : il est lancé sur un **dossier de travail vide**, jamais sur le dépôt, sinon
-il lirait `dashboard/.env` et sa clé `service_role`. Sans transport connecté, le
+onglet : il est lancé sur un **dossier de travail vide** (+ `--ignore-user-config`,
+`--ignore-rules`, env filtré), jamais sur le dépôt. Mais **le bac ne confine rien** :
+test canari du 2026-08-17 — avec `--sandbox read-only` dans un dossier vide, il a lu
+un fichier hors du bac *et* `package.json` dans le dépôt, son premier refus venant
+de lui-même et non d'une barrière. `read-only` n'interdit que l'écriture. La seule
+garde qui tient : une invite auto-suffisante, jamais une invitation à explorer le
+dépôt (`dashboard/.env` est à sa portée). Sans transport connecté, le
 script s'arrête et renvoie vers le repli navigateur
 (`.claude/skills/chatgpt/references/navigateur.md`, 8 pièges vécus) : **ne jamais
 écrire que ChatGPT a été consulté si l'échange n'a pas eu lieu.**

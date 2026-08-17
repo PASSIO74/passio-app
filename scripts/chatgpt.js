@@ -205,6 +205,22 @@ function argsCodex(exe, args) {
 }
 
 /**
+ * L'enfant hérite sinon de TOUT l'environnement. La garde `detecterSecrets` ne
+ * lit que l'invite : un secret présent en variable d'environnement lui échappe
+ * complètement. On ne transmet donc que le strict nécessaire au lancement et à
+ * l'authentification — même principe que l'env filtré de la Sentinelle.
+ * Signalé par ChatGPT lui-même le 2026-08-17, vérifié, retenu.
+ */
+function envFiltre() {
+  const garder = ["PATH", "Path", "PATHEXT", "SystemRoot", "windir", "ComSpec", "TEMP", "TMP",
+    "USERPROFILE", "HOME", "HOMEDRIVE", "HOMEPATH", "APPDATA", "LOCALAPPDATA",
+    "CODEX_HOME", "LANG", "LC_ALL", "TERM", "NUMBER_OF_PROCESSORS", "OS", "PROCESSOR_ARCHITECTURE"];
+  const env = {};
+  for (const k of garder) if (process.env[k] !== undefined) env[k] = process.env[k];
+  return env;
+}
+
+/**
  * Transport codex — réutilise l'abonnement ChatGPT (aucune facturation au jeton).
  *
  * ⚠️ Codex n'est PAS ChatGPT dans un navigateur : c'est un agent qui dispose
@@ -228,6 +244,8 @@ function appelCodex(invite, options) {
       "--sandbox", "read-only",        // aucune écriture, aucune commande mutante
       "--skip-git-repo-check",         // le bac vide n'est pas un dépôt git
       "--ephemeral",                   // pas de session persistée : notre fil fait foi
+      "--ignore-user-config",          // ← voir ci-dessous : coupe MCP/hooks/instructions globales
+      "--ignore-rules",
       "--color", "never",
       "-C", bac,                       // dossier de travail VIDE, surtout pas RACINE
       "-o", sortieFichier,
@@ -239,7 +257,7 @@ function appelCodex(invite, options) {
       return reject(new Error("codex introuvable — installer avec npm i -g @openai/codex")); }
     const lancement = argsCodex(exe, args);
     const enfant = spawn(lancement.commande, lancement.args,
-      { cwd: bac, shell: false, windowsVerbatimArguments: lancement.verbatim });
+      { cwd: bac, shell: false, windowsVerbatimArguments: lancement.verbatim, env: envFiltre() });
     let erreur = "", flux = "";
     enfant.stdout.on("data", (d) => { flux += d; });
     enfant.stderr.on("data", (d) => { erreur += d; });
