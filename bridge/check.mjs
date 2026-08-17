@@ -10,7 +10,8 @@ function run(command, args = [], cwd = REPO) {
   const r = spawnSync(command, args, {
     cwd,
     encoding: "utf8",
-    shell: process.platform === "win32"
+    shell: false,
+    windowsHide: true
   });
   return {
     ok: r.status === 0,
@@ -28,8 +29,8 @@ function check(name, command, args, detail) {
 
 check("Git", "git", ["--version"]);
 check("Depot Passio", "git", ["rev-parse", "--show-toplevel"]);
-check("Claude Code", "claude", ["--version"], "CLI Claude introuvable ou non executable");
-check("Codex", "codex", ["--version"], "CLI Codex introuvable ou non executable");
+check("Claude Code", process.platform === "win32" ? "claude.cmd" : "claude", ["--version"], "CLI Claude introuvable ou non executable");
+check("Codex", process.platform === "win32" ? "codex.cmd" : "codex", ["--version"], "CLI Codex introuvable ou non executable");
 
 const repo = run("git", ["rev-parse", "--show-toplevel"]);
 if (repo.ok && path.resolve(repo.text.split(/\r?\n/)[0]) !== REPO) {
@@ -42,7 +43,7 @@ const isolated = process.env.PASSIO_BRIDGE_ISOLATED === "1";
 
 console.log("PASSIO BRIDGE — diagnostic local\n");
 for (const c of checks) console.log(`${c.ok ? "OK" : "KO"}  ${c.name} — ${c.detail}`);
-console.log(`${isolated ? "OK" : "BLOQUE"}  Worker isole — ${isolated ? "PASSIO_BRIDGE_ISOLATED=1" : "non active (volontairement sûr pour le test du tunnel)"}`);
+console.log(`${isolated ? "OK" : "BLOQUE"}  Worker isole — ${isolated ? "PASSIO_BRIDGE_ISOLATED=1" : "non active (volontairement sur pour le test du tunnel)"}`);
 
 const failed = checks.filter((c) => !c.ok);
 console.log(`\n${checks.length - failed.length}/${checks.length} prerequis CLI disponibles.`);
