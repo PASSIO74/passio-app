@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "activated_at": "2026-08-18",
   "source_of_truth": {
     "repository": "PASSIO74/passio-app",
@@ -69,6 +69,20 @@
         "handoff must be implementation-neutral"
       ]
     },
+    "base44": {
+      "role": "connected AI app builder",
+      "usage": "available to PASSIO but no Passio Base44 app has been detected yet",
+      "preferred_for": [
+        "rapid app prototyping",
+        "alternative product experiments",
+        "standalone workflow prototypes"
+      ],
+      "constraints": [
+        "not a source of truth",
+        "no Passio Base44 app detected as of 2026-08-18",
+        "production changes must still follow repository review rules"
+      ]
+    },
     "codex": {
       "role": "independent reviewer and challenger",
       "preferred_for": [
@@ -85,13 +99,15 @@
     "backend": ["claude_code", "codex"],
     "security": ["claude_code", "codex"],
     "architecture": ["claude_code", "codex"],
-    "product_exploration": ["lovable", "claude", "claude_code"],
+    "product_exploration": ["lovable", "base44", "claude", "claude_code"],
     "final_arbitration": ["ChatGPT"]
   },
   "integration_policy": {
     "lovable_output": "review_then_transpose",
+    "base44_output": "review_then_transpose",
     "production_changes": "branch_pr_tests_review",
     "direct_lovable_to_main": false,
+    "direct_base44_to_main": false,
     "direct_unreviewed_ai_to_main": false
   }
 }
