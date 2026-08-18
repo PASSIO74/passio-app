@@ -59,6 +59,8 @@ test("journal exposes rollback without production authority", () => {
     suites: [{ suite: "smoke", ok: false }],
   });
   const snapshot = promotionJournalSnapshot(10);
+  assert.equal(snapshot.available, true);
+  assert.equal(snapshot.reason, null);
   assert.equal(snapshot.productionDeploy, false);
   assert.equal(snapshot.runtimeActivation, false);
   assert.equal(snapshot.latest.rolledBack, true);
