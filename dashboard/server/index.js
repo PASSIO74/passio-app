@@ -32,18 +32,19 @@ import { computeReadiness } from "./readiness.js";
 import { qaReport } from "./qa.js";
 import * as sentinel from "./sentinel.js";
 import { mergeRepair } from "./repair.js";
-import { observationSnapshot } from "./observation.js";
+import { observationSnapshot, acknowledgeSseHeartbeat } from "./observation.js";
 import { releaseHealth, releaseHistory } from "./release-recorder.js";
-import { listIncidentPackets } from "./incident-packets.js";
+import { listIncidentPackets, transitionIncident } from "./incident-packets.js";
 import { controlCommand } from "./control-intelligence.js";
 import { whatChanged, listControlSnapshots, startControlHistory } from "./control-history.js";
+import { anomalySnapshot } from "./anomaly-engine.js";
+import { releaseGuardianSnapshot } from "./release-guardian.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 app.set("trust proxy", true);
 app.use(express.json({ limit: "1mb" }));
 
-// Cookies de session minimalistes (clearCookie/cookie helpers).
 app.use((req, res, next) => {
   res.cookie = (name, val, opts = {}) => {
     const parts = [`${name}=${encodeURIComponent(val)}`, "Path=/"];
@@ -64,15 +65,11 @@ const asyncH = (fn) => (req, res) => Promise.resolve(fn(req, res)).catch((e) => 
   res.status(e.code || 500).json({ error: e.message || "Erreur serveur" });
 });
 
-// ─── Santé (sans auth, pour les health-checks d'hébergeur) ─────────────────
 api.get("/health", (req, res) => res.json({ ok: true, env: config.dashEnv, supabase: supabaseReady }));
-
-// ─── Auth ────────────────────────────────────────────────────────────────
 api.post("/login", asyncH(auth.login));
 api.post("/logout", auth.logout);
 api.get("/me", auth.me);
 
-// ─── Flux temps réel (SSE) ─────────────────────────────────────────────────
 api.get("/stream", auth.requireAuth, (req, res) => {
   res.writeHead(200, {
     "Content-Type": "text/event-stream", "Cache-Control": "no-cache, no-transform",
@@ -82,7 +79,6 @@ api.get("/stream", auth.requireAuth, (req, res) => {
   addClient(res);
 });
 
-// ─── Vue d'ensemble / activité ──────────────────────────────────────────────
 api.get("/overview", auth.requireAuth, (req, res) => res.json({ ...store.overview(), ingest: ingestState() }));
 api.get("/timeseries", auth.requireAuth, (req, res) => res.json(store.timeseries(Number(req.query.minutes) || 30)));
 api.get("/events", auth.requireAuth, (req, res) => {
@@ -90,21 +86,27 @@ api.get("/events", auth.requireAuth, (req, res) => {
   res.json(store.recent({ type, severity, user, device, session, env, screen, status, q }, Number(limit) || 200));
 });
 
-// ─── Command Center — DATA → SIGNAL → PRIORITÉ → ACTION ────────────────────
-// Routes en lecture seule, sans Claude. Elles n'exposent pas plus que les vues
-// déjà accessibles à un opérateur authentifié : preuves de santé, alertes,
-// incidents et agrégats produit.
+// ─── Command Center / Sentinel 3 ────────────────────────────────────────────
 api.get("/control/command", auth.requireAuth, asyncH(async (req, res) => res.json(await controlCommand())));
 api.get("/control/changes", auth.requireAuth, asyncH(async (req, res) => res.json(await whatChanged())));
 api.get("/control/history", auth.requireAuth, (req, res) => res.json(listControlSnapshots(Number(req.query.limit) || 30)));
 api.get("/observation", auth.requireAuth, (req, res) => res.json(observationSnapshot()));
+api.post("/observation/sse-ack", auth.requireAuth, (req, res) => res.json({ ok: acknowledgeSseHeartbeat(req.body?.id || null) }));
 api.get("/releases", auth.requireAuth, (req, res) => res.json({ health: releaseHealth(), history: releaseHistory(Number(req.query.limit) || 30) }));
+api.get("/release-guardian", auth.requireAuth, (req, res) => res.json(releaseGuardianSnapshot()));
+api.get("/anomalies", auth.requireAuth, (req, res) => res.json(anomalySnapshot()));
 api.get("/incidents", auth.requireAuth, (req, res) => res.json(listIncidentPackets(Number(req.query.limit) || 50)));
+api.post("/incidents/:id/transition", auth.requireCap("alerts"), (req, res) => {
+  const incident = transitionIncident(req.params.id, req.body?.phase, {
+    evidence: req.body?.evidence,
+    note: req.body?.note,
+    resolution: req.body?.resolution,
+    actor: req.session.u,
+  });
+  incident ? res.json(incident) : res.status(404).json({ error: "Incident introuvable" });
+});
 
-// ─── Interactions (vérification cross-device temps réel) ────────────────────
 api.get("/interactions", auth.requireAuth, (req, res) => res.json(interactionsSnapshot(Number(req.query.limit) || 120)));
-
-// ─── Traçage bout-en-bout (chaîne de validation par action) ─────────────────
 api.get("/traces", auth.requireAuth, (req, res) => res.json(tracesSnapshot(Number(req.query.limit) || 100)));
 api.get("/traces/:cid", auth.requireAuth, asyncH(async (req, res) => {
   const t = traceOne(req.params.cid);
@@ -115,10 +117,8 @@ api.get("/traces/:cid", auth.requireAuth, asyncH(async (req, res) => {
   }
   res.json({ trace: t, suspects, prompt: claude.buildTracePrompt(t, suspects ? suspectsPromptBlock(suspects) : "") });
 }));
-
 api.get("/coverage", auth.requireAuth, (req, res) => res.json(tracesCoverage()));
 
-// ─── Réconciliation (intégrité des données : échecs silencieux) ─────────────
 api.get("/reconcile", auth.requireCap("db"), asyncH(async (req, res) => res.json(await reconcile({ force: req.query.force === "1" }))));
 api.post("/reconcile/prompt", auth.requireCap("db"), (req, res) => {
   const c = req.body?.check;
@@ -135,13 +135,8 @@ api.get("/diagnose", auth.requireAuth, asyncH(async (req, res) => {
     integrity = { error: "non évaluée : ce rôle n'a pas accès à la base (capacité `db`)" };
   }
   const bundle = {
-    overview: store.overview(),
-    traces: tracesSnapshot(200),
-    interactions: interactionsSnapshot(200),
-    coverage: tracesCoverage(),
-    bugs: store.bugList().slice(0, 20),
-    errors: store.recent({ type: "error" }, 40),
-    integrity,
+    overview: store.overview(), traces: tracesSnapshot(200), interactions: interactionsSnapshot(200),
+    coverage: tracesCoverage(), bugs: store.bugList().slice(0, 20), errors: store.recent({ type: "error" }, 40), integrity,
   };
   res.json({ prompt: claude.buildPlatformDiagnosis(bundle), summary: {
     successRate: bundle.traces.totals.successRate,
@@ -159,7 +154,6 @@ api.get("/links/:id", auth.requireAuth, (req, res) => { const l = store.link(req
 api.get("/qa-report", auth.requireAuth, (req, res) => res.json(qaReport()));
 api.get("/kpi", auth.requireAuth, asyncH(async (req, res) => res.json(await kpi())));
 api.get("/retention", auth.requireAuth, asyncH(async (req, res) => res.json(await retention())));
-
 api.get("/names", auth.requireAuth, (req, res) => res.json(store.clientNames()));
 api.get("/signups", auth.requireAuth, asyncH(async (req, res) => res.json(await signups())));
 api.get("/accounts", auth.requireAuth, asyncH(async (req, res) => res.json(await accounts())));
@@ -232,7 +226,6 @@ api.post("/claude/recheck", auth.requireCap("claude"), asyncH(async (req, res) =
 
 api.get("/test-users", auth.requireCap("test_users"), asyncH(async (req, res) => res.json(await testusers.list())));
 api.delete("/test-users/:id", auth.requireCap("test_users"), asyncH(async (req, res) => res.json(await testusers.remove(req.params.id, req.session.u))));
-
 api.get("/alerts", auth.requireAuth, (req, res) => res.json(alerts.listAlerts()));
 api.post("/alerts/:id/ack", auth.requireCap("alerts"), (req, res) => res.json({ ok: alerts.acknowledge(req.params.id) }));
 api.post("/alerts/manual", auth.requireCap("alerts"), (req, res) => res.json(alerts.raiseManual(req.body || {})));
@@ -251,22 +244,16 @@ api.post("/sentinel/:id/merge", auth.requireCap("git_mutate"), asyncH(async (req
   if (!d || !d.repair?.ok) return res.status(404).json({ error: "Aucun correctif vérifié pour ce diagnostic." });
   res.json(await mergeRepair(d.repair.branch, req.session.u));
 }));
-
 api.get("/audit", auth.requireCap("audit"), (req, res) => res.json(listAudit(Number(req.query.limit) || 300, { action: req.query.action, actor: req.query.actor })));
 
 api.get("/readiness", auth.requireAuth, (req, res) => {
   res.json(computeReadiness({
-    overview: store.overview(),
-    checklist: checklist.listChecklist(),
-    bugs: store.bugList(),
-    authz: tests.authzSnapshot(),
-    observation: observationSnapshot(),
-    release: releaseHealth(),
+    overview: store.overview(), checklist: checklist.listChecklist(), bugs: store.bugList(), authz: tests.authzSnapshot(),
+    observation: observationSnapshot(), release: releaseHealth(),
   }));
 });
 
 app.use("/api", api);
-
 const publicDir = path.join(__dirname, "..", "public");
 app.use(express.static(publicDir));
 app.get("*", (req, res) => res.sendFile(path.join(publicDir, "index.html")));
