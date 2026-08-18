@@ -1,46 +1,53 @@
 // SENTINEL INCIDENT INVENTORY — preuve fail-closed de l'ensemble d'incidents.
 //
 // La policy locale (#12) ne doit jamais recevoir `incidentsComplete:true` sur la
-// seule foi d'un tableau partiel. Le stockage Incident Packet historique est
-// borné à 200 entrées ; cette couche refuse donc d'inventer l'exhaustivité.
-//
-// IMPORTANT : ce module ne modifie ni la rétention, ni Autopilot, ni le Guardian.
-import { listIncidentPackets } from "./incident-packets.js";
-
-const INVENTORY_LIMIT = Number(process.env.DASH_INCIDENT_KEEP || 200);
+// seule foi d'un tableau partiel. La complétude vient du registre de rétention
+// lui-même ET d'une lecture de tous les éléments que ce registre dit stocker.
+import { listIncidentPackets, incidentRetentionSnapshot } from "./incident-packets.js";
 
 function isCriticalOpen(incident) {
   return incident && incident.status !== "closed"
     && (incident.severity === "critical" || incident.severity === "high");
 }
 
-export function evaluateIncidentInventory(items = [], { limit = INVENTORY_LIMIT, historicalCompleteness = false } = {}) {
+export function evaluateIncidentInventory(items = [], { retention = null } = {}) {
   const safeItems = Array.isArray(items) ? items : [];
-  const saturated = safeItems.length >= limit;
+  const proof = retention || {
+    complete: false,
+    historyTrusted: false,
+    criticalOverflow: false,
+    stored: safeItems.length,
+    reason: "retention_proof_missing",
+  };
   const openCritical = safeItems.filter(isCriticalOpen);
   const blockers = [];
+  const stored = Number.isFinite(Number(proof.stored)) ? Number(proof.stored) : null;
 
-  if (!historicalCompleteness) blockers.push("historical_completeness_unproven");
-  if (saturated) blockers.push("retention_window_saturated");
+  if (proof.complete !== true) blockers.push(proof.reason || "retention_proof_incomplete");
+  if (stored === null) blockers.push("retention_stored_count_unknown");
+  else if (safeItems.length < stored) blockers.push("inventory_read_incomplete");
 
   return {
     complete: blockers.length === 0,
     blockers,
-    limit,
     count: safeItems.length,
-    saturated,
-    historicalCompleteness: historicalCompleteness === true,
+    expectedStored: stored,
+    retention: proof,
     incidents: safeItems,
     openCritical,
     openCriticalIds: openCritical.map((i) => i.id),
     policy: {
       failClosed: true,
-      noCompletenessFromTruncatedWindow: true,
+      completenessDerivedFromRetentionProof: true,
+      allStoredItemsMustBeRead: true,
     },
   };
 }
 
-export function incidentInventorySnapshot({ historicalCompleteness = false } = {}) {
-  const items = listIncidentPackets(INVENTORY_LIMIT);
-  return evaluateIncidentInventory(items, { limit: INVENTORY_LIMIT, historicalCompleteness });
+export function incidentInventorySnapshot() {
+  const retention = incidentRetentionSnapshot();
+  // Le registre peut dépasser KEEP pour préserver des high/critical ouverts ; on
+  // lit donc exactement tout ce qu'il affirme encore stocker, pas une fenêtre 200.
+  const items = listIncidentPackets(Math.max(0, retention.stored || 0));
+  return evaluateIncidentInventory(items, { retention });
 }
