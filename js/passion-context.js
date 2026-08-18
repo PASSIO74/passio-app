@@ -22,21 +22,30 @@
   var started = false;
   var timer = null;
 
-  function current() {
+  // Contexte INTERNE : l'id local sert uniquement à détecter un vrai changement
+  // de persona lorsque deux profils pourraient partager la même passion. Il ne
+  // sort jamais de cette closure et n'est jamais exposé dans l'API globale.
+  function readContext() {
     try {
       if (typeof state === "undefined" || !state || !state.user) return null;
       var p = (typeof currentProfile === "function") ? currentProfile() : null;
       if (!p) return null;
       return {
-        // Clé métier canonique du profil-passion. Pas l'id local de persona.
         passionId: p.passion ? String(p.passion).slice(0, 64) : null,
         profileLocalId: p.id ? String(p.id).slice(0, 64) : null,
       };
     } catch (e) { return null; }
   }
 
+  // API publique minimale : uniquement la donnée métier utile. L'identifiant
+  // local de persona reste strictement privé au module.
+  function current() {
+    var ctx = readContext();
+    return ctx ? { passionId: ctx.passionId } : null;
+  }
+
   function emitIfChanged(force) {
-    var ctx = current();
+    var ctx = readContext();
     var passion = ctx && ctx.passionId || null;
     var localId = ctx && ctx.profileLocalId || null;
     if (!force && passion === lastPassion && localId === lastProfileId) return false;
