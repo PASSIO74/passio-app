@@ -19,6 +19,15 @@ test("mobile service worker never caches API responses", () => {
   assert.match(sw, /pathname\.startsWith\("\/api\/"\).*return/);
 });
 
+test("mobile service worker controls only explicit pilot assets", () => {
+  const sw = read("mobile-sw.js");
+  assert.match(sw, /if \(!STATIC\.includes\(u\.pathname\)\) return/);
+  assert.match(sw, /\/mobile\.html/);
+  assert.match(sw, /\/css\/mobile\.css/);
+  assert.match(sw, /\/js\/mobile\.js/);
+  assert.match(sw, /\/mobile-manifest\.webmanifest/);
+});
+
 test("mobile static assets are network-first with cache only as offline fallback", () => {
   const sw = read("mobile-sw.js");
   assert.match(sw, /await fetch\(event\.request, \{ cache: "no-cache" \}\)/);
