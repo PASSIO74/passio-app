@@ -1,8 +1,8 @@
 // SENTINEL LOCAL PROMOTION EVIDENCE — fraîcheur + liaison causale canonique.
 //
-// Couche pure et NON mutante. Elle exige un Guardian récent, un diagnostic
-// persistant canonique et une identité incident identique dans repair + diagnostic
-// avant de déléguer à la policy locale fail-closed.
+// Couche pure et NON mutante. Elle exige un Guardian récent et la preuve causale
+// scellée par le bootstrap depuis le diagnostic canonique, puis délègue à la
+// policy locale fail-closed. Aucun import du moteur Sentinel ici.
 import { evaluateLocalPromotionGate } from "./sentinel-local-promotion-gate.js";
 
 const DEFAULT_MAX_GUARDIAN_AGE_MS = Number(process.env.DASH_AUTOPILOT_GUARDIAN_MAX_AGE_MS || 5 * 60_000);
@@ -16,15 +16,11 @@ function finiteTimestamp(value) {
   return null;
 }
 
-function diagnosisIncidentId(diagnosis = {}) {
-  return diagnosis?.meta?.incidentId || diagnosis?.incidentId || null;
-}
-
 export function evaluateLocalPromotionEvidence({
   guardian = null,
   incidents = [],
   incidentsComplete = false,
-  diagnosis = null,
+  diagnosisEvidence = null,
   repair = null,
   now = Date.now(),
   maxGuardianAgeMs = DEFAULT_MAX_GUARDIAN_AGE_MS,
@@ -37,16 +33,21 @@ export function evaluateLocalPromotionEvidence({
   else if (observedAt > now) blockers.push("guardian_timestamp_future");
   else if (ageMs > maxGuardianAgeMs) blockers.push("guardian_snapshot_stale");
 
-  const canonicalIncidentId = diagnosisIncidentId(diagnosis || {});
-  if (!diagnosis?.id) blockers.push("diagnosis_identity_missing");
+  const canonicalDiagnosisId = diagnosisEvidence?.id || null;
+  const canonicalIncidentId = diagnosisEvidence?.incidentId || null;
+  if (!canonicalDiagnosisId) blockers.push("diagnosis_identity_missing");
   if (!canonicalIncidentId) blockers.push("diagnosis_causal_incident_missing");
 
   if (!repair?.diagnosisId) blockers.push("repair_diagnosis_identity_missing");
-  else if (diagnosis?.id && repair.diagnosisId !== diagnosis.id) blockers.push("repair_diagnosis_mismatch");
+  else if (canonicalDiagnosisId && repair.diagnosisId !== canonicalDiagnosisId) blockers.push("repair_diagnosis_mismatch");
 
-  // Champ canonique de la chaîne #15 : repair.incidentId.
   if (!repair?.incidentId) blockers.push("repair_causal_incident_missing");
   else if (canonicalIncidentId && repair.incidentId !== canonicalIncidentId) blockers.push("repair_causal_incident_mismatch");
+
+  if (repair?.incidentClusterKey && diagnosisEvidence?.incidentClusterKey
+    && repair.incidentClusterKey !== diagnosisEvidence.incidentClusterKey) {
+    blockers.push("repair_incident_cluster_mismatch");
+  }
 
   const localGate = evaluateLocalPromotionGate({
     guardian,
@@ -60,7 +61,7 @@ export function evaluateLocalPromotionEvidence({
     decision: blockers.length ? "HOLD" : "GO_LOCAL",
     blockers: [...new Set(blockers)],
     causalIncidentId: canonicalIncidentId,
-    diagnosisId: diagnosis?.id || null,
+    diagnosisId: canonicalDiagnosisId,
     guardianObservedAt: observedAt,
     guardianAgeMs: ageMs,
     maxGuardianAgeMs,
@@ -69,7 +70,7 @@ export function evaluateLocalPromotionEvidence({
       productionDeploy: false,
       runtimeActivated: false,
       requiresFreshGuardian: true,
-      requiresCanonicalDiagnosis: true,
+      requiresSealedDiagnosisEvidence: true,
       requiresCompleteIncidentSet: true,
       requiresExactCausalIdentity: true,
     },
