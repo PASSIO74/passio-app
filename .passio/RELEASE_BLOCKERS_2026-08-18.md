@@ -45,45 +45,42 @@ Until the causal incident can be traced unambiguously through alert -> diagnosis
 
 ## BLOCKER 3 — PR #8 exact-head CI must finish green
 
-Current #8 head: `43b1080d803aea58fc3195bd39e01b7cd6575ca3`.
+Current #8 head: `4c885f318e4eabb0571bc1cbea5d8548f4464729`.
 Base: exact #7 head `2c4501b9e0aeba7ede062b520ef77b8b431907aa`.
-CI #1790 is the current exact-head proof and must be COMPLETED SUCCESS before #8 is called green.
+CI #1796 is the current exact-head proof and must be COMPLETED SUCCESS before #8 is called green.
 
-Additional hardening already included on this head:
+Hardening already included on this head:
 
 - mobile service worker is network-first for static assets with cache only as offline fallback;
 - `/api/*` is never intercepted/cached;
+- root-scoped service worker intercepts only the four explicit mobile pilot assets, never the general Control Center surface;
 - public release commit matching accepts only hexadecimal commit refs and requires at least 12 common characters of proof;
-- short/weak commit prefixes are explicitly rejected by tests.
+- short/weak commit prefixes are rejected by tests;
+- cached/in-flight public release evidence is bound to the exact expected commit/build pair;
+- if expectations change during an in-flight probe, the old verdict is never reused for the new revision;
+- `releaseHealth()` rejects a cached LIVE result whose embedded expectations no longer match the current release expectations (`STALE_EXPECTATION`).
 
-Any earlier #8 CI (#1771, #1782, #1783, #1788) is evidence for an older head only and must not be used to clear this blocker.
+Dashboard/Sentinel tests on #1796 are already SUCCESS, including the new in-flight expectation-change and mobile-SW confinement tests. AUTHZ/E2E/workflow completion are still required.
 
-## BLOCKER 4 — PR #9 corrected exact-head CI must finish green
+Any earlier #8 CI is evidence for an older head only and must not be used to clear this blocker.
+
+## RESOLVED EVIDENCE — PR #9 exact-head CI
 
 Current #9 head: `fee5a8fc4ee53ea7ac709a29e706f1d0e3b4cf37`.
-CI #1791 is the current exact-head proof.
+CI #1791: COMPLETED SUCCESS on this exact head.
 
-History that must not be misread:
+Validated together:
 
-- previous privacy-tightened head `f833f475...` ran CI #1785;
-- AUTHZ-CRITICAL passed;
-- the full application E2E suite passed: 170 passed, 18 skipped;
-- the production artifact gate failed only on RELEASE-INTEGRITY version-skew detection;
-- passion-context artifact tests themselves were not the failing area.
+- AUTHZ-CRITICAL SUCCESS;
+- full application E2E SUCCESS;
+- production artifact gates SUCCESS;
+- preview workflow SUCCESS;
+- `profileLocalId` remains closure-private and absent from public passion API/telemetry;
+- overlapping `PassioReleaseGuard.check()` calls share one in-flight Promise and no longer return a stale transient release verdict.
 
-Root cause fixed on current head:
+PR #9 is technically green, but merge still requires current base verification, branch-protection remediation and independent Friday review.
 
-`PassioReleaseGuard.check()` returned an immediate stale snapshot to a caller when another release check was already in flight. The guard now shares the same in-flight Promise, so concurrent/manual/visibility/online checks receive the final verdict instead of a transient stale result.
-
-Privacy hardening remains:
-
-- `profileLocalId` remains internal to the passion helper closure;
-- public `PassioPassionContext.current()` returns `{ passionId }` only;
-- telemetry publishes only `passion_ctx`.
-
-Do not clear this blocker until CI #1791 is COMPLETED SUCCESS, including the production artifact gate.
-
-## BLOCKER 5 — Production public release evidence must be configured and fresh
+## BLOCKER 4 — Production public release evidence must be configured and fresh
 
 PR #8 makes `PASSIO_PUBLIC_URL/release.json` part of production release health.
 Before production release:
@@ -92,11 +89,14 @@ Before production release:
 - public `release.json` must be reachable no-store/no-cache;
 - expected commit must match the public manifest commit with strong commit-prefix proof;
 - if a buildId expectation is available, it must come from a local manifest tied to the same commit;
-- NOT_CONFIGURED / UNKNOWN / UNAVAILABLE / MISMATCH are never acceptable as PASS/LIVE.
+- cached proof must be aligned to the CURRENT expectation pair;
+- NOT_CONFIGURED / UNKNOWN / UNAVAILABLE / MISMATCH / STALE_EXPECTATION are never acceptable as PASS/LIVE.
 
-## HARDENING TRACK — Node runtime upgrade (separate from release blockers unless runtime compatibility changes)
+## HARDENING TRACK — Node runtime upgrade
 
-Current CI still installs Node 20. GitHub Actions and Supabase dependencies now emit deprecation/engine warnings indicating Node 20 is obsolete or no longer supported by some packages. Do not mix this migration into #8/#9 while their release proofs are being stabilized. Prepare a separate Node 22+ hardening change with full CI evidence after the current stacks are stable.
+Current CI still installs Node 20. GitHub Actions and Supabase dependencies emit deprecation/engine warnings indicating Node 20 is obsolete or no longer supported by some packages. Keep the Node 22+ migration separate until the current release stacks stabilize, then run full CI evidence on that migration.
+
+A separate npm install warning also reported one high-severity vulnerability while installing Playwright dependencies. The current connector cannot identify the affected dependency/Dependabot alert, so do not classify it further without an actual audit result.
 
 ## Friday invariant
 
