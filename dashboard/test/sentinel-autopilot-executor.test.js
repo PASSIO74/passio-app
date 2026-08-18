@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { runPromotionTransaction } from "../server/sentinel-autopilot-executor.js";
+import { runPromotionTransaction, classifyPromotionTransaction } from "../server/sentinel-autopilot-executor.js";
 
 function opsFactory({ failSuite = null, dirty = false, branch = "main" } = {}) {
   const calls = [];
@@ -29,9 +29,14 @@ test("promotion advances HEAD only after every proof is green", async () => {
   assert.notEqual(r.afterSha, r.beforeSha);
   assert.deepEqual(r.suites.map((x) => [x.suite, x.ok]), [["authz", true], ["smoke", true]]);
   assert.equal(ops.calls.some((x) => x.startsWith("reset:")), false);
+  assert.deepEqual(classifyPromotionTransaction(r), {
+    status: "PROMOTED_LOCAL",
+    recordsLearning: true,
+    auditEvent: "sentinel_autopilot_promoted",
+  });
 });
 
-test("first red proof rolls back exactly to pre-promotion SHA", async () => {
+test("first red proof rolls back exactly to pre-promotion SHA and remains learnable", async () => {
   const ops = opsFactory({ failSuite: "handlers" });
   const r = await runPromotionTransaction(repair, { ops, suites: ["authz", "handlers", "smoke"] });
   assert.equal(r.ok, false);
@@ -39,27 +44,47 @@ test("first red proof rolls back exactly to pre-promotion SHA", async () => {
   assert.equal(r.reason, "verification_failed:handlers");
   assert.ok(ops.calls.includes("reset:" + ops.before));
   assert.equal(ops.calls.includes("verify:smoke"), false, "stop verification after first failure");
+  assert.equal(classifyPromotionTransaction(r).recordsLearning, true);
+  assert.equal(classifyPromotionTransaction(r).status, "ROLLED_BACK");
 });
 
-test("dirty working tree blocks promotion before merge", async () => {
+test("dirty working tree is an operational HOLD and cannot poison repair learning", async () => {
   const ops = opsFactory({ dirty: true });
   const r = await runPromotionTransaction(repair, { ops, suites: ["authz"] });
   assert.equal(r.attempted, false);
   assert.equal(r.reason, "working_tree_dirty");
   assert.equal(ops.calls.some((x) => x.startsWith("merge:")), false);
+  assert.deepEqual(classifyPromotionTransaction(r), {
+    status: "HOLD_OPERATIONAL",
+    recordsLearning: false,
+    auditEvent: "sentinel_autopilot_held",
+  });
 });
 
-test("wrong target branch blocks promotion before merge", async () => {
+test("wrong target branch is an operational HOLD and cannot poison repair learning", async () => {
   const ops = opsFactory({ branch: "feature/work" });
   const r = await runPromotionTransaction(repair, { ops, suites: ["authz"] });
   assert.equal(r.attempted, false);
   assert.equal(r.reason, "wrong_target_branch");
   assert.equal(ops.calls.some((x) => x.startsWith("merge:")), false);
+  assert.equal(classifyPromotionTransaction(r).recordsLearning, false);
 });
 
-test("arbitrary branch names are rejected", async () => {
+test("arbitrary branch names are rejected as operational HOLD before mutation", async () => {
   const ops = opsFactory();
   const r = await runPromotionTransaction({ ...repair, branch: "feature/not-sentinel" }, { ops, suites: ["authz"] });
   assert.equal(r.attempted, false);
   assert.equal(r.reason, "repair_branch_invalid");
+  assert.equal(classifyPromotionTransaction(r).status, "HOLD_OPERATIONAL");
+});
+
+test("concurrency lock rejection is operational and never counts as repair failure", () => {
+  const classification = classifyPromotionTransaction({
+    attempted: false,
+    ok: false,
+    reason: "promotion_already_in_progress",
+  });
+  assert.equal(classification.status, "HOLD_OPERATIONAL");
+  assert.equal(classification.recordsLearning, false);
+  assert.equal(classification.auditEvent, "sentinel_autopilot_held");
 });
