@@ -12,6 +12,7 @@ import { broadcast } from "./sse.js";
 import { runSuiteAwait } from "./tests.js";
 import { autopilotDecision, registerAutopilotOutcome } from "./sentinel-autopilot.js";
 import { acquireAutopilotLock, releaseAutopilotLock, autopilotLockSnapshot } from "./sentinel-autopilot-lock.js";
+import { recordPromotionTransaction, promotionJournalSnapshot } from "./sentinel-promotion-journal.js";
 
 const TARGET_BRANCH = process.env.DASH_AUTOPILOT_TARGET_BRANCH || "main";
 const VERIFY_SUITES = (process.env.DASH_AUTOPILOT_VERIFY_SUITES || "authz,globals,handlers,smoke")
@@ -50,6 +51,14 @@ export const realAutopilotOps = {
 function tail(v, n = 1200) {
   const s = String(v || "");
   return s.length > n ? "…" + s.slice(-n) : s;
+}
+
+function guardianTiming(policy = {}) {
+  const evidence = policy?.localGate?.policy || policy?.policy || policy || {};
+  return {
+    guardianObservedAt: evidence.guardianObservedAt || evidence.observedAt || null,
+    guardianAgeMs: Number.isFinite(evidence.guardianAgeMs) ? evidence.guardianAgeMs : null,
+  };
 }
 
 export async function runPromotionTransaction(repair, {
@@ -162,6 +171,25 @@ export async function executeAutopilotPromotion(repair, options = {}) {
 
   broadcast("sentinel_autopilot", { phase: "start", branch: repair.branch, sha: repair.sha });
   const tx = await runPromotionTransaction(repair, options);
+  const status = tx.ok ? "PROMOTED_LOCAL" : (tx.rolledBack ? "ROLLED_BACK" : "REJECTED");
+  const timing = guardianTiming(policy);
+  recordPromotionTransaction({
+    incidentId: repair?.incidentId || null,
+    diagnosisId: repair?.diagnosisId || null,
+    repairBranch: repair?.branch || null,
+    repairSha: repair?.sha || null,
+    beforeSha: tx.beforeSha || null,
+    afterSha: tx.afterSha || null,
+    attempted: tx.attempted === true,
+    ok: tx.ok === true,
+    rolledBack: tx.rolledBack === true,
+    reason: tx.reason || (tx.ok ? "verified_local_promotion" : "promotion_failed"),
+    status,
+    suites: tx.suites || [],
+    guardianObservedAt: timing.guardianObservedAt,
+    guardianAgeMs: timing.guardianAgeMs,
+    durationMs: tx.durationMs,
+  });
   const outcome = registerAutopilotOutcome(repair, {
     ok: Boolean(tx.ok),
     recurrence: false,
@@ -174,13 +202,13 @@ export async function executeAutopilotPromotion(repair, options = {}) {
     afterSha: tx.afterSha || null,
     rolledBack: Boolean(tx.rolledBack),
     reason: tx.reason || null,
-    suites: tx.suites || [],
+    suites: (tx.suites || []).map((suite) => ({ suite: suite.suite, ok: suite.ok === true })),
   }, "sentinelle-autopilot");
   broadcast("sentinel_autopilot", {
     phase: "end", branch: repair.branch, ok: Boolean(tx.ok),
     rolledBack: Boolean(tx.rolledBack), reason: tx.reason || null,
   });
-  return { ...tx, status: tx.ok ? "PROMOTED_LOCAL" : (tx.rolledBack ? "ROLLED_BACK" : "REJECTED"), learning: outcome, policy };
+  return { ...tx, status, learning: outcome, policy };
 }
 
 export function autopilotExecutorSnapshot() {
@@ -190,6 +218,7 @@ export function autopilotExecutorSnapshot() {
     productionMutation: false,
     requiresExplicitMutationFlag: true,
     processLocalLock: autopilotLockSnapshot(),
+    promotionJournal: promotionJournalSnapshot(20),
     distributedCoordination: false,
   };
 }
