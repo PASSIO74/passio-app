@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { config } from "./config.js";
 import { JsonDb } from "./jsondb.js";
+import { publicReleaseSnapshot, startPublicReleaseEvidence } from "./public-release-evidence.js";
 
 const db = new JsonDb("release-recorder", { snapshots: [] });
 const KEEP = Number(process.env.DASH_RELEASE_KEEP || 120);
@@ -11,7 +12,7 @@ function readRef() {
   try {
     const gitDir = path.join(config.repoPath, ".git");
     const head = fs.readFileSync(path.join(gitDir, "HEAD"), "utf8").trim();
-    if (!head.startsWith("ref:")) return { branch: "detached", revision: head.slice(0, 12) };
+    if (!head.startsWith("ref:")) return { branch: "detached", revision: head.slice(0, 12), fullRevision: head };
     const ref = head.slice(4).trim();
     let sha = null;
     try { sha = fs.readFileSync(path.join(gitDir, ref), "utf8").trim(); }
@@ -20,8 +21,34 @@ function readRef() {
       const line = packed.split("\n").find((l) => l.endsWith(" " + ref));
       sha = line ? line.split(" ")[0] : null;
     }
-    return { branch: ref.replace(/^refs\/heads\//, ""), revision: sha ? sha.slice(0, 12) : null };
-  } catch { return { branch: null, revision: null }; }
+    return { branch: ref.replace(/^refs\/heads\//, ""), revision: sha ? sha.slice(0, 12) : null, fullRevision: sha || null };
+  } catch { return { branch: null, revision: null, fullRevision: null }; }
+}
+
+function localReleaseManifest() {
+  const candidates = [
+    path.join(config.repoPath, "dist", "release.json"),
+    path.join(config.repoPath, "release.json"),
+  ];
+  for (const file of candidates) {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(file, "utf8"));
+      if (parsed && typeof parsed === "object" && parsed.buildId) return parsed;
+    } catch {}
+  }
+  return null;
+}
+
+export function publicReleaseExpectations() {
+  const git = readRef();
+  const local = localReleaseManifest();
+  const expectedCommit = process.env.COMMIT_REF || process.env.GITHUB_SHA || git.fullRevision || git.revision || null;
+  // Un buildId local ne vaut comme attente que si son manifeste est lui-même lié
+  // au commit courant. On ne compare jamais deux builds sur une simple coïncidence.
+  const expectedBuildId = local?.commit && expectedCommit
+    && (String(local.commit).startsWith(String(expectedCommit)) || String(expectedCommit).startsWith(String(local.commit)))
+    ? local.buildId : null;
+  return { expectedCommit, expectedBuildId };
 }
 
 export function releaseSnapshot(extra = {}) {
@@ -57,20 +84,34 @@ export function releaseHistory(limit = 30) { return db.get().snapshots.slice(0, 
 
 export function releaseHealth() {
   const current = releaseSnapshot();
+  const publicEvidence = publicReleaseSnapshot();
   const missing = [];
   if (!current.revision) missing.push("commit");
   if (!current.appVersion) missing.push("frontend version");
   if (!current.dbVersion) missing.push("DB version");
   if (!current.deployId) missing.push("deploy id");
+
+  // En production, le navigateur public fait partie de la preuve critique :
+  // NOT_CONFIGURED/UNKNOWN/UNAVAILABLE/MISMATCH ne peuvent jamais produire LIVE.
+  const publicRequired = config.isProd;
+  const publicOk = publicEvidence.state === "LIVE";
+  if (publicRequired && !publicOk) missing.push(`public release:${publicEvidence.state}`);
+
+  const state = missing.length === 0 ? "LIVE"
+    : publicRequired && !publicOk ? "DEGRADED"
+    : missing.length <= 2 ? "DEGRADED" : "NOT_CONFIGURED";
   return {
-    state: missing.length === 0 ? "LIVE" : missing.length <= 2 ? "DEGRADED" : "NOT_CONFIGURED",
+    state,
     current,
+    public: publicEvidence,
+    publicRequired,
     missing,
-    detail: missing.length ? `preuves manquantes: ${missing.join(", ")}` : "commit → deploy → app → DB corrélés",
+    detail: missing.length ? `preuves manquantes/incompatibles: ${missing.join(", ")}` : "commit → deploy → navigateur public → app → DB corrélés",
   };
 }
 
 export function startReleaseRecorder() {
   recordRelease({ source: "dashboard_boot" });
+  startPublicReleaseEvidence(publicReleaseExpectations);
   setInterval(() => recordRelease({ source: "periodic" }), 60_000).unref();
 }
