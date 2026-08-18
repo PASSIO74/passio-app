@@ -1,14 +1,14 @@
 // ═══════════════════════════════════════════════════════════════════════════
-// SUPERVISEUR — garde le centre de pilotage (et donc la sentinelle) VIVANT.
+// SUPERVISEUR — garde le centre de pilotage ET le worker IA local vivants.
 //
-// Un centre de pilotage qu'il faut relancer à la main ne surveille rien : la
-// panne qu'on rate est justement celle qui survient quand personne ne regarde.
-// Ce processus lance le serveur et le relance s'il meurt, avec un recul
-// progressif pour ne pas boucler à l'infini sur une erreur de démarrage.
+// Deux processus locaux, tous deux relancés s'ils meurent :
+//   1. server/index.js  → centre de pilotage + sentinelle
+//   2. aiworker.mjs     → orchestration Claude Code standard + Codex via GitHub
 //
-// Il ne fait QUE ça : pas de mise à jour automatique, pas de git, pas de réseau.
-// Un superviseur qui prend des initiatives est un superviseur qu'on n'ose plus
-// laisser tourner.
+// Le worker IA ne reçoit aucune connexion entrante : il surveille seulement les
+// branches `ai/request/*` du dépôt GitHub et produit des branches `ai/result/*`.
+// Cela permet à ChatGPT de donner une tâche depuis GitHub sans Passio Bridge ni
+// worker Claude isolé. Claude et Codex sont ceux de la session Windows standard.
 //
 //   node supervise.mjs           lancement direct (fenêtre visible)
 //   Sentinelle-Demarrage.vbs     lancement silencieux au démarrage de session
@@ -30,7 +30,6 @@ fs.writeFileSync(PIDFILE, String(process.pid));
 function log(msg) {
   const ligne = `[${new Date().toISOString()}] ${msg}\n`;
   try {
-    // Journal borné : ce processus vit des semaines, il ne doit pas remplir le disque.
     if (fs.existsSync(LOG) && fs.statSync(LOG).size > 2_000_000) {
       const garde = fs.readFileSync(LOG, "utf8").slice(-500_000);
       fs.writeFileSync(LOG, garde);
@@ -40,46 +39,38 @@ function log(msg) {
   process.stdout.write(ligne);
 }
 
-let child = null;
 let stopping = false;
-let echecs = 0;              // échecs CONSÉCUTIFS et rapides
-let demarreLe = 0;
+const procs = new Map();
 
-function delaiAvantRelance() {
-  // 2 s, 5 s, 15 s, 30 s, puis 60 s au plus. Un plantage immédiat et répété
-  // (port occupé, .env cassé) ne doit pas tourner en boucle serrée.
-  const paliers = [2000, 5000, 15_000, 30_000, 60_000];
-  return paliers[Math.min(echecs, paliers.length - 1)];
-}
-
-function demarrer() {
+function lancer(nom, fichier, extraEnv = {}) {
+  const etat = procs.get(nom) || { echecs: 0, demarreLe: 0, child: null };
   if (stopping) return;
-  demarreLe = Date.now();
-  child = spawn(process.execPath, [path.join(ROOT, "server", "index.js")], {
+  etat.demarreLe = Date.now();
+  etat.child = spawn(process.execPath, [path.join(ROOT, fichier)], {
     cwd: ROOT,
     windowsHide: true,
-    env: { ...process.env, DASH_SUPERVISED: "1" },
+    env: { ...process.env, ...extraEnv },
     stdio: ["ignore", "pipe", "pipe"],
   });
-  log(`serveur démarré (pid ${child.pid})`);
+  procs.set(nom, etat);
+  log(`${nom} démarré (pid ${etat.child.pid})`);
 
   const relayer = (flux) => (c) => {
     const t = c.toString().trimEnd();
-    if (t) log(flux + ": " + t.split("\n").slice(-6).join(" | "));
+    if (t) log(`${nom}/${flux}: ` + t.split("\n").slice(-6).join(" | "));
   };
-  child.stdout.on("data", relayer("out"));
-  child.stderr.on("data", relayer("err"));
+  etat.child.stdout.on("data", relayer("out"));
+  etat.child.stderr.on("data", relayer("err"));
 
-  child.on("exit", (code, signal) => {
-    child = null;
+  etat.child.on("exit", (code, signal) => {
+    etat.child = null;
     if (stopping) return;
-    const vecu = Date.now() - demarreLe;
-    // Un serveur qui a tenu plus d'une minute n'est pas « en échec de
-    // démarrage » : on repart franchement au lieu d'accumuler le recul.
-    if (vecu > 60_000) echecs = 0; else echecs++;
-    const attente = delaiAvantRelance();
-    log(`serveur arrêté (code ${code ?? signal}, après ${Math.round(vecu / 1000)} s) — relance dans ${attente / 1000} s`);
-    setTimeout(demarrer, attente);
+    const vecu = Date.now() - etat.demarreLe;
+    if (vecu > 60_000) etat.echecs = 0; else etat.echecs++;
+    const paliers = [2000, 5000, 15_000, 30_000, 60_000];
+    const attente = paliers[Math.min(etat.echecs, paliers.length - 1)];
+    log(`${nom} arrêté (code ${code ?? signal}, après ${Math.round(vecu / 1000)} s) — relance dans ${attente / 1000} s`);
+    setTimeout(() => lancer(nom, fichier, extraEnv), attente);
   });
 }
 
@@ -87,7 +78,9 @@ function arreter(motif) {
   if (stopping) return;
   stopping = true;
   log(`arrêt du superviseur (${motif})`);
-  if (child) { try { child.kill(); } catch {} }
+  for (const etat of procs.values()) {
+    if (etat.child) { try { etat.child.kill(); } catch {} }
+  }
   try { fs.unlinkSync(PIDFILE); } catch {}
   setTimeout(() => process.exit(0), 400);
 }
@@ -95,5 +88,6 @@ function arreter(motif) {
 process.on("SIGINT", () => arreter("SIGINT"));
 process.on("SIGTERM", () => arreter("SIGTERM"));
 
-log("superviseur en route — le centre de pilotage sera maintenu actif");
-demarrer();
+log("superviseur en route — pilotage + worker Claude/Codex maintenus actifs");
+lancer("serveur", path.join("server", "index.js"), { DASH_SUPERVISED: "1" });
+lancer("ai-worker", "aiworker.mjs", { PASSIO_AI_SUPERVISED: "1" });
