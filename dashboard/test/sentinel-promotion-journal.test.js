@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { recordPromotionTransaction, promotionJournalSnapshot } from "../server/sentinel-promotion-journal.js";
+import { recordPromotionTransaction, promotionJournalSnapshot, sanitizePromotionEntry } from "../server/sentinel-promotion-journal.js";
 
 test("journal keeps minimal causal transaction evidence", () => {
   const entry = recordPromotionTransaction({
@@ -25,6 +25,26 @@ test("journal keeps minimal causal transaction evidence", () => {
   assert.deepEqual(entry.suites, [{ suite: "authz", ok: true }]);
   assert.equal("token" in entry, false);
   assert.equal("detail" in entry.suites[0], false);
+});
+
+test("legacy rows are sanitized on read boundary", () => {
+  const legacy = sanitizePromotionEntry({
+    at: "2026-08-18T18:00:00.000Z",
+    incidentId: "inc_legacy",
+    diagnosisId: "diag_legacy",
+    status: "REJECTED",
+    suites: [{ suite: "smoke", ok: false, detail: "secret raw output" }],
+    token: "legacy-lock-token",
+    diagnosis: { analysis: "must never cross projection boundary" },
+    patch: "sensitive patch",
+  });
+
+  assert.equal(legacy.incidentId, "inc_legacy");
+  assert.deepEqual(legacy.suites, [{ suite: "smoke", ok: false }]);
+  assert.equal("token" in legacy, false);
+  assert.equal("diagnosis" in legacy, false);
+  assert.equal("patch" in legacy, false);
+  assert.equal("detail" in legacy.suites[0], false);
 });
 
 test("journal exposes rollback without production authority", () => {
