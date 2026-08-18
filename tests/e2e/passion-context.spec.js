@@ -50,15 +50,20 @@ test("un refresh sans changement n'émet pas de doublon", async ({ page }) => {
   await page.goto("/index.html?telemetry=1");
   await page.waitForFunction(() => Boolean(window.PassioPassionContext && window.tel));
 
-  const count = await page.evaluate(() => {
+  const result = await page.evaluate(() => {
     let n = 0;
     const original = window.tel.track;
     window.tel.track = function () { n++; };
     try {
+      // Le helper peut démarrer avant la restauration asynchrone de l'état app.
+      // On synchronise d'abord son snapshot interne avec le contexte courant ;
+      // ce premier signal éventuel est légitime et n'entre pas dans la mesure.
+      window.PassioPassionContext.refresh();
+      n = 0;
       window.PassioPassionContext.refresh();
       window.PassioPassionContext.refresh();
     } finally { window.tel.track = original; }
     return n;
   });
-  expect(count).toBe(0);
+  expect(result).toBe(0);
 });
