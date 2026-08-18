@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { config } from "./config.js";
 import { JsonDb } from "./jsondb.js";
+import { publicReleaseSnapshot, startPublicReleaseEvidence } from "./public-release-evidence.js";
 
 const db = new JsonDb("release-recorder", { snapshots: [] });
 const KEEP = Number(process.env.DASH_RELEASE_KEEP || 120);
@@ -57,20 +58,34 @@ export function releaseHistory(limit = 30) { return db.get().snapshots.slice(0, 
 
 export function releaseHealth() {
   const current = releaseSnapshot();
+  const publicEvidence = publicReleaseSnapshot();
   const missing = [];
   if (!current.revision) missing.push("commit");
   if (!current.appVersion) missing.push("frontend version");
   if (!current.dbVersion) missing.push("DB version");
   if (!current.deployId) missing.push("deploy id");
+
+  // En production, le navigateur public fait partie de la preuve critique :
+  // NOT_CONFIGURED/UNKNOWN/UNAVAILABLE/MISMATCH ne peuvent jamais produire LIVE.
+  const publicRequired = config.isProd;
+  const publicOk = publicEvidence.state === "LIVE";
+  if (publicRequired && !publicOk) missing.push(`public release:${publicEvidence.state}`);
+
+  const state = missing.length === 0 ? "LIVE"
+    : publicRequired && !publicOk ? "DEGRADED"
+    : missing.length <= 2 ? "DEGRADED" : "NOT_CONFIGURED";
   return {
-    state: missing.length === 0 ? "LIVE" : missing.length <= 2 ? "DEGRADED" : "NOT_CONFIGURED",
+    state,
     current,
+    public: publicEvidence,
+    publicRequired,
     missing,
-    detail: missing.length ? `preuves manquantes: ${missing.join(", ")}` : "commit → deploy → app → DB corrélés",
+    detail: missing.length ? `preuves manquantes/incompatibles: ${missing.join(", ")}` : "commit → deploy → navigateur public → app → DB corrélés",
   };
 }
 
 export function startReleaseRecorder() {
   recordRelease({ source: "dashboard_boot" });
+  startPublicReleaseEvidence();
   setInterval(() => recordRelease({ source: "periodic" }), 60_000).unref();
 }
