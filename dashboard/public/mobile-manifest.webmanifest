@@ -1,0 +1,12 @@
+{
+  "name": "PASSIO Pilot",
+  "short_name": "Passio Pilot",
+  "description": "Pilotage mobile du Control Center et de Sentinel",
+  "start_url": "/mobile.html",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0a0810",
+  "theme_color": "#0a0810",
+  "orientation": "portrait-primary",
+  "categories": ["productivity", "utilities"]
+}
