@@ -41,9 +41,7 @@ test("GO_LOCAL exige preuve fraîche, incidents exhaustifs et causalité exacte"
 });
 
 test("snapshot Guardian périmé bloque même si les gates locales sont PASS", () => {
-  const r = evaluateLocalPromotionEvidence(input({
-    guardian: guardian({ observedAt: NOW - 10 * 60_000 }),
-  }));
+  const r = evaluateLocalPromotionEvidence(input({ guardian: guardian({ observedAt: NOW - 10 * 60_000 }) }));
   assert.equal(r.decision, "HOLD");
   assert.ok(r.blockers.includes("guardian_snapshot_stale"));
 });
@@ -51,9 +49,15 @@ test("snapshot Guardian périmé bloque même si les gates locales sont PASS", (
 test("timestamp Guardian absent ou futur bloque fail-closed", () => {
   const missing = evaluateLocalPromotionEvidence(input({ guardian: guardian({ observedAt: null }) }));
   assert.ok(missing.blockers.includes("guardian_timestamp_missing"));
-
   const future = evaluateLocalPromotionEvidence(input({ guardian: guardian({ observedAt: NOW + 1_000 }) }));
   assert.ok(future.blockers.includes("guardian_timestamp_future"));
+});
+
+test("timestamp Guardian exactement à la limite reste acceptable puis bloque au-delà", () => {
+  const atLimit = evaluateLocalPromotionEvidence(input({ guardian: guardian({ observedAt: NOW - 5 * 60_000 }) }));
+  assert.equal(atLimit.decision, "GO_LOCAL");
+  const overLimit = evaluateLocalPromotionEvidence(input({ guardian: guardian({ observedAt: NOW - 5 * 60_000 - 1 }) }));
+  assert.ok(overLimit.blockers.includes("guardian_snapshot_stale"));
 });
 
 test("diagnostic sans incident causal exact bloque", () => {
@@ -63,22 +67,40 @@ test("diagnostic sans incident causal exact bloque", () => {
   assert.ok(r.blockers.includes("causal_incident_missing"));
 });
 
+test("diagnostic sans identité bloque même avec un incident causal", () => {
+  const r = evaluateLocalPromotionEvidence(input({ diagnosis: { meta: { incidentId: "inc_causal" } } }));
+  assert.equal(r.decision, "HOLD");
+  assert.ok(r.blockers.includes("diagnosis_identity_missing"));
+});
+
 test("réparation liée à un autre diagnostic ou incident bloque", () => {
-  const r = evaluateLocalPromotionEvidence(input({
-    repair: { diagnosisId: "diag_other", causalIncidentId: "inc_other" },
-  }));
+  const r = evaluateLocalPromotionEvidence(input({ repair: { diagnosisId: "diag_other", causalIncidentId: "inc_other" } }));
   assert.equal(r.decision, "HOLD");
   assert.ok(r.blockers.includes("repair_diagnosis_mismatch"));
   assert.ok(r.blockers.includes("repair_causal_incident_mismatch"));
 });
 
+test("incident causal fermé entre les snapshots bloque", () => {
+  const r = evaluateLocalPromotionEvidence(input({ incidents: [{ id: "inc_causal", status: "closed", severity: "high" }] }));
+  assert.equal(r.decision, "HOLD");
+  assert.ok(r.blockers.includes("causal_incident_not_open_critical"));
+});
+
 test("un incident high non causal reste bloquant", () => {
-  const r = evaluateLocalPromotionEvidence(input({
-    incidents: [
-      { id: "inc_causal", status: "open", severity: "high" },
-      { id: "inc_other", status: "open", severity: "critical" },
-    ],
-  }));
+  const r = evaluateLocalPromotionEvidence(input({ incidents: [
+    { id: "inc_causal", status: "open", severity: "high" },
+    { id: "inc_other", status: "open", severity: "critical" },
+  ] }));
+  assert.equal(r.decision, "HOLD");
+  assert.ok(r.blockers.includes("unrelated_critical_incidents"));
+});
+
+test("doublon d'un incident critique non causal ne peut pas disparaître du verdict", () => {
+  const r = evaluateLocalPromotionEvidence(input({ incidents: [
+    { id: "inc_causal", status: "open", severity: "high" },
+    { id: "inc_other", status: "open", severity: "high" },
+    { id: "inc_other", status: "open", severity: "high" },
+  ] }));
   assert.equal(r.decision, "HOLD");
   assert.ok(r.blockers.includes("unrelated_critical_incidents"));
 });
@@ -87,4 +109,12 @@ test("ensemble d'incidents non exhaustif reste HOLD", () => {
   const r = evaluateLocalPromotionEvidence(input({ incidentsComplete: false }));
   assert.equal(r.decision, "HOLD");
   assert.ok(r.blockers.includes("incident_set_incomplete"));
+});
+
+test("gate Guardian locale manquante reste HOLD", () => {
+  const g = guardian();
+  g.gates = g.gates.filter((x) => x.key !== "observation");
+  const r = evaluateLocalPromotionEvidence(input({ guardian: g }));
+  assert.equal(r.decision, "HOLD");
+  assert.ok(r.blockers.includes("missing_gate:observation"));
 });
