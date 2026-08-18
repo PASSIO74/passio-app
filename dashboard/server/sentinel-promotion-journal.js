@@ -21,28 +21,38 @@ function finite(value) {
   return Number.isFinite(value) ? value : null;
 }
 
-export function recordPromotionTransaction(input = {}) {
-  const entry = {
-    at: new Date().toISOString(),
-    incidentId: text(input.incidentId, 160),
-    diagnosisId: text(input.diagnosisId, 160),
-    repairBranch: text(input.repairBranch, 240),
-    repairSha: text(input.repairSha, 64),
-    beforeSha: text(input.beforeSha, 64),
-    afterSha: text(input.afterSha, 64),
-    status: text(input.status, 80),
-    ok: input.ok === true,
-    attempted: input.attempted === true,
-    rolledBack: input.rolledBack === true,
-    reason: text(input.reason, 240),
-    suites: (Array.isArray(input.suites) ? input.suites : []).slice(0, 20).map((suite) => ({
+// Whitelist the persisted/read schema in one place. This is intentionally also used
+// on READ so rows produced by an older prototype cannot re-expose removed fields.
+export function sanitizePromotionEntry(input = {}) {
+  const source = input && typeof input === "object" ? input : {};
+  return {
+    at: text(source.at, 64),
+    incidentId: text(source.incidentId, 160),
+    diagnosisId: text(source.diagnosisId, 160),
+    repairBranch: text(source.repairBranch, 240),
+    repairSha: text(source.repairSha, 64),
+    beforeSha: text(source.beforeSha, 64),
+    afterSha: text(source.afterSha, 64),
+    status: text(source.status, 80),
+    ok: source.ok === true,
+    attempted: source.attempted === true,
+    rolledBack: source.rolledBack === true,
+    reason: text(source.reason, 240),
+    suites: (Array.isArray(source.suites) ? source.suites : []).slice(0, 20).map((suite) => ({
       suite: text(suite?.suite, 100),
       ok: suite?.ok === true,
     })),
-    guardianObservedAt: text(input.guardianObservedAt, 64),
-    guardianAgeMs: finite(input.guardianAgeMs),
-    durationMs: finite(input.durationMs),
+    guardianObservedAt: text(source.guardianObservedAt, 64),
+    guardianAgeMs: finite(source.guardianAgeMs),
+    durationMs: finite(source.durationMs),
   };
+}
+
+export function recordPromotionTransaction(input = {}) {
+  const entry = sanitizePromotionEntry({
+    ...input,
+    at: new Date().toISOString(),
+  });
 
   db.update((data) => {
     data.entries = Array.isArray(data.entries) ? data.entries : [];
@@ -54,7 +64,9 @@ export function recordPromotionTransaction(input = {}) {
 
 export function promotionJournalSnapshot(limit = 50) {
   const safeLimit = Math.max(1, Math.min(Number(limit) || 50, 200));
-  const entries = (db.get().entries || []).slice(0, safeLimit);
+  const stored = db.get();
+  const rawEntries = Array.isArray(stored?.entries) ? stored.entries : [];
+  const entries = rawEntries.slice(0, safeLimit).map((entry) => sanitizePromotionEntry(entry));
   return {
     productionDeploy: false,
     runtimeActivation: false,
