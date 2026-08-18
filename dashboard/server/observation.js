@@ -55,6 +55,7 @@ export function noteSseHeartbeat({ id, clients }) {
   });
 }
 
+// Conservé pour permettre un vrai ACK navigateur plus tard sans casser l'API.
 export function acknowledgeSseHeartbeat(id) {
   db.update((d) => {
     d.sse = d.sse || {};
@@ -131,12 +132,14 @@ export function observationSnapshot() {
     canary = { state: "DEGRADED", detail: s.canary?.pendingId ? "canari en attente" : (s.canary?.lastError || "aucune preuve récente") };
   }
 
-  const sseAge = ageMs(s.sse?.lastAckAt);
+  // Une écriture SSE réussie prouve le seam Node → socket dashboard, pas le
+  // rendu UI. On l'appelle donc "livré au flux", jamais "ACK navigateur".
+  const sseFresh = ageMs(s.sse?.lastSentAt) <= 75_000;
   const sse = !s.sse?.clients
     ? { state: "DEGRADED", detail: "aucun navigateur dashboard connecté", clients: 0 }
-    : s.sse?.lastAckAt && sseAge <= 75_000
-      ? { state: "LIVE", detail: `heartbeat confirmé par ${s.sse.clients} client(s)`, at: s.sse.lastAckAt, clients: s.sse.clients }
-      : { state: "DEGRADED", detail: "heartbeat émis mais non confirmé par le navigateur", clients: s.sse.clients };
+    : sseFresh
+      ? { state: "LIVE", detail: `heartbeat livré au flux vers ${s.sse.clients} client(s)`, at: s.sse.lastSentAt, clients: s.sse.clients, browserAck: Boolean(s.sse.lastAckAt) }
+      : { state: "UNAVAILABLE", detail: "heartbeat SSE trop ancien", clients: s.sse.clients };
 
   const order = { LIVE: 0, DEGRADED: 1, NOT_CONFIGURED: 2, UNAVAILABLE: 3 };
   const parts = { dbRead, sse, canary };
