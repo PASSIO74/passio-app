@@ -45,22 +45,26 @@ Until the causal incident can be traced unambiguously through alert -> diagnosis
 
 ## BLOCKER 3 — PR #8 exact-head CI must finish green
 
-Current #8 head: `4c885f318e4eabb0571bc1cbea5d8548f4464729`.
+Current #8 head: `4506c9951ce3fbdc7fef1faa7488c0eb5983564a`.
 Base: exact #7 head `2c4501b9e0aeba7ede062b520ef77b8b431907aa`.
-CI #1796 is the current exact-head proof and must be COMPLETED SUCCESS before #8 is called green.
+CI #1799 is the current exact-head proof and must be COMPLETED SUCCESS before #8 is called green.
 
-Hardening already included on this head:
+Fresh compare proof: #8 is ahead of #7, behind 0, with exactly 10 changed files in the intended mobile/release/test surface.
+
+Hardening included on this head:
 
 - mobile service worker is network-first for static assets with cache only as offline fallback;
 - `/api/*` is never intercepted/cached;
 - root-scoped service worker intercepts only the four explicit mobile pilot assets, never the general Control Center surface;
-- public release commit matching accepts only hexadecimal commit refs and requires at least 12 common characters of proof;
+- public release commit matching accepts only hexadecimal commit refs;
+- 12 common commit characters is a NON-WEAKENABLE minimum security floor; environment configuration can request more proof but can never lower the floor;
+- `public-release-evidence` and `release-recorder` use the exact same proof constant so local buildId expectations cannot be derived with weaker commit proof than the public probe;
 - short/weak commit prefixes are rejected by tests;
 - cached/in-flight public release evidence is bound to the exact expected commit/build pair;
 - if expectations change during an in-flight probe, the old verdict is never reused for the new revision;
 - `releaseHealth()` rejects a cached LIVE result whose embedded expectations no longer match the current release expectations (`STALE_EXPECTATION`).
 
-Dashboard/Sentinel tests on #1796 are already SUCCESS, including the new in-flight expectation-change and mobile-SW confinement tests. AUTHZ/E2E/workflow completion are still required.
+Dashboard/Sentinel tests on #1799 are already SUCCESS. AUTHZ/E2E/workflow completion are still required.
 
 Any earlier #8 CI is evidence for an older head only and must not be used to clear this blocker.
 
@@ -80,6 +84,19 @@ Validated together:
 
 PR #9 is technically green, but merge still requires current base verification, branch-protection remediation and independent Friday review.
 
+## FOLLOW-UP — PR #10 Mobile Pilot entry
+
+PR #10 is intentionally stacked on #8 and does not replace #8's release proof.
+
+- head: `75acace7dc476ff627b846c6a092591a33625cad`;
+- base: current #8 head at creation `4506c9951ce3fbdc7fef1faa7488c0eb5983564a`;
+- changed files: exactly 2;
+- net `index.html` patch: one direct navigation link `Pilot` -> `/mobile.html`;
+- separate test file proves the link is navigation-only with no inline mutation/API action;
+- CI #1801 is in progress.
+
+Do not merge #10 before #8. Exact-head CI must be green and its base must be revalidated after #8 changes/merge.
+
 ## BLOCKER 4 — Production public release evidence must be configured and fresh
 
 PR #8 makes `PASSIO_PUBLIC_URL/release.json` part of production release health.
@@ -88,7 +105,7 @@ Before production release:
 - `PASSIO_PUBLIC_URL` must be configured to the real public app origin;
 - public `release.json` must be reachable no-store/no-cache;
 - expected commit must match the public manifest commit with strong commit-prefix proof;
-- if a buildId expectation is available, it must come from a local manifest tied to the same commit;
+- if a buildId expectation is available, it must come from a local manifest tied to the same commit with the same minimum proof floor;
 - cached proof must be aligned to the CURRENT expectation pair;
 - NOT_CONFIGURED / UNKNOWN / UNAVAILABLE / MISMATCH / STALE_EXPECTATION are never acceptable as PASS/LIVE.
 
