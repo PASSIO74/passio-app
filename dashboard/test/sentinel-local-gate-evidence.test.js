@@ -27,9 +27,14 @@ const repair = (over = {}) => ({
   incidentId: "inc_causal",
   incidentClusterKey: "cluster@rev",
   diagnosisId: "d1",
+  diagnosisEvidence: Object.freeze({
+    id: "d1",
+    incidentId: "inc_causal",
+    incidentClusterKey: "cluster@rev",
+    diagnosisTs: NOW - 1000,
+  }),
   ...over,
 });
-const diagnosis = (over = {}) => ({ id: "d1", meta: { incidentId: "inc_causal" }, ...over });
 const inventory = (over = {}) => ({
   complete: true,
   blockers: [],
@@ -43,7 +48,6 @@ function evaluate(rep = repair(), over = {}) {
   return evaluateLocalGateEvidence(rep, {
     guardian: guardian(),
     inventory: inventory(),
-    diagnosis: diagnosis(),
     now: NOW,
     ...over,
   });
@@ -74,26 +78,30 @@ test("read-only adapter HOLDs on any unrelated high/critical incident", () => {
   assert.deepEqual(r.localGate.unrelatedCriticalIncidentIds, ["inc_other"]);
 });
 
-test("read-only adapter HOLDs when canonical diagnosis is absent", () => {
-  const r = evaluateLocalGateEvidence(repair(), {
-    guardian: guardian(), inventory: inventory(), diagnosis: null, now: NOW,
-  });
+test("read-only adapter HOLDs when sealed diagnosis evidence is absent", () => {
+  const r = evaluate(repair({ diagnosisEvidence: null }));
   assert.equal(r.decision, "HOLD");
   assert.ok(r.blockers.includes("diagnosis_identity_missing"));
   assert.ok(r.blockers.includes("diagnosis_causal_incident_missing"));
-  assert.equal(r.evidence.canonicalDiagnosisFound, false);
+  assert.equal(r.evidence.sealedDiagnosisEvidence, false);
 });
 
-test("read-only adapter HOLDs when repair causal incident mismatches canonical diagnosis", () => {
+test("read-only adapter HOLDs when repair causal incident mismatches sealed diagnosis", () => {
   const r = evaluate(repair({ incidentId: "inc_other" }));
   assert.equal(r.decision, "HOLD");
   assert.ok(r.blockers.includes("repair_causal_incident_mismatch"));
 });
 
-test("read-only adapter HOLDs when repair diagnosis identity mismatches canonical diagnosis", () => {
+test("read-only adapter HOLDs when repair diagnosis identity mismatches sealed diagnosis", () => {
   const r = evaluate(repair({ diagnosisId: "d_other" }));
   assert.equal(r.decision, "HOLD");
   assert.ok(r.blockers.includes("repair_diagnosis_mismatch"));
+});
+
+test("read-only adapter HOLDs when repair cluster mismatches sealed diagnosis cluster", () => {
+  const r = evaluate(repair({ incidentClusterKey: "other@rev" }));
+  assert.equal(r.decision, "HOLD");
+  assert.ok(r.blockers.includes("repair_incident_cluster_mismatch"));
 });
 
 test("read-only adapter HOLDs on stale Guardian snapshot", () => {
@@ -108,14 +116,14 @@ test("read-only adapter HOLDs on future Guardian timestamp", () => {
   assert.ok(r.blockers.includes("guardian_timestamp_future"));
 });
 
-test("GO_LOCAL requires fresh Guardian, canonical causal diagnosis and complete incident evidence", () => {
+test("GO_LOCAL requires fresh Guardian, sealed causal diagnosis and complete incident evidence", () => {
   const r = evaluate();
   assert.equal(r.decision, "GO_LOCAL");
   assert.deepEqual(r.blockers, []);
   assert.equal(r.evidence.guardianDecision, "NO_GO");
   assert.equal(r.evidence.causalIncidentId, "inc_causal");
   assert.equal(r.evidence.repairIncidentId, "inc_causal");
-  assert.equal(r.evidence.canonicalDiagnosisFound, true);
+  assert.equal(r.evidence.sealedDiagnosisEvidence, true);
   assert.equal(r.policy.fullProductionGuardianDecision, "NO_GO");
   assert.equal(r.policy.adapterReadOnly, true);
   assert.equal(r.policy.runtimeActivated, false);
