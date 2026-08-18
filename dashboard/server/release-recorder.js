@@ -3,11 +3,15 @@ import fs from "node:fs";
 import path from "node:path";
 import { config } from "./config.js";
 import { JsonDb } from "./jsondb.js";
-import { publicReleaseSnapshot, startPublicReleaseEvidence, publicEvidenceExpectationKey } from "./public-release-evidence.js";
+import {
+  publicReleaseSnapshot,
+  startPublicReleaseEvidence,
+  publicEvidenceExpectationKey,
+  MIN_COMMIT_PROOF,
+} from "./public-release-evidence.js";
 
 const db = new JsonDb("release-recorder", { snapshots: [] });
 const KEEP = Number(process.env.DASH_RELEASE_KEEP || 120);
-const MIN_COMMIT_PROOF = Number(process.env.DASH_PUBLIC_RELEASE_MIN_COMMIT_CHARS || 12);
 
 function normalizeCommit(v) {
   const s = String(v || "").trim().toLowerCase();
@@ -58,7 +62,7 @@ export function publicReleaseExpectations() {
   const local = localReleaseManifest();
   const expectedCommit = process.env.COMMIT_REF || process.env.GITHUB_SHA || git.fullRevision || git.revision || null;
   // Un buildId local ne vaut comme attente que si son manifeste est lui-même lié
-  // au commit courant avec la même force de preuve que la sonde publique.
+  // au commit courant avec EXACTEMENT la même force de preuve que la sonde publique.
   const expectedBuildId = local?.commit && expectedCommit && sameCommit(local.commit, expectedCommit)
     ? local.buildId : null;
   return { expectedCommit, expectedBuildId };
