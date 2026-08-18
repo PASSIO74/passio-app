@@ -42,6 +42,7 @@ export const config = {
   supabaseAnonKey: env.SUPABASE_ANON_KEY || "",
 
   repoPath: resolveRepo(env.PASSIO_REPO_PATH),
+  passioPublicUrl: env.PASSIO_PUBLIC_URL || "",
   // Les mutations de code sont TOUJOURS refusées en production (sécurité).
   allowMutations: env.DASH_ALLOW_MUTATIONS === "true" && (env.DASH_ENV || "development") !== "production",
 
