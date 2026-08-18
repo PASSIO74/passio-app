@@ -33,7 +33,7 @@ test("mobile surface exposes only whitelisted test launcher and no arbitrary git
 });
 
 test("one unavailable domain cannot blank the whole mobile cockpit", () => {
-  const js = read("js/mobile.js\");
+  const js = read("js/mobile.js");
   assert.match(js, /Promise\.allSettled/);
   assert.doesNotMatch(js, /Promise\.all\(/);
   assert.match(js, /domaine\(s\) indisponible\(s\).*autres preuves restent affichées/);
