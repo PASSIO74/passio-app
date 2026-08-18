@@ -8,7 +8,7 @@ import * as checklist from "./checklist.js";
 import * as tests from "./tests.js";
 import { computeReadiness } from "./readiness.js";
 import { observationSnapshot } from "./observation.js";
-import { releaseSnapshot } from "./release-recorder.js";
+import { releaseHealth } from "./release-recorder.js";
 import { listAlerts } from "./alerts.js";
 import { listIncidentPackets } from "./incident-packets.js";
 import { kpi } from "./kpi.js";
@@ -27,14 +27,8 @@ function securityDomain(authz) {
 }
 
 function releaseDomain(r) {
-  const s = r || {};
-  if (!s.current) return domain("NOT_CONFIGURED", "Release", "Aucun snapshot de release disponible.");
-  const missing = [];
-  if (!s.current.revision) missing.push("commit");
-  if (!s.current.appVersion) missing.push("frontend");
-  if (!s.current.dbVersion) missing.push("DB");
-  if (missing.length) return domain("DEGRADED", "Release", `Chaîne partielle : preuve manquante ${missing.join(", ")}.`, s.current);
-  return domain("LIVE", "Release", `Commit ${s.current.revision} · frontend ${s.current.appVersion} · DB ${s.current.dbVersion}.`, s.current);
+  if (!r || !r.current) return domain("NOT_CONFIGURED", "Release", "Aucun snapshot de release disponible.");
+  return domain(r.state || "DEGRADED", "Release", r.detail || "État de release non qualifié.", r);
 }
 
 function technicalDomain(readiness) {
@@ -86,7 +80,6 @@ function buildRisks(domains, alerts, incidents) {
       ts: a.ts,
     });
   }
-  // Un incident critique ouvert doit rester visible même si son alerte a été acquittée.
   for (const i of incidents.filter((x) => x.status !== "closed" && (x.severity === "critical" || x.severity === "high")).slice(0, 20)) {
     if (risks.some((r) => r.incidentId === i.id)) continue;
     risks.push({
@@ -117,7 +110,7 @@ function actionFor(risk) {
 export async function controlCommand() {
   const authz = tests.authzSnapshot();
   const observation = observationSnapshot();
-  const release = releaseSnapshot();
+  const release = releaseHealth();
   const readiness = computeReadiness({
     overview: store.overview(),
     checklist: checklist.listChecklist(),
@@ -138,11 +131,16 @@ export async function controlCommand() {
   const incidents = listIncidentPackets(100);
   const risks = buildRisks(domains, alerts, incidents);
   const actions = risks.slice(0, 3).map((r, idx) => ({ rank: idx + 1, priority: r.priority, riskKey: r.key, action: actionFor(r) }));
-  const worst = Object.values(domains).reduce((a, b) => STATE_RANK[b.state] > STATE_RANK[a.state] ? b : a, domain("LIVE", "Global", ""));
+
+  // Le global ne mélange JAMAIS santé produit et panne technique. Les domaines
+  // critiques sont technique + sécurité + observation ; release et produit sont
+  // affichés et priorisés séparément, mais ne peuvent pas fabriquer un rouge système.
+  const critical = [domains.technical, domains.security, domains.observation];
+  const worst = critical.reduce((a, b) => STATE_RANK[b.state] > STATE_RANK[a.state] ? b : a, domain("LIVE", "Global", ""));
 
   return {
     generatedAt: new Date().toISOString(),
-    global: { state: worst.state, confidence: readiness.confiance, rule: "pire domaine critique + confiance de mesure" },
+    global: { state: worst.state, confidence: readiness.confiance, rule: "pire domaine critique (technique/sécurité/observation) + confiance de mesure" },
     domains,
     product: product && product.configured !== false ? {
       dau: product.dau ?? null, wau: product.wau ?? null, mau: product.mau ?? null,
