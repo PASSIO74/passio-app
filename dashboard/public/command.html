@@ -9,31 +9,27 @@
 </head>
 <body>
   <header class="cc-topbar">
-    <div class="cc-brand">
-      <div class="cc-logo" aria-hidden="true">P</div>
-      <div><strong>PASSIO</strong><span>Command Center</span></div>
-    </div>
-    <div class="cc-top-actions">
-      <span id="generatedAt" class="cc-muted">—</span>
-      <button id="refreshBtn" class="cc-btn" type="button">Actualiser</button>
-      <a class="cc-btn cc-btn-ghost" href="/">Centre complet</a>
-    </div>
+    <div class="cc-brand"><div class="cc-logo" aria-hidden="true">P</div><div><strong>PASSIO</strong><span>Command Center</span></div></div>
+    <div class="cc-top-actions"><span id="generatedAt" class="cc-muted">—</span><button id="refreshBtn" class="cc-btn" type="button">Actualiser</button><a class="cc-btn cc-btn-ghost" href="/">Centre complet</a></div>
   </header>
 
   <main class="cc-shell">
     <section class="cc-hero" aria-labelledby="globalTitle">
       <div>
         <div class="cc-eyebrow">État global prouvé</div>
-        <div class="cc-global-row">
-          <span id="globalState" class="cc-state cc-state-unknown">UNKNOWN</span>
-          <h1 id="globalTitle">Chargement du poste de commande…</h1>
-        </div>
+        <div class="cc-global-row"><span id="globalState" class="cc-state cc-state-unknown">UNKNOWN</span><h1 id="globalTitle">Chargement du poste de commande…</h1></div>
         <p id="globalRule" class="cc-muted">Les domaines critiques ne sont jamais moyennés.</p>
       </div>
-      <div class="cc-confidence">
-        <span>Confiance de mesure</span>
-        <strong id="confidence">—</strong>
+      <div class="cc-confidence"><span>Confiance de mesure</span><strong id="confidence">—</strong></div>
+    </section>
+
+    <section class="cc-guardian" aria-labelledby="guardianTitle">
+      <div class="cc-guardian-head">
+        <div><div class="cc-eyebrow">Sentinel 3 · Release Guardian</div><h2 id="guardianTitle">Décision de release</h2></div>
+        <span id="guardianDecision" class="cc-guardian-decision cc-guardian-unknown">—</span>
       </div>
+      <p id="guardianRule" class="cc-muted">Tous les gates critiques doivent être prouvés.</p>
+      <div id="guardianGates" class="cc-gates"></div>
     </section>
 
     <section aria-labelledby="domainsTitle">
@@ -42,39 +38,22 @@
     </section>
 
     <section class="cc-two-col">
-      <div class="cc-panel">
-        <div class="cc-section-head"><h2>Produit</h2><span id="productConfidence" class="cc-muted">—</span></div>
-        <div id="productKpis" class="cc-kpis"></div>
-      </div>
-      <div class="cc-panel">
-        <div class="cc-section-head"><h2>Charge opérateur</h2><span class="cc-muted">temps réel</span></div>
-        <div id="counts" class="cc-kpis"></div>
-      </div>
+      <div class="cc-panel"><div class="cc-section-head"><h2>Produit</h2><span id="productConfidence" class="cc-muted">—</span></div><div id="productKpis" class="cc-kpis"></div></div>
+      <div class="cc-panel"><div class="cc-section-head"><h2>Charge opérateur</h2><span class="cc-muted">temps réel</span></div><div id="counts" class="cc-kpis"></div></div>
     </section>
 
     <section class="cc-two-col cc-priority-zone">
-      <div class="cc-panel">
-        <div class="cc-section-head"><h2>Risques prioritaires</h2><span class="cc-muted">P0 → P3</span></div>
-        <div id="risks" class="cc-list"></div>
-      </div>
-      <div class="cc-panel cc-actions-panel">
-        <div class="cc-section-head"><h2>3 actions maintenant</h2><span class="cc-muted">déterministes</span></div>
-        <div id="actions" class="cc-list"></div>
-      </div>
+      <div class="cc-panel"><div class="cc-section-head"><h2>Risques prioritaires</h2><span class="cc-muted">P0 → P3</span></div><div id="risks" class="cc-list"></div></div>
+      <div class="cc-panel cc-actions-panel"><div class="cc-section-head"><h2>3 actions maintenant</h2><span class="cc-muted">déterministes</span></div><div id="actions" class="cc-list"></div></div>
     </section>
 
     <section class="cc-panel">
-      <div class="cc-section-head">
-        <h2>Qu’est-ce qui a changé ?</h2>
-        <button id="changesBtn" class="cc-link-btn" type="button">Recalculer la comparaison</button>
-      </div>
-      <p id="changesPeriod" class="cc-muted">Comparaison en cours…</p>
-      <div id="changes" class="cc-change-grid"></div>
+      <div class="cc-section-head"><h2>Qu’est-ce qui a changé ?</h2><button id="changesBtn" class="cc-link-btn" type="button">Recalculer la comparaison</button></div>
+      <p id="changesPeriod" class="cc-muted">Comparaison en cours…</p><div id="changes" class="cc-change-grid"></div>
     </section>
 
     <section id="errorBox" class="cc-error" hidden role="alert"></section>
   </main>
-
   <script type="module" src="js/command.js"></script>
 </body>
 </html>
