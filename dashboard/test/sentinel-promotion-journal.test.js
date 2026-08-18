@@ -1,6 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { recordPromotionTransaction, promotionJournalSnapshot, sanitizePromotionEntry } from "../server/sentinel-promotion-journal.js";
+import {
+  recordPromotionTransaction,
+  promotionJournalSnapshot,
+  sanitizePromotionEntry,
+  promotionJournalDocumentHealth,
+} from "../server/sentinel-promotion-journal.js";
 
 test("journal keeps minimal causal transaction evidence", () => {
   const entry = recordPromotionTransaction({
@@ -45,6 +50,19 @@ test("legacy rows are sanitized on read boundary", () => {
   assert.equal("diagnosis" in legacy, false);
   assert.equal("patch" in legacy, false);
   assert.equal("detail" in legacy.suites[0], false);
+});
+
+test("journal document health rejects malformed structures", () => {
+  for (const malformed of [null, [], {}, { entries: {} }]) {
+    assert.deepEqual(promotionJournalDocumentHealth(malformed), {
+      available: false,
+      reason: "journal_invalid_schema",
+    });
+  }
+  assert.deepEqual(promotionJournalDocumentHealth({ entries: [] }), {
+    available: true,
+    reason: null,
+  });
 });
 
 test("journal exposes rollback without production authority", () => {
