@@ -66,6 +66,35 @@ function guardianTiming(policy = {}) {
   };
 }
 
+export function classifyPromotionTransaction(tx = {}) {
+  if (tx?.attempted !== true) {
+    return {
+      status: "HOLD_OPERATIONAL",
+      recordsLearning: false,
+      auditEvent: "sentinel_autopilot_held",
+    };
+  }
+  if (tx?.ok === true) {
+    return {
+      status: "PROMOTED_LOCAL",
+      recordsLearning: true,
+      auditEvent: "sentinel_autopilot_promoted",
+    };
+  }
+  if (tx?.rolledBack === true) {
+    return {
+      status: "ROLLED_BACK",
+      recordsLearning: true,
+      auditEvent: "sentinel_autopilot_rejected",
+    };
+  }
+  return {
+    status: "REJECTED",
+    recordsLearning: true,
+    auditEvent: "sentinel_autopilot_rejected",
+  };
+}
+
 export async function runPromotionTransaction(repair, {
   ops = realAutopilotOps,
   targetBranch = TARGET_BRANCH,
@@ -176,7 +205,8 @@ export async function executeAutopilotPromotion(repair, options = {}) {
 
   broadcast("sentinel_autopilot", { phase: "start", branch: repair.branch, sha: repair.sha });
   const tx = await runPromotionTransaction(repair, options);
-  const status = tx.ok ? "PROMOTED_LOCAL" : (tx.rolledBack ? "ROLLED_BACK" : "REJECTED");
+  const classification = classifyPromotionTransaction(tx);
+  const status = classification.status;
   const timing = guardianTiming(policy);
   const journalWriter = options.recordJournal || recordPromotionTransaction;
   try {
@@ -205,22 +235,26 @@ export async function executeAutopilotPromotion(repair, options = {}) {
     }, "sentinelle-autopilot");
   }
 
-  const outcome = registerAutopilotOutcome(repair, {
-    ok: Boolean(tx.ok),
-    recurrence: false,
-    reason: tx.reason || (tx.ok ? "verified_local_promotion" : "promotion_failed"),
-  });
-  audit(tx.ok ? "sentinel_autopilot_promoted" : "sentinel_autopilot_rejected", {
+  const outcome = classification.recordsLearning
+    ? registerAutopilotOutcome(repair, {
+      ok: Boolean(tx.ok),
+      recurrence: false,
+      reason: tx.reason || (tx.ok ? "verified_local_promotion" : "promotion_failed"),
+    })
+    : null;
+
+  audit(classification.auditEvent, {
     branch: repair.branch,
     repairSha: repair.sha,
     beforeSha: tx.beforeSha || null,
     afterSha: tx.afterSha || null,
+    attempted: tx.attempted === true,
     rolledBack: Boolean(tx.rolledBack),
     reason: tx.reason || null,
     suites: (tx.suites || []).map((suite) => ({ suite: suite.suite, ok: suite.ok === true })),
   }, "sentinelle-autopilot");
   broadcast("sentinel_autopilot", {
-    phase: "end", branch: repair.branch, ok: Boolean(tx.ok),
+    phase: "end", branch: repair.branch, ok: Boolean(tx.ok), status,
     rolledBack: Boolean(tx.rolledBack), reason: tx.reason || null,
   });
   return { ...tx, status, learning: outcome, policy };
