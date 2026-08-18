@@ -19,6 +19,13 @@ test("mobile service worker never caches API responses", () => {
   assert.match(sw, /pathname\.startsWith\("\/api\/"\).*return/);
 });
 
+test("mobile static assets are network-first with cache only as offline fallback", () => {
+  const sw = read("mobile-sw.js");
+  assert.match(sw, /await fetch\(event\.request, \{ cache: "no-cache" \}\)/);
+  assert.match(sw, /await caches\.match\(event\.request\)/);
+  assert.doesNotMatch(sw, /caches\.match\(event\.request\)\.then\(hit => hit \|\| fetch/);
+});
+
 test("mobile surface exposes only whitelisted test launcher and no arbitrary git console", () => {
   const js = read("js/mobile.js");
   assert.match(js, /\/tests\/run/);
@@ -26,7 +33,7 @@ test("mobile surface exposes only whitelisted test launcher and no arbitrary git
 });
 
 test("one unavailable domain cannot blank the whole mobile cockpit", () => {
-  const js = read("js/mobile.js");
+  const js = read("js/mobile.js\");
   assert.match(js, /Promise\.allSettled/);
   assert.doesNotMatch(js, /Promise\.all\(/);
   assert.match(js, /domaine\(s\) indisponible\(s\).*autres preuves restent affichées/);
