@@ -63,11 +63,27 @@ export function recordPromotionTransaction(input = {}) {
 }
 
 export function promotionJournalSnapshot(limit = 50) {
+  const health = db.health();
+  if (health.available !== true) {
+    return {
+      available: false,
+      reason: "journal_unavailable",
+      productionDeploy: false,
+      runtimeActivation: false,
+      retentionLimit: KEEP,
+      count: 0,
+      latest: null,
+      entries: [],
+    };
+  }
+
   const safeLimit = Math.max(1, Math.min(Number(limit) || 50, 200));
   const stored = db.get();
   const rawEntries = Array.isArray(stored?.entries) ? stored.entries : [];
   const entries = rawEntries.slice(0, safeLimit).map((entry) => sanitizePromotionEntry(entry));
   return {
+    available: true,
+    reason: null,
     productionDeploy: false,
     runtimeActivation: false,
     retentionLimit: KEEP,
