@@ -44,6 +44,10 @@ dashboard/.claude/
 .passio/reviews/*
 !.passio/reviews/README.md
 
+# Worker local Claude Code + Codex : état, logs, worktrees et dossiers de revue.
+# Strictement local à la session Windows, jamais versionné.
+.passio/ai-worker/
+
 # Archives de sauvegarde (scripts/sauvegarde-donnees.js) : contenu RÉEL des
 # utilisateurs — messages, photos, et avec --avec-comptes les e-mails. Rien de
 # tout cela ne doit entrer dans un dépôt, a fortiori public. Le script est
