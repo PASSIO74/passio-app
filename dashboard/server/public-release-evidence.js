@@ -6,7 +6,9 @@ import { config } from "./config.js";
 
 const CACHE_MS = Number(process.env.DASH_PUBLIC_RELEASE_CACHE_S || 30) * 1000;
 const TIMEOUT_MS = Number(process.env.DASH_PUBLIC_RELEASE_TIMEOUT_MS || 3500);
-const MIN_COMMIT_PROOF = Number(process.env.DASH_PUBLIC_RELEASE_MIN_COMMIT_CHARS || 12);
+// 12 caractères est un PLANCHER de sécurité, jamais un réglage abaissable.
+// L'environnement peut demander davantage de preuve, pas en demander moins.
+export const MIN_COMMIT_PROOF = Math.max(12, Number(process.env.DASH_PUBLIC_RELEASE_MIN_COMMIT_CHARS || 12) || 12);
 let cached = null;
 let cachedAt = 0;
 let cachedKey = null;
