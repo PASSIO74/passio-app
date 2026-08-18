@@ -67,6 +67,7 @@ export function evaluateLocalPromotionEvidence({
     maxGuardianAgeMs,
     localGate,
     policy: {
+      ...localGate.policy,
       productionDeploy: false,
       runtimeActivated: false,
       requiresFreshGuardian: true,
