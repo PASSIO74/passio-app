@@ -62,28 +62,30 @@ BLOCKER 2 remains unresolved for runtime until all of the following happen in a 
 
 Until then, current fail-closed HOLD behavior remains the runtime behavior.
 
-## BLOCKER 3 — PR #8 exact-head CI must finish green
+## RESOLVED EVIDENCE — PR #8 exact-head CI
 
 Current #8 head: `4506c9951ce3fbdc7fef1faa7488c0eb5983564a`.
 Base: exact #7 head `2c4501b9e0aeba7ede062b520ef77b8b431907aa`.
-CI #1799 is the current exact-head proof and must be COMPLETED SUCCESS before #8 is called green.
+CI #1799: COMPLETED SUCCESS on this exact head.
 
 Fresh compare proof: #8 is ahead of #7, behind 0, with exactly 10 changed files in the intended mobile/release/test surface.
 
-Hardening included on this head:
+Validated together:
 
-- mobile service worker is network-first for static assets with cache only as offline fallback;
-- `/api/*` is never intercepted/cached;
-- root-scoped service worker intercepts only the four explicit mobile pilot assets, never the general Control Center surface;
-- public release commit matching accepts only hexadecimal commit refs;
-- 12 common commit characters is a NON-WEAKENABLE minimum security floor; environment configuration can request more proof but can never lower the floor;
-- `public-release-evidence` and `release-recorder` use the exact same proof constant so local buildId expectations cannot be derived with weaker commit proof than the public probe;
-- cached/in-flight public release evidence is bound to the exact expected commit/build pair;
-- changed expectations during an in-flight probe force a fresh probe;
-- `releaseHealth()` rejects cached LIVE evidence whose expectations no longer match (`STALE_EXPECTATION`).
+- mobile service worker network-first for explicit mobile assets with cache only as offline fallback;
+- `/api/*` never intercepted/cached;
+- root-scoped service worker confined to four explicit mobile pilot assets;
+- public release commit refs hexadecimal only;
+- 12 common commit characters is a NON-WEAKENABLE minimum security floor;
+- `public-release-evidence` and `release-recorder` use the exact same proof constant;
+- cached/in-flight evidence bound to exact expected commit/build pair;
+- changed expectations force a fresh probe;
+- `releaseHealth()` rejects stale cached LIVE evidence as `STALE_EXPECTATION`;
+- dashboard/Sentinel tests SUCCESS;
+- AUTHZ-CRITICAL SUCCESS;
+- full workflow `CI & Deploy` SUCCESS.
 
-Dashboard/Sentinel tests and AUTHZ-CRITICAL on #1799 are SUCCESS; E2E/workflow completion are still required.
-Any earlier #8 CI is evidence for an older head only.
+PR #8 is technically green. Merge remains blocked by current branch-protection governance, fresh Friday review, and production evidence configuration requirements below.
 
 ## RESOLVED EVIDENCE — PR #9 exact-head CI
 
@@ -114,7 +116,7 @@ PR #10 is intentionally stacked on #8 and does not replace #8's release proof.
 
 Do not merge #10 before #8. Revalidate its base after #8 merge/movement.
 
-## BLOCKER 4 — Production public release evidence must be configured and fresh
+## BLOCKER 3 — Production public release evidence must be configured and fresh
 
 PR #8 makes `PASSIO_PUBLIC_URL/release.json` part of production release health.
 Before production release:
