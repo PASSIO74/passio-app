@@ -5,8 +5,19 @@ import { config } from "./config.js";
 import { JsonDb } from "./jsondb.js";
 import { store } from "./store.js";
 
-const db = new JsonDb("incident-packets", { items: [] });
 const KEEP = Number(process.env.DASH_INCIDENT_KEEP || 200);
+const HARD_KEEP = Math.max(KEEP, Number(process.env.DASH_INCIDENT_HARD_KEEP || Math.max(KEEP * 5, 1000)));
+const db = new JsonDb("incident-packets", {
+  items: [],
+  retention: {
+    schema: 1,
+    historyTrusted: true,
+    legacyUnproven: false,
+    criticalOverflow: false,
+    criticalOverflowCount: 0,
+    initializedAt: new Date().toISOString(),
+  },
+});
 const CLUSTER_MS = Number(process.env.DASH_INCIDENT_CLUSTER_MIN || 15) * 60_000;
 
 export const INCIDENT_PHASES = ["DETECTED", "CONFIRMED", "CORRELATED", "DIAGNOSED", "FIX_READY", "VERIFIED", "RESOLVED"];
@@ -15,6 +26,57 @@ const NEXT = Object.fromEntries(INCIDENT_PHASES.slice(0, -1).map((p, i) => [p, I
 function safeText(v, max = 500) {
   if (v === null || v === undefined) return null;
   return String(v).replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, max);
+}
+
+function isCriticalOpen(incident) {
+  return incident && incident.status !== "closed"
+    && (incident.severity === "critical" || incident.severity === "high");
+}
+
+function ensureRetention(d) {
+  if (!d.retention || d.retention.schema !== 1) {
+    d.retention = {
+      schema: 1,
+      historyTrusted: false,
+      legacyUnproven: true,
+      criticalOverflow: false,
+      criticalOverflowCount: 0,
+      initializedAt: new Date().toISOString(),
+    };
+  }
+  return d.retention;
+}
+
+function pruneIncidents(d) {
+  d.items = d.items || [];
+  const retention = ensureRetention(d);
+
+  // La rétention nominale élimine d'abord les éléments qui ne sont PAS des
+  // incidents high/critical ouverts. Un incident critique ouvert ne doit jamais
+  // disparaître silencieusement parce que 200 événements plus récents existent.
+  while (d.items.length > KEEP) {
+    let removable = -1;
+    for (let i = d.items.length - 1; i >= 0; i--) {
+      if (!isCriticalOpen(d.items[i])) { removable = i; break; }
+    }
+    if (removable < 0) break;
+    d.items.splice(removable, 1);
+  }
+
+  // Protection mémoire ultime : si le registre est composé de plus de HARD_KEEP
+  // incidents high/critical ouverts, on borne malgré tout la mémoire mais on
+  // grave l'overflow. Dès lors la complétude historique est définitivement non
+  // prouvée et tout gate local doit rester HOLD.
+  if (d.items.length > HARD_KEEP) {
+    const dropped = d.items.splice(HARD_KEEP);
+    const droppedCritical = dropped.filter(isCriticalOpen);
+    if (droppedCritical.length) {
+      retention.criticalOverflow = true;
+      retention.criticalOverflowCount = (retention.criticalOverflowCount || 0) + droppedCritical.length;
+      retention.lastCriticalOverflowAt = new Date().toISOString();
+    }
+  }
+  retention.lastPrunedAt = new Date().toISOString();
 }
 
 function repoRevision() {
@@ -91,8 +153,8 @@ export function buildIncidentPacket(alert) {
     id,
     createdAt: new Date(ts).toISOString(),
     lastSeenAt: new Date(ts).toISOString(),
-    status: "open",                 // compat cockpit historique
-    phase: "DETECTED",              // machine d'état Sentinel 3
+    status: "open",
+    phase: "DETECTED",
     phaseHistory: [{ phase: "DETECTED", at: new Date(ts).toISOString(), evidence: "alerte primaire" }],
     severity: alert.level || "info",
     occurrences: 1,
@@ -140,6 +202,7 @@ export function recordIncident(alert) {
   let result = incoming;
   db.update((d) => {
     d.items = d.items || [];
+    ensureRetention(d);
     const now = Date.parse(incoming.createdAt);
     const cluster = d.items.find((x) =>
       x.status !== "closed" && x.clusterKey === incoming.clusterKey
@@ -152,22 +215,46 @@ export function recordIncident(alert) {
       cluster.signal = { ...cluster.signal, alertId: incoming.signal.alertId, message: incoming.signal.message || cluster.signal.message };
       const c = confidenceFor(cluster); cluster.confidence = c.level; cluster.confidenceBasis = c.basis;
       result = cluster;
+      pruneIncidents(d);
       return;
     }
     d.items.unshift(incoming);
-    if (d.items.length > KEEP) d.items.length = KEEP;
+    pruneIncidents(d);
   });
   return result;
 }
 
-export function listIncidentPackets(limit = 50) { return db.get().items.slice(0, limit); }
-export function getIncidentPacket(id) { return db.get().items.find((x) => x.id === id) || null; }
+export function listIncidentPackets(limit = 50) { return (db.get().items || []).slice(0, limit); }
+export function getIncidentPacket(id) { return (db.get().items || []).find((x) => x.id === id) || null; }
+
+export function incidentRetentionSnapshot() {
+  const d = db.get();
+  const r = d.retention || null;
+  const historyTrusted = r?.historyTrusted === true;
+  const criticalOverflow = r?.criticalOverflow === true;
+  return {
+    schema: r?.schema || 0,
+    historyTrusted,
+    legacyUnproven: r ? r.legacyUnproven === true : true,
+    criticalOverflow,
+    criticalOverflowCount: Number(r?.criticalOverflowCount || 0),
+    lastCriticalOverflowAt: r?.lastCriticalOverflowAt || null,
+    stored: (d.items || []).length,
+    keep: KEEP,
+    hardKeep: HARD_KEEP,
+    complete: historyTrusted && !criticalOverflow,
+    reason: !historyTrusted ? "historical_completeness_unproven"
+      : criticalOverflow ? "critical_retention_overflow"
+      : null,
+  };
+}
 
 export function transitionIncident(id, nextPhase, opts = {}) {
   nextPhase = String(nextPhase || "").toUpperCase();
   let out = null;
   db.update((d) => {
-    const it = d.items.find((x) => x.id === id);
+    ensureRetention(d);
+    const it = (d.items || []).find((x) => x.id === id);
     if (!it) return;
     const current = it.phase || "DETECTED";
     if (!canTransitionIncident(current, nextPhase)) {
@@ -181,8 +268,6 @@ export function transitionIncident(id, nextPhase, opts = {}) {
       note: safeText(opts.note || null, 1000),
       actor: safeText(opts.actor || null, 120),
     };
-    // Chaque transition au-delà de DETECTED doit porter au moins une preuve ou
-    // une note explicative ; sinon le statut devient une décoration sans valeur.
     if (nextPhase !== "RESOLVED" && !entry.evidence && !entry.note) {
       const e = new Error("Une preuve ou note est requise pour faire avancer un incident.");
       e.code = 400; throw e;
@@ -194,6 +279,7 @@ export function transitionIncident(id, nextPhase, opts = {}) {
       it.status = "closed";
       it.closedAt = entry.at;
       it.resolution = safeText(opts.resolution || opts.note || opts.evidence || "résolu après vérification", 1000);
+      pruneIncidents(d);
     }
     out = it;
   });
