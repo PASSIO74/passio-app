@@ -1,0 +1,6 @@
+{
+  "protocol": "passio-ai-v1",
+  "id": "e2e-credit-20260818-1117",
+  "title": "Validation E2E apres recharge credits Claude",
+  "instruction": "Test complet non destructif apres recharge des credits. Ne modifie aucun fichier applicatif, test, configuration, migration ni secret. Cree uniquement AI_E2E_VALIDATION.md a la racine du worktree. Le fichier doit confirmer les etapes reelles: Claude Code standard local execute l analyse initiale; Codex local effectue une revue independante; Claude Code reconcilie la revue; Codex local donne le verdict final. Ajoute un verdict global PASS/FAIL sur ChatGPT -> GitHub -> Claude Code -> Codex -> Claude Code -> Codex -> GitHub. N effectue aucun deploiement ni acces production. Le worker ne doit pousser la branche resultat que si le verdict final Codex est OK."
+}
