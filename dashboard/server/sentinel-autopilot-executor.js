@@ -52,13 +52,6 @@ function tail(v, n = 1200) {
   return s.length > n ? "…" + s.slice(-n) : s;
 }
 
-/**
- * Exécute uniquement la transaction git + tests. Exportée pour tests avec ops
- * injectées : aucun test unitaire ne touche le vrai dépôt.
- *
- * Le verrou process-local est acquis APRÈS validation du nom de branche mais
- * AVANT le premier accès git, puis libéré en finally pour toute issue.
- */
 export async function runPromotionTransaction(repair, {
   ops = realAutopilotOps,
   targetBranch = TARGET_BRANCH,
@@ -94,7 +87,6 @@ export async function runPromotionTransaction(repair, {
       activePromotion: lock?.active || null,
     };
   }
-  result.lockToken = lock.token || null;
 
   try {
     const st = await ops.status();
@@ -150,15 +142,10 @@ export async function runPromotionTransaction(repair, {
     result.durationMs = Date.now() - result.startedAt;
     return result;
   } finally {
-    const released = releaseLock(lock.token);
-    result.lockReleased = released?.ok === true;
+    releaseLock(lock.token);
   }
 }
 
-/**
- * Point d'entrée politique + transaction. En production et si les mutations ne
- * sont pas explicitement permises, il HOLD. Les gates ne sont jamais contournés.
- */
 export async function executeAutopilotPromotion(repair, options = {}) {
   const policy = options.policyDecision || autopilotDecision(repair, options.guardian, options.learning);
   if (policy.decision !== "PROMOTE_LOCAL") {
