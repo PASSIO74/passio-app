@@ -6,6 +6,7 @@ import { config } from "./config.js";
 
 const CACHE_MS = Number(process.env.DASH_PUBLIC_RELEASE_CACHE_S || 30) * 1000;
 const TIMEOUT_MS = Number(process.env.DASH_PUBLIC_RELEASE_TIMEOUT_MS || 3500);
+const MIN_COMMIT_PROOF = Number(process.env.DASH_PUBLIC_RELEASE_MIN_COMMIT_CHARS || 12);
 let cached = null;
 let cachedAt = 0;
 let inflight = null;
@@ -20,11 +21,18 @@ function normalizeBase(url) {
   } catch { return null; }
 }
 
+function normalizeCommit(v) {
+  const s = String(v || "").trim().toLowerCase();
+  return /^[0-9a-f]{7,64}$/.test(s) ? s : null;
+}
+
 function sameCommit(a, b) {
-  if (!a || !b) return false;
-  const x = String(a).trim().toLowerCase();
-  const y = String(b).trim().toLowerCase();
-  return x.startsWith(y) || y.startsWith(x);
+  const x = normalizeCommit(a);
+  const y = normalizeCommit(b);
+  if (!x || !y) return false;
+  const common = Math.min(x.length, y.length);
+  if (common < MIN_COMMIT_PROOF) return false;
+  return x.slice(0, common) === y.slice(0, common);
 }
 
 export function publicReleaseConfigured() {
