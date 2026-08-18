@@ -17,7 +17,7 @@ async function req(method, path, body) {
 }
 
 const aiIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/><circle cx="12" cy="12" r="4"/><path d="M10.5 12h3M12 10.5v3"/></svg>`;
-const statusLabel = (s) => ({ done:"Terminé", running:"En cours", queued:"En attente", failed:"Échec", supervised:"Supervisé", configured:"Configuré", external:"Externe", unknown:"Non vérifié" }[s] || s || "—");
+const statusLabel = (s) => ({ done:"Terminé", running:"En cours", queued:"En attente", failed:"Échec", supervised:"Supervisé", configured:"Configuré", external:"Externe", historical:"Historique", unknown:"Non vérifié" }[s] || s || "—");
 const statusClass = (s) => ["done","supervised","configured"].includes(s) ? "ok" : s === "failed" ? "bad" : s === "running" ? "run" : "muted";
 
 let me = null;
@@ -107,6 +107,7 @@ function taskRows(tasks = []) {
 
 function render(s) {
   const a = s.agents || {};
+  const declared = s.manifest?.agents || {};
   const body = $(".orch-body", panel);
   const mutate = can("git_mutate") && s.mutationsEnabled && !s.production;
   body.innerHTML = `
@@ -114,10 +115,12 @@ function render(s) {
       <div class="orch-source"><span>Source de vérité</span><strong>${esc(s.sourceOfTruth?.repository || "PASSIO74/passio-app")}</strong><code>${esc(s.sourceOfTruth?.production_branch || "main")}</code></div>
       <div class="orch-counter"><b>${s.counts?.running || 0}</b><span>en cours</span></div><div class="orch-counter"><b>${s.counts?.queued || 0}</b><span>en attente</span></div><div class="orch-counter"><b>${s.counts?.done || 0}</b><span>terminées</span></div><div class="orch-counter bad"><b>${s.counts?.failed || 0}</b><span>échecs</span></div>
     </section>
-    <section><div class="orch-section-head"><div><h3>Moteurs</h3><p>État honnête : « configuré » ne signifie pas « pilotable localement ».</p></div><span class="orch-worker ${s.local?.supervised ? "ok" : "warn"}">${s.local?.supervised ? "Superviseur local actif" : "Superviseur local non vérifié"}</span></div>
+    <section><div class="orch-section-head"><div><h3>Toutes les IA utilisées par Passio</h3><p>Les moteurs actifs et les outils historiques sont distingués pour garder un état fidèle du projet.</p></div><span class="orch-worker ${s.local?.supervised ? "ok" : "warn"}">${s.local?.supervised ? "Superviseur local actif" : "Superviseur local non vérifié"}</span></div>
       <div class="orch-agents">
         ${agentCard("chatgpt","ChatGPT","Orchestrateur / arbitre",a.chatgpt)}
+        ${agentCard("claude","Claude","Assistant IA Anthropic",{ status:"external", truthfulLabel: declared.claude?.usage || "Utilisé pour analyses et raisonnements ponctuels." })}
         ${agentCard("claude_code","Claude Code","Ingénieur production principal",a.claude_code)}
+        ${agentCard("claude_design","Claude Design","Design UI historique",{ status:"historical", truthfulLabel: declared.claude_design?.usage || "Utilisé auparavant pour des explorations et refontes visuelles de PASSIO." })}
         ${agentCard("lovable","Lovable","Design Lab UI/UX",a.lovable)}
         ${agentCard("codex","Codex","Reviewer indépendant",a.codex)}
       </div>

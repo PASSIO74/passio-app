@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "activated_at": "2026-08-18",
   "source_of_truth": {
     "repository": "PASSIO74/passio-app",
@@ -17,6 +17,15 @@
     ]
   },
   "agents": {
+    "claude": {
+      "role": "Anthropic general reasoning assistant",
+      "usage": "historical and ad-hoc analysis",
+      "preferred_for": [
+        "reasoning",
+        "product analysis",
+        "cross-checking"
+      ]
+    },
     "claude_code": {
       "role": "principal production engineer",
       "preferred_for": [
@@ -27,6 +36,19 @@
         "refactoring",
         "tests",
         "production integration"
+      ]
+    },
+    "claude_design": {
+      "role": "historical UI design assistant",
+      "usage": "visual redesign and UI exploration previously integrated into PASSIO",
+      "preferred_for": [
+        "visual redesign",
+        "UI exploration",
+        "design handoff"
+      ],
+      "constraints": [
+        "historical tool, not current production source of truth",
+        "production changes must still follow repository review rules"
       ]
     },
     "lovable": {
@@ -63,7 +85,7 @@
     "backend": ["claude_code", "codex"],
     "security": ["claude_code", "codex"],
     "architecture": ["claude_code", "codex"],
-    "product_exploration": ["lovable", "claude_code"],
+    "product_exploration": ["lovable", "claude", "claude_code"],
     "final_arbitration": ["ChatGPT"]
   },
   "integration_policy": {
