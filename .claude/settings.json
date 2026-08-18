@@ -1,5 +1,4 @@
 {
-  "apiKeyHelper": "powershell.exe -NoProfile -Command \"$k=[Environment]::GetEnvironmentVariable('ANTHROPIC_API_KEY','User'); if($k){Write-Output $k}else{exit 1}\"",
   "hooks": {
     "PreToolUse": [
       {
