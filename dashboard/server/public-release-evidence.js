@@ -9,7 +9,9 @@ const TIMEOUT_MS = Number(process.env.DASH_PUBLIC_RELEASE_TIMEOUT_MS || 3500);
 const MIN_COMMIT_PROOF = Number(process.env.DASH_PUBLIC_RELEASE_MIN_COMMIT_CHARS || 12);
 let cached = null;
 let cachedAt = 0;
+let cachedKey = null;
 let inflight = null;
+let inflightKey = null;
 
 function normalizeBase(url) {
   try {
@@ -33,6 +35,10 @@ function sameCommit(a, b) {
   const common = Math.min(x.length, y.length);
   if (common < MIN_COMMIT_PROOF) return false;
   return x.slice(0, common) === y.slice(0, common);
+}
+
+export function publicEvidenceExpectationKey({ expectedCommit = null, expectedBuildId = null } = {}) {
+  return JSON.stringify([String(expectedCommit || "").trim().toLowerCase(), String(expectedBuildId || "").trim()]);
 }
 
 export function publicReleaseConfigured() {
@@ -72,13 +78,30 @@ export function evaluatePublicRelease({ release, expectedCommit = null, expected
 
 export async function refreshPublicReleaseEvidence({ force = false, expectedCommit = null, expectedBuildId = null } = {}) {
   const now = Date.now();
-  if (!force && cached && now - cachedAt < CACHE_MS) return cached;
-  if (inflight) return inflight;
+  const key = publicEvidenceExpectationKey({ expectedCommit, expectedBuildId });
+  if (!force && cached && cachedKey === key && now - cachedAt < CACHE_MS) return cached;
+
+  if (inflight) {
+    if (inflightKey === key) return inflight;
+    // Les attentes ont changé pendant une requête en vol. On ne lance pas deux
+    // probes concurrentes, mais on ne réutilise JAMAIS le verdict de l'ancienne
+    // révision : attendre sa fin puis sonder explicitement les nouvelles attentes.
+    try { await inflight; } catch {}
+    return refreshPublicReleaseEvidence({ force: true, expectedCommit, expectedBuildId });
+  }
+
   const base = normalizeBase(config.passioPublicUrl);
   if (!base) {
-    cached = publicReleaseSnapshot(); cachedAt = now; return cached;
+    cached = {
+      state: "NOT_CONFIGURED", checkedAt: null, url: null, release: null,
+      expected: { commit: expectedCommit || null, buildId: expectedBuildId || null },
+      error: "PASSIO_PUBLIC_URL non configurée",
+    };
+    cachedKey = key; cachedAt = now;
+    return cached;
   }
-  inflight = (async () => {
+
+  const probe = (async () => {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
     try {
@@ -96,11 +119,19 @@ export async function refreshPublicReleaseEvidence({ force = false, expectedComm
         checkedAt: new Date().toISOString(), url: base + "/release.json",
       });
     } finally {
-      clearTimeout(timer); cachedAt = Date.now(); inflight = null;
+      clearTimeout(timer);
     }
+    cachedKey = key;
+    cachedAt = Date.now();
     return cached;
   })();
-  return inflight;
+
+  inflight = probe;
+  inflightKey = key;
+  try { return await probe; }
+  finally {
+    if (inflight === probe) { inflight = null; inflightKey = null; }
+  }
 }
 
 // Le provider est ré-évalué à CHAQUE cycle : une promotion locale ou un nouveau
