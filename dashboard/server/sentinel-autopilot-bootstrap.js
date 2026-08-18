@@ -9,12 +9,14 @@
 import * as sentinel from "./sentinel.js";
 import { attemptRepair } from "./repair.js";
 import { executeAutopilotPromotion } from "./sentinel-autopilot-executor.js";
+import { armRecurrenceWatch, startRecurrenceWatch } from "./sentinel-recurrence.js";
 
 let installed = false;
 
 export function makeAutopilotRepairer({
   repair = attemptRepair,
   promote = executeAutopilotPromotion,
+  armRecurrence = armRecurrenceWatch,
 } = {}) {
   return async function autopilotAwareRepair(record, analyzer) {
     const rep = await repair(record, analyzer);
@@ -30,6 +32,9 @@ export function makeAutopilotRepairer({
     let autopilot;
     try {
       autopilot = await promote(repairWithContext);
+      if (autopilot?.status === "PROMOTED_LOCAL") {
+        try { armRecurrence({ repair: repairWithContext, autopilot }); } catch {}
+      }
     } catch (e) {
       // Un défaut de l'Autopilot ne doit JAMAIS annuler une réparation déjà
       // vérifiée ni casser la boucle Sentinel : il est isolé et reporté.
@@ -46,6 +51,7 @@ export function makeAutopilotRepairer({
 
 export function startSentinelAutopilot({ setRepairer = sentinel._setRepairer } = {}) {
   if (installed) return { installed: true, alreadyInstalled: true };
+  startRecurrenceWatch();
   setRepairer(makeAutopilotRepairer());
   installed = true;
   return { installed: true, alreadyInstalled: false };
