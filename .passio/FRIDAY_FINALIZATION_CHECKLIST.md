@@ -7,9 +7,9 @@ Prepared 2026-08-18. This checklist is the execution order for the final Claude 
 - #26 exact head `3a4d0cede9784145a8817a0eef672a2fc8d7383f` — CI #1830 COMPLETED SUCCESS.
 - #27 exact head `1046c3fbf1697e90f7e1ba8257c5c9ed1c6a782a` — CI #1831 COMPLETED SUCCESS.
 - #28 exact head `6e24e7bee94cad676c4d7262900ee4da3ea599fc` — CI #1832 COMPLETED SUCCESS.
-- #29 exact current head `a7d6aca13a4eb33135243134b838923cdf722c8a` — CI #1833 started; re-query exact conclusion before calling green.
+- #29 exact current head `b332f44314d7a2a00ede60bcd1b6d04020a59384` — CI #1834 in progress at last verification; re-query exact conclusion before calling green.
 - #28 sanitizes the promotion journal at both write and read boundaries so legacy rows cannot re-expose removed fields.
-- #29 makes promotion-journal persistence fail-closed: corrupted/unreadable persisted JSON must surface `JOURNAL_UNAVAILABLE`, never fake `NO_ATTEMPT`.
+- #29 makes promotion-journal persistence fail-closed: corrupted/unreadable or structurally invalid persisted JSON must surface `JOURNAL_UNAVAILABLE`, never fake `NO_ATTEMPT`; writes are rejected while the journal is unhealthy so corrupt evidence is not silently overwritten.
 - `DASH_SENTINEL_LOCAL_GATE_V2` remains OFF.
 - #27 read-only promotion route remains intentionally unmounted in runtime.
 - no production deploy is authorized.
@@ -24,7 +24,7 @@ Prepared 2026-08-18. This checklist is the execution order for the final Claude 
 6. Review `.passio/SENTINEL_INSTANCE_COORDINATION_PROTOCOL.md`; prove singleton topology or require durable lease. Otherwise V2 stays OFF.
 7. Re-check fresh AUTHZ, Observation Health, Critical Journeys, Anomalies and Release Guardian evidence.
 8. At production-deploy decision time, verify public `release.json` against the exact expected commit/build pair. UNKNOWN/STALE/UNAVAILABLE/MISMATCH/NOT_CONFIGURED = NO_GO.
-9. #29 exact-head CI must be COMPLETED SUCCESS and both agents must review the new `JsonDb.health()`/journal-unavailable semantics before runtime mounting of #27.
+9. #29 exact-head CI must be COMPLETED SUCCESS and both agents must review `JsonDb.health()`, invalid-schema handling, write refusal on unhealthy journal, and `JOURNAL_UNAVAILABLE` projection before runtime mounting of #27.
 
 ## Canonical Sentinel/mobile merge order
 
@@ -55,7 +55,8 @@ Review full causal and safety chain, with special focus on:
 - process-local versus distributed coordination;
 - HOLD_OPERATIONAL not poisoning repair learning;
 - journal redaction on write and read;
-- persistence corruption: unreadable journal must be explicit unavailable, not empty/healthy;
+- persistence corruption/unreadable/invalid schema must be explicit unavailable, not empty/healthy;
+- unhealthy journal must reject writes rather than overwrite corrupt evidence;
 - #27 route auth/read-only contract and intentional non-mounting;
 - no production mutation or deploy authority anywhere in Sentinel local promotion.
 
@@ -63,7 +64,7 @@ Output one of READY_FOR_STACKED_MERGE / READY_AFTER_FIXES / BLOCKED with exact e
 
 ## Independent review scope — Codex
 
-Perform a separate adversarial code/state-machine review. Do not rely on Claude's conclusions. Focus on races, stale evidence, lock ownership, persistence corruption, read-boundary leakage, auth bypass, rollback races and false GO/false-empty states. Explicitly attack #29 by considering corrupt JSON, unreadable files, write failure, restart and recovery semantics.
+Perform a separate adversarial code/state-machine review. Do not rely on Claude's conclusions. Focus on races, stale evidence, lock ownership, persistence corruption, read-boundary leakage, auth bypass, rollback races and false GO/false-empty states. Explicitly attack #29 with corrupt JSON, valid JSON/wrong schema, unreadable files, attempted write after failed load, restart and recovery semantics.
 
 Output the same READY / READY_AFTER_FIXES / BLOCKED contract.
 
