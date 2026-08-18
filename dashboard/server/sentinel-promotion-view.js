@@ -1,7 +1,7 @@
 // SENTINEL PROMOTION VIEW — projection lecture seule pour API/UI.
 // Ne déclenche aucune décision, mutation git ou activation runtime.
 import { promotionJournalSnapshot } from "./sentinel-promotion-journal.js";
-import { promotionLockSnapshot } from "./sentinel-promotion-lock.js";
+import { autopilotLockSnapshot } from "./sentinel-autopilot-lock.js";
 
 export function promotionStatusView(limit = 20) {
   const journal = promotionJournalSnapshot(limit);
@@ -16,7 +16,7 @@ export function promotionStatusView(limit = 20) {
     rolledBack: latest?.rolledBack === true,
     guardianAgeMs: latest?.guardianAgeMs ?? null,
     suites: latest?.suites || [],
-    lock: promotionLockSnapshot(),
+    lock: autopilotLockSnapshot(),
     history: journal.entries,
     policy: {
       productionDeploy: false,
