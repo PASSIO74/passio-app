@@ -3,10 +3,24 @@ import fs from "node:fs";
 import path from "node:path";
 import { config } from "./config.js";
 import { JsonDb } from "./jsondb.js";
-import { publicReleaseSnapshot, startPublicReleaseEvidence } from "./public-release-evidence.js";
+import { publicReleaseSnapshot, startPublicReleaseEvidence, publicEvidenceExpectationKey } from "./public-release-evidence.js";
 
 const db = new JsonDb("release-recorder", { snapshots: [] });
 const KEEP = Number(process.env.DASH_RELEASE_KEEP || 120);
+const MIN_COMMIT_PROOF = Number(process.env.DASH_PUBLIC_RELEASE_MIN_COMMIT_CHARS || 12);
+
+function normalizeCommit(v) {
+  const s = String(v || "").trim().toLowerCase();
+  return /^[0-9a-f]{7,64}$/.test(s) ? s : null;
+}
+
+function sameCommit(a, b) {
+  const x = normalizeCommit(a);
+  const y = normalizeCommit(b);
+  if (!x || !y) return false;
+  const common = Math.min(x.length, y.length);
+  return common >= MIN_COMMIT_PROOF && x.slice(0, common) === y.slice(0, common);
+}
 
 function readRef() {
   try {
@@ -44,9 +58,8 @@ export function publicReleaseExpectations() {
   const local = localReleaseManifest();
   const expectedCommit = process.env.COMMIT_REF || process.env.GITHUB_SHA || git.fullRevision || git.revision || null;
   // Un buildId local ne vaut comme attente que si son manifeste est lui-même lié
-  // au commit courant. On ne compare jamais deux builds sur une simple coïncidence.
-  const expectedBuildId = local?.commit && expectedCommit
-    && (String(local.commit).startsWith(String(expectedCommit)) || String(expectedCommit).startsWith(String(local.commit)))
+  // au commit courant avec la même force de preuve que la sonde publique.
+  const expectedBuildId = local?.commit && expectedCommit && sameCommit(local.commit, expectedCommit)
     ? local.buildId : null;
   return { expectedCommit, expectedBuildId };
 }
@@ -84,18 +97,27 @@ export function releaseHistory(limit = 30) { return db.get().snapshots.slice(0, 
 
 export function releaseHealth() {
   const current = releaseSnapshot();
+  const expectations = publicReleaseExpectations();
   const publicEvidence = publicReleaseSnapshot();
+  const evidenceKey = publicEvidenceExpectationKey({
+    expectedCommit: publicEvidence?.expected?.commit || null,
+    expectedBuildId: publicEvidence?.expected?.buildId || null,
+  });
+  const currentKey = publicEvidenceExpectationKey(expectations);
+  const publicAligned = evidenceKey === currentKey;
   const missing = [];
   if (!current.revision) missing.push("commit");
   if (!current.appVersion) missing.push("frontend version");
   if (!current.dbVersion) missing.push("DB version");
   if (!current.deployId) missing.push("deploy id");
 
-  // En production, le navigateur public fait partie de la preuve critique :
-  // NOT_CONFIGURED/UNKNOWN/UNAVAILABLE/MISMATCH ne peuvent jamais produire LIVE.
+  // En production, une preuve LIVE calculée pour une ancienne révision est STALE,
+  // même si le prochain probe périodique n'a pas encore démarré.
   const publicRequired = config.isProd;
-  const publicOk = publicEvidence.state === "LIVE";
-  if (publicRequired && !publicOk) missing.push(`public release:${publicEvidence.state}`);
+  const publicOk = publicEvidence.state === "LIVE" && publicAligned;
+  if (publicRequired && !publicOk) {
+    missing.push(`public release:${publicEvidence.state}${publicAligned ? "" : ":STALE_EXPECTATION"}`);
+  }
 
   const state = missing.length === 0 ? "LIVE"
     : publicRequired && !publicOk ? "DEGRADED"
@@ -104,6 +126,8 @@ export function releaseHealth() {
     state,
     current,
     public: publicEvidence,
+    publicExpected: expectations,
+    publicAligned,
     publicRequired,
     missing,
     detail: missing.length ? `preuves manquantes/incompatibles: ${missing.join(", ")}` : "commit → deploy → navigateur public → app → DB corrélés",
