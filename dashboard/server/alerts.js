@@ -35,7 +35,20 @@ function emit(alert) {
   // à être donné plus tard à un agent sans refaire l'enquête de base.
   let incident = null;
   try { incident = recordIncident(base); } catch (e) { /* l'alerte primaire doit survivre */ }
-  const record = incident ? { ...base, incidentId: incident.id, incident } : base;
+
+  // La causalité doit survivre au passage dans Sentinel. `sentinel.js` persiste
+  // déjà `alert.meta` dans chaque diagnostic puis transmet ce record au réparateur.
+  // On place donc ici l'identité de l'Incident Packet, au point unique d'émission,
+  // plutôt que de tenter de la reconstruire plus tard par titre/temps/révision.
+  const causalMeta = incident ? {
+    ...(base.meta || {}),
+    incidentId: incident.id,
+    incidentClusterKey: incident.clusterKey || null,
+  } : (base.meta || {});
+  const record = incident
+    ? { ...base, meta: causalMeta, incidentId: incident.id, incident }
+    : { ...base, meta: causalMeta };
+
   db.update((d) => { d.items.unshift(record); if (d.items.length > 500) d.items.pop(); });
   broadcast("alert", record);
   for (const fn of subscribers) { try { fn(record); } catch (e) { console.error("[alerts] abonné en échec:", e.message); } }
