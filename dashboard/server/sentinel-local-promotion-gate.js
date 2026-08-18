@@ -19,7 +19,12 @@ function isCriticalOpen(incident) {
     && (incident.severity === "critical" || incident.severity === "high");
 }
 
-export function evaluateLocalPromotionGate({ guardian = null, incidents = [], causalIncidentId = null } = {}) {
+export function evaluateLocalPromotionGate({
+  guardian = null,
+  incidents = [],
+  incidentsComplete = false,
+  causalIncidentId = null,
+} = {}) {
   const blockers = [];
   const evidence = {};
 
@@ -29,6 +34,11 @@ export function evaluateLocalPromotionGate({ guardian = null, incidents = [], ca
     if (!gate) blockers.push(`missing_gate:${key}`);
     else if (gate.pass !== true) blockers.push(`gate:${key}:${gate.state || "UNKNOWN"}`);
   }
+
+  // Une liste d'incidents partielle ne peut JAMAIS prouver l'absence d'un autre
+  // high/critical. Le futur câblage runtime devra fournir une source exhaustive
+  // et attester explicitement cette complétude ; le défaut reste HOLD.
+  if (incidentsComplete !== true) blockers.push("incident_set_incomplete");
 
   const openCritical = (incidents || []).filter(isCriticalOpen);
   const causal = causalIncidentId
@@ -51,7 +61,7 @@ export function evaluateLocalPromotionGate({ guardian = null, incidents = [], ca
     blockers,
     causalIncidentId: causal?.id || causalIncidentId || null,
     unrelatedCriticalIncidentIds: unrelatedCritical.map((i) => i.id),
-    evidence,
+    evidence: { ...evidence, incidentsComplete: incidentsComplete === true },
     policy: {
       productionDeploy: false,
       runtimeActivated: false,
