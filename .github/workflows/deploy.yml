@@ -49,6 +49,17 @@ jobs:
       - name: Lancer les tests
         run: npx playwright test
 
+      # Le déploiement sert dist/, pas les fichiers de développement. Cette passe
+      # reconstruit donc l'artefact réel et prouve que HTML, release.json, SW et
+      # gardes navigateur portent la même identité de release. Elle vérifie aussi
+      # que le drain télémétrique attend bien la fin des POST avant transition.
+      - name: Gate artefact production (RELEASE-INTEGRITY)
+        env:
+          PASSIO_CIBLE: dist
+          PASSIO_PORT: 8091
+          COMMIT_REF: ${{ github.sha }}
+        run: npx playwright test tests/e2e/release-integrity.spec.js
+
   deploy:
     name: Déploiement production
     if: github.event_name == 'push'
@@ -58,9 +69,11 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build dist (assemblage monolithique + assets publics)
+        env:
+          COMMIT_REF: ${{ github.sha }}
         run: |
           node scripts/build.js dist/index.html
-          # sw.js est généré par build.js (dist/sw.js, cache auto-bumpé) — ne pas le recopier
+          # sw.js et release.json sont générés par build.js — ne pas les recopier
           cp manifest.json _headers icon-192.png icon-512.png dist/
 
       - name: Minify index.html (fallback sur le fichier brut en cas d'erreur)
@@ -101,9 +114,11 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build dist
+        env:
+          COMMIT_REF: ${{ github.event.pull_request.head.sha }}
         run: |
           node scripts/build.js dist/index.html
-          # sw.js est généré par build.js (dist/sw.js, cache auto-bumpé) — ne pas le recopier
+          # sw.js et release.json sont générés par build.js — ne pas les recopier
           cp manifest.json _headers icon-192.png icon-512.png dist/
 
       - name: Deploy preview Netlify
