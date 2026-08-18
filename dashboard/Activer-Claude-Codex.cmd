@@ -25,13 +25,16 @@ git pull --ff-only origin main
 if errorlevel 1 goto :gitdirty
 
 echo [2/4] Verification Claude Code...
-claude auth status > "%TEMP%\passio-claude-status.txt" 2>&1
+REM Sur Windows, claude installe par npm est souvent claude.cmd. Sans CALL,
+REM l execution transfere le controle au shim et ce script ne reprend jamais.
+call claude auth status > "%TEMP%\passio-claude-status.txt" 2>&1
 if errorlevel 1 goto :claudeauth
 findstr /I /C:"\"loggedIn\":true" /C:"\"loggedIn\": true" "%TEMP%\passio-claude-status.txt" >nul 2>&1
 if errorlevel 1 goto :claudeauth
 
 echo [3/4] Verification Codex...
-codex login status > "%TEMP%\passio-codex-status.txt" 2>&1
+REM Meme precaution pour codex.cmd.
+call codex login status > "%TEMP%\passio-codex-status.txt" 2>&1
 if errorlevel 1 goto :codexauth
 findstr /I /C:"not logged in" /C:"unauthorized" "%TEMP%\passio-codex-status.txt" >nul 2>&1
 if not errorlevel 1 goto :codexauth
