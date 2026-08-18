@@ -21,14 +21,20 @@ function finite(value) {
   return Number.isFinite(value) ? value : null;
 }
 
-function journalHealth() {
-  const load = db.health();
-  if (load.available !== true) return { available: false, reason: "journal_unavailable" };
-  const stored = db.get();
-  if (!stored || typeof stored !== "object" || Array.isArray(stored) || !Array.isArray(stored.entries)) {
+export function promotionJournalDocumentHealth(stored) {
+  if (!stored || typeof stored !== "object" || Array.isArray(stored)) {
+    return { available: false, reason: "journal_invalid_schema" };
+  }
+  if (!Array.isArray(stored.entries)) {
     return { available: false, reason: "journal_invalid_schema" };
   }
   return { available: true, reason: null };
+}
+
+function journalHealth() {
+  const load = db.health();
+  if (load.available !== true) return { available: false, reason: "journal_unavailable" };
+  return promotionJournalDocumentHealth(db.get());
 }
 
 // Whitelist the persisted/read schema in one place. This is intentionally also used
