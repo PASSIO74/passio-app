@@ -10,14 +10,14 @@ import {
 test("only PROMOTED_LOCAL repairs arm recurrence monitoring", () => {
   _resetRecurrenceForTests();
   assert.equal(armRecurrenceWatch({ repair: { key: "k" }, autopilot: { status: "HOLD" }, now: 1000 }), null);
-  assert.equal(recurrenceSnapshot().active, 0);
+  assert.equal(recurrenceSnapshot(1000).active, 0);
   const armed = armRecurrenceWatch({
     repair: { key: "k", branch: "sentinelle/x", sha: "abc", files: ["js/x.js"] },
     autopilot: { status: "PROMOTED_LOCAL", afterSha: "def" },
     now: 1000,
   });
   assert.equal(armed.signalKey, "k");
-  assert.equal(recurrenceSnapshot().active, 1);
+  assert.equal(recurrenceSnapshot(1000).active, 1);
 });
 
 test("alerts older than the promotion are never counted as recurrence", () => {
@@ -27,7 +27,7 @@ test("alerts older than the promotion are never counted as recurrence", () => {
   const out = observeAlertForRecurrence({ key: "same", ts: 1999, id: "old" }, { now: 2100, record: () => { recorded++; return {}; } });
   assert.equal(out, null);
   assert.equal(recorded, 0);
-  assert.equal(recurrenceSnapshot().active, 1);
+  assert.equal(recurrenceSnapshot(2100).active, 1);
 });
 
 test("same signal after promotion records recurrence once and disarms watch", () => {
@@ -42,7 +42,7 @@ test("same signal after promotion records recurrence once and disarms watch", ()
   assert.equal(first.recurrences, 2);
   assert.equal(calls.length, 1);
   assert.equal(calls[0].signalKey, "api5xx:/x");
-  assert.equal(recurrenceSnapshot().active, 0);
+  assert.equal(recurrenceSnapshot(3001).active, 0);
 
   const second = observeAlertForRecurrence({ key: "api5xx:/x", ts: 3002, id: "a2" }, {
     now: 3002,
@@ -59,5 +59,5 @@ test("different signal cannot poison another repair pattern", () => {
   const out = observeAlertForRecurrence({ key: "signal-B", ts: 4001 }, { now: 4001, record: () => { recorded = true; return {}; } });
   assert.equal(out, null);
   assert.equal(recorded, false);
-  assert.equal(recurrenceSnapshot().active, 1);
+  assert.equal(recurrenceSnapshot(4001).active, 1);
 });
