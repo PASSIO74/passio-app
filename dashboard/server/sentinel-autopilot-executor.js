@@ -54,10 +54,15 @@ function tail(v, n = 1200) {
 }
 
 function guardianTiming(policy = {}) {
-  const evidence = policy?.localGate?.policy || policy?.policy || policy || {};
+  const generatedAt = policy?.localGate?.evidence?.guardianGeneratedAt || null;
+  if (!generatedAt) return { guardianObservedAt: null, guardianAgeMs: null };
+  const observed = Date.parse(generatedAt);
+  if (!Number.isFinite(observed)) {
+    return { guardianObservedAt: String(generatedAt).slice(0, 64), guardianAgeMs: null };
+  }
   return {
-    guardianObservedAt: evidence.guardianObservedAt || evidence.observedAt || null,
-    guardianAgeMs: Number.isFinite(evidence.guardianAgeMs) ? evidence.guardianAgeMs : null,
+    guardianObservedAt: new Date(observed).toISOString(),
+    guardianAgeMs: Math.max(0, Date.now() - observed),
   };
 }
 
@@ -173,23 +178,33 @@ export async function executeAutopilotPromotion(repair, options = {}) {
   const tx = await runPromotionTransaction(repair, options);
   const status = tx.ok ? "PROMOTED_LOCAL" : (tx.rolledBack ? "ROLLED_BACK" : "REJECTED");
   const timing = guardianTiming(policy);
-  recordPromotionTransaction({
-    incidentId: repair?.incidentId || null,
-    diagnosisId: repair?.diagnosisId || null,
-    repairBranch: repair?.branch || null,
-    repairSha: repair?.sha || null,
-    beforeSha: tx.beforeSha || null,
-    afterSha: tx.afterSha || null,
-    attempted: tx.attempted === true,
-    ok: tx.ok === true,
-    rolledBack: tx.rolledBack === true,
-    reason: tx.reason || (tx.ok ? "verified_local_promotion" : "promotion_failed"),
-    status,
-    suites: tx.suites || [],
-    guardianObservedAt: timing.guardianObservedAt,
-    guardianAgeMs: timing.guardianAgeMs,
-    durationMs: tx.durationMs,
-  });
+  const journalWriter = options.recordJournal || recordPromotionTransaction;
+  try {
+    journalWriter({
+      incidentId: repair?.incidentId || null,
+      diagnosisId: repair?.diagnosisId || null,
+      repairBranch: repair?.branch || null,
+      repairSha: repair?.sha || null,
+      beforeSha: tx.beforeSha || null,
+      afterSha: tx.afterSha || null,
+      attempted: tx.attempted === true,
+      ok: tx.ok === true,
+      rolledBack: tx.rolledBack === true,
+      reason: tx.reason || (tx.ok ? "verified_local_promotion" : "promotion_failed"),
+      status,
+      suites: tx.suites || [],
+      guardianObservedAt: timing.guardianObservedAt,
+      guardianAgeMs: timing.guardianAgeMs,
+      durationMs: tx.durationMs,
+    });
+  } catch {
+    audit("sentinel_autopilot_journal_failed", {
+      branch: repair.branch,
+      repairSha: repair.sha,
+      reason: "journal_write_failed",
+    }, "sentinelle-autopilot");
+  }
+
   const outcome = registerAutopilotOutcome(repair, {
     ok: Boolean(tx.ok),
     recurrence: false,
