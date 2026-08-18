@@ -21,6 +21,16 @@ function finite(value) {
   return Number.isFinite(value) ? value : null;
 }
 
+function journalHealth() {
+  const load = db.health();
+  if (load.available !== true) return { available: false, reason: "journal_unavailable" };
+  const stored = db.get();
+  if (!stored || typeof stored !== "object" || Array.isArray(stored) || !Array.isArray(stored.entries)) {
+    return { available: false, reason: "journal_invalid_schema" };
+  }
+  return { available: true, reason: null };
+}
+
 // Whitelist the persisted/read schema in one place. This is intentionally also used
 // on READ so rows produced by an older prototype cannot re-expose removed fields.
 export function sanitizePromotionEntry(input = {}) {
@@ -49,13 +59,19 @@ export function sanitizePromotionEntry(input = {}) {
 }
 
 export function recordPromotionTransaction(input = {}) {
+  const health = journalHealth();
+  if (health.available !== true) {
+    const error = new Error(health.reason);
+    error.code = "SENTINEL_PROMOTION_JOURNAL_UNAVAILABLE";
+    throw error;
+  }
+
   const entry = sanitizePromotionEntry({
     ...input,
     at: new Date().toISOString(),
   });
 
   db.update((data) => {
-    data.entries = Array.isArray(data.entries) ? data.entries : [];
     data.entries.unshift(entry);
     if (data.entries.length > KEEP) data.entries.length = KEEP;
   });
@@ -63,11 +79,11 @@ export function recordPromotionTransaction(input = {}) {
 }
 
 export function promotionJournalSnapshot(limit = 50) {
-  const health = db.health();
+  const health = journalHealth();
   if (health.available !== true) {
     return {
       available: false,
-      reason: "journal_unavailable",
+      reason: health.reason,
       productionDeploy: false,
       runtimeActivation: false,
       retentionLimit: KEEP,
@@ -79,8 +95,7 @@ export function promotionJournalSnapshot(limit = 50) {
 
   const safeLimit = Math.max(1, Math.min(Number(limit) || 50, 200));
   const stored = db.get();
-  const rawEntries = Array.isArray(stored?.entries) ? stored.entries : [];
-  const entries = rawEntries.slice(0, safeLimit).map((entry) => sanitizePromotionEntry(entry));
+  const entries = stored.entries.slice(0, safeLimit).map((entry) => sanitizePromotionEntry(entry));
   return {
     available: true,
     reason: null,
