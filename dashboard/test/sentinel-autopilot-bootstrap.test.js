@@ -16,7 +16,7 @@ test("autopilot is never invoked for an unverified repair", async () => {
   assert.equal(armed, 0);
 });
 
-test("a verified repair is offered to autopilot exactly once with diagnosis and causal context", async () => {
+test("a verified repair is offered to autopilot exactly once with sealed diagnosis and causal context", async () => {
   const calls = [];
   let armed = 0;
   const wrapped = makeAutopilotRepairer({
@@ -26,6 +26,7 @@ test("a verified repair is offered to autopilot exactly once with diagnosis and 
   });
   const out = await wrapped({
     id: "d2",
+    ts: 123456,
     key: "trace@rev",
     title: "bug",
     meta: { incidentId: "inc_causal", incidentClusterKey: "trace@rev" },
@@ -35,12 +36,16 @@ test("a verified repair is offered to autopilot exactly once with diagnosis and 
   assert.equal(calls[0].key, "trace@rev");
   assert.equal(calls[0].incidentId, "inc_causal");
   assert.equal(calls[0].incidentClusterKey, "trace@rev");
+  assert.deepEqual(calls[0].diagnosisEvidence, {
+    id: "d2", incidentId: "inc_causal", incidentClusterKey: "trace@rev", diagnosisTs: 123456,
+  });
+  assert.equal(Object.isFrozen(calls[0].diagnosisEvidence), true);
   assert.equal(out.autopilot.status, "HOLD");
   assert.equal(out.ok, true);
   assert.equal(armed, 0);
 });
 
-test("repair-provided causal context is preserved as fallback", async () => {
+test("repair-provided causal context is preserved as fallback but is not canonical diagnosis evidence", async () => {
   const calls = [];
   const wrapped = makeAutopilotRepairer({
     repair: async () => ({
@@ -52,6 +57,7 @@ test("repair-provided causal context is preserved as fallback", async () => {
   await wrapped({ id: "d5" }, async () => ({}));
   assert.equal(calls[0].incidentId, "inc_from_repair");
   assert.equal(calls[0].incidentClusterKey, "cluster_from_repair");
+  assert.equal(calls[0].diagnosisEvidence.incidentId, null);
 });
 
 test("a verified local promotion arms recurrence monitoring exactly once", async () => {
@@ -66,6 +72,7 @@ test("a verified local promotion arms recurrence monitoring exactly once", async
   assert.equal(arms.length, 1);
   assert.equal(arms[0].repair.key, "api5xx:/messages");
   assert.equal(arms[0].repair.incidentId, "inc_api");
+  assert.equal(arms[0].repair.diagnosisEvidence.incidentId, "inc_api");
   assert.equal(arms[0].autopilot.afterSha, "def");
 });
 
