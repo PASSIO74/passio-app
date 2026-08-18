@@ -10,9 +10,9 @@ Canonical Sentinel/mobile tail:
 - #26 — `3a4d0cede9784145a8817a0eef672a2fc8d7383f` — CI #1830 SUCCESS;
 - #27 — `1046c3fbf1697e90f7e1ba8257c5c9ed1c6a782a` — CI #1831 SUCCESS;
 - #28 — `6e24e7bee94cad676c4d7262900ee4da3ea599fc` — CI #1832 SUCCESS;
-- #29 — current head `a7d6aca13a4eb33135243134b838923cdf722c8a` — CI #1833 IN PROGRESS at last update; exact final verdict required.
+- #29 — current head `b332f44314d7a2a00ede60bcd1b6d04020a59384` — CI #1834 IN PROGRESS at last update; exact final verdict required.
 
-#27 remains authenticated/read-only and intentionally NOT mounted in runtime. #28 sanitizes journal entries on write/read. #29 prevents corrupt/unreadable promotion-journal persistence from being misreported as healthy `NO_ATTEMPT`; it must surface explicit `JOURNAL_UNAVAILABLE` without raw error leakage.
+#27 remains authenticated/read-only and intentionally NOT mounted in runtime. #28 sanitizes journal entries on write/read. #29 prevents corrupt/unreadable/invalid-schema promotion-journal persistence from being misreported as healthy `NO_ATTEMPT`; it surfaces explicit `JOURNAL_UNAVAILABLE`. It also refuses promotion-journal writes while persistence health is unavailable, preventing corrupt evidence from being silently overwritten by an in-memory default.
 
 Node 22 is the canonical CI/build runtime from #21 onward. Do not describe Node 20 as the current runtime.
 
@@ -43,7 +43,7 @@ Current connector exposes no branch-protection/ruleset mutation action. If enfor
 
 ## BLOCKER 2 — independent Claude Code + Codex review not yet completed
 
-Final security-sensitive scope now includes causal incident identity, local promotion policy, inventory completeness, transactional Git mutation, rollback, learning/quarantine, journal privacy, lock semantics, authenticated read-only projection, legacy sanitization and journal-persistence health.
+Final security-sensitive scope now includes causal incident identity, local promotion policy, inventory completeness, transactional Git mutation, rollback, learning/quarantine, journal privacy, lock semantics, authenticated read-only projection, legacy sanitization and journal-persistence health/write refusal.
 
 Required:
 
@@ -66,9 +66,7 @@ PR #14 intentionally keeps a pre-retention-metadata registry fail-closed:
 - inventory completeness remains false until historical trust is explicitly established;
 - `criticalOverflow:true` permanently prevents completeness.
 
-Required procedure:
-
-`.passio/LEGACY_INCIDENT_BASELINE_PROTOCOL.md`
+Required procedure: `.passio/LEGACY_INCIDENT_BASELINE_PROTOCOL.md`.
 
 The protocol does NOT itself set `historyTrusted:true`. No manual production JSON edit is permitted. An accepted Friday baseline only authorizes implementation/review of a guarded one-shot trust upgrade bound to exact registry hash and review evidence. Until then, legacy history remains untrusted and Sentinel V2 remains OFF.
 
@@ -80,9 +78,7 @@ If evidence is incomplete/contradictory/UNKNOWN: `LEGACY_BASELINE_REJECTED`.
 
 PR #23 provides only a process-local transaction lock and declares `distributedCoordination:false`.
 
-Activation proof:
-
-`.passio/SENTINEL_INSTANCE_COORDINATION_PROTOCOL.md`
+Activation proof: `.passio/SENTINEL_INSTANCE_COORDINATION_PROTOCOL.md`.
 
 Before V2 activation, produce one of:
 
@@ -141,7 +137,8 @@ Before mounting:
 - no POST/PUT/PATCH/DELETE mutation surface;
 - no sensitive operational caching;
 - sanitized journal output only;
-- journal corruption/unavailability surfaces explicit unavailable, never fake-empty/healthy;
+- journal corruption/unavailability/invalid schema surfaces explicit unavailable, never fake-empty/healthy;
+- promotion-journal writes are rejected while persistence is unhealthy;
 - no lock token/raw diagnosis/raw suite detail/patch/log/raw filesystem error exposure;
 - focused runtime route tests;
 - exact-head CI.
@@ -152,9 +149,9 @@ Do not combine mounting with V2 activation.
 
 ## BLOCKER 8 — #29 exact-head conclusion not yet final
 
-At last check #29 / CI #1833 had passed static audits and Sentinel tests and was continuing through the Node22 workflow. Until GitHub reports the exact current head `a7d6aca13a4eb33135243134b838923cdf722c8a` as COMPLETED SUCCESS, #29 is not technically green.
+At last check #29 / CI #1834 on exact head `b332f44314d7a2a00ede60bcd1b6d04020a59384` had passed static audits and Sentinel tests and was continuing through the Node22 workflow. Until GitHub reports this exact head as COMPLETED SUCCESS, #29 is not technically green.
 
-If CI fails, fix only the exact cause; do not weaken tests or the `JOURNAL_UNAVAILABLE` invariant.
+If CI fails, fix only the exact cause; do not weaken tests, `JOURNAL_UNAVAILABLE`, invalid-schema rejection, or unhealthy-write refusal.
 
 ---
 
