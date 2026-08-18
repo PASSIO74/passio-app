@@ -1,196 +1,367 @@
 # PASSIO — Friday Independent Review Prompts
 
-Use these as independent review briefs. Claude Code and Codex should review separately first; reconcile only after both have produced evidence-backed findings.
+Use these as independent review briefs. Claude Code and Codex must review separately first; reconcile only after both have produced evidence-backed findings.
 
-## Review protocol shared by both agents
+## Shared review protocol
 
-Do not assume a green PR because it is mergeable. Re-query exact head, base and CI. `main` branch protection currently does not enforce required status checks, so CI evidence must be checked explicitly.
+Start by reading:
+
+- `.passio/FRIDAY_FINALIZATION_CHECKLIST.md`
+- `.passio/RELEASE_BLOCKERS_2026-08-18.md`
+- `.passio/LEGACY_INCIDENT_BASELINE_PROTOCOL.md`
+- `.passio/SENTINEL_INSTANCE_COORDINATION_PROTOCOL.md`
+- `.passio/SENTINEL_AUTOPILOT_ACTIVATION_PROTOCOL.md`
+- `.passio/ITERATION_2026-08-18_1900.md`
+
+Then re-query GitHub. Do not trust historical handoff claims without checking current head/base/mergeability/CI.
+
+Current canonical Sentinel/mobile order to review:
+
+#3 → #5 → #6 → #7 → #8 → #10 → #11 → #12 → #13 → #14 → #15 → #16 → #18 → #19 → #21 → #23 → #24 → #26 → #27 → #28
+
+Parallel integrity/product order:
+
+#4 → #9
+
+Superseded branches that must not be merged:
+
+- #20 (superseded by #23)
+- #22 (superseded by #24)
+- #25 (superseded by #27/#28)
+
+#17 remains open only until #19 supersession is explicitly accepted by evidence.
+
+Fresh known exact-head successes on 2026-08-18 that must still be revalidated Friday:
+
+- #21 / CI #1820 SUCCESS
+- #23 / CI #1822 SUCCESS
+- #24 / CI #1826 SUCCESS
+- #26 / CI #1830 SUCCESS
+- #27 / CI #1831 SUCCESS
+- #28 / CI #1832 SUCCESS
+
+Historical exact-head runs #14/#15/#18/#19 are NOT green merely because descendants pass. Their old Node 20 runs #1807/#1808/#1811/#1818 were stuck. Resolve this explicitly by evidence; never relabel them SUCCESS.
+
+`main` was still `protected:true` but required checks were `enforcement_level:off`, `contexts:[]`, `checks:[]` on the last fresh query. Re-query. If still off/empty: `NO_GO_MERGE`.
 
 For every finding provide:
 
 1. severity: BLOCKER / HIGH / MEDIUM / LOW;
-2. exact file/function or operational gate;
-3. concrete failure mode, not generic advice;
-4. evidence or reproducible test;
+2. exact PR + file/function/gate;
+3. concrete failure mode;
+4. reproducible evidence/test;
 5. smallest safe remediation;
 6. whether remediation changes security/release semantics;
-7. tests required before merge.
+7. exact tests required before accepting the fix.
 
-Do not weaken AUTHZ, Observation Health, Release Guardian, production mutation prohibition, or UNKNOWN/STALE fail-closed semantics to make a test green.
-
----
-
-# Claude Code review — Sentinel / Control Center stack
-
-Review stacked PRs in dependency order:
-
-- #3 Sentinel 2 Autonomous Core
-- #5 Control Center Intelligence
-- #6 Sentinel 3 Release Guardian
-- #7 Sentinel Autopilot Learning
-- #8 Mobile Control Center PWA
-- #10 Desktop Mobile Pilot entry
-- #11 Sentinel causal incident trace
-- #12 Pure local promotion gate (NOT runtime activated)
-
-Primary questions:
-
-### Observation and release truth
-
-- Can any UNKNOWN, stale, unavailable or unconfigured critical proof become PASS/GO/LIVE through a fallback path?
-- Is browser SSE ACK genuinely distinct from server write success?
-- Can the public release evidence report LIVE without strong evidence that the public `release.json` belongs to the expected commit?
-- Check the non-weakenable 12-character minimum commit-proof floor and prove every alternative commit comparison path uses the same or stronger semantics.
-- Verify `public-release-evidence` and `release-recorder` share the same proof floor rather than duplicating configuration.
-- Can a cached mobile asset or service worker cause the operator to see stale control information while believing it is current?
-- Verify `/api/*` is never served from the mobile service worker cache and the root-scoped SW can intercept only the explicit Pilot assets.
-
-### Sentinel self-heal / Autopilot
-
-- Trace one hypothetical production alert end-to-end: alert -> incident packet -> diagnosis -> verified repair branch -> Autopilot decision -> local transaction -> verification -> rollback or promotion -> recurrence watch -> learning/quarantine.
-- Prove production code mutation/deployment remains impossible from this loop.
-- Verify dirty worktree, wrong target branch, invalid repair branch, oversized patch, too many files, failed verification and rollback failure are all fail-closed.
-- Check whether exact pre-promotion SHA is preserved and rollback cannot reset past unrelated later commits.
-- Verify a recurrence is distinct from a failed repair attempt and cannot inflate attempts/failures.
-- Verify repeated recurrence quarantines the repair pattern and future auto-promotion is blocked.
-
-### Causal incident trace — PR #11
-
-- Prove the exact `incidentId` and `incidentClusterKey` originate from the Incident Packet produced for the alert, not from later heuristic reconstruction.
-- Prove the same identity survives alert meta -> Sentinel queue/job -> persisted diagnosis -> repairer input unchanged.
-- Check clustering behavior: a clustered later alert may update `signal.alertId`; ensure the `incidentId` still refers to the intended open packet and does not silently point at an unrelated causal cluster.
-- Check whether any code path constructs/feeds a Sentinel alert without an Incident Packet and what fail-closed behavior a future local gate must use in that case.
-- No review approval should infer that causal identity alone authorizes promotion.
-
-### Pure local promotion policy — PR #12
-
-This PR is **NOT runtime activated**. Review policy semantics independently from runtime wiring.
-
-- Verify required local safety gates are authorization, observation, critical journeys and anomalies, all requiring explicit `pass===true`.
-- Missing gate, UNKNOWN, STALE or FAIL must HOLD.
-- Verify `causalIncidentId` must identify an OPEN high/critical incident; missing, closed, warn/info or mismatched identity must HOLD.
-- Verify only that exact causal incident is excluded locally; every other open high/critical incident must HOLD.
-- Verify `release_chain` is ignored only for local reversible promotion and the full production Release Guardian remains unchanged and visible.
-- Verify the policy reports `productionDeploy:false` and `runtimeActivated:false` and has no import/call from `sentinel-autopilot.js` today.
-- Treat any hidden runtime activation in #12 as BLOCKER.
-- Do not approve a future activation solely because #12 tests pass; activation requires a separate diff/review and must preserve transactional verification + rollback.
-
-### Control Center / mobile authorization
-
-- Verify every mutation route keeps server-side capability checks; client-side hiding is not security.
-- Verify mobile exposes no arbitrary git command/patch/branch surface.
-- Verify test launching is limited to backend-listed suites and explicit confirmation.
-- Verify Sentinel mobile remains read-only unless a future action has a dedicated role check + explicit confirmation + audit trail.
-- Verify #10 adds navigation only and does not bypass auth or add mutation behavior.
-
-### Required output
-
-End with one of:
-
-- READY_FOR_STACKED_MERGE
-- READY_AFTER_FIXES: <exact fixes>
-- BLOCKED: <evidence>
-
-Do not recommend production deployment unless branch protection/status-check enforcement is also resolved and exact-head CI is green.
+Never weaken AUTHZ, Observation Health, Release Guardian, UNKNOWN/STALE fail-closed behavior, production mutation prohibition, branch protection, or tests just to obtain green.
 
 ---
 
-# Codex review — Sentinel / Control Center stack
+# Claude Code — independent Sentinel / Control Center review
 
-Perform an independent code-level adversarial review of PRs #3, #5, #6, #7, #8, #10, #11 and #12 without relying on Claude's conclusions.
+Review the complete canonical Sentinel/mobile stack without relying on Codex conclusions.
 
-Focus on state-machine and concurrency bugs:
+## A. End-to-end Sentinel causal loop
 
-- duplicate alert subscriptions / duplicate repair execution;
+Trace one realistic high/critical alert through:
+
+DETECT → CONFIRM → CORRELATE → DIAGNOSE → verified repair → local gate → transaction lock → Git preconditions → merge/test → rollback or PROMOTED_LOCAL → journal → learning/quarantine → recurrence watch.
+
+Prove:
+
+- incident identity originates from the exact Incident Packet;
+- `incidentId`, `incidentClusterKey`, and `diagnosisId` cannot be reconstructed heuristically later;
+- sealed diagnosis evidence cannot be swapped after decision;
+- missing/future/stale Guardian evidence HOLDs;
+- missing/incomplete incident inventory HOLDs;
+- only the exact causal high/critical incident can be excluded for local reversible evaluation;
+- any unrelated open high/critical incident HOLDs;
+- full production Guardian is never weakened;
+- `productionDeploy:false` remains true throughout the local path.
+
+## B. Inventory + legacy retention — #13/#14
+
+Review retention implementation and the legacy baseline protocol together.
+
+Prove:
+
+- new registries can be trusted by construction only because retention metadata starts with `historyTrusted:true`;
+- pre-metadata registries become `historyTrusted:false`, `legacyUnproven:true`;
+- open high/critical incidents are protected from nominal retention;
+- hard-cap overflow records permanent `criticalOverflow` evidence;
+- completeness is false whenever historical trust is false or critical overflow occurred;
+- no startup path can silently promote legacy history to trusted;
+- `.passio/LEGACY_INCIDENT_BASELINE_PROTOCOL.md` requires evidence strong enough to justify a future guarded one-shot trust upgrade.
+
+Any proposal to set `historyTrusted:true` directly or manually edit production JSON is BLOCKER.
+
+## C. Repair causal context — #15/#19
+
+Prove:
+
+- `repair.incidentId` and diagnosis identity remain exact across bootstrap/autopilot layers;
+- no ESM cycle or fallback heuristic can replace the sealed evidence;
+- cluster identity cannot accidentally authorize a different incident;
+- stale or mismatched evidence HOLDs.
+
+Resolve whether #19 fully supersedes #17. If yes, document exact evidence and recommend closing #17 without merge.
+
+## D. V2 opt-in boundary — #18/#19
+
+Verify:
+
+- `DASH_SENTINEL_LOCAL_GATE_V2` is OFF by default;
+- default behavior remains full production Guardian GO requirement;
+- local V2 requires explicit opt-in plus all other safety conditions;
+- activation is not implied by merging the policy code;
+- no hidden runtime path enables V2.
+
+End this section with one of:
+
+- `V2_POLICY_SAFE_BUT_INACTIVE`
+- `V2_POLICY_FIX_REQUIRED`
+- `V2_POLICY_BLOCKED`
+
+## E. Node 22 proof — #21
+
+Verify the workflow uses the same Node 22 runtime for test, preview build and production build/deploy path.
+
+Confirm Node 22 removes the old Playwright install issue without changing security gates.
+
+Propose an explicit evidence policy for #14/#15/#18/#19 that does not falsify their old run status.
+
+## F. Transaction serialization — #23
+
+Prove:
+
+- lock is acquired before any mutation-capable Git operation;
+- second concurrent local promotion is rejected before Git access;
+- token is private and never exposed in snapshot/journal/audit/API;
+- lock release is guaranteed in `finally`;
+- process-local scope is explicitly visible and cannot be mistaken for distributed safety.
+
+Review `.passio/SENTINEL_INSTANCE_COORDINATION_PROTOCOL.md` and state whether SINGLETON proof or DURABLE_LEASE is required for the actual target topology.
+
+No V2 activation may be approved without one of those proofs.
+
+## G. Promotion journal — #24/#28
+
+Prove:
+
+- journal retention is bounded;
+- journal write failure cannot convert a completed local transaction into an unhandled executor failure;
+- no lock token, raw diagnosis, raw patch, raw log or raw suite detail is persisted;
+- #28 sanitizes legacy rows on READ as well as WRITE;
+- unknown fields in legacy entries are dropped at projection boundary;
+- Guardian timing comes from the actual V2 evidence path and cannot be forged by an unrelated timestamp.
+
+## H. Operational holds and learning — #26
+
+Prove the invariant:
+
+`tx.attempted !== true` ⇒ `HOLD_OPERATIONAL` ⇒ journal/audit yes, repair-learning failure/quarantine no.
+
+Check at least:
+
+- lock contention;
+- dirty worktree;
+- wrong target branch;
+- invalid repair branch;
+- unavailable pre-promotion SHA if it occurs before transaction attempt.
+
+Then prove true attempted failures remain learnable:
+
+- verification failure;
+- failed merge after transaction start;
+- rollback path.
+
+No operational environment issue should quarantine a repair pattern.
+
+## I. Read-only promotion surface — #27/#28
+
+Prove:
+
+- only authenticated GET contract exists;
+- no POST/PUT/PATCH/DELETE mutation authority;
+- returned lock snapshot contains no ownership token;
+- returned journal data is sanitized by #28;
+- route is still NOT mounted in runtime;
+- no production deployment/runtime activation capability exists in this layer.
+
+Review a future mounting plan, but do not approve mounting merely because the module is safe in isolation. Dedicated route/access/no-cache/unauthenticated tests are required.
+
+## J. Mobile / Control Center
+
+Prove:
+
+- `/api/*` is never served from PWA cache;
+- mobile Pilot only exposes intended assets;
+- all mutations retain server-side authorization;
+- test-launching is whitelisted and confirmed;
+- Sentinel/operator surfaces remain read-only unless a future action has explicit role, confirmation, audit and dedicated review.
+
+## Required Claude output
+
+Return:
+
+1. `READY_FOR_STACKED_MERGE`, `READY_AFTER_FIXES`, or `BLOCKED`;
+2. exact blockers/fixes;
+3. explicit #17 vs #19 supersession verdict;
+4. exact legacy baseline verdict: `LEGACY_BASELINE_ACCEPTED_FOR_IMPLEMENTATION` or `LEGACY_BASELINE_REJECTED`;
+5. exact coordination verdict: `SINGLETON_EXECUTOR_PROVEN`, `DURABLE_LEASE_PROVEN`, or `COORDINATION_NOT_PROVEN`;
+6. recommended GO/NO_GO separately for merge, V2 activation and production deploy.
+
+---
+
+# Codex — independent adversarial Sentinel / Control Center review
+
+Review the same complete canonical stack independently. Do not rely on Claude's conclusions.
+
+Prioritize adversarial state-machine, concurrency and privacy failure modes.
+
+## Concurrency / transaction attacks
+
+Look for:
+
+- duplicate alert subscriptions;
 - overlapping Sentinel analyses;
-- overlapping Autopilot promotions;
-- stale git HEAD captured before transaction;
-- race between clean-tree check and merge;
-- concurrent recurrence watches for the same signal;
-- recurrence event timestamp ordering;
-- JSON persistence corruption or lost update behavior;
-- public release probe cache/inflight semantics;
-- service worker stale-cache behavior or overbroad root-scope interception;
-- false GO when a dependency throws or returns partial data;
-- mutation endpoints reachable with insufficient capability;
-- causal incident identity becoming stale after incident clustering/update;
-- local gate accidentally treating closed/noncritical/missing causal incidents as excludable;
-- unrelated high/critical incidents accidentally filtered by cluster key/title rather than exact id;
-- any runtime import/call of the #12 policy that contradicts `runtimeActivated:false`.
+- overlapping repair generation;
+- overlapping promotion attempts;
+- stale Git HEAD captured before transaction;
+- TOCTOU between clean-tree validation and merge;
+- lock release on every early throw/return path;
+- process-local lock incorrectly treated as cross-instance safety;
+- split-brain scenarios in any proposed durable lease;
+- stale owner/TTL takeover hazards;
+- concurrent recurrence watches or learning writes.
 
-For each proposed change, preserve deterministic behavior and add a focused test. Prefer rejection/HOLD over guessing when evidence is incomplete.
+## Evidence integrity attacks
 
-End with the same READY / READY_AFTER_FIXES / BLOCKED status and an exact merge-order check.
+Try to produce false GO with:
+
+- missing Guardian timestamp;
+- future timestamp;
+- stale Guardian;
+- missing diagnosis evidence;
+- mismatched incident/diagnosis/cluster;
+- incomplete incident inventory;
+- critical overflow;
+- closed or noncritical causal incident;
+- unrelated high/critical incident;
+- malformed/partial JSON persistence;
+- stale public release cache tied to an old expectation pair.
+
+Every such case must HOLD/fail closed.
+
+## Persistence/privacy attacks
+
+Inspect:
+
+- JsonDb corruption/lost update assumptions;
+- promotion journal legacy rows;
+- lock snapshot;
+- audit/broadcast payloads;
+- read-only API projection.
+
+Prove no token/raw diagnosis/patch/suite detail/private operational secret can reappear through historical data or alternate projection paths.
+
+## Learning correctness — #26
+
+Attempt to poison quarantine using repeated environmental holds. It must fail: non-attempted holds cannot increment repair failure counters.
+
+Attempted verification/rollback failures must remain learnable.
+
+## Runtime boundary — #27/#28
+
+Prove modules are inert until explicitly mounted. Search for accidental import/route registration. Treat hidden runtime mounting as BLOCKER.
+
+## Historical CI evidence
+
+Independently evaluate a rigorous proof strategy for #14/#15/#18/#19 under Node 22. Do not call their stuck Node 20 runs successful.
+
+## Required Codex output
+
+Return the same six outputs required from Claude, including independent merge/V2/deploy recommendations.
 
 ---
 
-# Claude Code review — Integrity / Product Passion stack
+# Claude Code — Integrity / Product Passion review
 
-Review:
+Review #4 and #9 independently.
 
-- #4 Application Integrity Wave 2
-- #9 Product Passion Intelligence
+## Release integrity
 
-### Release integrity
+Verify:
 
-- Verify `release.json`, embedded HTML release identity and service-worker cache identity are generated from the same build.
-- Verify commit is provider/GitHub evidence and buildId is a deterministic content identity; never equate the two.
-- Inspect `PassioReleaseGuard` concurrency. Concurrent checks must share the current in-flight verdict rather than return stale state.
-- Verify version skew detection never forces reload/navigation.
-- Verify identity-transition telemetry drain is bounded and cannot block logout indefinitely.
+- `release.json`, embedded HTML release identity and service-worker identity come from the same build lineage;
+- commit identity and buildId are not conflated;
+- concurrent Release Guard checks share the correct in-flight Promise;
+- version skew detection does not force uncontrolled reload/navigation;
+- logout/identity-transition telemetry drain is bounded;
+- production artifact tests exercise the built bundle rather than copied helper logic.
 
-### Passion privacy/data semantics
+## Passion privacy/data semantics
 
-- Verify only `passion_ctx` is emitted by `context/passion_active`.
-- Verify `profileLocalId`, profile name, bio, photo or other personal/local persona data never enters that telemetry event.
-- Verify `window.PassioPassionContext.current()` exposes `{ passionId }` only; local profile ID remains closure-private.
-- Verify profile-local ID can still be used internally to detect a real persona switch without leaking it.
-- Verify unchanged context does not emit duplicates.
-- Verify no historical backfill/provenance is invented.
-- Do not change feed ranking weights as part of this review unless a failing test demonstrates a ranking defect.
+Verify:
 
-End with READY / READY_AFTER_FIXES / BLOCKED and exact-head CI evidence.
+- `context/passion_active` exposes only intended `passion_ctx` data;
+- local profile/persona ids, name, bio, image or local-only metadata do not leak via telemetry/globals/URLs/logs;
+- `PassioPassionContext.current()` exposes only the intended public passion identity;
+- internal persona switching still works without public leakage;
+- unchanged context does not create duplicate events;
+- no invented historical provenance/backfill.
+
+Do not change ranking weights unless a failing regression test proves a ranking defect.
+
+Return READY / READY_AFTER_FIXES / BLOCKED with exact-head evidence.
 
 ---
 
-# Codex review — Integrity / Product Passion stack
+# Codex — Integrity / Product Passion review
 
-Independently inspect #4 and #9 for:
+Independently inspect #4/#9 for:
 
-- build reproducibility / release identity drift;
-- timing races between release guard startup and manual/visibility/online checks;
-- telemetry ordering during identity transitions;
-- local profile ID leakage through globals, serialized events, logs or URLs;
-- false duplicate suppression when two personas share a passion;
-- event storm risk from the 750 ms context poll;
-- test quality: production artifact tests must exercise the built bundle, not a copied helper implementation.
+- build reproducibility drift;
+- release identity races;
+- concurrent guard races;
+- identity-transition event ordering;
+- local persona-id leakage;
+- duplicate suppression bugs when two personas share a passion;
+- 750ms poll event-storm or lifecycle leak;
+- tests that accidentally validate helper copies instead of production artifacts.
 
-Require a focused regression test for every blocker/high issue.
+Require focused regression tests for every BLOCKER/HIGH finding.
 
 ---
 
 # Final reconciliation prompt
 
-After both independent reviews are complete, compare findings by evidence, not vote count.
+After independent reviews, compare claims by evidence, never by vote count.
 
 For each disagreement:
 
-1. state Claude's claim;
-2. state Codex's claim;
-3. identify the exact code/test evidence that can discriminate between them;
-4. run or add that test;
-5. adopt the result proven by the repository.
+1. Claude claim;
+2. Codex claim;
+3. exact discriminating code/test/data evidence;
+4. run/add test;
+5. adopt only the result proven by repository/runtime evidence.
 
-Then produce:
+Then re-query GitHub one final time and produce:
 
-- final exact merge order;
-- exact heads to merge;
-- CI run IDs/conclusions;
+- exact current merge order;
+- exact current heads and bases;
+- exact CI run IDs/conclusions;
+- explicit branch-protection/ruleset state;
+- #17 supersession decision;
+- legacy baseline verdict;
+- instance coordination verdict;
+- production release evidence state;
+- whether #27 remains unmounted;
+- whether `DASH_SENTINEL_LOCAL_GATE_V2` remains OFF;
 - unresolved blockers;
-- required branch-protection change;
-- production release evidence status;
-- explicit confirmation whether #12 remains inactive runtime policy;
-- GO / NO_GO for merge;
-- separately, GO / NO_GO for production deployment.
+- `GO_MERGE` or `NO_GO_MERGE`;
+- separately `GO_V2_ACTIVATION` or `NO_GO_V2_ACTIVATION`;
+- separately `GO_PRODUCTION_DEPLOY` or `NO_GO_PRODUCTION_DEPLOY`.
 
-Merge GO and deployment GO are intentionally separate decisions.
+No category inherits GO from another category.
