@@ -22,13 +22,25 @@ export function makeAutopilotRepairer({
     const rep = await repair(record, analyzer);
     if (!rep || rep.ok !== true) return rep;
 
+    // `record` est le diagnostic canonique que Sentinel vient de persister avant
+    // d'appeler le réparateur. On scelle ici uniquement les champs causaux utiles
+    // afin que les couches Autopilot n'aient jamais à réimporter `sentinel.js`
+    // (et évitent ainsi un cycle ESM bootstrap→executor→autopilot→sentinel).
+    const diagnosisEvidence = Object.freeze({
+      id: record?.id || null,
+      incidentId: record?.meta?.incidentId || null,
+      incidentClusterKey: record?.meta?.incidentClusterKey || null,
+      diagnosisTs: record?.ts || null,
+    });
+
     const repairWithContext = {
       ...rep,
       key: record?.key || rep.key || null,
       title: record?.title || rep.title || null,
-      diagnosisId: record?.id || null,
-      incidentId: record?.meta?.incidentId || rep.incidentId || null,
-      incidentClusterKey: record?.meta?.incidentClusterKey || rep.incidentClusterKey || null,
+      diagnosisId: diagnosisEvidence.id,
+      incidentId: diagnosisEvidence.incidentId || rep.incidentId || null,
+      incidentClusterKey: diagnosisEvidence.incidentClusterKey || rep.incidentClusterKey || null,
+      diagnosisEvidence,
     };
 
     let autopilot;
