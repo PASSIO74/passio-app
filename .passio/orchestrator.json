@@ -1,0 +1,75 @@
+{
+  "version": 2,
+  "activated_at": "2026-08-18",
+  "source_of_truth": {
+    "repository": "PASSIO74/passio-app",
+    "production_branch": "main"
+  },
+  "orchestrator": {
+    "agent": "ChatGPT",
+    "model": "GPT-5.6 Sol",
+    "responsibilities": [
+      "decompose objectives",
+      "route work to specialist agents",
+      "compare outputs",
+      "enforce governance",
+      "verify before production integration"
+    ]
+  },
+  "agents": {
+    "claude_code": {
+      "role": "principal production engineer",
+      "preferred_for": [
+        "repository-wide implementation",
+        "backend and Supabase",
+        "security and RLS",
+        "debugging",
+        "refactoring",
+        "tests",
+        "production integration"
+      ]
+    },
+    "lovable": {
+      "role": "UI/UX design laboratory",
+      "project_id": "4cdbef5a-ce64-4adb-afa2-320f5f2e7af7",
+      "preferred_for": [
+        "visual exploration",
+        "mobile UX",
+        "alternative screen concepts",
+        "component concepts",
+        "interaction prototypes"
+      ],
+      "constraints": [
+        "never source of truth",
+        "never production Supabase",
+        "never store production secrets",
+        "never migrate PASSIO production stack",
+        "handoff must be implementation-neutral"
+      ]
+    },
+    "codex": {
+      "role": "independent reviewer and challenger",
+      "preferred_for": [
+        "second opinion",
+        "risk review",
+        "architecture challenge",
+        "code review"
+      ]
+    }
+  },
+  "routing": {
+    "ui_ux": ["lovable", "claude_code"],
+    "frontend_production": ["claude_code", "codex"],
+    "backend": ["claude_code", "codex"],
+    "security": ["claude_code", "codex"],
+    "architecture": ["claude_code", "codex"],
+    "product_exploration": ["lovable", "claude_code"],
+    "final_arbitration": ["ChatGPT"]
+  },
+  "integration_policy": {
+    "lovable_output": "review_then_transpose",
+    "production_changes": "branch_pr_tests_review",
+    "direct_lovable_to_main": false,
+    "direct_unreviewed_ai_to_main": false
+  }
+}
