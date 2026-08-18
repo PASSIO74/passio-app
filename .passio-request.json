@@ -1,0 +1,6 @@
+{
+  "protocol": "passio-ai-v1",
+  "id": "e2e-validation-20260818-1053",
+  "title": "Validation bout en bout Claude Code + Codex",
+  "instruction": "Test de validation complet du canal local. Ne modifie aucun fichier applicatif, aucun test, aucune configuration et ne touche pas a la production. Cree uniquement un fichier AI_E2E_VALIDATION.md a la racine du worktree. Ce fichier doit contenir: 1) horodatage local du test si disponible, 2) confirmation que Claude Code standard local a execute la premiere analyse, 3) synthese de la revue Codex, 4) synthese de la reconciliation Claude apres Codex, 5) verdict final Codex, 6) verdict global PASS/FAIL sur la chaine ChatGPT -> GitHub -> Claude Code -> Codex -> Claude Code -> Codex -> GitHub. Lance seulement des verifications statiques non destructives si utiles. Le resultat final ne doit etre pousse que si Codex donne VERDICT: OK."
+}
