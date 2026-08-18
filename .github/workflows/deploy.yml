@@ -34,6 +34,15 @@ jobs:
       - name: Audits statiques (tests creux)
         run: node scripts/audit-tests-creux.js --ci
 
+      # Le centre de pilotage est une application à part entière. Ses tests
+      # déterministes (Sentinel, Guardian, Autopilot, rollback) sont désormais
+      # une gate CI explicite : une autonomie non testée ne doit jamais être verte.
+      - name: Tests centre de pilotage / Sentinel
+        working-directory: dashboard
+        run: |
+          npm install
+          npm test
+
       - name: Installer Playwright
         run: |
           npm install --no-save @playwright/test
