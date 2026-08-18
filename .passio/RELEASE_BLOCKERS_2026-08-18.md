@@ -21,27 +21,46 @@ Required before production merge/deploy:
 
 The current connector session can read this protection but exposes no mutation action for branch protection/rulesets, so this cannot be repaired automatically from this session.
 
-## BLOCKER 2 — Autopilot local pre-promotion policy can deadlock on the incident being repaired
+## BLOCKER 2 — Autopilot local pre-promotion deadlock is NOT runtime-resolved yet
 
-Current policy requires full Release Guardian `GO` before `PROMOTE_LOCAL`.
-Release Guardian requires zero open high/critical incidents.
-Therefore the causal incident being repaired can itself keep the Guardian NO_GO and block local promotion.
+Current runtime policy still requires full Release Guardian `GO` before `PROMOTE_LOCAL`.
+Release Guardian requires zero open high/critical incidents, so the causal incident being repaired can itself keep the Guardian NO_GO.
 
 Do NOT weaken production Release Guardian.
 
-Safe resolution requirements for a future distinct LOCAL pre-promotion gate:
+Progress prepared in separate, non-activating PRs:
 
-- repair already verified and within strict file/line bounds;
-- fresh/pass AUTHZ;
-- Observation LIVE;
-- critical journeys green;
-- anomaly evidence measured and not anomalous;
-- clean target branch and transactional rollback;
-- only the proven causal incident may be excluded from the local incident gate;
-- every unrelated high/critical incident remains a blocker;
-- full Release Guardian GO remains mandatory for production release/deploy.
+### PR #11 — causal incident identity
 
-Until the causal incident can be traced unambiguously through alert -> diagnosis -> repair -> promotion, keep current fail-closed HOLD behavior.
+- head `6092ee22dc0a883728f51d50c2f112fd43ed1f43`;
+- exact `incidentId` + `incidentClusterKey` are attached to alert meta at Incident Packet creation;
+- Sentinel already persists alert meta into diagnosis and gives the diagnosis to the repairer;
+- integration tests prove the causal identity survives Incident Packet -> alert/meta -> persisted diagnosis -> repairer;
+- CI #1802 is in progress; dashboard/Sentinel tests are already SUCCESS.
+
+### PR #12 — pure local gate policy, NOT activated
+
+- head `78bd5cf37205bd4dd77381b910555c864b7adad1`;
+- two new files only: policy + tests;
+- requires PASS authorization/observation/critical_journeys/anomalies;
+- requires exact causalIncidentId matching an open high/critical incident;
+- every unrelated high/critical incident blocks;
+- missing gate, UNKNOWN, STALE, FAIL, missing/mismatched causal identity => HOLD;
+- release_chain and the exact causal incident are ignored only for the LOCAL evaluation;
+- output explicitly declares `productionDeploy:false` and `runtimeActivated:false`;
+- `sentinel-autopilot.js` and Release Guardian are unchanged;
+- CI #1803 is in progress; dashboard/Sentinel tests are already SUCCESS.
+
+BLOCKER 2 remains unresolved for runtime until all of the following happen in a separate activation change:
+
+- #11/#12 exact-head CI green;
+- independent Claude Code + Codex review of causal identity and local policy;
+- activation wiring reviewed separately;
+- transactional executor/rollback remains mandatory;
+- production Release Guardian GO remains mandatory for production release/deploy;
+- no unrelated high/critical incident can ever be excluded.
+
+Until then, current fail-closed HOLD behavior remains the runtime behavior.
 
 ## BLOCKER 3 — PR #8 exact-head CI must finish green
 
@@ -59,14 +78,12 @@ Hardening included on this head:
 - public release commit matching accepts only hexadecimal commit refs;
 - 12 common commit characters is a NON-WEAKENABLE minimum security floor; environment configuration can request more proof but can never lower the floor;
 - `public-release-evidence` and `release-recorder` use the exact same proof constant so local buildId expectations cannot be derived with weaker commit proof than the public probe;
-- short/weak commit prefixes are rejected by tests;
 - cached/in-flight public release evidence is bound to the exact expected commit/build pair;
-- if expectations change during an in-flight probe, the old verdict is never reused for the new revision;
-- `releaseHealth()` rejects a cached LIVE result whose embedded expectations no longer match the current release expectations (`STALE_EXPECTATION`).
+- changed expectations during an in-flight probe force a fresh probe;
+- `releaseHealth()` rejects cached LIVE evidence whose expectations no longer match (`STALE_EXPECTATION`).
 
-Dashboard/Sentinel tests on #1799 are already SUCCESS. AUTHZ/E2E/workflow completion are still required.
-
-Any earlier #8 CI is evidence for an older head only and must not be used to clear this blocker.
+Dashboard/Sentinel tests and AUTHZ-CRITICAL on #1799 are SUCCESS; E2E/workflow completion are still required.
+Any earlier #8 CI is evidence for an older head only.
 
 ## RESOLVED EVIDENCE — PR #9 exact-head CI
 
@@ -89,13 +106,13 @@ PR #9 is technically green, but merge still requires current base verification, 
 PR #10 is intentionally stacked on #8 and does not replace #8's release proof.
 
 - head: `75acace7dc476ff627b846c6a092591a33625cad`;
-- base: current #8 head at creation `4506c9951ce3fbdc7fef1faa7488c0eb5983564a`;
-- changed files: exactly 2;
+- base: current #8 head `4506c9951ce3fbdc7fef1faa7488c0eb5983564a`;
+- changed files: exactly 2, zero deletions;
 - net `index.html` patch: one direct navigation link `Pilot` -> `/mobile.html`;
-- separate test file proves the link is navigation-only with no inline mutation/API action;
-- CI #1801 is in progress.
+- separate test proves navigation-only behavior with no inline API/mutation action;
+- CI #1801 is in progress; dashboard/Sentinel + AUTHZ are SUCCESS, E2E running.
 
-Do not merge #10 before #8. Exact-head CI must be green and its base must be revalidated after #8 changes/merge.
+Do not merge #10 before #8. Revalidate its base after #8 merge/movement.
 
 ## BLOCKER 4 — Production public release evidence must be configured and fresh
 
