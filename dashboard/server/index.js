@@ -39,6 +39,7 @@ import { controlCommand } from "./control-intelligence.js";
 import { whatChanged, listControlSnapshots, startControlHistory } from "./control-history.js";
 import { anomalySnapshot } from "./anomaly-engine.js";
 import { releaseGuardianSnapshot } from "./release-guardian.js";
+import { registerPromotionReadRoutes } from "./sentinel-promotion-routes.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -96,6 +97,7 @@ api.get("/releases", auth.requireAuth, (req, res) => res.json({ health: releaseH
 api.get("/release-guardian", auth.requireAuth, (req, res) => res.json(releaseGuardianSnapshot()));
 api.get("/anomalies", auth.requireAuth, (req, res) => res.json(anomalySnapshot()));
 api.get("/incidents", auth.requireAuth, (req, res) => res.json(listIncidentPackets(Number(req.query.limit) || 50)));
+registerPromotionReadRoutes(api, auth);
 api.post("/incidents/:id/transition", auth.requireCap("alerts"), (req, res) => {
   const incident = transitionIncident(req.params.id, req.body?.phase, {
     evidence: req.body?.evidence,
