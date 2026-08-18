@@ -27,6 +27,8 @@ export function makeAutopilotRepairer({
       key: record?.key || rep.key || null,
       title: record?.title || rep.title || null,
       diagnosisId: record?.id || null,
+      incidentId: record?.meta?.incidentId || rep.incidentId || null,
+      incidentClusterKey: record?.meta?.incidentClusterKey || rep.incidentClusterKey || null,
     };
 
     let autopilot;
