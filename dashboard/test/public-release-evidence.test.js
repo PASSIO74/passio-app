@@ -24,6 +24,15 @@ test("public release evidence is MISMATCH when deployed commit differs", () => {
   assert.equal(r.matches.commit, false);
 });
 
+test("public release evidence rejects a commit prefix that is too short to be proof", () => {
+  const r = evaluatePublicRelease({
+    release: { buildId: "abc123", commit: "1234567" },
+    expectedCommit: "1234567890abcdef1234567890abcdef12345678",
+  });
+  assert.equal(r.state, "MISMATCH");
+  assert.equal(r.matches.commit, false);
+});
+
 test("public release evidence is MISMATCH when expected commit proof is absent", () => {
   const r = evaluatePublicRelease({
     release: { buildId: "abc123", commit: null },
