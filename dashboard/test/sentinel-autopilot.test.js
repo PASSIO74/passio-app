@@ -29,14 +29,66 @@ test("post-promotion recurrences quarantine without falsifying repair attempts",
   assert.equal(learningDecision(repair).allowAutoPromotion, false);
 });
 
-test("autopilot is fail-closed when guardian is NO_GO", () => {
+test("autopilot is fail-closed when guardian is NO_GO by default", () => {
   const repair = { key: "x", files: ["js/example.js"], branch: "sentinelle/test", sha: "abc", ok: true, changedLines: 2 };
-  const d = autopilotDecision(repair, { decision: "NO_GO" }, { allowAutoPromotion: true });
+  const d = autopilotDecision(repair, { decision: "NO_GO" }, { allowAutoPromotion: true }, { enabled: true, useLocalGate: false });
   assert.equal(d.decision, "HOLD");
   assert.ok(d.blockers.includes("release_guardian_no_go"));
+  assert.equal(d.policy.localGateV2, false);
+});
+
+test("local gate v2 can promote only when explicitly enabled and GO_LOCAL", () => {
+  const repair = {
+    key: "x-local", files: ["js/example.js"], branch: "sentinelle/test", sha: "abc",
+    ok: true, changedLines: 2, incidentId: "inc_causal",
+  };
+  const localGateDecision = {
+    decision: "GO_LOCAL",
+    blockers: [],
+    policy: { runtimeActivated: false, productionDeploy: false },
+  };
+  const d = autopilotDecision(
+    repair,
+    { decision: "NO_GO" },
+    { allowAutoPromotion: true },
+    { enabled: true, useLocalGate: true, localGateDecision },
+  );
+  assert.equal(d.decision, "PROMOTE_LOCAL");
+  assert.deepEqual(d.blockers, []);
+  assert.equal(d.guardianDecision, "NO_GO");
+  assert.equal(d.policy.localGateV2, true);
+  assert.equal(d.policy.productionDeploy, false);
+});
+
+test("local gate v2 HOLD blocks even when full Guardian is GO", () => {
+  const repair = { key: "x-hold", files: ["js/example.js"], branch: "sentinelle/test", sha: "abc", ok: true, changedLines: 2 };
+  const d = autopilotDecision(
+    repair,
+    { decision: "GO" },
+    { allowAutoPromotion: true },
+    {
+      enabled: true,
+      useLocalGate: true,
+      localGateDecision: { decision: "HOLD", blockers: ["incident_set_incomplete"] },
+    },
+  );
+  assert.equal(d.decision, "HOLD");
+  assert.ok(d.blockers.includes("local_gate:incident_set_incomplete"));
+});
+
+test("autopilot disabled remains a blocker even with GO_LOCAL", () => {
+  const repair = { key: "x-disabled", files: ["js/example.js"], branch: "sentinelle/test", sha: "abc", ok: true, changedLines: 2 };
+  const d = autopilotDecision(
+    repair,
+    { decision: "NO_GO" },
+    { allowAutoPromotion: true },
+    { enabled: false, useLocalGate: true, localGateDecision: { decision: "GO_LOCAL", blockers: [] } },
+  );
+  assert.equal(d.decision, "HOLD");
+  assert.ok(d.blockers.includes("autopilot_disabled"));
 });
 
 test("autopilot never enables production deployment", () => {
-  const d = autopilotDecision({}, { decision: "GO" }, { allowAutoPromotion: true });
+  const d = autopilotDecision({}, { decision: "GO" }, { allowAutoPromotion: true }, { enabled: true, useLocalGate: false });
   assert.equal(d.policy.productionDeploy, false);
 });
