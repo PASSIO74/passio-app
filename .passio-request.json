@@ -1,0 +1,6 @@
+{
+  "protocol": "passio-ai-v1",
+  "id": "connexion-smoke",
+  "title": "Verifier la chaine Claude Code + Codex",
+  "instruction": "Analyse uniquement le nouveau mecanisme d orchestration locale PASSIO (dashboard/aiworker.mjs, dashboard/supervise.mjs, dashboard/Activer-Claude-Codex.cmd). Ne modifie aucun fichier applicatif. Cree uniquement un fichier AI_ANALYSIS.md a la racine du worktree avec: 1) verification que Claude Code standard local est bien utilise, 2) verification que Codex local est bien utilise, 3) risques ou bugs concrets trouves dans l orchestration, 4) correctifs recommandes, 5) verdict global. Lance les verifications statiques utiles sans toucher a la production. Le resultat final doit passer par la revue Codex puis reconciliation Claude puis revue Codex finale." 
+}
