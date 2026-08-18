@@ -14,7 +14,7 @@ test("le changement de profil émet uniquement la passion métier, jamais l'id l
   await page.goto("/index.html?telemetry=1");
   await page.waitForFunction(() => Boolean(window.PassioPassionContext && window.tel));
 
-  const emitted = await page.evaluate(() => {
+  const result = await page.evaluate(() => {
     const events = [];
     const original = window.tel.track;
     window.tel.track = function (type, action, fields) {
@@ -27,18 +27,21 @@ test("le changement de profil émet uniquement la passion métier, jamais l'id l
     } finally {
       window.tel.track = original;
     }
-    return events;
+    return { events, current: window.PassioPassionContext.current() };
   });
 
-  expect(emitted).toHaveLength(1);
-  expect(emitted[0].type).toBe("context");
-  expect(emitted[0].action).toBe("passion_active");
-  expect(emitted[0].fields.meta).toEqual({ passion_ctx: "sport" });
+  expect(result.events).toHaveLength(1);
+  expect(result.events[0].type).toBe("context");
+  expect(result.events[0].action).toBe("passion_active");
+  expect(result.events[0].fields.meta).toEqual({ passion_ctx: "sport" });
 
-  const wire = JSON.stringify(emitted[0]);
+  const wire = JSON.stringify(result.events[0]);
   expect(wire).not.toContain("pp_1");
   expect(wire).not.toContain("Audit QA");
   expect(wire).not.toContain("Profil de test");
+
+  expect(result.current).toEqual({ passionId: "sport" });
+  expect(result.current).not.toHaveProperty("profileLocalId");
 });
 
 test("un refresh sans changement n'émet pas de doublon", async ({ page }) => {
