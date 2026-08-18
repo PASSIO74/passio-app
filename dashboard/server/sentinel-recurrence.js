@@ -76,8 +76,8 @@ export function startRecurrenceWatch() {
   return { started: true, alreadyStarted: false };
 }
 
-export function recurrenceSnapshot() {
-  clean();
+export function recurrenceSnapshot(now = Date.now()) {
+  clean(now);
   return {
     active: watches.size,
     watchMinutes: Math.round(WATCH_MS / 60_000),
