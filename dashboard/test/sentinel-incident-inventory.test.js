@@ -3,36 +3,57 @@ import assert from "node:assert/strict";
 import { evaluateIncidentInventory } from "../server/sentinel-incident-inventory.js";
 
 const incident = (id, severity = "high", status = "open") => ({ id, severity, status });
+const retention = (over = {}) => ({
+  complete: true,
+  historyTrusted: true,
+  criticalOverflow: false,
+  stored: 1,
+  reason: null,
+  ...over,
+});
 
-test("incident inventory is incomplete when historical completeness is not proven", () => {
-  const r = evaluateIncidentInventory([incident("inc_a")], { limit: 200 });
+test("incident inventory is incomplete when retention proof is missing/untrusted", () => {
+  const r = evaluateIncidentInventory([incident("inc_a")], {
+    retention: retention({ complete: false, historyTrusted: false, reason: "historical_completeness_unproven" }),
+  });
   assert.equal(r.complete, false);
   assert.ok(r.blockers.includes("historical_completeness_unproven"));
 });
 
-test("incident inventory is incomplete when retention window is saturated", () => {
-  const items = Array.from({ length: 3 }, (_, i) => incident(`inc_${i}`, i === 0 ? "critical" : "warn"));
-  const r = evaluateIncidentInventory(items, { limit: 3, historicalCompleteness: true });
+test("a trusted registry still HOLDs if not all stored incidents were read", () => {
+  const r = evaluateIncidentInventory([incident("inc_a")], {
+    retention: retention({ stored: 2 }),
+  });
   assert.equal(r.complete, false);
-  assert.ok(r.blockers.includes("retention_window_saturated"));
+  assert.ok(r.blockers.includes("inventory_read_incomplete"));
 });
 
-test("only explicit historical proof plus a non-saturated window can be complete", () => {
-  const r = evaluateIncidentInventory([
+test("critical retention overflow makes the inventory incomplete", () => {
+  const r = evaluateIncidentInventory([incident("inc_a")], {
+    retention: retention({ complete: false, criticalOverflow: true, reason: "critical_retention_overflow" }),
+  });
+  assert.equal(r.complete, false);
+  assert.ok(r.blockers.includes("critical_retention_overflow"));
+});
+
+test("trusted retention plus a full read can be complete", () => {
+  const items = [
     incident("inc_causal", "critical"),
     incident("inc_closed", "high", "closed"),
-  ], { limit: 200, historicalCompleteness: true });
+  ];
+  const r = evaluateIncidentInventory(items, { retention: retention({ stored: items.length }) });
   assert.equal(r.complete, true);
   assert.deepEqual(r.blockers, []);
   assert.deepEqual(r.openCriticalIds, ["inc_causal"]);
 });
 
 test("openCritical includes only open high/critical incidents", () => {
-  const r = evaluateIncidentInventory([
+  const items = [
     incident("a", "high"),
     incident("b", "critical"),
     incident("c", "warn"),
     incident("d", "high", "closed"),
-  ], { limit: 200, historicalCompleteness: true });
+  ];
+  const r = evaluateIncidentInventory(items, { retention: retention({ stored: items.length }) });
   assert.deepEqual(r.openCriticalIds, ["a", "b"]);
 });
