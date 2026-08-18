@@ -5,7 +5,12 @@ import {
   evaluatePublicRelease,
   refreshPublicReleaseEvidence,
   publicEvidenceExpectationKey,
+  MIN_COMMIT_PROOF,
 } from "../server/public-release-evidence.js";
+
+test("public release evidence never allows commit proof weaker than 12 characters", () => {
+  assert.ok(MIN_COMMIT_PROOF >= 12);
+});
 
 test("public release evidence is LIVE when commit/build proof matches", () => {
   const r = evaluatePublicRelease({
