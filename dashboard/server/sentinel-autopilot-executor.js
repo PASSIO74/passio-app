@@ -11,6 +11,7 @@ import { audit } from "./audit.js";
 import { broadcast } from "./sse.js";
 import { runSuiteAwait } from "./tests.js";
 import { autopilotDecision, registerAutopilotOutcome } from "./sentinel-autopilot.js";
+import { acquireAutopilotLock, releaseAutopilotLock, autopilotLockSnapshot } from "./sentinel-autopilot-lock.js";
 
 const TARGET_BRANCH = process.env.DASH_AUTOPILOT_TARGET_BRANCH || "main";
 const VERIFY_SUITES = (process.env.DASH_AUTOPILOT_VERIFY_SUITES || "authz,globals,handlers,smoke")
@@ -54,11 +55,16 @@ function tail(v, n = 1200) {
 /**
  * Exécute uniquement la transaction git + tests. Exportée pour tests avec ops
  * injectées : aucun test unitaire ne touche le vrai dépôt.
+ *
+ * Le verrou process-local est acquis APRÈS validation du nom de branche mais
+ * AVANT le premier accès git, puis libéré en finally pour toute issue.
  */
 export async function runPromotionTransaction(repair, {
   ops = realAutopilotOps,
   targetBranch = TARGET_BRANCH,
   suites = VERIFY_SUITES,
+  acquireLock = acquireAutopilotLock,
+  releaseLock = releaseAutopilotLock,
 } = {}) {
   const result = {
     attempted: true,
@@ -75,58 +81,78 @@ export async function runPromotionTransaction(repair, {
     return { ...result, attempted: false, reason: "repair_branch_invalid" };
   }
 
-  const st = await ops.status();
-  if (st.code !== 0) return { ...result, attempted: false, reason: "git_status_failed", detail: tail(st.err || st.out) };
-  if (String(st.out || "").trim()) return { ...result, attempted: false, reason: "working_tree_dirty" };
-
-  const br = await ops.branch();
-  const current = String(br.out || "").trim();
-  if (br.code !== 0 || current !== targetBranch) {
-    return { ...result, attempted: false, reason: "wrong_target_branch", currentBranch: current || null };
+  const lock = acquireLock({
+    incidentId: repair?.incidentId || null,
+    diagnosisId: repair?.diagnosisId || null,
+    branch: repair.branch,
+  });
+  if (!lock?.ok) {
+    return {
+      ...result,
+      attempted: false,
+      reason: lock?.reason || "promotion_lock_unavailable",
+      activePromotion: lock?.active || null,
+    };
   }
+  result.lockToken = lock.token || null;
 
-  const before = await ops.head();
-  const beforeSha = String(before.out || "").trim();
-  if (before.code !== 0 || !/^[0-9a-f]{7,40}$/i.test(beforeSha)) {
-    return { ...result, attempted: false, reason: "pre_promotion_sha_unavailable" };
-  }
-  result.beforeSha = beforeSha;
+  try {
+    const st = await ops.status();
+    if (st.code !== 0) return { ...result, attempted: false, reason: "git_status_failed", detail: tail(st.err || st.out) };
+    if (String(st.out || "").trim()) return { ...result, attempted: false, reason: "working_tree_dirty" };
 
-  const merged = await ops.merge(repair.branch);
-  if (merged.code !== 0) {
-    await ops.abortMerge().catch(() => {});
-    result.reason = "merge_failed";
-    result.detail = tail(merged.err || merged.out);
-    result.durationMs = Date.now() - result.startedAt;
-    return result;
-  }
+    const br = await ops.branch();
+    const current = String(br.out || "").trim();
+    if (br.code !== 0 || current !== targetBranch) {
+      return { ...result, attempted: false, reason: "wrong_target_branch", currentBranch: current || null };
+    }
 
-  for (const suite of suites) {
-    let proof;
-    try { proof = await ops.verify(suite); }
-    catch (e) { proof = { code: -1, output: e?.message || String(e) }; }
-    const ok = proof?.code === 0;
-    result.suites.push({ suite, ok, detail: ok ? null : tail(proof?.output) });
-    if (!ok) {
-      const rb = await ops.resetHard(beforeSha);
-      result.rolledBack = rb?.code === 0;
-      result.reason = result.rolledBack ? `verification_failed:${suite}` : `rollback_failed:${suite}`;
-      result.rollbackDetail = result.rolledBack ? null : tail(rb?.err || rb?.out);
+    const before = await ops.head();
+    const beforeSha = String(before.out || "").trim();
+    if (before.code !== 0 || !/^[0-9a-f]{7,40}$/i.test(beforeSha)) {
+      return { ...result, attempted: false, reason: "pre_promotion_sha_unavailable" };
+    }
+    result.beforeSha = beforeSha;
+
+    const merged = await ops.merge(repair.branch);
+    if (merged.code !== 0) {
+      await ops.abortMerge().catch(() => {});
+      result.reason = "merge_failed";
+      result.detail = tail(merged.err || merged.out);
       result.durationMs = Date.now() - result.startedAt;
       return result;
     }
-  }
 
-  const after = await ops.head();
-  result.afterSha = String(after.out || "").trim() || null;
-  result.ok = after.code === 0 && Boolean(result.afterSha) && result.afterSha !== beforeSha;
-  result.reason = result.ok ? null : "promotion_head_not_advanced";
-  if (!result.ok) {
-    const rb = await ops.resetHard(beforeSha);
-    result.rolledBack = rb?.code === 0;
+    for (const suite of suites) {
+      let proof;
+      try { proof = await ops.verify(suite); }
+      catch (e) { proof = { code: -1, output: e?.message || String(e) }; }
+      const ok = proof?.code === 0;
+      result.suites.push({ suite, ok, detail: ok ? null : tail(proof?.output) });
+      if (!ok) {
+        const rb = await ops.resetHard(beforeSha);
+        result.rolledBack = rb?.code === 0;
+        result.reason = result.rolledBack ? `verification_failed:${suite}` : `rollback_failed:${suite}`;
+        result.rollbackDetail = result.rolledBack ? null : tail(rb?.err || rb?.out);
+        result.durationMs = Date.now() - result.startedAt;
+        return result;
+      }
+    }
+
+    const after = await ops.head();
+    result.afterSha = String(after.out || "").trim() || null;
+    result.ok = after.code === 0 && Boolean(result.afterSha) && result.afterSha !== beforeSha;
+    result.reason = result.ok ? null : "promotion_head_not_advanced";
+    if (!result.ok) {
+      const rb = await ops.resetHard(beforeSha);
+      result.rolledBack = rb?.code === 0;
+    }
+    result.durationMs = Date.now() - result.startedAt;
+    return result;
+  } finally {
+    const released = releaseLock(lock.token);
+    result.lockReleased = released?.ok === true;
   }
-  result.durationMs = Date.now() - result.startedAt;
-  return result;
 }
 
 /**
@@ -176,5 +202,7 @@ export function autopilotExecutorSnapshot() {
     verifySuites: VERIFY_SUITES,
     productionMutation: false,
     requiresExplicitMutationFlag: true,
+    processLocalLock: autopilotLockSnapshot(),
+    distributedCoordination: false,
   };
 }
