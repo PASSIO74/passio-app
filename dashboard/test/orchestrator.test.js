@@ -2,6 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { routeTask } from "../server/orchestrator.js";
 
+test("route video generation to Gemini Veo", () => {
+  const r = routeTask({ title: "Créer le teaser vidéo Passio", instruction: "Générer une vidéo verticale avec Veo pour les réseaux sociaux." });
+  assert.equal(r.category, "video_generation");
+  assert.equal(r.primary, "gemini_veo");
+  assert.deepEqual(r.agents, ["gemini_veo", "chatgpt"]);
+  assert.ok(r.pipeline.includes("Veo 3.1"));
+});
+
 test("route UI/UX recommends Lovable then production agents", () => {
   const r = routeTask({ title: "Refondre l'onboarding mobile", instruction: "Améliorer le design et le parcours UX." });
   assert.equal(r.category, "ui_ux");
