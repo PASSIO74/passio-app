@@ -1,21 +1,20 @@
 name: Claude Code
 
 on:
-  issues:
-    types: [opened, edited]
   issue_comment:
     types: [created, edited]
   pull_request_review_comment:
     types: [created, edited]
+  issues:
+    types: [opened, edited]
 
 jobs:
   claude:
-    if: >-
-      github.actor == 'PASSIO74' &&
-      (
-        contains(github.event.issue.title || '', '@claude') ||
-        contains(github.event.issue.body || '', '@claude') ||
-        contains(github.event.comment.body || '', '@claude')
+    if: |
+      github.actor == 'PASSIO74' && (
+        (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+        (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+        (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
       )
     runs-on: ubuntu-latest
     permissions:
@@ -23,23 +22,24 @@ jobs:
       issues: write
       pull-requests: write
       actions: read
-      id-token: write
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 1
 
       - name: Run Claude Code
+        id: claude
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           trigger_phrase: '@claude'
           branch_prefix: 'claude/'
+          base_branch: 'main'
           additional_permissions: |
             actions: read
-          custom_instructions: |
-            Read AGENTS.md and CLAUDE.md before changing PASSIO.
-            Never push directly to main. Work on a Claude branch and create or update a pull request.
-            Keep the change tightly scoped to the user request. Run relevant checks before finishing.
+          claude_args: |
+            --max-turns 30
+            --append-system-prompt "Read AGENTS.md and CLAUDE.md before changing PASSIO. Never push directly to main. Keep each change tightly scoped to the user's request."
