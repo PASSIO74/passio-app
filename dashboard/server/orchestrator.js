@@ -9,6 +9,7 @@ import os from "node:os";
 import path from "node:path";
 import { config } from "./config.js";
 import { audit } from "./audit.js";
+import * as veo from "./veo.js";
 
 const exec = promisify(execFile);
 const REPO = path.resolve(config.repoPath);
@@ -182,16 +183,26 @@ export async function snapshot() {
 }
 
 export async function submitTask(input = {}, actor = "unknown") {
-  if (config.isProd || !config.allowMutations) {
-    const e = new Error("Soumission IA désactivée : le Control Center est en production ou DASH_ALLOW_MUTATIONS n'est pas actif."); e.code = 403; throw e;
-  }
   const title = String(input.title || "").trim().slice(0, 160);
   const instruction = String(input.instruction || "").trim().slice(0, 30000);
   if (!title || !instruction) { const e = new Error("Titre et instruction requis."); e.code = 400; throw e; }
   const id = safeId(input.id || `${Date.now()}-${title}`);
-  const branch = `${REQUEST_PREFIX}${id}`;
   const route = routeTask({ title, instruction });
 
+  // Les tâches vidéo ne sont pas des mutations Git : elles partent directement
+  // vers le moteur Veo spécialisé et ne doivent jamais être envoyées au worker
+  // Claude/Codex qui traite les changements de code.
+  if (route.category === "video_generation") {
+    const videoOptions = input.video && typeof input.video === "object" ? input.video : {};
+    const started = await veo.generate({ ...videoOptions, prompt: String(videoOptions.prompt || instruction) }, actor);
+    audit("orchestrator_video_submit", { id, title, operation: started.operationName }, actor);
+    return { ...started, id, title, route, execution: "gemini_veo" };
+  }
+
+  if (config.isProd || !config.allowMutations) {
+    const e = new Error("Soumission IA désactivée : le Control Center est en production ou DASH_ALLOW_MUTATIONS n'est pas actif."); e.code = 403; throw e;
+  }
+  const branch = `${REQUEST_PREFIX}${id}`;
   const existing = await remoteBranches(branch);
   if (existing.some((b) => b.branch === branch)) { const e = new Error(`La tâche ${id} existe déjà.`); e.code = 409; throw e; }
 
