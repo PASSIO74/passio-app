@@ -1,6 +1,6 @@
 {
-  "version": 4,
-  "activated_at": "2026-08-18",
+  "version": 5,
+  "activated_at": "2026-08-19",
   "source_of_truth": {
     "repository": "PASSIO74/passio-app",
     "production_branch": "main"
@@ -83,6 +83,27 @@
         "production changes must still follow repository review rules"
       ]
     },
+    "gemini_veo": {
+      "role": "specialist video generation engine via Google Vertex AI",
+      "models": [
+        "veo-3.1-generate-001",
+        "veo-3.1-fast-generate-001"
+      ],
+      "preferred_for": [
+        "Passio teaser videos",
+        "investor presentation video scenes",
+        "social video assets",
+        "vertical 9:16 video",
+        "landscape 16:9 video",
+        "cinematic product storytelling"
+      ],
+      "constraints": [
+        "server-side only",
+        "Google credentials must never be committed",
+        "generated media must use a dedicated Cloud Storage output location",
+        "ChatGPT owns creative direction and final validation"
+      ]
+    },
     "codex": {
       "role": "independent reviewer and challenger",
       "preferred_for": [
@@ -95,6 +116,7 @@
   },
   "routing": {
     "ui_ux": ["lovable", "claude_code"],
+    "video_generation": ["gemini_veo", "ChatGPT"],
     "frontend_production": ["claude_code", "codex"],
     "backend": ["claude_code", "codex"],
     "security": ["claude_code", "codex"],
@@ -105,6 +127,7 @@
   "integration_policy": {
     "lovable_output": "review_then_transpose",
     "base44_output": "review_then_transpose",
+    "gemini_veo_output": "creative_review_then_publish",
     "production_changes": "branch_pr_tests_review",
     "direct_lovable_to_main": false,
     "direct_base44_to_main": false,
