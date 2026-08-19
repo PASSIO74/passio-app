@@ -11,10 +11,18 @@ on:
 jobs:
   claude:
     if: |
-      github.actor == 'PASSIO74' && (
-        (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
-        (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
-        (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
+      (
+        github.event_name == 'issues' &&
+        github.event.issue.user.login == 'PASSIO74' &&
+        (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude'))
+      ) || (
+        github.event_name == 'issue_comment' &&
+        github.event.comment.user.login == 'PASSIO74' &&
+        contains(github.event.comment.body, '@claude')
+      ) || (
+        github.event_name == 'pull_request_review_comment' &&
+        github.event.comment.user.login == 'PASSIO74' &&
+        contains(github.event.comment.body, '@claude')
       )
     runs-on: ubuntu-latest
     permissions:
