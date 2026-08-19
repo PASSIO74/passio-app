@@ -34,7 +34,7 @@ jobs:
 
       - name: Run Claude Code directly
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.PASSIO }}
           DISABLE_TELEMETRY: '1'
           DISABLE_ERROR_REPORTING: '1'
           DISABLE_BUG_COMMAND: '1'
@@ -55,7 +55,7 @@ jobs:
           EOF
           )
           claude -p "$PROMPT" \
-            --model claude-sonnet-4-20250514 \
+            --model sonnet \
             --max-turns 40 \
             --allowedTools "Read,Edit,Write,Glob,Grep,Bash(npm run:*),Bash(npm test:*),Bash(git diff:*),Bash(git status:*)" \
             --output-format text
