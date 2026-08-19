@@ -14,3 +14,5 @@ Contraintes :
 - laisse le changement applicatif non committé si le workflow te le demande : le workflow persistera uniquement les fichiers que tu as réellement modifiés.
 
 Cette modification applicative doit être réellement produite par Claude Code, pas par ChatGPT.
+
+<!-- CI retrigger uniquement : ajouté par ChatGPT après le commit applicatif Claude vérifié. -->
