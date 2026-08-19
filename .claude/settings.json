@@ -1,4 +1,5 @@
 {
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "hooks": {
     "PreToolUse": [
       {
@@ -40,6 +41,42 @@
         ]
       }
     ]
+  },
+  "env": {
+    "ENABLE_STOP_REVIEW": "0"
+  },
+  "extraKnownMarketplaces": {
+    "context7-marketplace": {
+      "source": {
+        "source": "github",
+        "repo": "upstash/context7"
+      }
+    },
+    "chrome-devtools-plugins": {
+      "source": {
+        "source": "github",
+        "repo": "ChromeDevTools/chrome-devtools-mcp"
+      }
+    },
+    "supabase-agent-skills": {
+      "source": {
+        "source": "github",
+        "repo": "supabase/agent-skills"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "github@claude-plugins-official": true,
+    "netlify-skills@claude-plugins-official": true,
+    "security-guidance@claude-plugins-official": true,
+    "pr-review-toolkit@claude-plugins-official": true,
+    "claude-code-setup@claude-plugins-official": true,
+    "session-report@claude-plugins-official": true,
+    "playwright@claude-plugins-official": true,
+    "context7@context7-marketplace": true,
+    "chrome-devtools-mcp@chrome-devtools-plugins": true,
+    "supabase@supabase-agent-skills": true,
+    "postgres-best-practices@supabase-agent-skills": true
   },
   "permissions": {
     "defaultMode": "bypassPermissions",
