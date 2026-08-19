@@ -56,6 +56,7 @@ async function remoteBranches(prefix) {
 
 export function routeTask(input = {}) {
   const text = `${input.title || ""} ${input.instruction || ""}`.toLowerCase();
+  const video = /(veo\b|gemini.*video|video|vidéo|film|clip|teaser|trailer|cinematic|cinématique|storyboard animé|animation vidéo)/i.test(text);
   const ui = /(design|ui\b|ux\b|interface|ecran|écran|onboarding|landing|maquette|visuel|mobile|profil|feed|parcours)/i.test(text);
   const security = /(secur|sécur|rls|auth|permission|xss|csrf|secret|vulner|audit)/i.test(text);
   const backend = /(backend|supabase|database|base de don|migration|sql|api|serveur|server|endpoint)/i.test(text);
@@ -69,6 +70,14 @@ export function routeTask(input = {}) {
     pipeline: "Codex → ChatGPT",
     lovableRecommended: false,
     explanation: "Demande principalement analytique : revue indépendante puis arbitrage ChatGPT."
+  };
+  if (video) return {
+    category: "video_generation",
+    primary: "gemini_veo",
+    agents: ["gemini_veo", "chatgpt"],
+    pipeline: "ChatGPT (direction créative) → Gemini / Veo 3.1 (génération) → ChatGPT (validation)",
+    lovableRecommended: false,
+    explanation: "Génération vidéo : Veo 3.1 est le moteur spécialisé, piloté et validé par ChatGPT."
   };
   if (ui) return {
     category: "ui_ux",
@@ -132,6 +141,7 @@ export async function snapshot() {
     };
   }).sort((a, b) => String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")));
 
+  const veoConfigured = Boolean(config.googleCloudProject && config.veoOutputGcsUri);
   return {
     manifest,
     sourceOfTruth: manifest?.source_of_truth || { repository: "PASSIO74/passio-app", production_branch: "main" },
@@ -145,6 +155,13 @@ export async function snapshot() {
       chatgpt: { status: "external", truthfulLabel: "Orchestrateur dans ChatGPT", model: manifest?.orchestrator?.model || "GPT-5.6 Sol" },
       claude_code: { status: processAlive(supervisorPid) ? "supervised" : "unknown", truthfulLabel: "Exécuté par aiworker.mjs dans la session locale standard" },
       codex: { status: processAlive(supervisorPid) ? "supervised" : "unknown", truthfulLabel: "Reviewer local appelé par aiworker.mjs" },
+      gemini_veo: {
+        status: veoConfigured ? "configured" : "setup_required",
+        truthfulLabel: veoConfigured ? "Vertex AI / Veo 3.1 configuré côté serveur" : "Intégration prête — projet Google Cloud et bucket GCS à renseigner",
+        model: config.veoModel,
+        fastModel: config.veoFastModel,
+        location: config.googleCloudLocation,
+      },
       lovable: {
         status: manifest?.agents?.lovable?.project_id ? "configured" : "unknown",
         truthfulLabel: "Piloté via ChatGPT MCP — pas directement par le serveur local",
