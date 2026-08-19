@@ -7,7 +7,9 @@
   "scripts": {
     "start": "node server/index.js",
     "dev": "node --watch server/index.js",
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "veo": "node veo.mjs",
+    "veo:status": "node veo.mjs --status"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",
