@@ -1,0 +1,45 @@
+name: Claude PR Task
+
+on:
+  pull_request:
+    types: [opened]
+
+jobs:
+  claude:
+    if: >-
+      github.event.pull_request.user.login == 'PASSIO74' &&
+      startsWith(github.event.pull_request.head.ref, 'claude-task/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      actions: read
+      id-token: write
+
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 1
+
+      - name: Run Claude Code on PR task
+        id: claude
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: |
+            Execute the trusted PASSIO task written in `.passio/claude-task.md` on this pull request branch.
+            Read `AGENTS.md` and `CLAUDE.md` first and obey all repository invariants.
+            Make the smallest safe implementation that satisfies the task.
+            Do not edit `.passio/claude-task.md`.
+            Run the relevant checks for the files you touch.
+            Commit and push your implementation to the current PR branch.
+            Never push to `main` and never merge the PR yourself.
+          additional_permissions: |
+            actions: read
+          claude_args: |
+            --max-turns 40
+            --append-system-prompt "You are the implementation agent for PASSIO. Work only on the current PR branch and leave the PR ready for independent review."
