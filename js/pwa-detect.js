@@ -40,3 +40,17 @@
         } catch(e) {}
       });
     }
+
+// TEST VISUEL TEMPORAIRE — 2026-08-19
+// Affiche la date en grand rouge en haut du fil Passio.
+window.addEventListener('DOMContentLoaded', () => {
+  const feed = document.getElementById('screen-feed');
+  if (!feed || document.getElementById('passio-date-test')) return;
+
+  const banner = document.createElement('div');
+  banner.id = 'passio-date-test';
+  banner.textContent = '19 AOÛT 2026';
+  banner.setAttribute('aria-label', 'Test visuel date Passio');
+  banner.style.cssText = 'font-size:42px;font-weight:900;line-height:1.05;text-align:center;color:#ff0000;padding:18px 12px 8px;letter-spacing:.02em;';
+  feed.insertBefore(banner, feed.firstChild);
+});
