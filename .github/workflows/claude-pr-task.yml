@@ -32,7 +32,7 @@ jobs:
           npm install -g @anthropic-ai/claude-code
           claude --version
 
-      - name: Run Claude Code directly
+      - name: Run Claude Code directly with Opus 5 only
         env:
           ANTHROPIC_API_KEY: ${{ secrets.PASSIO }}
           DISABLE_TELEMETRY: '1'
@@ -54,11 +54,48 @@ jobs:
           ${TASK}
           EOF
           )
+
+          set +e
           claude -p "$PROMPT" \
-            --model sonnet \
+            --model opus \
             --max-turns 40 \
             --allowedTools "Read,Edit,Write,Glob,Grep,Bash(npm run:*),Bash(npm test:*),Bash(git diff:*),Bash(git status:*)" \
-            --output-format text
+            --output-format stream-json \
+            --verbose > /tmp/claude-stream.jsonl
+          CLAUDE_EXIT=$?
+          set -e
+
+          MODEL="$(node <<'NODE'
+          const fs = require('fs');
+          const lines = fs.readFileSync('/tmp/claude-stream.jsonl', 'utf8').split(/\r?\n/);
+          let model = '';
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const event = JSON.parse(line);
+              if (event.type === 'system' && event.subtype === 'init' && event.model) {
+                model = String(event.model);
+                break;
+              }
+            } catch (_) {}
+          }
+          process.stdout.write(model);
+          NODE
+          )"
+
+          echo "Claude Code model: ${MODEL:-unknown}"
+          case "$MODEL" in
+            claude-opus-5*) ;;
+            *)
+              echo "Refusing task: Claude Code did not start with Claude Opus 5."
+              exit 1
+              ;;
+          esac
+
+          if [ "$CLAUDE_EXIT" -ne 0 ]; then
+            echo "Claude Code exited with status $CLAUDE_EXIT."
+            exit "$CLAUDE_EXIT"
+          fi
 
       - name: Verify Claude produced an application diff
         run: |
