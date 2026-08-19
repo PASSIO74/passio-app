@@ -35,8 +35,9 @@ jobs:
       - name: Run Claude Code directly with Opus 5 only
         env:
           ANTHROPIC_API_KEY: ${{ secrets.PASSIO }}
-          ANTHROPIC_MODEL: opus
-          CLAUDE_CODE_SUBAGENT_MODEL: opus
+          ANTHROPIC_MODEL: claude-opus-5
+          ANTHROPIC_DEFAULT_OPUS_MODEL: claude-opus-5
+          CLAUDE_CODE_SUBAGENT_MODEL: claude-opus-5
           DISABLE_TELEMETRY: '1'
           DISABLE_ERROR_REPORTING: '1'
           DISABLE_BUG_COMMAND: '1'
@@ -44,7 +45,7 @@ jobs:
           set -euo pipefail
           TASK="$(cat .passio/claude-task.md)"
           PROMPT=$(cat <<EOF
-          You are the implementation agent for PASSIO.
+          You are the implementation agent for PASSIO running on Claude Opus 5.
           Read AGENTS.md and CLAUDE.md first and obey all repository invariants.
           Execute the trusted task below on the current PR branch.
           Use Claude Opus 5 only for this task and all subagents. Never switch to Sonnet or Haiku.
@@ -60,7 +61,7 @@ jobs:
 
           set +e
           claude -p "$PROMPT" \
-            --model opus \
+            --model claude-opus-5 \
             --max-turns 40 \
             --allowedTools "Read,Edit,Write,Glob,Grep,Bash(npm run:*),Bash(npm test:*),Bash(git diff:*),Bash(git status:*)" \
             --output-format stream-json \
