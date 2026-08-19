@@ -28,9 +28,8 @@ jobs:
         id: claude
         uses: anthropics/claude-code-action@v1
         with:
-          anthropic_api_key: ${{ secrets.PASSIO }}
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          show_full_output: true
           prompt: |
             Execute the trusted PASSIO task written in `.passio/claude-task.md` on this pull request branch.
             Read `AGENTS.md` and `CLAUDE.md` first and obey all repository invariants.
