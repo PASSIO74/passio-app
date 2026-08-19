@@ -32,7 +32,7 @@ jobs:
           npm install -g @anthropic-ai/claude-code
           claude --version
 
-      - name: Run Claude Code directly with Opus only
+      - name: Run Claude Code directly with Opus 5 only
         env:
           ANTHROPIC_API_KEY: ${{ secrets.PASSIO }}
           ANTHROPIC_MODEL: opus
@@ -47,7 +47,7 @@ jobs:
           You are the implementation agent for PASSIO.
           Read AGENTS.md and CLAUDE.md first and obey all repository invariants.
           Execute the trusted task below on the current PR branch.
-          Use Claude Opus only for this task and all subagents. Never switch to Sonnet or Haiku.
+          Use Claude Opus 5 only for this task and all subagents. Never switch to Sonnet or Haiku.
           Make the smallest safe implementation that satisfies the task.
           Do not modify .passio/claude-task.md.
           Do not commit, push, merge, or switch branches; the workflow will persist only the file changes you create.
@@ -57,11 +57,48 @@ jobs:
           ${TASK}
           EOF
           )
+
+          set +e
           claude -p "$PROMPT" \
             --model opus \
             --max-turns 40 \
             --allowedTools "Read,Edit,Write,Glob,Grep,Bash(npm run:*),Bash(npm test:*),Bash(git diff:*),Bash(git status:*)" \
-            --output-format text
+            --output-format stream-json \
+            --verbose > /tmp/claude-stream.jsonl
+          CLAUDE_EXIT=$?
+          set -e
+
+          MODEL="$(node <<'NODE'
+          const fs = require('fs');
+          const lines = fs.readFileSync('/tmp/claude-stream.jsonl', 'utf8').split(/\r?\n/);
+          let model = '';
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const event = JSON.parse(line);
+              if (event.type === 'system' && event.subtype === 'init' && event.model) {
+                model = String(event.model);
+                break;
+              }
+            } catch (_) {}
+          }
+          process.stdout.write(model);
+          NODE
+          )"
+
+          echo "Claude Code model: ${MODEL:-unknown}"
+          case "$MODEL" in
+            claude-opus-5*) ;;
+            *)
+              echo "Refusing task: expected Claude Opus 5, got ${MODEL:-unknown}."
+              exit 1
+              ;;
+          esac
+
+          if [ "$CLAUDE_EXIT" -ne 0 ]; then
+            echo "Claude Code exited with status $CLAUDE_EXIT."
+            exit "$CLAUDE_EXIT"
+          fi
 
       - name: Verify Claude produced an application diff
         run: |
@@ -88,5 +125,5 @@ jobs:
           git config user.email "41898282+claude[bot]@users.noreply.github.com"
           git add -A
           git reset -- .passio/claude-task.md
-          git commit -m "test: Claude Code Opus applies PR task"
+          git commit -m "test: Claude Code Opus 5 applies PR task"
           git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
