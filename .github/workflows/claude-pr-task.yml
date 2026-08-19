@@ -13,9 +13,7 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
-      issues: write
       actions: read
-      id-token: write
 
     steps:
       - name: Checkout PR branch
@@ -24,23 +22,68 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 1
 
-      - name: Run Claude Code on PR task
-        id: claude
-        uses: anthropics/claude-code-action@v1
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          prompt: |
-            Execute the trusted PASSIO task written in `.passio/claude-task.md` on this pull request branch.
-            Read `AGENTS.md` and `CLAUDE.md` first and obey all repository invariants.
-            Make the smallest safe implementation that satisfies the task.
-            Do not edit `.passio/claude-task.md`.
-            Run the relevant checks for the files you touch.
-            Commit and push your implementation to the current PR branch.
-            Never push to `main` and never merge the PR yourself.
-          additional_permissions: |
-            actions: read
-          claude_args: |
-            --model claude-4-0-sonnet-20250805
-            --max-turns 40
-            --append-system-prompt "You are the implementation agent for PASSIO. Work only on the current PR branch and leave the PR ready for independent review."
+          node-version: '22'
+
+      - name: Install Claude Code CLI
+        run: |
+          npm install -g @anthropic-ai/claude-code
+          claude --version
+
+      - name: Run Claude Code directly
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          DISABLE_TELEMETRY: '1'
+          DISABLE_ERROR_REPORTING: '1'
+          DISABLE_BUG_COMMAND: '1'
+        run: |
+          set -euo pipefail
+          TASK="$(cat .passio/claude-task.md)"
+          PROMPT=$(cat <<EOF
+          You are the implementation agent for PASSIO.
+          Read AGENTS.md and CLAUDE.md first and obey all repository invariants.
+          Execute the trusted task below on the current PR branch.
+          Make the smallest safe implementation that satisfies the task.
+          Do not modify .passio/claude-task.md.
+          Do not commit, push, merge, or switch branches; the workflow will persist only the file changes you create.
+          Run relevant checks when possible.
+
+          TASK:
+          ${TASK}
+          EOF
+          )
+          claude -p "$PROMPT" \
+            --model claude-sonnet-4-20250514 \
+            --max-turns 40 \
+            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(npm run:*),Bash(npm test:*),Bash(git diff:*),Bash(git status:*)" \
+            --output-format text
+
+      - name: Verify Claude produced an application diff
+        run: |
+          set -euo pipefail
+          if ! git diff --quiet -- .passio/claude-task.md; then
+            echo "Claude modified the task file; refusing to persist."
+            exit 1
+          fi
+
+          CHANGED="$(git status --porcelain | awk '{print substr($0,4)}' | grep -v '^.passio/claude-task.md$' || true)"
+          if [ -z "$CHANGED" ]; then
+            echo "Claude produced no non-task file changes."
+            exit 1
+          fi
+
+          echo "Claude-produced files:"
+          printf '%s\n' "$CHANGED"
+          git diff --check
+
+      - name: Persist Claude-produced changes
+        run: |
+          set -euo pipefail
+          git config user.name "claude[bot]"
+          git config user.email "41898282+claude[bot]@users.noreply.github.com"
+          git add -A
+          git reset -- .passio/claude-task.md
+          git commit -m "test: Claude Code applies PR task"
+          git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
