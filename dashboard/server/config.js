@@ -53,6 +53,15 @@ export const config = {
   // Modèle du mode « Analyse approfondie » (lit le vrai code) : qualité max.
   claudeCliModelDeep: env.CLAUDE_CLI_MODEL_DEEP || "opus",
 
+  // ── Google Vertex AI / Gemini / Veo ───────────────────────────────────────
+  // Aucun secret Google n'est stocké ici : Veo utilise l'authentification locale
+  // gcloud. La région REST par défaut suit les exemples officiels Veo.
+  googleCloudProject: env.GOOGLE_CLOUD_PROJECT || "",
+  googleCloudLocation: env.GOOGLE_CLOUD_LOCATION || "us-central1",
+  veoModel: env.PASSIO_VEO_MODEL || "veo-3.1-generate-001",
+  veoFastModel: env.PASSIO_VEO_FAST_MODEL || "veo-3.1-fast-generate-001",
+  veoOutputGcsUri: env.PASSIO_VEO_OUTPUT_GCS_URI || "",
+
   eventBuffer: Number(env.DASH_EVENT_BUFFER || 5000),
   // Dossier des petites bases JSON. Surchargeable pour que les TESTS n'écrasent
   // pas les données réelles du dashboard (alertes, diagnostics, sessions).
