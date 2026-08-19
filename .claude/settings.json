@@ -8,7 +8,7 @@
           {
             "type": "command",
             "shell": "bash",
-            "command": "node \"C:/Users/BENJAMIN/Desktop/PASSIO/.claude/scripts/garde-commandes.js\"",
+            "command": "node \".claude/scripts/garde-commandes.js\"",
             "timeout": 10,
             "statusMessage": "Contrôle des commandes destructives"
           }
@@ -22,7 +22,7 @@
           {
             "type": "command",
             "shell": "bash",
-            "command": "node \"C:/Users/BENJAMIN/Desktop/PASSIO/.claude/stage-edited-file.js\"",
+            "command": "node \".claude/stage-edited-file.js\"",
             "statusMessage": "Indexation du fichier modifié"
           }
         ]
@@ -34,7 +34,7 @@
           {
             "type": "command",
             "shell": "bash",
-            "command": "node \"C:/Users/BENJAMIN/Desktop/PASSIO/.claude/scripts/compact-permissions.js\" --quiet",
+            "command": "node \".claude/scripts/compact-permissions.js\" --quiet",
             "timeout": 15,
             "statusMessage": "Compactage des permissions"
           }
