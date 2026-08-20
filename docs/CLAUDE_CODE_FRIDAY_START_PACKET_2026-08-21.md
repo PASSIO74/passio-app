@@ -23,7 +23,8 @@ Décisions déjà prises :
 - bobines/stories/vlogs sont des formats, pas des produits séparés ;
 - multi-profil reste fondamental ;
 - Feed→profil→message→IRL devient le parcours prioritaire ;
-- Sentinelle existante est renforcée, pas réécrite.
+- Sentinelle existante est renforcée, pas réécrite ;
+- aucun nouveau lot IRL ne doit diminuer confidentialité, blocage ou sécurité localisation.
 
 ## Documents à lire dans cet ordre
 
@@ -31,76 +32,108 @@ Décisions déjà prises :
 2. `docs/PASSIO_PRODUCT_AUDIT_V2_2026-08-20.md`
 3. `docs/CLAUDE_CODE_REPRISE_PRODUCT_2026-08-20.md`
 4. `docs/PASSIO_WALLET_PASSIA_REMOVAL_MAP_2026-08-20.md`
-5. `docs/PASSIO_CORE_NAV_AND_JOURNEYS_V2_2026-08-20.md`
-6. `docs/PASSIO_ACCEPTANCE_TEST_MATRIX_2026-08-20.md`
-7. `docs/PASSIO_SENTINELLE_MOBILE_HARDENING_SPEC_2026-08-20.md`
-8. `.passio/context/MULTI_PROFILE.md`
-9. `.passio/context/TESTING_STRATEGY.md`
-10. `PASSIO_SENTINELLE_JOINT_AUDIT.md` avant toute extension de capacité Sentinelle.
+5. `docs/PASSIO_WALLET_PASSIA_DB_STATE_AUDIT_2026-08-20.md`
+6. `docs/PASSIO_CDV_EXTRACTION_MAP_2026-08-20.md`
+7. `docs/PASSIO_CORE_NAV_AND_JOURNEYS_V2_2026-08-20.md`
+8. `docs/PASSIO_NAV_V2_IMPLEMENTATION_LOT_2026-08-20.md`
+9. `docs/PASSIO_FEED_PROFILE_MESSAGE_LOT_2026-08-20.md`
+10. `docs/PASSIO_CONVERSATION_TO_IRL_LOT_2026-08-20.md`
+11. `docs/PASSIO_CORE_FUNNEL_ANALYTICS_V1_2026-08-20.md`
+12. `docs/PASSIO_IRL_TRUST_SAFETY_AUDIT_2026-08-20.md`
+13. `docs/PASSIO_ACCEPTANCE_TEST_MATRIX_2026-08-20.md`
+14. `docs/PASSIO_SENTINELLE_MOBILE_HARDENING_SPEC_2026-08-20.md`
+15. `.passio/context/MULTI_PROFILE.md`
+16. `.passio/context/TESTING_STRATEGY.md`
+17. `PASSIO_SENTINELLE_JOINT_AUDIT.md` avant toute extension de capacité Sentinelle.
 
 ## Démarrage exact de la session
 
-### Étape 1 — Vérifier le terrain
+### Étape 0 — Vérifier que nous travaillons sur la dernière version réelle
 
-Claude Code doit commencer par :
+Avant toute modification, Claude Code doit confirmer que la version locale exécutée est bien la version de référence la plus récente de PASSIO :
 
-- `git status` ;
+- dépôt attendu `PASSIO74/passio-app` ;
 - branche courante ;
-- comparaison avec `main` ;
-- changements non commités du poste ;
-- version Node/npm et disponibilité Playwright si nécessaire ;
-- ne toucher à rien tant qu'un travail utilisateur non commité pourrait être écrasé.
+- `git status` ;
+- HEAD local ;
+- comparaison avec `main` et avec la branche de cadrage ;
+- changements non commités ;
+- écran mobile réellement exécuté comparé aux écrans mobiles de référence les plus récents disponibles ;
+- ne rien modifier si un travail utilisateur non commité risque d'être écrasé.
 
-### Étape 2 — Baseline avant code
+Cette vérification est obligatoire à chaque reprise Claude Code.
+
+### Étape 1 — Baseline avant code
 
 Mesurer et enregistrer :
 
 - écrans/destinations visibles ;
 - occurrences Wallet/Passia/score/rank/crypto ;
+- occurrences CDV dans navigation, feed, tour, routes et logique partagée ;
 - interactions exposées si script de mesure disponible ;
 - taille JS/CSS si mesure existante ;
 - résultats `audit:globals`, `audit:handlers`, smoke ;
 - tests navigation, profils, feed, messages, IRL, confidentialité/blocage/authz, multi-comptes selon disponibilité ;
+- état réel du schéma prod de référence avant toute hypothèse DB ;
 - aucune valeur inventée si une mesure n'est pas disponible.
 
-### Étape 3 — Audit exact Wallet/CDV
+### Étape 2 — Audit exact Wallet/CDV
 
-Produire les deux tableaux d'inventaire demandés dans le brief. Le document Wallet déjà préparé est un **point de départ vérifié**, pas un substitut à une recherche locale exhaustive : Claude Code possède la meilleure visibilité sur les fichiers réels.
+Produire les deux tableaux d'inventaire demandés dans le brief.
 
-### Étape 4 — Premier diff recommandé
+Pour Wallet/Passia, le nouvel audit DB/état établit déjà qu'aucun DROP SQL n'est actuellement nécessaire : l'économie historique vit surtout dans le code client et `user_state.data`. Claude Code doit néanmoins confirmer localement toutes les références avant suppression.
+
+### Étape 3 — Premier diff recommandé
 
 Commencer par **`remove/wallet-navigation`**, le lot le plus lisible et réversible :
 
 - retirer destinations/CTA/chips visibles Wallet ;
 - réécrire microcopy landing/profil/IA ;
 - gérer deep links obsolètes ;
-- ne pas encore supprimer les structures DB ;
+- ne pas toucher destructivement à la DB ;
 - tests navigation + handlers + smoke.
 
 Une fois ce lot vert : revue ChatGPT → contrôle Codex ciblé → commit clair.
 
-### Étape 5 — Deuxième diff
+### Étape 4 — Deuxième diff
 
 **`remove/passia-points-core`** :
 
 - supprimer appels de récompenses avant les fonctions centrales ;
 - neutraliser score/passia sur publication/commentaire/like/profil/IRL/onboarding ;
-- préserver comportement social réel ;
-- normaliser l'état legacy ;
+- préserver le comportement social réel ;
+- ajouter une migration applicative idempotente de l'état legacy ;
+- filtrer score/passia/transactions/quests/activePass au chargement local, à la restauration `user_state` et au payload sortant ;
 - ajouter tests négatifs Wallet et ancien état ;
 - seulement ensuite retirer `REWARDS`, `RANKS`, shop/crypto/renderers/CSS morts.
 
-### Étape 6 — CDV
+### Étape 5 — CDV
 
-Traiter **séparément** avec `extract/cdv-core-navigation`. Retirer du cœur, préserver données et briques partagées, conserver une voie d'extraction Passio : Voyage.
+Traiter **séparément** avec `extract/cdv-core-navigation`.
 
-### Étape 7 — Navigation + boucle cœur
+Retirer du cœur, préserver données et briques partagées, conserver une voie d'extraction Passio : Voyage. Ne pas supprimer naïvement `posts.vlog`, collaborations ou policies partagées.
 
-Puis seulement :
+### Étape 6 — Navigation + boucle cœur
+
+Puis :
 
 `simplify/core-navigation-onboarding` → `improve/feed-person-message` → `improve/message-irl-loop` → `instrument/core-funnel`.
 
 Le ranking Feed V2 vient **après instrumentation**.
+
+### Étape 7 — Gate Trust & Safety avant accélération IRL
+
+Avant de considérer `improve/message-irl-loop` prêt pour un lancement public, appliquer les garde-fous de `PASSIO_IRL_TRUST_SAFETY_AUDIT_2026-08-20.md` :
+
+- INSERT DM exige appartenance à la conversation ;
+- blocage empêche les nouvelles interactions directes ;
+- adresse/GPS exacts non publics par défaut ;
+- participants/check-ins/feedback non exposés publiquement en brut ;
+- check-in validé côté serveur avec token non dérivable ;
+- mineurs 13–17 hors IRL pour le premier lancement public tant qu'un cadre dédié n'existe pas ;
+- tests REST bruts de contournement.
+
+Ne pas mélanger ces migrations sensibles avec le premier lot Wallet.
 
 ## Répartition des IA
 
@@ -110,6 +143,7 @@ Le ranking Feed V2 vient **après instrumentation**.
 - arbitre les ambiguïtés fonctionnelles ;
 - fournit critères d'acceptation ;
 - relit les écarts entre intention et comportement ;
+- définit les frontières Trust & Safety ;
 - refuse le scope creep.
 
 ### Claude Code
@@ -119,13 +153,15 @@ Le ranking Feed V2 vient **après instrumentation**.
 - implémente les changements multi-fichiers ;
 - exécute tests/mesures ;
 - découpe en petits commits ;
-- signale les contradictions entre specs et code.
+- signale les contradictions entre specs et code ;
+- réalise les migrations expand/contract nécessaires aux lots de sécurité.
 
 ### Codex
 
 - intervient après lots sensibles ;
 - relit diff et migrations/normalisation ;
 - cherche régressions, références oubliées et failles cross-compte ;
+- attaque blocage, membership DM, localisation, participants et check-in ;
 - ajoute/propose tests ciblés ;
 - ne redéfinit pas la vision produit.
 
@@ -133,23 +169,26 @@ Le ranking Feed V2 vient **après instrumentation**.
 
 - pas de suppression DB opportuniste ;
 - pas de migration destructive sans inventaire + rollback + tests ;
-- pas de méga-commit mélangeant Wallet et CDV ;
+- pas de méga-commit mélangeant Wallet, CDV et sécurité IRL ;
 - pas de neutralisation d'un test pour rendre le lot vert ;
 - pas de modification du ranking « au feeling » ;
 - pas de nouvelle gamification pour remplacer Passia ;
 - pas de changement silencieux d'identité multi-profil ;
 - pas de baisse RLS/confidentialité/blocage ;
+- pas d'adresse exacte rendue publique par simple commodité UX ;
+- pas de check-in qualifié de vérifié s'il reste forgeable côté client ;
 - pas d'auto-merge ou auto-deploy Sentinelle ;
 - main/prod après tests verts et revue explicite seulement.
 
 ## Première phrase recommandée à Claude Code
 
-> Reprends PASSIO depuis la branche `product/passio-core-simplification-2026-08-20`. Lis le paquet de démarrage et les specs listées, vérifie d'abord l'état réel du dépôt et les changements locaux, puis réalise Sprint 0 et le premier lot `remove/wallet-navigation` sans toucher à la DB. Avant de modifier, annonce les fichiers réellement impactés et les tests que tu vas utiliser comme preuve.
+> Reprends PASSIO depuis la dernière version réelle vérifiée du dépôt `PASSIO74/passio-app`, puis charge la branche `product/passio-core-simplification-2026-08-20`. Compare d'abord dépôt, branche, HEAD, changements locaux et interface mobile exécutée avec la référence la plus récente. Lis ensuite le paquet et les specs dans l'ordre, réalise la baseline, puis commence uniquement le lot `remove/wallet-navigation`. Avant chaque lot, annonce fichiers réellement impactés et tests de preuve.
 
 ## Résultat attendu de la première séquence
 
 À la fin du premier bloc de travail, nous devons avoir :
 
+- dernière version réelle confirmée ;
 - baseline enregistrée ;
 - inventaire Wallet/CDV confirmé localement ;
 - Wallet retiré de la navigation et du discours cœur ;
