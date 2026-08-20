@@ -37,9 +37,10 @@ jobs:
           npm install -g @anthropic-ai/claude-code
           claude --version
 
-      - name: Run Claude Code directly with Opus 5 only
+      - name: Run Claude Code with Pro OAuth preferred
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.PASSIO }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          PASSIO_API_KEY: ${{ secrets.PASSIO }}
           ANTHROPIC_MODEL: claude-opus-5
           ANTHROPIC_DEFAULT_OPUS_MODEL: claude-opus-5
           CLAUDE_CODE_SUBAGENT_MODEL: claude-opus-5
@@ -48,6 +49,23 @@ jobs:
           DISABLE_BUG_COMMAND: '1'
         run: |
           set -euo pipefail
+
+          if [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+            AUTH_MODE="subscription_oauth"
+            unset ANTHROPIC_API_KEY
+          else
+            AUTH_MODE="api_key"
+            export ANTHROPIC_API_KEY="${PASSIO_API_KEY:-}"
+            unset CLAUDE_CODE_OAUTH_TOKEN
+          fi
+          unset PASSIO_API_KEY
+
+          echo "Claude authentication mode: ${AUTH_MODE}"
+          if [ "$AUTH_MODE" = "api_key" ] && [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+            echo "No Claude authentication credential is configured."
+            exit 1
+          fi
+
           TASK="$(cat .passio/claude-task.md)"
           PROMPT=$(cat <<EOF
           You are the implementation agent for PASSIO running on Claude Opus 5.
@@ -103,10 +121,10 @@ jobs:
 
           if [ "$CLAUDE_EXIT" -ne 0 ]; then
             echo "Claude Code exited with status $CLAUDE_EXIT."
-            node <<'NODE'
+            AUTH_MODE="$AUTH_MODE" node <<'NODE'
           const fs = require('fs');
           const scrub = (value) => String(value || '')
-            .replace(/sk-ant-[A-Za-z0-9_-]+/g, '[REDACTED_ANTHROPIC_KEY]')
+            .replace(/sk-ant-[A-Za-z0-9_-]+/g, '[REDACTED_ANTHROPIC_CREDENTIAL]')
             .replace(/gh[pousr]_[A-Za-z0-9]+/g, '[REDACTED_GITHUB_TOKEN]')
             .replace(/sb_secret_[A-Za-z0-9_-]+/g, '[REDACTED_SUPABASE_KEY]')
             .slice(0, 4000);
@@ -123,7 +141,16 @@ jobs:
             }
           } catch (_) {}
 
+          let stderr = '';
+          try { stderr = fs.readFileSync('/tmp/claude-stderr.log', 'utf8').trim(); } catch (_) {}
+          const combined = `${JSON.stringify(lastResult || {})}\n${stderr}`;
+          let classification = 'claude_runtime_failure';
+          if (/Credit balance is too low/i.test(combined)) classification = 'billing_blocked';
+          else if (/oauth|authentication|credential|unauthorized|expired token/i.test(combined)) classification = 'oauth_auth_failed';
+
           console.log('PASSIO_CLOUD_DIAGNOSTIC_BEGIN');
+          console.log(`classification=${classification}`);
+          console.log(`auth_mode=${process.env.AUTH_MODE || 'unknown'}`);
           if (lastResult) {
             console.log(scrub(JSON.stringify({
               type: lastResult.type,
@@ -135,10 +162,7 @@ jobs:
           } else {
             console.log('No structured Claude result event was produced.');
           }
-          try {
-            const stderr = fs.readFileSync('/tmp/claude-stderr.log', 'utf8').trim();
-            if (stderr) console.log(scrub(stderr));
-          } catch (_) {}
+          if (stderr) console.log(scrub(stderr));
           console.log('PASSIO_CLOUD_DIAGNOSTIC_END');
           NODE
             exit "$CLAUDE_EXIT"
