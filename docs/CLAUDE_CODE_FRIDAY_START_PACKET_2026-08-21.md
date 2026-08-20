@@ -21,7 +21,8 @@ Décisions déjà prises :
 - navigation cible : **Fil · IRL · Créer · Messages · Profil** ;
 - Explorer doit prouver un rôle distinct avant de rester destination primaire ;
 - bobines/stories/vlogs sont des formats, pas des produits séparés ;
-- multi-profil reste fondamental ;
+- multi-profil reste fondamental, mais il ne doit plus imposer plusieurs profils avant la première valeur ;
+- les passions choisies à l'onboarding doivent personnaliser immédiatement le premier Fil ;
 - Feed→profil→message→IRL devient le parcours prioritaire ;
 - Sentinelle existante est renforcée, pas réécrite ;
 - aucun nouveau lot IRL ne doit diminuer confidentialité, blocage ou sécurité localisation.
@@ -35,16 +36,17 @@ Décisions déjà prises :
 5. `docs/PASSIO_WALLET_PASSIA_DB_STATE_AUDIT_2026-08-20.md`
 6. `docs/PASSIO_CDV_EXTRACTION_MAP_2026-08-20.md`
 7. `docs/PASSIO_CORE_NAV_AND_JOURNEYS_V2_2026-08-20.md`
-8. `docs/PASSIO_NAV_V2_IMPLEMENTATION_LOT_2026-08-20.md`
-9. `docs/PASSIO_FEED_PROFILE_MESSAGE_LOT_2026-08-20.md`
-10. `docs/PASSIO_CONVERSATION_TO_IRL_LOT_2026-08-20.md`
-11. `docs/PASSIO_CORE_FUNNEL_ANALYTICS_V1_2026-08-20.md`
-12. `docs/PASSIO_IRL_TRUST_SAFETY_AUDIT_2026-08-20.md`
-13. `docs/PASSIO_ACCEPTANCE_TEST_MATRIX_2026-08-20.md`
-14. `docs/PASSIO_SENTINELLE_MOBILE_HARDENING_SPEC_2026-08-20.md`
-15. `.passio/context/MULTI_PROFILE.md`
-16. `.passio/context/TESTING_STRATEGY.md`
-17. `PASSIO_SENTINELLE_JOINT_AUDIT.md` avant toute extension de capacité Sentinelle.
+8. `docs/PASSIO_ONBOARDING_TO_FIRST_VALUE_LOT_2026-08-20.md`
+9. `docs/PASSIO_NAV_V2_IMPLEMENTATION_LOT_2026-08-20.md`
+10. `docs/PASSIO_FEED_PROFILE_MESSAGE_LOT_2026-08-20.md`
+11. `docs/PASSIO_CONVERSATION_TO_IRL_LOT_2026-08-20.md`
+12. `docs/PASSIO_CORE_FUNNEL_ANALYTICS_V1_2026-08-20.md`
+13. `docs/PASSIO_IRL_TRUST_SAFETY_AUDIT_2026-08-20.md`
+14. `docs/PASSIO_ACCEPTANCE_TEST_MATRIX_2026-08-20.md`
+15. `docs/PASSIO_SENTINELLE_MOBILE_HARDENING_SPEC_2026-08-20.md`
+16. `.passio/context/MULTI_PROFILE.md`
+17. `.passio/context/TESTING_STRATEGY.md`
+18. `PASSIO_SENTINELLE_JOINT_AUDIT.md` avant toute extension de capacité Sentinelle.
 
 ## Démarrage exact de la session
 
@@ -70,6 +72,7 @@ Mesurer et enregistrer :
 - écrans/destinations visibles ;
 - occurrences Wallet/Passia/score/rank/crypto ;
 - occurrences CDV dans navigation, feed, tour, routes et logique partagée ;
+- comportement réel du premier onboarding et du premier rendu Feed ;
 - interactions exposées si script de mesure disponible ;
 - taille JS/CSS si mesure existante ;
 - résultats `audit:globals`, `audit:handlers`, smoke ;
@@ -113,7 +116,23 @@ Traiter **séparément** avec `extract/cdv-core-navigation`.
 
 Retirer du cœur, préserver données et briques partagées, conserver une voie d'extraction Passio : Voyage. Ne pas supprimer naïvement `posts.vlog`, collaborations ou policies partagées.
 
-### Étape 6 — Navigation + boucle cœur
+### Étape 6 — Onboarding → premier moment de valeur
+
+Traiter `simplify/core-navigation-onboarding` avec `PASSIO_ONBOARDING_TO_FIRST_VALUE_LOT_2026-08-20.md`.
+
+Priorité immédiate O1 : corriger le défaut où l'utilisateur choisit ses passions puis arrive sur un Feed vide parce que `_activeFeedPassions` est remis à zéro.
+
+Ensuite seulement :
+
+- persister/restaurer `selectedFeedPassions` ;
+- découpler intérêts Feed et profils passion ;
+- créer un seul profil passion de départ ;
+- conserver tous les profils historiques ;
+- ne pas demander GPS pendant l'onboarding ;
+- ne pas forcer le tour démo ;
+- tests reload/cross-device/multi-profils.
+
+### Étape 7 — Navigation + boucle cœur
 
 Puis :
 
@@ -121,7 +140,7 @@ Puis :
 
 Le ranking Feed V2 vient **après instrumentation**.
 
-### Étape 7 — Gate Trust & Safety avant accélération IRL
+### Étape 8 — Gate Trust & Safety avant accélération IRL
 
 Avant de considérer `improve/message-irl-loop` prêt pour un lancement public, appliquer les garde-fous de `PASSIO_IRL_TRUST_SAFETY_AUDIT_2026-08-20.md` :
 
@@ -144,6 +163,7 @@ Ne pas mélanger ces migrations sensibles avec le premier lot Wallet.
 - fournit critères d'acceptation ;
 - relit les écarts entre intention et comportement ;
 - définit les frontières Trust & Safety ;
+- protège la simplicité du premier parcours ;
 - refuse le scope creep.
 
 ### Claude Code
@@ -154,7 +174,8 @@ Ne pas mélanger ces migrations sensibles avec le premier lot Wallet.
 - exécute tests/mesures ;
 - découpe en petits commits ;
 - signale les contradictions entre specs et code ;
-- réalise les migrations expand/contract nécessaires aux lots de sécurité.
+- réalise les migrations expand/contract nécessaires aux lots de sécurité ;
+- vérifie les chemins signup/signin/OAuth, reload et state sync.
 
 ### Codex
 
@@ -162,6 +183,7 @@ Ne pas mélanger ces migrations sensibles avec le premier lot Wallet.
 - relit diff et migrations/normalisation ;
 - cherche régressions, références oubliées et failles cross-compte ;
 - attaque blocage, membership DM, localisation, participants et check-in ;
+- vérifie que les intérêts Feed persistent sans duplication de profils ;
 - ajoute/propose tests ciblés ;
 - ne redéfinit pas la vision produit.
 
@@ -174,6 +196,7 @@ Ne pas mélanger ces migrations sensibles avec le premier lot Wallet.
 - pas de modification du ranking « au feeling » ;
 - pas de nouvelle gamification pour remplacer Passia ;
 - pas de changement silencieux d'identité multi-profil ;
+- pas de création automatique de multiples profils pour chaque intérêt Feed ;
 - pas de baisse RLS/confidentialité/blocage ;
 - pas d'adresse exacte rendue publique par simple commodité UX ;
 - pas de check-in qualifié de vérifié s'il reste forgeable côté client ;
