@@ -4,12 +4,17 @@ on:
   pull_request:
     types: [opened]
 
+concurrency:
+  group: claude-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
 jobs:
   claude:
     if: >-
       github.event.pull_request.user.login == 'PASSIO74' &&
       startsWith(github.event.pull_request.head.ref, 'claude-task/')
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     permissions:
       contents: write
       pull-requests: write
@@ -65,7 +70,7 @@ jobs:
             --max-turns 40 \
             --allowedTools "Read,Edit,Write,Glob,Grep,Bash(npm run:*),Bash(npm test:*),Bash(git diff:*),Bash(git status:*)" \
             --output-format stream-json \
-            --verbose > /tmp/claude-stream.jsonl
+            --verbose > /tmp/claude-stream.jsonl 2> /tmp/claude-stderr.log
           CLAUDE_EXIT=$?
           set -e
 
@@ -98,6 +103,44 @@ jobs:
 
           if [ "$CLAUDE_EXIT" -ne 0 ]; then
             echo "Claude Code exited with status $CLAUDE_EXIT."
+            node <<'NODE'
+          const fs = require('fs');
+          const scrub = (value) => String(value || '')
+            .replace(/sk-ant-[A-Za-z0-9_-]+/g, '[REDACTED_ANTHROPIC_KEY]')
+            .replace(/gh[pousr]_[A-Za-z0-9]+/g, '[REDACTED_GITHUB_TOKEN]')
+            .replace(/sb_secret_[A-Za-z0-9_-]+/g, '[REDACTED_SUPABASE_KEY]')
+            .slice(0, 4000);
+
+          let lastResult = null;
+          try {
+            const lines = fs.readFileSync('/tmp/claude-stream.jsonl', 'utf8').split(/\r?\n/);
+            for (const line of lines) {
+              if (!line.trim()) continue;
+              try {
+                const event = JSON.parse(line);
+                if (event.type === 'result' || event.is_error === true || event.error) lastResult = event;
+              } catch (_) {}
+            }
+          } catch (_) {}
+
+          console.log('PASSIO_CLOUD_DIAGNOSTIC_BEGIN');
+          if (lastResult) {
+            console.log(scrub(JSON.stringify({
+              type: lastResult.type,
+              subtype: lastResult.subtype,
+              is_error: lastResult.is_error,
+              result: lastResult.result,
+              error: lastResult.error,
+            })));
+          } else {
+            console.log('No structured Claude result event was produced.');
+          }
+          try {
+            const stderr = fs.readFileSync('/tmp/claude-stderr.log', 'utf8').trim();
+            if (stderr) console.log(scrub(stderr));
+          } catch (_) {}
+          console.log('PASSIO_CLOUD_DIAGNOSTIC_END');
+          NODE
             exit "$CLAUDE_EXIT"
           fi
 
