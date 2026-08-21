@@ -259,7 +259,7 @@ for lib,vrai in exigences:
     if not vrai: ko+=1
 sys.exit(1 if ko else 0)
 PYMODEL
-if [ $? -eq 0 ]; then ok=$((ok+9)); else ko=$((ko+1)); fi
+if [ $? -eq 0 ]; then ok=$((ok+15)); else ko=$((ko+1)); fi
 
 scenario_modele() { # <nom> <format:json|jsonl> <modele> <source> <attendu:PASSE|REFUS>
   local nom="$1" format="$2" modele="$3" source="$4" attendu="$5"
@@ -312,11 +312,20 @@ exigences=[
  ("plafond de tours borné (jamais illimité)", 0 < tours <= 200),
  ("marche de diagnostic présente", bool(diag)),
  ("diagnostic non bloquant (if: always)", str(diag[0].get('if','')) == 'always()' if diag else False),
- ("diagnostic ne peut pas faire échouer le run", 'exit 1' not in run),
+ ("diagnostic sans exit 1 littéral", 'exit 1' not in run),
+ ("diagnostic non bloquant pour la publication", diag[0].get('continue-on-error') is True if diag else False),
  ("les commandes refusées sont nommées", 'permission_denials' in run and 'tool_input' in run),
  ("le plafond atteint est signalé explicitement", 'error_max_turns' in run),
+ ("les 4 sous-types d'échec du CLI sont couverts", all(k in run for k in ('error_max_turns','error_max_budget_usd','error_during_execution','error_max_structured_output_retries'))),
+ # On interdit l'USAGE du champ inexistant, pas sa MENTION : le commentaire
+ # qui explique pourquoi on ne s'en sert pas doit rester lisible dans le code.
+ ("compteur lu du tableau, pas d'un champ annexe", 'resultat.permission_denials_count' not in run and 'refus.length' in run),
+ ("sortie assainie (sauts de ligne et `::`)", 'assainir' in run and '[\\r\\n]+' in run),
+ ("nombre de refus imprimés borné", 'refus.slice(0, 40)' in run),
+ ("budget borné en dollars", '--max-budget-usd' in args),
+ ("durée du job bornée", isinstance(d['jobs']['claude'].get('timeout-minutes'), int) and 0 < d['jobs']['claude']['timeout-minutes'] <= 120),
  # Le dépôt est PUBLIC : le diagnostic ne doit pas rouvrir tout le transcript.
- ("aucun retour à show_full_output", 'show_full_output' not in str(claude.get('with',{}).get('show_full_output',''))or claude.get('with',{}).get('show_full_output') != 'true'),
+ ("aucun retour à show_full_output", str(claude.get('with',{}).get('show_full_output','')).lower() not in ('true','1','yes')),
 ]
 ko=0
 for lib,vrai in exigences:
@@ -324,7 +333,7 @@ for lib,vrai in exigences:
     if not vrai: ko+=1
 sys.exit(1 if ko else 0)
 PYDIAG
-if [ $? -eq 0 ]; then ok=$((ok+8)); else ko=$((ko+1)); fi
+if [ $? -eq 0 ]; then ok=$((ok+9)); else ko=$((ko+1)); fi
 
 # Rejoue la marche RÉELLE du workflow sur des traces d'exécution.
 scenario_diag() { # <nom> <contenu-trace|VIDE> <attendu-dans-la-sortie|-> 
@@ -339,7 +348,16 @@ scenario_diag() { # <nom> <contenu-trace|VIDE> <attendu-dans-la-sortie|->
   local souci=""
   [ ${code} -ne 0 ] && souci="code ${code} (le diagnostic ne doit JAMAIS bloquer)"
   if [ -z "${souci}" ] && [ "${attendu}" != "-" ]; then
-    printf '%s' "${sortie}" | grep -qF "${attendu}" || souci="« ${attendu} » absent de la sortie"
+    case "${attendu}" in
+      # « !motif » = le motif doit être ABSENT. Un test qui ne sait qu'exiger
+      # une présence ne peut pas prouver qu'une neutralisation a eu lieu.
+      "!"*)
+        if printf '%s' "${sortie}" | grep -qE "${attendu#!}"; then
+          souci="« ${attendu#!} » PRÉSENT alors qu'il devait être neutralisé"
+        fi ;;
+      *)
+        printf '%s' "${sortie}" | grep -qF "${attendu}" || souci="« ${attendu} » absent de la sortie" ;;
+    esac
   fi
   if [ -z "${souci}" ]; then
     ok=$((ok+1)); printf '  OK  %-58s\n' "${nom}"
@@ -349,14 +367,33 @@ scenario_diag() { # <nom> <contenu-trace|VIDE> <attendu-dans-la-sortie|->
   fi
 }
 
-REFUS_JSON='[{"type":"system","subtype":"init","model":"claude-opus-5","apiKeySource":"none"},{"type":"result","subtype":"error_max_turns","num_turns":41,"permission_denials_count":1,"permission_denials":[{"tool_name":"Bash","tool_input":{"command":"npm run audit:globals 2>&1 | tail -15"}}]}]'
-SUCCES_JSON='[{"type":"system","subtype":"init","model":"claude-opus-5","apiKeySource":"none"},{"type":"result","subtype":"success","num_turns":12,"permission_denials_count":0,"permission_denials":[]}]'
+# Fixtures au schéma RÉEL du CLI 2.1.238 : `permission_denials` est un tableau
+# d'objets {tool_name, tool_use_id, tool_input}, et `permission_denials_count`
+# N'EXISTE PAS (0 occurrence dans le binaire). Inventer ce champ validait le
+# code contre sa propre erreur : le compteur restait a zero au-dessus d'une
+# liste non vide, et le test passait quand meme.
+REFUS_JSON='[{"type":"system","subtype":"init","model":"claude-opus-5","apiKeySource":"none"},{"type":"result","subtype":"error_max_turns","num_turns":41,"permission_denials":[{"tool_name":"Bash","tool_input":{"command":"npm run audit:globals 2>&1 | tail -15"}},{"tool_name":"Bash","tool_input":{"command":"git push origin main"}}]}]'
+SUCCES_JSON='[{"type":"system","subtype":"init","model":"claude-opus-5","apiKeySource":"none"},{"type":"result","subtype":"success","num_turns":12,"permission_denials":[]}]'
+# Une commande refusee MULTI-LIGNE dont une ligne commence par `::` : sans
+# assainissement, le runner l'interprete comme une commande de workflow.
+INJECTION_JSON='[{"type":"system","subtype":"init","model":"claude-opus-5","apiKeySource":"none"},{"type":"result","subtype":"error_during_execution","num_turns":9,"errors":["cause reelle de la panne"],"permission_denials":[{"tool_name":"Bash","tool_input":{"command":"cat <<EOF\n::add-mask::none\n::stop-commands::ZZZ\nEOF"}}]}]'
+# Commande qui COMMENCE par `::` : en colonne 0, le runner l'executerait.
+TETE_JSON='[{"type":"result","subtype":"success","num_turns":3,"permission_denials":[{"tool_name":"Bash","tool_input":{"command":"::add-mask::none"}}]}]'
+# `tool_input` est un record de valeurs INCONNUES au schema : un objet non
+# convertible en primitive fait lever String() et tuait la marche.
+HOSTILE_JSON='[{"type":"result","subtype":"error_max_turns","num_turns":41,"permission_denials":[{"tool_name":"Bash","tool_input":{"command":{"toString":1,"valueOf":1}}}]}]'
 
-scenario_diag "8. trace absente : ne bloque pas"            VIDE            -
+scenario_diag "8. trace absente : ne bloque pas"            VIDE            "rien à diagnostiquer"
 scenario_diag "9. commande refusée nommée en clair"         "${REFUS_JSON}" "npm run audit:globals 2>&1 | tail -15"
 scenario_diag "10. plafond de tours signalé"                "${REFUS_JSON}" "Plafond de tours atteint"
 scenario_diag "11. run propre : aucun refus annoncé"        "${SUCCES_JSON}" "Refus d'outils : 0"
-scenario_diag "12. trace illisible : ne bloque pas"         "pas du json"   -
+scenario_diag "12. trace illisible : ne bloque pas"         "pas du json"   "Aucun événement"
+scenario_diag "13. compteur = taille du tableau réel"      "${REFUS_JSON}" "Refus d'outils : 2"
+scenario_diag "14. multi-ligne : aucun :: en colonne 0"    "${INJECTION_JSON}" '!^[[:space:]]*::(add-mask|stop-commands|set-env|error|notice)'
+scenario_diag "15. commande refusée tenue sur une ligne"   "${INJECTION_JSON}" "cat <<EOF"
+scenario_diag "15b. `::` en tête de commande neutralisé"   "${TETE_JSON}"      '!^[[:space:]]*::add-mask' 
+scenario_diag "16. cause réelle imprimée"                  "${INJECTION_JSON}" "cause: cause reelle de la panne"
+scenario_diag "17. tool_input hostile : ne bloque pas"     "${HOSTILE_JSON}" "commande illisible"
 
 echo
 echo "Bilan final : ${ok} OK / ${ko} KO"
