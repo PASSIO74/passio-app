@@ -26,6 +26,10 @@ Réseau social des passions. PWA vanilla JS (pas de framework, pas de bundler) +
 ## Commandes
 
 - Serveur local : `npm run serve` → http://localhost:8080 (code d'accès : 2125 ; http-server, plus besoin de Python)
+- **Ouvrir l'app déjà déverrouillée** : `npm run ouvrir` (serveur lancé au besoin + fenêtre Chromium avec le jeton du gate
+  posé AVANT le premier script ; erreurs console et requêtes en échec imprimées en direct). Variantes : `--prod`, `--mobile`,
+  `--ecran feed`, `--capture preuve.png`, `--code 4807`. `npm run jeton` imprime seulement le jeton + le collage console.
+  Le jeton est RECALCULÉ depuis le code et comparé au `GATE_HASH` réel : un code faux est signalé avant d'ouvrir la fenêtre.
 - Tests : `npx playwright install chromium` puis `npm test` (smoke + access-gate ; le helper `tests/e2e/gate-helper.js` déverrouille le gate pour les tests)
 - Build prod : `node scripts/build.js dist/index.html`
 - Déploiement : `git push origin main` → GitHub Actions teste, build, minifie, déploie sur Netlify (https://passio-app.netlify.app)

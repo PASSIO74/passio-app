@@ -8,6 +8,7 @@ description: Lance le serveur de dev PASSIO et vérifie visuellement/fonctionnel
 ## Démarrer
 - `preview_start {name}` (config dans `.claude/launch.json` ; sinon `npm run serve` → http://localhost:8080). Ne JAMAIS lancer le serveur via Bash.
 - **Déverrouiller le gate** : l'app est protégée par code `2125` (saisir dans l'écran d'accès), ou le helper `tests/e2e/gate-helper.js` pose le jeton `sessionStorage["passio_gate_v1"]`.
+- **Hors outillage preview** (session distante, pas de `preview_start`) : `npm run ouvrir` fait tout — serveur au besoin, jeton du gate posé avant le premier script, fenêtre Chromium (headless auto sans écran), erreurs console/réseau en direct. `--mobile`, `--ecran feed`, `--capture preuve.png`, `--prod`. `npm run jeton` = jeton seul + collage console.
 
 ## Vérifier
 1. `read_console_messages` — 0 erreur JS attendue (attention : `state` est un binding de script, PAS `window.state` → dans `javascript_tool` tester `typeof state`).

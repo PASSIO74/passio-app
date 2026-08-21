@@ -43,6 +43,35 @@ crypto.subtle.digest("SHA-256", new TextEncoder().encode("passio-gate-v1::4807")
 
 Code actuel : `2125` → hash `67a2ba44e8c09efc9e9e9d60690ef7cd1e3069d072231a1834b30ec1fc50390f`.
 
+## 🎫 Créer le jeton / ouvrir l'app sans saisir le code
+
+`scripts/ouvrir-app.js` (`npm run ouvrir`) automatise les trois gestes qu'on refaisait à la main :
+
+```bash
+npm run jeton                      # imprime le jeton + le collage console navigateur
+npm run ouvrir                     # serveur local si besoin + fenêtre Chromium déjà déverrouillée
+npm run ouvrir -- --prod --mobile  # la prod Netlify, viewport 390x844
+npm run ouvrir -- --ecran feed --capture docs/screenshots/feed.png
+npm run ouvrir -- --code 4807      # après un changement de code
+```
+
+Le jeton n'est **pas** codé en dur dans le script : il est recalculé (`sha256(GATE_SALT + code)`)
+puis comparé au `GATE_HASH` lu dans `js/access-gate.js`. Un code qui ne correspond plus est
+signalé **avant** l'ouverture de la fenêtre — sinon le gate reste fermé sans explication.
+Le jeton est posé par `addInitScript`, donc **avant** l'exécution de `access-gate.js` : l'écran
+de code n'est jamais construit.
+
+Sur un navigateur déjà ouvert (y compris la prod, sur mobile via l'inspecteur distant) :
+
+```js
+sessionStorage.setItem("passio_gate_v1", "67a2ba44e8c09efc9e9e9d60690ef7cd1e3069d072231a1834b30ec1fc50390f");
+location.reload();
+```
+
+⚠️ Après un changement de `GATE_HASH`, trois endroits portent le jeton et doivent suivre :
+`js/access-gate.js` (source de vérité), `tests/e2e/gate-helper.js` (`GATE_TOKEN`), et tout collage
+console recopié ailleurs. `npm run jeton` donne la valeur à jour et dit si elle est conforme.
+
 ## Limites connues (assumées pour une beta privée)
 
 Le gate est **côté client** : un développeur qui lit le code source peut le contourner (le hash empêche seulement de retrouver le code). C'est suffisant pour empêcher l'usage non autorisé par le grand public, pas contre un attaquant motivé. Les données restent de toute façon protégées par les policies RLS Supabase côté serveur.

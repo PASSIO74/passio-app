@@ -17,6 +17,8 @@
     "revue": "node scripts/dossier-revue.js",
     "chatgpt": "node scripts/chatgpt.js",
     "serve": "http-server -p 8080 -c-1 .",
+    "ouvrir": "node scripts/ouvrir-app.js",
+    "jeton": "node scripts/ouvrir-app.js --jeton",
     "sessions": "node .claude/scripts/session-registre.js",
     "permissions:compact": "node .claude/scripts/compact-permissions.js",
     "skills:lint": "node .claude/scripts/skills-lint.js",
