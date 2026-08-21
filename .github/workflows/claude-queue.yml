@@ -47,6 +47,12 @@ jobs:
             Never push to `main` and never deploy directly.
           additional_permissions: |
             actions: read
+          # Liste ÉNUMÉRÉE, même raison que dans claude-code.yml : sans
+          # --allowedTools, chaque appel Bash est refusé en CI (mesuré le
+          # 2026-08-21, run 32460994611 : 16 refus, aucun commit, et pourtant
+          # `success`). Le push n'est autorisé que vers `claude-queue`, la
+          # branche de ce canal : `main` est hors d'atteinte par construction.
           claude_args: |
             --max-turns 40
-            --append-system-prompt "You are the implementation agent for PASSIO. GitHub is the source of truth. Work only on the current task branch."
+            --allowedTools "Read,Write,Edit,Glob,Grep,Bash(git fetch:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git rev-parse:*),Bash(git add:*),Bash(git commit:*),Bash(git push origin claude-queue:*),Bash(git push -u origin claude-queue:*),Bash(node scripts/:*),Bash(npm run:*),Bash(npm test:*)"
+            --append-system-prompt "You are the implementation agent for PASSIO. GitHub is the source of truth. Work only on the current task branch. Your tool grants are enumerated, not general: run one command per call, never chained with && or prefixed with cd, or the call is denied. Push only with: git push origin claude-queue"
