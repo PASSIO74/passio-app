@@ -319,7 +319,7 @@ jobs:
             3. Implémente le changement le plus petit et le plus réversible qui
                satisfait la spécification. Ne l'élargis pas de toi-même.
             4. Lance les vérifications pertinentes pour les fichiers touchés :
-               `node scripts/audit-globals.js`, `node scripts/audit-handlers.js`,
+               `npm run audit:globals`, `npm run audit:handlers`,
                et les tests Playwright ciblés quand ils s'appliquent.
             5. Travaille sur EXACTEMENT cette branche, imposée à ce run :
                    ${{ steps.branche.outputs.nom }}
@@ -348,11 +348,10 @@ jobs:
           # « Run Claude Code » se déclarait quand même `success`.
           #
           # Liste ÉNUMÉRÉE, jamais `bypassPermissions` ni `Bash(git:*)` : la
-          # protection de `main` n'est pas vérifiable depuis ce dépôt, donc on
-          # suppose qu'elle n'existe pas — et un `git push origin main`
-          # déclencherait le déploiement Netlify. Le `push` n'est autorisé que
-          # vers un préfixe `claude/`, ce qui rend l'écriture sur `main`
-          # impossible par construction, et pas seulement déconseillée.
+          # protection de `main` n'est pas la frontière primaire de ce job :
+          # Claude n'a aucun droit `git push`. Seule la marche de publication,
+          # hors de Claude, pousse un refspec explicite vers la branche imposée
+          # par le run ; `main` n'est jamais une cible calculable.
           claude_args: |
             --max-turns 40
             --allowedTools "Read,Write,Edit,Glob,Grep,Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git branch:*),Bash(git remote -v),Bash(git rev-parse:*),Bash(git ls-files:*),Bash(git fetch origin main),Bash(git checkout -b:*),Bash(git switch -c:*),Bash(git add:*),Bash(git commit:*),Bash(npm run:*),Bash(npm test:*),Bash(npx playwright:*),Bash(ls:*),Bash(cat:*),Bash(head:*),Bash(tail:*),Bash(wc:*),Bash(mkdir:*),Bash(pwd),Bash(date:*),Bash(gh issue comment:*),Bash(gh issue view:*),Bash(gh pr view:*)"
