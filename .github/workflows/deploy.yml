@@ -53,18 +53,20 @@ jobs:
             exit 0
           fi
 
+          head_sha="$(gh pr view "${pr}" --repo "${GITHUB_REPOSITORY}" --json headRefOid --jq '.headRefOid')"
           reviews="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${pr}/reviews")"
-          if ! jq -e --arg reviewer "${TRUSTED_REVIEWER}" '
+          if ! jq -e --arg reviewer "${TRUSTED_REVIEWER}" --arg head "${head_sha}" '
             [.[] | select(
               .user.login == $reviewer
+              and .commit_id == $head
               and ((.body // "") | contains("Contre-revue technique indépendante"))
             )] | length > 0
           ' <<< "${reviews}" >/dev/null; then
-            echo "::error title=Contre-revue manquante::Cette PR touche un périmètre critique. Une revue GitHub par PASSIO74 contenant le marqueur « Contre-revue technique indépendante » est obligatoire avant preview ou production."
+            echo "::error title=Contre-revue manquante::Cette PR touche un périmètre critique. Une revue GitHub par PASSIO74, ancrée sur le SHA courant et contenant le marqueur « Contre-revue technique indépendante », est obligatoire avant preview ou production."
             exit 1
           fi
 
-          echo "- Contre-revue indépendante : présente" >> "${GITHUB_STEP_SUMMARY}"
+          echo "- Contre-revue indépendante : présente sur ${head_sha}" >> "${GITHUB_STEP_SUMMARY}"
 
   test:
     name: Tests smoke (Playwright)
