@@ -2,26 +2,32 @@
 
 ## Directive active — 2026-08-21
 
-The Passio AI fusion/orchestration system must use **Claude Fable 5** as the primary Claude model for Claude Code whenever it is available through the owner's Claude Max subscription.
+The Passio AI fusion/orchestration system must select the strongest appropriate Claude model that is currently available through the owner's Claude Max subscription, rather than locking Claude Code to one model permanently.
 
 ### Roles
 
 - **ChatGPT (GPT-5.6 Sol)**: product lead, architecture, orchestration, prioritization, synthesis and final decision support.
-- **Claude Code + Claude Fable 5**: primary implementation and long-horizon agentic development engine for the Passio repository.
+- **Claude Code**: primary implementation and long-horizon agentic development engine for the Passio repository, using the dynamic model ladder below.
 - **Codex**: independent technical counter-review, code review, tests, security checks and verification of Claude Code changes.
 - **Lovable / Base44**: use only when they are the best fit for interactive prototyping, UI exploration or app-building experiments. They do not replace the main implementation path by default.
 
-### Model selection rule
+### Dynamic Claude model selection rule
 
-1. Prefer **Claude Fable 5** for Claude Code tasks.
-2. Use the Claude Max subscription allowance before pay-as-you-go usage credits.
-3. Do not downgrade to another Claude model unless Fable 5 is unavailable, its included limit has been reached, compatibility requires it, or another model is demonstrably better for the specific task.
-4. If a fallback model is used, make that fallback visible in the execution report.
-5. Keep Codex as an independent review path rather than duplicating Claude Code blindly.
+For each Claude Code task, select models according to availability and included Max capacity in this order:
 
-### Operational requirement
+1. **Claude Fable 5** — first choice whenever available and usable.
+2. **Claude Opus 5** — automatic fallback when Fable 5 is unavailable, temporarily limited, quota-constrained, or unsuitable for the task.
+3. **Best remaining Claude model available in the Max subscription** — choose the highest-capability suitable model currently available rather than stopping execution.
+4. Continue down the available Claude model ladder as needed so work can proceed without unnecessary interruption.
 
-Claude Code must be version **2.1.170 or later** to use Fable 5.
+### Operating principles
+
+- Availability, remaining Max allowance, compatibility and task suitability determine the active Claude model.
+- Prefer usage included in the Claude Max subscription before any pay-as-you-go or extra-credit usage.
+- A temporary limit on one model must trigger the next suitable model automatically rather than blocking Passio work.
+- When a higher-priority model becomes available again, it may become the preferred model for the next suitable task.
+- Record the Claude model actually used in execution reports so the Centre de pilotage can show which AI performed each change.
+- Keep Codex as an independent review path rather than duplicating Claude Code blindly.
 
 ### Passio governance
 
