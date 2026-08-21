@@ -345,6 +345,11 @@ jobs:
                dépôt (findPostAnywhere, supaTs, les trois helpers d'échappement,
                collisions de globals, lecture de `{ error }` sur toute écriture
                Supabase, 9 fichiers app-*.js entre les marqueurs BUILD:APP).
+               Préserve ton budget de tours : privilégie Read, Glob et Grep pour
+               l'exploration ; n'essaie jamais une seconde fois une commande
+               refusée par la permission du runner. Si un test spécialisé n'est
+               pas autorisé, utilise le script npm versionné équivalent ou
+               rapporte-le honnêtement dans le commit.
             2. Vérifie que tu travailles sur la dernière version réelle :
                `git fetch origin main` puis compare à origin/main. Ne modifie
                rien tant qu'un doute subsiste sur la version.
@@ -390,15 +395,17 @@ jobs:
           # qu'un canari prouve Fable 5 réellement exécuté. Un quota
           # d'abonnement épuisé reste un échec explicite : aucune clé API
           # facturée n'est utilisée en secours.
-          # PLAFOND DE TOURS — mesuré, pas deviné. Deux runs consécutifs sont
-          # morts sur `error_max_turns` à 41 tours, sur deux tâches DIFFÉRENTES :
-          # 32504851993 (« Bridge Feed vers IRL V1 », 0 refus d'outil) et
-          # 32512038095 (« Lot 1A », pourtant découpé plus petit). Environ 4 $
-          # de calcul chacun, zéro livrable, zéro branche. Sur ce dépôt un seul
-          # fichier pèse 111 Ko (index.html) et le bloc app ~1,8 Mo : lire,
-          # auditer et committer ne tient pas en 40 tours. Le plafond de 80 est
-          # celui décidé par #111 ; ce qui suit le complète au lieu de le
-          # rediscuter : un plafond de TOURS ne borne ni le temps ni l'argent.
+          #
+          # Budget porté à 80 tours après deux échecs reproductibles à 40 :
+          # runs 32504851993 et 32512038095. Le second utilisait bien Opus 5
+          # avec OAuth, sur un lot déjà réduit, mais 8 refus de commandes ont
+          # consommé une partie du budget avant `error_max_turns`. La surface
+          # d'outils reste strictement identique : plus de tours n'accorde donc
+          # aucun droit nouveau et la publication demeure hors du modèle.
+          #
+          # Complément, sans rediscuter ce plafond : un plafond de TOURS ne
+          # borne ni le temps ni l'argent. D'où `timeout-minutes` sur le job et
+          # `--max-budget-usd`, la borne exacte que le CLI expose.
           claude_args: |
             --model claude-opus-5
             --permission-mode default
