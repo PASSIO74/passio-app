@@ -324,7 +324,10 @@ exigences=[
  ("compteur lu du tableau, pas d'un champ annexe", 'resultat.permission_denials_count' not in run and 'refus.length' in run),
  ("sorties non fiables réduites à des valeurs sûres", 'const ISSUES' in run and 'function outil' in run and 'contenu masqué' in run),
  ("nombre de refus imprimés borné", 'refus.slice(0, 40)' in run),
- ("budget borné en dollars", '--max-budget-usd' in args),
+ # Le bug amont anthropics/claude-code#85400 coupe les abonnements Max sur
+ # un coût API équivalent alors que la dépense réelle vaut zéro. Le canal est
+ # subscription-only : sa borne sûre est le quota OAuth + le délai du job.
+ ("aucun plafond USD trompeur sur OAuth abonnement", '--max-budget-usd' not in args),
  ("durée du job bornée", isinstance(d['jobs']['claude'].get('timeout-minutes'), int) and 0 < d['jobs']['claude']['timeout-minutes'] <= 120),
  # Le dépôt est PUBLIC : le diagnostic ne doit pas rouvrir tout le transcript.
  ("aucun retour à show_full_output", str(claude.get('with',{}).get('show_full_output','')).lower() not in ('true','1','yes')),
