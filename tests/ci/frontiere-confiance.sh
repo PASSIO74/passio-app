@@ -26,6 +26,7 @@ d=yaml.safe_load(open('${WF}',encoding='utf-8'))
 print([x for x in d['jobs']['claude']['steps'] if x.get('id')=='$1'][0]['run'])
 "; }
 extraire spec > "${BAC}/spec.sh"
+extraire modele > "${BAC}/modele.sh"
 
 # --- Faux `gh api` : applique réellement --jq, comme le vrai ----------------
 cat > "${BAC}/bin/gh" <<'FAUXGH'
@@ -225,6 +226,67 @@ for lib,vrai in exigences:
 sys.exit(1 if ko else 0)
 PYW
 if [ $? -eq 0 ]; then ok=$((ok+19)); else ko=$((ko+1)); fi
+
+echo
+echo "═══ Modèle réellement exécuté — garde anti-déclassement ═══"
+WF="${WF}" python3 - <<'PYMODEL'
+import yaml,os,sys
+d=yaml.safe_load(open(os.environ["WF"],encoding='utf-8'))
+steps=d['jobs']['claude']['steps']
+claude=[x for x in steps if x.get('id')=='claude'][0]
+modele=[x for x in steps if x.get('id')=='modele'][0]
+publier=[x for x in steps if x.get('id')=='publier'][0]
+preuve=[x for x in steps if x.get('id')=='preuve'][0]
+env=claude.get('env',{})
+args=claude.get('with',{}).get('claude_args','')
+settings=claude.get('with',{}).get('settings','')
+run=modele.get('run','')
+exigences=[
+ ("fallback autorisé Opus 5 demandé explicitement", '--model claude-opus-5' in args),
+ ("aucun fallback implicite vers un troisième modèle", '--fallback-model' not in args),
+ ("modèle principal et sous-agents figés sur Opus 5", env.get('ANTHROPIC_MODEL') == 'claude-opus-5' and env.get('CLAUDE_CODE_SUBAGENT_MODEL') == 'claude-opus-5' and 'CLAUDE_CODE_SUBAGENT_MODEL' in settings),
+ ("ANTHROPIC_API_KEY vidée", env.get('ANTHROPIC_API_KEY') == ''),
+ ("trace JSON ou JSONL system/init lue", 'JSON.parse(raw)' in run and "event?.subtype === 'init'" in run and 'event.model' in run),
+ ("source apiKeySource contrôlée", 'event.apiKeySource' in run and 'ANTHROPIC_API_KEY' in run),
+ ("Fable 5 ou Opus 5 seulement", "['claude-fable-5', 'claude-opus-5']" in run),
+ ("publication et preuve exigent la garde modèle", "steps.modele.outcome == 'success'" in str(publier.get('if','')) and "steps.modele.outcome == 'success'" in str(preuve.get('if',''))),
+]
+ko=0
+for lib,vrai in exigences:
+    print(f"  {'OK ' if vrai else 'KO '} {lib}")
+    if not vrai: ko+=1
+sys.exit(1 if ko else 0)
+PYMODEL
+if [ $? -eq 0 ]; then ok=$((ok+8)); else ko=$((ko+1)); fi
+
+scenario_modele() { # <nom> <format:json|jsonl> <modele> <source> <attendu:PASSE|REFUS>
+  local nom="$1" format="$2" modele="$3" source="$4" attendu="$5"
+  local trace="${BAC}/execution-${format}.json" sortie code verdict
+  if [ "${format}" = "jsonl" ]; then
+    jq -cn --arg m "${modele}" --arg s "${source}" \
+      '{type:"system",subtype:"init",model:$m,apiKeySource:$s}' > "${trace}"
+  else
+    jq -n --arg m "${modele}" --arg s "${source}" \
+      '[{type:"system",subtype:"init",model:$m,apiKeySource:$s}]' > "${trace}"
+  fi
+  export EXECUTION_FILE="${trace}" GITHUB_OUTPUT="${BAC}/modele-output.txt"
+  : > "${GITHUB_OUTPUT}"
+  sortie="$(bash "${BAC}/modele.sh" 2>&1)"; code=$?
+  [ ${code} -eq 0 ] && verdict=PASSE || verdict=REFUS
+  if [ "${verdict}" = "${attendu}" ]; then
+    ok=$((ok+1)); printf '  OK  %-58s → %s\n' "${nom}" "${verdict}"
+  else
+    ko=$((ko+1)); printf '  KO  %-58s → %s (attendu %s)\n' "${nom}" "${verdict}" "${attendu}"
+    echo "${sortie}" | sed 's/^/        /'
+  fi
+}
+
+echo
+echo "═══ Garde modèle — scénarios d'exécution ═══"
+scenario_modele "1. JSON action + Opus 5 + OAuth"       json  claude-opus-5  ''                PASSE
+scenario_modele "2. JSON action + Sonnet 5 refusé"      json  claude-sonnet-5 ''                REFUS
+scenario_modele "3. JSON action + clé API refusée"      json  claude-opus-5  ANTHROPIC_API_KEY REFUS
+scenario_modele "4. JSONL compatible + Fable 5 + OAuth" jsonl claude-fable-5 ''                 PASSE
 
 echo
 echo "Bilan final : ${ok} OK / ${ko} KO"
