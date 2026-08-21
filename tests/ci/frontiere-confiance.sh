@@ -164,6 +164,31 @@ sys.exit(1 if ko else 0)
 PYIF
 if [ $? -eq 0 ]; then ok=$((ok+7)); else ko=$((ko+1)); fi
 
+
+echo
+echo "═══ Surface de déclenchement de l'action (garde anti-dérive) ═══"
+WF="${WF}" python3 - <<'PYW'
+import yaml,os,sys
+d=yaml.safe_load(open(os.environ["WF"],encoding='utf-8'))
+w=[x for x in d['jobs']['claude']['steps'] if x.get('id')=='claude'][0]['with']
+ab=w.get('allowed_bots')
+exigences=[
+ ("allowed_bots n'est JAMAIS '*'",            ab != '*'),
+ ("allowed_bots limite a une liste nommee",   ab in ('', 'claude')),
+ ("allowed_non_write_users reste vide",       w.get('allowed_non_write_users') == ''),
+ ("include_comments_by_actor == 'PASSIO74'",  w.get('include_comments_by_actor') == 'PASSIO74'),
+ ("label_trigger explicite",                  w.get('label_trigger') == 'claude'),
+ ("anthropic_api_key ABSENT",                 'anthropic_api_key' not in w),
+ ("claude_code_oauth_token present",          'claude_code_oauth_token' in w),
+]
+ko=0
+for lib,vrai in exigences:
+    print(f"  {'OK ' if vrai else 'KO '} {lib}")
+    if not vrai: ko+=1
+sys.exit(1 if ko else 0)
+PYW
+if [ $? -eq 0 ]; then ok=$((ok+7)); else ko=$((ko+1)); fi
+
 echo
 echo "Bilan final : ${ok} OK / ${ko} KO"
 [ "${ko}" -eq 0 ]
