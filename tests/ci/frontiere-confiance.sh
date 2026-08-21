@@ -246,8 +246,9 @@ exigences=[
  ("aucun fallback implicite vers un troisième modèle", '--fallback-model' not in args),
  ("modèle principal et sous-agents figés sur Opus 5", env.get('ANTHROPIC_MODEL') == 'claude-opus-5' and env.get('CLAUDE_CODE_SUBAGENT_MODEL') == 'claude-opus-5' and 'CLAUDE_CODE_SUBAGENT_MODEL' in settings),
  ("ANTHROPIC_API_KEY vidée", env.get('ANTHROPIC_API_KEY') == ''),
+ ("bypassPermissions neutralisé explicitement", '--permission-mode default' in args and 'disableBypassPermissionsMode' in settings),
  ("trace JSON ou JSONL system/init lue", 'JSON.parse(raw)' in run and "event?.subtype === 'init'" in run and 'event.model' in run),
- ("source apiKeySource contrôlée", 'event.apiKeySource' in run and 'ANTHROPIC_API_KEY' in run),
+ ("apiKeySource none seule valeur OAuth admise", 'event.apiKeySource' in run and "keySource !== 'none'" in run and "actualAuth = keySource || 'ABSENTE'" in run),
  ("Fable 5 ou Opus 5 seulement", "['claude-fable-5', 'claude-opus-5']" in run),
  ("publication et preuve exigent la garde modèle", "steps.modele.outcome == 'success'" in str(publier.get('if','')) and "steps.modele.outcome == 'success'" in str(preuve.get('if',''))),
 ]
@@ -257,7 +258,7 @@ for lib,vrai in exigences:
     if not vrai: ko+=1
 sys.exit(1 if ko else 0)
 PYMODEL
-if [ $? -eq 0 ]; then ok=$((ok+8)); else ko=$((ko+1)); fi
+if [ $? -eq 0 ]; then ok=$((ok+9)); else ko=$((ko+1)); fi
 
 scenario_modele() { # <nom> <format:json|jsonl> <modele> <source> <attendu:PASSE|REFUS>
   local nom="$1" format="$2" modele="$3" source="$4" attendu="$5"
@@ -283,10 +284,13 @@ scenario_modele() { # <nom> <format:json|jsonl> <modele> <source> <attendu:PASSE
 
 echo
 echo "═══ Garde modèle — scénarios d'exécution ═══"
-scenario_modele "1. JSON action + Opus 5 + OAuth"       json  claude-opus-5  ''                PASSE
-scenario_modele "2. JSON action + Sonnet 5 refusé"      json  claude-sonnet-5 ''                REFUS
-scenario_modele "3. JSON action + clé API refusée"      json  claude-opus-5  ANTHROPIC_API_KEY REFUS
-scenario_modele "4. JSONL compatible + Fable 5 + OAuth" jsonl claude-fable-5 ''                 PASSE
+scenario_modele "1. JSON action + Opus 5 + OAuth none"      json  claude-opus-5  none              PASSE
+scenario_modele "2. JSON action + Sonnet 5 refusé"          json  claude-sonnet-5 none              REFUS
+scenario_modele "3. JSON action + clé API refusée"          json  claude-opus-5  ANTHROPIC_API_KEY REFUS
+scenario_modele "4. JSONL compatible + Fable 5 + OAuth"     jsonl claude-fable-5 none              PASSE
+scenario_modele "5. Source d'auth absente refusée"          json  claude-opus-5  ''                REFUS
+scenario_modele "6. Source d'auth inconnue refusée"         json  claude-opus-5  temporary         REFUS
+scenario_modele "7. Helper de clé API refusé"               json  claude-opus-5  apiKeyHelper      REFUS
 
 echo
 echo "Bilan final : ${ok} OK / ${ko} KO"

@@ -115,6 +115,14 @@ Authentication policy is subscription-only through `CLAUDE_CODE_OAUTH_TOKEN`; pa
 
 The remote Claude Code channel attempts `claude-fable-5` first and configures `claude-opus-5` as the native CLI fallback. The native fallback is a resilience mechanism for model overload; it is not a paid-credit bypass and must not be presented as one.
 
+Temporary incident rule (2026-08-21): while Anthropic issue #83900 causes
+`claude setup-token` sessions to request Fable 5 but initialize Sonnet 5, the
+remote channel forces the already-authorized `claude-opus-5` fallback. This
+exception ends only after an OAuth canary proves `claude-fable-5` in the real
+`system/init` event. The workflow must block publication when that event is
+missing, when the model is outside Fable 5 / Opus 5, or when `apiKeySource` is
+not the subscription-token value `none` observed with the current CLI.
+
 If the Claude subscription quota is exhausted, the run must fail explicitly. PASSIO must never introduce `ANTHROPIC_API_KEY` or another metered API credential as a silent fallback.
 
 Model selection must never weaken repository security, branch isolation, test requirements or review gates. The actual model used must be reported from execution evidence rather than assumed from policy text.
