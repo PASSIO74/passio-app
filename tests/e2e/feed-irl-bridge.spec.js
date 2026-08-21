@@ -57,6 +57,10 @@ async function setFlag(page, on) {
   }, on);
 }
 
+function sourcePostCta(page) {
+  return page.locator(`#feedList .post[data-postid="${POST_ID}"] .feed-irl-cta`);
+}
+
 test.describe("Pont Fil → IRL (feed_irl_bridge_v1)", () => {
   test("drapeau OFF (défaut) : aucun CTA sur la carte", async ({ page }) => {
     await bootOnboarded(page);
@@ -74,7 +78,7 @@ test.describe("Pont Fil → IRL (feed_irl_bridge_v1)", () => {
     await bootOnboarded(page);
     await setFlag(page, "1");
     await seedFeed(page, "musique");
-    await expect(page.locator(".feed-irl-cta")).toHaveCount(1);
+    await expect(sourcePostCta(page)).toHaveCount(1);
 
     await setFlag(page, "0");
     await page.evaluate(() => { window._feedDomSig = null; renderFeed(); });
@@ -86,14 +90,15 @@ test.describe("Pont Fil → IRL (feed_irl_bridge_v1)", () => {
     await setFlag(page, "1");
     await seedFeed(page, "musique");
 
-    const cta = page.locator("#feedList .post .feed-irl-cta");
+    const cta = sourcePostCta(page);
     await expect(cta).toHaveCount(1);
     await expect(cta).toBeVisible();
     await expect(cta).toHaveAttribute("aria-label", /IRL/i);
     // Libellé explicite (pas une icône seule) et cible tactile ≥ 44 px.
     expect((await cta.innerText()).trim().length).toBeGreaterThan(6);
     const box = await cta.boundingBox();
-    expect(box.height).toBeGreaterThanOrEqual(44);
+    // Chromium peut arrondir 44 CSS px à 43.9999 selon le device scale factor.
+    expect(box.height).toBeGreaterThanOrEqual(43.9);
     // Focus clavier atteignable.
     await cta.focus();
     expect(await page.evaluate(() => document.activeElement.className)).toContain("feed-irl-cta");
@@ -108,7 +113,7 @@ test.describe("Pont Fil → IRL (feed_irl_bridge_v1)", () => {
     await setFlag(page, "1");
     await seedFeed(page, "musique");
 
-    await page.locator("#feedList .post .feed-irl-cta").click();
+    await sourcePostCta(page).click();
 
     // Le formulaire IRL EXISTANT (openCreateEvent) est ouvert.
     await expect(page.locator("#modalBackdrop.active #evPassion")).toBeVisible();
@@ -130,7 +135,7 @@ test.describe("Pont Fil → IRL (feed_irl_bridge_v1)", () => {
     await setFlag(page, "1");
     await seedFeed(page, "passion_inexistante_qa");
 
-    await page.locator("#feedList .post .feed-irl-cta").click();
+    await sourcePostCta(page).click();
     await expect(page.locator("#modalBackdrop.active #evPassion")).toBeVisible();
 
     // La passion inconnue n'est jamais injectée : le select garde son option par défaut.
@@ -151,7 +156,7 @@ test.describe("Pont Fil → IRL (feed_irl_bridge_v1)", () => {
 
     // Le post disparaît de l'état entre le rendu et le clic (cas réel : purge/refresh).
     await page.evaluate(() => { state.userPosts = []; });
-    await page.locator("#feedList .post .feed-irl-cta").click();
+    await sourcePostCta(page).click();
 
     await expect(page.locator("#modalBackdrop.active #evPassion")).toBeVisible();
     await expect(page.locator("#toastStack .toast")).toHaveCount(0);
@@ -167,7 +172,7 @@ test.describe("Pont Fil → IRL (feed_irl_bridge_v1)", () => {
     await bootOnboarded(page);
     await setFlag(page, "1");
     await seedFeed(page, "musique");
-    await page.locator("#feedList .post .feed-irl-cta").click();
+    await sourcePostCta(page).click();
     await expect(page.locator("#modalBackdrop.active #evPassion")).toBeVisible();
 
     const captured = await page.evaluate(() =>
@@ -201,11 +206,11 @@ test.describe("Pont Fil → IRL (feed_irl_bridge_v1)", () => {
     await setFlag(page, "1");
     await seedFeed(page, "musique");
 
-    const cta = page.locator("#feedList .post .feed-irl-cta");
+    const cta = sourcePostCta(page);
     await expect(cta).toBeVisible();
 
     const geo = await page.evaluate(() => {
-      const el = document.querySelector("#feedList .post .feed-irl-cta");
+      const el = document.querySelector('#feedList .post[data-postid="post_bridge_qa"] .feed-irl-cta');
       const card = el.closest(".post");
       const list = document.getElementById("feedList");
       return {
