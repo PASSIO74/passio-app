@@ -215,7 +215,7 @@ jobs:
 
       - name: Run Claude Code
         id: claude
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@3f854a8fb5146b39d5cbf8b57f70d80810e1366f # v1.0.198
         env:
           # Lu par le mode agent (src/modes/agent/index.ts : `process.env.CLAUDE_BRANCH`)
           # et ressorti tel quel dans l'output `branch_name`. Sans cette variable,

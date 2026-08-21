@@ -45,7 +45,12 @@ jobs:
 
       - name: Install Claude Code CLI
         run: |
-          npm install -g @anthropic-ai/claude-code
+          # Version ÉPINGLÉE, même raison que le SHA de l'action dans les
+          # autres workflows : ce CLI reçoit CLAUDE_CODE_OAUTH_TOKEN et un
+          # GITHUB_TOKEN en écriture. 2.1.238 est la version que
+          # claude-code-action v1.0.198 embarque (« chore: bump Claude Code
+          # to 2.1.238 »), donc les deux canaux exécutent le même code.
+          npm install -g @anthropic-ai/claude-code@2.1.238
           claude --version
 
       # Preuve d'auth AVANT la moindre dépense : `claude auth status` interroge
