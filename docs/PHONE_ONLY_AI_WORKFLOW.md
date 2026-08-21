@@ -81,3 +81,44 @@ Every result must state which agents actually ran:
 - Claude Code: only marked used when the GitHub Action actually executed Claude
 - Codex: only marked used when an independent Codex execution/review actually occurred
 - GitHub: repository/PR/CI transport and source of truth
+
+## Trust boundary (the repository is public)
+
+Anyone with a GitHub account can comment on a PASSIO issue, so a comment is not
+a trustworthy instruction. The workflow therefore ASSEMBLES the specification
+server-side, before Claude runs, from the only trusted sources:
+
+- the title and body of the issue, which the `if:` guard already restricts to PASSIO74;
+- comments written by PASSIO74, filtered by `jq` in the workflow, not by the model —
+  a model asked to ignore a text has already read it;
+- the instructions versioned in this repository (`AGENTS.md`, `CLAUDE.md`, the prompt).
+
+The result is written to a file and handed to Claude as its only order. Every
+other comment is dropped before Claude sees it, and the count of dropped
+comments is reported in the run log and in the result comment.
+
+`include_comments_by_actor: 'PASSIO74'` is also set on the action. Note that it
+is currently INERT: supplying an explicit `prompt` puts the action in agent
+mode, which loads no comments of its own (`src/modes/agent/index.ts` — agent
+mode "bypasses the standard @claude mention checking and comment tracking used
+by tag mode"). It is kept as defence in depth: if the explicit prompt were ever
+removed, tag mode would take over and the filter would become load-bearing.
+
+`allowed_non_write_users` and `allowed_bots` are pinned to empty. They must
+never be set to `*`.
+
+## Proof that a run actually did the work
+
+A green check is not proof. On 2026-08-19 the action exited in 3 seconds on
+`No trigger found, skipping remaining steps` and the run was reported as a
+success.
+
+The branch name is now imposed BY the run — `claude/issue-<n>-<run_id>` — passed
+through the `CLAUDE_BRANCH` environment variable and read back from the action's
+`branch_name` output. The run then verifies, in order: the output is non-empty;
+it matches the name this run imposed; that branch exists on `origin`; it differs
+from `main`; and an open pull request points exactly at it. The PR link is
+posted back on the issue — that comment is the return channel to ChatGPT.
+
+Because the branch name embeds `run_id`, a second Claude session pushing its own
+`claude/*` branch can never make this run green in place of the real work.
