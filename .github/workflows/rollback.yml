@@ -59,6 +59,10 @@ jobs:
               echo "::error title=SHA invalide::Le commit doit être un SHA Git hexadécimal."
               exit 1 ;;
           esac
+          if [ "${#TARGET_INPUT}" -lt 7 ] || [ "${#TARGET_INPUT}" -gt 40 ]; then
+            echo "::error title=SHA invalide::Le SHA doit contenir entre 7 et 40 caractères."
+            exit 1
+          fi
 
           target="$(git rev-parse --verify "${TARGET_INPUT}^{commit}")"
           if ! git merge-base --is-ancestor "${target}" origin/main; then
@@ -79,7 +83,7 @@ jobs:
 
           if ! git revert --no-edit "${target}"; then
             git revert --abort || true
-            echo "::error title=Conflit de rollback::Le revert n'est pas automatique. Aucun branche n'a été poussée."
+            echo "::error title=Conflit de rollback::Le revert n'est pas automatique. Aucune branche n'a été poussée."
             exit 1
           fi
 
