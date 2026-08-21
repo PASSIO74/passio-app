@@ -9,6 +9,21 @@ This repository is the shared source of truth for PASSIO work performed by ChatG
 - **Codex**: independent technical review, debugging, test design, security/performance review, and targeted implementation when it is the best tool for the task.
 - **GitHub**: canonical state for code, branches, commits, pull requests, reviews, CI results, and merge history.
 
+## Reaching Claude Code
+
+ChatGPT has no direct channel to Claude Code. GitHub is the transport, and an order
+only reaches Claude Code if the issue carries a marker:
+
+- `@claude` in the body/title or in a comment — conversational reply;
+- an issue title starting with `[CLAUDE CODE]` — task execution;
+- the `claude` label on the issue — task execution.
+
+Without a marker the workflow ends as `skipped` and nothing runs. The issue stays
+open with no failure signal, which is how six orders were silently lost on
+2026-08-21. Creating an issue is never evidence that a task ran: the evidence is a
+successful run under Actions → Claude Code, and a pull request. See
+`docs/PHONE_ONLY_AI_WORKFLOW.md`.
+
 ## Non-negotiable Git workflow
 
 1. Never develop directly on `main`.

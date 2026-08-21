@@ -12,6 +12,30 @@ Benjamin travaille en autonomie totale (`bypassPermissions` posé aux 3 niveaux 
 
 ---
 
+## 🤝 Modèle multi-IA (ChatGPT orchestre, Claude Code implémente)
+
+PASSIO est mené par plusieurs IA sous une gouvernance unique. **Les règles de
+collaboration vivent dans `AGENTS.md`** (workflow git non négociable, rôles,
+handoff de PR) et le routage dans `.passio/orchestrator.json`. Ce fichier-ci
+reste la référence *technique* ; `AGENTS.md` la référence *collaborative*. Lis
+les deux quand la tâche vient d'une issue ou d'une PR.
+
+Répartition : **ChatGPT** = direction produit, spécification, arbitrage ·
+**Claude Code** = implémentation, backend/Supabase/RLS, sécurité, tests, refacto ·
+**Codex** = revue indépendante · **Lovable / Base44** = laboratoires d'exploration,
+jamais source de vérité, jamais connectés à la prod. GitHub est la seule source
+de vérité — pas une conversation IA, pas un prototype, pas un export.
+
+⚠️ **ChatGPT ne peut pas me parler directement.** Le seul transport est GitHub, et
+un ordre ne m'atteint que s'il porte un marqueur : `@claude`, un titre d'issue
+commençant par `[CLAUDE CODE]`, ou le label `claude`. Sans marqueur le job est
+`skipped` **en silence** — l'issue reste ouverte et personne ne l'exécute (vécu le
+2026-08-21 : six ordres perdus, dont le chantier PERF-IOS). Une issue créée n'est
+JAMAIS la preuve qu'une tâche a tourné : la preuve est un run vert dans
+Actions → Claude Code, et une PR. Détail : `docs/PHONE_ONLY_AI_WORKFLOW.md`.
+
+---
+
 Réseau social des passions. PWA vanilla JS (pas de framework, pas de bundler) + Supabase. Beta privée protégée par code d'accès.
 
 ## Architecture
