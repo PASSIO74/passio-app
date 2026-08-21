@@ -201,13 +201,30 @@ for motif,pourquoi in INTERDITS.items():
     absent = motif not in args
     exigences.append((f"jamais {motif} — {pourquoi}", absent))
 
+# Prefixe PARTIEL : le filtre de permissions matche des TOKENS COMPLETS. Un
+# motif qui s'arrete au milieu d'un token — « Bash(git push origin claude/:*) »,
+# « Bash(node scripts/:*) » — exige ce fragment comme token ENTIER suivi d'un
+# espace, et ne matche donc jamais une commande reelle. Mort-ne, et refuse en
+# silence. Trois de mes motifs l'etaient ; mesure sur le run 32481660339.
+import re as _re
+outils = w.get('claude_args','')
+motifs = _re.findall(r'Bash\(([^)]*)\)', outils)
+partiels = [m for m in motifs if m.endswith(':*') and _re.search(r'[/-]:\*$', m)]
+exigences.append(
+    ("aucun motif Bash ne s'arrete au milieu d'un token"
+     + (f" — casses : {partiels}" if partiels else ""),
+     not partiels))
+
+# Claude ne doit plus avoir AUCUN droit de push : c'est le workflow qui publie.
+exigences.append(("Claude n'a aucun droit de git push", 'git push' not in outils))
+
 ko=0
 for lib,vrai in exigences:
     print(f"  {'OK ' if vrai else 'KO '} {lib}")
     if not vrai: ko+=1
 sys.exit(1 if ko else 0)
 PYW
-if [ $? -eq 0 ]; then ok=$((ok+17)); else ko=$((ko+1)); fi
+if [ $? -eq 0 ]; then ok=$((ok+19)); else ko=$((ko+1)); fi
 
 echo
 echo "Bilan final : ${ok} OK / ${ko} KO"
