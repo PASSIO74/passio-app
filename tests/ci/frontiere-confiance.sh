@@ -181,13 +181,33 @@ exigences=[
  ("anthropic_api_key ABSENT",                 'anthropic_api_key' not in w),
  ("claude_code_oauth_token present",          'claude_code_oauth_token' in w),
 ]
+# Vecteurs d'execution arbitraire : une commande dont une option lance un
+# sous-processus vide la liste d'outils de son sens. Signales par la revue
+# de securite du 2026-08-21 sur le commit d49a5ab.
+args=" ".join(str(v) for v in w.values())
+INTERDITS = {
+  "Bash(find:":        "find porte -exec/-execdir : execution arbitraire",
+  "Bash(git config:":  "git config pose core.pager, core.sshCommand ou une alias : execution arbitraire",
+  "Bash(git fetch:":   "git fetch accepte --upload-pack=<cmd> : execution arbitraire",
+  "Bash(git:*)":       "git en bloc autorise le push sur main",
+  "Bash(:*)":          "Bash en bloc",
+  "Bash(sh:":          "shell direct",
+  "Bash(bash:":        "shell direct",
+  "Bash(eval:":        "eval",
+  "Bash(xargs:":       "xargs execute une commande arbitraire",
+  "Bash(gh api:":      "gh api contourne les sous-commandes bornees",
+}
+for motif,pourquoi in INTERDITS.items():
+    absent = motif not in args
+    exigences.append((f"jamais {motif} — {pourquoi}", absent))
+
 ko=0
 for lib,vrai in exigences:
     print(f"  {'OK ' if vrai else 'KO '} {lib}")
     if not vrai: ko+=1
 sys.exit(1 if ko else 0)
 PYW
-if [ $? -eq 0 ]; then ok=$((ok+7)); else ko=$((ko+1)); fi
+if [ $? -eq 0 ]; then ok=$((ok+17)); else ko=$((ko+1)); fi
 
 echo
 echo "Bilan final : ${ok} OK / ${ko} KO"
