@@ -27,6 +27,7 @@ print([x for x in d['jobs']['claude']['steps'] if x.get('id')=='$1'][0]['run'])
 "; }
 extraire spec > "${BAC}/spec.sh"
 extraire modele > "${BAC}/modele.sh"
+extraire diagnostic > "${BAC}/diagnostic.sh"
 
 # --- Faux `gh api` : applique réellement --jq, comme le vrai ----------------
 cat > "${BAC}/bin/gh" <<'FAUXGH'
@@ -291,6 +292,71 @@ scenario_modele "4. JSONL compatible + Fable 5 + OAuth"     jsonl claude-fable-5
 scenario_modele "5. Source d'auth absente refusée"          json  claude-opus-5  ''                REFUS
 scenario_modele "6. Source d'auth inconnue refusée"         json  claude-opus-5  temporary         REFUS
 scenario_modele "7. Helper de clé API refusé"               json  claude-opus-5  apiKeyHelper      REFUS
+
+echo
+echo "═══ Plafond de tours et diagnostic des refus ═══"
+WF="${WF}" python3 - <<'PYDIAG'
+import yaml,os,sys,re
+d=yaml.safe_load(open(os.environ["WF"],encoding='utf-8'))
+steps=d['jobs']['claude']['steps']
+claude=[x for x in steps if x.get('id')=='claude'][0]
+diag=[x for x in steps if x.get('id')=='diagnostic']
+args=claude.get('with',{}).get('claude_args','')
+m=re.search(r'--max-turns\s+(\d+)', args)
+tours=int(m.group(1)) if m else 0
+run=diag[0].get('run','') if diag else ''
+exigences=[
+ # 41 tours consommés sur deux runs morts : le plafond doit dépasser ce mur.
+ ("plafond de tours au-dessus du mur mesuré de 41", tours > 41),
+ # Mais borné : sans plafond, un emballement tourne jusqu'à épuisement du quota.
+ ("plafond de tours borné (jamais illimité)", 0 < tours <= 200),
+ ("marche de diagnostic présente", bool(diag)),
+ ("diagnostic non bloquant (if: always)", str(diag[0].get('if','')) == 'always()' if diag else False),
+ ("diagnostic ne peut pas faire échouer le run", 'exit 1' not in run),
+ ("les commandes refusées sont nommées", 'permission_denials' in run and 'tool_input' in run),
+ ("le plafond atteint est signalé explicitement", 'error_max_turns' in run),
+ # Le dépôt est PUBLIC : le diagnostic ne doit pas rouvrir tout le transcript.
+ ("aucun retour à show_full_output", 'show_full_output' not in str(claude.get('with',{}).get('show_full_output',''))or claude.get('with',{}).get('show_full_output') != 'true'),
+]
+ko=0
+for lib,vrai in exigences:
+    print(f"  {'OK ' if vrai else 'KO '} {lib}")
+    if not vrai: ko+=1
+sys.exit(1 if ko else 0)
+PYDIAG
+if [ $? -eq 0 ]; then ok=$((ok+8)); else ko=$((ko+1)); fi
+
+# Rejoue la marche RÉELLE du workflow sur des traces d'exécution.
+scenario_diag() { # <nom> <contenu-trace|VIDE> <attendu-dans-la-sortie|-> 
+  local nom="$1" trace_contenu="$2" attendu="$3"
+  local trace="${BAC}/diag-trace.json"
+  if [ "${trace_contenu}" = "VIDE" ]; then
+    rm -f "${trace}"; export EXECUTION_FILE="${trace}"
+  else
+    printf '%s' "${trace_contenu}" > "${trace}"; export EXECUTION_FILE="${trace}"
+  fi
+  sortie="$(bash "${BAC}/diagnostic.sh" 2>&1)"; code=$?
+  local souci=""
+  [ ${code} -ne 0 ] && souci="code ${code} (le diagnostic ne doit JAMAIS bloquer)"
+  if [ -z "${souci}" ] && [ "${attendu}" != "-" ]; then
+    printf '%s' "${sortie}" | grep -qF "${attendu}" || souci="« ${attendu} » absent de la sortie"
+  fi
+  if [ -z "${souci}" ]; then
+    ok=$((ok+1)); printf '  OK  %-58s\n' "${nom}"
+  else
+    ko=$((ko+1)); printf '  KO  %-58s → %s\n' "${nom}" "${souci}"
+    printf '%s\n' "${sortie}" | sed 's/^/        /'
+  fi
+}
+
+REFUS_JSON='[{"type":"system","subtype":"init","model":"claude-opus-5","apiKeySource":"none"},{"type":"result","subtype":"error_max_turns","num_turns":41,"permission_denials_count":1,"permission_denials":[{"tool_name":"Bash","tool_input":{"command":"npm run audit:globals 2>&1 | tail -15"}}]}]'
+SUCCES_JSON='[{"type":"system","subtype":"init","model":"claude-opus-5","apiKeySource":"none"},{"type":"result","subtype":"success","num_turns":12,"permission_denials_count":0,"permission_denials":[]}]'
+
+scenario_diag "8. trace absente : ne bloque pas"            VIDE            -
+scenario_diag "9. commande refusée nommée en clair"         "${REFUS_JSON}" "npm run audit:globals 2>&1 | tail -15"
+scenario_diag "10. plafond de tours signalé"                "${REFUS_JSON}" "Plafond de tours atteint"
+scenario_diag "11. run propre : aucun refus annoncé"        "${SUCCES_JSON}" "Refus d'outils : 0"
+scenario_diag "12. trace illisible : ne bloque pas"         "pas du json"   -
 
 echo
 echo "Bilan final : ${ok} OK / ${ko} KO"
