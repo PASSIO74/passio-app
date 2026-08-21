@@ -227,5 +227,46 @@ PYW
 if [ $? -eq 0 ]; then ok=$((ok+19)); else ko=$((ko+1)); fi
 
 echo
+echo "═══ Politique modèles du canal claude-pr-task ═══"
+WFT="$(dirname "${WF}")/claude-pr-task.yml" python3 - <<'PYM'
+import yaml,os,sys,re
+p=os.environ["WFT"]
+brut=open(p,encoding='utf-8').read()
+d=yaml.safe_load(brut)
+run="".join(s.get('run','') for s in d['jobs']['claude']['steps'])
+env={}
+for s in d['jobs']['claude']['steps']:
+    env.update(s.get('env') or {})
+
+modeles=set(re.findall(r'claude-[a-z]+-[0-9]+(?:\.[0-9]+)?', brut))
+exig=[
+ ("Fable 5 est le modele PRIMAIRE",        'MODELE_PRIMAIRE=claude-fable-5' in run),
+ ("Opus 5 est le REPLI",                   'MODELE_REPLI=claude-opus-5' in run),
+ # On verifie le SITE D'APPEL de la garde, pas seulement que la fonction
+ # existe : neutraliser « if travail_produit; then » en « if false; then »
+ # laissait passer la premiere version de cette assertion. Test creux.
+ ("le repli est refuse si un fichier a deja ete modifie",
+                                           'if travail_produit; then' in run
+                                           and 'Repli refuse' in run
+                                           and 'exit 1' in run.split('Repli refuse')[1][:200]),
+ ("le modele reellement execute est valide",
+                                           'claude-fable-5*|claude-opus-5*' in run),
+ ("aucun autre modele n'apparait",         modeles <= {'claude-fable-5','claude-opus-5'}),
+ ("ANTHROPIC_API_KEY explicitement vide",  env.get('ANTHROPIC_API_KEY') == ''),
+ ("jeton d'abonnement utilise",            'CLAUDE_CODE_OAUTH_TOKEN' in brut),
+ ("aucun secret de cle API facturee",      'secrets.ANTHROPIC_API_KEY' not in brut and 'secrets.PASSIO}' not in brut),
+ ("l'auth reelle est verifiee (apiKeySource)", 'apiKeySource' in run),
+]
+ko=0
+for lib,vrai in exig:
+    print(f"  {'OK ' if vrai else 'KO '} {lib}")
+    if not vrai: ko+=1
+if modeles - {'claude-fable-5','claude-opus-5'}:
+    print(f"      modeles etrangers : {sorted(modeles - {'claude-fable-5','claude-opus-5'})}")
+sys.exit(1 if ko else 0)
+PYM
+if [ $? -eq 0 ]; then ok=$((ok+9)); else ko=$((ko+1)); fi
+
+echo
 echo "Bilan final : ${ok} OK / ${ko} KO"
 [ "${ko}" -eq 0 ]
