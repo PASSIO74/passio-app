@@ -113,9 +113,11 @@ Authentication policy is subscription-only through `CLAUDE_CODE_OAUTH_TOKEN`; pa
 
 ## 8. Model policy
 
-Use the best approved Claude model available to the configured subscription/channel for the task. Model selection must never weaken repository security, branch isolation, test requirements or review gates.
+The remote Claude Code channel attempts `claude-fable-5` first and configures `claude-opus-5` as the native CLI fallback. The native fallback is a resilience mechanism for model overload; it is not a paid-credit bypass and must not be presented as one.
 
-The actual model used should be reported in execution evidence when available rather than assumed from documentation.
+If the Claude subscription quota is exhausted, the run must fail explicitly. PASSIO must never introduce `ANTHROPIC_API_KEY` or another metered API credential as a silent fallback.
+
+Model selection must never weaken repository security, branch isolation, test requirements or review gates. The actual model used must be reported from execution evidence rather than assumed from policy text.
 
 ## 9. Non-negotiable merge gates
 
