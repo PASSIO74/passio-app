@@ -4,6 +4,10 @@ on:
   schedule:
     - cron: "17 * * * *"
   workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/sentinelle-distante.yml"
+      - "docs/SENTINELLE_DISTANTE.md"
 
 concurrency:
   group: sentinelle-distante
@@ -112,6 +116,11 @@ jobs:
               gh issue close "${existing}" --repo "${GITHUB_REPOSITORY}" --reason completed
             fi
             exit 0
+          fi
+
+          # Une PR vérifie le workflow sans créer d'incident opérationnel.
+          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+            exit 1
           fi
 
           if [ -n "${existing}" ]; then
