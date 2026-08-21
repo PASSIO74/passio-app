@@ -3988,6 +3988,164 @@ function removeEventCover() {
   if (fileInput) fileInput.value = "";
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// PONT FIL → IRL (drapeau `feed_irl_bridge_v1`) — Lot 1A.1
+// ──────────────────────────────────────────────────────────────────────────
+// Un CTA discret sur une carte du fil ouvre le formulaire IRL EXISTANT
+// (openCreateEvent) en pré-remplissant au maximum deux données techniques :
+// la passion déjà normalisée du post, et l'identifiant du post source. Aucun
+// backend, aucune migration, aucun événement créé automatiquement.
+//
+// Drapeau : OFF par défaut. Soupape par appareil relue à CHAQUE rendu (et pas
+// figée au chargement comme PASSIO_REALTIME_V*) → couper le pont ne demande ni
+// redéploiement ni rechargement :
+//     localStorage.passio_feed_irl_bridge_v1 = "1"  → pont actif
+//     localStorage.passio_feed_irl_bridge_v1 = "0"  → pont coupé (kill switch)
+//     window.PASSIO_FEED_IRL_BRIDGE_V1 = false      → coupure immédiate en mémoire
+// ⚠️ Aucun texte libre de l'utilisateur (titre, description, commentaire) ne
+// transite par une URL, un attribut inline, un log ou la télémétrie : seuls un
+// identifiant technique et des booléens de présence circulent.
+// ══════════════════════════════════════════════════════════════════════════
+var FEED_IRL_BRIDGE_VERSION = "v1a1";
+
+function feedIrlBridgeEnabled() {
+  if (typeof window.PASSIO_FEED_IRL_BRIDGE_V1 === "boolean") return window.PASSIO_FEED_IRL_BRIDGE_V1;
+  try {
+    var v = localStorage.getItem("passio_feed_irl_bridge_v1");
+    if (v === "1") return true;
+    if (v === "0") return false;
+  } catch (e) {}
+  return false; // défaut : OFF — le parcours Feed/IRL est strictement inchangé
+}
+
+// Éligibilité d'un post du fil. Un post qui PARTAGE déjà un événement IRL
+// (sharedReelData.kind === "event") n'a pas besoin du pont.
+function feedIrlBridgeEligible(p) {
+  if (!feedIrlBridgeEnabled()) return false;
+  if (!p || !p.id) return false;
+  if (p.sharedReelData && p.sharedReelData.kind === "event") return false;
+  return true;
+}
+
+// Passion NORMALISÉE du post : on ne renvoie un id que s'il correspond à une
+// passion réellement connue. Une valeur libre/inconnue vaut « absente ».
+function feedIrlBridgePassion(p) {
+  var id = p && p.passion;
+  if (!id || typeof id !== "string") return "";
+  if (typeof allPassions !== "function") return "";
+  var found = allPassions().find(function (x) { return x && x.id === id; });
+  return found ? found.id : "";
+}
+
+// Métadonnées AUTORISÉES : version, état effectif du drapeau, présence/absence
+// de la passion et de la référence. Rien d'autre.
+// ⚠️ `has_psn` et non `has_passion` : le filtre PII de js/telemetry.js rejette
+// toute clé contenant « pass ». Nommer la clé « has_passion » la ferait
+// disparaître en silence — l'événement serait émis, la donnée jamais reçue.
+function feedIrlBridgeMeta(hasPassion, hasRef) {
+  return {
+    v: FEED_IRL_BRIDGE_VERSION,
+    flag: feedIrlBridgeEnabled() ? "on" : "off",
+    has_psn: !!hasPassion,
+    has_ref: !!hasRef,
+  };
+}
+
+// Échec de transition : visible du Centre de pilotage / de la Sentinelle via le
+// diagnostic client existant (diagLog + tel.error), jamais via une erreur montrée
+// à l'utilisateur.
+function feedIrlBridgeFail(where, err, meta) {
+  var msg = "feed_irl_bridge (" + where + ") : " + ((err && err.message) || err || "?");
+  try { if (typeof diagLog === "function") diagLog(msg); } catch (e) {}
+  try {
+    if (window.tel && tel.error) {
+      tel.error(err instanceof Error ? err : new Error(msg), { action: "feed_irl_bridge", meta: meta });
+    }
+  } catch (e) {}
+}
+
+// Une vue par post et par session : un re-rendu du fil (pull-to-refresh,
+// retour sur l'écran) ne doit pas gonfler le compteur.
+function feedIrlBridgeTrackView(p, hasPassion) {
+  if (!window._feedIrlBridgeViewed) window._feedIrlBridgeViewed = {};
+  var k = String(p.id);
+  if (window._feedIrlBridgeViewed[k]) return;
+  window._feedIrlBridgeViewed[k] = 1;
+  try {
+    if (window.tel && tel.action) tel.action("feed_irl_cta_view", feedIrlBridgeMeta(hasPassion, true));
+  } catch (e) { feedIrlBridgeFail("view", e, null); }
+}
+
+// CTA rendu dans la carte du fil. Renvoie "" quand le drapeau est OFF ou que le
+// post n'est pas éligible → la carte est alors strictement celle d'avant.
+function feedIrlBridgeCtaHtml(p) {
+  if (!feedIrlBridgeEligible(p)) return "";
+  feedIrlBridgeTrackView(p, feedIrlBridgePassion(p));
+  return '<div class="feed-irl-bridge">'
+    + '<button type="button" class="feed-irl-cta"'
+    + ' onclick="event.stopPropagation();feedIrlBridgeOpen(\'' + escapeJsArg(p.id) + '\')"'
+    + ' aria-label="Organiser une rencontre IRL autour de ce post">'
+    + "\u{1F91D} Organiser un IRL</button></div>";
+}
+
+// Clic : ouvre le parcours IRL EXISTANT. Toute donnée absente ou invalide mène au
+// formulaire standard, sans préremplissage et sans message d'erreur.
+function feedIrlBridgeOpen(postId) {
+  var p = null;
+  try {
+    if (typeof findPostAnywhere === "function") p = findPostAnywhere(postId);
+  } catch (e) { feedIrlBridgeFail("lookup", e, null); }
+
+  var passion = feedIrlBridgePassion(p);
+  var ref = (p && p.id) ? String(p.id) : "";
+  try {
+    if (window.tel && tel.action) tel.action("feed_irl_cta_click", feedIrlBridgeMeta(passion, ref));
+  } catch (e) { feedIrlBridgeFail("click", e, null); }
+
+  if (typeof openCreateEvent !== "function") {
+    feedIrlBridgeFail("open", "openCreateEvent indisponible", feedIrlBridgeMeta(passion, ref));
+    if (typeof goTo === "function") goTo("irl");
+    return;
+  }
+  try {
+    openCreateEvent();
+  } catch (e) {
+    feedIrlBridgeFail("open", e, feedIrlBridgeMeta(passion, ref));
+    if (typeof goTo === "function") goTo("irl");
+    return;
+  }
+  // Le formulaire est injecté par openModal : on préremplit juste après, comme
+  // createEventAtSavedPlace (app-03) — même délai, même raison.
+  setTimeout(function () { feedIrlBridgePrefill(passion, ref); }, 60);
+}
+
+// Préremplissage sûr : la passion normalisée (seulement si l'option existe dans
+// CE formulaire) et la référence technique du post source. La référence est posée
+// via setAttribute — jamais concaténée dans une chaîne HTML. Elle n'est lue par
+// personne pour l'instant : la création et la participation relèvent du Lot 1B.
+function feedIrlBridgePrefill(passion, ref) {
+  var applied = false;
+  try {
+    var sel = document.getElementById("evPassion");
+    if (sel && passion) {
+      var has = Array.prototype.some.call(sel.options || [], function (o) { return o.value === passion; });
+      if (has) { sel.value = passion; applied = true; }
+    }
+    var host = document.getElementById("modalContent");
+    if (host) {
+      if (ref) host.setAttribute("data-feed-irl-source", ref);
+      else host.removeAttribute("data-feed-irl-source");
+    }
+    window._feedIrlBridgeSourcePostId = ref || null;
+  } catch (e) {
+    feedIrlBridgeFail("prefill", e, feedIrlBridgeMeta(applied, ref));
+    return; // formulaire standard : rien de plus n'est tenté, aucune erreur montrée
+  }
+  try {
+    if (window.tel && tel.action) tel.action("feed_irl_draft_prefilled", feedIrlBridgeMeta(applied, ref));
+  } catch (e) { feedIrlBridgeFail("prefill_track", e, null); }
+}
+
 function openCreateEvent(editId) {
   const ed = editId ? _findCanonicalEvent(editId) : null;
   if (editId && !ed) { toast("Événement introuvable"); return; }
