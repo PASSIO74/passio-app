@@ -243,6 +243,7 @@ settings=claude.get('with',{}).get('settings','')
 run=modele.get('run','')
 exigences=[
  ("fallback autorisé Opus 5 demandé explicitement", '--model claude-opus-5' in args),
+ ("budget borne a 80 tours apres les incidents 40 tours", '--max-turns 80' in args and '--max-turns 40' not in args),
  ("aucun fallback implicite vers un troisième modèle", '--fallback-model' not in args),
  ("modèle principal et sous-agents figés sur Opus 5", env.get('ANTHROPIC_MODEL') == 'claude-opus-5' and env.get('CLAUDE_CODE_SUBAGENT_MODEL') == 'claude-opus-5' and 'CLAUDE_CODE_SUBAGENT_MODEL' in settings),
  ("ANTHROPIC_API_KEY vidée", env.get('ANTHROPIC_API_KEY') == ''),
@@ -258,7 +259,7 @@ for lib,vrai in exigences:
     if not vrai: ko+=1
 sys.exit(1 if ko else 0)
 PYMODEL
-if [ $? -eq 0 ]; then ok=$((ok+9)); else ko=$((ko+1)); fi
+if [ $? -eq 0 ]; then ok=$((ok+10)); else ko=$((ko+1)); fi
 
 scenario_modele() { # <nom> <format:json|jsonl> <modele> <source> <attendu:PASSE|REFUS>
   local nom="$1" format="$2" modele="$3" source="$4" attendu="$5"
