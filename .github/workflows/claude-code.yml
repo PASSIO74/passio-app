@@ -40,9 +40,17 @@ concurrency:
 
 jobs:
   claude:
-    # Première frontière de confiance : l'AUTEUR de l'événement déclencheur doit
-    # être Benjamin. Ni un fork, ni un bot, ni un commentateur de passage ne
-    # réveille un agent qui a les droits d'écriture sur le dépôt.
+    # Première frontière de confiance. DEUX conditions, pas une : l'INSTRUCTION
+    # doit venir de Benjamin, et la CIBLE doit lui appartenir aussi.
+    #
+    # Vérifier le seul auteur du commentaire ne suffisait pas : sur un dépôt
+    # public, un tiers ouvre une issue dont le titre et le corps portent des
+    # instructions hostiles, Benjamin y répond « @claude », et ce titre et ce
+    # corps entraient dans la spécification comme texte de confiance. Le canal
+    # automatisé n'a pas besoin de traiter les issues d'autrui : cible ET
+    # instruction de PASSIO74, rien d'autre. Un canal séparé, où le contenu
+    # externe serait explicitement de la donnée non fiable, reste à construire
+    # le jour où ce besoin apparaîtra.
     if: |
       (
         github.event_name == 'issues' &&
@@ -55,10 +63,12 @@ jobs:
       ) || (
         github.event_name == 'issue_comment' &&
         github.event.comment.user.login == 'PASSIO74' &&
+        github.event.issue.user.login == 'PASSIO74' &&
         contains(github.event.comment.body, '@claude')
       ) || (
         github.event_name == 'pull_request_review_comment' &&
         github.event.comment.user.login == 'PASSIO74' &&
+        github.event.pull_request.user.login == 'PASSIO74' &&
         contains(github.event.comment.body, '@claude')
       )
     runs-on: ubuntu-latest
@@ -116,16 +126,33 @@ jobs:
           NUMERO: ${{ github.event.issue.number || github.event.pull_request.number }}
           DEPOT: ${{ github.repository }}
           AUTEUR_AUTORISE: PASSIO74
+          EVENEMENT: ${{ github.event_name }}
+          # Identifiant NUMÉRIQUE du commentaire déclencheur. Jamais son texte :
+          # un corps de commentaire interpolé dans un `run:` serait une injection
+          # shell offerte. On passe l'id, on relit le texte par l'API.
+          COMMENT_ID: ${{ github.event.comment.id }}
         run: |
           set -euo pipefail
           SPEC="${RUNNER_TEMP}/passio-spec.md"
 
-          gh api "repos/${DEPOT}/issues/${NUMERO}" \
-            --jq '"# " + .title + "\n\n" + (.body // "(corps vide)")' > "${SPEC}"
+          # ── Invariant 1 : la CIBLE appartient à l'acteur autorisé ──────────
+          # Défense en profondeur. Le `if:` du job le garantit déjà, mais un job
+          # qui ne se fie qu'à sa propre condition de déclenchement n'a aucun
+          # moyen de le prouver, et une condition YAML se casse en silence.
+          cible="$(gh api "repos/${DEPOT}/issues/${NUMERO}" \
+                   --jq '{login: .user.login, title: .title, body: (.body // "(corps vide)")}')"
+          auteur_cible="$(printf '%s' "${cible}" | jq -r '.login')"
+          if [ "${auteur_cible}" != "${AUTEUR_AUTORISE}" ]; then
+            echo "TRUST = REFUS"
+            echo "::error title=Cible non fiable::L'issue ou la PR #${NUMERO} a été créée par « ${auteur_cible} », pas par ${AUTEUR_AUTORISE}. Son titre et son corps ne peuvent pas servir de spécification sur un dépôt public. Aucun appel à Claude."
+            exit 1
+          fi
+          echo "TRUST = CIBLE ${AUTEUR_AUTORISE}"
+          printf '%s' "${cible}" | jq -r '"# " + .title + "\n\n" + .body' > "${SPEC}"
 
-          # Commentaires : UNIQUEMENT ceux de l'acteur autorisé. Le filtrage est
-          # fait par jq côté serveur, pas par le modèle — un modèle à qui l'on
-          # demande d'ignorer un texte l'a déjà lu.
+          # ── Invariant 2 : seuls les commentaires généraux de l'acteur ──────
+          # Le filtrage est fait par jq côté serveur, pas par le modèle : un
+          # modèle à qui l'on demande d'ignorer un texte l'a déjà lu.
           total=$(gh api --paginate "repos/${DEPOT}/issues/${NUMERO}/comments" --jq 'length' \
                   | awk '{s+=$1} END {print s+0}')
           retenus=$(gh api --paginate "repos/${DEPOT}/issues/${NUMERO}/comments" \
@@ -140,12 +167,46 @@ jobs:
             } >> "${SPEC}"
           fi
 
+          # ── Invariant 3 : le commentaire de revue INLINE déclencheur ───────
+          # `/issues/{n}/comments` ne renvoie QUE les commentaires généraux. Un
+          # « @claude corrige cette ligne » posé sur une ligne de code vit dans
+          # `/pulls/comments/{id}` : sans cette marche, Claude était réveillé par
+          # un ordre qu'il ne lisait jamais, et travaillait à l'aveugle.
+          inline=0
+          if [ "${EVENEMENT}" = "pull_request_review_comment" ]; then
+            case "${COMMENT_ID:-}" in
+              ''|*[!0-9]*)
+                echo "::error title=Identifiant de commentaire invalide::Reçu « ${COMMENT_ID:-vide} », attendu un entier."
+                exit 1 ;;
+            esac
+            commentaire="$(gh api "repos/${DEPOT}/pulls/comments/${COMMENT_ID}")"
+            auteur_inline="$(printf '%s' "${commentaire}" | jq -r '.user.login')"
+            if [ "${auteur_inline}" != "${AUTEUR_AUTORISE}" ]; then
+              echo "TRUST = REFUS"
+              echo "::error title=Commentaire inline non fiable::Le commentaire ${COMMENT_ID} est de « ${auteur_inline} », pas de ${AUTEUR_AUTORISE}. Refus de l'ajouter à la spécification."
+              exit 1
+            fi
+            {
+              printf '\n\n## Instruction de revue inline de %s\n\n' "${AUTEUR_AUTORISE}"
+              printf '%s' "${commentaire}" | jq -r '
+                "- Fichier : `" + (.path // "(inconnu)") + "`\n"
+                + "- Ligne : " + ((.line // .original_line // "(inconnue)") | tostring) + "\n"
+                + "- Côté : " + (.side // "(inconnu)") + "\n"
+                + "- Commit : `" + ((.commit_id // "(inconnu)") | .[0:12]) + "`\n\n"
+                + (.body // "(vide)")'
+            } >> "${SPEC}"
+            inline=1
+            echo "Commentaire de revue inline de ${AUTEUR_AUTORISE} intégré à la spécification."
+          fi
+
           ecartes=$(( total - retenus ))
-          echo "Commentaires totaux : ${total} — retenus (${AUTEUR_AUTORISE}) : ${retenus} — écartés : ${ecartes}"
+          echo "Commentaires généraux : ${total} — retenus (${AUTEUR_AUTORISE}) : ${retenus} — écartés : ${ecartes}"
+          echo "Instruction inline intégrée : ${inline}"
           echo "Spécification assemblée : $(wc -c < "${SPEC}") octets"
           {
             echo "fichier=${SPEC}"
             echo "ecartes=${ecartes}"
+            echo "inline=${inline}"
           } >> "$GITHUB_OUTPUT"
 
           if [ "${ecartes}" -gt 0 ]; then
