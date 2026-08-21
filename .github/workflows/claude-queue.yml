@@ -23,11 +23,19 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Contrôle d'authentification (subscription-only)
+        id: auth
+        uses: ./.github/actions/claude-auth-guard
+        with:
+          oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          policy: subscription-only
+
       - name: Run Claude Code task
         id: claude
         uses: anthropics/claude-code-action@v1
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Abonnement Claude Pro. `anthropic_api_key` est volontairement ABSENT.
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           prompt: |
             Execute the trusted PASSIO task written in `.passio/claude-task.md`.

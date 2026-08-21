@@ -1,3 +1,21 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# Claude Code — canal PRIMAIRE ChatGPT → GitHub → Claude Code → PR.
+#
+# AUTHENTIFICATION : abonnement Claude Pro de Benjamin, via le jeton OAuth
+# `CLAUDE_CODE_OAUTH_TOKEN` (généré par `claude setup-token`). AUCUNE clé API
+# Anthropic n'est utilisée ici — la politique du dépôt est « subscription-only »
+# et l'action `claude-auth-guard` refuse le job si une clé API apparaît.
+#
+# DÉCLENCHEMENT : le label `claude` est le chemin nominal. `@claude` reste en
+# secours. Le label existe parce que la détection par mention a échoué en
+# silence les 19–21 août : les issues #68, #69 et #73 ne contenaient pas la
+# chaîne « @claude » et les runs 9 à 14 sont sortis en `skipped`, indiscernables
+# d'un succès. Un label ne peut pas être mal orthographié.
+#
+# PREUVE D'EXÉCUTION : le job échoue si Claude n'a produit aucune branche, et
+# commente l'issue en cas d'échec. Un vert de 3 secondes ne doit plus jamais
+# passer pour un travail fait.
+# ═══════════════════════════════════════════════════════════════════════════
 name: Claude Code
 
 on:
@@ -6,15 +24,25 @@ on:
   pull_request_review_comment:
     types: [created, edited]
   issues:
-    types: [opened, edited]
+    types: [opened, edited, labeled]
+
+concurrency:
+  group: claude-code-${{ github.event.issue.number || github.event.pull_request.number }}
+  cancel-in-progress: false
 
 jobs:
   claude:
+    # L'auteur doit être Benjamin dans tous les cas : ni un fork, ni un bot,
+    # ni un commentateur de passage ne déclenche un agent qui écrit dans le dépôt.
     if: |
       (
         github.event_name == 'issues' &&
         github.event.issue.user.login == 'PASSIO74' &&
-        (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude'))
+        (
+          github.event.label.name == 'claude' ||
+          contains(github.event.issue.body, '@claude') ||
+          contains(github.event.issue.title, '@claude')
+        )
       ) || (
         github.event_name == 'issue_comment' &&
         github.event.comment.user.login == 'PASSIO74' &&
@@ -37,17 +65,128 @@ jobs:
         with:
           fetch-depth: 1
 
+      # Avant toute dépense de jeton : prouver que l'auth est bien l'abonnement.
+      - name: Contrôle d'authentification (subscription-only)
+        id: auth
+        uses: ./.github/actions/claude-auth-guard
+        with:
+          oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          policy: subscription-only
+
+      - name: Instantané des branches claude/* AVANT
+        id: avant
+        run: |
+          set -euo pipefail
+          git ls-remote --heads origin 'refs/heads/claude/*' | awk '{print $2}' | sort > /tmp/branches-avant.txt
+          echo "nombre=$(wc -l < /tmp/branches-avant.txt)" >> "$GITHUB_OUTPUT"
+          echo "Branches claude/* avant exécution : $(wc -l < /tmp/branches-avant.txt)"
+
       - name: Run Claude Code
         id: claude
         uses: anthropics/claude-code-action@v1
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Abonnement Claude Pro. `anthropic_api_key` est volontairement ABSENT.
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           trigger_phrase: '@claude'
           branch_prefix: 'claude/'
           base_branch: 'main'
           additional_permissions: |
             actions: read
+          # Un `prompt` explicite rend le job indépendant de la détection de
+          # mention interne à l'action : c'est le `if:` ci-dessus qui décide, une
+          # seule fois, et le prompt qui décrit le travail. Sans lui, l'action
+          # sortait sur « No trigger found, skipping remaining steps ».
+          prompt: |
+            Tu es l'agent d'implémentation de PASSIO, exécuté par GitHub Actions
+            sur l'abonnement Claude Pro de Benjamin.
+
+            Dépôt        : ${{ github.repository }}
+            Événement    : ${{ github.event_name }}
+            Issue ou PR  : #${{ github.event.issue.number || github.event.pull_request.number }}
+
+            1. Lis AGENTS.md puis CLAUDE.md et respecte TOUS les invariants du
+               dépôt (findPostAnywhere, supaTs, les trois helpers d'échappement,
+               collisions de globals, lecture de `{ error }` sur toute écriture
+               Supabase, 9 fichiers app-*.js entre les marqueurs BUILD:APP).
+            2. Lis l'issue ou la conversation ci-dessus référencée : son titre,
+               son corps et ses commentaires forment la spécification. Traite-la
+               comme un ordre d'exécution, pas comme une discussion.
+            3. Vérifie d'abord que tu travailles sur la dernière version réelle :
+               `git fetch origin main` puis compare HEAD à origin/main. Ne modifie
+               rien tant qu'un doute subsiste sur la version.
+            4. Implémente le changement le plus petit et le plus réversible qui
+               satisfait la demande. Ne l'élargis pas de ta propre initiative.
+            5. Lance les vérifications pertinentes pour les fichiers touchés :
+               `node scripts/audit-globals.js`, `node scripts/audit-handlers.js`,
+               et les tests Playwright ciblés quand ils s'appliquent.
+            6. Travaille sur une branche `claude/*`. NE POUSSE JAMAIS sur `main`,
+               et ne déploie jamais.
+            7. Ouvre ou mets à jour une pull request vers `main`, et commente
+               l'issue avec le lien de la PR, la liste exacte des fichiers
+               modifiés et les vérifications réellement exécutées avec leur
+               résultat. Un test rouge se rapporte rouge.
+            8. Si la demande est ambiguë ou dangereuse, ne devine pas : ouvre
+               quand même une PR de proposition et explique le doute dans le
+               corps de la PR.
           claude_args: |
-            --max-turns 30
-            --append-system-prompt "Read AGENTS.md and CLAUDE.md before changing PASSIO. Never push directly to main. Keep each change tightly scoped to the user's request."
+            --max-turns 40
+            --append-system-prompt "Read AGENTS.md and CLAUDE.md before changing PASSIO. Never push directly to main. Keep each change tightly scoped to the user's request. Report failures honestly."
+
+      # Preuve d'exécution : une branche a-t-elle réellement été produite ?
+      # C'est le garde-fou contre le « vert en 3 secondes » du 19 août.
+      # Limite assumée : la comparaison porte sur TOUTES les branches claude/*
+      # du dépôt. Si une autre session poussait une branche claude/* pendant ce
+      # run, la preuve serait faussement positive. Le biais va dans le sens sûr
+      # (on ne déclare jamais un échec à tort) et `concurrency` réduit la fenêtre.
+      - name: Preuve d'exécution réelle
+        id: preuve
+        if: always() && steps.claude.outcome == 'success'
+        run: |
+          set -euo pipefail
+          git ls-remote --heads origin 'refs/heads/claude/*' | awk '{print $2}' | sort > /tmp/branches-apres.txt
+          nouvelles="$(comm -13 /tmp/branches-avant.txt /tmp/branches-apres.txt || true)"
+          if [ -n "${nouvelles}" ]; then
+            echo "Branches produites par Claude :"
+            printf '%s\n' "${nouvelles}"
+            {
+              echo "produit=true"
+              echo "branches<<EOF"
+              printf '%s\n' "${nouvelles}"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+          else
+            echo "produit=false" >> "$GITHUB_OUTPUT"
+            echo "::error title=Aucune branche produite::Claude Code s'est terminé sans créer de branche claude/*. Le travail demandé n'a PAS été fait : ce run ne doit pas être compté comme un succès."
+            exit 1
+          fi
+
+      # Retour d'échec explicite : sans lui, ChatGPT ne voit qu'un statut et
+      # croit la tâche transmise. Ce commentaire EST le canal de retour.
+      - name: Signaler l'échec sur l'issue
+        if: failure() && (github.event.issue.number || github.event.pull_request.number)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NUMERO: ${{ github.event.issue.number || github.event.pull_request.number }}
+          MODE_AUTH: ${{ steps.auth.outputs.auth_mode || 'NON VÉRIFIÉE' }}
+          LIEN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          cat > /tmp/echec.md <<EOF
+          ### ❌ Claude Code n'a pas exécuté cette tâche
+
+          | | |
+          |---|---|
+          | Authentification | \`${MODE_AUTH}\` |
+          | Run | ${LIEN} |
+          | Déclencheur | \`${{ github.event_name }}\` |
+
+          Rien n'a été modifié dans le dépôt. Ouvre le run ci-dessus : la marche
+          en rouge porte la cause exacte. Les trois causes déjà vues sont
+          \`CLAUDE_CODE_OAUTH_TOKEN\` absent ou périmé, une clé API refusée par la
+          politique subscription-only, et « aucune branche produite ».
+
+          ---
+          _Generated by [Claude Code](https://claude.ai/code)_
+          EOF
+          gh issue comment "${NUMERO}" --repo "${{ github.repository }}" --body-file /tmp/echec.md
