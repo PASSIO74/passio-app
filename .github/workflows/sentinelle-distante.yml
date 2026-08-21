@@ -111,6 +111,9 @@ jobs:
           cat /tmp/sentinelle.md >> "${GITHUB_STEP_SUMMARY}"
 
           if [ "${AUDITS}" = "success" ] && [ "${PUBLIC}" = "success" ] && [ "${AUTHZ}" = "success" ]; then
+            if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+              exit 0
+            fi
             if [ -n "${existing}" ]; then
               gh issue comment "${existing}" --repo "${GITHUB_REPOSITORY}" --body "✅ Santé revenue au vert — run https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
               gh issue close "${existing}" --repo "${GITHUB_REPOSITORY}" --reason completed
