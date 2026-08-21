@@ -7,6 +7,7 @@ import { store } from "./store.js";
 import { broadcast } from "./sse.js";
 import { JsonDb } from "./jsondb.js";
 import { drainNewVerdicts } from "./traces.js";
+import { recordIncident } from "./incident-packets.js";
 
 const db = new JsonDb("alerts", { items: [] });
 const cooldown = new Map();           // évite le spam d'une même alerte
@@ -28,7 +29,13 @@ function emit(alert) {
   const now = Date.now();
   if (cooldown.get(key) && now - cooldown.get(key) < 60_000) return; // 1/min max
   cooldown.set(key, now);
-  const record = { id: "al_" + now.toString(36), ts: now, acknowledged: false, ...alert };
+  const base = { id: "al_" + now.toString(36), ts: now, acknowledged: false, ...alert };
+  // Chaque alerte exploitable produit d'abord un dossier de preuves déterministe.
+  // Claude peut être indisponible : le dossier reste utile, consultable et prêt
+  // à être donné plus tard à un agent sans refaire l'enquête de base.
+  let incident = null;
+  try { incident = recordIncident(base); } catch (e) { /* l'alerte primaire doit survivre */ }
+  const record = incident ? { ...base, incidentId: incident.id, incident } : base;
   db.update((d) => { d.items.unshift(record); if (d.items.length > 500) d.items.pop(); });
   broadcast("alert", record);
   for (const fn of subscribers) { try { fn(record); } catch (e) { console.error("[alerts] abonné en échec:", e.message); } }
