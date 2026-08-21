@@ -242,10 +242,36 @@ jobs:
           include_comments_by_actor: 'PASSIO74'
           exclude_comments_by_actor: ''
 
-          # Aucun élargissement de la surface de déclenchement. Explicites pour
-          # qu'un défaut d'upstream ne puisse pas les ouvrir en silence.
+          # Aucun élargissement de la surface de déclenchement. Explicite pour
+          # qu'un défaut d'upstream ne puisse pas l'ouvrir en silence.
           allowed_non_write_users: ''
-          allowed_bots: ''
+
+          # ── DÉROGATION NOMMÉE, autorisée par Benjamin le 2026-08-21 ────────
+          # `claude` est autorisé NOMMÉMENT. Jamais `*`.
+          #
+          # L'intention documentée de `checkHumanActor` est d'empêcher les
+          # BOUCLES de bots (« Prevents automated tools or bots from triggering
+          # Claude », src/github/validation/actor.ts). Dans CETTE configuration
+          # la boucle est déjà fermée en amont, par la condition `if:` du job :
+          #   · `issue_comment` et `pull_request_review_comment` exigent
+          #     `comment.user.login == 'PASSIO74'` — un commentaire écrit par un
+          #     bot ne matche jamais, et les comptes rendus de ce workflow sont
+          #     postés par `github-actions[bot]` ;
+          #   · `issues` exige le label `claude` ET une issue de PASSIO74, et ce
+          #     workflow ne pose jamais de label lui-même.
+          # Aucun chemin ne se rappelle donc lui-même : la dérogation sert
+          # l'intention de la garde au lieu de la contourner.
+          #
+          # Ce que cela ouvre réellement : une session Claude Code déjà
+          # autorisée sur ce dépôt peut relancer le canal. Cela suppose les
+          # identifiants de Benjamin — ce n'est pas une surface publique, et un
+          # tiers ne peut pas agir en tant que `claude[bot]` ici.
+          #
+          # Ce que cela NE doit jamais devenir : `*` autoriserait TOUT bot, y
+          # compris une App tierce installée plus tard sur le dépôt —
+          # `isAllowedBot` renvoie alors `true` sans autre examen. Le banc
+          # tests/ci/frontiere-confiance.sh échoue si cette valeur dérive.
+          allowed_bots: 'claude'
 
           branch_prefix: 'claude/'
           base_branch: 'main'
