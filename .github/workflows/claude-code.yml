@@ -419,9 +419,9 @@ jobs:
       # invisible : le run 32512038095 porte 8 refus qu'aucun log ne nomme.
       # Plutôt que de rouvrir tout le transcript — qui expose le raisonnement
       # et le contenu des fichiers dans un dépôt PUBLIC — on extrait du même
-      # `execution_file` les SEULS champs utiles au débogage : l'issue du run,
-      # le nombre de tours, et la liste des commandes refusées. Rien d'autre
-      # ne sort. Cette marche ne décide de rien : elle rend visible.
+      # `execution_file` l'issue, les tours et des CATÉGORIES de refus. Le texte
+      # des commandes et des erreurs n'est jamais publié : il peut porter un
+      # secret, du contenu de fichier ou une commande de workflow.
       - name: Diagnostic d'exécution (tours et refus d'outils)
         id: diagnostic
         if: always()
@@ -436,16 +436,24 @@ jobs:
         env:
           EXECUTION_FILE: ${{ steps.claude.outputs.execution_file }}
         run: |
-          set -euo pipefail
+          # La barrière YAML protège le job. Le script termine aussi à zéro,
+          # même si Node ou la lecture de la trace échoue.
+          set +e
 
-          if [ -z "${EXECUTION_FILE}" ] || [ ! -f "${EXECUTION_FILE}" ]; then
+          if [ -z "${EXECUTION_FILE:-}" ] || [ ! -f "${EXECUTION_FILE}" ]; then
             echo "Aucune trace d'exécution : rien à diagnostiquer."
             exit 0
           fi
 
           node <<'NODE'
           const fs = require('fs');
-          const raw = fs.readFileSync(process.env.EXECUTION_FILE, 'utf8');
+          let raw;
+          try {
+            raw = fs.readFileSync(process.env.EXECUTION_FILE, 'utf8');
+          } catch (_) {
+            console.log('Diagnostic indisponible : trace illisible ou erreur interne non bloquante.');
+            process.exit(0);
+          }
           let events = [];
           try {
             const parsed = JSON.parse(raw);
@@ -456,15 +464,44 @@ jobs:
             });
           }
 
-          // Tout ce qui sort d'ici est composé par le MODÈLE : c'est de la
-          // donnée, jamais une instruction. Un retour à la ligne suivi de `::`
-          // en colonne 0 est une COMMANDE DE WORKFLOW pour le runner —
-          // `::add-mask::` aveuglerait le journal d'audit, `::stop-commands::`
-          // éteindrait les avertissements de cette marche même. On aplatit les
-          // sauts de ligne et on neutralise un `::` initial.
-          const assainir = (t) => String(t)
-            .replace(/[\r\n]+/g, ' \u23ce ')
-            .replace(/^\s*::/, '\u200b::');
+          // Aucune valeur issue de la trace n'est imprimée directement. Les
+          // libellés retournés ci-dessous sont constants ou numériques : aucun
+          // secret, retour à la ligne ou `::...` contrôlé par le modèle ne sort.
+          const OUTILS = new Set(['Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash']);
+          const CATEGORIES = [
+            [/^\s*git\s+push(?:\s|$)/, 'git push'],
+            [/^\s*git\s+(?:status|diff|log|show|branch|remote|rev-parse|ls-files|fetch|checkout|switch|add|commit)(?:\s|$)/, 'git autorisé'],
+            [/^\s*npm\s+run(?:\s|$)/, 'npm run'],
+            [/^\s*npm\s+test(?:\s|$)/, 'npm test'],
+            [/^\s*npx\s+playwright(?:\s|$)/, 'npx playwright'],
+            [/^\s*gh\s+issue\s+comment(?:\s|$)/, 'gh issue comment'],
+            [/^\s*gh\s+issue\s+view(?:\s|$)/, 'gh issue view'],
+            [/^\s*gh\s+pr\s+view(?:\s|$)/, 'gh pr view'],
+            [/^\s*(?:ls|cat|head|tail|wc|mkdir|pwd|date)(?:\s|$)/, 'utilitaire local'],
+          ];
+
+          function entier(value) {
+            if (typeof value !== 'number' && typeof value !== 'string') return 0;
+            const texte = String(value);
+            if (!/^\d{1,6}$/.test(texte)) return 0;
+            const nombre = Number(texte);
+            return Number.isSafeInteger(nombre) ? nombre : 0;
+          }
+
+          function outil(value) {
+            return OUTILS.has(value) ? value : 'Autre';
+          }
+
+          function classerCommande(value) {
+            if (typeof value !== 'string') return 'entrée masquée';
+            const categorie = CATEGORIES.find(([motif]) => motif.test(value));
+            const libelle = categorie ? categorie[1] : 'autre (masquée)';
+            const traits = [];
+            if (/(^|[^|])\|([^|]|$)/.test(value)) traits.push('pipeline');
+            if (/&&|\|\|/.test(value)) traits.push('chaînement');
+            if (/[<>]/.test(value)) traits.push('redirection');
+            return traits.length ? `${libelle} + ${traits.join(' + ')}` : libelle;
+          }
 
           const resultat = events.filter((e) => e?.type === 'result').pop();
           if (!resultat) {
@@ -478,9 +515,16 @@ jobs:
           // résumé console. Le lire ici afficherait « Refus : 0 » au-dessus
           // d'une liste non vide, et le débogueur lit le premier chiffre.
           const refus = Array.isArray(resultat.permission_denials) ? resultat.permission_denials : [];
-          const tours = Number(resultat.num_turns ?? 0);
-          console.log(`Issue du run   : ${resultat.subtype ?? 'inconnue'}`);
-          console.log(`Tours consommés: ${tours}`);
+          const ISSUES = new Set([
+            'success',
+            'error_max_turns',
+            'error_max_budget_usd',
+            'error_during_execution',
+            'error_max_structured_output_retries',
+          ]);
+          const issueSure = ISSUES.has(resultat.subtype) ? resultat.subtype : 'autre';
+          console.log(`Issue du run   : ${issueSure}`);
+          console.log(`Tours consommés: ${entier(resultat.num_turns)}`);
           console.log(`Refus d'outils : ${refus.length}`);
 
           // Les quatre sous-types d'échec du CLI, pas seulement celui du jour.
@@ -490,28 +534,36 @@ jobs:
             error_during_execution: "Erreur d'exécution::Le CLI s'est arrêté en cours de route.",
             error_max_structured_output_retries: 'Sortie structurée invalide::Le CLI a épuisé ses reprises.',
           };
-          if (PANNES[resultat.subtype]) console.log(`::warning title=${PANNES[resultat.subtype]}`);
+          if (PANNES[issueSure]) console.log(`::warning title=${PANNES[issueSure]}`);
 
-          // `errors` nomme la cause exacte ; sans lui, 3 pannes sur 4 restent muettes.
-          for (const e of (Array.isArray(resultat.errors) ? resultat.errors : []).slice(0, 5)) {
-            console.log(`  cause: ${assainir(String(e)).slice(0, 200)}`);
-          }
+          // `errors` peut reprendre une sortie d'outil ou un chemin sensible :
+          // seul son nombre est utile ici, jamais son contenu.
+          const erreurs = Array.isArray(resultat.errors) ? resultat.errors : [];
+          if (erreurs.length) console.log(`Causes détaillées: ${erreurs.length} (contenu masqué)`);
 
-          // Les commandes refusées, et RIEN de plus : ni prompt, ni réponse,
-          // ni contenu de fichier. Tronquées, car une commande peut porter un
-          // message de commit entier.
+          // Une commande peut embarquer un secret, un heredoc, un message de
+          // commit ou du contenu de fichier. On ne publie donc qu'une catégorie
+          // constante et quelques propriétés structurelles.
           if (refus.length) {
-            console.log('Commandes refusées par la liste d\'outils :');
-            for (const d of refus.slice(0, 40)) {
-              let cmd;
-              try { cmd = String(d?.tool_input?.command ?? d?.tool_name ?? '(inconnue)'); }
-              catch (_) { cmd = '(commande illisible)'; }
-              console.log(`  - ${assainir(cmd).slice(0, 200)}`);
+            console.log('Refus d\'outils (texte des commandes masqué) :');
+            const visibles = refus.slice(0, 40);
+            visibles.forEach((d, index) => {
+              const nomOutil = outil(d?.tool_name);
+              const categorie = classerCommande(d?.tool_input?.command);
+              console.log(`  - #${index + 1} outil=${nomOutil} catégorie=${categorie}`);
+            });
+            if (refus.length > visibles.length) {
+              console.log(`  - ${refus.length - visibles.length} refus supplémentaire(s) masqué(s)`);
             }
-            if (refus.length > 40) console.log(`  … et ${refus.length - 40} autre(s)`);
-            console.log('::warning title=Refus d\'outils::Une ou plusieurs commandes ne correspondent à aucun motif de --allowedTools. Les motifs matchent des TOKENS COMPLETS.');
+            console.log('::warning title=Refus d\'outils::Une ou plusieurs commandes ne correspondent à aucun motif de --allowedTools. Le texte des commandes reste masqué.');
           }
           NODE
+
+          code=$?
+          if [ "${code}" -ne 0 ]; then
+            echo "Diagnostic indisponible : exécution Node impossible (non bloquante)."
+          fi
+          exit 0
 
       # L'argument demandé n'est pas une preuve : le run 32504851993 recevait
       # bien `--model claude-fable-5`, alors que l'événement system/init

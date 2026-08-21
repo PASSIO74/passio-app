@@ -313,15 +313,16 @@ exigences=[
  ("plafond de tours borné (jamais illimité)", 0 < tours <= 200),
  ("marche de diagnostic présente", bool(diag)),
  ("diagnostic non bloquant (if: always)", str(diag[0].get('if','')) == 'always()' if diag else False),
- ("diagnostic sans exit 1 littéral", 'exit 1' not in run),
+ ("script termine explicitement à zéro", 'exit 0' in run),
  ("diagnostic non bloquant pour la publication", diag[0].get('continue-on-error') is True if diag else False),
- ("les commandes refusées sont nommées", 'permission_denials' in run and 'tool_input' in run),
+ ("lecture de trace rattrapée", 'let raw;' in run and 'raw = fs.readFileSync' in run and 'Diagnostic indisponible' in run),
+ ("refus classés sans commande brute", 'classerCommande' in run and 'assainir(cmd)' not in run),
  ("le plafond atteint est signalé explicitement", 'error_max_turns' in run),
  ("les 4 sous-types d'échec du CLI sont couverts", all(k in run for k in ('error_max_turns','error_max_budget_usd','error_during_execution','error_max_structured_output_retries'))),
  # On interdit l'USAGE du champ inexistant, pas sa MENTION : le commentaire
  # qui explique pourquoi on ne s'en sert pas doit rester lisible dans le code.
  ("compteur lu du tableau, pas d'un champ annexe", 'resultat.permission_denials_count' not in run and 'refus.length' in run),
- ("sortie assainie (sauts de ligne et `::`)", 'assainir' in run and '[\\r\\n]+' in run),
+ ("sorties non fiables réduites à des valeurs sûres", 'const ISSUES' in run and 'function outil' in run and 'contenu masqué' in run),
  ("nombre de refus imprimés borné", 'refus.slice(0, 40)' in run),
  ("budget borné en dollars", '--max-budget-usd' in args),
  ("durée du job bornée", isinstance(d['jobs']['claude'].get('timeout-minutes'), int) and 0 < d['jobs']['claude']['timeout-minutes'] <= 120),
@@ -334,7 +335,7 @@ for lib,vrai in exigences:
     if not vrai: ko+=1
 sys.exit(1 if ko else 0)
 PYDIAG
-if [ $? -eq 0 ]; then ok=$((ok+15)); else ko=$((ko+1)); fi
+if [ $? -eq 0 ]; then ok=$((ok+16)); else ko=$((ko+1)); fi
 
 # Rejoue la marche RÉELLE du workflow sur des traces d'exécution.
 scenario_diag() { # <nom> <contenu-trace|VIDE> <attendu-dans-la-sortie|-> 
@@ -383,18 +384,39 @@ TETE_JSON='[{"type":"result","subtype":"success","num_turns":3,"permission_denia
 # `tool_input` est un record de valeurs INCONNUES au schema : un objet non
 # convertible en primitive fait lever String() et tuait la marche.
 HOSTILE_JSON='[{"type":"result","subtype":"error_max_turns","num_turns":41,"permission_denials":[{"tool_name":"Bash","tool_input":{"command":{"toString":1,"valueOf":1}}}]}]'
+# Tous les champs de la trace sont non fiables, pas seulement `command`.
+CHAMPS_HOSTILES_JSON='[{"type":"result","subtype":"success\n::error title=injecte::pwned","num_turns":"9\n::warning title=injecte::pwned","errors":["TOP_SECRET_NE_DOIT_PAS_SORTIR\n::error title=injecte::pwned"],"permission_denials":[{"tool_name":"Bash\n::error title=injecte::pwned","tool_input":{"command":"TOP_SECRET_NE_DOIT_PAS_SORTIR\n::error title=injecte::pwned"}}]}]'
 
 scenario_diag "8. trace absente : ne bloque pas"            VIDE            "rien à diagnostiquer"
-scenario_diag "9. commande refusée nommée en clair"         "${REFUS_JSON}" "npm run audit:globals 2>&1 | tail -15"
+scenario_diag "9. npm + pipe classé sans arguments"         "${REFUS_JSON}" "catégorie=npm run + pipeline"
+scenario_diag "9b. git push classé sans arguments"          "${REFUS_JSON}" "catégorie=git push"
 scenario_diag "10. plafond de tours signalé"                "${REFUS_JSON}" "Plafond de tours atteint"
 scenario_diag "11. run propre : aucun refus annoncé"        "${SUCCES_JSON}" "Refus d'outils : 0"
 scenario_diag "12. trace illisible : ne bloque pas"         "pas du json"   "Aucun événement"
 scenario_diag "13. compteur = taille du tableau réel"      "${REFUS_JSON}" "Refus d'outils : 2"
 scenario_diag "14. multi-ligne : aucun :: en colonne 0"    "${INJECTION_JSON}" '!^[[:space:]]*::(add-mask|stop-commands|set-env|error|notice)'
-scenario_diag "15. commande refusée tenue sur une ligne"   "${INJECTION_JSON}" "cat <<EOF"
-scenario_diag "15b. `::` en tête de commande neutralisé"   "${TETE_JSON}"      '!^[[:space:]]*::add-mask' 
-scenario_diag "16. cause réelle imprimée"                  "${INJECTION_JSON}" "cause: cause reelle de la panne"
-scenario_diag "17. tool_input hostile : ne bloque pas"     "${HOSTILE_JSON}" "commande illisible"
+scenario_diag "15. commande refusée classée sans contenu"  "${INJECTION_JSON}" "catégorie=utilitaire local + redirection"
+scenario_diag "15b. pseudo-commande en tête neutralisée"   "${TETE_JSON}"      '!^[[:space:]]*::add-mask'
+scenario_diag "16. cause réelle jamais publiée"            "${INJECTION_JSON}" '!cause reelle de la panne'
+scenario_diag "16b. nombre de causes conservé"             "${INJECTION_JSON}" "Causes détaillées: 1"
+scenario_diag "17. tool_input hostile : ne bloque pas"     "${HOSTILE_JSON}" "catégorie=entrée masquée"
+scenario_diag "18. arguments de commande jamais publiés"   "${REFUS_JSON}" '!audit:globals|tail -15|origin main'
+scenario_diag "19. pseudo-commandes jamais republiées"     "${INJECTION_JSON}" '!add-mask|stop-commands|ZZZ'
+scenario_diag "20. sous-type hostile réduit à une valeur sûre" "${CHAMPS_HOSTILES_JSON}" "Issue du run   : autre"
+scenario_diag "21. tous les champs hostiles restent masqués" "${CHAMPS_HOSTILES_JSON}" '!TOP_SECRET_NE_DOIT_PAS_SORTIR|title=injecte|pwned'
+
+# Même une panne de l'interpréteur doit rendre zéro. `continue-on-error: true`
+# reste la seconde barrière contre les erreurs de syntaxe ou de runner.
+mkdir -p "${BAC}/sans-node"
+printf '%s' "${REFUS_JSON}" > "${BAC}/diag-sans-node.json"
+export EXECUTION_FILE="${BAC}/diag-sans-node.json"
+sortie_sans_node="$(PATH="${BAC}/sans-node" /bin/bash "${BAC}/diagnostic.sh" 2>&1)"; code_sans_node=$?
+if [ ${code_sans_node} -eq 0 ] && printf '%s' "${sortie_sans_node}" | grep -qF 'exécution Node impossible'; then
+  ok=$((ok+1)); printf '  OK  %-58s\n' "22. Node absent : diagnostic toujours non bloquant"
+else
+  ko=$((ko+1)); printf '  KO  %-58s → code %s\n' "22. Node absent : diagnostic toujours non bloquant" "${code_sans_node}"
+  printf '%s\n' "${sortie_sans_node}" | sed 's/^/        /'
+fi
 
 echo
 echo "Bilan final : ${ok} OK / ${ko} KO"
