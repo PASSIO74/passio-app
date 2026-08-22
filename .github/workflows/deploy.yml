@@ -143,13 +143,14 @@ jobs:
       # Le déploiement sert dist/, pas les fichiers de développement. Cette passe
       # reconstruit donc l'artefact réel et prouve que HTML, release.json, SW et
       # gardes navigateur portent la même identité de release. Elle vérifie aussi
-      # que le drain télémétrique attend bien la fin des POST avant transition.
-      - name: Gate artefact production (RELEASE-INTEGRITY)
+      # le drain télémétrique et le contexte passionnel future-only réellement
+      # concaténé dans le bundle de production.
+      - name: Gates artefact production
         env:
           PASSIO_CIBLE: dist
           PASSIO_PORT: 8091
           COMMIT_REF: ${{ github.sha }}
-        run: npx playwright test tests/e2e/release-integrity.spec.js
+        run: npx playwright test tests/e2e/release-integrity.spec.js tests/e2e/passion-context.spec.js
 
   deploy:
     name: Déploiement production

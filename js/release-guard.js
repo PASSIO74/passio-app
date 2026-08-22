@@ -26,6 +26,7 @@
     lastError: null,
   };
   var lastReportedPair = null;
+  var inFlightCheck = null;
 
   function snapshot() {
     return {
@@ -62,8 +63,7 @@
     } catch (e) {}
   }
 
-  async function check() {
-    if (!state.configured || state.checking) return snapshot();
+  async function runCheck() {
     state.checking = true;
     try {
       var res = await fetch("/release.json?ts=" + Date.now(), {
@@ -91,6 +91,16 @@
     } finally {
       state.checking = false;
     }
+  }
+
+  function check() {
+    if (!state.configured) return Promise.resolve(snapshot());
+    // Une vérification concurrente ne doit jamais recevoir un snapshot stale :
+    // elle partage le même verdict en vol. C'est important au retour online /
+    // visibilitychange ou lorsqu'un contrôle manuel tombe au même instant.
+    if (inFlightCheck) return inFlightCheck;
+    inFlightCheck = runCheck().finally(function () { inFlightCheck = null; });
+    return inFlightCheck;
   }
 
   window.PassioReleaseGuard = { check: check, state: snapshot };

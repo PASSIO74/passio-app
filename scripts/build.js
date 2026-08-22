@@ -18,6 +18,9 @@ const read = (p) => fs.readFileSync(path.join(root, p), "utf8");
 //    son ordre APRÈS le bloc app) sont concaténés dans dist/app.js (hoisting
 //    préservé sur tout le bloc, comme avant). pwa-landing.js reste inline : il ne
 //    dépend que de pwa-detect (head) et son listener `load` mourrait si différé.
+//    passion-context.js ferme le bloc : il s'exécute APRÈS la définition de
+//    state/currentProfile et peut donc observer la persona active sans toucher
+//    aux gros fichiers app-*.
 const startMark = html.indexOf("<!-- BUILD:APP-START");
 const endMark = html.indexOf("<!-- BUILD:APP-END -->");
 if (startMark === -1 || endMark === -1) throw new Error("Marqueurs BUILD:APP introuvables");
@@ -26,7 +29,7 @@ const appFiles = [...appBlock.matchAll(/<script src="(js\/app-[^"]+)"><\/script>
 if (appFiles.length !== 9) throw new Error(`9 fichiers app attendus, trouvé ${appFiles.length}`);
 const EMOJI_TAG = '<script src="js/emoji-misc.js"></script>';
 if (!html.includes(EMOJI_TAG)) throw new Error("Tag emoji-misc.js introuvable (attendu après le bloc app)");
-const appJs = appFiles.map(read).join("") + "\n" + read("js/emoji-misc.js");
+const appJs = appFiles.map(read).join("") + "\n" + read("js/emoji-misc.js") + "\n" + read("js/passion-context.js");
 const appHash = crypto.createHash("sha1").update(appJs).digest("hex").slice(0, 10);
 const appRef = "app.js?v=" + appHash; // cache-busting par contenu (cf. _headers : /app.js immutable)
 const loader = ""
@@ -52,7 +55,7 @@ const loader = ""
   + "})();\n"
   + "</script>";
 html = html.slice(0, startMark) + loader + html.slice(endMark + "<!-- BUILD:APP-END -->".length);
-html = html.replace(EMOJI_TAG, "<!-- emoji-misc.js : inclus dans app.js -->");
+html = html.replace(EMOJI_TAG, "<!-- emoji-misc.js + passion-context.js : inclus dans app.js -->");
 
 // 2. CSS : EXTERNALISÉ dans dist/styles.css (avant le 2026-07-15 : inline dans le
 //    HTML). index.html est servi en no-store → les ~230 Ko de CSS inline étaient
