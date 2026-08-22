@@ -27,6 +27,7 @@ print([x for x in d['jobs']['claude']['steps'] if x.get('id')=='$1'][0]['run'])
 "; }
 extraire spec > "${BAC}/spec.sh"
 extraire modele > "${BAC}/modele.sh"
+extraire diagnostic > "${BAC}/diagnostic.sh"
 
 # --- Faux `gh api` : applique réellement --jq, comme le vrai ----------------
 cat > "${BAC}/bin/gh" <<'FAUXGH'
@@ -239,6 +240,17 @@ exigences += [
       '.github/*|.claude/*|package.json' in pub and 'Chemin interdit' in pub),
  ("le refus de chemin sort en erreur",
       'exit 1' in pub.split('Chemin interdit')[1][:200] if 'Chemin interdit' in pub else False),
+
+ # Une PR ouverte avec le GITHUB_TOKEN ne declenche AUCUN workflow. Mesure le
+ # 2026-08-22 sur la PR #121 : check_runs total_count = 0 sur 770 lignes
+ # applicatives. Le danger n'est pas l'absence de CI, c'est qu'elle soit
+ # INVISIBLE : une liste de controles vide se lit « rien a signaler ». Le corps
+ # de la PR et le journal du run doivent le dire, sinon le prochain relecteur
+ # retombera dedans.
+ ("le corps de PR genere avertit qu'il n'y a aucune CI",
+      "AUCUNE integration continue" in pub and "GITHUB_TOKEN" in pub),
+ ("l'absence de CI est aussi annoncee dans le journal du run",
+      'title=PR sans integration continue' in pub),
 ]
 
 # Prefixe PARTIEL : le filtre de permissions matche des TOKENS COMPLETS. Un
@@ -264,7 +276,7 @@ for lib,vrai in exigences:
     if not vrai: ko+=1
 sys.exit(1 if ko else 0)
 PYW
-if [ $? -eq 0 ]; then ok=$((ok+27)); else ko=$((ko+1)); fi
+if [ $? -eq 0 ]; then ok=$((ok+29)); else ko=$((ko+1)); fi
 
 echo
 echo "═══ Modèle réellement exécuté — garde anti-déclassement ═══"
@@ -290,6 +302,10 @@ exigences=[
  ("trace JSON ou JSONL system/init lue", 'JSON.parse(raw)' in run and "event?.subtype === 'init'" in run and 'event.model' in run),
  ("apiKeySource none seule valeur OAuth admise", 'event.apiKeySource' in run and "keySource !== 'none'" in run and "actualAuth = keySource || 'ABSENTE'" in run),
  ("Fable 5 ou Opus 5 seulement", "['claude-fable-5', 'claude-opus-5']" in run),
+ # Une trace illisible ne doit ni faire tomber une stack trace, ni ouvrir la
+ # porte : la garde refuse, mais en disant pourquoi.
+ ("lecture de la trace protégée", 'try {' in run.split('readFileSync')[0][-40:] or 'raw = fs.readFileSync' in run and 'catch (erreur)' in run),
+ ("trace illisible = refus, jamais passage en force", 'Trace illisible' in run and 'process.exit(1)' in run),
  ("publication et preuve exigent la garde modèle", "steps.modele.outcome == 'success'" in str(publier.get('if','')) and "steps.modele.outcome == 'success'" in str(preuve.get('if',''))),
 ]
 ko=0
@@ -298,7 +314,7 @@ for lib,vrai in exigences:
     if not vrai: ko+=1
 sys.exit(1 if ko else 0)
 PYMODEL
-if [ $? -eq 0 ]; then ok=$((ok+10)); else ko=$((ko+1)); fi
+if [ $? -eq 0 ]; then ok=$((ok+12)); else ko=$((ko+1)); fi
 
 scenario_modele() { # <nom> <format:json|jsonl> <modele> <source> <attendu:PASSE|REFUS>
   local nom="$1" format="$2" modele="$3" source="$4" attendu="$5"
@@ -372,6 +388,135 @@ if modeles - {'claude-fable-5','claude-opus-5'}:
 sys.exit(1 if ko else 0)
 PYM
 if [ $? -eq 0 ]; then ok=$((ok+9)); else ko=$((ko+1)); fi
+
+echo "═══ Plafond de tours et diagnostic des refus ═══"
+WF="${WF}" python3 - <<'PYDIAG'
+import yaml,os,sys,re
+d=yaml.safe_load(open(os.environ["WF"],encoding='utf-8'))
+steps=d['jobs']['claude']['steps']
+claude=[x for x in steps if x.get('id')=='claude'][0]
+diag=[x for x in steps if x.get('id')=='diagnostic']
+args=claude.get('with',{}).get('claude_args','')
+m=re.search(r'--max-turns\s+(\d+)', args)
+tours=int(m.group(1)) if m else 0
+run=diag[0].get('run','') if diag else ''
+exigences=[
+ # 41 tours consommés sur deux runs morts : le plafond doit dépasser ce mur.
+ ("plafond de tours au-dessus du mur mesuré de 41", tours > 41),
+ # Mais borné : sans plafond, un emballement tourne jusqu'à épuisement du quota.
+ ("plafond de tours borné (jamais illimité)", 0 < tours <= 200),
+ ("marche de diagnostic présente", bool(diag)),
+ ("diagnostic non bloquant (if: always)", str(diag[0].get('if','')) == 'always()' if diag else False),
+ ("script termine explicitement à zéro", 'exit 0' in run),
+ ("diagnostic non bloquant pour la publication", diag[0].get('continue-on-error') is True if diag else False),
+ ("lecture de trace rattrapée", 'let raw;' in run and 'raw = fs.readFileSync' in run and 'Diagnostic indisponible' in run),
+ ("refus classés sans commande brute", 'classerCommande' in run and 'assainir(cmd)' not in run),
+ ("le plafond atteint est signalé explicitement", 'error_max_turns' in run),
+ ("les 4 sous-types d'échec du CLI sont couverts", all(k in run for k in ('error_max_turns','error_max_budget_usd','error_during_execution','error_max_structured_output_retries'))),
+ # On interdit l'USAGE du champ inexistant, pas sa MENTION : le commentaire
+ # qui explique pourquoi on ne s'en sert pas doit rester lisible dans le code.
+ ("compteur lu du tableau, pas d'un champ annexe", 'resultat.permission_denials_count' not in run and 'refus.length' in run),
+ ("sorties non fiables réduites à des valeurs sûres", 'const ISSUES' in run and 'function outil' in run and 'contenu masqué' in run),
+ ("nombre de refus imprimés borné", 'refus.slice(0, 40)' in run),
+ # Le bug amont anthropics/claude-code#85400 coupe les abonnements Max sur
+ # un coût API équivalent alors que la dépense réelle vaut zéro. Le canal est
+ # subscription-only : sa borne sûre est le quota OAuth + le délai du job.
+ ("aucun plafond USD trompeur sur OAuth abonnement", '--max-budget-usd' not in args),
+ ("durée du job bornée", isinstance(d['jobs']['claude'].get('timeout-minutes'), int) and 0 < d['jobs']['claude']['timeout-minutes'] <= 120),
+ # `if: failure()` ne voit pas une annulation. Sans marche dédiée, un ordre
+ # évincé de la file disparaît sans un mot.
+ ("un run annulé est signalé sur l'issue", any('cancelled()' in str(x.get('if','')) and 'gh issue comment' in str(x.get('run','')) for x in steps)),
+ # Le dépôt est PUBLIC : le diagnostic ne doit pas rouvrir tout le transcript.
+ ("aucun retour à show_full_output", str(claude.get('with',{}).get('show_full_output','')).lower() not in ('true','1','yes')),
+]
+ko=0
+for lib,vrai in exigences:
+    print(f"  {'OK ' if vrai else 'KO '} {lib}")
+    if not vrai: ko+=1
+sys.exit(1 if ko else 0)
+PYDIAG
+if [ $? -eq 0 ]; then ok=$((ok+17)); else ko=$((ko+1)); fi
+
+# Rejoue la marche RÉELLE du workflow sur des traces d'exécution.
+scenario_diag() { # <nom> <contenu-trace|VIDE> <attendu-dans-la-sortie|-> 
+  local nom="$1" trace_contenu="$2" attendu="$3"
+  local trace="${BAC}/diag-trace.json"
+  if [ "${trace_contenu}" = "VIDE" ]; then
+    rm -f "${trace}"; export EXECUTION_FILE="${trace}"
+  else
+    printf '%s' "${trace_contenu}" > "${trace}"; export EXECUTION_FILE="${trace}"
+  fi
+  sortie="$(bash "${BAC}/diagnostic.sh" 2>&1)"; code=$?
+  local souci=""
+  [ ${code} -ne 0 ] && souci="code ${code} (le diagnostic ne doit JAMAIS bloquer)"
+  if [ -z "${souci}" ] && [ "${attendu}" != "-" ]; then
+    case "${attendu}" in
+      # « !motif » = le motif doit être ABSENT. Un test qui ne sait qu'exiger
+      # une présence ne peut pas prouver qu'une neutralisation a eu lieu.
+      "!"*)
+        if printf '%s' "${sortie}" | grep -qE "${attendu#!}"; then
+          souci="« ${attendu#!} » PRÉSENT alors qu'il devait être neutralisé"
+        fi ;;
+      *)
+        printf '%s' "${sortie}" | grep -qF "${attendu}" || souci="« ${attendu} » absent de la sortie" ;;
+    esac
+  fi
+  if [ -z "${souci}" ]; then
+    ok=$((ok+1)); printf '  OK  %-58s\n' "${nom}"
+  else
+    ko=$((ko+1)); printf '  KO  %-58s → %s\n' "${nom}" "${souci}"
+    printf '%s\n' "${sortie}" | sed 's/^/        /'
+  fi
+}
+
+# Fixtures au schéma RÉEL du CLI 2.1.238 : `permission_denials` est un tableau
+# d'objets {tool_name, tool_use_id, tool_input}, et `permission_denials_count`
+# N'EXISTE PAS (0 occurrence dans le binaire). Inventer ce champ validait le
+# code contre sa propre erreur : le compteur restait a zero au-dessus d'une
+# liste non vide, et le test passait quand meme.
+REFUS_JSON='[{"type":"system","subtype":"init","model":"claude-opus-5","apiKeySource":"none"},{"type":"result","subtype":"error_max_turns","num_turns":41,"permission_denials":[{"tool_name":"Bash","tool_input":{"command":"npm run audit:globals 2>&1 | tail -15"}},{"tool_name":"Bash","tool_input":{"command":"git push origin main"}}]}]'
+SUCCES_JSON='[{"type":"system","subtype":"init","model":"claude-opus-5","apiKeySource":"none"},{"type":"result","subtype":"success","num_turns":12,"permission_denials":[]}]'
+# Une commande refusee MULTI-LIGNE dont une ligne commence par `::` : sans
+# assainissement, le runner l'interprete comme une commande de workflow.
+INJECTION_JSON='[{"type":"system","subtype":"init","model":"claude-opus-5","apiKeySource":"none"},{"type":"result","subtype":"error_during_execution","num_turns":9,"errors":["cause reelle de la panne"],"permission_denials":[{"tool_name":"Bash","tool_input":{"command":"cat <<EOF\n::add-mask::none\n::stop-commands::ZZZ\nEOF"}}]}]'
+# Commande qui COMMENCE par `::` : en colonne 0, le runner l'executerait.
+TETE_JSON='[{"type":"result","subtype":"success","num_turns":3,"permission_denials":[{"tool_name":"Bash","tool_input":{"command":"::add-mask::none"}}]}]'
+# `tool_input` est un record de valeurs INCONNUES au schema : un objet non
+# convertible en primitive fait lever String() et tuait la marche.
+HOSTILE_JSON='[{"type":"result","subtype":"error_max_turns","num_turns":41,"permission_denials":[{"tool_name":"Bash","tool_input":{"command":{"toString":1,"valueOf":1}}}]}]'
+# Tous les champs de la trace sont non fiables, pas seulement `command`.
+CHAMPS_HOSTILES_JSON='[{"type":"result","subtype":"success\n::error title=injecte::pwned","num_turns":"9\n::warning title=injecte::pwned","errors":["TOP_SECRET_NE_DOIT_PAS_SORTIR\n::error title=injecte::pwned"],"permission_denials":[{"tool_name":"Bash\n::error title=injecte::pwned","tool_input":{"command":"TOP_SECRET_NE_DOIT_PAS_SORTIR\n::error title=injecte::pwned"}}]}]'
+
+scenario_diag "8. trace absente : ne bloque pas"            VIDE            "rien à diagnostiquer"
+scenario_diag "9. npm + pipe classé sans arguments"         "${REFUS_JSON}" "catégorie=npm run + pipeline"
+scenario_diag "9b. git push classé sans arguments"          "${REFUS_JSON}" "catégorie=git push"
+scenario_diag "10. plafond de tours signalé"                "${REFUS_JSON}" "Plafond de tours atteint"
+scenario_diag "11. run propre : aucun refus annoncé"        "${SUCCES_JSON}" "Refus d'outils : 0"
+scenario_diag "12. trace illisible : ne bloque pas"         "pas du json"   "Aucun événement"
+scenario_diag "13. compteur = taille du tableau réel"      "${REFUS_JSON}" "Refus d'outils : 2"
+scenario_diag "14. multi-ligne : aucun :: en colonne 0"    "${INJECTION_JSON}" '!^[[:space:]]*::(add-mask|stop-commands|set-env|error|notice)'
+scenario_diag "15. commande refusée classée sans contenu"  "${INJECTION_JSON}" "catégorie=utilitaire local + redirection"
+scenario_diag "15b. pseudo-commande en tête neutralisée"   "${TETE_JSON}"      '!^[[:space:]]*::add-mask'
+scenario_diag "16. cause réelle jamais publiée"            "${INJECTION_JSON}" '!cause reelle de la panne'
+scenario_diag "16b. nombre de causes conservé"             "${INJECTION_JSON}" "Causes détaillées: 1"
+scenario_diag "17. tool_input hostile : ne bloque pas"     "${HOSTILE_JSON}" "catégorie=entrée masquée"
+scenario_diag "18. arguments de commande jamais publiés"   "${REFUS_JSON}" '!audit:globals|tail -15|origin main'
+scenario_diag "19. pseudo-commandes jamais republiées"     "${INJECTION_JSON}" '!add-mask|stop-commands|ZZZ'
+scenario_diag "20. sous-type hostile réduit à une valeur sûre" "${CHAMPS_HOSTILES_JSON}" "Issue du run   : autre"
+scenario_diag "21. tous les champs hostiles restent masqués" "${CHAMPS_HOSTILES_JSON}" '!TOP_SECRET_NE_DOIT_PAS_SORTIR|title=injecte|pwned'
+
+# Même une panne de l'interpréteur doit rendre zéro. `continue-on-error: true`
+# reste la seconde barrière contre les erreurs de syntaxe ou de runner.
+mkdir -p "${BAC}/sans-node"
+printf '%s' "${REFUS_JSON}" > "${BAC}/diag-sans-node.json"
+export EXECUTION_FILE="${BAC}/diag-sans-node.json"
+sortie_sans_node="$(PATH="${BAC}/sans-node" /bin/bash "${BAC}/diagnostic.sh" 2>&1)"; code_sans_node=$?
+if [ ${code_sans_node} -eq 0 ] && printf '%s' "${sortie_sans_node}" | grep -qF 'exécution Node impossible'; then
+  ok=$((ok+1)); printf '  OK  %-58s\n' "22. Node absent : diagnostic toujours non bloquant"
+else
+  ko=$((ko+1)); printf '  KO  %-58s → code %s\n' "22. Node absent : diagnostic toujours non bloquant" "${code_sans_node}"
+  printf '%s\n' "${sortie_sans_node}" | sed 's/^/        /'
+fi
 
 echo
 echo "Bilan final : ${ok} OK / ${ko} KO"
