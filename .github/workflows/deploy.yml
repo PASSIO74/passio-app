@@ -95,24 +95,19 @@ jobs:
       - name: Audits statiques (tests creux)
         run: node scripts/audit-tests-creux.js --ci
 
-      # Le banc verrouille la frontière de confiance des workflows Claude :
-      # qui peut déclencher le canal, ce qui entre dans la spécification, quel
-      # modèle et quelle source d'authentification sont admis, et quels droits
-      # d'outils sont accordés. 73 assertions, éprouvées par mutation.
+      # Le banc des frontieres de confiance du canal Claude Code. Il verifie
+      # mecaniquement que les garde-fous sont intacts : Claude sans droit de
+      # push, action epinglee au SHA, allowed_bots jamais « * », cible ET
+      # instruction de PASSIO74, chemins de controle hors d'atteinte, aucun
+      # motif d'allowlist mort-ne, politique de modeles.
       #
-      # Il n'était appelé par AUCUN workflow ni script npm — alors qu'un
-      # commentaire de claude-code.yml affirme « le banc échoue si cette valeur
-      # dérive ». C'était faux : rien ne le lançait. Un garde que personne
-      # n'exécute ne garde rien, et la dérive qu'il est censé attraper touche
-      # les permissions d'un agent qui écrit dans ce dépôt.
-      #
-      # PyYAML est installé explicitement : le banc extrait les marches RÉELLES
-      # du YAML plutôt que d'en relire une copie, et dépendre de l'image du
-      # runner rendrait le rouge/vert tributaire d'un détail hors du dépôt.
-      - name: Banc de frontière de confiance (workflows Claude)
-        run: |
-          python3 -m pip install --quiet --disable-pip-version-check pyyaml
-          bash tests/ci/frontiere-confiance.sh
+      # Il existait depuis ce matin avec 76 assertions eprouvees par mutation,
+      # et n'etait lance NULLE PART : il ne protegeait donc rien. Une PR qui
+      # affaiblissait un garde-fou passait au vert. C'est corrige ici : toute
+      # regression sur une frontiere rend la CI rouge, sans que personne ait
+      # a y penser.
+      - name: Frontieres de confiance du canal Claude
+        run: bash tests/ci/frontiere-confiance.sh
 
       - name: Installer Playwright
         run: |

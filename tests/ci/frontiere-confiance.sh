@@ -183,6 +183,17 @@ exigences=[
  ("anthropic_api_key ABSENT",                 'anthropic_api_key' not in w),
  ("claude_code_oauth_token present",          'claude_code_oauth_token' in w),
 ]
+
+# Chaine d'approvisionnement : l'action DOIT etre epinglee a un SHA de 40
+# caracteres. « @v1 » est une reference mouvante, et on lui confie le jeton
+# OAuth plus un GITHUB_TOKEN en ecriture. Trou trouve le 2026-08-21 en
+# branchant le banc sur la CI : depinner passait au vert.
+import re as _re2
+_uses = [x.get('uses','') for x in d['jobs']['claude']['steps']]
+_cca  = [u for u in _uses if 'anthropics/claude-code-action' in u]
+exigences.append(("l'action Claude est epinglee a un SHA de 40 caracteres"
+                  + (f" — trouve : {_cca}" if _cca and not all(_re2.search(r'@[0-9a-f]{40}$', u.split('#')[0].strip()) for u in _cca) else ""),
+                  bool(_cca) and all(_re2.search(r'@[0-9a-f]{40}$', u.split('#')[0].strip()) for u in _cca)))
 # Vecteurs d'execution arbitraire : une commande dont une option lance un
 # sous-processus vide la liste d'outils de son sens. Signales par la revue
 # de securite du 2026-08-21 sur le commit d49a5ab.
@@ -202,6 +213,34 @@ INTERDITS = {
 for motif,pourquoi in INTERDITS.items():
     absent = motif not in args
     exigences.append((f"jamais {motif} — {pourquoi}", absent))
+
+# Execution indirecte : npm run / npx / node combines a l'outil Write
+# permettent d'ecrire un script dans le depot puis de l'executer, ce qui
+# contourne l'enumeration. Les verifications appartiennent au workflow.
+for outil in ("npm", "npx", "node"):
+    _a = w.get("claude_args","")
+    exigences.append((f"Claude n'a aucun droit d'executer {outil}",
+                      f"Bash({outil} " not in _a and f"Bash({outil}:" not in _a))
+
+# Le workflow doit executer les audits LUI-MEME et refuser les chemins qui
+# controlent l'agent. Sites d'appel verifies, pas simple presence du mot.
+pub = next((x.get('run','') for x in d['jobs']['claude']['steps']
+            if x.get('id') == 'publier'), '')
+exigences += [
+ # Ligne NON COMMENTEE : commenter « # node scripts/audit-globals.js »
+ # laissait passer la premiere version de cette assertion — la chaine reste
+ # presente. Troisieme test creux de la serie, meme famille.
+ ("le workflow execute les audits avant de publier",
+      all(any(_l.strip().startswith(_c) for _l in pub.splitlines())
+          for _c in ('node scripts/audit-globals.js',
+                     'node scripts/audit-handlers.js'))),
+ ("les audits precedent le push",
+      pub.find('audit-globals.js') < pub.find('git push origin') if 'git push origin' in pub else False),
+ ("les chemins de controle sont refuses",
+      '.github/*|.claude/*|package.json' in pub and 'Chemin interdit' in pub),
+ ("le refus de chemin sort en erreur",
+      'exit 1' in pub.split('Chemin interdit')[1][:200] if 'Chemin interdit' in pub else False),
+]
 
 # Prefixe PARTIEL : le filtre de permissions matche des TOKENS COMPLETS. Un
 # motif qui s'arrete au milieu d'un token — « Bash(git push origin claude/:*) »,
@@ -226,7 +265,7 @@ for lib,vrai in exigences:
     if not vrai: ko+=1
 sys.exit(1 if ko else 0)
 PYW
-if [ $? -eq 0 ]; then ok=$((ok+19)); else ko=$((ko+1)); fi
+if [ $? -eq 0 ]; then ok=$((ok+27)); else ko=$((ko+1)); fi
 
 echo
 echo "═══ Modèle réellement exécuté — garde anti-déclassement ═══"
@@ -299,6 +338,46 @@ scenario_modele "6. Source d'auth inconnue refusée"         json  claude-opus-5
 scenario_modele "7. Helper de clé API refusé"               json  claude-opus-5  apiKeyHelper      REFUS
 
 echo
+echo "═══ Politique modèles du canal claude-pr-task ═══"
+WFT="$(dirname "${WF}")/claude-pr-task.yml" python3 - <<'PYM'
+import yaml,os,sys,re
+p=os.environ["WFT"]
+brut=open(p,encoding='utf-8').read()
+d=yaml.safe_load(brut)
+run="".join(s.get('run','') for s in d['jobs']['claude']['steps'])
+env={}
+for s in d['jobs']['claude']['steps']:
+    env.update(s.get('env') or {})
+
+modeles=set(re.findall(r'claude-[a-z]+-[0-9]+(?:\.[0-9]+)?', brut))
+exig=[
+ ("Fable 5 est le modele PRIMAIRE",        'MODELE_PRIMAIRE=claude-fable-5' in run),
+ ("Opus 5 est le REPLI",                   'MODELE_REPLI=claude-opus-5' in run),
+ # On verifie le SITE D'APPEL de la garde, pas seulement que la fonction
+ # existe : neutraliser « if travail_produit; then » en « if false; then »
+ # laissait passer la premiere version de cette assertion. Test creux.
+ ("le repli est refuse si un fichier a deja ete modifie",
+                                           'if travail_produit; then' in run
+                                           and 'Repli refuse' in run
+                                           and 'exit 1' in run.split('Repli refuse')[1][:200]),
+ ("le modele reellement execute est valide",
+                                           'claude-fable-5*|claude-opus-5*' in run),
+ ("aucun autre modele n'apparait",         modeles <= {'claude-fable-5','claude-opus-5'}),
+ ("ANTHROPIC_API_KEY explicitement vide",  env.get('ANTHROPIC_API_KEY') == ''),
+ ("jeton d'abonnement utilise",            'CLAUDE_CODE_OAUTH_TOKEN' in brut),
+ ("aucun secret de cle API facturee",      'secrets.ANTHROPIC_API_KEY' not in brut and 'secrets.PASSIO}' not in brut),
+ ("l'auth reelle est verifiee (apiKeySource)", 'apiKeySource' in run),
+]
+ko=0
+for lib,vrai in exig:
+    print(f"  {'OK ' if vrai else 'KO '} {lib}")
+    if not vrai: ko+=1
+if modeles - {'claude-fable-5','claude-opus-5'}:
+    print(f"      modeles etrangers : {sorted(modeles - {'claude-fable-5','claude-opus-5'})}")
+sys.exit(1 if ko else 0)
+PYM
+if [ $? -eq 0 ]; then ok=$((ok+9)); else ko=$((ko+1)); fi
+
 echo "═══ Plafond de tours et diagnostic des refus ═══"
 WF="${WF}" python3 - <<'PYDIAG'
 import yaml,os,sys,re
