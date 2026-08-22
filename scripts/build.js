@@ -18,6 +18,9 @@ const read = (p) => fs.readFileSync(path.join(root, p), "utf8");
 //    son ordre APRÈS le bloc app) sont concaténés dans dist/app.js (hoisting
 //    préservé sur tout le bloc, comme avant). pwa-landing.js reste inline : il ne
 //    dépend que de pwa-detect (head) et son listener `load` mourrait si différé.
+//    passion-context.js ferme le bloc : il s'exécute APRÈS la définition de
+//    state/currentProfile et peut donc observer la persona active sans toucher
+//    aux gros fichiers app-*.
 const startMark = html.indexOf("<!-- BUILD:APP-START");
 const endMark = html.indexOf("<!-- BUILD:APP-END -->");
 if (startMark === -1 || endMark === -1) throw new Error("Marqueurs BUILD:APP introuvables");
@@ -26,7 +29,7 @@ const appFiles = [...appBlock.matchAll(/<script src="(js\/app-[^"]+)"><\/script>
 if (appFiles.length !== 9) throw new Error(`9 fichiers app attendus, trouvé ${appFiles.length}`);
 const EMOJI_TAG = '<script src="js/emoji-misc.js"></script>';
 if (!html.includes(EMOJI_TAG)) throw new Error("Tag emoji-misc.js introuvable (attendu après le bloc app)");
-const appJs = appFiles.map(read).join("") + "\n" + read("js/emoji-misc.js");
+const appJs = appFiles.map(read).join("") + "\n" + read("js/emoji-misc.js") + "\n" + read("js/passion-context.js");
 const appHash = crypto.createHash("sha1").update(appJs).digest("hex").slice(0, 10);
 const appRef = "app.js?v=" + appHash; // cache-busting par contenu (cf. _headers : /app.js immutable)
 const loader = ""
@@ -52,7 +55,7 @@ const loader = ""
   + "})();\n"
   + "</script>";
 html = html.slice(0, startMark) + loader + html.slice(endMark + "<!-- BUILD:APP-END -->".length);
-html = html.replace(EMOJI_TAG, "<!-- emoji-misc.js : inclus dans app.js -->");
+html = html.replace(EMOJI_TAG, "<!-- emoji-misc.js + passion-context.js : inclus dans app.js -->");
 
 // 2. CSS : EXTERNALISÉ dans dist/styles.css (avant le 2026-07-15 : inline dans le
 //    HTML). index.html est servi en no-store → les ~230 Ko de CSS inline étaient
@@ -67,16 +70,41 @@ const cssHash = crypto.createHash("sha1").update(css).digest("hex").slice(0, 10)
 const cssRef = "styles.css?v=" + cssHash;
 html = html.replace(CSS_TAG, '  <link rel="stylesheet" href="' + cssRef + '" />');
 
-// 3. Scripts individuels restants (uniquement src="js/…")
+// 3. Contrat de release — UNE identité commune au navigateur, au cockpit et à
+//    Sentinel. Le buildId ne dépend PAS d'un timestamp : deux builds des mêmes
+//    sources produisent le même identifiant. Le commit est une preuve additionnelle
+//    quand Netlify/GitHub la fournit, jamais une valeur inventée en local.
+const commitRef = process.env.COMMIT_REF || process.env.GITHUB_SHA || null;
+const buildId = crypto.createHash("sha1")
+  .update(html).update("\0").update(appJs).update("\0").update(css)
+  .digest("hex").slice(0, 12);
+const release = {
+  schema: 1,
+  buildId,
+  appHash,
+  cssHash,
+  commit: commitRef,
+  builtAt: process.env.PASSIO_BUILD_TIME || null,
+};
+
+// Les gardes sont chargés juste après telemetry.js :
+// - identity-transition observe les POST telemetry_events avant le bloc app ;
+// - release-guard connaît déjà PASSIO_RELEASE au moment de son initialisation.
+const TELEMETRY_TAG = '  <script src="js/telemetry.js"></script>';
+if (!html.includes(TELEMETRY_TAG)) throw new Error("Tag telemetry.js introuvable");
+const releaseBootstrap = '  <script>window.PASSIO_RELEASE=' + JSON.stringify(release).replace(/</g, "\\u003c") + ';</script>';
+html = html.replace(TELEMETRY_TAG,
+  releaseBootstrap + "\n" + TELEMETRY_TAG + "\n"
+  + '  <script src="js/identity-transition.js"></script>\n'
+  + '  <script src="js/release-guard.js"></script>');
+
+// 4. Scripts individuels restants (uniquement src="js/…")
 html = html.replace(/^([ \t]*)<script src="(js\/[^"]+)"><\/script>$/gm,
   (m, indent, file) => indent + "<script>\n" + read(file) + indent + "</script>");
 
-// 4. Service worker : bump AUTOMATIQUE de la version de cache à partir d'une
-//    signature du build (HTML final inline-CSS compris + app.js). Toute modif
-//    réelle change ce hash → les octets de dist/sw.js changent → le navigateur
-//    réinstalle le SW → les PWA déjà ouvertes se rechargent seules. Fini le
-//    « BUILD-BUMP » manuel à oublier. (En dev sans build, sw.js garde Date.now().)
-const buildId = crypto.createHash("sha1").update(html + appJs).digest("hex").slice(0, 12);
+// 5. Service worker : même buildId que le contrat de release. Une modif réelle
+//    change cet identifiant → dist/sw.js change → le navigateur réinstalle le SW.
+//    Le contrat et le cache parlent ainsi EXACTEMENT de la même release.
 let sw = read("sw.js");
 const swBefore = sw;
 sw = sw.replace(/const CACHE = "passio-v"\s*\+\s*Date\.now\(\);/,
@@ -88,4 +116,8 @@ fs.writeFileSync(outPath, html);
 fs.writeFileSync(path.join(path.dirname(outPath), "app.js"), appJs);
 fs.writeFileSync(path.join(path.dirname(outPath), "styles.css"), css);
 fs.writeFileSync(path.join(path.dirname(outPath), "sw.js"), sw);
-console.log("Build OK →", outPath, "(", Buffer.byteLength(html), "octets ) + app.js (", Buffer.byteLength(appJs), "octets, v=" + appHash + ") + styles.css (", Buffer.byteLength(css), "octets, v=" + cssHash + ") + sw.js (cache passio-v" + buildId + ")");
+fs.writeFileSync(path.join(path.dirname(outPath), "release.json"), JSON.stringify(release, null, 2) + "\n");
+console.log("Build OK →", outPath,
+  "(", Buffer.byteLength(html), "octets ) + app.js (", Buffer.byteLength(appJs),
+  "octets, v=" + appHash + ") + styles.css (", Buffer.byteLength(css),
+  "octets, v=" + cssHash + ") + sw.js + release.json (build " + buildId + ")");

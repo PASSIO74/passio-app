@@ -6,6 +6,11 @@
 /manifest.json
   Cache-Control: no-store, no-cache, must-revalidate
 
+# release.json : source de vérité de la release actuellement servie.
+# Un cache ici masquerait un version skew et transformerait le garde en faux vert.
+/release.json
+  Cache-Control: no-store, no-cache, must-revalidate
+
 # index.html : toujours frais
 /index.html
   Cache-Control: no-store, no-cache, must-revalidate
