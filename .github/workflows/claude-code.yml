@@ -564,6 +564,24 @@ jobs:
           if [ -z "$(gh pr list --repo "${DEPOT}" --head "${ATTENDUE}" --state open --json number --jq '.[0] // empty')" ]; then
             titre="$(git log -1 --format=%s "${ATTENDUE}")"
             {
+              # Une PR ouverte avec le GITHUB_TOKEN ne declenche AUCUN workflow
+              # (protection anti-boucle de GitHub). Mesure le 2026-08-22 sur la
+              # PR #121 : check_runs total_count = 0 sur 770 lignes applicatives.
+              # Une liste de controles vide se lit « rien a signaler » alors
+              # qu'elle dit « rien n'a ete verifie ». On l'ecrit dans le corps.
+              echo "> [!IMPORTANT]"
+              echo "> **Cette pull request n'a AUCUNE integration continue.**"
+              echo ">"
+              echo "> GitHub ne declenche aucun workflow sur un evenement cree avec le"
+              echo "> \`GITHUB_TOKEN\`. Une PR ouverte par ce workflow affiche donc une liste"
+              echo "> de controles VIDE : cela ne veut pas dire « rien a signaler », cela veut"
+              echo "> dire « rien n'a ete verifie »."
+              echo ">"
+              echo "> Pour la rendre verifiable : la fermer et en rouvrir une depuis un compte"
+              echo "> humain sur la meme branche \`${ATTENDUE}\`. La protection de branche sur"
+              echo "> \`main\` refuse de toute facon la fusion tant qu'aucun controle n'est"
+              echo "> rapporte."
+              echo
               echo "Travail produit par Claude Code depuis l'issue #${NUMERO}."
               echo
               echo "Branche imposée par le run : \`${ATTENDUE}\`"
@@ -588,6 +606,7 @@ jobs:
             if gh pr create --repo "${DEPOT}" --base main --head "${ATTENDUE}" \
                  --title "${titre}" --body-file "${RUNNER_TEMP}/pr.md"; then
               echo "pr_ouverte=true" >> "$GITHUB_OUTPUT"
+              echo "::warning title=PR sans integration continue::La PR est ouverte par le workflow avec le GITHUB_TOKEN : GitHub ne declenchera aucun controle dessus. La rouvrir depuis un compte humain sur la branche « ${ATTENDUE} » pour obtenir une CI."
             else
               echo "pr_ouverte=false" >> "$GITHUB_OUTPUT"
               echo "::warning title=PR non ouverte::La branche « ${ATTENDUE} » est poussee, mais GitHub interdit aux Actions de creer des pull requests. Cocher « Allow GitHub Actions to create and approve pull requests » dans Settings > Actions > General."
