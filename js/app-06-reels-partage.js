@@ -1274,6 +1274,8 @@ function toggleProfileFilter(passionId) {
   } else {
     _activeFeedPassions.add(passionId);
   }
+  // Persiste le nouvel état : le Set runtime seul ne survivrait pas au rechargement.
+  try { setFeedPassions(Array.from(_activeFeedPassions), { save: false }); } catch (e) {}
   // Auto-reset le mood si le mood actuel n'a plus de contenu dans la nouvelle sélection
   var mood = state.currentMood || "all";
   if (mood !== "all") {
@@ -1291,7 +1293,9 @@ function toggleProfileFilter(passionId) {
 }
 
 function selectAllProfiles() {
-  _activeFeedPassions = new Set();
+  // « Tout voir » = aucun filtre. Persisté aussi, sinon le rechargement
+  // ressusciterait les anciens intérêts que l'utilisateur vient de retirer.
+  try { setFeedPassions([]); } catch (e) { _activeFeedPassions = new Set(); }
   renderFeed();
 }
 

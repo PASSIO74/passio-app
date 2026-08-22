@@ -2038,6 +2038,13 @@ async function boot() {
   if (lp) lp.src = LOGO_SRC;
 
   state = loadState();
+  // Intérêts du Fil : restaurés pour TOUS les chemins de démarrage, pas seulement
+  // pour une session Supabase retrouvée. Sans cet appel ici, un utilisateur hors
+  // ligne ou dont la session n'est pas encore rétablie repartait sur un fil vide
+  // alors que ses intérêts étaient bien persistés — mesuré par le test
+  // « les intérêts choisis survivent à un rechargement complet ».
+  // Idempotent : la branche authentifiée le rappelle après hydratation user_state.
+  try { restoreFeedPassions(); } catch (e) {}
 
   // Restaure les conversations depuis le store DURABLE (IndexedDB) — toujours,
   // quel que soit le chemin de boot. Async + auto-gardé (s'exécute une seule
@@ -2137,8 +2144,12 @@ async function boot() {
           // pas à retomber sur ce fallback (user_state sera désormais peuplé).
           try { if (typeof supaSaveUserState === "function") await supaSaveUserState(); } catch(e) {}
         }
-        // Pas de filtre par défaut au démarrage — l'utilisateur choisit
-        _activeFeedPassions = new Set();
+        // Restaure les intérêts persistés (state.selectedFeedPassions) au lieu de
+        // repartir d'un fil vide. Avant le 2026-08-22 cette ligne faisait
+        // `_activeFeedPassions = new Set()` : les passions choisies à l'inscription
+        // ne survivaient donc à AUCUN rechargement. restoreFeedPassions() migre
+        // aussi un compte antérieur depuis les passions de ses profils.
+        try { restoreFeedPassions(); } catch (e) { _activeFeedPassions = new Set(); }
         try { renderEverything(); } catch(e) {}
         document.body.classList.add("screen-feed-active");
         try { supaInit(); } catch(e) {}
