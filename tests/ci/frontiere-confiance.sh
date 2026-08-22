@@ -202,6 +202,34 @@ for motif,pourquoi in INTERDITS.items():
     absent = motif not in args
     exigences.append((f"jamais {motif} — {pourquoi}", absent))
 
+# Execution indirecte : npm run / npx / node combines a l'outil Write
+# permettent d'ecrire un script dans le depot puis de l'executer, ce qui
+# contourne l'enumeration. Les verifications appartiennent au workflow.
+for outil in ("npm", "npx", "node"):
+    _a = w.get("claude_args","")
+    exigences.append((f"Claude n'a aucun droit d'executer {outil}",
+                      f"Bash({outil} " not in _a and f"Bash({outil}:" not in _a))
+
+# Le workflow doit executer les audits LUI-MEME et refuser les chemins qui
+# controlent l'agent. Sites d'appel verifies, pas simple presence du mot.
+pub = next((x.get('run','') for x in d['jobs']['claude']['steps']
+            if x.get('id') == 'publier'), '')
+exigences += [
+ # Ligne NON COMMENTEE : commenter « # node scripts/audit-globals.js »
+ # laissait passer la premiere version de cette assertion — la chaine reste
+ # presente. Troisieme test creux de la serie, meme famille.
+ ("le workflow execute les audits avant de publier",
+      all(any(_l.strip().startswith(_c) for _l in pub.splitlines())
+          for _c in ('node scripts/audit-globals.js',
+                     'node scripts/audit-handlers.js'))),
+ ("les audits precedent le push",
+      pub.find('audit-globals.js') < pub.find('git push origin') if 'git push origin' in pub else False),
+ ("les chemins de controle sont refuses",
+      '.github/*|.claude/*|package.json' in pub and 'Chemin interdit' in pub),
+ ("le refus de chemin sort en erreur",
+      'exit 1' in pub.split('Chemin interdit')[1][:200] if 'Chemin interdit' in pub else False),
+]
+
 # Prefixe PARTIEL : le filtre de permissions matche des TOKENS COMPLETS. Un
 # motif qui s'arrete au milieu d'un token — « Bash(git push origin claude/:*) »,
 # « Bash(node scripts/:*) » — exige ce fragment comme token ENTIER suivi d'un
@@ -225,7 +253,7 @@ for lib,vrai in exigences:
     if not vrai: ko+=1
 sys.exit(1 if ko else 0)
 PYW
-if [ $? -eq 0 ]; then ok=$((ok+19)); else ko=$((ko+1)); fi
+if [ $? -eq 0 ]; then ok=$((ok+26)); else ko=$((ko+1)); fi
 
 echo
 echo "═══ Modèle réellement exécuté — garde anti-déclassement ═══"
