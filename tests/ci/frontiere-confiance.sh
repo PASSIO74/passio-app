@@ -240,6 +240,17 @@ exigences += [
       '.github/*|.claude/*|package.json' in pub and 'Chemin interdit' in pub),
  ("le refus de chemin sort en erreur",
       'exit 1' in pub.split('Chemin interdit')[1][:200] if 'Chemin interdit' in pub else False),
+
+ # Une PR ouverte avec le GITHUB_TOKEN ne declenche AUCUN workflow. Mesure le
+ # 2026-08-22 sur la PR #121 : check_runs total_count = 0 sur 770 lignes
+ # applicatives. Le danger n'est pas l'absence de CI, c'est qu'elle soit
+ # INVISIBLE : une liste de controles vide se lit « rien a signaler ». Le corps
+ # de la PR et le journal du run doivent le dire, sinon le prochain relecteur
+ # retombera dedans.
+ ("le corps de PR genere avertit qu'il n'y a aucune CI",
+      "AUCUNE integration continue" in pub and "GITHUB_TOKEN" in pub),
+ ("l'absence de CI est aussi annoncee dans le journal du run",
+      'title=PR sans integration continue' in pub),
 ]
 
 # Prefixe PARTIEL : le filtre de permissions matche des TOKENS COMPLETS. Un
@@ -265,7 +276,7 @@ for lib,vrai in exigences:
     if not vrai: ko+=1
 sys.exit(1 if ko else 0)
 PYW
-if [ $? -eq 0 ]; then ok=$((ok+27)); else ko=$((ko+1)); fi
+if [ $? -eq 0 ]; then ok=$((ok+29)); else ko=$((ko+1)); fi
 
 echo
 echo "═══ Modèle réellement exécuté — garde anti-déclassement ═══"
