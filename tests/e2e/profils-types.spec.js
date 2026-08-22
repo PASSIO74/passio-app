@@ -25,9 +25,17 @@ test.describe("profils types — parcours simulés", () => {
     }, unique);
 
     // Le fil est volontairement vide tant qu'aucune passion n'est sélectionnée
-    // (« Choisis une passion »). On active le filtre de la passion publiée, comme
-    // le ferait un utilisateur, puis on vérifie l'apparition (optimistic update).
-    await page.evaluate((pa) => { toggleProfileFilter(pa); }, passion);
+    // (« Choisis une passion »). On S'ASSURE que le filtre de la passion publiée
+    // est actif, comme le ferait un utilisateur, puis on vérifie l'apparition.
+    //
+    // ⚠️ Ne pas revenir à un simple toggleProfileFilter(passion) : c'est une
+    // BASCULE. Depuis la migration §12, un compte avec un profil « musique »
+    // démarre avec ce filtre DÉJÀ actif, et basculer le désactive — le fil
+    // redevient vide et le test échoue pour une raison qui n'a rien à voir avec
+    // ce qu'il vérifie. Piège vécu le 2026-08-22.
+    await page.evaluate((pa) => {
+      if (!_activeFeedPassions.has(pa)) toggleProfileFilter(pa);
+    }, passion);
     await page.waitForFunction((txt) => {
       const f = document.getElementById("screen-feed");
       return f && f.textContent.includes(txt);
@@ -85,7 +93,7 @@ test.describe("profils types — parcours simulés", () => {
       out.vlog = state.userPosts[0] && state.userPosts[0].type === "vlog" && /Lisbonne/.test(state.userPosts[0].destination || state.userPosts[0].text || "");
 
       // Le fil (passion activée) doit rendre la photo postée (img data:)
-      toggleProfileFilter(passion);
+      if (!_activeFeedPassions.has(passion)) toggleProfileFilter(passion);
       out.photoRendered = !!document.querySelector('#screen-feed .post img[src^="data:image"]');
       out.totalUserPosts = state.userPosts.length;
       return out;

@@ -105,7 +105,7 @@ test("les intérêts choisis survivent à un rechargement complet", async ({ pag
   expect(apres.runtime).toEqual(["sport", "musique"]);
 });
 
-test("un compte antérieur n'est PAS filtré en silence par ses anciens profils", async ({ page }) => {
+test("un compte antérieur est migré depuis ses profils, sans qu'aucun soit supprimé", async ({ page }) => {
   const ancien = {
     onboarded: true, landingSeen: true, tourSeen: true,
     user: {
@@ -130,12 +130,11 @@ test("un compte antérieur n'est PAS filtré en silence par ses anciens profils"
       profils: state.user.profiles.map((p) => p.id),
     };
   });
-  // Écart assumé avec la spec §12 : amorcer les intérêts depuis les profils
-  // RÉTRÉCIRAIT le fil d'un compte existant (un Set vide = aucun filtre = tout
-  // le fil), au lieu de le sauver d'un fil vide. Mesuré : profils-types.spec.js
-  // passait au rouge. On ne restaure que ce qui a été explicitement choisi.
-  expect(r.restaurees).toEqual([]);
-  expect(r.runtime).toEqual([]);
+  // Spec §12 : sans amorçage, ce compte retomberait sur « Choisis une passion »,
+  // fil VIDE — un Set vide ne veut PAS dire « tout le fil » (voir renderFeed,
+  // `nothingSelected`). On amorce donc depuis les passions de ses profils.
+  expect(r.restaurees).toEqual(["sport", "musique"]);
+  expect(r.runtime).toEqual(["sport", "musique"]);
   // Ne rien supprimer : les profils auto-créés d'avant restent valides.
   expect(r.profils).toEqual(["pp_0", "pp_1"]);
 });

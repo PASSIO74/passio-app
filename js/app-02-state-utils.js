@@ -2260,27 +2260,39 @@ function setFeedPassions(ids, opts) {
 // Restaure les intérêts persistés dans le Set runtime. Appelée au boot, sur TOUS
 // les chemins de démarrage.
 //
-// ⚠️ ÉCART ASSUMÉ AVEC LA SPEC §12, fondé sur une mesure. La spec propose, quand
-// `selectedFeedPassions` est absent, d'amorcer les intérêts depuis les passions
-// des profils existants — pour éviter « un fil vide ». Implémenté puis mesuré le
-// 2026-08-22 : dans ce code, un Set VIDE ne veut pas dire « fil vide », il veut
-// dire « aucun filtre », donc TOUT le fil. Amorcer depuis les profils ne sauvait
-// donc personne — ça RÉTRÉCISSAIT en silence le fil des comptes existants, et
-// faisait disparaître au rechargement un post publié dans une autre passion.
-// Prouvé par `tests/e2e/profils-types.spec.js` : vert sur main, rouge avec la
-// migration, vert à nouveau sans elle.
+// Migration (spec §12) : un compte antérieur au lot Onboarding V2 n'a pas de
+// `selectedFeedPassions` mais possède des profils passion. Sans amorçage, il
+// retombe sur `nothingSelected` — c'est-à-dire l'écran « Choisis une passion »,
+// fil VIDE (voir renderFeed : un Set vide ne veut pas dire « tout le fil »).
+// On amorce donc depuis les passions uniques de ses profils. Aucun profil n'est
+// supprimé ni modifié.
 //
-// On ne restaure donc QUE ce que l'utilisateur a explicitement choisi. Les
-// nouveaux comptes reçoivent leurs intérêts de l'onboarding V2 ; les comptes
-// antérieurs gardent leur fil non filtré jusqu'à ce qu'ils filtrent eux-mêmes.
+// ⚠️ Historique, à ne pas re-supprimer par erreur : cette migration a été
+// retirée quelques heures le 2026-08-22 sur un MAUVAIS diagnostic. Elle faisait
+// tomber profils-types.spec.js, et j'en avais conclu qu'elle « rétrécissait le
+// fil des comptes existants ». Faux. La vraie cause était dans le test : il
+// appelait toggleProfileFilter(passion) — une BASCULE — sur une passion que la
+// migration venait justement d'activer, ce qui la DÉSACTIVAIT. Mesuré :
+// passion publiée « musique », profil « musique ». Le test exprime désormais son
+// intention (s'assurer que la passion est sélectionnée) au lieu de basculer.
 function restoreFeedPassions() {
   var persistees = [];
   try { persistees = Array.isArray(state.selectedFeedPassions) ? state.selectedFeedPassions : []; } catch (e) {}
-  if (!persistees.length) {
-    _activeFeedPassions = new Set();
-    return [];
-  }
-  return setFeedPassions(persistees, { save: false });
+  if (persistees.length) return setFeedPassions(persistees, { save: false });
+
+  var profils = [];
+  try { profils = (state.user && Array.isArray(state.user.profiles)) ? state.user.profiles : []; } catch (e) {}
+  var depuisProfils = profils.map(function (p) { return p && p.passion; })
+                             .filter(function (x) { return typeof x === "string" && x; });
+  if (!depuisProfils.length) { _activeFeedPassions = new Set(); return []; }
+
+  var restaurees = setFeedPassions(depuisProfils);
+  try {
+    if (window.tel && tel.action) {
+      tel.action("feed_interests_migrated", { n_interests: restaurees.length, source: "profiles" });
+    }
+  } catch (e) {}
+  return restaurees;
 }
 
 function onbFinish() {
