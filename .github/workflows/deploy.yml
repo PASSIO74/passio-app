@@ -6,7 +6,68 @@ on:
       - main
   pull_request:
 
+permissions:
+  contents: read
+  pull-requests: read
+
 jobs:
+  governance:
+    name: Gouvernance critique
+    runs-on: ubuntu-latest
+    steps:
+      - name: Résoudre la PR et vérifier la contre-revue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_PR: ${{ github.event.pull_request.number }}
+          TRUSTED_REVIEWER: PASSIO74
+        run: |
+          set -euo pipefail
+
+          pr="${EVENT_PR}"
+          if [ "${EVENT_NAME}" = "push" ]; then
+            pr="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls" --jq '.[0].number // empty')"
+            if [ -z "${pr}" ]; then
+              echo "::error title=Push direct sur main::Aucune pull request n'est associée à ${GITHUB_SHA}. Le déploiement production est refusé."
+              exit 1
+            fi
+          fi
+
+          files="$(gh pr diff "${pr}" --repo "${GITHUB_REPOSITORY}" --name-only)"
+          critical=false
+          while IFS= read -r file; do
+            case "${file}" in
+              .github/*|migrations/*|dashboard/server/auth.js|dashboard/server/config.js|dashboard/server/repair.js|dashboard/server/sentinel.js|scripts/run_migrations.js|scripts/sauvegarde-donnees.js)
+                critical=true ;;
+            esac
+          done <<< "${files}"
+
+          {
+            echo "## Gouvernance"
+            echo
+            echo "- PR : #${pr}"
+            echo "- Changement critique : ${critical}"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+          if [ "${critical}" != "true" ]; then
+            exit 0
+          fi
+
+          head_sha="$(gh pr view "${pr}" --repo "${GITHUB_REPOSITORY}" --json headRefOid --jq '.headRefOid')"
+          reviews="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${pr}/reviews")"
+          if ! jq -e --arg reviewer "${TRUSTED_REVIEWER}" --arg head "${head_sha}" '
+            [.[] | select(
+              .user.login == $reviewer
+              and .commit_id == $head
+              and ((.body // "") | contains("Contre-revue technique indépendante"))
+            )] | length > 0
+          ' <<< "${reviews}" >/dev/null; then
+            echo "::error title=Contre-revue manquante::Cette PR touche un périmètre critique. Une revue GitHub par PASSIO74, ancrée sur le SHA courant et contenant le marqueur « Contre-revue technique indépendante », est obligatoire avant preview ou production."
+            exit 1
+          fi
+
+          echo "- Contre-revue indépendante : présente sur ${head_sha}" >> "${GITHUB_STEP_SUMMARY}"
+
   test:
     name: Tests smoke (Playwright)
     runs-on: ubuntu-latest
@@ -61,7 +122,7 @@ jobs:
   deploy:
     name: Déploiement production
     if: github.event_name == 'push'
-    needs: test
+    needs: [test, governance]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -110,7 +171,7 @@ jobs:
   preview:
     name: Déploiement preview (PR)
     if: github.event_name == 'pull_request'
-    needs: test
+    needs: [test, governance]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

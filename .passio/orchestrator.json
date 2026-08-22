@@ -1,0 +1,113 @@
+{
+  "version": 4,
+  "activated_at": "2026-08-18",
+  "source_of_truth": {
+    "repository": "PASSIO74/passio-app",
+    "production_branch": "main"
+  },
+  "orchestrator": {
+    "agent": "ChatGPT",
+    "model": "GPT-5.6 Sol",
+    "responsibilities": [
+      "decompose objectives",
+      "route work to specialist agents",
+      "compare outputs",
+      "enforce governance",
+      "verify before production integration"
+    ]
+  },
+  "agents": {
+    "claude": {
+      "role": "Anthropic general reasoning assistant",
+      "usage": "historical and ad-hoc analysis",
+      "preferred_for": [
+        "reasoning",
+        "product analysis",
+        "cross-checking"
+      ]
+    },
+    "claude_code": {
+      "role": "principal production engineer",
+      "preferred_for": [
+        "repository-wide implementation",
+        "backend and Supabase",
+        "security and RLS",
+        "debugging",
+        "refactoring",
+        "tests",
+        "production integration"
+      ]
+    },
+    "claude_design": {
+      "role": "historical UI design assistant",
+      "usage": "visual redesign and UI exploration previously integrated into PASSIO",
+      "preferred_for": [
+        "visual redesign",
+        "UI exploration",
+        "design handoff"
+      ],
+      "constraints": [
+        "historical tool, not current production source of truth",
+        "production changes must still follow repository review rules"
+      ]
+    },
+    "lovable": {
+      "role": "UI/UX design laboratory",
+      "project_id": "4cdbef5a-ce64-4adb-afa2-320f5f2e7af7",
+      "preferred_for": [
+        "visual exploration",
+        "mobile UX",
+        "alternative screen concepts",
+        "component concepts",
+        "interaction prototypes"
+      ],
+      "constraints": [
+        "never source of truth",
+        "never production Supabase",
+        "never store production secrets",
+        "never migrate PASSIO production stack",
+        "handoff must be implementation-neutral"
+      ]
+    },
+    "base44": {
+      "role": "connected AI app builder",
+      "usage": "available to PASSIO but no Passio Base44 app has been detected yet",
+      "preferred_for": [
+        "rapid app prototyping",
+        "alternative product experiments",
+        "standalone workflow prototypes"
+      ],
+      "constraints": [
+        "not a source of truth",
+        "no Passio Base44 app detected as of 2026-08-18",
+        "production changes must still follow repository review rules"
+      ]
+    },
+    "codex": {
+      "role": "independent reviewer and challenger",
+      "preferred_for": [
+        "second opinion",
+        "risk review",
+        "architecture challenge",
+        "code review"
+      ]
+    }
+  },
+  "routing": {
+    "ui_ux": ["lovable", "claude_code"],
+    "frontend_production": ["claude_code", "codex"],
+    "backend": ["claude_code", "codex"],
+    "security": ["claude_code", "codex"],
+    "architecture": ["claude_code", "codex"],
+    "product_exploration": ["lovable", "base44", "claude", "claude_code"],
+    "final_arbitration": ["ChatGPT"]
+  },
+  "integration_policy": {
+    "lovable_output": "review_then_transpose",
+    "base44_output": "review_then_transpose",
+    "production_changes": "branch_pr_tests_review",
+    "direct_lovable_to_main": false,
+    "direct_base44_to_main": false,
+    "direct_unreviewed_ai_to_main": false
+  }
+}

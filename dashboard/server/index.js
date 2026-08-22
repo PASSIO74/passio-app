@@ -39,6 +39,7 @@ import { controlCommand } from "./control-intelligence.js";
 import { whatChanged, listControlSnapshots, startControlHistory } from "./control-history.js";
 import { anomalySnapshot } from "./anomaly-engine.js";
 import { releaseGuardianSnapshot } from "./release-guardian.js";
+import * as orchestrator from "./orchestrator.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -117,6 +118,7 @@ api.get("/traces/:cid", auth.requireAuth, asyncH(async (req, res) => {
   }
   res.json({ trace: t, suspects, prompt: claude.buildTracePrompt(t, suspects ? suspectsPromptBlock(suspects) : "") });
 }));
+
 api.get("/coverage", auth.requireAuth, (req, res) => res.json(tracesCoverage()));
 
 api.get("/reconcile", auth.requireCap("db"), asyncH(async (req, res) => res.json(await reconcile({ force: req.query.force === "1" }))));
@@ -126,6 +128,7 @@ api.post("/reconcile/prompt", auth.requireCap("db"), (req, res) => {
   res.json({ prompt: buildReconcilePrompt(c) });
 });
 
+// ─── Diagnostic global ───────────────────────────────────────────────────────
 api.get("/diagnose", auth.requireAuth, asyncH(async (req, res) => {
   const mayReadDb = auth.can(req.session.role, "db");
   let integrity = null;
@@ -149,8 +152,10 @@ api.get("/diagnose", auth.requireAuth, asyncH(async (req, res) => {
   }, apiConfigured: Boolean(config.anthropicKey) });
 }));
 
+// ─── Liens partagés ──────────────────────────────────────────────────────────
 api.get("/links", auth.requireAuth, (req, res) => res.json({ funnel: store.linkFunnel(), links: store.linkList(Number(req.query.limit) || 300) }));
 api.get("/links/:id", auth.requireAuth, (req, res) => { const l = store.link(req.params.id); l ? res.json(l) : res.status(404).json({ error: "Lien introuvable" }); });
+
 api.get("/qa-report", auth.requireAuth, (req, res) => res.json(qaReport()));
 api.get("/kpi", auth.requireAuth, asyncH(async (req, res) => res.json(await kpi())));
 api.get("/retention", auth.requireAuth, asyncH(async (req, res) => res.json(await retention())));
@@ -230,6 +235,7 @@ api.get("/alerts", auth.requireAuth, (req, res) => res.json(alerts.listAlerts())
 api.post("/alerts/:id/ack", auth.requireCap("alerts"), (req, res) => res.json({ ok: alerts.acknowledge(req.params.id) }));
 api.post("/alerts/manual", auth.requireCap("alerts"), (req, res) => res.json(alerts.raiseManual(req.body || {})));
 
+// ─── Sentinelle ──────────────────────────────────────────────────────────────
 api.get("/sentinel", auth.requireCap("claude"), (req, res) =>
   res.json({ state: sentinel.sentinelState(), diagnoses: sentinel.listDiagnoses(Number(req.query.limit) || 50) }));
 api.get("/sentinel/:id", auth.requireCap("claude"), (req, res) => {
@@ -244,8 +250,20 @@ api.post("/sentinel/:id/merge", auth.requireCap("git_mutate"), asyncH(async (req
   if (!d || !d.repair?.ok) return res.status(404).json({ error: "Aucun correctif vérifié pour ce diagnostic." });
   res.json(await mergeRepair(d.repair.branch, req.session.u));
 }));
+
+// ─── AI Orchestrator V2 ─────────────────────────────────────────────────────
+// La lecture expose des branches/tâches et suit donc la capacité git_read.
+// Le routage seul ne modifie rien. La soumission crée uniquement ai/request/*,
+// jamais main, et réutilise la capacité git_mutate déjà protégée/auditée.
+api.get("/orchestrator", auth.requireCap("git_read"), asyncH(async (req, res) => res.json(await orchestrator.snapshot())));
+api.post("/orchestrator/route", auth.requireAuth, (req, res) => res.json(orchestrator.routeTask(req.body || {})));
+api.post("/orchestrator/tasks", auth.requireCap("git_mutate"), asyncH(async (req, res) =>
+  res.json(await orchestrator.submitTask(req.body || {}, req.session.u))));
+
+// ─── Audit ───────────────────────────────────────────────────────────────
 api.get("/audit", auth.requireCap("audit"), (req, res) => res.json(listAudit(Number(req.query.limit) || 300, { action: req.query.action, actor: req.query.actor })));
 
+// ─── Readiness score ────────────────────────────────────────────────────────
 api.get("/readiness", auth.requireAuth, (req, res) => {
   res.json(computeReadiness({
     overview: store.overview(), checklist: checklist.listChecklist(), bugs: store.bugList(), authz: tests.authzSnapshot(),
@@ -254,6 +272,7 @@ api.get("/readiness", auth.requireAuth, (req, res) => {
 });
 
 app.use("/api", api);
+
 const publicDir = path.join(__dirname, "..", "public");
 app.use(express.static(publicDir));
 app.get("*", (req, res) => res.sendFile(path.join(publicDir, "index.html")));
