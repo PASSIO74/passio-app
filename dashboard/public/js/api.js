@@ -31,11 +31,17 @@ export function connectStream(handlers) {
     es.addEventListener("interaction", (e) => handlers.interaction && handlers.interaction(JSON.parse(e.data)));
     es.addEventListener("alert", (e) => handlers.alert && handlers.alert(JSON.parse(e.data)));
     es.addEventListener("trace", (e) => handlers.trace && handlers.trace(JSON.parse(e.data)));
-    // Sentinelle : diagnostic automatique terminé / changement d'état du moteur.
     es.addEventListener("sentinel", (e) => handlers.sentinel && handlers.sentinel(JSON.parse(e.data)));
     es.addEventListener("sentinel_state", (e) => handlers.sentinelState && handlers.sentinelState(JSON.parse(e.data)));
     es.addEventListener("test", (e) => handlers.test && handlers.test(JSON.parse(e.data)));
-    es.addEventListener("ping", (e) => handlers.ping && handlers.ping(JSON.parse(e.data)));
+    es.addEventListener("ping", (e) => {
+      let ping = null;
+      try { ping = JSON.parse(e.data); } catch {}
+      // VRAI ACK navigateur : contrairement au write() serveur, ce POST prouve
+      // que l'EventSource du client a reçu ET traité le heartbeat applicatif.
+      if (ping?.id) api.post("/observation/sse-ack", { id: ping.id }).catch(() => {});
+      if (handlers.ping) handlers.ping(ping || {});
+    });
     es.onerror = () => { handlers.error && handlers.error(); /* EventSource se reconnecte seul */ };
   }
   open();

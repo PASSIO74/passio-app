@@ -76,7 +76,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Audits statiques (collisions de globals)
         run: node scripts/audit-globals.js
@@ -109,6 +109,15 @@ jobs:
       - name: Frontieres de confiance du canal Claude
         run: bash tests/ci/frontiere-confiance.sh
 
+      # Le centre de pilotage est une application à part entière. Ses tests
+      # déterministes (Sentinel, Guardian, Autopilot, rollback) sont désormais
+      # une gate CI explicite : une autonomie non testée ne doit jamais être verte.
+      - name: Tests centre de pilotage / Sentinel
+        working-directory: dashboard
+        run: |
+          npm install
+          npm test
+
       - name: Installer Playwright
         run: |
           npm install --no-save @playwright/test
@@ -131,6 +140,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      # Même runtime que les tests : un artefact validé sous Node 22 ne doit pas
+      # être reconstruit sous une version implicite différente au déploiement.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
 
       - name: Build dist (assemblage monolithique + assets publics)
         run: |
@@ -174,6 +189,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
 
       - name: Build dist
         run: |

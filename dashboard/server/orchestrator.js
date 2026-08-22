@@ -60,7 +60,11 @@ export function routeTask(input = {}) {
   const security = /(secur|sécur|rls|auth|permission|xss|csrf|secret|vulner|audit)/i.test(text);
   const backend = /(backend|supabase|database|base de don|migration|sql|api|serveur|server|endpoint)/i.test(text);
   const tests = /(test|playwright|qa\b|regression|bug|debug|corrig|fix|refactor)/i.test(text);
-  const reviewOnly = /(review|revue|challenge|avis|audit seulement|analyse seulement)/i.test(text) && !/(implement|implémente|corrig|fix|code)/i.test(text);
+  // Une négation « sans X » dit l'INVERSE du mot qu'elle porte. Sans la retirer,
+  // « analyse seulement, sans coder » déclenchait l'exclusion sur « code »
+  // (sous-chaîne de « coder ») et une demande de revue pure partait en « general ».
+  const sansNegation = text.replace(/\bsans\s+\S+/g, " ");
+  const reviewOnly = /(review|revue|challenge|avis|audit seulement|analyse seulement)/i.test(text) && !/(implement|implémente|corrig|fix|code)/i.test(sansNegation);
 
   if (reviewOnly) return {
     category: "review",

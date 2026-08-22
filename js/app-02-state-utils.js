@@ -2722,6 +2722,9 @@ function renderFeed() {
     mood, Array.from(selectedMoods).join(","), Array.from(_activeFeedPassions).join(","),
     _showFollowingFeed ? 1 : 0, renderLimit, hasMore ? 1 : 0,
     Math.floor(Date.now() / 300000),
+    // Le pont Fil → IRL change le HTML des cartes sans toucher aux posts : sans
+    // lui dans la signature, basculer le drapeau ne repeindrait pas le fil.
+    (typeof feedIrlBridgeEnabled === "function" && feedIrlBridgeEnabled()) ? "irl1" : "irl0",
     visible.map(function(p) {
       return p.id + ":" + (p.likes || 0) + ":" + ((p.comments || []).length) + ":" + (Array.isArray(p.reactions) ? p.reactions.length : 0);
     }).join("|"),
@@ -3120,6 +3123,8 @@ function renderPostHTML(p) {
       </span>
       <span class="post-react-chip-holder" data-postchip="${escapeHtml(p.id)}" style="margin-left:auto;">${_postReactChipHtml(p.id)}</span>
     </div>
+
+    ${typeof feedIrlBridgeCtaHtml === "function" ? feedIrlBridgeCtaHtml(p) : ""}
 
     ${commentsPreview ? `<div style="margin-top:8px;" onclick="openPost('${escapeJsArg(p.id)}')" style="cursor:pointer;">${commentsPreview}</div>` : ""}
   </article>`;
