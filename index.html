@@ -52,6 +52,11 @@
        Chargée après platform.js dont elle réutilise window.supa. -->
   <script src="js/telemetry.js"></script>
 
+  <!-- PERF-IOS phase 1 : mesure de fluidité iPhone (p50/p95/p99 par action).
+       Purement observatoire — n'optimise rien, ne change aucun comportement.
+       Après telemetry.js dont il réutilise l'émetteur (window.tel). -->
+  <script src="js/perf-ios.js"></script>
+
   <!-- Service Worker registration + auto-update -->
   <script src="js/pwa-detect.js"></script>
 
