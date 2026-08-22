@@ -2227,48 +2227,150 @@ function togglePassion(id) {
   renderPassionGrid();
 }
 
+// ── Onboarding V2 — intérêts Feed ────────────────────────────────────────────
+// Drapeau de repli. Mettre window.PASSIO_ONBOARDING_V2 = false AVANT le boot
+// rebascule tout le lot sur l'ancien parcours, sans toucher au code.
+function onbV2Actif() {
+  try { return window.PASSIO_ONBOARDING_V2 !== false; } catch (e) { return true; }
+}
+
+// SOURCE DE VÉRITÉ des intérêts du Fil.
+//
+// Il y en avait deux, jamais synchronisées : `_activeFeedPassions` (Set runtime,
+// lu par le rendu) et `state.selectedFeedPassions` (déclaré app-02 l.58, validé
+// au chargement… et JAMAIS écrit ni lu ailleurs — état mort). Résultat mesuré le
+// 2026-08-22 : les passions choisies à l'inscription n'alimentaient pas le Fil,
+// et aucun filtre ne survivait à un rechargement.
+//
+// Cette fonction est le seul endroit qui écrit les deux à la fois. Tout appelant
+// qui modifie les intérêts DOIT passer par ici, sinon la divergence revient.
+function setFeedPassions(ids, opts) {
+  var liste = Array.isArray(ids) ? ids.filter(function (x) { return typeof x === "string" && x; }) : [];
+  // Dédup en conservant l'ordre de sélection : le premier choisi est le primaire.
+  var vues = {}, propre = [];
+  for (var i = 0; i < liste.length; i++) {
+    if (!vues[liste[i]]) { vues[liste[i]] = 1; propre.push(liste[i]); }
+  }
+  _activeFeedPassions = new Set(propre);
+  try { state.selectedFeedPassions = propre.slice(); } catch (e) {}
+  if (!opts || opts.save !== false) { try { saveState(); } catch (e) {} }
+  return propre;
+}
+
+// Restaure les intérêts persistés dans le Set runtime. Appelée au boot, sur TOUS
+// les chemins de démarrage.
+//
+// ⚠️ ÉCART ASSUMÉ AVEC LA SPEC §12, fondé sur une mesure. La spec propose, quand
+// `selectedFeedPassions` est absent, d'amorcer les intérêts depuis les passions
+// des profils existants — pour éviter « un fil vide ». Implémenté puis mesuré le
+// 2026-08-22 : dans ce code, un Set VIDE ne veut pas dire « fil vide », il veut
+// dire « aucun filtre », donc TOUT le fil. Amorcer depuis les profils ne sauvait
+// donc personne — ça RÉTRÉCISSAIT en silence le fil des comptes existants, et
+// faisait disparaître au rechargement un post publié dans une autre passion.
+// Prouvé par `tests/e2e/profils-types.spec.js` : vert sur main, rouge avec la
+// migration, vert à nouveau sans elle.
+//
+// On ne restaure donc QUE ce que l'utilisateur a explicitement choisi. Les
+// nouveaux comptes reçoivent leurs intérêts de l'onboarding V2 ; les comptes
+// antérieurs gardent leur fil non filtré jusqu'à ce qu'ils filtrent eux-mêmes.
+function restoreFeedPassions() {
+  var persistees = [];
+  try { persistees = Array.isArray(state.selectedFeedPassions) ? state.selectedFeedPassions : []; } catch (e) {}
+  if (!persistees.length) {
+    _activeFeedPassions = new Set();
+    return [];
+  }
+  return setFeedPassions(persistees, { save: false });
+}
+
 function onbFinish() {
   if (selectedPassions.length === 0) {
     toast("Choisis au moins 1 passion.");
     return;
   }
-  state.user.profiles = selectedPassions.map((pid, idx) => {
-    const p = passionById(pid);
+
+  var v2 = onbV2Actif();
+  var primaire = selectedPassions[0];
+
+  // PROFILS — V2 : UN SEUL profil passion de départ (spec §6). Sélectionner trois
+  // passions créait trois profils, soit une taxe d'identité imposée avant la
+  // première valeur. Les autres passions restent des INTÉRÊTS de Fil ; l'utilisateur
+  // crée un second profil plus tard, s'il en veut un.
+  var passionsProfil = v2 ? [primaire] : selectedPassions;
+  state.user.profiles = passionsProfil.map(function (pid) {
+    var p = passionById(pid);
     return {
       id: uid(),
       name: state.user.name,
       passion: pid,
       emoji: p.emoji,
-      bio: `Profil ${p.label} · Débutant·e passionné·e`,
+      bio: "Profil " + p.label + " · Débutant·e passionné·e",
       color: p.color,
       createdAt: Date.now(),
     };
   });
   state.user.currentProfileId = state.user.profiles[0].id;
-  _activeFeedPassions = new Set(); // pas de filtre par défaut après onboarding
+
+  // INTÉRÊTS DU FIL — V2 : les passions choisies alimentent le Fil IMMÉDIATEMENT.
+  // L'ancien code faisait `_activeFeedPassions = new Set()` ici même, avec le
+  // commentaire « pas de filtre par défaut après onboarding » : l'utilisateur
+  // atterrissait donc sur un fil qui ignorait ses choix.
+  if (v2) {
+    setFeedPassions(selectedPassions, { save: false });
+  } else {
+    _activeFeedPassions = new Set();
+  }
   state.onboarded = true;
 
-  state.user.score += REWARDS.first_login.pts;
-  state.user.passia += REWARDS.first_login.passia;
-  state.transactions.unshift({
-    id: uid(), kind: "first_login",
-    pts: REWARDS.first_login.pts, passia: REWARDS.first_login.passia,
-    label: "Bienvenue sur PASSIO", at: Date.now(),
-  });
+  // GAMIFICATION — retirée du parcours V2 (ADR-009 : Wallet/Passia hors du cœur).
+  // Conservée telle quelle sur le chemin de repli pour ne rien changer à l'ancien.
+  if (!v2) {
+    state.user.score += REWARDS.first_login.pts;
+    state.user.passia += REWARDS.first_login.passia;
+    state.transactions.unshift({
+      id: uid(), kind: "first_login",
+      pts: REWARDS.first_login.pts, passia: REWARDS.first_login.passia,
+      label: "Bienvenue sur PASSIO", at: Date.now(),
+    });
 
-  state.user.score += REWARDS.daily.pts;
-  state.user.passia += REWARDS.daily.passia;
-  state.transactions.unshift({
-    id: uid(), kind: "daily",
-    pts: REWARDS.daily.pts, passia: REWARDS.daily.passia,
-    label: "Connexion du jour", at: Date.now(),
-  });
+    state.user.score += REWARDS.daily.pts;
+    state.user.passia += REWARDS.daily.passia;
+    state.transactions.unshift({
+      id: uid(), kind: "daily",
+      pts: REWARDS.daily.pts, passia: REWARDS.daily.passia,
+      label: "Connexion du jour", at: Date.now(),
+    });
+  }
 
   saveState();
+
+  // ACTIVATION — aucune donnée personnelle. Les noms de clés évitent la liste
+  // noire PII de telemetry.js : « passion_count » et « primary_passion_id »,
+  // demandés par la spec, percutent « pass » et seraient jetés en SILENCE.
+  // scripts/audit-telemetry-keys.js verrouille ce point.
+  try {
+    if (window.tel && tel.action) {
+      tel.action("signup_completed", { signup_method: "email", flag_v2: v2 });
+      tel.action("passions_selected", {
+        n_interests: selectedPassions.length,
+        primary_id: primaire,
+        starter_profiles: state.user.profiles.length,
+        flag_v2: v2,
+      });
+    }
+  } catch (e) {}
+
   document.getElementById("onboarding").classList.remove("active");
   document.getElementById("landing").classList.remove("active");
   try { renderEverything(); } catch(e) { console.warn("renderEverything error:", e); }
   document.body.classList.add("screen-feed-active");
+
+  try {
+    if (v2 && window.tel && tel.action) {
+      tel.action("personalized_feed_viewed", { n_interests: selectedPassions.length, flag_v2: true });
+    }
+  } catch (e) {}
+
   try { if (typeof supaInit === "function") supaInit(); } catch(e) {}
   // Flush IMMÉDIAT des profils-passion vers user_state dès la fin de l'onboarding.
   // Sans ça, si l'utilisateur ferme l'app dans les 2.5s suivant le choix de ses
@@ -2279,8 +2381,9 @@ function onbFinish() {
     try { if (typeof supaSaveUserState === "function") supaSaveUserState(); } catch(e) {}
     try { if (typeof supaUpsertProfile === "function") supaUpsertProfile(); } catch(e) {}
   }, 800);
-  // Lancer le tour — avec fallback
-  launchTourSafe();
+
+  // Pas de tour forcé en V2 (spec §8) : la compréhension doit venir du produit.
+  if (!v2) launchTourSafe();
 }
 
 // Recherche un post par id dans TOUTES les sources : seed (démo), posts perso
