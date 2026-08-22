@@ -5,8 +5,8 @@
   "type": "module",
   "description": "Centre de pilotage, supervision et test temps réel de Passio",
   "scripts": {
-    "start": "node server/index.js",
-    "dev": "node --watch server/index.js",
+    "start": "node server/start.js",
+    "dev": "node --watch server/start.js",
     "test": "node --test test/*.test.js"
   },
   "dependencies": {
