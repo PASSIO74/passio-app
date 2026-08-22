@@ -1,4 +1,10 @@
 {
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "model": "claude-opus-5",
+  "availableModels": [
+    "claude-opus-5"
+  ],
+  "teammateDefaultModel": "claude-opus-5",
   "hooks": {
     "PreToolUse": [
       {
@@ -7,7 +13,7 @@
           {
             "type": "command",
             "shell": "bash",
-            "command": "node \"C:/Users/BENJAMIN/Desktop/PASSIO/.claude/scripts/garde-commandes.js\"",
+            "command": "node \".claude/scripts/garde-commandes.js\"",
             "timeout": 10,
             "statusMessage": "Contrôle des commandes destructives"
           }
@@ -21,7 +27,7 @@
           {
             "type": "command",
             "shell": "bash",
-            "command": "node \"C:/Users/BENJAMIN/Desktop/PASSIO/.claude/stage-edited-file.js\"",
+            "command": "node \".claude/stage-edited-file.js\"",
             "statusMessage": "Indexation du fichier modifié"
           }
         ]
@@ -33,13 +39,55 @@
           {
             "type": "command",
             "shell": "bash",
-            "command": "node \"C:/Users/BENJAMIN/Desktop/PASSIO/.claude/scripts/compact-permissions.js\" --quiet",
+            "command": "node \".claude/scripts/compact-permissions.js\" --quiet",
             "timeout": 15,
             "statusMessage": "Compactage des permissions"
           }
         ]
       }
     ]
+  },
+  "env": {
+    "ENABLE_STOP_REVIEW": "0",
+    "ANTHROPIC_MODEL": "claude-opus-5",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "claude-opus-5",
+    "CLAUDE_CODE_SUBAGENT_MODEL": "claude-opus-5"
+  },
+  "extraKnownMarketplaces": {
+    "context7-marketplace": {
+      "source": {
+        "source": "github",
+        "repo": "upstash/context7"
+      },
+      "autoUpdate": true
+    },
+    "chrome-devtools-plugins": {
+      "source": {
+        "source": "github",
+        "repo": "ChromeDevTools/chrome-devtools-mcp"
+      },
+      "autoUpdate": true
+    },
+    "supabase-agent-skills": {
+      "source": {
+        "source": "github",
+        "repo": "supabase/agent-skills"
+      },
+      "autoUpdate": true
+    }
+  },
+  "enabledPlugins": {
+    "github@claude-plugins-official": true,
+    "netlify-skills@claude-plugins-official": true,
+    "security-guidance@claude-plugins-official": true,
+    "pr-review-toolkit@claude-plugins-official": true,
+    "claude-code-setup@claude-plugins-official": true,
+    "session-report@claude-plugins-official": true,
+    "playwright@claude-plugins-official": true,
+    "context7@context7-marketplace": true,
+    "chrome-devtools-mcp@chrome-devtools-plugins": true,
+    "supabase@supabase-agent-skills": true,
+    "postgres-best-practices@supabase-agent-skills": true
   },
   "permissions": {
     "defaultMode": "bypassPermissions",

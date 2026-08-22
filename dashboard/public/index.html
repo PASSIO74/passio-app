@@ -5,13 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="color-scheme" content="dark light" />
   <title>Passio — Centre de pilotage</title>
-  <!-- Vrai logo PASSIO (flèche Ascension), identique à l'app -->
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='gA' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%23ddd6fe'/><stop offset='1' stop-color='%23a78bfa'/></linearGradient></defs><rect width='100' height='100' rx='22' fill='url(%23gA)'/><path d='M24 24 L76 24 L24 76' stroke='%23ffffff' stroke-width='13' stroke-linecap='round' stroke-linejoin='round' fill='none'/><path d='M76 24 L76 76' stroke='%234c1d95' stroke-width='13' stroke-linecap='round' fill='none'/></svg>" />
   <link rel="stylesheet" href="css/app.css" />
+  <link rel="stylesheet" href="css/orchestrator.css" />
 </head>
 <body>
   <a href="#view" class="skip-link" id="skipLink">Aller au contenu</a>
-  <!-- ─── Écran de connexion ─── -->
   <div id="loginScreen" class="login-screen" hidden>
     <form id="loginForm" class="login-card" autocomplete="on">
       <div class="login-logo" aria-hidden="true">
@@ -26,7 +25,6 @@
     </form>
   </div>
 
-  <!-- ─── Application ─── -->
   <div id="app" class="app" hidden>
     <aside class="sidebar" id="sidebar">
       <div class="brand">
@@ -48,6 +46,8 @@
           <button id="globalSearchBtn" class="global-search-btn" type="button" aria-label="Rechercher" title="Rechercher">Rechercher</button>
         </div>
         <div class="topbar-right">
+          <a class="btn btn-sm" href="/command.html" title="Poste de commande — risques et actions">Command</a>
+          <a class="btn btn-sm" href="/mobile.html" title="Pilot mobile — supervision et tests autorisés">Pilot</a>
           <span id="envBadge" class="env-badge">—</span>
           <button class="icon-btn" id="notifBtn" aria-label="Notifications — tout ce qui se passe" title="Notifications — tout ce qui se passe"><span id="notifCount" class="badge-count" hidden>0</span></button>
           <button class="icon-btn" id="themeBtn" aria-label="Thème clair/sombre" title="Thème"></button>
@@ -56,17 +56,15 @@
           <button class="icon-btn" id="logoutBtn" aria-label="Se déconnecter" title="Se déconnecter"></button>
         </div>
       </header>
-      <main id="view" class="view" tabindex="-1"><!-- vues injectées --></main>
+      <main id="view" class="view" tabindex="-1"></main>
     </div>
 
-    <!-- Tiroir de détails latéral -->
     <div id="drawer" class="drawer" hidden aria-label="Détails">
       <div class="drawer-head"><strong id="drawerTitle">Détails</strong><button class="icon-btn" id="drawerClose" aria-label="Fermer">&times;</button></div>
       <div id="drawerBody" class="drawer-body"></div>
     </div>
     <div id="drawerScrim" class="drawer-scrim" hidden></div>
 
-    <!-- Panneau de notifications (tout ce qui se passe, en direct) -->
     <div id="notifScrim" class="drawer-scrim" hidden></div>
     <div id="notifPanel" class="alerts-panel notif-panel" hidden aria-label="Notifications">
       <div class="drawer-head">
@@ -84,5 +82,7 @@
   </div>
 
   <script type="module" src="js/app.js"></script>
+  <script type="module" src="js/orchestrator-panel.js"></script>
+  <script src="js/claude-instructions-panel.js"></script>
 </body>
 </html>

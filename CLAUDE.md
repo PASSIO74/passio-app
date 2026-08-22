@@ -12,6 +12,48 @@ Benjamin travaille en autonomie totale (`bypassPermissions` posé aux 3 niveaux 
 
 ---
 
+## 🤝 Modèle multi-IA et contrat de déclenchement
+
+PASSIO est mené par plusieurs IA sous gouvernance unique. Les règles de
+collaboration vivent dans **`AGENTS.md`** (workflow git non négociable, rôles,
+handoff de PR), le routage dans `.passio/orchestrator.json`. Ce fichier-ci est la
+référence *technique*, `AGENTS.md` la référence *collaborative* : lire les deux
+quand la tâche vient d'une issue ou d'une PR.
+
+**ChatGPT ne peut pas parler directement à Claude Code.** Le seul transport est
+GitHub (`.github/workflows/claude-code.yml`, authentifié par l'abonnement via
+`CLAUDE_CODE_OAUTH_TOKEN`). Un ordre ne déclenche rien s'il ne porte pas un
+marqueur, et l'issue doit appartenir à PASSIO74 :
+
+| Voie | Condition exacte |
+|---|---|
+| **label `claude`** (nominal) | événement `labeled` sur une issue de PASSIO74 |
+| `@claude` (secours) | dans le titre/corps d'une issue, ou un commentaire de PASSIO74 sur une issue de PASSIO74 |
+
+⚠️ **Un run `skipped` à la création d'une issue est NORMAL.** La condition teste
+`github.event.label.name`, champ qui n'existe **que** sur l'événement `labeled` :
+l'ouverture de l'issue produit toujours un run `skipped`, puis la pose du label
+en produit un second qui, lui, exécute. Conséquences pratiques :
+
+- créer une issue avec le label **déjà posé** ne déclenche rien — il faut le
+  poser (ou le retirer/reposer) **après** création ;
+- dans Actions, un `skipped` ne distingue pas « jamais labellisé » de « labellisé
+  et exécuté » : c'est le run **suivant** qui fait foi.
+
+C'est exactement ce qui a coûté six ordres perdus les 19–21 août (issues #68,
+#69, #73 — dont le chantier PERF-IOS) : runs 9 à 14 sortis en `skipped`,
+indiscernables d'un succès, sans qu'aucune alerte ne soit levée. **Une issue
+créée n'est jamais la preuve qu'une tâche a tourné** : la preuve est un run vert
+dans Actions → Claude Code, et une PR. Détail : `docs/PHONE_ONLY_AI_WORKFLOW.md`.
+
+Répartition : **ChatGPT** = direction produit, spécification, arbitrage ·
+**Claude Code** = implémentation, backend/Supabase/RLS, sécurité, tests, refacto ·
+**Codex** = revue indépendante · **Lovable / Base44** = laboratoires
+d'exploration, jamais source de vérité, jamais connectés à la prod. GitHub est la
+seule source de vérité — pas une conversation IA, pas un prototype, pas un export.
+
+---
+
 Réseau social des passions. PWA vanilla JS (pas de framework, pas de bundler) + Supabase. Beta privée protégée par code d'accès.
 
 ## Architecture

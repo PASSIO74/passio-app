@@ -12,6 +12,8 @@ import { broadcast } from "./sse.js";
 import { onEvent as alertsOnEvent } from "./alerts.js";
 import { onEvent as interactionsOnEvent } from "./interactions.js";
 import { onEvent as tracesOnEvent, sealExisting as tracesSealExisting } from "./traces.js";
+import { isSyntheticCanary, observeSyntheticCanary, startObservation } from "./observation.js";
+import { startReleaseRecorder } from "./release-recorder.js";
 
 let interactionsDirty = false;
 let tracesDirty = false;
@@ -25,6 +27,13 @@ export function ingestState() { return { supabaseReady, realtimeOk, lastSeenIso,
 
 function ingestOne(row) {
   const ev = normalize(row);
+  // Le canari prouve la chaîne publique → DB → dashboard mais ne doit JAMAIS
+  // polluer utilisateurs, sessions, KPI, bugs, alertes ou traces produit.
+  if (isSyntheticCanary(ev)) {
+    observeSyntheticCanary(ev);
+    if (ev.ts) { const iso = new Date(ev.ts).toISOString(); if (iso > lastSeenIso) lastSeenIso = iso; }
+    return;
+  }
   const isNew = store.add(ev);
   if (!isNew) return;
   if (ev.ts) { const iso = new Date(ev.ts).toISOString(); if (iso > lastSeenIso) lastSeenIso = iso; }
@@ -53,6 +62,12 @@ setInterval(() => {
 }, 1000).unref();
 
 export async function startIngest() {
+  // Ces deux sous-systèmes sont autonomes et ne dépendent pas de Claude.
+  // Ils démarrent même si Supabase est absent afin d'exposer explicitement
+  // NOT_CONFIGURED plutôt qu'un faux vert silencieux.
+  startReleaseRecorder();
+  startObservation().catch((e) => console.error("[observation] démarrage échoué:", e.message));
+
   if (!supabaseReady) {
     console.warn("[ingest] Supabase non configuré (SUPABASE_SERVICE_ROLE_KEY manquante). " +
       "Le dashboard démarre en mode LOCAL : instrumentez Passio et renseignez .env pour les données réelles.");
@@ -77,6 +92,7 @@ export async function startIngest() {
     if (error) throw error;
     (data || []).reverse().forEach((row) => {
       const ev = normalize(row);
+      if (isSyntheticCanary(ev)) { observeSyntheticCanary(ev); return; }
       store.add(ev);
       // Rejoue aussi l'historique dans le traçage : sinon l'onglet « Traçage des
       // actions » repart vide à chaque redémarrage du serveur.
