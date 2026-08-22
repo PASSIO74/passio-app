@@ -12,6 +12,8 @@ export class JsonDb {
   constructor(name, initial) {
     this.file = path.join(config.dataDir, name + ".json");
     this.data = initial;
+    this.loadHealthy = true;
+    this.loadErrorCode = null;
     try {
       if (fs.existsSync(this.file)) {
         this.data = JSON.parse(fs.readFileSync(this.file, "utf8"));
@@ -19,6 +21,8 @@ export class JsonDb {
         this.save();
       }
     } catch (e) {
+      this.loadHealthy = false;
+      this.loadErrorCode = "read_or_parse_failed";
       console.error("[jsondb] lecture échouée pour", name, e.message);
     }
   }
@@ -29,6 +33,12 @@ export class JsonDb {
     return this;
   }
   get() { return this.data; }
+  health() {
+    return {
+      available: this.loadHealthy === true,
+      reason: this.loadHealthy === true ? null : this.loadErrorCode || "unavailable",
+    };
+  }
   set(d) { this.data = d; return this.save(); }
   update(fn) { fn(this.data); return this.save(); }
 }

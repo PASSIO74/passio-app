@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="fr" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#0a0810" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Passio Pilot" />
+  <title>Passio Pilot</title>
+  <link rel="manifest" href="mobile-manifest.webmanifest" />
+  <link rel="stylesheet" href="css/mobile.css" />
+</head>
+<body>
+  <header class="m-head">
+    <div><strong>PASSIO</strong><span>Pilot mobile</span></div>
+    <button id="refresh" class="m-btn">Actualiser</button>
+  </header>
+  <main class="m-main">
+    <section class="m-hero">
+      <div class="m-label">Release Guardian</div>
+      <div class="m-hero-row"><span id="decision" class="m-pill">—</span><strong id="headline">Chargement…</strong></div>
+      <small id="generated">—</small>
+    </section>
+
+    <nav class="m-tabs" aria-label="Pilotage">
+      <button class="active" data-tab="home">Santé</button>
+      <button data-tab="sentinel">Sentinel</button>
+      <button data-tab="incidents">Incidents</button>
+      <button data-tab="changes">Changements</button>
+      <button data-tab="tests">Tests</button>
+    </nav>
+
+    <section id="home" class="m-pane active">
+      <div id="gates" class="m-stack"></div>
+      <h2>3 actions maintenant</h2><div id="actions" class="m-stack"></div>
+      <h2>Observation</h2><div id="observation" class="m-stack"></div>
+    </section>
+
+    <section id="sentinel" class="m-pane">
+      <h2>Sentinel</h2>
+      <p class="m-muted">État vivant, file, réparations et derniers diagnostics. Ce panneau reste en lecture seule.</p>
+      <div id="sentinelState" class="m-stack"></div>
+      <h2>Diagnostics récents</h2><div id="sentinelList" class="m-stack"></div>
+    </section>
+
+    <section id="incidents" class="m-pane">
+      <h2>Incidents ouverts</h2><div id="incidentList" class="m-stack"></div>
+    </section>
+
+    <section id="changes" class="m-pane">
+      <h2>Qu’est-ce qui a changé ?</h2><div id="changeList" class="m-stack"></div>
+    </section>
+
+    <section id="tests" class="m-pane">
+      <h2>Tests autorisés</h2>
+      <p class="m-muted">Aucun terminal n’est exposé. Seules les suites en liste blanche du Control Center peuvent être lancées.</p>
+      <div id="testList" class="m-stack"></div>
+    </section>
+
+    <div id="error" class="m-error" hidden></div>
+  </main>
+  <script type="module" src="js/mobile.js"></script>
+</body>
+</html>
