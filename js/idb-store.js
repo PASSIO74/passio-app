@@ -124,7 +124,7 @@
           if (typeof window.goTo === "function") window.goTo("cdv");
           try {
             if (window.tel && typeof window.tel.action === "function") {
-              window.tel.action("secondary_feature_open", { feature: "cdv", passion: "voyage" });
+              window.tel.action("secondary_feature_open", { feature: "cdv", theme: "voyage" });
             }
           } catch (_) {}
         });

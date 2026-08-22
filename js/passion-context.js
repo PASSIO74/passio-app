@@ -52,14 +52,14 @@
     lastPassion = passion;
     lastProfileId = localId;
 
-    // IMPORTANT : seul passion_ctx est envoyé. profileLocalId reste local car il
+    // IMPORTANT : seul persona_ctx est envoyé. profileLocalId reste local car il
     // peut diverger entre appareils pour la même passion (sync défensive existante).
     try {
       if (window.tel && typeof window.tel.track === "function") {
         window.tel.track("context", "passion_active", {
           severity: "info",
           status: passion ? "ok" : "unknown",
-          meta: { passion_ctx: passion || "none" },
+          meta: { persona_ctx: passion || "none" },
         });
       }
     } catch (e) {}

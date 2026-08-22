@@ -33,7 +33,7 @@ test("le changement de profil émet uniquement la passion métier, jamais l'id l
   expect(result.events).toHaveLength(1);
   expect(result.events[0].type).toBe("context");
   expect(result.events[0].action).toBe("passion_active");
-  expect(result.events[0].fields.meta).toEqual({ passion_ctx: "sport" });
+  expect(result.events[0].fields.meta).toEqual({ persona_ctx: "sport" });
 
   const wire = JSON.stringify(result.events[0]);
   expect(wire).not.toContain("pp_1");
