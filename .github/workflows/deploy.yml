@@ -102,6 +102,14 @@ jobs:
       - name: Audits statiques (stub Supabase hors ligne)
         run: node scripts/audit-supa-stub.js
 
+      # Le filtre PII de telemetry.js est une liste NOIRE : une cle qui la percute
+      # n'est pas signalee, elle est SILENCIEUSEMENT jetee. L'evenement part, sa
+      # charge utile n'arrive jamais, et un test qui stubbe tel.track reste vert.
+      # Mesure le 2026-08-22 : « passion_ctx » (#9) et « passion » (idb-store)
+      # percutaient « pass ». Le premier etait deja en production.
+      - name: Audits statiques (cles de telemetrie vs filtre PII)
+        run: node scripts/audit-telemetry-keys.js
+
       # Le banc des frontieres de confiance du canal Claude Code. Il verifie
       # mecaniquement que les garde-fous sont intacts : Claude sans droit de
       # push, action epinglee au SHA, allowed_bots jamais « * », cible ET

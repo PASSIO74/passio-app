@@ -66,6 +66,7 @@ jobs:
           npm run audit:echappement
           npm run audit:tests
           npm run audit:supa-stub
+          npm run audit:telemetry-keys
 
       - name: Santé publique
         id: public
