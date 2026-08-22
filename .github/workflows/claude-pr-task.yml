@@ -90,15 +90,12 @@ jobs:
               echo "AUTH = CLAUDE PRO OAUTH" ;;
           esac
 
-      - name: Run Claude Code directly with Opus 5 only
+      - name: Run Claude Code (Fable 5 primaire, Opus 5 en repli)
         env:
           # Abonnement uniquement. ANTHROPIC_API_KEY est vidée explicitement :
           # si elle était définie ailleurs, le CLI la préférerait en silence.
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           ANTHROPIC_API_KEY: ''
-          ANTHROPIC_MODEL: claude-opus-5
-          ANTHROPIC_DEFAULT_OPUS_MODEL: claude-opus-5
-          CLAUDE_CODE_SUBAGENT_MODEL: claude-opus-5
           DISABLE_TELEMETRY: '1'
           DISABLE_ERROR_REPORTING: '1'
           DISABLE_BUG_COMMAND: '1'
@@ -106,11 +103,10 @@ jobs:
           set -euo pipefail
           TASK="$(cat .passio/claude-task.md)"
           PROMPT=$(cat <<EOF
-          You are the implementation agent for PASSIO running on Claude Opus 5,
-          authenticated with Benjamin's Claude Pro subscription (OAuth token).
+          You are the implementation agent for PASSIO, authenticated with
+          Benjamin's Claude Pro subscription (OAuth token).
           Read AGENTS.md and CLAUDE.md first and obey all repository invariants.
           Execute the trusted task below on the current PR branch.
-          Use Claude Opus 5 only for this task and all subagents. Never switch to Sonnet or Haiku.
           Make the smallest safe implementation that satisfies the task.
           Do not modify .passio/claude-task.md.
           Do not commit, push, merge, or switch branches; the workflow will persist only the file changes you create.
@@ -121,15 +117,55 @@ jobs:
           EOF
           )
 
+          # ── Politique modeles : Fable 5 primaire, Opus 5 en repli sur ─────
+          # Le repli n'a lieu QUE si le primaire a echoue SANS avoir touche un
+          # fichier. S'il a deja modifie quelque chose, relancer le repli
+          # par-dessus ecraserait un travail partiel : echec explicite.
+          # Aucun autre modele n'est acceptable, et aucun repli ne bascule sur
+          # une cle API facturee : l'auth reste l'abonnement, verifiee plus bas.
+          MODELE_PRIMAIRE=claude-fable-5
+          MODELE_REPLI=claude-opus-5
+
+          lancer_claude() {
+            local modele="$1" flux="$2" code
+            set +e
+            ANTHROPIC_MODEL="${modele}" \
+            ANTHROPIC_DEFAULT_OPUS_MODEL="${modele}" \
+            CLAUDE_CODE_SUBAGENT_MODEL="${modele}" \
+            claude -p "$PROMPT" \
+              --model "${modele}" \
+              --max-turns 40 \
+              --allowedTools "Read,Edit,Write,Glob,Grep,Bash(npm run:*),Bash(npm test:*),Bash(git diff:*),Bash(git status:*)" \
+              --output-format stream-json \
+              --verbose > "${flux}" 2> /tmp/claude-stderr.log
+            code=$?
+            set -e
+            return ${code}
+          }
+
+          travail_produit() {
+            [ -n "$(git status --porcelain | awk '{print substr($0,4)}' \
+                    | grep -v '^\.passio/claude-task\.md$' || true)" ]
+          }
+
+          echo "Modele primaire : ${MODELE_PRIMAIRE}"
           set +e
-          claude -p "$PROMPT" \
-            --model claude-opus-5 \
-            --max-turns 40 \
-            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(npm run:*),Bash(npm test:*),Bash(git diff:*),Bash(git status:*)" \
-            --output-format stream-json \
-            --verbose > /tmp/claude-stream.jsonl 2> /tmp/claude-stderr.log
+          lancer_claude "${MODELE_PRIMAIRE}" /tmp/claude-stream.jsonl
           CLAUDE_EXIT=$?
           set -e
+
+          if [ "${CLAUDE_EXIT}" -ne 0 ]; then
+            if travail_produit; then
+              echo "::error title=Repli refuse::${MODELE_PRIMAIRE} a echoue APRES avoir modifie des fichiers. Relancer ${MODELE_REPLI} par-dessus ecraserait un travail partiel. Echec explicite, conformement a la politique."
+              exit 1
+            fi
+            echo "::notice title=Repli sur ${MODELE_REPLI}::${MODELE_PRIMAIRE} a echoue (code ${CLAUDE_EXIT}) sans produire la moindre modification : repli controle."
+            cp /tmp/claude-stream.jsonl /tmp/claude-stream-primaire.jsonl 2>/dev/null || true
+            set +e
+            lancer_claude "${MODELE_REPLI}" /tmp/claude-stream.jsonl
+            CLAUDE_EXIT=$?
+            set -e
+          fi
 
           # L'événement `system/init` porte le modèle ET la source d'auth réelle.
           # C'est la seule preuve non déclarative de ce qui a servi à payer.
@@ -169,9 +205,9 @@ jobs:
           esac
 
           case "$MODEL" in
-            claude-opus-5*) ;;
+            claude-fable-5*|claude-opus-5*) ;;
             *)
-              echo "Refusing task: expected Claude Opus 5, got ${MODEL:-unknown}."
+              echo "::error title=Modele hors politique::Attendu ${MODELE_PRIMAIRE} ou ${MODELE_REPLI}, obtenu « ${MODEL:-unknown} ». Refus : pas de derive silencieuse vers un autre modele."
               exit 1
               ;;
           esac
