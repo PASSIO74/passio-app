@@ -15,6 +15,34 @@ The canonical collaboration model is documented in `docs/PASSIO_AI_OPERATING_SYS
 - **GitHub**: canonical technical state for code, branches, commits, pull requests, reviews, CI results and merge history.
 - **Centre de pilotage + Sentinelle**: operational visibility, incident detection, safe remediation, rollback/kill-switch visibility and mobile supervision for relevant PASSIO changes.
 
+## Reaching Claude Code
+
+ChatGPT has no direct channel to Claude Code. GitHub is the transport
+(`.github/workflows/claude-code.yml`, authenticated by Benjamin's subscription
+through `CLAUDE_CODE_OAUTH_TOKEN`). An order triggers nothing unless it carries a
+marker, and the issue must belong to `PASSIO74`:
+
+| Path | Exact condition |
+|---|---|
+| **`claude` label** (nominal) | a `labeled` event on an issue opened by PASSIO74 |
+| `@claude` (fallback) | in an issue title/body, or in a PASSIO74 comment on a PASSIO74 issue |
+
+**A `skipped` run when an issue is created is expected.** The condition reads
+`github.event.label.name`, a field that exists **only** on the `labeled` event.
+Opening the issue always produces a `skipped` run; applying the label produces a
+second run, and that one executes. Two practical consequences:
+
+- creating an issue with the label **already applied** triggers nothing — apply
+  it (or remove and re-apply it) **after** creation;
+- in Actions, `skipped` does not distinguish "never labeled" from "labeled and
+  executed": the **next** run is the one that counts.
+
+This is what cost six orders on 19–21 August (issues #68, #69, #73 — including
+the PERF-IOS project): runs 9 through 14 came out `skipped`, indistinguishable
+from success, with no alert raised. **Creating an issue is never evidence that a
+task ran**: the evidence is a successful run under Actions → Claude Code, and a
+pull request. See `docs/PHONE_ONLY_AI_WORKFLOW.md`.
+
 ## Non-negotiable Git workflow
 
 1. Never develop directly on `main`.
