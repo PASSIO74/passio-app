@@ -252,6 +252,10 @@ exigences=[
  ("trace JSON ou JSONL system/init lue", 'JSON.parse(raw)' in run and "event?.subtype === 'init'" in run and 'event.model' in run),
  ("apiKeySource none seule valeur OAuth admise", 'event.apiKeySource' in run and "keySource !== 'none'" in run and "actualAuth = keySource || 'ABSENTE'" in run),
  ("Fable 5 ou Opus 5 seulement", "['claude-fable-5', 'claude-opus-5']" in run),
+ # Une trace illisible ne doit ni faire tomber une stack trace, ni ouvrir la
+ # porte : la garde refuse, mais en disant pourquoi.
+ ("lecture de la trace protégée", 'try {' in run.split('readFileSync')[0][-40:] or 'raw = fs.readFileSync' in run and 'catch (erreur)' in run),
+ ("trace illisible = refus, jamais passage en force", 'Trace illisible' in run and 'process.exit(1)' in run),
  ("publication et preuve exigent la garde modèle", "steps.modele.outcome == 'success'" in str(publier.get('if','')) and "steps.modele.outcome == 'success'" in str(preuve.get('if',''))),
 ]
 ko=0
@@ -260,7 +264,7 @@ for lib,vrai in exigences:
     if not vrai: ko+=1
 sys.exit(1 if ko else 0)
 PYMODEL
-if [ $? -eq 0 ]; then ok=$((ok+10)); else ko=$((ko+1)); fi
+if [ $? -eq 0 ]; then ok=$((ok+12)); else ko=$((ko+1)); fi
 
 scenario_modele() { # <nom> <format:json|jsonl> <modele> <source> <attendu:PASSE|REFUS>
   local nom="$1" format="$2" modele="$3" source="$4" attendu="$5"
@@ -329,6 +333,9 @@ exigences=[
  # subscription-only : sa borne sûre est le quota OAuth + le délai du job.
  ("aucun plafond USD trompeur sur OAuth abonnement", '--max-budget-usd' not in args),
  ("durée du job bornée", isinstance(d['jobs']['claude'].get('timeout-minutes'), int) and 0 < d['jobs']['claude']['timeout-minutes'] <= 120),
+ # `if: failure()` ne voit pas une annulation. Sans marche dédiée, un ordre
+ # évincé de la file disparaît sans un mot.
+ ("un run annulé est signalé sur l'issue", any('cancelled()' in str(x.get('if','')) and 'gh issue comment' in str(x.get('run','')) for x in steps)),
  # Le dépôt est PUBLIC : le diagnostic ne doit pas rouvrir tout le transcript.
  ("aucun retour à show_full_output", str(claude.get('with',{}).get('show_full_output','')).lower() not in ('true','1','yes')),
 ]
@@ -338,7 +345,7 @@ for lib,vrai in exigences:
     if not vrai: ko+=1
 sys.exit(1 if ko else 0)
 PYDIAG
-if [ $? -eq 0 ]; then ok=$((ok+16)); else ko=$((ko+1)); fi
+if [ $? -eq 0 ]; then ok=$((ok+17)); else ko=$((ko+1)); fi
 
 # Rejoue la marche RÉELLE du workflow sur des traces d'exécution.
 scenario_diag() { # <nom> <contenu-trace|VIDE> <attendu-dans-la-sortie|-> 
