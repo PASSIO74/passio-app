@@ -102,6 +102,20 @@ jobs:
       - name: Audits statiques (stub Supabase hors ligne)
         run: node scripts/audit-supa-stub.js
 
+      # Le banc des frontieres de confiance du canal Claude Code. Il verifie
+      # mecaniquement que les garde-fous sont intacts : Claude sans droit de
+      # push, action epinglee au SHA, allowed_bots jamais « * », cible ET
+      # instruction de PASSIO74, chemins de controle hors d'atteinte, aucun
+      # motif d'allowlist mort-ne, politique de modeles.
+      #
+      # Il existait depuis ce matin avec 76 assertions eprouvees par mutation,
+      # et n'etait lance NULLE PART : il ne protegeait donc rien. Une PR qui
+      # affaiblissait un garde-fou passait au vert. C'est corrige ici : toute
+      # regression sur une frontiere rend la CI rouge, sans que personne ait
+      # a y penser.
+      - name: Frontieres de confiance du canal Claude
+        run: bash tests/ci/frontiere-confiance.sh
+
       - name: Installer Playwright
         run: |
           npm install --no-save @playwright/test
