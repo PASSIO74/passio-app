@@ -1,3 +1,12 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# Claude PR Task — exécution d'une tâche cadrée écrite dans .passio/claude-task.md
+# sur une branche `claude-task/*`, via le CLI Claude Code appele directement.
+#
+# AUTHENTIFICATION : abonnement Claude Pro (CLAUDE_CODE_OAUTH_TOKEN).
+# `secrets.PASSIO` et `ANTHROPIC_API_KEY` ne sont plus lus — le 2026-08-21 le
+# run 32364661774 est mort sur « Credit balance is too low » alors que le modèle
+# et l'auth étaient bons : c'est la facturation à l'usage qui bloquait.
+# ═══════════════════════════════════════════════════════════════════════════
 name: Claude PR Task
 
 on:
@@ -22,6 +31,13 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 1
 
+      - name: Contrôle d'authentification (subscription-only)
+        id: auth
+        uses: ./.github/actions/claude-auth-guard
+        with:
+          oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          policy: subscription-only
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -29,15 +45,57 @@ jobs:
 
       - name: Install Claude Code CLI
         run: |
-          npm install -g @anthropic-ai/claude-code
+          # Version ÉPINGLÉE, même raison que le SHA de l'action dans les
+          # autres workflows : ce CLI reçoit CLAUDE_CODE_OAUTH_TOKEN et un
+          # GITHUB_TOKEN en écriture. 2.1.238 est la version que
+          # claude-code-action v1.0.198 embarque (« chore: bump Claude Code
+          # to 2.1.238 »), donc les deux canaux exécutent le même code.
+          npm install -g @anthropic-ai/claude-code@2.1.238
           claude --version
 
-      - name: Run Claude Code directly with Opus 5 only
+      # Preuve d'auth AVANT la moindre dépense : `claude auth status` interroge
+      # le CLI lui-même et ne consomme aucun jeton de modèle.
+      - name: Diagnostic AUTH (aucune consommation)
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.PASSIO }}
-          ANTHROPIC_MODEL: claude-opus-5
-          ANTHROPIC_DEFAULT_OPUS_MODEL: claude-opus-5
-          CLAUDE_CODE_SUBAGENT_MODEL: claude-opus-5
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          set -euo pipefail
+          # `claude auth status` répond du JSON : { loggedIn, authMethod, apiProvider }
+          # authMethod vaut 'oauth_token' sur abonnement, 'api_key' sur clé facturée.
+          STATUT="$(claude auth status 2>&1 || true)"
+          METHODE="$(printf '%s' "$STATUT" | node -e "
+            let s=''; process.stdin.on('data',d=>s+=d).on('end',()=>{
+              try { process.stdout.write(String(JSON.parse(s).authMethod || '')); }
+              catch { process.stdout.write(''); }
+            });
+          ")"
+          CONNECTE="$(printf '%s' "$STATUT" | node -e "
+            let s=''; process.stdin.on('data',d=>s+=d).on('end',()=>{
+              try { process.stdout.write(String(JSON.parse(s).loggedIn === true)); }
+              catch { process.stdout.write('false'); }
+            });
+          ")"
+          echo "loggedIn   : ${CONNECTE}"
+          echo "authMethod : ${METHODE:-inconnu}"
+          if [ "${CONNECTE}" != "true" ]; then
+            echo "AUTH = NON CONFIRMEE A CE STADE"
+            echo "::warning title=Claude Code ne confirme pas la connexion ici::'claude auth status' ne reconnaît pas encore CLAUDE_CODE_OAUTH_TOKEN. Ce n'est pas bloquant : le verdict qui fait foi est apiKeySource, lu dans le flux du run réel plus bas. Si ce run échoue ensuite, la cause est un jeton absent, expiré ou révoqué — le regénérer avec 'claude setup-token'."
+          fi
+          case "${METHODE}" in
+            api_key|apiKey|ANTHROPIC_API_KEY)
+              echo "AUTH = ANTHROPIC API"
+              echo "::error title=Politique subscription-only violée::Le CLI s'authentifie par clé API facturée. PASSIO n'utilise que l'abonnement Claude Pro : refus d'exécuter."
+              exit 1 ;;
+            *)
+              echo "AUTH = CLAUDE PRO OAUTH" ;;
+          esac
+
+      - name: Run Claude Code (Fable 5 primaire, Opus 5 en repli)
+        env:
+          # Abonnement uniquement. ANTHROPIC_API_KEY est vidée explicitement :
+          # si elle était définie ailleurs, le CLI la préférerait en silence.
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          ANTHROPIC_API_KEY: ''
           DISABLE_TELEMETRY: '1'
           DISABLE_ERROR_REPORTING: '1'
           DISABLE_BUG_COMMAND: '1'
@@ -45,59 +103,154 @@ jobs:
           set -euo pipefail
           TASK="$(cat .passio/claude-task.md)"
           PROMPT=$(cat <<EOF
-          You are the implementation agent for PASSIO running on Claude Opus 5.
+          You are the implementation agent for PASSIO, authenticated with
+          Benjamin's Claude Pro subscription (OAuth token).
           Read AGENTS.md and CLAUDE.md first and obey all repository invariants.
           Execute the trusted task below on the current PR branch.
-          Use Claude Opus 5 only for this task and all subagents. Never switch to Sonnet or Haiku.
           Make the smallest safe implementation that satisfies the task.
           Do not modify .passio/claude-task.md.
           Do not commit, push, merge, or switch branches; the workflow will persist only the file changes you create.
-          Run relevant checks when possible.
+          Run relevant checks when possible and report failures honestly.
 
           TASK:
           ${TASK}
           EOF
           )
 
+          # ── Politique modeles : Fable 5 primaire, Opus 5 en repli sur ─────
+          # Le repli n'a lieu QUE si le primaire a echoue SANS avoir touche un
+          # fichier. S'il a deja modifie quelque chose, relancer le repli
+          # par-dessus ecraserait un travail partiel : echec explicite.
+          # Aucun autre modele n'est acceptable, et aucun repli ne bascule sur
+          # une cle API facturee : l'auth reste l'abonnement, verifiee plus bas.
+          MODELE_PRIMAIRE=claude-fable-5
+          MODELE_REPLI=claude-opus-5
+
+          lancer_claude() {
+            local modele="$1" flux="$2" code
+            set +e
+            ANTHROPIC_MODEL="${modele}" \
+            ANTHROPIC_DEFAULT_OPUS_MODEL="${modele}" \
+            CLAUDE_CODE_SUBAGENT_MODEL="${modele}" \
+            claude -p "$PROMPT" \
+              --model "${modele}" \
+              --max-turns 40 \
+              --allowedTools "Read,Edit,Write,Glob,Grep,Bash(npm run:*),Bash(npm test:*),Bash(git diff:*),Bash(git status:*)" \
+              --output-format stream-json \
+              --verbose > "${flux}" 2> /tmp/claude-stderr.log
+            code=$?
+            set -e
+            return ${code}
+          }
+
+          travail_produit() {
+            [ -n "$(git status --porcelain | awk '{print substr($0,4)}' \
+                    | grep -v '^\.passio/claude-task\.md$' || true)" ]
+          }
+
+          echo "Modele primaire : ${MODELE_PRIMAIRE}"
           set +e
-          claude -p "$PROMPT" \
-            --model claude-opus-5 \
-            --max-turns 40 \
-            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(npm run:*),Bash(npm test:*),Bash(git diff:*),Bash(git status:*)" \
-            --output-format stream-json \
-            --verbose > /tmp/claude-stream.jsonl
+          lancer_claude "${MODELE_PRIMAIRE}" /tmp/claude-stream.jsonl
           CLAUDE_EXIT=$?
           set -e
 
-          MODEL="$(node <<'NODE'
+          if [ "${CLAUDE_EXIT}" -ne 0 ]; then
+            if travail_produit; then
+              echo "::error title=Repli refuse::${MODELE_PRIMAIRE} a echoue APRES avoir modifie des fichiers. Relancer ${MODELE_REPLI} par-dessus ecraserait un travail partiel. Echec explicite, conformement a la politique."
+              exit 1
+            fi
+            echo "::notice title=Repli sur ${MODELE_REPLI}::${MODELE_PRIMAIRE} a echoue (code ${CLAUDE_EXIT}) sans produire la moindre modification : repli controle."
+            cp /tmp/claude-stream.jsonl /tmp/claude-stream-primaire.jsonl 2>/dev/null || true
+            set +e
+            lancer_claude "${MODELE_REPLI}" /tmp/claude-stream.jsonl
+            CLAUDE_EXIT=$?
+            set -e
+          fi
+
+          # L'événement `system/init` porte le modèle ET la source d'auth réelle.
+          # C'est la seule preuve non déclarative de ce qui a servi à payer.
+          MODEL=""; KEY_SOURCE=""
+          eval "$(node <<'NODE'
           const fs = require('fs');
-          const lines = fs.readFileSync('/tmp/claude-stream.jsonl', 'utf8').split(/\r?\n/);
-          let model = '';
-          for (const line of lines) {
-            if (!line.trim()) continue;
-            try {
-              const event = JSON.parse(line);
-              if (event.type === 'system' && event.subtype === 'init' && event.model) {
-                model = String(event.model);
-                break;
-              }
-            } catch (_) {}
-          }
-          process.stdout.write(model);
+          let model = '', keySource = '';
+          try {
+            for (const line of fs.readFileSync('/tmp/claude-stream.jsonl', 'utf8').split(/\r?\n/)) {
+              if (!line.trim()) continue;
+              try {
+                const event = JSON.parse(line);
+                if (event.type === 'system' && event.subtype === 'init') {
+                  model = String(event.model || '');
+                  keySource = String(event.apiKeySource || '');
+                  break;
+                }
+              } catch (_) {}
+            }
+          } catch (_) {}
+          const q = (v) => "'" + String(v).replace(/'/g, "'\\''") + "'";
+          process.stdout.write(`MODEL=${q(model)}\nKEY_SOURCE=${q(keySource)}\n`);
           NODE
           )"
 
-          echo "Claude Code model: ${MODEL:-unknown}"
-          case "$MODEL" in
-            claude-opus-5*) ;;
+          echo "Claude Code model : ${MODEL:-unknown}"
+          echo "apiKeySource      : ${KEY_SOURCE:-none}"
+
+          # Diagnostic d'authentification explicite, sans jamais montrer le secret.
+          case "${KEY_SOURCE}" in
+            ANTHROPIC_API_KEY|apiKey|api_key)
+              echo "AUTH = ANTHROPIC API"
+              echo "::error title=Politique subscription-only violée::Le run a consommé une clé API Anthropic facturée. Refus."
+              exit 1 ;;
             *)
-              echo "Refusing task: expected Claude Opus 5, got ${MODEL:-unknown}."
+              echo "AUTH = CLAUDE PRO OAUTH" ;;
+          esac
+
+          case "$MODEL" in
+            claude-fable-5*|claude-opus-5*) ;;
+            *)
+              echo "::error title=Modele hors politique::Attendu ${MODELE_PRIMAIRE} ou ${MODELE_REPLI}, obtenu « ${MODEL:-unknown} ». Refus : pas de derive silencieuse vers un autre modele."
               exit 1
               ;;
           esac
 
           if [ "$CLAUDE_EXIT" -ne 0 ]; then
             echo "Claude Code exited with status $CLAUDE_EXIT."
+            node <<'NODE'
+          const fs = require('fs');
+          const scrub = (value) => String(value || '')
+            .replace(/sk-ant-[A-Za-z0-9_-]+/g, '[REDACTED_ANTHROPIC_CREDENTIAL]')
+            .replace(/gh[pousr]_[A-Za-z0-9]+/g, '[REDACTED_GITHUB_TOKEN]')
+            .replace(/sb_secret_[A-Za-z0-9_-]+/g, '[REDACTED_SUPABASE_KEY]')
+            .slice(0, 4000);
+
+          let lastResult = null;
+          try {
+            for (const line of fs.readFileSync('/tmp/claude-stream.jsonl', 'utf8').split(/\r?\n/)) {
+              if (!line.trim()) continue;
+              try {
+                const event = JSON.parse(line);
+                if (event.type === 'result' || event.is_error === true || event.error) lastResult = event;
+              } catch (_) {}
+            }
+          } catch (_) {}
+
+          console.log('PASSIO_CLOUD_DIAGNOSTIC_BEGIN');
+          if (lastResult) {
+            console.log(scrub(JSON.stringify({
+              type: lastResult.type,
+              subtype: lastResult.subtype,
+              is_error: lastResult.is_error,
+              result: lastResult.result,
+              error: lastResult.error,
+            })));
+          } else {
+            console.log('No structured Claude result event was produced.');
+          }
+          try {
+            const stderr = fs.readFileSync('/tmp/claude-stderr.log', 'utf8').trim();
+            if (stderr) console.log(scrub(stderr));
+          } catch (_) {}
+          console.log('PASSIO_CLOUD_DIAGNOSTIC_END');
+          NODE
             exit "$CLAUDE_EXIT"
           fi
 
@@ -111,7 +264,7 @@ jobs:
 
           CHANGED="$(git status --porcelain | awk '{print substr($0,4)}' | grep -v '^.passio/claude-task.md$' || true)"
           if [ -z "$CHANGED" ]; then
-            echo "Claude produced no non-task file changes."
+            echo "::error title=Aucun diff applicatif::Claude n'a produit aucune modification de fichier. La tâche n'a PAS été faite."
             exit 1
           fi
 
@@ -126,5 +279,29 @@ jobs:
           git config user.email "41898282+claude[bot]@users.noreply.github.com"
           git add -A
           git reset -- .passio/claude-task.md
-          git commit -m "test: Claude Code Opus 5 applies PR task"
+          git commit -m "task: Claude Code applique la tache de la PR"
           git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
+
+      - name: Signaler l'échec sur la PR
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MODE_AUTH: ${{ steps.auth.outputs.auth_mode || 'NON VÉRIFIÉE' }}
+          LIEN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          cat > /tmp/echec.md <<EOF
+          ### ❌ Claude Code n'a pas exécuté cette tâche
+
+          | | |
+          |---|---|
+          | Authentification | \`${MODE_AUTH}\` |
+          | Run | ${LIEN} |
+
+          Aucune modification n'a été persistée sur cette branche. La marche en
+          rouge du run porte la cause exacte.
+
+          ---
+          _Generated by [Claude Code](https://claude.ai/code)_
+          EOF
+          gh pr comment "${{ github.event.pull_request.number }}" --repo "${{ github.repository }}" --body-file /tmp/echec.md

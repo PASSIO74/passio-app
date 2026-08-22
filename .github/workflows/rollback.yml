@@ -1,0 +1,123 @@
+name: Préparer un rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: "SHA du commit de main à annuler"
+        required: true
+        type: string
+      reason:
+        description: "Raison opérationnelle du rollback"
+        required: true
+        type: string
+      confirmation:
+        description: "Écrire exactement ROLLBACK"
+        required: true
+        type: string
+
+concurrency:
+  group: rollback-passio
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  prepare:
+    name: Branche et PR de rollback
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Vérifier la confirmation
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          if [ "${CONFIRMATION}" != "ROLLBACK" ]; then
+            echo "::error title=Confirmation refusée::Écrire exactement ROLLBACK."
+            exit 1
+          fi
+
+      - name: Checkout main complet
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Préparer le revert isolé
+        id: revert
+        env:
+          TARGET_INPUT: ${{ inputs.commit }}
+          REASON: ${{ inputs.reason }}
+        run: |
+          set -euo pipefail
+          git fetch origin main
+
+          case "${TARGET_INPUT}" in
+            *[!0-9a-fA-F]*|"")
+              echo "::error title=SHA invalide::Le commit doit être un SHA Git hexadécimal."
+              exit 1 ;;
+          esac
+          if [ "${#TARGET_INPUT}" -lt 7 ] || [ "${#TARGET_INPUT}" -gt 40 ]; then
+            echo "::error title=SHA invalide::Le SHA doit contenir entre 7 et 40 caractères."
+            exit 1
+          fi
+
+          target="$(git rev-parse --verify "${TARGET_INPUT}^{commit}")"
+          if ! git merge-base --is-ancestor "${target}" origin/main; then
+            echo "::error title=Commit hors main::Le commit demandé n'appartient pas à l'historique de main."
+            exit 1
+          fi
+
+          fields="$(git rev-list --parents -n 1 "${target}" | wc -w)"
+          if [ "${fields}" -ne 2 ]; then
+            echo "::error title=Commit de merge::Le rollback automatique n'accepte qu'un commit à parent unique. Préparer manuellement le revert -m adapté."
+            exit 1
+          fi
+
+          branch="rollback/${GITHUB_RUN_ID}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "${branch}" origin/main
+
+          if ! git revert --no-edit "${target}"; then
+            git revert --abort || true
+            echo "::error title=Conflit de rollback::Le revert n'est pas automatique. Aucune branche n'a été poussée."
+            exit 1
+          fi
+
+          git push origin "HEAD:refs/heads/${branch}"
+          {
+            echo "branch=${branch}"
+            echo "target=${target}"
+            echo "short=${target:0:8}"
+          } >> "${GITHUB_OUTPUT}"
+
+          {
+            echo "## Rollback demandé"
+            echo
+            echo "- Commit annulé : \`${target}\`"
+            echo "- Run : https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo
+            echo "### Raison"
+            echo
+            printf '%s\n' "${REASON}"
+            echo
+            echo "### Garde-fous"
+            echo
+            echo "- branche isolée : \`${branch}\`"
+            echo "- aucune fusion automatique"
+            echo "- aucun déploiement automatique"
+            echo "- CI et contre-revue obligatoires avant fusion"
+          } > "${RUNNER_TEMP}/rollback-pr.md"
+
+      - name: Ouvrir la PR en brouillon
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ steps.revert.outputs.branch }}
+          SHORT: ${{ steps.revert.outputs.short }}
+        run: |
+          gh pr create --repo "${GITHUB_REPOSITORY}" --base main --head "${BRANCH}" --draft \
+            --title "rollback: annuler ${SHORT}" \
+            --body-file "${RUNNER_TEMP}/rollback-pr.md"
