@@ -45,8 +45,12 @@
       function doInsert(payload) {
         try { window.supa.from("client_errors").insert(payload).then(function(){}, function(){}); } catch (e) {}
       }
+      // ⚠️ `window.supa` existe dès le PARSE d'app-08 : c'est le stub noop, dont
+      // l'insert ne part nulle part. Vider la file dessus jetait justement les
+      // erreurs les plus utiles — celles du boot — alors que le vrai client
+      // arrive une à deux secondes plus tard. On attend `_supaReal`.
       function flush() {
-        if (!window.supa) return;
+        if (!window._supaReal) return;
         while (pending.length) doInsert(pending.shift());
       }
       function report(message, source, line, col, stackText) {
@@ -63,8 +67,8 @@
             ua: navigator.userAgent.slice(0, 200),
             uid: window.MY_UID || null,
           };
-          if (window.supa) doInsert(payload);
-          else pending.push(payload); // boot : on garde pour plus tard
+          if (window._supaReal) doInsert(payload);
+          else pending.push(payload); // boot (ou stub noop) : on garde pour plus tard
         } catch (e) {}
       }
       window.addEventListener("error", function(e) {
@@ -80,8 +84,8 @@
       var tries = 0;
       var iv = setInterval(function() {
         tries++;
-        if (window.supa) flush();
-        if (window.supa || tries > 40) clearInterval(iv); // abandon après ~20s
+        if (window._supaReal) flush();
+        if (window._supaReal || tries > 40) clearInterval(iv); // abandon après ~20s
       }, 500);
     })();
 

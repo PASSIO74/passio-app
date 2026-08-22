@@ -33,6 +33,30 @@ async function compteurRemontees(page) {
   return envois;
 }
 
+/**
+ * Attend le VRAI client Supabase, ou IGNORE le test s'il ne peut pas exister.
+ *
+ * Depuis le 2026-08-22, `platform.js` ne vide plus sa file d'erreurs sur
+ * `window.supa` mais sur `window._supaReal` : `window.supa` existe dès le parse
+ * d'app-08, mais c'est le stub noop, et vider la file dessus jetait justement
+ * les erreurs de boot (cf. js/platform.js). La remontée n'est donc branchée
+ * qu'une fois le SDK arrivé du CDN. Sans cette attente, le test « la chaîne
+ * fonctionne » deviendrait flaky et le test « rien ne part » passerait au vert
+ * en mesurant une fenêtre où RIEN ne pouvait partir de toute façon.
+ *
+ * Quand cdn.jsdelivr.net est injoignable (bac à sable réseau fermé), la chaîne
+ * n'est pas cassée : elle est INVÉRIFIABLE. On l'annonce comme telle plutôt que
+ * de rendre un rouge qui accuserait le code, ou un vert qui ne prouverait rien.
+ * En CI le CDN est joignable et les deux tests tournent à pleine force.
+ */
+async function attendreClientReel(page) {
+  try {
+    await page.waitForFunction(() => window._supaReal === true, null, { timeout: 20000 });
+  } catch (e) {
+    test.skip(true, "SDK Supabase injoignable (CDN bloqué) : chaîne de remontée non vérifiable ici");
+  }
+}
+
 /** Provoque une vraie erreur non capturée, celle que `window.onerror` voit. */
 async function provoquerErreur(page) {
   await page.evaluate(() => {
@@ -51,6 +75,7 @@ test.describe("Monitoring — bruit de test", () => {
     await page.addInitScript(([k, t]) => sessionStorage.setItem(k, t), [GATE_KEY, GATE_TOKEN]);
     await page.goto("/index.html");
     await page.waitForSelector("#landing.active", { timeout: 30000 });
+    await attendreClientReel(page);
     await provoquerErreur(page);
 
     console.log(`[monitoring] local sans indicateur : ${envois.length} remontée(s)`);
@@ -67,6 +92,7 @@ test.describe("Monitoring — bruit de test", () => {
     await page.addInitScript(([k, t]) => sessionStorage.setItem(k, t), [GATE_KEY, GATE_TOKEN]);
     await page.goto("/index.html?monitoring=1");
     await page.waitForSelector("#landing.active", { timeout: 30000 });
+    await attendreClientReel(page);
     await provoquerErreur(page);
 
     console.log(`[monitoring] avec ?monitoring=1 : ${envois.length} remontée(s)`);

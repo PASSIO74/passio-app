@@ -95,6 +95,13 @@ jobs:
       - name: Audits statiques (tests creux)
         run: node scripts/audit-tests-creux.js --ci
 
+      # Le SDK Supabase vient d'un CDN : tant qu'il n'est pas là, TOUT passe par
+      # le stub noop d'app-08. Un membre appelé par l'app et absent du stub ne se
+      # voit qu'hors ligne, en TypeError non rattrapé — donc là où le stub devait
+      # protéger. Mesuré le 2026-08-22 : .not/.or/.update/storage/functions.
+      - name: Audits statiques (stub Supabase hors ligne)
+        run: node scripts/audit-supa-stub.js
+
       # Le banc des frontieres de confiance du canal Claude Code. Il verifie
       # mecaniquement que les garde-fous sont intacts : Claude sans droit de
       # push, action epinglee au SHA, allowed_bots jamais « * », cible ET

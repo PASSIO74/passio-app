@@ -2218,16 +2218,95 @@ let supa;
 // casser (offline-safe). Le VRAI client est construit par _initRealSupa() en tête
 // de boot(), une fois ensureSupabase() résolu.
 function _buildNoopSupa() {
-  const _noopQ = () => ({ select: () => _noopQ(), order: () => _noopQ(), limit: () => Promise.resolve({data:[],error:null}), eq: () => _noopQ(), neq: () => _noopQ(), ilike: () => _noopQ(), gte: () => _noopQ(), in: () => _noopQ(), maybeSingle: () => Promise.resolve({data:null,error:null}), single: () => Promise.resolve({data:null,error:null}), delete: () => _noopQ(), upsert: () => Promise.resolve({error:null}), insert: () => _noopQ() });
+  // Le stub doit couvrir TOUTE la surface Supabase que l'app appelle : un seul
+  // maillon manquant transforme la coupure réseau en TypeError non rattrapée,
+  // exactement ce que ce stub existe pour éviter. Constaté le 2026-08-22 :
+  // `.not()`, `.or()`, `.update()`, `supa.storage` et `supa.functions` étaient
+  // absents — `getEventRatings` et l'annuaire des profils cassaient hors ligne
+  // (« supa.from(...).select(...).not is not a function »), et un envoi de
+  // pièce jointe levait sur `supa.storage` undefined au lieu de retomber sur la
+  // data URL. `scripts/audit-supa-stub.js` (CI) empêche la prochaine omission.
+  // `error: null` = on garde la sémantique historique côté BASE : hors ligne
+  // l'app continue en local, elle ne crie pas à l'échec sur chaque écriture.
+  // ⚠️ `data: []` n'est PAS neutre pour autant : `_writeVerdict` (app-02) lit
+  // `res.data.length`, donc un appel marqué `expectRows` bascule de « OK »
+  // (ancien stub : pas de `.data` du tout → rows null → règle inerte) à
+  // « ÉCHEC » (0 ligne). C'est le verdict HONNÊTE — hors ligne l'écriture n'a
+  // effectivement pas eu lieu — et tous les appelants `expectRows` sont gardés
+  // par `window._supaReal`, donc inatteignables ici. Ne pas « restaurer »
+  // l'ancien comportement en croyant corriger une régression.
+  const _res = (data) => ({ data: data === undefined ? [] : data, error: null, count: 0, status: 200, statusText: "OK" });
+  // Erreur explicite pour tout ce qui SORT de l'appareil (upload, fonction
+  // edge) : là, un faux succès serait pire qu'un échec — l'appelant retombe sur
+  // sa data URL locale au lieu de publier une URL distante qui n'existe pas.
+  const _ko = () => Promise.resolve({ data: null, error: { message: "Supabase non disponible" } });
+  function _noopQ() {
+    const q = {
+      // Terminateurs : le builder est lui-même « thenable », donc n'importe quel
+      // maillon de chaîne peut être `await`é ou suivi d'un .then/.catch — comme
+      // le vrai PostgREST, où select/insert/update/delete sont des promesses.
+      then: (onOk, onKo) => Promise.resolve(_res()).then(onOk, onKo),
+      catch: (onKo) => Promise.resolve(_res()).catch(onKo),
+      finally: (fn) => Promise.resolve(_res()).finally(fn),
+      single: () => Promise.resolve({ data: null, error: null }),
+      maybeSingle: () => Promise.resolve({ data: null, error: null }),
+      csv: () => Promise.resolve({ data: "", error: null }),
+      geojson: () => Promise.resolve({ data: null, error: null }),
+      explain: () => Promise.resolve({ data: null, error: null }),
+    };
+    // Verbes et filtres : tous rendent le MÊME builder, donc toute chaîne, quel
+    // que soit son ordre, reste valide (le vrai SDK se chaîne librement aussi).
+    [
+      "select", "insert", "update", "upsert", "delete",
+      "eq", "neq", "gt", "gte", "lt", "lte", "like", "ilike", "is", "in",
+      "contains", "containedBy", "rangeGt", "rangeGte", "rangeLt", "rangeLte",
+      "rangeAdjacent", "overlaps", "textSearch", "match", "not", "or", "filter",
+      "order", "limit", "range", "abortSignal", "throwOnError", "returns",
+      "setHeader", "rollback",
+    ].forEach((m) => { q[m] = () => q; });
+    return q;
+  }
   return {
     from: () => _noopQ(),
-    channel: () => ({ on: function(){ return this; }, subscribe: () => null }),
+    rpc: () => _noopQ(),
+    channel: () => ({ on: function(){ return this; }, subscribe: () => null, send: () => Promise.resolve("ok"), track: () => Promise.resolve("ok"), untrack: () => Promise.resolve("ok"), unsubscribe: () => Promise.resolve("ok"), presenceState: () => ({}) }),
     removeChannel: () => {},
+    removeAllChannels: () => {},
+    getChannels: () => [],
+    storage: {
+      from: () => ({
+        upload: _ko,
+        update: _ko,
+        remove: _ko,
+        download: _ko,
+        list: _ko,
+        move: _ko,
+        copy: _ko,
+        createSignedUrl: _ko,
+        createSignedUrls: _ko,
+        // getPublicUrl est SYNCHRONE dans le SDK et déréférencé sans garde
+        // (app-09 fait `.getPublicUrl(p).data.publicUrl`) : rendre la forme
+        // exacte, sinon la coupure réseau lève au lieu de dégrader.
+        // ⚠️ L'URL VIDE n'est sans danger que parce que `upload` échoue juste
+        // au-dessus : tous les appelants testent `error` d'abord et retombent
+        // sur leur data URL. Rendre `upload` « réussi » ferait partir cette
+        // chaîne vide comme `file_url` en base — une pièce jointe morte. Les
+        // deux valeurs se tiennent : ne pas en changer une seule.
+        getPublicUrl: () => ({ data: { publicUrl: "" } }),
+      }),
+    },
+    functions: { invoke: _ko },
     auth: {
-      getSession: () => Promise.resolve({data:{session:null},error:null}),
-      signInWithPassword: () => Promise.resolve({data:null,error:{message:"Supabase non disponible"}}),
-      signUp: () => Promise.resolve({data:null,error:{message:"Supabase non disponible"}}),
-      signOut: () => Promise.resolve({error:null}),
+      getSession: () => Promise.resolve({ data: { session: null }, error: null }),
+      getUser: () => Promise.resolve({ data: { user: null }, error: null }),
+      refreshSession: () => Promise.resolve({ data: { session: null, user: null }, error: null }),
+      signInWithPassword: _ko,
+      signInWithOAuth: _ko,
+      signInAnonymously: _ko,
+      signUp: _ko,
+      updateUser: _ko,
+      resetPasswordForEmail: _ko,
+      signOut: () => Promise.resolve({ error: null }),
       onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
     },
   };
@@ -2690,7 +2769,12 @@ async function supaUploadMedia(postId, folder, base64Data, mediaType) {
   }
 
   try {
-    if (!supa || !supa.storage) return base64Data;
+    // ⚠️ Tester `supa.storage` ne prouve plus rien : le stub hors ligne l'expose
+    // (il doit le faire, sinon toute pièce jointe lève). Sans `_supaReal`, on
+    // paierait le downscale canvas + l'atob de la base64 entière (~25 Mo pour
+    // une vidéo), trois fois de suite via supaPublishPostWithRetry, pour finir
+    // sur l'échec d'upload de la ligne ~2800. Même verdict, gel d'UI en moins.
+    if (!supa || !window._supaReal) return base64Data;
 
     // Images (hors GIF) : downscale avant conversion en Blob.
     if (mediaType !== "video" && mediaType !== "audio" && base64Data.indexOf("data:image/") === 0 && base64Data.indexOf("data:image/gif") !== 0) {
