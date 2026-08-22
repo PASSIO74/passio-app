@@ -8,7 +8,6 @@ import { config } from "./config.js";
 import { broadcast } from "./sse.js";
 import { audit } from "./audit.js";
 
-// Liste blanche : id → { label, cmd, args }. Rien d'autre n'est exécutable.
 export const TEST_SUITES = {
   authz:      { label: "Autorisation — séparation entre comptes (AUTHZ-CRITICAL)", cmd: "npx", args: ["playwright", "test", "tests/e2e/authz-critical.spec.js"] },
   smoke:      { label: "Smoke + access-gate (E2E)", cmd: "npm", args: ["test"] },
@@ -20,34 +19,30 @@ export const TEST_SUITES = {
   cadrage:    { label: "E2E Cadrage viewport", cmd: "npx", args: ["playwright", "test", "tests/e2e/cadrage.spec.js"] },
 };
 
-let running = null;   // { id, proc, startedAt, output }
-
-// ─── Dernier résultat d'AUTHZ-CRITICAL ──────────────────────────────────────
-// Le domaine « autorisation » du score de santé doit venir d'une VÉRIFICATION
-// RÉELLE, pas d'une supposition. Tant que ce noyau n'a pas tourné ici, il vaut
-// INCONNU — et la santé globale ne peut pas afficher un vert franc (cf. F7).
-// On ne conserve que le verdict et sa date : aucune donnée de test.
-let dernierAuthz = null;   // { pass, total, verifieLe, code }
+let running = null;
+let dernierAuthz = null;   // { pass, total, at, code }
 
 export function authzSnapshot() {
   if (!dernierAuthz) return null;
-  const minutes = Math.round((Date.now() - dernierAuthz.at) / 60000);
+  const ageMs = Math.max(0, Date.now() - dernierAuthz.at);
+  const minutes = Math.floor(ageMs / 60000);
   return {
     pass: dernierAuthz.pass,
     total: dernierAuthz.total,
+    at: dernierAuthz.at,
+    ageMs,
+    ageMinutes: Math.floor(ageMs / 60000),
+    code: dernierAuthz.code,
     verifieLe: minutes < 1 ? "à l'instant" : `il y a ${minutes} min`,
   };
 }
 
-// Playwright résume en fin de sortie : « N passed », « N failed ».
-// Le noyau est UN test portant 9 assertions : c'est le verdict du fichier qui
-// compte, pas un décompte d'assertions qu'on ne peut pas lire de l'extérieur.
 function capterAuthz(sortie, code) {
   const passed = /(\d+)\s+passed/.exec(sortie);
   const failed = /(\d+)\s+failed/.exec(sortie);
   const p = passed ? Number(passed[1]) : 0;
   const f = failed ? Number(failed[1]) : 0;
-  if (!p && !f) return;                       // sortie illisible : on n'invente pas
+  if (!p && !f) return;
   dernierAuthz = { pass: p, total: p + f, at: Date.now(), code };
 }
 
@@ -89,13 +84,6 @@ export function runSuite(id, actor) {
   return { started: id };
 }
 
-/**
- * Variante attendue d'une suite, pour la réparation automatique. Partage le MÊME
- * verrou que `runSuite` : sans ça, une vérification automatique et un test lancé
- * à la main se marcheraient dessus (Playwright, un seul port de serveur local).
- * @param {string} id  @param {string} cwd  répertoire d'exécution (worktree isolé)
- * @returns {Promise<{code:number, output:string}>}
- */
 export function runSuiteAwait(id, cwd, actor, timeoutMs = 900_000) {
   return new Promise((resolve, reject) => {
     if (running) { const e = new Error("Un test est déjà en cours."); e.code = 409; return reject(e); }

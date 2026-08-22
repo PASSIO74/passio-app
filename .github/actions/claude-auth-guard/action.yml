@@ -1,0 +1,89 @@
+name: Claude auth guard
+description: >-
+  Vérifie que l'exécution Claude passe par l'abonnement Claude Pro (jeton OAuth)
+  et JAMAIS par une clé API facturée. Ne fait apparaître aucun secret.
+
+inputs:
+  oauth_token:
+    description: "Le secret CLAUDE_CODE_OAUTH_TOKEN. Il n'est jamais affiché ni écrit."
+    required: true
+  policy:
+    description: >-
+      subscription-only (défaut) : refuse toute clé API Anthropic.
+      allow-api-key : tolère une clé API (jamais utilisé par PASSIO aujourd'hui).
+    required: false
+    default: subscription-only
+
+outputs:
+  auth_mode:
+    description: "CLAUDE_PRO_OAUTH ou ANTHROPIC_API (jamais le secret lui-même)."
+    value: ${{ steps.guard.outputs.auth_mode }}
+
+runs:
+  using: composite
+  steps:
+    - id: guard
+      shell: bash
+      env:
+        # Le jeton n'entre ici que pour être MESURÉ (présence, forme, longueur).
+        # Il n'est jamais imprimé : chaque `echo` ci-dessous ne sort que des verdicts.
+        CLAUDE_OAUTH: ${{ inputs.oauth_token }}
+        POLICY: ${{ inputs.policy }}
+      run: |
+        set -euo pipefail
+
+        echo "::group::Diagnostic d'authentification Claude"
+        echo "Politique demandée : ${POLICY}"
+
+        # --- 1. Le jeton d'abonnement est-il installé ? ------------------------
+        if [ -z "${CLAUDE_OAUTH}" ]; then
+          echo "AUTH = ABSENTE"
+          echo "::endgroup::"
+          echo "::error title=CLAUDE_CODE_OAUTH_TOKEN manquant::Le secret d'actions CLAUDE_CODE_OAUTH_TOKEN est vide ou absent. Générer le jeton avec 'claude setup-token' sur une machine où Benjamin est connecté à son abonnement Claude Pro, puis l'enregistrer dans Settings > Secrets and variables > Actions. Aucune clé API ne sera utilisée en remplacement."
+          exit 1
+        fi
+
+        # --- 2. A-t-il la forme d'un jeton OAuth d'abonnement ? ----------------
+        # 'sk-ant-oat' est le préfixe PUBLIC des jetons OAuth Claude Code ; le
+        # reste du jeton n'est ni imprimé ni testé caractère par caractère.
+        case "${CLAUDE_OAUTH}" in
+          sk-ant-oat*)
+            forme="jeton OAuth d'abonnement (préfixe sk-ant-oat)" ;;
+          sk-ant-api*)
+            echo "AUTH = ANTHROPIC API"
+            echo "::endgroup::"
+            echo "::error title=Clé API détectée dans CLAUDE_CODE_OAUTH_TOKEN::Le secret contient une clé API facturée (préfixe sk-ant-api) et non un jeton d'abonnement. PASSIO est en politique subscription-only : refus d'exécuter. Regénérer un jeton avec 'claude setup-token'."
+            exit 1 ;;
+          *)
+            forme="préfixe inattendu — poursuite, le CLI tranchera" ;;
+        esac
+
+        # Longueur en tranche grossière : assez pour repérer un copier-coller
+        # tronqué, trop imprécis pour aider qui que ce soit à deviner le jeton.
+        n=${#CLAUDE_OAUTH}
+        if [ "$n" -lt 40 ]; then
+          echo "AUTH = SUSPECTE (jeton anormalement court)"
+          echo "::endgroup::"
+          echo "::error title=CLAUDE_CODE_OAUTH_TOKEN tronqué::Le secret fait moins de 40 caractères : c'est un copier-coller incomplet, pas un jeton valide."
+          exit 1
+        fi
+
+        # --- 3. Aucune clé API ne doit traîner dans l'environnement -----------
+        # Un ANTHROPIC_API_KEY non vide gagnerait silencieusement sur le jeton
+        # OAuth dans le CLI : en politique subscription-only, c'est un refus.
+        if [ "${POLICY}" = "subscription-only" ] && [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+          echo "AUTH = ANTHROPIC API"
+          echo "::endgroup::"
+          echo "::error title=ANTHROPIC_API_KEY présente::Une clé API est exposée à ce job alors que la politique est subscription-only. Elle serait facturée à la Console Anthropic. Retirer la variable du workflow."
+          exit 1
+        fi
+
+        echo "Forme du secret : ${forme}"
+        echo "Longueur        : >= 40 caractères"
+        # ATTENTION : ne JAMAIS écrire ${ANTHROPIC_API_KEY:-...} ici — la forme
+        # ":-" imprime la VALEUR quand la variable est définie, donc la clé.
+        if [ -n "${ANTHROPIC_API_KEY:-}" ]; then etat_cle="PRESENTE"; else etat_cle="absente"; fi
+        echo "ANTHROPIC_API_KEY dans l'environnement : ${etat_cle}"
+        echo "AUTH = CLAUDE PRO OAUTH"
+        echo "auth_mode=CLAUDE_PRO_OAUTH" >> "$GITHUB_OUTPUT"
+        echo "::endgroup::"

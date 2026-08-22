@@ -1,0 +1,135 @@
+name: Sentinelle distante
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/sentinelle-distante.yml"
+      - "docs/SENTINELLE_DISTANTE.md"
+
+concurrency:
+  group: sentinelle-distante
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  PASSIO_PROD_URL: https://passio-app.netlify.app
+
+jobs:
+  health:
+    name: Santé distante PASSIO
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Vérifier le coupe-circuit mobile
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pause="$(gh issue list --repo "${GITHUB_REPOSITORY}" --state open --search '"[SENTINELLE PAUSE]" in:title author:PASSIO74' --json number --jq 'length')"
+          if [ "${pause}" -gt 0 ]; then
+            echo "active=false" >> "${GITHUB_OUTPUT}"
+            echo "## Sentinelle distante : EN PAUSE" >> "${GITHUB_STEP_SUMMARY}"
+            echo "Une issue ouverte par PASSIO74 dont le titre contient [SENTINELLE PAUSE] sert de coupe-circuit." >> "${GITHUB_STEP_SUMMARY}"
+          else
+            echo "active=true" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Checkout
+        if: steps.gate.outputs.active == 'true'
+        uses: actions/checkout@v4
+
+      - name: Node
+        if: steps.gate.outputs.active == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Installer les dépendances
+        if: steps.gate.outputs.active == 'true'
+        run: npm ci
+
+      - name: Audits statiques
+        id: audits
+        if: steps.gate.outputs.active == 'true'
+        continue-on-error: true
+        run: |
+          npm run audit:globals
+          npm run audit:handlers
+          npm run audit:echappement
+          npm run audit:tests
+          npm run audit:supa-stub
+
+      - name: Santé publique
+        id: public
+        if: steps.gate.outputs.active == 'true'
+        continue-on-error: true
+        run: |
+          curl --fail --silent --show-error --location --retry 2 --max-time 25 "${PASSIO_PROD_URL}" --output /tmp/passio-index.html
+          grep -q 'screen-feed' /tmp/passio-index.html
+          grep -q 'Passio' /tmp/passio-index.html
+
+      - name: Installer Chromium
+        if: steps.gate.outputs.active == 'true'
+        run: npx playwright install --with-deps chromium
+
+      - name: Canari d'autorisation
+        id: authz
+        if: steps.gate.outputs.active == 'true'
+        continue-on-error: true
+        run: npx playwright test tests/e2e/authz-critical.spec.js --reporter=line
+
+      - name: Publier le verdict
+        if: always() && steps.gate.outputs.active == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AUDITS: ${{ steps.audits.outcome }}
+          PUBLIC: ${{ steps.public.outcome }}
+          AUTHZ: ${{ steps.authz.outcome }}
+        run: |
+          title="[SENTINELLE DISTANTE] Santé rouge"
+          existing="$(gh issue list --repo "${GITHUB_REPOSITORY}" --state open --search '"[SENTINELLE DISTANTE] Santé rouge" in:title' --json number --jq '.[0].number // empty')"
+          {
+            echo "## Sentinelle distante"
+            echo
+            echo "| Contrôle | Résultat |"
+            echo "|---|---|"
+            echo "| Audits statiques | ${AUDITS} |"
+            echo "| Page publique | ${PUBLIC} |"
+            echo "| Autorisation critique | ${AUTHZ} |"
+            echo
+            echo "Run : https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo "Révision : ${GITHUB_SHA}"
+          } > /tmp/sentinelle.md
+
+          cat /tmp/sentinelle.md >> "${GITHUB_STEP_SUMMARY}"
+
+          if [ "${AUDITS}" = "success" ] && [ "${PUBLIC}" = "success" ] && [ "${AUTHZ}" = "success" ]; then
+            if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+              exit 0
+            fi
+            if [ -n "${existing}" ]; then
+              gh issue comment "${existing}" --repo "${GITHUB_REPOSITORY}" --body "✅ Santé revenue au vert — run https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+              gh issue close "${existing}" --repo "${GITHUB_REPOSITORY}" --reason completed
+            fi
+            exit 0
+          fi
+
+          # Une PR vérifie le workflow sans créer d'incident opérationnel.
+          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+            exit 1
+          fi
+
+          if [ -n "${existing}" ]; then
+            gh issue comment "${existing}" --repo "${GITHUB_REPOSITORY}" --body-file /tmp/sentinelle.md
+          else
+            gh issue create --repo "${GITHUB_REPOSITORY}" --title "${title}" --body-file /tmp/sentinelle.md
+          fi
+          exit 1

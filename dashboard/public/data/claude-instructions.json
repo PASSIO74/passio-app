@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "updatedAt": "2026-08-19T22:12:00+02:00",
+  "current": {
+    "id": "chatgpt-2026-08-19-feed-irl-voyage",
+    "source": "ChatGPT",
+    "target": "Claude Code",
+    "status": "préparée",
+    "title": "Reprise Passio — Feed + IRL et Voyage secondaire",
+    "scheduledFor": "2026-08-21T03:00:00+02:00",
+    "summary": "Reprendre Claude Code sur le vrai produit Passio, simplifier le coeur Feed + IRL et conserver le CDV comme outil secondaire de la passion Voyage.",
+    "instructions": [
+      "Utiliser en priorité la session Claude Code standard sur l'ordinateur ; éviter les ponts et sessions isolées sauf nécessité réelle.",
+      "Vérifier que l'authentification Claude Code standard fonctionne sans conflit avec une ancienne ANTHROPIC_API_KEY.",
+      "Inspecter puis réparer la chaîne GitHub Actions / Playwright si elle n'est pas verte, sans affaiblir les tests.",
+      "Auditer le dépôt actuel selon la doctrine produit : partage tes Passio et rencontre les gens ; le coeur est Feed + IRL.",
+      "Retirer temporairement le CDV de la navigation principale sans supprimer son écran, son code, ses tests ni ses données.",
+      "Conserver le CDV comme fonctionnalité secondaire dans Passion > Voyage > Carnets de voyage / Mes voyages, avec accès réversible.",
+      "Préserver une passerelle depuis le contenu Voyage vers les carnets lorsque cela renforce l'expérience sans brouiller le coeur Feed + IRL.",
+      "Consolider le parcours Feed > passion > personne > interaction > rencontre IRL.",
+      "Réutiliser et industrialiser les bons éléments des prototypes Profil / Feed au lieu de multiplier les concepts concurrents.",
+      "Auditer le pipeline podcast/audio de bout en bout : upload, Storage, URL, droits, métadonnées, lecture et mobile.",
+      "Poursuivre le travail Supabase à partir du schéma de production observé, et non de la seule liste historique des migrations.",
+      "Pour toute modification importante : Claude implémente ou audite, Codex effectue la contre-revue, ChatGPT arbitre la cohérence produit, puis les tests passent avant fusion.",
+      "Ne pas consacrer le nouveau quota Claude à reconstruire encore l'infrastructure Claude : priorité au produit, au code existant, à sa simplification et aux essais réels."
+    ],
+    "acceptance": [
+      "Le CDV n'apparaît plus comme onglet principal.",
+      "Le CDV reste accessible depuis la passion Voyage et reste réactivable.",
+      "Aucune donnée ni logique CDV n'est supprimée.",
+      "Les tests CDV continuent de protéger le moteur existant.",
+      "Les consignes ChatGPT vers Claude restent visibles dans le Centre de pilotage sur ordinateur et mobile."
+    ]
+  },
+  "history": []
+}

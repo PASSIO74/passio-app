@@ -32,13 +32,20 @@ import { computeReadiness } from "./readiness.js";
 import { qaReport } from "./qa.js";
 import * as sentinel from "./sentinel.js";
 import { mergeRepair } from "./repair.js";
+import { observationSnapshot, acknowledgeSseHeartbeat } from "./observation.js";
+import { releaseHealth, releaseHistory } from "./release-recorder.js";
+import { listIncidentPackets, transitionIncident } from "./incident-packets.js";
+import { controlCommand } from "./control-intelligence.js";
+import { whatChanged, listControlSnapshots, startControlHistory } from "./control-history.js";
+import { anomalySnapshot } from "./anomaly-engine.js";
+import { releaseGuardianSnapshot } from "./release-guardian.js";
+import * as orchestrator from "./orchestrator.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 app.set("trust proxy", true);
 app.use(express.json({ limit: "1mb" }));
 
-// Cookies de session minimalistes (clearCookie/cookie helpers).
 app.use((req, res, next) => {
   res.cookie = (name, val, opts = {}) => {
     const parts = [`${name}=${encodeURIComponent(val)}`, "Path=/"];
@@ -59,15 +66,11 @@ const asyncH = (fn) => (req, res) => Promise.resolve(fn(req, res)).catch((e) => 
   res.status(e.code || 500).json({ error: e.message || "Erreur serveur" });
 });
 
-// ─── Santé (sans auth, pour les health-checks d'hébergeur) ─────────────────
 api.get("/health", (req, res) => res.json({ ok: true, env: config.dashEnv, supabase: supabaseReady }));
-
-// ─── Auth ────────────────────────────────────────────────────────────────
 api.post("/login", asyncH(auth.login));
 api.post("/logout", auth.logout);
 api.get("/me", auth.me);
 
-// ─── Flux temps réel (SSE) ─────────────────────────────────────────────────
 api.get("/stream", auth.requireAuth, (req, res) => {
   res.writeHead(200, {
     "Content-Type": "text/event-stream", "Cache-Control": "no-cache, no-transform",
@@ -77,7 +80,6 @@ api.get("/stream", auth.requireAuth, (req, res) => {
   addClient(res);
 });
 
-// ─── Vue d'ensemble / activité ──────────────────────────────────────────────
 api.get("/overview", auth.requireAuth, (req, res) => res.json({ ...store.overview(), ingest: ingestState() }));
 api.get("/timeseries", auth.requireAuth, (req, res) => res.json(store.timeseries(Number(req.query.minutes) || 30)));
 api.get("/events", auth.requireAuth, (req, res) => {
@@ -85,16 +87,31 @@ api.get("/events", auth.requireAuth, (req, res) => {
   res.json(store.recent({ type, severity, user, device, session, env, screen, status, q }, Number(limit) || 200));
 });
 
-// ─── Interactions (vérification cross-device temps réel) ────────────────────
-api.get("/interactions", auth.requireAuth, (req, res) => res.json(interactionsSnapshot(Number(req.query.limit) || 120)));
+// ─── Command Center / Sentinel 3 ────────────────────────────────────────────
+api.get("/control/command", auth.requireAuth, asyncH(async (req, res) => res.json(await controlCommand())));
+api.get("/control/changes", auth.requireAuth, asyncH(async (req, res) => res.json(await whatChanged())));
+api.get("/control/history", auth.requireAuth, (req, res) => res.json(listControlSnapshots(Number(req.query.limit) || 30)));
+api.get("/observation", auth.requireAuth, (req, res) => res.json(observationSnapshot()));
+api.post("/observation/sse-ack", auth.requireAuth, (req, res) => res.json({ ok: acknowledgeSseHeartbeat(req.body?.id || null) }));
+api.get("/releases", auth.requireAuth, (req, res) => res.json({ health: releaseHealth(), history: releaseHistory(Number(req.query.limit) || 30) }));
+api.get("/release-guardian", auth.requireAuth, (req, res) => res.json(releaseGuardianSnapshot()));
+api.get("/anomalies", auth.requireAuth, (req, res) => res.json(anomalySnapshot()));
+api.get("/incidents", auth.requireAuth, (req, res) => res.json(listIncidentPackets(Number(req.query.limit) || 50)));
+api.post("/incidents/:id/transition", auth.requireCap("alerts"), (req, res) => {
+  const incident = transitionIncident(req.params.id, req.body?.phase, {
+    evidence: req.body?.evidence,
+    note: req.body?.note,
+    resolution: req.body?.resolution,
+    actor: req.session.u,
+  });
+  incident ? res.json(incident) : res.status(404).json({ error: "Incident introuvable" });
+});
 
-// ─── Traçage bout-en-bout (chaîne de validation par action) ─────────────────
+api.get("/interactions", auth.requireAuth, (req, res) => res.json(interactionsSnapshot(Number(req.query.limit) || 120)));
 api.get("/traces", auth.requireAuth, (req, res) => res.json(tracesSnapshot(Number(req.query.limit) || 100)));
 api.get("/traces/:cid", auth.requireAuth, asyncH(async (req, res) => {
   const t = traceOne(req.params.cid);
   if (!t) return res.status(404).json({ error: "Trace introuvable (expirée ?)" });
-  // Corrélation aux changements récents : réservée aux rôles qui peuvent déjà
-  // lire le dépôt (elle expose sujets de commits, auteurs et chemins de fichiers).
   let suspects = null;
   if (auth.can(req.session.role, "git_read")) {
     try { suspects = await suspectsFor(t.startedAt, t.feature); } catch (e) { suspects = null; }
@@ -102,10 +119,8 @@ api.get("/traces/:cid", auth.requireAuth, asyncH(async (req, res) => {
   res.json({ trace: t, suspects, prompt: claude.buildTracePrompt(t, suspects ? suspectsPromptBlock(suspects) : "") });
 }));
 
-// ─── Couverture d'instrumentation (catalogue des contrats + dette) ──────────
 api.get("/coverage", auth.requireAuth, (req, res) => res.json(tracesCoverage()));
 
-// ─── Réconciliation (intégrité des données : échecs silencieux) ─────────────
 api.get("/reconcile", auth.requireCap("db"), asyncH(async (req, res) => res.json(await reconcile({ force: req.query.force === "1" }))));
 api.post("/reconcile/prompt", auth.requireCap("db"), (req, res) => {
   const c = req.body?.check;
@@ -113,29 +128,18 @@ api.post("/reconcile/prompt", auth.requireCap("db"), (req, res) => {
   res.json({ prompt: buildReconcilePrompt(c) });
 });
 
-// ─── Diagnostic global : « Diagnostiquer toute la plateforme » (prompt prêt) ─
+// ─── Diagnostic global ───────────────────────────────────────────────────────
 api.get("/diagnose", auth.requireAuth, asyncH(async (req, res) => {
-  // L'intégrité des données fait partie du diagnostic, MAIS elle expose des
-  // identifiants issus de la base : elle suit donc la même permission que
-  // /reconcile (capacité `db`). Un rôle sans cette capacité reçoit un diagnostic
-  // qui DIT que l'intégrité n'a pas été évaluée, au lieu de la passer sous
-  // silence (un blanc lu comme « tout va bien » serait un mensonge).
   const mayReadDb = auth.can(req.session.role, "db");
   let integrity = null;
   if (mayReadDb) {
-    // Si elle échoue (Supabase indisponible), on le DIT au lieu de prétendre que tout va bien.
     try { integrity = await reconcile(); } catch (e) { integrity = { error: e.message }; }
   } else {
     integrity = { error: "non évaluée : ce rôle n'a pas accès à la base (capacité `db`)" };
   }
   const bundle = {
-    overview: store.overview(),
-    traces: tracesSnapshot(200),
-    interactions: interactionsSnapshot(200),
-    coverage: tracesCoverage(),
-    bugs: store.bugList().slice(0, 20),
-    errors: store.recent({ type: "error" }, 40),
-    integrity,
+    overview: store.overview(), traces: tracesSnapshot(200), interactions: interactionsSnapshot(200),
+    coverage: tracesCoverage(), bugs: store.bugList().slice(0, 20), errors: store.recent({ type: "error" }, 40), integrity,
   };
   res.json({ prompt: claude.buildPlatformDiagnosis(bundle), summary: {
     successRate: bundle.traces.totals.successRate,
@@ -148,18 +152,13 @@ api.get("/diagnose", auth.requireAuth, asyncH(async (req, res) => {
   }, apiConfigured: Boolean(config.anthropicKey) });
 }));
 
-// ─── Liens partagés (cycle de vie création → partage → ouverture confirmée) ──
+// ─── Liens partagés ──────────────────────────────────────────────────────────
 api.get("/links", auth.requireAuth, (req, res) => res.json({ funnel: store.linkFunnel(), links: store.linkList(Number(req.query.limit) || 300) }));
 api.get("/links/:id", auth.requireAuth, (req, res) => { const l = store.link(req.params.id); l ? res.json(l) : res.status(404).json({ error: "Lien introuvable" }); });
 
-// ─── Campagne QA (rapport de la campagne multi-comptes) ─────────────────────
 api.get("/qa-report", auth.requireAuth, (req, res) => res.json(qaReport()));
-
-// ─── KPI produit (utilisateurs actifs réels, calculés sur telemetry_events) ──
 api.get("/kpi", auth.requireAuth, asyncH(async (req, res) => res.json(await kpi())));
 api.get("/retention", auth.requireAuth, asyncH(async (req, res) => res.json(await retention())));
-
-// ─── Appareils / sessions d'activité / parcours ─────────────────────────────
 api.get("/names", auth.requireAuth, (req, res) => res.json(store.clientNames()));
 api.get("/signups", auth.requireAuth, asyncH(async (req, res) => res.json(await signups())));
 api.get("/accounts", auth.requireAuth, asyncH(async (req, res) => res.json(await accounts())));
@@ -168,7 +167,6 @@ api.get("/visitors", auth.requireAuth, (req, res) => res.json({ funnel: store.vi
 api.get("/activity-sessions", auth.requireAuth, (req, res) => res.json(store.sessionList()));
 api.get("/journey/:session", auth.requireAuth, (req, res) => res.json(store.userJourney(req.params.session)));
 
-// ─── Bugs ────────────────────────────────────────────────────────────────
 api.get("/bugs", auth.requireAuth, (req, res) => res.json(store.bugList()));
 api.get("/bugs/:id", auth.requireAuth, (req, res) => {
   const b = store.bug(req.params.id); if (!b) return res.status(404).json({ error: "Bug introuvable" });
@@ -182,12 +180,10 @@ api.patch("/bugs/:id", auth.requireCap("sessions"), (req, res) => {
   res.json(b);
 });
 
-// ─── Performance / services / DB ─────────────────────────────────────────────
 api.get("/performance", auth.requireAuth, (req, res) => res.json({ api: store.apiPerf(), health: store.health() }));
 api.get("/services", auth.requireAuth, (req, res) => res.json(store.services()));
 api.get("/database", auth.requireCap("db"), asyncH(async (req, res) => res.json(await dbwatch.overview())));
 
-// ─── Sessions de test ────────────────────────────────────────────────────
 api.get("/test-sessions", auth.requireAuth, (req, res) => res.json(sessions.list()));
 api.post("/test-sessions", auth.requireCap("sessions"), (req, res) => res.json(sessions.create(req.body || {}, req.session.u)));
 api.get("/test-sessions/:id", auth.requireAuth, (req, res) => { const s = sessions.get(req.params.id); s ? res.json(s) : res.status(404).json({ error: "introuvable" }); });
@@ -200,19 +196,16 @@ api.post("/test-sessions/:id/:action", auth.requireCap("sessions"), (req, res) =
 });
 api.get("/test-sessions/:id/report", auth.requireAuth, (req, res) => { const r = sessions.report(req.params.id); r ? res.json(r) : res.status(404).json({ error: "introuvable" }); });
 
-// ─── Checklist / flags ───────────────────────────────────────────────────
 api.get("/checklist", auth.requireAuth, (req, res) => res.json(checklist.listChecklist()));
 api.patch("/checklist/:id", auth.requireCap("sessions"), (req, res) => { const it = checklist.updateChecklistItem(req.params.id, req.body || {}, req.session.u); it ? res.json(it) : res.status(404).json({ error: "introuvable" }); });
 api.get("/flags", auth.requireAuth, (req, res) => res.json(checklist.listFlags()));
 api.post("/flags", auth.requireCap("flags"), (req, res) => res.json(checklist.createFlag(req.body || {}, req.session.u)));
 api.patch("/flags/:id", auth.requireCap("flags"), (req, res) => { const f = checklist.updateFlag(req.params.id, req.body || {}, req.session.u); f ? res.json(f) : res.status(404).json({ error: "introuvable" }); });
 
-// ─── Tests ───────────────────────────────────────────────────────────────
 api.get("/tests", auth.requireAuth, (req, res) => res.json({ suites: tests.listSuites(), current: tests.currentRun() }));
 api.post("/tests/run", auth.requireCap("tests"), asyncH(async (req, res) => res.json(tests.runSuite(req.body?.id, req.session.u))));
 api.post("/tests/stop", auth.requireCap("tests"), (req, res) => res.json(tests.stopRun(req.session.u)));
 
-// ─── Git ─────────────────────────────────────────────────────────────────
 api.get("/git/status", auth.requireCap("git_read"), asyncH(async (req, res) => res.json(await git.status())));
 api.get("/git/branches", auth.requireCap("git_read"), asyncH(async (req, res) => res.json(await git.branches())));
 api.get("/git/log", auth.requireCap("git_read"), asyncH(async (req, res) => res.json(await git.log(Number(req.query.n) || 20))));
@@ -226,33 +219,23 @@ api.post("/git/apply", auth.requireCap("git_mutate"), asyncH(async (req, res) =>
   res.json(await git.applyPatch({ branch: req.body.branch, patch: req.body.patch }, req.session.u));
 }));
 
-// ─── Assistant Claude Code ──────────────────────────────────────────────────
 api.post("/claude/context", auth.requireCap("claude"), asyncH(async (req, res) => {
   const ctx = await claude.buildContext(req.body?.bugId);
   if (!ctx) return res.status(404).json({ error: "Bug introuvable" });
   res.json({ prompt: claude.buildPrompt(ctx), context: ctx, apiConfigured: Boolean(config.anthropicKey) });
 }));
 api.post("/claude/analyze", auth.requireCap("claude"), asyncH(async (req, res) => res.json(await claude.analyze(req.body?.bugId, { note: req.body?.note }, req.session.u))));
-// Réparation en un clic : depuis un bug groupé (bugId) ou un événement d'erreur brut (event).
 api.post("/claude/quickfix", auth.requireCap("claude"), asyncH(async (req, res) => res.json(await claude.quickFix({ bugId: req.body?.bugId, event: req.body?.event, note: req.body?.note, deep: req.body?.deep === true }, req.session.u))));
-// État de la source d'analyse + re-détection à la demande (après avoir connecté `claude`).
 api.get("/claude/status", auth.requireAuth, (req, res) => res.json({ cli: claudeCliState(), apiKey: Boolean(config.anthropicKey) }));
 api.post("/claude/recheck", auth.requireCap("claude"), asyncH(async (req, res) => { await detectClaudeCli(); res.json({ cli: claudeCliState(), apiKey: Boolean(config.anthropicKey) }); }));
 
-// ─── Utilisateurs de test ───────────────────────────────────────────────────
 api.get("/test-users", auth.requireCap("test_users"), asyncH(async (req, res) => res.json(await testusers.list())));
 api.delete("/test-users/:id", auth.requireCap("test_users"), asyncH(async (req, res) => res.json(await testusers.remove(req.params.id, req.session.u))));
-
-// ─── Alertes ───────────────────────────────────────────────────────────────
 api.get("/alerts", auth.requireAuth, (req, res) => res.json(alerts.listAlerts()));
 api.post("/alerts/:id/ack", auth.requireCap("alerts"), (req, res) => res.json({ ok: alerts.acknowledge(req.params.id) }));
 api.post("/alerts/manual", auth.requireCap("alerts"), (req, res) => res.json(alerts.raiseManual(req.body || {})));
 
-// ─── Sentinelle (débogage automatique permanent) ────────────────────────────
-// Même capacité que l'assistant Claude : un diagnostic contient du code du
-// dépôt, des chemins de fichiers et des extraits — ce n'est pas de la donnée
-// de supervision ordinaire. Un rôle qui n'a pas droit à « Réparer avec Claude »
-// n'a pas droit à ses diagnostics automatiques non plus.
+// ─── Sentinelle ──────────────────────────────────────────────────────────────
 api.get("/sentinel", auth.requireCap("claude"), (req, res) =>
   res.json({ state: sentinel.sentinelState(), diagnoses: sentinel.listDiagnoses(Number(req.query.limit) || 50) }));
 api.get("/sentinel/:id", auth.requireCap("claude"), (req, res) => {
@@ -261,9 +244,6 @@ api.get("/sentinel/:id", auth.requireCap("claude"), (req, res) => {
 });
 api.post("/sentinel/toggle", auth.requireCap("settings"), (req, res) =>
   res.json({ enabled: sentinel.setEnabled(req.body?.enabled !== false, req.session.u), state: sentinel.sentinelState() }));
-// Fusion d'un correctif vérifié : geste HUMAIN, confirmation explicite exigée,
-// même capacité que les autres mutations git. Ne pousse pas — déployer reste une
-// décision distincte, prise en regardant ce qu'on déploie.
 api.post("/sentinel/:id/merge", auth.requireCap("git_mutate"), asyncH(async (req, res) => {
   if (!req.body?.confirm) return res.status(400).json({ error: "Confirmation explicite requise (confirm:true)." });
   const d = sentinel.getDiagnosis(req.params.id);
@@ -271,27 +251,28 @@ api.post("/sentinel/:id/merge", auth.requireCap("git_mutate"), asyncH(async (req
   res.json(await mergeRepair(d.repair.branch, req.session.u));
 }));
 
+// ─── AI Orchestrator V2 ─────────────────────────────────────────────────────
+// La lecture expose des branches/tâches et suit donc la capacité git_read.
+// Le routage seul ne modifie rien. La soumission crée uniquement ai/request/*,
+// jamais main, et réutilise la capacité git_mutate déjà protégée/auditée.
+api.get("/orchestrator", auth.requireCap("git_read"), asyncH(async (req, res) => res.json(await orchestrator.snapshot())));
+api.post("/orchestrator/route", auth.requireAuth, (req, res) => res.json(orchestrator.routeTask(req.body || {})));
+api.post("/orchestrator/tasks", auth.requireCap("git_mutate"), asyncH(async (req, res) =>
+  res.json(await orchestrator.submitTask(req.body || {}, req.session.u))));
+
 // ─── Audit ───────────────────────────────────────────────────────────────
 api.get("/audit", auth.requireCap("audit"), (req, res) => res.json(listAudit(Number(req.query.limit) || 300, { action: req.query.action, actor: req.query.actor })));
 
-// ─── Readiness score (section 25) ───────────────────────────────────────────
+// ─── Readiness score ────────────────────────────────────────────────────────
 api.get("/readiness", auth.requireAuth, (req, res) => {
-  // `authz` vient du DERNIER passage réel d'AUTHZ-CRITICAL lancé depuis ce
-  // dashboard (suite « authz »). Tant qu'il n'a pas tourné, il vaut null → le
-  // domaine « autorisation » est INCONNU et la santé globale ne peut pas
-  // afficher un vert franc. Un domaine critique non mesuré n'est jamais compté
-  // comme sain (cf. F7, analyse croisée du 2026-08-15).
   res.json(computeReadiness({
-    overview: store.overview(),
-    checklist: checklist.listChecklist(),
-    bugs: store.bugList(),
-    authz: tests.authzSnapshot(),
+    overview: store.overview(), checklist: checklist.listChecklist(), bugs: store.bugList(), authz: tests.authzSnapshot(),
+    observation: observationSnapshot(), release: releaseHealth(),
   }));
 });
 
 app.use("/api", api);
 
-// ─── Statique (SPA) ─────────────────────────────────────────────────────────
 const publicDir = path.join(__dirname, "..", "public");
 app.use(express.static(publicDir));
 app.get("*", (req, res) => res.sendFile(path.join(publicDir, "index.html")));
@@ -303,16 +284,12 @@ app.listen(config.port, () => {
   console.log(`  ▸ Supabase : ${supabaseReady ? "connecté (service_role)" : "NON configuré → mode local (voir .env)"}`);
   console.log(`  ▸ Mutations git : ${config.allowMutations ? "autorisées (hors prod)" : "désactivées"}\n`);
   startIngest();
-  // Détection du `claude` local (analyse gratuite via l'abonnement Claude Code).
-  // La sentinelle n'est armée QU'APRÈS la détection : sans source d'analyse elle
-  // ne ferait qu'empiler des échecs. Elle démarre donc dans la continuité du
-  // `detectClaudeCli`, jamais avant.
+  startControlHistory();
   detectClaudeCli().then(() => {
     const s = claudeCliState();
     console.log(`  ▸ Claude Code local : ${s.loggedIn ? "connecté (analyse gratuite dispo)" : s.installed ? "installé mais NON connecté (lancer: claude auth login)" : "absent"}${config.anthropicKey ? " · clé API aussi configurée" : ""}`);
     sentinel.startSentinel();
   });
-  // Ouverture auto du navigateur quand lancé par le raccourci (une seule fois).
   if (process.env.DASH_OPEN_BROWSER === "1") {
     const url = `http://localhost:${config.port}`;
     const cmd = process.platform === "win32" ? `start "" "${url}"` : process.platform === "darwin" ? `open "${url}"` : `xdg-open "${url}"`;

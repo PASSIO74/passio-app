@@ -1920,6 +1920,38 @@
 
     .post-action svg { width: 17px; height: 17px; display: block; }
 
+    /* ===== Pont Fil → IRL (drapeau feed_irl_bridge_v1) =====
+       Ligne à part sous la barre d'actions : celle-ci porte déjà 5 éléments et
+       un 6e la ferait déborder en 390 px. Aucune largeur fixe, le bouton se
+       borne à la carte ; cible tactile 44 px et focus clavier visible. */
+    .feed-irl-bridge { margin-top: 8px; }
+
+    .feed-irl-cta {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      max-width: 100%;
+      min-height: 44px;
+      padding: 10px 14px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--bg-soft);
+      color: var(--accent);
+      font: inherit;
+      font-size: 12.5px;
+      font-weight: 700;
+      line-height: 1.2;
+      cursor: pointer;
+      overflow-wrap: anywhere;
+      -webkit-tap-highlight-color: transparent;
+      transition: background 160ms ease, border-color 160ms ease;
+    }
+
+    .feed-irl-cta:hover { background: var(--accent-soft); border-color: var(--accent); }
+    .feed-irl-cta:active { transform: scale(0.97); }
+    .feed-irl-cta:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
     /* Icône de partage unifiée (shareIconSvg) — alignement quand elle suit/précède du texte dans un bouton */
     .share-ico { vertical-align: middle; }
     .btn .share-ico, button .share-ico { vertical-align: -3px; }

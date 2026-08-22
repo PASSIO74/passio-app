@@ -6,7 +6,68 @@ on:
       - main
   pull_request:
 
+permissions:
+  contents: read
+  pull-requests: read
+
 jobs:
+  governance:
+    name: Gouvernance critique
+    runs-on: ubuntu-latest
+    steps:
+      - name: Résoudre la PR et vérifier la contre-revue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_PR: ${{ github.event.pull_request.number }}
+          TRUSTED_REVIEWER: PASSIO74
+        run: |
+          set -euo pipefail
+
+          pr="${EVENT_PR}"
+          if [ "${EVENT_NAME}" = "push" ]; then
+            pr="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls" --jq '.[0].number // empty')"
+            if [ -z "${pr}" ]; then
+              echo "::error title=Push direct sur main::Aucune pull request n'est associée à ${GITHUB_SHA}. Le déploiement production est refusé."
+              exit 1
+            fi
+          fi
+
+          files="$(gh pr diff "${pr}" --repo "${GITHUB_REPOSITORY}" --name-only)"
+          critical=false
+          while IFS= read -r file; do
+            case "${file}" in
+              .github/*|migrations/*|dashboard/server/auth.js|dashboard/server/config.js|dashboard/server/repair.js|dashboard/server/sentinel.js|scripts/run_migrations.js|scripts/sauvegarde-donnees.js)
+                critical=true ;;
+            esac
+          done <<< "${files}"
+
+          {
+            echo "## Gouvernance"
+            echo
+            echo "- PR : #${pr}"
+            echo "- Changement critique : ${critical}"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+          if [ "${critical}" != "true" ]; then
+            exit 0
+          fi
+
+          head_sha="$(gh pr view "${pr}" --repo "${GITHUB_REPOSITORY}" --json headRefOid --jq '.headRefOid')"
+          reviews="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${pr}/reviews")"
+          if ! jq -e --arg reviewer "${TRUSTED_REVIEWER}" --arg head "${head_sha}" '
+            [.[] | select(
+              .user.login == $reviewer
+              and .commit_id == $head
+              and ((.body // "") | contains("Contre-revue technique indépendante"))
+            )] | length > 0
+          ' <<< "${reviews}" >/dev/null; then
+            echo "::error title=Contre-revue manquante::Cette PR touche un périmètre critique. Une revue GitHub par PASSIO74, ancrée sur le SHA courant et contenant le marqueur « Contre-revue technique indépendante », est obligatoire avant preview ou production."
+            exit 1
+          fi
+
+          echo "- Contre-revue indépendante : présente sur ${head_sha}" >> "${GITHUB_STEP_SUMMARY}"
+
   test:
     name: Tests smoke (Playwright)
     runs-on: ubuntu-latest
@@ -15,7 +76,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Audits statiques (collisions de globals)
         run: node scripts/audit-globals.js
@@ -33,6 +94,36 @@ jobs:
       # les deux lignes du correctif qu'il était censé garder.
       - name: Audits statiques (tests creux)
         run: node scripts/audit-tests-creux.js --ci
+
+      # Le SDK Supabase vient d'un CDN : tant qu'il n'est pas là, TOUT passe par
+      # le stub noop d'app-08. Un membre appelé par l'app et absent du stub ne se
+      # voit qu'hors ligne, en TypeError non rattrapé — donc là où le stub devait
+      # protéger. Mesuré le 2026-08-22 : .not/.or/.update/storage/functions.
+      - name: Audits statiques (stub Supabase hors ligne)
+        run: node scripts/audit-supa-stub.js
+
+      # Le banc des frontieres de confiance du canal Claude Code. Il verifie
+      # mecaniquement que les garde-fous sont intacts : Claude sans droit de
+      # push, action epinglee au SHA, allowed_bots jamais « * », cible ET
+      # instruction de PASSIO74, chemins de controle hors d'atteinte, aucun
+      # motif d'allowlist mort-ne, politique de modeles.
+      #
+      # Il existait depuis ce matin avec 76 assertions eprouvees par mutation,
+      # et n'etait lance NULLE PART : il ne protegeait donc rien. Une PR qui
+      # affaiblissait un garde-fou passait au vert. C'est corrige ici : toute
+      # regression sur une frontiere rend la CI rouge, sans que personne ait
+      # a y penser.
+      - name: Frontieres de confiance du canal Claude
+        run: bash tests/ci/frontiere-confiance.sh
+
+      # Le centre de pilotage est une application à part entière. Ses tests
+      # déterministes (Sentinel, Guardian, Autopilot, rollback) sont désormais
+      # une gate CI explicite : une autonomie non testée ne doit jamais être verte.
+      - name: Tests centre de pilotage / Sentinel
+        working-directory: dashboard
+        run: |
+          npm install
+          npm test
 
       - name: Installer Playwright
         run: |
@@ -64,10 +155,16 @@ jobs:
   deploy:
     name: Déploiement production
     if: github.event_name == 'push'
-    needs: test
+    needs: [test, governance]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      # Même runtime que les tests : un artefact validé sous Node 22 ne doit pas
+      # être reconstruit sous une version implicite différente au déploiement.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
 
       - name: Build dist (assemblage monolithique + assets publics)
         env:
@@ -109,10 +206,14 @@ jobs:
   preview:
     name: Déploiement preview (PR)
     if: github.event_name == 'pull_request'
-    needs: test
+    needs: [test, governance]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
 
       - name: Build dist
         env:

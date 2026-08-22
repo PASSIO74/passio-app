@@ -4,10 +4,11 @@
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
 
+// CDV reste un écran réel et testé, même s'il n'est plus une destination de la
+// navigation principale : il vit désormais comme fonctionnalité secondaire de
+// Passion > Voyage.
 const SCREENS = ["feed", "profiles", "studio", "explore", "irl", "wallet", "messages", "cdv"];
-// Barre du bas à 5 onglets (règle des 5) depuis le 2026-06-19 : Messages est
-// passé dans le topbar (à côté des notifs) et Explorer dans le ➕ Créer.
-const NAV_LABELS = ["Fil", "Bobines", "IRL", "CDV"];
+const NAV_LABELS = ["Fil", "Bobines", "IRL"];
 
 test("tour des 8 écrans : zéro erreur JS, chaque écran devient actif", async ({ page }) => {
   const errors = { js: [], console: [], network: [] };
@@ -77,16 +78,21 @@ test("tour des 8 écrans : zéro erreur JS, chaque écran devient actif", async 
   }
 });
 
-test("bottom-nav : libellés, clics réels et écran attendu", async ({ page }) => {
+test("bottom-nav : CDV dépromu et accès Voyage conservé", async ({ page }) => {
   const errors = { js: [], console: [], network: [] };
   await bootOnboarded(page, errors);
 
-  // Libellés attendus présents dans la nav (5 onglets : 4 labels + le ➕ central)
+  // Les destinations cœur restent visibles.
   for (const label of NAV_LABELS) {
     await expect(page.locator(".nav-item", { hasText: label }).first(), `nav « ${label} »`).toBeVisible();
   }
-  // Barre du bas = exactement 5 onglets
-  expect(await page.locator("#appNav .nav-item").count(), "5 onglets dans la barre").toBe(5);
+
+  // Le nœud CDV est volontairement conservé pour rendre l'essai réversible,
+  // mais il ne doit plus apparaître comme onglet principal.
+  const cdvMain = page.locator('#appNav .nav-item[data-screen="cdv"]');
+  await expect(cdvMain).toBeHidden();
+  await expect(cdvMain).toHaveAttribute("data-secondary-feature", "voyage-cdv");
+
   // Messages relogé dans le topbar (icône aria-label="Messages")
   await page.click('.topbar-right .topbar-bell[aria-label="Messages"]');
   await page.waitForFunction(() => {
@@ -100,10 +106,18 @@ test("bottom-nav : libellés, clics réels et écran attendu", async ({ page }) 
     return el && el.classList.contains("active");
   }, null, { timeout: 5000 });
 
-  // Clic réel sur chaque item de la nav.
-  // Cas particulier : « Bobines » (data-screen=bobines) ouvre l'overlay #reelsViewer
-  // via openReels(), ce n'est pas un #screen-<nom> (comportement voulu de l'app).
-  const items = await page.$$eval(".nav-item[data-screen]", els => els.map(e => e.getAttribute("data-screen")));
+  // Voyage expose désormais le CDV comme outil secondaire.
+  await page.evaluate(() => openPassionExplorer("voyage"));
+  const voyageEntry = page.locator("[data-voyage-cdv-entry]");
+  await expect(voyageEntry).toBeVisible();
+  await expect(voyageEntry).toContainText("Carnets de voyage");
+  await voyageEntry.locator("[data-open-voyage-cdv]").click();
+  await expect(page.locator("#screen-cdv")).toHaveClass(/active/);
+
+  // Les clics réels ne portent plus que sur les destinations VISIBLES de la nav.
+  const items = await page.$$eval(".nav-item[data-screen]", els => els
+    .filter((e) => getComputedStyle(e).display !== "none")
+    .map(e => e.getAttribute("data-screen")));
   for (const s of items) {
     await page.click(`.nav-item[data-screen="${s}"]`);
     if (s === "bobines") {

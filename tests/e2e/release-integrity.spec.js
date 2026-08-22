@@ -24,28 +24,45 @@ test.describe("RELEASE-INTEGRITY — contrat de release et transition d'identit�
     expect(sw, "le cache SW utilise le même buildId").toContain(`passio-v${embedded.buildId}`);
   });
 
-  test("un onglet N détecte N+1 sans forcer le rechargement", async ({ page }) => {
-    await page.route("**/release.json*", async (route) => {
-      const current = await page.evaluate(() => window.PASSIO_RELEASE).catch(() => null);
-      const body = {
-        schema: 1,
-        buildId: current && current.buildId ? current.buildId.replace(/.$/, current.buildId.endsWith("0") ? "1" : "0") : "ffffffffffff",
-        appHash: "aaaaaaaaaa",
-        cssHash: "bbbbbbbbbb",
-        commit: "future-release",
-        builtAt: null,
-      };
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+  // Le service worker de PASSIO fait skipWaiting() + clients.claim() : il prend
+  // le controle immediatement. Or une requete RE-EMISE par un service worker
+  // echappe a page.route(). Ce test perdait donc une course : quand le SW
+  // gagnait, /release.json revenait du reseau reel, le buildId etait identique
+  // a celui embarque, et le skew n'etait jamais « detecte ». Mesure le
+  // 2026-08-22 : rouge trois fois de suite en CI (Chromium 1234), vert en local
+  // (Chromium 1194) — une difference de vitesse de prise de controle, pas de
+  // comportement produit.
+  //
+  // On bloque le service worker pour CE test uniquement. L'assertion est
+  // inchangee et le test verifie toujours exactement la meme chose : seule
+  // l'interception devient deterministe. L'accord service worker / buildId
+  // reste couvert par le premier test du fichier, qui garde son SW.
+  test.describe("sans service worker", () => {
+    test.use({ serviceWorkers: "block" });
+
+    test("un onglet N détecte N+1 sans forcer le rechargement", async ({ page }) => {
+      await page.route("**/release.json*", async (route) => {
+        const current = await page.evaluate(() => window.PASSIO_RELEASE).catch(() => null);
+        const body = {
+          schema: 1,
+          buildId: current && current.buildId ? current.buildId.replace(/.$/, current.buildId.endsWith("0") ? "1" : "0") : "ffffffffffff",
+          appHash: "aaaaaaaaaa",
+          cssHash: "bbbbbbbbbb",
+          commit: "future-release",
+          builtAt: null,
+        };
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+      });
+
+      await page.goto("/index.html");
+      await page.waitForFunction(() => !!window.PassioReleaseGuard && !!window.PASSIO_RELEASE);
+      const beforeHref = page.url();
+      const skew = await page.evaluate(() => window.PassioReleaseGuard.check());
+
+      expect(skew.active, "version skew explicitement détecté").toBe(true);
+      expect(skew.currentBuildId).not.toBe(skew.latestBuildId);
+      expect(page.url(), "aucun reload/navigation forcé").toBe(beforeHref);
     });
-
-    await page.goto("/index.html");
-    await page.waitForFunction(() => !!window.PassioReleaseGuard && !!window.PASSIO_RELEASE);
-    const beforeHref = page.url();
-    const skew = await page.evaluate(() => window.PassioReleaseGuard.check());
-
-    expect(skew.active, "version skew explicitement détecté").toBe(true);
-    expect(skew.currentBuildId).not.toBe(skew.latestBuildId);
-    expect(page.url(), "aucun reload/navigation forcé").toBe(beforeHref);
   });
 
   test("le drain attend les POST telemetry_events avant de rendre la main", async ({ page }) => {
