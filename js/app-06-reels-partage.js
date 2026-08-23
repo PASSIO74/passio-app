@@ -1293,8 +1293,12 @@ function toggleProfileFilter(passionId) {
 }
 
 function selectAllProfiles() {
-  // « Tout voir » = aucun filtre. Persisté aussi, sinon le rechargement
-  // ressusciterait les anciens intérêts que l'utilisateur vient de retirer.
+  // ⚠️ Le nom trompe : aucune passion active ne veut PAS dire « tout le fil ».
+  // renderFeed calcule `nothingSelected` et affiche « Choisis une passion » —
+  // le fil est VIDE. C'est précisément la confusion qui a produit un mauvais
+  // diagnostic le 2026-08-22 (PR #126, corrigée par #127). Persisté, sinon le
+  // rechargement ressusciterait les intérêts que l'utilisateur vient de retirer.
+  // Cette fonction n'est aujourd'hui câblée à aucun élément d'interface.
   try { setFeedPassions([]); } catch (e) { _activeFeedPassions = new Set(); }
   renderFeed();
 }

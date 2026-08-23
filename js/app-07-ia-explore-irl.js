@@ -870,6 +870,15 @@ async function passioReverseGeocode(lat, lng) {
 }
 
 // Demande la position actuelle de l'utilisateur
+// L'écran IRL est-il réellement affiché ? Sert à n'engager la géolocalisation
+// que lorsque l'utilisateur y est (spec §10), et jamais pendant un rendu de fond.
+function _irlEcranVisible() {
+  try {
+    var el = document.getElementById("screen-irl");
+    return !!(el && el.classList.contains("active"));
+  } catch (e) { return false; }
+}
+
 function requestUserLocation() {
   // SI DÉJÀ obtenue, ne pas redemander
   if (irlUserLocation) {
@@ -2223,8 +2232,23 @@ function renderIRL() {
   _scheduleIrlMapUpdate();
 
   // Demander la position GPS EN ARRIÈRE-PLAN (ne pas bloquer le rendu initial)
-  // Si elle est obtenue, elle appellera renderIRL() à nouveau avec la vraie position
-  if (!irlUserLocation) {
+  // Si elle est obtenue, elle appellera renderIRL() à nouveau avec la vraie position.
+  //
+  // ⚠️ SEULEMENT quand l'écran IRL est réellement à l'écran (spec §10 et test
+  // d'acceptation ONB-11 : « Ne pas demander la permission GPS au premier
+  // lancement. La localisation doit être demandée au moment où sa valeur est
+  // évidente. »).
+  //
+  // `renderEverything()` peint TOUS les écrans, y compris IRL, alors que
+  // l'utilisateur est sur le Fil — et il est appelé par onbFinish puis par
+  // initApp. Mesuré le 2026-08-23 : à la seconde où un nouveau compte entrait
+  // sur PASSIO, le navigateur affichait la demande de position, deux fois.
+  // Le premier écran de l'app était une permission GPS sans rapport avec ce que
+  // l'utilisateur venait de faire.
+  //
+  // goTo("irl") pose la classe `active` AVANT d'appeler renderIRL : la demande
+  // part donc bien à l'ouverture réelle de l'écran IRL, là où elle se comprend.
+  if (!irlUserLocation && _irlEcranVisible()) {
     requestUserLocation();
   }
 
