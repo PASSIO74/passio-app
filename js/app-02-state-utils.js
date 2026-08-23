@@ -2006,16 +2006,75 @@ async function onbSkipAuth() {
   } catch(e) { console.warn("Auth anonyme indisponible:", e); }
 }
 
+// ── Écran « Qu'est-ce qui te passionne ? » (spec §5) ─────────────────────────
+//
+// Trois écarts corrigés par rapport à l'écran d'origine :
+//
+// ① Le plafond était de 3. La spec demande 1 minimum, 3 en recommandation, 7 au
+//    maximum : « ne pas bloquer un utilisateur qui n'a réellement qu'une passion
+//    forte simplement pour satisfaire un chiffre produit ».
+// ② La copie disait « Chacune crée un profil dédié ». Depuis le lot 1 (V2),
+//    c'est FAUX : un seul profil de départ est créé, les autres passions restent
+//    des intérêts de Fil. L'écran promettait une mécanique que le code ne fait
+//    plus.
+// ③ Le profil de départ était choisi en silence (`selectedPassions[0]`).
+//    La spec : « Ainsi, le choix n'est pas silencieux. »
+//
+// Tout est derrière onbV2Actif() : drapeau à false → ancienne copie, ancien
+// plafond, aucune recherche, aucun sélecteur de départ.
+var ONB_MAX_PASSIONS = 7;      // plafond V2 (spec §5)
+var ONB_MAX_PASSIONS_V1 = 3;   // plafond historique, conservé pour le repli
+var ONB_SEARCH_SEUIL = 12;     // « permettre la recherche si le catalogue devient long »
+
+function onbMaxPassions() {
+  return onbV2Actif() ? ONB_MAX_PASSIONS : ONB_MAX_PASSIONS_V1;
+}
+
 function renderPassionGrid() {
   const grid = $("#passionGrid");
+  if (!grid) return;
+  const v2 = onbV2Actif();
   const all = allPassions();
-  const tiles = all.map(p => `
+
+  const titreEl = $("#onbPassionsTitle");
+  const texteEl = $("#onbPassionsText");
+  if (titreEl) titreEl.textContent = v2 ? "Qu'est-ce qui te passionne ?" : "Tes premières passions";
+  if (texteEl) {
+    texteEl.textContent = v2
+      ? "Choisis ce que tu veux voir dans ton Fil. Tu pourras tout modifier plus tard."
+      : "Choisis 1 à 3 passions. Chacune crée un profil dédié.";
+  }
+
+  // Recherche : n'apparaît qu'en V2 et qu'au-delà du seuil — un champ de
+  // recherche au-dessus de douze tuiles ajoute une étape sans rien filtrer.
+  const rechercheEl = $("#onbPassionSearch");
+  const rechercheActive = v2 && all.length > ONB_SEARCH_SEUIL;
+  let filtre = "";
+  if (rechercheEl) {
+    rechercheEl.style.display = rechercheActive ? "block" : "none";
+    if (rechercheActive) filtre = (rechercheEl.value || "").trim().toLowerCase();
+  }
+
+  let visibles = all;
+  if (filtre) {
+    visibles = all.filter(function (p) {
+      // Une passion déjà cochée reste visible même hors résultats : la voir
+      // disparaître donnerait à croire qu'elle a été décochée.
+      if (selectedPassions.includes(p.id)) return true;
+      return String(p.label || "").toLowerCase().indexOf(filtre) >= 0
+          || String(p.id || "").toLowerCase().indexOf(filtre) >= 0;
+    });
+  }
+
+  const depart = v2 ? selectedPassions[0] : null;
+  const tiles = visibles.map(p => `
     <div class="passion-tile ${selectedPassions.includes(p.id) ? "selected" : ""} ${p.custom ? "passion-custom" : ""}"
          data-passion="${escapeHtml(p.id)}"
          onclick="togglePassion('${escapeJsArg(p.id)}')">
       <div class="passion-tile-emoji">${p.emoji}</div>
       <div class="passion-tile-label">${escapeHtml(p.label)}</div>
       ${p.custom ? '<div class="passion-custom-badge">custom</div>' : ''}
+      ${p.id === depart ? '<div class="passion-depart-badge" data-depart="1" style="position:absolute;top:4px;left:5px;font-size:11px;">★</div>' : ''}
     </div>
   `).join("");
   const createTile = `
@@ -2024,7 +2083,59 @@ function renderPassionGrid() {
       <div class="passion-tile-label">Créer la mienne</div>
     </div>
   `;
-  grid.innerHTML = tiles + createTile;
+  grid.innerHTML = tiles + (filtre ? "" : createTile);
+
+  renderOnbStarter();
+}
+
+// Le profil de départ, énoncé et modifiable (spec §5).
+//
+// Le tap sur une tuile est déjà pris : il coche/décoche. Le surcharger pour
+// « promouvoir en départ » rendrait le décochage imprévisible. D'où une rangée
+// dédiée sous la grille, où le tap ne veut dire qu'une chose.
+function renderOnbStarter() {
+  const hote = $("#onbStarter");
+  if (!hote) return;
+  if (!onbV2Actif() || selectedPassions.length === 0) {
+    hote.style.display = "none";
+    hote.innerHTML = "";
+    return;
+  }
+
+  const depart = selectedPassions[0];
+  const puces = selectedPassions.map(function (id) {
+    const p = passionById(id);
+    const actif = id === depart;
+    return '<button type="button" class="onb-starter-chip" data-passion-depart="' + escapeHtml(id) + '"'
+      + ' onclick="setStarterPassion(\'' + escapeJsArg(id) + '\')"'
+      + ' aria-pressed="' + (actif ? "true" : "false") + '"'
+      + ' style="display:inline-flex;align-items:center;gap:5px;padding:7px 11px;border-radius:999px;font-size:12px;'
+      + 'cursor:pointer;min-height:34px;border:1.5px solid ' + (actif ? "var(--accent)" : "var(--border)") + ';'
+      + 'background:' + (actif ? "var(--accent)" : "var(--bg-card)") + ';'
+      + 'color:' + (actif ? "#fff" : "var(--text)") + ';font-weight:' + (actif ? "700" : "600") + ';">'
+      + (actif ? "★ " : "") + (p && p.emoji ? p.emoji : "✨") + " " + escapeHtml((p && p.label) ? p.label : id)
+      + '</button>';
+  }).join("");
+
+  hote.innerHTML =
+      '<div style="font-size:12px;font-weight:700;margin-bottom:5px;">Ton profil de départ</div>'
+    + '<div style="display:flex;flex-wrap:wrap;gap:6px;">' + puces + '</div>'
+    + '<div style="font-size:11px;color:var(--muted);margin-top:6px;line-height:1.45;">'
+    +   'Tu pourras créer d\'autres profils passion ensuite. Les autres passions choisies '
+    +   'alimentent ton Fil sans créer de profil.'
+    + '</div>';
+  hote.style.display = "block";
+}
+
+// Désigne la passion de départ en la plaçant en tête : `selectedPassions[0]` est
+// la seule définition du profil de départ (onbFinish la lit là), et l'ordre de
+// la liste n'a pas d'autre usage que celui-là.
+function setStarterPassion(id) {
+  const idx = selectedPassions.indexOf(id);
+  if (idx <= 0) return;                     // absente, ou déjà en tête
+  selectedPassions.splice(idx, 1);
+  selectedPassions.unshift(id);
+  renderPassionGrid();
 }
 
 function openCreateCustomPassion() {
@@ -2223,7 +2334,8 @@ function togglePassion(id) {
   const idx = selectedPassions.indexOf(id);
   if (idx >= 0) selectedPassions.splice(idx, 1);
   else {
-    if (selectedPassions.length >= 3) { toast("Max 3 passions pour commencer"); return; }
+    const max = onbMaxPassions();
+    if (selectedPassions.length >= max) { toast("Max " + max + " passions pour commencer"); return; }
     selectedPassions.push(id);
   }
   renderPassionGrid();

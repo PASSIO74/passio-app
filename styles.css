@@ -2342,6 +2342,10 @@
     }
 
     .passion-tile {
+      /* Contexte de positionnement des pastilles de la tuile (« custom », « ★
+         profil de départ ») : sans lui, leur position:absolute s'ancre sur un
+         ancêtre lointain et toutes s'empilent au même endroit. */
+      position: relative;
       aspect-ratio: 1;
       border-radius: 18px;
       border: 1px solid var(--border);
