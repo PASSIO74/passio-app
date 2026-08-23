@@ -2769,6 +2769,16 @@ function _pickMsgUser(el) {
 
 
 async function startDirectMessage(userId, userName, userEmoji, userAvatar, userPhoto) {
+  // ⚠️ Ouvrir un DM avec un compte que J'AI bloqué créait la conversation EN
+  // BASE (`supaCreateConversation` insère les deux membres), puis `renderMessages`
+  // la masquait au rendu : la ligne restait, et la conversation redevenait
+  // visible au déblocage comme si elle avait toujours existé. On refuse en
+  // amont. Seul ce sens est décidable ici — `blocks` est en `blocks_select_own`,
+  // donc « on m'a bloqué » exige une fonction serveur (#134, constats 2 et 3).
+  if (userId && typeof isBlocked === "function" && isBlocked(userId)) {
+    toast("🚫 Compte bloqué — débloque-le pour lui écrire");
+    return;
+  }
   // Photo : argument explicite, sinon profil déjà connu en cache
   if (!userPhoto) userPhoto = (userById(userId) || {}).photoUrl || null;
   var results = document.getElementById("msgUserResults");

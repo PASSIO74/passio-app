@@ -4172,6 +4172,160 @@ function feedIrlBridgePrefill(passion, ref) {
   } catch (e) { feedIrlBridgeFail("prefill_track", e, null); }
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// GARDE TRUST & SAFETY — PROPOSITION IRL (drapeau `irl_proposal_v1`) — #134
+// ──────────────────────────────────────────────────────────────────────────
+// Ce bloc ne CRÉE aucun point d'entrée. Il pose le point de passage OBLIGÉ
+// qu'un futur « proposer un IRL » depuis une conversation devra franchir, et
+// verrouille l'invariant de localisation qui tient aujourd'hui par accident.
+//
+// ⚠️ CE QUE CETTE GARDE NE PEUT PAS DÉCIDER — audité le 2026-08-23 sur la prod
+// réelle, écrit ici parce qu'une garde côté client donne l'illusion de couvrir
+// plus qu'elle ne couvre :
+//
+//   ① L'ÂGE DE L'AUTRE. `profiles` n'a ni date de naissance ni `is_minor` ;
+//      `state.user.isMinor` (app-02) est auto-déclaré, local, effaçable, et
+//      n'était relu NULLE PART avant ce bloc. On peut donc retenir MA propre
+//      proposition sur MA propre déclaration — jamais protéger un mineur d'en
+//      recevoir une. Préalable serveur : colonne d'âge + policy.
+//
+//   ② « ON M'A BLOQUÉ ». `blocks` porte `blocks_select_own`
+//      (`blocker_id = auth.uid()`) : la personne bloquée ne peut pas lire la
+//      ligne qui la bloque. Seul le sens « J'AI bloqué » est décidable ici.
+//      Préalable serveur : une fonction SECURITY DEFINER renvoyant un booléen
+//      sans exposer la ligne, sur le modèle de `is_conv_member`.
+//
+//   ③ LA CONVERSATION ELLE-MÊME TRAVERSE DÉJÀ LE BLOCAGE. `conversations`
+//      INSERT vaut `check: true` et le créateur d'une conv insère n'importe
+//      quel `user_id` dans `conv_members` : n'importe qui ouvre un DM à
+//      n'importe qui. Le client masque (`renderMessages`), la base garde.
+//
+// Tant que ① ② ③ tiennent, `irl_proposal_v1` reste OFF et aucun bouton ne doit
+// être branché sur `irlProposalAllowed`. Le drapeau est le kill switch :
+//     localStorage.passio_irl_proposal_v1 = "1"  → proposition autorisable
+//     localStorage.passio_irl_proposal_v1 = "0"  → coupée (défaut)
+//     window.PASSIO_IRL_PROPOSAL_V1 = false      → coupure immédiate en mémoire
+// ══════════════════════════════════════════════════════════════════════════
+var IRL_TS_VERSION = "v1";
+
+// Un `catch` muet sur un chemin de décision masque un ReferenceError — le défaut
+// qui a coûté six jours de fil vide (bug diagLog). Tout échec de la garde est
+// donc journalisé et remonté au Centre de pilotage, sans jamais être montré à
+// l'utilisateur ni faire échouer l'action appelante.
+function irlTsFail(ou, err) {
+  var msg = "irl_ts (" + ou + ") : " + ((err && err.message) || err || "?");
+  try { if (typeof diagLog === "function") diagLog(msg); } catch (e) {}
+  try {
+    if (window.tel && tel.error) {
+      tel.error(err instanceof Error ? err : new Error(msg), { action: "irl_ts", meta: { v: IRL_TS_VERSION, reason: String(ou) } });
+    }
+  } catch (e) {}
+}
+
+// ⚠️ CE DRAPEAU N'EST PAS UNE FRONTIÈRE DE SÉCURITÉ. Il vit dans le
+// `localStorage` de l'appareil : n'importe qui peut le poser à "1" depuis la
+// console. Il ne vaut que comme interrupteur d'exposition UX/dev — et comme
+// kill switch, sens dans lequel il est fiable (le client peut toujours se
+// couper lui-même, jamais s'autoriser). L'autorisation FINALE d'une
+// proposition IRL devra venir du serveur, une fois #136 fusionné et prouvé.
+// Tant que ce n'est pas le cas, aucun CTA produit ne doit être branché sur
+// `irlProposalAllowed` comme s'il s'agissait d'une permission.
+function irlProposalEnabled() {
+  if (typeof window.PASSIO_IRL_PROPOSAL_V1 === "boolean") return window.PASSIO_IRL_PROPOSAL_V1;
+  try {
+    var v = localStorage.getItem("passio_irl_proposal_v1");
+    if (v === "1") return true;
+    if (v === "0") return false;
+  } catch (e) {}
+  return false; // défaut : OFF — aucune proposition IRL n'est autorisée
+}
+
+// Suis-je mineur d'après MA propre déclaration d'onboarding ? Auto-déclaratif :
+// c'est une retenue, pas une vérification (cf. ① en tête de bloc).
+//
+// ⚠️ ÉCHEC FERMÉ. Une lecture d'état qui lève renvoie `true` — donc « retenir »,
+// pas « laisser passer ». Le réflexe inverse (`catch { return false }`) rendrait
+// la garde MUETTE exactement quand l'état est cassé, c'est-à-dire quand on a le
+// moins de raisons de lui faire confiance. Une garde T&S qui échoue en position
+// permissive est pire que pas de garde : elle a l'air de protéger.
+function irlProposerEstMineur() {
+  try {
+    return !!(state && state.user && state.user.isMinor === true);
+  } catch (e) {
+    irlTsFail("minorite", e);
+    return true;
+  }
+}
+
+// Verdict UNIQUE de la garde. Tout point d'entrée d'une proposition IRL doit
+// passer par là. Renvoie toujours un objet — jamais null, jamais une exception.
+function irlProposalVerdict(targetUserId) {
+  if (!irlProposalEnabled()) return { ok: false, reason: "flag_off" };
+  var id = targetUserId ? String(targetUserId) : "";
+  if (!id) return { ok: false, reason: "no_target" };
+  if (id === "me") return { ok: false, reason: "self" };
+  // ⚠️ ÉCHEC FERMÉ sur TOUT le reste du verdict : une exception dans la
+  // comparaison d'identité ou dans `isBlocked` rend `guard_error`, jamais `ok`.
+  // Avaler l'erreur puis tomber sur `return { ok: true }` laisserait passer
+  // précisément la proposition qu'on ne sait plus juger.
+  try {
+    if (typeof MY_UID !== "undefined" && MY_UID && id === MY_UID) return { ok: false, reason: "self" };
+    if (irlProposerEstMineur()) return { ok: false, reason: "self_minor" };
+    if (typeof isBlocked === "function" && isBlocked(id)) return { ok: false, reason: "blocked" };
+  } catch (e) {
+    irlTsFail("verdict", e);
+    return { ok: false, reason: "guard_error" };
+  }
+  return { ok: true, reason: "ok" };
+}
+
+// Métadonnées AUTORISÉES : version, état du drapeau, motif du verdict. Aucun
+// identifiant de compte, aucun texte, aucune coordonnée.
+// ⚠️ Toute clé ajoutée ici doit être vérifiée contre `DENY_KEY` (js/telemetry.js) :
+// une clé qui matche est jetée EN SILENCE — l'événement partirait, la donnée
+// n'arriverait jamais (piège déjà payé sur `has_passion` → `has_psn`).
+function irlProposalMeta(reason) {
+  return { v: IRL_TS_VERSION, flag: irlProposalEnabled() ? "on" : "off", reason: String(reason || "?") };
+}
+
+// Décision + trace. C'est CETTE fonction que branchera le futur bouton.
+function irlProposalAllowed(targetUserId) {
+  var verdict = irlProposalVerdict(targetUserId);
+  try {
+    if (window.tel && tel.action) tel.action("irl_proposal_guard", irlProposalMeta(verdict.reason));
+  } catch (e) {}
+  return verdict.ok;
+}
+
+// ── Localisation : l'invariant est tenu par des TESTS, pas par une mutation ──
+//
+// Constat du 2026-08-23 : `events` est en LECTURE PUBLIQUE INTÉGRALE
+// (`[SELECT] Lecture publique · using: true`), `lat`/`lng`/`address` comprises.
+// Rien dans la table ne protège un point de rendez-vous.
+//
+// L'audit a établi que le fix GPS (`irlUserLocation`) ne sert qu'au filtre de
+// distance et au recentrage de la carte : les coordonnées publiées viennent
+// d'une adresse TAPÉE, du dictionnaire de villes ou d'un géocodage. L'invariant
+// « la position de l'appareil ne part pas en base » tient donc déjà.
+//
+// ⚠️ UNE PREMIÈRE VERSION DE CE LOT LE « VERROUILLAIT » EN ARRONDISSANT DANS
+// `_eventRow` TOUTE COORDONNÉE PROCHE DU FIX GPS (même cellule de 0,01°, soit
+// ~1,1 km). C'était FAUX, et la contre-revue l'a arrêté avant la fusion :
+// **la proximité n'est pas la provenance**. Un café choisi à l'autocomplétion
+// à 300 m de chez soi tombe dans la même cellule que le fix GPS — ses
+// coordonnées exactes, légitimes et explicitement choisies, étaient réécrites
+// au centre de la cellule. On corrigeait un risque hypothétique en cassant le
+// parcours IRL réel.
+//
+// Règle qui remplace la mutation : **ne jamais déduire la provenance d'une
+// coordonnée de sa position**. Le jour où un parcours voudra publier la
+// position de l'appareil, il devra porter une provenance EXPLICITE
+// (`locationSource: "device"`) posée par ce parcours, plus un consentement
+// utilisateur réel — et c'est ce chemin-là, et lui seul, qui sera zoné.
+// D'ici là, `tests/e2e/irl-trust-safety.spec.js` tient l'invariant : le fix GPS
+// n'entre jamais dans un payload d'événement, et un lieu choisi à quelques
+// centaines de mètres reste EXACT.
+
 function openCreateEvent(editId) {
   const ed = editId ? _findCanonicalEvent(editId) : null;
   if (editId && !ed) { toast("Événement introuvable"); return; }
