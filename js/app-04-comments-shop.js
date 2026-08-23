@@ -3090,7 +3090,7 @@ async function openUserProfile(authorId, source) {
     </div>\
     \
     <!-- BOUTONS -->\
-    <div style="display:flex;gap:8px;justify-content:center;margin:14px 0 4px;">\
+    <div id="visitedProfileActions" style="display:flex;gap:8px;justify-content:center;margin:14px 0 4px;">\
       <button class="btn primary" onclick="closeModal();startDirectMessage(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "Passionné") + '\',\'' + (user.profileEmoji || "✨") + '\',\'' + (user.avatar || "#8b5cf6") + '\',\'' + (user.photoUrl || "") + '\')" style="flex:1;font-size:12px;padding:10px 18px;border-radius:14px;">💬 Message</button>\
       <button class="btn ghost" id="followBtn_' + authorId + '" onclick="toggleFollowUser(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "") + '\')" style="flex:1;font-size:12px;padding:10px 18px;border-radius:14px;' + (isFollowing ? 'background:var(--accent);color:#fff;border-color:var(--accent);' : '') + '">' + (isFollowing ? '✓ Suivi' : '➕ Suivre') + '</button>\
     </div>\
@@ -3114,6 +3114,15 @@ async function openUserProfile(authorId, source) {
   if (modalEl) modalEl.classList.add("modal-fullscreen");
   // Remplit le contenu selon les sélections (comme renderProfileContent chez moi).
   _renderVisitedContent();
+
+  // Aide §8 « premier profil visité » : mettre en évidence Suivre / Message.
+  // Différée d'un tick — la modale vient d'être injectée, son rectangle n'est
+  // mesurable qu'après peinture.
+  try {
+    if (typeof montrerHint === "function") {
+      setTimeout(function () { montrerHint("profil_visite", "#visitedProfileActions"); }, 350);
+    }
+  } catch (e) {}
 }
 
 // ======== PROFIL VISITÉ — filtres passion + type de contenu ========

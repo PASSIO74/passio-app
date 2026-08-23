@@ -1015,6 +1015,20 @@ function renderProfilesScreen() {
 
   // Contenu en dessous : filtré par l'onglet actif ET la multi-sélection
   renderProfileContent();
+
+  // Aide §8 « premier retour Profil » : montrer comment créer un second profil
+  // passion. Elle n'a de sens que si l'utilisateur en a exactement UN — celui
+  // créé à l'inscription. Avec deux profils ou plus, il a déjà trouvé tout seul,
+  // et le §8 interdit d'expliquer ce qui est acquis.
+  try {
+    if (typeof montrerHint === "function" && (state.user.profiles || []).length === 1) {
+      setTimeout(function () {
+        var ecran = document.getElementById("screen-profiles");
+        if (!ecran || !ecran.classList.contains("active")) return;
+        montrerHint("second_profil", "#nouveauProfilLien");
+      }, 400);
+    }
+  } catch (e) {}
 }
 
 // 🔄 MULTI-SÉLECTION DES PROFILS (écran profil). Nom distinct de toggleProfileFilter
