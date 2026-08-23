@@ -3250,8 +3250,15 @@ async function supaLoadStories() {
 // insert qui échoue en entier laissait l'événement en local seulement.
 const _EVENT_OPTIONAL_COLS = ["end_at", "status", "updated_at", "co_organizers", "series_id", "recurrence", "conv_id"];
 
+// ⚠️ POINT UNIQUE de départ d'un événement vers la base — et `events` est en
+// LECTURE PUBLIQUE INTÉGRALE (`[SELECT] Lecture publique · using: true`), donc
+// `lat`/`lng` y sont lisibles par tous. `irlSanitizeLocation` (app-07) ramène ici
+// à la zone (~1 km) toute coordonnée qui EST la position de l'appareil sans
+// consentement explicite. Aujourd'hui aucun chemin n'y met le fix GPS : c'est
+// précisément l'invariant qu'on verrouille avant d'ouvrir la proposition IRL
+// depuis une conversation (#134).
 function _eventRow(event) {
-  return {
+  var _row = {
     title: event.title, passion_id: event.passion || null,
     lat: event.lat || null, lng: event.lng || null,
     city: event.city || "", emoji: event.emoji || "📍",
@@ -3273,6 +3280,9 @@ function _eventRow(event) {
     recurrence: event.recurrence || "none",
     conv_id: event.convId || null,
   };
+  return typeof irlSanitizeLocation === "function"
+    ? irlSanitizeLocation(_row, event.locationConsent === true)
+    : _row;
 }
 
 // Retire de `row` la colonne citée dans le message d'erreur PostgREST (PGRST204 /
@@ -4683,6 +4693,15 @@ function supaSubscribe() {
         const otherId = (other && other.user_id)
           || (convData?.created_by && convData.created_by !== MY_UID ? convData.created_by : "")
           || "";
+        // ⚠️ N'IMPORTE QUI peut m'ajouter à une conversation : `conversations`
+        // INSERT vaut `check: true` et le créateur insère n'importe quel
+        // `user_id` dans `conv_members`. Bloquer ne l'empêche donc PAS côté
+        // base (#134, constat 3). `renderMessages` masquait la conv au rendu —
+        // mais elle était stockée, et ses messages avec. On refuse ici, à
+        // l'ingestion : un compte que J'AI bloqué ne matérialise plus rien
+        // localement. Le sens inverse (« on m'a bloqué ») reste indécidable
+        // côté client, `blocks` étant en `blocks_select_own`.
+        if (otherId && typeof isBlocked === "function" && isBlocked(otherId)) return;
         if (other?.profiles && typeof cacheRemoteProfile === "function") {
           try { cacheRemoteProfile({ id: other.user_id, username: other.profiles.username, emoji: other.profiles.emoji, color: other.profiles.color, avatar_url: other.profiles.avatar_url }); } catch(e) {}
         }

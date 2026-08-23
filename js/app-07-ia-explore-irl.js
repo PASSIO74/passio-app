@@ -4172,6 +4172,151 @@ function feedIrlBridgePrefill(passion, ref) {
   } catch (e) { feedIrlBridgeFail("prefill_track", e, null); }
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// GARDE TRUST & SAFETY — PROPOSITION IRL (drapeau `irl_proposal_v1`) — #134
+// ──────────────────────────────────────────────────────────────────────────
+// Ce bloc ne CRÉE aucun point d'entrée. Il pose le point de passage OBLIGÉ
+// qu'un futur « proposer un IRL » depuis une conversation devra franchir, et
+// verrouille l'invariant de localisation qui tient aujourd'hui par accident.
+//
+// ⚠️ CE QUE CETTE GARDE NE PEUT PAS DÉCIDER — audité le 2026-08-23 sur la prod
+// réelle, écrit ici parce qu'une garde côté client donne l'illusion de couvrir
+// plus qu'elle ne couvre :
+//
+//   ① L'ÂGE DE L'AUTRE. `profiles` n'a ni date de naissance ni `is_minor` ;
+//      `state.user.isMinor` (app-02) est auto-déclaré, local, effaçable, et
+//      n'était relu NULLE PART avant ce bloc. On peut donc retenir MA propre
+//      proposition sur MA propre déclaration — jamais protéger un mineur d'en
+//      recevoir une. Préalable serveur : colonne d'âge + policy.
+//
+//   ② « ON M'A BLOQUÉ ». `blocks` porte `blocks_select_own`
+//      (`blocker_id = auth.uid()`) : la personne bloquée ne peut pas lire la
+//      ligne qui la bloque. Seul le sens « J'AI bloqué » est décidable ici.
+//      Préalable serveur : une fonction SECURITY DEFINER renvoyant un booléen
+//      sans exposer la ligne, sur le modèle de `is_conv_member`.
+//
+//   ③ LA CONVERSATION ELLE-MÊME TRAVERSE DÉJÀ LE BLOCAGE. `conversations`
+//      INSERT vaut `check: true` et le créateur d'une conv insère n'importe
+//      quel `user_id` dans `conv_members` : n'importe qui ouvre un DM à
+//      n'importe qui. Le client masque (`renderMessages`), la base garde.
+//
+// Tant que ① ② ③ tiennent, `irl_proposal_v1` reste OFF et aucun bouton ne doit
+// être branché sur `irlProposalAllowed`. Le drapeau est le kill switch :
+//     localStorage.passio_irl_proposal_v1 = "1"  → proposition autorisable
+//     localStorage.passio_irl_proposal_v1 = "0"  → coupée (défaut)
+//     window.PASSIO_IRL_PROPOSAL_V1 = false      → coupure immédiate en mémoire
+// ══════════════════════════════════════════════════════════════════════════
+var IRL_TS_VERSION = "v1";
+
+// Rayon de l'arrondi appliqué à une position d'appareil publiée sans
+// consentement explicite : 2 décimales ≈ 1,1 km. La carte reste utilisable,
+// le point de rendez-vous exact ne quitte pas l'appareil.
+var IRL_ZONE_DECIMALS = 2;
+
+function irlProposalEnabled() {
+  if (typeof window.PASSIO_IRL_PROPOSAL_V1 === "boolean") return window.PASSIO_IRL_PROPOSAL_V1;
+  try {
+    var v = localStorage.getItem("passio_irl_proposal_v1");
+    if (v === "1") return true;
+    if (v === "0") return false;
+  } catch (e) {}
+  return false; // défaut : OFF — aucune proposition IRL n'est autorisée
+}
+
+// Suis-je mineur d'après MA propre déclaration d'onboarding ? Auto-déclaratif :
+// c'est une retenue, pas une vérification (cf. ① en tête de bloc).
+function irlProposerEstMineur() {
+  try { return state && state.user && state.user.isMinor === true; } catch (e) { return false; }
+}
+
+// Verdict UNIQUE de la garde. Tout point d'entrée d'une proposition IRL doit
+// passer par là. Renvoie toujours un objet — jamais null, jamais une exception.
+function irlProposalVerdict(targetUserId) {
+  if (!irlProposalEnabled()) return { ok: false, reason: "flag_off" };
+  var id = targetUserId ? String(targetUserId) : "";
+  if (!id) return { ok: false, reason: "no_target" };
+  try { if (typeof MY_UID !== "undefined" && MY_UID && id === MY_UID) return { ok: false, reason: "self" }; } catch (e) {}
+  if (id === "me") return { ok: false, reason: "self" };
+  if (irlProposerEstMineur()) return { ok: false, reason: "self_minor" };
+  try {
+    if (typeof isBlocked === "function" && isBlocked(id)) return { ok: false, reason: "blocked" };
+  } catch (e) {}
+  return { ok: true, reason: "ok" };
+}
+
+// Métadonnées AUTORISÉES : version, état du drapeau, motif du verdict. Aucun
+// identifiant de compte, aucun texte, aucune coordonnée.
+// ⚠️ Toute clé ajoutée ici doit être vérifiée contre `DENY_KEY` (js/telemetry.js) :
+// une clé qui matche est jetée EN SILENCE — l'événement partirait, la donnée
+// n'arriverait jamais (piège déjà payé sur `has_passion` → `has_psn`).
+function irlProposalMeta(reason) {
+  return { v: IRL_TS_VERSION, flag: irlProposalEnabled() ? "on" : "off", reason: String(reason || "?") };
+}
+
+// Décision + trace. C'est CETTE fonction que branchera le futur bouton.
+function irlProposalAllowed(targetUserId) {
+  var verdict = irlProposalVerdict(targetUserId);
+  try {
+    if (window.tel && tel.action) tel.action("irl_proposal_guard", irlProposalMeta(verdict.reason));
+  } catch (e) {}
+  return verdict.ok;
+}
+
+// ── Localisation : la position de l'appareil ne part jamais telle quelle ──
+//
+// Constat du 2026-08-23 : `events` est en LECTURE PUBLIQUE INTÉGRALE
+// (`[SELECT] Lecture publique · using: true`), `lat`/`lng`/`address` comprises.
+// Rien dans la table ne protège un point de rendez-vous. Aujourd'hui le fix GPS
+// (`irlUserLocation`) ne sert qu'au filtre de distance et au recentrage de la
+// carte — les coordonnées publiées viennent d'une adresse TAPÉE, du dictionnaire
+// de villes ou d'un géocodage. Cet invariant tient, mais par construction du
+// formulaire, sans rien pour l'empêcher de céder.
+//
+// `irlSanitizeLocation` le verrouille au SEUL point où un événement part en
+// base (`_eventRow`, app-08) : une coordonnée égale à la position de l'appareil
+// est ramenée à la zone (~1 km) faute de consentement explicite.
+
+// La coordonnée proposée EST-ELLE la position de l'appareil ? Comparaison à la
+// résolution de la zone : un fix GPS recopié puis légèrement remanié reste
+// détecté, alors qu'une ville homonyme à 1 km près ne peut pas exister.
+function irlEstPositionAppareil(lat, lng) {
+  try {
+    if (typeof irlUserLocation === "undefined" || !irlUserLocation) return false;
+    if (typeof lat !== "number" || typeof lng !== "number") return false;
+    var p = Math.pow(10, IRL_ZONE_DECIMALS);
+    return Math.round(lat * p) === Math.round(irlUserLocation.lat * p)
+        && Math.round(lng * p) === Math.round(irlUserLocation.lng * p);
+  } catch (e) { return false; }
+}
+
+function irlArrondiZone(n) {
+  var p = Math.pow(10, IRL_ZONE_DECIMALS);
+  return Math.round(n * p) / p;
+}
+
+// Ramène `row.lat`/`row.lng` à la zone quand ce sont les coordonnées de
+// l'appareil et qu'aucun consentement explicite n'a été donné. Renvoie la ligne
+// (mutée) pour rester utilisable en une expression.
+//
+// ⚠️ `consentExplicite` n'est posé par AUCUN chemin aujourd'hui : c'est
+// volontaire. Le jour où un parcours propose « publier ma position exacte », il
+// devra le poser lui-même, après un choix de l'utilisateur — pas l'obtenir par
+// défaut.
+function irlSanitizeLocation(row, consentExplicite) {
+  try {
+    if (!row) return row;
+    if (consentExplicite === true) return row;
+    if (!irlEstPositionAppareil(row.lat, row.lng)) return row;
+    row.lat = irlArrondiZone(row.lat);
+    row.lng = irlArrondiZone(row.lng);
+    try {
+      if (window.tel && tel.action) tel.action("irl_location_zoned", irlProposalMeta("device_position"));
+    } catch (e) {}
+    try { if (typeof diagLog === "function") diagLog("[IRL] position d'appareil ramenée à la zone (~1 km)"); } catch (e) {}
+  } catch (e) {}
+  return row;
+}
+
 function openCreateEvent(editId) {
   const ed = editId ? _findCanonicalEvent(editId) : null;
   if (editId && !ed) { toast("Événement introuvable"); return; }
