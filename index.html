@@ -333,9 +333,15 @@
     <!-- Step 4: Passion selection -->
     <div class="onb-step" data-onb-step="passions">
       <div style="font-size:28px;text-align:center;margin:4px 0 2px;">✨</div>
-      <div class="onb-title" style="font-size:20px;margin-bottom:4px;">Tes premières passions</div>
-      <p class="onb-text" style="font-size:12px;margin-bottom:10px;">Choisis 1 à 3 passions. Chacune crée un profil dédié.</p>
+      <!-- Titre et texte sont posés par renderPassionGrid() : ils diffèrent selon
+           onbV2Actif(), et l'ancienne copie doit rester restaurable par le drapeau. -->
+      <div class="onb-title" id="onbPassionsTitle" style="font-size:20px;margin-bottom:4px;">Tes premières passions</div>
+      <p class="onb-text" id="onbPassionsText" style="font-size:12px;margin-bottom:10px;">Choisis 1 à 3 passions. Chacune crée un profil dédié.</p>
+      <input type="text" id="onbPassionSearch" placeholder="Chercher une passion…" autocomplete="off"
+             oninput="renderPassionGrid()" aria-label="Chercher une passion"
+             style="display:none;width:100%;box-sizing:border-box;margin-bottom:8px;padding:9px 12px;font-size:16px;border:1.5px solid var(--border);border-radius:12px;background:var(--bg-card);color:var(--text);outline:none;"/>
       <div class="passion-grid" id="passionGrid"></div>
+      <div id="onbStarter" style="display:none;margin-top:10px;"></div>
       <div class="onb-footer">
         <button class="btn ghost" onclick="onbPrev()">← Retour</button>
         <button class="btn primary" style="flex:1;" onclick="onbFinish()">Entrer sur PASSIO</button>
