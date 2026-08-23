@@ -124,6 +124,22 @@ jobs:
       - name: Frontieres de confiance du canal Claude
         run: bash tests/ci/frontiere-confiance.sh
 
+      # Banc #136 : les gardes Trust & Safety SERVEUR (age fiable, blocage
+      # bidirectionnel, conversation non forcable) sont des policies RLS et des
+      # fonctions SECURITY DEFINER. Aucun test Playwright ne peut les prouver :
+      # ils vivent dans PostgreSQL, pas dans le navigateur.
+      #
+      # Le banc monte un PostgreSQL jetable, y reconstitue les policies REELLES
+      # de prod, applique la migration et joue les scenarios en tant que comptes
+      # distincts - puis retire chaque garde et exige que le test correspondant
+      # redevienne rouge. Il ne touche aucune base reelle.
+      #
+      # Branche ici des sa creation : le depot a deja paye le fait qu'un banc
+      # ecrit mais lance nulle part ne protege rien (cf. frontiere-confiance.sh
+      # ci-dessus, qui a vecu une journee sans garder quoi que ce soit).
+      - name: Banc Trust & Safety serveur (RLS, PostgreSQL jetable)
+        run: bash tests/sql/migration-ts-serveur.test.sh
+
       # Le centre de pilotage est une application à part entière. Ses tests
       # déterministes (Sentinel, Guardian, Autopilot, rollback) sont désormais
       # une gate CI explicite : une autonomie non testée ne doit jamais être verte.
