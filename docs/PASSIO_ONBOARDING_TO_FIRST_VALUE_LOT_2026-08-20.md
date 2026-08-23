@@ -358,11 +358,22 @@ conversation_started
 Pour `passions_selected` :
 
 ```text
-passion_count
-primary_passion_id
-signup_method
-is_minor_band
+n_interests
+primary_id
+starter_profiles
+flag_v2
 ```
+
+⚠️ **Corrigé le 2026-08-23 — les deux noms d'origine étaient morts-nés.** Cette
+section prescrivait `passion_count` et `primary_passion_id`. Le filtre PII de
+`js/telemetry.js` est une liste **NOIRE** de motifs de noms de clés (`DENY_KEY`)
+qui contient `pass` : les deux clés matchent, et `scrubMeta` les jette **en
+silence** — l'appel part, l'événement arrive, la propriété a disparu. C'est
+exactement le défaut mesuré sur `passion_ctx` en production le 2026-08-22.
+
+Le nommage retenu évite le radical `pass` (`n_interests`, `primary_id`). Toute
+nouvelle clé doit passer `npm run audit:telemetry-keys`, qui relit `DENY_KEY`
+depuis `js/telemetry.js` et échoue en CI si une clé émise n'y survit pas.
 
 Ne pas envoyer :
 
