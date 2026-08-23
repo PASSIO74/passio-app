@@ -4222,11 +4222,14 @@ function irlTsFail(ou, err) {
   } catch (e) {}
 }
 
-// Rayon de l'arrondi appliqué à une position d'appareil publiée sans
-// consentement explicite : 2 décimales ≈ 1,1 km. La carte reste utilisable,
-// le point de rendez-vous exact ne quitte pas l'appareil.
-var IRL_ZONE_DECIMALS = 2;
-
+// ⚠️ CE DRAPEAU N'EST PAS UNE FRONTIÈRE DE SÉCURITÉ. Il vit dans le
+// `localStorage` de l'appareil : n'importe qui peut le poser à "1" depuis la
+// console. Il ne vaut que comme interrupteur d'exposition UX/dev — et comme
+// kill switch, sens dans lequel il est fiable (le client peut toujours se
+// couper lui-même, jamais s'autoriser). L'autorisation FINALE d'une
+// proposition IRL devra venir du serveur, une fois #136 fusionné et prouvé.
+// Tant que ce n'est pas le cas, aucun CTA produit ne doit être branché sur
+// `irlProposalAllowed` comme s'il s'agissait d'une permission.
 function irlProposalEnabled() {
   if (typeof window.PASSIO_IRL_PROPOSAL_V1 === "boolean") return window.PASSIO_IRL_PROPOSAL_V1;
   try {
@@ -4294,74 +4297,34 @@ function irlProposalAllowed(targetUserId) {
   return verdict.ok;
 }
 
-// ── Localisation : la position de l'appareil ne part jamais telle quelle ──
+// ── Localisation : l'invariant est tenu par des TESTS, pas par une mutation ──
 //
 // Constat du 2026-08-23 : `events` est en LECTURE PUBLIQUE INTÉGRALE
 // (`[SELECT] Lecture publique · using: true`), `lat`/`lng`/`address` comprises.
-// Rien dans la table ne protège un point de rendez-vous. Aujourd'hui le fix GPS
-// (`irlUserLocation`) ne sert qu'au filtre de distance et au recentrage de la
-// carte — les coordonnées publiées viennent d'une adresse TAPÉE, du dictionnaire
-// de villes ou d'un géocodage. Cet invariant tient, mais par construction du
-// formulaire, sans rien pour l'empêcher de céder.
+// Rien dans la table ne protège un point de rendez-vous.
 //
-// `irlSanitizeLocation` le verrouille au SEUL point où un événement part en
-// base (`_eventRow`, app-08) : une coordonnée égale à la position de l'appareil
-// est ramenée à la zone (~1 km) faute de consentement explicite.
-
-// La coordonnée proposée EST-ELLE la position de l'appareil ? Comparaison à la
-// résolution de la zone : un fix GPS recopié puis légèrement remanié reste
-// détecté, alors qu'une ville homonyme à 1 km près ne peut pas exister.
-function irlEstPositionAppareil(lat, lng) {
-  try {
-    if (typeof irlUserLocation === "undefined" || !irlUserLocation) return false;
-    if (typeof lat !== "number" || typeof lng !== "number") return false;
-    var p = Math.pow(10, IRL_ZONE_DECIMALS);
-    return Math.round(lat * p) === Math.round(irlUserLocation.lat * p)
-        && Math.round(lng * p) === Math.round(irlUserLocation.lng * p);
-  } catch (e) {
-    // ÉCHEC FERMÉ : si on ne peut pas trancher, on suppose que C'EST la position
-    // de l'appareil — donc on arrondit. Le coût d'une erreur est un point de
-    // rendez-vous à 1 km près ; le coût de l'erreur inverse est une position
-    // exacte publiée sur une table en lecture publique.
-    irlTsFail("position_appareil", e);
-    return true;
-  }
-}
-
-function irlArrondiZone(n) {
-  var p = Math.pow(10, IRL_ZONE_DECIMALS);
-  return Math.round(n * p) / p;
-}
-
-// Ramène `row.lat`/`row.lng` à la zone quand ce sont les coordonnées de
-// l'appareil et qu'aucun consentement explicite n'a été donné. Renvoie la ligne
-// (mutée) pour rester utilisable en une expression.
+// L'audit a établi que le fix GPS (`irlUserLocation`) ne sert qu'au filtre de
+// distance et au recentrage de la carte : les coordonnées publiées viennent
+// d'une adresse TAPÉE, du dictionnaire de villes ou d'un géocodage. L'invariant
+// « la position de l'appareil ne part pas en base » tient donc déjà.
 //
-// ⚠️ `consentExplicite` n'est posé par AUCUN chemin aujourd'hui : c'est
-// volontaire. Le jour où un parcours propose « publier ma position exacte », il
-// devra le poser lui-même, après un choix de l'utilisateur — pas l'obtenir par
-// défaut.
-function irlSanitizeLocation(row, consentExplicite) {
-  if (!row) return row;
-  if (consentExplicite === true) return row;
-  try {
-    if (!irlEstPositionAppareil(row.lat, row.lng)) return row;
-    row.lat = irlArrondiZone(row.lat);
-    row.lng = irlArrondiZone(row.lng);
-    try {
-      if (window.tel && tel.action) tel.action("irl_location_zoned", irlProposalMeta("device_position"));
-    } catch (e) {}
-    try { if (typeof diagLog === "function") diagLog("[IRL] position d'appareil ramenée à la zone (~1 km)"); } catch (e) {}
-  } catch (e) {
-    // ÉCHEC FERMÉ : rendre `row` intacte ici publierait la coordonnée qu'on
-    // n'a pas su juger, sur une table en lecture publique. On la retire —
-    // l'événement s'enregistre sans point sur la carte, ce qui est visible et
-    // rattrapable, là où une position exacte publiée ne l'est pas.
-    irlTsFail("sanitize", e);
-    try { row.lat = null; row.lng = null; } catch (e2) {}
-  }
-  return row;
-}
+// ⚠️ UNE PREMIÈRE VERSION DE CE LOT LE « VERROUILLAIT » EN ARRONDISSANT DANS
+// `_eventRow` TOUTE COORDONNÉE PROCHE DU FIX GPS (même cellule de 0,01°, soit
+// ~1,1 km). C'était FAUX, et la contre-revue l'a arrêté avant la fusion :
+// **la proximité n'est pas la provenance**. Un café choisi à l'autocomplétion
+// à 300 m de chez soi tombe dans la même cellule que le fix GPS — ses
+// coordonnées exactes, légitimes et explicitement choisies, étaient réécrites
+// au centre de la cellule. On corrigeait un risque hypothétique en cassant le
+// parcours IRL réel.
+//
+// Règle qui remplace la mutation : **ne jamais déduire la provenance d'une
+// coordonnée de sa position**. Le jour où un parcours voudra publier la
+// position de l'appareil, il devra porter une provenance EXPLICITE
+// (`locationSource: "device"`) posée par ce parcours, plus un consentement
+// utilisateur réel — et c'est ce chemin-là, et lui seul, qui sera zoné.
+// D'ici là, `tests/e2e/irl-trust-safety.spec.js` tient l'invariant : le fix GPS
+// n'entre jamais dans un payload d'événement, et un lieu choisi à quelques
+// centaines de mètres reste EXACT.
 
 function openCreateEvent(editId) {
   const ed = editId ? _findCanonicalEvent(editId) : null;

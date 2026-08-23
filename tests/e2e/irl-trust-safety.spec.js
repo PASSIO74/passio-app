@@ -17,9 +17,16 @@
 // bloquants, et c'est la raison pour laquelle `irl_proposal_v1` reste OFF.
 //
 // Ce qui EST prouvé ici : le verdict de la garde dans les six cas décidables,
-// le verrou de localisation au point unique de départ vers la base, le refus
-// d'ouvrir un DM avec un compte bloqué (aller comme retour), et la survie des
-// clés de télémétrie au filtre PII.
+// son échec FERMÉ quand elle ne peut plus juger, l'invariant de localisation
+// (le fix GPS n'entre pas dans un payload d'événement, ET un lieu choisi à
+// quelques centaines de mètres reste exact), le refus d'ouvrir un DM avec un
+// compte bloqué, et la survie des clés de télémétrie au filtre PII.
+//
+// ⚠️ L'invariant de localisation est tenu par TEST, pas par une réécriture des
+// coordonnées. Une première version arrondissait dans `_eventRow` tout point
+// tombant dans la même cellule de 0,01° que le fix GPS : elle déplaçait donc
+// les lieux légitimement choisis à moins d'un kilomètre de chez soi. La
+// proximité n'est pas la provenance — la contre-revue l'a arrêté avant fusion.
 // ═══════════════════════════════════════════════════════════════════════════
 const fs = require("fs");
 const path = require("path");
@@ -121,55 +128,44 @@ test.describe("Trust & Safety — garde de la proposition IRL", () => {
 
   // ── Localisation : la position de l'appareil ne part jamais brute ─────────
 
-  test("_eventRow ramène à la zone une coordonnée qui EST la position de l'appareil", async ({ page }) => {
+  test("un lieu choisi à quelques centaines de mètres du GPS reste EXACT", async ({ page }) => {
     await bootOnboarded(page);
+    // ⚠️ LE TEST DE NON-RÉGRESSION DE LA CONTRE-REVUE. Une première version du
+    // lot arrondissait dans `_eventRow` toute coordonnée tombant dans la même
+    // cellule de 0,01° que le fix GPS — soit ~1,1 km. Un café choisi à
+    // l'autocomplétion à 300 m de chez soi partageait donc cette cellule et se
+    // faisait déplacer au centre. La proximité n'est PAS la provenance.
+    const r = await page.evaluate((gps) => {
+      irlUserLocation = { lat: gps.lat, lng: gps.lng };
+      const lieu = { lat: 45.897900, lng: 6.128100 }; // ~300 m, MÊME cellule 0,01°
+      const row = _eventRow({ title: "Café", lat: lieu.lat, lng: lieu.lng, date: Date.now() });
+      const p = 100;
+      return {
+        lat: row.lat, lng: row.lng,
+        memeCellule: Math.round(gps.lat * p) === Math.round(lieu.lat * p)
+                  && Math.round(gps.lng * p) === Math.round(lieu.lng * p),
+      };
+    }, GPS);
+    // Prémisse : sans elle, le test passerait sur un lieu trop éloigné pour que
+    // l'ancien défaut se déclenche, et ne garderait donc rien.
+    expect(r.memeCellule).toBe(true);
+    expect(r.lat).toBe(45.8979);
+    expect(r.lng).toBe(6.1281);
+  });
+
+  test("le lieu part intact même quand il EST exactement la position de l'appareil", async ({ page }) => {
+    await bootOnboarded(page);
+    // Corollaire assumé de la règle ci-dessus : aucune coordonnée n'est réécrite
+    // dans ce lot. Le jour où un parcours publiera la position de l'appareil, il
+    // portera une provenance explicite (`locationSource: "device"`) et c'est CE
+    // chemin-là, et lui seul, qui sera zoné — pas une coïncidence géographique.
     const r = await page.evaluate((gps) => {
       irlUserLocation = { lat: gps.lat, lng: gps.lng };
       const row = _eventRow({ title: "T", lat: gps.lat, lng: gps.lng, date: Date.now() });
       return { lat: row.lat, lng: row.lng };
     }, GPS);
-    // 2 décimales ≈ 1,1 km : la carte reste utilisable, le point exact ne part pas.
-    expect(r.lat).toBe(45.9);
-    expect(r.lng).toBe(6.13);
-    expect(r.lat).not.toBe(GPS.lat);
-    expect(r.lng).not.toBe(GPS.lng);
-  });
-
-  test("une coordonnée qui n'est PAS la position de l'appareil part intacte", async ({ page }) => {
-    await bootOnboarded(page);
-    const r = await page.evaluate((gps) => {
-      irlUserLocation = { lat: gps.lat, lng: gps.lng };
-      // Lyon : même pays, autre ville — rien à voir avec le fix GPS.
-      const row = _eventRow({ title: "T", lat: 45.764043, lng: 4.835659, date: Date.now() });
-      return { lat: row.lat, lng: row.lng };
-    }, GPS);
-    expect(r.lat).toBe(45.764043);
-    expect(r.lng).toBe(4.835659);
-  });
-
-  test("consentement explicite : la position exacte est conservée", async ({ page }) => {
-    await bootOnboarded(page);
-    const r = await page.evaluate((gps) => {
-      irlUserLocation = { lat: gps.lat, lng: gps.lng };
-      const row = _eventRow({ title: "T", lat: gps.lat, lng: gps.lng, date: Date.now(), locationConsent: true });
-      return { lat: row.lat, lng: row.lng };
-    }, GPS);
     expect(r.lat).toBe(GPS.lat);
     expect(r.lng).toBe(GPS.lng);
-  });
-
-  test("aucun chemin actuel ne pose locationConsent : le consentement reste à obtenir", async () => {
-    // Si un jour un parcours pose ce drapeau, ce test rougit — et c'est voulu :
-    // il devra alors prouver qu'un choix EXPLICITE de l'utilisateur le précède.
-    const racine = path.join(__dirname, "..", "..");
-    const fichiers = fs.readdirSync(path.join(racine, "js")).filter(f => f.endsWith(".js"));
-    const auteurs = [];
-    for (const f of fichiers) {
-      const src = fs.readFileSync(path.join(racine, "js", f), "utf8");
-      // Une AFFECTATION de locationConsent, pas sa lecture dans _eventRow.
-      if (/locationConsent\s*[:=](?!==)/.test(src)) auteurs.push(f);
-    }
-    expect(auteurs).toEqual([]);
   });
 
   test("un événement sans coordonnées ne récupère jamais celles de l'appareil", async ({ page }) => {
@@ -177,10 +173,42 @@ test.describe("Trust & Safety — garde de la proposition IRL", () => {
     const r = await page.evaluate((gps) => {
       irlUserLocation = { lat: gps.lat, lng: gps.lng };
       const row = _eventRow({ title: "T", date: Date.now() });
-      return { lat: row.lat, lng: row.lng };
+      return { lat: row.lat, lng: row.lng, gpsBienPose: !!irlUserLocation };
     }, GPS);
+    expect(r.gpsBienPose).toBe(true); // prémisse : le fix GPS est bien en mémoire
     expect(r.lat).toBeNull();
     expect(r.lng).toBeNull();
+  });
+
+  test("aucun code ne recopie irlUserLocation dans un payload d'événement", async () => {
+    // Verrou STATIQUE, complément du test dynamique ci-dessus : celui-là ne
+    // couvre qu'un appel de `_eventRow`, celui-ci couvre tous les chemins qui
+    // construisent un événement. Si un jour l'un d'eux injecte le fix GPS, ce
+    // test rougit — et son auteur devra porter une provenance explicite.
+    const racine = path.join(__dirname, "..", "..");
+    const coupables = [];
+    for (const f of fs.readdirSync(path.join(racine, "js")).filter(x => x.endsWith(".js"))) {
+      const src = fs.readFileSync(path.join(racine, "js", f), "utf8");
+      src.split("\n").forEach((ligne, n) => {
+        if (!/irlUserLocation/.test(ligne)) return;
+        // Une AFFECTATION vers un porteur de coordonnées d'événement.
+        if (/_evPickedCoords\s*=|\bev\.lat\s*=|\bev\.lng\s*=|\brow\.lat\s*=|\brow\.lng\s*=/.test(ligne)) {
+          coupables.push(`${f}:${n + 1} — ${ligne.trim()}`);
+        }
+      });
+    }
+    expect(coupables).toEqual([]);
+  });
+
+  test("le drapeau est documenté comme n'étant PAS une frontière de sécurité", async () => {
+    // Le drapeau vit dans le localStorage : n'importe qui le pose à "1". Tant
+    // que #136 n'a pas fermé âge + blocage bidirectionnel + conversation
+    // forçable cote serveur, aucun CTA produit ne doit s'y fier comme a une
+    // permission. Ce test garde l'avertissement dans le code : le supprimer,
+    // c'est perdre la seule chose qui empêche le prochain lecteur de s'y fier.
+    const src = fs.readFileSync(path.join(__dirname, "..", "..", "js", "app-07-ia-explore-irl.js"), "utf8");
+    expect(src).toContain("N'EST PAS UNE FRONTIÈRE DE SÉCURITÉ");
+    expect(src).toContain("#136");
   });
 
   // ── Blocage : les deux sens décidables ───────────────────────────────────
@@ -253,24 +281,6 @@ test.describe("Trust & Safety — garde de la proposition IRL", () => {
     expect(r.normal).toBe(false);   // prémisse : le compte de test est majeur
     expect(r.casse).toBe(true);     // échec fermé : on retient
     expect(r.restaure).toBe(true);  // l'état est bien rendu aux tests suivants
-  });
-
-  test("comparaison de position impossible → la coordonnée est retirée, pas publiée", async ({ page }) => {
-    await bootOnboarded(page);
-    const r = await page.evaluate((gps) => {
-      // `irlUserLocation` porteur d'un accesseur qui lève : `irlEstPositionAppareil`
-      // ne peut plus trancher, et `irlSanitizeLocation` ne doit pas rendre la
-      // ligne intacte pour autant.
-      const piege = {};
-      Object.defineProperty(piege, "lat", { get() { throw new Error("position illisible"); } });
-      irlUserLocation = piege;
-      const row = _eventRow({ title: "T", lat: gps.lat, lng: gps.lng, date: Date.now() });
-      irlUserLocation = null;
-      return { lat: row.lat, lng: row.lng };
-    }, GPS);
-    expect(r.lat).not.toBe(GPS.lat);
-    expect(r.lng).not.toBe(GPS.lng);
-    expect(r.lat == null || r.lat === 45.9).toBe(true); // retirée, ou au pire zonée
   });
 
   // ── Télémétrie ────────────────────────────────────────────────────────────

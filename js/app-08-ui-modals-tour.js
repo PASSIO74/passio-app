@@ -3252,11 +3252,15 @@ const _EVENT_OPTIONAL_COLS = ["end_at", "status", "updated_at", "co_organizers",
 
 // ⚠️ POINT UNIQUE de départ d'un événement vers la base — et `events` est en
 // LECTURE PUBLIQUE INTÉGRALE (`[SELECT] Lecture publique · using: true`), donc
-// `lat`/`lng` y sont lisibles par tous. `irlSanitizeLocation` (app-07) ramène ici
-// à la zone (~1 km) toute coordonnée qui EST la position de l'appareil sans
-// consentement explicite. Aujourd'hui aucun chemin n'y met le fix GPS : c'est
-// précisément l'invariant qu'on verrouille avant d'ouvrir la proposition IRL
-// depuis une conversation (#134).
+// `lat`/`lng`/`address` y sont lisibles par tous.
+//
+// Cette fonction ne doit JAMAIS recevoir la position de l'appareil
+// (`irlUserLocation`, app-07) : les coordonnées d'un événement viennent d'une
+// adresse tapée, du dictionnaire de villes ou d'un géocodage. L'invariant est
+// tenu par `tests/e2e/irl-trust-safety.spec.js`, PAS par une réécriture ici —
+// une première version de ce lot arrondissait toute coordonnée proche du fix
+// GPS et déplaçait donc les lieux légitimement choisis à moins d'un kilomètre
+// de chez soi. La proximité n'est pas la provenance (#134).
 function _eventRow(event) {
   var _row = {
     title: event.title, passion_id: event.passion || null,
@@ -3280,9 +3284,7 @@ function _eventRow(event) {
     recurrence: event.recurrence || "none",
     conv_id: event.convId || null,
   };
-  return typeof irlSanitizeLocation === "function"
-    ? irlSanitizeLocation(_row, event.locationConsent === true)
-    : _row;
+  return _row;
 }
 
 // Retire de `row` la colonne citée dans le message d'erreur PostgREST (PGRST204 /
