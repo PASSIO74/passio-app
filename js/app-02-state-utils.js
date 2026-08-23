@@ -57,6 +57,7 @@ function defaultState() {
     currentMood: "all",
     selectedFeedPassions: [], // passion IDs actifs dans le fil
     feedMoodsTouched: false,  // l'utilisateur a-t-il déjà réglé le filtre mood lui-même ?
+    feedInterestsMigrated: false, // le compte vit-il dans le modèle selectedFeedPassions ?
   };
 }
 
@@ -82,6 +83,7 @@ function loadState() {
     if (!Array.isArray(parsed.user.seenNotifIds)) parsed.user.seenNotifIds = [];
     if (!Array.isArray(parsed.selectedFeedPassions)) parsed.selectedFeedPassions = [];
     if (typeof parsed.feedMoodsTouched !== "boolean") parsed.feedMoodsTouched = false;
+    if (typeof parsed.feedInterestsMigrated !== "boolean") parsed.feedInterestsMigrated = false;
     // ✅ SÉCURITÉ: Initialiser supabasePosts s'il n'existe pas
     if (!Array.isArray(parsed.supabasePosts)) parsed.supabasePosts = [];
     // Dédup inconditionnelle des profils-passion par passion (clé métier).
@@ -2367,6 +2369,14 @@ function setFeedPassions(ids, opts) {
   }
   _activeFeedPassions = new Set(propre);
   try { state.selectedFeedPassions = propre.slice(); } catch (e) {}
+  // Marqueur de migration explicite (spec §12). Dès qu'un écrit passe par ici,
+  // le compte vit dans le nouveau modèle : `selectedFeedPassions` devient une
+  // valeur, y compris quand elle est VIDE. Sans ce marqueur, une liste vide est
+  // indiscernable d'une liste jamais renseignée, et restoreFeedPassions
+  // « répare » un fil que l'utilisateur venait délibérément de vider.
+  // L'amorçage depuis les profils passe `migration: true` pour ne pas se
+  // marquer lui-même avant d'avoir tracé l'événement.
+  try { if (!opts || opts.migration !== true) state.feedInterestsMigrated = true; } catch (e) {}
   if (!opts || opts.save !== false) { try { saveState(); } catch (e) {} }
   return propre;
 }
@@ -2394,18 +2404,33 @@ function restoreFeedPassions() {
   try { persistees = Array.isArray(state.selectedFeedPassions) ? state.selectedFeedPassions : []; } catch (e) {}
   if (persistees.length) return setFeedPassions(persistees, { save: false });
 
+  // ── Le vide VOULU n'est pas le vide JAMAIS RENSEIGNÉ (spec §12) ────────────
+  //
+  // « Ne pas [migrer] si l'utilisateur a explicitement vidé ses filtres dans le
+  // nouveau modèle : d'où l'intérêt d'un marqueur de migration explicite. »
+  //
+  // Mesuré le 2026-08-23, avant ce garde : un utilisateur qui décochait sa
+  // DERNIÈRE passion obtenait bien un fil vide… et la retrouvait cochée au
+  // rechargement suivant, la migration prenant sa liste vide pour une absence
+  // de données. Son choix était défait en silence, à chaque démarrage.
+  var dejaMigre = false;
+  try { dejaMigre = state.feedInterestsMigrated === true; } catch (e) {}
+  if (dejaMigre) { _activeFeedPassions = new Set(); return []; }
+
   var profils = [];
   try { profils = (state.user && Array.isArray(state.user.profiles)) ? state.user.profiles : []; } catch (e) {}
   var depuisProfils = profils.map(function (p) { return p && p.passion; })
                              .filter(function (x) { return typeof x === "string" && x; });
   if (!depuisProfils.length) { _activeFeedPassions = new Set(); return []; }
 
-  var restaurees = setFeedPassions(depuisProfils);
+  var restaurees = setFeedPassions(depuisProfils, { migration: true });
   try {
     if (window.tel && tel.action) {
       tel.action("feed_interests_migrated", { n_interests: restaurees.length, source: "profiles" });
     }
   } catch (e) {}
+  // La migration a eu lieu : elle ne doit plus jamais se rejouer sur ce compte.
+  try { state.feedInterestsMigrated = true; saveState(); } catch (e) {}
   return restaurees;
 }
 
