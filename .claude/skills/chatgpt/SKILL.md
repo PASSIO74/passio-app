@@ -32,23 +32,42 @@ node scripts/chatgpt.js "ta question" --fil archi
 | Fil / mémoire | `.passio/chatgpt/<fil>.json`, illimité, relisible | onglet mortel > 60 k caractères |
 | Gros dossier | `--fichier` (un `DOSSIER-COMPLET.md` entier) | insertion qui fige le rendu |
 | Garde secrets | **refus automatique** avant tout envoi réseau | aucune — tout ce qui est collé part |
-| Coût | **0 € via `codex`** (abonnement déjà payé) | 0 € |
+| Coût | **crédits d'espace de travail** — voir l'avertissement ci-dessous | 0 € |
 | Prérequis | `codex login` une fois | Chrome + panneau Claude connecté au **même** compte |
 
-### Le transport retenu : `codex`, compris dans l'abonnement
+### Le transport retenu : `codex` — et ce qu'il coûte réellement
 
-Décidé le 2026-08-16 : **aucun frais supplémentaire.** Le CLI Codex se connecte
-avec le compte ChatGPT et consomme les crédits du plan, pas une facturation au
-jeton. `transportDisponible()` le préfère automatiquement à l'API.
+Décidé le 2026-08-16, `transportDisponible()` le préfère automatiquement à l'API.
 
 ```bash
 codex login              # « Sign in with ChatGPT » — Benjamin uniquement
 node scripts/chatgpt.js etat
 ```
 
-Le CLI est installé (`codex-cli 0.147.0`) et la chaîne est vérifiée jusqu'au bout :
-le processus démarre, reçoit l'invite, et échoue sur `401 Unauthorized` faute de
-session. **`codex login` est la seule pièce manquante, et elle ne se délègue pas.**
+⚠️ **Rectifié le 2026-08-23 : ce paragraphe affirmait « aucun frais
+supplémentaire ». C'est faux.**
+
+La chaîne a été menée jusqu'au bout ce jour-là : `codex login` réussi
+(« Successfully logged in »), `node scripts/chatgpt.js etat` affichant `codex ✅
+prêt`, puis une vraie question envoyée dans le fil `produit`. Réponse du CLI :
+
+```
+ERROR: Your workspace is out of credits. Add credits to continue.
+```
+
+L'usage tire donc sur un **pool de crédits d'espace de travail**, distinct de
+l'abonnement ChatGPT, et ce pool peut être vide. Deux conséquences à retenir :
+
+- **`codex login` n'était pas la dernière pièce manquante.** L'ancienne version de
+  ce fichier le disait, parce que la chaîne s'arrêtait sur `401 Unauthorized` et
+  que personne n'était allé plus loin. Un échec d'authentification masquait un
+  problème de facturation.
+- **`etat` au vert ne prouve pas que le canal fonctionne.** Il ne teste que la
+  connexion, pas les crédits. Le seul test qui vaut est une question réelle.
+
+Sans crédits, le repli praticable n'est pas le pilotage du navigateur (huit pièges,
+aucune garde secrets) mais **Benjamin qui colle l'invite dans un onglet ChatGPT** :
+c'est pour ça que les invites de cette skill doivent rester auto-suffisantes.
 
 L'API (`OPENAI_API_KEY`) reste implémentée en repli, mais elle est **facturée au
 jeton** : ne pas la poser sans décision explicite de Benjamin.

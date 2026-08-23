@@ -183,10 +183,18 @@ node scripts/chatgpt.js etat                                    # quel canal Cha
 ```
 
 **Le canal ChatGPT passe par `scripts/chatgpt.js`** (skill `/chatgpt`), pas par le
-pilotage du DOM de chatgpt.com. Transport retenu le 2026-08-16 : **`codex`, compris
-dans l'abonnement ChatGPT déjà payé** — aucun frais supplémentaire, aucune clé API
-(l'API OpenAI est facturée au jeton : implémentée en repli, à ne pas activer sans
-décision de Benjamin). Fils persistants dans `.passio/chatgpt/` (gitignoré), et une
+pilotage du DOM de chatgpt.com. Transport retenu le 2026-08-16 : **`codex`**,
+lancé avec le compte ChatGPT, sans clé API (l'API OpenAI est facturée au jeton :
+implémentée en repli, à ne pas activer sans décision de Benjamin).
+
+⚠️ **Rectifié le 2026-08-23 : `codex` n'est PAS gratuit.** Ce paragraphe affirmait
+« compris dans l'abonnement déjà payé, aucun frais supplémentaire ». Mesuré à la
+première vraie question, `codex login` réussi et `etat` au vert : le CLI répond
+`ERROR: Your workspace is out of credits. Add credits to continue.` L'usage tire
+sur un pool de crédits d'espace de travail, distinct de l'abonnement ChatGPT, et
+ce pool était vide. **`codex login` n'était donc pas la dernière pièce manquante :
+les crédits le sont.** Tant qu'ils ne sont pas rechargés, le canal direct est
+inutilisable — quel que soit ce qu'affiche `etat`. Fils persistants dans `.passio/chatgpt/` (gitignoré), et une
 **garde qui refuse l'envoi** dès qu'un JWT, une clé `sb_secret_`/`sk-`, une
 affectation `SERVICE_ROLE_KEY=…` ou un mot de passe apparaît — le chemin navigateur,
 lui, n'a aucune garde. ⚠️ Codex est un **agent doté d'outils de lecture**, pas un
