@@ -4208,6 +4208,20 @@ function feedIrlBridgePrefill(passion, ref) {
 // ══════════════════════════════════════════════════════════════════════════
 var IRL_TS_VERSION = "v1";
 
+// Un `catch` muet sur un chemin de décision masque un ReferenceError — le défaut
+// qui a coûté six jours de fil vide (bug diagLog). Tout échec de la garde est
+// donc journalisé et remonté au Centre de pilotage, sans jamais être montré à
+// l'utilisateur ni faire échouer l'action appelante.
+function irlTsFail(ou, err) {
+  var msg = "irl_ts (" + ou + ") : " + ((err && err.message) || err || "?");
+  try { if (typeof diagLog === "function") diagLog(msg); } catch (e) {}
+  try {
+    if (window.tel && tel.error) {
+      tel.error(err instanceof Error ? err : new Error(msg), { action: "irl_ts", meta: { v: IRL_TS_VERSION, reason: String(ou) } });
+    }
+  } catch (e) {}
+}
+
 // Rayon de l'arrondi appliqué à une position d'appareil publiée sans
 // consentement explicite : 2 décimales ≈ 1,1 km. La carte reste utilisable,
 // le point de rendez-vous exact ne quitte pas l'appareil.
@@ -4225,8 +4239,19 @@ function irlProposalEnabled() {
 
 // Suis-je mineur d'après MA propre déclaration d'onboarding ? Auto-déclaratif :
 // c'est une retenue, pas une vérification (cf. ① en tête de bloc).
+//
+// ⚠️ ÉCHEC FERMÉ. Une lecture d'état qui lève renvoie `true` — donc « retenir »,
+// pas « laisser passer ». Le réflexe inverse (`catch { return false }`) rendrait
+// la garde MUETTE exactement quand l'état est cassé, c'est-à-dire quand on a le
+// moins de raisons de lui faire confiance. Une garde T&S qui échoue en position
+// permissive est pire que pas de garde : elle a l'air de protéger.
 function irlProposerEstMineur() {
-  try { return state && state.user && state.user.isMinor === true; } catch (e) { return false; }
+  try {
+    return !!(state && state.user && state.user.isMinor === true);
+  } catch (e) {
+    irlTsFail("minorite", e);
+    return true;
+  }
 }
 
 // Verdict UNIQUE de la garde. Tout point d'entrée d'une proposition IRL doit
@@ -4235,12 +4260,19 @@ function irlProposalVerdict(targetUserId) {
   if (!irlProposalEnabled()) return { ok: false, reason: "flag_off" };
   var id = targetUserId ? String(targetUserId) : "";
   if (!id) return { ok: false, reason: "no_target" };
-  try { if (typeof MY_UID !== "undefined" && MY_UID && id === MY_UID) return { ok: false, reason: "self" }; } catch (e) {}
   if (id === "me") return { ok: false, reason: "self" };
-  if (irlProposerEstMineur()) return { ok: false, reason: "self_minor" };
+  // ⚠️ ÉCHEC FERMÉ sur TOUT le reste du verdict : une exception dans la
+  // comparaison d'identité ou dans `isBlocked` rend `guard_error`, jamais `ok`.
+  // Avaler l'erreur puis tomber sur `return { ok: true }` laisserait passer
+  // précisément la proposition qu'on ne sait plus juger.
   try {
+    if (typeof MY_UID !== "undefined" && MY_UID && id === MY_UID) return { ok: false, reason: "self" };
+    if (irlProposerEstMineur()) return { ok: false, reason: "self_minor" };
     if (typeof isBlocked === "function" && isBlocked(id)) return { ok: false, reason: "blocked" };
-  } catch (e) {}
+  } catch (e) {
+    irlTsFail("verdict", e);
+    return { ok: false, reason: "guard_error" };
+  }
   return { ok: true, reason: "ok" };
 }
 
@@ -4286,7 +4318,14 @@ function irlEstPositionAppareil(lat, lng) {
     var p = Math.pow(10, IRL_ZONE_DECIMALS);
     return Math.round(lat * p) === Math.round(irlUserLocation.lat * p)
         && Math.round(lng * p) === Math.round(irlUserLocation.lng * p);
-  } catch (e) { return false; }
+  } catch (e) {
+    // ÉCHEC FERMÉ : si on ne peut pas trancher, on suppose que C'EST la position
+    // de l'appareil — donc on arrondit. Le coût d'une erreur est un point de
+    // rendez-vous à 1 km près ; le coût de l'erreur inverse est une position
+    // exacte publiée sur une table en lecture publique.
+    irlTsFail("position_appareil", e);
+    return true;
+  }
 }
 
 function irlArrondiZone(n) {
@@ -4303,9 +4342,9 @@ function irlArrondiZone(n) {
 // devra le poser lui-même, après un choix de l'utilisateur — pas l'obtenir par
 // défaut.
 function irlSanitizeLocation(row, consentExplicite) {
+  if (!row) return row;
+  if (consentExplicite === true) return row;
   try {
-    if (!row) return row;
-    if (consentExplicite === true) return row;
     if (!irlEstPositionAppareil(row.lat, row.lng)) return row;
     row.lat = irlArrondiZone(row.lat);
     row.lng = irlArrondiZone(row.lng);
@@ -4313,7 +4352,14 @@ function irlSanitizeLocation(row, consentExplicite) {
       if (window.tel && tel.action) tel.action("irl_location_zoned", irlProposalMeta("device_position"));
     } catch (e) {}
     try { if (typeof diagLog === "function") diagLog("[IRL] position d'appareil ramenée à la zone (~1 km)"); } catch (e) {}
-  } catch (e) {}
+  } catch (e) {
+    // ÉCHEC FERMÉ : rendre `row` intacte ici publierait la coordonnée qu'on
+    // n'a pas su juger, sur une table en lecture publique. On la retire —
+    // l'événement s'enregistre sans point sur la carte, ce qui est visible et
+    // rattrapable, là où une position exacte publiée ne l'est pas.
+    irlTsFail("sanitize", e);
+    try { row.lat = null; row.lng = null; } catch (e2) {}
+  }
   return row;
 }
 

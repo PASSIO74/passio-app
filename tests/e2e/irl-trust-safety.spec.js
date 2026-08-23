@@ -214,6 +214,65 @@ test.describe("Trust & Safety — garde de la proposition IRL", () => {
     expect(r.convs).toBe(1);
   });
 
+  // ── Échec FERMÉ : une garde qui plante doit refuser, pas laisser passer ──
+  //
+  // C'est la classe de defaut la plus traitre d'une garde T&S : `catch (e) {}`
+  // suivi d'un `return { ok: true }` produit une garde qui a l'air de proteger
+  // et qui s'ouvre en grand exactement quand l'etat est casse. Les trois tests
+  // ci-dessous forcent l'exception et exigent le refus.
+
+  test("isBlocked qui lève → verdict refusé (guard_error), jamais autorisé", async ({ page }) => {
+    await bootOnboarded(page);
+    await setFlag(page, "1");
+    const r = await page.evaluate(() => {
+      const premisse = irlProposalVerdict("u_autre"); // sans panne : autorisé
+      const vrai = window.isBlocked;
+      // `isBlocked` est une `function` top-level : on remplace la propriété que
+      // le verdict interroge réellement via `typeof isBlocked === "function"`.
+      // Si le remplacement ne prend pas, la prémisse ci-dessous le révèle.
+      window.isBlocked = function () { throw new Error("panne simulée"); };
+      const sousPanne = irlProposalVerdict("u_autre");
+      window.isBlocked = vrai;
+      return { premisse, sousPanne };
+    });
+    expect(r.premisse.ok).toBe(true);
+    expect(r.sousPanne.ok).toBe(false);
+  });
+
+  test("état illisible → traité comme mineur (retenu), jamais comme majeur", async ({ page }) => {
+    await bootOnboarded(page);
+    const r = await page.evaluate(() => {
+      const normal = irlProposerEstMineur();
+      // Un accesseur qui lève reproduit un état corrompu sans casser la page.
+      const sauvegarde = Object.getOwnPropertyDescriptor(state, "user");
+      Object.defineProperty(state, "user", { configurable: true, get() { throw new Error("état illisible"); } });
+      const casse = irlProposerEstMineur();
+      Object.defineProperty(state, "user", sauvegarde);
+      return { normal, casse, restaure: !!state.user };
+    });
+    expect(r.normal).toBe(false);   // prémisse : le compte de test est majeur
+    expect(r.casse).toBe(true);     // échec fermé : on retient
+    expect(r.restaure).toBe(true);  // l'état est bien rendu aux tests suivants
+  });
+
+  test("comparaison de position impossible → la coordonnée est retirée, pas publiée", async ({ page }) => {
+    await bootOnboarded(page);
+    const r = await page.evaluate((gps) => {
+      // `irlUserLocation` porteur d'un accesseur qui lève : `irlEstPositionAppareil`
+      // ne peut plus trancher, et `irlSanitizeLocation` ne doit pas rendre la
+      // ligne intacte pour autant.
+      const piege = {};
+      Object.defineProperty(piege, "lat", { get() { throw new Error("position illisible"); } });
+      irlUserLocation = piege;
+      const row = _eventRow({ title: "T", lat: gps.lat, lng: gps.lng, date: Date.now() });
+      irlUserLocation = null;
+      return { lat: row.lat, lng: row.lng };
+    }, GPS);
+    expect(r.lat).not.toBe(GPS.lat);
+    expect(r.lng).not.toBe(GPS.lng);
+    expect(r.lat == null || r.lat === 45.9).toBe(true); // retirée, ou au pire zonée
+  });
+
   // ── Télémétrie ────────────────────────────────────────────────────────────
 
   test("les clés de télémétrie de la garde survivent au filtre PII", async ({ page }) => {
