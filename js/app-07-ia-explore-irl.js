@@ -4200,6 +4200,14 @@ function feedIrlBridgePrefill(passion, ref) {
 //      quel `user_id` dans `conv_members` : n'importe qui ouvre un DM à
 //      n'importe qui. Le client masque (`renderMessages`), la base garde.
 //
+// ── ÉTAT AU 2026-08-23 (#136) ─────────────────────────────────────────────
+// Le SQL qui ferme ① ② ③ est ÉCRIT et relu, mais PAS APPLIQUÉ :
+// `docs/migrations-proposees/2026-08-23-ts-serveur-136.sql`. L'agent distant n'a
+// pas le droit d'écrire dans `migrations/` — le déplacement, la contre-revue et
+// l'exécution sont des gestes humains. Côté code, le point de passage serveur
+// existe désormais (`irlProposalVerdictServer`) et refuse tant que la base ne
+// répond pas. Les trois constats ci-dessus restent donc VRAIS en prod.
+//
 // Tant que ① ② ③ tiennent, `irl_proposal_v1` reste OFF et aucun bouton ne doit
 // être branché sur `irlProposalAllowed`. Le drapeau est le kill switch :
 //     localStorage.passio_irl_proposal_v1 = "1"  → proposition autorisable
@@ -4288,11 +4296,54 @@ function irlProposalMeta(reason) {
   return { v: IRL_TS_VERSION, flag: irlProposalEnabled() ? "on" : "off", reason: String(reason || "?") };
 }
 
-// Décision + trace. C'est CETTE fonction que branchera le futur bouton.
+// Décision + trace. Préfiltre SYNCHRONE : il ne décide que sur ce qui est
+// décidable sur l'appareil. Aucun CTA produit ne doit s'y brancher seul — c'est
+// `irlProposalAllowedServer` ci-dessous qui fait autorité.
 function irlProposalAllowed(targetUserId) {
   var verdict = irlProposalVerdict(targetUserId);
   try {
     if (window.tel && tel.action) tel.action("irl_proposal_guard", irlProposalMeta(verdict.reason));
+  } catch (e) {}
+  return verdict.ok;
+}
+
+// ── VERDICT SERVEUR (#136) — celui qui fait autorité ────────────────────────
+//
+// Ferme ① et ② de l'entête pour de bon, mais côté BASE : `irl_interaction_allowed`
+// (SECURITY DEFINER, `search_path` verrouillé) répond « oui / non » en tenant
+// compte de l'âge des DEUX comptes et du blocage dans les DEUX sens, sans jamais
+// laisser l'âge ni la direction du blocage traverser le réseau.
+//
+// ⚠️ FAIL-CLOSED, sans exception. Tout ce qui n'est pas un `true` explicite du
+// serveur vaut REFUS : RPC pas encore déployée, hors ligne, session expirée,
+// déclaration d'âge absente (« inconnu » n'est pas « majeur »), exception. Une
+// garde T&S qui échoue en position permissive est pire que pas de garde.
+//
+// ⚠️ Le SQL de #136 n'est PAS appliqué en prod à l'heure où ceci est écrit
+// (proposition dans `docs/migrations-proposees/`). Cette fonction renvoie donc
+// aujourd'hui « refusé » pour tout le monde — c'est le comportement voulu, et
+// `irl_proposal_v1` reste OFF.
+async function irlProposalVerdictServer(targetUserId) {
+  var local = irlProposalVerdict(targetUserId);
+  if (!local.ok) return local;            // le préfiltre a déjà tranché
+  if (typeof supaIrlInteractionAllowed !== "function") {
+    return { ok: false, reason: "server_unavailable" };
+  }
+  try {
+    var autorise = await supaIrlInteractionAllowed(targetUserId);
+    if (autorise === true) return { ok: true, reason: "ok" };
+    return { ok: false, reason: "server_refused" };
+  } catch (e) {
+    irlTsFail("verdict_serveur", e);
+    return { ok: false, reason: "guard_error" };
+  }
+}
+
+// Décision + trace. C'est CETTE fonction que branchera le futur bouton.
+async function irlProposalAllowedServer(targetUserId) {
+  var verdict = await irlProposalVerdictServer(targetUserId);
+  try {
+    if (window.tel && tel.action) tel.action("irl_proposal_guard_server", irlProposalMeta(verdict.reason));
   } catch (e) {}
   return verdict.ok;
 }

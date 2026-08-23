@@ -4114,9 +4114,131 @@ async function supaUsernameTaken(name) {
 }
 window.supaUsernameTaken = supaUsernameTaken;
 
+// ══════════════════════════════════════════════════════════════════════════
+// T&S SERVEUR (#136) — CONSOMMATION DES PRIMITIVES DE DÉCISION
+// ──────────────────────────────────────────────────────────────────────────
+// Ces helpers ne DÉCIDENT rien : ils interrogent le serveur, seul endroit où
+// la décision est opposable. Le SQL correspondant est proposé dans
+// `docs/migrations-proposees/2026-08-23-ts-serveur-136.sql` et n'est PAS encore
+// appliqué en prod — l'agent distant n'a pas le droit d'écrire dans
+// `migrations/`. Tant qu'il ne l'est pas, PostgREST répond « fonction
+// introuvable » (PGRST202) et chaque helper le traite comme « inconnu ».
+//
+// Deux régimes, volontairement différents :
+//   · MESSAGERIE — « inconnu » laisse passer. Le client n'est pas la frontière :
+//     c'est la policy `conv_members_insert_guarded` qui refuse. Faire échouer le
+//     client sur un inconnu casserait la messagerie hors-ligne et sur toute la
+//     fenêtre précédant l'application du SQL, sans rien protéger de plus.
+//   · IRL SENSIBLE — « inconnu » REFUSE (fail-closed, exigé par la spéc). Aucune
+//     proposition IRL ne part sur une décision que le serveur n'a pas rendue.
+// ══════════════════════════════════════════════════════════════════════════
+
+// La RPC n'existe pas encore côté base ? PostgREST le dit par un code stable.
+// Distinguer ce cas d'une VRAIE erreur est indispensable : sans ça, un déploiement
+// client en avance sur le SQL ressemblerait à un refus serveur.
+function tsRpcAbsente(error) {
+  if (!error) return false;
+  if (String(error.code || "") === "PGRST202") return true;
+  return /could not find the function|does not exist/i.test(String(error.message || ""));
+}
+
+// Un `catch` muet sur un chemin de décision masque un ReferenceError (bug
+// diagLog). Tout échec est journalisé, jamais montré à l'utilisateur.
+function tsServerFail(ou, err) {
+  var msg = "ts_serveur (" + ou + ") : " + ((err && err.message) || err || "?");
+  try { if (typeof diagLog === "function") diagLog(msg); } catch (e) {}
+  try {
+    if (window.tel && tel.error) {
+      tel.error(err instanceof Error ? err : new Error(msg), { action: "ts_serveur", meta: { reason: String(ou) } });
+    }
+  } catch (e) {}
+}
+
+function tsServerPret() {
+  return typeof supa !== "undefined" && supa && window._supaReal
+      && typeof MY_UID !== "undefined" && !!MY_UID;
+}
+
+// « L'un des deux a-t-il bloqué l'autre ? » — sans jamais savoir lequel.
+// `true` / `false` = réponse du serveur ; `null` = inconnu (RPC absente, hors
+// ligne, erreur). Ne JAMAIS confondre `null` et `false` chez l'appelant.
+async function supaBlockedBetween(otherUserId) {
+  var id = otherUserId ? String(otherUserId) : "";
+  if (!id || !tsServerPret()) return null;
+  try {
+    const { data, error } = await supa.rpc("is_blocked_between", { _a: MY_UID, _b: id });
+    if (error) {
+      if (!tsRpcAbsente(error)) tsServerFail("is_blocked_between", error);
+      return null;
+    }
+    return data === true;
+  } catch (e) { tsServerFail("is_blocked_between_exc", e); return null; }
+}
+window.supaBlockedBetween = supaBlockedBetween;
+
+// « Cette interaction IRL est-elle autorisée ? » — âge des deux comptes ET
+// blocage bidirectionnel, décidés côté serveur, sans que l'âge de l'autre ne
+// traverse jamais le réseau. FAIL-CLOSED : tout ce qui n'est pas un `true`
+// explicite vaut refus.
+async function supaIrlInteractionAllowed(otherUserId) {
+  var id = otherUserId ? String(otherUserId) : "";
+  if (!id || !tsServerPret()) return false;
+  try {
+    const { data, error } = await supa.rpc("irl_interaction_allowed", { _other_user_id: id });
+    if (error) {
+      if (!tsRpcAbsente(error)) tsServerFail("irl_interaction_allowed", error);
+      return false;
+    }
+    return data === true;
+  } catch (e) { tsServerFail("irl_interaction_allowed_exc", e); return false; }
+}
+window.supaIrlInteractionAllowed = supaIrlInteractionAllowed;
+
+// Rend la déclaration de minorité de l'onboarding PERSISTANTE et autoritaire
+// côté serveur — effacer le `localStorage` ne la remet plus à zéro. Ce n'est
+// PAS une vérification d'âge : c'est une déclaration que le serveur retient et
+// dont il refuse l'assouplissement (cf. `declare_account_minority`).
+// Renvoie l'état retenu par le serveur, ou `null` si inconnu.
+async function supaDeclareMinority(isMinor) {
+  if (typeof isMinor !== "boolean" || !tsServerPret()) return null;
+  try {
+    const { data, error } = await supa.rpc("declare_account_minority", { _is_minor: isMinor });
+    if (error) {
+      if (!tsRpcAbsente(error)) tsServerFail("declare_account_minority", error);
+      return null;
+    }
+    return data === true ? true : (data === false ? false : null);
+  } catch (e) { tsServerFail("declare_account_minority_exc", e); return null; }
+}
+window.supaDeclareMinority = supaDeclareMinority;
+
 async function supaCreateConversation(withUserId) {
+  // Motif du dernier refus de création, lu par `startDirectMessage` : un refus
+  // de BLOCAGE ne doit pas retomber sur le repli local (la conversation se
+  // matérialiserait sur l'appareil et réapparaîtrait au déblocage comme si elle
+  // avait toujours existé — le défaut corrigé par #137, ici côté serveur).
+  window._convCreateRefusal = null;
   try {
     await supaUpsertProfile();
+    // ── Chemin préféré : création ATOMIQUE côté serveur (#136) ──────────────
+    // Supprime la fenêtre `INSERT conversations` → `INSERT conv_members` et ses
+    // conversations orphelines, et fait porter la garde de blocage par la base.
+    try {
+      const { data, error } = tsServerPret()
+        ? await supa.rpc("create_direct_conversation", { _with_user_id: withUserId })
+        : { data: null, error: null };
+      if (!error && data) return String(data);
+      if (error && !tsRpcAbsente(error)) {
+        if (/PASSIO_BLOCKED/.test(String(error.message || ""))) {
+          window._convCreateRefusal = "blocked";
+        } else {
+          tsServerFail("create_direct_conversation", error);
+        }
+        return null;
+      }
+      // RPC absente (SQL pas encore appliqué) → chemin historique ci-dessous.
+    } catch (e) { tsServerFail("create_direct_conversation_exc", e); }
+
     const convId = "conv_" + uid();
     const rConv = await supa.from("conversations").insert({
       id: convId, is_group: false,

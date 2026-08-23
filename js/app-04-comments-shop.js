@@ -2810,7 +2810,30 @@ async function startDirectMessage(userId, userName, userEmoji, userAvatar, userP
 
     // Pas de conv existante → en créer une dans Supabase
     if (!supaConvId) {
+      // #136 — « ON M'A bloqué » n'est décidable que côté SERVEUR : `blocks` est
+      // en `blocks_select_own`, la ligne qui me bloque m'est illisible. On
+      // demande donc au serveur, qui répond par un booléen sans jamais dire qui
+      // a bloqué qui. `null` = inconnu (RPC pas encore déployée, hors ligne) :
+      // on laisse passer, car la frontière réelle est la policy
+      // `conv_members_insert_guarded`, pas ce test d'affichage.
+      var bloqueServeur = null;
+      try {
+        if (typeof supaBlockedBetween === "function") bloqueServeur = await supaBlockedBetween(userId);
+      } catch(e) {}
+      // Message identique dans les deux sens : le refus ne doit pas apprendre à
+      // l'un que l'autre l'a bloqué.
+      if (bloqueServeur === true) { toast("🚫 Conversation impossible avec ce compte"); return; }
+
       try { supaConvId = await supaCreateConversation(userId, passion); } catch(e) {}
+
+      // Refus EXPLICITE du serveur (PASSIO_BLOCKED) : surtout pas de repli
+      // local. Une conversation créée sur l'appareil réapparaîtrait au
+      // déblocage comme si elle avait toujours existé (défaut corrigé par #137,
+      // ici pour le sens que le client ne pouvait pas voir).
+      if (!supaConvId && window._convCreateRefusal === "blocked") {
+        toast("🚫 Conversation impossible avec ce compte");
+        return;
+      }
     }
 
     if (supaConvId) {

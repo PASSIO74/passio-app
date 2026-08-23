@@ -1779,6 +1779,23 @@ function onbValidateAge() {
   }
   state.user.birthYear = val;
   state.user.isMinor = age < 18;
+  // #136 — rendre la déclaration PERSISTANTE et autoritaire côté serveur. Sans
+  // ça, `isMinor` ne vit que dans le `localStorage` : l'effacer suffisait à
+  // repartir « majeur ». Seul le DÉRIVÉ part en base — jamais l'année, jamais
+  // la date de naissance (`account_safety`, aucune lecture inter-utilisateur).
+  //
+  // ⚠️ C'est une DÉCLARATION rendue opposable, PAS une vérification d'âge : le
+  // serveur empêche le contournement, il ne vérifie l'identité de personne.
+  //
+  // Volontairement non bloquant : l'onboarding continue même hors ligne ou si la
+  // RPC n'est pas encore déployée. L'absence de déclaration serveur = « inconnu »,
+  // et « inconnu » refuse les fonctions IRL sensibles (fail-closed) — l'utilisateur
+  // n'est donc jamais laissé dans un état plus permissif par cet échec.
+  try {
+    if (typeof supaDeclareMinority === "function") {
+      supaDeclareMinority(state.user.isMinor === true).then(function () {}, function () {});
+    }
+  } catch (e) {}
   onbNext();
 }
 
