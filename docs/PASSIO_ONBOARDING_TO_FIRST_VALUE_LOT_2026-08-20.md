@@ -7,6 +7,49 @@
 
 ---
 
+## 0. État de livraison — au 2026-08-23
+
+Ajouté après coup, pour que ce document dise ce qui a été FAIT et pas seulement
+ce qui était demandé. Sans cette section, la seule façon de savoir où en est le
+lot est de relire l'historique git — ce qui, dans une gouvernance à plusieurs IA,
+revient à ne pas le savoir.
+
+| § | Sujet | Statut | Où |
+|---|---|---|---|
+| 5 | Écran « Qu'est-ce qui te passionne ? » | livré | #129 |
+| 6 | État cible après validation | livré | #126 |
+| 7 | Premier rendu du Feed | livré | #128 |
+| 8 | Pas de tour forcé | livré | #129 |
+| 8 | Aides contextuelles (3 des 4) | livré | #131 |
+| 8 | 4ᵉ aide « proposer un IRL » | **en attente** | conditionnée par ce document à T&S |
+| 9 | Module « À vivre en vrai » dans le Fil | **en attente** | conditionné par ce document aux données |
+| 10 | Pas de GPS pendant l'onboarding | livré | #130 |
+| 11 | Vocabulaire d'activation | livré | + `npm run audit:telemetry-keys` en CI |
+| 12 | Compatibilité avec l'état historique | livré | #127, #130 |
+| 13 | Tests d'acceptation ONB | livré (8 des 11) | #130 |
+
+Les deux « en attente » le sont pour des raisons écrites **dans ce document**
+(§8 : « lorsque T&S est prêt » ; §9 : « après instrumentation et une fois le
+durcissement IRL livré »), pas par oubli.
+
+### Ce que les tests ne couvrent pas
+
+- **ONB-05** (restauration cross-appareil via `user_state`) et **ONB-09** (Google
+  OAuth) exigent de vrais comptes Supabase et un fournisseur réel : ils relèvent
+  de la suite opt-in `tests/e2e/multi-comptes.spec.js`.
+- La moitié « Connexion → Feed direct » d'**ONB-10** n'est pas vérifiable hors
+  session Supabase : `boot()` termine par `showLanding()` quand aucune session
+  n'est retrouvée, ce qui est le comportement correct et non le défaut visé.
+
+### Repli
+
+`window.PASSIO_ONBOARDING_V2 = false` posé AVANT le boot rebascule l'ensemble du
+lot sur l'ancien parcours : ancienne copie, plafond de 3 passions, aucun
+sélecteur de profil de départ, aucune recherche, tour d'origine relancé. Chaque
+PR du lot porte un test qui vérifie ce repli.
+
+---
+
 ## 1. Diagnostic vérifié de l'existant
 
 ### Parcours actuel
