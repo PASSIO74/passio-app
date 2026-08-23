@@ -2508,8 +2508,25 @@ function onbFinish() {
     try { if (typeof supaUpsertProfile === "function") supaUpsertProfile(); } catch(e) {}
   }, 800);
 
-  // Pas de tour forcé en V2 (spec §8) : la compréhension doit venir du produit.
-  if (!v2) launchTourSafe();
+  // Pas de tour forcé en V2 (spec §8) : « le tour long actuel ne doit pas suivre
+  // l'inscription, la compréhension doit venir du produit lui-même ».
+  //
+  // ⚠️ Ne PAS se contenter de sauter l'appel ici. Mesuré le 2026-08-23 : le tour
+  // réapparaissait ~800 ms après l'entrée sur PASSIO. `launchTourSafe` a QUATRE
+  // appelants (ici, exitLanding, exitLandingAsAuth, initApp) et les trois autres
+  // sont gardés par `if (!state.tourSeen)`. Sauter le seul appel d'onbFinish
+  // laissait donc le drapeau à false : le premier des trois autres à s'exécuter
+  // relançait le tour. La règle §8 était contournée en une seconde.
+  //
+  // Poser le drapeau exprime la règle là où elle se décide, sans dépendre de
+  // quel appelant gagne la course. Le tour reste lançable à la main (« Tour
+  // démo »), il n'est plus imposé.
+  if (v2) {
+    state.tourSeen = true;
+    try { saveState(); } catch (e) {}
+  } else {
+    launchTourSafe();
+  }
 }
 
 // Recherche un post par id dans TOUTES les sources : seed (démo), posts perso

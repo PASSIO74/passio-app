@@ -192,3 +192,56 @@ test("§5 — drapeau V2 à false : écran d'origine strictement rétabli", asyn
   expect(r.retenues).toBe(3);   // plafond historique
   expect(r.etoiles).toBe(0);
 });
+
+// ── §8 « Pas de tour forcé » ─────────────────────────────────────────────────
+//
+// Le lot 1 avait remplacé `launchTourSafe()` par `if (!v2) launchTourSafe()` en
+// fin d'onbFinish, et la règle §8 semblait tenue. Mesuré le 2026-08-23 : le tour
+// réapparaissait ~800 ms plus tard. `launchTourSafe` a QUATRE appelants
+// (onbFinish, exitLanding, exitLandingAsAuth, initApp) ; les trois autres sont
+// gardés par `if (!state.tourSeen)`, et sauter le seul appel d'onbFinish laissait
+// ce drapeau à false. Le premier des trois à s'exécuter relançait le tour.
+//
+// Ce test attend donc VRAIMENT, et rechargeun coup : vérifier l'état juste après
+// onbFinish aurait été vert sur du code cassé.
+test("§8 — aucun tour forcé après l'inscription, ni à l'entrée ni au rechargement", async ({ page }) => {
+  await bootEcranPassions(page);
+  await page.evaluate(() => {
+    state.user.name = "Testeur"; state.user.birthYear = 1990;
+    togglePassion("musique");
+    onbFinish();
+  });
+
+  const lire = () => page.evaluate(() => {
+    const o = document.getElementById("tourOverlay");
+    return { tourSeen: state.tourSeen, overlay: !!(o && o.classList.contains("active")) };
+  });
+
+  expect((await lire()).overlay).toBe(false);
+  // launchTourSafe temporise 800 ms avant d'activer l'overlay : mesurer trop tôt
+  // rendrait ce test vert sur le défaut qu'il doit attraper.
+  await page.waitForTimeout(2200);
+  const apres = await lire();
+  expect(apres.overlay).toBe(false);
+  expect(apres.tourSeen).toBe(true);   // le drapeau porte la règle, pas la chance
+
+  await page.reload();
+  await page.waitForFunction(() => typeof renderFeed === "function", null, { timeout: 20000 });
+  await page.waitForTimeout(2500);
+  expect((await lire()).overlay).toBe(false);
+});
+
+test("§8 — drapeau V2 à false : le tour d'origine est bien relancé", async ({ page }) => {
+  await bootEcranPassions(page, { v2: false });
+  await page.evaluate(() => {
+    state.user.name = "Testeur"; state.user.birthYear = 1990;
+    togglePassion("musique");
+    onbFinish();
+  });
+  await page.waitForTimeout(2200);
+  const o = await page.evaluate(() => {
+    const el = document.getElementById("tourOverlay");
+    return !!(el && el.classList.contains("active"));
+  });
+  expect(o).toBe(true);
+});
