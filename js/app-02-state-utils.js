@@ -56,6 +56,7 @@ function defaultState() {
     quests: [],              // user-specific quest progress (seed copied at init)
     currentMood: "all",
     selectedFeedPassions: [], // passion IDs actifs dans le fil
+    feedMoodsTouched: false,  // l'utilisateur a-t-il déjà réglé le filtre mood lui-même ?
   };
 }
 
@@ -80,6 +81,7 @@ function loadState() {
     if (!Array.isArray(parsed.user.following)) parsed.user.following = [];
     if (!Array.isArray(parsed.user.seenNotifIds)) parsed.user.seenNotifIds = [];
     if (!Array.isArray(parsed.selectedFeedPassions)) parsed.selectedFeedPassions = [];
+    if (typeof parsed.feedMoodsTouched !== "boolean") parsed.feedMoodsTouched = false;
     // ✅ SÉCURITÉ: Initialiser supabasePosts s'il n'existe pas
     if (!Array.isArray(parsed.supabasePosts)) parsed.supabasePosts = [];
     // Dédup inconditionnelle des profils-passion par passion (clé métier).
@@ -2516,6 +2518,16 @@ function toggleMood(mood) {
     selectedMoods.add(mood);
   }
 
+  // À partir d'ici le filtre mood exprime une INTENTION, plus un défaut d'usine :
+  // renderFeed cesse de l'élargir automatiquement (spec §7, « règle absolue »).
+  // Marqueur persistant, car `selectedMoods` repart à {"creation"} à chaque
+  // chargement : sans persistance, l'élargissement reviendrait contredire
+  // l'utilisateur au rechargement suivant.
+  if (!state.feedMoodsTouched) {
+    state.feedMoodsTouched = true;
+    try { saveState(); } catch (e) {}
+  }
+
   renderFeed();
   // renderFeed reconstruit le DOM du feed mais pas le sélecteur de moods —
   // on resynchronise les classes .active immédiatement après.
@@ -2725,6 +2737,117 @@ function rankFeedPosts(posts) {
   return arr;
 }
 
+// ── REPLI EXPLORATION du Fil (spec §7) ────────────────────────────────────────
+//
+// Quand les passions choisies ne donnent rien à afficher, la version précédente
+// s'arrêtait sur « Aucun post pour cette sélection. Essaie un autre mood ou sois
+// le premier à publier ici. » — un cul-de-sac : aucune des deux issues n'était
+// cliquable depuis cet écran.
+//
+// La spec §7 impose un ordre de repli : ① les autres passions sélectionnées
+// (déjà couvert : le fil est l'UNION des intérêts, pas une intersection),
+// ② des contenus d'exploration CLAIREMENT ÉTIQUETÉS, ③ des personnes,
+// ④ ajouter une passion, ⑤ publier. Et : « le repli doit rester lisible comme
+// exploration, pas prétendre être une personnalisation exacte » — d'où le
+// bandeau explicite au-dessus des cartes, et la mention de la passion d'origine
+// sur chacune.
+//
+// Retourne true dès que le repli est peint. Il l'est même sans contenu à
+// explorer (base vide, ou l'utilisateur suit déjà tout) : les trois issues
+// restent la vraie valeur de cet écran, et le message historique n'en offrait
+// aucune. false n'arrive que si le nœud de liste manque.
+var FEED_EXPLORATION_MAX = 6;
+
+function renderFeedExplorationFallback(list) {
+  if (!list) return false;
+
+  var mesInterets = Array.from(_activeFeedPassions);
+  var etiquettes = mesInterets.map(function(id) {
+    var p = passionById(id);
+    return (p && p.label) ? p.label : id;
+  });
+
+  // Contenus hors de mes passions, affichables dans le fil (un mood sans bouton
+  // — "irl" — resterait invisible : l'y mettre ferait une carte fantôme).
+  var moodsAffichables = {};
+  try {
+    $$("#moodSelector .mood-btn").forEach(function(b) {
+      var m = b.getAttribute("data-mood");
+      if (m) moodsAffichables[m] = 1;
+    });
+  } catch (e) {}
+
+  var candidats = [];
+  try {
+    candidats = allFeedPosts().filter(function(p) {
+      if (!p || p.type === "vlog") return false;
+      if (_activeFeedPassions.has(p.passion)) return false;
+      return p.mood === "all" || !p.mood || !!moodsAffichables[p.mood];
+    });
+  } catch (e) { candidats = []; }
+
+  var seen = {};
+  candidats = candidats.filter(function(p) {
+    if (seen[p.id]) return false;
+    seen[p.id] = 1;
+    return true;
+  });
+
+  var aExplorer = [];
+  try { aExplorer = rankFeedPosts(candidats).slice(0, FEED_EXPLORATION_MAX); }
+  catch (e) { aExplorer = candidats.slice(0, FEED_EXPLORATION_MAX); }
+
+  var quoi = etiquettes.length === 1
+    ? "Rien encore dans " + escapeHtml(etiquettes[0])
+    : "Rien encore dans tes passions";
+
+  var html = ''
+    + '<div class="feed-repli-tete" style="padding:18px 16px 8px;text-align:center;">'
+    +   '<div style="font-size:30px;line-height:1;">🌱</div>'
+    +   '<div style="font-size:16px;font-weight:800;margin-top:8px;">' + quoi + '</div>'
+    +   '<div style="font-size:13px;color:var(--muted);margin-top:6px;line-height:1.5;">'
+    +     'Personne n\'a encore publié ici. En attendant, voici ce qui vit ailleurs sur PASSIO.'
+    +   '</div>'
+    + '</div>'
+    + '<div class="feed-repli-actions" style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;padding:6px 16px 16px;">'
+    +   '<button class="btn ghost" onclick="goTo(\'profiles\')" style="flex:1 1 auto;">➕ Ajouter une passion</button>'
+    +   '<button class="btn ghost" onclick="goTo(\'explore\')" style="flex:1 1 auto;">👥 Découvrir des personnes</button>'
+    +   '<button class="btn primary" onclick="goTo(\'studio\')" style="flex:1 1 100%;">✍️ Publier le premier contenu</button>'
+    + '</div>';
+
+  if (aExplorer.length) {
+    html += '<div class="feed-repli-bandeau" style="margin:4px 12px 10px;padding:9px 12px;border:1.5px dashed var(--border);border-radius:12px;background:var(--bg-card);">'
+          +   '<div style="font-size:12px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;color:var(--accent);">Exploration</div>'
+          +   '<div style="font-size:12px;color:var(--muted);margin-top:2px;">Hors de tes passions — ce n\'est pas ton fil personnalisé.</div>'
+          + '</div>';
+    html += aExplorer.map(function(p) {
+      var pa = passionById(p.passion);
+      var nom = (pa && pa.label) ? pa.label : (p.passion || "");
+      var badge = '<div style="padding:2px 12px 0;font-size:11px;color:var(--muted);">Exploration · '
+                + escapeHtml(nom) + '</div>';
+      return '<div class="feed-repli-carte">' + badge + _renderPostHTMLSafe(p) + '</div>';
+    }).join("");
+  }
+
+  list.innerHTML = html;
+
+  // Le guard no-op de renderFeed compare `_feedDomSig` ET exige que la liste
+  // ait des enfants. Sans cette ligne, un rendu normal ultérieur retombant sur
+  // la signature d'avant le repli serait sauté et le repli resterait à l'écran.
+  window._feedDomSig = "repli§" + mesInterets.join(",") + "§" + aExplorer.length;
+
+  try {
+    if (window.tel && tel.action) {
+      tel.action("feed_exploration_fallback", {
+        n_interests: mesInterets.length,
+        n_explore: aExplorer.length,
+      });
+    }
+  } catch (e) {}
+
+  return true;
+}
+
 function renderFeed() {
   // 🎯 Masquer le skeleton loader
   const skeleton = $("#feedSkeleton");
@@ -2769,15 +2892,56 @@ function renderFeed() {
     return true;
   });
 
+  // Un post passe le filtre mood s'il est universel, ou si son mood est coché.
+  function _moodVisible(p) {
+    return p.mood === "all" || !p.mood || selectedMoods.has(p.mood);
+  }
+
+  // ── §7 « RÈGLE ABSOLUE » : le mood par défaut ne doit jamais masquer TOUT le
+  // contenu des passions choisies.
+  //
+  // `selectedMoods` démarre à {"creation"} (l. ~2486). Mesuré le 2026-08-23 sur
+  // le seed : 4 passions sur 17 (yoga, bienetre, cinema, actu) ont du contenu
+  // et AUCUN post de mood "creation". Un compte neuf qui choisissait « yoga »
+  // atterrissait donc sur « Aucun post pour cette sélection » alors que trois
+  // posts yoga existaient — et le bouton "creation", seul mood actif, était
+  // grisé avec pointer-events:none par renderMoodStripSmart : impossible de le
+  // décocher. Cul-de-sac complet, pour la raison exactement inverse de celle
+  // affichée.
+  //
+  // Tant que l'utilisateur n'a JAMAIS touché au filtre mood, celui-ci n'est pas
+  // une intention : c'est un défaut d'usine. On l'élargit alors aux moods
+  // réellement présents. Dès qu'il y touche (`state.feedMoodsTouched`, posé par
+  // toggleMood), son choix est respecté sans condition — y compris s'il vide le
+  // fil : c'est le sien.
+  if (onbV2Actif() && !state.feedMoodsTouched && availablePostsForMood.length > 0
+      && availablePostsForMood.filter(_moodVisible).length === 0) {
+    var _presents = {};
+    availablePostsForMood.forEach(function(p) {
+      if (p.mood && p.mood !== "all") _presents[p.mood] = 1;
+    });
+    // Seuls les moods qui ont un bouton : élargir vers "irl" (sans bouton dans
+    // #moodSelector) donnerait un filtre actif que l'utilisateur ne pourrait ni
+    // voir ni retirer.
+    var _elargis = Object.keys(_presents).filter(function(m) {
+      return !!document.querySelector('.mood-btn[data-mood="' + m + '"]');
+    });
+    if (_elargis.length) {
+      selectedMoods = new Set(_elargis);
+      if (typeof updateMoodButtonsUI === "function") updateMoodButtonsUI();
+      try {
+        if (window.tel && tel.action) {
+          tel.action("feed_moods_widened", { n_moods: _elargis.length, n_interests: _activeFeedPassions.size });
+        }
+      } catch (e) {}
+    }
+  }
+
   // Appliquer le filtre mood :
   // - selectedMoods vide → rien
   // - mood "all" sur un post → visible quel que soit le mood sélectionné (post universel)
   // - sinon → correspondance exacte
-  posts = selectedMoods.size === 0
-    ? []
-    : availablePostsForMood.filter(function(p) {
-        return p.mood === "all" || !p.mood || selectedMoods.has(p.mood);
-      });
+  posts = selectedMoods.size === 0 ? [] : availablePostsForMood.filter(_moodVisible);
 
   renderProfileStrip();
 
@@ -2787,6 +2951,19 @@ function renderFeed() {
   renderStories();
 
   if (posts.length === 0) {
+    // ── §7 : REPLI EXPLORATION plutôt qu'un cul-de-sac.
+    // Déclenché quand les intérêts de l'utilisateur ne donnent rien À AFFICHER —
+    // soit qu'aucun contenu n'existe, soit qu'il n'en existe que d'inaffichable
+    // dans le fil (mood "irl", qui n'a pas de bouton). On ne le déclenche PAS
+    // quand l'utilisateur a lui-même restreint les moods et que du contenu
+    // existe derrière : ce vide-là est son choix, pas une impasse.
+    if (onbV2Actif() && _activeFeedPassions.size > 0
+        && (availablePostsForMood.length === 0 || !state.feedMoodsTouched)
+        && renderFeedExplorationFallback(list)) {
+      var emptyElRepli = $("#feedEmpty");
+      if (emptyElRepli) emptyElRepli.style.display = "none";
+      return;
+    }
     list.innerHTML = "";
     var emptyEl = $("#feedEmpty");
     if (emptyEl) {
