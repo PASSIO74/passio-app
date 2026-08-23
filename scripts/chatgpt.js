@@ -6,9 +6,11 @@
  * flux d'affichage qui casse, onglet irrécupérable au-delà de ~60 000 caractères)
  * par un appel direct. Aucune dépendance : fetch natif (Node >= 18).
  *
- * Trois transports, dans l'ordre de préférence (le gratuit d'abord) :
- *   1. codex  — CLI `codex exec`, compris dans l'abonnement ChatGPT déjà payé.
- *               Choisi le 2026-08-16 : aucune facturation supplémentaire.
+ * Trois transports, dans l'ordre de préférence (le moins cher d'abord) :
+ *   1. codex  — CLI `codex exec`, lancé avec le compte ChatGPT. Choisi le
+ *               2026-08-16. ⚠️ Rectifié le 2026-08-23 : ce n'est PAS gratuit —
+ *               l'usage tire sur un pool de crédits d'espace de travail, qui
+ *               peut être vide (« Your workspace is out of credits »).
  *   2. api    — OPENAI_API_KEY, facturée au jeton. Repli seulement.
  *   3. chrome — Claude-in-Chrome, hors de ce script (voir la skill /chatgpt)
  *
@@ -221,7 +223,8 @@ function envFiltre() {
 }
 
 /**
- * Transport codex — réutilise l'abonnement ChatGPT (aucune facturation au jeton).
+ * Transport codex — lancé avec le compte ChatGPT ; consomme des crédits d'espace
+ * de travail, pas une facturation au jeton (mais pas gratuit pour autant).
  *
  * ⚠️ Codex n'est PAS ChatGPT dans un navigateur : c'est un agent qui dispose
  * d'outils de lecture. Deux conséquences, toutes deux voulues ici :
@@ -301,8 +304,8 @@ function codexConnecte() {
   return !/not logged in/i.test((r.stdout || "") + (r.stderr || ""));
 }
 
-// Priorité au transport qui ne coûte rien de plus : l'abonnement ChatGPT déjà payé
-// passe avant la facturation au jeton.
+// Priorité au moins cher : les crédits d'espace de travail passent avant la
+// facturation au jeton de l'API.
 function transportDisponible() {
   if (codexConnecte() === true) return "codex";
   if (process.env.OPENAI_API_KEY) return "api";
@@ -318,7 +321,7 @@ function cmdEtat() {
   const codex = codexConnecte();   // null = CLI absent, false = pas connecté, true = prêt
   console.log("État du canal ChatGPT\n");
   console.log(`  codex  ${codex === null ? "❌ CLI absent — npm i -g @openai/codex"
-    : codex ? "✅ prêt (compris dans l'abonnement ChatGPT, aucun frais au jeton)"
+    : codex ? "✅ connecté — ⚠️ vérifie tes crédits d'espace de travail : « prêt » ne teste que la session"
     : "⚠️  CLI installé mais pas connecté — lancer `codex login`"}   ← préféré`);
   console.log(`  api    ${aCle ? `✅ prête — modèle ${MODELE_DEFAUT} (facturée au jeton)` : "❌ OPENAI_API_KEY absente (facturation au jeton — non retenue)"}`);
   console.log("  chrome ↪ hors script : Claude-in-Chrome, voir .claude/skills/chatgpt/references/navigateur.md");
