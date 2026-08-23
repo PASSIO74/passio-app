@@ -58,6 +58,7 @@ function defaultState() {
     selectedFeedPassions: [], // passion IDs actifs dans le fil
     feedMoodsTouched: false,  // l'utilisateur a-t-il déjà réglé le filtre mood lui-même ?
     feedInterestsMigrated: false, // le compte vit-il dans le modèle selectedFeedPassions ?
+    hintsVus: {},             // aides contextuelles déjà montrées (spec §8)
   };
 }
 
@@ -84,8 +85,14 @@ function loadState() {
     if (!Array.isArray(parsed.selectedFeedPassions)) parsed.selectedFeedPassions = [];
     if (typeof parsed.feedMoodsTouched !== "boolean") parsed.feedMoodsTouched = false;
     if (typeof parsed.feedInterestsMigrated !== "boolean") parsed.feedInterestsMigrated = false;
+    if (!parsed.hintsVus || typeof parsed.hintsVus !== "object") parsed.hintsVus = {};
     // ✅ SÉCURITÉ: Initialiser supabasePosts s'il n'existe pas
     if (!Array.isArray(parsed.supabasePosts)) parsed.supabasePosts = [];
+    // Même garde pour userPosts, qui manquait à cette liste : renderMainProfile
+    // lit `state.userPosts.length` SANS garde, et l'écran Profil entier explose
+    // sur un état qui aurait perdu cette clé. Rencontré le 2026-08-23 sur un état
+    // de test partiel ; un état réel la porte toujours, mais rien ne le garantit.
+    if (!Array.isArray(parsed.userPosts)) parsed.userPosts = [];
     // Dédup inconditionnelle des profils-passion par passion (clé métier).
     // Nettoie tout état corrompu accumulé avant le fix, quel que soit le chemin
     // de sync (merge ou non). Un utilisateur ne peut avoir qu'un profil par passion.
@@ -1092,6 +1099,9 @@ function goTo(screen) {
     if (is) n.setAttribute("aria-current", "page");
     else n.removeAttribute("aria-current");
   });
+  // Une aide contextuelle est ancrée à un élément de l'écran qu'on quitte :
+  // la laisser flotter sur l'écran suivant n'aurait aucun sens (spec §8).
+  try { fermerHint(); } catch (e) {}
   $$(".screen").forEach(s => s.classList.remove("active"));
   const el = document.getElementById("screen-" + screen);
   if (el) el.classList.add("active");
@@ -3002,6 +3012,84 @@ function renderFeedExplorationFallback(list) {
   return true;
 }
 
+// ── AIDES CONTEXTUELLES (spec §8) ────────────────────────────────────────────
+//
+// « La compréhension doit venir du produit lui-même. » Le §8 interdit le tour
+// long après l'inscription (fermé par ailleurs) et autorise, à la place, des
+// aides contextuelles sous trois conditions non négociables :
+//
+//   ① UNE SEULE à la fois — jamais deux bulles à l'écran ;
+//   ② dismissible — l'utilisateur peut la faire taire ;
+//   ③ « Aucun carrousel de sept écrans avant de pouvoir utiliser PASSIO » :
+//      une aide n'est jamais modale, ne bloque rien, et ne se remontre pas.
+//
+// Ce n'est donc PAS un mini-tour déguisé. Chaque aide est déclenchée par le
+// geste auquel elle se rapporte, une fois, et disparaît pour toujours.
+//
+// ⚠️ `hintsVus` est marqué à l'AFFICHAGE, pas au rejet. Une aide vue puis
+// ignorée (l'utilisateur navigue ailleurs) a joué son rôle ; la remontrer
+// tournerait au harcèlement, ce que le §8 refuse.
+var HINTS = {
+  feed_auteur: "Appuie sur l'auteur pour découvrir sa Passio",
+  profil_visite: "Suis-le, ou envoie-lui un message",
+  second_profil: "Tu peux créer un profil pour une autre Passio",
+};
+
+function hintDejaVu(id) {
+  try { return !!(state.hintsVus && state.hintsVus[id]); } catch (e) { return true; }
+}
+
+function hintVisible() {
+  return !!document.querySelector(".passio-hint");
+}
+
+// Retire l'aide à l'écran, s'il y en a une. Appelé aussi à chaque navigation :
+// une bulle ancrée sur un élément d'un autre écran n'a plus de sens.
+function fermerHint() {
+  var el = document.querySelector(".passio-hint");
+  if (el && el.parentNode) el.parentNode.removeChild(el);
+}
+
+// Affiche l'aide `id` ancrée sous `cible`. Ne fait rien si l'aide a déjà été
+// vue, si une autre est à l'écran, ou si la cible n'est pas visible.
+function montrerHint(id, cible) {
+  try {
+    var texte = HINTS[id];
+    if (!texte || hintDejaVu(id) || hintVisible()) return false;
+    var el = (typeof cible === "string") ? document.querySelector(cible) : cible;
+    if (!el || !el.offsetParent) return false;
+
+    var r = el.getBoundingClientRect();
+    if (!r.width && !r.height) return false;
+
+    var bulle = document.createElement("div");
+    bulle.className = "passio-hint";
+    bulle.setAttribute("role", "status");
+    bulle.setAttribute("data-hint", id);
+    // Texte statique venu de HINTS — aucune donnée utilisateur n'entre ici.
+    bulle.innerHTML = '<span class="passio-hint-texte">' + escapeHtml(texte) + '</span>'
+      + '<button type="button" class="passio-hint-ok" onclick="fermerHint()">Compris</button>';
+
+    // Ancrage sous la cible, borné à la fenêtre pour ne jamais sortir à droite.
+    var largeur = Math.min(300, window.innerWidth - 24);
+    var gauche = Math.max(12, Math.min(r.left, window.innerWidth - largeur - 12));
+    var haut = r.bottom + 8;
+    // Si la cible est en bas d'écran, on passe la bulle au-dessus.
+    if (haut + 70 > window.innerHeight) haut = Math.max(12, r.top - 70);
+    bulle.style.cssText = "position:fixed;z-index:9000;left:" + Math.round(gauche) + "px;top:"
+      + Math.round(haut) + "px;width:" + largeur + "px;";
+    document.body.appendChild(bulle);
+
+    try {
+      state.hintsVus = state.hintsVus || {};
+      state.hintsVus[id] = true;
+      saveState();
+    } catch (e) {}
+    try { if (window.tel && tel.action) tel.action("hint_shown", { hint: id }); } catch (e) {}
+    return true;
+  } catch (e) { return false; }
+}
+
 function renderFeed() {
   // 🎯 Masquer le skeleton loader
   const skeleton = $("#feedSkeleton");
@@ -3185,6 +3273,20 @@ function renderFeed() {
   const FAST = Math.min(12, visible.length);
   list.innerHTML = visible.slice(0, FAST).map(_renderPostHTMLSafe).join("")
     + (visible.length <= FAST && hasMore ? moreBtnHtml : "");
+
+  // Aide §8 « première carte ». Différée d'un tick : la bulle s'ancre sur le
+  // rectangle de la carte, qui n'est mesurable qu'une fois la peinture faite.
+  // Ne part que si l'écran du Fil est bien celui qu'on regarde — renderFeed est
+  // aussi appelé par renderEverything pendant que l'utilisateur est ailleurs.
+  try {
+    if (!hintDejaVu("feed_auteur")) {
+      setTimeout(function () {
+        var ecran = document.getElementById("screen-feed");
+        if (!ecran || !ecran.classList.contains("active")) return;
+        montrerHint("feed_auteur", "#feedList .post .post-author");
+      }, 400);
+    }
+  } catch (e) {}
 
   // Jeton de rendu : si renderFeed est rappelé (filtre/refresh) avant que le
   // complément idle ne s'exécute, l'ancien complément est annulé.
