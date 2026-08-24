@@ -50,7 +50,11 @@ GRANT  EXECUTE ON FUNCTION public.is_conv_member(TEXT, TEXT) TO anon, authentica
 
 CREATE POLICY "conversations_select_member" ON public.conversations
   FOR SELECT USING (public.is_conv_member(id, ((SELECT auth.uid()))::text));
+-- LES DEUX policies INSERT permissives de prod, telles quelles : le banc doit
+-- prouver que la migration les retire toutes les deux (elles se combinent en OR,
+-- en laisser une annulerait le verrou).
 CREATE POLICY "Ecriture propre" ON public.conversations FOR INSERT WITH CHECK (true);
+CREATE POLICY "Insert conversations" ON public.conversations FOR INSERT WITH CHECK (true);
 
 CREATE POLICY "conv_members_select_member" ON public.conv_members
   FOR SELECT USING (public.is_conv_member(conv_id, ((SELECT auth.uid()))::text));

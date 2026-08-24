@@ -219,6 +219,36 @@ GRANT  EXECUTE ON FUNCTION public.irl_interaction_allowed(TEXT) TO authenticated
 -- N'affecte QUE les nouvelles insertions : les conversations existantes et
 -- leur lecture par `is_conv_member` sont intactes.
 
+-- ── C.0 Une conversation ne peut plus être attribuée à quelqu'un d'autre ──
+--
+-- Repris de la solution concurrente poussée en parallèle sur cette branche
+-- (commits `0cfd0bd`..`e954b28`), qui avait vu ce que j'avais laissé ouvert :
+-- la PROD porte DEUX policies INSERT permissives sur `conversations`, toutes
+-- deux `check: true`. N'importe qui créait donc une conversation en la
+-- déclarant créée par un autre compte — et récupérait au passage les droits que
+-- la policy `conv_members` accorde au créateur.
+--
+-- ⚠️ Les policies permissives se COMBINENT EN OR : en laisser une seule
+-- annulerait le verrou. D'où la suppression explicite des deux, puis un garde
+-- qui FAIT ÉCHOUER la migration si une policy INSERT inconnue subsiste.
+DROP POLICY IF EXISTS "Ecriture propre" ON public.conversations;
+DROP POLICY IF EXISTS "Insert conversations" ON public.conversations;
+DROP POLICY IF EXISTS "conversations_insert_creator" ON public.conversations;
+
+CREATE POLICY "conversations_insert_creator" ON public.conversations
+  FOR INSERT WITH CHECK (created_by = ((SELECT auth.uid()))::text);
+
+DO $g$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_catalog.pg_policies
+     WHERE schemaname = 'public' AND tablename = 'conversations'
+       AND cmd = 'INSERT' AND policyname <> 'conversations_insert_creator'
+  ) THEN
+    RAISE EXCEPTION 'policy INSERT conversations inattendue : migration refusee';
+  END IF;
+END $g$;
+
 -- ⚠️ POURQUOI UNE FONCTION, ET PAS UN SOUS-`EXISTS` DIRECT SUR `conversations`.
 --
 -- `conversations` n'est lisible que par ses MEMBRES (`conversations_select_member`
@@ -238,15 +268,15 @@ GRANT  EXECUTE ON FUNCTION public.irl_interaction_allowed(TEXT) TO authenticated
 -- `SECURITY DEFINER` + `search_path` verrouillé, sur le modèle exact de
 -- `is_conv_member` : la question « suis-je le créateur de cette conversation ? »
 -- est tranchée sans exposer la ligne.
-CREATE OR REPLACE FUNCTION public.is_conv_creator(_conv_id TEXT)
+CREATE OR REPLACE FUNCTION public.is_conversation_creator(_conv_id TEXT)
 RETURNS BOOLEAN LANGUAGE sql SECURITY DEFINER STABLE SET search_path = '' AS $$
   SELECT CASE WHEN auth.uid() IS NULL THEN FALSE ELSE EXISTS (
     SELECT 1 FROM public.conversations c
     WHERE c.id = _conv_id AND c.created_by = (auth.uid())::text
   ) END
 $$;
-REVOKE EXECUTE ON FUNCTION public.is_conv_creator(TEXT) FROM public;
-GRANT  EXECUTE ON FUNCTION public.is_conv_creator(TEXT) TO authenticated;
+REVOKE EXECUTE ON FUNCTION public.is_conversation_creator(TEXT) FROM public;
+GRANT  EXECUTE ON FUNCTION public.is_conversation_creator(TEXT) TO authenticated;
 
 DROP POLICY IF EXISTS "Ecriture propre" ON public.conv_members;
 CREATE POLICY "Ecriture propre" ON public.conv_members
@@ -254,7 +284,7 @@ CREATE POLICY "Ecriture propre" ON public.conv_members
     (
       -- ① Le créateur de la conversation en compose les membres — lui-même
       --    compris, ce qui amorce sans avoir besoin d'une branche libre.
-      public.is_conv_creator(conv_members.conv_id)
+      public.is_conversation_creator(conv_members.conv_id)
       -- ② Je rejoins MOI-MÊME la conversation d'un événement AUQUEL JE SUIS
       --    INSCRIT. C'est le seul self-join légitime de l'application
       --    (`supaJoinEventConversation`, app-08) : un inscrit rejoint le groupe

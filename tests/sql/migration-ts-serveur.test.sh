@@ -161,6 +161,12 @@ verifier "un membre légitime passe toujours"               accepte "$(insere "$
 
 echo
 echo
+echo "── C bis. Une conversation ne peut pas être attribuée à un AUTRE ──"
+verifier "PRÉMISSE — créer une conversation pour SOI : accepté" accepte \
+  "$(insere "$D" "insert into public.conversations(id,created_by) values ('cvforge_ok','$D');")"
+verifier "créer une conversation au nom d'un AUTRE : refusé"    refuse \
+  "$(insere "$D" "insert into public.conversations(id,created_by) values ('cvforge_ko','$A');")"
+echo
 echo "── D. ÉCRITURE DE L'ÂGE : le RPC est le SEUL chemin ──"
 # Contre-revue du 2026-08-23 : le trigger n'empêchait que de RECULER majority_at
 # sur un UPDATE. Un compte NEUF, sans ligne, faisait `INSERT ... '2000-01-01'`
@@ -236,6 +242,10 @@ sonde_forge_age() {
 sonde_auto_invitation() {
   conv "$A" cvx >/dev/null
   insere "$C" "insert into public.conv_members values ('cvx','$C');"
+}
+
+sonde_forge_conversation() {
+  insere "$D" "insert into public.conversations(id,created_by) values ('cvf','$A');"
 }
 
 mutation() { # $1=libellé  $2=SQL de mutation  $3=fonction sonde  $4=valeur qui SIGNALE le défaut
@@ -316,6 +326,10 @@ mutation "self-join arbitraire retabli sur conv_members" \
                   where c.id = conv_members.conv_id and c.created_by = (auth.uid())::text)))
      and not public.is_blocked_with(user_id));" \
   sonde_auto_invitation accepte
+mutation "une seule des deux policies INSERT permissives laissee" \
+  "create policy \"Insert conversations\" on public.conversations for insert with check (true);" \
+  sonde_forge_conversation accepte
+
 echo
 echo "═══ $OK OK · $KO KO ═══"
 [ "$KO" -eq 0 ] || exit 1
