@@ -58,6 +58,14 @@ test.describe("Fil — Envie du moment (feed_intents_v1)", () => {
     await expect(page.locator("#moodSelector")).toBeHidden();
     expect(await page.evaluate(() => localStorage.getItem("passio_feed_intents_v1"))).toBeNull();
 
+    await page.evaluate(() => {
+      localStorage.setItem("passio_feed_intents_v1", "0");
+      renderFeed();
+    });
+    await expect(page.locator("#moodSelector")).toBeVisible();
+    await expect(page.locator("#feedIntentSelector")).toBeHidden();
+
+    await page.evaluate(() => localStorage.removeItem("passio_feed_intents_v1"));
     await page.goto("/index.html");
     await expect(page.locator("#moodSelector")).toBeVisible({ timeout: 20000 });
     await expect(page.locator("#feedIntentSelector")).toBeHidden();
