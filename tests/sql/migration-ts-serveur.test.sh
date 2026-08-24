@@ -69,6 +69,7 @@ if [ "$demarre" -ne 1 ]; then
   exit 1
 fi
 
+ADMIN() { psql -h "$BASE" -p "$PORT" -U postgres -d postgres -tA -q -v ON_ERROR_STOP=1 "$@" 2>&1; }
 Q() { psql -h "$BASE" -p "$PORT" -U postgres -d ts -tA -q -v ON_ERROR_STOP=1 "$@" 2>&1; }
 # Exécute en tant que compte authentifié $1.
 AS() { psql -h "$BASE" -p "$PORT" -U postgres -d ts -tA -q \
@@ -81,17 +82,39 @@ D=44444444-4444-4444-4444-444444444444   # majeur, aucun blocage
 X=99999999-9999-9999-9999-999999999999   # aucune ligne user_safety (inconnu)
 N=55555555-5555-5555-5555-555555555555   # compte NEUF : rien de declare
 
+fatal() {
+  printf '❌ %s\n' "$1" >&2
+  [ -z "${2:-}" ] || printf '%s\n' "$2" >&2
+  exit 1
+}
+
+exiger_admin() {
+  local libelle="$1"; shift
+  local sortie
+  if ! sortie="$(ADMIN "$@")"; then fatal "$libelle" "$sortie"; fi
+}
+
+exiger_q() {
+  local libelle="$1"; shift
+  local sortie
+  if ! sortie="$(Q "$@")"; then fatal "$libelle" "$sortie"; fi
+}
+
+recreer_base() {
+  exiger_admin "suppression de la base de test impossible" -c "drop database if exists ts"
+  exiger_admin "suppression des roles de test impossible" -c "drop role if exists anon; drop role if exists authenticated"
+  exiger_admin "creation de la base de test impossible" -c "create database ts"
+  exiger_q "le socle PostgreSQL ne s'applique pas : banc interrompu" -f "$SOCLE"
+}
+
 preparer() {
-  psql -h "$BASE" -p "$PORT" -U postgres -tA -q -c "drop database if exists ts" >/dev/null 2>&1
-  psql -h "$BASE" -p "$PORT" -U postgres -tA -q -c "drop role if exists anon; drop role if exists authenticated" >/dev/null 2>&1
-  psql -h "$BASE" -p "$PORT" -U postgres -tA -q -c "create database ts" >/dev/null 2>&1
-  Q -f "$SOCLE" >/dev/null
-  Q -f "$MIGRATION" >/dev/null
-  [ -n "${1:-}" ] && Q -c "$1" >/dev/null
-  Q -c "insert into public.user_safety(user_id,majority_at) values
+  recreer_base
+  exiger_q "la migration T&S ne s'applique pas : banc interrompu" -f "$MIGRATION"
+  [ -z "${1:-}" ] || exiger_q "la mutation de test ne s'applique pas : banc interrompu" -c "$1"
+  exiger_q "les donnees de securite du banc ne se chargent pas" -c "insert into public.user_safety(user_id,majority_at) values
         ('$A','2010-01-01'),('$B','2011-01-01'),('$C','2030-01-01'),('$D','2012-01-01')
-        on conflict (user_id) do update set majority_at=excluded.majority_at;" >/dev/null
-  Q -c "insert into public.blocks(blocker_id,blocked_id) values ('$A','$B') on conflict do nothing;" >/dev/null
+        on conflict (user_id) do update set majority_at=excluded.majority_at;"
+  exiger_q "le blocage du banc ne se charge pas" -c "insert into public.blocks(blocker_id,blocked_id) values ('$A','$B') on conflict do nothing"
   # Conversation privee A<->D, socle des sondes d'auto-invitation et d'injection.
   AS "$A" "insert into public.conversations(id,created_by) values ('cvpriv','$A');" >/dev/null
   AS "$A" "insert into public.conv_members values ('cvpriv','$A');" >/dev/null
@@ -122,7 +145,35 @@ conv() { # $1=créateur $2=id  → crée la conv et y met le créateur
   AS "$1" "insert into public.conv_members values ('$2','$1');" >/dev/null
 }
 
+verifier_atomicite() {
+  recreer_base
+  exiger_q "impossible d'installer la policy inconnue de la sonde atomique" -c     "create policy \"policy_insert_inconnue\" on public.conv_members
+       for insert to authenticated with check (true);"
+
+  local sortie verdict
+  if sortie="$(Q -f "$MIGRATION")"; then
+    verdict=accepte
+  else
+    case "$sortie" in
+      *"policy INSERT conv_members inattendue"*) verdict=refuse ;;
+      *) verdict=erreur-inattendue ;;
+    esac
+  fi
+
+  verifier "policy INSERT inconnue préexistante : migration REFUSÉE" refuse "$verdict"
+  verifier "rollback : user_safety n'existe pas après l'échec" ""     "$(Q -c "select to_regclass('public.user_safety');")"
+  verifier "rollback : les 2 policies conversations de prod sont intactes" 2     "$(Q -c "select count(*) from pg_catalog.pg_policies
+              where schemaname='public' and tablename='conversations' and cmd='INSERT'
+                and policyname in ('Ecriture propre','Insert conversations');")"
+  verifier "rollback : policy conv_members d'origine + inconnue intactes" 2     "$(Q -c "select count(*) from pg_catalog.pg_policies
+              where schemaname='public' and tablename='conv_members' and cmd='INSERT'
+                and policyname in ('Ecriture propre','policy_insert_inconnue');")"
+}
+
 echo "═══ #136 — banc Trust & Safety serveur ═══"
+echo
+echo "── ATOMICITÉ : dérive préexistante = échec et rollback complet ──"
+verifier_atomicite
 preparer
 echo
 echo "── PRÉMISSES (si l'une échoue, tout le reste est sans valeur) ──"
@@ -171,26 +222,40 @@ verifier "PRÉMISSE — créer une conversation pour SOI : accepté" accepte \
 verifier "créer une conversation au nom d'un AUTRE : refusé"    refuse \
   "$(insere "$D" "insert into public.conversations(id,created_by) values ('cvforge_ko','$A');")"
 echo
-echo "── D. ÉCRITURE DE L'ÂGE : le RPC est le SEUL chemin ──"
-# Contre-revue du 2026-08-23 : le trigger n'empêchait que de RECULER majority_at
-# sur un UPDATE. Un compte NEUF, sans ligne, faisait `INSERT ... '2000-01-01'`
-# et se déclarait majeur dans la seconde. `authenticated` n'a donc plus aucun
-# droit d'écriture directe.
+echo "── D. ÂGE DÉCLARÉ : année en entrée, date dérivée côté serveur ──"
 verifier "compte neuf : INSERT direct d'une date passée REFUSÉ" refuse \
   "$(case "$(AS "$N" "insert into public.user_safety(user_id,majority_at) values ('$N','2000-01-01');")" in
        *"permission denied"*|*"violates row-level security"*) echo refuse;; *) echo accepte;; esac)"
 verifier "UPDATE direct permissif REFUSÉ"                       refuse \
   "$(case "$(AS "$C" "update public.user_safety set majority_at='2000-01-01' where user_id='$C';")" in
        *"permission denied"*|*"violates row-level security"*) echo refuse;; *) echo accepte;; esac)"
-verifier "PRÉMISSE — le RPC, lui, accepte la 1re déclaration"   t "$(AS "$N" "select public.declare_majority(date '2005-06-01');")"
-verifier "la déclaration est bien persistée"                    2005-06-01 "$(AS "$N" "select majority_at from public.user_safety where user_id='$N';")"
-verifier "2e déclaration PERMISSIVE (se vieillir) refusée"      f "$(AS "$N" "select public.declare_majority(date '1990-01-01');")"
-verifier "…et la valeur d'origine est intacte"                  2005-06-01 "$(AS "$N" "select majority_at from public.user_safety where user_id='$N';")"
-verifier "déclaration RESTRICTIVE (se rajeunir) acceptée"       t "$(AS "$N" "select public.declare_majority(date '2035-01-01');")"
-verifier "date invraisemblable (an 1800) refusée"               f "$(AS "$N" "select public.declare_majority(date '1800-01-01');")"
-verifier "on ne déclare que pour SOI (le RPC ignore tout id externe)" 1 \
+verifier "l'ancien RPC acceptant une DATE a disparu"            "" \
+  "$(Q -c "select to_regprocedure('public.declare_majority(date)');")"
+verifier "appel direct de l'ancien RPC DATE : fonction absente" absent \
+  "$(case "$(AS "$N" "select public.declare_majority(date '2000-01-01');")" in
+       *"does not exist"*) echo absent;; *) echo presente;; esac)"
+verifier "PRÉMISSE — le RPC année accepte la 1re déclaration"   t \
+  "$(AS "$N" "select public.declare_birth_year(2005);")"
+verifier "la majorité est dérivée au 31/12 des 18 ans"          2023-12-31 \
+  "$(AS "$N" "select majority_at from public.user_safety where user_id='$N';")"
+verifier "année arbitrairement ancienne : seule la date dérivée est stockée" t \
+  "$(AS "$X" "select public.declare_birth_year(1900);")"
+verifier "…et cette date est calculée côté serveur"             1918-12-31 \
+  "$(AS "$X" "select majority_at from public.user_safety where user_id='$X';")"
+verifier "2e déclaration PERMISSIVE (se vieillir) refusée"      f \
+  "$(AS "$N" "select public.declare_birth_year(1990);")"
+verifier "…et la valeur d'origine est intacte"                  2023-12-31 \
+  "$(AS "$N" "select majority_at from public.user_safety where user_id='$N';")"
+verifier "déclaration RESTRICTIVE (se rajeunir) acceptée"       t \
+  "$(AS "$N" "select public.declare_birth_year(2017);")"
+verifier "…et la nouvelle date reste une dérivation serveur"    2035-12-31 \
+  "$(AS "$N" "select majority_at from public.user_safety where user_id='$N';")"
+verifier "année invraisemblable (1899) refusée"                 f \
+  "$(AS "$N" "select public.declare_birth_year(1899);")"
+verifier "année future refusée"                                 f \
+  "$(AS "$N" "select public.declare_birth_year(2099);")"
+verifier "on ne déclare que pour SOI (aucun user_id externe)"   1 \
   "$(AS "$N" "select count(*) from public.user_safety where user_id='$N';")"
-
 echo
 echo "── E. AUTO-INVITATION : un tiers ne s'ajoute pas à une conversation A↔B ──"
 AS "$A" "insert into public.conv_messages(id,conv_id,from_id,content) values ('m1','cvpriv','$A','secret');" >/dev/null
@@ -220,6 +285,39 @@ AS "$B" "insert into public.conv_members values ('grp1','$B');" >/dev/null
 verifier "PRÉMISSE — le groupe accepte un membre non bloqué"    accepte "$(insere "$B" "insert into public.conv_members values ('grp1','$D');")"
 verifier "le groupe REFUSE la cible en blocage bidirectionnel"  refuse "$(insere "$B" "insert into public.conv_members values ('grp1','$A');")"
 
+echo
+echo "── H. PRIVILÈGES : SECURITY DEFINER et policies au minimum explicite ──"
+verifier "anon/PUBLIC n'exécute aucune fonction privilégiée du lot" 0 \
+  "$(Q -c "select count(*)
+            from pg_catalog.pg_proc p
+            join pg_catalog.pg_namespace n on n.oid=p.pronamespace
+           where n.nspname='public'
+             and p.prosecdef
+             and p.proname in ('declare_birth_year','is_blocked_with',
+                               'irl_interaction_allowed','is_conversation_creator',
+                               'can_join_event_conversation')
+             and has_function_privilege('anon',p.oid,'EXECUTE');")"
+verifier "authenticated exécute les 5 fonctions privilégiées du lot" 5 \
+  "$(Q -c "select count(*)
+            from pg_catalog.pg_proc p
+            join pg_catalog.pg_namespace n on n.oid=p.pronamespace
+           where n.nspname='public'
+             and p.prosecdef
+             and p.proname in ('declare_birth_year','is_blocked_with',
+                               'irl_interaction_allowed','is_conversation_creator',
+                               'can_join_event_conversation')
+             and has_function_privilege('authenticated',p.oid,'EXECUTE');")"
+verifier "les 4 nouvelles policies ciblent seulement authenticated" 4 \
+  "$(Q -c "select count(*) from pg_catalog.pg_policies
+            where schemaname='public' and roles::text='{authenticated}'
+              and (tablename,policyname) in (
+                ('user_safety','user_safety_select_own'),
+                ('conversations','conversations_insert_creator'),
+                ('conv_members','Ecriture propre'),
+                ('conv_messages','conv_messages_insert_member')
+              );")"
+
+echo
 echo "── MUTATIONS : chaque garde retirée doit rendre son test ROUGE ──"
 #
 # ⚠️ PAS D'`eval` ICI. La première version passait la commande sous forme de
@@ -235,7 +333,7 @@ sonde_age_inconnu()  { AS "$A" "select public.irl_interaction_allowed('$X');"; }
 # GRANTs quoi qu'il arrive : la sonde restait verte même sans trigger ni règle,
 # et ne prouvait donc plus rien sur la garde qu'elle prétend éprouver.
 sonde_vieillissement() {
-  AS "$C" "select public.declare_majority(date '2010-01-01');" >/dev/null
+  AS "$C" "select public.declare_birth_year(1990);" >/dev/null
   AS "$C" "select majority_at from public.user_safety where user_id='$C';"
 }
 
@@ -257,6 +355,9 @@ sonde_forge_conversation() {
 
 sonde_injection_message() {
   insere "$C" "insert into public.conv_messages(id,conv_id,from_id,content) values ('inj2','cvpriv','$C','intrus');"
+}
+sonde_exec_anon() {
+  Q -c "select has_function_privilege('anon','public.is_blocked_with(text)','EXECUTE');"
 }
 
 mutation() { # $1=libellé  $2=SQL de mutation  $3=fonction sonde  $4=valeur qui SIGNALE le défaut
@@ -298,24 +399,24 @@ mutation "COALESCE fail-closed retiré de l'âge" \
 # vérifie que le trigger seul suffirait.
 mutation "les DEUX gardes de non-vieillissement retirées" \
   "drop trigger if exists trg_user_safety_majorite on public.user_safety;
-   create or replace function public.declare_majority(_majority_at date)
+   create or replace function public.declare_birth_year(_birth_year integer)
    returns boolean language plpgsql security definer set search_path = '' as \$f\$
    begin
      insert into public.user_safety(user_id, majority_at)
-       values ((auth.uid())::text, _majority_at)
+       values ((auth.uid())::text, make_date(_birth_year + 18, 12, 31))
        on conflict (user_id) do update set majority_at = excluded.majority_at;
      return true;
    end \$f\$;" \
-  sonde_vieillissement 2010-01-01
+  sonde_vieillissement 2008-12-31
 
 # DÉFENSE EN PROFONDEUR : le RPC neutralisé mais le trigger EN PLACE — la
 # tentative de se vieillir doit encore échouer. C'est ce qui distingue deux
 # gardes réelles d'une garde unique écrite deux fois.
-preparer "create or replace function public.declare_majority(_majority_at date)
+preparer "create or replace function public.declare_birth_year(_birth_year integer)
    returns boolean language plpgsql security definer set search_path = '' as \$f\$
    begin
      insert into public.user_safety(user_id, majority_at)
-       values ((auth.uid())::text, _majority_at)
+       values ((auth.uid())::text, make_date(_birth_year + 18, 12, 31))
        on conflict (user_id) do update set majority_at = excluded.majority_at;
      return true;
    end \$f\$;"
@@ -346,6 +447,10 @@ mutation "policy conv_messages d'origine (sans appartenance) restauree" \
    create policy \"Ecriture propre\" on public.conv_messages
      for insert with check (from_id = (auth.uid())::text);" \
   sonde_injection_message accepte
+
+mutation "EXECUTE PUBLIC rétabli sur une fonction privilégiée" \
+  "grant execute on function public.is_blocked_with(text) to PUBLIC;" \
+  sonde_exec_anon t
 
 echo
 echo "═══ $OK OK · $KO KO ═══"
