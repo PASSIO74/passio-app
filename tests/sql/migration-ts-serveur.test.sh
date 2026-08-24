@@ -79,6 +79,7 @@ B=22222222-2222-2222-2222-222222222222   # majeur, BLOQUÉ par A
 C=33333333-3333-3333-3333-333333333333   # MINEUR
 D=44444444-4444-4444-4444-444444444444   # majeur, aucun blocage
 X=99999999-9999-9999-9999-999999999999   # aucune ligne user_safety (inconnu)
+N=55555555-5555-5555-5555-555555555555   # compte NEUF : rien de declare
 
 preparer() {
   psql -h "$BASE" -p "$PORT" -U postgres -tA -q -c "drop database if exists ts" >/dev/null 2>&1
@@ -133,11 +134,14 @@ verifier "MINEUR → majeur : refusé"                        f "$(AS "$C" "sele
 verifier "âge INCONNU (aucune ligne) : refusé"             f "$(AS "$A" "select public.irl_interaction_allowed('$X');")"
 verifier "soi-même : refusé"                               f "$(AS "$A" "select public.irl_interaction_allowed('$A');")"
 verifier "l'âge d'autrui reste illisible"                  0 "$(AS "$A" "select count(*) from public.user_safety where user_id='$C';")"
-verifier "on ne peut pas se VIEILLIR"  "$(printf 'refuse')" \
-  "$(case "$(AS "$C" "update public.user_safety set majority_at='2010-01-01' where user_id='$C';")" in *"ne peut pas etre avancee"*) echo refuse;; *) echo accepte;; esac)"
-AS "$C" "update public.user_safety set majority_at='2031-01-01' where user_id='$C';" >/dev/null
-verifier "on peut se RAJEUNIR (sens prudent)"              2031-01-01 "$(AS "$C" "select majority_at from public.user_safety where user_id='$C';")"
-verifier "on ne modifie pas la ligne d'un autre"           0 "$(AS "$C" "update public.user_safety set majority_at='2030-01-01' where user_id='$A'; select count(*) from public.user_safety where user_id='$A' and majority_at='2030-01-01';")"
+# Les règles d'ÉCRITURE de l'âge sont éprouvées en section D, à travers le RPC
+# qui est désormais leur seul chemin. Ici on ne garde que ce qui relève de la
+# section : la table elle-même refuse toute écriture directe, y compris sur la
+# ligne d'un tiers.
+verifier "écrire directement dans la ligne d'un AUTRE : refusé" refuse \
+  "$(case "$(AS "$C" "update public.user_safety set majority_at='2030-01-01' where user_id='$A';")" in
+       *"permission denied"*|*"violates row-level security"*) echo refuse;; *) echo accepte;; esac)"
+verifier "…et la ligne de l'autre est intacte"             2010-01-01 "$(AS "$A" "select majority_at from public.user_safety where user_id='$A';")"
 
 echo
 echo "── B. Blocage : bidirectionnel, sans révéler la direction ni servir d'oracle ──"
@@ -156,6 +160,53 @@ verifier "le BLOQUEUR ne peut pas ajouter celui qu'il a bloqué" refuse "$(inser
 verifier "un membre légitime passe toujours"               accepte "$(insere "$A" "insert into public.conv_members values ('cv2','$D');")"
 
 echo
+echo
+echo "── D. ÉCRITURE DE L'ÂGE : le RPC est le SEUL chemin ──"
+# Contre-revue du 2026-08-23 : le trigger n'empêchait que de RECULER majority_at
+# sur un UPDATE. Un compte NEUF, sans ligne, faisait `INSERT ... '2000-01-01'`
+# et se déclarait majeur dans la seconde. `authenticated` n'a donc plus aucun
+# droit d'écriture directe.
+verifier "compte neuf : INSERT direct d'une date passée REFUSÉ" refuse \
+  "$(case "$(AS "$N" "insert into public.user_safety(user_id,majority_at) values ('$N','2000-01-01');")" in
+       *"permission denied"*|*"violates row-level security"*) echo refuse;; *) echo accepte;; esac)"
+verifier "UPDATE direct permissif REFUSÉ"                       refuse \
+  "$(case "$(AS "$C" "update public.user_safety set majority_at='2000-01-01' where user_id='$C';")" in
+       *"permission denied"*|*"violates row-level security"*) echo refuse;; *) echo accepte;; esac)"
+verifier "PRÉMISSE — le RPC, lui, accepte la 1re déclaration"   t "$(AS "$N" "select public.declare_majority(date '2005-06-01');")"
+verifier "la déclaration est bien persistée"                    2005-06-01 "$(AS "$N" "select majority_at from public.user_safety where user_id='$N';")"
+verifier "2e déclaration PERMISSIVE (se vieillir) refusée"      f "$(AS "$N" "select public.declare_majority(date '1990-01-01');")"
+verifier "…et la valeur d'origine est intacte"                  2005-06-01 "$(AS "$N" "select majority_at from public.user_safety where user_id='$N';")"
+verifier "déclaration RESTRICTIVE (se rajeunir) acceptée"       t "$(AS "$N" "select public.declare_majority(date '2035-01-01');")"
+verifier "date invraisemblable (an 1800) refusée"               f "$(AS "$N" "select public.declare_majority(date '1800-01-01');")"
+verifier "on ne déclare que pour SOI (le RPC ignore tout id externe)" 1 \
+  "$(AS "$N" "select count(*) from public.user_safety where user_id='$N';")"
+
+echo
+echo "── E. AUTO-INVITATION : un tiers ne s'ajoute pas à une conversation A↔B ──"
+conv "$A" cvpriv
+AS "$A" "insert into public.conv_members values ('cvpriv','$D');" >/dev/null
+AS "$A" "insert into public.conv_messages(id,conv_id,from_id,content) values ('m1','cvpriv','$A','secret');" >/dev/null
+verifier "PRÉMISSE — un membre lit bien la conversation"        1 "$(AS "$D" "select count(*) from public.conv_messages where conv_id='cvpriv';")"
+verifier "le tiers C ne peut PAS s'ajouter"                     refuse "$(insere "$C" "insert into public.conv_members values ('cvpriv','$C');")"
+verifier "…et ne lit toujours pas les messages"                 0 "$(AS "$C" "select count(*) from public.conv_messages where conv_id='cvpriv';")"
+verifier "…ni la conversation elle-même"                        0 "$(AS "$C" "select count(*) from public.conversations where id='cvpriv';")"
+
+echo
+echo "── F. Le SEUL self-join légitime : rejoindre l'événement où l'on est inscrit ──"
+AS "$D" "insert into public.events(id,author_id,title,conv_id) values ('ev1','$D','Sortie','evgrp_ev1');" >/dev/null
+AS "$D" "insert into public.conversations(id,created_by,is_group) values ('evgrp_ev1','$D',true);" >/dev/null
+AS "$D" "insert into public.conv_members values ('evgrp_ev1','$D');" >/dev/null
+AS "$C" "insert into public.event_attendees(event_id,user_id) values ('ev1','$C');" >/dev/null
+verifier "un INSCRIT rejoint la conversation de l'événement"    accepte "$(insere "$C" "insert into public.conv_members values ('evgrp_ev1','$C');")"
+verifier "un NON-INSCRIT ne la rejoint pas"                     refuse "$(insere "$B" "insert into public.conv_members values ('evgrp_ev1','$B');")"
+
+echo
+echo "── G. Un groupe ne peut pas forcer une cible en blocage ──"
+AS "$B" "insert into public.conversations(id,created_by,is_group,group_name) values ('grp1','$B',true,'G');" >/dev/null
+AS "$B" "insert into public.conv_members values ('grp1','$B');" >/dev/null
+verifier "PRÉMISSE — le groupe accepte un membre non bloqué"    accepte "$(insere "$B" "insert into public.conv_members values ('grp1','$D');")"
+verifier "le groupe REFUSE la cible en blocage bidirectionnel"  refuse "$(insere "$B" "insert into public.conv_members values ('grp1','$A');")"
+
 echo "── MUTATIONS : chaque garde retirée doit rendre son test ROUGE ──"
 #
 # ⚠️ PAS D'`eval` ICI. La première version passait la commande sous forme de
@@ -166,9 +217,25 @@ echo "── MUTATIONS : chaque garde retirée doit rendre son test ROUGE ──
 sonde_conv_forcee()  { conv "$B" cvm >/dev/null; insere "$B" "insert into public.conv_members values ('cvm','$A');"; }
 sonde_blocage_sens() { AS "$B" "select public.is_blocked_with('$A');"; }
 sonde_age_inconnu()  { AS "$A" "select public.irl_interaction_allowed('$X');"; }
+# ⚠️ PASSE PAR LE RPC, pas par un UPDATE direct. Depuis que `authenticated` n'a
+# plus le droit d'écrire sur `user_safety`, un UPDATE direct est refusé par les
+# GRANTs quoi qu'il arrive : la sonde restait verte même sans trigger ni règle,
+# et ne prouvait donc plus rien sur la garde qu'elle prétend éprouver.
 sonde_vieillissement() {
-  AS "$C" "update public.user_safety set majority_at='2010-01-01' where user_id='$C';" >/dev/null
+  AS "$C" "select public.declare_majority(date '2010-01-01');" >/dev/null
   AS "$C" "select majority_at from public.user_safety where user_id='$C';"
+}
+
+sonde_forge_age() {
+  case "$(AS "$N" "insert into public.user_safety(user_id,majority_at) values ('$N','2000-01-01');")" in
+    *"permission denied"*|*"violates row-level security"*) echo refuse ;;
+    *ERROR*|*error:*) echo erreur ;;
+    *) echo accepte ;;
+  esac
+}
+sonde_auto_invitation() {
+  conv "$A" cvx >/dev/null
+  insere "$C" "insert into public.conv_members values ('cvx','$C');"
 }
 
 mutation() { # $1=libellé  $2=SQL de mutation  $3=fonction sonde  $4=valeur qui SIGNALE le défaut
@@ -199,10 +266,56 @@ mutation "COALESCE fail-closed retiré de l'âge" \
      select not public.is_blocked_with(_other) \$f\$;" \
   sonde_age_inconnu t
 
-mutation "trigger anti-vieillissement retiré" \
-  "drop trigger if exists trg_user_safety_majorite on public.user_safety;" \
+# ⚠️ La sonde passe par le RPC, PAS par un UPDATE direct : depuis que
+# `authenticated` n'a plus le droit d'écrire sur la table, un UPDATE direct est
+# refusé quoi qu'il arrive — retirer le trigger ne changeait donc plus rien et
+# la mutation « survivait » sans qu'aucun trou n'existe.
+#
+# Les deux gardes de non-vieillissement sont indépendantes : la règle du RPC, et
+# le trigger sous elle. Une seule mutation ne prouve rien tant que l'autre tient,
+# donc on retire les DEUX ; l'assertion de défense en profondeur juste après
+# vérifie que le trigger seul suffirait.
+mutation "les DEUX gardes de non-vieillissement retirées" \
+  "drop trigger if exists trg_user_safety_majorite on public.user_safety;
+   create or replace function public.declare_majority(_majority_at date)
+   returns boolean language plpgsql security definer set search_path = '' as \$f\$
+   begin
+     insert into public.user_safety(user_id, majority_at)
+       values ((auth.uid())::text, _majority_at)
+       on conflict (user_id) do update set majority_at = excluded.majority_at;
+     return true;
+   end \$f\$;" \
   sonde_vieillissement 2010-01-01
 
+# DÉFENSE EN PROFONDEUR : le RPC neutralisé mais le trigger EN PLACE — la
+# tentative de se vieillir doit encore échouer. C'est ce qui distingue deux
+# gardes réelles d'une garde unique écrite deux fois.
+preparer "create or replace function public.declare_majority(_majority_at date)
+   returns boolean language plpgsql security definer set search_path = '' as \$f\$
+   begin
+     insert into public.user_safety(user_id, majority_at)
+       values ((auth.uid())::text, _majority_at)
+       on conflict (user_id) do update set majority_at = excluded.majority_at;
+     return true;
+   end \$f\$;"
+verifier "RPC neutralisé, trigger seul : se vieillir échoue encore" 2030-01-01 "$(sonde_vieillissement)"
+
+
+mutation "INSERT/UPDATE direct rendu libre sur user_safety" \
+  "grant insert, update on public.user_safety to authenticated;
+   drop policy if exists \"user_safety_insert_own\" on public.user_safety;
+   create policy \"user_safety_insert_own\" on public.user_safety
+     for insert with check (user_id = ((select auth.uid()))::text);" \
+  sonde_forge_age accepte
+
+mutation "self-join arbitraire retabli sur conv_members" \
+  "drop policy \"Ecriture propre\" on public.conv_members;
+   create policy \"Ecriture propre\" on public.conv_members for insert with check (
+     ((user_id = (auth.uid())::text)
+      or (exists (select 1 from public.conversations c
+                  where c.id = conv_members.conv_id and c.created_by = (auth.uid())::text)))
+     and not public.is_blocked_with(user_id));" \
+  sonde_auto_invitation accepte
 echo
 echo "═══ $OK OK · $KO KO ═══"
 [ "$KO" -eq 0 ] || exit 1

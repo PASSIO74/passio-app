@@ -46,14 +46,19 @@ DROP POLICY IF EXISTS "user_safety_select_own" ON public.user_safety;
 CREATE POLICY "user_safety_select_own" ON public.user_safety
   FOR SELECT USING (user_id = ((SELECT auth.uid()))::text);
 
-DROP POLICY IF EXISTS "user_safety_insert_own" ON public.user_safety;
-CREATE POLICY "user_safety_insert_own" ON public.user_safety
-  FOR INSERT WITH CHECK (user_id = ((SELECT auth.uid()))::text);
-
-DROP POLICY IF EXISTS "user_safety_update_own" ON public.user_safety;
-CREATE POLICY "user_safety_update_own" ON public.user_safety
-  FOR UPDATE USING (user_id = ((SELECT auth.uid()))::text)
-           WITH CHECK (user_id = ((SELECT auth.uid()))::text);
+-- ⚠️ AUCUNE POLICY INSERT NI UPDATE, ET AUCUN GRANT CORRESPONDANT.
+--
+-- Une première version de ce lot accordait `INSERT, UPDATE` à `authenticated`
+-- avec des policies `own`. La contre-revue a montré le trou : le trigger
+-- n'empêche que de RECULER `majority_at` sur un UPDATE — un compte NEUF, sans
+-- ligne, faisait simplement `INSERT ... majority_at = '2000-01-01'` et se
+-- déclarait majeur dans la seconde. La garde ne gardait que les comptes ayant
+-- déjà déclaré.
+--
+-- L'écriture passe donc exclusivement par `public.declare_majority()` plus bas.
+-- REVOKE explicite : une base où la version précédente a tourné doit perdre ces
+-- droits au réapplication.
+REVOKE INSERT, UPDATE, DELETE ON public.user_safety FROM authenticated;
 
 -- ⚠️ LES POLICIES NE DONNENT PAS L'ACCÈS, ELLES LE FILTRENT. Sans GRANT, une
 -- table neuve rend « permission denied for table user_safety » à tout compte
@@ -63,9 +68,11 @@ CREATE POLICY "user_safety_update_own" ON public.user_safety
 -- général des default privileges qui couvriraient ce cas ; on ne s'en remet pas
 -- à un réglage de projet pour une table de sécurité.
 --
+-- SELECT SEULEMENT : le client doit pouvoir savoir s'il a déjà déclaré (sinon
+-- il redemanderait à chaque démarrage). L'écriture passe par le RPC.
 -- `anon` est volontairement exclu : sans `auth.uid()`, aucune policy ne peut
 -- l'accepter, et lui donner le GRANT n'ajouterait qu'une surface.
-GRANT SELECT, INSERT, UPDATE ON public.user_safety TO authenticated;
+GRANT SELECT ON public.user_safety TO authenticated;
 
 -- Pas de policy DELETE : effacer sa ligne reviendrait à revenir à « inconnu »,
 -- ce qui est fail-closed donc inoffensif — mais ce serait aussi un moyen de
@@ -94,6 +101,53 @@ DROP TRIGGER IF EXISTS trg_user_safety_majorite ON public.user_safety;
 CREATE TRIGGER trg_user_safety_majorite
   BEFORE UPDATE ON public.user_safety
   FOR EACH ROW EXECUTE FUNCTION public.user_safety_majorite_non_avancable();
+
+
+-- ⚠️ LE SEUL CHEMIN D'ÉCRITURE DE LA DONNÉE D'ÂGE.
+--
+-- `SECURITY DEFINER`, donc il traverse la RLS — c'est précisément pour ça que
+-- `authenticated` n'a plus aucun droit d'écriture direct sur la table.
+--
+-- Trois règles, dans cet ordre :
+--   ① bornes de vraisemblance — une majorité avant 1900 ou à plus de 18 ans
+--      dans le futur n'a pas de sens et est refusée ;
+--   ② la PREMIÈRE déclaration est libre, mais elle est définitive dans le sens
+--      permissif : c'est elle qui devient opposable ;
+--   ③ ensuite, seul un changement RESTRICTIF passe (se rajeunir). Se vieillir
+--      exige le service_role.
+--
+-- ⚠️ CE QUE CE RPC NE FAIT PAS, et qu'aucun code ne peut faire ici : VÉRIFIER
+-- l'âge. La déclaration reste déclarative. Ce que le lot apporte, c'est qu'elle
+-- devient opposable et à sens unique — pas qu'elle devienne vraie. Une
+-- vérification réelle (pièce, tiers de confiance) est un chantier à part, et il
+-- ne faut pas laisser croire que ce lot l'a fait.
+CREATE OR REPLACE FUNCTION public.declare_majority(_majority_at DATE)
+RETURNS BOOLEAN LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE v_uid TEXT; v_old DATE;
+BEGIN
+  v_uid := (auth.uid())::text;
+  IF v_uid IS NULL OR _majority_at IS NULL THEN RETURN FALSE; END IF;
+  IF _majority_at < DATE '1900-01-01'
+     OR _majority_at > (CURRENT_DATE + INTERVAL '18 years') THEN
+    RETURN FALSE;
+  END IF;
+
+  SELECT s.majority_at INTO v_old FROM public.user_safety s WHERE s.user_id = v_uid;
+
+  IF NOT FOUND THEN
+    INSERT INTO public.user_safety(user_id, majority_at) VALUES (v_uid, _majority_at);
+    RETURN TRUE;
+  END IF;
+
+  IF v_old IS NULL OR _majority_at > v_old THEN
+    UPDATE public.user_safety SET majority_at = _majority_at WHERE user_id = v_uid;
+    RETURN TRUE;
+  END IF;
+
+  RETURN FALSE;  -- tentative de se vieillir : refusée, sans exception bruyante
+END $$;
+REVOKE EXECUTE ON FUNCTION public.declare_majority(DATE) FROM public;
+GRANT  EXECUTE ON FUNCTION public.declare_majority(DATE) TO authenticated;
 
 -- ── B. Blocage bidirectionnel, sans révéler la direction ─────────────────
 --
@@ -150,21 +204,69 @@ GRANT  EXECUTE ON FUNCTION public.irl_interaction_allowed(TEXT) TO authenticated
 -- n'importe quel `user_id`. N'importe qui ouvrait donc un DM avec n'importe
 -- qui, blocage compris — le client masquait, la base gardait.
 --
--- On garde les deux branches légitimes (s'ajouter soi-même ; le créateur ajoute
--- les membres) et on retire la seule chose qui ne doit jamais passer : ajouter
--- quelqu'un avec qui on est en blocage, dans un sens ou dans l'autre.
+-- ⚠️ DEUXIÈME TROU, TROUVÉ PAR LA CONTRE-REVUE : la branche `user_id =
+-- auth.uid()` était LIBRE. Quiconque connaissait ou devinait un `conv_id`
+-- s'ajoutait lui-même comme membre — et `is_conv_member` lui ouvrait alors
+-- toute la conversation et ses messages. Une auto-invitation dans une
+-- conversation privée existante.
+--
+-- La supprimer purement casserait un parcours réel : `supaJoinEventConversation`
+-- (app-08) fait s'ajouter un inscrit au groupe des participants d'un événement.
+-- On la BORNE donc à ce cas précis, vérifié côté serveur contre
+-- `events.conv_id` et `event_attendees` — au lieu de la retirer à l'aveugle ou
+-- de la laisser ouverte.
 --
 -- N'affecte QUE les nouvelles insertions : les conversations existantes et
 -- leur lecture par `is_conv_member` sont intactes.
+
+-- ⚠️ POURQUOI UNE FONCTION, ET PAS UN SOUS-`EXISTS` DIRECT SUR `conversations`.
+--
+-- `conversations` n'est lisible que par ses MEMBRES (`conversations_select_member`
+-- → `is_conv_member`). Un sous-`EXISTS` écrit en clair dans la policy de
+-- `conv_members` est donc soumis à cette RLS : au moment où le créateur insère
+-- sa PROPRE ligne, il n'est pas encore membre, la conversation lui est invisible,
+-- et l'`EXISTS` rend faux. Résultat mesuré sur PostgreSQL réel : le créateur ne
+-- peut pas s'ajouter à sa propre conversation — plus AUCUNE conversation ne se
+-- crée, ni DM ni groupe.
+--
+-- L'ancienne policy ne marchait que par un enchaînement fragile : la branche
+-- libre `user_id = auth.uid()` amorçait l'adhésion du créateur, ce qui rendait
+-- ENSUITE la conversation visible et permettait d'ajouter l'autre membre. Cette
+-- branche étant précisément le trou d'auto-invitation, il faut remplacer
+-- l'amorçage, pas seulement le retirer.
+--
+-- `SECURITY DEFINER` + `search_path` verrouillé, sur le modèle exact de
+-- `is_conv_member` : la question « suis-je le créateur de cette conversation ? »
+-- est tranchée sans exposer la ligne.
+CREATE OR REPLACE FUNCTION public.is_conv_creator(_conv_id TEXT)
+RETURNS BOOLEAN LANGUAGE sql SECURITY DEFINER STABLE SET search_path = '' AS $$
+  SELECT CASE WHEN auth.uid() IS NULL THEN FALSE ELSE EXISTS (
+    SELECT 1 FROM public.conversations c
+    WHERE c.id = _conv_id AND c.created_by = (auth.uid())::text
+  ) END
+$$;
+REVOKE EXECUTE ON FUNCTION public.is_conv_creator(TEXT) FROM public;
+GRANT  EXECUTE ON FUNCTION public.is_conv_creator(TEXT) TO authenticated;
+
 DROP POLICY IF EXISTS "Ecriture propre" ON public.conv_members;
 CREATE POLICY "Ecriture propre" ON public.conv_members
   FOR INSERT WITH CHECK (
     (
-      user_id = ((SELECT auth.uid()))::text
-      OR EXISTS (
-        SELECT 1 FROM public.conversations c
-        WHERE c.id = conv_members.conv_id
-          AND c.created_by = ((SELECT auth.uid()))::text
+      -- ① Le créateur de la conversation en compose les membres — lui-même
+      --    compris, ce qui amorce sans avoir besoin d'une branche libre.
+      public.is_conv_creator(conv_members.conv_id)
+      -- ② Je rejoins MOI-MÊME la conversation d'un événement AUQUEL JE SUIS
+      --    INSCRIT. C'est le seul self-join légitime de l'application
+      --    (`supaJoinEventConversation`, app-08) : un inscrit rejoint le groupe
+      --    des participants après son RSVP.
+      OR (
+        user_id = ((SELECT auth.uid()))::text
+        AND EXISTS (
+          SELECT 1 FROM public.events e
+          JOIN public.event_attendees a ON a.event_id = e.id
+          WHERE e.conv_id = conv_members.conv_id
+            AND a.user_id = ((SELECT auth.uid()))::text
+        )
       )
     )
     AND NOT public.is_blocked_with(user_id)
