@@ -92,6 +92,10 @@ preparer() {
         ('$A','2010-01-01'),('$B','2011-01-01'),('$C','2030-01-01'),('$D','2012-01-01')
         on conflict (user_id) do update set majority_at=excluded.majority_at;" >/dev/null
   Q -c "insert into public.blocks(blocker_id,blocked_id) values ('$A','$B') on conflict do nothing;" >/dev/null
+  # Conversation privee A<->D, socle des sondes d'auto-invitation et d'injection.
+  AS "$A" "insert into public.conversations(id,created_by) values ('cvpriv','$A');" >/dev/null
+  AS "$A" "insert into public.conv_members values ('cvpriv','$A');" >/dev/null
+  AS "$A" "insert into public.conv_members values ('cvpriv','$D');" >/dev/null
 }
 
 OK=0; KO=0
@@ -189,13 +193,16 @@ verifier "on ne déclare que pour SOI (le RPC ignore tout id externe)" 1 \
 
 echo
 echo "── E. AUTO-INVITATION : un tiers ne s'ajoute pas à une conversation A↔B ──"
-conv "$A" cvpriv
-AS "$A" "insert into public.conv_members values ('cvpriv','$D');" >/dev/null
 AS "$A" "insert into public.conv_messages(id,conv_id,from_id,content) values ('m1','cvpriv','$A','secret');" >/dev/null
 verifier "PRÉMISSE — un membre lit bien la conversation"        1 "$(AS "$D" "select count(*) from public.conv_messages where conv_id='cvpriv';")"
 verifier "le tiers C ne peut PAS s'ajouter"                     refuse "$(insere "$C" "insert into public.conv_members values ('cvpriv','$C');")"
 verifier "…et ne lit toujours pas les messages"                 0 "$(AS "$C" "select count(*) from public.conv_messages where conv_id='cvpriv';")"
 verifier "…ni la conversation elle-même"                        0 "$(AS "$C" "select count(*) from public.conversations where id='cvpriv';")"
+
+verifier "un NON-MEMBRE ne peut pas INJECTER un message"    refuse \
+  "$(insere "$C" "insert into public.conv_messages(id,conv_id,from_id,content) values ('inj','cvpriv','$C','intrus');")"
+verifier "…et un MEMBRE écrit toujours (la garde ne déborde pas)" accepte \
+  "$(insere "$D" "insert into public.conv_messages(id,conv_id,from_id,content) values ('ok1','cvpriv','$D','bonjour');")"
 
 echo
 echo "── F. Le SEUL self-join légitime : rejoindre l'événement où l'on est inscrit ──"
@@ -246,6 +253,10 @@ sonde_auto_invitation() {
 
 sonde_forge_conversation() {
   insere "$D" "insert into public.conversations(id,created_by) values ('cvf','$A');"
+}
+
+sonde_injection_message() {
+  insere "$C" "insert into public.conv_messages(id,conv_id,from_id,content) values ('inj2','cvpriv','$C','intrus');"
 }
 
 mutation() { # $1=libellé  $2=SQL de mutation  $3=fonction sonde  $4=valeur qui SIGNALE le défaut
@@ -329,6 +340,12 @@ mutation "self-join arbitraire retabli sur conv_members" \
 mutation "une seule des deux policies INSERT permissives laissee" \
   "create policy \"Insert conversations\" on public.conversations for insert with check (true);" \
   sonde_forge_conversation accepte
+
+mutation "policy conv_messages d'origine (sans appartenance) restauree" \
+  "drop policy if exists \"conv_messages_insert_member\" on public.conv_messages;
+   create policy \"Ecriture propre\" on public.conv_messages
+     for insert with check (from_id = (auth.uid())::text);" \
+  sonde_injection_message accepte
 
 echo
 echo "═══ $OK OK · $KO KO ═══"

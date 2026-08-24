@@ -301,3 +301,32 @@ CREATE POLICY "Ecriture propre" ON public.conv_members
     )
     AND NOT public.is_blocked_with(user_id)
   );
+
+-- ── C ter. Un non-membre ne peut pas INJECTER un message ─────────────────
+--
+-- Trou trouve par la solution concurrente (`ba25715`), que j'avais manque : la
+-- policy INSERT de prod sur `conv_messages` ne verifie que `from_id =
+-- auth.uid()`. Un tiers connaissant un `conv_id` pouvait donc ECRIRE dans une
+-- conversation privee sans pouvoir la lire — la lecture etait fermee depuis
+-- 2026-08-09, l'ecriture non. L'appartenance est desormais exigee des l'INSERT.
+--
+-- Meme garde anti-policy-inconnue que plus haut : les policies permissives se
+-- combinent en OR.
+DROP POLICY IF EXISTS "Ecriture propre" ON public.conv_messages;
+DROP POLICY IF EXISTS "conv_messages_insert_member" ON public.conv_messages;
+CREATE POLICY "conv_messages_insert_member" ON public.conv_messages
+  FOR INSERT WITH CHECK (
+    from_id = ((SELECT auth.uid()))::text
+    AND public.is_conv_member(conv_id, ((SELECT auth.uid()))::text)
+  );
+
+DO $m$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_catalog.pg_policies
+     WHERE schemaname = 'public' AND tablename = 'conv_messages'
+       AND cmd = 'INSERT' AND policyname <> 'conv_messages_insert_member'
+  ) THEN
+    RAISE EXCEPTION 'policy INSERT conv_messages inattendue : migration refusee';
+  END IF;
+END $m$;
