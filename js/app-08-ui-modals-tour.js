@@ -5398,6 +5398,14 @@ async function supaInit() {
       try { if (typeof _flushPendingUserState === "function") _flushPendingUserState(); } catch(e) {}
     } catch(e) {}
 
+    // Canari conversation → IRL : rend la déclaration prudente disponible au
+    // verdict serveur, y compris lorsque ce compte est la cible de la future
+    // proposition. Best-effort et uniquement quand le flag est actif.
+    try {
+      if (typeof irlProposalEnabled === "function" && irlProposalEnabled()
+          && typeof irlProposalDeclareBirthYear === "function") irlProposalDeclareBirthYear();
+    } catch(e) {}
+
     // 0bis. PROFIL STABLE PAR COMPTE/EMAIL : la ligne `profiles` (cl\u00e9 = uid du
     // compte mail) fait FOI. \u00c0 chaque connexion, l'appareil ADOPTE le nom/emoji/
     // couleur/photo du serveur au lieu de republier le nom local \u2014 sinon le nom

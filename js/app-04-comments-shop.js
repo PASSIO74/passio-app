@@ -3602,6 +3602,14 @@ async function openConversation(convId) {
     fp.classList.add("active");
   }
 
+  // Le CTA IRL n'est jamais présent dans le HTML initial. Il est ajouté
+  // seulement après le verdict serveur âge + blocage de #136. Le drapeau reste
+  // OFF par défaut ; ce point d'appel ne fait donc aucun accès réseau hors canari.
+  if (!c.isGroup && typeof irlProposalEnabled === "function" && irlProposalEnabled()
+      && typeof irlProposalMountConversationAction === "function") {
+    irlProposalMountConversationAction(convId, c.userId);
+  }
+
   var thread = document.getElementById("convFpThread");
   // Fond de conversation personnalisé (réglages → 🎨), sinon fond par défaut.
   if (thread) thread.style.background = c.bg || "var(--bg-deep)";

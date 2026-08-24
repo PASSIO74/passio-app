@@ -214,8 +214,7 @@ test("§8 — le texte affiché est celui de HINTS, sans contenu utilisateur", a
     clefs: Object.keys(HINTS),
   }));
   expect(r.affiche).toBe(r.attendu);
-  // Les trois aides implémentées. « première conversation → Proposer un IRL »
-  // est explicitement reportée par la spec (« lorsque T&S est prêt ») : elle
-  // n'est donc PAS dans HINTS, et ce test le constate au lieu de le supposer.
-  expect(r.clefs.sort()).toEqual(["feed_auteur", "profil_visite", "second_profil"]);
+  // #136 ayant rendu T&S serveur autoritaire, la quatrième aide est maintenant
+  // disponible — mais son affichage reste conditionné au verdict RPC strict.
+  expect(r.clefs.sort()).toEqual(["conversation_irl", "feed_auteur", "profil_visite", "second_profil"]);
 });
