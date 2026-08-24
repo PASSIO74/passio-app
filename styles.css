@@ -7090,6 +7090,16 @@
     }
     .conv-action-btn:hover { background:rgba(139,92,246,0.10); color:var(--accent); }
     .conv-action-btn svg { width:18px; height:18px; }
+    .conv-action-btn.irl-proposal-action {
+      width:44px; height:44px; border-radius:12px;
+      color:var(--accent); background:var(--accent-wash);
+    }
+    .conv-action-btn.irl-proposal-action:hover { background:var(--accent); color:#fff; }
+    .conv-action-btn.irl-proposal-action:focus-visible {
+      outline:3px solid color-mix(in srgb, var(--accent) 38%, transparent);
+      outline-offset:2px;
+    }
+    .conv-action-btn.irl-proposal-action[aria-busy="true"] { opacity:0.55; cursor:wait; }
 
     /* Thread */
     .conv-fp-thread {

@@ -3196,6 +3196,7 @@ var HINTS = {
   feed_auteur: "Appuie sur l'auteur pour découvrir sa Passio",
   profil_visite: "Suis-le, ou envoie-lui un message",
   second_profil: "Tu peux créer un profil pour une autre Passio",
+  conversation_irl: "Quand vous êtes prêts, propose un moment IRL autour de votre passion",
 };
 
 function hintDejaVu(id) {
