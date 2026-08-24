@@ -46,6 +46,43 @@ indiscernables d'un succès, sans qu'aucune alerte ne soit levée. **Une issue
 créée n'est jamais la preuve qu'une tâche a tourné** : la preuve est un run vert
 dans Actions → Claude Code, et une PR. Détail : `docs/PHONE_ONLY_AI_WORKFLOW.md`.
 
+### État du canal, et son contrôle à chaque exécution (2026-08-24)
+
+Le canal GitHub → Claude Code est **nominal**, restauré le **2026-08-24** après
+une panne des jours précédents : chaque run sortait `AUTH_REELLE: none`
+(`CLAUDE_CODE_OAUTH_TOKEN` absent ou périmé), pendant que le chemin de secours —
+issue → Benjamin → session interactive — portait seul le travail.
+
+⚠️ **Un secret présent n'est pas une connexion qui fonctionne.** Ce sont deux
+marches distinctes du workflow ; les confondre, c'est prendre une panne d'auth
+pour un problème de code :
+
+| Marche du run | Ce qu'elle prouve | Ce qu'elle ne prouve PAS |
+|---|---|---|
+| `claude-auth-guard` (`steps.auth`) | le secret existe, fait ≥ 40 caractères, porte le préfixe `sk-ant-oat`, et aucune `ANTHROPIC_API_KEY` ne traîne dans le job | que le jeton est encore **valide** côté Anthropic |
+| `Prouver le modèle et l'authentification réellement exécutés` (`steps.modele`) | la source d'auth **observée** (`apiKeySource` de l'événement `system/init`) et le modèle réellement exécuté | — |
+
+Seul `AUTH_REELLE` fait foi. Il est lu dans la trace d'exécution, republié dans
+le commentaire de retour sur l'issue, et **bloque la publication** s'il sort de
+la politique `subscription-only`. **Contrôle obligatoire à chaque exécution** :
+lire `AUTH_REELLE` (commentaire de retour, ou marche `steps.modele` du run) avant
+de tenir un ordre pour transmis — un run vert sans ce champ ne prouve rien.
+
+**Repli si `AUTH_REELLE: none`** : le canal automatique est mort, ne pas le
+relancer en boucle (le label `claude` ne produit alors que des commentaires
+rouges). L'ordre s'écrit dans une issue ou une PR GitHub, Benjamin le colle dans
+une session Claude Code interactive, qui exécute. Lent mais fiable : c'est ce
+chemin qui a porté les lots des 2026-08-23/24. Le rétablissement demande un
+jeton neuf (`claude setup-token`) posé dans les secrets du dépôt — ni ChatGPT ni
+Claude Code ne peuvent le faire, seul Benjamin le peut.
+
+**Une branche sensible = un seul écrivain.** Le 2026-08-24, six commits d'une
+seconde session sont arrivés sur `claude/consolidate-pr-sessions-t05y6v` pendant
+qu'une première y travaillait ; rien n'a été perdu cette fois, mais à deux
+écrivains le recouvrement n'est qu'une question de temps. Désigner l'écrivain
+unique avant d'ouvrir le chantier ; les autres sessions lisent. Voir le skill
+`/passio-multi-session`.
+
 Répartition : **ChatGPT** = direction produit, spécification, arbitrage ·
 **Claude Code** = implémentation, backend/Supabase/RLS, sécurité, tests, refacto ·
 **Codex** = revue indépendante · **Lovable / Base44** = laboratoires
