@@ -2663,16 +2663,24 @@ var selectedMoods = new Set(["creation"]); // Par défaut "Création"
 //     localStorage.passio_feed_intents_v1 = "1"  → actif
 //     localStorage.passio_feed_intents_v1 = "0"  → kill switch immédiat
 //     window.PASSIO_FEED_INTENTS_V1 = false       → coupure en mémoire
+//     ?passio_preview=feed-intents-v1             → canari pour cette URL seulement
 // ══════════════════════════════════════════════════════════════════════════
 var FEED_INTENTS_VERSION = "v1";
 var activeFeedIntent = "for_you";
 
 function feedIntentsEnabled() {
   if (typeof window.PASSIO_FEED_INTENTS_V1 === "boolean") return window.PASSIO_FEED_INTENTS_V1;
+  var stored = null;
   try {
-    var v = localStorage.getItem("passio_feed_intents_v1");
-    if (v === "1") return true;
-    if (v === "0") return false;
+    stored = localStorage.getItem("passio_feed_intents_v1");
+  } catch (e) {}
+  if (stored === "0") return false; // le kill switch local reste prioritaire
+  if (stored === "1") return true;
+  try {
+    // Accès canari non persistant : retirer le paramètre rend immédiatement
+    // l'ancien rail, sans écrire de préférence ni ouvrir le flag global.
+    var preview = new URLSearchParams(window.location.search).get("passio_preview");
+    if (preview === "feed-intents-v1") return true;
   } catch (e) {}
   return false; // défaut sûr : ancien sélecteur et ancien filtrage inchangés
 }

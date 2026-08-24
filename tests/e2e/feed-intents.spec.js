@@ -49,6 +49,28 @@ function renderedIds(page) {
 }
 
 test.describe("Fil — Envie du moment (feed_intents_v1)", () => {
+  test("le lien canari active l'aperçu sans rendre le flag persistant", async ({ page }) => {
+    await bootOnboarded(page);
+    await page.evaluate(() => localStorage.removeItem("passio_feed_intents_v1"));
+
+    await page.goto("/index.html?passio_preview=feed-intents-v1");
+    await expect(page.locator("#feedIntentSelector")).toBeVisible({ timeout: 20000 });
+    await expect(page.locator("#moodSelector")).toBeHidden();
+    expect(await page.evaluate(() => localStorage.getItem("passio_feed_intents_v1"))).toBeNull();
+
+    await page.evaluate(() => {
+      localStorage.setItem("passio_feed_intents_v1", "0");
+      renderFeed();
+    });
+    await expect(page.locator("#moodSelector")).toBeVisible();
+    await expect(page.locator("#feedIntentSelector")).toBeHidden();
+
+    await page.evaluate(() => localStorage.removeItem("passio_feed_intents_v1"));
+    await page.goto("/index.html");
+    await expect(page.locator("#moodSelector")).toBeVisible({ timeout: 20000 });
+    await expect(page.locator("#feedIntentSelector")).toBeHidden();
+  });
+
   test("OFF par défaut : ancien rail visible et ancien filtre mood inchangé", async ({ page }) => {
     await bootOnboarded(page);
     await seedFeed(page, false);
