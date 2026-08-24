@@ -1,12 +1,24 @@
 -- TRUST & SAFETY SERVEUR (#136)
--- Age declare et oppose, blocage bidirectionnel, conversations non forcables.
+-- Age auto-declare, persistant et opposable ; blocage bidirectionnel ;
+-- conversations non forcables.
 --
--- IMPORTANT : cette migration ferme des frontieres serveur. Tant qu'elle n'est
--- pas appliquee et verifiee sur le vrai Supabase, `irl_proposal_v1` reste OFF.
+-- IMPORTANT : cette migration ferme des frontieres serveur. Elle ne verifie
+-- pas legalement l'age. Tant qu'elle n'est pas appliquee et prouvee sur le vrai
+-- Supabase, `irl_proposal_v1` reste OFF.
+--
+-- Le fichier entier est atomique : toute erreur, notamment une derive de policy,
+-- annule aussi les changements executes avant elle.
+
+BEGIN;
 
 -- ============================================================================
 -- A. AGE / MINORITE : DONNEE PRIVEE ET ECRITURE CONTROLEE
 -- ============================================================================
+-- `profiles` est publiquement lisible : aucune donnee d'age n'y entre.
+-- `majority_at` est derivee d'une ANNEE de naissance auto-declaree, jamais d'une
+-- date choisie par le client. Faute de jour/mois, la borne prudente est le
+-- 31 decembre de l'annee des 18 ans : elle ne classe jamais quelqu'un majeur
+-- trop tot. Ligne absente / NULL = age inconnu = refus pour l'IRL sensible.
 CREATE TABLE IF NOT EXISTS public.user_safety (
   user_id      TEXT PRIMARY KEY,
   majority_at  DATE,
@@ -16,16 +28,20 @@ CREATE TABLE IF NOT EXISTS public.user_safety (
 
 ALTER TABLE public.user_safety ENABLE ROW LEVEL SECURITY;
 
+-- Nettoyer toutes les revisions connues de #139 sans tolerer d'ecriture directe.
+DROP POLICY IF EXISTS "user_safety_insert_own" ON public.user_safety;
+DROP POLICY IF EXISTS "user_safety_update_own" ON public.user_safety;
 DROP POLICY IF EXISTS "user_safety_select_own" ON public.user_safety;
+
 CREATE POLICY "user_safety_select_own" ON public.user_safety
-  FOR SELECT USING (user_id = ((SELECT auth.uid()))::text);
+  FOR SELECT TO authenticated
+  USING (user_id = ((SELECT auth.uid()))::text);
 
--- Un compte authentifie ne peut jamais ecrire directement sa date de majorite.
-REVOKE INSERT, UPDATE, DELETE ON public.user_safety FROM authenticated;
-GRANT SELECT ON public.user_safety TO authenticated;
+REVOKE ALL ON TABLE public.user_safety FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON TABLE public.user_safety TO authenticated;
 
--- Defense en profondeur : meme un UPDATE privilegie ne peut pas rendre le
--- compte plus age (majority_at plus tot) sans retirer explicitement ce trigger.
+-- Defense en profondeur : meme un UPDATE privilegie ne peut pas avancer la date
+-- de majorite (donc rendre un compte plus permissif) sans retirer ce trigger.
 CREATE OR REPLACE FUNCTION public.user_safety_majorite_non_avancable()
 RETURNS TRIGGER LANGUAGE plpgsql SET search_path = '' AS $$
 BEGIN
@@ -36,59 +52,61 @@ BEGIN
   END IF;
   NEW.updated_at := NOW();
   RETURN NEW;
-END $$;
+END
+$$;
+REVOKE EXECUTE ON FUNCTION public.user_safety_majorite_non_avancable() FROM PUBLIC, anon, authenticated;
 
 DROP TRIGGER IF EXISTS trg_user_safety_majorite ON public.user_safety;
 CREATE TRIGGER trg_user_safety_majorite
   BEFORE UPDATE ON public.user_safety
   FOR EACH ROW EXECUTE FUNCTION public.user_safety_majorite_non_avancable();
 
--- Seul chemin client d'ecriture de l'age. La premiere declaration est
--- persistante ; ensuite, seul un changement restrictif (majority_at plus tard)
--- est accepte. Il s'agit d'une declaration utilisateur, pas d'une verification
--- legale de l'age.
-CREATE OR REPLACE FUNCTION public.declare_majority(_majority_at DATE)
+-- Retirer l'ancienne interface dangereuse : le client ne fournit plus jamais la
+-- date derivee. Seule l'annee auto-declaree entre dans le RPC.
+DROP FUNCTION IF EXISTS public.declare_majority(DATE);
+
+-- Premiere declaration : persistante. Une declaration ulterieure plus recente
+-- (donc plus restrictive) est acceptee ; une annee plus ancienne, qui ferait se
+-- vieillir, ne modifie rien. L'UPSERT est atomique aussi en appels concurrents.
+CREATE OR REPLACE FUNCTION public.declare_birth_year(_birth_year INTEGER)
 RETURNS BOOLEAN LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
 DECLARE
-  v_uid TEXT;
-  v_old DATE;
+  v_uid       TEXT;
+  v_candidate DATE;
+  v_applied   BOOLEAN;
 BEGIN
   v_uid := (auth.uid())::text;
-  IF v_uid IS NULL OR _majority_at IS NULL THEN
+  IF v_uid IS NULL OR _birth_year IS NULL THEN
     RETURN FALSE;
   END IF;
 
-  IF _majority_at < DATE '1900-01-01'
-     OR _majority_at > (CURRENT_DATE + INTERVAL '18 years') THEN
+  IF _birth_year < 1900
+     OR _birth_year > EXTRACT(YEAR FROM CURRENT_DATE)::INTEGER THEN
     RETURN FALSE;
   END IF;
 
-  SELECT s.majority_at
-    INTO v_old
-    FROM public.user_safety s
-   WHERE s.user_id = v_uid;
+  v_candidate := make_date(_birth_year + 18, 12, 31);
 
-  IF NOT FOUND THEN
-    INSERT INTO public.user_safety(user_id, majority_at)
-    VALUES (v_uid, _majority_at);
-    RETURN TRUE;
-  END IF;
+  INSERT INTO public.user_safety AS s (user_id, majority_at)
+  VALUES (v_uid, v_candidate)
+  ON CONFLICT (user_id) DO UPDATE
+    SET majority_at = EXCLUDED.majority_at,
+        updated_at = NOW()
+    WHERE s.majority_at IS NULL
+       OR EXCLUDED.majority_at > s.majority_at
+  RETURNING TRUE INTO v_applied;
 
-  IF v_old IS NULL OR _majority_at > v_old THEN
-    UPDATE public.user_safety
-       SET majority_at = _majority_at
-     WHERE user_id = v_uid;
-    RETURN TRUE;
-  END IF;
-
-  RETURN FALSE;
-END $$;
-REVOKE EXECUTE ON FUNCTION public.declare_majority(DATE) FROM public;
-GRANT EXECUTE ON FUNCTION public.declare_majority(DATE) TO authenticated;
+  RETURN COALESCE(v_applied, FALSE);
+END
+$$;
+REVOKE EXECUTE ON FUNCTION public.declare_birth_year(INTEGER) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.declare_birth_year(INTEGER) TO authenticated;
 
 -- ============================================================================
 -- B. BLOCAGE BIDIRECTIONNEL, SANS ORACLE ENTRE TIERS
 -- ============================================================================
+-- Signature a un argument : l'autre terme est toujours auth.uid(). Le client ne
+-- peut pas sonder une relation de blocage entre deux comptes tiers.
 CREATE OR REPLACE FUNCTION public.is_blocked_with(_other TEXT)
 RETURNS BOOLEAN LANGUAGE sql SECURITY DEFINER STABLE SET search_path = '' AS $$
   SELECT CASE
@@ -104,9 +122,11 @@ RETURNS BOOLEAN LANGUAGE sql SECURITY DEFINER STABLE SET search_path = '' AS $$
     )
   END
 $$;
-REVOKE EXECUTE ON FUNCTION public.is_blocked_with(TEXT) FROM public;
+REVOKE EXECUTE ON FUNCTION public.is_blocked_with(TEXT) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.is_blocked_with(TEXT) TO authenticated;
 
+-- Verdict IRL minimal : majorite prudente des DEUX comptes + aucun blocage. La
+-- date et le motif du refus restent prives ; seul le booleen necessaire sort.
 CREATE OR REPLACE FUNCTION public.irl_interaction_allowed(_other TEXT)
 RETURNS BOOLEAN LANGUAGE sql SECURITY DEFINER STABLE SET search_path = '' AS $$
   SELECT CASE
@@ -130,23 +150,16 @@ RETURNS BOOLEAN LANGUAGE sql SECURITY DEFINER STABLE SET search_path = '' AS $$
     )
   END
 $$;
-REVOKE EXECUTE ON FUNCTION public.irl_interaction_allowed(TEXT) FROM public;
+REVOKE EXECUTE ON FUNCTION public.irl_interaction_allowed(TEXT) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.irl_interaction_allowed(TEXT) TO authenticated;
 
 -- ============================================================================
 -- C. CONVERSATIONS : CREATION, MEMBERSHIP ET MESSAGES NON FORCABLES
 -- ============================================================================
 
--- Les deux policies permissives mesurees en prod se combinent en OR. Elles
--- doivent toutes disparaitre avant de recreer une seule policy restrictive.
-DROP POLICY IF EXISTS "Ecriture propre" ON public.conversations;
-DROP POLICY IF EXISTS "Insert conversations" ON public.conversations;
-DROP POLICY IF EXISTS "conversations_insert_creator" ON public.conversations;
-
-CREATE POLICY "conversations_insert_creator" ON public.conversations
-  FOR INSERT WITH CHECK (created_by = ((SELECT auth.uid()))::text);
-
-DO $g$
+-- Les policies permissives se combinent en OR. Une policy INSERT inconnue fait
+-- donc echouer la migration plutot que d'annuler silencieusement le verrou.
+DO $guard_conversations$
 BEGIN
   IF EXISTS (
     SELECT 1
@@ -154,14 +167,26 @@ BEGIN
      WHERE schemaname = 'public'
        AND tablename = 'conversations'
        AND cmd = 'INSERT'
-       AND policyname <> 'conversations_insert_creator'
+       AND policyname NOT IN ('Ecriture propre', 'Insert conversations', 'conversations_insert_creator')
   ) THEN
     RAISE EXCEPTION 'policy INSERT conversations inattendue : migration refusee';
   END IF;
-END $g$;
+END
+$guard_conversations$;
 
--- La SELECT de conversations est membre-only. Ce helper SECURITY DEFINER permet
--- au createur d'amorcer son premier membership sans ouvrir la ligne.
+DROP POLICY IF EXISTS "Ecriture propre" ON public.conversations;
+DROP POLICY IF EXISTS "Insert conversations" ON public.conversations;
+DROP POLICY IF EXISTS "conversations_insert_creator" ON public.conversations;
+
+CREATE POLICY "conversations_insert_creator" ON public.conversations
+  FOR INSERT TO authenticated
+  WITH CHECK (created_by = ((SELECT auth.uid()))::text);
+
+REVOKE INSERT ON TABLE public.conversations FROM PUBLIC, anon;
+GRANT INSERT ON TABLE public.conversations TO authenticated;
+
+-- La SELECT de conversations est membre-only. Ce helper permet au createur
+-- d'amorcer le premier membership sans ouvrir la ligne.
 CREATE OR REPLACE FUNCTION public.is_conversation_creator(_conv_id TEXT)
 RETURNS BOOLEAN LANGUAGE sql SECURITY DEFINER STABLE SET search_path = '' AS $$
   SELECT CASE
@@ -174,22 +199,16 @@ RETURNS BOOLEAN LANGUAGE sql SECURITY DEFINER STABLE SET search_path = '' AS $$
     )
   END
 $$;
-REVOKE EXECUTE ON FUNCTION public.is_conversation_creator(TEXT) FROM public;
+REVOKE EXECUTE ON FUNCTION public.is_conversation_creator(TEXT) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.is_conversation_creator(TEXT) TO authenticated;
 
--- Self-join evenement : autorise uniquement si TOUTES les preuves serveur sont
--- coherentes. `events.conv_id` est forgeable en prod (TEXT sans FK) et les
--- organisateurs peuvent modifier leurs evenements ; on ne lui fait donc jamais
--- confiance seul.
+-- Self-join evenement : autorise seulement si toutes les preuves serveur sont
+-- coherentes. `events.conv_id` est forgeable (TEXT sans FK), donc l'ID canonique
+-- et le createur sont verifies ensemble.
 --
--- Invariants obligatoires :
---   * l'appelant a un RSVP ferme `going` sur l'evenement ;
---   * la conversation est l'ID canonique genere par l'app : evgrp_<event.id> ;
---   * le createur de la conversation est l'auteur de l'evenement ;
---   * aucun blocage bidirectionnel n'existe entre l'appelant et l'organisateur.
---
--- La combinaison ID canonique + createur empeche un faux evenement ou une
--- modification de conv_id de pointer vers une conversation privee existante.
+-- `going` ET `maybe` rejoignent le groupe : c'est le contrat actuel du client.
+-- `declined`, `waitlist`, evenement annule et blocage avec l'organisateur sont
+-- refuses.
 CREATE OR REPLACE FUNCTION public.can_join_event_conversation(_conv_id TEXT)
 RETURNS BOOLEAN LANGUAGE sql SECURITY DEFINER STABLE SET search_path = '' AS $$
   SELECT CASE
@@ -205,31 +224,16 @@ RETURNS BOOLEAN LANGUAGE sql SECURITY DEFINER STABLE SET search_path = '' AS $$
        WHERE e.conv_id = _conv_id
          AND e.conv_id = ('evgrp_' || e.id)
          AND c.created_by = e.author_id
-         AND a.rsvp = 'going'
+         AND e.status = 'active'
+         AND a.rsvp IN ('going', 'maybe')
          AND NOT public.is_blocked_with(e.author_id)
     )
   END
 $$;
-REVOKE EXECUTE ON FUNCTION public.can_join_event_conversation(TEXT) FROM public;
+REVOKE EXECUTE ON FUNCTION public.can_join_event_conversation(TEXT) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.can_join_event_conversation(TEXT) TO authenticated;
 
-DROP POLICY IF EXISTS "Ecriture propre" ON public.conv_members;
-CREATE POLICY "Ecriture propre" ON public.conv_members
-  FOR INSERT WITH CHECK (
-    (
-      public.is_conversation_creator(conv_members.conv_id)
-      OR (
-        user_id = ((SELECT auth.uid()))::text
-        AND public.can_join_event_conversation(conv_members.conv_id)
-      )
-    )
-    AND NOT public.is_blocked_with(user_id)
-  );
-
--- Comme pour conversations/messages, une policy INSERT permissive supplementaire
--- annulerait le verrou par OR. Refuser la migration plutot que faire semblant
--- d'etre protege.
-DO $cm$
+DO $guard_members$
 BEGIN
   IF EXISTS (
     SELECT 1
@@ -241,18 +245,27 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'policy INSERT conv_members inattendue : migration refusee';
   END IF;
-END $cm$;
+END
+$guard_members$;
 
--- Un non-membre ne peut pas injecter de message, meme s'il connait conv_id.
-DROP POLICY IF EXISTS "Ecriture propre" ON public.conv_messages;
-DROP POLICY IF EXISTS "conv_messages_insert_member" ON public.conv_messages;
-CREATE POLICY "conv_messages_insert_member" ON public.conv_messages
-  FOR INSERT WITH CHECK (
-    from_id = ((SELECT auth.uid()))::text
-    AND public.is_conv_member(conv_id, ((SELECT auth.uid()))::text)
+DROP POLICY IF EXISTS "Ecriture propre" ON public.conv_members;
+CREATE POLICY "Ecriture propre" ON public.conv_members
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    (
+      public.is_conversation_creator(conv_members.conv_id)
+      OR (
+        user_id = ((SELECT auth.uid()))::text
+        AND public.can_join_event_conversation(conv_members.conv_id)
+      )
+    )
+    AND NOT public.is_blocked_with(user_id)
   );
 
-DO $m$
+REVOKE INSERT ON TABLE public.conv_members FROM PUBLIC, anon;
+GRANT INSERT ON TABLE public.conv_members TO authenticated;
+
+DO $guard_messages$
 BEGIN
   IF EXISTS (
     SELECT 1
@@ -260,8 +273,32 @@ BEGIN
      WHERE schemaname = 'public'
        AND tablename = 'conv_messages'
        AND cmd = 'INSERT'
-       AND policyname <> 'conv_messages_insert_member'
+       AND policyname NOT IN ('Ecriture propre', 'conv_messages_insert_member')
   ) THEN
     RAISE EXCEPTION 'policy INSERT conv_messages inattendue : migration refusee';
   END IF;
-END $m$;
+END
+$guard_messages$;
+
+-- Un non-membre ne peut pas injecter de message, meme s'il connait conv_id.
+DROP POLICY IF EXISTS "Ecriture propre" ON public.conv_messages;
+DROP POLICY IF EXISTS "conv_messages_insert_member" ON public.conv_messages;
+CREATE POLICY "conv_messages_insert_member" ON public.conv_messages
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    from_id = ((SELECT auth.uid()))::text
+    AND public.is_conv_member(conv_id, ((SELECT auth.uid()))::text)
+  );
+
+REVOKE INSERT ON TABLE public.conv_messages FROM PUBLIC, anon;
+GRANT INSERT ON TABLE public.conv_messages TO authenticated;
+
+COMMIT;
+
+-- RECUPERATION / ROLLBACK
+-- * avant COMMIT : toute erreur provoque le rollback integral automatiquement ;
+-- * apres COMMIT : `irl_proposal_v1` reste OFF, donc aucune activation produit
+--   n'est a annuler. Ne pas restaurer les anciennes policies permissives : ce
+--   serait rouvrir les failles. Conserver les donnees user_safety et corriger par
+--   une migration fix-forward revue. Une restauration fonctionnelle d'urgence
+--   doit rester fail-closed et faire l'objet d'une seconde revue independante.
