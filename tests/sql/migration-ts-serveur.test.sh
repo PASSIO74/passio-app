@@ -444,6 +444,36 @@ mutation() { # $1=libellé  $2=SQL de mutation  $3=fonction sonde  $4=valeur qui
   else KO=$((KO+1)); printf '  ❌ %s → LA MUTATION SURVIT (obtenu «%s») : le test ne garde rien\n' "$1" "$obtenu"; fi
 }
 
+# ── Les contrôles d'exploitation valent-ils quelque chose ? ────────────────
+# `migrations/controles_post_ts_serveur_age_blocage.sql` est ce que Benjamin
+# joue sur la VRAIE base après application. Un contrôle qui sort vert sur une
+# base cassée est pire que pas de contrôle : il transforme une frontière absente
+# en frontière prouvée. On le fait donc tourner ici sur une base fraîchement
+# migrée (0 ÉCHEC attendu), puis on le confronte à une régression réelle.
+echo
+echo "── Contrôles d'exploitation (migrations/controles_post_*.sql) ──"
+CONTROLES="$RACINE/migrations/controles_post_ts_serveur_age_blocage.sql"
+echecs_controles() { Q -t -A -f "$CONTROLES" 2>/dev/null | grep -c '|ECHEC|' || true; }
+
+preparer ""
+verifier "base correctement migrée : aucun ÉCHEC" 0 "$(echecs_controles)"
+
+# La régression la plus coûteuse du lot : une seconde policy INSERT permissive
+# sur `conversations`. Les policies permissives se combinent en OU — en laisser
+# une annule le verrou en silence. Si le contrôle ne la voit pas, il ne sert à rien.
+preparer "create policy \"Insert conversations\" on public.conversations for insert with check (true);"
+[ "$(echecs_controles)" -ge 1 ] \
+  && { OK=$((OK+1)); printf '  ✅ policy permissive rétablie → contrôle ROUGE\n'; } \
+  || { KO=$((KO+1)); printf '  ❌ policy permissive rétablie → contrôle resté VERT : il ne garde rien\n'; }
+
+# Une policy filtre l'accès, elle ne l'accorde pas : le GRANT est l'autre moitié
+# de la frontière, et c'est celle qu'on oublie.
+preparer "grant insert on public.user_safety to authenticated;"
+[ "$(echecs_controles)" -ge 1 ] \
+  && { OK=$((OK+1)); printf '  ✅ écriture directe rendue à authenticated → contrôle ROUGE\n'; } \
+  || { KO=$((KO+1)); printf '  ❌ écriture directe rendue à authenticated → contrôle resté VERT\n'; }
+
+echo
 mutation "policy conv_members d'origine restaurée" \
   "drop policy \"Ecriture propre\" on public.conv_members;
    create policy \"Ecriture propre\" on public.conv_members for insert with check (
