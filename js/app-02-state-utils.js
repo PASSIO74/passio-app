@@ -2651,6 +2651,112 @@ function allFeedPosts() {
 // ======== MOOD MULTI-SELECT ========
 var selectedMoods = new Set(["creation"]); // Par défaut "Création"
 
+// ══════════════════════════════════════════════════════════════════════════
+// ENVIE DU MOMENT (drapeau `feed_intents_v1`)
+// ──────────────────────────────────────────────────────────────────────────
+// Cette couche remplace visuellement les anciens moods quand le drapeau est
+// actif, mais ne filtre JAMAIS le fil : elle réordonne uniquement le set déjà
+// autorisé par les passions et les suivis. Le mood historique reste lu/écrit
+// pour la compatibilité et reprend exactement son comportement quand le
+// drapeau est coupé.
+//
+//     localStorage.passio_feed_intents_v1 = "1"  → actif
+//     localStorage.passio_feed_intents_v1 = "0"  → kill switch immédiat
+//     window.PASSIO_FEED_INTENTS_V1 = false       → coupure en mémoire
+// ══════════════════════════════════════════════════════════════════════════
+var FEED_INTENTS_VERSION = "v1";
+var activeFeedIntent = "for_you";
+
+function feedIntentsEnabled() {
+  if (typeof window.PASSIO_FEED_INTENTS_V1 === "boolean") return window.PASSIO_FEED_INTENTS_V1;
+  try {
+    var v = localStorage.getItem("passio_feed_intents_v1");
+    if (v === "1") return true;
+    if (v === "0") return false;
+  } catch (e) {}
+  return false; // défaut sûr : ancien sélecteur et ancien filtrage inchangés
+}
+
+function normalizeFeedIntent(intent) {
+  return ["for_you", "discover", "learn", "create", "meet"].indexOf(intent) > -1
+    ? intent : "for_you";
+}
+
+// Fonction pure, volontairement conservatrice : les valeurs historiques sans
+// équivalent sûr restent génériques et ne reçoivent aucun bonus d'intention.
+function legacyMoodToFeedIntent(mood) {
+  if (mood === "creation") return "create";
+  if (mood === "learn") return "learn";
+  if (mood === "irl") return "meet";
+  return "generic"; // actu, chill, all, absent ou valeur inconnue
+}
+
+function feedIntentMeta(intent) {
+  return { v: FEED_INTENTS_VERSION, flag: "on", intent: normalizeFeedIntent(intent) };
+}
+
+function feedIntentTrack(name, intent) {
+  if (!feedIntentsEnabled()) return;
+  try {
+    if (window.tel && tel.action) tel.action(name, feedIntentMeta(intent));
+  } catch (e) {}
+}
+
+function syncFeedIntentUi() {
+  var enabled = feedIntentsEnabled();
+  var legacy = document.getElementById("moodSelector");
+  var selector = document.getElementById("feedIntentSelector");
+  if (legacy) legacy.hidden = enabled;
+  if (selector) selector.hidden = !enabled;
+  if (!enabled) activeFeedIntent = "for_you";
+  activeFeedIntent = normalizeFeedIntent(activeFeedIntent);
+  if (!selector) return;
+  selector.querySelectorAll(".feed-intent-btn").forEach(function(btn) {
+    var active = btn.getAttribute("data-intent") === activeFeedIntent;
+    btn.classList.toggle("active", active);
+    btn.setAttribute("aria-pressed", active ? "true" : "false");
+  });
+}
+
+function setupFeedIntentDelegation() {
+  var selector = document.getElementById("feedIntentSelector");
+  if (!selector || selector._delegationAttached) return;
+  selector.addEventListener("click", function(e) {
+    var btn = e.target.closest(".feed-intent-btn");
+    if (!btn || !selector.contains(btn)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setFeedIntent(btn.getAttribute("data-intent"));
+  });
+  selector._delegationAttached = true;
+}
+
+function setFeedIntent(intent) {
+  if (!feedIntentsEnabled()) return;
+  var requested = normalizeFeedIntent(intent);
+  var reset = requested === "for_you" || requested === activeFeedIntent;
+  activeFeedIntent = reset ? "for_you" : requested;
+  feedIntentTrack(reset ? "feed_intent_reset" : "feed_intent_selected", activeFeedIntent);
+  window._feedDomSig = null;
+  renderFeed();
+  syncFeedIntentUi();
+}
+
+function feedIntentTrackContentClick() {
+  if (!feedIntentsEnabled() || activeFeedIntent === "for_you") return;
+  feedIntentTrack("feed_intent_content_click", activeFeedIntent);
+}
+
+function feedIntentTrackMeetToIrl() {
+  if (!feedIntentsEnabled() || activeFeedIntent !== "meet") return;
+  feedIntentTrack("feed_intent_meet_irl", activeFeedIntent);
+}
+
+function openFeedPost(id) {
+  feedIntentTrackContentClick();
+  return openPost(id);
+}
+
 // ✅ EVENT DELEGATION pour les moods - Plus robuste et fluide!
 function setupMoodDelegation() {
   var moodSelector = document.getElementById("moodSelector");
@@ -2901,6 +3007,55 @@ function rankFeedPosts(posts) {
   return arr;
 }
 
+// Réordonne le résultat de rankFeedPosts sans jamais ajouter, retirer ou
+// dupliquer un post. La soupape historique passio_feed_rank="0" coupe aussi les
+// bonus d'intention : un seul kill switch suffit pour retrouver la chronologie.
+function rankFeedPostsForIntent(posts, intent) {
+  var ranked = rankFeedPosts(posts);
+  intent = normalizeFeedIntent(intent);
+  if (!feedIntentsEnabled() || intent === "for_you") return ranked;
+  try {
+    if (localStorage.getItem("passio_feed_rank") === "0") return ranked;
+  } catch (e) {}
+
+  var myPassions = _myPassionSet();
+  var following = (state.user && state.user.following) || state.following || [];
+  var followingSet = new Set(following);
+
+  // Découvrir n'est permis que si au moins un signal de nouveauté fiable existe.
+  // À défaut, le classement « Pour toi » est rendu exactement dans le même
+  // ordre, sans heuristique inventée à partir du texte libre.
+  if (intent === "discover") {
+    var reliable = ranked.some(function(p) {
+      return !!((p.authorId && followingSet.size) || (p.passion && myPassions.size));
+    });
+    if (!reliable) return ranked;
+  }
+
+  return ranked.map(function(p, index) {
+    var bonus = 0;
+    if (intent === "discover") {
+      if (p.authorId && followingSet.size && !followingSet.has(p.authorId)) bonus += 0.28;
+      if (p.passion && myPassions.size && !myPassions.has(p.passion)) bonus += 0.28;
+    } else if (legacyMoodToFeedIntent(p.mood) === intent) {
+      // « Rencontrer » ne remonte que des posts dont le parcours IRL existant est
+      // réellement actionnable ; il n'active ni proposition ni géolocalisation.
+      var sharedEventActionable = intent === "meet"
+        && p.sharedReelData && p.sharedReelData.kind === "event"
+        && p.sharedReelData.id && typeof openEventDetails === "function";
+      if (intent !== "meet" || sharedEventActionable
+          || (typeof feedIrlBridgeEligible === "function" && feedIrlBridgeEligible(p))) {
+        bonus = 0.55;
+      }
+    }
+    var baseScore = typeof p._feedScore === "number" ? p._feedScore : 0;
+    return { post: p, index: index, total: baseScore + bonus };
+  }).sort(function(a, b) {
+    var d = b.total - a.total;
+    return d || a.index - b.index;
+  }).map(function(x) { return x.post; });
+}
+
 // ── REPLI EXPLORATION du Fil (spec §7) ────────────────────────────────────────
 //
 // Quand les passions choisies ne donnent rien à afficher, la version précédente
@@ -3097,6 +3252,9 @@ function renderFeed() {
 
   const list = $("#feedList");
   const mood = state.currentMood || "all";
+  setupFeedIntentDelegation();
+  syncFeedIntentUi();
+  const intentsEnabled = feedIntentsEnabled();
 
   // Tous les posts (hors vlogs)
   let allPosts = allFeedPosts().filter(function(p) { return p.type !== "vlog"; });
@@ -3156,7 +3314,7 @@ function renderFeed() {
   // réellement présents. Dès qu'il y touche (`state.feedMoodsTouched`, posé par
   // toggleMood), son choix est respecté sans condition — y compris s'il vide le
   // fil : c'est le sien.
-  if (onbV2Actif() && !state.feedMoodsTouched && availablePostsForMood.length > 0
+  if (!intentsEnabled && onbV2Actif() && !state.feedMoodsTouched && availablePostsForMood.length > 0
       && availablePostsForMood.filter(_moodVisible).length === 0) {
     var _presents = {};
     availablePostsForMood.forEach(function(p) {
@@ -3183,12 +3341,16 @@ function renderFeed() {
   // - selectedMoods vide → rien
   // - mood "all" sur un post → visible quel que soit le mood sélectionné (post universel)
   // - sinon → correspondance exacte
-  posts = selectedMoods.size === 0 ? [] : availablePostsForMood.filter(_moodVisible);
+  posts = intentsEnabled
+    ? availablePostsForMood.slice()
+    : (selectedMoods.size === 0 ? [] : availablePostsForMood.filter(_moodVisible));
 
   renderProfileStrip();
 
-  // Afficher les filtres de mood pour les deux modes
-  renderMoodStripSmart(availablePostsForMood);
+  // L'ancien rail n'est recalculé que lorsqu'il est réellement utilisé. Le
+  // nouveau rail conserve les mêmes posts et ne pilote que leur ordre.
+  if (intentsEnabled) syncFeedIntentUi();
+  else renderMoodStripSmart(availablePostsForMood);
 
   renderStories();
 
@@ -3215,21 +3377,27 @@ function renderFeed() {
       if (nothingSelected) {
         if (emptyTitle) emptyTitle.textContent = "Choisis une passion";
         if (emptyText) emptyText.textContent = "Sélectionne une passion ci-dessus pour voir le contenu de ta communauté.";
-      } else if (selectedMoods.size === 0) {
+      } else if (!intentsEnabled && selectedMoods.size === 0) {
         if (emptyTitle) emptyTitle.textContent = "Choisis un mood";
         if (emptyText) emptyText.textContent = "Sélectionne un mood pour filtrer le contenu.";
       } else if (_showFollowingFeed && _activeFeedPassions.size > 0) {
         if (emptyTitle) emptyTitle.textContent = "Aucun post pour cette combinaison";
-        if (emptyText) emptyText.textContent = "Essaie un autre mood ou autre sélection.";
+        if (emptyText) emptyText.textContent = intentsEnabled
+          ? "Essaie une autre sélection de passions ou de suivis."
+          : "Essaie un autre mood ou autre sélection.";
       } else if (_showFollowingFeed) {
         if (emptyTitle) emptyTitle.textContent = "Aucun post de tes suivis";
         if (emptyText) emptyText.textContent = "Tu ne suis personne, ou ils n'ont rien publié.";
       } else if (_activeFeedPassions.size > 0) {
         if (emptyTitle) emptyTitle.textContent = "Aucun post pour cette sélection";
-        if (emptyText) emptyText.textContent = "Essaie un autre mood ou sois le premier à publier ici.";
+        if (emptyText) emptyText.textContent = intentsEnabled
+          ? "Sois le premier à publier autour de cette passion."
+          : "Essaie un autre mood ou sois le premier à publier ici.";
       } else {
         if (emptyTitle) emptyTitle.textContent = "Aucun contenu";
-        if (emptyText) emptyText.textContent = "Sélectionne une passion et un mood.";
+        if (emptyText) emptyText.textContent = intentsEnabled
+          ? "Sélectionne une passion pour découvrir son contenu."
+          : "Sélectionne une passion et un mood.";
       }
       emptyEl.style.display = "block";
     }
@@ -3240,7 +3408,9 @@ function renderFeed() {
 
   // ✅ CLASSEMENT PAR PERTINENCE (fraîcheur + affinité passion/suivis + engagement).
   // Repli chronologique strict via localStorage.passio_feed_rank="0". Voir rankFeedPosts.
-  const sortedPosts = rankFeedPosts(posts);
+  const sortedPosts = intentsEnabled
+    ? rankFeedPostsForIntent(posts, activeFeedIntent)
+    : rankFeedPosts(posts);
 
   const renderLimit = window._feedRenderLimit || 20;
   const visible = sortedPosts.slice(0, renderLimit);
@@ -3254,6 +3424,7 @@ function renderFeed() {
   // repaint occasionnel pour rafraîchir les temps relatifs (« il y a X min »).
   const _domSig = [
     mood, Array.from(selectedMoods).join(","), Array.from(_activeFeedPassions).join(","),
+    intentsEnabled ? "intents1:" + activeFeedIntent : "intents0",
     _showFollowingFeed ? 1 : 0, renderLimit, hasMore ? 1 : 0,
     Math.floor(Date.now() / 300000),
     // Le pont Fil → IRL change le HTML des cartes sans toucher aux posts : sans
@@ -3633,6 +3804,8 @@ function renderPostHTML(p) {
   const fullText = p.text || "";
   const truncated = fullText.length > 220;
   const displayText = truncated ? fullText.slice(0, 220) + "…" : fullText;
+  // Le HTML historique reste littéralement identique quand le flag est OFF.
+  const FEED_POST_OPEN_FN = feedIntentsEnabled() ? "openFeedPost" : "openPost";
 
   return `<article class="post" data-postid="${escapeHtml(p.id)}">
     <div class="post-header">
@@ -3654,11 +3827,11 @@ function renderPostHTML(p) {
       <span class="post-mood-tag">${moodMap[p.mood] || ""}</span>
     </div>
 
-    <div class="post-body" onclick="openPost('${escapeJsArg(p.id)}')" style="cursor:pointer;">
+    <div class="post-body" onclick="${FEED_POST_OPEN_FN}('${escapeJsArg(p.id)}')" style="cursor:pointer;">
       ${escapeHtml(displayText)}
       ${truncated ? `<span style="color:var(--accent);font-weight:700;"> Lire la suite</span>` : ""}
     </div>
-    <div onclick="openPost('${escapeJsArg(p.id)}')" style="cursor:pointer;">${media}</div>
+    <div onclick="${FEED_POST_OPEN_FN}('${escapeJsArg(p.id)}')" style="cursor:pointer;">${media}</div>
 
     <div class="post-actions">
       <span class="post-action ${likeClass}" data-action="like" onclick="likePost('${escapeJsArg(p.id)}', false, this)">
@@ -3805,4 +3978,3 @@ function likePostDetail(id, el) {
     el.innerHTML = (liked ? "❤️" : "🤍") + " " + n;
   }
 }
-
