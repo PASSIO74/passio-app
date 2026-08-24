@@ -44,13 +44,8 @@ GRANT SELECT ON TABLE public.user_safety TO authenticated;
 
 -- Seul chemin d'écriture client : l'appelant déclare SON année de naissance.
 -- La fonction ne prend jamais de user_id : auth.uid() est l'unique identité.
---
--- Première déclaration : persistée.
--- Déclaration ultérieure plus restrictive (année plus récente) : acceptée.
--- Déclaration plus permissive (se vieillir) : ignorée, la valeur existante reste.
--- Cela empêche l'effacement du localStorage ou un UPDATE REST direct de rendre
--- le compte plus permissif. Une correction administrative reste du ressort du
--- service_role / opérateur, hors de cette RPC utilisateur.
+-- Première déclaration persistée ; déclaration ultérieure plus restrictive
+-- acceptée ; déclaration plus permissive ignorée.
 CREATE OR REPLACE FUNCTION public.declare_birth_year(_birth_year INTEGER)
 RETURNS BOOLEAN
 LANGUAGE plpgsql
@@ -63,15 +58,12 @@ DECLARE
   _stored DATE;
 BEGIN
   _uid := (auth.uid())::text;
-  IF _uid IS NULL THEN
-    RETURN FALSE;
-  END IF;
+  IF _uid IS NULL THEN RETURN FALSE; END IF;
 
   IF _birth_year IS NULL
      OR _birth_year < 1900
      OR _birth_year > EXTRACT(YEAR FROM CURRENT_DATE)::INTEGER THEN
-    RAISE EXCEPTION 'annee de naissance invalide'
-      USING ERRCODE = '22023';
+    RAISE EXCEPTION 'annee de naissance invalide' USING ERRCODE = '22023';
   END IF;
 
   _candidate := make_date(_birth_year + 18, 12, 31);
@@ -79,15 +71,11 @@ BEGIN
   INSERT INTO public.user_safety AS s (user_id, majority_at)
   VALUES (_uid, _candidate)
   ON CONFLICT (user_id) DO UPDATE
-    SET majority_at = EXCLUDED.majority_at,
-        updated_at = NOW()
-    WHERE s.majority_at IS NULL
-       OR EXCLUDED.majority_at > s.majority_at;
+    SET majority_at = EXCLUDED.majority_at, updated_at = NOW()
+    WHERE s.majority_at IS NULL OR EXCLUDED.majority_at > s.majority_at;
 
   SELECT s.majority_at INTO _stored
-    FROM public.user_safety s
-   WHERE s.user_id = _uid;
-
+    FROM public.user_safety s WHERE s.user_id = _uid;
   RETURN COALESCE(_stored <= CURRENT_DATE, FALSE);
 END
 $$;
@@ -96,8 +84,6 @@ REVOKE EXECUTE ON FUNCTION public.declare_birth_year(INTEGER) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.declare_birth_year(INTEGER) TO authenticated;
 
 -- ── B. Blocage bidirectionnel sans oracle entre tiers ───────────────────
--- Signature à un seul argument : l'autre terme est TOUJOURS auth.uid().
--- Le client ne peut donc pas sonder la relation de blocage entre deux tiers.
 CREATE OR REPLACE FUNCTION public.is_blocked_with(_other TEXT)
 RETURNS BOOLEAN
 LANGUAGE sql
@@ -114,12 +100,9 @@ AS $$
     )
   END
 $$;
-
 REVOKE EXECUTE ON FUNCTION public.is_blocked_with(TEXT) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.is_blocked_with(TEXT) TO authenticated;
 
--- Verdict IRL : majorité prudente des DEUX comptes + aucun blocage. Un seul
--- booléen est renvoyé ; la date stockée et le motif du refus restent privés.
 CREATE OR REPLACE FUNCTION public.irl_interaction_allowed(_other TEXT)
 RETURNS BOOLEAN
 LANGUAGE sql
@@ -131,50 +114,36 @@ AS $$
     WHEN auth.uid() IS NULL OR _other IS NULL OR _other = (auth.uid())::text THEN FALSE
     WHEN public.is_blocked_with(_other) THEN FALSE
     ELSE (
-      COALESCE((SELECT s.majority_at <= CURRENT_DATE
-                  FROM public.user_safety s
-                 WHERE s.user_id = (auth.uid())::text), FALSE)
+      COALESCE((SELECT s.majority_at <= CURRENT_DATE FROM public.user_safety s
+                WHERE s.user_id = (auth.uid())::text), FALSE)
       AND
-      COALESCE((SELECT s.majority_at <= CURRENT_DATE
-                  FROM public.user_safety s
-                 WHERE s.user_id = _other), FALSE)
+      COALESCE((SELECT s.majority_at <= CURRENT_DATE FROM public.user_safety s
+                WHERE s.user_id = _other), FALSE)
     )
   END
 $$;
-
 REVOKE EXECUTE ON FUNCTION public.irl_interaction_allowed(TEXT) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.irl_interaction_allowed(TEXT) TO authenticated;
 
--- ── C. Conversations : fermer les deux bypass serveur ───────────────────
+-- ── C. Conversations : fermer les bypass serveur ────────────────────────
 -- PROD contient deux policies INSERT permissives sur `conversations`, toutes
--- deux `check: true`. Elles sont supprimées explicitement ; aucune policy INSERT
--- inconnue n'est tolérée, car les policies permissives se combinent en OR.
+-- deux `check: true`. Elles sont supprimées explicitement.
 DROP POLICY IF EXISTS "Ecriture propre" ON public.conversations;
 DROP POLICY IF EXISTS "Insert conversations" ON public.conversations;
 DROP POLICY IF EXISTS "conversations_insert_creator" ON public.conversations;
-
 CREATE POLICY "conversations_insert_creator" ON public.conversations
   FOR INSERT WITH CHECK (created_by = ((SELECT auth.uid()))::text);
 
-DO $$
-BEGIN
+DO $$ BEGIN
   IF EXISTS (
     SELECT 1 FROM pg_catalog.pg_policies
-     WHERE schemaname = 'public'
-       AND tablename = 'conversations'
-       AND cmd = 'INSERT'
-       AND policyname <> 'conversations_insert_creator'
-  ) THEN
-    RAISE EXCEPTION 'policy INSERT conversations inattendue : migration refusee';
-  END IF;
-END
-$$;
+    WHERE schemaname='public' AND tablename='conversations' AND cmd='INSERT'
+      AND policyname <> 'conversations_insert_creator'
+  ) THEN RAISE EXCEPTION 'policy INSERT conversations inattendue : migration refusee'; END IF;
+END $$;
 
--- La policy conv_members ne peut PAS relire directement `conversations` : la
--- policy SELECT de cette table exige déjà d'être membre, donc le créateur serait
--- bloqué au moment d'ajouter le TOUT PREMIER membre. Cette primitive dédiée
--- répond uniquement « suis-je le créateur de cette conversation ? » sans révéler
--- l'identité du créateur et sans ouvrir la lecture de la conversation.
+-- Boolean dédié : la policy `conversations_select_member` ne permet pas au
+-- créateur de relire la conversation AVANT l'ajout du premier membre.
 CREATE OR REPLACE FUNCTION public.is_conversation_creator(_conv_id TEXT)
 RETURNS BOOLEAN
 LANGUAGE sql
@@ -186,50 +155,52 @@ AS $$
     WHEN auth.uid() IS NULL OR _conv_id IS NULL THEN FALSE
     ELSE EXISTS (
       SELECT 1 FROM public.conversations c
-       WHERE c.id = _conv_id
-         AND c.created_by = (auth.uid())::text
+      WHERE c.id=_conv_id AND c.created_by=(auth.uid())::text
     )
   END
 $$;
-
 REVOKE EXECUTE ON FUNCTION public.is_conversation_creator(TEXT) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.is_conversation_creator(TEXT) TO authenticated;
 
--- `conv_members` : seul le CRÉATEUR authentifié de la conversation peut ajouter
--- des membres. On supprime donc le self-join arbitraire `user_id=auth.uid()` :
--- connaître/deviner un conv_id ne donne plus le droit de rejoindre la discussion.
---
--- Le même chemin préserve DM et groupes existants : le créateur peut ajouter
--- sa propre ligne puis les invités, sauf toute cible en blocage avec lui dans
--- l'un ou l'autre sens. Ainsi un groupe ne contourne pas un blocage direct.
+-- Seul le créateur peut ajouter des membres. Le self-join arbitraire disparaît ;
+-- DM et groupes restent possibles ; toute cible bloquée est refusée.
 DROP POLICY IF EXISTS "Ecriture propre" ON public.conv_members;
 DROP POLICY IF EXISTS "conv_members_insert_creator" ON public.conv_members;
-
 CREATE POLICY "conv_members_insert_creator" ON public.conv_members
   FOR INSERT WITH CHECK (
     public.is_conversation_creator(conv_members.conv_id)
     AND NOT public.is_blocked_with(conv_members.user_id)
   );
 
-DO $$
-BEGIN
+DO $$ BEGIN
   IF EXISTS (
     SELECT 1 FROM pg_catalog.pg_policies
-     WHERE schemaname = 'public'
-       AND tablename = 'conv_members'
-       AND cmd = 'INSERT'
-       AND policyname <> 'conv_members_insert_creator'
-  ) THEN
-    RAISE EXCEPTION 'policy INSERT conv_members inattendue : migration refusee';
-  END IF;
-END
-$$;
+    WHERE schemaname='public' AND tablename='conv_members' AND cmd='INSERT'
+      AND policyname <> 'conv_members_insert_creator'
+  ) THEN RAISE EXCEPTION 'policy INSERT conv_members inattendue : migration refusee'; END IF;
+END $$;
 
--- Les policies SELECT `conversations_select_member`,
--- `conv_members_select_member` et `conv_messages_select_member` restent
--- inchangées : elles continuent de s'appuyer sur `is_conv_member`.
---
--- ROLLBACK (si nécessaire avant application produit) : restaurer les policies
--- INSERT précédentes depuis SCHEMA_PROD_REFERENCE.sql, puis supprimer les quatre
--- fonctions et la table user_safety. Ne jamais supprimer la table après qu'elle
--- contient des déclarations sans procédure de migration des données.
+-- Un autre trou du même chemin : la policy prod d'écriture de messages vérifie
+-- seulement `from_id=auth.uid()`. Un non-membre connaissant un conv_id pourrait
+-- donc injecter un message sans pouvoir lire la conversation. On exige aussi la
+-- membership serveur au moment de l'INSERT.
+DROP POLICY IF EXISTS "Ecriture propre" ON public.conv_messages;
+DROP POLICY IF EXISTS "conv_messages_insert_member" ON public.conv_messages;
+CREATE POLICY "conv_messages_insert_member" ON public.conv_messages
+  FOR INSERT WITH CHECK (
+    from_id = ((SELECT auth.uid()))::text
+    AND public.is_conv_member(conv_id, ((SELECT auth.uid()))::text)
+  );
+
+DO $$ BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_catalog.pg_policies
+    WHERE schemaname='public' AND tablename='conv_messages' AND cmd='INSERT'
+      AND policyname <> 'conv_messages_insert_member'
+  ) THEN RAISE EXCEPTION 'policy INSERT conv_messages inattendue : migration refusee'; END IF;
+END $$;
+
+-- Les policies SELECT membre-only restent inchangées.
+-- ROLLBACK : restaurer les policies précédentes depuis SCHEMA_PROD_REFERENCE.sql,
+-- puis supprimer les quatre fonctions et la table user_safety si elle ne porte
+-- encore aucune donnée à conserver.
