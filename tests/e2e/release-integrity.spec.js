@@ -1,4 +1,5 @@
 const { test, expect } = require("@playwright/test");
+const { bootOnboarded } = require("./app-helper");
 
 // Ces tests visent l'ARTEFACT de production. En suite dev ils sont volontairement
 // ignorés ; la CI les relance explicitement avec PASSIO_CIBLE=dist.
@@ -22,6 +23,17 @@ test.describe("RELEASE-INTEGRITY — contrat de release et transition d'identit�
 
     const sw = await (await request.get("/sw.js", { headers: { "cache-control": "no-cache" } })).text();
     expect(sw, "le cache SW utilise le même buildId").toContain(`passio-v${embedded.buildId}`);
+  });
+
+  test("le bundle différé conserve l'accès secondaire aux Carnets de voyage", async ({ page }) => {
+    await bootOnboarded(page);
+
+    await page.evaluate(() => openPassionExplorer("voyage"));
+    const voyageEntry = page.locator("[data-voyage-cdv-entry]");
+    await expect(voyageEntry).toBeVisible();
+    await expect(voyageEntry).toContainText("Carnets de voyage");
+    await voyageEntry.locator("[data-open-voyage-cdv]").click();
+    await expect(page.locator("#screen-cdv")).toHaveClass(/active/);
   });
 
   // Le service worker de PASSIO fait skipWaiting() + clients.claim() : il prend

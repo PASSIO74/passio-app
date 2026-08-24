@@ -43,6 +43,9 @@ const loader = ""
   + "  (window.__gateReady || Promise.resolve()).then(function () {\n"
   + '    var s = document.createElement("script");\n'
   + `    s.src = "${appRef}";\n`
+  + '    s.addEventListener("load", function () {\n'
+  + '      window.dispatchEvent(new Event("passio:app-ready"));\n'
+  + '    }, { once: true });\n'
   + "    document.body.appendChild(s);\n"
   + "  });\n"
   + '  if (document.documentElement.classList.contains("passio-locked")) {\n'
