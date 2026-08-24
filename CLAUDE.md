@@ -69,6 +69,13 @@ if (keySource !== 'none') {
 Une source vide sort `ABSENTE`, pas `none`. Donc : `none` = ✅ abonnement utilisé ;
 toute autre valeur = ❌ publication refusée.
 
+**Transport/authentification et capacité sont deux états distincts.** Un run peut
+porter la bonne preuve OAuth et être néanmoins refusé parce que le quota ou les
+crédits de l'abonnement sont épuisés. `AUTH_REELLE: none` ne prouve donc ni les
+crédits disponibles, ni leur date de retour. Dans ce cas, ne pas régénérer le
+jeton : attendre le rétablissement annoncé et continuer avec Codex sur les lots
+indépendants de Claude Code.
+
 Ce piège a coûté cher le 2026-08-24 : une session a lu `none` dans le commentaire
 de retour, l'a présenté comme la cause des échecs des runs 138 et 139, et Benjamin
 a régénéré un `CLAUDE_CODE_OAUTH_TOKEN` qui n'avait probablement rien. **La cause
