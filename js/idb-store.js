@@ -140,6 +140,12 @@
     installVoyageEntry();
   }
 
+  // En développement, les scripts app-* sont déjà exécutés quand
+  // DOMContentLoaded arrive. Dans l'artefact de production, app.js est injecté
+  // après le gate : ce signal explicite rejoue alors l'installation une seule
+  // fois, une fois openPassionExplorer réellement défini.
+  window.addEventListener("passio:app-ready", installVoyageEntry, { once: true });
+
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", bootSecondaryVoyageFeature, { once: true });
   } else {
