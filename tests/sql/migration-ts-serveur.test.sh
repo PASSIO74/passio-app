@@ -182,13 +182,31 @@ verifier "compte neuf : INSERT direct d'une date passée REFUSÉ" refuse \
 verifier "UPDATE direct permissif REFUSÉ"                       refuse \
   "$(case "$(AS "$C" "update public.user_safety set majority_at='2000-01-01' where user_id='$C';")" in
        *"permission denied"*|*"violates row-level security"*) echo refuse;; *) echo accepte;; esac)"
-verifier "PRÉMISSE — le RPC, lui, accepte la 1re déclaration"   t "$(AS "$N" "select public.declare_majority(date '2005-06-01');")"
-verifier "la déclaration est bien persistée"                    2005-06-01 "$(AS "$N" "select majority_at from public.user_safety where user_id='$N';")"
-verifier "2e déclaration PERMISSIVE (se vieillir) refusée"      f "$(AS "$N" "select public.declare_majority(date '1990-01-01');")"
-verifier "…et la valeur d'origine est intacte"                  2005-06-01 "$(AS "$N" "select majority_at from public.user_safety where user_id='$N';")"
-verifier "déclaration RESTRICTIVE (se rajeunir) acceptée"       t "$(AS "$N" "select public.declare_majority(date '2035-01-01');")"
-verifier "date invraisemblable (an 1800) refusée"               f "$(AS "$N" "select public.declare_majority(date '1800-01-01');")"
-verifier "on ne déclare que pour SOI (le RPC ignore tout id externe)" 1 \
+verifier "PRÉMISSE — le RPC accepte une 1re déclaration (année)" t \
+  "$(AS "$N" "select public.declare_birth_year(1987);")"
+verifier "la date est DÉRIVÉE par le serveur (31/12 des 18 ans)" 2005-12-31 \
+  "$(AS "$N" "select majority_at from public.user_safety where user_id='$N';")"
+
+# ⚠️ LE TEST ADVERSARIAL EXIGÉ PAR LA CONTRE-REVUE : le client ne doit disposer
+# d'AUCUN chemin pour fournir lui-même la date dérivée. La signature qui
+# l'acceptait est supprimee ; l'appeler doit echouer, pas etre ignore.
+verifier "aucun RPC n'accepte une DATE fournie par le client" absente \
+  "$(case "$(AS "$N" "select public.declare_majority(date '2000-01-01');")" in
+       *"does not exist"*|*"n'existe pas"*) echo absente;;
+       *"permission denied"*) echo absente;;
+       *) echo PRÉSENTE;; esac)"
+
+verifier "se VIEILLIR est ignoré : la date stockée ne bouge pas" 2005-12-31 \
+  "$(AS "$N" "select public.declare_birth_year(1970);" >/dev/null; AS "$N" "select majority_at from public.user_safety where user_id='$N';")"
+verifier "se RAJEUNIR est accepté (sens prudent)"           2035-12-31 \
+  "$(AS "$N" "select public.declare_birth_year(2017);" >/dev/null; AS "$N" "select majority_at from public.user_safety where user_id='$N';")"
+verifier "année invraisemblable (1800) : refusée"           refuse \
+  "$(case "$(AS "$N" "select public.declare_birth_year(1800);")" in
+       *"annee de naissance invalide"*) echo refuse;; *) echo accepte;; esac)"
+verifier "année future : refusée"                           refuse \
+  "$(case "$(AS "$N" "select public.declare_birth_year(2100);")" in
+       *"annee de naissance invalide"*) echo refuse;; *) echo accepte;; esac)"
+verifier "on ne déclare que pour SOI"                       1 \
   "$(AS "$N" "select count(*) from public.user_safety where user_id='$N';")"
 
 echo
@@ -235,7 +253,7 @@ sonde_age_inconnu()  { AS "$A" "select public.irl_interaction_allowed('$X');"; }
 # GRANTs quoi qu'il arrive : la sonde restait verte même sans trigger ni règle,
 # et ne prouvait donc plus rien sur la garde qu'elle prétend éprouver.
 sonde_vieillissement() {
-  AS "$C" "select public.declare_majority(date '2010-01-01');" >/dev/null
+  AS "$C" "select public.declare_birth_year(1992);" >/dev/null
   AS "$C" "select majority_at from public.user_safety where user_id='$C';"
 }
 
@@ -257,6 +275,14 @@ sonde_forge_conversation() {
 
 sonde_injection_message() {
   insere "$C" "insert into public.conv_messages(id,conv_id,from_id,content) values ('inj2','cvpriv','$C','intrus');"
+}
+
+sonde_date_fournie() {
+  case "$(AS "$N" "select public.declare_majority(date '2000-01-01');")" in
+    *"does not exist"*|*"permission denied"*) echo absente ;;
+    *ERROR*|*error:*) echo erreur ;;
+    *) echo PRÉSENTE ;;
+  esac
 }
 
 mutation() { # $1=libellé  $2=SQL de mutation  $3=fonction sonde  $4=valeur qui SIGNALE le défaut
@@ -298,24 +324,24 @@ mutation "COALESCE fail-closed retiré de l'âge" \
 # vérifie que le trigger seul suffirait.
 mutation "les DEUX gardes de non-vieillissement retirées" \
   "drop trigger if exists trg_user_safety_majorite on public.user_safety;
-   create or replace function public.declare_majority(_majority_at date)
+   create or replace function public.declare_birth_year(_birth_year integer)
    returns boolean language plpgsql security definer set search_path = '' as \$f\$
    begin
      insert into public.user_safety(user_id, majority_at)
-       values ((auth.uid())::text, _majority_at)
+       values ((auth.uid())::text, make_date(_birth_year + 18, 12, 31))
        on conflict (user_id) do update set majority_at = excluded.majority_at;
      return true;
    end \$f\$;" \
-  sonde_vieillissement 2010-01-01
+  sonde_vieillissement 2010-12-31
 
 # DÉFENSE EN PROFONDEUR : le RPC neutralisé mais le trigger EN PLACE — la
 # tentative de se vieillir doit encore échouer. C'est ce qui distingue deux
 # gardes réelles d'une garde unique écrite deux fois.
-preparer "create or replace function public.declare_majority(_majority_at date)
+preparer "create or replace function public.declare_birth_year(_birth_year integer)
    returns boolean language plpgsql security definer set search_path = '' as \$f\$
    begin
      insert into public.user_safety(user_id, majority_at)
-       values ((auth.uid())::text, _majority_at)
+       values ((auth.uid())::text, make_date(_birth_year + 18, 12, 31))
        on conflict (user_id) do update set majority_at = excluded.majority_at;
      return true;
    end \$f\$;"
@@ -346,6 +372,18 @@ mutation "policy conv_messages d'origine (sans appartenance) restauree" \
    create policy \"Ecriture propre\" on public.conv_messages
      for insert with check (from_id = (auth.uid())::text);" \
   sonde_injection_message accepte
+
+mutation "signature acceptant une DATE du client reintroduite" \
+  "create or replace function public.declare_majority(_majority_at date)
+   returns boolean language plpgsql security definer set search_path = '' as \$f\$
+   begin
+     insert into public.user_safety(user_id, majority_at)
+       values ((auth.uid())::text, _majority_at)
+       on conflict (user_id) do nothing;
+     return true;
+   end \$f\$;
+   grant execute on function public.declare_majority(date) to authenticated;" \
+  sonde_date_fournie PRÉSENTE
 
 echo
 echo "═══ $OK OK · $KO KO ═══"

@@ -47,44 +47,73 @@ CREATE TRIGGER trg_user_safety_majorite
 -- persistante ; ensuite, seul un changement restrictif (majority_at plus tard)
 -- est accepte. Il s'agit d'une declaration utilisateur, pas d'une verification
 -- legale de l'age.
-CREATE OR REPLACE FUNCTION public.declare_majority(_majority_at DATE)
-RETURNS BOOLEAN LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+-- ⚠️ SUPPRESSION EXPLICITE de l'ancienne signature. Sans elle, une base où la
+-- version précédente a déjà tourné garderait `declare_majority(DATE)` — donc le
+-- chemin falsifiable — à côté de la nouvelle. Remplacer une fonction ne retire
+-- pas celle qui portait une autre signature.
+DROP FUNCTION IF EXISTS public.declare_majority(DATE);
+
+-- ⚠️ LE CLIENT NE FOURNIT JAMAIS LA DATE DÉRIVÉE — il déclare son ANNÉE.
+--
+-- Une version antérieure de ce lot exposait `declare_majority(_majority_at DATE)`.
+-- La contre-revue indépendante l'a arrêtée : un compte neuf appelait
+-- `declare_majority('2000-01-01')` et devenait majeur dans la seconde. La
+-- persistance à sens unique ne protégeait que les déclarations SUIVANTES ; la
+-- PREMIÈRE, celle qui compte, était librement forgeable.
+--
+-- Cette signature existait dans cette branche parce qu'une résolution de conflit
+-- l'avait préférée à celle-ci, au motif que `majority_at` expose moins de données
+-- que l'année de naissance. Le raisonnement était faux : le critère n'est pas la
+-- minimalité de la donnée, c'est la FALSIFIABILITÉ DE L'ENTRÉE. Une date fournie
+-- par le client n'est vérifiable par rien ; une année l'est par le calcul serveur,
+-- qui seul produit la date.
+--
+-- ⚠️ Cela ne rend pas l'âge VÉRIFIÉ. Il reste DÉCLARÉ — mais opposable et à sens
+-- unique. Une vérification réelle (pièce, tiers de confiance) est un chantier à
+-- part, et rien ici ne doit laisser croire qu'il est fait.
+CREATE OR REPLACE FUNCTION public.declare_birth_year(_birth_year INTEGER)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
 DECLARE
-  v_uid TEXT;
-  v_old DATE;
+  _uid TEXT;
+  _candidate DATE;
+  _stored DATE;
 BEGIN
-  v_uid := (auth.uid())::text;
-  IF v_uid IS NULL OR _majority_at IS NULL THEN
+  _uid := (auth.uid())::text;
+  IF _uid IS NULL THEN
     RETURN FALSE;
   END IF;
 
-  IF _majority_at < DATE '1900-01-01'
-     OR _majority_at > (CURRENT_DATE + INTERVAL '18 years') THEN
-    RETURN FALSE;
+  IF _birth_year IS NULL
+     OR _birth_year < 1900
+     OR _birth_year > EXTRACT(YEAR FROM CURRENT_DATE)::INTEGER THEN
+    RAISE EXCEPTION 'annee de naissance invalide'
+      USING ERRCODE = '22023';
   END IF;
 
-  SELECT s.majority_at
-    INTO v_old
+  _candidate := make_date(_birth_year + 18, 12, 31);
+
+  INSERT INTO public.user_safety AS s (user_id, majority_at)
+  VALUES (_uid, _candidate)
+  ON CONFLICT (user_id) DO UPDATE
+    SET majority_at = EXCLUDED.majority_at,
+        updated_at = NOW()
+    WHERE s.majority_at IS NULL
+       OR EXCLUDED.majority_at > s.majority_at;
+
+  SELECT s.majority_at INTO _stored
     FROM public.user_safety s
-   WHERE s.user_id = v_uid;
+   WHERE s.user_id = _uid;
 
-  IF NOT FOUND THEN
-    INSERT INTO public.user_safety(user_id, majority_at)
-    VALUES (v_uid, _majority_at);
-    RETURN TRUE;
-  END IF;
+  RETURN COALESCE(_stored <= CURRENT_DATE, FALSE);
+END
+$$;
 
-  IF v_old IS NULL OR _majority_at > v_old THEN
-    UPDATE public.user_safety
-       SET majority_at = _majority_at
-     WHERE user_id = v_uid;
-    RETURN TRUE;
-  END IF;
-
-  RETURN FALSE;
-END $$;
-REVOKE EXECUTE ON FUNCTION public.declare_majority(DATE) FROM public;
-GRANT EXECUTE ON FUNCTION public.declare_majority(DATE) TO authenticated;
+REVOKE EXECUTE ON FUNCTION public.declare_birth_year(INTEGER) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.declare_birth_year(INTEGER) TO authenticated;
 
 -- ============================================================================
 -- B. BLOCAGE BIDIRECTIONNEL, SANS ORACLE ENTRE TIERS
