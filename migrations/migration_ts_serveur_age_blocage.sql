@@ -170,6 +170,31 @@ BEGIN
 END
 $$;
 
+-- La policy conv_members ne peut PAS relire directement `conversations` : la
+-- policy SELECT de cette table exige déjà d'être membre, donc le créateur serait
+-- bloqué au moment d'ajouter le TOUT PREMIER membre. Cette primitive dédiée
+-- répond uniquement « suis-je le créateur de cette conversation ? » sans révéler
+-- l'identité du créateur et sans ouvrir la lecture de la conversation.
+CREATE OR REPLACE FUNCTION public.is_conversation_creator(_conv_id TEXT)
+RETURNS BOOLEAN
+LANGUAGE sql
+SECURITY DEFINER
+STABLE
+SET search_path = ''
+AS $$
+  SELECT CASE
+    WHEN auth.uid() IS NULL OR _conv_id IS NULL THEN FALSE
+    ELSE EXISTS (
+      SELECT 1 FROM public.conversations c
+       WHERE c.id = _conv_id
+         AND c.created_by = (auth.uid())::text
+    )
+  END
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.is_conversation_creator(TEXT) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.is_conversation_creator(TEXT) TO authenticated;
+
 -- `conv_members` : seul le CRÉATEUR authentifié de la conversation peut ajouter
 -- des membres. On supprime donc le self-join arbitraire `user_id=auth.uid()` :
 -- connaître/deviner un conv_id ne donne plus le droit de rejoindre la discussion.
@@ -182,11 +207,7 @@ DROP POLICY IF EXISTS "conv_members_insert_creator" ON public.conv_members;
 
 CREATE POLICY "conv_members_insert_creator" ON public.conv_members
   FOR INSERT WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM public.conversations c
-       WHERE c.id = conv_members.conv_id
-         AND c.created_by = ((SELECT auth.uid()))::text
-    )
+    public.is_conversation_creator(conv_members.conv_id)
     AND NOT public.is_blocked_with(conv_members.user_id)
   );
 
@@ -209,6 +230,6 @@ $$;
 -- inchangées : elles continuent de s'appuyer sur `is_conv_member`.
 --
 -- ROLLBACK (si nécessaire avant application produit) : restaurer les policies
--- INSERT précédentes depuis SCHEMA_PROD_REFERENCE.sql, puis supprimer les trois
+-- INSERT précédentes depuis SCHEMA_PROD_REFERENCE.sql, puis supprimer les quatre
 -- fonctions et la table user_safety. Ne jamais supprimer la table après qu'elle
 -- contient des déclarations sans procédure de migration des données.
