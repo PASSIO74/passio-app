@@ -4,6 +4,8 @@
 -- IMPORTANT : cette migration ferme des frontieres serveur. Tant qu'elle n'est
 -- pas appliquee et verifiee sur le vrai Supabase, `irl_proposal_v1` reste OFF.
 
+BEGIN;
+
 -- ============================================================================
 -- A. AGE / MINORITE : DONNEE PRIVEE ET ECRITURE CONTROLEE
 -- ============================================================================
@@ -18,11 +20,13 @@ ALTER TABLE public.user_safety ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "user_safety_select_own" ON public.user_safety;
 CREATE POLICY "user_safety_select_own" ON public.user_safety
-  FOR SELECT USING (user_id = ((SELECT auth.uid()))::text);
+  FOR SELECT TO authenticated
+  USING (user_id = ((SELECT auth.uid()))::text);
 
--- Un compte authentifie ne peut jamais ecrire directement sa date de majorite.
-REVOKE INSERT, UPDATE, DELETE ON public.user_safety FROM authenticated;
-GRANT SELECT ON public.user_safety TO authenticated;
+-- Le Data API ne recoit que la lecture de sa propre ligne. Toute ecriture passe
+-- par le RPC ci-dessous ; anon et PUBLIC n'ont aucun droit sur cette table.
+REVOKE ALL ON TABLE public.user_safety FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON TABLE public.user_safety TO authenticated;
 
 -- Defense en profondeur : meme un UPDATE privilegie ne peut pas rendre le
 -- compte plus age (majority_at plus tot) sans retirer explicitement ce trigger.
@@ -43,48 +47,48 @@ CREATE TRIGGER trg_user_safety_majorite
   BEFORE UPDATE ON public.user_safety
   FOR EACH ROW EXECUTE FUNCTION public.user_safety_majorite_non_avancable();
 
--- Seul chemin client d'ecriture de l'age. La premiere declaration est
--- persistante ; ensuite, seul un changement restrictif (majority_at plus tard)
--- est accepte. Il s'agit d'une declaration utilisateur, pas d'une verification
--- legale de l'age.
-CREATE OR REPLACE FUNCTION public.declare_majority(_majority_at DATE)
+-- Seul chemin client d'ecriture de l'age. Le client declare uniquement une
+-- ANNEE de naissance ; majority_at est derive cote serveur au 31 decembre de
+-- l'annee des 18 ans. Aucune date de majorite fournie par le client n'est
+-- acceptee. Cette information reste declaree et opposable, jamais verifiee.
+--
+-- Premiere declaration : persistante. Ensuite, seule une annee plus recente
+-- (donc plus restrictive) peut remplacer la valeur stockee. L'upsert est
+-- atomique face a deux declarations concurrentes.
+DROP FUNCTION IF EXISTS public.declare_majority(DATE);
+
+CREATE OR REPLACE FUNCTION public.declare_birth_year(_birth_year INTEGER)
 RETURNS BOOLEAN LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
 DECLARE
   v_uid TEXT;
-  v_old DATE;
+  v_candidate DATE;
+  v_applied BOOLEAN;
 BEGIN
   v_uid := (auth.uid())::text;
-  IF v_uid IS NULL OR _majority_at IS NULL THEN
+  IF v_uid IS NULL OR _birth_year IS NULL THEN
     RETURN FALSE;
   END IF;
 
-  IF _majority_at < DATE '1900-01-01'
-     OR _majority_at > (CURRENT_DATE + INTERVAL '18 years') THEN
+  IF _birth_year < 1900
+     OR _birth_year > EXTRACT(YEAR FROM CURRENT_DATE)::INTEGER THEN
     RETURN FALSE;
   END IF;
 
-  SELECT s.majority_at
-    INTO v_old
-    FROM public.user_safety s
-   WHERE s.user_id = v_uid;
+  v_candidate := make_date(_birth_year + 18, 12, 31);
 
-  IF NOT FOUND THEN
-    INSERT INTO public.user_safety(user_id, majority_at)
-    VALUES (v_uid, _majority_at);
-    RETURN TRUE;
-  END IF;
+  INSERT INTO public.user_safety AS s (user_id, majority_at)
+  VALUES (v_uid, v_candidate)
+  ON CONFLICT (user_id) DO UPDATE
+    SET majority_at = EXCLUDED.majority_at,
+        updated_at = NOW()
+    WHERE s.majority_at IS NULL
+       OR EXCLUDED.majority_at > s.majority_at
+  RETURNING TRUE INTO v_applied;
 
-  IF v_old IS NULL OR _majority_at > v_old THEN
-    UPDATE public.user_safety
-       SET majority_at = _majority_at
-     WHERE user_id = v_uid;
-    RETURN TRUE;
-  END IF;
-
-  RETURN FALSE;
+  RETURN COALESCE(v_applied, FALSE);
 END $$;
-REVOKE EXECUTE ON FUNCTION public.declare_majority(DATE) FROM public;
-GRANT EXECUTE ON FUNCTION public.declare_majority(DATE) TO authenticated;
+REVOKE EXECUTE ON FUNCTION public.declare_birth_year(INTEGER) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.declare_birth_year(INTEGER) TO authenticated;
 
 -- ============================================================================
 -- B. BLOCAGE BIDIRECTIONNEL, SANS ORACLE ENTRE TIERS
@@ -104,7 +108,7 @@ RETURNS BOOLEAN LANGUAGE sql SECURITY DEFINER STABLE SET search_path = '' AS $$
     )
   END
 $$;
-REVOKE EXECUTE ON FUNCTION public.is_blocked_with(TEXT) FROM public;
+REVOKE EXECUTE ON FUNCTION public.is_blocked_with(TEXT) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.is_blocked_with(TEXT) TO authenticated;
 
 CREATE OR REPLACE FUNCTION public.irl_interaction_allowed(_other TEXT)
@@ -130,7 +134,7 @@ RETURNS BOOLEAN LANGUAGE sql SECURITY DEFINER STABLE SET search_path = '' AS $$
     )
   END
 $$;
-REVOKE EXECUTE ON FUNCTION public.irl_interaction_allowed(TEXT) FROM public;
+REVOKE EXECUTE ON FUNCTION public.irl_interaction_allowed(TEXT) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.irl_interaction_allowed(TEXT) TO authenticated;
 
 -- ============================================================================
@@ -144,7 +148,8 @@ DROP POLICY IF EXISTS "Insert conversations" ON public.conversations;
 DROP POLICY IF EXISTS "conversations_insert_creator" ON public.conversations;
 
 CREATE POLICY "conversations_insert_creator" ON public.conversations
-  FOR INSERT WITH CHECK (created_by = ((SELECT auth.uid()))::text);
+  FOR INSERT TO authenticated
+  WITH CHECK (created_by = ((SELECT auth.uid()))::text);
 
 DO $g$
 BEGIN
@@ -174,7 +179,7 @@ RETURNS BOOLEAN LANGUAGE sql SECURITY DEFINER STABLE SET search_path = '' AS $$
     )
   END
 $$;
-REVOKE EXECUTE ON FUNCTION public.is_conversation_creator(TEXT) FROM public;
+REVOKE EXECUTE ON FUNCTION public.is_conversation_creator(TEXT) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.is_conversation_creator(TEXT) TO authenticated;
 
 -- Self-join evenement : autorise uniquement si TOUTES les preuves serveur sont
@@ -210,12 +215,13 @@ RETURNS BOOLEAN LANGUAGE sql SECURITY DEFINER STABLE SET search_path = '' AS $$
     )
   END
 $$;
-REVOKE EXECUTE ON FUNCTION public.can_join_event_conversation(TEXT) FROM public;
+REVOKE EXECUTE ON FUNCTION public.can_join_event_conversation(TEXT) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.can_join_event_conversation(TEXT) TO authenticated;
 
 DROP POLICY IF EXISTS "Ecriture propre" ON public.conv_members;
 CREATE POLICY "Ecriture propre" ON public.conv_members
-  FOR INSERT WITH CHECK (
+  FOR INSERT TO authenticated
+  WITH CHECK (
     (
       public.is_conversation_creator(conv_members.conv_id)
       OR (
@@ -247,7 +253,8 @@ END $cm$;
 DROP POLICY IF EXISTS "Ecriture propre" ON public.conv_messages;
 DROP POLICY IF EXISTS "conv_messages_insert_member" ON public.conv_messages;
 CREATE POLICY "conv_messages_insert_member" ON public.conv_messages
-  FOR INSERT WITH CHECK (
+  FOR INSERT TO authenticated
+  WITH CHECK (
     from_id = ((SELECT auth.uid()))::text
     AND public.is_conv_member(conv_id, ((SELECT auth.uid()))::text)
   );
@@ -265,3 +272,5 @@ BEGIN
     RAISE EXCEPTION 'policy INSERT conv_messages inattendue : migration refusee';
   END IF;
 END $m$;
+
+COMMIT;
