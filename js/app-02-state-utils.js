@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 51629)
-Total output lines: 3988
-
 // Icône de partage UNIFIÉE (« share » à nœuds reliés) — utilisée partout :
 // posts, bobines, lives, profils, événements. Remplace l'ancien mélange
 // 📤 / 🔁 / 🔗 / boîte+flèche. Hérite de la couleur via currentColor.
@@ -1837,7 +1834,125 @@ async function onbGoogleAuth() {
     try { localStorage.setItem("passio_oauth_pending", "1"); } catch (e) {}
     const { error } = await supa.auth.signInWithOAuth({
       provider: "google",
-      opt…1629 tokens truncated…ar e-mail ».
+      options: { redirectTo: window.location.origin + window.location.pathname },
+    });
+    if (error) {
+      try { localStorage.removeItem("passio_oauth_pending"); } catch (e) {}
+      _showAuthMsg(error.message || "Connexion Google indisponible.", "error");
+    }
+  } catch (e) {
+    try { localStorage.removeItem("passio_oauth_pending"); } catch (e) {}
+    _showAuthMsg("Connexion Google indisponible.", "error");
+  }
+}
+
+// ── Récupération de mot de passe : UI minimale affichée quand Supabase émet
+// l'événement PASSWORD_RECOVERY (retour depuis le lien e-mail). ──
+function _showPasswordRecoveryUI() {
+  if (document.getElementById("pwdRecoveryOverlay")) return;
+  const ov = document.createElement("div");
+  ov.id = "pwdRecoveryOverlay";
+  ov.style.cssText = "position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;padding:20px;";
+  ov.innerHTML =
+    '<div style="background:var(--bg-card,#fff);border-radius:18px;padding:24px;max-width:360px;width:100%;box-shadow:0 12px 48px rgba(0,0,0,0.3);">' +
+      '<div style="font-size:18px;font-weight:800;margin-bottom:6px;">Nouveau mot de passe</div>' +
+      '<div style="font-size:13px;color:var(--muted);margin-bottom:16px;">Choisis un nouveau mot de passe pour ton compte.</div>' +
+      '<input type="password" id="pwdRecoveryInput" placeholder="••••••••" minlength="6" autocomplete="new-password" class="input" style="width:100%;box-sizing:border-box;font-size:15px;margin-bottom:8px;"/>' +
+      '<div id="pwdRecoveryMsg" style="font-size:12px;min-height:16px;margin-bottom:10px;"></div>' +
+      '<button id="pwdRecoveryBtn" class="btn primary block" style="padding:13px;font-weight:800;">Valider</button>' +
+    '</div>';
+  document.body.appendChild(ov);
+  const input = ov.querySelector("#pwdRecoveryInput");
+  const btn = ov.querySelector("#pwdRecoveryBtn");
+  const msg = ov.querySelector("#pwdRecoveryMsg");
+  setTimeout(function () { try { input.focus(); } catch (e) {} }, 50);
+  btn.onclick = async function () {
+    const pwd = input.value || "";
+    if (pwd.length < 6) { msg.style.color = "#e11d48"; msg.textContent = "Au moins 6 caractères."; return; }
+    btn.disabled = true; btn.textContent = "…";
+    try {
+      const { error } = await supa.auth.updateUser({ password: pwd });
+      if (error) { msg.style.color = "#e11d48"; msg.textContent = error.message; btn.disabled = false; btn.textContent = "Valider"; return; }
+      msg.style.color = "#16a34a"; msg.textContent = "✅ Mot de passe mis à jour.";
+      if (typeof state !== "undefined") { state.onboarded = true; try { saveState(); } catch (e) {} }
+      setTimeout(function () { window.location.reload(); }, 900);
+    } catch (e) {
+      msg.style.color = "#e11d48"; msg.textContent = "Erreur réseau."; btn.disabled = false; btn.textContent = "Valider";
+    }
+  };
+  input.onkeypress = function (e) { if (e.key === "Enter") btn.click(); };
+}
+window._showPasswordRecoveryUI = _showPasswordRecoveryUI;
+
+function _showAuthMsg(text, type) {
+  const el = document.getElementById("authMsg");
+  if (!el) return;
+  el.textContent = text;
+  el.className = "onb-auth-msg " + type;
+}
+
+// Normalise un numéro de téléphone : garde le « + » de tête (international) et
+// les chiffres, supprime espaces/points/tirets/parenthèses. Renvoie "" si vide.
+function normalizePhone(raw) {
+  const s = String(raw || "").trim();
+  if (!s) return "";
+  const plus = s[0] === "+" ? "+" : "";
+  return plus + s.replace(/[^\d]/g, "");
+}
+
+async function onbDoAuth() {
+  const email = (document.getElementById("authEmail")?.value || "").trim();
+  const pwd = document.getElementById("authPassword")?.value || "";
+  const pwd2 = document.getElementById("authPasswordConfirm")?.value || "";
+  const phone = normalizePhone(document.getElementById("authPhone")?.value || "");
+  const btn = document.getElementById("authSubmitBtn");
+
+  // Validation de format stricte (en plus de la confirmation par e-mail Supabase).
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+  if (!EMAIL_RE.test(email)) { _showAuthMsg("Adresse e-mail invalide.", "error"); return; }
+  if (pwd.length < 6) { _showAuthMsg("Le mot de passe doit contenir au moins 6 caractères.", "error"); return; }
+  if (_authMode === "signup" && pwd !== pwd2) { _showAuthMsg("Les mots de passe ne correspondent pas.", "error"); return; }
+  // Numéro obligatoire à la création (demandé au même titre que l'e-mail) :
+  // 8 à 15 chiffres, éventuellement précédés d'un indicatif « + » international.
+  if (_authMode === "signup") {
+    const digits = phone.replace(/\D/g, "");
+    if (digits.length < 8 || digits.length > 15) { _showAuthMsg("Numéro de téléphone invalide.", "error"); return; }
+  }
+
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="auth-loading"></span>' + (_authMode === "signin" ? "Connexion…" : "Création…"); }
+
+  try {
+    let result;
+    if (_authMode === "signin") {
+      result = await supa.auth.signInWithPassword({ email, password: pwd });
+    } else {
+      // Le numéro voyage dans user_metadata (auth.users) : jamais exposé aux
+      // autres comptes (contrairement à `profiles`, en lecture publique), lisible
+      // seulement côté serveur via service_role (centre de pilotage).
+      result = await supa.auth.signUp({ email, password: pwd, options: { data: { phone } } });
+      // Copie locale pour le profil et les prochaines synchros.
+      try {
+        if (typeof state !== "undefined") {
+          state.user = state.user || {};
+          state.user.general = state.user.general || {};
+          state.user.general.phone = phone;
+        }
+      } catch (e) {}
+    }
+    const { data, error } = result;
+    if (error) {
+      let msg = error.message;
+      if (msg.includes("Invalid login")) msg = "E-mail ou mot de passe incorrect.";
+      if (msg.includes("already registered")) msg = "Cet e-mail est déjà utilisé. Connecte-toi.";
+      if (msg.includes("Email not confirmed")) msg = "Confirme ton e-mail avant de te connecter.";
+      _showAuthMsg(msg, "error");
+      if (btn) { btn.disabled = false; btn.textContent = _authMode === "signin" ? "Se connecter" : "Créer mon compte"; }
+      return;
+    }
+    if (_authMode === "signup") {
+      // Avec « Confirm email » activé, Supabase NE renvoie PAS d'erreur si l'e-mail
+      // existe déjà (anti-énumération) : il renvoie un user aux `identities` vides.
+      // On le détecte pour garantir « un seul compte par e-mail ».
       if (data?.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
         _showAuthMsg("Cet e-mail est déjà utilisé. Connecte-toi.", "error");
         switchAuthTab("signin");
