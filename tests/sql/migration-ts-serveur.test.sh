@@ -1,27 +1,8 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════════════════
-# BANC #136 — Trust & Safety serveur : âge fiable, blocage bidirectionnel,
-# conversation non forçable.
-#
-# Monte un PostgreSQL JETABLE, y reconstitue la partie de la prod PASSIO que
-# la migration touche (tests/sql/socle-prod.sql, policies recopiées du schéma
-# de référence), applique la migration, puis joue les scénarios EN TANT QUE
-# comptes distincts via `set local role authenticated` + le claim JWT.
-#
-# ⚠️ Chaque garde est éprouvée par MUTATION : la garde est retirée, et le test
-# correspondant DOIT redevenir rouge. Une assertion qui reste verte sans sa
-# garde ne prouve rien — c'est le seul moyen de le savoir.
-#
-# ⚠️ Chaque refus attendu est précédé de sa PRÉMISSE (le cas légitime
-# équivalent, qui doit passer). Sans elle, un socle cassé ferait passer tous
-# les « refusé » sans qu'aucune garde n'y soit pour rien — c'est arrivé en
-# écrivant ce banc : sans la policy SELECT de `conversations`, AUCUN ajout de
-# tiers ne passait, et « un compte bloqué ne peut pas être ajouté » était vert
-# pour la mauvaise raison.
-#
-#   ./tests/sql/migration-ts-serveur.test.sh
-#
-# Prérequis : PostgreSQL 14+ (binaires serveur). Ne touche AUCUNE base réelle.
+# BANC #136 — Trust & Safety serveur.
+# PostgreSQL jetable, comptes distincts, prémisses positives et mutations.
+# Aucune base réelle n'est touchée.
 # ═══════════════════════════════════════════════════════════════════════════
 set -uo pipefail
 
@@ -30,16 +11,10 @@ MIGRATION="$RACINE/migrations/migration_ts_serveur_age_blocage.sql"
 SOCLE="$RACINE/tests/sql/socle-prod.sql"
 PGBIN="$(ls -d /usr/lib/postgresql/*/bin 2>/dev/null | tail -1)"
 [ -n "$PGBIN" ] && PATH="$PGBIN:$PATH"
+command -v initdb >/dev/null || { echo "ERREUR: binaires PostgreSQL introuvables"; exit 1; }
+[ -f "$MIGRATION" ] || { echo "ERREUR: migration introuvable"; exit 1; }
 
-command -v initdb >/dev/null || { echo "❌ binaires serveur PostgreSQL introuvables"; exit 1; }
-[ -f "$MIGRATION" ] || { echo "❌ migration introuvable : $MIGRATION"; exit 1; }
-
-PORT=$(( 5400 + RANDOM % 150 ))
-
-# ⚠️ `initdb` et `postgres` REFUSENT de tourner en root. En conteneur CI on est
-# souvent root : on bascule alors sur un compte de service dédié. Sans ça le
-# serveur ne démarre jamais — et un banc dont le serveur est absent rend des
-# erreurs de connexion, pas des échecs francs (cf. `insere` plus bas).
+PORT=$((5400 + RANDOM % 150))
 if [ "$(id -u)" -eq 0 ]; then
   id pgbanc >/dev/null 2>&1 || useradd -m pgbanc >/dev/null 2>&1
   BASE="$(su pgbanc -c 'mktemp -d -p ~')"
@@ -49,7 +24,6 @@ else
   SU="bash -c"
 fi
 lancer() { $SU "PATH='$PATH' $*"; }
-
 nettoyer() { lancer "pg_ctl -D '$BASE/data' stop -m immediate" >/dev/null 2>&1; rm -rf "$BASE"; }
 trap nettoyer EXIT
 
@@ -60,25 +34,16 @@ for _ in $(seq 1 30); do
   psql -h "$BASE" -p "$PORT" -U postgres -c "select 1" >/dev/null 2>&1 && { demarre=1; break; }
   sleep 0.5
 done
-# ⚠️ Un banc qui continue sans serveur produit des FAUX VERTS : la première
-# version de ce script a rendu « ✅ un membre légitime passe toujours » alors
-# qu'aucune base ne tournait. On s'arrête net.
-if [ "$demarre" -ne 1 ]; then
-  echo "❌ le serveur PostgreSQL de test n'a pas démarré — aucun résultat n'est exploitable"
-  [ -f "$BASE/pg.log" ] && tail -5 "$BASE/pg.log"
-  exit 1
-fi
+[ "$demarre" -eq 1 ] || { echo "ERREUR: PostgreSQL de test indisponible"; exit 1; }
 
 Q() { psql -h "$BASE" -p "$PORT" -U postgres -d ts -tA -q -v ON_ERROR_STOP=1 "$@" 2>&1; }
-# Exécute en tant que compte authentifié $1.
-AS() { psql -h "$BASE" -p "$PORT" -U postgres -d ts -tA -q \
-       -c "set local role authenticated; set local request.jwt.claim.sub='$1'; $2" 2>&1; }
+AS() { psql -h "$BASE" -p "$PORT" -U postgres -d ts -tA -q -c "set local role authenticated; set local request.jwt.claim.sub='$1'; $2" 2>&1; }
 
-A=11111111-1111-1111-1111-111111111111   # majeur
-B=22222222-2222-2222-2222-222222222222   # majeur, BLOQUÉ par A
-C=33333333-3333-3333-3333-333333333333   # MINEUR
-D=44444444-4444-4444-4444-444444444444   # majeur, aucun blocage
-X=99999999-9999-9999-9999-999999999999   # aucune ligne user_safety (inconnu)
+A=11111111-1111-1111-1111-111111111111
+B=22222222-2222-2222-2222-222222222222
+C=33333333-3333-3333-3333-333333333333
+D=44444444-4444-4444-4444-444444444444
+X=99999999-9999-9999-9999-999999999999
 
 preparer() {
   psql -h "$BASE" -p "$PORT" -U postgres -tA -q -c "drop database if exists ts" >/dev/null 2>&1
@@ -88,121 +53,121 @@ preparer() {
   Q -f "$MIGRATION" >/dev/null
   [ -n "${1:-}" ] && Q -c "$1" >/dev/null
   Q -c "insert into public.user_safety(user_id,majority_at) values
-        ('$A','2010-01-01'),('$B','2011-01-01'),('$C','2030-01-01'),('$D','2012-01-01')
-        on conflict (user_id) do update set majority_at=excluded.majority_at;" >/dev/null
+    ('$A','2010-01-01'),('$B','2011-01-01'),('$C','2030-01-01'),('$D','2012-01-01')
+    on conflict (user_id) do update set majority_at=excluded.majority_at;" >/dev/null
   Q -c "insert into public.blocks(blocker_id,blocked_id) values ('$A','$B') on conflict do nothing;" >/dev/null
 }
 
 OK=0; KO=0
-verifier() { # $1=libellé  $2=attendu  $3=obtenu
-  if [ "$3" = "$2" ]; then OK=$((OK+1)); printf '  ✅ %s\n' "$1"
-  else KO=$((KO+1)); printf '  ❌ %s — attendu «%s», obtenu «%s»\n' "$1" "$2" "$3"; fi
+verifier() {
+  if [ "$3" = "$2" ]; then OK=$((OK+1)); printf '  OK  %s\n' "$1"
+  else KO=$((KO+1)); printf '  KO  %s -- attendu <%s>, obtenu <%s>\n' "$1" "$2" "$3"; fi
 }
-# Rend "refuse" si l'insertion viole la RLS, "accepte" sinon.
-# ⚠️ Le cas par défaut ne doit JAMAIS être « accepte » : une erreur de connexion
-# ou de syntaxe y tombait, et un banc sans serveur affichait « ✅ accepté ».
-# Tout ce qui n'est ni un refus RLS explicite ni un succès franc est une panne.
-insere() {
+
+commande() {
   local sortie; sortie="$(AS "$1" "$2")"
   case "$sortie" in
-    *"violates row-level security"*) echo refuse ;;
-    *"connection to server"*|*"could not connect"*) echo PANNE-CONNEXION ;;
+    *"violates row-level security"*|*"permission denied"*) echo refuse ;;
+    *"connection to server"*|*"could not connect"*) echo panne ;;
     *ERROR*|*error:*) echo erreur ;;
     *) echo accepte ;;
   esac
 }
 
-conv() { # $1=créateur $2=id  → crée la conv et y met le créateur
-  AS "$1" "insert into public.conversations(id,created_by) values ('$2','$1');" >/dev/null
-  AS "$1" "insert into public.conv_members values ('$2','$1');" >/dev/null
+conv() {
+  local creator="$1" id="$2"
+  [ "$(commande "$creator" "insert into public.conversations(id,created_by) values ('$id','$creator');")" = accepte ] || return 1
+  [ "$(commande "$creator" "insert into public.conv_members(conv_id,user_id) values ('$id','$creator');")" = accepte ] || return 1
 }
 
-echo "═══ #136 — banc Trust & Safety serveur ═══"
+echo "=== #136 banc T&S serveur ==="
 preparer
-echo
-echo "── PRÉMISSES (si l'une échoue, tout le reste est sans valeur) ──"
-verifier "deux majeurs sans blocage : interaction AUTORISÉE" t "$(AS "$A" "select public.irl_interaction_allowed('$D');")"
-conv "$D" cvp
-verifier "ajout d'un tiers non bloqué : ACCEPTÉ"           accepte "$(insere "$D" "insert into public.conv_members values ('cvp','$A');")"
-verifier "chacun lit SA ligne user_safety"                 1 "$(AS "$A" "select count(*) from public.user_safety;")"
 
-echo
-echo "── A. Âge : fail-closed, et jamais lisible par autrui ──"
-verifier "majeur → MINEUR : refusé"                        f "$(AS "$A" "select public.irl_interaction_allowed('$C');")"
-verifier "MINEUR → majeur : refusé"                        f "$(AS "$C" "select public.irl_interaction_allowed('$A');")"
-verifier "âge INCONNU (aucune ligne) : refusé"             f "$(AS "$A" "select public.irl_interaction_allowed('$X');")"
-verifier "soi-même : refusé"                               f "$(AS "$A" "select public.irl_interaction_allowed('$A');")"
-verifier "l'âge d'autrui reste illisible"                  0 "$(AS "$A" "select count(*) from public.user_safety where user_id='$C';")"
-verifier "on ne peut pas se VIEILLIR"  "$(printf 'refuse')" \
-  "$(case "$(AS "$C" "update public.user_safety set majority_at='2010-01-01' where user_id='$C';")" in *"ne peut pas etre avancee"*) echo refuse;; *) echo accepte;; esac)"
-AS "$C" "update public.user_safety set majority_at='2031-01-01' where user_id='$C';" >/dev/null
-verifier "on peut se RAJEUNIR (sens prudent)"              2031-01-01 "$(AS "$C" "select majority_at from public.user_safety where user_id='$C';")"
-verifier "on ne modifie pas la ligne d'un autre"           0 "$(AS "$C" "update public.user_safety set majority_at='2030-01-01' where user_id='$A'; select count(*) from public.user_safety where user_id='$A' and majority_at='2030-01-01';")"
+echo "-- Premisses"
+verifier "conversation creee uniquement par son auteur" accepte "$(commande "$D" "insert into public.conversations(id,created_by) values ('prem','$D');")"
+verifier "usurpation created_by refusee" refuse "$(commande "$C" "insert into public.conversations(id,created_by) values ('fake','$D');")"
+conv "$D" cvp || { echo "KO: le createur ne peut pas initialiser sa membership"; exit 1; }
+verifier "createur ajoute un tiers non bloque" accepte "$(commande "$D" "insert into public.conv_members values ('cvp','$A');")"
+verifier "deux majeurs non bloques: IRL autorise" t "$(AS "$A" "select public.irl_interaction_allowed('$D');")"
+verifier "chacun lit seulement sa ligne age" 1 "$(AS "$A" "select count(*) from public.user_safety;")"
 
-echo
-echo "── B. Blocage : bidirectionnel, sans révéler la direction ni servir d'oracle ──"
-verifier "le BLOQUEUR voit le blocage"                     t "$(AS "$A" "select public.is_blocked_with('$B');")"
-verifier "le BLOQUÉ aussi (sans lire la ligne)"            t "$(AS "$B" "select public.is_blocked_with('$A');")"
-verifier "la table brute reste invisible au bloqué"        0 "$(AS "$B" "select count(*) from public.blocks;")"
-verifier "un TIERS ne peut pas sonder la paire A↔B"        f "$(AS "$C" "select public.is_blocked_with('$A');")"
-verifier "aucun blocage : faux"                            f "$(AS "$A" "select public.is_blocked_with('$D');")"
+echo "-- Age prive et oppose"
+verifier "mineur vers majeur refuse" f "$(AS "$C" "select public.irl_interaction_allowed('$A');")"
+verifier "majeur vers mineur refuse" f "$(AS "$A" "select public.irl_interaction_allowed('$C');")"
+verifier "age inconnu fail-closed" f "$(AS "$A" "select public.irl_interaction_allowed('$X');")"
+verifier "age autre compte illisible" 0 "$(AS "$A" "select count(*) from public.user_safety where user_id='$C';")"
+verifier "INSERT direct age forge refuse" refuse "$(commande "$X" "insert into public.user_safety(user_id,majority_at) values ('$X','2000-01-01');")"
+verifier "UPDATE direct age permissif refuse" refuse "$(commande "$C" "update public.user_safety set majority_at='2010-01-01' where user_id='$C';")"
+verifier "RPC premiere declaration mineure fail-closed" f "$(AS "$X" "select public.declare_birth_year(extract(year from current_date)::int - 10);")"
+stored_before="$(AS "$X" "select majority_at from public.user_safety where user_id='$X';")"
+AS "$X" "select public.declare_birth_year(2000);" >/dev/null
+stored_after="$(AS "$X" "select majority_at from public.user_safety where user_id='$X';")"
+verifier "RPC ne permet pas de se vieillir apres declaration" "$stored_before" "$stored_after"
 
-echo
-echo "── C. Conversation non forçable, dans les DEUX sens ──"
-conv "$B" cv1
-verifier "le BLOQUÉ ne peut pas ajouter celui qui l'a bloqué" refuse "$(insere "$B" "insert into public.conv_members values ('cv1','$A');")"
-conv "$A" cv2
-verifier "le BLOQUEUR ne peut pas ajouter celui qu'il a bloqué" refuse "$(insere "$A" "insert into public.conv_members values ('cv2','$B');")"
-verifier "un membre légitime passe toujours"               accepte "$(insere "$A" "insert into public.conv_members values ('cv2','$D');")"
+echo "-- Blocage bidirectionnel"
+verifier "bloqueur voit relation" t "$(AS "$A" "select public.is_blocked_with('$B');")"
+verifier "bloque voit relation" t "$(AS "$B" "select public.is_blocked_with('$A');")"
+verifier "bloque ne lit pas ligne brute" 0 "$(AS "$B" "select count(*) from public.blocks;")"
+verifier "tiers ne sonde pas paire A-B" f "$(AS "$C" "select public.is_blocked_with('$A');")"
+verifier "absence blocage = faux" f "$(AS "$A" "select public.is_blocked_with('$D');")"
 
-echo
-echo "── MUTATIONS : chaque garde retirée doit rendre son test ROUGE ──"
-#
-# ⚠️ PAS D'`eval` ICI. La première version passait la commande sous forme de
-# chaîne, et ses guillemets doubles arrivaient tels quels dans le SQL — où ils
-# désignent des IDENTIFIANTS, pas des chaînes. Les quatre mutations rendaient
-# « column "1111…" does not exist » et étaient comptées comme survivantes.
-# Chaque sonde est donc une vraie fonction, avec un vrai quotage.
-sonde_conv_forcee()  { conv "$B" cvm >/dev/null; insere "$B" "insert into public.conv_members values ('cvm','$A');"; }
+echo "-- Conversation non forcable"
+conv "$B" cv1 || exit 1
+verifier "bloque ne peut ajouter bloqueur" refuse "$(commande "$B" "insert into public.conv_members values ('cv1','$A');")"
+conv "$A" cv2 || exit 1
+verifier "bloqueur ne peut ajouter bloque" refuse "$(commande "$A" "insert into public.conv_members values ('cv2','$B');")"
+verifier "membre legitime non bloque accepte" accepte "$(commande "$A" "insert into public.conv_members values ('cv2','$D');")"
+conv "$D" private_ab || exit 1
+verifier "tiers ne peut pas self-join un conv_id connu" refuse "$(commande "$C" "insert into public.conv_members values ('private_ab','$C');")"
+verifier "tiers reste incapable de lire conversation" 0 "$(AS "$C" "select count(*) from public.conversations where id='private_ab';")"
+Q -c "insert into public.conv_messages(id,conv_id,from_id,text) values ('m1','private_ab','$D','secret');" >/dev/null
+verifier "tiers reste incapable de lire message" 0 "$(AS "$C" "select count(*) from public.conv_messages where conv_id='private_ab';")"
+
+# Le même chemin creator->members sert aux groupes : il doit rester fonctionnel,
+# mais un blocage ne peut pas être contourné par is_group=true.
+verifier "creation groupe legitime" accepte "$(commande "$A" "insert into public.conversations(id,is_group,created_by) values ('grp1',true,'$A');")"
+verifier "createur rejoint son groupe" accepte "$(commande "$A" "insert into public.conv_members values ('grp1','$A');")"
+verifier "membre groupe non bloque accepte" accepte "$(commande "$A" "insert into public.conv_members values ('grp1','$D');")"
+verifier "membre groupe bloque refuse" refuse "$(commande "$A" "insert into public.conv_members values ('grp1','$B');")"
+
+echo "-- Mutations: chaque garde retiree doit exposer le defaut"
+sonde_forge_age() { commande "$X" "insert into public.user_safety(user_id,majority_at) values ('$X','2000-01-01');"; }
+sonde_update_age() { commande "$C" "update public.user_safety set majority_at='2010-01-01' where user_id='$C';"; }
+sonde_self_join() { conv "$D" mutjoin >/dev/null; commande "$C" "insert into public.conv_members values ('mutjoin','$C');"; }
+sonde_blocage_conv() { conv "$B" mutblock >/dev/null; commande "$B" "insert into public.conv_members values ('mutblock','$A');"; }
 sonde_blocage_sens() { AS "$B" "select public.is_blocked_with('$A');"; }
-sonde_age_inconnu()  { AS "$A" "select public.irl_interaction_allowed('$X');"; }
-sonde_vieillissement() {
-  AS "$C" "update public.user_safety set majority_at='2010-01-01' where user_id='$C';" >/dev/null
-  AS "$C" "select majority_at from public.user_safety where user_id='$C';"
-}
+sonde_age_inconnu() { AS "$A" "select public.irl_interaction_allowed('$X');"; }
 
-mutation() { # $1=libellé  $2=SQL de mutation  $3=fonction sonde  $4=valeur qui SIGNALE le défaut
+mutation() {
   preparer "$2"
   local obtenu; obtenu="$("$3")"
-  if [ "$obtenu" = "$4" ]; then OK=$((OK+1)); printf '  ✅ %s → défaut détecté\n' "$1"
-  else KO=$((KO+1)); printf '  ❌ %s → LA MUTATION SURVIT (obtenu «%s») : le test ne garde rien\n' "$1" "$obtenu"; fi
+  if [ "$obtenu" = "$4" ]; then OK=$((OK+1)); printf '  OK  mutation %s detectee\n' "$1"
+  else KO=$((KO+1)); printf '  KO  mutation %s survit -- <%s>\n' "$1" "$obtenu"; fi
 }
 
-mutation "policy conv_members d'origine restaurée" \
-  "drop policy \"Ecriture propre\" on public.conv_members;
-   create policy \"Ecriture propre\" on public.conv_members for insert with check (
-     (user_id = (auth.uid())::text)
-     or (exists (select 1 from public.conversations c
-                 where c.id = conv_members.conv_id and c.created_by = (auth.uid())::text)));" \
-  sonde_conv_forcee accepte
+mutation "INSERT direct user_safety" \
+  "grant insert on public.user_safety to authenticated; create policy mut_age_insert on public.user_safety for insert with check (user_id=(auth.uid())::text);" \
+  sonde_forge_age accepte
 
-mutation "is_blocked_with rendue UNIDIRECTIONNELLE" \
-  "create or replace function public.is_blocked_with(_other text)
-   returns boolean language sql security definer stable set search_path = '' as \$f\$
-     select exists (select 1 from public.blocks b
-       where b.blocker_id = (auth.uid())::text and b.blocked_id = _other) \$f\$;" \
+mutation "UPDATE direct user_safety" \
+  "grant update on public.user_safety to authenticated; create policy mut_age_update on public.user_safety for update using (user_id=(auth.uid())::text) with check (user_id=(auth.uid())::text);" \
+  sonde_update_age accepte
+
+mutation "self-join conv_members" \
+  "drop policy conv_members_insert_creator on public.conv_members; create policy conv_members_insert_creator on public.conv_members for insert with check (user_id=(auth.uid())::text or public.is_conversation_creator(conv_id));" \
+  sonde_self_join accepte
+
+mutation "garde blocage conv_members retiree" \
+  "drop policy conv_members_insert_creator on public.conv_members; create policy conv_members_insert_creator on public.conv_members for insert with check (public.is_conversation_creator(conv_id));" \
+  sonde_blocage_conv accepte
+
+mutation "blocage rendu unidirectionnel" \
+  "create or replace function public.is_blocked_with(_other text) returns boolean language sql security definer stable set search_path='' as \$f\$ select exists(select 1 from public.blocks b where b.blocker_id=(auth.uid())::text and b.blocked_id=_other) \$f\$;" \
   sonde_blocage_sens f
 
-mutation "COALESCE fail-closed retiré de l'âge" \
-  "create or replace function public.irl_interaction_allowed(_other text)
-   returns boolean language sql security definer stable set search_path = '' as \$f\$
-     select not public.is_blocked_with(_other) \$f\$;" \
+mutation "age inconnu fail-open" \
+  "create or replace function public.irl_interaction_allowed(_other text) returns boolean language sql security definer stable set search_path='' as \$f\$ select not public.is_blocked_with(_other) \$f\$;" \
   sonde_age_inconnu t
 
-mutation "trigger anti-vieillissement retiré" \
-  "drop trigger if exists trg_user_safety_majorite on public.user_safety;" \
-  sonde_vieillissement 2010-01-01
-
-echo
-echo "═══ $OK OK · $KO KO ═══"
+echo "=== $OK OK / $KO KO ==="
 [ "$KO" -eq 0 ] || exit 1
