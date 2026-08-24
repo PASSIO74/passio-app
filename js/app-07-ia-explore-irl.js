@@ -4131,6 +4131,7 @@ function feedIrlBridgeOpen(postId) {
   try {
     if (window.tel && tel.action) tel.action("feed_irl_cta_click", feedIrlBridgeMeta(passion, ref));
   } catch (e) { feedIrlBridgeFail("click", e, null); }
+  if (typeof feedIntentTrackMeetToIrl === "function") feedIntentTrackMeetToIrl();
 
   if (typeof openCreateEvent !== "function") {
     feedIrlBridgeFail("open", "openCreateEvent indisponible", feedIrlBridgeMeta(passion, ref));
