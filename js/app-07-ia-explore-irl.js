@@ -2803,7 +2803,13 @@ async function setEventRsvp(id, rsvp) {
     toast(RSVP_LABELS[rsvp] ? RSVP_LABELS[rsvp].emoji + " " + RSVP_LABELS[rsvp].label : "Enregistré");
   }
 
-  if (window._supaReal) await supaSetEventRsvp(id, rsvp);
+  // Point d'AUTORITÉ de la participation : c'est le verdict de cette écriture
+  // (supaSetEventRsvp lit déjà son `{ error }`) qui alimente le funnel, pas le
+  // clic ni l'affichage optimiste déjà appliqué plus haut. `null` = aucune
+  // écriture tentée (mode local) → compté en échec `offline`, jamais en succès.
+  let rsvpOk = null;
+  if (window._supaReal) rsvpOk = await supaSetEventRsvp(id, rsvp);
+  irlFunnelTrackJoin(id, rsvp, rsvpOk);
   // Notifier l'organisateur (interaction cross-compte sur SON événement).
   if (rsvp === "going" && ev.fromSupabase && ev.organizerId && ev.organizerId !== meId && typeof supaInsertNotif === "function") {
     supaInsertNotif(ev.organizerId, "event_join", id, "a rejoint ton événement");
@@ -4172,6 +4178,104 @@ function feedIrlBridgePrefill(passion, ref) {
   } catch (e) { feedIrlBridgeFail("prefill_track", e, null); }
 }
 
+// Origine « pont Fil → IRL » d'un brouillon, LUE UNE FOIS PUIS EFFACÉE.
+// Le marqueur (`data-feed-irl-source` + `_feedIrlBridgeSourcePostId`) n'était
+// nettoyé nulle part : un brouillon ouvert depuis le fil puis abandonné aurait
+// attribué au pont la création suivante, faite depuis l'écran IRL. Consommer
+// évite d'attribuer au pont une conversion qui ne lui revient pas.
+function feedIrlBridgeConsumeOrigin() {
+  var from = false;
+  try {
+    var host = document.getElementById("modalContent");
+    if (host) {
+      if (host.getAttribute("data-feed-irl-source")) from = true;
+      host.removeAttribute("data-feed-irl-source");
+    }
+    if (!from && window._feedIrlBridgeSourcePostId) from = true;
+    window._feedIrlBridgeSourcePostId = null;
+  } catch (e) { feedIrlBridgeFail("origin", e, null); }
+  return from;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// FUNNEL FIL → IRL : RÉSULTATS RÉELS (Lot 1B)
+// ──────────────────────────────────────────────────────────────────────────
+// Le Lot 1A instrumentait l'INTENTION (vue du CTA, clic, brouillon prérempli).
+// Ce bloc instrumente le RÉSULTAT : création et participation. Trois règles,
+// toutes apprises à nos dépens sur ce dépôt :
+//
+//   ① Le succès n'est JAMAIS déduit d'un clic ni d'un affichage optimiste. Il
+//      vient du verdict de l'écriture Supabase — `supaPublishEvent` et
+//      `supaSetEventRsvp` lisent déjà leur `{ error }` et renvoient un booléen ;
+//      c'est CE booléen qui décide, et rien d'autre (cf. bobines fantômes du
+//      2026-07-19 : « publié ! » alors que rien n'était en base).
+//   ② Aucune écriture tentée (mode local / hors ligne) ≠ succès : la cause
+//      normalisée `offline` dit que le résultat n'a jamais atteint l'autorité.
+//   ③ Métadonnées bornées : version du lot, état effectif du drapeau du pont,
+//      origine Fil quand elle est RÉELLEMENT connue, cause d'échec normalisée.
+//      Jamais de titre, de ville, de coordonnée, d'identifiant de compte ni
+//      d'identifiant d'événement — le dédoublonnage garde les identifiants en
+//      mémoire locale et n'en envoie aucun.
+// ⚠️ Toute clé ajoutée ici doit être vérifiée contre `DENY_KEY` (js/telemetry.js) :
+// une clé qui matche est jetée EN SILENCE (piège déjà payé sur `has_passion`).
+// ══════════════════════════════════════════════════════════════════════════
+var IRL_FUNNEL_VERSION = "v1b1";
+// Fenêtre de dédoublonnage : absorbe une double émission (double soumission,
+// ré-entrance d'un handler) sans masquer un vrai retrait/ré-inscription, qui
+// demande plusieurs secondes à un humain.
+var IRL_FUNNEL_DEDUP_MS = 4000;
+// Seules ces intentions comptent comme une PARTICIPATION. « declined » et le
+// retrait (`rsvp` nul) sont des sorties du funnel, pas des conversions.
+// (liste, et non objet : un objet aurait rendu « toString » ou « constructor »
+// éligibles via son prototype)
+var IRL_FUNNEL_JOIN_INTENTS = ["going", "maybe", "waitlist"];
+
+// true la première fois qu'on voit cette clé dans la fenêtre. Les clés
+// expirées sont purgées à chaque appel : la table ne grossit pas.
+function irlFunnelOnce(key) {
+  var now = Date.now();
+  var seen = window._irlFunnelSeen || (window._irlFunnelSeen = {});
+  Object.keys(seen).forEach(function (k) {
+    if (now - seen[k] > IRL_FUNNEL_DEDUP_MS) delete seen[k];
+  });
+  if (seen[key]) return false;
+  seen[key] = now;
+  return true;
+}
+
+function irlFunnelMeta(reason, fromFeed) {
+  var m = { v: IRL_FUNNEL_VERSION, flag: feedIrlBridgeEnabled() ? "on" : "off" };
+  if (typeof fromFeed === "boolean") m.from_feed = fromFeed;  // omis si inconnu
+  if (reason) m.reason = String(reason);
+  return m;
+}
+
+function irlFunnelTrack(name, dedupKey, meta) {
+  try {
+    if (!irlFunnelOnce(name + "|" + dedupKey)) return false;
+    if (window.tel && tel.action) tel.action(name, meta);
+    return true;
+  } catch (e) { feedIrlBridgeFail("funnel", e, meta); return false; }
+}
+
+// Résultat d'une CRÉATION. `ok` : true/false = verdict de l'écriture Supabase,
+// null = aucune écriture tentée. Les éditions n'entrent pas dans ce funnel.
+function irlFunnelTrackCreate(eventId, ok, fromFeed) {
+  if (ok === true) return irlFunnelTrack("irl_create_success", String(eventId), irlFunnelMeta(null, !!fromFeed));
+  return irlFunnelTrack("irl_create_failed", String(eventId),
+    irlFunnelMeta(ok === null ? "offline" : "write_failed", !!fromFeed));
+}
+
+// Résultat d'une PARTICIPATION. Même contrat que ci-dessus. L'origine Fil n'est
+// pas transmise : à ce point du parcours elle n'est pas connue de façon sûre,
+// et une valeur devinée vaut moins que pas de valeur.
+function irlFunnelTrackJoin(eventId, rsvp, ok) {
+  if (IRL_FUNNEL_JOIN_INTENTS.indexOf(rsvp) < 0) return false;
+  var key = String(eventId) + "|" + rsvp;
+  if (ok === true) return irlFunnelTrack("irl_join_success", key, irlFunnelMeta(null));
+  return irlFunnelTrack("irl_join_failed", key, irlFunnelMeta(ok === null ? "offline" : "write_failed"));
+}
+
 // ══════════════════════════════════════════════════════════════════════════
 // GARDE TRUST & SAFETY — PROPOSITION IRL (drapeau `irl_proposal_v1`) — #134
 // ──────────────────────────────────────────────────────────────────────────
@@ -4327,6 +4431,10 @@ function irlProposalAllowed(targetUserId) {
 // centaines de mètres reste EXACT.
 
 function openCreateEvent(editId) {
+  // Repartir d'une origine vierge : un marqueur laissé par un brouillon
+  // abandonné ne doit pas être attribué à CETTE création. Le pont repose le
+  // sien juste après (feedIrlBridgeOpen → openCreateEvent → prefill).
+  feedIrlBridgeConsumeOrigin();
   const ed = editId ? _findCanonicalEvent(editId) : null;
   if (editId && !ed) { toast("Événement introuvable"); return; }
   window._evPickedCoords = ed && ed.lat ? { lat: ed.lat, lng: ed.lng } : null;
@@ -4793,6 +4901,10 @@ async function submitEvent(editId) {
   }
   window._evPickedCoords = null;
 
+  // Origine « pont Fil → IRL » : lue AVANT closeModal (le marqueur vit sur le
+  // modal) et consommée, pour qu'une création ultérieure n'en hérite pas.
+  const fromFeed = feedIrlBridgeConsumeOrigin();
+
   closeModal();
   toast(editId ? "💾 Enregistrement…" : "📤 Publication en cours…");
 
@@ -4835,7 +4947,8 @@ async function submitEvent(editId) {
   // Sync Supabase — on ne ment plus sur le résultat (même leçon que les bobines
   // fantômes du 2026-07-19 : « publié ! » alors que rien n'était en base).
   let ok = true;
-  if (window._supaReal) {
+  const backend = !!window._supaReal;
+  if (backend) {
     ok = editId
       ? await supaUpdateEvent(ev)
       : await supaPublishEvent(ev);
@@ -4849,6 +4962,9 @@ async function submitEvent(editId) {
       if (okOcc && typeof supaJoinEvent === "function") supaJoinEvent(o.id);
     }
   }
+  // Funnel : une création = un résultat, celui de l'écriture réellement exécutée.
+  // Une ÉDITION n'est pas une création et n'entre pas dans le funnel.
+  if (!editId) irlFunnelTrackCreate(ev.id, backend ? ok : null, fromFeed);
   renderIRL();
   toast(ok
     ? (editId ? "✅ Événement mis à jour"
