@@ -88,6 +88,7 @@ verifier "conversation creee uniquement par son auteur" accepte "$(commande "$D"
 verifier "usurpation created_by refusee" refuse "$(commande "$C" "insert into public.conversations(id,created_by) values ('fake','$D');")"
 conv "$D" cvp || { echo "KO: le createur ne peut pas initialiser sa membership"; exit 1; }
 verifier "createur ajoute un tiers non bloque" accepte "$(commande "$D" "insert into public.conv_members values ('cvp','$A');")"
+verifier "membre peut ecrire dans sa conversation" accepte "$(commande "$D" "insert into public.conv_messages(id,conv_id,from_id,text) values ('pm1','cvp','$D','ok');")"
 verifier "deux majeurs non bloques: IRL autorise" t "$(AS "$A" "select public.irl_interaction_allowed('$D');")"
 verifier "chacun lit seulement sa ligne age" 1 "$(AS "$A" "select count(*) from public.user_safety;")"
 
@@ -119,12 +120,11 @@ verifier "bloqueur ne peut ajouter bloque" refuse "$(commande "$A" "insert into 
 verifier "membre legitime non bloque accepte" accepte "$(commande "$A" "insert into public.conv_members values ('cv2','$D');")"
 conv "$D" private_ab || exit 1
 verifier "tiers ne peut pas self-join un conv_id connu" refuse "$(commande "$C" "insert into public.conv_members values ('private_ab','$C');")"
+verifier "tiers ne peut pas injecter message dans conv_id connu" refuse "$(commande "$C" "insert into public.conv_messages(id,conv_id,from_id,text) values ('evil','private_ab','$C','intrusion');")"
 verifier "tiers reste incapable de lire conversation" 0 "$(AS "$C" "select count(*) from public.conversations where id='private_ab';")"
 Q -c "insert into public.conv_messages(id,conv_id,from_id,text) values ('m1','private_ab','$D','secret');" >/dev/null
 verifier "tiers reste incapable de lire message" 0 "$(AS "$C" "select count(*) from public.conv_messages where conv_id='private_ab';")"
 
-# Le même chemin creator->members sert aux groupes : il doit rester fonctionnel,
-# mais un blocage ne peut pas être contourné par is_group=true.
 verifier "creation groupe legitime" accepte "$(commande "$A" "insert into public.conversations(id,is_group,created_by) values ('grp1',true,'$A');")"
 verifier "createur rejoint son groupe" accepte "$(commande "$A" "insert into public.conv_members values ('grp1','$A');")"
 verifier "membre groupe non bloque accepte" accepte "$(commande "$A" "insert into public.conv_members values ('grp1','$D');")"
@@ -134,6 +134,7 @@ echo "-- Mutations: chaque garde retiree doit exposer le defaut"
 sonde_forge_age() { commande "$X" "insert into public.user_safety(user_id,majority_at) values ('$X','2000-01-01');"; }
 sonde_update_age() { commande "$C" "update public.user_safety set majority_at='2010-01-01' where user_id='$C';"; }
 sonde_self_join() { conv "$D" mutjoin >/dev/null; commande "$C" "insert into public.conv_members values ('mutjoin','$C');"; }
+sonde_message_inject() { conv "$D" mutmsg >/dev/null; commande "$C" "insert into public.conv_messages(id,conv_id,from_id,text) values ('mutm','mutmsg','$C','x');"; }
 sonde_blocage_conv() { conv "$B" mutblock >/dev/null; commande "$B" "insert into public.conv_members values ('mutblock','$A');"; }
 sonde_blocage_sens() { AS "$B" "select public.is_blocked_with('$A');"; }
 sonde_age_inconnu() { AS "$A" "select public.irl_interaction_allowed('$X');"; }
@@ -148,23 +149,21 @@ mutation() {
 mutation "INSERT direct user_safety" \
   "grant insert on public.user_safety to authenticated; create policy mut_age_insert on public.user_safety for insert with check (user_id=(auth.uid())::text);" \
   sonde_forge_age accepte
-
 mutation "UPDATE direct user_safety" \
   "grant update on public.user_safety to authenticated; create policy mut_age_update on public.user_safety for update using (user_id=(auth.uid())::text) with check (user_id=(auth.uid())::text);" \
   sonde_update_age accepte
-
 mutation "self-join conv_members" \
   "drop policy conv_members_insert_creator on public.conv_members; create policy conv_members_insert_creator on public.conv_members for insert with check (user_id=(auth.uid())::text or public.is_conversation_creator(conv_id));" \
   sonde_self_join accepte
-
+mutation "garde membership message retiree" \
+  "drop policy conv_messages_insert_member on public.conv_messages; create policy conv_messages_insert_member on public.conv_messages for insert with check (from_id=(auth.uid())::text);" \
+  sonde_message_inject accepte
 mutation "garde blocage conv_members retiree" \
   "drop policy conv_members_insert_creator on public.conv_members; create policy conv_members_insert_creator on public.conv_members for insert with check (public.is_conversation_creator(conv_id));" \
   sonde_blocage_conv accepte
-
 mutation "blocage rendu unidirectionnel" \
   "create or replace function public.is_blocked_with(_other text) returns boolean language sql security definer stable set search_path='' as \$f\$ select exists(select 1 from public.blocks b where b.blocker_id=(auth.uid())::text and b.blocked_id=_other) \$f\$;" \
   sonde_blocage_sens f
-
 mutation "age inconnu fail-open" \
   "create or replace function public.irl_interaction_allowed(_other text) returns boolean language sql security definer stable set search_path='' as \$f\$ select not public.is_blocked_with(_other) \$f\$;" \
   sonde_age_inconnu t
