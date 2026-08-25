@@ -417,6 +417,14 @@ exigences=[
  # qui explique pourquoi on ne s'en sert pas doit rester lisible dans le code.
  ("compteur lu du tableau, pas d'un champ annexe", 'resultat.permission_denials_count' not in run and 'refus.length' in run),
  ("sorties non fiables réduites à des valeurs sûres", 'const ISSUES' in run and 'function outil' in run and 'contenu masqué' in run),
+ ("erreurs fournisseur classées en cinq catégories fixes",
+      'function classerErreur' in run
+      and all(c in run for c in ('CAPACITE_OU_CREDITS', 'CAPACITE_TEMPORAIRE',
+                                 'AUTHENTIFICATION', 'MODELE', 'INCONNUE'))),
+ ("texte brut des erreurs jamais republié",
+      'console.log(erreur' not in run and 'JSON.stringify(erreur' not in run),
+ ("classification fournisseur publiée sous un libellé sûr",
+      'Catégories sûres' in run and 'ORDRE_CATEGORIES_ERREUR' in run),
  ("nombre de refus imprimés borné", 'refus.slice(0, 40)' in run),
  # Le bug amont anthropics/claude-code#85400 coupe les abonnements Max sur
  # un coût API équivalent alors que la dépense réelle vaut zéro. Le canal est
@@ -435,7 +443,7 @@ for lib,vrai in exigences:
     if not vrai: ko+=1
 sys.exit(1 if ko else 0)
 PYDIAG
-if [ $? -eq 0 ]; then ok=$((ok+17)); else ko=$((ko+1)); fi
+if [ $? -eq 0 ]; then ok=$((ok+20)); else ko=$((ko+1)); fi
 
 # Rejoue la marche RÉELLE du workflow sur des traces d'exécution.
 scenario_diag() { # <nom> <contenu-trace|VIDE> <attendu-dans-la-sortie|-> 
@@ -486,6 +494,10 @@ TETE_JSON='[{"type":"result","subtype":"success","num_turns":3,"permission_denia
 HOSTILE_JSON='[{"type":"result","subtype":"error_max_turns","num_turns":41,"permission_denials":[{"tool_name":"Bash","tool_input":{"command":{"toString":1,"valueOf":1}}}]}]'
 # Tous les champs de la trace sont non fiables, pas seulement `command`.
 CHAMPS_HOSTILES_JSON='[{"type":"result","subtype":"success\n::error title=injecte::pwned","num_turns":"9\n::warning title=injecte::pwned","errors":["TOP_SECRET_NE_DOIT_PAS_SORTIR\n::error title=injecte::pwned"],"permission_denials":[{"tool_name":"Bash\n::error title=injecte::pwned","tool_input":{"command":"TOP_SECRET_NE_DOIT_PAS_SORTIR\n::error title=injecte::pwned"}}]}]'
+# Cinq causes réalistes contenant chacune un marqueur qui ne doit jamais sortir.
+# Le diagnostic peut lire ces textes pour choisir un libellé constant ; il ne
+# doit publier ni le message, ni le marqueur, ni une portion assainie du message.
+CAUSES_FOURNISSEUR_JSON='[{"type":"result","subtype":"error_during_execution","num_turns":1,"errors":["credit balance exhausted SECRET_CREDIT","service overloaded 503 SECRET_TEMP","OAuth token expired 401 SECRET_AUTH","model claude-opus-5 unavailable SECRET_MODEL","provider anomaly SECRET_UNKNOWN"],"permission_denials":[]}]'
 
 scenario_diag "8. trace absente : ne bloque pas"            VIDE            "rien à diagnostiquer"
 scenario_diag "9. npm + pipe classé sans arguments"         "${REFUS_JSON}" "catégorie=npm run + pipeline"
@@ -504,6 +516,12 @@ scenario_diag "18. arguments de commande jamais publiés"   "${REFUS_JSON}" '!au
 scenario_diag "19. pseudo-commandes jamais republiées"     "${INJECTION_JSON}" '!add-mask|stop-commands|ZZZ'
 scenario_diag "20. sous-type hostile réduit à une valeur sûre" "${CHAMPS_HOSTILES_JSON}" "Issue du run   : autre"
 scenario_diag "21. tous les champs hostiles restent masqués" "${CHAMPS_HOSTILES_JSON}" '!TOP_SECRET_NE_DOIT_PAS_SORTIR|title=injecte|pwned'
+scenario_diag "23. quota/crédits classé sans message brut"    "${CAUSES_FOURNISSEUR_JSON}" "CAPACITE_OU_CREDITS=1"
+scenario_diag "24. capacité temporaire classée sans message" "${CAUSES_FOURNISSEUR_JSON}" "CAPACITE_TEMPORAIRE=1"
+scenario_diag "25. authentification classée sans message"    "${CAUSES_FOURNISSEUR_JSON}" "AUTHENTIFICATION=1"
+scenario_diag "26. modèle classé sans message"               "${CAUSES_FOURNISSEUR_JSON}" "MODELE=1"
+scenario_diag "27. cause inconnue classée sans message"      "${CAUSES_FOURNISSEUR_JSON}" "INCONNUE=1"
+scenario_diag "28. marqueurs fournisseur jamais publiés"     "${CAUSES_FOURNISSEUR_JSON}" '!SECRET_CREDIT|SECRET_TEMP|SECRET_AUTH|SECRET_MODEL|SECRET_UNKNOWN'
 
 # Même une panne de l'interpréteur doit rendre zéro. `continue-on-error: true`
 # reste la seconde barrière contre les erreurs de syntaxe ou de runner.
@@ -521,3 +539,4 @@ fi
 echo
 echo "Bilan final : ${ok} OK / ${ko} KO"
 [ "${ko}" -eq 0 ]
+

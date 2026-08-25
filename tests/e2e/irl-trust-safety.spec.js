@@ -1,20 +1,10 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // GARDE TRUST & SAFETY — PROPOSITION IRL (#134)
 //
-// Le lot ne crée aucun bouton : il pose le point de passage obligé qu'un futur
-// « proposer un IRL » depuis une conversation devra franchir, et verrouille
-// l'invariant de localisation qui, jusqu'ici, ne tenait que par la forme du
-// formulaire de création d'événement.
-//
-// ⚠️ CE QUE CETTE SUITE NE PROUVE PAS, et qu'aucun test client ne peut prouver :
-//   · qu'un MINEUR ne reçoit pas de proposition — `profiles` n'a aucune donnée
-//     d'âge, `state.user.isMinor` est auto-déclaré et local ;
-//   · qu'une personne QUI M'A BLOQUÉ ne reçoit rien — `blocks` est en
-//     `blocks_select_own`, sa ligne m'est illisible ;
-//   · qu'une conversation ne peut pas être forcée — `conversations` INSERT vaut
-//     `check: true` côté base.
-// Ces trois trous sont serveur. Ils sont documentés dans la PR comme préalables
-// bloquants, et c'est la raison pour laquelle `irl_proposal_v1` reste OFF.
+// #136 a fermé côté serveur l'âge prudent des deux comptes, le blocage dans les
+// deux sens et les conversations forçables. Ce lot branche enfin le CTA, mais
+// seulement après `irl_interaction_allowed = true` et avec une revalidation au
+// clic. Le flag reste OFF par défaut et sert uniquement à l'exposition canari.
 //
 // Ce qui EST prouvé ici : le verdict de la garde dans les six cas décidables,
 // son échec FERMÉ quand elle ne peut plus juger, l'invariant de localisation
@@ -45,6 +35,43 @@ async function setFlag(page, v) {
   }, v);
 }
 
+async function installIrlRpc(page, interactionResults) {
+  await page.evaluate((results) => {
+    window._supaReal = true;
+    window.__irlRpcCalls = [];
+    window.__irlInteractionResults = Array.isArray(results) ? results.slice() : [results];
+    window.supa.auth.getSession = async () => ({
+      data: { session: { user: { id: "u_auth_qa" } } }, error: null,
+    });
+    window.supa.rpc = async (name, args) => {
+      window.__irlRpcCalls.push({ name, args });
+      if (name === "declare_birth_year") return { data: true, error: null };
+      if (name === "irl_interaction_allowed") {
+        const next = window.__irlInteractionResults.length > 1
+          ? window.__irlInteractionResults.shift()
+          : window.__irlInteractionResults[0];
+        if (next === "error") return { data: null, error: { message: "panne simulée" } };
+        return { data: next, error: null };
+      }
+      return { data: null, error: { message: "RPC inattendu" } };
+    };
+  }, interactionResults);
+}
+
+async function openIrlDirectConversation(page, id = "conv_irl_qa", target = "u_target_secret") {
+  await page.evaluate(async ({ convId, targetId }) => {
+    state.hintsVus = { feed_auteur: true, profil_visite: true, second_profil: true };
+    fermerHint();
+    const convs = getConversations();
+    if (!convs.some(c => c.id === convId)) convs.unshift({
+      id: convId, userId: targetId, userName: "Autre passionné", userEmoji: "✨",
+      userColor: "#7c3aed", passion: "musique", unread: 0, lastAt: Date.now(),
+      messages: [], isGroup: false,
+    });
+    await openConversation(convId);
+  }, { convId: id, targetId: target });
+}
+
 test.describe("Trust & Safety — garde de la proposition IRL", () => {
 
   // ── Le drapeau ────────────────────────────────────────────────────────────
@@ -71,6 +98,17 @@ test.describe("Trust & Safety — garde de la proposition IRL", () => {
       return irlProposalVerdict("u_autre");
     });
     expect(apres).toEqual({ ok: false, reason: "flag_off" });
+  });
+
+  test("le lien canari active l'aperçu sans persister le drapeau", async ({ page }) => {
+    await bootOnboarded(page);
+    await page.evaluate(() => localStorage.removeItem("passio_irl_proposal_v1"));
+    await page.goto("/index.html?passio_preview=irl-proposal-v1");
+    await page.waitForFunction(() => typeof irlProposalEnabled === "function", null, { timeout: 20000 });
+    expect(await page.evaluate(() => irlProposalEnabled())).toBe(true);
+    expect(await page.evaluate(() => localStorage.getItem("passio_irl_proposal_v1"))).toBeNull();
+    await page.evaluate(() => localStorage.setItem("passio_irl_proposal_v1", "0"));
+    expect(await page.evaluate(() => irlProposalEnabled())).toBe(false);
   });
 
   // ── Les six cas décidables ────────────────────────────────────────────────
@@ -209,6 +247,104 @@ test.describe("Trust & Safety — garde de la proposition IRL", () => {
     const src = fs.readFileSync(path.join(__dirname, "..", "..", "js", "app-07-ia-explore-irl.js"), "utf8");
     expect(src).toContain("N'EST PAS UNE FRONTIÈRE DE SÉCURITÉ");
     expect(src).toContain("#136");
+  });
+
+  // ── CTA conversation : verdict serveur obligatoire ──────────────────────
+
+  test("serveur true : CTA accessible de 44 px et quatrième aide, sans PII télémétrique", async ({ page }) => {
+    await bootOnboarded(page);
+    await setFlag(page, "1");
+    await installIrlRpc(page, true);
+    await page.evaluate(() => {
+      window.__irlTelemetry = [];
+      window.tel = window.tel || {};
+      window.__irlTelOriginal = window.tel.action;
+      window.tel.action = (name, meta) => window.__irlTelemetry.push({ name, meta });
+    });
+    await openIrlDirectConversation(page);
+
+    const cta = page.locator("[data-irl-proposal-action]");
+    await expect(cta).toBeVisible();
+    await expect(cta).toHaveAttribute("aria-label", "Proposer un moment IRL");
+    const box = await cta.boundingBox();
+    expect(box.width).toBeGreaterThanOrEqual(44);
+    expect(box.height).toBeGreaterThanOrEqual(44);
+    await expect(page.locator('.passio-hint[data-hint="conversation_irl"]')).toBeVisible();
+    await expect(page.locator('.passio-hint[data-hint="conversation_irl"]')).toContainText("moment IRL");
+
+    const proof = await page.evaluate(() => ({ calls: window.__irlRpcCalls, telemetry: window.__irlTelemetry }));
+    expect(proof.calls.map(c => c.name)).toEqual(["declare_birth_year", "irl_interaction_allowed"]);
+    expect(proof.telemetry.some(e => e.name === "irl_proposal_cta_shown")).toBe(true);
+    expect(JSON.stringify(proof.telemetry)).not.toContain("u_target_secret");
+    expect(JSON.stringify(proof.telemetry)).not.toContain("Autre passionné");
+  });
+
+  for (const denied of [false, null, "error"]) {
+    test(`serveur ${String(denied)} : aucun CTA ni aide n'est révélé`, async ({ page }) => {
+      await bootOnboarded(page);
+      await setFlag(page, "1");
+      await installIrlRpc(page, denied);
+      await openIrlDirectConversation(page);
+      await page.waitForTimeout(250);
+      await expect(page.locator("[data-irl-proposal-action]")).toHaveCount(0);
+      await expect(page.locator('.passio-hint[data-hint="conversation_irl"]')).toHaveCount(0);
+    });
+  }
+
+  test("OFF par défaut et conversation de groupe : aucun RPC d'éligibilité", async ({ page }) => {
+    await bootOnboarded(page);
+    await setFlag(page, null);
+    await installIrlRpc(page, true);
+    await openIrlDirectConversation(page, "conv_off", "u_target_off");
+    expect(await page.evaluate(() => window.__irlRpcCalls)).toEqual([]);
+    await expect(page.locator("[data-irl-proposal-action]")).toHaveCount(0);
+
+    await setFlag(page, "1");
+    await page.evaluate(async () => {
+      const convs = getConversations();
+      convs.unshift({ id: "conv_group_irl", groupName: "Groupe", userIds: ["u_a", "u_b"],
+        unread: 0, lastAt: Date.now(), messages: [], isGroup: true });
+      await openConversation("conv_group_irl");
+    });
+    // La synchronisation prudente de l'année peut démarrer en arrière-plan dès
+    // l'activation du canari ; le groupe, lui, ne doit jamais demander le
+    // verdict d'interaction qui cible un autre compte.
+    expect(await page.evaluate(() => window.__irlRpcCalls.filter(c => c.name === "irl_interaction_allowed"))).toEqual([]);
+    await expect(page.locator("[data-irl-proposal-action]")).toHaveCount(0);
+  });
+
+  test("le clic revalide : un refus tardif retire le CTA sans ouvrir le formulaire", async ({ page }) => {
+    await bootOnboarded(page);
+    await setFlag(page, "1");
+    await installIrlRpc(page, [true, false]);
+    await openIrlDirectConversation(page);
+    const cta = page.locator("[data-irl-proposal-action]");
+    await expect(cta).toBeVisible();
+    await cta.click();
+    await expect(cta).toHaveCount(0);
+    await expect(page.locator("#modalBackdrop.active")).toHaveCount(0);
+    const names = await page.evaluate(() => window.__irlRpcCalls.map(c => c.name));
+    expect(names).toEqual([
+      "declare_birth_year", "irl_interaction_allowed",
+      "declare_birth_year", "irl_interaction_allowed",
+    ]);
+  });
+
+  test("le clic autorisé ouvre le formulaire IRL existant et reste sans identifiant dans les traces", async ({ page }) => {
+    await bootOnboarded(page);
+    await setFlag(page, "1");
+    await installIrlRpc(page, [true, true]);
+    await page.evaluate(() => {
+      window.__irlTelemetry = [];
+      window.tel = window.tel || {};
+      window.tel.action = (name, meta) => window.__irlTelemetry.push({ name, meta });
+    });
+    await openIrlDirectConversation(page);
+    await page.locator("[data-irl-proposal-action]").click();
+    await expect(page.locator("#modalBackdrop.active .modal-title")).toContainText("Créer un événement IRL");
+    const events = await page.evaluate(() => window.__irlTelemetry);
+    expect(events.some(e => e.name === "irl_proposal_cta_clicked")).toBe(true);
+    expect(JSON.stringify(events)).not.toContain("u_target_secret");
   });
 
   // ── Blocage : les deux sens décidables ───────────────────────────────────
