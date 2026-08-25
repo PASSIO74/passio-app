@@ -79,6 +79,10 @@ SELECT '2. dependances', 'BLOQUANT', 'fonction absente : public.is_conv_member(t
        )
 
 UNION ALL
+-- ⚠️ Cette ligne dit « colonnes ET fonctions » : sa condition doit donc couvrir
+-- les DEUX. Version precedente : elle ne testait que les colonnes, et sortait
+-- « schema complet » a cote du BLOQUANT signalant la fonction manquante --
+-- deux lignes contradictoires, dont une fausse.
 SELECT '2. dependances', 'OK', 'schema complet',
        'Toutes les colonnes et fonctions attendues sont presentes.'
  WHERE NOT EXISTS (
@@ -86,6 +90,12 @@ SELECT '2. dependances', 'OK', 'schema complet',
           WHERE NOT EXISTS (
                   SELECT 1 FROM information_schema.columns c
                    WHERE c.table_schema = 'public' AND c.table_name = r.tbl AND c.column_name = r.col)
+       )
+   AND EXISTS (
+         SELECT 1 FROM pg_catalog.pg_proc p
+           JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+          WHERE n.nspname = 'public' AND p.proname = 'is_conv_member'
+            AND pg_catalog.pg_get_function_identity_arguments(p.oid) ILIKE '%text%text%'
        )
 
 -- 3. Donnees existantes que la migration rendra non conformes. La fonction exige
