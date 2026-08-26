@@ -58,6 +58,18 @@ async function boot(page, opts = {}) {
     await page.addInitScript(() => { window.PASSIO_UI_3 = false; });
   }
   await bootOnboarded(page, opts.errors, 1, opts.preview === false ? {} : { query: PREVIEW });
+
+  // ⚠️ Neutraliser les chargements de posts, comme le fait `bootInteractions`.
+  // Plusieurs chemins font `state.supabasePosts = posts.concat(extra)` : une
+  // requête du démarrage encore EN VOL se résout APRÈS le seed et remplace le
+  // tableau en bloc — le fil ne contient alors plus les publications semées, et
+  // un `toHaveCount(3)` tombe sur 0 ou 4 au hasard de la charge. Mesuré en CI
+  // sur le test « l'ancien CTA ne coexiste jamais ». La cause est une course de
+  // DONNÉES, pas de rendu : on la coupe à la source.
+  await page.evaluate(() => {
+    window.supaLoadPosts = async () => [];
+    window.supaLoadEventPosts = async () => [];
+  });
 }
 
 // Peuple le fil de façon déterministe et capture la télémétrie émise.

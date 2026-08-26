@@ -18,7 +18,43 @@
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
 
+// Neutralise, POUR CETTE SUITE SEULEMENT, l'optimisation de peinture
+// `.post { content-visibility: auto; contain-intrinsic-size: auto 320px }`
+// (styles.css). Elle fait varier la BOÎTE des cartes pendant que Playwright
+// prépare un clic : la cible bouge entre le test de stabilité et le geste, d'où
+// « element is not stable » pendant 15 s, ou un point qui retombe sur
+// l'<article> au lieu du bouton. Ce n'est pas la logique de like — ce que ces
+// tests exercent — mais une optimisation de rendu dont ils héritent.
+//
+// ⚠️ `addInitScript` et non `addStyleTag` : la suite contient un `page.reload()`
+// (l. « ma réaction emoji survit à un rechargement »), qui emporterait une
+// balise ajoutée après coup. Un script d'initialisation se rejoue à CHAQUE
+// navigation. Il survit aussi aux reconstructions du fil : le style vit dans
+// `<head>`, que réécrire `#feedList` ne touche pas.
+//
+// Cette neutralisation n'affaiblit AUCUNE assertion et ne masque pas UI-3A :
+// les tests d'ui-v3-passerelle.spec.js exercent le vrai rendu, avec le CSS de
+// production, y compris les tailles et le parcours tactile.
+async function poserLayoutDeterministe(page) {
+  await page.addInitScript(() => {
+    var poser = function () {
+      if (document.getElementById("__e2e_layout_determin")) return;
+      var st = document.createElement("style");
+      st.id = "__e2e_layout_determin";
+      st.textContent = "#feedList > .post { content-visibility: visible !important;"
+        + " contain-intrinsic-size: none !important; }";
+      (document.head || document.documentElement).appendChild(st);
+    };
+    if (document.head) poser();
+    else document.addEventListener("DOMContentLoaded", poser, { once: true });
+  });
+}
+
 async function bootInteractions(page) {
+  // AVANT la navigation : `bootOnboarded` fait le `goto`, et un script
+  // d'initialisation enregistré après lui ne s'appliquerait qu'au chargement
+  // suivant.
+  await poserLayoutDeterministe(page);
   await bootOnboarded(page);
   await page.evaluate(() => {
     // ⚠️ supaSetPostLike est stubbé à part : il doit répondre { ok:true }, pas
@@ -93,43 +129,17 @@ async function attendreFilStable(page, id) {
       + `état : ${etat ? JSON.stringify(etat) : "indisponible"}\n`
       + `(dansEtat=false ⇒ state.supabasePosts a été remplacé ; dansEtat=true ⇒ le rendu l'omet)\n${e.message}`);
   }
-  // ⚠️ NE PAS ajouter ici un `scrollIntoView` pour « préparer » le clic. Essayé et
-  // MESURÉ en CI le 2026-08-26 : ça empire tout. Sans lui, un seul de ces trois
-  // tests échouait ; avec lui, les trois — et la signature changeait (« element
-  // is not stable » dès la première tentative, sans même le « scrolling into
-  // view »). Défiler soi-même déclenche exactement la cascade de re-mise en page
-  // `content-visibility` qu'on cherchait à éviter, mais plus tôt. Le garde de
-  // boîte ci-dessous suffit : il a rendu la CI verte sans cet appel.
-
   // Compteurs de diagnostic : quand cette attente expire, on veut savoir POURQUOI.
   // « Le nœud a été remplacé 900 fois » et « le nœud a disparu du DOM » appellent
   // des corrections opposées ; sans le chiffre, on choisit à pile ou face.
-  await page.evaluate(() => { window.__filRef = null; window.__filBoite = null; window.__filStable = 0; window.__filDiag = { sondages: 0, remplacements: 0, absences: 0 }; });
+  await page.evaluate(() => { window.__filRef = null; window.__filStable = 0; window.__filDiag = { sondages: 0, remplacements: 0, absences: 0 }; });
   try {
     await page.waitForFunction((s) => {
     const n = document.querySelector(s);
     const d = window.__filDiag; if (d) d.sondages++;
     if (!n) { if (d) d.absences++; window.__filRef = null; window.__filStable = 0; return false; }
-    // ⚠️ Le nœud identique NE SUFFIT PAS. Playwright exige, avant de cliquer, que
-    // la BOÎTE de l'élément soit identique deux frames de suite ; `.post` porte
-    // `content-visibility: auto`, donc chaque carte qui entre dans la vue troque
-    // son estimation `contain-intrinsic-size` contre sa hauteur réelle et décale
-    // tout ce qui suit. Le nœud, lui, n'a pas bougé — d'où des « element is not
-    // stable » (et des « <article> intercepts pointer events » : le point visé
-    // n'est plus sur le bouton) alors que ce garde était déjà satisfait.
-    // Tolérance de 1 px : on veut détecter un fil qui BOUGE, pas l'arrondi
-    // sous-pixel d'une mise en page par ailleurs posée.
-    const r = n.getBoundingClientRect();
-    const boite = Math.round(r.top) + "," + Math.round(r.left) + "," + Math.round(r.height);
-    const memeBoite = window.__filBoite != null
-      && Math.abs(parseFloat(window.__filBoite.split(",")[0]) - Math.round(r.top)) <= 1
-      && window.__filBoite.split(",").slice(1).join(",") === boite.split(",").slice(1).join(",");
-    if (window.__filRef === n && memeBoite) { window.__filStable = (window.__filStable || 0) + 1; }
-    else {
-      if (d && window.__filRef && window.__filRef !== n) d.remplacements++;
-      window.__filRef = n; window.__filStable = 0;
-    }
-    window.__filBoite = boite;
+    if (window.__filRef === n) { window.__filStable = (window.__filStable || 0) + 1; }
+    else { if (d && window.__filRef) d.remplacements++; window.__filRef = n; window.__filStable = 1; }
     return window.__filStable >= 3;
     // ⚠️ polling par INTERVALLE, jamais "raf" : requestAnimationFrame ne se
     // déclenche pas sur une page qui ne compose pas de frames — ce qui est le
