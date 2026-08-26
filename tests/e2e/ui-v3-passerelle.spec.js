@@ -543,6 +543,58 @@ test("aperçu : le lien « Ça me tente » respecte le contraste AA (4,5:1)", as
     .toBeGreaterThanOrEqual(4.5);
 });
 
+// ── ⑦ quater. Mouvement : `prefers-reduced-motion` doit être respecté ──────
+// L'ordre du lot autorise UNE transition courte à l'ouverture du panneau, et
+// exige de respecter `prefers-reduced-motion`. Ce test l'exerce dans les deux
+// réglages : l'animation existe par défaut, et elle disparaît quand l'utilisateur
+// a demandé moins de mouvement — sans que le panneau cesse pour autant de
+// s'ouvrir et de fonctionner.
+test("aperçu : aucune animation quand l'utilisateur demande moins de mouvement", async ({ page }) => {
+  await boot(page);
+  // ⚠️ `page.emulateMedia` et non `test.use({ reducedMotion })` : mesuré ici, la
+  // seconde forme ne parvenait pas jusqu'à la page (`matchMedia(...)` restait à
+  // `false`) et le test aurait alors constaté « pas de réduction » sur un
+  // navigateur qui n'avait rien demandé — un vert qui ne prouve rien. L'appel
+  // explicite, lui, est vérifiable dans la ligne d'assertion ci-dessous.
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  expect(await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches),
+    "prémisse : le réglage doit réellement atteindre la page").toBe(true);
+
+  await seedFeed(page, POSTS);
+  await page.locator('article.post[data-postid="v3_a"] [data-v3-tempt]').click();
+  await expect(page.locator("#v3PassioSheet")).toBeVisible();
+
+  const m = await page.evaluate(() => {
+    const st = getComputedStyle(document.querySelector("#v3PassioSheet .v3-sheet-trace"));
+    return { duree: parseFloat(st.transitionDuration), transform: st.transform };
+  });
+  expect(m.duree, "aucune transition sur le trait").toBe(0);
+  // Le trait doit être ENTIÈREMENT déployé, pas figé à scaleX(0) : couper
+  // l'animation ne doit pas couper l'élément qu'elle animait.
+  expect(m.transform, "le trait reste déployé (identité, pas scaleX(0))")
+    .toBe("matrix(1, 0, 0, 1, 0, 0)");
+
+  // Le panneau reste pleinement utilisable.
+  await expect(page.locator("#v3PassioSheet [data-v3-choice]")).toHaveCount(3);
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#v3PassioSheet")).toBeHidden();
+});
+
+// Le pendant : sans réglage particulier, la transition courte EXISTE bien.
+test("aperçu : la transition d'ouverture existe par défaut", async ({ page }) => {
+  await boot(page);
+  await seedFeed(page, POSTS);
+  await page.locator('article.post[data-postid="v3_a"] [data-v3-tempt]').click();
+  await expect(page.locator("#v3PassioSheet")).toBeVisible();
+
+  const duree = await page.evaluate(() => {
+    const st = getComputedStyle(document.querySelector("#v3PassioSheet .v3-sheet-trace"));
+    return parseFloat(st.transitionDuration);
+  });
+  expect(duree, "une transition, et courte").toBeGreaterThan(0);
+  expect(duree, "pas plus de 400 ms : « transitions courtes et tactiles »").toBeLessThanOrEqual(0.4);
+});
+
 // ── ⑧ Mobile ───────────────────────────────────────────────────────────────
 for (const largeur of [320, 390, 430]) {
   test(`aperçu : aucun débordement et cible tactile ≥ 44 px en ${largeur} px`, async ({ page }) => {
