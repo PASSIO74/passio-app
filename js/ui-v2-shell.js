@@ -542,7 +542,16 @@
   // Candidats pris dans les auteurs RÉELLEMENT présents dans le fil rendu — pas
   // un annuaire, pas une recommandation calculée ailleurs.
   function pickPassionnes(posts) {
-    var st = window.state || {};
+    // `state` est un `let` global (app-01) : comme `MY_UID`, il appartient à
+    // l'environnement lexical partagé des scripts classiques mais PAS à
+    // `window`. Lire seulement `window.state` perdrait donc les suivis et les
+    // blocages dans l'application réelle. Le repli `window.state` reste utile
+    // pour un éventuel harnais isolé qui exposerait explicitement cet état.
+    var st = {};
+    try {
+      if (typeof state !== "undefined" && state) st = state;
+      else if (window.state) st = window.state;
+    } catch (e) {}
     var user = st.user || {};
     var following = user.following || [];
     var blocked = user.blocked || [];
@@ -758,3 +767,4 @@
     decorateEmpty: decorateEmpty,
   };
 })();
+
