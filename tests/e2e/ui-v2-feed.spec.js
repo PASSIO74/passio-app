@@ -1,14 +1,14 @@
-// Lot UI-2 — Feed V2 derrière l'aperçu UNIQUE `?passio_preview=passio-ui-v2`.
+// Lot UI-2 — Feed V2 actif par défaut depuis validation du 2026-08-26.
 //
 // Ce que cette suite prouve, et rien d'autre :
-//   ① l'URL NORMALE ne reçoit AUCUN module UI-2 et garde ses moods ;
-//   ② l'aperçu montre la barre du bas UI-1 ET les cinq intentions UI-2 ;
+//   ① le kill switch restaure le Feed historique et ses moods ;
+//   ② l'URL normale montre la barre du bas UI-1 ET les cinq intentions UI-2 ;
 //   ③ une Bobine est insérée DANS le fil, sans lecture automatique, et le tap
 //      ouvre le viewer EXISTANT sur cette bobine précise ;
 //   ④ « Passionnés à découvrir » n'apparaît jamais en tête, se limite à trois
 //      personnes, exclut moi/suivis/bloqués, n'apparaît pas sous deux candidats
 //      et n'offre qu'une issue : le profil existant ;
-//   ⑤ l'état vide de l'aperçu se termine par une action, l'état vide historique
+//   ⑤ l'état vide de la V2 se termine par une action, l'état vide historique
 //      reste strictement inchangé.
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
@@ -44,7 +44,10 @@ const REELS = [
     text: "Ma bobine plus ancienne", createdAt: 1000, likes: 0, comments: [] },
 ];
 
-async function boot(page, { preview = false, errors = null } = {}) {
+async function boot(page, { preview = false, legacy = false, errors = null } = {}) {
+  if (legacy) {
+    await page.addInitScript(() => localStorage.setItem("passio_ui_v2", "0"));
+  }
   await bootOnboarded(page, errors, 1, preview ? { query: PREVIEW } : {});
 }
 
@@ -79,10 +82,10 @@ async function seedFeed(page, opts = {}) {
   }, [opts.posts || POSTS, opts.reels || [], opts]);
 }
 
-// ── ① L'URL normale n'apprend rien d'UI-2 ───────────────────────────────────
-test("URL normale : aucun module UI-2, aucune Bobine injectée, moods intacts", async ({ page }) => {
+// ── ① Le kill switch restaure le Feed historique ────────────────────────────
+test("kill switch : aucun module UI-2, aucune Bobine injectée, moods intacts", async ({ page }) => {
   const errors = { js: [], console: [], network: [] };
-  await boot(page, { errors });
+  await boot(page, { legacy: true, errors });
   await seedFeed(page, { reels: REELS });
 
   await expect(page.locator("#feedList [data-v2-module]")).toHaveCount(0);
@@ -98,16 +101,16 @@ test("URL normale : aucun module UI-2, aucune Bobine injectée, moods intacts", 
   await expect(page.locator("#appNav")).toBeVisible();
   await expect(page.locator("#appNavV2")).toHaveCount(0);
 
-  expect(errors.js, "exceptions JS sur l'URL normale").toEqual([]);
+  expect(errors.js, "exceptions JS avec le kill switch").toEqual([]);
   // `decorateFeed` signale ses échecs par un console.error préfixé : aucun ne
   // doit apparaître (le reste de la console est couvert par ui-v2-shell.spec).
   expect(errors.console.filter((m) => m.includes("[ui-v2]"))).toEqual([]);
 });
 
 // ── ② Bottom-nav UI-1 et cinq intentions UI-2, ensemble ─────────────────────
-test("aperçu : barre du bas UI-1 et cinq intentions UI-2 simultanément", async ({ page }) => {
+test("URL normale : barre du bas UI-1 et cinq intentions UI-2 simultanément", async ({ page }) => {
   const errors = { js: [], console: [], network: [] };
-  await boot(page, { preview: true, errors });
+  await boot(page, { errors });
   await seedFeed(page, { reels: REELS });
 
   await expect(page.locator("#appNavV2")).toBeVisible();
@@ -286,8 +289,8 @@ test("aperçu : sans contenu de mes suivis, l'action proposée est de publier", 
   await expect(page.locator("#v2CreateSheet")).toBeVisible();
 });
 
-test("URL normale : l'état vide historique est strictement inchangé", async ({ page }) => {
-  await boot(page);
+test("kill switch : l'état vide historique est strictement inchangé", async ({ page }) => {
+  await boot(page, { legacy: true });
   await seedFeed(page, { passions: [] });
 
   const vide = page.locator("#feedEmpty");

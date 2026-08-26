@@ -7,8 +7,10 @@
 > les chantiers de performance profonde et de montée en charge sont suspendus jusqu'à validation
 > visuelle du concept. Les priorités **P0 sécurité ci-dessous restent intégralement en vigueur** —
 > elles deviennent les garde-fous de l'expérimentation, elles ne sont pas suspendues.
-> Doctrine : `DÉCOUVRIR → PARTAGER → RENCONTRER`. Livraison par lots UI-1 → UI-7, chacun derrière
-> l'aperçu non persistant `?passio_preview=passio-ui-v2`, chacun validé par Benjamin avant le suivant.
+> Doctrine : `DÉCOUVRIR → PARTAGER → RENCONTRER`. Livraison par lots UI-1 → UI-7. UI-1 + UI-2
+> sont actives par défaut depuis leur validation du 2026-08-26 ; les lots suivants sont validés
+> visuellement par Benjamin, puis fusionnés et déployés après revue et CI vertes sans demander une
+> seconde autorisation. Les changements critiques restent hors de cette autorisation permanente.
 > En cas de contradiction : décision utilisateur la plus récente pour le produit, ce document UI V2
 > pour la direction UX, `main` GitHub pour l'état réel du code, sécurité déjà acquise non négociable.
 

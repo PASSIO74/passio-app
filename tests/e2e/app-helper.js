@@ -29,9 +29,9 @@ function onboardedState(n = 1) {
 }
 
 // Démarre l'app dans l'état onboardé. `errors` (optionnel) = { js:[], console:[], network:[] }.
-// `opts.query` (optionnel) = chaîne ajoutée à l'URL, p. ex. "?passio_preview=passio-ui-v2".
-// Depuis UI-2 c'est la SEULE façon d'entrer dans la V2 : aucune valeur de
-// localStorage ni aucune variable mémoire ne l'active. Défaut : URL normale.
+// `opts.query` (optionnel) = chaîne ajoutée à l'URL. Depuis le déploiement validé
+// du 2026-08-26, UI-1 + UI-2 sont actives sur l'URL normale ; les tests de
+// secours posent explicitement le kill switch avant le boot.
 async function bootOnboarded(page, errors, nProfiles = 1, opts = {}) {
   if (errors) {
     page.on("pageerror", (e) => errors.js.push("pageerror: " + e.message));

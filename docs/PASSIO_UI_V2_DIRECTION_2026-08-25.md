@@ -460,7 +460,7 @@ Le multi-profil apparaît progressivement lorsqu’il apporte une valeur concrè
 
 - onboarding orienté premier Feed pertinent : livré ;
 - pont Feed → IRL, première étape avec CTA et préremplissage : livré derrière contrôle ;
-- `Envie du moment` : livré — **raccordé à l’aperçu unique `passio-ui-v2` au lot UI-2** ; l’ancien aperçu séparé `feed-intents-v1` n’active plus rien à lui seul ;
+- `Envie du moment` : livré — **raccordé au shell UI-1 et actif par défaut avec UI-2 depuis validation du 2026-08-26** ; l’ancien aperçu séparé `feed-intents-v1` n’est plus un canal distinct ;
 - conversation → IRL et quatrième aide contextuelle : livrés derrière l’aperçu `irl-proposal-v1` ;
 - moteur d’événements, RSVP, liste d’attente, conversation d’événement et retour post-IRL : déjà présents en partie ;
 - règles majorité, blocage et confidentialité IRL : base serveur livrée ;
@@ -468,22 +468,24 @@ Le multi-profil apparaît progressivement lorsqu’il apporte une valeur concrè
 
 Nous devons donc assembler et montrer les capacités existantes avant de reconstruire ce qui fonctionne déjà.
 
-## 14. Mode de validation
+## 14. Mode de validation et de mise en ligne
 
-Toutes les nouveautés d’interface sont regroupées dans un aperçu unique et non persistant :
+UI-1 + UI-2 ont été validées par Benjamin et sont actives par défaut sur l’URL normale depuis le 2026-08-26. L’ancien lien d’aperçu reste compatible :
 
 ```text
 ?passio_preview=passio-ui-v2
 ```
 
-Le nom exact peut être adapté par Claude Code aux conventions réelles du dépôt, mais le principe reste obligatoire :
+Pour chaque lot suivant, le principe reste :
 
-- aucun changement global avant validation ;
-- l’URL normale reste stable ;
-- l’aperçu active la navigation et les surfaces V2 nécessaires ;
+- la branche et sa preview montrent le changement avant fusion ;
+- l’URL normale reste sur la dernière version validée pendant cette revue ;
+- la preview active toutes les surfaces V2 nécessaires au test cohérent ;
 - aucun réglage durable dans le navigateur de l’utilisateur ;
-- un arrêt simple permet de revenir à l’interface actuelle ;
+- un arrêt simple permet de revenir à l’interface historique ;
 - chaque lot produit une URL de preview mobile à tester.
+
+Quand Benjamin valide explicitement un lot visuel ou d’interface à risque normal, cette validation autorise aussi sa fusion squash et son déploiement Git/Netlify après revue et CI vertes : aucune seconde autorisation n’est demandée. Cette règle ne couvre pas l’authentification, les RLS, les migrations, la sécurité, les secrets, les écritures de données de production, les actions destructives, les permissions d’agents, la remédiation automatique ni l’infrastructure de déploiement.
 
 Validation par lot :
 
@@ -914,11 +916,11 @@ Sans retour vers le Feed, l’IRL devient un cul-de-sac. Un souvenir facultatif 
 
 L’utilisateur conserve le choix de publier et de choisir la visibilité. Il n’existe aucune récompense artificielle ni obligation.
 
-### A29. Pourquoi un aperçu unique et non persistant
+### A29. Pourquoi une preview cohérente avant chaque mise en ligne
 
-Les différentes nouveautés forment un concept. Tester séparément une nouvelle barre sur l’ancienne hiérarchie ou un nouvel écran IRL dans l’ancien Feed donnerait des retours trompeurs. Un aperçu `passio-ui-v2` permet de voir la cohérence d’ensemble tout en livrant les changements par petites PR.
+Les différentes nouveautés forment un concept. Tester séparément une nouvelle barre sur l’ancienne hiérarchie ou un nouvel écran IRL dans l’ancien Feed donnerait des retours trompeurs. La preview de PR permet de voir la cohérence d’ensemble tout en livrant les changements par petites PR.
 
-Le mode non persistant évite d’enfermer un compte dans une configuration expérimentale et garantit que l’URL normale reste stable.
+Le test non persistant évite d’enfermer un compte dans une configuration expérimentale. Une fois le lot validé, il rejoint directement l’URL normale ; les kill switches restent disponibles comme solution de secours.
 
 ### A30. Pourquoi des lots courts plutôt qu’une refonte géante
 

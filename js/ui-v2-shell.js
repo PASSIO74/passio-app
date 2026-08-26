@@ -1,25 +1,22 @@
 // ══════════════════════════════════════════════════════════════════════════
-// PASSIO UI V2 — lots UI-1 (cadre et navigation) et UI-2 (Feed), DERRIÈRE UN
-// APERÇU UNIQUE. Direction produit : docs/PASSIO_UI_V2_DIRECTION_2026-08-25.md
+// PASSIO UI V2 — lots UI-1 (cadre et navigation) et UI-2 (Feed), ACTIVÉS PAR
+// DÉFAUT. Direction produit : docs/PASSIO_UI_V2_DIRECTION_2026-08-25.md
 //
-// Ce module est ADDITIF et RÉVERSIBLE : hors aperçu il ne touche à rien —
-// aucun nœud créé, aucune classe posée, aucun style appliqué. L'interface
-// actuelle (barre du bas, profils du fil, onglets Mood, écrans, handlers)
-// reste octet pour octet celle de `main`.
+// Après validation visuelle de Benjamin le 2026-08-26, l'URL normale sert la
+// V2 complète. Le module reste ADDITIF et RÉVERSIBLE : les deux coupures
+// ci-dessous restaurent l'interface historique sans réécrire les données ni
+// les réglages de l'utilisateur.
 //
-//     ?passio_preview=passio-ui-v2       → SEULE façon d'activer la V2
 //     localStorage.passio_ui_v2 = "0"    → kill switch, prioritaire
 //     window.PASSIO_UI_V2 = false        → coupure en mémoire, prioritaire
 //
-// ⚠️ L'aperçu N'EST JAMAIS DURABLE, et AUCUNE valeur POSITIVE ne l'active :
-// ni `localStorage.passio_ui_v2 = "1"` (hérité d'une version antérieure de ce
-// fichier), ni `window.PASSIO_UI_V2 = true`. Les deux drapeaux ne savent que
-// RETIRER l'aperçu. L'URL normale rend donc l'interface actuelle sans
-// exception, quel que soit l'historique du navigateur ou l'état mémoire —
-// un poste ne peut pas rester enfermé dans une V2 non validée.
+// Les anciennes valeurs positives et `?passio_preview=passio-ui-v2` restent
+// tolérées pour compatibilité, mais ne sont plus nécessaires : la V2 est le
+// défaut. Les drapeaux continuent de ne savoir que RETIRER la V2 ; aucune
+// valeur positive n'est écrite par ce module.
 //
-// L'aperçu N'ÉCRIT JAMAIS non plus : ni localStorage, ni `passio_config`, ni le
-// profil actif. Retirer le paramètre de l'URL et recharger suffit à revenir.
+// Le module N'ÉCRIT JAMAIS : ni localStorage, ni `passio_config`, ni le profil
+// actif.
 //
 // Périmètre :
 //   UI-1 — barre du bas et sélecteur « Créer » ;
@@ -39,28 +36,19 @@
   var ROOT_CLASS = "passio-ui-v2";
 
   // ── Drapeau ───────────────────────────────────────────────────────────────
-  // Ordre de priorité : coupure mémoire > kill switch local > canari d'URL >
-  // défaut sûr (désactivé).
+  // Ordre de priorité : coupure mémoire > kill switch local > défaut validé
+  // (activé).
   //
-  // ⚠️ Il n'y a VOLONTAIREMENT aucune branche « valeur positive qui active ».
-  // Les deux drapeaux ne savent que RETIRER : `window.PASSIO_UI_V2 = false`
-  // coupe, `= true` n'active rien ; `localStorage.passio_ui_v2 = "0"` coupe,
-  // `"1"` est ignoré. Un aperçu activable durablement (ou par une variable
-  // mémoire posée n'importe où) finirait par enfermer un poste dans une V2 non
-  // validée, et l'URL normale cesserait d'être la référence stable que la
-  // direction exige (§14). La SEULE activation positive est le canari d'URL.
+  // Il n'y a volontairement aucune branche « valeur positive qui active » :
+  // `window.PASSIO_UI_V2 = false` et `localStorage.passio_ui_v2 = "0"` coupent,
+  // tandis que `true` / `"1"` sont simplement ignorés. L'activation vient de
+  // la décision de déploiement, pas d'un état persistant du navigateur.
   function uiV2Enabled() {
     if (window.PASSIO_UI_V2 === false) return false; // coupure mémoire, jamais l'inverse
     var stored = null;
     try { stored = localStorage.getItem(STORAGE_KEY); } catch (e) {}
-    if (stored === "0") return false; // kill switch : prioritaire sur l'URL
-    try {
-      // Canari non persistant : lecture seule de l'URL, aucune écriture. Toute
-      // autre valeur stockée (dont un « 1 » hérité) est ignorée ici.
-      var preview = new URLSearchParams(window.location.search).get("passio_preview");
-      if (preview === PREVIEW_NAME) return true;
-    } catch (e) {}
-    return false;
+    if (stored === "0") return false;
+    return true;
   }
 
   // ── Destinations de la barre du bas V2 ────────────────────────────────────
@@ -198,7 +186,7 @@
 
     DESTINATIONS.forEach(function (d) {
       // `nav-item` est conservé : `goTo` (app-02) synchronise déjà l'état actif
-      // de TOUS les `.nav-item[data-screen]`, l'aperçu hérite donc gratuitement
+      // de TOUS les `.nav-item[data-screen]`, la V2 hérite donc gratuitement
       // du surlignage correct, y compris sur les navigations programmatiques.
       var el = document.createElement(d.action ? "button" : "div");
       el.className = "nav-item nav-v2-item" + (d.action === "create" ? " nav-v2-cta" : "");
@@ -406,7 +394,7 @@
   }
 
   // Cartes de post RÉELLES, en enfants directs : on ne compte ni les modules
-  // insérés ici, ni un éventuel `.post` imbriqué dans un aperçu.
+  // insérés ici, ni un éventuel `.post` imbriqué dans un module V2.
   function directPosts(list) {
     var out = [];
     var kids = list.children;
@@ -645,8 +633,8 @@
     return box;
   }
 
-  // Appelée par `renderFeed` juste après la peinture des cartes. Hors aperçu
-  // elle ne fait que retirer ses propres nœuds (bascule en mémoire) et rend la
+  // Appelée par `renderFeed` juste après la peinture des cartes. Quand la V2
+  // est coupée, elle ne fait que retirer ses propres nœuds et rend la
   // main : le fil reste exactement celui de `main`.
   function decorateFeed(list, posts) {
     list = list || feedList();
@@ -670,7 +658,7 @@
   }
 
   // ── État vide : une prochaine action, pas un cul-de-sac ───────────────────
-  // Les textes historiques ne sont pas touchés : l'aperçu AJOUTE un bouton qui
+  // Les textes historiques ne sont pas touchés : la V2 AJOUTE un bouton qui
   // dit quoi faire ensuite, et le retire dès qu'il est coupé.
   function decorateEmpty(emptyEl, ctx) {
     emptyEl = emptyEl || document.getElementById("feedEmpty");
@@ -701,7 +689,7 @@
     var legacy = document.getElementById("appNav");
 
     if (!on) {
-      // Chemin par défaut : on ne crée rien et on ne défait rien. Si l'aperçu
+      // Chemin de secours : on ne crée rien et on ne défait rien. Si la V2
       // avait été appliqué dans cette page (bascule en mémoire), on rend
       // exactement l'état d'origine.
       root.classList.remove(ROOT_CLASS);
@@ -762,7 +750,7 @@
     openCreateSheet: openCreateSheet,
     closeCreateSheet: closeCreateSheet,
     dismissHint: fermerAideContextuelle,
-    // UI-2 — appelées par `renderFeed` (app-02). Inertes hors aperçu.
+    // UI-2 — appelées par `renderFeed` (app-02). Inertes quand la V2 est coupée.
     decorateFeed: decorateFeed,
     decorateEmpty: decorateEmpty,
   };

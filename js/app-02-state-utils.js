@@ -2661,13 +2661,11 @@ var selectedMoods = new Set(["creation"]); // Par défaut "Création"
 // drapeau est coupé.
 //
 // ── UI-2 : le rail SUIT le shell V2, il n'a plus d'activation propre ────────
-// Une seule activation positive dans toute la V2 : `?passio_preview=passio-ui-v2`.
-// Les drapeaux ci-dessous ne savent plus que RETIRER — une valeur positive
-// laissée par une version antérieure (`"1"`, `window...=true`) est IGNORÉE, et
-// l'ancien aperçu séparé `?passio_preview=feed-intents-v1` n'active plus rien.
-// Sans quoi l'URL normale cesserait d'être la référence stable de la direction.
+// Depuis la validation visuelle du 2026-08-26, le shell V2 est actif par défaut
+// sur l'URL normale. Les drapeaux ci-dessous ne savent toujours que RETIRER :
+// une valeur positive héritée (`"1"`, `window...=true`) est ignorée, et l'ancien
+// aperçu séparé `?passio_preview=feed-intents-v1` ne constitue plus un canal.
 //
-//     ?passio_preview=passio-ui-v2                → SEULE activation
 //     localStorage.passio_feed_intents_v1 = "0"   → kill switch immédiat
 //     window.PASSIO_FEED_INTENTS_V1 = false        → coupure en mémoire
 //     localStorage.passio_ui_v2 = "0" / PASSIO_UI_V2 = false → coupent le shell,
@@ -2687,7 +2685,7 @@ function feedIntentsEnabled() {
   } catch (e) {}
   if (stored === "0") return false;
   // Puis le shell V2 tranche. `ui-v2-shell.js` est chargé après ce fichier mais
-  // AVANT tout rendu ; le repli ci-dessous applique la même règle d'URL, pour
+  // AVANT tout rendu ; le repli ci-dessous applique le même défaut actif, pour
   // qu'un chargement partiel ne fasse jamais diverger les deux réponses.
   try {
     if (window.PassioUIV2 && typeof window.PassioUIV2.isEnabled === "function") {
@@ -2698,11 +2696,7 @@ function feedIntentsEnabled() {
   try {
     if (localStorage.getItem("passio_ui_v2") === "0") return false;
   } catch (e) {}
-  try {
-    var preview = new URLSearchParams(window.location.search).get("passio_preview");
-    if (preview === "passio-ui-v2") return true;
-  } catch (e) {}
-  return false; // défaut sûr : ancien sélecteur et ancien filtrage inchangés
+  return true;
 }
 
 function normalizeFeedIntent(intent) {
@@ -3428,7 +3422,7 @@ function renderFeed() {
           ? "Sélectionne une passion pour découvrir son contenu."
           : "Sélectionne une passion et un mood.";
       }
-      // UI-2 : sous l'aperçu SEULEMENT, l'état vide se termine par une action
+      // UI-2 : quand la V2 est active, l'état vide se termine par une action
       // (§5). Les textes ci-dessus ne bougent pas — le module ajoute un bouton
       // et le retire de lui-même dès que la V2 est coupée.
       if (window.PassioUIV2 && typeof window.PassioUIV2.decorateEmpty === "function") {
@@ -3481,7 +3475,7 @@ function renderFeed() {
     + (visible.length <= FAST && hasMore ? moreBtnHtml : "");
 
   // UI-2 : Bobine du fil et module « Passionnés à découvrir », insérés APRÈS
-  // les premières cartes et derrière l'aperçu unique. Hors aperçu la fonction
+  // les premières cartes quand la V2 est active. Si elle est coupée, la fonction
   // ne fait rien : aucun post n'est ajouté, retiré ni réordonné dans les deux
   // cas — la décoration ne touche pas `sortedPosts`. Placée ici (dans la
   // peinture rapide) : les deux points d'insertion sont sous FAST, le

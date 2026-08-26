@@ -1,5 +1,7 @@
 # Message à copier dans Claude Code — PASSIO UI-1
 
+> **Archive d’exécution UI-1.** UI-1 a depuis été validée, fusionnée et rendue active par défaut avec UI-2 le 2026-08-26. La règle « ne fusionne et ne déploie rien sans autorisation explicite » ci-dessous a été remplacée pour les lots UI à risque normal : la validation visuelle explicite de Benjamin vaut autorisation de fusion et de déploiement après revue et CI vertes. Les changements critiques restent soumis à une autorisation spécifique.
+
 Le document joint `PASSIO_DIRECTION_UI_CONCEPT_TESTABLE_2026-08-25.md` devient la base produit canonique de la future interface PASSIO.
 
 ## Organisation et autorité
