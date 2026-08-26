@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-// Captures avant/après du lot UI-1 (shell et navigation V2), en 390 × 844.
+// Captures legacy/V2 du lot UI-1 (shell et navigation V2), en 390 × 844.
 //
-// « avant »  = URL normale, interface actuelle inchangée ;
-// « après »  = même état, même serveur, avec ?passio_preview=passio-ui-v2.
+// « avant »  = interface historique sous kill switch ;
+// « après »  = UI-1 + UI-2 actives par défaut sur l'URL normale.
 //
 // Les deux séries sont prises dans la MÊME session de navigateur et le MÊME état
-// local : une différence visible est donc imputable à l'aperçu, pas au jeu de
+// local : une différence visible est donc imputable à la V2, pas au jeu de
 // données. Usage : `npm run serve` puis `node scripts/capture-ui-v2.js [avant|apres]`.
 const { chromium } = require("@playwright/test");
 const { GATE_TOKEN, GATE_KEY } = require("../tests/e2e/gate-helper");
@@ -39,14 +39,15 @@ const STATE = {
   const browser = await chromium.launch();
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, locale: "fr-FR" });
   const page = await ctx.newPage();
-  await page.addInitScript(([k, t, st]) => {
+  await page.addInitScript(([k, t, st, phase]) => {
     sessionStorage.setItem(k, t);
     sessionStorage.setItem("passio_pwa_dismissed", "1");
     localStorage.setItem("passio_mvp_state_v1", JSON.stringify(st));
-  }, [GATE_KEY, GATE_TOKEN, STATE]);
+    if (phase === "avant") localStorage.setItem("passio_ui_v2", "0");
+    else localStorage.removeItem("passio_ui_v2");
+  }, [GATE_KEY, GATE_TOKEN, STATE, PHASE]);
 
-  const query = PHASE === "apres" ? "?passio_preview=passio-ui-v2" : "";
-  await page.goto(`http://127.0.0.1:${PORT}/index.html${query}`);
+  await page.goto(`http://127.0.0.1:${PORT}/index.html`);
   await page.waitForTimeout(3500);
   await page.evaluate(() => { const l = document.getElementById("landing"); if (l) l.classList.remove("active"); });
   await page.evaluate(() => { try { toggleProfileFilter("musique"); } catch (e) {} });
@@ -71,7 +72,7 @@ const STATE = {
     console.warn("✗ barre du bas introuvable :", navSel);
   }
 
-  // Le sélecteur « Créer » n'existe que dans l'aperçu V2.
+  // Le sélecteur « Créer » n'existe que dans la V2.
   if (PHASE === "apres") {
     await page.evaluate((scr) => goTo(scr), "feed");
     await page.waitForTimeout(700);
