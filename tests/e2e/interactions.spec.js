@@ -93,18 +93,13 @@ async function attendreFilStable(page, id) {
       + `état : ${etat ? JSON.stringify(etat) : "indisponible"}\n`
       + `(dansEtat=false ⇒ state.supabasePosts a été remplacé ; dansEtat=true ⇒ le rendu l'omet)\n${e.message}`);
   }
-  // On amène la cible dans la vue NOUS-MÊMES, avant de mesurer sa stabilité.
-  // Sinon c'est Playwright qui le fait au moment du clic — et ce défilement
-  // relance la mise en page des cartes `content-visibility: auto` : la boîte
-  // rebouge APRÈS le garde, le point visé retombe sur l'<article> au lieu du
-  // bouton (« intercepts pointer events »), puis plus rien ne se stabilise.
-  // Cible déjà dans la vue = « scrolling into view » sans effet = pas de
-  // re-mise en page. Aucune assertion n'est touchée : on prépare le geste, on
-  // ne le remplace pas.
-  await page.evaluate((s) => {
-    const n = document.querySelector(s);
-    if (n) n.scrollIntoView({ block: "center", inline: "nearest" });
-  }, sel);
+  // ⚠️ NE PAS ajouter ici un `scrollIntoView` pour « préparer » le clic. Essayé et
+  // MESURÉ en CI le 2026-08-26 : ça empire tout. Sans lui, un seul de ces trois
+  // tests échouait ; avec lui, les trois — et la signature changeait (« element
+  // is not stable » dès la première tentative, sans même le « scrolling into
+  // view »). Défiler soi-même déclenche exactement la cascade de re-mise en page
+  // `content-visibility` qu'on cherchait à éviter, mais plus tôt. Le garde de
+  // boîte ci-dessous suffit : il a rendu la CI verte sans cet appel.
 
   // Compteurs de diagnostic : quand cette attente expire, on veut savoir POURQUOI.
   // « Le nœud a été remplacé 900 fois » et « le nœud a disparu du DOM » appellent
