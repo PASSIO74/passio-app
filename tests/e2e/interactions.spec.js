@@ -96,14 +96,32 @@ async function attendreFilStable(page, id) {
   // Compteurs de diagnostic : quand cette attente expire, on veut savoir POURQUOI.
   // « Le nœud a été remplacé 900 fois » et « le nœud a disparu du DOM » appellent
   // des corrections opposées ; sans le chiffre, on choisit à pile ou face.
-  await page.evaluate(() => { window.__filRef = null; window.__filStable = 0; window.__filDiag = { sondages: 0, remplacements: 0, absences: 0 }; });
+  await page.evaluate(() => { window.__filRef = null; window.__filBoite = null; window.__filStable = 0; window.__filDiag = { sondages: 0, remplacements: 0, absences: 0 }; });
   try {
     await page.waitForFunction((s) => {
     const n = document.querySelector(s);
     const d = window.__filDiag; if (d) d.sondages++;
     if (!n) { if (d) d.absences++; window.__filRef = null; window.__filStable = 0; return false; }
-    if (window.__filRef === n) { window.__filStable = (window.__filStable || 0) + 1; }
-    else { if (d && window.__filRef) d.remplacements++; window.__filRef = n; window.__filStable = 1; }
+    // ⚠️ Le nœud identique NE SUFFIT PAS. Playwright exige, avant de cliquer, que
+    // la BOÎTE de l'élément soit identique deux frames de suite ; `.post` porte
+    // `content-visibility: auto`, donc chaque carte qui entre dans la vue troque
+    // son estimation `contain-intrinsic-size` contre sa hauteur réelle et décale
+    // tout ce qui suit. Le nœud, lui, n'a pas bougé — d'où des « element is not
+    // stable » (et des « <article> intercepts pointer events » : le point visé
+    // n'est plus sur le bouton) alors que ce garde était déjà satisfait.
+    // Tolérance de 1 px : on veut détecter un fil qui BOUGE, pas l'arrondi
+    // sous-pixel d'une mise en page par ailleurs posée.
+    const r = n.getBoundingClientRect();
+    const boite = Math.round(r.top) + "," + Math.round(r.left) + "," + Math.round(r.height);
+    const memeBoite = window.__filBoite != null
+      && Math.abs(parseFloat(window.__filBoite.split(",")[0]) - Math.round(r.top)) <= 1
+      && window.__filBoite.split(",").slice(1).join(",") === boite.split(",").slice(1).join(",");
+    if (window.__filRef === n && memeBoite) { window.__filStable = (window.__filStable || 0) + 1; }
+    else {
+      if (d && window.__filRef && window.__filRef !== n) d.remplacements++;
+      window.__filRef = n; window.__filStable = 0;
+    }
+    window.__filBoite = boite;
     return window.__filStable >= 3;
     // ⚠️ polling par INTERVALLE, jamais "raf" : requestAnimationFrame ne se
     // déclenche pas sur une page qui ne compose pas de frames — ce qui est le

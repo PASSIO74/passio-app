@@ -412,9 +412,61 @@ test("aperçu : l'ancien CTA « Organiser un IRL » ne coexiste jamais avec « �
   await seedFeed(page, POSTS);
 
   await expect(page.locator("#feedList [data-v3-tempt]")).toHaveCount(3);
-  await expect(page.locator("#feedList .feed-irl-bridge")).toHaveCount(0);
-  await expect(page.locator("#feedList .feed-irl-cta")).toHaveCount(0);
+  // Le CTA historique est bien RENDU par le moteur (le pont est allumé)…
+  await expect(page.locator("#feedList .feed-irl-bridge")).toHaveCount(3);
+  // …mais aucun n'est visible, et son libellé n'apparaît nulle part.
+  await expect(page.locator("#feedList .feed-irl-bridge").first()).toBeHidden();
   expect(await page.locator("#feedList").innerText()).not.toContain("Organiser un IRL");
+});
+
+// Le pendant du test précédent : couper UI-3A doit RENDRE le CTA historique.
+// Le masquer par CSS plutôt que le retirer du DOM est ce qui garantit ce retour ;
+// l'implémentation initiale le détruisait et la carte se retrouvait sans aucune
+// porte vers l'IRL après coupure (défaut relevé en contre-revue).
+test("aperçu : couper UI-3A restitue le CTA historique, sans repeindre le fil", async ({ page }) => {
+  await boot(page);
+  await page.evaluate(() => { window.PASSIO_FEED_IRL_BRIDGE_V1 = true; });
+  await seedFeed(page, POSTS);
+
+  await expect(page.locator("#feedList [data-v3-tempt]")).toHaveCount(3);
+  await expect(page.locator("#feedList .feed-irl-bridge").first()).toBeHidden();
+
+  // Coupure en mémoire, SANS toucher au fil : aucun renderFeed n'est appelé.
+  await page.evaluate(() => { window.PASSIO_UI_3 = false; window.PassioUIV3.apply(); });
+
+  await expect(page.locator("#feedList [data-v3-tempt]")).toHaveCount(0);
+  await expect(page.locator("#feedList .feed-irl-bridge").first()).toBeVisible();
+  expect(await page.locator("#feedList").innerText()).toContain("Organiser un IRL");
+});
+
+// ── ⑦ bis. L'aide contextuelle ne doit pas barrer la route ─────────────────
+// Le harnais de cette suite ferme les aides pour rendre les taps déterministes.
+// Ce test fait l'INVERSE : il en affiche une pour de vrai, et prouve que le
+// parcours reste atteignable — sinon le confort du test masquerait un défaut
+// produit (une bulle `position: fixed` qui intercepte le tap).
+test("aperçu : une aide contextuelle VISIBLE n'empêche pas « Ça me tente »", async ({ page }) => {
+  await boot(page);
+  await seedFeed(page, POSTS);
+
+  // On affiche réellement l'aide « auteur », ancrée sur la première carte.
+  const affichee = await page.evaluate(() => {
+    state.hintsVus = {};
+    return montrerHint("feed_auteur", "#feedList .post .post-author");
+  });
+  expect(affichee, "l'aide doit réellement s'être affichée").toBe(true);
+  const bulle = page.locator('.passio-hint[data-hint="feed_auteur"]');
+  await expect(bulle).toBeVisible();
+
+  // Le parcours reste atteignable, aide affichée.
+  await page.locator('article.post[data-postid="v3_a"] [data-v3-tempt]').click();
+  await expect(page.locator("#v3PassioSheet")).toBeVisible();
+  // …et l'aide a été fermée proprement, pas recouverte : aucune bulle orpheline
+  // ne flotte au-dessus de la feuille.
+  await expect(bulle).toHaveCount(0);
+
+  await expect(page.locator("#v3PassioSheet [data-v3-choice]")).toHaveCount(3);
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#v3PassioSheet")).toBeHidden();
 });
 
 // ── ⑧ Mobile ───────────────────────────────────────────────────────────────

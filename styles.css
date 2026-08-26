@@ -9380,6 +9380,13 @@ body.ctx-locked #appMain { overflow: hidden; }
   --v3-trace: linear-gradient(90deg, var(--v3-violet) 0%, var(--v3-coral) 100%);
 }
 
+/* Le CTA historique du pont Fil → IRL (« 🤝 Organiser un IRL ») ne cohabite pas
+   avec « Ça me tente » : deux portes vers l'IRL au bas d'une même carte. Il est
+   MASQUÉ ici, jamais retiré du DOM — la règle est portée par `.passio-ui-3`,
+   donc les kill switches la défont d'eux-mêmes et le CTA historique réapparaît
+   exactement tel qu'il était, sans attendre une repeinte du fil. */
+:root.passio-ui-3 .feed-irl-bridge { display: none; }
+
 /* ── Le « trait Passio » sur la carte du fil ────────────────────────────────
    Badge de la Passio → ligne fine violet/corail → lien discret. C'est la LIGNE
    qui porte la signature (direction §A19) : volontairement pas de pastille

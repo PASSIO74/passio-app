@@ -179,21 +179,19 @@
     return row;
   }
 
-  // Le CTA historique « 🤝 Organiser un IRL » (pont `feed_irl_bridge_v1`) est
-  // RETIRÉ de la carte quand UI-3A est actif : les deux répondent au même besoin,
-  // les afficher ensemble donnerait deux portes vers l'IRL au bas d'une carte.
-  // Retiré du DOM seulement — le moteur, lui, est réutilisé tel quel.
-  function retirerCtaHistorique(article) {
-    var vieux = article.querySelectorAll(".feed-irl-bridge");
-    for (var i = 0; i < vieux.length; i++) {
-      if (vieux[i].parentNode) vieux[i].parentNode.removeChild(vieux[i]);
-    }
-  }
-
+  // Le CTA historique « 🤝 Organiser un IRL » (pont `feed_irl_bridge_v1`) ne doit
+  // pas cohabiter avec « Ça me tente » : les deux répondent au même besoin, les
+  // afficher ensemble donnerait deux portes vers l'IRL au bas d'une carte.
+  //
+  // ⚠️ Il est MASQUÉ par une règle CSS ancrée à `.passio-ui-3`, jamais retiré du
+  // DOM. Le retirer marchait à l'aller et pas au retour : une coupure en mémoire
+  // enlevait bien « Ça me tente », mais ne rendait pas le CTA historique — la
+  // carte se retrouvait sans aucune porte vers l'IRL jusqu'à la repeinte
+  // suivante. Un masquage porté par la classe racine se défait tout seul quand
+  // le kill switch la retire. (Défaut relevé en contre-revue, PR #163.)
   function decorerArticle(article) {
     var id = article.getAttribute("data-postid");
     if (!id) return;
-    retirerCtaHistorique(article);
     if (article.querySelector("[data-v3-bridge]")) return; // déjà décorée
 
     var post = trouverPost(id);
@@ -440,10 +438,27 @@
     });
   }
 
+  // Une aide contextuelle (`.passio-hint`) est `position: fixed` et se pose
+  // PAR-DESSUS le fil : ouverte au moment où l'on tape « Ça me tente », elle
+  // recouvre le bas de la carte et intercepte le tap. Le produit prévoit déjà sa
+  // fermeture — on l'appelle, exactement comme la feuille « Créer » d'UI-1,
+  // plutôt que de lui passer devant avec un z-index (ce qui laisserait une bulle
+  // orpheline flotter sur la feuille).
+  function fermerAideContextuelle() {
+    try {
+      if (typeof window.fermerHint === "function") { window.fermerHint(); return; }
+    } catch (e) {}
+    try {
+      var hint = document.querySelector(".passio-hint");
+      if (hint && hint.parentNode) hint.parentNode.removeChild(hint);
+    } catch (e) {}
+  }
+
   function openSheet(postId) {
     if (!uiV3Enabled()) return false;
     var post = trouverPost(postId);
     if (!eligible(post)) return false;
+    fermerAideContextuelle();
 
     ctxPostId = String(post.id);
     ctxPassion = passionDuPost(post);
@@ -676,5 +691,6 @@
     decorateFeed: decorateFeed,
     openSheet: openSheet,
     closeSheet: closeSheet,
+    dismissHint: fermerAideContextuelle,
   };
 })();
