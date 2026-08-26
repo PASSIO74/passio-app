@@ -1,10 +1,10 @@
-// Lot UI-1 — cadre visuel et navigation V2, derrière l'aperçu `passio-ui-v2`.
+// Lot UI-1 — cadre visuel et navigation V2, actif par défaut depuis validation.
 //
 // Ce que cette suite prouve, et rien d'autre :
-//   ① l'URL NORMALE garde exactement la navigation actuelle ;
-//   ② l'aperçu expose cinq destinations, libellées et atteignables ;
+//   ① le kill switch restaure exactement la navigation historique ;
+//   ② l'URL normale expose cinq destinations, libellées et atteignables ;
 //   ③ Bobines et CDV quittent la barre principale mais restent routables ;
-//   ④ l'aperçu n'écrit AUCUN réglage durable et ne change pas le profil actif ;
+//   ④ la V2 n'écrit AUCUN réglage durable et ne change pas le profil actif ;
 //   ⑤ en 390 × 844 aucun libellé n'est tronqué et aucune cible n'est trop petite.
 //
 // Chaque test démarre sur un état onboardé injecté (CI-safe : aucun compte
@@ -24,7 +24,7 @@ const V2_NAV = [
   { key: "profile", label: "Profil", screen: "profiles" },
 ];
 
-async function boot(page, { preview = false, errors = null } = {}) {
+async function boot(page, { preview = false, legacy = false, errors = null } = {}) {
   if (errors) {
     page.on("pageerror", (e) => errors.js.push("pageerror: " + e.message));
     page.on("console", (m) => {
@@ -34,13 +34,14 @@ async function boot(page, { preview = false, errors = null } = {}) {
       else errors.console.push(txt);
     });
   }
-  await page.addInitScript(([k, t, st]) => {
+  await page.addInitScript(([k, t, st, useLegacy]) => {
     sessionStorage.setItem(k, t);
     sessionStorage.setItem("passio_pwa_dismissed", "1");
+    if (useLegacy) localStorage.setItem("passio_ui_v2", "0");
     if (!localStorage.getItem("passio_mvp_state_v1")) {
       localStorage.setItem("passio_mvp_state_v1", JSON.stringify(st));
     }
-  }, [GATE_KEY, GATE_TOKEN, onboardedState(1)]);
+  }, [GATE_KEY, GATE_TOKEN, onboardedState(1), legacy]);
   await page.goto("/index.html" + (preview ? PREVIEW : ""));
   await page.waitForFunction(() => {
     const el = document.getElementById("screen-feed");
@@ -62,10 +63,10 @@ async function screenIsActive(page, screen) {
   }, screen, { timeout: 8000 });
 }
 
-// ── ① L'URL normale ne bouge pas ────────────────────────────────────────────
-test("URL normale : la navigation actuelle est intacte, aucun nœud V2 créé", async ({ page }) => {
+// ── ① Le kill switch restaure l'interface historique ────────────────────────
+test("kill switch : navigation historique intacte, aucun nœud V2 créé", async ({ page }) => {
   const errors = { js: [], console: [], network: [] };
-  await boot(page, { errors });
+  await boot(page, { legacy: true, errors });
 
   // Pas un seul artefact de l'aperçu.
   await expect(page.locator("#appNavV2")).toHaveCount(0);
@@ -87,14 +88,14 @@ test("URL normale : la navigation actuelle est intacte, aucun nœud V2 créé", 
   await expect(page.locator("#profileStrip")).toHaveCount(1);
   await expect(page.locator("#moodSelector")).toHaveCount(1);
 
-  expect(errors.js, "exceptions JS sur l'URL normale").toEqual([]);
-  expect(errors.console, "console.error sur l'URL normale").toEqual([]);
+  expect(errors.js, "exceptions JS avec le kill switch").toEqual([]);
+  expect(errors.console, "console.error avec le kill switch").toEqual([]);
 });
 
-// ── ② Les cinq destinations de l'aperçu ─────────────────────────────────────
-test("aperçu : cinq entrées libellées, chacune menant à sa route existante", async ({ page }) => {
+// ── ② Les cinq destinations sur l'URL normale ────────────────────────────────
+test("URL normale : cinq entrées libellées, chacune menant à sa route existante", async ({ page }) => {
   const errors = { js: [], console: [], network: [] };
-  await boot(page, { preview: true, errors });
+  await boot(page, { errors });
 
   const nav = page.locator("#appNavV2");
   await expect(nav).toBeVisible();
@@ -124,8 +125,8 @@ test("aperçu : cinq entrées libellées, chacune menant à sa route existante",
     await expect(nav.locator(`.nav-v2-item[data-v2-key="${entry.key}"]`)).toHaveClass(/active/);
   }
 
-  expect(errors.js, "exceptions JS dans l'aperçu").toEqual([]);
-  expect(errors.console, "console.error dans l'aperçu").toEqual([]);
+  expect(errors.js, "exceptions JS dans la V2").toEqual([]);
+  expect(errors.console, "console.error dans la V2").toEqual([]);
 });
 
 // ── Le bouton central ouvre une feuille, pas le Studio ──────────────────────
@@ -286,8 +287,8 @@ test("aperçu : aucun réglage durable écrit, profil actif inchangé", async ({
     return window.PassioUIV2.isEnabled();
   })).toBe(false);
 
-  // Rafraîchir l'URL NORMALE restaure l'interface actuelle : c'est la garantie
-  // centrale du contrat d'aperçu (l'état local est conservé par le helper).
+  // Le kill switch persistant restaure l'interface historique au rechargement.
+  await page.evaluate(() => localStorage.setItem("passio_ui_v2", "0"));
   await page.goto("/index.html");
   await page.waitForFunction(() => {
     const el = document.getElementById("screen-feed");
@@ -297,11 +298,8 @@ test("aperçu : aucun réglage durable écrit, profil actif inchangé", async ({
   await expect(page.locator("#appNav")).toBeVisible();
 });
 
-// ── ④ ter — un « 1 » hérité dans localStorage n'active JAMAIS l'aperçu ──────
-// Régression demandée en revue : tant qu'une valeur locale pouvait activer la
-// V2, un poste ayant visité l'aperçu une fois pouvait y rester enfermé et
-// l'URL normale cessait d'être la référence stable exigée par la direction.
-test("URL normale : un passio_ui_v2 « 1 » hérité est ignoré", async ({ page }) => {
+// ── ④ ter — un « 1 » hérité reste sans effet propre ─────────────────────────
+test("URL normale : un passio_ui_v2 « 1 » hérité ne change pas le défaut V2", async ({ page }) => {
   const errors = { js: [], console: [], network: [] };
   await page.addInitScript(() => {
     // Valeur laissée par une version antérieure du module.
@@ -309,17 +307,15 @@ test("URL normale : un passio_ui_v2 « 1 » hérité est ignoré", async ({ page
   });
   await boot(page, { errors });
 
-  // L'aperçu ne doit exister sous AUCUNE forme.
-  await expect(page.locator("#appNavV2")).toHaveCount(0);
+  // La V2 vient du déploiement par défaut, pas de cette valeur héritée.
+  await expect(page.locator("#appNavV2")).toBeVisible();
   await expect(page.locator("#v2CreateSheet")).toHaveCount(0);
-  expect(await page.evaluate(() => document.documentElement.classList.contains("passio-ui-v2"))).toBe(false);
-  expect(await page.evaluate(() => window.PassioUIV2.isEnabled())).toBe(false);
+  expect(await page.evaluate(() => document.documentElement.classList.contains("passio-ui-v2"))).toBe(true);
+  expect(await page.evaluate(() => window.PassioUIV2.isEnabled())).toBe(true);
 
-  // …et la navigation historique reste bien celle qui pilote l'écran.
-  const legacy = page.locator("#appNav");
-  await expect(legacy).toBeVisible();
-  await expect(page.locator('#appNav .nav-item[data-screen="feed"]')).toBeVisible();
-  await page.click('#appNav .nav-item[data-screen="irl"]');
+  // …et c'est bien la navigation V2 qui pilote l'écran.
+  await expect(page.locator("#appNav")).toBeHidden();
+  await page.click('#appNavV2 .nav-v2-item[data-v2-key="meet"]');
   await screenIsActive(page, "irl");
 
   // La valeur héritée est ignorée, pas réécrite : l'aperçu n'écrit jamais.

@@ -2,14 +2,12 @@
 //
 // Le rail est une couche de réordonnancement : il doit conserver le set complet
 // des posts déjà autorisés par les passions/suivis, laisser le legacy
-// strictement intact hors aperçu et ne jamais émettre d'identifiant ni de texte
+// strictement intact sous kill switch et ne jamais émettre d'identifiant ni de texte
 // libre dans sa télémétrie.
 //
-// ⚠️ UI-2 : le rail n'a plus d'activation propre. La SEULE activation positive
-// de toute la V2 est `?passio_preview=passio-ui-v2` — plus aucune valeur de
-// `localStorage` ni variable mémoire ne l'allume, et l'ancien aperçu séparé
-// `?passio_preview=feed-intents-v1` n'active plus rien. Les tests d'activation
-// ci-dessous couvrent chacune de ces valeurs héritées, une par une.
+// UI-2 n'a plus d'activation propre : il suit UI-1 + UI-2, actives par défaut
+// depuis validation du 2026-08-26. Les valeurs positives héritées restent
+// inertes ; seules les coupures explicites peuvent retirer la V2.
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
 
@@ -22,7 +20,7 @@ const POSTS = [
   { id: "intent_meet", authorId: "author_d", authorName: "D", passion: "musique", mood: "irl", type: "text", text: "Rencontrer", createdAt: 4000, likes: 0, comments: [] },
 ];
 
-// L'aperçu se demande au BOOT, dans l'URL : c'est le seul interrupteur.
+// Le paramètre d'aperçu est conservé pour compatibilité avec les anciens liens.
 async function boot(page, { preview = false } = {}) {
   await bootOnboarded(page, null, 1, preview ? { query: PREVIEW } : {});
 }
@@ -64,10 +62,10 @@ function renderedIds(page) {
   return page.locator("#feedList .post").evaluateAll((els) => els.map((el) => el.dataset.postid));
 }
 
-test.describe("Fil — Envie du moment (aperçu unique passio-ui-v2)", () => {
-  test("l'aperçu unique active le rail sans rien rendre persistant", async ({ page }) => {
+test.describe("Fil — Envie du moment (UI-2 active par défaut)", () => {
+  test("l'URL normale active le rail sans rien rendre persistant", async ({ page }) => {
     await page.addInitScript(() => localStorage.removeItem("passio_feed_intents_v1"));
-    await boot(page, { preview: true });
+    await boot(page);
 
     await expect(page.locator("#feedIntentSelector")).toBeVisible({ timeout: 20000 });
     await expect(page.locator("#moodSelector")).toBeHidden();
@@ -85,63 +83,63 @@ test.describe("Fil — Envie du moment (aperçu unique passio-ui-v2)", () => {
 
     await page.evaluate(() => localStorage.removeItem("passio_feed_intents_v1"));
     await page.goto("/index.html");
-    await expect(page.locator("#moodSelector")).toBeVisible({ timeout: 20000 });
-    await expect(page.locator("#feedIntentSelector")).toBeHidden();
+    await expect(page.locator("#moodSelector")).toBeHidden({ timeout: 20000 });
+    await expect(page.locator("#feedIntentSelector")).toBeVisible();
   });
 
-  // ── Valeurs héritées : AUCUNE n'active l'interface sur l'URL normale ───────
-  test("URL normale : un passio_feed_intents_v1 « 1 » hérité est ignoré", async ({ page }) => {
+  // ── Valeurs héritées : inertes, sans contredire le défaut actif ────────────
+  test("URL normale : un passio_feed_intents_v1 « 1 » hérité est sans effet", async ({ page }) => {
     await page.addInitScript(() => localStorage.setItem("passio_feed_intents_v1", "1"));
     await boot(page);
 
-    await expect(page.locator("#moodSelector")).toBeVisible();
-    await expect(page.locator("#feedIntentSelector")).toBeHidden();
-    expect(await page.evaluate(() => feedIntentsEnabled())).toBe(false);
+    await expect(page.locator("#moodSelector")).toBeHidden();
+    await expect(page.locator("#feedIntentSelector")).toBeVisible();
+    expect(await page.evaluate(() => feedIntentsEnabled())).toBe(true);
     // Ignorée, pas réécrite : la garde ne touche pas au navigateur.
     expect(await page.evaluate(() => localStorage.getItem("passio_feed_intents_v1"))).toBe("1");
   });
 
-  test("URL normale : window.PASSIO_FEED_INTENTS_V1 = true n'active rien", async ({ page }) => {
+  test("URL normale : window.PASSIO_FEED_INTENTS_V1 = true reste sans effet", async ({ page }) => {
     await page.addInitScript(() => { window.PASSIO_FEED_INTENTS_V1 = true; });
     await boot(page);
 
-    await expect(page.locator("#moodSelector")).toBeVisible();
-    await expect(page.locator("#feedIntentSelector")).toBeHidden();
-    expect(await page.evaluate(() => feedIntentsEnabled())).toBe(false);
+    await expect(page.locator("#moodSelector")).toBeHidden();
+    await expect(page.locator("#feedIntentSelector")).toBeVisible();
+    expect(await page.evaluate(() => feedIntentsEnabled())).toBe(true);
   });
 
-  test("URL normale : window.PASSIO_UI_V2 = true n'active ni shell ni rail", async ({ page }) => {
+  test("URL normale : window.PASSIO_UI_V2 = true ne change pas le défaut actif", async ({ page }) => {
     await page.addInitScript(() => { window.PASSIO_UI_V2 = true; });
     await boot(page);
 
-    await expect(page.locator("#appNavV2")).toHaveCount(0);
-    await expect(page.locator("#appNav")).toBeVisible();
-    await expect(page.locator("#moodSelector")).toBeVisible();
-    await expect(page.locator("#feedIntentSelector")).toBeHidden();
-    expect(await page.evaluate(() => window.PassioUIV2.isEnabled())).toBe(false);
-    expect(await page.evaluate(() => feedIntentsEnabled())).toBe(false);
+    await expect(page.locator("#appNavV2")).toBeVisible();
+    await expect(page.locator("#appNav")).toBeHidden();
+    await expect(page.locator("#moodSelector")).toBeHidden();
+    await expect(page.locator("#feedIntentSelector")).toBeVisible();
+    expect(await page.evaluate(() => window.PassioUIV2.isEnabled())).toBe(true);
+    expect(await page.evaluate(() => feedIntentsEnabled())).toBe(true);
   });
 
-  test("URL normale : un passio_ui_v2 « 1 » hérité n'active pas le rail non plus", async ({ page }) => {
+  test("URL normale : un passio_ui_v2 « 1 » hérité reste sans effet", async ({ page }) => {
     await page.addInitScript(() => localStorage.setItem("passio_ui_v2", "1"));
     await boot(page);
 
-    await expect(page.locator("#moodSelector")).toBeVisible();
-    await expect(page.locator("#feedIntentSelector")).toBeHidden();
-    expect(await page.evaluate(() => feedIntentsEnabled())).toBe(false);
+    await expect(page.locator("#moodSelector")).toBeHidden();
+    await expect(page.locator("#feedIntentSelector")).toBeVisible();
+    expect(await page.evaluate(() => feedIntentsEnabled())).toBe(true);
   });
 
-  test("l'ancien aperçu feed-intents-v1 n'active plus rien à lui seul", async ({ page }) => {
+  test("l'ancien paramètre feed-intents-v1 ne crée aucun mode séparé", async ({ page }) => {
     await bootOnboarded(page, null, 1, { query: "?passio_preview=feed-intents-v1" });
 
-    await expect(page.locator("#moodSelector")).toBeVisible();
-    await expect(page.locator("#feedIntentSelector")).toBeHidden();
-    await expect(page.locator("#appNavV2")).toHaveCount(0);
-    expect(await page.evaluate(() => feedIntentsEnabled())).toBe(false);
+    await expect(page.locator("#moodSelector")).toBeHidden();
+    await expect(page.locator("#feedIntentSelector")).toBeVisible();
+    await expect(page.locator("#appNavV2")).toBeVisible();
+    expect(await page.evaluate(() => feedIntentsEnabled())).toBe(true);
   });
 
-  test("aperçu unique : le kill switch du shell coupe aussi le rail", async ({ page }) => {
-    await boot(page, { preview: true });
+  test("le kill switch du shell coupe aussi le rail", async ({ page }) => {
+    await boot(page);
     await expect(page.locator("#feedIntentSelector")).toBeVisible();
 
     expect(await page.evaluate(() => {
@@ -157,7 +155,7 @@ test.describe("Fil — Envie du moment (aperçu unique passio-ui-v2)", () => {
     await page.evaluate(() => localStorage.removeItem("passio_ui_v2"));
   });
 
-  test("OFF par défaut : ancien rail visible et ancien filtre mood inchangé", async ({ page }) => {
+  test("kill switch du rail : ancien sélecteur visible et ancien filtre mood inchangé", async ({ page }) => {
     await boot(page);
     await seedFeed(page, false);
 

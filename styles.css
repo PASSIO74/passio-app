@@ -8931,14 +8931,14 @@ body.ctx-locked #appMain { overflow: hidden; }
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
-   PASSIO UI V2 — lot UI-1 (shell et navigation), DERRIÈRE L'APERÇU
+   PASSIO UI V2 — lot UI-1 (shell et navigation), ACTIF PAR DÉFAUT
    Direction : docs/PASSIO_UI_V2_DIRECTION_2026-08-25.md
 
-   Tout ce bloc est INERTE hors aperçu : chaque règle est ancrée soit à
+   Tout ce bloc reste isolé : chaque règle est ancrée soit à
    `.passio-ui-v2` (classe posée sur <html> par js/ui-v2-shell.js uniquement
-   quand l'aperçu est actif), soit à `#appNavV2` / `#v2CreateSheet` — deux
-   nœuds qui n'existent pas dans l'interface normale. Aucune règle existante
-   n'est modifiée, aucun sélecteur générique n'est redéfini.
+   quand la V2 est active), soit à `#appNavV2` / `#v2CreateSheet` — deux nœuds
+   retirés par les kill switches. Aucune règle existante n'est modifiée, aucun
+   sélecteur générique n'est redéfini.
    ══════════════════════════════════════════════════════════════════════════ */
 
 /* ── Jetons V2, tous préfixés `--v2-` ───────────────────────────────────────
