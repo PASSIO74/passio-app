@@ -2051,16 +2051,6 @@
       background: linear-gradient(180deg, transparent 45%, rgba(124, 58, 237, 0.055));
       font-weight: 750;
     }
-    .feed-intent-btn.active::after {
-      content: "";
-      position: absolute;
-      left: 28%;
-      right: 28%;
-      bottom: -1px;
-      height: 2px;
-      border-radius: 999px 999px 0 0;
-      background: linear-gradient(90deg, #a78bfa, var(--accent));
-    }
     .feed-intent-btn:focus-visible {
       outline: 2px solid var(--accent);
       outline-offset: -3px;
@@ -9367,3 +9357,4 @@ body.ctx-locked #appMain { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) {
   :root.passio-ui-v2 .v2-person { transition: none; }
 }
+
