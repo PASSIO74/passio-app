@@ -1687,6 +1687,12 @@
      défaut ; les kill switches documentés dans le module la retirent. -->
 <script src="js/ui-v2-shell.js"></script>
 
+<!-- UI V3 (lot UI-3A — passerelle « Ça me tente ») — hors bloc app : composant
+     autonome (IIFE window.PassioUIV3), inliné individuellement au build. INERTE
+     par défaut : visible uniquement sous ?passio_preview=passio-ui-3, coupé par
+     localStorage.passio_ui_3="0" ou window.PASSIO_UI_3=false. -->
+<script src="js/ui-v3-passerelle.js"></script>
+
 
 <!-- ======== PWA INSTALL OVERLAY ======== -->
 <div id="pwa-overlay" style="display:none;">

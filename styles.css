@@ -9358,3 +9358,124 @@ body.ctx-locked #appMain { overflow: hidden; }
   :root.passio-ui-v2 .v2-person { transition: none; }
 }
 
+
+/* ══════════════════════════════════════════════════════════════════════════
+   PASSIO UI V3 — lot UI-3A (passerelle Feed → IRL), APERÇU UNIQUEMENT
+   Direction : docs/PASSIO_UI_V2_DIRECTION_2026-08-25.md §5, §6 et §15.
+
+   Tout ce bloc est ancré soit à `.passio-ui-3` (classe posée sur <html> par
+   js/ui-v3-passerelle.js, et seulement sous ?passio_preview=passio-ui-3), soit
+   à `#v3PassioSheet` — un nœud que les kill switches retirent. Aucune règle
+   existante n'est modifiée ; l'URL normale reste octet pour octet celle de la
+   production. Les feuilles basses et les classes `.v2-sheet-*` d'UI-1 sont
+   RÉUTILISÉES : on n'ajoute ici que ce que le trait Passio exige.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* Les jetons V3 s'appuient sur les `--v2-*` déjà validés, avec une valeur de
+   repli littérale : si UI-V2 était coupée sur l'appareil du testeur, la
+   passerelle garderait exactement les mêmes couleurs. */
+:root.passio-ui-3 {
+  --v3-violet: var(--v2-violet, #6d32f4);
+  --v3-coral: var(--v2-coral, #ff6b57);
+  --v3-trace: linear-gradient(90deg, var(--v3-violet) 0%, var(--v3-coral) 100%);
+}
+
+/* ── Le « trait Passio » sur la carte du fil ────────────────────────────────
+   Badge de la Passio → ligne fine violet/corail → lien discret. C'est la LIGNE
+   qui porte la signature (direction §A19) : volontairement pas de pastille
+   colorée, pas de bandeau, pas de carte dans la carte. */
+:root.passio-ui-3 .v3-bridge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  /* Aligné sur le rembourrage horizontal des autres blocs de la carte. */
+  padding: 2px 14px 10px;
+  min-width: 0;
+}
+
+:root.passio-ui-3 .v3-bridge-passion {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 1;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--v3-violet);
+}
+:root.passio-ui-3 .v3-bridge-emoji { font-size: 13px; line-height: 1; }
+/* En 320 px le libellé cède avant tout le reste : il s'élide, la ligne ne
+   déborde jamais et le lien reste entier. */
+:root.passio-ui-3 .v3-bridge-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+:root.passio-ui-3 .v3-bridge-trace {
+  flex: 1 1 12px;
+  /* 12 px : en dessous, la ligne n'est plus lisible comme un lien visuel ;
+     au-dessus, elle repousserait le CTA hors de la carte en 320 px. */
+  min-width: 12px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--v3-trace);
+}
+
+/* Un LIEN, pas un bouton plein : discret dans la carte, mais la cible tactile
+   fait bien 44 px de haut (le rembourrage négatif garde la ligne compacte). */
+:root.passio-ui-3 .v3-tempt {
+  appearance: none;
+  -webkit-appearance: none;
+  font-family: inherit;
+  background: none;
+  border: 0;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 4px;
+  margin: -11px 0;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--v3-coral);
+  cursor: pointer;
+  border-radius: 8px;
+}
+:root.passio-ui-3 .v3-tempt::after {
+  content: "›";
+  margin-left: 4px;
+  font-size: 15px;
+  line-height: 1;
+}
+:root.passio-ui-3 .v3-tempt:hover { text-decoration: underline; }
+:root.passio-ui-3 .v3-tempt:focus-visible {
+  outline: 2px solid var(--v3-coral);
+  outline-offset: 2px;
+}
+
+/* ── Feuille « Autour de cette Passio » ─────────────────────────────────────
+   Elle hérite de `.v2-sheet-backdrop` / `.v2-sheet` : mêmes rayons, même
+   safe-area, même piège de focus. Seul le trait de tête est propre au lot. */
+#v3PassioSheet .v3-sheet-trace {
+  height: 3px;
+  border-radius: 3px;
+  background: var(--v3-trace, linear-gradient(90deg, #6d32f4 0%, #ff6b57 100%));
+  margin: 0 auto 12px;
+  /* L'unique animation « forte » du lot (direction §5) : le trait violet file
+     vers le corail à l'ouverture. Courte, une seule fois, puis plus rien. */
+  width: 100%;
+  transform-origin: left center;
+  transform: scaleX(0);
+  transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+#v3PassioSheet.open .v3-sheet-trace { transform: scaleX(1); }
+
+/* 56 px comme les entrées de la feuille « Créer » : cible tactile confortable
+   au pouce, titre + aide lisibles sur une largeur de 320 px. */
+#v3PassioSheet .v3-sheet-item { min-height: 56px; }
+
+@media (prefers-reduced-motion: reduce) {
+  #v3PassioSheet .v3-sheet-trace { transition: none; transform: scaleX(1); }
+}
