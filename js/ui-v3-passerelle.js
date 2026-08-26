@@ -262,7 +262,7 @@
   // la REMPLACE — et le parcours ③ ouvre justement une modale par-dessus.
   // ══════════════════════════════════════════════════════════════════════════
   var lastFocused = null;
-  var scrollFeed = 0;       // position exacte du Feed au moment de l'ouverture
+  var ancre = null;         // { el, top } — la carte tapée et sa place à l'écran
   var ctxPostId = "";
   var ctxPassion = "";
 
@@ -291,6 +291,44 @@
   ];
 
   function conteneurScroll() { return document.getElementById("appMain"); }
+
+  // ── Position du Feed : on l'ancre sur la CARTE, jamais sur un `scrollTop` ──
+  // `.post` porte `content-visibility: auto` (styles.css) : les cartes hors écran
+  // sont estimées, la hauteur du fil est réévaluée en continu, et Chromium
+  // corrige alors `scrollTop` de lui-même — précisément POUR que le contenu
+  // visible ne bouge pas. Reposer à la fermeture un `scrollTop` figé à
+  // l'ouverture reviendrait donc à défaire cette correction : on RECRÉERAIT le
+  // saut qu'on cherche à éviter (mesuré : jusqu'à 96 px).
+  //
+  // Ce que le testeur doit retrouver, c'est SA carte au même endroit de l'écran.
+  // On mémorise donc l'article tapé et sa position dans la fenêtre, et on ne
+  // corrige que s'il a réellement bougé.
+  var ANCRE_TOLERANCE_PX = 2;
+
+  function poserAncre(postId) {
+    ancre = null;
+    try {
+      var el = document.querySelector('#feedList article.post[data-postid="' + cssEscape(postId) + '"]');
+      if (el) ancre = { el: el, top: el.getBoundingClientRect().top };
+    } catch (e) { fail("ancre", e); }
+  }
+
+  function restituerAncre() {
+    if (!ancre || !ancre.el) return;
+    try {
+      // La carte a pu être remplacée par une repeinte du fil : on la retrouve
+      // par son identifiant plutôt que de garder un nœud orphelin.
+      var el = document.body.contains(ancre.el)
+        ? ancre.el
+        : document.querySelector('#feedList article.post[data-postid="' + cssEscape(ctxPostId) + '"]');
+      if (!el) return;
+      var delta = el.getBoundingClientRect().top - ancre.top;
+      if (Math.abs(delta) <= ANCRE_TOLERANCE_PX) return;   // rien n'a bougé
+      var host = conteneurScroll();
+      if (host) host.scrollTop += delta;
+    } catch (e) { fail("ancre_restitution", e); }
+    ancre = null;
+  }
 
   function ensureSheet() {
     var wrap = document.getElementById("v3PassioSheet");
@@ -427,13 +465,9 @@
     if (first) focusSansScroll(first);
     document.addEventListener("keydown", onSheetKeydown, true);
 
-    // Position du Feed mesurée UNE FOIS le panneau en place — c'est celle que le
-    // testeur voit derrière lui, donc celle qu'il doit retrouver en fermant.
-    // La mesurer avant l'ouverture donnait une valeur d'un ou deux pixels
-    // différente (arrondi de mise en page au moment où la feuille se pose), et
-    // la fermeture faisait alors sauter le fil de ces quelques pixels.
-    var host = conteneurScroll();
-    scrollFeed = host ? host.scrollTop : 0;
+    // Ancre posée UNE FOIS le panneau en place : c'est l'état que le testeur voit
+    // derrière la feuille, donc celui qu'il doit retrouver en la fermant.
+    poserAncre(ctxPostId);
 
     track("ui_v3_tempt_open", { v: VERSION, has_psn: !!ctxPassion, has_ref: !!ctxPostId });
     return true;
@@ -454,14 +488,14 @@
     // rendu déclenché entre-temps (like realtime, refresh) peut avoir bougé le
     // conteneur : on repose donc la position mesurée à l'ouverture.
     if (!opts || opts.restaurer !== false) {
-      // ⚠️ Rendre le focus AVANT de reposer la position : un `focus()` ordinaire
-      // fait défiler l'élément dans la vue, ce qui écraserait la restauration.
-      // `preventScroll` couvre le cas courant, la repose finale couvre le reste.
+      // ⚠️ Rendre le focus AVANT de corriger la position : un `focus()` ordinaire
+      // fait défiler l'élément dans la vue. `preventScroll` couvre le cas
+      // courant, la correction d'ancre couvre ce qui aurait échappé.
       if (cta) focusSansScroll(cta);
       else if (lastFocused) focusSansScroll(lastFocused);
-      var host = conteneurScroll();
-      if (host) host.scrollTop = scrollFeed;
+      restituerAncre();
     }
+    ancre = null;
     lastFocused = null;
     return true;
   }
@@ -593,6 +627,11 @@
     openSheet(cta.getAttribute("data-v3-tempt"));
   }
 
+  // Le listener n'est POSÉ que lorsque le lot est actif, et RETIRÉ dès qu'il est
+  // coupé : sur l'URL normale, ce module ne laisse strictement aucune empreinte
+  // d'exécution — pas même un écouteur qui ne fait rien.
+  var listenerPose = false;
+
   function apply() {
     var on = uiV3Enabled();
     var root = document.documentElement;
@@ -602,20 +641,25 @@
       nettoyer(null);
       closeSheet({ restaurer: false });
       if (observer) { observer.disconnect(); observer = null; }
+      if (listenerPose) {
+        document.removeEventListener("click", onDocumentClick, true);
+        listenerPose = false;
+      }
       return false;
     }
 
     root.classList.add(ROOT_CLASS);
+    if (!listenerPose) {
+      document.addEventListener("click", onDocumentClick, true);
+      listenerPose = true;
+    }
     observerLeFil();
     decorateFeed(null);
     return true;
   }
 
   function boot() {
-    try {
-      document.addEventListener("click", onDocumentClick, true);
-      apply();
-    } catch (e) { fail("boot", e); }
+    try { apply(); } catch (e) { fail("boot", e); }
   }
 
   if (document.readyState === "loading") {

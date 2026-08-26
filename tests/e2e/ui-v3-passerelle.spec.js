@@ -16,10 +16,22 @@ const { bootOnboarded } = require("./app-helper");
 
 const PREVIEW = "?passio_preview=passio-ui-3";
 
-// Marge de la restitution de position, en pixels. Elle absorbe la respiration
-// propre au fil (`content-visibility: auto` sur `.post`), pas un saut : un
-// retour en tête du fil ferait des milliers de pixels d'écart.
-const SEUIL_PX = 8;
+// Marge de la restitution de position, en pixels. Elle absorbe l'arrondi de
+// mise en page, pas un saut : un retour en tête du fil ferait des centaines de
+// pixels d'écart.
+const SEUIL_PX = 4;
+
+// Position de la carte `id` DANS LA FENÊTRE. C'est la bonne mesure de « la
+// position du Feed » : `#appMain.scrollTop` est réévalué en continu par
+// Chromium à cause de `content-visibility: auto` sur `.post`, précisément pour
+// garder le contenu visible immobile — le suivre reviendrait à mesurer la
+// virtualisation du navigateur, pas ce que le testeur voit.
+function hautCarte(page, id) {
+  return page.evaluate((postId) => {
+    const el = document.querySelector(`#feedList article.post[data-postid="${postId}"]`);
+    return el ? Math.round(el.getBoundingClientRect().top) : null;
+  }, id);
+}
 
 function post(id, name, extra) {
   return Object.assign({
@@ -65,7 +77,72 @@ async function seedFeed(page, posts) {
     window._feedDomSig = null;
     renderFeed();
   }, posts);
-  await page.waitForTimeout(200); // l'observateur décore à la frame suivante
+  // ⚠️ L'aide contextuelle « auteur » est `position: fixed` et INTERCEPTE les
+  // taps. La marquer vue ne suffit pas : celle déclenchée par le `renderFeed`
+  // du démarrage est déjà à l'écran quand ce helper s'exécute. On la ferme donc
+  // explicitement — sinon un tap échoue en « subtree intercepts pointer events »,
+  // au hasard de la charge du runner.
+  await page.evaluate(() => {
+    try { if (typeof fermerHint === "function") fermerHint(); } catch (e) {}
+    document.querySelectorAll(".passio-hint").forEach((h) => h.remove());
+  });
+  // Attente DÉTERMINISTE de la décoration. Un délai fixe suffisait en local et
+  // rendait la suite instable sur un runner CI chargé : on attend que le fil ait
+  // cessé de bouger (nombre de cartes ET de traits stables sur plusieurs tours),
+  // sinon Playwright tape dans une carte que `renderFeed` déplace encore.
+  await page.waitForFunction(() => {
+    const l = document.getElementById("feedList");
+    if (!l) return false;
+    const sig = l.querySelectorAll("article.post").length + ":"
+      + l.querySelectorAll("[data-v3-bridge]").length + ":" + l.scrollHeight;
+    if (window.__v3Sig === sig) { window.__v3Stable = (window.__v3Stable || 0) + 1; }
+    else { window.__v3Sig = sig; window.__v3Stable = 0; }
+    return window.__v3Stable >= 4;
+  }, null, { timeout: 15000, polling: 100 });
+}
+
+// Fait défiler le fil À UNE POSITION CHOISIE, puis renvoie l'identifiant du
+// « Ça me tente » le plus proche du centre de l'écran.
+//
+// ⚠️ Pourquoi ne pas simplement faire `.nth(8).click()` : Playwright amène
+// d'abord la cible dans la vue, puis exige qu'elle soit STABLE deux frames de
+// suite. Or `.post` porte `content-visibility: auto` — les cartes hors écran
+// sont estimées, et une carte qu'on vient d'atteindre bouge encore de quelques
+// pixels pendant que ses voisines se mesurent. Sur un runner chargé, le clic
+// n'obtenait jamais sa fenêtre de stabilité (mesuré : 15 s de timeout en CI,
+// vert en local). On défile donc nous-mêmes, on laisse le fil se poser, et on
+// tape une cible DÉJÀ dans la vue — Playwright n'a plus rien à faire défiler.
+async function taperCarteVisible(page, offset) {
+  await page.evaluate((y) => { document.getElementById("appMain").scrollTop = y; }, offset);
+  await page.waitForTimeout(400);
+  const id = await page.evaluate(() => {
+    const centre = window.innerHeight / 2;
+    let best = null, dist = Infinity;
+    document.querySelectorAll("#feedList [data-v3-tempt]").forEach((b) => {
+      const r = b.getBoundingClientRect();
+      if (r.top < 60 || r.bottom > window.innerHeight - 80) return;
+      const d = Math.abs((r.top + r.bottom) / 2 - centre);
+      if (d < dist) { dist = d; best = b.getAttribute("data-v3-tempt"); }
+    });
+    return best;
+  });
+  expect(id, "un « Ça me tente » doit être visible à cette position").toBeTruthy();
+
+  // On attend que la cible ait cessé de bouger AVANT de taper. Playwright exige
+  // deux frames identiques et abandonne au bout de 15 s ; sur un runner chargé,
+  // la réévaluation des cartes `content-visibility` ne lui laissait pas toujours
+  // cette fenêtre. On la lui donne explicitement.
+  await page.waitForFunction((sel) => {
+    const el = document.querySelector(sel);
+    if (!el) return false;
+    const t = Math.round(el.getBoundingClientRect().top);
+    if (window.__v3Top === t) { window.__v3TopN = (window.__v3TopN || 0) + 1; }
+    else { window.__v3Top = t; window.__v3TopN = 0; }
+    return window.__v3TopN >= 4;
+  }, `[data-v3-tempt="${id}"]`, { timeout: 15000, polling: 100 });
+
+  await page.locator(`[data-v3-tempt="${id}"]`).click();
+  return id;
 }
 
 // ── ① L'URL normale reste la production ────────────────────────────────────
@@ -272,56 +349,43 @@ test("aperçu : « Proposer une sortie » préremplit le formulaire IRL existant
 // ── ⑥ Retour au Feed : position exacte et identité active ──────────────────
 test("aperçu : fermer le panneau restitue la position du Feed et l'identité active", async ({ page }) => {
   await boot(page);
-  // Assez de cartes pour que le fil défile réellement ET que la carte tapée
+  // Assez de cartes pour que le fil défile réellement ET que la position visée
   // reste LOIN du bas : collé au bas, `scrollTop` est borné par la hauteur du
-  // contenu, qui bouge encore de quelques pixels pendant que `renderFeed`
-  // complète le fil en idle. On mesurerait alors la respiration du fil, pas la
-  // restitution de la position.
+  // contenu, qui bouge encore pendant que `renderFeed` complète le fil en idle.
+  // On mesurerait alors la respiration du fil, pas la restitution.
   const beaucoup = [];
   for (let i = 0; i < 26; i++) beaucoup.push(post("v3_s" + "x".repeat(i), "Auteur " + i));
   await seedFeed(page, beaucoup);
 
   const identiteAvant = await page.evaluate(() => state.user.currentProfileId);
 
-  // On tape une carte PROFONDE dans le fil : Playwright l'amène dans la vue, donc
-  // la position réelle au moment de l'ouverture n'est pas le haut du fil. C'est
-  // CETTE position que la fermeture doit rendre — la mesurer après le tap est la
-  // seule façon honnête de le prouver (la fixer avant serait écrasé par le tap).
-  await page.locator("#feedList [data-v3-tempt]").nth(8).click();
-  await expect(page.locator("#v3PassioSheet")).toBeVisible();
-  const posOuverture = await page.evaluate(() => document.getElementById("appMain").scrollTop);
-  expect(posOuverture, "le fil doit réellement avoir défilé").toBeGreaterThan(0);
+  // On défile PROFONDÉMENT dans le fil, puis on tape une carte déjà visible. La
+  // position réelle au moment de l'ouverture n'est donc pas le haut du fil :
+  // c'est CELLE-LÀ que la fermeture doit rendre.
+  // Les trois fermetures possibles doivent toutes rendre la même chose : la
+  // carte tapée, au même endroit de l'écran, sur le Feed, sans changer d'identité.
+  const fermetures = [
+    ["le « × » du panneau", () => page.locator("#v3PassioSheet [data-v3-close]").click()],
+    ["Escape", () => page.keyboard.press("Escape")],
+    ["un tap hors panneau", () => page.locator("#v3PassioSheet").click({ position: { x: 5, y: 5 } })],
+  ];
 
-  // Fermeture par le « × » du panneau.
-  await page.locator("#v3PassioSheet [data-v3-close]").click();
-  await expect(page.locator("#v3PassioSheet")).toBeHidden();
-
-  const posFermeture = await page.evaluate(() => document.getElementById("appMain").scrollTop);
-  // ⚠️ Pourquoi une tolérance et pas l'égalité stricte : `.post` porte
-  // `content-visibility: auto` (styles.css). Les cartes hors écran sont donc
-  // estimées, et la hauteur du fil — donc `scrollTop` — respire de quelques
-  // pixels d'elle-même, panneau ou pas. Mesuré : ±3 px sur un fil immobile.
-  // Exiger l'égalité au pixel reviendrait à tester la virtualisation de
-  // Chromium, pas la restitution. Ce qui doit être vrai, et qui l'est ici :
-  // le fil ne saute pas, ne remonte pas en tête, on reste sur la même carte.
-  expect(Math.abs(posFermeture - posOuverture)).toBeLessThanOrEqual(SEUIL_PX);
-  expect(posFermeture).toBeGreaterThan(200);
-  expect(await page.evaluate(() => state.user.currentProfileId)).toBe(identiteAvant);
-  await expect(page.locator("#screen-feed")).toHaveClass(/active/);
-
-  // Même exigence pour Escape et pour le tap hors panneau.
-  for (const fermer of [
-    () => page.keyboard.press("Escape"),
-    () => page.locator("#v3PassioSheet").click({ position: { x: 5, y: 5 } }),
-  ]) {
-    await page.locator("#feedList [data-v3-tempt]").nth(8).click();
+  for (const [nom, fermer] of fermetures) {
+    const id = await taperCarteVisible(page, 1600);
     await expect(page.locator("#v3PassioSheet")).toBeVisible();
-    const pos = await page.evaluate(() => document.getElementById("appMain").scrollTop);
+    const avant = await hautCarte(page, id);
+    // Le fil a réellement défilé : la carte tapée n'est pas la première du fil.
+    expect(await page.evaluate(() => document.getElementById("appMain").scrollTop),
+      "le fil doit réellement avoir défilé").toBeGreaterThan(200);
+
     await fermer();
     await expect(page.locator("#v3PassioSheet")).toBeHidden();
-    const apres = await page.evaluate(() => document.getElementById("appMain").scrollTop);
-    expect(Math.abs(apres - pos)).toBeLessThanOrEqual(SEUIL_PX);
-    expect(apres).toBeGreaterThan(200);
+
+    const apres = await hautCarte(page, id);
+    expect(Math.abs(apres - avant), `fermeture par ${nom}`).toBeLessThanOrEqual(SEUIL_PX);
+    // …et on est toujours sur le Feed, avec la même identité active.
+    await expect(page.locator("#screen-feed")).toHaveClass(/active/);
+    expect(await page.evaluate(() => state.user.currentProfileId)).toBe(identiteAvant);
   }
 });
 
