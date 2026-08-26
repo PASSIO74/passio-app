@@ -460,7 +460,7 @@ Le multi-profil apparaît progressivement lorsqu’il apporte une valeur concrè
 
 - onboarding orienté premier Feed pertinent : livré ;
 - pont Feed → IRL, première étape avec CTA et préremplissage : livré derrière contrôle ;
-- `Envie du moment` : livré derrière l’aperçu `feed-intents-v1` ;
+- `Envie du moment` : livré — **raccordé à l’aperçu unique `passio-ui-v2` au lot UI-2** ; l’ancien aperçu séparé `feed-intents-v1` n’active plus rien à lui seul ;
 - conversation → IRL et quatrième aide contextuelle : livrés derrière l’aperçu `irl-proposal-v1` ;
 - moteur d’événements, RSVP, liste d’attente, conversation d’événement et retour post-IRL : déjà présents en partie ;
 - règles majorité, blocage et confidentialité IRL : base serveur livrée ;

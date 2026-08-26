@@ -2660,27 +2660,47 @@ var selectedMoods = new Set(["creation"]); // Par défaut "Création"
 // pour la compatibilité et reprend exactement son comportement quand le
 // drapeau est coupé.
 //
-//     localStorage.passio_feed_intents_v1 = "1"  → actif
-//     localStorage.passio_feed_intents_v1 = "0"  → kill switch immédiat
-//     window.PASSIO_FEED_INTENTS_V1 = false       → coupure en mémoire
-//     ?passio_preview=feed-intents-v1             → canari pour cette URL seulement
+// ── UI-2 : le rail SUIT le shell V2, il n'a plus d'activation propre ────────
+// Une seule activation positive dans toute la V2 : `?passio_preview=passio-ui-v2`.
+// Les drapeaux ci-dessous ne savent plus que RETIRER — une valeur positive
+// laissée par une version antérieure (`"1"`, `window...=true`) est IGNORÉE, et
+// l'ancien aperçu séparé `?passio_preview=feed-intents-v1` n'active plus rien.
+// Sans quoi l'URL normale cesserait d'être la référence stable de la direction.
+//
+//     ?passio_preview=passio-ui-v2                → SEULE activation
+//     localStorage.passio_feed_intents_v1 = "0"   → kill switch immédiat
+//     window.PASSIO_FEED_INTENTS_V1 = false        → coupure en mémoire
+//     localStorage.passio_ui_v2 = "0" / PASSIO_UI_V2 = false → coupent le shell,
+//                                                   donc le rail avec lui
+//
+// ⚠️ Aucune de ces gardes n'ÉCRIT dans le navigateur : lecture seule.
 // ══════════════════════════════════════════════════════════════════════════
 var FEED_INTENTS_VERSION = "v1";
 var activeFeedIntent = "for_you";
 
 function feedIntentsEnabled() {
-  if (typeof window.PASSIO_FEED_INTENTS_V1 === "boolean") return window.PASSIO_FEED_INTENTS_V1;
+  // Coupures propres au rail, prioritaires et purement soustractives.
+  if (window.PASSIO_FEED_INTENTS_V1 === false) return false;
   var stored = null;
   try {
     stored = localStorage.getItem("passio_feed_intents_v1");
   } catch (e) {}
-  if (stored === "0") return false; // le kill switch local reste prioritaire
-  if (stored === "1") return true;
+  if (stored === "0") return false;
+  // Puis le shell V2 tranche. `ui-v2-shell.js` est chargé après ce fichier mais
+  // AVANT tout rendu ; le repli ci-dessous applique la même règle d'URL, pour
+  // qu'un chargement partiel ne fasse jamais diverger les deux réponses.
   try {
-    // Accès canari non persistant : retirer le paramètre rend immédiatement
-    // l'ancien rail, sans écrire de préférence ni ouvrir le flag global.
+    if (window.PassioUIV2 && typeof window.PassioUIV2.isEnabled === "function") {
+      return !!window.PassioUIV2.isEnabled();
+    }
+  } catch (e) {}
+  if (window.PASSIO_UI_V2 === false) return false;
+  try {
+    if (localStorage.getItem("passio_ui_v2") === "0") return false;
+  } catch (e) {}
+  try {
     var preview = new URLSearchParams(window.location.search).get("passio_preview");
-    if (preview === "feed-intents-v1") return true;
+    if (preview === "passio-ui-v2") return true;
   } catch (e) {}
   return false; // défaut sûr : ancien sélecteur et ancien filtrage inchangés
 }
@@ -3408,6 +3428,12 @@ function renderFeed() {
           ? "Sélectionne une passion pour découvrir son contenu."
           : "Sélectionne une passion et un mood.";
       }
+      // UI-2 : sous l'aperçu SEULEMENT, l'état vide se termine par une action
+      // (§5). Les textes ci-dessus ne bougent pas — le module ajoute un bouton
+      // et le retire de lui-même dès que la V2 est coupée.
+      if (window.PassioUIV2 && typeof window.PassioUIV2.decorateEmpty === "function") {
+        window.PassioUIV2.decorateEmpty(emptyEl, { nothingSelected: nothingSelected });
+      }
       emptyEl.style.display = "block";
     }
     return;
@@ -3453,6 +3479,16 @@ function renderFeed() {
   const FAST = Math.min(12, visible.length);
   list.innerHTML = visible.slice(0, FAST).map(_renderPostHTMLSafe).join("")
     + (visible.length <= FAST && hasMore ? moreBtnHtml : "");
+
+  // UI-2 : Bobine du fil et module « Passionnés à découvrir », insérés APRÈS
+  // les premières cartes et derrière l'aperçu unique. Hors aperçu la fonction
+  // ne fait rien : aucun post n'est ajouté, retiré ni réordonné dans les deux
+  // cas — la décoration ne touche pas `sortedPosts`. Placée ici (dans la
+  // peinture rapide) : les deux points d'insertion sont sous FAST, le
+  // complément idle append derrière et l'ordre reste correct.
+  if (window.PassioUIV2 && typeof window.PassioUIV2.decorateFeed === "function") {
+    window.PassioUIV2.decorateFeed(list, visible);
+  }
 
   // Aide §8 « première carte ». Différée d'un tick : la bulle s'ancre sur le
   // rectangle de la carte, qui n'est mesurable qu'une fois la peinture faite.

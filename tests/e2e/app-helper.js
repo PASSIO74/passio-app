@@ -29,7 +29,10 @@ function onboardedState(n = 1) {
 }
 
 // Démarre l'app dans l'état onboardé. `errors` (optionnel) = { js:[], console:[], network:[] }.
-async function bootOnboarded(page, errors, nProfiles = 1) {
+// `opts.query` (optionnel) = chaîne ajoutée à l'URL, p. ex. "?passio_preview=passio-ui-v2".
+// Depuis UI-2 c'est la SEULE façon d'entrer dans la V2 : aucune valeur de
+// localStorage ni aucune variable mémoire ne l'active. Défaut : URL normale.
+async function bootOnboarded(page, errors, nProfiles = 1, opts = {}) {
   if (errors) {
     page.on("pageerror", (e) => errors.js.push("pageerror: " + e.message));
     page.on("console", (m) => {
@@ -49,7 +52,7 @@ async function bootOnboarded(page, errors, nProfiles = 1) {
       localStorage.setItem("passio_mvp_state_v1", JSON.stringify(st));
     }
   }, [GATE_KEY, GATE_TOKEN, onboardedState(nProfiles)]);
-  await page.goto("/index.html");
+  await page.goto("/index.html" + (opts.query || ""));
   await page.waitForFunction(() => {
     const el = document.getElementById("screen-feed");
     return el && el.classList.contains("active");
