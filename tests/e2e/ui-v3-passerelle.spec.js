@@ -95,8 +95,15 @@ async function seedFeed(page, posts) {
   await page.waitForFunction(() => {
     const l = document.getElementById("feedList");
     if (!l) return false;
-    const sig = l.querySelectorAll("article.post").length + ":"
-      + l.querySelectorAll("[data-v3-bridge]").length + ":" + l.scrollHeight;
+    const traits = l.querySelectorAll("[data-v3-bridge]").length;
+    // ⚠️ La stabilité seule ne suffit PAS : « 0 trait » est parfaitement stable
+    // tant que la décoration n'a pas tourné. Le garde rendait donc la main sur
+    // un fil non décoré, et l'assertion suivante échouait au hasard de la charge
+    // (mesuré en CI). Quand l'aperçu est actif, on exige d'abord qu'un trait
+    // soit posé — toutes les publications semées sous aperçu en ont au moins un.
+    const actif = !!(window.PassioUIV3 && window.PassioUIV3.isEnabled());
+    if (actif && traits === 0) { window.__v3Stable = 0; return false; }
+    const sig = l.querySelectorAll("article.post").length + ":" + traits + ":" + l.scrollHeight;
     if (window.__v3Sig === sig) { window.__v3Stable = (window.__v3Stable || 0) + 1; }
     else { window.__v3Sig = sig; window.__v3Stable = 0; }
     return window.__v3Stable >= 4;

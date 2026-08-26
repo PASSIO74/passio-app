@@ -236,12 +236,17 @@
   var observer = null;
   var pending = false;
 
+  // ⚠️ `setTimeout` et JAMAIS `requestAnimationFrame` pour cadencer la décoration.
+  // rAF ne se déclenche pas sur une page qui ne COMPOSE pas de frames — onglet en
+  // arrière-plan, navigateur sans tête, machine saturée. La passerelle n'aurait
+  // alors jamais été posée : pas de trait, pas de « Ça me tente », en silence.
+  // Le dépôt a déjà payé ce piège (cf. la note de `attendreFilStable` dans
+  // tests/e2e/interactions.spec.js) ; mesuré ici sur le runner CI, où le trait
+  // n'apparaissait pas en 5 secondes. La coalescence reste assurée par `pending`.
   function planifierScan() {
     if (pending) return;
     pending = true;
-    var run = function () { pending = false; decorateFeed(null); };
-    if (window.requestAnimationFrame) window.requestAnimationFrame(run);
-    else setTimeout(run, 16);
+    setTimeout(function () { pending = false; decorateFeed(null); }, 0);
   }
 
   function observerLeFil() {
@@ -468,8 +473,15 @@
     lastFocused = document.activeElement;
     wrap.hidden = false;
     // Deux images : la classe pilote la transition, `hidden` l'accessibilité.
-    if (window.requestAnimationFrame) window.requestAnimationFrame(function () { wrap.classList.add("open"); });
-    else wrap.classList.add("open");
+    //
+    // ⚠️ Même piège : sans `.open`, le fond reste à `opacity: 0` — le panneau
+    // serait présent dans le DOM mais INVISIBLE. On garde rAF quand il tourne
+    // (la transition démarre alors sur une frame propre), doublé d'un délai qui,
+    // lui, se déclenche toujours. `classList.add` est idempotent : que les deux
+    // arrivent ne change rien.
+    var ouvrir = function () { wrap.classList.add("open"); };
+    if (window.requestAnimationFrame) window.requestAnimationFrame(ouvrir);
+    setTimeout(ouvrir, 32);
 
     var cta = document.querySelector('[data-v3-tempt="' + cssEscape(ctxPostId) + '"]');
     if (cta) cta.setAttribute("aria-expanded", "true");
