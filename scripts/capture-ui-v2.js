@@ -49,7 +49,23 @@ const STATE = {
   await page.goto(`http://127.0.0.1:${PORT}/index.html${query}`);
   await page.waitForTimeout(3500);
   await page.evaluate(() => { const l = document.getElementById("landing"); if (l) l.classList.remove("active"); });
-  await page.evaluate(() => { try { toggleProfileFilter("musique"); } catch (e) {} });
+  // Sélectionner une passion RÉELLE du jeu de démonstration : sans ça le fil
+  // reste sur « Choisis une Passio » et la capture ne montre aucune carte —
+  // donc ni les Bobines dans le fil, ni le module « Passionnés à découvrir ».
+  const passionChoisie = await page.evaluate(() => {
+    try {
+      const posts = (state.seed.posts || []).filter((p) => p && p.passion);
+      const compte = {};
+      posts.forEach((p) => { compte[p.passion] = (compte[p.passion] || 0) + 1; });
+      const top = Object.keys(compte).sort((a, b) => compte[b] - compte[a])[0];
+      if (!top) return null;
+      if (!_activeFeedPassions.has(top)) toggleProfileFilter(top);
+      renderFeed();
+      return top;
+    } catch (e) { return "erreur: " + e.message; }
+  });
+  console.log("passion sélectionnée pour les captures :", passionChoisie);
+  await page.waitForTimeout(1200);
 
   for (const s of SCREENS) {
     await page.evaluate((scr) => goTo(scr), s);
@@ -69,6 +85,26 @@ const STATE = {
     console.log("✓", `${PHASE}-bottom-nav.png`);
   } else {
     console.warn("✗ barre du bas introuvable :", navSel);
+  }
+
+  // Module « Passionnés à découvrir » (lot UI-2) — il vit plus bas dans le fil :
+  // sans défilement, la capture ne montrerait rien de ce que le lot ajoute.
+  if (PHASE === "apres") {
+    await page.evaluate((scr) => goTo(scr), "feed");
+    await page.waitForTimeout(900);
+    const trouve = await page.evaluate(() => {
+      const m = document.querySelector("#feedList .v2-people");
+      if (!m) return false;
+      m.scrollIntoView({ block: "center" });
+      return true;
+    });
+    if (trouve) {
+      await page.waitForTimeout(900);
+      await page.screenshot({ path: path.join(OUT, "apres-passionnes.png"), fullPage: false });
+      console.log("✓ apres-passionnes.png");
+    } else {
+      console.warn("✗ module « Passionnés à découvrir » absent de ce fil");
+    }
   }
 
   // Le sélecteur « Créer » n'existe que dans l'aperçu V2.

@@ -2632,9 +2632,15 @@ function allFeedPosts() {
   if (blocked.length) {
     allPosts.forEach(p => { if (p && blocked.includes(p.authorId)) idsBloques.add(p.id); });
   }
+  // Lot UI-2 : sous l'aperçu V2, une Bobine est un FORMAT du fil, pas un
+  // univers séparé (direction §6). Hors aperçu, l'exclusion historique tient.
+  var gardeBobines = false;
+  try {
+    gardeBobines = !!(window.PassioUIV2Feed && window.PassioUIV2Feed.keepReelsInFeed());
+  } catch (e) {}
   const seenIds = new Set();
   const deduplicated = allPosts.filter(p => {
-    if (p.isReel) return false;
+    if (p.isReel && !gardeBobines) return false;
     if (idsBloques.has(p.id)) return false;
     if (seenIds.has(p.id)) return false;
     seenIds.add(p.id);
@@ -2681,6 +2687,15 @@ function feedIntentsEnabled() {
     // l'ancien rail, sans écrire de préférence ni ouvrir le flag global.
     var preview = new URLSearchParams(window.location.search).get("passio_preview");
     if (preview === "feed-intents-v1") return true;
+  } catch (e) {}
+  // Lot UI-2 : l'aperçu UNIQUE de la V2 allume aussi « Envie du moment ». La
+  // direction impose un seul aperçu (§14) — tester la nouvelle barre sur
+  // l'ancienne ligne de moods donnerait un retour trompeur. Ce raccordement est
+  // volontairement placé APRÈS les deux kill switches ci-dessus : couper
+  // `passio_feed_intents_v1` reste prioritaire, même sous l'aperçu V2.
+  try {
+    if (window.PassioUIV2 && typeof window.PassioUIV2.isEnabled === "function"
+        && window.PassioUIV2.isEnabled()) return true;
   } catch (e) {}
   return false; // défaut sûr : ancien sélecteur et ancien filtrage inchangés
 }
@@ -3264,6 +3279,12 @@ function renderFeed() {
   setupFeedIntentDelegation();
   syncFeedIntentUi();
   const intentsEnabled = feedIntentsEnabled();
+  // Lot UI-2 — couche Feed V2 (Bobines dans le fil, module « Passionnés à
+  // découvrir », états vides). Lu UNE fois par rendu : le drapeau ne doit pas
+  // pouvoir changer entre la signature et la peinture.
+  let _v2FeedOn = false;
+  try { _v2FeedOn = !!(window.PassioUIV2Feed && window.PassioUIV2Feed.isEnabled()); }
+  catch (e) { _v2FeedOn = false; }
 
   // Tous les posts (hors vlogs)
   let allPosts = allFeedPosts().filter(function(p) { return p.type !== "vlog"; });
@@ -3384,8 +3405,15 @@ function renderFeed() {
       var emptyText = emptyEl.querySelector(".empty-text");
 
       if (nothingSelected) {
-        if (emptyTitle) emptyTitle.textContent = "Choisis une passion";
-        if (emptyText) emptyText.textContent = "Sélectionne une passion ci-dessus pour voir le contenu de ta communauté.";
+        // Lot UI-2 : c'est l'écran le plus vu d'un nouveau compte. `emptyCopy`
+        // rend null hors aperçu → le texte actuel reste mot pour mot.
+        var _v2Aucune = null;
+        try {
+          if (window.PassioUIV2Feed) _v2Aucune = window.PassioUIV2Feed.emptyCopy("no-selection");
+        } catch (e) { _v2Aucune = null; }
+        if (emptyTitle) emptyTitle.textContent = _v2Aucune ? _v2Aucune.title : "Choisis une passion";
+        if (emptyText) emptyText.textContent = _v2Aucune ? _v2Aucune.text
+          : "Sélectionne une passion ci-dessus pour voir le contenu de ta communauté.";
       } else if (!intentsEnabled && selectedMoods.size === 0) {
         if (emptyTitle) emptyTitle.textContent = "Choisis un mood";
         if (emptyText) emptyText.textContent = "Sélectionne un mood pour filtrer le contenu.";
@@ -3398,15 +3426,26 @@ function renderFeed() {
         if (emptyTitle) emptyTitle.textContent = "Aucun post de tes suivis";
         if (emptyText) emptyText.textContent = "Tu ne suis personne, ou ils n'ont rien publié.";
       } else if (_activeFeedPassions.size > 0) {
-        if (emptyTitle) emptyTitle.textContent = "Aucun post pour cette sélection";
-        if (emptyText) emptyText.textContent = intentsEnabled
+        // Lot UI-2 : sous la V2, un fil vide nomme la SUITE possible au lieu de
+        // constater l'absence. `emptyCopy` rend null hors aperçu → les textes
+        // actuels restent mot pour mot.
+        var _v2Vide = null;
+        try {
+          if (window.PassioUIV2Feed) _v2Vide = window.PassioUIV2Feed.emptyCopy("passions");
+        } catch (e) { _v2Vide = null; }
+        if (emptyTitle) emptyTitle.textContent = _v2Vide ? _v2Vide.title : "Aucun post pour cette sélection";
+        if (emptyText) emptyText.textContent = _v2Vide ? _v2Vide.text : (intentsEnabled
           ? "Sois le premier à publier autour de cette passion."
-          : "Essaie un autre mood ou sois le premier à publier ici.";
+          : "Essaie un autre mood ou sois le premier à publier ici.");
       } else {
-        if (emptyTitle) emptyTitle.textContent = "Aucun contenu";
-        if (emptyText) emptyText.textContent = intentsEnabled
+        var _v2Rien = null;
+        try {
+          if (window.PassioUIV2Feed) _v2Rien = window.PassioUIV2Feed.emptyCopy("no-content");
+        } catch (e) { _v2Rien = null; }
+        if (emptyTitle) emptyTitle.textContent = _v2Rien ? _v2Rien.title : "Aucun contenu";
+        if (emptyText) emptyText.textContent = _v2Rien ? _v2Rien.text : (intentsEnabled
           ? "Sélectionne une passion pour découvrir son contenu."
-          : "Sélectionne une passion et un mood.";
+          : "Sélectionne une passion et un mood.");
       }
       emptyEl.style.display = "block";
     }
@@ -3439,6 +3478,10 @@ function renderFeed() {
     // Le pont Fil → IRL change le HTML des cartes sans toucher aux posts : sans
     // lui dans la signature, basculer le drapeau ne repeindrait pas le fil.
     (typeof feedIrlBridgeEnabled === "function" && feedIrlBridgeEnabled()) ? "irl1" : "irl0",
+    // Lot UI-2 : la V2 change le HTML des cartes (Bobines dans le fil, module
+    // « Passionnés à découvrir »). Sans ce jeton, basculer le drapeau en
+    // mémoire ne repeindrait pas le fil — le piège documenté du guard no-op.
+    _v2FeedOn ? "v21" : "v20",
     visible.map(function(p) {
       return p.id + ":" + (p.likes || 0) + ":" + ((p.comments || []).length) + ":" + (Array.isArray(p.reactions) ? p.reactions.length : 0);
     }).join("|"),
@@ -3451,7 +3494,22 @@ function renderFeed() {
   // après, en idle, SANS reconstruire les premières cartes (insertAdjacentHTML).
   // Le nombre total affiché est inchangé — seul l'instant du paint diffère.
   const FAST = Math.min(12, visible.length);
-  list.innerHTML = visible.slice(0, FAST).map(_renderPostHTMLSafe).join("")
+  // Module « Passionnés à découvrir » : inséré APRÈS les premiers contenus
+  // pertinents (direction §6, « avec parcimonie »), et seulement s'il y a
+  // assez de posts pour qu'il ne coupe pas un fil déjà maigre. Il est peint
+  // dans la PREMIÈRE passe : arrivé en complément idle, il ferait sauter le
+  // fil sous le pouce.
+  const _v2PeopleAt = _v2FeedOn && typeof window.PassioUIV2Feed.insertPeopleAfter === "function"
+    ? window.PassioUIV2Feed.insertPeopleAfter() : -1;
+  let _v2PeopleHtml = "";
+  if (_v2PeopleAt > 0 && visible.length > _v2PeopleAt) {
+    try { _v2PeopleHtml = window.PassioUIV2Feed.peopleModuleHtml(visible) || ""; }
+    catch (e) { _v2PeopleHtml = ""; }
+  }
+  const _v2Painted = _v2PeopleHtml && FAST > _v2PeopleAt;
+  list.innerHTML = visible.slice(0, FAST).map(function (p, i) {
+    return _renderPostHTMLSafe(p) + (_v2Painted && i === _v2PeopleAt - 1 ? _v2PeopleHtml : "");
+  }).join("")
     + (visible.length <= FAST && hasMore ? moreBtnHtml : "");
 
   // Aide §8 « première carte ». Différée d'un tick : la bulle s'ancre sur le
@@ -3762,7 +3820,19 @@ function renderPostHTML(p) {
       </div>`;
     }
   }
-  if (p.type === "video") {
+  // Lot UI-2 : une Bobine affichée DANS le fil garde son langage propre —
+  // vignette verticale, badge et lecture au tap dans le viewer plein écran —
+  // au lieu du lecteur inline d'une vidéo ordinaire. Le helper rend "" s'il n'a
+  // rien de jouable : on retombe alors sur le rendu habituel ci-dessous.
+  var _v2Reel = "";
+  try {
+    if (p.isReel && window.PassioUIV2Feed && window.PassioUIV2Feed.isEnabled()) {
+      _v2Reel = window.PassioUIV2Feed.reelMediaHtml(p) || "";
+    }
+  } catch (e) { _v2Reel = ""; }
+  if (_v2Reel) media = _v2Reel;
+
+  if (!_v2Reel && p.type === "video") {
     // ✅ VALIDATION VIDÉO - Vérifier que l'URL est valide
     if (p.video && p.video.trim()) {
       media = `<div class="post-media">

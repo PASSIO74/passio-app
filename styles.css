@@ -9176,3 +9176,159 @@ body.ctx-locked #appMain { overflow: hidden; }
   .v2-sheet { transform: none; }
   #appNavV2 .nav-icon { transition: none; }
 }
+
+/* ── Lot UI-2 : Feed V2 ─────────────────────────────────────────────────────
+   Même règle que le bloc UI-1 : tout est ancré à `.passio-ui-v2` ou à des
+   classes que seul l'aperçu produit (`v2-reel-*`, `v2-people-*`). Le fil
+   actuel, ses bulles de profils et sa ligne d'onglets restent intacts. */
+
+/* Bobine dans le fil — vignette verticale, jamais le lecteur inline d'une
+   vidéo ordinaire : le tap ouvre le viewer plein écran. */
+:root.passio-ui-v2 .v2-reel-media {
+  position: relative;
+  cursor: pointer;
+  background: #000;
+  overflow: hidden;
+  /* 4:5 — assez haut pour lire une vidéo verticale, assez court pour qu'une
+     deuxième carte reste visible sous le pouce en 390 × 844. */
+  aspect-ratio: 4 / 5;
+  max-height: 520px;
+}
+:root.passio-ui-v2 .v2-reel-cover {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+:root.passio-ui-v2 .v2-reel-badge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: rgba(23, 21, 43, 0.62);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+:root.passio-ui-v2 .v2-reel-play {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  /* 56 px : bien au-dessus du seuil tactile, et lisible sur n'importe quel
+     fond de vignette grâce au voile sombre. */
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: rgba(23, 21, 43, 0.46);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  pointer-events: none;
+}
+:root.passio-ui-v2 .v2-reel-play svg { width: 26px; height: 26px; margin-left: 3px; }
+:root.passio-ui-v2 .v2-reel-media:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* Module « Passionnés à découvrir » — il mène au PROFIL, jamais directement à
+   une conversation (annexe A17). */
+:root.passio-ui-v2 .v2-people {
+  margin: 10px 12px 14px;
+  padding: 14px 12px 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--v2-radius);
+  box-shadow: var(--shadow-soft);
+}
+:root.passio-ui-v2 .v2-people-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--text);
+}
+:root.passio-ui-v2 .v2-people-lede {
+  margin: 3px 0 11px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+:root.passio-ui-v2 .v2-people-row {
+  display: flex;
+  gap: 9px;
+  overflow-x: auto;
+  /* Le fil ne défile jamais horizontalement : c'est CE conteneur qui défile. */
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+:root.passio-ui-v2 .v2-people-row::-webkit-scrollbar { display: none; }
+:root.passio-ui-v2 .v2-people-card {
+  appearance: none;
+  -webkit-appearance: none;
+  font-family: inherit;
+  flex: 0 0 auto;
+  width: 104px;
+  /* 44 px minimum garanti largement : la carte fait ~130 px de haut. */
+  padding: 12px 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease;
+}
+:root.passio-ui-v2 .v2-people-card:hover {
+  background: var(--accent-wash);
+  border-color: var(--border-strong);
+}
+:root.passio-ui-v2 .v2-people-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+:root.passio-ui-v2 .v2-people-name {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+:root.passio-ui-v2 .v2-people-passion {
+  font-size: 11px;
+  color: var(--muted);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root.passio-ui-v2 .v2-people-card { transition: none; }
+}
+
+/* Ligne « Envie du moment » sous l'aperçu V2 — la grille de 5 colonnes rognait
+   « Rencontrer » en « Rencont… ». La direction tranche : « Si les cinq libellés
+   ne tiennent pas sur un petit écran, la ligne défile horizontalement SANS
+   réduire leur lisibilité. » On passe donc en rangée défilante et on retire
+   l'ellipse — le langage visuel (texte simple, actif violet souligné) est
+   strictement conservé, seule la stratégie de débordement change. */
+:root.passio-ui-v2 .feed-intent-selector {
+  display: flex;
+  grid-template-columns: none;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+:root.passio-ui-v2 .feed-intent-selector::-webkit-scrollbar { display: none; }
+:root.passio-ui-v2 .feed-intent-btn {
+  flex: 1 0 auto;
+  overflow: visible;
+  text-overflow: clip;
+  padding-inline: 10px;
+}
