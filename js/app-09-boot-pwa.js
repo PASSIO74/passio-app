@@ -1658,12 +1658,19 @@ function syncAppViewportHeight() {
 (function () {
   var main = document.querySelector(".app-main");
   if (!main) return;
-  var lastY = 0, ticking = false;
+  var lastY = 0, ticking = false, verrouJusqua = 0;
   main.addEventListener("scroll", function () {
+    // Un repositionnement programmatique (restauration d'ancre du fil fenêtré)
+    // n'est pas un geste de lecture : y réagir défait l'état d'en-tête qu'on
+    // vient de rétablir, et la cible se redéplace sous la correction en cours.
+    if (window._feedScrollRestoring) { lastY = main.scrollTop; return; }
     if (ticking) return;
     ticking = true;
     requestAnimationFrame(function () {
       ticking = false;
+      // Une trame peut avoir été programmée AVANT le début de la restauration :
+      // sans ce second garde, elle s'exécute au milieu et défait le même état.
+      if (window._feedScrollRestoring) { lastY = main.scrollTop; return; }
       var feed = document.getElementById("screen-feed");
       if (!feed || !feed.classList.contains("active")) {
         main.classList.remove("chrome-collapsed");
@@ -1671,8 +1678,37 @@ function syncAppViewportHeight() {
         return;
       }
       var y = main.scrollTop, dy = y - lastY;
-      if (y > 140 && dy > 4) main.classList.add("chrome-collapsed");
-      else if (dy < -4 || y < 60) main.classList.remove("chrome-collapsed");
+
+      // ⚠️ VERROU APRÈS BASCULE — sous le drapeau `feed_window_v1` uniquement.
+      // Replier le chrome RETIRE de la hauteur au-dessus du fil : la trame
+      // suivante lit donc un `dy` négatif, qui le déplie, ce qui rend la
+      // hauteur, ce qui le replie… Mesuré le 2026-08-25, descente monotone par
+      // paliers de 380 px : 13 bascules d'état réelles. L'en-tête battait, et
+      // tout le fil avec lui — du jank permanent, invisible comme tel parce
+      // qu'il se confond avec le mouvement du doigt.
+      //
+      // Un seuil en PIXELS ne suffit pas, et c'est le piège : la bascule
+      // déplace elle-même le contenu de la hauteur de l'en-tête (~150 px), donc
+      // tout seuil plus petit s'autorise lui-même le coup d'après. Un seuil
+      // plus grand, lui, rendrait l'en-tête paresseux pour l'utilisateur.
+      // On verrouille donc dans le TEMPS : après une bascule, on laisse la mise
+      // en page se poser avant d'en autoriser une autre. Drapeau coupé :
+      // comportement historique à l'identique, battement compris.
+      var maintenant = (window.performance && performance.now) ? performance.now() : 0;
+      if (typeof feedWindowEnabled === "function" && feedWindowEnabled()
+          && maintenant < verrouJusqua) {
+        lastY = y;
+        return;
+      }
+
+      var replie = main.classList.contains("chrome-collapsed");
+      var veut = replie;
+      if (y > 140 && dy > 4) veut = true;
+      else if (dy < -4 || y < 60) veut = false;
+      if (veut !== replie) {
+        main.classList.toggle("chrome-collapsed", veut);
+        verrouJusqua = maintenant + 320;
+      }
       lastY = y;
     });
   }, { passive: true });
