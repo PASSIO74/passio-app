@@ -276,6 +276,13 @@ Le script est en lecture seule sur le dépôt (il n'écrit que dans son dossier 
 ⚠️ **`.claude/` est désormais versionné SÉLECTIVEMENT** (skills + subagents = savoir projet, ils doivent survivre à un changement de machine). `.claude/settings.local.json` reste exclu : il a longtemps contenu des JWT et une clé `sb_secret_…` en clair dans ses commandes autorisées (9 entrées, purgées le 2026-08-15 par `npm run permissions:compact`, qui refuse désormais de conserver toute règle porteuse de secret). Il reste hors versionnement : c'est un fichier de poste, pas du savoir projet.
 
 ## 📚 Références projet
+- **`docs/PASSIO_UI_V2_DIRECTION_2026-08-25.md` — direction UX canonique (2026-08-25).** Elle
+  consolide et **remplace l'ancien ordre qui plaçait la refonte visuelle après la performance** :
+  priorité n° 1 = rendre le concept visible et testable par lots UI-1 → UI-7, chacun derrière
+  l'aperçu non persistant `?passio_preview=passio-ui-v2`. Les règles de sécurité déjà acquises
+  restent non négociables. Ordre du lot UI-1 : `docs/PASSIO_UI_V2_ORDRE_UI1_2026-08-25.md`.
+  Implémentation UI-1 : `js/ui-v2-shell.js` + bloc « PASSIO UI V2 » en fin de `styles.css`
+  (inertes hors aperçu), tests `tests/e2e/ui-v2-shell.spec.js`.
 - `docs/PIEGES_CONNUS.md` — les 56 fiches détaillées (extrait de ce fichier le 2026-08-07).
 - `docs/HISTORIQUE_PROJET.md` — état 2026-06-11, backlog terminé, logs d’optimisation.
 - `docs/ARCHITECTURE.md`, `docs/CONTROLE_16_MISSIONS.md`, `docs/CHECKLIST_COMMERCIALISATION.md`.

@@ -8939,3 +8939,240 @@ body.ctx-locked #appMain { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) {
   .passio-hint { animation: none; }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   PASSIO UI V2 — lot UI-1 (shell et navigation), DERRIÈRE L'APERÇU
+   Direction : docs/PASSIO_UI_V2_DIRECTION_2026-08-25.md
+
+   Tout ce bloc est INERTE hors aperçu : chaque règle est ancrée soit à
+   `.passio-ui-v2` (classe posée sur <html> par js/ui-v2-shell.js uniquement
+   quand l'aperçu est actif), soit à `#appNavV2` / `#v2CreateSheet` — deux
+   nœuds qui n'existent pas dans l'interface normale. Aucune règle existante
+   n'est modifiée, aucun sélecteur générique n'est redéfini.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Jetons V2, tous préfixés `--v2-` ───────────────────────────────────────
+   Ils N'ÉCRASENT PAS les variables du thème (--accent, --bg-card…) : la charte
+   claire et violette actuelle reste la référence. Le corail IRL et le
+   « trait Passio » sont préparés ici pour UI-3, sans usage sur le Feed. */
+:root.passio-ui-v2 {
+  --v2-ink: #17152b;
+  --v2-cloud: #f7f5fc;
+  --v2-surface: #ffffff;
+  --v2-violet: #6d32f4;
+  --v2-iris: #a784ff;
+  --v2-coral: #ff6b57;          /* passage au réel — réservé IRL */
+  --v2-nav-height: 66px;
+  --v2-nav-label: 10.5px;
+  --v2-radius: 20px;
+  --v2-trace: linear-gradient(90deg, var(--v2-violet) 0%, var(--v2-coral) 100%);
+}
+
+/* Le « trait Passio » : préparé et documenté, volontairement NON posé sur les
+   cartes du fil dans ce lot (aucun redesign Feed en UI-1). */
+:root.passio-ui-v2 .v2-passio-trace {
+  display: block;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--v2-trace);
+}
+
+/* La barre historique reste dans le DOM (applyNavOrder, dépromotion CDV et la
+   synchro d'état actif de goTo continuent de trouver leurs nœuds) : `hidden`
+   seul ne suffit pas face à `display: grid` de .app-nav, d'où cette règle. */
+:root.passio-ui-v2 #appNav[hidden] { display: none; }
+
+/* ── Barre du bas V2 ────────────────────────────────────────────────────────
+   Même forme générale et même safe-area que la barre actuelle (min-height +
+   padding-bottom en env(safe-area-inset-bottom)) : seuls la hauteur utile et
+   l'affichage des libellés changent. */
+#appNavV2.app-nav-v2 {
+  min-height: calc(var(--v2-nav-height) + env(safe-area-inset-bottom, 0px));
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  align-items: stretch;
+  background: rgba(255, 255, 255, 0.94);
+  border-top: 1px solid var(--border);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  flex-shrink: 0;
+}
+
+#appNavV2 .nav-v2-item {
+  /* `button` et `div` cohabitent dans la grille : on neutralise le style natif
+     du bouton pour que les cinq entrées soient rigoureusement identiques. */
+  appearance: none;
+  -webkit-appearance: none;
+  background: none;
+  border: 0;
+  margin: 0;
+  padding: 6px 2px;
+  font-family: inherit;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  /* 48 px : au-dessus du seuil tactile de 44 px même avec le libellé. */
+  min-height: 48px;
+  color: var(--muted);
+  cursor: pointer;
+  position: relative;
+  transition: color 180ms ease;
+}
+#appNavV2 .nav-v2-item:hover { color: var(--text-dim); }
+
+/* Libellés VISIBLES — c'est l'objet même du lot : `Découvrir` et `Rencontrer`
+   ne sont pas devinables à l'icône seule. */
+#appNavV2 .nav-label {
+  display: block;
+  font-size: var(--v2-nav-label);
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: 0.01em;
+  /* Pas de troncature : en 390 px les cinq libellés tiennent. S'ils venaient à
+     déborder sur un écran plus étroit, mieux vaut un retour à la ligne qu'une
+     ellipse illisible. */
+  text-align: center;
+  max-width: 100%;
+}
+
+#appNavV2 .nav-icon {
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 180ms ease;
+}
+#appNavV2 .nav-icon svg { width: 24px; height: 24px; display: block; overflow: visible; }
+
+#appNavV2 .nav-v2-item.active { color: var(--accent); }
+#appNavV2 .nav-v2-item.active .nav-icon { transform: translateY(-1px); }
+#appNavV2 .nav-v2-item.active::before {
+  content: "";
+  position: absolute;
+  top: 4px;
+  width: 18px;
+  height: 3px;
+  border-radius: 3px;
+  background: var(--grad-hero);
+}
+
+/* `Créer` reste visuellement central et saillant — sa présence forte fait
+   partie de ce qui est explicitement préservé de l'interface actuelle. */
+#appNavV2 .nav-v2-cta .nav-icon {
+  background: var(--grad-hero);
+  color: #fff;
+  width: 46px;
+  height: 46px;
+  border-radius: 15px;
+  box-shadow: 0 8px 20px rgba(124, 58, 237, 0.32);
+  margin-top: -12px;
+}
+#appNavV2 .nav-v2-cta .nav-icon svg { width: 26px; height: 26px; }
+#appNavV2 .nav-v2-cta .nav-label { color: var(--accent); }
+
+#appNavV2 .nav-v2-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: 10px;
+}
+
+/* ── Feuille basse « Créer » ────────────────────────────────────────────── */
+.v2-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(24, 18, 48, 0.42);
+  opacity: 0;
+  transition: opacity 200ms ease;
+}
+.v2-sheet-backdrop.open { opacity: 1; }
+.v2-sheet-backdrop[hidden] { display: none; }
+
+.v2-sheet {
+  width: 100%;
+  max-width: 540px;
+  background: var(--bg-card);
+  border-radius: var(--v2-radius) var(--v2-radius) 0 0;
+  padding: 10px 16px calc(18px + env(safe-area-inset-bottom, 0px));
+  box-shadow: var(--shadow-strong);
+  transform: translateY(14px);
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  max-height: 78vh;
+  overflow-y: auto;
+}
+.v2-sheet-backdrop.open .v2-sheet { transform: translateY(0); }
+
+.v2-sheet-grip {
+  width: 40px;
+  height: 4px;
+  border-radius: 4px;
+  background: var(--border-strong);
+  margin: 2px auto 10px;
+}
+.v2-sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.v2-sheet-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text);
+}
+.v2-sheet-close {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 0;
+  background: var(--bg-soft);
+  color: var(--text-dim);
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  font-size: 21px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.v2-sheet-list { display: flex; flex-direction: column; gap: 8px; }
+
+.v2-sheet-item {
+  appearance: none;
+  -webkit-appearance: none;
+  font-family: inherit;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  /* 56 px : cible tactile confortable au pouce, libellé + sous-titre lisibles. */
+  min-height: 56px;
+  padding: 10px 12px;
+  text-align: left;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease;
+}
+.v2-sheet-item:hover { background: var(--accent-wash); border-color: var(--border-strong); }
+.v2-sheet-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.v2-sheet-emoji { font-size: 24px; line-height: 1; flex-shrink: 0; width: 30px; text-align: center; }
+.v2-sheet-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.v2-sheet-item-title { font-size: 15px; font-weight: 700; color: var(--text); }
+.v2-sheet-item-hint { font-size: 12px; line-height: 1.35; color: var(--muted); }
+
+@media (prefers-reduced-motion: reduce) {
+  .v2-sheet-backdrop,
+  .v2-sheet { transition: none; }
+  .v2-sheet { transform: none; }
+  #appNavV2 .nav-icon { transition: none; }
+}

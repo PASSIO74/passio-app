@@ -1,5 +1,17 @@
 # Priorités actuelles
 
+> **2026-08-25 — nouvelle priorité n° 1 : rendre le concept PASSIO visible et testable, lot par lot.**
+> Direction canonique : [`docs/PASSIO_UI_V2_DIRECTION_2026-08-25.md`](../../docs/PASSIO_UI_V2_DIRECTION_2026-08-25.md)
+> (ordre du lot UI-1 : [`docs/PASSIO_UI_V2_ORDRE_UI1_2026-08-25.md`](../../docs/PASSIO_UI_V2_ORDRE_UI1_2026-08-25.md)).
+> Ce document **consolide et remplace l'ancien ordre UX qui plaçait la refonte APRÈS la performance** :
+> les chantiers de performance profonde et de montée en charge sont suspendus jusqu'à validation
+> visuelle du concept. Les priorités **P0 sécurité ci-dessous restent intégralement en vigueur** —
+> elles deviennent les garde-fous de l'expérimentation, elles ne sont pas suspendues.
+> Doctrine : `DÉCOUVRIR → PARTAGER → RENCONTRER`. Livraison par lots UI-1 → UI-7, chacun derrière
+> l'aperçu non persistant `?passio_preview=passio-ui-v2`, chacun validé par Benjamin avant le suivant.
+> En cas de contradiction : décision utilisateur la plus récente pour le produit, ce document UI V2
+> pour la direction UX, `main` GitHub pour l'état réel du code, sécurité déjà acquise non négociable.
+
 > Mis à jour : 2026-08-20. Les priorités sécurité existantes restent obligatoires ; ce document ajoute le cadrage produit de simplification. Voir aussi `../../docs/PASSIO_PRODUCT_AUDIT_V2_2026-08-20.md` et `../../docs/CLAUDE_CODE_REPRISE_PRODUCT_2026-08-20.md`.
 
 ## P0 — sécurité / prérequis qui ne doivent pas régresser
@@ -40,6 +52,12 @@
 - Refonte CDV/IRL du 2026-08-03 — préserver les briques CDV pour Passio : Voyage ; ne pas les supprimer aveuglément.
 - Centre de pilotage (télémétrie) actif par défaut en prod (opt-out) depuis 2026-08-05.
 - ADR-009 du 2026-08-20 : cœur Feed→IRL et retrait Wallet/Passia/points.
+
+## Suspendu par la direction UI V2 du 2026-08-25 (jusqu'à validation du concept)
+
+- Optimisation profonde du DOM et de la fenêtre de fil, budgets p95/p99 complets, dimensionnement
+  « un million d'utilisateurs ». Repris **après** validation visuelle des lots UI-1 → UI-7.
+- Corollaire : une branche de lot UI ne porte aucun chantier performance.
 
 ## Ne PAS faire maintenant (anti-scope-creep)
 
