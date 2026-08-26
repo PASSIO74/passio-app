@@ -242,6 +242,31 @@ test("aperçu : le trait Passio et le lien n'apparaissent que sur les publicatio
   await expect(page.locator('article.post[data-postid="v3_nopsn"] [data-v3-bridge]')).toHaveCount(0);
 });
 
+// L'aperçu ne tient QUE par `?passio_preview=…` dans l'URL, et `goTo` fait
+// `history.pushState(..., "#" + ecran)` à chaque navigation. Si cet appel
+// perdait la chaîne de requête, la passerelle disparaîtrait au premier
+// aller-retour — sans erreur, sans trace. Ce test l'exerce pour de vrai.
+test("aperçu : la passerelle survit à un aller-retour entre écrans", async ({ page }) => {
+  await boot(page);
+  await seedFeed(page, POSTS);
+  await expect(page.locator("#feedList [data-v3-tempt]")).toHaveCount(3);
+
+  await page.evaluate(() => goTo("irl"));
+  await expect(page.locator("#screen-irl")).toHaveClass(/active/);
+  await page.evaluate(() => goTo("feed"));
+  await expect(page.locator("#screen-feed")).toHaveClass(/active/);
+
+  // Le drapeau se relit à CHAQUE rendu : s'il ne trouvait plus le paramètre,
+  // le fil reviendrait nu.
+  expect(await page.evaluate(() => window.PassioUIV3.isEnabled())).toBe(true);
+  await expect(page.locator("#feedList [data-v3-tempt]").first()).toBeVisible();
+
+  // …et le parcours reste complet après l'aller-retour.
+  await page.locator("#feedList [data-v3-tempt]").first().click();
+  await expect(page.locator("#v3PassioSheet")).toBeVisible();
+  await expect(page.locator("#v3PassioSheet [data-v3-choice]")).toHaveCount(3);
+});
+
 // ── ④ Le panneau et ses trois actions ──────────────────────────────────────
 test("aperçu : le tap ouvre « Autour de cette Passio » avec exactement trois actions", async ({ page }) => {
   await boot(page);
