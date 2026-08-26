@@ -20,6 +20,8 @@ const PREVIEW = "?passio_preview=passio-ui-3";
 // mise en page, pas un saut : un retour en tête du fil ferait des centaines de
 // pixels d'écart.
 const SEUIL_PX = 4;
+const TAILLE_FIL = 9;
+const DEFILEMENT_PX = 500;
 
 // Position de la carte `id` DANS LA FENÊTRE. C'est la bonne mesure de « la
 // position du Feed » : `#appMain.scrollTop` est réévalué en continu par
@@ -104,14 +106,20 @@ async function seedFeed(page, posts) {
 // Fait défiler le fil À UNE POSITION CHOISIE, puis renvoie l'identifiant du
 // « Ça me tente » le plus proche du centre de l'écran.
 //
-// ⚠️ Pourquoi ne pas simplement faire `.nth(8).click()` : Playwright amène
+// ⚠️ Pourquoi ne pas simplement faire `.nth(N).click()` : Playwright amène
 // d'abord la cible dans la vue, puis exige qu'elle soit STABLE deux frames de
-// suite. Or `.post` porte `content-visibility: auto` — les cartes hors écran
-// sont estimées, et une carte qu'on vient d'atteindre bouge encore de quelques
-// pixels pendant que ses voisines se mesurent. Sur un runner chargé, le clic
-// n'obtenait jamais sa fenêtre de stabilité (mesuré : 15 s de timeout en CI,
-// vert en local). On défile donc nous-mêmes, on laisse le fil se poser, et on
-// tape une cible DÉJÀ dans la vue — Playwright n'a plus rien à faire défiler.
+// suite. Or `.post` porte `content-visibility: auto` — les cartes hors écran ne
+// sont pas mises en page, elles valent `contain-intrinsic-size: auto 320px`, et
+// chaque carte qui entre dans la vue remplace son estimation par sa hauteur
+// RÉELLE, ce qui décale tout ce qui suit. Défiler loin dans un fil long
+// déclenche donc une cascade de re-mesures : sur le runner CI, à 1600 px dans
+// 26 cartes, la boîte ne s'est jamais stabilisée — ni pour Playwright, ni pour
+// le garde ci-dessous (15 s de timeout, vert en local sur une machine rapide).
+//
+// Le scénario était irréaliste, pas le produit : un utilisateur tape une carte
+// qu'il VOIT, dans un fil posé. On défile donc modérément (§ TAILLE_FIL /
+// DEFILEMENT_PX), on attend que la cible ait cessé de bouger, et on tape une
+// cible DÉJÀ dans la vue — Playwright n'a plus rien à faire défiler.
 async function taperCarteVisible(page, offset) {
   await page.evaluate((y) => { document.getElementById("appMain").scrollTop = y; }, offset);
   await page.waitForTimeout(400);
@@ -136,9 +144,13 @@ async function taperCarteVisible(page, offset) {
     const el = document.querySelector(sel);
     if (!el) return false;
     const t = Math.round(el.getBoundingClientRect().top);
-    if (window.__v3Top === t) { window.__v3TopN = (window.__v3TopN || 0) + 1; }
-    else { window.__v3Top = t; window.__v3TopN = 0; }
-    return window.__v3TopN >= 4;
+    // Tolérance de 1 px : on veut détecter un fil qui BOUGE, pas l'arrondi
+    // sous-pixel d'une mise en page par ailleurs posée.
+    if (window.__v3Top != null && Math.abs(window.__v3Top - t) <= 1) {
+      window.__v3TopN = (window.__v3TopN || 0) + 1;
+    } else { window.__v3TopN = 0; }
+    window.__v3Top = t;
+    return window.__v3TopN >= 3;
   }, `[data-v3-tempt="${id}"]`, { timeout: 15000, polling: 100 });
 
   await page.locator(`[data-v3-tempt="${id}"]`).click();
@@ -349,12 +361,14 @@ test("aperçu : « Proposer une sortie » préremplit le formulaire IRL existant
 // ── ⑥ Retour au Feed : position exacte et identité active ──────────────────
 test("aperçu : fermer le panneau restitue la position du Feed et l'identité active", async ({ page }) => {
   await boot(page);
-  // Assez de cartes pour que le fil défile réellement ET que la position visée
-  // reste LOIN du bas : collé au bas, `scrollTop` est borné par la hauteur du
-  // contenu, qui bouge encore pendant que `renderFeed` complète le fil en idle.
-  // On mesurerait alors la respiration du fil, pas la restitution.
+  // TAILLE_FIL = 9 : assez pour défiler réellement, et sous le seuil de peinture
+  // rapide de `renderFeed` (12), donc SANS complément en idle qui rallongerait le
+  // fil après coup. DEFILEMENT_PX = 500 : franchement au-dessus de zéro, et assez
+  // proche du haut pour que seules deux ou trois cartes aient à se mesurer — le
+  // fil se pose alors en quelques centaines de millisecondes, même sur un runner
+  // chargé (cf. la note de `taperCarteVisible`).
   const beaucoup = [];
-  for (let i = 0; i < 26; i++) beaucoup.push(post("v3_s" + "x".repeat(i), "Auteur " + i));
+  for (let i = 0; i < TAILLE_FIL; i++) beaucoup.push(post("v3_s" + "x".repeat(i), "Auteur " + i));
   await seedFeed(page, beaucoup);
 
   const identiteAvant = await page.evaluate(() => state.user.currentProfileId);
@@ -371,12 +385,12 @@ test("aperçu : fermer le panneau restitue la position du Feed et l'identité ac
   ];
 
   for (const [nom, fermer] of fermetures) {
-    const id = await taperCarteVisible(page, 1600);
+    const id = await taperCarteVisible(page, DEFILEMENT_PX);
     await expect(page.locator("#v3PassioSheet")).toBeVisible();
     const avant = await hautCarte(page, id);
     // Le fil a réellement défilé : la carte tapée n'est pas la première du fil.
     expect(await page.evaluate(() => document.getElementById("appMain").scrollTop),
-      "le fil doit réellement avoir défilé").toBeGreaterThan(200);
+      "le fil doit réellement avoir défilé").toBeGreaterThan(100);
 
     await fermer();
     await expect(page.locator("#v3PassioSheet")).toBeHidden();
