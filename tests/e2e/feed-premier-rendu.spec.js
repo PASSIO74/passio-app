@@ -241,4 +241,3 @@ test("§7 — kill switch UI V2 : ancien comportement strictement rétabli", asy
   expect(r.repli).toBe(false);
   expect(r.cartes).toBe(0);
 });
-
