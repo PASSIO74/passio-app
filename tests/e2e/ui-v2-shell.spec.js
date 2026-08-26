@@ -297,6 +297,84 @@ test("aperçu : aucun réglage durable écrit, profil actif inchangé", async ({
   await expect(page.locator("#appNav")).toBeVisible();
 });
 
+// ── ④ ter — un « 1 » hérité dans localStorage n'active JAMAIS l'aperçu ──────
+// Régression demandée en revue : tant qu'une valeur locale pouvait activer la
+// V2, un poste ayant visité l'aperçu une fois pouvait y rester enfermé et
+// l'URL normale cessait d'être la référence stable exigée par la direction.
+test("URL normale : un passio_ui_v2 « 1 » hérité est ignoré", async ({ page }) => {
+  const errors = { js: [], console: [], network: [] };
+  await page.addInitScript(() => {
+    // Valeur laissée par une version antérieure du module.
+    localStorage.setItem("passio_ui_v2", "1");
+  });
+  await boot(page, { errors });
+
+  // L'aperçu ne doit exister sous AUCUNE forme.
+  await expect(page.locator("#appNavV2")).toHaveCount(0);
+  await expect(page.locator("#v2CreateSheet")).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.classList.contains("passio-ui-v2"))).toBe(false);
+  expect(await page.evaluate(() => window.PassioUIV2.isEnabled())).toBe(false);
+
+  // …et la navigation historique reste bien celle qui pilote l'écran.
+  const legacy = page.locator("#appNav");
+  await expect(legacy).toBeVisible();
+  await expect(page.locator('#appNav .nav-item[data-screen="feed"]')).toBeVisible();
+  await page.click('#appNav .nav-item[data-screen="irl"]');
+  await screenIsActive(page, "irl");
+
+  // La valeur héritée est ignorée, pas réécrite : l'aperçu n'écrit jamais.
+  expect(await page.evaluate(() => localStorage.getItem("passio_ui_v2"))).toBe("1");
+
+  expect(errors.js, "exceptions JS avec une valeur héritée").toEqual([]);
+});
+
+// ── L'aide contextuelle ne doit jamais recouvrir la feuille « Créer » ───────
+// Vécu en test : la bulle §8 est `position: fixed`, elle se posait par-dessus la
+// feuille et interceptait le tap sur le premier choix. On la ferme à l'ouverture
+// plutôt que de lui passer devant — un z-index laisserait une bulle orpheline.
+test("aperçu : « Créer » ferme l'aide contextuelle qui la recouvrirait", async ({ page }) => {
+  const errors = { js: [], console: [], network: [] };
+  await boot(page, { preview: true, errors });
+
+  // Profil unique → l'aide « second profil » s'arme sur l'écran Profil.
+  expect(await page.evaluate(() => (state.user.profiles || []).length)).toBe(1);
+  await page.click('#appNavV2 .nav-v2-item[data-v2-key="profile"]');
+  await screenIsActive(page, "profiles");
+
+  // On EXIGE que l'aide soit apparue : sans elle, le test ne prouverait rien.
+  const aide = page.locator(".passio-hint");
+  await expect(aide, "l'aide contextuelle doit s'afficher pour que le test ait un sens").toBeVisible({ timeout: 8000 });
+
+  await page.click('#appNavV2 [data-v2-action="create"]');
+  const sheet = page.locator("#v2CreateSheet");
+  await expect(sheet).toBeVisible();
+
+  // Plus aucune bulle : ni visible, ni orpheline dans le DOM.
+  await expect(page.locator(".passio-hint")).toHaveCount(0);
+
+  // Le premier choix est ENTIÈREMENT visible et réellement cliquable — c'est le
+  // symptôme qui avait été observé, pas seulement la présence du nœud.
+  const premier = sheet.locator('[data-v2-create="post"]');
+  await expect(premier).toBeVisible();
+  const geo = await premier.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    // Élément réellement au-dessus au centre de la cible ?
+    const dessus = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return {
+      dansLEcran: r.top >= 0 && r.bottom <= window.innerHeight && r.height >= 44,
+      atteignable: !!(dessus && el.contains(dessus)),
+    };
+  });
+  expect(geo.dansLEcran, "premier choix entièrement dans l'écran, ≥ 44 px").toBe(true);
+  expect(geo.atteignable, "premier choix atteignable au tap (rien par-dessus)").toBe(true);
+
+  // Et il fonctionne : le clic réel ouvre bien le Studio.
+  await premier.click();
+  await screenIsActive(page, "studio");
+
+  expect(errors.js, "exceptions JS pendant l'ouverture de Créer").toEqual([]);
+});
+
 // ── ④ bis — une ancienne config `navOrder` est normalisée, jamais effacée ───
 test("aperçu : ancien navOrder normalisé sans effacer les autres réglages", async ({ page }) => {
   // Configuration héritée : ordre personnalisé de l'ancienne barre + un réglage

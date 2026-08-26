@@ -73,10 +73,43 @@ const STATE = {
 
   // Le sélecteur « Créer » n'existe que dans l'aperçu V2.
   if (PHASE === "apres") {
+    await page.evaluate((scr) => goTo(scr), "feed");
+    await page.waitForTimeout(700);
     await page.click('#appNavV2 [data-v2-action="create"]');
     await page.waitForTimeout(600);
     await page.screenshot({ path: path.join(OUT, "apres-creer-sheet.png"), fullPage: false });
     console.log("✓ apres-creer-sheet.png");
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(400);
+
+    // Cas de régression : l'aide contextuelle §8 s'affiche sur l'écran Profil et
+    // recouvrait la feuille. Capture prise DANS ce scénario, pour montrer que la
+    // bulle a bien disparu et que le premier choix est entièrement lisible.
+    // L'aide §8 est marquée « vue » dès son AFFICHAGE, et le parcours de capture
+    // est déjà passé par Profil plus haut : sans remise à zéro, la bulle ne
+    // reparaîtrait pas et la capture ne prouverait rien. On rétablit donc la
+    // condition de première visite, telle que la vit un nouveau compte.
+    await page.evaluate(() => {
+      try {
+        state.hintsVus = {};
+        saveState();
+      } catch (e) {}
+    });
+    await page.evaluate((scr) => goTo(scr), "feed");
+    await page.waitForTimeout(500);
+    await page.click('#appNavV2 .nav-v2-item[data-v2-key="profile"]');
+    await page.waitForTimeout(1800);
+    const aideVue = await page.evaluate(() => !!document.querySelector(".passio-hint"));
+    if (!aideVue) {
+      console.warn("⚠️  aide contextuelle non affichée : la capture ne démontre PAS le cas de régression");
+    }
+    await page.click('#appNavV2 [data-v2-action="create"]');
+    await page.waitForTimeout(700);
+    const aideRestante = await page.evaluate(() => document.querySelectorAll(".passio-hint").length);
+    await page.screenshot({ path: path.join(OUT, "apres-creer-sheet-sans-aide.png"), fullPage: false });
+    console.log("✓ apres-creer-sheet-sans-aide.png"
+      + "  (aide affichée avant ouverture : " + aideVue
+      + " · aides restantes après : " + aideRestante + ")");
   }
 
   await ctx.close();

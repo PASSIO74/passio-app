@@ -7,13 +7,18 @@
 // actuelle (barre du bas, profils du fil, onglets Mood, écrans, handlers)
 // reste octet pour octet celle de `main`.
 //
-//     ?passio_preview=passio-ui-v2       → aperçu pour CETTE URL seulement
-//     localStorage.passio_ui_v2 = "1"    → aperçu durable (réglage de poste)
+//     ?passio_preview=passio-ui-v2       → SEULE façon d'activer l'aperçu
 //     localStorage.passio_ui_v2 = "0"    → kill switch, prioritaire
 //     window.PASSIO_UI_V2 = false        → coupure en mémoire, prioritaire
 //
-// L'aperçu N'ÉCRIT JAMAIS : ni localStorage, ni `passio_config`, ni le profil
-// actif. Retirer le paramètre de l'URL et recharger rend l'interface actuelle.
+// ⚠️ L'aperçu N'EST JAMAIS DURABLE. Il n'existe aucune valeur de `localStorage`
+// qui l'active : l'URL normale rend l'interface actuelle, sans exception et
+// quel que soit l'historique du navigateur. Une ancienne valeur `"1"` laissée
+// par une version antérieure de ce fichier est simplement IGNORÉE — elle ne
+// peut donc pas enfermer un poste dans une configuration expérimentale.
+//
+// L'aperçu N'ÉCRIT JAMAIS non plus : ni localStorage, ni `passio_config`, ni le
+// profil actif. Retirer le paramètre de l'URL et recharger suffit à revenir.
 //
 // Périmètre volontairement clos pour UI-1 : la barre du bas et le sélecteur
 // « Créer ». Le fil, ses bulles de profils et sa ligne d'onglets Mood ne sont
@@ -27,16 +32,23 @@
   var ROOT_CLASS = "passio-ui-v2";
 
   // ── Drapeau ───────────────────────────────────────────────────────────────
-  // Même contrat que `feedIntentsEnabled` (app-02) : coupure mémoire > kill
-  // switch local > réglage local > canari d'URL > défaut sûr (désactivé).
+  // Ordre de priorité : coupure mémoire > kill switch local > canari d'URL >
+  // défaut sûr (désactivé).
+  //
+  // ⚠️ Il n'y a VOLONTAIREMENT aucune branche « valeur locale qui active ».
+  // `feedIntentsEnabled` (app-02) en possède une pour des raisons historiques ;
+  // ce module s'en écarte sciemment. Un aperçu activable durablement finirait
+  // par enfermer un poste dans une V2 non validée, et l'URL normale cesserait
+  // d'être la référence stable que la direction exige (§14). Le seul état
+  // durable admis est le kill switch, qui ne fait que RETIRER l'aperçu.
   function uiV2Enabled() {
     if (typeof window.PASSIO_UI_V2 === "boolean") return window.PASSIO_UI_V2;
     var stored = null;
     try { stored = localStorage.getItem(STORAGE_KEY); } catch (e) {}
-    if (stored === "0") return false;
-    if (stored === "1") return true;
+    if (stored === "0") return false; // kill switch : prioritaire sur l'URL
     try {
-      // Canari non persistant : lecture seule de l'URL, aucune écriture.
+      // Canari non persistant : lecture seule de l'URL, aucune écriture. Toute
+      // autre valeur stockée (dont un « 1 » hérité) est ignorée ici.
       var preview = new URLSearchParams(window.location.search).get("passio_preview");
       if (preview === PREVIEW_NAME) return true;
     } catch (e) {}
@@ -288,7 +300,25 @@
     });
   }
 
+  // Une aide contextuelle (spec §8) est `position: fixed` et se pose PAR-DESSUS
+  // le reste : ouverte au moment où l'on tape « Créer », elle recouvre le haut
+  // de la feuille et intercepte le tap sur le premier choix. Le produit prévoit
+  // déjà sa fermeture — on l'appelle, plutôt que de lui passer devant avec un
+  // z-index, ce qui laisserait une bulle orpheline flotter sur la feuille.
+  function fermerAideContextuelle() {
+    try {
+      if (typeof window.fermerHint === "function") { window.fermerHint(); return; }
+    } catch (e) {}
+    // Repli si la fonction n'existe pas (chargement partiel) : on retire le
+    // nœud, seul effet dont la feuille a besoin.
+    try {
+      var hint = document.querySelector(".passio-hint");
+      if (hint && hint.parentNode) hint.parentNode.removeChild(hint);
+    } catch (e) {}
+  }
+
   function openCreateSheet() {
+    fermerAideContextuelle();
     var wrap = ensureSheet();
     renderCreateSheet("main");
     lastFocused = document.activeElement;
@@ -392,5 +422,6 @@
     refresh: syncActive,
     openCreateSheet: openCreateSheet,
     closeCreateSheet: closeCreateSheet,
+    dismissHint: fermerAideContextuelle,
   };
 })();
