@@ -287,6 +287,22 @@ Le script est en lecture seule sur le dépôt (il n'écrit que dans son dossier 
   `docs/PASSIO_UI_V2_ORDRE_UI1_2026-08-25.md`.
   Implémentation UI-1 : `js/ui-v2-shell.js` + bloc « PASSIO UI V2 » en fin de `styles.css`
   (inertes sous kill switch), tests `tests/e2e/ui-v2-shell.spec.js`.
+  Implémentation UI-3A (passerelle « Ça me tente » du Feed vers l'IRL) :
+  `js/ui-v3-passerelle.js` + bloc « PASSIO UI V3 » en fin de `styles.css`, tests
+  `tests/e2e/ui-v3-passerelle.spec.js`. **Aperçu uniquement** :
+  `?passio_preview=passio-ui-3` est la SEULE activation, aucune valeur positive n'est
+  écrite dans `localStorage` (l'URL normale reste la prod, même après une visite) ;
+  coupures : `localStorage.passio_ui_3="0"` et `window.PASSIO_UI_3=false`. Le module
+  n'écrit rien (ni base, ni `state`, ni `localStorage`), ne crée ni événement ni RSVP,
+  et réutilise les moteurs existants (`irlPassionFilters`+`renderIRL`,
+  `openPassionExplorer`, `openCreateEvent`+`feedIrlBridgePrefill`). ⚠️ Trois pièges
+  payés pendant ce lot, à ne pas refaire : ne JAMAIS cadencer un rendu sur
+  `requestAnimationFrame` (il ne part pas sur une page qui ne compose pas de frames —
+  onglet en arrière-plan, headless, machine saturée : la passerelle n'était jamais
+  posée, en silence) ; masquer par CSS ancré à la classe racine plutôt que RETIRER du
+  DOM, sinon le kill switch ne restitue pas l'état d'avant ; fermer l'aide contextuelle
+  (`fermerHint`) avant d'ouvrir une feuille, elle est `position: fixed` et intercepte le
+  tap. Le lot UI-3B (publications déjà liées à un événement, « Je participe ») reste à faire.
 - `docs/PIEGES_CONNUS.md` — les 56 fiches détaillées (extrait de ce fichier le 2026-08-07).
 - `docs/HISTORIQUE_PROJET.md` — état 2026-06-11, backlog terminé, logs d’optimisation.
 - `docs/ARCHITECTURE.md`, `docs/CONTROLE_16_MISSIONS.md`, `docs/CHECKLIST_COMMERCIALISATION.md`.
