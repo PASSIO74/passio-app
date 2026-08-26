@@ -8,7 +8,7 @@ const { bootOnboarded } = require("./app-helper");
 // navigation principale : il vit désormais comme fonctionnalité secondaire de
 // Passion > Voyage.
 const SCREENS = ["feed", "profiles", "studio", "explore", "irl", "wallet", "messages", "cdv"];
-const NAV_LABELS = ["Fil", "Bobines", "IRL"];
+const NAV_LABELS = ["Découvrir", "Rencontrer", "Créer", "Messages", "Profil"];
 
 test("tour des 8 écrans : zéro erreur JS, chaque écran devient actif", async ({ page }) => {
   const errors = { js: [], console: [], network: [] };
@@ -84,7 +84,7 @@ test("bottom-nav : CDV dépromu et accès Voyage conservé", async ({ page }) =>
 
   // Les destinations cœur restent visibles.
   for (const label of NAV_LABELS) {
-    await expect(page.locator(".nav-item", { hasText: label }).first(), `nav « ${label} »`).toBeVisible();
+    await expect(page.locator("#appNavV2 .nav-v2-item", { hasText: label }), `nav « ${label} »`).toBeVisible();
   }
 
   // Le nœud CDV est volontairement conservé pour rendre l'essai réversible,
@@ -115,11 +115,10 @@ test("bottom-nav : CDV dépromu et accès Voyage conservé", async ({ page }) =>
   await expect(page.locator("#screen-cdv")).toHaveClass(/active/);
 
   // Les clics réels ne portent plus que sur les destinations VISIBLES de la nav.
-  const items = await page.$$eval(".nav-item[data-screen]", els => els
-    .filter((e) => getComputedStyle(e).display !== "none")
+  const items = await page.$$eval("#appNavV2 .nav-item[data-screen]", els => els
     .map(e => e.getAttribute("data-screen")));
   for (const s of items) {
-    await page.click(`.nav-item[data-screen="${s}"]`);
+    await page.click(`#appNavV2 .nav-item[data-screen="${s}"]`);
     if (s === "bobines") {
       await page.waitForFunction(() => {
         const v = document.getElementById("reelsViewer");
