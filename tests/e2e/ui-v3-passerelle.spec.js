@@ -501,6 +501,48 @@ test("aperçu : une aide contextuelle VISIBLE n'empêche pas « Ça me tente »"
   await expect(page.locator("#v3PassioSheet")).toBeHidden();
 });
 
+// ── ⑦ ter. Accessibilité : le corail doit rester LISIBLE ───────────────────
+// Le corail de marque #ff6b57 ne donne que 2,80:1 sur blanc — sous le 4,5:1 de
+// WCAG AA pour du texte normal, et même sous le 3:1 des grands caractères (le
+// lien fait 13 px). Ce test calcule le ratio RÉEL depuis les styles appliqués
+// par le navigateur : une régression de jeton, de fond ou de couleur sera vue.
+test("aperçu : le lien « Ça me tente » respecte le contraste AA (4,5:1)", async ({ page }) => {
+  await boot(page);
+  await seedFeed(page, POSTS);
+
+  const mesure = await page.evaluate(() => {
+    const lin = (c) => { c /= 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+    const parse = (s) => (s.match(/\d+(\.\d+)?/g) || []).slice(0, 3).map(Number);
+    const lum = ([r, g, b]) => 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+    // Fond EFFECTIF : on remonte les ancêtres jusqu'au premier fond opaque,
+    // sinon on mesurerait contre un `transparent` qui ne veut rien dire.
+    const fond = (el) => {
+      for (let n = el; n; n = n.parentElement) {
+        const bg = getComputedStyle(n).backgroundColor;
+        const v = parse(bg);
+        if (v.length === 3 && !/rgba\(.*,\s*0\)/.test(bg)) return v;
+      }
+      return [255, 255, 255];
+    };
+    const cible = document.querySelector("#feedList [data-v3-tempt]");
+    const st = getComputedStyle(cible);
+    const c = lum(parse(st.color)), f = lum(fond(cible));
+    const hi = Math.max(c, f), lo = Math.min(c, f);
+    return {
+      ratio: (hi + 0.05) / (lo + 0.05),
+      couleur: st.color,
+      taillePx: parseFloat(st.fontSize),
+      graisse: st.fontWeight,
+    };
+  });
+
+  // 13 px, même en graisse 800, relève du « texte normal » : le seuil des grands
+  // caractères (3:1) ne s'applique qu'à partir de 18,66 px en gras.
+  expect(mesure.taillePx, "un lien plus grand changerait le seuil applicable").toBeLessThan(18.66);
+  expect(mesure.ratio, `contraste réel de ${mesure.couleur} : ${mesure.ratio.toFixed(2)}:1`)
+    .toBeGreaterThanOrEqual(4.5);
+});
+
 // ── ⑧ Mobile ───────────────────────────────────────────────────────────────
 for (const largeur of [320, 390, 430]) {
   test(`aperçu : aucun débordement et cible tactile ≥ 44 px en ${largeur} px`, async ({ page }) => {

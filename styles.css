@@ -9377,6 +9377,15 @@ body.ctx-locked #appMain { overflow: hidden; }
 :root.passio-ui-3 {
   --v3-violet: var(--v2-violet, #6d32f4);
   --v3-coral: var(--v2-coral, #ff6b57);
+  /* Corail du TEXTE. Le corail de marque #ff6b57 ne donne que 2,80:1 sur
+     blanc : sous le 4,5:1 exigé par WCAG AA pour du texte normal, et même
+     sous le 3:1 des grands caractères — le lien « Ça me tente » fait 13 px.
+     Ce ton garde la TEINTE du corail (8,2° contre 7,1°) en abaissant la
+     saturation à 66 % : 5,30:1 sur blanc, 4,90:1 sur le fond nuage. Le trait
+     dégradé, lui, reste en #ff6b57 : il est décoratif (`aria-hidden`) et ne
+     porte aucune information, donc aucune exigence de contraste. La signature
+     visuelle du lot est intacte, seule la lisibilité du texte change. */
+  --v3-coral-texte: #c13d28;
   --v3-trace: linear-gradient(90deg, var(--v3-violet) 0%, var(--v3-coral) 100%);
 }
 
@@ -9446,7 +9455,7 @@ body.ctx-locked #appMain { overflow: hidden; }
   margin: -11px 0;
   font-size: 13px;
   font-weight: 800;
-  color: var(--v3-coral);
+  color: var(--v3-coral-texte);
   cursor: pointer;
   border-radius: 8px;
 }
@@ -9458,7 +9467,7 @@ body.ctx-locked #appMain { overflow: hidden; }
 }
 :root.passio-ui-3 .v3-tempt:hover { text-decoration: underline; }
 :root.passio-ui-3 .v3-tempt:focus-visible {
-  outline: 2px solid var(--v3-coral);
+  outline: 2px solid var(--v3-coral-texte);
   outline-offset: 2px;
 }
 
