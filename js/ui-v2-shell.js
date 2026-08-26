@@ -1,28 +1,35 @@
 // ══════════════════════════════════════════════════════════════════════════
-// PASSIO UI V2 — lot UI-1 : cadre visuel et navigation, DERRIÈRE UN APERÇU.
-// Direction produit : docs/PASSIO_UI_V2_DIRECTION_2026-08-25.md
+// PASSIO UI V2 — lots UI-1 (cadre et navigation) et UI-2 (Feed), DERRIÈRE UN
+// APERÇU UNIQUE. Direction produit : docs/PASSIO_UI_V2_DIRECTION_2026-08-25.md
 //
 // Ce module est ADDITIF et RÉVERSIBLE : hors aperçu il ne touche à rien —
 // aucun nœud créé, aucune classe posée, aucun style appliqué. L'interface
 // actuelle (barre du bas, profils du fil, onglets Mood, écrans, handlers)
 // reste octet pour octet celle de `main`.
 //
-//     ?passio_preview=passio-ui-v2       → SEULE façon d'activer l'aperçu
+//     ?passio_preview=passio-ui-v2       → SEULE façon d'activer la V2
 //     localStorage.passio_ui_v2 = "0"    → kill switch, prioritaire
 //     window.PASSIO_UI_V2 = false        → coupure en mémoire, prioritaire
 //
-// ⚠️ L'aperçu N'EST JAMAIS DURABLE. Il n'existe aucune valeur de `localStorage`
-// qui l'active : l'URL normale rend l'interface actuelle, sans exception et
-// quel que soit l'historique du navigateur. Une ancienne valeur `"1"` laissée
-// par une version antérieure de ce fichier est simplement IGNORÉE — elle ne
-// peut donc pas enfermer un poste dans une configuration expérimentale.
+// ⚠️ L'aperçu N'EST JAMAIS DURABLE, et AUCUNE valeur POSITIVE ne l'active :
+// ni `localStorage.passio_ui_v2 = "1"` (hérité d'une version antérieure de ce
+// fichier), ni `window.PASSIO_UI_V2 = true`. Les deux drapeaux ne savent que
+// RETIRER l'aperçu. L'URL normale rend donc l'interface actuelle sans
+// exception, quel que soit l'historique du navigateur ou l'état mémoire —
+// un poste ne peut pas rester enfermé dans une V2 non validée.
 //
 // L'aperçu N'ÉCRIT JAMAIS non plus : ni localStorage, ni `passio_config`, ni le
 // profil actif. Retirer le paramètre de l'URL et recharger suffit à revenir.
 //
-// Périmètre volontairement clos pour UI-1 : la barre du bas et le sélecteur
-// « Créer ». Le fil, ses bulles de profils et sa ligne d'onglets Mood ne sont
-// PAS touchés (décision produit verrouillée — ils seront raccordés en UI-2).
+// Périmètre :
+//   UI-1 — barre du bas et sélecteur « Créer » ;
+//   UI-2 — Feed : « Envie du moment » (le rail à cinq intentions d'app-02 suit
+//          désormais CE drapeau, cf. `feedIntentsEnabled`), une Bobine insérée
+//          dans le fil, le module « Passionnés à découvrir » et un état vide
+//          qui se termine par une action.
+// Restent explicitement hors périmètre : les bulles de profils du fil, le
+// design validé en UI-1, `rankFeedPosts`, la publication, les commentaires,
+// les réactions, le partage, les messages, les événements et le RSVP.
 // ══════════════════════════════════════════════════════════════════════════
 (function () {
   "use strict";
@@ -35,14 +42,15 @@
   // Ordre de priorité : coupure mémoire > kill switch local > canari d'URL >
   // défaut sûr (désactivé).
   //
-  // ⚠️ Il n'y a VOLONTAIREMENT aucune branche « valeur locale qui active ».
-  // `feedIntentsEnabled` (app-02) en possède une pour des raisons historiques ;
-  // ce module s'en écarte sciemment. Un aperçu activable durablement finirait
-  // par enfermer un poste dans une V2 non validée, et l'URL normale cesserait
-  // d'être la référence stable que la direction exige (§14). Le seul état
-  // durable admis est le kill switch, qui ne fait que RETIRER l'aperçu.
+  // ⚠️ Il n'y a VOLONTAIREMENT aucune branche « valeur positive qui active ».
+  // Les deux drapeaux ne savent que RETIRER : `window.PASSIO_UI_V2 = false`
+  // coupe, `= true` n'active rien ; `localStorage.passio_ui_v2 = "0"` coupe,
+  // `"1"` est ignoré. Un aperçu activable durablement (ou par une variable
+  // mémoire posée n'importe où) finirait par enfermer un poste dans une V2 non
+  // validée, et l'URL normale cesserait d'être la référence stable que la
+  // direction exige (§14). La SEULE activation positive est le canari d'URL.
   function uiV2Enabled() {
-    if (typeof window.PASSIO_UI_V2 === "boolean") return window.PASSIO_UI_V2;
+    if (window.PASSIO_UI_V2 === false) return false; // coupure mémoire, jamais l'inverse
     var stored = null;
     try { stored = localStorage.getItem(STORAGE_KEY); } catch (e) {}
     if (stored === "0") return false; // kill switch : prioritaire sur l'URL
@@ -360,6 +368,332 @@
     else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
   }
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // UI-2 — DÉCORATION DU FEED
+  // ──────────────────────────────────────────────────────────────────────────
+  // Deux insertions, et rien d'autre. Elles s'ajoutent au fil DÉJÀ rendu par
+  // `renderFeed` (app-02) : aucun post n'est retiré, réordonné ni dupliqué, le
+  // moteur de classement `rankFeedPosts` n'est pas touché, et les bulles de
+  // profils du haut restent hors de portée de ce code.
+  //
+  // Tout est construit par l'API DOM avec `textContent` : le contenu vient de
+  // comptes tiers, et un nœud de texte ne peut pas devenir du markup. Les
+  // seules URL posées passent par `safeMediaUrl` (même politique que
+  // `safeUrlAttr`, cf. commentaire de cette fonction).
+  // ══════════════════════════════════════════════════════════════════════════
+  var MODULE_ATTR = "data-v2-module";
+  var REEL_AFTER = 2;    // « insérer dans le Feed » — jamais la première carte
+  var PEOPLE_AFTER = 4;  // « après les premiers contenus, jamais en tête »
+  var PEOPLE_MIN = 2;    // moins de deux candidats → on n'affiche rien
+  var PEOPLE_MAX = 3;
+
+  // Même politique que `safeUrlAttr` (app-02) : http(s), data:image et blob:
+  // seulement. La valeur est rendue BRUTE parce qu'elle est posée par l'API DOM
+  // (`img.src`), où aucune sortie d'attribut n'est possible — l'échappement HTML
+  // de `safeUrlAttr` y casserait au contraire toute URL contenant un « & ».
+  function safeMediaUrl(u) {
+    var s = String(u == null ? "" : u).trim();
+    return /^(https?:\/\/|data:image\/|blob:)/i.test(s) ? s : "";
+  }
+
+  function feedList() { return document.getElementById("feedList"); }
+
+  function removeFeedModules(list) {
+    var old = list.querySelectorAll("[" + MODULE_ATTR + "]");
+    for (var i = 0; i < old.length; i++) {
+      if (old[i].parentNode) old[i].parentNode.removeChild(old[i]);
+    }
+  }
+
+  // Cartes de post RÉELLES, en enfants directs : on ne compte ni les modules
+  // insérés ici, ni un éventuel `.post` imbriqué dans un aperçu.
+  function directPosts(list) {
+    var out = [];
+    var kids = list.children;
+    for (var i = 0; i < kids.length; i++) {
+      if (kids[i].classList && kids[i].classList.contains("post")) out.push(kids[i]);
+    }
+    return out;
+  }
+
+  function insertAfterNthPost(list, node, n) {
+    var posts = directPosts(list);
+    if (posts.length >= n) {
+      var anchor = posts[n - 1];
+      anchor.parentNode.insertBefore(node, anchor.nextSibling);
+    } else {
+      list.appendChild(node); // moins de contenus que prévu : jamais en tête non plus
+    }
+  }
+
+  // ── Bobine dans le Feed ───────────────────────────────────────────────────
+  // Le moteur existant est réutilisé tel quel : `buildReels()` (app-05) fait
+  // déjà la déduplication, l'exclusion des comptes bloqués et le rejet des
+  // bobines sans média. Aucun second lecteur, aucune logique de publication.
+  function pickFeedReel() {
+    if (typeof window.buildReels !== "function") return null;
+    var reels = [];
+    try { reels = window.buildReels() || []; }
+    catch (e) {
+      if (window.console && console.error) console.error("[ui-v2] buildReels :", e);
+      return null;
+    }
+    return reels.length ? reels[0] : null;
+  }
+
+  function reelPoster(reel) {
+    var candidates = [reel.poster, reel.photo, reel.coverPhotoUrl, reel.image];
+    if (reel.cover && typeof window.resolveCoverUrl === "function") {
+      try { candidates.push(window.resolveCoverUrl(reel.cover)); } catch (e) {}
+    }
+    for (var i = 0; i < candidates.length; i++) {
+      var u = safeMediaUrl(candidates[i]);
+      if (u) return u;
+    }
+    return "";
+  }
+
+  function authorName(post) {
+    if (post && post.authorName) return post.authorName;
+    try {
+      var u = (typeof window.userById === "function") ? window.userById(post && post.authorId) : null;
+      if (u && u.name) return u.name;
+    } catch (e) {}
+    return "Profil";
+  }
+
+  function buildReelCard(reel) {
+    var card = document.createElement("article");
+    card.className = "v2-feed-card v2-reel-card";
+    card.setAttribute(MODULE_ATTR, "reel");
+    card.setAttribute("data-reel-id", String(reel.id));
+    card.setAttribute("role", "button");
+    card.setAttribute("tabindex", "0");
+    card.setAttribute("aria-label", "Bobine de " + authorName(reel) + " — ouvrir");
+
+    var media = document.createElement("div");
+    media.className = "v2-reel-media";
+    var poster = reelPoster(reel);
+    if (poster) {
+      // AUCUNE lecture automatique : la vignette est une <img>, pas une <video>.
+      // Le viewer existant reste le seul lecteur de bobines de l'application.
+      var img = document.createElement("img");
+      img.className = "v2-reel-poster";
+      img.loading = "lazy";
+      img.decoding = "async";
+      img.alt = "";
+      img.src = poster;
+      media.appendChild(img);
+    } else {
+      media.classList.add("v2-reel-media-empty");
+    }
+    var badge = document.createElement("span");
+    badge.className = "v2-reel-badge";
+    badge.textContent = "🎬 Bobine";
+    media.appendChild(badge);
+    var play = document.createElement("span");
+    play.className = "v2-reel-play";
+    play.setAttribute("aria-hidden", "true");
+    play.textContent = "▶";
+    media.appendChild(play);
+    card.appendChild(media);
+
+    var foot = document.createElement("div");
+    foot.className = "v2-reel-foot";
+    var who = document.createElement("span");
+    who.className = "v2-reel-author";
+    who.textContent = authorName(reel);
+    foot.appendChild(who);
+    var legende = String(reel.text || reel.caption || "").trim();
+    if (legende) {
+      var cap = document.createElement("span");
+      cap.className = "v2-reel-caption";
+      cap.textContent = legende;
+      foot.appendChild(cap);
+    }
+    card.appendChild(foot);
+
+    var ouvrir = function () {
+      track("ui_v2_feed_reel_open", {});
+      call("openReelById", reel.id);
+    };
+    card.addEventListener("click", ouvrir);
+    card.addEventListener("keydown", function (e) {
+      if (e.key !== "Enter" && e.key !== " " && e.key !== "Spacebar") return;
+      e.preventDefault();
+      ouvrir();
+    });
+    return card;
+  }
+
+  // ── Passionnés à découvrir ────────────────────────────────────────────────
+  // Tous les identifiants sous lesquels MES contenus peuvent apparaître.
+  // ⚠️ `MY_UID` (app-08) est déclaré avec `let` : un `let` de premier niveau ne
+  // crée PAS de propriété sur `window`, il faut donc lire la liaison lexicale —
+  // sous `typeof`+try, parce qu'elle est en zone morte tant qu'app-08 n'a pas
+  // tourné. `me` est l'identifiant local historique de l'auteur courant.
+  function mesIdentifiants() {
+    var ids = ["me"];
+    try { if (typeof MY_UID !== "undefined" && MY_UID) ids.push(MY_UID); } catch (e) {}
+    try { if (window.MY_UID) ids.push(window.MY_UID); } catch (e) {}
+    return ids;
+  }
+
+  // Candidats pris dans les auteurs RÉELLEMENT présents dans le fil rendu — pas
+  // un annuaire, pas une recommandation calculée ailleurs.
+  function pickPassionnes(posts) {
+    // `state` est un `let` global (app-01) : comme `MY_UID`, il appartient à
+    // l'environnement lexical partagé des scripts classiques mais PAS à
+    // `window`. Lire seulement `window.state` perdrait donc les suivis et les
+    // blocages dans l'application réelle. Le repli `window.state` reste utile
+    // pour un éventuel harnais isolé qui exposerait explicitement cet état.
+    var st = {};
+    try {
+      if (typeof state !== "undefined" && state) st = state;
+      else if (window.state) st = window.state;
+    } catch (e) {}
+    var user = st.user || {};
+    var following = user.following || [];
+    var blocked = user.blocked || [];
+    var moi = mesIdentifiants();
+    var seen = new Set();
+    var out = [];
+    for (var i = 0; i < posts.length && out.length < PEOPLE_MAX; i++) {
+      var p = posts[i];
+      if (!p || p._source === "me") continue;        // moi : jamais proposé
+      var id = p.authorId;
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      if (moi.indexOf(id) > -1) continue;            // moi, sous n'importe quel id
+      if (following.indexOf(id) > -1) continue;      // déjà suivi
+      if (blocked.indexOf(id) > -1) continue;        // bloqué (modération)
+      out.push(p);
+    }
+    // Moins de deux candidats : le module n'a rien à raconter, on n'affiche rien.
+    return out.length >= PEOPLE_MIN ? out : [];
+  }
+
+  function buildPersonTile(p) {
+    var info = {};
+    try { info = (typeof window.userById === "function" && window.userById(p.authorId)) || {}; } catch (e) {}
+    var nom = p.authorName || info.name || "Profil";
+    var emoji = p.authorEmoji || info.profileEmoji || "✨";
+    var couleur = String(p.authorColor || info.avatar || "");
+    var photo = safeMediaUrl(info.photoUrl || p.authorAvatar);
+
+    var tile = document.createElement("button");
+    tile.type = "button";
+    tile.className = "v2-person";
+    tile.setAttribute("data-v2-person", String(p.authorId));
+    tile.setAttribute("aria-label", "Voir le profil de " + nom);
+
+    var av = document.createElement("span");
+    av.className = "v2-person-avatar";
+    if (photo) {
+      var img = document.createElement("img");
+      img.src = photo;
+      img.alt = "";
+      img.loading = "lazy";
+      av.appendChild(img);
+    } else {
+      // Couleur venue d'un autre compte : bornée à une notation hexadécimale
+      // avant d'atteindre le style (le CSSOM rejetterait le reste, on préfère
+      // un défaut lisible à une tuile transparente).
+      av.style.backgroundColor = /^#[0-9a-f]{3,8}$/i.test(couleur) ? couleur : "#8b5cf6";
+      av.textContent = emoji;
+    }
+    tile.appendChild(av);
+
+    var nm = document.createElement("span");
+    nm.className = "v2-person-name";
+    nm.textContent = nom;
+    tile.appendChild(nm);
+
+    var meta = null;
+    try { meta = (typeof window.passionById === "function") ? window.passionById(p.passion) : null; } catch (e) {}
+    var libelle = meta ? String((meta.emoji || "") + " " + (meta.label || "")).trim() : "";
+    if (libelle) {
+      var pa = document.createElement("span");
+      pa.className = "v2-person-passion";
+      pa.textContent = libelle;
+      tile.appendChild(pa);
+    }
+
+    // Une seule issue : le profil existant. Ni message, ni rencontre directe.
+    tile.addEventListener("click", function () {
+      track("ui_v2_feed_person_open", {});
+      call("openUserProfile", p.authorId);
+    });
+    return tile;
+  }
+
+  function buildPassionnesModule(candidates) {
+    var box = document.createElement("section");
+    box.className = "v2-feed-card v2-people";
+    box.setAttribute(MODULE_ATTR, "people");
+    box.setAttribute("aria-label", "Passionnés à découvrir");
+
+    var head = document.createElement("h3");
+    head.className = "v2-people-title";
+    head.textContent = "Passionnés à découvrir";
+    box.appendChild(head);
+
+    var row = document.createElement("div");
+    row.className = "v2-people-row";
+    for (var i = 0; i < candidates.length; i++) row.appendChild(buildPersonTile(candidates[i]));
+    box.appendChild(row);
+    return box;
+  }
+
+  // Appelée par `renderFeed` juste après la peinture des cartes. Hors aperçu
+  // elle ne fait que retirer ses propres nœuds (bascule en mémoire) et rend la
+  // main : le fil reste exactement celui de `main`.
+  function decorateFeed(list, posts) {
+    list = list || feedList();
+    if (!list) return false;
+    removeFeedModules(list);
+    if (!uiV2Enabled()) return false;
+    try {
+      var reel = pickFeedReel();
+      if (reel) insertAfterNthPost(list, buildReelCard(reel), REEL_AFTER);
+
+      var gens = pickPassionnes(Array.isArray(posts) ? posts : []);
+      if (gens.length) insertAfterNthPost(list, buildPassionnesModule(gens), PEOPLE_AFTER);
+      return true;
+    } catch (e) {
+      // Un fil décoré à moitié doit rester VISIBLE et l'échec rester audible
+      // (piège « catch large » du projet) : on nettoie et on le dit.
+      if (window.console && console.error) console.error("[ui-v2] décoration du fil :", e);
+      removeFeedModules(list);
+      return false;
+    }
+  }
+
+  // ── État vide : une prochaine action, pas un cul-de-sac ───────────────────
+  // Les textes historiques ne sont pas touchés : l'aperçu AJOUTE un bouton qui
+  // dit quoi faire ensuite, et le retire dès qu'il est coupé.
+  function decorateEmpty(emptyEl, ctx) {
+    emptyEl = emptyEl || document.getElementById("feedEmpty");
+    if (!emptyEl) return false;
+    var old = emptyEl.querySelector("[data-v2-empty-cta]");
+    if (old && old.parentNode) old.parentNode.removeChild(old);
+    if (!uiV2Enabled()) return false;
+
+    var rienChoisi = !!(ctx && ctx.nothingSelected);
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn primary v2-empty-cta";
+    btn.setAttribute("data-v2-empty-cta", rienChoisi ? "explore" : "create");
+    btn.textContent = rienChoisi ? "Explorer les passions" : "Publier une Passio";
+    btn.addEventListener("click", function () {
+      track("ui_v2_empty_cta", { kind: rienChoisi ? "explore" : "create" });
+      if (rienChoisi) { goToScreen("explore"); return; }
+      openCreateSheet();
+    });
+    emptyEl.appendChild(btn);
+    return true;
+  }
+
   // ── Activation / désactivation ────────────────────────────────────────────
   function apply() {
     var on = uiV2Enabled();
@@ -375,6 +709,11 @@
       var nav = document.getElementById("appNavV2");
       if (nav && nav.parentNode) nav.parentNode.removeChild(nav);
       closeCreateSheet();
+      // UI-2 : les insertions du fil et le bouton d'état vide disparaissent avec
+      // le reste — une bascule en mémoire rend exactement l'état d'origine.
+      var list = feedList();
+      if (list) removeFeedModules(list);
+      decorateEmpty(null, {});
       return false;
     }
 
@@ -423,5 +762,9 @@
     openCreateSheet: openCreateSheet,
     closeCreateSheet: closeCreateSheet,
     dismissHint: fermerAideContextuelle,
+    // UI-2 — appelées par `renderFeed` (app-02). Inertes hors aperçu.
+    decorateFeed: decorateFeed,
+    decorateEmpty: decorateEmpty,
   };
 })();
+
