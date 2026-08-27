@@ -132,14 +132,25 @@ async function attendreFilStable(page, id) {
   // Compteurs de diagnostic : quand cette attente expire, on veut savoir POURQUOI.
   // « Le nœud a été remplacé 900 fois » et « le nœud a disparu du DOM » appellent
   // des corrections opposées ; sans le chiffre, on choisit à pile ou face.
-  await page.evaluate(() => { window.__filRef = null; window.__filStable = 0; window.__filDiag = { sondages: 0, remplacements: 0, absences: 0 }; });
+  await page.evaluate(() => { window.__filRef = null; window.__filRect = null; window.__filStable = 0; window.__filDiag = { sondages: 0, remplacements: 0, absences: 0, deplacements: 0 }; });
   try {
     await page.waitForFunction((s) => {
     const n = document.querySelector(s);
     const d = window.__filDiag; if (d) d.sondages++;
-    if (!n) { if (d) d.absences++; window.__filRef = null; window.__filStable = 0; return false; }
-    if (window.__filRef === n) { window.__filStable = (window.__filStable || 0) + 1; }
-    else { if (d && window.__filRef) d.remplacements++; window.__filRef = n; window.__filStable = 1; }
+    if (!n) { if (d) d.absences++; window.__filRef = null; window.__filRect = null; window.__filStable = 0; return false; }
+    // ⚠️ L'identité du nœud ne suffit PAS : Playwright, lui, exige que l'élément
+    // ne BOUGE plus (« element is not stable »), et deux choses le déplacent ici
+    // sans le remplacer — l'animation `like-pop` (`transform: scale()`, 0,32 s)
+    // et la ligne que la passerelle UI-3A ajoute à la carte APRÈS la peinture.
+    // On attend donc la même géométrie, arrondie au pixel, sur des sondages
+    // consécutifs : c'est exactement la propriété que le clic suivant réclame.
+    const r = n.getBoundingClientRect();
+    const cle = [r.top, r.left, r.width, r.height].map(Math.round).join(":");
+    if (window.__filRef === n && window.__filRect === cle) { window.__filStable = (window.__filStable || 0) + 1; }
+    else {
+      if (d && window.__filRef) { if (window.__filRef === n) d.deplacements++; else d.remplacements++; }
+      window.__filRef = n; window.__filRect = cle; window.__filStable = 1;
+    }
     return window.__filStable >= 3;
     // ⚠️ polling par INTERVALLE, jamais "raf" : requestAnimationFrame ne se
     // déclenche pas sur une page qui ne compose pas de frames — ce qui est le
@@ -150,8 +161,8 @@ async function attendreFilStable(page, id) {
   } catch (e) {
     const d = await page.evaluate(() => window.__filDiag).catch(() => null);
     throw new Error(`attendreFilStable a expiré sur ${sel}\n`
-      + `diagnostic : ${d ? `${d.sondages} sondages, ${d.remplacements} remplacements de nœud, ${d.absences} absences` : "indisponible"}\n`
-      + `(remplacements élevés = le fil se re-rend en boucle ; absences élevées = le post n'est plus dans le DOM)\n${e.message}`);
+      + `diagnostic : ${d ? `${d.sondages} sondages, ${d.remplacements} remplacements de nœud, ${d.deplacements} déplacements, ${d.absences} absences` : "indisponible"}\n`
+      + `(remplacements élevés = le fil se re-rend en boucle ; déplacements élevés = la mise en page bouge encore ; absences élevées = le post n'est plus dans le DOM)\n${e.message}`);
   }
 }
 
