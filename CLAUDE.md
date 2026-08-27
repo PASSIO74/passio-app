@@ -364,6 +364,30 @@ Le script est en lecture seule sur le dépôt (il n'écrit que dans son dossier 
   la fiche historique y dit déjà la bonne chose. Vie privée : seule la ville publique monte
   au premier niveau, l'adresse exacte et le téléphone restent dans « Infos pratiques »,
   là où le moteur historique les avait mis.
+  Implémentation UI-4A0 (tête de l'écran « Rencontrer ») : `js/ui-v4a0-tete.js` + bloc
+  « PASSIO UI V4 — lot UI-4A0 » en fin de `styles.css`, tests `tests/e2e/ui-v4a0-tete.spec.js`.
+  **APERÇU UNIQUEMENT** (`?passio_preview=passio-ui-4a0-demo`, alias `…=passio-ui-4a0`) ;
+  coupures dédiées et prioritaires `localStorage.passio_ui_4a0="0"` et
+  `window.PASSIO_UI_4A0=false`. Périmètre volontairement minuscule : titre, sous-titre,
+  recherche et quatre intentions posés EN TÊTE de `#screen-irl` ; la liste, la carte, les
+  cartes d'activité et tous les moteurs d'app-07 restent intacts dessous. Deux seuls
+  comportements branchés : ① la recherche de tête recopie sa valeur dans le champ
+  historique `#irlCitySearch` (masqué en CSS via le nouvel id `#irlSearchRow`, jamais
+  retiré du DOM) puis appelle `filterIrlByCity()` — même anti-rebond, même
+  `irlSearchQuery`, aucun second moteur ; ② **aucune demande GPS à l'ouverture**, obtenue
+  en ENVELOPPANT `window.renderIRL` pour armer le marqueur historique
+  `_passioIrlSkipGeoOnce` (celui d'UI-3A) avant chaque rendu — le moteur le consomme
+  lui-même, donc la géolocalisation n'est jamais désactivée durablement et
+  `requestUserLocation()` appelé par un geste explicite fonctionne toujours.
+  ⚠️ Les quatre intentions (`Pour toi` neutre + trois multisélectionnables) tiennent leur
+  état **EN MÉMOIRE SEULE** et ne filtrent PAS encore : le raccordement à `irlDateFilters`
+  / `irlSelectedCity` / `irlPassionFilters` revient à UI-4A1, qui lira
+  `window.PassioUIV4A0.intents()`. C'est une décision de découpage, pas un oubli.
+  ⚠️ Piège du build : `scripts/build.js` externalise le bloc app dans `app.js` chargé
+  APRÈS le gate, alors que les modules hors bloc sont inlinés et s'exécutent tout de
+  suite — au premier `boot()`, `renderIRL` n'existe pas encore en prod. Le module écoute
+  donc `passio:app-ready` et garde une reprise bornée par `setTimeout` (jamais
+  `requestAnimationFrame`).
 - `docs/PIEGES_CONNUS.md` — les 56 fiches détaillées (extrait de ce fichier le 2026-08-07).
 - `docs/HISTORIQUE_PROJET.md` — état 2026-06-11, backlog terminé, logs d’optimisation.
 - `docs/ARCHITECTURE.md`, `docs/CONTROLE_16_MISSIONS.md`, `docs/CHECKLIST_COMMERCIALISATION.md`.

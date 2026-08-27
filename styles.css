@@ -9778,3 +9778,136 @@ body.ctx-locked #appMain { overflow: hidden; }
   :root.passio-ui-4b .v4b-rdv-jour { font-size: 21px; }
   :root.passio-ui-4b .v4b-rdv-quand { font-size: 14px; }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   PASSIO UI V4 — lot UI-4A0 : tête de « Rencontrer », APERÇU UNIQUEMENT
+   (?passio_preview=passio-ui-4a0-demo — voir js/ui-v4a0-tete.js)
+
+   Tout est ancré à `:root.passio-ui-4a0` : sans l'aperçu, aucune de ces règles
+   ne s'applique et l'écran IRL historique est rendu à l'octet près. Les deux
+   éléments historiques recouverts sont MASQUÉS, jamais retirés du DOM — le
+   kill switch doit pouvoir les rendre sans rechargement, et le moteur continue
+   d'écrire dedans (`updateIrlCityTitle`, `clearAllIrlFilters`).
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* Le titre historique « Passio IRL » et la barre de recherche historique sont
+   remplacés par le bandeau — pas dupliqués. */
+:root.passio-ui-4a0 #screen-irl > .section-title,
+:root.passio-ui-4a0 #irlSearchRow { display: none; }
+
+:root.passio-ui-4a0 .v4a0-head {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 2px 0 12px;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+:root.passio-ui-4a0 .v4a0-title {
+  margin: 0;
+  font-size: 26px;
+  line-height: 1.15;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  color: var(--text);
+}
+
+:root.passio-ui-4a0 .v4a0-sub {
+  margin: -4px 0 2px;
+  font-size: 13.5px;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+:root.passio-ui-4a0 .v4a0-searchbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 0 12px;
+  min-height: 46px;
+  box-sizing: border-box;
+  max-width: 100%;
+}
+:root.passio-ui-4a0 .v4a0-searchbox:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.14);
+}
+:root.passio-ui-4a0 .v4a0-search-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: var(--muted);
+}
+:root.passio-ui-4a0 .v4a0-search {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  outline: none;
+  color: var(--text);
+  /* 16 px : en dessous, iOS zoome à la mise au point du champ. */
+  font-size: 16px;
+  font-family: inherit;
+  min-height: 44px;
+  padding: 0;
+}
+:root.passio-ui-4a0 .v4a0-search::-webkit-search-cancel-button { cursor: pointer; }
+
+/* Les quatre intentions. Elles défilent horizontalement plutôt que de
+   déborder : à 320 px, quatre pastilles ne tiennent pas sur une ligne. */
+:root.passio-ui-4a0 .v4a0-intents {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  padding: 2px 0;
+  max-width: 100%;
+}
+:root.passio-ui-4a0 .v4a0-intents::-webkit-scrollbar { display: none; }
+
+:root.passio-ui-4a0 .v4a0-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  min-height: 44px;
+  padding: 0 15px;
+  border-radius: 999px;
+  border: 1.5px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color .16s ease, border-color .16s ease, color .16s ease;
+}
+/* Violet = sélection et Passio (charte). L'état ne repose PAS que sur la
+   couleur : `aria-pressed` le dit aux technologies d'assistance, et la coche
+   le dit à l'œil. */
+:root.passio-ui-4a0 .v4a0-chip[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+:root.passio-ui-4a0 .v4a0-chip-mark { display: none; font-size: 12px; }
+:root.passio-ui-4a0 .v4a0-chip[aria-pressed="true"] .v4a0-chip-mark { display: inline; }
+:root.passio-ui-4a0 .v4a0-chip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root.passio-ui-4a0 .v4a0-chip { transition: none; }
+}
+
+@media (max-width: 359px) {
+  :root.passio-ui-4a0 .v4a0-title { font-size: 23px; }
+  :root.passio-ui-4a0 .v4a0-chip { padding: 0 13px; font-size: 13px; }
+}
