@@ -9358,3 +9358,203 @@ body.ctx-locked #appMain { overflow: hidden; }
   :root.passio-ui-v2 .v2-person { transition: none; }
 }
 
+
+/* ══════════════════════════════════════════════════════════════════════════
+   PASSIO UI V3 — lot UI-3A (passerelle Feed → IRL), APERÇU UNIQUEMENT
+   Direction : docs/PASSIO_UI_V2_DIRECTION_2026-08-25.md §5, §6 et §15.
+
+   Tout ce bloc est ancré soit à `.passio-ui-3` (classe posée sur <html> par
+   js/ui-v3-passerelle.js, et seulement sous ?passio_preview=passio-ui-3), soit
+   à `#v3PassioSheet` — un nœud que les kill switches retirent. Aucune règle
+   existante n'est modifiée ; l'URL normale reste octet pour octet celle de la
+   production. Les feuilles basses et les classes `.v2-sheet-*` d'UI-1 sont
+   RÉUTILISÉES : on n'ajoute ici que ce que le trait Passio exige.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* Les jetons V3 s'appuient sur les `--v2-*` déjà validés, avec une valeur de
+   repli littérale : si UI-V2 était coupée sur l'appareil du testeur, la
+   passerelle garderait exactement les mêmes couleurs. */
+:root.passio-ui-3 {
+  --v3-violet: var(--v2-violet, #6d32f4);
+  --v3-coral: var(--v2-coral, #ff6b57);
+  /* Corail du TEXTE. Le corail de marque #ff6b57 ne donne que 2,80:1 sur
+     blanc : sous le 4,5:1 exigé par WCAG AA pour du texte normal, et même
+     sous le 3:1 des grands caractères — le lien de la passerelle fait 13 px.
+     Ce ton garde la TEINTE du corail (8,2° contre 7,1°) en abaissant la
+     saturation à 66 % : 5,30:1 sur blanc, 4,90:1 sur le fond nuage. Le trait
+     dégradé, lui, reste en #ff6b57 : il est décoratif (`aria-hidden`) et ne
+     porte aucune information, donc aucune exigence de contraste. La signature
+     visuelle du lot est intacte, seule la lisibilité du texte change. */
+  --v3-coral-texte: #c13d28;
+  --v3-trace: linear-gradient(90deg, var(--v3-violet) 0%, var(--v3-coral) 100%);
+}
+
+/* Le CTA historique du pont Fil → IRL (« 🤝 Organiser un IRL ») ne cohabite pas
+   avec la passerelle : deux portes vers l'IRL au bas d'une même carte. Il est
+   MASQUÉ ici, jamais retiré du DOM — la règle est portée par `.passio-ui-3`,
+   donc les kill switches la défont d'eux-mêmes et le CTA historique réapparaît
+   exactement tel qu'il était, sans attendre une repeinte du fil.
+
+   ⚠️ Le masquage est borné aux cartes RÉELLEMENT décorées (`data-v3-decore`,
+   posé par le module). Les deux éligibilités ne se recouvrent pas : le pont
+   historique s'affiche sur tout post non événementiel, la passerelle exige en
+   plus une passion CONNUE. Une règle non bornée fermait donc la seule porte
+   vers l'IRL des cartes sans passion reconnue, sans rien mettre à la place. */
+:root.passio-ui-3 .post[data-v3-decore] .feed-irl-bridge { display: none; }
+
+/* ── La ligne basse d'une carte éligible ────────────────────────────────────
+   Elle ne porte QUE le lien, aligné à droite. Elle a d'abord affiché un « trait
+   Passio » — badge de la Passio, emoji, ligne fine violet/corail — retiré le
+   2026-08-27 après essai réel de Benjamin sur la preview : la Passio figure déjà
+   dans l'en-tête du post, la répéter en bas alourdissait la carte sans rien
+   apprendre. Volontairement pas de pastille colorée, pas de bandeau, pas de
+   carte dans la carte. */
+:root.passio-ui-3 .v3-bridge {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  /* Aligné sur le rembourrage horizontal des autres blocs de la carte. */
+  padding: 2px 14px 10px;
+  min-width: 0;
+}
+
+/* Un LIEN, pas un bouton plein : discret dans la carte, mais la cible tactile
+   fait bien 44 px de haut (le rembourrage négatif garde la ligne compacte). */
+:root.passio-ui-3 .v3-tempt {
+  appearance: none;
+  -webkit-appearance: none;
+  font-family: inherit;
+  background: none;
+  border: 0;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 4px;
+  margin: -11px 0;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--v3-coral-texte);
+  cursor: pointer;
+  border-radius: 8px;
+}
+:root.passio-ui-3 .v3-tempt::after {
+  content: "›";
+  margin-left: 4px;
+  font-size: 15px;
+  line-height: 1;
+}
+:root.passio-ui-3 .v3-tempt:hover { text-decoration: underline; }
+:root.passio-ui-3 .v3-tempt:focus-visible {
+  outline: 2px solid var(--v3-coral-texte);
+  outline-offset: 2px;
+}
+
+/* ── Feuille « Trouver une expérience » ─────────────────────────────────────
+   Elle hérite de `.v2-sheet-backdrop` / `.v2-sheet` : mêmes rayons, même
+   safe-area, même piège de focus. Seul le trait de tête est propre au lot. */
+#v3PassioSheet .v3-sheet-trace {
+  height: 3px;
+  border-radius: 3px;
+  background: var(--v3-trace, linear-gradient(90deg, #6d32f4 0%, #ff6b57 100%));
+  margin: 0 auto 12px;
+  /* L'unique animation « forte » du lot (direction §5) : le trait violet file
+     vers le corail à l'ouverture. Courte, une seule fois, puis plus rien. */
+  width: 100%;
+  transform-origin: left center;
+  transform: scaleX(0);
+  transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+#v3PassioSheet.open .v3-sheet-trace { transform: scaleX(1); }
+
+/* 56 px comme les entrées de la feuille « Créer » : cible tactile confortable
+   au pouce, titre + aide lisibles sur une largeur de 320 px. */
+#v3PassioSheet .v3-sheet-item { min-height: 56px; }
+
+@media (prefers-reduced-motion: reduce) {
+  #v3PassioSheet .v3-sheet-trace { transition: none; transform: scaleX(1); }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   PASSIO UI V3 — lot UI-3B (publication déjà reliée à une activité)
+   Contrat visuel arrêté par Benjamin le 2026-08-27.
+
+   Tout est ancré à `.passio-ui-3` : les kill switches retirent la classe et
+   rendent l'application d'avant, sans rechargement.
+
+   ① Le lien « Voir l'activité » réutilise `.v3-tempt` — même discrétion,
+      même chevron, même cible tactile de 44 px, même corail lisible.
+      Pour un partage d'événement, la sous-carte historique est masquée sous le
+      marquage borné du lot : une seule porte reste visible dans le Feed.
+   ② La barre d'action de la fiche : une action primaire, un état lisible, et
+      un retrait qui ne concurrence pas l'action principale.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* Un partage d'événement possède déjà une sous-carte historique cliquable avec
+   son propre « Voir » et la Passio répétée. UI-3B la masque seulement sur les
+   cartes réellement décorées et identifiées comme `shared`. Le DOM reste en
+   place et réapparaît dès que la classe racine est retirée par un kill switch. */
+:root.passio-ui-3 .post[data-v3-decore][data-v3-activity-source="shared"] .post-vlog-card {
+  display: none;
+}
+
+:root.passio-ui-3 #eventDetailCta .v3-rsvp {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+/* Corail = « action vers le réel » (direction §5). ⚠️ Le corail de marque
+   #ff6b57 ne donne que 2,8:1 avec du blanc : c'est le ton texte
+   `--v3-coral-texte` qui sert de FOND ici (5,3:1 avec #fff), pour que le
+   libellé reste lisible en AA sans quitter la teinte du lot. */
+:root.passio-ui-3 #eventDetailCta .v3-rsvp-go {
+  background: var(--v3-coral-texte, #c13d28);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: none;
+  min-height: 48px;
+  font-size: 15px;
+}
+
+/* Participation confirmée : un ÉTAT, pas un bouton. Aucun `cursor: pointer`,
+   aucune bascule — un tap malheureux ne peut pas désinscrire. */
+:root.passio-ui-3 #eventDetailCta .v3-rsvp-etat {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: 0 14px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: #f5f3ff;
+  color: var(--text);
+  font-weight: 800;
+  font-size: 15px;
+}
+
+/* Retrait : présent, sûr, jamais concurrent de l'action primaire. Discret par
+   la taille et la graisse, mais cible tactile de 44 px comme le reste. */
+:root.passio-ui-3 #eventDetailCta .v3-rsvp-retirer {
+  appearance: none;
+  -webkit-appearance: none;
+  font-family: inherit;
+  background: none;
+  border: 0;
+  align-self: center;
+  min-height: 44px;
+  padding: 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  text-decoration: underline;
+  cursor: pointer;
+  border-radius: 8px;
+}
+:root.passio-ui-3 #eventDetailCta .v3-rsvp-retirer:hover { color: var(--text); }
+:root.passio-ui-3 #eventDetailCta .v3-rsvp-go:focus-visible,
+:root.passio-ui-3 #eventDetailCta .v3-rsvp-retirer:focus-visible {
+  outline: 2px solid var(--v3-coral-texte, #c13d28);
+  outline-offset: 2px;
+}
