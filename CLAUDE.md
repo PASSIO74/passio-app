@@ -287,6 +287,12 @@ Le script est en lecture seule sur le dépôt (il n'écrit que dans son dossier 
   `docs/PASSIO_UI_V2_ORDRE_UI1_2026-08-25.md`.
   Implémentation UI-1 : `js/ui-v2-shell.js` + bloc « PASSIO UI V2 » en fin de `styles.css`
   (inertes sous kill switch), tests `tests/e2e/ui-v2-shell.spec.js`.
+  ⚠️ **Contrat visuel arrêté le 2026-08-27, après essai réel de Benjamin sur la
+  preview** : la ligne basse d'une carte éligible ne porte QUE le lien « Trouver une
+  expérience », aligné à droite. Le nom de la Passio, son emoji et le « trait Passio »
+  violet → corail y ont été RETIRÉS — l'en-tête du post porte déjà la Passio, la répéter
+  en bas alourdissait la carte. Le trait subsiste dans la feuille basse, comme transition
+  d'ouverture. La direction §A19 est amendée dans ce sens.
   Implémentation UI-3A (passerelle « Trouver une expérience » du Feed vers l'IRL) :
   `js/ui-v3-passerelle.js` + bloc « PASSIO UI V3 » en fin de `styles.css`, tests
   `tests/e2e/ui-v3-passerelle.spec.js`. **ACTIF PAR DÉFAUT** depuis la validation

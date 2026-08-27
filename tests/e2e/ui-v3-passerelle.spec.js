@@ -5,8 +5,8 @@
 //   ① l'URL NORMALE porte la passerelle, et rien n'est écrit dans localStorage
 //      pour autant — l'activation vient du déploiement, pas de l'appareil ;
 //   ② les deux kill switches (localStorage et mémoire) coupent l'aperçu ;
-//   ③ une publication portant une Passio et SANS événement lié reçoit le trait
-//      Passio et le lien ; une publication reliée à un événement, non (UI-3B) ;
+//   ③ une publication portant une Passio et SANS événement lié reçoit le lien,
+//      et RIEN d'autre ; une publication reliée à un événement, non (UI-3B) ;
 //   ④ le tap ouvre « Trouver une expérience » avec EXACTEMENT trois actions ;
 //   ⑤ chacune des trois ouvre le moteur EXISTANT, sans rien créer ;
 //   ⑥ la fermeture restitue la position exacte du Feed et l'identité active ;
@@ -263,7 +263,7 @@ test("kill switch mémoire : window.PASSIO_UI_3 = false coupe l'aperçu", async 
 });
 
 // ── ③ Éligibilité ──────────────────────────────────────────────────────────
-test("le trait Passio et le lien n'apparaissent que sur les publications éligibles", async ({ page }) => {
+test("le lien n'apparaît que sur les publications éligibles, et SEUL", async ({ page }) => {
   await boot(page);
   await seedFeed(page, [
     post("v3_ok", "Alice"),                                       // éligible
@@ -274,9 +274,21 @@ test("le trait Passio et le lien n'apparaissent que sur les publications éligib
 
   await expect(page.locator("#feedList [data-v3-bridge]")).toHaveCount(1);
   const carte = page.locator('article.post[data-postid="v3_ok"]');
-  await expect(carte.locator(".v3-bridge-trace")).toHaveCount(1);
-  await expect(carte.locator(".v3-bridge-label")).toHaveText("Musique");
   await expect(carte.locator("[data-v3-tempt]")).toHaveText("Trouver une expérience");
+
+  // Contrat visuel arrêté le 2026-08-27 après essai réel sur la preview : la
+  // ligne basse ne porte QUE le lien. Le nom de la Passio, son emoji et le trait
+  // violet/corail sont supprimés — la Passio figure déjà dans l'en-tête du post.
+  const ligne = carte.locator("[data-v3-bridge]");
+  await expect(ligne.locator(".v3-bridge-passion")).toHaveCount(0);
+  await expect(ligne.locator(".v3-bridge-emoji")).toHaveCount(0);
+  await expect(ligne.locator(".v3-bridge-label")).toHaveCount(0);
+  await expect(ligne.locator(".v3-bridge-trace")).toHaveCount(0);
+  // Un seul élément dans la ligne, et c'est le lien.
+  expect(await ligne.evaluate((el) => el.children.length)).toBe(1);
+  expect(await ligne.evaluate((el) => el.firstElementChild.className)).toContain("v3-tempt");
+  // Le libellé de la Passio n'apparaît nulle part dans cette ligne.
+  expect(await ligne.innerText()).toBe("Trouver une expérience");
 
   await expect(page.locator('article.post[data-postid="v3_evt"] [data-v3-bridge]')).toHaveCount(0);
   await expect(page.locator('article.post[data-postid="v3_share"] [data-v3-bridge]')).toHaveCount(0);

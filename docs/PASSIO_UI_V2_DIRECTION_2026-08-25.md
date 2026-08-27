@@ -153,6 +153,16 @@ Un trait fin part du badge de passion d’un contenu, traverse le module context
 
 Ce motif relie visuellement Feed et IRL. Il doit rester discret, identifiable et réutilisable sur les cartes Feed, Bobines, événements et conversations.
 
+> ⚠️ **Rectification du 2026-08-27 — le trait est retiré de la carte du Feed.**
+> Après essai réel de Benjamin sur la preview de la PR #163, la ligne basse d'une
+> publication ne porte plus que le lien **« Trouver une expérience »**, aligné à
+> droite. Le nom de la Passio, son emoji et le trait violet → corail y sont
+> supprimés : la Passio figure déjà dans l'en-tête du post, la répéter en bas
+> alourdissait la carte sans rien apprendre. Le trait **subsiste dans la feuille
+> basse**, où il tient lieu de transition d'ouverture. Le schéma ci-dessus décrit
+> donc l'intention d'origine, plus l'implémentation livrée ; A19 est amendé dans
+> le même sens.
+
 ### Mouvement
 
 - une seule animation forte : lors de `Ça me tente`, le trait violet devient corail et ouvre le panneau IRL contextuel ;
@@ -858,6 +868,13 @@ Cette formulation évite de transformer PASSIO en dating forcé tout en gardant 
 Le lien Feed → IRL ne doit pas être seulement technique. L’utilisateur doit le percevoir visuellement. Le trait relie le badge de passion au module réel, avec un passage du violet au corail. Il rend visible la transformation : une passion numérique devient une expérience humaine.
 
 Cet élément est plus distinctif qu’une accumulation de cartes violettes et de dégradés génériques. Il donne à PASSIO un langage que l’on peut reconnaître dans le Feed, les Bobines, les fiches d’activité et les conversations.
+
+> ⚠️ **Amendé le 2026-08-27, à l'épreuve du réel.** Le raisonnement tenait sur le
+> papier ; sur l'écran, répéter la Passio en bas de carte n'apportait rien —
+> l'en-tête du post la porte déjà — et chargeait le fil. Le trait est donc retiré
+> de la carte et conservé dans la feuille basse, où il relie encore la Passio à
+> ses suites réelles au moment où l'utilisateur décide. La signature demeure,
+> elle se joue une fois, là où elle informe.
 
 ### A20. Pourquoi la couleur IRL est plus chaude
 

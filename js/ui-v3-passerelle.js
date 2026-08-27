@@ -4,9 +4,9 @@
 //
 // Périmètre EXACT de ce lot, et rien de plus :
 //   une publication du Feed qui porte une Passio et n'est PAS déjà reliée à un
-//   événement reçoit, en bas de carte, le « trait Passio » (violet → corail) et
-//   un lien discret « Trouver une expérience ». Le tap ouvre une feuille basse
-//   du même nom, qui propose exactement trois suites, toutes
+//   événement reçoit, en bas de carte, un lien discret « Trouver une expérience »
+//   — et rien d'autre depuis le 2026-08-27, voir `construireBridge`. Le tap ouvre
+//   une feuille basse du même nom, qui propose exactement trois suites, toutes
 //   servies par des moteurs QUI EXISTENT DÉJÀ :
 //     ① Voir les activités      → irlPassionFilters + goTo("irl")/renderIRL
 //     ② Découvrir des personnes → openPassionExplorer(passion)
@@ -123,16 +123,6 @@
     return "";
   }
 
-  function passionAffichable(pid) {
-    try {
-      if (typeof passionById === "function") {
-        var p = passionById(pid);
-        if (p) return { emoji: p.emoji || "✨", label: p.label || pid };
-      }
-    } catch (e) { fail("passion_label", e); }
-    return { emoji: "✨", label: pid };
-  }
-
   // ── Éligibilité UI-3A ─────────────────────────────────────────────────────
   // « Publication portant une Passio, mais SANS événement déjà lié ». Les deux
   // exclusions relèvent du lot UI-3B et sont donc traitées ici comme des
@@ -149,34 +139,15 @@
   // ══════════════════════════════════════════════════════════════════════════
   function feedList() { return document.getElementById("feedList"); }
 
-  // Le « trait Passio » : badge de la Passio, ligne fine violet → corail, puis le
-  // lien. C'est la ligne elle-même qui RELIE visuellement la Passio à l'action —
-  // pas une pastille générique de plus (direction §A19).
-  function construireBridge(post, passionId) {
-    var vue = passionAffichable(passionId);
-
+  // La ligne basse d'une carte éligible ne porte QUE le lien. Elle a d'abord
+  // affiché un « trait Passio » — badge de la Passio, emoji, ligne fine violet →
+  // corail — retiré le 2026-08-27 après essai réel de Benjamin sur la preview :
+  // la Passio figure déjà dans l'en-tête du post, la répéter en bas alourdissait
+  // la carte sans rien apprendre. Le lien reste discret et aligné à droite.
+  function construireBridge(post) {
     var row = document.createElement("div");
     row.className = "v3-bridge";
     row.setAttribute("data-v3-bridge", String(post.id));
-
-    // `textContent` partout : le libellé d'une passion PERSONNALISÉE est du texte
-    // saisi par un utilisateur. Aucune chaîne HTML n'est construite ici, donc
-    // aucune fenêtre d'échappement oublié.
-    var chip = document.createElement("span");
-    chip.className = "v3-bridge-passion";
-    var em = document.createElement("span");
-    em.className = "v3-bridge-emoji";
-    em.setAttribute("aria-hidden", "true");
-    em.textContent = vue.emoji;
-    var lab = document.createElement("span");
-    lab.className = "v3-bridge-label";
-    lab.textContent = vue.label;
-    chip.appendChild(em);
-    chip.appendChild(lab);
-
-    var trace = document.createElement("span");
-    trace.className = "v3-bridge-trace";
-    trace.setAttribute("aria-hidden", "true");
 
     var cta = document.createElement("button");
     cta.type = "button";
@@ -184,10 +155,10 @@
     cta.setAttribute("data-v3-tempt", String(post.id));
     cta.setAttribute("aria-haspopup", "dialog");
     cta.setAttribute("aria-expanded", "false");
+    // `textContent` : le libellé est une constante du lot, mais la règle vaut
+    // pour toute la ligne — aucune chaîne HTML n'est construite ici.
     cta.textContent = LIBELLE_CTA;
 
-    row.appendChild(chip);
-    row.appendChild(trace);
     row.appendChild(cta);
     return row;
   }
@@ -212,7 +183,7 @@
     var passionId = passionDuPost(post);
     if (!passionId) return;
 
-    article.appendChild(construireBridge(post, passionId));
+    article.appendChild(construireBridge(post));
     // Marque la carte comme DÉCORÉE. C'est cet attribut, et lui seul, qui
     // autorise le CSS à masquer le CTA historique : les deux éligibilités ne se
     // recouvrent pas (le pont historique n'exige aucune passion, la passerelle
@@ -379,8 +350,9 @@
     grip.className = "v2-sheet-grip";
     grip.setAttribute("aria-hidden", "true");
 
-    // Le « trait Passio » se prolonge dans la feuille : c'est le même motif qui
-    // relie la carte à ses suites réelles.
+    // Le trait violet → corail ne subsiste QUE dans la feuille, où il tient lieu
+    // de transition d'ouverture. Sur la carte il a été retiré le 2026-08-27 : il
+    // y répétait une Passio déjà lisible dans l'en-tête du post.
     var trace = document.createElement("div");
     trace.className = "v3-sheet-trace";
     trace.setAttribute("aria-hidden", "true");

@@ -9402,47 +9402,20 @@ body.ctx-locked #appMain { overflow: hidden; }
    vers l'IRL des cartes sans passion reconnue, sans rien mettre à la place. */
 :root.passio-ui-3 .post[data-v3-decore] .feed-irl-bridge { display: none; }
 
-/* ── Le « trait Passio » sur la carte du fil ────────────────────────────────
-   Badge de la Passio → ligne fine violet/corail → lien discret. C'est la LIGNE
-   qui porte la signature (direction §A19) : volontairement pas de pastille
-   colorée, pas de bandeau, pas de carte dans la carte. */
+/* ── La ligne basse d'une carte éligible ────────────────────────────────────
+   Elle ne porte QUE le lien, aligné à droite. Elle a d'abord affiché un « trait
+   Passio » — badge de la Passio, emoji, ligne fine violet/corail — retiré le
+   2026-08-27 après essai réel de Benjamin sur la preview : la Passio figure déjà
+   dans l'en-tête du post, la répéter en bas alourdissait la carte sans rien
+   apprendre. Volontairement pas de pastille colorée, pas de bandeau, pas de
+   carte dans la carte. */
 :root.passio-ui-3 .v3-bridge {
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: flex-end;
   /* Aligné sur le rembourrage horizontal des autres blocs de la carte. */
   padding: 2px 14px 10px;
   min-width: 0;
-}
-
-:root.passio-ui-3 .v3-bridge-passion {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  flex-shrink: 1;
-  min-width: 0;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--v3-violet);
-}
-:root.passio-ui-3 .v3-bridge-emoji { font-size: 13px; line-height: 1; }
-/* En 320 px le libellé cède avant tout le reste : il s'élide, la ligne ne
-   déborde jamais et le lien reste entier. */
-:root.passio-ui-3 .v3-bridge-label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
-}
-
-:root.passio-ui-3 .v3-bridge-trace {
-  flex: 1 1 12px;
-  /* 12 px : en dessous, la ligne n'est plus lisible comme un lien visuel ;
-     au-dessus, elle repousserait le CTA hors de la carte en 320 px. */
-  min-width: 12px;
-  height: 2px;
-  border-radius: 2px;
-  background: var(--v3-trace);
 }
 
 /* Un LIEN, pas un bouton plein : discret dans la carte, mais la cible tactile
