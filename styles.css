@@ -9444,6 +9444,12 @@ body.ctx-locked #appMain { overflow: hidden; }
   font-size: 15px;
   line-height: 1;
 }
+:root.passio-ui-3 .v3-tempt {
+  /* La cible dépasse légèrement la ligne compacte : ce contexte d'empilement
+     garantit que le bouton — et non la carte parente — reçoit toujours le tap. */
+  position: relative;
+  z-index: 1;
+}
 :root.passio-ui-3 .v3-tempt:hover { text-decoration: underline; }
 :root.passio-ui-3 .v3-tempt:focus-visible {
   outline: 2px solid var(--v3-coral-texte);
@@ -9599,8 +9605,8 @@ body.ctx-locked #appMain { overflow: hidden; }
    retour, déjà présent sur le partage) — le lecteur d'écran ne perd rien. */
 :root.passio-ui-4b .event-detail-back {
   font-size: 0;
-  width: 44px;
-  height: 44px;
+  width: 45px;
+  height: 45px;
   padding: 0;
   border-radius: 50%;
   display: flex;
@@ -9608,6 +9614,14 @@ body.ctx-locked #appMain { overflow: hidden; }
   justify-content: center;
   background: rgba(0, 0, 0, 0.42);
   top: max(14px, env(safe-area-inset-top));
+}
+:root.passio-ui-4b #eventDetailShareBtn {
+  /* 45 px évite l'arrondi sous-pixel 43,999998 px de Chromium tout en
+     conservant visuellement la cible ronde validée. */
+  width: 45px;
+  height: 45px;
+  min-width: 45px;
+  min-height: 45px;
 }
 :root.passio-ui-4b .event-detail-back::before {
   content: "←";
