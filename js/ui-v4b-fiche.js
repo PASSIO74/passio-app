@@ -763,6 +763,41 @@
   // encore être en cours de chargement. On réessaie quelques fois, brièvement,
   // puis on renonce en le disant — jamais en boucle infinie.
   var demoEssais = 0;
+  var demoPretObserver = null;
+
+  // Le délai borné reste un filet de secours, mais ne doit pas être l'unique
+  // signal : sous forte charge, l'app peut devenir prête après son expiration.
+  // On observe donc les deux classes de boot et on ouvre dès que l'état réel le
+  // permet. L'observateur est strictement réservé à l'aperçu de démonstration.
+  function armerOuvertureDemo() {
+    if (!demoDemandee() || demoPretObserver || idCourant() === DEMO_EVENT_ID) return;
+    var landing = document.getElementById("landing");
+    var feed = document.getElementById("screen-feed");
+    if (!landing && !feed) return;
+    demoPretObserver = new MutationObserver(function () {
+      if (!demoDemandee() || !uiV4bEnabled()) {
+        demoPretObserver.disconnect();
+        demoPretObserver = null;
+        return;
+      }
+      if (idCourant() === DEMO_EVENT_ID) {
+        demoPretObserver.disconnect();
+        demoPretObserver = null;
+        return;
+      }
+      ouvrirDemo();
+    });
+    if (landing) demoPretObserver.observe(landing,
+      { attributes: true, attributeFilter: ["class", "style"] });
+    if (feed) demoPretObserver.observe(feed,
+      { attributes: true, attributeFilter: ["class", "style"] });
+  }
+
+  function desarmerOuvertureDemo() {
+    if (!demoPretObserver) return;
+    demoPretObserver.disconnect();
+    demoPretObserver = null;
+  }
 
   // L'application doit avoir fini de se poser : ouvrir la fiche par-dessus la
   // landing ou avant le premier rendu du Feed donnerait un écran que le boot
@@ -785,6 +820,7 @@
       return;
     }
     if (rendreFiche(DEMO_EVENT_ID)) {
+      desarmerOuvertureDemo();
       track("ui_v4b_demo_open", { v: VERSION });
       planifier();
     }
@@ -799,6 +835,7 @@
     if (!on) {
       root.classList.remove(ROOT_CLASS);
       if (observateur) { observateur.disconnect(); observateur = null; }
+      desarmerOuvertureDemo();
       if (listenerPose) {
         document.removeEventListener("click", onDocumentClick, true);
         document.removeEventListener("keydown", onKeydown, true);
@@ -822,6 +859,7 @@
       listenerPose = true;
     }
     observer();
+    armerOuvertureDemo();
     ouvrirDemo();
     planifier();
     return true;
