@@ -251,7 +251,14 @@
     var deja = arr.some(function (p) { return p && p.id === DEMO_POST_ID; });
     if (!deja) arr.unshift(demoPost());
     demoRendering = true;
-    try { renderFeed(); }
+    try {
+      renderFeed();
+      // L'aide de première visite est positionnée au-dessus du Feed et peut
+      // intercepter le tap sur la carte de démonstration. Cette URL sert à une
+      // validation directe : on la ferme sans modifier son état persistant.
+      fermerAideContextuelle();
+      setTimeout(function () { fermerAideContextuelle(); }, 0);
+    }
     catch (e) { fail("demo_render", e); }
     finally {
       demoRendering = false;
