@@ -9482,13 +9482,21 @@ body.ctx-locked #appMain { overflow: hidden; }
    Tout est ancré à `.passio-ui-3` : les kill switches retirent la classe et
    rendent l'application d'avant, sans rechargement.
 
-   ① La carte du Feed n'a AUCUNE règle propre : le lien « Voir l'activité »
-      réutilise `.v3-tempt` — même discrétion, même chevron, même cible tactile
-      de 44 px, même corail lisible. Ne rien ajouter ici EST le contrat : pas de
-      sous-carte, pas de trait, pas de titre recopié, pas de bouton RSVP.
+   ① Le lien « Voir l'activité » réutilise `.v3-tempt` — même discrétion,
+      même chevron, même cible tactile de 44 px, même corail lisible.
+      Pour un partage d'événement, la sous-carte historique est masquée sous le
+      marquage borné du lot : une seule porte reste visible dans le Feed.
    ② La barre d'action de la fiche : une action primaire, un état lisible, et
       un retrait qui ne concurrence pas l'action principale.
    ══════════════════════════════════════════════════════════════════════════ */
+
+/* Un partage d'événement possède déjà une sous-carte historique cliquable avec
+   son propre « Voir » et la Passio répétée. UI-3B la masque seulement sur les
+   cartes réellement décorées et identifiées comme `shared`. Le DOM reste en
+   place et réapparaît dès que la classe racine est retirée par un kill switch. */
+:root.passio-ui-3 .post[data-v3-decore][data-v3-activity-source="shared"] .post-vlog-card {
+  display: none;
+}
 
 :root.passio-ui-3 #eventDetailCta .v3-rsvp {
   display: flex;
