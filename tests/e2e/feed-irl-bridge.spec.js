@@ -62,6 +62,18 @@ function sourcePostCta(page) {
 }
 
 test.describe("Pont Fil → IRL (feed_irl_bridge_v1)", () => {
+  // UI-3A (« Trouver une expérience ») est active par défaut depuis sa promotion
+  // du 2026-08-27 et MASQUE le CTA historique sur les cartes qu'elle décore —
+  // sans jamais le retirer du DOM. Cette suite-ci a un objet précis : prouver que
+  // le pont historique reste INTÉGRALEMENT fonctionnel quand UI-3A est coupée. On
+  // pose donc son kill switch documenté AVANT le boot ; une fois la page chargée,
+  // le CTA serait déjà masqué et le clic refusé. La preuve du chemin nominal,
+  // UI-3A active, appartient à `ui-v3-passerelle.spec.js` et au test « Rencontrer,
+  // UI-3A active » de `feed-intents.spec.js`. Aucune assertion n'est retirée ici.
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem("passio_ui_3", "0"));
+  });
+
   test("drapeau OFF (défaut) : aucun CTA sur la carte", async ({ page }) => {
     await bootOnboarded(page);
     await setFlag(page, null); // aucune valeur = défaut du code

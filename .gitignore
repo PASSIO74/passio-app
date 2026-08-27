@@ -65,6 +65,11 @@ push_passio.bat
 # Tests
 test-results/
 playwright-report/
+# Surcharge Playwright propre à un poste ou à un conteneur (ex. pointer un
+# binaire Chromium local quand celui qu'attend la version installée est absent).
+# Elle code en dur un chemin de machine : versionnée, elle casserait la CI et
+# les autres postes. La config de référence, playwright.config.js, est versionnée.
+playwright.local.config.js
 
 # Vidéos de démo générées (scripts/demo-video.js) — trop lourdes pour git
 docs/demo/

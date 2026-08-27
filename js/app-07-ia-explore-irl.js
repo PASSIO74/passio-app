@@ -2248,7 +2248,17 @@ function renderIRL() {
   //
   // goTo("irl") pose la classe `active` AVANT d'appeler renderIRL : la demande
   // part donc bien à l'ouverture réelle de l'écran IRL, là où elle se comprend.
-  if (!irlUserLocation && _irlEcranVisible()) {
+  //
+  // UI-3A (js/ui-v3-passerelle.js) pose un marqueur À USAGE UNIQUE avant de
+  // naviguer : arriver ici par « Voir les activités » signifie « les sorties de
+  // CETTE Passio », pas « autour de moi » — la valeur de la position n'est donc
+  // pas évidente à cet instant précis. Le marqueur est CONSOMMÉ ici, quoi qu'il
+  // arrive : il ne peut jamais désactiver durablement la géolocalisation, et le
+  // premier geste fait ensuite SUR l'écran IRL (filtre, carte) la redemande
+  // normalement.
+  var _sansGeoUneFois = window._passioIrlSkipGeoOnce === true;
+  window._passioIrlSkipGeoOnce = false;
+  if (!irlUserLocation && !_sansGeoUneFois && _irlEcranVisible()) {
     requestUserLocation();
   }
 

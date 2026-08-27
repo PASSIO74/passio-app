@@ -18,7 +18,43 @@
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
 
+// Neutralise, POUR CETTE SUITE SEULEMENT, l'optimisation de peinture
+// `.post { content-visibility: auto; contain-intrinsic-size: auto 320px }`
+// (styles.css). Elle fait varier la BOÎTE des cartes pendant que Playwright
+// prépare un clic : la cible bouge entre le test de stabilité et le geste, d'où
+// « element is not stable » pendant 15 s, ou un point qui retombe sur
+// l'<article> au lieu du bouton. Ce n'est pas la logique de like — ce que ces
+// tests exercent — mais une optimisation de rendu dont ils héritent.
+//
+// ⚠️ `addInitScript` et non `addStyleTag` : la suite contient un `page.reload()`
+// (l. « ma réaction emoji survit à un rechargement »), qui emporterait une
+// balise ajoutée après coup. Un script d'initialisation se rejoue à CHAQUE
+// navigation. Il survit aussi aux reconstructions du fil : le style vit dans
+// `<head>`, que réécrire `#feedList` ne touche pas.
+//
+// Cette neutralisation n'affaiblit AUCUNE assertion et ne masque pas UI-3A :
+// les tests d'ui-v3-passerelle.spec.js exercent le vrai rendu, avec le CSS de
+// production, y compris les tailles et le parcours tactile.
+async function poserLayoutDeterministe(page) {
+  await page.addInitScript(() => {
+    var poser = function () {
+      if (document.getElementById("__e2e_layout_determin")) return;
+      var st = document.createElement("style");
+      st.id = "__e2e_layout_determin";
+      st.textContent = "#feedList > .post { content-visibility: visible !important;"
+        + " contain-intrinsic-size: none !important; }";
+      (document.head || document.documentElement).appendChild(st);
+    };
+    if (document.head) poser();
+    else document.addEventListener("DOMContentLoaded", poser, { once: true });
+  });
+}
+
 async function bootInteractions(page) {
+  // AVANT la navigation : `bootOnboarded` fait le `goto`, et un script
+  // d'initialisation enregistré après lui ne s'appliquerait qu'au chargement
+  // suivant.
+  await poserLayoutDeterministe(page);
   await bootOnboarded(page);
   await page.evaluate(() => {
     // ⚠️ supaSetPostLike est stubbé à part : il doit répondre { ok:true }, pas
@@ -96,14 +132,25 @@ async function attendreFilStable(page, id) {
   // Compteurs de diagnostic : quand cette attente expire, on veut savoir POURQUOI.
   // « Le nœud a été remplacé 900 fois » et « le nœud a disparu du DOM » appellent
   // des corrections opposées ; sans le chiffre, on choisit à pile ou face.
-  await page.evaluate(() => { window.__filRef = null; window.__filStable = 0; window.__filDiag = { sondages: 0, remplacements: 0, absences: 0 }; });
+  await page.evaluate(() => { window.__filRef = null; window.__filRect = null; window.__filStable = 0; window.__filDiag = { sondages: 0, remplacements: 0, absences: 0, deplacements: 0 }; });
   try {
     await page.waitForFunction((s) => {
     const n = document.querySelector(s);
     const d = window.__filDiag; if (d) d.sondages++;
-    if (!n) { if (d) d.absences++; window.__filRef = null; window.__filStable = 0; return false; }
-    if (window.__filRef === n) { window.__filStable = (window.__filStable || 0) + 1; }
-    else { if (d && window.__filRef) d.remplacements++; window.__filRef = n; window.__filStable = 1; }
+    if (!n) { if (d) d.absences++; window.__filRef = null; window.__filRect = null; window.__filStable = 0; return false; }
+    // ⚠️ L'identité du nœud ne suffit PAS : Playwright, lui, exige que l'élément
+    // ne BOUGE plus (« element is not stable »), et deux choses le déplacent ici
+    // sans le remplacer — l'animation `like-pop` (`transform: scale()`, 0,32 s)
+    // et la ligne que la passerelle UI-3A ajoute à la carte APRÈS la peinture.
+    // On attend donc la même géométrie, arrondie au pixel, sur des sondages
+    // consécutifs : c'est exactement la propriété que le clic suivant réclame.
+    const r = n.getBoundingClientRect();
+    const cle = [r.top, r.left, r.width, r.height].map(Math.round).join(":");
+    if (window.__filRef === n && window.__filRect === cle) { window.__filStable = (window.__filStable || 0) + 1; }
+    else {
+      if (d && window.__filRef) { if (window.__filRef === n) d.deplacements++; else d.remplacements++; }
+      window.__filRef = n; window.__filRect = cle; window.__filStable = 1;
+    }
     return window.__filStable >= 3;
     // ⚠️ polling par INTERVALLE, jamais "raf" : requestAnimationFrame ne se
     // déclenche pas sur une page qui ne compose pas de frames — ce qui est le
@@ -114,8 +161,8 @@ async function attendreFilStable(page, id) {
   } catch (e) {
     const d = await page.evaluate(() => window.__filDiag).catch(() => null);
     throw new Error(`attendreFilStable a expiré sur ${sel}\n`
-      + `diagnostic : ${d ? `${d.sondages} sondages, ${d.remplacements} remplacements de nœud, ${d.absences} absences` : "indisponible"}\n`
-      + `(remplacements élevés = le fil se re-rend en boucle ; absences élevées = le post n'est plus dans le DOM)\n${e.message}`);
+      + `diagnostic : ${d ? `${d.sondages} sondages, ${d.remplacements} remplacements de nœud, ${d.deplacements} déplacements, ${d.absences} absences` : "indisponible"}\n`
+      + `(remplacements élevés = le fil se re-rend en boucle ; déplacements élevés = la mise en page bouge encore ; absences élevées = le post n'est plus dans le DOM)\n${e.message}`);
   }
 }
 
