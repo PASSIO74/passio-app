@@ -9474,3 +9474,79 @@ body.ctx-locked #appMain { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) {
   #v3PassioSheet .v3-sheet-trace { transition: none; transform: scaleX(1); }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   PASSIO UI V3 — lot UI-3B (publication déjà reliée à une activité)
+   Contrat visuel arrêté par Benjamin le 2026-08-27.
+
+   Tout est ancré à `.passio-ui-3` : les kill switches retirent la classe et
+   rendent l'application d'avant, sans rechargement.
+
+   ① La carte du Feed n'a AUCUNE règle propre : le lien « Voir l'activité »
+      réutilise `.v3-tempt` — même discrétion, même chevron, même cible tactile
+      de 44 px, même corail lisible. Ne rien ajouter ici EST le contrat : pas de
+      sous-carte, pas de trait, pas de titre recopié, pas de bouton RSVP.
+   ② La barre d'action de la fiche : une action primaire, un état lisible, et
+      un retrait qui ne concurrence pas l'action principale.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+:root.passio-ui-3 #eventDetailCta .v3-rsvp {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+/* Corail = « action vers le réel » (direction §5). ⚠️ Le corail de marque
+   #ff6b57 ne donne que 2,8:1 avec du blanc : c'est le ton texte
+   `--v3-coral-texte` qui sert de FOND ici (5,3:1 avec #fff), pour que le
+   libellé reste lisible en AA sans quitter la teinte du lot. */
+:root.passio-ui-3 #eventDetailCta .v3-rsvp-go {
+  background: var(--v3-coral-texte, #c13d28);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: none;
+  min-height: 48px;
+  font-size: 15px;
+}
+
+/* Participation confirmée : un ÉTAT, pas un bouton. Aucun `cursor: pointer`,
+   aucune bascule — un tap malheureux ne peut pas désinscrire. */
+:root.passio-ui-3 #eventDetailCta .v3-rsvp-etat {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: 0 14px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: #f5f3ff;
+  color: var(--text);
+  font-weight: 800;
+  font-size: 15px;
+}
+
+/* Retrait : présent, sûr, jamais concurrent de l'action primaire. Discret par
+   la taille et la graisse, mais cible tactile de 44 px comme le reste. */
+:root.passio-ui-3 #eventDetailCta .v3-rsvp-retirer {
+  appearance: none;
+  -webkit-appearance: none;
+  font-family: inherit;
+  background: none;
+  border: 0;
+  align-self: center;
+  min-height: 44px;
+  padding: 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  text-decoration: underline;
+  cursor: pointer;
+  border-radius: 8px;
+}
+:root.passio-ui-3 #eventDetailCta .v3-rsvp-retirer:hover { color: var(--text); }
+:root.passio-ui-3 #eventDetailCta .v3-rsvp-go:focus-visible,
+:root.passio-ui-3 #eventDetailCta .v3-rsvp-retirer:focus-visible {
+  outline: 2px solid var(--v3-coral-texte, #c13d28);
+  outline-offset: 2px;
+}

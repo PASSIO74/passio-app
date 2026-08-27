@@ -12,8 +12,14 @@
 //     ② Découvrir des personnes → openPassionExplorer(passion)
 //     ③ Proposer une sortie     → openCreateEvent() + feedIrlBridgePrefill()
 //
-// Hors périmètre (lot UI-3B) : les publications DÉJÀ reliées à un événement et
-// l'action « Je participe ». Elles sont explicitement exclues ici.
+// Lot UI-3B (ajouté le 2026-08-27, même module) : les publications DÉJÀ reliées
+// à une activité EXISTANTE reçoivent, au même endroit et dans le même style, le
+// lien « Voir l'activité ». Le tap ouvre la fiche EXISTANTE (`openEventDetails`),
+// où l'action primaire devient un unique « Je participe » servi par le moteur
+// RSVP historique (`setEventRsvp`). Les deux lots sont EXCLUSIFS : une carte
+// reliée à une activité ne reçoit jamais « Trouver une expérience », et
+// inversement. Contrat visuel arrêté par Benjamin : pas de « À vivre en vrai »,
+// pas de trait, pas de Passio répétée, pas de bouton RSVP dans le Feed.
 //
 // ⚠️ AUCUN effet de bord métier. Ce module ne crée pas d'événement, pas de RSVP,
 // pas de message, pas de relation ; il n'écrit ni en base, ni dans `state`, ni
@@ -49,6 +55,16 @@
   // promet est exactement ce que le panneau tient. Une seule constante, pour
   // qu'ils ne puissent pas diverger.
   var LIBELLE_CTA = "Trouver une expérience";
+
+  // ── Vocabulaire UI-3B, validé par Benjamin le 2026-08-27 ─────────────────
+  // Trois constantes, et rien d'autre : la carte ne porte QUE « Voir l'activité »,
+  // la fiche QUE « Je participe », et le retrait reste une action secondaire.
+  var VERSION_3B = "ui3b";
+  var LIBELLE_VOIR = "Voir l'activité";
+  var LIBELLE_RSVP = "Je participe";
+  var LIBELLE_RSVP_FAIT = "✓ Je participe";
+  var LIBELLE_RSVP_ATTENTE = "⏳ Sur liste d'attente";
+  var LIBELLE_RSVP_RETIRER = "Retirer ma participation";
 
   // ── Drapeau ───────────────────────────────────────────────────────────────
   // Ordre de priorité : coupure mémoire > kill switch local > défaut ACTIVÉ.
@@ -179,6 +195,15 @@
     if (article.querySelector("[data-v3-bridge]")) return; // déjà décorée
 
     var post = trouverPost(id);
+    if (!post || !post.id) return;
+
+    // UI-3B en premier : une publication DÉJÀ reliée à une activité relève de ce
+    // lot et de lui seul. Le `return` est inconditionnel — même quand l'activité
+    // est introuvable, la carte ne bascule PAS sur « Trouver une expérience » :
+    // ce serait proposer une autre porte que celle que la publication annonce.
+    var evId = refEvenement(post);
+    if (evId) { decorerActivite(article, post, evId); return; }
+
     if (!eligible(post)) return;
     var passionId = passionDuPost(post);
     if (!passionId) return;
@@ -304,11 +329,15 @@
   // corrige que s'il a réellement bougé.
   var ANCRE_TOLERANCE_PX = 2;
 
+  // ⚠️ L'ancre porte SON identifiant de publication. Elle était lue via
+  // `ctxPostId` (le contexte de la feuille) : UI-3B pose la même ancre depuis un
+  // parcours qui n'ouvre pas la feuille, et aurait restitué la position d'une
+  // autre carte. La donnée voyage donc avec l'ancre, jamais à côté.
   function poserAncre(postId) {
     ancre = null;
     try {
       var el = document.querySelector('#feedList article.post[data-postid="' + cssEscape(postId) + '"]');
-      if (el) ancre = { el: el, top: el.getBoundingClientRect().top };
+      if (el) ancre = { el: el, top: el.getBoundingClientRect().top, postId: String(postId) };
     } catch (e) { fail("ancre", e); }
   }
 
@@ -319,7 +348,7 @@
       // par son identifiant plutôt que de garder un nœud orphelin.
       var el = document.body.contains(ancre.el)
         ? ancre.el
-        : document.querySelector('#feedList article.post[data-postid="' + cssEscape(ctxPostId) + '"]');
+        : document.querySelector('#feedList article.post[data-postid="' + cssEscape(ancre.postId || ctxPostId) + '"]');
       if (!el) return;
       var delta = el.getBoundingClientRect().top - ancre.top;
       if (Math.abs(delta) <= ANCRE_TOLERANCE_PX) return;   // rien n'a bougé
@@ -638,16 +667,344 @@
   }
 
   // ══════════════════════════════════════════════════════════════════════════
+  // LOT UI-3B — publication DÉJÀ reliée à une activité
+  // ──────────────────────────────────────────────────────────────────────────
+  // Deux surfaces, aucun moteur nouveau :
+  //   ① la carte du Feed reçoit le seul lien « Voir l'activité » ;
+  //   ② la fiche EXISTANTE (`openEventDetails`) voit son action primaire
+  //      remplacée par un unique « Je participe », servi par `setEventRsvp`.
+  // Rien n'est écrit tant que le testeur n'a pas tapé « Je participe ».
+  // ══════════════════════════════════════════════════════════════════════════
+
+  // Référence d'activité PORTÉE par la publication. Uniquement les structures
+  // reconnues par l'application — jamais déduite du texte, de la ville ou de la
+  // Passio : une déduction ouvrirait la porte à un CTA qui ment.
+  function refEvenement(post) {
+    if (!post) return "";
+    if (post.eventId) return String(post.eventId);
+    if (post.event_id) return String(post.event_id);
+    var sd = post.sharedReelData;
+    if (sd && sd.kind === "event" && sd.id) return String(sd.id);
+    return "";
+  }
+
+  function sourceRef(post) {
+    if (!post) return "none";
+    if (post.eventId || post.event_id) return "direct";
+    return "shared";
+  }
+
+  // Résolution par les moteurs EXISTANTS, dans leur ordre d'autorité :
+  // l'objet canonique du `state` d'abord, la vue agrégée ensuite.
+  function trouverEvenement(id) {
+    if (!id) return null;
+    try {
+      if (typeof _findCanonicalEvent === "function") {
+        var ev = _findCanonicalEvent(id);
+        if (ev) return ev;
+      }
+    } catch (e) { fail("event_lookup", e); }
+    try {
+      if (typeof allEvents === "function") {
+        return allEvents().find(function (e) { return e && e.id === id; }) || null;
+      }
+    } catch (e) { fail("event_lookup_all", e); }
+    return null;
+  }
+
+  function etatRsvp(id) {
+    try { if (typeof myRsvp === "function") return myRsvp(id) || ""; }
+    catch (e) { fail("rsvp_etat", e); }
+    return "";
+  }
+
+  // Activité supprimée, inaccessible ou pas encore chargée : la publication
+  // reste visible et NUE. Le diagnostic est purement technique — pas
+  // d'identifiant de publication, pas de titre, pas de ville, pas de personne —
+  // et une seule fois par publication et par session, pour ne pas noyer le fil
+  // de diagnostic à chaque repeinte.
+  var orphelinsVus = {};
+  function signalerActiviteIntrouvable(postId) {
+    var k = String(postId);
+    if (orphelinsVus[k]) return;
+    orphelinsVus[k] = 1;
+    try { if (typeof diagLog === "function") diagLog("ui_v3b : activité liée introuvable"); } catch (e) {}
+    track("ui_v3b_ref_absente", { v: VERSION_3B });
+  }
+
+  // La ligne basse d'une carte reliée : le MÊME gabarit qu'UI-3A (lien discret,
+  // aligné à droite, chevron), et rien d'autre. Pas de sous-carte, pas de titre
+  // recopié, pas de date, pas de bouton de participation : le contrat visuel
+  // validé le 2026-08-27 tient en un lien.
+  function construireVoirActivite(post, ev) {
+    var row = document.createElement("div");
+    row.className = "v3-bridge";
+    row.setAttribute("data-v3-bridge", String(post.id));
+
+    var cta = document.createElement("button");
+    cta.type = "button";
+    cta.className = "v3-tempt v3-voir";
+    cta.setAttribute("data-v3-activity", String(ev.id));
+    cta.setAttribute("data-v3-post", String(post.id));
+    cta.textContent = LIBELLE_VOIR;
+
+    row.appendChild(cta);
+    return row;
+  }
+
+  // L'activité a disparu entre l'affichage du lien et le tap : on retire le lien
+  // devenu mensonger, et le marqueur avec lui — la carte redevient exactement
+  // celle d'avant, CTA historique compris.
+  function retirerDecoration(postId) {
+    if (!postId) return;
+    try {
+      var art = document.querySelector('#feedList article.post[data-postid="' + cssEscape(postId) + '"]');
+      if (!art) return;
+      var row = art.querySelector("[data-v3-bridge]");
+      if (row && row.parentNode) row.parentNode.removeChild(row);
+      art.removeAttribute("data-v3-decore");
+    } catch (e) { fail("decoration_retrait", e); }
+  }
+
+  function decorerActivite(article, post, evId) {
+    var ev = trouverEvenement(evId);
+    if (!ev) { signalerActiviteIntrouvable(post.id); return; }
+    article.appendChild(construireVoirActivite(post, ev));
+    // Même marqueur qu'UI-3A : c'est lui qui autorise le CSS à masquer le CTA
+    // historique, borné aux cartes réellement décorées.
+    article.setAttribute("data-v3-decore", "1");
+  }
+
+  // ── La fiche ──────────────────────────────────────────────────────────────
+  // `ctxFiche` = { id, postId } tant que la fiche a été ouverte PAR ce lot. Hors
+  // de ce contexte, la fiche reste exactement celle d'avant : ouvrir un
+  // événement depuis l'écran IRL ne change rien.
+  var ctxFiche = null;
+  var observerFicheRef = null;
+  var fichePending = false;
+
+  function pageFiche() { return document.getElementById("eventDetailPage"); }
+  function ficheOuverte() {
+    var page = pageFiche();
+    return !!page && page.style.display !== "none" && page.style.display !== "";
+  }
+
+  function ouvrirActivite(evId, postId) {
+    if (!uiV3Enabled()) return false;
+    var ev = trouverEvenement(evId);
+    if (!ev) {
+      // Le lien existait, l'activité a disparu entre-temps : on le dit, on
+      // n'ouvre rien, et on ne bascule sur AUCUNE autre activité.
+      signalerActiviteIntrouvable(postId);
+      notify("Cette activité n'est plus disponible.");
+      retirerDecoration(postId);
+      return false;
+    }
+    // Une aide contextuelle est `position: fixed` : ouverte à cet instant, elle
+    // recouvrirait la fiche. Même geste qu'UI-3A.
+    fermerAideContextuelle();
+
+    ctxFiche = { id: String(ev.id), postId: String(postId || "") };
+    if (ctxFiche.postId) poserAncre(ctxFiche.postId);
+
+    if (typeof openEventDetails !== "function") {
+      fail("fiche", "openEventDetails indisponible");
+      notify("La fiche de l'activité n'est pas disponible ici.");
+      ctxFiche = null;
+      return false;
+    }
+    try { openEventDetails(ev.id); } catch (e) {
+      fail("fiche_open", e);
+      notify("La fiche de l'activité n'est pas disponible ici.");
+      ctxFiche = null;
+      return false;
+    }
+
+    observerLaFiche();
+    appliquerCtaFiche();
+    track("ui_v3b_open_event", { v: VERSION_3B, src: sourceRef(trouverPost(postId)) });
+    return true;
+  }
+
+  // Action primaire de la fiche, remplacée UNE fois la fiche rendue. Elle n'est
+  // posée que dans le contexte de ce lot, sur une activité ni annulée ni
+  // terminée — dans ces deux cas la fiche historique dit déjà la bonne chose, et
+  // la recouvrir d'un « Je participe » serait mensonger.
+  function appliquerCtaFiche() {
+    if (!ctxFiche || !uiV3Enabled()) return;
+    if (String(window._openEventDetailId || "") !== ctxFiche.id) return;
+    var cta = document.getElementById("eventDetailCta");
+    if (!cta) return;
+    var ev = trouverEvenement(ctxFiche.id);
+    if (!ev) return;
+    try {
+      if (typeof _eventIsCancelled === "function" && _eventIsCancelled(ev)) return;
+      if (typeof _eventIsOver === "function" && _eventIsOver(ev)) return;
+    } catch (e) { fail("fiche_etat", e); return; }
+
+    var etat = etatRsvp(ctxFiche.id);
+    var sig = etat || "none";
+    // ⚠️ Le marqueur vit sur le nœud INJECTÉ, pas sur `#eventDetailCta` : le
+    // moteur historique repeint la barre par `innerHTML`, ce qui efface les
+    // enfants mais garde les attributs de l'hôte. Un marqueur posé sur l'hôte
+    // aurait donc dit « déjà à jour » sur une barre redevenue historique.
+    var box = cta.querySelector("[data-v3-rsvp]");
+    if (box && box.getAttribute("data-v3-rsvp") === sig) return;
+
+    cta.innerHTML = "";
+    cta.appendChild(construireCtaFiche(sig));
+  }
+
+  function construireCtaFiche(etat) {
+    var box = document.createElement("div");
+    box.className = "v3-rsvp";
+    box.setAttribute("data-v3-rsvp", etat);
+
+    // Participation confirmée (ou file d'attente) : un ÉTAT lisible, pas un
+    // bouton qui bascule — un tap malheureux ne doit pas désinscrire.
+    if (etat === "going" || etat === "waitlist") {
+      var st = document.createElement("div");
+      st.className = "v3-rsvp-etat";
+      st.setAttribute("data-v3-rsvp-etat", etat);
+      st.setAttribute("role", "status");
+      st.textContent = etat === "going" ? LIBELLE_RSVP_FAIT : LIBELLE_RSVP_ATTENTE;
+      box.appendChild(st);
+      box.appendChild(construireRetrait());
+      return box;
+    }
+
+    var go = document.createElement("button");
+    go.type = "button";
+    go.className = "btn primary block v3-rsvp-go";
+    go.setAttribute("data-v3-rsvp-go", "1");
+    go.textContent = LIBELLE_RSVP;
+    box.appendChild(go);
+    // Une réponse antérieure posée AILLEURS (feuille historique à trois états)
+    // reste retirable ici, sans que cette surface la nomme ni la propose.
+    if (etat !== "none") box.appendChild(construireRetrait());
+    return box;
+  }
+
+  function construireRetrait() {
+    var rm = document.createElement("button");
+    rm.type = "button";
+    rm.className = "v3-rsvp-retirer";
+    rm.setAttribute("data-v3-rsvp-remove", "1");
+    rm.textContent = LIBELLE_RSVP_RETIRER;
+    return rm;
+  }
+
+  // Geste EXPLICITE, et lui seul, déclenche l'écriture. `setEventRsvp` est le
+  // moteur historique : places, liste d'attente, annulation, notification de
+  // l'organisateur, écriture Supabase et lecture de son `{ error }` y sont déjà.
+  function participer() {
+    if (!ctxFiche) return false;
+    var id = ctxFiche.id;
+    if (typeof setEventRsvp !== "function") {
+      fail("rsvp", "setEventRsvp indisponible");
+      notify("La participation n'est pas disponible ici.");
+      return false;
+    }
+    track("ui_v3b_rsvp_go", { v: VERSION_3B, from: etatRsvp(id) || "none" });
+    try {
+      var r = setEventRsvp(id, "going");
+      if (r && typeof r.catch === "function") r.catch(function (e) { fail("rsvp_go", e); });
+    } catch (e) { fail("rsvp_go", e); return false; }
+    return true;
+  }
+
+  function retirerParticipation() {
+    if (!ctxFiche) return false;
+    var id = ctxFiche.id;
+    if (typeof setEventRsvp !== "function") return false;
+    track("ui_v3b_rsvp_remove", { v: VERSION_3B, from: etatRsvp(id) || "none" });
+    try {
+      var r = setEventRsvp(id, null);
+      if (r && typeof r.catch === "function") r.catch(function (e) { fail("rsvp_remove", e); });
+    } catch (e) { fail("rsvp_remove", e); return false; }
+    return true;
+  }
+
+  // Le moteur repeint la fiche ENTIÈRE à chaque changement de participation
+  // (`_refreshEventDetailIfOpen`) : la barre redevient alors historique. Un
+  // observateur coalescé la remet dans l'état du lot, et détecte la fermeture.
+  //
+  // ⚠️ `setTimeout` et jamais `requestAnimationFrame` : même piège qu'UI-3A, rAF
+  // ne part pas sur une page qui ne compose pas de frames.
+  function planifierFiche() {
+    if (fichePending) return;
+    fichePending = true;
+    setTimeout(function () { fichePending = false; majFiche(); }, 0);
+  }
+
+  function majFiche() {
+    if (!ctxFiche) return;
+    if (!ficheOuverte()) { quitterFiche(); return; }
+    // La fiche affiche une AUTRE activité (l'utilisateur a rebondi depuis
+    // l'album ou une recommandation) : le contexte du lot est périmé, on le
+    // rend au moteur historique plutôt que de recouvrir une fiche qu'on n'a
+    // pas ouverte.
+    if (String(window._openEventDetailId || "") !== ctxFiche.id) { quitterFiche(); return; }
+    try { appliquerCtaFiche(); } catch (e) { fail("fiche_cta", e); }
+  }
+
+  function observerLaFiche() {
+    var page = pageFiche();
+    if (!page || observerFicheRef) return;
+    observerFicheRef = new MutationObserver(function () { planifierFiche(); });
+    // Deux cibles, un seul observateur : l'affichage de la page (fermeture) et
+    // le contenu de la barre d'action (repeinte par le moteur historique).
+    observerFicheRef.observe(page, { attributes: true, attributeFilter: ["style"] });
+    var cta = document.getElementById("eventDetailCta");
+    if (cta) observerFicheRef.observe(cta, { childList: true });
+  }
+
+  // Retour au Feed : on rend la position exacte de la carte tapée. La fiche est
+  // un calque `position: fixed` qui ne démonte pas le fil, mais un rendu
+  // survenu entre-temps peut l'avoir bougé.
+  function quitterFiche() {
+    ctxFiche = null;
+    if (observerFicheRef) { observerFicheRef.disconnect(); observerFicheRef = null; }
+    restituerAncre();
+  }
+
+  // Coupure décidée alors que la fiche est ouverte : la barre d'action doit
+  // redevenir CELLE D'AVANT, sans rechargement. On laisse le moteur historique
+  // se réafficher lui-même plutôt que de reconstruire son HTML ici.
+  function restaurerFicheHistorique(id) {
+    if (!id || !ficheOuverte()) return;
+    if (String(window._openEventDetailId || "") !== String(id)) return;
+    try { if (typeof openEventDetails === "function") openEventDetails(id); }
+    catch (e) { fail("fiche_restore", e); }
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
   // ACTIVATION
   // ══════════════════════════════════════════════════════════════════════════
 
   // Délégation unique : les cartes du fil sont reconstruites en permanence, un
   // listener par bouton fuirait à chaque repeinte.
   function onDocumentClick(e) {
-    var cta = e.target.closest && e.target.closest("[data-v3-tempt]");
+    if (!e.target || !e.target.closest) return;
+
+    // UI-3B — « Voir l'activité » (carte du Feed) puis la fiche.
+    var voir = e.target.closest("[data-v3-activity]");
+    if (voir) {
+      e.preventDefault();
+      e.stopPropagation(); // le corps de la carte ouvre le post : ce lien, non.
+      ouvrirActivite(voir.getAttribute("data-v3-activity"), voir.getAttribute("data-v3-post"));
+      return;
+    }
+    var go = e.target.closest("[data-v3-rsvp-go]");
+    if (go) { e.preventDefault(); e.stopPropagation(); participer(); return; }
+    var rm = e.target.closest("[data-v3-rsvp-remove]");
+    if (rm) { e.preventDefault(); e.stopPropagation(); retirerParticipation(); return; }
+
+    // UI-3A — « Trouver une expérience ».
+    var cta = e.target.closest("[data-v3-tempt]");
     if (!cta) return;
     e.preventDefault();
-    e.stopPropagation();   // le corps de la carte ouvre le post : ce lien, non.
+    e.stopPropagation();
     openSheet(cta.getAttribute("data-v3-tempt"));
   }
 
@@ -664,6 +1021,13 @@
       root.classList.remove(ROOT_CLASS);
       nettoyer(null);
       closeSheet({ restaurer: false });
+      // La fiche ouverte par le lot redevient la fiche historique, barre
+      // d'action comprise. On coupe le contexte AVANT de la repeindre, sinon
+      // l'observateur la remettrait aussitôt dans l'état du lot.
+      var ctx = ctxFiche;
+      ctxFiche = null;
+      if (observerFicheRef) { observerFicheRef.disconnect(); observerFicheRef = null; }
+      if (ctx) restaurerFicheHistorique(ctx.id);
       if (observer) { observer.disconnect(); observer = null; }
       if (listenerPose) {
         document.removeEventListener("click", onDocumentClick, true);
@@ -701,5 +1065,8 @@
     openSheet: openSheet,
     closeSheet: closeSheet,
     dismissHint: fermerAideContextuelle,
+    // Lot UI-3B — surface de test et de diagnostic, sans effet de bord.
+    eventRefOf: refEvenement,
+    openActivity: ouvrirActivite,
   };
 })();
