@@ -1,13 +1,12 @@
 # CI — Reproductibilité du Netlify CLI (issue #172)
 
 **Date** : 2026-08-27 · **SHA de base** : `5a2382999a4ecc1eaa8dee43c1eabb011d9041b2`
-· **Risque** : critique (`.github/*`) · **État** : **correctif NON appliqué dans ce
-run** — conception vérifiée, application bloquée par les gardes du canal (§2).
+· **Risque** : critique (`.github/*`) · **État** : correctif appliqué dans cette branche
+par épinglage explicite de `netlify-cli@27.3.1` dans les jobs preview et production.
 
-> ⚠️ Ce document est une **note de conception et de blocage**, pas un correctif.
-> Il ne change aucun comportement. Le correctif réel touche `.github/workflows/deploy.yml`
-> (et, en option A, `package.json` + `package-lock.json`), chemins que l'agent distant
-> ne peut pas modifier. Il doit être appliqué à la main, avec contre-revue.
+> Claude Code a établi le diagnostic et les options ci-dessous mais son canal ne
+> pouvait pas écrire dans `.github/*`. Codex a appliqué l'option B sur la même
+> branche ; la CI et la contre-revue ancrée sur le SHA final restent obligatoires.
 
 ---
 
@@ -42,9 +41,9 @@ Conséquence pratique : un déploiement peut échouer **alors que rien n'a chang
 PASSIO**, et un déploiement peut réussir avec un CLI différent de celui du run
 précédent. Ni l'un ni l'autre n'est acceptable pour une marche de production.
 
-## 2. Pourquoi ce run n'a pas appliqué le correctif
+## 2. Pourquoi le run Claude n'avait pas appliqué le correctif
 
-Trois blocages, tous vérifiés, aucun contournable depuis ce run :
+Trois blocages, tous vérifiés dans le canal Claude distant :
 
 1. **Chemins de contrôle interdits à l'agent.** `.github/workflows/claude-code.yml`
    (étape « Chemin interdit ») refuse de publier tout travail touchant
@@ -126,7 +125,11 @@ code produit, `js/`, `styles.css`, `index.html`, Supabase, migrations. Les drape
 `--auth`/`--site` et leur alimentation par `secrets.NETLIFY_AUTH_TOKEN` restent
 strictement inchangés.
 
-## 4. Sélection de la version — à faire, pas à deviner
+## 4. Sélection de la version — vérification indépendante
+
+La version retenue est `27.3.1`. Elle est publiée, déclare Node `>=22.13.0` et dépend de `@netlify/ai@^1.0.0`, version disponible. Le tag Git officiel Netlify confirme ces métadonnées. La preview de cette PR doit encore prouver l'installation et le déploiement de bout en bout.
+
+### Méthode de sélection conservée
 
 `<VERSION_VERIFIEE>` doit être obtenue par exécution réelle, jamais par mémoire :
 
