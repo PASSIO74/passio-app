@@ -314,11 +314,31 @@ Le script est en lecture seule sur le dépôt (il n'écrit que dans son dossier 
   CTA historique vise `.post[data-v3-decore]`, marqueur posé par la décoration, car les
   deux éligibilités ne se recouvrent pas (le pont historique n'exige aucune passion, la
   passerelle en exige une CONNUE) : sans cette borne, une carte sans passion reconnue
-  perdait sa seule porte vers l'IRL sans rien recevoir en échange. Corollaire de test :
+  perdait sa seule porte vers l'IRL sans rien recevoir en échange.
+  Implémentation UI-3B (publication DÉJÀ reliée à une activité) : **même module**
+  `js/ui-v3-passerelle.js` (section « LOT UI-3B ») + bloc CSS dédié en fin de
+  `styles.css`, tests `tests/e2e/ui-v3b-activite.spec.js`. Les deux lots sont
+  EXCLUSIFS : `refEvenement(post)` (uniquement `eventId` / `event_id` /
+  `sharedReelData.kind==="event"`, jamais déduit du texte) décide, et une carte
+  reliée ne reçoit JAMAIS « Trouver une expérience ». La carte ne porte que le lien
+  « Voir l'activité » (mêmes classes `.v3-bridge`/`.v3-tempt`, attribut
+  `data-v3-activity`) ; activité introuvable = AUCUN CTA, publication intacte,
+  diagnostic technique sans PII. Le tap ouvre `openEventDetails` et remplace la
+  seule barre `#eventDetailCta` par une action unique « Je participe » servie par
+  `setEventRsvp` (aucun moteur RSVP dupliqué, aucune écriture avant le geste ;
+  ni « Peut-être », ni « Je ne participe pas » dans cette surface ; le retrait
+  reste secondaire). ⚠️ Deux pièges : le moteur repeint la fiche entière à chaque
+  RSVP (`_refreshEventDetailIfOpen`) donc le marqueur `data-v3-rsvp` vit sur le
+  nœud INJECTÉ et non sur `#eventDetailCta` (un `innerHTML` efface les enfants,
+  pas les attributs de l'hôte) ; et l'activité annulée ou terminée n'est jamais
+  recouverte — la fiche historique y dit déjà la bonne chose. Corollaire de test :
   les suites du pont historique (`feed-irl-bridge.spec.js`, le cas « Rencontrer » de
   `feed-intents.spec.js`) démarrent avec `localStorage.passio_ui_3="0"` pour l'observer
   seul — aucune assertion n'est retirée, la cohabitation est prouvée à part dans
-  `ui-v3-passerelle.spec.js`. Le lot UI-3B (publications déjà liées à un événement, « Je participe ») reste à faire.
+  `ui-v3-passerelle.spec.js`. Le lot UI-3B (publications déjà liées à un événement,
+  « Voir l'activité » puis « Je participe » dans la fiche) est implémenté et **en
+  attente de la validation visuelle de Benjamin** : il vit sous le MÊME drapeau
+  `passio_ui_3` et les mêmes coupures que UI-3A.
 - `docs/PIEGES_CONNUS.md` — les 56 fiches détaillées (extrait de ce fichier le 2026-08-07).
 - `docs/HISTORIQUE_PROJET.md` — état 2026-06-11, backlog terminé, logs d’optimisation.
 - `docs/ARCHITECTURE.md`, `docs/CONTROLE_16_MISSIONS.md`, `docs/CHECKLIST_COMMERCIALISATION.md`.
