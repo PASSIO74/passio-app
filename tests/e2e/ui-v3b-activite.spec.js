@@ -144,6 +144,14 @@ test("publication reliée : un seul CTA « Voir l'activité », et rien d'autre"
     await expect(carte.locator("[data-v3-rsvp-go]")).toHaveCount(0);
   }
 
+  // Le partage d'événement conserve son aperçu historique dans le DOM pour le
+  // kill switch, mais il est invisible : une seule porte reste à l'écran.
+  const partagee = page.locator('article.post[data-postid="p_share"]');
+  const apercuHistorique = partagee.locator(".post-vlog-card");
+  await expect(apercuHistorique).toHaveCount(1);
+  await expect(apercuHistorique).toBeHidden();
+  await expect(partagee.locator("[data-v3-activity]")).toBeVisible();
+
   // ① Aucun des libellés écartés par Benjamin n'apparaît dans le fil.
   const fil = await page.locator("#feedList").innerText();
   expect(fil).not.toContain("À vivre en vrai");
@@ -161,6 +169,13 @@ test("publication reliée : un seul CTA « Voir l'activité », et rien d'autre"
   const libre = page.locator('article.post[data-postid="p_libre"]');
   await expect(libre.locator("[data-v3-tempt]")).toHaveText("Trouver une expérience");
   await expect(libre.locator("[data-v3-activity]")).toHaveCount(0);
+
+  // Coupure immédiate : l'ancienne sous-carte revient et le lien UI-3B part,
+  // sans rechargement ni reconstruction du Feed.
+  await page.evaluate(() => { window.PASSIO_UI_3 = false; window.PassioUIV3.apply(); });
+  await expect(apercuHistorique).toBeVisible();
+  await expect(partagee.locator("[data-v3-activity]")).toHaveCount(0);
+  expect(await apercuHistorique.innerText()).toContain("Voir");
 
   expect(errors.js, "exceptions JS").toEqual([]);
 });
