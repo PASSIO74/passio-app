@@ -69,6 +69,7 @@
   var intentions = [];      // sélection courante, en mémoire seule
   var enveloppePosee = false;
   var renderIRLOriginal = null;
+  var displayRechercheHistorique = null;
 
   // ══════════════════════════════════════════════════════════════════════════
   // DRAPEAU
@@ -126,6 +127,25 @@
   function head() { return document.getElementById(HEAD_ID); }
   function champTete() { return document.getElementById(SEARCH_ID); }
   function champHistorique() { return document.getElementById("irlCitySearch"); }
+  function ligneRechercheHistorique() { return document.getElementById("irlSearchRow"); }
+
+  // La barre historique porte un display:flex inline : une règle CSS normale ne
+  // peut pas la masquer. On mémorise donc exactement sa valeur inline, puis on
+  // la restaure au kill switch sans rechargement.
+  function masquerRechercheHistorique() {
+    var row = ligneRechercheHistorique();
+    if (!row) return;
+    if (displayRechercheHistorique === null) displayRechercheHistorique = row.style.display;
+    row.style.display = "none";
+  }
+
+  function restaurerRechercheHistorique() {
+    var row = ligneRechercheHistorique();
+    if (row && displayRechercheHistorique !== null) {
+      row.style.display = displayRechercheHistorique;
+    }
+    displayRechercheHistorique = null;
+  }
 
   function creerChip(intention) {
     var b = document.createElement("button");
@@ -205,6 +225,7 @@
   function poserHead() {
     var ecran = ecranIrl();
     if (!ecran) return false;
+    masquerRechercheHistorique();
     if (head()) { syncHead(); return true; }
     var noeud = construireHead();
     if (ecran.firstChild) ecran.insertBefore(noeud, ecran.firstChild);
@@ -216,6 +237,7 @@
   function retirerHead() {
     var h = head();
     if (h && h.parentNode) h.parentNode.removeChild(h);
+    restaurerRechercheHistorique();
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -243,7 +265,10 @@
     var mien = champTete();
     var hist = champHistorique();
     if (!mien || !hist) return;
-    if (document.activeElement === mien) return;
+    // Après une action explicite du moteur historique (par exemple
+    // « Réinitialiser »), la source de vérité doit reprendre la main même si le
+    // champ de tête a encore le focus. Pendant la frappe, les deux valeurs sont
+    // déjà identiques, donc cette synchronisation ne déplace pas le curseur.
     if (mien.value !== hist.value) mien.value = hist.value;
   }
 
