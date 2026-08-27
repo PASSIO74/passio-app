@@ -133,7 +133,9 @@ test("aperçu UI-3B : une publication liée est visible sans donnée persistée"
   // au-dessus du lien.
   await page.evaluate(() => window.PassioUIV3.dismissHint());
   await expect(page.locator(".passio-hint")).toHaveCount(0);
-  // Ce scénario vérifie le branchement et la non-persistance. Le tap physique\r\n  // est couvert séparément ; ici on évite les overlays animés globaux entre tests.\r\n  await carte.locator("[data-v3-activity]").evaluate((el) => el.click());
+  // Ce scénario vérifie le branchement et la non-persistance. Le tap physique
+  // est couvert séparément ; ici on évite les overlays animés globaux entre tests.
+  await carte.locator("[data-v3-activity]").evaluate((el) => el.click());
   await expect(page.locator("#eventDetailPage")).toBeVisible();
   await expect(page.locator("#eventDetailHeroTitle .event-detail-title")).toHaveText("Jam acoustique");
   await expect(page.locator("#eventDetailCta [data-v3-rsvp-go]")).toHaveText("Je participe");
