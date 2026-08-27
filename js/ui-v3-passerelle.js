@@ -66,6 +66,88 @@
   var LIBELLE_RSVP_ATTENTE = "⏳ Sur liste d'attente";
   var LIBELLE_RSVP_RETIRER = "Retirer ma participation";
 
+  // Aperçu de validation VISUELLE : une carte liée, uniquement en mémoire,
+  // uniquement sous ce paramètre. Elle ne crée ni post, ni activité, ni RSVP
+  // dans Supabase/localStorage et reste absente de l'URL normale.
+  var DEMO_PREVIEW_NAME = "passio-ui-3b-demo";
+  var DEMO_POST_ID = "__passio_ui3b_demo_post";
+  var DEMO_EVENT_ID = "__passio_ui3b_demo_event";
+  var demoRsvp = "";
+
+  function demoDemandee() {
+    try {
+      return new URLSearchParams(window.location.search).get("passio_preview") === DEMO_PREVIEW_NAME;
+    } catch (e) { fail("demo_query", e); return false; }
+  }
+
+  function demoPassion() {
+    try {
+      if (typeof _activeFeedPassions !== "undefined" && _activeFeedPassions.size) {
+        return String(Array.from(_activeFeedPassions)[0]);
+      }
+      if (typeof allPassions === "function") {
+        var ps = allPassions();
+        if (ps && ps[0] && ps[0].id) return String(ps[0].id);
+      }
+    } catch (e) { fail("demo_passion", e); }
+    return "musique";
+  }
+
+  function demoPost() {
+    return {
+      id: DEMO_POST_ID,
+      authorId: "__passio_preview",
+      authorName: "Aperçu Passio",
+      authorEmoji: "✨",
+      authorColor: "#7c3aed",
+      passion: demoPassion(),
+      mood: "all",
+      type: "text",
+      text: "Une activité est liée à cette publication — démonstration non enregistrée.",
+      createdAt: Date.now(),
+      likes: 0,
+      comments: [],
+      eventId: DEMO_EVENT_ID,
+    };
+  }
+
+  function demoEvent() {
+    return {
+      id: DEMO_EVENT_ID,
+      title: "Jam acoustique",
+      passion: demoPassion(),
+      organizerId: "__passio_preview",
+      date: Date.now() + (3 * 86400000),
+      time: "18:30",
+      city: "Lyon",
+      venue: "Café des Arts",
+      price: 0,
+      maxAttendees: 12,
+      attendees: [],
+      maybes: [],
+      waitlist: [],
+      desc: "Une rencontre simple autour de la musique. Cette activité sert uniquement à valider l'interface UI-3B.",
+    };
+  }
+
+  // Le moteur historique exige que l'activité soit présente dans son catalogue
+  // au moment où il construit la fiche. On l'y place pendant cet appel
+  // synchrone, puis on la retire immédiatement : aucune donnée de démonstration
+  // ne survit dans state, saveState ou Supabase.
+  function avecDemoEvent(run) {
+    if (!demoDemandee() || typeof state === "undefined" || !state.seed) return run();
+    var arr = state.seed.events || (state.seed.events = []);
+    var deja = arr.some(function (e) { return e && e.id === DEMO_EVENT_ID; });
+    if (!deja) arr.unshift(demoEvent());
+    try { return run(); }
+    finally {
+      if (!deja) {
+        var i = arr.findIndex(function (e) { return e && e.id === DEMO_EVENT_ID; });
+        if (i >= 0) arr.splice(i, 1);
+      }
+    }
+  }
+
   // ── Drapeau ───────────────────────────────────────────────────────────────
   // Ordre de priorité : coupure mémoire > kill switch local > défaut ACTIVÉ.
   // Les deux coupures restent prioritaires sur tout le reste : un appareil
@@ -123,6 +205,7 @@
   // pendant un chargement partiel). Les `typeof` restent nécessaires : ces
   // fonctions vivent dans les app-*.js, hors de ce module.
   function trouverPost(id) {
+    if (demoDemandee() && String(id) === DEMO_POST_ID) return demoPost();
     try {
       if (typeof findPostAnywhere === "function") return findPostAnywhere(id);
     } catch (e) { fail("lookup", e); }
@@ -154,6 +237,31 @@
   // DÉCORATION DES CARTES DU FEED
   // ══════════════════════════════════════════════════════════════════════════
   function feedList() { return document.getElementById("feedList"); }
+
+  // Pose une publication de démonstration via le moteur de rendu existant.
+  // L'ajout au seed ne dure que le temps SYNCHRONE de renderFeed(), puis il est
+  // retiré ; seul le DOM rendu reste visible sur l'URL de validation.
+  var demoRendering = false;
+  function assurerDemoFeed() {
+    if (!demoDemandee() || demoRendering) return false;
+    var list = feedList();
+    if (!list || list.querySelector('article.post[data-postid="' + DEMO_POST_ID + '"]')) return !!list;
+    if (typeof state === "undefined" || !state.seed || typeof renderFeed !== "function") return false;
+    var arr = state.seed.posts || (state.seed.posts = []);
+    var deja = arr.some(function (p) { return p && p.id === DEMO_POST_ID; });
+    if (!deja) arr.unshift(demoPost());
+    demoRendering = true;
+    try { renderFeed(); }
+    catch (e) { fail("demo_render", e); }
+    finally {
+      demoRendering = false;
+      if (!deja) {
+        var i = arr.findIndex(function (p) { return p && p.id === DEMO_POST_ID; });
+        if (i >= 0) arr.splice(i, 1);
+      }
+    }
+    return !!feedList() && !!feedList().querySelector('article.post[data-postid="' + DEMO_POST_ID + '"]');
+  }
 
   // La ligne basse d'une carte éligible ne porte QUE le lien. Elle a d'abord
   // affiché un « trait Passio » — badge de la Passio, emoji, ligne fine violet →
@@ -268,7 +376,11 @@
   function planifierScan() {
     if (pending) return;
     pending = true;
-    setTimeout(function () { pending = false; decorateFeed(null); }, 0);
+    setTimeout(function () {
+      pending = false;
+      assurerDemoFeed();
+      decorateFeed(null);
+    }, 0);
   }
 
   function observerLeFil() {
@@ -699,6 +811,7 @@
   // l'objet canonique du `state` d'abord, la vue agrégée ensuite.
   function trouverEvenement(id) {
     if (!id) return null;
+    if (demoDemandee() && String(id) === DEMO_EVENT_ID) return demoEvent();
     try {
       if (typeof _findCanonicalEvent === "function") {
         var ev = _findCanonicalEvent(id);
@@ -714,6 +827,7 @@
   }
 
   function etatRsvp(id) {
+    if (demoDemandee() && String(id) === DEMO_EVENT_ID) return demoRsvp;
     try { if (typeof myRsvp === "function") return myRsvp(id) || ""; }
     catch (e) { fail("rsvp_etat", e); }
     return "";
@@ -819,7 +933,13 @@
       ctxFiche = null;
       return false;
     }
-    try { openEventDetails(ev.id); } catch (e) {
+    try {
+      if (demoDemandee() && String(ev.id) === DEMO_EVENT_ID) {
+        avecDemoEvent(function () { openEventDetails(ev.id); });
+      } else {
+        openEventDetails(ev.id);
+      }
+    } catch (e) {
       fail("fiche_open", e);
       notify("La fiche de l'activité n'est pas disponible ici.");
       ctxFiche = null;
@@ -906,6 +1026,12 @@
   function participer() {
     if (!ctxFiche) return false;
     var id = ctxFiche.id;
+    if (demoDemandee() && id === DEMO_EVENT_ID) {
+      demoRsvp = "going";
+      appliquerCtaFiche();
+      track("ui_v3b_demo_rsvp_go", { v: VERSION_3B });
+      return true;
+    }
     if (typeof setEventRsvp !== "function") {
       fail("rsvp", "setEventRsvp indisponible");
       notify("La participation n'est pas disponible ici.");
@@ -922,6 +1048,12 @@
   function retirerParticipation() {
     if (!ctxFiche) return false;
     var id = ctxFiche.id;
+    if (demoDemandee() && id === DEMO_EVENT_ID) {
+      demoRsvp = "";
+      appliquerCtaFiche();
+      track("ui_v3b_demo_rsvp_remove", { v: VERSION_3B });
+      return true;
+    }
     if (typeof setEventRsvp !== "function") return false;
     track("ui_v3b_rsvp_remove", { v: VERSION_3B, from: etatRsvp(id) || "none" });
     try {
@@ -980,8 +1112,15 @@
   function restaurerFicheHistorique(id) {
     if (!id || !ficheOuverte()) return;
     if (String(window._openEventDetailId || "") !== String(id)) return;
-    try { if (typeof openEventDetails === "function") openEventDetails(id); }
-    catch (e) { fail("fiche_restore", e); }
+    try {
+      if (typeof openEventDetails === "function") {
+        if (demoDemandee() && String(id) === DEMO_EVENT_ID) {
+          avecDemoEvent(function () { openEventDetails(id); });
+        } else {
+          openEventDetails(id);
+        }
+      }
+    } catch (e) { fail("fiche_restore", e); }
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -1048,6 +1187,7 @@
       listenerPose = true;
     }
     observerLeFil();
+    assurerDemoFeed();
     decorateFeed(null);
     return true;
   }
@@ -1065,6 +1205,7 @@
   // Surface publique unique (aucun global top-level : `audit:globals` reste vert).
   window.PassioUIV3 = {
     PREVIEW_NAME: PREVIEW_NAME,
+    DEMO_PREVIEW_NAME: DEMO_PREVIEW_NAME,
     isEnabled: uiV3Enabled,
     apply: apply,
     decorateFeed: decorateFeed,
