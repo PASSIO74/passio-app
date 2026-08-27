@@ -51,7 +51,7 @@ function hautCarte(page, id) {
 
 async function boot(page, opts = {}) {
   if (opts.killLocal) await page.addInitScript(() => localStorage.setItem("passio_ui_3", "0"));
-  await bootOnboarded(page, opts.errors, 1, {});
+  await bootOnboarded(page, opts.errors, 1, { query: opts.query || "" });
   await page.evaluate(() => {
     // Mêmes neutralisations que la suite UI-3A : une requête de démarrage encore
     // en vol remplace `state.supabasePosts` en bloc et vide le fil semé.
@@ -110,6 +110,43 @@ async function seedFeed(page, posts, events) {
 }
 
 const EVENTS = [evenement("ev_jam", "Jam acoustique")];
+
+// Preview de validation destinée à Benjamin : la carte et la fiche sont
+// interactives, mais aucune donnée de démonstration ne reste dans state.
+test("aperçu UI-3B : une publication liée est visible sans donnée persistée", async ({ page }) => {
+  await boot(page, { query: "?passio_preview=passio-ui-3b-demo" });
+
+  const carte = page.locator('article.post[data-postid="__passio_ui3b_demo_post"]');
+  await expect(carte).toBeVisible();
+  await expect(carte.locator("[data-v3-activity]")).toHaveText("Voir l'activité");
+  expect(await carte.innerText()).not.toContain("Trouver une expérience");
+
+  const avant = await page.evaluate(() => ({
+    post: [...(state.seed.posts || []), ...(state.userPosts || []), ...(state.supabasePosts || [])]
+      .some((p) => p && p.id === "__passio_ui3b_demo_post"),
+    event: [...(state.seed.events || []), ...(state.userEvents || [])]
+      .some((e) => e && e.id === "__passio_ui3b_demo_event"),
+  }));
+  expect(avant).toEqual({ post: false, event: false });
+
+  await carte.locator("[data-v3-activity]").click();
+  await expect(page.locator("#eventDetailPage")).toBeVisible();
+  await expect(page.locator("#eventDetailHeroTitle .event-detail-title")).toHaveText("Jam acoustique");
+  await expect(page.locator("#eventDetailCta [data-v3-rsvp-go]")).toHaveText("Je participe");
+
+  await page.locator("#eventDetailCta [data-v3-rsvp-go]").click();
+  await expect(page.locator('#eventDetailCta [data-v3-rsvp-etat="going"]')).toBeVisible();
+
+  const apres = await page.evaluate(() => ({
+    post: [...(state.seed.posts || []), ...(state.userPosts || []), ...(state.supabasePosts || [])]
+      .some((p) => p && p.id === "__passio_ui3b_demo_post"),
+    event: [...(state.seed.events || []), ...(state.userEvents || [])]
+      .some((e) => e && e.id === "__passio_ui3b_demo_event"),
+    rsvp: (state.user.eventRsvp || {})["__passio_ui3b_demo_event"] || null,
+    joined: (state.user.joinedEvents || []).includes("__passio_ui3b_demo_event"),
+  }));
+  expect(apres).toEqual({ post: false, event: false, rsvp: null, joined: false });
+});
 
 // Quatre cas d'éligibilité en un seul fil : référence directe, référence
 // partagée, activité introuvable, et aucune activité (UI-3A).
