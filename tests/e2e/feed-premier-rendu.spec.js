@@ -17,19 +17,21 @@
 //
 // Ce que la suite verrouille : la règle absolue (§7) « si du contenu
 // correspondant aux passions choisies existe, l'utilisateur ne doit jamais
-// atterrir sur un écran vide », le respect INCONDITIONNEL du filtre mood dès
-// que l'utilisateur y a touché, et le repli exploration explicitement étiqueté.
+// atterrir sur un écran vide », le nouveau rail d'intentions qui ne filtre pas
+// le fil, le respect du filtre mood quand le kill switch restaure l'interface
+// historique, et le repli exploration explicitement étiqueté.
 const { test, expect } = require("@playwright/test");
 const { GATE_TOKEN, GATE_KEY } = require("./gate-helper");
 
-async function bootVierge(page, { v2 = true, etat = null } = {}) {
-  await page.addInitScript(([k, t, st, flag]) => {
+async function bootVierge(page, { v2 = true, uiV2 = true, etat = null } = {}) {
+  await page.addInitScript(([k, t, st, flag, shellV2]) => {
     sessionStorage.setItem(k, t);
     sessionStorage.setItem("passio_pwa_dismissed", "1");
     window.PASSIO_ONBOARDING_V2 = flag;
+    if (!shellV2) localStorage.setItem("passio_ui_v2", "0");
     if (st) localStorage.setItem("passio_mvp_state_v1", JSON.stringify(st));
     window.__tel = [];
-  }, [GATE_KEY, GATE_TOKEN, etat, v2]);
+  }, [GATE_KEY, GATE_TOKEN, etat, v2, uiV2]);
   await page.goto("/index.html");
   await page.waitForFunction(() => typeof setFeedPassions === "function", null, { timeout: 20000 });
   await page.evaluate(() => {
@@ -61,20 +63,25 @@ test("§7 règle absolue — une passion sans post « création » affiche quand
   const r = await page.evaluate(() => ({
     postsExistants: allFeedPosts().filter((p) => p.passion === "yoga" && p.type !== "vlog").length,
     moods: Array.from(selectedMoods),
+    railMoodMasque: document.querySelector("#moodSelector").hidden,
+    railIntentionsVisible: !document.querySelector("#feedIntentSelector").hidden,
     cartes: document.querySelectorAll("#feedList .post").length,
     videAffiche: (document.querySelector("#feedEmpty") || {}).style.display,
   }));
 
-  // Prémisse du test : du contenu yoga existe, et pas en mood "creation".
+  // Le mood historique reste en mémoire pour le retour arrière, mais le rail
+  // d'intentions V2 ne filtre pas : les trois contenus yoga sont visibles.
   expect(r.postsExistants).toBeGreaterThan(0);
-  expect(r.moods).not.toEqual(["creation"]);
+  expect(r.moods).toEqual(["creation"]);
+  expect(r.railMoodMasque).toBe(true);
+  expect(r.railIntentionsVisible).toBe(true);
   // Conclusion : il est à l'écran.
   expect(r.cartes).toBe(r.postsExistants);
   expect(r.videAffiche).toBe("none");
 });
 
 test("§7 — le filtre mood réglé par l'utilisateur est respecté, même s'il vide le fil", async ({ page }) => {
-  await bootVierge(page);
+  await bootVierge(page, { uiV2: false });
   await terminerOnboarding(page, "yoga");
 
   const r = await page.evaluate(() => {
@@ -100,7 +107,7 @@ test("§7 — le filtre mood réglé par l'utilisateur est respecté, même s'il
 });
 
 test("§7 — l'intention mood survit au rechargement (selectedMoods, lui, repart à zéro)", async ({ page }) => {
-  await bootVierge(page);
+  await bootVierge(page, { uiV2: false });
   await terminerOnboarding(page, "yoga");
   await page.evaluate(() => { toggleMood("creation"); });
   await page.waitForTimeout(600); // saveState est débouncé à 250 ms
@@ -192,7 +199,9 @@ test("§7 repli — un aller-retour ne laisse pas le repli collé à l'écran", 
 });
 
 test("§7 — la télémétrie émise survit au filtre PII de js/telemetry.js", async ({ page }) => {
-  await bootVierge(page);
+  // Le signal feed_moods_widened appartient au rail historique : on le vérifie
+  // explicitement sous le kill switch, tandis que le repli reste commun.
+  await bootVierge(page, { uiV2: false });
   await terminerOnboarding(page, "yoga");   // déclenche feed_moods_widened
   await page.evaluate(() => { setFeedPassions(["moto"]); renderFeed(); }); // repli
 
@@ -218,8 +227,8 @@ test("§7 — la télémétrie émise survit au filtre PII de js/telemetry.js", 
   });
 });
 
-test("§7 — drapeau V2 à false : ancien comportement strictement rétabli", async ({ page }) => {
-  await bootVierge(page, { v2: false });
+test("§7 — kill switch UI V2 : ancien comportement strictement rétabli", async ({ page }) => {
+  await bootVierge(page, { v2: false, uiV2: false });
   await terminerOnboarding(page, "yoga");
   await page.evaluate(() => { setFeedPassions(["yoga"]); renderFeed(); });
 

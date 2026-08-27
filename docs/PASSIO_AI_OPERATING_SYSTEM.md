@@ -95,11 +95,13 @@ The Sentinelle should detect, diagnose and remediate safe classes of incidents a
 
 Localized feature work, visual changes, non-sensitive refactors and low-risk fixes may merge after relevant CI and review.
 
+**Standing UI release rule (Benjamin, 2026-08-26):** when Benjamin explicitly validates a normal-risk visual or product-interface lot, that product validation also authorizes squash merge and the normal Git-connected production deployment after green review and CI. A second authorization for the same merge/deploy is unnecessary. The branch/PR workflow, recovery controls and post-deploy verification are still required.
+
 ### Critical
 
 Authentication, authorization/RLS, migrations, security, deployment, destructive data operations, agent permissions, secrets, production writes and automatic remediation require stricter review and explicit rollback thinking.
 
-Critical changes must not be auto-merged blindly.
+Critical changes must not be auto-merged blindly. The standing UI release rule does not apply to authentication, authorization/RLS, migrations, security controls, secrets, destructive or production data writes, agent permissions, automatic remediation, or deployment-infrastructure changes; those still require specific explicit authorization and independent review.
 
 ## 7. Remote Claude Code channel
 

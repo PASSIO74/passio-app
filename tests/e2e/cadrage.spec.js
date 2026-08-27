@@ -22,7 +22,8 @@ for (const vp of VIEWPORTS) {
     await bootOnboarded(page);
 
     const m = await page.evaluate(() => {
-      const nav = document.querySelector(".app-nav");
+      const nav = Array.from(document.querySelectorAll(".app-nav"))
+        .find((el) => !el.hidden && getComputedStyle(el).display !== "none");
       const shell = document.querySelector(".app-shell");
       const r = nav.getBoundingClientRect();
       return {
@@ -55,7 +56,9 @@ test("un viewport qui rétrécit après le chargement est rattrapé", async ({ p
   await page.waitForTimeout(300);
 
   const m = await page.evaluate(() => {
-    const r = document.querySelector(".app-nav").getBoundingClientRect();
+    const nav = Array.from(document.querySelectorAll(".app-nav"))
+      .find((el) => !el.hidden && getComputedStyle(el).display !== "none");
+    const r = nav.getBoundingClientRect();
     return { viewport: window.innerHeight, navBas: Math.round(r.bottom) };
   });
   expect(m.viewport).toBe(640);
@@ -69,12 +72,13 @@ test("la safe-area du bas s'AJOUTE à la barre au lieu de rogner les icônes", a
   // env(safe-area-inset-bottom) n'est pas injectable en test : on reproduit à
   // l'identique ce que la règle CSS applique avec un inset de 48px.
   const m = await page.evaluate(() => {
-    const nav = document.querySelector(".app-nav");
+    const nav = Array.from(document.querySelectorAll(".app-nav"))
+      .find((el) => !el.hidden && getComputedStyle(el).display !== "none");
     const sansInset = Math.round(nav.getBoundingClientRect().height);
     nav.style.setProperty("padding-bottom", "48px", "important");
-    nav.style.setProperty("min-height", "calc(62px + 48px)", "important");
+    nav.style.setProperty("min-height", `calc(${sansInset}px + 48px)`, "important");
     const r = nav.getBoundingClientRect();
-    const cta = document.querySelector(".app-nav .nav-cta").getBoundingClientRect();
+    const cta = nav.querySelector('[data-v2-action="create"], .nav-cta').getBoundingClientRect();
     const res = {
       sansInset,
       hauteurAvecInset: Math.round(r.height),
@@ -88,9 +92,9 @@ test("la safe-area du bas s'AJOUTE à la barre au lieu de rogner les icônes", a
     return res;
   });
 
-  expect(m.sansInset).toBe(62); // aucun changement quand il n'y a pas d'inset
+  expect(m.sansInset).toBe(66); // hauteur utile validée de la barre UI-1
   // L'inset s'ajoute : la zone utile des onglets reste entière.
-  expect(m.zoneUtile).toBeGreaterThanOrEqual(62);
+  expect(m.zoneUtile).toBeGreaterThanOrEqual(m.sansInset);
   // Le fond de la barre descend sous la barre système (pas de bande vide)...
   expect(m.fondJusquEnBas).toBe(true);
   // ...mais les boutons restent au-dessus d'elle.

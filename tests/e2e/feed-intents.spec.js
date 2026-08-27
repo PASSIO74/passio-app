@@ -1,11 +1,17 @@
-// Suite « Envie du moment » (feed_intents_v1, issue #68).
+// Suite « Envie du moment » (rail à cinq intentions du Feed).
 //
-// Le nouveau rail est une couche de réordonnancement : il doit conserver le set
-// complet des posts déjà autorisés par les passions/suivis, laisser le legacy
-// strictement intact quand le flag est OFF et ne jamais émettre d'identifiant ni
-// de texte libre dans sa télémétrie.
+// Le rail est une couche de réordonnancement : il doit conserver le set complet
+// des posts déjà autorisés par les passions/suivis, laisser le legacy
+// strictement intact sous kill switch et ne jamais émettre d'identifiant ni de texte
+// libre dans sa télémétrie.
+//
+// UI-2 n'a plus d'activation propre : il suit UI-1 + UI-2, actives par défaut
+// depuis validation du 2026-08-26. Les valeurs positives héritées restent
+// inertes ; seules les coupures explicites peuvent retirer la V2.
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
+
+const PREVIEW = "?passio_preview=passio-ui-v2";
 
 const POSTS = [
   { id: "intent_create", authorId: "author_a", authorName: "A", passion: "musique", mood: "creation", type: "text", text: "Créer", createdAt: 1000, likes: 0, comments: [] },
@@ -14,9 +20,17 @@ const POSTS = [
   { id: "intent_meet", authorId: "author_d", authorName: "D", passion: "musique", mood: "irl", type: "text", text: "Rencontrer", createdAt: 4000, likes: 0, comments: [] },
 ];
 
+// Le paramètre d'aperçu est conservé pour compatibilité avec les anciens liens.
+async function boot(page, { preview = false } = {}) {
+  await bootOnboarded(page, null, 1, preview ? { query: PREVIEW } : {});
+}
+
 async function setFlags(page, intents, bridge = false) {
   await page.evaluate(([on, bridgeOn]) => {
-    localStorage.setItem("passio_feed_intents_v1", on ? "1" : "0");
+    // Le rail ne s'allume plus par `localStorage` : on ne fait ici qu'ôter (ou
+    // poser) la COUPURE dédiée. `on = true` retire simplement le kill switch.
+    if (on) localStorage.removeItem("passio_feed_intents_v1");
+    else localStorage.setItem("passio_feed_intents_v1", "0");
     localStorage.setItem("passio_feed_irl_bridge_v1", bridgeOn ? "1" : "0");
     delete window.PASSIO_FEED_INTENTS_V1;
     delete window.PASSIO_FEED_IRL_BRIDGE_V1;
@@ -48,18 +62,20 @@ function renderedIds(page) {
   return page.locator("#feedList .post").evaluateAll((els) => els.map((el) => el.dataset.postid));
 }
 
-test.describe("Fil — Envie du moment (feed_intents_v1)", () => {
-  test("le lien canari active l'aperçu sans rendre le flag persistant", async ({ page }) => {
-    await bootOnboarded(page);
-    await page.evaluate(() => localStorage.removeItem("passio_feed_intents_v1"));
+test.describe("Fil — Envie du moment (UI-2 active par défaut)", () => {
+  test("l'URL normale active le rail sans rien rendre persistant", async ({ page }) => {
+    await page.addInitScript(() => localStorage.removeItem("passio_feed_intents_v1"));
+    await boot(page);
 
-    await page.goto("/index.html?passio_preview=feed-intents-v1");
     await expect(page.locator("#feedIntentSelector")).toBeVisible({ timeout: 20000 });
     await expect(page.locator("#moodSelector")).toBeHidden();
     expect(await page.evaluate(() => localStorage.getItem("passio_feed_intents_v1"))).toBeNull();
+    // Aucune garde n'écrit : le drapeau du shell reste vierge lui aussi.
+    expect(await page.evaluate(() => localStorage.getItem("passio_ui_v2"))).toBeNull();
 
     await page.evaluate(() => {
       localStorage.setItem("passio_feed_intents_v1", "0");
+      window._feedDomSig = null;
       renderFeed();
     });
     await expect(page.locator("#moodSelector")).toBeVisible();
@@ -67,12 +83,80 @@ test.describe("Fil — Envie du moment (feed_intents_v1)", () => {
 
     await page.evaluate(() => localStorage.removeItem("passio_feed_intents_v1"));
     await page.goto("/index.html");
-    await expect(page.locator("#moodSelector")).toBeVisible({ timeout: 20000 });
-    await expect(page.locator("#feedIntentSelector")).toBeHidden();
+    await expect(page.locator("#moodSelector")).toBeHidden({ timeout: 20000 });
+    await expect(page.locator("#feedIntentSelector")).toBeVisible();
   });
 
-  test("OFF par défaut : ancien rail visible et ancien filtre mood inchangé", async ({ page }) => {
-    await bootOnboarded(page);
+  // ── Valeurs héritées : inertes, sans contredire le défaut actif ────────────
+  test("URL normale : un passio_feed_intents_v1 « 1 » hérité est sans effet", async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem("passio_feed_intents_v1", "1"));
+    await boot(page);
+
+    await expect(page.locator("#moodSelector")).toBeHidden();
+    await expect(page.locator("#feedIntentSelector")).toBeVisible();
+    expect(await page.evaluate(() => feedIntentsEnabled())).toBe(true);
+    // Ignorée, pas réécrite : la garde ne touche pas au navigateur.
+    expect(await page.evaluate(() => localStorage.getItem("passio_feed_intents_v1"))).toBe("1");
+  });
+
+  test("URL normale : window.PASSIO_FEED_INTENTS_V1 = true reste sans effet", async ({ page }) => {
+    await page.addInitScript(() => { window.PASSIO_FEED_INTENTS_V1 = true; });
+    await boot(page);
+
+    await expect(page.locator("#moodSelector")).toBeHidden();
+    await expect(page.locator("#feedIntentSelector")).toBeVisible();
+    expect(await page.evaluate(() => feedIntentsEnabled())).toBe(true);
+  });
+
+  test("URL normale : window.PASSIO_UI_V2 = true ne change pas le défaut actif", async ({ page }) => {
+    await page.addInitScript(() => { window.PASSIO_UI_V2 = true; });
+    await boot(page);
+
+    await expect(page.locator("#appNavV2")).toBeVisible();
+    await expect(page.locator("#appNav")).toBeHidden();
+    await expect(page.locator("#moodSelector")).toBeHidden();
+    await expect(page.locator("#feedIntentSelector")).toBeVisible();
+    expect(await page.evaluate(() => window.PassioUIV2.isEnabled())).toBe(true);
+    expect(await page.evaluate(() => feedIntentsEnabled())).toBe(true);
+  });
+
+  test("URL normale : un passio_ui_v2 « 1 » hérité reste sans effet", async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem("passio_ui_v2", "1"));
+    await boot(page);
+
+    await expect(page.locator("#moodSelector")).toBeHidden();
+    await expect(page.locator("#feedIntentSelector")).toBeVisible();
+    expect(await page.evaluate(() => feedIntentsEnabled())).toBe(true);
+  });
+
+  test("l'ancien paramètre feed-intents-v1 ne crée aucun mode séparé", async ({ page }) => {
+    await bootOnboarded(page, null, 1, { query: "?passio_preview=feed-intents-v1" });
+
+    await expect(page.locator("#moodSelector")).toBeHidden();
+    await expect(page.locator("#feedIntentSelector")).toBeVisible();
+    await expect(page.locator("#appNavV2")).toBeVisible();
+    expect(await page.evaluate(() => feedIntentsEnabled())).toBe(true);
+  });
+
+  test("le kill switch du shell coupe aussi le rail", async ({ page }) => {
+    await boot(page);
+    await expect(page.locator("#feedIntentSelector")).toBeVisible();
+
+    expect(await page.evaluate(() => {
+      window.PASSIO_UI_V2 = false;
+      return feedIntentsEnabled();
+    })).toBe(false);
+
+    await page.evaluate(() => {
+      delete window.PASSIO_UI_V2;
+      localStorage.setItem("passio_ui_v2", "0");
+    });
+    expect(await page.evaluate(() => feedIntentsEnabled())).toBe(false);
+    await page.evaluate(() => localStorage.removeItem("passio_ui_v2"));
+  });
+
+  test("kill switch du rail : ancien sélecteur visible et ancien filtre mood inchangé", async ({ page }) => {
+    await boot(page);
     await seedFeed(page, false);
 
     await expect(page.locator("#moodSelector")).toBeVisible();
@@ -84,7 +168,7 @@ test.describe("Fil — Envie du moment (feed_intents_v1)", () => {
   });
 
   test("ON : cinq intentions accessibles, Pour toi actif et aucun hard filter", async ({ page }) => {
-    await bootOnboarded(page);
+    await boot(page, { preview: true });
     await seedFeed(page, true);
 
     await expect(page.locator("#moodSelector")).toBeHidden();
@@ -92,12 +176,35 @@ test.describe("Fil — Envie du moment (feed_intents_v1)", () => {
     await expect(page.locator(".feed-intent-btn")).toHaveCount(5);
     await expect(page.locator('.feed-intent-btn[data-intent="for_you"]')).toHaveAttribute("aria-pressed", "true");
 
+    // Les cinq libellés exigés par la direction, dans l'ordre.
+    expect(await page.locator(".feed-intent-btn").allTextContents())
+      .toEqual(["Pour toi", "Découvrir", "Apprendre", "Créer", "Rencontrer"]);
+
     const ids = await renderedIds(page);
     expect(ids.slice().sort()).toEqual(POSTS.map((p) => p.id).sort());
   });
 
+  test("les cinq intentions rendent le MÊME ensemble, dans un ordre différent", async ({ page }) => {
+    await boot(page, { preview: true });
+    await seedFeed(page, true);
+
+    const attendus = POSTS.map((p) => p.id).sort();
+    const ordres = [];
+    for (const intent of ["for_you", "discover", "learn", "create", "meet"]) {
+      await page.evaluate((i) => {
+        activeFeedIntent = "for_you";      // repartir d'un état neutre à chaque tour
+        setFeedIntent(i);                  // "for_you" = retour, les autres = sélection
+      }, intent);
+      const ids = await renderedIds(page);
+      expect(ids.slice().sort(), `ensemble complet pour ${intent}`).toEqual(attendus);
+      ordres.push(ids.join("|"));
+    }
+    // Réordonner, pas filtrer : au moins deux ordres distincts.
+    expect(new Set(ordres).size).toBeGreaterThan(1);
+  });
+
   test("retaper l'intention active revient immédiatement à Pour toi", async ({ page }) => {
-    await bootOnboarded(page);
+    await boot(page, { preview: true });
     await seedFeed(page, true);
 
     await page.locator('.feed-intent-btn[data-intent="create"]').click();
@@ -108,7 +215,7 @@ test.describe("Fil — Envie du moment (feed_intents_v1)", () => {
   });
 
   test("le bouton Pour toi est aussi enregistré comme un retour, pas une sélection", async ({ page }) => {
-    await bootOnboarded(page);
+    await boot(page, { preview: true });
     await seedFeed(page, true);
     await page.locator('.feed-intent-btn[data-intent="learn"]').click();
     await page.locator('.feed-intent-btn[data-intent="for_you"]').click();
@@ -122,7 +229,7 @@ test.describe("Fil — Envie du moment (feed_intents_v1)", () => {
   });
 
   test("mapping legacy exact : creation/learn/irl seulement, le reste générique", async ({ page }) => {
-    await bootOnboarded(page);
+    await boot(page);
     const mapping = await page.evaluate(() => [
       "creation", "learn", "irl", "actu", "chill", "all", undefined,
     ].map(legacyMoodToFeedIntent));
@@ -130,7 +237,7 @@ test.describe("Fil — Envie du moment (feed_intents_v1)", () => {
   });
 
   test("Créer remonte le contenu correspondant sans perdre ni ajouter de post", async ({ page }) => {
-    await bootOnboarded(page);
+    await boot(page, { preview: true });
     await seedFeed(page, true);
     const ids = await page.evaluate((posts) =>
       rankFeedPostsForIntent(posts, "create").map((p) => p.id), POSTS);
@@ -139,7 +246,7 @@ test.describe("Fil — Envie du moment (feed_intents_v1)", () => {
   });
 
   test("Découvrir sans signal fiable restitue exactement le classement Pour toi", async ({ page }) => {
-    await bootOnboarded(page);
+    await boot(page, { preview: true });
     await seedFeed(page, true);
     const result = await page.evaluate((posts) => {
       state.user.profiles = [];
@@ -152,7 +259,7 @@ test.describe("Fil — Envie du moment (feed_intents_v1)", () => {
   });
 
   test("télémétrie sélection/reset/clic contenu : seulement version, flag et intention", async ({ page }) => {
-    await bootOnboarded(page);
+    await boot(page, { preview: true });
     await seedFeed(page, true);
 
     await page.locator('.feed-intent-btn[data-intent="create"]').click();
@@ -173,7 +280,7 @@ test.describe("Fil — Envie du moment (feed_intents_v1)", () => {
   });
 
   test("Rencontrer → CTA IRL existant, sans activer une proposition", async ({ page }) => {
-    await bootOnboarded(page);
+    await boot(page, { preview: true });
     await seedFeed(page, true, true);
     await page.locator('.feed-intent-btn[data-intent="meet"]').click();
 
@@ -187,13 +294,14 @@ test.describe("Fil — Envie du moment (feed_intents_v1)", () => {
   });
 
   test("kill switch à 0 : retour immédiat au rail et au filtre historiques", async ({ page }) => {
-    await bootOnboarded(page);
+    await boot(page, { preview: true });
     await seedFeed(page, true);
     await page.locator('.feed-intent-btn[data-intent="learn"]').click();
     expect(await renderedIds(page)).toHaveLength(POSTS.length);
 
     await page.evaluate(() => {
       localStorage.setItem("passio_feed_intents_v1", "0");
+      window._feedDomSig = null;
       renderFeed();
     });
     await expect(page.locator("#moodSelector")).toBeVisible();
@@ -203,7 +311,7 @@ test.describe("Fil — Envie du moment (feed_intents_v1)", () => {
   });
 
   test("la signature DOM varie avec l'intention active", async ({ page }) => {
-    await bootOnboarded(page);
+    await boot(page, { preview: true });
     await seedFeed(page, true);
     const before = await page.evaluate(() => window._feedDomSig);
     await page.locator('.feed-intent-btn[data-intent="learn"]').click();
@@ -212,8 +320,12 @@ test.describe("Fil — Envie du moment (feed_intents_v1)", () => {
     expect(after).toContain("intents1:learn");
   });
 
-  test("360/375/390/430 px : rail sans débordement et cibles tactiles de 44 px", async ({ page }) => {
-    await bootOnboarded(page);
+  // UI-2 §2 : sur écran étroit le rail DÉFILE, il ne tronque pas. L'assertion
+  // « aucun débordement du rail » d'avant UI-2 est remplacée par les deux
+  // propriétés qui comptent réellement : aucun libellé coupé, et la PAGE qui ne
+  // déborde jamais horizontalement (c'était l'objet du test d'origine).
+  test("360/375/390/430 px : aucun libellé tronqué, page sans débordement", async ({ page }) => {
+    await boot(page, { preview: true });
     await seedFeed(page, true);
 
     for (const width of [360, 375, 390, 430]) {
@@ -222,16 +334,54 @@ test.describe("Fil — Envie du moment (feed_intents_v1)", () => {
         const rail = document.getElementById("feedIntentSelector");
         const buttons = Array.from(rail.querySelectorAll(".feed-intent-btn"));
         return {
-          railScroll: rail.scrollWidth,
-          railClient: rail.clientWidth,
+          tronques: buttons.filter((b) => b.scrollWidth > Math.ceil(b.clientWidth) + 1)
+            .map((b) => b.textContent),
           minHeight: Math.min.apply(null, buttons.map((b) => b.getBoundingClientRect().height)),
           docScroll: document.documentElement.scrollWidth,
           docClient: document.documentElement.clientWidth,
         };
       });
-      expect(geo.railScroll).toBeLessThanOrEqual(geo.railClient);
-      expect(geo.docScroll).toBeLessThanOrEqual(geo.docClient);
+      expect(geo.tronques, `libellés tronqués en ${width} px`).toEqual([]);
+      // La PAGE ne déborde jamais : c'était l'objet du test d'origine, et le
+      // débordement éventuel du rail est désormais absorbé par son propre
+      // défilement (cf. test suivant) au lieu d'être coupé.
+      expect(geo.docScroll, `page débordante en ${width} px`).toBeLessThanOrEqual(geo.docClient);
       expect(geo.minHeight).toBeGreaterThanOrEqual(43.9);
     }
+  });
+
+  // UI-2 §2 : sur écran étroit, la bande DÉFILE au lieu de tronquer. Prouvé par
+  // construction (et pas seulement à une largeur donnée) : la bande défile en
+  // x, et aucun onglet ne peut rétrécir sous son texte.
+  test("le rail défile horizontalement au lieu de couper les libellés", async ({ page }) => {
+    await boot(page, { preview: true });
+    await seedFeed(page, true);
+    await page.setViewportSize({ width: 360, height: 844 });
+
+    const style = await page.evaluate(() => {
+      const rail = document.getElementById("feedIntentSelector");
+      const btn = rail.querySelector('.feed-intent-btn[data-intent="meet"]');
+      const cs = getComputedStyle(btn);
+      return {
+        railOverflowX: getComputedStyle(rail).overflowX,
+        flexShrink: cs.flexShrink,
+        textOverflow: cs.textOverflow,
+        // Le libellé le plus long tient entièrement dans sa boîte.
+        tronque: btn.scrollWidth > Math.ceil(btn.clientWidth) + 1,
+      };
+    });
+    expect(style.railOverflowX).toBe("auto");
+    expect(style.flexShrink).toBe("0");
+    expect(style.textOverflow).toBe("clip");
+    expect(style.tronque).toBe(false);
+
+    // Et la bande est réellement défilable quand elle déborde.
+    const defile = await page.evaluate(() => {
+      const rail = document.getElementById("feedIntentSelector");
+      if (rail.scrollWidth <= rail.clientWidth + 1) return "pas de débordement";
+      rail.scrollLeft = rail.scrollWidth;
+      return rail.scrollLeft > 0 ? "défile" : "bloqué";
+    });
+    expect(defile).not.toBe("bloqué");
   });
 });
