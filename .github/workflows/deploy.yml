@@ -226,8 +226,8 @@ jobs:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           NETLIFY_SITE_ID: eee53fe0-9fb2-41f4-ab70-0a4e2c3f01a1
         run: |
-          npx --yes netlify-cli@27.3.1 --version
-          npx --yes netlify-cli@27.3.1 deploy --prod --dir dist --auth "$NETLIFY_AUTH_TOKEN" --site "$NETLIFY_SITE_ID"
+          npx --yes netlify-cli@27.1.2 --version
+          npx --yes netlify-cli@27.1.2 deploy --prod --dir dist --auth "$NETLIFY_AUTH_TOKEN" --site "$NETLIFY_SITE_ID"
 
   preview:
     name: Déploiement preview (PR)
@@ -254,5 +254,5 @@ jobs:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           NETLIFY_SITE_ID: eee53fe0-9fb2-41f4-ab70-0a4e2c3f01a1
         run: |
-          npx --yes netlify-cli@27.3.1 --version
-          npx --yes netlify-cli@27.3.1 deploy --dir dist --alias "pr-${{ github.event.number }}" --auth "$NETLIFY_AUTH_TOKEN" --site "$NETLIFY_SITE_ID"
+          npx --yes netlify-cli@27.1.2 --version
+          npx --yes netlify-cli@27.1.2 deploy --dir dist --alias "pr-${{ github.event.number }}" --auth "$NETLIFY_AUTH_TOKEN" --site "$NETLIFY_SITE_ID"
