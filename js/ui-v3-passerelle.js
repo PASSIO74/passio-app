@@ -231,6 +231,7 @@
     var marquees = list.querySelectorAll("[data-v3-decore]");
     for (var j = 0; j < marquees.length; j++) {
       marquees[j].removeAttribute("data-v3-decore");
+      marquees[j].removeAttribute("data-v3-activity-source");
     }
   }
 
@@ -763,6 +764,7 @@
       var row = art.querySelector("[data-v3-bridge]");
       if (row && row.parentNode) row.parentNode.removeChild(row);
       art.removeAttribute("data-v3-decore");
+      art.removeAttribute("data-v3-activity-source");
     } catch (e) { fail("decoration_retrait", e); }
   }
 
@@ -773,6 +775,10 @@
     // Même marqueur qu'UI-3A : c'est lui qui autorise le CSS à masquer le CTA
     // historique, borné aux cartes réellement décorées.
     article.setAttribute("data-v3-decore", "1");
+    // Les partages d'événement portent déjà une sous-carte historique cliquable.
+    // Le CSS borné à cette source la masque pendant UI-3B afin de ne garder
+    // qu'une seule porte « Voir l'activité » ; le kill switch la restitue.
+    article.setAttribute("data-v3-activity-source", sourceRef(post));
   }
 
   // ── La fiche ──────────────────────────────────────────────────────────────
