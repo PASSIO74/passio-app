@@ -279,7 +279,15 @@ test.describe("Fil — Envie du moment (UI-2 active par défaut)", () => {
     }
   });
 
-  test("Rencontrer → CTA IRL existant, sans activer une proposition", async ({ page }) => {
+  // Deux contrats se rencontrent sur l'intention « Rencontrer ». Ils sont
+  // prouvés SÉPARÉMENT plutôt qu'arbitrés l'un contre l'autre :
+  //   ① la télémétrie `feed_intent_meet_irl` du rail est portée par le CTA
+  //      HISTORIQUE — elle se mesure donc UI-3A coupée, sinon le CTA est masqué
+  //      et l'absence d'événement passerait pour une régression de télémétrie ;
+  //   ② le chemin NOMINAL (UI-3A active par défaut) doit présenter « Trouver une
+  //      expérience » sans rien engager à la place de l'utilisateur.
+  test("Rencontrer sous kill switch UI-3A → CTA IRL existant, sans activer une proposition", async ({ page }) => {
+    await page.addInitScript(() => { localStorage.setItem("passio_ui_3", "0"); });
     await boot(page, { preview: true });
     await seedFeed(page, true, true);
     await page.locator('.feed-intent-btn[data-intent="meet"]').click();
@@ -290,6 +298,32 @@ test.describe("Fil — Envie du moment (UI-2 active par défaut)", () => {
       window.__intentTel.filter((e) => e.name === "feed_intent_meet_irl"));
     expect(meetEvents).toHaveLength(1);
     expect(meetEvents[0].meta).toEqual({ v: "v1", flag: "on", intent: "meet" });
+    expect(await page.evaluate(() => localStorage.getItem("passio_irl_proposal_v1"))).not.toBe("1");
+  });
+
+  test("Rencontrer, UI-3A active : « Trouver une expérience », sans proposition automatique", async ({ page }) => {
+    await boot(page);
+    await seedFeed(page, true, true);
+    // Le module doit être LÀ. Un module absent est un défaut de livraison, pas
+    // une raison d'ignorer ce test : on l'affirme au lieu de le contourner.
+    expect(await page.evaluate(() => !!window.PassioUIV3)).toBe(true);
+
+    await page.locator('.feed-intent-btn[data-intent="meet"]').click();
+    const carte = page.locator('#feedList .post[data-postid="intent_meet"]');
+
+    // Le vocabulaire validé est présent et réellement atteignable…
+    await expect(carte.getByText("Trouver une expérience", { exact: true }).first()).toBeVisible();
+
+    // …et le CTA historique reste dans le DOM, seulement masqué : aucun doublon
+    // à l'écran, et les kill switches le restituent sans repeindre le fil.
+    const historique = carte.locator(".feed-irl-cta");
+    await expect(historique).toHaveCount(1);
+    await expect(historique).toBeHidden();
+
+    // Rien n'est engagé à la place de l'utilisateur : ni événement, ni RSVP, ni
+    // proposition activée.
+    expect(await page.evaluate(() => (state.userEvents || []).length)).toBe(0);
+    expect(await page.evaluate(() => (state.user.joinedEvents || []).length)).toBe(0);
     expect(await page.evaluate(() => localStorage.getItem("passio_irl_proposal_v1"))).not.toBe("1");
   });
 

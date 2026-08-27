@@ -9393,8 +9393,14 @@ body.ctx-locked #appMain { overflow: hidden; }
    avec la passerelle : deux portes vers l'IRL au bas d'une même carte. Il est
    MASQUÉ ici, jamais retiré du DOM — la règle est portée par `.passio-ui-3`,
    donc les kill switches la défont d'eux-mêmes et le CTA historique réapparaît
-   exactement tel qu'il était, sans attendre une repeinte du fil. */
-:root.passio-ui-3 .feed-irl-bridge { display: none; }
+   exactement tel qu'il était, sans attendre une repeinte du fil.
+
+   ⚠️ Le masquage est borné aux cartes RÉELLEMENT décorées (`data-v3-decore`,
+   posé par le module). Les deux éligibilités ne se recouvrent pas : le pont
+   historique s'affiche sur tout post non événementiel, la passerelle exige en
+   plus une passion CONNUE. Une règle non bornée fermait donc la seule porte
+   vers l'IRL des cartes sans passion reconnue, sans rien mettre à la place. */
+:root.passio-ui-3 .post[data-v3-decore] .feed-irl-bridge { display: none; }
 
 /* ── Le « trait Passio » sur la carte du fil ────────────────────────────────
    Badge de la Passio → ligne fine violet/corail → lien discret. C'est la LIGNE

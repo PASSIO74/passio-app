@@ -213,6 +213,12 @@
     if (!passionId) return;
 
     article.appendChild(construireBridge(post, passionId));
+    // Marque la carte comme DÉCORÉE. C'est cet attribut, et lui seul, qui
+    // autorise le CSS à masquer le CTA historique : les deux éligibilités ne se
+    // recouvrent pas (le pont historique n'exige aucune passion, la passerelle
+    // en exige une CONNUE), donc masquer sans condition privait de toute porte
+    // vers l'IRL les cartes que la passerelle ne décore pas.
+    article.setAttribute("data-v3-decore", "1");
   }
 
   // Retire toute trace du lot : une coupure en mémoire rend exactement le fil
@@ -223,6 +229,12 @@
     var poses = list.querySelectorAll("[data-v3-bridge]");
     for (var i = 0; i < poses.length; i++) {
       if (poses[i].parentNode) poses[i].parentNode.removeChild(poses[i]);
+    }
+    // Le marqueur part avec la décoration : une carte non décorée ne doit
+    // jamais rester porteuse de la condition qui masque le CTA historique.
+    var marquees = list.querySelectorAll("[data-v3-decore]");
+    for (var j = 0; j < marquees.length; j++) {
+      marquees[j].removeAttribute("data-v3-decore");
     }
   }
 

@@ -78,8 +78,11 @@ async function boot(page, opts = {}) {
 }
 
 // Peuple le fil de façon déterministe et capture la télémétrie émise.
-async function seedFeed(page, posts) {
-  await page.evaluate((liste) => {
+// `passionsActives` borne le filtre du fil. Il vaut « musique » par défaut ;
+// un test qui sème une publication portant une AUTRE passion doit l'ajouter ici,
+// sinon le fil la filtre et la carte n'est jamais rendue.
+async function seedFeed(page, posts, passionsActives) {
+  await page.evaluate(([liste, passions]) => {
     window.__v3Tel = [];
     window.tel = window.tel || {};
     window.tel.action = function (name, meta) { window.__v3Tel.push({ name, meta }); };
@@ -91,11 +94,11 @@ async function seedFeed(page, posts) {
     state.userPosts = [];
     state.supabasePosts = liste;
     state.user.profiles = [{ id: "pp_0", name: "Audit QA", passion: "musique", emoji: "🎵", color: "#7c3aed" }];
-    _activeFeedPassions = new Set(["musique"]);
+    _activeFeedPassions = new Set(passions);
     activeFeedIntent = "for_you";
     window._feedDomSig = null;
     renderFeed();
-  }, posts);
+  }, [posts, passionsActives || ["musique"]]);
   // ⚠️ L'aide contextuelle « auteur » est `position: fixed` et INTERCEPTE les
   // taps. La marquer vue ne suffit pas : celle déclenchée par le `renderFeed`
   // du démarrage est déjà à l'écran quand ce helper s'exécute. On la ferme donc
@@ -507,6 +510,33 @@ test("couper UI-3A restitue le CTA historique, sans repeindre le fil", async ({ 
   await expect(page.locator("#feedList [data-v3-tempt]")).toHaveCount(0);
   await expect(page.locator("#feedList .feed-irl-bridge").first()).toBeVisible();
   expect(await page.locator("#feedList").innerText()).toContain("Organiser un IRL");
+});
+
+// ⑦ ter. Le masquage du CTA historique est BORNÉ aux cartes que la passerelle
+// décore vraiment. Les deux éligibilités ne se recouvrent pas : le pont
+// historique s'affiche sur tout post non événementiel, la passerelle exige en
+// plus une passion CONNUE. Une règle non bornée fermait donc la seule porte vers
+// l'IRL des cartes sans passion reconnue, sans rien mettre à la place.
+test("une carte non décorée garde son CTA historique, passerelle active", async ({ page }) => {
+  await boot(page);
+  await page.evaluate(() => { window.PASSIO_FEED_IRL_BRIDGE_V1 = true; });
+  // `passion_inconnue_qa` n'existe dans aucun catalogue : la passerelle ne peut
+  // pas décorer cette carte, le pont historique le peut.
+  await seedFeed(
+    page,
+    POSTS.concat([post("v3_sans", "Dana", { passion: "passion_inconnue_qa" })]),
+    ["musique", "passion_inconnue_qa"], // sans quoi le fil filtre la carte
+  );
+
+  const sans = '#feedList .post[data-postid="v3_sans"]';
+  await expect(page.locator(`${sans} [data-v3-tempt]`)).toHaveCount(0);
+  await expect(page.locator(sans)).not.toHaveAttribute("data-v3-decore", "1");
+  // La porte vers l'IRL de cette carte reste OUVERTE.
+  await expect(page.locator(`${sans} .feed-irl-bridge`)).toBeVisible();
+
+  // Et sur une carte décorée, le masquage s'applique toujours.
+  await expect(page.locator('#feedList .post[data-postid="v3_a"] [data-v3-tempt]')).toHaveCount(1);
+  await expect(page.locator('#feedList .post[data-postid="v3_a"] .feed-irl-bridge')).toBeHidden();
 });
 
 // ── ⑦ bis. L'aide contextuelle ne doit pas barrer la route ─────────────────

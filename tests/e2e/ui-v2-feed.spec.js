@@ -64,6 +64,16 @@ async function seedFeed(page, opts = {}) {
     // marque vue, comme un utilisateur qui l'a déjà lue.
     state.hintsVus = state.hintsVus || {};
     state.hintsVus.feed_auteur = true;
+    // ⚠️ `hintsVus` empêche les PROCHAINES aides, il ne retire pas la bulle DÉJÀ
+    // posée pendant le démarrage — elle s'ancre après le premier rendu du fil de
+    // démonstration, donc bien avant ce seed. Elle est `position: fixed` et
+    // intercepte alors le tap (clic refusé, jamais forcé). On la ferme par le
+    // MÉCANISME PRODUIT — le bouton « Compris », qui appelle `fermerHint()` —
+    // exactement comme le ferait l'utilisateur ; repli direct sur `fermerHint()`
+    // si la bulle existe sans son bouton.
+    var hintOk = document.querySelector(".passio-hint .passio-hint-ok");
+    if (hintOk) hintOk.click();
+    else if (typeof fermerHint === "function") fermerHint();
     state.seed.posts = [];
     state.userPosts = [];
     // Auteurs « du réseau » : ils doivent arriver par une source qui n'est pas
