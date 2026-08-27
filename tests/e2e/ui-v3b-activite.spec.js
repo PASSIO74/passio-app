@@ -129,6 +129,10 @@ test("aperçu UI-3B : une publication liée est visible sans donnée persistée"
   }));
   expect(avant).toEqual({ post: false, event: false });
 
+  // La preview doit être immédiatement testable, sans bulle de première visite
+  // au-dessus du lien.
+  await page.evaluate(() => window.PassioUIV3.dismissHint());
+  await expect(page.locator(".passio-hint")).toHaveCount(0);
   await carte.locator("[data-v3-activity]").click();
   await expect(page.locator("#eventDetailPage")).toBeVisible();
   await expect(page.locator("#eventDetailHeroTitle .event-detail-title")).toHaveText("Jam acoustique");
