@@ -25,6 +25,13 @@ async function boot(page, { preview = false } = {}) {
   await bootOnboarded(page, null, 1, preview ? { query: PREVIEW } : {});
 }
 
+// Kill switch documenté d'UI-3A, à poser AVANT le boot : une fois la page
+// chargée, `:root.passio-ui-3 .feed-irl-bridge { display: none }` masque déjà le
+// CTA historique et le clic serait refusé.
+async function couperUiV3(page) {
+  await page.addInitScript(() => localStorage.setItem("passio_ui_3", "0"));
+}
+
 async function setFlags(page, intents, bridge = false) {
   await page.evaluate(([on, bridgeOn]) => {
     // Le rail ne s'allume plus par `localStorage` : on ne fait ici qu'ôter (ou
@@ -279,7 +286,14 @@ test.describe("Fil — Envie du moment (UI-2 active par défaut)", () => {
     }
   });
 
-  test("Rencontrer → CTA IRL existant, sans activer une proposition", async ({ page }) => {
+  // Deux contrats distincts se rencontrent ici, et ils sont testés séparément
+  // plutôt qu'arbitrés l'un contre l'autre :
+  //   ① la télémétrie `feed_intent_meet_irl` du rail est portée par le CTA
+  //      HISTORIQUE — elle se prouve donc UI-3A coupée, sinon le CTA est masqué ;
+  //   ② le chemin nominal (UI-3A active par défaut) doit présenter « Trouver une
+  //      expérience » sans rien engager à la place de l'utilisateur.
+  test("Rencontrer → CTA IRL existant sous kill switch UI-3A, sans activer une proposition", async ({ page }) => {
+    await couperUiV3(page);
     await boot(page, { preview: true });
     await seedFeed(page, true, true);
     await page.locator('.feed-intent-btn[data-intent="meet"]').click();
@@ -290,6 +304,36 @@ test.describe("Fil — Envie du moment (UI-2 active par défaut)", () => {
       window.__intentTel.filter((e) => e.name === "feed_intent_meet_irl"));
     expect(meetEvents).toHaveLength(1);
     expect(meetEvents[0].meta).toEqual({ v: "v1", flag: "on", intent: "meet" });
+    expect(await page.evaluate(() => localStorage.getItem("passio_irl_proposal_v1"))).not.toBe("1");
+  });
+
+  test("Rencontrer, UI-3A active : « Trouver une expérience » sans proposition automatique", async ({ page }) => {
+    await boot(page);
+    await seedFeed(page, true, true);
+    // Le module UI-3A n'est pas encore livré sur toutes les bases : sans lui il
+    // n'y a rien à prouver ici. Le garde porte sur la PRÉSENCE du module, pas
+    // sur son rendu — un module chargé mais muet doit faire échouer ce test,
+    // pas le faire disparaître.
+    const moduleV3 = await page.evaluate(() => !!window.PassioUIV3);
+    test.skip(!moduleV3, "UI-3A absente de ce head : la passerelle n'est pas livrée ici.");
+
+    await page.locator('.feed-intent-btn[data-intent="meet"]').click();
+    const carte = page.locator('#feedList .post[data-postid="intent_meet"]');
+
+    // Le vocabulaire validé est présent et réellement atteignable…
+    const passerelle = carte.getByText("Trouver une expérience", { exact: true }).first();
+    await expect(passerelle).toBeVisible();
+
+    // …et le CTA historique reste dans le DOM, seulement masqué : aucun doublon
+    // à l'écran, et les kill switches peuvent le restituer sans repeinte.
+    const historique = carte.locator(".feed-irl-cta");
+    await expect(historique).toHaveCount(1);
+    await expect(historique).toBeHidden();
+
+    // Rien n'est engagé à la place de l'utilisateur : ni événement, ni
+    // proposition activée, ni RSVP.
+    expect(await page.evaluate(() => (state.userEvents || []).length)).toBe(0);
+    expect(await page.evaluate(() => (state.user.joinedEvents || []).length)).toBe(0);
     expect(await page.evaluate(() => localStorage.getItem("passio_irl_proposal_v1"))).not.toBe("1");
   });
 
