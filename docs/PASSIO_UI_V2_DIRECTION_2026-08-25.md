@@ -525,6 +525,13 @@ Validation par lot :
 
 ### Lot UI-3 — Passerelle Feed → IRL
 
+> **Rectification du 2026-08-27 (PR #163).** Le vocabulaire validé par Benjamin
+> après test visuel est **« Trouver une expérience »**, pour le lien de la carte
+> comme pour le titre du panneau. Les mentions de « Ça me tente » et de
+> « Autour de cette Passio » qui suivent dans ce document sont conservées comme
+> trace de la réflexion initiale, mais ne sont plus le libellé de référence.
+> Le lot UI-3A est ACTIF PAR DÉFAUT depuis cette validation ; UI-3B reste à faire.
+
 - `trait Passio` ;
 - module événement lié ;
 - action `Ça me tente` ;

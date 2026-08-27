@@ -1,12 +1,12 @@
 // ══════════════════════════════════════════════════════════════════════════
-// PASSIO UI V3 — lot UI-3A : passerelle « Ça me tente » du Feed vers l'IRL.
+// PASSIO UI V3 — lot UI-3A : passerelle « Trouver une expérience » du Feed vers l'IRL.
 // Direction produit : docs/PASSIO_UI_V2_DIRECTION_2026-08-25.md §6 et §15.
 //
 // Périmètre EXACT de ce lot, et rien de plus :
 //   une publication du Feed qui porte une Passio et n'est PAS déjà reliée à un
 //   événement reçoit, en bas de carte, le « trait Passio » (violet → corail) et
-//   un lien discret « Ça me tente ». Le tap ouvre une feuille basse
-//   « Autour de cette Passio » qui propose exactement trois suites, toutes
+//   un lien discret « Trouver une expérience ». Le tap ouvre une feuille basse
+//   du même nom, qui propose exactement trois suites, toutes
 //   servies par des moteurs QUI EXISTENT DÉJÀ :
 //     ① Voir les activités      → irlPassionFilters + goTo("irl")/renderIRL
 //     ② Découvrir des personnes → openPassionExplorer(passion)
@@ -20,16 +20,21 @@
 // dans `localStorage`. Il ne touche jamais `state.user.currentProfileId` :
 // l'identité active traverse la passerelle inchangée.
 //
-// ── Activation ────────────────────────────────────────────────────────────
-//     ?passio_preview=passio-ui-3      → SEULE façon d'activer le lot
-//     localStorage.passio_ui_3 = "0"   → kill switch (prioritaire sur l'URL)
+// ── Activation — ACTIF PAR DÉFAUT depuis la validation visuelle de Benjamin
+//    du 2026-08-27 (PR #163). Le lot était en aperçu jusque-là. ────────────
+//     localStorage.passio_ui_3 = "0"   → kill switch, prioritaire
 //     window.PASSIO_UI_3 = false       → coupure immédiate en mémoire
+//     ?passio_preview=passio-ui-3      → toléré, sans effet supplémentaire
 //
-// Le drapeau ne sait qu'ACTIVER POUR CETTE URL ou RETIRER : aucune valeur
-// positive n'est écrite dans `localStorage`, donc l'URL normale reste
-// rigoureusement celle de la production actuelle — y compris après une visite
-// de l'aperçu. C'est la différence avec un aperçu « collant », qui laisserait
-// une trace persistante sur l'appareil du testeur.
+// Le drapeau ne sait que RETIRER : il n'y a volontairement aucune branche
+// « valeur positive qui active ». `"1"` et `true` sont IGNORÉS, exactement
+// comme dans `ui-v2-shell.js` — l'activation vient de la décision de
+// déploiement, jamais d'un état persistant du navigateur.
+//
+// Le module n'écrit toujours RIEN dans `localStorage` : promouvoir le lot ne
+// change pas cet invariant, il le rend seulement inutile pour activer. Un
+// appareil coupé le reste, et le lien d'aperçu déjà partagé continue de
+// fonctionner sans rien poser sur l'appareil du testeur.
 // ══════════════════════════════════════════════════════════════════════════
 (function () {
   "use strict";
@@ -39,19 +44,27 @@
   var ROOT_CLASS = "passio-ui-3";
   var VERSION = "ui3a";
 
+  // Vocabulaire validé par Benjamin le 2026-08-27. Le lien de la carte et le
+  // titre du panneau portent DÉLIBÉRÉMENT le même libellé : ce que le tap
+  // promet est exactement ce que le panneau tient. Une seule constante, pour
+  // qu'ils ne puissent pas diverger.
+  var LIBELLE_CTA = "Trouver une expérience";
+
   // ── Drapeau ───────────────────────────────────────────────────────────────
-  // Ordre de priorité : coupure mémoire > kill switch local > aperçu par URL >
-  // défaut OFF. Les deux coupures passent AVANT l'URL : un appareil coupé le
-  // reste même si on lui envoie le lien d'aperçu.
+  // Ordre de priorité : coupure mémoire > kill switch local > défaut ACTIVÉ.
+  // Les deux coupures restent prioritaires sur tout le reste : un appareil
+  // coupé le reste, y compris si on lui envoie le lien d'aperçu.
+  //
+  // `PREVIEW_NAME` n'apparaît plus dans cette fonction : le paramètre d'URL
+  // reste valide (il mène à une app où le lot est actif) mais il n'a plus rien
+  // à décider. Le retirer d'ici est ce qui garantit qu'il ne peut pas devenir,
+  // par accident, un chemin d'activation qui court-circuiterait un kill switch.
   function uiV3Enabled() {
-    if (window.PASSIO_UI_3 === false) return false;
+    if (window.PASSIO_UI_3 === false) return false; // coupure mémoire
     var stored = null;
     try { stored = localStorage.getItem(STORAGE_KEY); } catch (e) {}
-    if (stored === "0") return false;
-    try {
-      if (new URLSearchParams(window.location.search).get("passio_preview") === PREVIEW_NAME) return true;
-    } catch (e) {}
-    return false;
+    if (stored === "0") return false;               // kill switch local
+    return true;
   }
 
   // ── Diagnostic ────────────────────────────────────────────────────────────
@@ -171,7 +184,7 @@
     cta.setAttribute("data-v3-tempt", String(post.id));
     cta.setAttribute("aria-haspopup", "dialog");
     cta.setAttribute("aria-expanded", "false");
-    cta.textContent = "Ça me tente";
+    cta.textContent = LIBELLE_CTA;
 
     row.appendChild(chip);
     row.appendChild(trace);
@@ -180,12 +193,12 @@
   }
 
   // Le CTA historique « 🤝 Organiser un IRL » (pont `feed_irl_bridge_v1`) ne doit
-  // pas cohabiter avec « Ça me tente » : les deux répondent au même besoin, les
+  // pas cohabiter avec « Trouver une expérience » : les deux répondent au même besoin, les
   // afficher ensemble donnerait deux portes vers l'IRL au bas d'une carte.
   //
   // ⚠️ Il est MASQUÉ par une règle CSS ancrée à `.passio-ui-3`, jamais retiré du
   // DOM. Le retirer marchait à l'aller et pas au retour : une coupure en mémoire
-  // enlevait bien « Ça me tente », mais ne rendait pas le CTA historique — la
+  // enlevait bien « Trouver une expérience », mais ne rendait pas le CTA historique — la
   // carte se retrouvait sans aucune porte vers l'IRL jusqu'à la repeinte
   // suivante. Un masquage porté par la classe racine se défait tout seul quand
   // le kill switch la retire. (Défaut relevé en contre-revue, PR #163.)
@@ -239,7 +252,7 @@
   // ⚠️ `setTimeout` et JAMAIS `requestAnimationFrame` pour cadencer la décoration.
   // rAF ne se déclenche pas sur une page qui ne COMPOSE pas de frames — onglet en
   // arrière-plan, navigateur sans tête, machine saturée. La passerelle n'aurait
-  // alors jamais été posée : pas de trait, pas de « Ça me tente », en silence.
+  // alors jamais été posée : pas de trait, pas de lien, en silence.
   // Le dépôt a déjà payé ce piège (cf. la note de `attendreFilStable` dans
   // tests/e2e/interactions.spec.js) ; mesuré ici sur le runner CI, où le trait
   // n'apparaissait pas en 5 secondes. La coalescence reste assurée par `pending`.
@@ -258,7 +271,7 @@
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // FEUILLE BASSE « AUTOUR DE CETTE PASSIO »
+  // FEUILLE BASSE « TROUVER UNE EXPÉRIENCE »
   // ──────────────────────────────────────────────────────────────────────────
   // Même mécanique que la feuille « Créer » d'UI-1 (mêmes classes `.v2-sheet-*`,
   // mêmes jetons) : `openModal` empile mal — ouvrir une modale depuis une autre
@@ -365,7 +378,7 @@
     var titre = document.createElement("h2");
     titre.className = "v2-sheet-title";
     titre.id = "v3SheetTitle";
-    titre.textContent = "Autour de cette Passio";
+    titre.textContent = LIBELLE_CTA;
     var close = document.createElement("button");
     close.type = "button";
     close.className = "v2-sheet-close";
@@ -444,7 +457,7 @@
   }
 
   // Une aide contextuelle (`.passio-hint`) est `position: fixed` et se pose
-  // PAR-DESSUS le fil : ouverte au moment où l'on tape « Ça me tente », elle
+  // PAR-DESSUS le fil : ouverte au moment où l'on tape le lien, elle
   // recouvre le bas de la carte et intercepte le tap. Le produit prévoit déjà sa
   // fermeture — on l'appelle, exactement comme la feuille « Créer » d'UI-1,
   // plutôt que de lui passer devant avec un z-index (ce qui laisserait une bulle

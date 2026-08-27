@@ -287,12 +287,14 @@ Le script est en lecture seule sur le dépôt (il n'écrit que dans son dossier 
   `docs/PASSIO_UI_V2_ORDRE_UI1_2026-08-25.md`.
   Implémentation UI-1 : `js/ui-v2-shell.js` + bloc « PASSIO UI V2 » en fin de `styles.css`
   (inertes sous kill switch), tests `tests/e2e/ui-v2-shell.spec.js`.
-  Implémentation UI-3A (passerelle « Ça me tente » du Feed vers l'IRL) :
+  Implémentation UI-3A (passerelle « Trouver une expérience » du Feed vers l'IRL) :
   `js/ui-v3-passerelle.js` + bloc « PASSIO UI V3 » en fin de `styles.css`, tests
-  `tests/e2e/ui-v3-passerelle.spec.js`. **Aperçu uniquement** :
-  `?passio_preview=passio-ui-3` est la SEULE activation, aucune valeur positive n'est
-  écrite dans `localStorage` (l'URL normale reste la prod, même après une visite) ;
-  coupures : `localStorage.passio_ui_3="0"` et `window.PASSIO_UI_3=false`. Le module
+  `tests/e2e/ui-v3-passerelle.spec.js`. **ACTIF PAR DÉFAUT** depuis la validation
+  visuelle de Benjamin du 2026-08-27 (PR #163) ; il était en aperçu jusque-là, et
+  `?passio_preview=passio-ui-3` reste toléré sans plus rien décider. Le drapeau ne
+  sait que RETIRER — aucune valeur positive n'active, aucune n'est écrite dans
+  `localStorage` ; coupures : `localStorage.passio_ui_3="0"` et
+  `window.PASSIO_UI_3=false`, prioritaires sur tout. Le module
   n'écrit rien (ni base, ni `state`, ni `localStorage`), ne crée ni événement ni RSVP,
   et réutilise les moteurs existants (`irlPassionFilters`+`renderIRL`,
   `openPassionExplorer`, `openCreateEvent`+`feedIrlBridgePrefill`). ⚠️ Trois pièges

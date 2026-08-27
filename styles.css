@@ -9379,7 +9379,7 @@ body.ctx-locked #appMain { overflow: hidden; }
   --v3-coral: var(--v2-coral, #ff6b57);
   /* Corail du TEXTE. Le corail de marque #ff6b57 ne donne que 2,80:1 sur
      blanc : sous le 4,5:1 exigé par WCAG AA pour du texte normal, et même
-     sous le 3:1 des grands caractères — le lien « Ça me tente » fait 13 px.
+     sous le 3:1 des grands caractères — le lien de la passerelle fait 13 px.
      Ce ton garde la TEINTE du corail (8,2° contre 7,1°) en abaissant la
      saturation à 66 % : 5,30:1 sur blanc, 4,90:1 sur le fond nuage. Le trait
      dégradé, lui, reste en #ff6b57 : il est décoratif (`aria-hidden`) et ne
@@ -9390,7 +9390,7 @@ body.ctx-locked #appMain { overflow: hidden; }
 }
 
 /* Le CTA historique du pont Fil → IRL (« 🤝 Organiser un IRL ») ne cohabite pas
-   avec « Ça me tente » : deux portes vers l'IRL au bas d'une même carte. Il est
+   avec la passerelle : deux portes vers l'IRL au bas d'une même carte. Il est
    MASQUÉ ici, jamais retiré du DOM — la règle est portée par `.passio-ui-3`,
    donc les kill switches la défont d'eux-mêmes et le CTA historique réapparaît
    exactement tel qu'il était, sans attendre une repeinte du fil. */
@@ -9471,7 +9471,7 @@ body.ctx-locked #appMain { overflow: hidden; }
   outline-offset: 2px;
 }
 
-/* ── Feuille « Autour de cette Passio » ─────────────────────────────────────
+/* ── Feuille « Trouver une expérience » ─────────────────────────────────────
    Elle hérite de `.v2-sheet-backdrop` / `.v2-sheet` : mêmes rayons, même
    safe-area, même piège de focus. Seul le trait de tête est propre au lot. */
 #v3PassioSheet .v3-sheet-trace {

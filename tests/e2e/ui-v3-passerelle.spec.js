@@ -1,12 +1,13 @@
-// Lot UI-3A — passerelle « Ça me tente » du Feed vers l'IRL.
+// Lot UI-3A — passerelle « Trouver une expérience » du Feed vers l'IRL.
+// ACTIVE PAR DÉFAUT depuis la validation visuelle de Benjamin du 2026-08-27.
 //
 // Ce que cette suite prouve, et rien d'autre :
-//   ① l'URL NORMALE est strictement inchangée (aucun trait, aucun lien) et
-//      l'aperçu n'écrit aucune activation dans localStorage ;
+//   ① l'URL NORMALE porte la passerelle, et rien n'est écrit dans localStorage
+//      pour autant — l'activation vient du déploiement, pas de l'appareil ;
 //   ② les deux kill switches (localStorage et mémoire) coupent l'aperçu ;
 //   ③ une publication portant une Passio et SANS événement lié reçoit le trait
 //      Passio et le lien ; une publication reliée à un événement, non (UI-3B) ;
-//   ④ le tap ouvre « Autour de cette Passio » avec EXACTEMENT trois actions ;
+//   ④ le tap ouvre « Trouver une expérience » avec EXACTEMENT trois actions ;
 //   ⑤ chacune des trois ouvre le moteur EXISTANT, sans rien créer ;
 //   ⑥ la fermeture restitue la position exacte du Feed et l'identité active ;
 //   ⑦ l'ancien CTA « Organiser un IRL » n'apparaît jamais en doublon ;
@@ -57,7 +58,11 @@ async function boot(page, opts = {}) {
   if (opts.killMemoire) {
     await page.addInitScript(() => { window.PASSIO_UI_3 = false; });
   }
-  await bootOnboarded(page, opts.errors, 1, opts.preview === false ? {} : { query: PREVIEW });
+  // Chemin NOMINAL = l'URL normale, depuis la promotion du 2026-08-27. Seul le
+  // test de compatibilité du lien d'aperçu demande explicitement `preview: true` :
+  // faire l'inverse laisserait la promotion couverte par un seul cas, alors
+  // qu'elle est désormais ce que voit tout le monde.
+  await bootOnboarded(page, opts.errors, 1, opts.preview === true ? { query: PREVIEW } : {});
 
   // ⚠️ Neutraliser les chargements de posts, comme le fait `bootInteractions`.
   // Plusieurs chemins font `state.supabasePosts = posts.concat(extra)` : une
@@ -123,7 +128,7 @@ async function seedFeed(page, posts) {
 }
 
 // Fait défiler le fil À UNE POSITION CHOISIE, puis renvoie l'identifiant du
-// « Ça me tente » le plus proche du centre de l'écran.
+// « Trouver une expérience » le plus proche du centre de l'écran.
 //
 // ⚠️ Pourquoi ne pas simplement faire `.nth(N).click()` : Playwright amène
 // d'abord la cible dans la vue, puis exige qu'elle soit STABLE deux frames de
@@ -153,7 +158,7 @@ async function taperCarteVisible(page, offset) {
     });
     return best;
   });
-  expect(id, "un « Ça me tente » doit être visible à cette position").toBeTruthy();
+  expect(id, "un lien de passerelle doit être visible à cette position").toBeTruthy();
 
   // On attend que la cible ait cessé de bouger AVANT de taper. Playwright exige
   // deux frames identiques et abandonne au bout de 15 s ; sur un runner chargé,
@@ -176,17 +181,27 @@ async function taperCarteVisible(page, offset) {
   return id;
 }
 
-// ── ① L'URL normale reste la production ────────────────────────────────────
-test("URL normale : aucun trait, aucun lien, aucune écriture d'activation", async ({ page }) => {
+// ── ① PROMOTION : l'URL normale PORTE la passerelle ────────────────────────
+// Ce test était l'inverse jusqu'au 2026-08-27 (« aucun trait, aucun lien ») :
+// le lot vivait en aperçu. La validation visuelle de Benjamin l'a promu ; le
+// test change donc de sens, pas de rôle — c'est toujours lui qui dit ce que
+// voit un utilisateur qui ouvre PASSIO normalement.
+test("URL normale : la passerelle est là, et rien n'est écrit pour autant", async ({ page }) => {
   const errors = { js: [], console: [], network: [] };
-  await boot(page, { preview: false, errors });
+  await boot(page, { errors });
   await seedFeed(page, POSTS);
 
-  await expect(page.locator("#feedList [data-v3-bridge]")).toHaveCount(0);
-  await expect(page.locator("#feedList [data-v3-tempt]")).toHaveCount(0);
-  await expect(page.locator("#v3PassioSheet")).toHaveCount(0);
-  expect(await page.evaluate(() => document.documentElement.classList.contains("passio-ui-3"))).toBe(false);
-  expect(await page.evaluate(() => window.PassioUIV3.isEnabled())).toBe(false);
+  await expect(page.locator("#feedList [data-v3-bridge]")).toHaveCount(3);
+  await expect(page.locator("#feedList [data-v3-tempt]").first()).toBeVisible();
+  await expect(page.locator("#feedList [data-v3-tempt]").first()).toHaveText("Trouver une expérience");
+  expect(await page.evaluate(() => document.documentElement.classList.contains("passio-ui-3"))).toBe(true);
+  expect(await page.evaluate(() => window.PassioUIV3.isEnabled())).toBe(true);
+
+  // ⚠️ L'invariant qui SURVIT à la promotion, et qui compte le plus : activer le
+  // lot n'a jamais rien posé sur l'appareil. Le drapeau ne sait que retirer.
+  expect(await page.evaluate(() => localStorage.getItem("passio_ui_3"))).toBeNull();
+  expect(await page.evaluate(() =>
+    Object.keys(localStorage).filter((k) => /ui_?3|ui-3/i.test(k)))).toEqual([]);
 
   // Les acquis UI-1 + UI-2 restent intacts sur cette même URL.
   await expect(page.locator("#appNavV2")).toBeVisible();
@@ -196,8 +211,8 @@ test("URL normale : aucun trait, aucun lien, aucune écriture d'activation", asy
   expect(errors.console.filter((m) => m.includes("[ui-v3]"))).toEqual([]);
 });
 
-test("aperçu : aucune activation positive n'est écrite dans localStorage", async ({ page }) => {
-  await boot(page);
+test("lien d'aperçu : toujours valide, et toujours sans écriture d'activation", async ({ page }) => {
+  await boot(page, { preview: true });
   await seedFeed(page, POSTS);
   await expect(page.locator("#feedList [data-v3-tempt]").first()).toBeVisible();
 
@@ -208,7 +223,7 @@ test("aperçu : aucune activation positive n'est écrite dans localStorage", asy
 });
 
 // ── ② Kill switches ────────────────────────────────────────────────────────
-test("kill switch localStorage : l'aperçu est coupé malgré l'URL", async ({ page }) => {
+test("kill switch localStorage : coupe sur l'URL normale ET malgré le lien d'aperçu", async ({ page }) => {
   const errors = { js: [], console: [], network: [] };
   await boot(page, { killLocal: true, errors });
   await seedFeed(page, POSTS);
@@ -216,6 +231,17 @@ test("kill switch localStorage : l'aperçu est coupé malgré l'URL", async ({ p
   await expect(page.locator("#feedList [data-v3-bridge]")).toHaveCount(0);
   expect(await page.evaluate(() => window.PassioUIV3.isEnabled())).toBe(false);
   expect(errors.js).toEqual([]);
+});
+
+// Le lien d'aperçu ne doit JAMAIS court-circuiter une coupure : c'est ce qui
+// distingue un kill switch d'une simple préférence. Depuis la promotion, le
+// paramètre n'entre même plus dans `uiV3Enabled()` — ce test le verrouille.
+test("kill switch localStorage : le lien d'aperçu ne le court-circuite pas", async ({ page }) => {
+  await boot(page, { killLocal: true, preview: true });
+  await seedFeed(page, POSTS);
+
+  await expect(page.locator("#feedList [data-v3-bridge]")).toHaveCount(0);
+  expect(await page.evaluate(() => window.PassioUIV3.isEnabled())).toBe(false);
 });
 
 test("kill switch mémoire : window.PASSIO_UI_3 = false coupe l'aperçu", async ({ page }) => {
@@ -234,7 +260,7 @@ test("kill switch mémoire : window.PASSIO_UI_3 = false coupe l'aperçu", async 
 });
 
 // ── ③ Éligibilité ──────────────────────────────────────────────────────────
-test("aperçu : le trait Passio et le lien n'apparaissent que sur les publications éligibles", async ({ page }) => {
+test("le trait Passio et le lien n'apparaissent que sur les publications éligibles", async ({ page }) => {
   await boot(page);
   await seedFeed(page, [
     post("v3_ok", "Alice"),                                       // éligible
@@ -247,7 +273,7 @@ test("aperçu : le trait Passio et le lien n'apparaissent que sur les publicatio
   const carte = page.locator('article.post[data-postid="v3_ok"]');
   await expect(carte.locator(".v3-bridge-trace")).toHaveCount(1);
   await expect(carte.locator(".v3-bridge-label")).toHaveText("Musique");
-  await expect(carte.locator("[data-v3-tempt]")).toHaveText("Ça me tente");
+  await expect(carte.locator("[data-v3-tempt]")).toHaveText("Trouver une expérience");
 
   await expect(page.locator('article.post[data-postid="v3_evt"] [data-v3-bridge]')).toHaveCount(0);
   await expect(page.locator('article.post[data-postid="v3_share"] [data-v3-bridge]')).toHaveCount(0);
@@ -258,7 +284,7 @@ test("aperçu : le trait Passio et le lien n'apparaissent que sur les publicatio
 // `history.pushState(..., "#" + ecran)` à chaque navigation. Si cet appel
 // perdait la chaîne de requête, la passerelle disparaîtrait au premier
 // aller-retour — sans erreur, sans trace. Ce test l'exerce pour de vrai.
-test("aperçu : la passerelle survit à un aller-retour entre écrans", async ({ page }) => {
+test("la passerelle survit à un aller-retour entre écrans", async ({ page }) => {
   await boot(page);
   await seedFeed(page, POSTS);
   await expect(page.locator("#feedList [data-v3-tempt]")).toHaveCount(3);
@@ -280,14 +306,14 @@ test("aperçu : la passerelle survit à un aller-retour entre écrans", async ({
 });
 
 // ── ④ Le panneau et ses trois actions ──────────────────────────────────────
-test("aperçu : le tap ouvre « Autour de cette Passio » avec exactement trois actions", async ({ page }) => {
+test("le tap ouvre « Trouver une expérience » avec exactement trois actions", async ({ page }) => {
   await boot(page);
   await seedFeed(page, POSTS);
 
   await page.locator('article.post[data-postid="v3_a"] [data-v3-tempt]').click();
   const sheet = page.locator("#v3PassioSheet");
   await expect(sheet).toBeVisible();
-  await expect(sheet.locator("#v3SheetTitle")).toHaveText("Autour de cette Passio");
+  await expect(sheet.locator("#v3SheetTitle")).toHaveText("Trouver une expérience");
   expect(await sheet.locator("[data-v3-choice] .v2-sheet-item-title").allTextContents()).toEqual([
     "Voir les activités", "Découvrir des personnes", "Proposer une sortie",
   ]);
@@ -305,7 +331,7 @@ test("aperçu : le tap ouvre « Autour de cette Passio » avec exactement trois 
   expect(Object.keys(ouverture.meta).sort()).toEqual(["has_psn", "has_ref", "v"]);
 });
 
-test("aperçu : Escape ferme le panneau et rien n'a été créé", async ({ page }) => {
+test("Escape ferme le panneau et rien n'a été créé", async ({ page }) => {
   await boot(page);
   await seedFeed(page, POSTS);
 
@@ -331,7 +357,7 @@ test("aperçu : Escape ferme le panneau et rien n'a été créé", async ({ page
 });
 
 // ── ⑤ Les trois suites ouvrent les moteurs EXISTANTS ───────────────────────
-test("aperçu : « Voir les activités » ouvre l'IRL filtré sur la Passio, sans GPS demandé", async ({ page }) => {
+test("« Voir les activités » ouvre l'IRL filtré sur la Passio, sans GPS demandé", async ({ page }) => {
   await boot(page);
   // La géolocalisation est neutralisée AVANT le clic : si un appel partait, la
   // sonde le verrait. UI-3A ne doit jamais en émettre un.
@@ -365,7 +391,7 @@ test("aperçu : « Voir les activités » ouvre l'IRL filtré sur la Passio, san
   expect(await page.evaluate(() => window.__geoCalls)).toBe(1);
 });
 
-test("aperçu : « Découvrir des personnes » ouvre le parcours Passion, sans contact automatique", async ({ page }) => {
+test("« Découvrir des personnes » ouvre le parcours Passion, sans contact automatique", async ({ page }) => {
   await boot(page);
   await seedFeed(page, POSTS);
 
@@ -385,7 +411,7 @@ test("aperçu : « Découvrir des personnes » ouvre le parcours Passion, sans c
   await expect(page.locator("#screen-messages")).not.toHaveClass(/active/);
 });
 
-test("aperçu : « Proposer une sortie » préremplit le formulaire IRL existant sans rien créer", async ({ page }) => {
+test("« Proposer une sortie » préremplit le formulaire IRL existant sans rien créer", async ({ page }) => {
   await boot(page);
   await seedFeed(page, POSTS);
 
@@ -403,7 +429,7 @@ test("aperçu : « Proposer une sortie » préremplit le formulaire IRL existant
 });
 
 // ── ⑥ Retour au Feed : position exacte et identité active ──────────────────
-test("aperçu : fermer le panneau restitue la position du Feed et l'identité active", async ({ page }) => {
+test("fermer le panneau restitue la position du Feed et l'identité active", async ({ page }) => {
   await boot(page);
   // TAILLE_FIL = 9 : assez pour défiler réellement, et sous le seuil de peinture
   // rapide de `renderFeed` (12), donc SANS complément en idle qui rallongerait le
@@ -448,7 +474,7 @@ test("aperçu : fermer le panneau restitue la position du Feed et l'identité ac
 });
 
 // ── ⑦ Aucun doublon avec l'ancien CTA ──────────────────────────────────────
-test("aperçu : l'ancien CTA « Organiser un IRL » ne coexiste jamais avec « Ça me tente »", async ({ page }) => {
+test("l'ancien CTA « Organiser un IRL » ne coexiste jamais avec la passerelle", async ({ page }) => {
   await boot(page);
   // Le pont historique est explicitement rallumé : c'est le cas où le doublon
   // pourrait apparaître.
@@ -467,7 +493,7 @@ test("aperçu : l'ancien CTA « Organiser un IRL » ne coexiste jamais avec « �
 // Le masquer par CSS plutôt que le retirer du DOM est ce qui garantit ce retour ;
 // l'implémentation initiale le détruisait et la carte se retrouvait sans aucune
 // porte vers l'IRL après coupure (défaut relevé en contre-revue).
-test("aperçu : couper UI-3A restitue le CTA historique, sans repeindre le fil", async ({ page }) => {
+test("couper UI-3A restitue le CTA historique, sans repeindre le fil", async ({ page }) => {
   await boot(page);
   await page.evaluate(() => { window.PASSIO_FEED_IRL_BRIDGE_V1 = true; });
   await seedFeed(page, POSTS);
@@ -488,7 +514,7 @@ test("aperçu : couper UI-3A restitue le CTA historique, sans repeindre le fil",
 // Ce test fait l'INVERSE : il en affiche une pour de vrai, et prouve que le
 // parcours reste atteignable — sinon le confort du test masquerait un défaut
 // produit (une bulle `position: fixed` qui intercepte le tap).
-test("aperçu : une aide contextuelle VISIBLE n'empêche pas « Ça me tente »", async ({ page }) => {
+test("une aide contextuelle VISIBLE n'empêche pas la passerelle", async ({ page }) => {
   await boot(page);
   await seedFeed(page, POSTS);
 
@@ -518,7 +544,7 @@ test("aperçu : une aide contextuelle VISIBLE n'empêche pas « Ça me tente »"
 // WCAG AA pour du texte normal, et même sous le 3:1 des grands caractères (le
 // lien fait 13 px). Ce test calcule le ratio RÉEL depuis les styles appliqués
 // par le navigateur : une régression de jeton, de fond ou de couleur sera vue.
-test("aperçu : le lien « Ça me tente » respecte le contraste AA (4,5:1)", async ({ page }) => {
+test("le lien « Trouver une expérience » respecte le contraste AA (4,5:1)", async ({ page }) => {
   await boot(page);
   await seedFeed(page, POSTS);
 
@@ -561,7 +587,7 @@ test("aperçu : le lien « Ça me tente » respecte le contraste AA (4,5:1)", as
 // réglages : l'animation existe par défaut, et elle disparaît quand l'utilisateur
 // a demandé moins de mouvement — sans que le panneau cesse pour autant de
 // s'ouvrir et de fonctionner.
-test("aperçu : aucune animation quand l'utilisateur demande moins de mouvement", async ({ page }) => {
+test("aucune animation quand l'utilisateur demande moins de mouvement", async ({ page }) => {
   await boot(page);
   // ⚠️ `page.emulateMedia` et non `test.use({ reducedMotion })` : mesuré ici, la
   // seconde forme ne parvenait pas jusqu'à la page (`matchMedia(...)` restait à
@@ -593,7 +619,7 @@ test("aperçu : aucune animation quand l'utilisateur demande moins de mouvement"
 });
 
 // Le pendant : sans réglage particulier, la transition courte EXISTE bien.
-test("aperçu : la transition d'ouverture existe par défaut", async ({ page }) => {
+test("la transition d'ouverture existe par défaut", async ({ page }) => {
   await boot(page);
   await seedFeed(page, POSTS);
   await page.locator('article.post[data-postid="v3_a"] [data-v3-tempt]').click();
