@@ -2,7 +2,7 @@
 
 **Date** : 2026-08-27 · **SHA de base** : `5a2382999a4ecc1eaa8dee43c1eabb011d9041b2`
 · **Risque** : critique (`.github/*`) · **État** : correctif appliqué dans cette branche
-par épinglage explicite de `netlify-cli@27.3.1` dans les jobs preview et production.
+par épinglage explicite de `netlify-cli@27.1.2` dans les jobs preview et production.
 
 > Claude Code a établi le diagnostic et les options ci-dessous mais son canal ne
 > pouvait pas écrire dans `.github/*`. Codex a appliqué l'option B sur la même
@@ -127,7 +127,7 @@ strictement inchangés.
 
 ## 4. Sélection de la version — vérification indépendante
 
-La version retenue est `27.3.1`. Elle est publiée, déclare Node `>=22.13.0` et dépend de `@netlify/ai@^1.0.0`, version disponible. Le tag Git officiel Netlify confirme ces métadonnées. La preview de cette PR doit encore prouver l'installation et le déploiement de bout en bout.
+La version retenue est `27.1.2`. Elle est publiée, déclare Node `>=22.13.0` et dépend de `@netlify/ai@^0.4.4`. Le tag Git officiel Netlify confirme ces métadonnées. `27.3.1`, pourtant épinglée lors d'une première tentative, résolvait encore la plage cassée `@netlify/ai@^1.0.1` dans l'artefact npm et a donc été écartée sur preuve CI. La preview de cette PR doit prouver l'installation et le déploiement de bout en bout.
 
 ### Méthode de sélection conservée
 
