@@ -963,8 +963,19 @@
   // posée que dans le contexte de ce lot, sur une activité ni annulée ni
   // terminée — dans ces deux cas la fiche historique dit déjà la bonne chose, et
   // la recouvrir d'un « Je participe » serait mensonger.
+  // L'aperçu UI-4B reconstruit la fiche ENTIÈRE, action primaire comprise. Deux
+  // modules qui écrivent la même barre se repeindraient l'un l'autre sans fin
+  // (chacun observe `#eventDetailCta`). UI-4B est alors le seul écrivain ; le
+  // reste d'UI-3B — lien du Feed, contexte, ancre de retour — est inchangé.
+  // Hors aperçu, `PassioUIV4B` répond « éteint » et rien ne change ici.
+  function ficheReprisParV4b() {
+    try { return !!(window.PassioUIV4B && window.PassioUIV4B.isEnabled()); }
+    catch (e) { return false; }
+  }
+
   function appliquerCtaFiche() {
     if (!ctxFiche || !uiV3Enabled()) return;
+    if (ficheReprisParV4b()) return;
     if (String(window._openEventDetailId || "") !== ctxFiche.id) return;
     var cta = document.getElementById("eventDetailCta");
     if (!cta) return;

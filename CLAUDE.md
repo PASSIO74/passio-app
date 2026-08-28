@@ -339,6 +339,31 @@ Le script est en lecture seule sur le dépôt (il n'écrit que dans son dossier 
   « Voir l'activité » puis « Je participe » dans la fiche) est implémenté et **en
   attente de la validation visuelle de Benjamin** : il vit sous le MÊME drapeau
   `passio_ui_3` et les mêmes coupures que UI-3A.
+  Implémentation UI-4B (fiche activité V2) : `js/ui-v4b-fiche.js` + bloc « PASSIO UI V4 »
+  en fin de `styles.css`, tests `tests/e2e/ui-v4b-fiche.spec.js`. **APERÇU UNIQUEMENT**
+  (`?passio_preview=passio-ui-4b`, ou `…=passio-ui-4b-demo` qui ouvre en plus une activité
+  de démonstration entièrement en mémoire) ; coupures dédiées et prioritaires
+  `localStorage.passio_ui_4b="0"` et `window.PASSIO_UI_4B=false`. Aucune activation
+  positive persistante, rien n'est écrit dans `localStorage`. Le module ne recrée AUCUN
+  moteur : il **déplace** les nœuds que `openEventDetails` vient de rendre dans des
+  sections ordonnées (rendez-vous → organisateur → description → infos → participants →
+  discussion → contextuel → échanges → autres actions), ajoute la seule surface neuve
+  (le bloc « Le rendez-vous » : tuile de date corail, heure, ville PUBLIQUE, places
+  agrégées) et remplace la barre d'action par un unique « Je participe » servi par
+  `setEventRsvp`. ⚠️ Cinq pièges de ce lot : **déplacer et non régénérer** — reconstruire
+  la chaîne HTML tuerait les `onclick` inline et les nœuds que des chargements asynchrones
+  retrouvent par id (`#eventAlbum`, `#eventCommentsList`, `#eventCommentInput`) ; un
+  élément non classé tombe dans « Autres actions » et un élément non reconnu **hérite du
+  titre historique qui le précède**, sinon la ligne « Plus que N places » quittait sa
+  section ; le marqueur `data-v4b-rsvp` vit sur le nœud INJECTÉ, pas sur `#eventDetailCta`
+  (même piège qu'UI-3B) ; **un verrou d'échec est obligatoire** car restaurer la fiche
+  historique repeint le corps, que l'observateur voit — sans lui, une erreur reproductible
+  boucle à l'infini ; et **deux modules ne peuvent pas écrire la même barre** — d'où le
+  garde `ficheReprisParV4b()` dans `ui-v3-passerelle.js`, qui rend la barre à UI-4B dès
+  que l'aperçu est actif (inerte hors aperçu). Annulé et terminé ne sont JAMAIS recouverts :
+  la fiche historique y dit déjà la bonne chose. Vie privée : seule la ville publique monte
+  au premier niveau, l'adresse exacte et le téléphone restent dans « Infos pratiques »,
+  là où le moteur historique les avait mis.
 - `docs/PIEGES_CONNUS.md` — les 56 fiches détaillées (extrait de ce fichier le 2026-08-07).
 - `docs/HISTORIQUE_PROJET.md` — état 2026-06-11, backlog terminé, logs d’optimisation.
 - `docs/ARCHITECTURE.md`, `docs/CONTROLE_16_MISSIONS.md`, `docs/CHECKLIST_COMMERCIALISATION.md`.

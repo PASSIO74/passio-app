@@ -9444,6 +9444,12 @@ body.ctx-locked #appMain { overflow: hidden; }
   font-size: 15px;
   line-height: 1;
 }
+:root.passio-ui-3 .v3-tempt {
+  /* La cible dépasse légèrement la ligne compacte : ce contexte d'empilement
+     garantit que le bouton — et non la carte parente — reçoit toujours le tap. */
+  position: relative;
+  z-index: 1;
+}
 :root.passio-ui-3 .v3-tempt:hover { text-decoration: underline; }
 :root.passio-ui-3 .v3-tempt:focus-visible {
   outline: 2px solid var(--v3-coral-texte);
@@ -9557,4 +9563,218 @@ body.ctx-locked #appMain { overflow: hidden; }
 :root.passio-ui-3 #eventDetailCta .v3-rsvp-retirer:focus-visible {
   outline: 2px solid var(--v3-coral-texte, #c13d28);
   outline-offset: 2px;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   PASSIO UI V4 — lot UI-4B : fiche activité V2, APERÇU UNIQUEMENT
+   Direction : docs/PASSIO_UI_V2_DIRECTION_2026-08-25.md §8, arbitrages de
+   Benjamin du 2026-08-27 (issue #165).
+
+   Tout ce bloc est ancré à `.passio-ui-4b`, classe posée sur <html> par
+   js/ui-v4b-fiche.js et SEULEMENT sous ?passio_preview=passio-ui-4b(-demo).
+   Les deux kill switches retirent la classe : l'ancienne fiche revient telle
+   quelle, sans rechargement. Aucune règle existante n'est modifiée — l'URL
+   normale reste octet pour octet celle de la production.
+
+   Le corps doit se lire comme une COMPOSITION continue, pas comme une pile de
+   dix cartes blanches : la hiérarchie vient de la typographie et de l'espace,
+   et deux surfaces fortes seulement (la photo, le bloc rendez-vous) portent la
+   couleur. Violet = Passio/découverte, corail = passage vers le réel.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+:root.passio-ui-4b {
+  --v4b-violet: var(--v2-violet, #6d32f4);
+  --v4b-coral: var(--v2-coral, #ff6b57);
+  /* Corail du TEXTE et des fonds porteurs de libellé. Le corail de marque
+     #ff6b57 ne donne que 2,8:1 avec du blanc — sous le 4,5:1 exigé en AA. Ce
+     ton garde la teinte en abaissant la saturation : 5,3:1 avec #fff. Le même
+     jeton qu'UI-3, pour que les deux lots ne puissent pas diverger. */
+  --v4b-coral-texte: var(--v3-coral-texte, #c13d28);
+}
+
+/* ── Photo de couverture dominante ──────────────────────────────────────────
+   Plus haute que la fiche historique (220 px) : c'est la première des deux
+   surfaces fortes, et sur mobile elle porte à elle seule « qu'est-ce qu'on va
+   vivre ». Bornée en vh pour qu'un petit écran garde du contenu visible. */
+:root.passio-ui-4b .event-detail-hero {
+  height: min(300px, 42vh);
+}
+
+/* Retour et partage : icônes sobres posées sur la photo, sans libellé visible.
+   Le nom accessible est porté par `aria-label` (posé par le module pour le
+   retour, déjà présent sur le partage) — le lecteur d'écran ne perd rien. */
+:root.passio-ui-4b .event-detail-back {
+  font-size: 0;
+  width: 45px;
+  height: 45px;
+  padding: 0;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.42);
+  top: max(14px, env(safe-area-inset-top));
+}
+:root.passio-ui-4b #eventDetailShareBtn {
+  /* 45 px évite l'arrondi sous-pixel 43,999998 px de Chromium tout en
+     conservant visuellement la cible ronde validée. */
+  width: 45px;
+  height: 45px;
+  min-width: 45px;
+  min-height: 45px;
+}
+:root.passio-ui-4b .event-detail-back::before {
+  content: "←";
+  font-size: 19px;
+  font-weight: 700;
+  line-height: 1;
+}
+:root.passio-ui-4b #eventDetailShareBtn::before { content: "⤴"; }
+:root.passio-ui-4b .event-detail-back:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+/* ── Sections ───────────────────────────────────────────────────────────────
+   Pas de bordure, pas de carte : de l'espace et un titre discret. Les blocs
+   historiques déplacés à l'intérieur gardent, eux, leur propre style. */
+:root.passio-ui-4b .v4b-sec + .v4b-sec { margin-top: 22px; }
+:root.passio-ui-4b .v4b-sec-titre {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  margin: 0 0 8px;
+}
+/* Le premier titre historique d'une section a déjà l'espace de la section :
+   sa marge haute ferait un double blanc. */
+:root.passio-ui-4b .v4b-sec > .event-detail-section-title:first-child { margin-top: 0; }
+
+/* ── Bloc signature « Le rendez-vous » ──────────────────────────────────────
+   La seconde surface forte : quand, où, avec qui, et puis-je entrer — d'un
+   seul coup d'œil. Volontairement la seule tache de corail du corps. */
+:root.passio-ui-4b .v4b-rdv {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(109, 50, 244, 0.10), rgba(255, 107, 87, 0.12));
+  border: 1px solid rgba(109, 50, 244, 0.16);
+  min-width: 0;
+}
+:root.passio-ui-4b .v4b-rdv-tuile {
+  flex-shrink: 0;
+  width: 58px;
+  padding: 8px 0;
+  border-radius: 14px;
+  background: var(--v4b-coral-texte, #c13d28);
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1;
+}
+:root.passio-ui-4b .v4b-rdv-jour { font-size: 24px; font-weight: 900; }
+:root.passio-ui-4b .v4b-rdv-mois {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-top: 3px;
+}
+:root.passio-ui-4b .v4b-rdv-corps { min-width: 0; flex: 1; }
+:root.passio-ui-4b .v4b-rdv-quand {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--text);
+  line-height: 1.25;
+  /* Première lettre du jour en majuscule sans toucher au texte : `toLocale…`
+     rend « samedi », et le module n'a pas à faire de typographie. */
+  text-transform: none;
+}
+:root.passio-ui-4b .v4b-rdv-quand::first-letter { text-transform: uppercase; }
+:root.passio-ui-4b .v4b-rdv-ou {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-dim);
+  margin-top: 3px;
+}
+/* Les places ne sont PAS qu'une couleur : le mot « complet » est écrit. */
+:root.passio-ui-4b .v4b-rdv-places {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+/* Le bandeau de statut (annulé / en cours / terminé) ouvre le bloc. */
+:root.passio-ui-4b [data-v4b-sec="rendezvous"] .event-detail-urgency { margin-bottom: 10px; }
+
+/* ── Action primaire unique ─────────────────────────────────────────────────
+   Une action, un état, un retrait secondaire — jamais deux actions primaires
+   concurrentes. La barre respecte la zone sûre du bas d'écran. */
+:root.passio-ui-4b .event-detail-cta {
+  padding-bottom: max(20px, calc(12px + env(safe-area-inset-bottom)));
+}
+:root.passio-ui-4b #eventDetailCta .v4b-rsvp {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+:root.passio-ui-4b #eventDetailCta .v4b-rsvp-go {
+  background: var(--v4b-coral-texte, #c13d28);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: none;
+  min-height: 48px;
+  font-size: 15px;
+}
+/* Participation confirmée : un ÉTAT, pas un bouton. Aucun `cursor: pointer`,
+   aucune bascule — un tap malheureux ne peut pas désinscrire. */
+:root.passio-ui-4b #eventDetailCta .v4b-rsvp-etat {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: 0 14px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: #f5f3ff;
+  color: var(--text);
+  font-weight: 800;
+  font-size: 15px;
+}
+:root.passio-ui-4b #eventDetailCta .v4b-rsvp-retirer {
+  appearance: none;
+  -webkit-appearance: none;
+  font-family: inherit;
+  background: none;
+  border: 0;
+  align-self: center;
+  min-height: 44px;
+  padding: 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  text-decoration: underline;
+  cursor: pointer;
+  border-radius: 8px;
+}
+:root.passio-ui-4b #eventDetailCta .v4b-rsvp-retirer:hover { color: var(--text); }
+:root.passio-ui-4b #eventDetailCta .v4b-rsvp-go:focus-visible,
+:root.passio-ui-4b #eventDetailCta .v4b-rsvp-retirer:focus-visible {
+  outline: 2px solid var(--v4b-coral-texte, #c13d28);
+  outline-offset: 2px;
+}
+
+/* 320 px : la tuile de date et le texte ne doivent jamais se pousser hors de
+   la carte. Rien d'autre ne change — la composition tient déjà. */
+@media (max-width: 359px) {
+  :root.passio-ui-4b .v4b-rdv { gap: 11px; padding: 12px 13px; }
+  :root.passio-ui-4b .v4b-rdv-tuile { width: 50px; }
+  :root.passio-ui-4b .v4b-rdv-jour { font-size: 21px; }
+  :root.passio-ui-4b .v4b-rdv-quand { font-size: 14px; }
 }
