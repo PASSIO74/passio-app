@@ -11129,11 +11129,17 @@ body.ctx-locked #appMain { overflow: hidden; }
 }
 .v7-subfilter-label { white-space: nowrap; }
 
-/* L'état vide ne doit plus pousser le reste hors de l'écran (§6). */
-:root.passio-ui-7 #myPosts .empty { padding: 16px 12px; }
-:root.passio-ui-7 #myPosts .empty-icon { font-size: 26px; margin-bottom: 4px; }
+/* L'état vide ne doit plus pousser « Publications populaires » hors de l'écran
+   (§6). Mesure a 390 px : 288 px avant, 163 px apres. La pastille ronde de
+   70 px etait l'essentiel de la hauteur — la reduire compte plus que la
+   taille du texte. */
+:root.passio-ui-7 #myPosts .empty { padding: 14px 12px; }
+:root.passio-ui-7 #myPosts .empty-icon {
+  width: 44px; height: 44px; font-size: 24px; margin: 0 auto 6px;
+}
 :root.passio-ui-7 #myPosts .empty-title { font-size: 13.5px; }
-:root.passio-ui-7 #myPosts .empty-text { font-size: 11.5px; margin-bottom: 8px; }
+:root.passio-ui-7 #myPosts .empty-text { font-size: 11.5px; }
+:root.passio-ui-7 #myPosts .empty .btn { margin-top: 8px; }
 
 /* Accès secondaires (Carnets / Passio : Voyage, Rencontrer) — jamais des
    entrées principales : ils ferment une section, ils ne l'ouvrent pas. */

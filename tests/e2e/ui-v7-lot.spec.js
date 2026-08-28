@@ -396,14 +396,23 @@ test.describe("UI-7 §6 — trois onglets nommés au Profil", () => {
     await page.waitForTimeout(700);
 
     await expect(page.locator('[data-v7-pan="publications"]')).toContainText("Publications populaires");
+
+    // ⚠️ Sans passion cochée, l'écran affiche l'invitation historique — et,
+    // sous le lot, la PORTE vers « À propos », où le sélecteur vit désormais.
+    // Sans elle, « Publications » serait un cul-de-sac.
+    await expect(page.locator("#myPosts .empty .btn", { hasText: "Mes passions" })).toBeVisible();
+
+    // L'état vide guidé du §6 (« Publie ta première création ») tient sous
+    // 200 px : il ne pousse plus « Publications populaires » hors de l'écran.
     const h = await page.evaluate(() => {
+      window.profilesFilterSelection = new Set((state.user.profiles || []).map((p) => p.id));
+      renderProfileContent();
       const v = document.querySelector("#myPosts .empty");
-      return v ? Math.round(v.getBoundingClientRect().height) : 0;
+      return { hauteur: v ? Math.round(v.getBoundingClientRect().height) : 0, txt: v ? v.innerText : "" };
     });
-    // L'état vide guidé tient sous 200 px : il ne pousse plus « Publications
-    // populaires » hors de l'écran.
-    expect(h).toBeGreaterThan(0);
-    expect(h).toBeLessThan(200);
+    expect(h.txt).toContain("Publie ta première création");
+    expect(h.hauteur).toBeGreaterThan(0);
+    expect(h.hauteur).toBeLessThan(200);
   });
 
   test("« Activités » montre ce que j'organise et ce que j'ai rejoint", async ({ page }) => {
