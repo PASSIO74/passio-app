@@ -5,7 +5,7 @@
 //      actions de la direction, dans l'ordre, et rien de plus ;
 //   ② une bobine RELIÉE à une activité reçoit le seul lien « Voir l'activité » —
 //      les deux branches sont EXCLUSIVES, jamais les deux à la fois ;
-//   ③ « Ça m'intrigue » pose un signal RÉEL et réversible : il est persisté, il
+//   ③ « Ça m'intéresse » pose un signal RÉEL et réversible : il est persisté, il
 //      pèse dans le classement du fil, et re-taper le retire ;
 //   ④ les trois sorties appellent les moteurs EXISTANTS d'UI-3A, jamais un
 //      second moteur, et ferment le viewer d'abord (sans quoi la surface
@@ -100,7 +100,7 @@ test.describe("UI-5 — Bobines connectées au réel", () => {
     const chips = b.locator(".v5-actions .v5-chip");
     await expect(chips).toHaveCount(4);
     expect(await chips.allTextContents()).toEqual([
-      "Ça m'intrigue", "Découvrir Musique", "À vivre près de moi", "Proposer une sortie",
+      "Ça m'intéresse", "Découvrir Musique", "À vivre près de moi", "Proposer une sortie",
     ]);
 
     // La rangée vit DANS le bloc d'information, pas dans le rail d'actions
@@ -129,7 +129,7 @@ test.describe("UI-5 — Bobines connectées au réel", () => {
     // « Proposer une sortie », qui inviterait à créer un doublon de l'activité
     // qu'elle montre déjà.
     await expect(b.locator(".v5-chip", { hasText: "Proposer une sortie" })).toHaveCount(0);
-    await expect(b.locator(".v5-chip", { hasText: "Ça m'intrigue" })).toHaveCount(0);
+    await expect(b.locator(".v5-chip", { hasText: "Ça m'intéresse" })).toHaveCount(0);
   });
 
   test("une bobine sans Passio reconnue garde sa mise en page d'avant", async ({ page }) => {
@@ -159,10 +159,10 @@ test.describe("UI-5 — Bobines connectées au réel", () => {
     await expect(b.locator(".reel-actions .reel-action-btn")).toHaveCount(4);
   });
 
-  test("« Ça m'intrigue » : signal réel, persisté, réversible, et il pèse", async ({ page }) => {
+  test("« Ça m'intéresse » : signal réel, persisté, réversible, et il pèse", async ({ page }) => {
     await boot(page);
     await ouvrirBobine(page, "v5_reel_libre");
-    const chip = item(page, "v5_reel_libre").locator(".v5-chip", { hasText: "Ça m'intrigue" });
+    const chip = item(page, "v5_reel_libre").locator(".v5-chip", { hasText: "Ça m'intéresse" });
 
     await expect(chip).toHaveAttribute("aria-pressed", "false");
     expect(await page.evaluate(() => !!(state.user.passionSignals || {}).musique)).toBe(false);
@@ -194,7 +194,7 @@ test.describe("UI-5 — Bobines connectées au réel", () => {
   test("le signal survit à un rechargement", async ({ page }) => {
     await boot(page);
     await ouvrirBobine(page, "v5_reel_libre");
-    await item(page, "v5_reel_libre").locator(".v5-chip", { hasText: "Ça m'intrigue" }).click();
+    await item(page, "v5_reel_libre").locator(".v5-chip", { hasText: "Ça m'intéresse" }).click();
     await page.waitForTimeout(600);   // saveState est débouncé
 
     await page.reload();
