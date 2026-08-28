@@ -15,6 +15,16 @@
 //    n'ont aucun contenu. Le fil s'arrêtait sur « sois le premier à publier
 //    ici » — sans aucun moyen de le faire depuis cet écran.
 //
+// ⚠️ RÉALIGNÉ le 2026-08-28. Le défaut ② est CORRIGÉ à la source : le contenu
+// de démonstration couvre désormais les 19 passions, la moins fournie en
+// comptant 7. Les tests du repli ne pouvaient donc plus compter sur un trou du
+// seed — ils CONSTRUISENT maintenant la condition avec `viderPassion()`, ce qui
+// est de toute façon plus honnête : le repli existe pour un compte dont une
+// passion est vide, cas qui survient sans trou dans le seed (auteurs bloqués,
+// réseau encore sans contenu sur cette passion). Aucune assertion n'a été
+// retirée ni affaiblie ; le test ne dépend simplement plus d'un accident de
+// données.
+//
 // Ce que la suite verrouille : la règle absolue (§7) « si du contenu
 // correspondant aux passions choisies existe, l'utilisateur ne doit jamais
 // atterrir sur un écran vide », le nouveau rail d'intentions qui ne filtre pas
@@ -45,6 +55,30 @@ async function bootVierge(page, { v2 = true, uiV2 = true, etat = null } = {}) {
   });
 }
 
+// Vide une passion de TOUT son contenu, dans les trois sources que
+// `allFeedPosts()` assemble. À appeler AVANT `terminerOnboarding` : c'est lui
+// qui déclenche le premier rendu.
+async function viderPassion(page, passion) {
+  await page.evaluate((pa) => {
+    const sansPa = (l) => (l || []).filter((p) => p.passion !== pa);
+    state.seed.posts = sansPa(state.seed.posts);
+    state.userPosts = sansPa(state.userPosts);
+    state.supabasePosts = sansPa(state.supabasePosts);
+    window._feedDomSig = null;   // le guard no-op sauterait le rendu suivant
+  }, passion);
+}
+
+// Attend que le fil soit ENTIÈREMENT peint. `renderFeed` peint d'abord 12
+// cartes puis complète le reste en idle : mesurer tout de suite compte 12 là où
+// la passion en a davantage. On attend la condition, jamais une durée.
+async function attendreFilComplet(page, attendu) {
+  await page.waitForFunction(
+    (n) => document.querySelectorAll("#feedList .post").length === n,
+    attendu,
+    { timeout: 10000 },
+  );
+}
+
 // Termine l'onboarding sur une passion donnée, comme le fait l'écran « passions ».
 async function terminerOnboarding(page, passion) {
   await page.evaluate((pa) => {
@@ -59,6 +93,12 @@ async function terminerOnboarding(page, passion) {
 test("§7 règle absolue — une passion sans post « création » affiche quand même son contenu", async ({ page }) => {
   await bootVierge(page);
   await terminerOnboarding(page, "yoga");
+
+  // Le fil peint 12 cartes puis complète en idle : yoga en a davantage depuis
+  // l'enrichissement du contenu de démonstration. On attend la fin du rendu.
+  const attendu = await page.evaluate(() =>
+    allFeedPosts().filter((p) => p.passion === "yoga" && p.type !== "vlog").length);
+  await attendreFilComplet(page, attendu);
 
   const r = await page.evaluate(() => ({
     postsExistants: allFeedPosts().filter((p) => p.passion === "yoga" && p.type !== "vlog").length,
@@ -124,6 +164,7 @@ test("§7 — l'intention mood survit au rechargement (selectedMoods, lui, repar
 
 test("§7 repli — une passion sans contenu propose l'exploration, étiquetée comme telle", async ({ page }) => {
   await bootVierge(page);
+  await viderPassion(page, "moto");
   await terminerOnboarding(page, "moto");
 
   const r = await page.evaluate(() => {
@@ -154,6 +195,7 @@ test("§7 repli — une passion sans contenu propose l'exploration, étiquetée 
 
 test("§7 repli — les onclick pointent vers des fonctions globales existantes", async ({ page }) => {
   await bootVierge(page);
+  await viderPassion(page, "moto");
   await terminerOnboarding(page, "moto");
   const ok = await page.evaluate(() => {
     const btns = Array.from(document.querySelectorAll("#feedList .feed-repli-actions button"));
@@ -175,6 +217,7 @@ test("§7 repli — les onclick pointent vers des fonctions globales existantes"
 // rien, la signature ayant changé de toute façon.
 test("§7 repli — un aller-retour ne laisse pas le repli collé à l'écran", async ({ page }) => {
   await bootVierge(page);
+  await viderPassion(page, "moto");
   await terminerOnboarding(page, "musique");
 
   const r = await page.evaluate(() => {
@@ -202,6 +245,7 @@ test("§7 — la télémétrie émise survit au filtre PII de js/telemetry.js", 
   // Le signal feed_moods_widened appartient au rail historique : on le vérifie
   // explicitement sous le kill switch, tandis que le repli reste commun.
   await bootVierge(page, { uiV2: false });
+  await viderPassion(page, "moto");
   await terminerOnboarding(page, "yoga");   // déclenche feed_moods_widened
   await page.evaluate(() => { setFeedPassions(["moto"]); renderFeed(); }); // repli
 

@@ -79,7 +79,10 @@ test.describe("UI-4A3 — commutateur Liste / Carte", () => {
     expect(await carteRepliee(page)).toBe(true);
     await expect(page.locator("#eventList")).toBeVisible();
     await expect(page.locator("#eventList .event-card").first()).toBeVisible();
-    await expect(page.locator(".irl-chip-create")).toBeVisible();
+    // « Créer un événement » est masqué par UI-4A0 (le « + » central le sert) ;
+    // le nœud reste dans le DOM. Le commutateur ne le touche pas.
+    await expect(page.locator(".irl-chip-create")).toHaveCount(1);
+    await expect(page.locator(".irl-chip-create")).toBeHidden();
 
     // Le commutateur se pose juste AU-DESSUS de la liste (§8 : le choix
     // d'affichage précède immédiatement le contenu).

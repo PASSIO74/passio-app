@@ -94,7 +94,6 @@ test.describe("profils types — parcours simulés", () => {
 
       // Le fil (passion activée) doit rendre la photo postée (img data:)
       if (!_activeFeedPassions.has(passion)) toggleProfileFilter(passion);
-      out.photoRendered = !!document.querySelector('#screen-feed .post img[src^="data:image"]');
       out.totalUserPosts = state.userPosts.length;
       return out;
     }, { img: IMG, vid: VID });
@@ -102,8 +101,19 @@ test.describe("profils types — parcours simulés", () => {
     expect(res.photo, "post photo créé (type+image)").toBe(true);
     expect(res.video, "post vidéo créé (type+video)").toBe(true);
     expect(res.vlog, "carnet créé (type vlog + destination)").toBe(true);
-    expect(res.photoRendered, "photo rendue dans le fil").toBe(true);
     expect(res.totalUserPosts, "3 posts créés").toBe(3);
+
+    // ⚠️ `renderFeed` peint 12 cartes puis complète le reste en idle. Depuis
+    // l'enrichissement du contenu de démonstration (2026-08-28), la passion
+    // choisie en compte largement plus de 12 : mesurer dans le même
+    // `page.evaluate` que la publication observait un fil à moitié peint, et la
+    // photo pouvait être dans la seconde moitié. On attend donc la CONDITION —
+    // la photo est à l'écran — au lieu de la supposer déjà vraie. L'assertion
+    // est la même, seul l'instant de la mesure change.
+    await expect(
+      page.locator('#screen-feed .post img[src^="data:image"]').first(),
+      "photo rendue dans le fil",
+    ).toBeAttached({ timeout: 10000 });
     expect(errors.js).toEqual([]);
   });
 

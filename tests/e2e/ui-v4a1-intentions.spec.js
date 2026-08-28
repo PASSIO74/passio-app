@@ -123,7 +123,7 @@ test.describe("UI-4A1 — raccord des intentions", () => {
     await expect(page.locator("#irlSearchRow")).toHaveCount(1);
     await expect(page.locator("#irlSearchRow")).toBeHidden();
 
-    // Neutre : « Pour toi » seul, aucune restriction demandée.
+    // Neutre : « Tous » seul, aucune restriction demandée.
     await expect(chip(page, "pour_toi")).toHaveAttribute("aria-pressed", "true");
     for (const id of ["semaine", "ville", "passio"]) {
       await expect(chip(page, id)).toHaveAttribute("aria-pressed", "false");
@@ -260,7 +260,7 @@ test.describe("UI-4A1 — raccord des intentions", () => {
     const a = await etat(page);
     expect(a.ids.length).toBeGreaterThan(0);
 
-    // « Pour toi » remet les trois familles au neutre.
+    // « Tous » (id pour_toi) remet les trois familles au neutre.
     await chip(page, "pour_toi").click();
     await page.waitForTimeout(300);
     const neutre = await etat(page);

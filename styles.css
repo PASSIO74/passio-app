@@ -8958,6 +8958,106 @@ body.ctx-locked #appMain { overflow: hidden; }
   --v2-trace: linear-gradient(90deg, var(--v2-violet) 0%, var(--v2-coral) 100%);
 }
 
+/* ── §5 de la direction : la palette V2 PILOTE enfin l'interface ────────────
+   Les jetons ci-dessus étaient déclarés et n'avaient AUCUN consommateur :
+   `--v2-ink` et `--v2-cloud` n'apparaissaient nulle part, et le violet
+   réellement affiché restait l'ancien #7c3aed au lieu du #6D32F4 de la
+   direction. La charte était donc écrite, jamais vue.
+
+   On remappe ici les variables de thème du projet — et elles seules. Aucune
+   règle existante n'est réécrite : toutes celles qui disent déjà
+   `var(--accent)`, `var(--bg-deep)`, `var(--grad-hero)`… changent de couleur
+   sans changer d'une ligne. Le kill switch `passio_ui_v2 = "0"` rend la
+   charte historique à l'octet près, sans rechargement.
+
+   Contraste vérifié avant/après, pour ne pas troquer l'identité contre la
+   lisibilité : #6D32F4 sur blanc donne 6,15:1 (l'ancien #7c3aed en donnait
+   5,70:1) — le nouveau violet est légèrement PLUS foncé, donc plus lisible.
+   L'encre #17152B et le nuage #F7F5FC sont à distance équivalente de leurs
+   prédécesseurs #1b1830 et #f6f5fa.
+
+   Le corail reste STRICTEMENT réservé au passage au réel (§5 : « une couleur
+   plus chaude signale le passage au réel ») : il n'entre dans aucun jeton
+   d'accent général, seulement dans le trait de la feuille IRL. */
+:root.passio-ui-v2 {
+  --bg-deep: var(--v2-cloud);
+  --bg-soft: #f1eefb;
+  --bg-card: var(--v2-surface);
+  --bg-tint: #efe9fd;
+
+  --accent: var(--v2-violet);
+  --accent-soft: #7c4ff7;
+  --accent-2: #5a24d6;
+  --accent-2-soft: #6d32f4;
+  --accent-3: #4a1cb8;
+  --accent-3-soft: #5a24d6;
+  --accent-4: var(--v2-iris);
+  --accent-5: #c8b2ff;
+  --accent-wash: rgba(109, 50, 244, 0.08);
+
+  --text: var(--v2-ink);
+  --text-dim: #47435f;
+  --border: rgba(23, 21, 43, 0.07);
+  --border-strong: rgba(23, 21, 43, 0.12);
+
+  --shadow-soft: 0 1px 2px rgba(23, 21, 43, 0.05), 0 4px 12px rgba(23, 21, 43, 0.05);
+  --shadow-strong: 0 16px 48px rgba(23, 21, 43, 0.12);
+  --shadow-glow: 0 4px 14px rgba(109, 50, 244, 0.16);
+  --shadow-glow-2: 0 4px 14px rgba(90, 36, 214, 0.15);
+
+  --grad-hero: linear-gradient(135deg, var(--v2-iris) 0%, var(--v2-violet) 100%);
+  --grad-hero-2: linear-gradient(135deg, var(--v2-violet) 0%, #5a24d6 100%);
+  --grad-warm: linear-gradient(135deg, var(--v2-iris) 0%, var(--v2-violet) 100%);
+  --grad-cool: linear-gradient(135deg, #c8b2ff 0%, var(--v2-violet) 100%);
+}
+
+/* ── §5 : deux niveaux de titre VISIBLEMENT distincts ───────────────────────
+   La direction demande « au moins deux niveaux de titre visiblement
+   distincts ; pas une multitude de tailles presque identiques », et une
+   graisse 700–800 « compacte et assurée » pour les titres et les appels à
+   l'action. Manrope est chargée pour ce seul rôle ; le texte courant garde la
+   pile système, plus rapide et déjà très lisible sur mobile (la direction
+   l'autorise explicitement : « Inter ou police système équivalente »).
+   ⚠️ `--v2-titre` retombe sur la pile système : si la police ne charge pas
+   (réseau, CSP, mode économie), la hiérarchie tient quand même par la graisse
+   et la taille — c'est elle qui porte l'effet, pas le dessin des lettres. */
+:root.passio-ui-v2 {
+  --v2-titre: "Manrope", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+:root.passio-ui-v2 h1,
+:root.passio-ui-v2 h2,
+:root.passio-ui-v2 h3,
+:root.passio-ui-v2 .section-title,
+:root.passio-ui-v2 .modal-title,
+:root.passio-ui-v2 .empty-title,
+:root.passio-ui-v2 .v2-sheet-title,
+:root.passio-ui-v2 .v2-people-title,
+:root.passio-ui-v2 .v2-reels-title,
+:root.passio-ui-v2 .v4a0-title,
+:root.passio-ui-v2 .v4a2-titre,
+:root.passio-ui-v2 .post-author,
+:root.passio-ui-v2 .nav-v2-item .nav-label,
+:root.passio-ui-v2 .btn {
+  font-family: var(--v2-titre);
+  letter-spacing: -0.011em;
+}
+/* Niveau 1 : le titre d'un écran. Nettement au-dessus de tout le reste. */
+:root.passio-ui-v2 .section-title,
+:root.passio-ui-v2 .v4a0-title {
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1.15;
+}
+/* Niveau 2 : les titres de bloc à l'intérieur d'un écran. */
+:root.passio-ui-v2 .v2-people-title,
+:root.passio-ui-v2 .v2-reels-title,
+:root.passio-ui-v2 .modal-title,
+:root.passio-ui-v2 .v2-sheet-title {
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
 /* Le « trait Passio » : préparé et documenté, volontairement NON posé sur les
    cartes du fil dans ce lot (aucun redesign Feed en UI-1). */
 :root.passio-ui-v2 .v2-passio-trace {
@@ -9212,25 +9312,66 @@ body.ctx-locked #appMain { overflow: hidden; }
   overflow: hidden;
 }
 
-/* ── Bobine dans le Feed ───────────────────────────────────────────────────
-   Carte VERTICALE (ratio 4/5, lisible au pouce sans occuper tout l'écran) et
-   volontairement STATIQUE : la vignette est une image, jamais une <video> —
-   il ne peut donc y avoir ni lecture automatique, ni second lecteur. */
-:root.passio-ui-v2 #feedList .v2-reel-card {
+/* ── Bobines à découvrir (rangée du Feed) ─────────────────────────────────
+   Une RANGÉE de vignettes, du même gabarit que « Passionnés à découvrir ».
+   Remplace la carte pleine largeur (média 4/5, ~530 px de haut sur mobile) qui
+   coupait le fil en deux — décision de Benjamin le 2026-08-28, après essai réel.
+   Volontairement STATIQUE : chaque vignette est une image, jamais une <video>.
+   Il ne peut donc y avoir ni lecture automatique, ni second lecteur.
+   ⚠️ La rangée DÉFILE (contrairement à `.v2-people-row`, qui est une grille de
+   trois colonnes) : il y a plus de bobines que de personnes à proposer. Le
+   défilement est borné par `flex: 0 0` sur les tuiles — sans quoi la PAGE
+   déborderait horizontalement. Padding, jamais de marge négative : la carte
+   porte `overflow: hidden`, qui clipperait un débord. */
+:root.passio-ui-v2 #feedList .v2-reels { padding: 12px 0 14px; }
+:root.passio-ui-v2 .v2-reels-title {
+  margin: 0 12px 10px;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--text);
+}
+:root.passio-ui-v2 .v2-reels-row {
+  display: flex;
+  gap: 8px;
+  padding: 2px 12px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+:root.passio-ui-v2 .v2-reels-row::-webkit-scrollbar { display: none; }
+:root.passio-ui-v2 .v2-reel-tile {
+  appearance: none;
+  -webkit-appearance: none;
+  font-family: inherit;
+  flex: 0 0 108px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 8px 6px 10px;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: 14px;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
-:root.passio-ui-v2 #feedList .v2-reel-card:focus-visible {
+:root.passio-ui-v2 .v2-reel-tile:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
-:root.passio-ui-v2 .v2-reel-media {
+:root.passio-ui-v2 .v2-reel-thumb {
   position: relative;
-  aspect-ratio: 4 / 5;
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  border-radius: 11px;
+  overflow: hidden;
   background: #17152b;
   display: block;
 }
-:root.passio-ui-v2 .v2-reel-media-empty {
+:root.passio-ui-v2 .v2-reel-thumb-empty {
   background: linear-gradient(150deg, var(--v2-violet), var(--v2-iris));
 }
 :root.passio-ui-v2 .v2-reel-poster {
@@ -9239,49 +9380,37 @@ body.ctx-locked #appMain { overflow: hidden; }
   object-fit: cover;
   display: block;
 }
-:root.passio-ui-v2 .v2-reel-badge {
-  position: absolute;
-  top: 10px;
-  left: 10px;
-  padding: 4px 9px;
-  border-radius: 999px;
-  background: rgba(23, 21, 43, 0.62);
-  color: #fff;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.01em;
-}
 :root.passio-ui-v2 .v2-reel-play {
   position: absolute;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 54px;
-  height: 54px;
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.92);
   color: var(--v2-violet);
-  font-size: 20px;
-  line-height: 54px;
+  font-size: 12px;
+  line-height: 30px;
   text-align: center;
-  box-shadow: 0 6px 18px rgba(23, 21, 43, 0.28);
+  box-shadow: 0 4px 12px rgba(23, 21, 43, 0.28);
 }
-:root.passio-ui-v2 .v2-reel-foot {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  padding: 10px 12px 12px;
-  min-width: 0;
-}
-:root.passio-ui-v2 .v2-reel-author { font-size: 14px; font-weight: 700; color: var(--text); }
-:root.passio-ui-v2 .v2-reel-caption {
-  font-size: 13px;
-  line-height: 1.35;
-  color: var(--muted);
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+:root.passio-ui-v2 .v2-reel-name {
+  max-width: 100%;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
   overflow: hidden;
+  text-overflow: ellipsis;
+}
+:root.passio-ui-v2 .v2-reel-passion {
+  max-width: 100%;
+  font-size: 10.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ── Passionnés à découvrir ────────────────────────────────────────────────
@@ -9780,8 +9909,8 @@ body.ctx-locked #appMain { overflow: hidden; }
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
-   PASSIO UI V4 — lot UI-4A0 : tête de « Rencontrer », APERÇU UNIQUEMENT
-   (?passio_preview=passio-ui-4a0-demo — voir js/ui-v4a0-tete.js)
+   PASSIO UI V4 — lot UI-4A0 : tête de « Rencontrer », ACTIF PAR DÉFAUT
+   (depuis le 2026-08-28 — coupure : localStorage.passio_ui_4a0="0")
 
    Tout est ancré à `:root.passio-ui-4a0` : sans l'aperçu, aucune de ces règles
    ne s'applique et l'écran IRL historique est rendu à l'octet près. Les deux
@@ -9794,6 +9923,20 @@ body.ctx-locked #appMain { overflow: hidden; }
    remplacés par le bandeau — pas dupliqués. */
 :root.passio-ui-4a0 #screen-irl > .section-title,
 :root.passio-ui-4a0 #irlSearchRow { display: none; }
+
+/* Le bouton « Créer un événement » quitte l'écran Rencontrer (2026-08-28, ordre
+   de Benjamin) : le « + » central de la barre du bas sert déjà exactement le
+   même geste — entrée « Activité IRL » de CREATE_CHOICES, qui appelle
+   openCreateEvent() (js/ui-v2-shell.js). Le porter deux fois sur le même écran
+   n'apportait rien.
+   ⚠️ On masque LE SEUL BOUTON, jamais `.irl-actionbar` : la barre héberge aussi
+   `#irlToolsBtn` (panneau Outils, cliqué par contextual-nav.spec.js et irl.spec.js
+   sans kill switch) et `<b id="irlUserCityName">`, que le moteur IRL lit et écrit
+   (`updateIrlCityTitle`, `_irlReferenceLabel`). Le nœud reste dans le DOM pour que
+   le kill switch le rende sans rechargement. `justify-content` recale « Outils »,
+   qui devient seul enfant d'une barre dont l'élément extensible a disparu. */
+:root.passio-ui-4a0 #screen-irl .irl-chip-create { display: none; }
+:root.passio-ui-4a0 #screen-irl .irl-actionbar { justify-content: flex-end; }
 
 :root.passio-ui-4a0 .v4a0-head {
   display: flex;
