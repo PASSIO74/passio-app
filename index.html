@@ -1711,6 +1711,15 @@
      ⚠️ Chargé APRÈS le bloc app : il enveloppe renderIRL, qui doit exister. -->
 <script src="js/ui-v4a0-tete.js"></script>
 
+<!-- UI V4 (lot UI-4A1 — raccord des intentions de « Rencontrer ») — hors bloc
+     app : composant autonome (IIFE window.PassioUIV4A1), inliné individuellement
+     au build. APERÇU UNIQUEMENT (?passio_preview=passio-ui-4a1-demo, alias
+     ?passio_preview=passio-ui-4a1) ; coupé par localStorage.passio_ui_4a1="0"
+     ou window.PASSIO_UI_4A1=false, et par les coupures d'UI-4A0.
+     ⚠️ Chargé APRÈS ui-v4a0-tete.js : il pose ses enveloppes par-dessus les
+     siennes et a besoin de window.PassioUIV4A0 dès son boot. -->
+<script src="js/ui-v4a1-intentions.js"></script>
+
 
 <!-- ======== PWA INSTALL OVERLAY ======== -->
 <div id="pwa-overlay" style="display:none;">
