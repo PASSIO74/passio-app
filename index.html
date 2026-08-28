@@ -1762,6 +1762,16 @@
      toast, de la fiche d'activité et des feuilles basses. -->
 <script src="js/ui-v5-bobines.js"></script>
 
+<!-- UI V4 (lot UI-4A4 — « Outils » rejoint Liste et Carte) — hors bloc app :
+     composant autonome (IIFE window.PassioUIV4A4), inliné individuellement au
+     build. ACTIF PAR DÉFAUT ; coupé par localStorage.passio_ui_4a4="0" ou
+     window.PASSIO_UI_4A4=false.
+     ⚠️ Il DÉPLACE le déclencheur #irlToolsBtn dans le commutateur (hôte stable,
+     pastille alimentée par le moteur) mais fait RECONSTRUIRE les intentions
+     dans le panneau par UI-4A0 — le corps du panneau est réécrit à chaque
+     rendu, une chip déplacée y serait arrachée par son propre clic. -->
+<script src="js/ui-v4a4-outils.js"></script>
+
 
 <!-- ======== PWA INSTALL OVERLAY ======== -->
 <div id="pwa-overlay" style="display:none;">

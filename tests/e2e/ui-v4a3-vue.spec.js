@@ -112,11 +112,22 @@ test.describe("UI-4A3 — commutateur Liste / Carte", () => {
       return r.width > 100 && r.height > 100;
     })).toBe(true);
 
-    // La liste est masquée mais TOUJOURS là : le moteur continue d'y écrire.
-    await expect(page.locator("#eventList")).toBeHidden();
+    // ⚠️ RÉALIGNÉ le 2026-08-28, sur décision de Benjamin après essai réel : la
+    // liste RESTE sous la carte. Une carte seule montre des points, pas ce qui
+    // s'y passe — les deux lectures valent mieux qu'un aller-retour d'onglet.
+    // Elle est donc VISIBLE, sous la carte, et toujours peuplée.
+    await expect(page.locator("#eventList")).toBeVisible();
     await expect(page.locator("#eventList")).toHaveCount(1);
     expect(await page.evaluate(() =>
       document.getElementById("eventList").innerHTML.trim().length)).toBeGreaterThan(0);
+    // Et elle est bien SOUS la carte, pas au-dessus.
+    expect(await page.evaluate(() => {
+      const carte = document.getElementById("irlMapWrap").getBoundingClientRect();
+      const liste = document.getElementById("eventList").getBoundingClientRect();
+      return liste.top >= carte.top;
+    })).toBe(true);
+    // La rangée de passions, elle, passe la main : la carte a besoin de la place.
+    await expect(page.locator("#irlPassionRow")).toBeHidden();
   });
 
   test("retour à Liste : la carte se replie et la liste revient", async ({ page }) => {
@@ -205,15 +216,19 @@ test.describe("UI-4A3 — commutateur Liste / Carte", () => {
 
     await onglet(page, "carte").click();
     await page.waitForTimeout(300);
-    await expect(page.locator("#eventList")).toBeHidden();
+    // En vue Carte la liste reste visible (décision du 2026-08-28) ; ce qui
+    // change avec la coupure, c'est le commutateur lui-même et la rangée de
+    // passions, que la vue Carte masquait.
+    await expect(page.locator("#irlPassionRow")).toBeHidden();
 
     await page.evaluate(() => { window.PASSIO_UI_4A3 = false; window.PassioUIV4A3.apply(); });
 
     await expect(page.locator("#v4a3Vue")).toHaveCount(0);
     expect(await page.evaluate(() =>
       document.documentElement.classList.contains("passio-ui-4a3"))).toBe(false);
-    // La liste revient, quelle que soit la vue qui était choisie.
+    // L'écran historique est rendu : liste ET rangée de passions.
     await expect(page.locator("#eventList")).toBeVisible();
+    await expect(page.locator("#irlPassionRow")).toBeVisible();
   });
 
   test("clavier : le commutateur s'actionne et expose son état", async ({ page }) => {

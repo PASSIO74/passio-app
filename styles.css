@@ -9548,7 +9548,15 @@ body.ctx-locked #appMain { overflow: hidden; }
 }
 
 /* Un LIEN, pas un bouton plein : discret dans la carte, mais la cible tactile
-   fait bien 44 px de haut (le rembourrage négatif garde la ligne compacte). */
+   fait bien 44 px de haut (le rembourrage négatif garde la ligne compacte).
+   ⚠️ ALLÉGÉ le 2026-08-28, sur retour de Benjamin (« pas joli, trop voyant »).
+   Ce qui change et pourquoi : la graisse passe de 800 à 600 et la taille de 13
+   à 12,5 px — en 800 le lien pesait plus lourd que le texte de la publication
+   qu'il accompagne, ce qui est exactement l'inverse de ce qu'on veut ; et le
+   corail saturé quitte le LIBELLÉ pour ne rester que sur le chevron. Le signal
+   « passage au réel » du §5 est ainsi conservé, mais comme un accent d'un seul
+   caractère au lieu d'une ligne entière. Le texte prend l'encre calme du thème,
+   qui monte au passage à ~8:1 de contraste contre 5,3 auparavant. */
 :root.passio-ui-3 .v3-tempt {
   appearance: none;
   -webkit-appearance: none;
@@ -9561,25 +9569,30 @@ body.ctx-locked #appMain { overflow: hidden; }
   min-height: 44px;
   padding: 0 4px;
   margin: -11px 0;
-  font-size: 13px;
-  font-weight: 800;
-  color: var(--v3-coral-texte);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.005em;
+  color: var(--text-dim);
   cursor: pointer;
   border-radius: 8px;
+  transition: color 140ms ease;
 }
 :root.passio-ui-3 .v3-tempt::after {
   content: "›";
-  margin-left: 4px;
+  margin-left: 5px;
   font-size: 15px;
   line-height: 1;
+  color: var(--v3-coral-texte);
+  transition: transform 140ms ease;
 }
+:root.passio-ui-3 .v3-tempt:hover { color: var(--v3-coral-texte); }
+:root.passio-ui-3 .v3-tempt:hover::after { transform: translateX(2px); }
 :root.passio-ui-3 .v3-tempt {
   /* La cible dépasse légèrement la ligne compacte : ce contexte d'empilement
      garantit que le bouton — et non la carte parente — reçoit toujours le tap. */
   position: relative;
   z-index: 1;
 }
-:root.passio-ui-3 .v3-tempt:hover { text-decoration: underline; }
 :root.passio-ui-3 .v3-tempt:focus-visible {
   outline: 2px solid var(--v3-coral-texte);
   outline-offset: 2px;
@@ -10324,10 +10337,14 @@ body.ctx-locked #appMain { overflow: hidden; }
   pointer-events: none;
 }
 
-/* Vue Carte : la carte prend l'écran, la liste et le bouton « Afficher plus »
-   passent la main. La liste n'est pas retirée du DOM — le moteur continue d'y
-   écrire, et revenir à la vue Liste la retrouve telle quelle. */
-:root.passio-ui-4a3[data-v4a3-vue="carte"] #eventList { display: none; }
+/* Vue Carte : la carte passe devant, et la LISTE RESTE dessous — décision de
+   Benjamin le 2026-08-28, après essai réel. La carte seule ne dit pas grand
+   chose : on voit des points, pas ce qui se passe. Garder la liste sous la
+   carte donne les deux lectures d'un coup, la position et le détail, sans
+   changer d'onglet. La rangée de passions, elle, passe la main : la carte a
+   déjà besoin de la hauteur.
+   ⚠️ La liste n'est de toute façon jamais retirée du DOM — le moteur continue
+   d'y écrire, et revenir à la vue Liste la retrouve telle quelle. */
 :root.passio-ui-4a3[data-v4a3-vue="carte"] #irlPassionRow { display: none; }
 
 @media (prefers-reduced-motion: reduce) {
@@ -10423,4 +10440,111 @@ body.ctx-locked #appMain { overflow: hidden; }
 @media (max-width: 380px) {
   :root.passio-ui-5 .v5-chip { padding: 11px 13px; font-size: 12.5px; }
   :root.passio-ui-5 .v5-actions { gap: 6px; }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   PASSIO UI V4 — lot UI-4A4 : « Outils » rejoint Liste et Carte, et le panneau
+   accueille les intentions.  ACTIF PAR DÉFAUT.
+   (coupures : localStorage.passio_ui_4a4 = "0" · window.PASSIO_UI_4A4 = false)
+
+   Tout est ancré à `:root.passio-ui-4a4` : coupé, le commutateur revient à deux
+   colonnes, le déclencheur « Outils » retourne dans sa barre d'origine (le
+   module le rend lui-même) et les intentions réapparaissent dans la tête.
+
+   ⚠️ « Outils » est À CÔTÉ du groupe d'onglets, pas dedans : Liste et Carte
+   sont deux vues exclusives, Outils ouvre un dialogue. Visuellement trois
+   cases, sémantiquement deux onglets et une action.
+   ══════════════════════════════════════════════════════════════════════════ */
+:root.passio-ui-4a4 .v4a3-vue[data-v4a4] {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+/* Le déclencheur historique reprend l'allure d'un onglet, sans en être un. */
+:root.passio-ui-4a4 .v4a4-outils-hote { display: flex; min-width: 0; }
+:root.passio-ui-4a4 .v4a4-outils-hote > .ctx-trigger {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 44px;
+  padding: 10px 8px;
+  border-radius: 11px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13.5px;
+  font-weight: 700;
+  justify-content: center;
+  gap: 6px;
+}
+:root.passio-ui-4a4 .v4a4-outils-hote > .ctx-trigger svg { width: 17px; height: 17px; }
+/* La pastille est en absolute top/right négatifs : dans une grille à 3 px de
+   padding elle sortirait du cadre. On la ramène à l'intérieur. */
+:root.passio-ui-4a4 .v4a4-outils-hote .ctx-trigger-badge {
+  top: 4px;
+  right: 4px;
+}
+
+/* Les intentions quittent la tête : masquées, JAMAIS retirées du DOM — le kill
+   switch doit les rendre sans rechargement, et `syncIntentions` continue de les
+   trouver. */
+:root.passio-ui-4a4 #v4a0Head .v4a0-intents { display: none; }
+
+/* ── La section « Ce que je cherche », dans le panneau ─────────────────────── */
+:root.passio-ui-4a4 .v4a4-intents {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+:root.passio-ui-4a4 .v4a4-intents .v4a0-chip {
+  width: 100%;
+  min-height: 46px;
+  justify-content: flex-start;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   REFONTE DU PANNEAU CONTEXTUEL (classes .ctx-*, PARTAGÉES avec Voyages)
+   Ce qui était réellement peu pratique, et qui change :
+     • `max-height: 85vh` ignorait `--app-vh`, la hauteur RÉELLE mesurée en JS :
+       sur iOS la feuille dépassait le viewport. Elle suit désormais la même
+       référence que tout le reste de l'application ;
+     • la croix faisait 40 px alors que 44 est la cible tactile du projet ;
+     • la feuille était collée au bord de la FENÊTRE, hors du cadre `.app-shell`
+       (440–540 px) : entre 900 et 1023 px elle s'étalait sur tout l'écran. Elle
+       est recentrée sur le cadre ;
+     • les entrées étaient quatre lignes bordées identiques, sans hiérarchie :
+       les items d'ÉTAT (multi-sélection) se distinguent maintenant des items de
+       NAVIGATION, qui seuls gardent le chevron.
+   ══════════════════════════════════════════════════════════════════════════ */
+.ctx-sheet {
+  max-height: min(78vh, calc(var(--app-vh, 100svh) - 72px));
+  /* Recentré sur le cadre de l'application plutôt que sur le bord de l'écran. */
+  left: 50%;
+  right: auto;
+  transform: translate(-50%, 101%);
+  width: min(100%, 540px);
+}
+.ctx-root.ctx-open .ctx-sheet { transform: translate(-50%, 0); }
+
+.ctx-close {
+  width: 44px;
+  height: 44px;
+}
+
+/* Une entrée d'ÉTAT (multi-sélection) : plus compacte, et sa sélection se lit
+   au premier coup d'œil — pastille pleine plutôt que bordure discrète. */
+.ctx-item[aria-pressed="true"] {
+  border-color: transparent;
+  background: var(--accent-wash);
+  color: var(--accent);
+}
+.ctx-item[aria-pressed="true"] .ctx-item-label { font-weight: 800; }
+
+/* Une entrée de NAVIGATION garde son chevron ; une entrée d'état n'en a pas —
+   le chevron promet une destination, un état n'en a pas. C'est déjà le contrat
+   de `contextual-nav.js` (le chevron n'est posé que sur un item SANS data) :
+   on ne fait ici que l'assumer visuellement. */
+.ctx-item .ctx-item-go { opacity: 0.5; font-size: 18px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ctx-sheet { transition: none; }
 }
