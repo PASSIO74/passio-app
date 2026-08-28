@@ -474,15 +474,14 @@ function renderStories() {
     `;
   }
 
-  // Live vidéo : bulle « Lancer un live » + bulles 🔴 des directs en cours.
-  html += `
-    <div class="story-item" onclick="startVideoLive()" title="Lancer un live vidéo">
-      <div class="story-ring vlive-create">
-        <div class="story-inner" style="background:#18181b;">🎥</div>
-      </div>
-      <div class="story-label">Live</div>
-    </div>
-  `;
+  // Live vidéo : les directs EN COURS, mêlés aux autres bulles de la barre.
+  // ⚠️ La bulle « Live » de CRÉATION a été retirée le 2026-08-28, sur demande de
+  // Benjamin : lancer un live est une action de création, sa place est dans le
+  // « + » central avec les autres formats — pas en tête de la barre des stories,
+  // qui montre ce que les gens PUBLIENT. L'entrée vit désormais dans le
+  // sélecteur « Créer » → « Plus » → « Live vidéo » (js/ui-v2-shell.js).
+  // Ne PAS la remettre ici : ce serait un doublon, et c'est exactement ce qui a
+  // été retiré. Les directs réels, eux, restent affichés ci-dessous.
   if (typeof _vliveChipsHtml === "function") { try { html += _vliveChipsHtml(); } catch (e) {} }
 
   html += others.map(g => {
