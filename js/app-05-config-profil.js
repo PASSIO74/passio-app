@@ -1730,18 +1730,94 @@ const SEED_REEL_VIDEOS = [
     text: "Café du matin, mug en grès fait main. Les petits rituels. ☕",
     createdAt: Date.now() - 25 * 3600000,
   },
+
+  {
+    id: "reel_seed_art_1",
+    video: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
+    poster: "https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=720&h=1280&fit=crop&auto=format&q=80",
+    fallback: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+    userId: "u_lou", passion: "art", mood: "creation",
+    text: "Émaillage d'une série de six bols. La couleur ne se révèle qu'à la sortie du four : on travaille en aveugle. 🏺",
+    createdAt: Date.now() - 27 * 3600000,
+  },
+  {
+    id: "reel_seed_danse_1",
+    video: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+    poster: "https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=720&h=1280&fit=crop&auto=format&q=80",
+    fallback: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+    userId: "u_amira", passion: "danse", mood: "creation",
+    text: "Trente secondes de la routine sur laquelle je bosse depuis deux semaines. Le transfert de poids au sol, toujours pas propre. 💃",
+    createdAt: Date.now() - 30 * 3600000,
+  },
+  {
+    id: "reel_seed_mode_1",
+    video: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4",
+    poster: "https://images.unsplash.com/photo-1483985988355-763728e1935b?w=720&h=1280&fit=crop&auto=format&q=80",
+    fallback: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+    userId: "u_zoe", passion: "mode", mood: "creation",
+    text: "Une veste de costume des années 80 devient une veste courte. Deux heures, zéro tissu acheté. 🧵",
+    createdAt: Date.now() - 33 * 3600000,
+  },
+  {
+    id: "reel_seed_jardinage_1",
+    video: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4",
+    poster: "https://images.unsplash.com/photo-1416879595882-3373a0480b5b?w=720&h=1280&fit=crop&auto=format&q=80",
+    fallback: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+    userId: "u_lucie", passion: "jardinage", mood: "chill",
+    text: "Le compost de mars est prêt. Six mois, aucun retournement, juste de la patience et des feuilles mortes. 🌱",
+    createdAt: Date.now() - 36 * 3600000,
+  },
+  {
+    id: "reel_seed_moto_1",
+    video: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/SubaruOutbackOnStreetAndDirt.mp4",
+    poster: "https://images.unsplash.com/photo-1558980664-10e7ec7b39cb?w=720&h=1280&fit=crop&auto=format&q=80",
+    fallback: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+    userId: "u_greg", passion: "moto", mood: "irl",
+    text: "Col du Béal au petit matin, personne sur la route. C'est pour ces quarante minutes-là qu'on se lève à 5h. 🏍",
+    createdAt: Date.now() - 39 * 3600000,
+  },
+  {
+    id: "reel_seed_animaux_1",
+    video: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/WeAreGoingOnBullrun.mp4",
+    poster: "https://images.unsplash.com/photo-1450778869180-41d0601e046e?w=720&h=1280&fit=crop&auto=format&q=80",
+    fallback: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+    userId: "u_maya", passion: "animaux", mood: "learn",
+    text: "Rappel au sifflet, séance 4. On travaille à dix mètres, en extérieur, sans distraction. La progression se fait en semaines, pas en jours. 🐾",
+    createdAt: Date.now() - 42 * 3600000,
+  },
+  {
+    id: "reel_seed_tech_1",
+    video: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4",
+    poster: "https://images.unsplash.com/photo-1518770660439-4636190af475?w=720&h=1280&fit=crop&auto=format&q=80",
+    fallback: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+    userId: "u_yanis", passion: "tech", mood: "learn",
+    text: "Mon petit outil de tri des notes, écrit un dimanche. Il fait une seule chose et il la fait bien. 💻",
+    createdAt: Date.now() - 45 * 3600000,
+  },
+  {
+    id: "reel_seed_litterature_2",
+    video: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4",
+    poster: "https://images.unsplash.com/photo-1521587760476-6c12a4b040da?w=720&h=1280&fit=crop&auto=format&q=80",
+    fallback: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+    userId: "u_anaïs", passion: "litterature", mood: "chill",
+    text: "Lecture à voix haute d'un texte écrit hier soir. Je ne sais jamais si un poème tient tant que je ne l'ai pas dit. 📝",
+    createdAt: Date.now() - 48 * 3600000,
+  },
 ];
 
 function getSeedReelPostsWithComments(seedUsers) {
   // Version de getSeedReelPosts() qui reçoit les users en paramètre
   return SEED_REEL_VIDEOS.map(r => {
+    // ⚠️ Ces auteurs doivent EXISTER dans seedUsers : u_alex / u_marie / u_luc /
+    // u_sara / u_lisa n'y ont jamais figuré, et leurs commentaires s'affichaient
+    // signés « ? ». Corrigé le 2026-08-28 avec des personas réels du seed.
     const commentExamples = [
-      { text: "J'aime beaucoup! 😍", author: "u_alex", name: "Alex" },
-      { text: "C'est incroyable!", author: "u_marie", name: "Marie" },
-      { text: "Trop cool 🔥", author: "u_luc", name: "Luc" },
-      { text: "Merci pour le partage!", author: "u_sara", name: "Sara" },
-      { text: "Je veux essayer ça!", author: "u_tom", name: "Tom" },
-      { text: "Magnifique ✨", author: "u_lisa", name: "Lisa" },
+      { text: "J'aime beaucoup 😍", author: "u_karim", name: "Karim Belkacem" },
+      { text: "C'est vraiment chouette.", author: "u_emma", name: "Emma Wright" },
+      { text: "Trop cool 🔥", author: "u_mehdi", name: "Mehdi Saïd" },
+      { text: "Merci pour le partage !", author: "u_sofia", name: "Sofia Lindqvist" },
+      { text: "Je veux essayer ça.", author: "u_tom", name: "Tom Larivière" },
+      { text: "Magnifique ✨", author: "u_mila", name: "Mila Andreani" },
     ];
 
     const comments = [];

@@ -163,8 +163,8 @@ function buildSeed() {
     { id: "u_zoe",   name: "Zoé Marchand",   avatar: "#7c3aed", passion: "mode", mood: "creation", bio: "Styliste upcycling · Paris", profileEmoji: "👗" },
     { id: "u_mehdi", name: "Mehdi Saïd",    avatar: "#8b5cf6", passion: "sport", mood: "irl", bio: "Trail runner · Annecy", profileEmoji: "🏃" },
     { id: "u_inès",  name: "Inès Vidal",     avatar: "#8b5cf6", passion: "art", mood: "creation", bio: "Illustratrice freelance · Nantes", profileEmoji: "🎨" },
-    { id: "u_tom",   name: "Tom Larivière",   avatar: "#a78bfa", passion: "jeux", mood: "chill", bio: "Speedrunner Zelda · Rennes", profileEmoji: "🎮" },
-    { id: "u_chloé", name: "Chloé Dubois",   avatar: "#a78bfa", passion: "bienetre", mood: "chill", bio: "Naturopathe · Aix-en-Provence", profileEmoji: "🌿" },
+    { id: "u_tom",   name: "Tom Larivière",   avatar: "#a78bfa", passion: "jeuxvideo", mood: "chill", bio: "Speedrunner Zelda · Rennes", profileEmoji: "🎮" },
+    { id: "u_chloé", name: "Chloé Dubois",   avatar: "#a78bfa", passion: "yoga", mood: "chill", bio: "Naturopathe · Aix-en-Provence", profileEmoji: "🌿" },
     { id: "u_oussa", name: "Oussama Farid",   avatar: "#7c3aed", passion: "musique", mood: "creation", bio: "Beatmaker studio home · Saint-Denis", profileEmoji: "🎧" },
     { id: "u_clara", name: "Clara Jensen",    avatar: "#8b5cf6", passion: "voyage", mood: "irl", bio: "Cyclo-voyageuse · Copenhague→Rome", profileEmoji: "🚴" },
     { id: "u_noa",   name: "Noa Benhaim",     avatar: "#7c3aed", passion: "cinema", mood: "learn", bio: "Monteuse indé · Paris", profileEmoji: "🎬" },
@@ -178,6 +178,12 @@ function buildSeed() {
     { id: "u_sami",  name: "Sami Ouedraogo",  avatar: "#7c3aed", passion: "actu", mood: "actu", bio: "Journaliste indé · Bruxelles", profileEmoji: "🗞" },
     { id: "u_val",   name: "Valentine Roux",  avatar: "#7c3aed", passion: "actu", mood: "actu", bio: "Géopolitologue · Sciences Po", profileEmoji: "🌍" },
     { id: "u_kaoru", name: "Kaoru Tanaka",    avatar: "#8b5cf6", passion: "actu", mood: "actu", bio: "Correspondant Tokyo · desk international", profileEmoji: "🗺" },
+    // Quatre passions du catalogue n'avaient AUCUN persona, donc aucun contenu :
+    // un compte qui les cochait tombait sur un fil vide (2026-08-28).
+    { id: "u_lucie", name: "Lucie Vernet",     avatar: "#8b5cf6", passion: "jardinage", mood: "chill", bio: "Permacultrice · Angers", profileEmoji: "🌱" },
+    { id: "u_nabil", name: "Nabil Cherif",     avatar: "#7c3aed", passion: "jeuxvideo", mood: "creation", bio: "Créateur de jeux indé · Rennes", profileEmoji: "🎮" },
+    { id: "u_greg",  name: "Greg Aubert",      avatar: "#a78bfa", passion: "moto", mood: "irl", bio: "Roadtrips et mécanique · Clermont-Ferrand", profileEmoji: "🏍" },
+    { id: "u_maya",  name: "Maya Lorenzi",     avatar: "#a78bfa", passion: "animaux", mood: "learn", bio: "Comportementaliste canin · Toulouse", profileEmoji: "🐾" },
   ];
 
   const seedPosts = [
@@ -350,12 +356,12 @@ function buildSeed() {
     { id: "p16", authorId: "u_noa", passion: "cinema", mood: "learn", type: "text", cover: "studio",
       text: "3 coupes qui changent un film :\n1. Couper 2 secondes AVANT qu'on pense\n2. Garder le souffle, pas la réplique\n3. Le son précède l'image, toujours",
       createdAt: hours(9), likes: 168, liked: false, comments: [] },
-    { id: "p17", authorId: "u_chloé", passion: "bienetre", mood: "chill", type: "text", cover: "nature",
+    { id: "p17", authorId: "u_chloé", passion: "yoga", mood: "chill", type: "text", cover: "nature",
       text: "Rappel doux : tu peux être productive ET fatiguée. Les deux sont vrais. Aujourd'hui j'ai fait la sieste. C'était parfait.",
       createdAt: hours(11), likes: 298, liked: false, comments: [
         { id: "c8", authorId: "u_emma", text: "Merci pour ça. J'en avais besoin 🌿", createdAt: hours(10), likes: 12, likedBy: [], emojis: [], replies: [] },
       ]},
-    { id: "p18", authorId: "u_tom", passion: "jeux", mood: "chill", type: "text", cover: "neon",
+    { id: "p18", authorId: "u_tom", passion: "jeuxvideo", mood: "chill", type: "text", cover: "neon",
       text: "Nouveau record perso sur Ocarina of Time any% : 16:54. La communauté speedrun FR devient ouf, on échange chaque semaine.",
       createdAt: hours(14), likes: 64, liked: false, comments: [] },
     { id: "p19", authorId: "u_raph", passion: "tech", mood: "creation", type: "text", cover: "tech",
@@ -535,15 +541,15 @@ function buildSeed() {
     { id: "p66", authorId: "u_emma", passion: "yoga", mood: "chill", type: "text", cover: "nature",
       text: "Pratique du matin face à l'océan. 25 min. Rien de spectaculaire, rien à poster, c'est précisément pour ça que je poste.\n\nLa constance a toujours l'air ennuyeuse. C'est là qu'est le truc.",
       createdAt: hours(7), likes: 145, liked: false, comments: [] },
-    { id: "p67", authorId: "u_chloé", passion: "bienetre", mood: "learn", type: "text", cover: "nature",
+    { id: "p67", authorId: "u_chloé", passion: "yoga", mood: "learn", type: "text", cover: "nature",
       text: "Naturopathie, 3 conseils sommeil qui marchent chez 90% de mes patient·es :\n\n1. Pas d'écran 45 min avant de dormir (le seuil, pas 1h30)\n2. Chambre à 17-18 °C max\n3. Petit-déj salé, pas sucré\n\nLe sommeil se prépare le matin.",
       createdAt: days(1), likes: 176, liked: false, comments: [] },
 
     // ==== JEUX, 2 posts ====
-    { id: "p68", authorId: "u_tom", passion: "jeux", mood: "creation", type: "text", cover: "dark_matter",
+    { id: "p68", authorId: "u_tom", passion: "jeuxvideo", mood: "creation", type: "text", cover: "dark_matter",
       text: "Nouveau record personnel sur Ocarina of Time Any% : 17:41. 3 mois d'optim sur le skip du Deku Tree.\n\nQuand je dis à mes potes non-gamers que je m'entraîne à battre 15 secondes, ils me regardent comme si j'étais fou. Ils ont raison. C'est le principe.",
       createdAt: hours(19), likes: 163, liked: false, comments: [] },
-    { id: "p69", authorId: "u_tom", passion: "jeux", mood: "chill", type: "text", cover: "neon",
+    { id: "p69", authorId: "u_tom", passion: "jeuxvideo", mood: "chill", type: "text", cover: "neon",
       text: "Soirée rétro ce vendredi à Rennes. On branche un CRT, des manettes N64, et on joue à Goldeneye jusqu'à 3h. BYOB, pizza offerte, 8 places.\n\nDM pour l'adresse.",
       createdAt: days(2), likes: 72, liked: false, comments: [] },
 
@@ -692,11 +698,11 @@ function buildSeed() {
         { id: "cac_yoga1", authorId: "u_emma", text: "Justice enfin. C'est la médecine du corps ET de l'esprit.", createdAt: hours(20), likes: 145, likedBy: [], emojis: [], replies: [] },
       ]},
 
-    { id: "pac_jeux", authorId: "u_tom", passion: "jeux", mood: "actu", type: "text", cover: "neon",
+    { id: "pac_jeux", authorId: "u_tom", passion: "jeuxvideo", mood: "actu", type: "text", cover: "neon",
       text: "Gaming : les speedrunners sont maintenant sponsorisés comme athlètes pro. Esports devient un métier légal.",
       createdAt: hours(15), likes: 634, liked: false, comments: [] },
 
-    { id: "pac_bienetre", authorId: "u_chloé", passion: "bienetre", mood: "actu", type: "text", cover: "nature",
+    { id: "pac_bienetre", authorId: "u_chloé", passion: "yoga", mood: "actu", type: "text", cover: "nature",
       text: "Naturopathie : études scientifiques valident 60% des pratiques traditionnelles. Bridge science-nature enfin.",
       createdAt: hours(7), likes: 445, liked: false, comments: [
         { id: "cac_bienetre1", authorId: "u_chloé", text: "La science rejoint la sagesse. Comme c'était attendu.", createdAt: hours(5), likes: 112, likedBy: [], emojis: [], replies: [] },
@@ -768,6 +774,64 @@ function buildSeed() {
     { id: "pv5", authorId: "u_nina", passion: "voyage", mood: "irl", type: "text", cover: "trail",
       text: "Rencontre du mois : Ibrahim, guide berbère dans l'Anti-Atlas marocain. 62 ans, marché 40 000 km de sa vie dans ces montagnes. Il connaît le nom de chaque pierre.\n\nC'est lui la destination. Pas le paysage.",
       createdAt: days(3), likes: 743, liked: false, comments: [] },
+
+    // ==== PUBLICATIONS RELIÉES À UNE ACTIVITÉ (lot UI-3B) ====
+    // `eventId` est l'un des trois champs — avec `event_id` et
+    // `sharedReelData.kind === "event"` — que `refEvenement()` reconnaît. Une
+    // publication qui en porte un reçoit « Voir l'activité » au lieu de
+    // « Trouver une expérience », et JAMAIS les deux (les deux lots sont
+    // exclusifs). Sans ce contenu, UI-3B n'avait rien à décorer : le lot
+    // paraissait mort alors qu'il fonctionnait (piège ④ du 2026-08-28).
+    // ⚠️ L'id doit correspondre EXACTEMENT à un événement de seedEvents : une
+    // référence introuvable ne produit AUCUN bouton, sans message visible.
+    // ⚠️ La passion doit être celle de l'activité, sinon la publication
+    // n'apparaît pas dans le fil des comptes intéressés par cette passion.
+    { id: "p_ev_jam", authorId: "u_oussa", passion: "musique", mood: "irl", type: "text", cover: "stage", eventId: "e1",
+      text: "J'y retourne ce soir. La dernière fois on était huit, deux qui n'avaient jamais joué devant quelqu'un, et à la fin tout le monde jouait la même grille sans se parler.\n\nSi tu hésites parce que tu débutes : c'est exactement pour ça que ça existe.",
+      createdAt: hours(5), likes: 87, liked: false, comments: [
+        { id: "cev1a", authorId: "u_lea", text: "Merci Oussama 🙏 Il reste de la place, venez !", createdAt: hours(4), likes: 12, likedBy: [], emojis: [], replies: [] },
+      ]},
+    { id: "p_ev_photo", authorId: "u_nina", passion: "photo", mood: "irl", type: "photo", cover: "sunrise", eventId: "e2",
+      text: "6h du matin sur le Pont des Arts, il faut le vouloir. Mais la lumière entre 6h10 et 6h40 ne ressemble à rien d'autre dans Paris.\n\nOn est repartis avec 300 photos et deux cafés.",
+      createdAt: hours(11), likes: 164, liked: false, comments: [] },
+    { id: "p_ev_cuisine", authorId: "u_emma", passion: "cuisine", mood: "irl", type: "text", cover: "kitchen", eventId: "e3",
+      text: "J'apporte une tarte aux blettes. Oui, aux blettes. Faites-moi confiance.\n\nCe que j'aime dans ces dîners : personne ne cherche à impressionner, tout le monde explique ce qu'il a raté.",
+      createdAt: hours(20), likes: 121, liked: false, comments: [
+        { id: "cev2a", authorId: "u_theo", text: "La tarte aux blettes de ma grand-mère niçoise, y a rien au-dessus.", createdAt: hours(18), likes: 9, likedBy: [], emojis: [], replies: [] },
+        { id: "cev2b", authorId: "u_hugo", text: "Version sucrée ou salée ? C'est tout le débat.", createdAt: hours(17), likes: 6, likedBy: [], emojis: [], replies: [] },
+      ]},
+    { id: "p_ev_yoga", authorId: "u_chloé", passion: "yoga", mood: "chill", type: "text", cover: "horizon", eventId: "e6",
+      text: "Yoga sur le sable, à 7h, avec le bruit des vagues à la place de la playlist. La première fois j'ai trouvé ça too much. La deuxième, j'ai compris.\n\nPrends une serviette épaisse, le sable est humide à cette heure-là.",
+      createdAt: hours(30), likes: 208, liked: false, comments: [] },
+    { id: "p_ev_ceramique", authorId: "u_inès", passion: "art", mood: "creation", type: "photo", cover: "workshop", eventId: "e7",
+      text: "Mon premier bol au tour est sorti tordu, épais, et je l'utilise tous les matins depuis.\n\nL'atelier de Lou est le seul endroit où j'ai vu quelqu'un dire « c'est raté » avec un vrai sourire.",
+      createdAt: hours(46), likes: 176, liked: false, comments: [
+        { id: "cev3a", authorId: "u_lou", text: "Le premier bol tordu est toujours le bon 🏺", createdAt: hours(44), likes: 21, likedBy: [], emojis: [], replies: [] },
+      ]},
+    { id: "p_ev_trail", authorId: "u_jona", passion: "sport", mood: "irl", type: "text", cover: "trail", eventId: "e30",
+      text: "18 km, 900 D+, départ 8h au bord du lac. On part groupés et on se retrouve au café, chacun à son rythme.\n\nRègle de la sortie : personne ne finit seul.",
+      createdAt: hours(14), likes: 143, liked: false, comments: [] },
+    { id: "p_ev_ia", authorId: "u_raph", passion: "tech", mood: "learn", type: "text", cover: "tech", eventId: "e5",
+      text: "Atelier « IA pour non-techs » : deux heures, zéro ligne de code, et à la fin chacun repart avec un outil qui lui fait gagner une heure par semaine.\n\nYanis prend le temps de répondre à tout, même aux questions qu'on n'ose pas poser.",
+      createdAt: hours(26), likes: 231, liked: false, comments: [
+        { id: "cev4a", authorId: "u_yanis", text: "Il reste 4 places, et on garde un créneau pour les questions à la fin.", createdAt: hours(24), likes: 15, likedBy: [], emojis: [], replies: [] },
+      ]},
+    { id: "p_ev_danse", authorId: "u_amira", passion: "danse", mood: "creation", type: "photo", cover: "dance", eventId: "e36",
+      text: "Jam contemporaine : pas de chorégraphie, pas de niveau, une salle et deux heures.\n\nCe qui se passe entre la vingtième et la quarantième minute, quand tout le monde arrête de se regarder, c'est ce que je viens chercher.",
+      createdAt: hours(38), likes: 154, liked: false, comments: [] },
+    { id: "p_ev_livre", authorId: "u_anaïs", passion: "litterature", mood: "chill", type: "text", cover: "book", eventId: "e14",
+      text: "Book club de ce mois : on lit un roman que personne n'a choisi, tiré au sort. C'est la meilleure règle qu'on ait inventée.\n\nJ'ai découvert trois autrices comme ça, que je n'aurais jamais ouvertes.",
+      createdAt: hours(60), likes: 98, liked: false, comments: [] },
+    // La SECONDE forme reconnue par refEvenement : le bloc `sharedReelData`,
+    // celui que produit le partage d'une activité depuis sa fiche. La carte y
+    // reçoit le même lien « Voir l'activité », et sa sous-carte historique est
+    // masquée au profit de ce seul lien (source "shared").
+    // ⚠️ Ne JAMAIS lui donner `cover` ni `image` : `shouldCover` (app-02)
+    // écraserait la sous-carte juste après l'avoir construite.
+    { id: "p_ev_partage", authorId: "u_mehdi", passion: "sport", mood: "irl", type: "text",
+      sharedReelData: { kind: "event", id: "e28", title: "Initiation surf coucher de soleil", city: "Biarritz", venue: "Plage de la Côte des Basques", date: "", passion: "sport" },
+      text: "Je partage, parce que c'est le genre de truc qu'on repousse pendant trois étés.\n\nDeux heures, planche fournie, et la houle de fin de journée est plus douce.",
+      createdAt: hours(9), likes: 189, liked: false, comments: [] },
   ];
 
   // Helpers pour créer des dates précises
@@ -778,11 +842,13 @@ function buildSeed() {
   const seedEvents = [
     // AUJOURD'HUI
     { id: "e9", title: "Session escalade nocturne", passion: "sport", emoji: "🧗",
+      coverUrl: "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
       eventType: "Sport & activité", organizerId: "u_jona", date: todayAt(20, 0), time: "20:00",
       city: "Chamonix", venue: "Salle Edelweiss", address: "24 allée du Savoy", postalCode: "74400",
       contact: "06 72 45 18 33", price: 8, maxAttendees: 20,
       attendees: ["u_mehdi", "u_raph"], desc: "Session nocturne en salle. Tous niveaux bienvenus. Chaussons en location sur place (3€). On finit autour d'une bière artisanale." },
     { id: "e1", title: "Jam session guitaristes débutants", passion: "musique", emoji: "🎸",
+      coverUrl: "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
       eventType: "Jam session", organizerId: "u_lea", date: todayAt(18, 30), time: "18:30",
       city: "Lyon", venue: "Café des Arts", address: "8 rue Dumenge", postalCode: "69004",
       contact: "lea.moreau@passio.app", price: 0, maxAttendees: 12,
@@ -790,11 +856,13 @@ function buildSeed() {
 
     // DEMAIN
     { id: "e2", title: "Balade photo au lever du soleil", passion: "photo", emoji: "📷",
+      coverUrl: "https://images.unsplash.com/photo-1552168324-d612d77725e3?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
       eventType: "Randonnée", organizerId: "u_karim", date: tomorrowAt(6, 0), time: "06:00",
       city: "Paris", venue: "Pont des Arts", address: "Pont des Arts", postalCode: "75006",
       contact: "karim.belkacem@passio.app", price: 0, maxAttendees: 8,
       attendees: ["u_nina", "u_sofia"], desc: "2h de marche, lumière magique sur le Pont des Arts puis les quais de Seine. Tous appareils acceptés (smartphone ok). RDV côté Rive Gauche, au niveau du cadenas d'amour." },
     { id: "e11", title: "Skate jam au skatepark", passion: "sport", emoji: "🛹",
+      coverUrl: "https://images.unsplash.com/photo-1519608487953-e999c86e7455?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
       eventType: "Sport & activité", organizerId: "u_yanis", date: tomorrowAt(14, 0), time: "14:00",
       city: "Bordeaux", venue: "Skatepark des Chartrons", address: "Quai des Chartrons", postalCode: "33300",
       contact: "06 88 12 54 76", price: 0,
@@ -802,22 +870,26 @@ function buildSeed() {
 
     // CETTE SEMAINE
     { id: "e3", title: "Dîner entre passionnés de cuisine", passion: "cuisine", emoji: "🍳",
+      coverUrl: "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
       eventType: "Dégustation", organizerId: "u_theo", date: inDaysAt(2, 19, 30), time: "19:30",
       city: "Marseille", venue: "Chez Théo", address: "15 rue des Catalans", postalCode: "13007",
       contact: "theo.roussel@passio.app", price: 0, maxAttendees: 10,
       attendees: ["u_emma", "u_zoe", "u_liam"], desc: "Chacun amène un plat cuisiné (préférence maison), on débriefe les techniques, les erreurs, les découvertes. Un moment convivial, ni trop formel ni trop décontracté. Indique dans les commentaires ce que tu prévois d'apporter." },
     { id: "e5", title: "Atelier IA pour non-techs", passion: "tech", emoji: "💻",
+      coverUrl: "https://images.unsplash.com/photo-1518770660439-4636190af475?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
       eventType: "Atelier", organizerId: "u_yanis", date: inDaysAt(2, 14, 0), time: "14:00",
       city: "Toulouse", venue: "Numa Toulouse", address: "2 rue d'Alsace-Lorraine", postalCode: "31000",
       contact: "yanis.perez@passio.app", price: 5, maxAttendees: 15,
       attendees: ["u_theo", "u_sofia"], desc: "Pas de code, zéro jargon. Juste comment intégrer l'IA dans ton quotidien : écriture, organisation, création. 3h avec exercices pratiques. Amène ton ordi." },
     { id: "e6", title: "Cours de yoga sur la plage", passion: "yoga", emoji: "🧘",
+      coverUrl: "https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
       eventType: "Cours", organizerId: "u_emma", date: inDaysAt(5, 7, 0), time: "07:00",
       city: "Biarritz", venue: "Plage de la Côte des Basques",
       address: "Boulevard du Prince de Galles", postalCode: "64200",
       contact: "emma.wright@passio.app", price: 0, maxAttendees: 20,
       attendees: ["u_nina", "u_amira", "u_zoe"], desc: "Yoga vinyasa au lever du soleil face à l'Atlantique. Tapis fournis (ou apporte le tien). Niveau intermédiaire. On finit avec un plongeon si le cœur t'en dit." },
     { id: "e17", title: "Soirée dégustation vins nature", passion: "cuisine", emoji: "🍷",
+      coverUrl: "https://images.unsplash.com/photo-1513519245088-0e12902e5a38?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
       eventType: "Dégustation", organizerId: "u_theo", date: inDaysAt(5, 19, 0), time: "19:00",
       city: "Dijon", venue: "Cave Les Écuyers", address: "24 rue des Forges", postalCode: "21000",
       contact: "06 33 77 91 45", price: 18, maxAttendees: 16,
@@ -825,37 +897,44 @@ function buildSeed() {
 
     // CE MOIS
     { id: "e12", title: "Concert acoustique amateur", passion: "musique", emoji: "🎵",
+      coverUrl: "https://images.unsplash.com/photo-1501386761578-eac5c94b800a?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
       eventType: "Concert", organizerId: "u_lea", date: inDaysAt(7, 20, 30), time: "20:30",
       city: "Nantes", venue: "Café La Femme Sauvage", address: "3 rue Fénelon", postalCode: "44000",
       contact: "07 61 42 18 05", price: 5, maxAttendees: 40,
       attendees: ["u_karim", "u_clara"], desc: "Café-concert intimiste avec 4 artistes amateurs de la communauté. Acoustique uniquement — guitare, voix, ukulélé. Scène ouverte en seconde partie. Boissons au bar." },
     { id: "e7", title: "Atelier céramique découverte", passion: "art", emoji: "🏺",
+      coverUrl: "https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
       eventType: "Atelier", organizerId: "u_lou", date: inDaysAt(8, 14, 0), time: "14:00",
       city: "Uzès", venue: "Atelier du Potier", address: "7 chemin des Remparts", postalCode: "30700",
       contact: "lou.petit@passio.app", price: 22, maxAttendees: 8,
       attendees: ["u_inès", "u_chloé"], desc: "3h pour comprendre le tour de potier et réaliser ton premier bol. Terre et thé fournis. Les pièces sont cuites et envoyées sous 3 semaines. Aucune expérience nécessaire." },
     { id: "e20", title: "Vernissage galerie indé", passion: "art", emoji: "🎨",
+      coverUrl: "https://images.unsplash.com/photo-1550745165-9bc0b252726f?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
       eventType: "Exposition", organizerId: "u_lou", date: inDaysAt(8, 18, 0), time: "18:00",
       city: "Toulouse", venue: "Galerie La Petite", address: "42 rue Pargaminières", postalCode: "31000",
       contact: "galerielapetite@gmail.com", price: 0,
       externalLink: "https://galerielapetite.fr",
       attendees: ["u_inès", "u_chloé"], desc: "18 artistes émergents de la région Occitanie. Peinture, photo, installation. Verre offert à l'ouverture. Tous bienvenus, entrée libre." },
     { id: "e10", title: "Ciné-club films restaurés", passion: "cinema", emoji: "🎬",
+      coverUrl: "https://images.unsplash.com/photo-1485846234645-a62644f84728?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
       eventType: "Soirée", organizerId: "u_noa", date: inDaysAt(9, 20, 0), time: "20:00",
       city: "Paris", venue: "Studio Galande", address: "42 rue Galande", postalCode: "75005",
       contact: "noa.benhaim@passio.app", price: 7, maxAttendees: 35,
       attendees: ["u_sofia", "u_inès", "u_raph"], desc: "Ce mois-ci : Agnès Varda, Sans toit ni loi (1985), version restaurée 4K. Discussion collective après la projection. Boissons disponibles au comptoir. Réservation conseillée." },
     { id: "e23", title: "Randonnée gourmande", passion: "voyage", emoji: "🥾",
+      coverUrl: "https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
       eventType: "Randonnée", organizerId: "u_nina", date: inDaysAt(11, 9, 0), time: "09:00",
       city: "Grenoble", venue: "Parking Téléphérique Bastille", address: "Quai Stéphane-Jay", postalCode: "38000",
       contact: "nina.costa@passio.app", price: 0, maxAttendees: 12,
       attendees: ["u_emma", "u_amira"], desc: "12 km en moyenne montagne sur les sentiers du Vercors. Pause pique-nique collective à mi-parcours (apporte quelque chose à partager). Niveau moyen. Chaussures de rando obligatoires." },
     { id: "e14", title: "Book club mensuel", passion: "litterature", emoji: "📚",
+      coverUrl: "https://images.unsplash.com/photo-1521587760476-6c12a4b040da?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
       eventType: "Rencontre", organizerId: "u_sofia", date: inDaysAt(11, 18, 0), time: "18:00",
       city: "Bordeaux", venue: "Librairie Mollat", address: "15 rue Vital Carles", postalCode: "33000",
       contact: "sofia.lindqvist@passio.app", price: 0, maxAttendees: 18,
       attendees: ["u_anaïs", "u_chloé"], desc: "Ce mois-ci : Annie Ernaux, Les Années. Pas de préparation imposée — viens même si tu n'as pas fini. Discussion autour d'un verre, en arrière-boutique de la librairie." },
     { id: "e28", title: "Initiation surf coucher de soleil", passion: "sport", emoji: "🏄",
+      coverUrl: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
       eventType: "Cours", organizerId: "u_jona", date: inDaysAt(15, 18, 0), time: "18:00",
       city: "Biarritz", venue: "Plage Milady", address: "Avenue de la Milady", postalCode: "64200",
       contact: "06 55 28 44 12", price: 25, maxAttendees: 8,
@@ -863,66 +942,77 @@ function buildSeed() {
 
     // AJOUTS SUPPLÉMENTAIRES
     { id: "e30", title: "Trail run du weekend", passion: "sport", emoji: "🏃",
+      coverUrl: "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
       eventType: "Sortie", organizerId: "u_mehdi", date: inDaysAt(1, 8, 0), time: "08:00",
       city: "Annecy", venue: "Parc du Pâquier", address: "Parc du Pâquier", postalCode: "74000",
       contact: "mehdi.said@passio.app", price: 0, maxAttendees: 20,
       attendees: ["u_jona"], desc: "Trail facile 12km dans les Alpes. Dénivelé +400m. Tous niveaux. Petit-déj sur place après. RDV 7h45 pour départ 8h." },
 
     { id: "e31", title: "Atelier photo street", passion: "photo", emoji: "📷",
+      coverUrl: "https://images.unsplash.com/photo-1519608487953-e999c86e7455?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
       eventType: "Atelier", organizerId: "u_karim", date: inDaysAt(3, 10, 0), time: "10:00",
       city: "Marseille", venue: "Vieux Port", address: "Quai des Belges", postalCode: "13001",
       contact: "karim.belkacem@passio.app", price: 15, maxAttendees: 10,
       attendees: ["u_nina"], desc: "Capture l'essence du Vieux Port : lumière, gens, architecture. Apporte ton appareil photo. Pause café en milieu de séance." },
 
-    { id: "e32", title: "Soirée game indé", passion: "jeux", emoji: "🎮",
+    { id: "e32", title: "Soirée game indé", passion: "jeuxvideo", emoji: "🎮",
+      coverUrl: "https://images.unsplash.com/photo-1542751371-adc38448a05e?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
       eventType: "Gaming", organizerId: "u_tom", date: inDaysAt(4, 19, 0), time: "19:00",
       city: "Rennes", venue: "Café Gamer Zone", address: "15 rue Saint-Michel", postalCode: "35000",
       contact: "06 12 34 56 78", price: 5, maxAttendees: 16,
       attendees: ["u_raph"], desc: "Tournoi Mario Kart, Smash Bros et jeux indé. Pizza et boissons à gogo. Inscription rapide — matchs toute la soirée." },
 
     { id: "e33", title: "Tasting biere artisanale", passion: "cuisine", emoji: "🍺",
+      coverUrl: "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
       eventType: "Dégustation", organizerId: "u_theo", date: inDaysAt(5, 18, 30), time: "18:30",
       city: "Lille", venue: "Brasserie Le Vieux Lille", address: "22 rue de la Monnaie", postalCode: "59000",
       contact: "theo.roussel@passio.app", price: 12, maxAttendees: 25,
       attendees: ["u_emma", "u_zoe"], desc: "6 bières du Nord dégustation commentée. Fromages et charcuterie locale. Ambiance décontractée, pas de prise de tête." },
 
     { id: "e34", title: "Ateliermode upcycling", passion: "mode", emoji: "👗",
+      coverUrl: "https://images.unsplash.com/photo-1483985988355-763728e1935b?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
       eventType: "Atelier", organizerId: "u_zoe", date: inDaysAt(6, 14, 0), time: "14:00",
       city: "Paris", venue: "Studio Créatif 11e", address: "45 rue de Charonne", postalCode: "75011",
       contact: "zoe.marchand@passio.app", price: 35, maxAttendees: 12,
       attendees: ["u_inès", "u_cloe"], desc: "Transformer un vieux tee-shirt ou jean en pièce unique. Apporte ton vêtement, nous fourniront fil et aiguilles. Résultat à emporter." },
 
     { id: "e35", title: "Podcast live enregistrement", passion: "podcast", emoji: "🎙",
+      coverUrl: "https://images.unsplash.com/photo-1589903308904-1010c2294adc?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
       eventType: "Enregistrement", organizerId: "u_liam", date: inDaysAt(7, 19, 0), time: "19:00",
       city: "Montréal", venue: "Studio Liam Dufresne", address: "201 rue Saint-Antoine", postalCode: "H2Y 1A6",
       contact: "liam.dufresne@passio.app", price: 0, maxAttendees: 30,
       attendees: ["u_sofia"], desc: "Enregistrement en direct du podcast 'Passion Quotidienne'. Thème : créativité et procrastination. Public en studio pour l'énergie." },
 
     { id: "e36", title: "Danse contemporaine jam", passion: "danse", emoji: "💃",
+      coverUrl: "https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
       eventType: "Jam", organizerId: "u_mila", date: inDaysAt(8, 18, 0), time: "18:00",
       city: "Ajaccio", venue: "Studio Mila", address: "Rue Fesch", postalCode: "20000",
       contact: "06 88 77 55 44", price: 8, maxAttendees: 15,
       attendees: ["u_amira"], desc: "Jam libre, mixte tous niveaux. Apporte ta musique ou prends ce qu'on propose. Studio climatisé. Barre disponible. On finit en apéro corse." },
 
     { id: "e37", title: "Rencontre littéraire auteur invité", passion: "litterature", emoji: "📚",
+      coverUrl: "https://images.unsplash.com/photo-1519681393784-d120267933ba?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
       eventType: "Rencontre", organizerId: "u_sofia", date: inDaysAt(9, 18, 0), time: "18:00",
       city: "Bordeaux", venue: "Librairie Mollat", address: "15 rue Vital Carles", postalCode: "33000",
       contact: "sofia.lindqvist@passio.app", price: 0, maxAttendees: 40,
       attendees: ["u_anaïs", "u_clara"], desc: "Rencontre avec auteur jeunesse. Dédicaces, questions, dégustation de vins locaux en arrière-boutique." },
 
     { id: "e38", title: "Workshop pâtisserie végan", passion: "cuisine", emoji: "🧁",
+      coverUrl: "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
       eventType: "Atelier", organizerId: "u_hugo", date: inDaysAt(10, 15, 0), time: "15:00",
       city: "Nice", venue: "Pâtisserie Hugo", address: "Promenade des Anglais", postalCode: "06000",
       contact: "hugo.martelli@passio.app", price: 28, maxAttendees: 10,
       attendees: ["u_chloé", "u_emma"], desc: "Réalise ton gâteau au chocolat 100% végan. Sans oeufs, sans lait, même pas butter. Goûteux ? Oui. À emporter." },
 
     { id: "e39", title: "Yoga coucher soleil en montagne", passion: "yoga", emoji: "🧘",
+      coverUrl: "https://images.unsplash.com/photo-1513745405825-efaf9a49315f?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
       eventType: "Cours", organizerId: "u_emma", date: inDaysAt(12, 17, 30), time: "17:30",
       city: "Chamonix", venue: "Refuge des Cosmiques", address: "Lac Blanc", postalCode: "74400",
       contact: "emma.wright@passio.app", price: 0, maxAttendees: 12,
       attendees: ["u_nina", "u_sofia"], desc: "Yoga ashtanga au sommet à 2386m, vue Mont-Blanc. Difficile d'accès à pied (rando 1h30) ou remontée mécanique. Niveau avancé." },
 
     { id: "e40", title: "Rencontre beatmakers producteurs", passion: "musique", emoji: "🎵",
+      coverUrl: "https://images.unsplash.com/photo-1598488035139-bdbb2231ce04?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
       eventType: "Jam", organizerId: "u_oussa", date: inDaysAt(13, 20, 0), time: "20:00",
       city: "Saint-Denis", venue: "Studio Oussa", address: "48 rue de la Paix", postalCode: "93200",
       contact: "oussa.farid@passio.app", price: 10, maxAttendees: 20,
@@ -930,60 +1020,70 @@ function buildSeed() {
 
     // ÉVÉNEMENTS PROCHES DE PARIS (pour les filtres distance)
     { id: "e41", title: "Yoga matin à Versailles", passion: "yoga", emoji: "🧘",
+      coverUrl: "https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
       eventType: "Cours", organizerId: "u_emma", date: todayAt(7, 0), time: "07:00",
       city: "Versailles", venue: "Parc de Versailles", address: "Place d'Armes", postalCode: "78000",
       contact: "emma.wright@passio.app", price: 5, maxAttendees: 15,
       attendees: ["u_sofia"], desc: "Yoga doux dans les jardins du château. ~15km de Paris. Prévoir tapis et bouteille d'eau." },
 
     { id: "e42", title: "Balade vélo Fontainebleau", passion: "sport", emoji: "🚴",
+      coverUrl: "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
       eventType: "Randonnée", organizerId: "u_clara", date: tomorrowAt(9, 0), time: "09:00",
       city: "Fontainebleau", venue: "Gare de Fontainebleau", address: "Place de la Gare", postalCode: "77300",
       contact: "clara.jensen@passio.app", price: 0, maxAttendees: 12,
       attendees: ["u_mehdi", "u_raph"], desc: "Sortie vélo facile ~50km autour de Fontainebleau. ~50km de Paris. Tous niveaux." },
 
     { id: "e43", title: "Pique-nique photos Fontainebleau", passion: "photo", emoji: "📷",
+      coverUrl: "https://images.unsplash.com/photo-1552168324-d612d77725e3?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
       eventType: "Sortie", organizerId: "u_karim", date: inDaysAt(2, 10, 0), time: "10:00",
       city: "Fontainebleau", venue: "Forêt de Fontainebleau", address: "Parking Gorges de Franchard", postalCode: "77300",
       contact: "karim.belkacem@passio.app", price: 0, maxAttendees: 8,
       attendees: ["u_nina"], desc: "Photo nature en forêt. Lumière douce matin. Pique-nique partage après shoot. ~50km." },
 
     { id: "e44", title: "Atelier poterie Fontainebleau", passion: "art", emoji: "🏺",
+      coverUrl: "https://images.unsplash.com/photo-1513519245088-0e12902e5a38?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
       eventType: "Atelier", organizerId: "u_lou", date: inDaysAt(3, 14, 0), time: "14:00",
       city: "Fontainebleau", venue: "Studio Terre & Feu", address: "15 rue du Four", postalCode: "77300",
       contact: "lou.petit@passio.app", price: 20, maxAttendees: 10,
       attendees: ["u_inès"], desc: "Atelier poterie 3h. Débutants welcome. Tout fourni. ~50km de Paris." },
 
     { id: "e45", title: "Brunch littéraire Rambouilet", passion: "litterature", emoji: "📚",
+      coverUrl: "https://images.unsplash.com/photo-1519681393784-d120267933ba?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
       eventType: "Rencontre", organizerId: "u_sofia", date: inDaysAt(1, 10, 30), time: "10:30",
       city: "Rambouillet", venue: "Café du Château", address: "22 place Poulain", postalCode: "78120",
       contact: "sofia.lindqvist@passio.app", price: 15, maxAttendees: 16,
       attendees: ["u_anaïs"], desc: "Brunch + discussion littéraire autour des lectures du mois. ~70km. RDV intérieur café." },
 
     { id: "e46", title: "Jam session jazz Boulogne", passion: "musique", emoji: "🎸",
+      coverUrl: "https://images.unsplash.com/photo-1501386761578-eac5c94b800a?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
       eventType: "Jam", organizerId: "u_lea", date: todayAt(19, 30), time: "19:30",
       city: "Boulogne-Billancourt", venue: "Blues Club", address: "8 rue des Pécheurs", postalCode: "92100",
       contact: "lea.moreau@passio.app", price: 8, maxAttendees: 25,
       attendees: ["u_oussa"], desc: "Jam jazz gratuit ce soir! Musiciens du dimanche welcome. ~3km de Paris. Buvettes sur place." },
 
     { id: "e47", title: "Tech meetup Neuilly", passion: "tech", emoji: "💻",
+      coverUrl: "https://images.unsplash.com/photo-1531746790731-6c087fecd65a?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
       eventType: "Meetup", organizerId: "u_raph", date: inDaysAt(1, 18, 0), time: "18:00",
       city: "Neuilly-sur-Seine", venue: "Hub Tech Neuilly", address: "35 avenue du Maréchal", postalCode: "92200",
       contact: "raph.thys@passio.app", price: 0, maxAttendees: 40,
       attendees: ["u_yanis", "u_tom"], desc: "Meetup mensuel tech: IA, DevOps, startups. ~5km. Apéro offert." },
 
     { id: "e48", title: "Danse urbaine Montreuil", passion: "danse", emoji: "💃",
+      coverUrl: "https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
       eventType: "Classe", organizerId: "u_amira", date: inDaysAt(2, 18, 0), time: "18:00",
       city: "Montreuil", venue: "Studio Urban Groove", address: "42 rue de Miromesnil", postalCode: "93100",
       contact: "amira.haddad@passio.app", price: 12, maxAttendees: 20,
       attendees: ["u_mila"], desc: "Hip-hop, popping, locking. Tous niveaux. ~8km de Paris. Musique live." },
 
     { id: "e49", title: "Mode éthique workshop Marais", passion: "mode", emoji: "👗",
+      coverUrl: "https://images.unsplash.com/photo-1483985988355-763728e1935b?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
       eventType: "Atelier", organizerId: "u_zoe", date: inDaysAt(4, 15, 0), time: "15:00",
       city: "Paris", venue: "Marais Créatif", address: "50 rue du Turenne", postalCode: "75003",
       contact: "zoe.marchand@passio.app", price: 25, maxAttendees: 12,
       attendees: ["u_rita"], desc: "Mode éthique & durable. Apprendre à coudre une pièce. ~0km (dans Paris)." },
 
     { id: "e50", title: "Cuisine méditerranéenne la Défense", passion: "cuisine", emoji: "🍳",
+      coverUrl: "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=900&h=560&fit=crop&crop=entropy&auto=format&q=80",
       eventType: "Atelier", organizerId: "u_theo", date: inDaysAt(3, 19, 0), time: "19:00",
       city: "La Défense", venue: "Cook Studio", address: "15 place de la Défense", postalCode: "92400",
       contact: "theo.roussel@passio.app", price: 35, maxAttendees: 14,
