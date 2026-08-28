@@ -132,7 +132,7 @@ test("URL normale : barre du bas UI-1 et cinq intentions UI-2 simultanément", a
   await expect(page.locator("#feedIntentSelector")).toBeVisible();
   await expect(page.locator("#moodSelector")).toBeHidden();
   expect(await page.locator(".feed-intent-btn").allTextContents())
-    .toEqual(["Pour toi", "Découvrir", "Apprendre", "Créer", "Rencontrer"]);
+    .toEqual(["Tous", "Découvrir", "Apprendre", "Créer", "Rencontrer"]);
 
   expect(errors.js, "exceptions JS dans l'aperçu").toEqual([]);
   expect(errors.console.filter((m) => m.includes("[ui-v2]"))).toEqual([]);

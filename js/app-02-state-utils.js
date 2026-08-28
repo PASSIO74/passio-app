@@ -3045,7 +3045,7 @@ function rankFeedPostsForIntent(posts, intent) {
   var followingSet = new Set(following);
 
   // Découvrir n'est permis que si au moins un signal de nouveauté fiable existe.
-  // À défaut, le classement « Pour toi » est rendu exactement dans le même
+  // À défaut, le classement neutre « Tous » (id for_you) est rendu exactement dans le même
   // ordre, sans heuristique inventée à partir du texte libre.
   if (intent === "discover") {
     var reliable = ranked.some(function(p) {

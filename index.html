@@ -483,7 +483,7 @@
       </div>
 
       <div class="mood-selector feed-intent-selector" id="feedIntentSelector" hidden role="group" aria-label="Envie du moment">
-        <button type="button" class="feed-intent-btn active" data-intent="for_you" aria-pressed="true">Pour toi</button>
+        <button type="button" class="feed-intent-btn active" data-intent="for_you" aria-pressed="true">Tous</button>
         <button type="button" class="feed-intent-btn" data-intent="discover" aria-pressed="false">Découvrir</button>
         <button type="button" class="feed-intent-btn" data-intent="learn" aria-pressed="false">Apprendre</button>
         <button type="button" class="feed-intent-btn" data-intent="create" aria-pressed="false">Créer</button>
@@ -856,7 +856,11 @@
            contextuel (js/contextual-nav.js → irlToolsSections). Rien n'est
            supprimé : ce sont les MÊMES handlers, regroupés.
            #irlUserCityName reste dans le DOM (masqué) : updateIrlCityTitle y
-           écrit et _irlReferenceLabel le lit (repli du filtre distance). -->
+           écrit et _irlReferenceLabel le lit (repli du filtre distance).
+           2026-08-28 : le bouton « Créer un événement » est MASQUÉ par le lot
+           UI-4A0 (styles.css, :root.passio-ui-4a0 .irl-chip-create) — le « + »
+           central de la barre du bas sert déjà ce geste. Le nœud reste ici pour
+           que le kill switch passio_ui_4a0="0" le restitue. -->
       <div class="irl-actionbar">
         <button class="irl-chip irl-chip-create" onclick="openCreateEvent()">
           <span aria-hidden="true">📍</span><span class="irl-chip-label">Créer un événement</span>

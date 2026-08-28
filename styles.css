@@ -9780,8 +9780,8 @@ body.ctx-locked #appMain { overflow: hidden; }
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
-   PASSIO UI V4 — lot UI-4A0 : tête de « Rencontrer », APERÇU UNIQUEMENT
-   (?passio_preview=passio-ui-4a0-demo — voir js/ui-v4a0-tete.js)
+   PASSIO UI V4 — lot UI-4A0 : tête de « Rencontrer », ACTIF PAR DÉFAUT
+   (depuis le 2026-08-28 — coupure : localStorage.passio_ui_4a0="0")
 
    Tout est ancré à `:root.passio-ui-4a0` : sans l'aperçu, aucune de ces règles
    ne s'applique et l'écran IRL historique est rendu à l'octet près. Les deux
@@ -9794,6 +9794,20 @@ body.ctx-locked #appMain { overflow: hidden; }
    remplacés par le bandeau — pas dupliqués. */
 :root.passio-ui-4a0 #screen-irl > .section-title,
 :root.passio-ui-4a0 #irlSearchRow { display: none; }
+
+/* Le bouton « Créer un événement » quitte l'écran Rencontrer (2026-08-28, ordre
+   de Benjamin) : le « + » central de la barre du bas sert déjà exactement le
+   même geste — entrée « Activité IRL » de CREATE_CHOICES, qui appelle
+   openCreateEvent() (js/ui-v2-shell.js). Le porter deux fois sur le même écran
+   n'apportait rien.
+   ⚠️ On masque LE SEUL BOUTON, jamais `.irl-actionbar` : la barre héberge aussi
+   `#irlToolsBtn` (panneau Outils, cliqué par contextual-nav.spec.js et irl.spec.js
+   sans kill switch) et `<b id="irlUserCityName">`, que le moteur IRL lit et écrit
+   (`updateIrlCityTitle`, `_irlReferenceLabel`). Le nœud reste dans le DOM pour que
+   le kill switch le rende sans rechargement. `justify-content` recale « Outils »,
+   qui devient seul enfant d'une barre dont l'élément extensible a disparu. */
+:root.passio-ui-4a0 #screen-irl .irl-chip-create { display: none; }
+:root.passio-ui-4a0 #screen-irl .irl-actionbar { justify-content: flex-end; }
 
 :root.passio-ui-4a0 .v4a0-head {
   display: flex;

@@ -63,8 +63,13 @@
   // Les quatre intentions arrêtées par Benjamin. `pour_toi` n'est pas une
   // option de plus : c'est l'état NEUTRE, celui où aucune restriction n'est
   // demandée. Les trois autres se combinent librement.
+  // ⚠️ Le LIBELLÉ affiché est « Tous » depuis le 2026-08-28, sur ordre de
+  // Benjamin (« Pour toi » n'était pas compréhensible : il désigne l'absence
+  // de restriction, pas une recommandation personnalisée). L'IDENTIFIANT reste
+  // `pour_toi` — estNeutre, syncIntentions, la télémétrie et les locators e2e
+  // en dépendent, et la série historique d'événements reste comparable.
   var INTENTIONS = [
-    { id: "pour_toi", label: "Pour toi", neutre: true },
+    { id: "pour_toi", label: "Tous", neutre: true },
     { id: "semaine", label: "Cette semaine" },
     { id: "ville", label: "Ma ville" },
     { id: "passio", label: "Mes Passio" },

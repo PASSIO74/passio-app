@@ -167,7 +167,7 @@ test.describe("Fil — Envie du moment (UI-2 active par défaut)", () => {
     expect(legacyHandler).not.toContain("openFeedPost(");
   });
 
-  test("ON : cinq intentions accessibles, Pour toi actif et aucun hard filter", async ({ page }) => {
+  test("ON : cinq intentions accessibles, Tous actif et aucun hard filter", async ({ page }) => {
     await boot(page, { preview: true });
     await seedFeed(page, true);
 
@@ -178,7 +178,7 @@ test.describe("Fil — Envie du moment (UI-2 active par défaut)", () => {
 
     // Les cinq libellés exigés par la direction, dans l'ordre.
     expect(await page.locator(".feed-intent-btn").allTextContents())
-      .toEqual(["Pour toi", "Découvrir", "Apprendre", "Créer", "Rencontrer"]);
+      .toEqual(["Tous", "Découvrir", "Apprendre", "Créer", "Rencontrer"]);
 
     const ids = await renderedIds(page);
     expect(ids.slice().sort()).toEqual(POSTS.map((p) => p.id).sort());
@@ -203,7 +203,7 @@ test.describe("Fil — Envie du moment (UI-2 active par défaut)", () => {
     expect(new Set(ordres).size).toBeGreaterThan(1);
   });
 
-  test("retaper l'intention active revient immédiatement à Pour toi", async ({ page }) => {
+  test("retaper l'intention active revient immédiatement à Tous", async ({ page }) => {
     await boot(page, { preview: true });
     await seedFeed(page, true);
 
@@ -214,7 +214,7 @@ test.describe("Fil — Envie du moment (UI-2 active par défaut)", () => {
     expect(await page.evaluate(() => activeFeedIntent)).toBe("for_you");
   });
 
-  test("le bouton Pour toi est aussi enregistré comme un retour, pas une sélection", async ({ page }) => {
+  test("le bouton Tous est aussi enregistré comme un retour, pas une sélection", async ({ page }) => {
     await boot(page, { preview: true });
     await seedFeed(page, true);
     await page.locator('.feed-intent-btn[data-intent="learn"]').click();
@@ -245,7 +245,7 @@ test.describe("Fil — Envie du moment (UI-2 active par défaut)", () => {
     expect(ids.slice().sort()).toEqual(POSTS.map((p) => p.id).sort());
   });
 
-  test("Découvrir sans signal fiable restitue exactement le classement Pour toi", async ({ page }) => {
+  test("Découvrir sans signal fiable restitue exactement le classement Tous", async ({ page }) => {
     await boot(page, { preview: true });
     await seedFeed(page, true);
     const result = await page.evaluate((posts) => {
@@ -264,7 +264,7 @@ test.describe("Fil — Envie du moment (UI-2 active par défaut)", () => {
 
     await page.locator('.feed-intent-btn[data-intent="create"]').click();
     await page.locator('#feedList .post[data-postid="intent_create"] .post-body').click();
-    await page.evaluate(() => setFeedIntent("create")); // active → reset Pour toi
+    await page.evaluate(() => setFeedIntent("create")); // active → reset Tous (for_you)
 
     const events = await page.evaluate(() => window.__intentTel.filter((e) => e.name.indexOf("feed_intent_") === 0));
     expect(events.map((e) => e.name)).toEqual([
