@@ -1762,6 +1762,59 @@
      toast, de la fiche d'activité et des feuilles basses. -->
 <script src="js/ui-v5-bobines.js"></script>
 
+<!-- UI V4 (lot UI-4A4 — « Outils » rejoint Liste et Carte) — hors bloc app :
+     composant autonome (IIFE window.PassioUIV4A4), inliné individuellement au
+     build. ACTIF PAR DÉFAUT ; coupé par localStorage.passio_ui_4a4="0" ou
+     window.PASSIO_UI_4A4=false.
+     ⚠️ Il DÉPLACE le déclencheur #irlToolsBtn dans le commutateur (hôte stable,
+     pastille alimentée par le moteur) mais fait RECONSTRUIRE les intentions
+     dans le panneau par UI-4A0 — le corps du panneau est réécrit à chaque
+     rendu, une chip déplacée y serait arrachée par son propre clic. -->
+<script src="js/ui-v4a4-outils.js"></script>
+
+<!-- UI V6 (§9 composer de publication, §11 sortie des mécaniques économiques) —
+     hors bloc app : composant autonome (IIFE window.PassioUIV6), inliné
+     individuellement au build. ACTIF PAR DÉFAUT ; coupé par
+     localStorage.passio_ui_6="0" ou window.PASSIO_UI_6=false.
+     ⚠️ Il DÉPLACE les nœuds du Studio, il n'en régénère aucun — régénérer
+     tuerait les onclick inline et les nœuds que les lecteurs de fichiers
+     retrouvent par id. Et le bouton média unique se contente de déclencher
+     #photoInput / #videoInput : ce sont leurs gestionnaires EXISTANTS qui
+     fixent `studioType`, seule variable d'après laquelle publishPost type le
+     post et remplit le média. -->
+<script src="js/ui-v6-composer.js"></script>
+
+<!-- UI V6A (§10 inbox Messages) — hors bloc app : composant autonome
+     (IIFE window.PassioUIV6A), inliné individuellement au build. ACTIF PAR
+     DÉFAUT ; coupé par localStorage.passio_ui_6a="0" ou window.PASSIO_UI_6A=false.
+     ⚠️ renderMessages() repart de zéro (innerHTML) à chaque envoi, réception et
+     frappe : la ligne de Passio est reposée par un MutationObserver, avec une
+     signature par carte pour n'écrire qu'au changement. La recherche est
+     DÉPLACÉE, jamais reconstruite (son oninput inline appelle _globalMsgSearch). -->
+<script src="js/ui-v6a-messages.js"></script>
+
+<!-- UI V6B (§11 Profil et multi-profils) — hors bloc app : composant autonome
+     (IIFE window.PassioUIV6B), inliné individuellement au build. ACTIF PAR
+     DÉFAUT ; coupé par localStorage.passio_ui_6b="0" ou window.PASSIO_UI_6B=false.
+     ⚠️ Il rend atteignable `switchToProfile()`, qui était définie et appelée par
+     PERSONNE : cliquer une carte de profil ne change qu'un FILTRE d'affichage,
+     pas l'identité active. Le bouton « Activer » est ce chaînon manquant — il
+     n'introduit aucun moteur. #profileList étant réécrit à chaque rendu (que
+     switchToProfile déclenche lui-même), les boutons sont reposés par un
+     MutationObserver, avec une signature par carte. -->
+<script src="js/ui-v6b-profil.js"></script>
+
+<!-- UI V6C (§10 « Proposer un IRL » depuis une conversation 1:1) — hors bloc
+     app : composant autonome (IIFE window.PassioUIV6C), inliné individuellement
+     au build. ACTIF PAR DÉFAUT ; coupé par localStorage.passio_ui_6c="0" ou
+     window.PASSIO_UI_6C=false.
+     ⚠️ Aucun moteur nouveau : l'entrée appelle PassioUIV3.proposeOuting, donc
+     openCreateEvent() + feedIrlBridgePrefill(). Ni GPS, ni adresse déduite, ni
+     message automatique, ni auto-ajout, ni auto-RSVP (§10 mot pour mot). Et le
+     titre suggéré est construit sur la PASSIO, jamais sur une personne : un
+     titre est public dès la création, et il peut être soumis sans relecture. -->
+<script src="js/ui-v6c-proposer-irl.js"></script>
+
 
 <!-- ======== PWA INSTALL OVERLAY ======== -->
 <div id="pwa-overlay" style="display:none;">

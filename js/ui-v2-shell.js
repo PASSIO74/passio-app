@@ -114,6 +114,17 @@
       run: function () { openStudioOnType("audio"); },
     },
     {
+      // Ajouté le 2026-08-28 : lancer un live est une action de CRÉATION, sa
+      // place est ici. Elle vivait jusqu'alors en tête de la barre des stories,
+      // qui montre ce que les gens publient — un doublon retiré le même jour.
+      // ⚠️ C'était le SEUL point d'entrée de `startVideoLive()` dans toute
+      // l'application : retirer la bulle sans poser cette entrée aurait rendu le
+      // live impossible à lancer.
+      key: "live", emoji: "🔴", title: "Live vidéo",
+      hint: "Passer en direct, tout de suite",
+      run: function () { call("startVideoLive"); },
+    },
+    {
       key: "back", emoji: "←", title: "Retour",
       hint: "Revenir aux trois actions principales",
       run: function () { renderCreateSheet("main"); },

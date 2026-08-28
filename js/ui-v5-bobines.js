@@ -17,7 +17,7 @@
 //   ① la bobine est reliée à une activité  → un seul lien « Voir l'activité »,
 //      conformément au §7 (« la fiche de l'activité correspondante est
 //      affichée directement ») ;
-//   ② sinon → « Ça m'intrigue », « Découvrir cette Passio »,
+//   ② sinon → « Ça m'intéresse », « Découvrir cette Passio »,
 //      « À vivre près de moi », « Proposer une sortie ». PASSIO ne fabrique
 //      jamais d'événement qui n'existe pas.
 //
@@ -39,7 +39,7 @@
 // L'observateur voit tout, y compris ses propres écritures — d'où le marqueur
 // d'idempotence posé sur `.reel-item`.
 //
-// ⚠️ « Ça m'intrigue » N'EST PAS UN BOUTON DÉCORATIF. Le signal est posé sur la
+// ⚠️ « Ça m'intéresse » N'EST PAS UN BOUTON DÉCORATIF. Le signal est posé sur la
 // PASSION (pas sur la bobine seule : c'est la seule granularité que les
 // moteurs existants savent consommer) dans `state.user.passionSignals`, et il
 // pèse réellement dans `feedPostScore` (app-02, bloc affinité). 100 % local,
@@ -138,7 +138,7 @@
     return "";
   }
 
-  // ── Le signal « Ça m'intrigue » ──────────────────────────────────────────
+  // ── Le signal « Ça m'intéresse » ──────────────────────────────────────────
   function signaux() {
     var st = etat();
     if (!st) return null;
@@ -259,7 +259,7 @@
 
     // ① Signal d'intérêt — le seul qui n'ouvre rien. État exposé par
     //    aria-pressed, et re-taper le retire (réversible, comme un like).
-    var b1 = chip("Ça m'intrigue", "v5-chip-signal", null);
+    var b1 = chip("Ça m'intéresse", "v5-chip-signal", null);
     b1.setAttribute("aria-pressed", intrigue(passion) ? "true" : "false");
     b1.addEventListener("click", function (e) {
       e.preventDefault();

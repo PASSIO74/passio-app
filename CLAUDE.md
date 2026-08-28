@@ -449,6 +449,71 @@ Le script est en lecture seule sur le dépôt (il n'écrit que dans son dossier 
   boot, puisqu'ils ont démarré avant que son fichier n'existe. Reste du lot UI-4 : la vue
   Liste / Carte (UI-4A3).
 
+  **Lot UI-5 — « Bobines connectées au réel » (§7 et §15), EN LIGNE le 2026-08-28.**
+  `js/ui-v5-bobines.js` + bloc « PASSIO UI V5 » en fin de `styles.css`, tests
+  `tests/e2e/ui-v5-bobines.spec.js` (15). Coupures : `localStorage.passio_ui_5="0"`,
+  `window.PASSIO_UI_5=false`. Une rangée d'actions est AJOUTÉE dans `.reel-info` ;
+  rien n'est retiré (le rail like/commentaire/soutien/partage reste entier).
+  Deux branches EXCLUSIVES, décidées par `PassioUIV3.eventRefOf` — la même règle
+  canonique que le Feed : une bobine reliée à une activité porte le seul lien
+  « Voir l'activité » ; les autres portent « Ça m'intrigue », « Découvrir
+  \<Passio\> », « À vivre près de moi », « Proposer une sortie ».
+  AUCUN moteur nouveau : `ui-v3-passerelle.js` expose désormais `seeActivities` /
+  `discoverPeople` / `proposeOuting` (les fonctions que la passerelle du Feed
+  appelle déjà), et l'ouverture d'activité passe par `openActivity`.
+  ⚠️ **Cinq pièges de ce lot.** ① Le viewer est en `z-index: 9999` alors que
+  `toast()` et `#eventDetailPage` sont à 200 et les feuilles basses à 1200 :
+  ouvertes par-dessus, elles seraient dans le DOM et INVISIBLES (seule
+  `.modal-backdrop`, 10001, monte au-dessus). Le module ferme donc le viewer
+  AVANT chaque sortie, sans exception — précédent `_openReelAuthor` — et un test
+  vérifie que `reelsState.open` est faux au moment de chaque appel de moteur ;
+  effet voulu : le « retour Feed stable » du §15 devient vrai. ② `openReels()`
+  fait `#reelsList.innerHTML = …` à CHAQUE ouverture, et `openReelById` rouvre le
+  viewer : la décoration passe par un `MutationObserver`, jamais par une
+  enveloppe de fonction. ③ « Ça m'intrigue » serait DÉCORATIF sans effet réel —
+  `state.user.likedPosts` n'est lu par aucun classement et le viewer n'en a
+  aucun. Le signal porte donc sur la PASSION (seule granularité que
+  `feedPostScore`, `irlPassionFilters` et `openPassionExplorer` savent déjà
+  consommer), vit dans `state.user.passionSignals` et ajoute 0,6 au bloc affinité
+  de `feedPostScore` ; 100 % local, réversible, borné à 200 entrées parce que le
+  blob `user_state` part EN ENTIER à chaque synchronisation. ④ Aucune bobine ne
+  portait d'`event_id` : deux bobines de démonstration en reçoivent un, sans quoi
+  la branche « Voir l'activité » serait invisible — donc indiscernable d'un lot
+  cassé (leçon UI-3B). ⑤ Les tests d'un lot « bobines » doivent VIDER les bobines
+  du seed avant d'injecter les leurs : `buildReels()` assemble seed + Supabase +
+  posts perso, donc le viewer en montre 22, et la liste étant en `scroll-snap`,
+  une chip hors écran n'est pas cliquable.
+  ⚠️ **Deux manques constatés et laissés hors du lot** (travail de fond, gelé
+  tant que le concept n'est pas figé) : `event_id` n'est PAS dans le `.select()`
+  de `supaLoadPosts`, donc une bobine RÉELLE ne peut pas porter d'activité ; et
+  le lien de partage `#reel=<id>` n'est routé par aucun code au démarrage.
+
+  **§5 de la direction — la palette PILOTE l'interface depuis le 2026-08-28.**
+  `--v2-ink` et `--v2-cloud` étaient déclarés avec ZÉRO consommateur, et le
+  violet réellement affiché restait `#7c3aed` au lieu du `#6D32F4` arrêté : la
+  charte était écrite, jamais vue. Les variables de thème du projet
+  (`--accent`, `--bg-deep`, `--text`, `--grad-hero`…) sont remappées sous
+  `:root.passio-ui-v2` — et elles seules : aucune règle existante n'est
+  réécrite, donc `localStorage.passio_ui_v2="0"` rend la charte historique à
+  l'octet près. Contraste vérifié avant/après : `#6D32F4` donne 6,15:1 sur blanc
+  contre 5,70:1 pour `#7c3aed` — le nouveau violet est plus foncé, donc plus
+  lisible. Le corail `#FF6B57` reste STRICTEMENT réservé au passage au réel
+  (§5) : il n'entre dans aucun jeton d'accent général. Typographie : Manrope
+  pour les titres et les appels à l'action (`display=swap`, autorisé par la CSP),
+  texte courant en pile système ; deux niveaux de titre distincts (26 px/800 pour
+  un écran, 17 px/800 pour un bloc).
+
+  **⚠️ Piège de déploiement mesuré le 2026-08-28 : la garde « Gouvernance
+  critique » perd une course avec l'indexation GitHub.** Sur un `push` vers
+  `main`, elle résout la PR par `gh api repos/…/commits/<sha>/pulls`. Lancée 3 s
+  après une fusion squash, l'index n'est pas encore à jour : elle sort « Aucune
+  pull request n'est associée à <sha> » et le déploiement production est SAUTÉ.
+  Ce n'est pas un défaut du code — le remède est de relancer le seul job en
+  échec une fois le run terminé (`rerun_failed_jobs`), et il passe. Ne jamais
+  annoncer « c'est en ligne » sans avoir vu le job « Déploiement production »
+  vert : entre la fusion et la publication, la chaîne repasse toute la suite
+  (~13 min) et peut buter sur cette garde.
+
   **⚠️ MISE EN LIGNE DU 2026-08-28 — les quatre lots UI-4 sont ACTIFS PAR DÉFAUT.**
   Sur ordre de Benjamin, `UI-4A0`, `UI-4A1`, `UI-4A2` et `UI-4B` sont passés de l'aperçu
   à l'URL normale, sans validation visuelle préalable — le mécanisme d'aperçu ne lui
@@ -499,6 +564,53 @@ Le script est en lecture seule sur le dépôt (il n'écrit que dans son dossier 
   AVANT la navigation, donc **aucune suite n'exerce la fenêtre « gate affiché,
   application absente »** — celle où ①, ② et ③ se produisent. Un vert e2e n'infirme
   jamais ces quatre causes.
+
+  **Lots UI-4A4, UI-5, UI-6, UI-6A et UI-6B (2026-08-28) — tous ACTIFS PAR DÉFAUT**, chacun
+  coupable seul (`localStorage.passio_ui_4a4|5|6|6a|6b = "0"`, ou le `window.PASSIO_UI_*`
+  correspondant à `false`). Aucune valeur positive n'active, rien n'est écrit dans
+  `localStorage`.
+  - **UI-4A4** — « Rencontrer » a trois cases (Liste · Carte · Outils) et les quatre
+    intentions quittent la tête pour le panneau. `js/ui-v4a4-outils.js`, tests
+    `ui-v4a4-outils.spec.js`. ⚠️ Dans le panneau, les intentions sont **RECONSTRUITES**
+    par UI-4A0 (`PassioUIV4A0.renderIntentsInto`), jamais déménagées : `#ctxToolsBody` est
+    réécrit en entier à chaque rendu, que le clic sur une intention déclenche justement —
+    une chip déplacée serait arrachée **par son propre clic**. Règle inverse pour
+    `#irlToolsBtn`, qui est *déplacé* : le reconstruire ferait écrire `_updateIrlFiltersBtn`
+    dans une pastille invisible. Et « Outils » **n'est pas un onglet** (il ouvre un
+    dialogue) : il garde son rôle de bouton et se place *à côté* du groupe `role="tab"`.
+    ⚠️ La refonte du panneau `.ctx-*` est bornée à `max-width: 1023px` : non bornée, elle
+    décollait le **rail latéral** du bord droit au-delà de 1024 px, en silence. Et elle
+    centre par `margin-inline: auto`, jamais par `translateX(-50%)` — `transform` est déjà
+    occupée par l'animation d'ouverture.
+  - **UI-5** — bobines connectées au réel. `js/ui-v5-bobines.js`. Toute sortie **ferme le
+    lecteur d'abord** ; « Ça m'intéresse » écrit un signal durable dans
+    `state.user.passionSignals`, lu par `feedPostScore`.
+  - **UI-6 (§9)** — le composer ne demande plus de choisir un format. `js/ui-v6-composer.js`.
+    ⚠️ **Le piège qui décide de tout** : `studioType` est la SEULE source de vérité de ce qui
+    est publié — `publishPost` type le post et remplit `image`/`video` d'après elle, jamais
+    d'après le média réellement attaché. Masquer les onglets sans rien d'autre publierait un
+    post « texte » avec la photo perdue **EN SILENCE**. Le bouton média unique se contente
+    donc de déclencher `#photoInput` / `#videoInput`, dont les gestionnaires **existants**
+    fixent déjà `studioType`. §11 au passage : « +10 pts » quitte le bouton et
+    `.profile-chips-row` est masquée — seul l'AFFICHAGE change, `grantReward` tourne toujours.
+  - **UI-6A (§10)** — inbox Messages : titre, « + » groupant les deux gestes, recherche
+    dessous, Passio devant l'aperçu. `js/ui-v6a-messages.js`. ⚠️ `renderMessages()` repart de
+    zéro (`innerHTML`) à chaque envoi, réception et frappe, et **sort tôt** quand l'écran
+    n'est pas actif : la décoration passe par un MutationObserver + signature par carte.
+  - **UI-6B (§11)** — profil : « Modifier », « Mes Passio », et surtout **Actif / Activer**.
+    `js/ui-v6b-profil.js`. ⚠️ Ce lot répare un défaut réel : `switchToProfile()` — la seule
+    fonction qui change l'identité active — était **définie et appelée par personne**, un clic
+    sur une carte de profil n'agissant que sur le filtre d'affichage (`toggleProfileSelect`).
+    D'où deux conséquences : le bouton « Activer » est ce chaînon manquant, et son clic
+    **doit stopper sa propagation**, sinon activer une identité basculerait aussi ce filtre.
+  ⚠️ **Trois règles communes à ces modules**, payées à l'écriture : ① un **verrou de coupure**
+  dans la fonction de décoration (`if (!actif()) return;`) — un rendez-vous armé AVANT la
+  coupure survit à l'arrêt de l'observateur et reconstruit la surface juste après sa dépose,
+  le kill switch paraissant sans effet ; ② rendre des nœuds dans un hôte encore **détaché**
+  les laisse invisibles aux synchronisations qui balaient le document ; ③ `photoDataUrl`,
+  `studioType`, `irlPassionFilters`… sont des `let` de **portée script** : ils existent comme
+  identifiants globaux mais **ne sont pas** des propriétés de `window` — `window.studioType`
+  vaut toujours `undefined`, et un test qui l'interroge expire sans rien prouver.
 - `docs/PIEGES_CONNUS.md` — les 56 fiches détaillées (extrait de ce fichier le 2026-08-07).
 - `docs/HISTORIQUE_PROJET.md` — état 2026-06-11, backlog terminé, logs d’optimisation.
 - `docs/ARCHITECTURE.md`, `docs/CONTROLE_16_MISSIONS.md`, `docs/CHECKLIST_COMMERCIALISATION.md`.

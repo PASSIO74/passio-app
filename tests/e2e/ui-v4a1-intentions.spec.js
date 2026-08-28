@@ -27,6 +27,12 @@
 //      UI-4A0 rend l'écran historique ENTIER — dans les deux cas sans effacer
 //      le choix détaillé posé entre-temps ;
 //   ⑨ mobile 320 / 390 / 430 px, cibles ≥ 44 px, clavier et aria-pressed.
+//
+// ⚠️ RÉALIGNÉ le 2026-08-28 (lot UI-4A4). Les quatre intentions ont QUITTÉ la
+// tête pour le panneau « Outils ». Cette suite les observe à leur place
+// d'origine : elle pose au boot le kill switch d'UI-4A4 et garde toutes ses
+// assertions. Que le RACCORD au moteur survive au déménagement est prouvé
+// dans `tests/e2e/ui-v4a4-outils.spec.js`, panneau ouvert.
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
 
@@ -52,6 +58,8 @@ async function espionnerGeo(page) {
 }
 
 async function boot(page, opts = {}) {
+  // Coupure du lot AVAL (UI-4A4) : voir l'entête.
+  await page.addInitScript(() => localStorage.setItem("passio_ui_4a4", "0"));
   if (opts.killLocal) {
     await page.addInitScript(() => localStorage.setItem("passio_ui_4a1", "0"));
   }
