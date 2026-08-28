@@ -1728,6 +1728,15 @@
      allonger la chaîne d'enveloppes d'UI-4A0 et UI-4A1. -->
 <script src="js/ui-v4a2-cartes.js"></script>
 
+<!-- UI V4 (lot UI-4A3 — commutateur Liste / Carte de « Rencontrer ») — hors
+     bloc app : composant autonome (IIFE window.PassioUIV4A3), inliné
+     individuellement au build. ACTIF PAR DÉFAUT ; coupé par
+     localStorage.passio_ui_4a3="0" ou window.PASSIO_UI_4A3=false.
+     ⚠️ Il ne touche jamais l'objet carte : il pilote la seule fonction
+     historique toggleIrlMapPeek(), qui déplie/replie ET programme le recadrage
+     du moteur cartographique. -->
+<script src="js/ui-v4a3-vue.js"></script>
+
 
 <!-- ======== PWA INSTALL OVERLAY ======== -->
 <div id="pwa-overlay" style="display:none;">

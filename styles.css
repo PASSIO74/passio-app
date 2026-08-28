@@ -10101,3 +10101,77 @@ body.ctx-locked #appMain { overflow: hidden; }
   :root.passio-ui-4a2 .v4a2-titre { font-size: 14.5px; }
   :root.passio-ui-4a2 .v4a2-actions .btn.small { padding: 0 11px; font-size: 12.5px; }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   PASSIO UI V4 — lot UI-4A3 : commutateur Liste / Carte, ACTIF PAR DÉFAUT
+   (voir js/ui-v4a3-vue.js)
+
+   Tout est ancré à `:root.passio-ui-4a3` et à l'attribut `data-v4a3-vue` que
+   le module pose sur la racine. Le kill switch retire les deux et rend l'écran
+   d'avant, sans rechargement.
+
+   ⚠️ En vue Liste, RIEN n'est masqué : l'écran est exactement l'historique
+   (carte en bande repliée, liste dessous). C'est la vue Carte qui est neuve —
+   elle donne l'écran à la carte et met la liste de côté. Masquer le conteneur
+   de carte en vue Liste donnerait une carte blanche au premier dépliage, le
+   moteur cartographique s'initialisant paresseusement.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+:root.passio-ui-4a3 .v4a3-vue {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  padding: 3px;
+  margin: 2px 0 12px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  box-sizing: border-box;
+  max-width: 100%;
+}
+
+:root.passio-ui-4a3 .v4a3-onglet {
+  appearance: none;
+  -webkit-appearance: none;
+  font-family: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  /* 44 px : la cible tactile de référence du projet. */
+  min-height: 44px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color .16s ease, color .16s ease;
+}
+
+/* Violet = sélection (charte). L'état ne repose PAS que sur la couleur :
+   `aria-selected` le dit aux technologies d'assistance. */
+:root.passio-ui-4a3 .v4a3-onglet[aria-selected="true"] {
+  background: var(--accent);
+  color: #fff;
+}
+:root.passio-ui-4a3 .v4a3-onglet:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Vue Carte : la carte prend l'écran, la liste et le bouton « Afficher plus »
+   passent la main. La liste n'est pas retirée du DOM — le moteur continue d'y
+   écrire, et revenir à la vue Liste la retrouve telle quelle. */
+:root.passio-ui-4a3[data-v4a3-vue="carte"] #eventList { display: none; }
+:root.passio-ui-4a3[data-v4a3-vue="carte"] #irlPassionRow { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  :root.passio-ui-4a3 .v4a3-onglet { transition: none; }
+}
+
+@media (max-width: 359px) {
+  :root.passio-ui-4a3 .v4a3-onglet { font-size: 12.5px; padding: 0 8px; }
+}
