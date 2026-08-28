@@ -602,10 +602,25 @@ test.describe("CDV — Mes lieux (liste d'envies)", () => {
   test("un lieu s'ajoute à la main et rejoint la liste immédiatement", async ({ page }) => {
     await bootCdv(page);
     await page.evaluate(() => { window.passioGeocode = async () => null; openAddSavedPlace(); });
+    // ⚠️ Instabilité CI mesurée le 2026-08-28 — course de FOCUS, pas de rendu.
+    // `openAddSavedPlace()` arme `setTimeout(focus #splNewName, 80)` (app-03).
+    // Or `fill()` procède en DEUX aller-retours : le script injecté focalise le
+    // champ, puis `Input.insertText` vise l'élément focalisé À CET INSTANT. Sur
+    // une machine lente, la minuterie du produit tombe entre les deux pour
+    // #splNewNote : la note s'écrit dans le champ NOM, qui vaut alors
+    // « Cap FréhelCoucher de soleil » — un seul lieu enregistré, mais mal nommé
+    // (exactement l'échec vu sur la CI). On attend donc la CONDITION observable
+    // « le focus différé a déjà eu lieu » avant toute saisie : la minuterie ne
+    // peut plus déplacer le focus ensuite.
+    await page.waitForFunction(() => document.activeElement && document.activeElement.id === "splNewName");
     await page.fill("#splNewName", "Cap Fréhel");
     await page.fill("#splNewNote", "Coucher de soleil");
+    // Le formulaire porte bien ce qui a été saisi (garde explicite du piège ci-dessus).
+    await expect(page.locator("#splNewName")).toHaveValue("Cap Fréhel");
+    await expect(page.locator("#splNewNote")).toHaveValue("Coucher de soleil");
     await page.getByRole("button", { name: /Ajouter à ma liste/ }).click();
-    await page.waitForTimeout(200);
+    // Attendre l'ÉCRITURE observable, jamais une durée.
+    await expect.poll(() => page.evaluate(() => savedPlaces().length), { timeout: 15000 }).toBe(1);
     const pl = await page.evaluate(() => savedPlaces());
     expect(pl).toHaveLength(1);
     expect(pl[0].name).toBe("Cap Fréhel");
