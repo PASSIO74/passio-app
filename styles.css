@@ -10162,6 +10162,25 @@ body.ctx-locked #appMain { overflow: hidden; }
   outline-offset: 2px;
 }
 
+/* Vue Liste : la carte QUITTE l'écran. C'est le sens même d'un commutateur —
+   laisser la carte visible dans l'onglet « Liste » n'avait pas de sens, et
+   Benjamin l'a signalé dès le premier essai (2026-08-28).
+
+   ⚠️ Elle n'est PAS en `display: none`. Le moteur cartographique s'initialise
+   paresseusement et MESURE son conteneur : un conteneur sans dimensions lui
+   donne une carte blanche au retour sur la vue Carte. On la sort donc du FLUX
+   en lui conservant sa boîte, technique hors-écran classique. Le plein écran
+   est exclu de la règle : il repositionne lui-même le conteneur en `fixed`. */
+:root.passio-ui-4a3[data-v4a3-vue="liste"] #irlMapWrap:not(.fullscreen) {
+  position: absolute;
+  left: -10000px;
+  top: 0;
+  width: 100%;
+  max-width: 100%;
+  margin-bottom: 0;
+  pointer-events: none;
+}
+
 /* Vue Carte : la carte prend l'écran, la liste et le bouton « Afficher plus »
    passent la main. La liste n'est pas retirée du DOM — le moteur continue d'y
    écrire, et revenir à la vue Liste la retrouve telle quelle. */
