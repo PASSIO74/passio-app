@@ -2791,7 +2791,7 @@
       letter-spacing: 0.05em;
     }
 
-    /* Onglets de contenu du profil : segmented control en icônes seules */
+    /* Onglets de contenu du profil : segmented control icône + libellé */
     .profile-tabs {
       display: flex;
       gap: 2px;
@@ -2804,10 +2804,12 @@
     .profile-tab {
       flex: 1;
       display: flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
-      min-height: 44px;
-      padding: 0;
+      gap: 3px;
+      min-height: 52px;
+      padding: 5px 2px;
       background: transparent;
       border: none;
       border-radius: 12px;
@@ -2815,7 +2817,24 @@
       cursor: pointer;
       transition: background 0.18s ease, color 0.18s ease, transform 0.18s ease;
     }
-    .profile-tab svg { width: 21px; height: 21px; display: block; }
+    .profile-tab svg { width: 20px; height: 20px; display: block; flex: none; }
+    /* Libellé sous l'icône : dit à quoi correspond l'onglet (les icônes seules
+       étaient devinettes — bobine vs vidéo vs carnet). Petit, jamais coupé. */
+    .profile-tab-lbl {
+      font-size: 10px;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.01em;
+      white-space: nowrap;
+    }
+    /* Rappel de ce que fait la rangée d'onglets (filtre, multi-sélection). */
+    .profile-tabs-hint {
+      margin: 16px 0 -8px;
+      font-size: 11px;
+      line-height: 1.45;
+      color: var(--muted);
+    }
+    .profile-tabs-hint + .profile-tabs { margin-top: 8px; }
     .profile-tab:hover { color: var(--text); background: rgba(124, 58, 237, 0.06); }
     /* Coché = filtre actif (multi-sélection) : pastille + anneau accent */
     .profile-tab.active {
@@ -2824,6 +2843,7 @@
       box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), inset 0 0 0 1.5px rgba(124, 58, 237, 0.35);
     }
     .profile-tab.active svg { stroke-width: 2; }
+    .profile-tab.active .profile-tab-lbl { font-weight: 800; }
     .profile-tab:active { transform: scale(0.94); }
 
     .passion-photo-badge {
@@ -9547,16 +9567,24 @@ body.ctx-locked #appMain { overflow: hidden; }
   min-width: 0;
 }
 
-/* Un LIEN, pas un bouton plein : discret dans la carte, mais la cible tactile
-   fait bien 44 px de haut (le rembourrage négatif garde la ligne compacte).
-   ⚠️ ALLÉGÉ le 2026-08-28, sur retour de Benjamin (« pas joli, trop voyant »).
-   Ce qui change et pourquoi : la graisse passe de 800 à 600 et la taille de 13
-   à 12,5 px — en 800 le lien pesait plus lourd que le texte de la publication
-   qu'il accompagne, ce qui est exactement l'inverse de ce qu'on veut ; et le
-   corail saturé quitte le LIBELLÉ pour ne rester que sur le chevron. Le signal
-   « passage au réel » du §5 est ainsi conservé, mais comme un accent d'un seul
-   caractère au lieu d'une ligne entière. Le texte prend l'encre calme du thème,
-   qui monte au passage à ~8:1 de contraste contre 5,3 auparavant. */
+/* Une PASTILLE, pas un lien de texte ni un bouton plein : demandé par Benjamin
+   le 2026-08-28 (« un petit onglet, plus discret »). Le libellé ne change pas —
+   il reste celui du panneau qu'il ouvre, une seule constante côté JS — mais il
+   se pose désormais dans une pilule au fond quasi-blanc, cerclée d'un filet, en
+   11,5 px. Une pastille lue comme un objet secondaire pèse moins qu'une ligne de
+   texte accentuée, qui se lisait comme une phrase de la publication.
+
+   ⚠️ Deux contraintes que ce dessin doit tenir en même temps :
+   ① la cible tactile fait 44 px de haut (test « cible tactile ≥ 44 px », mesuré
+      sur la BOÎTE du bouton — un simple débord en ::before ne compterait pas) ;
+   ② la pilule VISIBLE ne doit faire que ~30 px, sans quoi elle redevient un gros
+      bouton. D'où le dessin : le bouton garde ses 44 px, et c'est un ::before
+      en « inset: 7px 0 » (z-index négatif, sous le texte) qui PEINT la pilule.
+   Le rembourrage négatif garde la ligne compacte, comme avant.
+
+   Historique conservé : le corail saturé a quitté le LIBELLÉ le 2026-08-28 pour
+   ne rester que sur le chevron — le signal « passage au réel » du §5 tient en un
+   caractère, le texte gardant l'encre calme du thème (~8:1 de contraste). */
 :root.passio-ui-3 .v3-tempt {
   appearance: none;
   -webkit-appearance: none;
@@ -9567,25 +9595,38 @@ body.ctx-locked #appMain { overflow: hidden; }
   display: inline-flex;
   align-items: center;
   min-height: 44px;
-  padding: 0 4px;
+  padding: 0 11px;
   margin: -11px 0;
-  font-size: 12.5px;
+  font-size: 11.5px;
   font-weight: 600;
   letter-spacing: 0.005em;
   color: var(--text-dim);
   cursor: pointer;
-  border-radius: 8px;
   transition: color 140ms ease;
+}
+/* La pilule elle-même. Fond OPAQUE volontairement (var(--bg-deep)) : le test de
+   contraste remonte les ancêtres jusqu'au premier fond opaque, et une teinte
+   « rgba(...) » lui ferait mesurer la couleur pleine en ignorant l'alpha. */
+:root.passio-ui-3 .v3-tempt::before {
+  content: "";
+  position: absolute;
+  inset: 7px 0;
+  z-index: -1;
+  background: var(--bg-deep);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  transition: background 140ms ease, border-color 140ms ease;
 }
 :root.passio-ui-3 .v3-tempt::after {
   content: "›";
   margin-left: 5px;
-  font-size: 15px;
+  font-size: 14px;
   line-height: 1;
   color: var(--v3-coral-texte);
   transition: transform 140ms ease;
 }
 :root.passio-ui-3 .v3-tempt:hover { color: var(--v3-coral-texte); }
+:root.passio-ui-3 .v3-tempt:hover::before { border-color: var(--v3-coral-texte); }
 :root.passio-ui-3 .v3-tempt:hover::after { transform: translateX(2px); }
 :root.passio-ui-3 .v3-tempt {
   /* La cible dépasse légèrement la ligne compacte : ce contexte d'empilement
@@ -11097,37 +11138,11 @@ body.ctx-locked #appMain { overflow: hidden; }
   :root.passio-ui-7 .v7-tabs { gap: 4px; }
 }
 
-/* Les cinq anciens onglets redeviennent de petits sous-filtres nommés. */
-:root.passio-ui-7 .profile-tabs.v7-subfilters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  border: 0;
-  background: transparent;
-  padding: 0;
-  margin: 0 0 10px;
-}
-:root.passio-ui-7 .v7-subfilters .profile-tab {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  min-height: 32px;
-  padding: 4px 10px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--bg-card);
-  color: var(--muted);
-  font-size: 11.5px;
-  font-weight: 700;
-}
-:root.passio-ui-7 .v7-subfilters .profile-tab svg { width: 14px; height: 14px; }
-:root.passio-ui-7 .v7-subfilters .profile-tab.active {
-  border-color: var(--accent);
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 10%, var(--bg-card));
-}
-.v7-subfilter-label { white-space: nowrap; }
+/* Les cinq anciens onglets restent le SEGMENTED CONTROL de la PR #185 —
+   icone + libelle, deja nomme dans le markup. Ce lot ne le redessine pas :
+   il le DEPLACE dans « Publications », avec la ligne d'aide qui l'explique.
+   Seule retouche : les marges, que le panneau rend inutiles en haut. */
+:root.passio-ui-7 [data-v7-pan] .profile-tabs-hint { margin-top: 0; }
 
 /* L'état vide ne doit plus pousser « Publications populaires » hors de l'écran
    (§6). Mesure a 390 px : 288 px avant, 163 px apres. La pastille ronde de

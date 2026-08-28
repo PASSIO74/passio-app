@@ -293,6 +293,20 @@ Le script est en lecture seule sur le dépôt (il n'écrit que dans son dossier 
   violet → corail y ont été RETIRÉS — l'en-tête du post porte déjà la Passio, la répéter
   en bas alourdissait la carte. Le trait subsiste dans la feuille basse, comme transition
   d'ouverture. La direction §A19 est amendée dans ce sens.
+  ⚠️ **Amendement du 2026-08-28, sur demande de Benjamin (« un petit onglet, plus
+  discret »)** : ce lien de texte est devenu une **pastille**, et son libellé de carte
+  a été raccourci en « **Vivre ça en vrai** ». Deux conséquences à connaître avant d'y
+  toucher. ① Le libellé n'est plus unique : `LIBELLE_CTA_CARTE` (la pastille) et
+  `LIBELLE_CTA` (le titre du panneau, resté « Trouver une expérience ») sont deux
+  constantes — la carte invite, le panneau promet, et le panneau tient toujours ce que
+  la carte annonce. ② La pastille VISIBLE ne fait que ~30 px alors que la cible tactile
+  doit rester à 44 px (test « cible tactile ≥ 44 px », mesuré sur la **boîte** du bouton,
+  qu'un simple débord en pseudo-élément ne satisferait pas) : le bouton garde donc ses
+  44 px et c'est un `::before` en `inset: 7px 0` (z-index négatif) qui **peint** la
+  pilule. Son fond est **opaque** (`var(--bg-deep)`) délibérément : le test de contraste
+  remonte les ancêtres jusqu'au premier fond opaque et prendrait une teinte `rgba(…)`
+  pour une couleur pleine, alpha ignoré — un rouge ou un vert qui ne prouverait rien.
+  UI-3B (« Voir l'activité ») partage `.v3-tempt` et devient une pastille avec elle.
   Implémentation UI-3A (passerelle « Trouver une expérience » du Feed vers l'IRL) :
   `js/ui-v3-passerelle.js` + bloc « PASSIO UI V3 » en fin de `styles.css`, tests
   `tests/e2e/ui-v3-passerelle.spec.js`. **ACTIF PAR DÉFAUT** depuis la validation

@@ -246,11 +246,18 @@
     });
 
     // ── Publications : sous-filtres, contenu, puis les plus populaires ──
+    // ⚠️ La ligne d'aide (`.profile-tabs-hint`) suit le groupe qu'elle explique :
+    // la laisser au-dessus de la barre d'onglets la ferait commenter un groupe
+    // qui n'est plus là.
+    var aide = ec.querySelector(".profile-tabs-hint");
+    if (aide) deplacer(aide, hotes.publications);
     var sousFiltres = ec.querySelector(".profile-tabs");
     if (sousFiltres) {
+      // Marqueur seulement : les libellés sont posés DANS LE MARKUP depuis la
+      // PR #185 (`.profile-tab-lbl`). Ce lot n'en repose aucun — deux libellés
+      // pour un onglet, c'était le doublon garanti.
       sousFiltres.classList.add("v7-subfilters");
       deplacer(sousFiltres, hotes.publications);
-      nommerSousFiltres(sousFiltres);
     }
     deplacer(mesPosts, hotes.publications);
     var titrePop = titreContenant(ec, "Publications populaires");
@@ -308,20 +315,6 @@
     return b;
   }
 
-  // Les cinq onglets d'icônes deviennent de petits sous-filtres NOMMÉS : leur
-  // `title` porte déjà le mot juste, on ne l'invente pas. Les `onclick` inline
-  // et les attributs `data-tab` ne sont pas touchés.
-  function nommerSousFiltres(hote) {
-    var btns = hote.querySelectorAll(".profile-tab");
-    for (var i = 0; i < btns.length; i++) {
-      if (btns[i].querySelector(".v7-subfilter-label")) continue;
-      var s = document.createElement("span");
-      s.className = "v7-subfilter-label";
-      s.textContent = btns[i].getAttribute("title") || "";
-      btns[i].appendChild(s);
-    }
-  }
-
   function choisirOnglet(cle) {
     ongletActif = cle;
     var barre = el(BARRE_ID);
@@ -341,10 +334,6 @@
 
   function retirerProfil() {
     try {
-      var labels = document.querySelectorAll(".v7-subfilter-label");
-      for (var i = 0; i < labels.length; i++) {
-        if (labels[i].parentNode) labels[i].parentNode.removeChild(labels[i]);
-      }
       var sf = document.querySelector(".profile-tabs.v7-subfilters");
       if (sf) sf.classList.remove("v7-subfilters");
       rendreLesNoeuds();

@@ -367,8 +367,16 @@ test.describe("UI-7 §6 — trois onglets nommés au Profil", () => {
     expect(place.events).toBe("activites");
     expect(place.profils).toBe("apropos");
     expect(place.sousFiltres).toBe(5);   // les cinq types restent accessibles
-    expect(await page.locator(".v7-subfilters .v7-subfilter-label").allTextContents())
+    // Les libellés viennent du MARKUP (`.profile-tab-lbl`, PR #185) : ce lot
+    // n'en repose aucun — deux libellés pour un onglet, c'était le doublon.
+    expect(await page.locator(".v7-subfilters .profile-tab-lbl").allTextContents())
       .toEqual(["Tout", "Photos", "Vidéos", "Bobines", "Carnets"]);
+    // La ligne d'aide suit le groupe qu'elle explique.
+    expect(await page.evaluate(() => {
+      const h = document.querySelector(".profile-tabs-hint");
+      const p = h && h.closest("[data-v7-pan]");
+      return p ? p.getAttribute("data-v7-pan") : null;
+    })).toBe("publications");
 
     // Publications regroupe tout par défaut : le prédicat « posts » est vrai
     // pour n'importe quel contenu — ce n'est pas un filtre « texte seul ».
@@ -549,14 +557,16 @@ test.describe("UI-7 — le kill switch rend l'interface d'avant", () => {
         // Les nœuds historiques sont revenus DIRECTEMENT dans l'écran.
         myPosts: dans("myPosts"),
         profileList: dans("profileList"),
-        labels: document.querySelectorAll(".v7-subfilter-label").length,
+        // Les libellés du markup (#185) survivent à la coupure : ce lot ne les
+        // a jamais posés, il ne doit pas les emporter.
+        labels: document.querySelectorAll(".profile-tab-lbl").length,
       };
     });
     expect(apres.racine).toBe(false);
     expect(apres.barre).toBe(false);
     expect(apres.panneaux).toBe(0);
     expect(apres.more).toBe(false);
-    expect(apres.labels).toBe(0);
+    expect(apres.labels).toBe(5);
     expect(apres.myPosts).toBe("screen-profiles");
     expect(apres.profileList).toBe("screen-profiles");
 
