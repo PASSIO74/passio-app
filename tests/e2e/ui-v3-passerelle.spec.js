@@ -58,6 +58,16 @@ async function boot(page, opts = {}) {
   if (opts.killMemoire) {
     await page.addInitScript(() => { window.PASSIO_UI_3 = false; });
   }
+  // Coupure du lot qui RECOUVRE le comportement historique observé — ici UI-4A0
+  // (tête de l'écran « Rencontrer », active par défaut depuis le 2026-08-28),
+  // qui enveloppe `renderIRL` pour armer `_passioIrlSkipGeoOnce` avant chaque
+  // rendu. Convention maison, déjà appliquée aux suites du pont historique face
+  // à UI-3A : la suite qui observe le moteur historique pose le kill switch AU
+  // BOOT et garde toutes ses assertions ; la cohabitation est prouvée à part.
+  // (Couper UI-4A0 coupe aussi UI-4A1, qui en hérite — sans effet ici.)
+  if (opts.killV4a0) {
+    await page.addInitScript(() => localStorage.setItem("passio_ui_4a0", "0"));
+  }
   // Chemin NOMINAL = l'URL normale, depuis la promotion du 2026-08-27. Seul le
   // test de compatibilité du lien d'aperçu demande explicitement `preview: true` :
   // faire l'inverse laisserait la promotion couverte par un seul cas, alors
@@ -182,6 +192,36 @@ async function taperCarteVisible(page, offset) {
 
   await page.locator(`[data-v3-tempt="${id}"]`).click();
   return id;
+}
+
+// Tape un lien de passerelle DÉSIGNÉ (une carte précise), en lui appliquant la
+// même précaution que ci-dessus : on l'amène dans la vue, puis on attend qu'il
+// ait cessé de bouger avant de taper. Motif identique, raison identique — les
+// `.post` portent `content-visibility: auto` et chaque carte qui entre dans la
+// vue remplace son estimation de hauteur par sa hauteur RÉELLE, ce qui décale
+// tout ce qui suit ; Playwright, qui exige deux frames stables et abandonne au
+// bout de 15 s, tombait au hasard de la charge du runner (instabilité observée
+// sur les taps directs de cette suite). Rien n'est affaibli : ce que ces tests
+// examinent, c'est ce qui se passe APRÈS le tap.
+// ⚠️ `.first()` et `document.querySelector` désignent la MÊME cible (le premier
+// nœud correspondant) : un sélecteur qui en vise plusieurs reste utilisable sans
+// violer le mode strict de Playwright, et l'attente porte bien sur ce qui sera
+// tapé.
+async function taperLien(page, selecteur) {
+  const lien = page.locator(selecteur).first();
+  await expect(lien).toBeVisible();
+  await lien.scrollIntoViewIfNeeded();
+  await page.waitForFunction((sel) => {
+    const el = document.querySelector(sel);
+    if (!el) return false;
+    const t = Math.round(el.getBoundingClientRect().top);
+    if (window.__v3TopL != null && Math.abs(window.__v3TopL - t) <= 1) {
+      window.__v3TopLN = (window.__v3TopLN || 0) + 1;
+    } else { window.__v3TopLN = 0; }
+    window.__v3TopL = t;
+    return window.__v3TopLN >= 3;
+  }, selecteur, { timeout: 15000, polling: 100 });
+  await lien.click();
 }
 
 // ── ① PROMOTION : l'URL normale PORTE la passerelle ────────────────────────
@@ -315,7 +355,7 @@ test("la passerelle survit à un aller-retour entre écrans", async ({ page }) =
   await expect(page.locator("#feedList [data-v3-tempt]").first()).toBeVisible();
 
   // …et le parcours reste complet après l'aller-retour.
-  await page.locator("#feedList [data-v3-tempt]").first().click();
+  await taperLien(page, "#feedList [data-v3-tempt]");
   await expect(page.locator("#v3PassioSheet")).toBeVisible();
   await expect(page.locator("#v3PassioSheet [data-v3-choice]")).toHaveCount(3);
 });
@@ -325,7 +365,7 @@ test("le tap ouvre « Trouver une expérience » avec exactement trois actions",
   await boot(page);
   await seedFeed(page, POSTS);
 
-  await page.locator('article.post[data-postid="v3_a"] [data-v3-tempt]').click();
+  await taperLien(page, 'article.post[data-postid="v3_a"] [data-v3-tempt]');
   const sheet = page.locator("#v3PassioSheet");
   await expect(sheet).toBeVisible();
   await expect(sheet.locator("#v3SheetTitle")).toHaveText("Trouver une expérience");
@@ -357,7 +397,7 @@ test("Escape ferme le panneau et rien n'a été créé", async ({ page }) => {
     follows: (state.user.following || []).length,
   }));
 
-  await page.locator('article.post[data-postid="v3_a"] [data-v3-tempt]').click();
+  await taperLien(page, 'article.post[data-postid="v3_a"] [data-v3-tempt]');
   await expect(page.locator("#v3PassioSheet")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.locator("#v3PassioSheet")).toBeHidden();
@@ -372,38 +412,93 @@ test("Escape ferme le panneau et rien n'a été créé", async ({ page }) => {
 });
 
 // ── ⑤ Les trois suites ouvrent les moteurs EXISTANTS ───────────────────────
-test("« Voir les activités » ouvre l'IRL filtré sur la Passio, sans GPS demandé", async ({ page }) => {
-  await boot(page);
-  // La géolocalisation est neutralisée AVANT le clic : si un appel partait, la
-  // sonde le verrait. UI-3A ne doit jamais en émettre un.
+// Sonde de géolocalisation posée AVANT tout clic : si un appel partait, elle le
+// verrait. UI-3A ne doit jamais en émettre un.
+async function sondeGeo(page) {
   await page.evaluate(() => {
     window.__geoCalls = 0;
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition = function () { window.__geoCalls++; };
     }
   });
+}
+
+test("« Voir les activités » ouvre l'IRL filtré sur la Passio, sans GPS demandé", async ({ page }) => {
+  await boot(page);
+  await sondeGeo(page);
   await seedFeed(page, POSTS);
 
-  await page.locator('article.post[data-postid="v3_a"] [data-v3-tempt]').click();
+  await taperLien(page, 'article.post[data-postid="v3_a"] [data-v3-tempt]');
   await page.locator('[data-v3-choice="activities"]').click();
 
   await expect(page.locator("#v3PassioSheet")).toBeHidden();
   await expect(page.locator("#screen-irl")).toHaveClass(/active/);
   // Le filtre EXISTANT porte la Passio, et elle seule.
   expect(await page.evaluate(() => Array.from(irlPassionFilters))).toEqual(["musique"]);
-  // …et la tuile correspondante est bien active à l'écran.
+  // …et la tuile correspondante est bien active dans la rangée EXISTANTE. La
+  // tête UI-4A0 s'ajoute AU-DESSUS de l'écran historique sans le remplacer :
+  // `#irlPassionRow` est toujours là, et c'est toujours lui que le moteur
+  // (`renderIrlPassionTiles`) marque.
   await expect(page.locator('#irlPassionRow [data-irlpassion="musique"]')).toHaveClass(/active/);
   // Aucune activité, aucun RSVP créés par le passage.
   expect(await page.evaluate(() => (state.userEvents || []).length)).toBe(0);
   expect(await page.evaluate(() => (state.user.joinedEvents || []).length)).toBe(0);
+  // L'INVARIANT du lot, intact : arriver par « Voir les activités » ne demande
+  // jamais la position.
   expect(await page.evaluate(() => window.__geoCalls)).toBe(0);
 
-  // …et la suppression est À USAGE UNIQUE : le geste suivant SUR l'écran IRL
-  // redemande la position normalement. Le marqueur ne peut donc pas couper
-  // durablement la géolocalisation de l'app.
+  // ⚠️ Réécrit le 2026-08-28, jour où UI-4A0 (tête de l'écran « Rencontrer »)
+  // est passé en ACTIF PAR DÉFAUT. Ce test affirmait ici que le rendu SUIVANT de
+  // l'écran IRL redemandait la position : c'était vrai tant que `renderIRL`
+  // était le moteur historique NU. UI-4A0 l'enveloppe désormais pour armer le
+  // MÊME marqueur `_passioIrlSkipGeoOnce` avant CHAQUE rendu — sur l'URL
+  // normale, plus aucun rendu de cet écran n'émet de demande. L'ancien énoncé
+  // est devenu faux par changement de PRODUIT, pas par régression d'UI-3A ; son
+  // énoncé d'origine est reconduit tel quel dans le test suivant, qui coupe
+  // UI-4A0 au boot pour observer le moteur historique seul.
+  //
+  // Ce que l'on verrouille ici, sur la configuration RÉELLE : le marqueur est
+  // toujours CONSOMMÉ (jamais laissé armé), un rendu de plus reste silencieux,
+  // et ce silence n'est pas un GPS éteint — le geste explicite le redemande
+  // immédiatement.
   expect(await page.evaluate(() => window._passioIrlSkipGeoOnce)).toBe(false);
   await page.evaluate(() => renderIRL());
-  expect(await page.evaluate(() => window.__geoCalls)).toBe(1);
+  expect(await page.evaluate(() => window.__geoCalls),
+    "UI-4A0 actif : aucun rendu de l'écran IRL ne demande la position").toBe(0);
+  expect(await page.evaluate(() => window._passioIrlSkipGeoOnce)).toBe(false);
+
+  await page.evaluate(() => requestUserLocation());
+  expect(await page.evaluate(() => window.__geoCalls),
+    "un geste explicite redemande la position : rien n'est durablement éteint").toBe(1);
+});
+
+// Le pendant du précédent, dans la configuration où le comportement historique
+// est observable : UI-4A0 coupé au boot. L'énoncé est EXACTEMENT celui d'avant
+// la promotion — la suppression est à usage unique, le geste suivant SUR l'écran
+// IRL redemande la position — et il prouve toujours la même chose : le marqueur
+// posé par UI-3A ne peut pas couper durablement la géolocalisation de l'app.
+test("UI-4A0 coupé : le marqueur d'UI-3A reste à USAGE UNIQUE", async ({ page }) => {
+  await boot(page, { killV4a0: true });
+  await sondeGeo(page);
+  await seedFeed(page, POSTS);
+
+  await taperLien(page, 'article.post[data-postid="v3_a"] [data-v3-tempt]');
+  await page.locator('[data-v3-choice="activities"]').click();
+
+  await expect(page.locator("#screen-irl")).toHaveClass(/active/);
+  expect(await page.evaluate(() => Array.from(irlPassionFilters))).toEqual(["musique"]);
+  // Prémisse : la tête n'est pas là, c'est bien le moteur historique que l'on
+  // observe — sans quoi ce test dirait la même chose que le précédent.
+  expect(await page.evaluate(() => !!document.getElementById("v4a0Head"))).toBe(false);
+
+  // UI-4A0 hors circuit, ce zéro n'est plus dû qu'au marqueur d'UI-3A : c'est ici
+  // — et ici seulement — que l'invariant du lot est prouvé SANS filet.
+  expect(await page.evaluate(() => window.__geoCalls),
+    "UI-3A seul : la passerelle n'émet aucune demande de position").toBe(0);
+  expect(await page.evaluate(() => window._passioIrlSkipGeoOnce)).toBe(false);
+  await page.evaluate(() => renderIRL());
+  expect(await page.evaluate(() => window.__geoCalls),
+    "le geste suivant SUR l'écran IRL redemande la position, normalement").toBe(1);
 });
 
 test("« Découvrir des personnes » ouvre le parcours Passion, sans contact automatique", async ({ page }) => {
@@ -412,7 +507,7 @@ test("« Découvrir des personnes » ouvre le parcours Passion, sans contact aut
 
   const suivisAvant = await page.evaluate(() => (state.user.following || []).length);
 
-  await page.locator('article.post[data-postid="v3_a"] [data-v3-tempt]').click();
+  await taperLien(page, 'article.post[data-postid="v3_a"] [data-v3-tempt]');
   await page.locator('[data-v3-choice="people"]').click();
 
   await expect(page.locator("#v3PassioSheet")).toBeHidden();
@@ -430,7 +525,7 @@ test("« Proposer une sortie » préremplit le formulaire IRL existant sans rien
   await boot(page);
   await seedFeed(page, POSTS);
 
-  await page.locator('article.post[data-postid="v3_a"] [data-v3-tempt]').click();
+  await taperLien(page, 'article.post[data-postid="v3_a"] [data-v3-tempt]');
   await page.locator('[data-v3-choice="propose"]').click();
 
   await expect(page.locator("#v3PassioSheet")).toBeHidden();
@@ -570,7 +665,7 @@ test("une aide contextuelle VISIBLE n'empêche pas la passerelle", async ({ page
   await expect(bulle).toBeVisible();
 
   // Le parcours reste atteignable, aide affichée.
-  await page.locator('article.post[data-postid="v3_a"] [data-v3-tempt]').click();
+  await taperLien(page, 'article.post[data-postid="v3_a"] [data-v3-tempt]');
   await expect(page.locator("#v3PassioSheet")).toBeVisible();
   // …et l'aide a été fermée proprement, pas recouverte : aucune bulle orpheline
   // ne flotte au-dessus de la feuille.
@@ -641,7 +736,7 @@ test("aucune animation quand l'utilisateur demande moins de mouvement", async ({
     "prémisse : le réglage doit réellement atteindre la page").toBe(true);
 
   await seedFeed(page, POSTS);
-  await page.locator('article.post[data-postid="v3_a"] [data-v3-tempt]').click();
+  await taperLien(page, 'article.post[data-postid="v3_a"] [data-v3-tempt]');
   await expect(page.locator("#v3PassioSheet")).toBeVisible();
 
   const m = await page.evaluate(() => {
@@ -664,7 +759,7 @@ test("aucune animation quand l'utilisateur demande moins de mouvement", async ({
 test("la transition d'ouverture existe par défaut", async ({ page }) => {
   await boot(page);
   await seedFeed(page, POSTS);
-  await page.locator('article.post[data-postid="v3_a"] [data-v3-tempt]').click();
+  await taperLien(page, 'article.post[data-postid="v3_a"] [data-v3-tempt]');
   await expect(page.locator("#v3PassioSheet")).toBeVisible();
 
   const duree = await page.evaluate(() => {
@@ -701,7 +796,7 @@ for (const largeur of [320, 390, 430]) {
     expect(debord.ligne).toBeLessThanOrEqual(0);
 
     // Panneau ouvert : les trois actions restent dans l'écran et ≥ 44 px.
-    await cta.click();
+    await taperLien(page, "#feedList [data-v3-tempt]");
     await expect(page.locator("#v3PassioSheet")).toBeVisible();
     const items = await page.locator("#v3PassioSheet [data-v3-choice]").all();
     expect(items.length).toBe(3);

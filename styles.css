@@ -9926,3 +9926,252 @@ body.ctx-locked #appMain { overflow: hidden; }
   :root.passio-ui-4a0 .v4a0-title { font-size: 23px; }
   :root.passio-ui-4a0 .v4a0-chip { font-size: 11px; }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   PASSIO UI V4 — lot UI-4A2 : carte d'activité V2, APERÇU UNIQUEMENT
+   (?passio_preview=passio-ui-4a2-demo — voir js/ui-v4a2-cartes.js)
+
+   Tout est ancré à `:root.passio-ui-4a2` ET au marqueur `data-v4a2` que la
+   décoration pose sur la seule carte qu'elle a réellement remplacée. Cette
+   double ancre n'est pas de la prudence décorative : elle est la leçon du lot
+   UI-3A. Une carte que le module n'a pas su décorer (activité introuvable,
+   moteur pas encore chargé) garde ainsi TOUTES ses portes historiques, au lieu
+   de perdre son pied et ses actions sans rien recevoir en échange.
+
+   Aucun nœud n'est retiré du DOM ni déplacé : les enfants recouverts sont
+   masqués, et l'ordre visuel est donné par `order`. Le kill switch retire la
+   classe racine et le marqueur — la carte historique reparaît telle quelle,
+   sans rechargement et sans nouveau rendu.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+:root.passio-ui-4a2 {
+  /* Corail = « action vers le réel » (direction §5 et §A20). C'est le ton
+     TEXTE d'UI-3 qui sert de fond : le corail de marque #ff6b57 ne donne que
+     2,8:1 avec du blanc, sous le 4,5:1 exigé en AA. Repli littéral identique,
+     pour que le lot garde ses couleurs même si UI-3 est coupée sur l'appareil
+     du testeur. */
+  --v4a2-coral: var(--v3-coral-texte, #c13d28);
+}
+
+/* La carte décorée devient une colonne ordonnée. Trois enfants seulement
+   restent visibles : le bandeau d'état (annulé / en cours), le bloc du lot, et
+   la preuve sociale historique — la seule surface où des personnes sont
+   nommées, et elle est déjà bornée par le moteur aux comptes suivis. */
+:root.passio-ui-4a2 .event-card[data-v4a2] {
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+}
+/* ⚠️ `!important` est ici la seule arme qui porte, et non un raccourci : la
+   rangée haute de la carte historique est écrite par le moteur avec un
+   `style="display:flex;gap:10px;"` INLINE, qu'aucun sélecteur ne peut battre.
+   Le lot UI-4A0 avait résolu le même problème en mémorisant puis en restaurant
+   le display inline en JS ; ici il y a une rangée par carte et une carte neuve
+   à chaque rendu, donc rien à mémoriser : on laisse le style inline
+   parfaitement intact et on le SURCLASSE tant que la classe racine est là.
+   Retirer la classe suffit à tout rendre — il n'y a rien à restaurer. */
+:root.passio-ui-4a2 .event-card[data-v4a2] > * { display: none !important; }
+:root.passio-ui-4a2 .event-card[data-v4a2] > .event-card-banner { display: block !important; order: 0; }
+:root.passio-ui-4a2 .event-card[data-v4a2] > .v4a2 { display: flex !important; order: 1; }
+:root.passio-ui-4a2 .event-card[data-v4a2] > .event-social-proof { display: flex !important; order: 2; }
+
+/* Le barré historique de l'activité annulée vit sur `.event-title`, que le lot
+   ne montre plus : il est reporté sur le titre du bloc. */
+:root.passio-ui-4a2 .event-card.is-cancelled[data-v4a2] .v4a2-titre {
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+
+:root.passio-ui-4a2 .v4a2 {
+  gap: 12px;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+/* Visuel : couverture de l'activité, sinon la pastille emoji. Carré fixe —
+   une hauteur variable ferait danser la liste au fil des chargements. */
+:root.passio-ui-4a2 .v4a2-visuel {
+  flex: 0 0 auto;
+  width: 78px;
+  height: 78px;
+  border-radius: 14px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.12), rgba(255, 107, 87, 0.12));
+}
+:root.passio-ui-4a2 .v4a2-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+:root.passio-ui-4a2 .v4a2-emoji { font-size: 30px; line-height: 1; }
+
+:root.passio-ui-4a2 .v4a2-corps {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+:root.passio-ui-4a2 .v4a2-titre {
+  font-size: 15.5px;
+  font-weight: 800;
+  line-height: 1.25;
+  color: var(--text);
+  /* Deux lignes au plus : au-delà, le titre repousse la décision hors de vue. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+:root.passio-ui-4a2 .v4a2-l {
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+:root.passio-ui-4a2 .v4a2-quoi { color: var(--text-dim); font-weight: 700; }
+/* Une activité sans ville n'affiche pas de ligne vide : le module pose
+   `hidden`, cette règle prime sur l'affichage par défaut du bloc. */
+:root.passio-ui-4a2 .v4a2-l[hidden] { display: none; }
+
+:root.passio-ui-4a2 .v4a2-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 9px;
+}
+/* « Voir » à gauche, la réponse à droite — la disposition arrêtée en §8. */
+:root.passio-ui-4a2 .v4a2-voir { margin-right: auto; }
+
+/* Cibles tactiles : 44 px, comme partout ailleurs dans PASSIO. `.btn.small`
+   historique fait 6 px de padding vertical, soit ~27 px de haut — corrigé ici
+   comme il l'a été pour UI-3B et UI-4B (PR #171). */
+:root.passio-ui-4a2 .v4a2-actions .btn.small {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 14px;
+  font-size: 13px;
+  border-radius: 12px;
+}
+:root.passio-ui-4a2 .v4a2-go {
+  background: var(--v4a2-coral);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: none;
+  font-weight: 800;
+}
+
+/* État, pas bouton : aucun `cursor: pointer`, aucune bascule — un tap
+   malheureux ne peut ni inscrire ni désinscrire. */
+:root.passio-ui-4a2 .v4a2-etat {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--muted);
+}
+:root.passio-ui-4a2 .v4a2-etat-annule {
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
+:root.passio-ui-4a2 .v4a2-actions .btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (max-width: 359px) {
+  :root.passio-ui-4a2 .v4a2 { gap: 10px; }
+  :root.passio-ui-4a2 .v4a2-visuel { width: 64px; height: 64px; border-radius: 12px; }
+  :root.passio-ui-4a2 .v4a2-emoji { font-size: 26px; }
+  :root.passio-ui-4a2 .v4a2-titre { font-size: 14.5px; }
+  :root.passio-ui-4a2 .v4a2-actions .btn.small { padding: 0 11px; font-size: 12.5px; }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   PASSIO UI V4 — lot UI-4A3 : commutateur Liste / Carte, ACTIF PAR DÉFAUT
+   (voir js/ui-v4a3-vue.js)
+
+   Tout est ancré à `:root.passio-ui-4a3` et à l'attribut `data-v4a3-vue` que
+   le module pose sur la racine. Le kill switch retire les deux et rend l'écran
+   d'avant, sans rechargement.
+
+   ⚠️ En vue Liste, RIEN n'est masqué : l'écran est exactement l'historique
+   (carte en bande repliée, liste dessous). C'est la vue Carte qui est neuve —
+   elle donne l'écran à la carte et met la liste de côté. Masquer le conteneur
+   de carte en vue Liste donnerait une carte blanche au premier dépliage, le
+   moteur cartographique s'initialisant paresseusement.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+:root.passio-ui-4a3 .v4a3-vue {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  padding: 3px;
+  margin: 2px 0 12px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  box-sizing: border-box;
+  max-width: 100%;
+}
+
+:root.passio-ui-4a3 .v4a3-onglet {
+  appearance: none;
+  -webkit-appearance: none;
+  font-family: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  /* 44 px : la cible tactile de référence du projet. */
+  min-height: 44px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color .16s ease, color .16s ease;
+}
+
+/* Violet = sélection (charte). L'état ne repose PAS que sur la couleur :
+   `aria-selected` le dit aux technologies d'assistance. */
+:root.passio-ui-4a3 .v4a3-onglet[aria-selected="true"] {
+  background: var(--accent);
+  color: #fff;
+}
+:root.passio-ui-4a3 .v4a3-onglet:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Vue Carte : la carte prend l'écran, la liste et le bouton « Afficher plus »
+   passent la main. La liste n'est pas retirée du DOM — le moteur continue d'y
+   écrire, et revenir à la vue Liste la retrouve telle quelle. */
+:root.passio-ui-4a3[data-v4a3-vue="carte"] #eventList { display: none; }
+:root.passio-ui-4a3[data-v4a3-vue="carte"] #irlPassionRow { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  :root.passio-ui-4a3 .v4a3-onglet { transition: none; }
+}
+
+@media (max-width: 359px) {
+  :root.passio-ui-4a3 .v4a3-onglet { font-size: 12.5px; padding: 0 8px; }
+}

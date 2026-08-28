@@ -1,9 +1,20 @@
-// Lot UI-4B — fiche activité V2 (aperçu).
+// Lot UI-4B — fiche activité V2.
+//
+// ⚠️ Mise en ligne du 2026-08-28 : ce lot est passé de l'APERÇU à l'ACTIF PAR
+// DÉFAUT, sur ordre de Benjamin. L'URL normale porte donc désormais la fiche V2.
+// Deux conséquences pour cette suite : ① son premier énoncé (« l'URL normale est
+// strictement inchangée ») décrivait un état du produit qui n'existe plus — il a
+// été réécrit, et l'ancien énoncé, mot pour mot, est devenu la description de ce
+// que doivent rendre les deux coupures ; ② l'ancien lien
+// `?passio_preview=passio-ui-4b` ne décide plus rien : il est toléré et sans
+// effet, ce qui est prouvé à part. Seule la DÉMONSTRATION
+// (`?passio_preview=passio-ui-4b-demo`, activité fictive en mémoire) reste
+// strictement sur son lien — elle n'a rien à faire chez tout le monde.
 //
 // Ce que cette suite prouve, et rien d'autre :
-//   ① l'URL NORMALE est strictement inchangée — aucune classe, aucun nœud du
-//      lot, barre d'action historique intacte ;
-//   ② sous l'aperçu, la hiérarchie cible est en place et dans le bon ordre :
+//   ① sur l'URL NORMALE, le lot est actif et sert l'action primaire unique ;
+//      chacune de ses deux coupures rend la fiche historique intacte ;
+//   ② la hiérarchie cible est en place et dans le bon ordre :
 //      rendez-vous → organisateur → description → infos → participants →
 //      discussion → contextuel → échanges → autres actions ;
 //   ③ AUCUNE fonction historique n'est perdue : calendrier, invitation,
@@ -27,7 +38,10 @@
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
 
-const APERCU = "?passio_preview=passio-ui-4b";
+// Le lot vit sur l'URL NORMALE depuis le 2026-08-28 : c'est là qu'on l'observe.
+// `LIEN_TOLERE` n'est plus un interrupteur, seulement un ancien lien qui ne doit
+// ni activer, ni casser, ni écrire quoi que ce soit — un seul test s'en occupe.
+const LIEN_TOLERE = "?passio_preview=passio-ui-4b";
 const DEMO = "?passio_preview=passio-ui-4b-demo";
 const SEUIL_PX = 4;
 const DEFILEMENT_PX = 400;
@@ -88,9 +102,45 @@ function sections(page) {
 }
 
 // ── ① L'URL normale ────────────────────────────────────────────────────────
-test("URL normale : aucune trace du lot, fiche historique intacte", async ({ page }) => {
+//
+// ⚠️ ÉNONCÉ RÉÉCRIT LE 2026-08-28. Cette place portait « URL normale : aucune
+// trace du lot, fiche historique intacte ». C'était vrai tant que la fiche V2
+// n'était joignable que par `?passio_preview=passio-ui-4b` ; Benjamin a basculé
+// le lot en ACTIF PAR DÉFAUT, donc « aucune trace sur l'URL normale » est
+// devenu faux DU PRODUIT — ce n'est pas le test qui a dérivé, c'est le produit
+// qui a changé de comportement, et le test dit maintenant le nouveau vrai.
+// L'ancien énoncé n'est pas perdu : il décrit exactement ce que doivent rendre
+// les deux coupures, et il est vérifié mot pour mot par le test suivant (kill
+// switch local posé AU BOOT, selon la convention maison rappelée dans CLAUDE.md
+// pour la mise en ligne d'UI-3A : on ne retire aucune assertion, on pose
+// l'interrupteur du lot qui recouvre le comportement historique).
+test("URL normale : le lot est actif par défaut, action primaire unique", async ({ page }) => {
   const errors = { js: [], console: [], network: [] };
   await boot(page, { errors });
+  await ouvrir(page, [evenement("ev_jam")], "ev_jam");
+
+  expect(await page.evaluate(() => window.PassioUIV4B.isEnabled())).toBe(true);
+  await expect(page.locator("html")).toHaveClass(/passio-ui-4b/);
+  await expect(page.locator(".v4b-fiche")).toHaveCount(1);
+
+  // La barre historique a bien cédé la place, sans en garder un morceau.
+  const cta = page.locator("#eventDetailCta");
+  await expect(cta.locator("[data-v4b-rsvp-go]")).toHaveCount(1);
+  await expect(cta.locator("[data-v4b-rsvp-go]")).toHaveText("Je participe");
+  expect(await cta.innerText()).not.toContain("Rejoindre ·");
+
+  // L'activation vient du CODE, jamais d'un état posé sur l'appareil : le
+  // drapeau ne sait qu'enlever, il n'écrit aucune valeur positive.
+  expect(await page.evaluate(() => localStorage.getItem("passio_ui_4b"))).toBeNull();
+  expect(errors.js, "exceptions JS").toEqual([]);
+});
+
+// Les assertions ci-dessous sont celles de l'ancien test ① — inchangées. Seul
+// leur contexte a bougé : la fiche historique ne s'obtient plus en s'abstenant
+// d'un paramètre d'URL, mais en coupant le lot.
+test("URL normale + coupure locale : aucune trace du lot, fiche historique intacte", async ({ page }) => {
+  const errors = { js: [], console: [], network: [] };
+  await boot(page, { errors, killLocal: true });
   await ouvrir(page, [evenement("ev_jam")], "ev_jam");
 
   expect(await page.evaluate(() => window.PassioUIV4B.isEnabled())).toBe(false);
@@ -102,10 +152,23 @@ test("URL normale : aucune trace du lot, fiche historique intacte", async ({ pag
   expect(errors.js, "exceptions JS").toEqual([]);
 });
 
-// ── ② + ③ + ④ La composition ───────────────────────────────────────────────
-test("aperçu : la hiérarchie cible, sans rien perdre de la fiche historique", async ({ page }) => {
+// L'ancien lien d'aperçu survit dans des favoris et des captures d'écran : il
+// doit rester inoffensif — ni activation persistée, ni double application.
+test("l'ancien lien d'aperçu est toléré et ne décide plus rien", async ({ page }) => {
   const errors = { js: [], console: [], network: [] };
-  await boot(page, { errors, query: APERCU });
+  await boot(page, { errors, query: LIEN_TOLERE });
+  await ouvrir(page, [evenement("ev_jam")], "ev_jam");
+
+  await expect(page.locator(".v4b-fiche")).toHaveCount(1);
+  await expect(page.locator("#eventDetailCta [data-v4b-rsvp-go]")).toHaveCount(1);
+  expect(await page.evaluate(() => localStorage.getItem("passio_ui_4b"))).toBeNull();
+  expect(errors.js, "exceptions JS").toEqual([]);
+});
+
+// ── ② + ③ + ④ La composition ───────────────────────────────────────────────
+test("URL normale : la hiérarchie cible, sans rien perdre de la fiche historique", async ({ page }) => {
+  const errors = { js: [], console: [], network: [] };
+  await boot(page, { errors });
   await ouvrir(page, [evenement("ev_jam", {
     address: "12 rue des Lilas", postalCode: "69006", contact: "06 12 34 56 78",
   })], "ev_jam");
@@ -172,7 +235,7 @@ test("aperçu : la hiérarchie cible, sans rien perdre de la fiche historique", 
 
 // ── ⑤ + ⑥ L'action primaire ────────────────────────────────────────────────
 test("une seule action primaire, et aucune écriture avant le geste", async ({ page }) => {
-  await boot(page, { query: APERCU });
+  await boot(page, {});
   await ouvrir(page, [evenement("ev_jam")], "ev_jam");
 
   const cta = page.locator("#eventDetailCta");
@@ -222,7 +285,7 @@ test("une seule action primaire, et aucune écriture avant le geste", async ({ p
 
 // ── ⑦ Complet ──────────────────────────────────────────────────────────────
 test("complet : le libellé annonce la liste d'attente, le moteur l'applique", async ({ page }) => {
-  await boot(page, { query: APERCU });
+  await boot(page, {});
   await ouvrir(page, [evenement("ev_full", {
     maxAttendees: 2, attendees: ["u_karim", "u_nina"],
   })], "ev_full");
@@ -240,7 +303,7 @@ test("complet : le libellé annonce la liste d'attente, le moteur l'applique", a
 
 // ── ⑧ Annulé et terminé ────────────────────────────────────────────────────
 test("annulé et terminé : aucun CTA trompeur", async ({ page }) => {
-  await boot(page, { query: APERCU });
+  await boot(page, {});
 
   await ouvrir(page, [evenement("ev_off", { status: "cancelled" })], "ev_off");
   await expect(page.locator(".v4b-fiche")).toHaveCount(1);
@@ -302,7 +365,7 @@ test("démonstration : une activité en mémoire, zéro donnée persistée", asy
 
 // ── ⑩ Compatibilité UI-3B ──────────────────────────────────────────────────
 test("depuis le Feed : « Voir l'activité » mène à la fiche V2, et le retour rend le Feed", async ({ page }) => {
-  await boot(page, { query: APERCU });
+  await boot(page, {});
   await page.evaluate(([evts, posts]) => {
     state.seed.events = evts;
     state.seed.posts = [];
@@ -381,8 +444,10 @@ test("depuis le Feed : « Voir l'activité » mène à la fiche V2, et le retour
 });
 
 // ── ⑪ Kill switches ────────────────────────────────────────────────────────
-test("kill switch local : la fiche historique, même sous l'URL d'aperçu", async ({ page }) => {
-  await boot(page, { query: APERCU, killLocal: true });
+// Le kill switch local reste prioritaire même quand l'ancien lien d'aperçu est
+// dans l'URL : cet interrupteur ne décide plus rien, celui-ci décide toujours.
+test("kill switch local : la fiche historique, même sous l'ancien lien d'aperçu", async ({ page }) => {
+  await boot(page, { query: LIEN_TOLERE, killLocal: true });
   await ouvrir(page, [evenement("ev_jam")], "ev_jam");
 
   expect(await page.evaluate(() => window.PassioUIV4B.isEnabled())).toBe(false);
@@ -392,7 +457,7 @@ test("kill switch local : la fiche historique, même sous l'URL d'aperçu", asyn
 });
 
 test("coupure en cours de session : retour intégral à la fiche historique", async ({ page }) => {
-  await boot(page, { query: APERCU });
+  await boot(page, {});
   await ouvrir(page, [evenement("ev_jam")], "ev_jam");
   await expect(page.locator(".v4b-fiche")).toHaveCount(1);
 
@@ -410,7 +475,7 @@ test("coupure en cours de session : retour intégral à la fiche historique", as
 
 // ── ⑫ Clavier, Escape et mobile ────────────────────────────────────────────
 test("clavier : l'action est atteignable, Escape ferme la fiche", async ({ page }) => {
-  await boot(page, { query: APERCU });
+  await boot(page, {});
   await ouvrir(page, [evenement("ev_jam")], "ev_jam");
 
   await page.locator("#eventDetailCta [data-v4b-rsvp-go]").focus();
@@ -422,7 +487,7 @@ test("clavier : l'action est atteignable, Escape ferme la fiche", async ({ page 
 });
 
 test("l'action « Je participe » respecte le contraste AA (4,5:1)", async ({ page }) => {
-  await boot(page, { query: APERCU });
+  await boot(page, {});
   await ouvrir(page, [evenement("ev_jam")], "ev_jam");
   await expect(page.locator("#eventDetailCta [data-v4b-rsvp-go]")).toBeVisible();
 
@@ -442,7 +507,7 @@ test("l'action « Je participe » respecte le contraste AA (4,5:1)", async ({ pa
 for (const largeur of [320, 390, 430]) {
   test(`aucun débordement et cibles ≥ 44 px en ${largeur} px`, async ({ page }) => {
     await page.setViewportSize({ width: largeur, height: 844 });
-    await boot(page, { query: APERCU });
+    await boot(page, {});
     await ouvrir(page, [evenement("ev_jam")], "ev_jam");
     await expect(page.locator(".v4b-fiche")).toHaveCount(1);
 
