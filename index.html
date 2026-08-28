@@ -5,7 +5,7 @@
   <title>PASSIO – MVP Beta</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="description" content="PASSIO – Le réseau social des passions des utilisateurs. MVP beta testable." />
-  <meta name="theme-color" content="#7c3aed" />
+  <meta name="theme-color" content="#6d32f4" />
 
   <!-- Open Graph / Twitter : aperçu riche quand le lien est partagé (WhatsApp, Facebook, X, iMessage…) -->
   <meta property="og:type" content="website" />
@@ -75,6 +75,16 @@
   <!-- MapLibre GL + OpenFreeMap : chargés à la demande quand une carte s'ouvre -->
   <script src="js/map-loader.js"></script>
 
+  <!-- §5 de la direction : titres et appels à l'action en Manrope 700-800.
+       `display=swap` : le texte s'affiche IMMÉDIATEMENT dans la pile système
+       et bascule quand la police arrive — jamais de texte invisible. Le texte
+       courant reste en police système (la direction l'autorise : « Inter ou
+       police système équivalente »), pour ne pas payer deux familles.
+       Autorisé par la CSP de production : style-src … fonts.googleapis.com,
+       font-src … fonts.gstatic.com (netlify.toml). -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@600;700;800&display=swap" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -483,7 +493,7 @@
       </div>
 
       <div class="mood-selector feed-intent-selector" id="feedIntentSelector" hidden role="group" aria-label="Envie du moment">
-        <button type="button" class="feed-intent-btn active" data-intent="for_you" aria-pressed="true">Pour toi</button>
+        <button type="button" class="feed-intent-btn active" data-intent="for_you" aria-pressed="true">Tous</button>
         <button type="button" class="feed-intent-btn" data-intent="discover" aria-pressed="false">Découvrir</button>
         <button type="button" class="feed-intent-btn" data-intent="learn" aria-pressed="false">Apprendre</button>
         <button type="button" class="feed-intent-btn" data-intent="create" aria-pressed="false">Créer</button>
@@ -856,7 +866,11 @@
            contextuel (js/contextual-nav.js → irlToolsSections). Rien n'est
            supprimé : ce sont les MÊMES handlers, regroupés.
            #irlUserCityName reste dans le DOM (masqué) : updateIrlCityTitle y
-           écrit et _irlReferenceLabel le lit (repli du filtre distance). -->
+           écrit et _irlReferenceLabel le lit (repli du filtre distance).
+           2026-08-28 : le bouton « Créer un événement » est MASQUÉ par le lot
+           UI-4A0 (styles.css, :root.passio-ui-4a0 .irl-chip-create) — le « + »
+           central de la barre du bas sert déjà ce geste. Le nœud reste ici pour
+           que le kill switch passio_ui_4a0="0" le restitue. -->
       <div class="irl-actionbar">
         <button class="irl-chip irl-chip-create" onclick="openCreateEvent()">
           <span aria-hidden="true">📍</span><span class="irl-chip-label">Créer un événement</span>
@@ -1736,6 +1750,70 @@
      historique toggleIrlMapPeek(), qui déplie/replie ET programme le recadrage
      du moteur cartographique. -->
 <script src="js/ui-v4a3-vue.js"></script>
+
+<!-- UI V5 (lot UI-5 — « Bobines connectées au réel ») — hors bloc app :
+     composant autonome (IIFE window.PassioUIV5), inliné individuellement au
+     build. ACTIF PAR DÉFAUT ; coupé par localStorage.passio_ui_5="0" ou
+     window.PASSIO_UI_5=false.
+     ⚠️ Il ne crée AUCUN moteur : les trois sorties vers le réel sont celles de
+     la passerelle UI-3A, appelées par sa surface publique, et l'ouverture d'une
+     activité passe par PassioUIV3.openActivity. Il ferme systématiquement le
+     viewer avant toute sortie — celui-ci est en z-index 9999, au-dessus du
+     toast, de la fiche d'activité et des feuilles basses. -->
+<script src="js/ui-v5-bobines.js"></script>
+
+<!-- UI V4 (lot UI-4A4 — « Outils » rejoint Liste et Carte) — hors bloc app :
+     composant autonome (IIFE window.PassioUIV4A4), inliné individuellement au
+     build. ACTIF PAR DÉFAUT ; coupé par localStorage.passio_ui_4a4="0" ou
+     window.PASSIO_UI_4A4=false.
+     ⚠️ Il DÉPLACE le déclencheur #irlToolsBtn dans le commutateur (hôte stable,
+     pastille alimentée par le moteur) mais fait RECONSTRUIRE les intentions
+     dans le panneau par UI-4A0 — le corps du panneau est réécrit à chaque
+     rendu, une chip déplacée y serait arrachée par son propre clic. -->
+<script src="js/ui-v4a4-outils.js"></script>
+
+<!-- UI V6 (§9 composer de publication, §11 sortie des mécaniques économiques) —
+     hors bloc app : composant autonome (IIFE window.PassioUIV6), inliné
+     individuellement au build. ACTIF PAR DÉFAUT ; coupé par
+     localStorage.passio_ui_6="0" ou window.PASSIO_UI_6=false.
+     ⚠️ Il DÉPLACE les nœuds du Studio, il n'en régénère aucun — régénérer
+     tuerait les onclick inline et les nœuds que les lecteurs de fichiers
+     retrouvent par id. Et le bouton média unique se contente de déclencher
+     #photoInput / #videoInput : ce sont leurs gestionnaires EXISTANTS qui
+     fixent `studioType`, seule variable d'après laquelle publishPost type le
+     post et remplit le média. -->
+<script src="js/ui-v6-composer.js"></script>
+
+<!-- UI V6A (§10 inbox Messages) — hors bloc app : composant autonome
+     (IIFE window.PassioUIV6A), inliné individuellement au build. ACTIF PAR
+     DÉFAUT ; coupé par localStorage.passio_ui_6a="0" ou window.PASSIO_UI_6A=false.
+     ⚠️ renderMessages() repart de zéro (innerHTML) à chaque envoi, réception et
+     frappe : la ligne de Passio est reposée par un MutationObserver, avec une
+     signature par carte pour n'écrire qu'au changement. La recherche est
+     DÉPLACÉE, jamais reconstruite (son oninput inline appelle _globalMsgSearch). -->
+<script src="js/ui-v6a-messages.js"></script>
+
+<!-- UI V6B (§11 Profil et multi-profils) — hors bloc app : composant autonome
+     (IIFE window.PassioUIV6B), inliné individuellement au build. ACTIF PAR
+     DÉFAUT ; coupé par localStorage.passio_ui_6b="0" ou window.PASSIO_UI_6B=false.
+     ⚠️ Il rend atteignable `switchToProfile()`, qui était définie et appelée par
+     PERSONNE : cliquer une carte de profil ne change qu'un FILTRE d'affichage,
+     pas l'identité active. Le bouton « Activer » est ce chaînon manquant — il
+     n'introduit aucun moteur. #profileList étant réécrit à chaque rendu (que
+     switchToProfile déclenche lui-même), les boutons sont reposés par un
+     MutationObserver, avec une signature par carte. -->
+<script src="js/ui-v6b-profil.js"></script>
+
+<!-- UI V6C (§10 « Proposer un IRL » depuis une conversation 1:1) — hors bloc
+     app : composant autonome (IIFE window.PassioUIV6C), inliné individuellement
+     au build. ACTIF PAR DÉFAUT ; coupé par localStorage.passio_ui_6c="0" ou
+     window.PASSIO_UI_6C=false.
+     ⚠️ Aucun moteur nouveau : l'entrée appelle PassioUIV3.proposeOuting, donc
+     openCreateEvent() + feedIrlBridgePrefill(). Ni GPS, ni adresse déduite, ni
+     message automatique, ni auto-ajout, ni auto-RSVP (§10 mot pour mot). Et le
+     titre suggéré est construit sur la PASSIO, jamais sur une personne : un
+     titre est public dès la création, et il peut être soumis sans relecture. -->
+<script src="js/ui-v6c-proposer-irl.js"></script>
 
 
 <!-- ======== PWA INSTALL OVERLAY ======== -->

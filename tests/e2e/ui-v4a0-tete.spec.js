@@ -16,12 +16,15 @@
 //   ① sur l'URL normale, la tête cible est en place et dans le bon ordre :
 //      titre « Rencontrer », sous-titre, recherche, quatre intentions ;
 //   ② rien n'est perdu SOUS la tête : la liste, la carte, les cartes et la
-//      barre d'action historiques sont toujours là ;
+//      barre d'action historiques sont toujours là — à la seule exception du
+//      bouton « Créer un événement », masqué depuis le 2026-08-28 parce que le
+//      « + » central sert déjà ce geste (contrôlé ici, et restitué par la
+//      coupure) ;
 //   ③ aucune demande GPS à l'ouverture — prouvé PAR CONTRASTE avec la coupure,
 //      qui rend l'écran historique et sa demande de position ;
 //   ④ la recherche de tête écrit dans le champ historique et alimente le même
 //      état (`irlSearchQuery`) : aucun second moteur ;
-//   ⑤ les intentions sont multisélectionnables, « Pour toi » est l'état neutre,
+//   ⑤ les intentions sont multisélectionnables, « Tous » est l'état neutre,
 //      et l'état est exposé par `aria-pressed` ;
 //   ⑥ les deux kill switches, local et mémoire, posés au boot ou en cours de
 //      session : retour intégral à l'écran historique ;
@@ -36,6 +39,13 @@
 // pose `localStorage.passio_ui_4a1 = "0"` pour observer la tête seule ; le
 // comportement combiné (une intention que le moteur refuse ne peut plus rester
 // allumée) appartient à `tests/e2e/ui-v4a1-intentions.spec.js`.
+//
+// ⚠️ RÉALIGNÉ le 2026-08-28 (lot UI-4A4). Les quatre intentions ont QUITTÉ la
+// tête pour le panneau « Outils » — demande de Benjamin après essai réel. Cette
+// suite observe leur placement HISTORIQUE : elle pose donc au boot le kill
+// switch d'UI-4A4 (`localStorage.passio_ui_4a4 = "0"`) et garde TOUTES ses
+// assertions, conformément à la convention maison. Le nouveau placement est
+// prouvé à part, dans `tests/e2e/ui-v4a4-outils.spec.js`.
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
 
@@ -63,6 +73,9 @@ async function espionnerGeo(page) {
 }
 
 async function boot(page, opts = {}) {
+  // Coupure du lot AVAL (UI-4A4), qui déménage les intentions dans « Outils » :
+  // cette suite décrit leur place d'origine, en tête d'écran. Voir l'entête.
+  await page.addInitScript(() => localStorage.setItem("passio_ui_4a4", "0"));
   if (opts.killLocal) {
     await page.addInitScript(() => localStorage.setItem("passio_ui_4a0", "0"));
   }
@@ -112,6 +125,8 @@ test.describe("UI-4A0 — tête de Rencontrer", () => {
     await expect(page.locator("#screen-irl > .section-title")).toBeVisible();
     await expect(page.locator("#irlSearchRow")).toBeVisible();
     await expect(page.locator("#irlCitySearch")).toBeVisible();
+    // Réversibilité du retrait de « Créer un événement » : coupure = bouton rendu.
+    await expect(page.locator(".irl-chip-create")).toBeVisible();
 
     // Contrôle du contraste ③ : sans le lot, la position EST demandée.
     expect(await page.evaluate(() => window.__geoCalls)).toBeGreaterThan(0);
@@ -136,7 +151,7 @@ test.describe("UI-4A0 — tête de Rencontrer", () => {
     await expect(head.locator("#v4a0Search")).toBeVisible();
     await expect(head.locator("[data-v4a0-intent]")).toHaveCount(4);
     await expect(head.locator("[data-v4a0-intent]")).toHaveText([
-      /Pour toi/, /Cette semaine/, /Ma ville/, /Mes Passio/,
+      /Tous/, /Cette semaine/, /Ma ville/, /Mes Passio/,
     ]);
 
     // La tête est le PREMIER contenu de l'écran ; le doublon historique est
@@ -150,10 +165,33 @@ test.describe("UI-4A0 — tête de Rencontrer", () => {
     // ② rien n'est retiré sous la tête.
     await expect(page.locator("#eventList")).toBeVisible();
     await expect(page.locator("#irlMapWrap")).toHaveCount(1);
-    await expect(page.locator(".irl-chip-create")).toBeVisible();
     await expect(page.locator("#irlToolsBtn")).toBeVisible();
+    // « Créer un événement » a quitté l'écran (2026-08-28) : le « + » central
+    // sert ce geste. MASQUÉ, jamais retiré — le kill switch doit le rendre.
+    await expect(page.locator(".irl-chip-create")).toHaveCount(1);
+    await expect(page.locator(".irl-chip-create")).toBeHidden();
     expect(await page.evaluate(() =>
       document.getElementById("eventList").innerHTML.trim().length)).toBeGreaterThan(0);
+  });
+
+  // Le retrait de « Créer un événement » n'est acceptable que si le geste
+  // survit ailleurs. On le prouve par le chemin de remplacement, sur l'URL
+  // normale : « + » central → « Activité IRL » → le formulaire historique
+  // d'`openCreateEvent`. Sans ce contrôle, la suite prouverait la disparition
+  // mais pas la survie de la fonction.
+  test("le « + » central sert toujours la création d'activité", async ({ page }) => {
+    await boot(page);
+    await ouvrirIrl(page);
+
+    await expect(page.locator(".irl-chip-create")).toBeHidden();
+
+    await page.click('#appNavV2 [data-v2-action="create"]');
+    await page.locator('[data-v2-create="irl"]').click();
+    await page.waitForFunction(() => {
+      const b = document.getElementById("modalBackdrop");
+      return b && b.classList.contains("active") && !!document.getElementById("evTitle");
+    }, null, { timeout: 8000 });
+    await page.evaluate(() => { if (typeof closeModal === "function") closeModal(); });
   });
 
   test("aucune demande GPS à l'ouverture sur l'URL normale", async ({ page }) => {
@@ -200,7 +238,7 @@ test.describe("UI-4A0 — tête de Rencontrer", () => {
   // à UI-4A1 ; ce que le lot UI-4A0 doit garantir, et que voici, c'est la
   // mécanique de la tête : bascule, neutre, exposition par `aria-pressed`.
   // Aucune assertion n'a été retirée ni affaiblie.
-  test("intentions : multisélection, Pour toi neutre, aria-pressed", async ({ page }) => {
+  test("intentions : multisélection, Tous neutre, aria-pressed", async ({ page }) => {
     await boot(page, { killA1: true });
     await ouvrirIrl(page);
 
@@ -225,7 +263,7 @@ test.describe("UI-4A0 — tête de Rencontrer", () => {
     await chip("ville").click();
     await expect(chip("ville")).toHaveAttribute("aria-pressed", "false");
 
-    // « Pour toi » remet l'état neutre.
+    // « Tous » (id pour_toi) remet l'état neutre.
     await chip("pour_toi").click();
     await expect(chip("pour_toi")).toHaveAttribute("aria-pressed", "true");
     await expect(chip("semaine")).toHaveAttribute("aria-pressed", "false");

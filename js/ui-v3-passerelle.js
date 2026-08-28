@@ -1233,5 +1233,12 @@
     // Lot UI-3B — surface de test et de diagnostic, sans effet de bord.
     eventRefOf: refEvenement,
     openActivity: ouvrirActivite,
+    // Les trois moteurs de sortie vers le réel, exposés pour le lot UI-5
+    // (§7 : les mêmes actions, depuis une bobine). Ce sont EXACTEMENT les
+    // fonctions que la passerelle du Feed appelle : UI-5 n'en réécrit aucune,
+    // et le marqueur « sans GPS imposé » reste posé au même endroit.
+    seeActivities: voirActivites,
+    discoverPeople: decouvrirPersonnes,
+    proposeOuting: proposerSortie,
   };
 })();

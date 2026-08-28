@@ -63,8 +63,13 @@
   // Les quatre intentions arrêtées par Benjamin. `pour_toi` n'est pas une
   // option de plus : c'est l'état NEUTRE, celui où aucune restriction n'est
   // demandée. Les trois autres se combinent librement.
+  // ⚠️ Le LIBELLÉ affiché est « Tous » depuis le 2026-08-28, sur ordre de
+  // Benjamin (« Pour toi » n'était pas compréhensible : il désigne l'absence
+  // de restriction, pas une recommandation personnalisée). L'IDENTIFIANT reste
+  // `pour_toi` — estNeutre, syncIntentions, la télémétrie et les locators e2e
+  // en dépendent, et la série historique d'événements reste comparable.
   var INTENTIONS = [
-    { id: "pour_toi", label: "Pour toi", neutre: true },
+    { id: "pour_toi", label: "Tous", neutre: true },
     { id: "semaine", label: "Cette semaine" },
     { id: "ville", label: "Ma ville" },
     { id: "passio", label: "Mes Passio" },
@@ -330,10 +335,12 @@
     } catch (e) { fail("set_intentions", e); }
   }
 
+  // ⚠️ Synchronise TOUTES les chips du document, pas seulement celles de la
+  // tête. Depuis le lot UI-4A4, les mêmes intentions sont aussi rendues dans le
+  // panneau « Outils » : scoper à `#v4a0Head` laissait ces chips-là figées, sans
+  // aria-pressed ni état visuel — un échec parfaitement MUET, sans erreur ni log.
   function syncIntentions() {
-    var h = head();
-    if (!h) return;
-    var chips = h.querySelectorAll("[data-v4a0-intent]");
+    var chips = document.querySelectorAll("[data-v4a0-intent]");
     for (var i = 0; i < chips.length; i++) {
       var id = chips[i].getAttribute("data-v4a0-intent");
       var on = estNeutre(id) ? intentions.length === 0 : intentions.indexOf(id) !== -1;
@@ -437,6 +444,25 @@
     } catch (e) { fail("boot", e); }
   }
 
+  // Construit les MÊMES chips dans un hôte quelconque, et les synchronise.
+  // ⚠️ Pourquoi une API de CONSTRUCTION et non un déménagement de nœuds : le
+  // corps du panneau « Outils » est réécrit en entier (`innerHTML`) à chaque
+  // rendu, et un clic sur une intention déclenche `renderIRL`, donc ce rendu —
+  // une chip déplacée là-bas serait arrachée du DOM PAR SON PROPRE CLIC. Un
+  // hôte jetable se sert d'un constructeur, pas d'un déménageur.
+  // ⚠️ Et pourquoi c'est UI-4A0 qui construit : `basculerIntention` est privée,
+  // et c'est la SEULE voie qui émette `passio:ui4a0-intents`, l'événement dont
+  // UI-4A1 dépend. Un module tiers devrait dupliquer le moteur — interdit.
+  function rendreIntentionsDans(hote) {
+    if (!hote) return false;
+    try {
+      while (hote.firstChild) hote.removeChild(hote.firstChild);
+      for (var i = 0; i < INTENTIONS.length; i++) hote.appendChild(creerChip(INTENTIONS[i]));
+      syncIntentions();
+      return true;
+    } catch (e) { fail("intentions_hote", e); return false; }
+  }
+
   // Surface publique unique (aucun global top-level : `audit:globals` reste
   // vert). `intents()` rend une COPIE : personne ne modifie l'état du lot par
   // effet de bord.
@@ -448,6 +474,11 @@
     refresh: syncHead,
     intents: function () { return intentions.slice(); },
     setIntents: setIntents,
+    // Lot UI-4A4 : les mêmes intentions, rendues dans le panneau « Outils ».
+    renderIntentsInto: rendreIntentionsDans,
+    intentLabels: function () {
+      return INTENTIONS.map(function (x) { return { id: x.id, label: x.label }; });
+    },
   };
 
   window.addEventListener("passio:app-ready", function () {

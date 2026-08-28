@@ -14,13 +14,15 @@
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
 
-// Les quatre lots UI-4 (UI-4A0 tête, UI-4A1 intentions, UI-4A2 carte d'activité,
-// UI-4B fiche activité) sont ACTIFS PAR DÉFAUT depuis le 2026-08-28 et recouvrent
+// Les cinq lots UI-4 (UI-4A0 tête, UI-4A1 intentions, UI-4A2 carte d'activité,
+// UI-4A3 Liste/Carte et UI-4B fiche activité) sont ACTIFS PAR DÉFAUT depuis le
+// 2026-08-28 et recouvrent
 // l'écran « Rencontrer » que cette suite observe. Convention maison, déjà
 // appliquée à la mise en ligne d'UI-3A (CLAUDE.md, section UI-3B) : la suite du
 // MOTEUR HISTORIQUE pose au boot les coupures des lots qui le recouvrent pour
 // l'observer seul, garde TOUTES ses assertions, et la cohabitation est prouvée à
-// part dans ui-v4a0-tete / ui-v4a1-intentions / ui-v4a2-cartes / ui-v4b-fiche.
+// part dans ui-v4a0-tete / ui-v4a1-intentions / ui-v4a2-cartes /
+// ui-v4a3-vue / ui-v4b-fiche.
 //
 // Ce que chaque coupure rend ici, concrètement :
 //   · UI-4A0 masque en CSS la barre de recherche historique `#irlSearchRow`
@@ -43,6 +45,7 @@ async function bootIrl(page) {
     localStorage.setItem("passio_ui_4a0", "0");
     localStorage.setItem("passio_ui_4a1", "0");
     localStorage.setItem("passio_ui_4a2", "0");
+    localStorage.setItem("passio_ui_4a3", "0");
     localStorage.setItem("passio_ui_4b", "0");
   });
   await bootOnboarded(page);

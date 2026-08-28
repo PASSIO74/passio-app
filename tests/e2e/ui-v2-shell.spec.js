@@ -154,7 +154,7 @@ test("aperçu : « Créer » ouvre le sélecteur et non l'écran Studio", async 
   // « Plus » reste dans la feuille et expose Story + audio/podcast.
   await sheet.locator('[data-v2-create="more"]').click();
   const more = await sheet.locator(".v2-sheet-item-title").allTextContents();
-  expect(more).toEqual(["Story", "Audio / podcast", "Retour"]);
+  expect(more).toEqual(["Story", "Audio / podcast", "Live vidéo", "Retour"]);
   await sheet.locator('[data-v2-create="back"]').click();
   await expect(sheet.locator('[data-v2-create="post"]')).toBeVisible();
 
@@ -217,7 +217,48 @@ test("aperçu : chaque choix « Créer » rebranche un éditeur existant", async
     return b && getComputedStyle(b).display !== "none";
   }, null, { timeout: 8000 });
 
+  // Plus → Live vidéo. Cette entrée est le SEUL point d'accès à
+  // `startVideoLive()` depuis le 2026-08-28 : la bulle « Live » de la barre des
+  // stories a été retirée le même jour (doublon d'une action de création placée
+  // dans une barre qui montre ce que les gens publient). Le test vérifie que
+  // l'entrée existe ET qu'elle appelle bien le moteur — sans la déclencher pour
+  // de vrai, `startVideoLive` demandant la caméra.
+  await page.evaluate(() => {
+    window.__liveLance = 0;
+    window.startVideoLive = function () { window.__liveLance++; };
+  });
+  await page.click('#appNavV2 [data-v2-action="create"]');
+  await sheet.locator('[data-v2-create="more"]').click();
+  await expect(sheet.locator('[data-v2-create="live"]')).toBeVisible();
+  await sheet.locator('[data-v2-create="live"]').click();
+  expect(await page.evaluate(() => window.__liveLance)).toBe(1);
+
   expect(errors.js, "exceptions JS pendant les créations").toEqual([]);
+});
+
+// La bulle « Live » de création a quitté la barre des stories, mais les directs
+// EN COURS doivent continuer d'y apparaître, mêlés aux autres bulles — c'est
+// exactement ce que Benjamin a demandé. Sans ce test, retirer la bulle de
+// création pourrait emporter les vrais lives sans que personne le voie.
+test("barre des stories : plus de bulle de création Live, mais les vrais directs restent", async ({ page }) => {
+  await boot(page);
+  await page.evaluate(() => {
+    window._videoLives = [{
+      id: "vl_test", author_id: "autre_compte", author_name: "Nina Costa",
+      author_emoji: "🎸", author_photo: "", title: "Session guitare",
+    }];
+    renderStories();
+  });
+
+  const row = page.locator("#storiesRowFeed");
+  // Aucune bulle de CRÉATION de live.
+  await expect(row.locator(".story-ring.vlive-create")).toHaveCount(0);
+  await expect(row.locator('[onclick="startVideoLive()"]')).toHaveCount(0);
+  // Mais le direct réel est bien là, avec les autres.
+  await expect(row.locator(".story-ring.vlive-ring")).toHaveCount(1);
+  await expect(row.locator(".vlive-label")).toContainText("Nina");
+  // Et « Ta story » n'a pas bougé.
+  await expect(row.locator(".story-item").first()).toContainText("Ta story");
 });
 
 // ── ③ Bobines et CDV : hors barre principale, toujours routables ────────────

@@ -27,6 +27,12 @@
 //      UI-4A0 rend l'écran historique ENTIER — dans les deux cas sans effacer
 //      le choix détaillé posé entre-temps ;
 //   ⑨ mobile 320 / 390 / 430 px, cibles ≥ 44 px, clavier et aria-pressed.
+//
+// ⚠️ RÉALIGNÉ le 2026-08-28 (lot UI-4A4). Les quatre intentions ont QUITTÉ la
+// tête pour le panneau « Outils ». Cette suite les observe à leur place
+// d'origine : elle pose au boot le kill switch d'UI-4A4 et garde toutes ses
+// assertions. Que le RACCORD au moteur survive au déménagement est prouvé
+// dans `tests/e2e/ui-v4a4-outils.spec.js`, panneau ouvert.
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
 
@@ -52,6 +58,8 @@ async function espionnerGeo(page) {
 }
 
 async function boot(page, opts = {}) {
+  // Coupure du lot AVAL (UI-4A4) : voir l'entête.
+  await page.addInitScript(() => localStorage.setItem("passio_ui_4a4", "0"));
   if (opts.killLocal) {
     await page.addInitScript(() => localStorage.setItem("passio_ui_4a1", "0"));
   }
@@ -123,7 +131,7 @@ test.describe("UI-4A1 — raccord des intentions", () => {
     await expect(page.locator("#irlSearchRow")).toHaveCount(1);
     await expect(page.locator("#irlSearchRow")).toBeHidden();
 
-    // Neutre : « Pour toi » seul, aucune restriction demandée.
+    // Neutre : « Tous » seul, aucune restriction demandée.
     await expect(chip(page, "pour_toi")).toHaveAttribute("aria-pressed", "true");
     for (const id of ["semaine", "ville", "passio"]) {
       await expect(chip(page, id)).toHaveAttribute("aria-pressed", "false");
@@ -260,7 +268,7 @@ test.describe("UI-4A1 — raccord des intentions", () => {
     const a = await etat(page);
     expect(a.ids.length).toBeGreaterThan(0);
 
-    // « Pour toi » remet les trois familles au neutre.
+    // « Tous » (id pour_toi) remet les trois familles au neutre.
     await chip(page, "pour_toi").click();
     await page.waitForTimeout(300);
     const neutre = await etat(page);

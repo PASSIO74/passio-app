@@ -45,6 +45,16 @@ const onglet = (page, id) => page.locator(`[data-v4a3-onglet="${id}"]`);
 const carteRepliee = (page) => page.evaluate(() =>
   document.getElementById("irlMapWrap").classList.contains("peek"));
 
+// La carte est-elle RÉELLEMENT dans l'écran ? En vue Liste elle est sortie du
+// flux (position absolue très à gauche) : Playwright la considère encore
+// « visible » — elle a une boîte non vide et n'est pas en visibility:hidden —
+// donc `toBeVisible()` ne dirait rien de ce qui nous intéresse. On mesure sa
+// position réelle par rapport au cadre.
+const carteDansEcran = (page) => page.evaluate(() => {
+  const r = document.getElementById("irlMapWrap").getBoundingClientRect();
+  return r.right > 0 && r.left < document.documentElement.clientWidth && r.width > 0;
+});
+
 test.describe("UI-4A3 — commutateur Liste / Carte", () => {
   test("URL normale : commutateur présent, vue Liste, écran historique intact", async ({ page }) => {
     await boot(page);
@@ -58,12 +68,21 @@ test.describe("UI-4A3 — commutateur Liste / Carte", () => {
     await expect(onglet(page, "liste")).toHaveAttribute("aria-selected", "true");
     await expect(onglet(page, "carte")).toHaveAttribute("aria-selected", "false");
 
-    // ① L'écran est celui d'avant : carte en bande repliée, liste visible.
+    // ① Vue Liste = la LISTE, et rien qu'elle. La carte est hors écran — c'est
+    //    le sens d'un commutateur, et la première remarque de Benjamin à
+    //    l'essai du 2026-08-28. Elle reste dans le DOM (le moteur
+    //    cartographique mesure son conteneur) mais quitte le cadre et l'arbre
+    //    d'accessibilité.
+    expect(await carteDansEcran(page)).toBe(false);
+    await expect(page.locator("#irlMapWrap")).toHaveAttribute("aria-hidden", "true");
+    await expect(page.locator("#irlMapWrap")).toHaveCount(1);
     expect(await carteRepliee(page)).toBe(true);
-    await expect(page.locator("#irlMapWrap")).toBeVisible();
     await expect(page.locator("#eventList")).toBeVisible();
     await expect(page.locator("#eventList .event-card").first()).toBeVisible();
-    await expect(page.locator(".irl-chip-create")).toBeVisible();
+    // « Créer un événement » est masqué par UI-4A0 (le « + » central le sert) ;
+    // le nœud reste dans le DOM. Le commutateur ne le touche pas.
+    await expect(page.locator(".irl-chip-create")).toHaveCount(1);
+    await expect(page.locator(".irl-chip-create")).toBeHidden();
 
     // Le commutateur se pose juste AU-DESSUS de la liste (§8 : le choix
     // d'affichage précède immédiatement le contenu).
@@ -83,13 +102,32 @@ test.describe("UI-4A3 — commutateur Liste / Carte", () => {
     await expect(onglet(page, "carte")).toHaveAttribute("aria-selected", "true");
     await expect(onglet(page, "liste")).toHaveAttribute("aria-selected", "false");
     expect(await carteRepliee(page)).toBe(false);
-    await expect(page.locator("#irlMapWrap")).toBeVisible();
+    // Elle revient DANS le cadre, et redevient annoncée.
+    expect(await carteDansEcran(page)).toBe(true);
+    await expect(page.locator("#irlMapWrap")).not.toHaveAttribute("aria-hidden", "true");
+    // Sa boîte est réelle : sans dimensions, le moteur cartographique rendrait
+    // une carte blanche.
+    expect(await page.evaluate(() => {
+      const r = document.getElementById("irlMapWrap").getBoundingClientRect();
+      return r.width > 100 && r.height > 100;
+    })).toBe(true);
 
-    // La liste est masquée mais TOUJOURS là : le moteur continue d'y écrire.
-    await expect(page.locator("#eventList")).toBeHidden();
+    // ⚠️ RÉALIGNÉ le 2026-08-28, sur décision de Benjamin après essai réel : la
+    // liste RESTE sous la carte. Une carte seule montre des points, pas ce qui
+    // s'y passe — les deux lectures valent mieux qu'un aller-retour d'onglet.
+    // Elle est donc VISIBLE, sous la carte, et toujours peuplée.
+    await expect(page.locator("#eventList")).toBeVisible();
     await expect(page.locator("#eventList")).toHaveCount(1);
     expect(await page.evaluate(() =>
       document.getElementById("eventList").innerHTML.trim().length)).toBeGreaterThan(0);
+    // Et elle est bien SOUS la carte, pas au-dessus.
+    expect(await page.evaluate(() => {
+      const carte = document.getElementById("irlMapWrap").getBoundingClientRect();
+      const liste = document.getElementById("eventList").getBoundingClientRect();
+      return liste.top >= carte.top;
+    })).toBe(true);
+    // La rangée de passions, elle, passe la main : la carte a besoin de la place.
+    await expect(page.locator("#irlPassionRow")).toBeHidden();
   });
 
   test("retour à Liste : la carte se replie et la liste revient", async ({ page }) => {
@@ -103,6 +141,7 @@ test.describe("UI-4A3 — commutateur Liste / Carte", () => {
     await onglet(page, "liste").click();
     await page.waitForTimeout(400);
     expect(await carteRepliee(page)).toBe(true);
+    expect(await carteDansEcran(page)).toBe(false);
     await expect(page.locator("#eventList")).toBeVisible();
     await expect(page.locator("#eventList .event-card").first()).toBeVisible();
   });
@@ -163,7 +202,10 @@ test.describe("UI-4A3 — commutateur Liste / Carte", () => {
       document.documentElement.classList.contains("passio-ui-4a3"))).toBe(false);
     await expect(page.locator("#v4a3Vue")).toHaveCount(0);
     await expect(page.locator("#eventList")).toBeVisible();
-    await expect(page.locator("#irlMapWrap")).toBeVisible();
+    // Sans le lot, l'écran historique revient ENTIER : la carte est dans le
+    // cadre, en bande repliée, et n'est plus retirée de l'arbre d'accessibilité.
+    expect(await carteDansEcran(page)).toBe(true);
+    await expect(page.locator("#irlMapWrap")).not.toHaveAttribute("aria-hidden", "true");
     expect(await carteRepliee(page)).toBe(true);
   });
 
@@ -174,15 +216,19 @@ test.describe("UI-4A3 — commutateur Liste / Carte", () => {
 
     await onglet(page, "carte").click();
     await page.waitForTimeout(300);
-    await expect(page.locator("#eventList")).toBeHidden();
+    // En vue Carte la liste reste visible (décision du 2026-08-28) ; ce qui
+    // change avec la coupure, c'est le commutateur lui-même et la rangée de
+    // passions, que la vue Carte masquait.
+    await expect(page.locator("#irlPassionRow")).toBeHidden();
 
     await page.evaluate(() => { window.PASSIO_UI_4A3 = false; window.PassioUIV4A3.apply(); });
 
     await expect(page.locator("#v4a3Vue")).toHaveCount(0);
     expect(await page.evaluate(() =>
       document.documentElement.classList.contains("passio-ui-4a3"))).toBe(false);
-    // La liste revient, quelle que soit la vue qui était choisie.
+    // L'écran historique est rendu : liste ET rangée de passions.
     await expect(page.locator("#eventList")).toBeVisible();
+    await expect(page.locator("#irlPassionRow")).toBeVisible();
   });
 
   test("clavier : le commutateur s'actionne et expose son état", async ({ page }) => {
