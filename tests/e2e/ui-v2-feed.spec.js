@@ -3,8 +3,9 @@
 // Ce que cette suite prouve, et rien d'autre :
 //   ① le kill switch restaure le Feed historique et ses moods ;
 //   ② l'URL normale montre la barre du bas UI-1 ET les cinq intentions UI-2 ;
-//   ③ une Bobine est insérée DANS le fil, sans lecture automatique, et le tap
-//      ouvre le viewer EXISTANT sur cette bobine précise ;
+//   ③ les bobines sont une RANGÉE insérée dans le fil (jamais une carte pleine
+//      largeur), sans lecture automatique, et le tap ouvre le viewer EXISTANT
+//      sur la bobine touchée — la première comme la suivante ;
 //   ④ « Passionnés à découvrir » n'apparaît jamais en tête, se limite à trois
 //      personnes, exclut moi/suivis/bloqués, n'apparaît pas sous deux candidats
 //      et n'offre qu'une issue : le profil existant ;
@@ -99,7 +100,8 @@ test("kill switch : aucun module UI-2, aucune Bobine injectée, moods intacts", 
   await seedFeed(page, { reels: REELS });
 
   await expect(page.locator("#feedList [data-v2-module]")).toHaveCount(0);
-  await expect(page.locator("#feedList .v2-reel-card")).toHaveCount(0);
+  await expect(page.locator("#feedList .v2-reels")).toHaveCount(0);
+  await expect(page.locator("#feedList .v2-reel-tile")).toHaveCount(0);
   await expect(page.locator("#feedList .v2-people")).toHaveCount(0);
   await expect(page.locator("#feedEmpty [data-v2-empty-cta]")).toHaveCount(0);
 
@@ -138,22 +140,28 @@ test("URL normale : barre du bas UI-1 et cinq intentions UI-2 simultanément", a
   expect(errors.console.filter((m) => m.includes("[ui-v2]"))).toEqual([]);
 });
 
-// ── ③ La Bobine est un format DU fil ────────────────────────────────────────
-test("aperçu : une Bobine est insérée dans le fil, jamais en tête, sans lecture auto", async ({ page }) => {
-  await boot(page, { preview: true });
+// ── ③ Les bobines sont une RANGÉE du fil, pas une carte plein format ────────
+test("URL normale : une rangée de bobines dans le fil, jamais en tête, sans lecture auto", async ({ page }) => {
+  await boot(page);
   await seedFeed(page, { reels: REELS });
 
-  const carte = page.locator("#feedList .v2-reel-card");
-  await expect(carte).toHaveCount(1);           // un format du fil, pas un univers
-  await expect(carte).toBeVisible();
+  // UN module, plusieurs vignettes — c'est tout l'objet du changement du
+  // 2026-08-28 : la carte pleine largeur occupait ~530 px de haut sur mobile.
+  const module = page.locator("#feedList .v2-reels");
+  await expect(module).toHaveCount(1);
+  await expect(module).toBeVisible();
+  await expect(module.locator(".v2-reels-title")).toHaveText("Bobines à découvrir");
 
-  // La plus récente des bobines, et la carte porte bien son identifiant.
-  await expect(carte).toHaveAttribute("data-reel-id", "v2_reel_recent");
+  const tuiles = module.locator(".v2-reel-tile");
+  await expect(tuiles).toHaveCount(REELS.length);
+  // Ordre : la plus récente en premier (buildReels trie par createdAt décroissant).
+  await expect(tuiles.nth(0)).toHaveAttribute("data-reel-id", "v2_reel_recent");
+  await expect(tuiles.nth(1)).toHaveAttribute("data-reel-id", "v2_reel_vieux");
 
   // Jamais la première carte du fil : deux posts la précèdent.
   const rang = await page.evaluate(() => {
     const kids = Array.from(document.getElementById("feedList").children);
-    const idx = kids.findIndex((el) => el.classList.contains("v2-reel-card"));
+    const idx = kids.findIndex((el) => el.classList.contains("v2-reels"));
     return { idx, postsAvant: kids.slice(0, idx).filter((el) => el.classList.contains("post")).length };
   });
   expect(rang.idx).toBeGreaterThan(0);
@@ -161,29 +169,62 @@ test("aperçu : une Bobine est insérée dans le fil, jamais en tête, sans lect
 
   // AUCUNE lecture automatique : pas un seul <video> injecté dans le fil.
   await expect(page.locator("#feedList video")).toHaveCount(0);
-  await expect(carte.locator("img.v2-reel-poster")).toHaveCount(1);
+  await expect(module.locator("img.v2-reel-poster")).toHaveCount(REELS.length);
 
-  // La Bobine reste hors du set de posts : le fil garde exactement ses 6 cartes.
+  // Les bobines restent hors du set de posts : le fil garde ses 6 cartes.
+  await expect(page.locator("#feedList .post")).toHaveCount(POSTS.length);
+
+  // Le module est NETTEMENT plus court que la carte d'avant : elle valait
+  // 1,25 × la largeur du fil rien que pour son média. On borne à cette largeur,
+  // ce qui interdit tout retour à un format plein écran sans réécrire le test.
+  const mesures = await page.evaluate(() => {
+    const sec = document.querySelector("#feedList .v2-reels");
+    const list = document.getElementById("feedList");
+    return { hauteur: sec.getBoundingClientRect().height, largeur: list.getBoundingClientRect().width };
+  });
+  expect(mesures.hauteur).toBeLessThan(mesures.largeur);
+});
+
+test("URL normale : aucune bobine éligible → aucune rangée", async ({ page }) => {
+  await boot(page);
+  await seedFeed(page, { reels: [] });
+  await expect(page.locator("#feedList .v2-reels")).toHaveCount(0);
+  // …et le fil reste complet : l'absence de module ne coûte aucun post.
   await expect(page.locator("#feedList .post")).toHaveCount(POSTS.length);
 });
 
-test("aperçu : un tap sur la Bobine ouvre le viewer EXISTANT sur cette bobine", async ({ page }) => {
-  await boot(page, { preview: true });
+test("URL normale : un tap sur une vignette ouvre le viewer EXISTANT sur CETTE bobine", async ({ page }) => {
+  await boot(page);
   await seedFeed(page, { reels: REELS });
 
-  await page.locator("#feedList .v2-reel-card").click();
+  await page.locator("#feedList .v2-reel-tile").first().click();
   await page.waitForFunction(() => {
     const v = document.getElementById("reelsViewer");
     return v && v.classList.contains("open");
   }, null, { timeout: 8000 });
 
-  // C'est bien le viewer du projet, positionné sur la bobine de la carte.
+  // C'est bien le viewer du projet, positionné sur la bobine touchée.
   const courant = await page.evaluate(() => {
     const item = (reelsState.items || [])[reelsState.current];
     return { id: item && item.id, lecteurs: document.querySelectorAll("#reelsList .reel-item").length };
   });
   expect(courant.id).toBe("v2_reel_recent");
   expect(courant.lecteurs).toBe(REELS.length);
+
+  await page.evaluate(() => closeReels());
+
+  // La SECONDE vignette ouvre la SECONDE bobine : sans ce contrôle, une rangée
+  // dont toutes les tuiles ouvrent la première passerait pour correcte
+  // (openReelById ne se déplace que sur `idx > 0`).
+  await page.locator("#feedList .v2-reel-tile").nth(1).click();
+  await page.waitForFunction(() => {
+    const v = document.getElementById("reelsViewer");
+    return v && v.classList.contains("open");
+  }, null, { timeout: 8000 });
+  await page.waitForFunction(() => {
+    const item = (reelsState.items || [])[reelsState.current];
+    return item && item.id === "v2_reel_vieux";
+  }, null, { timeout: 8000 });
 
   await page.evaluate(() => closeReels());
 });
@@ -319,12 +360,16 @@ test("aperçu 390 × 844 : modules dans le cadre, cibles tactiles suffisantes", 
 
   const mesures = await page.evaluate(() => {
     const doc = document.documentElement;
-    const reel = document.querySelector("#feedList .v2-reel-card");
+    const bobines = document.querySelector("#feedList .v2-reels");
+    const rangee = document.querySelector("#feedList .v2-reels-row");
+    const vignettes = Array.from(document.querySelectorAll("#feedList .v2-reel-tile"));
     const tuiles = Array.from(document.querySelectorAll("#feedList .v2-person"));
     return {
       debordement: doc.scrollWidth > doc.clientWidth + 1,
-      reelLargeur: reel ? reel.getBoundingClientRect().width : 0,
+      bobinesLargeur: bobines ? bobines.getBoundingClientRect().width : 0,
+      rangeeLargeur: rangee ? rangee.getBoundingClientRect().width : 0,
       conteneur: document.getElementById("feedList").clientWidth,
+      minVignette: vignettes.length ? Math.min.apply(null, vignettes.map((t) => t.getBoundingClientRect().height)) : 0,
       minTuile: tuiles.length ? Math.min.apply(null, tuiles.map((t) => t.getBoundingClientRect().height)) : 0,
       nomsTronques: tuiles.filter((t) => {
         const n = t.querySelector(".v2-person-name");
@@ -334,7 +379,39 @@ test("aperçu 390 × 844 : modules dans le cadre, cibles tactiles suffisantes", 
   });
 
   expect(mesures.debordement, "la page déborde horizontalement").toBe(false);
-  expect(mesures.reelLargeur).toBeLessThanOrEqual(mesures.conteneur + 1);
+  expect(mesures.bobinesLargeur).toBeLessThanOrEqual(mesures.conteneur + 1);
+  expect(mesures.rangeeLargeur).toBeLessThanOrEqual(mesures.conteneur + 1);
+  expect(mesures.minVignette, "hauteur tactile d'une vignette Bobine").toBeGreaterThanOrEqual(44);
   expect(mesures.minTuile, "hauteur tactile d'une tuile Passionné").toBeGreaterThanOrEqual(44);
   expect(mesures.nomsTronques).toBe(0);
+});
+
+// La rangée doit DÉFILER quand il y a plus de bobines que de place — et c'est
+// exactement là qu'une tuile sans `flex: 0 0` ferait déborder la PAGE. Les deux
+// mesures sont indissociables : le débordement autorisé est celui de la rangée,
+// jamais celui du document.
+test("390 × 844 : la rangée de bobines défile sans faire déborder la page", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await boot(page);
+  const beaucoup = [];
+  for (let i = 0; i < 8; i++) {
+    beaucoup.push({
+      id: "v2_reel_n" + i, authorId: "author_e", authorName: "Elias " + i, authorEmoji: "🎬",
+      passion: "musique", type: "photo", isReel: true, photo: PIXEL, image: PIXEL,
+      text: "Bobine " + i, createdAt: 9000 - i, likes: 0, comments: [],
+    });
+  }
+  await seedFeed(page, { reels: beaucoup });
+
+  await expect(page.locator("#feedList .v2-reel-tile")).toHaveCount(8);
+  const m = await page.evaluate(() => {
+    const doc = document.documentElement;
+    const r = document.querySelector("#feedList .v2-reels-row");
+    return {
+      pageDeborde: doc.scrollWidth > doc.clientWidth + 1,
+      rangeeDefile: r.scrollWidth > r.clientWidth + 1,
+    };
+  });
+  expect(m.pageDeborde, "la page déborde horizontalement").toBe(false);
+  expect(m.rangeeDefile, "la rangée devrait défiler avec 8 bobines").toBe(true);
 });

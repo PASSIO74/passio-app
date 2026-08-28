@@ -1788,10 +1788,20 @@ function getSeedReelPostsWithComments(seedUsers) {
     return {
       id: r.id,
       type: "video",
+      // ⚠️ `isReel` est la SEULE condition retenue par buildReels() (avec la
+      // présence d'un média) : sans lui, ces douze vidéos n'étaient jamais des
+      // bobines — buildReels() renvoyait [] en démonstration, aucun module
+      // « Bobines » n'apparaissait, et elles tombaient au contraire dans le
+      // fil, sous le nom « Profil » faute d'`authorId`. Corrigé le 2026-08-28.
+      isReel: true,
       video: r.video,
       fallback: r.fallback,
       poster: r.poster,
       userId: r.userId,
+      // `authorId` double `userId` : les moteurs du fil et le module UI-2
+      // résolvent l'auteur par `authorId` (userById), les moteurs de bobines
+      // par `userId` (authorOfReel). Les deux pointent le même compte de démo.
+      authorId: r.userId,
       profileId: null,
       passion: r.passion,
       mood: r.mood,
@@ -1810,10 +1820,12 @@ function getSeedReelPosts() {
   return SEED_REEL_VIDEOS.map(r => ({
     id: r.id,
     type: "video",
+    isReel: true,          // cf. getSeedReelPostsWithComments : sans lui, buildReels() les rejette
     video: r.video,
     fallback: r.fallback,
     poster: r.poster,
     userId: r.userId,
+    authorId: r.userId,
     profileId: null,
     passion: r.passion,
     mood: r.mood,

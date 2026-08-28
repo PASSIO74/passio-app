@@ -21,9 +21,9 @@
 // Périmètre :
 //   UI-1 — barre du bas et sélecteur « Créer » ;
 //   UI-2 — Feed : « Envie du moment » (le rail à cinq intentions d'app-02 suit
-//          désormais CE drapeau, cf. `feedIntentsEnabled`), une Bobine insérée
-//          dans le fil, le module « Passionnés à découvrir » et un état vide
-//          qui se termine par une action.
+//          désormais CE drapeau, cf. `feedIntentsEnabled`), le module « Bobines
+//          à découvrir » inséré dans le fil, le module « Passionnés à découvrir »
+//          et un état vide qui se termine par une action.
 // Restent explicitement hors périmètre : les bulles de profils du fil, le
 // design validé en UI-1, `rankFeedPosts`, la publication, les commentaires,
 // les réactions, le partage, les messages, les événements et le RSVP.
@@ -374,6 +374,10 @@
   var PEOPLE_AFTER = 4;  // « après les premiers contenus, jamais en tête »
   var PEOPLE_MIN = 2;    // moins de deux candidats → on n'affiche rien
   var PEOPLE_MAX = 3;
+  // Bobines : une seule suffit à valoir le détour (contrairement aux personnes,
+  // dont le module n'a de sens qu'en comparaison — d'où PEOPLE_MIN = 2).
+  var REELS_MIN = 1;
+  var REELS_MAX = 8;
 
   // Même politique que `safeUrlAttr` (app-02) : http(s), data:image et blob:
   // seulement. La valeur est rendue BRUTE parce qu'elle est posée par l'API DOM
@@ -418,15 +422,15 @@
   // Le moteur existant est réutilisé tel quel : `buildReels()` (app-05) fait
   // déjà la déduplication, l'exclusion des comptes bloqués et le rejet des
   // bobines sans média. Aucun second lecteur, aucune logique de publication.
-  function pickFeedReel() {
-    if (typeof window.buildReels !== "function") return null;
+  function pickFeedReels(max) {
+    if (typeof window.buildReels !== "function") return [];
     var reels = [];
     try { reels = window.buildReels() || []; }
     catch (e) {
       if (window.console && console.error) console.error("[ui-v2] buildReels :", e);
-      return null;
+      return [];
     }
-    return reels.length ? reels[0] : null;
+    return reels.slice(0, max);
   }
 
   function reelPoster(reel) {
@@ -450,17 +454,44 @@
     return "Profil";
   }
 
-  function buildReelCard(reel) {
-    var card = document.createElement("article");
-    card.className = "v2-feed-card v2-reel-card";
-    card.setAttribute(MODULE_ATTR, "reel");
-    card.setAttribute("data-reel-id", String(reel.id));
-    card.setAttribute("role", "button");
-    card.setAttribute("tabindex", "0");
-    card.setAttribute("aria-label", "Bobine de " + authorName(reel) + " — ouvrir");
+  // Nom d'auteur d'une BOBINE. `authorName` ne connaît que `authorName` et
+  // `authorId` ; les bobines de démonstration s'identifient par `userId`, et
+  // `authorOfReel` (app-05) est la seule fonction qui sache résoudre les trois
+  // cas (moi, compte de démo, compte Supabase). On l'essaie d'abord, on
+  // retombe sur le résolveur générique — jamais l'inverse.
+  function nomAuteurBobine(reel) {
+    try {
+      if (typeof window.authorOfReel === "function") {
+        var a = window.authorOfReel(reel);
+        if (a && a.name) return String(a.name);
+      }
+    } catch (e) {}
+    return authorName(reel);
+  }
 
-    var media = document.createElement("div");
-    media.className = "v2-reel-media";
+  function libellePassion(id) {
+    try {
+      var meta = (typeof window.passionById === "function") ? window.passionById(id) : null;
+      if (!meta) return "";
+      return String((meta.emoji || "") + " " + (meta.label || "")).trim();
+    } catch (e) { return ""; }
+  }
+
+  // Une VIGNETTE, calquée sur `buildPersonTile` : le fil ne doit pas être coupé
+  // en deux par un média plein écran. La carte pleine largeur d'avant (média en
+  // 4/5, ~530 px de haut sur un mobile) est remplacée par une rangée de tuiles
+  // du même gabarit que « Passionnés à découvrir » — décision de Benjamin après
+  // essai réel, le 2026-08-28.
+  function buildReelTile(reel, rang) {
+    var tile = document.createElement("button");
+    tile.type = "button";
+    tile.className = "v2-reel-tile";
+    tile.setAttribute("data-reel-id", String(reel.id));
+    var nom = nomAuteurBobine(reel);
+    tile.setAttribute("aria-label", "Bobine de " + nom + " — ouvrir");
+
+    var thumb = document.createElement("span");
+    thumb.className = "v2-reel-thumb";
     var poster = reelPoster(reel);
     if (poster) {
       // AUCUNE lecture automatique : la vignette est une <img>, pas une <video>.
@@ -471,47 +502,62 @@
       img.decoding = "async";
       img.alt = "";
       img.src = poster;
-      media.appendChild(img);
+      thumb.appendChild(img);
     } else {
-      media.classList.add("v2-reel-media-empty");
+      thumb.classList.add("v2-reel-thumb-empty");
     }
-    var badge = document.createElement("span");
-    badge.className = "v2-reel-badge";
-    badge.textContent = "🎬 Bobine";
-    media.appendChild(badge);
     var play = document.createElement("span");
     play.className = "v2-reel-play";
     play.setAttribute("aria-hidden", "true");
     play.textContent = "▶";
-    media.appendChild(play);
-    card.appendChild(media);
+    thumb.appendChild(play);
+    tile.appendChild(thumb);
 
-    var foot = document.createElement("div");
-    foot.className = "v2-reel-foot";
     var who = document.createElement("span");
-    who.className = "v2-reel-author";
-    who.textContent = authorName(reel);
-    foot.appendChild(who);
-    var legende = String(reel.text || reel.caption || "").trim();
-    if (legende) {
-      var cap = document.createElement("span");
-      cap.className = "v2-reel-caption";
-      cap.textContent = legende;
-      foot.appendChild(cap);
+    who.className = "v2-reel-name";
+    who.textContent = nom;
+    tile.appendChild(who);
+
+    var libelle = libellePassion(reel.passion);
+    if (libelle) {
+      var pa = document.createElement("span");
+      pa.className = "v2-reel-passion";
+      pa.textContent = libelle;
+      tile.appendChild(pa);
     }
-    card.appendChild(foot);
 
     var ouvrir = function () {
-      track("ui_v2_feed_reel_open", {});
+      track("ui_v2_feed_reel_open", { rang: rang });
       call("openReelById", reel.id);
     };
-    card.addEventListener("click", ouvrir);
-    card.addEventListener("keydown", function (e) {
+    tile.addEventListener("click", ouvrir);
+    tile.addEventListener("keydown", function (e) {
       if (e.key !== "Enter" && e.key !== " " && e.key !== "Spacebar") return;
       e.preventDefault();
       ouvrir();
     });
-    return card;
+    return tile;
+  }
+
+  function buildBobinesModule(reels) {
+    var box = document.createElement("section");
+    box.className = "v2-feed-card v2-reels";
+    // Valeur d'attribut CONSERVÉE : `removeFeedModules` et le kill switch ne
+    // lisent que le nom, mais garder « reel » évite d'invalider les
+    // diagnostics et les relevés de télémétrie existants.
+    box.setAttribute(MODULE_ATTR, "reel");
+    box.setAttribute("aria-label", "Bobines à découvrir");
+
+    var head = document.createElement("h3");
+    head.className = "v2-reels-title";
+    head.textContent = "Bobines à découvrir";
+    box.appendChild(head);
+
+    var row = document.createElement("div");
+    row.className = "v2-reels-row";
+    for (var i = 0; i < reels.length; i++) row.appendChild(buildReelTile(reels[i], i));
+    box.appendChild(row);
+    return box;
   }
 
   // ── Passionnés à découvrir ────────────────────────────────────────────────
@@ -642,8 +688,10 @@
     removeFeedModules(list);
     if (!uiV2Enabled()) return false;
     try {
-      var reel = pickFeedReel();
-      if (reel) insertAfterNthPost(list, buildReelCard(reel), REEL_AFTER);
+      var bobines = pickFeedReels(REELS_MAX);
+      if (bobines.length >= REELS_MIN) {
+        insertAfterNthPost(list, buildBobinesModule(bobines), REEL_AFTER);
+      }
 
       var gens = pickPassionnes(Array.isArray(posts) ? posts : []);
       if (gens.length) insertAfterNthPost(list, buildPassionnesModule(gens), PEOPLE_AFTER);
