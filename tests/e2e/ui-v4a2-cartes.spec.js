@@ -315,7 +315,19 @@ test.describe("UI-4A2 — carte d'activité V2", () => {
     expect(await page.evaluate(() => window.PassioUIV4A1.isActive())).toBe(true);
 
     // Les intentions ne sont pas décoratives : elles pilotent le moteur.
-    await page.locator('[data-v4a0-intent="semaine"]').click();
+    // ⚠️ Elles vivent désormais dans le panneau « Outils » (lot UI-4A4,
+    // 2026-08-28) et non plus dans la tête. Ce test décrit l'URL NUE, telle
+    // qu'un vrai utilisateur la voit : il les actionne donc là où elles sont,
+    // plutôt que de couper UI-4A4 — ce qui mesurerait un écran que plus
+    // personne n'ouvre. Toutes les assertions sont conservées, et le contrôle
+    // gagne même en portée : il prouve en plus que les cartes V2 survivent à un
+    // rendu déclenché DEPUIS le panneau.
+    await page.locator("#irlToolsBtn").click();
+    await page.waitForFunction(
+      () => document.querySelectorAll("#ctxToolsBody [data-v4a0-intent]").length === 4,
+      null, { timeout: 8000 },
+    );
+    await page.locator('#ctxToolsBody [data-v4a0-intent="semaine"]').click();
     await page.waitForTimeout(400);
     expect(await page.evaluate(() => irlDateFilters.has("week"))).toBe(true);
     // Et les cartes restantes restent décorées après ce nouveau rendu.
