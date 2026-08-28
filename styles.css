@@ -8958,6 +8958,106 @@ body.ctx-locked #appMain { overflow: hidden; }
   --v2-trace: linear-gradient(90deg, var(--v2-violet) 0%, var(--v2-coral) 100%);
 }
 
+/* ── §5 de la direction : la palette V2 PILOTE enfin l'interface ────────────
+   Les jetons ci-dessus étaient déclarés et n'avaient AUCUN consommateur :
+   `--v2-ink` et `--v2-cloud` n'apparaissaient nulle part, et le violet
+   réellement affiché restait l'ancien #7c3aed au lieu du #6D32F4 de la
+   direction. La charte était donc écrite, jamais vue.
+
+   On remappe ici les variables de thème du projet — et elles seules. Aucune
+   règle existante n'est réécrite : toutes celles qui disent déjà
+   `var(--accent)`, `var(--bg-deep)`, `var(--grad-hero)`… changent de couleur
+   sans changer d'une ligne. Le kill switch `passio_ui_v2 = "0"` rend la
+   charte historique à l'octet près, sans rechargement.
+
+   Contraste vérifié avant/après, pour ne pas troquer l'identité contre la
+   lisibilité : #6D32F4 sur blanc donne 6,15:1 (l'ancien #7c3aed en donnait
+   5,70:1) — le nouveau violet est légèrement PLUS foncé, donc plus lisible.
+   L'encre #17152B et le nuage #F7F5FC sont à distance équivalente de leurs
+   prédécesseurs #1b1830 et #f6f5fa.
+
+   Le corail reste STRICTEMENT réservé au passage au réel (§5 : « une couleur
+   plus chaude signale le passage au réel ») : il n'entre dans aucun jeton
+   d'accent général, seulement dans le trait de la feuille IRL. */
+:root.passio-ui-v2 {
+  --bg-deep: var(--v2-cloud);
+  --bg-soft: #f1eefb;
+  --bg-card: var(--v2-surface);
+  --bg-tint: #efe9fd;
+
+  --accent: var(--v2-violet);
+  --accent-soft: #7c4ff7;
+  --accent-2: #5a24d6;
+  --accent-2-soft: #6d32f4;
+  --accent-3: #4a1cb8;
+  --accent-3-soft: #5a24d6;
+  --accent-4: var(--v2-iris);
+  --accent-5: #c8b2ff;
+  --accent-wash: rgba(109, 50, 244, 0.08);
+
+  --text: var(--v2-ink);
+  --text-dim: #47435f;
+  --border: rgba(23, 21, 43, 0.07);
+  --border-strong: rgba(23, 21, 43, 0.12);
+
+  --shadow-soft: 0 1px 2px rgba(23, 21, 43, 0.05), 0 4px 12px rgba(23, 21, 43, 0.05);
+  --shadow-strong: 0 16px 48px rgba(23, 21, 43, 0.12);
+  --shadow-glow: 0 4px 14px rgba(109, 50, 244, 0.16);
+  --shadow-glow-2: 0 4px 14px rgba(90, 36, 214, 0.15);
+
+  --grad-hero: linear-gradient(135deg, var(--v2-iris) 0%, var(--v2-violet) 100%);
+  --grad-hero-2: linear-gradient(135deg, var(--v2-violet) 0%, #5a24d6 100%);
+  --grad-warm: linear-gradient(135deg, var(--v2-iris) 0%, var(--v2-violet) 100%);
+  --grad-cool: linear-gradient(135deg, #c8b2ff 0%, var(--v2-violet) 100%);
+}
+
+/* ── §5 : deux niveaux de titre VISIBLEMENT distincts ───────────────────────
+   La direction demande « au moins deux niveaux de titre visiblement
+   distincts ; pas une multitude de tailles presque identiques », et une
+   graisse 700–800 « compacte et assurée » pour les titres et les appels à
+   l'action. Manrope est chargée pour ce seul rôle ; le texte courant garde la
+   pile système, plus rapide et déjà très lisible sur mobile (la direction
+   l'autorise explicitement : « Inter ou police système équivalente »).
+   ⚠️ `--v2-titre` retombe sur la pile système : si la police ne charge pas
+   (réseau, CSP, mode économie), la hiérarchie tient quand même par la graisse
+   et la taille — c'est elle qui porte l'effet, pas le dessin des lettres. */
+:root.passio-ui-v2 {
+  --v2-titre: "Manrope", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+:root.passio-ui-v2 h1,
+:root.passio-ui-v2 h2,
+:root.passio-ui-v2 h3,
+:root.passio-ui-v2 .section-title,
+:root.passio-ui-v2 .modal-title,
+:root.passio-ui-v2 .empty-title,
+:root.passio-ui-v2 .v2-sheet-title,
+:root.passio-ui-v2 .v2-people-title,
+:root.passio-ui-v2 .v2-reels-title,
+:root.passio-ui-v2 .v4a0-title,
+:root.passio-ui-v2 .v4a2-titre,
+:root.passio-ui-v2 .post-author,
+:root.passio-ui-v2 .nav-v2-item .nav-label,
+:root.passio-ui-v2 .btn {
+  font-family: var(--v2-titre);
+  letter-spacing: -0.011em;
+}
+/* Niveau 1 : le titre d'un écran. Nettement au-dessus de tout le reste. */
+:root.passio-ui-v2 .section-title,
+:root.passio-ui-v2 .v4a0-title {
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1.15;
+}
+/* Niveau 2 : les titres de bloc à l'intérieur d'un écran. */
+:root.passio-ui-v2 .v2-people-title,
+:root.passio-ui-v2 .v2-reels-title,
+:root.passio-ui-v2 .modal-title,
+:root.passio-ui-v2 .v2-sheet-title {
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
 /* Le « trait Passio » : préparé et documenté, volontairement NON posé sur les
    cartes du fil dans ce lot (aucun redesign Feed en UI-1). */
 :root.passio-ui-v2 .v2-passio-trace {
