@@ -10337,3 +10337,90 @@ body.ctx-locked #appMain { overflow: hidden; }
 @media (max-width: 359px) {
   :root.passio-ui-4a3 .v4a3-onglet { font-size: 12.5px; padding: 0 8px; }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   PASSIO UI V5 — lot UI-5 : « Bobines connectées au réel », ACTIF PAR DÉFAUT
+   (coupures : localStorage.passio_ui_5 = "0" · window.PASSIO_UI_5 = false)
+
+   Tout est ancré à `:root.passio-ui-5` ou au marqueur `[data-v5]` que le kill
+   switch retire : coupé, le viewer de bobines est rendu à l'octet près.
+
+   ⚠️ Géométrie : la rangée vit DANS `.reel-info` (left 14px, right 86px), la
+   seule zone basse déjà réservée au texte. On relève `.reel-info` sur les
+   bobines DÉCORÉES uniquement, pour dégager le bouton de navigation suivant
+   (`.reels-nav.next`, centré à bottom:18px, haut 46px) : sans ce dégagement,
+   les deux se recouvriraient au centre. Le masquage n'est PAS appliqué aux
+   bobines non décorées — une bobine que le lot n'a pas su enrichir garde
+   exactement sa mise en page d'avant.
+   ══════════════════════════════════════════════════════════════════════════ */
+:root.passio-ui-5 .reel-item[data-v5] .reel-info { bottom: 76px; }
+
+:root.passio-ui-5 .v5-actions {
+  display: flex;
+  gap: 7px;
+  margin-top: 10px;
+  padding-bottom: 2px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+:root.passio-ui-5 .v5-actions::-webkit-scrollbar { display: none; }
+
+/* Verre dépoli sur la vidéo : les chips doivent rester lisibles sur n'importe
+   quelle image, sans assombrir la bobine. Le texte est blanc plein, le fond
+   semi-opaque — mesuré au-dessus de 4,5:1 sur un média clair comme sur un
+   média sombre grâce au flou. */
+:root.passio-ui-5 .v5-chip {
+  appearance: none;
+  -webkit-appearance: none;
+  font-family: inherit;
+  flex: 0 0 auto;
+  min-height: 44px;             /* cible tactile : jamais moins */
+  padding: 11px 15px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.34);
+  background: rgba(23, 21, 43, 0.52);
+  -webkit-backdrop-filter: blur(9px);
+  backdrop-filter: blur(9px);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+:root.passio-ui-5 .v5-chip:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+:root.passio-ui-5 .v5-chip:active { transform: scale(0.97); }
+
+/* L'action forte — « Voir l'activité » — porte le corail, la couleur que la
+   direction §5 réserve au passage au réel. Elle est seule sur sa rangée :
+   quand une bobine est déjà reliée à une activité, il n'y a rien d'autre à
+   proposer. */
+:root.passio-ui-5 .v5-chip-fort {
+  background: var(--v2-coral, #ff6b57);
+  border-color: transparent;
+  color: #17152b;
+  font-weight: 800;
+}
+
+/* Le signal posé : violet plein, l'identité de la découverte (§5). */
+:root.passio-ui-5 .v5-chip-actif {
+  background: var(--v2-violet, #6d32f4);
+  border-color: transparent;
+  color: #fff;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root.passio-ui-5 .v5-chip:active { transform: none; }
+}
+
+@media (max-width: 380px) {
+  :root.passio-ui-5 .v5-chip { padding: 11px 13px; font-size: 12.5px; }
+  :root.passio-ui-5 .v5-actions { gap: 6px; }
+}
