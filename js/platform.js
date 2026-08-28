@@ -146,10 +146,25 @@
             if (typeof pwaShowOverlay === 'function') pwaShowOverlay();
           }, 1500);
         }
-        // ══ iOS autre navigateur : rediriger vers Safari ══
+        // ══ iOS autre navigateur : ramener sur l'adresse canonique ══
+        // ⚠️ Rectifié le 2026-08-28. Cette redirection n'ouvre PAS Safari : le
+        // schéma reste `https`, donc on demeure dans le navigateur courant.
+        // Elle avait donc deux effets, tous deux non voulus :
+        //   ① elle DÉTRUISAIT la query — un lien d'aperçu
+        //      `?passio_preview=…` était effacé 800 ms après le chargement, en
+        //      pleine saisie du code d'accès. C'est l'une des causes mesurées
+        //      des « aperçus invisibles » du 2026-08-28 ;
+        //   ② lancée depuis l'adresse canonique elle-même, elle rechargeait la
+        //      page pour rien, et pouvait le refaire à chaque chargement.
+        // On ne ramène donc plus que depuis une AUTRE origine, et en conservant
+        // query et fragment.
         else if (_isIOSOther) {
           setTimeout(function() {
-            window.location.href = 'https://passio-app.netlify.app/';
+            try {
+              if (window.location.origin === 'https://passio-app.netlify.app') return;
+              window.location.href = 'https://passio-app.netlify.app/'
+                + window.location.search + window.location.hash;
+            } catch (e) {}
           }, 800);
         }
         // ══ Firefox Android : ouvrir Chrome ══

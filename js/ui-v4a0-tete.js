@@ -34,17 +34,16 @@
 //
 // ⚠️ Le module n'écrit RIEN : ni Supabase, ni `state`, ni `localStorage`.
 //
-// ── Activation — APERÇU UNIQUEMENT ────────────────────────────────────────
-//     ?passio_preview=passio-ui-4a0-demo  → entrée nommée dans l'ordre
-//     ?passio_preview=passio-ui-4a0       → même chose, alias court
+// ── Activation — ACTIF PAR DÉFAUT (2026-08-28) ────────────────────────────
 //     localStorage.passio_ui_4a0 = "0"    → kill switch local, prioritaire
 //     window.PASSIO_UI_4A0 = false        → coupure immédiate en mémoire
 //
-// L'URL normale est strictement inchangée : sans le paramètre d'aperçu, ce
-// module ne pose ni classe, ni nœud, ni écouteur, ni enveloppe. Aucune
-// activation positive ne persiste — rien n'est écrit dans `localStorage` — et
-// les deux coupures priment sur le lien d'aperçu. Couper en cours de session
-// rend l'écran IRL historique intégralement, sans rechargement.
+// Mis en ligne sur l'URL normale par décision de Benjamin, en même temps que
+// UI-4A1, UI-4A2 et UI-4B. Les anciens liens `?passio_preview=passio-ui-4a0`
+// restent tolérés mais ne décident plus rien, et aucune activation positive
+// n'est écrite dans `localStorage`. Les deux coupures priment sur tout : couper
+// en cours de session rend l'écran IRL historique intégralement, sans
+// rechargement et sans déploiement.
 // ══════════════════════════════════════════════════════════════════════════
 (function () {
   "use strict";
@@ -82,37 +81,18 @@
   // Aucune valeur positive persistante : l'aperçu vient de l'URL, jamais d'un
   // état posé sur l'appareil du testeur.
   // ══════════════════════════════════════════════════════════════════════════
-  function apercuDemande(nom) {
-    try {
-      return new URLSearchParams(window.location.search).get("passio_preview") === nom;
-    } catch (e) { fail("query", e); return false; }
-  }
-
-  // Les sous-lots UI-4A suivants (UI-4A1, UI-4A2…) réutilisent cette tête TELLE
-  // QUELLE au lieu d'en poser une seconde : leur aperçu vaut donc aperçu de
-  // tête. On le leur DEMANDE, sans connaître leurs noms d'aperçu — et leur
-  // `isEnabled` ne consulte jamais celui-ci en retour, donc aucune récursion.
-  //
-  // ⚠️ Ils sont interrogés TOUS, jamais en chaîne : un héritier coupé par son
-  // propre kill switch ferait disparaître la tête alors qu'un autre la réclame
-  // encore. Chacun décide pour lui, la tête reste tant qu'un seul la demande.
-  var HERITIERS = ["PassioUIV4A1", "PassioUIV4A2"];
-
-  function apercuHeritier() {
-    for (var i = 0; i < HERITIERS.length; i++) {
-      var suite = window[HERITIERS[i]];
-      if (!suite || typeof suite.isEnabled !== "function") continue;
-      try { if (suite.isEnabled()) return true; } catch (e) { fail("apercu_heritier", e); }
-    }
-    return false;
-  }
-
+  // ⚠️ ACTIF PAR DÉFAUT depuis la mise en ligne du 2026-08-28, décidée par
+  // Benjamin. Le drapeau ne sait plus qu'ENLEVER : `PREVIEW_NAME` et
+  // `DEMO_PREVIEW_NAME` n'apparaissent plus dans cette fonction — les anciens
+  // liens `?passio_preview=…` restent tolérés mais ne décident plus rien, et
+  // aucune valeur positive n'est écrite dans `localStorage`. Les deux coupures
+  // priment sur tout et rendent l'écran historique sans rechargement.
   function uiV4a0Enabled() {
     if (window.PASSIO_UI_4A0 === false) return false;   // coupure mémoire
     var stored = null;
     try { stored = localStorage.getItem(STORAGE_KEY); } catch (e) {}
     if (stored === "0") return false;                   // kill switch local
-    return apercuDemande(PREVIEW_NAME) || apercuDemande(DEMO_PREVIEW_NAME) || apercuHeritier();
+    return true;
   }
 
   // Signal sortant — le seul canal par lequel un sous-lot apprend qu'une

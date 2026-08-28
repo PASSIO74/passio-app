@@ -1,9 +1,18 @@
-// Lot UI-4A1 — raccord des intentions de « Rencontrer » (aperçu).
+// Lot UI-4A1 — raccord des intentions de « Rencontrer ».
+//
+// ⚠️ MISE EN LIGNE DU 2026-08-28 : UI-4A0 et UI-4A1 sont passés d'APERÇU à
+// ACTIFS PAR DÉFAUT sur l'URL normale, sur décision de Benjamin. Les anciens
+// liens `?passio_preview=…` restent tolérés mais ne décident plus rien. Trois
+// énoncés de cette suite disaient l'inverse et ont été RÉÉCRITS (aucun n'a été
+// retiré ni affaibli) : chacun porte, sur place, la raison pour laquelle son
+// ancienne formulation ne tient plus.
 //
 // Ce que cette suite prouve, et rien d'autre :
-//   ① l'URL NORMALE est strictement inchangée — aucun raccord, aucun prédicat
-//      ville, écran IRL historique intact ;
-//   ② sous l'aperçu UI-4A1, la tête UI-4A0 validée apparaît TELLE QUELLE ;
+//   ① sur l'URL NORMALE le raccord est actif, mais NEUTRE : aucune date, aucun
+//      prédicat ville, aucun filtre compté tant qu'aucune intention n'est
+//      choisie — rien n'est appliqué sans geste humain ;
+//   ② la tête UI-4A0 validée apparaît TELLE QUELLE, y compris sur les anciens
+//      liens d'aperçu ;
 //   ③ « Cette semaine » ne pilote QUE la valeur "week" de `irlDateFilters` ;
 //   ④ « Mes Passio » ajoute exactement `_irlMyPassions()` et rend le choix
 //      détaillé antérieur à l'extinction ;
@@ -13,8 +22,10 @@
 //      ni le résultat ni la signature de pagination ;
 //   ⑦ `clearAllIrlFilters()` devient le nouveau neutre : chips éteintes, page 1,
 //      et aucun ancien filtre ressuscité par une coupure ultérieure ;
-//   ⑧ kill switches (UI-4A1 et UI-4A0) : l'écran historique revient sans que le
-//      choix détaillé posé entre-temps soit effacé ;
+//   ⑧ kill switches, et la hiérarchie entre eux : couper UI-4A1 défait le seul
+//      raccord et laisse la tête (elle est en ligne pour elle-même), couper
+//      UI-4A0 rend l'écran historique ENTIER — dans les deux cas sans effacer
+//      le choix détaillé posé entre-temps ;
 //   ⑨ mobile 320 / 390 / 430 px, cibles ≥ 44 px, clavier et aria-pressed.
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
@@ -85,21 +96,47 @@ const etat = (page) => page.evaluate(() => ({
 }));
 
 test.describe("UI-4A1 — raccord des intentions", () => {
-  test("URL normale : aucun raccord, écran IRL historique intact", async ({ page }) => {
+  // ⚠️ Énoncé RÉÉCRIT le 2026-08-28. L'ancien s'appelait « URL normale : aucun
+  // raccord, écran IRL historique intact » et vérifiait que l'aperçu était
+  // NÉCESSAIRE pour voir le raccord. Le produit a changé : UI-4A0 et UI-4A1 ont
+  // été mis en ligne, ACTIFS PAR DÉFAUT sur l'URL normale, et le drapeau ne sait
+  // plus qu'enlever. Continuer d'exiger « aucun raccord » reviendrait à réclamer
+  // le retour d'un comportement volontairement supprimé.
+  // Ce qui reste vrai, et qui est le véritable enjeu de sécurité produit, c'est
+  // que le raccord posé par défaut est NEUTRE : rien n'est filtré tant que
+  // l'utilisateur n'a choisi aucune intention. Les assertions d'origine sur
+  // l'absence de prédicat ville et sur `_irlActiveFilterCount()` sont donc
+  // conservées telles quelles ; la preuve que l'écran historique revient entier
+  // est faite à part, par les tests de kill switch plus bas.
+  test("URL normale : raccord actif par défaut, et neutre tant qu'aucune intention n'est choisie", async ({ page }) => {
     await boot(page);
     await ouvrirIrl(page);
 
-    expect(await page.evaluate(() =>
-      document.documentElement.classList.contains("passio-ui-4a1"))).toBe(false);
-    await expect(page.locator("#v4a0Head")).toHaveCount(0);
-    await expect(page.locator("#irlSearchRow")).toBeVisible();
+    expect(await page.evaluate(() => ({
+      a0: document.documentElement.classList.contains("passio-ui-4a0"),
+      a1: document.documentElement.classList.contains("passio-ui-4a1"),
+    }))).toEqual({ a0: true, a1: true });
+    await expect(page.locator("#v4a0Head")).toHaveCount(1);
+    await expect(page.locator("[data-v4a0-intent]")).toHaveCount(4);
+    // La tête REMPLACE la ligne de recherche historique, elle ne la retire
+    // jamais du DOM : c'est ce qui permet au kill switch de la rendre.
+    await expect(page.locator("#irlSearchRow")).toHaveCount(1);
+    await expect(page.locator("#irlSearchRow")).toBeHidden();
+
+    // Neutre : « Pour toi » seul, aucune restriction demandée.
+    await expect(chip(page, "pour_toi")).toHaveAttribute("aria-pressed", "true");
+    for (const id of ["semaine", "ville", "passio"]) {
+      await expect(chip(page, id)).toHaveAttribute("aria-pressed", "false");
+    }
 
     // Le prédicat ville existe dans le moteur mais reste INACTIF : la liste
-    // historique n'est restreinte par rien.
+    // n'est restreinte par rien, et rien n'a été appliqué sans geste humain.
     const e = await etat(page);
+    expect(e.dates).toEqual([]);
     expect(e.ville).toBe("");
     expect(e.ids.length).toBeGreaterThan(0);
     expect(await page.evaluate(() => _irlActiveFilterCount())).toBe(0);
+    expect(await page.evaluate(() => window.PassioUIV4A1.intents())).toEqual([]);
   });
 
   test("aperçu : la tête UI-4A0 validée est posée telle quelle", async ({ page }) => {
@@ -298,10 +335,28 @@ test.describe("UI-4A1 — raccord des intentions", () => {
       document.documentElement.classList.contains("passio-ui-4a1"))).toBe(false);
     expect((await etat(page)).dates).toEqual(["month"]);
 
-    // La tête UI-4A0 n'a plus d'héritier actif (l'URL ne porte que l'aperçu
-    // UI-4A1) : elle se retire d'elle-même, l'écran historique redevient entier.
-    await expect(page.locator("#v4a0Head")).toHaveCount(0);
-    await expect(page.locator("#irlSearchRow")).toBeVisible();
+    // ⚠️ Fin d'énoncé RÉÉCRITE le 2026-08-28. Elle affirmait : « la tête UI-4A0
+    // n'a plus d'héritier actif : elle se retire d'elle-même ». C'était vrai
+    // quand la tête n'existait qu'au service de ses héritiers d'aperçu. Ce ne
+    // l'est plus : UI-4A0 a été mis en ligne pour LUI-MÊME, actif par défaut, et
+    // couper UI-4A1 ne le concerne pas — c'est la hiérarchie voulue (couper la
+    // tête coupe le raccord, l'inverse est faux ; voir le test suivant).
+    // La tête reste donc posée, et la ligne de recherche historique reste
+    // remplacée. Ce que la coupure doit prouver, c'est que le RACCORD est bien
+    // défait : d'où la vérification ajoutée ci-dessous.
+    await expect(page.locator("#v4a0Head")).toHaveCount(1);
+    await expect(page.locator("#irlSearchRow")).toBeHidden();
+    expect(await page.evaluate(() =>
+      document.documentElement.classList.contains("passio-ui-4a0"))).toBe(true);
+
+    // Les chips sont revenues au neutre, et surtout elles ne pilotent plus rien :
+    // un clic sur « Cette semaine » reste en mémoire de la tête et ne touche
+    // AUCUNE valeur de `irlDateFilters`.
+    await expect(chip(page, "pour_toi")).toHaveAttribute("aria-pressed", "true");
+    await chip(page, "semaine").click();
+    await page.waitForTimeout(300);
+    expect((await etat(page)).dates).toEqual(["month"]);
+    expect(await page.evaluate(() => window.PassioUIV4A1.isActive())).toBe(false);
   });
 
   test("kill switch UI-4A0 : coupe aussi le raccord et rend l'écran historique", async ({ page }) => {
@@ -322,14 +377,35 @@ test.describe("UI-4A1 — raccord des intentions", () => {
     expect(e.ville).toBe("");
   });
 
-  test("kill switch local : aucun raccord, tête absente", async ({ page }) => {
+  // ⚠️ Énoncé RÉÉCRIT le 2026-08-28. Il s'appelait « kill switch local : aucun
+  // raccord, tête absente » et supposait que couper UI-4A1 faisait disparaître
+  // la tête UI-4A0 — vrai tant que la tête n'existait QUE pour ses héritiers
+  // d'aperçu. UI-4A0 est désormais en ligne pour lui-même, actif par défaut :
+  // son sort ne dépend plus de celui de UI-4A1. Le kill switch local de UI-4A1
+  // ne doit donc défaire QUE le raccord, et c'est ce que le test vérifie
+  // maintenant — sans rien retirer : la preuve que l'écran historique complet
+  // revient est portée par le kill switch de la tête, juste au-dessus.
+  test("kill switch local UI-4A1 : aucun raccord, la tête UI-4A0 demeure", async ({ page }) => {
     await boot(page, { query: DEMO, killLocal: true });
     await ouvrirIrl(page);
 
-    expect(await page.evaluate(() =>
-      document.documentElement.classList.contains("passio-ui-4a1"))).toBe(false);
-    await expect(page.locator("#v4a0Head")).toHaveCount(0);
-    await expect(page.locator("#irlSearchRow")).toBeVisible();
+    expect(await page.evaluate(() => ({
+      a0: document.documentElement.classList.contains("passio-ui-4a0"),
+      a1: document.documentElement.classList.contains("passio-ui-4a1"),
+    }))).toEqual({ a0: true, a1: false });
+    await expect(page.locator("#v4a0Head")).toHaveCount(1);
+    await expect(page.locator("[data-v4a0-intent]")).toHaveCount(4);
+    await expect(page.locator("#irlSearchRow")).toHaveCount(1);
+    await expect(page.locator("#irlSearchRow")).toBeHidden();
+
+    // Le raccord, lui, est bien absent : les chips ne pilotent aucun filtre.
+    await chip(page, "semaine").click();
+    await page.waitForTimeout(300);
+    const e = await etat(page);
+    expect(e.dates).toEqual([]);
+    expect(e.ville).toBe("");
+    expect(await page.evaluate(() => _irlActiveFilterCount())).toBe(0);
+    expect(await page.evaluate(() => window.PassioUIV4A1.isActive())).toBe(false);
   });
 
   test("clavier : les intentions s'activent au clavier et exposent leur état", async ({ page }) => {

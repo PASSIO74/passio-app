@@ -54,21 +54,20 @@
 // ses portes — jamais amputée de ce qu'on ne lui a pas remplacé (piège du lot
 // UI-3A). L'ordre visuel est donné par `order`, donc AUCUN nœud n'est déplacé.
 //
-// ── Activation — APERÇU UNIQUEMENT ────────────────────────────────────────
-//     ?passio_preview=passio-ui-4a2-demo  → entrée nommée dans l'ordre
-//     ?passio_preview=passio-ui-4a2       → même chose, alias court
+// ── Activation — ACTIF PAR DÉFAUT (2026-08-28) ────────────────────────────
 //     localStorage.passio_ui_4a2 = "0"    → kill switch local, prioritaire
 //     window.PASSIO_UI_4A2 = false        → coupure immédiate en mémoire
 //
-// L'aperçu UI-4A2 implique la tête UI-4A0 et le raccord UI-4A1 : `passio_preview`
-// ne porte qu'une valeur, et une carte V2 sous une tête historique ne montrerait
-// pas l'écran que la direction décrit. Les trois coupures restent INDÉPENDANTES
-// et prioritaires, chacune ne défaisant que SON lot :
-//   • couper UI-4A0 → tête historique, intentions rendues, cartes V2 ;
-//   • couper UI-4A1 → tête V2 mais chips inertes, cartes V2 ;
-//   • couper UI-4A2 → l'aperçu tout entier s'éteint, puisque c'est LUI que
-//     l'URL nomme et que plus aucun héritier ne réclame la tête. C'est le
-//     comportement attendu d'un kill switch posé sur le lot que l'on regarde.
+// Le lot a été mis en ligne sur l'URL normale par décision de Benjamin, en même
+// temps que UI-4A0, UI-4A1 et UI-4B : le mécanisme d'aperçu ne lui permettait
+// pas de voir les lots sur son appareil, et l'attente de validation bloquait
+// tout le chantier. Les anciens liens `?passio_preview=passio-ui-4a2[-demo]`
+// restent tolérés mais ne décident plus rien.
+//
+// Les coupures restent INDÉPENDANTES et prioritaires, chacune ne défaisant que
+// SON lot : couper UI-4A0 rend la tête historique sans toucher aux cartes,
+// couper UI-4A2 rend les cartes historiques sous la tête V2. C'est le chemin de
+// retour arrière, et il ne demande aucun déploiement.
 //
 // ⚠️ Le module n'écrit RIEN de durable : ni Supabase, ni `state`, ni
 // `localStorage`. La seule écriture possible est le RSVP, sur geste explicite,
@@ -108,18 +107,18 @@
   // Aucune valeur positive persistante : l'aperçu vient de l'URL, jamais d'un
   // état posé sur l'appareil du testeur.
   // ══════════════════════════════════════════════════════════════════════════
-  function apercuDemande(nom) {
-    try {
-      return new URLSearchParams(window.location.search).get("passio_preview") === nom;
-    } catch (e) { fail("query", e); return false; }
-  }
-
+  // ⚠️ ACTIF PAR DÉFAUT depuis la mise en ligne du 2026-08-28, décidée par
+  // Benjamin. Le drapeau ne sait plus qu'ENLEVER : `PREVIEW_NAME` et
+  // `DEMO_PREVIEW_NAME` n'apparaissent plus dans cette fonction — les anciens
+  // liens `?passio_preview=…` restent tolérés mais ne décident plus rien, et
+  // aucune valeur positive n'est écrite dans `localStorage`. Les deux coupures
+  // priment sur tout et rendent l'écran historique sans rechargement.
   function uiV4a2Enabled() {
     if (window.PASSIO_UI_4A2 === false) return false;   // coupure mémoire
     var stored = null;
     try { stored = localStorage.getItem(STORAGE_KEY); } catch (e) {}
     if (stored === "0") return false;                   // kill switch local
-    return apercuDemande(PREVIEW_NAME) || apercuDemande(DEMO_PREVIEW_NAME);
+    return true;
   }
 
   function actif() { return !enPanne && uiV4a2Enabled(); }
@@ -706,17 +705,6 @@
   var essais = 0;
   function boot() {
     try {
-      // Les lots amont ont booté AVANT que ce fichier ne soit parsé : leur
-      // `apercuHeritier()` ne pouvait pas encore nous voir, et ils se sont donc
-      // déclarés éteints. On les fait se réévaluer maintenant que nous
-      // existons — `PassioUIV4A1.apply()` réveille lui-même la tête UI-4A0, et
-      // respecte au passage les kill switches propres à chacun.
-      if (uiV4a2Enabled()) {
-        var amont = window.PassioUIV4A1;
-        if (amont && typeof amont.apply === "function") {
-          try { amont.apply(); } catch (e) { fail("amont", e); }
-        }
-      }
       var on = apply();
       if (on && !observateur && essais++ < 80) setTimeout(boot, 150);
     } catch (e) { fail("boot", e); }

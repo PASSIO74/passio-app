@@ -1,23 +1,46 @@
-// Lot UI-4A0 — tête de l'écran « Rencontrer » (aperçu).
+// Lot UI-4A0 — tête de l'écran « Rencontrer ».
+//
+// ⚠️ RÉALIGNÉ le 2026-08-28 : le lot est passé d'APERÇU à ACTIF PAR DÉFAUT sur
+// l'URL normale (décision de Benjamin, en même temps que UI-4A1, UI-4A2 et
+// UI-4B). Deux énoncés de cette suite sont donc devenus FAUX et ont été
+// réécrits — aucune assertion n'a été retirée :
+//   • « URL normale : rien du lot » disait le contraire de la vérité produit.
+//     Le chemin vers l'écran IRL historique n'est plus l'URL normale mais la
+//     COUPURE ; ce contrôle est donc devenu celui du kill switch, contraste GPS
+//     compris, et l'URL normale est désormais le cas où la tête EST posée ;
+//   • `?passio_preview=passio-ui-4a0[-demo]` ne décide plus rien. Les deux
+//     constantes ne servent plus qu'à prouver qu'un ancien lien ne ressuscite
+//     PAS le lot par-dessus une coupure.
 //
 // Ce que cette suite prouve, et rien d'autre :
-//   ① l'URL NORMALE est strictement inchangée — aucune classe racine, aucun
-//      nœud du lot, titre et barre de recherche historiques intacts ;
-//   ② sous l'aperçu, la tête cible est en place et dans le bon ordre : titre
-//      « Rencontrer », sous-titre, recherche, quatre intentions ;
-//   ③ rien n'est perdu SOUS la tête : la liste, la carte, les cartes et la
+//   ① sur l'URL normale, la tête cible est en place et dans le bon ordre :
+//      titre « Rencontrer », sous-titre, recherche, quatre intentions ;
+//   ② rien n'est perdu SOUS la tête : la liste, la carte, les cartes et la
 //      barre d'action historiques sont toujours là ;
-//   ④ aucune demande GPS à l'ouverture de l'écran — prouvé PAR CONTRASTE avec
-//      l'URL normale, qui la déclenche ;
-//   ⑤ la recherche de tête écrit dans le champ historique et alimente le même
+//   ③ aucune demande GPS à l'ouverture — prouvé PAR CONTRASTE avec la coupure,
+//      qui rend l'écran historique et sa demande de position ;
+//   ④ la recherche de tête écrit dans le champ historique et alimente le même
 //      état (`irlSearchQuery`) : aucun second moteur ;
-//   ⑥ les intentions sont multisélectionnables, « Pour toi » est l'état neutre,
+//   ⑤ les intentions sont multisélectionnables, « Pour toi » est l'état neutre,
 //      et l'état est exposé par `aria-pressed` ;
-//   ⑦ kill switches local et mémoire : retour intégral à l'écran historique ;
-//   ⑧ mobile 320 / 390 / 430 px sans débordement, cibles ≥ 44 px, clavier.
+//   ⑥ les deux kill switches, local et mémoire, posés au boot ou en cours de
+//      session : retour intégral à l'écran historique ;
+//   ⑦ mobile 320 / 390 / 430 px sans débordement, cibles ≥ 44 px, clavier.
+//
+// ⚠️ Convention maison (CLAUDE.md, mise en ligne d'UI-3A) : une suite qui
+// observe un comportement RECOUVERT par un lot ultérieur pose le kill switch de
+// ce lot au boot, garde toutes ses assertions, et laisse la cohabitation être
+// prouvée à part. C'est le cas du contrôle ⑤ : les intentions de la tête sont
+// un état EN MÉMOIRE tant qu'UI-4A1 ne les raccorde pas au moteur de filtrage.
+// UI-4A1 étant lui aussi actif par défaut depuis le 2026-08-28, ce seul test
+// pose `localStorage.passio_ui_4a1 = "0"` pour observer la tête seule ; le
+// comportement combiné (une intention que le moteur refuse ne peut plus rester
+// allumée) appartient à `tests/e2e/ui-v4a1-intentions.spec.js`.
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
 
+// Anciens liens d'aperçu : tolérés, mais ils ne décident plus rien — ils ne
+// servent plus ici qu'à prouver qu'ils ne passent PAS outre une coupure.
 const APERCU = "?passio_preview=passio-ui-4a0";
 const DEMO = "?passio_preview=passio-ui-4a0-demo";
 const SEUIL_PX = 4;
@@ -43,6 +66,14 @@ async function boot(page, opts = {}) {
   if (opts.killLocal) {
     await page.addInitScript(() => localStorage.setItem("passio_ui_4a0", "0"));
   }
+  if (opts.killMemoire) {
+    await page.addInitScript(() => { window.PASSIO_UI_4A0 = false; });
+  }
+  // Coupure du lot HÉRITIER (UI-4A1), pour observer la tête seule. Elle est
+  // indépendante de celle d'UI-4A0 : la tête reste posée et pleinement active.
+  if (opts.killA1) {
+    await page.addInitScript(() => localStorage.setItem("passio_ui_4a1", "0"));
+  }
   await espionnerGeo(page);
   await bootOnboarded(page, null, 1, { query: opts.query || "" });
   await page.evaluate(() => {
@@ -61,10 +92,17 @@ async function ouvrirIrl(page) {
 }
 
 test.describe("UI-4A0 — tête de Rencontrer", () => {
-  test("URL normale : rien du lot, écran IRL historique intact", async ({ page }) => {
-    await boot(page);
+  // ⚠️ Énoncé RÉÉCRIT : ce contrôle disait « URL normale : rien du lot ». Depuis
+  // la mise en ligne du 2026-08-28, l'URL normale PORTE le lot ; le seul chemin
+  // vers l'écran IRL historique est le kill switch. Toutes les assertions
+  // d'origine sont conservées, contraste GPS ④ compris : elles décrivent
+  // désormais ce que rend la coupure, et non plus l'URL nue.
+  test("kill switch local au boot : rien du lot, écran IRL historique intact", async ({ page }) => {
+    // L'ancien lien d'aperçu est posé EXPRÈS : il ne doit pas passer outre la
+    // coupure (le drapeau ne sait plus qu'enlever).
+    await boot(page, { query: DEMO, killLocal: true });
     // Départ franc : aucune position déjà connue, aucun appel déjà compté —
-    // le contrôle ④ ne doit dépendre d'aucun état hérité du boot.
+    // le contrôle du contraste ne doit dépendre d'aucun état hérité du boot.
     await page.evaluate(() => { irlUserLocation = null; window.__geoCalls = 0; });
     await ouvrirIrl(page);
 
@@ -75,12 +113,16 @@ test.describe("UI-4A0 — tête de Rencontrer", () => {
     await expect(page.locator("#irlSearchRow")).toBeVisible();
     await expect(page.locator("#irlCitySearch")).toBeVisible();
 
-    // Contrôle du contraste ④ : sans le lot, la position EST demandée.
+    // Contrôle du contraste ③ : sans le lot, la position EST demandée.
     expect(await page.evaluate(() => window.__geoCalls)).toBeGreaterThan(0);
   });
 
-  test("aperçu : hiérarchie de tête et écran historique conservé dessous", async ({ page }) => {
-    await boot(page, { query: DEMO });
+  // ⚠️ Énoncé RÉÉCRIT : ce contrôle s'appelait « aperçu : … » et bootait sur
+  // `?passio_preview=passio-ui-4a0-demo`. Le paramètre ne décide plus rien —
+  // c'est l'URL NORMALE qui porte désormais la tête. Mêmes assertions, sans le
+  // paramètre, pour qu'elles prouvent bien ce que voit un vrai utilisateur.
+  test("URL normale : hiérarchie de tête et écran historique conservé dessous", async ({ page }) => {
+    await boot(page);
     await ouvrirIrl(page);
 
     expect(await page.evaluate(() =>
@@ -105,7 +147,7 @@ test.describe("UI-4A0 — tête de Rencontrer", () => {
     await expect(page.locator("#irlSearchRow")).toBeHidden();
     await expect(page.locator("#irlCitySearch")).toHaveCount(1);
 
-    // ③ rien n'est retiré sous la tête.
+    // ② rien n'est retiré sous la tête.
     await expect(page.locator("#eventList")).toBeVisible();
     await expect(page.locator("#irlMapWrap")).toHaveCount(1);
     await expect(page.locator(".irl-chip-create")).toBeVisible();
@@ -114,8 +156,8 @@ test.describe("UI-4A0 — tête de Rencontrer", () => {
       document.getElementById("eventList").innerHTML.trim().length)).toBeGreaterThan(0);
   });
 
-  test("aucune demande GPS à l'ouverture sous l'aperçu", async ({ page }) => {
-    await boot(page, { query: APERCU });
+  test("aucune demande GPS à l'ouverture sur l'URL normale", async ({ page }) => {
+    await boot(page);
     await page.evaluate(() => { irlUserLocation = null; window.__geoCalls = 0; });
     await ouvrirIrl(page);
     expect(await page.evaluate(() => window.__geoCalls)).toBe(0);
@@ -132,7 +174,7 @@ test.describe("UI-4A0 — tête de Rencontrer", () => {
   });
 
   test("recherche de tête : même champ, même état, aucun second moteur", async ({ page }) => {
-    await boot(page, { query: APERCU });
+    await boot(page);
     await ouvrirIrl(page);
 
     await page.fill("#v4a0Search", "Annecy");
@@ -148,9 +190,24 @@ test.describe("UI-4A0 — tête de Rencontrer", () => {
     expect(await page.inputValue("#v4a0Search")).toBe("");
   });
 
+  // ⚠️ Ce test observe la tête SEULE, avec le kill switch d'UI-4A1 posé au boot
+  // (convention maison, cf. en-tête). Motif : depuis le 2026-08-28, UI-4A1 est
+  // actif par défaut et raccorde ces mêmes chips au moteur de filtrage, puis
+  // RESYNCHRONISE la tête sur l'état réel du moteur après chaque rendu. Une
+  // intention que le moteur refuse ne peut donc plus rester allumée — « Ma
+  // ville » sans ville choisie ouvre le sélecteur historique et retombe à
+  // `aria-pressed="false"`. Ce comportement combiné est vrai, mais il appartient
+  // à UI-4A1 ; ce que le lot UI-4A0 doit garantir, et que voici, c'est la
+  // mécanique de la tête : bascule, neutre, exposition par `aria-pressed`.
+  // Aucune assertion n'a été retirée ni affaiblie.
   test("intentions : multisélection, Pour toi neutre, aria-pressed", async ({ page }) => {
-    await boot(page, { query: APERCU });
+    await boot(page, { killA1: true });
     await ouvrirIrl(page);
+
+    // Garde-fou : si UI-4A1 redevenait actif ici, ce test n'observerait plus la
+    // tête seule et ses attentes deviendraient trompeuses.
+    expect(await page.evaluate(() =>
+      !!(window.PassioUIV4A1 && window.PassioUIV4A1.isActive()))).toBe(false);
 
     const chip = (id) => page.locator(`[data-v4a0-intent="${id}"]`);
     await expect(chip("pour_toi")).toHaveAttribute("aria-pressed", "true");
@@ -180,8 +237,12 @@ test.describe("UI-4A0 — tête de Rencontrer", () => {
     await expect(chip("semaine")).toHaveAttribute("aria-pressed", "true");
   });
 
-  test("kill switch local : écran historique rendu intégralement", async ({ page }) => {
-    await boot(page, { query: DEMO, killLocal: true });
+  // ⚠️ Énoncé RÉÉCRIT : ce contrôle doublait désormais le premier (kill switch
+  // local au boot). Il prouve maintenant la SECONDE coupure, indépendante,
+  // posée elle aussi avant la navigation — l'ancien lien d'aperçu ne la contre
+  // pas davantage.
+  test("kill switch mémoire au boot : écran historique rendu intégralement", async ({ page }) => {
+    await boot(page, { query: APERCU, killMemoire: true });
     await ouvrirIrl(page);
 
     expect(await page.evaluate(() =>
@@ -192,7 +253,7 @@ test.describe("UI-4A0 — tête de Rencontrer", () => {
   });
 
   test("kill switch mémoire en cours de session : retour sans rechargement", async ({ page }) => {
-    await boot(page, { query: DEMO });
+    await boot(page);
     await ouvrirIrl(page);
     await expect(page.locator("#v4a0Head")).toBeVisible();
 
@@ -212,7 +273,7 @@ test.describe("UI-4A0 — tête de Rencontrer", () => {
   for (const largeur of [320, 390, 430]) {
     test(`mobile ${largeur} px : aucun débordement, cibles ≥ 44 px`, async ({ page }) => {
       await page.setViewportSize({ width: largeur, height: 844 });
-      await boot(page, { query: DEMO });
+      await boot(page);
       await ouvrirIrl(page);
 
       const debord = await page.evaluate((seuil) => {

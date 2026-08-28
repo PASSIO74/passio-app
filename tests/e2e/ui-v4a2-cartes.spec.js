@@ -1,9 +1,21 @@
-// Lot UI-4A2 — carte d'activité V2 dans « Rencontrer » (aperçu).
+// Lot UI-4A2 — carte d'activité V2 dans « Rencontrer » (ACTIF PAR DÉFAUT).
+//
+// ⚠️ Réalignement du 2026-08-28 : le lot a été basculé de l'aperçu vers l'URL
+// normale, sur décision de Benjamin, en même temps qu'UI-4A0, UI-4A1 et UI-4B.
+// L'énoncé « l'URL normale est strictement inchangée » est donc devenu FAUX :
+// il décrivait un produit qui n'existe plus. Il est réécrit ci-dessous pour
+// dire le comportement vrai, sans qu'aucun contrôle soit retiré — les mêmes
+// nœuds sont observés, avec la visibilité désormais attendue. Corollaire : les
+// anciennes constantes d'aperçu (`?passio_preview=passio-ui-4a2[-demo]`) ne
+// décident plus rien, toute la suite part donc de l'URL NUE, et ce sont les
+// deux coupures (`localStorage.passio_ui_4a2="0"`, `window.PASSIO_UI_4A2=false`)
+// qui portent seules le chemin de retour arrière.
 //
 // Ce que cette suite prouve, et rien d'autre :
-//   ① l'URL NORMALE est strictement inchangée — aucune classe racine, aucun
-//      bloc du lot, carte historique entière et visible ;
-//   ② sous l'aperçu, la carte porte EXACTEMENT ce que la direction §8 énumère :
+//   ① sur l'URL NORMALE le lot est en place — classe racine posée, toutes les
+//      cartes rendues décorées, et la carte historique RECOUVERTE mais entière
+//      dans le DOM (c'est le kill switch, et lui seul, qui la redonne) ;
+//   ② la carte porte EXACTEMENT ce que la direction §8 énumère :
 //      un visuel, le titre, Passio · quand, ville · distance, participants
 //      agrégés · places, puis « Voir » et « Je viens » ;
 //   ③ rien n'est retiré du DOM : le pied, la barre d'actions sociales et
@@ -17,15 +29,20 @@
 //   ⑥ « Je viens » n'écrit RIEN avant le geste, puis passe par le moteur
 //      historique `setEventRsvp` — aucun second moteur de participation ;
 //   ⑦ annulé et terminé ne sont JAMAIS recouverts d'une invitation à venir ;
-//   ⑧ l'aperçu implique la tête UI-4A0 et le raccord UI-4A1, et les trois
-//      coupures restent indépendantes ;
+//   ⑧ sur cette même URL nue, la tête UI-4A0 et le raccord UI-4A1 sont actifs
+//      eux aussi (chacun pour son propre compte, plus par héritage d'aperçu),
+//      et les trois coupures restent indépendantes ;
 //   ⑨ kill switches local et mémoire : retour intégral à la carte historique ;
 //   ⑩ mobile 320 / 390 / 430 px sans débordement, cibles ≥ 44 px.
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
 
-const APERCU = "?passio_preview=passio-ui-4a2";
-const DEMO = "?passio_preview=passio-ui-4a2-demo";
+// ⚠️ Plus aucune constante d'aperçu ici. `?passio_preview=passio-ui-4a2` et son
+// alias `-demo` sont désormais des paramètres inertes : le drapeau du module ne
+// sait plus qu'ENLEVER. Un test qui les passerait mesurerait exactement la même
+// chose que l'URL nue tout en laissant croire qu'il a activé quelque chose —
+// c'est le contraire de ce que doit dire une suite. Toute la suite boote donc
+// sur l'URL normale, celle que voit réellement un utilisateur.
 const SEUIL_PX = 4;
 
 async function boot(page, opts = {}) {
@@ -40,7 +57,7 @@ async function boot(page, opts = {}) {
       if (g) Object.defineProperty(g, "getCurrentPosition", { configurable: true, value: function () {} });
     } catch (e) {}
   });
-  await bootOnboarded(page, null, 1, { query: opts.query || "" });
+  await bootOnboarded(page, null, 1);
   await page.evaluate(() => { window.supaLoadPosts = async () => []; });
 }
 
@@ -61,24 +78,39 @@ async function premiereCarte(page) {
 }
 
 test.describe("UI-4A2 — carte d'activité V2", () => {
-  test("URL normale : rien du lot, carte historique intacte", async ({ page }) => {
+  // ⚠️ Énoncé RÉÉCRIT le 2026-08-28. Il disait « URL normale : rien du lot,
+  // carte historique intacte » et vérifiait l'ABSENCE de la classe racine, du
+  // bloc V2 et du marqueur, puis la VISIBILITÉ des quatre nœuds historiques.
+  // Ces quatre affirmations sont devenues fausses par un changement de PRODUIT
+  // (bascule du lot en actif par défaut), pas par une régression : sur l'URL
+  // nue, le lot décore désormais chaque carte et recouvre l'ancienne. On garde
+  // exactement les mêmes nœuds sous observation — c'est la visibilité attendue
+  // qui s'inverse — plus la coquille (classe racine, marqueur, couverture) que
+  // l'ancien énoncé niait. « Recouverte » et non « supprimée » : la carte
+  // historique reste entière dans le DOM, sans quoi le retour arrière par kill
+  // switch (dernier test de la suite) serait impossible.
+  test("URL normale : le lot est en place et recouvre la carte historique", async ({ page }) => {
     await boot(page);
     await ouvrirIrl(page);
 
     expect(await page.evaluate(() =>
-      document.documentElement.classList.contains("passio-ui-4a2"))).toBe(false);
-    await expect(page.locator("#eventList .v4a2")).toHaveCount(0);
-    await expect(page.locator("#eventList .event-card[data-v4a2]")).toHaveCount(0);
+      document.documentElement.classList.contains("passio-ui-4a2"))).toBe(true);
+
+    const total = await page.locator("#eventList .event-card").count();
+    expect(total).toBeGreaterThan(0);
+    await expect(page.locator("#eventList .event-card[data-v4a2]")).toHaveCount(total);
+    await expect(page.locator("#eventList .v4a2")).toHaveCount(total);
 
     const { carte } = await premiereCarte(page);
-    await expect(carte.locator(".event-footer")).toBeVisible();
-    await expect(carte.locator(".post-actions")).toBeVisible();
-    await expect(carte.locator(".event-date-block")).toBeVisible();
-    await expect(carte.locator(".event-title")).toBeVisible();
+    await expect(carte.locator(".v4a2")).toBeVisible();
+    for (const sel of [".event-footer", ".post-actions", ".event-date-block", ".event-title"]) {
+      await expect(carte.locator(sel)).toHaveCount(1);
+      await expect(carte.locator(sel)).toBeHidden();
+    }
   });
 
-  test("aperçu : la carte porte les six informations de décision", async ({ page }) => {
-    await boot(page, { query: DEMO });
+  test("la carte porte les six informations de décision", async ({ page }) => {
+    await boot(page);
     await ouvrirIrl(page);
 
     expect(await page.evaluate(() =>
@@ -111,7 +143,7 @@ test.describe("UI-4A2 — carte d'activité V2", () => {
   });
 
   test("rien n'est retiré : les nœuds historiques sont masqués, pas supprimés", async ({ page }) => {
-    await boot(page, { query: APERCU });
+    await boot(page);
     await ouvrirIrl(page);
 
     const { carte, id } = await premiereCarte(page);
@@ -128,7 +160,7 @@ test.describe("UI-4A2 — carte d'activité V2", () => {
   });
 
   test("masquage borné : une carte non décorée garde toutes ses portes", async ({ page }) => {
-    await boot(page, { query: APERCU });
+    await boot(page);
     await ouvrirIrl(page);
 
     const { carte } = await premiereCarte(page);
@@ -167,7 +199,7 @@ test.describe("UI-4A2 — carte d'activité V2", () => {
   });
 
   test("vie privée : ni lieu exact, ni adresse, ni contact, ni visages", async ({ page }) => {
-    await boot(page, { query: APERCU });
+    await boot(page);
     await ouvrirIrl(page);
 
     // Une activité seed qui porte lieu, adresse et contact.
@@ -189,7 +221,7 @@ test.describe("UI-4A2 — carte d'activité V2", () => {
   });
 
   test("« Je viens » : aucune écriture avant le geste, puis setEventRsvp", async ({ page }) => {
-    await boot(page, { query: APERCU });
+    await boot(page);
     await ouvrirIrl(page);
 
     // Une activité à venir, non complète, que je n'organise pas.
@@ -229,7 +261,7 @@ test.describe("UI-4A2 — carte d'activité V2", () => {
   });
 
   test("annulé et terminé ne sont jamais recouverts", async ({ page }) => {
-    await boot(page, { query: APERCU });
+    await boot(page);
     await ouvrirIrl(page);
 
     const ids = await page.evaluate(() => {
@@ -266,8 +298,16 @@ test.describe("UI-4A2 — carte d'activité V2", () => {
     }
   });
 
-  test("l'aperçu implique la tête UI-4A0 et le raccord UI-4A1", async ({ page }) => {
-    await boot(page, { query: DEMO });
+  // ⚠️ Titre RÉÉCRIT le 2026-08-28. Il disait « l'aperçu implique la tête UI-4A0
+  // et le raccord UI-4A1 » : sous aperçu, ouvrir UI-4A2 allumait ses deux
+  // prédécesseurs par HÉRITAGE, faute de quoi la carte V2 se serait retrouvée
+  // sous une tête historique. Cet héritage n'a plus d'objet — les trois lots
+  // sont actifs par défaut, chacun pour son propre compte. Ce qui reste à
+  // prouver est le fait, pas le mécanisme : sur l'URL nue les trois surfaces
+  // cohabitent et les intentions pilotent réellement le moteur. Aucune
+  // assertion n'est retirée.
+  test("URL normale : la tête UI-4A0 et le raccord UI-4A1 sont là eux aussi", async ({ page }) => {
+    await boot(page);
     await ouvrirIrl(page);
 
     await expect(page.locator("#v4a0Head")).toBeVisible();
@@ -284,7 +324,7 @@ test.describe("UI-4A2 — carte d'activité V2", () => {
   });
 
   test("coupures indépendantes : couper UI-4A1 laisse la tête et les cartes V2", async ({ page }) => {
-    await boot(page, { query: DEMO, killLocal: "passio_ui_4a1" });
+    await boot(page, { killLocal: "passio_ui_4a1" });
     await ouvrirIrl(page);
 
     expect(await page.evaluate(() => window.PassioUIV4A1.isActive())).toBe(false);
@@ -293,7 +333,7 @@ test.describe("UI-4A2 — carte d'activité V2", () => {
   });
 
   test("kill switch local : carte historique rendue intégralement", async ({ page }) => {
-    await boot(page, { query: DEMO, killLocal: "passio_ui_4a2" });
+    await boot(page, { killLocal: "passio_ui_4a2" });
     await ouvrirIrl(page);
 
     expect(await page.evaluate(() =>
@@ -302,13 +342,20 @@ test.describe("UI-4A2 — carte d'activité V2", () => {
     const { carte } = await premiereCarte(page);
     await expect(carte.locator(".event-footer")).toBeVisible();
     await expect(carte.locator(".post-actions")).toBeVisible();
-    // C'est bien le lot nommé par l'URL qui est coupé : l'aperçu s'éteint
-    // entièrement, plus aucun héritier ne réclamant la tête.
-    await expect(page.locator("#v4a0Head")).toHaveCount(0);
+    // ⚠️ Assertion RÉÉCRITE le 2026-08-28. Elle exigeait `#v4a0Head` ABSENT :
+    // du temps de l'aperçu, la tête UI-4A0 ne s'affichait que parce qu'UI-4A2
+    // l'allumait par héritage, donc couper UI-4A2 éteignait toute la chaîne.
+    // Depuis la bascule, UI-4A0 est actif POUR LUI-MÊME : couper UI-4A2 ne
+    // défait que les cartes. C'est précisément l'indépendance des coupures que
+    // la suite revendique — la nier ici reviendrait à exiger qu'un kill switch
+    // déborde de son lot. On vérifie donc que la tête V2 est toujours servie,
+    // et qu'elle l'est de son propre chef.
+    await expect(page.locator("#v4a0Head")).toBeVisible();
+    expect(await page.evaluate(() => window.PassioUIV4A0.isEnabled())).toBe(true);
   });
 
   test("kill switch mémoire en cours de session : retour sans rechargement", async ({ page }) => {
-    await boot(page, { query: DEMO });
+    await boot(page);
     await ouvrirIrl(page);
     await expect(page.locator("#eventList .v4a2").first()).toBeVisible();
 
@@ -332,7 +379,7 @@ test.describe("UI-4A2 — carte d'activité V2", () => {
   for (const largeur of [320, 390, 430]) {
     test(`mobile ${largeur} px : aucun débordement, cibles ≥ 44 px`, async ({ page }) => {
       await page.setViewportSize({ width: largeur, height: 844 });
-      await boot(page, { query: DEMO });
+      await boot(page);
       await ouvrirIrl(page);
 
       const debord = await page.evaluate((seuil) => {
