@@ -9857,47 +9857,62 @@ body.ctx-locked #appMain { overflow: hidden; }
 }
 :root.passio-ui-4a0 .v4a0-search::-webkit-search-cancel-button { cursor: pointer; }
 
-/* Les quatre intentions. Elles défilent horizontalement plutôt que de
-   déborder : à 320 px, quatre pastilles ne tiennent pas sur une ligne. */
+/* Les quatre intentions restent toutes visibles : une grille compacte sur
+   une seule ligne évite tout geste de défilement, y compris à 320 px. */
 :root.passio-ui-4a0 .v4a0-intents {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: stretch;
+  gap: 6px;
+  overflow: visible;
   padding: 2px 0;
+  width: 100%;
   max-width: 100%;
+  box-sizing: border-box;
 }
-:root.passio-ui-4a0 .v4a0-intents::-webkit-scrollbar { display: none; }
 
 :root.passio-ui-4a0 .v4a0-chip {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  flex-shrink: 0;
-  min-height: 44px;
-  padding: 0 15px;
-  border-radius: 999px;
+  justify-content: center;
+  min-width: 0;
+  min-height: 48px;
+  padding: 4px;
+  border-radius: 14px;
   border: 1.5px solid var(--border);
   background: var(--bg-card);
   color: var(--text);
   font-family: inherit;
-  font-size: 13.5px;
+  font-size: 12px;
+  line-height: 1.05;
   font-weight: 700;
+  text-align: center;
   cursor: pointer;
   transition: background-color .16s ease, border-color .16s ease, color .16s ease;
 }
+:root.passio-ui-4a0 .v4a0-chip-label {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
 /* Violet = sélection et Passio (charte). L'état ne repose PAS que sur la
    couleur : `aria-pressed` le dit aux technologies d'assistance, et la coche
-   le dit à l'œil. */
+   le dit à l'œil sans prendre de largeur au libellé. */
 :root.passio-ui-4a0 .v4a0-chip[aria-pressed="true"] {
   background: var(--accent);
   border-color: var(--accent);
   color: #fff;
 }
-:root.passio-ui-4a0 .v4a0-chip-mark { display: none; font-size: 12px; }
-:root.passio-ui-4a0 .v4a0-chip[aria-pressed="true"] .v4a0-chip-mark { display: inline; }
+:root.passio-ui-4a0 .v4a0-chip-mark {
+  display: none;
+  position: absolute;
+  top: 4px;
+  left: 5px;
+  font-size: 9px;
+  line-height: 1;
+}
+:root.passio-ui-4a0 .v4a0-chip[aria-pressed="true"] .v4a0-chip-mark { display: block; }
 :root.passio-ui-4a0 .v4a0-chip:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
@@ -9909,5 +9924,5 @@ body.ctx-locked #appMain { overflow: hidden; }
 
 @media (max-width: 359px) {
   :root.passio-ui-4a0 .v4a0-title { font-size: 23px; }
-  :root.passio-ui-4a0 .v4a0-chip { padding: 0 13px; font-size: 13px; }
+  :root.passio-ui-4a0 .v4a0-chip { font-size: 11px; }
 }
