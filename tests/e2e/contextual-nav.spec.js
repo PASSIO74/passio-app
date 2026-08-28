@@ -18,7 +18,9 @@ test.describe("ContextualTools — ouverture / fermeture", () => {
     // Ouverture par clic sur le déclencheur.
     await page.locator("#irlToolsBtn").click();
     await expect(root).not.toHaveAttribute("hidden", /.*/);
-    await expect(page.locator("#ctxToolsTitle")).toContainText("IRL");
+    // §1 du lot UI-7 : le panneau s'intitule « Filtres » (et non plus
+    // « Outils · IRL ») — le titre change, le panneau et ses handlers non.
+    await expect(page.locator("#ctxToolsTitle")).toHaveText("Filtres");
     expect(await page.evaluate(() => ContextualTools.isOpen())).toBe(true);
 
     // Fermeture par le bouton ✕.
@@ -53,10 +55,10 @@ test.describe("ContextualTools — aucune fonctionnalité perdue", () => {
     await boot(page, "irl");
     await page.locator("#irlToolsBtn").click();
     const body = page.locator("#ctxToolsBody");
-    await expect(body).toContainText("Ville");
+    await expect(body).toContainText("Choisir une ville");
     await expect(body).toContainText("Date, distance, horaire");
     await expect(body).toContainText("Mes événements");
-    await expect(body).toContainText("Où je suis inscrit");
+    await expect(body).toContainText("Mes inscriptions");
 
     // Le lanceur « Filtres » ouvre bien le panneau de filtres existant.
     await body.locator('[onclick*="openIrlFiltersPanel"]').click();

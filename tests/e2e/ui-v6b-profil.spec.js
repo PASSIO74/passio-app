@@ -3,7 +3,7 @@
 // Ce que cette suite prouve, et rien d'autre :
 //   ① la tête suit le §11 : « Modifier » est visible et nommé, la statistique
 //      « posts » a quitté le premier niveau sans que rien soit perdu ;
-//   ② « Mes Passio » : chaque identité porte « Actif » ou « Activer » ;
+//   ② « Mes passions » : chaque identité porte « Actif » ou « Activer » ;
 //   ③ LE contrôle central : « Activer » change RÉELLEMENT l'identité active
 //      (`state.user.currentProfileId`) et le confirme visiblement — c'est le
 //      chaînon qui manquait, `switchToProfile()` n'étant appelée par personne ;
@@ -50,6 +50,15 @@ async function ouvrirProfil(page) {
   });
   await page.evaluate(() => renderProfilesScreen());
   await page.waitForTimeout(250);
+  // §6 du lot UI-7 : les identités vivent désormais dans l'onglet « À propos ».
+  // La fonctionnalité n'a pas bougé, sa PORTE si — on l'ouvre, plutôt que de
+  // retirer des assertions. Le `count()` garde ce test valide même sous kill
+  // switch du lot, où la barre d'onglets n'existe pas.
+  const ongletApropos = page.locator('[data-v7-tab="apropos"]');
+  if (await ongletApropos.count()) {
+    await ongletApropos.click();
+    await page.waitForTimeout(150);
+  }
 }
 
 test.describe("UI-6B — Profil et multi-profils", () => {
@@ -70,14 +79,14 @@ test.describe("UI-6B — Profil et multi-profils", () => {
     expect(await page.evaluate(() => typeof openMyPostsTab === "function")).toBe(true);
 
     // Le titre du §11.
-    await expect(page.locator("#nouveauProfilLien")).toHaveText("+ Ajouter une Passio");
+    await expect(page.locator("#nouveauProfilLien")).toHaveText("+ Ajouter une passion");
     expect(await page.evaluate(() =>
-      document.getElementById("nouveauProfilLien").parentNode.textContent)).toContain("Mes Passio");
+      document.getElementById("nouveauProfilLien").parentNode.textContent)).toContain("Mes passions");
 
     expect(errors.js, "exceptions JS").toEqual([]);
   });
 
-  test("« Mes Passio » : une identité Actif, l'autre Activer", async ({ page }) => {
+  test("« Mes passions » : une identité Actif, l'autre Activer", async ({ page }) => {
     await boot(page);
     await poserDeuxProfils(page);
     await ouvrirProfil(page);

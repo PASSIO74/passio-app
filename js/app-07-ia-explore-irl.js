@@ -1038,7 +1038,7 @@ function openIrlCitySelector() {
     </div>
     <div style="display:flex;gap:8px;">
       <button class="btn secondary block" onclick="closeModal()">Annuler</button>
-      <button class="btn primary block" onclick="clearIrlCitySelection()">📍 Ma position</button>
+      <button class="btn primary block" onclick="useMyPositionForIrl()">📍 Utiliser ma position</button>
     </div>
   `;
 
@@ -1106,6 +1106,20 @@ function selectIrlCity(cityId, cityName) {
   updateIrlCityTitle();
   closeModal();
   renderIRL();
+}
+
+// Geste EXPLICITE « Utiliser ma position » du sélecteur de ville (§2 du lot
+// UI-7). C'est le seul endroit de « Rencontrer » qui déclenche la
+// géolocalisation, et il ne se déclenche que sur un tap : l'écran, lui, ne
+// demande JAMAIS la position tout seul (UI-4A0 arme `_passioIrlSkipGeoOnce`
+// avant chaque rendu). On ne duplique aucun moteur : on retire la ville
+// choisie, puis on appelle `requestUserLocation()`, qui rafraîchit lui-même le
+// titre et relance `renderIRL()` quand la position arrive.
+function useMyPositionForIrl() {
+  clearIrlCitySelection();
+  try {
+    if (typeof requestUserLocation === "function") requestUserLocation();
+  } catch (e) { _diag("[GEO] ❌ demande explicite: " + (e && e.message)); }
 }
 
 // Revenir à ta position
@@ -2184,19 +2198,22 @@ function irlToolsSections() {
   var hasJoined = !!(typeof irlFilters !== "undefined" && irlFilters && irlFilters.has("joined"));
   var funnel = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18l-7 8v6l-4-2v-4z"/></svg>';
   return {
-    title: "Outils · IRL",
+    title: "Filtres",
     sections: [
       { title: "Autour de moi", items: [
-        { icon: "🌍", label: "Ville", sub: city, onClick: "closeCtxTools();openIrlCitySelector()" }
+        { icon: "🌍", label: "Choisir une ville", sub: city, onClick: "closeCtxTools();openIrlCitySelector()" }
       ] },
-      { title: "Filtres", items: [
+      // ⚠️ Le panneau s'intitule désormais « Filtres » (§1 du lot UI-7) : une
+      // section qui porterait le même mot ne dirait plus rien. Elle nomme donc
+      // ce qu'elle contient réellement.
+      { title: "Affiner la recherche", items: [
         { icon: funnel, label: "Date, distance, horaire",
           sub: advCount ? (advCount + " filtre" + (advCount > 1 ? "s" : "") + " actif" + (advCount > 1 ? "s" : "")) : "Tout afficher",
           badge: advCount || "", onClick: "closeCtxTools();openIrlFiltersPanel()" }
       ] },
       { title: "Mes événements", items: [
         { icon: "👤", label: "Mes événements", data: { irlfilter: "mine" }, active: hasMine },
-        { icon: "✅", label: "Où je suis inscrit", data: { irlfilter: "joined" }, active: hasJoined }
+        { icon: "✅", label: "Mes inscriptions", data: { irlfilter: "joined" }, active: hasJoined }
       ] }
     ]
   };

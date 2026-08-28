@@ -374,10 +374,13 @@
       <div class="topbar-bell" onclick="goTo('explore')" title="Explorer" role="button" tabindex="0" aria-label="Explorer">
         <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;"><circle cx="11" cy="11" r="7"/><path d="M20 20 L16.4 16.4"/></svg>
       </div>
-      <div class="topbar-bell" onclick="goTo('messages')" title="Messages" role="button" tabindex="0" aria-label="Messages">
-        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;"><path d="M5 4.5 H19 A2.2 2.2 0 0 1 21.2 6.7 V14.3 A2.2 2.2 0 0 1 19 16.5 H13 L9 20 V16.5 H5 A2.2 2.2 0 0 1 2.8 14.3 V6.7 A2.2 2.2 0 0 1 5 4.5 Z"/><circle cx="9" cy="10.5" r="0.9" fill="currentColor" stroke="none"/><circle cx="12" cy="10.5" r="0.9" fill="currentColor" stroke="none"/><circle cx="15" cy="10.5" r="0.9" fill="currentColor" stroke="none"/></svg>
-        <span class="bell-dot" id="msgDot"></span>
-      </div>
+      <!-- §4 (lot UI-7) : l'icône Messages a quitté le bandeau supérieur —
+           Messages est déjà une destination de la barre du bas, et deux portes
+           pour un même écran encombraient la tête de l'application. La pastille
+           #msgDot RESTE dans le DOM, masquée : plusieurs chemins l'allument
+           (renderMessages, notifications realtime) et la retirer aurait fait
+           échouer ces écritures en silence. -->
+      <span id="msgDot" class="bell-dot" hidden aria-hidden="true"></span>
       <div class="topbar-bell" onclick="openNotifications()" title="Notifications" role="button" tabindex="0" aria-label="Notifications">
         <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;"><path d="M18 8.5 A6 6 0 0 0 6 8.5 C6 14 3.8 15.5 3.8 15.5 H20.2 S18 14 18 8.5 Z"/><path d="M10.2 19 A2 2 0 0 0 13.8 19"/></svg>
         <span class="bell-dot" id="bellDot"></span>
@@ -494,9 +497,9 @@
 
       <div class="mood-selector feed-intent-selector" id="feedIntentSelector" hidden role="group" aria-label="Envie du moment">
         <button type="button" class="feed-intent-btn active" data-intent="for_you" aria-pressed="true">Tous</button>
-        <button type="button" class="feed-intent-btn" data-intent="discover" aria-pressed="false">Découvrir</button>
+        <button type="button" class="feed-intent-btn" data-intent="discover" aria-pressed="false">Explorer</button>
         <button type="button" class="feed-intent-btn" data-intent="learn" aria-pressed="false">Apprendre</button>
-        <button type="button" class="feed-intent-btn" data-intent="create" aria-pressed="false">Créer</button>
+        <button type="button" class="feed-intent-btn" data-intent="create" aria-pressed="false">Idées</button>
         <button type="button" class="feed-intent-btn" data-intent="meet" aria-pressed="false">Rencontrer</button>
       </div>
 
@@ -560,8 +563,8 @@
       <!-- ONGLETS CONTENU -->
       <p class="profile-tabs-hint">Filtre ce que tu affiches ci-dessous — coche un ou plusieurs types (rien de coché = tout).</p>
       <div class="profile-tabs" role="group" aria-label="Filtrer par type de contenu (multi-sélection)">
-        <button class="profile-tab active" data-tab="posts" aria-pressed="true" onclick="switchProfileTab('posts',this)" title="Posts" aria-label="Posts">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2.5"/><path d="M8 9h8"/><path d="M8 13h8"/><path d="M8 17h5"/></svg><span class="profile-tab-lbl">Posts</span>
+        <button class="profile-tab active" data-tab="posts" aria-pressed="true" onclick="switchProfileTab('posts',this)" title="Tout" aria-label="Tout">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2.5"/><path d="M8 9h8"/><path d="M8 13h8"/><path d="M8 17h5"/></svg><span class="profile-tab-lbl">Tout</span>
         </button>
         <button class="profile-tab" data-tab="photos" aria-pressed="false" onclick="switchProfileTab('photos',this)" title="Photos" aria-label="Photos">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"/><circle cx="8.5" cy="10" r="1.6"/><path d="M4 17l4.5 -4.5a2 2 0 0 1 2.8 0L16 17"/><path d="M14 14.5l1.6 -1.6a2 2 0 0 1 2.8 0L20 14.5"/></svg><span class="profile-tab-lbl">Photos</span>
@@ -579,11 +582,11 @@
       <div id="myPosts"></div>
 
       <!-- ÉVÉNEMENTS IRL -->
-      <div class="section-title" style="margin-top:18px;">🤝 Événements participés</div>
+      <div class="section-title" style="margin-top:18px;">🤝 Mes activités</div>
       <div id="profileEvents" style="margin-bottom:14px;"></div>
 
       <!-- TOP POSTS -->
-      <div class="section-title" style="margin-top:14px;">🔥 Top posts</div>
+      <div class="section-title" style="margin-top:14px;">🔥 Publications populaires</div>
       <div id="profileTopPosts" style="margin-bottom:14px;"></div>
 
     </section>
@@ -878,11 +881,11 @@
         </button>
         <button type="button" class="ctx-trigger" id="irlToolsBtn"
           onclick="ContextualTools.open('irl', this)" aria-haspopup="dialog"
-          aria-label="Outils : ville, filtres, mes événements" title="Outils & filtres">
+          aria-label="Filtres : ville, filtres, mes événements" title="Filtres">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
             <path d="M4 7h11"/><path d="M19 7h1"/><circle cx="17" cy="7" r="2"/>
             <path d="M4 17h9"/><path d="M17 17h3"/><circle cx="15" cy="17" r="2"/>
-          </svg><span>Outils</span>
+          </svg><span>Filtres</span>
           <span id="irlToolsBadge" class="ctx-trigger-badge"></span>
         </button>
         <b id="irlUserCityName" hidden aria-hidden="true">…</b>
@@ -1815,6 +1818,18 @@
      titre suggéré est construit sur la PASSIO, jamais sur une personne : un
      titre est public dès la création, et il peut être soumis sans relecture. -->
 <script src="js/ui-v6c-proposer-irl.js"></script>
+
+<!-- UI V7 (cohérence des interfaces : §2 Rencontrer, §3 Fil, §6 Profil,
+     §8 Bobine) — hors bloc app : composant autonome (IIFE window.PassioUIV7),
+     inliné individuellement au build. ACTIF PAR DÉFAUT ; coupé par
+     localStorage.passio_ui_7="0" ou window.PASSIO_UI_7=false.
+     ⚠️ Trois règles payées à l'écriture : le bouton « Autres » du fil est un
+     FRÈRE de #profileStrip (que renderProfileStrip réécrit en entier) ; les
+     blocs du profil sont DÉPLACÉS dans des panneaux, jamais régénérés (leurs
+     onclick inline et leurs id sont retrouvés à chaque rendu par app-06) ; et
+     la feuille de finition de bobine ne publie RIEN elle-même — elle renseigne
+     meState.details puis appelle mePublish(), seul moteur de publication. -->
+<script src="js/ui-v7-lot.js"></script>
 
 
 <!-- ======== PWA INSTALL OVERLAY ======== -->

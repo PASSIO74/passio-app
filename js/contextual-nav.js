@@ -170,6 +170,11 @@
     var root = ensureHost();
     render(config);
     currentType = pageType;
+    // ⚠️ L'ÉCRAN COURANT EST UNE DONNÉE, PAS UN TITRE. Un module tiers a
+    // longtemps deviné l'écran en lisant `#ctxToolsTitle` (« Outils · IRL ») :
+    // renommer ce titre suffisait à faire disparaître, en silence, la section
+    // qu'il injectait. On le publie donc explicitement, ici et via `pageType()`.
+    try { root.setAttribute("data-ctx-page", String(pageType)); } catch (_) {}
     lastTrigger = trigger || document.activeElement;
 
     root.removeAttribute("hidden");
@@ -197,6 +202,7 @@
     var root = document.getElementById(ROOT_ID);
     isOpen = false;
     currentType = null;
+    if (root) { try { root.removeAttribute("data-ctx-page"); } catch (_) {} }
     document.body.classList.remove("ctx-locked");
     document.removeEventListener("keydown", onKeydown, true);
     if (!root) return;
@@ -224,7 +230,9 @@
     open: open,
     close: close,
     refresh: refresh,
-    isOpen: function () { return isOpen; }
+    isOpen: function () { return isOpen; },
+    // Écran sur lequel le panneau est ouvert (« irl », « cdv »…), ou null.
+    pageType: function () { return currentType; }
   };
   // Raccourci pour les onClick inline des items (« closeCtxTools();openX() »).
   window.closeCtxTools = close;

@@ -102,7 +102,7 @@ test.describe("UI-4A4 — Outils, troisième case de Rencontrer", () => {
     const chips = page.locator("#ctxToolsBody [data-v4a0-intent]");
     await expect(chips).toHaveCount(4);
     expect(await chips.allTextContents()).toEqual([
-      "✓Tous", "✓Cette semaine", "✓Ma ville", "✓Mes Passio",
+      "✓Tous", "✓Cette semaine", "✓Ma ville", "✓Mes passions",
     ]);
     await expect(page.locator("#" + "v4a4Intentions .ctx-section-title"))
       .toHaveText("Ce que je cherche");

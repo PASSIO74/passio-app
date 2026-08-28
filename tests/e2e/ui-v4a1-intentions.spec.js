@@ -14,7 +14,7 @@
 //   ② la tête UI-4A0 validée apparaît TELLE QUELLE, y compris sur les anciens
 //      liens d'aperçu ;
 //   ③ « Cette semaine » ne pilote QUE la valeur "week" de `irlDateFilters` ;
-//   ④ « Mes Passio » ajoute exactement `_irlMyPassions()` et rend le choix
+//   ④ « Mes passions » ajoute exactement `_irlMyPassions()` et rend le choix
 //      détaillé antérieur à l'extinction ;
 //   ⑤ « Ma ville » sans ville ouvre le sélecteur HISTORIQUE, ne demande jamais
 //      la position, et ne devient active qu'après le choix ;
@@ -190,7 +190,7 @@ test.describe("UI-4A1 — raccord des intentions", () => {
     expect((await etat(page)).dates).toEqual(["month"]);
   });
 
-  test("Mes Passio : ajoute mes passions, rend le choix antérieur", async ({ page }) => {
+  test("Mes passions : ajoute mes passions, rend le choix antérieur", async ({ page }) => {
     await boot(page, { query: APERCU });
     await ouvrirIrl(page);
 

@@ -1303,15 +1303,28 @@ async function mePublish() {
     try { renderStories(); } catch(e) {}
     toast("✨ Story publiée !");
   } else {
+    // ── Finition de bobine (lot UI-7 §8) ────────────────────────────────────
+    // `meState.details` est renseigné par la feuille légère qui suit l'aperçu
+    // (description · passion · couverture · activité). Elle n'existe pas dans
+    // tous les chemins (galerie, kill switch du lot) : chaque champ retombe
+    // donc sur la valeur historique, jamais sur du vide.
+    //   • `image` sert de POSTER de la bobine — `media_url` reste la vidéo,
+    //     donc aucune image ne part en base par ce chemin ;
+    //   • `eventId` est écrit tel quel par `supaPublishPostWithRetry` (colonne
+    //     `event_id`) et c'est lui que `PassioUIV3.eventRefOf` lit pour poser
+    //     « Voir l'activité » sur la bobine (lot UI-5).
+    var d = meState.details || {};
     var post = {
       id: "reel_" + uid(), authorId: authorId, profileId: state.user.currentProfileId,
       authorName: p.name || state.user.name || "Profil", authorEmoji: p.emoji || "✨", authorColor: p.color || "#8b5cf6",
-      passion: p.passion || "autre", mood: "creation",
+      passion: d.passion || p.passion || "autre", mood: "creation",
       type: (mediaType === "video") ? "video" : "photo", isReel: true,
-      image: (mediaType === "photo") ? media : null, video: (mediaType === "video") ? media : null,
-      text: firstText, overlays: overlays,
+      image: (mediaType === "photo") ? media : (d.cover || null),
+      video: (mediaType === "video") ? media : null,
+      text: (d.text || firstText), overlays: overlays,
       createdAt: Date.now(), likes: 0, liked: false, comments: [],
     };
+    if (d.eventId) post.eventId = d.eventId;
     state.userPosts = state.userPosts || [];
     state.userPosts.unshift(post);
     saveState();

@@ -625,6 +625,54 @@ Le script est en lecture seule sur le dépôt (il n'écrit que dans son dossier 
   `studioType`, `irlPassionFilters`… sont des `let` de **portée script** : ils existent comme
   identifiants globaux mais **ne sont pas** des propriétés de `window` — `window.studioType`
   vaut toujours `undefined`, et un test qui l'interroge expire sans rien prouver.
+
+  **Lot UI-7 — cohérence des interfaces (2026-08-28), ACTIF PAR DÉFAUT.**
+  `js/ui-v7-lot.js` + bloc « PASSIO UI V7 » en fin de `styles.css`, tests
+  `tests/e2e/ui-v7-lot.spec.js` et `tests/e2e/ui-v7-bobine-camera.spec.js`.
+  Coupure unique : `localStorage.passio_ui_7="0"` ou `window.PASSIO_UI_7=false`.
+  Périmètre : ① **vocabulaire visible** (« Mes passions », « Ajouter une passion »,
+  « Passion : X », « Filtres » à la place d'« Outils » sur Rencontrer, « Mes inscriptions »,
+  « Options », « Changer de profil ») — les **identifiants** (`data-intent`, `data-tab`,
+  `data-irlfilter`) ne bougent pas ; ② **Rencontrer** : « Détails », « Je viens » →
+  « Inscrit ✓ », ligne « N participants · N places restantes » **calculée**, passion
+  abrégée à l'affichage seul (`libelleCourt`, « Yoga » et non « Yoga / Bien-être »),
+  « Choisir une ville » et un geste explicite `useMyPositionForIrl()` — toujours **aucun
+  GPS automatique** ; ③ **Fil** : les passions deviennent des pastilles « emoji + libellé »
+  qui reviennent à la ligne (bornées à deux rangées, bouton « Autres »), stories −25 %,
+  intentions renommées **Tous · Explorer · Apprendre · Idées · Rencontrer** ; ④ l'icône
+  **Messages quitte la barre supérieure** (`#msgDot` reste dans le DOM, masqué —
+  `renderMsgBadge` continue d'y écrire) ; ⑥ **Profil** à trois onglets nommés
+  (Publications · Activités · À propos), les cinq onglets d'icônes redevenant des
+  sous-filtres ; ⑧ **Bobine** : après l'aperçu, « Recommencer » / « Continuer », puis une
+  feuille légère (description · passion · couverture · activité facultative) qui
+  renseigne `meState.details` et appelle `mePublish()` — **aucun second moteur de
+  publication**.
+  ⚠️ **Six pièges de ce lot.** ① Le bouton « Autres » est un **frère** de `#profileStrip`,
+  jamais un enfant : `renderProfileStrip` réécrit la rangée en entier et la borne en
+  hauteur. ② Au Profil, c'est l'**ORDRE d'origine de l'écran** qui est mémorisé, pas le
+  « frère suivant » de chaque bloc — ce frère déménage lui aussi, et rendre un bloc
+  « avant lui » restituait un ordre inventé. ③ Le bloc CSS UI-7 vient **après** les règles
+  de repli au défilement, à spécificité **égale** : sans réécrire
+  `.app-main.chrome-collapsed …` dans le bloc, l'en-tête du fil cessait de se replier.
+  ④ Les intentions sont en `flex: 1 1 auto` et non `1 1 0` : à colonnes égales,
+  « Rencontrer » et « Apprendre » se faisaient couper pendant que « Tous » laissait du vide.
+  ⑤ `renderProfileEvents` listait `state.seed.events.slice(0,3)` — le contenu de
+  démonstration — sous le titre « Événements participés » : la section ne montrait donc
+  **jamais** une participation. Elle lit désormais `allEvents()` + `_isMyEvent` + `myRsvp`
+  (`_myProfileEventsHTML`, app-06). ⑥ `styles.css` est en **CRLF** : une réécriture du
+  fichier en mode texte Python le convertit en LF et produit un diff de 10 800 lignes —
+  n'y écrire qu'en **binaire**, ou en ajout.
+
+  ⑦ **Un TITRE n'est pas un identifiant d'écran.** `ui-v4a4-outils.js` décidait
+  s'il devait injecter les quatre intentions en cherchant « IRL » dans
+  `#ctxToolsTitle`. Renommer ce titre en « Filtres » a suffi à faire disparaître
+  toute la section — sans erreur, sans test rouge ailleurs, sans rien dans la
+  console. `ContextualTools` publie désormais l'écran courant comme une DONNÉE :
+  `ContextualTools.pageType()` et `#ctxToolsRoot[data-ctx-page]`. Même famille de
+  piège pour l'aide contextuelle : `montrerHint` refuse une cible sans
+  `offsetParent`, donc déplacer une ancre dans un panneau masqué éteint l'aide en
+  silence — l'ancre de « second_profil » retombe sur l'onglet « À propos ».
+
 - `docs/PIEGES_CONNUS.md` — les 56 fiches détaillées (extrait de ce fichier le 2026-08-07).
 - `docs/HISTORIQUE_PROJET.md` — état 2026-06-11, backlog terminé, logs d’optimisation.
 - `docs/ARCHITECTURE.md`, `docs/CONTROLE_16_MISSIONS.md`, `docs/CHECKLIST_COMMERCIALISATION.md`.
