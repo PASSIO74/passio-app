@@ -179,13 +179,18 @@ async function attendreFilStable(page, id) {
     //
     // ⚠️ L'arrondi n'est pas une négligence, c'est la contrepartie du point ①.
     // Une première version de ce garde comparait la géométrie EXACTE, au motif que
-    // c'est le critère de Playwright. Mesuré : 265 déplacements sur 271 sondages,
-    // et l'attente expirait TOUJOURS. La raison est celle-là même qui fait écarter
-    // les animations infinies — une décoration perpétuelle quelque part au-dessus
-    // fait osciller la boîte au sous-pixel (top : 407,3 → 407,4 → 407,5 → 407,3),
-    // sans jamais rien déplacer de perceptible. Exiger l'égalité au bit près, c'est
-    // exiger que cette oscillation s'arrête : elle ne s'arrête pas.
-    // L'arrondi absorbe donc le bruit décoratif, et le point ① couvre le seul cas
+    // c'est le critère de Playwright. Mesuré : l'attente y expirait, ou n'aboutissait
+    // que par chance. La cause a été identifiée, et ce n'est PAS du bruit décoratif :
+    // c'est le DÉFAUT PRODUIT décrit en tête du test « l'écriture serveur reçoit
+    // l'INTENTION… » (js/app-09-boot-pwa.js l. 1662-1677). Sous CPU ralenti,
+    // l'en-tête rétractable du fil se replie et se déplie tout seul deux fois par
+    // seconde, indéfiniment ; l'ancrage de défilement de Chrome compense presque
+    // exactement, et il reste une oscillation permanente de ±0,5 px sur chaque carte
+    // (top : 407,3 → 407,4 → 407,5 → 407,3 ; mesuré : 19 bascules en 10 s à
+    // `rate: 35`, 0 bascule sans ralentissement). Exiger l'égalité au bit près, ce
+    // serait exiger que ce défaut s'arrête : il ne s'arrête pas, et le test
+    // expirerait en accusant le mauvais coupable au lieu de le nommer.
+    // L'arrondi absorbe donc cette oscillation, et le point ① couvre le seul cas
     // que l'arrondi masquait : `like-pop`, dont les keyframes partent de `scale(1)`
     // et y reviennent (styles.css l. 443), et dont le début est indistinguable du
     // repos une fois arrondi.
@@ -394,6 +399,43 @@ test.describe("Interactions — like d'un post", () => {
     // L'ancien supaToggleLike relisait post_likes pour déduire le sens : dès que
     // la base et l'état local divergeaient, le clic écrivait l'inverse de ce que
     // l'utilisateur voyait.
+    //
+    // ⚠️ DÉFAUT PRODUIT CONNU, NON CORRIGÉ ICI — js/app-09-boot-pwa.js l. 1662-1677.
+    // Ce test a fait rougir `main` au hasard ; l'enquête du 2026-08-28 (CDP
+    // `Emulation.setCPUThrottlingRate`, qui reproduit le runner chargé) a montré
+    // qu'il ne s'agissait jamais d'une assertion fausse mais TOUJOURS d'un
+    // dépassement du budget de 45 s, sur un `locator.click` bloqué en boucle par
+    // « element is not stable ». La cause est en dehors de ce test :
+    //
+    //   l'en-tête rétractable du fil compare `dy = main.scrollTop - lastY` sans
+    //   distinguer un défilement de l'UTILISATEUR d'un défilement que le repli
+    //   vient lui-même de provoquer. Replier retire ~190 px AU-DESSUS de la zone
+    //   visible ; l'ancrage de défilement de Chrome (`overflow-anchor: auto`,
+    //   vérifié) rend ces 190 px en baissant `scrollTop` ; l'événement suivant lit
+    //   `dy ≈ -190 < -4` et DÉPLIE ; déplier remet 190 px, l'ancrage remonte
+    //   `scrollTop`, `dy ≈ +190 > 4` avec `y > 140` → REPLIE. Et ainsi de suite.
+    //
+    // Mesuré sur la carte du fil, sans le moindre geste : 19 bascules de
+    // `.chrome-collapsed` en 10 s à `rate: 35` (≈ 2/s, régulières jusqu'au bout,
+    // amplitude résiduelle 0,92 px après compensation) contre 0 bascule en 599
+    // frames sans ralentissement. Le garde `ticking` (requestAnimationFrame) avale
+    // le rebond dans la même frame tant que les frames sont fréquentes : c'est
+    // pour cela que le défaut est INVISIBLE sur machine rapide et permanent dès
+    // qu'elle rame. Coût réel : l'en-tête du fil qui clignote tout seul et du CPU
+    // brûlé en continu, sur l'appareil déjà le plus chargé.
+    //
+    // Il n'est PAS corrigé ici (ce lot ne touche qu'au test), et il n'est pas
+    // masqué : rien dans ce fichier ne neutralise `.chrome-collapsed`. Ce qui est
+    // corrigé, c'est ce qui relevait du test — une attente sur une condition
+    // inatteignable hors ligne (cf. seedServerPostStable) et un garde de stabilité
+    // aveugle à `like-pop` (cf. attendreFilStable).
+    //
+    // ⚠️ `test.slow()` triple le budget, il n'endort rien : le test continue de
+    // n'attendre que des conditions observables et finit aussi vite que la machine
+    // le permet. C'est la seule réponse honnête tant que le défaut ci-dessus force
+    // Playwright à rejouer ses clics — un budget calibré sur une machine au repos
+    // n'est pas une assertion, c'est un pari sur la charge du runner.
+    test.slow();
     await bootInteractions(page);
     const id = await seedServerPostStable(page);
     const btn = page.locator(`[data-postid="${id}"] [data-action="like"]`);

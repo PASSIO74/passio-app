@@ -51,7 +51,105 @@ const POSTS = [
   post("v3_ccc", "Carla"),
 ];
 
+// ── Démarrage APPLICATIF : deux courses à couper AVANT d'agir ──────────────
+// `bootOnboarded` rend la main sur une DURÉE (2,5 s) et sur `#screen-feed.active`
+// — classe déjà présente dans le HTML statique (index.html). Elle n'observe donc
+// RIEN du démarrage réel. Or celui-ci est asynchrone de bout en bout :
+//
+//   ① `boot()` (app-08) attend le SDK Supabase puis `getSession()`, et sa ligne
+//      `state = loadState()` REMPLACE l'objet d'état en bloc ; elle se termine
+//      par `showLanding()`, qui remet l'écran d'accueil PAR-DESSUS l'app ;
+//   ② `supaInit()` lance des chargements réseau dont les réponses REPEIGNENT :
+//      `state.supabasePosts = initPosts; renderFeed();` (app-08, § « 1. CHARGER
+//      LES POSTS ») et `supaLoadEvents().then(… renderIRL())` (§ « 3. Les autres
+//      requêtes »), ce dernier UNIQUEMENT si l'écran IRL est visible.
+//
+// Sur une machine calme ces réponses arrivent bien avant la fin des 2,5 s ; sur
+// un runner chargé, elles arrivent APRÈS le seed. Les deux échecs de CI de ce
+// fichier viennent de là, et de rien d'autre — reproduits ici en simulant la
+// seule chose qui manque en local (Supabase joignable) :
+//   • le fil semé est remplacé par les posts de la base → la carte `v3_a` et son
+//     lien disparaissent → « element(s) not found » sur `[data-v3-tempt]` ;
+//   • le `renderIRL()` de la réponse « events » tombe pendant que l'écran IRL est
+//     à l'écran → `requestUserLocation()` → `__geoCalls` vaut 1 au lieu de 0.
+//
+// ⚠️ Neutraliser ces chargements APRÈS `bootOnboarded` (ce que faisait ce
+// fichier) ne suffit pas : une requête DÉJÀ EN VOL ignore le remplacement de la
+// fonction.
+//
+// La seule barrière qu'AUCUNE course d'ordonnancement ne peut franchir est
+// RÉSEAU : tant que la requête n'aboutit pas, peu importe qui l'a lancée et
+// quand. On coupe donc Supabase pour cette suite — qui ne teste QUE du local
+// (`app-helper` neutralise déjà toutes les écritures et se décrit lui-même comme
+// « test offline »). Chaque chargeur traite cet échec par un `return []`
+// (`supaLoadPosts` : `if (error) return []`), et l'application se garde ensuite
+// elle-même : `if (initPosts.length > 0)` et `if (e && e.length)`. Résultat : ni
+// remplacement du fil, ni `renderIRL()` surnuméraire — quelle que soit la charge.
+//
+// Le remplacement des fonctions reste posé EN PLUS : il couvre les chemins qui
+// n'ont pas de requête à couper (SDK indisponible, stub inerte) et il documente
+// l'intention. Il ne suffirait pas à lui seul — un `setInterval` posé au
+// chargement du document peut être devancé par un timer ÉCHU depuis plus
+// longtemps (celui qui lance `initApp`, donc `supaInit`) : mesuré ici, la
+// fonction réelle était parfois déjà capturée. D'où la barrière réseau.
+async function couperSupabase(page) {
+  await page.route(/https?:\/\/[^/]*\.supabase\.co\//, (route) => route.abort());
+}
+
+// Remplace les chargeurs de démarrage dès qu'ils existent. Un `addInitScript`
+// ne peut pas les poser d'emblée : ce sont des DÉCLARATIONS de fonction
+// d'app-08, qui écrasent toute valeur posée avant l'analyse du fichier.
+async function neutraliserChargementsDeDemarrage(page) {
+  await page.addInitScript(() => {
+    var NOMS = ["supaLoadPosts", "supaLoadEventPosts", "supaLoadEvents", "supaLoadStories"];
+    var poser = function () {
+      var tout = true;
+      for (var i = 0; i < NOMS.length; i++) {
+        var f = window[NOMS[i]];
+        if (typeof f !== "function") { tout = false; continue; }
+        if (f.__e2eNeutralise) continue;
+        var vide = function () { return Promise.resolve([]); };
+        vide.__e2eNeutralise = true;
+        window[NOMS[i]] = vide;
+      }
+      return tout;
+    };
+    if (!poser()) {
+      var iv = setInterval(function () { if (poser()) clearInterval(iv); }, 5);
+      setTimeout(function () { clearInterval(iv); }, 30000); // jamais d'intervalle éternel
+    }
+  });
+}
+
+// Attend la CONDITION « le démarrage de l'application a réellement eu lieu » :
+// l'état est chargé (donc `state = loadState()` ne viendra plus effacer le seed)
+// et l'écran d'accueil ne recouvre pas l'app. Un `showLanding()` tardif est
+// refermé — le helper le fait déjà une fois, on le refait tant qu'il revient,
+// puis on exige que ce soit stable avant de rendre la main.
+//
+// Corollaire utile : le lancement d'`initApp()` (emoji-misc.js) est un timer
+// armé à l'analyse du fichier, échu bien avant ces 2,5 s ; quand cette attente
+// se résout, il a donc forcément déjà été servi — `renderEverything()` (et le
+// `renderIRL()` qu'il contient) ne peut plus survenir pendant le test.
+async function attendreDemarrageApplicatif(page) {
+  await page.waitForFunction(() => {
+    var s = null;
+    try { s = state; } catch (e) { return false; } // liaison `let` pas encore initialisée
+    if (!s || !s.user) return false;
+    var l = document.getElementById("landing");
+    if (l && l.classList.contains("active")) {
+      l.classList.remove("active");
+      window.__v3Boot = 0;
+      return false;
+    }
+    window.__v3Boot = (window.__v3Boot || 0) + 1;
+    return window.__v3Boot >= 3;
+  }, null, { timeout: 30000, polling: 100 });
+}
+
 async function boot(page, opts = {}) {
+  await couperSupabase(page);
+  await neutraliserChargementsDeDemarrage(page);
   if (opts.killLocal) {
     await page.addInitScript(() => localStorage.setItem("passio_ui_3", "0"));
   }
@@ -74,17 +172,17 @@ async function boot(page, opts = {}) {
   // qu'elle est désormais ce que voit tout le monde.
   await bootOnboarded(page, opts.errors, 1, opts.preview === true ? { query: PREVIEW } : {});
 
-  // ⚠️ Neutraliser les chargements de posts, comme le fait `bootInteractions`.
-  // Plusieurs chemins font `state.supabasePosts = posts.concat(extra)` : une
-  // requête du démarrage encore EN VOL se résout APRÈS le seed et remplace le
-  // tableau en bloc — le fil ne contient alors plus les publications semées, et
-  // un `toHaveCount(3)` tombe sur 0 ou 4 au hasard de la charge. Mesuré en CI
-  // sur le test « l'ancien CTA ne coexiste jamais ». La cause est une course de
-  // DONNÉES, pas de rendu : on la coupe à la source.
+  // Filet tardif, conservé : il couvre les chemins qui rappelleraient ces
+  // fonctions PLUS TARD (boucle de rafraîchissement du fil, retour en ligne).
+  // La course du DÉMARRAGE, elle, est déjà coupée avant le boot ci-dessus — une
+  // requête en vol se moque de ce remplacement.
   await page.evaluate(() => {
     window.supaLoadPosts = async () => [];
     window.supaLoadEventPosts = async () => [];
   });
+
+  // …et on n'agit qu'une fois le démarrage applicatif RÉELLEMENT passé.
+  await attendreDemarrageApplicatif(page);
 }
 
 // Peuple le fil de façon déterministe et capture la télémétrie émise.
@@ -122,9 +220,21 @@ async function seedFeed(page, posts, passionsActives) {
   // rendait la suite instable sur un runner CI chargé : on attend que le fil ait
   // cessé de bouger (nombre de cartes ET de traits stables sur plusieurs tours),
   // sinon Playwright tape dans une carte que `renderFeed` déplace encore.
-  await page.waitForFunction(() => {
+  await page.waitForFunction((ids) => {
     const l = document.getElementById("feedList");
     if (!l) return false;
+    // ⚠️ Le fil affiché doit être CELUI QU'ON A SEMÉ. Une réponse de démarrage
+    // qui atterrit ici (`state.supabasePosts = initPosts` puis `renderFeed()`)
+    // remplace le tableau en bloc : les cartes semées disparaissent, le lien avec
+    // elles, et le test échouait quinze lignes plus loin sur un « element(s) not
+    // found » qui ne disait pas d'où venait le problème. On l'observe DIRECTEMENT.
+    // (Une publication semée peut être filtrée par sa passion — c'est voulu, cf.
+    // `passionsActives` : on exige donc l'inclusion, pas l'égalité.)
+    const rendus = Array.from(l.querySelectorAll("article.post[data-postid]"));
+    if (!rendus.every((a) => ids.indexOf(a.getAttribute("data-postid")) !== -1)) {
+      window.__v3Stable = 0;
+      return false;
+    }
     const traits = l.querySelectorAll("[data-v3-bridge]").length;
     // ⚠️ La stabilité seule ne suffit PAS : « 0 trait » est parfaitement stable
     // tant que la décoration n'a pas tourné. Le garde rendait donc la main sur
@@ -137,7 +247,7 @@ async function seedFeed(page, posts, passionsActives) {
     if (window.__v3Sig === sig) { window.__v3Stable = (window.__v3Stable || 0) + 1; }
     else { window.__v3Sig = sig; window.__v3Stable = 0; }
     return window.__v3Stable >= 4;
-  }, null, { timeout: 15000, polling: 100 });
+  }, posts.map((p) => p.id), { timeout: 15000, polling: 100 });
 }
 
 // Fait défiler le fil À UNE POSITION CHOISIE, puis renvoie l'identifiant du
