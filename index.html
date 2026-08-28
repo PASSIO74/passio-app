@@ -1804,6 +1804,17 @@
      MutationObserver, avec une signature par carte. -->
 <script src="js/ui-v6b-profil.js"></script>
 
+<!-- UI V6C (§10 « Proposer un IRL » depuis une conversation 1:1) — hors bloc
+     app : composant autonome (IIFE window.PassioUIV6C), inliné individuellement
+     au build. ACTIF PAR DÉFAUT ; coupé par localStorage.passio_ui_6c="0" ou
+     window.PASSIO_UI_6C=false.
+     ⚠️ Aucun moteur nouveau : l'entrée appelle PassioUIV3.proposeOuting, donc
+     openCreateEvent() + feedIrlBridgePrefill(). Ni GPS, ni adresse déduite, ni
+     message automatique, ni auto-ajout, ni auto-RSVP (§10 mot pour mot). Et le
+     titre suggéré est construit sur la PASSIO, jamais sur une personne : un
+     titre est public dès la création, et il peut être soumis sans relecture. -->
+<script src="js/ui-v6c-proposer-irl.js"></script>
+
 
 <!-- ======== PWA INSTALL OVERLAY ======== -->
 <div id="pwa-overlay" style="display:none;">

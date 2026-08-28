@@ -564,6 +564,53 @@ Le script est en lecture seule sur le dépôt (il n'écrit que dans son dossier 
   AVANT la navigation, donc **aucune suite n'exerce la fenêtre « gate affiché,
   application absente »** — celle où ①, ② et ③ se produisent. Un vert e2e n'infirme
   jamais ces quatre causes.
+
+  **Lots UI-4A4, UI-5, UI-6, UI-6A et UI-6B (2026-08-28) — tous ACTIFS PAR DÉFAUT**, chacun
+  coupable seul (`localStorage.passio_ui_4a4|5|6|6a|6b = "0"`, ou le `window.PASSIO_UI_*`
+  correspondant à `false`). Aucune valeur positive n'active, rien n'est écrit dans
+  `localStorage`.
+  - **UI-4A4** — « Rencontrer » a trois cases (Liste · Carte · Outils) et les quatre
+    intentions quittent la tête pour le panneau. `js/ui-v4a4-outils.js`, tests
+    `ui-v4a4-outils.spec.js`. ⚠️ Dans le panneau, les intentions sont **RECONSTRUITES**
+    par UI-4A0 (`PassioUIV4A0.renderIntentsInto`), jamais déménagées : `#ctxToolsBody` est
+    réécrit en entier à chaque rendu, que le clic sur une intention déclenche justement —
+    une chip déplacée serait arrachée **par son propre clic**. Règle inverse pour
+    `#irlToolsBtn`, qui est *déplacé* : le reconstruire ferait écrire `_updateIrlFiltersBtn`
+    dans une pastille invisible. Et « Outils » **n'est pas un onglet** (il ouvre un
+    dialogue) : il garde son rôle de bouton et se place *à côté* du groupe `role="tab"`.
+    ⚠️ La refonte du panneau `.ctx-*` est bornée à `max-width: 1023px` : non bornée, elle
+    décollait le **rail latéral** du bord droit au-delà de 1024 px, en silence. Et elle
+    centre par `margin-inline: auto`, jamais par `translateX(-50%)` — `transform` est déjà
+    occupée par l'animation d'ouverture.
+  - **UI-5** — bobines connectées au réel. `js/ui-v5-bobines.js`. Toute sortie **ferme le
+    lecteur d'abord** ; « Ça m'intéresse » écrit un signal durable dans
+    `state.user.passionSignals`, lu par `feedPostScore`.
+  - **UI-6 (§9)** — le composer ne demande plus de choisir un format. `js/ui-v6-composer.js`.
+    ⚠️ **Le piège qui décide de tout** : `studioType` est la SEULE source de vérité de ce qui
+    est publié — `publishPost` type le post et remplit `image`/`video` d'après elle, jamais
+    d'après le média réellement attaché. Masquer les onglets sans rien d'autre publierait un
+    post « texte » avec la photo perdue **EN SILENCE**. Le bouton média unique se contente
+    donc de déclencher `#photoInput` / `#videoInput`, dont les gestionnaires **existants**
+    fixent déjà `studioType`. §11 au passage : « +10 pts » quitte le bouton et
+    `.profile-chips-row` est masquée — seul l'AFFICHAGE change, `grantReward` tourne toujours.
+  - **UI-6A (§10)** — inbox Messages : titre, « + » groupant les deux gestes, recherche
+    dessous, Passio devant l'aperçu. `js/ui-v6a-messages.js`. ⚠️ `renderMessages()` repart de
+    zéro (`innerHTML`) à chaque envoi, réception et frappe, et **sort tôt** quand l'écran
+    n'est pas actif : la décoration passe par un MutationObserver + signature par carte.
+  - **UI-6B (§11)** — profil : « Modifier », « Mes Passio », et surtout **Actif / Activer**.
+    `js/ui-v6b-profil.js`. ⚠️ Ce lot répare un défaut réel : `switchToProfile()` — la seule
+    fonction qui change l'identité active — était **définie et appelée par personne**, un clic
+    sur une carte de profil n'agissant que sur le filtre d'affichage (`toggleProfileSelect`).
+    D'où deux conséquences : le bouton « Activer » est ce chaînon manquant, et son clic
+    **doit stopper sa propagation**, sinon activer une identité basculerait aussi ce filtre.
+  ⚠️ **Trois règles communes à ces modules**, payées à l'écriture : ① un **verrou de coupure**
+  dans la fonction de décoration (`if (!actif()) return;`) — un rendez-vous armé AVANT la
+  coupure survit à l'arrêt de l'observateur et reconstruit la surface juste après sa dépose,
+  le kill switch paraissant sans effet ; ② rendre des nœuds dans un hôte encore **détaché**
+  les laisse invisibles aux synchronisations qui balaient le document ; ③ `photoDataUrl`,
+  `studioType`, `irlPassionFilters`… sont des `let` de **portée script** : ils existent comme
+  identifiants globaux mais **ne sont pas** des propriétés de `window` — `window.studioType`
+  vaut toujours `undefined`, et un test qui l'interroge expire sans rien prouver.
 - `docs/PIEGES_CONNUS.md` — les 56 fiches détaillées (extrait de ce fichier le 2026-08-07).
 - `docs/HISTORIQUE_PROJET.md` — état 2026-06-11, backlog terminé, logs d’optimisation.
 - `docs/ARCHITECTURE.md`, `docs/CONTROLE_16_MISSIONS.md`, `docs/CHECKLIST_COMMERCIALISATION.md`.
