@@ -2857,12 +2857,25 @@ async function supaPublishPost(post) {
 // ne touche PAS `_feedServerMayHaveMore` (c'est l'état de pagination DU FIL).
 async function supaLoadPosts(offset = 0, authorId = null) {
   try {
-    let q = supa.from("posts")
-      .select("id, author_id, passion_id, mood, content, media_url, created_at, is_reel, overlays, vlog, shared_from_post_id, shared_data, profiles!author_id(username,emoji,color,avatar_url,is_private)");
-    if (authorId) q = q.eq("author_id", authorId);
-    let { data, error } = await q
-      .order("created_at", { ascending: false })
-      .range(offset, offset + 59);
+    // ⚠️ `event_id` fait partie du SELECT depuis le 2026-08-28. Il était ÉCRIT
+    // par `supaPublishPostWithRetry` mais jamais RELU : une publication reliée
+    // à une activité perdait son lien au premier rechargement, et le
+    // « Voir l'activité » du fil (lot UI-3B) ne fonctionnait donc que sur le
+    // contenu de démonstration. Défaut silencieux : rien n'échouait, la porte
+    // vers l'IRL disparaissait simplement.
+    var COLONNES = "id, author_id, passion_id, mood, content, media_url, created_at, is_reel, overlays, vlog, shared_from_post_id, shared_data, event_id, profiles!author_id(username,emoji,color,avatar_url,is_private)";
+    async function _interroger(cols) {
+      let q = supa.from("posts").select(cols);
+      if (authorId) q = q.eq("author_id", authorId);
+      return await q.order("created_at", { ascending: false }).range(offset, offset + 59);
+    }
+    let { data, error } = await _interroger(COLONNES);
+    // Repli symétrique de celui de l'écriture : sur une base où la migration
+    // IRL v2 n'est pas appliquée, un SELECT nommant `event_id` échoue en bloc
+    // et VIDERAIT le fil. On réessaie sans la colonne plutôt que de tout perdre.
+    if (error && /event_id/.test(error.message || "")) {
+      ({ data, error } = await _interroger(COLONNES.replace(", event_id,", ",")));
+    }
     if (error) return [];
     if (!authorId) window._feedServerMayHaveMore = ((data || []).length === 60);
     // 🔒 Comptes privés : leurs posts ne sont montrés qu'à leurs abonnés (et à
@@ -2980,6 +2993,10 @@ async function supaLoadPosts(offset = 0, authorId = null) {
             authorId: x.user_id, text: x.payload,
             type: x.kind === "emoji" ? "emoji_reaction" : "gif_reaction", createdAt: supaTs(x.created_at) })),
         isReel: !!r.is_reel, // bobine (exclu du feed, affiché dans Bobines)
+        // 🤝 Activité rattachée : c'est CE champ que `refEvenement()` (UI-3B)
+        // lit pour poser « Voir l'activité ». Absent, la publication est
+        // traitée comme non reliée — sans erreur, et sans porte vers l'IRL.
+        ...(r.event_id ? { eventId: r.event_id } : {}),
         overlays: r.overlays || null,
         // 📔 Carnet de voyage : réhydrate les champs à plat attendus par le viewer
         // (openVlogViewer lit post.destination/steps/cover/… directement).
