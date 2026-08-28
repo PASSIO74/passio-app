@@ -1004,7 +1004,10 @@
         </div>
       </div>
 
-      <div style="display:flex;align-items:center;gap:8px;padding:4px 0 8px;">
+      <!-- id ajouté par le lot UI-4A0 : la tête « Rencontrer » remplace cette
+           barre par la sienne et la MASQUE en CSS (elle reste dans le DOM, le
+           moteur historique continue d'y lire et d'y écrire). -->
+      <div id="irlSearchRow" style="display:flex;align-items:center;gap:8px;padding:4px 0 8px;">
   <div style="display:flex;align-items:center;gap:6px;flex:1;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:8px 12px;">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true" style="width:14px;height:14px;color:var(--muted);flex-shrink:0;"><circle cx="11" cy="11" r="7"/><path d="M20 20 L16.4 16.4"/></svg>
     <input id="irlCitySearch" type="text" placeholder="Rechercher une ville, un événement…" oninput="filterIrlByCity()" style="border:none;background:transparent;font-size:13px;color:var(--text);outline:none;flex:1;"/>
@@ -1699,6 +1702,14 @@
      de la validation visuelle de Benjamin ; coupé par
      localStorage.passio_ui_4b="0" ou window.PASSIO_UI_4B=false. -->
 <script src="js/ui-v4b-fiche.js"></script>
+
+<!-- UI V4 (lot UI-4A0 — tête de « Rencontrer ») — hors bloc app : composant
+     autonome (IIFE window.PassioUIV4A0), inliné individuellement au build.
+     APERÇU UNIQUEMENT (?passio_preview=passio-ui-4a0-demo, alias
+     ?passio_preview=passio-ui-4a0) ; coupé par
+     localStorage.passio_ui_4a0="0" ou window.PASSIO_UI_4A0=false.
+     ⚠️ Chargé APRÈS le bloc app : il enveloppe renderIRL, qui doit exister. -->
+<script src="js/ui-v4a0-tete.js"></script>
 
 
 <!-- ======== PWA INSTALL OVERLAY ======== -->
