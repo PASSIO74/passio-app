@@ -388,6 +388,31 @@ Le script est en lecture seule sur le dépôt (il n'écrit que dans son dossier 
   suite — au premier `boot()`, `renderIRL` n'existe pas encore en prod. Le module écoute
   donc `passio:app-ready` et garde une reprise bornée par `setTimeout` (jamais
   `requestAnimationFrame`).
+  Implémentation UI-4A1 (raccord des intentions au moteur IRL) :
+  `js/ui-v4a1-intentions.js`, tests `tests/e2e/ui-v4a1-intentions.spec.js`.
+  **APERÇU UNIQUEMENT** (`?passio_preview=passio-ui-4a1-demo`, alias `…=passio-ui-4a1`) ;
+  coupures dédiées `localStorage.passio_ui_4a1="0"` et `window.PASSIO_UI_4A1=false`, et
+  couper UI-4A0 coupe aussi ce lot. Aucun style neuf : la tête UI-4A0 est réutilisée
+  telle quelle, son aperçu étant impliqué par celui de son « héritier ». Le module ne
+  crée AUCUN moteur : `semaine` pilote la seule valeur `"week"` de `irlDateFilters`,
+  `passio` ajoute exactement `_irlMyPassions()` dans `irlPassionFilters`, et tout passe
+  par le même `renderIRL()`. ⚠️ Le seul écart réel : **il n'existait aucun filtre ville** —
+  `irlSelectedCity` ne servait que de point de référence (carte, distances, tri « le plus
+  proche »). Un prédicat explicite `irlCityIntent` (+ `setIrlCityIntent` /
+  `irlCityIntentName` / `_normIrlCityName`) a donc été ajouté DANS `_filterIrlEvents`,
+  pour que liste et marqueurs ne divergent pas ; il est vide par défaut, compté par
+  `_irlActiveFilterCount`, signé par `_resetIrlPagingIfFiltersChanged` et vidé par
+  `clearAllIrlFilters`. Sans ville choisie, `Ma ville` ouvre `openIrlCitySelector()` et
+  reste inactive jusqu'au choix — jamais de GPS. ⚠️ Quatre pièges de ce lot : les états
+  historiques sont des `let` (`irlPassionFilters`, `irlSelectedCity`) donc **absents de
+  `window`** → app-07 expose `irlPassionFilterSet()` / `irlSelectedCityName()`, à relire
+  à chaud (`renderIrlPassionTiles` REMPLACE le Set le temps d'un calcul) ; la coupure
+  restitue **valeur par valeur**, jamais en bloc, sinon elle effacerait un filtre posé
+  depuis le panneau détaillé APRÈS l'activation ; `clearAllIrlFilters()` est un geste
+  explicite qui devient le nouveau neutre (le snapshot est abandonné, il ne ressuscite
+  pas à la coupure) ; et **deux enveloppes de `renderIRL` s'empilent** — UI-4A0 ne met
+  plus sa fonction d'origine à `null` quand un sous-lot l'a recouverte, sinon le rendu
+  suivant plantait sur un `null.apply`.
 - `docs/PIEGES_CONNUS.md` — les 56 fiches détaillées (extrait de ce fichier le 2026-08-07).
 - `docs/HISTORIQUE_PROJET.md` — état 2026-06-11, backlog terminé, logs d’optimisation.
 - `docs/ARCHITECTURE.md`, `docs/CONTROLE_16_MISSIONS.md`, `docs/CHECKLIST_COMMERCIALISATION.md`.

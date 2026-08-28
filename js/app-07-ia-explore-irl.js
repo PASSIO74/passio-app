@@ -1926,6 +1926,52 @@ function _eventTimeLabel(e) {
   return String(Math.floor(mins / 60)).padStart(2, "0") + ":" + String(mins % 60).padStart(2, "0");
 }
 
+// ── Prédicat ville — ajouté pour le lot UI-4A1 (intention « Ma ville ») ──────
+// Constat de l'audit préalable : AUCUN filtre ville n'existait. `irlSelectedCity`
+// ne servait que de point de RÉFÉRENCE (centrage de la carte, distances, tri
+// « le plus proche ») ; la liste, elle, n'était pas restreinte. L'intention
+// « Ma ville » a donc besoin de ce prédicat explicite — et de rien d'autre :
+// aucun rayon inventé, aucun détournement de `irlSearchQuery`.
+// Vide ("") = INACTIF = comportement historique strictement inchangé. Seule
+// l'intention V4 le pose ; `clearAllIrlFilters()` le remet à vide.
+var irlCityIntent = "";
+
+function _normIrlCityName(s) {
+  // La classe de la 2ᵉ ligne est la plage des diacritiques combinants
+  // U+0300–U+036F : après `normalize("NFD")`, « Sète » devient « s e t e » et
+  // non « s te ». Sans elle, le nettoyage suivant transformerait chaque accent
+  // en espace et couperait le nom de ville en deux.
+  return String(s || "")
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function setIrlCityIntent(name) { irlCityIntent = _normIrlCityName(name); }
+function irlCityIntentName() { return irlCityIntent; }
+
+// Ville sélectionnée courante, ou "". `irlSelectedCity` est déclaré en `let` :
+// il n'existe donc PAS sur `window` et les modules V4 (chargés hors du bloc app)
+// ne peuvent pas le lire directement.
+function irlSelectedCityName() { return irlSelectedCity ? String(irlSelectedCity.name || "") : ""; }
+
+// Idem pour `irlPassionFilters` (`let`, et REMPLACÉ le temps d'un calcul dans
+// renderIrlPassionTiles) : on le lit à chaud, on ne le capture jamais.
+function irlPassionFilterSet() {
+  if (!irlPassionFilters) irlPassionFilters = new Set();
+  return irlPassionFilters;
+}
+
+// « Lyon » doit retenir « Lyon 6e », mais on ne compare jamais en sous-chaîne
+// libre (« Lyon » attraperait « Saint-Lyonnais ») : égalité, ou préfixe de MOT.
+function _eventMatchesCityIntent(e) {
+  var v = _normIrlCityName(e && e.city);
+  if (!v || !irlCityIntent) return false;
+  if (v === irlCityIntent) return true;
+  return v.indexOf(irlCityIntent + " ") === 0 || irlCityIntent.indexOf(v + " ") === 0;
+}
+
 // Applique les 5 filtres IRL (passion / type / date / distance / heure) + retire le
 // passé. Partagé entre la liste (renderIRL) et les marqueurs (updateIrlMapMarkers)
 // pour qu'ils ne divergent jamais. (Factorisé le 2026-06-24.)
@@ -1969,6 +2015,11 @@ function _filterIrlEvents(events) {
       if (irlDateFilters.has("custom") && irlCustomDate && e.date >= irlCustomDate.start && e.date <= irlCustomDate.end) return true;
       return false;
     });
+  }
+  // 3 bis. Ville — actif SEULEMENT quand l'intention « Ma ville » (UI-4A1) l'a
+  // posé. Il s'ajoute par ET aux autres familles, comme elles toutes.
+  if (irlCityIntent) {
+    filtered = filtered.filter(_eventMatchesCityIntent);
   }
   // 4. Distance
   if (irlDistanceFilter && irlDistanceFilter !== "") {
@@ -2050,6 +2101,7 @@ function _irlActiveFilterCount() {
   if (irlPassionFilters && irlPassionFilters.size) n += irlPassionFilters.size;
   if (irlFilters && irlFilters.size) n += irlFilters.size;
   if (irlDateFilters && irlDateFilters.size) n += irlDateFilters.size;
+  if (irlCityIntent) n += 1;
   if (irlDistanceFilter) n += 1;
   if (irlTimeFilter) n += 1;
   return n;
@@ -2060,6 +2112,10 @@ function clearAllIrlFilters() {
   if (irlPassionFilters) irlPassionFilters.clear();
   if (irlFilters) irlFilters.clear();
   if (irlDateFilters) irlDateFilters.clear();
+  // « Tout afficher » est un geste explicite : il retire aussi le prédicat ville
+  // posé par l'intention V4, sinon la pastille resterait à 1 sans aucun panneau
+  // capable de l'éteindre.
+  irlCityIntent = "";
   irlDistanceFilter = "";
   irlTimeFilter = "";
   irlCustomDate = null;
@@ -2169,6 +2225,7 @@ function _resetIrlPagingIfFiltersChanged() {
     [...(irlPassionFilters || [])].sort().join(","),
     [...(irlFilters || [])].sort().join(","),
     [...(irlDateFilters || [])].sort().join(","),
+    irlCityIntent,
     irlDistanceFilter, irlTimeFilter, irlSearchQuery, irlSort, irlShowPast,
     irlCustomDate ? irlCustomDate.start + "-" + irlCustomDate.end : "",
   ].join("|");

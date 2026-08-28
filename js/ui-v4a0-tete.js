@@ -11,7 +11,12 @@
 // Ce qu'il NE fait pas, et qui revient aux sous-lots suivants (UI-4A1/4A2) :
 //   • aucune simplification des cartes d'activité ;
 //   • aucun commutateur Liste / Carte, aucune réorganisation de la carte ;
-//   • aucun raccordement des intentions au moteur de filtrage — leur état est
+//   • aucun raccordement des intentions au moteur de filtrage DANS CE FICHIER —
+//     c'est `js/ui-v4a1-intentions.js` (lot UI-4A1) qui le fait, à partir des
+//     trois seules surfaces ajoutées ici : l'événement `passio:ui4a0-intents`,
+//     l'événement `passio:ui4a0-apply` et `PassioUIV4A0.setIntents(...)`. Sous
+//     le seul aperçu UI-4A0, une intention ne change toujours PAS la liste ;
+//     leur état est
 //     tenu EN MÉMOIRE et exposé par `window.PassioUIV4A0.intents()` pour que
 //     UI-4A1 le branche sur `irlDateFilters` / `irlSelectedCity` /
 //     `irlPassionFilters` sans avoir à créer un second filtre. Tant que ce
@@ -83,12 +88,33 @@
     } catch (e) { fail("query", e); return false; }
   }
 
+  // Les sous-lots UI-4A suivants (UI-4A1…) réutilisent cette tête TELLE QUELLE
+  // au lieu d'en poser une seconde : leur aperçu vaut donc aperçu de tête. On
+  // le leur DEMANDE, sans connaître leurs noms d'aperçu — et leur `isEnabled`
+  // ne consulte jamais celui-ci en retour, donc aucune récursion.
+  function apercuHeritier() {
+    var suite = window.PassioUIV4A1;
+    if (suite && typeof suite.isEnabled === "function") {
+      try { return !!suite.isEnabled(); } catch (e) { fail("apercu_heritier", e); }
+    }
+    return false;
+  }
+
   function uiV4a0Enabled() {
     if (window.PASSIO_UI_4A0 === false) return false;   // coupure mémoire
     var stored = null;
     try { stored = localStorage.getItem(STORAGE_KEY); } catch (e) {}
     if (stored === "0") return false;                   // kill switch local
-    return apercuDemande(PREVIEW_NAME) || apercuDemande(DEMO_PREVIEW_NAME);
+    return apercuDemande(PREVIEW_NAME) || apercuDemande(DEMO_PREVIEW_NAME) || apercuHeritier();
+  }
+
+  // Signal sortant — le seul canal par lequel un sous-lot apprend qu'une
+  // intention a changé ou que la tête vient d'être posée/retirée. Aucun état
+  // n'est partagé autrement.
+  function emettre(nom, detail) {
+    try {
+      window.dispatchEvent(new CustomEvent(nom, { detail: detail || {} }));
+    } catch (e) { fail("evenement", e); }
   }
 
   // ── Diagnostic ────────────────────────────────────────────────────────────
@@ -293,7 +319,28 @@
       }
       syncIntentions();
       track("ui_v4a0_intent", { v: VERSION, intent: String(id), n: intentions.length });
+      emettre("passio:ui4a0-intents", { intents: intentions.slice() });
     } catch (e) { fail("intention", e); }
+  }
+
+  // Pose l'état des chips SANS ré-émettre l'événement : c'est la voie par
+  // laquelle un sous-lot resynchronise la tête sur l'état RÉEL du moteur (ville
+  // refusée faute de choix, « Tout afficher », kill switch…). Les identifiants
+  // inconnus et l'état neutre sont ignorés : on ne stocke que des intentions.
+  function setIntents(liste) {
+    try {
+      var propre = [];
+      var src = Array.isArray(liste) ? liste : [];
+      for (var i = 0; i < src.length; i++) {
+        var id = String(src[i]);
+        if (estNeutre(id) || propre.indexOf(id) !== -1) continue;
+        for (var j = 0; j < INTENTIONS.length; j++) {
+          if (INTENTIONS[j].id === id) { propre.push(id); break; }
+        }
+      }
+      intentions = propre;
+      syncIntentions();
+    } catch (e) { fail("set_intentions", e); }
   }
 
   function syncIntentions() {
@@ -329,7 +376,11 @@
   function poserEnveloppeRender() {
     if (enveloppePosee) return;
     if (typeof window.renderIRL !== "function") return;
-    if (window.renderIRL._v4a0) { enveloppePosee = true; return; }
+    // Notre enveloppe peut être encore DANS la chaîne, recouverte par celle d'un
+    // sous-lot (UI-4A1) : `window.renderIRL` ne porte alors plus `_v4a0`, mais
+    // `renderIRLOriginal` est toujours renseigné. La reconnaître évite d'en
+    // empiler une seconde — elle se garde elle-même par `uiV4a0Enabled()`.
+    if (window.renderIRL._v4a0 || renderIRLOriginal) { enveloppePosee = true; return; }
     renderIRLOriginal = window.renderIRL;
     var enveloppe = function () {
       if (uiV4a0Enabled()) {
@@ -346,12 +397,16 @@
     enveloppePosee = true;
   }
 
+  // ⚠️ `renderIRLOriginal` n'est remis à null QUE si l'enveloppe a réellement été
+  // retirée. Si un sous-lot a enveloppé par-dessus, la nôtre reste dans la
+  // chaîne : l'oublier ferait planter le prochain rendu sur un `null.apply`.
+  // Elle devient simplement inerte, `uiV4a0Enabled()` étant désormais faux.
   function retirerEnveloppeRender() {
     if (!enveloppePosee) return;
     if (renderIRLOriginal && window.renderIRL && window.renderIRL._v4a0) {
       window.renderIRL = renderIRLOriginal;
+      renderIRLOriginal = null;
     }
-    renderIRLOriginal = null;
     enveloppePosee = false;
   }
 
@@ -368,12 +423,14 @@
       retirerHead();
       // Le champ historique reprend la main : il n'a jamais quitté le DOM, il
       // était seulement masqué par la classe racine que l'on vient de retirer.
+      emettre("passio:ui4a0-apply", { on: false });
       return false;
     }
 
     root.classList.add(ROOT_CLASS);
     poserEnveloppeRender();
     poserHead();
+    emettre("passio:ui4a0-apply", { on: true });
     return true;
   }
 
@@ -403,6 +460,7 @@
     apply: apply,
     refresh: syncHead,
     intents: function () { return intentions.slice(); },
+    setIntents: setIntents,
   };
 
   window.addEventListener("passio:app-ready", function () {
