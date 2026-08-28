@@ -10503,6 +10503,10 @@ body.ctx-locked #appMain { overflow: hidden; }
 
 /* ══════════════════════════════════════════════════════════════════════════
    REFONTE DU PANNEAU CONTEXTUEL (classes .ctx-*, PARTAGÉES avec Voyages)
+   Ancrée à `:root.passio-ui-4a4` : la coupure du lot rend le panneau d'avant,
+   à l'identique. Le panneau sert aussi l'écran Voyages, mais le drapeau est
+   posé sur la racine du document, pas sur l'écran — il vaut donc partout.
+
    Ce qui était réellement peu pratique, et qui change :
      • `max-height: 85vh` ignorait `--app-vh`, la hauteur RÉELLE mesurée en JS :
        sur iOS la feuille dépassait le viewport. Elle suit désormais la même
@@ -10514,37 +10518,364 @@ body.ctx-locked #appMain { overflow: hidden; }
      • les entrées étaient quatre lignes bordées identiques, sans hiérarchie :
        les items d'ÉTAT (multi-sélection) se distinguent maintenant des items de
        NAVIGATION, qui seuls gardent le chevron.
-   ══════════════════════════════════════════════════════════════════════════ */
-.ctx-sheet {
-  max-height: min(78vh, calc(var(--app-vh, 100svh) - 72px));
-  /* Recentré sur le cadre de l'application plutôt que sur le bord de l'écran. */
-  left: 50%;
-  right: auto;
-  transform: translate(-50%, 101%);
-  width: min(100%, 540px);
-}
-.ctx-root.ctx-open .ctx-sheet { transform: translate(-50%, 0); }
 
-.ctx-close {
+   ⚠️ DEUX PIÈGES PAYÉS ICI, mesurés par `contextual-nav.spec.js` :
+   ① le recentrage NE DOIT PAS déborder sur ≥ 1024 px. Au-delà, la feuille n'est
+      plus une feuille : c'est un rail latéral droit plein hauteur, posé par le
+      media query d'origine. Une règle de recentrage écrite APRÈS ce media query
+      et sans borne le décollait du bord droit — le rail cessait d'être un rail,
+      en silence. D'où la borne `max-width: 1023px` ;
+   ② on centre par `left: 0; right: 0; margin-inline: auto`, JAMAIS par
+      `left: 50%` + `translateX(-50%)`. Le décalage aurait deux défauts : il
+      occupe la propriété `transform`, dont l'animation d'ouverture a besoin
+      (il faudrait alors réécrire les deux états, et la moindre omission fige la
+      feuille hors écran), et il rend `left` = 187.5px là où le contrat de la
+      feuille — vérifié — est d'être ancrée au bord bas-gauche du cadre.
+   ══════════════════════════════════════════════════════════════════════════ */
+@media (max-width: 1023px) {
+  :root.passio-ui-4a4 .ctx-sheet {
+    max-height: min(78vh, calc(var(--app-vh, 100svh) - 72px));
+    /* Recentré sur le cadre de l'application plutôt que sur le bord de l'écran,
+       sans toucher à `transform` (voir le piège ② ci-dessus). */
+    width: min(100%, 540px);
+    margin-inline: auto;
+  }
+}
+
+:root.passio-ui-4a4 .ctx-close {
   width: 44px;
   height: 44px;
 }
 
 /* Une entrée d'ÉTAT (multi-sélection) : plus compacte, et sa sélection se lit
    au premier coup d'œil — pastille pleine plutôt que bordure discrète. */
-.ctx-item[aria-pressed="true"] {
+:root.passio-ui-4a4 .ctx-item[aria-pressed="true"] {
   border-color: transparent;
   background: var(--accent-wash);
   color: var(--accent);
 }
-.ctx-item[aria-pressed="true"] .ctx-item-label { font-weight: 800; }
+:root.passio-ui-4a4 .ctx-item[aria-pressed="true"] .ctx-item-label { font-weight: 800; }
 
 /* Une entrée de NAVIGATION garde son chevron ; une entrée d'état n'en a pas —
    le chevron promet une destination, un état n'en a pas. C'est déjà le contrat
    de `contextual-nav.js` (le chevron n'est posé que sur un item SANS data) :
    on ne fait ici que l'assumer visuellement. */
-.ctx-item .ctx-item-go { opacity: 0.5; font-size: 18px; }
+:root.passio-ui-4a4 .ctx-item .ctx-item-go { opacity: 0.5; font-size: 18px; }
 
-@media (prefers-reduced-motion: reduce) {
-  .ctx-sheet { transition: none; }
+/* ══════════════════════════════════════════════════════════════════════════
+   PASSIO UI V6 — composer de publication (§9) et sortie des mécaniques
+   économiques du cœur (§11).  ACTIF PAR DÉFAUT.
+   (coupures : localStorage.passio_ui_6 = "0" · window.PASSIO_UI_6 = false)
+
+   Tout est ancré à `:root.passio-ui-6` : coupé, le Studio retrouve ses cinq
+   onglets, ses blocs dans l'ordre d'origine et son libellé « +10 pts ».
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* Les cinq onglets de format disparaissent : le composer ne demande plus de
+   choisir avant de commencer. MASQUÉS, jamais retirés — `openStudioOnType`
+   (le chemin « Créer → Plus → Audio/podcast ») y rejoue un clic. */
+:root.passio-ui-6 #studioTypeTabs { display: none !important; }
+
+/* Le bloc audio ne s'affiche que par ce chemin-là : le composer principal ne
+   propose que photo et vidéo (§9). Il garde donc son propre affichage inline. */
+
+:root.passio-ui-6 .v6-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
+
+/* « Publier en tant que … · Changer » : une ligne calme, pas un formulaire. */
+:root.passio-ui-6 .v6-identite,
+:root.passio-ui-6 .v6-passio {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  min-width: 0;
+}
+:root.passio-ui-6 .v6-identite-txt,
+:root.passio-ui-6 .v6-passio-txt {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+:root.passio-ui-6 .v6-lien {
+  appearance: none;
+  -webkit-appearance: none;
+  font-family: inherit;
+  flex: 0 0 auto;
+  background: none;
+  border: 0;
+  /* Cible tactile pleine, ligne compacte : même technique que les liens du fil. */
+  min-height: 44px;
+  margin: -12px 0;
+  padding: 0 2px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
+  cursor: pointer;
+  border-radius: 8px;
+}
+:root.passio-ui-6 .v6-lien:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Une seule zone média, deux portes. */
+:root.passio-ui-6 .v6-media { display: flex; gap: 8px; }
+:root.passio-ui-6 .v6-media-btn {
+  appearance: none;
+  -webkit-appearance: none;
+  font-family: inherit;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 48px;
+  padding: 12px 10px;
+  border-radius: 13px;
+  border: 1px dashed var(--border-strong);
+  background: var(--bg-card);
+  color: var(--text-dim);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color 150ms ease, color 150ms ease;
+}
+:root.passio-ui-6 .v6-media-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Le <select> de Passio reste la source lue par publishPost : il est REPLIÉ
+   derrière le résumé, jamais retiré. */
+:root.passio-ui-6 #fieldPassion { display: none; }
+:root.passio-ui-6 #fieldPassion.v6-ouvert { display: block; }
+
+/* « Affiner » : le mood, facultatif, replié par défaut. */
+:root.passio-ui-6 .v6-affiner {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 4px 12px;
+  background: var(--bg-card);
+}
+:root.passio-ui-6 .v6-affiner > summary {
+  cursor: pointer;
+  padding: 10px 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-dim);
+  list-style: none;
+}
+:root.passio-ui-6 .v6-affiner > summary::-webkit-details-marker { display: none; }
+:root.passio-ui-6 .v6-affiner > summary::after {
+  content: "▾";
+  float: right;
+  transition: transform 160ms ease;
+}
+:root.passio-ui-6 .v6-affiner[open] > summary::after { transform: rotate(180deg); }
+:root.passio-ui-6 .v6-affiner #fieldMood { margin-bottom: 10px; }
+
+/* Le bouton de publication est le nœud HISTORIQUE, déplacé tel quel : il porte
+   la hauteur de `.btn` (39 px), sous la cible tactile de 44 px du projet. On la
+   remonte sans le recréer — son `onclick="publishPost()"` doit rester intact. */
+:root.passio-ui-6 [data-v6-publier] { min-height: 48px; }
+
+/* ── §11 : les mécaniques économiques sortent du cœur ──────────────────────
+   « Les étoiles, scores, Passia, rangs, leaderboards et paywalls internes
+   sortent du cœur. »  Seul l'AFFICHAGE change : `grantReward` continue de
+   tourner et les points continuent d'être comptés. C'est un lot visuel.
+   ⚠️ On masque, on ne retire rien : `renderTopbar` écrit dans `#topPassia`
+   SANS garde — retirer ce nœud ferait planter la publication et le commentaire.
+   Le Wallet reste atteignable par les Réglages. */
+:root.passio-ui-6 .profile-chips-row { display: none; }
+:root.passio-ui-6 .toast.reward { display: none; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   PASSIO UI V6A — l'inbox Messages du §10.  ACTIF PAR DÉFAUT.
+   (coupures : localStorage.passio_ui_6a = "0" · window.PASSIO_UI_6A = false)
+
+   Tout est ancré à `:root.passio-ui-6a` : coupé, les deux gros boutons
+   reviennent, la recherche retourne à sa place et la tête disparaît.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* Les deux gros boutons cèdent la place au « + ». MASQUÉS, jamais retirés : le
+   menu appelle exactement les mêmes fonctions, et la coupure doit les rendre
+   sans rechargement. Le masquage est BORNÉ au marqueur posé par le module —
+   une rangée non marquée garde toutes ses portes. */
+:root.passio-ui-6a #screen-messages [data-v6a-legacy] { display: none !important; }
+
+:root.passio-ui-6a .v6a-head {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+:root.passio-ui-6a .v6a-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  /* La tête doit pouvoir ancrer le menu du « + » en absolu. */
+  position: relative;
+}
+:root.passio-ui-6a .v6a-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+:root.passio-ui-6a .v6a-plus {
+  appearance: none;
+  -webkit-appearance: none;
+  font-family: inherit;
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 14px;
+  background: var(--grad-hero);
+  color: #fff;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(124, 58, 237, 0.28);
+}
+:root.passio-ui-6a .v6a-plus:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Le menu du « + » : local, jamais une modale (openModal n'empile pas). */
+:root.passio-ui-6a .v6a-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  min-width: 208px;
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  box-shadow: 0 12px 34px rgba(24, 18, 48, 0.18);
+}
+:root.passio-ui-6a .v6a-menu-item {
+  appearance: none;
+  -webkit-appearance: none;
+  font-family: inherit;
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+:root.passio-ui-6a .v6a-menu-item:hover { background: var(--bg-soft); }
+
+/* « Musique · Dernier message… » — la Passio devant l'aperçu (§10). */
+:root.passio-ui-6a .v6a-psn { color: var(--accent); font-weight: 700; }
+
+@media (max-width: 380px) {
+  :root.passio-ui-6a .v6a-title { font-size: 20px; }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   PASSIO UI V6B — le Profil du §11.  ACTIF PAR DÉFAUT.
+   (coupures : localStorage.passio_ui_6b = "0" · window.PASSIO_UI_6B = false)
+
+   Tout est ancré à `:root.passio-ui-6b` : coupé, la statistique « posts »
+   revient et le module retire lui-même « Modifier », « Actif » et « Activer ».
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* §11 ne garde que « Abonnés · Abonnements » au premier niveau. Le compteur de
+   publications est MASQUÉ, jamais retiré : les onglets de contenu juste en
+   dessous ouvrent exactement la même chose, et `openMyPostsTab()` reste
+   appelable — rien n'est perdu, seule la hiérarchie change. */
+:root.passio-ui-6b #screen-profiles .main-profile-stats .main-profile-stat:first-child {
+  display: none;
+}
+
+:root.passio-ui-6b .v6b-modifier {
+  appearance: none;
+  -webkit-appearance: none;
+  font-family: inherit;
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  margin-top: 12px;
+  padding: 0 14px;
+  border-radius: 13px;
+  border: 1.5px solid var(--accent-5-soft);
+  background: var(--bg-card);
+  color: var(--accent);
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+:root.passio-ui-6b .v6b-modifier:hover { border-color: var(--accent); }
+:root.passio-ui-6b .v6b-modifier:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* « Actif » est un ÉTAT, « Activer » une ACTION : deux apparences distinctes.
+   Confondre les deux ferait cliquer sur l'identité déjà active. */
+:root.passio-ui-6b .v6b-ident {
+  flex: 0 0 auto;
+  align-self: center;
+  font-size: 12.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+:root.passio-ui-6b .v6b-actif {
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: var(--accent-wash);
+  color: var(--accent);
+}
+:root.passio-ui-6b .v6b-activer {
+  appearance: none;
+  -webkit-appearance: none;
+  font-family: inherit;
+  /* Cible tactile pleine sans grossir la carte : la hauteur déborde de la
+     ligne, comme les liens du fil. */
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: 11px;
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+:root.passio-ui-6b .v6b-activer:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+:root.passio-ui-6b .v6b-activer:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* La carte de profil doit laisser de la place à cette colonne sans écraser le
+   nom : c'est le corps qui cède, jamais le bouton. */
+:root.passio-ui-6b #profileList .profile-card { gap: 8px; }
+:root.passio-ui-6b #profileList .profile-card-body { min-width: 0; }

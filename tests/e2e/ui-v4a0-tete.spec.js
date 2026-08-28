@@ -39,6 +39,13 @@
 // pose `localStorage.passio_ui_4a1 = "0"` pour observer la tête seule ; le
 // comportement combiné (une intention que le moteur refuse ne peut plus rester
 // allumée) appartient à `tests/e2e/ui-v4a1-intentions.spec.js`.
+//
+// ⚠️ RÉALIGNÉ le 2026-08-28 (lot UI-4A4). Les quatre intentions ont QUITTÉ la
+// tête pour le panneau « Outils » — demande de Benjamin après essai réel. Cette
+// suite observe leur placement HISTORIQUE : elle pose donc au boot le kill
+// switch d'UI-4A4 (`localStorage.passio_ui_4a4 = "0"`) et garde TOUTES ses
+// assertions, conformément à la convention maison. Le nouveau placement est
+// prouvé à part, dans `tests/e2e/ui-v4a4-outils.spec.js`.
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
 
@@ -66,6 +73,9 @@ async function espionnerGeo(page) {
 }
 
 async function boot(page, opts = {}) {
+  // Coupure du lot AVAL (UI-4A4), qui déménage les intentions dans « Outils » :
+  // cette suite décrit leur place d'origine, en tête d'écran. Voir l'entête.
+  await page.addInitScript(() => localStorage.setItem("passio_ui_4a4", "0"));
   if (opts.killLocal) {
     await page.addInitScript(() => localStorage.setItem("passio_ui_4a0", "0"));
   }
