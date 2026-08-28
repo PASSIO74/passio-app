@@ -14,13 +14,15 @@
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
 
-// Les quatre lots UI-4 (UI-4A0 tête, UI-4A1 intentions, UI-4A2 carte d'activité,
-// UI-4B fiche activité) sont ACTIFS PAR DÉFAUT depuis le 2026-08-28 et recouvrent
-// l'écran « Rencontrer » que cette suite observe. Convention maison, déjà
+// Les cinq lots UI-4 (UI-4A0 tête, UI-4A1 intentions, UI-4A2 carte d'activité,
+// UI-4A3 commutateur Liste / Carte, UI-4B fiche activité) sont ACTIFS PAR DÉFAUT
+// depuis le 2026-08-28 et recouvrent l'écran « Rencontrer » que cette suite
+// observe. Convention maison, déjà
 // appliquée à la mise en ligne d'UI-3A (CLAUDE.md, section UI-3B) : la suite du
 // MOTEUR HISTORIQUE pose au boot les coupures des lots qui le recouvrent pour
 // l'observer seul, garde TOUTES ses assertions, et la cohabitation est prouvée à
-// part dans ui-v4a0-tete / ui-v4a1-intentions / ui-v4a2-cartes / ui-v4b-fiche.
+// part dans ui-v4a0-tete / ui-v4a1-intentions / ui-v4a2-cartes / ui-v4a3-vue /
+// ui-v4b-fiche.
 //
 // Ce que chaque coupure rend ici, concrètement :
 //   · UI-4A0 masque en CSS la barre de recherche historique `#irlSearchRow`
@@ -34,6 +36,12 @@ const { bootOnboarded } = require("./app-helper");
 //     (libellés RSVP) ne sont plus RENDUS. Les assertions correspondantes
 //     restaient vertes par la seule sémantique de `textContent` sur un nœud
 //     masqué : la coupure les rend de nouveau portantes ;
+//   · UI-4A3 pose le commutateur [Liste] [Carte] au-dessus de la liste et pilote
+//     le pli de la carte par la fonction historique `toggleIrlMapPeek()` ; c'est
+//     exactement ce pli que cette suite vérifie (`#irlMapWrap`,
+//     `#irlMapCollapseBtn`, `passio_irl_map_peek`), et la vue Liste du lot sort
+//     `#irlMapWrap` du cadre. Sans la coupure, le test « la carte démarre
+//     repliée… » observe l'écran du commutateur, pas le moteur historique ;
 //   · UI-4B réorganise la fiche ouverte par `openEventDetails`, dont cette suite
 //     vérifie le titre historique `#eventDetailHeroTitle`.
 // UI-3A/3B ne sont PAS coupées : elles étaient déjà actives avant cette bascule
@@ -43,6 +51,7 @@ async function bootIrl(page) {
     localStorage.setItem("passio_ui_4a0", "0");
     localStorage.setItem("passio_ui_4a1", "0");
     localStorage.setItem("passio_ui_4a2", "0");
+    localStorage.setItem("passio_ui_4a3", "0");
     localStorage.setItem("passio_ui_4b", "0");
   });
   await bootOnboarded(page);
