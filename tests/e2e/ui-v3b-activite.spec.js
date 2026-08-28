@@ -15,7 +15,17 @@
 //      historique, et se retire sans être une action primaire concurrente ;
 //   ⑧ le retour rend la même publication, à la même place, même identité active ;
 //   ⑨ les kill switches rendent la fiche et la carte historiques ;
-//   ⑩ mobile 320 / 390 / 430 px, cibles ≥ 44 px, contraste AA sur l'action.
+//   ⑩ mobile 320 / 390 / 430 px, cibles ≥ 44 px, contraste AA sur l'action ;
+//   ⑪ cohabitation par défaut avec UI-4B : depuis sa mise en ligne du
+//      2026-08-28, c'est UI-4B qui sert seul l'action de la fiche, tandis que
+//      le lien « Voir l'activité » du Feed reste à UI-3B.
+//
+// ⚠️ Lecture des coupures posées ci-dessous. Tout ce qui observe la BARRE
+// D'ACTION peinte par UI-3B démarre avec `localStorage.passio_ui_4b = "0"`
+// (option `killV4b` de `boot`) : UI-4B, actif par défaut, reprend sinon cette
+// barre via le garde `ficheReprisParV4b()` de js/ui-v3-passerelle.js. Aucune
+// assertion n'a été retirée — la surface est simplement observée seule, comme
+// la convention maison l'avait déjà fait pour UI-3A.
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
 
@@ -51,6 +61,18 @@ function hautCarte(page, id) {
 
 async function boot(page, opts = {}) {
   if (opts.killLocal) await page.addInitScript(() => localStorage.setItem("passio_ui_3", "0"));
+  // Convention maison (CLAUDE.md, §UI-3B) : une suite qui observe une surface
+  // désormais RECOUVERTE par un lot plus récent pose le kill switch de ce lot
+  // AU BOOT, et garde toutes ses assertions ; la cohabitation par défaut est
+  // prouvée à part (test « cohabitation » en fin de fichier).
+  // Ici le lot recouvrant est UI-4B, ACTIF PAR DÉFAUT depuis le 2026-08-28 :
+  // `ficheReprisParV4b()` (js/ui-v3-passerelle.js) rend alors la barre d'action
+  // de la fiche à UI-4B, et UI-3B ne la peint PLUS JAMAIS. C'est voulu — deux
+  // modules ne peuvent pas écrire la même barre. Sans cette coupure, aucun des
+  // contrôles portant sur `[data-v3-rsvp*]` n'a plus d'objet à observer.
+  // ⚠️ Le lien « Voir l'activité » du Feed, lui, appartient toujours à UI-3B :
+  // il reste vérifié SANS aucune coupure.
+  if (opts.killV4b) await page.addInitScript(() => localStorage.setItem("passio_ui_4b", "0"));
   await bootOnboarded(page, opts.errors, 1, { query: opts.query || "" });
   await page.evaluate(() => {
     // Mêmes neutralisations que la suite UI-3A : une requête de démarrage encore
@@ -114,7 +136,9 @@ const EVENTS = [evenement("ev_jam", "Jam acoustique")];
 // Preview de validation destinée à Benjamin : la carte et la fiche sont
 // interactives, mais aucune donnée de démonstration ne reste dans state.
 test("aperçu UI-3B : une publication liée est visible sans donnée persistée", async ({ page }) => {
-  await boot(page, { query: "?passio_preview=passio-ui-3b-demo" });
+  // La démonstration d'UI-3B va jusqu'à SON action de fiche : on isole donc
+  // UI-3B (voir l'avertissement en tête de fichier).
+  await boot(page, { killV4b: true, query: "?passio_preview=passio-ui-3b-demo" });
 
   const carte = page.locator('article.post[data-postid="__passio_ui3b_demo_post"]');
   await expect(carte).toBeVisible();
@@ -225,7 +249,7 @@ test("publication reliée : un seul CTA « Voir l'activité », et rien d'autre"
 
 // ── ⑤ + ⑥ Le tap ouvre la fiche, sans rien écrire ──────────────────────────
 test("« Voir l'activité » ouvre la fiche attendue, sans aucun RSVP", async ({ page }) => {
-  await boot(page);
+  await boot(page, { killV4b: true });
   await seedFeed(page, POSTS, EVENTS);
 
   await page.locator('article.post[data-postid="p_direct"] [data-v3-activity]').click();
@@ -271,7 +295,7 @@ test("« Voir l'activité » ouvre la fiche attendue, sans aucun RSVP", async ({
 
 // ── ⑦ La participation : un geste explicite, le moteur historique ──────────
 test("« Je participe » n'écrit qu'au geste explicite, via le moteur historique", async ({ page }) => {
-  await boot(page);
+  await boot(page, { killV4b: true });
   await seedFeed(page, POSTS, EVENTS);
 
   await page.locator('article.post[data-postid="p_share"] [data-v3-activity]').click();
@@ -353,7 +377,12 @@ test("retour : même publication, même position, même identité active", async
 
 // ── ⑨ Kill switches ────────────────────────────────────────────────────────
 test("kill switch local : ni lien sur la carte, ni action V2 dans la fiche", async ({ page }) => {
-  await boot(page, { killLocal: true });
+  // Ce que ce contrôle prouve : couper UI-3B rend la fiche HISTORIQUE. Depuis
+  // le 2026-08-28, UI-4B — actif par défaut — recouvre lui aussi cette barre ;
+  // il est donc coupé ici, faute de quoi on mesurerait la fiche d'UI-4B et non
+  // la restitution de l'historique par UI-3B. Le contrat V4B par défaut est
+  // vérifié à part, dans le test de cohabitation.
+  await boot(page, { killLocal: true, killV4b: true });
   await seedFeed(page, POSTS, EVENTS);
 
   await expect(page.locator("#feedList [data-v3-activity]")).toHaveCount(0);
@@ -368,7 +397,9 @@ test("kill switch local : ni lien sur la carte, ni action V2 dans la fiche", asy
 });
 
 test("coupure en cours de session : la fiche redevient historique", async ({ page }) => {
-  await boot(page);
+  // Même isolation : la restitution observée doit être celle d'UI-3B, pas la
+  // reprise de la barre par UI-4B (actif par défaut depuis le 2026-08-28).
+  await boot(page, { killV4b: true });
   await seedFeed(page, POSTS, EVENTS);
 
   await page.locator('article.post[data-postid="p_direct"] [data-v3-activity]').click();
@@ -387,7 +418,7 @@ test("coupure en cours de session : la fiche redevient historique", async ({ pag
 
 // ── ⑩ Accessibilité et mobile ──────────────────────────────────────────────
 test("l'action « Je participe » respecte le contraste AA (4,5:1)", async ({ page }) => {
-  await boot(page);
+  await boot(page, { killV4b: true });
   await seedFeed(page, POSTS, EVENTS);
   await page.locator('article.post[data-postid="p_direct"] [data-v3-activity]').click();
   await expect(page.locator("#eventDetailCta [data-v3-rsvp-go]")).toBeVisible();
@@ -406,7 +437,7 @@ test("l'action « Je participe » respecte le contraste AA (4,5:1)", async ({ pa
 });
 
 test("clavier : le lien et l'action sont atteignables et actionnables", async ({ page }) => {
-  await boot(page);
+  await boot(page, { killV4b: true });
   await seedFeed(page, [post("p_direct", "Alice", { eventId: "ev_jam" })], EVENTS);
 
   // Le lien est un vrai bouton : focus puis Entrée suffisent.
@@ -422,7 +453,7 @@ test("clavier : le lien et l'action sont atteignables et actionnables", async ({
 for (const largeur of [320, 390, 430]) {
   test(`aucun débordement et cibles ≥ 44 px en ${largeur} px`, async ({ page }) => {
     await page.setViewportSize({ width: largeur, height: 844 });
-    await boot(page);
+    await boot(page, { killV4b: true });
     await seedFeed(page, POSTS, EVENTS);
 
     const lien = page.locator('article.post[data-postid="p_direct"] [data-v3-activity]');
@@ -460,3 +491,63 @@ for (const largeur of [320, 390, 430]) {
       document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
   });
 }
+
+// ── ⑪ Cohabitation par défaut avec UI-4B ───────────────────────────────────
+// Ce contrôle est le PENDANT des coupures posées plus haut : il n'isole rien et
+// mesure l'application telle que la reçoit un utilisateur depuis le 2026-08-28,
+// une fois UI-4B basculé en actif par défaut. Le partage des rôles est explicite
+// et voulu — deux modules ne peuvent pas écrire la même barre d'action :
+//   · le lien « Voir l'activité » de la carte du Feed reste à UI-3B ;
+//   · l'action primaire de la fiche est servie par UI-4B, seul écrivain, via le
+//     garde `ficheReprisParV4b()` de js/ui-v3-passerelle.js.
+test("cohabitation : le lien reste à UI-3B, l'action de la fiche revient à UI-4B", async ({ page }) => {
+  const errors = { js: [], console: [], network: [] };
+  await boot(page, { errors });          // AUCUNE coupure : configuration réelle
+  await seedFeed(page, POSTS, EVENTS);
+
+  // Les deux lots sont bien actifs en même temps.
+  expect(await page.evaluate(() => ({
+    v3: !!(window.PassioUIV3 && window.PassioUIV3.isEnabled()),
+    v4b: !!(window.PassioUIV4B && window.PassioUIV4B.isEnabled()),
+  }))).toEqual({ v3: true, v4b: true });
+
+  // ① La carte du Feed est inchangée : le lien appartient toujours à UI-3B.
+  const carte = page.locator('article.post[data-postid="p_direct"]');
+  await expect(carte.locator("[data-v3-activity]")).toHaveCount(1);
+  await expect(carte.locator("[data-v3-activity]")).toHaveText("Voir l'activité");
+  await expect(carte.locator("[data-v3-tempt]")).toHaveCount(0);
+
+  await carte.locator("[data-v3-activity]").click();
+
+  // ② La fiche ouverte est bien celle de l'activité liée — la passerelle a fait
+  //    son travail, elle a seulement laissé la barre à l'autre lot.
+  await expect(page.locator("#eventDetailPage")).toBeVisible();
+  expect(await page.evaluate(() => window._openEventDetailId)).toBe("ev_jam");
+  await expect(page.locator("#eventDetailHeroTitle .event-detail-title")).toHaveText("Jam acoustique");
+
+  // ③ L'action primaire est celle d'UI-4B, et UI-3B n'a rien peint dans la barre.
+  const cta = page.locator("#eventDetailCta");
+  await expect(cta.locator("[data-v4b-rsvp-go]")).toHaveCount(1);
+  await expect(cta.locator("[data-v4b-rsvp-go]")).toHaveText("Je participe");
+  await expect(cta.locator("[data-v3-rsvp]")).toHaveCount(0);
+  await expect(cta.locator("[data-v3-rsvp-go]")).toHaveCount(0);
+  // Le contrat d'action unique tient quel que soit le module qui sert la barre.
+  const texteCta = await cta.innerText();
+  expect(texteCta).not.toContain("Peut-être");
+  expect(texteCta).not.toContain("Je ne participe pas");
+  expect(texteCta).not.toContain("Rejoindre");
+
+  // ④ Rien n'a été écrit par la seule ouverture, quel que soit l'écrivain.
+  expect(await page.evaluate(() => ({
+    joined: (state.user.joinedEvents || []).length,
+    rsvp: Object.keys(state.user.eventRsvp || {}).length,
+  }))).toEqual({ joined: 0, rsvp: 0 });
+
+  // ⑤ Et la participation passe par le même moteur historique.
+  await cta.locator("[data-v4b-rsvp-go]").click();
+  await expect(cta.locator('[data-v4b-rsvp-etat="going"]')).toBeVisible();
+  expect(await page.evaluate(() => myRsvp("ev_jam"))).toBe("going");
+  expect(await page.evaluate(() => (_findCanonicalEvent("ev_jam").attendees || []).length)).toBe(1);
+
+  expect(errors.js, "exceptions JS").toEqual([]);
+});

@@ -29,17 +29,22 @@
 // historique : places, liste d'attente, notification, écriture Supabase et
 // lecture de son `{ error }` y sont déjà) et seulement après un geste explicite.
 //
-// ── Activation — APERÇU UNIQUEMENT, en attente de la validation de Benjamin ──
-//     ?passio_preview=passio-ui-4b        → la fiche V2 sur les activités réelles
-//     ?passio_preview=passio-ui-4b-demo   → idem + une activité de démonstration
-//                                           ouverte, entièrement en mémoire
+// ── Activation — ACTIF PAR DÉFAUT (2026-08-28) ────────────────────────────
 //     localStorage.passio_ui_4b = "0"     → kill switch, prioritaire
 //     window.PASSIO_UI_4B = false         → coupure immédiate en mémoire
 //
-// L'URL normale est strictement inchangée : sans le paramètre d'aperçu, ce
-// module ne pose ni classe, ni écouteur, ni observateur. Il n'écrit RIEN dans
-// `localStorage` — aucune activation ne persiste d'une visite à l'autre, et les
-// deux coupures restent prioritaires sur le lien d'aperçu.
+// Mis en ligne sur l'URL normale par décision de Benjamin, en même temps que
+// UI-4A0, UI-4A1 et UI-4A2. L'ancien lien `?passio_preview=passio-ui-4b` reste
+// toléré mais ne décide plus rien.
+//
+// La DÉMONSTRATION, elle, reste strictement sur son propre lien :
+//     ?passio_preview=passio-ui-4b-demo   → ouvre une activité fictive,
+//                                           entièrement en mémoire
+// Elle injecte une activité qui n'existe nulle part : elle n'a rien à faire
+// dans l'application de tout le monde, et rien n'en est jamais écrit.
+//
+// Le module n'écrit RIEN dans `localStorage` : aucune activation ne persiste, et
+// les deux coupures rendent la fiche historique sans rechargement.
 // ══════════════════════════════════════════════════════════════════════════
 (function () {
   "use strict";
@@ -74,12 +79,21 @@
 
   function demoDemandee() { return apercuDemande(DEMO_PREVIEW_NAME); }
 
+  // ⚠️ ACTIF PAR DÉFAUT depuis la mise en ligne du 2026-08-28, décidée par
+  // Benjamin. Le drapeau ne sait plus qu'ENLEVER : `PREVIEW_NAME` n'apparaît
+  // plus dans cette fonction — l'ancien lien `?passio_preview=passio-ui-4b`
+  // reste toléré mais ne décide plus rien.
+  //
+  // `demoDemandee()`, en revanche, garde tout son rôle : la DÉMONSTRATION
+  // (`?passio_preview=passio-ui-4b-demo`) injecte une activité entièrement en
+  // mémoire, qui n'a rien à faire dans l'application de tout le monde. Elle
+  // reste donc strictement sur son lien, et elle seule.
   function uiV4bEnabled() {
     if (window.PASSIO_UI_4B === false) return false;   // coupure mémoire
     var stored = null;
     try { stored = localStorage.getItem(STORAGE_KEY); } catch (e) {}
     if (stored === "0") return false;                  // kill switch local
-    return apercuDemande(PREVIEW_NAME) || demoDemandee();
+    return true;
   }
 
   // ── Diagnostic ────────────────────────────────────────────────────────────
@@ -804,7 +818,11 @@
   // recouvrirait aussitôt.
   function pretPourDemo() {
     if (typeof openEventDetails !== "function") return false;
-    if (typeof state === "undefined" || !state.seed) return false;
+    // ⚠️ `state` est déclaré `let state = null` (app-01) : il EXISTE avant le
+    // boot, donc `typeof state === "undefined"` est faux et `state.seed` levait
+    // un TypeError — non rattrapé, il tuait définitivement la chaîne de reprise
+    // de la démonstration. Mesuré le 2026-08-28.
+    if (typeof state === "undefined" || !state || !state.seed) return false;
     var landing = document.getElementById("landing");
     if (landing && landing.classList.contains("active")) return false;
     var feed = document.getElementById("screen-feed");
@@ -880,6 +898,19 @@
     apply: apply,
     refresh: majFiche,
   };
+
+  // ⚠️ En PRODUCTION, le bloc app sort dans `app.js`, injecté seulement une fois
+  // le code d'accès franchi. Ce module, lui, est inliné et s'exécute tout de
+  // suite : son premier `boot()` tombe donc dans un monde où ni `state` ni
+  // `openEventDetails` n'existent, et le budget de relance de la démonstration
+  // (80 essais × 150 ms, soit 12 s) se consommait pendant que l'utilisateur
+  // saisissait le code — sans jamais être rendu. UI-4A0, UI-4A1 et UI-4A2
+  // écoutaient déjà `passio:app-ready` ; ce module était le seul à ne pas le
+  // faire. Corrigé le 2026-08-28, c'est le même motif que ses trois frères.
+  window.addEventListener("passio:app-ready", function () {
+    demoEssais = 0;
+    boot();
+  });
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", boot, { once: true });

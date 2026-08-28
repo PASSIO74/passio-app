@@ -46,16 +46,17 @@
 // `localStorage`. Il ne modifie que des états de filtrage en mémoire, tous
 // remis en place à la coupure.
 //
-// ── Activation — APERÇU UNIQUEMENT ────────────────────────────────────────
-//     ?passio_preview=passio-ui-4a1-demo  → entrée nommée dans l'ordre
-//     ?passio_preview=passio-ui-4a1       → même chose, alias court
+// ── Activation — ACTIF PAR DÉFAUT (2026-08-28) ────────────────────────────
 //     localStorage.passio_ui_4a1 = "0"    → kill switch local, prioritaire
 //     window.PASSIO_UI_4A1 = false        → coupure immédiate en mémoire
 //
-// L'aperçu UI-4A1 implique la tête UI-4A0 (elle se déclare active pour ses
-// héritiers) : couper UI-4A0 coupe donc aussi ce lot, et l'écran historique
-// revient entier. L'URL normale est strictement inchangée, aucune activation
-// positive ne persiste, rien n'est écrit dans `localStorage`.
+// Mis en ligne sur l'URL normale par décision de Benjamin, en même temps que
+// UI-4A0, UI-4A2 et UI-4B. Les anciens liens `?passio_preview=passio-ui-4a1`
+// restent tolérés mais ne décident plus rien.
+//
+// Couper UI-4A0 coupe TOUJOURS ce lot : sans la tête, il n'y a aucune chip à
+// raccorder, et l'écran historique doit revenir entier, filtres compris. C'est
+// ce que fait `actif()`, qui interroge la tête à chaque décision.
 // ══════════════════════════════════════════════════════════════════════════
 (function () {
   "use strict";
@@ -88,18 +89,18 @@
   // l'inverse qui a lieu (la tête demande à ses héritiers). Une consultation
   // croisée créerait une récursion infinie.
   // ══════════════════════════════════════════════════════════════════════════
-  function apercuDemande(nom) {
-    try {
-      return new URLSearchParams(window.location.search).get("passio_preview") === nom;
-    } catch (e) { fail("query", e); return false; }
-  }
-
+  // ⚠️ ACTIF PAR DÉFAUT depuis la mise en ligne du 2026-08-28, décidée par
+  // Benjamin. Le drapeau ne sait plus qu'ENLEVER : `PREVIEW_NAME` et
+  // `DEMO_PREVIEW_NAME` n'apparaissent plus dans cette fonction — les anciens
+  // liens `?passio_preview=…` restent tolérés mais ne décident plus rien, et
+  // aucune valeur positive n'est écrite dans `localStorage`. Les deux coupures
+  // priment sur tout et rendent l'écran historique sans rechargement.
   function uiV4a1Enabled() {
     if (window.PASSIO_UI_4A1 === false) return false;   // coupure mémoire
     var stored = null;
     try { stored = localStorage.getItem(STORAGE_KEY); } catch (e) {}
     if (stored === "0") return false;                   // kill switch local
-    return apercuDemande(PREVIEW_NAME) || apercuDemande(DEMO_PREVIEW_NAME);
+    return true;
   }
 
   function tete() { return window.PassioUIV4A0 || null; }

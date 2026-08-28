@@ -1697,28 +1697,36 @@
 <script src="js/ui-v3-passerelle.js"></script>
 
 <!-- UI V4 (lot UI-4B — fiche activité V2) — hors bloc app : composant autonome
-     (IIFE window.PassioUIV4B), inliné individuellement au build. APERÇU
-     UNIQUEMENT (?passio_preview=passio-ui-4b ou passio-ui-4b-demo) en attente
-     de la validation visuelle de Benjamin ; coupé par
-     localStorage.passio_ui_4b="0" ou window.PASSIO_UI_4B=false. -->
+     (IIFE window.PassioUIV4B), inliné individuellement au build. ACTIF PAR
+     DÉFAUT depuis la mise en ligne du 2026-08-28 ; coupé par
+     localStorage.passio_ui_4b="0" ou window.PASSIO_UI_4B=false. La
+     DÉMONSTRATION (?passio_preview=passio-ui-4b-demo), elle, reste sur son
+     lien : elle injecte une activité fictive, en mémoire seule. -->
 <script src="js/ui-v4b-fiche.js"></script>
 
 <!-- UI V4 (lot UI-4A0 — tête de « Rencontrer ») — hors bloc app : composant
      autonome (IIFE window.PassioUIV4A0), inliné individuellement au build.
-     APERÇU UNIQUEMENT (?passio_preview=passio-ui-4a0-demo, alias
-     ?passio_preview=passio-ui-4a0) ; coupé par
+     ACTIF PAR DÉFAUT depuis la mise en ligne du 2026-08-28 ; coupé par
      localStorage.passio_ui_4a0="0" ou window.PASSIO_UI_4A0=false.
      ⚠️ Chargé APRÈS le bloc app : il enveloppe renderIRL, qui doit exister. -->
 <script src="js/ui-v4a0-tete.js"></script>
 
 <!-- UI V4 (lot UI-4A1 — raccord des intentions de « Rencontrer ») — hors bloc
      app : composant autonome (IIFE window.PassioUIV4A1), inliné individuellement
-     au build. APERÇU UNIQUEMENT (?passio_preview=passio-ui-4a1-demo, alias
-     ?passio_preview=passio-ui-4a1) ; coupé par localStorage.passio_ui_4a1="0"
-     ou window.PASSIO_UI_4A1=false, et par les coupures d'UI-4A0.
+     au build. ACTIF PAR DÉFAUT depuis la mise en ligne du 2026-08-28 ; coupé
+     par localStorage.passio_ui_4a1="0" ou window.PASSIO_UI_4A1=false, et par
+     les coupures d'UI-4A0 (sans tête, aucune intention à raccorder).
      ⚠️ Chargé APRÈS ui-v4a0-tete.js : il pose ses enveloppes par-dessus les
      siennes et a besoin de window.PassioUIV4A0 dès son boot. -->
 <script src="js/ui-v4a1-intentions.js"></script>
+
+<!-- UI V4 (lot UI-4A2 — carte d'activité V2 dans « Rencontrer ») — hors bloc
+     app : composant autonome (IIFE window.PassioUIV4A2), inliné individuellement
+     au build. ACTIF PAR DÉFAUT depuis la mise en ligne du 2026-08-28 ; coupé
+     par localStorage.passio_ui_4a2="0" ou window.PASSIO_UI_4A2=false.
+     ⚠️ Ce module n'enveloppe PAS renderIRL : il observe #eventList, pour ne pas
+     allonger la chaîne d'enveloppes d'UI-4A0 et UI-4A1. -->
+<script src="js/ui-v4a2-cartes.js"></script>
 
 
 <!-- ======== PWA INSTALL OVERLAY ======== -->
