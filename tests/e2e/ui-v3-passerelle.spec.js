@@ -346,7 +346,7 @@ test("URL normale : la passerelle est là, et rien n'est écrit pour autant", as
 
   await expect(page.locator("#feedList [data-v3-bridge]")).toHaveCount(3);
   await expect(page.locator("#feedList [data-v3-tempt]").first()).toBeVisible();
-  await expect(page.locator("#feedList [data-v3-tempt]").first()).toHaveText("Trouver une expérience");
+  await expect(page.locator("#feedList [data-v3-tempt]").first()).toHaveText("Vivre ça en vrai");
   expect(await page.evaluate(() => document.documentElement.classList.contains("passio-ui-3"))).toBe(true);
   expect(await page.evaluate(() => window.PassioUIV3.isEnabled())).toBe(true);
 
@@ -424,7 +424,7 @@ test("le lien n'apparaît que sur les publications éligibles, et SEUL", async (
 
   await expect(page.locator("#feedList [data-v3-bridge]")).toHaveCount(1);
   const carte = page.locator('article.post[data-postid="v3_ok"]');
-  await expect(carte.locator("[data-v3-tempt]")).toHaveText("Trouver une expérience");
+  await expect(carte.locator("[data-v3-tempt]")).toHaveText("Vivre ça en vrai");
 
   // Contrat visuel arrêté le 2026-08-27 après essai réel sur la preview : la
   // ligne basse ne porte QUE le lien. Le nom de la Passio, son emoji et le trait
@@ -438,7 +438,7 @@ test("le lien n'apparaît que sur les publications éligibles, et SEUL", async (
   expect(await ligne.evaluate((el) => el.children.length)).toBe(1);
   expect(await ligne.evaluate((el) => el.firstElementChild.className)).toContain("v3-tempt");
   // Le libellé de la Passio n'apparaît nulle part dans cette ligne.
-  expect(await ligne.innerText()).toBe("Trouver une expérience");
+  expect(await ligne.innerText()).toBe("Vivre ça en vrai");
 
   await expect(page.locator('article.post[data-postid="v3_evt"] [data-v3-bridge]')).toHaveCount(0);
   await expect(page.locator('article.post[data-postid="v3_share"] [data-v3-bridge]')).toHaveCount(0);
@@ -791,7 +791,7 @@ test("une aide contextuelle VISIBLE n'empêche pas la passerelle", async ({ page
 // WCAG AA pour du texte normal, et même sous le 3:1 des grands caractères (le
 // lien fait 13 px). Ce test calcule le ratio RÉEL depuis les styles appliqués
 // par le navigateur : une régression de jeton, de fond ou de couleur sera vue.
-test("le lien « Trouver une expérience » respecte le contraste AA (4,5:1)", async ({ page }) => {
+test("la pastille « Vivre ça en vrai » respecte le contraste AA (4,5:1)", async ({ page }) => {
   await boot(page);
   await seedFeed(page, POSTS);
 
