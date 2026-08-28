@@ -136,7 +136,17 @@ test.describe("UI-4A2 — carte d'activité V2", () => {
 
     // L'activité devient introuvable : le lot doit RENDRE la carte historique,
     // pas la laisser amputée de ce qu'il ne remplace plus.
+    //
+    // ⚠️ Ce contrôle MET EN SCÈNE le DOM (un identifiant d'activité qui n'existe
+    // pas). N'importe quel nouveau rendu de la liste efface cette mise en scène
+    // et repeint une carte légitimement décorée : l'assertion devient alors une
+    // COURSE, verte ou rouge selon la machine. Elle est passée en local et a
+    // échoué sur la CI, plus lente (run 2173). On gèle donc le rendu historique
+    // le temps du contrôle — c'est le module UI-4A2 qui est sous test ici, pas
+    // le moteur IRL — puis on le rend au moteur.
     await page.evaluate(() => {
+      window.__renderIRLGele = window.renderIRL;
+      window.renderIRL = function () {};
       const c = document.querySelector("#eventList .event-card");
       c.setAttribute("data-evid", "evid_qui_n_existe_pas");
       window.PassioUIV4A2.refresh();
@@ -145,6 +155,15 @@ test.describe("UI-4A2 — carte d'activité V2", () => {
     expect(await carte.getAttribute("data-v4a2")).toBeNull();
     await expect(carte.locator(".event-footer")).toBeVisible();
     await expect(carte.locator(".post-actions")).toBeVisible();
+
+    // Le moteur reprend la main, et le rendu suivant redécore normalement :
+    // la carte n'a pas été « rendue » définitivement, seulement le temps où son
+    // activité était introuvable.
+    await page.evaluate(() => {
+      window.renderIRL = window.__renderIRLGele;
+      renderIRL();
+    });
+    await expect(page.locator("#eventList .event-card[data-v4a2]").first()).toBeVisible();
   });
 
   test("vie privée : ni lieu exact, ni adresse, ni contact, ni visages", async ({ page }) => {
