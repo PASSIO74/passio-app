@@ -1751,6 +1751,17 @@
      du moteur cartographique. -->
 <script src="js/ui-v4a3-vue.js"></script>
 
+<!-- UI V5 (lot UI-5 — « Bobines connectées au réel ») — hors bloc app :
+     composant autonome (IIFE window.PassioUIV5), inliné individuellement au
+     build. ACTIF PAR DÉFAUT ; coupé par localStorage.passio_ui_5="0" ou
+     window.PASSIO_UI_5=false.
+     ⚠️ Il ne crée AUCUN moteur : les trois sorties vers le réel sont celles de
+     la passerelle UI-3A, appelées par sa surface publique, et l'ouverture d'une
+     activité passe par PassioUIV3.openActivity. Il ferme systématiquement le
+     viewer avant toute sortie — celui-ci est en z-index 9999, au-dessus du
+     toast, de la fiche d'activité et des feuilles basses. -->
+<script src="js/ui-v5-bobines.js"></script>
+
 
 <!-- ======== PWA INSTALL OVERLAY ======== -->
 <div id="pwa-overlay" style="display:none;">

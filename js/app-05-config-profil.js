@@ -1633,6 +1633,7 @@ const SEED_REEL_VIDEOS = [
   },
   {
     id: "reel_seed_sport_skate_1",
+    eventId: "e11",  // lot UI-5 : la bobine EST le skate jam des Chartrons
     video: "https://videos.pexels.com/video-files/5765270/5765270-sd_640_360_24fps.mp4",
     poster: "https://images.unsplash.com/photo-1543364195-077a52659557?w=720&h=1280&fit=crop&auto=format&q=80",
     fallback: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
@@ -1642,6 +1643,7 @@ const SEED_REEL_VIDEOS = [
   },
   {
     id: "reel_seed_musique_1",
+    eventId: "e1",   // lot UI-5 : la bobine EST la prochaine jam de Léa
     video: "https://videos.pexels.com/video-files/5765163/5765163-sd_640_360_24fps.mp4",
     poster: "https://images.unsplash.com/photo-1510915361894-db8b60106cb1?w=720&h=1280&fit=crop&auto=format&q=80",
     fallback: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4",
@@ -1864,6 +1866,13 @@ function getSeedReelPostsWithComments(seedUsers) {
     return {
       id: r.id,
       type: "video",
+      // Lot UI-5 (§7) : « Si la Bobine possède un event_id, la fiche de
+      // l'activité correspondante est affichée directement. » Le champ n'est
+      // recopié que s'il existe — une bobine sans activité ne doit surtout pas
+      // en porter une vide, `refEvenement` la prendrait pour une référence.
+      // ⚠️ Sans ce contenu, la branche « Voir l'activité » du lot serait
+      // INVISIBLE, donc indiscernable d'un lot cassé (leçon UI-3B du 2026-08-28).
+      ...(r.eventId ? { eventId: r.eventId } : {}),
       // ⚠️ `isReel` est la SEULE condition retenue par buildReels() (avec la
       // présence d'un média) : sans lui, ces douze vidéos n'étaient jamais des
       // bobines — buildReels() renvoyait [] en démonstration, aucun module
@@ -1896,6 +1905,7 @@ function getSeedReelPosts() {
   return SEED_REEL_VIDEOS.map(r => ({
     id: r.id,
     type: "video",
+    ...(r.eventId ? { eventId: r.eventId } : {}),   // cf. getSeedReelPostsWithComments
     isReel: true,          // cf. getSeedReelPostsWithComments : sans lui, buildReels() les rejette
     video: r.video,
     fallback: r.fallback,

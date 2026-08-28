@@ -45,6 +45,16 @@ function defaultState() {
       savedCarnets: [],
       blocked: [],             // ids des utilisateurs bloqués (modération)
       seenNotifIds: [],        // mémoire locale des notifs déjà vues (anti-réapparition)
+      // Lot UI-5 (§7) : « Ça m'intrigue » sur une bobine. Map passion → horodatage.
+      // ⚠️ Le signal porte sur la PASSION, jamais sur la seule bobine : c'est la
+      // seule granularité que les moteurs existants savent déjà consommer
+      // (feedPostScore par _myPassionSet, irlPassionFilters par renderIRL,
+      // openPassionExplorer). Un signal par publication ne servirait qu'une fois.
+      // ⚠️ Borné à PASSION_SIGNALS_MAX : le blob `user_state` part EN ENTIER à
+      // chaque synchronisation, un journal non borné dégraderait tout le compte.
+      // 100 % LOCAL : aucune table, aucune policy, aucune écriture réseau — ce
+      // que la direction autorise explicitement (« simple, locale et explicable »).
+      passionSignals: {},
       general: {},
     },
     seed,                    // fake accounts / posts / events / stories / notifs / quests (SEED DE DÉMO SEULEMENT)
@@ -82,6 +92,8 @@ function loadState() {
     if (!Array.isArray(parsed.user.customPassions)) parsed.user.customPassions = [];
     if (!Array.isArray(parsed.user.following)) parsed.user.following = [];
     if (!Array.isArray(parsed.user.seenNotifIds)) parsed.user.seenNotifIds = [];
+    if (!parsed.user.passionSignals || typeof parsed.user.passionSignals !== "object"
+        || Array.isArray(parsed.user.passionSignals)) parsed.user.passionSignals = {};
     if (!Array.isArray(parsed.selectedFeedPassions)) parsed.selectedFeedPassions = [];
     if (typeof parsed.feedMoodsTouched !== "boolean") parsed.feedMoodsTouched = false;
     if (typeof parsed.feedInterestsMigrated !== "boolean") parsed.feedInterestsMigrated = false;
@@ -2984,16 +2996,34 @@ function _myPassionSet() {
   }
   return s;
 }
-function feedPostScore(p, nowBucket, myPassions, followingSet) {
+// Passions marquées « Ça m'intrigue » (lot UI-5). Relu À CHAUD à chaque
+// classement : le signal peut être posé pendant la session, depuis le viewer de
+// bobines, sans que rien ne re-crée l'ensemble.
+function _passionSignalSet() {
+  var s = new Set();
+  try {
+    var m = (state && state.user && state.user.passionSignals) || {};
+    for (var k in m) { if (Object.prototype.hasOwnProperty.call(m, k) && m[k]) s.add(k); }
+  } catch (e) {}
+  return s;
+}
+function feedPostScore(p, nowBucket, myPassions, followingSet, signalSet) {
   // Fraîcheur : âge en heures via buckets 5 min (12/h), décroissance exp τ=48 h.
   var postB = Math.floor((p.createdAt || 0) / 300000);
   var ageHours = Math.max(0, nowBucket - postB) / 12;
   var recency = Math.exp(-ageHours / 48); // 1.0 (frais) → 0.37 (48 h) → 0.14 (96 h)
 
-  // Affinité : 0 à 2 (passion pratiquée, auteur suivi).
+  // Affinité : 0 à 3 (passion pratiquée, auteur suivi, Passio qui m'intrigue).
   var affinity = 0;
   if (p.passion && myPassions.has(p.passion)) affinity += 1;
   if (p.authorId && followingSet.has(p.authorId)) affinity += 1;
+  // Lot UI-5 : « Ça m'intrigue », posé depuis une bobine. Sans ce terme le
+  // bouton serait DÉCORATIF — `state.user.likedPosts` n'est lu par aucun
+  // classement, et le viewer de bobines n'en a aucun. Volontairement plus
+  // faible qu'une passion pratiquée (0,6 contre 1) : c'est une curiosité, pas
+  // une déclaration. Même soupape que le reste : `passio_feed_rank = "0"`
+  // court-circuite tout le classement en amont.
+  if (p.passion && signalSet && signalSet.has(p.passion)) affinity += 0.6;
 
   // Engagement : commentaires > réactions ; log-compressé, plafonné (un vieux
   // post viral ne doit pas écraser la fraîcheur).
@@ -3015,9 +3045,10 @@ function rankFeedPosts(posts) {
   var myPassions = _myPassionSet();
   var following = (state.user && state.user.following) || state.following || [];
   var followingSet = new Set(following);
+  var signalSet = _passionSignalSet();
   // Les posts ici sont déjà des copies (allFeedPosts fait {...p}) → mutation sûre.
   for (var i = 0; i < arr.length; i++) {
-    arr[i]._feedScore = feedPostScore(arr[i], nowBucket, myPassions, followingSet);
+    arr[i]._feedScore = feedPostScore(arr[i], nowBucket, myPassions, followingSet, signalSet);
   }
   arr.sort(function(a, b) {
     var d = b._feedScore - a._feedScore;
