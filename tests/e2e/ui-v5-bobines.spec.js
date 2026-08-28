@@ -64,6 +64,12 @@ async function boot(page, opts = {}) {
 // Injecte les bobines de test et ouvre le viewer sur celle demandée.
 async function ouvrirBobine(page, id, bobines) {
   await page.evaluate(([liste, cible]) => {
+    // ⚠️ Le seed porte 20 bobines de démonstration : sans ce vidage, le viewer
+    // en afficherait 22 et aucun comptage ne serait déterministe. Les bobines
+    // de démonstration sont exercées à part, par le test « contenu de
+    // démonstration » plus bas.
+    state.seed.posts = (state.seed.posts || []).filter((p) => !p.isReel);
+    state.userPosts = [];
     state.supabasePosts = liste;
     openReelById(cible);
   }, [bobines || BOBINES, id]);
@@ -129,6 +135,8 @@ test.describe("UI-5 — Bobines connectées au réel", () => {
   test("une bobine sans Passio reconnue garde sa mise en page d'avant", async ({ page }) => {
     await boot(page);
     await page.evaluate(() => {
+      state.seed.posts = (state.seed.posts || []).filter((p) => !p.isReel);
+      state.userPosts = [];
       state.supabasePosts = [{
         id: "v5_reel_muet", authorId: "author_z", authorName: "Nour", authorEmoji: "🎬",
         passion: "cette-passion-nexiste-pas", type: "photo", isReel: true,
@@ -265,6 +273,8 @@ test.describe("UI-5 — Bobines connectées au réel", () => {
     const errors = { js: [], console: [], network: [] };
     await boot(page, { killLocal: true, errors });
     await page.evaluate(() => {
+      state.seed.posts = (state.seed.posts || []).filter((p) => !p.isReel);
+      state.userPosts = [];
       state.supabasePosts = [{
         id: "v5_reel_libre", authorId: "author_x", authorName: "Iris", authorEmoji: "🎬",
         passion: "musique", type: "photo", isReel: true,
@@ -290,7 +300,9 @@ test.describe("UI-5 — Bobines connectées au réel", () => {
   test("kill switch mémoire en cours de session : retour sans rechargement", async ({ page }) => {
     await boot(page);
     await ouvrirBobine(page, "v5_reel_libre");
-    await expect(page.locator(".v5-actions")).toHaveCount(1);
+    // Deux bobines de test, donc deux rangées : le décompte est exact, pas
+    // approximatif — c'est lui qui prouvera que la coupure les retire TOUTES.
+    await expect(page.locator(".v5-actions")).toHaveCount(BOBINES.length);
 
     await page.evaluate(() => { window.PASSIO_UI_5 = false; window.PassioUIV5.apply(); });
     await expect(page.locator(".v5-actions")).toHaveCount(0);
@@ -309,6 +321,34 @@ test.describe("UI-5 — Bobines connectées au réel", () => {
     // aurait disparu pour de bon.
     await ouvrirBobine(page, "v5_reel_libre");
     await expect(item(page, "v5_reel_libre").locator(".v5-actions .v5-chip")).toHaveCount(4);
+  });
+
+  test("contenu de démonstration : des bobines sont reliées à une activité", async ({ page }) => {
+    await boot(page);
+    // Aucune injection : on observe le seed tel qu'il est livré. Sans bobine
+    // éligible, la branche « Voir l'activité » serait invisible à la
+    // validation, donc indiscernable d'un lot cassé.
+    await page.evaluate(() => openReels());
+    await page.waitForFunction(() => {
+      const v = document.getElementById("reelsViewer");
+      return v && v.classList.contains("open");
+    }, null, { timeout: 8000 });
+    await page.waitForFunction(
+      () => document.querySelectorAll('.reel-item[data-v5-kind="activite"]').length > 0,
+      null, { timeout: 8000 },
+    );
+
+    const reliees = page.locator('.reel-item[data-v5-kind="activite"]');
+    expect(await reliees.count()).toBeGreaterThan(0);
+    await expect(reliees.first().locator(".v5-chip")).toHaveText("Voir l'activité");
+    // Et l'activité référencée EXISTE : une référence morte ne produirait
+    // aucun bouton, en silence.
+    expect(await page.evaluate(() => {
+      const el = document.querySelector('.reel-item[data-v5-kind="activite"]');
+      const reel = findPostAnywhere(el.getAttribute("data-post-id"));
+      const ref = window.PassioUIV3.eventRefOf(reel);
+      return !!(state.seed.events || []).find((e) => e.id === ref);
+    })).toBe(true);
   });
 
   for (const largeur of [320, 390, 430]) {
