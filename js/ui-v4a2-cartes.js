@@ -19,7 +19,7 @@
 //   ④ la ville ou zone · la distance approximative si elle est connue ;
 //   ⑤ les participants AGRÉGÉS · les places restantes ;
 //   ⑥ la preuve sociale historique, quand elle existe (personnes suivies) ;
-//   ⑦ « Voir » et « Je viens ».
+//   ⑦ « Détails » et « Je viens » / « Inscrit ✓ ».
 //
 // ── Ce qui n'est PAS fait ici, et pourquoi ────────────────────────────────
 //   • aucune vue « Liste / Carte » : c'est le sous-lot suivant (UI-4A3) ;
@@ -86,12 +86,17 @@
   var ATTR_SIG = "data-v4a2-sig";    // état déjà peint, pour n'écrire qu'au changement
   var CLASSE_BLOC = "v4a2";
 
-  var LIB_VOIR = "Voir";
+  var LIB_VOIR = "Détails";
   var LIB_REVOIR = "Revoir";
   var LIB_VIENS = "Je viens";
   var LIB_FILE = "Liste d'attente";
   var LIB_ANNULE = "Annulé";
   var LIB_ORGANISE = "Tu organises";
+  // §2 du lot UI-7 : une fois la réponse posée, la carte DIT l'état obtenu
+  // (« Inscrit ✓ ») au lieu de répéter l'invitation (« ✓ Je viens »), qui se
+  // lisait comme un bouton encore à presser. Les autres réponses gardent le
+  // libellé court du moteur historique : elles n'ont pas d'équivalent d'état.
+  var LIB_INSCRIT = "Inscrit ✓";
 
   var observateur = null;
   var pending = false;
@@ -285,10 +290,23 @@
 
   // Ligne « Passio · quand ». La Passio d'abord : c'est le premier critère de
   // tri mental d'un testeur qui cherche « ce que je peux vivre ».
+  // Libellé COURT d'une passion, pour la rangée compacte seulement : le
+  // catalogue porte des libellés doubles (« Yoga / Bien-être »), qui tiennent
+  // mal sur une carte et se lisaient comme un libellé tronqué. On garde la
+  // première branche. ⚠️ Purement d'AFFICHAGE : `ev.passion` et le catalogue
+  // ne sont pas touchés — le filtre, le tri et la fiche continuent de voir la
+  // passion canonique entière.
+  function libelleCourt(label) {
+    var s = String(label == null ? "" : label);
+    var i = s.indexOf("/");
+    var court = (i > 0 ? s.slice(0, i) : s).trim();
+    return court || s.trim();
+  }
+
   function ligneQuoi(ev) {
     var p = passionDe(ev);
     var bouts = [];
-    if (p) bouts.push([p.emoji, p.label].filter(Boolean).join(" "));
+    if (p) bouts.push([p.emoji, libelleCourt(p.label)].filter(Boolean).join(" "));
     var quand = libelleQuand(ev);
     if (quand) bouts.push(quand);
     return bouts.join(" · ");
@@ -314,13 +332,17 @@
     return bouts.join(" · ");
   }
 
-  // Ligne « N personnes · N places ». Agrégat, jamais de visages (§A24).
+  // Ligne « N participants · N places restantes ». Agrégat, jamais de visages
+  // (§A24). Les deux nombres sont CALCULÉS — `attendees` pour les participants,
+  // `_eventSpotsLeft` (le moteur) pour les places — jamais écrits en dur.
   function ligneMonde(ev) {
     var n = ((ev && ev.attendees) || []).length;
-    var bouts = [n + " personne" + (n > 1 ? "s" : "")];
+    var bouts = [n + " participant" + (n > 1 ? "s" : "")];
     var reste = placesRestantes(ev);
     if (reste !== null && reste !== undefined) {
-      bouts.push(reste <= 0 ? "complet" : reste + " place" + (reste > 1 ? "s" : ""));
+      bouts.push(reste <= 0
+        ? "complet"
+        : reste + " place" + (reste > 1 ? "s" : "") + " restante" + (reste > 1 ? "s" : ""));
     }
     var att = ((ev && ev.waitlist) || []).length;
     if (att) bouts.push(att + " en attente");
@@ -435,6 +457,7 @@
   }
 
   function libelleReponse(etat) {
+    if (etat === "going") return LIB_INSCRIT;
     try {
       if (typeof RSVP_LABELS !== "undefined" && RSVP_LABELS && RSVP_LABELS[etat]) {
         return RSVP_LABELS[etat].short;

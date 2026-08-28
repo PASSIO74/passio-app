@@ -93,8 +93,13 @@ test("bottom-nav : CDV dépromu et accès Voyage conservé", async ({ page }) =>
   await expect(cdvMain).toBeHidden();
   await expect(cdvMain).toHaveAttribute("data-secondary-feature", "voyage-cdv");
 
-  // Messages relogé dans le topbar (icône aria-label="Messages")
-  await page.click('.topbar-right .topbar-bell[aria-label="Messages"]');
+  // §4 du lot UI-7 : Messages a QUITTÉ la barre supérieure — il est déjà une
+  // destination de la barre du bas, et deux portes pour un même écran
+  // encombraient la tête de l'application. L'assertion n'est pas retirée, elle
+  // est déplacée sur le chemin qui subsiste, et complétée par la preuve que
+  // l'icône n'est effectivement plus là.
+  await expect(page.locator('.topbar-right .topbar-bell[aria-label="Messages"]')).toHaveCount(0);
+  await page.click('#appNavV2 [data-v2-key="messages"]');
   await page.waitForFunction(() => {
     const el = document.getElementById("screen-messages");
     return el && el.classList.contains("active");

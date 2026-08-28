@@ -72,7 +72,7 @@
     { id: "pour_toi", label: "Tous", neutre: true },
     { id: "semaine", label: "Cette semaine" },
     { id: "ville", label: "Ma ville" },
-    { id: "passio", label: "Mes Passio" },
+    { id: "passio", label: "Mes passions" },
   ];
 
   var intentions = [];      // sélection courante, en mémoire seule

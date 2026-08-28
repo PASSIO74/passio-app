@@ -128,18 +128,41 @@ test.describe("UI-4A2 — carte d'activité V2", () => {
     await expect(carte.locator(".v4a2-quoi")).toBeVisible();
     await expect(carte.locator(".v4a2-monde")).toBeVisible();
     await expect(carte.locator('.v4a2-actions [data-v4a2-act="voir"]')).toBeVisible();
+    await expect(carte.locator('.v4a2-actions [data-v4a2-act="voir"]')).toHaveText("Détails");
 
     // Le titre est celui de l'activité, et la Passio ouvre la première ligne.
     const attendu = await page.evaluate((evid) => {
       const ev = allEvents().find((e) => e.id === evid);
       const p = passionById(ev.passion);
-      return { titre: ev.title, passion: p.label, ville: ev.city, n: (ev.attendees || []).length };
+      return {
+        titre: ev.title,
+        // Lot UI-7 §2 : la rangée compacte porte le libellé COURT de la passion
+        // (« Yoga » et non « Yoga / Bien-être »), sans que la passion canonique
+        // change — c'est bien `p.label` qui sert de source, seulement abrégé.
+        passion: String(p.label).split("/")[0].trim(),
+        labelComplet: p.label,
+        ville: ev.city,
+        n: (ev.attendees || []).length,
+        reste: _eventSpotsLeft(ev),
+      };
     }, id);
     await expect(carte.locator(".v4a2-titre")).toHaveText(attendu.titre);
     await expect(carte.locator(".v4a2-quoi")).toContainText(attendu.passion);
+    if (attendu.labelComplet !== attendu.passion) {
+      await expect(carte.locator(".v4a2-quoi")).not.toContainText(attendu.labelComplet);
+      // …et la passion canonique n'a pas bougé pour autant.
+      expect(await page.evaluate((evid) => passionById(allEvents()
+        .find((e) => e.id === evid).passion).label, id)).toBe(attendu.labelComplet);
+    }
     await expect(carte.locator(".v4a2-ou")).toContainText(attendu.ville);
+    // Texte EXACT demandé au §2, et calculé — jamais codé en dur.
     await expect(carte.locator(".v4a2-monde"))
-      .toContainText(attendu.n + " personne" + (attendu.n > 1 ? "s" : ""));
+      .toContainText(attendu.n + " participant" + (attendu.n > 1 ? "s" : ""));
+    if (attendu.reste !== null && attendu.reste > 0) {
+      await expect(carte.locator(".v4a2-monde"))
+        .toContainText(attendu.reste + " place" + (attendu.reste > 1 ? "s" : "")
+          + " restante" + (attendu.reste > 1 ? "s" : ""));
+    }
   });
 
   test("rien n'est retiré : les nœuds historiques sont masqués, pas supprimés", async ({ page }) => {
@@ -258,6 +281,8 @@ test.describe("UI-4A2 — carte d'activité V2", () => {
     // états plutôt que d'en dupliquer une seconde.
     await expect(carte.locator('[data-v4a2-act="go"]')).toHaveCount(0);
     await expect(carte.locator('[data-v4a2-act="reponse"]')).toHaveAttribute("data-v4a2-rsvp", "going");
+    // §2 du lot UI-7 : le CTA dit « Je viens » AVANT, « Inscrit ✓ » APRÈS.
+    await expect(carte.locator('[data-v4a2-act="reponse"]')).toHaveText("Inscrit ✓");
   });
 
   test("annulé et terminé ne sont jamais recouverts", async ({ page }) => {

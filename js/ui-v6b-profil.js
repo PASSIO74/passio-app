@@ -111,11 +111,11 @@
       for (var i = 0; i < titre.childNodes.length; i++) {
         var n = titre.childNodes[i];
         if (n.nodeType === 3 && (n.nodeValue || "").trim()) {
-          n.nodeValue = "Mes Passio ";
+          n.nodeValue = "Mes passions ";
           break;
         }
       }
-      lien.textContent = "+ Ajouter une Passio";
+      lien.textContent = "+ Ajouter une passion";
       titre.setAttribute("data-v6b-titre", "1");
     } catch (e) { fail("titre", e); }
   }
