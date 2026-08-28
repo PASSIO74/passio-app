@@ -1107,12 +1107,22 @@ function renderProfilesScreen() {
   // passion. Elle n'a de sens que si l'utilisateur en a exactement UN — celui
   // créé à l'inscription. Avec deux profils ou plus, il a déjà trouvé tout seul,
   // et le §8 interdit d'expliquer ce qui est acquis.
+  // ⚠️ L'ANCRE dépend de l'écran réellement affiché. `montrerHint` refuse une
+  // cible sans `offsetParent` — et depuis le lot UI-7, « Mes passions » vit
+  // dans l'onglet « À propos », masqué tant qu'on ne l'ouvre pas : ancrer
+  // l'aide sur `#nouveauProfilLien` la rendait simplement invisible, sans que
+  // rien n'échoue. On retombe alors sur l'onglet, qui EST la porte à montrer.
   try {
     if (typeof montrerHint === "function" && (state.user.profiles || []).length === 1) {
       setTimeout(function () {
         var ecran = document.getElementById("screen-profiles");
         if (!ecran || !ecran.classList.contains("active")) return;
-        montrerHint("second_profil", "#nouveauProfilLien");
+        var ancre = "#nouveauProfilLien";
+        var lien = document.getElementById("nouveauProfilLien");
+        if ((!lien || !lien.offsetParent) && document.querySelector('[data-v7-tab="apropos"]')) {
+          ancre = '[data-v7-tab="apropos"]';
+        }
+        montrerHint("second_profil", ancre);
       }, 400);
     }
   } catch (e) {}
