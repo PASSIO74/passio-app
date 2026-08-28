@@ -1655,10 +1655,36 @@ function syncAppViewportHeight() {
 // ═══ En-tête du fil rétractable au scroll (refonte 2026-07-20) ═══
 // Descendre dans le fil replie filtres/moods/stories (classe .chrome-collapsed
 // sur .app-main, styles en fin de styles.css) ; remonter les réaffiche.
+//
+// ⚠️ CORRIGÉ LE 2026-08-28 — cette bascule pouvait osciller À L'INFINI.
+// Le repli RACCOURCIT le contenu situé au-dessus du fil (max-height des trois
+// blocs passe à 0 en 260 ms) : `scrollTop` s'en trouve déplacé. L'ancrage de
+// défilement de Chrome compense, mais imparfaitement, et le mouvement résiduel
+// franchit le seuil OPPOSÉ (`dy < -4`) — ce qui déplie, ce qui rallonge, ce qui
+// replie. Sur une machine rapide la transition se termine avant l'événement de
+// défilement suivant et l'oscillation s'éteint ; sur une machine lente, non.
+// Mesuré sous `Emulation.setCPUThrottlingRate {rate: 35}` : 19 bascules en 10 s,
+// contre 0 sans ralentissement, et chaque carte du fil oscillant de ±0,5 px en
+// permanence. C'est ce qui faisait échouer au hasard le test de like sur la CI —
+// le clic était refusé sur un élément qui ne tenait jamais en place.
+//
+// Le correctif : après un changement RÉEL d'état, la bascule cesse d'écouter le
+// défilement JUSQU'À CE QU'IL SE SOIT ARRÊTÉ — elle n'entend donc plus le
+// mouvement qu'elle a elle-même provoqué.
+//
+// ⚠️ Attendre une DURÉE ne suffit pas, et c'est la première version de ce
+// correctif qui l'a montré. Mesuré : replier fait tomber `scrollTop` de 400 à
+// 154, soit 246 px, sur une longue traîne d'événements dont la durée dépend de
+// la machine. Un temps mort de 320 ms — la durée de la transition — laissait
+// passer la fin de la traîne, qui se lit comme « l'utilisateur remonte »
+// (`dy` négatif) et rouvrait l'en-tête, donc relançait la boucle.
+// On attend donc la seule condition qui compte et qu'on peut observer : deux
+// trames consécutives avec la MÊME position. C'est vrai aussi vite que la
+// machine le permet, et pas plus vite.
 (function () {
   var main = document.querySelector(".app-main");
   if (!main) return;
-  var lastY = 0, ticking = false;
+  var lastY = 0, ticking = false, enStabilisation = false;
   main.addEventListener("scroll", function () {
     if (ticking) return;
     ticking = true;
@@ -1668,12 +1694,30 @@ function syncAppViewportHeight() {
       if (!feed || !feed.classList.contains("active")) {
         main.classList.remove("chrome-collapsed");
         lastY = main.scrollTop;
+        enStabilisation = false;
         return;
       }
       var y = main.scrollTop, dy = y - lastY;
-      if (y > 140 && dy > 4) main.classList.add("chrome-collapsed");
-      else if (dy < -4 || y < 60) main.classList.remove("chrome-collapsed");
+      var precedent = lastY;
+      // Toujours mis à jour, y compris pendant la stabilisation : un `lastY`
+      // figé ferait grossir `dy` jusqu'à franchir le seuil dès la reprise.
       lastY = y;
+      if (enStabilisation) {
+        // La position ne bouge plus d'une trame à l'autre : la traîne provoquée
+        // par notre propre bascule est finie, on peut réécouter.
+        if (y === precedent) enStabilisation = false;
+        return;
+      }
+      var replie = main.classList.contains("chrome-collapsed");
+      // La stabilisation n'est armée que sur un changement RÉEL : l'armer à
+      // chaque défilement vers le bas empêcherait l'en-tête de se rouvrir.
+      if (!replie && y > 140 && dy > 4) {
+        main.classList.add("chrome-collapsed");
+        enStabilisation = true;
+      } else if (replie && (dy < -4 || y < 60)) {
+        main.classList.remove("chrome-collapsed");
+        enStabilisation = true;
+      }
     });
   }, { passive: true });
 })();

@@ -45,6 +45,16 @@ const onglet = (page, id) => page.locator(`[data-v4a3-onglet="${id}"]`);
 const carteRepliee = (page) => page.evaluate(() =>
   document.getElementById("irlMapWrap").classList.contains("peek"));
 
+// La carte est-elle RÉELLEMENT dans l'écran ? En vue Liste elle est sortie du
+// flux (position absolue très à gauche) : Playwright la considère encore
+// « visible » — elle a une boîte non vide et n'est pas en visibility:hidden —
+// donc `toBeVisible()` ne dirait rien de ce qui nous intéresse. On mesure sa
+// position réelle par rapport au cadre.
+const carteDansEcran = (page) => page.evaluate(() => {
+  const r = document.getElementById("irlMapWrap").getBoundingClientRect();
+  return r.right > 0 && r.left < document.documentElement.clientWidth && r.width > 0;
+});
+
 test.describe("UI-4A3 — commutateur Liste / Carte", () => {
   test("URL normale : commutateur présent, vue Liste, écran historique intact", async ({ page }) => {
     await boot(page);
@@ -58,9 +68,15 @@ test.describe("UI-4A3 — commutateur Liste / Carte", () => {
     await expect(onglet(page, "liste")).toHaveAttribute("aria-selected", "true");
     await expect(onglet(page, "carte")).toHaveAttribute("aria-selected", "false");
 
-    // ① L'écran est celui d'avant : carte en bande repliée, liste visible.
+    // ① Vue Liste = la LISTE, et rien qu'elle. La carte est hors écran — c'est
+    //    le sens d'un commutateur, et la première remarque de Benjamin à
+    //    l'essai du 2026-08-28. Elle reste dans le DOM (le moteur
+    //    cartographique mesure son conteneur) mais quitte le cadre et l'arbre
+    //    d'accessibilité.
+    expect(await carteDansEcran(page)).toBe(false);
+    await expect(page.locator("#irlMapWrap")).toHaveAttribute("aria-hidden", "true");
+    await expect(page.locator("#irlMapWrap")).toHaveCount(1);
     expect(await carteRepliee(page)).toBe(true);
-    await expect(page.locator("#irlMapWrap")).toBeVisible();
     await expect(page.locator("#eventList")).toBeVisible();
     await expect(page.locator("#eventList .event-card").first()).toBeVisible();
     await expect(page.locator(".irl-chip-create")).toBeVisible();
@@ -83,7 +99,15 @@ test.describe("UI-4A3 — commutateur Liste / Carte", () => {
     await expect(onglet(page, "carte")).toHaveAttribute("aria-selected", "true");
     await expect(onglet(page, "liste")).toHaveAttribute("aria-selected", "false");
     expect(await carteRepliee(page)).toBe(false);
-    await expect(page.locator("#irlMapWrap")).toBeVisible();
+    // Elle revient DANS le cadre, et redevient annoncée.
+    expect(await carteDansEcran(page)).toBe(true);
+    await expect(page.locator("#irlMapWrap")).not.toHaveAttribute("aria-hidden", "true");
+    // Sa boîte est réelle : sans dimensions, le moteur cartographique rendrait
+    // une carte blanche.
+    expect(await page.evaluate(() => {
+      const r = document.getElementById("irlMapWrap").getBoundingClientRect();
+      return r.width > 100 && r.height > 100;
+    })).toBe(true);
 
     // La liste est masquée mais TOUJOURS là : le moteur continue d'y écrire.
     await expect(page.locator("#eventList")).toBeHidden();
@@ -103,6 +127,7 @@ test.describe("UI-4A3 — commutateur Liste / Carte", () => {
     await onglet(page, "liste").click();
     await page.waitForTimeout(400);
     expect(await carteRepliee(page)).toBe(true);
+    expect(await carteDansEcran(page)).toBe(false);
     await expect(page.locator("#eventList")).toBeVisible();
     await expect(page.locator("#eventList .event-card").first()).toBeVisible();
   });
@@ -163,7 +188,10 @@ test.describe("UI-4A3 — commutateur Liste / Carte", () => {
       document.documentElement.classList.contains("passio-ui-4a3"))).toBe(false);
     await expect(page.locator("#v4a3Vue")).toHaveCount(0);
     await expect(page.locator("#eventList")).toBeVisible();
-    await expect(page.locator("#irlMapWrap")).toBeVisible();
+    // Sans le lot, l'écran historique revient ENTIER : la carte est dans le
+    // cadre, en bande repliée, et n'est plus retirée de l'arbre d'accessibilité.
+    expect(await carteDansEcran(page)).toBe(true);
+    await expect(page.locator("#irlMapWrap")).not.toHaveAttribute("aria-hidden", "true");
     expect(await carteRepliee(page)).toBe(true);
   });
 

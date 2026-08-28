@@ -23,11 +23,13 @@
 // depuis ici serait un pari sur la mauvaise ; et l'état replié est mémorisé par
 // cette fonction, qu'il faut laisser seule maîtresse de sa clé.
 //
-// ⚠️ En vue Liste, la carte reste la BANDE repliée historique — elle n'est pas
-// retirée ni masquée. C'est délibéré : le moteur cartographique s'initialise
-// paresseusement, et l'initialiser dans un conteneur en `display:none` donne
-// une carte blanche au premier dépliage. La vue Liste rend donc l'écran
-// exactement tel qu'il est aujourd'hui ; c'est la vue Carte qui est neuve.
+// ⚠️ En vue Liste, la carte QUITTE l'écran — c'est le sens d'un commutateur, et
+// la première remarque de Benjamin à l'essai. Elle n'est pour autant pas mise en
+// `display: none` : le moteur cartographique s'initialise paresseusement et
+// MESURE son conteneur, qu'un `display: none` réduirait à rien, donnant une
+// carte blanche au retour. Le CSS la sort donc du FLUX en lui conservant sa
+// boîte, et ce module la retire de l'arbre d'accessibilité tant qu'elle est
+// hors écran.
 //
 // ── Activation — ACTIF PAR DÉFAUT ─────────────────────────────────────────
 //     localStorage.passio_ui_4a3 = "0"    → kill switch local, prioritaire
@@ -192,13 +194,27 @@
     track("ui_v4a3_vue", { v: VERSION, vue: String(vue) });
   }
 
+  // Hors écran ne suffit pas : une carte invisible ne doit pas rester annoncée
+  // aux technologies d'assistance ni atteignable au clavier. Appelée par le
+  // changement de vue ET par l'activation — sans quoi l'état d'ouverture aurait
+  // le bon CSS et la mauvaise accessibilité (défaut attrapé par le test le
+  // 2026-08-28).
+  function syncAccessibiliteCarte() {
+    var w = carteWrap();
+    if (!w) return;
+    if (actif() && vue !== "carte") w.setAttribute("aria-hidden", "true");
+    else w.removeAttribute("aria-hidden");
+  }
+
   function appliquerVue() {
     try {
       var root = document.documentElement;
       root.setAttribute(ATTR_VUE, vue);
-      // La carte n'est dépliée que dans SA vue. En vue Liste on la replie, ce
-      // qui rend exactement la bande historique.
+      // La carte n'est dépliée que dans SA vue. En vue Liste elle est repliée
+      // ET sortie de l'écran par le CSS — un onglet « Liste » qui montre la
+      // carte ne serait pas un commutateur.
       demanderCarteDepliee(vue === "carte");
+      syncAccessibiliteCarte();
       syncBarre();
     } catch (e) { fail("vue", e); }
   }
@@ -252,12 +268,19 @@
       root.removeAttribute(ATTR_VUE);
       cesserObservation();
       retirerBarre();
+      // La carte redevient annoncée : le lot ne laisse rien derrière lui.
+      syncAccessibiliteCarte();
       return false;
     }
     root.classList.add(ROOT_CLASS);
     root.setAttribute(ATTR_VUE, vue);
     observer();
     poserBarre();
+    // ⚠️ On aligne l'accessibilité, PAS le pli de la carte : `passio_irl_map_peek`
+    // est la mémoire du moteur historique, et la déplier ou la replier au
+    // démarrage écraserait un choix de l'utilisateur. En vue Liste la carte est
+    // hors écran de toute façon, son pli n'y change rien.
+    syncAccessibiliteCarte();
     return true;
   }
 

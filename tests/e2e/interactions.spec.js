@@ -132,7 +132,7 @@ async function attendreFilStable(page, id) {
   // Compteurs de diagnostic : quand cette attente expire, on veut savoir POURQUOI.
   // « Le nœud a été remplacé 900 fois » et « le nœud a disparu du DOM » appellent
   // des corrections opposées ; sans le chiffre, on choisit à pile ou face.
-  await page.evaluate(() => { window.__filRef = null; window.__filRect = null; window.__filStable = 0; window.__filDiag = { sondages: 0, remplacements: 0, absences: 0, deplacements: 0 }; });
+  await page.evaluate(() => { window.__filRef = null; window.__filRect = null; window.__filStable = 0; window.__filDiag = { sondages: 0, remplacements: 0, absences: 0, deplacements: 0, animations: 0 }; });
   try {
     await page.waitForFunction((s) => {
     const n = document.querySelector(s);
@@ -144,6 +144,73 @@ async function attendreFilStable(page, id) {
     // et la ligne que la passerelle UI-3A ajoute à la carte APRÈS la peinture.
     // On attend donc la même géométrie, arrondie au pixel, sur des sondages
     // consécutifs : c'est exactement la propriété que le clic suivant réclame.
+    //
+    // ⚠️ Échantillonner la géométrie NE SUFFIT PAS à couvrir `like-pop`, et c'est
+    // le trou par lequel ce fichier a fait rougir la CI (reproduit le 2026-08-28
+    // sous `Emulation.setCPUThrottlingRate {rate:30}` : « element is not stable »
+    // sur le SECOND clic, puis dépassement du budget de 45 s). Les keyframes
+    // `likePopKf` partent de `scale(1)` et y reviennent (styles.css l. 443) : la
+    // boîte au repos et la boîte au tout début de l'animation sont IDENTIQUES au
+    // pixel près. Sur une machine lente, les trois sondages consécutifs (150 ms)
+    // tiennent entièrement dans le début de l'animation de 320 ms et lisent trois
+    // fois la même géométrie — on déclare « stable » un bouton qui est en train de
+    // grossir. Playwright, qui échantillonne par requestAnimationFrame et non par
+    // intervalle, le rattrape ensuite en plein rebond, rejoue son action, et ces
+    // secondes-là sortent du budget du test.
+    //
+    // ⚠️ Et le bouton n'est pas le seul à bouger : mesuré au même moment, TREIZE
+    // transitions CSS tournaient sur ses ANCÊTRES — `max-height`, `opacity`,
+    // `margin`, `padding` sur `.profile-strip`, `.mood-selector` et
+    // `.stories-row`, soit l'en-tête rétractable du fil (`.chrome-collapsed`,
+    // styles.css l. 7836-7840, 260 ms). Ces trois blocs sont AU-DESSUS de
+    // `#feedList` : tant qu'ils se replient, chaque carte glisse verticalement.
+    // Le décalage est inférieur au pixel (top : 407,3 → 407,4 → 407,5 → 407,3),
+    // donc l'arrondi au pixel de la version précédente l'effaçait complètement et
+    // déclarait « stable » un fil encore en mouvement. Playwright, lui, compare la
+    // boîte NON arrondie : il voyait le mouvement, refusait le clic (« element is
+    // not stable »), rejouait — et ces secondes-là sortaient du budget de 45 s.
+    //
+    // On attend donc les deux conditions observables que le clic réclame vraiment :
+    // ① plus aucune animation ni transition en cours sur le bouton, sur un de ses
+    // ancêtres ou sur un de ses descendants — les seuls nœuds capables de déplacer
+    // ou redimensionner sa boîte. Les animations INFINIES sont écartées : elles ne
+    // s'arrêtent jamais, donc les attendre serait attendre l'éternité ;
+    // ② la géométrie, ARRONDIE AU PIXEL, identique sur des sondages consécutifs.
+    //
+    // ⚠️ L'arrondi n'est pas une négligence, c'est la contrepartie du point ①.
+    // Une première version de ce garde comparait la géométrie EXACTE, au motif que
+    // c'est le critère de Playwright. Mesuré : l'attente y expirait, ou n'aboutissait
+    // que par chance. La cause a été identifiée, et ce n'est PAS du bruit décoratif :
+    // c'est le DÉFAUT PRODUIT décrit en tête du test « l'écriture serveur reçoit
+    // l'INTENTION… » (js/app-09-boot-pwa.js l. 1662-1677). Sous CPU ralenti,
+    // l'en-tête rétractable du fil se replie et se déplie tout seul deux fois par
+    // seconde, indéfiniment ; l'ancrage de défilement de Chrome compense presque
+    // exactement, et il reste une oscillation permanente de ±0,5 px sur chaque carte
+    // (top : 407,3 → 407,4 → 407,5 → 407,3 ; mesuré : 19 bascules en 10 s à
+    // `rate: 35`, 0 bascule sans ralentissement). Exiger l'égalité au bit près, ce
+    // serait exiger que ce défaut s'arrête : il ne s'arrête pas, et le test
+    // expirerait en accusant le mauvais coupable au lieu de le nommer.
+    // L'arrondi absorbe donc cette oscillation, et le point ① couvre le seul cas
+    // que l'arrondi masquait : `like-pop`, dont les keyframes partent de `scale(1)`
+    // et y reviennent (styles.css l. 443), et dont le début est indistinguable du
+    // repos une fois arrondi.
+    let anims = [];
+    try {
+      anims = document.getAnimations().filter((a) => {
+        const t = a.effect && a.effect.target;
+        if (!t || !t.nodeType) return false;
+        if (!(t === n || (t.contains && t.contains(n)) || n.contains(t))) return false;
+        if (a.playState !== "running" && a.playState !== "pending") return false;
+        try { if (a.effect.getComputedTiming().iterations === Infinity) return false; } catch (e) {}
+        return true;
+      });
+    } catch (e) { anims = []; }
+    const anime = n.classList.contains("like-pop") || anims.length > 0;
+    if (anime) {
+      if (d) d.animations++;
+      window.__filRef = null; window.__filRect = null; window.__filStable = 0;
+      return false;
+    }
     const r = n.getBoundingClientRect();
     const cle = [r.top, r.left, r.width, r.height].map(Math.round).join(":");
     if (window.__filRef === n && window.__filRect === cle) { window.__filStable = (window.__filStable || 0) + 1; }
@@ -161,8 +228,8 @@ async function attendreFilStable(page, id) {
   } catch (e) {
     const d = await page.evaluate(() => window.__filDiag).catch(() => null);
     throw new Error(`attendreFilStable a expiré sur ${sel}\n`
-      + `diagnostic : ${d ? `${d.sondages} sondages, ${d.remplacements} remplacements de nœud, ${d.deplacements} déplacements, ${d.absences} absences` : "indisponible"}\n`
-      + `(remplacements élevés = le fil se re-rend en boucle ; déplacements élevés = la mise en page bouge encore ; absences élevées = le post n'est plus dans le DOM)\n${e.message}`);
+      + `diagnostic : ${d ? `${d.sondages} sondages, ${d.remplacements} remplacements de nœud, ${d.deplacements} déplacements, ${d.absences} absences, ${d.animations} sondages pendant une animation` : "indisponible"}\n`
+      + `(remplacements élevés = le fil se re-rend en boucle ; déplacements élevés = la mise en page bouge encore ; absences élevées = le post n'est plus dans le DOM ; animations élevées = une animation ne se termine jamais sur le bouton)\n${e.message}`);
   }
 }
 
@@ -197,6 +264,15 @@ async function seedServerPost(page, { writeResult = { ok: true, error: null }, m
       passion, mood: "all", type: "text", text: "post serveur", createdAt: Date.now(),
       likes: 4, liked: false, comments: [], fromSupabase: true,
     });
+    // Le post semé est enregistré là où l'application range les posts qui doivent
+    // SURVIVRE au remplacement en bloc `state.supabasePosts = posts.concat(extra)`
+    // (app-02 l. 2952, app-08 l. 1645 et 5328, app-09 l. 271). C'est exactement ce
+    // que fait `feedAddRealtimePost` pour un post reçu en direct : le fixture se
+    // comporte donc comme un vrai post arrivé hors requête, au lieu d'attendre en
+    // espérant qu'aucune requête ne soit encore en vol. Dédupliqué par id : le
+    // seed peut être rejoué, et deux exemplaires fausseraient tous les compteurs.
+    window._feedExtraPosts = (window._feedExtraPosts || []).filter((p) => p.id !== "p_srv_test");
+    window._feedExtraPosts.push(state.supabasePosts[0]);
     _activeFeedPassions.add(passion);
     window._feedDomSig = null;
     renderFeed();
@@ -238,7 +314,16 @@ async function seedServerPostStable(page, opts) {
   // Sans réseau (ou si la requête échoue), le tableau reste vide : on n'attend
   // pas indéfiniment, on sème quand même. L'échec de cette attente n'est pas
   // l'échec du test.
-  await page.waitForFunction(() => (state.supabasePosts || []).length > 0,
+  //
+  // ⚠️ « supabasePosts non vide » n'est PAS une condition atteignable quand aucun
+  // client Supabase réel n'a pu être construit : le SDK vient d'un CDN, donc sans
+  // réseau `_supaReal` reste faux, aucune requête ne part, le tableau ne se
+  // remplit jamais et cette attente brûlait ses 8 000 ms ENTIÈRES à chaque appel —
+  // un tiers du budget de 45 s du test, dépensé à attendre un événement qui ne
+  // peut pas se produire. On attend donc la vraie condition : « la requête du boot
+  // a atterri, OU il n'y a jamais eu de requête ». Avec réseau (la CI), le sens est
+  // inchangé — `_supaReal` est vrai et on attend bien les posts.
+  await page.waitForFunction(() => (state.supabasePosts || []).length > 0 || !window._supaReal,
     null, { polling: 50, timeout: 8000 }).catch(() => {});
   for (let essai = 1; essai <= 4; essai++) {
     id = await seedServerPost(page, opts);
@@ -314,6 +399,43 @@ test.describe("Interactions — like d'un post", () => {
     // L'ancien supaToggleLike relisait post_likes pour déduire le sens : dès que
     // la base et l'état local divergeaient, le clic écrivait l'inverse de ce que
     // l'utilisateur voyait.
+    //
+    // ⚠️ DÉFAUT PRODUIT CONNU, NON CORRIGÉ ICI — js/app-09-boot-pwa.js l. 1662-1677.
+    // Ce test a fait rougir `main` au hasard ; l'enquête du 2026-08-28 (CDP
+    // `Emulation.setCPUThrottlingRate`, qui reproduit le runner chargé) a montré
+    // qu'il ne s'agissait jamais d'une assertion fausse mais TOUJOURS d'un
+    // dépassement du budget de 45 s, sur un `locator.click` bloqué en boucle par
+    // « element is not stable ». La cause est en dehors de ce test :
+    //
+    //   l'en-tête rétractable du fil compare `dy = main.scrollTop - lastY` sans
+    //   distinguer un défilement de l'UTILISATEUR d'un défilement que le repli
+    //   vient lui-même de provoquer. Replier retire ~190 px AU-DESSUS de la zone
+    //   visible ; l'ancrage de défilement de Chrome (`overflow-anchor: auto`,
+    //   vérifié) rend ces 190 px en baissant `scrollTop` ; l'événement suivant lit
+    //   `dy ≈ -190 < -4` et DÉPLIE ; déplier remet 190 px, l'ancrage remonte
+    //   `scrollTop`, `dy ≈ +190 > 4` avec `y > 140` → REPLIE. Et ainsi de suite.
+    //
+    // Mesuré sur la carte du fil, sans le moindre geste : 19 bascules de
+    // `.chrome-collapsed` en 10 s à `rate: 35` (≈ 2/s, régulières jusqu'au bout,
+    // amplitude résiduelle 0,92 px après compensation) contre 0 bascule en 599
+    // frames sans ralentissement. Le garde `ticking` (requestAnimationFrame) avale
+    // le rebond dans la même frame tant que les frames sont fréquentes : c'est
+    // pour cela que le défaut est INVISIBLE sur machine rapide et permanent dès
+    // qu'elle rame. Coût réel : l'en-tête du fil qui clignote tout seul et du CPU
+    // brûlé en continu, sur l'appareil déjà le plus chargé.
+    //
+    // Il n'est PAS corrigé ici (ce lot ne touche qu'au test), et il n'est pas
+    // masqué : rien dans ce fichier ne neutralise `.chrome-collapsed`. Ce qui est
+    // corrigé, c'est ce qui relevait du test — une attente sur une condition
+    // inatteignable hors ligne (cf. seedServerPostStable) et un garde de stabilité
+    // aveugle à `like-pop` (cf. attendreFilStable).
+    //
+    // ⚠️ `test.slow()` triple le budget, il n'endort rien : le test continue de
+    // n'attendre que des conditions observables et finit aussi vite que la machine
+    // le permet. C'est la seule réponse honnête tant que le défaut ci-dessus force
+    // Playwright à rejouer ses clics — un budget calibré sur une machine au repos
+    // n'est pas une assertion, c'est un pari sur la charge du runner.
+    test.slow();
     await bootInteractions(page);
     const id = await seedServerPostStable(page);
     const btn = page.locator(`[data-postid="${id}"] [data-action="like"]`);
