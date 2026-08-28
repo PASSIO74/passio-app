@@ -11018,19 +11018,21 @@ body.ctx-locked #appMain { overflow: hidden; }
 /* ── §3 · Les stories restent des cercles, ~25 % plus compacts ───────────── */
 :root.passio-ui-7 #screen-feed .stories-row {
   gap: 9px;
-  padding: 3px 2px 5px;
-  margin: -2px -4px 5px;
+  padding: 2px 2px 4px;
+  margin: -2px -4px 4px;
 }
-:root.passio-ui-7 #screen-feed .story-item { width: 51px; }
-:root.passio-ui-7 #screen-feed .story-ring { width: 47px; height: 47px; }
+:root.passio-ui-7 #screen-feed .story-item { width: 48px; gap: 3px; }
+/* Mesure a 390 px : la rangee des stories passe de 87 a 63 px, celle des
+   passions de 101 a 76 px — environ un quart de moins chacune (§3). */
+:root.passio-ui-7 #screen-feed .story-ring { width: 44px; height: 44px; padding: 2px; }
 :root.passio-ui-7 #screen-feed .story-ring.create::after {
-  width: 17px; height: 17px; font-size: 11px;
+  width: 16px; height: 16px; font-size: 11px;
 }
-:root.passio-ui-7 #screen-feed .story-inner { font-size: 17px; }
+:root.passio-ui-7 #screen-feed .story-inner { font-size: 16px; border-width: 1.5px; }
 :root.passio-ui-7 #screen-feed .story-add-badge {
-  top: 31px; width: 17px; height: 17px; font-size: 12px;
+  top: 29px; width: 16px; height: 16px; font-size: 11px;
 }
-:root.passio-ui-7 #screen-feed .story-label { font-size: 9.5px; max-width: 51px; }
+:root.passio-ui-7 #screen-feed .story-label { font-size: 9px; max-width: 48px; }
 
 /* ⚠️ Le repli au défilement DOIT continuer de gagner. Les règles historiques
    (`.app-main.chrome-collapsed #screen-feed .profile-strip`) ont exactement la

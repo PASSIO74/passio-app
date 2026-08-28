@@ -649,6 +649,16 @@ Le script est en lecture seule sur le dépôt (il n'écrit que dans son dossier 
   fichier en mode texte Python le convertit en LF et produit un diff de 10 800 lignes —
   n'y écrire qu'en **binaire**, ou en ajout.
 
+  ⑦ **Un TITRE n'est pas un identifiant d'écran.** `ui-v4a4-outils.js` décidait
+  s'il devait injecter les quatre intentions en cherchant « IRL » dans
+  `#ctxToolsTitle`. Renommer ce titre en « Filtres » a suffi à faire disparaître
+  toute la section — sans erreur, sans test rouge ailleurs, sans rien dans la
+  console. `ContextualTools` publie désormais l'écran courant comme une DONNÉE :
+  `ContextualTools.pageType()` et `#ctxToolsRoot[data-ctx-page]`. Même famille de
+  piège pour l'aide contextuelle : `montrerHint` refuse une cible sans
+  `offsetParent`, donc déplacer une ancre dans un panneau masqué éteint l'aide en
+  silence — l'ancre de « second_profil » retombe sur l'onglet « À propos ».
+
 - `docs/PIEGES_CONNUS.md` — les 56 fiches détaillées (extrait de ce fichier le 2026-08-07).
 - `docs/HISTORIQUE_PROJET.md` — état 2026-06-11, backlog terminé, logs d’optimisation.
 - `docs/ARCHITECTURE.md`, `docs/CONTROLE_16_MISSIONS.md`, `docs/CHECKLIST_COMMERCIALISATION.md`.

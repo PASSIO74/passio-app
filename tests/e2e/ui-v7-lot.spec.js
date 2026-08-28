@@ -83,6 +83,15 @@ test.describe("UI-7 §1 — vocabulaire visible", () => {
 
     await expect(page.locator("#irlToolsBtn")).toContainText("Filtres");
     await page.locator("#irlToolsBtn").click();
+
+    // ⚠️ NON-RÉGRESSION. UI-4A4 devinait l'écran du panneau en cherchant « IRL »
+    // dans son TITRE : renommer ce titre en « Filtres » a fait disparaître les
+    // quatre intentions, en silence. L'écran courant est désormais une DONNÉE.
+    expect(await page.evaluate(() => ContextualTools.pageType())).toBe("irl");
+    await expect(page.locator("#ctxToolsRoot")).toHaveAttribute("data-ctx-page", "irl");
+    await expect(page.locator("#ctxToolsBody [data-v4a0-intent]")).toHaveCount(4);
+    await expect(page.locator("#ctxToolsTitle")).toHaveText("Filtres");
+
     const corps = page.locator("#ctxToolsBody");
     await expect(corps).toContainText("Choisir une ville");
     await expect(corps).toContainText("Mes inscriptions");

@@ -256,6 +256,15 @@ function openMyPostsTab() {
   _persistProfileTabs();
   _syncProfileTabButtons();
   renderProfilesScreen();
+  // Sous le lot UI-7, #myPosts vit dans l'onglet « Publications » : défiler
+  // vers un nœud masqué ne fait rien. On ouvre l'onglet d'abord — inerte dès
+  // que le lot est coupé.
+  try {
+    if (window.PassioUIV7 && typeof window.PassioUIV7.selectProfileTab === "function"
+        && document.querySelector('[data-v7-tab="publications"]')) {
+      window.PassioUIV7.selectProfileTab("publications");
+    }
+  } catch (e) {}
   var anchor = document.getElementById("myPosts");
   if (anchor && anchor.scrollIntoView) anchor.scrollIntoView({ behavior: "smooth", block: "start" });
 }
