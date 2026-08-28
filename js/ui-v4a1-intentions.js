@@ -54,8 +54,10 @@
 //
 // L'aperçu UI-4A1 implique la tête UI-4A0 (elle se déclare active pour ses
 // héritiers) : couper UI-4A0 coupe donc aussi ce lot, et l'écran historique
-// revient entier. L'URL normale est strictement inchangée, aucune activation
-// positive ne persiste, rien n'est écrit dans `localStorage`.
+// revient entier. Symétriquement, l'aperçu du sous-lot UI-4A2 (cartes
+// d'activité V2) implique CE raccord — sans quoi ses quatre chips seraient
+// posées mais inertes. L'URL normale est strictement inchangée, aucune
+// activation positive ne persiste, rien n'est écrit dans `localStorage`.
 // ══════════════════════════════════════════════════════════════════════════
 (function () {
   "use strict";
@@ -94,12 +96,25 @@
     } catch (e) { fail("query", e); return false; }
   }
 
+  // Le sous-lot UI-4A2 (cartes d'activité V2) réutilise ce raccord TEL QUEL :
+  // son aperçu vaut donc aperçu d'intentions. Sans cela, les quatre chips
+  // seraient posées mais INERTES sous l'aperçu des cartes — un écran qui ment
+  // sur ce qu'il sait faire. Son `isEnabled` ne consulte personne en retour,
+  // donc aucune récursion.
+  function apercuHeritier() {
+    var suite = window.PassioUIV4A2;
+    if (suite && typeof suite.isEnabled === "function") {
+      try { return !!suite.isEnabled(); } catch (e) { fail("apercu_heritier", e); }
+    }
+    return false;
+  }
+
   function uiV4a1Enabled() {
     if (window.PASSIO_UI_4A1 === false) return false;   // coupure mémoire
     var stored = null;
     try { stored = localStorage.getItem(STORAGE_KEY); } catch (e) {}
     if (stored === "0") return false;                   // kill switch local
-    return apercuDemande(PREVIEW_NAME) || apercuDemande(DEMO_PREVIEW_NAME);
+    return apercuDemande(PREVIEW_NAME) || apercuDemande(DEMO_PREVIEW_NAME) || apercuHeritier();
   }
 
   function tete() { return window.PassioUIV4A0 || null; }

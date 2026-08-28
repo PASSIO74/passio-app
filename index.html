@@ -1720,6 +1720,17 @@
      siennes et a besoin de window.PassioUIV4A0 dès son boot. -->
 <script src="js/ui-v4a1-intentions.js"></script>
 
+<!-- UI V4 (lot UI-4A2 — carte d'activité V2 dans « Rencontrer ») — hors bloc
+     app : composant autonome (IIFE window.PassioUIV4A2), inliné individuellement
+     au build. APERÇU UNIQUEMENT (?passio_preview=passio-ui-4a2-demo, alias
+     ?passio_preview=passio-ui-4a2) ; coupé par localStorage.passio_ui_4a2="0"
+     ou window.PASSIO_UI_4A2=false.
+     ⚠️ Chargé APRÈS ui-v4a1-intentions.js : son aperçu implique la tête UI-4A0
+     et le raccord UI-4A1, qui doivent tous deux exister au moment où ils
+     l'interrogent (`isEnabled`). Ce module n'enveloppe PAS renderIRL : il
+     observe #eventList, pour ne pas allonger la chaîne d'enveloppes. -->
+<script src="js/ui-v4a2-cartes.js"></script>
+
 
 <!-- ======== PWA INSTALL OVERLAY ======== -->
 <div id="pwa-overlay" style="display:none;">

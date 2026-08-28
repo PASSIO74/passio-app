@@ -88,14 +88,21 @@
     } catch (e) { fail("query", e); return false; }
   }
 
-  // Les sous-lots UI-4A suivants (UI-4A1…) réutilisent cette tête TELLE QUELLE
-  // au lieu d'en poser une seconde : leur aperçu vaut donc aperçu de tête. On
-  // le leur DEMANDE, sans connaître leurs noms d'aperçu — et leur `isEnabled`
-  // ne consulte jamais celui-ci en retour, donc aucune récursion.
+  // Les sous-lots UI-4A suivants (UI-4A1, UI-4A2…) réutilisent cette tête TELLE
+  // QUELLE au lieu d'en poser une seconde : leur aperçu vaut donc aperçu de
+  // tête. On le leur DEMANDE, sans connaître leurs noms d'aperçu — et leur
+  // `isEnabled` ne consulte jamais celui-ci en retour, donc aucune récursion.
+  //
+  // ⚠️ Ils sont interrogés TOUS, jamais en chaîne : un héritier coupé par son
+  // propre kill switch ferait disparaître la tête alors qu'un autre la réclame
+  // encore. Chacun décide pour lui, la tête reste tant qu'un seul la demande.
+  var HERITIERS = ["PassioUIV4A1", "PassioUIV4A2"];
+
   function apercuHeritier() {
-    var suite = window.PassioUIV4A1;
-    if (suite && typeof suite.isEnabled === "function") {
-      try { return !!suite.isEnabled(); } catch (e) { fail("apercu_heritier", e); }
+    for (var i = 0; i < HERITIERS.length; i++) {
+      var suite = window[HERITIERS[i]];
+      if (!suite || typeof suite.isEnabled !== "function") continue;
+      try { if (suite.isEnabled()) return true; } catch (e) { fail("apercu_heritier", e); }
     }
     return false;
   }

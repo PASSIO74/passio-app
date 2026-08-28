@@ -413,6 +413,41 @@ Le script est en lecture seule sur le dépôt (il n'écrit que dans son dossier 
   pas à la coupure) ; et **deux enveloppes de `renderIRL` s'empilent** — UI-4A0 ne met
   plus sa fonction d'origine à `null` quand un sous-lot l'a recouverte, sinon le rendu
   suivant plantait sur un `null.apply`.
+  Implémentation UI-4A2 (carte d'activité V2 dans la liste « Rencontrer ») :
+  `js/ui-v4a2-cartes.js` + bloc « PASSIO UI V4 — lot UI-4A2 » en fin de `styles.css`,
+  tests `tests/e2e/ui-v4a2-cartes.spec.js`. **APERÇU UNIQUEMENT**
+  (`?passio_preview=passio-ui-4a2-demo`, alias `…=passio-ui-4a2`) ; coupures dédiées
+  `localStorage.passio_ui_4a2="0"` et `window.PASSIO_UI_4A2=false`. La carte ne porte
+  plus que ce que la direction §8 énumère : visuel (couverture, sinon pastille emoji),
+  titre, `Passio · quand`, `ville · environ N km`, `N personnes · N places`, la preuve
+  sociale historique, puis « Voir » et « Je viens ». Vie privée (§A24) : elle en montre
+  **moins** que l'historique — ni `venue`, ni adresse, ni contact, ni trombinoscope, et
+  la preuve sociale reste la seule surface nommant des personnes (déjà bornée par
+  `_eventFriendsGoing` aux comptes suivis). Aucun moteur neuf : `setEventRsvp` reste le
+  seul point d'écriture (c'est lui qui bascule en liste d'attente), et une réponse déjà
+  posée ouvre `openEventRsvpSheet` au lieu de dupliquer les trois états. Annulé et
+  terminé ne sont jamais recouverts d'une invitation à venir.
+  ⚠️ Six pièges de ce lot : **rien n'est retiré ni déplacé** — les nœuds recouverts sont
+  masqués et l'ordre vient de `order`, sinon `_loadEventCommentCounts` /
+  `_loadEventReactions` / `_loadEventCommentsPreviews` ne retrouveraient plus
+  `[data-evlike]`, `[data-evc]`, `[data-evchipholder]`, `[data-evcomments]` ; le masquage
+  exige `!important` car la rangée haute de la carte historique porte un
+  `style="display:flex"` **inline** qu'aucun sélecteur ne bat (UI-4A0 avait mémorisé puis
+  restauré ce display en JS ; ici il y a une carte neuve à chaque rendu, donc rien à
+  restaurer — on surclasse, et retirer la classe racine rend tout) ; le masquage est
+  **borné à `data-v4a2`**, une carte non décorée gardant TOUTES ses portes ; **aucune
+  enveloppe de `renderIRL`** — un `MutationObserver` sur `#eventList` voit en plus
+  `_patchEventCardJoin`, qui repeint le seul pied après un RSVP sans repasser par le
+  rendu, et n'allonge pas la chaîne d'enveloppes UI-4A0/UI-4A1 ; l'anti-boucle est une
+  **signature d'état** posée sur la carte (on n'écrit qu'au changement), l'observateur
+  voyant ses propres écritures ; et `_isMyEvent` s'appuie sur `ev._mine`, drapeau porté
+  par les **copies** d'`allEvents()` et absent de l'objet canonique — d'où un repli sur
+  `state.userEvents`, sans quoi la carte V2 dirait « Je viens » là où l'historique disait
+  « Organisé ». L'aperçu UI-4A2 implique UI-4A0 et UI-4A1 (`passio_preview` ne porte
+  qu'une valeur, et des chips inertes mentiraient sur l'écran) : UI-4A0 balaie donc TOUS
+  ses héritiers au lieu d'en chaîner un seul, et UI-4A2 réveille les lots amont à son
+  boot, puisqu'ils ont démarré avant que son fichier n'existe. Reste du lot UI-4 : la vue
+  Liste / Carte (UI-4A3).
 - `docs/PIEGES_CONNUS.md` — les 56 fiches détaillées (extrait de ce fichier le 2026-08-07).
 - `docs/HISTORIQUE_PROJET.md` — état 2026-06-11, backlog terminé, logs d’optimisation.
 - `docs/ARCHITECTURE.md`, `docs/CONTROLE_16_MISSIONS.md`, `docs/CHECKLIST_COMMERCIALISATION.md`.
