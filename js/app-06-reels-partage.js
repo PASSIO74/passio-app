@@ -451,34 +451,32 @@ function renderProfileContent() {
   var myPostsDiv = document.getElementById("myPosts");
   if (!myPostsDiv) return;
 
+  // ⚠️ AUCUNE PASSION COCHÉE = AUCUN FILTRE, donc TOUT s'affiche.
+  //
+  // Ce n'était pas le cas, et le défaut était double. ① « Réinitialiser » —
+  // le seul mot que porte cette ligne — appelle `clearProfilesFilter()`, qui
+  // VIDAIT l'écran au lieu de retirer le filtre : une remise à zéro qui efface
+  // le contenu ne remet rien à zéro. ② Un compte neuf n'a pas encore de
+  // `profileFilterIds` : il arrivait donc sur « Sélectionne un profil passion »
+  // et ne voyait AUCUNE de ses publications, sans avoir rien filtré.
+  //
+  // La règle appliquée ici est celle que ce fichier énonce déjà quinze lignes
+  // plus bas pour les types de contenu — « Aucune icône cochée = AUCUN filtre :
+  // on affiche tout (et non un état vide) ». Les deux rangées vivent sur le même
+  // écran ; elles se contredisaient.
   var sel = window.profilesFilterSelection || new Set();
-  if (sel.size === 0) {
-    // ⚠️ Sous le lot UI-7, la liste des passions vit dans l'onglet « À propos » :
-    // « coche un profil ci-dessus » désignerait un sélecteur que cet onglet ne
-    // montre pas, et l'écran serait un cul-de-sac. On y ajoute donc la porte —
-    // guardée, donc inerte dès que le lot est coupé, où le texte historique
-    // redevient exact.
-    var v7 = !!(window.PassioUIV7 && typeof window.PassioUIV7.isEnabled === "function"
-      && window.PassioUIV7.isEnabled());
-    myPostsDiv.innerHTML = '<div class="empty"><div class="empty-icon">👆</div>'
-      + '<div class="empty-title">Sélectionne un profil passion</div>'
-      + '<div class="empty-text">'
-      + (v7 ? 'Choisis une ou plusieurs passions dans « À propos » pour afficher leur contenu.'
-            : 'Coche un ou plusieurs profils ci-dessus pour afficher leur contenu.')
-      + '</div>'
-      + (v7 ? '<button class="btn primary" onclick="PassioUIV7.selectProfileTab(\'apropos\')">Mes passions</button>' : '')
-      + '</div>';
-    return;
-  }
 
   // Filtrage cohérent : un profil sélectionné = sa passion. On matche STRICTEMENT
   // par PASSION (donnée fiable, figée à la création). Le profileId ne sert QUE de
   // repli pour un post sans passion. Matcher aussi par profileId (comme avant)
   // faisait fuiter un post « photo » publié pendant que le profil « musique » était
   // actif (profileId=musique) DANS le profil musique, et le double-comptait.
-  var selProfiles = (state.user.profiles || []).filter(function(pr){ return sel.has(pr.id); });
-  var selPassions = new Set(selProfiles.map(function(pr){ return pr.passion; }));
-  var mine = state.userPosts.filter(function(p){ return selPassions.has(p.passion) || (!p.passion && sel.has(p.profileId)); });
+  var mine = state.userPosts.slice();
+  if (sel.size > 0) {
+    var selProfiles = (state.user.profiles || []).filter(function(pr){ return sel.has(pr.id); });
+    var selPassions = new Set(selProfiles.map(function(pr){ return pr.passion; }));
+    mine = mine.filter(function(p){ return selPassions.has(p.passion) || (!p.passion && sel.has(p.profileId)); });
+  }
 
   // Multi-sélection des types : union des prédicats cochés.
   var tabSel = _profileTabSel();
