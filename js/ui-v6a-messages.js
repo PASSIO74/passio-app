@@ -236,7 +236,7 @@
     var l = el(MOI_ID);
     if (!l) return;
     // Coupure du lot UI-8 : la ligne disparaît, elle ne se fige pas.
-    if (!v8()) { l.textContent = ""; l.hidden = true; return; }
+    if (!v8()) { l.textContent = ""; l.hidden = true; l.removeAttribute("data-v6a-sig"); return; }
     var pseudo = "";
     var contexte = "";
     try {
@@ -252,6 +252,18 @@
       }
     } catch (e) {}
     if (!pseudo) { l.textContent = ""; l.hidden = true; return; }
+
+    // ⚠️ SIGNATURE — sans elle, ce module tournait EN BOUCLE tant que l'écran
+    // Messages était ouvert. L'observateur surveille `#screen-messages` en
+    // `childList` + `subtree` ; `majMoi` vidait et reconstruisait ses deux
+    // `<span>` À CHAQUE passage, ce qui produisait une mutation, qui rappelait
+    // `planifier()`, qui rappelait `majMoi`… `decorerCartes` avait bien sa
+    // signature (`data-v6a-psn`), pas celle-ci : la boucle vivait là.
+    // On n'écrit donc qu'au changement réel du couple pseudo + contexte.
+    var signature = pseudo + "\u0000" + contexte;
+    if (l.getAttribute("data-v6a-sig") === signature && !l.hidden) return;
+    l.setAttribute("data-v6a-sig", signature);
+
     l.hidden = false;
     l.textContent = "";
     var a = document.createElement("span");
