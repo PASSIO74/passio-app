@@ -7,6 +7,16 @@ publiées. Aucun statut n'est déduit d'un résumé de session.
 
 Référence `main` au moment de l'établissement : `77e8aae`.
 
+> **⚠️ MISE À JOUR DU SOIR — tout ce que ce document listait comme « à faire »
+> est en ligne.** Les cinq PR sont fusionnées et publiées : #195 (retrait
+> complet de l'économie interne + prix en euros), #196 (en-tête du Fil
+> permanent), #147 (contrôles de migration T&S), #198 (pastille de mood vide et
+> « Rencontrer » découvrable), #157 (fenêtrage du Fil, drapeau coupé par
+> défaut). Le détail de ce qui s'est passé entre-temps est en §5, ajoutée après
+> coup. **Les sections 1 à 3 ci-dessous décrivent l'état de l'après-midi et sont
+> conservées telles quelles** — elles expliquent d'où venaient les branches
+> orphelines, ce qui reste la leçon du jour.
+
 ---
 
 ## 1. Ce qui a été demandé aujourd'hui, et ce qui est réellement livré
@@ -164,3 +174,65 @@ correctifs de code, pas une relecture.
 - **Le fichier partagé est le point de collision, pas la branche.** Les deux
   paires en conflit ont touché exactement les mêmes fichiers (`app-02`,
   `index.html` pour les moods ; sept fichiers `app-0*` pour les points).
+
+
+---
+
+## 5. Ce qui s'est passé ensuite — ajouté le soir même
+
+### Les cinq lots sont en ligne
+
+| PR | Contenu | Publication |
+|---|---|---|
+| [#195](https://github.com/PASSIO74/passio-app/pull/195) | ADR-009 : retrait complet de l'économie interne, prix des activités en euros | ✅ |
+| [#196](https://github.com/PASSIO74/passio-app/pull/196) | L'en-tête du Fil ne se replie plus au défilement | ✅ |
+| [#147](https://github.com/PASSIO74/passio-app/pull/147) | Contrôles d'exploitation de la migration T&S | ✅ |
+| [#198](https://github.com/PASSIO74/passio-app/pull/198) | Les moods ne se lisent plus dans le DOM d'un rail masqué | ✅ |
+| [#157](https://github.com/PASSIO74/passio-app/pull/157) | Fenêtrage du Fil (`feed_window_v1`, coupé par défaut) | ✅ |
+
+### Ce que le document annonçait mal, et qui a été corrigé
+
+**Les correctifs de #157 et #147 existaient déjà.** La §2 les présentait comme
+du travail à écrire. En réalité leurs sessions les avaient écrits *après* les
+contre-revues de midi — à 12:39 et 13:12 — puis s'étaient arrêtées sans pousser
+les PR jusqu'à la fusion. C'est le même défaut que les quatre branches
+orphelines, une couche plus loin : **du travail terminé et invisible**.
+
+Les correctifs ont été vérifiés plutôt que crus sur parole. Pour #147, le banc
+`tests/sql/migration-ts-serveur.test.sh` a été monté sur un PostgreSQL 16
+jetable : **86 OK · 0 KO**, et chacun des cinq faux verts signalés redevient
+ROUGE sous mutation (`search_path = public`, surcharge de mauvais type,
+`WITH CHECK (true)` sous le même nom, rôles inchangés, trigger sans rapport).
+
+### Deux défauts neufs, trouvés en consolidant
+
+La branche doublon `mood-feed-display` a été abandonnée — mais elle avait vu
+juste sur un point, et le chercher a fait apparaître un second défaut de la même
+famille. Les deux sont en ligne dans #198, avec leurs tests et une preuve par
+mutation.
+
+1. **Une capsule vide sur chaque post venu de Supabase**, mesurée à 20 × 8 px.
+2. **Une publication « Rencontrer » ne pouvait pas être découverte** par
+   quelqu'un qui ne suit pas déjà sa passion — défaut rendu atteignable le matin
+   même par #194, qui a ajouté cette pastille au composer.
+
+### Trois erreurs de ma part, consignées
+
+1. **`styles.css` converti de CRLF en LF** en résolvant un conflit, produisant
+   un diff de 11 700 lignes pour un changement qui en fait 34. C'est très
+   exactement le piège que `CLAUDE.md` documente au lot UI-7 ⑥, et que j'avais
+   lu dans la même session. Reconstruit depuis les octets de `main`.
+2. **Une portée surestimée.** J'ai écrit qu'une publication « Rencontrer » était
+   invisible pour tout le monde, auteur compris. Mesure faite : elle est visible
+   dans sa propre passion. Le défaut était réel, sa portée était plus étroite.
+3. **Un diagnostic cherché au mauvais endroit.** Le blocage de fusion venait des
+   réglages du dépôt (deux contextes requis sans workflow), pas des branches. Le
+   test qui l'a tranché — une PR verte, jamais rebasée, qui échoue quand même —
+   était faisable au premier échec plutôt qu'au sixième.
+
+### Ce qui reste vrai de la leçon du jour
+
+La cause première n'a pas changé : **une session par demande, sans périmètre
+déclaré**. Elle a produit deux doublons francs, quatre branches orphelines et
+deux PR bloquées sur des correctifs déjà écrits. Le dépôt ne dit jamais qu'une
+session a fini — seule une PR **fusionnée** le dit.
