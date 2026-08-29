@@ -2195,7 +2195,13 @@ function openReelById(id) {
   openReels(id);
   try {
     var idx = (reelsState.items || []).findIndex(function(p){ return p.id === id; });
-    if (idx < 0) return false;
+    // ⚠️ openReels() a DÉJÀ ouvert le viewer sur la bobine n° 0 : rendre false
+    // sans le refermer laissait à l'écran le contenu de QUELQU'UN D'AUTRE, avec
+    // par-dessus un toast « introuvable » — exactement le mensonge que ce
+    // booléen existe pour éviter. Cas réel : une bobine dont l'auteur est
+    // bloqué passe les conditions isReel + média mais est écartée par
+    // buildReels, donc absente de la liste.
+    if (idx < 0) { try { closeReels(); } catch (e) {} return false; }
     if (idx > 0) {
       var items = document.querySelectorAll("#reelsList .reel-item");
       if (items[idx]) {
@@ -2207,7 +2213,12 @@ function openReelById(id) {
       }
     }
     return true;
-  } catch (e) {}
+  } catch (e) {
+    // Le retour de cette fonction pilote désormais un message à l'utilisateur :
+    // un catch MUET ferait passer une erreur interne (playReelAt, compteur…)
+    // pour une bobine « introuvable ». On le dit au moins à la console.
+    try { console.warn("[reel] openReelById:", e); } catch (e2) {}
+  }
   return false;
 }
 

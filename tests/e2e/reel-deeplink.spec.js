@@ -17,6 +17,14 @@ const PIXEL = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAA
 
 // Une bobine du contenu de démonstration : présente dès le boot, sans réseau.
 const BOBINE_SEED = "reel_seed_cuisine_1";
+const BOBINE_SEED_ID = BOBINE_SEED;
+
+// ⚠️ Les bobines du contenu de démonstration sont datées de `Date.now() - …` :
+// un décor daté de 9 000 000 (1970) ne remplit AUCUNE fenêtre, le seed la remplit
+// à sa place et le test « épinglage » ne construit pas la situation qu'il décrit.
+// On date donc les bobines de décor dans le futur proche, et la cible loin dans
+// le passé — là, la fenêtre de 30 est bien celle du test.
+const MAINTENANT = Date.now();
 
 function bobine(id, createdAt) {
   return {
@@ -72,7 +80,7 @@ test.describe("Lien partagé #reel=<id>", () => {
     // 31 bobines récentes + la cible, volontairement la plus ancienne : sans
     // épinglage elle tombe hors de la fenêtre lue par le viewer.
     const recentes = [];
-    for (let i = 0; i < 31; i++) recentes.push(bobine("reel_recent_" + i, 9_000_000 + i));
+    for (let i = 0; i < 31; i++) recentes.push(bobine("reel_recent_" + i, MAINTENANT + 1000 + i));
     const cible = bobine("reel_ancienne", 1000);
 
     await bootAvecLien(page, "#reel=reel_ancienne", { userPosts: recentes.concat([cible]) });
@@ -99,7 +107,9 @@ test.describe("Lien partagé #reel=<id>", () => {
 
     expect(await page.evaluate(() => !!(reelsState && reelsState.open))).toBe(false);
     await expect(page.locator("#reelsViewer.open")).toHaveCount(0);
-    expect(await page.evaluate(() => location.hash)).not.toContain("reel=");
+    // Le hash SURVIT à l'échec — c'est délibéré, et c'est le test suivant qui
+    // le prouve : sur un réseau plus lent que le budget, un rechargement doit
+    // pouvoir retenter au lieu de perdre le lien.
   });
 
   test("un lien collé en cours de session est routé aussi", async ({ page }) => {
@@ -112,7 +122,7 @@ test.describe("Lien partagé #reel=<id>", () => {
 
   test("sans lien, l'ouverture des Bobines est inchangée", async ({ page }) => {
     const recentes = [];
-    for (let i = 0; i < 31; i++) recentes.push(bobine("reel_recent_" + i, 9_000_000 + i));
+    for (let i = 0; i < 31; i++) recentes.push(bobine("reel_recent_" + i, MAINTENANT + 1000 + i));
     const st = onboardedState(1);
     st.userPosts = recentes;
     await page.addInitScript((s) => {
@@ -135,5 +145,70 @@ test.describe("Lien partagé #reel=<id>", () => {
     expect(info.taille).toBe(30);
     expect(info.premier).toBe("reel_recent_30");
     expect(info.courant).toBe(0);
+  });
+
+  test("auteur bloqué : rien ne s'ouvre, surtout pas la bobine de quelqu'un d'autre", async ({ page }) => {
+    // buildReels() écarte les comptes bloqués. Tester seulement isReel + média
+    // laissait passer cette bobine, puis openReels() ouvrait la PREMIÈRE de la
+    // liste : le viewer montrait le contenu d'un tiers avec, par-dessus, un
+    // toast « introuvable ». C'est le mensonge que ce routage doit exclure.
+    const st = onboardedState(1);
+    st.user.blocked = ["author_lien"];
+    st.userPosts = [bobine("reel_bloquee", MAINTENANT)];
+    await page.addInitScript((x) => {
+      localStorage.setItem("passio_mvp_state_v1", JSON.stringify(x));
+    }, st);
+    await bootOnboarded(page, null, 1, { query: "#reel=reel_bloquee" });
+
+    await expect(page.locator("#toastStack .toast", { hasText: "Bobine introuvable ou supprimée" }))
+      .toBeVisible({ timeout: 25000 });
+    await expect(page.locator("#reelsViewer.open")).toHaveCount(0);
+    expect(await page.evaluate(() => !!(reelsState && reelsState.open))).toBe(false);
+  });
+
+  test("openReelById rend false ET referme, pour un contenu qui n'est pas une bobine", async ({ page }) => {
+    await bootOnboarded(page, null, 1, {});
+    const r = await page.evaluate(() => {
+      const rendu = openReelById("__pas_une_bobine__");
+      const v = document.getElementById("reelsViewer");
+      return { rendu, ouvert: !!(v && v.classList.contains("open")), etat: !!reelsState.open };
+    });
+    expect(r.rendu).toBe(false);
+    expect(r.ouvert, "le viewer ne reste pas ouvert sur une autre bobine").toBe(false);
+    expect(r.etat).toBe(false);
+  });
+
+  test("le hash « #reels » du viewer n'est jamais pris pour un lien", async ({ page }) => {
+    await bootOnboarded(page, null, 1, {});
+    await page.evaluate(() => { location.hash = "#reels"; });
+    await page.waitForTimeout(1500);
+    await expect(page.locator("#reelsViewer.open")).toHaveCount(0);
+    await expect(page.locator("#toastStack .toast", { hasText: "Bobine introuvable" })).toHaveCount(0);
+  });
+
+  test("écran occupé (landing) : le lien attend au lieu de recouvrir", async ({ page }) => {
+    // Le viewer est en z-index 9999 : ouvert par-dessus la landing ou
+    // l'onboarding, il recouvrirait l'inscription de la personne même qui vient
+    // d'ouvrir le lien. Il doit attendre — et repartir ensuite.
+    await bootOnboarded(page, null, 1, {});
+    await page.evaluate(() => { document.getElementById("landing").classList.add("active"); });
+    await page.evaluate((id) => { location.hash = "#reel=" + id; }, BOBINE_SEED_ID);
+    await page.waitForTimeout(2000);
+    await expect(page.locator("#reelsViewer.open")).toHaveCount(0);
+
+    // Le lien n'est pas perdu pour autant : le hash est intact et il repart.
+    expect(await page.evaluate(() => location.hash)).toContain("reel=");
+    await page.evaluate(() => { document.getElementById("landing").classList.remove("active"); });
+    await viewerOuvert(page);
+    expect(await bobineAffichee(page)).toBe(BOBINE_SEED_ID);
+  });
+
+  test("échec : le hash reste, donc un rechargement peut retenter", async ({ page }) => {
+    // Nettoyer le hash sur le chemin d'échec rendait le lien irrécupérable :
+    // même F5 ne retentait rien, il fallait retourner dans la conversation.
+    await bootAvecLien(page, "#reel=bobine_qui_nexiste_pas");
+    await expect(page.locator("#toastStack .toast", { hasText: "Bobine introuvable ou supprimée" }))
+      .toBeVisible({ timeout: 25000 });
+    expect(await page.evaluate(() => location.hash)).toBe("#reel=bobine_qui_nexiste_pas");
   });
 });

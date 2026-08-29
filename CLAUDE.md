@@ -508,20 +508,33 @@ Le script est en lecture seule sur le dépôt (il n'écrit que dans son dossier 
   depuis toujours, mais **personne ne les lisait** — donc la seule porte d'entrée
   d'un nouveau venu retombait sur le fil. Même défaut, même correctif que
   `#cdv-live-<id>` (app-03) et `#irl-event-<id>` (app-07).
-  ⚠️ **Trois pièges de ce correctif.** ① `buildReels()` **tronque à 30** : une
-  bobine plus ancienne n'était pas dans `reelsState.items`, et `openReelById`
-  laissait alors le viewer sur la PREMIÈRE — un lien qui montre autre chose que
-  ce qu'il promet, sans le dire. D'où le paramètre `pinnedId` (`buildReels` /
-  `openReels`), qui épingle la cible EN TÊTE sans allonger la liste, et le
-  booléen désormais rendu par `openReelById`. ② Le hash est retiré **avant**
-  l'ouverture : `openReels()` empile son propre `#reels`, donc nettoyer après
-  effacerait cette entrée et le retour arrière rejouerait le lien. ③ Le routage
-  n'ouvre rien tant que le code d'accès n'est pas franchi — en dev tous les
-  scripts sont chargés AVANT le gate (en prod le bloc app n'est même pas
-  téléchargé) : il s'accroche à `window.__gateReady` plutôt que de sonder, et
-  attend le contenu (12 essais × 700 ms) car une bobine réelle n'arrive qu'avec
-  `supaLoadPosts`. Un identifiant introuvable le DIT (toast), il n'ouvre jamais
-  une autre bobine à la place.
+  ⚠️ **Cinq règles de ce routage, dont deux P0 trouvés en revue de diff.**
+  ① Il n'ouvre JAMAIS une autre bobine que celle demandée. `openReels()` montre
+  la première de la liste quand l'id est absent, et `buildReels()` **tronque à
+  30** : la garde est donc l'APPARTENANCE à `buildReels(id)` (qui épingle la
+  cible via `pinnedId`), jamais une copie de ses conditions. Tester `isReel` +
+  média ne suffisait pas — `buildReels` écarte aussi les **comptes bloqués**,
+  donc une bobine d'un compte bloqué ouvrait le viewer sur le contenu d'autrui,
+  avec un toast « introuvable » par-dessus. `openReelById` referme le viewer
+  quand il rend `false`. ② Il attend que l'application soit VRAIMENT prête :
+  `state` vaut **null** jusqu'à `state = loadState()`, qui part après
+  `await ensureSupabase()` — sonder trop tôt levait un TypeError dans
+  `findPostAnywhere`, non rattrapé car venu d'un `setTimeout`, ce qui TUAIT la
+  chaîne de reprise en silence (même piège que `ui-v4b-fiche.js` le 2026-08-28).
+  Le corps est sous `try` et une exception **replanifie** au lieu de conclure.
+  ③ Il n'ouvre rien par-dessus le gate, la landing ou l'onboarding (viewer en
+  z-index 9999 : il recouvrirait l'inscription de la personne même qui vient
+  d'ouvrir le lien) — ces attentes ne consomment pas d'essai. ④ Il ne nettoie le
+  hash que sur le chemin de SUCCÈS, et avant l'ouverture (`openReels()` empile
+  son propre `#reels`) : le nettoyer sur échec rendait le lien irrécupérable,
+  même par rechargement, alors que le budget d'attente (12 × 700 ms) peut être
+  plus court qu'un réseau mobile froid. ⑤ Il mémorise l'id au premier passage :
+  une ouverture normale des Bobines pendant l'attente empile `#reels` et le lien
+  aurait été perdu sans un mot. ⚠️ La télémétrie de ce chemin n'est PAS corrélée
+  au `?plk=` du lien : `telemetry.js` consomme et retire ce paramètre au
+  chargement, avant que le bloc app n'existe. Son `link_open` prouve
+  l'ouverture, `reel_link_open` l'affichage effectif ; les apparier demanderait
+  une API publique qui n'existe pas encore.
 
   **§5 de la direction — la palette PILOTE l'interface depuis le 2026-08-28.**
   `--v2-ink` et `--v2-cloud` étaient déclarés avec ZÉRO consommateur, et le
