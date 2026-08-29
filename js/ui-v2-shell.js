@@ -79,6 +79,13 @@
   // UI-1 ne réécrit AUCUN moteur de création : chaque choix rouvre le handler
   // existant. Si un handler manque (chargement partiel), l'entrée le dit au
   // lieu d'échouer en silence.
+  // ⚠️ 2026-08-29, sur demande de Benjamin : la feuille montre TOUT ce que l'on
+  // peut créer, d'un seul tenant. L'entrée « Plus » (et son « Retour ») a été
+  // RETIRÉE — elle imposait deux manipulations pour atteindre Story, Live et
+  // Audio, et cachait trois formats derrière un mot qui ne dit pas ce qu'il
+  // contient. Les trois premières entrées gardent leur position exacte : rien à
+  // réapprendre pour qui connaissait déjà la feuille, les trois autres se
+  // contentent de descendre à sa suite.
   var CREATE_CHOICES = [
     {
       key: "post", emoji: "✍️", title: "Publication",
@@ -96,38 +103,23 @@
       run: function () { call("openCreateEvent"); },
     },
     {
-      key: "more", emoji: "✨", title: "Plus",
-      hint: "Story, audio ou podcast",
-      run: function () { renderCreateSheet("more"); },
-    },
-  ];
-
-  var MORE_CHOICES = [
-    {
       key: "story", emoji: "📸", title: "Story",
       hint: "Un moment qui disparaît en 24 h",
       run: function () { call("meOpen", "story"); },
     },
     {
-      key: "audio", emoji: "🎙", title: "Audio / podcast",
-      hint: "Ouvre le Studio sur le format audio",
-      run: function () { openStudioOnType("audio"); },
-    },
-    {
-      // Ajouté le 2026-08-28 : lancer un live est une action de CRÉATION, sa
-      // place est ici. Elle vivait jusqu'alors en tête de la barre des stories,
-      // qui montre ce que les gens publient — un doublon retiré le même jour.
-      // ⚠️ C'était le SEUL point d'entrée de `startVideoLive()` dans toute
-      // l'application : retirer la bulle sans poser cette entrée aurait rendu le
-      // live impossible à lancer.
+      // Cette entrée est le SEUL point d'entrée de `startVideoLive()` dans toute
+      // l'application depuis le 2026-08-28 (la bulle « Live » de la barre des
+      // stories, doublon, a été retirée le même jour). Elle ne peut donc pas
+      // disparaître d'ici sans rendre le direct impossible à lancer.
       key: "live", emoji: "🔴", title: "Live vidéo",
       hint: "Passer en direct, tout de suite",
       run: function () { call("startVideoLive"); },
     },
     {
-      key: "back", emoji: "←", title: "Retour",
-      hint: "Revenir aux trois actions principales",
-      run: function () { renderCreateSheet("main"); },
+      key: "audio", emoji: "🎙", title: "Audio / podcast",
+      hint: "Ouvre le Studio sur le format audio",
+      run: function () { openStudioOnType("audio"); },
     },
   ];
 
@@ -272,12 +264,14 @@
     return wrap;
   }
 
-  function renderCreateSheet(mode) {
+  // Un seul niveau : la feuille n'a plus de sous-menu, donc plus de mode. Le
+  // paramètre est accepté et IGNORÉ pour ne casser aucun appel existant.
+  function renderCreateSheet() {
     var wrap = ensureSheet();
     var list = wrap.querySelector("#v2SheetList");
     var title = wrap.querySelector("#v2SheetTitle");
-    var choices = mode === "more" ? MORE_CHOICES : CREATE_CHOICES;
-    if (title) title.textContent = mode === "more" ? "Plus de formats" : "Créer";
+    var choices = CREATE_CHOICES;
+    if (title) title.textContent = "Créer";
     if (!list) return;
 
     list.innerHTML = "";
@@ -296,10 +290,8 @@
         + "</span>";
       btn.addEventListener("click", function () {
         track("ui_v2_create", { choice: c.key });
-        // Les entrées de navigation interne (« Plus », « Retour ») gardent la
-        // feuille ouverte ; toute action qui ouvre un éditeur la referme avant,
+        // Toute entrée ouvre désormais un éditeur : on referme AVANT de lancer,
         // sinon le fond assombri resterait au-dessus de l'éditeur média.
-        if (c.key === "more" || c.key === "back") { c.run(); return; }
         closeCreateSheet();
         c.run();
       });
@@ -327,7 +319,7 @@
   function openCreateSheet() {
     fermerAideContextuelle();
     var wrap = ensureSheet();
-    renderCreateSheet("main");
+    renderCreateSheet();
     lastFocused = document.activeElement;
     wrap.hidden = false;
     // Deux images : la classe pilote la transition, `hidden` l'accessibilité.
