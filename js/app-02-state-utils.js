@@ -2730,6 +2730,47 @@ function legacyMoodToFeedIntent(mood) {
   return "generic"; // actu, chill, all, absent ou valeur inconnue
 }
 
+// ── VOCABULAIRE DES MOODS ────────────────────────────────────────────────────
+//
+// Une seule table, parce que les deux surfaces qui affichaient un mood avaient
+// chacune la leur et qu'elles avaient DIVERGÉ : le fil connaissait « irl » mais
+// pas « actu », les bobines l'inverse. Conséquence mesurée le 2026-08-29 :
+// tous les posts d'actualité du seed sortaient avec une étiquette de mood VIDE
+// (`moodMap[p.mood] || ""`), et un post « irl » sortait « IRL » ici et « Tout »
+// là-bas.
+//
+// Les LIBELLÉS suivent le rail d'intentions du Fil (lot UI-7 : Tous · Explorer ·
+// Apprendre · Idées · Rencontrer) : ce qu'on choisit en publiant porte le même
+// mot que ce qu'on choisit en lisant. Les VALEURS, elles, ne bougent pas — elles
+// sont écrites en base (`posts.mood`), relues par `legacyMoodToFeedIntent`, et
+// portées par des milliers de publications existantes.
+//
+// ⚠️ « all » n'est PAS dans la table, et c'est délibéré : le neutre ne porte
+// aucune étiquette sur la carte (`moodTagLabel` rend ""). L'ajouter collerait un
+// badge à TOUS les posts venus de Supabase, qui retombent sur `mood: "all"`.
+// Le Studio, lui, a bien une pastille « ✨ Tous » : y choisir le neutre est un
+// geste, ne rien afficher ensuite en est la conséquence voulue.
+var PASSIO_MOOD_LABELS = {
+  creation: { emoji: "💡", label: "Idées" },
+  learn:    { emoji: "📚", label: "Apprendre" },
+  irl:      { emoji: "🤝", label: "Rencontrer" },
+  chill:    { emoji: "😌", label: "Chill" },
+  actu:     { emoji: "🌍", label: "Actu" },
+};
+
+// Étiquette de la carte (fil, post ouvert) : emoji + libellé, ou "" pour le
+// neutre et pour toute valeur inconnue venue de la base.
+function moodTagLabel(mood) {
+  var m = PASSIO_MOOD_LABELS[mood];
+  return m ? m.emoji + " " + m.label : "";
+}
+
+// Libellé nu (bobines), où le neutre s'écrit « Tout » depuis toujours.
+function moodShortLabel(mood) {
+  var m = PASSIO_MOOD_LABELS[mood];
+  return m ? m.label : "Tout";
+}
+
 function feedIntentMeta(intent) {
   return { v: FEED_INTENTS_VERSION, flag: "on", intent: normalizeFeedIntent(intent) };
 }
@@ -3741,7 +3782,6 @@ function renderPostHTML(p) {
     photoUrl: _cuAuthor.photoUrl || p.authorAvatar || null,  // 📷 photo de profil (live > snapshot)
   };
   const passion = passionById(p.passion);
-  const moodMap = { creation: "🎨 Création", learn: "📚 Apprendre", chill: "😌 Chill", irl: "🤝 IRL" };
   const liked = (state.user.likedPosts || []).includes(p.id);
   const likeClass = liked ? "liked" : "";
 
@@ -3899,7 +3939,7 @@ function renderPostHTML(p) {
       ${p._source === "me" ? `<button class="post-menu-btn" onclick="event.stopPropagation();openPostOptions('${escapeJsArg(p.id)}')" aria-label="Options du post" title="Options">
         <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>
       </button>` : ""}
-      <span class="post-mood-tag">${moodMap[p.mood] || ""}</span>
+      <span class="post-mood-tag">${moodTagLabel(p.mood)}</span>
     </div>
 
     <div class="post-body" onclick="${FEED_POST_OPEN_FN}('${escapeJsArg(p.id)}')" style="cursor:pointer;">
@@ -3944,7 +3984,6 @@ async function openPost(id) {
     : (function(){ const cu = userById(post.authorId) || {}; return post.authorName ? { name: post.authorName, profileEmoji: post.authorEmoji || "✨", avatar: post.authorColor || "#8b5cf6", photoUrl: cu.photoUrl || post.authorAvatar || null } : cu; })();
   const passion = passionById(post.passion);
   const liked = state.user.likedPosts.includes(id);
-  const moodMap = { creation: "🎨 Création", learn: "📚 Apprendre", chill: "😌 Chill", irl: "🤝 IRL" };
 
   // Media (réutilise la logique de renderPostHTML)
   let media = "";
@@ -3981,7 +4020,7 @@ async function openPost(id) {
         ${(state.userPosts || []).some(function(up){ return up.id === id; }) ? `<button class="post-menu-btn" onclick="event.stopPropagation();openPostOptions('${escapeJsArg(id)}')" aria-label="Options du post" title="Options">
           <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>
         </button>` : ""}
-        <span class="post-mood-tag">${moodMap[post.mood] || ""}</span>
+        <span class="post-mood-tag">${moodTagLabel(post.mood)}</span>
       </div>
       <div class="post-body" style="white-space:pre-wrap;">${escapeHtml(post.text || "")}</div>
       ${media ? `<div class="dbl-like" ondblclick="_dblLikeDetail('${escapeJsArg(id)}', event)" title="Double-clic pour aimer ❤️">${media}</div>` : ""}

@@ -2380,6 +2380,23 @@ async function saveCarnetEdits() {
   try { saveState(); renderCdvScreen(); } catch (e) {}
 }
 
+// ⚠️ Les moods « chill » et « actu » ont quitté le Studio avec l'alignement du
+// vocabulaire sur le rail d'intentions du Fil : ils n'ont plus de pastille.
+// Un brouillon plus ancien qui en porte un rechargeait donc une rangée SANS
+// pastille active — état muet, que l'auteur ne pouvait corriger qu'en cliquant
+// au hasard, et qui republiait en silence un mood absent de l'écran. Les deux
+// valaient déjà « generic » pour `legacyMoodToFeedIntent`, exactement comme le
+// neutre « all » : les y ramener ne perd aucun classement.
+// La rangée est lue dans le DOM plutôt qu'en dur : une pastille ajoutée demain
+// est reconnue sans toucher à cette fonction.
+function normalizeStudioMood(mood) {
+  var connu = false;
+  $$("#postMoodRow .pill").forEach(function (el) {
+    if (el.getAttribute("data-postmood") === mood) connu = true;
+  });
+  return connu ? mood : "all";
+}
+
 // Mood pill row
 $$("#postMoodRow .pill").forEach(p => {
   p.addEventListener("click", () => {
@@ -2881,7 +2898,7 @@ function loadDraft(id) {
   const d = state.user.drafts.find(x => x.id === id);
   if (!d) return;
   studioType = d.type;
-  studioMood = d.mood;
+  studioMood = normalizeStudioMood(d.mood);
   photoDataUrl = d.image || null;
   videoDataUrl = d.video || null;
   audioDataUrl = d.audio || null;
