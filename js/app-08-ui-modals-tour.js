@@ -4238,7 +4238,11 @@ async function supaLoadMessages(convId) {
         var ev = m._ctrl;
         if (ev.type === "del") { var i = clean.findIndex(function(x){ return x.id === ev.target; }); if (i >= 0) { delete byId[ev.target]; clean.splice(i,1); } }
         else if (ev.type === "react" && ev.target) {
-          var tm = byId[ev.target]; if (tm) { tm.reactions = tm.reactions || {}; if (ev.op === "remove") { tm.reactions[ev.emoji] = (tm.reactions[ev.emoji]||1)-1; if (tm.reactions[ev.emoji] <= 0) delete tm.reactions[ev.emoji]; } else { tm.reactions[ev.emoji] = (tm.reactions[ev.emoji]||0)+1; } }
+          // Second point d'écriture des réactions : le REJEU au chargement.
+          // Il doit filtrer comme le temps réel, sinon la charge hostile entre
+          // par cette porte-ci — et la persistance la garde.
+          var _k = (typeof _reactionKeySure === "function") ? _reactionKeySure(ev.emoji) : ev.emoji;
+          var tm = _k ? byId[ev.target] : null; if (tm) { tm.reactions = tm.reactions || {}; if (ev.op === "remove") { tm.reactions[_k] = (tm.reactions[_k]||1)-1; if (tm.reactions[_k] <= 0) delete tm.reactions[_k]; } else { tm.reactions[_k] = (tm.reactions[_k]||0)+1; } }
         }
       });
     }
