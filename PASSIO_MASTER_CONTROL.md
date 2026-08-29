@@ -8,17 +8,40 @@
 
 | Champ | Valeur | Source |
 |---|---|---|
-| Date | 2026-08-15 | — |
-| Commit | `f3684a9` | `git log -1` |
+| Date | **2026-08-29** (remesuré ; l'en-tête datait du 2026-08-15, onze jours et une douzaine de PR en arrière) | — |
+| Commit | `c2e3e1b` | `git log -1` |
 | Branche | `main`, dépôt propre, synchro `origin` (0/0) | `git status`, `git rev-list` |
 | Environnement | prod Netlify `passio-app.netlify.app` + Supabase `njkiyoklssvefstljemx` (West EU) | `supabase projects list` |
 | Global Health Score | **NON CALCULÉ** — composantes non encore arrêtées (cf. audit conjoint à venir) | — |
 | Functional Score | **NON MESURÉ** — la cartographie fonctionnelle n'existe pas encore | — |
 | Performance Score | **NON MESURÉ** — aucune mesure p50/p95 d'interaction à ce jour | — |
 | Security Score | **PARTIEL** — RLS active sur 34/34 tables ; pas de test d'intrusion applicatif rejoué ce jour | requête `pg_class`/`pg_policies` |
-| Test Score | **146 / 159 exécutés par défaut** (1 flaky, 12 skippés) + 11 cross-compte réels lancés à la main | Playwright |
+| Test Score | **521 passés / 1 flaky / 19 skippés** en CI sur `c2e3e1b` (15,5 min) + 6 sur l'artefact `dist`. Les cross-compte n'ont PAS été rejoués — voir la baseline. | Playwright (CI) |
 
-## BASELINE MESURÉE (2026-08-15)
+## BASELINE MESURÉE (2026-08-29)
+
+> Remesurée ce jour sur `c2e3e1b`. **Ce qui n'a pas pu être exécuté porte `NON MESURÉ` et sa raison** — jamais une estimation.
+
+| Vérification | Commande | Résultat |
+|---|---|---|
+| Syntaxe des 37 fichiers JS | `node --check js/*.js` | ✅ 0 erreur |
+| Collisions de globals | `npm run audit:globals` | ✅ 1411 déclarations, 37 fichiers, 0 collision |
+| Handlers inline fantômes | `npm run audit:handlers` | ✅ 0 fantôme |
+| Échappement contextuel | `npm run audit:echappement` | ✅ 75 signalements, tous dans le socle relu |
+| Tests creux | `npm run audit:tests` | ✅ 65 specs, aucun autoréférentiel |
+| Stub Supabase hors ligne | `npm run audit:supa-stub` | ✅ 44 membres, tous couverts |
+| Clés de télémétrie vs filtre PII | `npm run audit:telemetry-keys` | ✅ 78 clés, toutes filtrées |
+| Build prod | `node scripts/build.js` | ✅ index 609 346 o + app.js 2 034 891 o + css 403 410 o |
+| Tests e2e par défaut | CI, `npx playwright test` | ✅ **521 passés, 1 flaky, 19 skippés**, 15,5 min |
+| Gate artefact production | CI, `PASSIO_CIBLE=dist` | ✅ 6 passés, 5,9 s |
+| Flake `interactions.spec.js` | `--repeat-each=3 --retries=0` | ✅ **51/51, 0 flaky** (9,4 min) — cf. `RACE-LIKE-003` |
+| Déploiement production | GitHub Actions → Netlify | ✅ « Deploy is live », `c2e3e1b` |
+| Tests cross-compte réels | `PASSIO_E2E_MULTI=1` | ⛔ **NON MESURÉ** — le proxy réseau de l'environnement d'exécution refuse `njkiyoklssvefstljemx.supabase.co` (`connect_rejected`, politique d'organisation). Ni vert, ni rouge : **non lancé**. |
+| RLS prod | `pg_class` / `pg_policies` | ⛔ **NON MESURÉ** — Supabase injoignable (même cause). |
+| Accueil prod | `curl` | ⛔ **NON MESURÉ** — le proxy refuse `passio-app.netlify.app`. La mise en ligne est prouvée par le job Actions, pas par une requête d'ici. |
+| Tests backend dashboard | `cd dashboard && npm test` | ⛔ **NON MESURÉ** — non lancé ce jour. |
+
+## BASELINE MESURÉE (2026-08-15 — historique)
 
 | Vérification | Commande | Résultat |
 |---|---|---|
@@ -47,7 +70,9 @@
 | `NOTIF-FORGE-009` | **P1** | Intégrité / usurpation | **N'importe quel compte peut fabriquer une notification vers n'importe qui, au nom de n'importe qui.** `notifications` est scellée en SELECT/UPDATE/DELETE (`user_id = auth.uid()`) mais son **INSERT vaut `true`** — en double. Colonnes exposées : destinataire, auteur revendiqué, contenu libre, lien. | Une notification est cross-compte par nature (A aime le post de B → A écrit la ligne dont B est le destinataire). Contraindre `user_id` étant impossible, la contrainte a été abandonnée — alors que c'était l'**auteur** qu'il fallait contraindre. | **MIGRATION PRÊTE, NON APPLIQUÉE** — `migration_notifications_auteur.sql` : `with check (from_id = (select auth.uid())::text)`. **Sans rupture, vérifié** : `supaInsertNotif` est le seul insert de l'app et renseigne déjà `from_id = MY_UID`. | test d'intrusion à ajouter **en même temps** que la migration, pas avant |
 | `BLOC-ACCES-008` | **P1** | Confidentialité / Trust & Safety | **Bloquer quelqu'un ne lui retirait pas l'accès.** Sur un compte privé, la personne bloquée continuait de voir tous les posts. Prouvé en A/B : sans correctif, après blocage, `Received: 1` — le post reste visible. | `blockUser` supprimait **mon** abonnement vers elle, jamais **le sien** vers moi. Or `post_is_visible` accorde l'accès à un compte privé sur exactement `follows.follower_id = auth.uid() AND following_id = author`. Le blocage était donc purement cosmétique là où il compte le plus. | **FIXED_LOCALLY** — `supaBlockUser` retire aussi l'abonné. **La base l'autorisait déjà** : `follows` porte une policy `DELETE (following_id = auth.uid())` faite pour ça ; le client ne s'en servait pas. Aucun changement de RLS nécessaire. | ✅ `tests/e2e/blocage-acces.spec.js` — cross-compte réel, **précondition vérifiée** (B voyait le post avant), appelle la **vraie** `supaBlockUser`. **Mutation-testé** |
 | `FEED-RT-007` | **P3** | Fil / temps réel | Un post reçu en temps réel **s'affichait puis s'effaçait** jusqu'au cycle de rafraîchissement suivant. Prouvé en A/B : sans correctif le post est perdu, avec il survit. | `startFeedRefreshLoop` fait `state.supabasePosts = posts.concat(extra)`, où `posts` est un instantané serveur pris **avant** l'arrivée du post et `extra` ne contient que `_feedExtraPosts`. Le handler temps réel n'alimentait pas ce tableau de garde. Auto-réparant au cycle suivant, donc jamais signalé comme une perte. | **FIXED_LOCALLY** — logique extraite dans `feedAddRealtimePost()`, qui alimente les deux tableaux. L'extraction n'est pas cosmétique : tant que la logique vivait dans le callback `postgres_changes`, un test ne pouvait que la recopier — et un test qui recopie le code qu'il vérifie ne garde rien. | ✅ `tests/e2e/feed-realtime-course.spec.js` — survie, idempotence, non-duplication sur 3 cycles. **Mutation-testé A/B** |
-| `RACE-LIKE-003` | **P3** | Fil / affichage optimiste | `interactions.spec.js:126` flaky : `element was detached from the DOM`. Le test porte sur l'annulation d'un affichage optimiste pendant que le fil est reconstruit et qu'une écriture est en vol. | non établie — peut être une fragilité du test OU une vraie race re-render / rollback | DETECTED | — | le test existe |
+| `RACE-LIKE-003` | **P3** | Fil / affichage optimiste | `interactions.spec.js` flaky : `element was detached from the DOM`. | **ÉTABLIE** : fragilité de la MISE EN PLACE du test, pas une race applicative — rendus différés du boot, animation `like-pop`, et transitions de l'en-tête rétractable qui déplacent la carte sous le curseur. Le harnais `attendreFilStable` les couvre toutes les trois. | **✅ CLOS le 2026-08-29** | harnais stabilisé (`tests/e2e/interactions.spec.js`) | ✅ **51 exécutions consécutives, `--retries=0` : 51 passés, 0 flaky.** Ne prouve pas l'absence définitive de flake ; prouve qu'il ne se reproduit pas en 51 tirages **sans filet de retry**. |
+| `SHARE-PASSION-011` | **P2** | Publication / partage d'expérience | Partager le souvenir d'une activité dont la passion n'est pas l'une des siennes publiait le post **sans passion** → **invisible dans le fil de son propre auteur** (le fil est filtré par défaut sur les passions des profils) et sans provenance en base. | `shareEventExperience` faisait `sel.value = ev.passion`. **Affecter `select.value` avec une valeur sans `<option>` correspondante NE LÈVE PAS** : le select passe silencieusement à `""`. Le `try/catch` qui entourait la ligne ne pouvait rien attraper. | **✅ EN PROD le 2026-08-29** (`c2e3e1b`) | On ne force que si l'option existe ; sinon on garde l'identité active. Filet à la publication. | ✅ `tests/e2e/partage-experience-passion.spec.js`, **mutation-testé** (2 des 3 rougissent sans le correctif ; le 3ᵉ passe dans les deux sens et interdit un « correctif » qui ne forcerait plus rien) |
+| `CONV-FLAKY-012` | **P3** | Tests / messagerie | `conv-suppression.spec.js:33` remonte **flaky** dans la CI du 2026-08-29. | **NON ÉTABLIE** — une seule occurrence, aucune mesure répétée. Ne pas conclure. | DETECTED | — | à rejouer en `--repeat-each` sans retries, comme `RACE-LIKE-003` |
 
 ### Issus de l'analyse croisée (détail : `PASSIO_INITIAL_JOINT_AUDIT.md`)
 
