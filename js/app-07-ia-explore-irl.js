@@ -3509,8 +3509,26 @@ function shareEventExperience(id) {
   setTimeout(() => {
     const ta = document.getElementById("postText") || document.querySelector("#screen-studio textarea");
     if (ta) { ta.value = prefill; ta.focus(); ta.dispatchEvent(new Event("input", { bubbles: true })); }
+    // ⚠️ AFFECTER `select.value` AVEC UNE VALEUR SANS <option> NE LÈVE PAS :
+    // le select passe silencieusement à la chaîne vide. Le `try/catch` qui
+    // entourait cette ligne n'attrapait donc rien — il ne pouvait rien attraper.
+    //
+    // `#postPassion` ne contient QUE les passions des profils de l'utilisateur
+    // (`renderStudio`). Partager le souvenir d'une activité dont la passion n'est
+    // pas l'une des siennes vidait donc le champ, et `publishPost` publiait le
+    // post avec `passion: ""`. Conséquence mesurée : le fil est filtré par défaut
+    // sur les passions de l'utilisateur (`migrerInteretsDepuisProfils`), si bien
+    // que le souvenir était **invisible dans le fil de son propre auteur** — et
+    // partait en base sans provenance. Aucun message, aucune erreur.
+    //
+    // On ne force donc la valeur que si l'option existe réellement ; sinon on
+    // laisse celle que `renderStudio` a déjà posée (le profil actif).
     const sel = document.getElementById("postPassion");
-    if (sel && ev.passion) { try { sel.value = ev.passion; } catch (e) {} }
+    if (sel && ev.passion) {
+      const avant = sel.value;
+      sel.value = ev.passion;
+      if (sel.value !== ev.passion) sel.value = avant;
+    }
     toast("📸 Ajoute tes photos et raconte !");
   }, 250);
 }

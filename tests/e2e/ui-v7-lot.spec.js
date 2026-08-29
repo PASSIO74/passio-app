@@ -405,16 +405,16 @@ test.describe("UI-7 §6 — trois onglets nommés au Profil", () => {
 
     await expect(page.locator('[data-v7-pan="publications"]')).toContainText("Publications populaires");
 
-    // ⚠️ Sans passion cochée, l'écran affiche l'invitation historique — et,
-    // sous le lot, la PORTE vers « À propos », où le sélecteur vit désormais.
-    // Sans elle, « Publications » serait un cul-de-sac.
-    await expect(page.locator("#myPosts .empty .btn", { hasText: "Mes passions" })).toBeVisible();
+    // ⚠️ AUCUNE passion cochée = AUCUN filtre. L'écran ne dit donc plus
+    // « Sélectionne un profil passion » : il montre l'état vide guidé du §6,
+    // le même que lorsque toutes les passions sont cochées. C'est la règle que
+    // la rangée des TYPES applique déjà sur ce même écran.
+    expect(await page.evaluate(() => (window.profilesFilterSelection || new Set()).size)).toBe(0);
+    await expect(page.locator("#myPosts .empty")).not.toContainText("Sélectionne un profil passion");
 
     // L'état vide guidé du §6 (« Publie ta première création ») tient sous
     // 200 px : il ne pousse plus « Publications populaires » hors de l'écran.
     const h = await page.evaluate(() => {
-      window.profilesFilterSelection = new Set((state.user.profiles || []).map((p) => p.id));
-      renderProfileContent();
       const v = document.querySelector("#myPosts .empty");
       return { hauteur: v ? Math.round(v.getBoundingClientRect().height) : 0, txt: v ? v.innerText : "" };
     });
