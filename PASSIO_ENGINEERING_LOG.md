@@ -618,3 +618,47 @@ Conséquence directe : `PASSIO_INITIAL_JOINT_AUDIT.md` et `PASSIO_CONTROL_CENTER
 - Le vert de la CI est aujourd'hui trompeur sur tout ce qui touche à la confidentialité et au cross-compte : ne pas le lire comme une garantie.
 - Les tests cross-compte écrivent dans la base de production ; le nettoyage a été vérifié (0 compte e2e résiduel) mais reste à surveiller à chaque exécution.
 - Les hachages d'assets prod (`app.js?v=0d7a125b26`) diffèrent du build local (`0b7e76c726`) : attendu, la CI minifie. **Ce n'est donc pas un indicateur de divergence exploitable** — ne pas en tirer de conclusion.
+
+---
+
+## Session 2026-08-28 → 2026-08-29 — lot UI-7, deux défauts silencieux, réconciliation du plan de contrôle
+
+### Contexte
+Ordre de Benjamin : finaliser la cohérence des interfaces (§1 à §11) et aller **jusqu'à la mise en production réelle**, sans s'arrêter à une preview. Puis « travail en continu jusqu'à demain 8h ».
+
+### Ce qui a été livré en production
+| PR | SHA | Contenu |
+|---|---|---|
+| #186 | `6bf75ac` | Lot UI-7 : vocabulaire, Rencontrer, Fil compact, barre supérieure, Profil à trois onglets, parcours Bobine |
+| #187 | `c2e3e1b` | Filtre de passions vide = aucun filtre · la passion ne se vide plus en silence au partage d'expérience |
+
+### Deux défauts SILENCIEUX, trouvés en vérifiant autre chose
+1. **`SHARE-PASSION-011` (P2)** — `shareEventExperience` forçait `sel.value = ev.passion`. Affecter `select.value` avec une valeur **sans `<option>` correspondante ne lève pas** : le select passe à `""`. Le `try/catch` autour de la ligne ne pouvait rien attraper. Le souvenir partait sans passion, devenait **invisible dans le fil de son propre auteur** et perdait sa provenance en base.
+2. **Le filtre de passions du Profil** — « Réinitialiser » *vidait* l'écran au lieu de retirer le filtre, et un compte neuf ne voyait aucune de ses publications. La règle appliquée est celle que le même fichier énonçait déjà quinze lignes plus bas pour les types de contenu ; les deux rangées du même écran se contredisaient.
+
+### Le piège méthodologique de la session
+La CI de la PR #187 était rouge sur `ui-v7-parcours.spec.js` ⑦. **L'attribution évidente — « c'est mon dernier commit » — était fausse.** L'A/B (rejouer avec `app-06` remis à l'état de `main`) a montré un échec identique. Le test était flaky **de façon dépendante de l'heure** : il partage la première activité retournée par `_filterIrlEvents`, laquelle change au fil du temps ; quand elle portait une passion de l'utilisateur le select l'acceptait, sinon non. Vert la nuit, rouge le matin, imputé au commit de passage.
+
+> **Règle à retenir** : un test rouge sur une PR ne prouve pas que la PR l'a cassé. L'A/B contre la base coûte cinq minutes et évite de « corriger » du code sain.
+
+### Autres pièges payés (détail dans `CLAUDE.md`)
+- **Un titre n'est pas un identifiant d'écran** : `ui-v4a4-outils.js` détectait l'écran IRL en cherchant « IRL » dans `#ctxToolsTitle`. Renommer ce titre en « Filtres » a fait disparaître toute une section, **sans erreur ni exception**. `ContextualTools` publie désormais `pageType()` et `data-ctx-page`.
+- **`montrerHint` refuse une ancre sans `offsetParent`** : déplacer « Mes passions » dans un onglet masqué éteignait l'aide contextuelle en silence.
+- **`styles.css` est en CRLF** : une réécriture en mode texte Python le convertit en LF et produit un diff de 10 800 lignes. N'y écrire qu'en binaire.
+
+### Mesures
+Voir la table « BASELINE MESURÉE (2026-08-29) » de `PASSIO_MASTER_CONTROL.md`. Saillant : **521 passés / 1 flaky / 19 skippés** en CI ; six audits statiques verts ; build OK ; **`interactions.spec.js` 51/51 sans retry**.
+
+### Incidents mis à jour
+- `RACE-LIKE-003` → **CLOS**. Le tableau humain disait « cause non établie » alors que le registre machine disait `INFIRME / verified` : **le tableau humain était le périmé**. Mesuré avant d'aligner : 51 exécutions consécutives sans filet de retry, 0 flaky.
+- `SHARE-PASSION-011` → **corrigé en prod**, mutation-testé.
+- `CONV-FLAKY-012` → **détecté**, cause **non établie** (une seule occurrence). Aucune hypothèse écrite.
+
+### Ce qui n'a PAS pu être fait, et pourquoi
+- **`PASSIO_E2E_MULTI=1`, RLS prod, vérification de l'app en ligne** : le proxy réseau de l'environnement d'exécution refuse `passio-app.netlify.app` **et** `njkiyoklssvefstljemx.supabase.co` (`connect_rejected`, politique d'organisation). Ces trois-là sont `NON MESURÉ`, pas « OK ».
+- **La nuit de travail continu n'a pas eu lieu** : le conteneur a redémarré vers minuit. La reprise horaire posée par `CronCreate` vit **en mémoire de session** et est morte avec lui. ~8 h perdues. **Leçon : `CronCreate` n'est pas un mécanisme de reprise durable** — il faut une Routine côté serveur, qui survit au conteneur.
+
+### Dette signalée, non traitée
+- **Deux lots portent le nom « UI-7 »** : celui de la PR #184 (`ui-v7-parcours.spec.js`) et celui de la PR #186. Collision de nommage entre deux sessions ; renommage non fait, il toucherait le travail d'une autre session.
+- `NOTIF-FORGE-009` : migration prête, **non appliquée** (règle de la nuit : aucune migration sans supervision).
+- La CI force Node 24 sur des actions ciblant Node 20 (avertissement à chaque run). Périmètre `.github/` = critique, contre-revue obligatoire.
