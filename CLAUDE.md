@@ -773,9 +773,10 @@ Le script est en lecture seule sur le dépôt (il n'écrit que dans son dossier 
   `transition: all 0.25s`, donc une largeur relevée dans la foulée d'un changement de
   drapeau est encore à mi-course (piège vécu en écrivant le test du kill switch). ② Au Profil, c'est l'**ORDRE d'origine de l'écran** qui est mémorisé, pas le
   « frère suivant » de chaque bloc — ce frère déménage lui aussi, et rendre un bloc
-  « avant lui » restituait un ordre inventé. ③ Le bloc CSS UI-7 vient **après** les règles
+  « avant lui » restituait un ordre inventé. ③ ~~Le bloc CSS UI-7 vient **après** les règles
   de repli au défilement, à spécificité **égale** : sans réécrire
-  `.app-main.chrome-collapsed …` dans le bloc, l'en-tête du fil cessait de se replier.
+  `.app-main.chrome-collapsed …` dans le bloc, l'en-tête du fil cessait de se replier.~~
+  **CADUC depuis le 2026-08-29 : le repli au défilement a été RETIRÉ** (voir ci-dessous).
   ④ Les intentions sont en `flex: 1 1 auto` et non `1 1 0` : à colonnes égales,
   « Rencontrer » et « Apprendre » se faisaient couper pendant que « Tous » laissait du vide.
   ⑤ `renderProfileEvents` listait `state.seed.events.slice(0,3)` — le contenu de
@@ -976,6 +977,25 @@ Le script est en lecture seule sur le dépôt (il n'écrit que dans son dossier 
   payé à la résolution : les deux blocs se terminaient par une `@media` dont l'accolade
   fermante était la ligne COMMUNE d'après le marqueur de conflit — concaténés tels quels,
   le `@media` du premier englobait tout le second, en silence et sans CSS invalide.
+
+  **⚠️ En-tête du fil : plus de repli au défilement (2026-08-29).** Les passions
+  (`.profile-strip`), les moods (`.mood-selector` — la rangée AFFICHÉE est
+  `#feedIntentSelector`, l'historique `#moodSelector` restant `hidden`) et les stories
+  (`.stories-row`) restent visibles en permanence. La bascule `.chrome-collapsed`
+  (écouteur de défilement en fin d'`app-09`, règles en fin de `styles.css`) a été
+  **supprimée**, code et CSS : sur ordre de Benjamin, après le défaut vécu « je descends
+  puis je remonte, les profils et les moods ne s'affichent plus ». Cause identifiée et
+  documentée dans `app-09` : le garde anti-oscillation du 2026-08-28 n'était relâché que
+  par **deux événements de défilement consécutifs à la même position**, condition qu'un
+  geste tactile ne remplit pas à la fin d'un mouvement — une fois replié, l'en-tête ne se
+  rouvrait plus. Corriger le seuil aurait ramené l'oscillation (replier déplace
+  `scrollTop`, l'ancrage de Chrome compense mal) : les deux exigences étaient
+  contradictoires, on a retiré la bascule. Effet de bord bienvenu : plus aucune transition
+  `max-height` ne tourne au-dessus de `#feedList` pendant le défilement — c'est ce
+  mouvement sub-pixel qui faisait refuser des clics à Playwright (« element is not
+  stable », cf. `tests/e2e/interactions.spec.js`). Non-régression :
+  `tests/e2e/entete-fil-permanent.spec.js` (remplace `entete-fil-oscillation.spec.js`),
+  vérifiée rouge sur l'ancien code avant d'être verte sur le nouveau.
 
 - `docs/PIEGES_CONNUS.md` — les 56 fiches détaillées (extrait de ce fichier le 2026-08-07).
 - `docs/HISTORIQUE_PROJET.md` — état 2026-06-11, backlog terminé, logs d’optimisation.

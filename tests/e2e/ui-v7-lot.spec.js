@@ -10,8 +10,8 @@
 //      demande de position à l'ouverture ;
 //   ③ le Fil ne pousse la page à aucune largeur (320, 390, 430 px), les
 //      passions RESTENT des bulles — simplement plus petites, et le kill
-//      switch leur rend leur taille d'origine — et le repli au défilement
-//      fonctionne toujours ;
+//      switch leur rend leur taille d'origine — et elles restent affichées
+//      pendant tout le défilement (le repli au défilement a été retiré) ;
 //   ④ Messages a quitté la barre supérieure sans quitter l'application ;
 //   ⑥ le Profil a trois onglets nommés et RIEN n'est devenu inatteignable ;
 //   ⑧ après l'enregistrement d'une bobine : aperçu, « Recommencer » /
@@ -290,22 +290,33 @@ test.describe("UI-7 §3 — le haut du Fil est compact", () => {
     expect(historique).toBe(46);
   });
 
-  test("le repli au défilement fonctionne toujours", async ({ page }) => {
+  test("les passions restent affichées quand on descend dans le fil", async ({ page }) => {
     await boot(page, null, 3);
-    // On pose la classe comme le fait le moteur d'app-09, et on vérifie que le
-    // bloc UI-7 ne l'emporte pas sur elle (même spécificité, ordre inverse).
+    // Le repli au défilement a été RETIRÉ le 2026-08-29 (cf. la fin d'app-09 et
+    // tests/e2e/entete-fil-permanent.spec.js) : ce qui était vérifié ici — que
+    // le bloc UI-7 ne l'emportait pas sur `.chrome-collapsed` — n'a plus d'objet.
+    // Ce qui reste à prouver côté UI-7, c'est que la rangée de passions garde
+    // sa hauteur pendant tout le défilement, descente ET remontée.
     const h = await page.evaluate(async () => {
       const main = document.querySelector(".app-main");
       const strip = document.getElementById("profileStrip");
-      const avant = strip.getBoundingClientRect().height;
-      main.classList.add("chrome-collapsed");
+      const mesure = () => ({ strip: strip.getBoundingClientRect().height });
+      const avant = mesure();
+      main.scrollTop = 400;
+      main.dispatchEvent(new Event("scroll"));
       await new Promise((r) => setTimeout(r, 500));
-      const apres = strip.getBoundingClientRect().height;
-      main.classList.remove("chrome-collapsed");
-      return { avant, apres };
+      const apres = mesure();
+      const replie = main.classList.contains("chrome-collapsed");
+      main.scrollTop = 0;
+      main.dispatchEvent(new Event("scroll"));
+      await new Promise((r) => setTimeout(r, 500));
+      const remonte = mesure();
+      return { avant, apres, remonte, replie };
     });
-    expect(h.avant).toBeGreaterThan(10);
-    expect(h.apres).toBeLessThan(2);
+    expect(h.avant.strip).toBeGreaterThan(10);
+    expect(h.replie).toBe(false);
+    expect(h.apres.strip).toBeGreaterThan(10);
+    expect(h.remonte.strip).toBeGreaterThan(10);
   });
 });
 
