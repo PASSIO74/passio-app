@@ -64,6 +64,17 @@ async function bootOnboarded(page, errors, nProfiles = 1, opts = {}) {
   await page.evaluate(() => {
     const l = document.getElementById("landing");
     if (l) l.classList.remove("active");
+    // Conservées AVANT neutralisation : une suite qui doit exercer les VRAIS
+    // chemins d'écriture le fait contre un client Supabase factice (cf.
+    // partage-bobine.spec.js, commentaires-bobine.spec.js). Sans cette copie,
+    // la fonction d'origine est définitivement perdue pour la page.
+    window.__vraiSupa = {
+      publishPost: window.supaPublishPostWithRetry,
+      addComment: window.supaAddComment,
+      insertNotif: window.supaInsertNotif,
+      upsertProfile: window.supaUpsertProfile,
+    };
+    window.__vraiSupaPublishPost = window.supaPublishPostWithRetry;
     window.supaPublishPostWithRetry = async () => false;
     // ⚠️ supaSetPostLike doit répondre { ok:true } : un like dont l'écriture
     // serveur n'est pas confirmée est désormais ANNULÉ à l'écran.

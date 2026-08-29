@@ -86,9 +86,45 @@ function defaultState() {
 const LEGACY_ECONOMY_USER_KEYS = ["score", "passia", "likesReceived", "activePass"];
 const LEGACY_ECONOMY_ROOT_KEYS = ["transactions", "quests"];
 
+// ⚠️ Les NOTIFICATIONS déjà stockées promettaient encore des points. Le contenu
+// de démonstration est COPIÉ dans l'état à la première ouverture
+// (`parsed.notifications = def.seed.notifications.map(…)`) puis persisté : ADR-009
+// a bien réécrit la graine, mais un compte ouvert AVANT le retrait garde sa copie
+// pour toujours. Deux textes concernés, mesurés dans la graine d'avant :
+//   n5  « Nouvelle quête du jour : publie ton premier post 🎨 +15 pts »  (kind "quest")
+//   n6  « Bienvenue sur PASSIO 🎉 Tu as gagné 10 💎 Passia de bienvenue. »
+// Ils voyagent aussi par le blob `user_state` (`_leanState` recopie
+// `notifications`), d'où le passage par `stripLegacyEconomy`, appelé aux TROIS
+// frontières — sans quoi un ancien appareil les repousserait à chaque sync.
+// ⚠️ DEUX bornes, parce qu'un filtre par texte se trompe vite.
+// ① Il ne s'applique qu'aux notifications ÉCRITES PAR L'APP (`fromId` absent ou
+//    "me"). Une notification qui rapporte le contenu d'un AUTRE compte le CITE :
+//    le post d'actualité du contenu de démonstration contient « +4 pts » (une
+//    hausse de participation électorale) et un commentaire peut contenir « 💎 ».
+// ② Le motif ne retient que des tournures que l'app seule produisait. Le « 💎 »
+//    nu en est EXCLU délibérément : `pushNotification` interpole des titres
+//    d'activité et des destinations de carnet, où l'emoji est parfaitement
+//    légitime — « 🤝 Tu rejoins <b>Atelier 💎</b> » aurait disparu.
+const LEGACY_ECONOMY_NOTIF_RE = /\+\s*\d+\s*pts\b|\bPassia\b|^\s*🎉 Nouveau rang\b/i;
+const LEGACY_ECONOMY_NOTIF_KINDS = ["quest", "reward", "rank"];
+
+function _estNotifEconomieLegacy(n) {
+  if (!n || typeof n !== "object") return false;
+  if (LEGACY_ECONOMY_NOTIF_KINDS.indexOf(n.kind) > -1) return true;
+  var ecriteParLApp = !n.fromId || n.fromId === "me";
+  return ecriteParLApp && LEGACY_ECONOMY_NOTIF_RE.test(String(n.text || ""));
+}
+
 function stripLegacyEconomy(obj) {
   if (!obj || typeof obj !== "object") return obj;
   LEGACY_ECONOMY_ROOT_KEYS.forEach(function (k) { delete obj[k]; });
+  if (Array.isArray(obj.notifications)) {
+    // Réaffectation (et non splice) : sur la copie d'ENVOI, `notifications` est
+    // encore le tableau vivant de l'application — le filtrer en place ferait de
+    // cette fonction de lecture un effet de bord sur l'état affiché.
+    var gardees = obj.notifications.filter(function (n) { return !_estNotifEconomieLegacy(n); });
+    if (gardees.length !== obj.notifications.length) obj.notifications = gardees;
+  }
   if (obj.user && typeof obj.user === "object") {
     LEGACY_ECONOMY_USER_KEYS.forEach(function (k) { delete obj.user[k]; });
     if (Array.isArray(obj.user.profiles)) {

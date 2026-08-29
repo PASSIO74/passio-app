@@ -2250,6 +2250,15 @@ let videoDataUrl = null;
 // restait local et invisible. Un seul chemin de création demeure : l'écran CDV.
 
 function renderStudio() {
+  // ⚠️ Filet : l'éditeur de carnet vit dans l'écran CDV et masque les champs du
+  // Studio. On peut en sortir SANS passer par `closeCarnetEditor` (barre de
+  // navigation, retour arrière) — le Studio se retrouverait alors amputé. Il se
+  // répare donc lui-même à chaque ouverture, dès lors qu'il n'est pas en train
+  // d'être utilisé comme éditeur de carnet ou de live.
+  var _editeurCarnetOuvert = !!($("#cdvEditor") && $("#cdvEditor").style.display === "block");
+  if ((studioType === "vlog" || studioType === "cdvlive") && !_editeurCarnetOuvert) studioType = "text";
+  if (studioType !== "vlog" && studioType !== "cdvlive") _studioChampsTexteVisibles(true);
+
   // Passion dropdown based on user profiles
   const sel = $("#postPassion");
   // Lot UI-8 : on ne propose pas de créer dans une passion archivée. Les
@@ -2334,6 +2343,23 @@ $$("#studioTypeTabs .studio-type").forEach(el => {
   });
 });
 
+// Le carnet n'a ni texte libre, ni passion, ni mood : son éditeur masque ces
+// trois champs du Studio. ⚠️ Il faut donc aussi savoir les RENDRE — sans quoi
+// ouvrir l'éditeur de carnet une seule fois laisse le composeur du Studio
+// définitivement amputé. Le seul chemin de restauration était le clic sur un
+// onglet de format, et le lot UI-6 a précisément retiré ces onglets de l'écran.
+// `display = ""` rend la main à la feuille de style (`label.field {display:block}`)
+// au lieu de figer une valeur qu'une évolution du CSS invaliderait.
+function _studioChampsTexteVisibles(visible) {
+  var champs = [
+    $("#postText") && $("#postText").closest(".field"),
+    $("#fieldPassion"),
+    $("#fieldMood"),
+    $("#fieldTemplates"),
+  ];
+  champs.forEach(function (el) { if (el) el.style.display = visible ? "" : "none"; });
+}
+
 // Active la vue « Carnet » du Studio SANS onglet dédié (retiré le 2026-06-25 :
 // le carnet se crée depuis sa catégorie, écran CDV → « Nouveau carnet »). Remplace
 // l'ancien `document.querySelector('[data-type="vlog"]').click()` (cf. setStudioToVlog,
@@ -2351,12 +2377,9 @@ function activateStudioVlog() {
   // Visibilité par défaut = public (editCarnet la remplace ensuite si on modifie
   // un carnet existant, car il appelle activateStudioVlog AVANT de poser les champs).
   if (typeof _setVlogVisibility === "function") { try { _setVlogVisibility("public"); } catch (e) {} }
-  // Le carnet n'utilise ni passion ni mood : ces champs vivent dans le Studio et
-  // doivent rester masqués si l'utilisateur y repasse ensuite.
-  const mainTextField = $("#postText") && $("#postText").closest(".field");
-  if (mainTextField) mainTextField.style.display = "none";
-  const fp = $("#fieldPassion"); if (fp) fp.style.display = "none";
-  const fm = $("#fieldMood");    if (fm) fm.style.display = "none";
+  // Le carnet n'utilise ni texte libre, ni passion, ni mood : on masque ces
+  // champs du Studio le temps de l'édition. `closeCarnetEditor` les rend.
+  _studioChampsTexteVisibles(false);
   // `#postPassion` reste la source de la passion du post : si le Studio n'a jamais
   // été rendu, le select est vide → on le peuple pour ne pas publier sans passion.
   const sel = $("#postPassion");
@@ -2376,6 +2399,11 @@ function closeCarnetEditor() {
   const ed = $("#cdvEditor"); if (ed) ed.style.display = "none";
   const br = $("#cdvBrowse"); if (br) br.style.display = "block";
   if (studioType === "vlog") studioType = "text";
+  // ⚠️ Restauration OBLIGATOIRE : `activateStudioVlog` a masqué le texte, la
+  // passion et le mood du Studio. Sans cette ligne, fermer l'éditeur rendait
+  // `studioType` à "text" mais laissait le composeur sans champ de saisie —
+  // un Studio muet, sans erreur ni message, jusqu'au prochain rechargement.
+  _studioChampsTexteVisibles(true);
   window._editingCarnetId = null;
   if (typeof _syncCarnetEditorMode === "function") { try { _syncCarnetEditorMode(); } catch (e) {} }
   if (typeof renderCdvScreen === "function") { try { renderCdvScreen(); } catch (e) {} }

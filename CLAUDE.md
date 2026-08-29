@@ -1107,6 +1107,82 @@ Le script est en lecture seule sur le dépôt (il n'écrit que dans son dossier 
   jamais par `ownerId` — une sonde écrite avec `ownerId` rend 0 badge et fait conclure
   à tort que le défaut n'existe pas. Verrou : `profil-badges-visibles.spec.js`.
 
+  **⚠️ Second lot de la même nuit — sept défauts de plus, même méthode.**
+  Trois d'entre eux sont des failles d'échappement, quatre des chemins morts.
+
+  ⑥ **XSS stockée dans les notifications.** `renderNotifs` (app-08) écrivait
+  `${n.text}` BRUT parce que les notifications de démonstration portent des `<b>`
+  voulus. Or `pushNotification` recopie du texte d'autrui (mentions, extraits de
+  commentaires) et `supaLoadNotifs` remonte des lignes écrites par n'importe quel
+  compte. Le rendu est désormais **sûr par défaut** : `_notifTexteHtml(n)` échappe,
+  sauf discriminant explicite de confiance (`n.html === true` ou `kind === "local"`),
+  que seules la graine et `pushNotification` posent. ⚠️ Le motif est général : dès
+  qu'un champ mélange du balisage MAISON et du texte d'autrui, c'est un
+  **discriminant de confiance** qu'il faut, jamais un échappement conditionnel au cas
+  par cas. Verrou : `notifications-echappement.spec.js`.
+
+  ⑦ **La même donnée échappée à un endroit et pas à l'autre.** `ev.eventType` était
+  échappé sur la carte de la liste (app-07 ~2432) et BRUT dans la fiche (~3310) :
+  mesuré, `<img src=x onerror=…>` s'exécutait à l'ouverture de la fiche. Idem pour
+  `duration` d'un carnet en direct, brut dans le carrousel du Fil (app-02) et dans la
+  fiche (app-03). ⚠️ « Le `<select>` de création ne propose que des valeurs fixes »
+  n'est PAS une garantie : toute session authentifiée écrit ces colonnes par REST.
+  Verrou : `echappement-type-et-duree.spec.js`.
+
+  ⑧ **Un champ manquant qui fait échouer une publication EN SILENCE.**
+  `shareReelInFeed` (app-05) fabriquait son post sans `createdAt`. Or
+  `supaPublishPostWithRetry` fait `new Date(post.createdAt).toISOString()` : sur
+  `undefined` cela lève un RangeError, avalé par le `catch` de la boucle de réessai
+  qui renvoie `false`. Le partage n'atteignait donc JAMAIS Supabase — et le même champ
+  date la carte (`fmtTime(undefined)` → "") et la classe dans le fil (tri sur
+  `createdAt || 0` → tout en bas). Sa jumelle `sharePostInFeed` (app-03) le portait
+  déjà : **deux fonctions presque identiques avaient divergé sur ce seul point**.
+  Second défaut dans les DEUX : le texte était échappé à la SOURCE alors qu'il l'est
+  déjà à l'affichage (`escapeHtml(displayText)`), donc doublement — et la valeur
+  corrompue partait dans `posts.content`. Verrou : `partage-bobine.spec.js`.
+
+  ⑨ **Le lecteur de bobines n'envoyait aucun commentaire.** `submitReelComment`
+  (app-05) écrivait dans l'état local puis `saveState()`, et rien d'autre : ni
+  `post_comments`, ni `comment_interactions`. L'auteur de la bobine ne voyait jamais
+  le commentaire, et son auteur le perdait au premier rechargement. Le MÊME texte
+  posté depuis la discussion du Fil partait, lui — d'où un défaut invisible à qui
+  teste par le Fil. Corrigé **sans dupliquer de moteur** : passage par la file
+  d'attente commune `_enqueueCommentSync` (app-04), qui gère le réessai hors-ligne.
+  Dans la foulée : `loadReelComments` datait par `c.timestamp`, un champ qu'AUCUN
+  chemin de création ne pose (tous écrivent `createdAt`) — le repli « Maintenant »
+  était donc universel. Verrou : `commentaires-bobine.spec.js`.
+
+  ⑩ **Le contenu de démonstration est COPIÉ dans l'état, puis persisté à vie.**
+  `loadState` fait `parsed.notifications = def.seed.notifications.map(…)` à la
+  première ouverture. ADR-009 a réécrit la graine — mais un compte ouvert AVANT le
+  retrait garde sa copie : « Nouvelle quête du jour 🎨 **+15 pts** » et « Tu as gagné
+  **10 💎 Passia** ». `stripLegacyEconomy` filtre désormais aussi `notifications`, aux
+  TROIS frontières (`_leanState` recopie `notifications` dans le blob `user_state`,
+  donc un vieil appareil les repousserait). ⚠️ Le filtrage par TEXTE est borné aux
+  notifications écrites PAR L'APP (`fromId` absent ou `"me"`) : une notification qui
+  rapporte le contenu d'autrui le CITE — la publication d'actualité de la graine
+  contient « +4 pts ». Verrou : `notifications-economie-retiree.spec.js`.
+
+  ⑪ **« Ma ville » posait son prédicat une fois, et ne le reprenait jamais.**
+  `ui-v4a1-intentions.js` appelait `poserPredicatVille(nomVille())` au clic sur la
+  chip. Changer de ville ensuite (`selectIrlCity` → `renderIRL`) laissait le filtre
+  sur l'ANCIENNE : le titre annonçait Paris, la liste montrait Lyon. La
+  resynchronisation post-rendu ré-aligne désormais le prédicat. ⚠️ Le prédicat est
+  stocké NORMALISÉ (`_normIrlCityName`) et la ville garde son libellé d'affichage :
+  comparer les deux valeurs brutes ferait croire à une divergence à chaque rendu et
+  provoquerait une réécriture sans fin. Verrou : `irl-changement-ville.spec.js`.
+
+  ⑫ **Ouvrir l'éditeur de carnet amputait le Studio, définitivement.**
+  `activateStudioVlog` masque le texte libre, la passion et le mood — le carnet ne
+  les utilise pas. Rien ne les rendait : `closeCarnetEditor` remettait `studioType` à
+  `"text"` et s'arrêtait là, et le SEUL chemin de restauration était le clic sur un
+  onglet de format… que le lot UI-6 a retiré de l'écran. Un composeur muet, sans
+  erreur ni message, jusqu'au rechargement. Deux sorties tenues désormais : la porte
+  (`closeCarnetEditor`) et un filet dans `renderStudio` pour qui quitte l'écran CDV
+  par la navigation. ⚠️ Famille générale : **retirer un chemin d'accès (ici les
+  onglets) peut supprimer le seul chemin de RETOUR d'un état transitoire.**
+  Verrou : `studio-apres-carnet.spec.js`.
+
 - `docs/PIEGES_CONNUS.md` — les 59 fiches détaillées (extrait de ce fichier le 2026-08-07, recompté le 2026-08-29).
 - `docs/HISTORIQUE_PROJET.md` — état 2026-06-11, backlog terminé, logs d’optimisation.
 - `docs/ARCHITECTURE.md`, `docs/CONTROLE_16_MISSIONS.md`, `docs/CHECKLIST_COMMERCIALISATION.md`.
