@@ -1056,6 +1056,57 @@ Le script est en lecture seule sur le dépôt (il n'écrit que dans son dossier 
   prouve que la restauration se termine et ne fuit pas. Ne pas le retirer sans retirer
   aussi cette assertion.
 
+  **⚠️ Cinq défauts trouvés par audit adversarial après les treize lots du 2026-08-29.**
+  Tous étaient EN PRODUCTION, tous ont été mesurés avant correction et éprouvés par
+  mutation. Ils partagent une famille : **une règle ou un test qui survit à la
+  disparition de sa cible**.
+
+  ① **`HTMLElement.click()` sur un input remonte jusqu'à son conteneur.** La pastille
+  📷 d'une carte de passion faisait `event.stopPropagation()` puis `input.click()` —
+  mais ce `stopPropagation` ne concerne que le clic SUR LA PASTILLE : `.click()`
+  dispatche un NOUVEL événement, qui part de l'input (descendant de la carte) et
+  remonte à son `onclick`. Une seule tape ouvrait donc le sélecteur de fichier ET la
+  modale d'édition. Le garde est posé sur l'**input** (`onclick="event.stopPropagation()"`),
+  jamais sur la pastille : le menu « Options » déclenche le même `input.click()`.
+  ⚠️ `#mainProfileAvatar` porte le motif identique et n'a PAS ce défaut — son `onclick`
+  rappelle `input.click()`, et le *click in progress flag* de la spécification HTML
+  arrête la récursion. Ne pas le « corriger ». Verrou : `carte-passion-photo.spec.js`.
+
+  ② **`v()` du formulaire d'activité ÉCHAPPE DÉJÀ — ne jamais le ré-envelopper.**
+  Dix de ses onze appels faisaient `escapeHtml(v("champ"))`. Mesuré : « Café d'Or »
+  s'affichait « Café d&#39;Or ». Et ce n'était pas qu'un défaut d'affichage — ces
+  valeurs sont celles que « Enregistrer » PERSISTE, donc la corruption s'aggravait à
+  chaque édition (`&#39;` puis `&amp;#39;`). Le textarea `evDesc` était le seul appel
+  correct. ⚠️ Retirer un `escapeHtml` demande de prouver qu'on n'ouvre pas une sortie
+  d'attribut : `escapeHtml` échappe `& < > " '`, donc un seul passage suffit pour un
+  `value="…"`. Le test le vérifie sur une charge réelle, pas par raisonnement.
+  Verrou : `edition-activite-echappement.spec.js`.
+
+  ③ **« Mes passions » doit dire la même chose partout.** `_irlMyPassions()` (app-07)
+  mappait `state.user.profiles` en entier, archivées comprises, alors que le Fil rend
+  `passionsVivantes()`. Après un archivage : Fil `["musique"]`, Rencontrer
+  `["musique","cuisine"]`. Verrou : `irl-passion-archivee.spec.js`.
+
+  ④ **La passion ACTIVE ne doit jamais être archivée — et le nettoyage appartient aux
+  points d'ÉCRITURE.** `currentProfile()` rend `null` pour une passion archivée et son
+  commentaire dit pourquoi il ne réécrit rien. `archiverPassion` et `deleteProfile`
+  nettoient déjà ; `supaLoadUserState` restaurait `currentProfileId` sur le seul test
+  « toujours dans la liste fusionnée » — or une passion archivée sur un AUTRE appareil
+  y reste, avec `archived:true`. Extrait en fonction nommée
+  `restaurerPassionActiveApresFusion` pour qu'un test exerce le code RÉEL : la première
+  version du test recopiait la logique, et serait restée verte si la production avait
+  changé. Verrou : `sync-passion-active.spec.js`.
+
+  ⑤ **Une règle CSS survit à la disparition de sa cible.** UI-6 §11 masquait
+  `.profile-chips-row` pour cacher les pastilles de score, rang et solde. ADR-009 a
+  retiré ce moteur en entier, mais la règle est restée — et la rangée ne portait plus
+  que la pastille de BADGES d'assiduité, que l'ADR garde expressément. Mesuré avec un
+  badge gagné : pastille à `inline-flex`, rangée à `none`, hauteur visible 0, et
+  `openBadgesSheet()` sans aucun autre appelant. Fonctionnalité calculée à chaque
+  rendu, morte à l'écran. ⚠️ `myEngagementStats` compte par `organizerId`/`authorId`,
+  jamais par `ownerId` — une sonde écrite avec `ownerId` rend 0 badge et fait conclure
+  à tort que le défaut n'existe pas. Verrou : `profil-badges-visibles.spec.js`.
+
 - `docs/PIEGES_CONNUS.md` — les 59 fiches détaillées (extrait de ce fichier le 2026-08-07, recompté le 2026-08-29).
 - `docs/HISTORIQUE_PROJET.md` — état 2026-06-11, backlog terminé, logs d’optimisation.
 - `docs/ARCHITECTURE.md`, `docs/CONTROLE_16_MISSIONS.md`, `docs/CHECKLIST_COMMERCIALISATION.md`.
