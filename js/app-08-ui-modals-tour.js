@@ -2387,7 +2387,15 @@ async function supaUpsertProfile() {
     // Les photos ne partent que si ce sont des URLs Storage (jamais de base64,
     // le jsonb servirait alors des mégaoctets à chaque lecture de profil).
     const _httpOnly = (v) => (typeof v === "string" && /^https?:\/\//.test(v)) ? v : null;
-    const _passions = (state.user.profiles || []).map(pr => {
+    // ⚠️ Lot UI-8 : une passion ARCHIVÉE ne part pas dans le profil public.
+    // Ranger une passion et la voir rester chez les visiteurs, c'est un
+    // archivage qui n'archive rien. Rien n'est perdu pour autant : le drapeau
+    // vit dans le blob `user_state`, et la restaurer la republie telle quelle.
+    const _v8Vivantes = (state.user.profiles || []).filter(pr => {
+      try { return !(typeof passionsUnifieesActives === "function" && passionsUnifieesActives() && pr.archived); }
+      catch (e) { return true; }
+    });
+    const _passions = _v8Vivantes.map(pr => {
       const pas = (typeof passionById === "function") ? passionById(pr.passion) : null;
       return {
         id: pr.passion,

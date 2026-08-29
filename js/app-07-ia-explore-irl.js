@@ -255,9 +255,16 @@ function openPassionExplorer(pid) {
 
   var postsHTML = posts.length ? posts.slice(0,6).map(renderPostHTML).join("") : '<div class="empty"><div class="empty-icon">✏️</div><div class="empty-text">Aucun post pour l\'instant</div></div>';
 
-  var profileBtn = hasProfile
-    ? '<span class="pill active">Ton profil</span>'
-    : '<button class="btn small primary" onclick="quickCreateProfile(\'' + escapeJsArg(pid) + '\')">+ Créer profil</button>';
+  // Lot UI-8 : une passion ARCHIVÉE n'est pas « ta passion » — mais ce n'est pas
+  // non plus une passion à créer (elle existe, rangée). On propose la
+  // restauration, qui est le seul geste juste ici.
+  var _v8Arch = false;
+  try { _v8Arch = !!(hasProfile && hasProfile.archived && typeof passionsUnifieesActives === "function" && passionsUnifieesActives()); } catch (e) {}
+  var profileBtn = _v8Arch
+    ? '<button class="btn small ghost" onclick="restaurerPassion(\'' + escapeJsArg(hasProfile.id) + '\')">Restaurer cette passion</button>'
+    : (hasProfile
+      ? '<span class="pill active">Ta passion</span>'
+      : '<button class="btn small primary" onclick="quickCreateProfile(\'' + escapeJsArg(pid) + '\')">+ Créer profil</button>');
 
   var html = '\
     <div class="modal-handle"></div>\

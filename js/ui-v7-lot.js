@@ -498,7 +498,14 @@
     var s = el("v7BobinePassion");
     var st = etat();
     if (!s || !st || !st.user) return;
-    var profils = st.user.profiles || [];
+    // ⚠️ Même règle que `renderStudio` (app-06) depuis le lot UI-8 : on ne
+    // propose pas de publier dans une passion archivée. Deux composeurs qui ne
+    // répondent pas la même chose à « où puis-je publier ? », c'est la porte
+    // dérobée assurée.
+    var profils = (st.user.profiles || []).filter(function (p) {
+      try { return !(typeof passionsUnifieesActives === "function" && passionsUnifieesActives() && p.archived); }
+      catch (e) { return true; }
+    });
     var courant = st.user.currentProfileId;
     s.innerHTML = "";
     profils.forEach(function (p) {

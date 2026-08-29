@@ -11238,6 +11238,197 @@ body.ctx-locked #appMain { overflow: hidden; }
 .v7-cover-vue img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .v7-sheet-foot { padding-top: 6px; }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   PASSIO UI V8 — « une personne, plusieurs passions » (§Profil)
+
+   Toutes les règles sont ancrées à des classes `.v8-*` que l'interface
+   historique ne crée JAMAIS : `localStorage.passio_ui_8 = "0"` rend l'écran
+   d'avant à l'octet près, sans qu'aucune règle existante ait été réécrite.
+
+   §9 : fond clair, accent violet, couvertures conservées, cartes compactes.
+   La passion active doit se repérer en moins d'une seconde — c'est le seul
+   endroit de cet écran qui porte l'accent plein.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── La ligne « Passion active : 🏍️ Moto · Changer », sous la carte d'identité ── */
+.v8-active-line {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: var(--bg-tint);
+  border: 1px solid var(--border);
+}
+.v8-active-txt { font-size: 13px; color: var(--muted); line-height: 1.3; }
+.v8-active-txt b { color: var(--text); font-weight: 800; }
+.v8-active-btn {
+  appearance: none;
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 800;
+  padding: 0 16px;
+  min-height: 34px;
+  cursor: pointer;
+}
+.v8-active-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ── La rangée « Toutes · Moto · Podcast · Yoga » ──────────────────────────
+   Elle défile DANS son propre conteneur : le corps de la page ne défile
+   jamais horizontalement, quel que soit le nombre de passions. */
+.v8-filter-row {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  padding: 2px 2px 8px;
+  margin-bottom: 2px;
+}
+.v8-filter-row::-webkit-scrollbar { display: none; }
+.v8-chip {
+  appearance: none;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1.5px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-dim, var(--muted));
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
+}
+.v8-chip.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.v8-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ── La carte d'une passion ────────────────────────────────────────────────
+   Plus compacte que la carte historique (trois passions doivent se parcourir
+   d'un coup d'oeil sur mobile), et son état passe à la ligne : « Utiliser pour
+   créer » est un libellé long, le comprimer sur la même ligne que le nom
+   couperait l'un ou l'autre à 320 px. */
+.v8-passion-card {
+  flex-wrap: wrap;
+  align-items: center;
+  padding: 10px 12px;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.v8-passion-card .avatar.lg { width: 42px; height: 42px; font-size: 20px; flex: 0 0 42px; }
+.v8-passion-card .profile-card-body { flex: 1 1 auto; min-width: 0; }
+.v8-passion-card .profile-card-name { font-size: 14.5px; }
+.v8-passion-card .profile-card-bio {
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.v8-card-meta { font-size: 11px; color: var(--muted); margin-top: 3px; }
+.v8-passion-card.has-cover .v8-card-meta { color: rgba(255, 255, 255, 0.85); text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5); }
+.v8-passion-card .profile-dots-btn { flex: 0 0 auto; }
+
+/* La passion active se repère à son liseré plein — pas à un bouton discret
+   posé sur une couverture (§9). */
+.v8-passion-card.is-active {
+  border-color: var(--accent);
+  box-shadow: 0 6px 18px rgba(139, 92, 246, 0.18);
+}
+
+/* L'état, sur toute la largeur, en bas de la carte. */
+.v8-state {
+  flex: 1 0 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 12px;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 800;
+  border: 1.5px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text);
+  cursor: pointer;
+}
+.v8-state.on {
+  border-color: transparent;
+  background: var(--accent);
+  color: #fff;
+  cursor: default;
+}
+.v8-state:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Sur une couverture, le bouton garde un fond OPAQUE : posé en translucide il
+   emprunterait la photo et deviendrait illisible selon le cliché. */
+.v8-passion-card.has-cover .v8-state:not(.on) { background: var(--bg-card); }
+
+/* ── Le sélecteur de passion active, et la liste des archivées ─────────────── */
+.v8-switch-list { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
+.v8-switch-row {
+  appearance: none;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 8px 12px;
+  border-radius: 14px;
+  border: 1.5px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+.v8-switch-row.on { border-color: var(--accent); background: var(--bg-tint); cursor: default; }
+.v8-switch-emoji { font-size: 20px; flex: 0 0 auto; }
+.v8-switch-name { flex: 1 1 auto; min-width: 0; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.v8-switch-on { flex: 0 0 auto; font-size: 12px; font-weight: 800; color: var(--accent); }
+.v8-switch-go {
+  appearance: none;
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 0 14px;
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+}
+.v8-switch-row:focus-visible, .v8-switch-go:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ── Messages : QUI écrit ───────────────────────────────────────────────────
+   Le pseudo général d'abord, la passion active seulement en contexte gris.
+   Elle ne doit jamais se lire comme un autre expéditeur. */
+.v6a-moi { font-size: 12px; line-height: 1.3; margin: -2px 0 8px; }
+.v6a-moi-nom { color: var(--text); font-weight: 700; }
+.v6a-moi-ctx { color: var(--muted); font-weight: 600; }
+
+@media (prefers-reduced-motion: reduce) {
+  .v8-chip, .v8-passion-card { transition: none; }
+}
 /* ═══════════════════════════════════════════════════════════════════════════
    PASSIO UI V4 — lot UI-4A5 : « Filtres » est une VUE, et les bulles de passion
    vivent dedans.  ACTIF PAR DÉFAUT.

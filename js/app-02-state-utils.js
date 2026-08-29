@@ -679,6 +679,11 @@ async function supaLoadUserState() {
           if (!merged.photo && lp.photo) merged.photo = lp.photo;
           if (!merged.photoUrl && lp.photoUrl) merged.photoUrl = lp.photoUrl;
           if (!merged.bio && lp.bio) merged.bio = lp.bio;
+          // Lot UI-8 : l'état « archivée » est une donnée locale récente que le
+          // serveur peut ignorer (blob écrit avant l'archivage). On ne la
+          // réinjecte QUE s'il n'en a aucune — sinon une restauration serveur
+          // serait annulée par un vieil état local.
+          if (merged.archived === undefined && lp.archived !== undefined) merged.archived = lp.archived;
           return merged;
         });
         // Dédup final : s'il reste deux profils pour la même passion (ne devrait
