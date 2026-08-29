@@ -8,7 +8,7 @@
 const { chromium } = require("@playwright/test");
 const { GATE_TOKEN, GATE_KEY } = require("../tests/e2e/gate-helper");
 
-const SCREENS = ["feed", "profiles", "studio", "explore", "irl", "wallet", "messages", "cdv"];
+const SCREENS = ["feed", "profiles", "studio", "explore", "irl", "messages", "cdv"];
 
 (async () => {
   const browser = await chromium.launch();

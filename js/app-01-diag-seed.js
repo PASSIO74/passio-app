@@ -99,42 +99,10 @@ const PASSIONS = [
   { id: "actu",       emoji: "🌍", label: "Actualité",    color: "#7c3aed", photo: "photo-1504711434969-e33886168f5c" },
 ];
 
-// ======== SCORE LADDER ========
-const RANKS = [
-  { min: 0,    label: "Débutant",       next: 100 },
-  { min: 100,  label: "Explorateur",    next: 300 },
-  { min: 300,  label: "Créateur",       next: 700 },
-  { min: 700,  label: "Contributeur",   next: 1500 },
-  { min: 1500, label: "Ambassadeur",    next: 3000 },
-  { min: 3000, label: "Passionné·e",    next: null },
-];
-
-// ======== POINTS MAP ========
-// Deux monnaies, deux logiques claires :
-//  ⭐ Étoiles  = ton ACTIVITÉ. Généreuses, elles font monter ton rang. Chaque
-//               action en donne (publier, commenter, participer, créer…).
-//  💎 Passia   = la VALEUR que tu crées pour les autres. Vraie valeur, donc rare
-//               et IMPOSSIBLE à farmer en solo : on n'en gagne JAMAIS par une
-//               action perso. Les seules sources sont (1) les likes reçus sur
-//               ton contenu (palier tous les LIKES_PER_PASSIA likes) et (2) les
-//               quêtes/jalons (claimQuest). → passia: 0 partout ici, exprès.
-const REWARDS = {
-  publish_text:   { pts: 10, passia: 0, label: "Post publié" },
-  publish_photo:  { pts: 15, passia: 0, label: "Photo publiée" },
-  publish_video:  { pts: 25, passia: 0, label: "Vidéo publiée" },
-  publish_audio:  { pts: 20, passia: 0, label: "Podcast publié" },
-  publish_vlog:   { pts: 50, passia: 0, label: "Carnet de voyage publié" },
-  event_create:   { pts: 30, passia: 0, label: "Événement créé" },
-  event_join:     { pts: 20, passia: 0, label: "Participation IRL" },
-  profile_create: { pts: 15, passia: 0, label: "Nouveau profil" },
-  comment:        { pts: 3,  passia: 0, label: "Commentaire" },
-  like_received:  { pts: 2,  passia: 0, label: "Like reçu" },
-  first_login:    { pts: 50, passia: 0, label: "Premier login" },
-  daily:          { pts: 5,  passia: 0, label: "Connexion du jour" },
-};
-
-// 💎 Un palier de likes reçus = +1 Passia (la valeur reçue, lissée et non-farmable).
-const LIKES_PER_PASSIA = 10;
+// ======== ÉCONOMIE INTERNE — RETIRÉE (ADR-009) ========
+// `RANKS`, `REWARDS` et `LIKES_PER_PASSIA` ont été supprimés avec le Wallet, les
+// points, les rangs, les quêtes et les Passia. Aucun barème ne subsiste : le
+// cœur produit est Passion → contenu → personne → conversation → IRL.
 
 // ======== STATE ========
 let state = null;
@@ -1749,29 +1717,11 @@ function buildSeed() {
     { id: "n2", kind: "follow",  fromId: "u_clara", text: "<b>Clara Jensen</b> suit maintenant ton profil voyage", createdAt: hours(1), unread: true,  emoji: "🤝" },
     { id: "n3", kind: "comment", fromId: "u_yanis", text: "<b>Yanis Perez</b> a réagi à un post : « On devrait échanger 🚀 »", createdAt: hours(2), unread: true,  emoji: "💬" },
     { id: "n4", kind: "event",   fromId: "u_theo",  text: "<b>Théo Roussel</b> t'invite au « Dîner entre passionnés de cuisine »", createdAt: hours(3), unread: false, emoji: "🍳" },
-    { id: "n5", kind: "quest",   fromId: "me",      text: "Nouvelle quête du jour : publie ton premier post 🎨 <b>+15 pts</b>", createdAt: hours(5), unread: false, emoji: "🎯" },
-    { id: "n6", kind: "system",  fromId: "me",      text: "Bienvenue sur PASSIO 🎉 Tu as gagné <b>10 💎 Passia</b> de bienvenue.", createdAt: hours(6), unread: false, emoji: "✨" },
+    { id: "n5", kind: "system",  fromId: "me",      text: "Ta première publication attend : montre ce que tu aimes 🎨", createdAt: hours(5), unread: false, emoji: "✨" },
+    { id: "n6", kind: "system",  fromId: "me",      text: "Bienvenue sur PASSIO 🎉 Choisis tes passions et découvre qui les partage.", createdAt: hours(6), unread: false, emoji: "✨" },
     { id: "n7", kind: "like",    fromId: "u_karim", text: "<b>Karim Belkacem</b> a réagi à ta passion photo", createdAt: hours(10), unread: false, emoji: "📷" },
   ];
 
-  const seedQuests = [
-    // Défis quotidiens (faciles)
-    { id: "q1", emoji: "🎨", title: "Publie 1 post création", mood: "creation", reward: 15, passia: 2, target: 1, progress: 0, type: "publish", kind: "daily", done: false },
-    { id: "q2", emoji: "💖", title: "Réagis à 3 posts", reward: 8, passia: 1, target: 3, progress: 1, type: "like", kind: "daily", done: false },
-    { id: "q3", emoji: "💬", title: "Commente un post inspirant", reward: 10, passia: 1, target: 1, progress: 0, type: "comment", kind: "daily", done: false },
-    { id: "q4", emoji: "🌅", title: "Connecte-toi 3 jours d'affilée", reward: 20, passia: 3, target: 3, progress: 1, type: "streak", kind: "daily", done: false },
-    // Défis hebdomadaires (moyens)
-    { id: "q5", emoji: "🎬", title: "Publie 1 vidéo dans le Studio", reward: 35, passia: 5, target: 1, progress: 0, type: "publish_video", kind: "weekly", done: false },
-    { id: "q6", emoji: "🤝", title: "Rejoins 1 événement IRL", reward: 50, passia: 8, target: 1, progress: 0, type: "join", kind: "weekly", done: false },
-    { id: "q7", emoji: "📔", title: "Publie un carnet de voyage", reward: 75, passia: 12, target: 1, progress: 0, type: "publish_vlog", kind: "weekly", done: false },
-    { id: "q8", emoji: "🎙", title: "Enregistre 1 podcast (Studio audio)", reward: 40, passia: 6, target: 1, progress: 0, type: "publish_audio", kind: "weekly", done: false },
-    // Défis communautaires (gros gains)
-    { id: "q9", emoji: "⭐", title: "Aide 5 nouveaux membres (commentaires bienveillants)", reward: 100, passia: 15, target: 5, progress: 0, type: "help", kind: "community", done: false },
-    { id: "q10", emoji: "🎉", title: "Organise 1 événement IRL", reward: 150, passia: 25, target: 1, progress: 0, type: "create_event", kind: "community", done: false },
-    { id: "q11", emoji: "🏆", title: "Atteins 50 likes cumulés sur tes posts", reward: 120, passia: 20, target: 50, progress: 12, type: "likes_received", kind: "community", done: false },
-    { id: "q12", emoji: "🌟", title: "Crée une passion communautaire", reward: 200, passia: 35, target: 1, progress: 0, type: "create_passion", kind: "community", done: false },
-  ];
-
-  return { users: seedUsers, posts: seedPosts, events: seedEvents, stories: seedStories, notifications: seedNotifications, quests: seedQuests };
+  return { users: seedUsers, posts: seedPosts, events: seedEvents, stories: seedStories, notifications: seedNotifications };
 }
 

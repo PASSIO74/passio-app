@@ -104,7 +104,7 @@ function confirmDeletePost(postId) {
       <div class="pay-modal-title">Supprimer ce post ?</div>
     </div>
     <div style="font-size:13px;color:var(--text);margin-bottom:14px;line-height:1.55;text-align:center;">
-      Cette action est <b>définitive</b>. Le post et ses commentaires seront supprimés. Tes points et Passia gagnés à la publication restent acquis.
+      Cette action est <b>définitive</b>. Le post et ses commentaires seront supprimés.
     </div>
     ${preview ? `<div style="background:rgba(139,92,246,0.06);padding:10px 12px;border-radius:10px;margin-bottom:14px;font-size:12px;color:var(--text-dim);font-style:italic;line-height:1.5;">« ${escapeHtml(preview)} »</div>` : ""}
     <button class="btn block" style="background:#dc2626;color:#fff;border-color:#dc2626;margin-bottom:8px;" onclick="deletePost('${escapeJsArg(postId)}')">
@@ -127,15 +127,6 @@ function deletePost(postId) {
   state.userPosts.splice(idx, 1);
   // Nettoie les références (likes notamment)
   state.user.likedPosts = (state.user.likedPosts || []).filter(x => x !== postId);
-  // Trace dans l'historique
-  state.transactions.unshift({
-    id: uid(),
-    kind: "post_delete",
-    pts: 0,
-    passia: 0,
-    label: "Post supprimé",
-    at: Date.now(),
-  });
   saveState();
   // Supprimer aussi dans Supabase
   if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
@@ -952,14 +943,14 @@ async function openComments(postId) {
   openModal(`
     <div class="modal-handle"></div>
     <div class="modal-title">Discussion</div>
-    <div class="modal-subtitle">Commente pour gagner +3 pts.</div>
+    <div class="modal-subtitle">Réponds à cette publication.</div>
     <div id="commentsBox" style="max-height:260px;overflow-y:auto;margin-bottom:12px;" aria-live="polite">
       ${localComments.length ? _renderCommentsList(localComments, postId) : (_willLoad ? _commentSkeletonHtml(4) : _emptyStateHtml)}
     </div>
     <textarea class="textarea" id="newComment" placeholder="Ajoute un commentaire…" maxlength="400" style="min-height:44px;" oninput="autoResizeTextarea(this);_syncComposerSendState(this)" onkeydown="if((event.metaKey||event.ctrlKey)&&event.key==='Enter'){event.preventDefault();submitComment('${escapeJsArg(postId)}');}"></textarea>
     <div style="display:flex;align-items:center;gap:6px;margin-top:8px;">
       ${_cmtComposerToolsHtml("newComment", "submitComment", postId)}
-      <button class="btn primary" style="flex:1;" onclick="submitComment('${escapeJsArg(postId)}')">Publier · +3 pts</button>
+      <button class="btn primary" style="flex:1;" onclick="submitComment('${escapeJsArg(postId)}')">Publier</button>
     </div>
   `);
   // Bouton d'envoi désactivé tant que le champ est vide (état initial).
@@ -1029,7 +1020,6 @@ function submitComment(postId) {
   const meEntry = { id: realAuthorId, name: p?.name || state.user.name || "Moi", profileEmoji: p?.emoji || "✨", avatar: p?.color || "#8b5cf6" };
   state.seed.users = state.seed.users.filter(u => u.id !== realAuthorId);
   state.seed.users.push(meEntry);
-  grantReward("comment");
   // Sync avec Supabase — via la FILE D'ATTENTE (#14) : envoi + réessai auto si
   // offline/erreur, avec statut « Envoi… / Non envoyé » sur le commentaire.
   if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
@@ -1522,7 +1512,7 @@ function openCommentSheet(threadId, title) {
   openModal(
     '<div class="modal-handle"></div>'
     + '<div class="modal-title">' + (title || "💬 Commentaires") + '</div>'
-    + '<div class="modal-subtitle">Commente pour gagner +3 pts.</div>'
+    + '<div class="modal-subtitle">Réponds à cette publication.</div>'
     + '<div id="cmtThreadList" data-thread="' + escapeHtml(threadId) + '" style="max-height:52vh;overflow-y:auto;margin-bottom:12px;">' + initial + '</div>'
     + '<div style="display:flex;gap:6px;align-items:center;">'
     + '<input type="text" class="input" id="cmtThreadInput" placeholder="Écris un commentaire…" maxlength="500" style="flex:1;" onkeypress="if(event.key===\'Enter\')submitCommentSheet(\'' + escapeJsArg(threadId) + '\')"/>'
@@ -1560,7 +1550,6 @@ function submitCommentSheet(threadId) {
       var p = (typeof currentProfile === "function") ? currentProfile() : null;
       var realAuthorId = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me";
       post.comments.unshift({ id: _cid, authorId: realAuthorId, authorName: (p && p.name) || state.user.name || "Moi", authorEmoji: (p && p.emoji) || "✨", text: t, content: t, createdAt: Date.now() });
-      if (typeof grantReward === "function") grantReward("comment");
       if (typeof supaAddComment === "function" && typeof MY_UID !== "undefined" && MY_UID) supaAddComment(threadId, t, _cid);
       _refreshCommentThreadUI(threadId);
       try { _patchPostCommentCount(threadId); } catch (e) {}
@@ -1993,237 +1982,10 @@ $$(".mood-btn").forEach(btn => {
   });
 });
 
-// ======== BOUTIQUE PASSIA ========
-const PASSIA_PACKS = [
-  { id: "pack_1",  emoji: "🌱", name: "Découverte",  base: 50,    bonus: 0,    price: 4.99,  popular: false, mega: false },
-  { id: "pack_2",  emoji: "🌸", name: "Standard",    base: 150,   bonus: 30,   price: 9.99,  popular: false, mega: false },
-  { id: "pack_3",  emoji: "💎", name: "Confort",     base: 350,   bonus: 80,   price: 19.99, popular: false, mega: false },
-  { id: "pack_4",  emoji: "🔥", name: "Soutien",     base: 500,   bonus: 150,  price: 24.99, popular: true,  mega: false },
-  { id: "pack_5",  emoji: "🚀", name: "Créateur",    base: 1200,  bonus: 400,  price: 49.99, popular: false, mega: false },
-  { id: "pack_6",  emoji: "👑", name: "Mécène",      base: 3000,  bonus: 1500, price: 99.99, popular: false, mega: true  },
-];
-
-const PASSIA_PASSES = [
-  {
-    id: "pass_monthly",
-    title: "Pass Passion",
-    badge: "Mensuel",
-    price: 9.99,
-    period: "/ mois",
-    monthlyPassia: 200,
-    perks: [
-      "200 💎 Passia ajoutés chaque mois",
-      "Profils illimités (vs 4 par défaut)",
-      "Archives complètes de tes contenus",
-      "Badge Passion sur tous tes profils",
-      "Statistiques avancées par profil",
-      "Annulable à tout moment"
-    ],
-    annual: false
-  },
-  {
-    id: "pass_annual",
-    title: "Pass Passion Annuel",
-    badge: "Économise 30 💎 Passia",
-    price: 89.00,
-    period: "/ an",
-    monthlyPassia: 200, // 2400 sur l'année
-    perks: [
-      "2 400 💎 Passia répartis sur l'année",
-      "Tous les avantages du Pass mensuel",
-      "Accès anticipé aux nouveautés",
-      "Badge Mécène (édition limitée)",
-      "Soutien direct au développement",
-      "30 € d'économie vs mensuel"
-    ],
-    annual: true
-  },
-];
-
-function renderShop() {
-  const grid = $("#packGrid");
-  if (!grid) return;
-  grid.innerHTML = PASSIA_PACKS.map(p => {
-    const total = p.base + p.bonus;
-    const cls = p.popular ? "popular" : (p.mega ? "mega" : "");
-    return `<div class="pack-card ${cls}" onclick="openBuyModal('${escapeJsArg(p.id)}')">
-      <div class="pack-emoji">${p.emoji}</div>
-      <div class="pack-name">${escapeHtml(p.name)}</div>
-      <div class="pack-amount">
-        <span class="pack-amount-num">${total}</span>
-        <span class="pack-amount-emoji">💎</span>
-      </div>
-      ${p.bonus > 0 ? `<span class="pack-bonus">+${p.bonus} bonus</span>` : '<span style="font-size:11px;color:var(--muted);display:block;margin-bottom:6px;">Sans bonus</span>'}
-      <div class="pack-price">
-        ${p.price.toFixed(2).replace('.', ',')} €
-        <div class="pack-price-per">${(p.price / total * 100).toFixed(2).replace('.', ',')} ¢ / Passia</div>
-      </div>
-    </div>`;
-  }).join("");
-
-  const passList = $("#passList");
-  if (passList) {
-    passList.innerHTML = PASSIA_PASSES.map(p => `
-      <div class="pass-card ${p.annual ? 'annual' : ''}" onclick="openBuyPassModal('${escapeJsArg(p.id)}')">
-        <div class="pass-card-head">
-          <div class="pass-card-title">${escapeHtml(p.title)}</div>
-          <div class="pass-card-badge">${escapeHtml(p.badge)}</div>
-        </div>
-        <div class="pass-card-price">
-          ${p.price.toFixed(2).replace('.', ',')} €
-          <span class="pass-card-price-per">${escapeHtml(p.period)}</span>
-        </div>
-        <ul class="pass-card-perks">
-          ${p.perks.map(pk => `<li>${escapeHtml(pk)}</li>`).join("")}
-        </ul>
-        <button class="pass-card-cta">Activer ce pass</button>
-      </div>
-    `).join("");
-  }
-}
-
-function openBuyModal(packId) {
-  const p = PASSIA_PACKS.find(x => x.id === packId);
-  if (!p) return;
-  const total = p.base + p.bonus;
-  const html = `
-    <div class="modal-handle"></div>
-    <span class="modal-close" onclick="closeModal()">×</span>
-    <div class="pay-modal-head">
-      <div class="pay-modal-emoji">${p.emoji}</div>
-      <div class="pay-modal-title">Pack ${escapeHtml(p.name)}</div>
-    </div>
-    <div class="pay-modal-amount">
-      <div class="pay-modal-amount-big">${total} 💎</div>
-      <div class="pay-modal-amount-sub">${p.bonus > 0 ? `${p.base} + ${p.bonus} bonus offerts ·` : ""} ${p.price.toFixed(2).replace('.', ',')} €</div>
-    </div>
-    <div style="font-size:13px;color:var(--text-dim);margin-bottom:10px;text-align:center;">Choisis ton moyen de paiement</div>
-    <button class="pay-method" onclick="confirmPurchase('${escapeJsArg(p.id)}', 'apple')">
-      <span class="pay-method-icon">🍎</span>
-      Apple Pay
-      <span class="pay-method-arrow">›</span>
-    </button>
-    <button class="pay-method" onclick="confirmPurchase('${escapeJsArg(p.id)}', 'google')">
-      <span class="pay-method-icon">🅖</span>
-      Google Pay
-      <span class="pay-method-arrow">›</span>
-    </button>
-    <button class="pay-method" onclick="confirmPurchase('${escapeJsArg(p.id)}', 'card')">
-      <span class="pay-method-icon">💳</span>
-      Carte bancaire (Visa, Mastercard)
-      <span class="pay-method-arrow">›</span>
-    </button>
-    <button class="pay-method" onclick="confirmPurchase('${escapeJsArg(p.id)}', 'paypal')">
-      <span class="pay-method-icon">🅿️</span>
-      PayPal
-      <span class="pay-method-arrow">›</span>
-    </button>
-    <p style="font-size:10.5px;color:var(--muted);text-align:center;margin-top:14px;line-height:1.5;">
-      🔒 Paiement traité par Stripe, chiffré bout en bout · Remboursement 14 jours sans justification
-    </p>
-  `;
-  openModal(html);
-}
-
-function openBuyPassModal(passId) {
-  const p = PASSIA_PASSES.find(x => x.id === passId);
-  if (!p) return;
-  const html = `
-    <div class="modal-handle"></div>
-    <span class="modal-close" onclick="closeModal()">×</span>
-    <div class="pay-modal-head">
-      <div class="pay-modal-emoji">${p.annual ? "👑" : "✨"}</div>
-      <div class="pay-modal-title">${escapeHtml(p.title)}</div>
-    </div>
-    <div class="pay-modal-amount" style="${p.annual ? 'background: linear-gradient(135deg, #b45309, #f59e0b);' : ''}">
-      <div class="pay-modal-amount-big">${p.price.toFixed(2).replace('.', ',')} €</div>
-      <div class="pay-modal-amount-sub">${escapeHtml(p.period)} · ${p.annual ? "2 400" : "200"} 💎 inclus</div>
-    </div>
-    <div style="font-size:12.5px;color:var(--text);margin-bottom:14px;line-height:1.5;background:rgba(139,92,246,0.06);padding:10px 12px;border-radius:10px;">
-      <b>Sans engagement.</b> ${p.annual ? "Renouvellement annuel automatique, annulable à tout moment depuis ton wallet." : "Renouvellement mensuel automatique, annulable en 1 clic."}
-    </div>
-    <div style="font-size:13px;color:var(--text-dim);margin-bottom:10px;text-align:center;">Choisis ton moyen de paiement</div>
-    <button class="pay-method" onclick="confirmPassPurchase('${escapeJsArg(p.id)}', 'apple')">
-      <span class="pay-method-icon">🍎</span>
-      Apple Pay
-      <span class="pay-method-arrow">›</span>
-    </button>
-    <button class="pay-method" onclick="confirmPassPurchase('${escapeJsArg(p.id)}', 'card')">
-      <span class="pay-method-icon">💳</span>
-      Carte bancaire
-      <span class="pay-method-arrow">›</span>
-    </button>
-    <p style="font-size:10.5px;color:var(--muted);text-align:center;margin-top:14px;line-height:1.5;">
-      🔒 Paiement sécurisé · Annulable à tout moment · Aucun frais caché
-    </p>
-  `;
-  openModal(html);
-}
-
-function confirmPurchase(packId, method) {
-  const p = PASSIA_PACKS.find(x => x.id === packId);
-  if (!p) return;
-  const total = p.base + p.bonus;
-
-  // Crédite le wallet
-  state.user.passia += total;
-  state.transactions.unshift({
-    id: uid(),
-    kind: "purchase",
-    pts: 0,
-    passia: total,
-    label: `Achat pack ${p.name} · ${p.price.toFixed(2).replace('.', ',')} €`,
-    at: Date.now(),
-  });
-  saveState();
-  closeModal();
-  renderTopbar();
-  renderWallet();
-  // Confettis virtuels via toast festif
-  rewardToast(0, total, `🎉 Achat confirmé · ${p.name}`);
-  toast(`💎 +${total} Passia crédités sur ton wallet !`, "success");
-}
-
-function confirmPassPurchase(passId, method) {
-  const p = PASSIA_PASSES.find(x => x.id === passId);
-  if (!p) return;
-  const credit = p.annual ? 2400 : 200;
-
-  state.user.passia += credit;
-  state.user.activePass = {
-    id: p.id,
-    title: p.title,
-    activeSince: Date.now(),
-    nextBillingAt: p.annual ? Date.now() + 365 * 86400000 : Date.now() + 30 * 86400000,
-  };
-  state.transactions.unshift({
-    id: uid(),
-    kind: "pass_purchase",
-    pts: 0,
-    passia: credit,
-    label: `Pass activé : ${p.title} · ${p.price.toFixed(2).replace('.', ',')} €`,
-    at: Date.now(),
-  });
-  saveState();
-  closeModal();
-  renderTopbar();
-  renderWallet();
-  rewardToast(0, credit, `👑 Pass ${p.title} activé !`);
-  toast(`✨ Bienvenue dans le Pass Passion · +${credit} Passia`, "success");
-}
-
-// Bascule des onglets Wallet
-function setWalletTab(tabId) {
-  $$(".wallet-tab").forEach(t => t.classList.toggle("active", t.getAttribute("data-wallettab") === tabId));
-  $$(".wallet-pane").forEach(p => p.classList.toggle("active", p.getAttribute("data-walletpane") === tabId));
-  if (tabId === "shop") renderShop();
-  // scroll en haut du wallet
-  $("#appMain").scrollTop = 0;
-}
-document.addEventListener("click", (e) => {
-  const t = e.target.closest("[data-wallettab]");
-  if (t) setWalletTab(t.getAttribute("data-wallettab"));
-});
+// ======== BOUTIQUE PASSIA — SUPPRIMÉE (ADR-009) ========
+// Packs Passia, Pass Passion, achats simulés, crédit de solde et `setWalletTab`
+// sont sortis du produit avec l'écran Wallet. Un besoin de paiement futur devra
+// être un paiement DIRECT en monnaie réelle, sans monnaie intermédiaire PASSIO.
 
 // ======== MESSAGERIE ========
 const SEED_CONVERSATIONS = [
