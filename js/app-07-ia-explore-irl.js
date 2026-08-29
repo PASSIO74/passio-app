@@ -2272,7 +2272,7 @@ function _irlEmptyStateHtml() {
       + '<button class="btn primary" style="margin-top:10px;" onclick="clearAllIrlFilters()">✕ Tout afficher</button></div>';
   }
   return '<div class="empty"><div class="empty-icon">🗓</div><div class="empty-title">Aucun événement</div>'
-    + '<div class="empty-text">Crée le premier pour +30 pts.</div>'
+    + '<div class="empty-text">Crée le premier et donne rendez-vous.</div>'
     + '<button class="btn primary" style="margin-top:10px;" onclick="openCreateEvent()">+ Créer</button></div>';
 }
 
@@ -3368,7 +3368,7 @@ function openEventDetails(id) {
     ${_canCheckIn(ev) ? `
       <button class="btn ${_hasCheckedIn(ev) ? "ghost" : "primary"} block" style="font-size:12px;margin-bottom:8px;"
         ${_hasCheckedIn(ev) ? "disabled" : ""} onclick="checkInEvent('${escapeJsArg(ev.id)}')">
-        ${_hasCheckedIn(ev) ? "✅ Arrivée confirmée" : "📍 Je suis sur place · +25 pts"}
+        ${_hasCheckedIn(ev) ? "✅ Arrivée confirmée" : "📍 Je suis sur place"}
       </button>
       ${_hasCheckedIn(ev) ? "" : `<button class="btn ghost block" style="font-size:12px;margin-bottom:8px;" onclick="openCheckinCodeEntry('${escapeJsArg(ev.id)}')">📲 J'ai un code d'accueil</button>`}` : ""}
 
@@ -3482,7 +3482,7 @@ function _refreshEventDetailCta(ev, joined) {
   const isFull = spotsLeft !== null && spotsLeft <= 0 && !joined;
   cta.innerHTML = `
     <button class="btn ${joined ? "ghost" : "primary"} block" ${isFull ? "disabled" : ""} onclick="toggleJoinEventDetail('${escapeJsArg(ev.id)}')">
-      ${joined ? "✓ Inscrit — Se désinscrire" : isFull ? "⚠️ Complet" : "+ Rejoindre · +25 pts · +5 💎"}
+      ${joined ? "✓ Inscrit — Se désinscrire" : isFull ? "⚠️ Complet" : "+ Rejoindre"}
     </button>
   `;
 }
@@ -4654,7 +4654,7 @@ function openCreateEvent(editId) {
   openModal(`
     <div class="modal-handle"></div>
     <div class="modal-title">${editId ? "✏️ Modifier l'événement" : "✨ Créer un événement IRL"}</div>
-    <div class="modal-subtitle">${editId ? "Les inscrits seront prévenus de tes changements." : "Rejoins ou crée des moments réels avec ta communauté. +30 pts · +5 💎"}</div>
+    <div class="modal-subtitle">${editId ? "Les inscrits seront prévenus de tes changements." : "Rejoins ou crée des moments réels avec ta communauté."}</div>
 
     <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.12em;color:var(--accent);margin:14px 0 8px;">🖼 Photo de couverture</div>
     <div id="evCoverPreviewWrap" style="width:100%;height:140px;border-radius:14px;overflow:hidden;background:linear-gradient(135deg,#4c1d95,#7c3aed);display:flex;align-items:center;justify-content:center;margin-bottom:10px;position:relative;cursor:pointer;" onclick="document.getElementById('evCoverFile').click()">
@@ -4752,7 +4752,7 @@ function openCreateEvent(editId) {
       <textarea class="textarea" id="evDesc" placeholder="Programme, ambiance, quoi apporter…" maxlength="800" style="min-height:90px;">${v("desc")}</textarea>
     </label>
 
-    <button class="btn primary block" style="margin-top:8px;" onclick="submitEvent(${editId ? "'" + escapeJsArg(editId) + "'" : ""})">${editId ? "💾 Enregistrer les modifications" : "🎉 Publier · +30 pts"}</button>
+    <button class="btn primary block" style="margin-top:8px;" onclick="submitEvent(${editId ? "'" + escapeJsArg(editId) + "'" : ""})">${editId ? "💾 Enregistrer les modifications" : "🎉 Publier"}</button>
   `);
 
   setTimeout(() => {

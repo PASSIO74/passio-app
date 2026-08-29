@@ -189,13 +189,23 @@ test.describe("UI-6 — composer de publication", () => {
     await expect(page.locator("#studioTypeTabs .studio-type")).toHaveCount(5);
     await expect(page.locator("#fieldPassion")).toBeVisible();
     await expect(page.locator("#fieldMood")).toBeVisible();
-    // Le libellé historique, récompense comprise.
+    // ⚠️ Ce test exigeait le libellé « +10 pts » et des pastilles score/Passia
+    // visibles : c'était ce que ce lot MASQUAIT. L'ADR-009 a depuis retiré la
+    // mécanique elle-même, donc le kill switch n'a plus rien à rendre de ce
+    // côté. Les assertions sont retournées, pas supprimées — elles interdisent
+    // maintenant que couper UI-6 ressuscite l'économie retirée.
     expect(await page.evaluate(() =>
-      document.getElementById("screen-studio").textContent.includes("+10 pts"))).toBe(true);
-    // Et les pastilles du profil sont de retour.
+      document.getElementById("screen-studio").textContent.includes("+10 pts"))).toBe(false);
     await page.evaluate(() => goTo("profiles"));
     await page.waitForTimeout(300);
-    await expect(page.locator(".profile-chips-row")).toBeVisible();
+    await expect(page.locator("#topPassia")).toHaveCount(0);
+    await expect(page.locator("#mainProfileStars")).toHaveCount(0);
+    // La rangée elle-même n'est plus masquée par ce lot : elle ne porte que la
+    // pastille de badges, qui suit sa propre règle (cachée sans badge acquis).
+    expect(await page.evaluate(() => {
+      const r = document.querySelector(".profile-chips-row");
+      return r ? getComputedStyle(r).display : null;
+    })).not.toBe("none");
 
     expect(errors.js, "exceptions JS avec le kill switch").toEqual([]);
   });

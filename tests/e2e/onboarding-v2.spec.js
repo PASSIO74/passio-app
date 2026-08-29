@@ -189,10 +189,18 @@ test("drapeau à false : l'ancien comportement est strictement rétabli", async 
       profils: state.user.profiles.map((p) => p.passion),
       interets: Array.from(_activeFeedPassions),
       score: state.user.score,
+      transactions: state.transactions,
     };
   });
-  // Ancien parcours : un profil PAR passion, aucun filtre de fil, gamification active.
+  // Ancien parcours : un profil PAR passion et aucun filtre de fil — c'est cela
+  // que ce drapeau rétablit, et c'est inchangé.
   expect(r.profils).toEqual(["sport", "musique", "cuisine"]);
   expect(r.interets).toEqual([]);
-  expect(r.score).toBeGreaterThan(0);
+  // ⚠️ Ce test exigeait `score > 0` : le chemin de repli conservait la
+  // gamification que la V2 avait déjà abandonnée. L'ADR-009 l'a retirée des
+  // DEUX chemins — le drapeau ne rétablit plus une économie qui n'existe nulle
+  // part. L'assertion est retournée, pas supprimée : elle interdit désormais la
+  // réapparition des points par cette porte restée entrouverte.
+  expect(r.score).toBeUndefined();
+  expect(r.transactions).toBeUndefined();
 });

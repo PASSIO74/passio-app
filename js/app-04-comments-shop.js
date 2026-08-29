@@ -943,14 +943,14 @@ async function openComments(postId) {
   openModal(`
     <div class="modal-handle"></div>
     <div class="modal-title">Discussion</div>
-    <div class="modal-subtitle">Commente pour gagner +3 pts.</div>
+    <div class="modal-subtitle">Réponds à cette publication.</div>
     <div id="commentsBox" style="max-height:260px;overflow-y:auto;margin-bottom:12px;" aria-live="polite">
       ${localComments.length ? _renderCommentsList(localComments, postId) : (_willLoad ? _commentSkeletonHtml(4) : _emptyStateHtml)}
     </div>
     <textarea class="textarea" id="newComment" placeholder="Ajoute un commentaire…" maxlength="400" style="min-height:44px;" oninput="autoResizeTextarea(this);_syncComposerSendState(this)" onkeydown="if((event.metaKey||event.ctrlKey)&&event.key==='Enter'){event.preventDefault();submitComment('${escapeJsArg(postId)}');}"></textarea>
     <div style="display:flex;align-items:center;gap:6px;margin-top:8px;">
       ${_cmtComposerToolsHtml("newComment", "submitComment", postId)}
-      <button class="btn primary" style="flex:1;" onclick="submitComment('${escapeJsArg(postId)}')">Publier · +3 pts</button>
+      <button class="btn primary" style="flex:1;" onclick="submitComment('${escapeJsArg(postId)}')">Publier</button>
     </div>
   `);
   // Bouton d'envoi désactivé tant que le champ est vide (état initial).
@@ -1512,7 +1512,7 @@ function openCommentSheet(threadId, title) {
   openModal(
     '<div class="modal-handle"></div>'
     + '<div class="modal-title">' + (title || "💬 Commentaires") + '</div>'
-    + '<div class="modal-subtitle">Commente pour gagner +3 pts.</div>'
+    + '<div class="modal-subtitle">Réponds à cette publication.</div>'
     + '<div id="cmtThreadList" data-thread="' + escapeHtml(threadId) + '" style="max-height:52vh;overflow-y:auto;margin-bottom:12px;">' + initial + '</div>'
     + '<div style="display:flex;gap:6px;align-items:center;">'
     + '<input type="text" class="input" id="cmtThreadInput" placeholder="Écris un commentaire…" maxlength="500" style="flex:1;" onkeypress="if(event.key===\'Enter\')submitCommentSheet(\'' + escapeJsArg(threadId) + '\')"/>'

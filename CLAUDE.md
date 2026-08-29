@@ -263,6 +263,23 @@ Ce qui a disparu, et où : `RANKS`/`REWARDS`/`LIKES_PER_PASSIA` + `seedQuests`
    jamais lieu** (le RSVP est gratuit, `price` n'est qu'un affichage). Il est
    redevenu un montant indicatif en €, ce que l'ADR autorise explicitement.
 
+⑤ **Retirer un gros bloc de `index.html` emporte facilement une balise
+   STRUCTURELLE voisine.** La suppression de `#screen-wallet` a avalé le
+   `</main>` qui la suivait : `.app-nav` s'est retrouvée DANS la zone
+   scrollable, sa base à 9 735 px au lieu de 667 — cinq tests `cadrage` au
+   rouge, sans la moindre erreur JS. Après tout retrait de balisage, compter
+   les balises structurelles contre la version d'avant, ou passer le fichier à
+   `html.parser` : le nombre d'erreurs doit être IDENTIQUE, pas nul (index.html
+   en porte une, préexistante).
+
+⑥ **Les libellés promettaient des points que le moteur ne donnait plus.**
+   « ✨ Publier · +10 pts », « Publier · +3 pts », « + Rejoindre · +25 pts ·
+   +5 💎 », « Crée le premier pour +30 pts »… étaient du texte en dur dans
+   `index.html` et quatre app-*.js, invisibles d'une recherche sur `passia` ou
+   `grantReward`. Le lot UI-6 n'en masquait qu'un seul, et son test de kill
+   switch EXIGEAIT le retour de « +10 pts » — c'est ce test qui les a révélés.
+   Chercher aussi `\+[0-9]+ ?pts` et `\+[0-9]+ ?💎` avant de conclure.
+
 Verrou de non-régression : `tests/e2e/adr-009-retrait-economie.spec.js` (7 tests)
 couvre la surface, le moteur, la création d'un 4ᵉ profil, et l'aller-retour de
 synchronisation avec un ancien client.

@@ -1717,7 +1717,7 @@ function buildSeed() {
     { id: "n2", kind: "follow",  fromId: "u_clara", text: "<b>Clara Jensen</b> suit maintenant ton profil voyage", createdAt: hours(1), unread: true,  emoji: "🤝" },
     { id: "n3", kind: "comment", fromId: "u_yanis", text: "<b>Yanis Perez</b> a réagi à un post : « On devrait échanger 🚀 »", createdAt: hours(2), unread: true,  emoji: "💬" },
     { id: "n4", kind: "event",   fromId: "u_theo",  text: "<b>Théo Roussel</b> t'invite au « Dîner entre passionnés de cuisine »", createdAt: hours(3), unread: false, emoji: "🍳" },
-    { id: "n5", kind: "quest",   fromId: "me",      text: "Nouvelle quête du jour : publie ton premier post 🎨 <b>+15 pts</b>", createdAt: hours(5), unread: false, emoji: "🎯" },
+    { id: "n5", kind: "system",  fromId: "me",      text: "Ta première publication attend : montre ce que tu aimes 🎨", createdAt: hours(5), unread: false, emoji: "✨" },
     { id: "n6", kind: "system",  fromId: "me",      text: "Bienvenue sur PASSIO 🎉 Choisis tes passions et découvre qui les partage.", createdAt: hours(6), unread: false, emoji: "✨" },
     { id: "n7", kind: "like",    fromId: "u_karim", text: "<b>Karim Belkacem</b> a réagi à ta passion photo", createdAt: hours(10), unread: false, emoji: "📷" },
   ];

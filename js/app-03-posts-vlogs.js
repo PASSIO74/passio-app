@@ -713,7 +713,7 @@ function _syncCarnetEditorMode() {
   var t = document.getElementById("cdvEditorTitle");
   if (t) t.textContent = editing ? "✏️ Modifier le carnet" : "📔 Nouveau carnet";
   var b = document.getElementById("cdvPublishBtn");
-  if (b) b.textContent = editing ? "✅ Enregistrer les modifications" : "✨ Publier mon carnet · +50 pts";
+  if (b) b.textContent = editing ? "✅ Enregistrer les modifications" : "✨ Publier mon carnet";
 }
 
 // ⭐ Favoris des LIVES. L'onglet « Mes favoris » ne couvrait que les carnets :
