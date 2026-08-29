@@ -24,6 +24,14 @@ async function boot(page, opts = {}) {
   if (opts.killLocal) {
     await page.addInitScript(() => localStorage.setItem("passio_ui_6", "0"));
   }
+  // ⚠️ CONVENTION DE TEST (la même qu'aux mises en ligne d'UI-3A et d'UI-4) :
+  // le lot UI-8 recouvre le VOCABULAIRE de cette ligne — « Passion : … ·
+  // Modifier » devient « Publication dans : … · Changer », parce que le mot
+  // « profil » y est désormais réservé au profil personnel. Cette suite observe
+  // les mots d'avant : elle pose donc le kill switch du lot qui les recouvre, et
+  // garde TOUTES ses assertions. Les nouveaux mots sont prouvés à part, dans
+  // `ui-v8-passions.spec.js`, avec leur restitution sous coupure.
+  await page.addInitScript(() => localStorage.setItem("passio_ui_8", "0"));
   await bootOnboarded(page, opts.errors || null, 1, {});
   await page.evaluate(() => {
     window.supaLoadPosts = async () => [];

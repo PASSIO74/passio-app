@@ -2062,7 +2062,7 @@ const COLORS_PASSION_BG = {
 function renderReelHTML(post, idx) {
   const author = authorOfReel(post);
   const passion = passionById(post.passion) || { label: post.passion, emoji: "✨" };
-  const moodLabel = ({ creation: "Création", learn: "Apprendre", chill: "Chill", actu: "Actu" })[post.mood] || "Tout";
+  const moodLabel = moodShortLabel(post.mood);
   // Source de vérité = l'état persisté des likes (partagé avec le fil), pas le Set
   // volatil du viewer : un post aimé dans le fil doit apparaître aimé en Bobines.
   const isLiked = ((state.user.likedPosts || []).indexOf(post.id) > -1) || reelsState.liked.has(post.id);
@@ -2763,7 +2763,7 @@ function openReelShareModal(postId) {
   const url = (_lk && tel.tagUrl) ? tel.tagUrl(rawUrl, _lk) : rawUrl;
   const author = authorOfReel(reel);
   const passion = passionById(reel.passion) || { label: reel.passion, emoji: "✨" };
-  const moodLabel = ({ creation: "Création", learn: "Apprendre", chill: "Chill", actu: "Actu" })[reel.mood] || "Tout";
+  const moodLabel = moodShortLabel(reel.mood);
   const txt = reel.text || reel.caption || "";
 
   // Créer des URLs de partage pour les réseaux sociaux

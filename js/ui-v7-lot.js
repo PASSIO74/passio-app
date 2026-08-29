@@ -4,13 +4,14 @@
 // Trois surfaces, un seul module — elles partagent le même drapeau, la même
 // mécanique d'observation et les mêmes verrous :
 //
-//   ③ LE FIL. La rangée des passions (`#profileStrip`) devient une file de
-//      petites pastilles « emoji + libellé » qui REVIENT À LA LIGNE au lieu de
-//      défiler, bornée à deux rangées, avec un bouton « Autres » quand il y en
-//      a davantage. Les stories restent des cercles : c'est justement ce qui
-//      les distingue désormais des passions. Aucun moteur de classement ni de
-//      défilement n'est touché — `toggleProfileFilter` et
-//      `toggleFollowingFilter` restent les seuls points d'écriture.
+//   ③ LE FIL. La rangée des passions (`#profileStrip`) et celle des stories
+//      sont RÉDUITES d'environ un quart. Rectifié le 2026-08-29 : ce lot avait
+//      d'abord transformé les passions en pastilles « emoji + libellé » qui
+//      revenaient à la ligne ; Benjamin les veut en BULLES comme avant, juste
+//      plus petites. C'est donc purement une affaire de CSS — aucun moteur de
+//      rendu, de classement ni de défilement n'est touché, et
+//      `toggleProfileFilter` / `toggleFollowingFilter` restent les seuls
+//      points d'écriture.
 //
 //   ⑥ LE PROFIL. Trois onglets NOMMÉS (Publications · Activités · À propos)
 //      remplacent les cinq onglets d'icônes, qui redeviennent de petits
@@ -25,10 +26,10 @@
 // ⚠️ CINQ PIÈGES PAYÉS À L'ÉCRITURE, dans l'ordre où ils se présentent :
 //
 // ① `renderProfileStrip` (app-06) réécrit `#profileStrip.innerHTML` et garde
-//    son propre cache `_lastHtml`. Le bouton « Autres » est donc posé en
-//    FRÈRE du conteneur, jamais dedans : dans la rangée il serait effacé au
-//    rendu suivant, et — parce que la rangée est bornée en hauteur — il serait
-//    de toute façon le premier élément à passer sous la coupe.
+//    son propre cache `_lastHtml` : tout nœud injecté DANS la rangée serait
+//    effacé au rendu suivant. C'est pourquoi la compacité des passions est
+//    portée par le CSS seul — un module qui voudrait y ajouter quoi que ce
+//    soit devrait le poser en FRÈRE du conteneur, jamais dedans.
 //
 // ② Les nœuds du profil sont DÉPLACÉS, pas régénérés. `#myPosts`,
 //    `#profileList`, `#profileEvents`, `#profileTopPosts` et `.profile-tabs`
@@ -127,55 +128,12 @@
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // ③ LE FIL — passions compactes, bornées à deux rangées, avec « Autres »
+  // ③ LE FIL — les passions restent des bulles, simplement plus compactes
   // ══════════════════════════════════════════════════════════════════════════
-  var BTN_AUTRES = "v7StripMore";
-
-  function bande() { return el("profileStrip"); }
-
-  // Piège ① : le bouton est un FRÈRE de la rangée, jamais un de ses enfants.
-  function poserBoutonAutres() {
-    var b = bande();
-    if (!b || !b.parentNode) return;
-    var btn = el(BTN_AUTRES);
-    if (!btn) {
-      btn = document.createElement("button");
-      btn.type = "button";
-      btn.id = BTN_AUTRES;
-      btn.className = "v7-strip-more";
-      btn.setAttribute("aria-expanded", "false");
-      btn.textContent = "Autres";
-      btn.addEventListener("click", function () {
-        var bb = bande();
-        if (!bb) return;
-        var ouvert = bb.classList.toggle("v7-strip-open");
-        bb.removeAttribute("data-v7-sig");   // la signature change : on remesurera
-        btn.setAttribute("aria-expanded", ouvert ? "true" : "false");
-        btn.textContent = ouvert ? "Moins" : "Autres";
-        track("ui_v7_passions_autres", { open: ouvert });
-      });
-      b.parentNode.insertBefore(btn, b.nextSibling);
-    }
-    // Il ne s'affiche que s'il y a réellement quelque chose de plus à voir :
-    // la rangée tient sur deux lignes dans l'immense majorité des comptes.
-    // ⚠️ Mesurer `scrollHeight` force un recalcul de mise en page, et
-    // l'observateur du fil se déclenche à chaque rendu. On ne remesure donc que
-    // lorsque la rangée a effectivement changé (nombre de pastilles, largeur de
-    // la boîte, état déplié) — pas à chaque mutation du fil.
-    var ouvert = b.classList.contains("v7-strip-open");
-    var sig = b.children.length + "|" + b.clientWidth + "|" + (ouvert ? "1" : "0");
-    if (b.getAttribute("data-v7-sig") === sig) return;
-    b.setAttribute("data-v7-sig", sig);
-    var deborde = b.scrollHeight > b.clientHeight + 2;
-    btn.hidden = !(deborde || ouvert);
-  }
-
-  function retirerBoutonAutres() {
-    var btn = el(BTN_AUTRES);
-    if (btn && btn.parentNode) btn.parentNode.removeChild(btn);
-    var b = bande();
-    if (b) { b.classList.remove("v7-strip-open"); b.removeAttribute("data-v7-sig"); }
-  }
+  // Rien à faire en JavaScript : la compacité est entièrement portée par le
+  // bloc CSS `:root.passio-ui-7 #screen-feed .profile-tile*`. Le rendu, le
+  // défilement horizontal et les filtres restent ceux de `renderProfileStrip`
+  // (app-06), qu'aucun code de ce module ne touche.
 
   // ══════════════════════════════════════════════════════════════════════════
   // ⑥ LE PROFIL — trois onglets nommés
@@ -540,7 +498,14 @@
     var s = el("v7BobinePassion");
     var st = etat();
     if (!s || !st || !st.user) return;
-    var profils = st.user.profiles || [];
+    // ⚠️ Même règle que `renderStudio` (app-06) depuis le lot UI-8 : on ne
+    // propose pas de publier dans une passion archivée. Deux composeurs qui ne
+    // répondent pas la même chose à « où puis-je publier ? », c'est la porte
+    // dérobée assurée.
+    var profils = (st.user.profiles || []).filter(function (p) {
+      try { return !(typeof passionsUnifieesActives === "function" && passionsUnifieesActives() && p.archived); }
+      catch (e) { return true; }
+    });
     var courant = st.user.currentProfileId;
     s.innerHTML = "";
     profils.forEach(function (p) {
@@ -676,7 +641,6 @@
     if (enPanne) return;
     if (!actif()) return;          // piège ⑤ : verrou de coupure
     try {
-      if (bande()) poserBoutonAutres();
       if (ecranProfil()) construireProfil();
       if (editeur()) decorerBobine();
     } catch (e) {
@@ -712,7 +676,6 @@
     if (!actif()) {
       racine.classList.remove(CLASSE_RACINE);
       cesserObservation();
-      retirerBoutonAutres();
       retirerProfil();
       retirerBobine();
       return false;
@@ -720,7 +683,6 @@
     enPanne = false;
     racine.classList.add(CLASSE_RACINE);
     if (!observateurs.length) {
-      observer(el("screen-feed"));
       observer(ecranProfil());
       observer(editeur());
     }

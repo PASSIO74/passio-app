@@ -76,6 +76,11 @@ async function boot(page, opts = {}) {
   // Coupure du lot AVAL (UI-4A4), qui déménage les intentions dans « Outils » :
   // cette suite décrit leur place d'origine, en tête d'écran. Voir l'entête.
   await page.addInitScript(() => localStorage.setItem("passio_ui_4a4", "0"));
+  // Coupure du lot AVAL (UI-4A5, 2026-08-29), qui rend les MÊMES intentions
+  // dans son panneau en ligne : sans elle, `[data-v4a0-intent]` désigne deux
+  // nœuds et le mode strict de Playwright refuse le clic. Même raison que
+  // pour UI-4A4 ci-dessus — cette suite décrit les intentions en tête d'écran.
+  await page.addInitScript(() => localStorage.setItem("passio_ui_4a5", "0"));
   if (opts.killLocal) {
     await page.addInitScript(() => localStorage.setItem("passio_ui_4a0", "0"));
   }

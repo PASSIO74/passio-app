@@ -255,9 +255,16 @@ function openPassionExplorer(pid) {
 
   var postsHTML = posts.length ? posts.slice(0,6).map(renderPostHTML).join("") : '<div class="empty"><div class="empty-icon">✏️</div><div class="empty-text">Aucun post pour l\'instant</div></div>';
 
-  var profileBtn = hasProfile
-    ? '<span class="pill active">Ton profil</span>'
-    : '<button class="btn small primary" onclick="quickCreateProfile(\'' + escapeJsArg(pid) + '\')">+ Créer profil</button>';
+  // Lot UI-8 : une passion ARCHIVÉE n'est pas « ta passion » — mais ce n'est pas
+  // non plus une passion à créer (elle existe, rangée). On propose la
+  // restauration, qui est le seul geste juste ici.
+  var _v8Arch = false;
+  try { _v8Arch = !!(hasProfile && hasProfile.archived && typeof passionsUnifieesActives === "function" && passionsUnifieesActives()); } catch (e) {}
+  var profileBtn = _v8Arch
+    ? '<button class="btn small ghost" onclick="restaurerPassion(\'' + escapeJsArg(hasProfile.id) + '\')">Restaurer cette passion</button>'
+    : (hasProfile
+      ? '<span class="pill active">Ta passion</span>'
+      : '<button class="btn small primary" onclick="quickCreateProfile(\'' + escapeJsArg(pid) + '\')">+ Créer profil</button>');
 
   var html = '\
     <div class="modal-handle"></div>\
@@ -2197,21 +2204,28 @@ function irlToolsSections() {
   var hasMine = !!(typeof irlFilters !== "undefined" && irlFilters && irlFilters.has("mine"));
   var hasJoined = !!(typeof irlFilters !== "undefined" && irlFilters && irlFilters.has("joined"));
   var funnel = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18l-7 8v6l-4-2v-4z"/></svg>';
+  // ⚠️ Chaque section porte un `id` STABLE. C'est un contrat, pas un ornement :
+  // le lot UI-4A5 affiche ces mêmes sections en ligne sous les onglets de
+  // « Rencontrer » et doit en RETIRER une (« affiner »), dont il rend les
+  // contrôles — calendrier, curseur de distance, plage horaire — directement.
+  // Filtrer sur le TITRE aurait rejoué le piège du lot UI-4A4 : renommer un
+  // libellé y avait fait disparaître une section entière, en silence.
+  // `contextual-nav.js` ignore les clés qu'il ne connaît pas.
   return {
     title: "Filtres",
     sections: [
-      { title: "Autour de moi", items: [
+      { id: "ville", title: "Autour de moi", items: [
         { icon: "🌍", label: "Choisir une ville", sub: city, onClick: "closeCtxTools();openIrlCitySelector()" }
       ] },
       // ⚠️ Le panneau s'intitule désormais « Filtres » (§1 du lot UI-7) : une
       // section qui porterait le même mot ne dirait plus rien. Elle nomme donc
       // ce qu'elle contient réellement.
-      { title: "Affiner la recherche", items: [
+      { id: "affiner", title: "Affiner la recherche", items: [
         { icon: funnel, label: "Date, distance, horaire",
           sub: advCount ? (advCount + " filtre" + (advCount > 1 ? "s" : "") + " actif" + (advCount > 1 ? "s" : "")) : "Tout afficher",
           badge: advCount || "", onClick: "closeCtxTools();openIrlFiltersPanel()" }
       ] },
-      { title: "Mes événements", items: [
+      { id: "miens", title: "Mes événements", items: [
         { icon: "👤", label: "Mes événements", data: { irlfilter: "mine" }, active: hasMine },
         { icon: "✅", label: "Mes inscriptions", data: { irlfilter: "joined" }, active: hasJoined }
       ] }
