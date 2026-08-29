@@ -10661,6 +10661,46 @@ body.ctx-locked #appMain { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) {
   .v8-chip, .v8-passion-card { transition: none; }
 }
+/* ── Pastille « messages non lus » sur la barre de navigation ──────────────
+   Posée par renderMsgBadge (app-08). Elle répare un manque, pas un lot : depuis
+   UI-7 §4 l'icône Messages a quitté le bandeau supérieur, et AUCUNE surface
+   n'indiquait plus un message non lu — la fonction calculait un nombre juste
+   pour l'écrire dans un élément masqué. Cette règle vit donc dans la feuille
+   commune, sans classe racine de lot : aucun kill switch ne doit la retirer.
+
+   ⚠️ Ce bloc est posé AVANT celui d'UI-4A5, qui doit rester le DERNIER de la
+   feuille (ses sélecteurs gagnent par la position). */
+/* Lot UI-7 §4 : l'icône Messages du bandeau supérieur est MASQUÉE, jamais
+   retirée. Deux portes pour un même écran encombraient la tête de
+   l'application — mais cette justification ne tient QUE si l'autre porte
+   existe : c'est la barre du bas V2 (lot UI-1) qui la fournit, la barre
+   historique n'a jamais eu d'entrée Messages.
+   D'où la double condition : on ne masque que si UI-7 ET UI-1 sont actifs.
+   Couper l'un OU l'autre rend l'icône — sinon un kill switch laissait
+   l'application sans AUCUN accès à Messages, ce qui est un état inédit et
+   non l'état d'avant. */
+:root.passio-ui-7.passio-ui-v2 #topbarMessages { display: none; }
+
+.app-nav .nav-item { position: relative; }
+.nav-msg-badge {
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  transform: translateX(4px);
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 16px;
+  text-align: center;
+  box-shadow: 0 0 0 2px var(--bg-card);
+  pointer-events: none;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    PASSIO UI V4 — lot UI-4A5 : « Filtres » est une VUE, et les bulles de passion
    vivent dedans.  ACTIF PAR DÉFAUT.
