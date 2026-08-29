@@ -3603,7 +3603,10 @@ function renderConvFpThread(c, displayName) {
     } else if (m.text) {
       if (m.text.startsWith('📍')) {
         var parts2 = m.text.split(': ');
-        content = '<a href="' + escapeHtml(parts2[1]||'') + '" target="_blank" rel="noopener" style="color:inherit;">' + escapeHtml(m.text) + '</a>';
+        // ⚠️ C'est un ATTRIBUT href alimenté par le texte d'un message reçu :
+        // `escapeHtml` ne bloque PAS `javascript:` — seul `safeUrlAttr` le fait
+        // (il n'accepte que http(s), data:image|audio|video et blob:).
+        content = '<a href="' + safeUrlAttr(parts2[1]||'') + '" target="_blank" rel="noopener" style="color:inherit;">' + escapeHtml(m.text) + '</a>';
       } else {
         content = escapeHtml(m.text);
       }
@@ -3637,7 +3640,10 @@ function renderConvFpThread(c, displayName) {
     var reactHtml = "";
     if (m.reactions && Object.keys(m.reactions).length) {
       reactHtml = '<div class="conv-reactions ' + (isMe?'me':'them') + '">' +
-        Object.keys(m.reactions).map(function(e){ return '<span class="conv-react-badge">' + e + (m.reactions[e]>1?(' '+m.reactions[e]):'') + '</span>'; }).join('') +
+        // ⚠️ La CLÉ de `m.reactions` vient de la ligne `conv_messages` de l'autre
+        // compte : rien n'oblige un client à y mettre un emoji. Échappée à
+        // l'affichage, comme tout payload librement insérable (règle CLAUDE.md).
+        Object.keys(m.reactions).map(function(e){ return '<span class="conv-react-badge">' + escapeHtml(e) + (m.reactions[e]>1?(' '+escapeHtml(String(m.reactions[e]))):'') + '</span>'; }).join('') +
         '</div>';
     }
 
