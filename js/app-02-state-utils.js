@@ -2728,6 +2728,19 @@ function moodShortLabel(mood) {
   return m ? m.label : "Tout";
 }
 
+// La pastille ELLE-MÊME, ou rien. Ne jamais rendre `<span class="post-mood-tag">`
+// avec un libellé vide : la classe porte `padding: 3px 9px`, `border: 1px` et un
+// fond opaque, donc un libellé vide dessine une CAPSULE CREUSE — mesurée à
+// 20 × 8 px sur un post neutre. Or `moodTagLabel` rend "" pour `all`, pour un
+// mood inconnu et pour un mood absent : tous les posts venus de Supabase
+// retombent sur `mood: "all"`, donc TOUS en portaient une.
+// ⚠️ C'est bien le neutre qui ne doit porter aucun badge (cf. la note de
+// `PASSIO_MOOD_LABELS`) — l'intention était juste, seul le rendu la trahissait.
+function _moodTagHTML(mood) {
+  var t = moodTagLabel(mood);
+  return t ? '<span class="post-mood-tag">' + t + '</span>' : "";
+}
+
 function feedIntentMeta(intent) {
   return { v: FEED_INTENTS_VERSION, flag: "on", intent: normalizeFeedIntent(intent) };
 }
@@ -3145,11 +3158,19 @@ function renderFeedExplorationFallback(list) {
   // Contenus hors de mes passions, affichables dans le fil (un mood sans bouton
   // — "irl" — resterait invisible : l'y mettre ferait une carte fantôme).
   var moodsAffichables = {};
+  // ⚠️ Cette liste se construisait en LISANT LES BOUTONS de `#moodSelector`.
+  // Deux raisons de ne plus le faire, et la seconde est un défaut mesuré :
+  //  · sous UI-7 ce rail est MASQUÉ (`#feedIntentSelector` le remplace) — faire
+  //    dépendre le classement du fil du DOM d'une surface cachée est fragile ;
+  //  · `irl` n'a JAMAIS eu de bouton dans ce rail. Une publication « Rencontrer »
+  //    venue d'une passion que l'on ne suit pas était donc exclue de
+  //    l'exploration — invisible pour exactement les gens qu'elle cherche.
+  //    « Rencontrer » est devenu publiable le 2026-08-29 (#194) ; le défaut
+  //    n'existait pas avant, faute de moyen de produire un tel post.
+  // La table canonique `PASSIO_MOOD_LABELS` fait foi. Elle reste une liste
+  // BLANCHE : un mood inconnu venu de la base n'entre toujours pas.
   try {
-    $$("#moodSelector .mood-btn").forEach(function(b) {
-      var m = b.getAttribute("data-mood");
-      if (m) moodsAffichables[m] = 1;
-    });
+    Object.keys(PASSIO_MOOD_LABELS).forEach(function(m) { moodsAffichables[m] = 1; });
   } catch (e) {}
 
   var candidats = [];
@@ -3896,7 +3917,7 @@ function renderPostHTML(p) {
       ${p._source === "me" ? `<button class="post-menu-btn" onclick="event.stopPropagation();openPostOptions('${escapeJsArg(p.id)}')" aria-label="Options du post" title="Options">
         <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>
       </button>` : ""}
-      <span class="post-mood-tag">${moodTagLabel(p.mood)}</span>
+      ${_moodTagHTML(p.mood)}
     </div>
 
     <div class="post-body" onclick="${FEED_POST_OPEN_FN}('${escapeJsArg(p.id)}')" style="cursor:pointer;">
@@ -3977,7 +3998,7 @@ async function openPost(id) {
         ${(state.userPosts || []).some(function(up){ return up.id === id; }) ? `<button class="post-menu-btn" onclick="event.stopPropagation();openPostOptions('${escapeJsArg(id)}')" aria-label="Options du post" title="Options">
           <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>
         </button>` : ""}
-        <span class="post-mood-tag">${moodTagLabel(post.mood)}</span>
+        ${_moodTagHTML(post.mood)}
       </div>
       <div class="post-body" style="white-space:pre-wrap;">${escapeHtml(post.text || "")}</div>
       ${media ? `<div class="dbl-like" ondblclick="_dblLikeDetail('${escapeJsArg(id)}', event)" title="Double-clic pour aimer ❤️">${media}</div>` : ""}

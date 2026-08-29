@@ -1,0 +1,67 @@
+// ============================================================================
+// LA PASTILLE DE MOOD N'EST JAMAIS UNE CAPSULE VIDE (2026-08-29)
+// ----------------------------------------------------------------------------
+// `moodTagLabel()` rend "" pour le neutre (`all`), pour un mood inconnu et pour
+// un mood absent — c'est VOULU : la note de `PASSIO_MOOD_LABELS` dit que le
+// neutre ne porte aucun badge, sinon tous les posts venus de Supabase, qui
+// retombent sur `mood: "all"`, en recevraient un.
+//
+// Mais le `<span class="post-mood-tag">` était rendu SANS CONDITION. La classe
+// porte `padding: 3px 9px`, `border: 1px solid` et un fond opaque : un libellé
+// vide dessine donc une capsule creuse, mesurée à 20 × 8 px avant correctif.
+// L'intention était juste, seul le rendu la trahissait.
+//
+// Ce fichier tient les deux bords : rien pour le neutre, la pastille complète
+// pour un mood qui en a une.
+// ============================================================================
+const { test, expect } = require("@playwright/test");
+const { bootOnboarded } = require("./app-helper");
+
+async function poser(page, mood) {
+  await page.evaluate((m) => {
+    state.seed.posts = [{
+      id: "p_mood_" + String(m), authorId: "u_lea", passion: "cuisine", mood: m,
+      text: "Publication de contrôle.", createdAt: Date.now() - 3600000,
+      likes: 0, comments: [],
+    }];
+    state.userPosts = []; state.supabasePosts = [];
+    saveState(); goTo("feed"); renderFeed();
+  }, mood);
+  await page.waitForTimeout(700);
+  return page.evaluate(() => {
+    const el = document.querySelector("#feedList .post-mood-tag");
+    if (!el) return { present: false };
+    const r = el.getBoundingClientRect();
+    return { present: true, texte: el.textContent, largeur: Math.round(r.width) };
+  });
+}
+
+test.describe("la pastille de mood", () => {
+  // Le cas majoritaire en production : tout post venu de Supabase porte "all".
+  test("un post neutre n'a AUCUNE pastille, pas même une capsule vide", async ({ page }) => {
+    await bootOnboarded(page);
+    expect((await poser(page, "all")).present).toBe(false);
+  });
+
+  test("un mood inconnu ou absent n'en dessine pas non plus", async ({ page }) => {
+    await bootOnboarded(page);
+    expect((await poser(page, "mood_qui_nexiste_pas")).present).toBe(false);
+    expect((await poser(page, null)).present).toBe(false);
+  });
+
+  // La garde anti-creux : sans elle, ce fichier passerait aussi si la pastille
+  // avait disparu de TOUTES les publications.
+  // ⚠️ Le mood de contrôle doit appartenir à une passion que le compte suit.
+  // Écrit d'abord avec `irl` sur une passion étrangère, ce test sortait rouge —
+  // non parce que la pastille manquait, mais parce que la PUBLICATION n'était
+  // pas rendue : elle passait par le repli d'exploration, qui l'écartait (voir
+  // `exploration-moods.spec.js`). Un test qui se trompe de cause est pire qu'un
+  // test absent.
+  test("un mood connu porte bien sa pastille, avec son libellé", async ({ page }) => {
+    await bootOnboarded(page);
+    const m = await poser(page, "creation");
+    expect(m.present).toBe(true);
+    expect(m.texte).toContain("Idées");
+    expect(m.largeur).toBeGreaterThan(40);
+  });
+});
