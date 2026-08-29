@@ -11237,3 +11237,114 @@ body.ctx-locked #appMain { overflow: hidden; }
 }
 .v7-cover-vue img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .v7-sheet-foot { padding-top: 6px; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PASSIO UI V4 — lot UI-4A5 : « Filtres » est une VUE, et les bulles de passion
+   vivent dedans.  ACTIF PAR DÉFAUT.
+   (coupures : localStorage.passio_ui_4a5 = "0" · window.PASSIO_UI_4A5 = false)
+
+   Tout est ancré à `:root.passio-ui-4a5` et à l'attribut `data-v4a5-vue` que le
+   module pose sur la racine. Coupé, les deux disparaissent : la rangée de
+   passions et les volets de filtres retrouvent leur place (le module les
+   rend lui-même), et le bouton rouvre le dialogue historique.
+
+   ⚠️ Ce bloc RÉÉCRIT deux règles du lot UI-7 (§2), qui donnaient volontairement
+   à la troisième case une allure DIFFÉRENTE parce qu'elle ouvrait un dialogue.
+   Elle n'en ouvre plus : elle redevient une case comme les deux autres, à
+   égalité de largeur et sans séparateur. Les sélecteurs sont à spécificité
+   égale ou supérieure ET plus bas dans le fichier : c'est ce qui les fait
+   gagner, et c'est pourquoi ce bloc doit rester le dernier.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── La troisième case redevient un onglet ────────────────────────── */
+:root.passio-ui-4a5 .v4a3-vue[data-v4a4] {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+:root.passio-ui-4a5 .v4a4-outils-hote {
+  margin-left: 0;
+  padding-left: 0;
+  border-left: 0;
+}
+:root.passio-ui-4a5 .v4a4-outils-hote > .ctx-trigger {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 700;
+  padding-inline: 10px;
+}
+
+/* Violet = sélection, comme Liste et Carte. L'état ne repose PAS que sur la
+   couleur : `aria-selected` le dit aux technologies d'assistance. */
+:root.passio-ui-4a5 .v4a4-outils-hote > .ctx-trigger[aria-selected="true"] {
+  background: var(--accent);
+  color: #fff;
+}
+/* Sur fond violet, la pastille de compte s'inverse : un violet sur violet ne
+   se lirait plus. */
+:root.passio-ui-4a5 .v4a4-outils-hote > .ctx-trigger[aria-selected="true"] .ctx-trigger-badge {
+  background: #fff;
+  color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+/* ── Le panneau : caché hors de sa vue, jamais retiré du DOM ───────────
+   Il héberge des nœuds DÉPLACÉS (#irlPassionRow, les volets de filtres) dans
+   lesquels le moteur historique continue d'écrire à chaque rendu : le retirer
+   de l'arbre les emporterait, et `renderIrlPassionTiles` écrirait dans le
+   vide. On le masque donc, ce qui n'empêche aucune écriture. */
+:root.passio-ui-4a5 .v4a5-panneau { display: none; }
+:root.passio-ui-4a5[data-v4a5-vue="filtres"] .v4a5-panneau { display: block; }
+
+/* Vue Filtres : la liste passe la main, comme la carte le fait en vue Liste.
+   `!important` parce que `#irlSearchEmpty` porte un `display` INLINE, qu'aucun
+   sélecteur ne bat. La liste n'est pas vidée pour autant : le moteur continue
+   d'y écrire, et revenir à la vue Liste la retrouve telle quelle. */
+:root.passio-ui-4a5[data-v4a5-vue="filtres"] #eventList,
+:root.passio-ui-4a5[data-v4a5-vue="filtres"] #irlSearchEmpty {
+  display: none !important;
+}
+
+/* ── Contenu du panneau ──────────────────────────────────── */
+:root.passio-ui-4a5 .v4a5-panneau > .v4a5-section:first-child,
+:root.passio-ui-4a5 .v4a5-panneau > .v4a5-outils:first-child { margin-top: 2px; }
+
+/* Les bulles de passion : mêmes tuiles, même moteur — seule la marge basse
+   change, la rangée n'est plus le premier bloc de l'écran. */
+:root.passio-ui-4a5 #v4a5Passions .msg-filter-tiles { margin: 0; }
+:root.passio-ui-4a5 #v4a5Passions .irl-extra-panel { margin-bottom: 0; }
+
+/* Les quatre intentions, deux par ligne (même grille que le panneau UI-4A4). */
+:root.passio-ui-4a5 .v4a5-intents {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+:root.passio-ui-4a5 .v4a5-intents .v4a0-chip {
+  width: 100%;
+  min-height: 46px;
+  justify-content: flex-start;
+}
+
+/* Les volets Date / Distance / Horaire, déplacés depuis la feuille historique :
+   leur dernière marge basse servait à les décoller du pied de cette feuille. */
+:root.passio-ui-4a5 #v4a5Avance .irl-fpane { margin-bottom: 0; }
+:root.passio-ui-4a5 #v4a5Avance .irl-ftabs { margin-bottom: 12px; }
+
+/* Le pied : effacer, et revenir au résultat. Les deux boutons annoncent ce
+   qu'ils font — le principal porte le NOMBRE d'activités restantes, écrit par
+   le moteur (`_syncIrlFiltersFooter`), jamais recompté ici. */
+:root.passio-ui-4a5 .v4a5-pied {
+  display: flex;
+  gap: 8px;
+  margin: 18px 0 6px;
+}
+:root.passio-ui-4a5 .v4a5-pied .btn { min-width: 0; }
+/* Le principal porte un compte variable (« Voir les 35 événements ») : il
+   prend la place restante, et « Tout effacer » se contente de la sienne.
+   À colonnes égales, le libellé du principal passait à la ligne. */
+:root.passio-ui-4a5 .v4a5-pied #v4a5Done { flex: 1 1 auto; }
+:root.passio-ui-4a5 .v4a5-pied #v4a5Reset { flex: 0 1 auto; white-space: nowrap; }
+
+@media (max-width: 359px) {
+  :root.passio-ui-4a5 .v4a5-intents { grid-template-columns: minmax(0, 1fr); }
+}

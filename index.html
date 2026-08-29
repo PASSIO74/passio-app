@@ -1776,6 +1776,20 @@
      rendu, une chip déplacée y serait arrachée par son propre clic. -->
 <script src="js/ui-v4a4-outils.js"></script>
 
+<!-- UI-4A5 (« Filtres » devient une VUE de Rencontrer, et les bulles de passion
+     y entrent) — hors bloc app : composant autonome (IIFE window.PassioUIV4A5),
+     inliné individuellement au build. ACTIF PAR DÉFAUT ; coupé par
+     localStorage.passio_ui_4a5="0" ou window.PASSIO_UI_4A5=false.
+     ⚠️ Chargé APRÈS ui-v4a3-vue.js et ui-v4a4-outils.js : il transforme en
+     ONGLET le déclencheur #irlToolsBtn qu'UI-4A4 vient de poser dans le
+     commutateur, et son panneau se range juste sous la barre d'UI-4A3.
+     ⚠️ Il DÉPLACE #irlPassionRow et les volets .irl-ftabs / #irlPane* de la
+     feuille #irlFiltersPanel : les moteurs historiques les retrouvent par leur
+     id et continuent d'y écrire. Le clic sur le déclencheur est intercepté en
+     phase de CAPTURE — un écouteur posé sur le bouton s'exécuterait après son
+     onclick inline, qui reste intact pour la coupure. -->
+<script src="js/ui-v4a5-filtres.js"></script>
+
 <!-- UI V6 (§9 composer de publication, §11 sortie des mécaniques économiques) —
      hors bloc app : composant autonome (IIFE window.PassioUIV6), inliné
      individuellement au build. ACTIF PAR DÉFAUT ; coupé par
