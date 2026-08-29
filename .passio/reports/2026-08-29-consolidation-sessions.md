@@ -130,10 +130,11 @@ qui n'a pas besoin de lui.
 1. **Valider visuellement UI-8** ([#193](https://github.com/PASSIO74/passio-app/pull/193), fusionné à 14:43, déploiement en cours au moment
    d'écrire). Il est parti en production sans passer par l'aperçu, comme les
    lots UI-4. Vérifier sur l'appareil réel que « une personne, plusieurs
-   passions » se comporte comme attendu, et **surveiller le job « Déploiement
-   production »** : la garde « Gouvernance critique » perd régulièrement sa
-   course avec l'indexation GitHub et fait sauter la publication. Si le job est
-   rouge sur cette garde, il suffit de le relancer.
+   passions » se comporte comme attendu. La garde « Gouvernance critique » est
+   passée **verte** sur ce run (14:43:50) — le piège de la course avec
+   l'indexation GitHub n'a pas eu lieu cette fois ; restent les tests puis la
+   publication. Ne pas annoncer « c'est en ligne » avant d'avoir vu le job
+   « Déploiement production » vert.
 2. **Trancher sur l'économie interne.** Deux sessions ont retiré les points ;
    l'une va plus loin et supprime **tout** (Wallet, Passia, boutique). Le plan
    ci-dessus retient le retrait complet — dire si ce n'est pas ce qui était
