@@ -16,13 +16,13 @@ const VP = { width: 390, height: 844 };
 const STATE = {
   onboarded: true, landingSeen: true, tourSeen: true,
   user: {
-    name: "Léa", birthYear: 1995, isMinor: false, score: 120, passia: 45,
+    name: "Léa", birthYear: 1995, isMinor: false,
     currentProfileId: "pp_0",
     profiles: [{ id: "pp_0", name: "Léa", passion: "musique", emoji: "🎵", bio: "Passionnée de musique et de voyages", color: "#7c3aed", createdAt: 1 }],
     drafts: [], likedPosts: [], joinedEvents: [], seenStories: [], customPassions: [],
     following: [], savedCarnets: [], general: { username: "Léa" },
   },
-  userPosts: [], userEvents: [], transactions: [], notifications: [], quests: [],
+  userPosts: [], userEvents: [], notifications: [],
   currentMood: "all", selectedFeedPassions: [],
 };
 

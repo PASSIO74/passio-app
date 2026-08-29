@@ -8,12 +8,12 @@ const { GATE_TOKEN, GATE_KEY } = require("../tests/e2e/gate-helper");
 
 const STATE = {
   onboarded: true, landingSeen: true, tourSeen: true,
-  user: { name: "Perf QA", birthYear: 1995, isMinor: false, score: 0, passia: 0,
+  user: { name: "Perf QA", birthYear: 1995, isMinor: false,
     currentProfileId: "pp_0",
     profiles: [{ id: "pp_0", name: "Perf QA", passion: "musique", emoji: "🎵", bio: "", color: "#7c3aed", createdAt: 1 }],
     drafts: [], likedPosts: [], joinedEvents: [], seenStories: [], customPassions: [],
     following: [], savedCarnets: [], general: { username: "Perf QA" } },
-  userPosts: [], userEvents: [], transactions: [], notifications: [], quests: [],
+  userPosts: [], userEvents: [], notifications: [],
   currentMood: "all", selectedFeedPassions: [],
 };
 

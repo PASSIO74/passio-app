@@ -59,7 +59,7 @@ function applyConfig() {
         .brand-name { color: #fff !important; }\
         .brand-tagline { color: rgba(255,255,255,0.82) !important; }\
         .brand-logo { background: rgba(255,255,255,0.92) !important; box-shadow: 0 0 0 1.5px rgba(255,255,255,0.4), 0 4px 12px rgba(0,0,0,0.18) !important; }\
-        .topbar-chip, .topbar-chip.score, .topbar-chip.passia { background: rgba(255,255,255,0.16) !important; border-color: rgba(255,255,255,0.30) !important; color: #fff !important; }\
+        .topbar-chip { background: rgba(255,255,255,0.16) !important; border-color: rgba(255,255,255,0.30) !important; color: #fff !important; }\
         .topbar-bell { background: rgba(255,255,255,0.16) !important; border-color: rgba(255,255,255,0.30) !important; color: #fff !important; }\
         .nav-item.active { color: " + c.accent + " !important; }\
         .btn.primary { background: linear-gradient(135deg, " + c.accent + ", " + c.c3 + ") !important; }\
@@ -67,8 +67,6 @@ function applyConfig() {
         .mood-btn.active { color: " + c.accent + " !important; border-bottom-color: " + c.accent + " !important; }\
         .profile-tile.active .profile-tile-avatar { box-shadow: 0 4px 18px rgba(" + c.shadow + ",0.45) !important; }\
         .story-ring:not(.seen):not(.create) { background: linear-gradient(135deg, " + c.accent + ", " + c.c3 + ") !important; }\
-        .kpi.score .kpi-value { color: " + c.accent + " !important; }\
-        .kpi.passia .kpi-value { color: " + c.c2 + " !important; }\
         .landing { background: radial-gradient(circle at 12% 6%, rgba(" + c.shadow + ",0.18), transparent 52%), radial-gradient(circle at 88% 92%, rgba(" + c.shadow + ",0.14), transparent 55%), " + c.bgDeep + " !important; }\
         .onboarding-shell { background: radial-gradient(circle at 16% 10%, rgba(" + c.shadow + ",0.18), transparent 54%), radial-gradient(circle at 84% 90%, rgba(" + c.shadow + ",0.14), transparent 56%), " + c.bgDeep + " !important; }\
         .link { color: " + c.accent + " !important; }\
@@ -134,7 +132,7 @@ function applyConfig() {
     if (r) {
       var rdStyle = document.getElementById("passio-rd-override");
       if (!rdStyle) { rdStyle = document.createElement("style"); rdStyle.id = "passio-rd-override"; document.head.appendChild(rdStyle); }
-      rdStyle.textContent = ".btn, .input, .textarea, .pill, .post-card, .msg-card, .cdv-feed-card, .cdv-live-card, .profile-card, .main-profile-card, .main-profile-cover, .main-profile-stats, .main-profile-stat, .main-profile-edit-btn, .main-profile-rs-link, .modal, .tour-card, .new-group-btn, .kpi, .upload-zone, .landing-pillar, .conv-bubble, .cdv-mode-card, .passion-tile, .notif-card, .quest-card, .cdv-live-step, .mood-btn-icon, .topbar-chip, .config-color-option, .msg-readfilter-btn, .story-ring, .story-inner { border-radius: " + r.val + " !important; } .avatar, .main-profile-avatar, .profile-tile-avatar, .msg-avatar, .msg-user-result-avatar, .passion-photo-badge, .main-profile-avatar-badge, .profile-general-avatar { border-radius: " + r.val + " !important; }";
+      rdStyle.textContent = ".btn, .input, .textarea, .pill, .post-card, .msg-card, .cdv-feed-card, .cdv-live-card, .profile-card, .main-profile-card, .main-profile-cover, .main-profile-stats, .main-profile-stat, .main-profile-edit-btn, .main-profile-rs-link, .modal, .tour-card, .new-group-btn, .kpi, .upload-zone, .landing-pillar, .conv-bubble, .cdv-mode-card, .passion-tile, .notif-card, .cdv-live-step, .mood-btn-icon, .topbar-chip, .config-color-option, .msg-readfilter-btn, .story-ring, .story-inner { border-radius: " + r.val + " !important; } .avatar, .main-profile-avatar, .profile-tile-avatar, .msg-avatar, .msg-user-result-avatar, .passion-photo-badge, .main-profile-avatar-badge, .profile-general-avatar { border-radius: " + r.val + " !important; }";
     }
   } else {
     var rdStyle = document.getElementById("passio-rd-override"); if (rdStyle) rdStyle.remove();
@@ -1611,7 +1609,6 @@ const reelsState = {
   items: [],
   current: 0,
   liked: new Set(),
-  tipped: new Set(),
   viewedSinceOpen: 0,
   pausePrompted: false,
   observer: null,
@@ -2080,7 +2077,6 @@ function renderReelHTML(post, idx) {
   // Source de vérité = l'état persisté des likes (partagé avec le fil), pas le Set
   // volatil du viewer : un post aimé dans le fil doit apparaître aimé en Bobines.
   const isLiked = ((state.user.likedPosts || []).indexOf(post.id) > -1) || reelsState.liked.has(post.id);
-  const isTipped = reelsState.tipped.has(post.id);
   const txt = post.text || post.caption || "";
   return `
     <div class="reel-item" data-reel-idx="${idx}" data-post-id="${escapeHtml(post.id)}">
@@ -2113,12 +2109,6 @@ function renderReelHTML(post, idx) {
             <svg viewBox="0 0 24 24"><path d="M21 12 C21 16 16.5 19 12 19 C10.8 19 9.7 18.85 8.7 18.55 L4 20 L5.5 16 C4 14.85 3 13.5 3 12 C3 8 7.5 5 12 5 C16.5 5 21 8 21 12 Z"/></svg>
           </span>
           <span class="reel-action-label">Commentaire</span>
-        </button>
-        <button class="reel-action-btn ${isTipped ? "tipped" : ""}" onclick="tipReel('${escapeJsArg(post.id)}', this)" aria-label="Soutenir">
-          <span class="reel-action-icon">
-            <svg viewBox="0 0 24 24"><path d="M12 3 L14.6 9 L21 9.6 L16 14 L17.5 20.5 L12 17 L6.5 20.5 L8 14 L3 9.6 L9.4 9 Z"/></svg>
-          </span>
-          <span class="reel-action-label">Soutenir</span>
         </button>
         <button class="reel-action-btn" onclick="shareReel('${escapeJsArg(post.id)}')" aria-label="Partager">
           <span class="reel-action-icon">
@@ -2344,8 +2334,6 @@ function maybePromptPause() {
 // classe CSS et un Set en mémoire : aucun compteur, rien de persisté (perdu au
 // rechargement), rien envoyé à Supabase, et l'auteur n'était jamais notifié — le
 // même contenu apparaissait « aimé » dans les Bobines et « non aimé » dans le fil.
-// Aimer ne rapporte RIEN à celui qui like (anti-farm) : les 💎 se gagnent en
-// RECEVANT des likes (awardLikeReceived).
 function toggleReelLike(postId, btn) {
   if (typeof likePost === "function") likePost(postId, true, null);
   var post = (typeof findPostAnywhere === "function") ? findPostAnywhere(postId) : null;
@@ -2358,31 +2346,6 @@ function toggleReelLike(postId, btn) {
     if (lab) lab.textContent = (post && post.likes) || 0;
   });
   if (liked && typeof _likePop === "function") _likePop(btn);
-}
-
-function tipReel(postId, btn) {
-  if (reelsState.tipped.has(postId)) {
-    toast("Déjà soutenu, merci !");
-    return;
-  }
-  if ((state.user.passia || 0) < 1) {
-    toast("Pas assez de Passia pour soutenir ce créateur.");
-    return;
-  }
-  reelsState.tipped.add(postId);
-  btn.classList.add("tipped");
-  state.user.passia -= 1;
-  state.transactions.unshift({
-    id: uid(),
-    kind: "tip_reel",
-    pts: 0,
-    passia: -1,
-    label: "Soutien à un créateur",
-    at: Date.now(),
-  });
-  saveState();
-  renderTopbar();
-  toast("💎 1 Passia envoyé au créateur");
 }
 
 function openReelComments(postId) {

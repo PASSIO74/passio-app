@@ -353,7 +353,6 @@ function _submitReply(arg) {
     try { supaInsertNotif(comment.authorId, "comment", postId, "a répondu à ton commentaire"); } catch(e) {}
   }
   if (typeof _notifyCommentMentions === "function") _notifyCommentMentions(postId, text);
-  if (typeof grantReward === "function") { try { grantReward("comment"); } catch(e){} }
   var w = inp.closest(".comment-reply-input"); if (w) w.remove();
   // Déplie automatiquement les réponses pour que la nouvelle soit visible.
   window._repliesExpanded = window._repliesExpanded || {}; window._repliesExpanded[commentId] = true;
@@ -614,7 +613,6 @@ function _postGifComment(threadId, gifUrl) {
       supaInsertNotif(thread.targetUserId, "comment", threadId, "a commenté avec un GIF");
     }
   } catch (e) {}
-  if (typeof grantReward === "function") { try { grantReward("comment"); } catch (e) {} }
   if (typeof _refreshCommentThreadUI === "function") _refreshCommentThreadUI(threadId);
   if (kind === "event" && typeof _patchEventCommentsInline === "function") { try { _patchEventCommentsInline(threadId); } catch (e) {} }
   // Met à jour le compteur 💬 sur la carte du fil — patch EN PLACE (l'ancien

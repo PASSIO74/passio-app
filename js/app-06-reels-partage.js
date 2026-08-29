@@ -345,19 +345,9 @@ function renderMainProfile() {
     : "";
   rsEl.style.display = links.length ? "" : "none";
 
-  // Pastille étoiles : indicateur discret de points + rang (clic → Wallet pour
-  // le détail). Remis à la demande de l'utilisateur, version sobre et intuitive.
-  // Allégé (2026-07-20) : on n'affiche PLUS le libellé de rang ni la jauge
-  // « Plus que X pts avant … » — seulement le chiffre. Le détail (rang,
-  // progression) reste dans le Wallet, où mène le clic.
-  var starsScoreEl = document.getElementById("profileStarsScore");
-  if (starsScoreEl) {
-    var _score = state.user.score || 0;
-    var _rank  = (typeof rankOf === "function") ? rankOf(_score) : { label: "Débutant" };
-    starsScoreEl.textContent = _score;
-    var chip = document.getElementById("mainProfileStars");
-    if (chip) chip.title = _rank && _rank.next ? ("⭐ " + _score + " · " + _rank.label + " — plus que " + Math.max(0, _rank.next - _score) + " pts avant « " + (rankOf(_rank.next).label) + " »") : ("⭐ " + _score + " · rang maximum atteint 🏆");
-  }
+  // ADR-009 : plus de pastille score/rang ni de solde Passia sur le profil.
+  // Le cœur produit est Passion → contenu → personne → conversation → IRL ;
+  // aucun score global ne doit concurrencer cette promesse.
 
   // Pastille badges : uniquement quand il y en a au moins un (une pastille « 0 »
   // ne raconte rien et encombre la ligne d'identité).
@@ -372,7 +362,6 @@ function renderMainProfile() {
 
   var postCount = state.userPosts.length;
   document.getElementById("mainStatPosts").textContent = postCount;
-  var ppEl = document.getElementById("topPassia"); if (ppEl) ppEl.textContent = state.user.passia || 0;
   // Abonnements : vraie donnée locale (les gens que je suis)
   var foEl = document.getElementById("mainStatFollowing"); if (foEl) foEl.textContent = (state.user.following || []).length;
   // Abonnés : vrai compte Supabase (async). Affiche le cache en attendant.
@@ -1300,8 +1289,9 @@ async function saveMainProfile() {
 //    posts. Archiver ne retire RIEN : la passion reste dans `state.user.profiles`
 //    avec `archived:true`, ses publications restent visibles dans « Toutes ».
 //    Aucune migration Supabase — le drapeau voyage dans le blob `user_state`.
-//    Le quota (`isNextProfilePaid`) compte toujours `profiles.length` : archiver
-//    ne rend donc pas un emplacement payant, et c'est voulu.
+//    ⚠️ Ce point parlait d'un quota payant (`isNextProfilePaid`) : ADR-009 a
+//    retiré l'économie interne, il n'y a donc plus ni limite ni emplacement à
+//    payer. Archiver et restaurer sont gratuits, et le restent.
 //
 // ⑤ Le filtre est monté PAR RAPPORT au bloc qu'il commande
 //    (`insertBefore(rangee, #myPosts)`), jamais à une position fixe de l'écran :
@@ -2137,102 +2127,20 @@ function renderMoodStripSmart(availablePosts) {
   });
 }
 
-// ===== Limite profils + paywall =====
-const FREE_PROFILES_LIMIT = 3;
-const EXTRA_PROFILE_COST_PASSIA = 150;
+// ===== Profils multiples =====
+// ADR-009 : plus aucune limite payante ni monnaie interne. Créer un profil-passion
+// supplémentaire est libre et gratuit — le paywall « 150 💎 », le « Pass Passion »
+// et le compteur `profilesCount()` qui ne servait qu'à eux ont été retirés du
+// cœur produit avec le reste de l'économie Passia.
 
-function hasActivePass() {
-  const ap = state.user && state.user.activePass;
-  if (!ap) return false;
-  return !ap.nextBillingAt || ap.nextBillingAt > Date.now();
-}
-
-function profilesCount() {
-  return (state.user.profiles || []).length;
-}
-
-function isNextProfilePaid() {
-  return profilesCount() >= FREE_PROFILES_LIMIT && !hasActivePass();
-}
-
-function openProfilePaywall() {
-  const balance = state.user.passia || 0;
-  const cost = EXTRA_PROFILE_COST_PASSIA;
-  const canAfford = balance >= cost;
-  const html = `
-    <div class="modal-handle"></div>
-    <span class="modal-close" onclick="closeModal()">×</span>
-    <div class="pay-modal-head">
-      <div class="pay-modal-emoji">🔓</div>
-      <div class="pay-modal-title">Profil supplémentaire</div>
-    </div>
-    <div style="font-size:13px;color:var(--text);text-align:center;margin-bottom:14px;line-height:1.55;">
-      ${passionsUnifieesActives()
-        ? `Tu as déjà créé <b>${profilesCount()} passions</b> (la limite gratuite).<br/>
-      Une passion archivée compte toujours : la restaurer est gratuit.<br/>
-      Ajoute une nouvelle passion pour <b>${cost} 💎</b>, ou passe au Pass Passion pour des passions illimitées.`
-        : `Tu as déjà <b>${profilesCount()} profils actifs</b> (la limite gratuite).<br/>
-      Ajoute un nouveau profil-passion pour <b>${cost} 💎</b>, ou passe au Pass Passion pour des profils illimités.`}
-    </div>
-    <div class="pay-modal-amount" style="background: linear-gradient(135deg, #4c1d95, #7c3aed);">
-      <div class="pay-modal-amount-big">${cost} 💎</div>
-      <div class="pay-modal-amount-sub">Solde actuel : ${balance} 💎</div>
-    </div>
-    <button class="btn primary block" ${canAfford ? `onclick="payForExtraProfile()"` : 'disabled style="opacity:0.5;cursor:not-allowed;"'}>
-      ${canAfford ? `Payer ${cost} 💎 et créer mon profil` : `Pas assez de 💎 (manque ${cost - balance})`}
-    </button>
-    ${!canAfford ? `<button class="btn block" style="margin-top:8px;" onclick="closeModal();goTo('wallet');setTimeout(()=>setWalletTab('shop'), 100);">+ Acheter du Passia</button>` : ""}
-    <div style="text-align:center;margin:14px 0 8px;font-size:11px;color:var(--muted);">— ou —</div>
-    <div class="pass-card" onclick="closeModal();goTo('wallet');setTimeout(()=>setWalletTab('shop'), 100);" style="margin:0;cursor:pointer;">
-      <div class="pass-card-head">
-        <div class="pass-card-title">Pass Passion</div>
-        <div class="pass-card-badge">Profils illimités</div>
-      </div>
-      <div class="pass-card-price">9,99 € <span class="pass-card-price-per">/ mois</span></div>
-      <ul class="pass-card-perks" style="margin:0;">
-        <li>Profils illimités</li>
-        <li>200 💎 / mois inclus</li>
-        <li>Annulable à tout moment</li>
-      </ul>
-    </div>
-    <p style="font-size:10.5px;color:var(--muted);text-align:center;margin-top:12px;line-height:1.5;">
-      Pourquoi ? Un profil = un fil dédié, modéré, hébergé. Au-delà de 3, on couvre les frais réels d'hébergement et de modération.
-    </p>
-  `;
-  openModal(html);
-}
-
-function payForExtraProfile() {
-  const cost = EXTRA_PROFILE_COST_PASSIA;
-  if ((state.user.passia || 0) < cost) {
-    toast("Solde Passia insuffisant.");
-    return;
-  }
-  // Marque qu'on a payé pour ce prochain profil, sera consommé à la création
-  window._paidProfileSlotPending = true;
-  closeModal();
-  // Petit délai pour la transition de modale, puis ouvre la création
-  setTimeout(() => openCreateProfile(true), 180);
-}
-
-function openCreateProfile(_paidSlotConfirmed) {
-  // ⚠️ Lot UI-8 : le quota ne doit pas barrer une RESTAURATION. Une passion
-  // archivée est DÉJÀ comptée dans `profiles.length` — la retrouver n'ajoute
-  // rien à payer. Sans cette exception, un compte à la limite gratuite qui
-  // archive une passion se voyait réclamer 150 💎 pour une passion qu'il
-  // possède déjà et qu'il ne voit plus nulle part. Le paywall reste entier
-  // pour une passion réellement NEUVE : `confirmCreateProfile` le re-teste
-  // après avoir écarté le cas de la restauration.
-  var _peutRestaurer = passionsUnifieesActives() && passionsArchivees().length > 0;
-  if (!_paidSlotConfirmed && !_peutRestaurer && isNextProfilePaid()) {
-    openProfilePaywall();
-    return;
-  }
+function openCreateProfile() {
   // ⚠️ Lot UI-8 : une passion ARCHIVÉE ne compte pas comme « déjà prise ». Sans
-  // ça elle n'apparaissait ni dans la liste, ni dans le catalogue — et le
-  // paywall du quota (qui, lui, la compte toujours) réclamait de payer pour une
-  // passion invisible. La choisir ici la RESTAURE (cf. confirmCreateProfile),
-  // elle n'en crée pas une seconde.
+  // ça elle n'apparaissait ni dans la liste, ni dans le catalogue. La choisir
+  // ici la RESTAURE (cf. confirmCreateProfile), elle n'en crée pas une seconde.
+  // ⚠️ ADR-009 : le paywall qui gardait cette porte (quota gratuit de 3, Pass
+  // Passion, paiement en 💎) est retiré avec le reste de l'économie interne.
+  // Créer une passion est désormais toujours gratuit, et sans limite — il n'y a
+  // plus aucun moyen de payer, donc plus rien à barrer.
   const _v8Cr = passionsUnifieesActives();
   const already = state.user.profiles
     .filter(p => !(_v8Cr && p.archived))
@@ -2243,7 +2151,7 @@ function openCreateProfile(_paidSlotConfirmed) {
     <div style="text-align:center;margin-bottom:18px;">
       <div style="font-size:28px;margin-bottom:6px;">✨</div>
       <div style="font-weight:800;font-size:17px;color:var(--text);margin-bottom:4px;">Nouveau fil passion</div>
-      <div style="font-size:12px;color:var(--muted);line-height:1.5;">Chaque passion = un fil dédié sur ton profil.<br/>+15 pts · +2 💎 à la création.</div>
+      <div style="font-size:12px;color:var(--muted);line-height:1.5;">Chaque passion = un fil dédié sur ton profil.</div>
     </div>
     <div class="passion-grid new-profile-passion-grid" id="newProfileGrid">
       ${pool.map(p => `
@@ -2288,20 +2196,11 @@ async function confirmCreateProfile() {
 
   // ⚠️ Lot UI-8 : cette passion existe peut-être déjà, ARCHIVÉE. La recréer
   // ferait un doublon (deux entrées pour la même passion, que la fusion
-  // défensive d'app-02 dédupliquerait ensuite en silence) et ferait payer un
-  // emplacement pour une passion déjà comptée dans le quota. On la restaure —
-  // gratuitement, sans toucher au quota, et sans rien effacer.
+  // défensive d'app-02 dédupliquerait ensuite en silence). On la restaure, sans
+  // rien effacer.
   if (passionsUnifieesActives()) {
     const _arch = (state.user.profiles || []).find(function (x) { return x.archived && x.passion === pid; });
     if (_arch) { restaurerPassion(_arch.id); return; }
-  }
-
-  // Vérifie le paywall : profil au-delà du quota gratuit ET pas de Pass actif ET pas de paiement préalable
-  const paidPending = !!window._paidProfileSlotPending;
-  if (profilesCount() >= FREE_PROFILES_LIMIT && !hasActivePass() && !paidPending) {
-    closeModal();
-    setTimeout(() => openProfilePaywall(), 150);
-    return;
   }
 
   // Identité centralisée : on réutilise toujours le nom principal du compte.
@@ -2316,22 +2215,7 @@ async function confirmCreateProfile() {
     bio: bio || `Profil ${p.label}`,
     color: p.color,
     createdAt: Date.now(),
-    paid: paidPending,
   };
-
-  // Si paiement Passia : déduit et log
-  if (paidPending) {
-    state.user.passia -= EXTRA_PROFILE_COST_PASSIA;
-    state.transactions.unshift({
-      id: uid(),
-      kind: "profile_extra",
-      pts: 0,
-      passia: -EXTRA_PROFILE_COST_PASSIA,
-      label: `Profil supplémentaire débloqué : ${p.label}`,
-      at: Date.now(),
-    });
-    window._paidProfileSlotPending = false;
-  }
 
   state.user.profiles.push(np);
   state.user.currentProfileId = np.id;
@@ -2342,14 +2226,10 @@ async function confirmCreateProfile() {
   // Pousse immédiatement user_state (liste complète des profils) sans attendre le
   // debounce de 2500ms — sinon un logout rapide perd le nouveau profil.
   if (typeof supaSaveUserState === "function") { try { supaSaveUserState(); } catch(e) {} }
-  grantReward("profile_create");
   closeModal();
   renderProfilesScreen();
   renderTopbar();
-
-  if (paidPending) {
-    toast(`✨ Profil ${p.label} débloqué ! −${EXTRA_PROFILE_COST_PASSIA} 💎`, "success");
-  }
+  toast(`✨ Ton fil ${p.label} est créé`, "success");
 }
 
 function switchProfileModal() {
@@ -2996,14 +2876,6 @@ async function publishPost() {
     var _db = document.getElementById("vlogDraftBanner"); if (_db) _db.remove();
   }
 
-  // Reward
-  const kind = studioType === "photo" ? "publish_photo"
-             : studioType === "video" ? "publish_video"
-             : studioType === "audio" ? "publish_audio"
-             : isVlogPublish          ? "publish_vlog"
-             : "publish_text";
-  grantReward(kind);
-  if (studioMood === "creation") bumpQuest("publish");
 
   // ✅ Le message de confirmation est déjà dans supaPublishPostWithRetry
   // (toast "Publication en cours..." → "✅ Post publié!" ou "❌ Erreur")
@@ -3315,7 +3187,6 @@ function aiDetectIntent(q) {
   if (/irl|événement|event|rencontre|près de|proximité/.test(ql)) return "irl";
   if (/cdv|carnet|voyage|live|en direct/.test(ql)) return "cdv";
   if (/créateur|profil|suivre|utilisateur|qui suit/.test(ql)) return "creators";
-  if (/passia|points|score|wallet|gagner|récompense/.test(ql)) return "gamification";
   if (/mode pause|bien-être|digital wellbeing|temps d'écran|pause/.test(ql)) return "wellbeing";
   if (/post|publier|créer|studio/.test(ql) && !/passion/.test(ql)) return "create";
   // Passion knowledge
@@ -3395,16 +3266,6 @@ function aiGenerateResponse(query) {
   }
 
   // --- Gamification ---
-  if (intent === "gamification") {
-    return '<div><div class="ai-section-label">💎 Comment gagner des Passia</div>' +
-      '<div class="ai-card"><div class="ai-card-title">📝 Publier un post texte</div><div class="ai-card-meta">+10 pts · +2 💎</div></div>' +
-      '<div class="ai-card"><div class="ai-card-title">📷 Publier une photo</div><div class="ai-card-meta">+15 pts · +3 💎</div></div>' +
-      '<div class="ai-card"><div class="ai-card-title">🎙 Publier un podcast</div><div class="ai-card-meta">+20 pts · +5 💎</div></div>' +
-      '<div class="ai-card"><div class="ai-card-title">📍 Rejoindre un événement IRL</div><div class="ai-card-meta">+25 pts · +5 💎</div></div>' +
-      '<div class="ai-card"><div class="ai-card-title">📔 Lancer un CDV Live</div><div class="ai-card-meta">+30 pts · +8 💎</div></div>' +
-      '<div style="margin-top:8px;font-size:12px;color:var(--muted);">Consulte ton Wallet dans l\'onglet <b>Wallet</b> pour voir ton score et le leaderboard.</div></div>';
-  }
-
   // --- Bien-être ---
   if (intent === "wellbeing") {
     return '<div><div class="ai-section-label">🌿 Bien-être digital sur PASSIO</div>' +
@@ -3528,7 +3389,7 @@ function aiGenerateResponse(query) {
     '• Chercher des événements IRL<br>' +
     '• Consulter les carnets de voyage<br><br>' +
     'Essaie des questions comme :<br>' +
-    '<em>"Conseils en photographie"</em>, <em>"Events IRL Lyon"</em>, <em>"Comment gagner des Passia"</em>' +
+    '<em>"Conseils en photographie"</em>, <em>"Events IRL Lyon"</em>, <em>"Rencontrer des passionnés"</em>' +
     '</div>';
 }
 
