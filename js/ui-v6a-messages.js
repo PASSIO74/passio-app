@@ -41,6 +41,7 @@
   var VERSION = 1;
   var CLASSE_RACINE = "passio-ui-6a";
   var HOTE_ID = "v6aHead";
+  var MOI_ID = "v6aMoi";
   var MENU_ID = "v6aMenu";
   var MARQUEUR = "data-v6a";
 
@@ -197,6 +198,15 @@
     rangee.appendChild(plus);
     hote.appendChild(rangee);
 
+    // ── Lot UI-8 : QUI écrit ? ──────────────────────────────────────────────
+    // Toujours le profil personnel. La passion active n'est qu'un CONTEXTE
+    // secondaire, affiché après un point médian et en gris : elle ne doit jamais
+    // laisser croire qu'un autre compte, ou quelqu'un d'autre, envoie le message.
+    var moi = document.createElement("div");
+    moi.className = "v6a-moi";
+    moi.id = MOI_ID;
+    hote.appendChild(moi);
+
     // La recherche est DÉPLACÉE (piège ③) : son `oninput` inline doit survivre.
     var champ = el("convGlobalSearch");
     var boite = champ ? champ.parentNode : null;
@@ -212,6 +222,48 @@
 
     ec.insertBefore(hote, ec.firstChild);
     return true;
+  }
+
+  // Lot UI-8 : « Ben sur portable · 🏍️ Moto ». Le pseudo GÉNÉRAL d'abord — c'est
+  // l'identité publique et la seule qui parte réellement dans un message.
+  function v8() {
+    try { if (window.PASSIO_UI_8 === false) return false; } catch (e) {}
+    try { if (localStorage.getItem("passio_ui_8") === "0") return false; } catch (e) {}
+    return true;
+  }
+
+  function majMoi() {
+    var l = el(MOI_ID);
+    if (!l) return;
+    // Coupure du lot UI-8 : la ligne disparaît, elle ne se fige pas.
+    if (!v8()) { l.textContent = ""; l.hidden = true; return; }
+    var pseudo = "";
+    var contexte = "";
+    try {
+      var g = (typeof state !== "undefined" && state && state.user && state.user.general) || {};
+      pseudo = g.username || (state && state.user && state.user.name) || "";
+    } catch (e) {}
+    try {
+      var pr = (typeof currentProfile === "function") ? currentProfile() : null;
+      if (pr && pr.passion && typeof passionById === "function") {
+        var meta = passionById(pr.passion) || {};
+        var lab = String(meta.label || "").split(/\s*[\/&·]\s*/)[0].trim();
+        if (lab) contexte = ((meta.emoji || pr.emoji || "") + " " + lab).trim();
+      }
+    } catch (e) {}
+    if (!pseudo) { l.textContent = ""; l.hidden = true; return; }
+    l.hidden = false;
+    l.textContent = "";
+    var a = document.createElement("span");
+    a.className = "v6a-moi-nom";
+    a.textContent = pseudo;
+    l.appendChild(a);
+    if (contexte) {
+      var b = document.createElement("span");
+      b.className = "v6a-moi-ctx";
+      b.textContent = " · " + contexte;
+      l.appendChild(b);
+    }
   }
 
   // ── ② « Musique · Dernier message… » ─────────────────────────────────────
@@ -277,6 +329,7 @@
     if (!ec) return;
     try {
       if (!el(HOTE_ID) && !construire()) return;
+      majMoi();
       decorerCartes();
     } catch (e) {
       enPanne = true;
