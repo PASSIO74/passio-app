@@ -39,7 +39,15 @@ const { bootOnboarded } = require("./app-helper");
 const VIDEO_FACTICE = "data:video/webm;base64,AAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
 async function boot(page, errors, n = 3) {
+  // ⚠️ CONVENTION DE TEST (la même qu'aux mises en ligne d'UI-3A et d'UI-4) :
+  // cette suite observe des surfaces que des lots PLUS RÉCENTS recouvrent. Elle
+  // pose leur kill switch et garde TOUTES ses assertions ; leur cohabitation est
+  // prouvée à part, dans la suite de chacun.
+  //   · UI-4A5 : « Filtres » devient une vue de Rencontrer.
+  //   · UI-8   : le libellé du composer (« Passion : » → « Publication dans : »)
+  //              et l'état de la carte de passion (rendu par app-06, plus par UI-6B).
   await page.addInitScript(() => localStorage.setItem("passio_ui_4a5", "0"));
+  await page.addInitScript(() => localStorage.setItem("passio_ui_8", "0"));
   await bootOnboarded(page, errors, n);
 }
 

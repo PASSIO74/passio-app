@@ -19,7 +19,7 @@ function post(id, passion, emoji, text, likes) {
 const STATE = {
   onboarded: true, landingSeen: true, tourSeen: true,
   user: {
-    name: "Léa Moreau", birthYear: 1997, isMinor: false, score: 1240, passia: 320,
+    name: "Léa Moreau", birthYear: 1997, isMinor: false,
     currentProfileId: "pp_music",
     profiles: [
       { id: "pp_music", name: "Léa Moreau", passion: "musique", emoji: "🎸", bio: "Guitariste autodidacte, je partage mes sessions et mes reprises.", color: "#7c3aed", createdAt: 1 },
@@ -47,7 +47,7 @@ const STATE = {
     post(4, "musique", "🎸", "Petit riff du dimanche 🤘", 156),
     post(5, "voyage", "✈️", "Prochaine étape : les Dolomites cet été. Des spots à conseiller ?", 121),
   ],
-  userEvents: [], transactions: [], notifications: [], quests: [],
+  userEvents: [], notifications: [],
   currentMood: "all", selectedFeedPassions: [],
 };
 

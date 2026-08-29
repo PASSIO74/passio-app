@@ -1,7 +1,9 @@
 // ======== TOPBAR ========
 function renderTopbar() {
   const prof = currentProfile();
-  $("#topPassia").textContent = state.user.passia || 0;
+  // ADR-009 : le solde Passia n'est plus affiché (le nœud `#topPassia` a été
+  // retiré du DOM). Cette ligne y écrivait SANS garde — la laisser aurait fait
+  // lever renderTopbar, appelé à chaque publication, commentaire et RSVP.
   // Ne pas afficher la passion, juste PASSIO
   if (prof) {
     $("#currentProfilePassion").textContent = "";
@@ -120,17 +122,6 @@ const TOUR_STEPS = [
       "Étapes, photos, vidéos, audio, conseils",
       "Carte interactive auto-générée",
       "Inspire-toi des carnets des autres pour préparer le tien"
-    ]
-  },
-  {
-    screen: "wallet",
-    emoji: "💎",
-    title: "Soutiens ce qui te plaît",
-    lede: "Avec Passia, tu envoies de la valeur à ceux qui te l'apportent.",
-    points: [
-      "Gagne du Passia en participant à la communauté",
-      "Soutiens un créateur, paye un cours, un événement",
-      "Plus tard, le Passia deviendra une vraie monnaie qui grandit avec la communauté"
     ]
   },
 ];
@@ -283,7 +274,7 @@ function saveFeedback() {
 
 // ======== RESET ========
 function resetApp() {
-  if (!confirm("Tout réinitialiser ? (onboarding, profils, posts, wallet)")) return;
+  if (!confirm("Tout réinitialiser ? (onboarding, profils, posts)")) return;
   try { discardPendingStateSave(); } catch (e) {}
   localStorage.removeItem(STATE_KEY);
   location.reload();
@@ -1882,92 +1873,9 @@ function pushNotification(text, emoji = "✨", fromId = "me") {
 }
 
 // ======== QUESTS ========
-function renderQuests() {
-  const box = $("#questsBox");
-  if (!box) return;
-  const quests = state.quests || [];
-  if (!quests.length) { box.innerHTML = `<div class="empty"><div class="empty-text">Pas de défi aujourd'hui.</div></div>`; return; }
-
-  // Regroupe par catégorie : daily, weekly, community
-  const groups = {
-    daily: { label: "🔥 Défis du jour", quests: [] },
-    weekly: { label: "⭐ Défis de la semaine", quests: [] },
-    community: { label: "🏆 Défis communautaires (gros gains)", quests: [] },
-  };
-  quests.forEach(q => {
-    const cat = q.kind === "weekly" ? "weekly" : q.kind === "community" ? "community" : "daily";
-    groups[cat].quests.push(q);
-  });
-
-  // Stats du haut : total gagnable + déjà gagné
-  const totalPts = quests.filter(q => !q.done).reduce((s, q) => s + q.reward, 0);
-  const totalPassia = quests.filter(q => !q.done).reduce((s, q) => s + q.passia, 0);
-  const doneCount = quests.filter(q => q.done).length;
-
-  let html = `<div class="quest-summary">
-    <div class="quest-summary-line"><b>${doneCount} / ${quests.length}</b> défis complétés</div>
-    <div class="quest-summary-line">À gagner : <b>+${totalPts} pts</b> · <b>+${totalPassia} 💎</b></div>
-  </div>`;
-
-  Object.entries(groups).forEach(([cat, group]) => {
-    if (!group.quests.length) return;
-    html += `<div class="quest-group-title">${group.label}</div>`;
-    html += group.quests.map(q => {
-      const pct = Math.min(100, Math.round((q.progress / q.target) * 100));
-      const ready = q.progress >= q.target && !q.done;
-      return `
-        <div class="quest-card ${q.done ? "done" : ""} ${ready ? "ready" : ""}">
-          <div class="quest-emoji">${q.emoji}</div>
-          <div class="quest-body">
-            <div class="quest-title">${escapeHtml(q.title)}</div>
-            <div class="quest-reward">+${q.reward} pts · +${q.passia} 💎</div>
-            <div class="quest-progress"><div class="quest-progress-bar" style="width:${pct}%;"></div></div>
-          </div>
-          ${q.done
-            ? `<div style="font-size:18px;">✅</div>`
-            : `<button class="quest-claim" ${ready ? "" : "disabled"} onclick="claimQuest('${escapeJsArg(q.id)}')">${ready ? "Réclamer" : q.progress + "/" + q.target}</button>`
-          }
-        </div>
-      `;
-    }).join("");
-  });
-
-  box.innerHTML = html;
-}
-
-function bumpQuest(type) {
-  let changed = false;
-  (state.quests || []).forEach(q => {
-    if (q.type === type && !q.done && q.progress < q.target) {
-      q.progress++;
-      changed = true;
-    }
-  });
-  // renderQuests seulement si le Wallet est visible : rebuild d'un écran caché =
-  // lag gratuit à chaque like/commentaire (goTo('wallet') re-rend de toute façon).
-  if (changed) { saveState(); if (typeof _walletScreenActive === "function" && _walletScreenActive()) renderQuests(); }
-}
-
-function claimQuest(id) {
-  const q = state.quests.find(x => x.id === id);
-  if (!q || q.done || q.progress < q.target) return;
-  q.done = true;
-  const _prevScore = state.user.score || 0;
-  state.user.score += q.reward;
-  state.user.passia += q.passia;
-  state.transactions.unshift({
-    id: uid(), ts: Date.now(), type: "quest",
-    title: "Quête : " + q.title,
-    score: q.reward, passia: q.passia,
-  });
-  saveState();
-  rewardToast(q.reward, q.passia, "Quête complétée");
-  pushNotification("🎯 Quête complétée : <b>" + escapeHtml(q.title) + "</b>", "🎯");
-  renderQuests();
-  renderTopbar();
-  renderWallet();
-  checkRankUp(_prevScore);
-}
+// ADR-009 : les quêtes/défis ont été retirés du cœur produit avec le Wallet, les
+// points et les Passia. Aucune récompense n'est plus attribuée. Les clés `quests`
+// d'un ancien état local restent tolérées par loadState mais ne sont plus lues.
 
 // ======== ACTIVATION CLAVIER GÉNÉRIQUE des [role="button"] non natifs ========
 // Topbar, barre IRL, éléments générés… : tout div role="button" tabindex="0"
@@ -2387,7 +2295,15 @@ async function supaUpsertProfile() {
     // Les photos ne partent que si ce sont des URLs Storage (jamais de base64,
     // le jsonb servirait alors des mégaoctets à chaque lecture de profil).
     const _httpOnly = (v) => (typeof v === "string" && /^https?:\/\//.test(v)) ? v : null;
-    const _passions = (state.user.profiles || []).map(pr => {
+    // ⚠️ Lot UI-8 : une passion ARCHIVÉE ne part pas dans le profil public.
+    // Ranger une passion et la voir rester chez les visiteurs, c'est un
+    // archivage qui n'archive rien. Rien n'est perdu pour autant : le drapeau
+    // vit dans le blob `user_state`, et la restaurer la republie telle quelle.
+    const _v8Vivantes = (state.user.profiles || []).filter(pr => {
+      try { return !(typeof passionsUnifieesActives === "function" && passionsUnifieesActives() && pr.archived); }
+      catch (e) { return true; }
+    });
+    const _passions = _v8Vivantes.map(pr => {
       const pas = (typeof passionById === "function") ? passionById(pr.passion) : null;
       return {
         id: pr.passion,
@@ -4824,10 +4740,8 @@ function supaSubscribe() {
       if (post) {
         post.likes = (post.likes || 0) + 1;
         try { patchPostLikeDom(post); } catch(e) {}
-        // 💎 Valeur reçue : un autre compte a aimé MON contenu → récompense l'auteur.
-        if (post.authorId === MY_UID || post.author === "me" || post.mine) {
-          try { awardLikeReceived(); } catch(e) {}
-        }
+        // ADR-009 : le like reçu reste un signal social (compteur + DOM), il ne
+        // déclenche plus aucune récompense Passia/points.
       }
     })
     .on("postgres_changes", { event: "DELETE", schema: "public", table: "post_likes" }, payload => {

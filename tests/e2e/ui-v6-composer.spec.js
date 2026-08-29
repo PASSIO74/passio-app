@@ -24,6 +24,14 @@ async function boot(page, opts = {}) {
   if (opts.killLocal) {
     await page.addInitScript(() => localStorage.setItem("passio_ui_6", "0"));
   }
+  // ⚠️ CONVENTION DE TEST (la même qu'aux mises en ligne d'UI-3A et d'UI-4) :
+  // le lot UI-8 recouvre le VOCABULAIRE de cette ligne — « Passion : … ·
+  // Modifier » devient « Publication dans : … · Changer », parce que le mot
+  // « profil » y est désormais réservé au profil personnel. Cette suite observe
+  // les mots d'avant : elle pose donc le kill switch du lot qui les recouvre, et
+  // garde TOUTES ses assertions. Les nouveaux mots sont prouvés à part, dans
+  // `ui-v8-passions.spec.js`, avec leur restitution sous coupure.
+  await page.addInitScript(() => localStorage.setItem("passio_ui_8", "0"));
   await bootOnboarded(page, opts.errors || null, 1, {});
   await page.evaluate(() => {
     window.supaLoadPosts = async () => [];
@@ -159,19 +167,22 @@ test.describe("UI-6 — composer de publication", () => {
     await expect(page.locator("[data-v6-passio]")).toHaveText("Passion : " + valeur);
   });
 
-  test("§11 : les mécaniques économiques ne s'affichent plus dans le cœur", async ({ page }) => {
+  test("§11 : les mécaniques économiques ont quitté le cœur, moteur compris", async ({ page }) => {
     await boot(page);
     await page.evaluate(() => goTo("profiles"));
     await page.waitForTimeout(300);
 
-    // Masquées, JAMAIS retirées : `renderTopbar` écrit dans #topPassia sans
-    // garde — retirer ce nœud ferait planter la publication et le commentaire.
-    await expect(page.locator(".profile-chips-row")).toHaveCount(1);
-    await expect(page.locator(".profile-chips-row")).toBeHidden();
-    await expect(page.locator("#topPassia")).toHaveCount(1);
+    // Ce lot ne faisait que MASQUER la rangée ; l'ADR-009 a depuis retiré les
+    // nœuds eux-mêmes. `renderTopbar` n'écrit plus dans #topPassia — c'était la
+    // seule raison de garder ce nœud, et elle a disparu avec lui.
+    await expect(page.locator("#topPassia")).toHaveCount(0);
+    await expect(page.locator("#mainProfileStars")).toHaveCount(0);
+    await expect(page.locator("#profilePassiaChip")).toHaveCount(0);
+    await expect(page.locator("#screen-wallet")).toHaveCount(0);
 
-    // Et le moteur de points, lui, continue de tourner : seul l'affichage change.
-    expect(await page.evaluate(() => typeof grantReward === "function")).toBe(true);
+    // Et le moteur lui-même n'existe plus.
+    expect(await page.evaluate(() => typeof window.grantReward)).toBe("undefined");
+    expect(await page.evaluate(() => typeof window.renderWallet)).toBe("undefined");
   });
 
   test("kill switch local au boot : Studio historique strictement rendu", async ({ page }) => {
@@ -186,13 +197,23 @@ test.describe("UI-6 — composer de publication", () => {
     await expect(page.locator("#studioTypeTabs .studio-type")).toHaveCount(5);
     await expect(page.locator("#fieldPassion")).toBeVisible();
     await expect(page.locator("#fieldMood")).toBeVisible();
-    // Le libellé historique, récompense comprise.
+    // ⚠️ Ce test exigeait le libellé « +10 pts » et des pastilles score/Passia
+    // visibles : c'était ce que ce lot MASQUAIT. L'ADR-009 a depuis retiré la
+    // mécanique elle-même, donc le kill switch n'a plus rien à rendre de ce
+    // côté. Les assertions sont retournées, pas supprimées — elles interdisent
+    // maintenant que couper UI-6 ressuscite l'économie retirée.
     expect(await page.evaluate(() =>
-      document.getElementById("screen-studio").textContent.includes("+10 pts"))).toBe(true);
-    // Et les pastilles du profil sont de retour.
+      document.getElementById("screen-studio").textContent.includes("+10 pts"))).toBe(false);
     await page.evaluate(() => goTo("profiles"));
     await page.waitForTimeout(300);
-    await expect(page.locator(".profile-chips-row")).toBeVisible();
+    await expect(page.locator("#topPassia")).toHaveCount(0);
+    await expect(page.locator("#mainProfileStars")).toHaveCount(0);
+    // La rangée elle-même n'est plus masquée par ce lot : elle ne porte que la
+    // pastille de badges, qui suit sa propre règle (cachée sans badge acquis).
+    expect(await page.evaluate(() => {
+      const r = document.querySelector(".profile-chips-row");
+      return r ? getComputedStyle(r).display : null;
+    })).not.toBe("none");
 
     expect(errors.js, "exceptions JS avec le kill switch").toEqual([]);
   });

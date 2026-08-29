@@ -182,19 +182,9 @@ function renderMainProfile() {
     : "";
   rsEl.style.display = links.length ? "" : "none";
 
-  // Pastille étoiles : indicateur discret de points + rang (clic → Wallet pour
-  // le détail). Remis à la demande de l'utilisateur, version sobre et intuitive.
-  // Allégé (2026-07-20) : on n'affiche PLUS le libellé de rang ni la jauge
-  // « Plus que X pts avant … » — seulement le chiffre. Le détail (rang,
-  // progression) reste dans le Wallet, où mène le clic.
-  var starsScoreEl = document.getElementById("profileStarsScore");
-  if (starsScoreEl) {
-    var _score = state.user.score || 0;
-    var _rank  = (typeof rankOf === "function") ? rankOf(_score) : { label: "Débutant" };
-    starsScoreEl.textContent = _score;
-    var chip = document.getElementById("mainProfileStars");
-    if (chip) chip.title = _rank && _rank.next ? ("⭐ " + _score + " · " + _rank.label + " — plus que " + Math.max(0, _rank.next - _score) + " pts avant « " + (rankOf(_rank.next).label) + " »") : ("⭐ " + _score + " · rang maximum atteint 🏆");
-  }
+  // ADR-009 : plus de pastille score/rang ni de solde Passia sur le profil.
+  // Le cœur produit est Passion → contenu → personne → conversation → IRL ;
+  // aucun score global ne doit concurrencer cette promesse.
 
   // Pastille badges : uniquement quand il y en a au moins un (une pastille « 0 »
   // ne raconte rien et encombre la ligne d'identité).
@@ -209,7 +199,6 @@ function renderMainProfile() {
 
   var postCount = state.userPosts.length;
   document.getElementById("mainStatPosts").textContent = postCount;
-  var ppEl = document.getElementById("topPassia"); if (ppEl) ppEl.textContent = state.user.passia || 0;
   // Abonnements : vraie donnée locale (les gens que je suis)
   var foEl = document.getElementById("mainStatFollowing"); if (foEl) foEl.textContent = (state.user.following || []).length;
   // Abonnés : vrai compte Supabase (async). Affiche le cache en attendant.
@@ -225,6 +214,10 @@ function renderMainProfile() {
   // créer aucun, et chaque ligne porte une miniature, une date et une ville.
   var eventsEl = document.getElementById("profileEvents");
   if (eventsEl) eventsEl.innerHTML = _myProfileEventsHTML();
+  // Lot UI-8 : la ligne « Passion active » et la rangée de filtre des activités.
+  // Les deux fonctions se retirent elles-mêmes quand le lot est coupé.
+  try { renderActivePassionLine(); } catch (e) { _v8Echec("passion_active", e); }
+  try { _monterFiltrePassion("events"); } catch (e) { _v8Echec("filtre_activites", e); }
 
   // Top posts
   var topEl = document.getElementById("profileTopPosts");
@@ -249,6 +242,13 @@ async function loadFollowersCount() {
 
 // Clic « posts » : sélectionne tous mes profils, onglet Posts, défile vers le contenu
 function openMyPostsTab() {
+  // Lot UI-8 : « tous mes posts », c'est le neutre « Toutes », pas une
+  // sélection de toutes les cartes (qui n'existe plus).
+  if (passionsUnifieesActives()) {
+    _migrerFiltresPassion();
+    state.user.profilePostFilterId = null;
+    saveState();
+  }
   window.profilesFilterSelection = new Set((state.user.profiles || []).map(function(p){ return p.id; }));
   _persistProfileFilter();
   window.activeProfileTab = "posts";
@@ -395,6 +395,16 @@ function _myProfileEvents(limit) {
     else if (window.console && console.error) console.error("[profil] activités :", e);
     return [];
   }
+  // Lot UI-8 : filtre à choix unique de l'onglet « Activités ». Aucun moteur IRL
+  // parallèle — on ne fait que restreindre la liste déjà produite par `allEvents`,
+  // `_isMyEvent` et `myRsvp`. `limit === 9999` est l'appel de COMPTAGE des cartes
+  // de passion : il ne doit jamais être restreint par le filtre d'affichage.
+  if (limit !== 9999 && typeof passionsUnifieesActives === "function" && passionsUnifieesActives()) {
+    try {
+      var _prF = _passionDuFiltre("profileEventFilterId");
+      if (_prF) out = out.filter(function (e) { return e && e.passion === _prF.passion; });
+    } catch (x) {}
+  }
   var maintenant = Date.now();
   out.sort(function (a, b) {
     var fa = a.date >= maintenant, fb = b.date >= maintenant;
@@ -408,10 +418,14 @@ function _myProfileEvents(limit) {
 // passe par escapeHtml (titre, ville), l'identifiant par escapeJsArg (argument
 // JS d'un onclick) et la couverture par safeUrlAttr (URL posée par autrui).
 function _myProfileEventsHTML() {
-  var evs = _myProfileEvents(4);
+  var evs = _myProfileEvents(passionsUnifieesActives() ? 8 : 4);
   if (!evs.length) {
-    return '<div style="font-size:12px;color:var(--muted);padding:10px;">'
-      + 'Aucune activité pour le moment — rejoins ou propose une sortie depuis « Rencontrer ».</div>';
+    var _f = null;
+    try { if (passionsUnifieesActives()) _f = _passionDuFiltre("profileEventFilterId"); } catch (x) {}
+    var _msg = _f
+      ? "Aucune activité en " + _passionEtiquette(_f).label + " pour l'instant — choisis « Toutes » ou propose une sortie depuis « Rencontrer »."
+      : "Aucune activité pour le moment — rejoins ou propose une sortie depuis « Rencontrer ».";
+    return '<div style="font-size:12px;color:var(--muted);padding:10px;">' + escapeHtml(_msg) + '</div>';
   }
   return evs.map(function (e) {
     var emoji = e.emoji || "📍";
@@ -464,18 +478,33 @@ function renderProfileContent() {
   // plus bas pour les types de contenu — « Aucune icône cochée = AUCUN filtre :
   // on affiche tout (et non un état vide) ». Les deux rangées vivent sur le même
   // écran ; elles se contredisaient.
-  var sel = window.profilesFilterSelection || new Set();
-
-  // Filtrage cohérent : un profil sélectionné = sa passion. On matche STRICTEMENT
-  // par PASSION (donnée fiable, figée à la création). Le profileId ne sert QUE de
-  // repli pour un post sans passion. Matcher aussi par profileId (comme avant)
-  // faisait fuiter un post « photo » publié pendant que le profil « musique » était
-  // actif (profileId=musique) DANS le profil musique, et le double-comptait.
   var mine = state.userPosts.slice();
-  if (sel.size > 0) {
-    var selProfiles = (state.user.profiles || []).filter(function(pr){ return sel.has(pr.id); });
-    var selPassions = new Set(selProfiles.map(function(pr){ return pr.passion; }));
-    mine = mine.filter(function(p){ return selPassions.has(p.passion) || (!p.passion && sel.has(p.profileId)); });
+
+  if (passionsUnifieesActives()) {
+    // ── LOT UI-8 : le filtre de contenu vit ICI, dans « Publications », et il
+    // est à choix UNIQUE. « Toutes » (aucun filtre) est le neutre. Les anciennes
+    // publications qui n'ont qu'une passion OU qu'un profileId restent
+    // atteignables : l'appariement est le même que celui de la multisélection
+    // historique (`_postDeLaPassion`).
+    _monterFiltrePassion("posts");
+    var prFiltre = _passionDuFiltre("profilePostFilterId");
+    if (prFiltre) {
+      mine = mine.filter(function (p) { return _postDeLaPassion(p, prFiltre); });
+    }
+  } else {
+    var sel = window.profilesFilterSelection || new Set();
+
+    // Filtrage cohérent : un profil sélectionné = sa passion. On matche STRICTEMENT
+    // par PASSION (donnée fiable, figée à la création). Le profileId ne sert QUE de
+    // repli pour un post sans passion. Matcher aussi par profileId (comme avant)
+    // faisait fuiter un post « photo » publié pendant que le profil « musique » était
+    // actif (profileId=musique) DANS le profil musique, et le double-comptait.
+    if (sel.size > 0) {
+      var selProfiles = (state.user.profiles || []).filter(function(pr){ return sel.has(pr.id); });
+      var selPassions = new Set(selProfiles.map(function(pr){ return pr.passion; }));
+      mine = mine.filter(function(p){ return selPassions.has(p.passion) || (!p.passion && sel.has(p.profileId)); });
+    }
+    _monterFiltrePassion("posts");
   }
 
   // Multi-sélection des types : union des prédicats cochés.
@@ -493,7 +522,22 @@ function renderProfileContent() {
   // texte + bouton primaire), CTA direct vers le Studio. On reste sur la classe
   // inline `.empty` (et non `.reels-empty`, qui est en position:absolute pour le
   // viewer plein écran des bobines et casserait la mise en page ici).
+  // Lot UI-8 : quand un filtre de passion est posé, l'état vide doit dire que
+  // c'est LUI qui vide l'écran — sinon il affirme « tu n'as rien publié » à
+  // quelqu'un qui a publié ailleurs.
+  var _filtreNom = "";
+  try {
+    if (passionsUnifieesActives()) {
+      var _pf = _passionDuFiltre("profilePostFilterId");
+      if (_pf) _filtreNom = _passionEtiquette(_pf).label;
+    }
+  } catch (e) { _v8Echec("etat_vide", e); }
+
   function guidedEmpty(emoji, title, text) {
+    if (_filtreNom) {
+      title = "Rien en " + _filtreNom;
+      text = "Touche « Toutes » pour revoir tout ce que tu as publié, ou crée dans cette passion.";
+    }
     return '<div class="empty">'
       + '<div class="empty-icon">'+emoji+'</div>'
       + '<div class="empty-title">'+title+'</div>'
@@ -899,11 +943,18 @@ function openPassionProfileMenu(ev, profileId) {
   const p = (state.user.profiles || []).find(x => x.id === profileId);
   if (!p) return;
   const passion = passionById(p.passion);
+  // ⚠️ Lot UI-8 : « Supprimer ce profil » effaçait la passion ET TOUS SES POSTS.
+  // Elle est remplacée par l'archivage, qui ne retire aucun contenu. La
+  // suppression reste le comportement rendu par le kill switch.
+  var v8 = passionsUnifieesActives();
+  var dernier = v8
+    ? { icon: "🗄️", label: "Archiver cette passion", run: function() { confirmArchivePassion(profileId); } }
+    : { icon: "🗑", label: "Supprimer ce profil", danger: true, run: function() { confirmDeleteProfile(profileId, (passion && passion.label) || ""); } };
   _profileDotsOpen(ev, [
-    { icon: "✏️", label: "Modifier ce profil", run: function() { openEditPassionProfile(profileId); } },
-    { icon: "🖼️", label: "Photo du profil",    run: function() { const i = document.getElementById("passionPhoto_" + profileId); if (i) i.click(); } },
+    { icon: "✏️", label: v8 ? "Modifier cette passion" : "Modifier ce profil", run: function() { openEditPassionProfile(profileId); } },
+    { icon: "🖼️", label: v8 ? "Photo de la passion" : "Photo du profil",    run: function() { const i = document.getElementById("passionPhoto_" + profileId); if (i) i.click(); } },
     { icon: "🌄", label: "Photo de fond",      run: function() { const i = document.getElementById("passionCover_" + profileId); if (i) i.click(); }, sep: true },
-    { icon: "🗑", label: "Supprimer ce profil", danger: true, run: function() { confirmDeleteProfile(profileId, (passion && passion.label) || ""); } }
+    dernier
   ]);
 }
 
@@ -1045,6 +1096,369 @@ async function saveMainProfile() {
   toast("✅ Profil mis à jour !");
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// LOT UI-8 — « une personne, plusieurs passions »
+// ──────────────────────────────────────────────────────────────────────────
+// PASSIO ne doit plus donner l'impression que l'on possède plusieurs COMPTES.
+// Le modèle devient : UN profil personnel (pseudo, avatar, abonnés) + plusieurs
+// PASSIONS, univers de contenu rattachés à ce même profil. Une seule passion
+// est active pour CRÉER ; consulter se fait par des filtres séparés.
+//
+// ⚠️ CINQ POINTS À CONNAÎTRE AVANT D'Y TOUCHER.
+//
+// ① `currentProfileId` reste la SEULE source de vérité de l'identité active,
+//    et `switchToProfile()` son seul point d'écriture. Rien n'est dupliqué :
+//    la ligne « Passion active », le sélecteur et le bouton « Utiliser pour
+//    créer » appellent tous les trois cette même fonction.
+//
+// ② La multisélection de l'onglet « À propos » (`toggleProfileSelect`) est
+//    REMPLACÉE, pas supprimée : elle reste le comportement rendu par le kill
+//    switch. Le filtre de contenu déménage dans « Publications » et devient
+//    à choix UNIQUE (`state.user.profilePostFilterId`), plus un filtre jumeau
+//    pour « Activités » (`profileEventFilterId`). Aucun filtre = « Toutes ».
+//
+// ③ Migration défensive de l'ancien état : `profileFilterIds` n'est jamais
+//    effacé. S'il contient EXACTEMENT une passion encore valide, elle devient
+//    le filtre unique ; vide ou multiple, on retombe sur « Toutes ». La
+//    migration ne tourne qu'une fois (`_v8FiltresMigres`).
+//
+// ④ L'ARCHIVAGE remplace la suppression, qui effaçait le profil ET tous ses
+//    posts. Archiver ne retire RIEN : la passion reste dans `state.user.profiles`
+//    avec `archived:true`, ses publications restent visibles dans « Toutes ».
+//    Aucune migration Supabase — le drapeau voyage dans le blob `user_state`.
+//    ⚠️ Ce point parlait d'un quota payant (`isNextProfilePaid`) : ADR-009 a
+//    retiré l'économie interne, il n'y a donc plus ni limite ni emplacement à
+//    payer. Archiver et restaurer sont gratuits, et le restent.
+//
+// ⑤ Le filtre est monté PAR RAPPORT au bloc qu'il commande
+//    (`insertBefore(rangee, #myPosts)`), jamais à une position fixe de l'écran :
+//    sous le lot UI-7, `#myPosts` et `#profileEvents` vivent dans des panneaux
+//    d'onglet, et une rangée posée « en haut de l'écran » sortirait du panneau.
+//
+// Coupure, prioritaire sur tout :
+//   window.PASSIO_UI_8 === false   ·   localStorage.passio_ui_8 === "0"
+// Le drapeau ne sait qu'ENLEVER : aucune valeur positive n'active, et rien
+// n'est écrit dans `localStorage`.
+// ══════════════════════════════════════════════════════════════════════════
+
+// ⚠️ Jamais muet : un `catch(e){}` sur un chemin d'affichage a déjà masqué un
+// ReferenceError six jours dans ce dépôt (fiche « catch large »), et une surface
+// qui disparaît sans un mot est indiscernable d'un kill switch ou d'un lot non
+// déployé — la cause exacte des quatre aperçus invisibles du 2026-08-28.
+function _v8Echec(etape, e) {
+  try {
+    if (typeof diagLog === "function") diagLog("ui_v8 " + etape + " " + (e && e.message));
+    else if (window.console && console.error) console.error("[ui-v8] " + etape + " :", e);
+  } catch (x) {}
+}
+
+function passionsUnifieesActives() {
+  try { if (window.PASSIO_UI_8 === false) return false; } catch (e) {}
+  try { if (localStorage.getItem("passio_ui_8") === "0") return false; } catch (e) {}
+  return true;
+}
+
+// Les passions utilisables (non archivées) et les archivées. Une liste vide de
+// passions vivantes ne doit jamais arriver — `archiverPassion` refuse la
+// dernière — mais on retombe sur la liste complète plutôt que sur un écran vide.
+function passionsVivantes() {
+  var tous = (state.user && state.user.profiles) || [];
+  var vifs = tous.filter(function (p) { return !p.archived; });
+  return vifs.length ? vifs : tous;
+}
+function passionsArchivees() {
+  return ((state.user && state.user.profiles) || []).filter(function (p) { return !!p.archived; });
+}
+
+// « Yoga / Bien-être » → « Yoga ». Affichage SEUL : la clé métier ne bouge pas.
+function _passionCourte(label) {
+  var s = String(label || "");
+  var i = s.search(/\s*[\/&·]\s*/);
+  return (i > 0 ? s.slice(0, i) : s).trim() || s;
+}
+// Une couleur de passion part dans un attribut `style` : on n'y laisse entrer
+// qu'une forme connue. Elle est locale aujourd'hui, mais un attribut de style
+// n'est pas un endroit où faire confiance à une chaîne libre.
+function _couleurSure(c) {
+  var s = String(c || "");
+  return /^(#[0-9a-fA-F]{3,8}|rgba?\([0-9.,%\s]+\)|[a-zA-Z]{3,20})$/.test(s) ? s : "var(--accent)";
+}
+
+function _passionEtiquette(pr) {
+  var meta = {};
+  try { meta = passionById(pr.passion) || {}; } catch (e) {}
+  return {
+    emoji: meta.emoji || pr.emoji || "✨",
+    label: _passionCourte(meta.label || pr.passion || "Passion"),
+  };
+}
+
+// ③ Migration défensive, une seule fois, sans jamais effacer l'ancien état.
+function _migrerFiltresPassion() {
+  if (!state.user || state.user._v8FiltresMigres) return;
+  state.user._v8FiltresMigres = true;
+  if (state.user.profilePostFilterId === undefined) {
+    var anciens = state.user.profileFilterIds || [];
+    var valides = new Set((state.user.profiles || []).map(function (p) { return p.id; }));
+    var retenus = anciens.filter(function (id) { return valides.has(id); });
+    state.user.profilePostFilterId = (retenus.length === 1) ? retenus[0] : null;
+  }
+  if (state.user.profileEventFilterId === undefined) state.user.profileEventFilterId = null;
+}
+
+// Un filtre qui désigne une passion disparue ou archivée retombe sur « Toutes »
+// plutôt que de vider l'écran sans explication.
+function _passionDuFiltre(cle) {
+  _migrerFiltresPassion();
+  var id = state.user[cle] || null;
+  if (!id) return null;
+  var pr = (state.user.profiles || []).find(function (p) { return p.id === id; });
+  // Une passion disparue ou archivée retombe sur « Toutes » plutôt que de vider
+  // l'écran sans explication. On NE RÉÉCRIT PAS l'état ici : cette fonction est
+  // appelée pendant le rendu, et une écriture non persistée y serait un
+  // mensonge de plus. C'est `archiverPassion` qui nettoie, une fois.
+  if (!pr || pr.archived) return null;
+  return pr;
+}
+
+// Appariement post ↔ passion. La PASSION est la source de vérité (figée à la
+// création) ; `profileId` ne sert que de repli pour un post sans passion —
+// c'est exactement la règle déjà appliquée par la multisélection historique.
+function _postDeLaPassion(p, pr) {
+  return p.passion === pr.passion || (!p.passion && p.profileId === pr.id);
+}
+
+function setPostPassionFilter(profileId) {
+  _migrerFiltresPassion();
+  state.user.profilePostFilterId = profileId || null;
+  saveState();
+  renderProfileContent();
+}
+
+function setEventPassionFilter(profileId) {
+  _migrerFiltresPassion();
+  state.user.profileEventFilterId = profileId || null;
+  saveState();
+  var box = document.getElementById("profileEvents");
+  if (box) box.innerHTML = _myProfileEventsHTML();
+  _monterFiltrePassion("events");
+}
+
+// La rangée « Toutes · Moto · Podcast · Yoga ». Choix UNIQUE.
+function _passionFilterRowHTML(genre, actifId) {
+  // ⚠️ Le nom de la fonction appelée est écrit EN TOUTES LETTRES dans chaque
+  // branche, jamais interpolé depuis une variable : un `onclick` construit par
+  // concaténation d'un identifiant variable est exactement le motif que
+  // `audit:echappement` refuse, et il a raison — la relecture d'un handler doit
+  // pouvoir se faire à l'oeil, sans remonter la provenance de la chaîne.
+  var evs = (genre === "events");
+  var puces = ['<button type="button" class="v8-chip' + (actifId ? "" : " on")
+    + '" data-v8-chip="toutes" aria-pressed="' + (actifId ? "false" : "true")
+    + '" onclick="' + (evs ? "setEventPassionFilter(null)" : "setPostPassionFilter(null)")
+    + '">Toutes</button>'];
+  passionsVivantes().forEach(function (pr) {
+    var et = _passionEtiquette(pr);
+    var on = (pr.id === actifId);
+    var tete = '<button type="button" class="v8-chip' + (on ? " on" : "")
+      + '" data-v8-chip="' + escapeHtml(String(pr.id)) + '" aria-pressed="' + (on ? "true" : "false") + '"';
+    var pied = '>' + escapeHtml(et.emoji) + " " + escapeHtml(et.label) + "</button>";
+    puces.push(evs
+      ? tete + ' onclick="setEventPassionFilter(\'' + escapeJsArg(String(pr.id)) + '\')"' + pied
+      : tete + ' onclick="setPostPassionFilter(\'' + escapeJsArg(String(pr.id)) + '\')"' + pied);
+  });
+  return puces.join("");
+}
+
+// ⑤ La rangée est posée JUSTE AVANT le bloc qu'elle commande, donc dans le
+// panneau d'onglet où le lot UI-7 a déplacé ce bloc.
+function _monterFiltrePassion(genre) {
+  var ancreId = (genre === "events") ? "profileEvents" : "myPosts";
+  var rangeeId = (genre === "events") ? "v8EventFilter" : "v8PostFilter";
+  var ancre = document.getElementById(ancreId);
+  if (!ancre || !ancre.parentNode) return null;
+  var rangee = document.getElementById(rangeeId);
+  if (!passionsUnifieesActives()) {
+    if (rangee && rangee.parentNode) rangee.parentNode.removeChild(rangee);
+    return null;
+  }
+  if (!rangee) {
+    rangee = document.createElement("div");
+    rangee.id = rangeeId;
+    rangee.className = "v8-filter-row";
+    rangee.setAttribute("role", "group");
+    rangee.setAttribute("aria-label", genre === "events" ? "Filtrer les activités par passion" : "Filtrer les publications par passion");
+  }
+  if (rangee.parentNode !== ancre.parentNode || rangee.nextSibling !== ancre) {
+    ancre.parentNode.insertBefore(rangee, ancre);
+  }
+  var cle = (genre === "events") ? "profileEventFilterId" : "profilePostFilterId";
+  var pr = _passionDuFiltre(cle);
+  // Signature d'état : on n'écrit qu'au changement réel. Les observateurs des
+  // lots voisins voient chacune de nos écritures — les leur servir à chaque
+  // rendu du profil les réveillerait pour rien.
+  var sig = (pr ? pr.id : "-") + "|" + passionsVivantes().map(function (x) { return x.id; }).join(",");
+  if (rangee.getAttribute("data-v8-sig") !== sig) {
+    rangee.setAttribute("data-v8-sig", sig);
+    rangee.innerHTML = _passionFilterRowHTML(genre, pr ? pr.id : null);
+  }
+  return rangee;
+}
+
+// ── La ligne « Passion active : 🏍️ Moto · Changer », sous la carte d'identité ──
+function renderActivePassionLine() {
+  var corps = document.querySelector("#screen-profiles .main-profile-body");
+  if (!corps) return;
+  var ligne = document.getElementById("v8ActivePassion");
+  if (!passionsUnifieesActives()) {
+    if (ligne && ligne.parentNode) ligne.parentNode.removeChild(ligne);
+    return;
+  }
+  var pr = (typeof currentProfile === "function") ? currentProfile() : null;
+  if (!pr) return;
+  var et = _passionEtiquette(pr);
+  if (!ligne) {
+    ligne = document.createElement("div");
+    ligne.id = "v8ActivePassion";
+    ligne.className = "v8-active-line";
+  }
+  if (ligne.parentNode !== corps) corps.appendChild(ligne);
+  // Même signature d'état que la rangée de filtre.
+  var sig = String(pr.id) + "|" + et.emoji + "|" + et.label;
+  if (ligne.getAttribute("data-v8-sig") === sig) return;
+  ligne.setAttribute("data-v8-sig", sig);
+  ligne.innerHTML =
+    '<span class="v8-active-txt">Passion active : <b>' + escapeHtml(et.emoji) + " " + escapeHtml(et.label) + "</b></span>"
+    + '<button type="button" class="v8-active-btn" data-v8-changer="1" onclick="openPassionSwitcher()">Changer</button>';
+}
+
+// ── Le sélecteur de passion active. Aucun moteur neuf : il appelle
+//    `switchToProfile`, telle quelle. ──────────────────────────────────────
+function openPassionSwitcher() {
+  var courant = (state.user && state.user.currentProfileId) || "";
+  var lignes = passionsVivantes().map(function (pr) {
+    var et = _passionEtiquette(pr);
+    var on = (pr.id === courant);
+    return '<button type="button" class="v8-switch-row' + (on ? " on" : "") + '"'
+      + ' data-v8-switch="' + escapeHtml(String(pr.id)) + '"'
+      + (on ? "" : ' onclick="switchToProfile(\'' + escapeJsArg(String(pr.id)) + '\');closeModal();"')
+      + '><span class="v8-switch-emoji" aria-hidden="true">' + escapeHtml(et.emoji) + "</span>"
+      + '<span class="v8-switch-name">' + escapeHtml(et.label) + "</span>"
+      + (on ? '<span class="v8-switch-on">Active ✓</span>' : '<span class="v8-switch-go">Choisir</span>')
+      + "</button>";
+  }).join("");
+  openModal(
+    '<div class="modal-handle"></div>'
+    + '<div class="modal-title">Choisir la passion active</div>'
+    + '<p class="section-subtitle" style="margin-top:-6px;">C\'est l\'univers dans lequel tes prochaines créations seront publiées. Ton profil, ton pseudo et tes abonnés ne changent pas.</p>'
+    + '<div class="v8-switch-list">' + lignes + "</div>"
+  );
+}
+
+// ── ④ ARCHIVAGE (remplace la suppression, qui effaçait aussi les posts) ────
+function confirmArchivePassion(profileId) {
+  var pr = (state.user.profiles || []).find(function (p) { return p.id === profileId; });
+  if (!pr) return;
+  var et = _passionEtiquette(pr);
+  var vivantes = (state.user.profiles || []).filter(function (p) { return !p.archived; });
+  if (vivantes.length <= 1) {
+    toast("Tu dois garder au moins une passion active");
+    return;
+  }
+  if (state.user.currentProfileId === profileId) {
+    toast("Choisis d'abord une autre passion active");
+    openPassionSwitcher();
+    return;
+  }
+  openModal(
+    '<div class="modal-handle"></div>'
+    + '<div style="text-align:center;margin-bottom:16px;">'
+    + '<div style="font-size:36px;margin-bottom:8px;">🗄️</div>'
+    + '<div style="font-weight:800;font-size:16px;color:var(--text);">Archiver cette passion ?</div>'
+    + '<div style="font-size:13px;color:var(--muted);margin-top:6px;line-height:1.5;">'
+    + escapeHtml(et.emoji + " " + et.label) + ' quitte tes passions actives.<br/>'
+    + '<b>Rien n\'est supprimé</b> : tes publications, activités, bobines et médias restent visibles dans « Toutes », et tu peux la restaurer quand tu veux.'
+    + "</div></div>"
+    + '<div style="display:flex;gap:8px;">'
+    + '<button class="btn ghost" onclick="closeModal()" style="flex:1;">Annuler</button>'
+    + '<button class="btn primary" data-v8-archiver="' + escapeHtml(String(profileId)) + '" onclick="archiverPassion(\'' + escapeJsArg(String(profileId)) + '\')" style="flex:1;">Archiver</button>'
+    + "</div>"
+  );
+}
+
+function archiverPassion(profileId) {
+  var pr = (state.user.profiles || []).find(function (p) { return p.id === profileId; });
+  if (!pr) { closeModal(); return; }
+  var vivantes = (state.user.profiles || []).filter(function (p) { return !p.archived; });
+  if (vivantes.length <= 1) { toast("Tu dois garder au moins une passion active"); closeModal(); return; }
+  if (state.user.currentProfileId === profileId) { toast("Choisis d'abord une autre passion active"); closeModal(); return; }
+
+  pr.archived = true;
+  pr.archivedAt = Date.now();
+  // Un filtre qui pointait dessus retombe sur « Toutes » — sinon l'écran se
+  // vide sans que rien ne l'explique.
+  if (state.user.profilePostFilterId === profileId) state.user.profilePostFilterId = null;
+  if (state.user.profileEventFilterId === profileId) state.user.profileEventFilterId = null;
+  // ⚠️ Et le FIL, surtout. Sa tuile quitte `renderProfileStrip` (qui ne rend
+  // plus que les passions vivantes) mais la passion resterait dans
+  // `_activeFeedPassions` : le filtre survivrait à sa propre commande. Si
+  // c'était la seule sélectionnée, le Fil n'afficherait plus QUE la passion
+  // qu'on vient de ranger, sans rien à l'écran pour en sortir.
+  try {
+    if (typeof setFeedPassions === "function" && typeof _activeFeedPassions !== "undefined"
+        && _activeFeedPassions.has(pr.passion)) {
+      setFeedPassions(Array.from(_activeFeedPassions).filter(function (x) { return x !== pr.passion; }));
+    }
+  } catch (e) {
+    if (typeof diagLog === "function") diagLog("v8_archive_filtre_fil " + (e && e.message));
+    else if (window.console && console.error) console.error("[ui-v8] filtre du fil :", e);
+  }
+  saveState();
+  if (typeof supaUpsertProfile === "function") { try { supaUpsertProfile(); } catch (e) {} }
+  if (typeof supaSaveUserState === "function") { try { supaSaveUserState(); } catch (e) {} }
+  closeModal();
+  renderProfilesScreen();
+  if (typeof renderProfileStrip === "function") { try { renderProfileStrip(); } catch (e) {} }
+  var et = _passionEtiquette(pr);
+  toast("🗄️ " + et.label + " archivée — rien n'a été supprimé");
+}
+
+function restaurerPassion(profileId) {
+  var pr = (state.user.profiles || []).find(function (p) { return p.id === profileId; });
+  if (!pr) return;
+  pr.archived = false;
+  delete pr.archivedAt;
+  saveState();
+  if (typeof supaUpsertProfile === "function") { try { supaUpsertProfile(); } catch (e) {} }
+  if (typeof supaSaveUserState === "function") { try { supaSaveUserState(); } catch (e) {} }
+  closeModal();
+  renderProfilesScreen();
+  if (typeof renderProfileStrip === "function") { try { renderProfileStrip(); } catch (e) {} }
+  toast("✅ " + _passionEtiquette(pr).label + " est de retour dans tes passions");
+  // Restaurer deux passions ne doit pas obliger à rouvrir la liste à la main.
+  if (passionsArchivees().length) setTimeout(openArchivedPassions, 350);
+}
+
+function openArchivedPassions() {
+  var archivees = passionsArchivees();
+  var lignes = archivees.length
+    ? archivees.map(function (pr) {
+        var et = _passionEtiquette(pr);
+        return '<div class="v8-switch-row" data-v8-archived="' + escapeHtml(String(pr.id)) + '">'
+          + '<span class="v8-switch-emoji" aria-hidden="true">' + escapeHtml(et.emoji) + "</span>"
+          + '<span class="v8-switch-name">' + escapeHtml(et.label) + "</span>"
+          + '<button type="button" class="v8-switch-go" data-v8-restaurer="' + escapeHtml(String(pr.id)) + '"'
+          + ' onclick="restaurerPassion(\'' + escapeJsArg(String(pr.id)) + '\')">Restaurer</button>'
+          + "</div>";
+      }).join("")
+    : '<div style="font-size:12px;color:var(--muted);padding:10px;">Aucune passion archivée.</div>';
+  openModal(
+    '<div class="modal-handle"></div>'
+    + '<div class="modal-title">Passions archivées</div>'
+    + '<p class="section-subtitle" style="margin-top:-6px;">Leurs publications et activités n\'ont pas bougé : elles restent visibles dans « Toutes ».</p>'
+    + '<div class="v8-switch-list">' + lignes + "</div>"
+  );
+}
+
 function renderProfilesScreen() {
   renderMainProfile();
 
@@ -1062,50 +1476,116 @@ function renderProfilesScreen() {
   const list = $("#profileList");
   const sub  = $("#profilesQuotaSub");
 
-  if (sub) {
-    // Plus de décompte verbeux : on garde uniquement la fonction Réinitialiser
-    // quand une sélection est active, sinon rien.
-    if (window.profilesFilterSelection.size > 0) {
-      sub.innerHTML = `<span class="link" onclick="clearProfilesFilter()">Réinitialiser</span>`;
-      sub.style.display = "";
-    } else {
-      sub.innerHTML = "";
-      sub.style.display = "none";
+  // ── LOT UI-8 : les passions sont des UNIVERS rattachés au profil personnel ──
+  // Plus de multisélection sur les cartes : le filtre de contenu a déménagé dans
+  // « Publications » (et son jumeau dans « Activités »). Ici, une carte ne dit
+  // plus qu'une chose — « avec laquelle je crée ? » — et le reste de la carte
+  // ouvre l'édition existante (photo, couverture, bio).
+  if (passionsUnifieesActives()) {
+    _migrerFiltresPassion();
+
+    // Comptages : une seule lecture d'`allEvents()` pour toutes les cartes.
+    var _mesEvs = _myProfileEvents(9999);
+    var _courant = state.user.currentProfileId;
+
+    if (sub) {
+      var _arch = passionsArchivees();
+      if (_arch.length) {
+        sub.innerHTML = '<span class="link" data-v8-archivees="1" onclick="openArchivedPassions()">🗄️ Passions archivées (' + _arch.length + ')</span>';
+        sub.style.display = "";
+      } else {
+        sub.innerHTML = "";
+        sub.style.display = "none";
+      }
     }
-  }
 
-  list.innerHTML = state.user.profiles.map(p => {
-    const passion    = passionById(p.passion);
-    const isSelected = window.profilesFilterSelection.has(p.id);
-    const _pPhoto = p.photoUrl || p.photo || null;
-    const hasPhoto   = !!_pPhoto;
-    const avatarStyle = hasPhoto
-      ? `background:url(${safeUrlAttr(_pPhoto)}) center/cover;`
-      : `background:${p.color};`;
-    const avatarContent = hasPhoto ? "" : p.emoji;
+    list.innerHTML = passionsVivantes().map(function (p) {
+      var et = _passionEtiquette(p);
+      var estActive = (p.id === _courant);
+      var _pPhoto = p.photoUrl || p.photo || null;
+      var avatarStyle = _pPhoto
+        ? "background:url(" + safeUrlAttr(_pPhoto) + ") center/cover;"
+        : "background:" + _couleurSure(p.color) + ";";
+      var avatarContent = _pPhoto ? "" : escapeHtml(et.emoji);
+      var _pCover = p.coverUrl || p.coverPhoto || null;
+      var coverStyle = _pCover
+        ? "background:linear-gradient(90deg, rgba(0,0,0,0.62), rgba(0,0,0,0.30)), url(" + safeUrlAttr(_pCover) + ") center/cover;"
+        : "";
 
-    // Photo de fond du profil passion (facultative) : voile sombre par-dessus
-    // pour que le nom et la bio restent lisibles.
-    const _pCover = p.coverUrl || p.coverPhoto || null;
-    const coverStyle = _pCover
-      ? `background:linear-gradient(90deg, rgba(0,0,0,0.62), rgba(0,0,0,0.30)), url(${safeUrlAttr(_pCover)}) center/cover;`
-      : "";
+      var nbPosts = (state.userPosts || []).filter(function (x) { return _postDeLaPassion(x, p); }).length;
+      var nbEvs = _mesEvs.filter(function (e) { return e && e.passion === p.passion; }).length;
+      var compte = nbPosts + " publication" + (nbPosts > 1 ? "s" : "") + " · " + nbEvs + " activité" + (nbEvs > 1 ? "s" : "");
 
-    return `<div class="profile-card ${isSelected?"selected":""} ${_pCover?"has-cover":""}" style="${coverStyle}${isSelected ? "border:2px solid var(--accent);" : ""}" onclick="toggleProfileSelect('${escapeJsArg(p.id)}')">
-      <div class="avatar lg" style="${avatarStyle}position:relative;">${avatarContent}
-        <div class="passion-photo-badge" onclick="event.stopPropagation();document.getElementById('passionPhoto_${escapeJsArg(p.id)}').click()">📷</div>
-        <input type="file" id="passionPhoto_${p.id}" accept="image/*" style="display:none;" onchange="event.stopPropagation();changePassionPhoto(event,'${escapeJsArg(p.id)}')"/>
-        <input type="file" id="passionCover_${p.id}" accept="image/*" style="display:none;" onchange="event.stopPropagation();changePassionCoverPhoto(event,'${escapeJsArg(p.id)}')"/>
-      </div>
-      <div class="profile-card-body" style="flex:1;">
-        <div class="profile-card-name">
-          ${passion.emoji} ${passion.label}
+      var etat = estActive
+        ? '<span class="v8-state on" data-v8-active="' + escapeHtml(String(p.id)) + '">Passion active ✓</span>'
+        : '<button type="button" class="v8-state" data-v8-utiliser="' + escapeHtml(String(p.id)) + '"'
+          + ' onclick="event.stopPropagation();switchToProfile(\'' + escapeJsArg(String(p.id)) + '\')">Utiliser pour créer</button>';
+
+      return '<div class="profile-card v8-passion-card' + (estActive ? " is-active" : "") + (_pCover ? " has-cover" : "") + '"'
+        + ' data-v8-card="' + escapeHtml(String(p.id)) + '" style="' + coverStyle + '"'
+        + ' onclick="openEditPassionProfile(\'' + escapeJsArg(String(p.id)) + '\')">'
+        + '<div class="avatar lg" style="' + avatarStyle + 'position:relative;">' + avatarContent
+        + '<div class="passion-photo-badge" onclick="event.stopPropagation();document.getElementById(\'passionPhoto_' + escapeJsArg(String(p.id)) + '\').click()">📷</div>'
+        + '<input type="file" id="passionPhoto_' + escapeHtml(String(p.id)) + '" accept="image/*" style="display:none;" onchange="event.stopPropagation();changePassionPhoto(event,\'' + escapeJsArg(String(p.id)) + '\')"/>'
+        + '<input type="file" id="passionCover_' + escapeHtml(String(p.id)) + '" accept="image/*" style="display:none;" onchange="event.stopPropagation();changePassionCoverPhoto(event,\'' + escapeJsArg(String(p.id)) + '\')"/>'
+        + '</div>'
+        + '<div class="profile-card-body">'
+        + '<div class="profile-card-name">' + escapeHtml(et.emoji) + " " + escapeHtml(et.label) + '</div>'
+        + (p.bio ? '<div class="profile-card-bio">' + escapeHtml(p.bio) + '</div>' : "")
+        + '<div class="v8-card-meta">' + escapeHtml(compte) + '</div>'
+        + '</div>'
+        + '<button class="profile-dots-btn" onclick="openPassionProfileMenu(event,\'' + escapeJsArg(String(p.id)) + '\')" title="Options" aria-label="Options de la passion" aria-haspopup="menu">⋯</button>'
+        + etat
+        + '</div>';
+    }).join("");
+  } else {
+
+
+    if (sub) {
+      // Plus de décompte verbeux : on garde uniquement la fonction Réinitialiser
+      // quand une sélection est active, sinon rien.
+      if (window.profilesFilterSelection.size > 0) {
+        sub.innerHTML = `<span class="link" onclick="clearProfilesFilter()">Réinitialiser</span>`;
+        sub.style.display = "";
+      } else {
+        sub.innerHTML = "";
+        sub.style.display = "none";
+      }
+    }
+
+    list.innerHTML = state.user.profiles.map(p => {
+      const passion    = passionById(p.passion);
+      const isSelected = window.profilesFilterSelection.has(p.id);
+      const _pPhoto = p.photoUrl || p.photo || null;
+      const hasPhoto   = !!_pPhoto;
+      const avatarStyle = hasPhoto
+        ? `background:url(${safeUrlAttr(_pPhoto)}) center/cover;`
+        : `background:${p.color};`;
+      const avatarContent = hasPhoto ? "" : p.emoji;
+
+      // Photo de fond du profil passion (facultative) : voile sombre par-dessus
+      // pour que le nom et la bio restent lisibles.
+      const _pCover = p.coverUrl || p.coverPhoto || null;
+      const coverStyle = _pCover
+        ? `background:linear-gradient(90deg, rgba(0,0,0,0.62), rgba(0,0,0,0.30)), url(${safeUrlAttr(_pCover)}) center/cover;`
+        : "";
+
+      return `<div class="profile-card ${isSelected?"selected":""} ${_pCover?"has-cover":""}" style="${coverStyle}${isSelected ? "border:2px solid var(--accent);" : ""}" onclick="toggleProfileSelect('${escapeJsArg(p.id)}')">
+        <div class="avatar lg" style="${avatarStyle}position:relative;">${avatarContent}
+          <div class="passion-photo-badge" onclick="event.stopPropagation();document.getElementById('passionPhoto_${escapeJsArg(p.id)}').click()">📷</div>
+          <input type="file" id="passionPhoto_${p.id}" accept="image/*" style="display:none;" onchange="event.stopPropagation();changePassionPhoto(event,'${escapeJsArg(p.id)}')"/>
+          <input type="file" id="passionCover_${p.id}" accept="image/*" style="display:none;" onchange="event.stopPropagation();changePassionCoverPhoto(event,'${escapeJsArg(p.id)}')"/>
         </div>
-        ${p.bio ? `<div class="profile-card-bio">${escapeHtml(p.bio)}</div>` : ""}
-      </div>
-      <button class="profile-dots-btn" onclick="openPassionProfileMenu(event,'${escapeJsArg(p.id)}')" title="Options du profil" aria-label="Options du profil" aria-haspopup="menu" style="flex-shrink:0;">⋯</button>
-    </div>`;
-  }).join("");
+        <div class="profile-card-body" style="flex:1;">
+          <div class="profile-card-name">
+            ${passion.emoji} ${passion.label}
+          </div>
+          ${p.bio ? `<div class="profile-card-bio">${escapeHtml(p.bio)}</div>` : ""}
+        </div>
+        <button class="profile-dots-btn" onclick="openPassionProfileMenu(event,'${escapeJsArg(p.id)}')" title="Options du profil" aria-label="Options du profil" aria-haspopup="menu" style="flex-shrink:0;">⋯</button>
+      </div>`;
+    }).join("");
+  }
 
   // Contenu en dessous : filtré par l'onglet actif ET la multi-sélection
   renderProfileContent();
@@ -1175,6 +1655,15 @@ function switchToProfile(id) {
   const p = currentProfile();
   // switchToProfile ne force plus de filtre — l'utilisateur choisit lui-même
   saveState();
+  // Lot UI-8 : le changement de passion active n'est JAMAIS muet — c'est avec
+  // elle que l'utilisateur publiera ensuite. Le toast dit ce qui change
+  // vraiment : l'univers de création, pas le compte.
+  if (passionsUnifieesActives()) {
+    try {
+      var _et = _passionEtiquette(p || {});
+      toast("✨ Tu crées maintenant dans " + _et.label);
+    } catch (e) {}
+  }
   // Le profil actif = identité publique (1 ligne profiles par compte) → on la
   // resynchronise pour que la recherche/messagerie reflètent le bon pseudo.
   if (typeof supaUpsertProfile === "function") { try { supaUpsertProfile(); } catch(e) {} }
@@ -1183,6 +1672,18 @@ function switchToProfile(id) {
   renderTopbar();
   renderProfilesScreen();
   renderFeed();
+  // Le Studio prend la passion active comme valeur par défaut : s'il est déjà
+  // monté, son sélecteur doit suivre immédiatement (sinon la prochaine
+  // publication partirait dans l'ancienne passion).
+  // ⚠️ `#postPassion` est dans le markup statique : tester sa présence ne garde
+  // RIEN. Ce qu'il faut tester, c'est que le Studio soit à l'écran — sinon
+  // `renderStudio()` réécrit le <select> et écrase une passion choisie à la
+  // main pour la publication en cours.
+  try {
+    var _st = document.getElementById("screen-studio");
+    if (_st && _st.classList.contains("active") && typeof renderStudio === "function") renderStudio();
+  } catch (e) { _v8Echec("studio_resync", e); }
+  try { if (typeof renderProfileStrip === "function") renderProfileStrip(); } catch (e) { _v8Echec("strip_resync", e); }
 }
 
 // ===== ÉDITION D'UN PROFIL PASSION (crayon sur la carte) =====
@@ -1192,6 +1693,11 @@ function openEditPassionProfile(profileId) {
   const p = (state.user.profiles || []).find(x => x.id === profileId);
   if (!p) return;
   const passion = passionById(p.passion);
+  // ⚠️ Lot UI-8 : cette modale est désormais ouverte par TOUTE la surface de la
+  // carte de passion. Y laisser « Supprimer ce profil » — qui efface aussi
+  // `state.userPosts` — mettrait la suppression destructrice à deux taps, plus
+  // près qu'avant le lot. Sous UI-8, c'est l'archivage, et lui seul.
+  const _v8 = passionsUnifieesActives();
   const photo = p.photoUrl || p.photo || null;
   const cover = p.coverUrl || p.coverPhoto || null;
 
@@ -1227,7 +1733,8 @@ function openEditPassionProfile(profileId) {
     </div>
 
     <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);">
-      <button class="btn ghost" onclick="closeModal();setTimeout(function(){confirmDeleteProfile('${escapeJsArg(p.id)}','${escapeJsArg(passion.label)}');},200);" style="width:100%;font-size:13px;padding:12px;color:#ef4444;">🗑 Supprimer ce profil</button>
+      ${_v8 ? `<button class="btn ghost" data-v8-archiver-lien="1" onclick="closeModal();setTimeout(function(){confirmArchivePassion('${escapeJsArg(p.id)}');},200);" style="width:100%;font-size:13px;padding:12px;">🗄️ Archiver cette passion</button>`
+            : `<button class="btn ghost" onclick="closeModal();setTimeout(function(){confirmDeleteProfile('${escapeJsArg(p.id)}','${escapeJsArg(passion.label)}');},200);" style="width:100%;font-size:13px;padding:12px;color:#ef4444;">🗑 Supprimer ce profil</button>`}
     </div>`);
 
   const ta = document.getElementById("editPassionBio");
@@ -1311,7 +1818,11 @@ function deleteProfile(profileId) {
   state.user.profiles = profiles.filter(function(p) { return p.id !== profileId; });
   state.userPosts = state.userPosts.filter(function(p) { return p.profileId !== profileId; });
   if (state.user.currentProfileId === profileId) {
-    state.user.currentProfileId = state.user.profiles[0].id;
+    // ⚠️ Le repli doit désigner une passion VIVANTE : sinon supprimer la
+    // dernière non archivée rendait active une passion rangée — un état que
+    // tout le lot UI-8 suppose impossible.
+    var _vivantes = (state.user.profiles || []).filter(function (x) { return !x.archived; });
+    state.user.currentProfileId = (_vivantes[0] || state.user.profiles[0]).id;
   }
   // selectedFeedPassions ne contient pas d'IDs de profil, rien à nettoyer ici
   saveState();
@@ -1330,7 +1841,9 @@ function deleteProfile(profileId) {
 function renderProfileStrip() {
   const box = document.getElementById("profileStrip");
   if (!box) return;
-  const profiles = state.user.profiles || [];
+  // Lot UI-8 : une passion archivée ne pèse plus sur le Fil. Rien n'est
+  // supprimé — la restaurer la fait revenir ici telle quelle.
+  const profiles = passionsUnifieesActives() ? passionsVivantes() : (state.user.profiles || []);
   if (profiles.length === 0) { box.innerHTML = ""; return; }
 
   var hasFilter = _activeFeedPassions.size > 0 || _showFollowingFeed;
@@ -1451,94 +1964,31 @@ function renderMoodStripSmart(availablePosts) {
   });
 }
 
-// ===== Limite profils + paywall =====
-const FREE_PROFILES_LIMIT = 3;
-const EXTRA_PROFILE_COST_PASSIA = 150;
+// ===== Profils multiples =====
+// ADR-009 : plus aucune limite payante ni monnaie interne. Créer un profil-passion
+// supplémentaire est libre et gratuit — le paywall « 150 💎 », le « Pass Passion »
+// et le compteur `profilesCount()` qui ne servait qu'à eux ont été retirés du
+// cœur produit avec le reste de l'économie Passia.
 
-function hasActivePass() {
-  const ap = state.user && state.user.activePass;
-  if (!ap) return false;
-  return !ap.nextBillingAt || ap.nextBillingAt > Date.now();
-}
-
-function profilesCount() {
-  return (state.user.profiles || []).length;
-}
-
-function isNextProfilePaid() {
-  return profilesCount() >= FREE_PROFILES_LIMIT && !hasActivePass();
-}
-
-function openProfilePaywall() {
-  const balance = state.user.passia || 0;
-  const cost = EXTRA_PROFILE_COST_PASSIA;
-  const canAfford = balance >= cost;
-  const html = `
-    <div class="modal-handle"></div>
-    <span class="modal-close" onclick="closeModal()">×</span>
-    <div class="pay-modal-head">
-      <div class="pay-modal-emoji">🔓</div>
-      <div class="pay-modal-title">Profil supplémentaire</div>
-    </div>
-    <div style="font-size:13px;color:var(--text);text-align:center;margin-bottom:14px;line-height:1.55;">
-      Tu as déjà <b>${profilesCount()} profils actifs</b> (la limite gratuite).<br/>
-      Ajoute un nouveau profil-passion pour <b>${cost} 💎</b>, ou passe au Pass Passion pour des profils illimités.
-    </div>
-    <div class="pay-modal-amount" style="background: linear-gradient(135deg, #4c1d95, #7c3aed);">
-      <div class="pay-modal-amount-big">${cost} 💎</div>
-      <div class="pay-modal-amount-sub">Solde actuel : ${balance} 💎</div>
-    </div>
-    <button class="btn primary block" ${canAfford ? `onclick="payForExtraProfile()"` : 'disabled style="opacity:0.5;cursor:not-allowed;"'}>
-      ${canAfford ? `Payer ${cost} 💎 et créer mon profil` : `Pas assez de 💎 (manque ${cost - balance})`}
-    </button>
-    ${!canAfford ? `<button class="btn block" style="margin-top:8px;" onclick="closeModal();goTo('wallet');setTimeout(()=>setWalletTab('shop'), 100);">+ Acheter du Passia</button>` : ""}
-    <div style="text-align:center;margin:14px 0 8px;font-size:11px;color:var(--muted);">— ou —</div>
-    <div class="pass-card" onclick="closeModal();goTo('wallet');setTimeout(()=>setWalletTab('shop'), 100);" style="margin:0;cursor:pointer;">
-      <div class="pass-card-head">
-        <div class="pass-card-title">Pass Passion</div>
-        <div class="pass-card-badge">Profils illimités</div>
-      </div>
-      <div class="pass-card-price">9,99 € <span class="pass-card-price-per">/ mois</span></div>
-      <ul class="pass-card-perks" style="margin:0;">
-        <li>Profils illimités</li>
-        <li>200 💎 / mois inclus</li>
-        <li>Annulable à tout moment</li>
-      </ul>
-    </div>
-    <p style="font-size:10.5px;color:var(--muted);text-align:center;margin-top:12px;line-height:1.5;">
-      Pourquoi ? Un profil = un fil dédié, modéré, hébergé. Au-delà de 3, on couvre les frais réels d'hébergement et de modération.
-    </p>
-  `;
-  openModal(html);
-}
-
-function payForExtraProfile() {
-  const cost = EXTRA_PROFILE_COST_PASSIA;
-  if ((state.user.passia || 0) < cost) {
-    toast("Solde Passia insuffisant.");
-    return;
-  }
-  // Marque qu'on a payé pour ce prochain profil, sera consommé à la création
-  window._paidProfileSlotPending = true;
-  closeModal();
-  // Petit délai pour la transition de modale, puis ouvre la création
-  setTimeout(() => openCreateProfile(true), 180);
-}
-
-function openCreateProfile(_paidSlotConfirmed) {
-  // Vérifie le paywall, sauf si on vient de confirmer un paiement
-  if (!_paidSlotConfirmed && isNextProfilePaid()) {
-    openProfilePaywall();
-    return;
-  }
-  const already = state.user.profiles.map(p => p.passion);
+function openCreateProfile() {
+  // ⚠️ Lot UI-8 : une passion ARCHIVÉE ne compte pas comme « déjà prise ». Sans
+  // ça elle n'apparaissait ni dans la liste, ni dans le catalogue. La choisir
+  // ici la RESTAURE (cf. confirmCreateProfile), elle n'en crée pas une seconde.
+  // ⚠️ ADR-009 : le paywall qui gardait cette porte (quota gratuit de 3, Pass
+  // Passion, paiement en 💎) est retiré avec le reste de l'économie interne.
+  // Créer une passion est désormais toujours gratuit, et sans limite — il n'y a
+  // plus aucun moyen de payer, donc plus rien à barrer.
+  const _v8Cr = passionsUnifieesActives();
+  const already = state.user.profiles
+    .filter(p => !(_v8Cr && p.archived))
+    .map(p => p.passion);
   const pool = allPassions().filter(p => !already.includes(p.id));
   openModal(`
     <div class="modal-handle"></div>
     <div style="text-align:center;margin-bottom:18px;">
       <div style="font-size:28px;margin-bottom:6px;">✨</div>
       <div style="font-weight:800;font-size:17px;color:var(--text);margin-bottom:4px;">Nouveau fil passion</div>
-      <div style="font-size:12px;color:var(--muted);line-height:1.5;">Chaque passion = un fil dédié sur ton profil.<br/>+15 pts · +2 💎 à la création.</div>
+      <div style="font-size:12px;color:var(--muted);line-height:1.5;">Chaque passion = un fil dédié sur ton profil.</div>
     </div>
     <div class="passion-grid new-profile-passion-grid" id="newProfileGrid">
       ${pool.map(p => `
@@ -1581,12 +2031,13 @@ async function confirmCreateProfile() {
   const pid = window._newProfilePassion;
   if (!pid) { toast("Choisis une passion"); return; }
 
-  // Vérifie le paywall : profil au-delà du quota gratuit ET pas de Pass actif ET pas de paiement préalable
-  const paidPending = !!window._paidProfileSlotPending;
-  if (profilesCount() >= FREE_PROFILES_LIMIT && !hasActivePass() && !paidPending) {
-    closeModal();
-    setTimeout(() => openProfilePaywall(), 150);
-    return;
+  // ⚠️ Lot UI-8 : cette passion existe peut-être déjà, ARCHIVÉE. La recréer
+  // ferait un doublon (deux entrées pour la même passion, que la fusion
+  // défensive d'app-02 dédupliquerait ensuite en silence). On la restaure, sans
+  // rien effacer.
+  if (passionsUnifieesActives()) {
+    const _arch = (state.user.profiles || []).find(function (x) { return x.archived && x.passion === pid; });
+    if (_arch) { restaurerPassion(_arch.id); return; }
   }
 
   // Identité centralisée : on réutilise toujours le nom principal du compte.
@@ -1601,22 +2052,7 @@ async function confirmCreateProfile() {
     bio: bio || `Profil ${p.label}`,
     color: p.color,
     createdAt: Date.now(),
-    paid: paidPending,
   };
-
-  // Si paiement Passia : déduit et log
-  if (paidPending) {
-    state.user.passia -= EXTRA_PROFILE_COST_PASSIA;
-    state.transactions.unshift({
-      id: uid(),
-      kind: "profile_extra",
-      pts: 0,
-      passia: -EXTRA_PROFILE_COST_PASSIA,
-      label: `Profil supplémentaire débloqué : ${p.label}`,
-      at: Date.now(),
-    });
-    window._paidProfileSlotPending = false;
-  }
 
   state.user.profiles.push(np);
   state.user.currentProfileId = np.id;
@@ -1627,14 +2063,10 @@ async function confirmCreateProfile() {
   // Pousse immédiatement user_state (liste complète des profils) sans attendre le
   // debounce de 2500ms — sinon un logout rapide perd le nouveau profil.
   if (typeof supaSaveUserState === "function") { try { supaSaveUserState(); } catch(e) {} }
-  grantReward("profile_create");
   closeModal();
   renderProfilesScreen();
   renderTopbar();
-
-  if (paidPending) {
-    toast(`✨ Profil ${p.label} débloqué ! −${EXTRA_PROFILE_COST_PASSIA} 💎`, "success");
-  }
+  toast(`✨ Ton fil ${p.label} est créé`, "success");
 }
 
 function switchProfileModal() {
@@ -1657,7 +2089,10 @@ let videoDataUrl = null;
 function renderStudio() {
   // Passion dropdown based on user profiles
   const sel = $("#postPassion");
-  sel.innerHTML = state.user.profiles.map(p => {
+  // Lot UI-8 : on ne propose pas de créer dans une passion archivée. Les
+  // publications existantes gardent la leur — seul le choix futur est borné.
+  const _pool = passionsUnifieesActives() ? passionsVivantes() : state.user.profiles;
+  sel.innerHTML = _pool.map(p => {
     const pn = passionById(p.passion);
     return `<option value="${p.passion}" ${p.id === state.user.currentProfileId ? "selected" : ""}>${pn.emoji} ${pn.label}</option>`;
   }).join("");
@@ -2278,14 +2713,6 @@ async function publishPost() {
     var _db = document.getElementById("vlogDraftBanner"); if (_db) _db.remove();
   }
 
-  // Reward
-  const kind = studioType === "photo" ? "publish_photo"
-             : studioType === "video" ? "publish_video"
-             : studioType === "audio" ? "publish_audio"
-             : isVlogPublish          ? "publish_vlog"
-             : "publish_text";
-  grantReward(kind);
-  if (studioMood === "creation") bumpQuest("publish");
 
   // ✅ Le message de confirmation est déjà dans supaPublishPostWithRetry
   // (toast "Publication en cours..." → "✅ Post publié!" ou "❌ Erreur")
@@ -2597,7 +3024,6 @@ function aiDetectIntent(q) {
   if (/irl|événement|event|rencontre|près de|proximité/.test(ql)) return "irl";
   if (/cdv|carnet|voyage|live|en direct/.test(ql)) return "cdv";
   if (/créateur|profil|suivre|utilisateur|qui suit/.test(ql)) return "creators";
-  if (/passia|points|score|wallet|gagner|récompense/.test(ql)) return "gamification";
   if (/mode pause|bien-être|digital wellbeing|temps d'écran|pause/.test(ql)) return "wellbeing";
   if (/post|publier|créer|studio/.test(ql) && !/passion/.test(ql)) return "create";
   // Passion knowledge
@@ -2677,16 +3103,6 @@ function aiGenerateResponse(query) {
   }
 
   // --- Gamification ---
-  if (intent === "gamification") {
-    return '<div><div class="ai-section-label">💎 Comment gagner des Passia</div>' +
-      '<div class="ai-card"><div class="ai-card-title">📝 Publier un post texte</div><div class="ai-card-meta">+10 pts · +2 💎</div></div>' +
-      '<div class="ai-card"><div class="ai-card-title">📷 Publier une photo</div><div class="ai-card-meta">+15 pts · +3 💎</div></div>' +
-      '<div class="ai-card"><div class="ai-card-title">🎙 Publier un podcast</div><div class="ai-card-meta">+20 pts · +5 💎</div></div>' +
-      '<div class="ai-card"><div class="ai-card-title">📍 Rejoindre un événement IRL</div><div class="ai-card-meta">+25 pts · +5 💎</div></div>' +
-      '<div class="ai-card"><div class="ai-card-title">📔 Lancer un CDV Live</div><div class="ai-card-meta">+30 pts · +8 💎</div></div>' +
-      '<div style="margin-top:8px;font-size:12px;color:var(--muted);">Consulte ton Wallet dans l\'onglet <b>Wallet</b> pour voir ton score et le leaderboard.</div></div>';
-  }
-
   // --- Bien-être ---
   if (intent === "wellbeing") {
     return '<div><div class="ai-section-label">🌿 Bien-être digital sur PASSIO</div>' +
@@ -2810,7 +3226,7 @@ function aiGenerateResponse(query) {
     '• Chercher des événements IRL<br>' +
     '• Consulter les carnets de voyage<br><br>' +
     'Essaie des questions comme :<br>' +
-    '<em>"Conseils en photographie"</em>, <em>"Events IRL Lyon"</em>, <em>"Comment gagner des Passia"</em>' +
+    '<em>"Conseils en photographie"</em>, <em>"Events IRL Lyon"</em>, <em>"Rencontrer des passionnés"</em>' +
     '</div>';
 }
 

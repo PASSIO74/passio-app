@@ -32,8 +32,6 @@ function defaultState() {
       name: "",
       birthYear: null,
       isMinor: false,
-      score: 0,
-      passia: 0,
       currentProfileId: null,
       profiles: [],
       drafts: [],
@@ -57,13 +55,11 @@ function defaultState() {
       passionSignals: {},
       general: {},
     },
-    seed,                    // fake accounts / posts / events / stories / notifs / quests (SEED DE DÉMO SEULEMENT)
+    seed,                    // fake accounts / posts / events / stories / notifs (SEED DE DÉMO SEULEMENT)
     supabasePosts: [],       // ✅ POSTS VRAIS UTILISATEURS chargés depuis Supabase
     userPosts: [],           // posts published by the user
     userEvents: [],          // events created by the user
-    transactions: [],
     notifications: [],       // user-specific notifications (seed copied at init)
-    quests: [],              // user-specific quest progress (seed copied at init)
     currentMood: "all",
     selectedFeedPassions: [], // passion IDs actifs dans le fil
     feedMoodsTouched: false,  // l'utilisateur a-t-il déjà réglé le filtre mood lui-même ?
@@ -72,11 +68,42 @@ function defaultState() {
   };
 }
 
+// ════════════════════════════════════════════════════════════════════════
+// ADR-009 — ÉCONOMIE INTERNE RETIRÉE : normaliseur d'état legacy
+// ════════════════════════════════════════════════════════════════════════
+// Un état écrit par un client d'avant le retrait (localStorage OU blob
+// `user_state` synchronisé depuis un autre appareil) contient encore
+// `user.score`, `user.passia`, `user.likesReceived`, `user.activePass`,
+// `transactions` et `quests`. Rien ne doit lever à la lecture, et rien ne doit
+// réapparaître à l'écran.
+//
+// ⚠️ Ce normaliseur est appelé aux TROIS frontières, pas seulement au
+// chargement local : sans la frontière d'hydratation, un ancien appareil encore
+// en service repousserait les clés à chaque synchronisation et le nouveau client
+// les réécrirait en boucle dans son propre blob (« last write wins » joue dans
+// les deux sens). Sans la frontière d'envoi, ce client propagerait à son tour
+// les clés qu'il vient de lire.
+const LEGACY_ECONOMY_USER_KEYS = ["score", "passia", "likesReceived", "activePass"];
+const LEGACY_ECONOMY_ROOT_KEYS = ["transactions", "quests"];
+
+function stripLegacyEconomy(obj) {
+  if (!obj || typeof obj !== "object") return obj;
+  LEGACY_ECONOMY_ROOT_KEYS.forEach(function (k) { delete obj[k]; });
+  if (obj.user && typeof obj.user === "object") {
+    LEGACY_ECONOMY_USER_KEYS.forEach(function (k) { delete obj.user[k]; });
+    if (Array.isArray(obj.user.profiles)) {
+      // `paid` marquait un profil débloqué contre 150 💎 : la notion n'existe plus.
+      obj.user.profiles.forEach(function (p) { if (p && typeof p === "object") delete p.paid; });
+    }
+  }
+  return obj;
+}
+
 function loadState() {
   try {
     const raw = localStorage.getItem(STATE_KEY);
     if (!raw) return defaultState();
-    const parsed = JSON.parse(raw);
+    const parsed = stripLegacyEconomy(JSON.parse(raw));
     // Always refresh seed (in case we update it between versions)
     const def = defaultState();
     parsed.seed = def.seed;
@@ -84,9 +111,6 @@ function loadState() {
     if (!parsed.user.seenStories) parsed.user.seenStories = [];
     if (!Array.isArray(parsed.notifications) || !parsed.notifications.length) {
       parsed.notifications = def.seed.notifications.map(n => ({ ...n }));
-    }
-    if (!Array.isArray(parsed.quests) || !parsed.quests.length) {
-      parsed.quests = def.seed.quests.map(q => ({ ...q }));
     }
     if (typeof parsed.landingSeen === "undefined") parsed.landingSeen = false;
     if (!Array.isArray(parsed.user.customPassions)) parsed.user.customPassions = [];
@@ -208,6 +232,17 @@ function _syncableState() {
   const s = _leanState();
   delete s.seed;
   delete s.supabasePosts;
+  // ADR-009 : ne jamais REPROPAGER une clé d'économie interne lue d'un ancien
+  // état — sinon ce client remettrait en circulation ce qu'il vient de retirer.
+  // ⚠️ `_leanState()` est une copie SUPERFICIELLE : `s.user` est le MÊME objet
+  // que `state.user`. On le dédouble avant de filtrer, sinon cette fonction
+  // d'ENVOI muterait l'état vivant de l'application — un effet de bord qu'un
+  // lecteur de `_syncableState` n'a aucune raison d'attendre.
+  if (s.user && typeof s.user === "object") s.user = Object.assign({}, s.user);
+  if (Array.isArray(s.user && s.user.profiles)) s.user.profiles = s.user.profiles.map(function (p) {
+    return (p && typeof p === "object") ? Object.assign({}, p) : p;
+  });
+  stripLegacyEconomy(s);
   // Strip base64 photos from passion profiles : les images base64 peuvent dépasser
   // la limite de payload Supabase (~1 Mo) et bloquer TOUS les appels supaSaveUserState.
   // La photo reste dans localStorage (s.user n'est pas modifié en mémoire) ; seule
@@ -602,6 +637,9 @@ async function _flushPendingUserState() {
 // réseau, qui sont rechargés séparément).
 function _applyUserState(data) {
   if (!data || typeof data !== "object") return;
+  // ADR-009 : un blob poussé par un ancien client porte encore score/passia/
+  // transactions/quests. On les jette AVANT de les recopier dans `state`.
+  stripLegacyEconomy(data);
   const keepSeed = state.seed, keepSupa = state.supabasePosts;
   window._hydratingState = true;
   try {
@@ -679,6 +717,11 @@ async function supaLoadUserState() {
           if (!merged.photo && lp.photo) merged.photo = lp.photo;
           if (!merged.photoUrl && lp.photoUrl) merged.photoUrl = lp.photoUrl;
           if (!merged.bio && lp.bio) merged.bio = lp.bio;
+          // Lot UI-8 : l'état « archivée » est une donnée locale récente que le
+          // serveur peut ignorer (blob écrit avant l'archivage). On ne la
+          // réinjecte QUE s'il n'en a aucune — sinon une restauration serveur
+          // serait annulée par un vieil état local.
+          if (merged.archived === undefined && lp.archived !== undefined) merged.archived = lp.archived;
           return merged;
         });
         // Dédup final : s'il reste deux profils pour la même passion (ne devrait
@@ -971,23 +1014,18 @@ function _withSenderMeta(content) {
   return JSON.stringify({ type: "text", text: (content == null ? "" : String(content)), sp: sp });
 }
 
-function rankOf(score) {
-  let r = RANKS[0];
-  for (const rank of RANKS) if (score >= rank.min) r = rank;
-  return r;
-}
-
-// Célèbre un passage de rang : à appeler APRÈS une modification du score, en lui
-// passant le score AVANT le gain. Ne toaste que si le rang a réellement grimpé.
-function checkRankUp(prevScore) {
-  if (!state || !state.user) return;
-  const newRank = rankOf(state.user.score || 0);
-  const oldRank = rankOf(prevScore || 0);
-  if (newRank.label === oldRank.label) return;
-  const order = RANKS.map(r => r.label);
-  if (order.indexOf(newRank.label) <= order.indexOf(oldRank.label)) return; // pas une montée
-  try { toast("🎉 Nouveau rang débloqué : " + newRank.label + " !", "reward"); } catch (e) {}
-  try { if (typeof pushNotification === "function") pushNotification("🎉 Nouveau rang : <b>" + escapeHtml(newRank.label) + "</b>", "🏆"); } catch (e) {}
+// Prix d'une activité, en euros. Seule fonction autorisée à écrire un prix à
+// l'écran : elle tient le cas « gratuit » (0, vide, absent, non numérique) et
+// évite les décimales inutiles — « 12 € », mais « 12,50 € » quand il y en a.
+// ⚠️ ADR-009 : les prix étaient libellés en Passia (💎) tant que l'économie
+// interne existait. Un prix est désormais une somme RÉELLE en euros ; ne jamais
+// y remettre de jeton interne, et ne jamais concaténer « + " €" » à la main —
+// c'est ce qui laissait passer « 12.5 € » et « NaN € ».
+function fmtEventPrice(price) {
+  const n = Number(price);
+  if (price === null || price === undefined || price === "" || !isFinite(n) || n <= 0) return "Gratuit 🎉";
+  const txt = Number.isInteger(n) ? String(n) : n.toFixed(2).replace(".", ",");
+  return txt + "\u00a0€";
 }
 
 // ======== TOAST ========
@@ -1006,74 +1044,12 @@ function toast(msg, type = "info", onClick = null) {
   setTimeout(() => t.remove(), onClick ? 6000 : 3000);
 }
 
-function rewardToast(amount, passia, reason) {
-  const stack = $("#toastStack");
-  const t = document.createElement("div");
-  t.className = "toast reward";
-  t.innerHTML = `⭐ +${amount}${passia ? ` · 💎 +${passia}` : ""} · ${escapeHtml(reason)}`;
-  stack.appendChild(t);
-  setTimeout(() => t.remove(), 3000);
-}
-
-// ======== REWARDS ========
-// Le Wallet n'est re-rendu par une récompense QUE s'il est à l'écran : renderWallet
-// reconstruit guide + transactions + leaderboard + quêtes (~lourd), et goTo('wallet')
-// le re-rend de toute façon à la navigation → le faire sur un écran caché = pur lag
-// (ressenti sur CHAQUE commentaire/réponse/GIF via grantReward).
-function _walletScreenActive() {
-  var el = document.getElementById("screen-wallet");
-  return !!(el && el.classList.contains("active"));
-}
-
-function grantReward(kind, customLabel) {
-  const r = REWARDS[kind];
-  if (!r) return;
-  const _prevScore = state.user.score || 0;
-  state.user.score += r.pts;
-  state.user.passia += r.passia;
-  state.transactions.unshift({
-    id: uid(),
-    kind,
-    pts: r.pts,
-    passia: r.passia,
-    label: customLabel || r.label,
-    at: Date.now(),
-  });
-  saveState();
-  renderTopbar();
-  if (_walletScreenActive()) renderWallet();
-  rewardToast(r.pts, r.passia, customLabel || r.label);
-  checkRankUp(_prevScore);
-}
-
-// 💎 VALEUR REÇUE — appelé quand QUELQU'UN D'AUTRE like un de MES posts (via le
-// canal realtime:likes). C'est la seule source « organique » de Passia : rare,
-// non-farmable (il faut que les autres aiment ton contenu). Chaque like reçu
-// donne 2 ⭐ ; tous les LIKES_PER_PASSIA likes reçus → +1 💎.
-function awardLikeReceived() {
-  if (!state || !state.user) return;
-  const _prevScore = state.user.score || 0;
-  state.user.score = (state.user.score || 0) + (REWARDS.like_received.pts || 2);
-  state.user.likesReceived = (state.user.likesReceived || 0) + 1;
-  let passia = 0;
-  if (state.user.likesReceived % LIKES_PER_PASSIA === 0) {
-    passia = 1;
-    state.user.passia = (state.user.passia || 0) + 1;
-  }
-  state.transactions.unshift({
-    id: uid(),
-    kind: "like_received",
-    pts: REWARDS.like_received.pts || 2,
-    passia,
-    label: passia ? "Palier de likes reçus 💎" : "Like reçu",
-    at: Date.now(),
-  });
-  saveState();
-  try { renderTopbar(); } catch (e) {}
-  try { if (_walletScreenActive()) renderWallet(); } catch (e) {}
-  if (passia) rewardToast(REWARDS.like_received.pts || 2, passia, "Ton contenu plaît !");
-  checkRankUp(_prevScore);
-}
+// ======== RÉCOMPENSES — RETIRÉES (ADR-009) ========
+// Le Wallet, les points, les rangs et les Passia sont sortis du cœur produit.
+// `grantReward`, `awardLikeReceived`, `rewardToast`, `rankOf` et `checkRankUp`
+// ont été supprimés avec l'intégralité de leurs sites d'appel : publier,
+// commenter, aimer, rejoindre un événement ou créer un profil ne rapporte plus
+// rien. Ne PAS réintroduire d'économie interne sans rouvrir l'ADR-009.
 
 // ======== NAVIGATION ========
 // Historique de navigation pour le bouton back du téléphone
@@ -1088,6 +1064,10 @@ function pushOverlayToHistory(overlayType, overlayId = "") {
 }
 
 function goTo(screen) {
+  // ADR-009 : l'écran Wallet n'existe plus. Un ancien lien, un deep link `#wallet`
+  // ou un raccourci mémorisé doit mener à une destination valide plutôt qu'à un
+  // écran blanc (aucun `#screen-wallet` ne peut plus recevoir la classe active).
+  if (screen === "wallet" || screen === "shop") screen = "profiles";
   // Fermer le panneau d'outils contextuel s'il était ouvert (on change d'écran).
   if (window.ContextualTools && ContextualTools.isOpen()) ContextualTools.close();
   // Ajouter à l'historique seulement si ce n'est pas un retour en arrière
@@ -1126,7 +1106,6 @@ function goTo(screen) {
   if (screen === "studio")   renderStudio();
   if (screen === "explore")  { renderExplorer(); setTimeout(renderAiHistory, 50); }
   if (screen === "irl")      renderIRL();
-  if (screen === "wallet")   renderWallet();
   if (screen === "messages") renderMessages();
   if (screen === "cdv")      { renderCdvScreen(); if (typeof supaRefreshCdvLives === "function") supaRefreshCdvLives(); }
 
@@ -2495,25 +2474,8 @@ function onbFinish() {
   }
   state.onboarded = true;
 
-  // GAMIFICATION — retirée du parcours V2 (ADR-009 : Wallet/Passia hors du cœur).
-  // Conservée telle quelle sur le chemin de repli pour ne rien changer à l'ancien.
-  if (!v2) {
-    state.user.score += REWARDS.first_login.pts;
-    state.user.passia += REWARDS.first_login.passia;
-    state.transactions.unshift({
-      id: uid(), kind: "first_login",
-      pts: REWARDS.first_login.pts, passia: REWARDS.first_login.passia,
-      label: "Bienvenue sur PASSIO", at: Date.now(),
-    });
-
-    state.user.score += REWARDS.daily.pts;
-    state.user.passia += REWARDS.daily.passia;
-    state.transactions.unshift({
-      id: uid(), kind: "daily",
-      pts: REWARDS.daily.pts, passia: REWARDS.daily.passia,
-      label: "Connexion du jour", at: Date.now(),
-    });
-  }
+  // ADR-009 : plus aucune récompense d'activation (`first_login`, `daily`).
+  // Le chemin de repli suit désormais le parcours V2 sur ce point.
 
   saveState();
 

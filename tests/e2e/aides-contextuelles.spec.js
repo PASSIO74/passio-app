@@ -161,7 +161,7 @@ test("§8 — changer d'écran retire l'aide au lieu de la laisser flotter", asy
   await boot(page);
   await inscrire(page, "musique");
   await expect(bulles(page)).toHaveCount(1);
-  await page.evaluate(() => goTo("wallet"));
+  await page.evaluate(() => goTo("messages"));
   await expect(bulles(page)).toHaveCount(0);
 });
 

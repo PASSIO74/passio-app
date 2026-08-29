@@ -138,7 +138,7 @@ Réseau social des passions. PWA vanilla JS (pas de framework, pas de bundler) +
 - `$()` = querySelector (défini app-02), `$$()` = querySelectorAll. Toujours garder les guards `if (!el) return;`.
 - HTML généré par template literals + `escapeHtml()` pour tout contenu utilisateur (XSS). **3 helpers d'échappement (app-02), choisir selon le CONTEXTE** : `escapeHtml(x)` = texte HTML ; `escapeJsArg(x)` = argument de chaîne JS simple-quotée DANS un attribut onclick (le HTML décode `&#39;` AVANT le parse JS → un pseudo avec apostrophe cassait le bouton avec escapeHtml seul) ; `safeUrlAttr(x)` = attribut src/href d'une URL fournie par un autre utilisateur (bloque `javascript:` & sortie d'attribut ; n'accepte que http(s)/data:image|audio|video/blob). ⚠️ Les payloads de `comment_interactions`/`event_reactions`/messages média sont librement insérables par tout compte authentifié → TOUJOURS échapper à l'affichage (XSS stockés corrigés le 2026-07-02).
 - **Timestamps Supabase : TOUJOURS `supaTs(s)` (app-02), JAMAIS `new Date(x + "Z")`.** La prod mélange des colonnes `timestamp` (sans fuseau : posts, conv_messages, notifications, stories, events, profiles) et `timestamptz` (avec offset `+00:00` : comment_interactions, event_comments/reactions/attendees, tout cdv_*, blocks, reports…) — l'ancien pattern `+ "Z"` donnait NaN (« Invalid Date ») sur les timestamptz. `supaTs` gère les deux + le format realtime.
-- Navigation : `goTo('feed'|'profiles'|'studio'|'explore'|'irl'|'wallet'|'messages'|'cdv')` — écrans = `#screen-<nom>`.
+- Navigation : `goTo('feed'|'profiles'|'studio'|'explore'|'irl'|'messages'|'cdv')` — écrans = `#screen-<nom>`. `goTo('wallet')` et `goTo('shop')` sont REDIRIGÉS vers `profiles` (ADR-009) : un ancien deep link `#wallet` ne doit jamais laisser l'app sans écran actif.
 - Toasts via `toast()`, jamais `alert()`.
 - Les onclick inline doivent référencer des fonctions globales EXISTANTES (l'audit du 2026-06-10 a trouvé 7 fonctions fantômes — vérifier avant d'ajouter un handler).
 
@@ -216,6 +216,73 @@ App INDÉPENDANTE de supervision/test temps réel, dans `dashboard/` (Node/Expre
 
 **Présence permanente** : `dashboard/supervise.mjs` relance le serveur s'il meurt (recul 2/5/15/30/60 s, journal borné `data/supervise.log`, PID dans `data/supervise.pid`), `Sentinelle-Demarrage.vbs` le lance sans fenêtre, `Installer-Demarrage-Auto.cmd` pose un raccourci dans le dossier Démarrage de la session (aucun droit admin ; `/retirer` pour défaire), `Arreter-Pilotage.cmd` arrête tout. ⚠️ Ces `.cmd` sont en **ASCII pur** : un `.cmd` accentué est mal découpé par l'interpréteur Windows, qui exécute alors des morceaux de commentaire. Chaque diagnostic porte un **verdict** : défaut réel / comportement attendu / données insuffisantes. Réglages `DASH_SENTINEL_*` (voir `dashboard/README.md` §3 bis). Tests : `dashboard/test/sentinel.test.js` (17, dont un test d'intégration erreur réelle → diagnostic).
 
+
+## 💸 ADR-009 appliqué — l'économie interne est RETIRÉE (2026-08-29)
+
+Wallet, points, étoiles, rangs, Score Passion, leaderboard, quêtes, Passia,
+boutique, Pass Passion et piste crypto ne sont plus dans le code. La décision est
+`.passio/adr/ADR-009-core-feed-irl-sans-wallet.md`, la carte d'exécution
+`docs/PASSIO_WALLET_PASSIA_REMOVAL_MAP_2026-08-20.md`. **Ne rien réintroduire sans
+rouvrir l'ADR** : un paiement futur devra être un paiement DIRECT en monnaie
+réelle, sans monnaie intermédiaire.
+
+Ce qui a disparu, et où : `RANKS`/`REWARDS`/`LIKES_PER_PASSIA` + `seedQuests`
+(app-01) · `grantReward`/`rewardToast`/`awardLikeReceived`/`rankOf`/`checkRankUp`
+(app-02) · les documents « Passia expliqué » et leur visionneuse (app-03) ·
+`PASSIA_PACKS`/`PASSIA_PASSES`/`setWalletTab` (app-04) · `tipReel` et le bouton
+« Soutenir » du rail bobine (app-05) · le **paywall du 4ᵉ profil** (app-06) ·
+`renderWallet` et le leaderboard (app-07) · quêtes et récompense de like realtime
+(app-08) · `#screen-wallet` et ses 4 onglets (index.html) · 154 règles CSS.
+
+⚠️ **Quatre pièges de ce chantier, à connaître avant d'y retoucher.**
+
+① **`renderTopbar` écrivait dans `#topPassia` SANS garde.** Retirer le nœud sans
+   retirer cette ligne fait lever la fonction — et elle est rappelée à chaque
+   publication, commentaire et RSVP. Le lot UI-6 avait justement choisi de
+   *masquer* la rangée pour cette raison ; le retrait, lui, oblige à traiter les
+   deux ensemble. Même famille de risque pour tout nœud supprimé qu'un renderer
+   adresse par id.
+
+② **L'état legacy se propage dans les DEUX sens.** `user.score`, `user.passia`,
+   `user.likesReceived`, `user.activePass`, `transactions`, `quests` et le
+   `profile.paid` vivent encore dans les `localStorage` existants ET dans le blob
+   `user_state`. `stripLegacyEconomy()` (app-02) est donc appelé aux **trois**
+   frontières : `loadState`, `_applyUserState` (hydratation serveur) et
+   `_syncableState` (envoi). Sans la 2ᵉ, un ancien appareil encore en service
+   repousse les clés à chaque sync ; sans la 3ᵉ, ce client les remet lui-même en
+   circulation. « Last write wins » joue dans les deux sens.
+
+③ **Une classe morte suffit à tuer un sélecteur.** Le nettoyage CSS a d'abord
+   exigé que TOUTES les classes d'un sélecteur soient mortes : `.quest-card.ready`,
+   `.lb-rank.gold`, `.pack-card.popular` et `.wallet-tab.active` survivaient donc,
+   parce que `ready`/`gold`/`popular`/`active` sont des modificateurs vivants
+   ailleurs. Le bon critère est l'inverse : **une seule** classe jamais posée rend
+   la règle inatteignable. Et `styles.css` est en **CRLF** — écrire en binaire.
+
+④ **Le prix d'un événement était libellé en Passia alors qu'aucun paiement n'a
+   jamais lieu** (le RSVP est gratuit, `price` n'est qu'un affichage). Il est
+   redevenu un montant indicatif en €, ce que l'ADR autorise explicitement.
+
+⑤ **Retirer un gros bloc de `index.html` emporte facilement une balise
+   STRUCTURELLE voisine.** La suppression de `#screen-wallet` a avalé le
+   `</main>` qui la suivait : `.app-nav` s'est retrouvée DANS la zone
+   scrollable, sa base à 9 735 px au lieu de 667 — cinq tests `cadrage` au
+   rouge, sans la moindre erreur JS. Après tout retrait de balisage, compter
+   les balises structurelles contre la version d'avant, ou passer le fichier à
+   `html.parser` : le nombre d'erreurs doit être IDENTIQUE, pas nul (index.html
+   en porte une, préexistante).
+
+⑥ **Les libellés promettaient des points que le moteur ne donnait plus.**
+   « ✨ Publier · +10 pts », « Publier · +3 pts », « + Rejoindre · +25 pts ·
+   +5 💎 », « Crée le premier pour +30 pts »… étaient du texte en dur dans
+   `index.html` et quatre app-*.js, invisibles d'une recherche sur `passia` ou
+   `grantReward`. Le lot UI-6 n'en masquait qu'un seul, et son test de kill
+   switch EXIGEAIT le retour de « +10 pts » — c'est ce test qui les a révélés.
+   Chercher aussi `\+[0-9]+ ?pts` et `\+[0-9]+ ?💎` avant de conclure.
+
+Verrou de non-régression : `tests/e2e/adr-009-retrait-economie.spec.js` (7 tests)
+couvre la surface, le moteur, la création d'un 4ᵉ profil, et l'aller-retour de
+synchronisation avec un ancien client.
 
 ## 🗂️ Pièges connus — index (détail complet : docs/PIEGES_CONNUS.md)
 
@@ -772,6 +839,109 @@ Le script est en lecture seule sur le dépôt (il n'écrit que dans son dossier 
   posts les portent). Un brouillon plus ancien qui en porte un est ramené sur le neutre par
   `normalizeStudioMood` (app-06) : sans elle, `loadDraft` rendait une rangée SANS pastille
   active — état muet, republié en silence.
+
+  **Lot UI-8 — « une personne, plusieurs passions » (2026-08-29), ACTIF PAR DÉFAUT.**
+  Coupure unique : `localStorage.passio_ui_8="0"` ou `window.PASSIO_UI_8=false`. Le drapeau
+  ne sait qu'ENLEVER — aucune valeur positive n'active, rien n'est écrit dans `localStorage`.
+  Implémentation dans les moteurs eux-mêmes (`js/app-06-reels-partage.js`, bloc « LOT UI-8 »)
+  plutôt que dans un module observateur : ce lot change ce que l'écran SIGNIFIE, pas seulement
+  ce qu'il montre. CSS : bloc « PASSIO UI V8 » en fin de `styles.css`. Tests :
+  `tests/e2e/ui-v8-passions.spec.js`.
+  **Le modèle.** PASSIO ne donne plus l'impression qu'on possède plusieurs COMPTES : un seul
+  profil personnel (pseudo, avatar, bio, abonnés) + plusieurs **passions**, univers de contenu
+  rattachés à ce même profil. Une seule passion est active pour CRÉER ; consulter se fait par
+  des filtres séparés. `currentProfileId` reste la seule source de vérité de l'identité active
+  et `switchToProfile()` son seul point d'écriture — la ligne « Passion active », le sélecteur
+  (`openPassionSwitcher`) et le bouton « Utiliser pour créer » l'appellent tous les trois.
+  **Ce qui bouge.** ① Sous la carte d'identité, une ligne `Passion active : 🏍️ Moto · Changer`
+  (`#v8ActivePassion`, rendue par `renderMainProfile` donc rafraîchie à chaque repeint).
+  ② « À propos » ne filtre PLUS : la carte n'appelle plus `toggleProfileSelect`, « Réinitialiser »
+  disparaît, et chaque carte porte photo/couverture/nom/bio, ses décomptes et son état
+  (« Passion active ✓ » ou « Utiliser pour créer »). Le reste de la carte ouvre
+  `openEditPassionProfile`. ③ Le filtre de contenu déménage dans « Publications » et devient à
+  choix UNIQUE (`state.user.profilePostFilterId`), avec un jumeau dans « Activités »
+  (`profileEventFilterId`) ; aucun filtre = « Toutes ». ④ Le Studio annonce
+  `Publication dans : 🏍️ Moto · Changer` (le `<select>` `#postPassion` reste le seul moteur :
+  choisir une autre passion pour UNE publication ne change pas la passion active). ⑤ Les
+  Messages affichent `Ben sur portable · 🏍️ Moto` — pseudo général d'abord, passion en contexte
+  gris. ⑥ « Supprimer ce profil » devient « Archiver cette passion ».
+  ⚠️ **Sept points à connaître avant d'y toucher.**
+  ① **La suppression effaçait aussi les posts.** `deleteProfile` filtrait `state.userPosts` sur
+  `profileId` : perdre une passion, c'était perdre son contenu. L'archivage ne retire RIEN — la
+  passion reste dans `state.user.profiles` avec `archived:true`, ses publications restent
+  visibles dans « Toutes ». **Aucune migration Supabase** : le drapeau voyage dans le blob
+  `user_state`. La fusion défensive d'app-02 le ré-injecte quand le serveur n'en a AUCUN
+  (`=== undefined`), jamais quand il en porte un — sinon une restauration serveur serait annulée
+  par un vieil état local. Le quota (`isNextProfilePaid`) compte toujours `profiles.length` :
+  archiver ne libère pas d'emplacement payant, et c'est voulu.
+  ② **La migration de l'ancien état n'efface jamais `profileFilterIds`.** Exactement une valeur
+  encore valide devient le filtre unique ; vide ou multiple retombe sur « Toutes ». Elle ne
+  tourne qu'une fois (`_v8FiltresMigres`), et un filtre qui désigne une passion disparue ou
+  archivée retombe sur « Toutes » plutôt que de vider l'écran sans explication.
+  ③ **La rangée de filtre est montée PAR RAPPORT au bloc qu'elle commande**
+  (`insertBefore(rangee, #myPosts)`), jamais à une position fixe de l'écran : sous le lot UI-7,
+  `#myPosts` et `#profileEvents` vivent dans des panneaux d'onglet, et une rangée posée « en
+  haut de l'écran » sortirait du panneau — visible, mais sous le mauvais onglet.
+  ④ **Deux modules ne peuvent pas écrire la même carte.** UI-6B posait « Actif »/« Activer » par
+  MutationObserver en lisant l'`onclick` de la carte (`idDeCarte` cherche `toggleProfileSelect`).
+  Sous UI-8 cet `onclick` n'existe plus et l'état est rendu par `renderProfilesScreen` :
+  `cartesReprisesParV8()` rend donc la surface à app-06 (même famille de garde que
+  `ficheReprisParV4b` au lot UI-4B). UI-6B garde « Modifier » et le renommage de section.
+  ⑤ **`_myProfileEvents(9999)` est l'appel de COMPTAGE**, et il n'est volontairement pas soumis
+  au filtre d'affichage : les cartes doivent annoncer le total d'une passion, pas ce que le
+  filtre courant laisse passer.
+  ⑥ **Le Studio publiait « en tant que » la mauvaise identité.** `identiteCourante()`
+  (ui-v6-composer) lisait `currentProfile().name` — le nom porté par la passion — alors que
+  `publishPost` envoie `state.user.general.username`. Ce n'était pas une nuance de vocabulaire :
+  l'écran annonçait un expéditeur qui n'était pas celui du post.
+  ⑦ **Un `onclick` construit par concaténation d'un identifiant de fonction VARIABLE est refusé
+  par `audit:echappement`**, et il a raison : la relecture d'un handler doit se faire à l'œil.
+  Chaque branche de `_passionFilterRowHTML` écrit son appel en toutes lettres, avec
+  `escapeJsArg` inline dans l'attribut.
+  ⚠️ **Six PORTES DÉROBÉES trouvées par l'audit du lot, toutes fermées — et toutes couvertes par
+  un test.** Elles ne rendaient pas le lot imparfait, elles le rendaient FAUX : « archiver ne
+  supprime rien » ne tenait pas.
+  ① `openEditPassionProfile` gardait « 🗑 Supprimer ce profil » — or c'est cette modale que la
+  nouvelle carte ouvre sur TOUTE sa surface : la suppression destructrice se retrouvait à deux
+  taps, plus près qu'avant le lot. Elle devient « Archiver cette passion » sous UI-8.
+  ② `supaUpsertProfile` publiait `state.user.profiles` EN ENTIER dans le profil public : ranger
+  une passion la laissait visible chez tous les autres comptes. Seule conséquence hors appareil
+  du lot, et rien ne la filtrait.
+  ③ `archiverPassion` ne nettoyait pas `_activeFeedPassions` alors que `renderProfileStrip` ne
+  rend plus que les vivantes : la tuile disparaissait, le filtre restait. Si c'était la seule
+  sélectionnée, le Fil ne montrait plus QUE la passion rangée, sans commande pour en sortir.
+  ④ Le paywall barrait la RESTAURATION : `openCreateProfile` ouvrait `openProfilePaywall()` avant
+  la grille dès `profiles.length >= 3` (archivées comprises, ce qui est voulu), et la passion
+  rangée n'apparaissait ni dans la liste ni dans le catalogue. Un compte à la limite gratuite se
+  voyait réclamer 150 💎 pour une passion qu'il possède déjà et ne voit plus. Le quota est
+  inchangé ; c'est le CHEMIN qui s'ouvre — et choisir une passion archivée la RESTAURE au lieu
+  d'en créer une seconde (`confirmCreateProfile`, avant le re-test du paywall).
+  ⑤ `ui-v7-lot.js` (`remplirPassions`, feuille de bobine) proposait encore de publier dans une
+  passion archivée, là où `renderStudio` les excluait : deux composeurs, deux réponses à « où
+  puis-je publier ? ».
+  ⑥ `deleteProfile` (chemin historique) repliait `currentProfileId` sur `profiles[0]`, qui peut
+  être ARCHIVÉE — un état que tout le lot suppose impossible.
+  ⚠️ **Et la coupure doit rendre les MOTS aussi.** Le vocabulaire du composer
+  (« Publication dans : … · Changer ») et la ligne d'identité des Messages sont gouvernés par le
+  même drapeau `passio_ui_8` : un kill switch qui laisse les libellés du nouveau lot n'est pas un
+  kill switch. Corollaire de test : `ui-v6-composer.spec.js` et `ui-v7-lot.spec.js` observent ces
+  mots d'avant, ils posent donc `localStorage.passio_ui_8="0"` au boot et gardent TOUTES leurs
+  assertions — comme `ui-v6b-profil.spec.js`. Seule exception non gouvernée par le drapeau :
+  `identiteCourante()`, qui est une correction de défaut (le Studio annonçait un expéditeur qui
+  n'était pas celui du post), pas un choix de lot.
+  Convention de test appliquée, la même qu'aux mises en ligne d'UI-3A et d'UI-4 :
+  `ui-v6b-profil.spec.js` observe le comportement historique de la carte, il pose donc
+  `localStorage.passio_ui_8="0"` au boot et garde TOUTES ses assertions ; la cohabitation des
+  deux lots est prouvée à part dans `ui-v8-passions.spec.js`.
+
+  ⚠️ **Ordre des blocs dans `styles.css` (fusion UI-4A5 × UI-8, 2026-08-29).** Le lot UI-4A5
+  énonce que son bloc doit rester le DERNIER de la feuille — ses sélecteurs gagnent par la
+  position. Le bloc « PASSIO UI V8 » est donc posé JUSTE AVANT lui, pas à la fin. Les deux
+  sont ancrés sur des familles disjointes (`.v8-*` d'un côté, `:root.passio-ui-4a5` de
+  l'autre), donc rien ne se recouvre ; l'ordre ne sert qu'à honorer cette contrainte. Piège
+  payé à la résolution : les deux blocs se terminaient par une `@media` dont l'accolade
+  fermante était la ligne COMMUNE d'après le marqueur de conflit — concaténés tels quels,
+  le `@media` du premier englobait tout le second, en silence et sans CSS invalide.
 
 - `docs/PIEGES_CONNUS.md` — les 56 fiches détaillées (extrait de ce fichier le 2026-08-07).
 - `docs/HISTORIQUE_PROJET.md` — état 2026-06-11, backlog terminé, logs d’optimisation.
