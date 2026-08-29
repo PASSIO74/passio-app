@@ -1691,10 +1691,26 @@ function renderMsgBadge() {
 //   · `html: true`      — posé par `pushNotification` et le contenu de démo ;
 //   · `kind === "local"` — les notifications déjà PERSISTÉES chez les comptes
 //     existants, écrites avant que le drapeau n'existe.
+// ⚠️ RÉCONCILIATION DE DEUX CORRECTIFS PARALLÈLES (2026-08-29, nuit).
+// Deux sessions ont fermé la même XSS le même soir, chacune à un bout de la
+// chaîne : neutralisation des chevrons à l'ENTRÉE (`mergeSupaNotifs`, #202) et
+// modèle de confiance explicite au RENDU (celui-ci, #200). Les deux fusionnés,
+// main est devenu ROUGE — et pas seulement sur des tests : `escapeHtml` appliqué
+// ici DOUBLE-ÉCHAPPAIT un texte déjà échappé à la source. `supaInsertNotif`
+// compose `escapeHtml(nom) + " " + libellé` : un pseudo avec apostrophe est
+// stocké « Ben&#39;j », et un second échappement l'affichait tel quel à l'écran.
+//
+// Le modèle de confiance de #200 est conservé — il est meilleur : le défaut est
+// le REFUS, tout producteur futur qui oublie de se déclarer est neutralisé. Seul
+// le désinfectant change pour le texte non fiable : on neutralise les CHEVRONS
+// au lieu d'échapper toutes les entités. C'est suffisant ici — le texte est
+// inséré entre deux balises, pas dans un attribut, et `<` et `>` sont les seuls
+// caractères qui peuvent y créer du balisage — et c'est idempotent, donc la
+// neutralisation d'entrée et celle-ci se composent sans se marcher dessus.
 function _notifTexteHtml(n) {
   if (!n) return "";
   var deConfiance = n.html === true || n.kind === "local";
-  return deConfiance ? String(n.text || "") : escapeHtml(String(n.text || ""));
+  return deConfiance ? String(n.text || "") : _neutraliserBalisesNotif(n.text);
 }
 
 function _notifListHtml(notifs) {
