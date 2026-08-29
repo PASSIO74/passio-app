@@ -1,8 +1,11 @@
 // Lot UI-6B — le Profil du §11.
 //
 // Ce que cette suite prouve, et rien d'autre :
-//   ① la tête suit le §11 : « Modifier » est visible et nommé, la statistique
-//      « posts » a quitté le premier niveau sans que rien soit perdu ;
+//   ① la tête suit le §11 : le point d'édition est un CRAYON discret au coin
+//      haut droit de la couverture (ordre du 2026-08-29) — il ouvre le même
+//      `openMainProfileMenu`, remplace le « ⋯ » qui occupait ce coin, et la
+//      statistique « posts » a quitté le premier niveau sans que rien soit
+//      perdu ;
 //   ② « Mes passions » : chaque identité porte « Actif » ou « Activer » ;
 //   ③ LE contrôle central : « Activer » change RÉELLEMENT l'identité active
 //      (`state.user.currentProfileId`) et le confirme visiblement — c'est le
@@ -71,14 +74,45 @@ async function ouvrirProfil(page) {
 }
 
 test.describe("UI-6B — Profil et multi-profils", () => {
-  test("URL normale : « Modifier » visible, « posts » hors du premier niveau", async ({ page }) => {
+  test("URL normale : le crayon au coin haut droit, « posts » hors du premier niveau", async ({ page }) => {
     const errors = { js: [], console: [], network: [] };
     await boot(page, { errors });
     await poserDeuxProfils(page);
     await ouvrirProfil(page);
 
-    await expect(page.locator("#v6bModifier")).toBeVisible();
-    await expect(page.locator("#v6bModifier")).toHaveText("Modifier");
+    const crayon = page.locator("#v6bModifier");
+    await expect(crayon).toBeVisible();
+    // « un petit onglet très discret (crayon) » : une icône, aucun libellé.
+    await expect(crayon).toHaveText("");
+    await expect(crayon.locator("svg")).toHaveCount(1);
+    await expect(crayon).toHaveAttribute("aria-label", "Modifier le profil");
+
+    // Le coin HAUT DROIT de la couverture, et pas ailleurs.
+    const pose = await page.evaluate(() => {
+      const b = document.getElementById("v6bModifier");
+      const cov = document.getElementById("mainProfileCover");
+      const rb = b.getBoundingClientRect(), rc = cov.getBoundingClientRect();
+      return {
+        dansLaCouverture: cov.contains(b),
+        droite: rc.right - rb.right,
+        haut: rb.top - rc.top,
+        largeur: rb.width,
+        hauteur: rb.height,
+      };
+    });
+    expect(pose.dansLaCouverture).toBe(true);
+    expect(pose.droite).toBeLessThanOrEqual(8);
+    expect(pose.haut).toBeLessThanOrEqual(8);
+    // Discret à l'œil (rond de 30 px peint par ::before), mais la cible
+    // tactile reste entière : c'est la BOÎTE qui est mesurée.
+    expect(pose.largeur).toBeGreaterThanOrEqual(44);
+    expect(pose.hauteur).toBeGreaterThanOrEqual(44);
+
+    // Le « ⋯ » occupait ce coin et ouvrait le MÊME menu : masqué, jamais
+    // retiré du DOM — le kill switch doit pouvoir le rendre.
+    const dots = page.locator("#screen-profiles .profile-dots-btn.on-cover");
+    await expect(dots).toHaveCount(1);
+    await expect(dots).toBeHidden();
 
     // Masquée, JAMAIS retirée : les onglets de contenu ouvrent la même chose.
     const posts = page.locator("#screen-profiles .main-profile-stat").first();
@@ -93,6 +127,21 @@ test.describe("UI-6B — Profil et multi-profils", () => {
       document.getElementById("nouveauProfilLien").parentNode.textContent)).toContain("Mes passions");
 
     expect(errors.js, "exceptions JS").toEqual([]);
+  });
+
+  test("le crayon ouvre le même menu d'édition (rien n'est perdu)", async ({ page }) => {
+    await boot(page);
+    await poserDeuxProfils(page);
+    await ouvrirProfil(page);
+
+    await page.locator("#v6bModifier").click();
+    const menu = page.locator(".profile-dots-menu");
+    await expect(menu).toBeVisible();
+    // Les quatre entrées historiques d'`openMainProfileMenu`.
+    await expect(menu).toContainText("Modifier le profil");
+    await expect(menu).toContainText("Photo de profil");
+    await expect(menu).toContainText("Photo de couverture");
+    await expect(menu).toContainText("Apparence");
   });
 
   test("« Mes passions » : une identité Actif, l'autre Activer", async ({ page }) => {
@@ -168,6 +217,8 @@ test.describe("UI-6B — Profil et multi-profils", () => {
     await expect(page.locator(".v6b-ident")).toHaveCount(0);
     await expect(page.locator("#screen-profiles .main-profile-stat").first()).toBeVisible();
     await expect(page.locator("#nouveauProfilLien")).toHaveText("+ Nouveau");
+    // Le point d'édition historique reprend sa place.
+    await expect(page.locator("#screen-profiles .profile-dots-btn.on-cover")).toBeVisible();
 
     expect(errors.js, "exceptions JS avec le kill switch").toEqual([]);
   });
@@ -183,6 +234,7 @@ test.describe("UI-6B — Profil et multi-profils", () => {
 
     await expect(page.locator("#v6bModifier")).toHaveCount(0);
     await expect(page.locator(".v6b-ident")).toHaveCount(0);
+    await expect(page.locator("#screen-profiles .profile-dots-btn.on-cover")).toBeVisible();
     await expect(page.locator("#nouveauProfilLien")).toHaveText("+ Nouveau");
     expect(await page.evaluate(() =>
       document.getElementById("nouveauProfilLien").parentNode.textContent)).toContain("Mes profils passion");
