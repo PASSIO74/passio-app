@@ -3419,9 +3419,47 @@ function feedWindowHydrate(card) {
   card.style.height = "";
   card._fwOff = false;
   card.removeAttribute("data-fw");
+  _feedWindowRedecorer(card);
   // La taille intrinsèque reste posée : elle vaut la dernière hauteur réelle
   // mesurée, ce qui est toujours plus juste que la supposition de 320 px.
   return true;
+}
+
+// ⚠️ Défaut relevé en contre-revue indépendante sur cette PR, et REPRODUIT le
+// 2026-08-29 : 12 passerelles avant, 11 après une seule déshydratation, et elles
+// ne revenaient jamais.
+//
+// Réhydrater REMPLACE l'intérieur de la carte. La passerelle UI-3
+// (`[data-v3-bridge]`) posée DEDANS disparaît donc, alors que le marqueur
+// `data-v3-decore` vit sur l'ÉLÉMENT et survit à `innerHTML`. Or c'est ce
+// marqueur, et lui seul, qui autorise `styles.css` à masquer le CTA historique
+// (`.post[data-v3-decore] .feed-irl-bridge`) : la carte se retrouvait avec la
+// porte neuve retirée ET l'ancienne toujours masquée — donc AUCUNE porte vers
+// l'IRL. Et l'observateur d'UI-3 écoute `#feedList` en `childList` SANS
+// `subtree` : remplacer le contenu d'une carte ne le réveille pas, rien ne
+// repose la passerelle. `feedWindowTeardown()` réhydratant tout, une simple
+// navigation suffisait à vider le fil de ses passerelles.
+//
+// On redécore donc explicitement, à la seule sortie commune de toutes les
+// réhydratations — observateur, coupure du drapeau, redimensionnement.
+function _feedWindowRedecorer(card) {
+  try {
+    // Les marqueurs partent AVEC la décoration qu'ils accompagnaient : une carte
+    // non décorée ne doit jamais rester porteuse de la condition qui masque le
+    // CTA historique, même le temps d'une trame. `decorerArticle` les repose.
+    card.removeAttribute("data-v3-decore");
+    card.removeAttribute("data-v3-activity-source");
+    if (window.PassioUIV3
+        && typeof PassioUIV3.decorateFeed === "function"
+        && typeof PassioUIV3.isEnabled === "function"
+        && PassioUIV3.isEnabled()) {
+      PassioUIV3.decorateFeed();
+    }
+  } catch (e) {
+    // Jamais muet : un `catch` large sur un chemin de rendu a déjà masqué six
+    // jours de fil vide dans ce dépôt.
+    try { if (typeof diagLog === "function") diagLog("feedWindow.redecorer", e && e.message); } catch (_) {}
+  }
 }
 
 // Fige la taille intrinsèque d'une carte montée sur sa hauteur réelle, pour que

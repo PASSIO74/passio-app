@@ -521,6 +521,77 @@ test.describe("Fil fenêtré — pas de fuite, et le parcours reste entier", () 
     }
   });
 
+  // ⚠️ Défaut relevé par la contre-revue indépendante de cette PR, et REPRODUIT :
+  // réhydrater remplace l'intérieur de la carte, ce qui EFFACE la passerelle UI-3
+  // posée dedans — pendant que le marqueur `data-v3-decore`, lui, vit sur
+  // l'élément et survit à `innerHTML`. Comme c'est ce marqueur qui autorise le
+  // CSS à masquer le CTA historique, la carte se retrouvait avec la porte neuve
+  // retirée ET l'ancienne masquée : plus AUCUNE porte vers l'IRL. L'observateur
+  // d'UI-3 n'écoute que les enfants directs de `#feedList`, sans `subtree` :
+  // rien ne la reposait. Mesuré avant correctif : 12 passerelles, puis 11 après
+  // une seule déshydratation, définitivement.
+  //
+  // L'invariant tenu ici est le bon, et il est plus large qu'« une passerelle
+  // revient » : AUCUNE carte ne doit porter le marqueur sans porter la
+  // passerelle, à aucun moment du cycle de vie du fenêtrage.
+  test("le fenêtrage ne prive jamais une carte de sa porte vers l'IRL (UI-3)", async ({ page }) => {
+    await bootOnboarded(page);
+    await seedFeed(page, { windowOn: true });
+
+    const etat = () => page.evaluate(() => {
+      const cartes = [...document.querySelectorAll("#feedList .post[data-postid]")];
+      return {
+        v3: !!(window.PassioUIV3 && PassioUIV3.isEnabled && PassioUIV3.isEnabled()),
+        decorees: cartes.filter((c) => c.hasAttribute("data-v3-decore")).length,
+        passerelles: cartes.filter((c) => !!c.querySelector("[data-v3-bridge]")).length,
+        // Les cartes SANS aucune porte : MONTÉES, marquées décorées, et pourtant
+        // sans passerelle. Le prédicat est borné aux cartes montées à dessein :
+        // une carte déshydratée n'a par construction aucun enfant, et c'est
+        // précisément l'état qu'on lui demande — elle retrouve tout en remontant.
+        orphelines: cartes
+          .filter((c) => c.getAttribute("data-fw") !== "off")
+          .filter((c) => c.hasAttribute("data-v3-decore") && !c.querySelector("[data-v3-bridge]"))
+          .map((c) => c.getAttribute("data-postid")),
+      };
+    });
+
+    // Sans cette garde le test serait creux : un fil où UI-3 ne décore rien
+    // satisferait « aucune orpheline » sans rien prouver.
+    const depart = await etat();
+    expect(depart.v3).toBe(true);
+    expect(depart.decorees).toBeGreaterThan(0);
+    expect(depart.orphelines).toEqual([]);
+
+    // ① Le cycle déshydratation → réhydratation, appelé directement.
+    const cible = await page.evaluate(() => {
+      const c = document.querySelector("#feedList .post[data-v3-decore]");
+      const id = c.getAttribute("data-postid");
+      feedWindowDehydrate(c);
+      feedWindowHydrate(document.querySelector('#feedList .post[data-postid="' + id + '"]'));
+      return id;
+    });
+    expect(await page.evaluate((id) => !!document
+      .querySelector('#feedList .post[data-postid="' + id + '"]')
+      .querySelector("[data-v3-bridge]"), cible)).toBe(true);
+    expect((await etat()).orphelines).toEqual([]);
+
+    // ② Le même cycle, provoqué pour de vrai en descendant puis remontant.
+    for (const y of [2200, 4200, 0]) {
+      await page.evaluate((k) => document.querySelector(".app-main").scrollTo(0, k), y);
+      await page.waitForTimeout(350);
+      expect((await etat()).orphelines).toEqual([]);
+    }
+
+    // ③ Et après un aller-retour d'écran — `feedWindowTeardown()` réhydrate tout.
+    await page.evaluate(() => goTo("profiles"));
+    await page.waitForTimeout(200);
+    await page.evaluate(() => goTo("feed"));
+    await page.waitForTimeout(600);
+    const fin = await etat();
+    expect(fin.orphelines).toEqual([]);
+    expect(fin.passerelles).toBeGreaterThan(0);
+  });
+
   test("session longue : le fil reste sain après un long va-et-vient de scroll", async ({ page }) => {
     await bootOnboarded(page);
     await seedFeed(page, { windowOn: true });
