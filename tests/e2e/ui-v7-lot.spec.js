@@ -8,8 +8,9 @@
 //      « Je viens » puis « Inscrit ✓ », la ligne participants/places CALCULÉE,
 //      la passion abrégée sans que la passion canonique bouge, et AUCUNE
 //      demande de position à l'ouverture ;
-//   ③ le Fil tient sans défilement horizontal à 320, 390 et 430 px, les
-//      passions ne sont plus des bulles de story, et elles restent affichées
+//   ③ le Fil ne pousse la page à aucune largeur (320, 390, 430 px), les
+//      passions RESTENT des bulles — simplement plus petites, et le kill
+//      switch leur rend leur taille d'origine — et elles restent affichées
 //      pendant tout le défilement (le repli au défilement a été retiré) ;
 //   ④ Messages a quitté la barre supérieure sans quitter l'application ;
 //   ⑥ le Profil a trois onglets nommés et RIEN n'est devenu inatteignable ;
@@ -24,6 +25,12 @@
 // du bouton, pour prouver que le chemin réel arrive au même endroit. Ce second
 // fichier est séparé parce que `test.use({ launchOptions })` force un worker
 // dédié et n'est pas admis dans un `describe`.
+// ⚠️ Cette suite pose au boot le kill switch du lot UI-4A5 (2026-08-29), qui
+// recouvre le comportement qu'elle observe : depuis ce lot, « Filtres » n'ouvre
+// plus le dialogue contextuel, il affiche les choix EN LIGNE sous les onglets.
+// Convention du projet : la suite qui observe le comportement historique coupe
+// le lot qui le recouvre et garde TOUTES ses assertions ; la cohabitation est
+// prouvée à part, dans `ui-v4a5-filtres.spec.js`.
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
 
@@ -32,6 +39,15 @@ const { bootOnboarded } = require("./app-helper");
 const VIDEO_FACTICE = "data:video/webm;base64,AAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
 async function boot(page, errors, n = 3) {
+  // ⚠️ CONVENTION DE TEST (la même qu'aux mises en ligne d'UI-3A et d'UI-4) :
+  // cette suite observe des surfaces que des lots PLUS RÉCENTS recouvrent. Elle
+  // pose leur kill switch et garde TOUTES ses assertions ; leur cohabitation est
+  // prouvée à part, dans la suite de chacun.
+  //   · UI-4A5 : « Filtres » devient une vue de Rencontrer.
+  //   · UI-8   : le libellé du composer (« Passion : » → « Publication dans : »)
+  //              et l'état de la carte de passion (rendu par app-06, plus par UI-6B).
+  await page.addInitScript(() => localStorage.setItem("passio_ui_4a5", "0"));
+  await page.addInitScript(() => localStorage.setItem("passio_ui_8", "0"));
   await bootOnboarded(page, errors, n);
 }
 
@@ -213,76 +229,65 @@ test.describe("UI-7 §3 — le haut du Fil est compact", () => {
           docSw: document.documentElement.scrollWidth,
           docCw: document.documentElement.clientWidth,
           railSw: rail.scrollWidth, railCw: rail.clientWidth,
-          stripSw: strip.scrollWidth, stripCw: strip.clientWidth,
+          // La rangée des passions défile horizontalement PAR CONSTRUCTION
+          // (`overflow-x: auto`) : ce qui compte est qu'elle ne pousse pas la
+          // page, mesuré par `docSw` ci-dessus.
+          stripDeborde: getComputedStyle(strip).overflowX,
           tronques: [...document.querySelectorAll(".feed-intent-btn")]
             .filter((b) => b.scrollWidth > b.clientWidth + 1).map((b) => b.textContent),
         };
       });
       expect(m.docSw, "page").toBeLessThanOrEqual(m.docCw + 1);
       expect(m.railSw, "rail des intentions").toBeLessThanOrEqual(m.railCw + 1);
-      expect(m.stripSw, "rangée des passions").toBeLessThanOrEqual(m.stripCw + 1);
+      expect(m.stripDeborde, "rangée des passions").toBe("auto");
       expect(m.tronques, "intentions tronquées").toEqual([]);
     });
   }
 
-  test("les passions sont des pastilles, les stories restent des cercles", async ({ page }) => {
+  test("les passions restent des bulles, plus petites que les stories d'origine", async ({ page }) => {
     await boot(page, null, 6);
 
     const m = await page.evaluate(() => {
-      const tuile = document.querySelector("#profileStrip .profile-tile");
+      const strip = document.getElementById("profileStrip");
+      const tuile = strip.querySelector(".profile-tile");
       const av = tuile.querySelector(".profile-tile-avatar");
+      const photo = tuile.querySelector(".profile-tile-photo");
       const anneau = document.querySelector("#screen-feed .story-ring");
       const s = getComputedStyle(tuile);
       return {
         direction: s.flexDirection,
-        rayon: s.borderRadius,
+        enveloppe: getComputedStyle(strip).flexWrap,
         avatar: Math.round(av.getBoundingClientRect().width),
-        photoVisible: !!tuile.querySelector(".profile-tile-photo")
-          && getComputedStyle(tuile.querySelector(".profile-tile-photo")).display !== "none",
-        glyphe: (tuile.querySelector(".profile-tile-glyph") || {}).textContent || "",
+        photoVisible: !!photo && getComputedStyle(photo).display !== "none",
+        glypheVisible: [...tuile.querySelectorAll(".profile-tile-glyph")]
+          .some((g) => getComputedStyle(g).display !== "none"),
         anneau: anneau ? Math.round(anneau.getBoundingClientRect().width) : 0,
-        anneauRayon: anneau ? getComputedStyle(anneau).borderRadius : "",
       };
     });
-    expect(m.direction).toBe("row");                 // emoji + libellé côte à côte
-    expect(m.avatar).toBeLessThanOrEqual(22);        // plus une bulle de story
-    expect(m.photoVisible).toBe(false);
-    expect(m.glyphe.length).toBeGreaterThan(0);
-    expect(m.anneau).toBeGreaterThan(30);            // les stories, elles, restent rondes
-    expect(m.anneauRayon).toContain("999px");
+    // C'est toujours une bulle : vignette photo, libellé DESSOUS, pas de retour
+    // à la ligne (la rangée défile, comme avant le lot).
+    expect(m.direction).toBe("column");
+    expect(m.enveloppe).toBe("nowrap");
+    expect(m.photoVisible).toBe(true);
+    expect(m.glypheVisible).toBe(false);
+    // …mais plus petite que les 46 px historiques.
+    expect(m.avatar).toBeLessThanOrEqual(38);
+    expect(m.avatar).toBeGreaterThanOrEqual(28);
+    expect(m.anneau).toBeGreaterThan(30);
   });
 
-  test("« Autres » n'apparaît que s'il y a réellement plus à voir, et déplie", async ({ page }) => {
-    await page.setViewportSize({ width: 320, height: 780 });
-    await boot(page, null, 3);
-
-    const btn = page.locator("#v7StripMore");
-    // Trois passions tiennent sur deux rangées : rien à déplier, rien à montrer.
-    await expect(btn).toBeHidden();
-
-    // Dix passions, en revanche, débordent — et le bouton apparaît DE LUI-MÊME,
-    // sans rechargement : c'est l'observateur qui le remesure.
-    await page.evaluate(() => {
-      const ids = ["musique", "sport", "cuisine", "photo", "voyage", "art", "cinema", "tech", "jardinage", "jeuxvideo"];
-      state.user.profiles = ids.map((p, i) => ({
-        id: "pp_" + i, name: "P" + i, passion: p, emoji: "🎵", color: "#7c3aed", createdAt: i + 1,
-      }));
-      state.user.currentProfileId = "pp_0";
-      window.profilesFilterSelection = new Set(state.user.profiles.map((p) => p.id));
-      renderProfileStrip();
-    });
-    await expect(btn).toBeVisible();
-    const avant = await page.evaluate(() =>
-      Math.round(document.getElementById("profileStrip").getBoundingClientRect().height));
-    await btn.click();
-    await page.waitForTimeout(200);
-    const apres = await page.evaluate(() =>
-      Math.round(document.getElementById("profileStrip").getBoundingClientRect().height));
-    expect(apres).toBeGreaterThan(avant);
-    await expect(btn).toHaveText("Moins");
-    // Les filtres eux-mêmes n'ont pas bougé : cliquer une pastille appelle
-    // toujours le MÊME moteur.
-    expect(await page.evaluate(() => typeof toggleProfileFilter)).toBe("function");
+  test("couper le lot rend aux bulles leur taille d'origine", async ({ page }) => {
+    await boot(page, null, 6);
+    const compact = await page.evaluate(() =>
+      Math.round(document.querySelector("#profileStrip .profile-tile-avatar").getBoundingClientRect().width));
+    await page.evaluate(() => { localStorage.setItem("passio_ui_7", "0"); PassioUIV7.apply(); });
+    // ⚠️ `.profile-tile-avatar` porte `transition: all 0.25s` : mesurée dans la
+    // foulée, la bulle est encore à mi-chemin. On laisse la transition finir.
+    await page.waitForTimeout(500);
+    const historique = await page.evaluate(() =>
+      Math.round(document.querySelector("#profileStrip .profile-tile-avatar").getBoundingClientRect().width));
+    expect(historique).toBeGreaterThan(compact);
+    expect(historique).toBe(46);
   });
 
   test("les passions restent affichées quand on descend dans le fil", async ({ page }) => {
@@ -290,18 +295,12 @@ test.describe("UI-7 §3 — le haut du Fil est compact", () => {
     // Le repli au défilement a été RETIRÉ le 2026-08-29 (cf. la fin d'app-09 et
     // tests/e2e/entete-fil-permanent.spec.js) : ce qui était vérifié ici — que
     // le bloc UI-7 ne l'emportait pas sur `.chrome-collapsed` — n'a plus d'objet.
-    // Ce qui reste à prouver côté UI-7, c'est que la rangée de pastilles et son
-    // bouton « Autres » gardent leur hauteur pendant tout le défilement.
+    // Ce qui reste à prouver côté UI-7, c'est que la rangée de passions garde
+    // sa hauteur pendant tout le défilement, descente ET remontée.
     const h = await page.evaluate(async () => {
       const main = document.querySelector(".app-main");
       const strip = document.getElementById("profileStrip");
-      const mesure = () => {
-        const more = document.getElementById("v7StripMore");
-        return {
-          strip: strip.getBoundingClientRect().height,
-          more: more && !more.hidden ? more.getBoundingClientRect().height : null,
-        };
-      };
+      const mesure = () => ({ strip: strip.getBoundingClientRect().height });
       const avant = mesure();
       main.scrollTop = 400;
       main.dispatchEvent(new Event("scroll"));
@@ -318,12 +317,6 @@ test.describe("UI-7 §3 — le haut du Fil est compact", () => {
     expect(h.replie).toBe(false);
     expect(h.apres.strip).toBeGreaterThan(10);
     expect(h.remonte.strip).toBeGreaterThan(10);
-    // Le bouton « Autres » n'existe que si les passions débordent des deux
-    // rangées ; quand il est là, il suit la rangée au lieu de disparaître seul.
-    if (h.avant.more !== null) {
-      expect(h.apres.more).toBeGreaterThan(4);
-      expect(h.remonte.more).toBeGreaterThan(4);
-    }
   });
 });
 
@@ -573,7 +566,6 @@ test.describe("UI-7 — le kill switch rend l'interface d'avant", () => {
         racine: document.documentElement.classList.contains("passio-ui-7"),
         barre: !!document.getElementById("v7ProfileTabs"),
         panneaux: document.querySelectorAll("[data-v7-pan]").length,
-        more: !!document.getElementById("v7StripMore"),
         // Les nœuds historiques sont revenus DIRECTEMENT dans l'écran.
         myPosts: dans("myPosts"),
         profileList: dans("profileList"),
@@ -585,7 +577,6 @@ test.describe("UI-7 — le kill switch rend l'interface d'avant", () => {
     expect(apres.racine).toBe(false);
     expect(apres.barre).toBe(false);
     expect(apres.panneaux).toBe(0);
-    expect(apres.more).toBe(false);
     expect(apres.labels).toBe(5);
     expect(apres.myPosts).toBe("screen-profiles");
     expect(apres.profileList).toBe("screen-profiles");

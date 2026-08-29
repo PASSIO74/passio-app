@@ -10847,27 +10847,60 @@ body.ctx-locked #appMain { overflow: hidden; }
   display: none;
 }
 
+/* Le crayon du coin haut droit (ordre du 2026-08-29 : « un petit onglet très
+   discret »). Il remplace le bouton « Modifier » pleine largeur ET le « ⋯ »
+   historique, qui occupait ce coin et ouvrait déjà `openMainProfileMenu` :
+   deux boutons identiques côte à côte, c'était le doublon garanti.
+
+   ⚠️ Le rond VISIBLE fait 30 px, mais la cible tactile doit rester à 44 px et
+   elle se mesure sur la BOÎTE du bouton : le bouton garde donc ses 44 px et
+   c'est un `::before` en `inset: 7px` qui PEINT le rond. Même patron que la
+   pastille d'UI-3A ; un débord en pseudo-élément ne satisferait pas la mesure. */
+:root.passio-ui-6b #screen-profiles .profile-dots-btn.on-cover { display: none; }
+
 :root.passio-ui-6b .v6b-modifier {
   appearance: none;
   -webkit-appearance: none;
-  font-family: inherit;
-  display: block;
-  width: 100%;
-  min-height: 44px;
-  margin-top: 12px;
-  padding: 0 14px;
-  border-radius: 13px;
-  border: 1.5px solid var(--accent-5-soft);
-  background: var(--bg-card);
-  color: var(--accent);
-  font-size: 13.5px;
-  font-weight: 700;
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  z-index: 2;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #fff;
+  opacity: 0.82;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.15s ease;
 }
-:root.passio-ui-6b .v6b-modifier:hover { border-color: var(--accent); }
+:root.passio-ui-6b .v6b-modifier::before {
+  content: "";
+  position: absolute;
+  inset: 7px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: -1;
+}
+:root.passio-ui-6b .v6b-modifier svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+  pointer-events: none;
+}
+:root.passio-ui-6b .v6b-modifier:hover { opacity: 1; }
+:root.passio-ui-6b .v6b-modifier:hover::before { background: rgba(0, 0, 0, 0.45); }
 :root.passio-ui-6b .v6b-modifier:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  opacity: 1;
+  outline: 2px solid #fff;
+  outline-offset: -4px;
+  border-radius: 50%;
 }
 
 /* « Actif » est un ÉTAT, « Activer » une ACTION : deux apparences distinctes.
@@ -10972,82 +11005,62 @@ body.ctx-locked #appMain { overflow: hidden; }
   }
 }
 
-/* ── §3 · Les passions : de petites pastilles, plus des bulles de story ──── */
+/* -- §3 · Les passions restent des BULLES, simplement plus petites ---------
+   Rectifié le 2026-08-29 sur demande de Benjamin : le lot UI-7 les avait
+   transformées en pastilles « emoji + libellé » revenant à la ligne. Elles
+   redeviennent ce qu'elles étaient — une file horizontale de vignettes photo
+   rondes avec le libellé dessous — mais d'environ un quart plus compactes, ce
+   qui était le vrai besoin (le haut du Fil prenait trop de place).
+   ⚠️ On ne touche QUE aux dimensions : la structure, le défilement horizontal
+   et le moteur (`renderProfileStrip`, `toggleProfileFilter`) sont ceux d'avant,
+   et couper le lot (`localStorage.passio_ui_7 = "0"`) rend les tailles
+   d'origine. Le glyphe « emoji seul » que la pastille utilisait redevient donc
+   inerte partout — app-06 continue de l'émettre, personne ne l'affiche. */
 :root.passio-ui-7 #screen-feed .profile-strip {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  overflow-x: hidden;
-  overflow-y: hidden;
-  padding: 2px 2px 4px;
-  margin: 0 0 6px;
-  /* Deux rangées de pastilles EXACTEMENT — mesuré, pas estimé : 2 px de haut,
-     deux rangées de 32 px, une gouttière de 6 px, 4 px de bas. Au-delà, le
-     bouton « Autres » prend le relais. */
-  max-height: 76px;
+  gap: 10px;
+  padding: 6px 10px 4px;
+  margin: 0 0 2px;
 }
-:root.passio-ui-7 #screen-feed .profile-strip.v7-strip-open { max-height: 460px; }
-
 :root.passio-ui-7 #screen-feed .profile-tile {
-  flex: 0 0 auto;
-  flex-direction: row;
-  align-items: center;
   gap: 5px;
-  padding: 4px 11px 4px 8px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: var(--bg-card);
-  min-height: 32px;
+  padding: 2px 2px 4px;
 }
-:root.passio-ui-7 #screen-feed .profile-tile.active {
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 10%, var(--bg-card));
-}
-/* La grande vignette photo cède la place au glyphe : c'est ce qui sépare
-   visuellement les passions (pastilles) des stories (cercles). */
+/* 46 -> 34 px : la bulle reste une bulle (photo + pastille emoji), la rangée
+   passe d'environ 101 à 76 px de haut — le même quart gagné que sur les
+   stories, sans changer de langage visuel. */
 :root.passio-ui-7 #screen-feed .profile-tile-avatar {
-  width: 18px !important;
-  height: 18px !important;
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
-  box-shadow: none;
-  overflow: visible;
-  font-size: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: 13px;
+  font-size: 17px;
 }
-:root.passio-ui-7 #screen-feed .profile-tile-photo,
-:root.passio-ui-7 #screen-feed .profile-tile-emoji-badge,
-:root.passio-ui-7 #screen-feed .profile-tile-count { display: none !important; }
-:root.passio-ui-7 #screen-feed .profile-tile-glyph {
-  display: block;
-  font-size: 15px;
-  line-height: 18px;
+:root.passio-ui-7 #screen-feed .profile-tile.active .profile-tile-avatar {
+  font-size: 26px;
+}
+:root.passio-ui-7 #screen-feed .profile-tile-emoji-badge {
+  width: 18px;
+  height: 18px;
+  bottom: -3px;
+  right: -3px;
+  font-size: 11px;
+  border-width: 1.5px;
+}
+:root.passio-ui-7 #screen-feed .profile-tile-count {
+  top: -4px;
+  right: -4px;
+  font-size: 8px;
+  border-width: 1.5px;
 }
 :root.passio-ui-7 #screen-feed .profile-tile-label {
-  font-size: 11.5px !important;
-  max-width: none !important;
-  white-space: nowrap;
+  font-size: 9.5px;
+  max-width: 58px;
 }
-/* Le glyphe n'existe QUE dans cette vue : partout ailleurs il reste inerte. */
+:root.passio-ui-7 #screen-feed .profile-tile.active .profile-tile-label {
+  font-size: 11px;
+}
+/* Le glyphe (emoji sans vignette) ne sert plus nulle part : il reste dans le
+   markup, inerte, plutôt que de faire bouger `renderProfileStrip`. */
 .profile-tile-glyph { display: none; }
-
-:root.passio-ui-7 #screen-feed .v7-strip-more {
-  display: inline-flex;
-  align-items: center;
-  min-height: 30px;
-  margin: 0 0 8px;
-  padding: 4px 12px;
-  border: 1px dashed var(--border);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--muted);
-  font: inherit;
-  font-size: 11.5px;
-  font-weight: 700;
-  cursor: pointer;
-}
-:root.passio-ui-7 #screen-feed .v7-strip-more[hidden] { display: none; }
-
 /* ── §3 · Les stories restent des cercles, ~25 % plus compacts ───────────── */
 :root.passio-ui-7 #screen-feed .stories-row {
   gap: 9px;
@@ -11067,12 +11080,6 @@ body.ctx-locked #appMain { overflow: hidden; }
 }
 :root.passio-ui-7 #screen-feed .story-label { font-size: 9px; max-width: 48px; }
 
-/* Le bouton « Autres » borne la rangée des passions ; il ne se replie plus au
-   défilement (bascule .chrome-collapsed retirée le 2026-08-29, cf. app-09). */
-:root.passio-ui-7 #screen-feed .v7-strip-more {
-  max-height: 60px;
-  overflow: hidden;
-}
 
 /* ── §6 · Profil : trois onglets NOMMÉS ──────────────────────────────────── */
 :root.passio-ui-7 .v7-tabs {
@@ -11210,3 +11217,305 @@ body.ctx-locked #appMain { overflow: hidden; }
 }
 .v7-cover-vue img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .v7-sheet-foot { padding-top: 6px; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   PASSIO UI V8 — « une personne, plusieurs passions » (§Profil)
+
+   Toutes les règles sont ancrées à des classes `.v8-*` que l'interface
+   historique ne crée JAMAIS : `localStorage.passio_ui_8 = "0"` rend l'écran
+   d'avant à l'octet près, sans qu'aucune règle existante ait été réécrite.
+
+   §9 : fond clair, accent violet, couvertures conservées, cartes compactes.
+   La passion active doit se repérer en moins d'une seconde — c'est le seul
+   endroit de cet écran qui porte l'accent plein.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── La ligne « Passion active : 🏍️ Moto · Changer », sous la carte d'identité ── */
+.v8-active-line {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: var(--bg-tint);
+  border: 1px solid var(--border);
+}
+.v8-active-txt { font-size: 13px; color: var(--muted); line-height: 1.3; }
+.v8-active-txt b { color: var(--text); font-weight: 800; }
+.v8-active-btn {
+  appearance: none;
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 800;
+  padding: 0 16px;
+  min-height: 34px;
+  cursor: pointer;
+}
+.v8-active-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ── La rangée « Toutes · Moto · Podcast · Yoga » ──────────────────────────
+   Elle défile DANS son propre conteneur : le corps de la page ne défile
+   jamais horizontalement, quel que soit le nombre de passions. */
+.v8-filter-row {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  padding: 2px 2px 8px;
+  margin-bottom: 2px;
+}
+.v8-filter-row::-webkit-scrollbar { display: none; }
+.v8-chip {
+  appearance: none;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1.5px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-dim, var(--muted));
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
+}
+.v8-chip.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.v8-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ── La carte d'une passion ────────────────────────────────────────────────
+   Plus compacte que la carte historique (trois passions doivent se parcourir
+   d'un coup d'oeil sur mobile), et son état passe à la ligne : « Utiliser pour
+   créer » est un libellé long, le comprimer sur la même ligne que le nom
+   couperait l'un ou l'autre à 320 px. */
+.v8-passion-card {
+  flex-wrap: wrap;
+  align-items: center;
+  padding: 10px 12px;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.v8-passion-card .avatar.lg { width: 42px; height: 42px; font-size: 20px; flex: 0 0 42px; }
+.v8-passion-card .profile-card-body { flex: 1 1 auto; min-width: 0; }
+.v8-passion-card .profile-card-name { font-size: 14.5px; }
+.v8-passion-card .profile-card-bio {
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.v8-card-meta { font-size: 11px; color: var(--muted); margin-top: 3px; }
+.v8-passion-card.has-cover .v8-card-meta { color: rgba(255, 255, 255, 0.85); text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5); }
+.v8-passion-card .profile-dots-btn { flex: 0 0 auto; }
+
+/* La passion active se repère à son liseré plein — pas à un bouton discret
+   posé sur une couverture (§9). */
+.v8-passion-card.is-active {
+  border-color: var(--accent);
+  box-shadow: 0 6px 18px rgba(139, 92, 246, 0.18);
+}
+
+/* L'état, sur toute la largeur, en bas de la carte. */
+.v8-state {
+  flex: 1 0 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 12px;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 800;
+  border: 1.5px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text);
+  cursor: pointer;
+}
+.v8-state.on {
+  border-color: transparent;
+  background: var(--accent);
+  color: #fff;
+  cursor: default;
+}
+.v8-state:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Sur une couverture, le bouton garde un fond OPAQUE : posé en translucide il
+   emprunterait la photo et deviendrait illisible selon le cliché. */
+.v8-passion-card.has-cover .v8-state:not(.on) { background: var(--bg-card); }
+
+/* ── Le sélecteur de passion active, et la liste des archivées ─────────────── */
+.v8-switch-list { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
+.v8-switch-row {
+  appearance: none;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 8px 12px;
+  border-radius: 14px;
+  border: 1.5px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+.v8-switch-row.on { border-color: var(--accent); background: var(--bg-tint); cursor: default; }
+.v8-switch-emoji { font-size: 20px; flex: 0 0 auto; }
+.v8-switch-name { flex: 1 1 auto; min-width: 0; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.v8-switch-on { flex: 0 0 auto; font-size: 12px; font-weight: 800; color: var(--accent); }
+.v8-switch-go {
+  appearance: none;
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 0 14px;
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+}
+.v8-switch-row:focus-visible, .v8-switch-go:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ── Messages : QUI écrit ───────────────────────────────────────────────────
+   Le pseudo général d'abord, la passion active seulement en contexte gris.
+   Elle ne doit jamais se lire comme un autre expéditeur. */
+.v6a-moi { font-size: 12px; line-height: 1.3; margin: -2px 0 8px; }
+.v6a-moi-nom { color: var(--text); font-weight: 700; }
+.v6a-moi-ctx { color: var(--muted); font-weight: 600; }
+
+@media (prefers-reduced-motion: reduce) {
+  .v8-chip, .v8-passion-card { transition: none; }
+}
+/* ═══════════════════════════════════════════════════════════════════════════
+   PASSIO UI V4 — lot UI-4A5 : « Filtres » est une VUE, et les bulles de passion
+   vivent dedans.  ACTIF PAR DÉFAUT.
+   (coupures : localStorage.passio_ui_4a5 = "0" · window.PASSIO_UI_4A5 = false)
+
+   Tout est ancré à `:root.passio-ui-4a5` et à l'attribut `data-v4a5-vue` que le
+   module pose sur la racine. Coupé, les deux disparaissent : la rangée de
+   passions et les volets de filtres retrouvent leur place (le module les
+   rend lui-même), et le bouton rouvre le dialogue historique.
+
+   ⚠️ Ce bloc RÉÉCRIT deux règles du lot UI-7 (§2), qui donnaient volontairement
+   à la troisième case une allure DIFFÉRENTE parce qu'elle ouvrait un dialogue.
+   Elle n'en ouvre plus : elle redevient une case comme les deux autres, à
+   égalité de largeur et sans séparateur. Les sélecteurs sont à spécificité
+   égale ou supérieure ET plus bas dans le fichier : c'est ce qui les fait
+   gagner, et c'est pourquoi ce bloc doit rester le dernier.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── La troisième case redevient un onglet ────────────────────────── */
+:root.passio-ui-4a5 .v4a3-vue[data-v4a4] {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+:root.passio-ui-4a5 .v4a4-outils-hote {
+  margin-left: 0;
+  padding-left: 0;
+  border-left: 0;
+}
+:root.passio-ui-4a5 .v4a4-outils-hote > .ctx-trigger {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 700;
+  padding-inline: 10px;
+}
+
+/* Violet = sélection, comme Liste et Carte. L'état ne repose PAS que sur la
+   couleur : `aria-selected` le dit aux technologies d'assistance. */
+:root.passio-ui-4a5 .v4a4-outils-hote > .ctx-trigger[aria-selected="true"] {
+  background: var(--accent);
+  color: #fff;
+}
+/* Sur fond violet, la pastille de compte s'inverse : un violet sur violet ne
+   se lirait plus. */
+:root.passio-ui-4a5 .v4a4-outils-hote > .ctx-trigger[aria-selected="true"] .ctx-trigger-badge {
+  background: #fff;
+  color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+/* ── Le panneau : caché hors de sa vue, jamais retiré du DOM ───────────
+   Il héberge des nœuds DÉPLACÉS (#irlPassionRow, les volets de filtres) dans
+   lesquels le moteur historique continue d'écrire à chaque rendu : le retirer
+   de l'arbre les emporterait, et `renderIrlPassionTiles` écrirait dans le
+   vide. On le masque donc, ce qui n'empêche aucune écriture. */
+:root.passio-ui-4a5 .v4a5-panneau { display: none; }
+:root.passio-ui-4a5[data-v4a5-vue="filtres"] .v4a5-panneau { display: block; }
+
+/* Vue Filtres : la liste passe la main, comme la carte le fait en vue Liste.
+   `!important` parce que `#irlSearchEmpty` porte un `display` INLINE, qu'aucun
+   sélecteur ne bat. La liste n'est pas vidée pour autant : le moteur continue
+   d'y écrire, et revenir à la vue Liste la retrouve telle quelle. */
+:root.passio-ui-4a5[data-v4a5-vue="filtres"] #eventList,
+:root.passio-ui-4a5[data-v4a5-vue="filtres"] #irlSearchEmpty {
+  display: none !important;
+}
+
+/* ── Contenu du panneau ──────────────────────────────────── */
+:root.passio-ui-4a5 .v4a5-panneau > .v4a5-section:first-child,
+:root.passio-ui-4a5 .v4a5-panneau > .v4a5-outils:first-child { margin-top: 2px; }
+
+/* Les bulles de passion : mêmes tuiles, même moteur — seule la marge basse
+   change, la rangée n'est plus le premier bloc de l'écran. */
+:root.passio-ui-4a5 #v4a5Passions .msg-filter-tiles { margin: 0; }
+:root.passio-ui-4a5 #v4a5Passions .irl-extra-panel { margin-bottom: 0; }
+
+/* Les quatre intentions, deux par ligne (même grille que le panneau UI-4A4). */
+:root.passio-ui-4a5 .v4a5-intents {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+:root.passio-ui-4a5 .v4a5-intents .v4a0-chip {
+  width: 100%;
+  min-height: 46px;
+  justify-content: flex-start;
+}
+
+/* Les volets Date / Distance / Horaire, déplacés depuis la feuille historique :
+   leur dernière marge basse servait à les décoller du pied de cette feuille. */
+:root.passio-ui-4a5 #v4a5Avance .irl-fpane { margin-bottom: 0; }
+:root.passio-ui-4a5 #v4a5Avance .irl-ftabs { margin-bottom: 12px; }
+
+/* Le pied : effacer, et revenir au résultat. Les deux boutons annoncent ce
+   qu'ils font — le principal porte le NOMBRE d'activités restantes, écrit par
+   le moteur (`_syncIrlFiltersFooter`), jamais recompté ici. */
+:root.passio-ui-4a5 .v4a5-pied {
+  display: flex;
+  gap: 8px;
+  margin: 18px 0 6px;
+}
+:root.passio-ui-4a5 .v4a5-pied .btn { min-width: 0; }
+/* Le principal porte un compte variable (« Voir les 35 événements ») : il
+   prend la place restante, et « Tout effacer » se contente de la sienne.
+   À colonnes égales, le libellé du principal passait à la ligne. */
+:root.passio-ui-4a5 .v4a5-pied #v4a5Done { flex: 1 1 auto; }
+:root.passio-ui-4a5 .v4a5-pied #v4a5Reset { flex: 0 1 auto; white-space: nowrap; }
+
+@media (max-width: 359px) {
+  :root.passio-ui-4a5 .v4a5-intents { grid-template-columns: minmax(0, 1fr); }
+}

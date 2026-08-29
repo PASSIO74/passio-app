@@ -381,8 +381,18 @@ Créer
 ├── Publication — idée, photo ou vidéo
 ├── Bobine — vidéo courte autour d’une Passio
 ├── Activité IRL — quelque chose à vivre ensemble
-└── Plus — audio/podcast, Story
+├── Story — un moment qui disparaît en 24 h
+├── Live vidéo — passer en direct, tout de suite
+└── Audio / podcast — le Studio sur le format audio
 ```
+
+> **Amendement du 2026-08-29, sur demande de Benjamin.** L’entrée `Plus` est
+> **RETIRÉE** : la feuille montre d’un seul tenant tout ce que l’on peut créer.
+> Elle imposait deux manipulations pour atteindre Story, Live et Audio, et
+> cachait trois formats derrière un mot qui ne dit pas ce qu’il contient. Les
+> trois intentions principales gardent leur position exacte — la hiérarchie
+> voulue par §A25 est portée par l’**ordre** de la liste, plus par un
+> sous-menu. Les six entrées tiennent sans défilement en 390 × 844.
 
 Le composer Publication ne demande plus de choisir `Texte`, `Photo` ou `Vidéo` avant de commencer. Il contient :
 
@@ -914,7 +924,7 @@ La preuve sociale peut exister — par exemple une personne suivie qui participe
 2. créer une Bobine ;
 3. proposer une activité IRL.
 
-Podcast, audio et Story restent accessibles sous `Plus`. Cela préserve les capacités existantes sans les laisser concurrencer les actions les plus importantes.
+Podcast, audio, Story et Live vidéo restent secondaires. **Depuis le 2026-08-29 ils ne sont plus repliés sous `Plus`** (voir l’amendement du §9) : ils figurent dans la même liste, mais APRÈS les trois actions cœur. La hiérarchie vient de l’ordre de lecture, pas d’un second tap — ce qui préserve les capacités existantes sans les laisser concurrencer les actions les plus importantes, et sans les rendre coûteuses à atteindre.
 
 ### A26. Pourquoi l’identité active est visible avant publication
 
