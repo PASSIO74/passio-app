@@ -611,12 +611,23 @@ Le script est en lecture seule sur le dépôt (il n'écrit que dans son dossier 
     dessous, Passio devant l'aperçu. `js/ui-v6a-messages.js`. ⚠️ `renderMessages()` repart de
     zéro (`innerHTML`) à chaque envoi, réception et frappe, et **sort tôt** quand l'écran
     n'est pas actif : la décoration passe par un MutationObserver + signature par carte.
-  - **UI-6B (§11)** — profil : « Modifier », « Mes Passio », et surtout **Actif / Activer**.
+  - **UI-6B (§11)** — profil : le point d'édition, « Mes Passio », et surtout **Actif / Activer**.
     `js/ui-v6b-profil.js`. ⚠️ Ce lot répare un défaut réel : `switchToProfile()` — la seule
     fonction qui change l'identité active — était **définie et appelée par personne**, un clic
     sur une carte de profil n'agissant que sur le filtre d'affichage (`toggleProfileSelect`).
     D'où deux conséquences : le bouton « Activer » est ce chaînon manquant, et son clic
     **doit stopper sa propagation**, sinon activer une identité basculerait aussi ce filtre.
+    ⚠️ **Amendement du 2026-08-29, sur ordre de Benjamin (« un petit onglet très discret,
+    crayon, en haut à droite »)** : le bouton « Modifier » pleine largeur posé sous les
+    statistiques est devenu un **crayon** (`#v6bModifier`, icône seule) ancré au coin haut
+    droit de `#mainProfileCover`. Trois choses à savoir avant d'y toucher. ① Le moteur ne
+    change pas : le crayon appelle toujours `openMainProfileMenu`, avec ses quatre entrées.
+    ② Le « ⋯ » historique occupait **exactement ce coin** et ouvrait **ce même menu** — deux
+    boutons identiques côte à côte : il est donc **masqué en CSS** (`:root.passio-ui-6b
+    #screen-profiles .profile-dots-btn.on-cover { display: none }`), jamais retiré du DOM,
+    de sorte que le kill switch le rende. ③ Le rond VISIBLE fait 30 px mais la cible tactile
+    se mesure sur la **boîte** du bouton : celui-ci garde ses 44 px et c'est un `::before` en
+    `inset: 7px` qui peint la pastille — même patron que la pastille d'UI-3A.
   ⚠️ **Trois règles communes à ces modules**, payées à l'écriture : ① un **verrou de coupure**
   dans la fonction de décoration (`if (!actif()) return;`) — un rendez-vous armé AVANT la
   coupure survit à l'arrêt de l'observateur et reconstruit la surface juste après sa dépose,
@@ -637,8 +648,15 @@ Le script est en lecture seule sur le dépôt (il n'écrit que dans son dossier 
   « Inscrit ✓ », ligne « N participants · N places restantes » **calculée**, passion
   abrégée à l'affichage seul (`libelleCourt`, « Yoga » et non « Yoga / Bien-être »),
   « Choisir une ville » et un geste explicite `useMyPositionForIrl()` — toujours **aucun
-  GPS automatique** ; ③ **Fil** : les passions deviennent des pastilles « emoji + libellé »
-  qui reviennent à la ligne (bornées à deux rangées, bouton « Autres »), stories −25 %,
+  GPS automatique** ; ③ **Fil** : les passions et les stories sont réduites d'environ
+  −25 % — ⚠️ **rectifié le 2026-08-29 sur demande de Benjamin** (« remets les profils du
+  fil comme avant, en bulle mais plus petite ») : ce lot les avait transformées en
+  pastilles « emoji + libellé » revenant à la ligne, avec un bouton « Autres ». Elles
+  redeviennent des **bulles** (vignette photo ronde + pastille emoji + libellé dessous)
+  dans une rangée qui **défile horizontalement**, avec une vignette de 34 px au lieu de
+  46. C'est du CSS SEUL (`:root.passio-ui-7 #screen-feed .profile-tile*`) : le bouton
+  « Autres » et son mécanisme JS ont été supprimés, `renderProfileStrip` n'est pas touché,
+  et couper le lot rend les 46 px d'origine — ce que la suite vérifie. Aussi :
   intentions renommées **Tous · Explorer · Apprendre · Idées · Rencontrer** ; ④ l'icône
   **Messages quitte la barre supérieure** (`#msgDot` reste dans le DOM, masqué —
   `renderMsgBadge` continue d'y écrire) ; ⑥ **Profil** à trois onglets nommés
@@ -647,9 +665,12 @@ Le script est en lecture seule sur le dépôt (il n'écrit que dans son dossier 
   feuille légère (description · passion · couverture · activité facultative) qui
   renseigne `meState.details` et appelle `mePublish()` — **aucun second moteur de
   publication**.
-  ⚠️ **Six pièges de ce lot.** ① Le bouton « Autres » est un **frère** de `#profileStrip`,
-  jamais un enfant : `renderProfileStrip` réécrit la rangée en entier et la borne en
-  hauteur. ② Au Profil, c'est l'**ORDRE d'origine de l'écran** qui est mémorisé, pas le
+  ⚠️ **Six pièges de ce lot.** ① `renderProfileStrip` réécrit `#profileStrip` **en
+  entier** (cache `_lastHtml` compris) : rien d'injecté dans la rangée n'y survit, tout
+  ajout doit être posé en **frère** — c'est pourquoi la compacité des passions passe
+  aujourd'hui par le CSS seul. Corollaire de mesure : `.profile-tile-avatar` porte
+  `transition: all 0.25s`, donc une largeur relevée dans la foulée d'un changement de
+  drapeau est encore à mi-course (piège vécu en écrivant le test du kill switch). ② Au Profil, c'est l'**ORDRE d'origine de l'écran** qui est mémorisé, pas le
   « frère suivant » de chaque bloc — ce frère déménage lui aussi, et rendre un bloc
   « avant lui » restituait un ordre inventé. ③ Le bloc CSS UI-7 vient **après** les règles
   de repli au défilement, à spécificité **égale** : sans réécrire
