@@ -1,3 +1,166 @@
+// ══════════════════════════════════════════════════════════════════════════
+// LIEN PARTAGÉ D'UNE BOBINE — #reel=<id>
+//
+// ⚠️ Ces liens EXISTAIENT depuis toujours : openReelShareModal les fabrique et
+// les envoie sur WhatsApp, Telegram, X, Facebook, e-mail, SMS et presse-papier.
+// Mais AUCUN code ne les lisait au démarrage — ouvrir un lien de bobine partagée
+// retombait bêtement sur le fil. La boucle de partage, c'est-à-dire le seul
+// chemin d'entrée d'une personne qui ne connaît pas encore PASSIO, était rompue
+// en silence. Même défaut et même correctif que #cdv-live-<id> (app-03) et
+// #irl-event-<id> (app-07), corrigés eux le 2026-07-21.
+//
+// Cinq règles que ce routage tient, et qui expliquent sa forme :
+//   ① il n'ouvre JAMAIS une autre bobine que celle demandée. openReels() montre
+//      la première de la liste quand l'id est absent — pire qu'une erreur : un
+//      lien qui ment sans le dire. D'où la vérification d'APPARTENANCE à
+//      buildReels(id) AVANT toute ouverture. ⚠️ Tester isReel + média ne suffit
+//      pas : buildReels écarte aussi les comptes BLOQUÉS, et une bobine d'un
+//      compte bloqué passait donc la garde puis ouvrait le viewer sur autrui ;
+//   ② il attend que l'application soit vraiment prête. `state` vaut **null**
+//      (pas undefined) jusqu'à `state = loadState()` dans boot(), qui part
+//      APRÈS `await ensureSupabase()` — un aller-retour CDN. Sonder trop tôt
+//      levait un TypeError dans findPostAnywhere ; comme l'appel vient d'un
+//      setTimeout, l'exception n'était rattrapée par personne et TUAIT la
+//      chaîne de reprise, en silence (piège déjà payé sur ui-v4b-fiche.js le
+//      2026-08-28). Le corps entier est donc sous try, et une exception
+//      REPLANIFIE au lieu de conclure ;
+//   ③ il n'ouvre rien par-dessus le gate, la landing ou l'onboarding : le
+//      viewer est en z-index 9999, il recouvrirait l'inscription de la personne
+//      même qui vient d'ouvrir le lien. Ces attentes ne consomment pas d'essai ;
+//   ④ il ne nettoie le hash que sur le chemin de SUCCÈS. Le nettoyer sur échec
+//      rendait le lien irrécupérable — même un rechargement ne pouvait plus rien
+//      retenter (le précédent _openIrlEventFromHash ne le nettoie jamais) ;
+//   ⑤ il mémorise l'id au premier passage : pendant l'attente, une ouverture
+//      normale des Bobines empile « #reels » et le lien aurait été perdu sans
+//      un mot.
+//
+// ⚠️ Télémétrie : le marqueur ci-dessous n'est PAS corrélé au `?plk=` du lien.
+// telemetry.js consomme et RETIRE ce paramètre au chargement de la page, bien
+// avant que le bloc app n'existe (en prod il n'est même pas téléchargé). Son
+// propre événement `link_open` prouve l'ouverture du lien ; celui-ci prouve
+// l'affichage effectif de la bobine. Les apparier demanderait une API publique
+// de telemetry.js qui n'existe pas encore.
+var _reelLinkId = "";         // id capturé au premier passage
+var _reelLinkEssais = 0;      // tentatives « le contenu n'est pas encore là »
+var _reelLinkAttentes = 0;    // tentatives « l'application n'est pas prête »
+var _reelLinkTimer = null;
+
+function _reelLinkReplanifier(delai) {
+  if (_reelLinkTimer) return;
+  _reelLinkTimer = setTimeout(function () {
+    _reelLinkTimer = null;
+    _openReelDeepLink();
+  }, delai || 700);
+}
+
+// Retire le #reel=<id> sans toucher à la query (?plk=… sert au suivi du lien,
+// et telemetry.js l'a déjà lu et retiré au chargement).
+function _reelLinkNettoyerHash() {
+  try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
+}
+
+// L'application peut-elle répondre, et l'écran est-il libre ?
+function _reelLinkAppPrete() {
+  if (document.documentElement.classList.contains("passio-locked")) return false;
+  // ⚠️ `state` est déclaré `let state = null` : `typeof state === "undefined"`
+  // seul ne protège de rien, c'est l'accès à `.seed` qui lève.
+  if (typeof state === "undefined" || !state || !state.seed) return false;
+  if (typeof findPostAnywhere !== "function" || typeof openReelById !== "function") return false;
+  if (typeof buildReels !== "function") return false;
+  var l = document.getElementById("landing");
+  if (l && l.classList.contains("active")) return false;
+  var o = document.getElementById("onboarding");
+  if (o && o.classList.contains("active")) return false;
+  return true;
+}
+
+function _openReelDeepLink() {
+  var m = /^#reel=(.+)$/.exec(location.hash || "");
+  if (m) {
+    var lu = m[1];
+    try { lu = decodeURIComponent(lu); } catch (e) {}
+    _reelLinkId = lu;
+  }
+  var id = _reelLinkId;
+  if (!id) return false;
+
+  try {
+    // Gate, landing, onboarding, application pas encore chargée : on attend,
+    // sans consommer d'essai de contenu. Bornée — aucun minuteur ne doit
+    // tourner seul indéfiniment (600 × 700 ms ≈ 7 min, le temps d'une
+    // inscription), et le hash reste en place, donc un rechargement retente.
+    if (!_reelLinkAppPrete()) {
+      if (++_reelLinkAttentes <= 600) _reelLinkReplanifier();
+      return false;
+    }
+
+    var post = findPostAnywhere(id);
+    var jouable = !!post && !!post.isReel
+      && !!(post.video || post.image || post.photo || post.coverPhotoUrl || post.cover);
+    // Seule garde qui compte : la bobine est-elle DANS la liste que le viewer
+    // va afficher ? buildReels(id) épingle la cible même hors des 30 plus
+    // récentes, et écarte les comptes bloqués — d'où cette vérification plutôt
+    // qu'une copie de ses conditions, qui divergerait tôt ou tard.
+    var dansLaListe = jouable && buildReels(id).some(function (p) { return p.id === id; });
+
+    if (!dansLaListe) {
+      // Une bobine RÉELLE n'arrive qu'avec supaLoadPosts : on retente avant de
+      // conclure. Le hash n'est PAS nettoyé ici — le lien doit rester rejouable
+      // par un simple rechargement si le réseau a été plus lent que le budget.
+      if (++_reelLinkEssais <= 12) { _reelLinkReplanifier(); return false; }
+      _reelLinkId = "";
+      if (typeof toast === "function") toast("Bobine introuvable ou supprimée");
+      return false;
+    }
+
+    // Le hash part AVANT l'ouverture : openReels() empile son propre « #reels »,
+    // et le retour arrière doit fermer le viewer, pas rejouer le lien en boucle.
+    _reelLinkNettoyerHash();
+    _reelLinkId = "";
+    _reelLinkEssais = 0;
+    _reelLinkAttentes = 0;
+
+    if (openReelById(id) === false) {
+      if (typeof toast === "function") toast("Bobine introuvable ou supprimée");
+      return false;
+    }
+    try { if (window.tel && tel.action) tel.action("reel_link_open", { source: "deeplink" }); } catch (e) {}
+    return true;
+  } catch (e) {
+    // Une exception ne doit PAS tuer la chaîne : on la journalise (un catch muet
+    // ici rendrait un lien mort indiscernable d'un lien absent) et on retente.
+    try { console.warn("[reel] lien partagé :", e); } catch (e2) {}
+    if (++_reelLinkEssais <= 12) _reelLinkReplanifier();
+    return false;
+  }
+}
+
+// Un lien collé pendant que l'app tourne : budget neuf seulement si la CIBLE
+// change (sinon une page qui réécrit son hash ré-armerait le compteur sans fin).
+window.addEventListener("hashchange", function () {
+  var m = /^#reel=(.+)$/.exec(location.hash || "");
+  if (!m) return;
+  var id = m[1];
+  try { id = decodeURIComponent(id); } catch (e) {}
+  if (id && id !== _reelLinkId) {
+    _reelLinkId = id;
+    _reelLinkEssais = 0;
+    _reelLinkAttentes = 0;
+  }
+  _openReelDeepLink();
+});
+
+(function _reelDeepLinkBoot() {
+  if (!/^#reel=/.test(location.hash || "")) return;
+  // On attend le déverrouillage plutôt que de sonder : `__gateReady` est la
+  // promesse que boot() attend déjà (js/access-gate.js). Elle ne dit PAS que
+  // l'application est prête (cf. règle ②) — c'est _reelLinkAppPrete qui le dit.
+  // Repli immédiat si le gate est absent (page de test, build sans gate).
+  var demarrer = function () { _reelLinkReplanifier(400); };
+  var g = window.__gateReady;
+  if (g && typeof g.then === "function") g.then(demarrer); else demarrer();
+})();
+
 function copyReelLink(postId, encodedUrl) {
   const url = decodeURIComponent(encodedUrl);
   if (navigator.clipboard) {
