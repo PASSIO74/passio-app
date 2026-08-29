@@ -661,10 +661,19 @@
       <label class="field" id="fieldMood">
         <span>Mood</span>
         <div class="pill-row" id="postMoodRow">
-          <button class="pill active" data-postmood="creation">🎨 Création</button>
-          <button class="pill" data-postmood="learn">📚 Apprentissage</button>
-          <button class="pill" data-postmood="chill">😌 Chill</button>
-          <button class="pill" data-postmood="actu">🌍 Actu</button>
+          <!-- ⚠️ Le VOCABULAIRE suit le rail d'intentions du Fil (Tous · Explorer ·
+               Apprendre · Idées · Rencontrer) : on publie avec le mot qu'on lit.
+               Les VALEURS, elles, ne bougent pas — « creation », « learn »,
+               « irl » et « all » sont écrites en base et lues par
+               `legacyMoodToFeedIntent` ; les renommer casserait les
+               publications existantes pour un simple mot.
+               Pas de pastille « Explorer » : cette intention se calcule côté
+               lecteur (auteur non suivi, passion inconnue) et ne regarde JAMAIS
+               le mood — une pastille y serait purement décorative. -->
+          <button type="button" class="pill active" data-postmood="creation">💡 Idées</button>
+          <button type="button" class="pill" data-postmood="learn">📚 Apprendre</button>
+          <button type="button" class="pill" data-postmood="irl">🤝 Rencontrer</button>
+          <button type="button" class="pill" data-postmood="all">✨ Tous</button>
         </div>
       </label>
 
