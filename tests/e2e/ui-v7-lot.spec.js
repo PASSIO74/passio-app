@@ -9,8 +9,8 @@
 //      la passion abrégée sans que la passion canonique bouge, et AUCUNE
 //      demande de position à l'ouverture ;
 //   ③ le Fil tient sans défilement horizontal à 320, 390 et 430 px, les
-//      passions ne sont plus des bulles de story, et le repli au défilement
-//      fonctionne toujours ;
+//      passions ne sont plus des bulles de story, et elles restent affichées
+//      pendant tout le défilement (le repli au défilement a été retiré) ;
 //   ④ Messages a quitté la barre supérieure sans quitter l'application ;
 //   ⑥ le Profil a trois onglets nommés et RIEN n'est devenu inatteignable ;
 //   ⑧ après l'enregistrement d'une bobine : aperçu, « Recommencer » /
@@ -285,25 +285,45 @@ test.describe("UI-7 §3 — le haut du Fil est compact", () => {
     expect(await page.evaluate(() => typeof toggleProfileFilter)).toBe("function");
   });
 
-  test("le repli au défilement fonctionne toujours", async ({ page }) => {
+  test("les passions restent affichées quand on descend dans le fil", async ({ page }) => {
     await boot(page, null, 3);
-    // On pose la classe comme le fait le moteur d'app-09, et on vérifie que le
-    // bloc UI-7 ne l'emporte pas sur elle (même spécificité, ordre inverse).
+    // Le repli au défilement a été RETIRÉ le 2026-08-29 (cf. la fin d'app-09 et
+    // tests/e2e/entete-fil-permanent.spec.js) : ce qui était vérifié ici — que
+    // le bloc UI-7 ne l'emportait pas sur `.chrome-collapsed` — n'a plus d'objet.
+    // Ce qui reste à prouver côté UI-7, c'est que la rangée de pastilles et son
+    // bouton « Autres » gardent leur hauteur pendant tout le défilement.
     const h = await page.evaluate(async () => {
       const main = document.querySelector(".app-main");
       const strip = document.getElementById("profileStrip");
-      const avant = strip.getBoundingClientRect().height;
-      main.classList.add("chrome-collapsed");
+      const mesure = () => {
+        const more = document.getElementById("v7StripMore");
+        return {
+          strip: strip.getBoundingClientRect().height,
+          more: more && !more.hidden ? more.getBoundingClientRect().height : null,
+        };
+      };
+      const avant = mesure();
+      main.scrollTop = 400;
+      main.dispatchEvent(new Event("scroll"));
       await new Promise((r) => setTimeout(r, 500));
-      const apres = strip.getBoundingClientRect().height;
-      const more = document.getElementById("v7StripMore");
-      const moreH = more ? more.getBoundingClientRect().height : 0;
-      main.classList.remove("chrome-collapsed");
-      return { avant, apres, moreH };
+      const apres = mesure();
+      const replie = main.classList.contains("chrome-collapsed");
+      main.scrollTop = 0;
+      main.dispatchEvent(new Event("scroll"));
+      await new Promise((r) => setTimeout(r, 500));
+      const remonte = mesure();
+      return { avant, apres, remonte, replie };
     });
-    expect(h.avant).toBeGreaterThan(10);
-    expect(h.apres).toBeLessThan(2);
-    expect(h.moreH).toBeLessThan(2);
+    expect(h.avant.strip).toBeGreaterThan(10);
+    expect(h.replie).toBe(false);
+    expect(h.apres.strip).toBeGreaterThan(10);
+    expect(h.remonte.strip).toBeGreaterThan(10);
+    // Le bouton « Autres » n'existe que si les passions débordent des deux
+    // rangées ; quand il est là, il suit la rangée au lieu de disparaître seul.
+    if (h.avant.more !== null) {
+      expect(h.apres.more).toBeGreaterThan(4);
+      expect(h.remonte.more).toBeGreaterThan(4);
+    }
   });
 });
 
