@@ -2304,7 +2304,12 @@ function saveDraft() {
     id: uid(),
     type: studioType,
     text,
-    passion: $("#postPassion").value,
+    // Filet de dernier recours : un `<select>` peut valoir "" sans que personne
+    // ne l'ait voulu (une affectation à une valeur sans <option> le vide en
+    // silence — cf. shareEventExperience). Un post sans passion perd sa
+    // provenance ET disparaît du fil de son auteur, que le filtre de passions
+    // écarte. On retombe donc sur l'identité active, jamais sur du vide.
+    passion: $("#postPassion").value || (currentProfile() && currentProfile().passion) || "",
     mood: studioMood,
     image: photoDataUrl,
     video: videoDataUrl,
