@@ -178,7 +178,7 @@ test.describe("Fil — Envie du moment (UI-2 active par défaut)", () => {
 
     // Les cinq libellés exigés par la direction, dans l'ordre.
     expect(await page.locator(".feed-intent-btn").allTextContents())
-      .toEqual(["Tous", "Découvrir", "Apprendre", "Créer", "Rencontrer"]);
+      .toEqual(["Tous", "Explorer", "Apprendre", "Idées", "Rencontrer"]);
 
     const ids = await renderedIds(page);
     expect(ids.slice().sort()).toEqual(POSTS.map((p) => p.id).sort());
@@ -301,7 +301,7 @@ test.describe("Fil — Envie du moment (UI-2 active par défaut)", () => {
     expect(await page.evaluate(() => localStorage.getItem("passio_irl_proposal_v1"))).not.toBe("1");
   });
 
-  test("Rencontrer, UI-3A active : « Trouver une expérience », sans proposition automatique", async ({ page }) => {
+  test("Rencontrer, UI-3A active : « Vivre ça en vrai », sans proposition automatique", async ({ page }) => {
     await boot(page);
     await seedFeed(page, true, true);
     // Le module doit être LÀ. Un module absent est un défaut de livraison, pas
@@ -312,7 +312,7 @@ test.describe("Fil — Envie du moment (UI-2 active par défaut)", () => {
     const carte = page.locator('#feedList .post[data-postid="intent_meet"]');
 
     // Le vocabulaire validé est présent et réellement atteignable…
-    await expect(carte.getByText("Trouver une expérience", { exact: true }).first()).toBeVisible();
+    await expect(carte.getByText("Vivre ça en vrai", { exact: true }).first()).toBeVisible();
 
     // …et le CTA historique reste dans le DOM, seulement masqué : aucun doublon
     // à l'écran, et les kill switches le restituent sans repeindre le fil.
@@ -384,10 +384,15 @@ test.describe("Fil — Envie du moment (UI-2 active par défaut)", () => {
     }
   });
 
-  // UI-2 §2 : sur écran étroit, la bande DÉFILE au lieu de tronquer. Prouvé par
-  // construction (et pas seulement à une largeur donnée) : la bande défile en
-  // x, et aucun onglet ne peut rétrécir sous son texte.
-  test("le rail défile horizontalement au lieu de couper les libellés", async ({ page }) => {
+  // ⚠️ RÉÉCRIT AU LOT UI-7. Le test d'origine exigeait que la bande DÉFILE
+  // horizontalement (`overflow-x: auto`, `flex-shrink: 0`) : c'était la réponse
+  // d'UI-2 à « Rencontrer » tronqué à 360 px. Le §3 de l'ordre du 2026-08-28
+  // demande l'inverse et le rend possible — les libellés raccourcis
+  // (Explorer, Idées) tiennent à cinq sans geste de défilement. L'exigence de
+  // fond, elle, ne bouge pas : AUCUN libellé coupé. Elle est donc conservée,
+  // et c'est le moyen qui change. Sous kill switch, la bande défilante d'UI-2
+  // revient telle quelle — ce que la seconde moitié du test vérifie.
+  test("le rail tient sans défilement horizontal, et le kill switch rend la bande défilante", async ({ page }) => {
     await boot(page, { preview: true });
     await seedFeed(page, true);
     await page.setViewportSize({ width: 360, height: 844 });
@@ -395,27 +400,35 @@ test.describe("Fil — Envie du moment (UI-2 active par défaut)", () => {
     const style = await page.evaluate(() => {
       const rail = document.getElementById("feedIntentSelector");
       const btn = rail.querySelector('.feed-intent-btn[data-intent="meet"]');
+      return {
+        railOverflowX: getComputedStyle(rail).overflowX,
+        deborde: rail.scrollWidth > rail.clientWidth + 1,
+        tronque: btn.scrollWidth > Math.ceil(btn.clientWidth) + 1,
+        tousTronques: [...rail.querySelectorAll(".feed-intent-btn")]
+          .filter((b) => b.scrollWidth > Math.ceil(b.clientWidth) + 1).map((b) => b.textContent),
+      };
+    });
+    expect(style.railOverflowX).toBe("hidden");
+    expect(style.deborde, "la bande ne déborde plus").toBe(false);
+    expect(style.tronque).toBe(false);
+    expect(style.tousTronques, "libellés coupés").toEqual([]);
+
+    // Kill switch du lot UI-7 : la bande défilante d'UI-2 est rendue à
+    // l'identique, sans rechargement.
+    const apres = await page.evaluate(() => {
+      localStorage.setItem("passio_ui_7", "0");
+      PassioUIV7.apply();
+      const rail = document.getElementById("feedIntentSelector");
+      const btn = rail.querySelector('.feed-intent-btn[data-intent="meet"]');
       const cs = getComputedStyle(btn);
       return {
         railOverflowX: getComputedStyle(rail).overflowX,
         flexShrink: cs.flexShrink,
         textOverflow: cs.textOverflow,
-        // Le libellé le plus long tient entièrement dans sa boîte.
-        tronque: btn.scrollWidth > Math.ceil(btn.clientWidth) + 1,
       };
     });
-    expect(style.railOverflowX).toBe("auto");
-    expect(style.flexShrink).toBe("0");
-    expect(style.textOverflow).toBe("clip");
-    expect(style.tronque).toBe(false);
-
-    // Et la bande est réellement défilable quand elle déborde.
-    const defile = await page.evaluate(() => {
-      const rail = document.getElementById("feedIntentSelector");
-      if (rail.scrollWidth <= rail.clientWidth + 1) return "pas de débordement";
-      rail.scrollLeft = rail.scrollWidth;
-      return rail.scrollLeft > 0 ? "défile" : "bloqué";
-    });
-    expect(defile).not.toBe("bloqué");
+    expect(apres.railOverflowX).toBe("auto");
+    expect(apres.flexShrink).toBe("0");
+    expect(apres.textOverflow).toBe("clip");
   });
 });

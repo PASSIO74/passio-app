@@ -149,7 +149,7 @@
     qui.className = "v6-identite-txt";
     qui.textContent = "Publier en tant que " + identiteCourante();
     identite.appendChild(qui);
-    identite.appendChild(lienTexte("Changer", function () {
+    identite.appendChild(lienTexte("Changer de profil", function () {
       // Le moteur existant, jamais un second sélecteur d'identité.
       if (typeof goTo === "function") goTo("profiles");
     }));
@@ -200,7 +200,7 @@
     var txt = document.createElement("span");
     txt.className = "v6-passio-txt";
     txt.setAttribute("data-v6-passio", "1");
-    txt.textContent = "Passio : " + (libellePassionChoisie() || "—");
+    txt.textContent = "Passion : " + (libellePassionChoisie() || "—");
     resume.appendChild(txt);
     var champPassion = el("fieldPassion");
     resume.appendChild(lienTexte("Modifier", function () {
@@ -216,7 +216,7 @@
     var affiner = document.createElement("details");
     affiner.className = "v6-affiner";
     var somm = document.createElement("summary");
-    somm.textContent = "Affiner";
+    somm.textContent = "Options";
     affiner.appendChild(somm);
     hote.appendChild(affiner);
     var champMood = el("fieldMood");
@@ -246,7 +246,7 @@
   function syncResume() {
     try {
       var t = document.querySelector("[data-v6-passio]");
-      if (t) t.textContent = "Passio : " + (libellePassionChoisie() || "—");
+      if (t) t.textContent = "Passion : " + (libellePassionChoisie() || "—");
       var q = document.querySelector(".v6-identite-txt");
       if (q) q.textContent = "Publier en tant que " + identiteCourante();
     } catch (e) {}

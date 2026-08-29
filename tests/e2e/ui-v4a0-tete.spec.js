@@ -151,7 +151,7 @@ test.describe("UI-4A0 — tête de Rencontrer", () => {
     await expect(head.locator("#v4a0Search")).toBeVisible();
     await expect(head.locator("[data-v4a0-intent]")).toHaveCount(4);
     await expect(head.locator("[data-v4a0-intent]")).toHaveText([
-      /Tous/, /Cette semaine/, /Ma ville/, /Mes Passio/,
+      /Tous/, /Cette semaine/, /Ma ville/, /Mes passions/,
     ]);
 
     // La tête est le PREMIER contenu de l'écran ; le doublon historique est

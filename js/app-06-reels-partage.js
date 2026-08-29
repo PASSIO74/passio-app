@@ -216,14 +216,15 @@ function renderMainProfile() {
   var fEl = document.getElementById("mainStatFollowers"); if (fEl) fEl.textContent = (typeof window._followersCount === "number" ? window._followersCount : 0);
   loadFollowersCount();
 
-  // Events
+  // Activités — ORGANISÉES et REJOINTES (§6 du lot UI-7).
+  // ⚠️ Ce bloc listait `state.seed.events.slice(0,3)`, c'est-à-dire les TROIS
+  // PREMIÈRES activités du contenu de démonstration : ni les miennes, ni celles
+  // auxquelles je participe. La section s'appelait « Événements participés » et
+  // ne montrait donc, littéralement, jamais une participation. On lit désormais
+  // les moteurs existants — `allEvents()`, `_isMyEvent()`, `myRsvp()` — sans en
+  // créer aucun, et chaque ligne porte une miniature, une date et une ville.
   var eventsEl = document.getElementById("profileEvents");
-  if (eventsEl) {
-    var events = (state.seed.events||[]).slice(0,3);
-    eventsEl.innerHTML = events.length ? events.map(function(e) {
-      return '<div style="display:flex;align-items:center;gap:10px;padding:10px;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;margin-bottom:6px;"><span style="font-size:20px;">'+(e.emoji||"📍")+'</span><div style="flex:1;"><div style="font-weight:700;font-size:12px;">'+escapeHtml(e.title||"Événement")+'</div><div style="font-size:10px;color:var(--muted);">'+escapeHtml(e.city||"")+'</div></div></div>';
-    }).join("") : '<div style="font-size:12px;color:var(--muted);padding:10px;">Aucun événement</div>';
-  }
+  if (eventsEl) eventsEl.innerHTML = _myProfileEventsHTML();
 
   // Top posts
   var topEl = document.getElementById("profileTopPosts");
@@ -255,6 +256,15 @@ function openMyPostsTab() {
   _persistProfileTabs();
   _syncProfileTabButtons();
   renderProfilesScreen();
+  // Sous le lot UI-7, #myPosts vit dans l'onglet « Publications » : défiler
+  // vers un nœud masqué ne fait rien. On ouvre l'onglet d'abord — inerte dès
+  // que le lot est coupé.
+  try {
+    if (window.PassioUIV7 && typeof window.PassioUIV7.selectProfileTab === "function"
+        && document.querySelector('[data-v7-tab="publications"]')) {
+      window.PassioUIV7.selectProfileTab("publications");
+    }
+  } catch (e) {}
   var anchor = document.getElementById("myPosts");
   if (anchor && anchor.scrollIntoView) anchor.scrollIntoView({ behavior: "smooth", block: "start" });
 }
@@ -363,6 +373,78 @@ function _syncProfileTabButtons() {
   });
 }
 
+// Activités de MON profil : celles que j'organise et celles où j'ai répondu
+// (« je viens », « peut-être », liste d'attente). Les à-venir d'abord, du plus
+// proche au plus lointain, puis les passées de la plus récente à la plus
+// ancienne — l'écran de profil sert d'abord à retrouver ce qui arrive.
+// Aucun moteur nouveau : `allEvents`, `_isMyEvent` et `myRsvp` sont ceux d'IRL.
+function _myProfileEvents(limit) {
+  var out = [];
+  try {
+    var tous = (typeof allEvents === "function") ? allEvents() : [];
+    out = tous.filter(function (e) {
+      if (!e) return false;
+      var mien = (typeof _isMyEvent === "function") ? _isMyEvent(e) : false;
+      var rep = (typeof myRsvp === "function") ? myRsvp(e.id) : null;
+      return mien || (rep && rep !== "declined");
+    });
+  } catch (e) {
+    // ⚠️ Jamais muet : un `catch` large sur un chemin d'affichage a déjà masqué
+    // un ReferenceError six jours dans ce dépôt (fiche « catch large »).
+    if (typeof diagLog === "function") diagLog("profil_activites " + (e && e.message));
+    else if (window.console && console.error) console.error("[profil] activités :", e);
+    return [];
+  }
+  var maintenant = Date.now();
+  out.sort(function (a, b) {
+    var fa = a.date >= maintenant, fb = b.date >= maintenant;
+    if (fa !== fb) return fa ? -1 : 1;
+    return fa ? (a.date - b.date) : (b.date - a.date);
+  });
+  return out.slice(0, limit || 4);
+}
+
+// Une ligne = miniature + titre + « date · ville ». Tout contenu d'activité
+// passe par escapeHtml (titre, ville), l'identifiant par escapeJsArg (argument
+// JS d'un onclick) et la couverture par safeUrlAttr (URL posée par autrui).
+function _myProfileEventsHTML() {
+  var evs = _myProfileEvents(4);
+  if (!evs.length) {
+    return '<div style="font-size:12px;color:var(--muted);padding:10px;">'
+      + 'Aucune activité pour le moment — rejoins ou propose une sortie depuis « Rencontrer ».</div>';
+  }
+  return evs.map(function (e) {
+    var emoji = e.emoji || "📍";
+    try {
+      if (!e.emoji && typeof passionById === "function") emoji = (passionById(e.passion) || {}).emoji || "📍";
+    } catch (x) {}
+    var vignette = e.coverUrl
+      ? '<img loading="lazy" decoding="async" src="' + safeUrlAttr(e.coverUrl) + '" alt="" '
+        + 'style="width:100%;height:100%;object-fit:cover;display:block;" '
+        + 'onerror="this.style.display=\'none\'"/>'
+      : '<span style="font-size:20px;">' + escapeHtml(String(emoji)) + '</span>';
+    var quand = "";
+    try {
+      quand = new Date(e.date).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" });
+    } catch (x) {}
+    var bas = [quand, e.city ? String(e.city) : ""].filter(Boolean).join(" · ");
+    var role = ((typeof _isMyEvent === "function") && _isMyEvent(e)) ? "Tu organises" : "";
+    return '<div data-profile-event="' + escapeHtml(String(e.id)) + '" '
+      + 'onclick="openEventDetails(\'' + escapeJsArg(String(e.id)) + '\')" '
+      + 'style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--bg-card);'
+      + 'border:1px solid var(--border);border-radius:12px;margin-bottom:6px;cursor:pointer;">'
+      + '<div style="width:44px;height:44px;flex:0 0 44px;border-radius:10px;overflow:hidden;'
+      + 'background:var(--bg-tint);display:grid;place-items:center;">' + vignette + '</div>'
+      + '<div style="flex:1;min-width:0;">'
+      + '<div style="font-weight:700;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
+      + escapeHtml(e.title || "Activité") + '</div>'
+      + '<div style="font-size:10.5px;color:var(--muted);">' + escapeHtml(bas) + '</div>'
+      + '</div>'
+      + (role ? '<span style="font-size:10px;color:var(--muted);white-space:nowrap;">' + role + '</span>' : '')
+      + '</div>';
+  }).join("");
+}
+
 // Rend la zone #myPosts selon l'onglet actif ET la multi-sélection de profils.
 // Sélection vide => invite à sélectionner (pas de fallback profil actif).
 function renderProfileContent() {
@@ -371,7 +453,21 @@ function renderProfileContent() {
 
   var sel = window.profilesFilterSelection || new Set();
   if (sel.size === 0) {
-    myPostsDiv.innerHTML = '<div class="empty"><div class="empty-icon">👆</div><div class="empty-title">Sélectionne un profil passion</div><div class="empty-text">Coche un ou plusieurs profils ci-dessus pour afficher leur contenu.</div></div>';
+    // ⚠️ Sous le lot UI-7, la liste des passions vit dans l'onglet « À propos » :
+    // « coche un profil ci-dessus » désignerait un sélecteur que cet onglet ne
+    // montre pas, et l'écran serait un cul-de-sac. On y ajoute donc la porte —
+    // guardée, donc inerte dès que le lot est coupé, où le texte historique
+    // redevient exact.
+    var v7 = !!(window.PassioUIV7 && typeof window.PassioUIV7.isEnabled === "function"
+      && window.PassioUIV7.isEnabled());
+    myPostsDiv.innerHTML = '<div class="empty"><div class="empty-icon">👆</div>'
+      + '<div class="empty-title">Sélectionne un profil passion</div>'
+      + '<div class="empty-text">'
+      + (v7 ? 'Choisis une ou plusieurs passions dans « À propos » pour afficher leur contenu.'
+            : 'Coche un ou plusieurs profils ci-dessus pour afficher leur contenu.')
+      + '</div>'
+      + (v7 ? '<button class="btn primary" onclick="PassioUIV7.selectProfileTab(\'apropos\')">Mes passions</button>' : '')
+      + '</div>';
     return;
   }
 
@@ -1020,12 +1116,22 @@ function renderProfilesScreen() {
   // passion. Elle n'a de sens que si l'utilisateur en a exactement UN — celui
   // créé à l'inscription. Avec deux profils ou plus, il a déjà trouvé tout seul,
   // et le §8 interdit d'expliquer ce qui est acquis.
+  // ⚠️ L'ANCRE dépend de l'écran réellement affiché. `montrerHint` refuse une
+  // cible sans `offsetParent` — et depuis le lot UI-7, « Mes passions » vit
+  // dans l'onglet « À propos », masqué tant qu'on ne l'ouvre pas : ancrer
+  // l'aide sur `#nouveauProfilLien` la rendait simplement invisible, sans que
+  // rien n'échoue. On retombe alors sur l'onglet, qui EST la porte à montrer.
   try {
     if (typeof montrerHint === "function" && (state.user.profiles || []).length === 1) {
       setTimeout(function () {
         var ecran = document.getElementById("screen-profiles");
         if (!ecran || !ecran.classList.contains("active")) return;
-        montrerHint("second_profil", "#nouveauProfilLien");
+        var ancre = "#nouveauProfilLien";
+        var lien = document.getElementById("nouveauProfilLien");
+        if ((!lien || !lien.offsetParent) && document.querySelector('[data-v7-tab="apropos"]')) {
+          ancre = '[data-v7-tab="apropos"]';
+        }
+        montrerHint("second_profil", ancre);
       }, 400);
     }
   } catch (e) {}
@@ -1242,7 +1348,7 @@ function renderProfileStrip() {
   var followingIds = state.user?.following || [];
   var followingPostCount = allPostsFlat.filter(function(p) { return followingIds.includes(p.authorId); }).length;
   var followingTile = '<div class="profile-tile ' + (_showFollowingFeed ? "active" : "") + '" onclick="toggleFollowingFilter()" title="Suivis" style="opacity:1;transform:' + (_showFollowingFeed ? 'scale(1.07)' : 'scale(1)') + ';transition:all 0.2s;">\
-      <div class="profile-tile-avatar" style="position:relative;overflow:hidden;background:linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(124, 58, 237, 0.10));"><img loading="lazy" decoding="async" class="profile-tile-photo" src="https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=200&h=200&fit=crop&crop=faces,entropy&auto=format&q=80" alt="Suivis" onerror="this.onerror=null;this.src=\'https://picsum.photos/seed/community/200/200\'" /><div style="position:absolute;inset:0;background:radial-gradient(circle at 30% 30%, rgba(139, 92, 246, 0.08), transparent 70%);pointer-events:none;"></div>' + (followingPostCount > 0 ? '<span style="position:absolute;top:-5px;right:-5px;background:var(--accent);color:#fff;font-size:9px;font-weight:800;border-radius:8px;padding:1px 5px;min-width:16px;text-align:center;border:2px solid var(--bg);line-height:14px;">' + followingPostCount + '</span>' : '') + '</div>\
+      <div class="profile-tile-avatar" style="position:relative;overflow:hidden;background:linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(124, 58, 237, 0.10));"><img loading="lazy" decoding="async" class="profile-tile-photo" src="https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=200&h=200&fit=crop&crop=faces,entropy&auto=format&q=80" alt="Suivis" onerror="this.onerror=null;this.src=\'https://picsum.photos/seed/community/200/200\'" /><div style="position:absolute;inset:0;background:radial-gradient(circle at 30% 30%, rgba(139, 92, 246, 0.08), transparent 70%);pointer-events:none;"></div><span class="profile-tile-glyph" aria-hidden="true">👥</span>' + (followingPostCount > 0 ? '<span class="profile-tile-count" style="position:absolute;top:-5px;right:-5px;background:var(--accent);color:#fff;font-size:9px;font-weight:800;border-radius:8px;padding:1px 5px;min-width:16px;text-align:center;border:2px solid var(--bg);line-height:14px;">' + followingPostCount + '</span>' : '') + '</div>\
       <div class="profile-tile-label" style="font-weight:' + (_showFollowingFeed ? '800' : '600') + ';color:' + (_showFollowingFeed ? 'var(--accent)' : '') + ';">Suivis</div>\
     </div>';
 
@@ -1257,11 +1363,11 @@ function renderProfileStrip() {
       : null;
     const fallback = "https://picsum.photos/seed/" + p.passion + "/200/200";
     const avatarContent = photoUrl
-      ? '<img loading="lazy" decoding="async" class="profile-tile-photo" src="' + photoUrl + '" alt="' + escapeHtml(label) + '" onerror="this.onerror=null;this.src=\'' + escapeJsArg(fallback) + '\'"/><span class="profile-tile-emoji-badge">' + p.emoji + '</span>'
-      : p.emoji;
+      ? '<img loading="lazy" decoding="async" class="profile-tile-photo" src="' + photoUrl + '" alt="' + escapeHtml(label) + '" onerror="this.onerror=null;this.src=\'' + escapeJsArg(fallback) + '\'"/><span class="profile-tile-emoji-badge">' + p.emoji + '</span><span class="profile-tile-glyph" aria-hidden="true">' + p.emoji + '</span>'
+      : p.emoji + '<span class="profile-tile-glyph" aria-hidden="true">' + p.emoji + '</span>';
     const count = postCountByPassion[p.passion] || 0;
     const countBadge = count > 0
-      ? '<span style="position:absolute;top:-5px;right:-5px;background:var(--accent);color:#fff;font-size:9px;font-weight:800;border-radius:8px;padding:1px 5px;min-width:16px;text-align:center;border:2px solid var(--bg);line-height:14px;">' + count + '</span>'
+      ? '<span class="profile-tile-count" style="position:absolute;top:-5px;right:-5px;background:var(--accent);color:#fff;font-size:9px;font-weight:800;border-radius:8px;padding:1px 5px;min-width:16px;text-align:center;border:2px solid var(--bg);line-height:14px;">' + count + '</span>'
       : '';
     return '<div class="profile-tile ' + (isSelected ? "active" : "") + '" onclick="toggleProfileFilter(\'' + escapeJsArg(p.passion) + '\')" title="' + escapeHtml(label) + '" style="opacity:' + (isDimmed ? '0.3' : '1') + ';transform:' + (isSelected ? 'scale(1.07)' : 'scale(1)') + ';transition:all 0.2s;">\
       <div class="profile-tile-avatar" style="position:relative;">' + avatarContent + countBadge + '</div>\

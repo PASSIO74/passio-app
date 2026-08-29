@@ -2791,7 +2791,7 @@
       letter-spacing: 0.05em;
     }
 
-    /* Onglets de contenu du profil : segmented control en icônes seules */
+    /* Onglets de contenu du profil : segmented control icône + libellé */
     .profile-tabs {
       display: flex;
       gap: 2px;
@@ -2804,10 +2804,12 @@
     .profile-tab {
       flex: 1;
       display: flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
-      min-height: 44px;
-      padding: 0;
+      gap: 3px;
+      min-height: 52px;
+      padding: 5px 2px;
       background: transparent;
       border: none;
       border-radius: 12px;
@@ -2815,7 +2817,24 @@
       cursor: pointer;
       transition: background 0.18s ease, color 0.18s ease, transform 0.18s ease;
     }
-    .profile-tab svg { width: 21px; height: 21px; display: block; }
+    .profile-tab svg { width: 20px; height: 20px; display: block; flex: none; }
+    /* Libellé sous l'icône : dit à quoi correspond l'onglet (les icônes seules
+       étaient devinettes — bobine vs vidéo vs carnet). Petit, jamais coupé. */
+    .profile-tab-lbl {
+      font-size: 10px;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.01em;
+      white-space: nowrap;
+    }
+    /* Rappel de ce que fait la rangée d'onglets (filtre, multi-sélection). */
+    .profile-tabs-hint {
+      margin: 16px 0 -8px;
+      font-size: 11px;
+      line-height: 1.45;
+      color: var(--muted);
+    }
+    .profile-tabs-hint + .profile-tabs { margin-top: 8px; }
     .profile-tab:hover { color: var(--text); background: rgba(124, 58, 237, 0.06); }
     /* Coché = filtre actif (multi-sélection) : pastille + anneau accent */
     .profile-tab.active {
@@ -2824,6 +2843,7 @@
       box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), inset 0 0 0 1.5px rgba(124, 58, 237, 0.35);
     }
     .profile-tab.active svg { stroke-width: 2; }
+    .profile-tab.active .profile-tab-lbl { font-weight: 800; }
     .profile-tab:active { transform: scale(0.94); }
 
     .passion-photo-badge {
@@ -9547,16 +9567,24 @@ body.ctx-locked #appMain { overflow: hidden; }
   min-width: 0;
 }
 
-/* Un LIEN, pas un bouton plein : discret dans la carte, mais la cible tactile
-   fait bien 44 px de haut (le rembourrage négatif garde la ligne compacte).
-   ⚠️ ALLÉGÉ le 2026-08-28, sur retour de Benjamin (« pas joli, trop voyant »).
-   Ce qui change et pourquoi : la graisse passe de 800 à 600 et la taille de 13
-   à 12,5 px — en 800 le lien pesait plus lourd que le texte de la publication
-   qu'il accompagne, ce qui est exactement l'inverse de ce qu'on veut ; et le
-   corail saturé quitte le LIBELLÉ pour ne rester que sur le chevron. Le signal
-   « passage au réel » du §5 est ainsi conservé, mais comme un accent d'un seul
-   caractère au lieu d'une ligne entière. Le texte prend l'encre calme du thème,
-   qui monte au passage à ~8:1 de contraste contre 5,3 auparavant. */
+/* Une PASTILLE, pas un lien de texte ni un bouton plein : demandé par Benjamin
+   le 2026-08-28 (« un petit onglet, plus discret »). Le libellé ne change pas —
+   il reste celui du panneau qu'il ouvre, une seule constante côté JS — mais il
+   se pose désormais dans une pilule au fond quasi-blanc, cerclée d'un filet, en
+   11,5 px. Une pastille lue comme un objet secondaire pèse moins qu'une ligne de
+   texte accentuée, qui se lisait comme une phrase de la publication.
+
+   ⚠️ Deux contraintes que ce dessin doit tenir en même temps :
+   ① la cible tactile fait 44 px de haut (test « cible tactile ≥ 44 px », mesuré
+      sur la BOÎTE du bouton — un simple débord en ::before ne compterait pas) ;
+   ② la pilule VISIBLE ne doit faire que ~30 px, sans quoi elle redevient un gros
+      bouton. D'où le dessin : le bouton garde ses 44 px, et c'est un ::before
+      en « inset: 7px 0 » (z-index négatif, sous le texte) qui PEINT la pilule.
+   Le rembourrage négatif garde la ligne compacte, comme avant.
+
+   Historique conservé : le corail saturé a quitté le LIBELLÉ le 2026-08-28 pour
+   ne rester que sur le chevron — le signal « passage au réel » du §5 tient en un
+   caractère, le texte gardant l'encre calme du thème (~8:1 de contraste). */
 :root.passio-ui-3 .v3-tempt {
   appearance: none;
   -webkit-appearance: none;
@@ -9567,25 +9595,38 @@ body.ctx-locked #appMain { overflow: hidden; }
   display: inline-flex;
   align-items: center;
   min-height: 44px;
-  padding: 0 4px;
+  padding: 0 11px;
   margin: -11px 0;
-  font-size: 12.5px;
+  font-size: 11.5px;
   font-weight: 600;
   letter-spacing: 0.005em;
   color: var(--text-dim);
   cursor: pointer;
-  border-radius: 8px;
   transition: color 140ms ease;
+}
+/* La pilule elle-même. Fond OPAQUE volontairement (var(--bg-deep)) : le test de
+   contraste remonte les ancêtres jusqu'au premier fond opaque, et une teinte
+   « rgba(...) » lui ferait mesurer la couleur pleine en ignorant l'alpha. */
+:root.passio-ui-3 .v3-tempt::before {
+  content: "";
+  position: absolute;
+  inset: 7px 0;
+  z-index: -1;
+  background: var(--bg-deep);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  transition: background 140ms ease, border-color 140ms ease;
 }
 :root.passio-ui-3 .v3-tempt::after {
   content: "›";
   margin-left: 5px;
-  font-size: 15px;
+  font-size: 14px;
   line-height: 1;
   color: var(--v3-coral-texte);
   transition: transform 140ms ease;
 }
 :root.passio-ui-3 .v3-tempt:hover { color: var(--v3-coral-texte); }
+:root.passio-ui-3 .v3-tempt:hover::before { border-color: var(--v3-coral-texte); }
 :root.passio-ui-3 .v3-tempt:hover::after { transform: translateX(2px); }
 :root.passio-ui-3 .v3-tempt {
   /* La cible dépasse légèrement la ligne compacte : ce contexte d'empilement
@@ -10879,3 +10920,316 @@ body.ctx-locked #appMain { overflow: hidden; }
    nom : c'est le corps qui cède, jamais le bouton. */
 :root.passio-ui-6b #profileList .profile-card { gap: 8px; }
 :root.passio-ui-6b #profileList .profile-card-body { min-width: 0; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   PASSIO UI V7 — cohérence des interfaces (§2 Rencontrer · §3 Fil · §6 Profil
+   · §8 Bobine)
+
+   Tout est ancré à `:root.passio-ui-7` ou à des classes `.v7-*` que
+   l'interface historique ne crée jamais : `localStorage.passio_ui_7 = "0"`
+   rend l'écran d'avant à l'octet près.
+
+   ⚠️ Une règle de ce bloc RÉÉCRIT des propriétés que le fil pose déjà
+   (`.profile-strip`, `.profile-tile`). On ne touche qu'aux propriétés que le
+   moteur ne pose PAS en ligne : `renderProfileStrip` applique aussi des styles
+   INLINE (opacity, transform, font-weight), qu'aucun sélecteur ne bat.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── §2 · « Filtres » reste visuellement distinct des deux vrais onglets ───
+   Liste et Carte sont des vues exclusives ; Filtres ouvre un dialogue. La
+   troisième case cesse donc d'avoir exactement la même allure : colonne
+   ajustée à son contenu, séparateur, et contour propre. */
+:root.passio-ui-7 .v4a3-vue[data-v4a4] {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+}
+:root.passio-ui-7 .v4a4-outils-hote {
+  margin-left: 4px;
+  padding-left: 7px;
+  border-left: 1px solid var(--border);
+}
+:root.passio-ui-7 .v4a4-outils-hote > .ctx-trigger {
+  border: 1px solid var(--border);
+  background: var(--bg-tint);
+  color: var(--text-dim);
+  font-weight: 650;
+  padding-inline: 12px;
+}
+
+/* ── §3 · Les cinq intentions tiennent SANS défilement horizontal ──────────
+   Le lot UI-2 les avait mises en bande défilante parce que « Rencontrer » se
+   coupait. Les libellés raccourcis (Explorer, Idées) tiennent désormais à cinq.
+   ⚠️ `flex-basis: auto` et non `0`. À cinq colonnes ÉGALES, « Rencontrer » et
+   « Apprendre » se faisaient couper alors que « Tous » et « Idées » laissaient
+   de la place vide à côté d'eux. Chaque onglet part donc de la largeur de son
+   texte, et l'espace restant est réparti : personne n'est tronqué tant que la
+   somme des libellés tient — ce qui est le cas à 320 px avec ces cinq mots. */
+:root.passio-ui-7 #feedIntentSelector { overflow-x: hidden; }
+:root.passio-ui-7 #feedIntentSelector .feed-intent-btn {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-inline: 4px;
+  font-size: 11px;
+  letter-spacing: -0.02em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@media (max-width: 359px) {
+  :root.passio-ui-7 #feedIntentSelector .feed-intent-btn {
+    font-size: 10.5px;
+    padding-inline: 2px;
+  }
+}
+
+/* ── §3 · Les passions : de petites pastilles, plus des bulles de story ──── */
+:root.passio-ui-7 #screen-feed .profile-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  overflow-x: hidden;
+  overflow-y: hidden;
+  padding: 2px 2px 4px;
+  margin: 0 0 6px;
+  /* Deux rangées de pastilles EXACTEMENT — mesuré, pas estimé : 2 px de haut,
+     deux rangées de 32 px, une gouttière de 6 px, 4 px de bas. Au-delà, le
+     bouton « Autres » prend le relais. */
+  max-height: 76px;
+}
+:root.passio-ui-7 #screen-feed .profile-strip.v7-strip-open { max-height: 460px; }
+
+:root.passio-ui-7 #screen-feed .profile-tile {
+  flex: 0 0 auto;
+  flex-direction: row;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 11px 4px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  min-height: 32px;
+}
+:root.passio-ui-7 #screen-feed .profile-tile.active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-card));
+}
+/* La grande vignette photo cède la place au glyphe : c'est ce qui sépare
+   visuellement les passions (pastilles) des stories (cercles). */
+:root.passio-ui-7 #screen-feed .profile-tile-avatar {
+  width: 18px !important;
+  height: 18px !important;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  box-shadow: none;
+  overflow: visible;
+  font-size: 0;
+}
+:root.passio-ui-7 #screen-feed .profile-tile-photo,
+:root.passio-ui-7 #screen-feed .profile-tile-emoji-badge,
+:root.passio-ui-7 #screen-feed .profile-tile-count { display: none !important; }
+:root.passio-ui-7 #screen-feed .profile-tile-glyph {
+  display: block;
+  font-size: 15px;
+  line-height: 18px;
+}
+:root.passio-ui-7 #screen-feed .profile-tile-label {
+  font-size: 11.5px !important;
+  max-width: none !important;
+  white-space: nowrap;
+}
+/* Le glyphe n'existe QUE dans cette vue : partout ailleurs il reste inerte. */
+.profile-tile-glyph { display: none; }
+
+:root.passio-ui-7 #screen-feed .v7-strip-more {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  margin: 0 0 8px;
+  padding: 4px 12px;
+  border: 1px dashed var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+:root.passio-ui-7 #screen-feed .v7-strip-more[hidden] { display: none; }
+
+/* ── §3 · Les stories restent des cercles, ~25 % plus compacts ───────────── */
+:root.passio-ui-7 #screen-feed .stories-row {
+  gap: 9px;
+  padding: 2px 2px 4px;
+  margin: -2px -4px 4px;
+}
+:root.passio-ui-7 #screen-feed .story-item { width: 48px; gap: 3px; }
+/* Mesure a 390 px : la rangee des stories passe de 87 a 63 px, celle des
+   passions de 101 a 76 px — environ un quart de moins chacune (§3). */
+:root.passio-ui-7 #screen-feed .story-ring { width: 44px; height: 44px; padding: 2px; }
+:root.passio-ui-7 #screen-feed .story-ring.create::after {
+  width: 16px; height: 16px; font-size: 11px;
+}
+:root.passio-ui-7 #screen-feed .story-inner { font-size: 16px; border-width: 1.5px; }
+:root.passio-ui-7 #screen-feed .story-add-badge {
+  top: 29px; width: 16px; height: 16px; font-size: 11px;
+}
+:root.passio-ui-7 #screen-feed .story-label { font-size: 9px; max-width: 48px; }
+
+/* ⚠️ Le repli au défilement DOIT continuer de gagner. Les règles historiques
+   (`.app-main.chrome-collapsed #screen-feed .profile-strip`) ont exactement la
+   même spécificité que celles ci-dessus, et ce bloc vient APRÈS : sans les
+   réécrire ici, l'en-tête du fil ne se replierait plus. Le bouton « Autres »
+   suit le même mouvement, sinon il flotterait seul sur un en-tête replié. */
+:root.passio-ui-7 #screen-feed .v7-strip-more {
+  transition: max-height 260ms ease, opacity 200ms ease, margin 260ms ease, padding 260ms ease;
+  max-height: 60px;
+  overflow: hidden;
+}
+:root.passio-ui-7 .app-main.chrome-collapsed #screen-feed .profile-strip,
+:root.passio-ui-7 .app-main.chrome-collapsed #screen-feed .v7-strip-more {
+  max-height: 0;
+  opacity: 0;
+  margin-top: 0; margin-bottom: 0;
+  padding-top: 0; padding-bottom: 0;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  :root.passio-ui-7 #screen-feed .v7-strip-more { transition: none; }
+}
+
+/* ── §6 · Profil : trois onglets NOMMÉS ──────────────────────────────────── */
+:root.passio-ui-7 .v7-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  padding: 3px;
+  margin: 12px 0;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  box-sizing: border-box;
+}
+:root.passio-ui-7 .v7-tab {
+  appearance: none;
+  -webkit-appearance: none;
+  font-family: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 44px;               /* cible tactile de référence du projet */
+  padding: 0 8px;
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color .16s ease, color .16s ease;
+}
+:root.passio-ui-7 .v7-tab[aria-selected="true"] { background: var(--accent); color: #fff; }
+:root.passio-ui-7 .v7-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+:root.passio-ui-7 .v7-pan[hidden] { display: none; }
+@media (max-width: 359px) {
+  /* « Publications » est le plus long des trois : sans ce cran, il touche
+     les bords de sa case a 320 px. */
+  :root.passio-ui-7 .v7-tab { font-size: 12px; padding: 0 4px; }
+  :root.passio-ui-7 .v7-tabs { gap: 4px; }
+}
+
+/* Les cinq anciens onglets restent le SEGMENTED CONTROL de la PR #185 —
+   icone + libelle, deja nomme dans le markup. Ce lot ne le redessine pas :
+   il le DEPLACE dans « Publications », avec la ligne d'aide qui l'explique.
+   Seule retouche : les marges, que le panneau rend inutiles en haut. */
+:root.passio-ui-7 [data-v7-pan] .profile-tabs-hint { margin-top: 0; }
+
+/* L'état vide ne doit plus pousser « Publications populaires » hors de l'écran
+   (§6). Mesure a 390 px : 288 px avant, 163 px apres. La pastille ronde de
+   70 px etait l'essentiel de la hauteur — la reduire compte plus que la
+   taille du texte. */
+:root.passio-ui-7 #myPosts .empty { padding: 14px 12px; }
+:root.passio-ui-7 #myPosts .empty-icon {
+  width: 44px; height: 44px; font-size: 24px; margin: 0 auto 6px;
+}
+:root.passio-ui-7 #myPosts .empty-title { font-size: 13.5px; }
+:root.passio-ui-7 #myPosts .empty-text { font-size: 11.5px; }
+:root.passio-ui-7 #myPosts .empty .btn { margin-top: 8px; }
+
+/* Accès secondaires (Carnets / Passio : Voyage, Rencontrer) — jamais des
+   entrées principales : ils ferment une section, ils ne l'ouvrent pas. */
+:root.passio-ui-7 .v7-secondaire {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 52px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg-card);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+:root.passio-ui-7 .v7-secondaire-emoji { font-size: 20px; }
+:root.passio-ui-7 .v7-secondaire-txt { display: flex; flex-direction: column; min-width: 0; }
+:root.passio-ui-7 .v7-secondaire-titre { font-size: 13px; font-weight: 700; }
+:root.passio-ui-7 .v7-secondaire-sous { font-size: 11px; color: var(--muted); }
+
+/* ── §8 · Bobine : deux issues après l'aperçu, puis une feuille légère ───── */
+:root.passio-ui-7 #mediaEditor[data-v7-bobine] #mePublishBtn { display: none; }
+:root.passio-ui-7 .v7-bobine-actions { display: flex; gap: 8px; }
+:root.passio-ui-7 .v7-bobine-actions .btn { flex: 1 1 0; min-width: 0; }
+
+.v7-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10002;             /* au-dessus de l'éditeur média (9999) */
+  background: rgba(16, 12, 34, 0.5);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 180ms ease;
+}
+.v7-sheet-backdrop.open { opacity: 1; }
+.v7-sheet-backdrop[hidden] { display: none !important; }
+.v7-sheet {
+  width: min(520px, 100%);
+  max-height: 88vh;
+  overflow-y: auto;
+  background: var(--bg-card);
+  border-radius: 20px 20px 0 0;
+  padding: 8px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+  box-sizing: border-box;
+}
+.v7-sheet-grip {
+  width: 38px; height: 4px; border-radius: 999px;
+  background: var(--border); margin: 4px auto 8px;
+}
+.v7-sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.v7-sheet-title { margin: 0; font-size: 16px; font-weight: 800; color: var(--text); }
+.v7-sheet-close {
+  border: 0; background: transparent; color: var(--muted);
+  font-size: 22px; line-height: 1; cursor: pointer;
+  min-width: 44px; min-height: 44px;
+}
+.v7-sheet-body { display: flex; flex-direction: column; gap: 12px; padding: 8px 0 4px; }
+.v7-champ { display: flex; flex-direction: column; gap: 5px; }
+.v7-champ > span { font-size: 11.5px; font-weight: 700; color: var(--muted); }
+.v7-cover-row { display: flex; align-items: center; gap: 8px; }
+/* `[hidden]` ne suffit pas ici : `.btn` pose un `display` explicite, qui bat la
+   regle de la feuille utilisateur-agent. Sans ce !important, le bouton
+   « Retirer » restait visible alors qu'aucune couverture n'est choisie. */
+.v7-cover-row .btn[hidden] { display: none !important; }
+.v7-cover-vue {
+  width: 46px; height: 46px; flex: 0 0 46px;
+  border-radius: 10px; overflow: hidden;
+  background: var(--bg-tint);
+  display: grid; place-items: center; font-size: 20px;
+}
+.v7-cover-vue img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.v7-sheet-foot { padding-top: 6px; }

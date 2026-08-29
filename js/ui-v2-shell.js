@@ -87,7 +87,7 @@
     },
     {
       key: "bobine", emoji: "🎬", title: "Bobine",
-      hint: "Vidéo courte autour d'une Passio",
+      hint: "Vidéo courte autour d'une passion",
       run: function () { call("meOpen", "bobine"); },
     },
     {

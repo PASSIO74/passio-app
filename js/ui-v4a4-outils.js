@@ -121,12 +121,21 @@
 
   // ── ② Les intentions dans le panneau ─────────────────────────────────────
   // Le panneau sert aussi l'écran Voyages : on ne décore QUE quand il est ouvert
-  // sur IRL. `ContextualTools` ne l'expose pas, mais le titre le dit.
+  // sur IRL.
+  // ⚠️ CE TEST LISAIT LE TITRE (« Outils · IRL »). Renommer ce titre en
+  // « Filtres » (lot UI-7) a suffi à faire disparaître toute cette section, en
+  // silence — rien n'échouait, les quatre intentions n'étaient simplement plus
+  // là. `ContextualTools` publie désormais l'écran courant comme une DONNÉE :
+  // c'est elle qui décide, et le titre n'est plus qu'un texte.
   function panneauSurIrl() {
     try {
-      var t = document.getElementById("ctxToolsTitle");
-      return !!(t && /IRL/i.test(t.textContent || ""));
-    } catch (e) { return false; }
+      if (window.ContextualTools && typeof ContextualTools.pageType === "function") {
+        return ContextualTools.pageType() === "irl";
+      }
+      var r = document.getElementById("ctxToolsRoot");
+      if (r && r.hasAttribute("data-ctx-page")) return r.getAttribute("data-ctx-page") === "irl";
+    } catch (e) {}
+    return false;
   }
 
   function decorerPanneau() {

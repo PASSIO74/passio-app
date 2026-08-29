@@ -4,7 +4,7 @@
 //
 // Périmètre EXACT de ce lot, et rien de plus :
 //   une publication du Feed qui porte une Passio et n'est PAS déjà reliée à un
-//   événement reçoit, en bas de carte, un lien discret « Trouver une expérience »
+//   événement reçoit, en bas de carte, une pastille discrète « Vivre ça en vrai »
 //   — et rien d'autre depuis le 2026-08-27, voir `construireBridge`. Le tap ouvre
 //   une feuille basse du même nom, qui propose exactement trois suites, toutes
 //   servies par des moteurs QUI EXISTENT DÉJÀ :
@@ -50,10 +50,15 @@
   var ROOT_CLASS = "passio-ui-3";
   var VERSION = "ui3a";
 
-  // Vocabulaire validé par Benjamin le 2026-08-27. Le lien de la carte et le
-  // titre du panneau portent DÉLIBÉRÉMENT le même libellé : ce que le tap
-  // promet est exactement ce que le panneau tient. Une seule constante, pour
-  // qu'ils ne puissent pas diverger.
+  // Vocabulaire validé par Benjamin le 2026-08-27, AMENDÉ le 2026-08-28 sur sa
+  // demande (« un petit onglet, plus discret »). Le libellé était unique, pour
+  // que la carte et le panneau ne puissent pas diverger ; il est désormais en
+  // DEUX temps, ce qui est le prix de la discrétion demandée :
+  //   • la carte porte une pastille courte — une invitation, pas une phrase ;
+  //   • le panneau, lui, garde la promesse entière et explicite.
+  // Les deux disent la même chose dans le même ordre d'idée (passer au réel) :
+  // aucune des deux ne promet ce que l'autre ne tient pas.
+  var LIBELLE_CTA_CARTE = "Vivre ça en vrai";
   var LIBELLE_CTA = "Trouver une expérience";
 
   // ── Vocabulaire UI-3B, validé par Benjamin le 2026-08-27 ─────────────────
@@ -288,7 +293,9 @@
     cta.setAttribute("aria-expanded", "false");
     // `textContent` : le libellé est une constante du lot, mais la règle vaut
     // pour toute la ligne — aucune chaîne HTML n'est construite ici.
-    cta.textContent = LIBELLE_CTA;
+    // Libellé COURT sur la carte (pastille discrète) ; le panneau ouvert par le
+    // tap porte, lui, la promesse entière (`LIBELLE_CTA`).
+    cta.textContent = LIBELLE_CTA_CARTE;
 
     row.appendChild(cta);
     return row;

@@ -143,7 +143,7 @@ test("aperçu UI-3B : une publication liée est visible sans donnée persistée"
   const carte = page.locator('article.post[data-postid="__passio_ui3b_demo_post"]');
   await expect(carte).toBeVisible();
   await expect(carte.locator("[data-v3-activity]")).toHaveText("Voir l'activité");
-  expect(await carte.innerText()).not.toContain("Trouver une expérience");
+  expect(await carte.innerText()).not.toContain("Vivre ça en vrai");
 
   const avant = await page.evaluate(() => ({
     post: [...(state.seed.posts || []), ...(state.userPosts || []), ...(state.supabasePosts || [])]
@@ -234,7 +234,7 @@ test("publication reliée : un seul CTA « Voir l'activité », et rien d'autre"
 
   // ② Une publication sans activité liée garde exactement l'acquis UI-3A.
   const libre = page.locator('article.post[data-postid="p_libre"]');
-  await expect(libre.locator("[data-v3-tempt]")).toHaveText("Trouver une expérience");
+  await expect(libre.locator("[data-v3-tempt]")).toHaveText("Vivre ça en vrai");
   await expect(libre.locator("[data-v3-activity]")).toHaveCount(0);
 
   // Coupure immédiate : l'ancienne sous-carte revient et le lien UI-3B part,

@@ -54,7 +54,7 @@ test.describe("UI-6 — composer de publication", () => {
     const hote = page.locator("#v6Composer");
     await expect(hote).toBeVisible();
 
-    // L'ordre du §9 : identité, texte, média, Passio, Affiner, Publier.
+    // L'ordre du §9 : identité, texte, média, Passion, Options, Publier.
     expect(await page.evaluate(() => {
       const h = document.getElementById("v6Composer");
       return Array.from(h.children).map((c) => {
@@ -156,7 +156,7 @@ test.describe("UI-6 — composer de publication", () => {
       s.dispatchEvent(new Event("change"));
       return s.options[s.selectedIndex].textContent.trim();
     });
-    await expect(page.locator("[data-v6-passio]")).toHaveText("Passio : " + valeur);
+    await expect(page.locator("[data-v6-passio]")).toHaveText("Passion : " + valeur);
   });
 
   test("§11 : les mécaniques économiques ne s'affichent plus dans le cœur", async ({ page }) => {

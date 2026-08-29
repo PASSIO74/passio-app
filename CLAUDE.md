@@ -293,6 +293,20 @@ Le script est en lecture seule sur le dépôt (il n'écrit que dans son dossier 
   violet → corail y ont été RETIRÉS — l'en-tête du post porte déjà la Passio, la répéter
   en bas alourdissait la carte. Le trait subsiste dans la feuille basse, comme transition
   d'ouverture. La direction §A19 est amendée dans ce sens.
+  ⚠️ **Amendement du 2026-08-28, sur demande de Benjamin (« un petit onglet, plus
+  discret »)** : ce lien de texte est devenu une **pastille**, et son libellé de carte
+  a été raccourci en « **Vivre ça en vrai** ». Deux conséquences à connaître avant d'y
+  toucher. ① Le libellé n'est plus unique : `LIBELLE_CTA_CARTE` (la pastille) et
+  `LIBELLE_CTA` (le titre du panneau, resté « Trouver une expérience ») sont deux
+  constantes — la carte invite, le panneau promet, et le panneau tient toujours ce que
+  la carte annonce. ② La pastille VISIBLE ne fait que ~30 px alors que la cible tactile
+  doit rester à 44 px (test « cible tactile ≥ 44 px », mesuré sur la **boîte** du bouton,
+  qu'un simple débord en pseudo-élément ne satisferait pas) : le bouton garde donc ses
+  44 px et c'est un `::before` en `inset: 7px 0` (z-index négatif) qui **peint** la
+  pilule. Son fond est **opaque** (`var(--bg-deep)`) délibérément : le test de contraste
+  remonte les ancêtres jusqu'au premier fond opaque et prendrait une teinte `rgba(…)`
+  pour une couleur pleine, alpha ignoré — un rouge ou un vert qui ne prouverait rien.
+  UI-3B (« Voir l'activité ») partage `.v3-tempt` et devient une pastille avec elle.
   Implémentation UI-3A (passerelle « Trouver une expérience » du Feed vers l'IRL) :
   `js/ui-v3-passerelle.js` + bloc « PASSIO UI V3 » en fin de `styles.css`, tests
   `tests/e2e/ui-v3-passerelle.spec.js`. **ACTIF PAR DÉFAUT** depuis la validation
@@ -611,6 +625,54 @@ Le script est en lecture seule sur le dépôt (il n'écrit que dans son dossier 
   `studioType`, `irlPassionFilters`… sont des `let` de **portée script** : ils existent comme
   identifiants globaux mais **ne sont pas** des propriétés de `window` — `window.studioType`
   vaut toujours `undefined`, et un test qui l'interroge expire sans rien prouver.
+
+  **Lot UI-7 — cohérence des interfaces (2026-08-28), ACTIF PAR DÉFAUT.**
+  `js/ui-v7-lot.js` + bloc « PASSIO UI V7 » en fin de `styles.css`, tests
+  `tests/e2e/ui-v7-lot.spec.js` et `tests/e2e/ui-v7-bobine-camera.spec.js`.
+  Coupure unique : `localStorage.passio_ui_7="0"` ou `window.PASSIO_UI_7=false`.
+  Périmètre : ① **vocabulaire visible** (« Mes passions », « Ajouter une passion »,
+  « Passion : X », « Filtres » à la place d'« Outils » sur Rencontrer, « Mes inscriptions »,
+  « Options », « Changer de profil ») — les **identifiants** (`data-intent`, `data-tab`,
+  `data-irlfilter`) ne bougent pas ; ② **Rencontrer** : « Détails », « Je viens » →
+  « Inscrit ✓ », ligne « N participants · N places restantes » **calculée**, passion
+  abrégée à l'affichage seul (`libelleCourt`, « Yoga » et non « Yoga / Bien-être »),
+  « Choisir une ville » et un geste explicite `useMyPositionForIrl()` — toujours **aucun
+  GPS automatique** ; ③ **Fil** : les passions deviennent des pastilles « emoji + libellé »
+  qui reviennent à la ligne (bornées à deux rangées, bouton « Autres »), stories −25 %,
+  intentions renommées **Tous · Explorer · Apprendre · Idées · Rencontrer** ; ④ l'icône
+  **Messages quitte la barre supérieure** (`#msgDot` reste dans le DOM, masqué —
+  `renderMsgBadge` continue d'y écrire) ; ⑥ **Profil** à trois onglets nommés
+  (Publications · Activités · À propos), les cinq onglets d'icônes redevenant des
+  sous-filtres ; ⑧ **Bobine** : après l'aperçu, « Recommencer » / « Continuer », puis une
+  feuille légère (description · passion · couverture · activité facultative) qui
+  renseigne `meState.details` et appelle `mePublish()` — **aucun second moteur de
+  publication**.
+  ⚠️ **Six pièges de ce lot.** ① Le bouton « Autres » est un **frère** de `#profileStrip`,
+  jamais un enfant : `renderProfileStrip` réécrit la rangée en entier et la borne en
+  hauteur. ② Au Profil, c'est l'**ORDRE d'origine de l'écran** qui est mémorisé, pas le
+  « frère suivant » de chaque bloc — ce frère déménage lui aussi, et rendre un bloc
+  « avant lui » restituait un ordre inventé. ③ Le bloc CSS UI-7 vient **après** les règles
+  de repli au défilement, à spécificité **égale** : sans réécrire
+  `.app-main.chrome-collapsed …` dans le bloc, l'en-tête du fil cessait de se replier.
+  ④ Les intentions sont en `flex: 1 1 auto` et non `1 1 0` : à colonnes égales,
+  « Rencontrer » et « Apprendre » se faisaient couper pendant que « Tous » laissait du vide.
+  ⑤ `renderProfileEvents` listait `state.seed.events.slice(0,3)` — le contenu de
+  démonstration — sous le titre « Événements participés » : la section ne montrait donc
+  **jamais** une participation. Elle lit désormais `allEvents()` + `_isMyEvent` + `myRsvp`
+  (`_myProfileEventsHTML`, app-06). ⑥ `styles.css` est en **CRLF** : une réécriture du
+  fichier en mode texte Python le convertit en LF et produit un diff de 10 800 lignes —
+  n'y écrire qu'en **binaire**, ou en ajout.
+
+  ⑦ **Un TITRE n'est pas un identifiant d'écran.** `ui-v4a4-outils.js` décidait
+  s'il devait injecter les quatre intentions en cherchant « IRL » dans
+  `#ctxToolsTitle`. Renommer ce titre en « Filtres » a suffi à faire disparaître
+  toute la section — sans erreur, sans test rouge ailleurs, sans rien dans la
+  console. `ContextualTools` publie désormais l'écran courant comme une DONNÉE :
+  `ContextualTools.pageType()` et `#ctxToolsRoot[data-ctx-page]`. Même famille de
+  piège pour l'aide contextuelle : `montrerHint` refuse une cible sans
+  `offsetParent`, donc déplacer une ancre dans un panneau masqué éteint l'aide en
+  silence — l'ancre de « second_profil » retombe sur l'onglet « À propos ».
+
 - `docs/PIEGES_CONNUS.md` — les 56 fiches détaillées (extrait de ce fichier le 2026-08-07).
 - `docs/HISTORIQUE_PROJET.md` — état 2026-06-11, backlog terminé, logs d’optimisation.
 - `docs/ARCHITECTURE.md`, `docs/CONTROLE_16_MISSIONS.md`, `docs/CHECKLIST_COMMERCIALISATION.md`.
