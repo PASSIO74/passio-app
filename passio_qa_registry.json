@@ -1,467 +1,515 @@
 {
- "$comment": "Source de verite MACHINE de la qualification PASSIO. Vue humaine : PASSIO_MASTER_CONTROL.md. Journal : PASSIO_ENGINEERING_LOG.md. Regle : aucune valeur inventee ; un champ non mesure vaut null et porte un statut explicite.",
- "schema_version": 1,
- "generated_at": "2026-08-17T08:35:03.078Z",
- "commit": "b5a8051",
- "branch": "main",
- "working_tree": "clean",
- "environment": {
-  "prod_url": "https://passio-app.netlify.app",
-  "supabase_ref": "njkiyoklssvefstljemx",
-  "supabase_region": "West EU (Ireland)"
- },
- "scores": {
-  "global_health": {
-   "value": null,
-   "status": "NON_CALCULE",
-   "reason": "Le modele existe (min des domaines critiques + CONFIANCE) mais le domaine autorisation n est alimente que si AUTHZ-CRITICAL a tourne depuis le dashboard."
+  "$comment": "Source de verite MACHINE de la qualification PASSIO. Vue humaine : PASSIO_MASTER_CONTROL.md. Journal : PASSIO_ENGINEERING_LOG.md. Regle : aucune valeur inventee ; un champ non mesure vaut null et porte un statut explicite.",
+  "schema_version": 1,
+  "generated_at": "2026-08-29T09:50:00.000Z",
+  "commit": "c2e3e1b",
+  "branch": "main",
+  "working_tree": "clean",
+  "environment": {
+    "prod_url": "https://passio-app.netlify.app",
+    "supabase_ref": "njkiyoklssvefstljemx",
+    "supabase_region": "West EU (Ireland)"
   },
-  "functional": {
-   "value": 15.2,
-   "status": "MESURE",
-   "reason": "66 interactions executees sur 435 pendant la suite complete (PASSIO_E2E_MULTI=1), denominateur produit par scripts/couverture-interactions.js, numerateur par scripts/serve-couverture.js. PLAFOND et non borne inferieure : un appel interne compte autant qu un clic."
+  "scores": {
+    "global_health": {
+      "value": null,
+      "status": "NON_CALCULE",
+      "reason": "Le modele existe (min des domaines critiques + CONFIANCE) mais le domaine autorisation n est alimente que si AUTHZ-CRITICAL a tourne depuis le dashboard."
+    },
+    "functional": {
+      "value": 15.2,
+      "status": "MESURE",
+      "reason": "66 interactions executees sur 435 pendant la suite complete (PASSIO_E2E_MULTI=1), denominateur produit par scripts/couverture-interactions.js, numerateur par scripts/serve-couverture.js. PLAFOND et non borne inferieure : un appel interne compte autant qu un clic."
+    },
+    "performance": {
+      "value": null,
+      "status": "PARTIEL",
+      "reason": "Poids servi et cout CPU du boot mesures ; latences API de production mesurees ; la latence PERCUE des interactions reste non mesuree."
+    },
+    "security": {
+      "value": null,
+      "status": "PARTIEL",
+      "reason": "RLS active sur 34/34 tables ; 13 invariants d autorisation en gate CI ; advisors securite = 9 avertissements tous documentes comme deliberes ; NOTIF-FORGE-009 corrige et verifie en base."
+    },
+    "test": {
+      "value": null,
+      "status": "PARTIEL",
+      "reason": "175 e2e passes (1 flaky, 1 skipped) + 94 backend ; audit des tests creux en CI ; couverture fonctionnelle mesuree a 15,2 %."
+    }
+  },
+  "baseline": {
+    "date": "2026-08-29",
+    "$comment": "Remesuree apres onze jours et une douzaine de PR (lots UI-1 a UI-7) absents de la baseline du 2026-08-16. Toute valeur ci-dessous a ete EXECUTEE ce jour ; ce qui ne l a pas ete porte result=NOT_MEASURED avec sa raison.",
+    "checks": [
+      {
+        "id": "SYNTAXE",
+        "result": "PASS",
+        "detail": "node --check sur 37 fichiers js/*.js, 0 erreur"
+      },
+      {
+        "id": "AUDIT_GLOBALS",
+        "result": "PASS",
+        "detail": "1411 declarations uniques, 37 fichiers, 0 collision"
+      },
+      {
+        "id": "AUDIT_HANDLERS",
+        "result": "PASS",
+        "detail": "0 fonction fantome"
+      },
+      {
+        "id": "AUDIT_ECHAPPEMENT",
+        "result": "PASS",
+        "detail": "75 signalements en contexte a risque, tous dans le socle relu"
+      },
+      {
+        "id": "AUDIT_TESTS_CREUX",
+        "result": "PASS",
+        "detail": "65 specs, 1366 fonctions de production recensees, aucun spec autoreferentiel"
+      },
+      {
+        "id": "AUDIT_SUPA_STUB",
+        "result": "PASS",
+        "detail": "44 membres du stub hors ligne, tous couverts"
+      },
+      {
+        "id": "AUDIT_TELEMETRY_KEYS",
+        "result": "PASS",
+        "detail": "78 cles relevees dans 37 fichiers, toutes survivent au filtre PII"
+      },
+      {
+        "id": "BUILD",
+        "result": "PASS",
+        "detail": "index 609 346 o + app.js 2 034 891 o (v=71400a383f) + styles.css 403 410 o (v=2ce09b1bbb), avant minification CI"
+      },
+      {
+        "id": "E2E_DEFAULT",
+        "result": "PASS",
+        "detail": "CI sur c2e3e1b : 521 passes, 1 flaky (conv-suppression.spec.js:33), 19 skippes, 15,5 min"
+      },
+      {
+        "id": "E2E_DIST_GATE",
+        "result": "PASS",
+        "detail": "CI, PASSIO_CIBLE=dist : release-integrity + passion-context, 6 passes en 5,9 s"
+      },
+      {
+        "id": "E2E_CROSS_ACCOUNT",
+        "result": "NOT_MEASURED",
+        "detail": "PASSIO_E2E_MULTI=1 exige la prod Supabase. Le proxy reseau de l environnement d execution refuse njkiyoklssvefstljemx.supabase.co (connect_rejected, politique d organisation). Non lance : ni vert ni rouge."
+      },
+      {
+        "id": "PROD_HTTP",
+        "result": "NOT_MEASURED",
+        "detail": "Le meme proxy refuse passio-app.netlify.app. La mise en ligne est prouvee par le job GitHub Actions (Deploy is live), pas par une requete depuis cet environnement."
+      },
+      {
+        "id": "RLS_PROD",
+        "result": "NOT_MEASURED",
+        "detail": "Supabase injoignable depuis cet environnement (voir E2E_CROSS_ACCOUNT)."
+      },
+      {
+        "id": "DASHBOARD_TESTS",
+        "result": "NOT_MEASURED",
+        "detail": "Non lance ce jour."
+      }
+    ]
   },
   "performance": {
-   "value": null,
-   "status": "PARTIEL",
-   "reason": "Poids servi et cout CPU du boot mesures ; latences API de production mesurees ; la latence PERCUE des interactions reste non mesuree."
-  },
-  "security": {
-   "value": null,
-   "status": "PARTIEL",
-   "reason": "RLS active sur 34/34 tables ; 13 invariants d autorisation en gate CI ; advisors securite = 9 avertissements tous documentes comme deliberes ; NOTIF-FORGE-009 corrige et verifie en base."
-  },
-  "test": {
-   "value": null,
-   "status": "PARTIEL",
-   "reason": "175 e2e passes (1 flaky, 1 skipped) + 94 backend ; audit des tests creux en CI ; couverture fonctionnelle mesuree a 15,2 %."
-  }
- },
- "baseline": {
-  "date": "2026-08-16",
-  "checks": [
-   {
-    "id": "AUDIT_GLOBALS",
-    "result": "PASS",
-    "detail": "1337 declarations, 19 fichiers, 0 collision"
-   },
-   {
-    "id": "AUDIT_HANDLERS",
-    "result": "PASS",
-    "detail": "0 fonction fantome"
-   },
-   {
-    "id": "AUDIT_ECHAPPEMENT",
-    "result": "PASS",
-    "detail": "75 signalements, tous dans le socle relu"
-   },
-   {
-    "id": "AUDIT_TESTS_CREUX",
-    "result": "PASS",
-    "detail": "23 specs, aucun ne verifie uniquement ses propres constructions"
-   },
-   {
-    "id": "BUILD",
-    "result": "PASS",
-    "detail": "index 209 Ko + app.js 1,84 Mo + css 305 Ko (avant minification CI)"
-   },
-   {
-    "id": "E2E_DEFAULT",
-    "result": "PASS",
-    "detail": "162 passes, 12 skippes (opt-in), exit 0"
-   },
-   {
-    "id": "E2E_CROSS_ACCOUNT",
-    "result": "PASS",
-    "detail": "13 passes, 0 compte e2e residuel"
-   },
-   {
-    "id": "DASHBOARD_TESTS",
-    "result": "PASS",
-    "detail": "94 passes"
-   },
-   {
-    "id": "RLS_PROD",
-    "result": "PASS",
-    "detail": "34/34 tables avec RLS activee"
-   },
-   {
-    "id": "CI",
-    "result": "PASS",
-    "detail": "gate AUTHZ-CRITICAL vert depuis un runner GitHub"
-   }
-  ]
- },
- "performance": {
-  "poids_transfere_total_ko": 355,
-  "detail": {
-   "index_html_o": 33466,
-   "app_js_o": 287164,
-   "styles_css_o": 34221
-  },
-  "verdict_poids": "Le telechargement n est PAS le probleme.",
-  "boot_cpu_x4": {
-   "landing_ms": 1501,
-   "dcl_ms": 623,
-   "fcp_ms": 296,
-   "taches_longues": 6,
-   "cumul_ms": 728,
-   "plus_longue_ms": 145,
-   "conditions": "machine AU REPOS, mediane de 3 mesures",
-   "correction": "Les valeurs publiees pendant plusieurs heures (landing 3946, cumul 2575, max 496) etaient GONFLEES ~3,5x : la mesure tournait pendant la suite complete en arriere-plan.",
-   "verdict": "Aucun probleme de demarrage a traiter. FCP 296 ms, landing 1,5 s, aucune tache au-dela de 145 ms sous bridage x4."
-  },
-  "couverture_js_au_premier_ecran": {
-   "total_ko": 1714,
-   "execute_pct": 20,
-   "inutilise_ko": 1367
-  },
-  "latences_api_production": [
-   {
-    "endpoint": "/rest/v1/user_state",
-    "n": 757,
-    "p50": 156,
-    "p95": 2844,
-    "max": 43199,
-    "verdict": "defaut reel, corrige (SYNC-B64-005)"
-   },
-   {
-    "endpoint": "/functions/v1/notify-call",
-    "n": 70,
-    "p50": 894,
-    "p95": 4337,
-    "verdict": "PAS un defaut : fire-and-forget, en complement du ring realtime"
-   },
-   {
-    "endpoint": "/rest/v1/follows",
-    "n": 351,
-    "p50": 99,
-    "p95": 1275,
-    "verdict": "a surveiller"
-   },
-   {
-    "endpoint": "/rest/v1/profiles",
-    "n": 773,
-    "p50": 80,
-    "p95": 1130,
-    "verdict": "a surveiller"
-   }
-  ],
-  "non_mesure": "Latence PERCUE des interactions (tap -> retour visuel), distincte de la latence reseau que l affichage optimiste masque.",
-  "cout_injection_scripts": {
-   "cumul_ms": 133,
-   "cpu": "x4",
-   "reseau": "chaud",
-   "cache_code": "neutralise",
-   "detail_ms": {
-    "app-06-reels-partage": 24,
-    "app-01-diag-seed": 19,
-    "app-09-boot-pwa": 19,
-    "app-03-posts-vlogs": 15,
-    "app-04-comments-shop": 14,
-    "app-02-state-utils": 12,
-    "app-05-config-profil": 11,
-    "app-07-ia-explore-irl": 11,
-    "app-08-ui-modals-tour": 8
-   },
-   "verdict": "Le chargement des scripts represente 5 % des 2 575 ms de taches longues. Extraire app-06 economiserait 24 ms. Le decoupage N EST PAS le levier.",
-   "pourquoi": "V8 pre-parse paresseusement : une fonction n est analysee en profondeur qu au premier appel. Les 1 367 Ko jamais executes ne coutent donc presque rien. La couverture a 20 % est exacte mais NON ACTIONNABLE."
-  },
-  "hypotheses_infirmees": [
-   "Decoupage du JS : cout d injection des 9 fichiers = 133 ms au total. V8 pre-parse paresseusement.",
-   "CSS trop lourd : A/B en retirant styles.css → cumul des taches longues PASSE DE 969 A 2457 ms. Le CSS fait GAGNER du travail (il masque les ecrans au lieu de les mettre en page).",
-   "Couverture CSS a 9 % lue comme un levier : meme piege que la couverture JS a 20 %."
-  ]
- },
- "incidents": [
-  {
-   "id": "CI-GATE-001",
-   "severity": "P1",
-   "domain": "ci_release_gate",
-   "status": "FIXED_LOCALLY",
-   "problem": "Chaque deploiement etait valide par une suite n exercant ni RLS, ni cross-compte, ni realtime, ni confidentialite.",
-   "fix": "tests/e2e/authz-critical.spec.js — 11 invariants par appels REST bruts, etape dediee et isolee en tete du workflow.",
-   "blocage_suppose_infirme": "Aucun secret CI requis : l inscription passe par la cle anon, deja publique.",
-   "verified": true
-  },
-  {
-   "id": "TEL-IDENT-002",
-   "severity": "P1",
-   "domain": "telemetrie",
-   "status": "FIXED_LOCALLY",
-   "problem": "Fenetre pre-auth perdue a 100 %, empoisonnement de lot, alarme rejetee par la cause qu elle signale.",
-   "mesure_avant": "20 envois, 20 x HTTP 401",
-   "mesure_apres": "1 envoi, HTTP 201",
-   "fix": "js/telemetry.js : seul un UUID d authentification part, le reste a NULL ; desinfection aussi au flush.",
-   "verified": true
-  },
-  {
-   "id": "RACE-LIKE-003",
-   "severity": "P3",
-   "domain": "fil",
-   "status": "INFIRME",
-   "problem": "Flaky sur l annulation d affichage optimiste.",
-   "conclusion": "Ce n etait PAS une race applicative : le flake portait sur le clic de mise en place. Harnais stabilise (3 causes, dont polling raf inoperant sur page non composee).",
-   "verified": true
-  },
-  {
-   "id": "TEL-NOISE-004",
-   "severity": "P2",
-   "domain": "telemetrie",
-   "status": "CLOS",
-   "problem": "79 % de la table de telemetrie etait du bruit de test (40 625 development contre 10 532 production).",
-   "cause": "Une seule base Supabase, telemetrie active par defaut sur localhost, ~15 specs e2e qui chargent l app.",
-   "fix": "Opt-in explicite en local + purge de 44 960 lignes (production intacte).",
-   "verified": true
-  },
-  {
-   "id": "SYNC-B64-005",
-   "severity": "P1",
-   "domain": "performance",
-   "status": "FIXED_LOCALLY",
-   "problem": "4,7 Mo de base64 renvoyes a chaque synchronisation d etat ; p95 2 844 ms, max 43 199 ms.",
-   "cause": "_syncableState() expurgeait deja le base64 mais SEULEMENT pour les profils passion, pas pour les photos du compte.",
-   "fix": "Expurgation etendue, a la frontiere de synchronisation.",
-   "verified": true,
-   "mutation_teste": true
-  },
-  {
-   "id": "CONV-RESUR-006",
-   "severity": "P2",
-   "domain": "messagerie",
-   "status": "FIXED_LOCALLY",
-   "problem": "Une conversation et un message prive supprimes revenaient apres redemarrage.",
-   "cause": "Deux stores (localStorage synchrone, IndexedDB asynchrone best-effort) fusionnes SANS pierre tombale.",
-   "fix": "Journal de suppressions borne (TTL 30 j, 2 000 entrees), filtrage en un seul point a la sortie de la fusion.",
-   "note": "L union n etait pas une erreur : elle corrigeait des messages qui disparaissaient. Le defaut etait qu aucun store ne distinguait « jamais existe » de « supprime ».",
-   "verified": true,
-   "mutation_teste": true
-  },
-  {
-   "id": "FEED-RT-007",
-   "severity": "P3",
-   "domain": "fil_temps_reel",
-   "status": "FIXED_LOCALLY",
-   "problem": "Un post recu en temps reel s affichait puis s effacait jusqu au cycle suivant.",
-   "cause": "Le rafraichissement ecrase state.supabasePosts avec un instantane pris AVANT l arrivee du post ; seul _feedExtraPosts survit, et le handler ne l alimentait pas.",
-   "fix": "Logique extraite dans feedAddRealtimePost() — extraction faite POUR la testabilite : une logique enfermee dans un callback ne peut etre testee qu en la recopiant.",
-   "verified": true,
-   "mutation_teste": true
-  },
-  {
-   "id": "BLOC-ACCES-008",
-   "severity": "P1",
-   "domain": "confidentialite",
-   "status": "FIXED_LOCALLY",
-   "problem": "Bloquer quelqu un ne lui retirait aucun acces : sur un compte prive, la personne bloquee voyait tous les posts.",
-   "cause": "blockUser supprimait MON abonnement vers elle, jamais LE SIEN vers moi, alors que post_is_visible accorde l acces sur exactement cette relation.",
-   "fix": "supaBlockUser retire aussi l abonne. La base l autorisait deja (policy DELETE following_id = auth.uid()).",
-   "verified": true,
-   "mutation_teste": true
-  },
-  {
-   "id": "NOTIF-FORGE-009",
-   "severity": "P1",
-   "domain": "integrite_usurpation",
-   "status": "CLOS",
-   "problem": "N importe quel compte peut fabriquer une notification vers n importe qui, au nom de n importe qui, avec contenu et lien arbitraires.",
-   "cause": "notifications est scellee en SELECT/UPDATE/DELETE mais son INSERT vaut true, en double. La contrainte portait sur le mauvais cote : c est l AUTEUR qu il fallait contraindre, pas le destinataire.",
-   "fix": "migrations/migration_notifications_auteur.sql — with check (from_id = (select auth.uid())::text). Sans rupture, verifie : supaInsertNotif est le seul insert de l app et renseigne deja from_id.",
-   "verified": true,
-   "note": "Le registre a porte MIGRATION_PRETE_NON_APPLIQUEE apres l application reelle : ecart entre le journal (qui la disait appliquee) et ce fichier, tranche en interrogeant la base plutot qu en croyant l un des deux documents.",
-   "preuve": "pg_policies au 2026-08-16 : une seule policy INSERT sur notifications, notifications_insert_own_author, with_check (from_id = (select auth.uid())::text). Les deux policies INSERT valant true ont disparu."
-  },
-  {
-   "id": "MEDIA-COMPTE-SUPPRIME-010",
-   "severity": "P2",
-   "domain": "confidentialite",
-   "status": "INFIRME_PARTIELLEMENT",
-   "problem": "La suppression d un compte ne cascade pas. Restent en base et en Storage, mesure du 2026-08-17 : 76 lignes user_state, 54 notifications, et 19 fichiers medias (81 Mo). Les medias sont TOUJOURS SERVIS : verifie en recuperant l URL publique d une photo d un compte disparu, sans aucun jeton, http 200 / 249 415 octets.",
-   "cause": "Aucun mecanisme ne nettoie a la suppression d un compte. Les tables de CONTENU sont propres (posts, commentaires, likes, messages, stories, evenements : 0 ligne orpheline) parce que la purge e2e les couvre ; l etat personnel, les notifications et les fichiers, non. Le seau `content` etant public par conception, un media orphelin reste lisible indefiniment.",
-   "fix": "Non decide. Trois voies, non exclusives : cascade de suppression cote base (trigger ou fonction d effacement de compte) ; purge des medias par l API Storage a la meme occasion ; et, pour la lecture, URLs signees au lieu d un seau public - mais celle-la change l architecture d affichage et se decide au niveau produit.",
-   "verified": false,
-   "note": "Le commentaire de doDeleteAccount (app-02) affirmait que l Edge Function n etait PAS deployee. Perime et trompeur : c est lui qui a motive ce constat errone. Corrige, et couvert par tests/e2e/suppression-compte.spec.js.",
-   "mesure": {
-    "user_state": 76,
-    "notifications": 54,
-    "fichiers_storage": 19,
-    "octets_storage": 85000000
-   },
-   "correction_2026_08_17": "CADRAGE FAUX de ma part. Verifie de bout en bout : le parcours applicatif « Supprimer mon compte » est COMPLET. L Edge Function delete-account est deployee, active, et supprime le compte (reconnexion impossible ensuite) ET les medias du Storage - que le code client ne touche jamais. Mesure : media servi 200 avant, 400 apres ; reconnexion refusee.",
-   "ce_qui_reste_vrai": "Le residu mesure (76 user_state, 54 notifications, 19 medias) ne vient PAS du parcours produit mais des suppressions ADMINISTRATIVES qui le contournent : purge_e2e_accounts.sql supprime auth.users directement, et les nettoyages manuels aussi. C est un artefact d exploitation, pas un defaut vecu par un utilisateur.",
-   "reste_a_trancher": "Les 19 medias de comptes supprimes administrativement restent publiquement lisibles. Soit les purger, soit aligner les outils d administration sur l Edge Function (qui, elle, fait le travail)."
-  },
-  {
-   "id": "STORAGE-BRUIT-011",
-   "severity": "P3",
-   "domain": "observabilite",
-   "status": "CLOS",
-   "problem": "La suite e2e abandonnait ses fixtures dans le seau PUBLIC `content` : 174 GIF de 37 octets accumules sous des dossiers de comptes supprimes, une douzaine de plus par execution.",
-   "cause": "purge_e2e_accounts.sql nettoie 23 tables et les comptes, mais ne peut PAS toucher aux fichiers : Supabase interdit le DELETE direct sur storage.objects (trigger protect_delete). Le nettoyage passe obligatoirement par l API Storage.",
-   "fix": "scripts/purge-e2e-storage.js, branche sur le global-teardown apres la purge des comptes. Garde-fou : seuls les fichiers de moins de 1 Ko d un compte inexistant sont supprimes - une vraie photo ne pese jamais 37 octets, donc effacer du contenu utilisateur est mecaniquement impossible.",
-   "verified": true,
-   "preuve": "244 -> 70 fichiers a la purge ; puis suite complete relancee : 70 -> 70, zero petit fichier restant (les 6 crees pendant l execution ont ete nettoyes par le teardown)."
-  },
-  {
-   "id": "SYNC-CLOCK-012",
-   "severity": "P1",
-   "domain": "synchronisation multi-appareils",
-   "status": "CLOS",
-   "problem": "L horloge du CLIENT faisait autorite sur user_state : le client ecrivait lui-meme updated_at, et cette valeur arbitrait la fusion au demarrage. Un appareil en avance d une heure gagnait definitivement — les modifications des autres appareils etaient ecrasees en silence, et leur drapeau « etat sale » ne retombait jamais (garde monotone qui refuse de reculer).",
-   "cause": "La colonne avait DEFAULT now() mais AUCUN trigger : la valeur envoyee par le client gagnait. Approfondi par la revue croisee ChatGPT : l horloge n etait qu un symptome. La classe reelle est « ecriture obsolete qui ecrase une plus recente », atteignable SANS decalage d horloge — 17 points d appel declenchent supaSaveUserState (la plupart en flush immediat hors debounce) et le garde !_stateDirty ne protege pas de la concurrence, le drapeau ne retombant qu APRES l await.",
-   "fix": "Trigger BEFORE INSERT OR UPDATE imposant now() (frontiere en BASE : deploiement a chaque push sans staging, et le beacon ecrit hors du SDK). Client : plus d updated_at envoye, relecture de la valeur serveur, serialisation des sauvegardes. Rejeu de la file : comparaison entre DEUX valeurs serveur (.lte) et non client-vs-serveur — sans quoi le correctif aurait fait perdre ses reprises hors-ligne a tout appareil dont l horloge retarde. Beacon : n inscrit plus de marqueur de synchro (reponse return=minimal, valeur serveur inconnue).",
-   "preuve_avant": "trigger desactive -> 3 653 jours d avance acceptes, test ROUGE",
-   "preuve_apres": "trigger actif -> 0 jour, test VERT",
-   "mutation_teste": true,
-   "test_permanent": "tests/e2e/user-state-horodatage.spec.js",
-   "regression": "17/17 sur etat-sync-base64, audit-identite-emoji, conv-suppression, smoke, telemetrie-preauth, authz-critical ; 0 compte e2e residuel",
-   "commit": "ea6d507",
-   "risque_residuel": "L ecriture reste « dernier ecrivain gagne » sur un blob : deux appareils modifiant deux champs independants, le second ecrase le premier. Horodater cote serveur supprime l AUTORITE FAUSSE, pas le besoin d un controle d anciennete par revision (CAS). Non fait : change la semantique d ecriture du chemin le plus sensible, et exige un chemin de resolution de conflit inexistant. ⚠️ Correction du 2026-08-16 apportee par la revue croisee et VERIFIEE sur la base : now() renvoie l heure de DEBUT DE TRANSACTION, pas celle du commit (identique de part et d autre d un pg_sleep(0.3) pendant que clock_timestamp avancait de 306 ms). updated_at n est donc PAS une horloge d ordre : une transaction demarree avant mais committee apres porte un horodatage anterieur. La garde .lte du rejeu reste tres superieure a une comparaison client-vs-serveur, mais elle n est pas une garantie de precedence. Vocabulaire impose : updated_at = metadonnee temporelle ; ordre logique = revision monotone, qui n existe pas encore.",
-   "note": "Le commit ea6d507 et son message portent l ancien numero SYNC-CLOCK-011 : une session Claude Code parallele avait pris 011 (STORAGE-BRUIT-011) au meme moment. Renumerote en 012 dans le code et le registre.",
-   "verified": true
-  },
-  {
-   "id": "TEST-DIST-013",
-   "severity": "P2",
-   "domain": "qualification / artefact de production",
-   "status": "CLOS",
-   "problem": "Sur 175 tests, TROIS seulement visaient l artefact reellement deploye (/dist/index.html), et ces trois ne couvrent que le gate et le demarrage. Le fil, la publication, la messagerie, la confidentialite etaient prouves uniquement sur le programme de developpement.",
-   "cause": "En dev l app est 19 fichiers JS charges separement ; en prod scripts/build.js en assemble un monolithe injecte apres le gate. Deux programmes, une seule suite. 30 des 31 specs codent en dur page.goto('/index.html').",
-   "fix": "scripts/servir-dist.js + PASSIO_CIBLE=dist : la suite entiere tourne sur le monolithe construit SANS qu un seul test soit modifie (c est la racine servie qui change). Port parametrable PASSIO_PORT pour cohabiter avec une session parallele.",
-   "preuve_avant": "3 tests sur 175 touchaient l artefact",
-   "preuve_apres": "169 passes, 12 ignores, 0 echec en 7,4 min sur l artefact construit",
-   "mutation_teste": false,
-   "test_permanent": "toute la suite, via PASSIO_CIBLE=dist",
-   "commit": "cda3245",
-   "risque_residuel": "Ne prouve rien APRES minification, que seule la CI applique (html-minifier-terser). Le minifieur renomme les identifiants — piege deja rencontre. Et le mode dist n est pas encore branche dans la CI.",
-   "verified": true
-  },
-  {
-   "id": "STORAGE-ECRITURE-014",
-   "severity": "P2",
-   "domain": "securite",
-   "status": "CLOS",
-   "problem": "La policy d INSERT du Storage n imposait AUCUNE contrainte de chemin ni de type. Verifie empiriquement le 2026-08-17 avec un compte jetable, puis nettoye : deposer un text/html dans un seau de medias = 200 ; deposer sous le dossier d un AUTRE compte = 200 ; relire les deux sans jeton = 200. Les seaux n ont ni file_size_limit ni allowed_mime_types. Et le cloisonnement ne tient pas non plus par renommage : move et copy vers le dossier d un autre compte renvoient 200 (mesure du 2026-08-17).",
-   "cause": "with check (bucket_id in (content,attachments) and auth.role() = authenticated) — l appartenance du chemin n etait jamais verifiee.",
-   "fix": "migrations/migration_storage_cloisonnement.sql (version 2). Ferme INSERT ET UPDATE : move/copy sont des UPDATE du nom, et l ancienne policy UPDATE portait un using sans with check — Postgres reutilise alors using pour la nouvelle ligne, et l owner ne change pas lors d un renommage. Fermer l INSERT seul n aurait RIEN ferme.",
-   "verified": true,
-   "gravite_nuancee": "Supabase sert les fichiers en text/plain : un HTML depose ne s execute pas, ce n est PAS un XSS stocke. Ce qui reste : ecriture sous le dossier d autrui (qui fausse toute attribution par dossier) et hebergement public gratuit de fichiers arbitraires sur le domaine du projet.",
-   "note": "Contre-epreuve faite avant d ecrire la migration : sur les 70 fichiers reels, aucun ne violerait la nouvelle regle au moment de son envoi. Les non-conformes actuels pointent vers des comptes ou des conversations supprimes.",
-   "revue_croisee": {
-    "canal": "codex (scripts/chatgpt.js), fil securite, 2026-08-17",
-    "objections_retenues": [
-     "move/copy contournent la policy INSERT — VERIFIE en production (HTTP 200), correction majeure de la migration",
-     "allowed_mime_types casserait des envois legitimes — VERIFIE dans le code : application/octet-stream (app-08 2709), file.type vide (app-09 874), audio/webm;codecs=opus non nettoye (app-09 1495) ; et l echec retomberait sur le repli base64, reintroduisant SYNC-B64-005. Liste retiree.",
-     "un test d intrusion en text/plain serait invalide si une liste MIME existait : refuse pour le type, pas pour le chemin. Le test annexe utilise image/png."
+    "poids_transfere_total_ko": 355,
+    "detail": {
+      "index_html_o": 33466,
+      "app_js_o": 287164,
+      "styles_css_o": 34221
+    },
+    "verdict_poids": "Le telechargement n est PAS le probleme.",
+    "boot_cpu_x4": {
+      "landing_ms": 1501,
+      "dcl_ms": 623,
+      "fcp_ms": 296,
+      "taches_longues": 6,
+      "cumul_ms": 728,
+      "plus_longue_ms": 145,
+      "conditions": "machine AU REPOS, mediane de 3 mesures",
+      "correction": "Les valeurs publiees pendant plusieurs heures (landing 3946, cumul 2575, max 496) etaient GONFLEES ~3,5x : la mesure tournait pendant la suite complete en arriere-plan.",
+      "verdict": "Aucun probleme de demarrage a traiter. FCP 296 ms, landing 1,5 s, aucune tache au-dela de 145 ms sous bridage x4."
+    },
+    "couverture_js_au_premier_ecran": {
+      "total_ko": 1714,
+      "execute_pct": 20,
+      "inutilise_ko": 1367
+    },
+    "latences_api_production": [
+      {
+        "endpoint": "/rest/v1/user_state",
+        "n": 757,
+        "p50": 156,
+        "p95": 2844,
+        "max": 43199,
+        "verdict": "defaut reel, corrige (SYNC-B64-005)"
+      },
+      {
+        "endpoint": "/functions/v1/notify-call",
+        "n": 70,
+        "p50": 894,
+        "p95": 4337,
+        "verdict": "PAS un defaut : fire-and-forget, en complement du ring realtime"
+      },
+      {
+        "endpoint": "/rest/v1/follows",
+        "n": 351,
+        "p50": 99,
+        "p95": 1275,
+        "verdict": "a surveiller"
+      },
+      {
+        "endpoint": "/rest/v1/profiles",
+        "n": 773,
+        "p50": 80,
+        "p95": 1130,
+        "verdict": "a surveiller"
+      }
     ],
-    "objections_nuancees": [
-     "le chemin avec ../ est normalise par le serveur AVANT enregistrement (mesure) : la RLS devrait voir le nom normalise. Non verifiable avant application — inscrit en verification (e)."
+    "non_mesure": "Latence PERCUE des interactions (tap -> retour visuel), distincte de la latence reseau que l affichage optimiste masque.",
+    "cout_injection_scripts": {
+      "cumul_ms": 133,
+      "cpu": "x4",
+      "reseau": "chaud",
+      "cache_code": "neutralise",
+      "detail_ms": {
+        "app-06-reels-partage": 24,
+        "app-01-diag-seed": 19,
+        "app-09-boot-pwa": 19,
+        "app-03-posts-vlogs": 15,
+        "app-04-comments-shop": 14,
+        "app-02-state-utils": 12,
+        "app-05-config-profil": 11,
+        "app-07-ia-explore-irl": 11,
+        "app-08-ui-modals-tour": 8
+      },
+      "verdict": "Le chargement des scripts represente 5 % des 2 575 ms de taches longues. Extraire app-06 economiserait 24 ms. Le decoupage N EST PAS le levier.",
+      "pourquoi": "V8 pre-parse paresseusement : une fonction n est analysee en profondeur qu au premier appel. Les 1 367 Ko jamais executes ne coutent donc presque rien. La couverture a 20 % est exacte mais NON ACTIONNABLE."
+    },
+    "hypotheses_infirmees": [
+      "Decoupage du JS : cout d injection des 9 fichiers = 133 ms au total. V8 pre-parse paresseusement.",
+      "CSS trop lourd : A/B en retirant styles.css → cumul des taches longues PASSE DE 969 A 2457 ms. Le CSS fait GAGNER du travail (il masque les ecrans au lieu de les mettre en page).",
+      "Couverture CSS a 9 % lue comme un levier : meme piege que la couverture JS a 20 %."
     ]
-   },
-   "preuve": "Migration appliquee en production le 2026-08-17. pg_policies : une seule policy par commande, INSERT et UPDATE portant toutes deux storage_chemin_autorise(). Verifications derroulees : depot chez autrui, move, copy, conversation non membre -> tous >= 400 ; depot dans son propre dossier -> 200 ; upsert et PUT sur sa propre cle -> 200 ; chemin fabrique avec ../ -> 400, donc la RLS voit le nom NORMALISE (point qui etait marque non verifiable avant application).",
-   "limite_de_la_preuve": "Le controle « aucun data: dans posts.media_url » est vrai (0 sur tout l historique) mais ne prouve rien sur le trafic reel : aucun media n a ete publie en production depuis l application. La preuve du chemin legitime vient de la suite e2e."
-  }
- ],
- "dette_signalee_non_traitee": [
-  {
-   "sujet": "auth_rls_initplan",
-   "nb": 85,
-   "statut": "CLOS — 10 policies reelles, toutes traitees",
-   "motif": "Les 85 avertissements se ramenaient a 10 policies : 3 de messagerie (corrigees, 11,636 -> 1,136 ms) et 7 de lecture (corrigees ce jour). Les 73 autres sont des ECRITURES, ou « reevalue par ligne » signifie « evalue une fois » puisqu une ecriture touche une ligne — non-sujet.",
-   "preuve_semantique": "Definitions normalisees comparees avant/apres : diff VIDE. Seule la forme d appel a change. InitPlan verifie present sur stories."
   },
-  {
-   "sujet": "multiple_permissive_policies",
-   "nb": 42,
-   "motif": "Hypothese de reautorisation par OU verifiee et INFIRMEE pour les lectures (doublons true||true sur tables publiques assumees). L examen a en revanche revele NOTIF-FORGE-009."
-  },
-  {
-   "sujet": "unused_index",
-   "nb": 13,
-   "motif": "Sur une beta a faible trafic, « inutilise » = « pas encore utilise ». Agir serait agir sur une absence de preuve."
-  },
-  {
-   "sujet": "node20_ci_deprecie",
-   "nb": 2,
-   "motif": "Modifier les actions, c est modifier le chemin de deploiement. Le bump se verifie sur une PR."
-  }
- ],
- "decisions": [
-  {
-   "id": "ADR-007",
-   "sujet": "Provenance du profil passionnel",
-   "retenu": "Option C — contraindre l existant, ne pas etendre aux 10 tables d interaction.",
-   "applique": true,
-   "reserve_externe": "La revue croisee note que la provenance PASSEE est irreversible : ne rien enregistrer aujourd hui rend la question insoluble plus tard. Elle suggere de distinguer les interactions socialement visibles des actions de compte, et de nommer le champ actor_profile_id."
-  },
-  {
-   "id": "ADR-008",
-   "sujet": "Suppression de conversations/messages",
-   "retenu": "Option B — journal de pierres tombales borne.",
-   "applique": true
-  }
- ],
- "revue_croisee": {
-  "menee": true,
-  "date": "2026-08-16",
-  "tours": 3,
-  "corrections_apportees_a_claude": [
-   "« 49 % des evenements desattribues » etait FAUX : les NULL sont concentres sur session (99 %) et perf (100 %), le comportemental est a 0 %.",
-   "« La perte n est pas silencieuse » etait FAUX : server_reject emprunte la meme file, la meme auth et la meme policy.",
-   "F3 n etait pas une race applicative.",
-   "Le sujet du decoupage JS avait ete ferme trop tot : mesure ensuite a 20 % de couverture."
+  "incidents": [
+    {
+      "id": "CI-GATE-001",
+      "severity": "P1",
+      "domain": "ci_release_gate",
+      "status": "FIXED_LOCALLY",
+      "problem": "Chaque deploiement etait valide par une suite n exercant ni RLS, ni cross-compte, ni realtime, ni confidentialite.",
+      "fix": "tests/e2e/authz-critical.spec.js — 11 invariants par appels REST bruts, etape dediee et isolee en tete du workflow.",
+      "blocage_suppose_infirme": "Aucun secret CI requis : l inscription passe par la cle anon, deja publique.",
+      "verified": true
+    },
+    {
+      "id": "TEL-IDENT-002",
+      "severity": "P1",
+      "domain": "telemetrie",
+      "status": "FIXED_LOCALLY",
+      "problem": "Fenetre pre-auth perdue a 100 %, empoisonnement de lot, alarme rejetee par la cause qu elle signale.",
+      "mesure_avant": "20 envois, 20 x HTTP 401",
+      "mesure_apres": "1 envoi, HTTP 201",
+      "fix": "js/telemetry.js : seul un UUID d authentification part, le reste a NULL ; desinfection aussi au flush.",
+      "verified": true
+    },
+    {
+      "id": "RACE-LIKE-003",
+      "severity": "P3",
+      "domain": "fil",
+      "status": "CLOS",
+      "problem": "Flaky sur l annulation d affichage optimiste.",
+      "conclusion": "Ce n etait PAS une race applicative : le flake portait sur le clic de mise en place. Harnais stabilise (3 causes, dont polling raf inoperant sur page non composee).",
+      "verified": true,
+      "mesure_2026_08_29": "51 executions consecutives de tests/e2e/interactions.spec.js (--repeat-each=3 --retries=0) : 51 passes, 0 flaky, 0 echec, 9,4 min. Ne prouve pas l absence definitive de flake ; prouve qu il ne se reproduit pas en 51 tirages sans filet de retry.",
+      "note_reconciliation": "PASSIO_MASTER_CONTROL.md portait encore DETECTED / cause non etablie alors que ce registre disait INFIRME / verified. Le tableau humain etait le perime : il est aligne."
+    },
+    {
+      "id": "TEL-NOISE-004",
+      "severity": "P2",
+      "domain": "telemetrie",
+      "status": "CLOS",
+      "problem": "79 % de la table de telemetrie etait du bruit de test (40 625 development contre 10 532 production).",
+      "cause": "Une seule base Supabase, telemetrie active par defaut sur localhost, ~15 specs e2e qui chargent l app.",
+      "fix": "Opt-in explicite en local + purge de 44 960 lignes (production intacte).",
+      "verified": true
+    },
+    {
+      "id": "SYNC-B64-005",
+      "severity": "P1",
+      "domain": "performance",
+      "status": "FIXED_LOCALLY",
+      "problem": "4,7 Mo de base64 renvoyes a chaque synchronisation d etat ; p95 2 844 ms, max 43 199 ms.",
+      "cause": "_syncableState() expurgeait deja le base64 mais SEULEMENT pour les profils passion, pas pour les photos du compte.",
+      "fix": "Expurgation etendue, a la frontiere de synchronisation.",
+      "verified": true,
+      "mutation_teste": true
+    },
+    {
+      "id": "CONV-RESUR-006",
+      "severity": "P2",
+      "domain": "messagerie",
+      "status": "FIXED_LOCALLY",
+      "problem": "Une conversation et un message prive supprimes revenaient apres redemarrage.",
+      "cause": "Deux stores (localStorage synchrone, IndexedDB asynchrone best-effort) fusionnes SANS pierre tombale.",
+      "fix": "Journal de suppressions borne (TTL 30 j, 2 000 entrees), filtrage en un seul point a la sortie de la fusion.",
+      "note": "L union n etait pas une erreur : elle corrigeait des messages qui disparaissaient. Le defaut etait qu aucun store ne distinguait « jamais existe » de « supprime ».",
+      "verified": true,
+      "mutation_teste": true
+    },
+    {
+      "id": "FEED-RT-007",
+      "severity": "P3",
+      "domain": "fil_temps_reel",
+      "status": "FIXED_LOCALLY",
+      "problem": "Un post recu en temps reel s affichait puis s effacait jusqu au cycle suivant.",
+      "cause": "Le rafraichissement ecrase state.supabasePosts avec un instantane pris AVANT l arrivee du post ; seul _feedExtraPosts survit, et le handler ne l alimentait pas.",
+      "fix": "Logique extraite dans feedAddRealtimePost() — extraction faite POUR la testabilite : une logique enfermee dans un callback ne peut etre testee qu en la recopiant.",
+      "verified": true,
+      "mutation_teste": true
+    },
+    {
+      "id": "BLOC-ACCES-008",
+      "severity": "P1",
+      "domain": "confidentialite",
+      "status": "FIXED_LOCALLY",
+      "problem": "Bloquer quelqu un ne lui retirait aucun acces : sur un compte prive, la personne bloquee voyait tous les posts.",
+      "cause": "blockUser supprimait MON abonnement vers elle, jamais LE SIEN vers moi, alors que post_is_visible accorde l acces sur exactement cette relation.",
+      "fix": "supaBlockUser retire aussi l abonne. La base l autorisait deja (policy DELETE following_id = auth.uid()).",
+      "verified": true,
+      "mutation_teste": true
+    },
+    {
+      "id": "NOTIF-FORGE-009",
+      "severity": "P1",
+      "domain": "integrite_usurpation",
+      "status": "CLOS",
+      "problem": "N importe quel compte peut fabriquer une notification vers n importe qui, au nom de n importe qui, avec contenu et lien arbitraires.",
+      "cause": "notifications est scellee en SELECT/UPDATE/DELETE mais son INSERT vaut true, en double. La contrainte portait sur le mauvais cote : c est l AUTEUR qu il fallait contraindre, pas le destinataire.",
+      "fix": "migrations/migration_notifications_auteur.sql — with check (from_id = (select auth.uid())::text). Sans rupture, verifie : supaInsertNotif est le seul insert de l app et renseigne deja from_id.",
+      "verified": true,
+      "note": "Le registre a porte MIGRATION_PRETE_NON_APPLIQUEE apres l application reelle : ecart entre le journal (qui la disait appliquee) et ce fichier, tranche en interrogeant la base plutot qu en croyant l un des deux documents.",
+      "preuve": "pg_policies au 2026-08-16 : une seule policy INSERT sur notifications, notifications_insert_own_author, with_check (from_id = (select auth.uid())::text). Les deux policies INSERT valant true ont disparu."
+    },
+    {
+      "id": "MEDIA-COMPTE-SUPPRIME-010",
+      "severity": "P2",
+      "domain": "confidentialite",
+      "status": "INFIRME_PARTIELLEMENT",
+      "problem": "La suppression d un compte ne cascade pas. Restent en base et en Storage, mesure du 2026-08-17 : 76 lignes user_state, 54 notifications, et 19 fichiers medias (81 Mo). Les medias sont TOUJOURS SERVIS : verifie en recuperant l URL publique d une photo d un compte disparu, sans aucun jeton, http 200 / 249 415 octets.",
+      "cause": "Aucun mecanisme ne nettoie a la suppression d un compte. Les tables de CONTENU sont propres (posts, commentaires, likes, messages, stories, evenements : 0 ligne orpheline) parce que la purge e2e les couvre ; l etat personnel, les notifications et les fichiers, non. Le seau `content` etant public par conception, un media orphelin reste lisible indefiniment.",
+      "fix": "Non decide. Trois voies, non exclusives : cascade de suppression cote base (trigger ou fonction d effacement de compte) ; purge des medias par l API Storage a la meme occasion ; et, pour la lecture, URLs signees au lieu d un seau public - mais celle-la change l architecture d affichage et se decide au niveau produit.",
+      "verified": false,
+      "note": "Le commentaire de doDeleteAccount (app-02) affirmait que l Edge Function n etait PAS deployee. Perime et trompeur : c est lui qui a motive ce constat errone. Corrige, et couvert par tests/e2e/suppression-compte.spec.js.",
+      "mesure": {
+        "user_state": 76,
+        "notifications": 54,
+        "fichiers_storage": 19,
+        "octets_storage": 85000000
+      },
+      "correction_2026_08_17": "CADRAGE FAUX de ma part. Verifie de bout en bout : le parcours applicatif « Supprimer mon compte » est COMPLET. L Edge Function delete-account est deployee, active, et supprime le compte (reconnexion impossible ensuite) ET les medias du Storage - que le code client ne touche jamais. Mesure : media servi 200 avant, 400 apres ; reconnexion refusee.",
+      "ce_qui_reste_vrai": "Le residu mesure (76 user_state, 54 notifications, 19 medias) ne vient PAS du parcours produit mais des suppressions ADMINISTRATIVES qui le contournent : purge_e2e_accounts.sql supprime auth.users directement, et les nettoyages manuels aussi. C est un artefact d exploitation, pas un defaut vecu par un utilisateur.",
+      "reste_a_trancher": "Les 19 medias de comptes supprimes administrativement restent publiquement lisibles. Soit les purger, soit aligner les outils d administration sur l Edge Function (qui, elle, fait le travail)."
+    },
+    {
+      "id": "STORAGE-BRUIT-011",
+      "severity": "P3",
+      "domain": "observabilite",
+      "status": "CLOS",
+      "problem": "La suite e2e abandonnait ses fixtures dans le seau PUBLIC `content` : 174 GIF de 37 octets accumules sous des dossiers de comptes supprimes, une douzaine de plus par execution.",
+      "cause": "purge_e2e_accounts.sql nettoie 23 tables et les comptes, mais ne peut PAS toucher aux fichiers : Supabase interdit le DELETE direct sur storage.objects (trigger protect_delete). Le nettoyage passe obligatoirement par l API Storage.",
+      "fix": "scripts/purge-e2e-storage.js, branche sur le global-teardown apres la purge des comptes. Garde-fou : seuls les fichiers de moins de 1 Ko d un compte inexistant sont supprimes - une vraie photo ne pese jamais 37 octets, donc effacer du contenu utilisateur est mecaniquement impossible.",
+      "verified": true,
+      "preuve": "244 -> 70 fichiers a la purge ; puis suite complete relancee : 70 -> 70, zero petit fichier restant (les 6 crees pendant l execution ont ete nettoyes par le teardown)."
+    },
+    {
+      "id": "SYNC-CLOCK-012",
+      "severity": "P1",
+      "domain": "synchronisation multi-appareils",
+      "status": "CLOS",
+      "problem": "L horloge du CLIENT faisait autorite sur user_state : le client ecrivait lui-meme updated_at, et cette valeur arbitrait la fusion au demarrage. Un appareil en avance d une heure gagnait definitivement — les modifications des autres appareils etaient ecrasees en silence, et leur drapeau « etat sale » ne retombait jamais (garde monotone qui refuse de reculer).",
+      "cause": "La colonne avait DEFAULT now() mais AUCUN trigger : la valeur envoyee par le client gagnait. Approfondi par la revue croisee ChatGPT : l horloge n etait qu un symptome. La classe reelle est « ecriture obsolete qui ecrase une plus recente », atteignable SANS decalage d horloge — 17 points d appel declenchent supaSaveUserState (la plupart en flush immediat hors debounce) et le garde !_stateDirty ne protege pas de la concurrence, le drapeau ne retombant qu APRES l await.",
+      "fix": "Trigger BEFORE INSERT OR UPDATE imposant now() (frontiere en BASE : deploiement a chaque push sans staging, et le beacon ecrit hors du SDK). Client : plus d updated_at envoye, relecture de la valeur serveur, serialisation des sauvegardes. Rejeu de la file : comparaison entre DEUX valeurs serveur (.lte) et non client-vs-serveur — sans quoi le correctif aurait fait perdre ses reprises hors-ligne a tout appareil dont l horloge retarde. Beacon : n inscrit plus de marqueur de synchro (reponse return=minimal, valeur serveur inconnue).",
+      "preuve_avant": "trigger desactive -> 3 653 jours d avance acceptes, test ROUGE",
+      "preuve_apres": "trigger actif -> 0 jour, test VERT",
+      "mutation_teste": true,
+      "test_permanent": "tests/e2e/user-state-horodatage.spec.js",
+      "regression": "17/17 sur etat-sync-base64, audit-identite-emoji, conv-suppression, smoke, telemetrie-preauth, authz-critical ; 0 compte e2e residuel",
+      "commit": "ea6d507",
+      "risque_residuel": "L ecriture reste « dernier ecrivain gagne » sur un blob : deux appareils modifiant deux champs independants, le second ecrase le premier. Horodater cote serveur supprime l AUTORITE FAUSSE, pas le besoin d un controle d anciennete par revision (CAS). Non fait : change la semantique d ecriture du chemin le plus sensible, et exige un chemin de resolution de conflit inexistant. ⚠️ Correction du 2026-08-16 apportee par la revue croisee et VERIFIEE sur la base : now() renvoie l heure de DEBUT DE TRANSACTION, pas celle du commit (identique de part et d autre d un pg_sleep(0.3) pendant que clock_timestamp avancait de 306 ms). updated_at n est donc PAS une horloge d ordre : une transaction demarree avant mais committee apres porte un horodatage anterieur. La garde .lte du rejeu reste tres superieure a une comparaison client-vs-serveur, mais elle n est pas une garantie de precedence. Vocabulaire impose : updated_at = metadonnee temporelle ; ordre logique = revision monotone, qui n existe pas encore.",
+      "note": "Le commit ea6d507 et son message portent l ancien numero SYNC-CLOCK-011 : une session Claude Code parallele avait pris 011 (STORAGE-BRUIT-011) au meme moment. Renumerote en 012 dans le code et le registre.",
+      "verified": true
+    },
+    {
+      "id": "TEST-DIST-013",
+      "severity": "P2",
+      "domain": "qualification / artefact de production",
+      "status": "CLOS",
+      "problem": "Sur 175 tests, TROIS seulement visaient l artefact reellement deploye (/dist/index.html), et ces trois ne couvrent que le gate et le demarrage. Le fil, la publication, la messagerie, la confidentialite etaient prouves uniquement sur le programme de developpement.",
+      "cause": "En dev l app est 19 fichiers JS charges separement ; en prod scripts/build.js en assemble un monolithe injecte apres le gate. Deux programmes, une seule suite. 30 des 31 specs codent en dur page.goto('/index.html').",
+      "fix": "scripts/servir-dist.js + PASSIO_CIBLE=dist : la suite entiere tourne sur le monolithe construit SANS qu un seul test soit modifie (c est la racine servie qui change). Port parametrable PASSIO_PORT pour cohabiter avec une session parallele.",
+      "preuve_avant": "3 tests sur 175 touchaient l artefact",
+      "preuve_apres": "169 passes, 12 ignores, 0 echec en 7,4 min sur l artefact construit",
+      "mutation_teste": false,
+      "test_permanent": "toute la suite, via PASSIO_CIBLE=dist",
+      "commit": "cda3245",
+      "risque_residuel": "Ne prouve rien APRES minification, que seule la CI applique (html-minifier-terser). Le minifieur renomme les identifiants — piege deja rencontre. Et le mode dist n est pas encore branche dans la CI.",
+      "verified": true
+    },
+    {
+      "id": "STORAGE-ECRITURE-014",
+      "severity": "P2",
+      "domain": "securite",
+      "status": "CLOS",
+      "problem": "La policy d INSERT du Storage n imposait AUCUNE contrainte de chemin ni de type. Verifie empiriquement le 2026-08-17 avec un compte jetable, puis nettoye : deposer un text/html dans un seau de medias = 200 ; deposer sous le dossier d un AUTRE compte = 200 ; relire les deux sans jeton = 200. Les seaux n ont ni file_size_limit ni allowed_mime_types. Et le cloisonnement ne tient pas non plus par renommage : move et copy vers le dossier d un autre compte renvoient 200 (mesure du 2026-08-17).",
+      "cause": "with check (bucket_id in (content,attachments) and auth.role() = authenticated) — l appartenance du chemin n etait jamais verifiee.",
+      "fix": "migrations/migration_storage_cloisonnement.sql (version 2). Ferme INSERT ET UPDATE : move/copy sont des UPDATE du nom, et l ancienne policy UPDATE portait un using sans with check — Postgres reutilise alors using pour la nouvelle ligne, et l owner ne change pas lors d un renommage. Fermer l INSERT seul n aurait RIEN ferme.",
+      "verified": true,
+      "gravite_nuancee": "Supabase sert les fichiers en text/plain : un HTML depose ne s execute pas, ce n est PAS un XSS stocke. Ce qui reste : ecriture sous le dossier d autrui (qui fausse toute attribution par dossier) et hebergement public gratuit de fichiers arbitraires sur le domaine du projet.",
+      "note": "Contre-epreuve faite avant d ecrire la migration : sur les 70 fichiers reels, aucun ne violerait la nouvelle regle au moment de son envoi. Les non-conformes actuels pointent vers des comptes ou des conversations supprimes.",
+      "revue_croisee": {
+        "canal": "codex (scripts/chatgpt.js), fil securite, 2026-08-17",
+        "objections_retenues": [
+          "move/copy contournent la policy INSERT — VERIFIE en production (HTTP 200), correction majeure de la migration",
+          "allowed_mime_types casserait des envois legitimes — VERIFIE dans le code : application/octet-stream (app-08 2709), file.type vide (app-09 874), audio/webm;codecs=opus non nettoye (app-09 1495) ; et l echec retomberait sur le repli base64, reintroduisant SYNC-B64-005. Liste retiree.",
+          "un test d intrusion en text/plain serait invalide si une liste MIME existait : refuse pour le type, pas pour le chemin. Le test annexe utilise image/png."
+        ],
+        "objections_nuancees": [
+          "le chemin avec ../ est normalise par le serveur AVANT enregistrement (mesure) : la RLS devrait voir le nom normalise. Non verifiable avant application — inscrit en verification (e)."
+        ]
+      },
+      "preuve": "Migration appliquee en production le 2026-08-17. pg_policies : une seule policy par commande, INSERT et UPDATE portant toutes deux storage_chemin_autorise(). Verifications derroulees : depot chez autrui, move, copy, conversation non membre -> tous >= 400 ; depot dans son propre dossier -> 200 ; upsert et PUT sur sa propre cle -> 200 ; chemin fabrique avec ../ -> 400, donc la RLS voit le nom NORMALISE (point qui etait marque non verifiable avant application).",
+      "limite_de_la_preuve": "Le controle « aucun data: dans posts.media_url » est vrai (0 sur tout l historique) mais ne prouve rien sur le trafic reel : aucun media n a ete publie en production depuis l application. La preuve du chemin legitime vient de la suite e2e."
+    },
+    {
+      "id": "SHARE-PASSION-011",
+      "severity": "P2",
+      "domain": "publication / partage d experience",
+      "status": "FIXED_IN_PROD",
+      "problem": "Partager le souvenir d une activite dont la passion n est pas l une des siennes publiait le post SANS passion. Le fil etant filtre par defaut sur les passions des profils, le souvenir devenait invisible dans le fil de son propre auteur, et partait en base sans provenance.",
+      "cause_racine": "shareEventExperience forcait sel.value = ev.passion. Affecter select.value avec une valeur qui n a aucune <option> correspondante NE LEVE PAS : le select passe silencieusement a la chaine vide. Le try/catch qui entourait la ligne ne pouvait rien attraper. #postPassion ne contient que les passions des profils de l utilisateur (renderStudio).",
+      "fix": "On ne force la valeur que si l option existe reellement, sinon on conserve celle posee par renderStudio (profil actif). Filet supplementaire dans publishPost : repli sur l identite active plutot que sur du vide.",
+      "effet_de_bord_diagnostique": "Ce defaut rendait ui-v7-parcours.spec.js #7 flaky de facon dependante de l HEURE : ce test partage la premiere activite retournee par _filterIrlEvents, qui change au fil du temps. Vert la nuit, rouge le matin, et impute au dernier commit arrive. A/B verifie : le test echoue a l identique avec app-06 remis a l etat de main.",
+      "test": "tests/e2e/partage-experience-passion.spec.js",
+      "mutation_teste": true,
+      "mutation_detail": "Sans le correctif : 2 des 3 tests echouent sur l assertion visee (Expected: not \"\"). Le troisieme passe dans les deux sens volontairement — il interdit un correctif qui se contenterait de ne plus rien forcer.",
+      "commit": "c2e3e1b",
+      "verified": true
+    },
+    {
+      "id": "CONV-FLAKY-012",
+      "severity": "P3",
+      "domain": "tests / messagerie",
+      "status": "DETECTED",
+      "problem": "conv-suppression.spec.js:33 (« une suppression non parvenue a IndexedDB ne ressuscite PAS au redemarrage ») remonte flaky dans la CI du 2026-08-29 sur c2e3e1b.",
+      "cause_racine": "NON ETABLIE — une seule occurrence observee, aucune mesure repetee. Ne pas conclure.",
+      "prochaine_etape": "Rejouer --repeat-each sans retries, comme cela a ete fait pour RACE-LIKE-003, avant toute hypothese.",
+      "verified": false
+    }
   ],
-  "hypotheses_infirmees": [
-   "Injection d un profile_id d autrui : cette colonne n existe nulle part.",
-   "Reautorisation par policies permissives multiples en lecture : doublons true||true sur tables publiques assumees."
-  ]
- },
- "pieges_de_verification": [
-  "Service worker qui sert l ancien code en local.",
-  "Minifieur qui renomme les marqueurs cherches en prod : seuls les litteraux survivent.",
-  "git checkout <fichier> restaure depuis l INDEX (que le hook alimente) : il faut git checkout HEAD -- <fichier>.",
-  "Interroger le mauvais artefact (index.html au lieu de app.js).",
-  "Un test qui RECOPIE le code qu il verifie : il fait croire a un succes, et rien ne le signale.",
-  "Une reponse ChatGPT qui parait bloquee : elle est complete cote serveur, un rechargement la revele.",
-  "Couverture V8 : les plages sont IMBRIQUEES, additionner celles a count>0 donne 100 % partout. Carte d octets obligatoire.",
-  "Couverture a 20 % lue comme un levier : ce qui n est pas EXECUTE ne coute pas forcement. Mesurer le cout, pas l inutilisation.",
-  "Mesurer la performance sur une machine CHARGEE : baseline gonflee 3,5x, et deux investigations entieres menees sur une premisse fausse. Machine au repos, repetee, mediane.",
-  "drop policy avec un nom DEVINE ne supprime rien : les anciennes policies restent, se combinent en OU, et le benefice est nul. Balayer pg_policies pour obtenir les vrais noms.",
-  {
-   "piege": "Un code de sortie lu apres un pipe mesure le DERNIER maillon, pas la commande.",
-   "vecu": "`supabase db dump | tail` a renvoye 0 alors que supabase sortait en 1. J ai failli declarer un incident « l outil ment sur son succes » qui n existait pas.",
-   "parade": "Mesurer sans pipe, ou lire PIPESTATUS[0]."
+  "dette_signalee_non_traitee": [
+    {
+      "sujet": "auth_rls_initplan",
+      "nb": 85,
+      "statut": "CLOS — 10 policies reelles, toutes traitees",
+      "motif": "Les 85 avertissements se ramenaient a 10 policies : 3 de messagerie (corrigees, 11,636 -> 1,136 ms) et 7 de lecture (corrigees ce jour). Les 73 autres sont des ECRITURES, ou « reevalue par ligne » signifie « evalue une fois » puisqu une ecriture touche une ligne — non-sujet.",
+      "preuve_semantique": "Definitions normalisees comparees avant/apres : diff VIDE. Seule la forme d appel a change. InitPlan verifie present sur stories."
+    },
+    {
+      "sujet": "multiple_permissive_policies",
+      "nb": 42,
+      "motif": "Hypothese de reautorisation par OU verifiee et INFIRMEE pour les lectures (doublons true||true sur tables publiques assumees). L examen a en revanche revele NOTIF-FORGE-009."
+    },
+    {
+      "sujet": "unused_index",
+      "nb": 13,
+      "motif": "Sur une beta a faible trafic, « inutilise » = « pas encore utilise ». Agir serait agir sur une absence de preuve."
+    },
+    {
+      "sujet": "node20_ci_deprecie",
+      "nb": 2,
+      "motif": "Modifier les actions, c est modifier le chemin de deploiement. Le bump se verifie sur une PR."
+    }
+  ],
+  "decisions": [
+    {
+      "id": "ADR-007",
+      "sujet": "Provenance du profil passionnel",
+      "retenu": "Option C — contraindre l existant, ne pas etendre aux 10 tables d interaction.",
+      "applique": true,
+      "reserve_externe": "La revue croisee note que la provenance PASSEE est irreversible : ne rien enregistrer aujourd hui rend la question insoluble plus tard. Elle suggere de distinguer les interactions socialement visibles des actions de compte, et de nommer le champ actor_profile_id."
+    },
+    {
+      "id": "ADR-008",
+      "sujet": "Suppression de conversations/messages",
+      "retenu": "Option B — journal de pierres tombales borne.",
+      "applique": true
+    }
+  ],
+  "revue_croisee": {
+    "menee": true,
+    "date": "2026-08-16",
+    "tours": 3,
+    "corrections_apportees_a_claude": [
+      "« 49 % des evenements desattribues » etait FAUX : les NULL sont concentres sur session (99 %) et perf (100 %), le comportemental est a 0 %.",
+      "« La perte n est pas silencieuse » etait FAUX : server_reject emprunte la meme file, la meme auth et la meme policy.",
+      "F3 n etait pas une race applicative.",
+      "Le sujet du decoupage JS avait ete ferme trop tot : mesure ensuite a 20 % de couverture."
+    ],
+    "hypotheses_infirmees": [
+      "Injection d un profile_id d autrui : cette colonne n existe nulle part.",
+      "Reautorisation par policies permissives multiples en lecture : doublons true||true sur tables publiques assumees."
+    ]
   },
-  {
-   "piege": "Une mesure vide ressemble a un resultat nul.",
-   "vecu": "En mode couverture, un http-server deja lance aurait ete reutilise et la suite aurait mesure 0 interaction — indiscernable d une couverture nulle.",
-   "parade": "reuseExistingServer:false : le port occupe fait ECHOUER le demarrage au lieu de produire un zero."
-  },
-  {
-   "piege": "Compter les orphelins du Storage sur les seules colonnes qui RESSEMBLENT a des URLs.",
-   "vecu": "Une premiere requete annoncait 221 orphelins / 108 Mo en ignorant les colonnes jsonb (posts.vlog, overlays, cdv_live_steps.photos) et conv_messages.content. Recompte en cherchant chaque nom de fichier dans l integralite des lignes : 198 orphelins / 35 Mo.",
-   "parade": "Chercher le nom de fichier dans la representation texte de la LIGNE ENTIERE (table::text), jamais dans une liste de colonnes choisie a la main."
-  },
-  {
-   "piege": "Supposer qu on peut nettoyer le Storage en SQL.",
-   "vecu": "`delete from storage.objects` est refuse par Supabase (trigger storage.protect_delete). Une purge ecrite en SQL aurait echoue silencieusement dans un script best-effort.",
-   "parade": "Passer par l API Storage. Et verifier qu une suppression rend bien le fichier inaccessible."
+  "pieges_de_verification": [
+    "Service worker qui sert l ancien code en local.",
+    "Minifieur qui renomme les marqueurs cherches en prod : seuls les litteraux survivent.",
+    "git checkout <fichier> restaure depuis l INDEX (que le hook alimente) : il faut git checkout HEAD -- <fichier>.",
+    "Interroger le mauvais artefact (index.html au lieu de app.js).",
+    "Un test qui RECOPIE le code qu il verifie : il fait croire a un succes, et rien ne le signale.",
+    "Une reponse ChatGPT qui parait bloquee : elle est complete cote serveur, un rechargement la revele.",
+    "Couverture V8 : les plages sont IMBRIQUEES, additionner celles a count>0 donne 100 % partout. Carte d octets obligatoire.",
+    "Couverture a 20 % lue comme un levier : ce qui n est pas EXECUTE ne coute pas forcement. Mesurer le cout, pas l inutilisation.",
+    "Mesurer la performance sur une machine CHARGEE : baseline gonflee 3,5x, et deux investigations entieres menees sur une premisse fausse. Machine au repos, repetee, mediane.",
+    "drop policy avec un nom DEVINE ne supprime rien : les anciennes policies restent, se combinent en OU, et le benefice est nul. Balayer pg_policies pour obtenir les vrais noms.",
+    {
+      "piege": "Un code de sortie lu apres un pipe mesure le DERNIER maillon, pas la commande.",
+      "vecu": "`supabase db dump | tail` a renvoye 0 alors que supabase sortait en 1. J ai failli declarer un incident « l outil ment sur son succes » qui n existait pas.",
+      "parade": "Mesurer sans pipe, ou lire PIPESTATUS[0]."
+    },
+    {
+      "piege": "Une mesure vide ressemble a un resultat nul.",
+      "vecu": "En mode couverture, un http-server deja lance aurait ete reutilise et la suite aurait mesure 0 interaction — indiscernable d une couverture nulle.",
+      "parade": "reuseExistingServer:false : le port occupe fait ECHOUER le demarrage au lieu de produire un zero."
+    },
+    {
+      "piege": "Compter les orphelins du Storage sur les seules colonnes qui RESSEMBLENT a des URLs.",
+      "vecu": "Une premiere requete annoncait 221 orphelins / 108 Mo en ignorant les colonnes jsonb (posts.vlog, overlays, cdv_live_steps.photos) et conv_messages.content. Recompte en cherchant chaque nom de fichier dans l integralite des lignes : 198 orphelins / 35 Mo.",
+      "parade": "Chercher le nom de fichier dans la representation texte de la LIGNE ENTIERE (table::text), jamais dans une liste de colonnes choisie a la main."
+    },
+    {
+      "piege": "Supposer qu on peut nettoyer le Storage en SQL.",
+      "vecu": "`delete from storage.objects` est refuse par Supabase (trigger storage.protect_delete). Une purge ecrite en SQL aurait echoue silencieusement dans un script best-effort.",
+      "parade": "Passer par l API Storage. Et verifier qu une suppression rend bien le fichier inaccessible."
+    }
+  ],
+  "recuperation": {
+    "statut": "SAUVEGARDE_VERIFIE_RESTAURATION_NON_EXECUTEE",
+    "mesure_le": "2026-08-16",
+    "archive": {
+      "tables": 32,
+      "lignes": 1104,
+      "octets_base": 5140000,
+      "comptes": 4,
+      "fichiers_storage": 220,
+      "octets_storage": 182000000
+    },
+    "verifie": "Chaque table recomptee cote serveur et confrontee a l export ; decompte des medias confirme independamment par SQL sur storage.objects ; archive relue et conforme a son manifeste.",
+    "non_verifie": "Aucune restauration executee : ni Docker, ni psql, ni base cible sur cette machine. La reconstruction du schema supposerait de rejouer migrations/, connu pour diverger de la prod.",
+    "bloqueur": "Une base cible. Second projet Supabase ou Docker Desktop — decision, pas developpement.",
+    "doc": "docs/RECUPERATION.md"
   }
- ],
- "recuperation": {
-  "statut": "SAUVEGARDE_VERIFIE_RESTAURATION_NON_EXECUTEE",
-  "mesure_le": "2026-08-16",
-  "archive": {
-   "tables": 32,
-   "lignes": 1104,
-   "octets_base": 5140000,
-   "comptes": 4,
-   "fichiers_storage": 220,
-   "octets_storage": 182000000
-  },
-  "verifie": "Chaque table recomptee cote serveur et confrontee a l export ; decompte des medias confirme independamment par SQL sur storage.objects ; archive relue et conforme a son manifeste.",
-  "non_verifie": "Aucune restauration executee : ni Docker, ni psql, ni base cible sur cette machine. La reconstruction du schema supposerait de rejouer migrations/, connu pour diverger de la prod.",
-  "bloqueur": "Une base cible. Second projet Supabase ou Docker Desktop — decision, pas developpement.",
-  "doc": "docs/RECUPERATION.md"
- }
 }
