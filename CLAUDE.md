@@ -219,7 +219,7 @@ App INDÉPENDANTE de supervision/test temps réel, dans `dashboard/` (Node/Expre
 
 ## 🗂️ Pièges connus — index (détail complet : docs/PIEGES_CONNUS.md)
 
-56 fiches détaillées par domaine. **Lis la fiche concernée AVANT de modifier ce domaine.** Pour un audit de diff, lance le subagent `audit-passio`.
+57 fiches détaillées par domaine. **Lis la fiche concernée AVANT de modifier ce domaine.** Pour un audit de diff, lance le subagent `audit-passio`.
 
 - **Cadrage / shell** : jamais 100dvh (var --app-vh mesurée en JS).
 - **Feed** : classement par pertinence (rankFeedPosts), guards no-op.
@@ -231,7 +231,8 @@ App INDÉPENDANTE de supervision/test temps réel, dans `dashboard/` (Node/Expre
 - **Commentaires / réactions** : 1 réaction/personne, GIF=commentaire, fluidité (patch en place), UX IG/FB.
 - **Cartes / géocodage** : MapLibre+OpenFreeMap, BAN+Photon (Nominatim retiré de la CSP).
 - **Supabase / realtime** : SDK paresseux, embeds sans FK, notifications cross-compte, tests multi-comptes par e-mail.
-- **Divers** : diagLog, monitoring client_errors, multi-profil centralisé, système d’étoiles, double-like.
+- **Économie / points** : système de points RETIRÉ (2026-08-29) — `grantReward`/`checkRankUp` restent définies mais **inertes** ; prix des événements IRL en **euros** (`fmtEventPrice`), jamais en Passia.
+- **Divers** : diagLog, monitoring client_errors, multi-profil centralisé, double-like.
 
 ## 🔍 Revue indépendante par un second modèle (2026-08-13)
 
@@ -274,6 +275,50 @@ script s'arrête et renvoie vers le repli navigateur
 Le script est en lecture seule sur le dépôt (il n'écrit que dans son dossier de sortie) et n'a aucun accès prod. Chaque piège a une **portée** : les invariants DOM/globals ne valent que pour `js/app-*.js`, pas pour les modules Node — sinon le rapport se noie dans les faux positifs. Détail : `.passio/reviews/README.md`.
 
 ⚠️ **`.claude/` est désormais versionné SÉLECTIVEMENT** (skills + subagents = savoir projet, ils doivent survivre à un changement de machine). `.claude/settings.local.json` reste exclu : il a longtemps contenu des JWT et une clé `sb_secret_…` en clair dans ses commandes autorisées (9 entrées, purgées le 2026-08-15 par `npm run permissions:compact`, qui refuse désormais de conserver toute règle porteuse de secret). Il reste hors versionnement : c'est un fichier de poste, pas du savoir projet.
+
+## 💶 Points retirés, prix en euros (2026-08-29)
+
+Deux ordres de Benjamin, le même jour :
+
+**① Le prix d'un événement IRL est en EUROS.** Il s'affichait « 12 💎 Passia » — un
+atelier réel semblait se payer avec la monnaie interne, non convertible. Un formateur
+unique **`fmtEventPrice(price)`** (dans `app-02`, donc chargé avant `app-07`) sert les
+**trois** surfaces, pour qu'elles ne divergent plus : le champ `#evPrice` du formulaire,
+la pastille de la carte de liste (`priceTag`) et la ligne « Prix » de la fiche
+(`priceStr`). Sorties : « Gratuit 🎉 » (0, vide, null), « 12 € », « 12,50 € ». Le champ
+accepte désormais `step="0.01"` — il valait 1, un tarif à la pièce était insaisissable.
+⚠️ Ne pas confondre avec la **boutique Passia** (on y achète des Passia AVEC des euros) :
+elle est inchangée, comme l'onglet Crypto.
+
+**② Le système de points a quitté l'app.** Disparus : `score`, `RANKS`, `rankOf`,
+`REWARDS`, la pastille `⭐ N` du profil (`#mainProfileStars`), l'anneau de progression,
+le rang, le classement « Top Passionnés », les lignes « gagne des étoiles » du Wallet et
+toutes les promesses « +N pts » (boutons, sous-titres, états vides, panneau IA, quêtes).
+
+⚠️ **Ce qui reste, et pourquoi il ne faut pas le « nettoyer » à la légère** :
+- `grantReward(kind)` et `checkRankUp(prev)` sont toujours **définies**, et **inertes**.
+  Une vingtaine de chemins les appellent, souvent SANS garde (`grantReward("comment")`
+  nu dans `app-04`) : les supprimer ferait planter la publication, le commentaire et le
+  RSVP. Retirer les appelants d'abord, la fonction ensuite — jamais l'inverse.
+- Le **Passia (💎) reste** : c'est la monnaie du projet, et il n'a **jamais** été
+  distribué par ce barème (`passia: 0` sur les douze entrées de l'ancien `REWARDS`). Ses
+  deux seules sources sont inchangées : le palier de likes reçus (`awardLikeReceived`,
+  `LIKES_PER_PASSIA`) et les quêtes (`claimQuest`).
+- `rewardToast(amount, passia, reason)` garde son premier paramètre, désormais **ignoré**
+  (une quinzaine d'appelants le passent) et se tait quand `passia` vaut 0. ⚠️ Il est de
+  toute façon masqué par `:root.passio-ui-6 .toast.reward { display: none }`.
+
+⚠️ **Trois pièges payés pendant ce lot** :
+① `renderWallet` écrivait `$("#scoreNum").textContent` **sans garde** sur six nœuds —
+retirer ceux-ci d'`index.html` sans garder chaque écriture aurait planté le Wallet dès le
+premier rendu ; ② l'historique filtre sur `(t.passia||0) !== 0` et **non** `> 0`, sinon
+les **dépenses** disparaissent (`tip_reel` porte `passia: -1`) ; ③ `claimQuest` inscrivait
+sa transaction avec les clés `title`/`score` alors que le Wallet lit `label`/`at` — les
+quêtes réclamées s'affichaient donc vides, défaut latent corrigé au passage.
+
+Couverture : `tests/e2e/prix-euros-sans-points.spec.js` (12 tests). Le contrôle
+« +10 pts » d'`ui-v6-composer.spec.js` a été **inversé**, jamais supprimé : plus aucun
+écran ne doit promettre de points, kill switch UI-6 posé ou non.
 
 ## 📚 Références projet
 - **`docs/PASSIO_UI_V2_DIRECTION_2026-08-25.md` — direction UX canonique (2026-08-25).** Elle
@@ -606,7 +651,9 @@ Le script est en lecture seule sur le dépôt (il n'écrit que dans son dossier 
     post « texte » avec la photo perdue **EN SILENCE**. Le bouton média unique se contente
     donc de déclencher `#photoInput` / `#videoInput`, dont les gestionnaires **existants**
     fixent déjà `studioType`. §11 au passage : « +10 pts » quitte le bouton et
-    `.profile-chips-row` est masquée — seul l'AFFICHAGE change, `grantReward` tourne toujours.
+    `.profile-chips-row` est masquée. ⚠️ Amendé le **2026-08-29** : le système de points a
+    depuis été RETIRÉ de l'app (voir ci-dessous) — `grantReward` ne « tourne » donc plus,
+    elle est inerte, et le libellé « +10 pts » a quitté le markup lui-même.
   - **UI-6A (§10)** — inbox Messages : titre, « + » groupant les deux gestes, recherche
     dessous, Passio devant l'aperçu. `js/ui-v6a-messages.js`. ⚠️ `renderMessages()` repart de
     zéro (`innerHTML`) à chaque envoi, réception et frappe, et **sort tôt** quand l'écran
@@ -673,7 +720,7 @@ Le script est en lecture seule sur le dépôt (il n'écrit que dans son dossier 
   `offsetParent`, donc déplacer une ancre dans un panneau masqué éteint l'aide en
   silence — l'ancre de « second_profil » retombe sur l'onglet « À propos ».
 
-- `docs/PIEGES_CONNUS.md` — les 56 fiches détaillées (extrait de ce fichier le 2026-08-07).
+- `docs/PIEGES_CONNUS.md` — les 57 fiches détaillées (extrait de ce fichier le 2026-08-07).
 - `docs/HISTORIQUE_PROJET.md` — état 2026-06-11, backlog terminé, logs d’optimisation.
 - `docs/ARCHITECTURE.md`, `docs/CONTROLE_16_MISSIONS.md`, `docs/CHECKLIST_COMMERCIALISATION.md`.
 - Skills projet : `/ship`, `/migration`, `/e2e-multi`. Subagents : `audit-passio`, `migration-checker`.

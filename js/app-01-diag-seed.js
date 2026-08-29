@@ -99,39 +99,12 @@ const PASSIONS = [
   { id: "actu",       emoji: "🌍", label: "Actualité",    color: "#7c3aed", photo: "photo-1504711434969-e33886168f5c" },
 ];
 
-// ======== SCORE LADDER ========
-const RANKS = [
-  { min: 0,    label: "Débutant",       next: 100 },
-  { min: 100,  label: "Explorateur",    next: 300 },
-  { min: 300,  label: "Créateur",       next: 700 },
-  { min: 700,  label: "Contributeur",   next: 1500 },
-  { min: 1500, label: "Ambassadeur",    next: 3000 },
-  { min: 3000, label: "Passionné·e",    next: null },
-];
-
-// ======== POINTS MAP ========
-// Deux monnaies, deux logiques claires :
-//  ⭐ Étoiles  = ton ACTIVITÉ. Généreuses, elles font monter ton rang. Chaque
-//               action en donne (publier, commenter, participer, créer…).
-//  💎 Passia   = la VALEUR que tu crées pour les autres. Vraie valeur, donc rare
-//               et IMPOSSIBLE à farmer en solo : on n'en gagne JAMAIS par une
-//               action perso. Les seules sources sont (1) les likes reçus sur
-//               ton contenu (palier tous les LIKES_PER_PASSIA likes) et (2) les
-//               quêtes/jalons (claimQuest). → passia: 0 partout ici, exprès.
-const REWARDS = {
-  publish_text:   { pts: 10, passia: 0, label: "Post publié" },
-  publish_photo:  { pts: 15, passia: 0, label: "Photo publiée" },
-  publish_video:  { pts: 25, passia: 0, label: "Vidéo publiée" },
-  publish_audio:  { pts: 20, passia: 0, label: "Podcast publié" },
-  publish_vlog:   { pts: 50, passia: 0, label: "Carnet de voyage publié" },
-  event_create:   { pts: 30, passia: 0, label: "Événement créé" },
-  event_join:     { pts: 20, passia: 0, label: "Participation IRL" },
-  profile_create: { pts: 15, passia: 0, label: "Nouveau profil" },
-  comment:        { pts: 3,  passia: 0, label: "Commentaire" },
-  like_received:  { pts: 2,  passia: 0, label: "Like reçu" },
-  first_login:    { pts: 50, passia: 0, label: "Premier login" },
-  daily:          { pts: 5,  passia: 0, label: "Connexion du jour" },
-};
+// ======== POINTS — RETIRÉS ========
+// Le système de points (⭐ étoiles, rangs, classement) a été retiré de l'app le
+// 2026-08-29 : les tables RANKS et REWARDS n'avaient plus un seul lecteur, et
+// les garder aurait laissé croire qu'un barème existe encore. Le Passia (💎),
+// lui, reste — c'est la monnaie du projet, et il n'a JAMAIS été distribué par
+// ce barème (`passia: 0` sur les douze entrées).
 
 // 💎 Un palier de likes reçus = +1 Passia (la valeur reçue, lissée et non-farmable).
 const LIKES_PER_PASSIA = 10;
@@ -1749,7 +1722,7 @@ function buildSeed() {
     { id: "n2", kind: "follow",  fromId: "u_clara", text: "<b>Clara Jensen</b> suit maintenant ton profil voyage", createdAt: hours(1), unread: true,  emoji: "🤝" },
     { id: "n3", kind: "comment", fromId: "u_yanis", text: "<b>Yanis Perez</b> a réagi à un post : « On devrait échanger 🚀 »", createdAt: hours(2), unread: true,  emoji: "💬" },
     { id: "n4", kind: "event",   fromId: "u_theo",  text: "<b>Théo Roussel</b> t'invite au « Dîner entre passionnés de cuisine »", createdAt: hours(3), unread: false, emoji: "🍳" },
-    { id: "n5", kind: "quest",   fromId: "me",      text: "Nouvelle quête du jour : publie ton premier post 🎨 <b>+15 pts</b>", createdAt: hours(5), unread: false, emoji: "🎯" },
+    { id: "n5", kind: "quest",   fromId: "me",      text: "Nouvelle quête du jour : publie ton premier post 🎨", createdAt: hours(5), unread: false, emoji: "🎯" },
     { id: "n6", kind: "system",  fromId: "me",      text: "Bienvenue sur PASSIO 🎉 Tu as gagné <b>10 💎 Passia</b> de bienvenue.", createdAt: hours(6), unread: false, emoji: "✨" },
     { id: "n7", kind: "like",    fromId: "u_karim", text: "<b>Karim Belkacem</b> a réagi à ta passion photo", createdAt: hours(10), unread: false, emoji: "📷" },
   ];

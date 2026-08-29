@@ -25,9 +25,10 @@
 // et les gestionnaires de fichiers EXISTANTS fixent déjà `studioType` eux-mêmes.
 // Rien n'est dupliqué, rien n'est réécrit.
 //
-// ⚠️ « +10 pts » quitte le bouton, et le toast de récompense est masqué : le §11
-// sort les mécaniques économiques du cœur. Seul l'AFFICHAGE change — `grantReward`
-// continue de tourner, les points continuent d'être comptés. Le lot est visuel.
+// ⚠️ Le toast de récompense est masqué ici : le §11 sort les mécaniques
+// économiques du cœur. Le libellé « +10 pts » du bouton, lui, a disparu du
+// markup lui-même le 2026-08-29 avec le RETRAIT du système de points —
+// `grantReward` ne compte donc plus rien nulle part, kill switch posé ou non.
 //
 // Coupures, prioritaires sur tout :
 //   window.PASSIO_UI_6 === false   ·   localStorage.passio_ui_6 === "0"

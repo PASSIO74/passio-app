@@ -9,7 +9,8 @@
 // Invariants vérifiés ici :
 //   · setFeedPassions écrit les DEUX sources et déduplique en gardant l'ordre ;
 //   · onbFinish V2 : un seul profil de départ, tous les intérêts dans le fil ;
-//   · aucun Passia/score distribué en V2 (ADR-009) ;
+//   · aucun Passia distribué en V2 (ADR-009) — ni ailleurs depuis le retrait
+//     du système de points le 2026-08-29 ;
 //   · les intérêts survivent à un rechargement complet ;
 //   · un compte antérieur sans selectedFeedPassions est migré depuis ses profils,
 //     sans qu'aucun profil existant soit supprimé ;
@@ -80,8 +81,10 @@ test("onbFinish V2 : un seul profil de départ, mais toutes les passions dans le
   expect(r.profils).toEqual(["sport"]);
   expect(r.interets).toEqual(["sport", "musique", "cuisine"]);
   expect(r.persiste).toEqual(["sport", "musique", "cuisine"]);
-  // ADR-009 : aucune gamification monétaire dans le parcours V2.
-  expect(r.score).toBe(0);
+  // ADR-009 : aucune gamification monétaire dans le parcours V2. Depuis le
+  // retrait du système de points (2026-08-29), `score` n'existe même plus dans
+  // l'état neuf — l'assertion suit ce fait plutôt que de le contourner.
+  expect(r.score).toBeUndefined();
   expect(r.passia).toBe(0);
   expect(r.transactions).toBe(0);
 });
@@ -181,10 +184,15 @@ test("drapeau à false : l'ancien comportement est strictement rétabli", async 
       profils: state.user.profiles.map((p) => p.passion),
       interets: Array.from(_activeFeedPassions),
       score: state.user.score,
+      transactions: state.transactions.length,
     };
   });
-  // Ancien parcours : un profil PAR passion, aucun filtre de fil, gamification active.
+  // Ancien parcours : un profil PAR passion et aucun filtre de fil. ⚠️ La
+  // gamification, elle, n'est plus « active » nulle part : le système de points
+  // a été retiré de l'app le 2026-08-29, y compris sur ce chemin de repli qui
+  // créditait encore first_login + daily. L'assertion est INVERSÉE, pas retirée.
   expect(r.profils).toEqual(["sport", "musique", "cuisine"]);
   expect(r.interets).toEqual([]);
-  expect(r.score).toBeGreaterThan(0);
+  expect(r.score).toBeUndefined();
+  expect(r.transactions).toBe(0);
 });

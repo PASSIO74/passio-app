@@ -32,7 +32,8 @@ function defaultState() {
       name: "",
       birthYear: null,
       isMinor: false,
-      score: 0,
+      // `score` a disparu avec le système de points (2026-08-29). Les états déjà
+      // enregistrés gardent le leur : il n'est simplement plus lu ni écrit.
       passia: 0,
       currentProfileId: null,
       profiles: [],
@@ -971,23 +972,25 @@ function _withSenderMeta(content) {
   return JSON.stringify({ type: "text", text: (content == null ? "" : String(content)), sp: sp });
 }
 
-function rankOf(score) {
-  let r = RANKS[0];
-  for (const rank of RANKS) if (score >= rank.min) r = rank;
-  return r;
+// ======== PRIX D'UN ÉVÉNEMENT — EN EUROS ========
+// Le prix d'un événement IRL est un prix RÉEL, en euros : ce que l'organisateur
+// demande à l'entrée. Il n'a jamais rien eu à voir avec le Passia, monnaie
+// interne non convertible — l'afficher « 12 Passia » laissait croire qu'on payait
+// un atelier avec des points de fidélité. Un seul formateur pour toutes les
+// surfaces (carte de liste, fiche, carte V2) afin qu'elles ne divergent pas.
+function fmtEventPrice(price) {
+  const n = Number(price);
+  if (price === null || price === undefined || price === "" || !isFinite(n) || n <= 0) return "Gratuit 🎉";
+  // Pas de décimales inutiles : « 12 € », mais « 12,50 € » quand elles existent.
+  const txt = Number.isInteger(n) ? String(n) : n.toFixed(2).replace(".", ",");
+  return txt + "\u00a0€";
 }
 
-// Célèbre un passage de rang : à appeler APRÈS une modification du score, en lui
-// passant le score AVANT le gain. Ne toaste que si le rang a réellement grimpé.
+// INERTE depuis le retrait du système de points (2026-08-29). La fonction reste
+// définie parce qu'une vingtaine d'appelants la nomment ; il n'y a plus de rang
+// à monter, donc plus rien à célébrer.
 function checkRankUp(prevScore) {
-  if (!state || !state.user) return;
-  const newRank = rankOf(state.user.score || 0);
-  const oldRank = rankOf(prevScore || 0);
-  if (newRank.label === oldRank.label) return;
-  const order = RANKS.map(r => r.label);
-  if (order.indexOf(newRank.label) <= order.indexOf(oldRank.label)) return; // pas une montée
-  try { toast("🎉 Nouveau rang débloqué : " + newRank.label + " !", "reward"); } catch (e) {}
-  try { if (typeof pushNotification === "function") pushNotification("🎉 Nouveau rang : <b>" + escapeHtml(newRank.label) + "</b>", "🏆"); } catch (e) {}
+  return;
 }
 
 // ======== TOAST ========
@@ -1006,11 +1009,21 @@ function toast(msg, type = "info", onClick = null) {
   setTimeout(() => t.remove(), onClick ? 6000 : 3000);
 }
 
+// ⚠️ `:root.passio-ui-6 .toast.reward { display: none }` masque ce toast tant
+// qu'UI-6 est actif (le §11 sort les mécaniques économiques du cœur) : ne pas
+// s'étonner de ne rien voir à l'écran.
+// Les ⭐ ont disparu avec le système de points : ce toast ne parle plus que du
+// Passia, et se tait quand il n'y en a pas (une récompense de 0 n'est pas une
+// récompense). La signature garde son premier paramètre : une quinzaine
+// d'appelants la passent, et les casser tous pour un argument ignoré serait
+// une refonte sans bénéfice.
 function rewardToast(amount, passia, reason) {
+  if (!passia) return;
   const stack = $("#toastStack");
+  if (!stack) return;
   const t = document.createElement("div");
   t.className = "toast reward";
-  t.innerHTML = `⭐ +${amount}${passia ? ` · 💎 +${passia}` : ""} · ${escapeHtml(reason)}`;
+  t.innerHTML = `💎 +${passia} · ${escapeHtml(reason)}`;
   stack.appendChild(t);
   setTimeout(() => t.remove(), 3000);
 }
@@ -1025,54 +1038,37 @@ function _walletScreenActive() {
   return !!(el && el.classList.contains("active"));
 }
 
+// Le système de points a été retiré de l'app (2026-08-29). La fonction reste
+// définie et appelée — une vingtaine de chemins la nomment, souvent sans garde
+// — mais elle ne crédite plus rien, n'inscrit plus de transaction et ne toaste
+// plus. Le Passia, lui, n'a jamais été distribué ici (`passia: 0` partout dans
+// REWARDS) : rien n'est donc perdu de ce côté.
 function grantReward(kind, customLabel) {
-  const r = REWARDS[kind];
-  if (!r) return;
-  const _prevScore = state.user.score || 0;
-  state.user.score += r.pts;
-  state.user.passia += r.passia;
-  state.transactions.unshift({
-    id: uid(),
-    kind,
-    pts: r.pts,
-    passia: r.passia,
-    label: customLabel || r.label,
-    at: Date.now(),
-  });
-  saveState();
-  renderTopbar();
-  if (_walletScreenActive()) renderWallet();
-  rewardToast(r.pts, r.passia, customLabel || r.label);
-  checkRankUp(_prevScore);
+  return;
 }
 
 // 💎 VALEUR REÇUE — appelé quand QUELQU'UN D'AUTRE like un de MES posts (via le
 // canal realtime:likes). C'est la seule source « organique » de Passia : rare,
-// non-farmable (il faut que les autres aiment ton contenu). Chaque like reçu
-// donne 2 ⭐ ; tous les LIKES_PER_PASSIA likes reçus → +1 💎.
+// non-farmable (il faut que les autres aiment ton contenu). Tous les
+// LIKES_PER_PASSIA likes reçus → +1 💎. Les points qui accompagnaient chaque like
+// ont été retirés avec le reste du système de points ; le compteur de likes reçus
+// reste, c'est lui qui déclenche le palier.
 function awardLikeReceived() {
   if (!state || !state.user) return;
-  const _prevScore = state.user.score || 0;
-  state.user.score = (state.user.score || 0) + (REWARDS.like_received.pts || 2);
   state.user.likesReceived = (state.user.likesReceived || 0) + 1;
-  let passia = 0;
-  if (state.user.likesReceived % LIKES_PER_PASSIA === 0) {
-    passia = 1;
-    state.user.passia = (state.user.passia || 0) + 1;
-  }
+  if (state.user.likesReceived % LIKES_PER_PASSIA !== 0) { saveState(); return; }
+  state.user.passia = (state.user.passia || 0) + 1;
   state.transactions.unshift({
     id: uid(),
     kind: "like_received",
-    pts: REWARDS.like_received.pts || 2,
-    passia,
-    label: passia ? "Palier de likes reçus 💎" : "Like reçu",
+    passia: 1,
+    label: "Palier de likes reçus 💎",
     at: Date.now(),
   });
   saveState();
   try { renderTopbar(); } catch (e) {}
   try { if (_walletScreenActive()) renderWallet(); } catch (e) {}
-  if (passia) rewardToast(REWARDS.like_received.pts || 2, passia, "Ton contenu plaît !");
-  checkRankUp(_prevScore);
+  rewardToast(0, 1, "Ton contenu plaît !");
 }
 
 // ======== NAVIGATION ========
@@ -2495,25 +2491,9 @@ function onbFinish() {
   }
   state.onboarded = true;
 
-  // GAMIFICATION — retirée du parcours V2 (ADR-009 : Wallet/Passia hors du cœur).
-  // Conservée telle quelle sur le chemin de repli pour ne rien changer à l'ancien.
-  if (!v2) {
-    state.user.score += REWARDS.first_login.pts;
-    state.user.passia += REWARDS.first_login.passia;
-    state.transactions.unshift({
-      id: uid(), kind: "first_login",
-      pts: REWARDS.first_login.pts, passia: REWARDS.first_login.passia,
-      label: "Bienvenue sur PASSIO", at: Date.now(),
-    });
-
-    state.user.score += REWARDS.daily.pts;
-    state.user.passia += REWARDS.daily.passia;
-    state.transactions.unshift({
-      id: uid(), kind: "daily",
-      pts: REWARDS.daily.pts, passia: REWARDS.daily.passia,
-      label: "Connexion du jour", at: Date.now(),
-    });
-  }
+  // GAMIFICATION — le système de points a été retiré de l'app (2026-08-29), et
+  // ces deux bonus ne distribuaient aucun Passia (`passia: 0` dans REWARDS) :
+  // il ne reste donc rien à créditer à l'inscription, ni en V2 ni sur le repli.
 
   saveState();
 

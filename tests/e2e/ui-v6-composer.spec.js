@@ -170,8 +170,15 @@ test.describe("UI-6 — composer de publication", () => {
     await expect(page.locator(".profile-chips-row")).toBeHidden();
     await expect(page.locator("#topPassia")).toHaveCount(1);
 
-    // Et le moteur de points, lui, continue de tourner : seul l'affichage change.
+    // `grantReward` reste DÉFINIE — une vingtaine de chemins l'appellent, souvent
+    // sans garde — mais elle est inerte depuis le retrait du système de points :
+    // elle ne crédite plus rien et n'inscrit plus de transaction.
     expect(await page.evaluate(() => typeof grantReward === "function")).toBe(true);
+    expect(await page.evaluate(() => {
+      const avant = (state.transactions || []).length;
+      grantReward("publish_text");
+      return (state.transactions || []).length - avant;
+    })).toBe(0);
   });
 
   test("kill switch local au boot : Studio historique strictement rendu", async ({ page }) => {
@@ -186,9 +193,12 @@ test.describe("UI-6 — composer de publication", () => {
     await expect(page.locator("#studioTypeTabs .studio-type")).toHaveCount(5);
     await expect(page.locator("#fieldPassion")).toBeVisible();
     await expect(page.locator("#fieldMood")).toBeVisible();
-    // Le libellé historique, récompense comprise.
+    // Plus AUCUNE promesse de points, kill switch ou pas : le système de points
+    // a été retiré du markup lui-même le 2026-08-29, il n'y a donc plus de
+    // libellé historique à restituer. Le contrôle est conservé, inversé — le
+    // supprimer laisserait la porte ouverte à une réapparition silencieuse.
     expect(await page.evaluate(() =>
-      document.getElementById("screen-studio").textContent.includes("+10 pts"))).toBe(true);
+      document.getElementById("screen-studio").textContent.includes("+10 pts"))).toBe(false);
     // Et les pastilles du profil sont de retour.
     await page.evaluate(() => goTo("profiles"));
     await page.waitForTimeout(300);

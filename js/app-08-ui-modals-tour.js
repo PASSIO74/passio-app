@@ -1891,7 +1891,7 @@ function renderQuests() {
   // Regroupe par catégorie : daily, weekly, community
   const groups = {
     daily: { label: "🔥 Défis du jour", quests: [] },
-    weekly: { label: "⭐ Défis de la semaine", quests: [] },
+    weekly: { label: "📅 Défis de la semaine", quests: [] },
     community: { label: "🏆 Défis communautaires (gros gains)", quests: [] },
   };
   quests.forEach(q => {
@@ -1900,13 +1900,12 @@ function renderQuests() {
   });
 
   // Stats du haut : total gagnable + déjà gagné
-  const totalPts = quests.filter(q => !q.done).reduce((s, q) => s + q.reward, 0);
   const totalPassia = quests.filter(q => !q.done).reduce((s, q) => s + q.passia, 0);
   const doneCount = quests.filter(q => q.done).length;
 
   let html = `<div class="quest-summary">
     <div class="quest-summary-line"><b>${doneCount} / ${quests.length}</b> défis complétés</div>
-    <div class="quest-summary-line">À gagner : <b>+${totalPts} pts</b> · <b>+${totalPassia} 💎</b></div>
+    <div class="quest-summary-line">À gagner : <b>+${totalPassia} 💎</b></div>
   </div>`;
 
   Object.entries(groups).forEach(([cat, group]) => {
@@ -1920,7 +1919,7 @@ function renderQuests() {
           <div class="quest-emoji">${q.emoji}</div>
           <div class="quest-body">
             <div class="quest-title">${escapeHtml(q.title)}</div>
-            <div class="quest-reward">+${q.reward} pts · +${q.passia} 💎</div>
+            <div class="quest-reward">+${q.passia} 💎</div>
             <div class="quest-progress"><div class="quest-progress-bar" style="width:${pct}%;"></div></div>
           </div>
           ${q.done
@@ -1948,25 +1947,26 @@ function bumpQuest(type) {
   if (changed) { saveState(); if (typeof _walletScreenActive === "function" && _walletScreenActive()) renderQuests(); }
 }
 
+// Une quête ne rapporte plus que du Passia : le système de points a été retiré
+// de l'app (2026-08-29), et `q.reward` — son montant en points — n'est plus ni
+// crédité ni affiché. Le champ reste dans le seed, il n'est simplement plus lu.
 function claimQuest(id) {
   const q = state.quests.find(x => x.id === id);
   if (!q || q.done || q.progress < q.target) return;
   q.done = true;
-  const _prevScore = state.user.score || 0;
-  state.user.score += q.reward;
   state.user.passia += q.passia;
   state.transactions.unshift({
-    id: uid(), ts: Date.now(), type: "quest",
+    id: uid(), ts: Date.now(), type: "quest", kind: "quest",
     title: "Quête : " + q.title,
-    score: q.reward, passia: q.passia,
+    label: "Quête : " + q.title,
+    passia: q.passia, at: Date.now(),
   });
   saveState();
-  rewardToast(q.reward, q.passia, "Quête complétée");
+  rewardToast(0, q.passia, "Quête complétée");
   pushNotification("🎯 Quête complétée : <b>" + escapeHtml(q.title) + "</b>", "🎯");
   renderQuests();
   renderTopbar();
   renderWallet();
-  checkRankUp(_prevScore);
 }
 
 // ======== ACTIVATION CLAVIER GÉNÉRIQUE des [role="button"] non natifs ========

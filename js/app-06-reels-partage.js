@@ -182,19 +182,8 @@ function renderMainProfile() {
     : "";
   rsEl.style.display = links.length ? "" : "none";
 
-  // Pastille étoiles : indicateur discret de points + rang (clic → Wallet pour
-  // le détail). Remis à la demande de l'utilisateur, version sobre et intuitive.
-  // Allégé (2026-07-20) : on n'affiche PLUS le libellé de rang ni la jauge
-  // « Plus que X pts avant … » — seulement le chiffre. Le détail (rang,
-  // progression) reste dans le Wallet, où mène le clic.
-  var starsScoreEl = document.getElementById("profileStarsScore");
-  if (starsScoreEl) {
-    var _score = state.user.score || 0;
-    var _rank  = (typeof rankOf === "function") ? rankOf(_score) : { label: "Débutant" };
-    starsScoreEl.textContent = _score;
-    var chip = document.getElementById("mainProfileStars");
-    if (chip) chip.title = _rank && _rank.next ? ("⭐ " + _score + " · " + _rank.label + " — plus que " + Math.max(0, _rank.next - _score) + " pts avant « " + (rankOf(_rank.next).label) + " »") : ("⭐ " + _score + " · rang maximum atteint 🏆");
-  }
+  // La pastille « ⭐ N » a quitté la ligne d'identité avec le système de points
+  // (2026-08-29), et son nœud #profileStarsScore n'existe plus dans index.html.
 
   // Pastille badges : uniquement quand il y en a au moins un (une pastille « 0 »
   // ne raconte rien et encombre la ligne d'identité).
@@ -1538,7 +1527,7 @@ function openCreateProfile(_paidSlotConfirmed) {
     <div style="text-align:center;margin-bottom:18px;">
       <div style="font-size:28px;margin-bottom:6px;">✨</div>
       <div style="font-weight:800;font-size:17px;color:var(--text);margin-bottom:4px;">Nouveau fil passion</div>
-      <div style="font-size:12px;color:var(--muted);line-height:1.5;">Chaque passion = un fil dédié sur ton profil.<br/>+15 pts · +2 💎 à la création.</div>
+      <div style="font-size:12px;color:var(--muted);line-height:1.5;">Chaque passion = un fil dédié sur ton profil.</div>
     </div>
     <div class="passion-grid new-profile-passion-grid" id="newProfileGrid">
       ${pool.map(p => `
@@ -2661,13 +2650,14 @@ function aiGenerateResponse(query) {
 
   // --- Gamification ---
   if (intent === "gamification") {
+    // Ces cinq cartes annonçaient « +N pts · +N 💎 » par action : les points ont
+    // été retirés de l'app (2026-08-29), et ces actions n'ont JAMAIS versé de
+    // Passia (`passia: 0` sur tout l'ancien barème). Le panneau dit donc
+    // désormais les deux seules sources réelles.
     return '<div><div class="ai-section-label">💎 Comment gagner des Passia</div>' +
-      '<div class="ai-card"><div class="ai-card-title">📝 Publier un post texte</div><div class="ai-card-meta">+10 pts · +2 💎</div></div>' +
-      '<div class="ai-card"><div class="ai-card-title">📷 Publier une photo</div><div class="ai-card-meta">+15 pts · +3 💎</div></div>' +
-      '<div class="ai-card"><div class="ai-card-title">🎙 Publier un podcast</div><div class="ai-card-meta">+20 pts · +5 💎</div></div>' +
-      '<div class="ai-card"><div class="ai-card-title">📍 Rejoindre un événement IRL</div><div class="ai-card-meta">+25 pts · +5 💎</div></div>' +
-      '<div class="ai-card"><div class="ai-card-title">📔 Lancer un CDV Live</div><div class="ai-card-meta">+30 pts · +8 💎</div></div>' +
-      '<div style="margin-top:8px;font-size:12px;color:var(--muted);">Consulte ton Wallet dans l\'onglet <b>Wallet</b> pour voir ton score et le leaderboard.</div></div>';
+      '<div class="ai-card"><div class="ai-card-title">❤️ Des likes sur ton contenu</div><div class="ai-card-meta">' + LIKES_PER_PASSIA + ' likes reçus = +1 💎</div></div>' +
+      '<div class="ai-card"><div class="ai-card-title">🎯 Compléter une quête</div><div class="ai-card-meta">Défis du jour, de la semaine et communautaires</div></div>' +
+      '<div style="margin-top:8px;font-size:12px;color:var(--muted);">Le Passia récompense la valeur que tu crées pour les autres : il ne se gagne pas en solo. Ton solde est dans l\'onglet <b>Wallet</b>.</div></div>';
   }
 
   // --- Bien-être ---

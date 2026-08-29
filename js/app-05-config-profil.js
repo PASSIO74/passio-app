@@ -2341,7 +2341,6 @@ function tipReel(postId, btn) {
   state.transactions.unshift({
     id: uid(),
     kind: "tip_reel",
-    pts: 0,
     passia: -1,
     label: "Soutien à un créateur",
     at: Date.now(),
