@@ -1479,8 +1479,24 @@ document.addEventListener("keydown", (e) => {
 // la barre principale, où elle se comporte exactement comme les miennes.
 // ⚠️ Cocher dans le panneau AJOUTE la tuile, ça ne filtre pas : c'est le clic sur
 // la tuile qui filtre (aria-pressed). Les deux gestes sont distincts.
+// ⚠️ « Mes passions » doit dire la MÊME chose sur Rencontrer et sur le Fil.
+// Mesuré avant correctif, juste après avoir archivé « Cuisine » :
+//   renderProfileStrip (Fil)  → ["musique"]
+//   _irlMyPassions (Rencontrer) → ["musique", "cuisine"]
+// La passion rangée gardait donc sa tuile marquée « ✦ une de tes passions »,
+// et l'intention « Passio » d'UI-4A1, qui se sert de cette liste, filtrait
+// dessus. La règle est reprise telle quelle de `renderProfileStrip` (app-06) :
+// sous le kill switch d'UI-8 l'archivage n'existe pas comme notion, donc on
+// rend toutes les passions, exactement comme avant le lot.
+// ⚠️ Une passion archivée qui serait ENCORE dans `irlPassionFilters` reste
+// affichée : `renderIrlPassionTiles` ajoute `[...irlPassionFilters]` aux tuiles
+// montrées, précisément pour qu'un filtre actif ne devienne jamais indécochable.
 function _irlMyPassions() {
-  return [...new Set((state.user.profiles || []).map(p => p.passion).filter(Boolean))];
+  const source = (typeof passionsUnifieesActives === "function" && passionsUnifieesActives()
+                  && typeof passionsVivantes === "function")
+    ? passionsVivantes()
+    : (state.user.profiles || []);
+  return [...new Set(source.map(p => p.passion).filter(Boolean))];
 }
 function _irlExtraPassions() {
   if (!Array.isArray(state.user.irlExtraPassions)) state.user.irlExtraPassions = [];
