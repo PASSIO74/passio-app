@@ -431,4 +431,68 @@ test.describe("Fil — Envie du moment (UI-2 active par défaut)", () => {
     expect(apres.flexShrink).toBe("0");
     expect(apres.textOverflow).toBe("clip");
   });
+
+  // ── Vocabulaire : la pastille d'un contenu dit ce que disent les onglets ───
+  // Les anciens moods (Création · Chill · IRL · Actu) ont été remplacés par les
+  // intentions. La pastille en haut à droite d'une carte est la seule autre
+  // surface du fil à nommer une intention : elle doit employer EXACTEMENT les
+  // libellés du rail, sinon le fil parle deux langues.
+  test("la pastille d'un contenu emploie les libellés du rail, jamais les anciens moods", async ({ page }) => {
+    await boot(page);
+    await page.evaluate(() => {
+      state.userPosts = [
+        { id: "mood_create", authorId: "a", authorName: "A", passion: "musique", mood: "creation", type: "text", text: "c", createdAt: 5000, likes: 0, comments: [] },
+        { id: "mood_learn", authorId: "b", authorName: "B", passion: "musique", mood: "learn", type: "text", text: "l", createdAt: 4000, likes: 0, comments: [] },
+        { id: "mood_meet", authorId: "c", authorName: "C", passion: "musique", mood: "irl", type: "text", text: "m", createdAt: 3000, likes: 0, comments: [] },
+        { id: "mood_chill", authorId: "d", authorName: "D", passion: "musique", mood: "chill", type: "text", text: "h", createdAt: 2000, likes: 0, comments: [] },
+        { id: "mood_actu", authorId: "e", authorName: "E", passion: "musique", mood: "actu", type: "text", text: "a", createdAt: 1000, likes: 0, comments: [] },
+      ];
+      state.seed.posts = [];
+      state.supabasePosts = [];
+      state.user.following = [];
+      state.user.profiles = [{ id: "qa", name: "QA", passion: "musique" }];
+      _activeFeedPassions = new Set(["musique"]);
+      _showFollowingFeed = false;
+      window._feedDomSig = null;
+      renderFeed();
+    });
+    await expect(page.locator("#feedList .post")).toHaveCount(5);
+
+    const pastilles = await page.locator("#feedList .post").evaluateAll((els) => {
+      const out = {};
+      els.forEach((el) => {
+        const tag = el.querySelector(".post-mood-tag");
+        out[el.dataset.postid] = tag ? tag.textContent.trim() : null;
+      });
+      return out;
+    });
+    const rail = await page.locator("#feedIntentSelector .feed-intent-btn")
+      .evaluateAll((els) => els.map((b) => b.textContent.trim()));
+
+    // Chaque pastille reprend, à l'emoji près, le mot exact de son onglet.
+    expect(pastilles.mood_create).toBe("💡 Idées");
+    expect(pastilles.mood_learn).toBe("📚 Apprendre");
+    expect(pastilles.mood_meet).toBe("🤝 Rencontrer");
+    ["mood_create", "mood_learn", "mood_meet"].forEach((id) => {
+      const mot = pastilles[id].replace(/^\S+\s+/, "");
+      expect(rail, "« " + mot + " » doit exister dans le rail").toContain(mot);
+    });
+
+    // Aucun mot de l'ancien vocabulaire ne subsiste.
+    const tout = Object.values(pastilles).join(" | ");
+    ["Création", "Chill", "IRL", "Actu"].forEach((ancien) => {
+      expect(tout, "ancien mood « " + ancien + " » encore affiché").not.toContain(ancien);
+    });
+
+    // « Tous » et « Explorer » ne sont pas des attributs de contenu : un mood
+    // sans intention ne reçoit AUCUNE pastille — pas même une pilule vide, que
+    // la bordure et le fond de `.post-mood-tag` rendraient visible.
+    expect(pastilles.mood_chill).toBeNull();
+    expect(pastilles.mood_actu).toBeNull();
+    expect(await page.locator("#feedList .post-mood-tag").count()).toBe(3);
+
+    // Le post ouvert en détail porte le même en-tête que sa carte.
+    await page.evaluate(() => openPost("mood_meet"));
+    await expect(page.locator("#postDetailContent .post-mood-tag").first()).toHaveText("🤝 Rencontrer");
+  });
 });

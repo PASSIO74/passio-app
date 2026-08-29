@@ -2062,7 +2062,9 @@ const COLORS_PASSION_BG = {
 function renderReelHTML(post, idx) {
   const author = authorOfReel(post);
   const passion = passionById(post.passion) || { label: post.passion, emoji: "✨" };
-  const moodLabel = ({ creation: "Création", learn: "Apprendre", chill: "Chill", actu: "Actu" })[post.mood] || "Tout";
+  // Même vocabulaire que le fil : les intentions, jamais les anciens moods.
+  // Vide quand le contenu ne sert aucune intention → on n'affiche que la Passio.
+  const moodLabel = moodIntentLabel(post.mood);
   // Source de vérité = l'état persisté des likes (partagé avec le fil), pas le Set
   // volatil du viewer : un post aimé dans le fil doit apparaître aimé en Bobines.
   const isLiked = ((state.user.likedPosts || []).indexOf(post.id) > -1) || reelsState.liked.has(post.id);
@@ -2075,7 +2077,7 @@ function renderReelHTML(post, idx) {
         ${(Array.isArray(post.overlays) && post.overlays.length && typeof _storyOverlaysHtml === "function") ? `<div class="reel-overlays-layer">${_storyOverlaysHtml(post.overlays)}</div>` : ""}
       </div>
       <div class="reel-overlay"></div>
-      <span class="reel-tag-mood">${passion.emoji} ${escapeHtml(passion.label)} · ${moodLabel}</span>
+      <span class="reel-tag-mood">${passion.emoji} ${escapeHtml(passion.label)}${moodLabel ? ` · ${moodLabel}` : ""}</span>
       ${post.type === "video" ? `<button class="reel-sound-btn" onclick="toggleReelsSound(event)" aria-label="Activer ou couper le son">${reelsState.soundOn ? "🔊" : "🔇"}</button>` : ""}
       <div class="reel-info">
         <div class="reel-author" onclick="_openReelAuthor('${escapeJsArg(post.authorId || post.userId || '')}'); return false;" style="cursor:pointer;">
@@ -2763,7 +2765,6 @@ function openReelShareModal(postId) {
   const url = (_lk && tel.tagUrl) ? tel.tagUrl(rawUrl, _lk) : rawUrl;
   const author = authorOfReel(reel);
   const passion = passionById(reel.passion) || { label: reel.passion, emoji: "✨" };
-  const moodLabel = ({ creation: "Création", learn: "Apprendre", chill: "Chill", actu: "Actu" })[reel.mood] || "Tout";
   const txt = reel.text || reel.caption || "";
 
   // Créer des URLs de partage pour les réseaux sociaux

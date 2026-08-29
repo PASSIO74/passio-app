@@ -2725,6 +2725,31 @@ function legacyMoodToFeedIntent(mood) {
   return "generic"; // actu, chill, all, absent ou valeur inconnue
 }
 
+// Libellé de la pastille posée en haut à droite d'un contenu.
+// ──────────────────────────────────────────────────────────────────────────
+// Le vocabulaire des anciens moods (Création · Chill · IRL · Actu) a été
+// REMPLACÉ par les intentions du rail « Envie du moment » (Tous · Explorer ·
+// Apprendre · Idées · Rencontrer). La pastille doit dire exactement ce que
+// disent les onglets, sinon le fil parle deux langues à la fois.
+// La correspondance passe par `legacyMoodToFeedIntent`, déjà seule source de
+// vérité du classement (`rankFeedPostsForIntent`) : pastille et onglet ne
+// peuvent donc plus diverger.
+// ⚠️ « Tous » et « Explorer » ne sont PAS des attributs de contenu — l'un est
+// le neutre, l'autre se calcule par rapport à celui qui regarde. Un mood sans
+// intention (chill, actu, inconnu, absent) ne reçoit donc AUCUNE pastille :
+// l'en-tête porte déjà la Passio et l'heure. Ne jamais rendre le <span> vide,
+// `.post-mood-tag` a une bordure et un fond — il dessinerait une pilule creuse
+// (défaut déjà visible sur les contenus « actu », absents de l'ancienne table).
+var FEED_INTENT_CONTENT_LABELS = {
+  create: "💡 Idées",
+  learn: "📚 Apprendre",
+  meet: "🤝 Rencontrer"
+};
+
+function moodIntentLabel(mood) {
+  return FEED_INTENT_CONTENT_LABELS[legacyMoodToFeedIntent(mood)] || "";
+}
+
 function feedIntentMeta(intent) {
   return { v: FEED_INTENTS_VERSION, flag: "on", intent: normalizeFeedIntent(intent) };
 }
@@ -3736,7 +3761,7 @@ function renderPostHTML(p) {
     photoUrl: _cuAuthor.photoUrl || p.authorAvatar || null,  // 📷 photo de profil (live > snapshot)
   };
   const passion = passionById(p.passion);
-  const moodMap = { creation: "🎨 Création", learn: "📚 Apprendre", chill: "😌 Chill", irl: "🤝 IRL" };
+  const moodTag = moodIntentLabel(p.mood);
   const liked = (state.user.likedPosts || []).includes(p.id);
   const likeClass = liked ? "liked" : "";
 
@@ -3894,7 +3919,7 @@ function renderPostHTML(p) {
       ${p._source === "me" ? `<button class="post-menu-btn" onclick="event.stopPropagation();openPostOptions('${escapeJsArg(p.id)}')" aria-label="Options du post" title="Options">
         <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>
       </button>` : ""}
-      <span class="post-mood-tag">${moodMap[p.mood] || ""}</span>
+      ${moodTag ? `<span class="post-mood-tag">${moodTag}</span>` : ""}
     </div>
 
     <div class="post-body" onclick="${FEED_POST_OPEN_FN}('${escapeJsArg(p.id)}')" style="cursor:pointer;">
@@ -3939,7 +3964,7 @@ async function openPost(id) {
     : (function(){ const cu = userById(post.authorId) || {}; return post.authorName ? { name: post.authorName, profileEmoji: post.authorEmoji || "✨", avatar: post.authorColor || "#8b5cf6", photoUrl: cu.photoUrl || post.authorAvatar || null } : cu; })();
   const passion = passionById(post.passion);
   const liked = state.user.likedPosts.includes(id);
-  const moodMap = { creation: "🎨 Création", learn: "📚 Apprendre", chill: "😌 Chill", irl: "🤝 IRL" };
+  const moodTag = moodIntentLabel(post.mood);
 
   // Media (réutilise la logique de renderPostHTML)
   let media = "";
@@ -3976,7 +4001,7 @@ async function openPost(id) {
         ${(state.userPosts || []).some(function(up){ return up.id === id; }) ? `<button class="post-menu-btn" onclick="event.stopPropagation();openPostOptions('${escapeJsArg(id)}')" aria-label="Options du post" title="Options">
           <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>
         </button>` : ""}
-        <span class="post-mood-tag">${moodMap[post.mood] || ""}</span>
+        ${moodTag ? `<span class="post-mood-tag">${moodTag}</span>` : ""}
       </div>
       <div class="post-body" style="white-space:pre-wrap;">${escapeHtml(post.text || "")}</div>
       ${media ? `<div class="dbl-like" ondblclick="_dblLikeDetail('${escapeJsArg(id)}', event)" title="Double-clic pour aimer ❤️">${media}</div>` : ""}
