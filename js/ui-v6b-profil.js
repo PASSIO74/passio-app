@@ -2,10 +2,10 @@
 // PASSIO — LOT UI-6B : le Profil du §11
 // ──────────────────────────────────────────────────────────────────────────
 // Cible (§11 de la direction) :
+//   [couverture .............................. ✏️]
 //   [avatar] Benjamin
 //   Bio générale
 //   Abonnés · Abonnements
-//   [Modifier]
 //
 //   Mes Passio
 //   🎵 Musique          Actif
@@ -73,28 +73,52 @@
   function ecran() { return document.getElementById("screen-profiles"); }
   function el(id) { return document.getElementById(id); }
 
-  // ── ① [Modifier] ─────────────────────────────────────────────────────────
-  // Le point d'édition existe déjà (`openMainProfileMenu`), mais il se cache
-  // derrière un « ⋯ » posé sur la couverture. §11 le veut nommé et visible.
+  // ── ① Le crayon ──────────────────────────────────────────────────────────
+  // Ordre de Benjamin (2026-08-29) : « remplace l'onglet Modifier par un petit
+  // onglet très discret (crayon) en haut à droite ». Le bouton pleine largeur
+  // posé sous les statistiques laisse donc la place à une pastille d'icône
+  // ancrée au coin haut droit de la couverture.
+  //
+  // ⚠️ DEUX POINTS QUI NE SONT PAS DE L'APPARENCE.
+  // ① Le point d'édition reste `openMainProfileMenu` — le même menu, avec les
+  //    mêmes quatre entrées (Modifier le profil · Photo de profil · Photo de
+  //    couverture · Apparence). Rien n'est retiré, seule la porte change de
+  //    forme. Le « ⋯ » historique occupait EXACTEMENT ce coin et ouvrait ce
+  //    même menu : le laisser mettrait deux boutons identiques côte à côte, il
+  //    est donc masqué en CSS (jamais retiré du DOM — le kill switch le rend).
+  // ② La pastille VISIBLE fait 30 px, mais la cible tactile doit rester à
+  //    44 px (mesurée sur la BOÎTE du bouton, qu'un débord en pseudo-élément
+  //    ne satisferait pas) : le bouton garde ses 44 px et c'est un `::before`
+  //    en `inset: 7px` qui PEINT le rond. Même patron que la pastille d'UI-3A.
   function poserModifier() {
     if (el(MODIF_ID)) return;
-    var stats = document.querySelector("#screen-profiles .main-profile-stats");
-    if (!stats || !stats.parentNode) return;
+    // Le coin haut droit de la couverture, où vivait le « ⋯ ». La couverture
+    // n'est jamais réécrite par `renderMainProfile` (elle ne reçoit qu'un
+    // `style.background`) : le bouton y survit aux rendus.
+    var hote = el("mainProfileCover");
+    if (!hote) return;
     var b = document.createElement("button");
     b.type = "button";
     b.className = "v6b-modifier";
     b.id = MODIF_ID;
-    b.textContent = "Modifier";
+    b.title = "Modifier le profil";
+    b.setAttribute("aria-label", "Modifier le profil");
+    b.setAttribute("aria-haspopup", "menu");
+    // Contenu statique, aucun contenu utilisateur : pas d'échappement en jeu.
+    b.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"'
+      + ' stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+      + '<path d="M4.5 19.5h3.6L18.6 9a2.2 2.2 0 0 0-3.1-3.1L5 16.4v3.1z"/>'
+      + '<path d="M14.2 7.3l2.5 2.5"/></svg>';
     b.addEventListener("click", function (e) {
       e.preventDefault();
+      // La couverture entière est cliquable : sans ceci, ouvrir le menu
+      // déclencherait aussi le geste de la couverture.
       e.stopPropagation();
       try {
         if (typeof openMainProfileMenu === "function") openMainProfileMenu(e);
       } catch (x) { fail("modifier", x); }
     });
-    // Après les statistiques, comme dans la maquette du §11.
-    if (stats.nextSibling) stats.parentNode.insertBefore(b, stats.nextSibling);
-    else stats.parentNode.appendChild(b);
+    hote.appendChild(b);
   }
 
   // ── ② « Mes Passio » ─────────────────────────────────────────────────────

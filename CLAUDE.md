@@ -611,12 +611,23 @@ Le script est en lecture seule sur le dépôt (il n'écrit que dans son dossier 
     dessous, Passio devant l'aperçu. `js/ui-v6a-messages.js`. ⚠️ `renderMessages()` repart de
     zéro (`innerHTML`) à chaque envoi, réception et frappe, et **sort tôt** quand l'écran
     n'est pas actif : la décoration passe par un MutationObserver + signature par carte.
-  - **UI-6B (§11)** — profil : « Modifier », « Mes Passio », et surtout **Actif / Activer**.
+  - **UI-6B (§11)** — profil : le point d'édition, « Mes Passio », et surtout **Actif / Activer**.
     `js/ui-v6b-profil.js`. ⚠️ Ce lot répare un défaut réel : `switchToProfile()` — la seule
     fonction qui change l'identité active — était **définie et appelée par personne**, un clic
     sur une carte de profil n'agissant que sur le filtre d'affichage (`toggleProfileSelect`).
     D'où deux conséquences : le bouton « Activer » est ce chaînon manquant, et son clic
     **doit stopper sa propagation**, sinon activer une identité basculerait aussi ce filtre.
+    ⚠️ **Amendement du 2026-08-29, sur ordre de Benjamin (« un petit onglet très discret,
+    crayon, en haut à droite »)** : le bouton « Modifier » pleine largeur posé sous les
+    statistiques est devenu un **crayon** (`#v6bModifier`, icône seule) ancré au coin haut
+    droit de `#mainProfileCover`. Trois choses à savoir avant d'y toucher. ① Le moteur ne
+    change pas : le crayon appelle toujours `openMainProfileMenu`, avec ses quatre entrées.
+    ② Le « ⋯ » historique occupait **exactement ce coin** et ouvrait **ce même menu** — deux
+    boutons identiques côte à côte : il est donc **masqué en CSS** (`:root.passio-ui-6b
+    #screen-profiles .profile-dots-btn.on-cover { display: none }`), jamais retiré du DOM,
+    de sorte que le kill switch le rende. ③ Le rond VISIBLE fait 30 px mais la cible tactile
+    se mesure sur la **boîte** du bouton : celui-ci garde ses 44 px et c'est un `::before` en
+    `inset: 7px` qui peint la pastille — même patron que la pastille d'UI-3A.
   ⚠️ **Trois règles communes à ces modules**, payées à l'écriture : ① un **verrou de coupure**
   dans la fonction de décoration (`if (!actif()) return;`) — un rendez-vous armé AVANT la
   coupure survit à l'arrêt de l'observateur et reconstruit la surface juste après sa dépose,
