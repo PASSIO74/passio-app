@@ -71,9 +71,9 @@ const TOUR_STEPS = [
     screen: "feed",
     emoji: "🏠",
     title: "Ton fil, à ton rythme",
-    lede: "Le contenu s'adapte à ton humeur du moment.",
+    lede: "Le contenu s'adapte à ton envie du moment.",
     points: [
-      "Tu choisis : envie de créer, d'apprendre ou de te détendre ?",
+      "Tu choisis : explorer, apprendre, des idées ou rencontrer ?",
       "Pas d'algorithme qui te garde captif",
       "Tu lis ce que tu veux, quand tu veux"
     ]

@@ -2746,7 +2746,20 @@ var FEED_INTENT_CONTENT_LABELS = {
   meet: "🤝 Rencontrer"
 };
 
+// ⚠️ Sous kill switch, l'ancien rail `#moodSelector` redevient VISIBLE **et
+// FILTRANT** (`posts = … filter(_moodVisible)` plus bas) : la pastille doit
+// alors reparler sa langue, sinon « Chill » filtre un fil dont aucune carte ne
+// porte de pastille, et « Création » affiche « Idées », mot absent de l'écran.
+// Le libellé suit donc EXACTEMENT le même interrupteur que le rail.
+var LEGACY_MOOD_LABELS = {
+  creation: "🎨 Création",
+  learn: "📚 Apprendre",
+  chill: "😌 Chill",
+  irl: "🤝 IRL"
+};
+
 function moodIntentLabel(mood) {
+  if (!feedIntentsEnabled()) return LEGACY_MOOD_LABELS[mood] || "";
   return FEED_INTENT_CONTENT_LABELS[legacyMoodToFeedIntent(mood)] || "";
 }
 

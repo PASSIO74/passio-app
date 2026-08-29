@@ -494,5 +494,64 @@ test.describe("Fil — Envie du moment (UI-2 active par défaut)", () => {
     // Le post ouvert en détail porte le même en-tête que sa carte.
     await page.evaluate(() => openPost("mood_meet"));
     await expect(page.locator("#postDetailContent .post-mood-tag").first()).toHaveText("🤝 Rencontrer");
+
+    // ⚠️ Sous kill switch, l'ancien rail redevient visible ET FILTRANT : la
+    // pastille doit reparler sa langue, sinon « Chill » filtrerait un fil dont
+    // aucune carte ne porte de pastille, et « Création » afficherait « Idées »,
+    // mot alors absent de l'écran.
+    await page.evaluate(() => {
+      document.getElementById("postDetailPage").classList.remove("active");
+      localStorage.setItem("passio_feed_intents_v1", "0");
+      selectedMoods = new Set(["creation", "learn", "chill", "actu"]);
+      window._feedDomSig = null;
+      renderFeed();
+    });
+    await expect(page.locator("#moodSelector")).toBeVisible();
+    const legacy = await page.locator("#feedList .post").evaluateAll((els) => {
+      const out = {};
+      els.forEach((el) => {
+        const tag = el.querySelector(".post-mood-tag");
+        out[el.dataset.postid] = tag ? tag.textContent.trim() : null;
+      });
+      return out;
+    });
+    expect(legacy.mood_create).toBe("🎨 Création");
+    expect(legacy.mood_learn).toBe("📚 Apprendre");
+    expect(legacy.mood_chill).toBe("😌 Chill");
+  });
+
+  // ── Le mot qu'on POSE est le mot qu'on LIT ─────────────────────────────────
+  // Le composer est la seule surface où un auteur choisit l'intention de sa
+  // publication. Chaque pastille qu'il propose doit produire EXACTEMENT le
+  // libellé qu'elle annonce — sinon choisir « Chill » resterait sans le moindre
+  // effet visible sur la carte, et le contrôle paraîtrait cassé.
+  test("le composer propose les mots que la carte affichera, et rien d'autre", async ({ page }) => {
+    await boot(page);
+    const pastilles = await page.evaluate(() =>
+      [...document.querySelectorAll("#postMoodRow .pill")].map((b) => ({
+        valeur: b.getAttribute("data-postmood"),
+        libelle: b.textContent.trim(),
+        carte: moodIntentLabel(b.getAttribute("data-postmood")),
+      }))
+    );
+
+    expect(pastilles.map((p) => p.valeur)).toEqual(["creation", "learn", "chill"]);
+    // Les deux intentions affichables annoncent mot pour mot leur pastille.
+    expect(pastilles[0]).toMatchObject({ libelle: "💡 Idées", carte: "💡 Idées" });
+    expect(pastilles[1]).toMatchObject({ libelle: "📚 Apprendre", carte: "📚 Apprendre" });
+    // Le neutre le DIT : aucune pastille, choisi et non subi.
+    expect(pastilles[2].libelle).toContain("Aucune");
+    expect(pastilles[2].carte).toBe("");
+
+    // Le champ ne s'appelle plus « Mood », et plus aucun ancien mot ne subsiste.
+    const champ = await page.locator("#fieldMood > span").first().textContent();
+    expect(champ.trim()).toBe("Intention");
+    const tout = pastilles.map((p) => p.libelle).join(" | ");
+    ["Création", "Apprentissage", "Chill", "Actu"].forEach((ancien) => {
+      expect(tout, "ancien mood « " + ancien + " » encore proposé").not.toContain(ancien);
+    });
+
+    // Le défaut reste `creation` : `bumpQuest("publish")` en dépend.
+    expect(await page.evaluate(() => studioMood)).toBe("creation");
   });
 });

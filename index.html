@@ -119,8 +119,8 @@
       <div class="landing-pillar">
         <div class="landing-pillar-emoji">🎨</div>
         <div>
-          <div class="landing-pillar-title">Choisis ton humeur du moment</div>
-          <div class="landing-pillar-text">Envie d'apprendre, de créer, de te détendre ? Le fil s'adapte à toi, à ton rythme.</div>
+          <div class="landing-pillar-title">Choisis ton envie du moment</div>
+          <div class="landing-pillar-text">Explorer, apprendre, des idées, rencontrer ? Le fil s'adapte à toi, à ton rythme.</div>
         </div>
       </div>
       <div class="landing-pillar">
@@ -510,8 +510,8 @@
 
       <div id="feedEmpty" class="empty" style="display:none;">
         <div class="empty-icon">🪷</div>
-        <div class="empty-title">Aucun post pour ce mood</div>
-        <div class="empty-text">Change de mood ou crée le premier contenu.</div>
+        <div class="empty-title">Aucun post pour cette sélection</div>
+        <div class="empty-text">Change de sélection ou crée le premier contenu.</div>
       </div>
     </section>
 
@@ -659,12 +659,19 @@
       </label>
 
       <label class="field" id="fieldMood">
-        <span>Mood</span>
+        <span>Intention</span>
+        <!-- Les libellés sont ceux du rail « Envie du moment » et de la pastille
+             des cartes : ce qu'un auteur POSE ici est le mot qu'un lecteur LIT
+             en haut de sa publication. Les VALEURS restent historiques
+             (creation/learn/chill) — elles sont lues par le classement, la
+             base et le filtre de repli. « Aucune » = pas de pastille, dit
+             explicitement plutôt que subi. `actu` n'est plus proposé : c'est
+             une catégorie de contenu, pas une intention, et il n'a jamais
+             produit de pastille ; les contenus existants restent intacts. -->
         <div class="pill-row" id="postMoodRow">
-          <button class="pill active" data-postmood="creation">🎨 Création</button>
-          <button class="pill" data-postmood="learn">📚 Apprentissage</button>
-          <button class="pill" data-postmood="chill">😌 Chill</button>
-          <button class="pill" data-postmood="actu">🌍 Actu</button>
+          <button class="pill active" data-postmood="creation">💡 Idées</button>
+          <button class="pill" data-postmood="learn">📚 Apprendre</button>
+          <button class="pill" data-postmood="chill">😌 Aucune en particulier</button>
         </div>
       </label>
 

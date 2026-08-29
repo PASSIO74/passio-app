@@ -2327,6 +2327,16 @@ function loadDraft(id) {
   if (!d) return;
   studioType = d.type;
   studioMood = d.mood;
+  // Un brouillon d'avant le réalignement peut porter une intention qui n'a plus
+  // de pastille (`actu`). Sans ce repli, la rangée s'afficherait SANS aucun
+  // choix actif — le contrôle paraîtrait cassé. `chill` est le neutre : même
+  // absence de pastille à l'affichage, donc aucune perte de sens.
+  var _moodsProposes = $$("#postMoodRow .pill").map(function(el) {
+    return el.getAttribute("data-postmood");
+  });
+  if (_moodsProposes.length && _moodsProposes.indexOf(studioMood) === -1) {
+    studioMood = "chill";
+  }
   photoDataUrl = d.image || null;
   videoDataUrl = d.video || null;
   audioDataUrl = d.audio || null;
