@@ -1,3 +1,94 @@
+// ══════════════════════════════════════════════════════════════════════════
+// LIEN PARTAGÉ D'UNE BOBINE — #reel=<id>
+//
+// ⚠️ Ces liens EXISTAIENT depuis toujours : openReelShareModal les fabrique et
+// les envoie sur WhatsApp, Telegram, X, Facebook, e-mail, SMS et presse-papier.
+// Mais AUCUN code ne les lisait au démarrage — ouvrir un lien de bobine partagée
+// retombait bêtement sur le fil. La boucle de partage, c'est-à-dire le seul
+// chemin d'entrée d'une personne qui ne connaît pas encore PASSIO, était rompue
+// en silence. Même défaut et même correctif que #cdv-live-<id> (app-03) et
+// #irl-event-<id> (app-07), corrigés eux le 2026-07-21.
+//
+// Trois règles que ce routage tient, et qui expliquent sa forme :
+//   ① il n'ouvre JAMAIS une autre bobine que celle demandée — openReels()
+//      montrait la première de la liste quand l'id était absent, ce qui est pire
+//      qu'une erreur : un lien qui ment sans le dire. D'où le booléen rendu par
+//      openReelById et l'épinglage dans buildReels ;
+//   ② il attend le contenu au lieu de conclure trop tôt : une bobine réelle
+//      n'arrive qu'avec supaLoadPosts, plusieurs secondes après le boot ;
+//   ③ il n'ouvre rien tant que le code d'accès n'est pas franchi (en dev, tous
+//      les scripts sont chargés avant le gate ; en prod le bloc app n'est même
+//      pas téléchargé avant, cf. scripts/build.js).
+var _reelLinkEssais = 0;      // tentatives « le contenu n'est pas encore là »
+var _reelLinkAttentes = 0;    // tentatives « le gate n'est pas franchi »
+var _reelLinkTimer = null;
+
+function _reelLinkReplanifier() {
+  if (_reelLinkTimer) return;
+  _reelLinkTimer = setTimeout(function () { _reelLinkTimer = null; _openReelDeepLink(); }, 700);
+}
+
+// Retire le #reel=<id> sans toucher à la query (?plk=… sert au suivi du lien,
+// et telemetry.js l'a déjà lu au chargement).
+function _reelLinkNettoyerHash() {
+  try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
+}
+
+function _openReelDeepLink() {
+  var m = /^#reel=(.+)$/.exec(location.hash || "");
+  if (!m) return false;
+  var id = m[1];
+  try { id = decodeURIComponent(id); } catch (e) {}
+  if (!id) return false;
+
+  // Gate non franchi : on ne consomme pas d'essai de contenu, on repasse plus
+  // tard. Borné quand même — personne ne doit laisser un minuteur tourner seul.
+  if (document.documentElement.classList.contains("passio-locked")) {
+    if (++_reelLinkAttentes <= 120) _reelLinkReplanifier();
+    return false;
+  }
+
+  var post = (typeof findPostAnywhere === "function") ? findPostAnywhere(id) : null;
+  // Mêmes conditions que buildReels : sans média, la bobine n'est pas jouable.
+  var jouable = !!post && !!post.isReel
+    && !!(post.video || post.image || post.photo || post.coverPhotoUrl || post.cover);
+
+  if (!jouable) {
+    if (++_reelLinkEssais <= 12) { _reelLinkReplanifier(); return false; }
+    _reelLinkNettoyerHash();
+    if (typeof toast === "function") toast("Bobine introuvable ou supprimée");
+    return false;
+  }
+
+  // Le hash part AVANT l'ouverture : openReels() empile son propre « #reels »,
+  // et le retour arrière doit fermer le viewer, pas rejouer le lien en boucle.
+  _reelLinkNettoyerHash();
+  _reelLinkEssais = 0;
+  _reelLinkAttentes = 0;
+  var ouvert = (typeof openReelById === "function") ? openReelById(id) !== false : false;
+  if (!ouvert) { if (typeof toast === "function") toast("Bobine introuvable ou supprimée"); return false; }
+  try { if (window.tel && tel.action) tel.action("reel_link_open", { source: "deeplink" }); } catch (e) {}
+  return true;
+}
+
+// Un lien collé pendant que l'app tourne : on repart d'un budget neuf.
+window.addEventListener("hashchange", function () {
+  if (!/^#reel=/.test(location.hash || "")) return;
+  _reelLinkEssais = 0;
+  _reelLinkAttentes = 0;
+  _openReelDeepLink();
+});
+
+(function _reelDeepLinkBoot() {
+  if (!/^#reel=/.test(location.hash || "")) return;
+  // On attend le déverrouillage plutôt que de sonder : `__gateReady` est la
+  // promesse que boot() attend déjà (js/access-gate.js). Repli immédiat si le
+  // gate est absent (page de test, build futur sans gate).
+  var demarrer = function () { setTimeout(_openReelDeepLink, 400); };
+  var g = window.__gateReady;
+  if (g && typeof g.then === "function") g.then(demarrer); else demarrer();
+})();
+
 function copyReelLink(postId, encodedUrl) {
   const url = decodeURIComponent(encodedUrl);
   if (navigator.clipboard) {

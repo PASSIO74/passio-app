@@ -497,10 +497,31 @@ Le script est en lecture seule sur le dépôt (il n'écrit que dans son dossier 
   du seed avant d'injecter les leurs : `buildReels()` assemble seed + Supabase +
   posts perso, donc le viewer en montre 22, et la liste étant en `scroll-snap`,
   une chip hors écran n'est pas cliquable.
-  ⚠️ **Deux manques constatés et laissés hors du lot** (travail de fond, gelé
-  tant que le concept n'est pas figé) : `event_id` n'est PAS dans le `.select()`
-  de `supaLoadPosts`, donc une bobine RÉELLE ne peut pas porter d'activité ; et
-  le lien de partage `#reel=<id>` n'est routé par aucun code au démarrage.
+  ⚠️ **Les deux manques laissés hors du lot UI-5 sont désormais fermés.**
+  `event_id` est entré dans le `.select()` de `supaLoadPosts` avec la PR #184.
+  Le **lien de partage `#reel=<id>`** est routé depuis le 2026-08-29 :
+  `_openReelDeepLink()` en tête de `js/app-06-reels-partage.js`, écouteur
+  `hashchange` + amorçage sur `window.__gateReady`, tests
+  `tests/e2e/reel-deeplink.spec.js` (5). C'était un défaut de production, pas une
+  fonctionnalité manquante : `openReelShareModal` fabriquait ces liens et les
+  envoyait sur WhatsApp, Telegram, X, Facebook, e-mail, SMS et presse-papier
+  depuis toujours, mais **personne ne les lisait** — donc la seule porte d'entrée
+  d'un nouveau venu retombait sur le fil. Même défaut, même correctif que
+  `#cdv-live-<id>` (app-03) et `#irl-event-<id>` (app-07).
+  ⚠️ **Trois pièges de ce correctif.** ① `buildReels()` **tronque à 30** : une
+  bobine plus ancienne n'était pas dans `reelsState.items`, et `openReelById`
+  laissait alors le viewer sur la PREMIÈRE — un lien qui montre autre chose que
+  ce qu'il promet, sans le dire. D'où le paramètre `pinnedId` (`buildReels` /
+  `openReels`), qui épingle la cible EN TÊTE sans allonger la liste, et le
+  booléen désormais rendu par `openReelById`. ② Le hash est retiré **avant**
+  l'ouverture : `openReels()` empile son propre `#reels`, donc nettoyer après
+  effacerait cette entrée et le retour arrière rejouerait le lien. ③ Le routage
+  n'ouvre rien tant que le code d'accès n'est pas franchi — en dev tous les
+  scripts sont chargés AVANT le gate (en prod le bloc app n'est même pas
+  téléchargé) : il s'accroche à `window.__gateReady` plutôt que de sonder, et
+  attend le contenu (12 essais × 700 ms) car une bobine réelle n'arrive qu'avec
+  `supaLoadPosts`. Un identifiant introuvable le DIT (toast), il n'ouvre jamais
+  une autre bobine à la place.
 
   **§5 de la direction — la palette PILOTE l'interface depuis le 2026-08-28.**
   `--v2-ink` et `--v2-cloud` étaient déclarés avec ZÉRO consommateur, et le

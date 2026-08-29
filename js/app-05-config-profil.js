@@ -1948,7 +1948,7 @@ function reelVideoFallback(videoEl, fallbackUrl) {
   try { videoEl.play().catch(()=>{}); } catch(e) {}
 }
 
-function buildReels() {
+function buildReels(pinnedId) {
   // Les Bobines sont une fonctionnalité DISTINCTE du fil (comme Reels) : on ne
   // montre QUE les contenus marqués `isReel` (créés via le type « Bobine » du
   // Studio), jamais les vidéos du feed. Toutes les bobines récentes, dédupliquées,
@@ -1960,7 +1960,7 @@ function buildReels() {
   ];
   const seen = new Set();
   const blocked = state.user.blocked || [];
-  return sources
+  const eligibles = sources
     .filter(function(p) {
       if (!p || !p.isReel) return false;
       if (seen.has(p.id)) return false;
@@ -1972,8 +1972,22 @@ function buildReels() {
       if (!(p.video || p.image || p.photo || p.coverPhotoUrl || p.cover)) return false;
       return true;
     })
-    .sort(function(a, b) { return (b.createdAt || 0) - (a.createdAt || 0); })
-    .slice(0, 30);
+    .sort(function(a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
+
+  const liste = eligibles.slice(0, 30);
+  // `pinnedId` : la bobine visée par un lien partagé (#reel=<id>). Elle peut être
+  // plus ancienne que les 30 plus récentes — et dans ce cas openReelById ne la
+  // trouvait pas dans la liste, laissant le viewer sur la PREMIÈRE bobine : un
+  // lien qui montre autre chose que ce qu'il promet. On l'épingle en tête, sans
+  // élargir la liste ni changer l'ordre du cas normal.
+  if (pinnedId) {
+    const dedans = liste.some(function(p) { return p.id === pinnedId; });
+    if (!dedans) {
+      const cible = eligibles.find(function(p) { return p.id === pinnedId; });
+      if (cible) return [cible].concat(liste.slice(0, 29));
+    }
+  }
+  return liste;
 }
 
 // blob: URL mise en cache pour lire une vidéo locale encore en base64 (bobine
@@ -2116,11 +2130,13 @@ function renderReelHTML(post, idx) {
     </div>`;
 }
 
-function openReels() {
+function openReels(pinnedId) {
   // Ajouter à l'historique pour que le bouton back fonctionne
   window.history.pushState({ overlay: "reels" }, "", "#reels");
 
-  const items = buildReels();
+  // `pinnedId` n'est passé que par openReelById : il garantit que la bobine
+  // demandée EST dans la liste, même si elle est sortie des 30 plus récentes.
+  const items = buildReels(pinnedId);
   if (!items.length) {
     const v = document.getElementById("reelsViewer");
     v.classList.add("open");
@@ -2171,10 +2187,15 @@ function openReels() {
 
 // Ouvre le viewer Bobines directement sur une bobine précise (depuis l'onglet
 // Bobines du profil). Retombe sur la 1ʳᵉ si l'id n'est pas trouvé.
+// Renvoie true si c'est BIEN la bobine demandée qui est à l'écran, false si elle
+// est introuvable — auquel cas le viewer reste sur la première, comme avant. Le
+// booléen existe pour le lien partagé (#reel=<id>), qui doit pouvoir dire
+// « introuvable » plutôt que de montrer une autre bobine sans prévenir.
 function openReelById(id) {
-  openReels();
+  openReels(id);
   try {
     var idx = (reelsState.items || []).findIndex(function(p){ return p.id === id; });
+    if (idx < 0) return false;
     if (idx > 0) {
       var items = document.querySelectorAll("#reelsList .reel-item");
       if (items[idx]) {
@@ -2185,7 +2206,9 @@ function openReelById(id) {
         if (typeof updateReelsCounter === "function") updateReelsCounter();
       }
     }
+    return true;
   } catch (e) {}
+  return false;
 }
 
 function closeReels() {
