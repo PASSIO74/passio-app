@@ -152,17 +152,10 @@
         </div>
       </div>
       <div class="landing-pillar">
-        <div class="landing-pillar-emoji">💎</div>
+        <div class="landing-pillar-emoji">🤝</div>
         <div>
-          <div class="landing-pillar-title">Soutiens ceux qui t'inspirent</div>
-          <div class="landing-pillar-text">Envoie des Passia à un créateur, paye un cours en visio, réserve une expérience. L'argent va vraiment à eux.</div>
-        </div>
-      </div>
-      <div class="landing-pillar">
-        <div class="landing-pillar-emoji">⛓</div>
-        <div>
-          <div class="landing-pillar-title">Grandis avec la communauté</div>
-          <div class="landing-pillar-text">Ton Passia deviendra une vraie monnaie. Plus la communauté grandit, plus elle gagne de valeur.</div>
+          <div class="landing-pillar-title">Rencontre-les pour de vrai</div>
+          <div class="landing-pillar-text">Sorties, ateliers, sessions près de chez toi. Une passion partagée en ligne, vécue ensemble hors ligne.</div>
         </div>
       </div>
       <div class="landing-pillar">
@@ -402,7 +395,6 @@
       <div class="settings-section-body">
         <button class="btn ghost" onclick="event.stopPropagation();toggleDevPanel();goTo('profiles')">Mon profil</button>
         <button class="btn ghost" onclick="event.stopPropagation();toggleDevPanel();openEditMainProfile()">Modifier le profil</button>
-        <button class="btn ghost" onclick="event.stopPropagation();toggleDevPanel();goTo('wallet')">Mon Wallet</button>
         <button class="btn ghost" onclick="event.stopPropagation();toggleDevPanel();openChangePassword()">🔑 Changer mon mot de passe</button>
         <button class="btn ghost" onclick="event.stopPropagation();resetOnboarding()" style="font-size:12px;">🔄 Voir l'onboarding</button>
       </div>
@@ -537,12 +529,10 @@
           </div>
           <div class="main-profile-username" id="mainProfileUsername">Mon profil</div>
           <div class="profile-chips-row">
-            <button class="profile-stars-chip" id="mainProfileStars" onclick="goTo('wallet')" title="Tes points & ton rang" aria-label="Tes points et ton rang">⭐ <b id="profileStarsScore">0</b></button>
-            <!-- Badges d'assiduité : jalons concrets (sorties, villes, pays), à
-                 côté des étoiles qui mesurent l'activité globale. Masqué tant
-                 qu'aucun badge n'est acquis — cf. renderMainProfile. -->
+            <!-- ADR-009 : plus de pastille score/rang ni de solde Passia. Restent
+                 les badges d'assiduité, jalons CONCRETS (sorties, villes, pays)
+                 et non un score global. Masqués tant qu'aucun n'est acquis. -->
             <button class="profile-stars-chip" id="mainProfileBadges" onclick="openBadgesSheet()" style="display:none;" title="Tes badges" aria-label="Tes badges">🏅 <b id="profileBadgeCount">0</b></button>
-            <button class="profile-stars-chip" id="profilePassiaChip" onclick="goTo('wallet')" title="Mon solde Passia" aria-label="Mon solde Passia">💎 <b id="topPassia">0</b></button>
           </div>
           <div class="main-profile-bio" id="mainProfileBio">Ajoute une biographie…</div>
           <div class="main-profile-rs" id="mainProfileRs"></div>
@@ -759,14 +749,6 @@
                 <div class="ai-shortcut-row-body">
                   <div class="ai-shortcut-row-title">Créateurs à découvrir</div>
                   <div class="ai-shortcut-row-desc">Profils inspirants à suivre sur PASSIO</div>
-                </div>
-                <span style="color:var(--muted);font-size:16px;">›</span>
-              </button>
-              <button class="ai-shortcut-row" onclick="sendAIQuery('Comment gagner des Passia')">
-                <span class="ai-shortcut-row-icon">💎</span>
-                <div class="ai-shortcut-row-body">
-                  <div class="ai-shortcut-row-title">Gagner des Passia</div>
-                  <div class="ai-shortcut-row-desc">Toutes les actions qui rapportent des points</div>
                 </div>
                 <span style="color:var(--muted);font-size:16px;">›</span>
               </button>
@@ -1188,289 +1170,11 @@
       </div><!-- /#cdvBrowse -->
     </section>
 
-    <!-- ===== SCREEN: WALLET / POINTS ===== -->
-    <section class="screen" id="screen-wallet">
-      <!-- Onglets Wallet -->
-      <div class="wallet-tabs">
-        <button class="wallet-tab active" data-wallettab="mywallet">Wallet</button>
-        <button class="wallet-tab" data-wallettab="shop">Boutique</button>
-        <button class="wallet-tab" data-wallettab="crypto">Crypto</button>
-        <button class="wallet-tab" data-wallettab="explain">Aide</button>
-      </div>
-
-      <!-- ============ Pane 1 : Mon wallet (existant) ============ -->
-      <div class="wallet-pane active" data-walletpane="mywallet">
-        <div class="score-hero">
-          <div class="ring">
-            <svg viewBox="0 0 100 100">
-              <defs>
-                <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stop-color="#8b5cf6"/>
-                  <stop offset="55%" stop-color="#7c3aed"/>
-                  <stop offset="100%" stop-color="#8b5cf6"/>
-                </linearGradient>
-              </defs>
-              <circle class="ring-bg" cx="50" cy="50" r="42"/>
-              <circle class="ring-fg" id="ringFg" cx="50" cy="50" r="42"
-                      stroke-dasharray="263.89" stroke-dashoffset="263.89"/>
-            </svg>
-            <div class="ring-inner">
-              <div class="rank" id="rankLabel">Débutant</div>
-              <div class="score-num" id="scoreNum">0</div>
-            </div>
-          </div>
-          <div class="score-hero-body">
-            <div class="score-hero-title">Ton Score Passion</div>
-            <div class="score-hero-text" id="nextRankText">Prochain rang à 200 pts</div>
-            <div class="score-hero-pace" id="nextRankPace" style="display:none;"></div>
-            <div style="display:flex;gap:8px;margin-top:8px;">
-              <span class="pill active">⭐ <span id="heroScore">0</span></span>
-              <span class="pill">💎 <span id="heroPassia">0</span></span>
-            </div>
-          </div>
-        </div>
-
-        <div class="card indigo">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-            <div>
-              <div style="font-size:10px;color:rgba(255,255,255,0.7);text-transform:uppercase;letter-spacing:0.1em;font-weight:700;">Wallet Passia</div>
-              <div style="font-size:26px;font-weight:800;margin-top:2px;color:#fff;">
-                <span id="passiaBalance">0</span>
-                <span style="font-size:14px;color:rgba(255,255,255,0.65);">💎</span>
-                <span class="passia-value-indicator" id="passiaValueIndicator" style="display:none;"></span>
-              </div>
-            </div>
-            <div style="display:flex;gap:6px;">
-              <button class="btn small" style="background:#fff;color:var(--accent-2);border-color:transparent;font-weight:800;" onclick="setWalletTab('shop')">+ Acheter</button>
-              <button class="btn small" style="background:rgba(255,255,255,0.16);color:#fff;border-color:rgba(255,255,255,0.28);" onclick="setWalletTab('crypto')">Crypto</button>
-            </div>
-          </div>
-          <p style="font-size:11px;color:rgba(255,255,255,0.78);margin:4px 0 0;line-height:1.5;">Gagnés en créant et en aidant. Points de fidélité internes, non convertibles à ce jour. <b>Évolution crypto à l'étude — voir l'onglet Crypto.</b></p>
-        </div>
-
-        <div class="section-title" style="margin-top:14px;">Défis & quêtes <span style="font-size:10px;color:var(--muted);font-weight:500;" id="questsResetLabel">reset quotidien</span></div>
-        <div class="card" id="questsBox"></div>
-
-        <div class="section-title" style="margin-top:14px;">Comment gagner</div>
-        <div class="card" id="earnGuide"></div>
-
-        <div class="section-title" style="margin-top:14px;">Historique</div>
-        <div class="card" id="txList"></div>
-
-        <div class="section-title" style="margin-top:14px;">Top Passionnés (semaine)</div>
-        <div class="card" id="leaderboard"></div>
-      </div>
-
-      <!-- ============ Pane 2 : Boutique Passia ============ -->
-      <div class="wallet-pane" data-walletpane="shop">
-        <div class="shop-hero">
-          <div class="shop-hero-emoji">💎</div>
-          <div class="shop-hero-title">Boutique Passia</div>
-          <div class="shop-hero-sub">Soutiens des créateurs, paye des cours, des ateliers et des événements IRL. 100 % redistribué aux créateurs.</div>
-        </div>
-
-        <div class="trust-strip">
-          <span class="trust-chip"><span class="trust-chip-icon">🔒</span> Paiement sécurisé</span>
-          <span class="trust-chip"><span class="trust-chip-icon">↩️</span> Remboursement 14 j</span>
-          <span class="trust-chip"><span class="trust-chip-icon">🎨</span> 80 % aux créateurs</span>
-        </div>
-
-        <div class="section-title" style="margin-top:6px;">Packs Passia</div>
-        <p class="section-subtitle">Plus tu prends, plus le bonus grimpe.</p>
-        <div class="pack-grid" id="packGrid"></div>
-
-        <div class="section-title" style="margin-top:18px;">Pass Passion (abonnement)</div>
-        <p class="section-subtitle">Passia mensuels + avantages premium · sans engagement.</p>
-        <div id="passList"></div>
-
-        <p style="font-size:11px;color:var(--muted);text-align:center;margin-top:16px;line-height:1.5;">Mode démo · aucun paiement réel.</p>
-      </div>
-
-      <!-- ============ Pane Crypto : piste a l'etude ============ -->
-      <div class="wallet-pane" data-walletpane="crypto">
-        <div class="crypto-hero">
-          <span class="crypto-hero-tag">⛓ PISTE À L'ÉTUDE</span>
-          <div class="crypto-hero-title">Un Passia crypto, un jour ?</div>
-          <div class="crypto-hero-sub">C'est une direction que nous explorons pour l'avenir de PASSIO — ni une décision, ni une date, ni une promesse. Aujourd'hui, tes Passia sont des <b>points de fidélité internes</b> : ils n'ont aucune valeur monétaire et ne sont pas convertibles.</div>
-          <div class="crypto-stats">
-            <div class="crypto-stat">
-              <div class="crypto-stat-num">0</div>
-              <div class="crypto-stat-label">Token émis à ce jour</div>
-            </div>
-            <div class="crypto-stat">
-              <div class="crypto-stat-num">—</div>
-              <div class="crypto-stat-label">Aucune valeur en €</div>
-            </div>
-            <div class="crypto-stat">
-              <div class="crypto-stat-num">MiCA</div>
-              <div class="crypto-stat-label">Sous réserve du cadre légal</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Pourquoi on explore -->
-        <div class="crypto-card">
-          <div class="crypto-card-head">
-            <div class="crypto-card-icon">🌍</div>
-            <div class="crypto-card-title">Pourquoi on explore cette piste</div>
-          </div>
-          <div class="crypto-card-text">
-            L'idée à long terme : permettre un jour à la communauté de détenir une part de ce qu'elle crée, plutôt que de dépendre entièrement de PASSIO. <b>Si</b> — et seulement si — le cadre réglementaire, la sécurité et la maturité du projet le permettent, les Passia <b>pourraient</b> un jour évoluer. Rien de tout cela n'est décidé, garanti, ni daté.
-          </div>
-        </div>
-
-        <!-- Ce que nous etudions (hypotheses) -->
-        <div class="crypto-card">
-          <div class="crypto-card-head">
-            <div class="crypto-card-icon">🧭</div>
-            <div class="crypto-card-title">Ce que nous étudions (hypothèses)</div>
-          </div>
-          <div class="crypto-card-text">Voici les directions de conception à l'étude. Ce sont des <b>hypothèses de travail</b>, pas des engagements : chacune peut évoluer ou être abandonnée. Aucune ne constitue une promesse de valeur ou de gain.</div>
-          <div class="crypto-mech-grid">
-            <div class="crypto-mech">
-              <div class="crypto-mech-num">1</div>
-              <div class="crypto-mech-title">Un plafond de rareté</div>
-              <div class="crypto-mech-text">Un nombre total fixé une fois pour toutes, pour éviter toute création illimitée.</div>
-            </div>
-            <div class="crypto-mech">
-              <div class="crypto-mech-num">2</div>
-              <div class="crypto-mech-title">Souveraineté des créateurs</div>
-              <div class="crypto-mech-text">Permettre, à terme, de conserver ce qu'on a gagné plutôt que d'en dépendre à 100 % de l'app.</div>
-            </div>
-            <div class="crypto-mech">
-              <div class="crypto-mech-num">3</div>
-              <div class="crypto-mech-title">Des usages concrets</div>
-              <div class="crypto-mech-text">Soutenir un créateur, payer un cours, s'inscrire à un atelier : la valeur vient de l'usage réel.</div>
-            </div>
-            <div class="crypto-mech">
-              <div class="crypto-mech-num">4</div>
-              <div class="crypto-mech-title">Transparence du code</div>
-              <div class="crypto-mech-text">Des règles publiques et auditables plutôt que des décisions opaques.</div>
-            </div>
-            <div class="crypto-mech">
-              <div class="crypto-mech-num">5</div>
-              <div class="crypto-mech-title">Gouvernance communautaire</div>
-              <div class="crypto-mech-text">Donner progressivement plus de voix à la communauté dans les décisions.</div>
-            </div>
-            <div class="crypto-mech" style="background: linear-gradient(135deg, rgba(124, 58, 237, 0.10), rgba(124, 58, 237, 0.05)); border-color: rgba(217, 119, 6, 0.35);">
-              <div class="crypto-mech-num" style="background: linear-gradient(135deg, #b45309, #f59e0b);">★</div>
-              <div class="crypto-mech-title">Protection avant tout</div>
-              <div class="crypto-mech-text">Aucune étape ne serait lancée sans conformité (MiCA), audit de sécurité et garde-fous pour les utilisateurs.</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Pas de projection de prix -->
-        <div class="crypto-card">
-          <div class="crypto-card-head">
-            <div class="crypto-card-icon">🚫</div>
-            <div class="crypto-card-title">Pourquoi on n'affiche aucun prix</div>
-          </div>
-          <div class="crypto-card-text">
-            Tu ne trouveras ici <b>aucune projection de valeur, aucun cours, aucun objectif de prix</b>. Annoncer des chiffres futurs serait trompeur : personne ne peut les connaître. Les Passia restent aujourd'hui des points internes, sans valeur de revente.
-          </div>
-        </div>
-
-        <!-- Etapes envisagees -->
-        <div class="crypto-card">
-          <div class="crypto-card-head">
-            <div class="crypto-card-icon">🗓</div>
-            <div class="crypto-card-title">Étapes envisagées (indicatif, non daté)</div>
-          </div>
-          <ul class="explain-list">
-            <li><b>Aujourd'hui</b> : Passia = points de fidélité internes, sans valeur monétaire ni conversion.</li>
-            <li><b>Étude</b> : analyse juridique et réglementaire (MiCA), faisabilité technique et sécurité.</li>
-            <li><b>Décision</b> : go / no-go — le projet peut tout à fait ne jamais aller plus loin.</li>
-            <li><b>Éventuellement</b> : si tous les feux sont verts, ouverture progressive avec audits indépendants.</li>
-            <li><b>Plus tard</b> : place croissante de la communauté dans les décisions.</li>
-          </ul>
-          <p style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.5;">Aucune de ces étapes n'est datée ni garantie. Cette section est purement informative.</p>
-        </div>
-
-        <!-- Avertissement -->
-        <div class="crypto-risk">
-          <div class="crypto-risk-title">⚠️ À retenir</div>
-          <div class="crypto-risk-text">
-            Aucun token n'existe à ce jour et <b>aucun n'est proposé à l'achat</b>. Cette page décrit une réflexion, pas un produit financier. Elle ne constitue <b>ni un conseil en investissement, ni une offre, ni une promesse de gain</b>. Si un jour un actif transférable voyait le jour, sa valeur pourrait varier fortement, y compris à la baisse — et rien ne serait jamais garanti.
-          </div>
-        </div>
-
-        <button class="btn primary block" onclick="openDoc('full')" style="margin-top: 6px;">
-          📄 En savoir plus sur cette réflexion
-        </button>
-
-        <p style="font-size:10.5px;color:var(--muted);text-align:center;margin-top:14px;line-height:1.5;">
-          Passia = points de fidélité internes, non convertibles. Toute évolution « crypto » reste hypothétique et soumise à la réglementation en vigueur.
-        </p>
-      </div>
-
-      <!-- ============ Pane 3 : Comment ça marche ============ -->
-      <div class="wallet-pane" data-walletpane="explain">
-        <div class="shop-hero" style="background: linear-gradient(135deg, #2b1a5e 0%, #4c1d95 60%, #7c3aed 100%);">
-          <div class="shop-hero-emoji">💡</div>
-          <div class="shop-hero-title">Pourquoi acheter du Passia ?</div>
-          <div class="shop-hero-sub">PASSIO vit de l'argent que tu choisis volontairement de redistribuer aux créateurs et à la communauté.</div>
-        </div>
-
-        <div class="explain-block">
-          <div class="explain-block-title"><span class="explain-block-icon">🎨</span> 80 % redistribué aux créateurs</div>
-          <div class="explain-block-text">Sur chaque Passia que tu achètes, 80 % part directement dans la poche des créateurs que tu soutiens, tip, achat de cours, inscription à un atelier IRL. PASSIO garde 20 % pour faire tourner l'app, payer la modération et les serveurs.</div>
-        </div>
-
-        <div class="explain-block">
-          <div class="explain-block-title"><span class="explain-block-icon">🛡</span> Conformité RGPD</div>
-          <div class="explain-block-text">Le traitement des données est strictement conforme au RGPD. Acheter du Passia, c'est financer cette promesse.</div>
-        </div>
-
-        <div class="explain-block">
-          <div class="explain-block-title"><span class="explain-block-icon">💸</span> Convertible en euros pour les créateurs</div>
-          <div class="explain-block-text">Quand un créateur reçoit du Passia, il peut le convertir en euros sur son compte bancaire. Pas de monnaie de jeu : du vrai argent qui change de mains, sans intermédiaire spéculatif.</div>
-        </div>
-
-        <div class="explain-block">
-          <div class="explain-block-title"><span class="explain-block-icon">✨</span> Que peux-tu faire avec ?</div>
-          <ul class="explain-list">
-            <li>Soutenir un créateur en lui envoyant des Passia (tip)</li>
-            <li>Acheter un cours en visio (céramique, guitare, photo, écriture)</li>
-            <li>Réserver un atelier IRL premium (workshops privés)</li>
-            <li>Acheter dans la marketplace artisans (objets, livres, vinyles)</li>
-            <li>Crowdfunder un événement de ta passion</li>
-            <li>Booster un événement IRL pour atteindre plus de membres</li>
-            <li>Personnaliser ton profil (thèmes, badges édition limitée)</li>
-          </ul>
-        </div>
-
-        <div class="explain-block">
-          <div class="explain-block-title"><span class="explain-block-icon">🛡</span> Garanties éthiques</div>
-          <ul class="explain-list">
-            <li>Aucun mécanisme aléatoire (pas de loot box, pas de gambling)</li>
-            <li>Prix et bonus affichés clairement, jamais cachés</li>
-            <li>Remboursement intégral sous 14 jours sans justification</li>
-            <li>Aucun engagement long terme imposé (Pass annulable mensuellement)</li>
-            <li>Plafond de dépense paramétrable (à activer dès l'inscription)</li>
-            <li>Mode mineur : achat impossible sans accord parental</li>
-          </ul>
-        </div>
-
-        <div class="explain-block">
-          <div class="explain-block-title"><span class="explain-block-icon">🎁</span> Pourquoi le bonus augmente avec le pack ?</div>
-          <div class="explain-block-text">C'est mathématique : plus de Passia achetés = moins de frais bancaires proportionnels. On répercute cette économie en bonus pour toi. Ce n'est pas un piège psychologique, c'est juste une part des frais que tu n'as pas à payer.</div>
-        </div>
-
-        <div class="explain-block" style="background: linear-gradient(135deg, rgba(139, 92, 246, 0.08), rgba(236, 72, 153, 0.06));">
-          <div class="explain-block-title"><span class="explain-block-icon">🌱</span> Le pacte PASSIO</div>
-          <div class="explain-block-text">Si un jour PASSIO contredit cette promesse — dark patterns dans la boutique, manquement RGPD avéré — l'utilisateur peut demander le remboursement total des Passia non utilisés. Cette clause est inscrite dans les CGU. C'est notre moyen de te garantir que cette confiance n'est pas symbolique.</div>
-        </div>
-      </div>
-    </section>
-
-  </main>
-
-  <!-- ============ DOC VIEWER (passia simple + complet, embedded) ============ -->
-  <div id="docViewer" class="doc-viewer" aria-hidden="true">
-    <div class="doc-viewer-close" onclick="closeDocViewer()" aria-label="Fermer">✕</div>
-    <div class="doc-viewer-content" id="docViewerBody"></div>
-  </div>
+    <!-- ===== ÉCRAN WALLET — SUPPRIMÉ (ADR-009) =====
+         Wallet, Score Passion, leaderboard, boutique Passia, Pass Passion et
+         piste crypto sont sortis du cœur produit. `goTo("wallet")` redirige
+         désormais vers l'écran Profils (app-02), pour qu'un ancien deep link
+         `#wallet` ne laisse jamais l'application sans écran actif. -->
 
   <!-- ============ CARNET DE VOYAGE, VIEWER PLEIN ÉCRAN ============ -->
   <div id="vlogViewer" class="vlog-viewer" aria-hidden="true">

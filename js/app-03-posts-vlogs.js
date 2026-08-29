@@ -318,7 +318,6 @@ function likePost(id, skipRender = false, el = null) {
   // Mise à jour optimiste : l'affichage ne dépend JAMAIS du réseau.
   _applyLikeLocally(id, want);
   if (want) {
-    bumpQuest("like");
     try { supaTrack("like_post", { passion: post.passion }); } catch(_) {}
   }
   // Repeint en place plutôt que reconstruire le fil (perte de scroll, panels
@@ -346,125 +345,10 @@ function likePost(id, skipRender = false, el = null) {
   });
 }
 
-// ===== DOC VIEWER, Passia (simple + complet embarqués) =====
-const DOC_PASSIA_SIMPLE = `
-<span class="doc-viewer-header-tag">VERSION SIMPLE · 3 MIN DE LECTURE</span>
-<h1>Passia, expliqué simplement</h1>
-<p style="font-style: italic; color: #6b6480;">Sans jargon, et sans rien te promettre.</p>
-<div class="doc-callout">
-  <div class="doc-callout-title">L'essentiel en 4 points</div>
-  <p>• Aujourd'hui, Passia (💎) est un <b>point de fidélité interne</b> à l'app.</p>
-  <p>• Il n'a <b>aucune valeur en euros</b> et ne peut pas être revendu ou converti.</p>
-  <p>• Tu en gagnes en participant, tu en dépenses pour soutenir des créateurs dans l'app.</p>
-  <p>• Une évolution « crypto » est <b>à l'étude</b> pour l'avenir, mais rien n'est décidé.</p>
-</div>
-
-<h1>1. C'est quoi Passia, aujourd'hui ?</h1>
-<p>Passia, c'est un compteur de fidélité dans PASSIO. Tu en gagnes en publiant, en aidant, en participant. Tu peux t'en servir dans l'app pour soutenir des créateurs ou débloquer certaines options.</p>
-<p>C'est un peu comme les points de fidélité d'un magasin : utiles à l'intérieur du système, mais ce n'est pas de l'argent et on ne peut pas les échanger contre des euros.</p>
-
-<h1>2. Et la « cryptomonnaie » dont on parle ?</h1>
-<p>C'est une <b>piste que nous explorons</b> pour le futur : donner un jour à la communauté une vraie souveraineté sur ce qu'elle crée. Mais c'est une réflexion, pas un produit.</p>
-<div class="doc-callout amber">
-  <div class="doc-callout-title">Ce qui est vrai à ce jour</div>
-  <p>Aucun token n'existe. Rien n'est en vente. Aucune date n'est fixée. Une telle évolution ne se ferait que dans un cadre légal strict (réglementation européenne MiCA) et après des audits de sécurité.</p>
-</div>
-
-<h1>3. Ce qu'il ne faut pas croire</h1>
-<div class="doc-callout red">
-  <div class="doc-callout-title">Passia n'est pas un investissement</div>
-  <p>Personne ne peut te promettre que Passia « prendra de la valeur ». Ne considère jamais tes Passia comme un placement, et méfie-toi de quiconque te promettrait des gains.</p>
-</div>
-<div class="doc-callout red">
-  <div class="doc-callout-title">Attention aux arnaques</div>
-  <p>Toute proposition du type « double tes Passia » (sur Discord, Telegram, X…) est une arnaque. PASSIO n'a aucun programme de ce genre et ne te demandera jamais de payer pour en recevoir.</p>
-</div>
-
-<h1>4. En résumé</h1>
-<div class="doc-callout green">
-  <div class="doc-callout-title">À retenir</div>
-  <p>Passia = points de fidélité internes, sans valeur monétaire ni conversion à ce jour.</p>
-  <p>Tu ne participes pas pour « gagner de l'argent », mais parce que tu crois au projet et à sa communauté.</p>
-  <p>Toute évolution future sera annoncée clairement, encadrée par la loi, et n'aura jamais valeur de promesse de gain.</p>
-</div>
-`;
-
-const DOC_PASSIA_FULL = `
-<span class="doc-viewer-header-tag">NOTE D'INTENTION · PISTE À L'ÉTUDE</span>
-<h1>Passia — points de fidélité & réflexion sur l'avenir</h1>
-<p style="font-style: italic; color: #6b6480;">Document d'information. Ni offre, ni conseil en investissement, ni promesse de rendement.</p>
-
-<div class="doc-callout red">
-  <div class="doc-callout-title">⚠️ Avertissement, à lire en premier</div>
-  <p>À ce jour, Passia est un <b>point de fidélité interne</b> à PASSIO : il n'a aucune valeur monétaire, n'est pas convertible en euros et n'est pas transférable hors de l'application.</p>
-  <p>Aucun « token » crypto n'existe et aucun n'est proposé à l'achat. Ce document décrit une <b>réflexion</b> sur une évolution possible. Il ne constitue ni une offre, ni un conseil financier, ni une garantie. Rien n'est décidé ni daté.</p>
-</div>
-
-<h1>1. Où en est-on aujourd'hui</h1>
-<p>Dans PASSIO, Passia (💎) récompense la participation : créer, aider, organiser, échanger. Il se dépense à l'intérieur de l'app (soutenir un créateur, débloquer des options). C'est un système fermé, comparable à des points de fidélité : utile dans l'app, mais sans valeur de revente.</p>
-
-<h1>2. La piste que nous explorons</h1>
-<p>À long terme, nous étudions la possibilité de donner à la communauté une plus grande souveraineté sur ce qu'elle crée. L'objectif serait de moins dépendre d'un système fermé — mais uniquement <b>si</b> cela peut se faire de façon sûre et conforme à la loi.</p>
-<p>Cette réflexion peut aboutir… ou pas. Un « go / no-go » honnête fait partie du processus : il est tout à fait possible que cette évolution ne voie jamais le jour.</p>
-
-<h1>3. Nos principes non négociables</h1>
-<ul>
-  <li><b>Pas de promesse de gain.</b> Nous n'annoncerons jamais de prix, de projection de valeur ou de rendement.</li>
-  <li><b>La loi d'abord.</b> Aucune étape sans conformité au cadre européen (MiCA) et validation juridique.</li>
-  <li><b>La sécurité d'abord.</b> Aucune ouverture sans audits indépendants et garde-fous utilisateurs.</li>
-  <li><b>Transparence.</b> Les règles seraient publiques et vérifiables, pas décidées en coulisses.</li>
-  <li><b>Protection des plus vulnérables.</b> Contrôle d'âge, plafonds et prévention resteraient prioritaires.</li>
-</ul>
-
-<h1>4. Les risques, en toute honnêteté</h1>
-<div class="doc-callout amber">
-  <div class="doc-callout-title">Si une telle évolution voyait le jour</div>
-  <p>Tout actif transférable peut voir sa valeur varier fortement, y compris chuter. Il n'existerait aucune garantie de conserver ou de récupérer une quelconque valeur.</p>
-</div>
-<ul>
-  <li><b>Risque de marché</b> : la valeur d'un actif numérique est volatile et imprévisible.</li>
-  <li><b>Risque produit</b> : le projet dépend de son adoption ; il peut ne pas se concrétiser.</li>
-  <li><b>Risque réglementaire</b> : le cadre légal évolue et peut empêcher ou retarder toute évolution.</li>
-  <li><b>Risque technique</b> : toute technologie comporte des failles possibles.</li>
-</ul>
-<div class="doc-callout red">
-  <div class="doc-callout-title">Règle de bon sens</div>
-  <p>Ne considère jamais des points de fidélité comme une épargne ou un investissement. Méfie-toi de toute promesse de gain : elle ne viendrait pas de PASSIO.</p>
-</div>
-
-<h1>5. Ce que tu peux faire aujourd'hui</h1>
-<p>Utiliser Passia pour ce à quoi il sert : soutenir les créateurs et faire vivre la communauté dans l'app. C'est là que se trouve sa vraie utilité — pas dans une éventuelle valeur future.</p>
-
-<div class="doc-callout">
-  <div class="doc-callout-title">La phrase qui résume tout</div>
-  <p>Tu ne détiens pas une promesse de gain : tu participes à une communauté. Toute évolution future sera annoncée clairement, encadrée par la loi, et sans jamais valoir promesse de rendement.</p>
-</div>
-`;
-
-function openDoc(which) {
-  const html = which === 'simple' ? DOC_PASSIA_SIMPLE : DOC_PASSIA_FULL;
-  document.getElementById('docViewerBody').innerHTML = html;
-  document.getElementById('docViewer').classList.add('open');
-  document.getElementById('docViewer').setAttribute('aria-hidden', 'false');
-  document.body.classList.add('doc-open');
-  document.body.style.overflow = 'hidden';
-  // Reset scroll en haut
-  document.getElementById('docViewer').scrollTop = 0;
-}
-
-function closeDocViewer() {
-  document.getElementById('docViewer').classList.remove('open');
-  document.getElementById('docViewer').setAttribute('aria-hidden', 'true');
-  document.body.classList.remove('doc-open');
-  document.body.style.overflow = '';
-}
-
-document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") {
-    const v = document.getElementById('docViewer');
-    if (v && v.classList.contains('open')) closeDocViewer();
-  }
-});
+// ===== DOC VIEWER — SUPPRIMÉ (ADR-009) =====
+// Les deux documents « Passia expliqué » et la visionneuse qui les affichait ne
+// s'ouvraient que depuis l'onglet Crypto du Wallet, lui-même retiré. Ils
+// décrivaient un système qui n'existe plus.
 
 // ===== CARNET DE VOYAGE (VLOG) =====
 const vlogState = {
@@ -1396,7 +1280,6 @@ function submitVlogComment(postId) {
   var meEntry = { id: realAuthorId, name: (p && p.name) || state.user.name || "Moi", profileEmoji: (p && p.emoji) || "✨", avatar: (p && p.color) || "#8b5cf6" };
   state.seed.users = state.seed.users.filter(function(u){ return u.id !== realAuthorId; });
   state.seed.users.push(meEntry);
-  if (typeof grantReward === "function") grantReward("comment");
   // Sync Supabase + notif auteur (mêmes règles que submitComment)
   if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID && typeof supaAddComment === "function") {
     supaAddComment(postId, text, _cid);
@@ -2043,7 +1926,6 @@ function saveCdvLiveStep(liveId, stepId) {
     live.steps.push(step);
     saveCdvLives(lives);
     if (typeof supaAddCdvLiveStep === "function") supaAddCdvLiveStep(liveId, step);
-    if (typeof grantReward === "function") { try { grantReward("comment"); } catch (e) {} }
     closeModal();
     toast("📍 Étape publiée en direct !");
     _notifyCdvLiveFollowers(live, step);
@@ -2148,7 +2030,6 @@ function submitStepComment(threadId) {
     state.seed.users.push(meEntry);
   } catch (e) {}
   if (typeof thread.save === "function") thread.save();
-  if (typeof grantReward === "function") { try { grantReward("comment"); } catch (e) {} }
   if (inp) { inp.value = ""; try { autoResizeTextarea(inp); } catch (e) {} }
   if (typeof _refreshCommentThreadUINow === "function") _refreshCommentThreadUINow(threadId);
   var box = document.getElementById("stepCommentsBox");
@@ -2366,7 +2247,6 @@ function toggleStepLike(threadId, el) {
     var p = (typeof currentProfile === "function") ? currentProfile() : null;
     arr.push({ authorId: me, authorName: (p && p.name) || state.user.name || "Moi", createdAt: Date.now() });
     nowLiked = true;
-    if (typeof grantReward === "function") { try { grantReward("like"); } catch (e) {} }
   }
   try { saveState(); } catch (e) {}
   // On transmet l'INTENTION (nowLiked), jamais l'id seul : côté serveur, re-déduire
@@ -2405,7 +2285,6 @@ function _postStepGifComment(threadId, gifUrl) {
   if (typeof thread.save === "function") thread.save();
   if (typeof supaAddStepComment === "function") { try { supaAddStepComment(threadId, cid, gifUrl, nm, em); } catch (e) {} }
   _notifyStepAuthor(threadId, "a commenté ton étape");
-  if (typeof grantReward === "function") { try { grantReward("comment"); } catch (e) {} }
   if (typeof _refreshCommentThreadUI === "function") _refreshCommentThreadUI(threadId);
   var n = _stepCommentCount(threadId);
   document.querySelectorAll('[data-cmtcount="' + threadId + '"]').forEach(function (el) { el.innerHTML = "💬 " + n; });

@@ -71,19 +71,27 @@ test("onbFinish V2 : un seul profil de départ, mais toutes les passions dans le
       profils: state.user.profiles.map((p) => p.passion),
       interets: Array.from(_activeFeedPassions),
       persiste: state.selectedFeedPassions,
+      // ADR-009 : ces clés ne doivent plus EXISTER dans l'état canonique, et
+      // plus seulement valoir zéro — le moteur entier a été retiré.
       score: state.user.score,
       passia: state.user.passia,
-      transactions: state.transactions.length,
+      transactions: state.transactions,
+      quests: state.quests,
+      moteurRetire: typeof window.grantReward === "undefined"
+                 && typeof window.rewardToast === "undefined"
+                 && typeof window.awardLikeReceived === "undefined",
     };
   });
   // Trois passions cochées → UN profil (le primaire), trois intérêts de fil.
   expect(r.profils).toEqual(["sport"]);
   expect(r.interets).toEqual(["sport", "musique", "cuisine"]);
   expect(r.persiste).toEqual(["sport", "musique", "cuisine"]);
-  // ADR-009 : aucune gamification monétaire dans le parcours V2.
-  expect(r.score).toBe(0);
-  expect(r.passia).toBe(0);
-  expect(r.transactions).toBe(0);
+  // ADR-009 : aucune gamification monétaire — ni valeur, ni clé, ni moteur.
+  expect(r.score).toBeUndefined();
+  expect(r.passia).toBeUndefined();
+  expect(r.transactions).toBeUndefined();
+  expect(r.quests).toBeUndefined();
+  expect(r.moteurRetire).toBe(true);
 });
 
 test("les intérêts choisis survivent à un rechargement complet", async ({ page }) => {

@@ -138,7 +138,7 @@ Réseau social des passions. PWA vanilla JS (pas de framework, pas de bundler) +
 - `$()` = querySelector (défini app-02), `$$()` = querySelectorAll. Toujours garder les guards `if (!el) return;`.
 - HTML généré par template literals + `escapeHtml()` pour tout contenu utilisateur (XSS). **3 helpers d'échappement (app-02), choisir selon le CONTEXTE** : `escapeHtml(x)` = texte HTML ; `escapeJsArg(x)` = argument de chaîne JS simple-quotée DANS un attribut onclick (le HTML décode `&#39;` AVANT le parse JS → un pseudo avec apostrophe cassait le bouton avec escapeHtml seul) ; `safeUrlAttr(x)` = attribut src/href d'une URL fournie par un autre utilisateur (bloque `javascript:` & sortie d'attribut ; n'accepte que http(s)/data:image|audio|video/blob). ⚠️ Les payloads de `comment_interactions`/`event_reactions`/messages média sont librement insérables par tout compte authentifié → TOUJOURS échapper à l'affichage (XSS stockés corrigés le 2026-07-02).
 - **Timestamps Supabase : TOUJOURS `supaTs(s)` (app-02), JAMAIS `new Date(x + "Z")`.** La prod mélange des colonnes `timestamp` (sans fuseau : posts, conv_messages, notifications, stories, events, profiles) et `timestamptz` (avec offset `+00:00` : comment_interactions, event_comments/reactions/attendees, tout cdv_*, blocks, reports…) — l'ancien pattern `+ "Z"` donnait NaN (« Invalid Date ») sur les timestamptz. `supaTs` gère les deux + le format realtime.
-- Navigation : `goTo('feed'|'profiles'|'studio'|'explore'|'irl'|'wallet'|'messages'|'cdv')` — écrans = `#screen-<nom>`.
+- Navigation : `goTo('feed'|'profiles'|'studio'|'explore'|'irl'|'messages'|'cdv')` — écrans = `#screen-<nom>`. `goTo('wallet')` et `goTo('shop')` sont REDIRIGÉS vers `profiles` (ADR-009) : un ancien deep link `#wallet` ne doit jamais laisser l'app sans écran actif.
 - Toasts via `toast()`, jamais `alert()`.
 - Les onclick inline doivent référencer des fonctions globales EXISTANTES (l'audit du 2026-06-10 a trouvé 7 fonctions fantômes — vérifier avant d'ajouter un handler).
 
@@ -216,6 +216,56 @@ App INDÉPENDANTE de supervision/test temps réel, dans `dashboard/` (Node/Expre
 
 **Présence permanente** : `dashboard/supervise.mjs` relance le serveur s'il meurt (recul 2/5/15/30/60 s, journal borné `data/supervise.log`, PID dans `data/supervise.pid`), `Sentinelle-Demarrage.vbs` le lance sans fenêtre, `Installer-Demarrage-Auto.cmd` pose un raccourci dans le dossier Démarrage de la session (aucun droit admin ; `/retirer` pour défaire), `Arreter-Pilotage.cmd` arrête tout. ⚠️ Ces `.cmd` sont en **ASCII pur** : un `.cmd` accentué est mal découpé par l'interpréteur Windows, qui exécute alors des morceaux de commentaire. Chaque diagnostic porte un **verdict** : défaut réel / comportement attendu / données insuffisantes. Réglages `DASH_SENTINEL_*` (voir `dashboard/README.md` §3 bis). Tests : `dashboard/test/sentinel.test.js` (17, dont un test d'intégration erreur réelle → diagnostic).
 
+
+## 💸 ADR-009 appliqué — l'économie interne est RETIRÉE (2026-08-29)
+
+Wallet, points, étoiles, rangs, Score Passion, leaderboard, quêtes, Passia,
+boutique, Pass Passion et piste crypto ne sont plus dans le code. La décision est
+`.passio/adr/ADR-009-core-feed-irl-sans-wallet.md`, la carte d'exécution
+`docs/PASSIO_WALLET_PASSIA_REMOVAL_MAP_2026-08-20.md`. **Ne rien réintroduire sans
+rouvrir l'ADR** : un paiement futur devra être un paiement DIRECT en monnaie
+réelle, sans monnaie intermédiaire.
+
+Ce qui a disparu, et où : `RANKS`/`REWARDS`/`LIKES_PER_PASSIA` + `seedQuests`
+(app-01) · `grantReward`/`rewardToast`/`awardLikeReceived`/`rankOf`/`checkRankUp`
+(app-02) · les documents « Passia expliqué » et leur visionneuse (app-03) ·
+`PASSIA_PACKS`/`PASSIA_PASSES`/`setWalletTab` (app-04) · `tipReel` et le bouton
+« Soutenir » du rail bobine (app-05) · le **paywall du 4ᵉ profil** (app-06) ·
+`renderWallet` et le leaderboard (app-07) · quêtes et récompense de like realtime
+(app-08) · `#screen-wallet` et ses 4 onglets (index.html) · 154 règles CSS.
+
+⚠️ **Quatre pièges de ce chantier, à connaître avant d'y retoucher.**
+
+① **`renderTopbar` écrivait dans `#topPassia` SANS garde.** Retirer le nœud sans
+   retirer cette ligne fait lever la fonction — et elle est rappelée à chaque
+   publication, commentaire et RSVP. Le lot UI-6 avait justement choisi de
+   *masquer* la rangée pour cette raison ; le retrait, lui, oblige à traiter les
+   deux ensemble. Même famille de risque pour tout nœud supprimé qu'un renderer
+   adresse par id.
+
+② **L'état legacy se propage dans les DEUX sens.** `user.score`, `user.passia`,
+   `user.likesReceived`, `user.activePass`, `transactions`, `quests` et le
+   `profile.paid` vivent encore dans les `localStorage` existants ET dans le blob
+   `user_state`. `stripLegacyEconomy()` (app-02) est donc appelé aux **trois**
+   frontières : `loadState`, `_applyUserState` (hydratation serveur) et
+   `_syncableState` (envoi). Sans la 2ᵉ, un ancien appareil encore en service
+   repousse les clés à chaque sync ; sans la 3ᵉ, ce client les remet lui-même en
+   circulation. « Last write wins » joue dans les deux sens.
+
+③ **Une classe morte suffit à tuer un sélecteur.** Le nettoyage CSS a d'abord
+   exigé que TOUTES les classes d'un sélecteur soient mortes : `.quest-card.ready`,
+   `.lb-rank.gold`, `.pack-card.popular` et `.wallet-tab.active` survivaient donc,
+   parce que `ready`/`gold`/`popular`/`active` sont des modificateurs vivants
+   ailleurs. Le bon critère est l'inverse : **une seule** classe jamais posée rend
+   la règle inatteignable. Et `styles.css` est en **CRLF** — écrire en binaire.
+
+④ **Le prix d'un événement était libellé en Passia alors qu'aucun paiement n'a
+   jamais lieu** (le RSVP est gratuit, `price` n'est qu'un affichage). Il est
+   redevenu un montant indicatif en €, ce que l'ADR autorise explicitement.
+
+Verrou de non-régression : `tests/e2e/adr-009-retrait-economie.spec.js` (7 tests)
+couvre la surface, le moteur, la création d'un 4ᵉ profil, et l'aller-retour de
+synchronisation avec un ancien client.
 
 ## 🗂️ Pièges connus — index (détail complet : docs/PIEGES_CONNUS.md)
 

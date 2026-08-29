@@ -25,9 +25,9 @@
 // et les gestionnaires de fichiers EXISTANTS fixent déjà `studioType` eux-mêmes.
 // Rien n'est dupliqué, rien n'est réécrit.
 //
-// ⚠️ « +10 pts » quitte le bouton, et le toast de récompense est masqué : le §11
-// sort les mécaniques économiques du cœur. Seul l'AFFICHAGE change — `grantReward`
-// continue de tourner, les points continuent d'être comptés. Le lot est visuel.
+// ⚠️ « +10 pts » a quitté le bouton avec le §11. Ce lot n'en masquait que
+// l'AFFICHAGE ; depuis l'application de l'ADR-009, le moteur lui-même
+// (`grantReward`, points, Passia) n'existe plus — il n'y a plus rien à masquer.
 //
 // Coupures, prioritaires sur tout :
 //   window.PASSIO_UI_6 === false   ·   localStorage.passio_ui_6 === "0"
@@ -211,8 +211,9 @@
     hote.appendChild(resume);
     if (champPassion) deplacer(champPassion, hote);
 
-    // ⑤ « Affiner » : le mood, replié. Il reste facultatif et garde son défaut —
-    // y toucher arrêterait la progression de `bumpQuest("publish")`.
+    // ⑤ « Affiner » : le mood, replié. Il reste facultatif et garde son défaut
+    // (il pilote le classement du fil, pas une quête : celles-ci ont disparu
+    // avec l'ADR-009).
     var affiner = document.createElement("details");
     affiner.className = "v6-affiner";
     var somm = document.createElement("summary");

@@ -159,19 +159,22 @@ test.describe("UI-6 — composer de publication", () => {
     await expect(page.locator("[data-v6-passio]")).toHaveText("Passion : " + valeur);
   });
 
-  test("§11 : les mécaniques économiques ne s'affichent plus dans le cœur", async ({ page }) => {
+  test("§11 : les mécaniques économiques ont quitté le cœur, moteur compris", async ({ page }) => {
     await boot(page);
     await page.evaluate(() => goTo("profiles"));
     await page.waitForTimeout(300);
 
-    // Masquées, JAMAIS retirées : `renderTopbar` écrit dans #topPassia sans
-    // garde — retirer ce nœud ferait planter la publication et le commentaire.
-    await expect(page.locator(".profile-chips-row")).toHaveCount(1);
-    await expect(page.locator(".profile-chips-row")).toBeHidden();
-    await expect(page.locator("#topPassia")).toHaveCount(1);
+    // Ce lot ne faisait que MASQUER la rangée ; l'ADR-009 a depuis retiré les
+    // nœuds eux-mêmes. `renderTopbar` n'écrit plus dans #topPassia — c'était la
+    // seule raison de garder ce nœud, et elle a disparu avec lui.
+    await expect(page.locator("#topPassia")).toHaveCount(0);
+    await expect(page.locator("#mainProfileStars")).toHaveCount(0);
+    await expect(page.locator("#profilePassiaChip")).toHaveCount(0);
+    await expect(page.locator("#screen-wallet")).toHaveCount(0);
 
-    // Et le moteur de points, lui, continue de tourner : seul l'affichage change.
-    expect(await page.evaluate(() => typeof grantReward === "function")).toBe(true);
+    // Et le moteur lui-même n'existe plus.
+    expect(await page.evaluate(() => typeof window.grantReward)).toBe("undefined");
+    expect(await page.evaluate(() => typeof window.renderWallet)).toBe("undefined");
   });
 
   test("kill switch local au boot : Studio historique strictement rendu", async ({ page }) => {
