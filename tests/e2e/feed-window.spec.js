@@ -292,6 +292,89 @@ test.describe("Fil fenêtré — ancre de scroll sous 2 px", () => {
       expect(Math.abs(d - depart)).toBeLessThanOrEqual(2);
     }
   });
+
+  // ⚠️ Le test le plus important de ce fichier, et celui qui manquait.
+  //
+  // Mesuré le 2026-08-29 : tant que l'ancrage de défilement NATIF du navigateur
+  // (`overflow-anchor`, actif par défaut) opère, il rattrape lui-même toute
+  // croissance de contenu au-dessus du viewport — et la restauration d'ancre
+  // paraît solide alors qu'elle s'appuie sur cette béquille sans le savoir.
+  // Le Chromium du runner ne compensait pas dans ce cas : d'où un rouge CI
+  // impossible à rejouer ici tant que la béquille était en place.
+  //
+  // On coupe donc `overflow-anchor` pour éprouver NOTRE code et non celui du
+  // navigateur, et on provoque exactement la classe de défaut : une carte
+  // au-dessus de l'ancre qui grandit APRÈS que la convergence s'est déclarée
+  // terminée (image décodée, compteur arrivé, police échangée — la cause est
+  // indifférente). Sans la veille d'ancre, la mesure donnait 114 à 138 px.
+  for (const retard of [80, 300, 700]) {
+    test("l'ancre tient sans l'ancrage natif, malgré une mise en page tardive à " + retard + " ms", async ({ page }) => {
+      await bootOnboarded(page);
+      await page.addStyleTag({ content: ".app-main, #feedList, #feedList .post { overflow-anchor: none; }" });
+      await seedFeed(page, { windowOn: true });
+      await page.evaluate(() => document.querySelector(".app-main").scrollTo(0, 1800));
+      await page.waitForTimeout(500);
+
+      const idCible = await page.evaluate(() => {
+        const main = document.querySelector(".app-main");
+        const top = main.getBoundingClientRect().top;
+        const cards = [...document.querySelectorAll("#feedList .post[data-postid]")];
+        const c = cards.find((x) => x.getBoundingClientRect().top - top >= 0) || cards[0];
+        return c.getAttribute("data-postid");
+      });
+      let depart = await ancre(page, idCible);
+
+      for (let i = 0; i < 3; i++) {
+        await page.evaluate(() => goTo("profiles"));
+        await page.waitForTimeout(200);
+        await page.evaluate(([id, ms]) => {
+          goTo("feed");
+          setTimeout(() => {
+            const list = document.getElementById("feedList");
+            const cible = list.querySelector('.post[data-postid="' + id + '"]');
+            const cartes = [...list.querySelectorAll(".post[data-postid]")];
+            const k = cartes.indexOf(cible);
+            const dessus = cartes[Math.max(0, k - 2)];
+            if (dessus && dessus !== cible) dessus.style.paddingTop = "40px";
+          }, ms);
+        }, [idCible, retard]);
+        await page.waitForTimeout(1400);
+
+        expect(Math.abs((await ancre(page, idCible)) - depart)).toBeLessThanOrEqual(2);
+
+        // Retirer le rembourrage déplace la page pour de vrai (40 px de moins
+        // au-dessus, sans ancrage natif) : ce n'est pas une dérive de
+        // restauration, donc on reprend la référence après nettoyage.
+        await page.evaluate(() => {
+          document.querySelectorAll("#feedList .post").forEach((c) => (c.style.paddingTop = ""));
+        });
+        await page.waitForTimeout(200);
+        depart = await ancre(page, idCible);
+      }
+    });
+  }
+
+  // La veille corrige tant que personne ne touche l'écran ; au premier geste,
+  // c'est l'utilisateur qui décide où est la page. Sans cette sortie, un doigt
+  // posé juste après une navigation se ferait reprendre le défilement.
+  test("un geste de l'utilisateur interrompt la veille d'ancre", async ({ page }) => {
+    await bootOnboarded(page);
+    await seedFeed(page, { windowOn: true });
+    await page.evaluate(() => document.querySelector(".app-main").scrollTo(0, 1800));
+    await page.waitForTimeout(500);
+
+    await page.evaluate(() => goTo("profiles"));
+    await page.waitForTimeout(200);
+    await page.evaluate(() => {
+      goTo("feed");
+      window.dispatchEvent(new Event("touchstart"));
+    });
+    await page.waitForTimeout(300);
+
+    // La veille est levée, et le fil a rendu la main au défilement normal.
+    expect(await page.evaluate(() => !!window._feedWindowVeille)).toBe(false);
+    expect(await page.evaluate(() => !!window._feedScrollRestoring)).toBe(false);
+  });
 });
 
 test.describe("Fil fenêtré — mises à jour ciblées, jamais globales", () => {

@@ -3565,12 +3565,17 @@ function feedWindowRememberScroll() {
   };
 }
 
+var _FEED_GESTES = ["wheel", "touchstart", "pointerdown", "keydown"];
+
 function feedWindowRestoreScroll() {
   if (!feedWindowEnabled()) return;
   var memo = window._feedScrollAnchor;
   if (!memo) return;
   var scroller = _feedWindowScroller();
   if (!scroller) return;
+
+  // Une restauration déjà en cours appartient à une navigation précédente.
+  _feedWindowArreterVeille();
 
   // Rétablir la hauteur d'en-tête AVANT de viser : la convergence corrige un
   // écart, elle ne devine pas une géométrie différente. Et neutraliser la
@@ -3579,28 +3584,84 @@ function feedWindowRestoreScroll() {
   window._feedScrollRestoring = true;
   scroller.classList.toggle("chrome-collapsed", !!memo.collapsed);
 
-  // Puis viser, mesurer, corriger — jusqu'à deux trames stables. La mise en page
-  // et le décodage des images se posent de façon asynchrone : viser une seule
-  // fois manque la cible, et trois trames n'y suffisaient pas (150 px d'écart
-  // résiduel mesuré).
-  var attempts = 0, stable = 0;
-  var fin = function () { window._feedScrollRestoring = false; };
-  var step = function () {
-    attempts++;
+  // Toute la restauration — convergence PUIS veille — s'interrompt au premier
+  // GESTE de l'utilisateur : dès qu'il touche l'écran, c'est lui qui décide où
+  // est la page, plus nous. Les écouteurs sont posés tout de suite, et pas
+  // seulement à l'ouverture de la veille : un doigt posé pendant la convergence
+  // doit rendre la main immédiatement.
+  var minuteries = [];
+  var vivante = true;
+  var arret = function () {
+    if (!vivante) return;
+    vivante = false;
+    minuteries.forEach(clearTimeout);
+    minuteries.length = 0;
+    _FEED_GESTES.forEach(function (ev) { window.removeEventListener(ev, arret, true); });
+    window._feedScrollRestoring = false;
+    window._feedWindowVeille = null;
+  };
+  _FEED_GESTES.forEach(function (ev) {
+    window.addEventListener(ev, arret, { capture: true, passive: true });
+  });
+  window._feedWindowVeille = arret;
+
+  // Viser la carte mémorisée : renvoie l'écart corrigé, 0 si déjà en place,
+  // null si le post a disparu du fil.
+  var viser = function () {
     var list = document.getElementById("feedList");
     var card = (memo.id && list)
       ? list.querySelector('.post[data-postid="' + (window.CSS && CSS.escape ? CSS.escape(memo.id) : memo.id) + '"]')
       : null;
-    if (!card) { scroller.scrollTop = memo.y; fin(); return; }   // post disparu : repli brut
+    if (!card) return null;
     var diff = (card.getBoundingClientRect().top - scroller.getBoundingClientRect().top) - memo.delta;
-    if (Math.abs(diff) > 0.5) { scroller.scrollTop += diff; stable = 0; }
-    else stable++;
-    // Une carte au-dessus peut encore grandir (image décodée) : on reconverge
-    // jusqu'à deux trames stables, au plus 12 trames (~200 ms) pour borner le coût.
-    if (stable < 2 && attempts < 12) requestAnimationFrame(step);
-    else fin();
+    if (Math.abs(diff) > 0.5) { scroller.scrollTop += diff; return diff; }
+    return 0;
+  };
+
+  // Convergence : viser, mesurer, corriger — jusqu'à deux trames stables. La
+  // mise en page et le décodage des images se posent de façon asynchrone : viser
+  // une seule fois manque la cible, et trois trames n'y suffisaient pas (150 px
+  // d'écart résiduel mesuré).
+  var attempts = 0, stable = 0;
+  var step = function () {
+    if (!vivante) return;
+    attempts++;
+    var diff = viser();
+    if (diff === null) { scroller.scrollTop = memo.y; arret(); return; }  // post disparu : repli brut
+    if (diff !== 0) stable = 0; else stable++;
+    if (stable < 2 && attempts < 12) { requestAnimationFrame(step); return; }
+    _feedWindowVeillerAncre(viser, arret, minuteries, function () { return vivante; });
   };
   requestAnimationFrame(step);
+}
+
+// ── Veille d'ancre après convergence ──────────────────────────────────────
+// ⚠️ Mesuré le 2026-08-29 : tant que l'ancrage de défilement NATIF du navigateur
+// (`overflow-anchor`) opère, il rattrape lui-même toute croissance de contenu
+// au-dessus du viewport, et la convergence ci-dessus paraît suffisante. Elle ne
+// l'est pas : elle s'appuyait sans le savoir sur cette béquille. En la coupant
+// (`overflow-anchor: none`), la même navigation dérivait de 114 à 138 px — c'est
+// la forme locale du rouge CI, où le Chromium du runner ne compensait pas.
+//
+// On ne s'en remet donc plus au navigateur : après la convergence, on REVÉRIFIE
+// l'ancre à quelques instants choisis et on corrige tout écart. Une veille par
+// échéances plutôt qu'un observateur : coût borné, rien à démonter, aucune fuite.
+var _FEED_VEILLE_MS = [90, 200, 350, 550, 800, 1100];
+
+function _feedWindowVeillerAncre(viser, arret, minuteries, vivante) {
+  _FEED_VEILLE_MS.forEach(function (ms, i) {
+    minuteries.push(setTimeout(function () {
+      if (!vivante()) return;
+      // Le fil a pu être quitté entre-temps : ne rien corriger sur un écran caché.
+      var ecran = document.getElementById("screen-feed");
+      if (!ecran || ecran.style.display === "none" || !feedWindowEnabled()) { arret(); return; }
+      if (viser() === null || i === _FEED_VEILLE_MS.length - 1) arret();
+    }, ms));
+  });
+}
+
+function _feedWindowArreterVeille() {
+  if (typeof window._feedWindowVeille === "function") window._feedWindowVeille();
 }
 
 // Une rotation ou un changement de largeur périme toute hauteur figée : on les
@@ -3630,6 +3691,9 @@ function feedWindowSetupResize() {
 // Coupe tout : observateur, hauteurs figées, mémoire d'ancre. Appelé par le kill
 // switch et quand on quitte le fil, pour qu'aucun observateur ne survive.
 function feedWindowTeardown() {
+  // La veille d'ancre survivrait au démontage et corrigerait un fil qu'on vient
+  // de rendre à son état historique : la couper d'abord.
+  _feedWindowArreterVeille();
   if (window._feedWindowObserver) {
     try { window._feedWindowObserver.disconnect(); } catch (e) {}
   }
