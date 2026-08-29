@@ -13,6 +13,14 @@
 //   ⑤ les boutons SURVIVENT au rendu que leur propre clic déclenche ;
 //   ⑥ les deux kill switches rendent le profil historique ;
 //   ⑦ mobile 320 / 390 / 430 px : aucun débordement, cibles ≥ 44 px.
+//
+// ⚠️ CONVENTION DE TEST (la même qu'à la mise en ligne d'UI-3A et d'UI-4) : le
+// lot UI-8 RECOUVRE la carte de passion — sous UI-8 c'est `renderProfilesScreen`
+// qui rend l'état de la carte (« Passion active ✓ » / « Utiliser pour créer »),
+// et UI-6B lui rend la main (deux modules n'écrivent jamais la même surface).
+// Cette suite observe le comportement HISTORIQUE : elle pose donc le kill switch
+// du lot qui le recouvre, et garde TOUTES ses assertions. La cohabitation des
+// deux est prouvée à part, dans `ui-v8-passions.spec.js`.
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
 
@@ -20,6 +28,7 @@ async function boot(page, opts = {}) {
   if (opts.killLocal) {
     await page.addInitScript(() => localStorage.setItem("passio_ui_6b", "0"));
   }
+  await page.addInitScript(() => localStorage.setItem("passio_ui_8", "0"));
   await bootOnboarded(page, opts.errors || null, 1, {});
   await page.evaluate(() => {
     window.supaLoadPosts = async () => [];

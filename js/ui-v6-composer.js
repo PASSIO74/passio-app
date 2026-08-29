@@ -113,8 +113,30 @@
     return b;
   }
 
+  // §5 : le Studio dit dans QUELLE passion il publie. La passion active est la
+  // valeur par défaut (posée par `renderStudio`), et « Changer » n'ouvre que le
+  // <select> existant : choisir une autre passion pour UNE publication ne change
+  // pas durablement la passion active.
+  // ⚠️ Gouverné par le drapeau du lot UI-8 : `localStorage.passio_ui_8="0"` doit
+  // rendre le composer d'avant à l'octet près, libellés compris.
+  function v8() {
+    try { if (window.PASSIO_UI_8 === false) return false; } catch (e) {}
+    try { if (localStorage.getItem("passio_ui_8") === "0") return false; } catch (e) {}
+    return true;
+  }
+  function libellePublieDans() { return v8() ? "Publication dans : " : "Passion : "; }
+
+  // ⚠️ Lot UI-8 : le PSEUDO GÉNÉRAL d'abord. Cette fonction lisait
+  // `currentProfile().name` — le nom porté par la passion active — et le Studio
+  // annonçait donc de publier « en tant que » quelque chose qui n'est pas
+  // l'identité publique. Ce n'est pas une nuance de vocabulaire : c'est le
+  // pseudo général qui part réellement avec le post (`publishPost` prend
+  // `state.user.general.username` en premier), et lui seul.
   function identiteCourante() {
     try {
+      var g = (typeof state !== "undefined" && state && state.user && state.user.general) || {};
+      if (g.username) return String(g.username);
+      if (typeof state !== "undefined" && state && state.user && state.user.name) return String(state.user.name);
       var p = (typeof currentProfile === "function") ? currentProfile() : null;
       if (p && p.name) return String(p.name);
       if (p && p.passion && typeof passionById === "function") {
@@ -149,8 +171,10 @@
     qui.className = "v6-identite-txt";
     qui.textContent = "Publier en tant que " + identiteCourante();
     identite.appendChild(qui);
-    identite.appendChild(lienTexte("Changer de profil", function () {
-      // Le moteur existant, jamais un second sélecteur d'identité.
+    // ⚠️ Lot UI-8 : plus de « Changer de profil » ici. Publier ne change JAMAIS
+    // d'identité — il n'y a qu'un profil personnel. Ce qui se choisit, c'est la
+    // PASSION, et elle se choisit sur la ligne « Publication dans » ci-dessous.
+    identite.appendChild(lienTexte(v8() ? "Voir mon profil" : "Changer de profil", function () {
       if (typeof goTo === "function") goTo("profiles");
     }));
     hote.appendChild(identite);
@@ -200,10 +224,10 @@
     var txt = document.createElement("span");
     txt.className = "v6-passio-txt";
     txt.setAttribute("data-v6-passio", "1");
-    txt.textContent = "Passion : " + (libellePassionChoisie() || "—");
+    txt.textContent = libellePublieDans() + (libellePassionChoisie() || "—");
     resume.appendChild(txt);
     var champPassion = el("fieldPassion");
-    resume.appendChild(lienTexte("Modifier", function () {
+    resume.appendChild(lienTexte(v8() ? "Changer" : "Modifier", function () {
       if (!champPassion) return;
       var ouvert = champPassion.classList.toggle("v6-ouvert");
       if (ouvert) { var s = el("postPassion"); if (s) s.focus(); }
@@ -246,7 +270,7 @@
   function syncResume() {
     try {
       var t = document.querySelector("[data-v6-passio]");
-      if (t) t.textContent = "Passion : " + (libellePassionChoisie() || "—");
+      if (t) t.textContent = libellePublieDans() + (libellePassionChoisie() || "—");
       var q = document.querySelector(".v6-identite-txt");
       if (q) q.textContent = "Publier en tant que " + identiteCourante();
     } catch (e) {}

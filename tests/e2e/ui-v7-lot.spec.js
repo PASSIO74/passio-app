@@ -32,6 +32,14 @@ const { bootOnboarded } = require("./app-helper");
 const VIDEO_FACTICE = "data:video/webm;base64,AAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
 async function boot(page, errors, n = 3) {
+  // ⚠️ CONVENTION DE TEST (la même qu'aux mises en ligne d'UI-3A et d'UI-4) :
+  // le lot UI-8 recouvre deux surfaces observées ici — le libellé du composer
+  // (« Passion : » devient « Publication dans : ») et l'état de la carte de
+  // passion (rendu par app-06, plus par UI-6B). Cette suite observe le
+  // comportement d'avant : elle pose donc le kill switch du lot qui le
+  // recouvre, et garde TOUTES ses assertions. La cohabitation est prouvée à
+  // part, dans `ui-v8-passions.spec.js`.
+  await page.addInitScript(() => localStorage.setItem("passio_ui_8", "0"));
   await bootOnboarded(page, errors, n);
 }
 

@@ -151,7 +151,19 @@
     } catch (e) { fail("activation", e); }
   }
 
+  // ⚠️ Garde de cohabitation (même famille que `ficheReprisParV4b` au lot UI-4B).
+  // Sous le lot UI-8, `renderProfilesScreen` rend lui-même l'état de la carte —
+  // et cette carte n'appelle plus `toggleProfileSelect`, donc `idDeCarte()` ne
+  // trouverait rien de toute façon. On rend la surface à app-06 plutôt que
+  // d'empiler deux écritures.
+  function cartesReprisesParV8() {
+    try { if (window.PASSIO_UI_8 === false) return false; } catch (e) {}
+    try { if (localStorage.getItem("passio_ui_8") === "0") return false; } catch (e) {}
+    return !!document.querySelector("#profileList [data-v8-card]");
+  }
+
   function decorerCartes() {
+    if (cartesReprisesParV8()) return;
     var cartes = document.querySelectorAll("#profileList .profile-card");
     var courant = profilActifId();
     for (var i = 0; i < cartes.length; i++) {
