@@ -2648,7 +2648,7 @@ function openCdvLiveViewer(liveId) {
       <span>📍 ' + live.steps.length + ' étape' + (live.steps.length>1?"s":"") + '</span>\
       <span id="cdvViewerCount">👁 ' + viewerCount + ' suivent</span>\
       <span>🕐 ' + fmtTime(live.createdAt) + '</span>\
-      ' + (live.duration ? '<span>📅 ' + live.duration + '</span>' : '') + '\
+      ' + (live.duration ? '<span>📅 ' + escapeHtml(live.duration) + '</span>' : '') + '\
     </div>\
     \
     <div id="cdvTripStats">' + _cdvTripStatsHtml(cdvTripStats(live.steps)) + '</div>\

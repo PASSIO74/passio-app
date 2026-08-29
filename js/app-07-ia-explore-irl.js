@@ -3306,8 +3306,13 @@ function openEventDetails(id) {
 
   const heroTitle = document.getElementById("eventDetailHeroTitle");
   if (heroTitle) {
+    // ⚠️ eventType vient de l'événement d'un AUTRE compte. Il était déjà
+    // échappé sur la carte de la liste (~l. 2432) mais PAS ici : mesuré, une
+    // charge <img src=x onerror=...> s'exécutait à l'ouverture de la fiche.
+    // Le <select> de création ne propose que des valeurs fixes, mais rien
+    // n'empêche une insertion REST directe.
     heroTitle.innerHTML = `
-      <div class="event-detail-passion-badge">${passion.emoji} ${passion.label}${ev.eventType ? ` · ${ev.eventType}` : ""}</div>
+      <div class="event-detail-passion-badge">${passion.emoji} ${passion.label}${ev.eventType ? ` · ${escapeHtml(ev.eventType)}` : ""}</div>
       <div class="event-detail-title">${escapeHtml(ev.title || "Événement")}</div>
     `;
   }

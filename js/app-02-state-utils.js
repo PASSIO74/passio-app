@@ -2966,7 +2966,7 @@ function renderFeedCdvLives() {
         <span style="font-size:11px;color:var(--muted);margin-left:auto;">👁 ${viewerCount}</span>
       </div>
       <div style="font-size:11px;color:var(--text-dim);margin-bottom:6px;">par ${escapeHtml(authorName)}</div>
-      ${l.steps.length ? `<div style="font-size:10px;color:var(--muted);">${l.steps.length} étape${l.steps.length>1?"s":""} · ${l.duration || ""}</div>` : ""}
+      ${l.steps.length ? `<div style="font-size:10px;color:var(--muted);">${l.steps.length} étape${l.steps.length>1?"s":""} · ${escapeHtml(l.duration || "")}</div>` : ""}
     </div>`;
   }).join("");
 
