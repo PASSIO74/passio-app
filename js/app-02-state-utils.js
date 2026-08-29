@@ -1094,6 +1094,14 @@ function goTo(screen) {
   // Une aide contextuelle est ancrée à un élément de l'écran qu'on quitte :
   // la laisser flotter sur l'écran suivant n'aurait aucun sens (spec §8).
   try { fermerHint(); } catch (e) {}
+  // Fil fenêtré : mémoriser l'ancre AVANT de masquer l'écran — une carte dans un
+  // écran inactif n'a plus de rectangle mesurable. Et démonter l'observateur en
+  // quittant, pour qu'aucun ne survive à la navigation.
+  var _quitteFil = document.getElementById("screen-feed");
+  if (_quitteFil && _quitteFil.classList.contains("active") && screen !== "feed") {
+    try { feedWindowRememberScroll(); feedWindowTeardown(); } catch (e) {}
+  }
+
   $$(".screen").forEach(s => s.classList.remove("active"));
   const el = document.getElementById("screen-" + screen);
   if (el) el.classList.add("active");
@@ -1101,7 +1109,7 @@ function goTo(screen) {
   document.body.classList.toggle("screen-feed-active", screen === "feed");
 
   // Re-render dynamic screens on navigate
-  if (screen === "feed")     renderFeed();
+  if (screen === "feed")     { renderFeed(); try { feedWindowRestoreScroll(); } catch (e) {} }
   if (screen === "profiles") renderProfilesScreen();
   if (screen === "studio")   renderStudio();
   if (screen === "explore")  { renderExplorer(); setTimeout(renderAiHistory, 50); }
@@ -3323,12 +3331,482 @@ function montrerHint(id, cible) {
   } catch (e) { return false; }
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// FIL FENÊTRÉ (drapeau `feed_window_v1`) — PERF-IOS phase 2
+// ──────────────────────────────────────────────────────────────────────────
+// Borne le nombre de cartes RÉELLEMENT montées dans #feedList, charge les
+// suivantes par lots quand on approche du bas, et conserve l'ancre de scroll
+// à la navigation aller-retour. Le classement, `_feedDomSig`, le HTML des
+// cartes et le parcours Fil → IRL sont strictement inchangés.
+//
+//     localStorage.passio_feed_window_v1 = "1"  → fenêtrage actif
+//     localStorage.passio_feed_window_v1 = "0"  → kill switch immédiat
+//     window.PASSIO_FEED_WINDOW_V1 = false      → coupure en mémoire
+//     ?passio_preview=feed-window-v1            → canari pour cette URL seulement
+//
+// ⚠️ POURQUOI L'ANCRE SAUTAIT (19–78 px sur le prototype, contre-revue Codex).
+// `.post` porte `content-visibility: auto; contain-intrinsic-size: auto 320px`
+// (styles.css). Tant qu'une carte n'a JAMAIS été peinte, le navigateur lui
+// prête 320 px — or les cartes réelles vont de ~150 px (texte seul) à ~560 px
+// (cover). Chaque carte qui entre pour la première fois dans le flux corrige
+// alors sa hauteur d'un coup, et tout ce qui est en dessous se décale de la
+// différence. Le mot-clé `auto` mémorise la taille après la première peinture,
+// mais iOS abandonne cette mémoire sous pression mémoire : d'où le retour des
+// sauts en session longue.
+//
+// Le correctif ne relâche AUCUN seuil, il supprime l'estimation :
+//   ① une carte déshydratée garde son élément en place, avec une hauteur
+//      explicite égale à sa hauteur mesurée (`getBoundingClientRect`, donc
+//      fractionnaire, et box-sizing:border-box partout → boîte identique) ;
+//      seuls ses enfants sont retirés. Marges et place dans le flux inchangées,
+//      donc décalage nul par construction ;
+//   ② une carte hydratée reçoit un `contain-intrinsic-size` explicite égal à sa
+//      hauteur réelle, qui remplace la supposition de 320 px et survit à
+//      l'oubli du `auto`.
+// ══════════════════════════════════════════════════════════════════════════
+var FEED_WINDOW_VERSION = "v1";
+// Marge d'hydratation de part et d'autre du viewport. Large exprès : l'oeil ne
+// doit jamais croiser une carte vide, même en scroll rapide au doigt.
+var FEED_WINDOW_MARGIN_PX = 1400;
+// Taille d'un lot de chargement progressif (identique au pas historique du
+// bouton « Charger plus », pour ne pas changer la pagination serveur).
+var FEED_WINDOW_BATCH = 20;
+
+function feedWindowEnabled() {
+  if (typeof window.PASSIO_FEED_WINDOW_V1 === "boolean") return window.PASSIO_FEED_WINDOW_V1;
+  var stored = null;
+  try { stored = localStorage.getItem("passio_feed_window_v1"); } catch (e) {}
+  if (stored === "0") return false;  // kill switch local prioritaire
+  if (stored === "1") return true;
+  try {
+    var preview = new URLSearchParams(window.location.search).get("passio_preview");
+    if (preview === "feed-window-v1") return true;
+  } catch (e) {}
+  return false; // défaut sûr : rendu historique, à l'octet près
+}
+
+// Signature d'une carte : ce qui, dans le modèle, change son HTML rendu.
+// Sert au repeint incrémental — jamais à décider d'un affichage.
+function _feedWindowCardSig(p) {
+  return p.id + ":" + (p.likes || 0) + ":" + ((p.comments || []).length)
+       + ":" + (Array.isArray(p.reactions) ? p.reactions.length : 0);
+}
+
+// Marge d'hydratation, réglable pour les tests et pour un éventuel ajustement
+// terrain sans redéploiement. Toute valeur non numérique retombe sur le défaut.
+function feedWindowMarginPx() {
+  var v = window.PASSIO_FEED_WINDOW_MARGIN;
+  return (typeof v === "number" && isFinite(v) && v >= 0) ? v : FEED_WINDOW_MARGIN_PX;
+}
+
+function _feedWindowScroller() {
+  return document.querySelector(".app-main") || document.getElementById("appMain");
+}
+
+// Déshydrate une carte : son élément RESTE dans le flux, à hauteur figée.
+// Refuse tant qu'elle contient le focus (saisie en cours) ou une sélection.
+function feedWindowDehydrate(card) {
+  if (!card || card._fwOff) return false;
+  try {
+    if (document.activeElement && card.contains(document.activeElement)) return false;
+  } catch (e) {}
+  var h = card.getBoundingClientRect().height;
+  if (!(h > 0)) return false;                       // jamais peinte : rien à figer
+  card._fwHtml = card.innerHTML;
+  card.style.height = h + "px";
+  card.style.containIntrinsicSize = h + "px";
+  card.innerHTML = "";
+  card._fwOff = true;
+  card.setAttribute("data-fw", "off");
+  return true;
+}
+
+// Réhydrate une carte. Le HTML est REGÉNÉRÉ depuis le modèle quand le post est
+// retrouvable : un like ou un commentaire arrivé pendant que la carte était
+// démontée a modifié le modèle, pas le DOM absent — restaurer la chaîne mise de
+// côté rafficherait des compteurs périmés. Repli sur la chaîne conservée.
+function feedWindowHydrate(card) {
+  if (!card || !card._fwOff) return false;
+  var html = card._fwHtml || "";
+  try {
+    var id = card.getAttribute("data-postid");
+    var post = (id && typeof findPostAnywhere === "function") ? findPostAnywhere(id) : null;
+    if (post) {
+      var tpl = document.createElement("template");
+      tpl.innerHTML = _renderPostHTMLSafe(post);
+      var fresh = tpl.content.firstElementChild;
+      if (fresh && fresh.innerHTML) html = fresh.innerHTML;
+    }
+  } catch (e) {}
+  card.innerHTML = html;
+  card._fwHtml = null;
+  card.style.height = "";
+  card._fwOff = false;
+  card.removeAttribute("data-fw");
+  _feedWindowRedecorer(card);
+  // La taille intrinsèque reste posée : elle vaut la dernière hauteur réelle
+  // mesurée, ce qui est toujours plus juste que la supposition de 320 px.
+  return true;
+}
+
+// ⚠️ Défaut relevé en contre-revue indépendante sur cette PR, et REPRODUIT le
+// 2026-08-29 : 12 passerelles avant, 11 après une seule déshydratation, et elles
+// ne revenaient jamais.
+//
+// Réhydrater REMPLACE l'intérieur de la carte. La passerelle UI-3
+// (`[data-v3-bridge]`) posée DEDANS disparaît donc, alors que le marqueur
+// `data-v3-decore` vit sur l'ÉLÉMENT et survit à `innerHTML`. Or c'est ce
+// marqueur, et lui seul, qui autorise `styles.css` à masquer le CTA historique
+// (`.post[data-v3-decore] .feed-irl-bridge`) : la carte se retrouvait avec la
+// porte neuve retirée ET l'ancienne toujours masquée — donc AUCUNE porte vers
+// l'IRL. Et l'observateur d'UI-3 écoute `#feedList` en `childList` SANS
+// `subtree` : remplacer le contenu d'une carte ne le réveille pas, rien ne
+// repose la passerelle. `feedWindowTeardown()` réhydratant tout, une simple
+// navigation suffisait à vider le fil de ses passerelles.
+//
+// On redécore donc explicitement, à la seule sortie commune de toutes les
+// réhydratations — observateur, coupure du drapeau, redimensionnement.
+function _feedWindowRedecorer(card) {
+  try {
+    // Les marqueurs partent AVEC la décoration qu'ils accompagnaient : une carte
+    // non décorée ne doit jamais rester porteuse de la condition qui masque le
+    // CTA historique, même le temps d'une trame. `decorerArticle` les repose.
+    card.removeAttribute("data-v3-decore");
+    card.removeAttribute("data-v3-activity-source");
+    if (window.PassioUIV3
+        && typeof PassioUIV3.decorateFeed === "function"
+        && typeof PassioUIV3.isEnabled === "function"
+        && PassioUIV3.isEnabled()) {
+      PassioUIV3.decorateFeed();
+    }
+  } catch (e) {
+    // Jamais muet : un `catch` large sur un chemin de rendu a déjà masqué six
+    // jours de fil vide dans ce dépôt.
+    try { if (typeof diagLog === "function") diagLog("feedWindow.redecorer", e && e.message); } catch (_) {}
+  }
+}
+
+// Fige la taille intrinsèque d'une carte montée sur sa hauteur réelle, pour que
+// le navigateur n'ait plus jamais à la supposer (cause des sauts d'ancre).
+function _feedWindowPinIntrinsic(card) {
+  if (!card || card._fwOff) return;
+  var h = card.getBoundingClientRect().height;
+  if (h > 0) card.style.containIntrinsicSize = h + "px";
+}
+
+// UN SEUL observateur pour tout le fil, recréé seulement quand la liste change
+// d'identité. `_fwObsToken` empêche d'en empiler un par rendu — c'est la fuite
+// classique d'un fenêtrage naïf.
+function feedWindowSync(list) {
+  if (!feedWindowEnabled()) return;
+  list = list || document.getElementById("feedList");
+  if (!list) return;
+
+  var scroller = _feedWindowScroller();
+  if (!window._feedWindowObserver || window._feedWindowRoot !== scroller) {
+    if (window._feedWindowObserver) {
+      try { window._feedWindowObserver.disconnect(); } catch (e) {}
+    }
+    window._feedWindowObserverCount = (window._feedWindowObserverCount || 0) + 1;
+    window._feedWindowRoot = scroller;
+    window._feedWindowObserver = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        var el = entry.target;
+        if (el.id === "feedWindowSentinel") {
+          if (entry.isIntersecting) feedWindowLoadNextBatch();
+          return;
+        }
+        if (entry.isIntersecting) feedWindowHydrate(el);
+        else feedWindowDehydrate(el);
+      });
+    }, { root: scroller || null, rootMargin: feedWindowMarginPx() + "px 0px" });
+  }
+
+  var obs = window._feedWindowObserver;
+  var cards = list.querySelectorAll(".post[data-postid]");
+  for (var i = 0; i < cards.length; i++) {
+    var c = cards[i];
+    if (c._fwObserved) continue;
+    c._fwObserved = true;
+    _feedWindowPinIntrinsic(c);
+    obs.observe(c);
+  }
+  var sentinel = document.getElementById("feedWindowSentinel");
+  if (sentinel && !sentinel._fwObserved) {
+    sentinel._fwObserved = true;
+    obs.observe(sentinel);
+  }
+}
+
+// Chargement progressif : appelé quand la sentinelle de fin de liste entre dans
+// la marge. Réutilise EXACTEMENT le chemin de pagination historique.
+function feedWindowLoadNextBatch() {
+  if (!feedWindowEnabled()) return;
+  if (window._feedWindowLoading) return;
+  var feedEl = document.getElementById("screen-feed");
+  if (!feedEl || !feedEl.classList.contains("active")) return;
+  window._feedWindowLoading = true;
+  try {
+    if (window.tel && tel.action) {
+      tel.action("feed_window_batch", {
+        v: FEED_WINDOW_VERSION,
+        limit: window._feedRenderLimit || FEED_WINDOW_BATCH,
+      });
+    }
+  } catch (e) {}
+  var done = function () { window._feedWindowLoading = false; };
+  if (typeof loadMoreFeedPosts !== "function") { done(); return; }
+  try {
+    var r = loadMoreFeedPosts();
+    if (r && typeof r.then === "function") r.then(done, done);
+    else done();
+  } catch (e) { done(); }
+}
+
+// Repeint INCRÉMENTAL : n'ajoute que la queue manquante, sans toucher aux
+// cartes déjà montées — donc sans réinitialiser le scroll ni re-décoder les
+// images déjà à l'écran. Renvoie false dès que le moindre doute existe, et le
+// rendu complet historique reprend la main.
+function feedWindowPaintIncremental(list, visible, hasMore, moreBtnHtml) {
+  if (!feedWindowEnabled()) return false;
+  var mounted = list.querySelectorAll(".post[data-postid]");
+  var n = mounted.length;
+  if (n === 0 || n >= visible.length) return false;
+  var sigs = list._fwSigs;
+  if (!sigs || sigs.length !== n) return false;
+  for (var i = 0; i < n; i++) {
+    if (mounted[i].getAttribute("data-postid") !== visible[i].id) return false;
+    if (sigs[i] !== _feedWindowCardSig(visible[i])) return false;   // compteur périmé
+  }
+  var tail = list.querySelector("#feedWindowTail");
+  if (tail) tail.remove();
+  list.insertAdjacentHTML("beforeend",
+    visible.slice(n).map(_renderPostHTMLSafe).join("") + feedWindowTailHtml(hasMore, moreBtnHtml));
+  list._fwSigs = visible.map(_feedWindowCardSig);
+  feedWindowSync(list);
+  return true;
+}
+
+// Pied de liste : bouton historique + sentinelle de chargement progressif.
+// Le bouton reste, seul et inchangé, quand le drapeau est coupé.
+function feedWindowTailHtml(hasMore, moreBtnHtml) {
+  if (!feedWindowEnabled()) return hasMore ? moreBtnHtml : "";
+  return '<div id="feedWindowTail">'
+       + (hasMore ? moreBtnHtml : "")
+       + '<div id="feedWindowSentinel" aria-hidden="true" style="height:1px;"></div>'
+       + '</div>';
+}
+
+// ── Ancre de scroll ───────────────────────────────────────────────────────
+// On ne mémorise PAS un `scrollTop` brut : à la navigation retour, les images
+// ne sont pas encore décodées et le même pixel ne désigne plus le même post.
+// On mémorise la carte de tête et son décalage, puis on corrige jusqu'à
+// convergence — c'est ce qui tient l'écart sous 2 px.
+function feedWindowRememberScroll() {
+  if (!feedWindowEnabled()) return;
+  var scroller = _feedWindowScroller();
+  var list = document.getElementById("feedList");
+  if (!scroller || !list) return;
+  var top = scroller.getBoundingClientRect().top;
+  var cards = list.querySelectorAll(".post[data-postid]");
+  var anchor = null, delta = 0;
+  for (var i = 0; i < cards.length; i++) {
+    var d = cards[i].getBoundingClientRect().top - top;
+    if (d >= -1) { anchor = cards[i]; delta = d; break; }   // 1re carte non dépassée
+    anchor = cards[i]; delta = d;                            // sinon, la dernière au-dessus
+  }
+  window._feedScrollAnchor = {
+    id: anchor ? anchor.getAttribute("data-postid") : null,
+    delta: anchor ? delta : 0,
+    y: scroller.scrollTop,
+    // ⚠️ L'ancre mémorisait aussi l'état de l'en-tête rétractable, qui retirait
+    // ~150 px au-dessus du fil une fois replié : restaurer la position sans
+    // restaurer sa hauteur, c'était viser une page d'une autre géométrie, et
+    // c'était la moitié haute des sauts de 19 à 78 px relevés en contre-revue.
+    // Le repli a été RETIRÉ (#196) : la géométrie ne varie plus, il n'y a donc
+    // plus rien à mémoriser ici. Ne pas le réintroduire sans le repli.
+  };
+}
+
+var _FEED_GESTES = ["wheel", "touchstart", "pointerdown", "keydown"];
+
+function feedWindowRestoreScroll() {
+  if (!feedWindowEnabled()) return;
+  var memo = window._feedScrollAnchor;
+  if (!memo) return;
+  var scroller = _feedWindowScroller();
+  if (!scroller) return;
+
+  // Une restauration déjà en cours appartient à une navigation précédente.
+  _feedWindowArreterVeille();
+
+  // ⚠️ `_feedScrollRestoring` neutralisait la bascule d'en-tête pendant la
+  // convergence : sans ça, chaque correction de scroll la redéclenchait et la
+  // cible bougeait sous la correction. Ce consommateur a disparu avec le repli
+  // lui-même (#196). Le marqueur SURVIT parce qu'il dit « une restauration est
+  // en cours » et que le test de cycle de vie exige qu'il soit bien relâché —
+  // c'est ce qui prouve que la restauration se termine et ne fuit pas.
+  window._feedScrollRestoring = true;
+
+  // Toute la restauration — convergence PUIS veille — s'interrompt au premier
+  // GESTE de l'utilisateur : dès qu'il touche l'écran, c'est lui qui décide où
+  // est la page, plus nous. Les écouteurs sont posés tout de suite, et pas
+  // seulement à l'ouverture de la veille : un doigt posé pendant la convergence
+  // doit rendre la main immédiatement.
+  var minuteries = [];
+  var vivante = true;
+  var arret = function () {
+    if (!vivante) return;
+    vivante = false;
+    minuteries.forEach(clearTimeout);
+    minuteries.length = 0;
+    _FEED_GESTES.forEach(function (ev) { window.removeEventListener(ev, arret, true); });
+    window._feedScrollRestoring = false;
+    window._feedWindowVeille = null;
+  };
+  _FEED_GESTES.forEach(function (ev) {
+    window.addEventListener(ev, arret, { capture: true, passive: true });
+  });
+  window._feedWindowVeille = arret;
+
+  // Viser la carte mémorisée : renvoie l'écart corrigé, 0 si déjà en place,
+  // null si le post a disparu du fil.
+  var viser = function () {
+    var list = document.getElementById("feedList");
+    var card = (memo.id && list)
+      ? list.querySelector('.post[data-postid="' + (window.CSS && CSS.escape ? CSS.escape(memo.id) : memo.id) + '"]')
+      : null;
+    if (!card) return null;
+    var diff = (card.getBoundingClientRect().top - scroller.getBoundingClientRect().top) - memo.delta;
+    if (Math.abs(diff) > 0.5) { scroller.scrollTop += diff; return diff; }
+    return 0;
+  };
+
+  // Convergence : viser, mesurer, corriger — jusqu'à deux trames stables. La
+  // mise en page et le décodage des images se posent de façon asynchrone : viser
+  // une seule fois manque la cible, et trois trames n'y suffisaient pas (150 px
+  // d'écart résiduel mesuré).
+  var attempts = 0, stable = 0;
+  var step = function () {
+    if (!vivante) return;
+    attempts++;
+    var diff = viser();
+    if (diff === null) { scroller.scrollTop = memo.y; arret(); return; }  // post disparu : repli brut
+    if (diff !== 0) stable = 0; else stable++;
+    if (stable < 2 && attempts < 12) { requestAnimationFrame(step); return; }
+    _feedWindowVeillerAncre(viser, arret, minuteries, function () { return vivante; });
+  };
+  requestAnimationFrame(step);
+}
+
+// ── Veille d'ancre après convergence ──────────────────────────────────────
+// ⚠️ Mesuré le 2026-08-29 : tant que l'ancrage de défilement NATIF du navigateur
+// (`overflow-anchor`) opère, il rattrape lui-même toute croissance de contenu
+// au-dessus du viewport, et la convergence ci-dessus paraît suffisante. Elle ne
+// l'est pas : elle s'appuyait sans le savoir sur cette béquille. En la coupant
+// (`overflow-anchor: none`), la même navigation dérivait de 114 à 138 px — c'est
+// la forme locale du rouge CI, où le Chromium du runner ne compensait pas.
+//
+// On ne s'en remet donc plus au navigateur : après la convergence, on REVÉRIFIE
+// l'ancre à quelques instants choisis et on corrige tout écart. Une veille par
+// échéances plutôt qu'un observateur : coût borné, rien à démonter, aucune fuite.
+var _FEED_VEILLE_MS = [90, 200, 350, 550, 800, 1100];
+
+function _feedWindowVeillerAncre(viser, arret, minuteries, vivante) {
+  _FEED_VEILLE_MS.forEach(function (ms, i) {
+    minuteries.push(setTimeout(function () {
+      if (!vivante()) return;
+      // Le fil a pu être quitté entre-temps : ne rien corriger sur un écran caché.
+      var ecran = document.getElementById("screen-feed");
+      if (!ecran || ecran.style.display === "none" || !feedWindowEnabled()) { arret(); return; }
+      if (viser() === null || i === _FEED_VEILLE_MS.length - 1) arret();
+    }, ms));
+  });
+}
+
+function _feedWindowArreterVeille() {
+  if (typeof window._feedWindowVeille === "function") window._feedWindowVeille();
+}
+
+// Une rotation ou un changement de largeur périme toute hauteur figée : on les
+// relâche et on laisse le flux se recalculer, plutôt que de conserver des
+// hauteurs fausses qui décaleraient l'ancre (tests 320/390/430 px).
+function feedWindowSetupResize() {
+  if (window._feedWindowResizeAttached) return;
+  window._feedWindowResizeAttached = true;
+  var t = null;
+  window.addEventListener("resize", function () {
+    if (!feedWindowEnabled()) return;
+    clearTimeout(t);
+    t = setTimeout(function () {
+      var list = document.getElementById("feedList");
+      if (!list) return;
+      list.querySelectorAll('.post[data-fw="off"]').forEach(feedWindowHydrate);
+      list.querySelectorAll(".post[data-postid]").forEach(function (c) {
+        c.style.containIntrinsicSize = "";
+      });
+      requestAnimationFrame(function () {
+        list.querySelectorAll(".post[data-postid]").forEach(_feedWindowPinIntrinsic);
+      });
+    }, 150);
+  }, { passive: true });
+}
+
+// Coupe tout : observateur, hauteurs figées, mémoire d'ancre. Appelé par le kill
+// switch et quand on quitte le fil, pour qu'aucun observateur ne survive.
+function feedWindowTeardown() {
+  // La veille d'ancre survivrait au démontage et corrigerait un fil qu'on vient
+  // de rendre à son état historique : la couper d'abord.
+  _feedWindowArreterVeille();
+  if (window._feedWindowObserver) {
+    try { window._feedWindowObserver.disconnect(); } catch (e) {}
+  }
+  window._feedWindowObserver = null;
+  window._feedWindowRoot = null;
+  var list = document.getElementById("feedList");
+  if (list) {
+    list.querySelectorAll('.post[data-fw="off"]').forEach(feedWindowHydrate);
+    list.querySelectorAll(".post[data-postid]").forEach(function (c) { c._fwObserved = false; });
+  }
+  var s = document.getElementById("feedWindowSentinel");
+  if (s) s._fwObserved = false;
+}
+
+// Compteurs d'état — lus par les tests et par le pilotage. Aucune donnée
+// utilisateur : uniquement des nombres et un booléen.
+function feedWindowStats() {
+  var list = document.getElementById("feedList");
+  var cards = list ? list.querySelectorAll(".post[data-postid]") : [];
+  var off = list ? list.querySelectorAll('.post[data-fw="off"]').length : 0;
+  return {
+    enabled: feedWindowEnabled(),
+    total: cards.length,
+    mounted: cards.length - off,
+    dehydrated: off,
+    observers: window._feedWindowObserver ? 1 : 0,
+    observersCreated: window._feedWindowObserverCount || 0,
+    loading: !!window._feedWindowLoading,
+  };
+}
+window.feedWindowStats = feedWindowStats;
+
 function renderFeed() {
   // 🎯 Masquer le skeleton loader
   const skeleton = $("#feedSkeleton");
   if (skeleton) skeleton.style.display = "none";
 
   const list = $("#feedList");
+
+  // Kill switch : drapeau coupé alors que le fenêtrage a laissé des traces
+  // (observateur vivant, cartes déshydratées). On remonte tout et on force un
+  // rendu complet historique — le retour arrière est immédiat, sans rechargement.
+  if (!feedWindowEnabled()
+      && (window._feedWindowObserver || (list && list.querySelector('.post[data-fw="off"]')))) {
+    try { feedWindowTeardown(); } catch (e) {}
+    if (list) list._fwSigs = null;
+    window._feedDomSig = null;
+  }
+
   const mood = state.currentMood || "all";
   setupFeedIntentDelegation();
   syncFeedIntentUi();
@@ -3518,16 +3996,33 @@ function renderFeed() {
       return p.id + ":" + (p.likes || 0) + ":" + ((p.comments || []).length) + ":" + (Array.isArray(p.reactions) ? p.reactions.length : 0);
     }).join("|"),
   ].join("§");
-  if (_domSig === window._feedDomSig && list.children.length > 0) return;
+  if (_domSig === window._feedDomSig && list.children.length > 0) {
+    // Le DOM est déjà le bon, mais l'observateur a pu être démonté en quittant
+    // le fil : sans ce réarmement, revenir sur le fil laissait un fenêtrage
+    // mort (plus rien ne s'hydrate ni ne se démonte) — trouvé par le test des
+    // dix navigations, jamais par une relecture.
+    feedWindowSync(list);
+    return;
+  }
   window._feedDomSig = _domSig;
 
   // ── Peinture en 2 temps : on affiche d'abord FAST cartes (paint initial ~2×
   // plus rapide à la navigation), puis on complète jusqu'à renderLimit juste
   // après, en idle, SANS reconstruire les premières cartes (insertAdjacentHTML).
   // Le nombre total affiché est inchangé — seul l'instant du paint diffère.
+  // ── Fil fenêtré : si les cartes déjà montées sont exactement le début de ce
+  // qu'il faut afficher (cas du chargement progressif), on n'ajoute que la
+  // queue. Le DOM en place n'est pas retouché : ni scroll réinitialisé, ni
+  // images re-décodées. Toute divergence renvoie au rendu complet ci-dessous.
+  if (feedWindowPaintIncremental(list, visible, hasMore, moreBtnHtml)) return;
+
   const FAST = Math.min(12, visible.length);
   list.innerHTML = visible.slice(0, FAST).map(_renderPostHTMLSafe).join("")
-    + (visible.length <= FAST && hasMore ? moreBtnHtml : "");
+    + (visible.length <= FAST ? feedWindowTailHtml(hasMore, moreBtnHtml) : "");
+  list._fwSigs = feedWindowEnabled() && visible.length <= FAST
+    ? visible.map(_feedWindowCardSig) : null;
+  feedWindowSetupResize();
+  feedWindowSync(list);
 
   // UI-2 : Bobine du fil et module « Passionnés à découvrir », insérés APRÈS
   // les premières cartes quand la V2 est active. Si elle est coupée, la fonction
@@ -3561,7 +4056,9 @@ function renderFeed() {
       if (window._feedRenderToken !== _token) return;          // rendu obsolète
       if (!document.body.contains(list)) return;
       list.insertAdjacentHTML("beforeend",
-        visible.slice(FAST).map(_renderPostHTMLSafe).join("") + (hasMore ? moreBtnHtml : ""));
+        visible.slice(FAST).map(_renderPostHTMLSafe).join("") + feedWindowTailHtml(hasMore, moreBtnHtml));
+      if (feedWindowEnabled()) list._fwSigs = visible.map(_feedWindowCardSig);
+      feedWindowSync(list);
     };
     (window.requestIdleCallback || function(f){ return setTimeout(f, 50); })(_fill, { timeout: 300 });
   }
