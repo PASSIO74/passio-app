@@ -2652,6 +2652,13 @@ function allFeedPosts() {
   const deduplicated = allPosts.filter(p => {
     if (p.isReel) return false;
     if (idsBloques.has(p.id)) return false;
+    // ⚠️ VISIBILITÉ D'UN CARNET. Elle vit dans le blob jsonb `vlog` (pas de
+    // colonne), donc la RLS ne peut PAS la faire respecter : la ligne `posts`
+    // part à tous ceux qui peuvent lire l'auteur. Le filet est donc CLIENT — et
+    // il n'était appliqué que par `allCarnets()`. Résultat : un carnet marqué
+    // « Privé » n'apparaissait pas dans l'onglet Carnets… mais s'affichait dans
+    // le FIL de tout le monde, et s'y ouvrait entièrement.
+    if (typeof canSeeCarnet === "function" && !canSeeCarnet(p)) return false;
     if (seenIds.has(p.id)) return false;
     seenIds.add(p.id);
     return true;

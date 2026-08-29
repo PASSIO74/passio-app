@@ -744,6 +744,12 @@ function inspireFromCarnet(postId) {
     ? findPostAnywhere(postId)
     : (state.userPosts.find(p => p.id === postId) || state.seed.posts.find(p => p.id === postId));
   if (!post || post.type !== "vlog") return;
+  // On ne duplique pas la structure d'un carnet qu'on n'a pas le droit d'ouvrir.
+  if (typeof canSeeCarnet === "function" && !canSeeCarnet(post)) {
+    if (typeof toast === "function") toast("Ce carnet n'est pas public");
+    return;
+  }
+
   closeVlogViewer();
   // Ouvre l'éditeur de carnet (écran CDV) et le remplit avec la STRUCTURE.
   setTimeout(() => {
@@ -1037,6 +1043,15 @@ function openVlogViewer(postId) {
     ? findPostAnywhere(postId)
     : (state.userPosts.find(p => p.id === postId) || state.seed.posts.find(p => p.id === postId));
   if (!post || post.type !== "vlog") return;
+  // ⚠️ Le filtre de visibilité vivait dans `allCarnets()` seulement : toute autre
+  // porte ouvrait le carnet sans rien vérifier — le lien partagé #carnet-<id>, les
+  // vignettes du profil visité, les listes du passeport, la carte du fil. Le viewer
+  // est le point de passage COMMUN : la règle tient ici, pas dans chacun de ses dix
+  // appelants.
+  if (typeof canSeeCarnet === "function" && !canSeeCarnet(post)) {
+    if (typeof toast === "function") toast("Ce carnet n'est pas public");
+    return;
+  }
   const author = post._source === "me" || post.profileId
     ? { name: state.user.name || "Toi", profileEmoji: "🌍", avatar: "#7c3aed" }
     : (userById(post.authorId) || { name: "Anonyme", profileEmoji: "🌍", avatar: "#7c3aed" });
