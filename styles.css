@@ -9977,10 +9977,21 @@ body.ctx-locked #appMain { overflow: hidden; }
 :root.passio-ui-6 [data-v6-publier] { min-height: 48px; }
 
 /* ── §11 : les mécaniques économiques sont sorties du cœur ─────────────────
-   Ce lot ne faisait que MASQUER les pastilles ; l'ADR-009 a depuis retiré le
-   moteur lui-même (Wallet, points, rangs, Passia, quêtes, boutique, paywall
-   du 4ᵉ profil). La rangée ne porte plus que la pastille de badges. */
-:root.passio-ui-6 .profile-chips-row { display: none; }
+   Ce lot ne faisait que MASQUER les pastilles de score, de rang et de solde ;
+   l'ADR-009 a depuis retiré le moteur lui-même (Wallet, points, rangs, Passia,
+   quêtes, boutique, paywall du 4ᵉ profil). Il n'y a donc plus rien à masquer.
+
+   ⚠️ La règle `:root.passio-ui-6 .profile-chips-row { display: none }` a été
+   RETIRÉE le 2026-08-29. Elle visait ces pastilles économiques, mais la rangée
+   ne porte plus que la pastille de BADGES d'assiduité — jalons concrets
+   (sorties, villes, pays) que l'ADR-009 garde expressément. UI-6 étant actif
+   par défaut, la règle rendait ces badges inatteignables : mesuré avec un badge
+   réellement gagné, la pastille passait bien à `inline-flex` mais sa rangée
+   restait à `display: none`, hauteur visible 0. Et `openBadgesSheet()` n'a
+   AUCUN autre appelant : la fonctionnalité était calculée et morte.
+   La pastille garde son propre `display: none` en ligne et n'est montrée par
+   `renderMainProfile` que lorsqu'au moins un badge est acquis — un compte neuf
+   ne voit donc toujours rien. */
 
 /* ══════════════════════════════════════════════════════════════════════════
    PASSIO UI V6A — l'inbox Messages du §10.  ACTIF PAR DÉFAUT.

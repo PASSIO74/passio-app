@@ -1479,8 +1479,24 @@ document.addEventListener("keydown", (e) => {
 // la barre principale, où elle se comporte exactement comme les miennes.
 // ⚠️ Cocher dans le panneau AJOUTE la tuile, ça ne filtre pas : c'est le clic sur
 // la tuile qui filtre (aria-pressed). Les deux gestes sont distincts.
+// ⚠️ « Mes passions » doit dire la MÊME chose sur Rencontrer et sur le Fil.
+// Mesuré avant correctif, juste après avoir archivé « Cuisine » :
+//   renderProfileStrip (Fil)  → ["musique"]
+//   _irlMyPassions (Rencontrer) → ["musique", "cuisine"]
+// La passion rangée gardait donc sa tuile marquée « ✦ une de tes passions »,
+// et l'intention « Passio » d'UI-4A1, qui se sert de cette liste, filtrait
+// dessus. La règle est reprise telle quelle de `renderProfileStrip` (app-06) :
+// sous le kill switch d'UI-8 l'archivage n'existe pas comme notion, donc on
+// rend toutes les passions, exactement comme avant le lot.
+// ⚠️ Une passion archivée qui serait ENCORE dans `irlPassionFilters` reste
+// affichée : `renderIrlPassionTiles` ajoute `[...irlPassionFilters]` aux tuiles
+// montrées, précisément pour qu'un filtre actif ne devienne jamais indécochable.
 function _irlMyPassions() {
-  return [...new Set((state.user.profiles || []).map(p => p.passion).filter(Boolean))];
+  const source = (typeof passionsUnifieesActives === "function" && passionsUnifieesActives()
+                  && typeof passionsVivantes === "function")
+    ? passionsVivantes()
+    : (state.user.profiles || []);
+  return [...new Set(source.map(p => p.passion).filter(Boolean))];
 }
 function _irlExtraPassions() {
   if (!Array.isArray(state.user.irlExtraPassions)) state.user.irlExtraPassions = [];
@@ -4658,6 +4674,12 @@ function openCreateEvent(editId) {
 
   const eventTypes = ["Atelier", "Jam session", "Concert", "Exposition", "Sport & activité", "Randonnée", "Dégustation", "Book club", "Cours", "Marché", "Soirée", "Rencontre", "Conférence", "Compétition", "Autre"];
   const typeOptions = eventTypes.map(t => `<option value="${escapeHtml(t)}"${ed && ed.eventType === t ? " selected" : ""}>${t}</option>`).join("");
+  // ⚠️ `v()` ÉCHAPPE DÉJÀ. Ne jamais l'envelopper dans un second
+  // `escapeHtml()` : dix champs l'étaient, et le formulaire d'édition
+  // affichait « Café d&#39;Or » au lieu de « Café d'Or ». Pire, la valeur
+  // corrompue était RÉENREGISTRÉE au premier « Enregistrer », donc la
+  // corruption s'aggravait à chaque édition (`&#39;` puis `&amp;#39;`…).
+  // Le textarea `evDesc` était le seul appel correct — il sert de témoin.
   const v = (x, d) => escapeHtml(String(ed && ed[x] != null && ed[x] !== "" ? ed[x] : (d == null ? "" : d)));
   // Date pré-remplie DANS le markup (et non via un setTimeout après ouverture) :
   // le champ était vide pendant les premières millisecondes et une soumission
@@ -4685,7 +4707,7 @@ function openCreateEvent(editId) {
 
     <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.12em;color:var(--accent);margin:14px 0 8px;">📝 Infos principales</div>
     <label class="field"><span>Titre *</span>
-      <input type="text" class="input" id="evTitle" placeholder="Ex : Jam session guitare débutants" maxlength="80" value="${escapeHtml(v("title"))}"/>
+      <input type="text" class="input" id="evTitle" placeholder="Ex : Jam session guitare débutants" maxlength="80" value="${v("title")}"/>
     </label>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
       <label class="field"><span>Passion *</span>
@@ -4700,7 +4722,7 @@ function openCreateEvent(editId) {
         <input type="date" class="input" id="evDate" value="${escapeHtml(dateValue)}" min="${escapeHtml(ed ? "" : _localDay(Date.now()))}"/>
       </label>
       <label class="field"><span>Heure</span>
-        <input type="time" class="input" id="evTime" value="${escapeHtml(v("time", "18:00"))}"/>
+        <input type="time" class="input" id="evTime" value="${v("time", "18:00")}"/>
       </label>
       <label class="field"><span>Durée</span>
         <select class="input" id="evDuration">
@@ -4733,34 +4755,34 @@ function openCreateEvent(editId) {
     <div id="evPlacePicked" style="display:${ed && ed.lat ? "flex" : "none"};align-items:center;gap:6px;font-size:12px;color:#16a34a;font-weight:700;margin:-4px 0 10px;">📍 <span>Position précise enregistrée</span></div>
 
     <label class="field"><span>Nom du lieu</span>
-      <input type="text" class="input" id="evVenue" placeholder="Café du Coin, Parc, Studio…" maxlength="80" value="${escapeHtml(v("venue"))}"/>
+      <input type="text" class="input" id="evVenue" placeholder="Café du Coin, Parc, Studio…" maxlength="80" value="${v("venue")}"/>
     </label>
     <label class="field"><span>Adresse</span>
-      <input type="text" class="input" id="evAddress" placeholder="12 rue de la Paix" maxlength="100" value="${escapeHtml(v("address"))}"/>
+      <input type="text" class="input" id="evAddress" placeholder="12 rue de la Paix" maxlength="100" value="${v("address")}"/>
     </label>
     <div style="display:grid;grid-template-columns:1fr 2fr;gap:10px;">
       <label class="field"><span>Code postal</span>
-        <input type="text" class="input" id="evPostal" placeholder="75001" maxlength="10" value="${escapeHtml(v("postalCode"))}"/>
+        <input type="text" class="input" id="evPostal" placeholder="75001" maxlength="10" value="${v("postalCode")}"/>
       </label>
       <label class="field"><span>Ville *</span>
-        <input type="text" class="input" id="evCity" placeholder="Paris" maxlength="60" value="${escapeHtml(v("city"))}"/>
+        <input type="text" class="input" id="evCity" placeholder="Paris" maxlength="60" value="${v("city")}"/>
       </label>
     </div>
 
     <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.12em;color:var(--accent);margin:14px 0 8px;">ℹ️ Détails</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
       <label class="field"><span>Prix indicatif en € (0 = gratuit)</span>
-        <input type="number" class="input" id="evPrice" inputmode="decimal" step="0.01" placeholder="0" min="0" max="99999" value="${escapeHtml(v("price", 0))}"/>
+        <input type="number" class="input" id="evPrice" inputmode="decimal" step="0.01" placeholder="0" min="0" max="99999" value="${v("price", 0)}"/>
       </label>
       <label class="field"><span>Places max</span>
-        <input type="number" class="input" id="evMax" placeholder="Illimité" min="1" max="9999" value="${escapeHtml(v("maxAttendees"))}"/>
+        <input type="number" class="input" id="evMax" placeholder="Illimité" min="1" max="9999" value="${v("maxAttendees")}"/>
       </label>
     </div>
     <label class="field"><span>Contact (tél ou email)</span>
-      <input type="text" class="input" id="evContact" placeholder="06 12 34 56 78" maxlength="80" value="${escapeHtml(v("contact"))}"/>
+      <input type="text" class="input" id="evContact" placeholder="06 12 34 56 78" maxlength="80" value="${v("contact")}"/>
     </label>
     <label class="field"><span>Lien (Eventbrite, site…)</span>
-      <input type="url" class="input" id="evLink" placeholder="https://…" maxlength="200" value="${escapeHtml(v("externalLink"))}"/>
+      <input type="url" class="input" id="evLink" placeholder="https://…" maxlength="200" value="${v("externalLink")}"/>
     </label>
     <label class="field"><span>Description</span>
       <textarea class="textarea" id="evDesc" placeholder="Programme, ambiance, quoi apporter…" maxlength="800" style="min-height:90px;">${v("desc")}</textarea>
