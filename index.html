@@ -1823,8 +1823,8 @@
      §8 Bobine) — hors bloc app : composant autonome (IIFE window.PassioUIV7),
      inliné individuellement au build. ACTIF PAR DÉFAUT ; coupé par
      localStorage.passio_ui_7="0" ou window.PASSIO_UI_7=false.
-     ⚠️ Trois règles payées à l'écriture : le bouton « Autres » du fil est un
-     FRÈRE de #profileStrip (que renderProfileStrip réécrit en entier) ; les
+     ⚠️ Trois règles payées à l'écriture : le fil n'est touché QUE par le CSS
+     (renderProfileStrip réécrit #profileStrip en entier, cache compris) ; les
      blocs du profil sont DÉPLACÉS dans des panneaux, jamais régénérés (leurs
      onclick inline et leurs id sont retrouvés à chaque rendu par app-06) ; et
      la feuille de finition de bobine ne publie RIEN elle-même — elle renseigne
