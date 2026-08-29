@@ -147,16 +147,25 @@ test("aperçu : « Créer » ouvre le sélecteur et non l'écran Studio", async 
   // L'écran n'a PAS changé : le tap n'active plus immédiatement le Studio.
   expect(await page.evaluate(() => document.querySelector(".screen.active").id)).toBe("screen-feed");
 
-  // Les quatre choix de la direction produit, dans l'ordre.
+  // TOUT ce que l'on peut créer, d'un seul tenant et dans l'ordre : c'est
+  // l'objet du changement du 2026-08-29 (« ça évite deux manips »).
   const titles = await sheet.locator(".v2-sheet-item-title").allTextContents();
-  expect(titles).toEqual(["Publication", "Bobine", "Activité IRL", "Plus"]);
+  expect(titles).toEqual([
+    "Publication", "Bobine", "Activité IRL", "Story", "Live vidéo", "Audio / podcast",
+  ]);
 
-  // « Plus » reste dans la feuille et expose Story + audio/podcast.
-  await sheet.locator('[data-v2-create="more"]').click();
-  const more = await sheet.locator(".v2-sheet-item-title").allTextContents();
-  expect(more).toEqual(["Story", "Audio / podcast", "Live vidéo", "Retour"]);
-  await sheet.locator('[data-v2-create="back"]').click();
-  await expect(sheet.locator('[data-v2-create="post"]')).toBeVisible();
+  // Le sous-menu a disparu : ni « Plus », ni « Retour », nulle part.
+  await expect(sheet.locator('[data-v2-create="more"]')).toHaveCount(0);
+  await expect(sheet.locator('[data-v2-create="back"]')).toHaveCount(0);
+
+  // Les six entrées sont atteignables SANS second tap, et chacune reste une
+  // cible tactile réglementaire — c'est ce que la liste longue met en jeu.
+  for (const key of ["post", "bobine", "irl", "story", "live", "audio"]) {
+    const item = sheet.locator(`[data-v2-create="${key}"]`);
+    await expect(item).toBeVisible();
+    const h = await item.evaluate((el) => el.getBoundingClientRect().height);
+    expect(h, `cible « ${key} » trop petite`).toBeGreaterThanOrEqual(44);
+  }
 
   // Échap referme, le focus revient au bouton central (clavier utilisable).
   await page.keyboard.press("Escape");
@@ -196,9 +205,8 @@ test("aperçu : chaque choix « Créer » rebranche un éditeur existant", async
   }, null, { timeout: 8000 });
   await page.evaluate(() => { if (typeof closeModal === "function") closeModal(); });
 
-  // Plus → Story → même éditeur média, en mode story.
+  // Story → même éditeur média, en mode story (un seul tap depuis « + »).
   await page.click('#appNavV2 [data-v2-action="create"]');
-  await sheet.locator('[data-v2-create="more"]').click();
   await sheet.locator('[data-v2-create="story"]').click();
   await page.waitForFunction(() => {
     const ed = document.getElementById("mediaEditor");
@@ -207,9 +215,8 @@ test("aperçu : chaque choix « Créer » rebranche un éditeur existant", async
   expect(await page.evaluate(() => document.getElementById("meTitle").textContent)).toBe("Story");
   await page.evaluate(() => { if (typeof meClose === "function") meClose(); });
 
-  // Plus → Audio/podcast → Studio positionné sur le format audio.
+  // Audio/podcast → Studio positionné sur le format audio.
   await page.click('#appNavV2 [data-v2-action="create"]');
-  await sheet.locator('[data-v2-create="more"]').click();
   await sheet.locator('[data-v2-create="audio"]').click();
   await screenIsActive(page, "studio");
   await page.waitForFunction(() => {
@@ -217,7 +224,7 @@ test("aperçu : chaque choix « Créer » rebranche un éditeur existant", async
     return b && getComputedStyle(b).display !== "none";
   }, null, { timeout: 8000 });
 
-  // Plus → Live vidéo. Cette entrée est le SEUL point d'accès à
+  // Live vidéo. Cette entrée est le SEUL point d'accès à
   // `startVideoLive()` depuis le 2026-08-28 : la bulle « Live » de la barre des
   // stories a été retirée le même jour (doublon d'une action de création placée
   // dans une barre qui montre ce que les gens publient). Le test vérifie que
@@ -228,7 +235,6 @@ test("aperçu : chaque choix « Créer » rebranche un éditeur existant", async
     window.startVideoLive = function () { window.__liveLance++; };
   });
   await page.click('#appNavV2 [data-v2-action="create"]');
-  await sheet.locator('[data-v2-create="more"]').click();
   await expect(sheet.locator('[data-v2-create="live"]')).toBeVisible();
   await sheet.locator('[data-v2-create="live"]').click();
   expect(await page.evaluate(() => window.__liveLance)).toBe(1);
