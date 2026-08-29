@@ -18,12 +18,12 @@ function onboardedState(n = 1) {
   return {
     onboarded: true, landingSeen: true, tourSeen: true,
     user: {
-      name: "Audit QA", birthYear: 1995, isMinor: false, score: 20, passia: 10,
+      name: "Audit QA", birthYear: 1995, isMinor: false,
       currentProfileId: "pp_0", profiles,
       drafts: [], likedPosts: [], joinedEvents: [], seenStories: [], customPassions: [],
       following: [], savedCarnets: [], general: { username: "Audit QA" },
     },
-    userPosts: [], userEvents: [], transactions: [], notifications: [], quests: [],
+    userPosts: [], userEvents: [], notifications: [],
     currentMood: "all", selectedFeedPassions: [],
   };
 }

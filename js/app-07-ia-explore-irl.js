@@ -117,10 +117,9 @@ function aiGetRelated(query) {
   if (ql.includes("photo")) return ["Ressources photographie", "Créateurs photo", "Events photo IRL"];
   if (ql.includes("musiqu") || ql.includes("guitare")) return ["Ressources musique", "Tendances musique 2026", "Events musique IRL"];
   if (ql.includes("cuisi")) return ["Débuter en cuisine", "Ressources cuisine", "Events cuisine IRL"];
-  if (ql.includes("irl") || ql.includes("event")) return ["Carnets de voyage CDV", "Créateurs à suivre", "Comment gagner des Passia"];
-  if (ql.includes("passia") || ql.includes("point")) return ["Événements IRL", "Lancer un CDV Live", "Créer du contenu"];
+  if (ql.includes("irl") || ql.includes("event")) return ["Carnets de voyage CDV", "Créateurs à suivre", "Rencontrer des passionnés"];
   if (ql.includes("voyage") || ql.includes("cdv")) return ["Événements IRL", "Conseils voyage", "Créateurs voyage"];
-  return ["Events IRL cette semaine", "Créateurs à suivre", "Comment gagner des Passia"];
+  return ["Events IRL cette semaine", "Créateurs à suivre", "Rencontrer des passionnés"];
 }
 
 function filterExplore() {
@@ -302,7 +301,6 @@ function quickCreateProfile(pid) {
   if (typeof supaUpsertProfile === "function") { try { supaUpsertProfile(); } catch(e) {} }
   // Flush immédiat de user_state sans attendre le debounce.
   if (typeof supaSaveUserState === "function") { try { supaSaveUserState(); } catch(e) {} }
-  grantReward("profile_create");
   closeModal();
   renderTopbar();
   goTo("profiles");
@@ -2288,7 +2286,7 @@ function _irlEmptyStateHtml() {
       + '<button class="btn primary" style="margin-top:10px;" onclick="clearAllIrlFilters()">✕ Tout afficher</button></div>';
   }
   return '<div class="empty"><div class="empty-icon">🗓</div><div class="empty-title">Aucun événement</div>'
-    + '<div class="empty-text">Crée le premier pour +30 pts.</div>'
+    + '<div class="empty-text">Crée le premier et donne rendez-vous.</div>'
     + '<button class="btn primary" style="margin-top:10px;" onclick="openCreateEvent()">+ Créer</button></div>';
 }
 
@@ -2414,7 +2412,7 @@ function renderIRL() {
     const venueStr = e.venue ? " · " + escapeHtml(e.venue) : "";
     const distKm = _eventDistanceKm(e, _ref);
     const distStr = distKm != null && distKm < 20000 ? " · " + _fmtDistance(distKm) : "";
-    const priceTag = e.price !== undefined && e.price !== null && e.price !== "" ? `<span class="pill" style="padding:2px 7px;font-size:10px;">${e.price == 0 ? "Gratuit 🎉" : e.price + " 💎 Passia"}</span>` : "";
+    const priceTag = e.price !== undefined && e.price !== null && e.price !== "" ? `<span class="pill" style="padding:2px 7px;font-size:10px;">${escapeHtml(fmtEventPrice(e.price))}</span>` : "";
     const typeTag = e.eventType ? `<span class="pill" style="padding:2px 7px;font-size:10px;">${escapeHtml(e.eventType)}</span>` : "";
     const attCount = (e.attendees || []).length;
     const maybeCount = (e.maybes || []).length;
@@ -2517,7 +2515,6 @@ function toggleEventLike(id, el) {
   } else {
     state.user.likedEvents.push(id);
     cur.likes = (cur.likes || 0) + 1; cur.liked = true;
-    if (typeof bumpQuest === "function") { try { bumpQuest("like"); } catch(e){} }
   }
   window._eventLikes[id] = cur;
   if (typeof saveState === "function") saveState();
@@ -2894,8 +2891,6 @@ async function setEventRsvp(id, rsvp) {
   }
 
   if (rsvp === "going" && prev !== "going") {
-    grantReward("event_join");
-    bumpQuest("join");
     pushNotification(`🤝 Tu rejoins <b>${escapeHtml(ev.title)}</b>`, "🤝");
   } else {
     toast(RSVP_LABELS[rsvp] ? RSVP_LABELS[rsvp].emoji + " " + RSVP_LABELS[rsvp].label : "Enregistré");
@@ -3019,7 +3014,6 @@ function checkInEvent(id) {
     state.user.checkedInEvents = state.user.checkedInEvents || [];
     if (!state.user.checkedInEvents.includes(id)) state.user.checkedInEvents.push(id);
     if (myRsvp(id) !== "going") _setMyRsvpLocal(id, "going");
-    grantReward("event_join");
     saveState();
     if (window._supaReal && typeof supaCheckInEvent === "function") supaCheckInEvent(id);
     toast("🎉 Arrivée confirmée — bon moment !");
@@ -3339,14 +3333,14 @@ function openEventDetails(id) {
 
   const addressFull = [ev.address, ev.postalCode, ev.city].filter(Boolean).join(", ");
   const mapsLink = addressFull ? `<a href="https://maps.google.com/?q=${encodeURIComponent(addressFull)}" target="_blank" class="event-detail-info-link">📍 Voir sur Google Maps →</a>` : "";
-  const priceStr = (ev.price === 0 || ev.price === "0" || ev.price === "" || ev.price === undefined || ev.price === null) ? "Gratuit 🎉" : `${ev.price} 💎 Passia`;
+  const priceStr = fmtEventPrice(ev.price);
 
   // Build info rows (only show filled fields)
   const infoRows = [
     infoRow("📅", "Date & heure", `${dateStr} à ${timeStr}`),
     addressFull ? infoRow("📍", "Adresse", escapeHtml(addressFull), mapsLink) : (ev.city ? infoRow("🏙️", "Ville", escapeHtml(ev.city)) : ""),
     ev.venue ? infoRow("🏠", "Lieu", escapeHtml(ev.venue)) : "",
-    infoRow("💎", "Prix", priceStr),
+    infoRow("💶", "Prix", priceStr),
     ev.contact ? infoRow("📞", "Contact", `<a href="tel:${escapeHtml(ev.contact)}" style="color:var(--accent);font-weight:700;">${escapeHtml(ev.contact)}</a>`) : "",
     // ⚠️ `externalLink` vient de l'événement d'un AUTRE compte. escapeHtml ferme
     // l'attribut mais PAS le schéma : un `javascript:` restait cliquable ici.
@@ -3388,7 +3382,7 @@ function openEventDetails(id) {
     ${_canCheckIn(ev) ? `
       <button class="btn ${_hasCheckedIn(ev) ? "ghost" : "primary"} block" style="font-size:12px;margin-bottom:8px;"
         ${_hasCheckedIn(ev) ? "disabled" : ""} onclick="checkInEvent('${escapeJsArg(ev.id)}')">
-        ${_hasCheckedIn(ev) ? "✅ Arrivée confirmée" : "📍 Je suis sur place · +25 pts"}
+        ${_hasCheckedIn(ev) ? "✅ Arrivée confirmée" : "📍 Je suis sur place"}
       </button>
       ${_hasCheckedIn(ev) ? "" : `<button class="btn ghost block" style="font-size:12px;margin-bottom:8px;" onclick="openCheckinCodeEntry('${escapeJsArg(ev.id)}')">📲 J'ai un code d'accueil</button>`}` : ""}
 
@@ -3502,7 +3496,7 @@ function _refreshEventDetailCta(ev, joined) {
   const isFull = spotsLeft !== null && spotsLeft <= 0 && !joined;
   cta.innerHTML = `
     <button class="btn ${joined ? "ghost" : "primary"} block" ${isFull ? "disabled" : ""} onclick="toggleJoinEventDetail('${escapeJsArg(ev.id)}')">
-      ${joined ? "✓ Inscrit — Se désinscrire" : isFull ? "⚠️ Complet" : "+ Rejoindre · +25 pts · +5 💎"}
+      ${joined ? "✓ Inscrit — Se désinscrire" : isFull ? "⚠️ Complet" : "+ Rejoindre"}
     </button>
   `;
 }
@@ -4090,7 +4084,6 @@ async function addEventComment(eventId) {
   } catch (e) {}
   // Rafraîchit l'aperçu inline des commentaires sur la carte de l'événement.
   if (typeof _patchEventCommentsInline === "function") { try { _patchEventCommentsInline(eventId); } catch(e) {} }
-  if (typeof grantReward === "function") { try { grantReward("comment"); } catch (e) {} }
   if (typeof supaAddEventComment === "function" && window._supaReal) {
     try {
       var realId = await supaAddEventComment(eventId, text);
@@ -4675,7 +4668,7 @@ function openCreateEvent(editId) {
   openModal(`
     <div class="modal-handle"></div>
     <div class="modal-title">${editId ? "✏️ Modifier l'événement" : "✨ Créer un événement IRL"}</div>
-    <div class="modal-subtitle">${editId ? "Les inscrits seront prévenus de tes changements." : "Rejoins ou crée des moments réels avec ta communauté. +30 pts · +5 💎"}</div>
+    <div class="modal-subtitle">${editId ? "Les inscrits seront prévenus de tes changements." : "Rejoins ou crée des moments réels avec ta communauté."}</div>
 
     <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.12em;color:var(--accent);margin:14px 0 8px;">🖼 Photo de couverture</div>
     <div id="evCoverPreviewWrap" style="width:100%;height:140px;border-radius:14px;overflow:hidden;background:linear-gradient(135deg,#4c1d95,#7c3aed);display:flex;align-items:center;justify-content:center;margin-bottom:10px;position:relative;cursor:pointer;" onclick="document.getElementById('evCoverFile').click()">
@@ -4756,8 +4749,8 @@ function openCreateEvent(editId) {
 
     <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.12em;color:var(--accent);margin:14px 0 8px;">ℹ️ Détails</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-      <label class="field"><span>Prix en Passia 💎 (0 = gratuit)</span>
-        <input type="number" class="input" id="evPrice" placeholder="0" min="0" max="99999" value="${escapeHtml(v("price", 0))}"/>
+      <label class="field"><span>Prix indicatif en € (0 = gratuit)</span>
+        <input type="number" class="input" id="evPrice" inputmode="decimal" step="0.01" placeholder="0" min="0" max="99999" value="${escapeHtml(v("price", 0))}"/>
       </label>
       <label class="field"><span>Places max</span>
         <input type="number" class="input" id="evMax" placeholder="Illimité" min="1" max="9999" value="${escapeHtml(v("maxAttendees"))}"/>
@@ -4773,7 +4766,7 @@ function openCreateEvent(editId) {
       <textarea class="textarea" id="evDesc" placeholder="Programme, ambiance, quoi apporter…" maxlength="800" style="min-height:90px;">${v("desc")}</textarea>
     </label>
 
-    <button class="btn primary block" style="margin-top:8px;" onclick="submitEvent(${editId ? "'" + escapeJsArg(editId) + "'" : ""})">${editId ? "💾 Enregistrer les modifications" : "🎉 Publier · +30 pts"}</button>
+    <button class="btn primary block" style="margin-top:8px;" onclick="submitEvent(${editId ? "'" + escapeJsArg(editId) + "'" : ""})">${editId ? "💾 Enregistrer les modifications" : "🎉 Publier"}</button>
   `);
 
   setTimeout(() => {
@@ -5153,7 +5146,6 @@ async function submitEvent(editId) {
       if (!state.user.joinedEvents.includes(o.id)) state.user.joinedEvents.push(o.id);
       _setMyRsvpLocal(o.id, "going");
     });
-    grantReward("event_create");
   }
   saveState();
   renderIRL();
@@ -5241,145 +5233,12 @@ function testIrlDistance() {
   toast("🧪 5 événements de test créés! Ouvre le diagnostic (F12)");
 }
 
-// Estime le nombre de jours avant le prochain rang d'après le gain moyen récent
-// (transactions à points des 30 derniers jours). Retourne null si pas assez de
-// données pour estimer, ou si le rang maximum est atteint.
-function _estimateDaysToNextRank(score, rank) {
-  if (!rank || !rank.next) return null;            // rang max
-  const remaining = rank.next - score;
-  if (remaining <= 0) return null;
-  const now = Date.now();
-  const WINDOW = 30 * 86400000;                    // 30 jours
-  const recent = (state.transactions || []).filter(t =>
-    t && t.at && (t.pts || 0) > 0 && (now - t.at) <= WINDOW);
-  if (recent.length < 2) return null;              // historique insuffisant
-  const oldest = recent.reduce((m, t) => Math.min(m, t.at), now);
-  const spanDays = Math.max(1, (now - oldest) / 86400000);
-  const totalPts = recent.reduce((a, t) => a + (t.pts || 0), 0);
-  const perDay = totalPts / spanDays;
-  if (perDay <= 0) return null;
-  return Math.max(1, Math.ceil(remaining / perDay));
-}
-
-// ======== WALLET ========
-function renderWallet() {
-  const s = state.user.score || 0;
-  const p = state.user.passia || 0;
-  $("#heroScore").textContent = s;
-  $("#heroPassia").textContent = p;
-
-  // Rank
-  const r = rankOf(s);
-  $("#rankLabel").textContent = r.label;
-  $("#scoreNum").textContent = s;
-  const rNext = r.next || r.min;
-  $("#nextRankText").textContent = r.next ? `Prochain rang à ${r.next} pts · ${Math.max(0, r.next - s)} à gagner` : "Rang maximum atteint 🏆";
-  // Estimation temporelle « à ce rythme, prochain rang dans ~N jours ».
-  const paceEl = $("#nextRankPace");
-  if (paceEl) {
-    const days = _estimateDaysToNextRank(s, r);
-    if (days) {
-      paceEl.textContent = `📈 À ce rythme, prochain rang dans ~${days} jour${days > 1 ? "s" : ""}`;
-      paceEl.style.display = "";
-    } else {
-      paceEl.style.display = "none";
-    }
-  }
-  const pct = r.next ? Math.min(100, ((s - r.min) / (r.next - r.min)) * 100) : 100;
-  const circ = 2 * Math.PI * 42;
-  $("#ringFg").setAttribute("stroke-dasharray", circ.toFixed(2));
-  $("#ringFg").setAttribute("stroke-dashoffset", (circ * (1 - pct / 100)).toFixed(2));
-  $("#passiaBalance").textContent = p;
-  // Wallet légal : pas de valeur € ni de « gain » fictif — ce sont des points de
-  // fidélité internes, non convertibles à ce jour (cf. mention sous le solde).
-  const valIndic = $("#passiaValueIndicator");
-  if (valIndic) {
-    valIndic.textContent = "Points de fidélité";
-  }
-
-  // Earn guide — deux monnaies, deux logiques :
-  //  ⭐ Étoiles = ton activité (généreux, fait monter le rang)
-  //  💎 Passia  = la valeur que tu crées pour les autres (rare, vraie valeur)
-  const guide = $("#earnGuide");
-  guide.innerHTML = `
-    <div class="earn-section-title">⭐ Gagne des étoiles en agissant</div>
-    <div class="tx"><div class="tx-icon">✍️</div>
-      <div class="tx-body"><div class="tx-title">Publier un post texte</div></div>
-      <div class="tx-amount plus">+10 ⭐</div></div>
-    <div class="tx"><div class="tx-icon">📷</div>
-      <div class="tx-body"><div class="tx-title">Publier une photo</div></div>
-      <div class="tx-amount plus">+15 ⭐</div></div>
-    <div class="tx"><div class="tx-icon">🎙️</div>
-      <div class="tx-body"><div class="tx-title">Publier un podcast</div></div>
-      <div class="tx-amount plus">+20 ⭐</div></div>
-    <div class="tx"><div class="tx-icon">🤝</div>
-      <div class="tx-body"><div class="tx-title">Rejoindre un événement IRL</div></div>
-      <div class="tx-amount plus">+20 ⭐</div></div>
-    <div class="tx"><div class="tx-icon">🗓</div>
-      <div class="tx-body"><div class="tx-title">Organiser un événement</div></div>
-      <div class="tx-amount plus">+30 ⭐</div></div>
-    <div class="earn-section-title">💎 Gagne des Passia (vraie valeur)</div>
-    <div class="tx"><div class="tx-icon">❤️</div>
-      <div class="tx-body"><div class="tx-title">${LIKES_PER_PASSIA} likes reçus sur ton contenu</div></div>
-      <div class="tx-amount plus">+1 💎</div></div>
-    <div class="tx"><div class="tx-icon">🎯</div>
-      <div class="tx-body"><div class="tx-title">Compléter une quête</div></div>
-      <div class="tx-amount plus">+💎</div></div>
-  `;
-
-  // History
-  const tx = state.transactions || [];
-  const txList = $("#txList");
-  if (tx.length === 0) {
-    txList.innerHTML = `<div class="empty"><div class="empty-icon">🧾</div><div class="empty-title">Aucune transaction</div><div class="empty-text">Commence à publier pour gagner.</div></div>`;
-  } else {
-    txList.innerHTML = tx.slice(0, 30).map(t => {
-      const icon = { publish_text: "✍️", publish_photo: "📷", publish_video: "🎬", publish_audio: "🎙", event_create: "🗓", event_join: "🤝", comment: "💬", profile_create: "✨", first_login: "🎉", daily: "☀️", like_received: "❤️", tip_reel: "💎", quest: "🎯" }[t.kind] || "⭐";
-      return `<div class="tx">
-        <div class="tx-icon">${icon}</div>
-        <div class="tx-body">
-          <div class="tx-title">${escapeHtml(t.label)}</div>
-          <div class="tx-meta">${fmtTime(t.at)}</div>
-        </div>
-        <div class="tx-amount plus">+${t.pts}${t.passia ? ` · ${t.passia}💎` : ""}</div>
-      </div>`;
-    }).join("");
-  }
-
-  // Leaderboard (mix of seed users + me)
-  const lbEntries = [
-    ...state.seed.users.map(u => ({
-      id: u.id,
-      name: u.name,
-      emoji: u.profileEmoji,
-      color: u.avatar,
-      passion: passionById(u.passion).label,
-      score: Math.floor(Math.random() * 1400 + 300), // pseudo, but stable per seed? We'll compute deterministic
-    })),
-    { id: "me", name: state.user.name || "Moi", emoji: currentProfile()?.emoji || "✨", color: currentProfile()?.color || "#8b5cf6", passion: passionById(currentProfile()?.passion)?.label || "—", score: state.user.score, me: true },
-  ];
-  // Deterministic seed scores: hash of id
-  const hash = (s) => s.split("").reduce((a, c) => (a * 33 + c.charCodeAt(0)) >>> 0, 5381);
-  lbEntries.forEach(e => {
-    if (!e.me) e.score = 300 + (hash(e.id) % 1500);
-  });
-  const sorted = lbEntries.sort((a, b) => b.score - a.score).slice(0, 8);
-  $("#leaderboard").innerHTML = sorted.map((e, i) => {
-    const rc = ["gold", "silver", "bronze"][i] || "";
-    return `<div class="lb-row">
-      <div class="lb-rank ${rc}">${i + 1}</div>
-      <div class="avatar sm" style="background:${_cssColor(e.color)};">${escapeHtml(e.emoji || e.name[0])}</div>
-      <div class="lb-body">
-        <div class="lb-name">${escapeHtml(e.name)}${e.me ? ' <span class="pill active" style="padding:1px 6px;font-size:9px;">Moi</span>' : ""}</div>
-        <div class="lb-passion">${escapeHtml(e.passion)}</div>
-      </div>
-      <div class="lb-score">${e.score}</div>
-    </div>`;
-  }).join("");
-
-  renderQuests();
-}
-
+// ======== WALLET — SUPPRIMÉ (ADR-009) ========
+// `renderWallet`, le Score Passion, le prochain rang, le guide de gains, le
+// journal de transactions et le leaderboard public ont été retirés du cœur
+// produit. Les signaux de confiance restent CONTEXTUELS (profil complété,
+// participations réelles, relations mutuelles) et ne doivent jamais redevenir
+// un score public générique.
 
 /* ============================================================================
    IRL — PREUVE SOCIALE & INVITATIONS DIRECTES (2026-07-21)
@@ -6271,7 +6130,6 @@ function _checkInViaCode(ev) {
   state.user.checkedInEvents = state.user.checkedInEvents || [];
   if (state.user.checkedInEvents.indexOf(ev.id) === -1) state.user.checkedInEvents.push(ev.id);
   if (myRsvp(ev.id) !== "going") _setMyRsvpLocal(ev.id, "going");
-  grantReward("event_join");
   saveState();
   if (window._supaReal && typeof supaCheckInEvent === "function") supaCheckInEvent(ev.id);
   toast("🎉 Arrivée confirmée — bon moment !");

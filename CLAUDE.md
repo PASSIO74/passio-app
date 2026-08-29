@@ -138,7 +138,7 @@ Réseau social des passions. PWA vanilla JS (pas de framework, pas de bundler) +
 - `$()` = querySelector (défini app-02), `$$()` = querySelectorAll. Toujours garder les guards `if (!el) return;`.
 - HTML généré par template literals + `escapeHtml()` pour tout contenu utilisateur (XSS). **3 helpers d'échappement (app-02), choisir selon le CONTEXTE** : `escapeHtml(x)` = texte HTML ; `escapeJsArg(x)` = argument de chaîne JS simple-quotée DANS un attribut onclick (le HTML décode `&#39;` AVANT le parse JS → un pseudo avec apostrophe cassait le bouton avec escapeHtml seul) ; `safeUrlAttr(x)` = attribut src/href d'une URL fournie par un autre utilisateur (bloque `javascript:` & sortie d'attribut ; n'accepte que http(s)/data:image|audio|video/blob). ⚠️ Les payloads de `comment_interactions`/`event_reactions`/messages média sont librement insérables par tout compte authentifié → TOUJOURS échapper à l'affichage (XSS stockés corrigés le 2026-07-02).
 - **Timestamps Supabase : TOUJOURS `supaTs(s)` (app-02), JAMAIS `new Date(x + "Z")`.** La prod mélange des colonnes `timestamp` (sans fuseau : posts, conv_messages, notifications, stories, events, profiles) et `timestamptz` (avec offset `+00:00` : comment_interactions, event_comments/reactions/attendees, tout cdv_*, blocks, reports…) — l'ancien pattern `+ "Z"` donnait NaN (« Invalid Date ») sur les timestamptz. `supaTs` gère les deux + le format realtime.
-- Navigation : `goTo('feed'|'profiles'|'studio'|'explore'|'irl'|'wallet'|'messages'|'cdv')` — écrans = `#screen-<nom>`.
+- Navigation : `goTo('feed'|'profiles'|'studio'|'explore'|'irl'|'messages'|'cdv')` — écrans = `#screen-<nom>`. `goTo('wallet')` et `goTo('shop')` sont REDIRIGÉS vers `profiles` (ADR-009) : un ancien deep link `#wallet` ne doit jamais laisser l'app sans écran actif.
 - Toasts via `toast()`, jamais `alert()`.
 - Les onclick inline doivent référencer des fonctions globales EXISTANTES (l'audit du 2026-06-10 a trouvé 7 fonctions fantômes — vérifier avant d'ajouter un handler).
 
@@ -216,6 +216,73 @@ App INDÉPENDANTE de supervision/test temps réel, dans `dashboard/` (Node/Expre
 
 **Présence permanente** : `dashboard/supervise.mjs` relance le serveur s'il meurt (recul 2/5/15/30/60 s, journal borné `data/supervise.log`, PID dans `data/supervise.pid`), `Sentinelle-Demarrage.vbs` le lance sans fenêtre, `Installer-Demarrage-Auto.cmd` pose un raccourci dans le dossier Démarrage de la session (aucun droit admin ; `/retirer` pour défaire), `Arreter-Pilotage.cmd` arrête tout. ⚠️ Ces `.cmd` sont en **ASCII pur** : un `.cmd` accentué est mal découpé par l'interpréteur Windows, qui exécute alors des morceaux de commentaire. Chaque diagnostic porte un **verdict** : défaut réel / comportement attendu / données insuffisantes. Réglages `DASH_SENTINEL_*` (voir `dashboard/README.md` §3 bis). Tests : `dashboard/test/sentinel.test.js` (17, dont un test d'intégration erreur réelle → diagnostic).
 
+
+## 💸 ADR-009 appliqué — l'économie interne est RETIRÉE (2026-08-29)
+
+Wallet, points, étoiles, rangs, Score Passion, leaderboard, quêtes, Passia,
+boutique, Pass Passion et piste crypto ne sont plus dans le code. La décision est
+`.passio/adr/ADR-009-core-feed-irl-sans-wallet.md`, la carte d'exécution
+`docs/PASSIO_WALLET_PASSIA_REMOVAL_MAP_2026-08-20.md`. **Ne rien réintroduire sans
+rouvrir l'ADR** : un paiement futur devra être un paiement DIRECT en monnaie
+réelle, sans monnaie intermédiaire.
+
+Ce qui a disparu, et où : `RANKS`/`REWARDS`/`LIKES_PER_PASSIA` + `seedQuests`
+(app-01) · `grantReward`/`rewardToast`/`awardLikeReceived`/`rankOf`/`checkRankUp`
+(app-02) · les documents « Passia expliqué » et leur visionneuse (app-03) ·
+`PASSIA_PACKS`/`PASSIA_PASSES`/`setWalletTab` (app-04) · `tipReel` et le bouton
+« Soutenir » du rail bobine (app-05) · le **paywall du 4ᵉ profil** (app-06) ·
+`renderWallet` et le leaderboard (app-07) · quêtes et récompense de like realtime
+(app-08) · `#screen-wallet` et ses 4 onglets (index.html) · 154 règles CSS.
+
+⚠️ **Quatre pièges de ce chantier, à connaître avant d'y retoucher.**
+
+① **`renderTopbar` écrivait dans `#topPassia` SANS garde.** Retirer le nœud sans
+   retirer cette ligne fait lever la fonction — et elle est rappelée à chaque
+   publication, commentaire et RSVP. Le lot UI-6 avait justement choisi de
+   *masquer* la rangée pour cette raison ; le retrait, lui, oblige à traiter les
+   deux ensemble. Même famille de risque pour tout nœud supprimé qu'un renderer
+   adresse par id.
+
+② **L'état legacy se propage dans les DEUX sens.** `user.score`, `user.passia`,
+   `user.likesReceived`, `user.activePass`, `transactions`, `quests` et le
+   `profile.paid` vivent encore dans les `localStorage` existants ET dans le blob
+   `user_state`. `stripLegacyEconomy()` (app-02) est donc appelé aux **trois**
+   frontières : `loadState`, `_applyUserState` (hydratation serveur) et
+   `_syncableState` (envoi). Sans la 2ᵉ, un ancien appareil encore en service
+   repousse les clés à chaque sync ; sans la 3ᵉ, ce client les remet lui-même en
+   circulation. « Last write wins » joue dans les deux sens.
+
+③ **Une classe morte suffit à tuer un sélecteur.** Le nettoyage CSS a d'abord
+   exigé que TOUTES les classes d'un sélecteur soient mortes : `.quest-card.ready`,
+   `.lb-rank.gold`, `.pack-card.popular` et `.wallet-tab.active` survivaient donc,
+   parce que `ready`/`gold`/`popular`/`active` sont des modificateurs vivants
+   ailleurs. Le bon critère est l'inverse : **une seule** classe jamais posée rend
+   la règle inatteignable. Et `styles.css` est en **CRLF** — écrire en binaire.
+
+④ **Le prix d'un événement était libellé en Passia alors qu'aucun paiement n'a
+   jamais lieu** (le RSVP est gratuit, `price` n'est qu'un affichage). Il est
+   redevenu un montant indicatif en €, ce que l'ADR autorise explicitement.
+
+⑤ **Retirer un gros bloc de `index.html` emporte facilement une balise
+   STRUCTURELLE voisine.** La suppression de `#screen-wallet` a avalé le
+   `</main>` qui la suivait : `.app-nav` s'est retrouvée DANS la zone
+   scrollable, sa base à 9 735 px au lieu de 667 — cinq tests `cadrage` au
+   rouge, sans la moindre erreur JS. Après tout retrait de balisage, compter
+   les balises structurelles contre la version d'avant, ou passer le fichier à
+   `html.parser` : le nombre d'erreurs doit être IDENTIQUE, pas nul (index.html
+   en porte une, préexistante).
+
+⑥ **Les libellés promettaient des points que le moteur ne donnait plus.**
+   « ✨ Publier · +10 pts », « Publier · +3 pts », « + Rejoindre · +25 pts ·
+   +5 💎 », « Crée le premier pour +30 pts »… étaient du texte en dur dans
+   `index.html` et quatre app-*.js, invisibles d'une recherche sur `passia` ou
+   `grantReward`. Le lot UI-6 n'en masquait qu'un seul, et son test de kill
+   switch EXIGEAIT le retour de « +10 pts » — c'est ce test qui les a révélés.
+   Chercher aussi `\+[0-9]+ ?pts` et `\+[0-9]+ ?💎` avant de conclure.
+
+Verrou de non-régression : `tests/e2e/adr-009-retrait-economie.spec.js` (7 tests)
+couvre la surface, le moteur, la création d'un 4ᵉ profil, et l'aller-retour de
+synchronisation avec un ancien client.
 
 ## 🗂️ Pièges connus — index (détail complet : docs/PIEGES_CONNUS.md)
 
@@ -706,9 +773,10 @@ Le script est en lecture seule sur le dépôt (il n'écrit que dans son dossier 
   `transition: all 0.25s`, donc une largeur relevée dans la foulée d'un changement de
   drapeau est encore à mi-course (piège vécu en écrivant le test du kill switch). ② Au Profil, c'est l'**ORDRE d'origine de l'écran** qui est mémorisé, pas le
   « frère suivant » de chaque bloc — ce frère déménage lui aussi, et rendre un bloc
-  « avant lui » restituait un ordre inventé. ③ Le bloc CSS UI-7 vient **après** les règles
+  « avant lui » restituait un ordre inventé. ③ ~~Le bloc CSS UI-7 vient **après** les règles
   de repli au défilement, à spécificité **égale** : sans réécrire
-  `.app-main.chrome-collapsed …` dans le bloc, l'en-tête du fil cessait de se replier.
+  `.app-main.chrome-collapsed …` dans le bloc, l'en-tête du fil cessait de se replier.~~
+  **CADUC depuis le 2026-08-29 : le repli au défilement a été RETIRÉ** (voir ci-dessous).
   ④ Les intentions sont en `flex: 1 1 auto` et non `1 1 0` : à colonnes égales,
   « Rencontrer » et « Apprendre » se faisaient couper pendant que « Tous » laissait du vide.
   ⑤ `renderProfileEvents` listait `state.seed.events.slice(0,3)` — le contenu de
@@ -909,6 +977,25 @@ Le script est en lecture seule sur le dépôt (il n'écrit que dans son dossier 
   payé à la résolution : les deux blocs se terminaient par une `@media` dont l'accolade
   fermante était la ligne COMMUNE d'après le marqueur de conflit — concaténés tels quels,
   le `@media` du premier englobait tout le second, en silence et sans CSS invalide.
+
+  **⚠️ En-tête du fil : plus de repli au défilement (2026-08-29).** Les passions
+  (`.profile-strip`), les moods (`.mood-selector` — la rangée AFFICHÉE est
+  `#feedIntentSelector`, l'historique `#moodSelector` restant `hidden`) et les stories
+  (`.stories-row`) restent visibles en permanence. La bascule `.chrome-collapsed`
+  (écouteur de défilement en fin d'`app-09`, règles en fin de `styles.css`) a été
+  **supprimée**, code et CSS : sur ordre de Benjamin, après le défaut vécu « je descends
+  puis je remonte, les profils et les moods ne s'affichent plus ». Cause identifiée et
+  documentée dans `app-09` : le garde anti-oscillation du 2026-08-28 n'était relâché que
+  par **deux événements de défilement consécutifs à la même position**, condition qu'un
+  geste tactile ne remplit pas à la fin d'un mouvement — une fois replié, l'en-tête ne se
+  rouvrait plus. Corriger le seuil aurait ramené l'oscillation (replier déplace
+  `scrollTop`, l'ancrage de Chrome compense mal) : les deux exigences étaient
+  contradictoires, on a retiré la bascule. Effet de bord bienvenu : plus aucune transition
+  `max-height` ne tourne au-dessus de `#feedList` pendant le défilement — c'est ce
+  mouvement sub-pixel qui faisait refuser des clics à Playwright (« element is not
+  stable », cf. `tests/e2e/interactions.spec.js`). Non-régression :
+  `tests/e2e/entete-fil-permanent.spec.js` (remplace `entete-fil-oscillation.spec.js`),
+  vérifiée rouge sur l'ancien code avant d'être verte sur le nouveau.
 
 - `docs/PIEGES_CONNUS.md` — les 56 fiches détaillées (extrait de ce fichier le 2026-08-07).
 - `docs/HISTORIQUE_PROJET.md` — état 2026-06-11, backlog terminé, logs d’optimisation.

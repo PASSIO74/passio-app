@@ -281,8 +281,6 @@
       color: var(--text-dim);
     }
 
-    .topbar-chip.score { color: var(--text-dim); border-color: var(--border); background: var(--bg-soft); }
-    .topbar-chip.passia { color: var(--text-dim); border-color: var(--border); background: var(--bg-soft); }
 
     .topbar-bell {
       width: 34px;
@@ -1078,129 +1076,6 @@
     .vlog-card-create-sub { font-size: 9.5px; color: var(--muted); margin-top: 1px; }
 
     /* ============ DOC VIEWER ============ */
-    .doc-viewer {
-      position: fixed;
-      top: 0; left: 0; right: 0; bottom: 0;
-      background: #ffffff;
-      z-index: 9999;
-      overflow-y: auto;
-      -webkit-overflow-scrolling: touch;
-      overscroll-behavior: contain;
-      display: none;
-    }
-    .doc-viewer.open { display: block; }
-    body.doc-open #appMain,
-    body.doc-open .app-shell { overflow: hidden !important; }
-    body.doc-open { overflow: hidden; }
-
-    .doc-viewer-close {
-      position: fixed;
-      top: 14px; right: 14px;
-      width: 38px; height: 38px;
-      border-radius: 50%;
-      background: rgba(15, 12, 32, 0.85);
-      color: #fff;
-      cursor: pointer;
-      z-index: 10001;
-      display: inline-flex; align-items: center; justify-content: center;
-      font-size: 20px;
-      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
-    }
-
-    .doc-viewer-content {
-      max-width: 720px;
-      margin: 0 auto;
-      padding: 30px 24px 80px;
-      color: #1f1b2e;
-    }
-    .doc-viewer-content h1 {
-      font-size: 26px; font-weight: 800; color: #4c1d95;
-      margin: 28px 0 14px; padding-bottom: 8px;
-      border-bottom: 2px solid #c4b5fd;
-      letter-spacing: -0.01em; line-height: 1.2;
-    }
-    .doc-viewer-content h1:first-child { margin-top: 0; }
-    .doc-viewer-content h2 {
-      font-size: 19px; font-weight: 800; color: #7c3aed;
-      margin: 22px 0 10px; line-height: 1.3;
-    }
-    .doc-viewer-content h3 {
-      font-size: 15px; font-weight: 800; color: #4c1d95;
-      margin: 16px 0 8px;
-    }
-    .doc-viewer-content p {
-      font-size: 14px; line-height: 1.65; margin: 0 0 12px;
-      color: #1f1b2e;
-    }
-    .doc-viewer-content ul {
-      list-style: none; padding: 0; margin: 0 0 14px;
-    }
-    .doc-viewer-content ul li {
-      position: relative;
-      padding: 4px 0 4px 20px;
-      font-size: 14px; line-height: 1.6;
-    }
-    .doc-viewer-content ul li::before {
-      content: "•"; color: #7c3aed; font-weight: 800;
-      position: absolute; left: 4px;
-    }
-    .doc-viewer-content .doc-callout {
-      background: linear-gradient(135deg, rgba(139, 92, 246, 0.08), rgba(167, 139, 250, 0.04));
-      border: 1px solid rgba(139, 92, 246, 0.30);
-      border-left: 4px solid #7c3aed;
-      border-radius: 12px;
-      padding: 14px 18px;
-      margin: 16px 0;
-    }
-    .doc-viewer-content .doc-callout.green {
-      background: linear-gradient(135deg, rgba(16, 185, 129, 0.07), rgba(16, 185, 129, 0.03));
-      border-color: rgba(16, 185, 129, 0.45);
-      border-left-color: #10b981;
-    }
-    .doc-viewer-content .doc-callout.amber {
-      background: linear-gradient(135deg, rgba(217, 119, 6, 0.07), rgba(217, 119, 6, 0.03));
-      border-color: rgba(217, 119, 6, 0.45);
-      border-left-color: #d97706;
-    }
-    .doc-viewer-content .doc-callout.red {
-      background: linear-gradient(135deg, rgba(220, 38, 38, 0.07), rgba(220, 38, 38, 0.03));
-      border-color: rgba(220, 38, 38, 0.45);
-      border-left-color: #dc2626;
-    }
-    .doc-viewer-content .doc-callout-title {
-      font-size: 13px; font-weight: 800; color: #4c1d95;
-      letter-spacing: 0.04em; margin-bottom: 6px;
-    }
-    .doc-viewer-content .doc-callout.green .doc-callout-title { color: #047857; }
-    .doc-viewer-content .doc-callout.amber .doc-callout-title { color: #b45309; }
-    .doc-viewer-content .doc-callout.red .doc-callout-title { color: #b91c1c; }
-    .doc-viewer-content .doc-callout p { margin: 4px 0; font-size: 13px; }
-    .doc-viewer-content table {
-      width: 100%; border-collapse: collapse;
-      margin: 14px 0; font-size: 13px;
-      border-radius: 8px; overflow: hidden;
-      border: 1px solid #c4b5fd;
-    }
-    .doc-viewer-content th, .doc-viewer-content td {
-      padding: 10px 12px; text-align: left;
-      border-bottom: 1px solid #ede9fe;
-      vertical-align: top;
-    }
-    .doc-viewer-content th {
-      background: #7c3aed; color: #fff;
-      font-weight: 700;
-    }
-    .doc-viewer-content tr:nth-child(even) td { background: #f5f3ff; }
-    .doc-viewer-header-tag {
-      display: inline-block;
-      padding: 4px 12px;
-      background: linear-gradient(135deg, #7c3aed, #6d28d9);
-      color: #fff;
-      border-radius: 999px;
-      font-size: 11px; font-weight: 800;
-      letter-spacing: 0.06em;
-      margin-bottom: 14px;
-    }
 
     /* CDV, Fil d'actualité spécial carnets de voyage */
     /* ===== CDV MODE CARDS ===== */
@@ -2224,11 +2099,6 @@
       gap: 6px;
     }
 
-    .toast.reward {
-      background: var(--grad-hero);
-      box-shadow: 0 10px 28px rgba(124, 58, 237, 0.34);
-      color: #fff;
-    }
 
     .toast.info {
       background: var(--grad-hero-2);
@@ -2708,7 +2578,7 @@
       margin-bottom: 5px;
       letter-spacing: -0.01em;
     }
-    /* Pastilles étoiles + Passia : texte léger, sans fond ni contour (→ Wallet) */
+    /* Rangée de pastilles du profil (badges d'assiduité) */
     .profile-chips-row {
       display: flex;
       flex-wrap: wrap;
@@ -2914,8 +2784,6 @@
     }
     .kpi-value { font-size: 22px; font-weight: 800; color: var(--text); }
     .kpi-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-top: 2px; font-weight: 600; }
-    .kpi.score .kpi-value { background: var(--grad-hero); -webkit-background-clip: text; background-clip: text; color: transparent; }
-    .kpi.passia .kpi-value { background: var(--grad-hero-2); -webkit-background-clip: text; background-clip: text; color: transparent; }
 
     /* Event card */
     .event-card {
@@ -3145,37 +3013,6 @@
       border-bottom: 1px solid var(--border);
     }
     .tx:last-child { border-bottom: none; }
-
-    .tx-icon {
-      width: 36px;
-      height: 36px;
-      border-radius: 12px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 16px;
-      background: linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(139, 92, 246, 0.12));
-      border: 1px solid var(--border);
-      flex-shrink: 0;
-    }
-
-    .tx-body { flex: 1; min-width: 0; }
-    .tx-title { font-size: 13px; font-weight: 600; }
-    .tx-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
-
-    .tx-amount { font-size: 14px; font-weight: 700; }
-    .tx-amount.plus { color: #8b5cf6; }
-    .tx-amount.minus { color: var(--danger); }
-
-    .earn-section-title {
-      font-size: 11px;
-      font-weight: 800;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-      color: var(--muted);
-      margin: 14px 2px 4px;
-    }
-    .earn-section-title:first-child { margin-top: 2px; }
 
     /* Studio, onglets compacts, 5 inline centrés sur la même ligne */
     .studio-type-tabs {
@@ -4211,19 +4048,6 @@
     }
 
     /* Score progress ring */
-    .score-hero {
-      padding: 20px;
-      border-radius: var(--radius-md);
-      background:
-        radial-gradient(circle at 100% 0, rgba(124, 58, 237, 0.08), transparent 60%),
-        var(--bg-card);
-      border: 1px solid var(--border);
-      margin-bottom: 12px;
-      display: flex;
-      align-items: center;
-      gap: 18px;
-      box-shadow: var(--shadow-soft);
-    }
 
     .ring {
       width: 92px;
@@ -4249,29 +4073,6 @@
 
     .ring-inner .rank { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; }
     .ring-inner .score-num { font-size: 20px; font-weight: 800; color: var(--text); }
-
-    .score-hero-body { flex: 1; min-width: 0; }
-    .score-hero-title { font-size: 15px; font-weight: 700; }
-    .score-hero-text { font-size: 11px; color: var(--muted); margin-top: 3px; line-height: 1.5; }
-    .score-hero-pace { font-size: 10.5px; color: var(--accent); margin-top: 4px; font-weight: 700; line-height: 1.4; }
-
-    /* Leaderboard */
-    .lb-row {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 10px 0;
-      border-bottom: 1px solid var(--border);
-    }
-    .lb-row:last-child { border-bottom: none; }
-    .lb-rank { width: 22px; text-align: center; font-weight: 800; color: var(--muted); font-size: 13px; }
-    .lb-rank.gold { color: #7c3aed; }
-    .lb-rank.silver { color: #e8e4f5; }
-    .lb-rank.bronze { color: #8b5cf6; }
-    .lb-body { flex: 1; min-width: 0; }
-    .lb-name { font-size: 13px; font-weight: 600; }
-    .lb-passion { font-size: 11px; color: var(--muted); margin-top: 1px; }
-    .lb-score { font-size: 13px; font-weight: 700; color: var(--accent); }
 
     /* Action row for IRL / Explorer */
     .list-row {
@@ -4382,18 +4183,13 @@
     }
 
     /* ===== Retour tactile ===== */
-    .btn:active, .pill:active, .topbar-chip:active, .topbar-bell:active,
-    .vlog-template-btn:active, .studio-type:active,
-    .wallet-tab:active, .explore-tab:active, .ai-shortcut-row:active,
-    .pay-method:active, .nav-item:active {
+    .btn:active,.pill:active,.topbar-chip:active,.topbar-bell:active,.vlog-template-btn:active,.studio-type:active,.explore-tab:active,.ai-shortcut-row:active,.pay-method:active,.nav-item:active {
       transform: scale(0.95);
     }
-    .post:active, .card:active, .msg-card:active, .event-card:active,
-    .pack-card:active, .cdv-mode-card:active, .profile-tile:active {
+    .post:active,.card:active,.msg-card:active,.event-card:active,.cdv-mode-card:active,.profile-tile:active {
       transform: scale(0.985);
     }
-    .btn, .pill, .topbar-chip, .topbar-bell, .ai-shortcut-row, .pay-method,
-    .wallet-tab, .explore-tab {
+    .btn,.pill,.topbar-chip,.topbar-bell,.ai-shortcut-row,.pay-method,.explore-tab {
       transition: transform 130ms cubic-bezier(0.4,0,0.2,1), background 180ms ease, box-shadow 220ms ease, color 160ms ease, border-color 160ms ease;
     }
 
@@ -4986,109 +4782,8 @@
       box-shadow: 0 0 10px rgba(139, 92, 246, 0.6);
     }
 
-    /* ===== Quests ===== */
-    /* Résumé des défis en haut */
-    .quest-summary {
-      padding: 10px 12px;
-      margin-bottom: 12px;
-      border-radius: 12px;
-      background: linear-gradient(135deg, rgba(139, 92, 246, 0.10), rgba(124, 58, 237, 0.06));
-      border: 1px solid rgba(139, 92, 246, 0.25);
-    }
-    .quest-summary-line {
-      font-size: 12px;
-      color: var(--text);
-      line-height: 1.6;
-    }
-    .quest-summary-line b { color: var(--accent); }
-
-    /* Titre de groupe (daily / weekly / community) */
-    .quest-group-title {
-      font-size: 11px;
-      font-weight: 800;
-      letter-spacing: 0.08em;
-      color: var(--accent);
-      margin: 14px 0 6px;
-      text-transform: uppercase;
-    }
-    .quest-group-title:first-child { margin-top: 4px; }
-
     /* Indicateur quand un défi est prêt à être réclamé */
-    .quest-card.ready {
-      border-color: rgba(16, 185, 129, 0.50);
-      background: linear-gradient(180deg, rgba(16, 185, 129, 0.06), rgba(16, 185, 129, 0.02));
-      box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.20);
-    }
-    .quest-card.ready .quest-claim {
-      background: #10b981 !important;
-      color: #fff !important;
-      animation: questPulse 1.5s ease-in-out infinite;
-    }
-    @keyframes questPulse {
-      0%, 100% { transform: scale(1); }
-      50% { transform: scale(1.05); }
-    }
 
-    .quest-card {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 12px;
-      border-radius: 14px;
-      background: linear-gradient(135deg, rgba(139, 92, 246, 0.10), rgba(139, 92, 246, 0.08));
-      border: 1px solid var(--border);
-      margin-bottom: 8px;
-    }
-    .quest-card.done {
-      background: linear-gradient(135deg, rgba(167, 139, 250, 0.18), rgba(163, 236, 242, 0.10));
-      border-color: rgba(167, 139, 250, 0.45);
-    }
-    .quest-emoji {
-      width: 44px; height: 44px;
-      border-radius: 14px;
-      background: rgba(15, 23, 42, 0.4);
-      display: flex; align-items: center; justify-content: center;
-      font-size: 22px;
-      flex-shrink: 0;
-      border: 1px solid var(--border);
-    }
-    .quest-body { flex: 1; min-width: 0; }
-    .quest-title { font-size: 13px; font-weight: 700; }
-    .quest-reward { font-size: 11px; color: #a78bfa; margin-top: 2px; font-weight: 600; }
-    .quest-reward.passia { color: #a78bfa; }
-    .quest-progress {
-      height: 5px;
-      border-radius: 3px;
-      background: rgba(139, 92, 246, 0.10);
-      margin-top: 7px;
-      overflow: hidden;
-    }
-    .quest-progress-bar {
-      height: 100%;
-      background: var(--grad-hero);
-      border-radius: 3px;
-      transition: width 400ms cubic-bezier(0.4,0,0.2,1);
-    }
-    .quest-card.done .quest-progress-bar {
-      background: linear-gradient(135deg, #8b5cf6, #a78bfa);
-    }
-    .quest-claim {
-      padding: 6px 12px;
-      border-radius: 12px;
-      background: var(--grad-hero);
-      color: #ffffff;
-      font-size: 11px;
-      font-weight: 800;
-      border: none;
-      cursor: pointer;
-      flex-shrink: 0;
-      box-shadow: 0 6px 18px rgba(139, 92, 246, 0.35);
-    }
-    .quest-claim:disabled {
-      opacity: 0.4;
-      cursor: not-allowed;
-      box-shadow: none;
-    }
 
     /* ===== Landing page ===== */
     .landing {
@@ -6162,231 +5857,11 @@
       .msg-tile-icon { height: 30px; width: 30px; font-size: 18px; }
     }
 
-    /* ============ BOUTIQUE PASSIA ============ */
-    .wallet-tabs {
-      display: flex;
-      gap: 3px;
-      justify-content: space-around;
-      margin: 0 0 14px;
-      padding: 4px;
-      border-radius: 14px;
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      box-shadow: var(--shadow-soft);
-      scrollbar-width: none;
-    }
-    .wallet-tabs::-webkit-scrollbar { display: none; }
-    .wallet-tab {
-      flex: 1;
-      min-width: 0;
-      padding: 8px 4px;
-      border-radius: 10px;
-      border: none;
-      background: transparent;
-      color: var(--text-dim);
-      font-size: 10.5px;
-      font-weight: 700;
-      cursor: pointer;
-      transition: all 180ms ease;
-      letter-spacing: 0;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      text-align: center;
-    }
-    @media (max-width: 380px) {
-      .wallet-tab { font-size: 9.5px; padding: 7px 2px; }
-    }
-    .wallet-tab:hover { color: var(--text); }
-    .wallet-tab.active {
-      background: transparent;
-      border: 2px solid var(--accent);
-      color: var(--accent);
-      font-weight: 700;
-      box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.12);
-    }
-
-    .wallet-pane { display: none; }
-    .wallet-pane.active { display: block; }
-
     /* Hero boutique */
-    .shop-hero {
-      padding: 18px 20px;
-      border-radius: var(--radius-md);
-      background: linear-gradient(135deg, #4c1d95 0%, #7c3aed 60%, #6d28d9 100%);
-      color: #fff;
-      margin-bottom: 14px;
-      position: relative;
-      overflow: hidden;
-      box-shadow: 0 10px 28px rgba(124, 58, 237, 0.32);
-    }
-    .shop-hero::before {
-      content: "";
-      position: absolute;
-      top: -40px; right: -30px;
-      width: 180px; height: 180px;
-      border-radius: 50%;
-      background: radial-gradient(circle, rgba(255,255,255,0.20), transparent 70%);
-      pointer-events: none;
-    }
-    .shop-hero-emoji { font-size: 38px; margin-bottom: 4px; }
-    .shop-hero-title { font-size: 20px; font-weight: 800; letter-spacing: 0.01em; }
-    .shop-hero-sub { font-size: 13px; opacity: 0.92; margin-top: 4px; line-height: 1.4; }
 
     /* Cartes packs */
-    .pack-grid {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 10px;
-      margin-bottom: 18px;
-    }
-    @media (max-width: 380px) {
-      .pack-grid { grid-template-columns: 1fr; }
-    }
-
-    .pack-card {
-      position: relative;
-      padding: 16px 14px;
-      border-radius: 16px;
-      background: var(--bg-card);
-      border: 1.5px solid var(--border);
-      cursor: pointer;
-      transition: transform 180ms cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 220ms ease, border-color 200ms ease;
-      overflow: hidden;
-    }
-    .pack-card:hover {
-      transform: translateY(-3px);
-      box-shadow: 0 12px 28px rgba(124, 58, 237, 0.20);
-      border-color: rgba(124, 58, 237, 0.40);
-    }
-    .pack-card.popular {
-      border-color: rgba(124, 58, 237, 0.45);
-      background: linear-gradient(180deg, #ffffff, var(--bg-tint));
-      box-shadow: 0 8px 22px rgba(124, 58, 237, 0.18);
-    }
-    .pack-card.popular::after {
-      content: "★ POPULAIRE";
-      position: absolute;
-      top: 0; right: 0;
-      padding: 4px 12px;
-      font-size: 9.5px;
-      font-weight: 800;
-      letter-spacing: 0.10em;
-      background: var(--grad-hero);
-      color: #fff;
-      border-radius: 0 16px 0 12px;
-      box-shadow: 0 4px 10px rgba(124, 58, 237, 0.34);
-    }
-    .pack-card.mega {
-      border-color: rgba(245, 158, 11, 0.55);
-      background: linear-gradient(180deg, rgba(255, 255, 255, 1), rgba(254, 243, 199, 0.50));
-    }
-    .pack-card.mega::after {
-      content: "👑 MÉCÈNE";
-      position: absolute;
-      top: 0; right: 0;
-      padding: 4px 12px;
-      font-size: 9.5px;
-      font-weight: 800;
-      letter-spacing: 0.10em;
-      background: linear-gradient(135deg, #f59e0b, #b45309);
-      color: #fff;
-      border-radius: 0 16px 0 12px;
-    }
-
-    .pack-emoji { font-size: 30px; line-height: 1; margin-bottom: 6px; }
-    .pack-name { font-size: 13px; font-weight: 700; color: var(--text-dim); letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 4px; }
-    .pack-amount {
-      display: flex; align-items: baseline; gap: 4px;
-      font-weight: 800; color: var(--text);
-      margin-bottom: 2px;
-    }
-    .pack-amount-num { font-size: 26px; }
-    .pack-amount-emoji { font-size: 16px; }
-    .pack-bonus {
-      display: inline-block;
-      padding: 2px 8px;
-      font-size: 11px;
-      font-weight: 700;
-      color: #047857;
-      background: rgba(16, 185, 129, 0.12);
-      border-radius: 999px;
-      margin-bottom: 8px;
-    }
-    .pack-price {
-      font-size: 18px;
-      font-weight: 800;
-      color: var(--accent);
-      margin-top: 6px;
-      padding-top: 8px;
-      border-top: 1px solid var(--border);
-    }
-    .pack-price-per { font-size: 10px; color: var(--muted); font-weight: 600; }
 
     /* Pass Passion, cartes plus larges, full width */
-    .pass-card {
-      position: relative;
-      padding: 18px 18px;
-      border-radius: 18px;
-      background: linear-gradient(135deg, #2b1a5e 0%, #4c1d95 60%, #7c3aed 100%);
-      color: #fff;
-      margin-bottom: 12px;
-      cursor: pointer;
-      transition: transform 180ms ease, box-shadow 240ms ease;
-      overflow: hidden;
-      box-shadow: 0 10px 28px rgba(76, 29, 149, 0.28);
-    }
-    .pass-card:hover { transform: translateY(-2px); box-shadow: 0 14px 34px rgba(76, 29, 149, 0.42); }
-    .pass-card.annual {
-      background: linear-gradient(135deg, #b45309 0%, #f59e0b 50%, #fde68a 100%);
-      color: #1f1b2e;
-      box-shadow: 0 10px 28px rgba(245, 158, 11, 0.30);
-    }
-    .pass-card-head {
-      display: flex; align-items: center; justify-content: space-between; gap: 10px;
-      margin-bottom: 8px;
-    }
-    .pass-card-title { font-size: 17px; font-weight: 800; letter-spacing: 0.01em; }
-    .pass-card-badge {
-      padding: 3px 9px;
-      font-size: 10px;
-      font-weight: 800;
-      letter-spacing: 0.08em;
-      border-radius: 999px;
-      background: rgba(255, 255, 255, 0.20);
-      backdrop-filter: blur(10px);
-    }
-    .pass-card.annual .pass-card-badge { background: rgba(31, 27, 46, 0.18); color: #1f1b2e; }
-    .pass-card-price {
-      font-size: 28px; font-weight: 800; line-height: 1;
-      margin: 4px 0 8px;
-    }
-    .pass-card-price-per { font-size: 13px; opacity: 0.85; font-weight: 600; }
-    .pass-card-perks {
-      list-style: none;
-      padding: 0; margin: 8px 0 12px;
-    }
-    .pass-card-perks li {
-      font-size: 12px;
-      padding: 3px 0;
-      opacity: 0.93;
-    }
-    .pass-card-perks li::before { content: "✓ "; font-weight: 800; }
-    .pass-card-cta {
-      display: inline-block;
-      padding: 8px 18px;
-      border-radius: 999px;
-      background: rgba(255, 255, 255, 0.20);
-      color: #fff;
-      font-weight: 800;
-      font-size: 13px;
-      border: 1px solid rgba(255, 255, 255, 0.35);
-      cursor: pointer;
-      backdrop-filter: blur(10px);
-      transition: background 180ms ease;
-    }
-    .pass-card-cta:hover { background: rgba(255, 255, 255, 0.32); }
-    .pass-card.annual .pass-card-cta { background: rgba(31, 27, 46, 0.18); color: #1f1b2e; border-color: rgba(31, 27, 46, 0.30); }
 
     /* Trust strip */
     .trust-strip {
@@ -6412,16 +5887,6 @@
     }
     .pay-modal-emoji { font-size: 40px; margin-bottom: 6px; }
     .pay-modal-title { font-size: 18px; font-weight: 800; color: var(--text); }
-    .pay-modal-amount {
-      padding: 14px 18px;
-      border-radius: 14px;
-      background: var(--grad-hero);
-      color: #fff;
-      text-align: center;
-      margin-bottom: 14px;
-    }
-    .pay-modal-amount-big { font-size: 30px; font-weight: 800; }
-    .pay-modal-amount-sub { font-size: 13px; opacity: 0.92; margin-top: 2px; }
     .pay-method {
       width: 100%;
       padding: 14px 16px;
@@ -6446,213 +5911,7 @@
     }
     .pay-method-arrow { margin-left: auto; color: var(--muted); font-size: 18px; }
 
-    /* Onglet Crypto */
-    .crypto-hero {
-      padding: 18px 18px;
-      border-radius: var(--radius-md);
-      background: linear-gradient(135deg, #2b1a5e 0%, #4c1d95 55%, #6d28d9 100%);
-      color: #fff;
-      margin-bottom: 14px;
-      position: relative;
-      overflow: hidden;
-      box-shadow: 0 12px 30px rgba(76, 29, 149, 0.34);
-    }
-    .crypto-hero-tag {
-      display: inline-block;
-      padding: 3px 10px;
-      font-size: 10px;
-      font-weight: 800;
-      letter-spacing: 0.10em;
-      background: rgba(255, 255, 255, 0.18);
-      border: 1px solid rgba(255, 255, 255, 0.3);
-      border-radius: 999px;
-      margin-bottom: 8px;
-      backdrop-filter: blur(10px);
-    }
-    .crypto-hero-title { font-size: 22px; font-weight: 800; margin-bottom: 6px; line-height: 1.2; }
-    .crypto-hero-sub { font-size: 13px; opacity: 0.9; line-height: 1.5; margin-bottom: 12px; }
-    .crypto-stats {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 8px;
-      margin-top: 12px;
-    }
-    .crypto-stat {
-      padding: 10px 8px;
-      border-radius: 12px;
-      background: rgba(255, 255, 255, 0.10);
-      backdrop-filter: blur(12px);
-      text-align: center;
-      border: 1px solid rgba(255, 255, 255, 0.15);
-    }
-    .crypto-stat-num { font-size: 18px; font-weight: 800; line-height: 1.2; }
-    .crypto-stat-label { font-size: 10px; opacity: 0.85; margin-top: 2px; }
-    .crypto-stat-trend {
-      font-size: 9.5px;
-      padding: 1px 6px;
-      border-radius: 999px;
-      background: rgba(16, 185, 129, 0.30);
-      color: #d1fae5;
-      font-weight: 700;
-      display: inline-block;
-      margin-top: 3px;
-    }
-
-    .crypto-card {
-      padding: 14px 16px;
-      border-radius: 14px;
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      margin-bottom: 10px;
-    }
-    .crypto-card-head {
-      display: flex; align-items: center; gap: 10px;
-      margin-bottom: 8px;
-    }
-    .crypto-card-icon {
-      width: 36px; height: 36px;
-      border-radius: 10px;
-      background: linear-gradient(135deg, #4c1d95, #7c3aed);
-      color: #fff;
-      display: inline-flex; align-items: center; justify-content: center;
-      font-size: 18px;
-      flex-shrink: 0;
-    }
-    .crypto-card-title { font-size: 15px; font-weight: 800; color: var(--text); }
-    .crypto-card-text { font-size: 13px; color: var(--text); line-height: 1.55; }
-
-    .crypto-mech-grid {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 8px;
-      margin: 10px 0 14px;
-    }
-    @media (max-width: 380px) {
-      .crypto-mech-grid { grid-template-columns: 1fr; }
-    }
-    .crypto-mech {
-      padding: 12px 12px;
-      border-radius: 12px;
-      background: var(--bg-tint);
-      border: 1px solid rgba(124, 58, 237, 0.18);
-    }
-    .crypto-mech-num {
-      display: inline-block;
-      width: 22px; height: 22px;
-      border-radius: 50%;
-      background: var(--grad-hero);
-      color: #fff;
-      font-size: 12px;
-      font-weight: 800;
-      text-align: center;
-      line-height: 22px;
-      margin-bottom: 6px;
-    }
-    .crypto-mech-title { font-size: 13px; font-weight: 800; color: var(--text); margin-bottom: 4px; }
-    .crypto-mech-text { font-size: 11.5px; color: var(--text-dim); line-height: 1.45; }
-
     /* Mini graphique simulé valeur dans le temps */
-    .crypto-chart {
-      position: relative;
-      height: 110px;
-      border-radius: 12px;
-      background: var(--bg-tint);
-      border: 1px solid rgba(124, 58, 237, 0.16);
-      overflow: hidden;
-      padding: 12px 14px;
-      margin-bottom: 10px;
-    }
-    .crypto-chart-svg { display: block; width: 100%; height: 100%; }
-    .crypto-chart-points {
-      position: absolute;
-      bottom: 8px;
-      left: 0; right: 0;
-      display: flex;
-      justify-content: space-between;
-      padding: 0 14px;
-      font-size: 9.5px;
-      color: var(--muted);
-      font-weight: 700;
-    }
-
-    .crypto-risk {
-      padding: 12px 14px;
-      border-radius: 12px;
-      background: rgba(220, 38, 38, 0.06);
-      border: 1px solid rgba(220, 38, 38, 0.30);
-      margin-bottom: 10px;
-    }
-    .crypto-risk-title {
-      font-size: 13px; font-weight: 800; color: #b91c1c;
-      margin-bottom: 6px;
-      display: flex; align-items: center; gap: 6px;
-    }
-    .crypto-risk-text { font-size: 12px; color: var(--text); line-height: 1.5; }
-
-    /* Indicateur valeur dans le wallet principal */
-    .passia-value-indicator {
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-      padding: 3px 9px;
-      border-radius: 999px;
-      background: rgba(255, 255, 255, 0.18);
-      border: 1px solid rgba(255, 255, 255, 0.30);
-      font-size: 10px;
-      font-weight: 700;
-      color: #ffffff;
-      margin-left: 6px;
-    }
-
-    /* Onglet "Comment ça marche" */
-    .explain-block {
-      padding: 12px 14px;
-      border-radius: 14px;
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      margin-bottom: 10px;
-      box-sizing: border-box;
-      max-width: 100%;
-      word-wrap: break-word;
-      overflow-wrap: break-word;
-    }
-    .explain-block-title {
-      display: flex; align-items: center; gap: 8px;
-      font-size: 13px; font-weight: 800; color: var(--text);
-      margin-bottom: 6px;
-      word-wrap: break-word;
-      overflow-wrap: break-word;
-      hyphens: auto;
-    }
-    .explain-block-icon {
-      width: 30px; height: 30px;
-      border-radius: 8px;
-      background: var(--grad-hero);
-      color: #fff;
-      display: inline-flex; align-items: center; justify-content: center;
-      font-size: 15px;
-      flex-shrink: 0;
-    }
-    .explain-block-text {
-      font-size: 11.5px;
-      color: var(--text);
-      line-height: 1.5;
-      word-wrap: break-word;
-      overflow-wrap: break-word;
-    }
-    .explain-list {
-      list-style: none;
-      padding: 0; margin: 6px 0 0;
-    }
-    .explain-list li {
-      padding: 3px 0;
-      font-size: 11.5px;
-      color: var(--text);
-      line-height: 1.5;
-      word-wrap: break-word;
-      overflow-wrap: break-word;
-    }
-    .explain-list li::before { content: "▸ "; color: var(--accent); font-weight: 700; }
 
     /* Sous-filtre lu / non lu, pills compactes */
     .msg-readfilter-row {
@@ -7513,10 +6772,7 @@
           meilleur contraste du texte blanc).
        2) Accélération GPU + isolation de la zone scrollable principale.
        ============================================================ */
-    .vlog-card-mini-tag, .cdv-feed-tag, .post-vlog-tag,
-    .post-cover-caption, .passion-tile, .pass-card-badge,
-    .pass-card-cta, .crypto-stat, .crypto-hero-tag,
-    .reel-tag-mood, .reel-action-icon, .reels-counter, .reels-hint {
+    .vlog-card-mini-tag,.cdv-feed-tag,.post-vlog-tag,.post-cover-caption,.passion-tile,.reel-tag-mood,.reel-action-icon,.reels-counter,.reels-hint {
       backdrop-filter: none !important;
       -webkit-backdrop-filter: none !important;
     }
@@ -7851,32 +7107,24 @@
       55% { box-shadow: 0 0 0 5px rgba(239, 68, 68, 0); }
     }
 
-    /* ── En-tête du fil rétractable au scroll (pattern Instagram) :
-       .app-main porte .chrome-collapsed quand on descend dans le fil ── */
+    /* ── En-tête du fil : passions, moods et stories TOUJOURS visibles ──
+       Le repli au défilement (classe .chrome-collapsed posée par app-09) a été
+       RETIRÉ le 2026-08-29 : une fois replié, il ne se rouvrait plus en
+       remontant (détail dans app-09). Les trois blocs gardent leur bornage de
+       hauteur — c'est lui qui empêche une longue liste de passions ou de moods
+       de repousser le fil hors de l'écran — mais plus aucune transition de
+       hauteur ne tourne au-dessus de #feedList pendant le défilement. ── */
     #screen-feed .profile-strip,
     #screen-feed .mood-selector,
     #screen-feed .stories-row {
-      transition: max-height 260ms ease, opacity 200ms ease, margin 260ms ease, padding 260ms ease;
       max-height: 220px;
       overflow-y: hidden;
-    }
-    .app-main.chrome-collapsed #screen-feed .profile-strip,
-    .app-main.chrome-collapsed #screen-feed .mood-selector,
-    .app-main.chrome-collapsed #screen-feed .stories-row {
-      max-height: 0;
-      opacity: 0;
-      margin-top: 0; margin-bottom: 0;
-      padding-top: 0; padding-bottom: 0;
-      pointer-events: none;
     }
 
     /* ── Respect de prefers-reduced-motion ── */
     @media (prefers-reduced-motion: reduce) {
       .screen { animation: none; }
       .live-dot { animation: none; }
-      #screen-feed .profile-strip,
-      #screen-feed .mood-selector,
-      #screen-feed .stories-row { transition: none; }
     }
 
     /* ── Desktop : halos violets doux autour de la colonne ── */
@@ -10728,15 +9976,11 @@ body.ctx-locked #appMain { overflow: hidden; }
    remonte sans le recréer — son `onclick="publishPost()"` doit rester intact. */
 :root.passio-ui-6 [data-v6-publier] { min-height: 48px; }
 
-/* ── §11 : les mécaniques économiques sortent du cœur ──────────────────────
-   « Les étoiles, scores, Passia, rangs, leaderboards et paywalls internes
-   sortent du cœur. »  Seul l'AFFICHAGE change : `grantReward` continue de
-   tourner et les points continuent d'être comptés. C'est un lot visuel.
-   ⚠️ On masque, on ne retire rien : `renderTopbar` écrit dans `#topPassia`
-   SANS garde — retirer ce nœud ferait planter la publication et le commentaire.
-   Le Wallet reste atteignable par les Réglages. */
+/* ── §11 : les mécaniques économiques sont sorties du cœur ─────────────────
+   Ce lot ne faisait que MASQUER les pastilles ; l'ADR-009 a depuis retiré le
+   moteur lui-même (Wallet, points, rangs, Passia, quêtes, boutique, paywall
+   du 4ᵉ profil). La rangée ne porte plus que la pastille de badges. */
 :root.passio-ui-6 .profile-chips-row { display: none; }
-:root.passio-ui-6 .toast.reward { display: none; }
 
 /* ══════════════════════════════════════════════════════════════════════════
    PASSIO UI V6A — l'inbox Messages du §10.  ACTIF PAR DÉFAUT.
@@ -11088,18 +10332,6 @@ body.ctx-locked #appMain { overflow: hidden; }
 }
 :root.passio-ui-7 #screen-feed .story-label { font-size: 9px; max-width: 48px; }
 
-/* ⚠️ Le repli au défilement DOIT continuer de gagner. Les règles historiques
-   (`.app-main.chrome-collapsed #screen-feed .profile-strip`) ont exactement la
-   même spécificité que celles ci-dessus, et ce bloc vient APRÈS : les
-   `padding` que l'on vient d'y poser écraseraient sinon la mise à zéro du
-   repli, et l'en-tête du fil ne se replierait plus. */
-:root.passio-ui-7 .app-main.chrome-collapsed #screen-feed .profile-strip {
-  max-height: 0;
-  opacity: 0;
-  margin-top: 0; margin-bottom: 0;
-  padding-top: 0; padding-bottom: 0;
-  pointer-events: none;
-}
 
 /* ── §6 · Profil : trois onglets NOMMÉS ──────────────────────────────────── */
 :root.passio-ui-7 .v7-tabs {

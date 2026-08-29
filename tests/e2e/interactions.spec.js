@@ -424,8 +424,15 @@ test.describe("Interactions — like d'un post", () => {
     // qu'elle rame. Coût réel : l'en-tête du fil qui clignote tout seul et du CPU
     // brûlé en continu, sur l'appareil déjà le plus chargé.
     //
-    // Il n'est PAS corrigé ici (ce lot ne touche qu'au test), et il n'est pas
-    // masqué : rien dans ce fichier ne neutralise `.chrome-collapsed`. Ce qui est
+    // ✅ CORRIGÉ DEPUIS, le 2026-08-29, mais PAS ici : la bascule elle-même a été
+    // RETIRÉE (les passions, les moods et les stories restent affichés en
+    // permanence — cf. la fin de `js/app-09-boot-pwa.js` et
+    // `tests/e2e/entete-fil-permanent.spec.js`), donc plus aucune transition de
+    // hauteur ne tourne au-dessus du fil pendant le défilement. Le garde de
+    // stabilité ci-dessous reste utile pour `like-pop` et n'a pas bougé.
+    //
+    // Ce lot-ci ne touchait qu'au test, et ne masquait rien : rien dans ce
+    // fichier ne neutralise `.chrome-collapsed`. Ce qui y est
     // corrigé, c'est ce qui relevait du test — une attente sur une condition
     // inatteignable hors ligne (cf. seedServerPostStable) et un garde de stabilité
     // aveugle à `like-pop` (cf. attendreFilStable).

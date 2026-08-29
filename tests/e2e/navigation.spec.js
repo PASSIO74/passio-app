@@ -7,10 +7,12 @@ const { bootOnboarded } = require("./app-helper");
 // CDV reste un écran réel et testé, même s'il n'est plus une destination de la
 // navigation principale : il vit désormais comme fonctionnalité secondaire de
 // Passion > Voyage.
-const SCREENS = ["feed", "profiles", "studio", "explore", "irl", "wallet", "messages", "cdv"];
+// ADR-009 : `wallet` a été retiré du produit ; `goTo("wallet")` redirige
+// désormais vers `profiles` (vérifié par le test de deep link plus bas).
+const SCREENS = ["feed", "profiles", "studio", "explore", "irl", "messages", "cdv"];
 const NAV_LABELS = ["Découvrir", "Rencontrer", "Créer", "Messages", "Profil"];
 
-test("tour des 8 écrans : zéro erreur JS, chaque écran devient actif", async ({ page }) => {
+test("tour des 7 écrans : zéro erreur JS, chaque écran devient actif", async ({ page }) => {
   const errors = { js: [], console: [], network: [] };
   await bootOnboarded(page, errors);
 

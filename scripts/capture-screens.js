@@ -9,17 +9,17 @@ const fs = require("fs");
 const path = require("path");
 
 const OUT = path.join(__dirname, "..", "docs", "screenshots");
-const SCREENS = ["feed", "profiles", "studio", "explore", "irl", "wallet", "messages", "cdv"];
+const SCREENS = ["feed", "profiles", "studio", "explore", "irl", "messages", "cdv"];
 const STATE = {
   onboarded: true, landingSeen: true, tourSeen: true,
   user: {
-    name: "Audit QA", birthYear: 1995, isMinor: false, score: 120, passia: 45,
+    name: "Audit QA", birthYear: 1995, isMinor: false,
     currentProfileId: "pp_0",
     profiles: [{ id: "pp_0", name: "Audit QA", passion: "musique", emoji: "🎵", bio: "Passionné de musique et de voyages", color: "#7c3aed", createdAt: 1 }],
     drafts: [], likedPosts: [], joinedEvents: [], seenStories: [], customPassions: [],
     following: [], savedCarnets: [], general: { username: "Audit QA" },
   },
-  userPosts: [], userEvents: [], transactions: [], notifications: [], quests: [],
+  userPosts: [], userEvents: [], notifications: [],
   currentMood: "all", selectedFeedPassions: [],
 };
 
