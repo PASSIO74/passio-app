@@ -296,7 +296,7 @@ synchronisation avec un ancien client.
 
 ## 🗂️ Pièges connus — index (détail complet : docs/PIEGES_CONNUS.md)
 
-56 fiches détaillées par domaine. **Lis la fiche concernée AVANT de modifier ce domaine.** Pour un audit de diff, lance le subagent `audit-passio`.
+59 fiches détaillées par domaine. **Lis la fiche concernée AVANT de modifier ce domaine.** Pour un audit de diff, lance le subagent `audit-passio`.
 
 - **Cadrage / shell** : jamais 100dvh (var --app-vh mesurée en JS).
 - **Feed** : classement par pertinence (rankFeedPosts), guards no-op.
@@ -1056,7 +1056,7 @@ Le script est en lecture seule sur le dépôt (il n'écrit que dans son dossier 
   prouve que la restauration se termine et ne fuit pas. Ne pas le retirer sans retirer
   aussi cette assertion.
 
-- `docs/PIEGES_CONNUS.md` — les 56 fiches détaillées (extrait de ce fichier le 2026-08-07).
+- `docs/PIEGES_CONNUS.md` — les 59 fiches détaillées (extrait de ce fichier le 2026-08-07, recompté le 2026-08-29).
 - `docs/HISTORIQUE_PROJET.md` — état 2026-06-11, backlog terminé, logs d’optimisation.
 - `docs/ARCHITECTURE.md`, `docs/CONTROLE_16_MISSIONS.md`, `docs/CHECKLIST_COMMERCIALISATION.md`.
 - Skills projet : `/ship`, `/migration`, `/e2e-multi`. Subagents : `audit-passio`, `migration-checker`.
