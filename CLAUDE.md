@@ -637,8 +637,15 @@ Le script est en lecture seule sur le dépôt (il n'écrit que dans son dossier 
   « Inscrit ✓ », ligne « N participants · N places restantes » **calculée**, passion
   abrégée à l'affichage seul (`libelleCourt`, « Yoga » et non « Yoga / Bien-être »),
   « Choisir une ville » et un geste explicite `useMyPositionForIrl()` — toujours **aucun
-  GPS automatique** ; ③ **Fil** : les passions deviennent des pastilles « emoji + libellé »
-  qui reviennent à la ligne (bornées à deux rangées, bouton « Autres »), stories −25 %,
+  GPS automatique** ; ③ **Fil** : les passions et les stories sont réduites d'environ
+  −25 % — ⚠️ **rectifié le 2026-08-29 sur demande de Benjamin** (« remets les profils du
+  fil comme avant, en bulle mais plus petite ») : ce lot les avait transformées en
+  pastilles « emoji + libellé » revenant à la ligne, avec un bouton « Autres ». Elles
+  redeviennent des **bulles** (vignette photo ronde + pastille emoji + libellé dessous)
+  dans une rangée qui **défile horizontalement**, avec une vignette de 34 px au lieu de
+  46. C'est du CSS SEUL (`:root.passio-ui-7 #screen-feed .profile-tile*`) : le bouton
+  « Autres » et son mécanisme JS ont été supprimés, `renderProfileStrip` n'est pas touché,
+  et couper le lot rend les 46 px d'origine — ce que la suite vérifie. Aussi :
   intentions renommées **Tous · Explorer · Apprendre · Idées · Rencontrer** ; ④ l'icône
   **Messages quitte la barre supérieure** (`#msgDot` reste dans le DOM, masqué —
   `renderMsgBadge` continue d'y écrire) ; ⑥ **Profil** à trois onglets nommés
@@ -647,9 +654,12 @@ Le script est en lecture seule sur le dépôt (il n'écrit que dans son dossier 
   feuille légère (description · passion · couverture · activité facultative) qui
   renseigne `meState.details` et appelle `mePublish()` — **aucun second moteur de
   publication**.
-  ⚠️ **Six pièges de ce lot.** ① Le bouton « Autres » est un **frère** de `#profileStrip`,
-  jamais un enfant : `renderProfileStrip` réécrit la rangée en entier et la borne en
-  hauteur. ② Au Profil, c'est l'**ORDRE d'origine de l'écran** qui est mémorisé, pas le
+  ⚠️ **Six pièges de ce lot.** ① `renderProfileStrip` réécrit `#profileStrip` **en
+  entier** (cache `_lastHtml` compris) : rien d'injecté dans la rangée n'y survit, tout
+  ajout doit être posé en **frère** — c'est pourquoi la compacité des passions passe
+  aujourd'hui par le CSS seul. Corollaire de mesure : `.profile-tile-avatar` porte
+  `transition: all 0.25s`, donc une largeur relevée dans la foulée d'un changement de
+  drapeau est encore à mi-course (piège vécu en écrivant le test du kill switch). ② Au Profil, c'est l'**ORDRE d'origine de l'écran** qui est mémorisé, pas le
   « frère suivant » de chaque bloc — ce frère déménage lui aussi, et rendre un bloc
   « avant lui » restituait un ordre inventé. ③ Le bloc CSS UI-7 vient **après** les règles
   de repli au défilement, à spécificité **égale** : sans réécrire
