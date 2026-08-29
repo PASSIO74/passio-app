@@ -1671,6 +1671,48 @@ function renderMsgBadge() {
 
 // HTML de la liste de notifications (extrait pour pouvoir re-rendre le panneau
 // en place lors d'un rafraîchissement Supabase / temps réel).
+// Le texte d'une notification : ÉCHAPPÉ par défaut, HTML seulement si la
+// notification vient d'un producteur de confiance.
+//
+// ⚠️ XSS STOCKÉE mesurée le 2026-08-29 : `_notifListHtml` insérait `n.text`
+// brut. Or une notification venue de Supabase porte `notifications.content`,
+// texte libre insérable par TOUT compte authentifié — même famille que
+// `comment_interactions` et `event_reactions`. Une charge
+// `<img src=x onerror=…>` s'exécutait dans le panneau de la victime ; vérifié
+// par un test qui arme un marqueur global.
+//
+// ⚠️ Pourquoi PAS un `escapeHtml` global : les notifications LOCALES portent du
+// HTML VOULU — `pushNotification` compose « Tu rejoins <b>…</b> » en ayant déjà
+// échappé la partie variable, et le contenu de démonstration fait de même.
+// Les échapper toutes afficherait « &lt;b&gt; » à l'écran.
+//
+// La confiance est donc EXPLICITE, et le défaut est le refus : tout producteur
+// futur qui oublie de se déclarer sera échappé, pas exécuté.
+//   · `html: true`      — posé par `pushNotification` et le contenu de démo ;
+//   · `kind === "local"` — les notifications déjà PERSISTÉES chez les comptes
+//     existants, écrites avant que le drapeau n'existe.
+// ⚠️ RÉCONCILIATION DE DEUX CORRECTIFS PARALLÈLES (2026-08-29, nuit).
+// Deux sessions ont fermé la même XSS le même soir, chacune à un bout de la
+// chaîne : neutralisation des chevrons à l'ENTRÉE (`mergeSupaNotifs`, #202) et
+// modèle de confiance explicite au RENDU (celui-ci, #200). Les deux fusionnés,
+// main est devenu ROUGE — et pas seulement sur des tests : `escapeHtml` appliqué
+// ici DOUBLE-ÉCHAPPAIT un texte déjà échappé à la source. `supaInsertNotif`
+// compose `escapeHtml(nom) + " " + libellé` : un pseudo avec apostrophe est
+// stocké « Ben&#39;j », et un second échappement l'affichait tel quel à l'écran.
+//
+// Le modèle de confiance de #200 est conservé — il est meilleur : le défaut est
+// le REFUS, tout producteur futur qui oublie de se déclarer est neutralisé. Seul
+// le désinfectant change pour le texte non fiable : on neutralise les CHEVRONS
+// au lieu d'échapper toutes les entités. C'est suffisant ici — le texte est
+// inséré entre deux balises, pas dans un attribut, et `<` et `>` sont les seuls
+// caractères qui peuvent y créer du balisage — et c'est idempotent, donc la
+// neutralisation d'entrée et celle-ci se composent sans se marcher dessus.
+function _notifTexteHtml(n) {
+  if (!n) return "";
+  var deConfiance = n.html === true || n.kind === "local";
+  return deConfiance ? String(n.text || "") : _neutraliserBalisesNotif(n.text);
+}
+
 function _notifListHtml(notifs) {
   notifs = notifs || [];
   if (!notifs.length) return `
@@ -1683,7 +1725,7 @@ function _notifListHtml(notifs) {
     <div class="notif-row ${n.unread ? "unread" : ""}" onclick="clickNotif('${escapeJsArg(n.id)}')">
       <div class="notif-icon">${escapeHtml(n.emoji || "✨")}</div>
       <div class="notif-body">
-        <div class="notif-text">${n.text}</div>
+        <div class="notif-text">${_notifTexteHtml(n)}</div>
         <div class="notif-meta">${fmtTime(n.createdAt)}</div>
       </div>
       ${n.unread ? '<div class="notif-dot"></div>' : ""}
@@ -1889,6 +1931,9 @@ function pushNotification(text, emoji = "✨", fromId = "me") {
   state.notifications = state.notifications || [];
   state.notifications.unshift({
     id: uid(), kind: "local", fromId, text, createdAt: Date.now(), unread: true, emoji,
+    // Ce texte est composé ICI, ses parties variables déjà échappées par
+    // l'appelant : c'est du HTML de confiance (cf. `_notifTexteHtml`).
+    html: true,
   });
   saveState();
   renderBell();

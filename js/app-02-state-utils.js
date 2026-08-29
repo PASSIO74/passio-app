@@ -666,6 +666,43 @@ function _applyUserState(data) {
 // Charge l'état du compte depuis Supabase au boot/connexion. Si le serveur a une
 // version plus récente (ou si l'appareil est vierge), on l'applique → le profil
 // et toutes les données suivent l'utilisateur. Sinon on pousse le local.
+// Après une fusion serveur, la passion ACTIVE doit rester vivante.
+//
+// ⚠️ « Toujours dans la liste fusionnée » ne suffit pas : une passion ARCHIVÉE
+// sur un autre appareil reste dans `profiles`, avec `archived:true`. Le test
+// d'existence seul rendait donc active une passion rangée. Mesuré avant
+// correctif : l'écran affichait « Passion active : 🍳 Cuisine » pendant que le
+// Fil, qui ne rend que `passionsVivantes()`, ne la connaissait plus — et le
+// Studio publiait dedans.
+//
+// C'est l'état que tout le lot UI-8 suppose impossible. `currentProfile()`
+// (app-06) rend `null` pour une passion archivée, et son commentaire dit
+// pourquoi il ne réécrit rien : le nettoyage appartient aux points d'ÉCRITURE.
+// `archiverPassion` et `deleteProfile` le font déjà ; la synchronisation était
+// le dernier à ne pas le faire.
+//
+// Fonction NOMMÉE et non bloc en ligne, pour qu'un test puisse exercer le code
+// réel plutôt qu'une copie — une copie ne prouverait que sa propre cohérence.
+function restaurerPassionActiveApresFusion(localCurrentId) {
+  if (!state || !state.user) return;
+  var profils = Array.isArray(state.user.profiles) ? state.user.profiles : [];
+  var archivee = function (id) {
+    var pr = profils.find(function (p) { return p.id === id; });
+    return !!(pr && pr.archived);
+  };
+  if (localCurrentId && profils.some(function (p) { return p.id === localCurrentId; })
+      && !archivee(localCurrentId)) {
+    state.user.currentProfileId = localCurrentId;
+  }
+  // Filet commun : quelle que soit la provenance de la valeur — locale
+  // restaurée ci-dessus, ou reçue du serveur — on retombe sur la première
+  // VIVANTE, jamais sur `profiles[0]` qui peut être archivée.
+  if (archivee(state.user.currentProfileId)) {
+    var vivantes = profils.filter(function (p) { return !p.archived; });
+    if (vivantes.length) state.user.currentProfileId = vivantes[0].id;
+  }
+}
+
 async function supaLoadUserState() {
   try {
     if (typeof supa === "undefined" || !supa || !window._supaReal) return false;
@@ -736,11 +773,8 @@ async function supaLoadUserState() {
         // Re-pousse immédiatement si des différences ont été fusionnées.
         setTimeout(function() { try { supaSaveUserState(); } catch(_e) {} }, 0);
       }
-      // Restaure le profil actif local s'il est toujours dans la liste fusionnée.
-      if (localCurrentId) {
-        const stillExists = Array.isArray(state.user.profiles) && state.user.profiles.some(function(p) { return p.id === localCurrentId; });
-        if (stillExists) state.user.currentProfileId = localCurrentId;
-      }
+      // Restaure le profil actif local, et garantit qu'il est VIVANT.
+      restaurerPassionActiveApresFusion(localCurrentId);
       state._stateSyncedAt = data.updated_at;
       // supaLoadUserState n'est appelée qu'avec une session active → l'utilisateur
       // est connecté, donc onboardé (évite de retomber sur la landing).
@@ -2618,6 +2652,13 @@ function allFeedPosts() {
   const deduplicated = allPosts.filter(p => {
     if (p.isReel) return false;
     if (idsBloques.has(p.id)) return false;
+    // ⚠️ VISIBILITÉ D'UN CARNET. Elle vit dans le blob jsonb `vlog` (pas de
+    // colonne), donc la RLS ne peut PAS la faire respecter : la ligne `posts`
+    // part à tous ceux qui peuvent lire l'auteur. Le filet est donc CLIENT — et
+    // il n'était appliqué que par `allCarnets()`. Résultat : un carnet marqué
+    // « Privé » n'apparaissait pas dans l'onglet Carnets… mais s'affichait dans
+    // le FIL de tout le monde, et s'y ouvrait entièrement.
+    if (typeof canSeeCarnet === "function" && !canSeeCarnet(p)) return false;
     if (seenIds.has(p.id)) return false;
     seenIds.add(p.id);
     return true;

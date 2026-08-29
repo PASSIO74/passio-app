@@ -1689,8 +1689,8 @@ function renderProfilesScreen() {
         + ' onclick="openEditPassionProfile(\'' + escapeJsArg(String(p.id)) + '\')">'
         + '<div class="avatar lg" style="' + avatarStyle + 'position:relative;">' + avatarContent
         + '<div class="passion-photo-badge" onclick="event.stopPropagation();document.getElementById(\'passionPhoto_' + escapeJsArg(String(p.id)) + '\').click()">📷</div>'
-        + '<input type="file" id="passionPhoto_' + escapeHtml(String(p.id)) + '" accept="image/*" style="display:none;" onchange="event.stopPropagation();changePassionPhoto(event,\'' + escapeJsArg(String(p.id)) + '\')"/>'
-        + '<input type="file" id="passionCover_' + escapeHtml(String(p.id)) + '" accept="image/*" style="display:none;" onchange="event.stopPropagation();changePassionCoverPhoto(event,\'' + escapeJsArg(String(p.id)) + '\')"/>'
+        + '<input type="file" id="passionPhoto_' + escapeHtml(String(p.id)) + '" accept="image/*" style="display:none;" onclick="event.stopPropagation();" onchange="event.stopPropagation();changePassionPhoto(event,\'' + escapeJsArg(String(p.id)) + '\')"/>'
+        + '<input type="file" id="passionCover_' + escapeHtml(String(p.id)) + '" accept="image/*" style="display:none;" onclick="event.stopPropagation();" onchange="event.stopPropagation();changePassionCoverPhoto(event,\'' + escapeJsArg(String(p.id)) + '\')"/>'
         + '</div>'
         + '<div class="profile-card-body">'
         + '<div class="profile-card-name">' + escapeHtml(et.emoji) + " " + escapeHtml(et.label) + '</div>'
@@ -1736,8 +1736,8 @@ function renderProfilesScreen() {
       return `<div class="profile-card ${isSelected?"selected":""} ${_pCover?"has-cover":""}" style="${coverStyle}${isSelected ? "border:2px solid var(--accent);" : ""}" onclick="toggleProfileSelect('${escapeJsArg(p.id)}')">
         <div class="avatar lg" style="${avatarStyle}position:relative;">${avatarContent}
           <div class="passion-photo-badge" onclick="event.stopPropagation();document.getElementById('passionPhoto_${escapeJsArg(p.id)}').click()">📷</div>
-          <input type="file" id="passionPhoto_${p.id}" accept="image/*" style="display:none;" onchange="event.stopPropagation();changePassionPhoto(event,'${escapeJsArg(p.id)}')"/>
-          <input type="file" id="passionCover_${p.id}" accept="image/*" style="display:none;" onchange="event.stopPropagation();changePassionCoverPhoto(event,'${escapeJsArg(p.id)}')"/>
+          <input type="file" id="passionPhoto_${p.id}" accept="image/*" style="display:none;" onclick="event.stopPropagation();" onchange="event.stopPropagation();changePassionPhoto(event,'${escapeJsArg(p.id)}')"/>
+          <input type="file" id="passionCover_${p.id}" accept="image/*" style="display:none;" onclick="event.stopPropagation();" onchange="event.stopPropagation();changePassionCoverPhoto(event,'${escapeJsArg(p.id)}')"/>
         </div>
         <div class="profile-card-body" style="flex:1;">
           <div class="profile-card-name">
