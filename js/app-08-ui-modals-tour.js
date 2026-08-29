@@ -1681,7 +1681,7 @@ function _notifListHtml(notifs) {
     </div>`;
   return notifs.map(n => `
     <div class="notif-row ${n.unread ? "unread" : ""}" onclick="clickNotif('${escapeJsArg(n.id)}')">
-      <div class="notif-icon">${n.emoji || "✨"}</div>
+      <div class="notif-icon">${escapeHtml(n.emoji || "✨")}</div>
       <div class="notif-body">
         <div class="notif-text">${n.text}</div>
         <div class="notif-meta">${fmtTime(n.createdAt)}</div>
@@ -1694,8 +1694,30 @@ function _notifListHtml(notifs) {
 // dédup par id, tri par date), met à jour le badge cloche et rafraîchit le
 // panneau s'il est ouvert. Utilisé au boot, à l'ouverture du panneau et en
 // temps réel. Remplace la fusion qui dormait dans le code mort de supaInit.
+// Le texte d'une notification DISTANTE est écrit par un autre compte : la ligne
+// `notifications.content` est insérable par n'importe quel compte authentifié
+// (cf. NOTIF-FORGE-009). Or `_notifListHtml` rend ce texte en HTML — c'est un
+// choix délibéré pour les notifications LOCALES, qui posent un `<b>` autour d'un
+// contenu déjà échappé à la construction. Une notification distante n'a, elle,
+// aucune raison légitime de porter du balisage : `supaInsertNotif` compose
+// `escapeHtml(nom) + " " + libellé`.
+//
+// ⚠️ On NEUTRALISE les chevrons plutôt que d'appliquer `escapeHtml` : le nom de
+// l'émetteur est DÉJÀ échappé côté émetteur, donc un second échappement
+// afficherait « Ben&#39;j » à l'écran au lieu de « Ben'j ». Ici les entités
+// existantes ne sont pas touchées, et `<img onerror=…>` devient du texte inerte.
+function _neutraliserBalisesNotif(t) {
+  return String(t == null ? "" : t).replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
 function mergeSupaNotifs(ns) {
   if (!ns || !ns.length) return;
+  // Point de passage UNIQUE des notifications distantes : la lecture REST
+  // (supaLoadNotifications) et le temps réel arrivent tous deux ici. Sanitiser
+  // au point d'entrée plutôt qu'au rendu couvre aussi les chemins futurs.
+  ns.forEach(function (n) {
+    if (n && n.fromSupabase) n.text = _neutraliserBalisesNotif(n.text);
+  });
   // Ignorer les notifs émises par un utilisateur bloqué (modération)
   if (typeof isBlocked === "function") ns = ns.filter(n => !isBlocked(n.fromId));
   if (!ns.length) return;
