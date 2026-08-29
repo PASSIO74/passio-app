@@ -1633,6 +1633,7 @@ const SEED_REEL_VIDEOS = [
   },
   {
     id: "reel_seed_sport_skate_1",
+    eventId: "e11",  // lot UI-5 : la bobine EST le skate jam des Chartrons
     video: "https://videos.pexels.com/video-files/5765270/5765270-sd_640_360_24fps.mp4",
     poster: "https://images.unsplash.com/photo-1543364195-077a52659557?w=720&h=1280&fit=crop&auto=format&q=80",
     fallback: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
@@ -1642,6 +1643,7 @@ const SEED_REEL_VIDEOS = [
   },
   {
     id: "reel_seed_musique_1",
+    eventId: "e1",   // lot UI-5 : la bobine EST la prochaine jam de Léa
     video: "https://videos.pexels.com/video-files/5765163/5765163-sd_640_360_24fps.mp4",
     poster: "https://images.unsplash.com/photo-1510915361894-db8b60106cb1?w=720&h=1280&fit=crop&auto=format&q=80",
     fallback: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4",
@@ -1730,18 +1732,94 @@ const SEED_REEL_VIDEOS = [
     text: "Café du matin, mug en grès fait main. Les petits rituels. ☕",
     createdAt: Date.now() - 25 * 3600000,
   },
+
+  {
+    id: "reel_seed_art_1",
+    video: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
+    poster: "https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=720&h=1280&fit=crop&auto=format&q=80",
+    fallback: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+    userId: "u_lou", passion: "art", mood: "creation",
+    text: "Émaillage d'une série de six bols. La couleur ne se révèle qu'à la sortie du four : on travaille en aveugle. 🏺",
+    createdAt: Date.now() - 27 * 3600000,
+  },
+  {
+    id: "reel_seed_danse_1",
+    video: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+    poster: "https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=720&h=1280&fit=crop&auto=format&q=80",
+    fallback: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+    userId: "u_amira", passion: "danse", mood: "creation",
+    text: "Trente secondes de la routine sur laquelle je bosse depuis deux semaines. Le transfert de poids au sol, toujours pas propre. 💃",
+    createdAt: Date.now() - 30 * 3600000,
+  },
+  {
+    id: "reel_seed_mode_1",
+    video: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4",
+    poster: "https://images.unsplash.com/photo-1483985988355-763728e1935b?w=720&h=1280&fit=crop&auto=format&q=80",
+    fallback: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+    userId: "u_zoe", passion: "mode", mood: "creation",
+    text: "Une veste de costume des années 80 devient une veste courte. Deux heures, zéro tissu acheté. 🧵",
+    createdAt: Date.now() - 33 * 3600000,
+  },
+  {
+    id: "reel_seed_jardinage_1",
+    video: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4",
+    poster: "https://images.unsplash.com/photo-1416879595882-3373a0480b5b?w=720&h=1280&fit=crop&auto=format&q=80",
+    fallback: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+    userId: "u_lucie", passion: "jardinage", mood: "chill",
+    text: "Le compost de mars est prêt. Six mois, aucun retournement, juste de la patience et des feuilles mortes. 🌱",
+    createdAt: Date.now() - 36 * 3600000,
+  },
+  {
+    id: "reel_seed_moto_1",
+    video: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/SubaruOutbackOnStreetAndDirt.mp4",
+    poster: "https://images.unsplash.com/photo-1558980664-10e7ec7b39cb?w=720&h=1280&fit=crop&auto=format&q=80",
+    fallback: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+    userId: "u_greg", passion: "moto", mood: "irl",
+    text: "Col du Béal au petit matin, personne sur la route. C'est pour ces quarante minutes-là qu'on se lève à 5h. 🏍",
+    createdAt: Date.now() - 39 * 3600000,
+  },
+  {
+    id: "reel_seed_animaux_1",
+    video: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/WeAreGoingOnBullrun.mp4",
+    poster: "https://images.unsplash.com/photo-1450778869180-41d0601e046e?w=720&h=1280&fit=crop&auto=format&q=80",
+    fallback: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+    userId: "u_maya", passion: "animaux", mood: "learn",
+    text: "Rappel au sifflet, séance 4. On travaille à dix mètres, en extérieur, sans distraction. La progression se fait en semaines, pas en jours. 🐾",
+    createdAt: Date.now() - 42 * 3600000,
+  },
+  {
+    id: "reel_seed_tech_1",
+    video: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4",
+    poster: "https://images.unsplash.com/photo-1518770660439-4636190af475?w=720&h=1280&fit=crop&auto=format&q=80",
+    fallback: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+    userId: "u_yanis", passion: "tech", mood: "learn",
+    text: "Mon petit outil de tri des notes, écrit un dimanche. Il fait une seule chose et il la fait bien. 💻",
+    createdAt: Date.now() - 45 * 3600000,
+  },
+  {
+    id: "reel_seed_litterature_2",
+    video: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4",
+    poster: "https://images.unsplash.com/photo-1521587760476-6c12a4b040da?w=720&h=1280&fit=crop&auto=format&q=80",
+    fallback: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+    userId: "u_anaïs", passion: "litterature", mood: "chill",
+    text: "Lecture à voix haute d'un texte écrit hier soir. Je ne sais jamais si un poème tient tant que je ne l'ai pas dit. 📝",
+    createdAt: Date.now() - 48 * 3600000,
+  },
 ];
 
 function getSeedReelPostsWithComments(seedUsers) {
   // Version de getSeedReelPosts() qui reçoit les users en paramètre
   return SEED_REEL_VIDEOS.map(r => {
+    // ⚠️ Ces auteurs doivent EXISTER dans seedUsers : u_alex / u_marie / u_luc /
+    // u_sara / u_lisa n'y ont jamais figuré, et leurs commentaires s'affichaient
+    // signés « ? ». Corrigé le 2026-08-28 avec des personas réels du seed.
     const commentExamples = [
-      { text: "J'aime beaucoup! 😍", author: "u_alex", name: "Alex" },
-      { text: "C'est incroyable!", author: "u_marie", name: "Marie" },
-      { text: "Trop cool 🔥", author: "u_luc", name: "Luc" },
-      { text: "Merci pour le partage!", author: "u_sara", name: "Sara" },
-      { text: "Je veux essayer ça!", author: "u_tom", name: "Tom" },
-      { text: "Magnifique ✨", author: "u_lisa", name: "Lisa" },
+      { text: "J'aime beaucoup 😍", author: "u_karim", name: "Karim Belkacem" },
+      { text: "C'est vraiment chouette.", author: "u_emma", name: "Emma Wright" },
+      { text: "Trop cool 🔥", author: "u_mehdi", name: "Mehdi Saïd" },
+      { text: "Merci pour le partage !", author: "u_sofia", name: "Sofia Lindqvist" },
+      { text: "Je veux essayer ça.", author: "u_tom", name: "Tom Larivière" },
+      { text: "Magnifique ✨", author: "u_mila", name: "Mila Andreani" },
     ];
 
     const comments = [];
@@ -1788,10 +1866,27 @@ function getSeedReelPostsWithComments(seedUsers) {
     return {
       id: r.id,
       type: "video",
+      // Lot UI-5 (§7) : « Si la Bobine possède un event_id, la fiche de
+      // l'activité correspondante est affichée directement. » Le champ n'est
+      // recopié que s'il existe — une bobine sans activité ne doit surtout pas
+      // en porter une vide, `refEvenement` la prendrait pour une référence.
+      // ⚠️ Sans ce contenu, la branche « Voir l'activité » du lot serait
+      // INVISIBLE, donc indiscernable d'un lot cassé (leçon UI-3B du 2026-08-28).
+      ...(r.eventId ? { eventId: r.eventId } : {}),
+      // ⚠️ `isReel` est la SEULE condition retenue par buildReels() (avec la
+      // présence d'un média) : sans lui, ces douze vidéos n'étaient jamais des
+      // bobines — buildReels() renvoyait [] en démonstration, aucun module
+      // « Bobines » n'apparaissait, et elles tombaient au contraire dans le
+      // fil, sous le nom « Profil » faute d'`authorId`. Corrigé le 2026-08-28.
+      isReel: true,
       video: r.video,
       fallback: r.fallback,
       poster: r.poster,
       userId: r.userId,
+      // `authorId` double `userId` : les moteurs du fil et le module UI-2
+      // résolvent l'auteur par `authorId` (userById), les moteurs de bobines
+      // par `userId` (authorOfReel). Les deux pointent le même compte de démo.
+      authorId: r.userId,
       profileId: null,
       passion: r.passion,
       mood: r.mood,
@@ -1810,10 +1905,13 @@ function getSeedReelPosts() {
   return SEED_REEL_VIDEOS.map(r => ({
     id: r.id,
     type: "video",
+    ...(r.eventId ? { eventId: r.eventId } : {}),   // cf. getSeedReelPostsWithComments
+    isReel: true,          // cf. getSeedReelPostsWithComments : sans lui, buildReels() les rejette
     video: r.video,
     fallback: r.fallback,
     poster: r.poster,
     userId: r.userId,
+    authorId: r.userId,
     profileId: null,
     passion: r.passion,
     mood: r.mood,
@@ -1964,7 +2062,7 @@ const COLORS_PASSION_BG = {
 function renderReelHTML(post, idx) {
   const author = authorOfReel(post);
   const passion = passionById(post.passion) || { label: post.passion, emoji: "✨" };
-  const moodLabel = ({ creation: "Création", learn: "Apprendre", chill: "Chill", actu: "Actu" })[post.mood] || "Tout";
+  const moodLabel = moodShortLabel(post.mood);
   // Source de vérité = l'état persisté des likes (partagé avec le fil), pas le Set
   // volatil du viewer : un post aimé dans le fil doit apparaître aimé en Bobines.
   const isLiked = ((state.user.likedPosts || []).indexOf(post.id) > -1) || reelsState.liked.has(post.id);
@@ -2665,7 +2763,7 @@ function openReelShareModal(postId) {
   const url = (_lk && tel.tagUrl) ? tel.tagUrl(rawUrl, _lk) : rawUrl;
   const author = authorOfReel(reel);
   const passion = passionById(reel.passion) || { label: reel.passion, emoji: "✨" };
-  const moodLabel = ({ creation: "Création", learn: "Apprendre", chill: "Chill", actu: "Actu" })[reel.mood] || "Tout";
+  const moodLabel = moodShortLabel(reel.mood);
   const txt = reel.text || reel.caption || "";
 
   // Créer des URLs de partage pour les réseaux sociaux

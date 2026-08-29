@@ -255,9 +255,16 @@ function openPassionExplorer(pid) {
 
   var postsHTML = posts.length ? posts.slice(0,6).map(renderPostHTML).join("") : '<div class="empty"><div class="empty-icon">✏️</div><div class="empty-text">Aucun post pour l\'instant</div></div>';
 
-  var profileBtn = hasProfile
-    ? '<span class="pill active">Ton profil</span>'
-    : '<button class="btn small primary" onclick="quickCreateProfile(\'' + escapeJsArg(pid) + '\')">+ Créer profil</button>';
+  // Lot UI-8 : une passion ARCHIVÉE n'est pas « ta passion » — mais ce n'est pas
+  // non plus une passion à créer (elle existe, rangée). On propose la
+  // restauration, qui est le seul geste juste ici.
+  var _v8Arch = false;
+  try { _v8Arch = !!(hasProfile && hasProfile.archived && typeof passionsUnifieesActives === "function" && passionsUnifieesActives()); } catch (e) {}
+  var profileBtn = _v8Arch
+    ? '<button class="btn small ghost" onclick="restaurerPassion(\'' + escapeJsArg(hasProfile.id) + '\')">Restaurer cette passion</button>'
+    : (hasProfile
+      ? '<span class="pill active">Ta passion</span>'
+      : '<button class="btn small primary" onclick="quickCreateProfile(\'' + escapeJsArg(pid) + '\')">+ Créer profil</button>');
 
   var html = '\
     <div class="modal-handle"></div>\
@@ -1038,7 +1045,7 @@ function openIrlCitySelector() {
     </div>
     <div style="display:flex;gap:8px;">
       <button class="btn secondary block" onclick="closeModal()">Annuler</button>
-      <button class="btn primary block" onclick="clearIrlCitySelection()">📍 Ma position</button>
+      <button class="btn primary block" onclick="useMyPositionForIrl()">📍 Utiliser ma position</button>
     </div>
   `;
 
@@ -1106,6 +1113,20 @@ function selectIrlCity(cityId, cityName) {
   updateIrlCityTitle();
   closeModal();
   renderIRL();
+}
+
+// Geste EXPLICITE « Utiliser ma position » du sélecteur de ville (§2 du lot
+// UI-7). C'est le seul endroit de « Rencontrer » qui déclenche la
+// géolocalisation, et il ne se déclenche que sur un tap : l'écran, lui, ne
+// demande JAMAIS la position tout seul (UI-4A0 arme `_passioIrlSkipGeoOnce`
+// avant chaque rendu). On ne duplique aucun moteur : on retire la ville
+// choisie, puis on appelle `requestUserLocation()`, qui rafraîchit lui-même le
+// titre et relance `renderIRL()` quand la position arrive.
+function useMyPositionForIrl() {
+  clearIrlCitySelection();
+  try {
+    if (typeof requestUserLocation === "function") requestUserLocation();
+  } catch (e) { _diag("[GEO] ❌ demande explicite: " + (e && e.message)); }
 }
 
 // Revenir à ta position
@@ -1926,6 +1947,52 @@ function _eventTimeLabel(e) {
   return String(Math.floor(mins / 60)).padStart(2, "0") + ":" + String(mins % 60).padStart(2, "0");
 }
 
+// ── Prédicat ville — ajouté pour le lot UI-4A1 (intention « Ma ville ») ──────
+// Constat de l'audit préalable : AUCUN filtre ville n'existait. `irlSelectedCity`
+// ne servait que de point de RÉFÉRENCE (centrage de la carte, distances, tri
+// « le plus proche ») ; la liste, elle, n'était pas restreinte. L'intention
+// « Ma ville » a donc besoin de ce prédicat explicite — et de rien d'autre :
+// aucun rayon inventé, aucun détournement de `irlSearchQuery`.
+// Vide ("") = INACTIF = comportement historique strictement inchangé. Seule
+// l'intention V4 le pose ; `clearAllIrlFilters()` le remet à vide.
+var irlCityIntent = "";
+
+function _normIrlCityName(s) {
+  // La classe de la 2ᵉ ligne est la plage des diacritiques combinants
+  // U+0300–U+036F : après `normalize("NFD")`, « Sète » devient « s e t e » et
+  // non « s te ». Sans elle, le nettoyage suivant transformerait chaque accent
+  // en espace et couperait le nom de ville en deux.
+  return String(s || "")
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function setIrlCityIntent(name) { irlCityIntent = _normIrlCityName(name); }
+function irlCityIntentName() { return irlCityIntent; }
+
+// Ville sélectionnée courante, ou "". `irlSelectedCity` est déclaré en `let` :
+// il n'existe donc PAS sur `window` et les modules V4 (chargés hors du bloc app)
+// ne peuvent pas le lire directement.
+function irlSelectedCityName() { return irlSelectedCity ? String(irlSelectedCity.name || "") : ""; }
+
+// Idem pour `irlPassionFilters` (`let`, et REMPLACÉ le temps d'un calcul dans
+// renderIrlPassionTiles) : on le lit à chaud, on ne le capture jamais.
+function irlPassionFilterSet() {
+  if (!irlPassionFilters) irlPassionFilters = new Set();
+  return irlPassionFilters;
+}
+
+// « Lyon » doit retenir « Lyon 6e », mais on ne compare jamais en sous-chaîne
+// libre (« Lyon » attraperait « Saint-Lyonnais ») : égalité, ou préfixe de MOT.
+function _eventMatchesCityIntent(e) {
+  var v = _normIrlCityName(e && e.city);
+  if (!v || !irlCityIntent) return false;
+  if (v === irlCityIntent) return true;
+  return v.indexOf(irlCityIntent + " ") === 0 || irlCityIntent.indexOf(v + " ") === 0;
+}
+
 // Applique les 5 filtres IRL (passion / type / date / distance / heure) + retire le
 // passé. Partagé entre la liste (renderIRL) et les marqueurs (updateIrlMapMarkers)
 // pour qu'ils ne divergent jamais. (Factorisé le 2026-06-24.)
@@ -1969,6 +2036,11 @@ function _filterIrlEvents(events) {
       if (irlDateFilters.has("custom") && irlCustomDate && e.date >= irlCustomDate.start && e.date <= irlCustomDate.end) return true;
       return false;
     });
+  }
+  // 3 bis. Ville — actif SEULEMENT quand l'intention « Ma ville » (UI-4A1) l'a
+  // posé. Il s'ajoute par ET aux autres familles, comme elles toutes.
+  if (irlCityIntent) {
+    filtered = filtered.filter(_eventMatchesCityIntent);
   }
   // 4. Distance
   if (irlDistanceFilter && irlDistanceFilter !== "") {
@@ -2050,6 +2122,7 @@ function _irlActiveFilterCount() {
   if (irlPassionFilters && irlPassionFilters.size) n += irlPassionFilters.size;
   if (irlFilters && irlFilters.size) n += irlFilters.size;
   if (irlDateFilters && irlDateFilters.size) n += irlDateFilters.size;
+  if (irlCityIntent) n += 1;
   if (irlDistanceFilter) n += 1;
   if (irlTimeFilter) n += 1;
   return n;
@@ -2060,6 +2133,10 @@ function clearAllIrlFilters() {
   if (irlPassionFilters) irlPassionFilters.clear();
   if (irlFilters) irlFilters.clear();
   if (irlDateFilters) irlDateFilters.clear();
+  // « Tout afficher » est un geste explicite : il retire aussi le prédicat ville
+  // posé par l'intention V4, sinon la pastille resterait à 1 sans aucun panneau
+  // capable de l'éteindre.
+  irlCityIntent = "";
   irlDistanceFilter = "";
   irlTimeFilter = "";
   irlCustomDate = null;
@@ -2127,20 +2204,30 @@ function irlToolsSections() {
   var hasMine = !!(typeof irlFilters !== "undefined" && irlFilters && irlFilters.has("mine"));
   var hasJoined = !!(typeof irlFilters !== "undefined" && irlFilters && irlFilters.has("joined"));
   var funnel = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18l-7 8v6l-4-2v-4z"/></svg>';
+  // ⚠️ Chaque section porte un `id` STABLE. C'est un contrat, pas un ornement :
+  // le lot UI-4A5 affiche ces mêmes sections en ligne sous les onglets de
+  // « Rencontrer » et doit en RETIRER une (« affiner »), dont il rend les
+  // contrôles — calendrier, curseur de distance, plage horaire — directement.
+  // Filtrer sur le TITRE aurait rejoué le piège du lot UI-4A4 : renommer un
+  // libellé y avait fait disparaître une section entière, en silence.
+  // `contextual-nav.js` ignore les clés qu'il ne connaît pas.
   return {
-    title: "Outils · IRL",
+    title: "Filtres",
     sections: [
-      { title: "Autour de moi", items: [
-        { icon: "🌍", label: "Ville", sub: city, onClick: "closeCtxTools();openIrlCitySelector()" }
+      { id: "ville", title: "Autour de moi", items: [
+        { icon: "🌍", label: "Choisir une ville", sub: city, onClick: "closeCtxTools();openIrlCitySelector()" }
       ] },
-      { title: "Filtres", items: [
+      // ⚠️ Le panneau s'intitule désormais « Filtres » (§1 du lot UI-7) : une
+      // section qui porterait le même mot ne dirait plus rien. Elle nomme donc
+      // ce qu'elle contient réellement.
+      { id: "affiner", title: "Affiner la recherche", items: [
         { icon: funnel, label: "Date, distance, horaire",
           sub: advCount ? (advCount + " filtre" + (advCount > 1 ? "s" : "") + " actif" + (advCount > 1 ? "s" : "")) : "Tout afficher",
           badge: advCount || "", onClick: "closeCtxTools();openIrlFiltersPanel()" }
       ] },
-      { title: "Mes événements", items: [
+      { id: "miens", title: "Mes événements", items: [
         { icon: "👤", label: "Mes événements", data: { irlfilter: "mine" }, active: hasMine },
-        { icon: "✅", label: "Où je suis inscrit", data: { irlfilter: "joined" }, active: hasJoined }
+        { icon: "✅", label: "Mes inscriptions", data: { irlfilter: "joined" }, active: hasJoined }
       ] }
     ]
   };
@@ -2169,6 +2256,7 @@ function _resetIrlPagingIfFiltersChanged() {
     [...(irlPassionFilters || [])].sort().join(","),
     [...(irlFilters || [])].sort().join(","),
     [...(irlDateFilters || [])].sort().join(","),
+    irlCityIntent,
     irlDistanceFilter, irlTimeFilter, irlSearchQuery, irlSort, irlShowPast,
     irlCustomDate ? irlCustomDate.start + "-" + irlCustomDate.end : "",
   ].join("|");
@@ -2248,7 +2336,17 @@ function renderIRL() {
   //
   // goTo("irl") pose la classe `active` AVANT d'appeler renderIRL : la demande
   // part donc bien à l'ouverture réelle de l'écran IRL, là où elle se comprend.
-  if (!irlUserLocation && _irlEcranVisible()) {
+  //
+  // UI-3A (js/ui-v3-passerelle.js) pose un marqueur À USAGE UNIQUE avant de
+  // naviguer : arriver ici par « Voir les activités » signifie « les sorties de
+  // CETTE Passio », pas « autour de moi » — la valeur de la position n'est donc
+  // pas évidente à cet instant précis. Le marqueur est CONSOMMÉ ici, quoi qu'il
+  // arrive : il ne peut jamais désactiver durablement la géolocalisation, et le
+  // premier geste fait ensuite SUR l'écran IRL (filtre, carte) la redemande
+  // normalement.
+  var _sansGeoUneFois = window._passioIrlSkipGeoOnce === true;
+  window._passioIrlSkipGeoOnce = false;
+  if (!irlUserLocation && !_sansGeoUneFois && _irlEcranVisible()) {
     requestUserLocation();
   }
 
@@ -3425,8 +3523,26 @@ function shareEventExperience(id) {
   setTimeout(() => {
     const ta = document.getElementById("postText") || document.querySelector("#screen-studio textarea");
     if (ta) { ta.value = prefill; ta.focus(); ta.dispatchEvent(new Event("input", { bubbles: true })); }
+    // ⚠️ AFFECTER `select.value` AVEC UNE VALEUR SANS <option> NE LÈVE PAS :
+    // le select passe silencieusement à la chaîne vide. Le `try/catch` qui
+    // entourait cette ligne n'attrapait donc rien — il ne pouvait rien attraper.
+    //
+    // `#postPassion` ne contient QUE les passions des profils de l'utilisateur
+    // (`renderStudio`). Partager le souvenir d'une activité dont la passion n'est
+    // pas l'une des siennes vidait donc le champ, et `publishPost` publiait le
+    // post avec `passion: ""`. Conséquence mesurée : le fil est filtré par défaut
+    // sur les passions de l'utilisateur (`migrerInteretsDepuisProfils`), si bien
+    // que le souvenir était **invisible dans le fil de son propre auteur** — et
+    // partait en base sans provenance. Aucun message, aucune erreur.
+    //
+    // On ne force donc la valeur que si l'option existe réellement ; sinon on
+    // laisse celle que `renderStudio` a déjà posée (le profil actif).
     const sel = document.getElementById("postPassion");
-    if (sel && ev.passion) { try { sel.value = ev.passion; } catch (e) {} }
+    if (sel && ev.passion) {
+      const avant = sel.value;
+      sel.value = ev.passion;
+      if (sel.value !== ev.passion) sel.value = avant;
+    }
     toast("📸 Ajoute tes photos et raconte !");
   }, 250);
 }

@@ -32,7 +32,11 @@ const SAMPLE_IDS = 20;   // nb d'identifiants d'exemple remontés par anomalie
 // anomalies mesurées avant ce filtre, contre 21 réelles) et rendrait le tableau
 // de bord inutile. On les isole en « références de démo » : informatives, jamais
 // un incident.
-const SEED_ID = /^(u_[a-z]+|p\d+|pm\d+|e\d+|p_vlog_[a-z]+|pac_[a-z]+|reel_seed_[a-z0-9_]+|photo|podcast|me)$/i;
+// ⚠️ 2026-08-28 : le contenu de démonstration s'est enrichi (publications
+// reliées à une activité `p_ev_*`, bobines `pv\d+`, profils `pp\d+`). Sans ces
+// motifs, chacune de leurs références serait comptée comme une VRAIE anomalie
+// d'intégrité — exactement le « cri au loup » que ce filtre existe pour éviter.
+const SEED_ID = /^(u_[a-z]+|p\d+|pm\d+|pp\d+|pv\d+|e\d+|p_vlog_[a-z]+|p_ev_[a-z]+|pac_[a-z]+|reel_seed_[a-z0-9_]+|photo|podcast|me)$/i;
 const isSeedRef = (v) => SEED_ID.test(String(v || ""));
 
 /** Charge une colonne d'identifiants et signale si la borne a été atteinte. */

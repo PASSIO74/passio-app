@@ -14,7 +14,44 @@
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
 
+// Les cinq lots UI-4 (UI-4A0 tête, UI-4A1 intentions, UI-4A2 carte d'activité,
+// UI-4A3 Liste/Carte et UI-4B fiche activité) sont ACTIFS PAR DÉFAUT depuis le
+// 2026-08-28 et recouvrent
+// l'écran « Rencontrer » que cette suite observe. Convention maison, déjà
+// appliquée à la mise en ligne d'UI-3A (CLAUDE.md, section UI-3B) : la suite du
+// MOTEUR HISTORIQUE pose au boot les coupures des lots qui le recouvrent pour
+// l'observer seul, garde TOUTES ses assertions, et la cohabitation est prouvée à
+// part dans ui-v4a0-tete / ui-v4a1-intentions / ui-v4a2-cartes /
+// ui-v4a3-vue / ui-v4b-fiche.
+//
+// Ce que chaque coupure rend ici, concrètement :
+//   · UI-4A0 masque en CSS la barre de recherche historique `#irlSearchRow`
+//     (`:root.passio-ui-4a0 #irlSearchRow { display: none }`) au profit de son
+//     champ de tête ; sans la coupure, les trois tests qui remplissent
+//     `#irlCitySearch` échouent sur un élément non visible ;
+//   · UI-4A1 se raccorde à cette tête (couper UI-4A0 le neutralise déjà, on
+//     l'énonce quand même : une coupure par lot, indépendante et explicite) ;
+//   · UI-4A2 masque tous les enfants de la carte décorée sauf son propre bloc —
+//     `.event-meta` (séparateur ville · lieu) et `.event-footer button`
+//     (libellés RSVP) ne sont plus RENDUS. Les assertions correspondantes
+//     restaient vertes par la seule sémantique de `textContent` sur un nœud
+//     masqué : la coupure les rend de nouveau portantes ;
+//   · UI-4B réorganise la fiche ouverte par `openEventDetails`, dont cette suite
+//     vérifie le titre historique `#eventDetailHeroTitle`.
+// UI-3A/3B ne sont PAS coupées : elles étaient déjà actives avant cette bascule
+// et la suite était verte avec elles.
 async function bootIrl(page) {
+  await page.addInitScript(() => {
+    localStorage.setItem("passio_ui_4a0", "0");
+    localStorage.setItem("passio_ui_4a1", "0");
+    localStorage.setItem("passio_ui_4a2", "0");
+    localStorage.setItem("passio_ui_4a3", "0");
+    localStorage.setItem("passio_ui_4b", "0");
+    // UI-4A5 (2026-08-29) déplace la rangée de passions et les volets
+    // date/distance/horaire dans un panneau en ligne : cette suite les
+    // observe à leur place historique, et ouvre encore `#irlFiltersPanel`.
+    localStorage.setItem("passio_ui_4a5", "0");
+  });
   await bootOnboarded(page);
   await page.evaluate(() => {
     ["supaPublishEvent", "supaUpdateEvent", "supaCancelEvent", "supaDeleteEvent",

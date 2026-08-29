@@ -2,10 +2,17 @@
 // IRL & CDV du 2026-08-07. Vérifie l'ouverture/fermeture par tous les canaux,
 // le responsive (bottom-sheet mobile / rail droit desktop), l'a11y, et surtout
 // qu'AUCUNE fonctionnalité déplacée n'a disparu (mêmes handlers).
+// ⚠️ Cette suite pose au boot le kill switch du lot UI-4A5 (2026-08-29), qui
+// recouvre le comportement qu'elle observe : depuis ce lot, « Filtres » n'ouvre
+// plus le dialogue contextuel, il affiche les choix EN LIGNE sous les onglets.
+// Convention du projet : la suite qui observe le comportement historique coupe
+// le lot qui le recouvre et garde TOUTES ses assertions ; la cohabitation est
+// prouvée à part, dans `ui-v4a5-filtres.spec.js`.
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
 
 async function boot(page, screen) {
+  await page.addInitScript(() => localStorage.setItem("passio_ui_4a5", "0"));
   await bootOnboarded(page);
   await page.evaluate((s) => goTo(s), screen);
 }
@@ -18,7 +25,9 @@ test.describe("ContextualTools — ouverture / fermeture", () => {
     // Ouverture par clic sur le déclencheur.
     await page.locator("#irlToolsBtn").click();
     await expect(root).not.toHaveAttribute("hidden", /.*/);
-    await expect(page.locator("#ctxToolsTitle")).toContainText("IRL");
+    // §1 du lot UI-7 : le panneau s'intitule « Filtres » (et non plus
+    // « Outils · IRL ») — le titre change, le panneau et ses handlers non.
+    await expect(page.locator("#ctxToolsTitle")).toHaveText("Filtres");
     expect(await page.evaluate(() => ContextualTools.isOpen())).toBe(true);
 
     // Fermeture par le bouton ✕.
@@ -53,10 +62,10 @@ test.describe("ContextualTools — aucune fonctionnalité perdue", () => {
     await boot(page, "irl");
     await page.locator("#irlToolsBtn").click();
     const body = page.locator("#ctxToolsBody");
-    await expect(body).toContainText("Ville");
+    await expect(body).toContainText("Choisir une ville");
     await expect(body).toContainText("Date, distance, horaire");
     await expect(body).toContainText("Mes événements");
-    await expect(body).toContainText("Où je suis inscrit");
+    await expect(body).toContainText("Mes inscriptions");
 
     // Le lanceur « Filtres » ouvre bien le panneau de filtres existant.
     await body.locator('[onclick*="openIrlFiltersPanel"]').click();

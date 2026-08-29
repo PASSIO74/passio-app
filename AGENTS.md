@@ -58,6 +58,12 @@ pull request. See `docs/PHONE_ONLY_AI_WORKFLOW.md`.
 11. Do not bypass a red CI check to ship faster.
 12. A remote AI run that produces no expected branch/diff/PR must fail explicitly rather than appearing successful.
 
+### Standing authorization for approved UI lots (2026-08-26)
+
+When Benjamin explicitly validates a **normal-risk visual or product-interface lot**, that validation also authorizes its squash merge and Git-connected production deployment as soon as the PR review and relevant CI are green. Do not ask for a second merge/deploy authorization for the same approved UI lot. Branch, PR, review, CI, recovery and post-deploy verification remain mandatory; never push directly to `main`.
+
+This standing authorization does **not** cover authentication, authorization/RLS, database migrations, security controls, secrets, destructive or production data writes, agent permissions, automatic remediation, or deployment-infrastructure changes. Those remain critical and require specific explicit authorization plus independent review.
+
 ## PASSIO product guardrails
 
 - Core values: **Découvrir / Partager / Rencontrer (IRL)**.

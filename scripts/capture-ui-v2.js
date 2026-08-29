@@ -1,0 +1,119 @@
+#!/usr/bin/env node
+// Captures legacy/V2 du lot UI-1 (shell et navigation V2), en 390 × 844.
+//
+// « avant »  = interface historique sous kill switch ;
+// « après »  = UI-1 + UI-2 actives par défaut sur l'URL normale.
+//
+// Les deux séries sont prises dans la MÊME session de navigateur et le MÊME état
+// local : une différence visible est donc imputable à la V2, pas au jeu de
+// données. Usage : `npm run serve` puis `node scripts/capture-ui-v2.js [avant|apres]`.
+const { chromium } = require("@playwright/test");
+const { GATE_TOKEN, GATE_KEY } = require("../tests/e2e/gate-helper");
+const fs = require("fs");
+const path = require("path");
+
+const PHASE = (process.argv[2] || "avant").toLowerCase();
+if (PHASE !== "avant" && PHASE !== "apres") {
+  console.error("Usage : node scripts/capture-ui-v2.js [avant|apres]");
+  process.exit(1);
+}
+const PORT = process.env.PASSIO_PORT || 8080;
+const OUT = path.join(__dirname, "..", "docs", "screenshots", "ui-v2");
+const SCREENS = ["feed", "irl", "messages", "profiles"];
+
+const STATE = {
+  onboarded: true, landingSeen: true, tourSeen: true,
+  user: {
+    name: "Audit QA", birthYear: 1995, isMinor: false, score: 120, passia: 45,
+    currentProfileId: "pp_0",
+    profiles: [{ id: "pp_0", name: "Audit QA", passion: "musique", emoji: "🎵", bio: "Passionné de musique et de voyages", color: "#7c3aed", createdAt: 1 }],
+    drafts: [], likedPosts: [], joinedEvents: [], seenStories: [], customPassions: [],
+    following: [], savedCarnets: [], general: { username: "Audit QA" },
+  },
+  userPosts: [], userEvents: [], transactions: [], notifications: [], quests: [],
+  currentMood: "all", selectedFeedPassions: [],
+};
+
+(async () => {
+  fs.mkdirSync(OUT, { recursive: true });
+  const browser = await chromium.launch();
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, locale: "fr-FR" });
+  const page = await ctx.newPage();
+  await page.addInitScript(([k, t, st, phase]) => {
+    sessionStorage.setItem(k, t);
+    sessionStorage.setItem("passio_pwa_dismissed", "1");
+    localStorage.setItem("passio_mvp_state_v1", JSON.stringify(st));
+    if (phase === "avant") localStorage.setItem("passio_ui_v2", "0");
+    else localStorage.removeItem("passio_ui_v2");
+  }, [GATE_KEY, GATE_TOKEN, STATE, PHASE]);
+
+  await page.goto(`http://127.0.0.1:${PORT}/index.html`);
+  await page.waitForTimeout(3500);
+  await page.evaluate(() => { const l = document.getElementById("landing"); if (l) l.classList.remove("active"); });
+  await page.evaluate(() => { try { toggleProfileFilter("musique"); } catch (e) {} });
+
+  for (const s of SCREENS) {
+    await page.evaluate((scr) => goTo(scr), s);
+    await page.waitForTimeout(1100);
+    const file = path.join(OUT, `${PHASE}-${s}.png`);
+    await page.screenshot({ path: file, fullPage: false });
+    console.log("✓", path.basename(file));
+  }
+
+  // Gros plan sur la barre du bas : c'est elle que le lot UI-1 change.
+  await page.evaluate((scr) => goTo(scr), "feed");
+  await page.waitForTimeout(700);
+  const navSel = PHASE === "apres" ? "#appNavV2" : "#appNav";
+  const nav = await page.$(navSel);
+  if (nav) {
+    await nav.screenshot({ path: path.join(OUT, `${PHASE}-bottom-nav.png`) });
+    console.log("✓", `${PHASE}-bottom-nav.png`);
+  } else {
+    console.warn("✗ barre du bas introuvable :", navSel);
+  }
+
+  // Le sélecteur « Créer » n'existe que dans la V2.
+  if (PHASE === "apres") {
+    await page.evaluate((scr) => goTo(scr), "feed");
+    await page.waitForTimeout(700);
+    await page.click('#appNavV2 [data-v2-action="create"]');
+    await page.waitForTimeout(600);
+    await page.screenshot({ path: path.join(OUT, "apres-creer-sheet.png"), fullPage: false });
+    console.log("✓ apres-creer-sheet.png");
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(400);
+
+    // Cas de régression : l'aide contextuelle §8 s'affiche sur l'écran Profil et
+    // recouvrait la feuille. Capture prise DANS ce scénario, pour montrer que la
+    // bulle a bien disparu et que le premier choix est entièrement lisible.
+    // L'aide §8 est marquée « vue » dès son AFFICHAGE, et le parcours de capture
+    // est déjà passé par Profil plus haut : sans remise à zéro, la bulle ne
+    // reparaîtrait pas et la capture ne prouverait rien. On rétablit donc la
+    // condition de première visite, telle que la vit un nouveau compte.
+    await page.evaluate(() => {
+      try {
+        state.hintsVus = {};
+        saveState();
+      } catch (e) {}
+    });
+    await page.evaluate((scr) => goTo(scr), "feed");
+    await page.waitForTimeout(500);
+    await page.click('#appNavV2 .nav-v2-item[data-v2-key="profile"]');
+    await page.waitForTimeout(1800);
+    const aideVue = await page.evaluate(() => !!document.querySelector(".passio-hint"));
+    if (!aideVue) {
+      console.warn("⚠️  aide contextuelle non affichée : la capture ne démontre PAS le cas de régression");
+    }
+    await page.click('#appNavV2 [data-v2-action="create"]');
+    await page.waitForTimeout(700);
+    const aideRestante = await page.evaluate(() => document.querySelectorAll(".passio-hint").length);
+    await page.screenshot({ path: path.join(OUT, "apres-creer-sheet-sans-aide.png"), fullPage: false });
+    console.log("✓ apres-creer-sheet-sans-aide.png"
+      + "  (aide affichée avant ouverture : " + aideVue
+      + " · aides restantes après : " + aideRestante + ")");
+  }
+
+  await ctx.close();
+  await browser.close();
+  console.log(`\nCaptures « ${PHASE} » dans docs/screenshots/ui-v2/`);
+})();

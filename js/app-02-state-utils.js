@@ -45,6 +45,16 @@ function defaultState() {
       savedCarnets: [],
       blocked: [],             // ids des utilisateurs bloqués (modération)
       seenNotifIds: [],        // mémoire locale des notifs déjà vues (anti-réapparition)
+      // Lot UI-5 (§7) : « Ça m'intrigue » sur une bobine. Map passion → horodatage.
+      // ⚠️ Le signal porte sur la PASSION, jamais sur la seule bobine : c'est la
+      // seule granularité que les moteurs existants savent déjà consommer
+      // (feedPostScore par _myPassionSet, irlPassionFilters par renderIRL,
+      // openPassionExplorer). Un signal par publication ne servirait qu'une fois.
+      // ⚠️ Borné à PASSION_SIGNALS_MAX : le blob `user_state` part EN ENTIER à
+      // chaque synchronisation, un journal non borné dégraderait tout le compte.
+      // 100 % LOCAL : aucune table, aucune policy, aucune écriture réseau — ce
+      // que la direction autorise explicitement (« simple, locale et explicable »).
+      passionSignals: {},
       general: {},
     },
     seed,                    // fake accounts / posts / events / stories / notifs / quests (SEED DE DÉMO SEULEMENT)
@@ -82,6 +92,8 @@ function loadState() {
     if (!Array.isArray(parsed.user.customPassions)) parsed.user.customPassions = [];
     if (!Array.isArray(parsed.user.following)) parsed.user.following = [];
     if (!Array.isArray(parsed.user.seenNotifIds)) parsed.user.seenNotifIds = [];
+    if (!parsed.user.passionSignals || typeof parsed.user.passionSignals !== "object"
+        || Array.isArray(parsed.user.passionSignals)) parsed.user.passionSignals = {};
     if (!Array.isArray(parsed.selectedFeedPassions)) parsed.selectedFeedPassions = [];
     if (typeof parsed.feedMoodsTouched !== "boolean") parsed.feedMoodsTouched = false;
     if (typeof parsed.feedInterestsMigrated !== "boolean") parsed.feedInterestsMigrated = false;
@@ -667,6 +679,11 @@ async function supaLoadUserState() {
           if (!merged.photo && lp.photo) merged.photo = lp.photo;
           if (!merged.photoUrl && lp.photoUrl) merged.photoUrl = lp.photoUrl;
           if (!merged.bio && lp.bio) merged.bio = lp.bio;
+          // Lot UI-8 : l'état « archivée » est une donnée locale récente que le
+          // serveur peut ignorer (blob écrit avant l'archivage). On ne la
+          // réinjecte QUE s'il n'en a aucune — sinon une restauration serveur
+          // serait annulée par un vieil état local.
+          if (merged.archived === undefined && lp.archived !== undefined) merged.archived = lp.archived;
           return merged;
         });
         // Dédup final : s'il reste deux profils pour la même passion (ne devrait
@@ -2660,29 +2677,43 @@ var selectedMoods = new Set(["creation"]); // Par défaut "Création"
 // pour la compatibilité et reprend exactement son comportement quand le
 // drapeau est coupé.
 //
-//     localStorage.passio_feed_intents_v1 = "1"  → actif
-//     localStorage.passio_feed_intents_v1 = "0"  → kill switch immédiat
-//     window.PASSIO_FEED_INTENTS_V1 = false       → coupure en mémoire
-//     ?passio_preview=feed-intents-v1             → canari pour cette URL seulement
+// ── UI-2 : le rail SUIT le shell V2, il n'a plus d'activation propre ────────
+// Depuis la validation visuelle du 2026-08-26, le shell V2 est actif par défaut
+// sur l'URL normale. Les drapeaux ci-dessous ne savent toujours que RETIRER :
+// une valeur positive héritée (`"1"`, `window...=true`) est ignorée, et l'ancien
+// aperçu séparé `?passio_preview=feed-intents-v1` ne constitue plus un canal.
+//
+//     localStorage.passio_feed_intents_v1 = "0"   → kill switch immédiat
+//     window.PASSIO_FEED_INTENTS_V1 = false        → coupure en mémoire
+//     localStorage.passio_ui_v2 = "0" / PASSIO_UI_V2 = false → coupent le shell,
+//                                                   donc le rail avec lui
+//
+// ⚠️ Aucune de ces gardes n'ÉCRIT dans le navigateur : lecture seule.
 // ══════════════════════════════════════════════════════════════════════════
 var FEED_INTENTS_VERSION = "v1";
 var activeFeedIntent = "for_you";
 
 function feedIntentsEnabled() {
-  if (typeof window.PASSIO_FEED_INTENTS_V1 === "boolean") return window.PASSIO_FEED_INTENTS_V1;
+  // Coupures propres au rail, prioritaires et purement soustractives.
+  if (window.PASSIO_FEED_INTENTS_V1 === false) return false;
   var stored = null;
   try {
     stored = localStorage.getItem("passio_feed_intents_v1");
   } catch (e) {}
-  if (stored === "0") return false; // le kill switch local reste prioritaire
-  if (stored === "1") return true;
+  if (stored === "0") return false;
+  // Puis le shell V2 tranche. `ui-v2-shell.js` est chargé après ce fichier mais
+  // AVANT tout rendu ; le repli ci-dessous applique le même défaut actif, pour
+  // qu'un chargement partiel ne fasse jamais diverger les deux réponses.
   try {
-    // Accès canari non persistant : retirer le paramètre rend immédiatement
-    // l'ancien rail, sans écrire de préférence ni ouvrir le flag global.
-    var preview = new URLSearchParams(window.location.search).get("passio_preview");
-    if (preview === "feed-intents-v1") return true;
+    if (window.PassioUIV2 && typeof window.PassioUIV2.isEnabled === "function") {
+      return !!window.PassioUIV2.isEnabled();
+    }
   } catch (e) {}
-  return false; // défaut sûr : ancien sélecteur et ancien filtrage inchangés
+  if (window.PASSIO_UI_V2 === false) return false;
+  try {
+    if (localStorage.getItem("passio_ui_v2") === "0") return false;
+  } catch (e) {}
+  return true;
 }
 
 function normalizeFeedIntent(intent) {
@@ -2697,6 +2728,47 @@ function legacyMoodToFeedIntent(mood) {
   if (mood === "learn") return "learn";
   if (mood === "irl") return "meet";
   return "generic"; // actu, chill, all, absent ou valeur inconnue
+}
+
+// ── VOCABULAIRE DES MOODS ────────────────────────────────────────────────────
+//
+// Une seule table, parce que les deux surfaces qui affichaient un mood avaient
+// chacune la leur et qu'elles avaient DIVERGÉ : le fil connaissait « irl » mais
+// pas « actu », les bobines l'inverse. Conséquence mesurée le 2026-08-29 :
+// tous les posts d'actualité du seed sortaient avec une étiquette de mood VIDE
+// (`moodMap[p.mood] || ""`), et un post « irl » sortait « IRL » ici et « Tout »
+// là-bas.
+//
+// Les LIBELLÉS suivent le rail d'intentions du Fil (lot UI-7 : Tous · Explorer ·
+// Apprendre · Idées · Rencontrer) : ce qu'on choisit en publiant porte le même
+// mot que ce qu'on choisit en lisant. Les VALEURS, elles, ne bougent pas — elles
+// sont écrites en base (`posts.mood`), relues par `legacyMoodToFeedIntent`, et
+// portées par des milliers de publications existantes.
+//
+// ⚠️ « all » n'est PAS dans la table, et c'est délibéré : le neutre ne porte
+// aucune étiquette sur la carte (`moodTagLabel` rend ""). L'ajouter collerait un
+// badge à TOUS les posts venus de Supabase, qui retombent sur `mood: "all"`.
+// Le Studio, lui, a bien une pastille « ✨ Tous » : y choisir le neutre est un
+// geste, ne rien afficher ensuite en est la conséquence voulue.
+var PASSIO_MOOD_LABELS = {
+  creation: { emoji: "💡", label: "Idées" },
+  learn:    { emoji: "📚", label: "Apprendre" },
+  irl:      { emoji: "🤝", label: "Rencontrer" },
+  chill:    { emoji: "😌", label: "Chill" },
+  actu:     { emoji: "🌍", label: "Actu" },
+};
+
+// Étiquette de la carte (fil, post ouvert) : emoji + libellé, ou "" pour le
+// neutre et pour toute valeur inconnue venue de la base.
+function moodTagLabel(mood) {
+  var m = PASSIO_MOOD_LABELS[mood];
+  return m ? m.emoji + " " + m.label : "";
+}
+
+// Libellé nu (bobines), où le neutre s'écrit « Tout » depuis toujours.
+function moodShortLabel(mood) {
+  var m = PASSIO_MOOD_LABELS[mood];
+  return m ? m.label : "Tout";
 }
 
 function feedIntentMeta(intent) {
@@ -2970,16 +3042,34 @@ function _myPassionSet() {
   }
   return s;
 }
-function feedPostScore(p, nowBucket, myPassions, followingSet) {
+// Passions marquées « Ça m'intrigue » (lot UI-5). Relu À CHAUD à chaque
+// classement : le signal peut être posé pendant la session, depuis le viewer de
+// bobines, sans que rien ne re-crée l'ensemble.
+function _passionSignalSet() {
+  var s = new Set();
+  try {
+    var m = (state && state.user && state.user.passionSignals) || {};
+    for (var k in m) { if (Object.prototype.hasOwnProperty.call(m, k) && m[k]) s.add(k); }
+  } catch (e) {}
+  return s;
+}
+function feedPostScore(p, nowBucket, myPassions, followingSet, signalSet) {
   // Fraîcheur : âge en heures via buckets 5 min (12/h), décroissance exp τ=48 h.
   var postB = Math.floor((p.createdAt || 0) / 300000);
   var ageHours = Math.max(0, nowBucket - postB) / 12;
   var recency = Math.exp(-ageHours / 48); // 1.0 (frais) → 0.37 (48 h) → 0.14 (96 h)
 
-  // Affinité : 0 à 2 (passion pratiquée, auteur suivi).
+  // Affinité : 0 à 3 (passion pratiquée, auteur suivi, Passio qui m'intrigue).
   var affinity = 0;
   if (p.passion && myPassions.has(p.passion)) affinity += 1;
   if (p.authorId && followingSet.has(p.authorId)) affinity += 1;
+  // Lot UI-5 : « Ça m'intrigue », posé depuis une bobine. Sans ce terme le
+  // bouton serait DÉCORATIF — `state.user.likedPosts` n'est lu par aucun
+  // classement, et le viewer de bobines n'en a aucun. Volontairement plus
+  // faible qu'une passion pratiquée (0,6 contre 1) : c'est une curiosité, pas
+  // une déclaration. Même soupape que le reste : `passio_feed_rank = "0"`
+  // court-circuite tout le classement en amont.
+  if (p.passion && signalSet && signalSet.has(p.passion)) affinity += 0.6;
 
   // Engagement : commentaires > réactions ; log-compressé, plafonné (un vieux
   // post viral ne doit pas écraser la fraîcheur).
@@ -3001,9 +3091,10 @@ function rankFeedPosts(posts) {
   var myPassions = _myPassionSet();
   var following = (state.user && state.user.following) || state.following || [];
   var followingSet = new Set(following);
+  var signalSet = _passionSignalSet();
   // Les posts ici sont déjà des copies (allFeedPosts fait {...p}) → mutation sûre.
   for (var i = 0; i < arr.length; i++) {
-    arr[i]._feedScore = feedPostScore(arr[i], nowBucket, myPassions, followingSet);
+    arr[i]._feedScore = feedPostScore(arr[i], nowBucket, myPassions, followingSet, signalSet);
   }
   arr.sort(function(a, b) {
     var d = b._feedScore - a._feedScore;
@@ -3031,7 +3122,7 @@ function rankFeedPostsForIntent(posts, intent) {
   var followingSet = new Set(following);
 
   // Découvrir n'est permis que si au moins un signal de nouveauté fiable existe.
-  // À défaut, le classement « Pour toi » est rendu exactement dans le même
+  // À défaut, le classement neutre « Tous » (id for_you) est rendu exactement dans le même
   // ordre, sans heuristique inventée à partir du texte libre.
   if (intent === "discover") {
     var reliable = ranked.some(function(p) {
@@ -3408,6 +3499,12 @@ function renderFeed() {
           ? "Sélectionne une passion pour découvrir son contenu."
           : "Sélectionne une passion et un mood.";
       }
+      // UI-2 : quand la V2 est active, l'état vide se termine par une action
+      // (§5). Les textes ci-dessus ne bougent pas — le module ajoute un bouton
+      // et le retire de lui-même dès que la V2 est coupée.
+      if (window.PassioUIV2 && typeof window.PassioUIV2.decorateEmpty === "function") {
+        window.PassioUIV2.decorateEmpty(emptyEl, { nothingSelected: nothingSelected });
+      }
       emptyEl.style.display = "block";
     }
     return;
@@ -3453,6 +3550,16 @@ function renderFeed() {
   const FAST = Math.min(12, visible.length);
   list.innerHTML = visible.slice(0, FAST).map(_renderPostHTMLSafe).join("")
     + (visible.length <= FAST && hasMore ? moreBtnHtml : "");
+
+  // UI-2 : Bobine du fil et module « Passionnés à découvrir », insérés APRÈS
+  // les premières cartes quand la V2 est active. Si elle est coupée, la fonction
+  // ne fait rien : aucun post n'est ajouté, retiré ni réordonné dans les deux
+  // cas — la décoration ne touche pas `sortedPosts`. Placée ici (dans la
+  // peinture rapide) : les deux points d'insertion sont sous FAST, le
+  // complément idle append derrière et l'ordre reste correct.
+  if (window.PassioUIV2 && typeof window.PassioUIV2.decorateFeed === "function") {
+    window.PassioUIV2.decorateFeed(list, visible);
+  }
 
   // Aide §8 « première carte ». Différée d'un tick : la bulle s'ancre sur le
   // rectangle de la carte, qui n'est mesurable qu'une fois la peinture faite.
@@ -3675,7 +3782,6 @@ function renderPostHTML(p) {
     photoUrl: _cuAuthor.photoUrl || p.authorAvatar || null,  // 📷 photo de profil (live > snapshot)
   };
   const passion = passionById(p.passion);
-  const moodMap = { creation: "🎨 Création", learn: "📚 Apprendre", chill: "😌 Chill", irl: "🤝 IRL" };
   const liked = (state.user.likedPosts || []).includes(p.id);
   const likeClass = liked ? "liked" : "";
 
@@ -3833,7 +3939,7 @@ function renderPostHTML(p) {
       ${p._source === "me" ? `<button class="post-menu-btn" onclick="event.stopPropagation();openPostOptions('${escapeJsArg(p.id)}')" aria-label="Options du post" title="Options">
         <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>
       </button>` : ""}
-      <span class="post-mood-tag">${moodMap[p.mood] || ""}</span>
+      <span class="post-mood-tag">${moodTagLabel(p.mood)}</span>
     </div>
 
     <div class="post-body" onclick="${FEED_POST_OPEN_FN}('${escapeJsArg(p.id)}')" style="cursor:pointer;">
@@ -3878,7 +3984,6 @@ async function openPost(id) {
     : (function(){ const cu = userById(post.authorId) || {}; return post.authorName ? { name: post.authorName, profileEmoji: post.authorEmoji || "✨", avatar: post.authorColor || "#8b5cf6", photoUrl: cu.photoUrl || post.authorAvatar || null } : cu; })();
   const passion = passionById(post.passion);
   const liked = state.user.likedPosts.includes(id);
-  const moodMap = { creation: "🎨 Création", learn: "📚 Apprendre", chill: "😌 Chill", irl: "🤝 IRL" };
 
   // Media (réutilise la logique de renderPostHTML)
   let media = "";
@@ -3915,7 +4020,7 @@ async function openPost(id) {
         ${(state.userPosts || []).some(function(up){ return up.id === id; }) ? `<button class="post-menu-btn" onclick="event.stopPropagation();openPostOptions('${escapeJsArg(id)}')" aria-label="Options du post" title="Options">
           <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>
         </button>` : ""}
-        <span class="post-mood-tag">${moodMap[post.mood] || ""}</span>
+        <span class="post-mood-tag">${moodTagLabel(post.mood)}</span>
       </div>
       <div class="post-body" style="white-space:pre-wrap;">${escapeHtml(post.text || "")}</div>
       ${media ? `<div class="dbl-like" ondblclick="_dblLikeDetail('${escapeJsArg(id)}', event)" title="Double-clic pour aimer ❤️">${media}</div>` : ""}

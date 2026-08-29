@@ -474,15 +474,14 @@ function renderStories() {
     `;
   }
 
-  // Live vidéo : bulle « Lancer un live » + bulles 🔴 des directs en cours.
-  html += `
-    <div class="story-item" onclick="startVideoLive()" title="Lancer un live vidéo">
-      <div class="story-ring vlive-create">
-        <div class="story-inner" style="background:#18181b;">🎥</div>
-      </div>
-      <div class="story-label">Live</div>
-    </div>
-  `;
+  // Live vidéo : les directs EN COURS, mêlés aux autres bulles de la barre.
+  // ⚠️ La bulle « Live » de CRÉATION a été retirée le 2026-08-28, sur demande de
+  // Benjamin : lancer un live est une action de création, sa place est dans le
+  // « + » central avec les autres formats — pas en tête de la barre des stories,
+  // qui montre ce que les gens PUBLIENT. L'entrée vit désormais dans le
+  // sélecteur « Créer » → « Plus » → « Live vidéo » (js/ui-v2-shell.js).
+  // Ne PAS la remettre ici : ce serait un doublon, et c'est exactement ce qui a
+  // été retiré. Les directs réels, eux, restent affichés ci-dessous.
   if (typeof _vliveChipsHtml === "function") { try { html += _vliveChipsHtml(); } catch (e) {} }
 
   html += others.map(g => {
@@ -1304,15 +1303,28 @@ async function mePublish() {
     try { renderStories(); } catch(e) {}
     toast("✨ Story publiée !");
   } else {
+    // ── Finition de bobine (lot UI-7 §8) ────────────────────────────────────
+    // `meState.details` est renseigné par la feuille légère qui suit l'aperçu
+    // (description · passion · couverture · activité). Elle n'existe pas dans
+    // tous les chemins (galerie, kill switch du lot) : chaque champ retombe
+    // donc sur la valeur historique, jamais sur du vide.
+    //   • `image` sert de POSTER de la bobine — `media_url` reste la vidéo,
+    //     donc aucune image ne part en base par ce chemin ;
+    //   • `eventId` est écrit tel quel par `supaPublishPostWithRetry` (colonne
+    //     `event_id`) et c'est lui que `PassioUIV3.eventRefOf` lit pour poser
+    //     « Voir l'activité » sur la bobine (lot UI-5).
+    var d = meState.details || {};
     var post = {
       id: "reel_" + uid(), authorId: authorId, profileId: state.user.currentProfileId,
       authorName: p.name || state.user.name || "Profil", authorEmoji: p.emoji || "✨", authorColor: p.color || "#8b5cf6",
-      passion: p.passion || "autre", mood: "creation",
+      passion: d.passion || p.passion || "autre", mood: "creation",
       type: (mediaType === "video") ? "video" : "photo", isReel: true,
-      image: (mediaType === "photo") ? media : null, video: (mediaType === "video") ? media : null,
-      text: firstText, overlays: overlays,
+      image: (mediaType === "photo") ? media : (d.cover || null),
+      video: (mediaType === "video") ? media : null,
+      text: (d.text || firstText), overlays: overlays,
       createdAt: Date.now(), likes: 0, liked: false, comments: [],
     };
+    if (d.eventId) post.eventId = d.eventId;
     state.userPosts = state.userPosts || [];
     state.userPosts.unshift(post);
     saveState();
@@ -2375,7 +2387,15 @@ async function supaUpsertProfile() {
     // Les photos ne partent que si ce sont des URLs Storage (jamais de base64,
     // le jsonb servirait alors des mégaoctets à chaque lecture de profil).
     const _httpOnly = (v) => (typeof v === "string" && /^https?:\/\//.test(v)) ? v : null;
-    const _passions = (state.user.profiles || []).map(pr => {
+    // ⚠️ Lot UI-8 : une passion ARCHIVÉE ne part pas dans le profil public.
+    // Ranger une passion et la voir rester chez les visiteurs, c'est un
+    // archivage qui n'archive rien. Rien n'est perdu pour autant : le drapeau
+    // vit dans le blob `user_state`, et la restaurer la republie telle quelle.
+    const _v8Vivantes = (state.user.profiles || []).filter(pr => {
+      try { return !(typeof passionsUnifieesActives === "function" && passionsUnifieesActives() && pr.archived); }
+      catch (e) { return true; }
+    });
+    const _passions = _v8Vivantes.map(pr => {
       const pas = (typeof passionById === "function") ? passionById(pr.passion) : null;
       return {
         id: pr.passion,
@@ -2858,12 +2878,25 @@ async function supaPublishPost(post) {
 // ne touche PAS `_feedServerMayHaveMore` (c'est l'état de pagination DU FIL).
 async function supaLoadPosts(offset = 0, authorId = null) {
   try {
-    let q = supa.from("posts")
-      .select("id, author_id, passion_id, mood, content, media_url, created_at, is_reel, overlays, vlog, shared_from_post_id, shared_data, profiles!author_id(username,emoji,color,avatar_url,is_private)");
-    if (authorId) q = q.eq("author_id", authorId);
-    let { data, error } = await q
-      .order("created_at", { ascending: false })
-      .range(offset, offset + 59);
+    // ⚠️ `event_id` fait partie du SELECT depuis le 2026-08-28. Il était ÉCRIT
+    // par `supaPublishPostWithRetry` mais jamais RELU : une publication reliée
+    // à une activité perdait son lien au premier rechargement, et le
+    // « Voir l'activité » du fil (lot UI-3B) ne fonctionnait donc que sur le
+    // contenu de démonstration. Défaut silencieux : rien n'échouait, la porte
+    // vers l'IRL disparaissait simplement.
+    var COLONNES = "id, author_id, passion_id, mood, content, media_url, created_at, is_reel, overlays, vlog, shared_from_post_id, shared_data, event_id, profiles!author_id(username,emoji,color,avatar_url,is_private)";
+    async function _interroger(cols) {
+      let q = supa.from("posts").select(cols);
+      if (authorId) q = q.eq("author_id", authorId);
+      return await q.order("created_at", { ascending: false }).range(offset, offset + 59);
+    }
+    let { data, error } = await _interroger(COLONNES);
+    // Repli symétrique de celui de l'écriture : sur une base où la migration
+    // IRL v2 n'est pas appliquée, un SELECT nommant `event_id` échoue en bloc
+    // et VIDERAIT le fil. On réessaie sans la colonne plutôt que de tout perdre.
+    if (error && /event_id/.test(error.message || "")) {
+      ({ data, error } = await _interroger(COLONNES.replace(", event_id,", ",")));
+    }
     if (error) return [];
     if (!authorId) window._feedServerMayHaveMore = ((data || []).length === 60);
     // 🔒 Comptes privés : leurs posts ne sont montrés qu'à leurs abonnés (et à
@@ -2981,6 +3014,10 @@ async function supaLoadPosts(offset = 0, authorId = null) {
             authorId: x.user_id, text: x.payload,
             type: x.kind === "emoji" ? "emoji_reaction" : "gif_reaction", createdAt: supaTs(x.created_at) })),
         isReel: !!r.is_reel, // bobine (exclu du feed, affiché dans Bobines)
+        // 🤝 Activité rattachée : c'est CE champ que `refEvenement()` (UI-3B)
+        // lit pour poser « Voir l'activité ». Absent, la publication est
+        // traitée comme non reliée — sans erreur, et sans porte vers l'IRL.
+        ...(r.event_id ? { eventId: r.event_id } : {}),
         overlays: r.overlays || null,
         // 📔 Carnet de voyage : réhydrate les champs à plat attendus par le viewer
         // (openVlogViewer lit post.destination/steps/cover/… directement).

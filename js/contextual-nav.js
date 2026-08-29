@@ -124,11 +124,11 @@
     '</button>';
   }
 
-  function render(config) {
-    var body = document.getElementById("ctxToolsBody");
-    var titleEl = document.getElementById("ctxToolsTitle");
-    if (titleEl) titleEl.textContent = (config && config.title) || "Outils";
-    if (!body) return;
+  // Sections → HTML. Extrait de `render` pour que le MÊME rendu serve aussi
+  // un hôte hors du panneau (lot UI-4A5 : les filtres IRL s'affichent en ligne
+  // sous les onglets, et non plus dans un dialogue). Dupliquer `itemHtml`
+  // ailleurs aurait fait diverger l'échappement et la délégation.
+  function sectionsHtml(config) {
     var html = "";
     (config && config.sections || []).forEach(function (sec) {
       if (!sec || !sec.items || !sec.items.length) return;
@@ -137,7 +137,29 @@
       html += '<div class="ctx-section-items">' + sec.items.map(itemHtml).join("") + '</div>';
       html += '</div>';
     });
-    body.innerHTML = html || '<div class="ctx-empty">Aucun outil ici.</div>';
+    return html;
+  }
+
+  function render(config) {
+    var body = document.getElementById("ctxToolsBody");
+    var titleEl = document.getElementById("ctxToolsTitle");
+    if (titleEl) titleEl.textContent = (config && config.title) || "Outils";
+    if (!body) return;
+    body.innerHTML = sectionsHtml(config) || '<div class="ctx-empty">Aucun outil ici.</div>';
+  }
+
+  // Rend une configuration (déjà construite par l'appelant, qui peut donc en
+  // retirer une section) dans un hôte quelconque. Ne touche NI l'état
+  // d'ouverture du panneau, NI son titre : ce n'est pas une ouverture.
+  function renderInto(host, config) {
+    if (!host) return false;
+    try {
+      host.innerHTML = sectionsHtml(config);
+      return true;
+    } catch (err) {
+      if (window.console && console.error) console.error("[ctx] renderInto :", err);
+      return false;
+    }
   }
 
   // ---- Focus trap minimal (a11y) --------------------------------------
@@ -170,6 +192,11 @@
     var root = ensureHost();
     render(config);
     currentType = pageType;
+    // ⚠️ L'ÉCRAN COURANT EST UNE DONNÉE, PAS UN TITRE. Un module tiers a
+    // longtemps deviné l'écran en lisant `#ctxToolsTitle` (« Outils · IRL ») :
+    // renommer ce titre suffisait à faire disparaître, en silence, la section
+    // qu'il injectait. On le publie donc explicitement, ici et via `pageType()`.
+    try { root.setAttribute("data-ctx-page", String(pageType)); } catch (_) {}
     lastTrigger = trigger || document.activeElement;
 
     root.removeAttribute("hidden");
@@ -197,6 +224,7 @@
     var root = document.getElementById(ROOT_ID);
     isOpen = false;
     currentType = null;
+    if (root) { try { root.removeAttribute("data-ctx-page"); } catch (_) {} }
     document.body.classList.remove("ctx-locked");
     document.removeEventListener("keydown", onKeydown, true);
     if (!root) return;
@@ -224,7 +252,11 @@
     open: open,
     close: close,
     refresh: refresh,
-    isOpen: function () { return isOpen; }
+    // Rendu déporté (lot UI-4A5). Voir `renderInto` ci-dessus.
+    renderInto: renderInto,
+    isOpen: function () { return isOpen; },
+    // Écran sur lequel le panneau est ouvert (« irl », « cdv »…), ou null.
+    pageType: function () { return currentType; }
   };
   // Raccourci pour les onClick inline des items (« closeCtxTools();openX() »).
   window.closeCtxTools = close;
