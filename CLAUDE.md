@@ -262,6 +262,16 @@ Ce qui a disparu, et où : `RANKS`/`REWARDS`/`LIKES_PER_PASSIA` + `seedQuests`
 ④ **Le prix d'un événement était libellé en Passia alors qu'aucun paiement n'a
    jamais lieu** (le RSVP est gratuit, `price` n'est qu'un affichage). Il est
    redevenu un montant indicatif en €, ce que l'ADR autorise explicitement.
+   ⚠️ **`fmtEventPrice(price)` (app-02) est la SEULE fonction autorisée à écrire
+   un prix à l'écran** — carte de la liste, ligne « Prix » de la fiche, et tout
+   ce qui viendra. La première version concaténait `+ " €"` à la main aux trois
+   endroits, ce qui sortait `12.5 €` (point anglais), `NaN €` sur une valeur non
+   numérique et `-5 €` sur un négatif. Le helper rend « Gratuit 🎉 » pour tout
+   ce qui n'est pas un montant positif, « 12 € » sans décimale inutile et
+   « 12,50 € » avec la virgule française. Le champ de saisie porte
+   `step="0.01"` : il valait 1, et refusait donc *silencieusement* les centimes.
+   Verrou : `tests/e2e/prix-euros.spec.js` (4 cas, dont les six cas limites du
+   formateur).
 
 ⑤ **Retirer un gros bloc de `index.html` emporte facilement une balise
    STRUCTURELLE voisine.** La suppression de `#screen-wallet` a avalé le
@@ -996,6 +1006,55 @@ Le script est en lecture seule sur le dépôt (il n'écrit que dans son dossier 
   stable », cf. `tests/e2e/interactions.spec.js`). Non-régression :
   `tests/e2e/entete-fil-permanent.spec.js` (remplace `entete-fil-oscillation.spec.js`),
   vérifiée rouge sur l'ancien code avant d'être verte sur le nouveau.
+
+  **⚠️ Les moods ne se lisent plus dans le DOM d'un rail MASQUÉ (2026-08-29, PR #198).**
+  Deux défauts de la même famille, trouvés en consolidant une branche doublon. Racine
+  commune : une décision de **rendu** et une décision de **classement** s'appuyaient sur
+  le DOM de `#moodSelector`, que le lot UI-7 a masqué au profit de `#feedIntentSelector`.
+  ① La pastille de mood dessinait une **capsule vide** : `<span class="post-mood-tag">`
+  était rendu SANS condition alors que `moodTagLabel()` rend `""` pour le neutre, pour un
+  mood inconnu et pour un mood absent. La classe portant `padding: 3px 9px`, `border: 1px`
+  et un fond opaque, le résultat était une capsule creuse — **mesurée à 20 × 8 px**, pas
+  déduite du CSS. Tous les posts venus de Supabase retombent sur `mood: "all"` : ils en
+  portaient donc **tous** une. L'intention documentée était pourtant la bonne (« le neutre
+  ne porte aucun badge ») ; seul le rendu la trahissait. `_moodTagHTML(mood)` rend la
+  pastille, ou rien — **ne jamais réintroduire un `<span>` de mood sans condition**.
+  ② Le **repli d'exploration** (« voici ce qui vit ailleurs », servi quand les passions
+  suivies n'ont rien) construisait sa liste de moods admis en lisant les BOUTONS de
+  `#moodSelector`. Or `irl` n'y a **jamais** eu de bouton : une publication « Rencontrer »
+  venue d'une passion non suivie en était exclue. Portée exacte, à ne pas surestimer —
+  elle restait visible dans sa propre passion, ce n'était pas « invisible partout » ; mais
+  elle n'atteignait personne d'autre, soit exactement les gens qu'une invitation à se
+  rencontrer vise. Le défaut n'était **pas atteignable avant #194**, qui a rendu
+  « Rencontrer » choisissable dans le composer le matin même. La source de vérité est
+  désormais `PASSIO_MOOD_LABELS`, qui reste une liste **BLANCHE** : un mood inconnu venu
+  d'un client tiers n'entre toujours pas. Verrous : `tests/e2e/pastille-mood.spec.js` (3)
+  et `tests/e2e/exploration-moods.spec.js` (4), éprouvés par mutation — rendre la source
+  de vérité au DOM, ou la pastille sans condition, fait rougir 3 tests.
+
+  **⚠️ Fenêtrage du Fil — `feed_window_v1`, COUPÉ par défaut (2026-08-29, PR #157).**
+  Le fil ne monte plus toutes ses cartes : celles hors fenêtre sont déshydratées (contenu
+  retiré, hauteur intrinsèque conservée) et réhydratées à l'approche. Moteur dans `app-02`
+  (`feedWindowHydrate`, `feedWindowTeardown`, `feedWindowRememberScroll`,
+  `feedWindowRestoreScroll`), suite `tests/e2e/feed-window.spec.js` (24).
+  ⚠️ **Le piège qui décide de tout : réhydrater REMPLACE `card.innerHTML`.** Tout ce qu'un
+  autre lot a injecté DANS la carte après rendu disparaît — la passerelle UI-3
+  `[data-v3-bridge]` la première — alors que les marqueurs posés sur l'ÉLÉMENT
+  (`data-v3-decore`) survivent. Et l'observateur d'UI-3 n'écoute `#feedList` qu'en
+  `childList` **sans `subtree`** : remplacer le contenu d'une carte ne le réveille pas.
+  La carte se retrouvait donc avec la porte neuve retirée ET l'ancienne toujours masquée
+  par la règle liée à `data-v3-decore` — soit **aucune** porte vers l'IRL.
+  `_feedWindowRedecorer(card)` retire les marqueurs devenus incohérents puis rappelle
+  `PassioUIV3.decorateFeed()`, à la **seule sortie commune** de toutes les réhydratations
+  (observateur, coupure du drapeau, redimensionnement). Son `catch` journalise par
+  `diagLog` : un `catch` muet sur un chemin de rendu a déjà coûté six jours de fil vide.
+  **Tout futur décorateur de carte doit être rebranché là**, sinon il disparaîtra au
+  premier défilement.
+  ⚠️ `window._feedScrollRestoring` n'a plus de consommateur en production depuis que #196
+  a supprimé l'en-tête rétractable qu'il neutralisait. Il SURVIT à dessein : il marque
+  « une restauration est en cours » et un test vérifie qu'il est bien relâché, ce qui
+  prouve que la restauration se termine et ne fuit pas. Ne pas le retirer sans retirer
+  aussi cette assertion.
 
 - `docs/PIEGES_CONNUS.md` — les 56 fiches détaillées (extrait de ce fichier le 2026-08-07).
 - `docs/HISTORIQUE_PROJET.md` — état 2026-06-11, backlog terminé, logs d’optimisation.
