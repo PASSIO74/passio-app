@@ -47,6 +47,10 @@ async function bootIrl(page) {
     localStorage.setItem("passio_ui_4a2", "0");
     localStorage.setItem("passio_ui_4a3", "0");
     localStorage.setItem("passio_ui_4b", "0");
+    // UI-4A5 (2026-08-29) déplace la rangée de passions et les volets
+    // date/distance/horaire dans un panneau en ligne : cette suite les
+    // observe à leur place historique, et ouvre encore `#irlFiltersPanel`.
+    localStorage.setItem("passio_ui_4a5", "0");
   });
   await bootOnboarded(page);
   await page.evaluate(() => {

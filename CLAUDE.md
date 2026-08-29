@@ -673,6 +673,49 @@ Le script est en lecture seule sur le dépôt (il n'écrit que dans son dossier 
   `offsetParent`, donc déplacer une ancre dans un panneau masqué éteint l'aide en
   silence — l'ancre de « second_profil » retombe sur l'onglet « À propos ».
 
+  **Lot UI-4A5 — « Filtres » est une VUE de Rencontrer (2026-08-29), ACTIF PAR DÉFAUT.**
+  `js/ui-v4a5-filtres.js` + bloc « PASSIO UI V4 — lot UI-4A5 » en fin de `styles.css`,
+  tests `tests/e2e/ui-v4a5-filtres.spec.js` (11). Coupure unique :
+  `localStorage.passio_ui_4a5="0"` ou `window.PASSIO_UI_4A5=false`. Demandé par Benjamin
+  après essai réel : « les bulles de profil dans le filtre, et l'onglet Filtres fait comme
+  pour Liste et Carte : quand on clique dessus tu n'ouvres plus un panel mais tu affiches
+  dessous tous les choix. » La troisième case cesse donc d'ouvrir un dialogue et devient
+  une **troisième vue exclusive** : la liste passe la main, et tout le choix s'affiche en
+  ligne — bulles de passion, quatre intentions, ville, « Mes événements / Mes inscriptions »,
+  puis le calendrier, le curseur de distance et la plage horaire. Le pied porte
+  « Tout effacer » et « Voir les N événements », qui ramène à la liste.
+  **Aucun moteur n'est écrit ici** : `#irlPassionRow` et les volets `.irl-ftabs` /
+  `#irlPane*` sont DÉPLACÉS (les moteurs les retrouvent par leur `id` et continuent d'y
+  écrire à chaque `renderIRL`), les intentions sont construites par
+  `PassioUIV4A0.renderIntentsInto`, et les items ville/mes-événements sont rendus par la
+  nouvelle `ContextualTools.renderInto(hôte, config)` — même `itemHtml`, même échappement,
+  même délégation `[data-irlfilter]`.
+  ⚠️ **Six pièges de ce lot.** ① Le clic est intercepté en phase de **CAPTURE** sur
+  `document` avec `stopPropagation()` : c'est le SEUL moyen de neutraliser l'`onclick`
+  inline `ContextualTools.open('irl', this)` sans le retirer — un écouteur posé sur le
+  bouton lui-même s'exécuterait APRÈS l'attribut, l'ordre en phase « at target » étant
+  celui de l'enregistrement. L'attribut reste intact et redevient actif à la coupure.
+  ② Le **calendrier n'était peint qu'à l'ouverture** de `#irlFiltersPanel`, que ce lot ne
+  passe plus jamais : sans un appel explicite à `_renderIrlInlineCal()` à l'ouverture de
+  la vue, le volet Date s'affiche VIDE, sans erreur ni test rouge ailleurs. ③ Les sections
+  d'`irlToolsSections()` portent désormais un `id` (`ville`/`affiner`/`miens`) et le lot
+  retire « affiner » par cet **identifiant**, jamais par son titre — filtrer sur un
+  libellé, c'est le piège d'UI-4A4 (renommer « Outils · IRL » en « Filtres » avait fait
+  disparaître une section entière, en silence). ④ La sélection des onglets se dispute avec
+  UI-4A3, qui repose `aria-selected` à chaque rendu : on le **ré-aligne** après coup et
+  seulement quand la valeur diffère. UI-4A3 n'observe que les enfants directs de
+  `#screen-irl` et jamais les attributs — aucune de ces écritures ne le réveille, donc
+  aucun aller-retour. ⑤ Le panneau est **masqué, jamais retiré**, parce qu'il héberge des
+  nœuds déplacés dans lesquels le moteur continue d'écrire ; et la coupure **restitue
+  avant de supprimer**, sinon la suppression les emporterait. ⑥ Ce lot **réécrit deux
+  règles d'UI-7 (§2)**, qui donnaient volontairement à « Filtres » une allure différente
+  parce qu'elle ouvrait un dialogue : elle redevient une case à égalité de largeur, sans
+  séparateur. Les sélecteurs gagnent par la position — le bloc UI-4A5 doit rester le
+  DERNIER de `styles.css`.
+  Convention de test appliquée : `contextual-nav`, `irl`, `ui-v4a2-cartes`, `ui-v4a3-vue`,
+  `ui-v4a4-outils` et `ui-v7-lot` posent au boot `passio_ui_4a5="0"` et gardent TOUTES
+  leurs assertions ; la cohabitation est prouvée à part.
+
 - `docs/PIEGES_CONNUS.md` — les 56 fiches détaillées (extrait de ce fichier le 2026-08-07).
 - `docs/HISTORIQUE_PROJET.md` — état 2026-06-11, backlog terminé, logs d’optimisation.
 - `docs/ARCHITECTURE.md`, `docs/CONTROLE_16_MISSIONS.md`, `docs/CHECKLIST_COMMERCIALISATION.md`.

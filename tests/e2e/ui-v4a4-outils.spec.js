@@ -12,10 +12,17 @@
 //   ⑤ le kill switch rend l'écran d'avant : deux cases, déclencheur dans sa
 //      barre d'origine, intentions de retour dans la tête ;
 //   ⑥ mobile 320 / 390 / 430 px : aucun débordement, cibles ≥ 44 px.
+// ⚠️ Cette suite pose au boot le kill switch du lot UI-4A5 (2026-08-29), qui
+// recouvre le comportement qu'elle observe : depuis ce lot, « Filtres » n'ouvre
+// plus le dialogue contextuel, il affiche les choix EN LIGNE sous les onglets.
+// Convention du projet : la suite qui observe le comportement historique coupe
+// le lot qui le recouvre et garde TOUTES ses assertions ; la cohabitation est
+// prouvée à part, dans `ui-v4a5-filtres.spec.js`.
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
 
 async function boot(page, opts = {}) {
+  await page.addInitScript(() => localStorage.setItem("passio_ui_4a5", "0"));
   if (opts.killLocal) {
     await page.addInitScript(() => localStorage.setItem("passio_ui_4a4", "0"));
   }
