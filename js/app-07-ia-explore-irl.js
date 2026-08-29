@@ -2412,7 +2412,7 @@ function renderIRL() {
     const venueStr = e.venue ? " · " + escapeHtml(e.venue) : "";
     const distKm = _eventDistanceKm(e, _ref);
     const distStr = distKm != null && distKm < 20000 ? " · " + _fmtDistance(distKm) : "";
-    const priceTag = e.price !== undefined && e.price !== null && e.price !== "" ? `<span class="pill" style="padding:2px 7px;font-size:10px;">${e.price == 0 ? "Gratuit 🎉" : e.price + " €"}</span>` : "";
+    const priceTag = e.price !== undefined && e.price !== null && e.price !== "" ? `<span class="pill" style="padding:2px 7px;font-size:10px;">${escapeHtml(fmtEventPrice(e.price))}</span>` : "";
     const typeTag = e.eventType ? `<span class="pill" style="padding:2px 7px;font-size:10px;">${escapeHtml(e.eventType)}</span>` : "";
     const attCount = (e.attendees || []).length;
     const maybeCount = (e.maybes || []).length;
@@ -3333,14 +3333,14 @@ function openEventDetails(id) {
 
   const addressFull = [ev.address, ev.postalCode, ev.city].filter(Boolean).join(", ");
   const mapsLink = addressFull ? `<a href="https://maps.google.com/?q=${encodeURIComponent(addressFull)}" target="_blank" class="event-detail-info-link">📍 Voir sur Google Maps →</a>` : "";
-  const priceStr = (ev.price === 0 || ev.price === "0" || ev.price === "" || ev.price === undefined || ev.price === null) ? "Gratuit 🎉" : `${ev.price} €`;
+  const priceStr = fmtEventPrice(ev.price);
 
   // Build info rows (only show filled fields)
   const infoRows = [
     infoRow("📅", "Date & heure", `${dateStr} à ${timeStr}`),
     addressFull ? infoRow("📍", "Adresse", escapeHtml(addressFull), mapsLink) : (ev.city ? infoRow("🏙️", "Ville", escapeHtml(ev.city)) : ""),
     ev.venue ? infoRow("🏠", "Lieu", escapeHtml(ev.venue)) : "",
-    infoRow("💎", "Prix", priceStr),
+    infoRow("💶", "Prix", priceStr),
     ev.contact ? infoRow("📞", "Contact", `<a href="tel:${escapeHtml(ev.contact)}" style="color:var(--accent);font-weight:700;">${escapeHtml(ev.contact)}</a>`) : "",
     // ⚠️ `externalLink` vient de l'événement d'un AUTRE compte. escapeHtml ferme
     // l'attribut mais PAS le schéma : un `javascript:` restait cliquable ici.
@@ -4750,7 +4750,7 @@ function openCreateEvent(editId) {
     <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.12em;color:var(--accent);margin:14px 0 8px;">ℹ️ Détails</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
       <label class="field"><span>Prix indicatif en € (0 = gratuit)</span>
-        <input type="number" class="input" id="evPrice" placeholder="0" min="0" max="99999" value="${escapeHtml(v("price", 0))}"/>
+        <input type="number" class="input" id="evPrice" inputmode="decimal" step="0.01" placeholder="0" min="0" max="99999" value="${escapeHtml(v("price", 0))}"/>
       </label>
       <label class="field"><span>Places max</span>
         <input type="number" class="input" id="evMax" placeholder="Illimité" min="1" max="9999" value="${escapeHtml(v("maxAttendees"))}"/>

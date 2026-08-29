@@ -1014,6 +1014,20 @@ function _withSenderMeta(content) {
   return JSON.stringify({ type: "text", text: (content == null ? "" : String(content)), sp: sp });
 }
 
+// Prix d'une activité, en euros. Seule fonction autorisée à écrire un prix à
+// l'écran : elle tient le cas « gratuit » (0, vide, absent, non numérique) et
+// évite les décimales inutiles — « 12 € », mais « 12,50 € » quand il y en a.
+// ⚠️ ADR-009 : les prix étaient libellés en Passia (💎) tant que l'économie
+// interne existait. Un prix est désormais une somme RÉELLE en euros ; ne jamais
+// y remettre de jeton interne, et ne jamais concaténer « + " €" » à la main —
+// c'est ce qui laissait passer « 12.5 € » et « NaN € ».
+function fmtEventPrice(price) {
+  const n = Number(price);
+  if (price === null || price === undefined || price === "" || !isFinite(n) || n <= 0) return "Gratuit 🎉";
+  const txt = Number.isInteger(n) ? String(n) : n.toFixed(2).replace(".", ",");
+  return txt + "\u00a0€";
+}
+
 // ======== TOAST ========
 function toast(msg, type = "info", onClick = null) {
   const stack = $("#toastStack");
