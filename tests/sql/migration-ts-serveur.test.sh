@@ -473,6 +473,75 @@ preparer "grant insert on public.user_safety to authenticated;"
   && { OK=$((OK+1)); printf '  ✅ écriture directe rendue à authenticated → contrôle ROUGE\n'; } \
   || { KO=$((KO+1)); printf '  ❌ écriture directe rendue à authenticated → contrôle resté VERT\n'; }
 
+# ─────────────────────────────────────────────────────────────────────────
+# Les quatre FAUX VERTS relevés en contre-revue indépendante (PR #147).
+# Chacun laissait le contrôle post-migration sortir « toutes les lignes en OK »
+# sur une base dont la frontière était ouverte. Une mutation qui ne change QUE
+# le point visé, et qui doit rendre le contrôle rouge.
+# ─────────────────────────────────────────────────────────────────────────
+controle_rouge() { # $1=libellé  $2=SQL de mutation
+  preparer "$2"
+  [ "$(echecs_controles)" -ge 1 ] \
+    && { OK=$((OK+1)); printf '  ✅ %s → contrôle ROUGE\n' "$1"; } \
+    || { KO=$((KO+1)); printf '  ❌ %s → contrôle resté VERT : faux vert\n' "$1"; }
+}
+
+# ① Le cas que l'ancien contrôle acceptait : la policy attendue, sous le MÊME
+# nom, avec `WITH CHECK (true)`. Nom et nombre inchangés, frontière ouverte.
+controle_rouge "policy attendue affaiblie en WITH CHECK (true), même nom" \
+  "drop policy \"conversations_insert_creator\" on public.conversations;
+   create policy \"conversations_insert_creator\" on public.conversations
+     for insert to authenticated with check (true);"
+
+# ② Le non-blocage retiré de conv_members, le reste intact : c'est par là qu'on
+# forçait un compte bloqué dans une conversation.
+controle_rouge "non-blocage retiré de conv_members, nom et rôles inchangés" \
+  "drop policy \"Ecriture propre\" on public.conv_members;
+   create policy \"Ecriture propre\" on public.conv_members
+     for insert to authenticated with check (
+       public.is_conversation_creator(conv_members.conv_id)
+       or (user_id = ((select auth.uid()))::text
+           and public.can_join_event_conversation(conv_members.conv_id)));"
+
+# ③ `SET search_path = public` : la configuration exactement détournable que le
+# contrôle prétendait exclure, et qu'il déclarait OK.
+controle_rouge "search_path d'une fonction SECURITY DEFINER passé à public" \
+  "alter function public.is_blocked_with(text) set search_path = public;"
+
+# ④ Le trigger de non-régression remplacé par un trigger sans rapport : l'ancien
+# contrôle se contentait de « un trigger utilisateur existe ».
+controle_rouge "trigger attendu remplacé par un trigger sans rapport" \
+  "drop trigger trg_user_safety_majorite on public.user_safety;
+   create or replace function public.trigger_decoratif() returns trigger
+     language plpgsql set search_path = '' as \$t\$ begin return new; end \$t\$;
+   create trigger trg_decoratif before update on public.user_safety
+     for each row execute function public.trigger_decoratif();"
+
+# ⑤ Une surcharge de mauvais type ne satisfait pas « fonction présente » : la
+# fonction réellement appelée par les policies est celle en (text).
+# On RENOMME plutôt que de supprimer : les policies suivent l'OID, donc la
+# frontière reste intacte et la mutation ne change QUE ce qu'elle vise — la
+# signature visible dans le catalogue. Sous l'ancien contrôle, filtré sur
+# `proname` seul, la surcharge (uuid) suffisait à satisfaire « les 5 fonctions
+# sont présentes » alors que celle réellement appelée avait disparu du nom.
+controle_rouge "fonction attendue masquée par une surcharge de mauvais type" \
+  "alter function public.is_blocked_with(text) rename to is_blocked_with_ancienne;
+   create function public.is_blocked_with(_other uuid)
+     returns boolean language sql security definer stable set search_path = ''
+     as \$f\$ select false \$f\$;
+   -- Sans ce REVOKE la mutation serait rouge pour une RAISON ETRANGERE : une
+   -- fonction fraichement creee accorde EXECUTE a PUBLIC, donc a anon, ce que
+   -- l'ancien controle voyait deja. On ferme cette porte pour que la seule
+   -- difference mesuree soit bien la SIGNATURE. (Pas d'accent grave ici : dans
+   -- une chaine bash entre guillemets, il ouvrirait une substitution.)
+   revoke execute on function public.is_blocked_with(uuid) from public, anon;
+   -- Et on rend explicitement le droit a authenticated : le REVOKE ci-dessus lui
+   -- retirait aussi son EXECUTE, herite de PUBLIC, ce qui faisait rougir la
+   -- PREMISSE de l'ancien controle -- encore une raison etrangere. Avec ces deux
+   -- lignes, l'ancien controle est integralement VERT sur cette base : c'est
+   -- exactement le faux vert que la signature attrape desormais.
+   grant execute on function public.is_blocked_with(uuid) to authenticated;"
+
 echo
 mutation "policy conv_members d'origine restaurée" \
   "drop policy \"Ecriture propre\" on public.conv_members;

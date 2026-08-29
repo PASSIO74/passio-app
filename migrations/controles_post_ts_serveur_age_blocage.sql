@@ -10,26 +10,56 @@
 -- Attendu : toutes les lignes en OK. Toute ligne ECHEC = ne pas activer
 -- irl_proposal_v1.
 
+-- ⚠️ La SIGNATURE fait partie de l'attendu, pas seulement le nom. Filtrer sur
+-- `proname` seul laisserait une surcharge de mauvais type -- disons
+-- is_blocked_with(uuid) -- satisfaire « fonction presente » pendant que la
+-- fonction reellement appelee par les policies, celle en (text), manque.
+-- (Defaut releve en contre-revue independante, PR #147.)
 WITH attendus (nom, args) AS (
-  VALUES ('is_blocked_with','text'),
-         ('irl_interaction_allowed','text'),
-         ('is_conversation_creator','text'),
-         ('can_join_event_conversation','text'),
-         ('declare_birth_year','integer')
+  VALUES ('is_blocked_with','_other text'),
+         ('irl_interaction_allowed','_other text'),
+         ('is_conversation_creator','_conv_id text'),
+         ('can_join_event_conversation','_conv_id text'),
+         ('declare_birth_year','_birth_year integer')
 ),
 fn AS (
-  SELECT p.proname, p.oid, p.prosecdef, p.proconfig
+  SELECT p.proname, p.oid, p.prosecdef, p.proconfig,
+         pg_catalog.pg_get_function_identity_arguments(p.oid) AS args
     FROM pg_catalog.pg_proc p
     JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+    JOIN (VALUES ('is_blocked_with','_other text'),
+                 ('irl_interaction_allowed','_other text'),
+                 ('is_conversation_creator','_conv_id text'),
+                 ('can_join_event_conversation','_conv_id text'),
+                 ('declare_birth_year','_birth_year integer')) AS att(nom, args)
+      ON att.nom = p.proname
+     AND att.args = pg_catalog.pg_get_function_identity_arguments(p.oid)
    WHERE n.nspname = 'public'
-     AND p.proname IN ('is_blocked_with','irl_interaction_allowed','is_conversation_creator',
-                       'can_join_event_conversation','declare_birth_year')
 ),
+-- ⚠️ Le NOM d'une policy ne prouve rien de ce qu'elle autorise : une policy
+-- homonyme avec `WITH CHECK (true)` laisse le tableau des noms intact et ouvre
+-- la frontiere en grand. On rapatrie donc aussi le mode, les roles et
+-- l'expression, controles plus bas. (Defaut releve en contre-revue, PR #147.)
 policies_finales AS (
-  SELECT tablename, cmd, policyname
+  SELECT tablename, cmd, policyname, permissive, roles::text AS roles,
+         COALESCE(with_check, '') AS with_check
     FROM pg_catalog.pg_policies
    WHERE schemaname = 'public'
      AND tablename IN ('conversations','conv_members','conv_messages','user_safety')
+),
+-- Ce que chaque policy INSERT doit REELLEMENT contenir. On ne compare pas la
+-- chaine entiere : sa normalisation par PostgreSQL varie d'une version a
+-- l'autre, et un controle qui rougit sur une prod saine finit par etre ignore.
+-- On exige donc la presence de chaque predicat porteur de la frontiere, et
+-- l'absence d'un `true` qui les annulerait tous.
+exigences (tablename, policyname, jeton) AS (
+  VALUES ('conversations','conversations_insert_creator','created_by ='),
+         ('conversations','conversations_insert_creator','auth.uid()'),
+         ('conv_members','Ecriture propre','is_conversation_creator'),
+         ('conv_members','Ecriture propre','can_join_event_conversation'),
+         ('conv_members','Ecriture propre','is_blocked_with'),
+         ('conv_messages','conv_messages_insert_member','from_id ='),
+         ('conv_messages','conv_messages_insert_member','is_conv_member')
 )
 
 -- A. La table d'age est privee et non ecrivable par le client.
@@ -77,13 +107,26 @@ SELECT 'A. age',
        'Si elle survit, le chemin ou le client choisit sa date de majorite existe encore A COTE du nouveau.'
 UNION ALL
 SELECT 'A. age',
+       -- ⚠️ « un trigger utilisateur existe sur user_safety » ne prouve rien :
+       -- n'importe quel trigger sans rapport satisfaisait ce controle. On exige
+       -- LE trigger attendu, ACTIF (`tgenabled <> 'D'`), sur SA fonction, et
+       -- pose BEFORE UPDATE FOR EACH ROW -- un AFTER ne peut rien refuser, et un
+       -- trigger desactive ne s'execute jamais.
+       -- (Defaut releve en contre-revue independante, PR #147.)
        CASE WHEN EXISTS (SELECT 1 FROM pg_catalog.pg_trigger t
                            JOIN pg_catalog.pg_class c ON c.oid=t.tgrelid
                            JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
+                           JOIN pg_catalog.pg_proc f ON f.oid=t.tgfoid
                           WHERE n.nspname='public' AND c.relname='user_safety'
-                            AND NOT t.tgisinternal)
+                            AND NOT t.tgisinternal
+                            AND t.tgname = 'trg_user_safety_majorite'
+                            AND t.tgenabled <> 'D'
+                            AND f.proname = 'user_safety_majorite_non_avancable'
+                            AND (t.tgtype & 1) = 1     -- FOR EACH ROW
+                            AND (t.tgtype & 2) = 2     -- BEFORE
+                            AND (t.tgtype & 16) = 16)  -- UPDATE
             THEN 'OK' ELSE 'ECHEC' END,
-       'trigger de non-regression de majority_at',
+       'trigger trg_user_safety_majorite actif, BEFORE UPDATE, sur sa fonction',
        'Interdit d''AVANCER la date de majorite, donc de se rendre majeur.'
 
 -- B. Les fonctions de decision : presentes, SECURITY DEFINER, search_path verrouille,
@@ -108,10 +151,17 @@ SELECT 'B. fonctions',
        CASE WHEN NOT EXISTS (
               SELECT 1 FROM fn
                WHERE fn.proconfig IS NULL
-                  OR NOT (fn.proconfig::text LIKE '%search_path=%')
+                  -- ⚠️ La VALEUR, pas la presence. `SET search_path = public` porte
+                  -- lui aussi la chaine « search_path= » : le controle precedent le
+                  -- declarait OK alors que c'est exactement la configuration
+                  -- detournable qu'il pretendait exclure -- un schema tiers place
+                  -- devant `public` capture les appels non qualifies. PostgreSQL
+                  -- stocke `SET search_path = ''` sous la forme `search_path=""`.
+                  -- (Defaut releve en contre-revue independante, PR #147.)
+                  OR NOT ('search_path=""' = ANY(fn.proconfig) OR 'search_path=' = ANY(fn.proconfig))
             ) THEN 'OK' ELSE 'ECHEC' END,
-       'search_path verrouille sur chaque fonction',
-       'Une fonction SECURITY DEFINER sans search_path fixe est detournable par un schema tiers.'
+       'search_path verrouille a la chaine VIDE sur chaque fonction',
+       'Seul search_path = '''' convient : toute autre valeur laisse un schema tiers capturer les appels non qualifies.'
 UNION ALL
 SELECT 'B. fonctions',
        CASE WHEN NOT EXISTS (SELECT 1 FROM fn WHERE has_function_privilege('anon', fn.oid, 'EXECUTE'))
@@ -150,6 +200,42 @@ SELECT 'C. conversations',
             THEN 'OK' ELSE 'ECHEC' END,
        'conv_messages : une seule policy INSERT',
        'Empeche l''injection de message par un non-membre qui connait conv_id.'
+-- Le nom et le nombre etant acquis ci-dessus, on controle maintenant CE QUE LA
+-- POLICY AUTORISE. Sans ces trois lignes, une policy homonyme en
+-- `WITH CHECK (true)` -- ou ouverte a `public` -- laissait tout le bloc C en OK.
+UNION ALL
+SELECT 'C. conversations',
+       CASE WHEN NOT EXISTS (
+              SELECT 1 FROM policies_finales pf
+               WHERE pf.cmd = 'INSERT'
+                 AND pf.tablename IN ('conversations','conv_members','conv_messages')
+                 AND (pf.permissive <> 'PERMISSIVE' OR pf.roles <> '{authenticated}')
+            ) THEN 'OK' ELSE 'ECHEC' END,
+       'les trois policies INSERT sont permissives et reservees a authenticated',
+       'Une policy ouverte a public s''applique aussi a anon ; une restrictive change le sens du OU.'
+UNION ALL
+SELECT 'C. conversations',
+       CASE WHEN NOT EXISTS (
+              SELECT 1 FROM policies_finales pf
+               WHERE pf.cmd = 'INSERT'
+                 AND pf.tablename IN ('conversations','conv_members','conv_messages')
+                 AND (pf.with_check = '' OR btrim(lower(pf.with_check), '() ') = 'true')
+            ) THEN 'OK' ELSE 'ECHEC' END,
+       'aucune policy INSERT n''a un WITH CHECK vide ou toujours vrai',
+       'Le cas exact du faux vert : meme nom, meme compte, frontiere ouverte.'
+UNION ALL
+SELECT 'C. conversations',
+       CASE WHEN NOT EXISTS (
+              SELECT 1 FROM exigences e
+               WHERE NOT EXISTS (
+                 SELECT 1 FROM policies_finales pf
+                  WHERE pf.cmd = 'INSERT'
+                    AND pf.tablename = e.tablename
+                    AND pf.policyname = e.policyname
+                    AND position(e.jeton IN pf.with_check) > 0)
+            ) THEN 'OK' ELSE 'ECHEC' END,
+       'chaque policy INSERT porte encore tous ses predicats',
+       'createur pour conversations ; createur/participant + non-blocage pour conv_members ; auteur + membre pour conv_messages.'
 UNION ALL
 SELECT 'C. conversations',
        CASE WHEN NOT has_table_privilege('anon','public.conversations','INSERT')
