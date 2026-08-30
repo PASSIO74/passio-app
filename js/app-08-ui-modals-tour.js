@@ -4106,9 +4106,15 @@ async function supaSearchUsers(query) {
     if (!safe) return [];
     // 🔍 1 ligne par compte dans profiles, colonne passions = jsonb [{id,emoji,label}]
     const searchPattern = `%${safe}%`;
+    // ⚠️ BORNE. Cette requête n'avait AUCUNE limite : chercher « a » ramenait
+    // toute ligne de `profiles` dont le pseudo ou la bio contient un « a » —
+    // avec bio et avatar_url, à chaque frappe. Invisible à trente comptes de
+    // beta, ruineux à dix mille. Les appelants n'affichent au mieux que 8
+    // résultats ; 30 laisse de la marge pour leur filtrage local.
     const { data, error } = await supa.from("profiles")
       .select("id, username, emoji, color, passion_id, passions, bio, avatar_url")
-      .or(`username.ilike.${searchPattern},bio.ilike.${searchPattern}`);
+      .or(`username.ilike.${searchPattern},bio.ilike.${searchPattern}`)
+      .limit(30);
 
     if (!data) return [];
 

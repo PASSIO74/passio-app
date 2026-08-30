@@ -2364,6 +2364,13 @@ function openNewMessage() {
   }, 80);
 }
 
+// La question actuellement posée par le champ de recherche, normalisée comme
+// `_nmDoSearch` la reçoit. Sert à jeter une réponse réseau devenue obsolète.
+function _nmRequeteCourante() {
+  var inp = document.getElementById("_nmSearch");
+  return ((inp && inp.value) || "").trim().toLowerCase();
+}
+
 function _nmDoSearch(q) {
   var box = document.getElementById("_nmResults");
   if (!box) return;
@@ -2390,7 +2397,13 @@ function _nmDoSearch(q) {
     box.innerHTML = `<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px;">Aucun utilisateur trouvé</div>`;
     // Lancer aussi la recherche Supabase si query non vide
     if (q && typeof supaSearchUsers === "function" && supa && MY_UID) {
+      // ⚠️ GARDE D'OBSOLESCENCE. Les réponses reviennent dans l'ordre du réseau,
+      // pas dans celui de la frappe : taper « ab » puis « abc » pouvait laisser
+      // la réponse d'« ab » écraser celle d'« abc ». On ne peint que si la
+      // question posée est encore la question courante.
+      var _qA = q;
       supaSearchUsers(q).then(function(res) {
+        if (_nmRequeteCourante() !== _qA) return;
         if (!res || !res.length) return;
         var html2 = res.slice(0,8).map(function(u) { return _nmUserRow(u.id, u.username||"Passionné", u.emoji||"✨", u.color||"#8b5cf6", u.photoUrl); }).join("");
         if (box) box.innerHTML = html2;
@@ -2403,7 +2416,9 @@ function _nmDoSearch(q) {
 
   // Compléter avec Supabase en arrière-plan si query
   if (q && typeof supaSearchUsers === "function" && supa && MY_UID) {
+    var _qB = q;
     supaSearchUsers(q).then(function(res) {
+      if (_nmRequeteCourante() !== _qB) return;   // cf. garde d'obsolescence
       if (!res || !box) return;
       var extra = res.filter(function(u) { return !matches.find(function(m) { return m.id === u.id; }); }).slice(0,5);
       if (extra.length) box.innerHTML += extra.map(function(u) { return _nmUserRow(u.id, u.username||"Passionné", u.emoji||"✨", u.color||"#8b5cf6", u.photoUrl); }).join("");
