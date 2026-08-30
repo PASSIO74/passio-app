@@ -109,15 +109,39 @@ test.describe("partage d'une bobine dans le Fil", () => {
     expect(r.texte).not.toMatch(/&(amp|#39|quot|lt|gt);/);
 
     // Et à l'écran, l'apostrophe est bien une apostrophe.
-    await page.evaluate(() => { goTo("feed"); renderFeed(); });
-    await page.waitForTimeout(600);
-    const affiche = await page.evaluate(() => {
-      const cartes = [...document.querySelectorAll("#feedList .post")];
-      const c = cartes.find((el) => (el.textContent || "").includes("A partagé une bobine"));
-      return c ? c.textContent : null;
+    //
+    // ⚠️ CE TEST A ROUGI EN CI ALORS QU'IL PASSAIT EN LOCAL, et la cause n'était
+    // ni le correctif ni un aléa : le fil ne monte pas tout. Il classe
+    // (`rankFeedPosts`) puis monte un PREMIER LOT. En CI, `supaLoadPosts`
+    // ramène de vraies publications de production ; hors ligne il n'en ramène
+    // aucune. Reproduit en injectant 80 publications réseau :
+    //
+    //     cartes montées                12
+    //     carte de partage présente ?   NON  (ni par texte, ni par identifiant)
+    //     …puis `supabasePosts` vidé →   1 carte, et c'est la bonne
+    //
+    // On neutralise donc la lecture réseau ET on vide ce qu'elle a déjà chargé
+    // au boot — sans quoi viser la carte par son identifiant n'y changerait
+    // rien, elle n'est simplement pas montée. Même contrôle d'environnement que
+    // `entete-fil-permanent` et les suites UI-4.
+    const id = await page.evaluate(() => {
+      window.supaLoadPosts = async () => [];
+      state.supabasePosts = [];
+      const p = (state.userPosts || []).find((x) => x.sharedReel === "reel_partage");
+      return p ? p.id : null;
     });
+    expect(id, "le post de partage doit avoir un id").not.toBe(null);
+
+    await page.evaluate(() => { goTo("feed"); renderFeed(); });
+    await page.waitForSelector(`#feedList .post[data-postid="${id}"]`, { timeout: 10000 });
+    const affiche = await page.evaluate((pid) => {
+      const c = document.querySelector(`#feedList .post[data-postid="${pid}"]`);
+      return c ? c.textContent : null;
+    }, id);
+
     expect(affiche, "la carte de partage doit être dans le fil").not.toBe(null);
     expect(affiche).toContain("Café d'Or & Cie");
+    expect(affiche, "aucune entité HTML ne doit être visible").not.toMatch(/&(amp|#39|quot|lt|gt);/);
   });
 
   test("le partage d'un POST ordinaire n'est pas échappé deux fois non plus", async ({ page }) => {
