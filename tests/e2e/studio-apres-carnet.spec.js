@@ -20,18 +20,30 @@
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
 
-const CHAMPS = ["#postText", "#fieldPassion", "#fieldMood"];
-
-async function visibilites(page) {
-  return page.evaluate((sels) => {
-    const out = {};
-    sels.forEach((s) => {
-      const el = document.querySelector(s);
-      const cible = s === "#postText" ? (el && el.closest(".field")) : el;
-      out[s] = cible ? !!(cible.offsetWidth || cible.offsetHeight || cible.getClientRects().length) : null;
-    });
-    return out;
-  }, CHAMPS);
+// ⚠️ DEUX mesures différentes, et c'est volontaire.
+//   · `#postText` : on mesure la VISIBILITÉ réelle — c'est le symptôme vécu,
+//     « le composeur n'a plus de champ de saisie ».
+//   · `#fieldPassion` / `#fieldMood` : on mesure l'OVERRIDE EN LIGNE. Sous le
+//     lot UI-6 ces deux champs sont normalement repliés (la passion derrière
+//     « Modifier », le mood dans le <details> « Options ») : ils sont donc
+//     invisibles même quand tout va bien. Ce que l'éditeur de carnet a posé, et
+//     qu'il doit retirer, c'est le `style="display:none"` — le rendre laisse
+//     UI-6 décider, ce qui est exactement le comportement attendu.
+async function etatChamps(page) {
+  return page.evaluate(() => {
+    const champ = document.querySelector("#postText");
+    const boite = champ && champ.closest(".field");
+    const inline = (sel) => {
+      const el = document.querySelector(sel);
+      return el ? el.style.display : null;
+    };
+    return {
+      texteVisible: boite ? !!(boite.offsetWidth || boite.offsetHeight || boite.getClientRects().length) : null,
+      texteInline: boite ? boite.style.display : null,
+      passionInline: inline("#fieldPassion"),
+      moodInline: inline("#fieldMood"),
+    };
+  });
 }
 
 async function ouvrirStudio(page) {
@@ -44,8 +56,8 @@ test.describe("Studio après un passage par l'éditeur de carnet", () => {
     await bootOnboarded(page);
     await ouvrirStudio(page);
 
-    const avant = await visibilites(page);
-    expect(avant["#postText"], "le champ texte doit être visible au départ").toBe(true);
+    const avant = await etatChamps(page);
+    expect(avant.texteVisible, "le champ texte doit être visible au départ").toBe(true);
 
     await page.evaluate(() => activateStudioVlog());
     await page.waitForTimeout(300);
@@ -61,9 +73,10 @@ test.describe("Studio après un passage par l'éditeur de carnet", () => {
     await page.waitForTimeout(300);
     await ouvrirStudio(page);
 
-    const apres = await visibilites(page);
-    expect(apres["#postText"], "le champ texte doit être revenu").toBe(true);
-    expect(apres["#fieldPassion"]).toBe(true);
+    const apres = await etatChamps(page);
+    expect(apres.texteVisible, "le champ texte doit être revenu").toBe(true);
+    expect(apres.passionInline, "l'override du carnet doit être levé").not.toBe("none");
+    expect(apres.moodInline).not.toBe("none");
     expect(await page.evaluate(() => studioType)).not.toBe("vlog");
   });
 
@@ -82,9 +95,9 @@ test.describe("Studio après un passage par l'éditeur de carnet", () => {
     await page.waitForTimeout(300);
     await ouvrirStudio(page);
 
-    const apres = await visibilites(page);
-    expect(apres["#postText"]).toBe(true);
-    expect(apres["#fieldPassion"]).toBe(true);
+    const apres = await etatChamps(page);
+    expect(apres.texteVisible).toBe(true);
+    expect(apres.passionInline).not.toBe("none");
     // Et le type de publication n'est plus « carnet » : sans cela, publier
     // depuis le Studio créerait un carnet vide.
     expect(await page.evaluate(() => studioType)).not.toBe("vlog");

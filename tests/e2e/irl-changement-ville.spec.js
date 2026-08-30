@@ -67,7 +67,13 @@ test.describe("« Ma ville » après un changement de ville", () => {
     expect(a).not.toBe(b);
 
     // Ville A choisie, puis l'intention « Ma ville » activée.
-    await page.evaluate((v) => selectIrlCity("test_a", v), a);
+    // ⚠️ `selectIrlGeoCity` et non `selectIrlCity` : ce dernier lit les
+    // coordonnées dans `FRANCE_CITIES[cityId]`, et un identifiant inventé y
+    // donne `undefined` — `_irlReferenceLoc` déréférence alors `coords[0]` et
+    // fait tomber tout le rendu IRL. En production l'identifiant vient toujours
+    // de `_irlCityList()`, donc de `FRANCE_CITIES` ; ici on passe par le chemin
+    // géocodé, qui porte ses coordonnées et exerce le même `renderIRL()`.
+    await page.evaluate((v) => selectIrlGeoCity(v, 45.757, 4.832), a);
     await page.waitForTimeout(300);
     // Même événement que celui qu'émet un clic sur la chip. `setIntents` ne le
     // rejoue PAS (c'est la voie de resynchronisation, pas celle du geste), donc
@@ -87,7 +93,7 @@ test.describe("« Ma ville » après un changement de ville", () => {
     expect(surA.villes).toEqual([surA.attendu]);
 
     // Changement de ville, par le chemin historique.
-    await page.evaluate((v) => selectIrlCity("test_b", v), b);
+    await page.evaluate((v) => selectIrlGeoCity(v, 43.296, 5.369), b);
     await page.waitForTimeout(800);
 
     const surB = await page.evaluate((v) => ({
@@ -107,9 +113,9 @@ test.describe("« Ma ville » après un changement de ville", () => {
     await boot(page);
     const { a, b } = await deuxVilles(page);
 
-    await page.evaluate((v) => selectIrlCity("test_a", v), a);
+    await page.evaluate((v) => selectIrlGeoCity(v, 45.757, 4.832), a);
     await page.waitForTimeout(300);
-    await page.evaluate((v) => selectIrlCity("test_b", v), b);
+    await page.evaluate((v) => selectIrlGeoCity(v, 43.296, 5.369), b);
     await page.waitForTimeout(600);
 
     const r = await page.evaluate(() => ({
