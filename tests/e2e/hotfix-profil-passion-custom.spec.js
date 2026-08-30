@@ -70,7 +70,15 @@ async function compteCustomOnly(page, opts = {}) {
     }];
     state.user.currentProfileId = "pp_custom";
     state.user.general = Object.assign({}, state.user.general, o.general || {});
-    if (o.effacerNom) { state.user.name = ""; delete state.user.general.username; }
+    // ⚠️ La chaîne de replis du pseudo compte TROIS maillons :
+    // [g.username, state.user.name, prof.name]. En vider deux ne suffit pas —
+    // c'est ce qui faisait échouer ce test, qui recevait « QA » (le nom du
+    // profil) au lieu du littéral final.
+    if (o.effacerNom) {
+      state.user.name = "";
+      delete state.user.general.username;
+      state.user.profiles.forEach(function (pr) { pr.name = ""; });
+    }
     saveState();
   }, opts);
 }
@@ -88,6 +96,32 @@ test("compte custom-only : la ligne profiles est CRÉÉE, avec passion_id null",
   expect(res.length).toBe(1);
   expect(res[0].passion_id).toBeNull();
   expect(res[0].username).toBe("Benjamin");
+});
+
+test("AUCUN profil résoluble : la ligne est créée quand même", async ({ page }) => {
+  await boot(page);
+  await page.evaluate(() => {
+    // ⚠️ LE test du hotfix. `currentProfile()` ne rend `undefined` que sur une
+    // liste de profils VIDE (app-02: `profiles.find(…) || profiles[0]`) — c'est
+    // le seul état où l'ancien `if (!prof) return;` s'exerçait. Tous les autres
+    // cas de ce fichier donnent une passion au compte, donc `prof` y est
+    // toujours défini : sans ce test, la garde retirée n'était jamais éprouvée.
+    state.user.profiles = [];
+    state.user.currentProfileId = null;
+    state.user.customPassions = [];
+    state.user.general = Object.assign({}, state.user.general, { username: "Benjamin" });
+    saveState();
+  });
+  const rows = await page.evaluate(async () => {
+    window.__rows = [];
+    await supaUpsertProfile();
+    return window.__rows;
+  });
+  expect(rows.length).toBe(1);
+  expect(rows[0].id).toBeTruthy();
+  expect(rows[0].username).toBe("Benjamin");
+  expect(rows[0].passion_id).toBeNull();
+  expect(rows[0].passions).toEqual([]);
 });
 
 test("le username explicite du compte est CONSERVÉ", async ({ page }) => {
