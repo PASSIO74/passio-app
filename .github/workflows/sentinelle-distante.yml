@@ -43,13 +43,13 @@ jobs:
 
       - name: Checkout
         if: steps.gate.outputs.active == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Node
         if: steps.gate.outputs.active == 'true'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Installer les dépendances
@@ -81,10 +81,15 @@ jobs:
         if: steps.gate.outputs.active == 'true'
         run: npx playwright install --with-deps chromium
 
+      # ⚠️ Le canari cree deux comptes jetables. « Confirm email » etant actif
+      # (SMTP Brevo), ils doivent etre crees pre-confirmes via service_role —
+      # voir tests/e2e/compte-e2e.js.
       - name: Canari d'autorisation
         id: authz
         if: steps.gate.outputs.active == 'true'
         continue-on-error: true
+        env:
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: npx playwright test tests/e2e/authz-critical.spec.js --reporter=line
 
       - name: Publier le verdict

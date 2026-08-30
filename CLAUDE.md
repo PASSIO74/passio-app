@@ -294,6 +294,42 @@ Verrou de non-régression : `tests/e2e/adr-009-retrait-economie.spec.js` (7 test
 couvre la surface, le moteur, la création d'un 4ᵉ profil, et l'aller-retour de
 synchronisation avec un ancien client.
 
+## 📧 Confirmation d'e-mail ACTIVE depuis le 2026-08-30 (SMTP Brevo)
+
+`signUp` ne rend **plus** de session : le compte existe, il est inutilisable tant que
+l'adresse n'est pas confirmée. État complet de la configuration, procédure de
+rétablissement et geste DNS restant : `docs/SETUP_SMTP_AUTH.md`.
+
+⚠️ **Quatre conséquences, toutes déjà traitées — les connaître avant de toucher à l'auth.**
+
+① **Deux chemins de `onbDoAuth` étaient morts, et muets.** Les branches « compte créé,
+   va confirmer » et « e-mail déjà utilisé » (anti-énumération : Supabase rend un user
+   aux `identities` VIDES, pas une erreur) écrivaient le message **puis** appelaient
+   `switchAuthTab("signin")`, qui remet `#authMsg` à zéro. On créait son compte, l'écran
+   basculait, rien ne s'affichait. **Règle : `switchAuthTab` d'abord, message ensuite** —
+   et tout ce qu'on veut voir survivre à une bascule se pose APRÈS elle.
+
+② **Sans renvoi, un lien perdu enferme le compte** (« déjà utilisé » à l'inscription,
+   « confirme ton e-mail » à la connexion, aucune sortie). `onbResendConfirmation()`
+   (`supa.auth.resend`, type `signup`) + `#authResendLink`, affiché seulement quand il
+   sert. Le message de succès n'affirme JAMAIS que le compte existe.
+
+③ **Les comptes de test ne se créent plus par `signUp`.** Passer par
+   `tests/e2e/compte-e2e.js` : création **pré-confirmée** via `service_role`
+   (`email_confirm: true`), aucun e-mail envoyé — donc ni quota Brevo consommé (300/j),
+   ni rebond vers le domaine fictif `passio-e2e.test` qui abîmerait la réputation
+   d'expéditeur. ⚠️ `authz-critical` est la **barrière RLS du déploiement** : elle en
+   dépend, et sans le secret `SUPABASE_SERVICE_ROLE_KEY` elle échoue **en nommant la
+   cause** plutôt que de se mettre en veille (un skip silencieux sur une barrière de
+   sécurité serait pire qu'un rouge).
+
+④ **Le domaine d'envoi n'est pas authentifié** (ni DKIM ni DMARC) : les confirmations
+   peuvent partir en indésirables — inscription perdue, **sans aucune trace côté app**.
+   Risque R11, remède DNS uniquement.
+
+Verrou : `tests/e2e/confirmation-email.spec.js` (7, éprouvés par mutation — remettre
+l'ordre d'origine ou retirer le renvoi fait rougir 6 des 7).
+
 ## 🗂️ Pièges connus — index (détail complet : docs/PIEGES_CONNUS.md)
 
 59 fiches détaillées par domaine. **Lis la fiche concernée AVANT de modifier ce domaine.** Pour un audit de diff, lance le subagent `audit-passio`.
@@ -1126,6 +1162,102 @@ Le script est en lecture seule sur le dépôt (il n'écrit que dans son dossier 
   rendu, morte à l'écran. ⚠️ `myEngagementStats` compte par `organizerId`/`authorId`,
   jamais par `ownerId` — une sonde écrite avec `ownerId` rend 0 badge et fait conclure
   à tort que le défaut n'existe pas. Verrou : `profil-badges-visibles.spec.js`.
+
+  **⚠️ Second lot de la même nuit — sept défauts de plus, même méthode.**
+  Trois d'entre eux sont des failles d'échappement, quatre des chemins morts.
+
+  ⑥ **XSS stockée dans les notifications.** `renderNotifs` (app-08) écrivait
+  `${n.text}` BRUT parce que les notifications de démonstration portent des `<b>`
+  voulus. Or `pushNotification` recopie du texte d'autrui (mentions, extraits de
+  commentaires) et `supaLoadNotifs` remonte des lignes écrites par n'importe quel
+  compte. Le rendu est désormais **sûr par défaut** : `_notifTexteHtml(n)` échappe,
+  sauf discriminant explicite de confiance (`n.html === true` ou `kind === "local"`),
+  que seules la graine et `pushNotification` posent. ⚠️ Le motif est général : dès
+  qu'un champ mélange du balisage MAISON et du texte d'autrui, c'est un
+  **discriminant de confiance** qu'il faut, jamais un échappement conditionnel au cas
+  par cas. Verrou : `notifications-echappement.spec.js`.
+
+  ⑦ **La même donnée échappée à un endroit et pas à l'autre.** `ev.eventType` était
+  échappé sur la carte de la liste (app-07 ~2432) et BRUT dans la fiche (~3310) :
+  mesuré, `<img src=x onerror=…>` s'exécutait à l'ouverture de la fiche. Idem pour
+  `duration` d'un carnet en direct, brut dans le carrousel du Fil (app-02) et dans la
+  fiche (app-03). ⚠️ « Le `<select>` de création ne propose que des valeurs fixes »
+  n'est PAS une garantie : toute session authentifiée écrit ces colonnes par REST.
+  Verrou : `echappement-type-et-duree.spec.js`.
+
+  ⑧ **Un champ manquant qui fait échouer une publication EN SILENCE.**
+  `shareReelInFeed` (app-05) fabriquait son post sans `createdAt`. Or
+  `supaPublishPostWithRetry` fait `new Date(post.createdAt).toISOString()` : sur
+  `undefined` cela lève un RangeError, avalé par le `catch` de la boucle de réessai
+  qui renvoie `false`. Le partage n'atteignait donc JAMAIS Supabase — et le même champ
+  date la carte (`fmtTime(undefined)` → "") et la classe dans le fil (tri sur
+  `createdAt || 0` → tout en bas). Sa jumelle `sharePostInFeed` (app-03) le portait
+  déjà : **deux fonctions presque identiques avaient divergé sur ce seul point**.
+  Second défaut dans les DEUX : le texte était échappé à la SOURCE alors qu'il l'est
+  déjà à l'affichage (`escapeHtml(displayText)`), donc doublement — et la valeur
+  corrompue partait dans `posts.content`. Verrou : `partage-bobine.spec.js`.
+
+  ⑨ **Le lecteur de bobines n'envoyait aucun commentaire.** `submitReelComment`
+  (app-05) écrivait dans l'état local puis `saveState()`, et rien d'autre : ni
+  `post_comments`, ni `comment_interactions`. L'auteur de la bobine ne voyait jamais
+  le commentaire, et son auteur le perdait au premier rechargement. Le MÊME texte
+  posté depuis la discussion du Fil partait, lui — d'où un défaut invisible à qui
+  teste par le Fil. Corrigé **sans dupliquer de moteur** : passage par la file
+  d'attente commune `_enqueueCommentSync` (app-04), qui gère le réessai hors-ligne.
+  Dans la foulée : `loadReelComments` datait par `c.timestamp`, un champ qu'AUCUN
+  chemin de création ne pose (tous écrivent `createdAt`) — le repli « Maintenant »
+  était donc universel. Verrou : `commentaires-bobine.spec.js`.
+
+  ⑩ **Le contenu de démonstration est COPIÉ dans l'état, puis persisté à vie.**
+  `loadState` fait `parsed.notifications = def.seed.notifications.map(…)` à la
+  première ouverture. ADR-009 a réécrit la graine — mais un compte ouvert AVANT le
+  retrait garde sa copie : « Nouvelle quête du jour 🎨 **+15 pts** » et « Tu as gagné
+  **10 💎 Passia** ». `stripLegacyEconomy` filtre désormais aussi `notifications`, aux
+  TROIS frontières (`_leanState` recopie `notifications` dans le blob `user_state`,
+  donc un vieil appareil les repousserait). ⚠️ Le filtrage par TEXTE est borné aux
+  notifications écrites PAR L'APP (`fromId` absent ou `"me"`) : une notification qui
+  rapporte le contenu d'autrui le CITE — la publication d'actualité de la graine
+  contient « +4 pts ». Verrou : `notifications-economie-retiree.spec.js`.
+
+  ⑪ **« Ma ville » posait son prédicat une fois, et ne le reprenait jamais.**
+  `ui-v4a1-intentions.js` appelait `poserPredicatVille(nomVille())` au clic sur la
+  chip. Changer de ville ensuite (`selectIrlCity` → `renderIRL`) laissait le filtre
+  sur l'ANCIENNE : le titre annonçait Paris, la liste montrait Lyon. La
+  resynchronisation post-rendu ré-aligne désormais le prédicat. ⚠️ Le prédicat est
+  stocké NORMALISÉ (`_normIrlCityName`) et la ville garde son libellé d'affichage :
+  comparer les deux valeurs brutes ferait croire à une divergence à chaque rendu et
+  provoquerait une réécriture sans fin. Verrou : `irl-changement-ville.spec.js`.
+
+  ⑫ **Ouvrir l'éditeur de carnet amputait le Studio, définitivement.**
+  `activateStudioVlog` masque le texte libre, la passion et le mood — le carnet ne
+  les utilise pas. Rien ne les rendait : `closeCarnetEditor` remettait `studioType` à
+  `"text"` et s'arrêtait là, et le SEUL chemin de restauration était le clic sur un
+  onglet de format… que le lot UI-6 a retiré de l'écran. Un composeur muet, sans
+  erreur ni message, jusqu'au rechargement. Deux sorties tenues désormais : la porte
+  (`closeCarnetEditor`) et un filet dans `renderStudio` pour qui quitte l'écran CDV
+  par la navigation. ⚠️ Famille générale : **retirer un chemin d'accès (ici les
+  onglets) peut supprimer le seul chemin de RETOUR d'un état transitoire.**
+  Verrou : `studio-apres-carnet.spec.js`.
+
+  ⑬ **Deux sessions ont corrigé le MÊME défaut à deux endroits — et le cumul a
+  cassé l'affichage.** La XSS des notifications a été fermée deux fois le même
+  soir : #202 neutralise les chevrons au **point d'entrée** (`mergeSupaNotifs`,
+  par où passent la lecture REST et le temps réel), #200 échappait au **rendu**
+  (`_notifTexteHtml`). Chacun était correct seul. Fusionnés, un texte distant
+  passait deux fois — mesuré : « Ben&#39;j a aimé ton post &lt;img … &gt; »,
+  entités visibles à l'écran. Le repli par défaut de `supaInsertNotif` étant
+  `escapeHtml("Quelqu'un")`, **tout le monde** voyait « Quelqu&#39;un ».
+  Réconcilié par #209 : le modèle de confiance du rendu est conservé (le défaut
+  reste le REFUS) mais son désinfectant devient la même neutralisation de
+  chevrons qu'à l'entrée — **idempotente** (`&lt;` ne contient plus de `<`) et
+  suffisante dans un contenu d'élément. ⚠️ Deux leçons : un désinfectant appliqué
+  à deux étages doit être idempotent, sinon il ne faut en garder qu'un ; et c'est
+  exactement le risque que vise « une branche sensible = un seul écrivain » — ici
+  les deux branches ne se touchaient même pas, ce sont les CORRECTIFS qui se sont
+  recouverts. Verrou ajouté APRÈS coup, #209 n'en portait aucun : le test
+  « passée par mergeSupaNotifs, elle n'est pas désinfectée deux fois » rougit
+  seul quand on remet `escapeHtml` — les quatre tests de sécurité, eux, restent
+  verts, ce qui montre qu'il s'agit d'un défaut d'affichage et non d'une faille.
 
 - `docs/PIEGES_CONNUS.md` — les 59 fiches détaillées (extrait de ce fichier le 2026-08-07, recompté le 2026-08-29).
 - `docs/HISTORIQUE_PROJET.md` — état 2026-06-11, backlog terminé, logs d’optimisation.

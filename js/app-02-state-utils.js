@@ -86,9 +86,45 @@ function defaultState() {
 const LEGACY_ECONOMY_USER_KEYS = ["score", "passia", "likesReceived", "activePass"];
 const LEGACY_ECONOMY_ROOT_KEYS = ["transactions", "quests"];
 
+// ⚠️ Les NOTIFICATIONS déjà stockées promettaient encore des points. Le contenu
+// de démonstration est COPIÉ dans l'état à la première ouverture
+// (`parsed.notifications = def.seed.notifications.map(…)`) puis persisté : ADR-009
+// a bien réécrit la graine, mais un compte ouvert AVANT le retrait garde sa copie
+// pour toujours. Deux textes concernés, mesurés dans la graine d'avant :
+//   n5  « Nouvelle quête du jour : publie ton premier post 🎨 +15 pts »  (kind "quest")
+//   n6  « Bienvenue sur PASSIO 🎉 Tu as gagné 10 💎 Passia de bienvenue. »
+// Ils voyagent aussi par le blob `user_state` (`_leanState` recopie
+// `notifications`), d'où le passage par `stripLegacyEconomy`, appelé aux TROIS
+// frontières — sans quoi un ancien appareil les repousserait à chaque sync.
+// ⚠️ DEUX bornes, parce qu'un filtre par texte se trompe vite.
+// ① Il ne s'applique qu'aux notifications ÉCRITES PAR L'APP (`fromId` absent ou
+//    "me"). Une notification qui rapporte le contenu d'un AUTRE compte le CITE :
+//    le post d'actualité du contenu de démonstration contient « +4 pts » (une
+//    hausse de participation électorale) et un commentaire peut contenir « 💎 ».
+// ② Le motif ne retient que des tournures que l'app seule produisait. Le « 💎 »
+//    nu en est EXCLU délibérément : `pushNotification` interpole des titres
+//    d'activité et des destinations de carnet, où l'emoji est parfaitement
+//    légitime — « 🤝 Tu rejoins <b>Atelier 💎</b> » aurait disparu.
+const LEGACY_ECONOMY_NOTIF_RE = /\+\s*\d+\s*pts\b|\bPassia\b|^\s*🎉 Nouveau rang\b/i;
+const LEGACY_ECONOMY_NOTIF_KINDS = ["quest", "reward", "rank"];
+
+function _estNotifEconomieLegacy(n) {
+  if (!n || typeof n !== "object") return false;
+  if (LEGACY_ECONOMY_NOTIF_KINDS.indexOf(n.kind) > -1) return true;
+  var ecriteParLApp = !n.fromId || n.fromId === "me";
+  return ecriteParLApp && LEGACY_ECONOMY_NOTIF_RE.test(String(n.text || ""));
+}
+
 function stripLegacyEconomy(obj) {
   if (!obj || typeof obj !== "object") return obj;
   LEGACY_ECONOMY_ROOT_KEYS.forEach(function (k) { delete obj[k]; });
+  if (Array.isArray(obj.notifications)) {
+    // Réaffectation (et non splice) : sur la copie d'ENVOI, `notifications` est
+    // encore le tableau vivant de l'application — le filtrer en place ferait de
+    // cette fonction de lecture un effet de bord sur l'état affiché.
+    var gardees = obj.notifications.filter(function (n) { return !_estNotifEconomieLegacy(n); });
+    if (gardees.length !== obj.notifications.length) obj.notifications = gardees;
+  }
   if (obj.user && typeof obj.user === "object") {
     LEGACY_ECONOMY_USER_KEYS.forEach(function (k) { delete obj.user[k]; });
     if (Array.isArray(obj.user.profiles)) {
@@ -1604,8 +1640,10 @@ async function doLogout() {
 }
 
 /* Changement de mot de passe SANS email : pour un utilisateur déjà connecté,
-   via la session active (supa.auth.updateUser). Indispensable tant que l'envoi
-   d'e-mails (lien « mot de passe oublié ») n'est pas opérationnel. */
+   via la session active (supa.auth.updateUser). L'envoi d'e-mails EST
+   opérationnel depuis le branchement du SMTP (2026-08-30, docs/SETUP_SMTP_AUTH.md) ;
+   ce chemin reste le plus court pour qui est déjà connecté — il évite un
+   aller-retour par la boîte mail — et la seule sortie si le mail n'arrive pas. */
 function openChangePassword() {
   openModal('\
     <div class="modal-handle"></div>\
@@ -1825,6 +1863,11 @@ function onbValidateName() {
 
 // -------- AUTH STEP --------
 let _authMode = "signin";
+// Adresse dont la confirmation est en attente (voir onbResendConfirmation).
+// ⚠️ Déclarée ICI, avant switchAuthTab qui la remet à zéro : un `let` n'est pas
+// hissé comme une déclaration de fonction — plus bas dans le fichier, tout appel
+// fait pendant l'évaluation du script la trouverait en zone morte temporelle.
+let _pendingConfirmEmail = "";
 
 function switchAuthTab(mode) {
   _authMode = mode;
@@ -1840,6 +1883,10 @@ function switchAuthTab(mode) {
   const msg = document.getElementById("authMsg");
   msg.className = "onb-auth-msg";
   msg.textContent = "";
+  // ⚠️ Remise à zéro de l'écran : le lien de renvoi ne survit pas à un
+  // changement d'onglet. Les appelants qui basculent PUIS proposent le renvoi
+  // (onbDoAuth) doivent donc appeler _showResendConfirmation APRÈS switchAuthTab.
+  _showResendConfirmation("");
 }
 
 // ── Mot de passe oublié : envoie un e-mail de réinitialisation Supabase ──
@@ -1853,6 +1900,55 @@ async function onbForgotPassword() {
     const { error } = await supa.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin + window.location.pathname });
     if (error) { _showAuthMsg(error.message || "Échec de l'envoi.", "error"); return; }
     _showAuthMsg("📧 E-mail de réinitialisation envoyé. Vérifie ta boîte (et les spams).", "success");
+  } catch (e) {
+    _showAuthMsg("Erreur réseau. Vérifie ta connexion.", "error");
+  }
+}
+
+// ── Confirmation d'e-mail : renvoyer le lien ────────────────────────────────
+//
+// Depuis l'activation de « Confirm email » (SMTP Brevo, 2026-08-30), `signUp`
+// ne rend PLUS de session : le compte existe mais reste inutilisable tant que
+// l'adresse n'est pas confirmée. Sans ce renvoi, un lien non reçu (spam, boîte
+// pleine, lien expiré au bout de 24 h) enferme la personne : l'inscription
+// répond « cet e-mail est déjà utilisé », la connexion « confirme ton e-mail »,
+// et aucun des deux écrans n'offrait de sortie.
+//
+// L'adresse est mémorisée par _showResendConfirmation pour que le lien reste
+// utilisable après un changement d'onglet piloté par le code, mais la valeur
+// SAISIE prime toujours : on renvoie là où la personne regarde.
+function _showResendConfirmation(email) {
+  _pendingConfirmEmail = String(email || "").trim();
+  const el = document.getElementById("authResendLink");
+  if (el) el.style.display = _pendingConfirmEmail ? "" : "none";
+}
+
+async function onbResendConfirmation() {
+  const saisi = (document.getElementById("authEmail")?.value || "").trim();
+  const email = saisi || _pendingConfirmEmail;
+  if (!email || !email.includes("@")) {
+    _showAuthMsg("Entre ton adresse e-mail ci-dessus, puis reclique sur « Renvoyer ».", "error");
+    return;
+  }
+  try {
+    // Absent du client de repli hors ligne comme des SDK antérieurs à 2.7 :
+    // le dire, plutôt que de lever un TypeError avalé en « erreur réseau ».
+    if (!supa || !supa.auth || typeof supa.auth.resend !== "function") {
+      _showAuthMsg("Renvoi indisponible pour l'instant. Réessaie dans un moment.", "error");
+      return;
+    }
+    const { error } = await supa.auth.resend({ type: "signup", email });
+    if (error) {
+      let m = error.message || "Échec de l'envoi.";
+      // Supabase impose un délai minimal entre deux envois (anti-abus) : le
+      // message brut est en anglais et cite des secondes, on le rend lisible.
+      if (/security purposes|rate limit|too many/i.test(m)) m = "Un e-mail vient déjà d'être envoyé. Patiente une minute avant de réessayer.";
+      _showAuthMsg(m, "error");
+      return;
+    }
+    // Supabase ne dit JAMAIS si l'adresse existe ou est déjà confirmée
+    // (anti-énumération) : le message ne doit rien affirmer de plus que l'envoi.
+    _showAuthMsg("📧 Si ce compte attend une confirmation, le lien vient d'être renvoyé. Pense aux spams.", "success");
   } catch (e) {
     _showAuthMsg("Erreur réseau. Vérifie ta connexion.", "error");
   }
@@ -1977,7 +2073,13 @@ async function onbDoAuth() {
       let msg = error.message;
       if (msg.includes("Invalid login")) msg = "E-mail ou mot de passe incorrect.";
       if (msg.includes("already registered")) msg = "Cet e-mail est déjà utilisé. Connecte-toi.";
-      if (msg.includes("Email not confirmed")) msg = "Confirme ton e-mail avant de te connecter.";
+      // Seule sortie possible pour qui n'a jamais reçu le lien : sans ce renvoi,
+      // le compte est inaccessible pour toujours (« déjà utilisé » à
+      // l'inscription, « confirme ton e-mail » à la connexion, et rien d'autre).
+      if (msg.includes("Email not confirmed")) {
+        msg = "Confirme ton e-mail avant de te connecter.";
+        _showResendConfirmation(email);
+      }
       _showAuthMsg(msg, "error");
       if (btn) { btn.disabled = false; btn.textContent = _authMode === "signin" ? "Se connecter" : "Créer mon compte"; }
       return;
@@ -1987,16 +2089,22 @@ async function onbDoAuth() {
       // existe déjà (anti-énumération) : il renvoie un user aux `identities` vides.
       // On le détecte pour garantir « un seul compte par e-mail ».
       if (data?.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
-        _showAuthMsg("Cet e-mail est déjà utilisé. Connecte-toi.", "error");
+        // ⚠️ switchAuthTab() VIDE #authMsg (il remet la classe et le texte à zéro) :
+        // basculer AVANT d'écrire, sinon l'explication est effacée dans la
+        // milliseconde et l'écran change sans un mot. Ces deux branches ne sont
+        // atteignables que depuis l'activation de « Confirm email » (2026-08-30) —
+        // le défaut était donc invisible tant que signUp rendait une session.
         switchAuthTab("signin");
+        _showAuthMsg("Cet e-mail est déjà utilisé. Connecte-toi.", "error");
         if (btn) { btn.disabled = false; btn.textContent = "Se connecter"; }
         return;
       }
       // Pas de session → e-mail à confirmer. On NE rentre PAS dans l'app sans
       // adresse confirmée (exigence : « il faut une adresse mail valide »).
       if (!data?.session) {
-        _showAuthMsg("✅ Compte créé ! Vérifie tes e-mails pour confirmer, puis reviens te connecter.", "success");
         switchAuthTab("signin");
+        _showAuthMsg("✅ Compte créé ! Vérifie tes e-mails (et les spams) pour confirmer, puis reviens te connecter.", "success");
+        _showResendConfirmation(email);
         if (btn) { btn.disabled = false; btn.textContent = "Se connecter"; }
         return;
       }
@@ -2966,7 +3074,7 @@ function renderFeedCdvLives() {
         <span style="font-size:11px;color:var(--muted);margin-left:auto;">👁 ${viewerCount}</span>
       </div>
       <div style="font-size:11px;color:var(--text-dim);margin-bottom:6px;">par ${escapeHtml(authorName)}</div>
-      ${l.steps.length ? `<div style="font-size:10px;color:var(--muted);">${l.steps.length} étape${l.steps.length>1?"s":""} · ${l.duration || ""}</div>` : ""}
+      ${l.steps.length ? `<div style="font-size:10px;color:var(--muted);">${l.steps.length} étape${l.steps.length>1?"s":""} · ${escapeHtml(l.duration || "")}</div>` : ""}
     </div>`;
   }).join("");
 

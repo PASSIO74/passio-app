@@ -55,6 +55,43 @@ test.describe("le texte d'une notification", () => {
     expect(r.texte_affiche).toContain("Léa a aimé");
   });
 
+  // ⚠️ CROISEMENT DE DEUX CORRECTIFS (2026-08-29). #202 neutralise les chevrons
+  // au POINT D'ENTRÉE (`mergeSupaNotifs`), celui-ci désinfecte au RENDU. Avec un
+  // `escapeHtml` au rendu, le texte passait DEUX fois : mesuré sur `main`, une
+  // notification distante s'affichait « Ben&#39;j a aimé ton post &lt;img … &gt; ».
+  // Le nom est déjà échappé par l'émetteur — `supaInsertNotif` fait
+  // `escapeHtml(prof.name || "Quelqu'un")` — donc le repli par défaut montrait
+  // « Quelqu&#39;un » à tout le monde. Le désinfectant du rendu est donc la même
+  // neutralisation de chevrons, IDEMPOTENTE.
+  test("passée par mergeSupaNotifs, elle n'est pas désinfectée deux fois", async ({ page }) => {
+    await bootOnboarded(page);
+    const r = await page.evaluate(async () => {
+      window.__XSS_NOTIF = false;
+      state.notifications = [];
+      mergeSupaNotifs([{
+        id: "n_double", kind: "like", fromId: "u_autre", fromSupabase: true,
+        // Ce que compose réellement `supaInsertNotif` : le nom est DÉJÀ échappé.
+        text: 'Quelqu&#39;un a aimé ton post <img src=x onerror="window.__XSS_NOTIF=true">',
+        emoji: "❤️", createdAt: Date.now(), unread: true,
+      }]);
+      openNotifications();
+      await new Promise((r) => setTimeout(r, 600));
+      const el = document.querySelector(".notif-text");
+      return {
+        texte: el ? el.textContent : "(absent)",
+        balise: !!document.querySelector(".notif-text img"),
+        script: !!window.__XSS_NOTIF,
+      };
+    });
+
+    // Sécurité d'abord : toujours inerte.
+    expect(r.script).toBe(false);
+    expect(r.balise).toBe(false);
+    // Et lisible : l'apostrophe est une apostrophe, pas une entité affichée.
+    expect(r.texte).toContain("Quelqu'un a aimé");
+    expect(r.texte, "aucune entité ne doit être visible à l'écran").not.toMatch(/&(amp|#39|lt|gt|quot);/);
+  });
+
   test("d'une notification LOCALE garde son gras voulu", async ({ page }) => {
     await bootOnboarded(page);
     const r = await poserEtOuvrir(page, {

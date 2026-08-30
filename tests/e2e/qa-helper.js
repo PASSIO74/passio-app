@@ -2,13 +2,15 @@
 // QA-HELPER — briques partagées de la CAMPAGNE QA multi-comptes (qa-campaign).
 //
 // Réutilise le parcours d'inscription RÉEL prouvé par multi-comptes.spec.js :
-// landing → « Créer un compte » → signUp e-mail/mot de passe (comptes jetables
-// e2e_…@passio-e2e.test, purgés par le globalTeardown) → onboarding → reload
-// pour que boot() rebranche supaInit + supaSubscribe (realtime) avec la session.
+// landing → « Créer un compte » → compte jetable e2e_…@passio-e2e.test créé
+// pré-confirmé puis connecté (compte-e2e.js ; purgé par le globalTeardown) →
+// onboarding → reload pour que boot() rebranche supaInit + supaSubscribe
+// (realtime) avec la session.
 //
 // ⚠️ ÉCRIT EN BASE RÉELLE (prod). Opt-in strict côté spec (PASSIO_QA_CAMPAIGN=1).
 // ═══════════════════════════════════════════════════════════════════════════
 const { GATE_TOKEN, GATE_KEY } = require("./gate-helper");
+const { creerCompteE2E } = require("./compte-e2e");
 
 const RT_MODE = process.env.PASSIO_E2E_RT || "";
 
@@ -26,15 +28,10 @@ async function signupUser(page, label, passionIndex = 0) {
   await page.waitForSelector("#landing.active", { timeout: 25000 });
   await page.getByRole("button", { name: "Créer un compte" }).first().click();
   await page.waitForFunction(() => typeof supa !== "undefined" && !!supa && typeof onbNext === "function", null, { timeout: 25000 });
-  const email = `e2e_${Date.now()}_${Math.random().toString(36).slice(2, 8)}@passio-e2e.test`;
-  await page.evaluate(async (em) => {
-    try {
-      const { data, error } = await supa.auth.signUp({ email: em, password: "Passio-qa-12345!" });
-      if (data && data.session) { window.MY_UID = data.session.user.id; try { localStorage.setItem("passio_uid", window.MY_UID); } catch (e) {} }
-      else if (error) console.warn("signUp qa error:", error.message);
-    } catch (e) { console.warn("signUp qa exception:", e && e.message); }
-    if (typeof onbNext === "function") onbNext();
-  }, email);
+  // Compte réel PRÉ-CONFIRMÉ (compte-e2e.js) : depuis l'activation de « Confirm
+  // email », signUp ne rend plus de session et l'attente de MY_UID expirait.
+  await creerCompteE2E(page, "qa");
+  await page.evaluate(() => { if (typeof onbNext === "function") onbNext(); });
   await page.waitForFunction(() => !!window.MY_UID, null, { timeout: 25000 });
   await page.locator("#birthYear").fill("1995");
   await page.getByRole("button", { name: "Valider" }).click();

@@ -18,7 +18,7 @@
 
 ## P0 — sécurité / prérequis qui ne doivent pas régresser
 
-1. **SMTP + confirmation e-mail** (confidentialité, anti-usurpation).
+1. ~~SMTP + confirmation e-mail~~ → **fait le 2026-08-30** (Brevo + « Confirm email » ON). Reste ouvert : **authentifier le domaine d'envoi** (DKIM/DMARC, accès DNS requis) et poser le secret `SUPABASE_SERVICE_ROLE_KEY` dans le dépôt, sans lequel les gates e2e qui écrivent en base échouent. Voir `docs/SETUP_SMTP_AUTH.md`.
 2. **URLs signées** pour médias privés.
 3. **Gate `migration-checker`** prod↔repo avant toute migration.
 4. Maintenir verts les invariants **RLS / authz / blocage / confidentialité / cross-compte** pendant toute simplification.

@@ -1,8 +1,8 @@
 {
   "$comment": "Source de verite MACHINE de la qualification PASSIO. Vue humaine : PASSIO_MASTER_CONTROL.md. Journal : PASSIO_ENGINEERING_LOG.md. Regle : aucune valeur inventee ; un champ non mesure vaut null et porte un statut explicite.",
   "schema_version": 1,
-  "generated_at": "2026-08-29T09:50:00.000Z",
-  "commit": "c2e3e1b",
+  "generated_at": "2026-08-30T06:55:00.000Z",
+  "commit": "1dde20c",
   "branch": "main",
   "working_tree": "clean",
   "environment": {
@@ -408,6 +408,154 @@
       "cause_racine": "NON ETABLIE — une seule occurrence observee, aucune mesure repetee. Ne pas conclure.",
       "prochaine_etape": "Rejouer --repeat-each sans retries, comme cela a ete fait pour RACE-LIKE-003, avant toute hypothese.",
       "verified": false
+    },
+    {
+      "id": "XSS-NOTIF-015",
+      "severity": "P0",
+      "domain": "securite_xss_stockee",
+      "status": "FIXED_IN_PROD",
+      "problem": "Le texte d une notification distante (notifications.content, inserable par tout compte authentifie) etait insere BRUT dans _notifListHtml. Charge <img src=x onerror=...> executee dans le panneau de la victime.",
+      "fix": "Modele de confiance EXPLICITE au rendu (html:true / kind==='local'), tout le reste neutralise ; ET neutralisation des chevrons a l ENTREE dans mergeSupaNotifs. PR #200, #202, reconcilies par #209.",
+      "preuve": "6 tests a preuve ACTIVE (la charge appelle window.__pwn()) ; 3 mutations, 3 rouges.",
+      "verified": true
+    },
+    {
+      "id": "XSS-REACT-016",
+      "severity": "P1",
+      "domain": "securite_xss_stockee",
+      "status": "FIXED_IN_PROD",
+      "problem": "La cle d une reaction de message n etait filtree ni a l affichage ni a l ENTREE : la charge restait dans localStorage ET IndexedDB, rejouee a chaque demarrage.",
+      "fix": "escapeHtml a l affichage + _reactionKeySure a l entree (rejet de [<>&\"'\\\\ et des cles de plus de 16 caracteres). PR #202, #207.",
+      "preuve": "4 tests ; 1 mutation -> 2 rouges. La verification adversariale avait signale que neutraliser a l affichage ne desamorce pas le stockage.",
+      "verified": true
+    },
+    {
+      "id": "XSS-HREF-017",
+      "severity": "P1",
+      "domain": "securite_xss_stockee",
+      "status": "FIXED_IN_PROD",
+      "problem": "Le href d un message « position » acceptait javascript: — escapeHtml ferme la sortie d attribut, pas le schema d URL.",
+      "fix": "safeUrlAttr, le helper prevu pour ce contexte. PR #202.",
+      "preuve": "test dedie ; mutation -> rouge.",
+      "verified": true
+    },
+    {
+      "id": "CARNET-PRIVE-018",
+      "severity": "P0",
+      "domain": "confidentialite",
+      "status": "FIXED_IN_PROD",
+      "problem": "Un carnet marque « Prive » s affichait dans le fil de TOUS les comptes et s ouvrait entierement.",
+      "fix": "canSeeCarnet applique dans allFeedPosts ET en tete d openVlogViewer. PR #203.",
+      "preuve": "5 tests ; 2 mutations -> 4 rouges.",
+      "limite": "Filet CLIENT seulement. La vraie fermeture demande une colonne reelle et une policy RLS — non ecrite, prod injoignable depuis la session et regle de la nuit interdisant une migration sans supervision.",
+      "verified": true
+    },
+    {
+      "id": "MSG-BADGE-019",
+      "severity": "P1",
+      "domain": "regression_de_lot",
+      "status": "FIXED_IN_PROD",
+      "problem": "Apres le lot UI-7 §4, plus AUCUNE surface de l application n indiquait un message non lu : renderMsgBadge calculait le bon nombre pour l ecrire dans un element masque. Et l icone Messages ayant ete RETIREE du markup, couper UI-1 laissait l ecran Messages sans aucune porte.",
+      "fix": "Pastille .nav-msg-badge sur l entree Messages des DEUX barres ; icone du bandeau MASQUEE sous double condition UI-7 ET UI-1, jamais retiree. PR #204.",
+      "preuve": "6 tests ; 2 mutations -> 4 puis 1 rouge. Deux assertions existantes qui exigeaient le RETRAIT ont ete corrigees en presence+invisibilite, pas affaiblies.",
+      "verified": true
+    },
+    {
+      "id": "UI6A-BOUCLE-020",
+      "severity": "P1",
+      "domain": "performance",
+      "status": "FIXED_IN_PROD",
+      "problem": "L inbox Messages se repeignait en boucle : le MutationObserver de decoration voyait ses propres ecritures.",
+      "fix": "Signature d etat par carte (pseudo + contexte) ; on n ecrit qu au changement reel. PR #205.",
+      "preuve": "MESURE : 1047 mutations DOM en 1,5 s avant, 0 apres.",
+      "verified": true
+    },
+    {
+      "id": "MSG-MEDIA-021",
+      "severity": "P1",
+      "domain": "ecriture_silencieuse",
+      "status": "FIXED_IN_PROD",
+      "problem": "sendMessageToSupabase ne lisait pas { error } : le SDK ne LEVE PAS sur un refus RLS, donc un media (photo, video, vocal, document) refuse restait « envoye » a l ecran et disparaissait au rechargement.",
+      "fix": "Echec -> statut failed + outbox ; succes -> statut sent + retrait de l outbox. PR #206.",
+      "preuve": "3 tests ; 1 mutation -> 1 rouge.",
+      "verified": true
+    },
+    {
+      "id": "SEARCH-BORNE-022",
+      "severity": "P2",
+      "domain": "performance_reseau",
+      "status": "FIXED_IN_PROD",
+      "problem": "supaSearchUsers n avait AUCUNE limite : chercher « a » ramenait toute ligne de profiles dont le pseudo ou la bio contient un « a », bio et avatar_url compris, a chaque frappe. Et les reponses revenaient dans l ordre du reseau : taper « ab » puis « abc » laissait la reponse d « ab » ecraser celle d « abc ».",
+      "fix": ".limit(30) + garde d obsolescence _nmRequeteCourante() sur les deux .then de _nmDoSearch. PR #210.",
+      "preuve": "2 tests ; 2 mutations, 1 rouge chacune.",
+      "verified": true
+    },
+    {
+      "id": "DEEPLINK-ETAT-023",
+      "severity": "P1",
+      "domain": "liens_profonds",
+      "status": "FIXED_IN_PROD",
+      "problem": "Trois liens profonds sondaient l application avant qu elle soit prete. `state` vaut null (pas undefined) jusqu a state = loadState(), qui part apres await ensureSupabase() : l acces a state.seed levait, l exception venue d un setTimeout ou d un hashchange n etait rattrapee par personne, la boucle de reprise n etait JAMAIS armee, et le lien mourait sans un toast. Le pire cas est le QR de pointage : on est devant l organisateur, on scanne, il ne se passe rien.",
+      "fix": "#reel=<id> (app-06, PR precedente) puis #irl-event- et #irl-checkin- (app-07, PR #212) : attente de disponibilite qui ne consomme pas d essai de contenu, memorisation de l id au premier passage, corps sous try qui replanifie, ecoute de passio:app-ready.",
+      "preuve": "3 tests ; sur le code d avant, les 2 cas degrades ROUGES et le cas nominal VERT.",
+      "limite": "Mutation mesuree : chaque couche suffit SEULE (neutraliser la garde laisse vert car le catch rattrape ; faire conclure le catch laisse vert car la garde evite l exception). Aucune mutation simple ne rougit — le test protege le comportement, pas chaque couche.",
+      "verified": true
+    },
+    {
+      "id": "SESSIONS-COLLISION-024",
+      "severity": "P1",
+      "domain": "processus",
+      "status": "CLOS",
+      "problem": "Deux sessions Claude Code ont trouve la meme XSS de notification le meme soir et l ont fermee a deux bouts differents de la chaine. Chaque PR etait verte separement — elles ne se voyaient pas. Fusionnees, elles double-echappaient : « Ben&#39;j » s affichait a l ecran. main est reste rouge de 23:00 a 00:11, aucun deploiement production, et SIX PR bloquees en cascade sur exactement les deux memes tests sans etre fautives.",
+      "fix": "PR #209 : le modele de confiance de l autre session est conserve (son defaut est le REFUS), seul le desinfectant change pour etre IDEMPOTENT avec la neutralisation d entree.",
+      "lecon": "Deux correctifs corrects sur la meme ligne ne font pas un correctif correct. La CI d une PR ne teste pas la fusion, elle teste la branche. `npm run sessions` sert a declarer un perimetre de fichiers : aucune des deux sessions ne l a utilise cette nuit.",
+      "verified": true
+    },
+    {
+      "id": "TESTS-CREUX-025",
+      "severity": "P2",
+      "domain": "qualite_des_tests",
+      "status": "CLOS",
+      "problem": "Deux tests de securite ecrits cette nuit passaient POUR LA MAUVAISE RAISON, trouves par reinjection et non par relecture. (1) La charge XSS fabriquait onmouseover=\"window.__pwn()', event);\" — une erreur de syntaxe que le navigateur avale en silence, donc le test passait sans echappement. (2) Un test sans decor : _liveReactItems ne trouvait pas le live, la pastille n etait jamais construite, le test restait vert en retirant l echappement.",
+      "fix": "Charge terminee par // pour rendre le reste inerte ; decor seed dans localStorage.passio_cdv_lives.",
+      "lecon": "Un test de securite qui n a pas ete vu ROUGIR n est pas un test de securite. Le meme filet a resservi le lendemain : le premier jet du test des liens IRL mesurait la fiche par une classe .active qu elle n a pas — les trois tests etaient rouges, cas nominal compris.",
+      "verified": true
+    },
+    {
+      "id": "CI-SIGNUP-026",
+      "severity": "P1",
+      "domain": "ci_release_gate",
+      "status": "OUVERT — bloque le deploiement",
+      "problem": "Depuis 06:03 le 2026-08-30, le gate authz-critical echoue et avec lui tout le deploiement. Cause MESUREE (message instrumente, PR #220) : supa.auth.signUp rend error === null, data.user PRESENT et data.session === null. Le compte est cree, c'est la session qui manque — signature de « Confirm email » exige par le projet Supabase.",
+      "ce_que_ce_n_est_pas": "PAS un incident de production. app-02 gere explicitement ce cas a l'inscription (« Pas de session → e-mail a confirmer »), et un nouvel inscrit voit « Compte cree ! Verifie tes e-mails ». La confirmation d'e-mail est un comportement VOULU de PASSIO.",
+      "defaut_reel": "authz-critical.spec.js et user-state-horodatage.spec.js supposent que signUp rend une session IMMEDIATE. Cette hypothese est incompatible avec le reglage que le produit revendique par ailleurs : ces deux gardes etaient condamnees des que la confirmation s'appliquerait a leurs comptes.",
+      "non_mesure": "Pourquoi elles passaient a 05:22 et echouaient a 06:03 : soit le reglage a change entre les deux, soit les adresses @passio-e2e.test beneficiaient d'une exemption qui a saute. Le connecteur Supabase lecture seule n'est pas authentifie dans la session et le proxy refuse le domaine du projet.",
+      "impact": "main rouge sur 1dde20c, « Deploiement production » saute, la prod tourne sur 8f4c319 donc SANS les six correctifs du matin. Rien n'est casse en ligne : c'est du retard, pas une panne.",
+      "remede_hors_depot": "Verifier le reglage Auth du projet Supabase (Confirm email). Si la confirmation est voulue — et le code dit qu'elle l'est — alors les deux gardes doivent etre repensees : comptes de test provisionnes a l'avance + secret CI pour s'y connecter. Ni l'un ni l'autre n'est creable depuis la session.",
+      "refus_assume": "Contourner en acceptant un compte sans session desarmerait la garde pour faire passer la CI. Non fait.",
+      "verified": true
+    },
+    {
+      "id": "CI-VAGUE-027",
+      "severity": "P2",
+      "domain": "ci_release_gate",
+      "status": "CORRIGE, en attente de contre-revue",
+      "problem": "Huit branches mises a jour puis six PR fusionnees coup sur coup ont lance quatorze runs CI en une heure, tous partageant la meme prod Supabase. Erreur de manoeuvre de la session, pas defaut du depot.",
+      "second_defaut_ferme_au_passage": "Sans serialisation, six runs de main tournent en parallele et rien ne garantit que le dernier commit pousse soit le dernier deploye : un run ancien peut finir apres un plus recent et remettre en ligne un artefact perime.",
+      "fix": "concurrency { group: passio-ci, cancel-in-progress: false } dans deploy.yml — branche claude/ci-serialiser. Groupe CONSTANT et non derive de github.ref : la saturation vient du CUMUL entre branches, un groupe par branche n'aurait rien regle.",
+      "cout_assume": "Les runs font la queue. Sur l'usage ordinaire — une PR a la fois — cela ne change rien ; cela ne mord que sur une vague, c'est-a-dire exactement quand on veut que cela morde.",
+      "bloque_par": "Perimetre .github/ : la garde « Gouvernance critique » exige une contre-revue humaine ancree sur le SHA. Non contournee.",
+      "verified": true
+    },
+    {
+      "id": "TEST-DIAG-028",
+      "severity": "P2",
+      "domain": "qualite_des_tests",
+      "status": "CORRIGE",
+      "problem": "Les deux gardes qui creent de vrais comptes rendaient « pas de session » pour TROIS causes distinctes — signUp refuse, signUp vide, compte sans session. La CI a echoue trois fois de suite sur ce seul message, sans permettre de choisir le remede. J'ai conclu a tort a un epuisement de quota, hypothese plausible mais NON MESUREE, et fausse.",
+      "fix": "Trois branches de diagnostic distinctes, PR #220. Aucune assertion retiree ni affaiblie : les gardes exigent toujours un compte reellement cree avec sa session, seul le message change.",
+      "lecon": "Trois relances identiques ne valent pas un diagnostic. Quand un echec ne dit pas sa cause, le premier correctif est de le faire parler — pas de relancer une quatrieme fois.",
+      "verified": true
     }
   ],
   "dette_signalee_non_traitee": [
@@ -432,6 +580,23 @@
       "sujet": "node20_ci_deprecie",
       "nb": 2,
       "motif": "Modifier les actions, c est modifier le chemin de deploiement. Le bump se verifie sur une PR."
+    },
+    {
+      "sujet": "ci_runtime_node20",
+      "statut": "PRET, NON APPLIQUE — attend la contre-revue de Benjamin",
+      "motif": "GitHub retire Node 20 des runners le 23 septembre 2026. actions/checkout@v4 et setup-node@v4 tournent sur ce runtime : passe cette date, gouvernance, tests, build, deploiement, rollback et Sentinelle s arretent tous. Correctif minimal pret (v4 -> v5) en PR #201. Le perimetre .github/ est critique : la garde « Gouvernance critique » exige une contre-revue humaine ancree sur le SHA. Elle a refuse la PR — comportement voulu, non contourne.",
+      "echeance": "2026-09-23"
+    },
+    {
+      "sujet": "carnet_prive_rls",
+      "statut": "FILET CLIENT SEULEMENT",
+      "motif": "CARNET-PRIVE-018 est ferme cote client. La vraie fermeture demande une colonne reelle et une policy RLS. Non ecrite : la prod est injoignable depuis la session autonome (proxy refuse njkiyoklssvefstljemx.supabase.co), donc impossible de lire le schema reel, et la regle de la nuit interdit d appliquer une migration sans supervision."
+    },
+    {
+      "sujet": "audit_nuit_findings_non_verifies",
+      "nb": 36,
+      "statut": "NON VERIFIES",
+      "motif": "Findings de moindre gravite du premier audit, laisses sans verification adversariale faute de budget. Ils ne doivent PAS etre pris pour des defauts etablis. Une seconde passe a ete lancee sur les plus prometteurs (stories vs blocage, base64 retenu sur window, tests creux, ecritures silencieuses restantes, autres liens profonds)."
     }
   ],
   "decisions": [

@@ -10,6 +10,7 @@
 //   bash :        PASSIO_E2E_MULTI=1 npm test -- multi-comptes
 const { test, expect } = require("@playwright/test");
 const { GATE_TOKEN, GATE_KEY } = require("./gate-helper");
+const { creerCompteE2E } = require("./compte-e2e");
 
 // Mode realtime à tester : PASSIO_E2E_RT = "v2" | "v3" (sinon v1 par défaut).
 // Permet de valider le realtime scalable de bout en bout :
@@ -1150,11 +1151,12 @@ test.describe("messagerie entre 2 comptes réels", () => {
   });
 });
 
-// Parcours réel : landing → Créer un compte → inscription par e-mail/mot de passe
+// Parcours réel : landing → Créer un compte → compte réel par e-mail/mot de passe
 // (l'auth ANONYME est désactivée côté Supabase — `anonymous_provider_disabled` —
-// et l'app exige un vrai compte ; « Confirm email » étant OFF, signUp renvoie une
-// session immédiatement) → âge → prénom → 1 passion → Entrer sur PASSIO, puis
-// reload pour que boot() refasse supaInit + supaSubscribe avec la session.
+// et l'app exige un vrai compte) → âge → prénom → 1 passion → Entrer sur PASSIO,
+// puis reload pour que boot() refasse supaInit + supaSubscribe avec la session.
+// ⚠️ Le compte est créé PRÉ-CONFIRMÉ par compte-e2e.js : « Confirm email » est
+// activé depuis le 2026-08-30, et `signUp` ne rend donc plus de session.
 // ⚠️ Crée de vrais utilisateurs e-mail jetables dans auth.users (préfixe e2e_…@
 // passio-e2e.test) — non supprimables sans service_role, comme les anciens
 // comptes anonymes. C'est pourquoi le test reste OPT-IN.
@@ -1173,19 +1175,12 @@ async function signupAnonymous(page, name) {
   step("landing affichée (boot terminé)");
   await page.getByRole("button", { name: "Créer un compte" }).first().click();
   step("clic Créer un compte");
-  // Inscription e-mail par l'API (équivalent de onbDoAuth en mode signup) puis
+  // Création + connexion par l'API (équivalent de onbDoAuth en mode signup) puis
   // onbNext() pour avancer l'onboarding, comme l'ancien chemin anonyme.
   await page.waitForFunction(() => typeof supa !== "undefined" && !!supa && typeof onbNext === "function", null, { timeout: 20000 });
-  const email = `e2e_${Date.now()}_${Math.random().toString(36).slice(2, 8)}@passio-e2e.test`;
-  await page.evaluate(async (em) => {
-    try {
-      const { data, error } = await supa.auth.signUp({ email: em, password: "Passio-e2e-12345!" });
-      if (data && data.session) { window.MY_UID = data.session.user.id; try { localStorage.setItem("passio_uid", window.MY_UID); } catch (e) {} }
-      else if (error) console.warn("signUp e2e error:", error.message);
-    } catch (e) { console.warn("signUp e2e exception:", e && e.message); }
-    if (typeof onbNext === "function") onbNext();
-  }, email);
-  step("inscription e-mail (API) — attente MY_UID…");
+  await creerCompteE2E(page);
+  await page.evaluate(() => { if (typeof onbNext === "function") onbNext(); });
+  step("compte pré-confirmé créé et connecté — attente MY_UID…");
   await page.waitForFunction(() => !!window.MY_UID, null, { timeout: 20000 });
   step("MY_UID obtenu");
   await page.locator("#birthYear").fill("1995");
