@@ -939,11 +939,33 @@ function sendMessageToSupabase(msgId, convId, fileUrl, fileType, fileName, kind)
 
   // AVEC from_id d'abord : la RLS v2 rejette toujours l'insert sans from_id
   // (WITH CHECK from_id = auth.uid()) — fallback sans from_id par prudence.
+  // ⚠️ LE VERDICT DE L'ÉCRITURE DOIT ÊTRE VISIBLE. Ce chemin — photos, vidéos,
+  // GIF, vocaux, documents, position — lisait bien `res.error`, mais n'en
+  // faisait qu'un `_diag` et un événement de télémétrie : à l'écran le média
+  // restait « envoyé », et il disparaissait au rechargement. Un vocal perdu ne
+  // se refait pas. Le chemin TEXTE et le TRANSFERT traitent déjà ce cas de la
+  // même façon depuis longtemps : statut « failed » + mise en file de renvoi
+  // (`_outboxAdd`), le pictogramme « ⚠️ réessayer » étant rendu par
+  // `_msgStatusIndHtml`. Le média n'avait simplement jamais reçu ce traitement.
+  var _charge = _withSenderMeta(contentJson);
+  function _echec(raison) {
+    _diag("handleAttachFile: ❌ Échec définitif - " + raison);
+    try { if (typeof _setMsgStatus === "function") _setMsgStatus(convId, msgId, "failed"); } catch (e) {}
+    try { if (typeof _outboxAdd === "function") _outboxAdd(convId, msgId, _charge); } catch (e) {}
+    _flowSaved(false, raison);
+  }
+  function _succes(voie) {
+    _diag("handleAttachFile: ✅ Supabase OK (" + voie + ")");
+    try { if (typeof _setMsgStatus === "function") _setMsgStatus(convId, msgId, "sent"); } catch (e) {}
+    try { if (typeof _outboxRemove === "function") _outboxRemove(msgId); } catch (e) {}
+    _flowSaved(true);
+  }
+
   supa.from("conv_messages").insert({
     id: msgId,
     conv_id: convId,
     from_id: (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : null,
-    content: _withSenderMeta(contentJson),
+    content: _charge,
     created_at: new Date().toISOString()
   }).then(function(res) {
     if (res.error) {
@@ -951,24 +973,18 @@ function sendMessageToSupabase(msgId, convId, fileUrl, fileType, fileName, kind)
       supa.from("conv_messages").insert({
         id: msgId,
         conv_id: convId,
-        content: _withSenderMeta(contentJson),
+        content: _charge,
         created_at: new Date().toISOString()
       }).then(function(res2) {
-        if (!res2.error) {
-          _diag("handleAttachFile: ✅ Supabase OK (fallback sans from_id)");
-          _flowSaved(true);
-        } else {
-          _diag("handleAttachFile: ❌ Échec définitif - " + res2.error.message);
-          _flowSaved(false, res2.error.message);
-        }
-      }).catch(function(e2) { _flowSaved(false, e2 && e2.message); });
+        if (!res2.error) _succes("fallback sans from_id");
+        else _echec(res2.error.message);
+      }).catch(function(e2) { _echec((e2 && e2.message) || "exception"); });
     } else {
-      _diag("handleAttachFile: ✅ Supabase OK (avec from_id)");
-      _flowSaved(true);
+      _succes("avec from_id");
     }
   }).catch(function(err) {
     _diag("handleAttachFile: Catch - " + err.message);
-    _flowSaved(false, err && err.message);
+    _echec((err && err.message) || "exception");
   });
 }
 
