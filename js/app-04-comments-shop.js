@@ -4082,16 +4082,36 @@ function _sendReaction(convId, msgId, emoji, op) {
 }
 
 // Applique un événement de réaction (reçu ou rejoué) à un message d'une conv.
+// La CLÉ d'une réaction vient d'un AUTRE compte : `conv_messages.content` est
+// une colonne libre, tout compte membre de la conversation y insère ce qu'il
+// veut. L'échappement à l'affichage empêche l'exécution — mais sans filtre à
+// l'ENTRÉE, la valeur hostile entre quand même dans `state`, part dans
+// localStorage ET IndexedDB par `saveConversations`, et revient à chaque
+// démarrage. On borne donc ce qui a le droit de devenir une clé de réaction.
+//
+// Volontairement PAS une liste blanche de plages Unicode : les emojis composés
+// (👨‍👩‍👧, drapeaux, modificateurs de teinte) casseraient. On rejette ce qui n'a
+// rien à faire dans un emoji — balisage, guillemets, antislash, caractères de
+// contrôle — et ce qui est trop long pour en être un.
+function _reactionKeySure(x) {
+  var s = String(x == null ? "" : x);
+  if (!s || s.length > 16) return "";
+  if (/[<>&"'\\\u0000-\u001F]/.test(s)) return "";
+  return s;
+}
+
 function _applyReactionEvent(c, ev) {
   if (!c || !ev || !ev.target) return;
+  var emoji = _reactionKeySure(ev.emoji);
+  if (!emoji) return;
   var tm = (c.messages || []).find(function(x){ return x.id === ev.target; });
   if (!tm) return;
   tm.reactions = tm.reactions || {};
   if (ev.op === "remove") {
-    tm.reactions[ev.emoji] = (tm.reactions[ev.emoji] || 1) - 1;
-    if (tm.reactions[ev.emoji] <= 0) delete tm.reactions[ev.emoji];
+    tm.reactions[emoji] = (tm.reactions[emoji] || 1) - 1;
+    if (tm.reactions[emoji] <= 0) delete tm.reactions[emoji];
   } else {
-    tm.reactions[ev.emoji] = (tm.reactions[ev.emoji] || 0) + 1;
+    tm.reactions[emoji] = (tm.reactions[emoji] || 0) + 1;
   }
 }
 
