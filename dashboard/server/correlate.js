@@ -12,6 +12,7 @@
 // coupable désigné à tort.
 // ═══════════════════════════════════════════════════════════════════════════
 import * as git from "./git.js";
+import { entree } from "./liste-blanche.js";
 
 // Un changement postérieur au début de l'incident ne peut pas l'avoir causé ;
 // au-delà de la fenêtre amont, la proximité temporelle ne veut plus rien dire.
@@ -42,7 +43,7 @@ function shipsToApp(commit) {
 }
 
 function touchesFeature(commit, feature) {
-  const frags = FEATURE_PATHS[feature] || [];
+  const frags = entree(FEATURE_PATHS, feature) || [];
   if (!frags.length) return false;
   const hay = (commit.files.join(" ") + " " + commit.subject).toLowerCase();
   return frags.some((f) => hay.includes(f));

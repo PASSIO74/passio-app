@@ -4,6 +4,7 @@
 // pourra brancher plus tard e-mail / webhook / messagerie (voir NOTIFY_SINKS).
 // ═══════════════════════════════════════════════════════════════════════════
 import { store } from "./store.js";
+import { entree } from "./liste-blanche.js";
 import { broadcast } from "./sse.js";
 import { JsonDb } from "./jsondb.js";
 import { drainNewVerdicts } from "./traces.js";
@@ -138,7 +139,7 @@ export function sweepTraces() {
   let verdicts;
   try { verdicts = drainNewVerdicts(); } catch (e) { return; }
   for (const v of verdicts) {
-    const spec = VERDICT_ALERT[v.final];
+    const spec = entree(VERDICT_ALERT, v.final);
     if (!spec) continue;
     const failStep = (v.steps || []).find((s) => s.status === "fail")
       || (v.steps || []).find((s) => s.status === "missing");

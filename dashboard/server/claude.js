@@ -5,6 +5,7 @@
 // L'assistant PROPOSE ; il ne modifie jamais la production directement.
 // ═══════════════════════════════════════════════════════════════════════════
 import { config } from "./config.js";
+import { entree } from "./liste-blanche.js";
 import { store } from "./store.js";
 import { readSnippet, blameFile } from "./git.js";
 import { audit } from "./audit.js";
@@ -114,7 +115,7 @@ export function buildTracePrompt(t, suspectsBlock = "") {
   lines.push("");
   lines.push("## Chaîne de validation (étape par étape)");
   for (const s of t.steps) {
-    const st = STEP_STATUS_FR[s.status] || s.status;
+    const st = entree(STEP_STATUS_FR, s.status) || s.status;
     const extra = s.http_status ? ` (HTTP ${s.http_status})` : "";
     lines.push(`- ${s.label} : ${st}${extra}`);
   }

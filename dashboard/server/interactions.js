@@ -18,6 +18,7 @@
 // Il ne lit rien de plus que la télémétrie déjà ingérée : lecture seule.
 // ═══════════════════════════════════════════════════════════════════════════
 import { store } from "./store.js";
+import { entree } from "./liste-blanche.js";
 
 const WINDOW_MS = 45_000;    // fenêtre max émission → réception pour apparier
 const PENDING_MS = 12_000;   // en deçà et sans réception : encore « en attente »
@@ -69,12 +70,12 @@ class InteractionTracker {
   onEvent(ev) {
     if (!ev) return false;
     if (ev.type === "rt_recv") return this._onReceive(ev);
-    if (ev.type === "action" && EMIT_KIND[ev.action]) return this._onEmit(ev);
+    if (ev.type === "action" && entree(EMIT_KIND, ev.action)) return this._onEmit(ev);
     return false;
   }
 
   _onEmit(ev) {
-    const kind = EMIT_KIND[ev.action];
+    const kind = entree(EMIT_KIND, ev.action);
     const rec = {
       id: ev.event_id || ev.id,
       kind,
@@ -93,7 +94,7 @@ class InteractionTracker {
   }
 
   _onReceive(ev) {
-    const kind = RECV_KIND[ev.action];
+    const kind = entree(RECV_KIND, ev.action);
     if (!kind) return false;
     const target = targetOf(ev.meta, kind);
     const recvDevice = ev.device_id || null;

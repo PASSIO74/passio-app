@@ -26,6 +26,7 @@
 // une étape non observée reste « en attente » puis « non confirmée ».
 // ═══════════════════════════════════════════════════════════════════════════
 import { store } from "./store.js";
+import { entree } from "./liste-blanche.js";
 
 const FLOW_WINDOW_MS = 30_000;   // fenêtre de vie d'un flow (au-delà : figé)
 const RUNNING_MS = 8_000;        // en deçà et incomplet : encore « en cours »
@@ -217,7 +218,7 @@ class TraceTracker {
   // apparié par cible (convId/postId/commentId) au flow le plus récent de l'action
   // correspondante. Honnête : on ne marque « delivered » qu'avec un signal réel.
   _onReceive(ev) {
-    const map = RECV_MAP[ev.action];
+    const map = entree(RECV_MAP, ev.action);
     if (!map) return false;
     const target = (ev.meta && ev.meta[map.field]) || null;
     if (!target) return false;
