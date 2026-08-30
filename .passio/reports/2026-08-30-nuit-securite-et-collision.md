@@ -62,8 +62,12 @@ n'est pas un test de sécurité.**
 
 ## 4. L'incident : deux sessions, le même défaut, deux correctifs corrects, une CI rouge
 
-**`main` est resté rouge d'environ 23:00 à la fusion de la PR de réconciliation.**
-Aucun déploiement production pendant ce temps.
+**`main` est resté rouge de 23:00 (fusion de #200) à 00:0x (fusion de #209).**
+Aucun déploiement production pendant ce temps, et **six PR de la nuit ont été
+bloquées en cascade** — #204 à #208 échouaient toutes sur exactement les deux
+mêmes tests (`xss-notifs-messages.spec.js:45` et `:69`), non parce qu'elles
+étaient fautives, mais parce que la CI d'une PR teste la **fusion** de sa branche
+avec la base : une base rouge rend rouge tout ce qui s'y greffe.
 
 Les deux sessions ont trouvé la **même XSS de notification** le même soir et l'ont
 fermée **au même moment, à deux bouts différents de la chaîne** :
