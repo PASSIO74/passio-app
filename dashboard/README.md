@@ -250,6 +250,25 @@ Voir [`docs/INTEGRATION_CLAUDE_CODE.md`](docs/INTEGRATION_CLAUDE_CODE.md).
 - L'analyse Claude en direct nécessite `ANTHROPIC_API_KEY` ; sinon mode « copier le prompt ».
 - Le store temps réel est en mémoire (borné) ; l'historique long vit dans Supabase.
 
+### ⚠️ « Fraîcheur » ne mesure QUE le trafic réel (corrigé le 2026-08-30)
+
+`server/ingest.js` tient **deux** marques d'eau, et les confondre a produit un
+défaut observé en production : l'en-tête annonçait « dernier signal il y a
+5 min » alors que le dernier signal réel datait d'une heure et cinq minutes.
+
+| Variable | Question à laquelle elle répond | Le canari la fait-il avancer ? |
+|---|---|---|
+| `lastSeenIso` | « à partir d'où reprendre le polling ? » | **Oui, obligatoirement** — sinon chaque cycle relit les mêmes lignes |
+| `lastRealSeenIso` | « quand un vrai signal est-il arrivé ? » | **Non, jamais** — c'est elle que l'écran affiche |
+
+Le canari synthétique part toutes les 15 min (`DASH_CANARY_EVERY_MIN`) et prouve
+la chaîne publique → base → dashboard ; il ne prouve **aucun** trafic utilisateur.
+L'afficher sous « dernier signal » faisait passer un pilotage sans trafic pour un
+pilotage vivant — exactement la panne que cet écran est censé rendre visible.
+Verrou : les deux tests « marque d'eau » de `test/ingest.test.js`, éprouvés par
+mutation (rendre la fraîcheur sensible au canari, ou la figer, rougit chacun le
+sien).
+
 ## 11. Améliorations recommandées
 
 - Cron `purge_telemetry(30)` (pg_cron) pour la rétention.
