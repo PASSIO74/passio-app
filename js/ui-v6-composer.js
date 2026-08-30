@@ -124,7 +124,10 @@
     try { if (localStorage.getItem("passio_ui_8") === "0") return false; } catch (e) {}
     return true;
   }
-  function libellePublieDans() { return v8() ? "Publication dans : " : "Passion : "; }
+  // ADR-010 : le libellé d'écriture est « Publier dans : ». Il nomme un GESTE,
+  // là où « Publication dans » nommait un contenant — et où l'ancien « Passion : »
+  // ne disait pas du tout qu'il s'agissait d'un choix.
+  function libellePublieDans() { return v8() ? "Publier dans : " : "Passion : "; }
 
   // ⚠️ Lot UI-8 : le PSEUDO GÉNÉRAL d'abord. Cette fonction lisait
   // `currentProfile().name` — le nom porté par la passion active — et le Studio

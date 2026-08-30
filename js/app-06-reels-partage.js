@@ -977,14 +977,14 @@ function changePassionPhoto(event, profileId) {
   const file = event.target.files[0];
   if (event.target) event.target.value = "";
   if (!file) { _reopenEditPassionAfterPhoto(); return; }
-  _readAndCrop(file, { aspect: 1, outW: 480, outH: 480, round: true, title: "Recadre la photo du profil passion" })
+  _readAndCrop(file, { aspect: 1, outW: 480, outH: 480, round: true, title: "Recadre la photo de la passion" })
     .then(async function(base64) {
     const prof = state.user.profiles.find(p => p.id === profileId);
     if (!prof) return;
     prof.photo = base64; // cache local immédiat pour l'affichage
     saveState();
     renderProfilesScreen();
-    toast("📷 Photo du profil passion mise à jour !");
+    toast("📷 Photo de la passion mise à jour !");
     _reopenEditPassionAfterPhoto();
     // Tente un upload vers Storage → stocke l'URL (sync cross-appareil sans base64)
     if (typeof supaUploadMedia === "function" && window._supaReal) {
@@ -1535,7 +1535,7 @@ function renderActivePassionLine() {
   if (ligne.getAttribute("data-v8-sig") === sig) return;
   ligne.setAttribute("data-v8-sig", sig);
   ligne.innerHTML =
-    '<span class="v8-active-txt">Passion active : <b>' + escapeHtml(et.emoji) + " " + escapeHtml(et.label) + "</b></span>"
+    '<span class="v8-active-txt">Publier dans : <b>' + escapeHtml(et.emoji) + " " + escapeHtml(et.label) + "</b></span>"
     + '<button type="button" class="v8-active-btn" data-v8-changer="1" onclick="openPassionSwitcher()">Changer</button>';
 }
 
@@ -1728,9 +1728,9 @@ function renderProfilesScreen() {
       var compte = nbPosts + " publication" + (nbPosts > 1 ? "s" : "") + " · " + nbEvs + " activité" + (nbEvs > 1 ? "s" : "");
 
       var etat = estActive
-        ? '<span class="v8-state on" data-v8-active="' + escapeHtml(String(p.id)) + '">Passion active ✓</span>'
+        ? '<span class="v8-state on" data-v8-active="' + escapeHtml(String(p.id)) + '">Tu publies ici ✓</span>'
         : '<button type="button" class="v8-state" data-v8-utiliser="' + escapeHtml(String(p.id)) + '"'
-          + ' onclick="event.stopPropagation();switchToProfile(\'' + escapeJsArg(String(p.id)) + '\')">Utiliser pour créer</button>';
+          + ' onclick="event.stopPropagation();switchToProfile(\'' + escapeJsArg(String(p.id)) + '\')">Publier dans celle-ci</button>';
 
       return '<div class="profile-card v8-passion-card' + (estActive ? " is-active" : "") + (_pCover ? " has-cover" : "") + '"'
         + ' data-v8-card="' + escapeHtml(String(p.id)) + '" style="' + coverStyle + '"'
@@ -1917,7 +1917,7 @@ function openEditPassionProfile(profileId) {
     <div class="modal-title">✏️ ${escapeHtml(passion.emoji + " " + passion.label)}</div>
 
     <div class="field">
-      <span>Photo du profil</span>
+      <span>Photo de la passion</span>
       <div style="display:flex;gap:10px;align-items:center;">
         <div style="width:56px;height:56px;border-radius:50%;flex-shrink:0;${photo ? "background:url(" + safeUrlAttr(photo) + ") center/cover;" : "background:" + escapeHtml(p.color || "var(--accent)") + ";display:flex;align-items:center;justify-content:center;font-size:24px;"}">${photo ? "" : escapeHtml(p.emoji || "")}</div>
         <button class="btn ghost" onclick="_editPassionPhotoFromModal('${escapeJsArg(p.id)}')">📷 Changer</button>
@@ -2007,13 +2007,13 @@ function savePassionProfile(profileId) {
   if (typeof supaUpsertProfile === "function") { try { supaUpsertProfile(); } catch(e) {} }
   closeModal();
   renderProfilesScreen();
-  toast("✅ Profil passion mis à jour !");
+  toast("✅ Passion mise à jour !");
 }
 
 function confirmDeleteProfile(profileId, passionLabel) {
   var profiles = state.user.profiles || [];
   if (profiles.length <= 1) {
-    toast("Tu dois garder au moins 1 profil passion");
+    toast("Tu dois garder au moins 1 passion");
     return;
   }
   openModal('\
@@ -2064,7 +2064,11 @@ function renderProfileStrip() {
   const profiles = passionsUnifieesActives() ? passionsVivantes() : (state.user.profiles || []);
   if (profiles.length === 0) { box.innerHTML = ""; return; }
 
-  var hasFilter = _activeFeedPassions.size > 0 || _showFollowingFeed;
+  // La rangée ne porte plus QUE des passions : « Suivis » est devenu une VUE du
+  // Fil (ADR-010), rendue par le commutateur au-dessus. Mélanger dans un même
+  // rail un filtre thématique et une source de contenu était l'une des raisons
+  // pour lesquelles « à quoi sert une passion ? » n'avait pas de réponse claire.
+  var hasFilter = _activeFeedPassions.size > 0;
   box.classList.toggle("has-filter", hasFilter);
 
   var hasPassionFilter = _activeFeedPassions.size > 0;
@@ -2073,15 +2077,7 @@ function renderProfileStrip() {
   var postCountByPassion = {};
   allPostsFlat.forEach(function(p) { postCountByPassion[p.passion] = (postCountByPassion[p.passion] || 0) + 1; });
 
-  // ── PROFIL SPÉCIAL "SUIVIS" : Photo de gens/communauté ──
-  var followingIds = state.user?.following || [];
-  var followingPostCount = allPostsFlat.filter(function(p) { return followingIds.includes(p.authorId); }).length;
-  var followingTile = '<div class="profile-tile ' + (_showFollowingFeed ? "active" : "") + '" onclick="toggleFollowingFilter()" title="Suivis" style="opacity:1;transform:' + (_showFollowingFeed ? 'scale(1.07)' : 'scale(1)') + ';transition:all 0.2s;">\
-      <div class="profile-tile-avatar" style="position:relative;overflow:hidden;background:linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(124, 58, 237, 0.10));"><img loading="lazy" decoding="async" class="profile-tile-photo" src="https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=200&h=200&fit=crop&crop=faces,entropy&auto=format&q=80" alt="Suivis" onerror="this.onerror=null;this.src=\'https://picsum.photos/seed/community/200/200\'" /><div style="position:absolute;inset:0;background:radial-gradient(circle at 30% 30%, rgba(139, 92, 246, 0.08), transparent 70%);pointer-events:none;"></div><span class="profile-tile-glyph" aria-hidden="true">👥</span>' + (followingPostCount > 0 ? '<span class="profile-tile-count" style="position:absolute;top:-5px;right:-5px;background:var(--accent);color:#fff;font-size:9px;font-weight:800;border-radius:8px;padding:1px 5px;min-width:16px;text-align:center;border:2px solid var(--bg);line-height:14px;">' + followingPostCount + '</span>' : '') + '</div>\
-      <div class="profile-tile-label" style="font-weight:' + (_showFollowingFeed ? '800' : '600') + ';color:' + (_showFollowingFeed ? 'var(--accent)' : '') + ';">Suivis</div>\
-    </div>';
-
-  var tilesHTML = followingTile + profiles.map(function(p) {
+  var tilesHTML = profiles.map(function(p) {
     const passion = passionById(p.passion);
     const isSelected = _activeFeedPassions.has(p.passion);
     const isDimmed = hasPassionFilter && !isSelected;
@@ -2109,13 +2105,9 @@ function renderProfileStrip() {
   if (box._lastHtml !== tilesHTML) { box.innerHTML = tilesHTML; box._lastHtml = tilesHTML; }
 }
 
-function toggleFollowingFilter() {
-  _showFollowingFeed = !_showFollowingFeed;
-  saveState();
-  renderFeed();
-  var appMain = document.getElementById("appMain");
-  if (appMain) setTimeout(function() { appMain.scrollTop = 0; }, 60);
-}
+// `toggleFollowingFilter` a été SUPPRIMÉE le 2026-08-30 (ADR-010) avec la
+// bascule `_showFollowingFeed` qu'elle inversait. Le choix « voir mes suivis »
+// passe désormais par `setFeedView("suivis")`, qui persiste.
 
 function toggleProfileFilter(passionId) {
   if (_activeFeedPassions.has(passionId)) {
@@ -2205,8 +2197,8 @@ function openCreateProfile() {
     <div class="modal-handle"></div>
     <div style="text-align:center;margin-bottom:18px;">
       <div style="font-size:28px;margin-bottom:6px;">✨</div>
-      <div style="font-weight:800;font-size:17px;color:var(--text);margin-bottom:4px;">Nouveau fil passion</div>
-      <div style="font-size:12px;color:var(--muted);line-height:1.5;">Chaque passion = un fil dédié sur ton profil.</div>
+      <div style="font-weight:800;font-size:17px;color:var(--text);margin-bottom:4px;">Nouvelle passion</div>
+      <div style="font-size:12px;color:var(--muted);line-height:1.5;">Une passion range ce que tu publies — ton profil et tes abonnés, eux, restent les mêmes.</div>
     </div>
     <div class="passion-grid new-profile-passion-grid" id="newProfileGrid">
       ${pool.map(p => `
@@ -2226,7 +2218,7 @@ function openCreateProfile() {
       <span>Bio courte <span style="font-weight:400;color:var(--muted);">(optionnel)</span></span>
       <input type="text" class="input" id="newProfileBio" placeholder="Ex : Photographe amateur · Paris" maxlength="80" />
     </label>
-    <button class="btn primary block" style="margin-top:12px;" onclick="confirmCreateProfile()">Créer ce fil</button>
+    <button class="btn primary block" style="margin-top:12px;" onclick="confirmCreateProfile()">Ajouter cette passion</button>
   `);
   window._newProfilePassion = null;
 }
@@ -2267,7 +2259,9 @@ async function confirmCreateProfile() {
     name,
     passion: pid,
     emoji: p.emoji,
-    bio: bio || `Profil ${p.label}`,
+    // Pas de bio par défaut : elle s'affichait telle quelle sur la carte, et
+    // « Profil Cuisine » réintroduisait à l'écran le mot que le lot retire.
+    bio: bio || "",
     color: p.color,
     createdAt: Date.now(),
   };
@@ -2287,7 +2281,7 @@ async function confirmCreateProfile() {
   closeModal();
   renderProfilesScreen();
   renderTopbar();
-  toast(`✨ Ton fil ${p.label} est créé`, "success");
+  toast(`✨ ${p.label} ajoutée à tes passions`, "success");
 }
 
 function switchProfileModal() {
@@ -2831,14 +2825,30 @@ async function publishPost() {
     }).catch(() => {});
   }
 
-  // ✅ Toujours afficher le vrai nom du profil!
+  // ✅ L'auteur d'un post est le COMPTE (ADR-010), jamais une passion.
+  //
+  // ⚠️ Le nom suivait déjà `general.username`, mais l'emoji et la couleur
+  // restaient ceux de la passion ACTIVE. Deux conséquences, mesurées :
+  //  · publier dans une passion autre que l'active produisait un post dont
+  //    `passion`/`profileId` disaient A et dont l'emoji disait B ;
+  //  · la carte optimiste locale ne correspondait pas à ce que le serveur rend
+  //    ensuite — `supaLoadPosts` reconstruit l'avatar depuis `profiles.emoji`,
+  //    c'est-à-dire l'identité du compte. L'emoji changeait donc au rechargement.
+  // Même correction que dans `supaUpsertProfile` le 2026-08-30 : l'identité
+  // publiée est celle du compte, avec repli sur la passion pour un état ancien
+  // qui n'aurait jamais renseigné `general`.
   const authorName = (state.user.general?.username) || prof?.name || state.user.name || "Profil";
-  const authorEmoji = prof?.emoji || "✨";
-  const authorColor = prof?.color || "#8b5cf6";
+  const authorEmoji = g.emoji || prof?.emoji || "✨";
+  const authorColor = g.color || prof?.color || "#8b5cf6";
 
-  // Rattacher le post au profil passion CHOISI (pas au profil actif) pour que le
-  // filtre de l'écran profil reste cohérent. Repli sur le profil actif.
-  const _matchProf = (state.user.profiles || []).find(function(pr){ return pr.passion === passion; });
+  // Rattacher le post à la passion CHOISIE (pas à la passion active) pour que le
+  // filtre de l'écran profil reste cohérent. Repli sur la passion active.
+  // ⚠️ On ne retient qu'une passion VIVANTE : le `<select>` ne propose que
+  // celles-là, mais cette recherche balayait `profiles` en entier, archivées
+  // comprises — un `profileId` rangé restait donc atteignable par du code qui
+  // poserait la valeur du select lui-même.
+  const _matchProf = (state.user.profiles || []).find(function(pr){ return pr.passion === passion && !pr.archived; })
+    || (state.user.profiles || []).find(function(pr){ return pr.passion === passion; });
   const post = {
     id: uid(),
     authorId: (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : "me",

@@ -109,7 +109,12 @@ let state = null;
 const STATE_KEY = "passio_mvp_state_v1";
 // Filtre de passion actif dans le fil — variable globale directe, hors state/localStorage
 let _activeFeedPassions = new Set(); // vide = rien afficher — l'utilisateur doit sélectionner au moins une passion
-let _showFollowingFeed = false; // Affiche le contenu des gens qu'on suit
+// `_showFollowingFeed` a été SUPPRIMÉE le 2026-08-30 (ADR-010). C'était une
+// bascule « voir mes suivis » jamais persistée : elle repartait à `false` à
+// chaque ouverture, donc les publications des comptes suivis n'entraient pas
+// dans le fil par défaut et le bouton « Suivre » n'avait aucun effet durable.
+// Remplacée par `state.feedView` ("accueil" | "suivis"), persistée, et par une
+// union explicite dans `renderFeed`. Ne pas la réintroduire.
 
 // Default seed (fake users / posts / events), built once at first launch
 function buildSeed() {
@@ -1714,7 +1719,7 @@ function buildSeed() {
 
   const seedNotifications = [
     { id: "n1", kind: "like",    fromId: "u_lea",   text: "<b>Léa Moreau</b> a aimé ton intention de rejoindre PASSIO", createdAt: hours(0.5), unread: true,  html: true, emoji: "💖" },
-    { id: "n2", kind: "follow",  fromId: "u_clara", text: "<b>Clara Jensen</b> suit maintenant ton profil voyage", createdAt: hours(1), unread: true,  html: true, emoji: "🤝" },
+    { id: "n2", kind: "follow",  fromId: "u_clara", text: "<b>Clara Jensen</b> suit maintenant tes publications voyage", createdAt: hours(1), unread: true,  html: true, emoji: "🤝" },
     { id: "n3", kind: "comment", fromId: "u_yanis", text: "<b>Yanis Perez</b> a réagi à un post : « On devrait échanger 🚀 »", createdAt: hours(2), unread: true,  html: true, emoji: "💬" },
     { id: "n4", kind: "event",   fromId: "u_theo",  text: "<b>Théo Roussel</b> t'invite au « Dîner entre passionnés de cuisine »", createdAt: hours(3), unread: false, html: true, emoji: "🍳" },
     { id: "n5", kind: "system",  fromId: "me",      text: "Ta première publication attend : montre ce que tu aimes 🎨", createdAt: hours(5), unread: false, html: true, emoji: "✨" },

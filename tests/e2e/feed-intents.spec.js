@@ -49,7 +49,9 @@ async function seedFeed(page, intents, bridge = false) {
     state.user.following = [];
     state.user.profiles = [{ id: "qa", name: "QA", passion: "musique" }];
     _activeFeedPassions = new Set(["musique"]);
-    _showFollowingFeed = false;
+    // ADR-010 : voir feed-window.spec.js — `state.user.following` est vide ici,
+    // donc « accueil » observe le même périmètre que l'ancienne bascule à false.
+    state.feedView = "accueil";
     selectedMoods = new Set(["creation"]);
     activeFeedIntent = "for_you";
     window._feedIrlBridgeViewed = {};

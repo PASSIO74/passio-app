@@ -10712,6 +10712,103 @@ body.ctx-locked #appMain { overflow: hidden; }
   pointer-events: none;
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   VUES DU FIL (ADR-010) — « Accueil » et « Suivis »
+   ──────────────────────────────────────────────────────────────────────────
+   Deux vues explicites en tête du Fil. Elles remplacent l'ancienne tuile
+   « Suivis » qui vivait DANS la rangée de passions : un filtre thématique et
+   une source de contenu ne partagent plus le même rail.
+
+   Le vocabulaire visuel est repris tel quel de `.feed-intent-btn` (soulignement
+   à l'accent, même transition, même cible de 44 px) pour que le Fil garde une
+   seule grammaire de commutation. Aucune règle existante n'est réécrite.
+   ══════════════════════════════════════════════════════════════════════════ */
+/* Filtres de passion du profil VISITÉ (ADR-010) — des pastilles, jamais des
+   cartes d'identité. Même grammaire que les autres filtres du produit. */
+.v10-vfilters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 4px;
+}
+.v10-vfilter {
+  min-height: 34px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--bg-card);
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: color 150ms ease, border-color 150ms ease, background 150ms ease;
+}
+.v10-vfilter:hover { color: var(--text); }
+.v10-vfilter.active {
+  border-color: var(--accent);
+  background: rgba(124, 58, 237, 0.10);
+  color: var(--accent);
+  font-weight: 800;
+}
+.v10-vfilter:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.feed-passions-label {
+  margin: 2px 0 5px;
+  padding-inline: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+#feedPassionsBlock[hidden] { display: none !important; }
+
+.feed-views {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0;
+  padding: 0 4px;
+  margin-bottom: 8px;
+}
+.feed-view-btn {
+  min-width: 0;
+  min-height: 44px;
+  padding: 9px 2px 10px;
+  border: 0;
+  border-bottom: 1.5px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+  white-space: nowrap;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: color 160ms ease, border-color 160ms ease, background 160ms ease;
+}
+.feed-view-btn:hover { color: var(--text); }
+.feed-view-btn.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  background: linear-gradient(180deg, transparent 45%, rgba(124, 58, 237, 0.055));
+  font-weight: 800;
+}
+.feed-view-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -3px;
+  border-radius: 7px 7px 0 0;
+}
+@media (max-width: 380px) {
+  .feed-views { padding-inline: 0; }
+  .feed-view-btn { font-size: 12.5px; }
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    PASSIO UI V4 — lot UI-4A5 : « Filtres » est une VUE, et les bulles de passion
    vivent dedans.  ACTIF PAR DÉFAUT.

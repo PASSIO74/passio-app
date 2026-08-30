@@ -10,8 +10,9 @@
 //      revenaient à la ligne ; Benjamin les veut en BULLES comme avant, juste
 //      plus petites. C'est donc purement une affaire de CSS — aucun moteur de
 //      rendu, de classement ni de défilement n'est touché, et
-//      `toggleProfileFilter` / `toggleFollowingFilter` restent les seuls
-//      points d'écriture.
+//      `toggleProfileFilter` reste le seul point d'écriture. (`toggleFollowingFilter`
+//      est mentionnée ici dans l'état d'origine du lot ; elle a été supprimée le
+//      2026-08-30 avec la bascule `_showFollowingFeed` — ADR-010.)
 //
 //   ⑥ LE PROFIL. Trois onglets NOMMÉS (Publications · Activités · À propos)
 //      remplacent les cinq onglets d'icônes, qui redeviennent de petits
@@ -236,6 +237,12 @@
     var titrePassions = el("nouveauProfilLien");
     titrePassions = titrePassions ? titrePassions.parentNode : null;
     if (titrePassions) deplacer(titrePassions, hotes.apropos);
+    // ⚠️ `#profilesModeleSub` (ADR-010) porte la phrase qui explique le modèle
+    // « un seul profil, plusieurs passions ». Elle vit entre le titre et
+    // `#profilesQuotaSub` : sans ce déplacement elle resterait HORS des trois
+    // panneaux, visible sous eux, détachée de la section qu'elle explique.
+    var subModele = el("profilesModeleSub");
+    if (subModele) deplacer(subModele, hotes.apropos);
     var sub = el("profilesQuotaSub");
     if (sub) deplacer(sub, hotes.apropos);
     deplacer(listeProfils, hotes.apropos);

@@ -2746,37 +2746,29 @@ async function openUserProfile(authorId, source) {
     }
   }
 
-  // 🎯 Cartes passion SÉLECTIONNABLES — même mécanique que « Mes profils
-  // passion » sur mon écran : cocher une ou plusieurs passions filtre le
-  // contenu en dessous (aucune cochée = tout est affiché). Même visuel
-  // (photo/couleur, libellé, bio par passion, photo de fond).
+  // 🎯 FILTRES de passion (ADR-010). Ces pastilles filtrent les publications de
+  // la personne ; elles ne sont PAS des identités.
+  //
+  // ⚠️ Elles étaient jusqu'au 2026-08-30 de grandes `.profile-card` — photo,
+  // couverture, bio par passion — multisélectionnables, c'est-à-dire visuellement
+  // indiscernables d'une liste de comptes. Deux écrans jumeaux racontaient alors
+  // deux modèles : mon profil avait déjà un filtre à choix UNIQUE avec un neutre
+  // « Toutes », le profil visité gardait la multisélection d'avant. On aligne sur
+  // la mécanique de mon écran, et sur le vocabulaire d'ADR-010.
+  //
+  // ⚠️ `p.emoji` vient du jsonb `profiles.passions` d'un AUTRE compte, colonne
+  // que tout compte authentifié écrit librement sur SA ligne : un
+  // `<img src=x onerror=…>` s'y exécutait avant le correctif du 2026-08-30.
+  // Ne JAMAIS retirer l'échappement ci-dessous.
   const passionsHTML = userPassions.length > 0
-    ? '<div class="section-title" style="margin-top:14px;">Ses profils passion</div>'
-      + '<div id="visitedPassions">'
+    ? '<div class="section-title" style="margin-top:14px;">Ses passions</div>'
+      + '<div id="visitedPassions" class="v10-vfilters" role="group" aria-label="Filtrer ses publications par passion">'
+      + '<button type="button" class="v10-vfilter active" data-vpid="" onclick="setVisitedPassion(\'\')">Toutes</button>'
       + userPassions.map(p => {
           const pas = passionById(p.id);
           const label = (pas && pas.label) || p.label || "Passion";
-          const _pPhoto = p.photoUrl || null;
-          const avatarStyle = _pPhoto
-            ? 'background:url(' + safeUrlAttr(_pPhoto) + ') center/cover;'
-            : 'background:' + _cssColor(p.color || "#8b5cf6") + ';';
-          const _pCover = p.coverUrl || null;
-          const coverStyle = _pCover
-            ? 'background:linear-gradient(90deg, rgba(0,0,0,0.62), rgba(0,0,0,0.30)), url(' + safeUrlAttr(_pCover) + ') center/cover;'
-            : '';
-          // ⚠️ XSS STOCKÉE (corrigé le 2026-08-30). `p.emoji` vient du jsonb
-          // `profiles.passions` d'un AUTRE compte, colonne que tout compte
-          // authentifié écrit librement sur SA ligne : un `<img src=x onerror=…>`
-          // s'exécutait à la simple ouverture de son profil. C'est un SURVIVANT
-          // du correctif de ~2517, qui avait échappé les badges de la recherche
-          // et manqué ces deux emplacements-ci — même donnée, même défaut.
-          const _pEmoji = escapeHtml(p.emoji || "✨");
-          return '<div class="profile-card ' + (_pCover ? 'has-cover' : '') + '" data-vpid="' + escapeHtml(p.id) + '" style="' + coverStyle + '" onclick="toggleVisitedPassion(\'' + escapeJsArg(p.id) + '\')">'
-            + '<div class="avatar lg" style="' + avatarStyle + '">' + (_pPhoto ? '' : _pEmoji) + '</div>'
-            + '<div class="profile-card-body" style="flex:1;">'
-            + '<div class="profile-card-name">' + _pEmoji + ' ' + escapeHtml(label) + '</div>'
-            + (p.bio ? '<div class="profile-card-bio">' + escapeHtml(p.bio) + '</div>' : '')
-            + '</div></div>';
+          return '<button type="button" class="v10-vfilter" data-vpid="' + escapeHtml(p.id) + '" onclick="setVisitedPassion(\'' + escapeJsArg(p.id) + '\')">'
+            + escapeHtml(p.emoji || "✨") + ' ' + escapeHtml(label) + '</button>';
         }).join("")
       + '</div>'
     : '';
@@ -2934,11 +2926,21 @@ async function openUserProfile(authorId, source) {
 // icônes de type sont des filtres cumulables ; rien de coché = tout affiché.
 // L'état vit dans window._visited (posé par openUserProfile).
 
-function toggleVisitedPassion(pid) {
+// Choix UNIQUE (ADR-010) : une passion, ou « Toutes ». `passionSel` reste un Set
+// pour ne pas toucher au filtrage de `_renderVisitedContent` — il contient
+// désormais zéro ou un élément.
+function setVisitedPassion(pid) {
   var v = window._visited; if (!v) return;
-  if (v.passionSel.has(pid)) v.passionSel.delete(pid); else v.passionSel.add(pid);
+  v.passionSel = new Set(pid ? [pid] : []);
   _syncVisitedUI();
   _renderVisitedContent();
+}
+
+// Conservée : d'anciens liens ou un handler encore en vol pourraient l'appeler.
+// Elle bascule vers le neutre quand on retouche la passion déjà choisie.
+function toggleVisitedPassion(pid) {
+  var v = window._visited; if (!v) return;
+  setVisitedPassion(v.passionSel.has(pid) ? "" : pid);
 }
 
 function switchVisitedTab(tab) {
@@ -2953,9 +2955,11 @@ function switchVisitedTab(tab) {
 function _syncVisitedUI() {
   var v = window._visited; if (!v) return;
   document.querySelectorAll("#visitedPassions [data-vpid]").forEach(function(c) {
-    var on = v.passionSel.has(c.getAttribute("data-vpid"));
+    var id = c.getAttribute("data-vpid") || "";
+    // La pastille « Toutes » (id vide) est active quand rien n'est sélectionné.
+    var on = id ? v.passionSel.has(id) : (v.passionSel.size === 0);
+    c.classList.toggle("active", on);
     c.classList.toggle("selected", on);
-    c.style.border = on ? "2px solid var(--accent)" : "";
   });
   document.querySelectorAll("#visitedTabs .profile-tab").forEach(function(b) {
     var on = v.tabSel.has(b.getAttribute("data-vtab"));

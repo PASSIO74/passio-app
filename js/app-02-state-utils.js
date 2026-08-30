@@ -61,6 +61,7 @@ function defaultState() {
     userEvents: [],          // events created by the user
     notifications: [],       // user-specific notifications (seed copied at init)
     currentMood: "all",
+    feedView: "accueil",      // "accueil" (union) | "suivis" — vue du Fil, ADR-010
     selectedFeedPassions: [], // passion IDs actifs dans le fil
     feedMoodsTouched: false,  // l'utilisateur a-t-il déjà réglé le filtre mood lui-même ?
     feedInterestsMigrated: false, // le compte vit-il dans le modèle selectedFeedPassions ?
@@ -155,6 +156,12 @@ function loadState() {
     if (!parsed.user.passionSignals || typeof parsed.user.passionSignals !== "object"
         || Array.isArray(parsed.user.passionSignals)) parsed.user.passionSignals = {};
     if (!Array.isArray(parsed.selectedFeedPassions)) parsed.selectedFeedPassions = [];
+    // Vue du Fil (ADR-010). Toute valeur inconnue — et tout état antérieur, qui
+    // n'a pas cette clé — retombe sur « accueil » : c'est la vue par défaut, et
+    // celle qui montre le plus de contenu. Elle remplace l'ancienne bascule
+    // `_showFollowingFeed`, qui n'était persistée nulle part et repartait donc à
+    // `false` à chaque ouverture : suivre quelqu'un n'avait aucun effet durable.
+    if (parsed.feedView !== "accueil" && parsed.feedView !== "suivis") parsed.feedView = "accueil";
     if (typeof parsed.feedMoodsTouched !== "boolean") parsed.feedMoodsTouched = false;
     if (typeof parsed.feedInterestsMigrated !== "boolean") parsed.feedInterestsMigrated = false;
     if (!parsed.hintsVus || typeof parsed.hintsVus !== "object") parsed.hintsVus = {};
@@ -1735,7 +1742,7 @@ function openDeleteAccountConfirm() {
     <div class="modal-title" style="color:#ef4444;">🗑 Supprimer mon compte</div>\
     <p style="font-size:13px;color:var(--muted);margin-bottom:10px;">Cette action est <strong>définitive</strong>. Seront supprimés :</p>\
     <ul style="font-size:13px;color:var(--muted);margin:0 0 12px 18px;line-height:1.7;">\
-      <li>ton profil et tes profils passion ;</li>\
+      <li>ton profil et tes passions ;</li>\
       <li>tous tes posts, photos, vidéos, carnets et stories ;</li>\
       <li>tes messages, conversations et notifications ;</li>\
       <li>tes likes, commentaires, abonnements et événements.</li>\
@@ -1815,7 +1822,7 @@ function openPrivacyPolicy() {
     <div class="modal-title">🛡 Politique de confidentialité</div>\
     <div style="font-size:12.5px;color:var(--muted);line-height:1.65;max-height:55vh;overflow-y:auto;padding-right:4px;">\
       <p style="margin:0 0 10px;"><strong style="color:var(--text);">Dernière mise à jour : juin 2026 — PASSIO (beta privée)</strong></p>\
-      <p style="margin:0 0 10px;"><strong style="color:var(--text);">1. Données collectées.</strong> Lors de l\'inscription : adresse e-mail et nom d\'utilisateur. Lors de l\'utilisation : profils passion, publications (textes, photos, vidéos, audio), carnets, messages, commentaires, likes, abonnements, participation aux événements, et préférences locales (thème, filtres).</p>\
+      <p style="margin:0 0 10px;"><strong style="color:var(--text);">1. Données collectées.</strong> Lors de l\'inscription : adresse e-mail et nom d\'utilisateur. Lors de l\'utilisation : passions, publications (textes, photos, vidéos, audio), carnets, messages, commentaires, likes, abonnements, participation aux événements, et préférences locales (thème, filtres).</p>\
       <p style="margin:0 0 10px;"><strong style="color:var(--text);">2. Où sont stockées tes données.</strong> Sur les serveurs de notre prestataire Supabase (hébergement UE/US, chiffrement en transit), et en partie sur ton appareil (localStorage) pour le fonctionnement hors-ligne. Les accès en base sont restreints par des règles de sécurité par propriétaire (RLS).</p>\
       <p style="margin:0 0 10px;"><strong style="color:var(--text);">3. Ce que nous ne faisons pas.</strong> Pas de revente de données, pas de publicité ciblée, pas de traqueurs tiers. C\'est l\'engagement fondateur de PASSIO.</p>\
       <p style="margin:0 0 10px;"><strong style="color:var(--text);">4. Durée de conservation.</strong> Tes données sont conservées tant que ton compte est actif. La suppression du compte efface tes contenus immédiatement et ton e-mail sous 30 jours.</p>\
@@ -2289,11 +2296,11 @@ function renderOnbStarter() {
   }).join("");
 
   hote.innerHTML =
-      '<div style="font-size:12px;font-weight:700;margin-bottom:5px;">Ton profil de départ</div>'
+      '<div style="font-size:12px;font-weight:700;margin-bottom:5px;">Ta passion de départ</div>'
     + '<div style="display:flex;flex-wrap:wrap;gap:6px;">' + puces + '</div>'
     + '<div style="font-size:11px;color:var(--muted);margin-top:6px;line-height:1.45;">'
-    +   'Tu pourras créer d\'autres profils passion ensuite. Les autres passions choisies '
-    +   'alimentent ton Fil sans créer de profil.'
+    +   'Tu pourras ajouter d\'autres passions ensuite. Les autres passions choisies '
+    +   'alimentent ton Fil sans que tu aies à les créer.'
     + '</div>';
   hote.style.display = "block";
 }
@@ -2529,6 +2536,78 @@ function onbV2Actif() {
 //
 // Cette fonction est le seul endroit qui écrit les deux à la fois. Tout appelant
 // qui modifie les intérêts DOIT passer par ici, sinon la divergence revient.
+// ══════════════════════════════════════════════════════════════════════════
+// VUES DU FIL (ADR-010) — « Accueil » et « Suivis »
+// ──────────────────────────────────────────────────────────────────────────
+// Deux vues explicites et PERSISTÉES, à la place de l'ancienne bascule
+// `_showFollowingFeed`. Cette bascule était une variable de portée script jamais
+// écrite nulle part : elle repartait à `false` à chaque ouverture. Conséquence
+// mesurée avant ce lot — par défaut, à chaque lancement, les publications des
+// comptes suivis n'entraient PAS dans le fil. Suivre quelqu'un ne produisait
+// aucun effet observable, ce qui vidait le bouton « Suivre » de son sens.
+//
+// « Accueil » est l'UNION des passions choisies par le lecteur et des comptes
+// qu'il suit — jamais une intersection : une publication d'un compte suivi
+// reste visible même si sa passion n'est pas cochée.
+// « Suivis » ne montre que les comptes suivis.
+//
+// ⚠️ La vue est un état de LECTURE. Elle ne touche jamais à la passion de
+// publication (`currentProfileId`) — cf. ADR-010, décision 6.
+function feedViewCourante() {
+  try {
+    return (state && state.feedView === "suivis") ? "suivis" : "accueil";
+  } catch (e) { return "accueil"; }
+}
+
+function setFeedView(vue) {
+  var v = (vue === "suivis") ? "suivis" : "accueil";
+  try {
+    if (state.feedView === v) return v;
+    state.feedView = v;
+    saveState();
+  } catch (e) {}
+  // ⚠️ Invalider le guard no-op AVANT de repeindre. `renderFeed` sort tôt quand
+  // la signature est inchangée ET que la liste a des enfants — et le repli
+  // d'exploration écrit dans `_feedDomSig` une signature d'une AUTRE forme
+  // (« repli§… »), incomparable à la nôtre. Un changement de vue est un geste
+  // explicite : il doit toujours repeindre.
+  try { window._feedDomSig = null; } catch (e) {}
+  try { if (typeof syncFeedViewUi === "function") syncFeedViewUi(); } catch (e) {}
+  try { if (typeof renderProfileStrip === "function") renderProfileStrip(); } catch (e) {}
+  try { renderFeed(); } catch (e) {}
+  try {
+    var appMain = document.getElementById("appMain");
+    if (appMain) setTimeout(function () { appMain.scrollTop = 0; }, 60);
+  } catch (e) {}
+  return v;
+}
+
+// Aligne le commutateur de vue sur l'état. Appelée à chaque `renderFeed` (le fil
+// peut être repeint sans passer par `setFeedView` : boot, realtime, navigation).
+function syncFeedViewUi() {
+  var box = document.getElementById("feedViews");
+  if (!box) return;
+  var vue = feedViewCourante();
+  var btns = box.querySelectorAll("[data-feedview]");
+  for (var i = 0; i < btns.length; i++) {
+    var on = btns[i].getAttribute("data-feedview") === vue;
+    // On n'écrit QUE si la valeur change : ces boutons sont dans #screen-feed,
+    // observé par plusieurs lots UI, et une écriture inconditionnelle à chaque
+    // rendu réveillerait leurs MutationObserver pour rien.
+    if (btns[i].classList.contains("active") !== on) btns[i].classList.toggle("active", on);
+    if (btns[i].getAttribute("aria-selected") !== String(on)) btns[i].setAttribute("aria-selected", String(on));
+  }
+  // Le rail de passions ne pilote que « Accueil ». En « Suivis » il ne filtrerait
+  // rien : on le masque plutôt que d'offrir une commande sans effet. Masqué, non
+  // retiré — les tuiles restent dans le DOM et `renderProfileStrip` continue d'y
+  // écrire, donc revenir sur « Accueil » retrouve la sélection intacte.
+  var bloc = document.getElementById("feedPassionsBlock");
+  if (bloc) {
+    var cache = (vue === "suivis");
+    if (bloc.hidden !== cache) bloc.hidden = cache;
+  }
+}
+
 function setFeedPassions(ids, opts) {
   var liste = Array.isArray(ids) ? ids.filter(function (x) { return typeof x === "string" && x; }) : [];
   // Dédup en conservant l'ordre de sélection : le premier choisi est le primaire.
@@ -3975,6 +4054,7 @@ function renderFeed() {
   }
 
   const mood = state.currentMood || "all";
+  syncFeedViewUi();
   setupFeedIntentDelegation();
   syncFeedIntentUi();
   const intentsEnabled = feedIntentsEnabled();
@@ -3985,27 +4065,37 @@ function renderFeed() {
   let posts = [];
   let availablePostsForMood = []; // Pour afficher les moods disponibles
 
-  // ── COMBINAISON : "Suivis" OU "Passions" (multi-sélection) ──
+  // ── VUES DU FIL (ADR-010) : « Accueil » (union) et « Suivis » ──
+  //
+  // « Accueil » réunit DEUX sources, sans jamais les croiser : les passions que
+  // le lecteur a choisies, ET les comptes qu'il suit. Une publication d'un compte
+  // suivi reste donc visible même si sa passion n'est pas cochée — c'est ce qui
+  // donne enfin un effet observable au bouton « Suivre ». Avant ce lot, cette
+  // seconde source était conditionnée à une bascule non persistée
+  // (`_showFollowingFeed`), donc éteinte à chaque ouverture de l'application.
+  const vueFil = feedViewCourante();
+  const followingIds = (state.user && state.user.following) || [];
+  const suitQuelquun = followingIds.length > 0;
+
   let combinedPosts = [];
 
-  // ✅ RÈGLE : si aucune passion ET aucun suivis sélectionné → feed vide
-  // L'utilisateur doit choisir une passion pour voir du contenu
-  const nothingSelected = !_showFollowingFeed && _activeFeedPassions.size === 0;
+  // Le fil ne peut être vide de source QUE dans « Accueil » sans passion choisie
+  // et sans abonnement. En « Suivis », l'absence d'abonnement a son propre message.
+  const nothingSelected = vueFil === "accueil" && _activeFeedPassions.size === 0 && !suitQuelquun;
 
-  if (!nothingSelected) {
-    // Ajouter les posts des suivis si sélectionné
-    if (_showFollowingFeed) {
-      const followingIds = state.user?.following || [];
-      let followingPosts = allPosts.filter(function(p) { return followingIds.includes(p.authorId); });
-      combinedPosts = combinedPosts.concat(followingPosts);
-    }
-
-    // Ajouter les posts des passions sélectionnées
+  if (vueFil === "suivis") {
+    combinedPosts = allPosts.filter(function(p) { return followingIds.includes(p.authorId); });
+  } else if (!nothingSelected) {
     if (_activeFeedPassions.size > 0) {
-      let postsByPassion = allPosts.filter(function(p) { return _activeFeedPassions.has(p.passion); });
-      combinedPosts = combinedPosts.concat(postsByPassion);
+      combinedPosts = combinedPosts.concat(allPosts.filter(function(p) { return _activeFeedPassions.has(p.passion); }));
+    }
+    if (suitQuelquun) {
+      combinedPosts = combinedPosts.concat(allPosts.filter(function(p) { return followingIds.includes(p.authorId); }));
     }
   }
+  // ⚠️ La déduplication qui suit (`seenIds`) n'est plus une précaution mais une
+  // NÉCESSITÉ : une publication d'un compte suivi dans une passion cochée entre
+  // désormais par les deux sources à chaque rendu de « Accueil ».
 
   // Dédupliquer les posts
   const seenIds = new Set();
@@ -4084,7 +4174,10 @@ function renderFeed() {
     // dans le fil (mood "irl", qui n'a pas de bouton). On ne le déclenche PAS
     // quand l'utilisateur a lui-même restreint les moods et que du contenu
     // existe derrière : ce vide-là est son choix, pas une impasse.
-    if (onbV2Actif() && _activeFeedPassions.size > 0
+    // Repli d'exploration : « voici ce qui vit ailleurs ». Il n'a de sens que dans
+    // « Accueil » — en « Suivis », montrer du contenu d'inconnus contredirait
+    // exactement ce que la vue promet.
+    if (vueFil === "accueil" && onbV2Actif() && _activeFeedPassions.size > 0
         && (availablePostsForMood.length === 0 || !state.feedMoodsTouched)
         && renderFeedExplorationFallback(list)) {
       var emptyElRepli = $("#feedEmpty");
@@ -4097,20 +4190,25 @@ function renderFeed() {
       var emptyTitle = emptyEl.querySelector(".empty-title");
       var emptyText = emptyEl.querySelector(".empty-text");
 
-      if (nothingSelected) {
-        if (emptyTitle) emptyTitle.textContent = "Choisis une passion";
-        if (emptyText) emptyText.textContent = "Sélectionne une passion ci-dessus pour voir le contenu de ta communauté.";
+      if (vueFil === "suivis" && !suitQuelquun) {
+        // Vue « Suivis » sans aucun abonnement : le message dit quoi FAIRE, et
+        // où. Ne jamais y proposer du contenu d'inconnus (cf. repli ci-dessus).
+        if (emptyTitle) emptyTitle.textContent = "Tu ne suis encore personne";
+        if (emptyText) emptyText.textContent = "Ouvre le profil de quelqu'un et touche « Suivre » : ses publications apparaîtront ici, et dans ton Accueil.";
+      } else if (vueFil === "suivis") {
+        if (emptyTitle) emptyTitle.textContent = "Rien de neuf chez tes abonnements";
+        if (emptyText) emptyText.textContent = "Les comptes que tu suis n'ont rien publié pour le moment. Ton Accueil, lui, montre aussi les passions que tu as choisies.";
+      } else if (nothingSelected) {
+        // « Accueil » sans passion choisie ET sans abonnement : le seul vrai
+        // cul-de-sac. Il énonce les DEUX sorties, puisqu'il y en a deux.
+        if (emptyTitle) emptyTitle.textContent = "Choisis tes passions";
+        if (emptyText) emptyText.textContent = "Ton Accueil réunit les passions que tu choisis et les personnes que tu suis. Touche une passion ci-dessus pour commencer.";
       } else if (!intentsEnabled && selectedMoods.size === 0) {
         if (emptyTitle) emptyTitle.textContent = "Choisis un mood";
         if (emptyText) emptyText.textContent = "Sélectionne un mood pour filtrer le contenu.";
-      } else if (_showFollowingFeed && _activeFeedPassions.size > 0) {
-        if (emptyTitle) emptyTitle.textContent = "Aucun post pour cette combinaison";
-        if (emptyText) emptyText.textContent = intentsEnabled
-          ? "Essaie une autre sélection de passions ou de suivis."
-          : "Essaie un autre mood ou autre sélection.";
-      } else if (_showFollowingFeed) {
-        if (emptyTitle) emptyTitle.textContent = "Aucun post de tes suivis";
-        if (emptyText) emptyText.textContent = "Tu ne suis personne, ou ils n'ont rien publié.";
+      } else if (_activeFeedPassions.size === 0 && suitQuelquun) {
+        if (emptyTitle) emptyTitle.textContent = "Rien de neuf pour l'instant";
+        if (emptyText) emptyText.textContent = "Les personnes que tu suis n'ont rien publié. Ajoute une passion ci-dessus pour découvrir d'autres contenus.";
       } else if (_activeFeedPassions.size > 0) {
         if (emptyTitle) emptyTitle.textContent = "Aucun post pour cette sélection";
         if (emptyText) emptyText.textContent = intentsEnabled
@@ -4154,7 +4252,7 @@ function renderFeed() {
   const _domSig = [
     mood, Array.from(selectedMoods).join(","), Array.from(_activeFeedPassions).join(","),
     intentsEnabled ? "intents1:" + activeFeedIntent : "intents0",
-    _showFollowingFeed ? 1 : 0, renderLimit, hasMore ? 1 : 0,
+    vueFil, followingIds.length, renderLimit, hasMore ? 1 : 0,
     Math.floor(Date.now() / 300000),
     // Le pont Fil → IRL change le HTML des cartes sans toucher aux posts : sans
     // lui dans la signature, basculer le drapeau ne repeindrait pas le fil.

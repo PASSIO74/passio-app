@@ -61,12 +61,12 @@ const TOUR_STEPS = [
   {
     screen: "profiles",
     emoji: "👤",
-    title: "Plusieurs profils, plusieurs passions",
-    lede: "Un espace dédié pour chaque chose qui t'anime.",
+    title: "Un seul profil, plusieurs passions",
+    lede: "Range ce que tu publies, choisis ce que tu vois.",
     points: [
-      "Skate, lecture, photo, cuisine, chaque passion son profil",
-      "Tu changes d'univers en un tap",
-      "Pas besoin de tout mélanger sur un seul compte"
+      "Skate, lecture, photo, cuisine : tu publies dans la passion qui correspond",
+      "Ton fil réunit les passions que tu choisis et les personnes que tu suis",
+      "Un seul pseudo, un seul profil : les gens te suivent, toi"
     ]
   },
   {

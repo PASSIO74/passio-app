@@ -25,7 +25,7 @@ Instrumentation automatique (`js/telemetry.js`) : **navigation** (wrap `goTo`), 
 | Habitude (DAU/MAU) · Taux de retour 7 j | **RÉEL** | Idem `kpi.js` (`computeKpi`, testé). |
 | Rétention J1 / J7 / J30 (cohorte) | **RÉEL (avec garde)** | `dashboard/server/retention.js` : `profiles.created_at` × retour télémétrie. Cohorte comptée seulement si fenêtre écoulée ET couverte par la télémétrie ; sinon « insuffisant »/inconnu, jamais un faux 0 %. Aujourd'hui surtout « insuffisant » (télémétrie ~3 j de recul). |
 | K-factor / viralité | **UNKNOWN** | Invitations/parrainage non instrumentés en agrégat. |
-| Passions par utilisateur | **UNKNOWN** | Dérivable de `profile_passions` mais non exposé. |
+| Passions par utilisateur | **UNKNOWN** | Dérivable de la colonne jsonb `profiles.passions` mais non exposé. (Il n'existe pas de table `profile_passions` — cf. ADR-007 et ADR-010.) |
 | Profils par utilisateur / taux de bascule | **UNKNOWN** | Bascule de profil non marquée en télémétrie (candidat `telemetry-event`). |
 | Création de contenu (posts/stories/CDV/IRL) | **PARTIEL** | Marqueurs de publication existent (`supaPublishPostWithRetry`) ; agrégat par type à construire. |
 
