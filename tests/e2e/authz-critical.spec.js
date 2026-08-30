@@ -81,13 +81,20 @@ test.describe("AUTHZ-CRITICAL — séparation entre comptes", () => {
       //    profiles(id). Sans profil, publier renvoie 409 (violation de clé
       //    étrangère) — un garde d'intégrité utile, découvert en écrivant ce test.
       for (const [tag, acc] of [["A", A], ["B", B]]) {
+        // ⚠️ UPSERT, pas un POST simple. Depuis que `supaUpsertProfile` ne
+        // s'interrompt plus quand aucune passion n'est résoluble (hotfix du
+        // 2026-08-30), l'application CRÉE elle-même la ligne `profiles` au
+        // moment où `creerCompteE2E` ouvre la session dans la page. Un POST
+        // simple tombait alors sur un 409 (conflit de clé) et faisait échouer la
+        // mise en place — alors que l'état voulu était déjà atteint.
         const p = await rest(acc.token, "profiles", {
           method: "POST",
+          headers: { Prefer: "return=representation,resolution=merge-duplicates" },
           body: JSON.stringify({ id: acc.uid, username: `e2e_authz_${tag.toLowerCase()}` }),
         });
-        expect(p.status, `profil ${tag} créé`).toBeLessThan(300);
+        expect(p.status, `profil ${tag} en place`).toBeLessThan(300);
       }
-      log("profils A et B créés");
+      log("profils A et B en place");
 
       // ── 0. B ne peut PAS se fabriquer un profil portant l'identité de A ────
       //    C'est l'attaque « choisir le côté acteur de la relation » : si elle
@@ -98,7 +105,20 @@ test.describe("AUTHZ-CRITICAL — séparation entre comptes", () => {
       });
       expect(stolenProfile.status, "B crée un profil sous l'id de A → doit être refusé")
         .toBeGreaterThanOrEqual(400);
-      log(`profil usurpé refusé (HTTP ${stolenProfile.status})`);
+      // ⚠️ LE STATUT NE SUFFIT PLUS À PROUVER QUOI QUE CE SOIT. Maintenant que la
+      // ligne de A peut PRÉEXISTER (cf. l'upsert ci-dessus), ce POST renvoie 409
+      // — un conflit de clé primaire — quelle que soit la RLS. L'assertion
+      // ci-dessus passerait donc même si la RLS était grande ouverte : c'est
+      // exactement le « faux verrou » que le dépôt documente, ici sur la barrière
+      // de séparation des comptes.
+      // On assère donc sur le RÉSULTAT : le profil de A lui appartient toujours
+      // et porte toujours SON pseudo. Cette vérification tient quel que soit le
+      // code d'état, et quel que soit l'ordre de création des lignes.
+      const profilA = await rest(A.token, `profiles?id=eq.${A.uid}&select=id,username`, { method: "GET" });
+      const ligneA = Array.isArray(profilA.body) ? profilA.body[0] : null;
+      expect(ligneA, "le profil de A est lisible par A").toBeTruthy();
+      expect(ligneA.username, "B n'a pas récrit le pseudo de A").not.toBe("usurpateur");
+      log(`profil usurpé refusé (HTTP ${stolenProfile.status}) — pseudo de A intact : ${ligneA.username}`);
 
       // ── A publie un post qui lui appartient ────────────────────────────────
       const created = await rest(A.token, "posts", {
