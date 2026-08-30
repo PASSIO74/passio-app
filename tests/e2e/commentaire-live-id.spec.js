@@ -77,6 +77,60 @@ test.describe("Commentaire de live CDV — identité côté serveur", () => {
     expect(ids[0]).not.toMatch(/^lc_local_/);
   });
 
+  test("l'affichage ne dépend PAS du réseau : le commentaire est là avant la réponse de la base", async ({ page }) => {
+    // ⚠️ CE QUE CE TEST GARDE (défaut mesuré le 2026-08-30, audit de la PR #222).
+    // Le passage de `addCdvLiveComment` en `async` avait placé le vidage du champ
+    // et le repeint de la boîte APRÈS l'`await supaAddCdvLiveComment(...)`. Que
+    // les appelants ignorent la promesse n'y change rien : ces deux gestes vivent
+    // DANS la fonction, donc derrière l'attente. Sur réseau lent ou coupé, le
+    // commentaire n'apparaissait qu'au bout de l'aller-retour — la personne
+    // croyait que sa touche n'avait pas pris et republiait.
+    //
+    // L'insert ne se résout JAMAIS ici : c'est le réseau lent porté à sa limite.
+    // Si le rendu repasse derrière l'`await`, il n'a alors JAMAIS lieu et ce test
+    // expire. C'est ce qui le rend capable de rougir.
+    await bootOnboarded(page);
+    await page.evaluate((liveId) => {
+      localStorage.setItem("passio_cdv_lives", JSON.stringify([{
+        id: liveId, authorId: "me", destination: "Lisbonne", status: "live",
+        steps: [], comments: [], createdAt: Date.now(),
+      }]));
+      window.__insertAppele = false;
+      supa = {
+        from: function () {
+          return {
+            insert: function () {
+              window.__insertAppele = true;
+              return new Promise(function () {});   // ne se résout jamais
+            },
+          };
+        },
+      };
+      var box = document.getElementById("cdvCommentsBox");
+      if (!box) { box = document.createElement("div"); box.id = "cdvCommentsBox"; document.body.appendChild(box); }
+      box.innerHTML = "";
+      var inp = document.getElementById("cdvLiveComment");
+      if (!inp) { inp = document.createElement("input"); inp.id = "cdvLiveComment"; document.body.appendChild(inp); }
+      inp.value = "Bien joué !";
+      // ⚠️ NE PAS attendre la promesse : c'est précisément l'objet du test.
+      addCdvLiveComment(liveId);
+    }, LIVE_ID);
+
+    await expect
+      .poll(() => page.evaluate(() => (document.getElementById("cdvLiveComment") || {}).value),
+            { timeout: 5000, message: "le champ doit être vidé sans attendre la base" })
+      .toBe("");
+    const html = await page.evaluate(() => document.getElementById("cdvCommentsBox").innerHTML);
+    expect(html, "le commentaire doit être peint sans attendre la base").toContain("Bien jou");
+
+    // Anti-creux : l'écriture réseau a bien été lancée et est TOUJOURS en vol —
+    // sans quoi le test prouverait seulement qu'il n'y a pas eu d'appel du tout.
+    expect(await page.evaluate(() => window.__insertAppele), "l'insert doit avoir été lancé").toBe(true);
+    const ids = await commentaires(page);
+    expect(ids.length).toBe(1);
+    expect(ids[0], "l'id est encore le local tant que la base n'a pas répondu").toMatch(/^lc_local_/);
+  });
+
   test("sans Supabase, le commentaire reste posé localement", async ({ page }) => {
     // Garde de non-régression : corriger l'id ne doit pas rendre l'écriture
     // locale dépendante du réseau. Hors ligne, le commentaire s'affiche quand même.

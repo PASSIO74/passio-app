@@ -27,20 +27,32 @@ on:
 # par heure. Un groupe par branche n'aurait rien réglé — la saturation vient du
 # CUMUL entre branches.
 #
-# `cancel-in-progress: false` est délibéré, et vaut pour les deux cas :
-#   · sur main, annuler un run en cours pourrait interrompre un déploiement à
-#     mi-chemin ; en sérialisant, le dernier commit poussé est aussi le dernier
-#     déployé — ce qui ferme au passage un second défaut, celui d'un run ancien
-#     qui finissait après un plus récent et remettait en ligne un artefact périmé ;
-#   · sur une PR, annuler priverait une AUTRE pull request de son résultat, le
-#     groupe étant commun. GitHub ne garde de toute façon qu'un run en attente par
-#     groupe : un nouveau push sur la même PR remplace celui qui patientait.
+# `cancel-in-progress: false` est délibéré : annuler un run en cours pourrait
+# interrompre un déploiement à mi-chemin. En sérialisant, le dernier commit
+# poussé est aussi le dernier déployé — ce qui ferme au passage le défaut d'un
+# run ancien finissant après un plus récent et remettant en ligne un artefact
+# périmé.
 #
-# COÛT ASSUMÉ : les runs font la queue au lieu de tourner en parallèle. Sur
-# l'usage ordinaire (une PR à la fois) cela ne change rien ; cela ne mord que sur
-# une vague — c'est-à-dire exactement quand on veut que cela morde.
+# ⚠️ DEUX GROUPES, ET C'EST LA CORRECTION D'UN DÉFAUT MESURÉ (2026-08-30, audit
+# de la PR #222). La première version posait UN groupe constant couvrant les deux
+# déclencheurs, et son commentaire affirmait qu'un run en attente n'était remplacé
+# que par « un nouveau push sur la même PR ». C'est FAUX : GitHub ne garde qu'UN
+# emplacement en attente par groupe, et tout nouveau run entrant y évince celui
+# qui patientait, quelle que soit son origine. Conséquence, sur ce dépôt où huit
+# branches vivent en parallèle : une fusion sur main met son run de déploiement
+# en attente, la mise à jour d'une PR quelconque l'ANNULE, et le commit fusionné
+# n'est JAMAIS déployé — sans un job rouge, sans une alerte, exactement la panne
+# silencieuse que cette PR existe pour réparer.
+#
+# Les pushes sur main ont donc leur propre groupe : ils se sérialisent entre eux
+# et aucune PR ne peut les évincer. Les PR gardent le groupe commun, qui borne le
+# cumul de runs simultanés — la raison d'être initiale.
+#
+# COÛT ASSUMÉ, et il est réel : sur une vague de PR, un run de PR en attente peut
+# être évincé par une AUTRE PR. Il faut alors repousser pour le relancer. C'est le
+# prix du plafond ; il ne s'applique jamais au déploiement.
 concurrency:
-  group: passio-ci
+  group: ${{ github.event_name == 'push' && 'passio-deploy-main' || 'passio-ci-pr' }}
   cancel-in-progress: false
 
 permissions:
@@ -115,8 +127,15 @@ jobs:
     # donc avec la cle service_role. Sans ce secret, tests/e2e/compte-e2e.js
     # echoue en nommant la cause plutot que de se mettre en veille silencieuse
     # sur une barriere de securite.
-    env:
-      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    #
+    # ⚠️ LE SECRET EST PORTÉ PAR LES DEUX SEULES ÉTAPES QUI S'EN SERVENT, JAMAIS
+    # PAR LE JOB. Corrigé le 2026-08-30 (audit de la PR #222) : posé au niveau du
+    # job, il était dans l'environnement de TOUTES les étapes, dont trois qui
+    # exécutent du code de tiers non épinglé (`npm install` du dashboard, `npm
+    # install --no-save @playwright/test`, `npx playwright install`). Un seul
+    # `postinstall` d'une dépendance transitive compromise suffisait alors à lire
+    # `process.env.SUPABASE_SERVICE_ROLE_KEY` et à l'exfiltrer, job vert et sans
+    # trace — or cette clé contourne INTÉGRALEMENT la RLS de la prod.
     steps:
       - uses: actions/checkout@v5
 
@@ -189,10 +208,13 @@ jobs:
       # Le centre de pilotage est une application à part entière. Ses tests
       # déterministes (Sentinel, Guardian, Autopilot, rollback) sont désormais
       # une gate CI explicite : une autonomie non testée ne doit jamais être verte.
+      # `npm ci` et non `npm install` : `dashboard/package-lock.json` est versionné,
+      # donc l'arbre installé doit être celui qu'il fixe. `npm install` laissait
+      # l'arbre dériver vers des versions jamais relues.
       - name: Tests centre de pilotage / Sentinel
         working-directory: dashboard
         run: |
-          npm install
+          npm ci
           npm test
 
       - name: Installer Playwright
@@ -207,9 +229,13 @@ jobs:
       # (env du job) : la clé anon ne suffit plus depuis que la confirmation
       # d'e-mail est active.
       - name: Gate d'autorisation (AUTHZ-CRITICAL)
+        env:
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: npx playwright test tests/e2e/authz-critical.spec.js
 
       - name: Lancer les tests
+        env:
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: npx playwright test
 
       # Le déploiement sert dist/, pas les fichiers de développement. Cette passe

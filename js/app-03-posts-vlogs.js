@@ -3604,10 +3604,28 @@ async function _loadCdvLiveLikes(ids) {
   } catch (e) {}
 }
 
+// Repeint le seul bloc des commentaires d'un live, sans ré-ouvrir la modale (ce
+// qui perdrait la position de défilement). Trois surfaces peuvent l'afficher :
+// la boîte du viewer, le fil de commentaires unifié, ou la modale elle-même.
+function _repeindreCommentairesLive(liveId, live) {
+  var box = document.getElementById("cdvCommentsBox");
+  if (box) { box.innerHTML = _cdvCommentsBoxHtml(live); return; }
+  if (typeof _refreshCommentThreadUI === "function" && document.getElementById("cmtThreadList")) { _refreshCommentThreadUI(liveId); return; }
+  if (document.querySelector(".modal[data-live-id]")) openCdvLiveViewer(liveId);
+}
+
 // `async` : on attend l'identifiant que la base a réellement écrit pour le poser
-// sur le commentaire optimiste. Les trois appelants (touche Entrée, bouton
-// Envoyer, fil de commentaires unifié) ignorent la promesse — l'affichage reste
-// immédiat, seul l'id est corrigé après coup.
+// sur le commentaire optimiste, puis on repeint pour que le DOM cesse de porter
+// l'id local dans ses handlers (c'est le défaut que ce chemin corrige).
+//
+// ⚠️ RENDU D'ABORD, RÉSEAU ENSUITE — ne jamais replacer l'affichage derrière
+// l'`await`. Que les trois appelants ignorent la promesse ne rend PAS l'affichage
+// immédiat : le vidage du champ et le repeint vivent DANS cette fonction, donc
+// derrière l'`await` s'ils sont écrits après lui. C'était le cas jusqu'au
+// 2026-08-30 : sur réseau lent ou coupé, le commentaire n'apparaissait qu'au
+// bout de l'aller-retour Supabase (jusqu'au timeout hors ligne), le texte restait
+// dans le champ, et la personne réappuyait — publiant deux fois. `saveCdvLives`
+// n'écrit que dans localStorage : il ne rend rien, il ne remplace pas le repeint.
 async function addCdvLiveComment(liveId) {
   var inp = document.getElementById("cdvLiveComment") || document.getElementById("cmtThreadInput");
   if (!inp) return;
@@ -3622,6 +3640,17 @@ async function addCdvLiveComment(liveId) {
   var _c = { id: "lc_local_" + Date.now(), authorId: _myId, author: _author, authorName: _author, text: text, at: Date.now(), createdAt: Date.now(), replies: [], likes: 0, likedBy: [] };
   live.comments.push(_c);
   saveCdvLives(lives);
+
+  // ── Affichage optimiste : immédiat, avant toute attente réseau. ──
+  inp.value = "";
+  _repeindreCommentairesLive(liveId, live);
+
+  // Notifie l'auteur du live (interaction cross-compte sur SON carnet).
+  if (live.authorId && live.authorId !== _myId && live.authorId !== "me" && typeof supaInsertNotif === "function") {
+    try { supaInsertNotif(live.authorId, "comment", liveId, "a commenté ton live"); } catch (e) {}
+  }
+
+  // ── Puis, en arrière-plan : adopter l'id que la base a réellement écrit. ──
   if (typeof supaAddCdvLiveComment === "function") {
     try {
       var realId = await supaAddCdvLiveComment(liveId, text);
@@ -3631,21 +3660,18 @@ async function addCdvLiveComment(liveId) {
         var _lives = getCdvLives();
         var _live = _lives.find(function (l) { return l.id === liveId; });
         var _cible = _live && (_live.comments || []).find(function (c) { return c.id === _c.id; });
-        if (_cible) { _cible.id = realId; saveCdvLives(_lives); }
+        if (_cible) {
+          _cible.id = realId;
+          saveCdvLives(_lives);
+          // Le DOM affiché porte encore l'id LOCAL dans ses handlers (suppression,
+          // réponse, like) : sans ce second repeint, supprimer son propre
+          // commentaire viserait un id absent de la base — exactement le défaut
+          // que ce chemin corrige.
+          _repeindreCommentairesLive(liveId, _live);
+        }
       }
     } catch (e) {}
   }
-  // Notifie l'auteur du live (interaction cross-compte sur SON carnet).
-  if (live.authorId && live.authorId !== _myId && live.authorId !== "me" && typeof supaInsertNotif === "function") {
-    try { supaInsertNotif(live.authorId, "comment", liveId, "a commenté ton live"); } catch (e) {}
-  }
-  // Re-render le bloc commentaires seul (évite de ré-ouvrir toute la modale et de
-  // perdre la position de défilement).
-  if (inp) inp.value = "";
-  var box = document.getElementById("cdvCommentsBox");
-  if (box) box.innerHTML = _cdvCommentsBoxHtml(live);
-  else if (typeof _refreshCommentThreadUI === "function" && document.getElementById("cmtThreadList")) _refreshCommentThreadUI(liveId);
-  else if (document.querySelector(".modal[data-live-id]")) openCdvLiveViewer(liveId);
 }
 
 // renderCdvLives() n'est plus utilisée - les lives s'affichent uniquement dans cdvList via renderCdvScreen()
