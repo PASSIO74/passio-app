@@ -34,6 +34,57 @@
 
 Chaque route sensible est protégée par `requireCap(...)`. Un refus est audité.
 
+**Ce que les tests vérifient, et à quel niveau** (ajouté le 2026-08-30) :
+
+- `test/routes-caps.test.js` fige la garde **déclarée** des 81 routes, dans les
+  deux sens — une garde qui change rougit, une route ajoutée sans garde déclarée
+  aussi. Il lit la SOURCE : `server/index.js` appelle `app.listen` au chargement
+  et n'est donc pas importable.
+- `test/http-routes.test.js` vérifie la garde **appliquée**, sur un vrai serveur :
+  quatre comptes de rôles différents, chaque route interrogée sans session
+  (401 exigé) puis avec un rôle dépourvu de la capacité (403 exigé). C'est ce
+  qui attrape un middleware neutralisé en amont, qu'une lecture de code ne voit
+  pas. Seul le sens du REFUS est testé : appeler les routes de mutation
+  lancerait des suites, créerait des branches, supprimerait des comptes.
+- Invariant **général** figé au passage : toute route dont le corps appelle
+  `reconcile` doit exiger la capacité `db` ou la vérifier elle-même.
+  `/api/diagnose` n'en était qu'un cas — c'est par là que l'intégrité avait
+  fuité une fois.
+
+## 3 bis. Injection dans la page de pilotage (corrigé le 2026-08-30)
+
+Le dashboard affiche du texte écrit par les navigateurs des utilisateurs de
+PASSIO — messages d'erreur, noms d'écrans, plateformes, gravités, identifiants
+d'appareil — dans une session qui porte les capacités les plus fortes du
+produit. **Une injection ici ne vise pas un visiteur : elle vise le poste de
+pilotage.**
+
+Le défaut : 17 boutons écrits `onclick='fn(${JSON.stringify(x)})'`.
+`JSON.stringify` échappe le guillemet double, **jamais l'apostrophe** — or c'est
+une apostrophe qui délimite l'attribut. Mesuré avec `x'); alert(…); //` : le
+navigateur referme l'attribut au milieu et relit le reste comme des attributs
+HTML. Les valeurs concernées étaient les plus hostiles du produit (message et
+stack d'un bug, l'événement de télémétrie sérialisé en entier, identifiants
+d'appareil et de lien). S'y ajoutaient huit champs de télémétrie affichés bruts,
+dont trois dans des **attributs de classe**, et les libellés de `charts.js`.
+
+Les trois règles à tenir, verrouillées par `test/spa-echappement.test.js` et
+prouvées dans un navigateur réel par `test/navigateur.test.js` :
+
+1. **`escJsArg` pour toute donnée dans un `onclick`.** Le navigateur DÉCODE
+   l'attribut avant de parser le JS : `&#39;` y redevient une apostrophe, légale
+   à l'intérieur du littéral à guillemets doubles produit par `JSON.stringify`.
+   Le « & » s'échappe AVANT l'apostrophe, sans quoi une charge déjà encodée se
+   décoderait en apostrophe vive. C'est l'`escapeJsArg` de l'app PASSIO.
+2. **`esc` pour tout champ de télémétrie affiché**, y compris — surtout — dans
+   un attribut de classe, où un seul guillemet suffit.
+3. **L'échappement se pose à la SOURCE du helper** (`bars()` dans `charts.js`),
+   pas chez ses appelants : un appelant qui oublie ne peut pas rouvrir le trou.
+
+`command.js` échappe à cette famille par construction : il bâtit ses nœuds avec
+`createElement`/`textContent` et n'utilise aucun `innerHTML`. Un test fige ce
+choix.
+
 ## 4. Modifications de code (Git)
 
 Processus imposé : détection → contexte → analyse → **diff** → **validation

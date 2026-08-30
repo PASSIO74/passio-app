@@ -12,10 +12,14 @@
 // ═══════════════════════════════════════════════════════════════════════════
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { config } from "./config.js";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const REPORT = path.join(__dirname, "..", "data", "qa-report.json");
+// Le chemin suit `config.dataDir` comme tout le reste du pilotage. Il était
+// calculé à part (`__dirname/../data`) : identique tant que `DASH_DATA_DIR`
+// n'est pas posé, faux dès qu'il l'est — le rapport était alors cherché dans un
+// dossier que plus personne n'écrivait, et la vue QA disait « aucune campagne »
+// au lieu de montrer la dernière.
+const REPORT = path.join(config.dataDir, "qa-report.json");
 
 export function qaReport() {
   try {

@@ -7,6 +7,7 @@ import { spawn } from "node:child_process";
 import { config } from "./config.js";
 import { broadcast } from "./sse.js";
 import { audit } from "./audit.js";
+import { entree } from "./liste-blanche.js";
 
 export const TEST_SUITES = {
   authz:      { label: "Autorisation — séparation entre comptes (AUTHZ-CRITICAL)", cmd: "npx", args: ["playwright", "test", "tests/e2e/authz-critical.spec.js"] },
@@ -55,7 +56,7 @@ export function currentRun() {
 
 export function runSuite(id, actor) {
   if (running) { const e = new Error("Un test est déjà en cours."); e.code = 409; throw e; }
-  const suite = TEST_SUITES[id];
+  const suite = entree(TEST_SUITES, id);
   if (!suite) { const e = new Error("Suite inconnue (hors liste blanche)."); e.code = 400; throw e; }
   audit("run_tests", { id, cmd: suite.cmd + " " + suite.args.join(" ") }, actor);
 
@@ -87,7 +88,7 @@ export function runSuite(id, actor) {
 export function runSuiteAwait(id, cwd, actor, timeoutMs = 900_000) {
   return new Promise((resolve, reject) => {
     if (running) { const e = new Error("Un test est déjà en cours."); e.code = 409; return reject(e); }
-    const suite = TEST_SUITES[id];
+    const suite = entree(TEST_SUITES, id);
     if (!suite) { const e = new Error("Suite inconnue (hors liste blanche)."); e.code = 400; return reject(e); }
     audit("run_tests_auto", { id, cwd }, actor);
     const proc = spawn(suite.cmd, suite.args, { cwd: cwd || config.repoPath, shell: process.platform === "win32", env: { ...process.env, CI: "1", FORCE_COLOR: "0" } });

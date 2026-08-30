@@ -1,4 +1,10 @@
 // Graphiques légers sur <canvas> (aucune dépendance). Thème via variables CSS.
+
+// ⚠️ `bars()` est le SEUL rendu HTML de ce fichier, et ses libellés viennent de
+// données observées : types d'événements, noms d'écrans, actions — tous écrits
+// par les navigateurs des utilisateurs. Un `esc` local plutôt qu'un import :
+// `app.js` garde le sien, comme `command.js` et `orchestrator-panel.js`.
+const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || "#8b5cf6"; }
 function prep(canvas, h = 160) {
   const dpr = window.devicePixelRatio || 1;
@@ -65,8 +71,8 @@ export function bars(el, items) {
   el.innerHTML = items.map((it) => `
     <div style="margin:9px 0">
       <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
-        <span>${it.label}</span><span class="progress-num muted">${it.display ?? it.value}</span>
+        <span>${esc(it.label)}</span><span class="progress-num muted">${esc(it.display ?? it.value)}</span>
       </div>
-      <div class="bar-track"><div class="bar-fill" style="width:${Math.min(100, (it.value / (it.max || 100)) * 100)}%;${it.color ? "background:" + it.color : ""}"></div></div>
+      <div class="bar-track"><div class="bar-fill" style="width:${Math.min(100, (it.value / (it.max || 100)) * 100)}%;${it.color ? "background:" + esc(it.color) : ""}"></div></div>
     </div>`).join("");
 }

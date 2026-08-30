@@ -57,7 +57,13 @@ export function updateFlag(id, patch, actor) {
   const d = flagsDb.get(); const f = d.items.find((x) => x.id === id);
   if (!f) return null;
   const before = { enabled: f.enabled, rollout: f.rollout };
-  for (const k of ["enabled", "rollout", "targetUsers", "targetDevices", "startAt", "endAt", "label"]) if (k in patch) f[k] = patch[k];
+  // Mêmes coercitions qu'à la création : un formulaire envoie « 50 » et « on »,
+  // pas 50 et true. Sans ça, `enabled` finissait par valoir la CHAÎNE "false"
+  // (donc vrai) et `rollout` une chaîne, selon qu'un drapeau avait été créé ou
+  // modifié — deux chemins pour un même objet, deux formes de données.
+  for (const k of ["targetUsers", "targetDevices", "startAt", "endAt", "label"]) if (k in patch) f[k] = patch[k];
+  if ("enabled" in patch) f.enabled = Boolean(patch.enabled) && patch.enabled !== "false";
+  if ("rollout" in patch) f.rollout = Math.min(100, Math.max(0, Number(patch.rollout) || 0));
   f.history.push({ ts: Date.now(), actor, action: "updated", before, after: { enabled: f.enabled, rollout: f.rollout } });
   if (f.history.length > 50) f.history.shift();
   flagsDb.save();
