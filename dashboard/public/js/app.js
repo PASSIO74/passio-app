@@ -26,6 +26,17 @@ const LIVE = new Set(["overview", "activity", "devices", "users", "content", "li
 
 // ─── Utilitaires ─────────────────────────────────────────────────────────────
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+// ⚠️ Argument de chaîne DANS un attribut onclick : deux couches à franchir, et
+// `JSON.stringify` n'en couvre qu'une. Il échappe le guillemet double mais PAS
+// l'apostrophe — or l'attribut est délimité par des apostrophes. Un message
+// d'erreur contenant « \' » refermait donc l'attribut, et tout ce qui suivait
+// était relu par le navigateur comme des attributs HTML. Mesuré le 2026-08-30
+// avec la charge « x\'); alert(document.cookie); // ».
+// Le navigateur DÉCODE l'attribut avant de parser le JS : `&#39;` redevient une
+// apostrophe, légale à l'intérieur du littéral à guillemets doubles que produit
+// `JSON.stringify`. C'est exactement le rôle d'`escapeJsArg` dans l'app PASSIO.
+const escJsArg = (v) => JSON.stringify(String(v == null ? "" : v))
+  .replace(/&/g, "&amp;").replace(/\'/g, "&#39;").replace(/</g, "&lt;");
 const hhmmss = (ts) => new Date(ts).toLocaleTimeString("fr-FR", { hour12: false });
 function ago(ts) {
   if (!ts) return "—"; const s = (Date.now() - ts) / 1000;
@@ -207,7 +218,7 @@ function renderFixResult(r) {
   // Affiche le vrai libellé du problème dans l'intro (on ne le passe plus via l'onclick).
   const intro = $("#drawerBody .fix-intro"); if (intro && r.title) intro.textContent = r.title;
   // Bouton COPIER — bien visible, épinglé en haut (accessible sans faire défiler).
-  const copyBtn = `<button class="btn btn-primary btn-block fix-copy" onclick='window.__copy(${JSON.stringify(r.prompt || "")},"Instructions pour Claude Code")'>${icon("copy")} Copier tout pour Claude Code</button>`;
+  const copyBtn = `<button class="btn btn-primary btn-block fix-copy" onclick='window.__copy(${escJsArg(r.prompt || "")},"Instructions pour Claude Code")'>${icon("copy")} Copier tout pour Claude Code</button>`;
   const wasDeep = fixWithClaude._last && fixWithClaude._last.deep;
   const canDeep = !wasDeep && r.via === "cli" && !r.authNeeded;
   const deepBtn = canDeep ? `<button class="btn btn-block fix-deep" id="fixDeep">${icon("sparkles")} Analyse approfondie — lit ton vrai code (~3-5 min)</button>` : "";
@@ -303,7 +314,7 @@ VIEWS.overview = async (view) => {
     }
     const liveTag = (dataReal && hasData) ? `<div class="state-live"><span class="live-dot"></span>EN DIRECT</div>` : "";
     const fixBtn = (dataReal && hasData && worst && hasCap("claude"))
-      ? `<button class="btn btn-primary state-fix" onclick="window.__fixBug('${worst.id}')">${icon("wrench")} Réparer avec Claude</button>`
+      ? `<button class="btn btn-primary state-fix" onclick='window.__fixBug(${escJsArg(worst.id)})'>${icon("wrench")} Réparer avec Claude</button>`
       : (dataReal && hasData && problems) ? `<a class="btn btn-primary state-fix" href="#bugs">${icon("wrench")} Voir les problèmes</a>` : "";
     $("#ovState").innerHTML = `<div class="state-banner ${level}">
       <div class="state-ico">${icon(banIco)}</div>
@@ -550,25 +561,25 @@ VIEWS.brief = async (view) => {
 function feedRow(ev) {
   const meta = [ev.screen && "écran " + ev.screen, ev.duration_ms != null && ev.duration_ms + " ms", ev.http_status && "HTTP " + ev.http_status].filter(Boolean).join(" · ");
   const fix = ev.type === "error" && hasCap("claude")
-    ? `<button class="fix-btn" title="Réparer avec Claude" onclick='event.stopPropagation();window.__fixEvent(${JSON.stringify(ev.id)})'>${icon("wrench")}</button>` : "";
-  return `<div class="feed-row" onclick='window.__evDetail(${JSON.stringify(ev.id)})'>
+    ? `<button class="fix-btn" title="Réparer avec Claude" onclick='event.stopPropagation();window.__fixEvent(${escJsArg(ev.id)})'>${icon("wrench")}</button>` : "";
+  return `<div class="feed-row" onclick='window.__evDetail(${escJsArg(ev.id)})'>
     <span class="fr-time">${hhmmss(ev.ts)}</span>
     <span class="fr-dot" style="background:${dotColor(ev)}"></span>
-    <span class="fr-main"><b>${esc(actionLabel(ev))}</b> <span class="muted">· ${who(ev)} · ${ev.platform}/${ev.browser}</span><div class="fr-meta">${meta || ""}</div></span>
-    <span class="fr-right">${fix}<span class="pill ${ev.type === "error" ? "error" : ev.status}">${TYPE_FR[ev.type] || ev.type}</span></span></div>`;
+    <span class="fr-main"><b>${esc(actionLabel(ev))}</b> <span class="muted">· ${who(ev)} · ${esc(ev.platform)}/${esc(ev.browser)}</span><div class="fr-meta">${meta || ""}</div></span>
+    <span class="fr-right">${fix}<span class="pill ${ev.type === "error" ? "error" : esc(ev.status)}">${esc(Object.hasOwn(TYPE_FR, ev.type) ? TYPE_FR[ev.type] : ev.type)}</span></span></div>`;
 }
 window.__evDetail = (id) => {
   const ev = S.buffer.find((e) => e.id === id); if (!ev) return;
   openDrawer("Détail de l'événement", `
     <div class="detail-grid">
-      ${detail("Type", (TYPE_FR[ev.type] || ev.type) + " · " + esc(actionLabel(ev)))}
+      ${detail("Type", esc(Object.hasOwn(TYPE_FR, ev.type) ? TYPE_FR[ev.type] : ev.type) + " · " + esc(actionLabel(ev)))}
       ${detail("Horodatage", new Date(ev.ts).toLocaleString("fr-FR"))}
       ${detail("Profil", who(ev))}
       ${detail("Appareil", esc(deviceLabel(ev)) + " · v" + esc(ev.app_version))}
       ${detail("Écran", esc(ev.screen || "—"))}
-      ${detail("Environnement", ev.env)}
-      ${detail("Statut", `<span class="pill ${ev.type === "error" ? "error" : ev.status}">${ev.status}</span>`)}
-      ${detail("Gravité", `<span class="sev-${ev.severity}">${ev.severity}</span>`)}
+      ${detail("Environnement", esc(ev.env))}
+      ${detail("Statut", `<span class="pill ${ev.type === "error" ? "error" : esc(ev.status)}">${esc(ev.status)}</span>`)}
+      ${detail("Gravité", `<span class="sev-${esc(ev.severity)}">${esc(ev.severity)}</span>`)}
       ${ev.endpoint ? detail("Endpoint", `<span class="mono">${esc(ev.endpoint)}</span>`) : ""}
       ${ev.http_status ? detail("Code HTTP", ev.http_status) : ""}
       ${ev.duration_ms != null ? detail("Durée", ev.duration_ms + " ms") : ""}
@@ -577,7 +588,7 @@ window.__evDetail = (id) => {
     ${ev.message ? `<div class="section-title">Message</div><div class="stack">${esc(ev.message)}</div>` : ""}
     ${ev.stack ? `<div class="section-title">Stack</div><div class="stack">${esc(ev.stack)}</div>` : ""}
     ${Object.keys(ev.meta || {}).length ? `<div class="section-title">Métadonnées</div><div class="stack">${esc(JSON.stringify(ev.meta, null, 2))}</div>` : ""}
-    <div class="copy-row"><button class="btn btn-sm" onclick='window.__copy(${JSON.stringify(JSON.stringify(ev, null, 2))},"Événement")'>${icon("copy")} Copier le contexte</button>
+    <div class="copy-row"><button class="btn btn-sm" onclick='window.__copy(${escJsArg(JSON.stringify(ev, null, 2))},"Événement")'>${icon("copy")} Copier le contexte</button>
     <a class="btn btn-sm" href="#activity/session/${esc(ev.session_id)}">${icon("route")} Parcours de la session</a></div>`);
 };
 window.__copy = (t, l) => copy(t, l);
@@ -635,7 +646,7 @@ VIEWS.devices = async () => {
   async function refresh() {
     const devs = await api.get("/devices");
     if ($("#cmpA").options.length === 0 && devs.length) {
-      const opts = devs.map((d) => `<option value="${d.deviceId}">${nameFor(d.userId, d.userLabel)} · ${d.platform}/${d.browser}</option>`).join("");
+      const opts = devs.map((d) => `<option value="${esc(d.deviceId)}">${nameFor(d.userId, d.userLabel)} · ${esc(d.platform)}/${esc(d.browser)}</option>`).join("");
       $("#cmpA").innerHTML = opts; $("#cmpB").innerHTML = opts;
       if (devs[1]) $("#cmpB").value = devs[1].deviceId;
       $("#cmpA").onchange = $("#cmpB").onchange = () => drawCompare(devs);
@@ -656,7 +667,7 @@ VIEWS.devices = async () => {
 };
 function deviceCard(d) {
   const sess = S.buffer.filter((e) => e.device_id === d.deviceId).slice(-6).reverse();
-  return `<div class="card device-card"><div class="dc-head"><div class="dc-os">${(d.platform || "?").slice(0, 3).toUpperCase()}</div><div><strong>${nameFor(d.userId, d.userLabel)}</strong><div class="muted" style="font-size:12px">${d.platform} · ${d.browser} · v${esc(d.appVersion || "?")}</div></div><span class="pill ${d.online ? "ok" : "info"}" style="margin-left:auto">${d.online ? "en ligne" : ago(d.lastSeen)}</span></div>
+  return `<div class="card device-card"><div class="dc-head"><div class="dc-os">${esc((d.platform || "?").slice(0, 3).toUpperCase())}</div><div><strong>${nameFor(d.userId, d.userLabel)}</strong><div class="muted" style="font-size:12px">${esc(d.platform)} · ${esc(d.browser)} · v${esc(d.appVersion || "?")}</div></div><span class="pill ${d.online ? "ok" : "info"}" style="margin-left:auto">${d.online ? "en ligne" : ago(d.lastSeen)}</span></div>
     <div class="detail-grid" style="margin:8px 0">${detail("Écran", esc(d.screen || "—"))}${detail("Taille", esc(d.screenSize || "—"))}${detail("Connexion", esc(d.connection || "—"))}${detail("Erreurs", d.errorCount || 0)}${detail("Environnement", d.env)}</div>
     <div class="section-title" style="margin:10px 0 6px">Activité récente</div>${sess.map(feedRow).join("") || '<div class="muted" style="font-size:12px">—</div>'}</div>`;
 }
@@ -694,7 +705,7 @@ async function loadTestUsers() {
   try {
     const r = await api.get("/test-users");
     if (!r.configured) { $("#testUsers").innerHTML = '<div class="muted">Supabase non configuré (service_role manquante).</div>'; return; }
-    $("#testUsers").innerHTML = r.users.length ? `<p class="muted" style="margin-top:0;font-size:12px">Seuls les comptes jetables (<span class="mono">@passio-e2e.test</span>) sont listés. Les comptes réels sont protégés.</p>` + r.users.map((u) => `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border-soft)"><span class="mono">${esc(u.email)}</span><button class="btn btn-sm btn-danger" onclick="window.__delTestUser('${u.id}')">${icon("trash")} Supprimer</button></div>`).join("") : '<div class="muted">Aucun compte de test.</div>';
+    $("#testUsers").innerHTML = r.users.length ? `<p class="muted" style="margin-top:0;font-size:12px">Seuls les comptes jetables (<span class="mono">@passio-e2e.test</span>) sont listés. Les comptes réels sont protégés.</p>` + r.users.map((u) => `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border-soft)"><span class="mono">${esc(u.email)}</span><button class="btn btn-sm btn-danger" onclick='window.__delTestUser(${escJsArg(u.id)})'>${icon("trash")} Supprimer</button></div>`).join("") : '<div class="muted">Aucun compte de test.</div>';
   } catch (e) { $("#testUsers").innerHTML = `<div class="muted">${esc(e.message)}</div>`; }
 }
 window.__delTestUser = async (id) => { if (!confirm("Supprimer ce compte de test ?")) return; try { await api.del("/test-users/" + id); toast("Compte supprimé"); loadTestUsers(); } catch (e) { toast(e.message); } };
@@ -730,7 +741,7 @@ function linkTimelineRow(ev) {
   else if (ev.action === "link_open") { txt = `Lien ${shortLink(id)} — Ouverture confirmée (page chargée)${dev}`; cls = "ok"; }
   else if (ev.action === "link_load_error") { txt = `Lien ${shortLink(id)} — Échec de chargement${dev}`; cls = "error"; }
   else { txt = `Lien ${shortLink(id)} — ${esc(actionLabel(ev))}`; cls = "info"; }
-  return `<div class="tl-row" onclick='window.__linkDetail(${JSON.stringify(id)})'>
+  return `<div class="tl-row" onclick='window.__linkDetail(${escJsArg(id)})'>
     <span class="tl-time">${hhmmss(ev.ts)}</span><span class="tl-dot ${cls}"></span>
     <span class="tl-txt">${esc(txt)}</span></div>`;
 }
@@ -817,7 +828,7 @@ function linkRow(l) {
   const cfg = LINK_STATUS[l.status] || LINK_STATUS.unknown;
   const opens = l.openCount ? `<b class="${l.errorOpens && l.errorOpens === l.openCount ? "sev-error" : "sev-ok"}">${l.openCount}</b> <span class="muted">· ${l.openDevices} appareil${l.openDevices > 1 ? "s" : ""}</span>` : '<span class="muted">aucune</span>';
   const chans = (l.channels || []).length ? `<span class="muted">· ${l.channels.map(esc).join(", ")}</span>` : "";
-  return `<tr onclick='window.__linkDetail(${JSON.stringify(l.id)})'>
+  return `<tr onclick='window.__linkDetail(${escJsArg(l.id)})'>
     <td><span class="pill ${cfg.pill}">${cfg.label}</span></td>
     <td class="mono">${shortLink(l.id)}${l.orphan ? ' <span class="pill info" title="Ouverture sans création connue">orphelin</span>' : ""}</td>
     <td>${esc(linkKind(l))}${l.target ? ` <span class="muted mono" style="font-size:11px">${esc(String(l.target).slice(0, 14))}</span>` : ""}</td>
@@ -852,7 +863,7 @@ window.__linkDetail = async (id) => {
     <div class="fix-note ${l.openCount ? "ok" : "" }" style="margin-top:12px">${icon(l.openCount ? "checkCircle" : "alertTriangle")} ${esc(cfg.desc || "")}${!l.openCount && l.shareCount ? " — ce lien a été partagé mais aucune ouverture n'a été confirmée pour l'instant." : ""}</div>
     ${shareRows ? `<div class="section-title">Partages</div><div class="timeline">${shareRows}</div>` : ""}
     ${openRows ? `<div class="section-title">Ouvertures</div><div class="timeline">${openRows}</div>` : ""}
-    <div class="copy-row"><button class="btn btn-sm" onclick='window.__copy(${JSON.stringify(l.id)},"Identifiant du lien")'>${icon("copy")} Copier l'ID</button>
+    <div class="copy-row"><button class="btn btn-sm" onclick='window.__copy(${escJsArg(l.id)},"Identifiant du lien")'>${icon("copy")} Copier l'ID</button>
     <a class="btn btn-sm" href="#activity">${icon("activity")} Voir dans le flux</a></div>`);
 };
 
@@ -939,7 +950,7 @@ function visitorRow(v) {
   const via = (v.viaLinks || []).length ? `<span class="mono" title="Lien d'arrivée">${shortLink(v.viaLink)}</span>${v.viaLinks.length > 1 ? ` <span class="muted">+${v.viaLinks.length - 1}</span>` : ""}` : '<span class="muted">direct</span>';
   const act = `${num(v.sessions || 0)} sess. <span class="muted">· ${num(v.events || 0)} év.</span>${v.errorCount ? ` <span class="pill error" style="font-size:10px" title="Problèmes rencontrés">${v.errorCount}</span>` : ""}`;
   const status = v.online ? '<span class="pill ok">en ligne</span>' : v.netTrouble ? '<span class="pill error">réseau</span>' : v.active ? '<span class="pill accent">actif</span>' : '<span class="pill info">hors ligne</span>';
-  return `<tr onclick='window.__visitorDetail(${JSON.stringify(v.deviceId)})' style="cursor:pointer">
+  return `<tr onclick='window.__visitorDetail(${escJsArg(v.deviceId)})' style="cursor:pointer">
     <td>${name}</td><td>${dev}</td><td>${v.screen ? esc(v.screen) : '<span class="muted">—</span>'}</td>
     <td>${via}</td><td>${act}</td>
     <td class="muted" title="${v.firstSeen ? new Date(v.firstSeen).toLocaleString("fr-FR") : ""}">${v.firstSeen ? ago(v.firstSeen) : "—"}</td>
@@ -958,7 +969,7 @@ window.__visitorDetail = (deviceId) => {
     ["Connexion", v.connection ? esc(v.connection) : "—"],
     ["Environnement", esc(ENV_FR[v.env] || v.env)],
     ["Version de l'app", `<span class="mono">${esc(v.appVersion || "?")}</span>`],
-    ["Arrivé par", (v.viaLinks || []).length ? v.viaLinks.map((id) => `<a class="mono" onclick='window.__linkDetail(${JSON.stringify(id)})' style="cursor:pointer">${shortLink(id)}</a>`).join(" ") : '<span class="muted">accès direct (pas de lien suivi)</span>'],
+    ["Arrivé par", (v.viaLinks || []).length ? v.viaLinks.map((id) => `<a class="mono" onclick='window.__linkDetail(${escJsArg(id)})' style="cursor:pointer">${shortLink(id)}</a>`).join(" ") : '<span class="muted">accès direct (pas de lien suivi)</span>'],
     ["Sessions", num(v.sessions || 0)],
     ["Événements", num(v.events || 0)],
     ["Problèmes rencontrés", v.errorCount ? `<span class="sev-error">${v.errorCount}</span>` : "aucun"],
@@ -972,7 +983,7 @@ window.__visitorDetail = (deviceId) => {
     `<div class="detail-grid">${rows.map(([k, val]) => detail(k, val)).join("")}</div>
      ${screens}
      <div class="fix-note" style="margin-top:12px">${icon("alertTriangle")} Numéro de téléphone indisponible : Passio n'en collecte pas (inscription par e-mail). Les données ci-dessus sont tout ce que la télémétrie connaît, PII masqué par conception.</div>
-     <div class="copy-row"><button class="btn btn-sm" onclick='window.__copy(${JSON.stringify(v.deviceId)},"Identifiant d\\u0027appareil")'>${icon("copy")} Copier l'ID appareil</button></div>`);
+     <div class="copy-row"><button class="btn btn-sm" onclick='window.__copy(${escJsArg(v.deviceId)},"Identifiant d\\u0027appareil")'>${icon("copy")} Copier l'ID appareil</button></div>`);
 };
 
 // ── Vérification des interactions cross-device ──────────────────────────────
@@ -1429,7 +1440,7 @@ function interRow(r) {
     deliv = `<span class="pill warn">${icon("clock")} En attente…</span>`;
   } else if (r.status === "unconfirmed") {
     const fix = hasCap("claude")
-      ? `<button class="fix-btn" title="Réparer avec Claude" onclick='event.stopPropagation();window.__fixInteraction(${JSON.stringify(r.id)})'>${icon("wrench")}</button>`
+      ? `<button class="fix-btn" title="Réparer avec Claude" onclick='event.stopPropagation();window.__fixInteraction(${escJsArg(r.id)})'>${icon("wrench")}</button>`
       : "";
     deliv = `<span class="pill error">${icon("alertTriangle")} Non reçu ailleurs</span> <span class="muted">aucun autre appareil ne l'a reçu${r.idCorrelated ? "" : " (appariement par le temps)"}</span> ${fix}`;
   } else {
@@ -1488,7 +1499,7 @@ VIEWS.bugs = async () => {
     <div class="table-wrap"><table><thead><tr><th>Gravité</th><th>Problème</th><th>Fois</th><th>Users</th><th>Statut</th><th>Vu</th><th>Réparer</th></tr></thead><tbody id="bugRows"></tbody></table></div>`);
   async function refresh() {
     const bugs = await api.get("/bugs");
-    $("#bugRows").innerHTML = bugs.map((b) => `<tr onclick="window.__bug('${b.id}')"><td><span class="pill ${b.severity}">${b.severity}</span></td><td><strong>${esc(b.title)}</strong><div class="muted" style="font-size:11px">${esc(b.codeRef ? b.codeRef.file + (b.codeRef.line ? ":" + b.codeRef.line : "") : b.action || "")}</div></td><td>${b.count}</td><td>${b.users}</td><td><span class="pill ${b.status}">${b.status.replace(/_/g, " ")}</span></td><td class="muted">${ago(b.lastSeen)}</td><td>${hasCap("claude") ? `<button class="fix-btn big" title="Réparer avec Claude" onclick="event.stopPropagation();window.__fixBug('${b.id}')">${icon("wrench")}</button>` : "—"}</td></tr>`).join("") || '<tr><td colspan="7" class="empty">Aucun problème détecté. 🎉</td></tr>';
+    $("#bugRows").innerHTML = bugs.map((b) => `<tr onclick='window.__bug(${escJsArg(b.id)})'><td><span class="pill ${esc(b.severity)}">${esc(b.severity)}</span></td><td><strong>${esc(b.title)}</strong><div class="muted" style="font-size:11px">${esc(b.codeRef ? b.codeRef.file + (b.codeRef.line ? ":" + b.codeRef.line : "") : b.action || "")}</div></td><td>${b.count}</td><td>${b.users}</td><td><span class="pill ${b.status}">${b.status.replace(/_/g, " ")}</span></td><td class="muted">${ago(b.lastSeen)}</td><td>${hasCap("claude") ? `<button class="fix-btn big" title="Réparer avec Claude" onclick='event.stopPropagation();window.__fixBug(${escJsArg(b.id)})'>${icon("wrench")}</button>` : "—"}</td></tr>`).join("") || '<tr><td colspan="7" class="empty">Aucun problème détecté. 🎉</td></tr>';
     const open = bugs.filter((b) => b.status !== "corrige" && b.status !== "ignore").length;
     const nb = $("#navBugs"); if (nb) { nb.hidden = !open; nb.textContent = open; }
   }
@@ -1499,7 +1510,7 @@ window.__bug = async (id) => {
   try {
     const b = await api.get("/bugs/" + id);
     const cr = b.codeRef;
-    openDrawer(`Bug · <span class="pill ${b.severity}">${b.severity}</span>`, `
+    openDrawer(`Bug · <span class="pill ${esc(b.severity)}">${esc(b.severity)}</span>`, `
       <h3 style="margin:0 0 4px">${esc(b.title)}</h3>
       <div class="detail-grid">
         ${detail("Occurrences", b.count)}${detail("Utilisateurs touchés", b.users)}
@@ -1510,16 +1521,16 @@ window.__bug = async (id) => {
       <div class="section-title">Statut</div>
       <select class="select" id="bugStatus" style="width:100%">${BUG_STATUS.map((s) => `<option value="${s}" ${s === b.status ? "selected" : ""}>${s.replace(/_/g, " ")}</option>`).join("")}</select>
       ${cr ? `<div class="section-title">Code et diagnostic</div>
-        <div class="code-panel"><div class="code-head"><span class="code-file">${esc(cr.file)}${cr.line ? ":" + cr.line : ""}${cr.fn ? " · " + esc(cr.fn) : ""}</span><button class="btn btn-sm btn-ghost" onclick='window.__copy(${JSON.stringify(cr.file)},"Chemin")'>${icon("copy")}</button></div>
+        <div class="code-panel"><div class="code-head"><span class="code-file">${esc(cr.file)}${cr.line ? ":" + cr.line : ""}${cr.fn ? " · " + esc(cr.fn) : ""}</span><button class="btn btn-sm btn-ghost" onclick='window.__copy(${escJsArg(cr.file)},"Chemin")'>${icon("copy")}</button></div>
         <div class="code-body">${b.snippet ? b.snippet.lines.map((l) => `<div class="code-line ${l.hot ? "hot" : ""}"><span class="ln">${l.n}</span><span>${esc(l.code)}</span></div>`).join("") : '<div style="padding:10px" class="muted">Extrait indisponible (fichier non résolu dans le dépôt local).</div>'}</div></div>` : ""}
       ${b.message ? `<div class="section-title">Message</div><div class="stack">${esc(b.message)}</div>` : ""}
       ${b.stack ? `<div class="section-title">Stack trace</div><div class="stack">${esc(b.stack)}</div>` : ""}
       <div class="copy-row">
-        <button class="btn btn-sm" onclick='window.__copy(${JSON.stringify(b.message || "")},"Erreur")'>${icon("copy")} Erreur</button>
-        <button class="btn btn-sm" onclick='window.__copy(${JSON.stringify(b.stack || "")},"Stack")'>${icon("copy")} Stack</button>
-        ${b.snippet ? `<button class="btn btn-sm" onclick='window.__copy(${JSON.stringify(b.snippet.lines.map((l) => l.code).join("\n"))},"Code")'>${icon("copy")} Extrait</button>` : ""}
-        <button class="btn btn-sm" onclick='window.__copy(${JSON.stringify(JSON.stringify(b, null, 2))},"Contexte complet")'>${icon("copy")} Contexte complet</button>
-        ${hasCap("claude") ? `<button class="btn btn-sm btn-primary" onclick="window.__fixBug('${b.id}')">${icon("wrench")} Réparer avec Claude</button>` : ""}
+        <button class="btn btn-sm" onclick='window.__copy(${escJsArg(b.message || "")},"Erreur")'>${icon("copy")} Erreur</button>
+        <button class="btn btn-sm" onclick='window.__copy(${escJsArg(b.stack || "")},"Stack")'>${icon("copy")} Stack</button>
+        ${b.snippet ? `<button class="btn btn-sm" onclick='window.__copy(${escJsArg(b.snippet.lines.map((l) => l.code).join("\n"))},"Code")'>${icon("copy")} Extrait</button>` : ""}
+        <button class="btn btn-sm" onclick='window.__copy(${escJsArg(JSON.stringify(b, null, 2))},"Contexte complet")'>${icon("copy")} Contexte complet</button>
+        ${hasCap("claude") ? `<button class="btn btn-sm btn-primary" onclick='window.__fixBug(${escJsArg(b.id)})'>${icon("wrench")} Réparer avec Claude</button>` : ""}
       </div>`);
     $("#bugStatus").onchange = async (e) => { await api.patch("/bugs/" + id, { status: e.target.value }); toast("Statut mis à jour"); if (S.currentView === "bugs") S.refresh?.(); };
   } catch (e) { openDrawer("Erreur", `<div class="empty">${esc(e.message)}</div>`); }
@@ -1581,9 +1592,9 @@ function sessionControls(s) {
   const c = hasCap("sessions");
   let btns = "";
   if (c) {
-    if (s.status === "created" || s.status === "paused") btns += `<button class="btn btn-sm" onclick="window.__sessCtl('${s.id}','${s.status === "paused" ? "resume" : "start"}')">${icon("play")} ${s.status === "paused" ? "Reprendre" : "Démarrer"}</button>`;
-    if (s.status === "running") btns += `<button class="btn btn-sm" onclick="window.__sessCtl('${s.id}','pause')">${icon("pause")} Pause</button>`;
-    if (s.status !== "ended") btns += `<button class="btn btn-sm" onclick="window.__sessNote('${s.id}')">Note</button><button class="btn btn-sm btn-danger" onclick="window.__sessCtl('${s.id}','end')">Terminer</button>`;
+    if (s.status === "created" || s.status === "paused") btns += `<button class="btn btn-sm" onclick='window.__sessCtl(${escJsArg(s.id)},${escJsArg(s.status === "paused" ? "resume" : "start")})'>${icon("play")} ${s.status === "paused" ? "Reprendre" : "Démarrer"}</button>`;
+    if (s.status === "running") btns += `<button class="btn btn-sm" onclick='window.__sessCtl(${escJsArg(s.id)},"pause")'>${icon("pause")} Pause</button>`;
+    if (s.status !== "ended") btns += `<button class="btn btn-sm" onclick='window.__sessNote(${escJsArg(s.id)})'>Note</button><button class="btn btn-sm btn-danger" onclick='window.__sessCtl(${escJsArg(s.id)},"end")'>Terminer</button>`;
   }
   btns += `<a class="btn btn-sm" href="#sessions/${s.id}">${icon("reports")} Rapport</a>`;
   return btns;
@@ -1609,10 +1620,10 @@ async function renderSessionReport(id) {
   try {
     const r = await api.get(`/test-sessions/${id}/report`);
     const sm = r.summary;
-    $("#rep").innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px"><div><h2 class="page-title">${esc(r.session.name)}</h2><p class="page-sub" style="margin:0">Durée ${Math.round(r.window.durationMs / 60000)} min · ${r.session.status}</p></div><div style="display:flex;gap:6px"><button class="btn btn-sm" onclick='window.__copy(${JSON.stringify(JSON.stringify(r, null, 2))},"Rapport")'>${icon("copy")} JSON</button><button class="btn btn-sm" id="repCsv">${icon("download")} CSV</button><button class="btn btn-sm" id="repJson">${icon("download")} JSON</button></div></div>
+    $("#rep").innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px"><div><h2 class="page-title">${esc(r.session.name)}</h2><p class="page-sub" style="margin:0">Durée ${Math.round(r.window.durationMs / 60000)} min · ${r.session.status}</p></div><div style="display:flex;gap:6px"><button class="btn btn-sm" onclick='window.__copy(${escJsArg(JSON.stringify(r, null, 2))},"Rapport")'>${icon("copy")} JSON</button><button class="btn btn-sm" id="repCsv">${icon("download")} CSV</button><button class="btn btn-sm" id="repJson">${icon("download")} JSON</button></div></div>
       <div class="grid kpi-grid" style="margin-top:12px">${[["Événements", sm.totalEvents], ["Erreurs", sm.errors], ["Bugs auto", sm.bugsAuto], ["Bugs manuels", sm.bugsManual], ["Critiques", sm.criticalBugs], ["Latence moy.", sm.avgLatency + " ms"], ["Appareils", sm.devices], ["Participants", sm.participants.length]].map(([l, v]) => `<div class="kpi"><div class="kpi-label">${l}</div><div class="kpi-value" style="font-size:22px">${v}</div></div>`).join("")}</div>
       <div class="cols cols-2" style="margin-top:16px"><div class="card card-pad"><h4 style="margin-top:0">Écrans parcourus</h4><div id="repScreens"></div></div><div class="card card-pad"><h4 style="margin-top:0">Répartition par type</h4><div id="repTypes"></div></div></div>
-      ${r.bugs.length ? `<div class="section-title">Bugs de la fenêtre</div>${r.bugs.map((b) => `<div class="card card-pad" style="margin-bottom:8px;cursor:pointer" onclick="window.__bug('${b.id}')"><span class="pill ${b.severity}">${b.severity}</span> <strong>${esc(b.title)}</strong> <span class="muted">· ${b.count} occ.</span></div>`).join("")}` : ""}
+      ${r.bugs.length ? `<div class="section-title">Bugs de la fenêtre</div>${r.bugs.map((b) => `<div class="card card-pad" style="margin-bottom:8px;cursor:pointer" onclick='window.__bug(${escJsArg(b.id)})'><span class="pill ${esc(b.severity)}">${esc(b.severity)}</span> <strong>${esc(b.title)}</strong> <span class="muted">· ${b.count} occ.</span></div>`).join("")}` : ""}
       ${r.session.notes.length ? `<div class="section-title">Notes</div>${r.session.notes.map((n) => `<div class="card card-pad" style="margin-bottom:6px"><span class="muted" style="font-size:11px">${new Date(n.ts).toLocaleString("fr-FR")} · ${esc(n.author || "")}</span><div>${esc(n.text)}</div></div>`).join("")}` : ""}`;
     bars($("#repScreens"), Object.entries(r.byScreen).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, v]) => ({ label: k, value: v, max: Math.max(...Object.values(r.byScreen), 1) })));
     bars($("#repTypes"), Object.entries(r.byType).sort((a, b) => b[1] - a[1]).map(([k, v]) => ({ label: TYPE_FR[k] || k, value: v, max: Math.max(...Object.values(r.byType), 1) })));
@@ -1639,7 +1650,7 @@ VIEWS.tests = async () => {
     <div class="section-title">Console de test <button class="btn btn-sm" id="clearLog" style="float:right">${icon("x")} Effacer</button></div>
     <div class="stack" id="testLog" style="max-height:340px">${S.testLog.join("") || "En attente…"}</div>`);
   const d = await api.get("/tests");
-  $("#suites").innerHTML = d.suites.map((s) => `<div class="card card-pad"><strong>${esc(s.label)}</strong><div class="mono muted" style="font-size:11px;margin:6px 0 10px">${esc(s.cmd)}</div>${canRun ? `<button class="btn btn-sm btn-primary" onclick="window.__runTest('${s.id}')" ${d.current.running ? "disabled" : ""}>${icon("play")} Lancer</button>` : '<span class="muted" style="font-size:12px">Lecture seule</span>'}</div>`).join("");
+  $("#suites").innerHTML = d.suites.map((s) => `<div class="card card-pad"><strong>${esc(s.label)}</strong><div class="mono muted" style="font-size:11px;margin:6px 0 10px">${esc(s.cmd)}</div>${canRun ? `<button class="btn btn-sm btn-primary" onclick='window.__runTest(${escJsArg(s.id)})' ${d.current.running ? "disabled" : ""}>${icon("play")} Lancer</button>` : '<span class="muted" style="font-size:12px">Lecture seule</span>'}</div>`).join("");
   if (d.current.running && canRun) $("#suites").insertAdjacentHTML("afterbegin", `<div class="card card-pad accent" style="grid-column:1/-1;display:flex;justify-content:space-between;align-items:center"><span><span class="spinner"></span> Test en cours…</span><button class="btn btn-sm btn-danger" onclick="window.__stopTest()">${icon("pause")} Arrêter</button></div>`);
   $("#clearLog").onclick = () => { S.testLog = []; $("#testLog").innerHTML = "En attente…"; };
 };
@@ -1666,12 +1677,12 @@ VIEWS.claude = async (view, params) => {
   const list = open.length ? open : bugs;
   $("#clWrap").innerHTML = list.map((b) => `<div class="card card-pad problem-card">
       <div class="pc-main">
-        <div class="pc-title"><span class="pill ${b.severity}">${b.severity === "critical" ? "critique" : b.severity}</span> <strong>${esc(b.title)}</strong></div>
+        <div class="pc-title"><span class="pill ${esc(b.severity)}">${b.severity === "critical" ? "critique" : esc(b.severity)}</span> <strong>${esc(b.title)}</strong></div>
         <div class="muted" style="font-size:12.5px;margin-top:4px">${b.count} fois · ${b.users} utilisateur${b.users > 1 ? "s" : ""}${b.screens && b.screens.length ? " · écran " + esc(b.screens.slice(0, 2).join(", ")) : ""}${b.codeRef ? " · " + esc(b.codeRef.file) : ""}</div>
       </div>
       <div class="pc-actions">
-        <button class="btn" onclick="window.__bug('${b.id}')">${icon("filter")} Détails</button>
-        <button class="btn btn-primary" onclick="window.__fixBug('${b.id}')">${icon("wrench")} Réparer</button>
+        <button class="btn" onclick='window.__bug(${escJsArg(b.id)})'>${icon("filter")} Détails</button>
+        <button class="btn btn-primary" onclick='window.__fixBug(${escJsArg(b.id)})'>${icon("wrench")} Réparer</button>
       </div>
     </div>`).join("");
 
@@ -1728,8 +1739,8 @@ VIEWS.alerts = async () => {
 };
 function alertItem(a) {
   const fix = hasCap("claude") && (a.level === "critical" || a.level === "high")
-    ? `<button class="fix-btn" title="Réparer avec Claude" onclick="window.__fixAlert('${a.id}')">${icon("wrench")}</button>` : "";
-  return `<div class="alert-item ${a.level} ${a.acknowledged ? "ack" : ""}"><div class="a-row"><div class="a-title">${esc(a.title)}</div>${fix}</div><div class="a-msg">${esc(a.message || "")}</div><div class="a-time">${new Date(a.ts).toLocaleString("fr-FR")}${a.acknowledged ? " · vu" : hasCap("alerts") ? ` · <a href="#" onclick="window.__ackAlert('${a.id}');return false">marquer comme vu</a>` : ""}</div></div>`;
+    ? `<button class="fix-btn" title="Réparer avec Claude" onclick='window.__fixAlert(${escJsArg(a.id)})'>${icon("wrench")}</button>` : "";
+  return `<div class="alert-item ${a.level} ${a.acknowledged ? "ack" : ""}"><div class="a-row"><div class="a-title">${esc(a.title)}</div>${fix}</div><div class="a-msg">${esc(a.message || "")}</div><div class="a-time">${new Date(a.ts).toLocaleString("fr-FR")}${a.acknowledged ? " · vu" : hasCap("alerts") ? ` · <a href="#" onclick='window.__ackAlert(${escJsArg(a.id)});return false'>marquer comme vu</a>` : ""}</div></div>`;
 }
 window.__ackAlert = async (id) => { await api.post(`/alerts/${id}/ack`, {}); const a = S.alerts.find((x) => x.id === id); if (a) a.acknowledged = true; if (S.currentView === "alerts") VIEWS.alerts($("#view")); updateAlertBadges(); };
 
