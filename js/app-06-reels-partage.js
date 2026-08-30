@@ -2061,7 +2061,34 @@ function renderProfileStrip() {
   if (!box) return;
   // Lot UI-8 : une passion archivée ne pèse plus sur le Fil. Rien n'est
   // supprimé — la restaurer la fait revenir ici telle quelle.
-  const profiles = passionsUnifieesActives() ? passionsVivantes() : (state.user.profiles || []);
+  var profiles = passionsUnifieesActives() ? passionsVivantes() : (state.user.profiles || []);
+
+  // ⚠️ Toute passion qui FILTRE le fil doit avoir sa bulle (ADR-010 : une passion
+  // sert à choisir le contenu du fil — une préférence de lecture invisible n'est
+  // pas une préférence, c'est un piège).
+  //
+  // Défaut mesuré : l'onboarding fait choisir jusqu'à 7 passions et les met TOUTES
+  // dans `_activeFeedPassions` (`setFeedPassions(selectedPassions)`), mais ne crée
+  // qu'UNE passion (`passionsProfil = [primaire]`). Ce rail ne dessinait que les
+  // passions AYANT un profil : les autres décidaient réellement de ce qui entrait
+  // dans le fil, sans tuile pour les voir ni les décocher. Un compte neuf ayant
+  // coché 3 passions voyait donc une seule bulle et un fil nourri par trois.
+  //
+  // On complète donc avec les passions actives sans profil. Ce sont des entrées
+  // d'AFFICHAGE : rien n'est créé dans `state.user.profiles`, et les décocher les
+  // fait disparaître d'elles-mêmes.
+  try {
+    var _avecProfil = {};
+    profiles.forEach(function (p) { _avecProfil[p.passion] = 1; });
+    var _orphelines = Array.from(_activeFeedPassions).filter(function (id) { return id && !_avecProfil[id]; });
+    if (_orphelines.length) {
+      profiles = profiles.concat(_orphelines.map(function (id) {
+        var pas = passionById(id);
+        return { id: "_interet_" + id, passion: id, emoji: (pas && pas.emoji) || "✨", _interetSeul: true };
+      }));
+    }
+  } catch (e) {}
+
   if (profiles.length === 0) { box.innerHTML = ""; return; }
 
   // La rangée ne porte plus QUE des passions : « Suivis » est devenu une VUE du

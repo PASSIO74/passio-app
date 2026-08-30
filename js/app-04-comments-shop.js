@@ -2766,7 +2766,15 @@ async function openUserProfile(authorId, source) {
       + '<button type="button" class="v10-vfilter active" data-vpid="" onclick="setVisitedPassion(\'\')">Toutes</button>'
       + userPassions.map(p => {
           const pas = passionById(p.id);
-          const label = (pas && pas.label) || p.label || "Passion";
+          // ⚠️ L'ORDRE compte. `passionById` ne rend JAMAIS null : sur un id
+          // inconnu il retombe sur `{ label: "Passion" }`. Placer son résultat
+          // en premier rendait donc `p.label` — le libellé publié par l'auteur
+          // dans le jsonb, justement pour ce cas — définitivement inatteignable.
+          // Conséquence : une passion personnalisée s'affichait « 🧶 Passion »
+          // chez tous les autres comptes, qui n'ont pas ce catalogue.
+          const _catalogue = (pas && pas.label) || "";
+          const label = (_catalogue && _catalogue !== "Passion" ? _catalogue : "")
+            || p.label || _catalogue || "Passion";
           return '<button type="button" class="v10-vfilter" data-vpid="' + escapeHtml(p.id) + '" onclick="setVisitedPassion(\'' + escapeJsArg(p.id) + '\')">'
             + escapeHtml(p.emoji || "✨") + ' ' + escapeHtml(label) + '</button>';
         }).join("")

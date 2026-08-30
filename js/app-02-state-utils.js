@@ -2348,8 +2348,8 @@ function openCreateCustomPassion() {
 
   openModal(`
     <div class="modal-handle"></div>
-    <div class="modal-title">🌟 Proposer une nouvelle passion</div>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.5;">Les catégories sont validées par l'équipe PASSIO pour garantir la qualité et éviter les doublons. Ta demande sera examinée sous 48h.</div>
+    <div class="modal-title">🌟 Créer ta passion</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.5;">Ta passion est ajoutée tout de suite, rien que pour toi : elle te sert à ranger tes publications et à filtrer ton fil. Elle n'entre pas dans le catalogue commun.</div>
 
     ${pendingHTML}
 
@@ -2474,10 +2474,19 @@ function submitPassionRequest() {
   }
 
   closeModal();
-  toast("📩 Demande envoyée ! Tu seras notifié quand elle sera examinée.", "success");
+  // ⚠️ Ce message annonçait « Demande envoyée ! Tu seras notifié quand elle sera
+  // examinée », et la modale promettait une revue « par l'équipe PASSIO […] sous
+  // 48h ». Aucune revue n'a jamais existé : le code auto-approuvait après cinq
+  // secondes. Une promesse de modération humaine qu'aucun humain ne tient n'est
+  // pas un détail de formulation — on dit ce que le produit fait.
+  toast("✨ Passion ajoutée à tes passions", "success");
 
-  // Simuler une approbation après 5 secondes pour la démo
-  setTimeout(function() {
+  // Ajout IMMÉDIAT. C'était un `setTimeout(…, 5000)` commenté « Simuler une
+  // approbation après 5 secondes pour la démo » : la passion n'existait donc pas
+  // pendant 5 secondes, et le toast de succès mentait sur son propre effet.
+  // La passion est PERSONNELLE (`state.user.customPassions`, jamais publiée) :
+  // il n'y a rien à approuver, et personne pour le faire.
+  (function() {
     var reqs = JSON.parse(localStorage.getItem("passio_passion_requests") || "[]");
     var req = reqs.find(function(r) { return r.id === request.id; });
     if (req) {
@@ -2498,9 +2507,8 @@ function submitPassionRequest() {
       state.user.customPassions.push(newPassion);
       saveState();
       if (typeof renderExplorer === "function") renderExplorer();
-      toast("🎉 Ta passion « " + name + " » a été approuvée ! " + draft.emoji, "reward");
     }
-  }, 5000);
+  })();
 }
 
 function saveCustomPassion() {
