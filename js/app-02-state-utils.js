@@ -2236,7 +2236,11 @@ function renderPassionGrid() {
       <div class="passion-tile-label">Créer la mienne</div>
     </div>
   `;
-  grid.innerHTML = tiles + (filtre ? "" : createTile);
+  // Tuile masquée tant que la création est suspendue (hotfix 2026-08-30) : une
+  // porte qui refuse au tap est un cul-de-sac. Le garde d'`openCreateCustomPassion`
+  // reste en place — il couvre tout appelant que ce masquage oublierait.
+  const _peutCreer = !(typeof passionsPersoSuspendues === "function" && passionsPersoSuspendues());
+  grid.innerHTML = tiles + ((filtre || !_peutCreer) ? "" : createTile);
 
   renderOnbStarter();
 }
@@ -2291,7 +2295,37 @@ function setStarterPassion(id) {
   renderPassionGrid();
 }
 
+// ⛔ CRÉATION DE PASSIONS PERSONNALISÉES SUSPENDUE (hotfix du 2026-08-30).
+//
+// Une passion personnalisée reçoit un id `custom_<slug>_<rand>` qui ne vit que
+// dans l'état local. Or `posts`, `profiles`, `stories`, `events` et
+// `conversations` portent une clé étrangère vers `passions(id)`, table qui n'a
+// qu'une policy SELECT : aucun client ne peut y insérer la ligne correspondante.
+// Publier dans une telle passion échoue donc en 23503, et le message affiché
+// accuse le réseau pour une erreur définitive.
+//
+// Tant que la question n'est pas tranchée (cf. docs/PASSION_PERSONNALISEE_FK),
+// on ferme la porte plutôt que d'offrir un cul-de-sac. RIEN n'est supprimé : les
+// passions déjà créées restent dans l'état, leurs publications restent en place.
+function passionsPersoSuspendues() { return true; }
+
 function openCreateCustomPassion() {
+  if (passionsPersoSuspendues()) {
+    openModal('\
+      <div class="modal-handle"></div>\
+      <div class="modal-title">🌟 Créer ta passion</div>\
+      <div style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:16px;">\
+        La création de passions personnalisées est <b>momentanément indisponible</b>.\
+        Elles ne pouvaient pas être publiées correctement, alors on préfère fermer\
+        la porte plutôt que de te laisser publier dans le vide.<br/><br/>\
+        Tes passions déjà créées ne sont pas touchées : elles restent sur ton profil.\
+        Choisis une passion du catalogue pour publier dès maintenant.\
+      </div>\
+      <button class="btn primary block" onclick="closeModal()">J\'ai compris</button>\
+    ');
+    return;
+  }
+
   const palette = [
     { emoji: "⭐", color: "#8b5cf6" },
     { emoji: "🎯", color: "#8b5cf6" },

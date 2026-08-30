@@ -2384,12 +2384,65 @@ function getMyUserId() {
 let MY_UID = getMyUserId();
 
 // ---- PROFIL ----
+
+// Un identifiant de passion n'est publiable dans `profiles.passion_id` que s'il
+// existe RÉELLEMENT dans le référentiel `passions` — sinon la clé étrangère
+// rejette l'upsert entier.
+//
+// ⚠️ Le discriminant est la LISTE BLANCHE `PASSIONS`, pas le drapeau `custom`
+// ni le préfixe `custom_`. Le drapeau ne vit que dans `state.user.customPassions`
+// et disparaît sur un appareil neuf (la reconstruction du boot rebâtit les
+// profils depuis le jsonb `profiles.passions` sans jamais le restaurer) : s'y
+// fier laisserait passer l'identifiant invalide précisément dans le cas qu'on
+// cherche à réparer. Le préfixe, lui, est une liste NOIRE : il ne couvre ni
+// « autre », ni « test », ni la chaîne vide. La liste blanche rejette les quatre.
+function estPassionCanonique(id) {
+  if (!id || typeof id !== "string") return false;
+  try {
+    if (typeof PASSIONS === "undefined" || !Array.isArray(PASSIONS)) return false;
+    for (var i = 0; i < PASSIONS.length; i++) if (PASSIONS[i] && PASSIONS[i].id === id) return true;
+  } catch (e) {}
+  return false;
+}
+
+// La passion principale publiée : la première VIVANTE et canonique, sinon celle
+// de la passion active si elle l'est, sinon `null`. On ne substitue jamais une
+// passion arbitraire — un compte n'est pas rangé dans une catégorie qu'il n'a
+// pas choisie.
+function _passionIdPubliable(passions, prof) {
+  try {
+    var liste = Array.isArray(passions) ? passions : [];
+    for (var i = 0; i < liste.length; i++) {
+      if (liste[i] && estPassionCanonique(liste[i].id)) return liste[i].id;
+    }
+    if (prof && estPassionCanonique(prof.passion)) return prof.passion;
+  } catch (e) {}
+  return null;
+}
+
 async function supaUpsertProfile() {
   try {
-    const prof = currentProfile();
+    // ⚠️ `prof` est FACULTATIF (hotfix du 2026-08-30). Il y avait ici un
+    // `if (!prof) return;` qui abandonnait TOUTE l'identité publique du compte
+    // dès qu'aucune passion n'était résoluble. C'était du couplage pur : `prof`
+    // n'est utilisé qu'à quatre endroits, tous en DERNIER repli, et chacun a
+    // déjà un littéral de secours (« Profil », « ✨ », « #8b5cf6 », `null`).
+    //
+    // Ce que la garde provoquait : un compte NEUF dont la première passion est
+    // personnalisée n'obtenait AUCUNE ligne `profiles` — et comme `posts`,
+    // `stories`, `conv_members`, `conv_messages` et `post_comments` portent
+    // toutes une clé étrangère vers `profiles(id)`, il ne pouvait plus rien
+    // écrire du tout. (Un compte possédant DÉJÀ une ligne n'était pas bloqué :
+    // un upsert qui échoue ne supprime pas l'existant, ses données publiques
+    // restaient simplement périmées.)
+    //
+    // Invariant désormais tenu : tout compte authentifié pouvant utiliser
+    // l'application peut obtenir une ligne `profiles`, même si aucune passion
+    // canonique ni aucun ancien profil passion n'est résoluble. La seule colonne
+    // vraiment obligatoire hors `id` est `username`, dont la chaîne de replis se
+    // termine par un littéral : l'upsert est donc toujours constructible.
+    const prof = currentProfile() || {};
     const g = state.user.general || {};
-
-    if (!prof) return;
 
     // PSEUDO CENTRALISÉ : un seul nom public pour TOUTES les passions du compte.
     // (Avant : on publiait `prof.name` — le nom du profil-passion ACTIF — donc un
@@ -2432,9 +2485,18 @@ async function supaUpsertProfile() {
     const profileData = {
       id: MY_UID,
       username: _uname,
-      emoji: prof.emoji || "✨",
-      color: prof.color || "#8b5cf6",
-      passion_id: (_passions[0] && _passions[0].id) || prof.passion || null,
+      // L'identité visuelle du COMPTE passe avant celle d'une passion.
+      emoji: g.emoji || prof.emoji || "✨",
+      color: g.color || prof.color || "#8b5cf6",
+      // ⚠️ `profiles.passion_id` porte une clé étrangère vers `passions(id)`, et
+      // la table `passions` n'a qu'une policy SELECT : aucun client ne peut y
+      // insérer une ligne. Un identifiant absent du référentiel — une passion
+      // personnalisée `custom_…`, la sentinelle « autre », « test », ou une
+      // chaîne vide — fait donc rejeter TOUT l'upsert en 23503, pas seulement
+      // ce champ. La colonne étant NULLABLE et une FK acceptant NULL, on
+      // normalise plutôt que de perdre le profil : la passion est un attribut
+      // AUXILIAIRE, l'identité publique ne doit pas dépendre d'elle.
+      passion_id: _passionIdPubliable(_passions, prof),
       passions: _passions,
       bio: g.bio || "",
       // Compte privé : les visiteurs non abonnés ne verront pas le contenu.

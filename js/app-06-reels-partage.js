@@ -2161,12 +2161,13 @@ function openCreateProfile() {
           ${p.custom ? '<div class="passion-custom-badge">Perso</div>' : ''}
         </div>
       `).join("")}
+      ${(typeof passionsPersoSuspendues === "function" && passionsPersoSuspendues()) ? "" : `
       <div class="passion-tile passion-tile-create" onclick="openCreateCustomPassionFromProfile()">
         <div class="passion-tile-emoji">＋</div>
         <div class="passion-tile-label">Créer</div>
-      </div>
+      </div>`}
     </div>
-    ${pool.length === 0 ? '<div style="font-size:12px;color:var(--muted);text-align:center;margin:8px 0;">Toutes les passions du catalogue sont déjà prises, tu peux créer la tienne ✨</div>' : ''}
+    ${pool.length === 0 ? '<div style="font-size:12px;color:var(--muted);text-align:center;margin:8px 0;">Toutes les passions du catalogue sont déjà prises.</div>' : ''}
     <label class="field" style="margin-top:4px;">
       <span>Bio courte <span style="font-weight:400;color:var(--muted);">(optionnel)</span></span>
       <input type="text" class="input" id="newProfileBio" placeholder="Ex : Photographe amateur · Paris" maxlength="80" />
@@ -3009,7 +3010,7 @@ function renderExplorer() {
   // All passions + CTA « Créer une passion » à la fin
   const customs = (state.user.customPassions || []);
   const allList = [...PASSIONS, ...customs];
-  const createCta = `
+  const createCta = (typeof passionsPersoSuspendues === "function" && passionsPersoSuspendues()) ? "" : `
     <div class="passion-tile passion-tile-create" onclick="openCreateCustomPassionFromExplorer()">
       <div class="passion-tile-emoji">＋</div>
       <div class="passion-tile-label">Créer une passion</div>
