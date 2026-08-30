@@ -572,7 +572,10 @@
       <!-- PROFILS PASSION -->
       <div class="section-title" style="margin-top:14px;">Mes passions <span class="link" id="nouveauProfilLien" onclick="openCreateProfile()">+ Ajouter</span></div>
       <p class="section-subtitle" id="profilesModeleSub">Un seul profil, plusieurs passions. Publie dans la passion qui correspond ; ton fil réunit les passions que tu choisis et les personnes que tu suis.</p>
-      <p class="section-subtitle" id="profilesQuotaSub"></p>
+      <!-- Porte le lien « Passions archivées (N) », posé par renderProfilesScreen.
+           Masqué au départ : vide, il laisserait une gouttière avant le premier
+           rendu. Le renderer gère ensuite son affichage. -->
+      <p class="section-subtitle" id="profilesQuotaSub" style="display:none;"></p>
       <div id="profileList"></div>
 
       <!-- ONGLETS CONTENU -->
