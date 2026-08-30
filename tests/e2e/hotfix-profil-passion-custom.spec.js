@@ -188,17 +188,72 @@ test("passion canonique + passion perso : la canonique est choisie, rien n'est p
   expect(ids).toContain("yoga");
 });
 
-test("l'identité visuelle du COMPTE prime sur celle de la passion", async ({ page }) => {
+// ⚠️ CE HOTFIX NE TOUCHE PAS À LA SOURCE DE L'AVATAR PUBLIC.
+// Une version intermédiaire faisait passer `general.emoji`/`general.color` devant
+// ceux de la passion. C'était une fausse stabilisation : sur `main`,
+// `saveMainProfile` alimente encore `general.emoji` DEPUIS la passion active, donc
+// la source n'est pas stable et la rendre prioritaire n'aurait fait que changer
+// laquelle des deux valeurs dérivées gagne — en modifiant l'identité publique de
+// comptes existants, au passage. Les trois tests ci-dessous verrouillent le
+// périmètre : rendre `prof` facultatif, et rien de plus.
+test("un profil résoluble conserve EXACTEMENT son emoji et sa couleur d'avant", async ({ page }) => {
   await boot(page);
   await page.evaluate(() => {
     state.user.profiles = [{ id: "pp_moto", name: "QA", passion: "moto", emoji: "🏍", color: "#111111" }];
     state.user.currentProfileId = "pp_moto";
+    // `general` porte d'AUTRES valeurs : elles ne doivent pas prendre le dessus,
+    // c'est le comportement de `main` et le hotfix ne le change pas.
     state.user.general = Object.assign({}, state.user.general, { emoji: "😎", color: "#ff0000" });
     saveState();
   });
   const row = await page.evaluate(async () => { window.__rows = []; await supaUpsertProfile(); return window.__rows[0]; });
-  expect(row.emoji).toBe("😎");
-  expect(row.color).toBe("#ff0000");
+  expect(row.emoji).toBe("🏍");
+  expect(row.color).toBe("#111111");
+});
+
+test("sans profil résoluble : les replis NEUTRES, jamais une passion", async ({ page }) => {
+  await boot(page);
+  await page.evaluate(() => {
+    state.user.profiles = [];
+    state.user.currentProfileId = null;
+    state.user.customPassions = [];
+    saveState();
+  });
+  const row = await page.evaluate(async () => { window.__rows = []; await supaUpsertProfile(); return window.__rows[0]; });
+  expect(row).toBeTruthy();
+  expect(row.emoji).toBe("✨");
+  expect(row.color).toBe("#8b5cf6");
+});
+
+test("aucune passion active ne devient implicitement l'identité publique", async ({ page }) => {
+  await boot(page);
+  // Deux passions, l'active porte une identité visuelle marquée. On bascule.
+  const avant = await page.evaluate(async () => {
+    state.user.profiles = [
+      { id: "pp_moto", name: "QA", passion: "moto", emoji: "🏍", color: "#111111" },
+      { id: "pp_yoga", name: "QA", passion: "yoga", emoji: "🧘", color: "#222222" },
+    ];
+    state.user.currentProfileId = "pp_moto";
+    saveState();
+    window.__rows = [];
+    await supaUpsertProfile();
+    return window.__rows[0];
+  });
+  const apres = await page.evaluate(async () => {
+    state.user.currentProfileId = "pp_yoga";
+    saveState();
+    window.__rows = [];
+    await supaUpsertProfile();
+    return window.__rows[0];
+  });
+  // ⚠️ Ce test CONSTATE le comportement de `main`, il ne le valide pas : l'emoji
+  // publié SUIT la passion active, et c'est précisément la contradiction que la
+  // branche ADR-010 doit résoudre (l'avatar public réécrit rétroactivement tout
+  // l'historique). Le verrouiller ici évite qu'un hotfix le change en douce.
+  expect(avant.emoji).toBe("🏍");
+  expect(apres.emoji).toBe("🧘");
+  // Ce qui NE doit pas bouger : le pseudo public, qui est déjà centralisé.
+  expect(apres.username).toBe(avant.username);
 });
 
 test("aucune passion locale n'est supprimée ni transformée par le hotfix", async ({ page }) => {

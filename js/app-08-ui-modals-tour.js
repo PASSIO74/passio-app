@@ -2485,9 +2485,19 @@ async function supaUpsertProfile() {
     const profileData = {
       id: MY_UID,
       username: _uname,
-      // L'identité visuelle du COMPTE passe avant celle d'une passion.
-      emoji: g.emoji || prof.emoji || "✨",
-      color: g.color || prof.color || "#8b5cf6",
+      // ⚠️ COMPORTEMENT DE `main` CONSERVÉ, délibérément. Une version de ce
+      // hotfix faisait passer `general.emoji`/`general.color` devant ceux de la
+      // passion. C'était une fausse stabilisation : sur `main`, `saveMainProfile`
+      // ALIMENTE encore `general.emoji` depuis la passion ACTIVE — la source
+      // n'est donc pas stable, et la rendre prioritaire n'aurait fait que changer
+      // laquelle des deux valeurs dérivées gagne, en modifiant au passage
+      // l'identité publique de comptes existants. Hors du périmètre d'un hotfix
+      // consacré à la CRÉATION de la ligne.
+      // Effet de `prof = currentProfile() || {}` : un profil résoluble garde
+      // exactement son emoji et sa couleur d'avant ; sans profil résoluble, les
+      // replis neutres s'appliquent. Assainir la source appartient à ADR-010.
+      emoji: prof.emoji || "✨",
+      color: prof.color || "#8b5cf6",
       // ⚠️ `profiles.passion_id` porte une clé étrangère vers `passions(id)`, et
       // la table `passions` n'a qu'une policy SELECT : aucun client ne peut y
       // insérer une ligne. Un identifiant absent du référentiel — une passion
