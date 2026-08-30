@@ -324,9 +324,18 @@ test.describe("UI-7 §3 — le haut du Fil est compact", () => {
 // ④ BARRE SUPÉRIEURE (§4)
 // ══════════════════════════════════════════════════════════════════════════
 test.describe("UI-7 §4 — Messages quitte le bandeau supérieur", () => {
-  test("plus d'icône Messages en haut, mais Messages reste atteignable", async ({ page }) => {
+  test("plus d'icône Messages VISIBLE en haut, mais Messages reste atteignable", async ({ page }) => {
     await boot(page);
-    await expect(page.locator('.topbar-right .topbar-bell[aria-label="Messages"]')).toHaveCount(0);
+    // ⚠️ Assertion CORRIGÉE le 2026-08-29, pas affaiblie. Elle exigeait
+    // `toHaveCount(0)` — c'est-à-dire le RETRAIT du markup — alors que la règle
+    // du projet est « masquer, jamais retirer ». Le retrait avait une
+    // conséquence mesurée : sous `passio_ui_v2="0"`, la barre V2 disparaît, la
+    // barre historique n'a pas d'entrée Messages, et il ne restait AUCUNE porte
+    // vers l'écran. L'icône existe donc, masquée par CSS ; ce que §4 promet —
+    // une seule porte à l'écran — est exigé ici sous sa forme visuelle.
+    const iconeHaut = page.locator('.topbar-right .topbar-bell[aria-label="Messages"]');
+    await expect(iconeHaut).toHaveCount(1);
+    await expect(iconeHaut).toBeHidden();
     // Le reste du bandeau est intact.
     await expect(page.locator('.topbar-right .topbar-bell[aria-label="Explorer"]')).toHaveCount(1);
     await expect(page.locator('.topbar-right .topbar-bell[aria-label="Notifications"]')).toHaveCount(1);
