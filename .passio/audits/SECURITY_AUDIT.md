@@ -21,7 +21,7 @@ PASSIO adopte un modèle de sécurité **cohérent et défendable pour son éche
 | S8 | Uploads / validation fichiers | ⚠️ | Downscale images à l'upload ; hygiène base64→Storage **en cours** (dette). |
 | S9 | Rate limiting / anti-flood | ✅ | Anti-flood serveur en place. |
 | S10 | Confidentialité médias privés | ❌ **P0** | Buckets publics → **URLs signées à mettre en place** (R2). |
-| S11 | Confirmation e-mail / anti-usurpation | ❌ **P0** | SMTP non configuré ; réactiver « confirm email » sans SMTP = mailer 2/h bloquant (R1). |
+| S11 | Confirmation e-mail / anti-usurpation | ✅ (2026-08-30) | SMTP Brevo + « Confirm email » ON — R1 fermé. ⚠️ Domaine d'envoi non authentifié (DKIM/DMARC absents) → **R11** : les confirmations peuvent finir en indésirables, sans trace côté app. |
 | S12 | RGPD / suppression de compte | ✅/⚠️ | `migration_rgpd_delete_policies.sql` + Edge Function delete-account ; **parcours à tester bout-en-bout** (R9). |
 | S13 | Modération (signalements/blocages) | ✅ | `reports`, `blocks`, skill `moderation`. |
 | S14 | Blocage / accès cross-profil | ⚠️ | Couverture de test partielle (parcours sensibles). |
@@ -31,7 +31,7 @@ PASSIO adopte un modèle de sécurité **cohérent et défendable pour son éche
 | S18 | Sécurité du dashboard (mutations) | ✅ | Mutations code désactivées en prod ; patchs sur branche dédiée après confirmation ; audit complet. |
 
 ## Actions prioritaires
-1. **[P0]** Configurer un SMTP puis réactiver la confirmation e-mail (S11 / R1).
+1. **[P0]** ~~Configurer un SMTP puis réactiver la confirmation e-mail~~ — **fait le 2026-08-30** (S11 / R1). Reste : authentifier le domaine d'envoi dans Brevo (DKIM + DMARC, R11).
 2. **[P0]** Passer les médias privés en URLs signées (S10 / R2).
 3. **[P1]** Formaliser des specs Playwright multi-comptes pour les parcours sensibles (S12, S14 / R9).
 4. **[P1]** Auditer la RLS **par table** pour les frontières multi-profil (S6).

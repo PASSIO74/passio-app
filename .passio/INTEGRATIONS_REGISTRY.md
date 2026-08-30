@@ -14,7 +14,7 @@
 | **Anthropic API / Claude CLI** | IA (dashboard) | local | OPTIONNEL | `ANTHROPIC_API_KEY` ou CLI Claude Code | analyse de bug en direct | à la demande | Sans clé → mode « copier le prompt ». |
 | **MapLibre + OpenFreeMap** | Cartes | prod | RÉEL | aucune | tuiles carto | à la demande | Nominatim retiré de la CSP. |
 | **BAN + Photon** | Géocodage | prod | RÉEL | aucune | adresses FR / POI | à la demande | Pièges cartes/géocodage. |
-| **SMTP (e-mail)** | Notifications | — | **UNKNOWN / non configuré** | — | confirmation e-mail | — | **P0** : bloquant confidentialité (R1). |
+| **SMTP (Brevo)** | Notifications | prod | **RÉEL** (2026-08-30) | SMTP Supabase (jamais dans le dépôt) | confirmation e-mail, réinitialisation de mot de passe | 300/jour (offre gratuite) | Port 587 STARTTLS, expéditeur « PASSIO ». **Domaine d'envoi pas encore authentifié (DKIM/DMARC absents)** → risque de spam ; demande un accès DNS. |
 | **Stripe / paiements** | Finance | — | **UNKNOWN (absent)** | — | — | — | Hors schéma ; exploration/ADR only. |
 | **Analytics tiers (PostHog/GA…)** | Analytics | — | **UNKNOWN (non branché)** | — | — | — | Non nécessaire : télémétrie maison. |
 

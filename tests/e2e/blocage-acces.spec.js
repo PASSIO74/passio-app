@@ -24,6 +24,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 const { test, expect } = require("@playwright/test");
 const { GATE_TOKEN, GATE_KEY } = require("./gate-helper");
+const { creerCompteE2E } = require("./compte-e2e");
 
 test.describe("Blocage — retrait d'accès effectif", () => {
   test("bloquer un abonné lui retire l'accès à un compte privé", async ({ page }) => {
@@ -37,17 +38,6 @@ test.describe("Blocage — retrait d'accès effectif", () => {
          && typeof supaBlockUser === "function",
       null, { timeout: 30000 },
     );
-
-    const mkAccount = async (tag) => {
-      const out = await page.evaluate(async (t) => {
-        const email = `e2e_bloc_${t}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}@passio-e2e.test`;
-        const { data, error } = await supa.auth.signUp({ email, password: "Passio-e2e-12345!" });
-        if (error || !data || !data.session) return { error: (error && error.message) || "pas de session" };
-        return { uid: data.session.user.id, token: data.session.access_token };
-      }, tag);
-      expect(out.error, `compte ${tag} créé`).toBeUndefined();
-      return out;
-    };
 
     const rest = (token, path, init = {}) =>
       page.evaluate(async ([tok, p, i]) => {
@@ -64,11 +54,12 @@ test.describe("Blocage — retrait d'accès effectif", () => {
         return { status: res.status, body };
       }, [token, path, init]);
 
-    // ⚠️ B d'abord : `signUp` bascule la session de la page. En créant A en
-    // DERNIER, la page tourne sous A — indispensable pour appeler la vraie
-    // `supaBlockUser`, qui agit au nom de la session courante.
-    const B = await mkAccount("b");
-    const A = await mkAccount("a");
+    // ⚠️ B d'abord : la création de compte (compte-e2e.js, pré-confirmée depuis
+    // l'activation de « Confirm email ») bascule la session de la page. En
+    // créant A en DERNIER, la page tourne sous A — indispensable pour appeler
+    // la vraie `supaBlockUser`, qui agit au nom de la session courante.
+    const B = await creerCompteE2E(page, "bloc_b");
+    const A = await creerCompteE2E(page, "bloc_a");
     const postId = `post_bloc_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     log(`A=${A.uid} (session de la page) B=${B.uid}`);
 

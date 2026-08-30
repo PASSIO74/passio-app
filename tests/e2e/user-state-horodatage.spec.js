@@ -33,6 +33,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 const { test, expect } = require("@playwright/test");
 const { GATE_TOKEN, GATE_KEY } = require("./gate-helper");
+const { creerCompteE2E } = require("./compte-e2e");
 
 test.describe("SYNC-CLOCK-012 — horodatage serveur de user_state", () => {
   test("une date envoyée par le client est ignorée ; une écriture légitime passe", async ({ page }) => {
@@ -45,13 +46,9 @@ test.describe("SYNC-CLOCK-012 — horodatage serveur de user_state", () => {
       null, { timeout: 30000 },
     );
 
-    const compte = await page.evaluate(async () => {
-      const email = `e2e_clock_${Date.now()}_${Math.random().toString(36).slice(2, 8)}@passio-e2e.test`;
-      const { data, error } = await supa.auth.signUp({ email, password: "Passio-e2e-12345!" });
-      if (error || !data || !data.session) return { error: (error && error.message) || "pas de session" };
-      return { uid: data.session.user.id, token: data.session.access_token };
-    });
-    expect(compte.error, "compte e2e créé").toBeUndefined();
+    // Compte réel PRÉ-CONFIRMÉ (compte-e2e.js) : « Confirm email » étant activé,
+    // signUp ne rend plus de session et ce test n'avait plus de jeton.
+    const compte = await creerCompteE2E(page, "clock");
 
     // Upsert REST brut, en revendiquant une date à +10 ans — ce que faisait
     // structurellement un appareil dont l'horloge avance.

@@ -71,6 +71,15 @@ jobs:
   test:
     name: Tests smoke (Playwright)
     runs-on: ubuntu-latest
+    # Les suites qui ecrivent en base (authz-critical, blocage-acces,
+    # user-state-horodatage) creent des comptes jetables. Depuis l'activation de
+    # « Confirm email » (SMTP Brevo, 2026-08-30), signUp ne rend plus de session :
+    # ces comptes doivent etre crees PRE-CONFIRMES par l'API d'administration,
+    # donc avec la cle service_role. Sans ce secret, tests/e2e/compte-e2e.js
+    # echoue en nommant la cause plutot que de se mettre en veille silencieuse
+    # sur une barriere de securite.
+    env:
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
     steps:
       - uses: actions/checkout@v4
 
@@ -157,7 +166,9 @@ jobs:
       # Gate d'autorisation (incident CI-GATE-001) : lancé EN PREMIER et à part,
       # pour que la séparation entre comptes soit prouvée avant tout le reste et
       # qu'un rouge ici soit lisible immédiatement, sans le chercher dans 150
-      # résultats. Ne nécessite aucun secret : l'inscription passe par la clé anon.
+      # résultats. ⚠️ Nécessite désormais le secret SUPABASE_SERVICE_ROLE_KEY
+      # (env du job) : la clé anon ne suffit plus depuis que la confirmation
+      # d'e-mail est active.
       - name: Gate d'autorisation (AUTHZ-CRITICAL)
         run: npx playwright test tests/e2e/authz-critical.spec.js
 

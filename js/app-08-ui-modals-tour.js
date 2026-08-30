@@ -2349,6 +2349,7 @@ function _buildNoopSupa() {
       signUp: _ko,
       updateUser: _ko,
       resetPasswordForEmail: _ko,
+      resend: _ko,
       signOut: () => Promise.resolve({ error: null }),
       onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
     },
