@@ -94,6 +94,30 @@ erreur de démarrage). Journal borné dans `data/supervise.log`.
 | `Installer-Demarrage-Auto.cmd /retirer` | retire le démarrage automatique |
 | `Arreter-Pilotage.cmd` | arrête superviseur + serveur (repart à la prochaine session) |
 
+
+## 2 ter. Tests du pilotage
+
+`npm test` — **347 tests, ~40 s** (dont 5 dans un vrai navigateur).
+
+Ce qu'ils couvrent, du plus proche du code au plus proche de l'écran :
+
+| Niveau | Fichiers | Ce que ça prouve |
+|---|---|---|
+| Unités | 40 fichiers | moteurs, policies, agrégations |
+| Contrat page ↔ serveur | `front-api.test.js` | les 60 appels de la page existent, avec le bon verbe |
+| Gardes déclarées | `routes-caps.test.js` | les 81 routes et leur capacité, figées dans les deux sens |
+| Gardes appliquées | `http-routes.test.js` | un vrai serveur refuse vraiment (401/403), quatre rôles |
+| Écran | `navigateur.test.js` | Chromium : 29 onglets rendus, deux charges d'injection |
+
+Le fichier navigateur **saute bruyamment** si Chromium manque, en disant
+pourquoi — il ne laisse pas de trou : l'échappement est aussi couvert sans
+navigateur par `spa-echappement.test.js`.
+
+Convention maison : **tout test de sécurité ou de non-régression est éprouvé par
+MUTATION** avant d'être retenu — on casse le code exprès, on vérifie que le test
+rougit, on restaure. Un test qu'aucune mutation ne fait rougir ne protège rien,
+et les commits de cette suite nomment les mutations passées.
+
 ## 3 bis. Sentinelle — le débogage sans rien faire
 
 Onglet **Sentinelle**. Elle tourne en permanence dès que le dashboard est lancé :
