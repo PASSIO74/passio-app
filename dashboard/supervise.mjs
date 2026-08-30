@@ -2,7 +2,8 @@
 // SUPERVISEUR — garde le centre de pilotage ET le worker IA local vivants.
 //
 // Deux processus locaux, tous deux relancés s'ils meurent :
-//   1. server/index.js  → centre de pilotage + sentinelle
+//   1. server/start.js  → centre de pilotage + sentinelle (start.js, PAS index.js :
+//      c'est lui qui installe l'enveloppe Autopilot AVANT le démarrage du serveur)
 //   2. aiworker.mjs     → orchestration Claude Code standard + Codex via GitHub
 //
 // Le worker IA ne reçoit aucune connexion entrante : il surveille seulement les
@@ -89,5 +90,5 @@ process.on("SIGINT", () => arreter("SIGINT"));
 process.on("SIGTERM", () => arreter("SIGTERM"));
 
 log("superviseur en route — pilotage + worker Claude/Codex maintenus actifs");
-lancer("serveur", path.join("server", "index.js"), { DASH_SUPERVISED: "1" });
+lancer("serveur", path.join("server", "start.js"), { DASH_SUPERVISED: "1" });
 lancer("ai-worker", "aiworker.mjs", { PASSIO_AI_SUPERVISED: "1" });
