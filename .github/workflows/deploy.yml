@@ -6,6 +6,43 @@ on:
       - main
   pull_request:
 
+# ⚠️ UN SEUL RUN A LA FOIS, TOUTES BRANCHES CONFONDUES. Ajouté le 2026-08-30,
+# après un incident mesuré.
+#
+# CE QUI S'EST PASSÉ. Huit branches mises à jour puis six PR fusionnées coup sur
+# coup ont lancé quatorze runs en une heure. Or les gardes de sécurité de cette
+# suite — `authz-critical.spec.js` et `user-state-horodatage.spec.js` — créent de
+# VRAIS comptes sur la prod Supabase : c'est ce qui leur donne leur valeur (elles
+# éprouvent la vraie RLS, pas la politesse du client), mais cela consomme le quota
+# d'inscriptions du projet, qui est partagé et horaire.
+#
+# Symptôme, constant sur trois retries : `signUp` rend un utilisateur SANS session
+# et SANS message d'erreur — donc « pas de session ». Le gate d'autorisation
+# passait encore à 05:22 et échouait à 06:03. Ce n'était ni un flake, ni une
+# régression du code : le quota s'était épuisé entre les deux, et main est resté
+# rouge avec le déploiement production sauté.
+#
+# POURQUOI CETTE FORME. Le groupe est CONSTANT (pas dérivé de `github.ref`) :
+# c'est ce qui borne le nombre total de runs simultanés, et donc d'inscriptions
+# par heure. Un groupe par branche n'aurait rien réglé — la saturation vient du
+# CUMUL entre branches.
+#
+# `cancel-in-progress: false` est délibéré, et vaut pour les deux cas :
+#   · sur main, annuler un run en cours pourrait interrompre un déploiement à
+#     mi-chemin ; en sérialisant, le dernier commit poussé est aussi le dernier
+#     déployé — ce qui ferme au passage un second défaut, celui d'un run ancien
+#     qui finissait après un plus récent et remettait en ligne un artefact périmé ;
+#   · sur une PR, annuler priverait une AUTRE pull request de son résultat, le
+#     groupe étant commun. GitHub ne garde de toute façon qu'un run en attente par
+#     groupe : un nouveau push sur la même PR remplace celui qui patientait.
+#
+# COÛT ASSUMÉ : les runs font la queue au lieu de tourner en parallèle. Sur
+# l'usage ordinaire (une PR à la fois) cela ne change rien ; cela ne mord que sur
+# une vague — c'est-à-dire exactement quand on veut que cela morde.
+concurrency:
+  group: passio-ci
+  cancel-in-progress: false
+
 permissions:
   contents: read
   pull-requests: read
