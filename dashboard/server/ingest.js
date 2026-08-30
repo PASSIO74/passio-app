@@ -23,6 +23,14 @@ let lastSeenIso = new Date(Date.now() - 60 * 60_000).toISOString();
 let realtimeOk = false;
 
 export function getAdmin() { return admin; }
+
+// Injection d'un client Supabase FACTICE — tests uniquement. `accounts`,
+// `signups`, `dbwatch` et `testusers` passent tous par `getAdmin()` : sans ce
+// point d'entrée, aucun d'eux n'est atteignable par un test, et c'est
+// `testusers.remove` — qui supprime des comptes avec la clé service_role — qui
+// en pâtissait le plus. Ne JAMAIS l'appeler depuis le code de production :
+// `startIngest` reste le seul chemin qui installe un vrai client.
+export function _setAdminForTests(client) { admin = client; }
 export function ingestState() { return { supabaseReady, realtimeOk, lastSeenIso, buffered: store.events.length }; }
 
 // Exportée pour les tests : c'est le point de passage UNIQUE de tout événement
