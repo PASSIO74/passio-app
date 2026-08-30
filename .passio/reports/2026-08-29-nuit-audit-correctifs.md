@@ -228,3 +228,30 @@ sans erreur ni message, jusqu'au rechargement complet de la page.
 
 C'est une famille à retenir : **retirer un chemin d'accès peut supprimer le seul
 chemin de retour d'un état transitoire.**
+
+### ⑬ Deux sessions ont corrigé le même défaut — et le cumul a cassé l'affichage
+
+Pendant que je travaillais, l'autre session a fermé **la même** XSS des
+notifications, à un autre endroit : elle au **point d'entrée**
+(`mergeSupaNotifs`, #202), moi au **rendu** (#200). Chacun des deux correctifs
+était correct seul. Fusionnés sur `main`, le texte passait deux fois.
+
+Mesuré, pas déduit :
+
+```
+à l'écran   « Ben&#39;j a aimé ton post &lt;img … &gt; »
+```
+
+Et ce n'était pas un cas limite : le repli par défaut de `supaInsertNotif` est
+`escapeHtml("Quelqu'un")`, donc **tout le monde** voyait « Quelqu&#39;un ».
+
+L'autre session a réconcilié (#209) pendant que j'écrivais le même correctif —
+au caractère près la même solution, trouvée indépendamment. J'ai donc jeté mon
+code et gardé **le test**, que #209 n'avait pas : il rougit seul quand on remet
+`escapeHtml`, les quatre tests de sécurité restant verts. C'est bien un défaut
+d'affichage, pas une faille.
+
+> ⚠️ C'est exactement le risque que vise « une branche sensible = un seul
+> écrivain » (CLAUDE.md). Ici les deux branches ne se touchaient même pas : ce
+> sont les **correctifs** qui se sont recouverts. Un désinfectant appliqué à
+> deux étages doit être idempotent — sinon il ne faut en garder qu'un.

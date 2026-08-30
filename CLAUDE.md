@@ -1183,6 +1183,26 @@ Le script est en lecture seule sur le dépôt (il n'écrit que dans son dossier 
   onglets) peut supprimer le seul chemin de RETOUR d'un état transitoire.**
   Verrou : `studio-apres-carnet.spec.js`.
 
+  ⑬ **Deux sessions ont corrigé le MÊME défaut à deux endroits — et le cumul a
+  cassé l'affichage.** La XSS des notifications a été fermée deux fois le même
+  soir : #202 neutralise les chevrons au **point d'entrée** (`mergeSupaNotifs`,
+  par où passent la lecture REST et le temps réel), #200 échappait au **rendu**
+  (`_notifTexteHtml`). Chacun était correct seul. Fusionnés, un texte distant
+  passait deux fois — mesuré : « Ben&#39;j a aimé ton post &lt;img … &gt; »,
+  entités visibles à l'écran. Le repli par défaut de `supaInsertNotif` étant
+  `escapeHtml("Quelqu'un")`, **tout le monde** voyait « Quelqu&#39;un ».
+  Réconcilié par #209 : le modèle de confiance du rendu est conservé (le défaut
+  reste le REFUS) mais son désinfectant devient la même neutralisation de
+  chevrons qu'à l'entrée — **idempotente** (`&lt;` ne contient plus de `<`) et
+  suffisante dans un contenu d'élément. ⚠️ Deux leçons : un désinfectant appliqué
+  à deux étages doit être idempotent, sinon il ne faut en garder qu'un ; et c'est
+  exactement le risque que vise « une branche sensible = un seul écrivain » — ici
+  les deux branches ne se touchaient même pas, ce sont les CORRECTIFS qui se sont
+  recouverts. Verrou ajouté APRÈS coup, #209 n'en portait aucun : le test
+  « passée par mergeSupaNotifs, elle n'est pas désinfectée deux fois » rougit
+  seul quand on remet `escapeHtml` — les quatre tests de sécurité, eux, restent
+  verts, ce qui montre qu'il s'agit d'un défaut d'affichage et non d'une faille.
+
 - `docs/PIEGES_CONNUS.md` — les 59 fiches détaillées (extrait de ce fichier le 2026-08-07, recompté le 2026-08-29).
 - `docs/HISTORIQUE_PROJET.md` — état 2026-06-11, backlog terminé, logs d’optimisation.
 - `docs/ARCHITECTURE.md`, `docs/CONTROLE_16_MISSIONS.md`, `docs/CHECKLIST_COMMERCIALISATION.md`.
