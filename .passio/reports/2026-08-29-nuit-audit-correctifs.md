@@ -143,3 +143,115 @@ que supposée :
   de vérification qui n'ont plus aucun workflow derrière. Tu les as retirés cette
   nuit ; c'est ce qui a débloqué les fusions. Les deux gardes réelles — « Tests
   smoke » et « Gouvernance critique » — restent requises.
+
+---
+
+## 6. Second lot de la nuit — sept défauts de plus
+
+Même méthode : mesurés avant correction, éprouvés par mutation (annuler le
+correctif doit faire rougir ses tests), et aucun moteur dupliqué.
+
+### ⑥ XSS stockée dans les notifications *(sécurité)*
+
+`renderNotifs` écrivait `${n.text}` **brut**, parce que les notifications de
+démonstration portent des `<b>` voulus. Or `pushNotification` recopie du texte
+d'autrui (mentions, extraits de commentaires) et `supaLoadNotifs` remonte des
+lignes écrites par n'importe quel compte.
+
+Le rendu est désormais **sûr par défaut** : un discriminant de confiance
+explicite (`n.html === true` ou `kind === "local"`) autorise le balisage, tout
+le reste est échappé.
+
+### ⑦ La même donnée échappée d'un côté, brute de l'autre *(sécurité)*
+
+`ev.eventType` était échappé sur la **carte** d'activité et brut dans la
+**fiche**. Mesuré : la charge `<img src=x onerror=…>` s'exécutait à l'ouverture
+de la fiche. Idem pour la **durée** d'un carnet en direct, brute dans le
+carrousel du Fil et dans la fiche du carnet.
+
+> « Le `<select>` de création ne propose que des valeurs fixes » n'est pas une
+> garantie : toute session authentifiée écrit ces colonnes par REST.
+
+### ⑧ Partager une bobine n'atteignait jamais Supabase
+
+Le post de partage était fabriqué **sans `createdAt`**. `supaPublishPostWithRetry`
+fait `new Date(post.createdAt).toISOString()` : sur `undefined`, RangeError —
+avalé par le `catch` du réessai, qui renvoie `false` sans un mot.
+
+Un seul champ manquant, quatre conséquences : jamais persisté (donc perdu au
+rechargement), aucune heure sur la carte, et classé tout en bas du fil (tri sur
+`createdAt || 0`). Sa jumelle `sharePostInFeed` le portait déjà — **deux
+fonctions presque identiques avaient divergé sur ce seul point**.
+
+Au passage, dans les deux : le texte était échappé à la source **et** à
+l'affichage, donc doublement — et la valeur corrompue partait dans
+`posts.content`.
+
+### ⑨ Le lecteur de bobines n'envoyait aucun commentaire
+
+`submitReelComment` écrivait dans l'état local puis `saveState()`, et rien
+d'autre. L'auteur de la bobine ne voyait jamais le commentaire ; son auteur le
+perdait au premier rechargement. Le **même texte** posté depuis la discussion du
+Fil partait, lui : un défaut invisible à qui teste par le Fil.
+
+Corrigé par la file d'attente commune (réessai hors-ligne, statut « Envoi… /
+Non envoyé »), sans écrire un second moteur.
+
+Dans la foulée : tous les commentaires de bobine s'affichaient « Maintenant »,
+parce que le rendu lisait `c.timestamp` — un champ qu'aucun chemin de création
+ne pose.
+
+### ⑩ Les notifications promettaient encore des points
+
+Le contenu de démonstration est **copié** dans l'état à la première ouverture,
+puis persisté. ADR-009 a réécrit la graine, mais un compte ouvert **avant** le
+retrait garde sa copie : « Nouvelle quête du jour 🎨 **+15 pts** » et « Tu as
+gagné **10 💎 Passia** ». Nettoyées aux trois frontières (elles voyagent aussi
+par le blob `user_state`).
+
+Le filtre est volontairement **borné** : il ne juge le texte que des
+notifications écrites par l'app, et le « 💎 » nu en est exclu — une activité
+peut légitimement s'appeler « Atelier 💎 Bijoux ». Un test tient ce cas limite.
+
+### ⑪ « Ma ville » filtrait sur la ville précédente
+
+Le prédicat était posé **une fois**, au clic sur l'intention. Changer de ville
+ensuite laissait le filtre sur l'ancienne : le titre annonçait Paris, la liste
+montrait Lyon, sans le moindre signe.
+
+### ⑫ Ouvrir l'éditeur de carnet amputait le Studio
+
+`activateStudioVlog` masque le texte libre, la passion et le mood. Rien ne les
+rendait : le seul chemin de restauration était le clic sur un **onglet de
+format**… que le lot UI-6 a précisément retiré de l'écran. Un composeur muet,
+sans erreur ni message, jusqu'au rechargement complet de la page.
+
+C'est une famille à retenir : **retirer un chemin d'accès peut supprimer le seul
+chemin de retour d'un état transitoire.**
+
+### ⑬ Deux sessions ont corrigé le même défaut — et le cumul a cassé l'affichage
+
+Pendant que je travaillais, l'autre session a fermé **la même** XSS des
+notifications, à un autre endroit : elle au **point d'entrée**
+(`mergeSupaNotifs`, #202), moi au **rendu** (#200). Chacun des deux correctifs
+était correct seul. Fusionnés sur `main`, le texte passait deux fois.
+
+Mesuré, pas déduit :
+
+```
+à l'écran   « Ben&#39;j a aimé ton post &lt;img … &gt; »
+```
+
+Et ce n'était pas un cas limite : le repli par défaut de `supaInsertNotif` est
+`escapeHtml("Quelqu'un")`, donc **tout le monde** voyait « Quelqu&#39;un ».
+
+L'autre session a réconcilié (#209) pendant que j'écrivais le même correctif —
+au caractère près la même solution, trouvée indépendamment. J'ai donc jeté mon
+code et gardé **le test**, que #209 n'avait pas : il rougit seul quand on remet
+`escapeHtml`, les quatre tests de sécurité restant verts. C'est bien un défaut
+d'affichage, pas une faille.
+
+> ⚠️ C'est exactement le risque que vise « une branche sensible = un seul
+> écrivain » (CLAUDE.md). Ici les deux branches ne se touchaient même pas : ce
+> sont les **correctifs** qui se sont recouverts. Un désinfectant appliqué à
+> deux étages doit être idempotent — sinon il ne faut en garder qu'un.

@@ -174,6 +174,16 @@
     try { window.setIrlCityIntent(nom || ""); } catch (e) { fail("predicat_set", e); }
   }
 
+  // Le prédicat est stocké NORMALISÉ (`_normIrlCityName`) alors que la ville
+  // sélectionnée porte son libellé d'affichage : comparer les deux bruts ferait
+  // croire à une divergence à chaque rendu.
+  function normVille(nom) {
+    try {
+      if (typeof window._normIrlCityName === "function") return window._normIrlCityName(nom || "");
+    } catch (e) { fail("norm_ville", e); }
+    return String(nom || "").trim().toLowerCase();
+  }
+
   function mesPassions() {
     try {
       var l = (typeof window._irlMyPassions === "function") ? window._irlMyPassions() : [];
@@ -360,6 +370,25 @@
         return;
       }
     }
+    // ⚠️ « Ma ville » posait le prédicat UNE FOIS, au clic sur la chip, et ne le
+    // reprenait plus jamais. Changer de ville ensuite (sélecteur historique →
+    // `selectIrlCity` → `renderIRL`) laissait donc le filtre sur l'ANCIENNE :
+    // le titre annonçait Paris et la liste montrait Lyon, sans le moindre
+    // signe. On ré-aligne le prédicat sur la ville réellement choisie — et
+    // seulement quand il diffère, l'écriture d'un rendu à l'autre étant sinon
+    // permanente. `setIrlCityIntent` normalise, donc après l'écriture les deux
+    // valeurs sont égales : aucun aller-retour possible.
+    if (predicatVille()) {
+      var villeCourante = nomVille();
+      if (normVille(villeCourante) !== predicatVille()) {
+        poserPredicatVille(villeCourante);
+        applique = intentionsDuMoteur();
+        poserChips(applique);
+        setTimeout(rendre, 0);
+        return;
+      }
+    }
+
     applique = intentionsDuMoteur();
     poserChips(applique);
   }

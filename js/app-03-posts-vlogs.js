@@ -81,7 +81,9 @@ async function sharePostInFeed(id) {
     authorName: authorName,
     authorEmoji: prof?.emoji || g.emoji || "✨",
     authorColor: prof?.color || g.color || "#8b5cf6",
-    text: `📤 A partagé un post\n\n${passion.emoji} ${escapeHtml(post.authorName || "Passionné")} – ${passion.label}\n\n"${escapeHtml(txt).slice(0, 150)}${txt.length > 150 ? "…" : ""}"`,
+    // ⚠️ PAS d'escapeHtml : voir la note de `shareReelInFeed` (app-05) — `text`
+    // est échappé à l'affichage, l'échapper ici le fait passer deux fois.
+    text: `📤 A partagé un post\n\n${passion.emoji} ${post.authorName || "Passionné"} – ${passion.label}\n\n"${txt.slice(0, 150)}${txt.length > 150 ? "…" : ""}"`,
     passion: post.passion || null,
     mood: post.mood || "all",
     createdAt: Date.now(),
@@ -2648,7 +2650,7 @@ function openCdvLiveViewer(liveId) {
       <span>📍 ' + live.steps.length + ' étape' + (live.steps.length>1?"s":"") + '</span>\
       <span id="cdvViewerCount">👁 ' + viewerCount + ' suivent</span>\
       <span>🕐 ' + fmtTime(live.createdAt) + '</span>\
-      ' + (live.duration ? '<span>📅 ' + live.duration + '</span>' : '') + '\
+      ' + (live.duration ? '<span>📅 ' + escapeHtml(live.duration) + '</span>' : '') + '\
     </div>\
     \
     <div id="cdvTripStats">' + _cdvTripStatsHtml(cdvTripStats(live.steps)) + '</div>\

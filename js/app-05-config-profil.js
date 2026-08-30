@@ -2431,7 +2431,12 @@ function loadReelComments(postId) {
 
   commentsList.innerHTML = comments.map((c, idx) => {
     const commenter = userById(c.authorId) || { name: c.authorName || "Anonyme", profileEmoji: "✨", avatar: "#8b5cf6" };
-    const timeStr = c.timestamp ? fmtTime(c.timestamp) : "Maintenant";
+    // ⚠️ Les commentaires sont créés avec `createdAt` (ici comme dans app-04 et
+    // dans la relecture Supabase) et JAMAIS avec `timestamp` : ce test lisait un
+    // champ qui n'existe nulle part, donc TOUS les commentaires — y compris ceux
+    // d'il y a six mois — s'affichaient « Maintenant ».
+    const _ts = c.createdAt || c.timestamp || c.at;
+    const timeStr = _ts ? fmtTime(_ts) : "Maintenant";
     const likesCount = c.likes || 0;
     const isLiked = (c.likedBy || []).includes(state.user?.id || "me");
     const replies = c.replies || [];
@@ -2499,6 +2504,36 @@ function autoResizeReelCommentInput() {
   input.style.height = Math.min(input.scrollHeight, 100) + "px";
 }
 
+// ⚠️ Un commentaire posté depuis le LECTEUR DE BOBINES n'était écrit QUE dans
+// l'état local : ni `post_comments`, ni `comment_interactions`. L'auteur de la
+// bobine ne le voyait jamais, et il disparaissait du propre appareil de son
+// auteur au premier rechargement qui rejoue les posts du serveur. Le même texte
+// posté depuis la discussion du Fil (`submitComment`, app-04) partait, lui.
+//
+// On ne duplique AUCUN moteur : on passe par la file d'attente commune
+// (`_enqueueCommentSync`, app-04), qui gère le réessai hors-ligne et l'état
+// « Envoi… / Non envoyé » du commentaire, avec repli direct si elle est absente.
+function _envoyerCommentaireBobine(postId, op) {
+  if (typeof supa === "undefined" || !supa) return;
+  if (typeof MY_UID === "undefined" || !MY_UID) return;
+  if (typeof _enqueueCommentSync === "function") {
+    _enqueueCommentSync(Object.assign({ threadId: postId }, op));
+  } else if (op.type === "post_comment" && typeof supaAddComment === "function") {
+    supaAddComment(postId, op.text, op.commentId);
+  } else if (op.type === "reply" && typeof supaCommentInteract === "function") {
+    supaCommentInteract(op.parentId, postId, "reply", op.text);
+  }
+  // Prévenir l'auteur, comme le fait le chemin du Fil.
+  try {
+    const cible = typeof findPostAnywhere === "function" ? findPostAnywhere(postId) : null;
+    if (cible && cible.authorId && cible.authorId !== MY_UID && cible.fromSupabase
+        && typeof supaInsertNotif === "function") {
+      supaInsertNotif(cible.authorId, "comment", postId, "a commenté ta bobine");
+    }
+    if (typeof _notifyCommentMentions === "function") _notifyCommentMentions(postId, op.text);
+  } catch (e) {}
+}
+
 function submitReelComment() {
   const input = document.getElementById("reelCommentInput");
   if (!input || !window.currentReelCommentPostId) return;
@@ -2532,6 +2567,18 @@ function submitReelComment() {
         reel.comments[commentIdx].replies = [];
       }
       reel.comments[commentIdx].replies.push(newReply);
+      // ⚠️ `comment_interactions.comment_id` doit désigner un commentaire réel :
+      // un ancien commentaire local sans `id` produirait une ligne orpheline,
+      // rejetée en silence. Sans identifiant de parent, on n'envoie rien —
+      // la réponse reste locale, comme avant, plutôt que fausse en base.
+      if (reel.comments[commentIdx].id) {
+        _envoyerCommentaireBobine(postId, {
+          type: "reply",
+          parentId: reel.comments[commentIdx].id,
+          nodeId: newReply.id,
+          text: text,
+        });
+      }
       toast("✅ Réponse postée!");
     }
   } else {
@@ -2547,6 +2594,12 @@ function submitReelComment() {
       replies: []
     };
     reel.comments.push(newComment);
+    _envoyerCommentaireBobine(postId, {
+      type: "post_comment",
+      commentId: newComment.id,
+      nodeId: newComment.id,
+      text: text,
+    });
     toast("✅ Commentaire posté!");
   }
 
@@ -2857,8 +2910,21 @@ async function shareReelInFeed(postId) {
     authorEmoji: prof?.emoji || "✨",
     authorColor: prof?.color || "#8b5cf6",
     authorBio: currentProfile()?.bio || "",
-    text: `📤 A partagé une bobine\n\n${passion.emoji} ${escapeHtml(author.name)} – ${passion.label}\n\n"${escapeHtml(txt).slice(0, 150)}${txt.length > 150 ? "…" : ""}"`,
+    // ⚠️ PAS d'escapeHtml ici : `text` est un champ TEXTE, échappé à l'affichage
+    // (`escapeHtml(displayText)`, app-02). L'échapper à la source le fait passer
+    // DEUX fois → « Café d'Or » s'affichait « Café d&#39;Or », et la valeur
+    // corrompue partait telle quelle dans `posts.content`. Même motif que le
+    // double échappement du formulaire d'activité (#200 ②).
+    text: `📤 A partagé une bobine\n\n${passion.emoji} ${author.name} – ${passion.label}\n\n"${txt.slice(0, 150)}${txt.length > 150 ? "…" : ""}"`,
     caption: `Shared reel from ${author.name}`,
+    // ⚠️ `createdAt` est OBLIGATOIRE : `supaPublishPostWithRetry` fait
+    // `new Date(post.createdAt).toISOString()` — sur `undefined` cela lève un
+    // RangeError avalé par le `catch` du retry, donc le partage n'atteignait
+    // JAMAIS Supabase (perdu au rechargement). Le même champ date la carte
+    // (`fmtTime(p.createdAt)`, vide sans lui) et la classe dans le fil
+    // (tri sur `createdAt || 0` → tout en bas). `sharePostInFeed` (app-03),
+    // sa jumelle, le portait déjà.
+    createdAt: Date.now(),
     timestamp: Date.now(),
     likes: 0,
     comments: [],
