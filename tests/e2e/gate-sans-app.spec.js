@@ -61,19 +61,16 @@ test("après déverrouillage, l'application démarre et le fil s'affiche", async
   await page.goto("/index.html");
   await page.waitForTimeout(1500);
 
-  // Déverrouillage par le vrai chemin (saisie du code), pas par le jeton : c'est
-  // la TRANSITION gate → application qu'on veut exercer.
-  await page.evaluate((code) => {
-    const champ = document.querySelector("#gateInput, input[type='password'], input[inputmode='numeric']");
-    if (champ) { champ.value = code; champ.dispatchEvent(new Event("input", { bubbles: true })); }
-  }, GATE_CODE);
-  await page.evaluate(() => {
-    const b = document.querySelector("#gateSubmit, .gate-submit, button[type='submit']");
-    if (b) b.click();
-  });
+  // Déverrouillage par le VRAI chemin — la saisie du code, pas la pose du jeton :
+  // c'est la transition gate → application qu'on veut exercer.
+  // ⚠️ Le gate est un champ OTP `#pgInput` (js/access-gate.js) : il n'a AUCUN
+  // bouton de validation, il vérifie tout seul dès que la longueur du code est
+  // atteinte, sur l'événement `input`. Taper au clavier reproduit exactement ça.
+  await page.locator("#pgInput").fill(GATE_CODE);
+  await page.waitForTimeout(1200);
 
-  // Repli : si le formulaire n'a pas la forme attendue, on pose le jeton et on
-  // recharge — le test garde alors son sens (démarrage après gate).
+  // Repli : si le gate n'a pas cédé (forme du champ différente), on pose le jeton
+  // et on recharge — le test garde alors son sens (démarrage après gate).
   const passe = await page.waitForFunction(() => {
     const el = document.getElementById("screen-feed");
     return el && el.classList.contains("active");
