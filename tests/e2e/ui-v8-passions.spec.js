@@ -83,7 +83,7 @@ test.describe("UI-8 — un profil personnel, plusieurs passions", () => {
 
     const ligne = page.locator("#v8ActivePassion");
     await expect(ligne).toBeVisible();
-    await expect(ligne).toContainText("Passion active");
+    await expect(ligne).toContainText("Publier dans");
     await expect(ligne).toContainText("Moto");
     await expect(page.locator("[data-v8-changer]")).toBeVisible();
 
@@ -125,13 +125,13 @@ test.describe("UI-8 — un profil personnel, plusieurs passions", () => {
     await expect(page.locator("#nouveauProfilLien")).toBeVisible();
 
     // Chaque carte porte son état, et son décompte.
-    await expect(page.locator('[data-v8-active="v8_moto"]')).toHaveText(/Passion active/);
-    await expect(page.locator('[data-v8-utiliser="v8_pod"]')).toHaveText("Utiliser pour créer");
+    await expect(page.locator('[data-v8-active="v8_moto"]')).toHaveText(/Tu publies ici/);
+    await expect(page.locator('[data-v8-utiliser="v8_pod"]')).toHaveText("Publier dans celle-ci");
     await expect(page.locator('[data-v8-card="v8_moto"] .v8-card-meta')).toContainText("1 publication");
   });
 
-  // ── ③ « Utiliser pour créer » ─────────────────────────────────────────────
-  test("« Utiliser pour créer » change l'identité active, sans propagation", async ({ page }) => {
+  // ── ③ « Publier dans celle-ci » ───────────────────────────────────────────
+  test("« Publier dans celle-ci » change l'identité active, sans propagation", async ({ page }) => {
     await boot(page);
     await poserTroisPassions(page);
     await ouvrirProfil(page, "apropos");
@@ -273,7 +273,7 @@ test.describe("UI-8 — un profil personnel, plusieurs passions", () => {
     await page.evaluate(() => goTo("studio"));
     await page.waitForTimeout(600);
 
-    await expect(page.locator("[data-v6-passio]")).toContainText("Publication dans");
+    await expect(page.locator("[data-v6-passio]")).toContainText("Publier dans");
     await expect(page.locator("[data-v6-passio]")).toContainText("Podcast");
     expect(await page.evaluate(() => document.getElementById("postPassion").value)).toBe("podcast");
 
@@ -532,7 +532,10 @@ test.describe("UI-8 — un profil personnel, plusieurs passions", () => {
     await page.evaluate(() => goTo("studio"));
     await page.waitForTimeout(600);
     await expect(page.locator("[data-v6-passio]")).toContainText("Passion : ");
-    await expect(page.locator("[data-v6-passio]")).not.toContainText("Publication dans");
+    // ⚠️ Doit viser le libellé UI-8 COURANT (« Publier dans » depuis ADR-010).
+    // Garder « Publication dans » ferait passer ce test sur une chaîne qui
+    // n'existe plus nulle part : un verrou qui ne ferme rien.
+    await expect(page.locator("[data-v6-passio]")).not.toContainText("Publier dans");
 
     await page.evaluate(() => goTo("messages"));
     await page.waitForTimeout(700);

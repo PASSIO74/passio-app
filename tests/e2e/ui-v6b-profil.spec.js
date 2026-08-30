@@ -216,7 +216,9 @@ test.describe("UI-6B — Profil et multi-profils", () => {
     await expect(page.locator("#v6bModifier")).toHaveCount(0);
     await expect(page.locator(".v6b-ident")).toHaveCount(0);
     await expect(page.locator("#screen-profiles .main-profile-stat").first()).toBeVisible();
-    await expect(page.locator("#nouveauProfilLien")).toHaveText("+ Nouveau");
+    // ADR-010 : le markup d'origine dit « + Ajouter » (le vocabulaire n'est
+    // sous aucun kill switch, il change donc aussi sur le chemin historique).
+    await expect(page.locator("#nouveauProfilLien")).toHaveText("+ Ajouter");
     // Le point d'édition historique reprend sa place.
     await expect(page.locator("#screen-profiles .profile-dots-btn.on-cover")).toBeVisible();
 
@@ -235,9 +237,11 @@ test.describe("UI-6B — Profil et multi-profils", () => {
     await expect(page.locator("#v6bModifier")).toHaveCount(0);
     await expect(page.locator(".v6b-ident")).toHaveCount(0);
     await expect(page.locator("#screen-profiles .profile-dots-btn.on-cover")).toBeVisible();
-    await expect(page.locator("#nouveauProfilLien")).toHaveText("+ Nouveau");
+    // ADR-010 : le markup d'origine dit « + Ajouter » (le vocabulaire n'est
+    // sous aucun kill switch, il change donc aussi sur le chemin historique).
+    await expect(page.locator("#nouveauProfilLien")).toHaveText("+ Ajouter");
     expect(await page.evaluate(() =>
-      document.getElementById("nouveauProfilLien").parentNode.textContent)).toContain("Mes profils passion");
+      document.getElementById("nouveauProfilLien").parentNode.textContent)).toContain("Mes passions");
     await expect(page.locator("#screen-profiles .main-profile-stat").first()).toBeVisible();
   });
 
