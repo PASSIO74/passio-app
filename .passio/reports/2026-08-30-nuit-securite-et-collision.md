@@ -202,3 +202,78 @@ publiée reste retenu jusqu'à la réouverture de l'éditeur (P3,
 
 Non traité parce que le corriger demande de vérifier que rien ne lit `meState.media` après
 fermeture (la publication est asynchrone), et cette vérification n'a pas été faite.
+
+
+## 8. Incident du matin — la CI ne peut plus déployer, et ce n'est pas ce que j'ai cru d'abord
+
+### Ce qui est MESURÉ
+
+Depuis 06:03, le gate `authz-critical.spec.js` échoue, et avec lui tout le
+déploiement. Le message instrumenté (PR #220) dit la cause sans ambiguïté :
+
+> `compte créé mais AUCUNE session — signature de « Confirm email » exigé par le
+> projet Supabase (réglage Auth), ou d'une protection anti-abus qui l'impose`
+
+Autrement dit : `signUp` rend `error === null`, un `data.user` **présent**, et
+`data.session === null`. Le compte EST créé ; c'est la session qui manque.
+
+### Ma première conclusion était FAUSSE
+
+J'ai d'abord annoncé un **épuisement du quota d'inscriptions**, causé par mes
+quatorze runs CI en une heure. C'était une hypothèse plausible — la chronologie
+collait — mais elle n'était pas mesurée, et elle est **fausse** : un quota
+atteint renvoie une *erreur* explicite, pas un utilisateur sans session.
+
+Ce qui m'a induit en erreur : le helper de test écrasait trois causes distinctes
+sous un unique « pas de session ». C'est pour ça que le premier travail utile a
+été d'instrumenter le message, pas de relancer une quatrième fois.
+
+> **Règle** : trois relances identiques ne valent pas un diagnostic. Quand un
+> échec ne dit pas sa cause, le premier correctif est de le faire parler.
+
+### Ce que ce réglage n'est PAS
+
+Ce n'est **pas** un incident de production. `js/app-02-state-utils.js` gère
+explicitement ce cas à l'inscription :
+
+> « Pas de session → e-mail à confirmer. On NE rentre PAS dans l'app sans adresse
+> confirmée (exigence : « il faut une adresse mail valide ») »
+
+Un nouvel inscrit voit donc « ✅ Compte créé ! Vérifie tes e-mails ». La
+confirmation d'e-mail est un comportement **voulu** de PASSIO.
+
+### Le défaut réel, et il est structurel
+
+`authz-critical.spec.js` et `user-state-horodatage.spec.js` supposent que
+`signUp` rend une **session immédiate**. Cette hypothèse est **incompatible avec
+le réglage que le produit revendique par ailleurs**. Ces deux gardes étaient donc
+condamnées dès l'instant où la confirmation s'appliquerait à leurs comptes.
+
+Reste une question que je **ne peux pas trancher depuis cette session** : elles
+passaient à 05:22 et échouaient à 06:03. Soit le réglage a changé entre les deux,
+soit les adresses `@passio-e2e.test` bénéficiaient d'une exemption qui a sauté.
+Le connecteur Supabase en lecture seule n'est pas authentifié ici, et le proxy
+refuse le domaine du projet : `NON MESURÉ`, et je n'invente pas.
+
+### Conséquence à connaître
+
+Le gate d'autorisation conditionne toute la suite. Tant qu'il échoue :
+
+- `main` reste **rouge** sur `1dde20c` ;
+- « Déploiement production » est **sauté** ;
+- la production tourne sur `8f4c319`, donc **sans les six correctifs du matin** —
+  stories des comptes bloqués, QR de pointage, fuite mémoire des bobines,
+  recherche de comptes, échappement d'identifiants, réactions filtrées à l'entrée.
+
+Rien n'est cassé en ligne. C'est du retard, pas une panne.
+
+### Ce qui a été fait, et ce qui ne pouvait pas l'être
+
+Fait : le message d'échec nomme désormais sa cause (#220) ; la CI est sérialisée
+pour qu'une vague ne puisse plus se reproduire (branche `claude/ci-serialiser`).
+
+Non fait, et pourquoi : **découpler ces deux gardes de `signUp`** demanderait des
+comptes de test provisionnés à l'avance et un secret CI pour s'y connecter. Je ne
+peux créer ni l'un ni l'autre. Et les contourner — accepter un compte sans
+session — reviendrait à désarmer la garde pour faire passer la CI, ce qui est
+exactement ce qu'on ne fait pas.

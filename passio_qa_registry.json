@@ -1,8 +1,8 @@
 {
   "$comment": "Source de verite MACHINE de la qualification PASSIO. Vue humaine : PASSIO_MASTER_CONTROL.md. Journal : PASSIO_ENGINEERING_LOG.md. Regle : aucune valeur inventee ; un champ non mesure vaut null et porte un statut explicite.",
   "schema_version": 1,
-  "generated_at": "2026-08-30T00:40:00.000Z",
-  "commit": "8f4c319",
+  "generated_at": "2026-08-30T06:55:00.000Z",
+  "commit": "1dde20c",
   "branch": "main",
   "working_tree": "clean",
   "environment": {
@@ -519,6 +519,42 @@
       "problem": "Deux tests de securite ecrits cette nuit passaient POUR LA MAUVAISE RAISON, trouves par reinjection et non par relecture. (1) La charge XSS fabriquait onmouseover=\"window.__pwn()', event);\" — une erreur de syntaxe que le navigateur avale en silence, donc le test passait sans echappement. (2) Un test sans decor : _liveReactItems ne trouvait pas le live, la pastille n etait jamais construite, le test restait vert en retirant l echappement.",
       "fix": "Charge terminee par // pour rendre le reste inerte ; decor seed dans localStorage.passio_cdv_lives.",
       "lecon": "Un test de securite qui n a pas ete vu ROUGIR n est pas un test de securite. Le meme filet a resservi le lendemain : le premier jet du test des liens IRL mesurait la fiche par une classe .active qu elle n a pas — les trois tests etaient rouges, cas nominal compris.",
+      "verified": true
+    },
+    {
+      "id": "CI-SIGNUP-026",
+      "severity": "P1",
+      "domain": "ci_release_gate",
+      "status": "OUVERT — bloque le deploiement",
+      "problem": "Depuis 06:03 le 2026-08-30, le gate authz-critical echoue et avec lui tout le deploiement. Cause MESUREE (message instrumente, PR #220) : supa.auth.signUp rend error === null, data.user PRESENT et data.session === null. Le compte est cree, c'est la session qui manque — signature de « Confirm email » exige par le projet Supabase.",
+      "ce_que_ce_n_est_pas": "PAS un incident de production. app-02 gere explicitement ce cas a l'inscription (« Pas de session → e-mail a confirmer »), et un nouvel inscrit voit « Compte cree ! Verifie tes e-mails ». La confirmation d'e-mail est un comportement VOULU de PASSIO.",
+      "defaut_reel": "authz-critical.spec.js et user-state-horodatage.spec.js supposent que signUp rend une session IMMEDIATE. Cette hypothese est incompatible avec le reglage que le produit revendique par ailleurs : ces deux gardes etaient condamnees des que la confirmation s'appliquerait a leurs comptes.",
+      "non_mesure": "Pourquoi elles passaient a 05:22 et echouaient a 06:03 : soit le reglage a change entre les deux, soit les adresses @passio-e2e.test beneficiaient d'une exemption qui a saute. Le connecteur Supabase lecture seule n'est pas authentifie dans la session et le proxy refuse le domaine du projet.",
+      "impact": "main rouge sur 1dde20c, « Deploiement production » saute, la prod tourne sur 8f4c319 donc SANS les six correctifs du matin. Rien n'est casse en ligne : c'est du retard, pas une panne.",
+      "remede_hors_depot": "Verifier le reglage Auth du projet Supabase (Confirm email). Si la confirmation est voulue — et le code dit qu'elle l'est — alors les deux gardes doivent etre repensees : comptes de test provisionnes a l'avance + secret CI pour s'y connecter. Ni l'un ni l'autre n'est creable depuis la session.",
+      "refus_assume": "Contourner en acceptant un compte sans session desarmerait la garde pour faire passer la CI. Non fait.",
+      "verified": true
+    },
+    {
+      "id": "CI-VAGUE-027",
+      "severity": "P2",
+      "domain": "ci_release_gate",
+      "status": "CORRIGE, en attente de contre-revue",
+      "problem": "Huit branches mises a jour puis six PR fusionnees coup sur coup ont lance quatorze runs CI en une heure, tous partageant la meme prod Supabase. Erreur de manoeuvre de la session, pas defaut du depot.",
+      "second_defaut_ferme_au_passage": "Sans serialisation, six runs de main tournent en parallele et rien ne garantit que le dernier commit pousse soit le dernier deploye : un run ancien peut finir apres un plus recent et remettre en ligne un artefact perime.",
+      "fix": "concurrency { group: passio-ci, cancel-in-progress: false } dans deploy.yml — branche claude/ci-serialiser. Groupe CONSTANT et non derive de github.ref : la saturation vient du CUMUL entre branches, un groupe par branche n'aurait rien regle.",
+      "cout_assume": "Les runs font la queue. Sur l'usage ordinaire — une PR a la fois — cela ne change rien ; cela ne mord que sur une vague, c'est-a-dire exactement quand on veut que cela morde.",
+      "bloque_par": "Perimetre .github/ : la garde « Gouvernance critique » exige une contre-revue humaine ancree sur le SHA. Non contournee.",
+      "verified": true
+    },
+    {
+      "id": "TEST-DIAG-028",
+      "severity": "P2",
+      "domain": "qualite_des_tests",
+      "status": "CORRIGE",
+      "problem": "Les deux gardes qui creent de vrais comptes rendaient « pas de session » pour TROIS causes distinctes — signUp refuse, signUp vide, compte sans session. La CI a echoue trois fois de suite sur ce seul message, sans permettre de choisir le remede. J'ai conclu a tort a un epuisement de quota, hypothese plausible mais NON MESUREE, et fausse.",
+      "fix": "Trois branches de diagnostic distinctes, PR #220. Aucune assertion retiree ni affaiblie : les gardes exigent toujours un compte reellement cree avec sa session, seul le message change.",
+      "lecon": "Trois relances identiques ne valent pas un diagnostic. Quand un echec ne dit pas sa cause, le premier correctif est de le faire parler — pas de relancer une quatrieme fois.",
       "verified": true
     }
   ],
