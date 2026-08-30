@@ -137,6 +137,58 @@ test.describe("UI-4A3 — commutateur Liste / Carte", () => {
     await expect(page.locator("#irlPassionRow")).toBeHidden();
   });
 
+  test("la carte s'affiche SOUS les onglets, exactement comme la liste", async ({ page }) => {
+    // Demandé par Benjamin le 2026-08-30 après essai réel : les trois cases du
+    // commutateur doivent produire le MÊME effet — le contenu choisi s'affiche
+    // dessous. La carte, elle, vit très haut dans le balisage historique (juste
+    // sous la barre d'action) : elle s'affichait donc AU-DESSUS des onglets.
+    await boot(page);
+    await ouvrirIrl(page);
+
+    await onglet(page, "carte").click();
+    await page.waitForTimeout(500);
+
+    // ① Géométrie : le commutateur coiffe la carte, qui coiffe la liste.
+    const geo = await page.evaluate(() => {
+      const b = document.getElementById("v4a3Vue").getBoundingClientRect();
+      const c = document.getElementById("irlMapWrap").getBoundingClientRect();
+      const l = document.getElementById("eventList").getBoundingClientRect();
+      return { barre: b.bottom, carte: c.top, liste: l.top };
+    });
+    expect(geo.carte).toBeGreaterThanOrEqual(geo.barre - 1);
+    expect(geo.liste).toBeGreaterThanOrEqual(geo.carte);
+
+    // ② Balisage : la carte s'est glissée ENTRE le commutateur et la liste, et
+    //    le commutateur reste au-dessus d'elle.
+    expect(await page.evaluate(() => {
+      const c = document.getElementById("irlMapWrap");
+      return c.nextElementSibling && c.nextElementSibling.id;
+    })).toBe("eventList");
+    expect(await page.evaluate(() => {
+      const b = document.getElementById("v4a3Vue");
+      const c = document.getElementById("irlMapWrap");
+      return !!(b.compareDocumentPosition(c) & Node.DOCUMENT_POSITION_FOLLOWING);
+    })).toBe(true);
+
+    // ③ Le nœud est DÉPLACÉ, jamais recréé : le moteur cartographique vit
+    //    dedans, et il n'y en a toujours qu'un.
+    await expect(page.locator("#irlMapWrap")).toHaveCount(1);
+    await expect(page.locator("#irlMap")).toHaveCount(1);
+
+    // ④ Retour à Liste : la carte rend sa place d'origine, et le commutateur
+    //    coiffe de nouveau directement la liste.
+    await onglet(page, "liste").click();
+    await page.waitForTimeout(400);
+    expect(await page.evaluate(() => {
+      const l = document.getElementById("eventList");
+      return l.previousElementSibling && l.previousElementSibling.id;
+    })).toBe("v4a3Vue");
+    expect(await page.evaluate(() => {
+      const c = document.getElementById("irlMapWrap");
+      return c.nextElementSibling && c.nextElementSibling.id;
+    })).toBe("irlPassionRow");
+  });
+
   test("retour à Liste : la carte se replie et la liste revient", async ({ page }) => {
     await boot(page);
     await ouvrirIrl(page);
@@ -231,6 +283,12 @@ test.describe("UI-4A3 — commutateur Liste / Carte", () => {
     await page.evaluate(() => { window.PASSIO_UI_4A3 = false; window.PassioUIV4A3.apply(); });
 
     await expect(page.locator("#v4a3Vue")).toHaveCount(0);
+    // La carte, déplacée sous les onglets par la vue Carte, retrouve sa place
+    // d'origine : la coupure ne laisse aucun balisage remanié derrière elle.
+    expect(await page.evaluate(() => {
+      const c = document.getElementById("irlMapWrap");
+      return c.nextElementSibling && c.nextElementSibling.id;
+    })).toBe("irlPassionRow");
     expect(await page.evaluate(() =>
       document.documentElement.classList.contains("passio-ui-4a3"))).toBe(false);
     // L'écran historique est rendu : liste ET rangée de passions.

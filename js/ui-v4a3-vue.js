@@ -23,6 +23,14 @@
 // depuis ici serait un pari sur la mauvaise ; et l'état replié est mémorisé par
 // cette fonction, qu'il faut laisser seule maîtresse de sa clé.
 //
+// ── 2026-08-30 : les trois onglets se comportent pareil ───────────────────
+// La carte s'affiche DESSOUS le commutateur, comme la liste et comme la vue
+// Filtres d'UI-4A5. Le balisage historique la place très au-dessus (juste sous
+// la barre d'action) : la vue Carte DÉPLACE donc `#irlMapWrap` juste avant
+// `#eventList`, et le rend à sa place d'origine dès qu'on quitte la vue ou que
+// le drapeau tombe. Le nœud est déplacé, jamais recréé — le moteur Leaflet vit
+// dedans.
+//
 // ⚠️ En vue Liste, la carte QUITTE l'écran — c'est le sens d'un commutateur, et
 // la première remarque de Benjamin à l'essai. Elle n'est pour autant pas mise en
 // `display: none` : le moteur cartographique s'initialise paresseusement et
@@ -55,6 +63,7 @@
   ];
 
   var vue = "liste";                  // en mémoire seule, jamais persistée
+  var origCarte = null;               // position d'origine de #irlMapWrap
   var observateur = null;
   var pending = false;
   var enPanne = false;
@@ -121,6 +130,80 @@
   }
 
   // ══════════════════════════════════════════════════════════════════════════
+  // LA CARTE S'AFFICHE SOUS LES ONGLETS
+  // ──────────────────────────────────────────────────────────────────────────
+  // Demandé par Benjamin le 2026-08-30, après essai réel : « quand je clique
+  // sur Carte je voudrais qu'elle apparaisse DESSOUS les trois onglets, comme
+  // quand je clique sur Liste — le même effet sur les trois clics. »
+  //
+  // Dans le balisage historique, `#irlMapWrap` précède la liste de très haut
+  // (juste sous la barre d'action) : le commutateur, lui, se pose au ras de
+  // `#eventList`. La carte s'affichait donc AU-DESSUS des onglets, quand la
+  // liste et la vue Filtres s'affichent dessous — trois cases, deux
+  // comportements. La vue Carte DÉPLACE donc le nœud juste avant la liste, et
+  // le rend à sa place d'origine dès qu'on la quitte.
+  //
+  // ⚠️ Le nœud est DÉPLACÉ, jamais recréé : le moteur cartographique (Leaflet)
+  // vit dans `#irlMap`, ses écouteurs et ses tuiles avec lui. Le reconstruire
+  // donnerait une carte blanche, et `initIrlMap()` ne réinitialise pas deux fois.
+  //
+  // ⚠️ La destination est `#eventList`, JAMAIS `barre.nextSibling` : UI-4A5 y
+  // pose son panneau de filtres et le REMET à cette place après chaque rendu.
+  // Deux modules qui revendiquent le même point d'ancrage se renverraient la
+  // balle indéfiniment, chacun réveillant l'observateur de l'autre.
+  // ══════════════════════════════════════════════════════════════════════════
+
+  // Déplacer le conteneur ne change pas sa largeur, mais Leaflet mesure à
+  // l'attache : on lui redemande un recadrage. `irlMap` est un `let` de portée
+  // script (donc absent de `window`, et en zone morte tant qu'app-07 n'a pas
+  // tourné) — d'où le `typeof` DANS un `try`, le seul des deux qui protège.
+  function recadrerCarte() {
+    setTimeout(function () {
+      try {
+        if (typeof irlMap !== "undefined" && irlMap
+          && typeof irlMap.invalidateSize === "function") irlMap.invalidateSize();
+      } catch (e) {}
+    }, 320);
+  }
+
+  function carteDeplacee() { return !!origCarte; }
+
+  function placerCarte(sousLesOnglets) {
+    try {
+      var w = carteWrap();
+      var l = liste();
+      if (!w || !l || !l.parentNode) return;
+      if (sousLesOnglets) {
+        // Hors de portée (un autre lot l'aurait déménagée ailleurs) : on ne
+        // force rien, la vue reste correcte, seule la place change.
+        if (w.parentNode !== l.parentNode) return;
+        if (w.nextElementSibling === l) return;        // déjà en place
+        // On mémorise les DEUX voisins. ⚠️ En DÉVELOPPEMENT le voisin suivant
+        // est le nœud de texte du retour à la ligne, qui ne bouge jamais ; en
+        // PRODUCTION la CI minifie avec `--collapse-whitespace --remove-comments`
+        // et ce voisin devient `#irlPassionRow` — qu'UI-4A5 emmène dans son
+        // panneau de filtres. Ne retenir que lui rendait donc la carte à la FIN
+        // de l'écran, sous la liste, et seulement en prod. Le précédent (la
+        // barre d'action) ne bouge, lui, dans aucun des deux.
+        if (!origCarte) origCarte = { parent: w.parentNode, prev: w.previousSibling, next: w.nextSibling };
+        l.parentNode.insertBefore(w, l);
+        poserBarre();                                   // les onglets restent au-dessus
+        recadrerCarte();
+      } else {
+        if (!origCarte) return;
+        var o = origCarte;
+        origCarte = null;
+        // Chaque repère n'est suivi que s'il est encore chez lui ; le dernier
+        // repli (fin du parent) ne sert que si les deux ont disparu.
+        if (o.next && o.next.parentNode === o.parent) o.parent.insertBefore(w, o.next);
+        else if (o.prev && o.prev.parentNode === o.parent) o.parent.insertBefore(w, o.prev.nextSibling);
+        else o.parent.appendChild(w);
+        recadrerCarte();
+      }
+    } catch (e) { fail("placer_carte", e); }
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
   // COMMUTATEUR
   // Construit par `document.createElement` : aucun contenu utilisateur n'entre
   // ici, et rien n'est concaténé en HTML.
@@ -148,15 +231,39 @@
     return wrap;
   }
 
+  // Devant quoi la barre se pose. Normalement la liste ; en vue Carte, la carte
+  // déplacée, qui vient de se glisser entre les deux — sans quoi une barre
+  // reconstruite après un rendu passerait SOUS la carte, et le commutateur
+  // cesserait de coiffer ce qu'il commande.
+  function ancreBarre() {
+    var l = liste();
+    if (!l || !l.parentNode) return null;
+    var w = carteWrap();
+    if (carteDeplacee() && w && w.parentNode === l.parentNode
+      && (w.compareDocumentPosition(l) & Node.DOCUMENT_POSITION_FOLLOWING)) return w;
+    return l;
+  }
+
   // Idempotent : appelé au boot ET après chaque rendu. La barre se pose JUSTE
-  // AU-DESSUS de la liste, donc sous la tête UI-4A0 et sous la carte — c'est
+  // AU-DESSUS du contenu qu'elle commande, donc sous la tête UI-4A0 — c'est
   // l'ordre du §8, où le choix d'affichage précède immédiatement le contenu.
   function poserBarre() {
-    var l = liste();
-    if (!l || !l.parentNode) return false;
-    if (barre()) { syncBarre(); return true; }
+    var ancre = ancreBarre();
+    if (!ancre || !ancre.parentNode) return false;
+    var b = barre();
+    if (b) {
+      // Ré-alignement, jamais capture : on ne déplace la barre que si l'ancre
+      // est passée DEVANT elle. Sinon on ne touche à rien — l'écriture inutile
+      // réveillerait l'observateur, et celui d'UI-4A5, à chaque rendu.
+      if (b.parentNode === ancre.parentNode
+        && (b.compareDocumentPosition(ancre) & Node.DOCUMENT_POSITION_PRECEDING)) {
+        ancre.parentNode.insertBefore(b, ancre);
+      }
+      syncBarre();
+      return true;
+    }
     var noeud = construireBarre();
-    l.parentNode.insertBefore(noeud, l);
+    ancre.parentNode.insertBefore(noeud, ancre);
     syncBarre();
     return true;
   }
@@ -213,6 +320,9 @@
       // La carte n'est dépliée que dans SA vue. En vue Liste elle est repliée
       // ET sortie de l'écran par le CSS — un onglet « Liste » qui montre la
       // carte ne serait pas un commutateur.
+      // Elle s'affiche SOUS les onglets, comme la liste et comme la vue
+      // Filtres : les trois cases se comportent pareil (2026-08-30).
+      placerCarte(vue === "carte");
       demanderCarteDepliee(vue === "carte");
       syncAccessibiliteCarte();
       syncBarre();
@@ -267,6 +377,9 @@
       root.classList.remove(ROOT_CLASS);
       root.removeAttribute(ATTR_VUE);
       cesserObservation();
+      // Avant de retirer la barre : la carte retrouve sa place d'origine, sinon
+      // la coupure laisserait le balisage remanié derrière elle.
+      placerCarte(false);
       retirerBarre();
       // La carte redevient annoncée : le lot ne laisse rien derrière lui.
       syncAccessibiliteCarte();
@@ -275,6 +388,10 @@
     root.classList.add(ROOT_CLASS);
     root.setAttribute(ATTR_VUE, vue);
     observer();
+    // Ré-activation en cours de session : la place de la carte suit la vue
+    // courante. Idempotent — en vue Liste, rien n'a été déplacé, donc rien à
+    // rendre.
+    placerCarte(vue === "carte");
     poserBarre();
     // ⚠️ On aligne l'accessibilité, PAS le pli de la carte : `passio_irl_map_peek`
     // est la mémoire du moteur historique, et la déplier ou la replier au
