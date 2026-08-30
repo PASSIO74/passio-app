@@ -27,6 +27,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import os from "node:os";
 
 // ⚠️ `import` est HISSÉ : un `process.env.X = …` écrit au-dessus des imports
 // s'exécute APRÈS eux, donc après que `config.js` a lu l'environnement. La
@@ -45,12 +46,30 @@ assert.equal(config.allowMutations, true,
 const HEAD_AU_DEPART = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"],
   { cwd: config.repoPath, encoding: "utf8" }).trim();
 
-/** Exécute un bout de code dans un processus neuf, avec l'environnement donné. */
+// ─── Bac à sable pour les processus enfants ──────────────────────────────────
+// ⚠️ INCIDENT VÉCU EN ÉCRIVANT CE FICHIER, à ne jamais reproduire. Les tests des
+// verrous d'environnement appellent `createBranch("correctif/x")` avec un nom
+// VALIDE : seul le verrou les arrête. En éprouvant la suite par mutation — le
+// verrou neutralisé exprès — l'enfant a donc exécuté un vrai `git checkout -b`
+// dans le DÉPÔT DE TRAVAIL, qui s'est retrouvé sur une autre branche. C'est
+// exactement l'incident du 2026-07-21. Le filet de fin de fichier l'a signalé,
+// mais après coup : un test ne doit pas pouvoir atteindre le vrai dépôt, même
+// avec tous ses gardes cassés. Les enfants travaillent donc sur un dépôt jetable.
+const BAC = fs.mkdtempSync(path.join(os.tmpdir(), "passio-git-test-"));
+for (const args of [["init", "-q", "-b", "bac"], ["config", "user.email", "t@t"], ["config", "user.name", "t"]]) {
+  execFileSync("git", args, { cwd: BAC, stdio: "ignore" });
+}
+fs.writeFileSync(path.join(BAC, "index.html"), "<!doctype html>\n");
+execFileSync("git", ["add", "-A"], { cwd: BAC, stdio: "ignore" });
+execFileSync("git", ["commit", "-qm", "bac"], { cwd: BAC, stdio: "ignore" });
+process.on("exit", () => { try { fs.rmSync(BAC, { recursive: true, force: true }); } catch {} });
+
+/** Exécute un bout de code dans un processus neuf, sur le dépôt JETABLE. */
 function dansUnEnfant(env, code) {
   try {
     const out = execFileSync(process.execPath, ["--input-type=module", "-e", code], {
       cwd: path.resolve("."), encoding: "utf8",
-      env: { ...process.env, ...env },
+      env: { ...process.env, PASSIO_REPO_PATH: BAC, ...env },
     });
     return { ok: true, out: out.trim() };
   } catch (e) {
@@ -184,4 +203,8 @@ test("aucun test de ce fichier n'a touché le dépôt", async () => {
     "un test a changé de branche — relis la méthode en tête de fichier.");
   const st = await status();
   assert.equal(st.branch, HEAD_AU_DEPART);
+  // …et le dépôt jetable n'a pas bougé non plus tant que les verrous tiennent.
+  const bac = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"],
+    { cwd: BAC, encoding: "utf8" }).trim();
+  assert.equal(bac, "bac", "un enfant a muté le bac à sable : un verrou ne tient plus");
 });
