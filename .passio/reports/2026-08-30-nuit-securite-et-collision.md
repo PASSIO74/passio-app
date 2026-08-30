@@ -120,3 +120,85 @@ texte non fiable, pour qu'il soit **idempotent** avec la neutralisation d'entré
   donc la garde « Gouvernance critique » **exige une contre-revue humaine ancrée
   sur le SHA** : elle a refusé la PR, ce qui est le comportement voulu. Je ne l'ai
   pas contournée.
+
+
+## 7. Seconde passe adversariale — ce qui reste, avec sa mutation
+
+Les 36 findings non vérifiés de §5 ont été repris par une seconde passe : **5 pistes
+d'enquête, 20 findings, 60 verdicts** (trois lentilles par finding — réalité du code,
+reproductibilité par un geste, existence d'une garde ailleurs — avec consigne de
+**réfuter** par défaut). 65 agents, 0 erreur, 18 réfutations.
+
+Quatre ont été corrigés cette nuit et sont en PR : le rail de stories qui ignorait le
+blocage, la fuite de Blob des bobines, et trois assertions de test inatteignables.
+
+**Le reste est confirmé mais NON TRAITÉ.** Il est listé ici avec assez de précision pour
+être repris sans refaire l'enquête. Ce sont des findings **vérifiés**, pas des soupçons —
+mais aucun n'a été reproduit dans un navigateur par moi, et c'est la règle de la maison :
+*avant de corriger, mesurer*.
+
+### 7.1 Écritures Supabase qui ne s'écrivent pas — demandent une MIGRATION
+
+Ces trois-là ont un point commun : **une policy manque en base**. Le correctif client seul
+ne suffirait pas, et la règle de la nuit interdit d'appliquer une migration sans
+supervision. Ils sont donc préparés, pas appliqués.
+
+| Défaut | Où | Ce qui manque |
+|---|---|---|
+| **Modifier un commentaire d'activité IRL ou de live CDV n'écrit RIEN** (P1) | `js/app-04-comments-shop.js:1475` | Deux verrous indépendants : `_supaUpdateCommentRow` écrit `content` sur les trois tables, or seule `post_comments` a cette colonne — `event_comments` et `cdv_live_comments` portent `text` (→ 400 PGRST204) ; **et** aucune policy UPDATE n'existe sur ces deux tables. Même avec la bonne colonne, l'UPDATE serait filtré à 0 ligne. Aucun `{ error }` n'est lu : le texte d'origine revient au rechargement. |
+| **Supprimer le commentaire d'une étape ne touche jamais `step_interactions`** (P1) | `js/app-04-comments-shop.js:1422` | `_supaDeleteCommentRow` choisit sa table sur le seul **préfixe** de l'id (`ec_`, `lc_`, sinon `post_comments`). Or les commentaires d'étape portent `c_…` et vivent dans `step_interactions`, jamais citée. La suppression part sur la mauvaise table → 0 ligne, `{ error: null }`. Et l'hydratation est une UNION qui ne supprime jamais : le commentaire revient à la réouverture. Router sur le **kind** du fil, pas sur le préfixe. |
+| **La description d'un groupe est écrite dans une table sans policy UPDATE** (P2) | `js/app-05-config-profil.js:1584` | `public.conversations` n'a que des policies INSERT et SELECT. Et le résultat est jeté par un `.then(function(){}, function(){})` qui avale aussi bien l'erreur que le succès à 0 ligne. Second défaut cumulé, indépendant : `supaLoadMyConversations` ne recopie jamais `c.description`, donc la valeur serait perdue au boot **même si** l'écriture passait. |
+
+### 7.2 Un id local qui n'est jamais remplacé par l'id serveur
+
+**Supprimer un commentaire de live CDV qu'on vient de poster ne supprime rien** (P2,
+`js/app-03-posts-vlogs.js:3616`). `addCdvLiveComment` crée l'optimiste avec
+`"lc_local_" + Date.now()`, tandis que `supaAddCdvLiveComment` génère de son côté
+`"lc_" + uid()` et **ne le renvoie pas**. La suppression part donc sur un id fictif.
+
+C'est un écart avec le chemin des activités, qui fait la chose juste :
+`addEventComment` corrige l'id (`optimistic.id = realId`). Correctif sans migration —
+faire renvoyer son id par `supaAddCdvLiveComment`, comme le fait déjà l'autre chemin.
+
+### 7.3 Deux liens profonds encore dans l'état que cette nuit a corrigé ailleurs
+
+Même famille exactement que `#reel=`, `#irl-event-` et `#irl-checkin-`, et **non traitée** :
+
+- **`?call=<id>`** (P1, `js/app-05-config-profil.js:1161`) — le repli à 10 s appelle
+  `handlePushIncomingCall` sans aucune garde de préparation. La chaîne descend jusqu'à
+  `isBlocked(payload.from)`, qui fait `state.user.blocked` : sur `state === null`, c'est un
+  TypeError, venu d'un `setInterval`, **non rattrapé**. Et l'URL a déjà été effacée.
+- **`?live=<id>`** (P1, `js/app-05-config-profil.js:1172`) — le paramètre est supprimé
+  **avant** toute tentative, et par `location.pathname` seul, ce qui emporte aussi le reste
+  de la query et le fragment. Puis la reprise abandonne **en silence** à 10 s : ni toast,
+  ni journal.
+
+Dans les deux cas le budget d'attente (40 × 250 ms) est calculé sur une hypothèse fausse :
+`ensureSupabase()` télécharge le SDK depuis un CDN **sans délai maximal ni repli**. Sur un
+réseau mobile froid, 10 s ne suffisent pas.
+
+Le correctif est déjà écrit ailleurs et n'a qu'à être transposé : `_reelLinkAppPrete`
+(app-06) et `_irlLienAppPrete` (app-07).
+
+### 7.4 Quatre tests encore soupçonnés creux
+
+`profils-types.spec.js:191` et `:208`, `cadrage.spec.js:68`,
+`profil-badges-visibles.spec.js:87`. Chacun vient avec sa mutation nommée. **Je ne les ai
+pas vérifiés** — et les rapporter comme établis serait reproduire exactement l'erreur que
+la PR #216 corrige. À reprendre avec la même discipline : appliquer la mutation, constater
+le vert, puis réparer.
+
+⚠️ Fait à connaître : `npm run audit:tests` reste **vert** sur les quatre. Cet audit
+détecte les specs qui ne vérifient *que* leurs propres constructions, pas une assertion
+isolée inatteignable au milieu d'un test par ailleurs solide. Sa portée mérite d'être
+élargie.
+
+### 7.5 Une rétention mémoire, volontairement laissée
+
+`meClose()` ne remet pas `meState.media` à `null` : le base64 de la dernière bobine
+publiée reste retenu jusqu'à la réouverture de l'éditeur (P3,
+`js/app-08-ui-modals-tour.js:613`). C'est une **rétention**, pas une accumulation —
+`meOpen()` réaffecte `meState` en entier, donc il n'y a jamais qu'une copie à la fois.
+
+Non traité parce que le corriger demande de vérifier que rien ne lit `meState.media` après
+fermeture (la publication est asynchrone), et cette vérification n'a pas été faite.
