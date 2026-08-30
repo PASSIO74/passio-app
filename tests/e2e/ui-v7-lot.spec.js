@@ -344,7 +344,25 @@ test.describe("UI-7 §4 — Messages quitte le bandeau supérieur", () => {
 
     // La pastille reste dans le DOM : plusieurs chemins l'écrivent encore.
     await expect(page.locator("#msgDot")).toHaveCount(1);
-    expect(await page.evaluate(() => { renderMsgBadge(); return true; })).toBe(true);
+    // ⚠️ Cette ligne était `expect(await page.evaluate(() => { renderMsgBadge();
+    // return true; })).toBe(true)` — une valeur écrite par le test lui-même,
+    // qui ne prouvait que « l'appel ne lève pas ». Or c'est exactement la
+    // garantie que le commentaire d'index.html revendique : #msgDot reste dans
+    // le DOM PARCE QUE plusieurs chemins l'allument. Et `renderMsgBadge` sort en
+    // silence si le nœud manque, tandis que ses cinq sites d'appel l'enveloppent
+    // tous dans un `try/catch` : une panne y est structurellement muette.
+    // On assère donc une valeur que la PRODUCTION calcule.
+    await page.evaluate(() => {
+      const convs = getConversations();
+      convs.length = 0;
+      convs.push({
+        id: "conv_v7_badge", userId: "u_autre", userName: "Autre", userEmoji: "✨",
+        userColor: "#7c3aed", passion: "musique", unread: 4, lastAt: Date.now(),
+        isGroup: false, messages: [],
+      });
+      renderMsgBadge();
+    });
+    expect(await page.evaluate(() => document.getElementById("msgDot").textContent)).toBe("4");
 
     // Et la destination existe toujours, via la barre du bas.
     await page.locator('#appNavV2 [data-v2-key="messages"]').click();
