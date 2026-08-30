@@ -3800,22 +3800,74 @@ function downloadEventIcs(id) {
 // ⚠️ Le lien « #irl-event-<id> » n'était lu par PERSONNE : partager un événement
 // donnait un lien qui ouvrait bêtement l'accueil. On l'ouvre désormais au boot et
 // à chaque changement de hash. (Corrigé le 2026-07-21.)
+// ⚠️ CORRECTIF DU 2026-08-30 — le sondage arrivait AVANT l'application.
+// `state` vaut **null** (pas `undefined`) jusqu'à `state = loadState()`, qui
+// part APRÈS `await ensureSupabase()`. Sur un réseau mobile froid, le sondage
+// d'amorçage à +1 200 ms tombait dans cette fenêtre : `allEvents()` fait
+// `state.seed.events` et levait un TypeError. Venue d'un `setTimeout` ou d'un
+// écouteur `hashchange`, cette exception n'était rattrapée par personne — donc
+// la boucle de reprise n'était JAMAIS armée, aucun toast ne sortait, et le lien
+// était mort sans un mot. Trois règles en découlent, les mêmes que pour
+// `#reel=<id>` (app-06) :
+//   ① attendre que l'application soit prête, SANS consommer d'essai de contenu
+//      (sinon le budget de 12 essais est brûlé par le démarrage lui-même) ;
+//   ② mémoriser l'id au premier passage — `goTo()` fait un `pushState("#irl")`,
+//      donc toute navigation pendant l'attente effacerait le lien ;
+//   ③ le corps entier sous `try` : une exception REPLANIFIE au lieu de conclure.
+// Le hash n'est jamais nettoyé ici (comportement d'origine conservé) : un
+// rechargement doit pouvoir retenter le lien.
+function _irlLienAppPrete() {
+  if (document.documentElement.classList.contains("passio-locked")) return false;
+  if (typeof state === "undefined" || !state || !state.seed) return false;
+  if (typeof allEvents !== "function" || typeof openEventDetails !== "function") return false;
+  var l = document.getElementById("landing");
+  if (l && l.classList.contains("active")) return false;
+  var o = document.getElementById("onboarding");
+  if (o && o.classList.contains("active")) return false;
+  return true;
+}
+
+var _irlEvLinkId = "";
+var _irlEvLinkEssais = 0;    // « l'événement n'est pas encore chargé »
+var _irlEvLinkAttentes = 0;  // « l'application n'est pas encore prête »
+var _irlEvLinkTimer = null;
+
+function _irlEvLinkReplanifier() {
+  if (_irlEvLinkTimer) return;
+  _irlEvLinkTimer = setTimeout(function () {
+    _irlEvLinkTimer = null;
+    _openIrlEventFromHash();
+  }, 700);
+}
+
 function _openIrlEventFromHash() {
   const m = /#irl-event-([\w-]+)/.exec(location.hash || "");
-  if (!m) return false;
-  const id = m[1];
-  const open = () => {
-    if (typeof goTo === "function") goTo("irl");
-    if (typeof openEventDetails === "function") openEventDetails(id);
-  };
-  // L'événement peut n'arriver qu'avec le chargement Supabase : on retente.
-  if (allEvents().some(e => e.id === id)) { open(); return true; }
-  let tries = 0;
-  const t = setInterval(() => {
-    if (allEvents().some(e => e.id === id)) { clearInterval(t); open(); }
-    else if (++tries > 12) { clearInterval(t); toast("Événement introuvable ou supprimé"); }
-  }, 700);
-  return true;
+  if (m) _irlEvLinkId = m[1];
+  const id = _irlEvLinkId;
+  if (!id) return false;
+
+  try {
+    // Bornée : aucun minuteur ne doit tourner seul indéfiniment. 600 × 700 ms
+    // ≈ 7 min, le temps d'une inscription depuis un lien partagé.
+    if (!_irlLienAppPrete()) {
+      if (++_irlEvLinkAttentes <= 600) _irlEvLinkReplanifier();
+      return false;
+    }
+    if (allEvents().some(e => e.id === id)) {
+      if (typeof goTo === "function") goTo("irl");
+      openEventDetails(id);
+      return true;
+    }
+    // L'événement peut n'arriver qu'avec le chargement Supabase : on retente.
+    if (++_irlEvLinkEssais <= 12) { _irlEvLinkReplanifier(); return false; }
+    toast("Événement introuvable ou supprimé");
+    return false;
+  } catch (e) {
+    // Ne JAMAIS conclure sur une exception : c'est exactement ce qui tuait la
+    // reprise en silence. On replanifie dans le budget d'attente.
+    if (++_irlEvLinkAttentes <= 600) _irlEvLinkReplanifier();
+    return false;
+  }
 }
 window.addEventListener("hashchange", _openIrlEventFromHash);
 (function _irlDeepLinkBoot() {
@@ -3823,6 +3875,14 @@ window.addEventListener("hashchange", _openIrlEventFromHash);
   // Après le gate + le boot (les événements Supabase arrivent en différé).
   setTimeout(_openIrlEventFromHash, 1200);
 })();
+// En prod le bloc app est injecté APRÈS le code d'accès : le sondage ci-dessus
+// peut partir alors que `boot()` n'a pas encore tourné. On repart proprement au
+// signal, en remettant les compteurs à zéro (piège consigné dans CLAUDE.md).
+window.addEventListener("passio:app-ready", function () {
+  if (!_irlEvLinkId && !/#irl-event-/.test(location.hash || "")) return;
+  _irlEvLinkAttentes = 0; _irlEvLinkEssais = 0;
+  _openIrlEventFromHash();
+});
 
 // Partage d'un événement : Web Share API si dispo, sinon copie du lien.
 // Partage d'un événement : mêmes deux options que sharePost (app-03) —
@@ -6160,30 +6220,60 @@ function _checkInViaCode(ev) {
 }
 
 // Lien profond #irl-checkin-<eventId>-<code> (celui que porte le QR).
+// ⚠️ Même correctif que `#irl-event-` ci-dessus, et c'est ici qu'il compte le
+// plus : ce lien est celui que porte le QR de pointage. On est physiquement
+// devant l'organisateur, on scanne — et avant ce correctif, si l'application
+// n'était pas prête au sondage de +1 200 ms, il ne se passait strictement rien.
+var _irlCkLinkId = "";
+var _irlCkLinkCode = "";
+var _irlCkLinkEssais = 0;
+var _irlCkLinkAttentes = 0;
+var _irlCkLinkTimer = null;
+
+function _irlCkLinkReplanifier() {
+  if (_irlCkLinkTimer) return;
+  _irlCkLinkTimer = setTimeout(function () {
+    _irlCkLinkTimer = null;
+    _openIrlCheckinFromHash();
+  }, 700);
+}
+
 function _openIrlCheckinFromHash() {
   var m = /#irl-checkin-(.+)-([A-Z0-9]{6})$/.exec(location.hash || "");
-  if (!m) return false;
-  var id = m[1], code = m[2];
-  var run = function () {
+  if (m) { _irlCkLinkId = m[1]; _irlCkLinkCode = m[2]; }
+  var id = _irlCkLinkId, code = _irlCkLinkCode;
+  if (!id || !code) return false;
+
+  try {
+    if (!_irlLienAppPrete()) {
+      if (++_irlCkLinkAttentes <= 600) _irlCkLinkReplanifier();
+      return false;
+    }
     var ev = _findCanonicalEvent(id) || allEvents().find(function (e) { return e.id === id; });
-    if (!ev) return false;
+    if (!ev) {
+      if (++_irlCkLinkEssais <= 12) { _irlCkLinkReplanifier(); return false; }
+      toast("Événement introuvable ou supprimé");
+      return false;
+    }
     if (typeof goTo === "function") goTo("irl");
-    if (typeof openEventDetails === "function") openEventDetails(id);
+    openEventDetails(id);
+    // Un code faux ouvre quand même la fiche — la personne est devant le bon
+    // événement, elle peut pointer autrement — mais ne pointe PAS.
     if (code !== _eventCheckinCode(ev)) { toast("Lien de pointage invalide"); return true; }
     _checkInViaCode(ev);
     return true;
-  };
-  if (run()) return true;
-  // L'événement peut n'arriver qu'avec le chargement Supabase : on retente.
-  var tries = 0;
-  var t = setInterval(function () {
-    if (run()) clearInterval(t);
-    else if (++tries > 12) { clearInterval(t); toast("Événement introuvable ou supprimé"); }
-  }, 700);
-  return true;
+  } catch (e) {
+    if (++_irlCkLinkAttentes <= 600) _irlCkLinkReplanifier();
+    return false;
+  }
 }
 window.addEventListener("hashchange", _openIrlCheckinFromHash);
 (function _irlCheckinDeepLinkBoot() {
   if (!/#irl-checkin-/.test(location.hash || "")) return;
   setTimeout(_openIrlCheckinFromHash, 1200);
 })();
+window.addEventListener("passio:app-ready", function () {
+  if (!_irlCkLinkId && !/#irl-checkin-/.test(location.hash || "")) return;
+  _irlCkLinkAttentes = 0; _irlCkLinkEssais = 0;
+  _openIrlCheckinFromHash();
+});
