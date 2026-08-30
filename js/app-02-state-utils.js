@@ -962,6 +962,24 @@ function passionById(id) {
   return allPassions().find(p => p.id === id) || { emoji: "✨", label: "Passion", color: "#8b5cf6" };
 }
 
+// Filtre d'AFFICHAGE de la colonne jsonb `profiles.passions` (la liste des
+// passions d'un compte, publiée par `supaUpsertProfile`).
+//
+// ⚠️ Cette colonne a DEUX rôles, et c'est ce qui a causé un défaut le 2026-08-30 :
+// (a) la liste des passions montrée aux visiteurs, et (b) la sauvegarde serveur de
+// MES propres passions, relue par la reconstruction du boot quand un appareil neuf
+// n'a ni état local ni `user_state`. Le lot UI-8 retirait les passions archivées à
+// la SOURCE pour servir (a) — ce qui vidait (b) et rendait une passion rangée
+// définitivement irrécupérable après un changement de téléphone.
+//
+// La règle est donc : on publie TOUT (marqué `archived`), et on filtre ICI, à
+// chaque endroit qui MONTRE les passions de quelqu'un. Une entrée sans marqueur
+// vient d'un client antérieur au correctif : elle est considérée vivante.
+function passionsPubliques(list) {
+  if (!Array.isArray(list)) return [];
+  return list.filter(function (p) { return p && p.id && !p.archived; });
+}
+
 function userById(id) {
   if (id === "me" || (typeof MY_UID !== "undefined" && MY_UID && id === MY_UID)) {
     const p = currentProfile ? currentProfile() : null;

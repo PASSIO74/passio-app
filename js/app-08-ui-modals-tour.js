@@ -2148,7 +2148,17 @@ async function boot() {
                 passion: ps.id,
                 emoji: ps.emoji || (pd && pd.emoji) || "✨",
                 color: (pd && pd.color) || "#8b5cf6",
-                bio: "",
+                // Bio et photos voyagent aussi dans le jsonb depuis le 2026-07-20 :
+                // ne pas les relire, c'était rendre une passion nue à un compte qui
+                // l'avait renseignée.
+                bio: ps.bio || "",
+                photoUrl: ps.photoUrl || null,
+                coverUrl: ps.coverUrl || null,
+                // ⚠️ Restituer le rangement. Sans ce report, une passion archivée
+                // revenait VIVANTE sur un appareil neuf — l'archivage ne survivait
+                // pas à un changement de téléphone (symétrique du défaut corrigé
+                // dans `supaUpsertProfile`, qui, lui, la faisait disparaître).
+                archived: !!ps.archived,
                 createdAt: Date.now() - idx,
               };
             });
@@ -2164,7 +2174,10 @@ async function boot() {
               createdAt: Date.now(),
             }];
           }
-          state.user.currentProfileId = state.user.profiles[0].id;
+          // La passion active ne doit JAMAIS être archivée (invariant du lot UI-8) :
+          // `profiles[0]` peut l'être maintenant que le rangement est restitué.
+          state.user.currentProfileId = (state.user.profiles.find(function (p) { return !p.archived; })
+            || state.user.profiles[0]).id;
           if (srvProf) {
             state.user.general = state.user.general || {};
             if (srvProf.username) state.user.general.username = srvProf.username;
@@ -2408,15 +2421,18 @@ async function supaUpsertProfile() {
     // Les photos ne partent que si ce sont des URLs Storage (jamais de base64,
     // le jsonb servirait alors des mégaoctets à chaque lecture de profil).
     const _httpOnly = (v) => (typeof v === "string" && /^https?:\/\//.test(v)) ? v : null;
-    // ⚠️ Lot UI-8 : une passion ARCHIVÉE ne part pas dans le profil public.
-    // Ranger une passion et la voir rester chez les visiteurs, c'est un
-    // archivage qui n'archive rien. Rien n'est perdu pour autant : le drapeau
-    // vit dans le blob `user_state`, et la restaurer la republie telle quelle.
-    const _v8Vivantes = (state.user.profiles || []).filter(pr => {
-      try { return !(typeof passionsUnifieesActives === "function" && passionsUnifieesActives() && pr.archived); }
-      catch (e) { return true; }
-    });
-    const _passions = _v8Vivantes.map(pr => {
+    // ⚠️ Lot UI-8 : une passion ARCHIVÉE ne doit pas s'afficher chez les visiteurs
+    // — ranger une passion et la voir rester chez les autres, c'est un archivage
+    // qui n'archive rien. Mais elle est désormais PUBLIÉE quand même, marquée
+    // `archived: true`, et c'est l'AFFICHAGE qui la retire (`passionsPubliques`,
+    // app-02). Corrigé le 2026-08-30 : l'exclusion à la source rendait la passion
+    // rangée IRRÉCUPÉRABLE. Cette colonne jsonb a en effet deux rôles — (a) la
+    // liste montrée aux visiteurs et (b) la sauvegarde de MES passions, relue par
+    // la reconstruction du boot (app-08 ~2140) quand un appareil neuf n'a ni état
+    // local ni `user_state`. Ne publier que les vivantes vidait (b) pour servir
+    // (a) : on se reconnectait sur un nouveau téléphone et la passion archivée
+    // n'existait plus nulle part. « Archiver ne supprime rien » ne tenait pas.
+    const _passions = (state.user.profiles || []).map(pr => {
       const pas = (typeof passionById === "function") ? passionById(pr.passion) : null;
       return {
         id: pr.passion,
@@ -2426,15 +2442,32 @@ async function supaUpsertProfile() {
         color: pr.color || "#8b5cf6",
         photoUrl: _httpOnly(pr.photoUrl || pr.photo),
         coverUrl: _httpOnly(pr.coverUrl || pr.coverPhoto),
+        // Marqueur de rangement : lu par `passionsPubliques()` à l'affichage, et
+        // par la reconstruction du boot pour restituer l'état exact du compte.
+        archived: !!pr.archived,
       };
     }).filter(p => p.id);
 
+    // ⚠️ IDENTITÉ PUBLIQUE STABLE (2026-08-30). L'emoji et la couleur publiés ici
+    // sont ceux du COMPTE (`general`), jamais ceux de la passion ACTIVE. C'est la
+    // même correction que le « PSEUDO CENTRALISÉ » ci-dessus, qui n'avait été
+    // appliquée qu'au nom : `prof.emoji`/`prof.color` survivaient deux lignes plus
+    // bas. Le défaut n'était pas cosmétique — `supaLoadPosts` reconstruit l'avatar
+    // de CHAQUE publication depuis `profiles.emoji` (app-08 ~2993), pas depuis un
+    // emoji figé à la publication. Basculer de passion réécrivait donc l'avatar de
+    // TOUT l'historique, rétroactivement et chez tous les autres comptes : 40 posts
+    // publiés en 🏍️ Moto s'affichaient en 🧘 après un passage sur Yoga. La passion
+    // reste visible par publication via `posts.passion_id` ; elle ne signe plus
+    // l'identité. Repli sur la passion active seulement si le compte n'a rien
+    // (ancien état jamais passé par « Modifier le profil »).
     const profileData = {
       id: MY_UID,
       username: _uname,
-      emoji: prof.emoji || "✨",
-      color: prof.color || "#8b5cf6",
-      passion_id: (_passions[0] && _passions[0].id) || prof.passion || null,
+      emoji: g.emoji || prof.emoji || "✨",
+      color: g.color || prof.color || "#8b5cf6",
+      // La passion « principale » (rétro-compat : feed, embeds, anciens clients)
+      // doit être VIVANTE — `_passions` contient désormais aussi les archivées.
+      passion_id: ((_passions.find(p => !p.archived) || _passions[0] || {}).id) || prof.passion || null,
       passions: _passions,
       bio: g.bio || "",
       // Compte privé : les visiteurs non abonnés ne verront pas le contenu.
@@ -4146,8 +4179,11 @@ async function supaSearchUsers(query) {
     const results = data.map(profile => {
       // Passions : colonne jsonb d'abord, fallback sur passion_id si vide
       let passions = [];
-      if (Array.isArray(profile.passions) && profile.passions.length > 0) {
-        passions = profile.passions; // [{id, emoji, label}]
+      // `passionsPubliques` retire les passions ARCHIVÉES : elles sont publiées
+      // (pour ne jamais être perdues) mais ne doivent pas s'afficher chez autrui.
+      const _pubs = (typeof passionsPubliques === "function") ? passionsPubliques(profile.passions) : (profile.passions || []);
+      if (_pubs.length > 0) {
+        passions = _pubs; // [{id, emoji, label}]
       } else if (profile.passion_id) {
         passions = [{ id: profile.passion_id, emoji: profile.emoji || "✨", label: "" }];
       }

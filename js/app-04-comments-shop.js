@@ -2492,7 +2492,7 @@ function searchUsers(query) {
         profileEmoji: u.emoji || "✨",
         avatar: u.color || "#8b5cf6",
         photoUrl: u.photoUrl || null,
-        passions: u.passions || [],
+        passions: (typeof passionsPubliques === "function") ? passionsPubliques(u.passions) : (u.passions || []),
         bio: u.bio || ""
       };
     });
@@ -2687,7 +2687,7 @@ async function openUserProfile(authorId, source) {
 
       if (data && data.length > 0) {
         const profile = data[0];
-        user = { id: profile.id, name: profile.username || "Passionné", profileEmoji: profile.emoji || "✨", avatar: profile.color || "#8b5cf6", passion: profile.passion_id || "", passions: Array.isArray(profile.passions) ? profile.passions : undefined, bio: profile.bio || "", photoUrl: profile.avatar_url || null, coverUrl: profile.cover_url || null, isPrivate: !!profile.is_private, rsLinks: Array.isArray(profile.rs_links) ? profile.rs_links : [] };
+        user = { id: profile.id, name: profile.username || "Passionné", profileEmoji: profile.emoji || "✨", avatar: profile.color || "#8b5cf6", passion: profile.passion_id || "", passions: Array.isArray(profile.passions) ? ((typeof passionsPubliques === "function") ? passionsPubliques(profile.passions) : profile.passions) : undefined, bio: profile.bio || "", photoUrl: profile.avatar_url || null, coverUrl: profile.cover_url || null, isPrivate: !!profile.is_private, rsLinks: Array.isArray(profile.rs_links) ? profile.rs_links : [] };
         try { cacheRemoteProfile(profile); } catch(e) {}
         state.seed.users.push(user);
         console.log("[openUserProfile] Trouvé dans Supabase et ajouté à seed.users");
@@ -2715,8 +2715,11 @@ async function openUserProfile(authorId, source) {
         .eq("id", _profileId)
         .maybeSingle();
       if (data) {
-        if (Array.isArray(data.passions) && data.passions.length) {
-          userPassions = data.passions;
+        // Passions ARCHIVÉES retirées ici : publiées pour ne pas être perdues,
+        // jamais montrées à un visiteur (cf. `passionsPubliques`, app-02).
+        const _pubs = (typeof passionsPubliques === "function") ? passionsPubliques(data.passions) : (data.passions || []);
+        if (_pubs.length) {
+          userPassions = _pubs;
         } else if (data.passion_id) {
           userPassions = [{ id: data.passion_id, emoji: data.emoji || "✨" }];
         }
@@ -2761,10 +2764,17 @@ async function openUserProfile(authorId, source) {
           const coverStyle = _pCover
             ? 'background:linear-gradient(90deg, rgba(0,0,0,0.62), rgba(0,0,0,0.30)), url(' + safeUrlAttr(_pCover) + ') center/cover;'
             : '';
+          // ⚠️ XSS STOCKÉE (corrigé le 2026-08-30). `p.emoji` vient du jsonb
+          // `profiles.passions` d'un AUTRE compte, colonne que tout compte
+          // authentifié écrit librement sur SA ligne : un `<img src=x onerror=…>`
+          // s'exécutait à la simple ouverture de son profil. C'est un SURVIVANT
+          // du correctif de ~2517, qui avait échappé les badges de la recherche
+          // et manqué ces deux emplacements-ci — même donnée, même défaut.
+          const _pEmoji = escapeHtml(p.emoji || "✨");
           return '<div class="profile-card ' + (_pCover ? 'has-cover' : '') + '" data-vpid="' + escapeHtml(p.id) + '" style="' + coverStyle + '" onclick="toggleVisitedPassion(\'' + escapeJsArg(p.id) + '\')">'
-            + '<div class="avatar lg" style="' + avatarStyle + '">' + (_pPhoto ? '' : (p.emoji || "✨")) + '</div>'
+            + '<div class="avatar lg" style="' + avatarStyle + '">' + (_pPhoto ? '' : _pEmoji) + '</div>'
             + '<div class="profile-card-body" style="flex:1;">'
-            + '<div class="profile-card-name">' + (p.emoji || "✨") + ' ' + escapeHtml(label) + '</div>'
+            + '<div class="profile-card-name">' + _pEmoji + ' ' + escapeHtml(label) + '</div>'
             + (p.bio ? '<div class="profile-card-bio">' + escapeHtml(p.bio) + '</div>' : '')
             + '</div></div>';
         }).join("")
@@ -2885,7 +2895,7 @@ async function openUserProfile(authorId, source) {
     \
     <!-- BOUTONS -->\
     <div id="visitedProfileActions" style="display:flex;gap:8px;justify-content:center;margin:14px 0 4px;">\
-      <button class="btn primary" onclick="closeModal();startDirectMessage(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "Passionné") + '\',\'' + (user.profileEmoji || "✨") + '\',\'' + (user.avatar || "#8b5cf6") + '\',\'' + (user.photoUrl || "") + '\')" style="flex:1;font-size:12px;padding:10px 18px;border-radius:14px;">💬 Message</button>\
+      <button class="btn primary" onclick="closeModal();startDirectMessage(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "Passionné") + '\',\'' + escapeJsArg(user.profileEmoji || "✨") + '\',\'' + escapeJsArg(user.avatar || "#8b5cf6") + '\',\'' + escapeJsArg(user.photoUrl || "") + '\')" style="flex:1;font-size:12px;padding:10px 18px;border-radius:14px;">💬 Message</button>\
       <button class="btn ghost" id="followBtn_' + authorId + '" onclick="toggleFollowUser(\'' + escapeJsArg(authorId) + '\',\'' + escapeJsArg(user.name || "") + '\')" style="flex:1;font-size:12px;padding:10px 18px;border-radius:14px;' + (isFollowing ? 'background:var(--accent);color:#fff;border-color:var(--accent);' : '') + '">' + (isFollowing ? '✓ Suivi' : '➕ Suivre') + '</button>\
     </div>\
     \

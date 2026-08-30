@@ -385,7 +385,19 @@ function renderMainProfile() {
   // Top posts
   var topEl = document.getElementById("profileTopPosts");
   if (topEl) {
-    var top = state.userPosts.slice().sort(function(a,b){return(b.likes||0)-(a.likes||0);}).slice(0,3);
+    // ⚠️ Le bloc « 🔥 Publications populaires » vit dans l'onglet « Publications »,
+    // SOUS la rangée de puces de passion — il doit donc obéir au même filtre que la
+    // liste qui le suit (`renderProfileContent`, ~653). Il ne le faisait pas :
+    // choisir « Moto » vidait la liste du bas en affichant « Rien en Moto — touche
+    // Toutes… » pendant que ce bloc-ci, quelques pixels plus haut et sous le même
+    // onglet, continuait d'afficher du Yoga et du Podcast. Un filtre qu'un bloc
+    // voisin contredit n'est pas un filtre : c'est ce qui rendait l'écran illisible.
+    var _mesPosts = state.userPosts || [];
+    try {
+      var _prTop = (typeof _passionDuFiltre === "function") ? _passionDuFiltre("profilePostFilterId") : null;
+      if (_prTop) _mesPosts = _mesPosts.filter(function (x) { return _postDeLaPassion(x, _prTop); });
+    } catch (e) {}
+    var top = _mesPosts.slice().sort(function(a,b){return(b.likes||0)-(a.likes||0);}).slice(0,3);
     topEl.innerHTML = top.length ? top.map(function(p){return renderPostHTML(Object.assign({},p,{_source:"me"}));}).join("") : '<div style="font-size:12px;color:var(--muted);padding:10px;">Publie ton premier post !</div>';
   }
 }
@@ -992,6 +1004,9 @@ function changePassionPhoto(event, profileId) {
     }
     // Flush immédiat vers user_state (sans attendre le debounce 2500ms).
     if (typeof supaSaveUserState === "function") { try { supaSaveUserState(); } catch(_e) {} }
+    // La photo d'une passion n'atteint les VISITEURS que par `profiles.passions`,
+    // écrit uniquement par `supaUpsertProfile` (cf. `savePassionProfile`).
+    if (typeof supaUpsertProfile === "function") { try { supaUpsertProfile(); } catch(_e) {} }
     })
     .catch(function() { _reopenEditPassionAfterPhoto(); });
 }
@@ -1019,6 +1034,7 @@ function changePassionCoverPhoto(event, profileId) {
         } catch(_e) {}
       }
       if (typeof supaSaveUserState === "function") { try { supaSaveUserState(); } catch(_e) {} }
+      if (typeof supaUpsertProfile === "function") { try { supaUpsertProfile(); } catch(_e) {} }
     })
     .catch(function() { _reopenEditPassionAfterPhoto(); });
 }
@@ -1241,12 +1257,19 @@ async function saveMainProfile() {
   state.user.general.bio      = bio;
   state.user.general.rsLinks  = rsLinks;
   state.user.general.isPrivate = !!document.getElementById("editIsPrivate")?.checked;
-  state.user.general.emoji    = currentProfile()?.emoji || "✨";
+  // ⚠️ NE PLUS écraser l'emoji du compte avec celui de la passion ACTIVE. `g.emoji`
+  // est l'identité publique stable (publiée par `supaUpsertProfile` depuis le
+  // 2026-08-30) : la dériver de la passion active à chaque enregistrement ramenait
+  // exactement le défaut qu'on vient de corriger — l'avatar public du compte
+  // changeait au gré de la passion choisie. On ne l'initialise que s'il est absent.
+  if (!state.user.general.emoji) state.user.general.emoji = currentProfile()?.emoji || "✨";
   if (username) state.user.name = username;
-  // ⚠️ Renommer aussi le PROFIL ACTIF : c'est lui que supaUpsertProfile publie
-  // (prof.name prioritaire). Sans ça, « Modifier le profil » changeait g.username
-  // mais l'identité publique restait l'ancien nom du profil → renommage ignoré.
-  if (username) { const _cp = currentProfile(); if (_cp) _cp.name = username; }
+  // ⚠️ Renommer TOUTES les passions, pas seulement l'active. `supaUpsertProfile` et
+  // `_msgSenderMeta` prennent bien le pseudo général en priorité, mais `prof.name`
+  // survit ailleurs — `supaInsertNotif` s'en sert pour nommer l'expéditeur : après
+  // un renommage, les notifications envoyées depuis une AUTRE passion partaient
+  // sous l'ANCIEN nom, chez le destinataire, sans que rien ne le signale.
+  if (username) (state.user.profiles || []).forEach(function (pr) { pr.name = username; });
 
   saveState();
   // await : on garantit que le serveur (source de vérité du profil stable) est à
@@ -1389,6 +1412,28 @@ function _passionDuFiltre(cle) {
 // c'est exactement la règle déjà appliquée par la multisélection historique.
 function _postDeLaPassion(p, pr) {
   return p.passion === pr.passion || (!p.passion && p.profileId === pr.id);
+}
+
+// Rend une passion VISIBLE dans le Fil (2026-08-30).
+//
+// ⚠️ Le Fil ne montre que les passions présentes dans `_activeFeedPassions`, et un
+// Set VIDE n'y veut pas dire « tout » : il veut dire « rien » (app-02 ~3993). Or ni
+// `confirmCreateProfile`, ni `quickCreateProfile`, ni `restaurerPassion` n'y
+// touchaient. Conséquences mesurables, et c'est le défaut qui rendait le
+// multi-passion incompréhensible à l'usage : ① une passion neuve naissait GRISÉE
+// dans la rangée du Fil ; ② publier dedans rendait son propre post invisible dans
+// son propre fil, sans le moindre message ; ③ archiver puis restaurer perdait
+// l'appartenance au Fil en silence (`archiverPassion` retire — à raison, sinon le
+// filtre survivrait à sa commande — mais `restaurerPassion` ne remettait pas).
+//
+// On AJOUTE seulement : jamais de remise à zéro de la sélection existante.
+function ajouterPassionAuFil(passionId) {
+  if (!passionId) return;
+  try {
+    if (typeof setFeedPassions !== "function" || typeof _activeFeedPassions === "undefined") return;
+    if (_activeFeedPassions.has(passionId)) return;
+    setFeedPassions(Array.from(_activeFeedPassions).concat([passionId]));
+  } catch (e) {}
 }
 
 function setPostPassionFilter(profileId) {
@@ -1590,6 +1635,9 @@ function restaurerPassion(profileId) {
   if (!pr) return;
   pr.archived = false;
   delete pr.archivedAt;
+  // Symétrique d'`archiverPassion`, qui l'avait retirée du Fil : sans ça, un
+  // aller-retour archiver→restaurer perdait le réglage, en silence.
+  ajouterPassionAuFil(pr.passion);
   saveState();
   if (typeof supaUpsertProfile === "function") { try { supaUpsertProfile(); } catch (e) {} }
   if (typeof supaSaveUserState === "function") { try { supaSaveUserState(); } catch (e) {} }
@@ -1927,6 +1975,7 @@ function removePassionCover(profileId) {
   p.bio = bio.trim();
   saveState();
   if (typeof supaSaveUserState === "function") { try { supaSaveUserState(); } catch(e) {} }
+  if (typeof supaUpsertProfile === "function") { try { supaUpsertProfile(); } catch(e) {} }
   renderProfilesScreen();
   openEditPassionProfile(profileId);
   toast("Photo de fond retirée");
@@ -1950,6 +1999,12 @@ function savePassionProfile(profileId) {
   p.bio = (document.getElementById("editPassionBio")?.value || "").trim();
   saveState();
   if (typeof supaSaveUserState === "function") { try { supaSaveUserState(); } catch(e) {} }
+  // ⚠️ La carte de passion telle qu'un VISITEUR la voit est servie par la colonne
+  // jsonb `profiles.passions`, alimentée UNIQUEMENT par `supaUpsertProfile`. Sans
+  // cet appel, modifier la bio d'une passion ne changeait rien pour les autres :
+  // la nouvelle bio n'atteignait le public qu'au prochain geste qui, par hasard,
+  // republiait le profil (changer de passion active, renommer son pseudo…).
+  if (typeof supaUpsertProfile === "function") { try { supaUpsertProfile(); } catch(e) {} }
   closeModal();
   renderProfilesScreen();
   toast("✅ Profil passion mis à jour !");
@@ -2219,6 +2274,9 @@ async function confirmCreateProfile() {
 
   state.user.profiles.push(np);
   state.user.currentProfileId = np.id;
+  // Une passion qu'on vient de créer doit être visible dans le Fil, sinon elle
+  // naît grisée et le premier post publié dedans est invisible pour son auteur.
+  ajouterPassionAuFil(pid);
   saveState();
   // Synchronise tout de suite le profil actif vers Supabase → découvrable dans la
   // recherche et messageable sans attendre le prochain boot.

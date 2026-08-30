@@ -158,7 +158,7 @@ function filterExplore() {
         profileEmoji: u.emoji || "✨",
         avatar: u.color || "#8b5cf6",
         photoUrl: u.photoUrl || u.avatar_url || null,
-        passions: u.passions || [],
+        passions: (typeof passionsPubliques === "function") ? passionsPubliques(u.passions) : (u.passions || []),
         bio: u.bio || ""
       };
     });
@@ -296,6 +296,8 @@ function quickCreateProfile(pid) {
   };
   state.user.profiles.push(np);
   state.user.currentProfileId = np.id;
+  // Même règle que `confirmCreateProfile` : une passion neuve entre dans le Fil.
+  if (typeof ajouterPassionAuFil === "function") ajouterPassionAuFil(pid);
   saveState();
   // Re-synchronise le profil public (pseudo unique + liste de passions à jour).
   if (typeof supaUpsertProfile === "function") { try { supaUpsertProfile(); } catch(e) {} }
