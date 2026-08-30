@@ -3654,14 +3654,24 @@ async function supaDeleteCdvLiveStep(liveId, stepId) {
   } catch (e) { console.warn("CDV step delete:", e); }
 }
 
+// ⚠️ RENVOIE SON IDENTIFIANT depuis le 2026-08-30, et ce n'est pas cosmétique.
+// L'appelant crée un commentaire optimiste avec un id local `lc_local_…`, tandis
+// que cette fonction en génère un tout autre. Sans le renvoyer, l'objet local
+// gardait un id qui n'existe nulle part en base : la suppression partait sur
+// `delete().eq("id", "lc_local_…")`, ne touchait AUCUNE ligne, et le SDK ne lève
+// pas sur ce cas — le commentaire disparaissait à l'écran puis revenait au
+// rechargement. Le chemin des activités (`addEventComment`, app-07) faisait déjà
+// la chose juste ; on s'aligne dessus.
 async function supaAddCdvLiveComment(liveId, text) {
   try {
+    const id = "lc_" + uid();
     const { error } = await supa.from("cdv_live_comments").insert({
-      id: "lc_" + uid(), live_id: liveId, author_id: MY_UID,
+      id: id, live_id: liveId, author_id: MY_UID,
       author_name: (state.user && state.user.name) || "Moi", text: text,
     });
-    if (error) console.warn("CDV comment:", error.message);
-  } catch(e) { console.warn("CDV comment:", e); }
+    if (error) { console.warn("CDV comment:", error.message); return null; }
+    return id;
+  } catch(e) { console.warn("CDV comment:", e); return null; }
 }
 
 async function supaReactCdvLive(liveId, emoji) {
