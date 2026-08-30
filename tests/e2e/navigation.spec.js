@@ -100,7 +100,10 @@ test("bottom-nav : CDV dépromu et accès Voyage conservé", async ({ page }) =>
   // encombraient la tête de l'application. L'assertion n'est pas retirée, elle
   // est déplacée sur le chemin qui subsiste, et complétée par la preuve que
   // l'icône n'est effectivement plus là.
-  await expect(page.locator('.topbar-right .topbar-bell[aria-label="Messages"]')).toHaveCount(0);
+  // ⚠️ Corrigée le 2026-08-29 : l'icône est MASQUÉE, plus retirée. La retirer
+  // laissait l'application sans aucune porte vers Messages dès que la barre V2
+  // était coupée — un kill switch doit rendre l'état d'avant.
+  await expect(page.locator('.topbar-right .topbar-bell[aria-label="Messages"]')).toBeHidden();
   await page.click('#appNavV2 [data-v2-key="messages"]');
   await page.waitForFunction(() => {
     const el = document.getElementById("screen-messages");
