@@ -4,7 +4,8 @@
 
 | # | Risque | Catégorie | Prob | Impact | Détect. | Mitigation |
 |---|---|---|---|---|---|---|
-| R1 | Réactivation « confirm email » sans SMTP → inscriptions bloquées (mailer 2/h) | Produit/Conf. | Moyenne | Élevé | Difficile | Ne réactiver qu'après SMTP configuré (P0). |
+| R1 | ~~Réactivation « confirm email » sans SMTP~~ → **traité** le 2026-08-30 (SMTP Brevo + confirmation ON) | Produit/Conf. | — | — | — | Voir « Remédiations appliquées ». Reste ouvert : domaine d'envoi non authentifié (DKIM/DMARC) → **R11**. |
+| R11 | Domaine d'envoi non authentifié (ni DKIM ni DMARC) → confirmations classées en spam, inscriptions perdues sans trace | Produit/Deliverab. | Élevée | Élevé | **Difficile** (rien ne remonte côté app) | Ajouter les enregistrements DNS Brevo (accès registrar requis). |
 | R2 | Médias privés en bucket public (pas d'URL signée) | Confidentialité | Moyenne | Élevé | Difficile | URLs signées (P0). |
 | R3 | Schéma prod diverge des migrations repo → 400 / RLS silencieuse | DB | Élevée | Moyen | Moyen | `migration-checker` en gate. |
 | R4 | Collision de globals sur nouveau code | Archi | Moyenne | Moyen | Facile | `audit-globals` (CI). |
@@ -21,5 +22,10 @@
 
 
 - **2026-08-09 — Durcissement advisors (prod).** `migrations/migration_security_hardening.sql` : 3 vues SECURITY DEFINER (`telemetry_last24h`, `client_errors_top_24h`, `client_errors_par_heure`) passées en `security_invoker` (erreurs advisor corrigées) ; EXECUTE révoqué à `PUBLIC/anon/authenticated` sur les fonctions trigger/maintenance (`purge_telemetry`, `rate_limit_insert`, `broadcast_conv_message_to_users`, `posts_freeze_author`) — **`purge_telemetry` n'était appelable par n'importe qui** ; `search_path` épinglé. Non-régression : `multi-comptes` (messagerie + notifications) vert. Restent, **volontairement**, les WARN sur `post_is_visible`/`can_edit_post`/`comment_target_visible` (helpers de policies RLS → `authenticated` doit garder EXECUTE) et `auth_leaked_password_protection` (toggle Auth gratuit → `docs/SETUP_SMTP_AUTH.md`).
+
+- **2026-08-30 — R1 fermé : confirmation d'e-mail réellement active (prod).** SMTP Brevo branché sur Supabase (587/STARTTLS, expéditeur « PASSIO »), « Confirm email » ON. Un compte ne peut donc plus être créé avec l'adresse de quelqu'un d'autre. Trois conséquences ont été traitées dans le code, parce qu'activer le réglage ne suffisait pas :
+  ① `signUp` ne rend plus de session → les deux branches de `onbDoAuth` qui gèrent ce cas étaient **muettes** (`_showAuthMsg` puis `switchAuthTab`, qui vide `#authMsg`) : compte créé, écran basculé, aucune explication. Ordre inversé, vérifié par mutation ;
+  ② aucune sortie si le lien n'arrive pas → ajout du renvoi (`supa.auth.resend`, lien `#authResendLink`, message anti-énumération) ;
+  ③ les suites e2e qui écrivent en base créaient leurs comptes par `signUp` et attendaient une session — dont `authz-critical`, **barrière RLS du déploiement**. Elles passent par `tests/e2e/compte-e2e.js` (création pré-confirmée via `service_role`, aucun e-mail envoyé, quota Brevo intact). ⚠️ Demande le secret `SUPABASE_SERVICE_ROLE_KEY` dans le dépôt, sans quoi ces suites échouent **en nommant la cause** (choix délibéré : une barrière de sécurité ne doit pas se mettre en veille silencieuse). Non-régression : `tests/e2e/confirmation-email.spec.js` (7).
 
 Revoir à chaque `/passio-audit` et `/passio-launch-review`.

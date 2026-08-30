@@ -12,7 +12,7 @@
 | Flood/abus | Anti-flood serveur | En place. |
 | RGPD | `migration_rgpd_delete_policies.sql`, Edge Function delete-account | En place ; tester le parcours suppression. |
 | Médias privés | URLs signées | **À faire (P0)** — cf. roadmap. |
-| Confirmation e-mail / usurpation | SMTP + confirm | **Désactivé (P0)** — pas de SMTP. |
+| Confirmation e-mail / usurpation | SMTP Brevo + « Confirm email » ON | **En place depuis le 2026-08-30** (`docs/SETUP_SMTP_AUTH.md`). Reste : authentifier le domaine d'envoi (DKIM/DMARC, R11) — une confirmation en indésirables est une inscription perdue sans trace. |
 | Modération | `reports`, `blocks`, skill `moderation` | En place. |
 
 ## Vie privée (privacy by design)

@@ -15,8 +15,13 @@
 // une régression d'autorisation.
 //
 // ⚠️ Il écrit en base RÉELLE : 2 comptes e2e + 1 post, nettoyés en fin de test.
-// Aucun secret CI n'est requis : l'inscription utilise la clé anon, déjà publique
-// côté client par conception Supabase.
+// ⚠️ Depuis l'activation de « Confirm email » (2026-08-30), la clé anon NE SUFFIT
+// PLUS : `signUp` ne rend plus de session, donc plus de jeton à opposer aux
+// policies. Les comptes sont créés pré-confirmés par tests/e2e/compte-e2e.js, qui
+// demande le secret SUPABASE_SERVICE_ROLE_KEY (déjà passé par les workflows).
+// Sans lui ce gate échoue en NOMMANT la cause : il ne doit jamais se mettre en
+// veille silencieuse — un gate d'autorisation vert pour cause de skip serait
+// exactement l'incident CI-GATE-001 à nouveau.
 //
 // Règle de contenu : on n'assère ICI que des invariants qui TIENNENT aujourd'hui.
 // Un invariant souhaité mais non encore satisfait (ex. usurpation par author_name,
@@ -25,6 +30,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 const { test, expect } = require("@playwright/test");
 const { GATE_TOKEN, GATE_KEY } = require("./gate-helper");
+const { creerCompteE2E } = require("./compte-e2e");
 
 test.describe("AUTHZ-CRITICAL — séparation entre comptes", () => {
   test("un compte ne peut ni lire, ni écrire, ni altérer ce qui appartient à un autre", async ({ page }) => {
@@ -38,21 +44,13 @@ test.describe("AUTHZ-CRITICAL — séparation entre comptes", () => {
       null, { timeout: 30000 },
     );
 
-    // ── Deux comptes réels. signUp bascule la session : on capture le jeton
-    //    de A AVANT de créer B, sinon on ne dispose plus que de celui de B.
-    const mkAccount = async (tag) => {
-      const out = await page.evaluate(async (t) => {
-        const email = `e2e_authz_${t}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}@passio-e2e.test`;
-        const { data, error } = await supa.auth.signUp({ email, password: "Passio-e2e-12345!" });
-        if (error || !data || !data.session) return { error: (error && error.message) || "pas de session" };
-        return { uid: data.session.user.id, token: data.session.access_token };
-      }, tag);
-      expect(out.error, `compte ${tag} créé`).toBeUndefined();
-      return out;
-    };
-
-    const A = await mkAccount("a");
-    const B = await mkAccount("b");
+    // ── Deux comptes réels, créés PRÉ-CONFIRMÉS (compte-e2e.js) : « Confirm
+    //    email » est activé depuis le 2026-08-30, donc signUp ne rend plus de
+    //    session — ce test, barrière RLS du déploiement, expirait sinon.
+    //    La création bascule la session de la page : on capture le jeton de A
+    //    AVANT de créer B, sinon on ne dispose plus que de celui de B.
+    const A = await creerCompteE2E(page, "authz_a");
+    const B = await creerCompteE2E(page, "authz_b");
     expect(A.uid).not.toBe(B.uid);
     log(`A=${A.uid} B=${B.uid}`);
 
