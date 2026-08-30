@@ -25,7 +25,10 @@ let realtimeOk = false;
 export function getAdmin() { return admin; }
 export function ingestState() { return { supabaseReady, realtimeOk, lastSeenIso, buffered: store.events.length }; }
 
-function ingestOne(row) {
+// Exportée pour les tests : c'est le point de passage UNIQUE de tout événement
+// entrant (historique, realtime, polling de secours). Une erreur ici aveugle le
+// pilotage entier, silencieusement — d'où `test/ingest.test.js`.
+export function ingestOne(row) {
   const ev = normalize(row);
   // Le canari prouve la chaîne publique → DB → dashboard mais ne doit JAMAIS
   // polluer utilisateurs, sessions, KPI, bugs, alertes ou traces produit.
