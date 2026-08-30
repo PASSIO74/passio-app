@@ -418,29 +418,51 @@ test.describe("UI-8 — un profil personnel, plusieurs passions", () => {
     expect(await page.evaluate(() => state.selectedFeedPassions || [])).not.toContain("yoga");
   });
 
-  test("une passion archivée quitte le profil PUBLIC", async ({ page }) => {
+  // ⚠️ RÉÉCRIT le 2026-08-30. Ce test s'appelait « une passion archivée quitte le
+  // profil PUBLIC » et ne pouvait PAS rougir : il bouchonnait `window.supa`, qui
+  // ne rebinde pas le `supa` de PORTÉE SCRIPT utilisé par `supaUpsertProfile`
+  // (app-08:2271), et le helper `boot()` de cette suite neutralise déjà cette
+  // fonction. `_v8Publie` restait donc `null`, et la seule assertion était sautée
+  // par son propre `if (passions)`. Un verrou qui ne ferme rien.
+  //
+  // Il disait en outre l'INVERSE du code depuis la correction du même jour : une
+  // passion archivée est désormais PUBLIÉE (marquée `archived`), parce que la
+  // colonne `profiles.passions` sert aussi de sauvegarde relue par la
+  // reconstruction du boot — l'amputer rendait la passion rangée irrécupérable
+  // sur un appareil neuf. L'invariant réel est donc : publiée mais marquée, et
+  // retirée à l'AFFICHAGE. C'est ce qu'on vérifie ici, sur le vrai chemin.
+  test("une passion archivée est publiée MARQUÉE, et retirée à l'affichage", async ({ page }) => {
     await boot(page);
     await poserTroisPassions(page);
-    // On capture ce que `supaUpsertProfile` publierait réellement.
     await page.evaluate(() => {
       window._v8Publie = null;
-      window.supa = {
-        from: () => ({
-          upsert: async (row) => { window._v8Publie = row; return { error: null }; },
-          select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null }) }) }),
+      // Seul point d'injection possible : le SDK global lu par `_initRealSupa()`.
+      window.supabase = {
+        createClient: () => ({
+          from: () => ({
+            upsert: async (row) => { window._v8Publie = row; return { error: null }; },
+            select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }),
+          }),
         }),
       };
+      window._supaReal = false;
+      _initRealSupa();
+      window.supaUpsertProfile = window.__vraiSupa.upsertProfile;
     });
     await page.evaluate(() => { archiverPassion("v8_yoga"); });
     await page.waitForTimeout(600);
-    const passions = await page.evaluate(() => {
-      const r = window._v8Publie;
-      const p = r && (r.passions || (r.data && r.data.passions));
-      return Array.isArray(p) ? p.map((x) => x.id) : null;
-    });
-    // Si la publication n'a pas eu lieu dans ce contexte de test, on ne conclut
-    // rien — mais si elle a eu lieu, la passion rangée n'y est pas.
-    if (passions) expect(passions).not.toContain("yoga");
+    const publie = await page.evaluate(() => window._v8Publie);
+    // La publication DOIT avoir eu lieu : sans cette assertion, le test
+    // redeviendrait le faux verrou qu'il était.
+    expect(publie).toBeTruthy();
+    const ids = publie.passions.map((x) => x.id);
+    expect(ids).toContain("yoga");
+    expect(publie.passions.find((x) => x.id === "yoga").archived).toBe(true);
+    // La passion « principale » ne désigne jamais une passion rangée.
+    expect(publie.passion_id).not.toBe("yoga");
+    // Et un visiteur ne la voit pas.
+    const vues = await page.evaluate((r) => passionsPubliques(r.passions).map((x) => x.id), publie);
+    expect(vues).not.toContain("yoga");
   });
 
   test("recréer une passion archivée la RESTAURE au lieu d'en faire un doublon", async ({ page }) => {
