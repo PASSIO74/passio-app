@@ -375,7 +375,16 @@ function _myStoryAuthorId() {
 // la plus récente (les stories sont déjà unshift => plus récentes en tête).
 // Dans chaque groupe, on joue de la plus ancienne à la plus récente.
 function buildStoryGroups() {
-  const stories = state.seed.stories || [];
+  // ⚠️ LE BLOCAGE S'APPLIQUE ICI, ET NULLE PART AILLEURS POUR LES STORIES.
+  // Cette fonction est la source UNIQUE du rail (renderStories) ET du visionneur
+  // (openStoryGroup / openStoryViewerAt / playCurrentStory) : filtrer ici couvre
+  // les quatre. Avant le 2026-08-30 il n'y avait AUCUN filtre — bloquer quelqu'un
+  // laissait sa bulle en tête du fil et son contenu s'ouvrait en plein écran,
+  // alors que `isBlocked` (app-02) annonçait en commentaire couvrir les stories
+  // et l'appliquait déjà à dix-sept autres endroits. La garantie était écrite,
+  // pas tenue.
+  const stories = (state.seed.stories || []).filter(s =>
+    !(typeof isBlocked === "function" && isBlocked(s.authorId)));
   const map = new Map();
   const order = [];
   stories.forEach(s => {
@@ -1379,8 +1388,13 @@ const STORY_DURATION = 4500;
 // Ouvre le viewer sur toutes les stories d'un auteur, à la suite.
 function openStoryGroup(authorId) {
   storyGroups = buildStoryGroups();
-  let gi = storyGroups.findIndex(g => String(g.authorId) === String(authorId));
-  if (gi < 0) gi = 0;
+  const gi = storyGroups.findIndex(g => String(g.authorId) === String(authorId));
+  // ⚠️ ÉCHOUER FERMÉ. Cette ligne faisait `if (gi < 0) gi = 0` : un auteur
+  // introuvable — un compte qu'on vient de bloquer, une story expirée — ouvrait
+  // le groupe n° 0, c'est-à-dire les stories de QUELQU'UN D'AUTRE. Filtrer le
+  // rail sans corriger ça aurait remplacé une fuite par un mensonge. Même piège
+  // que `openReels()`, qui montre la première bobine quand l'id est absent.
+  if (gi < 0) return;
   // Instagram : on reprend à la PREMIÈRE story non vue du groupe (au début si tout est vu).
   const seen = (state.user && state.user.seenStories) || [];
   const g = storyGroups[gi];
