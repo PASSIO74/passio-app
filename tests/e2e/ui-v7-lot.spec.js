@@ -278,14 +278,21 @@ test.describe("UI-7 §3 — le haut du Fil est compact", () => {
 
   test("couper le lot rend aux bulles leur taille d'origine", async ({ page }) => {
     await boot(page, null, 6);
+    // ⚠️ `offsetWidth`, PAS `getBoundingClientRect()`. `renderProfileStrip` pose
+    // un `transform: scale(1.07)` EN LIGNE sur une tuile sélectionnée, et
+    // `getBoundingClientRect` inclut les transformations : 46 × 1,07 = 49,22.
+    // Ce test mesure une taille CSS, pas un agrandissement visuel — et depuis
+    // qu'ADR-010 a retiré la tuile « Suivis » (devenue une VUE du fil), la
+    // première tuile du rail est une passion, potentiellement sélectionnée,
+    // là où c'était auparavant la tuile « Suivis », toujours à `scale(1)`.
     const compact = await page.evaluate(() =>
-      Math.round(document.querySelector("#profileStrip .profile-tile-avatar").getBoundingClientRect().width));
+      document.querySelector("#profileStrip .profile-tile-avatar").offsetWidth);
     await page.evaluate(() => { localStorage.setItem("passio_ui_7", "0"); PassioUIV7.apply(); });
     // ⚠️ `.profile-tile-avatar` porte `transition: all 0.25s` : mesurée dans la
     // foulée, la bulle est encore à mi-chemin. On laisse la transition finir.
     await page.waitForTimeout(500);
     const historique = await page.evaluate(() =>
-      Math.round(document.querySelector("#profileStrip .profile-tile-avatar").getBoundingClientRect().width));
+      document.querySelector("#profileStrip .profile-tile-avatar").offsetWidth);
     expect(historique).toBeGreaterThan(compact);
     expect(historique).toBe(46);
   });

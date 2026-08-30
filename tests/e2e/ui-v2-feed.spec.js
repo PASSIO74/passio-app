@@ -350,9 +350,14 @@ test("kill switch : l'état vide historique est strictement inchangé", async ({
   const vide = page.locator("#feedEmpty");
   await expect(vide).toBeVisible();
   await expect(vide.locator("[data-v2-empty-cta]")).toHaveCount(0);
-  await expect(vide.locator(".empty-title")).toHaveText("Choisis une passion");
+  // ⚠️ ADR-010 a réécrit cet état vide, et ce texte n'est sous AUCUN kill switch :
+  // il change donc aussi sur le chemin historique testé ici. Ce que ce test
+  // verrouille — l'absence du CTA d'UI-2 sous kill switch — est INCHANGÉ ; seul
+  // le libellé attendu suit le nouveau modèle, qui nomme les DEUX sources du fil
+  // (les passions choisies ET les personnes suivies) au lieu de la seule passion.
+  await expect(vide.locator(".empty-title")).toHaveText("Choisis tes passions");
   await expect(vide.locator(".empty-text"))
-    .toHaveText("Sélectionne une passion ci-dessus pour voir le contenu de ta communauté.");
+    .toHaveText("Ton Accueil réunit les passions que tu choisis et les personnes que tu suis. Touche une passion ci-dessus pour commencer.");
 });
 
 // ── Cadrage mobile de référence ─────────────────────────────────────────────
