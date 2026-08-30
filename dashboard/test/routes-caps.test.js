@@ -30,39 +30,8 @@
 // ═══════════════════════════════════════════════════════════════════════════
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import * as auth from "../server/auth.js";
-
-const SRC = fs.readFileSync(
-  path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "server", "index.js"), "utf8");
-
-// ─── Analyse de la source ────────────────────────────────────────────────────
-// `@public` = aucun middleware de garde. `@auth` = requireAuth. Sinon : la
-// capacité exigée. Un `@public` inattendu est un échec, pas une tolérance.
-const METHODES = new Set(["GET", "POST", "PATCH", "PUT", "DELETE"]);
-
-function parseRoutes(src) {
-  // Le verbe n'est PAS énuméré ici : c'est justement ce qui a failli passer.
-  // La première écriture de ce fichier listait get|post|put|delete et rendait
-  // les trois routes `api.patch(...)` INVISIBLES — dont deux mutations. On
-  // capture donc n'importe quel verbe, et on vérifie ensuite qu'il est connu.
-  const re = /^api\.([a-z]+)\(\s*"([^"]+)"\s*,\s*([^\n]*)$/gm;
-  const out = [];
-  let m;
-  while ((m = re.exec(src))) {
-    const rest = m[3];
-    const cap = rest.match(/^auth\.requireCap\("([a-z_]+)"\)/);
-    out.push({
-      method: m[1].toUpperCase(),
-      route: m[2],
-      guard: cap ? cap[1] : /^auth\.requireAuth\b/.test(rest) ? "@auth" : "@public",
-      at: m.index,
-    });
-  }
-  return out;
-}
+import { SRC, METHODES, parseRoutes } from "./aide-routes.js";
 
 // ─── Inventaire figé ─────────────────────────────────────────────────────────
 // Modifier cette table est un GESTE DÉLIBÉRÉ : c'est là qu'on relit ce qu'on
