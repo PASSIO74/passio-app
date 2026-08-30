@@ -1661,11 +1661,42 @@ document.addEventListener("visibilitychange", function() {
 // Badge des messages non-lus sur l'icône Messages du topbar (déplacée depuis la
 // barre du bas). Somme des `unread` de toutes les conversations.
 function renderMsgBadge() {
-  const dot = document.getElementById("msgDot");
-  if (!dot) return;
   let n = 0;
   try { (getConversations() || []).forEach(c => { n += (c.unread || 0); }); } catch(e) {}
-  dot.textContent = n > 0 ? (n > 9 ? "9+" : String(n)) : "";
+  const libelle = n > 0 ? (n > 9 ? "9+" : String(n)) : "";
+
+  // Pastille historique du bandeau supérieur. Depuis le lot UI-7 §4 elle est
+  // MASQUÉE (l'icône Messages a quitté la tête de l'application) : on continue de
+  // l'écrire — plusieurs chemins l'allument et le kill switch d'UI-7 la rend —
+  // mais elle ne peut plus être la seule surface.
+  const dot = document.getElementById("msgDot");
+  if (dot) dot.textContent = libelle;
+
+  // ⚠️ LE DÉFAUT QUE CECI RÉPARE : après UI-7, plus AUCUNE surface n'indiquait
+  // un message non lu. La tête n'a plus d'icône Messages, et la barre du bas
+  // (historique comme V2) n'a jamais porté de compteur — `renderMsgBadge`
+  // calculait donc un nombre juste pour l'écrire dans un élément masqué.
+  // La pastille est posée sur l'entrée « Messages » des DEUX barres : la V2
+  // (`[data-v2-key="messages"]`) et l'historique (`[data-screen="messages"]`),
+  // pour que couper UI-1 ne reprenne pas l'indicateur au passage.
+  document.querySelectorAll('#appNavV2 [data-v2-key="messages"], #appNav [data-screen="messages"]')
+    .forEach(function (item) {
+      let b = item.querySelector(".nav-msg-badge");
+      if (!libelle) { if (b) b.remove(); return; }
+      if (!b) {
+        b = document.createElement("span");
+        b.className = "nav-msg-badge";
+        b.setAttribute("aria-hidden", "true");   // le compte est déjà dans aria-label
+        item.appendChild(b);
+      }
+      b.textContent = libelle;
+      item.setAttribute("aria-label", n > 1 ? ("Messages, " + n + " non lus") : "Messages, 1 non lu");
+    });
+  if (!libelle) {
+    document.querySelectorAll('#appNavV2 [data-v2-key="messages"], #appNav [data-screen="messages"]')
+      .forEach(function (item) { item.setAttribute("aria-label", "Messages"); });
+  }
+
   updateAppBadge();
 }
 

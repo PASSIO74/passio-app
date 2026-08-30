@@ -367,13 +367,18 @@
       <div class="topbar-bell" onclick="goTo('explore')" title="Explorer" role="button" tabindex="0" aria-label="Explorer">
         <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;"><circle cx="11" cy="11" r="7"/><path d="M20 20 L16.4 16.4"/></svg>
       </div>
-      <!-- §4 (lot UI-7) : l'icône Messages a quitté le bandeau supérieur —
-           Messages est déjà une destination de la barre du bas, et deux portes
-           pour un même écran encombraient la tête de l'application. La pastille
-           #msgDot RESTE dans le DOM, masquée : plusieurs chemins l'allument
-           (renderMessages, notifications realtime) et la retirer aurait fait
-           échouer ces écritures en silence. -->
-      <span id="msgDot" class="bell-dot" hidden aria-hidden="true"></span>
+      <!-- §4 (lot UI-7) : l'icône Messages quitte le bandeau supérieur — Messages
+           est déjà une destination de la barre du bas, et deux portes pour un
+           même écran encombraient la tête de l'application.
+           ⚠️ Elle est MASQUÉE par CSS (`:root.passio-ui-7`), plus RETIRÉE : la
+           supprimer du markup laissait l'application SANS AUCUNE porte vers
+           Messages dès qu'on coupait UI-1 (`passio_ui_v2="0"`), la barre du bas
+           historique n'ayant jamais porté cette entrée. Un kill switch doit
+           rendre l'état d'avant — c'est la règle du projet, et elle valait ici. -->
+      <div class="topbar-bell" id="topbarMessages" onclick="goTo('messages')" title="Messages" role="button" tabindex="0" aria-label="Messages">
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;"><path d="M21 15a2 2 0 0 1 -2 2h-9l-4 3v-14a2 2 0 0 1 2 -2h11a2 2 0 0 1 2 2z"/></svg>
+        <span id="msgDot" class="bell-dot" aria-hidden="true"></span>
+      </div>
       <div class="topbar-bell" onclick="openNotifications()" title="Notifications" role="button" tabindex="0" aria-label="Notifications">
         <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;"><path d="M18 8.5 A6 6 0 0 0 6 8.5 C6 14 3.8 15.5 3.8 15.5 H20.2 S18 14 18 8.5 Z"/><path d="M10.2 19 A2 2 0 0 0 13.8 19"/></svg>
         <span class="bell-dot" id="bellDot"></span>
