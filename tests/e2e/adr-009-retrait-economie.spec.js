@@ -143,10 +143,10 @@ test.describe("ADR-009 — retrait de l'économie interne", () => {
 
     // La modale ouverte est bien la CRÉATION, pas le paywall.
     const modale = await page.evaluate(() => document.getElementById("modalContent").innerText);
-    // Ancre d'ouverture de la modale. Le libellé est passé à « Nouvelle passion »
-    // avec ADR-010 (le mot « fil » désignait un troisième concept) ; l'assertion
-    // de ce test — aucun paywall, aucun coût — est inchangée juste en dessous.
-    expect(modale).toContain("Nouvelle passion");
+    // Ancre d'OUVERTURE de la modale, par sa grille de choix — un identifiant
+    // stable, pas un libellé. L'assertion de ce test (aucun paywall, aucun coût)
+    // suit juste en dessous et n'a jamais dépendu d'un texte.
+    expect(await page.locator("#newProfileGrid").count()).toBe(1);
     expect(modale).not.toMatch(/💎|Passia|Pass Passion|Payer|Profil supplémentaire/i);
 
     // Et elle va jusqu'au bout.

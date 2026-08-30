@@ -1,0 +1,103 @@
+// SMOKE TEST — la fenêtre « gate affiché, application absente ».
+//
+// Angle mort structurel documenté dans CLAUDE.md : `tests/e2e/app-helper.js` pose
+// le jeton du gate AVANT la navigation, donc AUCUNE suite n'exerce l'instant où
+// le code d'accès est à l'écran et où le bloc applicatif n'existe pas encore.
+// Quatre pannes d'aperçu invisibles sont nées dans cette fenêtre le 2026-08-28 :
+//   ① une redirection qui détruisait la query pendant la saisie du code ;
+//   ② `typeof state === "undefined"` alors qu'app-01 déclare `let state = null`,
+//      donc `state.seed` levait un TypeError non rattrapé ;
+//   ③ un budget de reprise (`setTimeout` × N) brûlé avant l'existence de l'app,
+//      sans remise à zéro sur `passio:app-ready` ;
+//   ④ un lot sans contenu éligible, indiscernable d'un lot cassé.
+//
+// Ce fichier n'entre PAS par le helper : il navigue sans jeton, reste sur le
+// gate, et vérifie que rien ne casse ni ne s'emballe pendant cette fenêtre.
+const { test, expect } = require("@playwright/test");
+const { GATE_KEY, GATE_TOKEN, GATE_CODE } = require("./gate-helper");
+
+test("gate affiché, application absente : aucune erreur JS, aucun module ne s'emballe", async ({ page }) => {
+  // Convention d'app-helper.js : on sépare les erreurs APPLICATIVES des échecs de
+  // ressource réseau. Ce bac n'a pas d'accès sortant (polices, images distantes,
+  // CDN) — compter leurs `ERR_CONNECTION_RESET` masquerait les vraies erreurs
+  // sous du bruit d'environnement.
+  const erreurs = [];
+  const reseau = [];
+  const trier = (txt) => (/Failed to load resource|net::|ERR_/.test(txt) ? reseau : erreurs).push(txt);
+  page.on("pageerror", (e) => erreurs.push("pageerror: " + e.message));
+  page.on("console", (m) => { if (m.type() === "error") trier("console: " + m.text()); });
+
+  // AUCUN jeton : on arrive vraiment sur le gate, comme un vrai visiteur.
+  await page.goto("/index.html");
+  await page.waitForTimeout(4000);   // largement de quoi laisser des reprises s'emballer
+
+  const etat = await page.evaluate(() => ({
+    // `state` est déclaré `let state = null` par app-01 : c'est exactement la
+    // valeur qui a fait lever les gardes écrites en `typeof state === "undefined"`.
+    stateNul: (typeof state === "undefined") ? "absent" : (state === null ? "null" : "objet"),
+    gateVisible: !!document.querySelector("#gateOverlay, .gate-overlay, #accessGate"),
+    appPrete: !!window.__gateReady,
+  }));
+
+  // Le fait qui compte : dans cette fenêtre, `state` n'est pas un objet.
+  expect(["absent", "null"]).toContain(etat.stateNul);
+  expect(erreurs, "erreurs pendant la fenêtre gate :\n" + erreurs.join("\n")).toEqual([]);
+});
+
+test("la query survit à la fenêtre du gate (piège platform.js du 2026-08-28)", async ({ page }) => {
+  // `js/platform.js` redirigeait vers l'origine canonique 800 ms après `load`,
+  // en PERDANT `?passio_preview=…` — donc pendant la saisie du code d'accès.
+  await page.goto("/index.html?passio_preview=passio-ui-4b&x=1#reel=abc");
+  await page.waitForTimeout(3000);
+  const url = page.url();
+  expect(url).toContain("passio_preview=passio-ui-4b");
+  expect(url).toContain("#reel=abc");
+});
+
+test("après déverrouillage, l'application démarre et le fil s'affiche", async ({ page }) => {
+  const erreurs = [];
+  page.on("pageerror", (e) => erreurs.push("pageerror: " + e.message));
+
+  await page.goto("/index.html");
+  await page.waitForTimeout(1500);
+
+  // Déverrouillage par le vrai chemin (saisie du code), pas par le jeton : c'est
+  // la TRANSITION gate → application qu'on veut exercer.
+  await page.evaluate((code) => {
+    const champ = document.querySelector("#gateInput, input[type='password'], input[inputmode='numeric']");
+    if (champ) { champ.value = code; champ.dispatchEvent(new Event("input", { bubbles: true })); }
+  }, GATE_CODE);
+  await page.evaluate(() => {
+    const b = document.querySelector("#gateSubmit, .gate-submit, button[type='submit']");
+    if (b) b.click();
+  });
+
+  // Repli : si le formulaire n'a pas la forme attendue, on pose le jeton et on
+  // recharge — le test garde alors son sens (démarrage après gate).
+  const passe = await page.waitForFunction(() => {
+    const el = document.getElementById("screen-feed");
+    return el && el.classList.contains("active");
+  }, null, { timeout: 12000 }).then(() => true).catch(() => false);
+
+  if (!passe) {
+    await page.evaluate(([k, t]) => sessionStorage.setItem(k, t), [GATE_KEY, GATE_TOKEN]);
+    await page.reload();
+    await page.waitForFunction(() => {
+      const el = document.getElementById("screen-feed");
+      return el && el.classList.contains("active");
+    }, null, { timeout: 20000 });
+  }
+  await page.waitForTimeout(2500);
+
+  const apres = await page.evaluate(() => ({
+    stateObjet: (typeof state !== "undefined" && state !== null && !!state.seed),
+    filPresent: !!document.getElementById("feedList"),
+    vues: !!document.getElementById("feedViews"),
+  }));
+  // Ce que la fenêtre précédente ne prouvait pas : l'app finit par exister.
+  expect(apres.stateObjet).toBe(true);
+  expect(apres.filPresent).toBe(true);
+  // ADR-010 : le commutateur de vues est bien monté après le gate.
+  expect(apres.vues).toBe(true);
+  expect(erreurs, "erreurs après déverrouillage :\n" + erreurs.join("\n")).toEqual([]);
+});

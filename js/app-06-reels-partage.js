@@ -2245,7 +2245,7 @@ function openCreateProfile() {
       <span>Bio courte <span style="font-weight:400;color:var(--muted);">(optionnel)</span></span>
       <input type="text" class="input" id="newProfileBio" placeholder="Ex : Photographe amateur · Paris" maxlength="80" />
     </label>
-    <button class="btn primary block" style="margin-top:12px;" onclick="confirmCreateProfile()">Ajouter cette passion</button>
+    <button class="btn primary block" id="confirmNewPassionBtn" style="margin-top:12px;" onclick="confirmCreateProfile()">Ajouter cette passion</button>
   `);
   window._newProfilePassion = null;
 }

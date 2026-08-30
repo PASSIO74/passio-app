@@ -478,7 +478,10 @@ test.describe("UI-8 — un profil personnel, plusieurs passions", () => {
     await expect(page.locator('#newProfileGrid [data-passion="yoga"]')).toHaveCount(1);
 
     await page.locator('#newProfileGrid [data-passion="yoga"]').click();
-    await page.locator("#modalContent").getByText("Créer ce fil").click();
+    // Sélecteur STABLE plutôt que le libellé : ce test vérifie la RESTAURATION
+    // d'une passion archivée, pas le texte du bouton. Un renommage de libellé ne
+    // doit pas faire rougir un test de comportement.
+    await page.locator("#confirmNewPassionBtn").click();
     await page.waitForTimeout(600);
     expect(await page.evaluate(() => state.user.profiles.length)).toBe(3);
     expect(await page.evaluate(() =>
