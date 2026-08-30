@@ -20,70 +20,15 @@
 // ═══════════════════════════════════════════════════════════════════════════
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import { parseRoutes, cheminConcret } from "./aide-routes.js";
+import { demarrerServeur } from "./aide-serveur.js";
 import { capsFor } from "../server/auth.js";
-
-const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "passio-http-test-"));
-const PORT = 4700 + Math.floor(Math.random() * 200);
-const BASE = `http://127.0.0.1:${PORT}`;
-const MDP = "mot-de-passe-de-test";
 
 let serveur = null;
 const cookies = {};
 
-function attendre(ms) { return new Promise((r) => setTimeout(r, ms)); }
-
-async function demarrer() {
-  serveur = spawn(process.execPath, ["server/start.js"], {
-    cwd: path.join(path.dirname(new URL(import.meta.url).pathname), ".."),
-    env: {
-      ...process.env,
-      PORT: String(PORT),
-      DASH_DATA_DIR: TMP,
-      DASH_ENV: "development",
-      DASH_ALLOW_MUTATIONS: "",          // aucune mutation possible, même par erreur
-      SUPABASE_SERVICE_ROLE_KEY: "",     // aucun accès à la production
-      SUPABASE_URL: "",
-      ANTHROPIC_API_KEY: "",
-      DASH_ADMIN_USER: "admin_test",
-      DASH_ADMIN_PASSWORD: MDP,
-      DASH_SESSION_SECRET: "secret-de-test-suffisamment-long-pour-hmac-0123456789",
-      DASH_EXTRA_USERS: `dev_test:${MDP}:developer,testeur_test:${MDP}:tester,obs_test:${MDP}:observer`,
-      DASH_OPEN_BROWSER: "",
-    },
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  serveur.stdout.on("data", () => {});
-  serveur.stderr.on("data", () => {});
-
-  for (let i = 0; i < 60; i++) {
-    try {
-      const r = await fetch(`${BASE}/api/health`);
-      if (r.ok) return;
-    } catch {}
-    await attendre(250);
-  }
-  throw new Error("le serveur de test n'a pas démarré");
-}
-
-async function connecter(user) {
-  const r = await fetch(`${BASE}/api/login`, {
-    method: "POST", headers: { "content-type": "application/json" },
-    body: JSON.stringify({ user, password: MDP }),
-  });
-  assert.equal(r.status, 200, `connexion refusée pour ${user}`);
-  const set = r.headers.getSetCookie?.() || [];
-  const cookie = set.map((c) => c.split(";")[0]).join("; ");
-  assert.ok(cookie.includes("dash_session"), `aucun cookie de session pour ${user}`);
-  return cookie;
-}
-
 function appeler(route, cookie) {
-  return fetch(BASE + cheminConcret(route.route), {
+  return fetch(serveur.base + cheminConcret(route.route), {
     method: route.method,
     headers: { "content-type": "application/json", ...(cookie ? { cookie } : {}) },
     body: ["GET", "HEAD"].includes(route.method) ? undefined : "{}",
@@ -99,22 +44,19 @@ function roleSansCapacite(cap) {
 }
 
 before(async () => {
-  await demarrer();
-  for (const u of ["admin_test", "dev_test", "testeur_test", "obs_test"]) cookies[u] = await connecter(u);
+  serveur = await demarrerServeur();
+  for (const u of ["admin_test", "dev_test", "testeur_test", "obs_test"]) cookies[u] = await serveur.cookieDe(u);
 }, { timeout: 60_000 });
 
-after(() => {
-  try { serveur?.kill(); } catch {}
-  try { fs.rmSync(TMP, { recursive: true, force: true }); } catch {}
-});
+after(() => serveur?.arreter());
 
 test("le serveur démarre sans Supabase et sans mutations autorisées", async () => {
-  const r = await fetch(`${BASE}/api/health`);
+  const r = await fetch(`${serveur.base}/api/health`);
   const j = await r.json();
   assert.equal(j.ok, true);
   assert.equal(j.supabase, false, "aucun accès production dans un test");
 
-  const me = await (await fetch(`${BASE}/api/me`, { headers: { cookie: cookies.admin_test } })).json();
+  const me = await (await fetch(`${serveur.base}/api/me`, { headers: { cookie: cookies.admin_test } })).json();
   assert.equal(me.role, "admin");
   assert.equal(me.allowMutations, false, "les mutations doivent rester coupées");
 });
@@ -152,12 +94,12 @@ test("un observateur lit les vues d'ensemble, et rien de plus", async () => {
   // Le rôle le plus faible doit pouvoir REGARDER : un pilotage qu'on ne peut pas
   // ouvrir sans être admin n'est pas un pilotage partageable.
   for (const chemin of ["/api/overview", "/api/alerts", "/api/traces", "/api/bugs", "/api/readiness"]) {
-    const rep = await fetch(BASE + chemin, { headers: { cookie: cookies.obs_test } });
+    const rep = await fetch(serveur.base + chemin, { headers: { cookie: cookies.obs_test } });
     assert.equal(rep.status, 200, `${chemin} devrait être lisible par un observateur`);
   }
   // …mais rien qui touche la base, le dépôt, les diagnostics ou le journal.
   for (const chemin of ["/api/database", "/api/reconcile", "/api/git/status", "/api/sentinel", "/api/audit"]) {
-    const rep = await fetch(BASE + chemin, { headers: { cookie: cookies.obs_test } });
+    const rep = await fetch(serveur.base + chemin, { headers: { cookie: cookies.obs_test } });
     assert.equal(rep.status, 403, `${chemin} ne doit pas être lisible par un observateur`);
   }
 });
@@ -165,7 +107,7 @@ test("un observateur lit les vues d'ensemble, et rien de plus", async () => {
 test("l'intégrité n'est pas lisible par la bande via /api/diagnose", async () => {
   // Le défaut historique : `/diagnose` est ouvert à tout compte authentifié et
   // EMBARQUE le rapport d'intégrité. Ici on l'exerce pour de vrai.
-  const rep = await fetch(`${BASE}/api/diagnose`, { headers: { cookie: cookies.testeur_test } });
+  const rep = await fetch(`${serveur.base}/api/diagnose`, { headers: { cookie: cookies.testeur_test } });
   assert.equal(rep.status, 200, "le diagnostic lui-même reste accessible");
   const j = await rep.json();
   assert.equal(j.summary.integrityEvaluated, false,
@@ -176,14 +118,14 @@ test("l'intégrité n'est pas lisible par la bande via /api/diagnose", async () 
 });
 
 test("un mot de passe faux est refusé, et la session est signée", async () => {
-  const r = await fetch(`${BASE}/api/login`, {
+  const r = await fetch(`${serveur.base}/api/login`, {
     method: "POST", headers: { "content-type": "application/json" },
     body: JSON.stringify({ user: "admin_test", password: "pas-le-bon" }),
   });
   assert.ok([401, 429].includes(r.status), `mot de passe faux accepté (${r.status})`);
 
   // Un cookie fabriqué à la main ne doit ouvrir aucune porte.
-  const faux = await fetch(`${BASE}/api/overview`, {
+  const faux = await fetch(`${serveur.base}/api/overview`, {
     headers: { cookie: "dash_session=admin_test.admin.9999999999.signature-inventee" },
   });
   assert.equal(faux.status, 401, "une session non signée doit être rejetée");
