@@ -249,6 +249,57 @@ test.describe("UI-4A5 — « Filtres », troisième vue de Rencontrer", () => {
     expect(errors.js, "exceptions JS").toEqual([]);
   });
 
+  test("cohabitation avec la vue Carte : chacun son ancrage, aucun va-et-vient", async ({ page }) => {
+    // Depuis le 2026-08-30, la vue Carte DÉPLACE `#irlMapWrap` juste avant la
+    // liste — donc APRÈS le panneau de filtres, que ce lot remet à chaque rendu
+    // au ras du commutateur. Deux modules qui viseraient le même point
+    // d'ancrage se renverraient la balle : cette suite le vérifie.
+    const errors = { js: [], console: [], network: [] };
+    await boot(page, { errors });
+    await ouvrirIrl(page);
+
+    await page.locator('[data-v4a3-onglet="carte"]').click();
+    await page.waitForTimeout(600);
+
+    const ordre = () => page.evaluate(() => {
+      const ids = ["v4a3Vue", "v4a5Panneau", "irlMapWrap", "eventList"];
+      const n = ids.map((id) => document.getElementById(id));
+      if (n.some((x) => !x)) return "manquant";
+      return n.map((x, i) => (i === 0 ? x.id
+        : ((n[i - 1].compareDocumentPosition(x) & Node.DOCUMENT_POSITION_FOLLOWING) ? x.id : "!" + x.id)))
+        .join(" > ");
+    });
+
+    const attendu = "v4a3Vue > v4a5Panneau > irlMapWrap > eventList";
+    expect(await ordre()).toBe(attendu);
+    // Stable dans le temps : aucun module ne repositionne l'autre en boucle.
+    await page.waitForTimeout(900);
+    expect(await ordre()).toBe(attendu);
+
+    // La vue Filtres reprend la main : elle ramène la vue Liste, donc la carte
+    // sort de l'écran et rend sa place.
+    await ouvrirFiltres(page);
+    expect(await page.evaluate(() => window.PassioUIV4A3.vue())).toBe("liste");
+    await expect(page.locator("#v4a5Panneau")).toBeVisible();
+    // Elle est remontée AU-DESSUS du commutateur, à sa place d'origine — et
+    // surtout pas reléguée en fin d'écran, sous la liste : son voisin d'origine
+    // `#irlPassionRow` vit désormais DANS le panneau, la barre d'action fait
+    // donc le repère.
+    expect(await page.evaluate(() => {
+      const c = document.getElementById("irlMapWrap");
+      const b = document.getElementById("v4a3Vue");
+      return !!(c.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    })).toBe(true);
+    expect(await page.evaluate(() => {
+      const c = document.getElementById("irlMapWrap");
+      const p = c.previousElementSibling;
+      return !!(p && p.classList.contains("irl-actionbar"));
+    })).toBe(true);
+
+    expect(errors.js, "exceptions JS").toEqual([]);
+    expect(errors.console, "erreurs console").toEqual([]);
+  });
+
   test("coupure à chaud : tout est rendu, sans rechargement", async ({ page }) => {
     await boot(page);
     await ouvrirIrl(page);

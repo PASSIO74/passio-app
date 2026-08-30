@@ -905,6 +905,35 @@ Le script est en lecture seule sur le dépôt (il n'écrit que dans son dossier 
   `ui-v4a4-outils` et `ui-v7-lot` posent au boot `passio_ui_4a5="0"` et gardent TOUTES
   leurs assertions ; la cohabitation est prouvée à part.
 
+  **⚠️ La vue Carte s'affiche SOUS les onglets (2026-08-30), dans `js/ui-v4a3-vue.js`.**
+  Demandé par Benjamin après essai réel : « quand je clique sur Carte je voudrais qu'elle
+  apparaisse dessous les trois onglets, comme quand je clique sur Liste — le même effet
+  sur les trois clics. » Dans le balisage historique, `#irlMapWrap` précède la liste de
+  très haut (juste sous `.irl-actionbar`) alors que le commutateur se pose au ras de
+  `#eventList` : la carte s'affichait donc AU-DESSUS des onglets, quand la liste et la
+  vue Filtres s'affichent dessous — trois cases, deux comportements. La vue Carte
+  **DÉPLACE** donc le nœud juste avant `#eventList`, et le rend à sa place d'origine dès
+  qu'on quitte la vue ou que le drapeau tombe.
+  ⚠️ Quatre points à connaître avant d'y toucher. ① Le nœud est **déplacé, jamais
+  recréé** : le moteur Leaflet vit dans `#irlMap`, et `initIrlMap()` ne réinitialise pas
+  deux fois — le reconstruire donnerait une carte blanche. On redemande seulement un
+  `invalidateSize()` après le déplacement (`irlMap` est un `let` de portée script, absent
+  de `window` et en zone morte tant qu'app-07 n'a pas tourné : le `typeof` doit être DANS
+  un `try`). ② La destination est `#eventList`, **jamais `barre.nextSibling`** : UI-4A5 y
+  pose son panneau et l'y REMET après chaque rendu — deux modules sur le même point
+  d'ancrage se renverraient la balle, chacun réveillant l'observateur de l'autre. L'ordre
+  obtenu est `v4a3Vue > v4a5Panneau > irlMapWrap > eventList`. ③ `poserBarre()` ne vise
+  plus la liste mais une **ancre** (`ancreBarre()`) : sans elle, une barre reconstruite
+  après un rendu se serait insérée SOUS la carte déplacée. Le ré-alignement n'écrit que
+  si l'ancre est passée devant la barre — une écriture inconditionnelle réveillerait les
+  deux observateurs à chaque rendu. ④ La restitution mémorise **les deux voisins** : le
+  suivant (`#irlPassionRow`) peut avoir déménagé dans le panneau d'UI-4A5 au moment de
+  rendre la carte, et ne retenir que lui la reléguait en FIN d'écran, sous la liste ; le
+  précédent (`.irl-actionbar`) sert alors de repère. Verrous : `ui-v4a3-vue.spec.js`
+  (« la carte s'affiche SOUS les onglets », éprouvé par mutation — neutraliser le
+  déplacement le fait rougir) et `ui-v4a5-filtres.spec.js` (« cohabitation avec la vue
+  Carte : chacun son ancrage, aucun va-et-vient »).
+
   **Moods du Studio alignés sur le rail d'intentions (2026-08-29), ACTIF, sans drapeau.**
   Le composer proposait encore les quatre moods d'origine — Création · Apprentissage ·
   Chill · Actu — alors que le Fil lit désormais Tous · Explorer · Apprendre · Idées ·
