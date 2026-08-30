@@ -78,6 +78,33 @@ test.describe("Liens profonds IRL et fenêtre « application pas encore prête �
     await ficheOuverte(page);
   });
 
+  // ⚠️ RÉGRESSION QUE J'AI MOI-MÊME INTRODUITE en écrivant ce correctif, trouvée
+  // en relisant mon diff contre celui de `#reel=`. Mémoriser l'id du lien est
+  // nécessaire (`goTo()` fait un `pushState("#irl")`, donc une navigation pendant
+  // l'attente effacerait le lien) — mais un id qui SURVIT à l'ouverture agit sur
+  // n'importe quel `hashchange` suivant : un simple retour arrière vers « #feed »
+  // rouvrait la fiche sans que personne ne l'ait demandé. Deux gardes : l'id est
+  // CONSOMMÉ à l'ouverture, et l'écouteur sort si le hash n'est pas un lien.
+  test("après ouverture, un hashchange sans rapport ne rouvre PAS la fiche", async ({ page }) => {
+    await bootOnboarded(page);
+    await page.evaluate((id) => { location.hash = "#irl-event-" + id; }, EVENT_SEED);
+    await ficheOuverte(page);
+
+    await page.evaluate(() => { closeEventDetail(); });
+    await page.waitForFunction(() => {
+      const el = document.getElementById("eventDetailPage");
+      return !!(el && el.style && el.style.display === "none");
+    }, null, { timeout: 8000 });
+
+    await page.evaluate(() => { location.hash = "#feed"; });
+    await page.waitForTimeout(2500);
+
+    expect(await page.evaluate(() => {
+      const el = document.getElementById("eventDetailPage");
+      return !!(el && el.style && el.style.display !== "none");
+    }), "la fiche doit rester fermée").toBe(false);
+  });
+
   // Garde anti-creux : le chemin nominal (application déjà prête) doit continuer
   // de marcher. Sans ce test, un correctif qui casserait le cas normal tout en
   // réparant le cas dégradé passerait inaperçu ici.

@@ -3854,12 +3854,17 @@ function _openIrlEventFromHash() {
       return false;
     }
     if (allEvents().some(e => e.id === id)) {
+      // ⚠️ L'id mémorisé est CONSOMMÉ ici. Sans ça, il survivrait à l'ouverture
+      // et le moindre `hashchange` ultérieur (un retour arrière vers « #feed »,
+      // par exemple) rouvrirait la fiche sans que personne ne l'ait demandé.
+      _irlEvLinkId = ""; _irlEvLinkEssais = 0; _irlEvLinkAttentes = 0;
       if (typeof goTo === "function") goTo("irl");
       openEventDetails(id);
       return true;
     }
     // L'événement peut n'arriver qu'avec le chargement Supabase : on retente.
     if (++_irlEvLinkEssais <= 12) { _irlEvLinkReplanifier(); return false; }
+    _irlEvLinkId = "";
     toast("Événement introuvable ou supprimé");
     return false;
   } catch (e) {
@@ -3869,7 +3874,19 @@ function _openIrlEventFromHash() {
     return false;
   }
 }
-window.addEventListener("hashchange", _openIrlEventFromHash);
+// Un lien collé pendant que l'application tourne. ⚠️ On sort si le hash n'est
+// PAS un lien d'événement : brancher `_openIrlEventFromHash` directement ferait
+// agir l'id encore mémorisé sur un `hashchange` sans rapport. Budget neuf
+// seulement si la CIBLE change, sinon une page qui réécrit son hash ré-armerait
+// le compteur sans fin.
+window.addEventListener("hashchange", function () {
+  const m = /#irl-event-([\w-]+)/.exec(location.hash || "");
+  if (!m) return;
+  if (m[1] !== _irlEvLinkId) {
+    _irlEvLinkId = m[1]; _irlEvLinkEssais = 0; _irlEvLinkAttentes = 0;
+  }
+  _openIrlEventFromHash();
+});
 (function _irlDeepLinkBoot() {
   if (!/#irl-event-/.test(location.hash || "")) return;
   // Après le gate + le boot (les événements Supabase arrivent en différé).
@@ -6252,9 +6269,13 @@ function _openIrlCheckinFromHash() {
     var ev = _findCanonicalEvent(id) || allEvents().find(function (e) { return e.id === id; });
     if (!ev) {
       if (++_irlCkLinkEssais <= 12) { _irlCkLinkReplanifier(); return false; }
+      _irlCkLinkId = ""; _irlCkLinkCode = "";
       toast("Événement introuvable ou supprimé");
       return false;
     }
+    // Même règle qu'au-dessus, et elle compte davantage ici : un id mémorisé qui
+    // survivrait au pointage ferait re-pointer à chaque `hashchange` suivant.
+    _irlCkLinkId = ""; _irlCkLinkCode = ""; _irlCkLinkEssais = 0; _irlCkLinkAttentes = 0;
     if (typeof goTo === "function") goTo("irl");
     openEventDetails(id);
     // Un code faux ouvre quand même la fiche — la personne est devant le bon
@@ -6267,7 +6288,15 @@ function _openIrlCheckinFromHash() {
     return false;
   }
 }
-window.addEventListener("hashchange", _openIrlCheckinFromHash);
+window.addEventListener("hashchange", function () {
+  var m = /#irl-checkin-(.+)-([A-Z0-9]{6})$/.exec(location.hash || "");
+  if (!m) return;
+  if (m[1] !== _irlCkLinkId || m[2] !== _irlCkLinkCode) {
+    _irlCkLinkId = m[1]; _irlCkLinkCode = m[2];
+    _irlCkLinkEssais = 0; _irlCkLinkAttentes = 0;
+  }
+  _openIrlCheckinFromHash();
+});
 (function _irlCheckinDeepLinkBoot() {
   if (!/#irl-checkin-/.test(location.hash || "")) return;
   setTimeout(_openIrlCheckinFromHash, 1200);
