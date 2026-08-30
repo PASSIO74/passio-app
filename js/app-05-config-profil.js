@@ -1993,8 +1993,26 @@ function buildReels(pinnedId) {
 // même raison que l'aperçu de l'éditeur média (meSetMedia).
 function _reelVideoSrc(post) {
   var v = post.video || "";
-  if (v.indexOf("data:") !== 0) return v;
   window._reelBlobUrls = window._reelBlobUrls || {};
+  if (v.indexOf("data:") !== 0) {
+    // ⚠️ RÉVOCATION, ajoutée le 2026-08-30. C'était le SEUL `createObjectURL` du
+    // dépôt sans `revokeObjectURL` en regard — les quatre autres (export
+    // calendrier app-07, aperçu média et sondeur audio app-08, redimensionnement
+    // app-09) révoquent tous. Une fois la bobine téléversée, `post.video` devient
+    // une URL https et le Blob n'a plus AUCUN usage : il restait pourtant retenu,
+    // avec sa vidéo pleine taille, jusqu'à la fin de la session. Filmer plusieurs
+    // bobines d'affilée accumulait autant de vidéos en mémoire, sur un téléphone,
+    // pour rien.
+    // On révoque ICI et pas ailleurs : c'est le seul endroit qui sait que l'URL
+    // objet est devenue inutile. Révoquer à la fermeture du lecteur casserait la
+    // lecture d'une bobine dont le téléversement n'a pas encore abouti — le cas
+    // même pour lequel ce cache existe.
+    if (post.id && window._reelBlobUrls[post.id]) {
+      try { URL.revokeObjectURL(window._reelBlobUrls[post.id]); } catch (e) {}
+      delete window._reelBlobUrls[post.id];
+    }
+    return v;
+  }
   if (window._reelBlobUrls[post.id]) return window._reelBlobUrls[post.id];
   try {
     if (typeof _meDataUrlToBlob === "function") {
