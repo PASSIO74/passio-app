@@ -896,7 +896,13 @@ function _postReactItems(postId) {
   return _dedupReactionsByAuthor(reacts).map(function(r){ return { authorId: r.authorId, text: r.text }; });
 }
 function _postReactChipHtml(postId) {
-  return _reactionItemsChipHtml(_postReactItems(postId), "return openPostReactors('" + postId + "', event);");
+  // ⚠️ `postId` entre dans une chaîne JS, elle-même dans un attribut onclick :
+  // c'est le contexte d'`escapeJsArg`, pas d'`escapeHtml` (le HTML décode
+  // `&#39;` AVANT le parse JS, l'apostrophe revient). En prod `posts.id` est de
+  // type TEXT : un compte authentifié CHOISIT la valeur qu'il insère. Le
+  // troisième appelant de ce même helper (app-03:2098, réactions d'étape)
+  // échappait déjà — ces deux-ci sont les survivants.
+  return _reactionItemsChipHtml(_postReactItems(postId), "return openPostReactors('" + escapeJsArg(postId) + "', event);");
 }
 function openPostReactors(postId, event) {
   return _openReactorsList(_postReactItems(postId), event);
@@ -918,7 +924,7 @@ function _liveReactItems(liveId) {
     .map(function(e){ return { authorId: null, text: e }; });
 }
 function _liveReactChipHtml(liveId) {
-  return _reactionItemsChipHtml(_liveReactItems(liveId), "return openLiveReactors('" + liveId + "', event);");
+  return _reactionItemsChipHtml(_liveReactItems(liveId), "return openLiveReactors('" + escapeJsArg(liveId) + "', event);");
 }
 function openLiveReactors(liveId, event) {
   return _openReactorsList(_liveReactItems(liveId), event);
