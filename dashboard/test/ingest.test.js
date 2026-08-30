@@ -9,7 +9,8 @@
 //
 // Quatre invariants sont figés ici :
 //   1. le canari synthétique ne pollue JAMAIS les données produit ;
-//   2. …mais il fait quand même avancer la marque d'eau du polling ;
+//   2. …mais il fait quand même avancer la marque d'eau du polling — SANS jamais
+//      toucher celle qui sert à afficher la fraîcheur ;
 //   3. la déduplication par `event_id` tient (realtime + polling voient le même
 //      événement deux fois — par construction, pas par accident) ;
 //   4. une ligne malformée ne fait pas tomber l'ingestion.
@@ -85,6 +86,32 @@ test("la marque d'eau ne RECULE jamais sur un événement plus ancien", () => {
   ingestOne(ligne({ received_at: new Date(Date.now() - 3600_000).toISOString() }));
   assert.equal(ingestState().lastSeenIso, haut,
     "un événement en retard ferait redemander une heure de données à chaque cycle");
+});
+
+test("le canari ne fait PAS avancer la FRAÎCHEUR affichée", () => {
+  // Deux marques d'eau, deux questions — et les confondre a produit un vrai
+  // défaut, observé en production le 2026-08-30 : l'en-tête annonçait « dernier
+  // signal il y a 5 min » (la période du canari) pendant que le dernier signal
+  // réel datait d'une heure et cinq minutes. Un pilotage aveugle qui a l'air
+  // vivant est plus dangereux qu'un pilotage manifestement muet : c'est
+  // exactement la panne que cet écran est censé rendre visible.
+  const avant = ingestState().lastRealSeenIso;
+  const futur = new Date(Date.now() + 120_000).toISOString();
+  ingestOne(canari({ received_at: futur }));
+  assert.equal(ingestState().lastSeenIso, futur,
+    "celle du polling doit avancer — sinon le canari est relu à chaque cycle");
+  assert.equal(ingestState().lastRealSeenIso, avant,
+    "le canari est un événement de service : il ne prouve AUCUN trafic réel");
+});
+
+test("un événement RÉEL fait avancer les DEUX marques d'eau", () => {
+  // Le pendant du test précédent : sans lui, on pourrait figer `lastRealSeenIso`
+  // à null et les deux assertions ci-dessus passeraient sans rien prouver.
+  const futur = new Date(Date.now() + 180_000).toISOString();
+  ingestOne(ligne({ received_at: futur }));
+  const st = ingestState();
+  assert.equal(st.lastSeenIso, futur);
+  assert.equal(st.lastRealSeenIso, futur);
 });
 
 test("déduplication : le realtime et le polling livrent le même événement", () => {

@@ -297,7 +297,11 @@ VIEWS.overview = async (view) => {
     const ing = ov.ingest || {};
     const dataReal = !!ing.supabaseReady;
     const hasData = (ing.buffered || 0) > 0;
-    const lastSeen = ing.lastSeenIso ? Date.parse(ing.lastSeenIso) : null;
+    // ⚠️ `lastRealSeenIso`, jamais `lastSeenIso` : la seconde est la marque d'eau du
+    // polling, que le canari synthétique fait avancer toutes les 15 minutes. L'afficher
+    // sous « dernier signal » faisait passer un pilotage sans aucun trafic réel pour un
+    // pilotage vivant. Voir la note en tête de server/ingest.js.
+    const lastSeen = ing.lastRealSeenIso ? Date.parse(ing.lastRealSeenIso) : null;
     const provItem = (ic, k, v) => `<div class="prov-item"><span class="prov-ic">${icon(ic)}</span><span class="prov-k">${k}</span><span class="prov-v">${v}</span></div>`;
     setHtml("#ovProv", `<div class="prov-strip">
       ${provItem("database", "Données", dataReal ? `<span class="prov-pill ok">RÉEL · Supabase</span>` : `<span class="prov-pill off">LOCAL · non connecté</span>`)}
@@ -488,7 +492,11 @@ VIEWS.brief = async (view) => {
     if (!ov) { setHtml("#briefBody", `<div class="empty">Données indisponibles.</div>`); return; }
     const t = ov.totals, h = ov.health, ing = ov.ingest || {};
     const dataReal = !!ing.supabaseReady, hasData = (ing.buffered || 0) > 0;
-    const lastSeen = ing.lastSeenIso ? Date.parse(ing.lastSeenIso) : null;
+    // ⚠️ `lastRealSeenIso`, jamais `lastSeenIso` : la seconde est la marque d'eau du
+    // polling, que le canari synthétique fait avancer toutes les 15 minutes. L'afficher
+    // sous « dernier signal » faisait passer un pilotage sans aucun trafic réel pour un
+    // pilotage vivant. Voir la note en tête de server/ingest.js.
+    const lastSeen = ing.lastRealSeenIso ? Date.parse(ing.lastRealSeenIso) : null;
     const openBugs = (bugs || []).filter((b) => b.status !== "corrige" && b.status !== "ignore");
     const worst = openBugs.slice().sort((a, b) => (b.severity === "critical") - (a.severity === "critical") || b.count - a.count)[0];
     const unack = (alerts || []).filter((a) => !a.acknowledged);
@@ -1959,7 +1967,11 @@ VIEWS.sources = async () => {
   ]);
   const git = hasCap("git_read") ? await api.get("/git/status").catch(() => null) : null;
   const ing = ov.ingest || {};
-  const lastSeen = ing.lastSeenIso ? Date.parse(ing.lastSeenIso) : null;
+  // ⚠️ `lastRealSeenIso`, jamais `lastSeenIso` : la seconde est la marque d'eau du
+  // polling, que le canari synthétique fait avancer toutes les 15 minutes. L'afficher
+  // sous « dernier signal » faisait passer un pilotage sans aucun trafic réel pour un
+  // pilotage vivant. Voir la note en tête de server/ingest.js.
+  const lastSeen = ing.lastRealSeenIso ? Date.parse(ing.lastRealSeenIso) : null;
 
   // état → { cls, label } ; ok=vert, warn=orange, off=neutre (config), unknown=neutre
   const P = { ok: ["ok", "Connecté"], active: ["ok", "Actif"], warn: ["warn", "Dégradé"], off: ["info", "Non connecté"], absent: ["info", "Absent"], unknown: ["info", "Inconnu"] };
