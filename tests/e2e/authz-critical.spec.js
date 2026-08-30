@@ -44,7 +44,23 @@ test.describe("AUTHZ-CRITICAL — séparation entre comptes", () => {
       const out = await page.evaluate(async (t) => {
         const email = `e2e_authz_${t}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}@passio-e2e.test`;
         const { data, error } = await supa.auth.signUp({ email, password: "Passio-e2e-12345!" });
-        if (error || !data || !data.session) return { error: (error && error.message) || "pas de session" };
+        // ⚠️ DIAGNOSTIC, pas seulement un verdict (2026-08-30). Ce helper rendait
+        // « pas de session » pour TROIS causes différentes, et le message ne
+        // permettait pas de les distinguer : la CI a échoué trois fois de suite
+        // sans qu'on puisse dire si c'était un quota, une confirmation d'e-mail
+        // exigée, ou une panne. `signUp` qui rend `error === null` ET
+        // `data.user` présent ET `data.session === null`, c'est la signature de
+        // « Confirm email » activé côté projet — un réglage, pas un bug du code.
+        // Un échec de garde de sécurité doit dire POURQUOI il échoue.
+        if (error) return { error: "signUp a refusé : " + error.message };
+        if (!data) return { error: "signUp n'a rien rendu" };
+        if (!data.session) {
+          return {
+            error: data.user
+              ? "compte créé mais AUCUNE session — signature de « Confirm email » exigé par le projet Supabase (réglage Auth), ou d'une protection anti-abus qui l'impose"
+              : "ni session ni utilisateur — inscriptions refusées côté projet Supabase",
+          };
+        }
         return { uid: data.session.user.id, token: data.session.access_token };
       }, tag);
       expect(out.error, `compte ${tag} créé`).toBeUndefined();
