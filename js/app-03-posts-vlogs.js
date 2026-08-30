@@ -3602,7 +3602,11 @@ async function _loadCdvLiveLikes(ids) {
   } catch (e) {}
 }
 
-function addCdvLiveComment(liveId) {
+// `async` : on attend l'identifiant que la base a réellement écrit pour le poser
+// sur le commentaire optimiste. Les trois appelants (touche Entrée, bouton
+// Envoyer, fil de commentaires unifié) ignorent la promesse — l'affichage reste
+// immédiat, seul l'id est corrigé après coup.
+async function addCdvLiveComment(liveId) {
   var inp = document.getElementById("cdvLiveComment") || document.getElementById("cmtThreadInput");
   if (!inp) return;
   var text = inp.value.trim();
@@ -3616,7 +3620,19 @@ function addCdvLiveComment(liveId) {
   var _c = { id: "lc_local_" + Date.now(), authorId: _myId, author: _author, authorName: _author, text: text, at: Date.now(), createdAt: Date.now(), replies: [], likes: 0, likedBy: [] };
   live.comments.push(_c);
   saveCdvLives(lives);
-  if (typeof supaAddCdvLiveComment === "function") supaAddCdvLiveComment(liveId, text);
+  if (typeof supaAddCdvLiveComment === "function") {
+    try {
+      var realId = await supaAddCdvLiveComment(liveId, text);
+      if (realId) {
+        // Relire les lives : `_c` appartient au tableau qu'on vient d'enregistrer,
+        // mais une autre écriture a pu passer entre-temps.
+        var _lives = getCdvLives();
+        var _live = _lives.find(function (l) { return l.id === liveId; });
+        var _cible = _live && (_live.comments || []).find(function (c) { return c.id === _c.id; });
+        if (_cible) { _cible.id = realId; saveCdvLives(_lives); }
+      }
+    } catch (e) {}
+  }
   // Notifie l'auteur du live (interaction cross-compte sur SON carnet).
   if (live.authorId && live.authorId !== _myId && live.authorId !== "me" && typeof supaInsertNotif === "function") {
     try { supaInsertNotif(live.authorId, "comment", liveId, "a commenté ton live"); } catch (e) {}
