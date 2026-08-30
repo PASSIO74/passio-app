@@ -445,6 +445,21 @@ test.describe("IRL — création, récurrence et vues", () => {
     // Le volet Date est ouvert par défaut et le calendrier est déjà peint.
     await expect(page.locator("#irlPaneDate")).toHaveClass(/on/);
     await expect(page.locator("#irlCalGrid .irl-cal-day:not(.empty)").first()).toBeVisible();
+
+    // ⚠️ PIÈGE À RETARDEMENT, désamorcé le 2026-08-30. Le calendrier ouvre sur le
+    // mois COURANT, et la date de test est « aujourd'hui + 2 jours ». Les 30 et 31
+    // de presque chaque mois, cette date tombe le mois SUIVANT : la grille affichée
+    // ne portait alors aucun jour pointé, l'assertion suivante était rouge, et le
+    // clic sur le quantième cherchait ce jour-là dans le mauvais mois.
+    // Ce n'était pas un défaut de l'application — le calendrier sait naviguer — mais
+    // un test daté, rouge deux jours par mois sans que rien n'ait changé dans le
+    // code. Même famille que le flaky dépendant de l'heure déjà consigné dans
+    // PASSIO_ENGINEERING_LOG.md à propos de `ui-v7-parcours.spec.js`.
+    const maintenant = new Date();
+    if (d.getMonth() !== maintenant.getMonth() || d.getFullYear() !== maintenant.getFullYear()) {
+      await page.locator('.irl-cal-nav[aria-label="Mois suivant"]').click();
+    }
+
     // Les jours qui portent un événement sont pointés.
     await expect(page.locator("#irlCalGrid .irl-cal-day.has-ev")).not.toHaveCount(0);
 
