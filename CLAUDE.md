@@ -612,6 +612,26 @@ Le script est en lecture seule sur le dépôt (il n'écrit que dans son dossier 
   chargement, avant que le bloc app n'existe. Son `link_open` prouve
   l'ouverture, `reel_link_open` l'affichage effectif ; les apparier demanderait
   une API publique qui n'existe pas encore.
+  ⚠️ **Les liens IRL avaient le MÊME défaut, corrigé le 2026-08-30.**
+  `#irl-event-<id>` et `#irl-checkin-<id>-<code>` (app-07) sondaient `allEvents()`
+  **une seule fois**, à +1 200 ms d'un `setTimeout` d'amorçage — donc parfois avant
+  que `state` existe. `allEvents()` fait `state.seed.events` : sur `state === null`
+  il lève, l'exception venue d'un `setTimeout` ou d'un `hashchange` n'est rattrapée
+  par personne, la boucle de reprise `setInterval` n'est **jamais armée**, et le
+  lien meurt sans un toast. Le cas du **QR de pointage** est le pire des deux : on
+  est devant l'organisateur, on scanne, il ne se passe rien. Les deux routages
+  suivent désormais les mêmes règles que `#reel=` : attente de disponibilité qui ne
+  consomme **pas** d'essai de contenu (sinon le budget de 12 essais est brûlé par le
+  démarrage), mémorisation de l'id au premier passage (`goTo()` fait un
+  `pushState("#irl")`, donc toute navigation pendant l'attente effacerait le lien),
+  corps entier sous `try` qui **replanifie** au lieu de conclure, et écoute de
+  `passio:app-ready` avec remise à zéro des compteurs. Le hash n'est toujours pas
+  nettoyé — un rechargement doit pouvoir retenter. ⚠️ Mesuré en mutant les deux
+  couches séparément : **chacune suffit seule** (neutraliser la garde laisse vert,
+  car le `catch` replanifie ; faire conclure le `catch` laisse vert, car la garde
+  évite l'exception). C'est une vraie défense en profondeur — et la conséquence
+  honnête est qu'aucune mutation simple ne rougit : le test protège le
+  comportement, pas chaque couche.
 
   **§5 de la direction — la palette PILOTE l'interface depuis le 2026-08-28.**
   `--v2-ink` et `--v2-cloud` étaient déclarés avec ZÉRO consommateur, et le
