@@ -662,3 +662,74 @@ Voir la table « BASELINE MESURÉE (2026-08-29) » de `PASSIO_MASTER_CONTROL.md`
 - **Deux lots portent le nom « UI-7 »** : celui de la PR #184 (`ui-v7-parcours.spec.js`) et celui de la PR #186. Collision de nommage entre deux sessions ; renommage non fait, il toucherait le travail d'une autre session.
 - `NOTIF-FORGE-009` : migration prête, **non appliquée** (règle de la nuit : aucune migration sans supervision).
 - La CI force Node 24 sur des actions ciblant Node 20 (avertissement à chaque run). Périmètre `.github/` = critique, contre-revue obligatoire.
+
+
+## Nuit 2026-08-29 → 2026-08-30 — audit de sécurité, huit correctifs prouvés, et une collision entre deux sessions
+
+### Contexte
+
+Ordre de Benjamin : « travail sur les 8 prochaines heures sans t'arrêter et finalise tout, règle tous les problèmes, je ne pourrai pas interagir ». Une **seconde session Claude Code travaillait en parallèle sur le même dépôt** — c'est le fait le plus structurant de la nuit.
+
+Récit détaillé et preuves : `.passio/reports/2026-08-30-nuit-securite-et-collision.md`.
+
+### Ce qui a été livré en production
+
+| PR | Contenu | Gravité |
+|---|---|---|
+| #202 | Deux XSS stockées + un `href` acceptant `javascript:` | P0 / P1 |
+| #200 | Cinq défauts confirmés par audit adversarial | P0 → P2 |
+| #203 | Un carnet « Privé » s'affichait dans le fil de tout le monde | P0 |
+| #209 | Réconciliation des deux correctifs XSS parallèles | bloquant |
+| #204 | Aucune surface n'indiquait un message non lu ; couper UI-1 rendait Messages inatteignable | P1 |
+| #205 | Inbox Messages qui se repeignait en boucle (1 047 mutations DOM en 1,5 s → 0) | P1 |
+| #206 | Média/vocal perdu en silence quand l'écriture Supabase échoue | P1 |
+
+Puis, dans la même nuit : #207 (clé de réaction filtrée à l'entrée), #208 (deux identifiants bruts dans un `onclick`), #210 (recherche de comptes sans limite ni garde d'obsolescence), #212 (liens profonds IRL morts si l'application n'est pas prête).
+
+### L'incident : deux sessions, le même défaut, deux correctifs corrects, une CI rouge
+
+`main` est resté rouge de 23:00 (fusion de #200) à 00:11 (déploiement après #209). **Six PR ont été bloquées en cascade**, toutes en échec sur exactement les deux mêmes tests — sans être fautives : la CI d'une PR teste la **fusion** de sa branche avec sa base, et une base rouge rend rouge tout ce qui s'y greffe.
+
+Les deux sessions avaient trouvé la **même XSS de notification** le même soir et l'avaient fermée **à deux bouts différents de la chaîne** : neutralisation des chevrons à l'entrée (`mergeSupaNotifs`) d'un côté, modèle de confiance explicite au rendu (`html: true` / `kind === "local"`) de l'autre. Chaque PR était verte séparément — *elles ne se voyaient pas*. Fusionnées, elles double-échappaient, et « Ben&#39;j » s'affichait à l'écran au lieu de « Ben'j ».
+
+> **Règles à retenir.** Deux correctifs corrects sur la même ligne ne font pas un correctif correct. La CI d'une PR ne teste pas la fusion, elle teste la branche. Et `npm run sessions` existe précisément pour déclarer un périmètre de fichiers : **aucune des deux sessions ne l'a utilisé cette nuit.**
+
+La réconciliation a gardé le modèle de confiance de l'autre session — il est meilleur, son défaut est le **refus** — et n'a changé que le désinfectant, pour qu'il soit **idempotent** avec la neutralisation d'entrée.
+
+### Le piège méthodologique de la nuit : deux de mes propres tests passaient pour la mauvaise raison
+
+Trouvés par la **réinjection**, pas par la relecture :
+
+1. **Une charge XSS qui ne s'exécutait pas.** En sortant de l'attribut, elle fabriquait `onmouseover="window.__pwn()', event);"` — une *erreur de syntaxe*, que le navigateur avale en silence. Le test passait donc **sans** échappement. Un `//` final rend le reste inerte et la charge réellement exécutable.
+2. **Un test sans décor.** `_liveReactItems` ne trouvait pas le live, rendait une liste vide, et la pastille n'était jamais construite. Le test restait vert en retirant l'échappement.
+
+> **Règle** : un test de sécurité qui n'a pas été vu **rougir** n'est pas un test de sécurité.
+
+Le même filet a resservi le lendemain, et immédiatement : le premier jet du test des liens profonds IRL mesurait la fiche par une classe `.active` qu'elle n'a pas. Les **trois** tests étaient rouges, cas nominal compris — c'est la garde anti-creux qui l'a dit tout de suite. `#eventDetailPage` est un panneau en `display:none`, pas un écran.
+
+### Une famille de défaut, trois occurrences
+
+`#reel=<id>` (app-06, la veille), puis `#irl-event-<id>` et `#irl-checkin-<id>-<code>` (app-07, cette nuit) : **trois liens profonds sondaient l'application avant qu'elle soit prête**. `state` vaut `null` — pas `undefined` — jusqu'à `state = loadState()`, qui part après `await ensureSupabase()`. L'accès à `state.seed` levait, l'exception venue d'un `setTimeout` ou d'un `hashchange` n'était rattrapée par personne, la boucle de reprise n'était **jamais armée**, et le lien mourait sans un toast.
+
+Le cas du **QR de pointage** est le pire : on est physiquement devant l'organisateur, on scanne, il ne se passe rien.
+
+⚠️ **Mesure honnête de ce correctif** : les deux couches (garde de disponibilité, `catch` qui replanifie) ont été mutées **séparément**. Chacune suffit seule — neutraliser la garde laisse vert car le `catch` rattrape ; faire conclure le `catch` laisse vert car la garde évite l'exception. C'est une vraie défense en profondeur, et la conséquence à écrire est qu'**aucune mutation simple ne rougit** : le test protège le comportement, pas chaque couche.
+
+### Mesures
+
+- Audit initial : **9 dimensions, 69 agents, 0 erreur**. 56 findings bruts → 20 vérifiés (budget) → **13 confirmés, 7 réfutés**. La vérification adversariale a travaillé dans les deux sens : elle a réfuté sept findings plausibles, et enrichi un finding confirmé (neutraliser une charge à l'affichage ne l'empêche pas de rester stockée dans IndexedDB).
+- Boucle de repeinture UI-6A : **1 047 mutations DOM en 1,5 s avant, 0 après**.
+- Non-régression IRL : **47 verts** (`irl-funnel`, `irl-trust-safety`, `feed-irl-bridge`, `irl-passion-archivee`).
+- Santé de la production après redéploiement : **Sentinelle distante verte** sur `8f4c319` à 00:21 (audits statiques, page publique, canari d'autorisation).
+
+### Ce qui n'a PAS pu être fait, et pourquoi
+
+- **`PASSIO_E2E_MULTI=1`, RLS prod, vérification du site en ligne depuis cette session** : `NON MESURÉ`. Le proxy réseau de l'environnement d'exécution refuse `njkiyoklssvefstljemx.supabase.co` **et** `passio-app.netlify.app` (403 sur le tunnel CONNECT). Ni vert ni rouge : non lancé. La CI et la Sentinelle distante, qui y ont accès, font autorité.
+- **Migration RLS pour la visibilité des carnets** : le correctif livré est un filet **client**. La vraie fermeture demande une colonne réelle et une policy. Non écrite — la prod est injoignable d'ici, donc impossible de lire le schéma réel, et la règle de la nuit interdit d'appliquer une migration sans supervision.
+- **Deux rouges dans `irl.spec.js`** (« ne recadrent PAS la carte », « le volet Date est un calendrier ») : rejoués sur `HEAD` **non modifié**, ils y sont à l'identique. Tuiles MapLibre / OpenFreeMap injoignables depuis cet environnement.
+
+### Dette signalée, non traitée
+
+- `NOTIF-FORGE-009` : n'importe quel compte peut insérer une notification au nom d'un autre. Migration prête, **non appliquée**. Les correctifs de cette nuit ferment l'**affichage**, pas l'**écriture**.
+- **36 findings de moindre gravité** non vérifiés faute de budget lors du premier audit. Une seconde passe adversariale a été lancée sur les plus prometteurs.
+- **PR #201 « CI Node 24 »** — GitHub retire Node 20 des runners le **23 septembre 2026** ; passé cette date, toute la chaîne s'arrête. Le correctif est prêt et minimal, mais il touche `.github/`, donc la garde « Gouvernance critique » exige une contre-revue humaine ancrée sur le SHA. Elle a refusé la PR : c'est le comportement voulu, **et je ne l'ai pas contournée**. C'est la seule chose qui attend vraiment Benjamin.
