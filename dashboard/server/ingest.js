@@ -19,13 +19,37 @@ let interactionsDirty = false;
 let tracesDirty = false;
 
 let admin = null;
+// ⚠️ DEUX marques d'eau, et il faut les deux — elles répondent à deux questions
+// différentes que ce fichier confondait jusqu'au 2026-08-30.
+//   • `lastSeenIso` : « à partir d'où reprendre le polling ». Le canari synthétique
+//     DOIT la faire avancer, sinon chaque tour de polling relit les mêmes lignes.
+//     Elle est semée une heure en arrière pour amorcer le premier tour.
+//   • `lastRealSeenIso` : « quand un vrai signal est-il arrivé pour la dernière
+//     fois ». Elle n'est JAMAIS semée et n'avance que sur un événement produit.
+// L'en-tête du pilotage affichait la première sous le libellé « Fraîcheur —
+// dernier signal » : il annonçait « il y a 5 min » (le canari, toutes les 15 min)
+// alors que le dernier signal réel datait d'une heure. Un voyant qui a l'air
+// vivant pendant que plus rien n'arrive est exactement la panne que ce pilotage
+// est censé rendre visible.
 let lastSeenIso = new Date(Date.now() - 60 * 60_000).toISOString();
+let lastRealSeenIso = null;
 let realtimeOk = false;
 
 export function getAdmin() { return admin; }
-export function ingestState() { return { supabaseReady, realtimeOk, lastSeenIso, buffered: store.events.length }; }
 
-function ingestOne(row) {
+// Injection d'un client Supabase FACTICE — tests uniquement. `accounts`,
+// `signups`, `dbwatch` et `testusers` passent tous par `getAdmin()` : sans ce
+// point d'entrée, aucun d'eux n'est atteignable par un test, et c'est
+// `testusers.remove` — qui supprime des comptes avec la clé service_role — qui
+// en pâtissait le plus. Ne JAMAIS l'appeler depuis le code de production :
+// `startIngest` reste le seul chemin qui installe un vrai client.
+export function _setAdminForTests(client) { admin = client; }
+export function ingestState() { return { supabaseReady, realtimeOk, lastSeenIso, lastRealSeenIso, buffered: store.events.length }; }
+
+// Exportée pour les tests : c'est le point de passage UNIQUE de tout événement
+// entrant (historique, realtime, polling de secours). Une erreur ici aveugle le
+// pilotage entier, silencieusement — d'où `test/ingest.test.js`.
+export function ingestOne(row) {
   const ev = normalize(row);
   // Le canari prouve la chaîne publique → DB → dashboard mais ne doit JAMAIS
   // polluer utilisateurs, sessions, KPI, bugs, alertes ou traces produit.
@@ -36,7 +60,11 @@ function ingestOne(row) {
   }
   const isNew = store.add(ev);
   if (!isNew) return;
-  if (ev.ts) { const iso = new Date(ev.ts).toISOString(); if (iso > lastSeenIso) lastSeenIso = iso; }
+  if (ev.ts) {
+    const iso = new Date(ev.ts).toISOString();
+    if (iso > lastSeenIso) lastSeenIso = iso;
+    if (!lastRealSeenIso || iso > lastRealSeenIso) lastRealSeenIso = iso;
+  }
   broadcast("event", ev);
   try { alertsOnEvent(ev); } catch (e) { /* ignore */ }
   // Vérification cross-device des interactions : signal coalescé (le client
@@ -99,6 +127,7 @@ export async function startIngest() {
       try { tracesOnEvent(ev); } catch (e) { /* ignore */ }
       const iso = new Date(ev.ts).toISOString();
       if (iso > lastSeenIso) lastSeenIso = iso;
+      if (!lastRealSeenIso || iso > lastRealSeenIso) lastRealSeenIso = iso;
     });
     // …mais on scelle ces flux : un redémarrage ne doit PAS refaire sonner
     // toutes les alertes des dernières heures.

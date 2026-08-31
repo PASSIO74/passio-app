@@ -801,8 +801,18 @@ async function _syncProfilePhoto(field, folder, dataUrl) {
         renderMainProfile();
       }
     }
-    // 3) Pousse l'URL (ou laisse tel quel si offline) dans la table profiles.
-    if (typeof supaUpsertProfile === "function") await supaUpsertProfile();
+    // 3) Pousse l'URL — et ELLE SEULE. Republier le profil complet ici, c'était
+    // réécrire pseudo, bio et confidentialité depuis l'état local à chaque
+    // changement de photo (P0 confidentialité du 2026-08-31).
+    // `field` vaut "avatarPhoto" ou "coverPhoto" ; la colonne correspondante est
+    // `avatar_url` / `cover_url`, et on ne publie qu'une URL Storage.
+    const _col = (field === "avatarPhoto") ? "avatar_url" : (field === "coverPhoto" ? "cover_url" : null);
+    const _val = state.user.general[field];
+    if (_col && typeof _val === "string" && /^https?:\/\//.test(_val) && typeof supaSavePublicProfile === "function") {
+      await supaSavePublicProfile({ [_col]: _val });
+    } else if (typeof supaEnsureProfileExists === "function") {
+      await supaEnsureProfileExists();   // la ligne doit exister, rien de plus
+    }
   } catch (e) { console.warn("Sync photo profil échouée:", e && e.message); }
 }
 
@@ -1137,7 +1147,33 @@ function openPassionProfileMenu(ev, profileId) {
   ]);
 }
 
+// ⚠️ PREUVE D'INTERACTION, pas déduction. Le marqueur `privacyChoisi` ne doit
+// PAS se déduire de la valeur finale au moment de la soumission : « la case est
+// décochée » ne distingue pas « j'ai choisi public » de « je n'y ai pas touché ».
+// Seul un `change` sur le contrôle prouve un geste.
+function marquerConfidentialiteTouchee() { window._privacyTouched = true; }
+
 function openEditMainProfile() {
+  // Remis à zéro à CHAQUE ouverture : un geste d'hier ne prouve pas celui d'aujourd'hui.
+  // (`editCoverFromModal` réouvre la modale ; il restaure ce drapeau lui-même.)
+  window._privacyTouched = false;
+  // ⚠️ HYDRATATION SERVEUR, en arrière-plan. La case est d'abord rendue depuis
+  // l'état local (instantané), puis corrigée dès que la base répond — sinon un
+  // profil créé PRIVÉ par `ensure` s'afficherait public, et le rendre vraiment
+  // public demanderait deux allers-retours au lieu d'un geste.
+  // On ne corrige QUE si la personne n'a pas encore touché au contrôle : sinon
+  // la case basculerait sous son doigt.
+  setTimeout(function () {
+    try {
+      if (typeof supaHydraterConfidentialite !== "function") return;
+      supaHydraterConfidentialite().then(function (v) {
+        if (v === null || v === undefined) return;
+        if (window._privacyTouched === true) return;
+        var el = document.getElementById("editIsPrivate");
+        if (el) el.checked = !!v;
+      }).catch(function () {});
+    } catch (e) {}
+  }, 0);
   const g = state.user.general || {};
   const RS_LIST = ["instagram","tiktok","facebook","youtube","twitter","linkedin","snapchat","autre"];
   const links = g.rsLinks || [];
@@ -1172,7 +1208,7 @@ function openEditMainProfile() {
     <div class="field">
       <span>Confidentialité</span>
       <label style="display:flex;align-items:flex-start;gap:10px;padding:12px;border:1px solid var(--border);border-radius:12px;cursor:pointer;">
-        <input type="checkbox" id="editIsPrivate" ${g.isPrivate ? "checked" : ""} style="width:20px;height:20px;flex-shrink:0;margin-top:1px;accent-color:var(--accent);"/>
+        <input type="checkbox" id="editIsPrivate" ${g.isPrivate ? "checked" : ""} onchange="marquerConfidentialiteTouchee()" style="width:20px;height:20px;flex-shrink:0;margin-top:1px;accent-color:var(--accent);"/>
         <span style="flex:1;">
           <span style="display:block;font-weight:700;font-size:13px;color:var(--text);">🔒 Compte privé</span>
           <span style="display:block;font-size:11px;color:var(--muted);line-height:1.45;margin-top:3px;">Seuls tes abonnés peuvent voir tes publications, photos, bobines et carnets. Ton pseudo, ton avatar et tes passions restent visibles pour que l'on puisse te trouver.</span>
@@ -1217,6 +1253,8 @@ function openEditMainProfile() {
     const u = document.getElementById("editUsername"); if (u) u.value = draft.username || "";
     if (bioTa) { bioTa.value = draft.bio || ""; if (bioCount) bioCount.textContent = `${bioTa.value.length}/200`; }
     const pv = document.getElementById("editIsPrivate"); if (pv) pv.checked = !!draft.isPrivate;
+    // Un aller-retour par le recadreur ne doit pas effacer la preuve du geste.
+    window._privacyTouched = !!draft.privacyTouched;
     (draft.rs || []).forEach(function(r) {
       const inp = document.querySelector('.rs-link-input[data-platform="' + r.platform + '"]');
       if (inp) inp.value = r.url || "";
@@ -1232,6 +1270,7 @@ function editCoverFromModal() {
     username: document.getElementById("editUsername")?.value || "",
     bio: document.getElementById("editBio")?.value || "",
     isPrivate: !!document.getElementById("editIsPrivate")?.checked,
+    privacyTouched: !!window._privacyTouched,
     rs: [...document.querySelectorAll(".rs-link-input")].map(function(i) { return { platform: i.dataset.platform, url: i.value }; })
   };
   window._editProfileReopen = true;
@@ -1256,24 +1295,26 @@ async function saveMainProfile() {
   state.user.general.username = username;
   state.user.general.bio      = bio;
   state.user.general.rsLinks  = rsLinks;
-  state.user.general.isPrivate = !!document.getElementById("editIsPrivate")?.checked;
-  // ⚠️ NE PLUS écraser l'emoji du compte avec celui de la passion ACTIVE. `g.emoji`
-  // est l'identité publique stable (publiée par `supaUpsertProfile` depuis le
-  // 2026-08-30) : la dériver de la passion active à chaque enregistrement ramenait
-  // exactement le défaut qu'on vient de corriger — l'avatar public du compte
-  // changeait au gré de la passion choisie. On ne l'initialise que s'il est absent.
+  // ⚠️ MARQUEUR DE CHOIX DE CONFIDENTIALITÉ (2026-08-31, venu du hotfix #226).
+  // `general.isPrivate` est la SEULE trace de confidentialité de l'application,
+  // et cette ligne est sa SEULE assignation dans tout le dépôt. Un `false` n'y
+  // prouve donc rien : la case a pu rester décochée pendant qu'on enregistrait
+  // simplement sa bio. Le marqueur n'est posé que si la personne AGIT sur le
+  // contrôle (`change`) — jamais déduit de la valeur finale à la soumission.
+  var _prive = !!document.getElementById("editIsPrivate")?.checked;
+  if (window._privacyTouched === true) state.user.general.privacyChoisi = true;
+  state.user.general.isPrivate = _prive;
+  // ⚠️ NE PLUS écraser l'emoji du compte avec celui de la passion ACTIVE (ADR-010).
+  // `main` écrit ici `state.user.general.emoji = currentProfile()?.emoji` SANS
+  // condition : la dériver de la passion active à chaque enregistrement ramène le
+  // défaut que ce lot corrige — l'avatar public change au gré de la passion.
+  // On ne l'initialise que s'il est absent.
   if (!state.user.general.emoji) state.user.general.emoji = currentProfile()?.emoji || "✨";
   // ⚠️ ET LA COULEUR, symétriquement. `general.color` n'était assigné NULLE PART
-  // — vérifié par `git grep "general\.color\s*="`, qui ne rendait rien sur aucune
-  // branche. `g.color` valait donc toujours `undefined`, et le
-  // `color: g.color || prof.color` de `supaUpsertProfile` retombait
-  // systématiquement sur la couleur de la passion ACTIVE : basculer de passion
-  // continuait de réécrire la couleur de tout l'historique, alors que l'emoji,
-  // lui, était corrigé. La moitié du défaut avait survécu à son correctif.
-  //
-  // Le test `multi-passion-integrite` ① ne l'a pas vu parce qu'il POSE
-  // `general.color` à la main dans son état de départ — un état qu'aucun chemin
-  // réel ne produit. Il testait la fonction, pas le parcours.
+  // — `git grep "general\.color\s*="` ne rendait rien sur aucune branche. `g.color`
+  // valait donc toujours `undefined`, et la couleur publiée retombait
+  // systématiquement sur celle de la passion ACTIVE : la moitié du défaut avait
+  // survécu à son correctif.
   if (!state.user.general.color) state.user.general.color = currentProfile()?.color || "#8b5cf6";
   if (username) state.user.name = username;
   // ⚠️ Renommer TOUTES les passions, pas seulement l'active. `supaUpsertProfile` et
@@ -1286,7 +1327,21 @@ async function saveMainProfile() {
   saveState();
   // await : on garantit que le serveur (source de vérité du profil stable) est à
   // jour AVANT de rendre la main, pour qu'un éventuel re-sync adopte le nouveau nom.
-  if (typeof supaUpsertProfile === "function") { try { await supaUpsertProfile(); } catch(e) {} }
+  // ⚠️ SAUVEGARDE EXPLICITE, champ par champ. C'est le SEUL parcours qui porte
+  // un contrôle de confidentialité, donc le seul autorisé à écrire
+  // `is_private` — et encore : `supaSavePublicProfile` le refusera si
+  // `privacyChoisi` n'est pas posé (cf. le marqueur, plus haut dans cette
+  // fonction). L'ancien appel republiait tout le profil depuis l'état local.
+  if (typeof supaSavePublicProfile === "function") {
+    try {
+      await supaSavePublicProfile({
+        username: state.user.general.username,
+        bio: state.user.general.bio,
+        rs_links: Array.isArray(state.user.general.rsLinks) ? state.user.general.rsLinks : [],
+        is_private: state.user.general.isPrivate,
+      });
+    } catch (e) {}
+  }
   // Flush user_state immédiat (username/bio/rsLinks doivent être dans le blob sync).
   if (typeof supaSaveUserState === "function") { try { supaSaveUserState(); } catch(e) {} }
   closeModal();
@@ -1633,7 +1688,8 @@ function archiverPassion(profileId) {
     else if (window.console && console.error) console.error("[ui-v8] filtre du fil :", e);
   }
   saveState();
-  if (typeof supaUpsertProfile === "function") { try { supaUpsertProfile(); } catch (e) {} }
+  // Passions seules : ni pseudo, ni bio, ni avatar, ni confidentialité.
+  if (typeof supaSavePassionState === "function") { try { supaSavePassionState(); } catch (e) {} }
   if (typeof supaSaveUserState === "function") { try { supaSaveUserState(); } catch (e) {} }
   closeModal();
   renderProfilesScreen();
@@ -1651,7 +1707,8 @@ function restaurerPassion(profileId) {
   // aller-retour archiver→restaurer perdait le réglage, en silence.
   ajouterPassionAuFil(pr.passion);
   saveState();
-  if (typeof supaUpsertProfile === "function") { try { supaUpsertProfile(); } catch (e) {} }
+  // Passions seules : ni pseudo, ni bio, ni avatar, ni confidentialité.
+  if (typeof supaSavePassionState === "function") { try { supaSavePassionState(); } catch (e) {} }
   if (typeof supaSaveUserState === "function") { try { supaSaveUserState(); } catch (e) {} }
   closeModal();
   renderProfilesScreen();
@@ -1889,7 +1946,8 @@ function switchToProfile(id) {
   }
   // Le profil actif = identité publique (1 ligne profiles par compte) → on la
   // resynchronise pour que la recherche/messagerie reflètent le bon pseudo.
-  if (typeof supaUpsertProfile === "function") { try { supaUpsertProfile(); } catch(e) {} }
+  // Passions seules : ni pseudo, ni bio, ni avatar, ni confidentialité.
+  if (typeof supaSavePassionState === "function") { try { supaSavePassionState(); } catch (e) {} }
   // Flush immédiat de user_state pour persister le changement de profil actif.
   if (typeof supaSaveUserState === "function") { try { supaSaveUserState(); } catch(e) {} }
   renderTopbar();
@@ -2058,7 +2116,8 @@ function deleteProfile(profileId) {
   saveState();
   // Re-synchronise le profil public pour retirer la passion supprimée de la
   // liste affichée aux autres.
-  if (typeof supaUpsertProfile === "function") { try { supaUpsertProfile(); } catch(e) {} }
+  // Passions seules : ni pseudo, ni bio, ni avatar, ni confidentialité.
+  if (typeof supaSavePassionState === "function") { try { supaSavePassionState(); } catch (e) {} }
   // Flush immédiat de user_state pour ne pas perdre la suppression si l'utilisateur
   // se déconnecte dans les 2500ms suivantes.
   if (typeof supaSaveUserState === "function") { try { supaSaveUserState(); } catch(e) {} }
@@ -2310,7 +2369,8 @@ async function confirmCreateProfile() {
   saveState();
   // Synchronise tout de suite le profil actif vers Supabase → découvrable dans la
   // recherche et messageable sans attendre le prochain boot.
-  if (typeof supaUpsertProfile === "function") { try { supaUpsertProfile(); } catch(e) {} }
+  // Passions seules : ni pseudo, ni bio, ni avatar, ni confidentialité.
+  if (typeof supaSavePassionState === "function") { try { supaSavePassionState(); } catch (e) {} }
   // Pousse immédiatement user_state (liste complète des profils) sans attendre le
   // debounce de 2500ms — sinon un logout rapide perd le nouveau profil.
   if (typeof supaSaveUserState === "function") { try { supaSaveUserState(); } catch(e) {} }

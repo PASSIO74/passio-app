@@ -786,15 +786,16 @@ window.testSupabaseInsert = async function() {
   var html = "<h3>🧪 TEST SUPABASE INSERT</h3>";
   html += "Envoi d'un post test en Supabase...<br/>";
 
+  // ⚠️ `passion_id` valait « test » — un identifiant qui n'existe pas dans le
+  // référentiel `passions`. Depuis la pose des clés étrangères (prod, 2026-08-17)
+  // cet insert échoue donc SYSTÉMATIQUEMENT en 23503, et cet outil — censé
+  // diagnostiquer Supabase — concluait à une panne de la base. On prend la
+  // première passion canonique réelle.
+  var _passionTest = (typeof PASSIONS !== "undefined" && PASSIONS[0] && PASSIONS[0].id) || null;
   var testPost = {
     id: "test_" + Date.now(),
     author_id: window.MY_UID,
-    // ⚠️ « test » n'est dans AUCUN des 19 identifiants du référentiel : la clé
-    // étrangère `posts_passion_fk` rejetait donc cet insert en 23503, et le
-    // panneau concluait « supaPublishPostWithRetry() échoue silencieusement ».
-    // L'outil accusait Supabase pour une charge qu'il avait lui-même rendue
-    // invalide. Neuvième point d'écriture du dépôt, hors des deux politiques.
-    passion_id: "musique",
+    passion_id: _passionTest,
     mood: "all",
     content: "Post test pour vérifier si Supabase fonctionne",
     media_url: null,
@@ -819,6 +820,12 @@ window.testSupabaseInsert = async function() {
 
     const insertPromise = supa.from("posts").insert(testPost).select();
     const { data, error } = await Promise.race([insertPromise, timeoutPromise]);
+    // ⚠️ Cet outil n'a JAMAIS supprimé son post : chaque lancement laissait une
+    // ligne « Post test pour vérifier si Supabase fonctionne » en base. On
+    // nettoie ce qu'on vient d'écrire, et seulement ça — par son id exact.
+    if (!error) {
+      try { await supa.from("posts").delete().eq("id", testPost.id); } catch (_e) {}
+    }
 
     if (error) {
       html += "<br/><b>❌ ERREUR:</b><br/>";

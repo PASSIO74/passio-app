@@ -2436,12 +2436,170 @@ function getMyUserId() {
 let MY_UID = getMyUserId();
 
 // ---- PROFIL ----
-async function supaUpsertProfile() {
-  try {
-    const prof = currentProfile();
-    const g = state.user.general || {};
 
-    if (!prof) return;
+// Un identifiant de passion n'est publiable dans `profiles.passion_id` que s'il
+// existe RÉELLEMENT dans le référentiel `passions` — sinon la clé étrangère
+// rejette l'upsert entier.
+//
+// ⚠️ Le discriminant est la LISTE BLANCHE, pas le drapeau `custom` ni le préfixe
+// `custom_`. Le drapeau ne vit que dans `state.user.customPassions` et disparaît
+// sur un appareil neuf (la reconstruction du boot rebâtit les profils depuis le
+// jsonb `profiles.passions` sans jamais le restaurer) : s'y fier laisserait
+// passer l'identifiant invalide précisément dans le cas qu'on cherche à réparer.
+// Le préfixe, lui, est une liste NOIRE : il ne couvre ni « autre », ni « test »,
+// ni la chaîne vide. La liste blanche rejette les quatre.
+//
+// ⚠️ LA DÉFINITION VIT DANS app-02, PAS ICI. Le hotfix #226 en portait une copie
+// locale, bornée à `PASSIONS`. La fusion du 2026-08-31 en a fait DEUX
+// déclarations top-level du même nom — et comme app-08 charge APRÈS app-02, la
+// copie du hotfix gagnait par hoisting : elle aurait silencieusement dégradé la
+// version d'ADR-010, qui interroge le référentiel SERVEUR en union avec le socle
+// local. `npm run audit:globals` l'a attrapée. La copie est donc retirée ; le
+// nom résout vers app-02, seule autorité.
+
+// La passion principale publiée : la première VIVANTE et canonique, sinon celle
+// de la passion active si elle l'est, sinon `null`. On ne substitue jamais une
+// passion arbitraire — un compte n'est pas rangé dans une catégorie qu'il n'a
+// pas choisie.
+function _passionIdPubliable(passions, prof) {
+  try {
+    var liste = Array.isArray(passions) ? passions : [];
+    for (var i = 0; i < liste.length; i++) {
+      if (liste[i] && estPassionCanonique(liste[i].id)) return liste[i].id;
+    }
+    if (prof && estPassionCanonique(prof.passion)) return prof.passion;
+  } catch (e) {}
+  return null;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// CONFLIT DE CLÉ : seule la clé PRIMAIRE de `profiles` vaut « la ligne existe »
+// ══════════════════════════════════════════════════════════════════════════
+// ⚠️ Traiter n'importe quel `23505` — ou pire, n'importe quel message contenant
+// « duplicate » — comme un succès serait faux dès qu'une AUTRE contrainte
+// d'unicité existera sur cette table. La dette D2 propose justement un index
+// unique sur `username` : un conflit dessus signifierait « ce pseudo est pris »,
+// PAS « ta ligne existe ». On renoncerait alors à créer une ligne dont dépendent
+// cinq clés étrangères, et le compte serait incapable d'écrire quoi que ce soit.
+//
+// L'asymétrie décide du sens du doute : trop STRICT = on journalise une erreur
+// alors que la ligne existait (sans conséquence — elle existe) ; trop LAXISTE =
+// la ligne n'est jamais créée. On exige donc une PREUVE que le conflit porte
+// sur `id`, et tout `23505` non prouvé est remonté comme une vraie erreur.
+function _conflitClePrimaireProfiles(e) {
+  if (!e || String(e.code) !== "23505") return false;
+  var msg = String(e.message || "");
+  var det = String(e.details || "");
+  // PostgREST relaie le message PostgreSQL, qui NOMME la contrainte violée…
+  if (/profiles_pkey/i.test(msg) || /profiles_pkey/i.test(det)) return true;
+  // …et son `details` nomme la colonne en conflit : « Key (id)=(…) already exists. »
+  if (/Key\s*\(\s*id\s*\)/i.test(det)) return true;
+  return false;   // 23505 sur une autre contrainte : ce n'est PAS notre cas
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// CONFIDENTIALITÉ D'UNE LIGNE CRÉÉE SANS ÉTAT LOCAL AUTORITAIRE
+// ══════════════════════════════════════════════════════════════════════════
+// Règle produit (Benjamin, 2026-08-31) : choix explicitement PROUVÉ → on le
+// respecte ; choix absent, ambigu, ou simple valeur initiale → profil PRIVÉ.
+//
+// ⚠️ NE JAMAIS écrire `is_private: !!g.isPrivate` ici : `undefined` y devient
+// `false` en silence, donc « je ne sais pas » deviendrait « public ».
+//
+// Ce que l'application sait réellement, vérifié sur tout le dépôt : `general`
+// vaut `{}` par défaut (`isPrivate` est donc `undefined`, jamais `false`), et
+// il n'existe qu'UNE seule assignation, dans `saveMainProfile`. Un `false` n'y
+// prouve rien — la case peut simplement avoir été décochée pendant qu'on
+// enregistrait sa bio. D'où le marqueur `privacyChoisi`, posé par
+// `saveMainProfile` UNIQUEMENT quand la personne agit sur le contrôle : elle
+// coche la case, ou elle décoche une case qui était cochée.
+function _confidentialiteDeLaLigneMinimale(g) {
+  if (!g || typeof g !== "object") return true;        // rien à prouver → privé
+  if (g.isPrivate === true) return true;               // privé : le choix se prouve lui-même
+  if (g.privacyChoisi === true && g.isPrivate === false) return false;  // public, explicitement prouvé
+  return true;                                         // inconnu, ou ambigu → privé
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// « INSERT IF ABSENT » ATOMIQUE  (P0 confidentialité, 2026-08-31)
+// ══════════════════════════════════════════════════════════════════════════
+// Garantit l'EXISTENCE de la ligne `profiles` sans toucher un seul champ si
+// elle existe déjà. Utilisée quand l'état local n'est PAS autoritaire.
+//
+// ⚠️ PAS de `select` suivi d'un `insert`. Entre les deux, une autre session —
+// ou le même appareil dans un autre onglet — peut créer la ligne, et on
+// écraserait précisément ce qu'on cherche à préserver : ce serait remplacer une
+// course par une autre. La seule opération sûre est celle que la BASE arbitre :
+// un `insert` simple dont le conflit de clé primaire est traité comme « la
+// ligne existe déjà ». C'est la sémantique `ON CONFLICT (id) DO NOTHING`,
+// obtenue sans RPC ni policy nouvelle.
+//
+// ⚠️ On n'utilise PAS `upsert(…, { ignoreDuplicates: true })` : selon la version
+// du SDK chargée, l'option peut être ignorée et l'en-tête
+// `Prefer: resolution=merge-duplicates` partir à sa place — donc un ÉCRASEMENT,
+// exactement ce qu'on interdit ici. `insert` a la même sémantique partout.
+async function _insertProfilMinimalSiAbsent(uname, g) {
+  var ligne = {
+    id: MY_UID,
+    username: uname || "Profil",
+    emoji: "✨",
+    color: "#8b5cf6",
+    passion_id: null,          // aucune passion résoluble ; la clé étrangère accepte NULL
+    passions: [],
+    bio: "",
+    is_private: _confidentialiteDeLaLigneMinimale(g),
+    rs_links: [],
+  };
+  try {
+    var r = await supa.from("profiles").insert(ligne);
+    // Même filet que le chemin normal : une colonne absente (migration non
+    // appliquée sur ce projet) est retirée, et l'insert retenté.
+    for (var i = 0; i < 3; i++) {
+      var col = ["passions", "is_private", "rs_links"][i];
+      if (!r || !r.error || _conflitClePrimaireProfiles(r.error)) break;
+      if (String(r.error.message || "").indexOf(col) === -1) continue;
+      delete ligne[col];
+      r = await supa.from("profiles").insert(ligne);
+    }
+    if (!r.error) return true;
+    if (_conflitClePrimaireProfiles(r.error)) return true;   // la ligne existe : rien à faire, et surtout rien à écraser
+    // Toute autre erreur est remontée explicitement — y compris un 23505 dont
+    // on n'a PAS pu prouver qu'il portait sur la clé primaire.
+    console.warn("profil (création minimale) :", r.error.message);
+    return false;
+  } catch (e) {
+    console.warn("profil (création minimale) :", e && e.message);
+    return false;
+  }
+}
+
+// Construit la charge complète du profil public depuis l'état local.
+// ⚠️ N'ÉCRIT RIEN : c'est `saveProfileExplicit` qui décide des champs qui
+// partent réellement. Séparer la construction de l'écriture est ce qui permet
+// à un appelant de ne publier QUE ce qu'il vient d'éditer.
+function _chargeProfilComplete() {
+  try {
+    // ⚠️ `prof` est FACULTATIF (hotfix du 2026-08-30). Il y avait ici un
+    // `if (!prof) return;` qui abandonnait TOUTE l'identité publique du compte
+    // dès qu'aucune passion n'était résoluble. C'était du couplage pur : `prof`
+    // n'est utilisé qu'à quatre endroits, tous en DERNIER repli, et chacun a
+    // déjà un littéral de secours (« Profil », « ✨ », « #8b5cf6 », `null`).
+    //
+    // Ce que la garde provoquait : un compte NEUF dont la première passion est
+    // personnalisée n'obtenait AUCUNE ligne `profiles` — et comme `posts`,
+    // `stories`, `conv_members`, `conv_messages` et `post_comments` portent
+    // toutes une clé étrangère vers `profiles(id)`, il ne pouvait plus rien
+    // écrire du tout. (Un compte possédant DÉJÀ une ligne n'était pas bloqué :
+    // un upsert qui échoue ne supprime pas l'existant, ses données publiques
+    // restaient simplement périmées.)
+    //
+    // Invariant désormais tenu : tout compte authentifié pouvant utiliser
+    // l'application peut obtenir une ligne `profiles`, même si aucune passion
+    // canonique ni aucun ancien profil passion n'est résoluble. La seule colonne
+    // vraiment obligatoire hors `id` est `username`, dont la chaîne de replis se
+    // termine par un littéral : l'upsert est donc toujours constructible.
+    const prof = currentProfile() || {};
+    const g = state.user.general || {};
 
     // PSEUDO CENTRALISÉ : un seul nom public pour TOUTES les passions du compte.
     // (Avant : on publiait `prof.name` — le nom du profil-passion ACTIF — donc un
@@ -2451,6 +2609,43 @@ async function supaUpsertProfile() {
     // sentinelles auto-générées : on prend le 1ᵉʳ nom RÉEL disponible.
     const _isDefaultName = (n) => !n || n === "Passionné" || n === "Profil";
     const _uname = [g.username, state.user.name, prof.name].find(n => !_isDefaultName(n)) || "Profil";
+
+    // ══════════════════════════════════════════════════════════════════════
+    // ANCIENNE HEURISTIQUE — RETIRÉE (2026-08-31)
+    // ══════════════════════════════════════════════════════════════════════
+    // Retirer `if (!prof) return;` a débloqué la CRÉATION de la ligne — le
+    // défaut que ce hotfix répare — mais a ouvert du même coup une ÉCRITURE
+    // que `main` n'autorisait pas : un compte dont l'état local est VIDE
+    // (connexion sur un appareil neuf, avant que la reconstruction serveur
+    // n'ait peuplé `state.user.profiles`) envoyait ses REPLIS par-dessus une
+    // ligne serveur existante.
+    //
+    // Mesuré par le run 2337 de la CI, sur deux tests indépendants :
+    // `username` devenait « Profil », `is_private` devenait `false`. Ce n'est
+    // PAS une course de test — c'est une perte de données publiques et une
+    // régression de confidentialité : un compte privé redevenait public, en
+    // silence, à la simple connexion. Neutraliser la fonction dans les tests
+    // masquait le symptôme sans toucher la cause.
+    //
+    // L'état local n'est autoritaire que s'il porte réellement les données du
+    // compte. `state.user.profiles` vide signifie « je ne sais rien », pas
+    // « le compte n'a rien » — et on ne réécrit pas une identité sur une
+    // ignorance. Dans ce cas l'identité SERVEUR fait foi : on garantit
+    // l'EXISTENCE de la ligne, sans toucher aucun champ.
+    //
+    // ⚠️ Une première version aiguillait sur `state.user.profiles.length > 0`,
+    // en supposant qu'un état local porteur de passions était forcément
+    // autoritaire sur l'identité. C'est FAUX, et le contre-exemple est simple :
+    // profil serveur PRIVÉ + passions locales non vides + `general` incomplet
+    // → le compte passait pour autoritaire, `is_private: !!g.isPrivate` valait
+    // `false`, et le compte redevenait public. Le défaut qu'on prétendait
+    // fermer restait ouvert, sur le chemin même que l'heuristique déclarait sûr.
+    //
+    // L'autorité ne se DEVINE pas depuis l'état : elle vient de ce que
+    // l'appelant est en train de faire. D'où trois opérations distinctes,
+    // définies plus bas : `ensureProfileExists`, `saveProfileExplicit` et
+    // `syncPassionsProfil`. `supaUpsertProfile` n'est plus qu'un ALIAS du mode
+    // sûr — voir sa définition.
 
     // Liste de TOUTES les passions du compte → affichée telle quelle sur le
     // profil public. La passion principale (1ʳᵉ créée) reste dans `passion_id`
@@ -2502,15 +2697,21 @@ async function supaUpsertProfile() {
     const profileData = {
       id: MY_UID,
       username: _uname,
-      emoji: g.emoji || prof.emoji || "✨",
-      color: g.color || prof.color || "#8b5cf6",
+      // ⚠️ AUCUNE PRIORITÉ NOUVELLE donnée à `general.emoji`/`general.color` —
+      // exigence de Benjamin, tenue par le hotfix #226. La faire primer était une
+      // fausse stabilisation, et modifiait l'identité publique de comptes existants.
+      // ⚠️ En pratique ce champ n'est plus écrit après la création : seul
+      // `supaSavePublicProfile` publie l'emoji, et `saveMainProfile` ne le lui
+      // passe pas. `supaSavePassionState` ne prend que `passions`/`passion_id`.
+      emoji: prof.emoji || "✨",
+      color: prof.color || "#8b5cf6",
       // La passion « principale » (rétro-compat : feed, embeds, anciens clients)
-      // doit être VIVANTE — `_passions` contient désormais aussi les archivées.
-      // Politique FACULTATIVE (ADR-010) : le profil public a une raison
-      // d'exister indépendante de son classement. Une passion non canonique est
-      // normalisée en `null` plutôt que de faire rejeter TOUT l'upsert par la
-      // clé étrangère — pseudo, avatar, bio et liste des passions n'atteignaient
-      // alors plus personne (P0 du 2026-08-30, hotfix repris ici).
+      // doit être VIVANTE — `_passions` contient aussi les archivées.
+      // Politique FACULTATIVE (ADR-010) : le profil public a une raison d'exister
+      // indépendante de son classement. Une passion non canonique est normalisée
+      // en `null` plutôt que de faire rejeter TOUT l'upsert par la clé étrangère.
+      // On passe par `optionalCanonicalPassion`, la politique COMMUNE, plutôt que
+      // par `_passionIdPubliable` du hotfix : même effet, une seule règle.
       passion_id: optionalCanonicalPassion(((_passions.find(p => !p.archived) || _passions[0] || {}).id) || prof.passion),
       passions: _passions,
       bio: g.bio || "",
@@ -2526,28 +2727,182 @@ async function supaUpsertProfile() {
     if (typeof g.avatarPhoto === "string" && /^https?:\/\//.test(g.avatarPhoto)) profileData.avatar_url = g.avatarPhoto;
     if (typeof g.coverPhoto === "string" && /^https?:\/\//.test(g.coverPhoto)) profileData.cover_url = g.coverPhoto;
 
-    let result = await supa.from("profiles").upsert(profileData, { onConflict: "id" });
-    // Filet de sécurité : si une colonne récente n'existe pas encore en base
-    // (migration non appliquée sur ce projet), on la retire et on retente, plutôt
-    // que de perdre TOUTE la synchro du profil. Généralisé le 2026-07-20
-    // (auparavant : `passions` seule) pour couvrir is_private / rs_links.
-    for (const col of ["passions", "is_private", "rs_links"]) {
-      if (!result || !result.error) break;
-      const msg = result.error.message || "";
-      if (!msg.includes(col)) continue;
-      delete profileData[col];
-      result = await supa.from("profiles").upsert(profileData, { onConflict: "id" });
-    }
-
-    // ⚠️ CONFIDENTIALITÉ. La boucle ci-dessus ne rattrape QUE le cas « colonne
-    // absente ». Un refus RLS, une contrainte ou une panne PostgREST arrivaient
-    // ici sans log, sans retour et sans exception : `is_private` voyage dans ce
-    // payload, donc un compte pouvait rester PUBLIC en base pendant que
-    // l'utilisateur voyait le cadenas à l'écran. On rend le verdict.
-    const v = _writeVerdict(result, { label: "profil (upsert)" });
-    return v.ok;
-  } catch(e) { console.warn("profil (upsert) :", e && e.message); return false; }
+    return profileData;
+  } catch (e) { console.warn("profil (construction) :", e && e.message); return null; }
 }
+
+// ══════════════════════════════════════════════════════════════════════════
+// TROIS OPÉRATIONS, TROIS AUTORITÉS  (P0 confidentialité, 2026-08-31)
+// ══════════════════════════════════════════════════════════════════════════
+// L'autorité d'une écriture ne se DEVINE pas depuis l'état local : elle vient
+// de ce que l'appelant est en train de faire. Les 21 appels de production se
+// répartissent en trois familles, et douze d'entre eux — publication, message,
+// commentaire, RSVP, abonnement… — ne veulent QUE garantir l'existence de la
+// cible d'une clé étrangère. Ils republiaient jusqu'ici tout le profil public
+// depuis l'état local : chaque message envoyé réécrivait l'identité du compte.
+//
+//   · ensureProfileExists()   — la ligne doit exister. N'écrit AUCUN champ.
+//   · saveProfileExplicit(c)  — la personne vient d'éditer `c`. Écrit `c`, rien d'autre.
+//   · syncPassionsProfil()    — la liste des passions a changé. Ne touche QUE
+//                               `passions` et `passion_id` : jamais le pseudo,
+//                               la bio, l'avatar ni la confidentialité.
+
+// ── CACHE PAR UID + PROMESSE PARTAGÉE ────────────────────────────────────
+// Douze appelants demandent `ensure` — publication, commentaire, message,
+// RSVP, abonnement… Sans cache, chaque message enverrait un INSERT voué à
+// échouer en 23505 : un aller-retour réseau et un conflit SQL par interaction.
+//
+// ⚠️ On ne marque JAMAIS un UID comme assuré avant le verdict Supabase. Une
+// erreur réseau ne doit rien mettre en cache, sinon la ligne ne serait jamais
+// créée de toute la session — et le compte, incapable d'écrire, sans reprise
+// possible. Seuls un succès et un conflit de clé PRIMAIRE prouvent l'existence.
+let _profilAssureUid = null;        // UID dont la ligne est CONFIRMÉE en base
+let _profilAssureEnCours = null;    // { uid, p } — promesse partagée par les appels simultanés
+
+// Appelée à la purge du compte et à tout changement d'utilisateur.
+function _resetProfilAssure() { _profilAssureUid = null; _profilAssureEnCours = null; }
+window._resetProfilAssure = _resetProfilAssure;
+
+// Garantit l'existence de la ligne, sans jamais modifier une ligne existante.
+async function supaEnsureProfileExists() {
+  const uid = (typeof MY_UID !== "undefined") ? MY_UID : null;
+  if (!uid) return false;
+  // Changement d'utilisateur : le cache d'un autre UID ne vaut rien ici. Le
+  // fait de CLÉER sur l'uid est la réinitialisation — pas besoin d'un signal.
+  if (_profilAssureUid === uid) return true;
+  if (_profilAssureEnCours && _profilAssureEnCours.uid === uid) return await _profilAssureEnCours.p;
+
+  const p = (async () => {
+    try {
+      const g = (state && state.user && state.user.general) || {};
+      const prof = (typeof currentProfile === "function" && currentProfile()) || {};
+      const _def = (n) => !n || n === "Passionné" || n === "Profil";
+      const uname = [g.username, state && state.user && state.user.name, prof.name].find(n => !_def(n)) || "Profil";
+      return await _insertProfilMinimalSiAbsent(uname, g);
+    } catch (e) { console.warn("supaEnsureProfileExists :", e && e.message); return false; }
+  })();
+
+  _profilAssureEnCours = { uid: uid, p: p };
+  const ok = await p;
+  if (_profilAssureEnCours && _profilAssureEnCours.p === p) _profilAssureEnCours = null;
+  if (ok) _profilAssureUid = uid;   // APRÈS le verdict, jamais avant
+  return ok;
+}
+
+// Champs qu'une action utilisateur peut publier. Liste BLANCHE : un champ
+// inconnu est refusé et signalé, jamais écrit « au cas où ».
+const _CHAMPS_PROFIL_PUBLIABLES = ["username", "bio", "emoji", "color", "avatar_url", "cover_url", "rs_links", "is_private"];
+
+// ⚠️ L'AUTORITÉ EST AUSSI CHAMP PAR CHAMP. Qu'une action soit explicite ne rend
+// pas tous ses champs autoritaires : `onbFinish` est une sauvegarde délibérée du
+// pseudo, de la bio et des passions — mais l'onboarding ne propose AUCUN contrôle
+// de confidentialité, donc il n'a rien à dire sur `is_private`. Écrire `false`
+// « parce qu'on enregistre » rendrait public un compte que la ligne minimale
+// avait justement créé privé.
+function _choixConfidentialiteProuve() {
+  try {
+    const g = (state && state.user && state.user.general) || {};
+    return g.privacyChoisi === true;
+  } catch (e) { return false; }
+}
+
+// Écrit UNIQUEMENT les champs passés, et seulement ceux de la liste blanche.
+// La ligne est garantie d'exister d'abord : un `update` sur une ligne absente
+// toucherait 0 ligne, et le SDK ne lève pas.
+async function supaSavePublicProfile(champs) {
+  try {
+    if (!champs || typeof champs !== "object") return true;
+    let charge = {};
+    for (const k of Object.keys(champs)) {
+      if (_CHAMPS_PROFIL_PUBLIABLES.indexOf(k) === -1) {
+        console.warn("profil : champ non publiable ignoré — " + k);
+        continue;
+      }
+      charge[k] = champs[k];
+    }
+    // La confidentialité n'est écrite qu'avec une PREUVE de choix.
+    if ("is_private" in charge && !_choixConfidentialiteProuve()) {
+      console.warn("profil : `is_private` non écrit — aucun choix de confidentialité prouvé");
+      delete charge.is_private;
+    }
+    if (!Object.keys(charge).length) return true;
+    await supaEnsureProfileExists();
+    let res = await supa.from("profiles").update(charge).eq("id", MY_UID).select("id");
+    // Même filet qu'avant : une colonne absente en base (migration non
+    // appliquée) est retirée, et l'écriture retentée — plutôt que de perdre
+    // TOUT l'enregistrement pour une seule colonne manquante.
+    for (const col of ["passions", "is_private", "rs_links", "avatar_url", "cover_url"]) {
+      if (!res || !res.error) break;
+      if (String(res.error.message || "").indexOf(col) === -1) continue;
+      delete charge[col];
+      if (!Object.keys(charge).length) return true;
+      res = await supa.from("profiles").update(charge).eq("id", MY_UID).select("id");
+    }
+    // ⚠️ CONFIDENTIALITÉ : `is_private` peut voyager ici. Un refus RLS ne lève
+    // pas — sans verdict, un compte resterait PUBLIC en base pendant que
+    // l'utilisateur voit le cadenas à l'écran.
+    return _writeVerdict(res, { expectRows: true, label: "profil (enregistrement)" }).ok;
+  } catch (e) { console.warn("profil (enregistrement) :", e && e.message); return false; }
+}
+
+// La liste des passions a changé (création, archivage, restauration,
+// suppression, changement de passion active). RIEN d'autre ne part : ni pseudo,
+// ni bio, ni avatar, ni couverture, ni confidentialité.
+async function supaSavePassionState() {
+  try {
+    const charge = _chargeProfilComplete();
+    if (!charge) return false;
+    await supaEnsureProfileExists();
+    // `passion_id` est déjà normalisé par `_passionIdPubliable` dans le
+    // constructeur : une passion hors référentiel devient `null` plutôt que de
+    // faire rejeter l'écriture en 23503.
+    let corps = { passions: charge.passions, passion_id: charge.passion_id };
+    let res = await supa.from("profiles").update(corps).eq("id", MY_UID).select("id");
+    if (res && res.error && String(res.error.message || "").indexOf("passions") !== -1) {
+      delete corps.passions;
+      res = await supa.from("profiles").update(corps).eq("id", MY_UID).select("id");
+    }
+    return _writeVerdict(res, { expectRows: true, label: "profil (passions)" }).ok;
+  } catch (e) { console.warn("profil (passions) :", e && e.message); return false; }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// HYDRATATION DE LA CONFIDENTIALITÉ DEPUIS LE SERVEUR  (2026-08-31)
+// ══════════════════════════════════════════════════════════════════════════
+// ⚠️ L'application ne relisait JAMAIS `is_private` : aucune de ses requêtes
+// `profiles` ne sélectionnait cette colonne. L'état local en était donc la
+// seule source — et il peut être faux.
+//
+// Le défaut que ça produit, depuis que `ensure` crée une ligne PRIVÉE : sur un
+// appareil neuf, `general.isPrivate` vaut `undefined`, la case « Compte privé »
+// s'affiche DÉCOCHÉE, et le compte paraît public alors qu'il est privé. Pire :
+// pour le rendre réellement public il faudrait cocher, enregistrer, décocher,
+// enregistrer — deux allers-retours pour un seul geste attendu.
+//
+// On lit donc la valeur serveur et on aligne l'état local dessus.
+// ⚠️ L'hydratation ne pose PAS `privacyChoisi` : une valeur en base est un
+// FAIT, pas la preuve d'un choix de la personne. Seule une interaction réelle
+// avec le contrôle vaut preuve.
+async function supaHydraterConfidentialite() {
+  try {
+    if (typeof MY_UID === "undefined" || !MY_UID) return null;
+    if (typeof supa === "undefined" || !supa || !window._supaReal) return null;
+    const { data, error } = await supa.from("profiles").select("is_private").eq("id", MY_UID).maybeSingle();
+    if (error || !data) return null;
+    if (!state.user.general) state.user.general = {};
+    state.user.general.isPrivate = !!data.is_private;
+    try { saveState(); } catch (e) {}
+    return !!data.is_private;
+  } catch (e) { return null; }
+}
+
+// ⚠️ ALIAS DE COMPATIBILITÉ, volontairement aligné sur le mode le PLUS SÛR.
+// `supaUpsertProfile` reste appelée par des tests et par du code que ce hotfix
+// ne réécrit pas. En la faisant pointer sur `ensureProfileExists`, tout appel
+// non classé échoue du bon côté : il garantit l'existence de la ligne et ne
+// peut écraser aucune donnée publique. Un appelant qui veut vraiment écrire
+// doit le DIRE, en appelant `saveProfileExplicit`.
+async function supaUpsertProfile() { return await supaEnsureProfileExists(); }
 
 // ---- DIAGNOSTIC ----
 // ⚠️ Cette DÉFINITION doit exister tant que des appels diagLog() vivent dans le
@@ -2609,7 +2964,7 @@ async function supaPublishPostWithRetry(post, maxRetries = 2) {
 
   // S'assurer que le profil existe en DB avant de publier
   // (le JOIN profiles!author_id retourne null sinon → pas de nom d'auteur)
-  try { await supaUpsertProfile(); } catch(e) {}
+  try { await supaEnsureProfileExists(); } catch(e) {}
 
   // Timeout d'upload PROPORTIONNEL à la taille du média : l'ancien plafond fixe
   // (20 s vidéo) expirait systématiquement sur une vidéo de 15-25 Mo → le retry
@@ -3190,7 +3545,7 @@ async function supaGetLikeCount(postId) {
 async function supaAddComment(postId, content, commentId) {
   if (typeof supa === "undefined" || !supa || !MY_UID || !window._supaReal) return false;
   try {
-    await supaUpsertProfile();
+    await supaEnsureProfileExists();
     const { error } = await supa.from("post_comments").insert({
       // ⚠️ id ALIGNÉ avec le commentaire local (commentId) pour pouvoir rattacher
       // les interactions cross-compte (like/réponse/emoji) au même id partout.
@@ -3345,7 +3700,7 @@ async function supaPublishStory(story) {
   var _cid = null;
   try { if (window.tel && tel.flowStart) _cid = tel.flowStart("publish_story", { postId: story && story.id }); } catch (e) {}
   try {
-    await supaUpsertProfile();
+    await supaEnsureProfileExists();
     // Uploader le média (photo/vidéo) en Storage — jamais de base64 en DB.
     var mediaUrl = null, mediaType = story.mediaType || null;
     var _uploadeIci = false;   // a-t-on créé un fichier Storage dans CET appel ?
@@ -3483,7 +3838,7 @@ function _passionEvenementRefusee(event) {
 async function supaPublishEvent(event) {
   if (_passionEvenementRefusee(event)) return false;
   try {
-    await supaUpsertProfile();
+    await supaEnsureProfileExists();
     const row = Object.assign(_eventRow(event), {
       id: event.id || uid(), author_id: MY_UID, organizer_id: MY_UID,
     });
@@ -3626,7 +3981,7 @@ async function supaLoadEvents() {
 
 async function supaPublishCdvLive(live) {
   try {
-    await supaUpsertProfile();
+    await supaEnsureProfileExists();
     const res = await supa.from("cdv_lives").insert({
       id: live.id, author_id: MY_UID,
       destination: live.destination || "", description: live.description || "",
@@ -4318,7 +4673,7 @@ window.supaUsernameTaken = supaUsernameTaken;
 
 async function supaCreateConversation(withUserId) {
   try {
-    await supaUpsertProfile();
+    await supaEnsureProfileExists();
     const convId = "conv_" + uid();
     const rConv = await supa.from("conversations").insert({
       id: convId, is_group: false,
@@ -4343,7 +4698,7 @@ async function supaCreateConversation(withUserId) {
 
 async function supaCreateGroup(groupName, memberIds, passionId) {
   try {
-    await supaUpsertProfile();
+    await supaEnsureProfileExists();
     const convId = "grp_" + uid();
     const rConv = await supa.from("conversations").insert({
       id: convId, is_group: true,
@@ -4367,7 +4722,7 @@ async function supaCreateGroup(groupName, memberIds, passionId) {
 
 async function supaSendMessage(convId, content) {
   try {
-    await supaUpsertProfile();
+    await supaEnsureProfileExists();
     await supa.from("conv_messages").insert({
       id: "msg_" + uid(), conv_id: convId,
       from_id: MY_UID, content: _withSenderMeta(content),
@@ -5120,7 +5475,7 @@ async function supaFollowUser(targetId) {
   var _cid = null;
   try { if (window.tel && tel.flowStart) _cid = tel.flowStart("follow_user", { target: targetId }); } catch (e) {}
   try {
-    await supaUpsertProfile();
+    await supaEnsureProfileExists();
     // ⚠️ PAS de created_at : la table follows en prod n'a QUE (follower_id,
     // following_id) — envoyer created_at = 400 PGRST204 silencieux, le follow
     // n'était JAMAIS écrit (seule la notif partait). Découvert par le e2e 2026-07-02.
@@ -5246,7 +5601,7 @@ async function supaLoadStoryViews() {
 // doublon à chaque changement d'avis).
 async function supaSetEventRsvp(eventId, rsvp) {
   try {
-    await supaUpsertProfile();
+    await supaEnsureProfileExists();
     const upd = await supa.from("event_attendees")
       .update({ rsvp: rsvp }).eq("event_id", eventId).eq("user_id", MY_UID).select();
     if (!upd.error && upd.data && upd.data.length) return true;
@@ -5396,7 +5751,7 @@ async function supaLoadEventPosts(eventId) {
 // rejoignent la même conversation (le levier n°1 de participation réelle).
 async function supaCreateEventConversation(ev) {
   try {
-    await supaUpsertProfile();
+    await supaEnsureProfileExists();
     const convId = "evgrp_" + (ev.id || uid());
     const r = await supa.from("conversations").insert({
       id: convId, is_group: true,
@@ -5644,9 +5999,9 @@ async function supaInit() {
         try { if (typeof renderMainProfile === "function") renderMainProfile(); } catch(e) {}
       } else {
         // Pas de profil serveur encore \u2192 publier le profil local (cr\u00e9ation).
-        await supaUpsertProfile();
+        await supaEnsureProfileExists();
       }
-    } catch(e) { try { await supaUpsertProfile(); } catch(_e) {} }
+    } catch(e) { try { await supaEnsureProfileExists(); } catch(_e) {} }
 
     // 1. CHARGER LES POSTS au d\u00e9marrage
     console.log("\ud83d\udce5 [INIT] Chargement des posts Supabase");

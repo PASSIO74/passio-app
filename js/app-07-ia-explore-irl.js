@@ -300,7 +300,8 @@ function quickCreateProfile(pid) {
   if (typeof ajouterPassionAuFil === "function") ajouterPassionAuFil(pid);
   saveState();
   // Re-synchronise le profil public (pseudo unique + liste de passions à jour).
-  if (typeof supaUpsertProfile === "function") { try { supaUpsertProfile(); } catch(e) {} }
+  // Passions seules : ni pseudo, ni bio, ni avatar, ni confidentialité.
+  if (typeof supaSavePassionState === "function") { try { supaSavePassionState(); } catch (e) {} }
   // Flush immédiat de user_state sans attendre le debounce.
   if (typeof supaSaveUserState === "function") { try { supaSaveUserState(); } catch(e) {} }
   closeModal();

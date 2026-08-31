@@ -94,6 +94,30 @@ erreur de démarrage). Journal borné dans `data/supervise.log`.
 | `Installer-Demarrage-Auto.cmd /retirer` | retire le démarrage automatique |
 | `Arreter-Pilotage.cmd` | arrête superviseur + serveur (repart à la prochaine session) |
 
+
+## 2 ter. Tests du pilotage
+
+`npm test` — **347 tests, ~40 s** (dont 5 dans un vrai navigateur).
+
+Ce qu'ils couvrent, du plus proche du code au plus proche de l'écran :
+
+| Niveau | Fichiers | Ce que ça prouve |
+|---|---|---|
+| Unités | 40 fichiers | moteurs, policies, agrégations |
+| Contrat page ↔ serveur | `front-api.test.js` | les 60 appels de la page existent, avec le bon verbe |
+| Gardes déclarées | `routes-caps.test.js` | les 81 routes et leur capacité, figées dans les deux sens |
+| Gardes appliquées | `http-routes.test.js` | un vrai serveur refuse vraiment (401/403), quatre rôles |
+| Écran | `navigateur.test.js` | Chromium : 29 onglets rendus, deux charges d'injection |
+
+Le fichier navigateur **saute bruyamment** si Chromium manque, en disant
+pourquoi — il ne laisse pas de trou : l'échappement est aussi couvert sans
+navigateur par `spa-echappement.test.js`.
+
+Convention maison : **tout test de sécurité ou de non-régression est éprouvé par
+MUTATION** avant d'être retenu — on casse le code exprès, on vérifie que le test
+rougit, on restaure. Un test qu'aucune mutation ne fait rougir ne protège rien,
+et les commits de cette suite nomment les mutations passées.
+
 ## 3 bis. Sentinelle — le débogage sans rien faire
 
 Onglet **Sentinelle**. Elle tourne en permanence dès que le dashboard est lancé :
@@ -225,6 +249,25 @@ Voir [`docs/INTEGRATION_CLAUDE_CODE.md`](docs/INTEGRATION_CLAUDE_CODE.md).
   on mesure latence, erreurs, timings de navigation.
 - L'analyse Claude en direct nécessite `ANTHROPIC_API_KEY` ; sinon mode « copier le prompt ».
 - Le store temps réel est en mémoire (borné) ; l'historique long vit dans Supabase.
+
+### ⚠️ « Fraîcheur » ne mesure QUE le trafic réel (corrigé le 2026-08-30)
+
+`server/ingest.js` tient **deux** marques d'eau, et les confondre a produit un
+défaut observé en production : l'en-tête annonçait « dernier signal il y a
+5 min » alors que le dernier signal réel datait d'une heure et cinq minutes.
+
+| Variable | Question à laquelle elle répond | Le canari la fait-il avancer ? |
+|---|---|---|
+| `lastSeenIso` | « à partir d'où reprendre le polling ? » | **Oui, obligatoirement** — sinon chaque cycle relit les mêmes lignes |
+| `lastRealSeenIso` | « quand un vrai signal est-il arrivé ? » | **Non, jamais** — c'est elle que l'écran affiche |
+
+Le canari synthétique part toutes les 15 min (`DASH_CANARY_EVERY_MIN`) et prouve
+la chaîne publique → base → dashboard ; il ne prouve **aucun** trafic utilisateur.
+L'afficher sous « dernier signal » faisait passer un pilotage sans trafic pour un
+pilotage vivant — exactement la panne que cet écran est censé rendre visible.
+Verrou : les deux tests « marque d'eau » de `test/ingest.test.js`, éprouvés par
+mutation (rendre la fraîcheur sensible au canari, ou la figer, rougit chacun le
+sien).
 
 ## 11. Améliorations recommandées
 

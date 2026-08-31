@@ -1793,6 +1793,11 @@ function purgeAccountScopedData() {
   try { MY_UID = null; window.MY_UID = null; } catch (e) {}
   // Caches en mémoire : le rechargement les emporte, mais il peut échouer ou tarder.
   try { if (typeof _clearProfileCache === "function") _clearProfileCache(); } catch (e) {}
+  // ⚠️ Le cache « ligne profiles assurée » est indexé par UID, donc un changement
+  // d'utilisateur le manque naturellement. On le vide quand même à la purge :
+  // laisser un UID marqué assuré après une déconnexion ferait sauter l'insert
+  // du compte suivant si les identifiants venaient à se recouvrir.
+  try { if (typeof _resetProfilAssure === "function") _resetProfilAssure(); } catch (e) {}
   try { ACCOUNT_SCOPED_KEYS.forEach(function (k) { localStorage.removeItem(k); }); } catch (e) {}
   // ⚠️ Les files de sauvegarde en attente sont suffixées par compte : elles ne
   // peuvent donc pas figurer en dur dans la liste ci-dessus. Chacune contient le
@@ -2431,7 +2436,11 @@ function renderPassionGrid() {
       <div class="passion-tile-label">Créer la mienne</div>
     </div>
   `;
-  grid.innerHTML = tiles + (filtre ? "" : createTile);
+  // Tuile masquée tant que la création est suspendue (hotfix 2026-08-30) : une
+  // porte qui refuse au tap est un cul-de-sac. Le garde d'`openCreateCustomPassion`
+  // reste en place — il couvre tout appelant que ce masquage oublierait.
+  const _peutCreer = !(typeof passionsPersoSuspendues === "function" && passionsPersoSuspendues());
+  grid.innerHTML = tiles + ((filtre || !_peutCreer) ? "" : createTile);
 
   renderOnbStarter();
 }
@@ -2985,7 +2994,18 @@ function onbFinish() {
   // un save, mais on garantit ici un flush explicite en parallèle.
   setTimeout(function() {
     try { if (typeof supaSaveUserState === "function") supaSaveUserState(); } catch(e) {}
-    try { if (typeof supaUpsertProfile === "function") supaUpsertProfile(); } catch(e) {}
+    // ⚠️ L'onboarding est une sauvegarde EXPLICITE du pseudo et des passions,
+    // mais il ne propose AUCUN contrôle de confidentialité : il n'a donc rien à
+    // dire sur `is_private`, et ne l'envoie pas. Écrire `false` « parce qu'on
+    // enregistre » rendrait public un compte que la ligne minimale a créé privé.
+    // Le caractère explicite d'une action ne rend pas tous ses champs autoritaires.
+    try {
+      if (typeof supaSavePublicProfile === "function") {
+        var _g = (state.user && state.user.general) || {};
+        supaSavePublicProfile({ username: _g.username, bio: _g.bio });
+      }
+      if (typeof supaSavePassionState === "function") supaSavePassionState();
+    } catch(e) {}
   }, 800);
 
   // Pas de tour forcé en V2 (spec §8) : « le tour long actuel ne doit pas suivre

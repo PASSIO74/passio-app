@@ -62,7 +62,7 @@ echo   ===============================================
 echo.
 
 set DASH_OPEN_BROWSER=1
-node server/index.js
+node server/start.js
 echo.
 echo Serveur arrete (le process s'est termine).
 echo Si ce n'etait pas voulu, lis le message d'erreur ci-dessus.

@@ -39,6 +39,7 @@ test.describe("Blocage — retrait d'accès effectif", () => {
       null, { timeout: 30000 },
     );
 
+
     const rest = (token, path, init = {}) =>
       page.evaluate(async ([tok, p, i]) => {
         const cfg = window.PASSIO_SUPABASE;
@@ -64,8 +65,21 @@ test.describe("Blocage — retrait d'accès effectif", () => {
     log(`A=${A.uid} (session de la page) B=${B.uid}`);
 
     try {
-      await rest(A.token, "profiles", { method: "POST", body: JSON.stringify({ id: A.uid, username: "e2e_bloc_a", is_private: true }) });
-      await rest(B.token, "profiles", { method: "POST", body: JSON.stringify({ id: B.uid, username: "e2e_bloc_b" }) });
+      // ⚠️ UPSERT, et le résultat est VÉRIFIÉ. Depuis que `supaUpsertProfile` ne
+      // s'interrompt plus faute de passion résoluble (hotfix du 2026-08-30),
+      // l'application crée elle-même la ligne `profiles` quand `creerCompteE2E`
+      // ouvre la session dans la page. Un POST simple tombait alors sur un 409
+      // SANS que ce test s'en aperçoive — il n'assérait pas le statut — et
+      // `is_private: true` n'était donc PAS appliqué : tout ce fichier se serait
+      // mis à éprouver un compte qui n'est pas privé. Un test de confidentialité
+      // qui tourne sur la mauvaise prémisse est pire qu'un test rouge.
+      const upsert = { Prefer: "return=representation,resolution=merge-duplicates" };
+      await rest(A.token, "profiles", { method: "POST", headers: upsert, body: JSON.stringify({ id: A.uid, username: "e2e_bloc_a", is_private: true }) });
+      await rest(B.token, "profiles", { method: "POST", headers: upsert, body: JSON.stringify({ id: B.uid, username: "e2e_bloc_b" }) });
+      // La prémisse de tout le fichier : A est RÉELLEMENT privé côté serveur.
+      const verifA = await rest(A.token, `profiles?id=eq.${A.uid}&select=is_private`, { method: "GET" });
+      expect(Array.isArray(verifA.body) && verifA.body[0] && verifA.body[0].is_private,
+        "le compte A doit être privé en base avant d'éprouver le blocage").toBe(true);
 
       // B s'abonne à A, puis A publie.
       const suivi = await rest(B.token, "follows", { method: "POST", body: JSON.stringify({ follower_id: B.uid, following_id: A.uid }) });
