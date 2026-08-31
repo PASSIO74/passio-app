@@ -982,6 +982,82 @@ function passionById(id) {
 // La règle est donc : on publie TOUT (marqué `archived`), et on filtre ICI, à
 // chaque endroit qui MONTRE les passions de quelqu'un. Une entrée sans marqueur
 // vient d'un client antérieur au correctif : elle est considérée vivante.
+// ══════════════════════════════════════════════════════════════════════════
+// CLASSIFICATION DES PASSIONS (ADR-010)
+// ──────────────────────────────────────────────────────────────────────────
+// Une seule question — « cet identifiant existe-t-il dans le référentiel ? » —
+// et des POLITIQUES distinctes par type d'objet. La clé étrangère est la même
+// sur les cinq tables ; l'invariant PRODUIT, lui, ne l'est pas.
+//
+// AUTORITÉ. La table Supabase `passions` fait foi. Elle est en lecture publique
+// (policy `passions_select_all`) et tient 19 lignes : on la charge UNE fois, en
+// arrière-plan, et on la garde en cache. `PASSIONS` (app-01) sert de REPLI —
+// jamais d'autorité — pour que le chargement puisse échouer sans bloquer les 19
+// passions existantes.
+//
+// ⚠️ NI le drapeau `custom: true`, NI le préfixe `custom_` ne servent de
+// discriminant. Le drapeau ne vit que dans `state.user.customPassions` et
+// disparaît sur un appareil neuf (la reconstruction du boot rebâtit les profils
+// depuis le jsonb `profiles.passions` sans le restaurer) : s'y fier échouerait
+// précisément dans le cas qu'on cherche à traiter. Le préfixe est une liste
+// NOIRE, qui ne couvre ni la sentinelle « autre », ni « test », ni la chaîne
+// vide. La liste blanche rejette les quatre d'un coup.
+let _referentielPassions = null;   // Set des ids réels, ou null tant qu'inconnu
+
+// Chargement en arrière-plan. N'est JAMAIS attendu par le démarrage : tant qu'il
+// n'a pas répondu, `estPassionCanonique` utilise le repli local.
+function chargerReferentielPassions() {
+  try {
+    if (_referentielPassions) return;                       // déjà en cache
+    if (typeof supa === "undefined" || !supa || !window._supaReal) return;
+    supa.from("passions").select("id").then(function (r) {
+      try {
+        if (r && !r.error && Array.isArray(r.data) && r.data.length) {
+          _referentielPassions = new Set(r.data.map(function (x) { return x && x.id; }).filter(Boolean));
+        }
+      } catch (e) {}
+    }).catch(function () {});                                // un échec laisse le repli en place
+  } catch (e) {}
+}
+
+// L'identifiant existe-t-il réellement dans le référentiel ?
+function estPassionCanonique(id) {
+  if (!id || typeof id !== "string") return false;
+  try {
+    if (_referentielPassions) return _referentielPassions.has(id);
+    // Repli : la liste locale. Une passion présente en base mais absente d'ici
+    // ne serait de toute façon proposée par AUCUNE grille — elles sont toutes
+    // construites sur `allPassions()` — donc inatteignable par un chemin
+    // utilisateur. Le repli ne peut pas bloquer une publication réelle.
+    if (typeof PASSIONS === "undefined" || !Array.isArray(PASSIONS)) return false;
+    for (var i = 0; i < PASSIONS.length; i++) if (PASSIONS[i] && PASSIONS[i].id === id) return true;
+  } catch (e) {}
+  return false;
+}
+
+// Les trois états possibles, nommés une fois pour toutes.
+function classerPassion(id) {
+  if (id === null || id === undefined || id === "") return "null";
+  return estPassionCanonique(id) ? "canonique" : "non_canonique";
+}
+
+// ── POLITIQUE : la passion est OBLIGATOIRE (posts, events) ────────────────
+// `null` ET `non_canonique` sont refusés. Rend `{ ok, motif }` — l'appelant
+// décide du message, car il seul sait quel geste l'utilisateur vient de faire.
+function requiredCanonicalPassion(id) {
+  var c = classerPassion(id);
+  if (c === "canonique") return { ok: true, valeur: id };
+  return { ok: false, motif: c };   // "null" | "non_canonique"
+}
+
+// ── POLITIQUE : la passion est FACULTATIVE (profiles, stories, conversations) ──
+// `null` est accepté ; tout identifiant non nul DOIT être canonique, sinon il est
+// normalisé en `null`. On ne bloque jamais l'écriture pour ça : l'objet a une
+// raison d'exister indépendante de son classement.
+function optionalCanonicalPassion(id) {
+  return estPassionCanonique(id) ? id : null;
+}
+
 function passionsPubliques(list) {
   if (!Array.isArray(list)) return [];
   return list.filter(function (p) { return p && p.id && !p.archived; });

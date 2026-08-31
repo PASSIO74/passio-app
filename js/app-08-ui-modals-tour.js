@@ -2385,6 +2385,11 @@ function _initRealSupa() {
     supa = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
     window.supa = supa;
     window._supaReal = true;
+    // Référentiel des passions (ADR-010) : chargé UNE fois, en arrière-plan.
+    // Volontairement NI attendu NI await : le démarrage ne doit pas dépendre de
+    // cette requête, et tant qu'elle n'a pas répondu `estPassionCanonique`
+    // utilise le repli local. Un échec laisse donc les 19 passions utilisables.
+    try { if (typeof chargerReferentielPassions === "function") chargerReferentielPassions(); } catch (e) {}
     return true;
   } catch(e) { console.warn("Supabase init failed:", e); return false; }
 }
