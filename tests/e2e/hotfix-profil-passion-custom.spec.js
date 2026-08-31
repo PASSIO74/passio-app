@@ -27,7 +27,7 @@ const REFERENTIEL = ["musique","photo","voyage","cuisine","sport","litterature",
 async function boot(page, ref = REFERENTIEL) {
   await bootOnboarded(page, null, 1, {});
   await page.evaluate((refs) => {
-    window.__rows = [];      // ce que la « base » contient réellement
+    window.__rows = []; if (typeof _resetProfilAssure === "function") _resetProfilAssure();      // ce que la « base » contient réellement
     window.supaLoadPosts = async () => [];
     window.supaSaveUserState = async () => {};
     // ⚠️ `supa` est un `let` de portée script : le seul point d'injection est
@@ -44,7 +44,37 @@ async function boot(page, ref = REFERENTIEL) {
             window.__rows = window.__rows.filter(r => r.id !== row.id).concat([row]);
             return { error: null };
           },
-          insert: async () => ({ error: null }),
+          // ⚠️ `insert` doit se comporter comme la VRAIE table, pas rendre un
+          // succès vide : depuis le correctif P0 confidentialité du 2026-08-31,
+          // un compte sans profil local résoluble passe par « insert if absent »
+          // et non plus par `upsert`. Un faux `insert` qui n'écrit rien laissait
+          // le test chercher une ligne jamais créée — il testait le faux SDK,
+          // pas le code. La clé primaire est donc modélisée, conflit compris.
+          insert: async (row) => {
+            if (!row || !row.id) return { error: null };
+            if (window.__rows.some(r => r.id === row.id)) {
+              return { error: { code: "23505",
+                message: 'duplicate key value violates unique constraint "profiles_pkey"',
+                details: 'Key (id)=(' + row.id + ') already exists.' } };
+            }
+            window.__rows.push(JSON.parse(JSON.stringify(row)));
+            return { error: null };
+          },
+          // `update` CIBLÉ : ne touche que les colonnes envoyées, comme PostgREST.
+          update: (corps) => {
+            const q = { eq: () => q, select: async () => {
+              window.__updates.push(JSON.parse(JSON.stringify(corps)));
+              const cible = window.__rows.find(r => r.id === window.__uid);
+              if (!cible) return { data: [], error: null };
+              if (corps && corps.passion_id && refs.indexOf(corps.passion_id) < 0) {
+                return { data: null, error: { code: "23503",
+                  message: 'violates foreign key constraint "profiles_passion_fk"' } };
+              }
+              Object.assign(cible, JSON.parse(JSON.stringify(corps)));
+              return { data: [{ id: cible.id }], error: null };
+            } };
+            return q;
+          },
           delete: () => ({ eq: async () => ({ error: null }) }),
           select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }),
         }),
@@ -53,6 +83,11 @@ async function boot(page, ref = REFERENTIEL) {
     window._supaReal = false;
     _initRealSupa();
     window.supaUpsertProfile = window.__vraiSupa.upsertProfile;
+    // ⚠️ `supaInit` a déjà appelé `ensure` : sans remise à zéro, l'UID est
+    // marqué ASSURÉ et l'appel du test rend `true` sans rien insérer.
+    window.__uid = MY_UID;
+    window.__updates = [];
+    if (typeof _resetProfilAssure === "function") _resetProfilAssure();
   }, ref);
 }
 
@@ -88,8 +123,8 @@ test("compte custom-only : la ligne profiles est CRÉÉE, avec passion_id null",
   await compteCustomOnly(page, { general: { username: "Benjamin" } });
 
   const res = await page.evaluate(async () => {
-    window.__rows = [];
-    await supaUpsertProfile();
+    window.__rows = []; if (typeof _resetProfilAssure === "function") _resetProfilAssure();
+    await supaEnsureProfileExists(); await supaSavePassionState();
     return window.__rows;
   });
   // Le cœur du hotfix : une ligne existe.
@@ -113,8 +148,8 @@ test("AUCUN profil résoluble : la ligne est créée quand même", async ({ page
     saveState();
   });
   const rows = await page.evaluate(async () => {
-    window.__rows = [];
-    await supaUpsertProfile();
+    window.__rows = []; if (typeof _resetProfilAssure === "function") _resetProfilAssure();
+    await supaEnsureProfileExists();
     return window.__rows;
   });
   expect(rows.length).toBe(1);
@@ -127,14 +162,14 @@ test("AUCUN profil résoluble : la ligne est créée quand même", async ({ page
 test("le username explicite du compte est CONSERVÉ", async ({ page }) => {
   await boot(page);
   await compteCustomOnly(page, { general: { username: "Benjamin" } });
-  const row = await page.evaluate(async () => { window.__rows = []; await supaUpsertProfile(); return window.__rows[0]; });
+  const row = await page.evaluate(async () => { window.__rows = []; if (typeof _resetProfilAssure === "function") _resetProfilAssure(); await supaEnsureProfileExists(); return window.__rows[0]; });
   expect(row.username).toBe("Benjamin");
 });
 
 test("sans username résoluble : la ligne est créée avec « Profil »", async ({ page }) => {
   await boot(page);
   await compteCustomOnly(page, { effacerNom: true });
-  const row = await page.evaluate(async () => { window.__rows = []; await supaUpsertProfile(); return window.__rows[0]; });
+  const row = await page.evaluate(async () => { window.__rows = []; if (typeof _resetProfilAssure === "function") _resetProfilAssure(); await supaEnsureProfileExists(); return window.__rows[0]; });
   // Un profil temporairement nommé « Profil » est moins grave qu'un compte privé
   // de ligne serveur et bloqué dans toutes ses interactions.
   expect(row).toBeTruthy();
@@ -147,8 +182,8 @@ test("aucune donnée d'authentification privée n'est utilisée", async ({ page 
   const row = await page.evaluate(async () => {
     // Si le code lisait l'e-mail ou les métadonnées d'auth, elles seraient ici.
     window.__authLu = [];
-    window.__rows = [];
-    await supaUpsertProfile();
+    window.__rows = []; if (typeof _resetProfilAssure === "function") _resetProfilAssure();
+    await supaEnsureProfileExists();
     return { row: window.__rows[0], authLu: window.__authLu };
   });
   const brut = JSON.stringify(row.row);
@@ -156,6 +191,9 @@ test("aucune donnée d'authentification privée n'est utilisée", async ({ page 
   expect(row.authLu.length).toBe(0);
 });
 
+// POINT D'ENTRÉE ADAPTÉ : publier une passion n'est plus le rôle de
+// `supaUpsertProfile` (devenu `ensure`), c'est celui de `supaSavePassionState`.
+// L'assertion de RÉSULTAT est conservée intacte.
 test("une passion CANONIQUE reste publiée telle quelle", async ({ page }) => {
   await boot(page);
   await page.evaluate(() => {
@@ -163,7 +201,7 @@ test("une passion CANONIQUE reste publiée telle quelle", async ({ page }) => {
     state.user.currentProfileId = "pp_moto";
     saveState();
   });
-  const row = await page.evaluate(async () => { window.__rows = []; await supaUpsertProfile(); return window.__rows[0]; });
+  const row = await page.evaluate(async () => { window.__rows = []; if (typeof _resetProfilAssure === "function") _resetProfilAssure(); await supaEnsureProfileExists(); await supaSavePassionState(); return window.__rows[0]; });
   // La normalisation ne doit toucher QUE l'invalide.
   expect(row.passion_id).toBe("moto");
 });
@@ -179,7 +217,7 @@ test("passion canonique + passion perso : la canonique est choisie, rien n'est p
     state.user.currentProfileId = "pp_custom";
     saveState();
   });
-  const row = await page.evaluate(async () => { window.__rows = []; await supaUpsertProfile(); return window.__rows[0]; });
+  const row = await page.evaluate(async () => { window.__rows = []; if (typeof _resetProfilAssure === "function") _resetProfilAssure(); await supaEnsureProfileExists(); await supaSavePassionState(); return window.__rows[0]; });
   expect(row.passion_id).toBe("yoga");
   // ⚠️ AUCUNE donnée supprimée : la passion perso reste dans la LISTE publique
   // (le jsonb `passions` ne porte pas de clé étrangère), donc rien n'est perdu.
@@ -196,21 +234,36 @@ test("passion canonique + passion perso : la canonique est choisie, rien n'est p
 // laquelle des deux valeurs dérivées gagne — en modifiant l'identité publique de
 // comptes existants, au passage. Les trois tests ci-dessous verrouillent le
 // périmètre : rendre `prof` facultatif, et rien de plus.
-test("un profil résoluble conserve EXACTEMENT son emoji et sa couleur d'avant", async ({ page }) => {
+// ⚠️ ATTENTE RÉÉCRITE (2026-08-31), pas assouplie. Elle exigeait que
+// `supaUpsertProfile` REPUBLIE l'emoji et la couleur du profil résoluble — donc
+// qu'il republie tout le profil à chaque appel. C'est exactement le comportement
+// invalidé par la séparation des autorités. La garantie devient plus FORTE :
+// `ensure` ne touche AUCUN champ d'une ligne existante.
+test("`ensure` ne réécrit AUCUN champ d'une ligne existante", async ({ page }) => {
   await boot(page);
-  await page.evaluate(() => {
+  // ⚠️ ATTENTE RÉÉCRITE (2026-08-31), et RENFORCÉE. Elle exigeait que
+  // `supaUpsertProfile` REPUBLIE l'emoji et la couleur du profil résoluble —
+  // donc qu'il republie tout le profil à chaque appel. C'est le comportement
+  // invalidé par la séparation des autorités. La garantie devient plus forte :
+  // sur une ligne qui EXISTE, `ensure` ne touche rien du tout.
+  const vu = await page.evaluate(async () => {
     state.user.profiles = [{ id: "pp_moto", name: "QA", passion: "moto", emoji: "🏍", color: "#111111" }];
     state.user.currentProfileId = "pp_moto";
-    // `general` porte d'AUTRES valeurs : elles ne doivent pas prendre le dessus,
-    // c'est le comportement de `main` et le hotfix ne le change pas.
-    state.user.general = Object.assign({}, state.user.general, { emoji: "😎", color: "#ff0000" });
+    state.user.general = { username: "Benjamin", emoji: "🎵", color: "#999999" };
     saveState();
+    // Une ligne serveur préexistante, avec SA propre identité.
+    window.__rows = [{ id: window.__uid, username: "Benjamin", emoji: "🏍", color: "#111111", bio: "Ma bio", is_private: true }];
+    if (typeof _resetProfilAssure === "function") _resetProfilAssure();
+    const ok = await supaEnsureProfileExists();
+    return { ok, row: window.__rows.find(r => r.id === window.__uid), updates: window.__updates.length };
   });
-  const row = await page.evaluate(async () => { window.__rows = []; await supaUpsertProfile(); return window.__rows[0]; });
-  expect(row.emoji).toBe("🏍");
-  expect(row.color).toBe("#111111");
+  expect(vu.ok, "la ligne existe : l'état voulu est atteint").toBe(true);
+  expect(vu.row.emoji).toBe("🏍");
+  expect(vu.row.color).toBe("#111111");
+  expect(vu.row.bio).toBe("Ma bio");
+  expect(vu.row.is_private, "et la confidentialité non plus").toBe(true);
+  expect(vu.updates, "`ensure` n'émet AUCUNE mise à jour").toBe(0);
 });
-
 test("sans profil résoluble : les replis NEUTRES, jamais une passion", async ({ page }) => {
   await boot(page);
   await page.evaluate(() => {
@@ -219,48 +272,62 @@ test("sans profil résoluble : les replis NEUTRES, jamais une passion", async ({
     state.user.customPassions = [];
     saveState();
   });
-  const row = await page.evaluate(async () => { window.__rows = []; await supaUpsertProfile(); return window.__rows[0]; });
+  const row = await page.evaluate(async () => { window.__rows = []; if (typeof _resetProfilAssure === "function") _resetProfilAssure(); await supaEnsureProfileExists(); return window.__rows[0]; });
   expect(row).toBeTruthy();
   expect(row.emoji).toBe("✨");
   expect(row.color).toBe("#8b5cf6");
 });
 
-test("aucune passion active ne devient implicitement l'identité publique", async ({ page }) => {
+test("changer de passion ne réécrit AUCUN champ d'identité publique", async ({ page }) => {
   await boot(page);
-  // Deux passions, l'active porte une identité visuelle marquée. On bascule.
-  const avant = await page.evaluate(async () => {
+  // ⚠️ TEST RÉÉCRIT (2026-08-31). Il CONSTATAIT que l'emoji publié suivait la
+  // passion active — sans valider ce comportement, pour qu'aucun hotfix ne le
+  // change en douce. La séparation des autorités le corrige pour de bon :
+  // changer de passion passe par `supaSavePassionState`, qui n'écrit QUE
+  // `passions` et `passion_id`. Le test devient donc une INTERDICTION.
+  //
+  // ⚠️ La ligne n'est PAS vidée entre les deux temps : c'est précisément sur une
+  // ligne qui persiste que l'écrasement se produisait.
+  const vu = await page.evaluate(async () => {
     state.user.profiles = [
       { id: "pp_moto", name: "QA", passion: "moto", emoji: "🏍", color: "#111111" },
       { id: "pp_yoga", name: "QA", passion: "yoga", emoji: "🧘", color: "#222222" },
     ];
     state.user.currentProfileId = "pp_moto";
+    state.user.general = { username: "Benjamin", bio: "Ma bio" };
     saveState();
-    window.__rows = [];
-    await supaUpsertProfile();
-    return window.__rows[0];
-  });
-  const apres = await page.evaluate(async () => {
+    await supaEnsureProfileExists();
+    // On pose une identité publique complète, comme le ferait l'écran Profil.
+    await supaSavePublicProfile({ username: "Benjamin", bio: "Ma bio", emoji: "🏍", color: "#111111" });
+    const avant = JSON.parse(JSON.stringify(window.__rows.find(r => r.id === window.__uid)));
+
+    // Puis on change de passion.
     state.user.currentProfileId = "pp_yoga";
     saveState();
-    window.__rows = [];
-    await supaUpsertProfile();
-    return window.__rows[0];
+    await supaSavePassionState();
+    const apres = window.__rows.find(r => r.id === window.__uid);
+    return { avant, apres, champs: window.__updates.map(u => Object.keys(u).sort()) };
   });
-  // ⚠️ Ce test CONSTATE le comportement de `main`, il ne le valide pas : l'emoji
-  // publié SUIT la passion active, et c'est précisément la contradiction que la
-  // branche ADR-010 doit résoudre (l'avatar public réécrit rétroactivement tout
-  // l'historique). Le verrouiller ici évite qu'un hotfix le change en douce.
-  expect(avant.emoji).toBe("🏍");
-  expect(apres.emoji).toBe("🧘");
-  // Ce qui NE doit pas bouger : le pseudo public, qui est déjà centralisé.
-  expect(apres.username).toBe(avant.username);
-});
 
+  expect(vu.avant.emoji).toBe("🏍");
+  expect(vu.apres.emoji, "changer de passion ne réécrit plus l'avatar public").toBe("🏍");
+  expect(vu.apres.color).toBe("#111111");
+  expect(vu.apres.username).toBe("Benjamin");
+  expect(vu.apres.bio).toBe("Ma bio");
+  // ⚠️ `passion_id` ne suit PAS la passion active : `_passionIdPubliable` rend
+  // la PREMIÈRE passion vivante et canonique de la liste. C'est la
+  // rétro-compatibilité documentée (« la passion PRINCIPALE, 1ʳᵉ créée »), et
+  // c'est mon test qui avait tort, pas le code. La liste est inchangée, donc
+  // la valeur publiée l'est aussi.
+  expect(vu.apres.passion_id, "la passion principale reste la 1ʳᵉ vivante canonique").toBe("moto");
+  // Et la dernière écriture n'a porté QUE sur les deux colonnes de passion.
+  expect(vu.champs[vu.champs.length - 1]).toEqual(["passion_id", "passions"]);
+});
 test("aucune passion locale n'est supprimée ni transformée par le hotfix", async ({ page }) => {
   await boot(page);
   await compteCustomOnly(page, { general: { username: "Benjamin" } });
   const avant = await page.evaluate(() => JSON.stringify(state.user.profiles));
-  await page.evaluate(async () => { await supaUpsertProfile(); });
+  await page.evaluate(async () => { await supaEnsureProfileExists(); });
   const apres = await page.evaluate(() => JSON.stringify(state.user.profiles));
   expect(apres).toBe(avant);
 });
