@@ -44,6 +44,22 @@ test.describe("AUTHZ-CRITICAL — séparation entre comptes", () => {
       null, { timeout: 30000 },
     );
 
+    // ⚠️ L'upsert AUTOMATIQUE de l'application est neutralisé pour ce test.
+    //
+    // Ce fichier éprouve la frontière REST/RLS par des appels bruts : c'est là
+    // qu'est la vraie barrière, un attaquant n'utilise pas l'interface. L'écriture
+    // de confort du client y est du BRUIT — et depuis que `supaUpsertProfile` ne
+    // s'interrompt plus faute de passion résoluble (hotfix du 2026-08-30), elle
+    // écrit pour de bon : déclenchée de façon ASYNCHRONE par `signInWithPassword`,
+    // elle peut atterrir APRÈS l'upsert du test et le recouvrir avec ses propres
+    // valeurs (`username: "Profil"`, `is_private: false`). C'est exactement ce
+    // qu'ont montré les deux échecs du run 2337.
+    //
+    // On la neutralise donc AVANT toute création de compte : le test redevient
+    // maître de l'état qu'il éprouve. Aucune assertion de sécurité n'en dépend —
+    // toutes passent par `rest()`, jamais par le client.
+    await page.evaluate(() => { window.supaUpsertProfile = async () => {}; });
+
     // ── Deux comptes réels, créés PRÉ-CONFIRMÉS (compte-e2e.js) : « Confirm
     //    email » est activé depuis le 2026-08-30, donc signUp ne rend plus de
     //    session — ce test, barrière RLS du déploiement, expirait sinon.

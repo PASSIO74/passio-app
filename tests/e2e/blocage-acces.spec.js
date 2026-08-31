@@ -39,6 +39,14 @@ test.describe("Blocage — retrait d'accès effectif", () => {
       null, { timeout: 30000 },
     );
 
+    // ⚠️ Même raison qu'`authz-critical` : l'upsert AUTOMATIQUE du client est
+    // neutralisé. Ce fichier éprouve la frontière REST/RLS par des appels bruts.
+    // Depuis que `supaUpsertProfile` écrit vraiment (hotfix du 2026-08-30), il
+    // part de façon asynchrone au `signInWithPassword` et peut recouvrir
+    // l'upsert du test — écrasant notamment `is_private: true` par sa valeur par
+    // défaut. La prémisse de tout ce fichier (« A est privé ») en dépend.
+    await page.evaluate(() => { window.supaUpsertProfile = async () => {}; });
+
     const rest = (token, path, init = {}) =>
       page.evaluate(async ([tok, p, i]) => {
         const cfg = window.PASSIO_SUPABASE;
