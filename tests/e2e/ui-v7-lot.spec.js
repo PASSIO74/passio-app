@@ -615,18 +615,25 @@ test.describe("UI-7 — le kill switch rend l'interface d'avant", () => {
         panneaux: document.querySelectorAll("[data-v7-pan]").length,
         // Les nœuds historiques sont revenus DIRECTEMENT dans l'écran.
         myPosts: dans("myPosts"),
+        // ⚠️ `#profileList` fait exception depuis ADR-011 : sa maison dans le
+        // markup est `#passionManager` (§1 a retiré l'onglet « À propos »), et
+        // ce lot ne l'en sort plus. La coupure ne doit donc PAS le déménager —
+        // un kill switch ne restitue que ce qu'il a lui-même déplacé.
         profileList: dans("profileList"),
         // Les libellés du markup (#185) survivent à la coupure : ce lot ne les
-        // a jamais posés, il ne doit pas les emporter.
+        // a jamais posés, il ne doit pas les emporter. ⚠️ Ils sont QUATRE
+        // depuis ADR-011 : l'onglet « Carnets » est parti avec le Carnet de
+        // voyage (§6). C'est le markup qui a changé, pas le comportement du
+        // kill switch, que ce test mesure.
         labels: document.querySelectorAll(".profile-tab-lbl").length,
       };
     });
     expect(apres.racine).toBe(false);
     expect(apres.barre).toBe(false);
     expect(apres.panneaux).toBe(0);
-    expect(apres.labels).toBe(5);
+    expect(apres.labels).toBe(4);
     expect(apres.myPosts).toBe("screen-profiles");
-    expect(apres.profileList).toBe("screen-profiles");
+    expect(apres.profileList).toBe("passionManager");
 
     // Et l'écran continue de fonctionner : le rendu historique repasse.
     expect(await page.evaluate(() => { renderProfilesScreen(); return !!document.getElementById("myPosts"); })).toBe(true);

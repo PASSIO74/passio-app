@@ -310,15 +310,25 @@ test.describe("UI-8 — un profil personnel, plusieurs passions", () => {
     await expect(page.locator("[data-v6-passio]")).toContainText("Podcast");
     expect(await page.evaluate(() => document.getElementById("postPassion").value)).toBe("podcast");
 
-    // Choisir une AUTRE passion pour une publication ne change pas la passion
-    // active de façon durable. Le <select> est REPLIÉ derrière « Changer » :
+    // ⚠️ INVERSION ASSUMÉE (ADR-011 §3). Ce test exigeait auparavant que choisir
+    // une autre passion ici NE change PAS la passion d'écriture de façon
+    // durable : la ligne « Passion active » du profil s'en chargeait. Cette
+    // ligne est retirée (§1) et le Studio devient le SEUL endroit où la passion
+    // de destination se choisit — donc son choix doit persister, sans quoi plus
+    // rien ne pourrait la changer. Le <select> est REPLIÉ derrière « Changer » :
     // on joue le vrai parcours plutôt que d'écrire dans un nœud invisible.
     await page.locator(".v6-passio .v6-lien").click();
     await page.waitForTimeout(200);
     await page.selectOption("#postPassion", "yoga");
     await page.waitForTimeout(200);
-    expect(await page.evaluate(() => state.user.currentProfileId)).toBe("v8_pod");
+    expect(await page.evaluate(() => state.user.currentProfileId)).toBe("v8_yoga");
     await expect(page.locator("[data-v6-passio]")).toContainText("Yoga");
+
+    // Et le choix survit au départ de l'écran : c'est ce qui en fait un réglage
+    // et non une bascule d'un seul post.
+    await page.evaluate(() => { goTo("feed"); goTo("studio"); });
+    await page.waitForTimeout(500);
+    expect(await page.evaluate(() => document.getElementById("postPassion").value)).toBe("yoga");
   });
 
   test("le Studio ne propose pas de publier dans une passion archivée", async ({ page }) => {
@@ -616,17 +626,23 @@ test.describe("UI-8 — un profil personnel, plusieurs passions", () => {
           document.documentElement.scrollWidth > window.innerWidth + 1);
         expect(debord, `débordement sur « ${onglet} » à ${largeur} px`).toBe(false);
       }
-      // Cible tactile : le bouton d'état et « Changer » restent confortables.
+      // Cible tactile. ⚠️ Les deux commandes que ce test mesurait — le bouton
+      // « Utiliser pour créer » de la carte et le « Changer » de la ligne
+      // « Passion active » — n'existent plus : ADR-011 retire la ligne (§1) et
+      // fait de la carte une INFORMATION, le choix de la passion d'écriture
+      // ayant rejoint le Studio (§3). L'intention du test est conservée sur les
+      // deux surfaces qui les remplacent : la bulle du rail de passions (le
+      // geste de filtrage, §1) et la carte entière (le geste d'édition).
       const h = await page.evaluate(() => {
-        const b = document.querySelector("[data-v8-utiliser]");
-        const c = document.querySelector("[data-v8-changer]");
+        const b = document.querySelector("[data-v8-card]");
+        const c = document.querySelector("#v9ProfilePassions [data-passion-tile]");
         return {
-          etat: b ? Math.round(b.getBoundingClientRect().height) : 0,
-          changer: c ? Math.round(c.getBoundingClientRect().height) : 0,
+          carte: b ? Math.round(b.getBoundingClientRect().height) : 0,
+          bulle: c ? Math.round(c.getBoundingClientRect().height) : 0,
         };
       });
-      expect(h.etat).toBeGreaterThanOrEqual(40);
-      expect(h.changer).toBeGreaterThanOrEqual(32);
+      expect(h.carte).toBeGreaterThanOrEqual(40);
+      expect(h.bulle).toBeGreaterThanOrEqual(40);
       expect(errors.js, "exceptions JS").toEqual([]);
     });
   }

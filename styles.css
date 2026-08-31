@@ -9503,83 +9503,21 @@ body.ctx-locked #appMain { overflow: hidden; }
    d'avant à l'octet près, sans qu'aucune règle existante ait été réécrite.
 
    §9 : fond clair, accent violet, couvertures conservées, cartes compactes.
-   La passion active doit se repérer en moins d'une seconde — c'est le seul
-   endroit de cet écran qui porte l'accent plein.
+
+   ⚠️ ADR-011 a retiré d'ici trois familles devenues inatteignables : la ligne
+   « Passion active » (`.v8-active-*`), que §1 supprime du profil, et la rangée
+   de pastilles de filtre (`.v8-filter-row`, `.v8-chip`), remplacée par le rail
+   de bulles du Fil — c'est `.v9-profile-strip` qui l'habille désormais. Ce qui
+   reste ici ne concerne plus que la GESTION des passions (`#passionManager`).
    ══════════════════════════════════════════════════════════════════════════ */
-
-/* ── La ligne « Passion active : 🏍️ Moto · Changer », sous la carte d'identité ── */
-.v8-active-line {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 10px;
-  padding: 8px 12px;
-  border-radius: 999px;
-  background: var(--bg-tint);
-  border: 1px solid var(--border);
-}
-.v8-active-txt { font-size: 13px; color: var(--muted); line-height: 1.3; }
-.v8-active-txt b { color: var(--text); font-weight: 800; }
-.v8-active-btn {
-  appearance: none;
-  border: 0;
-  border-radius: 999px;
-  background: var(--accent);
-  color: #fff;
-  font-family: inherit;
-  font-size: 12.5px;
-  font-weight: 800;
-  padding: 0 16px;
-  min-height: 34px;
-  cursor: pointer;
-}
-.v8-active-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-
-/* ── La rangée « Toutes · Moto · Podcast · Yoga » ──────────────────────────
-   Elle défile DANS son propre conteneur : le corps de la page ne défile
-   jamais horizontalement, quel que soit le nombre de passions. */
-.v8-filter-row {
-  display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
-  padding: 2px 2px 8px;
-  margin-bottom: 2px;
-}
-.v8-filter-row::-webkit-scrollbar { display: none; }
-.v8-chip {
-  appearance: none;
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  min-height: 36px;
-  padding: 0 14px;
-  border-radius: 999px;
-  border: 1.5px solid var(--border);
-  background: var(--bg-card);
-  color: var(--text-dim, var(--muted));
-  font-family: inherit;
-  font-size: 12.5px;
-  font-weight: 700;
-  white-space: nowrap;
-  cursor: pointer;
-  transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
-}
-.v8-chip.on {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-}
-.v8-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* ── La carte d'une passion ────────────────────────────────────────────────
    Plus compacte que la carte historique (trois passions doivent se parcourir
-   d'un coup d'oeil sur mobile), et son état passe à la ligne : « Utiliser pour
-   créer » est un libellé long, le comprimer sur la même ligne que le nom
-   couperait l'un ou l'autre à 320 px. */
+   d'un coup d'oeil sur mobile), et son état passe à la ligne : le libellé est
+   long, le comprimer sur la même ligne que le nom couperait l'un ou l'autre à
+   320 px. ⚠️ Depuis ADR-011 §3 cet état n'est plus qu'une INFORMATION
+   (« Passion du Studio ✓ ») : le choix de la passion d'écriture a rejoint le
+   Studio, la carte ne le commande plus. */
 .v8-passion-card {
   flex-wrap: wrap;
   align-items: center;
@@ -9657,7 +9595,6 @@ body.ctx-locked #appMain { overflow: hidden; }
 .v8-switch-row.on { border-color: var(--accent); background: var(--bg-tint); cursor: default; }
 .v8-switch-emoji { font-size: 20px; flex: 0 0 auto; }
 .v8-switch-name { flex: 1 1 auto; min-width: 0; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.v8-switch-on { flex: 0 0 auto; font-size: 12px; font-weight: 800; color: var(--accent); }
 .v8-switch-go {
   appearance: none;
   flex: 0 0 auto;
@@ -9684,7 +9621,7 @@ body.ctx-locked #appMain { overflow: hidden; }
 .v6a-moi-ctx { color: var(--muted); font-weight: 600; }
 
 @media (prefers-reduced-motion: reduce) {
-  .v8-chip, .v8-passion-card { transition: none; }
+  .v8-passion-card { transition: none; }
 }
 /* ── Pastille « messages non lus » sur la barre de navigation ──────────────
    Posée par renderMsgBadge (app-08). Elle répare un manque, pas un lot : depuis
