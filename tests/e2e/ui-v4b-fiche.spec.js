@@ -213,7 +213,6 @@ test("URL normale : la hiérarchie cible, sans rien perdre de la fiche historiqu
       invitation: html.includes("openEventInvite"),
       partage: html.includes("shareEvent("),
       discussion: html.includes("openEventChat"),
-      carnet: html.includes("startTripFromEvent"),
       signalement: html.includes("reportEvent"),
       album: !!document.getElementById("eventAlbum"),
       commentaires: !!document.getElementById("eventCommentsList"),

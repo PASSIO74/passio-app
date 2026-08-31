@@ -28,7 +28,7 @@
      }
    `icon` peut être un emoji OU du SVG brut (confiance : produit par nous).
    `label`/`sub` sont échappés. `data` pose des data-attributes (réutilise les
-   listeners délégués déjà en place : [data-irlfilter], [data-cdvfilter]…).
+   listeners délégués déjà en place : [data-irlfilter]…).
 
    IIFE "use strict" : n'expose QUE window.ContextualTools / window.closeCtxTools
    (audit:globals reste vert — aucun global top-level parasite).
@@ -255,7 +255,7 @@
     // Rendu déporté (lot UI-4A5). Voir `renderInto` ci-dessus.
     renderInto: renderInto,
     isOpen: function () { return isOpen; },
-    // Écran sur lequel le panneau est ouvert (« irl », « cdv »…), ou null.
+    // Écran sur lequel le panneau est ouvert (« irl »…), ou null.
     pageType: function () { return currentType; }
   };
   // Raccourci pour les onClick inline des items (« closeCtxTools();openX() »).

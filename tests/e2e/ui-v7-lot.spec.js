@@ -79,9 +79,12 @@ test.describe("UI-7 §1 — vocabulaire visible", () => {
     await expect(page.locator(".v6-identite")).toContainText("Changer de profil");
 
     // Profil : « Mes passions », « + Ajouter une passion ».
-    await page.evaluate(() => goTo("profiles"));
+    // ⚠️ ANCRE DÉPLACÉE, ASSERTION CONSERVÉE. La refonte multi-passion (ADR-011)
+    // retire l'onglet « À propos » ; le titre et son lien vivent maintenant dans
+    // le panneau `#passionManager`, qu'ouvre `openPassionManager`. Le lot UI-7
+    // les renomme toujours, et c'est ce que ce cas vérifie.
+    await page.evaluate(() => { goTo("profiles"); openPassionManager(); });
     await page.waitForTimeout(600);
-    await page.locator('[data-v7-tab="apropos"]').click();
     await expect(page.locator("#nouveauProfilLien")).toHaveText("+ Ajouter une passion");
     expect(await page.evaluate(() =>
       document.getElementById("nouveauProfilLien").parentNode.textContent))
@@ -383,15 +386,20 @@ test.describe("UI-7 §4 — Messages quitte le bandeau supérieur", () => {
 // ══════════════════════════════════════════════════════════════════════════
 // ⑥ LE PROFIL (§6)
 // ══════════════════════════════════════════════════════════════════════════
-test.describe("UI-7 §6 — trois onglets nommés au Profil", () => {
-  test("Publications · Activités · À propos, et rien n'est perdu", async ({ page }) => {
+test.describe("UI-7 §6 — les onglets nommés au Profil", () => {
+  // ⚠️ CE CAS A ÉTÉ RÉALIGNÉ, PAS AFFAIBLI. Le lot UI-7 posait TROIS onglets ;
+  // la refonte multi-passion (ADR-011 §2) n'en garde que deux et retire
+  // « À propos », dont le contenu est passé dans `#passionManager`. Toutes les
+  // assertions « rien n'est perdu » sont conservées — c'est leur destination qui
+  // change, pas leur exigence.
+  test("Publications · Activité, et rien n'est perdu", async ({ page }) => {
     const errors = { js: [], console: [], network: [] };
     await boot(page, errors, 2);
     await page.evaluate(() => goTo("profiles"));
     await page.waitForTimeout(700);
 
     expect(await page.locator("[data-v7-tab]").allTextContents())
-      .toEqual(["Publications", "Activités", "À propos"]);
+      .toEqual(["Publications", "Activité"]);
 
     // Chaque bloc historique est DANS un panneau, pas supprimé.
     const place = await page.evaluate(() => {
@@ -412,12 +420,15 @@ test.describe("UI-7 §6 — trois onglets nommés au Profil", () => {
     expect(place.myPosts).toBe("publications");
     expect(place.top).toBe("publications");
     expect(place.events).toBe("activites");
-    expect(place.profils).toBe("apropos");
-    expect(place.sousFiltres).toBe(5);   // les cinq types restent accessibles
+    // La liste des passions n'est plus dans un panneau d'onglet : elle vit dans
+    // `#passionManager`, replié, hors du flux de la page.
+    expect(place.profils).toBe("hors-panneau");
+    // ⚠️ Quatre types, plus cinq : « Carnets » est parti avec la fonctionnalité.
+    expect(place.sousFiltres).toBe(4);
     // Les libellés viennent du MARKUP (`.profile-tab-lbl`, PR #185) : ce lot
     // n'en repose aucun — deux libellés pour un onglet, c'était le doublon.
     expect(await page.locator(".v7-subfilters .profile-tab-lbl").allTextContents())
-      .toEqual(["Tout", "Photos", "Vidéos", "Bobines", "Carnets"]);
+      .toEqual(["Tout", "Photos", "Vidéos", "Bobines"]);
     // La ligne d'aide suit le groupe qu'elle explique.
     expect(await page.evaluate(() => {
       const h = document.querySelector(".profile-tabs-hint");
@@ -435,12 +446,14 @@ test.describe("UI-7 §6 — trois onglets nommés au Profil", () => {
       [...document.querySelectorAll("[data-v7-pan]")].filter((p) => !p.hidden)
         .map((p) => p.getAttribute("data-v7-pan")))).toEqual(["activites"]);
 
-    // « À propos » garde l'identité active et l'accès secondaire aux carnets.
-    await page.locator('[data-v7-tab="apropos"]').click();
-    await expect(page.locator("#profileList .v6b-ident").first()).toBeVisible();
-    await expect(page.locator(".v7-secondaire", { hasText: "Carnets de voyage" })).toBeVisible();
-    await page.locator(".v7-secondaire", { hasText: "Carnets de voyage" }).click();
-    await expect(page.locator("#screen-cdv")).toHaveClass(/active/);
+    // ⚠️ « À propos » et son lien « Carnets de voyage » ont disparu (ADR-011).
+    // Ce qui compte reste vérifié : la gestion des passions n'est pas devenue
+    // inatteignable — retirer un onglet ne doit jamais fermer une fonction.
+    await expect(page.locator('[data-v7-tab="apropos"]')).toHaveCount(0);
+    await expect(page.locator(".v7-secondaire", { hasText: "Carnets de voyage" })).toHaveCount(0);
+    await page.evaluate(() => openPassionManager());
+    await page.waitForTimeout(300);
+    await expect(page.locator("#profileList .profile-card").first()).toBeVisible();
 
     expect(errors.js, "exceptions JS").toEqual([]);
   });

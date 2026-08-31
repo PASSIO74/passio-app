@@ -56,7 +56,10 @@ test.describe("profils types — parcours simulés", () => {
     expect(errors.js).toEqual([]);
   });
 
-  test("créateur média : publie photo, vidéo et carnet", async ({ page }) => {
+  // ⚠️ « et carnet » a quitté ce cas avec la fonctionnalité (ADR-011 §5) : le
+  // type `vlog` n'est plus publiable et son formulaire n'existe plus. Les deux
+  // autres formats restent vérifiés à l'identique.
+  test("créateur média : publie photo et vidéo", async ({ page }) => {
     const errors = { js: [], console: [], network: [] };
     await bootOnboarded(page, errors);
 
@@ -82,16 +85,6 @@ test.describe("profils types — parcours simulés", () => {
       await publishPost();
       out.video = state.userPosts[0] && state.userPosts[0].type === "video" && !!state.userPosts[0].video;
 
-      // ── CARNET (vlog) ──
-      goTo("studio");
-      studioType = "vlog"; photoDataUrl = null; videoDataUrl = null;
-      const dest = document.getElementById("vlogDestination");
-      if (dest) dest.value = "Lisbonne [audit]";
-      vlogState.cover = null;
-      vlogState.steps = [{ place: "Alfama", text: "Jour 1", tip: "Tram 28", photo: null, video: null, audio: null }];
-      await publishPost();
-      out.vlog = state.userPosts[0] && state.userPosts[0].type === "vlog" && /Lisbonne/.test(state.userPosts[0].destination || state.userPosts[0].text || "");
-
       // Le fil (passion activée) doit rendre la photo postée (img data:)
       if (!_activeFeedPassions.has(passion)) toggleProfileFilter(passion);
       out.totalUserPosts = state.userPosts.length;
@@ -100,8 +93,7 @@ test.describe("profils types — parcours simulés", () => {
 
     expect(res.photo, "post photo créé (type+image)").toBe(true);
     expect(res.video, "post vidéo créé (type+video)").toBe(true);
-    expect(res.vlog, "carnet créé (type vlog + destination)").toBe(true);
-    expect(res.totalUserPosts, "3 posts créés").toBe(3);
+    expect(res.totalUserPosts, "2 posts créés").toBe(2);
 
     // ⚠️ `renderFeed` peint 12 cartes puis complète le reste en idle. Depuis
     // l'enrichissement du contenu de démonstration (2026-08-28), la passion

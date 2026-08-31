@@ -125,36 +125,11 @@ test.describe("Échappement contextuel — contenu d'un autre compte", () => {
     expect(r.couleurGardee).toBe("#7c3aed");
   });
 
-  test("carnet d'un autre compte : ni la couverture, ni l'identifiant, ni l'emoji ne s'exécutent", async ({ page }) => {
-    await bootAvecSonde(page);
-
-    await page.evaluate((H) => {
-      state.supabasePosts = state.supabasePosts || [];
-      state.supabasePosts.push({
-        id: H.id, type: "vlog", authorId: "u_attaquant", authorName: "Attaquant",
-        authorEmoji: H.html, authorColor: H.couleur, cover: H.url,
-        destination: H.html, createdAt: new Date().toISOString(),
-        steps: [], visibility: "public",
-      });
-      renderVlogCarousel();
-      if (typeof renderCdvScreen === "function") renderCdvScreen();
-    }, HOSTILE);
-
-    // La carte doit bien avoir été rendue, sinon le test ne prouverait rien.
-    expect(await page.locator(".cdv-feed-card, .vlog-card-mini").count()).toBeGreaterThan(0);
-
-    expect((await secouerEtRelever(page)).executions).toBe(0);
-
-    // Le clic est le moment de vérité pour l'identifiant : c'est là que la chaîne
-    // JS de l'attribut onclick est réellement parsée puis exécutée.
-    for (const sel of [".vlog-card-mini", ".cdv-feed-card", "[data-postlike]"]) {
-      const el = page.locator(sel).first();
-      if (await el.count()) await el.click({ timeout: 3000, force: true }).catch(() => {});
-    }
-    await page.waitForTimeout(300);
-
-    expect((await secouerEtRelever(page)).executions).toBe(0);
-  });
+  // ⚠️ LE CAS « carnet d'un autre compte » A ÉTÉ RETIRÉ avec la fonctionnalité
+  // Carnet de voyage (ADR-011 §5) : ni `renderVlogCarousel`, ni
+  // `renderCdvScreen`, ni les cartes qu'ils peignaient n'existent plus. La
+  // surface d'attaque disparaît avec la surface d'affichage — ce n'est pas un
+  // relâchement de garde, c'est la garde qui n'a plus rien à garder.
 
   test("superposition de story : position et couleur ne peuvent pas sortir de l'attribut style", async ({ page }) => {
     await bootAvecSonde(page);

@@ -1,14 +1,29 @@
-// ADR-010 — « Un seul profil, plusieurs passions » : le contrat du Fil.
+// LE CONTRAT DU FIL — sélection ADDITIVE (refonte multi-passion, §4).
+//
+// ⚠️ CETTE SUITE A ÉTÉ RÉÉCRITE, PAS ASSOUPLIE. Elle verrouillait le modèle
+// d'ADR-010 : deux VUES EXCLUSIVES, « Accueil » (union passions + suivis) et
+// « Suivis » (rien d'autre), où toucher une passion quittait « Suivis ». La
+// refonte remplace cette exclusivité par un OU INCLUSIF : « Suivis » est un
+// critère au même titre qu'une passion ou qu'une envie, et cocher l'un
+// n'éteint jamais l'autre. Trois cas exigeaient littéralement l'inverse de ce
+// contrat-ci (⑥, ⑥ ter, ⑥ quater) : ils sont réécrits sur la nouvelle règle.
+//
+// ⚠️ CE QUI NE BOUGE PAS, et qu'il ne faut pas affaiblir en passant :
+//   · la PERSISTANCE du choix (⑦) — l'ancienne bascule `_showFollowingFeed`
+//     n'était pas persistée, donc suivre quelqu'un n'avait aucun effet durable ;
+//   · le garde de ⑥ quinquies — sans passion, la tuile « Suivis » doit survivre,
+//     sinon un compte neuf qui suit déjà quelqu'un n'a plus aucune commande.
 //
 // Ce que cette suite prouve :
-//   ① « Accueil » montre le contenu d'une passion choisie ;
-//   ② « Accueil » montre AUSSI un compte suivi dont la passion n'est PAS choisie ;
-//   ③ une publication présente dans les deux sources n'apparaît qu'UNE fois ;
-//   ④ sans passion choisie, les comptes suivis restent visibles ;
-//   ⑤ sans passion ni abonnement, un état vide EXPLICATIF apparaît ;
-//   ⑥ « Suivis » ne montre QUE les comptes suivis ;
-//   ⑦ la vue survit à un rechargement (l'ancienne bascule, non persistée, ne
-//      survivait pas — suivre quelqu'un n'avait donc aucun effet durable) ;
+//   ① une passion cochée fait entrer son contenu ;
+//   ② « Suivis » coché fait entrer un compte suivi, passion NON cochée ;
+//   ③ une publication présente dans plusieurs sources n'apparaît qu'UNE fois ;
+//   ④ sans passion cochée, les comptes suivis restent visibles ;
+//   ⑤ sans aucun critère, un état vide EXPLICATIF apparaît ;
+//   ⑥ « Suivis » seul ne montre QUE les comptes suivis ;
+//   ⑥ ter la tuile bascule « Suivis » et le choix persiste ;
+//   ⑥ quater cocher une passion N'ÉTEINT PAS « Suivis » (le cœur de §4) ;
+//   ⑦ le choix survit à un rechargement ;
 //   ⑧ se désabonner retire bien la source ;
 //   ⑨ changer « Publier dans » ne touche pas « Passions à afficher » ;
 //   ⑩ changer « Passions à afficher » ne touche pas « Publier dans » ;
@@ -49,7 +64,9 @@ async function poser(page, opts = {}) {
     state.user.profiles = [{ id: "pp_0", name: "Audit QA", passion: "musique", emoji: "🎵", color: "#7c3aed" }];
     state.user.currentProfileId = "pp_0";
     setFeedPassions(o.passions === undefined ? ["musique"] : o.passions);
-    state.feedView = o.vue || "accueil";
+    // « Suivis » est désormais un booléen persisté, pas une vue exclusive.
+    state.feedFollowingOn = (o.suivis === undefined) ? true : !!o.suivis;
+    if (typeof setFeedIntents === "function") setFeedIntents(o.envies || []);
     selectedMoods = new Set(["all", "creation", "learn", "chill", "actu"]);
     state.feedMoodsTouched = true;
     window._feedDomSig = null;
@@ -61,26 +78,26 @@ async function poser(page, opts = {}) {
 
 const texte = (page) => page.evaluate(() => document.getElementById("feedList").innerText);
 
-test("① Accueil montre le contenu d'une passion choisie", async ({ page }) => {
+test("① une passion cochée fait entrer son contenu", async ({ page }) => {
   await poser(page);
   expect(await texte(page)).toContain("POST_PASSION");
 });
 
-test("② Accueil montre un compte suivi même si sa passion n'est pas choisie", async ({ page }) => {
+test("② « Suivis » fait entrer un compte suivi même sans passion commune", async ({ page }) => {
   await poser(page);
   // LE test de ce lot : avant ADR-010, cette publication n'apparaissait qu'après
   // avoir activé une bascule qui repartait à zéro au rechargement suivant.
   expect(await texte(page)).toContain("POST_SUIVI");
 });
 
-test("③ une publication des deux sources n'apparaît qu'une fois", async ({ page }) => {
+test("③ une publication de plusieurs sources n'apparaît qu'une fois", async ({ page }) => {
   await poser(page);
   const n = await page.evaluate(() =>
     document.querySelectorAll('#feedList [data-postid="p_double"]').length);
   expect(n).toBe(1);
 });
 
-test("④ sans passion choisie, les comptes suivis restent visibles", async ({ page }) => {
+test("④ sans passion cochée, les comptes suivis restent visibles", async ({ page }) => {
   await poser(page, { passions: [] });
   const t = await texte(page);
   expect(t).toContain("POST_SUIVI");
@@ -89,8 +106,8 @@ test("④ sans passion choisie, les comptes suivis restent visibles", async ({ p
   expect(t).not.toContain("POST_PASSION");
 });
 
-test("⑤ sans passion ni abonnement : un état vide explicatif", async ({ page }) => {
-  await poser(page, { passions: [], following: [] });
+test("⑤ sans aucun critère : un état vide explicatif", async ({ page }) => {
+  await poser(page, { passions: [], following: [], suivis: false });
   const vide = await page.evaluate(() => {
     const e = document.getElementById("feedEmpty");
     return { visible: e && e.style.display !== "none",
@@ -104,48 +121,48 @@ test("⑤ sans passion ni abonnement : un état vide explicatif", async ({ page 
   expect(vide.texte).toContain("personnes que tu suis");
 });
 
-test("⑥ la vue Suivis ne montre que les comptes suivis", async ({ page }) => {
-  await poser(page, { vue: "suivis" });
+test("⑥ « Suivis » SEUL ne montre que les comptes suivis", async ({ page }) => {
+  // « Suivis » coché, aucune passion, aucune envie : la sélection ne porte
+  // qu'un critère, donc le fil n'a qu'une source.
+  await poser(page, { suivis: true, passions: [] });
   const t = await texte(page);
   expect(t).toContain("POST_SUIVI");
   expect(t).toContain("POST_DOUBLE");
   expect(t).not.toContain("POST_PASSION");
-  // ⚠️ ATTENTE RÉÉCRITE le 2026-08-31, pas assouplie. Le rail était MASQUÉ dans
-  // cette vue, parce qu'il ne filtrait rien. Il ne peut plus l'être : il héberge
-  // désormais la tuile « Suivis », donc le masquer supprimerait la seule
-  // commande permettant de revenir. La contradiction « une passion cochée qui
-  // ne filtre rien » est levée autrement — aucune passion ne s'affiche active.
   const rail = await page.evaluate(() => ({
     visible: !document.getElementById("feedPassionsBlock").hidden,
     suivisActif: !!document.querySelector("#profileStrip .profile-tile.active[title='Suivis']"),
     passionsActives: document.querySelectorAll("#profileStrip .profile-tile.active:not([title='Suivis'])").length,
   }));
   expect(rail.visible, "le rail porte la commande de retour : le masquer enfermerait").toBe(true);
-  expect(rail.suivisActif, "la tuile « Suivis » montre la vue courante").toBe(true);
-  expect(rail.passionsActives, "aucune passion active : elle ne filtrerait rien ici").toBe(0);
+  expect(rail.suivisActif, "la tuile « Suivis » montre le critère coché").toBe(true);
+  expect(rail.passionsActives, "aucune passion cochée dans ce scénario").toBe(0);
 });
 
-test("⑥ ter — la tuile « Suivis » du rail pilote la vue, et persiste", async ({ page }) => {
-  // ⚠️ CE TEST REMPLACE LE COMMUTATEUR RETIRÉ. Le geste change de place — la
-  // tuile du rail au lieu d'un onglet au-dessus — mais la garantie qui comptait
-  // reste : le choix est PERSISTÉ. L'ancienne tuile de `main` inversait
-  // `_showFollowingFeed`, une variable de session : elle repartait à faux à
-  // chaque ouverture, donc suivre quelqu'un n'avait aucun effet durable.
-  await poser(page, { vue: "accueil" });
+test("⑥ ter — la tuile « Suivis » est une bascule, et son état persiste", async ({ page }) => {
+  // ⚠️ LA GARANTIE QUI COMPTE EST LA PERSISTANCE, et elle ne change pas avec le
+  // modèle. L'ancienne tuile de `main` inversait `_showFollowingFeed`, une
+  // variable de session : elle repartait à faux à chaque ouverture, donc suivre
+  // quelqu'un n'avait aucun effet durable. Ce qui change : la bascule ne quitte
+  // plus une « vue », elle décoche un CRITÈRE parmi d'autres.
+  await poser(page, { suivis: true, passions: [] });
   const clicSuivis = () => page.evaluate(() => {
     document.querySelector("#profileStrip .profile-tile[title='Suivis']").click();
   });
 
-  await clicSuivis();
-  await page.waitForTimeout(400);
-  expect(await page.evaluate(() => state.feedView)).toBe("suivis");
-  expect(await texte(page)).not.toContain("POST_PASSION");
+  expect(await texte(page)).toContain("POST_SUIVI");
 
-  // Le même geste ramène en « accueil » : la tuile est une bascule, comme avant.
+  // Décoché : plus aucun critère → l'état vide explicatif, pas le fil entier.
   await clicSuivis();
   await page.waitForTimeout(400);
-  expect(await page.evaluate(() => state.feedView)).toBe("accueil");
-  expect(await texte(page)).toContain("POST_PASSION");
+  expect(await page.evaluate(() => state.feedFollowingOn)).toBe(false);
+  expect(await texte(page)).not.toContain("POST_SUIVI");
+
+  // Re-coché : la source revient.
+  await clicSuivis();
+  await page.waitForTimeout(400);
+  expect(await page.evaluate(() => state.feedFollowingOn)).toBe(true);
+  expect(await texte(page)).toContain("POST_SUIVI");
 
   // Et le choix survit au rechargement — ce que l'ancienne bascule ne faisait pas.
   await clicSuivis();
@@ -156,25 +173,37 @@ test("⑥ ter — la tuile « Suivis » du rail pilote la vue, et persiste", asy
     return el && el.classList.contains("active");
   }, null, { timeout: 20000 });
   await page.waitForTimeout(2500);
-  expect(await page.evaluate(() => state.feedView)).toBe("suivis");
+  expect(await page.evaluate(() => state.feedFollowingOn)).toBe(false);
 });
 
-test("⑥ quater — toucher une passion depuis « Suivis » ne reste pas sans effet", async ({ page }) => {
-  // ⚠️ En vue « suivis », `renderFeed` ne consulte PAS `_activeFeedPassions` :
-  // un tap sur une passion y serait un CLIC MORT. Il ramène donc en « accueil ».
-  await poser(page, { vue: "suivis", passions: [] });
+test("⑥ quater — cocher une passion N'ÉTEINT PAS « Suivis » (le cœur de §4)", async ({ page }) => {
+  // ⚠️ CE TEST EXIGE MAINTENANT L'INVERSE DE CE QU'IL EXIGEAIT SOUS ADR-010, et
+  // c'est le changement de contrat lui-même. Auparavant, toucher une passion
+  // ramenait en vue « accueil » parce que le moteur ignorait les passions tant
+  // que « Suivis » était allumé — un tap y aurait été un clic mort. Le moteur
+  // fait désormais l'UNION : les deux critères tiennent ensemble.
+  await poser(page, { suivis: true, passions: [] });
   expect(await texte(page)).not.toContain("POST_PASSION");
 
   await page.evaluate(() => toggleProfileFilter("musique"));
   await page.waitForTimeout(400);
 
-  expect(await page.evaluate(() => state.feedView), "le tap rend la vue « accueil »").toBe("accueil");
+  expect(await page.evaluate(() => state.feedFollowingOn),
+    "« Suivis » reste coché : les critères sont additifs").toBe(true);
   const t = await texte(page);
-  expect(t, "et la passion touchée filtre vraiment").toContain("POST_PASSION");
+  expect(t, "la passion cochée entre").toContain("POST_PASSION");
+  expect(t, "et le compte suivi reste, sans passion commune").toContain("POST_SUIVI");
+
+  // Les deux tuiles s'affichent actives EN MÊME TEMPS : un rail qui n'en
+  // montrerait qu'une mentirait sur ce que le fil contient.
+  const actives = await page.evaluate(() =>
+    Array.from(document.querySelectorAll("#profileStrip .profile-tile.active"))
+      .map(t => t.getAttribute("data-passion-tile")).sort());
+  expect(actives).toEqual(["__suivis__", "musique"]);
 });
 
-test("⑥ bis — vue Suivis sans aucun abonnement : message dédié, pas de contenu d'inconnus", async ({ page }) => {
-  await poser(page, { vue: "suivis", following: [] });
+test("⑥ bis — « Suivis » sans aucun abonnement : message dédié, pas de contenu d'inconnus", async ({ page }) => {
+  await poser(page, { suivis: true, passions: [], following: [] });
   const vide = await page.evaluate(() => {
     const e = document.getElementById("feedEmpty");
     return { visible: e && e.style.display !== "none", titre: e && e.querySelector(".empty-title").textContent };
@@ -191,7 +220,7 @@ test("⑥ quinquies — sans aucune passion, « Suivis » reste atteignable", as
   // permettant de voir les comptes suivis. Un compte NEUF qui suit déjà
   // quelqu'un n'avait donc aucune porte vers leurs publications ; et comme la
   // vue est persistée, il ne pouvait pas non plus en sortir une fois dedans.
-  await poser(page, { vue: "accueil", passions: [] });
+  await poser(page, { suivis: true, passions: [] });
   await page.evaluate(() => {
     state.user.profiles = [];
     state.user.currentProfileId = null;
@@ -210,17 +239,23 @@ test("⑥ quinquies — sans aucune passion, « Suivis » reste atteignable", as
   expect(vu.passions, "et rien d'autre : le compte n'a aucune passion").toBe(0);
 
   // Et elle FONCTIONNE : ce n'est pas une tuile décorative.
-  await page.evaluate(() => {
+  // Elle est déjà cochée dans ce scénario : on la décoche puis on la recoche,
+  // ce qui prouve que le geste agit dans les DEUX sens.
+  const clic = () => page.evaluate(() => {
     document.querySelector("#profileStrip .profile-tile[title='Suivis']").click();
   });
+  await clic();
   await page.waitForTimeout(400);
-  expect(await page.evaluate(() => state.feedView)).toBe("suivis");
+  expect(await page.evaluate(() => state.feedFollowingOn)).toBe(false);
+  await clic();
+  await page.waitForTimeout(400);
+  expect(await page.evaluate(() => state.feedFollowingOn)).toBe(true);
   expect(await texte(page)).toContain("POST_SUIVI");
 });
 
-test("⑦ la vue survit à un rechargement", async ({ page }) => {
-  await poser(page, { vue: "accueil" });
-  await page.evaluate(() => setFeedView("suivis"));
+test("⑦ le choix survit à un rechargement", async ({ page }) => {
+  await poser(page, { suivis: true });
+  await page.evaluate(() => setFeedFollowing(false));
   await page.waitForTimeout(300);
   await page.reload();
   await page.waitForFunction(() => {
@@ -229,8 +264,7 @@ test("⑦ la vue survit à un rechargement", async ({ page }) => {
   }, null, { timeout: 20000 });
   await page.waitForTimeout(2500);
   // C'est exactement ce que l'ancienne bascule ne faisait pas.
-  const vue = await page.evaluate(() => state.feedView);
-  expect(vue).toBe("suivis");
+  expect(await page.evaluate(() => state.feedFollowingOn)).toBe(false);
 });
 
 test("⑧ se désabonner retire la source correspondante", async ({ page }) => {
@@ -287,16 +321,15 @@ test("⑪ le profil d'autrui : une identité, et des filtres de passion", async 
     return {
       html: c ? c.innerText : "",
       // Une seule identité : un seul pseudo en tête, pas une carte par passion.
-      filtres: Array.from(document.querySelectorAll("#visitedPassions [data-vpid]"))
-        .map(b => ({ id: b.getAttribute("data-vpid"), texte: b.textContent.trim(), actif: b.classList.contains("active") })),
+      filtres: Array.from(document.querySelectorAll("#visitedPassions [data-passion-tile]"))
+        .map(b => ({ id: b.getAttribute("data-passion-tile"), texte: b.textContent.trim(), actif: b.classList.contains("active") })),
       cartesIdentite: document.querySelectorAll("#visitedPassions .profile-card").length,
     };
   });
-  expect(vu.html).toContain("Ses passions");
   expect(vu.html).not.toContain("profils passion");
-  // Aucune carte d'identité : ce sont des pastilles de filtre.
+  // Aucune carte d'identité : ce sont les MÊMES bulles que le Fil.
   expect(vu.cartesIdentite).toBe(0);
-  // « Toutes » en tête, active par défaut, puis une pastille par passion.
+  // « Toutes » en tête, active par défaut, puis une bulle par passion.
   expect(vu.filtres[0].id).toBe("");
   expect(vu.filtres[0].texte).toBe("Toutes");
   expect(vu.filtres[0].actif).toBe(true);
@@ -306,7 +339,7 @@ test("⑪ le profil d'autrui : une identité, et des filtres de passion", async 
   await page.evaluate(() => setVisitedPassion("cuisine"));
   await page.waitForTimeout(300);
   const apres = await page.evaluate(() => ({
-    actifs: Array.from(document.querySelectorAll("#visitedPassions [data-vpid].active")).map(b => b.getAttribute("data-vpid")),
+    actifs: Array.from(document.querySelectorAll("#visitedPassions [data-passion-tile].active")).map(b => b.getAttribute("data-passion-tile")),
     sel: Array.from(window._visited.passionSel),
   }));
   expect(apres.actifs).toEqual(["cuisine"]);

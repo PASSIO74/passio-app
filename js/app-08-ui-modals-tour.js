@@ -26,18 +26,10 @@ function openModal(html) {
   if (backdrop) backdrop.classList.add("active");
 }
 function closeModal() {
-  // Arrêter le refresh automatique du CDV Live si actif
-  if (cdvLiveRefreshInterval) {
-    clearInterval(cdvLiveRefreshInterval);
-    cdvLiveRefreshInterval = null;
-  }
-
-  // Retirer le spectateur du live si c'est applicable
-  const currentLiveId = document.querySelector(".modal-fullscreen")?.getAttribute("data-live-id");
-  if (currentLiveId) {
-    removeCdvLiveViewer(currentLiveId);
-  }
-
+  // ⚠️ Le nettoyage du CDV Live (arrêt du polling, retrait du spectateur) a été
+  // retiré avec la fonctionnalité (§6). `cdvLiveRefreshInterval` et
+  // `removeCdvLiveViewer` n'existent plus — les garder ici aurait levé un
+  // ReferenceError à CHAQUE fermeture de modale, c'est-à-dire partout.
   $("#modalBackdrop").classList.remove("active");
 }
 function closeModalOnBackdrop(e) {
@@ -95,7 +87,7 @@ const TOUR_STEPS = [
     screen: "studio",
     emoji: "🎙",
     title: "Crée tout ce que tu veux",
-    lede: "Texte, photo, vidéo, podcast, carnet de voyage, tout au même endroit.",
+    lede: "Texte, photo, vidéo, bobine, podcast, tout au même endroit.",
     points: [
       "Pas besoin d'outils externes",
       "Templates pour démarrer facilement",
@@ -113,17 +105,8 @@ const TOUR_STEPS = [
       "Des créateurs à découvrir, près de chez toi"
     ]
   },
-  {
-    screen: "cdv",
-    emoji: "📔",
-    title: "Raconte tes voyages",
-    lede: "Documente tes périples comme une histoire, pour t'en souvenir et inspirer les autres.",
-    points: [
-      "Étapes, photos, vidéos, audio, conseils",
-      "Carte interactive auto-générée",
-      "Inspire-toi des carnets des autres pour préparer le tien"
-    ]
-  },
+  // ⚠️ L'étape « Raconte tes voyages » du tour a été retirée avec le Carnet de
+  // voyage (§6) : elle promettait un écran qui n'existe plus.
 ];
 
 let tourIdx = 0;
@@ -1792,6 +1775,18 @@ function _notifTexteHtml(n) {
   return deConfiance ? String(n.text || "") : _neutraliserBalisesNotif(n.text);
 }
 
+// §2 : sous le texte d'une notification, les passions de la personne qui l'a
+// déclenchée — quand on sait qui c'est. `identitePassionsHTML` rend "" pour un
+// émetteur inconnu ou sans passion publiée, et on ne peint alors rien.
+function _notifIdentiteHtml(n) {
+  try {
+    var id = n && (n.fromId || n.authorId);
+    if (!id || id === "me") return "";
+    var u = (typeof userById === "function") ? userById(id) : null;
+    return u ? identitePassionsHTML(u, "ident-passions-sm") : "";
+  } catch (e) { return ""; }
+}
+
 function _notifListHtml(notifs) {
   notifs = notifs || [];
   if (!notifs.length) return `
@@ -1805,6 +1800,7 @@ function _notifListHtml(notifs) {
       <div class="notif-icon">${escapeHtml(n.emoji || "✨")}</div>
       <div class="notif-body">
         <div class="notif-text">${_notifTexteHtml(n)}</div>
+        ${_notifIdentiteHtml(n)}
         <div class="notif-meta">${fmtTime(n.createdAt)}</div>
       </div>
       ${n.unread ? '<div class="notif-dot"></div>' : ""}
@@ -1979,9 +1975,12 @@ function openNotifTarget(n) {
     case "live_video":
       if (ref && typeof joinVideoLive === "function") joinVideoLive(ref);
       break;
-    // Nouvelle étape d'un carnet en direct qu'on suit → ouvre le live.
+    // ⚠️ « Nouvelle étape d'un carnet en direct » n'ouvre plus rien : le viewer
+    // a été retiré (§6). Les notifications déjà reçues restent affichées — les
+    // effacer serait détruire l'historique de quelqu'un — mais les toucher
+    // ramène simplement au fil, via la redirection de `goTo("cdv")`.
     case "cdv_live_step":
-      if (ref && typeof openCdvLiveViewer === "function") { if (typeof goTo === "function") goTo("cdv"); openCdvLiveViewer(ref); }
+      if (typeof goTo === "function") goTo("feed");
       break;
     default:
       // Notif locale / type inconnu : pas de cible précise, on n'ouvre rien.
@@ -3044,24 +3043,12 @@ async function supaPublishPostWithRetry(post, maxRetries = 2) {
         try { saveState(); } catch (e) {}
       }
 
-      // Carnet de voyage : uploader la cover + les médias d'étapes sur Storage
-      // (jamais de base64 en DB) et construire le blob jsonb `vlog`.
-      let vlogData = null;
-      if (post.type === "vlog") {
-        // ⚠️ Ne PAS retomber sur `null` en silence. Le champ `vlog` était alors omis
-        // du payload et le post s'insérait quand même : le carnet arrivait en base
-        // dépouillé de ses étapes, de sa couverture et de ses métadonnées, avec un
-        // succès officiel à la clé. Une exception ici (ReferenceError, upload qui
-        // remonte) doit faire ÉCHOUER la publication — le brouillon reste, on retente.
-        try {
-          vlogData = await _buildVlogPayload(post);
-        } catch(e) {
-          console.warn("carnet : construction du contenu impossible —", e && e.message);
-          return _pubDone(false);
-        }
-      }
+      // ⚠️ La construction du blob jsonb `vlog` a été retirée avec le Carnet de
+      // voyage (§6) : plus aucun chemin ne produit une publication de ce type.
+      // La COLONNE `vlog` reste en base et les carnets déjà publiés la gardent —
+      // ce retrait ne touche pas une seule ligne existante.
 
-      // STEP 2: Créer le post (timeout plus long pour un carnet — plus de médias)
+      // STEP 2: Créer le post
       const postData = {
         id: post.id,
         author_id: MY_UID,
@@ -3073,7 +3060,6 @@ async function supaPublishPostWithRetry(post, maxRetries = 2) {
         created_at: new Date(post.createdAt).toISOString(),
         is_reel: !!post.isReel, // bobine → Bobines (exclu du feed)
         ...(post.overlays && post.overlays.length ? { overlays: post.overlays } : {}),
-        ...(vlogData ? { vlog: vlogData } : {}),
         // 🔄 Ajouter les champs de repost si applicable
         ...(post.sharedReel && { shared_from_post_id: post.sharedReel }),
         ...(post.sharedReelData && { shared_data: JSON.stringify(post.sharedReelData) }),
@@ -3087,17 +3073,8 @@ async function supaPublishPostWithRetry(post, maxRetries = 2) {
       const insertPromise = supa.from("posts").insert([postData]).select();
       const { data, error } = await Promise.race([
         insertPromise,
-        new Promise((_, reject) => setTimeout(() => reject(new Error("Insert timeout")), post.type === "vlog" ? 15000 : 12000))
+        new Promise((_, reject) => setTimeout(() => reject(new Error("Insert timeout")), 12000))
       ]);
-
-      // Colonne `vlog` absente (migration non appliquée) → réessayer SANS vlog
-      // pour ne pas perdre le post (dégradation propre : carnet local-only).
-      if (error && vlogData && /vlog/.test(error.message || "")) {
-        delete postData.vlog;
-        const retry = await supa.from("posts").insert([postData]).select();
-        if (retry.error) throw retry.error;
-        return _pubDone(true);
-      }
       // Colonne `event_id` absente (migration IRL v2 non appliquée) → réessayer
       // sans le rattachement à l'événement plutôt que de perdre le post.
       if (error && postData.event_id && /event_id/.test(error.message || "")) {
@@ -3132,124 +3109,10 @@ async function supaPublishPostWithRetry(post, maxRetries = 2) {
   return _pubDone(false);
 }
 
-// ── Co-auteurs d'un CARNET (table post_collaborators) ──
-// Même principe que les co-voyageurs d'un live, appliqué au récit : la policy
-// UPDATE de `posts` passe par can_edit_post(id) (SECURITY DEFINER) et un
-// trigger gèle author_id, donc un co-auteur écrit sans pouvoir s'approprier
-// le carnet. Cf. migration_carnet_collaborators.sql.
-async function supaAddCarnetCollaborator(postId, userId) {
-  try {
-    if (!postId || !userId || !MY_UID) return false;
-    const { error } = await supa.from("post_collaborators")
-      .insert({ post_id: postId, user_id: userId, added_by: MY_UID });
-    if (error && error.code !== "23505") { console.warn("carnet collab:", error.message); return false; }
-    return true;
-  } catch (e) { console.warn("carnet collab:", e); return false; }
-}
 
-// ⚠️ RÉVOCATION DE DROITS : le résultat doit être lu. Cette ligne participe
-// directement à `can_edit_post` — la croire supprimée alors qu'elle existe encore
-// laisse un collaborateur écarté de l'écran continuer à modifier le carnet.
-async function supaRemoveCarnetCollaborator(postId, userId) {
-  try {
-    const res = await supa.from("post_collaborators").delete()
-      .eq("post_id", postId).eq("user_id", userId).select("user_id");
-    return _writeVerdict(res, { label: "retrait de co-auteur du carnet" }).ok;
-  } catch (e) { console.warn("retrait de co-auteur du carnet :", e && e.message); return false; }
-}
 
-// Charge les co-auteurs des carnets visibles → { postId: [userId, …] }.
-// ⚠️ Renvoie NULL (et pas {}) en cas d'échec ou hors-ligne : l'appelant doit
-// pouvoir distinguer « le serveur dit : aucun co-auteur » de « je n'ai pas pu
-// demander ». Sans ça, une coupure réseau effaçait les co-auteurs connus
-// localement et faisait disparaître les crédits du carnet.
-async function supaLoadCarnetCollaborators(postIds) {
-  try {
-    if (!postIds || !postIds.length || !window._supaReal) return null;
-    const { data, error } = await supa.from("post_collaborators").select("*").in("post_id", postIds);
-    if (error || !data) return null;
-    const m = {};
-    postIds.forEach((id) => { m[id] = []; });   // réponse explicite : liste vide
-    data.forEach((r) => { (m[r.post_id] = m[r.post_id] || []).push(r.user_id); });
-    return m;
-  } catch (e) { return null; }
-}
 
-// Met à jour un carnet DÉJÀ publié (modification par son auteur). Réutilise
-// _buildVlogPayload : les nouveaux médias base64 partent sur Storage, ceux déjà
-// en http(s) sont conservés tels quels. RLS : la policy UPDATE de `posts` limite
-// déjà à l'auteur, on double avec .eq("author_id", MY_UID).
-async function supaUpdateVlogPost(post) {
-  try {
-    if (!post || !post.id || typeof MY_UID === "undefined" || !MY_UID || !window._supaReal) return false;
-    const vlogData = await _buildVlogPayload(post);
-    const patch = { content: post.text || "", vlog: vlogData };
-    // ⚠️ PAS de .eq("author_id", MY_UID) ici : un CO-AUTEUR doit pouvoir
-    // enregistrer. C'est la policy UPDATE (can_edit_post) qui autorise ou non,
-    // et le trigger posts_freeze_author qui protège la propriété.
-    // ⚠️ `.select()` + comptage : la policy can_edit_post peut filtrer l'UPDATE et
-    // renvoyer { data: [], error: null }. Un co-auteur dont les droits viennent
-    // d'être révoqués, l'éditeur resté ouvert, recevait alors « enregistré » alors
-    // que le carnet serveur gardait son ancienne version.
-    const res = await supa.from("posts").update(patch).eq("id", post.id).select("id");
-    const error = res.error;
-    if (!error) return _writeVerdict(res, { expectRows: true, label: "enregistrement du carnet" }).ok;
-    if (error) {
-      // Colonne `vlog` absente (migration non appliquée) → au moins le texte.
-      if (/vlog/.test(error.message || "")) {
-        const r2 = await supa.from("posts").update({ content: post.text || "" }).eq("id", post.id).select("id");
-        return _writeVerdict(r2, { expectRows: true, label: "enregistrement du carnet (texte seul)" }).ok;
-      }
-      console.warn("supaUpdateVlogPost:", error.message);
-      return false;
-    }
-    return true;
-  } catch (e) { console.warn("supaUpdateVlogPost:", e); return false; }
-}
 
-// Construit le blob jsonb `vlog` d'un carnet : champs texte + cover et médias
-// d'étapes UPLOADÉS sur Storage (jamais de base64 en DB, même hygiène que les
-// vocaux / étapes CDV). Un média qui échoue à l'upload est sauté (le carnet
-// reste léger ; l'auteur garde sa copie locale base64 dans state.userPosts).
-async function _buildVlogPayload(post) {
-  async function up(b64, key, kind) {
-    if (!b64 || typeof b64 !== "string") return null;
-    if (b64.indexOf("data:") !== 0) return b64; // déjà une URL
-    try {
-      var folder = kind === "video" ? "videos" : kind === "audio" ? "audios" : "photos";
-      var url = await supaUploadMedia(post.id + "_" + key, folder, b64, kind);
-      return (url && url.indexOf("data:") !== 0) ? url : null;
-    } catch (e) { return null; }
-  }
-  var coverUrl = await up(post.cover, "cover", "image");
-  if (coverUrl) { post.cover = coverUrl; try { saveState(); } catch(e) {} }
-  var steps = [];
-  var srcSteps = Array.isArray(post.steps) ? post.steps : [];
-  for (var i = 0; i < srcSteps.length; i++) {
-    var s = srcSteps[i] || {};
-    var photo = await up(s.photo, "s" + i + "p", "image");
-    var video = await up(s.video, "s" + i + "v", "video");
-    var audio = await up(s.audio, "s" + i + "a", "audio");
-    if (photo) s.photo = photo; if (video) s.video = video; if (audio) s.audio = audio;
-    // Coordonnées réelles de l'étape (GPS ou géocodage) → carte fiable pour tous
-    // les lecteurs, y compris hors du dictionnaire de villes françaises.
-    if (typeof s.lat !== "number" && s.place && typeof cdvGeocodePlace === "function") {
-      try { var g = await cdvGeocodePlace(s.place); if (g) { s.lat = g.lat; s.lng = g.lng; } } catch (e) {}
-    }
-    steps.push({ place: s.place || "", text: s.text || "", tip: s.tip || "", budget: s.budget || "",
-      photo: photo, video: video, audio: audio,
-      lat: (typeof s.lat === "number") ? s.lat : null, lng: (typeof s.lng === "number") ? s.lng : null });
-  }
-  try { saveState(); } catch(e) {}
-  return {
-    destination: post.destination || "", dateStart: post.dateStart || null, dateEnd: post.dateEnd || null,
-    budget: post.budget || "", transport: post.transport || "", lodging: post.lodging || "",
-    season: post.season || "", tip: post.tip || "", cover: coverUrl, steps: steps,
-    // Visibilité du carnet (public / followers / private) : stockée DANS le blob
-    // jsonb `vlog` (pas de nouvelle colonne). Filtrée côté client par canSeeCarnet().
-    visibility: post.visibility || "public",
-  };
-}
 
 // Redimensionne une image base64 AVANT upload : max 1600 px (grand côté),
 // ré-encodée JPEG 0.85 (PNG conservé pour la transparence, GIF non touché pour
@@ -3481,7 +3344,15 @@ async function supaLoadPosts(offset = 0, authorId = null) {
         passion: r.passion_id || null, mood: r.mood || "all",
         // ✅ Détecter le type basé sur l'extension du fichier dans media_url
         type: (() => {
-          if (r.vlog) return "vlog"; // carnet de voyage (colonne jsonb dédiée)
+          // ⚠️ ON GARDE LE TYPAGE « vlog », alors même que la fonctionnalité est
+          // retirée (§6) — et c'est une garantie de CONFIDENTIALITÉ, pas une
+          // survivance. La visibilité d'un carnet (« public / abonnés / privé »)
+          // vit dans ce blob jsonb, hors de portée de la RLS : la ligne `posts`
+          // part à quiconque peut lire l'auteur. C'est ce type qui permet à
+          // `allFeedPosts` de les écarter TOUS, sans exception. Retirer cette
+          // ligne ferait retomber un carnet « Privé » sur son type de média et
+          // l'afficherait, en clair, dans le fil de tout le monde.
+          if (r.vlog) return "vlog";
           if (!r.media_url) return "text";
           const url = r.media_url.toLowerCase();
           if (url.includes(".mp4") || url.includes("videos/")) return "video";
@@ -3525,15 +3396,10 @@ async function supaLoadPosts(offset = 0, authorId = null) {
         // traitée comme non reliée — sans erreur, et sans porte vers l'IRL.
         ...(r.event_id ? { eventId: r.event_id } : {}),
         overlays: r.overlays || null,
-        // 📔 Carnet de voyage : réhydrate les champs à plat attendus par le viewer
-        // (openVlogViewer lit post.destination/steps/cover/… directement).
-        ...(r.vlog ? (() => {
-          var v = (typeof r.vlog === "string") ? (function(){ try { return JSON.parse(r.vlog); } catch(e){ return {}; } })() : (r.vlog || {});
-          return { destination: v.destination || "", dateStart: v.dateStart || null, dateEnd: v.dateEnd || null,
-            budget: v.budget || "", transport: v.transport || "", lodging: v.lodging || "", season: v.season || "",
-            tip: v.tip || "", cover: v.cover || null, steps: Array.isArray(v.steps) ? v.steps : [],
-            visibility: v.visibility || "public" };
-        })() : {}),
+        // ⚠️ La réhydratation des champs de carnet a été retirée (§6) : aucun
+        // viewer ne les lit plus. La colonne `vlog` reste demandée dans le
+        // SELECT — c'est elle qui permet, plus bas, de reconnaître un carnet
+        // ancien pour l'écarter de l'affichage.
         // 🔄 Repost support: parse shared_from_post_id and shared_data if applicable
         ...(r.shared_from_post_id && { sharedReel: r.shared_from_post_id }),
         ...(r.shared_data && { sharedReelData: (() => {
@@ -3688,7 +3554,10 @@ async function _resolveProfilesByIds(ids) {
   const uniq = [...new Set((ids || []).filter(Boolean))];
   if (!uniq.length) return out;
   try {
-    const { data } = await supa.from("profiles").select("id,username,emoji,color,avatar_url,passion_id,bio").in("id", uniq);
+    // `passions` (jsonb) est demandé pour l'identité partagée (§2) : le pseudo
+    // s'accompagne partout des passions du compte, et ce résolveur est le point
+    // de passage commun des commentaires, stories et événements.
+    const { data } = await supa.from("profiles").select("id,username,emoji,color,avatar_url,passion_id,passions,bio").in("id", uniq);
     (data || []).forEach(p => { out[p.id] = p; try { cacheRemoteProfile(p); } catch(e) {} });
   } catch(e) {}
   return out;
@@ -3997,282 +3866,16 @@ async function supaLoadEvents() {
   } catch(e) { return []; }
 }
 
-// ======== CDV LIVES (voyages en direct, sync cross-compte) ========
-// Tables : cdv_lives / cdv_live_steps / cdv_live_comments / cdv_live_reactions /
-// cdv_live_followers (migration_cdv_lives.sql, appliquée en prod le 2026-06-24).
 
-async function supaPublishCdvLive(live) {
-  try {
-    await supaEnsureProfileExists();
-    const res = await supa.from("cdv_lives").insert({
-      id: live.id, author_id: MY_UID,
-      destination: live.destination || "", description: live.description || "",
-      duration: live.duration || "", visibility: live.visibility || "public",
-      status: live.status || "live",
-    });
-    // Sans contrat de retour, un refus laissait le voyage vivre en local pendant
-    // que les étapes suivantes se faisaient rejeter par la clé étrangère : au
-    // rechargement, ou sur un autre appareil, tout avait disparu.
-    return _writeVerdict(res, { label: "publication de live CDV", dupOk: true }).ok;
-  } catch(e) { console.warn("publication de live CDV :", e && e.message); return false; }
-}
 
-// Modifier / supprimer un live (2026-07-22). La RLS de `cdv_lives` est
-// « propriété de l'auteur » : l'UPDATE/DELETE d'un autre compte touche 0 ligne
-// en silence — c'est la base qui tranche, on ne re-filtre pas côté client.
-async function supaUpdateCdvLive(liveId, fields) {
-  try {
-    const payload = Object.assign({}, fields || {}, { updated_at: new Date().toISOString() });
-    const { error } = await supa.from("cdv_lives").update(payload).eq("id", liveId);
-    if (error) console.warn("CDV live update:", error.message);
-  } catch (e) { console.warn("CDV live update:", e); }
-}
 
-async function supaDeleteCdvLive(liveId) {
-  try {
-    // Étapes / commentaires / réactions / suivis partent avec la ligne parente :
-    // les 4 FK vers `cdv_lives` sont en ON DELETE CASCADE (vérifié en prod le
-    // 2026-07-22). Ne PAS tenter de les supprimer d'abord : leurs policies DELETE
-    // sont « propriété de l'auteur de la ligne » → celles des autres comptes
-    // résisteraient en silence.
-    const { error } = await supa.from("cdv_lives").delete().eq("id", liveId);
-    if (error) console.warn("CDV live delete:", error.message);
-  } catch (e) { console.warn("CDV live delete:", e); }
-}
 
-async function supaUpdateCdvLiveStatus(liveId, status) {
-  try { await supa.from("cdv_lives").update({ status: status, updated_at: new Date().toISOString() }).eq("id", liveId); }
-  catch(e) { console.warn("CDV live status:", e); }
-}
 
-// Upload la vidéo d'une étape CDV sur Storage (bucket content, dossier cdv_steps).
-// Renvoie l'URL, ou null (base64 sauté → l'expéditeur garde sa copie locale).
-async function _uploadCdvStepVideo(key, video) {
-  try {
-    if (typeof video !== "string" || !video) return null;
-    if (video.indexOf("data:") !== 0) return video; // déjà une URL
-    if (typeof supaUploadMedia !== "function") return null;
-    var url = await supaUploadMedia(key + "_v", "cdv_steps", video, "video");
-    return (url && url.indexOf("data:") !== 0) ? url : null;
-  } catch (e) { return null; }
-}
-async function supaAddCdvLiveStep(liveId, step) {
-  try {
-    const stepId = step.id || ("ls_" + uid());
-    // Uploader les photos base64 sur Storage (bucket "content") et ne stocker que
-    // des URLs dans la DB — JAMAIS de base64 (un seul média de 5 Mo a fait gonfler
-    // une table à 24 Mo). Si l'upload échoue, on saute la photo (la DB reste légère,
-    // l'expéditeur garde sa copie locale base64).
-    const photoUrls = [];
-    const photos = Array.isArray(step.photos) ? step.photos : [];
-    for (let i = 0; i < photos.length; i++) {
-      const p = photos[i];
-      if (typeof p !== "string" || !p) continue;
-      if (p.indexOf("data:") === 0) {
-        if (typeof supaUploadMedia === "function") {
-          const url = await supaUploadMedia(stepId + "_" + i, "cdv_steps", p, "photo");
-          if (url && url.indexOf("data:") !== 0) photoUrls.push(url);
-        }
-      } else {
-        photoUrls.push(p); // déjà une URL
-      }
-    }
-    // Vidéo d'étape → Storage (jamais de base64 en DB), même hygiène que les photos.
-    var videoUrl = await _uploadCdvStepVideo(stepId, step.video);
-    var row = {
-      id: stepId, live_id: liveId, author_id: MY_UID,
-      city: step.city || "", emoji: step.emoji || "📍", content: step.content || "",
-      photos: photoUrls, rating: step.rating || 0, budget: step.budget || "",
-      lat: (typeof step.lat === "number") ? step.lat : null,
-      lng: (typeof step.lng === "number") ? step.lng : null,
-    };
-    if (videoUrl) row.video = videoUrl;
-    var { error } = await supa.from("cdv_live_steps").insert(row);
-    // Filet si la colonne `video` n'existe pas encore en prod : ré-insérer sans elle.
-    if (error && /video/i.test(error.message || "") && row.video) {
-      delete row.video;
-      ({ error } = await supa.from("cdv_live_steps").insert(row));
-    }
-    // Contrat de retour : sans lui, une étape rejetée (souvent parce que la ligne
-    // parente n'existe pas) restait affichée localement et disparaissait au
-    // rechargement. On ne touche pas non plus `updated_at` du parent si l'étape
-    // n'existe pas — ça ferait mentir la date de dernière activité du voyage.
-    if (error) { console.warn("étape de live CDV :", error.message); return false; }
-    await supa.from("cdv_lives").update({ updated_at: new Date().toISOString() }).eq("id", liveId);
-    return true;
-  } catch(e) { console.warn("étape de live CDV :", e && e.message); return false; }
-}
 
-// Modifier une étape existante (auteur uniquement — la RLS de cdv_live_steps
-// exige author_id = auth.uid()). Réutilise le même pipeline d'upload que l'insert :
-// les photos base64 partent sur Storage, seules des URLs vont en DB.
-async function supaUpdateCdvLiveStep(liveId, step) {
-  try {
-    if (!step || !step.id || !MY_UID) return;
-    const photoUrls = [];
-    const photos = Array.isArray(step.photos) ? step.photos : [];
-    for (let i = 0; i < photos.length; i++) {
-      const p = photos[i];
-      if (typeof p !== "string" || !p) continue;
-      if (p.indexOf("data:") === 0) {
-        if (typeof supaUploadMedia === "function") {
-          const url = await supaUploadMedia(step.id + "_e" + Date.now() + "_" + i, "cdv_steps", p, "photo");
-          if (url && url.indexOf("data:") !== 0) photoUrls.push(url);
-        }
-      } else photoUrls.push(p);
-    }
-    var videoUrl = await _uploadCdvStepVideo(step.id + "_e" + Date.now(), step.video);
-    var patch = {
-      city: step.city || "", emoji: step.emoji || "📍", content: step.content || "",
-      photos: photoUrls, rating: step.rating || 0, budget: step.budget || "",
-      lat: (typeof step.lat === "number") ? step.lat : null,
-      lng: (typeof step.lng === "number") ? step.lng : null,
-    };
-    if (videoUrl) patch.video = videoUrl;
-    var { error } = await supa.from("cdv_live_steps").update(patch).eq("id", step.id).eq("author_id", MY_UID);
-    if (error && /video/i.test(error.message || "") && patch.video) {
-      delete patch.video;
-      ({ error } = await supa.from("cdv_live_steps").update(patch).eq("id", step.id).eq("author_id", MY_UID));
-    }
-    if (error) console.warn("CDV step update:", error.message);
-    await supa.from("cdv_lives").update({ updated_at: new Date().toISOString() }).eq("id", liveId);
-  } catch (e) { console.warn("CDV step update:", e); }
-}
 
-// Complète les coordonnées d'une étape géocodée après coup (tâche de fond).
-async function supaUpdateCdvLiveStepCoords(stepId, lat, lng) {
-  try {
-    if (!stepId || !MY_UID || typeof lat !== "number") return;
-    await supa.from("cdv_live_steps").update({ lat: lat, lng: lng })
-      .eq("id", stepId).eq("author_id", MY_UID);
-  } catch (e) {}
-}
 
-async function supaDeleteCdvLiveStep(liveId, stepId) {
-  try {
-    if (!stepId || !MY_UID) return;
-    const { error } = await supa.from("cdv_live_steps").delete().eq("id", stepId).eq("author_id", MY_UID);
-    if (error) console.warn("CDV step delete:", error.message);
-    await supa.from("cdv_lives").update({ updated_at: new Date().toISOString() }).eq("id", liveId);
-  } catch (e) { console.warn("CDV step delete:", e); }
-}
 
-// ⚠️ RENVOIE SON IDENTIFIANT depuis le 2026-08-30, et ce n'est pas cosmétique.
-// L'appelant crée un commentaire optimiste avec un id local `lc_local_…`, tandis
-// que cette fonction en génère un tout autre. Sans le renvoyer, l'objet local
-// gardait un id qui n'existe nulle part en base : la suppression partait sur
-// `delete().eq("id", "lc_local_…")`, ne touchait AUCUNE ligne, et le SDK ne lève
-// pas sur ce cas — le commentaire disparaissait à l'écran puis revenait au
-// rechargement. Le chemin des activités (`addEventComment`, app-07) faisait déjà
-// la chose juste ; on s'aligne dessus.
-async function supaAddCdvLiveComment(liveId, text) {
-  try {
-    const id = "lc_" + uid();
-    const { error } = await supa.from("cdv_live_comments").insert({
-      id: id, live_id: liveId, author_id: MY_UID,
-      author_name: (state.user && state.user.name) || "Moi", text: text,
-    });
-    if (error) { console.warn("CDV comment:", error.message); return null; }
-    return id;
-  } catch(e) { console.warn("CDV comment:", e); return null; }
-}
 
-async function supaReactCdvLive(liveId, emoji) {
-  try { await supa.from("cdv_live_reactions").insert({ id: "lr_" + uid(), live_id: liveId, user_id: MY_UID, emoji: emoji }); }
-  catch(e) { console.warn("CDV reaction:", e); }
-}
-// Retire une réaction emoji précise de MOI sur un live (une seule réaction/personne).
-// Le ❤️ (like) passe par supaSetCdvLiveLike et n'est jamais retiré ici.
-async function supaRemoveCdvLiveReaction(liveId, emoji) {
-  if (!liveId || !emoji || typeof MY_UID === "undefined" || !MY_UID || !window._supaReal) return;
-  try { await supa.from("cdv_live_reactions").delete().eq("live_id", liveId).eq("user_id", MY_UID).eq("emoji", emoji); }
-  catch(e) {}
-}
-
-// ── Interactions PAR ÉTAPE / PAR JOUR (table step_interactions, cross-compte) ──
-// thread_id = « cdvstep:<liveId>:<stepId> » ou « carnetstep:<postId>:<index> ».
-// kind = 'comment' (content = texte) | 'reaction' (content = emoji).
-async function supaAddStepComment(threadId, commentId, text, authorName, authorEmoji) {
-  if (!threadId || !text || typeof MY_UID === "undefined" || !MY_UID || !window._supaReal) return false;
-  try {
-    const { error } = await supa.from("step_interactions").insert({
-      id: commentId || ("sc_" + uid()), thread_id: threadId, user_id: MY_UID,
-      kind: "comment", content: text, author_name: authorName || null, author_emoji: authorEmoji || null,
-    });
-    if (error) { console.warn("step comment:", error.message); return false; }
-    return true;
-  } catch(e) { console.warn("step comment:", e); return false; }
-}
-// UNE réaction par personne : on efface d'abord MES réactions sur ce thread.
-async function supaSetStepReaction(threadId, emoji, authorName, authorEmoji) {
-  if (!threadId || typeof MY_UID === "undefined" || !MY_UID || !window._supaReal) return false;
-  try {
-    // ⚠️ L'erreur de ce DELETE n'était pas lue : s'il échouait et que l'INSERT
-    // réussissait, DEUX réactions de la même personne persistaient — invariant
-    // « une réaction par personne » rompu, et la corruption restait invisible car
-    // l'affichage déduplique en gardant la plus récente.
-    const del = await supa.from("step_interactions").delete()
-      .eq("thread_id", threadId).eq("user_id", MY_UID).eq("kind", "reaction").select("id");
-    if (!_writeVerdict(del, { label: "réaction d'étape (retrait de l'ancienne)" }).ok) return false;
-    if (!emoji) return true; // toggle off = suppression seule
-    const { error } = await supa.from("step_interactions").insert({
-      id: "sr_" + uid(), thread_id: threadId, user_id: MY_UID,
-      kind: "reaction", content: emoji, author_name: authorName || null, author_emoji: authorEmoji || null,
-    });
-    if (error) { console.warn("step reaction:", error.message); return false; }
-    return true;
-  } catch(e) { console.warn("step reaction:", e); return false; }
-}
-// ❤️ LIKE d'une étape (kind='like'). La colonne kind est libre (pas de contrainte
-// CHECK) → aucune migration. Un like par personne (toggle : delete si présent).
-// ⚠️ `want` est l'INTENTION de l'utilisateur (true = aimer, false = retirer), pas
-// une déduction. L'ancienne version relisait la table puis décidait : dès que le
-// local et la base divergeaient (action faite sur un autre appareil, rollback
-// incomplet, état périmé), elle faisait l'INVERSE de ce que la personne demandait.
-// Même fiche que le like de post, corrigé le 2026-08-14.
-async function supaSetStepLike(threadId, want) {
-  if (!threadId || typeof MY_UID === "undefined" || !MY_UID || !window._supaReal) return false;
-  try {
-    if (!want) {
-      const del = await supa.from("step_interactions").delete()
-        .eq("thread_id", threadId).eq("user_id", MY_UID).eq("kind", "like").select("id");
-      return _writeVerdict(del, { label: "like d'étape (retrait)" }).ok;
-    }
-    const ins = await supa.from("step_interactions").insert({
-      id: "sl_" + uid(), thread_id: threadId, user_id: MY_UID, kind: "like", content: "❤️",
-    });
-    return _writeVerdict(ins, { label: "like d'étape", dupOk: true }).ok;
-  } catch(e) { console.warn("like d'étape :", e && e.message); return false; }
-}
-// Charge les interactions d'un lot de threads → { threadId: { comments:[], reactions:[], likes:[] } }
-// aux formats des stores locaux (state.user.stepComments / stepReactions / stepLikes).
-async function supaLoadStepInteractions(threadIds) {
-  var out = {};
-  if (!threadIds || !threadIds.length || !window._supaReal) return out;
-  var uniq = Array.from(new Set(threadIds.filter(Boolean)));
-  if (!uniq.length) return out;
-  try {
-    const { data, error } = await supa.from("step_interactions")
-      .select("id,thread_id,user_id,kind,content,author_name,author_emoji,created_at")
-      .in("thread_id", uniq).order("created_at", { ascending: true });
-    if (error) { console.warn("step interactions load:", error.message); return out; }
-    (data || []).forEach(function (r) {
-      var t = r.thread_id; if (!t) return;
-      out[t] = out[t] || { comments: [], reactions: [], likes: [] };
-      if (r.kind === "reaction") {
-        out[t].reactions.push({ authorId: r.user_id, authorName: r.author_name || "Voyageur",
-          text: r.content, createdAt: supaTs(r.created_at) });
-      } else if (r.kind === "like") {
-        out[t].likes.push({ authorId: r.user_id, authorName: r.author_name || "Voyageur",
-          createdAt: supaTs(r.created_at) });
-      } else {
-        out[t].comments.unshift({ id: r.id, authorId: r.user_id, authorName: r.author_name || "Voyageur",
-          authorEmoji: r.author_emoji || "✨", text: r.content, content: r.content, createdAt: supaTs(r.created_at) });
-      }
-    });
-    return out;
-  } catch(e) { console.warn("step interactions load:", e); return out; }
-}
 
 // ── Likes & réactions emoji des événements IRL (table event_reactions) ──
 // Un like = une réaction d'emoji '❤️' (toggle) ; tout autre emoji = réaction.
@@ -4357,38 +3960,6 @@ async function supaLoadEventCommentsBatch(eventIds) {
   } catch(e) { console.warn("event comments batch:", e); return {}; }
 }
 
-// ── Like ❤️ d'un live CDV en TOGGLE strict (1 par compte), via cdv_live_reactions ──
-// `want` = l'INTENTION (cf. supaSetStepLike) — jamais une relecture de la base.
-async function supaSetCdvLiveLike(liveId, want) {
-  if (!liveId || typeof MY_UID === "undefined" || !MY_UID) return false;
-  try {
-    if (!want) {
-      const del = await supa.from("cdv_live_reactions").delete()
-        .eq("live_id", liveId).eq("user_id", MY_UID).eq("emoji", "❤️").select("id");
-      return _writeVerdict(del, { label: "like de live CDV (retrait)" }).ok;
-    }
-    const ins = await supa.from("cdv_live_reactions").insert({ id: "lr_" + uid(), live_id: liveId, user_id: MY_UID, emoji: "❤️" });
-    return _writeVerdict(ins, { label: "like de live CDV", dupOk: true }).ok;
-  } catch(e) { console.warn("like de live CDV :", e && e.message); return false; }
-}
-// Likes ❤️ d'un lot de lives (comptés par UTILISATEUR distinct) → { liveId:{likes,liked} }.
-async function supaLoadCdvLiveLikes(liveIds) {
-  if (!liveIds || !liveIds.length) return {};
-  try {
-    const { data, error } = await supa.from("cdv_live_reactions")
-      .select("live_id,user_id,emoji").in("live_id", liveIds).eq("emoji", "❤️");
-    if (error) { console.warn("cdv live likes:", error.message); return {}; }
-    var out = {};
-    liveIds.forEach(function(id){ out[id] = { likes: 0, liked: false, _seen: {} }; });
-    (data || []).forEach(function(r){
-      var o = out[r.live_id] || (out[r.live_id] = { likes: 0, liked: false, _seen: {} });
-      if (!o._seen[r.user_id]) { o._seen[r.user_id] = 1; o.likes++; } // distinct users
-      if (r.user_id === MY_UID) o.liked = true;
-    });
-    liveIds.forEach(function(id){ if (out[id]) delete out[id]._seen; });
-    return out;
-  } catch(e) { console.warn("cdv live likes:", e); return {}; }
-}
 
 // ── Commentaires d'événements IRL (table event_comments, cross-compte) ──
 async function supaAddEventComment(eventId, text) {
@@ -4460,159 +4031,12 @@ async function supaLoadEventCommentCounts(eventIds) {
   } catch(e) { console.warn("event comment counts:", e); return {}; }
 }
 
-async function supaFollowCdvLive(liveId) {
-  try { await supa.from("cdv_live_followers").insert({ live_id: liveId, user_id: MY_UID }); }
-  catch(e) { console.warn("CDV follow:", e); }
-}
-async function supaUnfollowCdvLive(liveId) {
-  try { await supa.from("cdv_live_followers").delete().eq("live_id", liveId).eq("user_id", MY_UID); }
-  catch(e) { console.warn("CDV unfollow:", e); }
-}
 
-// ── Co-voyageurs d'un live (table cdv_live_collaborators) ──
-// Un collaborateur publie ses étapes SOUS SON PROPRE author_id : la policy
-// INSERT de cdv_live_steps (author_id = auth.uid()) reste satisfaite, rien à
-// assouplir côté RLS.
-async function supaAddCdvCollaborator(liveId, userId) {
-  try {
-    if (!liveId || !userId || !MY_UID) return false;
-    const { error } = await supa.from("cdv_live_collaborators")
-      .insert({ live_id: liveId, user_id: userId, added_by: MY_UID });
-    if (error && error.code !== "23505") { console.warn("CDV collab:", error.message); return false; }
-    return true;
-  } catch (e) { console.warn("CDV collab:", e); return false; }
-}
 
-// Même exigence que pour le carnet : une révocation crue à tort laisse le
-// collaborateur contribuer au voyage.
-async function supaRemoveCdvCollaborator(liveId, userId) {
-  try {
-    const res = await supa.from("cdv_live_collaborators").delete()
-      .eq("live_id", liveId).eq("user_id", userId).select("user_id");
-    return _writeVerdict(res, { label: "retrait de collaborateur du live CDV" }).ok;
-  } catch (e) { console.warn("retrait de collaborateur du live CDV :", e && e.message); return false; }
-}
 
-async function supaLoadCdvLives() {
-  try {
-    const { data: lives, error } = await supa.from("cdv_lives").select("*").order("created_at", { ascending: false }).limit(50);
-    if (error) { console.warn("supaLoadCdvLives:", error.message); return []; }
-    const rows = lives || [];
-    if (!rows.length) return [];
-    const ids = rows.map(r => r.id);
-    const [stepsRes, comRes, reacRes, folRes, colRes] = await Promise.all([
-      supa.from("cdv_live_steps").select("*").in("live_id", ids).order("created_at", { ascending: true }),
-      supa.from("cdv_live_comments").select("*").in("live_id", ids).order("created_at", { ascending: true }),
-      supa.from("cdv_live_reactions").select("*").in("live_id", ids),
-      supa.from("cdv_live_followers").select("*").in("live_id", ids),
-      // Table récente : si la migration n'est pas passée, on dégrade sans casser.
-      supa.from("cdv_live_collaborators").select("*").in("live_id", ids).then(r => r, () => ({ data: [] })),
-    ]);
-    const groupBy = (res, key) => {
-      const m = {}; (res.data || []).forEach(x => { (m[x[key]] = m[x[key]] || []).push(x); }); return m;
-    };
-    const stepsBy = groupBy(stepsRes, "live_id");
-    const comBy = groupBy(comRes, "live_id");
-    const reacBy = groupBy(reacRes, "live_id");
-    const folBy = groupBy(folRes, "live_id");
-    const colBy = groupBy(colRes || { data: [] }, "live_id");
-    return rows.map(r => {
-      const followers = (folBy[r.id] || []).map(f => f.user_id);
-      return {
-        id: r.id, authorId: r.author_id,
-        destination: r.destination || "", description: r.description || "",
-        duration: r.duration || "", visibility: r.visibility || "public",
-        status: r.status || "live",
-        steps: (stepsBy[r.id] || []).map(s => ({
-          id: s.id, authorId: s.author_id, city: s.city || "", emoji: s.emoji || "📍", content: s.content || "",
-          photos: Array.isArray(s.photos) ? s.photos : [], photo: (Array.isArray(s.photos) && s.photos[0]) || null,
-          video: s.video || null,
-          rating: s.rating || 0, budget: s.budget || "", createdAt: supaTs(s.created_at),
-          lat: (typeof s.lat === "number") ? s.lat : null, lng: (typeof s.lng === "number") ? s.lng : null,
-        })),
-        comments: (comBy[r.id] || []).map(c => ({ id: c.id, authorId: c.author_id, author: c.author_name || "Anonyme", text: c.text || "", at: supaTs(c.created_at) })),
-        reactions: (reacBy[r.id] || []).map(x => x.emoji),
-        // Garde l'auteur de chaque réaction → pastille « qui a réagi » sur les cartes live.
-        reactionsBy: (reacBy[r.id] || []).map(x => ({ emoji: x.emoji, userId: x.user_id })),
-        followers: followers, viewers: followers, currentViewers: followers.length,
-        collaborators: (colBy[r.id] || []).map(c => c.user_id),
-        createdAt: supaTs(r.created_at),
-        fromSupabase: true,
-      };
-    });
-  } catch(e) { console.warn("supaLoadCdvLives:", e); return []; }
-}
 
-// Charge un seul live (pour le rafraîchissement du viewer ouvert).
-async function supaLoadCdvLive(liveId) {
-  const all = await supaLoadCdvLives();
-  return all.find(l => l.id === liveId) || null;
-}
 
-// Fusionne les lives Supabase dans le cache local (passio_cdv_lives) + re-render.
-async function supaRefreshCdvLives() {
-  try {
-    if (typeof getCdvLives !== "function") return;
-    const supaLives = await supaLoadCdvLives();
-    if (!supaLives || !supaLives.length) return;
-    const supaIds = new Set(supaLives.map(l => l.id));
-    const localOnly = (getCdvLives() || []).filter(l => !supaIds.has(l.id) && !l.fromSupabase);
-    saveCdvLives([...supaLives, ...localOnly]);
-    try { _notifyNewFollowedLives(supaLives); } catch(_) {}
-    try {
-      const cdvScreen = document.getElementById("screen-cdv");
-      if (cdvScreen && cdvScreen.classList.contains("active") && typeof renderCdvScreen === "function") renderCdvScreen();
-    } catch(_) {}
-  } catch(e) { console.warn("supaRefreshCdvLives:", e); }
-}
 
-// Notifie (une fois) quand un compte SUIVI démarre un Live. Dédup persistante via
-// state.user.notifiedLiveIds ; les lives déjà anciens (>15 min) au moment du 1er
-// chargement sont marqués vus sans notifier, pour éviter un flot au boot.
-function _notifyNewFollowedLives(lives) {
-  try {
-    if (!state || !state.user) return;
-    const following = [].concat(state.following || [], (state.user && state.user.following) || []);
-    if (!following.length) return;
-    state.user.notifiedLiveIds = state.user.notifiedLiveIds || [];
-    const seen = new Set(state.user.notifiedLiveIds);
-    const now = Date.now();
-    let changed = false;
-    (lives || []).forEach(function(l) {
-      if (!l || l.status !== "live" || seen.has(l.id)) return;
-      if (typeof isMyLive === "function" && isMyLive(l)) return;
-      if (!following.includes(l.authorId)) return;
-      if (typeof isBlocked === "function" && isBlocked(l.authorId)) return;
-      seen.add(l.id); state.user.notifiedLiveIds.push(l.id); changed = true;
-      // Live déjà ancien au 1er passage : marqué vu, mais pas de notif tardive.
-      if (l.createdAt && (now - l.createdAt) > 15 * 60000) return;
-      const author = (typeof userById === "function" && userById(l.authorId)) || {};
-      const name = author.name || "Un passionné que tu suis";
-      try { if (typeof pushNotification === "function") pushNotification("🔴 <b>" + escapeHtml(name) + "</b> a démarré un Live" + (l.destination ? " : " + escapeHtml(l.destination) : ""), "🔴"); } catch (e) {}
-    });
-    if (state.user.notifiedLiveIds.length > 200) state.user.notifiedLiveIds = state.user.notifiedLiveIds.slice(-200);
-    if (changed) { try { saveState(); } catch (e) {} }
-  } catch (e) {}
-}
-
-// Handler realtime CDV Lives (debounced) : un changement sur n'importe quelle
-// table cdv_* → recharge la liste + le viewer ouvert. Rend les Lives instantanés
-// (le polling 5 s de startCdvLiveRefresh reste un filet de sécurité hors-ligne).
-let _cdvRtDebounce = null;
-function _onCdvRealtime() {
-  if (_cdvRtDebounce) clearTimeout(_cdvRtDebounce);
-  _cdvRtDebounce = setTimeout(async function() {
-    try { if (typeof supaRefreshCdvLives === "function") await supaRefreshCdvLives(); } catch(e) {}
-    try {
-      const modal = document.querySelector(".modal.modal-fullscreen[data-live-id]");
-      if (!modal) return;
-      const ci = document.getElementById("cdvLiveComment");
-      if (ci && document.activeElement === ci && ci.value) return; // ne pas écraser la saisie en cours
-      const lid = modal.getAttribute("data-live-id");
-      if (lid && typeof openCdvLiveViewer === "function") openCdvLiveViewer(lid);
-    } catch(e) {}
-  }, 400);
-}
 
 // ---- MESSAGERIE TEMPS RÉEL ----
 
@@ -5460,23 +4884,16 @@ function supaSubscribe() {
       } catch(e) {}
     });
 
-  // CDV Lives en temps réel : les 5 tables (étapes / commentaires / réactions /
-  // suivis). Handler debounced → refresh liste + viewer ouvert.
-  dbChan
-    .on("postgres_changes", { event: "*", schema: "public", table: "cdv_lives" }, _onCdvRealtime)
-    .on("postgres_changes", { event: "*", schema: "public", table: "cdv_live_steps" }, _onCdvRealtime)
-    .on("postgres_changes", { event: "*", schema: "public", table: "cdv_live_comments" }, _onCdvRealtime)
-    .on("postgres_changes", { event: "*", schema: "public", table: "cdv_live_reactions" }, _onCdvRealtime)
-    .on("postgres_changes", { event: "*", schema: "public", table: "cdv_live_followers" }, _onCdvRealtime);
-
-  // Interactions PAR ÉTAPE / PAR JOUR (commentaires + réactions), cross-compte.
-  dbChan
-    .on("postgres_changes", { event: "INSERT", schema: "public", table: "step_interactions" }, function(payload) {
-      try { if (typeof _onStepInteraction === "function") _onStepInteraction(payload); } catch(e) {}
-    })
-    .on("postgres_changes", { event: "DELETE", schema: "public", table: "step_interactions" }, function(payload) {
-      try { if (typeof _onStepInteraction === "function") _onStepInteraction(payload); } catch(e) {}
-    });
+  // ⚠️ LES ABONNEMENTS TEMPS RÉEL DU CARNET DE VOYAGE ONT ÉTÉ RETIRÉS (§6).
+  // Neuf abonnements y passaient : les cinq tables `cdv_live_*` et les deux
+  // événements de `step_interactions`. Ils n'ont plus AUCUNE surface à
+  // rafraîchir — l'écran, le viewer et leurs listes n'existent plus — mais ils
+  // continuaient de coûter un canal et du trafic à chaque session.
+  //
+  // ⚠️ AUCUNE table n'est supprimée ni vidée : `cdv_lives`, `cdv_live_steps`,
+  // `cdv_live_comments`, `cdv_live_reactions`, `cdv_live_followers` et
+  // `step_interactions` gardent leurs lignes et restent dans la publication
+  // realtime. On cesse seulement de les écouter.
 
   // Lives VIDÉO : apparition/fin d'un direct → rafraîchit les bulles 🔴.
   dbChan

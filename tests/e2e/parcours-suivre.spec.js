@@ -55,7 +55,8 @@ async function poser(page) {
     state.user.profiles = [{ id: "pp_0", name: "Audit QA", passion: "musique", emoji: "🎵", color: "#7c3aed" }];
     state.user.currentProfileId = "pp_0";
     setFeedPassions(["musique"]);          // « cuisine » n'est PAS choisie
-    state.feedView = "accueil";
+    state.feedFollowingOn = true;
+    state.feedIntents = [];
     selectedMoods = new Set(["all", "creation", "learn", "chill", "actu"]);
     state.feedMoodsTouched = true;
     saveState();
@@ -143,12 +144,14 @@ test("le parcours complet : suivre → voir → recharger → toujours voir → 
     window._feedDomSig = null;
     goTo("feed");
     renderFeed();
-    return { suivis: (state.user.following || []).slice(), vue: feedViewCourante(), passions: [...(_activeFeedPassions || [])] };
+    // ⚠️ `feedViewCourante()` a disparu avec les vues exclusives (ADR-011 §1) :
+    // « Suivis » est devenu un CRITÈRE persisté, `state.feedFollowingOn`.
+    return { suivis: (state.user.following || []).slice(), suivisCoche: feedFollowingSelected(), passions: [...(_activeFeedPassions || [])] };
   });
   await page.waitForTimeout(400);
 
   expect(survivant.suivis, "l'abonnement a survécu au rechargement").toContain("u_sacha");
-  expect(survivant.vue, "et la vue aussi").toBe("accueil");
+  expect(survivant.suivisCoche, "et le critère « Suivis » aussi").toBe(true);
   expect(survivant.passions, "« cuisine » n'a jamais été ajoutée aux passions choisies").not.toContain("cuisine");
   expect(await texte(page), "après rechargement, sa publication est toujours là").toContain("POST_DE_SACHA");
 

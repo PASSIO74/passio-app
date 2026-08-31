@@ -140,10 +140,15 @@
   // ⑥ LE PROFIL — trois onglets nommés
   // ══════════════════════════════════════════════════════════════════════════
   var BARRE_ID = "v7ProfileTabs";
+  // ⚠️ DEUX onglets, plus trois. La refonte multi-passion (§1) retire « À propos » :
+  // les passions se présentent désormais en haut de l'écran, dans le rail de
+  // bulles (`renderProfilePassionRail`, app-06), et leur GESTION vit dans le
+  // panneau `#passionManager`, ouvert à la demande. Un troisième onglet aurait
+  // gardé une deuxième liste de passions sous les deux premières — la
+  // duplication que cette refonte supprime.
   var PANNEAUX = [
     { cle: "publications", libelle: "Publications" },
-    { cle: "activites", libelle: "Activités" },
-    { cle: "apropos", libelle: "À propos" },
+    { cle: "activites", libelle: "Activité" },
   ];
   var ongletActif = "publications";
 
@@ -233,25 +238,15 @@
       "🤝", "Trouver une activité", "Voir ce qui se passe près de chez toi",
       function () { if (typeof goTo === "function") goTo("irl"); }));
 
-    // ── À propos : les passions (identité active) et les accès secondaires ──
-    var titrePassions = el("nouveauProfilLien");
-    titrePassions = titrePassions ? titrePassions.parentNode : null;
-    if (titrePassions) deplacer(titrePassions, hotes.apropos);
-    // ⚠️ `#profilesModeleSub` (ADR-010) porte la phrase qui explique le modèle
-    // « un seul profil, plusieurs passions ». Elle vit entre le titre et
-    // `#profilesQuotaSub` : sans ce déplacement elle resterait HORS des trois
-    // panneaux, visible sous eux, détachée de la section qu'elle explique.
-    var subModele = el("profilesModeleSub");
-    if (subModele) deplacer(subModele, hotes.apropos);
-    var sub = el("profilesQuotaSub");
-    if (sub) deplacer(sub, hotes.apropos);
-    deplacer(listeProfils, hotes.apropos);
-    // §6 : accès SECONDAIRE aux Carnets / Passio : Voyage. Rien n'est supprimé
-    // — le sous-filtre « Carnets » de Publications reste, et l'écran CDV garde
-    // toutes ses routes (`goTo("cdv")`, lien profond `#cdv`).
-    hotes.apropos.appendChild(lienSecondaire(
-      "📔", "Carnets de voyage", "Tes carnets et Passio : Voyage",
-      function () { if (typeof goTo === "function") goTo("cdv"); }));
+    // ⚠️ PLUS DE PANNEAU « À propos ». Ce qu'il contenait — le titre « Mes
+    // passions », la phrase du modèle, le lien des passions archivées et la
+    // liste `#profileList` — vit maintenant dans `#passionManager`, un panneau
+    // masqué que les options du profil ouvrent à la demande (app-06). Ces nœuds
+    // ne sont donc PAS déplacés ici : ils restent dans leur conteneur, qui est
+    // `hidden` tant qu'on ne le demande pas.
+    //
+    // ⚠️ Le lien secondaire « Carnets de voyage » a été retiré avec la
+    // fonctionnalité elle-même (§6).
 
     ec.setAttribute("data-v7-profil", "1");
     return true;

@@ -86,11 +86,13 @@ async function seedFeed(page, opts = {}) {
     // rester résoluble, sinon le haut du fil se rend sur un profil absent.
     state.user.profiles = [{ id: "pp_0", name: "Audit QA", passion: "musique", emoji: "🎵", color: "#7c3aed" }];
     _activeFeedPassions = new Set(cfg.passions || ["musique"]);
-    // ADR-010 : la bascule `_showFollowingFeed` est remplacée par une VUE
-    // persistée. `following_feed: true` demandait « montre-moi mes suivis » →
-    // c'est désormais la vue « Suivis ».
-    state.feedView = cfg.following_feed ? "suivis" : "accueil";
+    // ⚠️ ADR-011 : « Suivis » n'est plus une VUE mais un CRITÈRE additif,
+    // persisté dans `state.feedFollowingOn`. `following_feed: true` demandait
+    // « montre-moi mes suivis » ; ici `state.user.following` reste vide, donc
+    // ce critère n'apporte aucune source — le périmètre observé est le même.
+    state.feedFollowingOn = !!cfg.following_feed;
     activeFeedIntent = "for_you";
+    state.feedIntents = [];
     window._feedDomSig = null;
     renderFeed();
   }, [opts.posts || POSTS, opts.reels || [], opts]);

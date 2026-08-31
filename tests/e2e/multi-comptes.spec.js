@@ -605,105 +605,11 @@ test.describe("messagerie entre 2 comptes réels", () => {
   // CDV Live cross-compte : A démarre un Live + une étape, B le charge depuis
   // Supabase, commente, réagit et le suit ; A recharge et voit le commentaire,
   // la réaction et le follower. Valide la synchro des Lives (migration_cdv_lives).
-  test("CDV Live d'un autre → étape/commentaire/réaction/suivi cross-compte", async ({ browser }) => {
-    test.setTimeout(180000);
-    const t0 = Date.now();
-    const log = (m) => console.log(`[cdv ${(((Date.now() - t0) / 1000) | 0)}s] ${m}`);
-
-    const ctxA = await browser.newContext();
-    const ctxB = await browser.newContext();
-    const pageA = await ctxA.newPage();
-    const pageB = await ctxB.newPage();
-    pageA.on("console", (m) => { if (m.type() === "error") log("A err: " + m.text().slice(0, 160)); });
-    pageB.on("console", (m) => { if (m.type() === "error") log("B err: " + m.text().slice(0, 160)); });
-    wireHttpDiag(log, pageA, pageB);
-
-    let liveId = null;
-    try {
-      const uidA = await signupAnonymous(pageA, "Test Alice");
-      const uidB = await signupAnonymous(pageB, "Test Bob");
-      expect(uidA).toBeTruthy(); expect(uidB).toBeTruthy(); expect(uidA).not.toBe(uidB);
-      log("A=" + uidA + " B=" + uidB);
-
-      // ── A démarre un Live + publie une étape AVEC une photo base64 ──
-      const PX = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
-      liveId = await pageA.evaluate(async (px) => {
-        const id = "live_" + uid();
-        await supaPublishCdvLive({ id, authorId: "me", destination: "Tour auto", description: "e2e", duration: "weekend", visibility: "public", status: "live" });
-        await supaAddCdvLiveStep(id, { id: "ls_" + uid(), city: "Lisbonne", emoji: "📍", content: "Arrivée [test auto]", photos: [px], rating: 5, budget: "€€" });
-        return id;
-      }, PX);
-      expect(liveId, "Live de A publié").toBeTruthy();
-      log("live publié: " + liveId);
-
-      // ── B charge le Live de A depuis Supabase ──
-      const bLive = await loadFindWithRetry(pageB, "supaLoadCdvLives", liveId, 20000);
-      expect(bLive, "B charge le Live de A").toBeTruthy();
-      expect(bLive.steps.length, "étape visible chez B").toBeGreaterThanOrEqual(1);
-      expect(bLive.authorId, "auteur = A").toBe(uidA);
-      // Invariant DB-hygiène : AUCUNE photo d'étape ne doit être du base64 en DB
-      // (uploadée sur Storage → URL, ou sautée si l'upload échoue — jamais base64).
-      const stepPhotos = bLive.steps.reduce((acc, s) => acc.concat(s.photos || []), []);
-      expect(stepPhotos.every((p) => typeof p === "string" && p.indexOf("data:") !== 0), "aucune photo base64 en DB").toBe(true);
-      log("B voit le live · étapes=" + bLive.steps.length + " · photos=" + JSON.stringify(stepPhotos.map((p) => (p || "").slice(0, 24))));
-
-      // ── B commente, réagit, suit (vraies fonctions de sync) ──
-      await pageB.evaluate(async (id) => {
-        await supaAddCdvLiveComment(id, "Génial ce voyage ! [test auto]");
-        await supaReactCdvLive(id, "🔥");
-        await supaFollowCdvLive(id);
-      }, liveId);
-      log("B a commenté / réagi / suivi");
-      await pageB.waitForTimeout(1500);
-
-      // ── A recharge son Live et voit les interactions de B ──
-      const aLive = await loadFindWithRetry(pageA, "supaLoadCdvLives", liveId, 20000);
-      expect(aLive, "A recharge son Live").toBeTruthy();
-      expect((aLive.comments || []).some((c) => (c.text || "").indexOf("Génial") !== -1), "commentaire de B visible chez A").toBe(true);
-      expect((aLive.reactions || []).includes("🔥"), "réaction de B visible chez A").toBe(true);
-      expect((aLive.followers || []).includes(uidB), "B figure dans les followers chez A").toBe(true);
-      log("✅ CDV Live cross-compte validé (étape + commentaire + réaction + suivi)");
-
-      // ── Interactions PAR ÉTAPE cross-compte (table step_interactions) ──
-      // B commente ET réagit sur l'ÉTAPE précise (pas le live entier) ; A les
-      // recharge via supaLoadStepInteractions → preuve que le commentaire/la
-      // réaction d'un jour précis d'un autre compte sont bien partagés.
-      const stepId = bLive.steps[0].id;
-      const stepThread = "cdvstep:" + liveId + ":" + stepId;
-      await pageB.evaluate(async (t) => {
-        await supaAddStepComment(t, "sc_" + uid(), "Trop belle cette étape ! [test auto]", "Test Bob", "🌍");
-        await supaSetStepReaction(t, "😍", "Test Bob", "🌍");
-      }, stepThread);
-      await pageB.waitForTimeout(1200);
-      const aStep = await pageA.evaluate((t) => supaLoadStepInteractions([t]), stepThread);
-      expect(aStep[stepThread], "A charge les interactions d'étape").toBeTruthy();
-      expect((aStep[stepThread].comments || []).some((c) => (c.text || "").indexOf("Trop belle") !== -1), "commentaire d'étape de B visible chez A").toBe(true);
-      expect((aStep[stepThread].reactions || []).some((r) => r.text === "😍"), "réaction d'étape de B visible chez A").toBe(true);
-      log("✅ step_interactions cross-compte validé (commentaire + réaction d'étape)");
-      // Nettoyage des interactions d'étape (pas de FK → pas de cascade).
-      await pageB.evaluate((t) => supa.from("step_interactions").delete().eq("thread_id", t), stepThread).catch(() => {});
-
-      // ── Realtime : A ajoute une 2e étape, B la reçoit SANS recharger manuellement
-      //    (canal postgres_changes "realtime:cdv_lives" → _onCdvRealtime → refresh) ──
-      await pageA.evaluate((id) => supaAddCdvLiveStep(id, { id: "ls_" + uid(), city: "Sintra", emoji: "📍", content: "Étape realtime [test auto]", photos: [], rating: 4, budget: "€" }), liveId);
-      try {
-        await pageB.waitForFunction(
-          (id) => { const l = (typeof getCdvLives === "function" ? getCdvLives() : []).find((x) => x.id === id); return !!(l && (l.steps || []).length >= 2); },
-          liveId, { timeout: 15000 }
-        );
-        log("✅ realtime OK : B a reçu la 2e étape sans recharger");
-      } catch (e) {
-        log("⚠️ realtime non livré sous 15s (le polling 5 s du viewer reste le filet de sécurité)");
-      }
-
-      // ── Nettoyage : A supprime son Live (cascade efface les enfants) ──
-      await cleanupCdvLive(pageA, liveId);
-      await cleanupCdvLive(pageB, null);
-    } finally {
-      await ctxA.close();
-      await ctxB.close();
-    }
-  });
+  // ⚠️ LE CAS « CDV Live d'un autre » A ÉTÉ RETIRÉ avec le Carnet de voyage
+  // (ADR-011 §5). Il validait la synchro cross-compte des lives (tables
+  // `cdv_live_*`, migration_cdv_lives) : ni le moteur, ni l'écran, ni les
+  // abonnements temps réel n'existent plus. Les TABLES, elles, sont intactes —
+  // aucune donnée n'a été détruite.
 
   // Carnet de voyage cross-compte (2026-07-02, colonne posts.vlog jsonb) : A
   // publie un carnet complet (destination, 2 étapes dont 1 photo base64, cover),

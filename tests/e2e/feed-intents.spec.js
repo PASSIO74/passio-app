@@ -1,9 +1,15 @@
 // Suite « Envie du moment » (rail à cinq intentions du Feed).
 //
-// Le rail est une couche de réordonnancement : il doit conserver le set complet
-// des posts déjà autorisés par les passions/suivis, laisser le legacy
-// strictement intact sous kill switch et ne jamais émettre d'identifiant ni de texte
-// libre dans sa télémétrie.
+// ⚠️ CE QUE LE RAIL FAIT A CHANGÉ AVEC LA REFONTE MULTI-PASSION (ADR-011 §1).
+// Il était une couche de RÉORDONNANCEMENT à choix unique : il conservait le set
+// complet des posts déjà autorisés par les passions et les suivis, et se
+// contentait d'en changer l'ordre. Il est devenu une TROISIÈME SOURCE, en
+// multi-sélection : une envie cochée fait ENTRER du contenu dans le fil, au
+// même titre qu'une passion ou que « Suivis », en OU inclusif.
+//
+// Ce qui ne change pas, et que cette suite continue de garantir : le legacy
+// reste strictement intact sous kill switch, et la télémétrie n'émet jamais
+// d'identifiant ni de texte libre.
 //
 // UI-2 n'a plus d'activation propre : il suit UI-1 + UI-2, actives par défaut
 // depuis validation du 2026-08-26. Les valeurs positives héritées restent
@@ -49,9 +55,11 @@ async function seedFeed(page, intents, bridge = false) {
     state.user.following = [];
     state.user.profiles = [{ id: "qa", name: "QA", passion: "musique" }];
     _activeFeedPassions = new Set(["musique"]);
-    // ADR-010 : voir feed-window.spec.js — `state.user.following` est vide ici,
-    // donc « accueil » observe le même périmètre que l'ancienne bascule à false.
-    state.feedView = "accueil";
+    // ⚠️ ADR-011 : « Suivis » est un critère persisté, plus une vue.
+    // `state.user.following` est vide ici, donc le cocher n'apporte aucune
+    // source : le périmètre observé est exactement celui d'avant.
+    state.feedFollowingOn = true;
+    state.feedIntents = [];
     selectedMoods = new Set(["creation"]);
     activeFeedIntent = "for_you";
     window._feedIrlBridgeViewed = {};
@@ -186,7 +194,14 @@ test.describe("Fil — Envie du moment (UI-2 active par défaut)", () => {
     expect(ids.slice().sort()).toEqual(POSTS.map((p) => p.id).sort());
   });
 
-  test("les cinq intentions rendent le MÊME ensemble, dans un ordre différent", async ({ page }) => {
+  test("une passion cochée garde tout le set, quelle que soit l'envie — seul l'ordre bouge", async ({ page }) => {
+    // ⚠️ CE CAS EST LE MÊME QU'AVANT, sur la prémisse qui le rend encore vrai.
+    // Toutes les publications de ce lot portent la passion « musique », qui est
+    // cochée : elles entrent donc TOUTES par la source « passions ». Cocher une
+    // envie ne peut alors qu'AJOUTER (union) — jamais retrancher — et son seul
+    // effet observable reste le classement. C'est exactement ce que le rail
+    // promettait avant, et la refonte ne le retire pas : elle y ajoute la
+    // capacité de faire entrer du contenu qu'aucune passion n'aurait amené.
     await boot(page, { preview: true });
     await seedFeed(page, true);
 
@@ -194,15 +209,42 @@ test.describe("Fil — Envie du moment (UI-2 active par défaut)", () => {
     const ordres = [];
     for (const intent of ["for_you", "discover", "learn", "create", "meet"]) {
       await page.evaluate((i) => {
-        activeFeedIntent = "for_you";      // repartir d'un état neutre à chaque tour
+        setFeedIntents([]);                // repartir d'un état neutre à chaque tour
         setFeedIntent(i);                  // "for_you" = retour, les autres = sélection
       }, intent);
       const ids = await renderedIds(page);
       expect(ids.slice().sort(), `ensemble complet pour ${intent}`).toEqual(attendus);
       ordres.push(ids.join("|"));
     }
-    // Réordonner, pas filtrer : au moins deux ordres distincts.
+    // Réordonner : au moins deux ordres distincts.
     expect(new Set(ordres).size).toBeGreaterThan(1);
+  });
+
+  test("une envie SEULE fait entrer du contenu qu'aucune passion cochée n'amenait", async ({ page }) => {
+    // ⚠️ LE COMPORTEMENT NEUF (ADR-011 §1) : sans passion cochée et sans
+    // abonnement, une envie devient la seule source du fil.
+    await boot(page, { preview: true });
+    await seedFeed(page, true);
+
+    await page.evaluate(() => {
+      setFeedPassions([]);                 // aucune passion
+      state.feedFollowingOn = false;       // aucun compte suivi coché
+      setFeedIntents([]);
+      window._feedDomSig = null;
+      renderFeed();
+    });
+    expect(await renderedIds(page), "aucun critère : aucune carte").toEqual([]);
+
+    await page.evaluate(() => setFeedIntent("learn"));
+    expect(await renderedIds(page), "« Apprendre » seule amène son contenu")
+      .toEqual(["intent_learn"]);
+
+    // Deux envies s'ajoutent, elles ne se remplacent pas.
+    await page.evaluate(() => setFeedIntent("create"));
+    expect((await renderedIds(page)).slice().sort())
+      .toEqual(["intent_create", "intent_learn"]);
+    expect(await page.evaluate(() => feedIntentsSelected().sort()))
+      .toEqual(["create", "learn"]);
   });
 
   test("retaper l'intention active revient immédiatement à Tous", async ({ page }) => {
@@ -214,6 +256,7 @@ test.describe("Fil — Envie du moment (UI-2 active par défaut)", () => {
     await page.locator('.feed-intent-btn[data-intent="create"]').click();
     await expect(page.locator('.feed-intent-btn[data-intent="for_you"]')).toHaveAttribute("aria-pressed", "true");
     expect(await page.evaluate(() => activeFeedIntent)).toBe("for_you");
+    expect(await page.evaluate(() => feedIntentsSelected())).toEqual([]);
   });
 
   test("le bouton Tous est aussi enregistré comme un retour, pas une sélection", async ({ page }) => {

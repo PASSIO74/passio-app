@@ -54,53 +54,9 @@ test.describe("échappement du type d'activité et de la durée", () => {
     expect(r.texte).toContain(CHARGE);
   });
 
-  test("la durée du carnet en direct est du texte dans le carrousel du Fil", async ({ page }) => {
-    await bootOnboarded(page);
-
-    const r = await page.evaluate((charge) => {
-      localStorage.setItem("passio_cdv_lives", JSON.stringify([{
-        id: "live_xss", authorId: "u_autre", status: "live", visibility: "public",
-        destination: "Lyon", duration: charge, currentViewers: 2,
-        steps: [{ id: "s1", text: "étape" }], createdAt: Date.now(),
-      }]));
-      const sec = document.getElementById("feedCdvLivesSection");
-      if (sec) sec.remove();
-      renderFeedCdvLives();
-      const item = document.querySelector("#feedCdvLivesSection .cdv-feed-live-item");
-      return {
-        present: !!item,
-        texte: item ? item.textContent : null,
-        img: !!(item && item.querySelector("img")),
-        marqueur: !!window.__XSS,
-      };
-    }, CHARGE);
-
-    expect(r.present, "le carrousel doit contenir le live injecté").toBe(true);
-    expect(r.marqueur).toBe(false);
-    expect(r.img).toBe(false);
-    expect(r.texte).toContain(CHARGE);
-  });
-
-  test("la durée est du texte dans la fiche du carnet en direct", async ({ page }) => {
-    await bootOnboarded(page);
-
-    const r = await page.evaluate((charge) => {
-      localStorage.setItem("passio_cdv_lives", JSON.stringify([{
-        id: "live_xss2", authorId: "u_autre", status: "live", visibility: "public",
-        destination: "Lyon", duration: charge, currentViewers: 2,
-        steps: [{ id: "s1", text: "étape" }], createdAt: Date.now(),
-      }]));
-      openCdvLiveViewer("live_xss2");
-      const modal = document.querySelector(".modal-content") || document.body;
-      return {
-        texte: modal.textContent,
-        img: !!modal.querySelector('img[src="x"]'),
-        marqueur: !!window.__XSS,
-      };
-    }, CHARGE);
-
-    expect(r.marqueur).toBe(false);
-    expect(r.img).toBe(false);
-    expect(r.texte).toContain(CHARGE);
-  });
+  // ⚠️ LES DEUX CAS « durée du carnet en direct » ONT ÉTÉ RETIRÉS avec le
+  // Carnet de voyage (ADR-011 §5) : le carrousel du Fil (`renderFeedCdvLives`)
+  // et la fiche (`openCdvLiveViewer`) n'existent plus, donc `duration` n'a plus
+  // aucune surface d'affichage. Le premier cas de ce fichier — `eventType` sur
+  // la fiche d'activité — reste, et c'est celui qui garde du code vivant.
 });

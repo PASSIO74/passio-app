@@ -119,7 +119,7 @@ Réseau social des passions. PWA vanilla JS (pas de framework, pas de bundler) +
 ## Architecture
 
 - `index.html` : markup complet de l'app (landing, onboarding, 8 écrans, modals). En dev les 15 fichiers JS sont chargés séparément ; en prod `scripts/build.js` ré-assemble un monolithe dans `dist/`.
-- `js/app-01` à `app-09` : logique applicative (ordre de chargement = dépendances par hoisting, NE PAS réordonner). 01=diag/seed, 02=state/utils/goTo, 03=posts/carnets, 04=commentaires/conversations rendering, 05=config/profils/reels, 06=profil principal/studio/partage, 07=IA/explore/IRL, 08=modals/tour/boot()/Supabase client, 09=PWA/emoji/pièces jointes/wrappers messagerie.
+- `js/app-01` à `app-09` : logique applicative (ordre de chargement = dépendances par hoisting, NE PAS réordonner). 01=diag/seed, 02=state/utils/goTo, 03=posts (partage, likes — les carnets en ont été retirés par ADR-011), 04=commentaires/conversations rendering, 05=config/profils/reels, 06=profil principal/studio/partage, 07=IA/explore/IRL, 08=modals/tour/boot()/Supabase client, 09=PWA/emoji/pièces jointes/wrappers messagerie.
 - `js/access-gate.js` : verrouillage par code (2125) — chargé en PREMIER dans <head>. Voir `docs/SECURITE_CODE_ACCES.md` pour changer le code.
 - `styles.css` : 6300 lignes, thème violet (#7c3aed), variables CSS (--bg-card, --border, --muted, --accent…).
 - Backend : Supabase (URL/clé anon dans app-08). Tables : profiles, posts, post_likes, post_comments, stories, events, event_attendees, conversations, conv_members, conv_messages, notifications, follows, client_errors. RLS par propriétaire (`auth.uid()::text`). Migrations dans `migrations/`.
@@ -138,7 +138,7 @@ Réseau social des passions. PWA vanilla JS (pas de framework, pas de bundler) +
 - `$()` = querySelector (défini app-02), `$$()` = querySelectorAll. Toujours garder les guards `if (!el) return;`.
 - HTML généré par template literals + `escapeHtml()` pour tout contenu utilisateur (XSS). **3 helpers d'échappement (app-02), choisir selon le CONTEXTE** : `escapeHtml(x)` = texte HTML ; `escapeJsArg(x)` = argument de chaîne JS simple-quotée DANS un attribut onclick (le HTML décode `&#39;` AVANT le parse JS → un pseudo avec apostrophe cassait le bouton avec escapeHtml seul) ; `safeUrlAttr(x)` = attribut src/href d'une URL fournie par un autre utilisateur (bloque `javascript:` & sortie d'attribut ; n'accepte que http(s)/data:image|audio|video/blob). ⚠️ Les payloads de `comment_interactions`/`event_reactions`/messages média sont librement insérables par tout compte authentifié → TOUJOURS échapper à l'affichage (XSS stockés corrigés le 2026-07-02).
 - **Timestamps Supabase : TOUJOURS `supaTs(s)` (app-02), JAMAIS `new Date(x + "Z")`.** La prod mélange des colonnes `timestamp` (sans fuseau : posts, conv_messages, notifications, stories, events, profiles) et `timestamptz` (avec offset `+00:00` : comment_interactions, event_comments/reactions/attendees, tout cdv_*, blocks, reports…) — l'ancien pattern `+ "Z"` donnait NaN (« Invalid Date ») sur les timestamptz. `supaTs` gère les deux + le format realtime.
-- Navigation : `goTo('feed'|'profiles'|'studio'|'explore'|'irl'|'messages'|'cdv')` — écrans = `#screen-<nom>`. `goTo('wallet')` et `goTo('shop')` sont REDIRIGÉS vers `profiles` (ADR-009) : un ancien deep link `#wallet` ne doit jamais laisser l'app sans écran actif.
+- Navigation : `goTo('feed'|'profiles'|'studio'|'explore'|'irl'|'messages')` — écrans = `#screen-<nom>`. `goTo('wallet')` et `goTo('shop')` sont REDIRIGÉS vers `profiles` (ADR-009), `goTo('cdv')` vers `feed` (ADR-011, retrait du Carnet de voyage) : un ancien deep link ne doit jamais laisser l'app sans écran actif.
 - Toasts via `toast()`, jamais `alert()`.
 - Les onclick inline doivent référencer des fonctions globales EXISTANTES (l'audit du 2026-06-10 a trouvé 7 fonctions fantômes — vérifier avant d'ajouter un handler).
 
@@ -337,7 +337,7 @@ l'ordre d'origine ou retirer le renvoi fait rougir 6 des 7).
 - **Cadrage / shell** : jamais 100dvh (var --app-vh mesurée en JS).
 - **Feed** : classement par pertinence (rankFeedPosts), guards no-op.
 - **Profil** : onglets multi-sélection, profil visité = même mécanique, compte privé (RLS).
-- **CDV** (carnets/lives/voyages) : ~15 fiches — v2/v3, collaboratif, stats/passeport, Mes lieux, rétrospective, stories, création hors Studio, sync Supabase, modération.
+- ~~**CDV** (carnets/lives/voyages)~~ : **fonctionnalité RETIRÉE le 2026-08-31 (ADR-011)**. Les ~15 fiches de `docs/PIEGES_CONNUS.md` ne décrivent plus aucun code vivant ; elles restent pour l'histoire, et parce que rien n'interdit que la fonctionnalité revienne.
 - **IRL** (événements) : ~12 fiches — RSVP 3 états, liste d’attente, check-in QR, badges, preuve sociale, cycle de vie, ergonomie, suite de tests dédiée.
 - **Bobines / stories / éditeur média** : publication vidéo fiabilisée, son, plein écran.
 - **Appels / Live vidéo** : WebRTC P2P, push app fermée, anti-écho (mono).
@@ -970,6 +970,132 @@ Le script est en lecture seule sur le dépôt (il n'écrit que dans son dossier 
   `normalizeStudioMood` (app-06) : sans elle, `loadDraft` rendait une rangée SANS pastille
   active — état muet, republié en silence.
 
+
+  **REFONTE MULTI-PASSION (2026-08-31) — ADR-011, SANS DRAPEAU.**
+  `.passio/adr/ADR-011-refonte-multi-passion.md`. Elle complète ADR-010 (qu'elle
+  ne remet pas en cause : une identité publique, des passions qui classent) et en
+  **amende l'interface** sur quatre points. Verrou :
+  `tests/e2e/refonte-multi-passion.spec.js` (18 cas, les six tests d'acceptation).
+
+  ① **LE FIL EST UNE SÉLECTION ADDITIVE (OU inclusif).** « Suivis », les passions
+  et les envies du moment sont trois familles de critères CUMULABLES : une
+  publication entre dès qu'elle en satisfait **au moins un**, et cocher l'un
+  n'éteint jamais l'autre. Une seule liste, dédupliquée par `p.id`, classée par le
+  moteur existant — aucune section par passion, par envie ni par source.
+  ⚠️ **Ce que ça défait sciemment.** ADR-010 avait livré deux VUES EXCLUSIVES
+  (`state.feedView` = `"accueil"` | `"suivis"`), et toucher une passion depuis
+  « Suivis » ramenait en « accueil ». Ce n'était pas un caprice : `renderFeed` ne
+  consultait PAS `_activeFeedPassions` en vue « suivis », donc une passion cochée
+  y aurait été un CLIC MORT. La refonte supprime la cause — le moteur consulte
+  désormais les trois sources — avant de supprimer l'exclusivité.
+  ⚠️ **Migration** : `state.feedView` → `state.feedFollowingOn` (booléen persisté).
+  Les DEUX anciennes vues se migrent à `true`, car les deux incluaient les comptes
+  suivis. C'est ce qui préserve l'acquis d'ADR-010 : suivre quelqu'un garde un
+  effet observable et durable. `setFeedView` survit en alias de compatibilité.
+  ⚠️ **Les envies deviennent un FILTRE, plus seulement un classement.**
+  `#feedIntentSelector` passe en multi-sélection (`state.feedIntents`, `setFeedIntents`,
+  `feedIntentsSelected`) et `feedPostMatchesIntent` en fait un critère d'entrée.
+  « Tous » (`for_you`) reste le NEUTRE : le cocher revient à tout décocher.
+  ⚠️ **Le défaut ne doit pas ÉLARGIR** : `state.feedIntents` démarre VIDE. Le piège
+  était `selectedMoods`, qui démarre à `{"creation"}` — en OU, un critère coché
+  d'usine aurait ouvert le fil au lieu de le restreindre. Le rail legacy
+  (`#moodSelector`, sous kill switch) n'est pas touché : son comportement ET reste
+  intact à l'octet près.
+  ⚠️ **Le classement est généralisé, pas remplacé** : `rankFeedPostsForIntents`
+  retombe EXACTEMENT sur `rankFeedPostsForIntent` à zéro ou une envie ; à
+  plusieurs, il retient le MEILLEUR bonus, jamais leur somme. La règle de bonus est
+  extraite dans `_feedIntentBonus`, partagée — deux copies auraient divergé.
+
+  ② **LE PROFIL : UN SEUL SÉLECTEUR, DEUX ONGLETS.** Le rail de passions se pose
+  EN HAUT, au-dessus des onglets, et réutilise le composant du Fil —
+  `passionTileHTML` (app-02), donc les mêmes classes `.profile-tile*`, les mêmes
+  dimensions et les mêmes états. **Choix UNIQUE** ici (multi-sélection sur le Fil),
+  et il commande les DEUX onglets à la fois (`setProfilePassion` écrit
+  `profilePostFilterId` ET `profileEventFilterId`, tenus égaux). Deux onglets
+  seulement : **Publications** et **Activité**. Même mécanique sur le profil
+  d'autrui, avec une section « Activité » qui montre ce qu'il ORGANISE — jamais ses
+  participations, qui ne sont pas chargées pour un tiers.
+  **Retirés** : l'onglet et le panneau « À propos », la ligne « Passion active »
+  (`#v8ActivePassion`), `openPassionSwitcher`, et les deux rangées de puces
+  jumelles (`#v8PostFilter` / `#v8EventFilter`, avec `_passionFilterRowHTML` et
+  `_monterFiltrePassion`).
+  ⚠️ **La migration à un coup `_v8FiltresMigres` est REPRISE, pas renommée** : elle
+  convertit l'ancien `profileFilterIds` multiple. La contourner perdrait le filtre
+  des comptes existants, en silence.
+  ⚠️ **RETIRER UN ONGLET PEUT FERMER UNE FONCTION.** « À propos » portait la
+  gestion des passions (ajouter, illustrer, archiver). Elle vit maintenant dans
+  `#passionManager`, panneau replié qu'ouvre l'entrée « Mes passions » du menu
+  d'options du profil (`openPassionManager`). Sans cette porte, ajouter une passion
+  devenait inatteignable — le défaut exact du Studio après un carnet (2026-08-29).
+  ⚠️ `archiverPassion` **rebascule elle-même** `currentProfileId` sur une passion
+  vivante : elle exigeait auparavant « choisis d'abord une autre passion active »,
+  un geste qui n'existe plus. Le nettoyage vit au point d'ÉCRITURE, jamais à
+  l'affichage.
+
+  ③ **L'IDENTITÉ AFFICHÉE EST CENTRALISÉE.** `identitePassionsHTML(u)` /
+  `identitePassionsTexte(u)` / `passionsAffichables(u)` (app-02) rendent, sous le
+  pseudo, les passions du compte (« Benjamin » / « Moto · Podcast · Voyage »).
+  Appliqué aux cartes de publication, au post ouvert, aux commentaires et réponses,
+  aux abonnés/abonnements, aux DEUX écrans de recherche, aux notifications, à
+  l'inbox Messages, à mon profil et au profil visité. `cacheRemoteProfile` et
+  `_resolveProfilesByIds` transportent désormais la colonne `passions`.
+  ⚠️ **Trois règles, chacune payée par un défaut réel.** ① `passionsPubliques()` et
+  JAMAIS la liste brute : le jsonb `profiles.passions` contient les passions
+  ARCHIVÉES (c'est voulu — la colonne sert de sauvegarde), les afficher ferait
+  réapparaître chez tout le monde ce qu'un utilisateur a rangé (porte dérobée ② du
+  lot UI-8). ② Ces libellés sont du CONTENU D'AUTRUI : `escapeHtml` obligatoire.
+  ③ Le rendu est BORNÉ (3 + « +N ») et tronqué en CSS — une identité longue pousse
+  hors de l'écran l'action posée à côté d'elle (« Message → », « Voir → »).
+  ⚠️ L'inbox Messages n'affiche plus la passion ACTIVE mais TOUTES les passions :
+  « Ben · 🏍️ Moto » laissait croire qu'on écrivait « depuis » une passion.
+
+  ④ **LE STUDIO EST LE SEUL POINT DE CHOIX DE LA PASSION DE DESTINATION**, et il
+  s'en souvient : `#postPassion` porte un `onchange="onStudioPassionChange()"` qui
+  appelle `switchToProfile`. Sans cela, la ligne « Passion active » ayant disparu,
+  la passion d'inscription serait devenue un choix définitif. Écriture et lecture
+  restent indépendantes (ADR-010 §6) : ça ne touche aucune préférence du fil.
+  La carte de passion n'offre plus « Publier dans celle-ci » — elle INDIQUE
+  seulement laquelle le Studio présélectionnera.
+
+  ⚠️ **LE GESTIONNAIRE D'UNE BULLE N'EST PAS UNE CHAÎNE LIBRE.** `passionTileHTML`
+  prend une `action` (`feedFollowing` | `feedPassion` | `profilePassion` |
+  `visitedPassion`) et un `arg` ; `_passionTileOnclick` écrit chaque appel EN
+  TOUTES LETTRES. La première version laissait l'appelant fournir l'`onclick`
+  entier — `audit:echappement` l'a refusée, à raison : un handler doit se relire à
+  l'œil, sans remonter la provenance de la chaîne.
+
+  **RETRAIT DU CARNET DE VOYAGE (§6 de la refonte, ADR-011).** Écran, éditeur,
+  viewer plein écran, CDV Lives et leurs étapes, commentaires et réactions
+  d'étape, « Mes lieux », passeport, géocodage, liens profonds, 9 abonnements
+  temps réel, 32 fonctions Supabase, contenu de démonstration, sous-filtre
+  « Carnets » du profil, entrée de navigation, étape du tour, raccourci IA et pont
+  IRL↔CDV : tout est retiré. `js/app-03-posts-vlogs.js` passe de 4 879 à ~400
+  lignes ; 279 règles CSS partent. **`goTo("cdv")` est REDIRIGÉ vers le fil**,
+  comme `goTo("wallet")` après ADR-009 — un ancien lien profond ne doit jamais
+  laisser l'application sans écran actif.
+  ⚠️ **AUCUNE DONNÉE N'EST DÉTRUITE** : `localStorage["passio_cdv_lives"]`, les
+  publications de type `vlog` et les tables `cdv_*` restent intactes, et restent
+  dans la publication realtime — on cesse seulement de les écouter.
+  ⚠️ **`_kmBetween` RESTE dans app-03** : `app-07` s'en sert pour trier les
+  activités par proximité. C'est de la géométrie, pas du voyage. La retirer aurait
+  fait retomber toutes les distances à 0 — sans erreur, car l'appel est gardé par
+  un `typeof`.
+  ⚠️ **LE TYPAGE `vlog` EST CONSERVÉ À LA LECTURE** (`supaLoadPosts`), et c'est une
+  garantie de CONFIDENTIALITÉ, pas une survivance : la visibilité d'un carnet
+  (« public / abonnés / privé ») vivait dans un blob jsonb, hors de portée de la
+  RLS. C'est ce type qui permet à `allFeedPosts` de les écarter TOUS. Le retirer
+  ferait retomber un carnet « Privé » sur son type de média et l'afficherait, en
+  clair, dans le fil de tout le monde.
+  ⚠️ **`closeModal` levait à CHAQUE fermeture** si on oubliait son nettoyage CDV
+  (`cdvLiveRefreshInterval`, `removeCdvLiveViewer`) — c'est-à-dire partout. Même
+  famille que le `renderTopbar` d'ADR-009 : chercher tout accès à un nœud ou à une
+  variable supprimés dans une fonction rappelée en permanence.
+  ⚠️ Les badges « voyages / kilomètres / pays » valent désormais zéro. Ils ne sont
+  PAS supprimés : ils restent visibles comme non acquis, plutôt que de disparaître
+  d'un profil qui les affichait hier.
+  Suites retirées : `cdv`, `cdv-deeplink`, `carnet-visibilite`,
+  `commentaire-live-id`, `studio-apres-carnet`.
+
   **Lot UI-8 — « une personne, plusieurs passions » (2026-08-29), ACTIF PAR DÉFAUT.**
   Coupure unique : `localStorage.passio_ui_8="0"` ou `window.PASSIO_UI_8=false`. Le drapeau
   ne sait qu'ENLEVER — aucune valeur positive n'active, rien n'est écrit dans `localStorage`.
@@ -1288,6 +1414,7 @@ Le script est en lecture seule sur le dépôt (il n'écrit que dans son dossier 
   seul quand on remet `escapeHtml` — les quatre tests de sécurité, eux, restent
   verts, ce qui montre qu'il s'agit d'un défaut d'affichage et non d'une faille.
 
+- **`.passio/adr/ADR-011-refonte-multi-passion.md` — la refonte du 2026-08-31** : fil additif (OU inclusif), profil à deux onglets, identité centralisée, Studio seul point de choix, retrait du Carnet de voyage. Elle complète ADR-010 et en amende l'interface.
 - `docs/PIEGES_CONNUS.md` — les 59 fiches détaillées (extrait de ce fichier le 2026-08-07, recompté le 2026-08-29).
 - `docs/HISTORIQUE_PROJET.md` — état 2026-06-11, backlog terminé, logs d’optimisation.
 - `docs/ARCHITECTURE.md`, `docs/CONTROLE_16_MISSIONS.md`, `docs/CHECKLIST_COMMERCIALISATION.md`.

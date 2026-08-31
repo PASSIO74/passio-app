@@ -491,55 +491,15 @@ test.describe("Interactions — like d'un post", () => {
     expect(await page.evaluate(() => window.__likeCalls)).toEqual([]);
   });
 
-  test("carte carnet CDV : le ❤️ met à jour le BOUTON, pas seulement l'état", async ({ page }) => {
-    await bootInteractions(page);
-    await page.evaluate(() => { goTo("cdv"); renderCdvScreen(); });
+  // ⚠️ TROIS CAS « carnet / CDV » ONT ÉTÉ RETIRÉS avec la fonctionnalité
+  // (ADR-011 §5) : la carte de carnet, son viewer plein écran et la pastille
+  // de réaction qu'ils portaient n'existent plus. Les mêmes garanties — le
+  // bouton VISIBLE suit l'état, la pastille se met à jour en place — restent
+  // vérifiées sur le fil, la fiche d'activité et la bobine, dans ce fichier.
 
-    const btn = page.locator("#screen-cdv [data-postlike]").first();
-    const id = await btn.getAttribute("data-postlike");
-    const before = await page.evaluate((i) => findPostAnywhere(i).likes || 0, id);
+  // (idem — cas retiré avec la fonctionnalité, cf. ci-dessus.)
 
-    await btn.click();
-    // Le cœur ET le compteur doivent bouger : c'était TOUT le bug (l'état passait
-    // bien à liked, mais le DOM restait sur « 🤍 <ancien compteur> »).
-    await expect(btn).toHaveText(new RegExp(`❤️\\s*${before + 1}`));
-    expect(await page.evaluate((i) => state.user.likedPosts.includes(i), id)).toBe(true);
-  });
-
-  test("carnet : le compteur reste synchronisé entre la carte et le viewer ouvert", async ({ page }) => {
-    await bootInteractions(page);
-    await page.evaluate(() => { goTo("cdv"); renderCdvScreen(); });
-    const id = await page.locator("#screen-cdv [data-postlike]").first().getAttribute("data-postlike");
-
-    await page.locator(`#screen-cdv [data-postlike="${id}"]`).click();
-    const cardText = await page.locator(`#screen-cdv [data-postlike="${id}"]`).textContent();
-
-    await page.evaluate((i) => openVlogViewer(i), id);
-    const viewerBtn = page.locator(`#vlogViewerContent [data-postlike="${id}"]`);
-    await expect(viewerBtn).toHaveCount(1); // le viewer a bien un bouton like
-    expect((await viewerBtn.textContent()).trim()).toBe(cardText.trim());
-
-    // Un like DEPUIS le viewer repeint aussi la carte qui est dessous.
-    await viewerBtn.click();
-    expect((await page.locator(`#screen-cdv [data-postlike="${id}"]`).textContent()).trim())
-      .toBe((await viewerBtn.textContent()).trim());
-  });
-
-  test("viewer de carnet : la réaction emoji est disponible et alimente la pastille", async ({ page }) => {
-    await bootInteractions(page);
-    await page.evaluate(() => { goTo("cdv"); renderCdvScreen(); });
-    const id = await page.locator("#screen-cdv [data-postlike]").first().getAttribute("data-postlike");
-
-    await page.evaluate((i) => openVlogViewer(i), id);
-    // Le viewer se peuple en deux temps (rendu local puis commentaires) : on attend
-    // qu'il soit réellement ouvert avant d'agir, sinon le test mesure un état
-    // transitoire quand la machine est chargée.
-    await expect(page.locator("#vlogViewer")).toHaveClass(/open/);
-    await expect(page.locator("#vlogViewerContent .post-action[onclick*=showEmojiPickerForPost]")).toHaveCount(1);
-
-    await page.evaluate((i) => addEmojiToPost(i, "🔥"), id);
-    await expect(page.locator(`#vlogViewerContent [data-postchip="${id}"]`)).toContainText("🔥");
-  });
+  // (idem — cas retiré avec la fonctionnalité, cf. ci-dessus.)
 });
 
 test.describe("Interactions — like d'un commentaire", () => {

@@ -5,8 +5,11 @@ const BORDER_RADIUS = [
   { id: "pill", name: "Pilule", val: "24px" },
 ];
 
-const DEFAULT_NAV_ORDER = ["feed","bobines","explore","studio","messages","irl","cdv"];
-const NAV_LABELS = { feed:"🏠 Fil", bobines:"🎬 Bobines", explore:"🔍 Explorer", studio:"➕ Créer", messages:"💬 Messages", irl:"🤝 IRL", cdv:"📔 CDV" };
+// ⚠️ « cdv » a quitté cet ordre avec le Carnet de voyage (§6). Un compte qui
+// avait personnalisé sa barre garde son réglage en base ; l'entrée n'ayant plus
+// ni écran ni libellé, elle est simplement ignorée au rendu.
+const DEFAULT_NAV_ORDER = ["feed","bobines","explore","studio","messages","irl"];
+const NAV_LABELS = { feed:"🏠 Fil", bobines:"🎬 Bobines", explore:"🔍 Explorer", studio:"➕ Créer", messages:"💬 Messages", irl:"🤝 IRL" };
 
 function getCurrentConfig() {
   try { return JSON.parse(localStorage.getItem("passio_config") || "{}"); } catch(e) { return {}; }

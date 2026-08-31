@@ -333,6 +333,27 @@ function renderMainProfile() {
   }
 
   usernameEl.textContent = g.username || state.user.name || "Mon profil";
+  // §2 : mes passions sous mon pseudo, comme sur toutes les autres surfaces.
+  // Nœud créé une fois, tenu à jour ensuite — pas de `innerHTML` sur la carte,
+  // qui emporterait l'input de photo qu'elle héberge.
+  try {
+    var identEl = document.getElementById("mainProfileIdent");
+    var identTxt = (typeof identitePassionsTexte === "function")
+      ? identitePassionsTexte({ id: (typeof MY_UID !== "undefined" && MY_UID) || "me" }) : "";
+    if (!identEl && identTxt) {
+      identEl = document.createElement("div");
+      identEl.id = "mainProfileIdent";
+      identEl.className = "ident-passions";
+      usernameEl.parentNode.insertBefore(identEl, usernameEl.nextSibling);
+    }
+    if (identEl) {
+      // Un libellé vide ne doit rien peindre : une ligne vide sous un pseudo se
+      // lit comme un chargement qui n'arrive jamais.
+      identEl.textContent = identTxt;
+      identEl.title = identTxt;
+      identEl.hidden = !identTxt;
+    }
+  } catch (e) { _v8Echec("ident_passions", e); }
   // Bio : afficher seulement si renseignée (sinon rien, pas de placeholder)
   bioEl.textContent = g.bio || "";
   bioEl.style.display = g.bio ? "" : "none";
@@ -377,10 +398,11 @@ function renderMainProfile() {
   // créer aucun, et chaque ligne porte une miniature, une date et une ville.
   var eventsEl = document.getElementById("profileEvents");
   if (eventsEl) eventsEl.innerHTML = _myProfileEventsHTML();
-  // Lot UI-8 : la ligne « Passion active » et la rangée de filtre des activités.
-  // Les deux fonctions se retirent elles-mêmes quand le lot est coupé.
-  try { renderActivePassionLine(); } catch (e) { _v8Echec("passion_active", e); }
-  try { _monterFiltrePassion("events"); } catch (e) { _v8Echec("filtre_activites", e); }
+  // Refonte multi-passion (§1) : UN SEUL sélecteur, en haut, au-dessus des
+  // onglets — il remplace la ligne « Passion active » (UI-8) et les deux
+  // rangées de puces jumelles (Publications / Activités), qui disaient trois
+  // fois la même chose à trois endroits différents.
+  try { renderProfilePassionRail(); } catch (e) { _v8Echec("rail_passions", e); }
 
   // Top posts
   var topEl = document.getElementById("profileTopPosts");
@@ -448,7 +470,8 @@ function openMyPostsTab() {
 function _personRowHTML(id, u) {
   return '<div onclick="closeModal();openUserProfile(\'' + escapeJsArg(id) + '\')" style="display:flex;align-items:center;gap:10px;padding:8px;border:1px solid var(--border);border-radius:12px;cursor:pointer;">'
     + '<div style="width:40px;height:40px;border-radius:50%;background:' + avatarBg(u) + ';display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">' + avatarInner(u) + '</div>'
-    + '<div style="font-weight:700;font-size:14px;color:var(--text);">' + escapeHtml(u.name || 'Utilisateur') + '</div></div>';
+    + '<div style="min-width:0;"><div style="font-weight:700;font-size:14px;color:var(--text);">' + escapeHtml(u.name || 'Utilisateur') + '</div>'
+    + identitePassionsHTML(u, "ident-passions-sm") + '</div></div>';
 }
 function _peopleEmpty(msg) {
   return '<div style="text-align:center;padding:24px;color:var(--muted);font-size:13px;">' + escapeHtml(msg) + '</div>';
@@ -481,7 +504,7 @@ async function openFollowersList() {
     const { data: rels } = await supa.from("follows").select("follower_id").eq("following_id", MY_UID);
     var ids = (rels || []).map(function(r){ return r.follower_id; }).filter(Boolean);
     if (!ids.length) { if (body) body.innerHTML = _peopleEmpty("Personne ne te suit encore."); return; }
-    const { data: profs } = await supa.from("profiles").select("id,username,emoji,color").in("id", ids);
+    const { data: profs } = await supa.from("profiles").select("id,username,emoji,color,passions").in("id", ids);
     var map = {}; (profs || []).forEach(function(p){ map[p.id] = p; });
     var rows = ids.map(function(id){
       var p = map[id] || {};
@@ -496,7 +519,10 @@ async function openFollowersList() {
 
 // Onglets de contenu : MULTI-SÉLECTION (union des types cochés).
 // L'ordre fait foi pour l'affichage et la persistance.
-var PROFILE_TAB_KEYS = ["posts", "photos", "videos", "bobines", "carnets"];
+// ⚠️ « carnets » a quitté cette liste avec la fonctionnalité Carnet de voyage
+// (§6). Son bouton est retiré du balisage, son prédicat aussi : un sous-filtre
+// qui ne peut plus rien montrer est un contrôle mort.
+var PROFILE_TAB_KEYS = ["posts", "photos", "videos", "bobines"];
 
 // Prédicats par type. « posts » = tout (l'onglet historique, non filtrant) : le
 // cocher avec d'autres donne donc l'union complète, ce qui reste cohérent.
@@ -505,7 +531,6 @@ var PROFILE_TAB_PRED = {
   photos:  function(p) { return !p.isReel && (p.type === "photo" || p.image); },
   videos:  function(p) { return p.type === "video" && !p.isReel; },
   bobines: function(p) { return !!p.isReel; },
-  carnets: function(p) { return p.type === "vlog"; }
 };
 
 // Sélection courante (Set), restaurée depuis l'état, repli sur « posts ».
@@ -653,7 +678,11 @@ function renderProfileContent() {
   // plus bas pour les types de contenu — « Aucune icône cochée = AUCUN filtre :
   // on affiche tout (et non un état vide) ». Les deux rangées vivent sur le même
   // écran ; elles se contredisaient.
-  var mine = state.userPosts.slice();
+  // ⚠️ Les carnets (§6) sont retirés de l'affichage, y compris sur MON profil.
+  // `allFeedPosts` les exclut déjà pour le fil, mais cette liste-ci lit
+  // `state.userPosts` en direct : sans ce filtre, un carnet ancien s'y
+  // afficherait avec un `onclick` vers un viewer qui n'existe plus.
+  var mine = state.userPosts.filter(function (p) { return p && p.type !== "vlog"; });
 
   if (passionsUnifieesActives()) {
     // ── LOT UI-8 : le filtre de contenu vit ICI, dans « Publications », et il
@@ -661,7 +690,6 @@ function renderProfileContent() {
     // publications qui n'ont qu'une passion OU qu'un profileId restent
     // atteignables : l'appariement est le même que celui de la multisélection
     // historique (`_postDeLaPassion`).
-    _monterFiltrePassion("posts");
     var prFiltre = _passionDuFiltre("profilePostFilterId");
     if (prFiltre) {
       mine = mine.filter(function (p) { return _postDeLaPassion(p, prFiltre); });
@@ -679,7 +707,6 @@ function renderProfileContent() {
       var selPassions = new Set(selProfiles.map(function(pr){ return pr.passion; }));
       mine = mine.filter(function(p){ return selPassions.has(p.passion) || (!p.passion && sel.has(p.profileId)); });
     }
-    _monterFiltrePassion("posts");
   }
 
   // Multi-sélection des types : union des prédicats cochés.
@@ -742,9 +769,6 @@ function renderProfileContent() {
       // pour tout profil sans bobine ouvrant cet onglet. guidedEmpty est le
       // même état vide que les autres onglets.
       : guidedEmpty("🎞️","Aucune bobine","Filme un moment de ta passion en format vertical.");
-  } else if (tab==="carnets") {
-    var carnets = mine.filter(function(p){return p.type==="vlog";});
-    myPostsDiv.innerHTML = carnets.length ? carnets.map(function(p){return renderPostHTML(Object.assign({},p,{_source:"me"}));}).join("") : guidedEmpty("📔","Démarre ton premier carnet","Raconte l'histoire derrière ta création, étape par étape.");
   } else {
     // État vide guidé : au lieu d'un simple « rien publié », on invite à créer
     // (raccourci direct vers le Studio), au même format que l'état vide des bobines.
@@ -1123,6 +1147,12 @@ function openMainProfileMenu(ev) {
     { icon: "✏️", label: "Modifier le profil", run: function() { openEditMainProfile(); } },
     { icon: "🖼️", label: "Photo de profil",    run: function() { const i = document.getElementById("avatarPhotoInput"); if (i) i.click(); } },
     { icon: "🌄", label: "Photo de couverture", run: function() { const i = document.getElementById("coverPhotoInput"); if (i) i.click(); }, sep: true },
+    // ⚠️ LA SEULE PORTE VERS LA GESTION DES PASSIONS depuis la refonte
+    // multi-passion : l'onglet « À propos » qui la portait a disparu (§1).
+    // Retirer un onglet ne doit jamais emporter la seule commande d'une
+    // fonction — ajouter, renommer, illustrer ou archiver une passion passe
+    // désormais par ici.
+    { icon: "🗂️", label: "Mes passions", run: function() { if (typeof openPassionManager === "function") openPassionManager(); } },
     { icon: "🎨", label: "Apparence & thème",   run: function() { if (typeof openConfigurator === "function") openConfigurator(); } }
   ]);
 }
@@ -1503,131 +1533,181 @@ function ajouterPassionAuFil(passionId) {
   } catch (e) {}
 }
 
-function setPostPassionFilter(profileId) {
+// ⚠️ COMPAT. Le profil n'a plus qu'UN sélecteur de passion (`setProfilePassion`),
+// posé au-dessus des onglets, qui commande Publications ET Activité. Ces deux
+// noms restent des points d'entrée : ils écrivaient chacun leur clé, et du code
+// en vol — ou un test — peut encore les appeler. Ils délèguent, plutôt que de
+// disparaître en laissant deux filtres divergents derrière eux.
+function setPostPassionFilter(profileId) { return setProfilePassion(profileId); }
+function setEventPassionFilter(profileId) { return setProfilePassion(profileId); }
+
+// ⚠️ `_passionFilterRowHTML` et `_monterFiltrePassion` ont été RETIRÉES par la
+// refonte multi-passion (§1) : elles montaient deux rangées de puces jumelles
+// (`#v8PostFilter` sous Publications, `#v8EventFilter` sous Activités) qui
+// posaient la MÊME question à deux endroits, avec deux réponses possibles.
+// Un seul rail de bulles les remplace, au-dessus des onglets, et il commande
+// les deux — voir `renderProfilePassionRail`.
+
+// ══════════════════════════════════════════════════════════════════════════
+// LE RAIL DE PASSIONS DU PROFIL (refonte multi-passion, §1)
+// ──────────────────────────────────────────────────────────────────────────
+// Les passions se présentent en haut du profil, dans le MÊME composant que le
+// Fil — `passionTileHTML` (app-02), donc mêmes classes, mêmes dimensions, mêmes
+// espacements, mêmes états. Deux différences assumées avec le Fil, et une seule
+// est visuelle :
+//
+//   · CHOIX UNIQUE ici, multi-sélection là-bas. Le profil répond à « je regarde
+//     quelle partie de cette personne ? » ; le Fil à « qu'est-ce que je veux
+//     voir ? ». Confondre les deux, c'était l'écran d'avant.
+//   · La sélection pilote les DEUX onglets à la fois (Publications ET Activité) :
+//     une seule passion active sous le sélecteur, tout ce qui est dessous suit.
+//
+// ⚠️ Elle s'écrit dans les DEUX clés historiques (`profilePostFilterId` et
+// `profileEventFilterId`), tenues égales. Les garder séparées aurait laissé
+// l'onglet Activité sur une passion pendant que Publications en montrait une
+// autre — l'incohérence que ce rail supprime.
+function _profilePassionSelected() {
+  try { return _passionDuFiltre("profilePostFilterId"); } catch (e) { return null; }
+}
+
+function setProfilePassion(profileId) {
   _migrerFiltresPassion();
-  state.user.profilePostFilterId = profileId || null;
+  var id = profileId || null;
+  state.user.profilePostFilterId = id;
+  state.user.profileEventFilterId = id;
   saveState();
-  renderProfileContent();
+  renderProfilePassionRail();
+  try { renderProfileContent(); } catch (e) { _v8Echec("rail_posts", e); }
+  try {
+    var box = document.getElementById("profileEvents");
+    if (box) box.innerHTML = _myProfileEventsHTML();
+  } catch (e) { _v8Echec("rail_events", e); }
 }
 
-function setEventPassionFilter(profileId) {
-  _migrerFiltresPassion();
-  state.user.profileEventFilterId = profileId || null;
-  saveState();
-  var box = document.getElementById("profileEvents");
-  if (box) box.innerHTML = _myProfileEventsHTML();
-  _monterFiltrePassion("events");
+// L'ancre : le rail se pose JUSTE AVANT le groupe d'onglets qu'il commande.
+// ⚠️ Jamais « après la carte d'identité » : le lot UI-7 insère sa barre
+// d'onglets à `carte.nextSibling`, donc un rail posé là se retrouverait SOUS
+// les onglets au rendu suivant. On vise ce qui vient après lui, pas ce qui
+// vient avant.
+function _ancreRailPassions() {
+  var ec = document.getElementById("screen-profiles");
+  if (!ec) return null;
+  return document.getElementById("v7ProfileTabs")
+      || ec.querySelector(".profile-tabs-hint")
+      || ec.querySelector(".profile-tabs")
+      || document.getElementById("myPosts");
 }
 
-// La rangée « Toutes · Moto · Podcast · Yoga ». Choix UNIQUE.
-function _passionFilterRowHTML(genre, actifId) {
-  // ⚠️ Le nom de la fonction appelée est écrit EN TOUTES LETTRES dans chaque
-  // branche, jamais interpolé depuis une variable : un `onclick` construit par
-  // concaténation d'un identifiant variable est exactement le motif que
-  // `audit:echappement` refuse, et il a raison — la relecture d'un handler doit
-  // pouvoir se faire à l'oeil, sans remonter la provenance de la chaîne.
-  var evs = (genre === "events");
-  var puces = ['<button type="button" class="v8-chip' + (actifId ? "" : " on")
-    + '" data-v8-chip="toutes" aria-pressed="' + (actifId ? "false" : "true")
-    + '" onclick="' + (evs ? "setEventPassionFilter(null)" : "setPostPassionFilter(null)")
-    + '">Toutes</button>'];
-  passionsVivantes().forEach(function (pr) {
-    var et = _passionEtiquette(pr);
-    var on = (pr.id === actifId);
-    var tete = '<button type="button" class="v8-chip' + (on ? " on" : "")
-      + '" data-v8-chip="' + escapeHtml(String(pr.id)) + '" aria-pressed="' + (on ? "true" : "false") + '"';
-    var pied = '>' + escapeHtml(et.emoji) + " " + escapeHtml(et.label) + "</button>";
-    puces.push(evs
-      ? tete + ' onclick="setEventPassionFilter(\'' + escapeJsArg(String(pr.id)) + '\')"' + pied
-      : tete + ' onclick="setPostPassionFilter(\'' + escapeJsArg(String(pr.id)) + '\')"' + pied);
-  });
-  return puces.join("");
-}
-
-// ⑤ La rangée est posée JUSTE AVANT le bloc qu'elle commande, donc dans le
-// panneau d'onglet où le lot UI-7 a déplacé ce bloc.
-function _monterFiltrePassion(genre) {
-  var ancreId = (genre === "events") ? "profileEvents" : "myPosts";
-  var rangeeId = (genre === "events") ? "v8EventFilter" : "v8PostFilter";
-  var ancre = document.getElementById(ancreId);
+function renderProfilePassionRail() {
+  var ancre = _ancreRailPassions();
   if (!ancre || !ancre.parentNode) return null;
-  var rangee = document.getElementById(rangeeId);
+  var rail = document.getElementById("v9ProfilePassions");
+
+  // Kill switch du lot UI-8 : sans le modèle « une personne, plusieurs
+  // passions », ce rail n'a pas de sens — l'écran historique revient entier.
   if (!passionsUnifieesActives()) {
-    if (rangee && rangee.parentNode) rangee.parentNode.removeChild(rangee);
+    if (rail && rail.parentNode) rail.parentNode.removeChild(rail);
     return null;
   }
-  if (!rangee) {
-    rangee = document.createElement("div");
-    rangee.id = rangeeId;
-    rangee.className = "v8-filter-row";
-    rangee.setAttribute("role", "group");
-    rangee.setAttribute("aria-label", genre === "events" ? "Filtrer les activités par passion" : "Filtrer les publications par passion");
-  }
-  if (rangee.parentNode !== ancre.parentNode || rangee.nextSibling !== ancre) {
-    ancre.parentNode.insertBefore(rangee, ancre);
-  }
-  var cle = (genre === "events") ? "profileEventFilterId" : "profilePostFilterId";
-  var pr = _passionDuFiltre(cle);
-  // Signature d'état : on n'écrit qu'au changement réel. Les observateurs des
-  // lots voisins voient chacune de nos écritures — les leur servir à chaque
-  // rendu du profil les réveillerait pour rien.
-  var sig = (pr ? pr.id : "-") + "|" + passionsVivantes().map(function (x) { return x.id; }).join(",");
-  if (rangee.getAttribute("data-v8-sig") !== sig) {
-    rangee.setAttribute("data-v8-sig", sig);
-    rangee.innerHTML = _passionFilterRowHTML(genre, pr ? pr.id : null);
-  }
-  return rangee;
-}
 
-// ── La ligne « Passion active : 🏍️ Moto · Changer », sous la carte d'identité ──
-function renderActivePassionLine() {
-  var corps = document.querySelector("#screen-profiles .main-profile-body");
-  if (!corps) return;
-  var ligne = document.getElementById("v8ActivePassion");
-  if (!passionsUnifieesActives()) {
-    if (ligne && ligne.parentNode) ligne.parentNode.removeChild(ligne);
-    return;
+  if (!rail) {
+    rail = document.createElement("div");
+    rail.id = "v9ProfilePassions";
+    rail.className = "profile-strip v9-profile-strip";
+    rail.setAttribute("role", "group");
+    rail.setAttribute("aria-label", "Filtrer ce profil par passion");
   }
-  var pr = (typeof currentProfile === "function") ? currentProfile() : null;
-  if (!pr) return;
-  var et = _passionEtiquette(pr);
-  if (!ligne) {
-    ligne = document.createElement("div");
-    ligne.id = "v8ActivePassion";
-    ligne.className = "v8-active-line";
+  if (rail.nextSibling !== ancre || rail.parentNode !== ancre.parentNode) {
+    ancre.parentNode.insertBefore(rail, ancre);
   }
-  if (ligne.parentNode !== corps) corps.appendChild(ligne);
-  // Même signature d'état que la rangée de filtre.
-  var sig = String(pr.id) + "|" + et.emoji + "|" + et.label;
-  if (ligne.getAttribute("data-v8-sig") === sig) return;
-  ligne.setAttribute("data-v8-sig", sig);
-  ligne.innerHTML =
-    '<span class="v8-active-txt">Publier dans : <b>' + escapeHtml(et.emoji) + " " + escapeHtml(et.label) + "</b></span>"
-    + '<button type="button" class="v8-active-btn" data-v8-changer="1" onclick="openPassionSwitcher()">Changer</button>';
-}
 
-// ── Le sélecteur de passion active. Aucun moteur neuf : il appelle
-//    `switchToProfile`, telle quelle. ──────────────────────────────────────
-function openPassionSwitcher() {
-  var courant = (state.user && state.user.currentProfileId) || "";
-  var lignes = passionsVivantes().map(function (pr) {
+  var vivantes = passionsVivantes();
+  var selId = (_profilePassionSelected() || {}).id || null;
+
+  // État propre « profil sans passion » : on ne laisse pas une rangée vide,
+  // qui se lirait comme un chargement qui n'arrive jamais.
+  if (!vivantes.length) {
+    var vide = '<div class="v9-strip-empty">Aucune passion pour l\'instant · '
+      + '<span class="link" onclick="openCreateProfile()">Ajouter une passion</span></div>';
+    if (rail.getAttribute("data-v9-sig") !== "vide") {
+      rail.setAttribute("data-v9-sig", "vide");
+      rail.innerHTML = vide;
+    }
+    rail.classList.toggle("has-filter", false);
+    return rail;
+  }
+
+  var posts = state.userPosts || [];
+  var sig = (selId || "-") + "|" + vivantes.map(function (p) { return p.id + ":" + p.passion; }).join(",")
+    + "|" + posts.length;
+  if (rail.getAttribute("data-v9-sig") === sig) return rail;
+  rail.setAttribute("data-v9-sig", sig);
+  rail.classList.toggle("has-filter", !!selId);
+
+  // Le neutre « Toutes » est une bulle comme les autres — pas un bouton d'un
+  // autre genre : il doit se toucher au même endroit, à la même taille.
+  var html = passionTileHTML({
+    emoji: "\u2728",
+    label: "Toutes",
+    count: posts.length,
+    selected: !selId,
+    dimmed: !!selId,
+    action: "profilePassion", arg: null,
+    title: "Toutes les passions",
+    tileKey: "",
+  });
+
+  html += vivantes.map(function (pr) {
     var et = _passionEtiquette(pr);
-    var on = (pr.id === courant);
-    return '<button type="button" class="v8-switch-row' + (on ? " on" : "") + '"'
-      + ' data-v8-switch="' + escapeHtml(String(pr.id)) + '"'
-      + (on ? "" : ' onclick="switchToProfile(\'' + escapeJsArg(String(pr.id)) + '\');closeModal();"')
-      + '><span class="v8-switch-emoji" aria-hidden="true">' + escapeHtml(et.emoji) + "</span>"
-      + '<span class="v8-switch-name">' + escapeHtml(et.label) + "</span>"
-      + (on ? '<span class="v8-switch-on">Active ✓</span>' : '<span class="v8-switch-go">Choisir</span>')
-      + "</button>";
+    var meta = {};
+    try { meta = passionById(pr.passion) || {}; } catch (e) {}
+    var on = (pr.id === selId);
+    return passionTileHTML({
+      emoji: et.emoji,
+      label: et.label,
+      photoUrl: pr.photoUrl || pr.photo || passionPhotoUrl(meta),
+      fallbackUrl: passionPhotoFallback(pr.passion),
+      count: posts.filter(function (x) { return _postDeLaPassion(x, pr); }).length,
+      selected: on,
+      dimmed: !on && !!selId,
+      action: "profilePassion", arg: String(pr.id),
+      title: et.label,
+      tileKey: pr.id,
+    });
   }).join("");
-  openModal(
-    '<div class="modal-handle"></div>'
-    + '<div class="modal-title">Choisir la passion active</div>'
-    + '<p class="section-subtitle" style="margin-top:-6px;">C\'est l\'univers dans lequel tes prochaines créations seront publiées. Ton profil, ton pseudo et tes abonnés ne changent pas.</p>'
-    + '<div class="v8-switch-list">' + lignes + "</div>"
-  );
+
+  rail.innerHTML = html;
+  return rail;
 }
+
+// ── Gérer ses passions : un panneau, plus une section de la page ────────────
+// La refonte retire l'onglet « À propos » où le lot UI-7 avait rangé la liste
+// des cartes de passion. Elles ne disparaissent pas pour autant : elles sont
+// dans `#passionManager`, ouvert à la demande depuis les options du profil.
+// Sans cette porte, ajouter une passion, changer sa photo ou en archiver une
+// deviendrait inatteignable — un retrait d'onglet ne doit jamais emporter la
+// seule commande d'une fonction (leçon du Studio après un carnet, 2026-08-29).
+function openPassionManager() {
+  var box = document.getElementById("passionManager");
+  if (!box) return;
+  try { closeModal(); } catch (e) {}
+  box.hidden = false;
+  try { renderProfilesScreen(); } catch (e) {}
+  if (box.scrollIntoView) box.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function closePassionManager() {
+  var box = document.getElementById("passionManager");
+  if (box) box.hidden = true;
+}
+
+// ⚠️ `renderActivePassionLine` (la ligne « Publier dans : X · Changer », UI-8)
+// et `openPassionSwitcher` ont été RETIRÉES par la refonte multi-passion.
+// §1 supprime le bloc « Passion active » du profil, et §3 fait du Studio le
+// SEUL endroit où l'on choisit la passion de destination d'un contenu.
+// `currentProfileId` reste la source de vérité de l'identité d'écriture et
+// `switchToProfile` son seul point d'écriture — mais plus aucun écran hors
+// Studio ne l'expose comme un choix.
 
 // ── ④ ARCHIVAGE (remplace la suppression, qui effaçait aussi les posts) ────
 function confirmArchivePassion(profileId) {
@@ -1639,11 +1719,10 @@ function confirmArchivePassion(profileId) {
     toast("Tu dois garder au moins une passion active");
     return;
   }
-  if (state.user.currentProfileId === profileId) {
-    toast("Choisis d'abord une autre passion active");
-    openPassionSwitcher();
-    return;
-  }
+  // ⚠️ On n'exige plus de « choisir d'abord une autre passion active » : la
+  // refonte multi-passion retire cette notion de l'interface (§1), donc exiger
+  // un geste qui n'existe plus serait un cul-de-sac. `archiverPassion` bascule
+  // lui-même sur une autre passion vivante.
   openModal(
     '<div class="modal-handle"></div>'
     + '<div style="text-align:center;margin-bottom:16px;">'
@@ -1665,7 +1744,14 @@ function archiverPassion(profileId) {
   if (!pr) { closeModal(); return; }
   var vivantes = (state.user.profiles || []).filter(function (p) { return !p.archived; });
   if (vivantes.length <= 1) { toast("Tu dois garder au moins une passion active"); closeModal(); return; }
-  if (state.user.currentProfileId === profileId) { toast("Choisis d'abord une autre passion active"); closeModal(); return; }
+  // ⚠️ La passion de publication ne doit JAMAIS pointer une passion archivée :
+  // `currentProfile()` rend `null` dans ce cas et tout le modèle suppose cet
+  // état impossible. On rebascule ici, au POINT D'ÉCRITURE — pas à l'affichage,
+  // qui ne persiste rien.
+  if (state.user.currentProfileId === profileId) {
+    var _remplacante = vivantes.find(function (p) { return p.id !== profileId; });
+    if (_remplacante) state.user.currentProfileId = _remplacante.id;
+  }
 
   pr.archived = true;
   pr.archivedAt = Date.now();
@@ -1741,6 +1827,9 @@ function openArchivedPassions() {
 
 function renderProfilesScreen() {
   renderMainProfile();
+  // Le rail de passions se remonte à chaque rendu : le lot UI-7 reconstruit sa
+  // barre d'onglets, et le rail doit rester juste au-dessus d'elle.
+  try { renderProfilePassionRail(); } catch (e) { _v8Echec("rail_passions", e); }
 
   // 🔄 Initialiser la sélection des profils (multi-select), restaurée depuis la
   // dernière session (state.user.profileFilterIds), filtrée sur les profils existants.
@@ -1796,10 +1885,14 @@ function renderProfilesScreen() {
       var nbEvs = _mesEvs.filter(function (e) { return e && e.passion === p.passion; }).length;
       var compte = nbPosts + " publication" + (nbPosts > 1 ? "s" : "") + " · " + nbEvs + " activité" + (nbEvs > 1 ? "s" : "");
 
+      // ⚠️ PLUS DE SÉLECTEUR DE PASSION D'ÉCRITURE ICI (refonte §3) : le Studio
+      // est le seul endroit où l'on choisit la passion de destination. La carte
+      // ne fait plus qu'INDIQUER laquelle le Studio présélectionnera — c'est une
+      // information, plus une commande, et `switchToProfile` n'est plus appelée
+      // depuis cet écran.
       var etat = estActive
-        ? '<span class="v8-state on" data-v8-active="' + escapeHtml(String(p.id)) + '">Tu publies ici ✓</span>'
-        : '<button type="button" class="v8-state" data-v8-utiliser="' + escapeHtml(String(p.id)) + '"'
-          + ' onclick="event.stopPropagation();switchToProfile(\'' + escapeJsArg(String(p.id)) + '\')">Publier dans celle-ci</button>';
+        ? '<span class="v8-state on" data-v8-active="' + escapeHtml(String(p.id)) + '">Passion du Studio ✓</span>'
+        : "";
 
       return '<div class="profile-card v8-passion-card' + (estActive ? " is-active" : "") + (_pCover ? " has-cover" : "") + '"'
         + ' data-v8-card="' + escapeHtml(String(p.id)) + '" style="' + coverStyle + '"'
@@ -1875,10 +1968,12 @@ function renderProfilesScreen() {
   // créé à l'inscription. Avec deux profils ou plus, il a déjà trouvé tout seul,
   // et le §8 interdit d'expliquer ce qui est acquis.
   // ⚠️ L'ANCRE dépend de l'écran réellement affiché. `montrerHint` refuse une
-  // cible sans `offsetParent` — et depuis le lot UI-7, « Mes passions » vit
-  // dans l'onglet « À propos », masqué tant qu'on ne l'ouvre pas : ancrer
-  // l'aide sur `#nouveauProfilLien` la rendait simplement invisible, sans que
-  // rien n'échoue. On retombe alors sur l'onglet, qui EST la porte à montrer.
+  // cible sans `offsetParent` — et « Mes passions » vit maintenant dans le
+  // panneau `#passionManager`, masqué tant qu'on ne l'ouvre pas : ancrer l'aide
+  // sur `#nouveauProfilLien` la rendrait simplement invisible, sans que rien
+  // n'échoue. On retombe alors sur le rail de passions, qui est la surface
+  // visible de ce que l'aide veut montrer, puis sur le bouton d'options — la
+  // porte réelle vers la gestion.
   try {
     if (typeof montrerHint === "function" && (state.user.profiles || []).length === 1) {
       setTimeout(function () {
@@ -1886,8 +1981,10 @@ function renderProfilesScreen() {
         if (!ecran || !ecran.classList.contains("active")) return;
         var ancre = "#nouveauProfilLien";
         var lien = document.getElementById("nouveauProfilLien");
-        if ((!lien || !lien.offsetParent) && document.querySelector('[data-v7-tab="apropos"]')) {
-          ancre = '[data-v7-tab="apropos"]';
+        if (!lien || !lien.offsetParent) {
+          var rail = document.getElementById("v9ProfilePassions");
+          if (rail && rail.offsetParent) ancre = "#v9ProfilePassions";
+          else if (ecran.querySelector(".profile-dots-btn")) ancre = "#screen-profiles .profile-dots-btn";
         }
         montrerHint("second_profil", ancre);
       }, 400);
@@ -2193,19 +2290,18 @@ function renderProfileStrip() {
   // ⚠️ CE QUI NE REVIENT PAS EN ARRIÈRE. L'ancienne tuile inversait
   // `_showFollowingFeed`, une variable de session NON persistée : elle repartait
   // à faux à chaque ouverture, donc suivre quelqu'un n'avait aucun effet
-  // durable. Celle-ci pilote `state.feedView`, sauvegardé. Même place, même
-  // geste, mais le défaut de fond reste corrigé.
+  // durable. Celle-ci pilote `state.feedFollowingOn`, sauvegardé. Même place,
+  // même geste, mais le défaut de fond reste corrigé.
   //
-  // ⚠️ ELLE EST EXCLUSIVE DES PASSIONS, et ce n'est pas un choix esthétique :
-  // en vue « suivis », `renderFeed` ne consulte PAS `_activeFeedPassions`
-  // (app-02). Laisser une passion cochée et active pendant que « Suivis » est
-  // allumé afficherait donc une sélection sans aucun effet — exactement le
-  // « contrôle inopérant » qu'on cherchait à éviter en masquant le rail. On
-  // rend la contradiction impossible plutôt que de l'afficher : allumer
-  // « Suivis » éteint visuellement les passions, et toucher une passion rend
-  // la vue « accueil ».
-  var enSuivis = (typeof feedViewCourante === "function") && feedViewCourante() === "suivis";
-  var hasPassionFilter = !enSuivis && _activeFeedPassions.size > 0;
+  // ⚠️ ELLE N'EST PLUS EXCLUSIVE DES PASSIONS (refonte multi-passion). La
+  // version d'ADR-010 grisait les passions dès que « Suivis » était allumé,
+  // parce que le moteur ne les consultait alors pas : la contradiction était
+  // rendue impossible plutôt qu'affichée. Le moteur fait désormais l'UNION des
+  // trois familles de critères (`renderFeed`, app-02), donc les cocher ensemble
+  // a un effet réel — et le rail doit les montrer TOUTES actives en même temps.
+  // Cocher une passion ne décoche plus « Suivis », et réciproquement.
+  var enSuivis = (typeof feedFollowingSelected === "function") ? feedFollowingSelected() : true;
+  var hasPassionFilter = _activeFeedPassions.size > 0;
   box.classList.toggle("has-filter", hasPassionFilter || enSuivis);
 
   // Compter les posts disponibles par passion (tous moods)
@@ -2220,34 +2316,41 @@ function renderProfileStrip() {
   var followingPostCount = _suivis.length
     ? allPostsFlat.filter(function (p) { return _suivis.indexOf(p.authorId) >= 0; }).length
     : 0;
-  var followingTile = '<div class="profile-tile ' + (enSuivis ? "active" : "") + '" onclick="setFeedView(\'' + (enSuivis ? 'accueil' : 'suivis') + '\')" title="Suivis" style="opacity:' + (hasPassionFilter ? '0.3' : '1') + ';transform:' + (enSuivis ? 'scale(1.07)' : 'scale(1)') + ';transition:all 0.2s;">\
-      <div class="profile-tile-avatar" style="position:relative;overflow:hidden;background:linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(124, 58, 237, 0.10));"><img loading="lazy" decoding="async" class="profile-tile-photo" src="https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=200&h=200&fit=crop&crop=faces,entropy&auto=format&q=80" alt="Suivis" onerror="this.onerror=null;this.src=\'https://picsum.photos/seed/community/200/200\'" /><span class="profile-tile-glyph" aria-hidden="true">👥</span>' + (followingPostCount > 0 ? '<span class="profile-tile-count" style="position:absolute;top:-5px;right:-5px;background:var(--accent);color:#fff;font-size:9px;font-weight:800;border-radius:8px;padding:1px 5px;min-width:16px;text-align:center;border:2px solid var(--bg);line-height:14px;">' + followingPostCount + '</span>' : '') + '</div>\
-      <div class="profile-tile-label" style="font-weight:' + (enSuivis ? '800' : '600') + ';color:' + (enSuivis ? 'var(--accent)' : '') + ';">Suivis</div>\
-    </div>';
+  // ⚠️ Le rendu de la bulle est CENTRALISÉ dans `passionTileHTML` (app-02) : le
+  // Profil affiche exactement la même, et deux copies auraient divergé.
+  var followingTile = passionTileHTML({
+    emoji: "👥",
+    label: "Suivis",
+    photoUrl: "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=200&h=200&fit=crop&crop=faces,entropy&auto=format&q=80",
+    fallbackUrl: "https://picsum.photos/seed/community/200/200",
+    avatarStyle: "background:linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(124, 58, 237, 0.10));",
+    count: followingPostCount,
+    selected: enSuivis,
+    dimmed: !enSuivis,
+    action: "feedFollowing",
+    title: "Suivis",
+    tileKey: "__suivis__",
+  });
 
   var tilesHTML = followingTile + (_sansPassion ? [] : profiles).map(function(p) {
     const passion = passionById(p.passion);
-    // En vue « suivis » le moteur ignore les passions : aucune ne s'affiche
-    // active, sinon le rail annoncerait un filtre qui ne filtre rien.
-    const isSelected = !enSuivis && _activeFeedPassions.has(p.passion);
-    const isDimmed = enSuivis || (hasPassionFilter && !isSelected);
-    const label = escapeHtml(passion.label);
-    const photoId = passion.photo;
-    const photoUrl = photoId
-      ? "https://images.unsplash.com/" + photoId + "?w=200&h=200&fit=crop&crop=faces,entropy&auto=format&q=80"
-      : null;
-    const fallback = "https://picsum.photos/seed/" + p.passion + "/200/200";
-    const avatarContent = photoUrl
-      ? '<img loading="lazy" decoding="async" class="profile-tile-photo" src="' + photoUrl + '" alt="' + escapeHtml(label) + '" onerror="this.onerror=null;this.src=\'' + escapeJsArg(fallback) + '\'"/><span class="profile-tile-emoji-badge">' + p.emoji + '</span><span class="profile-tile-glyph" aria-hidden="true">' + p.emoji + '</span>'
-      : p.emoji + '<span class="profile-tile-glyph" aria-hidden="true">' + p.emoji + '</span>';
-    const count = postCountByPassion[p.passion] || 0;
-    const countBadge = count > 0
-      ? '<span class="profile-tile-count" style="position:absolute;top:-5px;right:-5px;background:var(--accent);color:#fff;font-size:9px;font-weight:800;border-radius:8px;padding:1px 5px;min-width:16px;text-align:center;border:2px solid var(--bg);line-height:14px;">' + count + '</span>'
-      : '';
-    return '<div class="profile-tile ' + (isSelected ? "active" : "") + '" onclick="toggleProfileFilter(\'' + escapeJsArg(p.passion) + '\')" title="' + escapeHtml(label) + '" style="opacity:' + (isDimmed ? '0.3' : '1') + ';transform:' + (isSelected ? 'scale(1.07)' : 'scale(1)') + ';transition:all 0.2s;">\
-      <div class="profile-tile-avatar" style="position:relative;">' + avatarContent + countBadge + '</div>\
-      <div class="profile-tile-label" style="font-weight:' + (isSelected ? '800' : '600') + ';color:' + (isSelected ? 'var(--accent)' : '') + ';">' + label + '</div>\
-    </div>';
+    // Une passion cochée reste cochée quel que soit l'état de « Suivis » : les
+    // critères sont additifs. Le grisé ne signale plus qu'une chose — « ce
+    // critère-ci n'est pas coché » — et jamais « il est sans effet ».
+    const isSelected = _activeFeedPassions.has(p.passion);
+    const isDimmed = !isSelected && (hasPassionFilter || enSuivis);
+    return passionTileHTML({
+      emoji: p.emoji,
+      label: passion.label,
+      photoUrl: passionPhotoUrl(passion),
+      fallbackUrl: passionPhotoFallback(p.passion),
+      count: postCountByPassion[p.passion] || 0,
+      selected: isSelected,
+      dimmed: isDimmed,
+      action: "feedPassion", arg: p.passion,
+      title: passion.label,
+      tileKey: p.passion,
+    });
   }).join("");
 
   // Perf : appelé à chaque renderFeed — pas de rebuild si rien n'a changé
@@ -2260,16 +2363,11 @@ function renderProfileStrip() {
 // passe désormais par `setFeedView("suivis")`, qui persiste.
 
 function toggleProfileFilter(passionId) {
-  // ⚠️ Toucher une passion RAMÈNE en vue « accueil ». Sans ça, le geste serait
-  // sans effet visible depuis « Suivis » : le moteur n'y consulte jamais
-  // `_activeFeedPassions`. On ne laisse pas un tap ne rien faire.
-  // `setFeedView` sort tôt si la vue est déjà « accueil », donc aucun rendu
-  // superflu dans le cas courant.
-  try {
-    if (typeof feedViewCourante === "function" && feedViewCourante() === "suivis") {
-      if (typeof setFeedView === "function") setFeedView("accueil");
-    }
-  } catch (e) {}
+  // ⚠️ NE TOUCHE PLUS À « SUIVIS ». La version d'ADR-010 forçait le retour en
+  // vue « accueil » ici, parce que le moteur ignorait les passions tant que
+  // « Suivis » était allumé — un tap sur une passion n'aurait rien fait sinon.
+  // Les critères sont désormais additifs : cocher une passion s'ajoute à
+  // « Suivis » au lieu de le remplacer (refonte multi-passion, §4).
   if (_activeFeedPassions.has(passionId)) {
     _activeFeedPassions.delete(passionId);
   } else {
@@ -2454,20 +2552,38 @@ let photoDataUrl = null;
 let audioDataUrl = null;
 let videoDataUrl = null;
 
-// ⚠️ Le lancement d'un CDV Live depuis le Studio a été SUPPRIMÉ (2026-07-21) :
-// son formulaire dupliquait celui de `startCdvLive()` (app-03) et c'est cette
-// copie qui oubliait `supaPublishCdvLive` → tout live lancé depuis le Studio
-// restait local et invisible. Un seul chemin de création demeure : l'écran CDV.
+
+// ── §3 : LE STUDIO EST LE SEUL POINT DE CHOIX DE LA PASSION DE DESTINATION ──
+// Et il doit s'en souvenir. Depuis que la refonte multi-passion a retiré la
+// ligne « Passion active » du profil, `#postPassion` est la SEULE commande qui
+// désigne une passion d'écriture : si elle ne persistait rien, quelqu'un qui
+// publie toujours dans « Podcast » devrait le re-choisir à chaque fois, et le
+// Studio rouvrirait sur la passion de son inscription pour toujours.
+//
+// ⚠️ Cela ne touche AUCUNE préférence de lecture (ADR-010, décision 6) :
+// `switchToProfile` écrit `currentProfileId`, jamais `_activeFeedPassions`.
+function onStudioPassionChange() {
+  try {
+    var sel = document.getElementById("postPassion");
+    if (!sel || !sel.value) return;
+    var pr = (state.user.profiles || []).find(function (p) {
+      return p && !p.archived && p.passion === sel.value;
+    });
+    if (pr && pr.id !== state.user.currentProfileId && typeof switchToProfile === "function") {
+      switchToProfile(pr.id);
+    }
+  } catch (e) {
+    if (typeof diagLog === "function") diagLog("studio_passion_change " + (e && e.message));
+  }
+}
 
 function renderStudio() {
-  // ⚠️ Filet : l'éditeur de carnet vit dans l'écran CDV et masque les champs du
-  // Studio. On peut en sortir SANS passer par `closeCarnetEditor` (barre de
-  // navigation, retour arrière) — le Studio se retrouverait alors amputé. Il se
-  // répare donc lui-même à chaque ouverture, dès lors qu'il n'est pas en train
-  // d'être utilisé comme éditeur de carnet ou de live.
-  var _editeurCarnetOuvert = !!($("#cdvEditor") && $("#cdvEditor").style.display === "block");
-  if ((studioType === "vlog" || studioType === "cdvlive") && !_editeurCarnetOuvert) studioType = "text";
-  if (studioType !== "vlog" && studioType !== "cdvlive") _studioChampsTexteVisibles(true);
+  // ⚠️ Le filet « le Studio se répare après l'éditeur de carnet » a disparu avec
+  // l'éditeur (§6) : plus rien ne masque les champs du Studio, donc plus rien à
+  // restaurer. Un état résiduel `studioType === "vlog"` — venu d'un brouillon
+  // enregistré avant le retrait — est ramené au neutre, sinon le composeur
+  // publierait dans un type qui n'existe plus.
+  if (studioType === "vlog" || studioType === "cdvlive") studioType = "text";
 
   // Passion dropdown based on user profiles
   const sel = $("#postPassion");
@@ -2558,134 +2674,27 @@ $$("#studioTypeTabs .studio-type").forEach(el => {
     // en is_reel → va dans les Bobines, pas le feed).
     $("#studioVideo").style.display = (studioType === "video" || studioType === "bobine") ? "block" : "none";
     $("#studioAudio").style.display = studioType === "audio" ? "block" : "none";
-    // (Le carnet de voyage n'est plus un type du Studio : son éditeur vit dans
-    // l'écran CDV. Ne rien toucher ici — cf. activateStudioVlog / closeCarnetEditor.)
-
-    // En mode carnet/live : masquer le textarea principal, mood, templates, passion
-    // Le carnet a sa propre catégorie (voyage) et son propre mood (chill)
-    const isVlog = studioType === "vlog";
-    const isCdvLive = studioType === "cdvlive";
-    const mainTextField = $("#postText") && $("#postText").closest(".field");
-    if (mainTextField) mainTextField.style.display = (isVlog || isCdvLive) ? "none" : "block";
-    const fp = $("#fieldPassion"); if (fp) fp.style.display = (isVlog || isCdvLive) ? "none" : "block";
-    const fm = $("#fieldMood");    if (fm) fm.style.display = (isVlog || isCdvLive) ? "none" : "block";
-    const ft = $("#fieldTemplates"); if (ft) ft.style.display = (isVlog || isCdvLive) ? "none" : "block";
-
-    // Si on bascule sur vlog, on initialise au moins une étape
-    if (studioType === "vlog" && (!vlogState.steps || vlogState.steps.length === 0)) {
-      vlogState.steps = [{ id: uid(), place: "", text: "", tip: "", photo: null, video: null, audio: null }];
-      renderVlogSteps();
-    }
+    // ⚠️ Le masquage des champs « en mode carnet/live » a été retiré avec le
+    // Carnet de voyage (§6). Les types `vlog` et `cdvlive` n'existent plus, donc
+    // le texte libre, la passion, le mood et les modèles restent TOUJOURS
+    // visibles ici — c'est précisément le défaut que ce masquage avait produit
+    // le 2026-08-29 (un Studio amputé, sans chemin de retour).
   });
 });
 
-// Le carnet n'a ni texte libre, ni passion, ni mood : son éditeur masque ces
-// trois champs du Studio. ⚠️ Il faut donc aussi savoir les RENDRE — sans quoi
-// ouvrir l'éditeur de carnet une seule fois laisse le composeur du Studio
-// définitivement amputé. Le seul chemin de restauration était le clic sur un
-// onglet de format, et le lot UI-6 a précisément retiré ces onglets de l'écran.
-// `display = ""` rend la main à la feuille de style (`label.field {display:block}`)
-// au lieu de figer une valeur qu'une évolution du CSS invaliderait.
-function _studioChampsTexteVisibles(visible) {
-  var champs = [
-    $("#postText") && $("#postText").closest(".field"),
-    $("#fieldPassion"),
-    $("#fieldMood"),
-    $("#fieldTemplates"),
-  ];
-  champs.forEach(function (el) { if (el) el.style.display = visible ? "" : "none"; });
-}
+// ⚠️ RETRAIT DU CARNET DE VOYAGE (refonte multi-passion, §6).
+// Quatre fonctions vivaient ici et sont parties avec l'écran CDV :
+// `_studioChampsTexteVisibles` (elle ne servait qu'à masquer puis rendre les
+// champs que l'éditeur de carnet empruntait au Studio), `activateStudioVlog`,
+// `closeCarnetEditor` et `saveCarnetEdits`.
+//
+// ⚠️ Le défaut qu'elles portaient disparaît avec elles, et il vaut d'être
+// retenu : ouvrir l'éditeur de carnet AMPUTAIT le Studio (texte libre, passion
+// et mood masqués), et le seul chemin de restauration était un onglet de format
+// que le lot UI-6 avait retiré de l'écran. Un composeur muet, sans erreur ni
+// message, jusqu'au rechargement. Famille générale : retirer un chemin d'accès
+// peut supprimer le seul chemin de RETOUR d'un état transitoire.
 
-// Active la vue « Carnet » du Studio SANS onglet dédié (retiré le 2026-06-25 :
-// le carnet se crée depuis sa catégorie, écran CDV → « Nouveau carnet »). Remplace
-// l'ancien `document.querySelector('[data-type="vlog"]').click()` (cf. setStudioToVlog,
-// inspireFromCarnet, convertLiveToCarnet) qui n'a plus d'onglet à cliquer.
-// Ouvre l'éditeur de carnet DANS l'écran CDV (plus dans le Studio) : on crée son
-// carnet là où on consulte les voyages. `activateStudioVlog` garde son nom
-// historique — elle est appelée par inspireFromCarnet / convertLiveToCarnet /
-// setStudioToVlog — mais ne touche plus au Studio.
-function activateStudioVlog() {
-  studioType = "vlog";
-  goTo("cdv");
-  const ed = $("#cdvEditor"); if (ed) ed.style.display = "block";
-  const br = $("#cdvBrowse"); if (br) br.style.display = "none";
-  const vlogEl = $("#studioVlog"); if (vlogEl) vlogEl.style.display = "block";
-  // Visibilité par défaut = public (editCarnet la remplace ensuite si on modifie
-  // un carnet existant, car il appelle activateStudioVlog AVANT de poser les champs).
-  if (typeof _setVlogVisibility === "function") { try { _setVlogVisibility("public"); } catch (e) {} }
-  // Le carnet n'utilise ni texte libre, ni passion, ni mood : on masque ces
-  // champs du Studio le temps de l'édition. `closeCarnetEditor` les rend.
-  _studioChampsTexteVisibles(false);
-  // `#postPassion` reste la source de la passion du post : si le Studio n'a jamais
-  // été rendu, le select est vide → on le peuple pour ne pas publier sans passion.
-  const sel = $("#postPassion");
-  if (sel && !sel.options.length && typeof renderStudio === "function") { try { renderStudio(); } catch (e) {} }
-  if (!vlogState.steps || vlogState.steps.length === 0) {
-    vlogState.steps = [{ id: uid(), place: "", text: "", tip: "", photo: null, video: null, audio: null }];
-  }
-  renderVlogSteps();
-  try { window.scrollTo(0, 0); } catch (e) {}
-  const main = document.querySelector(".app-main"); if (main) main.scrollTop = 0;
-  // Propose de reprendre un carnet laissé en plan (autosave, cf. app-03).
-  if (typeof renderVlogDraftBanner === "function") { try { renderVlogDraftBanner(); } catch (e) {} }
-}
-
-// Referme l'éditeur et revient à la liste des carnets.
-function closeCarnetEditor() {
-  const ed = $("#cdvEditor"); if (ed) ed.style.display = "none";
-  const br = $("#cdvBrowse"); if (br) br.style.display = "block";
-  if (studioType === "vlog") studioType = "text";
-  // ⚠️ Restauration OBLIGATOIRE : `activateStudioVlog` a masqué le texte, la
-  // passion et le mood du Studio. Sans cette ligne, fermer l'éditeur rendait
-  // `studioType` à "text" mais laissait le composeur sans champ de saisie —
-  // un Studio muet, sans erreur ni message, jusqu'au prochain rechargement.
-  _studioChampsTexteVisibles(true);
-  window._editingCarnetId = null;
-  if (typeof _syncCarnetEditorMode === "function") { try { _syncCarnetEditorMode(); } catch (e) {} }
-  if (typeof renderCdvScreen === "function") { try { renderCdvScreen(); } catch (e) {} }
-}
-
-// Enregistre les modifications d'un carnet EXISTANT (met à jour la ligne au lieu
-// d'insérer un nouveau post). Appelée par publishPost quand _editingCarnetId est
-// posé — cf. editCarnet (app-03).
-async function saveCarnetEdits() {
-  const id = window._editingCarnetId;
-  const post = (typeof findPostAnywhere === "function") ? findPostAnywhere(id) : null;
-  if (!post) { toast("Carnet introuvable"); closeCarnetEditor(); return; }
-
-  const dest = ($("#vlogDestination") && $("#vlogDestination").value || "").trim();
-  if (!dest) { toast("Destination obligatoire pour un carnet."); return; }
-  if (!vlogState.steps || !vlogState.steps.length) { toast("Ajoute au moins un jour."); return; }
-
-  post.destination = dest;
-  post.dateStart = ($("#vlogDateStart") && $("#vlogDateStart").value) || null;
-  post.dateEnd = ($("#vlogDateEnd") && $("#vlogDateEnd").value) || null;
-  post.cover = vlogState.cover;
-  post.budget = ($("#vlogBudget") && $("#vlogBudget").value || "").trim();
-  post.transport = ($("#vlogTransport") && $("#vlogTransport").value || "").trim();
-  post.lodging = ($("#vlogLodging") && $("#vlogLodging").value || "").trim();
-  post.season = ($("#vlogSeason") && $("#vlogSeason").value || "").trim();
-  post.tip = ($("#vlogTip") && $("#vlogTip").value || "").trim();
-  post.steps = (vlogState.steps || []).map(s => ({
-    place: s.place || "", text: s.text || "", tip: s.tip || "", budget: s.budget || "",
-    photo: s.photo || null, video: s.video || null, audio: s.audio || null,
-    lat: (typeof s.lat === "number") ? s.lat : null, lng: (typeof s.lng === "number") ? s.lng : null,
-  }));
-  post.visibility = _vlogVisibility || "public";
-  post.text = post.destination + (post.dateStart || post.dateEnd ? " · carnet" : "");
-  post.editedAt = Date.now();
-  saveState();
-
-  closeCarnetEditor();
-  toast("⏳ Enregistrement…", "loading");
-  let ok = false;
-  try {
-    if (typeof supaUpdateVlogPost === "function") ok = await supaUpdateVlogPost(post);
-  } catch (e) { ok = false; }
-  toast(ok ? "✅ Carnet mis à jour" : "⚠️ Modifs enregistrées en local (synchro à réessayer)",
-        ok ? "success" : "warning");
-  try { saveState(); renderCdvScreen(); } catch (e) {}
-}
 
 // ⚠️ Les moods « chill » et « actu » ont quitté le Studio avec l'alignement du
 // vocabulaire sur le rail d'intentions du Fil : ils n'ont plus de pastille.
@@ -2970,26 +2979,7 @@ async function publishPost() {
     return;
   }
 
-  // Modification d'un carnet existant : on met à jour, on n'insère pas.
-  if (studioType === "vlog" && window._editingCarnetId) {
-    _publishInProgress = false;
-    return saveCarnetEdits();
-  }
-
   _publishInProgress = true;
-
-  // ⚠️ `studioType` est remis à "text" par closeCarnetEditor() : on fige le type
-  // ICI, sinon les blocs « nettoyage du formulaire » et « navigation » plus bas
-  // (qui testaient studioType === "vlog") seraient silencieusement sautés.
-  const isVlogPublish = studioType === "vlog";
-
-  // Validation spéciale carnet de voyage (libérer le verrou sinon plus aucune
-  // publication possible après une validation échouée)
-  if (isVlogPublish) {
-    const dest = ($("#vlogDestination") && $("#vlogDestination").value || "").trim();
-    if (!dest) { _publishInProgress = false; toast("Destination obligatoire pour un carnet."); return; }
-    if (!vlogState.steps || vlogState.steps.length === 0) { _publishInProgress = false; toast("Ajoute au moins un jour."); return; }
-  }
 
   // ⚠️ IMPASSE FERMÉE LE 2026-08-31. La sortie A retire du `<select>` les
   // passions non publiables. Un compte dont TOUTES les passions sont
@@ -3078,24 +3068,8 @@ async function publishPost() {
     authorColor: authorColor,
   };
 
-  // Champs spécifiques au carnet de voyage
-  if (isVlogPublish) {
-    post.destination = ($("#vlogDestination").value || "").trim();
-    post.dateStart = ($("#vlogDateStart") && $("#vlogDateStart").value) || null;
-    post.dateEnd = ($("#vlogDateEnd") && $("#vlogDateEnd").value) || null;
-    post.cover = vlogState.cover;
-    post.steps = (vlogState.steps || []).map(s => ({
-      place: s.place || "", text: s.text || "", tip: s.tip || "", budget: s.budget || "",
-      photo: s.photo || null, video: s.video || null, audio: s.audio || null
-    }));
-    post.visibility = _vlogVisibility || "public";
-    post.budget = ($("#vlogBudget") && $("#vlogBudget").value || "").trim();
-    post.transport = ($("#vlogTransport") && $("#vlogTransport").value || "").trim();
-    post.lodging = ($("#vlogLodging") && $("#vlogLodging").value || "").trim();
-    post.season = ($("#vlogSeason") && $("#vlogSeason").value || "").trim();
-    post.tip = ($("#vlogTip") && $("#vlogTip").value || "").trim();
-    post.text = post.destination + (post.dateStart || post.dateEnd ? " · carnet" : "");
-  }
+  // ⚠️ Les champs de carnet (destination, étapes, budget, transport…) ont été
+  // retirés du post publié avec la fonctionnalité (§6).
 
   // Album d'événement : le Studio a été ouvert depuis « Partager mon expérience »
   // sur la fiche d'un événement (window._pendingEventPost) → on rattache le post
@@ -3114,9 +3088,6 @@ async function publishPost() {
   if (post.isReel) {
     try { renderFeed(); } catch(e) {}
     setTimeout(() => { try { if (typeof openReels === "function") openReels(); } catch(e) {} }, 80);
-  } else if (isVlogPublish) {
-    // Un carnet reste dans SON univers : pas de détour par le fil (l'écran CDV
-    // est déjà actif, l'éditeur se referme à la fin de la publication).
   } else {
     goTo("feed");
     setTimeout(() => renderFeed(), 50);
@@ -3164,35 +3135,13 @@ async function publishPost() {
   $("#recTime").textContent = "00:00";
   $("#recStatus").textContent = "Tap pour démarrer l'enregistrement";
 
-  // Clear vlog form
-  if (isVlogPublish) {
-    if ($("#vlogDestination")) $("#vlogDestination").value = "";
-    if ($("#vlogDateStart")) $("#vlogDateStart").value = "";
-    if ($("#vlogDateEnd")) $("#vlogDateEnd").value = "";
-    if ($("#vlogBudget")) $("#vlogBudget").value = "";
-    if ($("#vlogTransport")) $("#vlogTransport").value = "";
-    if ($("#vlogLodging")) $("#vlogLodging").value = "";
-    if ($("#vlogSeason")) $("#vlogSeason").value = "";
-    if ($("#vlogTip")) $("#vlogTip").value = "";
-    if ($("#vlogCoverPreview")) $("#vlogCoverPreview").innerHTML = "";
-    vlogState.cover = null;
-    vlogState.steps = [];
-    // Le carnet est publié : le brouillon n'a plus lieu d'être.
-    if (typeof clearVlogDraft === "function") clearVlogDraft();
-    var _db = document.getElementById("vlogDraftBanner"); if (_db) _db.remove();
-  }
-
 
   // ✅ Le message de confirmation est déjà dans supaPublishPostWithRetry
   // (toast "Publication en cours..." → "✅ Post publié!" ou "❌ Erreur")
   // Pas de duplication ici
 
   // Navigation immédiate
-  if (isVlogPublish) {
-    if (typeof closeCarnetEditor === "function") closeCarnetEditor();
-    goTo("cdv");
-    pushNotification(`📔 Ton carnet <b>${escapeHtml(post.destination || "voyage")}</b> ${syncSuccess ? "est en ligne" : "est local"}`, "📔");
-  } else {
+  {
     // 🔄 RECHARGER LES POSTS APRÈS PUBLICATION
     if (syncSuccess) {
       try {

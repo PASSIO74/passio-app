@@ -1,79 +1,17 @@
-// Click sur les filtres CDV (multi-select). Depuis le 2026-08-08 ces filtres
-// vivent dans le panneau « Outils » (ContextualTools → cdvToolsSections) : la
-// délégation n'est donc PLUS scopée à #cdvFilterRow (supprimé) mais au seul
-// attribut [data-cdvfilter], comme la délégation IRL [data-irlfilter].
-document.addEventListener("click", (e) => {
-  const t = e.target.closest("[data-cdvfilter]");
-  if (!t) return;
-
-  const filterType = t.getAttribute("data-cdvfilter");
-
-  // Toggle multi-select
-  if (cdvFilters.has(filterType)) {
-    cdvFilters.delete(filterType);
-  } else {
-    cdvFilters.add(filterType);
-  }
-
-  // Reflet immédiat de l'état actif sur l'item cliqué (le panneau reste ouvert).
-  t.classList.toggle("active");
-  const ap = t.getAttribute("aria-pressed");
-  if (ap !== null) t.setAttribute("aria-pressed", ap === "true" ? "false" : "true");
-
-  renderCdvScreen();
-  // Rafraîchit les sous-titres/compteurs des items si le panneau est ouvert.
-  if (window.ContextualTools) ContextualTools.refresh("cdv");
-});
-
-// Carrousel des carnets de voyage en haut du Fil, point d'entrée principal
-function renderVlogCarousel() {
-  const el = $("#vlogCarousel");
-  if (!el) return;
-  const carnets = allCarnets().slice(0, 8); // max 8 mini-cartes
-  // Toujours afficher la tuile "Créer" en premier, invitation visible
-  let html = `<div class="vlog-card-create" onclick="setStudioToVlog()">
-    <div class="vlog-card-create-icon">＋</div>
-    <div class="vlog-card-create-label">Créer un carnet</div>
-    <div class="vlog-card-create-sub">Raconte ton voyage</div>
-  </div>`;
-
-  html += carnets.map(c => {
-    const stats = vlogStats(c);
-    // ⚠️ Un carnet peut venir d'un AUTRE compte (allCarnets lit state.supabasePosts) :
-    // `cover` atterrit dans un src et `id` dans deux chaînes JS (onclick + onerror).
-    // Sans helper, une apostrophe suffisait à sortir de l'attribut.
-    const cSeed = encodeURIComponent(String(c.id || ""));
-    return `<div class="vlog-card-mini" onclick="openVlogViewer('${escapeJsArg(c.id)}')">
-      <img loading="lazy" decoding="async" class="vlog-card-mini-cover" src="${safeUrlAttr(c.cover || `https://picsum.photos/seed/vlog-mini-${cSeed}/360/240`)}" alt="${escapeHtml(c.destination || '')}" onerror="this.onerror=null;this.src='https://picsum.photos/seed/vlog-mini-${cSeed}/360/240';"/>
-      <div class="vlog-card-mini-overlay"></div>
-      <span class="vlog-card-mini-tag">📔 CARNET</span>
-      <div class="vlog-card-mini-meta">
-        <div class="vlog-card-mini-dest">${escapeHtml(c.destination || "Voyage")}</div>
-        <div class="vlog-card-mini-stats">${stats.durée}j · ${stats.nbDays} étapes${c.budget ? " · " + escapeHtml(c.budget.split('(')[0].trim()) : ""}</div>
-      </div>
-    </div>`;
-  }).join("");
-
-  el.innerHTML = html;
-}
-
-document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && $("#vlogViewer") && $("#vlogViewer").classList.contains("open")) {
-    closeVlogViewer();
-  }
-});
+// ⚠️ RETRAIT DU CARNET DE VOYAGE (refonte multi-passion, §6).
+// Trois choses vivaient en tête de ce fichier et sont parties avec l'écran CDV :
+// la délégation de clic `[data-cdvfilter]` (les filtres « Mes favoris / Mes
+// carnets / Lives » du panneau Outils), le carrousel `renderVlogCarousel` et le
+// raccourci Échap du viewer plein écran. Leurs cibles n'existent plus.
 
 // ===== MENU D'OPTIONS D'UN POST (⋯) =====
 // Bottom-sheet façon Instagram : la suppression vit ici, plus dans l'en-tête du post.
 function openPostOptions(postId) {
-  // Un carnet de voyage est modifiable (c'est un long récit : une faute dans la
-  // destination ou une étape oubliée ne doit pas obliger à tout resaisir).
-  var _p = (typeof findPostAnywhere === "function") ? findPostAnywhere(postId) : null;
-  var _editBtn = (_p && _p.type === "vlog")
-    ? '<button class="post-option" onclick="closeModal();editCarnet(\'' + escapeJsArg(postId) + '\')">'
-      + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20 H8 L19 9 L15 5 L4 16 Z"/><path d="M14 6 L18 10"/></svg>'
-      + 'Modifier le carnet</button>'
-    : "";
+  // ⚠️ « Modifier le carnet » a été retiré avec la fonctionnalité (§6) : son
+  // éditeur n'existe plus. Les publications de type `vlog` n'apparaissent
+  // d'ailleurs plus nulle part, donc ce menu ne peut plus s'ouvrir sur l'une
+  // d'elles.
+  var _editBtn = "";
   openModal(`
     <div class="modal-handle"></div>
     <div class="post-options-sheet">
@@ -555,6 +493,7 @@ function _renderCommentsList(allComments, postId) {
       <div class="comment-body">
         ${c.pinned ? '<div class="cmt-pinned-badge">📌 Épinglé</div>' : ""}
         <div class="comment-author" style="cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${escapeJsArg(authorId)}','${escapeJsArg(cSrc)}')">${escapeHtml(name)}</div>
+        ${identitePassionsHTML(_cAv, "ident-passions-sm")}
         <div class="comment-text">${_commentBodyHtml(c.text || c.content || "")}</div>
         <div class="comment-meta">${fmtTime(c.createdAt || c.at)}${c.edited ? " · modifié" : ""}${typeof _cmtStatusHtml === "function" ? _cmtStatusHtml(postId, c) : ""}</div>
         <div class="comment-actions">
@@ -603,7 +542,7 @@ function _renderCommentsList(allComments, postId) {
           const rLikes = r.likes || 0;
           return `<div class="comment-reply" data-replyid="${escapeHtml(r.id)}" style="display:flex;align-items:flex-start;gap:6px;padding:4px 0;">
             <div class="avatar xs" style="background:${avatarBg(_rAvT)};flex-shrink:0;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${escapeJsArg(r.authorId)}','${escapeJsArg(rSrc)}')">${avatarInner(_rAvT)}</div>
-            <div style="flex:1;min-width:0;"><span class="comment-reply-author" style="font-size:11px;font-weight:600;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${escapeJsArg(r.authorId)}','${escapeJsArg(rSrc)}')">${escapeHtml(ru.name)}</span> ${_commentBodyHtml(r.text)}
+            <div style="flex:1;min-width:0;"><span class="comment-reply-author" style="font-size:11px;font-weight:600;cursor:pointer;" onclick="event.stopPropagation();closeModal();openUserProfile('${escapeJsArg(r.authorId)}','${escapeJsArg(rSrc)}')">${escapeHtml(ru.name)}</span> ${_commentBodyHtml(r.text)}${identitePassionsHTML(ru, "ident-passions-sm")}
             <div class="comment-reply-actions" style="display:flex;align-items:center;gap:10px;margin-top:2px;">
               <span style="font-size:10px;color:var(--muted);">${fmtTime(r.createdAt)}${typeof _cmtStatusHtml === "function" ? _cmtStatusHtml(postId, r) : ""}</span>
               <span class="comment-action ${rLiked ? "liked" : ""}" data-cmtlike="${escapeHtml(r.id)}" style="font-size:12px;" onclick="return likeCommentNode('${escapeJsArg(postId)}','${escapeJsArg(r.id)}', event);" title="J'aime">${rLiked ? "❤️" : "🤍"} ${rLikes}</span>
@@ -2509,21 +2448,13 @@ function searchUsers(query) {
     results.innerHTML = matches.map(function(u) {
       var nameEsc = escapeHtml(u.name || "Passionné");
       var emoji = u.profileEmoji || "✨";
-      // Badges passions
-      var passionBadges = "";
-      if (u.passions && u.passions.length > 0) {
-        passionBadges = u.passions.map(function(p) {
-          var label = p.label || (typeof passionById === "function" && passionById(p.id) ? passionById(p.id).label : "");
-          // ⚠️ p.emoji vient du jsonb `profiles.passions` d'un AUTRE compte : brut,
-          // il s'exécutait (`<img src=x onerror=…>`) dès l'affichage du résultat.
-          return "<span style='background:rgba(124,58,237,0.10);border:1px solid rgba(124,58,237,0.18);border-radius:20px;padding:1px 6px;font-size:10px;font-weight:600;color:var(--accent);margin-right:2px;'>"
-            + escapeHtml(p.emoji || "✨") + (label ? " " + escapeHtml(label) : "") + "</span>";
-        }).join("");
-      } else if (u.passion) {
-        var pw = passionById(u.passion) || { emoji: "✨", label: "" };
-        passionBadges = "<span style='background:rgba(124,58,237,0.10);border:1px solid rgba(124,58,237,0.18);border-radius:20px;padding:1px 6px;font-size:10px;font-weight:600;color:var(--accent);'>"
-          + pw.emoji + (pw.label ? " " + escapeHtml(pw.label) : "") + "</span>";
-      }
+      // §2 : la MÊME ligne d'identité que partout ailleurs, au lieu des pastilles
+      // propres à cet écran. `identitePassionsHTML` échappe (le jsonb
+      // `profiles.passions` d'un AUTRE compte est du contenu libre — un
+      // `<img src=x onerror=…>` s'y exécutait avant le correctif du 2026-08-30)
+      // et borne la liste, pour qu'un compte à douze passions ne pousse pas
+      // « Message → » hors de l'écran.
+      var passionBadges = identitePassionsHTML(u, "ident-passions-sm");
       // ⚠️ data-emoji recevait `profiles.emoji` BRUT dans un attribut simple-quoté :
       // une valeur du type `' onmouseover='…` refermait l'attribut et ouvrait un
       // gestionnaire d'événement. Tout ce qui entre ici doit être échappé, y compris
@@ -2760,10 +2691,24 @@ async function openUserProfile(authorId, source) {
   // que tout compte authentifié écrit librement sur SA ligne : un
   // `<img src=x onerror=…>` s'y exécutait avant le correctif du 2026-08-30.
   // Ne JAMAIS retirer l'échappement ci-dessous.
+  // ⚠️ MÊME COMPOSANT QUE LE FIL ET QUE MON PROFIL (refonte multi-passion, §1).
+  // Ces pastilles étaient d'abord de grandes `.profile-card` — indiscernables
+  // d'une liste de comptes — puis des puces `.v10-vfilter` propres à cet écran.
+  // Elles deviennent les BULLES `passionTileHTML` (app-02) : un seul rendu, donc
+  // les mêmes dimensions et les mêmes états partout où une passion se choisit.
+  // Le choix reste UNIQUE ici, comme sur mon profil.
+  //
+  // ⚠️ `p.emoji` et `p.label` viennent du jsonb `profiles.passions` d'un AUTRE
+  // compte, colonne que toute session authentifiée écrit librement sur SA ligne :
+  // un `<img src=x onerror=…>` s'y exécutait avant le correctif du 2026-08-30.
+  // `passionTileHTML` échappe (texte + `safeUrlAttr` pour la photo) ; ne jamais
+  // contourner ce chemin.
   const passionsHTML = userPassions.length > 0
-    ? '<div class="section-title" style="margin-top:14px;">Ses passions</div>'
-      + '<div id="visitedPassions" class="v10-vfilters" role="group" aria-label="Filtrer ses publications par passion">'
-      + '<button type="button" class="v10-vfilter active" data-vpid="" onclick="setVisitedPassion(\'\')">Toutes</button>'
+    ? '<div id="visitedPassions" class="profile-strip v9-profile-strip" role="group" aria-label="Filtrer ses publications par passion">'
+      + passionTileHTML({
+          emoji: "\u2728", label: "Toutes", selected: true, dimmed: false,
+          action: "visitedPassion", arg: "", title: "Toutes ses passions", tileKey: "",
+        })
       + userPassions.map(p => {
           const pas = passionById(p.id);
           // ⚠️ L'ORDRE compte. `passionById` ne rend JAMAIS null : sur un id
@@ -2775,8 +2720,17 @@ async function openUserProfile(authorId, source) {
           const _catalogue = (pas && pas.label) || "";
           const label = (_catalogue && _catalogue !== "Passion" ? _catalogue : "")
             || p.label || _catalogue || "Passion";
-          return '<button type="button" class="v10-vfilter" data-vpid="' + escapeHtml(p.id) + '" onclick="setVisitedPassion(\'' + escapeJsArg(p.id) + '\')">'
-            + escapeHtml(p.emoji || "✨") + ' ' + escapeHtml(label) + '</button>';
+          return passionTileHTML({
+            emoji: p.emoji || "\u2728",
+            label: label,
+            photoUrl: passionPhotoUrl(pas),
+            fallbackUrl: passionPhotoFallback(p.id),
+            selected: false,
+            dimmed: false,
+            action: "visitedPassion", arg: p.id,
+            title: label,
+            tileKey: p.id,
+          });
         }).join("")
       + '</div>'
     : '';
@@ -2855,6 +2809,18 @@ async function openUserProfile(authorId, source) {
       + '</div>'
     : '';
 
+  // ── DEUX SECTIONS, comme sur mon profil (refonte multi-passion, §1) :
+  // « Publications » et « Activité ». Les cinq icônes de type de contenu
+  // restent DANS « Publications » comme sous-filtres, exactement comme le lot
+  // UI-7 les y a rangées chez moi — deux écrans jumeaux doivent raconter le
+  // même modèle.
+  var sectionsHTML = canSeeContent
+    ? '<div class="v7-tabs" id="visitedSections" role="tablist" aria-label="Sections du profil">'
+      + '<button type="button" class="v7-tab" role="tab" data-v9-vtab="publications" aria-selected="true" onclick="switchVisitedSection(\'publications\')">Publications</button>'
+      + '<button type="button" class="v7-tab" role="tab" data-v9-vtab="activite" aria-selected="false" onclick="switchVisitedSection(\'activite\')">Activité</button>'
+      + '</div>'
+    : '';
+
   // Contenu initial : verrou « compte privé » pour un non-abonné, sinon rempli
   // par _renderVisitedContent() juste après l'ouverture de la modale.
   var contentHTML = canSeeContent
@@ -2883,6 +2849,7 @@ async function openUserProfile(authorId, source) {
           <div class="main-profile-avatar" style="background:' + avatarBg(user) + ';background-size:cover;background-position:center;cursor:default;">' + avatarInner(user) + '</div>\
         </div>\
         <div class="main-profile-username">' + escapeHtml(user.name || "Passionné") + (user.isPrivate ? ' <span title="Compte privé" style="font-size:13px;">🔒</span>' : '') + '</div>\
+        ' + identitePassionsHTML({ id: authorId, passions: userPassions, passion: user.passion }) + '\
         ' + (user.bio ? '<div class="main-profile-bio">' + escapeHtml(user.bio) + '</div>' : '') + '\
         ' + (rsLinks.length ? '<div class="main-profile-rs">' + rsLinks.map(function(l) { return '<a class="main-profile-rs-link" href="' + safeUrlAttr(l.url || "") + '" target="_blank" rel="noopener">' + (RS_ICONS[l.platform] || "🔗") + ' ' + escapeHtml(l.platform || "lien") + '</a>'; }).join("") + '</div>' : '') + '\
         <div class="main-profile-stats">\
@@ -2909,8 +2876,9 @@ async function openUserProfile(authorId, source) {
     </div>\
     \
     ' + passionsHTML + '\
-    ' + tabsHTML + '\
-    <div id="visitedContent">' + contentHTML + '</div>\
+    ' + sectionsHTML + '\
+    <div class="v7-pan" data-v9-vpan="publications">' + tabsHTML + '<div id="visitedContent">' + contentHTML + '</div></div>\
+    <div class="v7-pan" data-v9-vpan="activite" hidden><div id="visitedEvents"></div></div>\
   ';
   openModal(html);
   // Passer en plein écran
@@ -2918,6 +2886,7 @@ async function openUserProfile(authorId, source) {
   if (modalEl) modalEl.classList.add("modal-fullscreen");
   // Remplit le contenu selon les sélections (comme renderProfileContent chez moi).
   _renderVisitedContent();
+  _renderVisitedEvents();
 
   // Aide §8 « premier profil visité » : mettre en évidence Suivre / Message.
   // Différée d'un tick — la modale vient d'être injectée, son rectangle n'est
@@ -2941,7 +2910,91 @@ function setVisitedPassion(pid) {
   var v = window._visited; if (!v) return;
   v.passionSel = new Set(pid ? [pid] : []);
   _syncVisitedUI();
+  // ⚠️ Une seule sélection commande les DEUX sections : sans le second appel,
+  // « Activité » resterait sur la passion précédente pendant que
+  // « Publications » aurait changé — l'incohérence que le rail supprime.
   _renderVisitedContent();
+  _renderVisitedEvents();
+}
+
+// ── Les deux sections du profil visité ────────────────────────────────────
+function switchVisitedSection(cle) {
+  var k = (cle === "activite") ? "activite" : "publications";
+  document.querySelectorAll("#visitedSections [data-v9-vtab]").forEach(function (b) {
+    b.setAttribute("aria-selected", b.getAttribute("data-v9-vtab") === k ? "true" : "false");
+  });
+  document.querySelectorAll("[data-v9-vpan]").forEach(function (p) {
+    p.hidden = p.getAttribute("data-v9-vpan") !== k;
+  });
+  if (k === "activite") _renderVisitedEvents();
+}
+
+// L'activité PUBLIQUE d'un autre compte : les sorties qu'il organise. On ne
+// montre pas ses participations — `event_attendees` n'est pas chargé pour un
+// tiers, et l'inventer serait annoncer une présence qu'on n'a pas vérifiée.
+function _visitedEvents(authorId, passionId) {
+  var out = [];
+  try {
+    var tous = (typeof allEvents === "function") ? allEvents() : [];
+    out = tous.filter(function (e) {
+      return e && (e.organizerId === authorId || e.authorId === authorId);
+    });
+  } catch (e) {
+    // Jamais muet : un catch large sur un chemin d'affichage a déjà masqué un
+    // ReferenceError six jours dans ce dépôt.
+    if (typeof diagLog === "function") diagLog("profil_visite_activites " + (e && e.message));
+    return [];
+  }
+  if (passionId) out = out.filter(function (e) { return e.passion === passionId; });
+  var maintenant = Date.now();
+  out.sort(function (a, b) {
+    var fa = a.date >= maintenant, fb = b.date >= maintenant;
+    if (fa !== fb) return fa ? -1 : 1;
+    return fa ? (a.date - b.date) : (b.date - a.date);
+  });
+  return out.slice(0, 8);
+}
+
+function _renderVisitedEvents() {
+  var v = window._visited;
+  var box = document.getElementById("visitedEvents");
+  if (!v || !box) return;
+  if (v.locked) {
+    box.innerHTML = '<div class="empty"><div class="empty-icon">🔒</div><div class="empty-title">Ce compte est privé</div>'
+      + '<div class="empty-text">Abonne-toi pour voir son activité.</div></div>';
+    return;
+  }
+  var passionId = null;
+  v.passionSel.forEach(function (x) { passionId = x; });
+  var evs = _visitedEvents(v.authorId, passionId);
+  if (!evs.length) {
+    var msg = passionId
+      ? "Aucune activité dans cette passion pour l'instant."
+      : "Cette personne n'organise aucune activité pour le moment.";
+    box.innerHTML = '<div class="empty"><div class="empty-icon">🤝</div><div class="empty-title">Rien à afficher</div>'
+      + '<div class="empty-text">' + escapeHtml(msg) + '</div></div>';
+    return;
+  }
+  box.innerHTML = evs.map(function (e) {
+    var emoji = e.emoji || "📍";
+    try { if (!e.emoji && typeof passionById === "function") emoji = (passionById(e.passion) || {}).emoji || "📍"; } catch (x) {}
+    var vignette = e.coverUrl
+      ? '<img loading="lazy" decoding="async" src="' + safeUrlAttr(e.coverUrl) + '" alt="" style="width:100%;height:100%;object-fit:cover;display:block;" onerror="this.style.display=\'none\'"/>'
+      : '<span style="font-size:20px;">' + escapeHtml(String(emoji)) + '</span>';
+    var quand = "";
+    try { quand = new Date(e.date).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" }); } catch (x) {}
+    var bas = [quand, e.city ? String(e.city) : ""].filter(Boolean).join(" · ");
+    return '<div onclick="closeModal();openEventDetails(\'' + escapeJsArg(String(e.id)) + '\')"'
+      + ' style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--bg-card);'
+      + 'border:1px solid var(--border);border-radius:12px;margin-bottom:6px;cursor:pointer;">'
+      + '<div style="width:44px;height:44px;flex:0 0 44px;border-radius:10px;overflow:hidden;'
+      + 'background:var(--bg-tint);display:grid;place-items:center;">' + vignette + '</div>'
+      + '<div style="flex:1;min-width:0;">'
+      + '<div style="font-weight:700;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
+      + escapeHtml(e.title || "Activité") + '</div>'
+      + '<div style="font-size:10.5px;color:var(--muted);">' + escapeHtml(bas) + '</div>'
+      + '</div></div>';
+  }).join("");
 }
 
 // Conservée : d'anciens liens ou un handler encore en vol pourraient l'appeler.
@@ -2962,12 +3015,19 @@ function switchVisitedTab(tab) {
 // renderProfilesScreen) et les onglets (classe active + aria-pressed).
 function _syncVisitedUI() {
   var v = window._visited; if (!v) return;
-  document.querySelectorAll("#visitedPassions [data-vpid]").forEach(function(c) {
-    var id = c.getAttribute("data-vpid") || "";
-    // La pastille « Toutes » (id vide) est active quand rien n'est sélectionné.
-    var on = id ? v.passionSel.has(id) : (v.passionSel.size === 0);
+  var _unFiltre = v.passionSel.size > 0;
+  document.querySelectorAll("#visitedPassions [data-passion-tile]").forEach(function(c) {
+    var id = c.getAttribute("data-passion-tile") || "";
+    // La bulle « Toutes » (clé vide) est active quand rien n'est sélectionné.
+    var on = id ? v.passionSel.has(id) : !_unFiltre;
     c.classList.toggle("active", on);
-    c.classList.toggle("selected", on);
+    c.setAttribute("aria-pressed", on ? "true" : "false");
+    // Mêmes états visuels que le Fil et que mon profil : l'opacité et l'échelle
+    // sont posées en style inline par `passionTileHTML`, on les tient à jour.
+    c.style.opacity = on ? "1" : (_unFiltre ? "0.3" : "1");
+    c.style.transform = on ? "scale(1.07)" : "scale(1)";
+    var lbl = c.querySelector(".profile-tile-label");
+    if (lbl) { lbl.style.fontWeight = on ? "800" : "600"; lbl.style.color = on ? "var(--accent)" : ""; }
   });
   document.querySelectorAll("#visitedTabs .profile-tab").forEach(function(b) {
     var on = v.tabSel.has(b.getAttribute("data-vtab"));
@@ -2994,8 +3054,20 @@ function _renderVisitedContent() {
   }
   var single = keys.length === 1 ? keys[0] : null;
 
+  // ⚠️ L'état vide doit dire QUI vide l'écran. Sans mention du filtre, il
+  // affirme « aucune publication » à quelqu'un qui en a, ailleurs.
+  var _nomFiltre = "";
+  try {
+    v.passionSel.forEach(function (id) {
+      var t = document.querySelector('#visitedPassions [data-passion-tile="' + CSS.escape(id) + '"] .profile-tile-label');
+      if (t) _nomFiltre = t.textContent || "";
+    });
+  } catch (e) {}
   function _vEmpty(msg) {
-    return '<div class="empty"><div class="empty-icon">📭</div><div class="empty-title">' + msg + '</div><div class="empty-text">Rien à afficher pour cette sélection.</div></div>';
+    var sous = _nomFiltre
+      ? "Rien en " + _nomFiltre + " — touche « Toutes » pour voir le reste."
+      : "Rien à afficher pour cette sélection.";
+    return '<div class="empty"><div class="empty-icon">📭</div><div class="empty-title">' + escapeHtml(msg) + '</div><div class="empty-text">' + escapeHtml(sous) + '</div></div>';
   }
 
   if (single === "photos") {
