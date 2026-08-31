@@ -1600,6 +1600,11 @@ function purgeAccountScopedData() {
   try { MY_UID = null; window.MY_UID = null; } catch (e) {}
   // Caches en mémoire : le rechargement les emporte, mais il peut échouer ou tarder.
   try { if (typeof _clearProfileCache === "function") _clearProfileCache(); } catch (e) {}
+  // ⚠️ Le cache « ligne profiles assurée » est indexé par UID, donc un changement
+  // d'utilisateur le manque naturellement. On le vide quand même à la purge :
+  // laisser un UID marqué assuré après une déconnexion ferait sauter l'insert
+  // du compte suivant si les identifiants venaient à se recouvrir.
+  try { if (typeof _resetProfilAssure === "function") _resetProfilAssure(); } catch (e) {}
   try { ACCOUNT_SCOPED_KEYS.forEach(function (k) { localStorage.removeItem(k); }); } catch (e) {}
   // ⚠️ Les files de sauvegarde en attente sont suffixées par compte : elles ne
   // peuvent donc pas figurer en dur dans la liste ci-dessus. Chacune contient le
@@ -2236,7 +2241,11 @@ function renderPassionGrid() {
       <div class="passion-tile-label">Créer la mienne</div>
     </div>
   `;
-  grid.innerHTML = tiles + (filtre ? "" : createTile);
+  // Tuile masquée tant que la création est suspendue (hotfix 2026-08-30) : une
+  // porte qui refuse au tap est un cul-de-sac. Le garde d'`openCreateCustomPassion`
+  // reste en place — il couvre tout appelant que ce masquage oublierait.
+  const _peutCreer = !(typeof passionsPersoSuspendues === "function" && passionsPersoSuspendues());
+  grid.innerHTML = tiles + ((filtre || !_peutCreer) ? "" : createTile);
 
   renderOnbStarter();
 }
@@ -2291,7 +2300,37 @@ function setStarterPassion(id) {
   renderPassionGrid();
 }
 
+// ⛔ CRÉATION DE PASSIONS PERSONNALISÉES SUSPENDUE (hotfix du 2026-08-30).
+//
+// Une passion personnalisée reçoit un id `custom_<slug>_<rand>` qui ne vit que
+// dans l'état local. Or `posts`, `profiles`, `stories`, `events` et
+// `conversations` portent une clé étrangère vers `passions(id)`, table qui n'a
+// qu'une policy SELECT : aucun client ne peut y insérer la ligne correspondante.
+// Publier dans une telle passion échoue donc en 23503, et le message affiché
+// accuse le réseau pour une erreur définitive.
+//
+// Tant que la question n'est pas tranchée (cf. docs/PASSION_PERSONNALISEE_FK),
+// on ferme la porte plutôt que d'offrir un cul-de-sac. RIEN n'est supprimé : les
+// passions déjà créées restent dans l'état, leurs publications restent en place.
+function passionsPersoSuspendues() { return true; }
+
 function openCreateCustomPassion() {
+  if (passionsPersoSuspendues()) {
+    openModal('\
+      <div class="modal-handle"></div>\
+      <div class="modal-title">🌟 Créer ta passion</div>\
+      <div style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:16px;">\
+        La création de passions personnalisées est <b>momentanément indisponible</b>.\
+        Elles ne pouvaient pas être publiées correctement, alors on préfère fermer\
+        la porte plutôt que de te laisser publier dans le vide.<br/><br/>\
+        Tes passions déjà créées ne sont pas touchées : elles restent sur ton profil.\
+        Choisis une passion du catalogue pour publier dès maintenant.\
+      </div>\
+      <button class="btn primary block" onclick="closeModal()">J\'ai compris</button>\
+    ');
+    return;
+  }
+
   const palette = [
     { emoji: "⭐", color: "#8b5cf6" },
     { emoji: "🎯", color: "#8b5cf6" },
@@ -2664,7 +2703,18 @@ function onbFinish() {
   // un save, mais on garantit ici un flush explicite en parallèle.
   setTimeout(function() {
     try { if (typeof supaSaveUserState === "function") supaSaveUserState(); } catch(e) {}
-    try { if (typeof supaUpsertProfile === "function") supaUpsertProfile(); } catch(e) {}
+    // ⚠️ L'onboarding est une sauvegarde EXPLICITE du pseudo et des passions,
+    // mais il ne propose AUCUN contrôle de confidentialité : il n'a donc rien à
+    // dire sur `is_private`, et ne l'envoie pas. Écrire `false` « parce qu'on
+    // enregistre » rendrait public un compte que la ligne minimale a créé privé.
+    // Le caractère explicite d'une action ne rend pas tous ses champs autoritaires.
+    try {
+      if (typeof supaSavePublicProfile === "function") {
+        var _g = (state.user && state.user.general) || {};
+        supaSavePublicProfile({ username: _g.username, bio: _g.bio });
+      }
+      if (typeof supaSavePassionState === "function") supaSavePassionState();
+    } catch(e) {}
   }, 800);
 
   // Pas de tour forcé en V2 (spec §8) : « le tour long actuel ne doit pas suivre

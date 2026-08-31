@@ -789,8 +789,18 @@ async function _syncProfilePhoto(field, folder, dataUrl) {
         renderMainProfile();
       }
     }
-    // 3) Pousse l'URL (ou laisse tel quel si offline) dans la table profiles.
-    if (typeof supaUpsertProfile === "function") await supaUpsertProfile();
+    // 3) Pousse l'URL — et ELLE SEULE. Republier le profil complet ici, c'était
+    // réécrire pseudo, bio et confidentialité depuis l'état local à chaque
+    // changement de photo (P0 confidentialité du 2026-08-31).
+    // `field` vaut "avatarPhoto" ou "coverPhoto" ; la colonne correspondante est
+    // `avatar_url` / `cover_url`, et on ne publie qu'une URL Storage.
+    const _col = (field === "avatarPhoto") ? "avatar_url" : (field === "coverPhoto" ? "cover_url" : null);
+    const _val = state.user.general[field];
+    if (_col && typeof _val === "string" && /^https?:\/\//.test(_val) && typeof supaSavePublicProfile === "function") {
+      await supaSavePublicProfile({ [_col]: _val });
+    } else if (typeof supaEnsureProfileExists === "function") {
+      await supaEnsureProfileExists();   // la ligne doit exister, rien de plus
+    }
   } catch (e) { console.warn("Sync photo profil échouée:", e && e.message); }
 }
 
@@ -1121,7 +1131,33 @@ function openPassionProfileMenu(ev, profileId) {
   ]);
 }
 
+// ⚠️ PREUVE D'INTERACTION, pas déduction. Le marqueur `privacyChoisi` ne doit
+// PAS se déduire de la valeur finale au moment de la soumission : « la case est
+// décochée » ne distingue pas « j'ai choisi public » de « je n'y ai pas touché ».
+// Seul un `change` sur le contrôle prouve un geste.
+function marquerConfidentialiteTouchee() { window._privacyTouched = true; }
+
 function openEditMainProfile() {
+  // Remis à zéro à CHAQUE ouverture : un geste d'hier ne prouve pas celui d'aujourd'hui.
+  // (`editCoverFromModal` réouvre la modale ; il restaure ce drapeau lui-même.)
+  window._privacyTouched = false;
+  // ⚠️ HYDRATATION SERVEUR, en arrière-plan. La case est d'abord rendue depuis
+  // l'état local (instantané), puis corrigée dès que la base répond — sinon un
+  // profil créé PRIVÉ par `ensure` s'afficherait public, et le rendre vraiment
+  // public demanderait deux allers-retours au lieu d'un geste.
+  // On ne corrige QUE si la personne n'a pas encore touché au contrôle : sinon
+  // la case basculerait sous son doigt.
+  setTimeout(function () {
+    try {
+      if (typeof supaHydraterConfidentialite !== "function") return;
+      supaHydraterConfidentialite().then(function (v) {
+        if (v === null || v === undefined) return;
+        if (window._privacyTouched === true) return;
+        var el = document.getElementById("editIsPrivate");
+        if (el) el.checked = !!v;
+      }).catch(function () {});
+    } catch (e) {}
+  }, 0);
   const g = state.user.general || {};
   const RS_LIST = ["instagram","tiktok","facebook","youtube","twitter","linkedin","snapchat","autre"];
   const links = g.rsLinks || [];
@@ -1156,7 +1192,7 @@ function openEditMainProfile() {
     <div class="field">
       <span>Confidentialité</span>
       <label style="display:flex;align-items:flex-start;gap:10px;padding:12px;border:1px solid var(--border);border-radius:12px;cursor:pointer;">
-        <input type="checkbox" id="editIsPrivate" ${g.isPrivate ? "checked" : ""} style="width:20px;height:20px;flex-shrink:0;margin-top:1px;accent-color:var(--accent);"/>
+        <input type="checkbox" id="editIsPrivate" ${g.isPrivate ? "checked" : ""} onchange="marquerConfidentialiteTouchee()" style="width:20px;height:20px;flex-shrink:0;margin-top:1px;accent-color:var(--accent);"/>
         <span style="flex:1;">
           <span style="display:block;font-weight:700;font-size:13px;color:var(--text);">🔒 Compte privé</span>
           <span style="display:block;font-size:11px;color:var(--muted);line-height:1.45;margin-top:3px;">Seuls tes abonnés peuvent voir tes publications, photos, bobines et carnets. Ton pseudo, ton avatar et tes passions restent visibles pour que l'on puisse te trouver.</span>
@@ -1201,6 +1237,8 @@ function openEditMainProfile() {
     const u = document.getElementById("editUsername"); if (u) u.value = draft.username || "";
     if (bioTa) { bioTa.value = draft.bio || ""; if (bioCount) bioCount.textContent = `${bioTa.value.length}/200`; }
     const pv = document.getElementById("editIsPrivate"); if (pv) pv.checked = !!draft.isPrivate;
+    // Un aller-retour par le recadreur ne doit pas effacer la preuve du geste.
+    window._privacyTouched = !!draft.privacyTouched;
     (draft.rs || []).forEach(function(r) {
       const inp = document.querySelector('.rs-link-input[data-platform="' + r.platform + '"]');
       if (inp) inp.value = r.url || "";
@@ -1216,6 +1254,7 @@ function editCoverFromModal() {
     username: document.getElementById("editUsername")?.value || "",
     bio: document.getElementById("editBio")?.value || "",
     isPrivate: !!document.getElementById("editIsPrivate")?.checked,
+    privacyTouched: !!window._privacyTouched,
     rs: [...document.querySelectorAll(".rs-link-input")].map(function(i) { return { platform: i.dataset.platform, url: i.value }; })
   };
   window._editProfileReopen = true;
@@ -1240,7 +1279,24 @@ async function saveMainProfile() {
   state.user.general.username = username;
   state.user.general.bio      = bio;
   state.user.general.rsLinks  = rsLinks;
-  state.user.general.isPrivate = !!document.getElementById("editIsPrivate")?.checked;
+  // ⚠️ MARQUEUR DE CHOIX DE CONFIDENTIALITÉ (2026-08-31).
+  // `general.isPrivate` est la SEULE trace de confidentialité de l'application,
+  // et cette ligne est sa SEULE assignation dans tout le dépôt. Un `false` n'y
+  // prouve donc rien : la case a pu rester décochée pendant qu'on enregistrait
+  // simplement sa bio. Or `_creerProfilMinimalSiAbsent` (app-08) doit savoir
+  // distinguer « cette personne a choisi public » de « personne n'a rien choisi »,
+  // sous peine de rendre public un compte qui ne l'a jamais demandé.
+  //
+  // Le marqueur n'est donc posé que si la personne AGIT sur le contrôle : elle
+  // coche la case, ou elle décoche une case qui était cochée. Enregistrer le
+  // choix à chaque soumission ferait passer « j'ai sauvegardé ma bio » pour
+  // « j'ai choisi public » — exactement l'ambiguïté qu'on cherche à lever.
+  var _prive = !!document.getElementById("editIsPrivate")?.checked;
+  // ⚠️ Le marqueur vient d'une INTERACTION avec le contrôle (`change`), jamais
+  // de la valeur finale : décochée peut vouloir dire « j'ai choisi public » ou
+  // « je n'y ai pas touché », et les deux n'autorisent pas la même écriture.
+  if (window._privacyTouched === true) state.user.general.privacyChoisi = true;
+  state.user.general.isPrivate = _prive;
   state.user.general.emoji    = currentProfile()?.emoji || "✨";
   if (username) state.user.name = username;
   // ⚠️ Renommer aussi le PROFIL ACTIF : c'est lui que supaUpsertProfile publie
@@ -1251,7 +1307,21 @@ async function saveMainProfile() {
   saveState();
   // await : on garantit que le serveur (source de vérité du profil stable) est à
   // jour AVANT de rendre la main, pour qu'un éventuel re-sync adopte le nouveau nom.
-  if (typeof supaUpsertProfile === "function") { try { await supaUpsertProfile(); } catch(e) {} }
+  // ⚠️ SAUVEGARDE EXPLICITE, champ par champ. C'est le SEUL parcours qui porte
+  // un contrôle de confidentialité, donc le seul autorisé à écrire
+  // `is_private` — et encore : `supaSavePublicProfile` le refusera si
+  // `privacyChoisi` n'est pas posé (cf. le marqueur, plus haut dans cette
+  // fonction). L'ancien appel republiait tout le profil depuis l'état local.
+  if (typeof supaSavePublicProfile === "function") {
+    try {
+      await supaSavePublicProfile({
+        username: state.user.general.username,
+        bio: state.user.general.bio,
+        rs_links: Array.isArray(state.user.general.rsLinks) ? state.user.general.rsLinks : [],
+        is_private: state.user.general.isPrivate,
+      });
+    } catch (e) {}
+  }
   // Flush user_state immédiat (username/bio/rsLinks doivent être dans le blob sync).
   if (typeof supaSaveUserState === "function") { try { supaSaveUserState(); } catch(e) {} }
   closeModal();
@@ -1576,7 +1646,8 @@ function archiverPassion(profileId) {
     else if (window.console && console.error) console.error("[ui-v8] filtre du fil :", e);
   }
   saveState();
-  if (typeof supaUpsertProfile === "function") { try { supaUpsertProfile(); } catch (e) {} }
+  // Passions seules : ni pseudo, ni bio, ni avatar, ni confidentialité.
+  if (typeof supaSavePassionState === "function") { try { supaSavePassionState(); } catch (e) {} }
   if (typeof supaSaveUserState === "function") { try { supaSaveUserState(); } catch (e) {} }
   closeModal();
   renderProfilesScreen();
@@ -1591,7 +1662,8 @@ function restaurerPassion(profileId) {
   pr.archived = false;
   delete pr.archivedAt;
   saveState();
-  if (typeof supaUpsertProfile === "function") { try { supaUpsertProfile(); } catch (e) {} }
+  // Passions seules : ni pseudo, ni bio, ni avatar, ni confidentialité.
+  if (typeof supaSavePassionState === "function") { try { supaSavePassionState(); } catch (e) {} }
   if (typeof supaSaveUserState === "function") { try { supaSaveUserState(); } catch (e) {} }
   closeModal();
   renderProfilesScreen();
@@ -1829,7 +1901,8 @@ function switchToProfile(id) {
   }
   // Le profil actif = identité publique (1 ligne profiles par compte) → on la
   // resynchronise pour que la recherche/messagerie reflètent le bon pseudo.
-  if (typeof supaUpsertProfile === "function") { try { supaUpsertProfile(); } catch(e) {} }
+  // Passions seules : ni pseudo, ni bio, ni avatar, ni confidentialité.
+  if (typeof supaSavePassionState === "function") { try { supaSavePassionState(); } catch (e) {} }
   // Flush immédiat de user_state pour persister le changement de profil actif.
   if (typeof supaSaveUserState === "function") { try { supaSaveUserState(); } catch(e) {} }
   renderTopbar();
@@ -1991,7 +2064,8 @@ function deleteProfile(profileId) {
   saveState();
   // Re-synchronise le profil public pour retirer la passion supprimée de la
   // liste affichée aux autres.
-  if (typeof supaUpsertProfile === "function") { try { supaUpsertProfile(); } catch(e) {} }
+  // Passions seules : ni pseudo, ni bio, ni avatar, ni confidentialité.
+  if (typeof supaSavePassionState === "function") { try { supaSavePassionState(); } catch (e) {} }
   // Flush immédiat de user_state pour ne pas perdre la suppression si l'utilisateur
   // se déconnecte dans les 2500ms suivantes.
   if (typeof supaSaveUserState === "function") { try { supaSaveUserState(); } catch(e) {} }
@@ -2161,12 +2235,13 @@ function openCreateProfile() {
           ${p.custom ? '<div class="passion-custom-badge">Perso</div>' : ''}
         </div>
       `).join("")}
+      ${(typeof passionsPersoSuspendues === "function" && passionsPersoSuspendues()) ? "" : `
       <div class="passion-tile passion-tile-create" onclick="openCreateCustomPassionFromProfile()">
         <div class="passion-tile-emoji">＋</div>
         <div class="passion-tile-label">Créer</div>
-      </div>
+      </div>`}
     </div>
-    ${pool.length === 0 ? '<div style="font-size:12px;color:var(--muted);text-align:center;margin:8px 0;">Toutes les passions du catalogue sont déjà prises, tu peux créer la tienne ✨</div>' : ''}
+    ${pool.length === 0 ? '<div style="font-size:12px;color:var(--muted);text-align:center;margin:8px 0;">Toutes les passions du catalogue sont déjà prises.</div>' : ''}
     <label class="field" style="margin-top:4px;">
       <span>Bio courte <span style="font-weight:400;color:var(--muted);">(optionnel)</span></span>
       <input type="text" class="input" id="newProfileBio" placeholder="Ex : Photographe amateur · Paris" maxlength="80" />
@@ -2222,7 +2297,8 @@ async function confirmCreateProfile() {
   saveState();
   // Synchronise tout de suite le profil actif vers Supabase → découvrable dans la
   // recherche et messageable sans attendre le prochain boot.
-  if (typeof supaUpsertProfile === "function") { try { supaUpsertProfile(); } catch(e) {} }
+  // Passions seules : ni pseudo, ni bio, ni avatar, ni confidentialité.
+  if (typeof supaSavePassionState === "function") { try { supaSavePassionState(); } catch (e) {} }
   // Pousse immédiatement user_state (liste complète des profils) sans attendre le
   // debounce de 2500ms — sinon un logout rapide perd le nouveau profil.
   if (typeof supaSaveUserState === "function") { try { supaSaveUserState(); } catch(e) {} }
@@ -3009,7 +3085,7 @@ function renderExplorer() {
   // All passions + CTA « Créer une passion » à la fin
   const customs = (state.user.customPassions || []);
   const allList = [...PASSIONS, ...customs];
-  const createCta = `
+  const createCta = (typeof passionsPersoSuspendues === "function" && passionsPersoSuspendues()) ? "" : `
     <div class="passion-tile passion-tile-create" onclick="openCreateCustomPassionFromExplorer()">
       <div class="passion-tile-emoji">＋</div>
       <div class="passion-tile-label">Créer une passion</div>
