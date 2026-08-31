@@ -110,9 +110,67 @@ test("⑥ la vue Suivis ne montre que les comptes suivis", async ({ page }) => {
   expect(t).toContain("POST_SUIVI");
   expect(t).toContain("POST_DOUBLE");
   expect(t).not.toContain("POST_PASSION");
-  // Le rail de passions est masqué : il ne filtrerait rien dans cette vue.
-  const cache = await page.evaluate(() => document.getElementById("feedPassionsBlock").hidden);
-  expect(cache).toBe(true);
+  // ⚠️ ATTENTE RÉÉCRITE le 2026-08-31, pas assouplie. Le rail était MASQUÉ dans
+  // cette vue, parce qu'il ne filtrait rien. Il ne peut plus l'être : il héberge
+  // désormais la tuile « Suivis », donc le masquer supprimerait la seule
+  // commande permettant de revenir. La contradiction « une passion cochée qui
+  // ne filtre rien » est levée autrement — aucune passion ne s'affiche active.
+  const rail = await page.evaluate(() => ({
+    visible: !document.getElementById("feedPassionsBlock").hidden,
+    suivisActif: !!document.querySelector("#profileStrip .profile-tile.active[title='Suivis']"),
+    passionsActives: document.querySelectorAll("#profileStrip .profile-tile.active:not([title='Suivis'])").length,
+  }));
+  expect(rail.visible, "le rail porte la commande de retour : le masquer enfermerait").toBe(true);
+  expect(rail.suivisActif, "la tuile « Suivis » montre la vue courante").toBe(true);
+  expect(rail.passionsActives, "aucune passion active : elle ne filtrerait rien ici").toBe(0);
+});
+
+test("⑥ ter — la tuile « Suivis » du rail pilote la vue, et persiste", async ({ page }) => {
+  // ⚠️ CE TEST REMPLACE LE COMMUTATEUR RETIRÉ. Le geste change de place — la
+  // tuile du rail au lieu d'un onglet au-dessus — mais la garantie qui comptait
+  // reste : le choix est PERSISTÉ. L'ancienne tuile de `main` inversait
+  // `_showFollowingFeed`, une variable de session : elle repartait à faux à
+  // chaque ouverture, donc suivre quelqu'un n'avait aucun effet durable.
+  await poser(page, { vue: "accueil" });
+  const clicSuivis = () => page.evaluate(() => {
+    document.querySelector("#profileStrip .profile-tile[title='Suivis']").click();
+  });
+
+  await clicSuivis();
+  await page.waitForTimeout(400);
+  expect(await page.evaluate(() => state.feedView)).toBe("suivis");
+  expect(await texte(page)).not.toContain("POST_PASSION");
+
+  // Le même geste ramène en « accueil » : la tuile est une bascule, comme avant.
+  await clicSuivis();
+  await page.waitForTimeout(400);
+  expect(await page.evaluate(() => state.feedView)).toBe("accueil");
+  expect(await texte(page)).toContain("POST_PASSION");
+
+  // Et le choix survit au rechargement — ce que l'ancienne bascule ne faisait pas.
+  await clicSuivis();
+  await page.waitForTimeout(400);
+  await page.reload();
+  await page.waitForFunction(() => {
+    const el = document.getElementById("screen-feed");
+    return el && el.classList.contains("active");
+  }, null, { timeout: 20000 });
+  await page.waitForTimeout(2500);
+  expect(await page.evaluate(() => state.feedView)).toBe("suivis");
+});
+
+test("⑥ quater — toucher une passion depuis « Suivis » ne reste pas sans effet", async ({ page }) => {
+  // ⚠️ En vue « suivis », `renderFeed` ne consulte PAS `_activeFeedPassions` :
+  // un tap sur une passion y serait un CLIC MORT. Il ramène donc en « accueil ».
+  await poser(page, { vue: "suivis", passions: [] });
+  expect(await texte(page)).not.toContain("POST_PASSION");
+
+  await page.evaluate(() => toggleProfileFilter("musique"));
+  await page.waitForTimeout(400);
+
+  expect(await page.evaluate(() => state.feedView), "le tap rend la vue « accueil »").toBe("accueil");
+  const t = await texte(page);
+  expect(t, "et la passion touchée filtre vraiment").toContain("POST_PASSION");
 });
 
 test("⑥ bis — vue Suivis sans aucun abonnement : message dédié, pas de contenu d'inconnus", async ({ page }) => {
@@ -124,6 +182,40 @@ test("⑥ bis — vue Suivis sans aucun abonnement : message dédié, pas de con
   expect(vide.visible).toBe(true);
   expect(vide.titre).toBe("Tu ne suis encore personne");
   expect(await texte(page)).not.toContain("POST_PASSION");
+});
+
+test("⑥ quinquies — sans aucune passion, « Suivis » reste atteignable", async ({ page }) => {
+  // ⚠️ DÉFAUT RÉEL, présent aussi sur `main`. `renderProfileStrip` sortait tôt
+  // (`box.innerHTML = ""`) dès qu'aucune passion n'était résoluble — et depuis
+  // que « Suivis » vit dans ce rail, ce retour emportait la seule commande
+  // permettant de voir les comptes suivis. Un compte NEUF qui suit déjà
+  // quelqu'un n'avait donc aucune porte vers leurs publications ; et comme la
+  // vue est persistée, il ne pouvait pas non plus en sortir une fois dedans.
+  await poser(page, { vue: "accueil", passions: [] });
+  await page.evaluate(() => {
+    state.user.profiles = [];
+    state.user.currentProfileId = null;
+    setFeedPassions([]);
+    window._feedDomSig = null;
+    renderProfileStrip();
+    renderFeed();
+  });
+  await page.waitForTimeout(400);
+
+  const vu = await page.evaluate(() => ({
+    tuile: !!document.querySelector("#profileStrip .profile-tile[title='Suivis']"),
+    passions: document.querySelectorAll("#profileStrip .profile-tile:not([title='Suivis'])").length,
+  }));
+  expect(vu.tuile, "la seule porte vers les comptes suivis doit survivre").toBe(true);
+  expect(vu.passions, "et rien d'autre : le compte n'a aucune passion").toBe(0);
+
+  // Et elle FONCTIONNE : ce n'est pas une tuile décorative.
+  await page.evaluate(() => {
+    document.querySelector("#profileStrip .profile-tile[title='Suivis']").click();
+  });
+  await page.waitForTimeout(400);
+  expect(await page.evaluate(() => state.feedView)).toBe("suivis");
+  expect(await texte(page)).toContain("POST_SUIVI");
 });
 
 test("⑦ la vue survit à un rechargement", async ({ page }) => {

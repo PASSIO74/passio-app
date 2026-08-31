@@ -2169,25 +2169,68 @@ function renderProfileStrip() {
     }
   } catch (e) {}
 
-  if (profiles.length === 0) { box.innerHTML = ""; return; }
+  // ⚠️ PAS DE RETOUR ANTICIPÉ QUI EMPORTE « SUIVIS ». Ce garde vidait le rail
+  // dès qu'aucune passion n'était résoluble — et il emportait donc la tuile
+  // « Suivis » avec lui, puisqu'elle vit dans ce même rail depuis le
+  // 2026-08-31. Conséquence : un compte sans passion mais QUI SUIT des gens
+  // n'avait plus aucune commande pour voir leurs publications. Il ne pouvait
+  // pas non plus en sortir, la vue étant persistée.
+  //
+  // ⚠️ Le défaut existait déjà sur `main`, où la tuile était construite APRÈS
+  // ce retour : il n'est pas né du déplacement, il devient seulement visible
+  // maintenant que cette tuile est la seule porte vers les comptes suivis.
+  // Le cas n'est pas théorique : c'est l'état d'un compte neuf, et c'est
+  // exactement celui qu'exerce `gate-sans-app`.
+  var _sansPassion = (profiles.length === 0);
 
-  // La rangée ne porte plus QUE des passions : « Suivis » est devenu une VUE du
-  // Fil (ADR-010), rendue par le commutateur au-dessus. Mélanger dans un même
-  // rail un filtre thématique et une source de contenu était l'une des raisons
-  // pour lesquelles « à quoi sert une passion ? » n'avait pas de réponse claire.
-  var hasFilter = _activeFeedPassions.size > 0;
-  box.classList.toggle("has-filter", hasFilter);
+  // ⚠️ « SUIVIS » EST DE RETOUR DANS CE RAIL (2026-08-31), sur demande de
+  // Benjamin après essai de la preview : « je préfère que tu mettes Suivis avec
+  // les passions à afficher comme avant ; ça rajoute encore une ligne en haut,
+  // pas confortable ». Le commutateur « Accueil / Suivis » posé au-dessus par
+  // ADR-010 est retiré : sur un écran de téléphone, deux lignes de chrome en
+  // moins valent mieux qu'une taxonomie propre.
+  //
+  // ⚠️ CE QUI NE REVIENT PAS EN ARRIÈRE. L'ancienne tuile inversait
+  // `_showFollowingFeed`, une variable de session NON persistée : elle repartait
+  // à faux à chaque ouverture, donc suivre quelqu'un n'avait aucun effet
+  // durable. Celle-ci pilote `state.feedView`, sauvegardé. Même place, même
+  // geste, mais le défaut de fond reste corrigé.
+  //
+  // ⚠️ ELLE EST EXCLUSIVE DES PASSIONS, et ce n'est pas un choix esthétique :
+  // en vue « suivis », `renderFeed` ne consulte PAS `_activeFeedPassions`
+  // (app-02). Laisser une passion cochée et active pendant que « Suivis » est
+  // allumé afficherait donc une sélection sans aucun effet — exactement le
+  // « contrôle inopérant » qu'on cherchait à éviter en masquant le rail. On
+  // rend la contradiction impossible plutôt que de l'afficher : allumer
+  // « Suivis » éteint visuellement les passions, et toucher une passion rend
+  // la vue « accueil ».
+  var enSuivis = (typeof feedViewCourante === "function") && feedViewCourante() === "suivis";
+  var hasPassionFilter = !enSuivis && _activeFeedPassions.size > 0;
+  box.classList.toggle("has-filter", hasPassionFilter || enSuivis);
 
-  var hasPassionFilter = _activeFeedPassions.size > 0;
   // Compter les posts disponibles par passion (tous moods)
   var allPostsFlat = allFeedPosts().filter(function(p) { return p.type !== "vlog"; });
   var postCountByPassion = {};
   allPostsFlat.forEach(function(p) { postCountByPassion[p.passion] = (postCountByPassion[p.passion] || 0) + 1; });
 
-  var tilesHTML = profiles.map(function(p) {
+  // Combien de publications le rail « Suivis » montrerait — même source que le
+  // moteur (`following` × `authorId`), pour ne pas annoncer un chiffre que le
+  // fil ne tiendrait pas.
+  var _suivis = (state.user && state.user.following) || [];
+  var followingPostCount = _suivis.length
+    ? allPostsFlat.filter(function (p) { return _suivis.indexOf(p.authorId) >= 0; }).length
+    : 0;
+  var followingTile = '<div class="profile-tile ' + (enSuivis ? "active" : "") + '" onclick="setFeedView(\'' + (enSuivis ? 'accueil' : 'suivis') + '\')" title="Suivis" style="opacity:' + (hasPassionFilter ? '0.3' : '1') + ';transform:' + (enSuivis ? 'scale(1.07)' : 'scale(1)') + ';transition:all 0.2s;">\
+      <div class="profile-tile-avatar" style="position:relative;overflow:hidden;background:linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(124, 58, 237, 0.10));"><img loading="lazy" decoding="async" class="profile-tile-photo" src="https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=200&h=200&fit=crop&crop=faces,entropy&auto=format&q=80" alt="Suivis" onerror="this.onerror=null;this.src=\'https://picsum.photos/seed/community/200/200\'" /><span class="profile-tile-glyph" aria-hidden="true">👥</span>' + (followingPostCount > 0 ? '<span class="profile-tile-count" style="position:absolute;top:-5px;right:-5px;background:var(--accent);color:#fff;font-size:9px;font-weight:800;border-radius:8px;padding:1px 5px;min-width:16px;text-align:center;border:2px solid var(--bg);line-height:14px;">' + followingPostCount + '</span>' : '') + '</div>\
+      <div class="profile-tile-label" style="font-weight:' + (enSuivis ? '800' : '600') + ';color:' + (enSuivis ? 'var(--accent)' : '') + ';">Suivis</div>\
+    </div>';
+
+  var tilesHTML = followingTile + (_sansPassion ? [] : profiles).map(function(p) {
     const passion = passionById(p.passion);
-    const isSelected = _activeFeedPassions.has(p.passion);
-    const isDimmed = hasPassionFilter && !isSelected;
+    // En vue « suivis » le moteur ignore les passions : aucune ne s'affiche
+    // active, sinon le rail annoncerait un filtre qui ne filtre rien.
+    const isSelected = !enSuivis && _activeFeedPassions.has(p.passion);
+    const isDimmed = enSuivis || (hasPassionFilter && !isSelected);
     const label = escapeHtml(passion.label);
     const photoId = passion.photo;
     const photoUrl = photoId
@@ -2217,6 +2260,16 @@ function renderProfileStrip() {
 // passe désormais par `setFeedView("suivis")`, qui persiste.
 
 function toggleProfileFilter(passionId) {
+  // ⚠️ Toucher une passion RAMÈNE en vue « accueil ». Sans ça, le geste serait
+  // sans effet visible depuis « Suivis » : le moteur n'y consulte jamais
+  // `_activeFeedPassions`. On ne laisse pas un tap ne rien faire.
+  // `setFeedView` sort tôt si la vue est déjà « accueil », donc aucun rendu
+  // superflu dans le cas courant.
+  try {
+    if (typeof feedViewCourante === "function" && feedViewCourante() === "suivis") {
+      if (typeof setFeedView === "function") setFeedView("accueil");
+    }
+  } catch (e) {}
   if (_activeFeedPassions.has(passionId)) {
     _activeFeedPassions.delete(passionId);
   } else {

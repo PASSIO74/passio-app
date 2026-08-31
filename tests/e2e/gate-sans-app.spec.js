@@ -89,12 +89,26 @@ test("après déverrouillage, l'application démarre et le fil s'affiche", async
   const apres = await page.evaluate(() => ({
     stateObjet: (typeof state !== "undefined" && state !== null && !!state.seed),
     filPresent: !!document.getElementById("feedList"),
-    vues: !!document.getElementById("feedViews"),
+    // ⚠️ Le commutateur « Accueil / Suivis » a été RETIRÉ le 2026-08-31 (il
+    // coûtait une ligne de chrome en haut du Fil). La vue se choisit désormais
+    // par la tuile « Suivis » du rail de passions : on vérifie donc que le RAIL
+    // est monté — la garantie de ce test est inchangée, « l'interface du Fil
+    // existe bien après le gate ».
+    //
+    // ⚠️ NE PAS « RENFORCER » EN EXIGEANT LA TUILE ELLE-MÊME. Essayé le
+    // 2026-08-31, rouge aussitôt : ce scénario déverrouille le gate sur un
+    // compte NON onboardé, donc `renderProfileStrip` n'a pas encore tourné et
+    // le rail est vide. L'assertion d'origine portait sur du BALISAGE statique
+    // (`#feedViews` est écrit dans `index.html`), pas sur un rendu — la
+    // remplacer par une exigence de rendu changerait ce que ce test garde, et
+    // le rendrait dépendant d'un état que sa propre mise en scène ne pose pas.
+    // Le contenu du rail est verrouillé là où il doit l'être :
+    // `feed-vues-adr010` ⑥ ter et ⑥ quinquies.
+    rail: !!document.getElementById("profileStrip"),
   }));
   // Ce que la fenêtre précédente ne prouvait pas : l'app finit par exister.
   expect(apres.stateObjet).toBe(true);
   expect(apres.filPresent).toBe(true);
-  // ADR-010 : le commutateur de vues est bien monté après le gate.
-  expect(apres.vues).toBe(true);
+  expect(apres.rail, "le rail de passions est monté après le gate").toBe(true);
   expect(erreurs, "erreurs après déverrouillage :\n" + erreurs.join("\n")).toEqual([]);
 });

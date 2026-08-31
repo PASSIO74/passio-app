@@ -484,23 +484,21 @@
         <div style="width:16px;height:16px;border:2px solid var(--accent);border-top-color:transparent;border-radius:50%;animation:spin .7s linear infinite;"></div>
         Actualisation…
       </div>
-      <!-- VUES DU FIL (ADR-010). « Accueil » réunit les passions choisies et les
-           comptes suivis ; « Suivis » ne montre que les comptes suivis. Ces deux
-           vues remplacent l'ancienne tuile-bascule « Suivis » de la rangée de
-           passions, qui n'était pas persistée. La rangée ci-dessous ne porte donc
-           plus QUE des passions : une source de contenu et un filtre thématique
-           ne partagent plus le même rail. -->
-      <div class="feed-views" id="feedViews" role="tablist" aria-label="Vue du fil">
-        <button type="button" class="feed-view-btn active" data-feedview="accueil" role="tab" aria-selected="true" onclick="setFeedView('accueil')">Accueil</button>
-        <button type="button" class="feed-view-btn" data-feedview="suivis" role="tab" aria-selected="false" onclick="setFeedView('suivis')">Suivis</button>
-      </div>
-
       <!-- Côté LECTURE (ADR-010). Ce rail ne décide QUE de ce que le fil affiche ;
-           il ne touche jamais à la passion dans laquelle on publie. Il est masqué
-           en vue « Suivis », où il n'aurait aucun effet — un contrôle inopérant
-           est pire qu'un contrôle absent. -->
+           il ne touche jamais à la passion dans laquelle on publie.
+           ⚠️ RETOUR EN ARRIÈRE ASSUMÉ, demandé par Benjamin après essai réel sur
+           la preview de la PR #227 : « je préfère que tu mettes Suivis avec les
+           passions à afficher comme avant ; ça rajoute encore une ligne en haut,
+           pas confortable ». Une rangée de vues « Accueil / Suivis » vivait ici,
+           au-dessus du rail, plus un libellé « Passions à afficher » : deux
+           lignes de hauteur gagnées sur un écran où le contenu doit primer.
+           « Suivis » redevient donc la PREMIÈRE TUILE de ce rail, comme avant.
+           ⚠️ Ce qui NE revient PAS en arrière : la persistance. L'ancienne
+           tuile pilotait `_showFollowingFeed`, une bascule non persistée, donc
+           éteinte à chaque ouverture — le bouton « Suivre » n'avait aucun effet
+           durable. La tuile pilote désormais `state.feedView`, sauvegardé. La
+           place change, le défaut reste corrigé. -->
       <div id="feedPassionsBlock">
-        <p class="feed-passions-label" id="feedPassionsLabel">Passions à afficher</p>
         <div class="profile-strip" id="profileStrip"></div>
       </div>
 

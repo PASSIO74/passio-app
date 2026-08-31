@@ -2815,30 +2815,28 @@ function setFeedView(vue) {
   return v;
 }
 
-// Aligne le commutateur de vue sur l'état. Appelée à chaque `renderFeed` (le fil
+// Aligne l'interface sur la vue courante. Appelée à chaque `renderFeed` (le fil
 // peut être repeint sans passer par `setFeedView` : boot, realtime, navigation).
+//
+// ⚠️ ELLE NE PILOTE PLUS DE COMMUTATEUR. La rangée « Accueil / Suivis » a été
+// retirée le 2026-08-31 sur demande de Benjamin, après essai réel : elle coûtait
+// une ligne de chrome en haut du Fil pour un choix que la tuile « Suivis » du
+// rail exprime déjà. C'est `renderProfileStrip` (app-06) qui rend l'état de la
+// vue, dans cette tuile.
+//
+// ⚠️ ELLE RESTE UTILE, et ce n'est pas une coquille vide : le bloc de passions
+// était MASQUÉ en vue « Suivis » par la version précédente. Un compte qui a
+// quitté l'application dans cet état porte encore `hidden` sur ce nœud au
+// rechargement — l'attribut est dans le DOM servi, pas dans l'état. Sans cette
+// remise à zéro, le rail resterait invisible pour toujours, tuile « Suivis »
+// comprise : plus aucune commande pour en sortir. C'est le même piège que le
+// filtre du Fil resté accroché à une passion archivée.
 function syncFeedViewUi() {
-  var box = document.getElementById("feedViews");
-  if (!box) return;
-  var vue = feedViewCourante();
-  var btns = box.querySelectorAll("[data-feedview]");
-  for (var i = 0; i < btns.length; i++) {
-    var on = btns[i].getAttribute("data-feedview") === vue;
-    // On n'écrit QUE si la valeur change : ces boutons sont dans #screen-feed,
-    // observé par plusieurs lots UI, et une écriture inconditionnelle à chaque
-    // rendu réveillerait leurs MutationObserver pour rien.
-    if (btns[i].classList.contains("active") !== on) btns[i].classList.toggle("active", on);
-    if (btns[i].getAttribute("aria-selected") !== String(on)) btns[i].setAttribute("aria-selected", String(on));
-  }
-  // Le rail de passions ne pilote que « Accueil ». En « Suivis » il ne filtrerait
-  // rien : on le masque plutôt que d'offrir une commande sans effet. Masqué, non
-  // retiré — les tuiles restent dans le DOM et `renderProfileStrip` continue d'y
-  // écrire, donc revenir sur « Accueil » retrouve la sélection intacte.
   var bloc = document.getElementById("feedPassionsBlock");
-  if (bloc) {
-    var cache = (vue === "suivis");
-    if (bloc.hidden !== cache) bloc.hidden = cache;
-  }
+  // On n'écrit QUE si la valeur change : ce nœud est dans #screen-feed, observé
+  // par plusieurs lots UI, et une écriture inconditionnelle à chaque rendu
+  // réveillerait leurs MutationObserver pour rien.
+  if (bloc && bloc.hidden) bloc.hidden = false;
 }
 
 function setFeedPassions(ids, opts) {
