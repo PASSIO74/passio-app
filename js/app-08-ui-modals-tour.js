@@ -2461,13 +2461,37 @@ let MY_UID = getMyUserId();
 // de la passion active si elle l'est, sinon `null`. On ne substitue jamais une
 // passion arbitraire — un compte n'est pas rangé dans une catégorie qu'il n'a
 // pas choisie.
+//
+// ⚠️ CHOISIR n'est pas NORMALISER — régression mesurée au run 2342 de la CI.
+// La fusion du 2026-08-31 avait remplacé cet appel par l'expression en ligne
+// `optionalCanonicalPassion(première vivante)`, avec le commentaire « même effet,
+// une seule règle ». C'était faux : normaliser la PREMIÈRE passion rend `null`
+// dès qu'elle n'est pas canonique, alors que PARCOURIR la liste trouve la
+// suivante qui l'est. Un compte portant « tricot perso » puis « yoga » publiait
+// donc `passion_id: null` — il perdait son classement public alors qu'il
+// possède une passion parfaitement valide. Les deux écritures sont légitimes,
+// mais elles ne répondent pas à la même question : `optionalCanonicalPassion`
+// répond « cette valeur-là est-elle écrivable ? », celle-ci « laquelle de mes
+// passions représente ce compte ? ». La canonicité reste déléguée à app-02, donc
+// le référentiel SERVEUR est bien pris en compte : une seule règle, appliquée au
+// bon endroit.
+//
+// ⚠️ Elle préfère une passion VIVANTE, mais accepte une archivée en dernier
+// recours : le champ sert la rétro-compatibilité (feed, embeds, anciens clients)
+// et un compte dont toutes les passions sont rangées reste mieux classé par une
+// catégorie qu'il a choisie que par `null`. L'affichage, lui, retire les
+// archivées (`passionsPubliques`, app-02) : ranger reste visible côté lecture.
 function _passionIdPubliable(passions, prof) {
   try {
     var liste = Array.isArray(passions) ? passions : [];
-    for (var i = 0; i < liste.length; i++) {
-      if (liste[i] && estPassionCanonique(liste[i].id)) return liste[i].id;
+    var i, repli = null;
+    for (i = 0; i < liste.length; i++) {
+      if (!liste[i] || !estPassionCanonique(liste[i].id)) continue;
+      if (!liste[i].archived) return liste[i].id;
+      if (repli === null) repli = liste[i].id;
     }
     if (prof && estPassionCanonique(prof.passion)) return prof.passion;
+    return repli;
   } catch (e) {}
   return null;
 }
@@ -2708,11 +2732,9 @@ function _chargeProfilComplete() {
       // La passion « principale » (rétro-compat : feed, embeds, anciens clients)
       // doit être VIVANTE — `_passions` contient aussi les archivées.
       // Politique FACULTATIVE (ADR-010) : le profil public a une raison d'exister
-      // indépendante de son classement. Une passion non canonique est normalisée
-      // en `null` plutôt que de faire rejeter TOUT l'upsert par la clé étrangère.
-      // On passe par `optionalCanonicalPassion`, la politique COMMUNE, plutôt que
-      // par `_passionIdPubliable` du hotfix : même effet, une seule règle.
-      passion_id: optionalCanonicalPassion(((_passions.find(p => !p.archived) || _passions[0] || {}).id) || prof.passion),
+      // indépendante de son classement. Aucune passion canonique résoluble →
+      // `null`, plutôt que de faire rejeter TOUT l'upsert par la clé étrangère.
+      passion_id: _passionIdPubliable(_passions, prof),
       passions: _passions,
       bio: g.bio || "",
       // Compte privé : les visiteurs non abonnés ne verront pas le contenu.

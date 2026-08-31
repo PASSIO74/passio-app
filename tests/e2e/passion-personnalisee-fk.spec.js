@@ -1,20 +1,28 @@
-// REPRODUCTION du défaut « passion personnalisée » (2026-08-30).
+// La chaîne « passion personnalisée » est COUPÉE — verrou de non-régression.
 //
-// Ce fichier ne corrige rien : il ÉTABLIT le parcours et ses conséquences, pour
-// que la décision (désactiver la publication, ou migrer) se prenne sur des faits.
+// ⚠️ CE FICHIER A CHANGÉ DE SENS LE 2026-08-31, délibérément. Il REPRODUISAIT le
+// défaut du 2026-08-30, maillon par maillon, pour que la décision se prenne sur
+// des faits. La décision est prise (sortie A, `.passio/adr/ADR-010`), donc les
+// attentes qui EXIGEAIENT le défaut sont devenues fausses : elles décrivaient un
+// comportement que le correctif a supprimé. Elles sont retournées, pas retirées —
+// la chaîne garde ses cinq maillons, et chacun est désormais vérifié COUPÉ.
 //
-// Chaîne, entièrement atteignable depuis l'interface :
+// La chaîne d'origine, entièrement atteignable depuis l'interface :
 //   ① `openCreateCustomPassion` → id `custom_<slug>_<rand>` dans
 //      `state.user.customPassions` (LOCAL, jamais envoyé au serveur) ;
-//   ② `allPassions()` la renvoie, donc la grille de `openCreateProfile` la montre
-//      (elle a même une classe dédiée `passion-custom` : c'est prévu) ;
+//   ② `allPassions()` la renvoie, donc la grille de `openCreateProfile` la montre ;
 //   ③ créer une passion depuis cette tuile en fait un profil publiable ;
 //   ④ `renderStudio` la met dans `#postPassion` ;
-//   ⑤ `publishPost` l'envoie comme `passion_id`.
+//   ⑤ `publishPost` l'envoie comme `passion_id` → rejet 23503, message trompeur.
 //
 // En production, `posts.posts_passion_fk` référence `passions(id)`, et la table
 // `passions` n'a qu'une policy SELECT (`passions_select_all`) : aucun client ne
-// peut y insérer la ligne correspondante. L'insert est donc rejeté (23503).
+// peut y insérer la ligne correspondante. L'insert serait rejeté (23503) — c'est
+// pourquoi la porte d'ÉCRITURE est fermée en amont, avant toute mutation locale.
+//
+// ⚠️ CE QUI N'A PAS CHANGÉ, et que ce fichier continue d'exiger : AUCUNE passion
+// personnalisée n'est supprimée ni transformée. Elle reste dans le catalogue de
+// LECTURE, elle range toujours le fil. Seule l'écriture est refusée.
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
 
@@ -62,7 +70,7 @@ async function boot(page) {
   }, PASSIONS_REFERENTIEL);
 }
 
-test("le parcours est atteignable : une passion personnalisée devient publiable", async ({ page }) => {
+test("① ② ③ intacts (rien n'est supprimé), ④ coupé : le Studio ne la propose plus", async ({ page }) => {
   await boot(page);
 
   // ① et ② — la passion personnalisée entre dans le catalogue local.
@@ -88,11 +96,15 @@ test("le parcours est atteignable : une passion personnalisée devient publiable
     renderStudio();
     return Array.from(document.querySelectorAll("#postPassion option")).map(o => o.value);
   });
-  // ④ — le <select> du Studio la propose.
-  expect(publiable).toContain("custom_tricot_ab12");
+  // ④ COUPÉ — le <select> du Studio ne la propose plus (sortie A).
+  expect(publiable, "une passion hors référentiel n'est plus une destination d'écriture")
+    .not.toContain("custom_tricot_ab12");
+  // …et le Studio n'est pas vide pour autant : la passion canonique du compte
+  // reste proposée. Fermer la porte invalide ne doit pas fermer les valides.
+  expect(publiable).toContain("musique");
 });
 
-test("la publication part avec un passion_id que la base REFUSE", async ({ page }) => {
+test("⑤ coupé : la publication ne PART PLUS, et rien n'est écrit en local", async ({ page }) => {
   await boot(page);
   await page.evaluate(() => {
     state.user.customPassions = [{ id: "custom_tricot_ab12", emoji: "🧶", label: "Tricot", color: "#8b5cf6", custom: true }];
@@ -109,12 +121,17 @@ test("la publication part avec un passion_id que la base REFUSE", async ({ page 
 
   const insertsPosts = await page.evaluate(() =>
     window.__inserts.filter(i => i.table === "posts").map(i => i.rows[0].passion_id));
-  // ⑤ — le client envoie bien l'id local, que le référentiel ne contient pas.
-  expect(insertsPosts.length).toBeGreaterThan(0);
-  expect(insertsPosts[0]).toBe("custom_tricot_ab12");
+  // ⑤ COUPÉ — plus aucun insert ne part avec un id absent du référentiel.
+  expect(insertsPosts, "aucune écriture ne doit partir vers une clé étrangère impossible")
+    .toEqual([]);
+  // ⚠️ Et le refus intervient AVANT la mutation locale : un post « publié » qui
+  // n'atteint jamais personne est pire qu'un refus net — il paraît réussi à
+  // l'écran et disparaît au rechargement.
+  const local = await page.evaluate(() => (state.userPosts || []).length);
+  expect(local, "aucune publication optimiste sans passion canonique").toBe(0);
 });
 
-test("l'utilisateur voit un message de RÉSEAU pour une erreur permanente de données", async ({ page }) => {
+test("le message dit la VRAIE cause, et oriente vers le catalogue", async ({ page }) => {
   await boot(page);
   await page.evaluate(() => {
     state.user.customPassions = [{ id: "custom_tricot_ab12", emoji: "🧶", label: "Tricot", color: "#8b5cf6", custom: true }];
@@ -135,16 +152,21 @@ test("l'utilisateur voit un message de RÉSEAU pour une erreur permanente de don
   await page.waitForTimeout(9000);
 
   const vu = await page.evaluate(() => (window.__toasts || []).join(" | "));
-  // Le défaut d'expérience : la cause est une contrainte de base, définitive, et
-  // le message accuse la connexion. Réessayer ne servira jamais à rien.
-  expect(vu).toContain("Post en local");
-  // Et le post reste dans l'état LOCAL, invisible de tous, perdu au changement
-  // d'appareil (il ne sera jamais rejoué : rien ne retente cet insert).
+  // ⚠️ ATTENTE RETOURNÉE. Le message accusait la CONNEXION (« Post en local,
+  // sera republié ») pour une contrainte de base définitive : réessayer n'aurait
+  // jamais rien donné, et le post restait invisible de tous. Il nomme désormais
+  // la vraie cause et dit quoi faire.
+  expect(vu, "le message ne doit plus accuser le réseau").not.toContain("Post en local");
+  expect(vu).toContain("Ajoute une passion du catalogue");
+  // ⚠️ Il ne rouvre AUCUNE porte fermée par la sortie A : il oriente vers une
+  // passion existante du catalogue, jamais vers la création d'une passion perso.
+  expect(vu.toLowerCase()).not.toContain("crée ta passion");
+  expect(vu.toLowerCase()).not.toContain("créer une passion");
   const local = await page.evaluate(() => (state.userPosts || []).length);
-  expect(local).toBeGreaterThan(0);
+  expect(local, "rien n'est écrit en local non plus").toBe(0);
 });
 
-test("le profil PUBLIC est atteint aussi quand la passion custom est la principale", async ({ page }) => {
+test("le profil PUBLIC part quand même : la passion invalide est normalisée en null", async ({ page }) => {
   await boot(page);
   const verdict = await page.evaluate(async () => {
     state.user.customPassions = [{ id: "custom_tricot_ab12", emoji: "🧶", label: "Tricot", color: "#8b5cf6", custom: true }];
@@ -157,9 +179,15 @@ test("le profil PUBLIC est atteint aussi quand la passion custom est la principa
     const envoye = window.__inserts.filter(i => i.table === "profiles").map(i => i.rows[0].passion_id);
     return { ok: ok, envoye: envoye };
   });
-  // `profiles.profiles_passion_fk` référence la même table : la synchronisation
-  // de l'identité PUBLIQUE échoue elle aussi. Portée plus large que la seule
-  // publication — c'est le pseudo, l'avatar et la bio qui n'atteignent personne.
-  expect(verdict.envoye[0]).toBe("custom_tricot_ab12");
-  expect(verdict.ok).toBeFalsy();
+  // ⚠️ ATTENTE RETOURNÉE, et c'est le maillon le plus grave des cinq.
+  // `profiles.profiles_passion_fk` référence la même table : la synchronisation de
+  // l'identité PUBLIQUE échouait elle aussi, donc pseudo, avatar et bio
+  // n'atteignaient personne — et comme cinq tables portent une clé étrangère vers
+  // `profiles(id)`, un compte NEUF dans ce cas ne pouvait plus rien écrire du tout.
+  // Le profil public a une raison d'exister indépendante de son classement : la
+  // passion invalide est donc normalisée en `null` plutôt que de faire rejeter
+  // toute la ligne. Politique FACULTATIVE d'ADR-010.
+  expect(verdict.envoye[0], "une passion hors référentiel devient null, elle ne bloque plus la ligne")
+    .toBe(null);
+  expect(verdict.ok, "l'identité publique atteint la base").toBe(true);
 });

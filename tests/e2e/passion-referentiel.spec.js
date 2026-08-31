@@ -12,8 +12,31 @@ const LOCALES = ["musique","photo","voyage","cuisine","sport","litterature","cin
   "tech","art","jardinage","metier","jeuxvideo","yoga","mode","danse","podcast","moto","animaux","actu"];
 
 // Installe un SDK factice qui sert le référentiel demandé, ou échoue.
+//
+// ⚠️ LE SDK RÉEL DOIT ÊTRE BLOQUÉ, sinon ce fichier mesure la PRODUCTION.
+// Défaut mesuré au run 2342 de la CI : trois tests d'ici passaient en local et
+// échouaient en CI, pour une raison qui n'était pas le code. `index.html` charge
+// le SDK depuis jsdelivr ; le bac à sable local n'a pas de réseau sortant, donc
+// `typeof supabase === "undefined"` et `_initRealSupa()` renonce au boot. En CI
+// le réseau existe : le SDK se charge, `_initRealSupa()` réussit, et il appelle
+// `chargerReferentielPassions()` — qui lit la table `passions` de la VRAIE base.
+// Or ce cache est à UN SEUL COUP (`if (_referentielPassions) return;`). Le
+// référentiel de production s'installait donc AVANT que le test pose le sien :
+// `__refLu` restait à 0 (le faux n'était jamais interrogé) et « apiculture »
+// n'était pas canonique, puisque la vraie base ne la contient pas.
+//
+// Le défaut est dans le test, pas dans le code : un vrai client DOIT charger le
+// vrai référentiel au démarrage. On coupe donc la source du SDK, et on VÉRIFIE
+// la prémisse — un test qui ne contrôle pas la sienne finit par passer, ou
+// échouer, pour une raison qui ne le regarde pas.
 async function boot(page, opts = {}) {
+  await page.route("**/@supabase/supabase-js**", (r) => r.abort());
   await bootOnboarded(page, null, 1, {});
+  // Prémisse : aucun référentiel n'a pu être chargé avant le nôtre.
+  expect(await page.evaluate(() => typeof supabase),
+    "le SDK réel doit être hors circuit, sinon le référentiel de production gagne").toBe("undefined");
+  expect(await page.evaluate(() => estPassionCanonique("apiculture")),
+    "le cache du référentiel doit être vierge avant que le test le remplisse").toBe(false);
   await page.evaluate((o) => {
     window.supaLoadPosts = async () => [];
     window.supaSaveUserState = async () => {};

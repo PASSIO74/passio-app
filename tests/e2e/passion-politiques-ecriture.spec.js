@@ -200,22 +200,33 @@ test("profiles ⑥ une passion personnelle n'empêche plus le profil public de p
     state.user.profiles = [{ id: "pp_perso", name: "Tricot", passion: "custom_tricot_ab12", emoji: "🧶", color: "#8b5cf6", createdAt: 1 }];
     state.user.currentProfileId = "pp_perso";
     state.user.general = { username: "Benjamin", emoji: "🎵", color: "#7c3aed", bio: "Salut" };
-    await supaUpsertProfile();
+    // ⚠️ POINT D'ENTRÉE RÉÉCRIT LE 2026-08-31, assertions conservées. Publier le
+    // profil public n'est plus UN upsert mais TROIS opérations d'autorités
+    // distinctes — c'est la correction du P0 confidentialité : republier tout à
+    // chaque appel écrasait l'identité serveur depuis un appareil sans état
+    // local. Le test exerce donc les trois, et vérifie le même RÉSULTAT :
+    // l'ensemble du profil public atteint la base malgré la passion invalide.
+    await supaEnsureProfileExists();
+    await supaSavePublicProfile({ username: "Benjamin", bio: "Salut" });
+    await supaSavePassionState();
     return window.__ecrits.profiles;
   });
 
-  expect(vu.length, "l'upsert doit aboutir, pas être refusé").toBe(1);
+  // La ligne d'écriture aboutit, elle n'est pas refusée. On la reconstitue :
+  // c'est l'état que le serveur porterait au bout des trois opérations.
+  expect(vu.length, "les écritures doivent aboutir, pas être refusées").toBeGreaterThan(0);
+  const ligne = Object.assign({}, ...vu);
   // La FK est respectée…
-  expect(vu[0].passion_id).toBe(null);
+  expect(ligne.passion_id).toBe(null);
   // …et TOUT le reste du profil public arrive quand même. C'est l'enjeu réel :
   // sans ça, pseudo, avatar, bio et liste des passions n'atteignaient personne.
-  expect(vu[0].username).toBe("Benjamin");
-  expect(vu[0].bio).toBe("Salut");
-  expect(Array.isArray(vu[0].passions)).toBe(true);
+  expect(ligne.username).toBe("Benjamin");
+  expect(ligne.bio).toBe("Salut");
+  expect(Array.isArray(ligne.passions)).toBe(true);
   // La passion personnelle reste PUBLIÉE dans la liste jsonb : elle n'est pas
   // une clé étrangère là-dedans, et l'effacer perdrait le rangement de son
   // propriétaire au premier changement d'appareil.
-  expect(vu[0].passions.map((p) => p.id)).toContain("custom_tricot_ab12");
+  expect(ligne.passions.map((p) => p.id)).toContain("custom_tricot_ab12");
 });
 
 test("stories ⑦ et conversations ⑧ : normalisées en `null`, jamais refusées", async ({ page }) => {

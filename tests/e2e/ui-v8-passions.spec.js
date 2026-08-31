@@ -21,6 +21,7 @@
 //   ⑪ mobile 320 / 390 / 430 px : aucun débordement horizontal.
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
+const { installerFauxProfiles } = require("./faux-profiles");
 
 async function boot(page, opts = {}) {
   if (opts.kill) await page.addInitScript(() => localStorage.setItem("passio_ui_8", "0"));
@@ -434,27 +435,21 @@ test.describe("UI-8 — un profil personnel, plusieurs passions", () => {
   test("une passion archivée est publiée MARQUÉE, et retirée à l'affichage", async ({ page }) => {
     await boot(page);
     await poserTroisPassions(page);
-    await page.evaluate(() => {
-      window._v8Publie = null;
-      // Seul point d'injection possible : le SDK global lu par `_initRealSupa()`.
-      window.supabase = {
-        createClient: () => ({
-          from: () => ({
-            upsert: async (row) => { window._v8Publie = row; return { error: null }; },
-            select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }),
-          }),
-        }),
-      };
-      window._supaReal = false;
-      _initRealSupa();
-      window.supaUpsertProfile = window.__vraiSupa.upsertProfile;
-    });
+    // ⚠️ POINT D'ENTRÉE RÉÉCRIT LE 2026-08-31, assertions conservées. Le faux
+    // n'implémentait que `upsert`, l'opération unique qui republiait tout le
+    // profil ; elle n'existe plus depuis la séparation des autorités. L'état des
+    // passions a désormais son opération propre, `supaSavePassionState`, qui fait
+    // un `update` CIBLÉ — le faux ne voyait donc plus rien passer et `_v8Publie`
+    // restait `null` : le test redevenait exactement le faux verrou que son
+    // commentaire ci-dessus dénonce.
+    await page.evaluate(installerFauxProfiles);
     await page.evaluate(() => { archiverPassion("v8_yoga"); });
     await page.waitForTimeout(600);
-    const publie = await page.evaluate(() => window._v8Publie);
+    const publie = await page.evaluate(() =>
+      (window.__updates.filter(u => u.table === "profiles" && u.patch.passions).pop() || {}).patch);
     // La publication DOIT avoir eu lieu : sans cette assertion, le test
     // redeviendrait le faux verrou qu'il était.
-    expect(publie).toBeTruthy();
+    expect(publie, "archiver une passion doit republier la liste").toBeTruthy();
     const ids = publie.passions.map((x) => x.id);
     expect(ids).toContain("yoga");
     expect(publie.passions.find((x) => x.id === "yoga").archived).toBe(true);

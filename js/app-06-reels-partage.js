@@ -1015,8 +1015,8 @@ function changePassionPhoto(event, profileId) {
     // Flush immédiat vers user_state (sans attendre le debounce 2500ms).
     if (typeof supaSaveUserState === "function") { try { supaSaveUserState(); } catch(_e) {} }
     // La photo d'une passion n'atteint les VISITEURS que par `profiles.passions`,
-    // écrit uniquement par `supaUpsertProfile` (cf. `savePassionProfile`).
-    if (typeof supaUpsertProfile === "function") { try { supaUpsertProfile(); } catch(_e) {} }
+    // écrit uniquement par `supaSavePassionState` (cf. `savePassionProfile`).
+    if (typeof supaSavePassionState === "function") { try { supaSavePassionState(); } catch(_e) {} }
     })
     .catch(function() { _reopenEditPassionAfterPhoto(); });
 }
@@ -1044,7 +1044,7 @@ function changePassionCoverPhoto(event, profileId) {
         } catch(_e) {}
       }
       if (typeof supaSaveUserState === "function") { try { supaSaveUserState(); } catch(_e) {} }
-      if (typeof supaUpsertProfile === "function") { try { supaUpsertProfile(); } catch(_e) {} }
+      if (typeof supaSavePassionState === "function") { try { supaSavePassionState(); } catch(_e) {} }
     })
     .catch(function() { _reopenEditPassionAfterPhoto(); });
 }
@@ -2045,7 +2045,7 @@ function removePassionCover(profileId) {
   p.bio = bio.trim();
   saveState();
   if (typeof supaSaveUserState === "function") { try { supaSaveUserState(); } catch(e) {} }
-  if (typeof supaUpsertProfile === "function") { try { supaUpsertProfile(); } catch(e) {} }
+  if (typeof supaSavePassionState === "function") { try { supaSavePassionState(); } catch(e) {} }
   renderProfilesScreen();
   openEditPassionProfile(profileId);
   toast("Photo de fond retirée");
@@ -2070,11 +2070,20 @@ function savePassionProfile(profileId) {
   saveState();
   if (typeof supaSaveUserState === "function") { try { supaSaveUserState(); } catch(e) {} }
   // ⚠️ La carte de passion telle qu'un VISITEUR la voit est servie par la colonne
-  // jsonb `profiles.passions`, alimentée UNIQUEMENT par `supaUpsertProfile`. Sans
+  // jsonb `profiles.passions`, alimentée UNIQUEMENT par `supaSavePassionState`. Sans
   // cet appel, modifier la bio d'une passion ne changeait rien pour les autres :
   // la nouvelle bio n'atteignait le public qu'au prochain geste qui, par hasard,
   // republiait le profil (changer de passion active, renommer son pseudo…).
-  if (typeof supaUpsertProfile === "function") { try { supaUpsertProfile(); } catch(e) {} }
+  //
+  // ⚠️ CE FUT `supaUpsertProfile` — et la fusion du 2026-08-31 l'y avait REMIS,
+  // dans les quatre chemins de cette famille (photo, couverture, retrait de
+  // couverture, bio). Ce nom ne désigne plus la même chose : depuis la séparation
+  // des autorités, ce n'est qu'un ALIAS d'`ensure`, qui n'écrit AUCUN champ d'une
+  // ligne existante. Le défaut que ce commentaire décrit était donc revenu,
+  // silencieusement et à l'identique — l'appel restait présent, la fonction
+  // existait, l'écriture ne partait plus. C'est le pire genre de régression de
+  // fusion : elle ne se voit ni dans le diff ni à l'exécution.
+  if (typeof supaSavePassionState === "function") { try { supaSavePassionState(); } catch(e) {} }
   closeModal();
   renderProfilesScreen();
   toast("✅ Passion mise à jour !");
