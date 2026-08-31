@@ -846,28 +846,12 @@ function _postReactChipHtml(postId) {
 function openPostReactors(postId, event) {
   return _openReactorsList(_postReactItems(postId), event);
 }
-// ── Live CDV (réactions = live.reactions, simples emojis sans auteur local) ──
-function _liveReactItems(liveId) {
-  var lives = (typeof getCdvLives === "function") ? getCdvLives() : [];
-  var live = lives.find(function(l){ return l.id === liveId; });
-  if (!live) return [];
-  // ❤️ = like (compté à part) → exclu de la pastille de réactions.
-  // reactionsBy [{emoji,userId}] (auteur connu) prioritaire ; sinon strings (sans auteur).
-  if (Array.isArray(live.reactionsBy) && live.reactionsBy.length) {
-    var items = live.reactionsBy.filter(function(x){ return x && x.emoji !== "❤️"; })
-      .map(function(x, i){ return { authorId: x.userId, text: x.emoji, createdAt: x.at || i }; });
-    return _dedupReactionsByAuthor(items).map(function(r){ return { authorId: r.authorId, text: r.text }; });
-  }
-  var arr = Array.isArray(live.reactions) ? live.reactions : [];
-  return arr.filter(function(e){ return e !== "❤️"; })
-    .map(function(e){ return { authorId: null, text: e }; });
-}
-function _liveReactChipHtml(liveId) {
-  return _reactionItemsChipHtml(_liveReactItems(liveId), "return openLiveReactors('" + escapeJsArg(liveId) + "', event);");
-}
-function openLiveReactors(liveId, event) {
-  return _openReactorsList(_liveReactItems(liveId), event);
-}
+// ⚠️ `_liveReactItems`, `_liveReactChipHtml` et `openLiveReactors` — la pastille
+// de réactions d'un live CDV — ont été RETIRÉES avec le Carnet de voyage
+// (ADR-011 §5). Elles lisaient `getCdvLives()`, qui n'existe plus, et aucune
+// surface ne les peignait. La pastille des COMMENTAIRES et celle des POSTS,
+// juste au-dessus, partagent le même moteur (`_reactionItemsChipHtml`) et sont
+// intactes.
 
 async function openComments(postId) {
   // Ajouter à l'historique pour que le bouton back fonctionne
@@ -1110,35 +1094,12 @@ function _applyCommentInteractionEvent(r, op) {
 // Retourne { kind, id, comments (référence mutable), save(), targetUserId } ou null.
 function _findCommentThread(threadId) {
   if (!threadId) return null;
-  // 0) Étape d'un voyage (CDV live OU carnet) — commenter/partager CHAQUE étape.
-  //    Le fil est scopé à l'étape ; les commentaires vivent dans un STORE À PART
-  //    (state.user.stepComments[threadId]) et PAS sur l'objet étape, sinon le
-  //    rafraîchissement serveur du live (toutes les 5 s, qui remplace live.steps)
-  //    les effacerait. On réutilise tout le système unifié (renderer, composeur,
-  //    panneau emoji/GIF).
-  if (typeof threadId === "string" && (threadId.indexOf("cdvstep:") === 0 || threadId.indexOf("carnetstep:") === 0)) {
-    var _target = null;
-    if (threadId.indexOf("cdvstep:") === 0 && typeof getCdvLives === "function") {
-      try {
-        var _pp = threadId.split(":"); // cdvstep:<liveId>:<stepId>
-        var _lv = getCdvLives().find(function (l) { return l.id === _pp[1]; });
-        var _st = _lv && (_lv.steps || []).find(function (s) { return s.id === _pp[2]; });
-        _target = (_st && (_st.authorId || (_lv && _lv.authorId))) || (_lv && _lv.authorId) || null;
-        if (!_lv) return null;
-      } catch (e) {}
-    } else if (threadId.indexOf("carnetstep:") === 0 && typeof findPostAnywhere === "function") {
-      try {
-        var _cp = threadId.split(":"); // carnetstep:<postId>:<stepIndex>
-        var _cpost = findPostAnywhere(_cp[1]);
-        if (!_cpost) return null;
-        _target = _cpost.authorId;
-      } catch (e) {}
-    }
-    state.user.stepComments = state.user.stepComments || {};
-    if (!Array.isArray(state.user.stepComments[threadId])) state.user.stepComments[threadId] = [];
-    return { kind: "step", id: threadId, comments: state.user.stepComments[threadId],
-      save: function () { try { saveState(); } catch (e) {} }, targetUserId: _target };
-  }
+  // ⚠️ La branche 0) — « Étape d'un voyage » (`cdvstep:` / `carnetstep:`) — a été
+  // retirée avec le Carnet de voyage (ADR-011 §5). Plus aucun code ne produit un
+  // identifiant de cette forme, et aucune surface n'affiche un fil d'étape.
+  // Les commentaires DÉJÀ écrits restent dans `state.user.stepComments` : rien
+  // n'est effacé, conformément à la règle « la fonctionnalité disparaît, pas les
+  // données ».
   // 1) Post du fil
   if (typeof findPostAnywhere === "function") {
     var post = findPostAnywhere(threadId);
@@ -1162,18 +1123,10 @@ function _findCommentThread(threadId) {
       }
     } catch(e) {}
   }
-  // 3) Live CDV
-  if (typeof getCdvLives === "function") {
-    try {
-      var lives = getCdvLives();
-      var live = lives.find(function(l){ return l.id === threadId; });
-      if (live) {
-        if (!live.comments) live.comments = [];
-        return { kind: "cdv", id: threadId, comments: live.comments,
-          save: function(){ try { saveCdvLives(lives); } catch(e){} }, targetUserId: live.authorId };
-      }
-    } catch(e) {}
-  }
+  // ⚠️ La 3ᵉ branche — « Live CDV » — a été retirée avec la fonctionnalité
+  // (ADR-011 §5). Un fil de commentaires ne peut plus être un live de voyage :
+  // `kind: "cdv"` n'est plus produit nulle part. Les branches « post » et
+  // « event » ci-dessus sont inchangées.
   return null;
 }
 
@@ -1223,31 +1176,16 @@ function _refreshCommentThreadUINow(threadId) {
       if (box) _setThreadHtml(box, _renderCommentsList(thread.comments, threadId));
     }
   } catch(e) {}
-  // Étape d'un voyage (CDV live / carnet) : feuille dédiée #stepCommentsBox.
-  if (thread.kind === "step") {
-    try {
-      if (window._openStepThreadId === threadId) {
-        var sbox = document.getElementById("stepCommentsBox");
-        if (sbox) _setThreadHtml(sbox, thread.comments.length ? _renderCommentsList(thread.comments, threadId) : '<div class="empty"><div class="empty-icon">💭</div><div class="empty-title">Sois le premier à commenter cette étape</div></div>');
-      }
-    } catch (e) {}
-    return;
-  }
+  // ⚠️ La feuille de commentaires d'ÉTAPE (`#stepCommentsBox`, `kind: "step"`) a
+  // été retirée avec le Carnet de voyage (ADR-011 §5) : `_findCommentThread` ne
+  // produit plus ce genre de fil.
   // IRL : son renderer gère DÉJÀ la page détail ET la feuille inline (#cmtThreadList).
   if (thread.kind === "event") {
     try { if (typeof _renderEventComments === "function") _renderEventComments(threadId); } catch(e) {}
     return;
   }
-  // CDV : viewer plein écran (#cdvCommentsBox).
-  try {
-    if (thread.kind === "cdv") {
-      var cdvBox = document.getElementById("cdvCommentsBox");
-      if (cdvBox && typeof _cdvCommentsBoxHtml === "function") {
-        var l = getCdvLives().find(function(x){ return x.id === threadId; });
-        if (l) _setThreadHtml(cdvBox, _cdvCommentsBoxHtml(l));
-      }
-    }
-  } catch(e) {}
+  // ⚠️ Le rafraîchissement du viewer CDV (`#cdvCommentsBox`) a été retiré avec la
+  // fonctionnalité (ADR-011 §5) : ce viewer n'existe plus.
   // Page détail d'un post (#postDetailComments) — realtime/like/réponse s'y
   // reflètent maintenant comme dans la modale (renderer unifié, 2026-07-03).
   try {
@@ -1378,7 +1316,6 @@ function _isThreadOwner(threadId) {
   var p = (typeof findPostAnywhere === "function") ? findPostAnywhere(threadId) : null;
   if (p) return p.authorId === me || p._source === "me" || p.authorId === "me";
   if (typeof allEvents === "function") { var e = allEvents().find(function (x) { return x.id === threadId; }); if (e) return e.organizerId === me || !!e._mine; }
-  if (typeof getCdvLives === "function") { var l = getCdvLives().find(function (x) { return x.id === threadId; }); if (l) return l.authorId === me || (typeof isMyLive === "function" && isMyLive(l)); }
   return false;
 }
 // ── #10 ÉDITION d'un commentaire (façon IG/FB) ── éditeur inline + sync.
@@ -1483,8 +1420,6 @@ function submitCommentSheet(threadId) {
   if (!thread) return;
   if (thread.kind === "event" && typeof addEventComment === "function") {
     addEventComment(threadId); // lit #cmtThreadInput en repli, re-render #cmtThreadList
-  } else if (thread.kind === "cdv" && typeof addCdvLiveComment === "function") {
-    addCdvLiveComment(threadId); // lit #cmtThreadInput en repli, re-render via _refreshCommentThreadUI
   } else if (typeof submitComment === "function") {
     // Fil : réutilise le chemin post (champ texte différent → on délègue manuellement)
     var t = inp.value.trim(); inp.value = "";

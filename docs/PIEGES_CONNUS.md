@@ -2,6 +2,16 @@
 
 > Extrait de CLAUDE.md le 2026-08-07. Invariants et pièges par domaine. **Le subagent `audit-passio` encode les plus transverses.** À lire avant de modifier le domaine concerné.
 
+> ⚠️ **Les fiches « CDV » ne décrivent plus aucun code vivant (2026-08-31).** La
+> fonctionnalité « Carnet de voyage » a été retirée de l'application par
+> [ADR-011](../.passio/adr/ADR-011-refonte-multi-passion.md) : écran, éditeur,
+> viewer, lives, étapes, « Mes lieux », passeport, géocodage et liens profonds
+> n'existent plus, et `goTo("cdv")` redirige vers le fil. **Aucune donnée n'a été
+> détruite** — `passio_cdv_lives`, les publications de type `vlog` et les tables
+> `cdv_*` restent intactes. Ces fiches sont conservées pour l'histoire, et parce
+> que rien n'interdit que la fonctionnalité revienne : elles disent alors ce
+> qu'il faudra ne pas refaire.
+
 ## Pièges connus
 
 - **CADRAGE BAS — ne JAMAIS dimensionner le shell en `100dvh` (2026-07-22)** : symptôme signalé par le client, « certaines fois à l'ouverture, la barre d'onglets est cachée par la barre système du téléphone ». Cause : plusieurs navigateurs mobiles résolvent `dvh` avec le **grand** viewport au tout premier paint (barres considérées absentes) ; comme `body` est en `overflow:hidden`, **aucun scroll ni resize ne vient corriger ensuite** et le shell reste trop haut pour TOUTE la session — d'où l'intermittence. Correction : `.app-shell` (et `.reel-item`, `#conv-fullpage`, `.irl-map-wrap.fullscreen`) utilisent `var(--app-vh, 100svh)` — repli `100svh` = petit viewport, jamais plus haut que le visible — et **`--app-vh` est mesurée en JS** (`syncAppViewportHeight`/`_measureAppVh`, fin de app-09) = `min(innerHeight, visualViewport.height)`, re-mesurée aux moments où les navigateurs mobiles stabilisent leurs barres (60/300/900 ms après le boot, resize, orientationchange, pageshow, visibilitychange, visualViewport) + un filet `touchstart` pour les navigateurs qui changent la géométrie SANS émettre de resize. ⚠️ Trois pièges dans ce code : ① la garde « clavier ouvert » (input/textarea focus + chute > 25 %) est indispensable, sinon le shell reste rétréci après fermeture du clavier ; ② `schedule()` doit tomber en mesure DIRECTE quand `document.hidden` — rAF est gelé en arrière-plan, une rotation hors écran ne serait jamais prise en compte ; ③ pinch-zoom (`visualViewport.scale > 1.05`) doit être ignoré. **L'inset de safe-area est porté par `.app-nav`** (`min-height: calc(62px + env(...))` + `padding-bottom: env(...)`, idem 58px dans la media query ≤480px), PAS par `.app-shell` : le fond de la barre passe ainsi sous la barre système (pas de bande vide) tout en gardant les 62 px utiles au-dessus d'elle. Avec `box-sizing:border-box`, un `height` FIXE sur `.app-nav` annulerait tout l'effet — toujours `min-height`. Non-régression : `tests/e2e/cadrage.spec.js` (5 tests, dans `npm test`).
