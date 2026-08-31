@@ -3117,6 +3117,23 @@ function loadDraft(id) {
   const d = state.user.drafts.find(x => x.id === id);
   if (!d) return;
   studioType = d.type;
+  // ⚠️ La passion du brouillon était la SEULE chose que `loadDraft` ne
+  // restaurait pas. Tant que le `<select>` proposait toutes les passions, le
+  // brouillon repartait sous la sienne par la présélection du profil actif.
+  // Depuis le filtre canonique, un brouillon rangé dans une passion non
+  // publiable serait republié sous une AUTRE passion, sans un mot. On la
+  // restaure quand elle est encore proposée, et on le DIT quand elle ne l'est
+  // plus — plutôt que de reclasser dans le dos de son auteur.
+  setTimeout(function () {
+    try {
+      var sel = $("#postPassion");
+      if (!sel || !d.passion) return;
+      var dispo = [].slice.call(sel.options).some(function (o) { return o.value === d.passion; });
+      if (dispo) { sel.value = d.passion; return; }
+      var pn = (typeof passionById === "function") ? passionById(d.passion) : null;
+      toast("⚠️ « " + ((pn && pn.label) || d.passion) + " » n'est plus publiable : choisis une passion avant d'envoyer.");
+    } catch (e) {}
+  }, 0);
   studioMood = normalizeStudioMood(d.mood);
   photoDataUrl = d.image || null;
   videoDataUrl = d.video || null;

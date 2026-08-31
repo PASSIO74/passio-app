@@ -789,7 +789,12 @@ window.testSupabaseInsert = async function() {
   var testPost = {
     id: "test_" + Date.now(),
     author_id: window.MY_UID,
-    passion_id: "test",
+    // ⚠️ « test » n'est dans AUCUN des 19 identifiants du référentiel : la clé
+    // étrangère `posts_passion_fk` rejetait donc cet insert en 23503, et le
+    // panneau concluait « supaPublishPostWithRetry() échoue silencieusement ».
+    // L'outil accusait Supabase pour une charge qu'il avait lui-même rendue
+    // invalide. Neuvième point d'écriture du dépôt, hors des deux politiques.
+    passion_id: "musique",
     mood: "all",
     content: "Post test pour vérifier si Supabase fonctionne",
     media_url: null,

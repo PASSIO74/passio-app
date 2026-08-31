@@ -510,8 +510,18 @@
     // répondent pas la même chose à « où puis-je publier ? », c'est la porte
     // dérobée assurée.
     var profils = (st.user.profiles || []).filter(function (p) {
-      try { return !(typeof passionsUnifieesActives === "function" && passionsUnifieesActives() && p.archived); }
-      catch (e) { return true; }
+      try {
+        if (typeof passionsUnifieesActives === "function" && passionsUnifieesActives() && p.archived) return false;
+        // ⚠️ FILTRE CANONIQUE — ajouté le 2026-08-31. Ce sélecteur était le SEUL
+        // point d'écriture du dépôt à ne pas l'appliquer : il proposait une
+        // passion personnelle, la PRÉSÉLECTIONNAIT même quand c'était le profil
+        // actif, et la publication était ensuite refusée. Le commentaire juste
+        // au-dessus annonçait précisément ce risque (« si les deux ne répondent
+        // pas la même chose à "où puis-je publier ?", c'est la porte dérobée
+        // assurée ») — il décrivait ce fichier.
+        if (typeof estPassionCanonique === "function" && !estPassionCanonique(p.passion)) return false;
+        return true;
+      } catch (e) { return true; }
     });
     var courant = st.user.currentProfileId;
     s.innerHTML = "";

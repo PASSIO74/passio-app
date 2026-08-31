@@ -1286,6 +1286,32 @@ async function mePublish() {
   var overlays = _meOverlaysData();
   var firstText = (meState.overlays.find(function(o) { return o.type === "text"; }) || {}).text || "";
   var media = meState.media, mediaType = meState.mediaType, bg = meState.bg, mode = meState.mode;
+
+  // ⚠️ LE REFUS DOIT PRÉCÉDER `meClose()`. Une première version plaçait ce garde
+  // plus bas, dans la branche bobine — donc APRÈS la fermeture de l'éditeur. Or
+  // `meClose()` révoque l'URL de prévisualisation (`_meRevokePreviewUrl`) et la
+  // seule ré-entrée, `meOpen()`, réinitialise `meState` à vide : la vidéo, les
+  // overlays, le texte et la couverture étaient DÉTRUITS par un refus censé les
+  // protéger. Le remède était pire que le mal. On refuse avant de fermer :
+  // l'éditeur reste intact et le geste reste rattrapable.
+  //
+  // ⚠️ Et on RÉSOUT avant de refuser. `d.passion || p.passion || défaut` ne
+  // consultait le repli que si les DEUX étaient vides : un compte dont la
+  // passion active est personnelle voyait sa bobine refusée alors qu'il possède
+  // par ailleurs une passion publiable. `passionDeRepartage` applique la même
+  // règle que les trois partages — la passion demandée si elle peut partir, la
+  // mienne sinon.
+  var _passionBobine = null;
+  if (mode !== "story") {
+    var _dBob = meState.details || {};
+    var _pBob = (typeof currentProfile === "function" && currentProfile()) || {};
+    _passionBobine = (typeof passionDeRepartage === "function")
+      ? passionDeRepartage(_dBob.passion || _pBob.passion)
+      : (_dBob.passion || _pBob.passion);
+    if (typeof publicationRefuseeFautePassion === "function"
+        && publicationRefuseeFautePassion(_passionBobine)) return;   // éditeur INTACT
+  }
+
   meClose();
   if (mode === "story") {
     var story = {
@@ -1317,10 +1343,11 @@ async function mePublish() {
     var post = {
       id: "reel_" + uid(), authorId: authorId, profileId: state.user.currentProfileId,
       authorName: p.name || state.user.name || "Profil", authorEmoji: p.emoji || "✨", authorColor: p.color || "#8b5cf6",
-      // ⚠️ Le repli était la valeur FANTÔME « autre », qui n'existe dans aucun
-      // des 19 identifiants du référentiel : elle faisait rejeter l'insert par
-      // la clé étrangère, donc la bobine ne quittait jamais l'appareil.
-      passion: d.passion || p.passion || passionParDefautPourPublier(), mood: "creation",
+      // Résolue et VALIDÉE plus haut, avant `meClose()`. Le repli était la
+      // valeur FANTÔME « autre », absente des 19 identifiants du référentiel :
+      // elle faisait rejeter l'insert par la clé étrangère, donc la bobine ne
+      // quittait jamais l'appareil.
+      passion: _passionBobine, mood: "creation",
       type: (mediaType === "video") ? "video" : "photo", isReel: true,
       image: (mediaType === "photo") ? media : (d.cover || null),
       video: (mediaType === "video") ? media : null,
@@ -1328,12 +1355,6 @@ async function mePublish() {
       createdAt: Date.now(), likes: 0, liked: false, comments: [],
     };
     if (d.eventId) post.eventId = d.eventId;
-    // ⚠️ REFUS AVANT TOUTE MUTATION LOCALE. Sans ce garde, la bobine entrait
-    // dans `state.userPosts`, s'affichait chez son auteur, et le garde central
-    // la refusait ensuite : jamais arrivée au serveur, perdue au changement
-    // d'appareil. Le refus doit précéder la mutation, pas seulement la requête.
-    if (typeof publicationRefuseeFautePassion === "function"
-        && publicationRefuseeFautePassion(post.passion)) return;
     state.userPosts = state.userPosts || [];
     state.userPosts.unshift(post);
     saveState();

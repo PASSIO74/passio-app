@@ -4758,7 +4758,21 @@ function openCreateEvent(editId) {
   // n'avait qu'un profil « musique ».
   const myPassionIds = (state.user.profiles || []).map(pr => pr.passion).filter(Boolean);
   // ⚠️ SORTIE A : `events.passion_id` porte la même clé étrangère que `posts`.
-  const sortedPassions = passionsPubliables().slice().sort((a, b) =>
+  // ⚠️ NE PAS RECLASSER EN SILENCE. Si l'activité éditée porte une passion
+  // absente du catalogue publiable, aucune `<option>` ne serait marquée
+  // `selected` — le navigateur retiendrait alors l'option 0, et
+  // `submitEvent` écrirait cette passion-là sans un mot. On réinjecte donc la
+  // passion d'origine dans la liste : elle reste visible, elle reste
+  // sélectionnée, et le garde de `submitEvent` peut faire son travail en
+  // affichant un message au lieu de reclasser dans le dos de l'organisateur.
+  const _passionEditee = editId ? (ed && ed.passion) : null;
+  const _pubs = passionsPubliables();
+  if (_passionEditee && !_pubs.some(function (x) { return x.id === _passionEditee; })) {
+    const _pOrig = (typeof passionById === "function") ? passionById(_passionEditee) : null;
+    _pubs.push({ id: _passionEditee, emoji: (_pOrig && _pOrig.emoji) || "✨",
+                 label: ((_pOrig && _pOrig.label) || _passionEditee) + " (non publiable)" });
+  }
+  const sortedPassions = _pubs.slice().sort((a, b) =>
     (myPassionIds.includes(a.id) ? 0 : 1) - (myPassionIds.includes(b.id) ? 0 : 1));
   const selPassion = ed ? ed.passion : "";
   const passionOptions = sortedPassions
