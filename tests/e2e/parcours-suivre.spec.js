@@ -13,6 +13,16 @@ const { bootOnboarded } = require("./app-helper");
 
 // L'auteur suivi publie dans une passion que je n'ai PAS choisie : sa présence
 // dans mon fil ne peut alors venir que de l'abonnement.
+//
+// ⚠️ PIÈGE PAYÉ EN ÉCRIVANT CETTE SUITE. Une première version ne posait QUE la
+// publication de Sacha. Accueil se retrouvait vide — ma passion choisie n'ayant
+// aucun contenu et ne suivant personne — et le **repli d'exploration** («  Rien
+// encore dans Musique […] voici ce qui vit ailleurs sur PASSIO ») affichait le
+// post de Sacha, correctement étiqueté « Hors de tes passions ». La prémisse
+// « au départ, on ne le voit pas » était donc FAUSSE, et le test rouge disait
+// vrai. On pose maintenant un contenu dans la passion choisie : Accueil n'est
+// jamais vide, le repli ne se déclenche pas, et la présence de Sacha ne peut
+// venir que de l'abonnement — ce que la suite prétend mesurer.
 async function poser(page) {
   await page.evaluate(() => {
     window.supaLoadPosts = async () => [];
@@ -23,11 +33,22 @@ async function poser(page) {
 
     state.seed.users = (state.seed.users || []).filter((u) => u.id !== "u_sacha");
     state.seed.users.push({ id: "u_sacha", name: "Sacha", profileEmoji: "🍳", avatar: "#8b5cf6", passion: "cuisine" });
-    state.seed.posts = [{
-      id: "p_sacha", authorId: "u_sacha", userId: "u_sacha", passion: "cuisine",
-      type: "text", text: "POST_DE_SACHA", mood: "all",
-      createdAt: Date.now() - 1000, likes: 0, comments: [],
-    }];
+    state.seed.users = state.seed.users.filter((u) => u.id !== "u_tiers");
+    state.seed.users.push({ id: "u_tiers", name: "Alex", profileEmoji: "🎸", avatar: "#8b5cf6", passion: "musique" });
+    state.seed.posts = [
+      {
+        id: "p_sacha", authorId: "u_sacha", userId: "u_sacha", passion: "cuisine",
+        type: "text", text: "POST_DE_SACHA", mood: "all",
+        createdAt: Date.now() - 1000, likes: 0, comments: [],
+      },
+      // Contenu de MA passion choisie, d'un auteur que je ne suis pas : il garde
+      // Accueil non vide, donc hors du repli d'exploration (cf. la note ci-dessus).
+      {
+        id: "p_musique", authorId: "u_tiers", userId: "u_tiers", passion: "musique",
+        type: "text", text: "POST_DE_MA_PASSION", mood: "all",
+        createdAt: Date.now() - 2000, likes: 0, comments: [],
+      },
+    ];
     state.supabasePosts = [];
     state.userPosts = [];
     state.user.following = [];
@@ -53,7 +74,11 @@ test("le parcours complet : suivre → voir → recharger → toujours voir → 
 
   // ── ① Avant de suivre : rien. C'est la prémisse, et elle est vérifiée —
   //     sans elle, un test qui « voit » le post ne prouverait rien.
-  expect(await texte(page), "au départ, Sacha n'est pas suivi").not.toContain("POST_DE_SACHA");
+  const depart = await texte(page);
+  expect(depart, "le fil n'est PAS vide : le repli d'exploration ne se déclenche pas")
+    .toContain("POST_DE_MA_PASSION");
+  expect(depart, "et il ne montre donc rien « d'ailleurs »").not.toContain("EXPLORATION");
+  expect(depart, "au départ, Sacha n'est pas suivi").not.toContain("POST_DE_SACHA");
 
   // ── ② Le GESTE réel. `toggleFollowUser` exige le bouton que la fiche de
   //     profil rend : on le pose tel quel, avec l'id qu'elle lui donne.
@@ -98,11 +123,20 @@ test("le parcours complet : suivre → voir → recharger → toujours voir → 
     // PAS l'abonnement — c'est lui qu'on met à l'épreuve.
     state.seed.users = (state.seed.users || []).filter((u) => u.id !== "u_sacha");
     state.seed.users.push({ id: "u_sacha", name: "Sacha", profileEmoji: "🍳", avatar: "#8b5cf6", passion: "cuisine" });
-    state.seed.posts = [{
-      id: "p_sacha", authorId: "u_sacha", userId: "u_sacha", passion: "cuisine",
-      type: "text", text: "POST_DE_SACHA", mood: "all",
-      createdAt: Date.now() - 1000, likes: 0, comments: [],
-    }];
+    state.seed.users = state.seed.users.filter((u) => u.id !== "u_tiers");
+    state.seed.users.push({ id: "u_tiers", name: "Alex", profileEmoji: "🎸", avatar: "#8b5cf6", passion: "musique" });
+    state.seed.posts = [
+      {
+        id: "p_sacha", authorId: "u_sacha", userId: "u_sacha", passion: "cuisine",
+        type: "text", text: "POST_DE_SACHA", mood: "all",
+        createdAt: Date.now() - 1000, likes: 0, comments: [],
+      },
+      {
+        id: "p_musique", authorId: "u_tiers", userId: "u_tiers", passion: "musique",
+        type: "text", text: "POST_DE_MA_PASSION", mood: "all",
+        createdAt: Date.now() - 2000, likes: 0, comments: [],
+      },
+    ];
     state.supabasePosts = [];
     selectedMoods = new Set(["all", "creation", "learn", "chill", "actu"]);
     state.feedMoodsTouched = true;
@@ -131,7 +165,12 @@ test("le parcours complet : suivre → voir → recharger → toujours voir → 
 
   const fin = await page.evaluate(() => ({ suivis: (state.user.following || []).slice() }));
   expect(fin.suivis).not.toContain("u_sacha");
-  expect(await texte(page), "se désabonner retire sa publication d'Accueil").not.toContain("POST_DE_SACHA");
+  const fini = await texte(page);
+  expect(fini, "se désabonner retire sa publication d'Accueil").not.toContain("POST_DE_SACHA");
+  // ⚠️ Et le fil n'est pas simplement retombé dans le repli d'exploration, qui
+  // masquerait un désabonnement sans effet derrière un écran d'apparence vide.
+  expect(fini, "ma passion choisie est toujours servie").toContain("POST_DE_MA_PASSION");
+  expect(fini).not.toContain("EXPLORATION");
 });
 
 test("suivre n'ajoute JAMAIS la passion de l'autre à mes préférences de lecture", async ({ page }) => {
