@@ -61,5 +61,10 @@ notifications · analytics · modération.
 - **Client** : `state.user.profiles[]` + `currentProfileId` — la passion d'ÉCRITURE courante ;
   `state.selectedFeedPassions` / `_activeFeedPassions` — les préférences de LECTURE. Deux états
   distincts, par décision.
+- **Classification** : une seule question (`estPassionCanonique`, adossée au référentiel Supabase
+  `passions`, `PASSIONS` en repli) et deux politiques — `posts` et `events` **obligatoires** (refus
+  avant la requête), `profiles`, `stories` et `conversations` **facultatives** (normalisation en
+  `null`, l'écriture aboutit). Une passion personnalisée existe donc toujours, comme centre
+  d'intérêt du fil ; elle n'est simplement plus proposée là où elle ne peut pas aboutir.
 
 Lié : [[PASSIO_SYSTEM_MODEL]], `SECURITY.md`, skill `rls-audit`, ADR-003, ADR-010.

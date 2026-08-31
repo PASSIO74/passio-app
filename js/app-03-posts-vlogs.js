@@ -84,7 +84,10 @@ async function sharePostInFeed(id) {
     // ⚠️ PAS d'escapeHtml : voir la note de `shareReelInFeed` (app-05) — `text`
     // est échappé à l'affichage, l'échapper ici le fait passer deux fois.
     text: `📤 A partagé un post\n\n${passion.emoji} ${post.authorName || "Passionné"} – ${passion.label}\n\n"${txt.slice(0, 150)}${txt.length > 150 ? "…" : ""}"`,
-    passion: post.passion || null,
+    // Le repartage est MA publication : il hérite du classement de la source
+    // quand celui-ci peut partir, et retombe sur le mien sinon. `posts` est en
+    // politique OBLIGATOIRE (ADR-010) — `null` ferait refuser l'envoi.
+    passion: passionDeRepartage(post.passion),
     mood: post.mood || "all",
     createdAt: Date.now(),
     timestamp: Date.now(),

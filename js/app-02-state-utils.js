@@ -1058,6 +1058,57 @@ function optionalCanonicalPassion(id) {
   return estPassionCanonique(id) ? id : null;
 }
 
+// ── CATALOGUE PUBLIABLE (sortie A du 2026-08-30) ──────────────────────────
+// `docs/PASSION_PERSONNALISEE_FK_2026-08-30.md` : une passion absente du
+// référentiel ne PEUT PAS être écrite dans `posts`/`events` — la clé étrangère
+// est infranchissable côté client, la table `passions` n'exposant qu'une policy
+// SELECT. On cesse donc de la PROPOSER là où elle ne peut pas aboutir.
+//
+// ⚠️ On ne supprime ni ne transforme AUCUNE passion personnalisée existante :
+// elle reste dans `state.user.customPassions`, reste un centre d'intérêt du fil
+// (le filtre de lecture est 100 % local, il fonctionne parfaitement) et reste
+// affichée partout où elle est déjà posée. Seule la porte d'ÉCRITURE se ferme.
+function passionsPubliables() {
+  var l = (typeof allPassions === "function") ? allPassions() : [];
+  return l.filter(function (p) { return p && estPassionCanonique(p.id); });
+}
+
+// La passion sous laquelle CE compte publie par défaut : l'active si elle est
+// publiable, sinon la première passion vivante qui l'est. Rend `null` quand le
+// compte n'en a AUCUNE — l'appelant renonce alors, il n'invente jamais.
+function passionParDefautPourPublier() {
+  try {
+    var cp = (typeof currentProfile === "function") ? currentProfile() : null;
+    if (cp && estPassionCanonique(cp.passion)) return cp.passion;
+    var vivantes = (typeof passionsVivantes === "function")
+      ? passionsVivantes()
+      : ((state && state.user && state.user.profiles) || []);
+    for (var i = 0; i < vivantes.length; i++) {
+      if (vivantes[i] && estPassionCanonique(vivantes[i].passion)) return vivantes[i].passion;
+    }
+  } catch (e) {}
+  return null;
+}
+
+// Classement d'une REPUBLICATION. Le partage est MA publication : il hérite du
+// classement de la source quand celui-ci peut partir, et retombe sur le mien
+// sinon (source locale rangée dans une passion personnelle, ou source sans
+// passion). Il ne recopie jamais un classement qui ferait refuser l'insert.
+function passionDeRepartage(source) {
+  return estPassionCanonique(source) ? source : passionParDefautPourPublier();
+}
+
+// Un échec de publication n'est pas toujours un échec de RÉSEAU. Quand la cause
+// est le classement, le dire — l'ancien message « connexion lente » invitait à
+// retenter une opération qui ne pouvait pas aboutir (cf. le document ci-dessus).
+// Rend `null` si le dernier échec n'était pas de cette nature.
+function messageEchecPassion() {
+  var c = window._passioEchecPublication;
+  if (c === "passion_absente") return "⚠️ Choisis une passion avant de publier.";
+  if (c === "passion_inconnue") return "⚠️ Cette passion n'existe que chez toi : elle range ton fil, mais on ne peut pas encore y publier. Choisis une passion du catalogue.";
+  return null;
+}
+
 function passionsPubliques(list) {
   if (!Array.isArray(list)) return [];
   return list.filter(function (p) { return p && p.id && !p.archived; });
@@ -2425,7 +2476,7 @@ function openCreateCustomPassion() {
   openModal(`
     <div class="modal-handle"></div>
     <div class="modal-title">🌟 Créer ta passion</div>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.5;">Ta passion est ajoutée tout de suite, rien que pour toi : elle te sert à ranger tes publications et à filtrer ton fil. Elle n'entre pas dans le catalogue commun.</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.5;">Ta passion est ajoutée tout de suite, rien que pour toi : elle sert à choisir ce que tu vois dans ton fil. Elle n'entre pas dans le catalogue commun, et on ne peut pas encore publier dedans.</div>
 
     ${pendingHTML}
 

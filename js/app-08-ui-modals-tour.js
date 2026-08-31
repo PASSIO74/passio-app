@@ -1317,7 +1317,10 @@ async function mePublish() {
     var post = {
       id: "reel_" + uid(), authorId: authorId, profileId: state.user.currentProfileId,
       authorName: p.name || state.user.name || "Profil", authorEmoji: p.emoji || "✨", authorColor: p.color || "#8b5cf6",
-      passion: d.passion || p.passion || "autre", mood: "creation",
+      // ⚠️ Le repli était la valeur FANTÔME « autre », qui n'existe dans aucun
+      // des 19 identifiants du référentiel : elle faisait rejeter l'insert par
+      // la clé étrangère, donc la bobine ne quittait jamais l'appareil.
+      passion: d.passion || p.passion || passionParDefautPourPublier(), mood: "creation",
       type: (mediaType === "video") ? "video" : "photo", isReel: true,
       image: (mediaType === "photo") ? media : (d.cover || null),
       video: (mediaType === "video") ? media : null,
@@ -1352,6 +1355,10 @@ function _publishReelWithFeedback(post) {
       toast("✅ Bobine publiée !");
       return;
     }
+    // Échec de CLASSEMENT : réessayer est inutile, et le dire franchement vaut
+    // mieux que huit tentatives silencieuses espacées de 45 s.
+    var _msgP = (typeof messageEchecPassion === "function") ? messageEchecPassion() : null;
+    if (_msgP) { post._pendingSync = false; try { saveState(); } catch (e) {} toast(_msgP); return; }
     post._pendingSync = true;
     toast("⚠️ Vidéo pas encore envoyée — nouvel essai automatique. Garde l'app ouverte.");
     _scheduleReelRetry();
@@ -2472,7 +2479,12 @@ async function supaUpsertProfile() {
       color: g.color || prof.color || "#8b5cf6",
       // La passion « principale » (rétro-compat : feed, embeds, anciens clients)
       // doit être VIVANTE — `_passions` contient désormais aussi les archivées.
-      passion_id: ((_passions.find(p => !p.archived) || _passions[0] || {}).id) || prof.passion || null,
+      // Politique FACULTATIVE (ADR-010) : le profil public a une raison
+      // d'exister indépendante de son classement. Une passion non canonique est
+      // normalisée en `null` plutôt que de faire rejeter TOUT l'upsert par la
+      // clé étrangère — pseudo, avatar, bio et liste des passions n'atteignaient
+      // alors plus personne (P0 du 2026-08-30, hotfix repris ici).
+      passion_id: optionalCanonicalPassion(((_passions.find(p => !p.archived) || _passions[0] || {}).id) || prof.passion),
       passions: _passions,
       bio: g.bio || "",
       // Compte privé : les visiteurs non abonnés ne verront pas le contenu.
@@ -2549,6 +2561,25 @@ async function supaPublishPostWithRetry(post, maxRetries = 2) {
     try { if (_pubCid && window.tel) { tel.step(_pubCid, "saved", ok ? "ok" : "error"); tel.flowEnd(_pubCid, ok ? "ok" : "error"); _pubCid = null; } } catch (e) {}
     return ok;
   }
+  // ── Politique `posts` : la passion est OBLIGATOIRE (ADR-010) ─────────────
+  // Le garde est ICI, au point d'écriture central, parce que QUATRE producteurs
+  // y aboutissent — Studio (`publishPost`), bobine (`mePublish`), partage
+  // d'événement et repartages — et qu'un garde par producteur en aurait manqué
+  // un. Il s'exécute AVANT toute requête : ni upload de média, ni insert.
+  //
+  // ⚠️ On BLOQUE, on ne substitue pas. Une valeur non canonique fait rejeter
+  // l'insert par `posts_passion_fk` (23503) : l'utilisateur voyait alors
+  // « connexion lente » pour une erreur de DONNÉES et réessayait indéfiniment
+  // (docs/PASSION_PERSONNALISEE_FK_2026-08-30.md §3). La substitution
+  // appartient aux producteurs, qui seuls savent quel geste vient d'être fait.
+  window._passioEchecPublication = null;
+  const _clsPassion = requiredCanonicalPassion(post && post.passion);
+  if (!_clsPassion.ok) {
+    window._passioEchecPublication = (_clsPassion.motif === "null") ? "passion_absente" : "passion_inconnue";
+    console.warn("publication refusée — passion « " + (post && post.passion) + " » : " + _clsPassion.motif);
+    return _pubDone(false);
+  }
+
   // S'assurer que le profil existe en DB avant de publier
   // (le JOIN profiles!author_id retourne null sinon → pas de nom d'auteur)
   try { await supaUpsertProfile(); } catch(e) {}
@@ -2630,7 +2661,7 @@ async function supaPublishPostWithRetry(post, maxRetries = 2) {
       const postData = {
         id: post.id,
         author_id: MY_UID,
-        passion_id: post.passion || null,
+        passion_id: _clsPassion.valeur,
         mood: post.mood || "all",
         content: (post.text && !post.text.startsWith("data:")) ? post.text : (post.text?.startsWith("data:") ? "" : ""),
         // ✅ NE JAMAIS stocker du base64 en DB — seulement des URLs Supabase Storage
@@ -2679,6 +2710,14 @@ async function supaPublishPostWithRetry(post, maxRetries = 2) {
       return _pubDone(true);
 
     } catch (e) {
+      // 23503 = clé étrangère. Erreur de DONNÉES, donc définitive : la réessayer
+      // ne fait que retarder le même refus, et — pour une bobine — relance une
+      // boucle de 8 essais espacés de 45 s qui ne pouvait pas aboutir.
+      if (e && (String(e.code) === "23503" || /foreign key/i.test(e.message || ""))) {
+        window._passioEchecPublication = "passion_inconnue";
+        console.warn("publication refusée par la clé étrangère :", e.message || e);
+        return _pubDone(false);
+      }
       if (attempt === maxRetries) return _pubDone(false);
 
       // Attendre avant retry
@@ -3031,7 +3070,11 @@ async function supaLoadPosts(offset = 0, authorId = null) {
         authorEmoji: r.profiles?.emoji || "✨",  // ✅ Utiliser l'emoji depuis profiles
         authorColor: r.profiles?.color || "#8b5cf6",  // ✅ Utiliser la couleur depuis profiles
         authorAvatar: r.profiles?.avatar_url || null,  // 📷 Photo de profil (URL Storage) si définie
-        passion: r.passion_id || "autre", mood: r.mood || "all",
+        // ⚠️ Jamais « autre » : cette valeur fantôme n'est dans aucun des 19
+        // identifiants du référentiel. Elle ne changeait rien à l'affichage
+        // (`passionById` retombe sur son défaut dans les deux cas) mais elle
+        // repartait en ÉCRITURE dès qu'un post relu était repartagé.
+        passion: r.passion_id || null, mood: r.mood || "all",
         // ✅ Détecter le type basé sur l'extension du fichier dans media_url
         type: (() => {
           if (r.vlog) return "vlog"; // carnet de voyage (colonne jsonb dédiée)
@@ -3300,7 +3343,9 @@ async function supaPublishStory(story) {
     }
     const res = await supa.from("stories").insert({
       id: story.id || uid(), author_id: MY_UID,
-      passion_id: story.passion || null,
+      // Politique FACULTATIVE (ADR-010) : une story éphémère vaut d'être
+      // publiée même sans classement — le refuser pour ça la ferait disparaître.
+      passion_id: optionalCanonicalPassion(story.passion),
       content: story.text || story.content || "",
       emoji: story.emoji || "✨",
       media_url: mediaUrl,
@@ -3395,7 +3440,21 @@ function _stripUnknownEventCol(row, error) {
 
 // Renvoie true si la ligne est bien en base (l'appelant peut alors promettre à
 // l'utilisateur que son événement est publié — cf. bobines fantômes 2026-07-19).
+// ── Politique `events` : la passion est OBLIGATOIRE (ADR-010) ─────────────
+// Cohérent avec l'interface, qui l'exige déjà (`submitEvent` : « Sélectionne une
+// passion »). Ce garde ne fait que fermer le cas qu'elle ne voyait pas : une
+// passion CHOISIE mais absente du référentiel. Sans lui, l'insert partait, était
+// refusé par la clé étrangère, et l'événement restait local — donc invisible de
+// tous les participants qu'il cherchait à réunir.
+function _passionEvenementRefusee(event) {
+  var c = requiredCanonicalPassion(event && event.passion);
+  if (c.ok) return false;
+  console.warn("événement refusé — passion « " + (event && event.passion) + " » : " + c.motif);
+  return true;
+}
+
 async function supaPublishEvent(event) {
+  if (_passionEvenementRefusee(event)) return false;
   try {
     await supaUpsertProfile();
     const row = Object.assign(_eventRow(event), {
@@ -3422,6 +3481,7 @@ async function supaPublishEvent(event) {
 // un changement que la base n'avait pas enregistré. C'est la RLS qui autorise
 // (auteur ou co-organisateur) ; ici on COMPTE les lignes réellement modifiées.
 async function supaUpdateEvent(event) {
+  if (_passionEvenementRefusee(event)) return false;
   try {
     const row = Object.assign(_eventRow(event), { updated_at: new Date().toISOString() });
     for (let attempt = 0; attempt < 4; attempt++) {
@@ -3500,7 +3560,7 @@ async function supaLoadEvents() {
       organizerId: r.organizer_id || r.author_id,
       organizerName: (profs[r.organizer_id || r.author_id] || {}).username || "Passionné",
       title: r.title || "Événement",
-      passion: r.passion_id || "autre",
+      passion: r.passion_id || null,   // jamais la valeur fantôme « autre »
       lat: r.lat, lng: r.lng,
       city: r.city || "",
       emoji: r.emoji || "📍",
@@ -4260,7 +4320,9 @@ async function supaCreateGroup(groupName, memberIds, passionId) {
     const convId = "grp_" + uid();
     const rConv = await supa.from("conversations").insert({
       id: convId, is_group: true,
-      group_name: groupName, passion_id: passionId || null,
+      // Politique FACULTATIVE (ADR-010) : une conversation existe pour ses
+      // membres, pas pour son classement.
+      group_name: groupName, passion_id: optionalCanonicalPassion(passionId),
       created_by: MY_UID,
     });
     if (rConv.error) { console.warn("Group error (conversations):", rConv.error.message); return null; }
@@ -4896,7 +4958,7 @@ function supaSubscribe() {
         const { data: prof } = await supa.from("profiles").select("username,emoji,color").eq("id", r.author_id).maybeSingle();
         const _mu = (r.media_url || "").toLowerCase();
         const _isVid = _mu.includes(".mp4") || _mu.includes("videos/");
-        const newPost = { id: r.id, authorId: r.author_id, authorName: prof?.username || "Passionne", authorEmoji: prof?.emoji || "✨", authorColor: prof?.color || "#8b5cf6", passion: r.passion_id || "autre", mood: r.mood || "all", type: _isVid ? "video" : "text", text: r.content || "", image: _isVid ? null : (r.media_url || null), video: _isVid ? r.media_url : null, isReel: !!r.is_reel, overlays: r.overlays || null, createdAt: supaTs(r.created_at), likes: 0, liked: false, comments: [], fromSupabase: true };
+        const newPost = { id: r.id, authorId: r.author_id, authorName: prof?.username || "Passionne", authorEmoji: prof?.emoji || "✨", authorColor: prof?.color || "#8b5cf6", passion: r.passion_id || null, mood: r.mood || "all", type: _isVid ? "video" : "text", text: r.content || "", image: _isVid ? null : (r.media_url || null), video: _isVid ? r.media_url : null, isReel: !!r.is_reel, overlays: r.overlays || null, createdAt: supaTs(r.created_at), likes: 0, liked: false, comments: [], fromSupabase: true };
         // ✅ Ajouter dans state.supabasePosts, pas state.seed.posts!
         if (feedAddRealtimePost(newPost)) { try { scheduleFeedRender(); } catch(e) {} }
       } catch(e) {}
@@ -5312,7 +5374,9 @@ async function supaCreateEventConversation(ev) {
     const r = await supa.from("conversations").insert({
       id: convId, is_group: true,
       group_name: "📍 " + String(ev.title || "Événement").slice(0, 40),
-      passion_id: ev.passion || null, created_by: MY_UID,
+      // Politique FACULTATIVE (ADR-010) : la discussion des participants ne
+      // doit pas être bloquée par le classement de son événement.
+      passion_id: optionalCanonicalPassion(ev.passion), created_by: MY_UID,
     });
     if (r.error && String(r.error.code) !== "23505") return null;
     await supa.from("conv_members").insert({ conv_id: convId, user_id: MY_UID });

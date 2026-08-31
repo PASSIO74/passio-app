@@ -3997,7 +3997,7 @@ async function shareEventInFeed(id) {
     authorEmoji: (prof && prof.emoji) || g.emoji || "✨",
     authorColor: (prof && prof.color) || g.color || "#8b5cf6",
     text: `📍 A partagé un événement\n\n${ev.title}\n${passion.emoji} ${passion.label}${ev.city ? " · " + ev.city : ""} · ${dateStr}`,
-    passion: ev.passion || null,
+    passion: passionDeRepartage(ev.passion),   // cf. `sharePostInFeed` (app-03)
     mood: "irl",
     createdAt: Date.now(),
     timestamp: Date.now(),
@@ -4750,7 +4750,8 @@ function openCreateEvent(editId) {
   // choix aux profils créés empêchait d'organiser un événement « photo » quand on
   // n'avait qu'un profil « musique ».
   const myPassionIds = (state.user.profiles || []).map(pr => pr.passion).filter(Boolean);
-  const sortedPassions = allPassions().slice().sort((a, b) =>
+  // ⚠️ SORTIE A : `events.passion_id` porte la même clé étrangère que `posts`.
+  const sortedPassions = passionsPubliables().slice().sort((a, b) =>
     (myPassionIds.includes(a.id) ? 0 : 1) - (myPassionIds.includes(b.id) ? 0 : 1));
   const selPassion = ed ? ed.passion : "";
   const passionOptions = sortedPassions
@@ -5161,6 +5162,13 @@ async function submitEvent(editId) {
   if (!city) { toast("Indique une ville"); return; }
   if (!date) { toast("Choisis une date"); return; }
   if (!passion) { toast("Sélectionne une passion"); return; }
+  // Politique OBLIGATOIRE (ADR-010). Le `<select>` ne propose plus que des
+  // passions publiables, donc ce garde ne se déclenche que sur un état bâti
+  // autrement (brouillon ancien, édition d'un événement d'avant le correctif).
+  if (!estPassionCanonique(passion)) {
+    toast("⚠️ Cette passion n'existe que chez toi : choisis-en une du catalogue pour créer une activité.");
+    return;
+  }
 
   const ts = new Date(date + "T" + time).getTime();
   if (isNaN(ts)) { toast("Date invalide"); return; }

@@ -83,6 +83,36 @@ dangereux qu'une absence de document : il invite à raisonner comme si la fronti
   archivées y sont **publiées marquées** et filtrées à l'affichage.
 - `posts.passion_id` reste l'étiquette de classement d'une publication.
 
+#### Une classification commune, deux politiques par type d'objet
+
+La clé étrangère `passion_id → passions(id)` est la même sur les cinq tables ; l'invariant
+**produit**, lui, ne l'est pas. Une seule question est posée partout — « cet identifiant existe-t-il
+dans le référentiel ? » (`estPassionCanonique`, app-02) — et la réponse est appliquée par deux
+politiques distinctes :
+
+| Table | Politique | Point d'écriture | Obligatoire dans l'interface ? | Comportement |
+|---|---|---|---|---|
+| `posts` | **obligatoire** | `supaPublishPostWithRetry` (point central : Studio, bobine, partage d'événement, repartages) | oui — le `<select>` est toujours peuplé et présélectionné | refus **avant** la requête, avec une cause distincte (`passion_absente` / `passion_inconnue`) |
+| `events` | **obligatoire** | `supaPublishEvent`, `supaUpdateEvent` | oui — `submitEvent` refuse déjà une passion vide | refus avant la requête, aux deux points d'écriture |
+| `profiles` | facultative | `supaUpsertProfile` | non | normalisée en `null` ; le reste du profil public part quand même |
+| `stories` | facultative | `supaPublishStory` | non | idem — une story éphémère vaut d'être publiée sans classement |
+| `conversations` | facultative | `supaCreateConversation`, `supaCreateGroup`, `supaCreateEventConversation` | non | idem — une conversation existe pour ses membres |
+
+**Pourquoi pas un garde universel.** Un refus uniforme sur les cinq tables aurait fait échouer tout
+l'upsert du profil public pour un classement dont il n'a pas besoin : c'est exactement le défaut P0
+du 2026-08-30 (pseudo, avatar, bio et liste des passions n'atteignaient plus personne). À l'inverse,
+normaliser en `null` sur `posts` ferait perdre le classement d'une publication en silence.
+
+**Le référentiel fait autorité, la liste locale sert de repli.** La table `passions` est chargée une
+fois en arrière-plan et mise en cache (`chargerReferentielPassions`). Le démarrage ne l'attend
+jamais, et un échec de chargement laisse les 19 passions de `PASSIONS` (app-01) opérantes — une
+panne réseau ne doit pas bloquer une publication légitime.
+
+⚠️ **Le discriminant n'est ni le drapeau `custom: true`, ni le préfixe `custom_`.** Le drapeau ne vit
+que dans `state.user.customPassions` et disparaît sur un appareil neuf ; le préfixe est une liste
+noire, qui ne couvre ni la valeur fantôme `"autre"`, ni `"test"`, ni la chaîne vide. Seule la liste
+blanche du référentiel les rejette toutes.
+
 ### Fil
 - Le fil « Accueil » est l'**union** des publications correspondant aux passions choisies par le
   lecteur et des publications des comptes suivis, dédupliquée. Suivre quelqu'un a donc un effet

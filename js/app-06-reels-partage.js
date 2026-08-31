@@ -2231,7 +2231,14 @@ function openCreateProfile() {
   const already = state.user.profiles
     .filter(p => !(_v8Cr && p.archived))
     .map(p => p.passion);
-  const pool = allPassions().filter(p => !already.includes(p.id));
+  // ⚠️ SORTIE A (2026-08-30). La grille est bâtie sur les passions PUBLIABLES,
+  // pas sur `allPassions()`. Une passion personnalisée n'existe que sur cet
+  // appareil : en faire un rangement de publication menait à un insert refusé
+  // par la clé étrangère, donc à des posts invisibles de tous — et, quand
+  // c'était la seule passion du compte, à un profil public jamais synchronisé.
+  // Elle reste entière dans `state.user.customPassions` et reste un centre
+  // d'intérêt du fil ; c'est la porte d'ÉCRITURE qui se ferme, pas la passion.
+  const pool = passionsPubliables().filter(p => !already.includes(p.id));
   openModal(`
     <div class="modal-handle"></div>
     <div style="text-align:center;margin-bottom:18px;">
@@ -2247,12 +2254,9 @@ function openCreateProfile() {
           ${p.custom ? '<div class="passion-custom-badge">Perso</div>' : ''}
         </div>
       `).join("")}
-      <div class="passion-tile passion-tile-create" onclick="openCreateCustomPassionFromProfile()">
-        <div class="passion-tile-emoji">＋</div>
-        <div class="passion-tile-label">Créer</div>
-      </div>
     </div>
-    ${pool.length === 0 ? '<div style="font-size:12px;color:var(--muted);text-align:center;margin:8px 0;">Toutes les passions du catalogue sont déjà prises, tu peux créer la tienne ✨</div>' : ''}
+    ${pool.length === 0 ? '<div style="font-size:12px;color:var(--muted);text-align:center;margin:8px 0;">Tu as déjà toutes les passions du catalogue ✨</div>' : ''}
+    <div style="font-size:11px;color:var(--muted);text-align:center;margin:10px 0 2px;line-height:1.5;">Tu peux créer une passion à toi depuis l'Explorateur : elle choisira ce que tu vois dans ton fil.</div>
     <label class="field" style="margin-top:4px;">
       <span>Bio courte <span style="font-weight:400;color:var(--muted);">(optionnel)</span></span>
       <input type="text" class="input" id="newProfileBio" placeholder="Ex : Photographe amateur · Paris" maxlength="80" />
@@ -2260,13 +2264,6 @@ function openCreateProfile() {
     <button class="btn primary block" id="confirmNewPassionBtn" style="margin-top:12px;" onclick="confirmCreateProfile()">Ajouter cette passion</button>
   `);
   window._newProfilePassion = null;
-}
-
-/* Open custom-passion creator from inside the "Nouveau fil" modal.
-   After save, we jump straight back into openCreateProfile so user can pick it. */
-function openCreateCustomPassionFromProfile() {
-  window._returnToCreateProfile = true;
-  openCreateCustomPassion();
 }
 
 function selectNewProfilePassion(id) {
@@ -2354,11 +2351,25 @@ function renderStudio() {
   const sel = $("#postPassion");
   // Lot UI-8 : on ne propose pas de créer dans une passion archivée. Les
   // publications existantes gardent la leur — seul le choix futur est borné.
-  const _pool = passionsUnifieesActives() ? passionsVivantes() : state.user.profiles;
+  const _poolBrut = passionsUnifieesActives() ? passionsVivantes() : state.user.profiles;
+  // ⚠️ SORTIE A : un compte peut DÉJÀ posséder une passion personnalisée créée
+  // avant ce correctif. Elle reste dans son profil et dans son fil, mais on ne
+  // lui propose plus d'y publier — l'insert serait refusé et le post perdu.
+  const _pool = _poolBrut.filter(p => p && estPassionCanonique(p.passion));
   sel.innerHTML = _pool.map(p => {
     const pn = passionById(p.passion);
     return `<option value="${p.passion}" ${p.id === state.user.currentProfileId ? "selected" : ""}>${pn.emoji} ${pn.label}</option>`;
   }).join("");
+  // La ligne d'explication n'apparaît QUE si quelque chose a été écarté : sinon
+  // elle inquiéterait pour rien l'immense majorité des comptes.
+  const _horsCat = _poolBrut.length - _pool.length;
+  const _noteP = $("#studioPassionNote");
+  if (_noteP) {
+    _noteP.textContent = _horsCat
+      ? "Tes passions personnelles rangent ton fil, mais on ne peut pas encore y publier."
+      : "";
+    _noteP.style.display = _horsCat ? "block" : "none";
+  }
 
   // Drafts
   // 🔧 FIX AUDIT 2026-06-10 : #draftList n'existe plus dans le markup →
@@ -2974,7 +2985,11 @@ async function publishPost() {
       toast("✅ Post publié !", "success");
       try { supaTrack("publish_post", { type: post.type, passion: post.passion, is_reel: !!post.isReel }); } catch(_) {}
     } else {
-      toast("⏱️ Post en local (connexion lente)", "warning");
+      // ⚠️ « connexion lente » accusait le RÉSEAU pour une erreur de DONNÉES :
+      // l'utilisateur réessayait une opération qui ne pouvait jamais aboutir
+      // (docs/PASSION_PERSONNALISEE_FK_2026-08-30.md §3).
+      var _msgP = (typeof messageEchecPassion === "function") ? messageEchecPassion() : null;
+      toast(_msgP || "⏱️ Post en local (connexion lente)", "warning");
     }
   } catch (e) {
     toast("⏱️ Post en local (erreur réseau)", "warning");

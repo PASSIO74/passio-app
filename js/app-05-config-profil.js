@@ -2928,7 +2928,7 @@ async function shareReelInFeed(postId) {
     timestamp: Date.now(),
     likes: 0,
     comments: [],
-    passion: reel.passion,
+    passion: passionDeRepartage(reel.passion),   // cf. `sharePostInFeed` (app-03)
     mood: reel.mood || "chill",
     sharedReel: postId,
     sharedReelData: {
