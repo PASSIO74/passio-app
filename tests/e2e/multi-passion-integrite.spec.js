@@ -298,3 +298,52 @@ test("⑨ la passion principale se CHOISIT, elle ne se normalise pas", async ({ 
   expect(cas.toutesArchivees, "plutôt une catégorie choisie que null").toBe("moto");
   expect(cas.aucuneCanonique, "aucune passion canonique : null, jamais une valeur inventée").toBe(null);
 });
+
+test("⑩ aucun fichier de production n'appelle `supaUpsertProfile`", async ({ page }) => {
+  // ⚠️ COMPLÉMENT STRUCTUREL du verrou ⑧, et non un doublon. ⑧ vérifie un
+  // RÉSULTAT sur le seul chemin pilotable depuis un test (`savePassionProfile`) ;
+  // les trois autres de la même famille — photo, couverture, retrait de
+  // couverture — sont des téléversements asynchrones qu'aucune suite ne
+  // traverse. Ce sont précisément eux qui étaient morts en silence.
+  //
+  // Le nom `supaUpsertProfile` survit VOLONTAIREMENT : `app-helper` et une
+  // vingtaine de suites le neutralisent par ce nom. Mais il ne désigne plus
+  // qu'un ALIAS d'`ensure`, qui n'écrit AUCUN champ d'une ligne existante — et
+  // comme tous les appels sont gardés par `typeof … === "function"`, un
+  // appelant fautif ne lève rien : il ne fait simplement plus rien. Ni les
+  // audits statiques, ni la relecture, ni un test de rendu ne le voient.
+  //
+  // On lit les SOURCES réellement servies au navigateur, comme le garde-fou de
+  // vocabulaire d'ADR-010 : c'est plus large que piloter un écran, pas plus
+  // étroit. Les commentaires sont retirés — ils racontent légitimement
+  // l'histoire du défaut corrigé.
+  const FICHIERS = [
+    "/js/app-01-diag-seed.js", "/js/app-02-state-utils.js", "/js/app-03-posts-vlogs.js",
+    "/js/app-04-comments-shop.js", "/js/app-05-config-profil.js", "/js/app-06-reels-partage.js",
+    "/js/app-07-ia-explore-irl.js", "/js/app-08-ui-modals-tour.js", "/js/app-09-boot-pwa.js",
+    "/js/emoji-misc.js", "/js/ui-v6-composer.js", "/js/ui-v6b-profil.js", "/js/ui-v7-lot.js",
+    "/js/ui-v8-passions.js",
+  ];
+  const fautifs = [];
+  for (const f of FICHIERS) {
+    const r = await page.request.get(f);
+    if (!r.ok()) continue;                       // fichier absent de cette branche
+    // ⚠️ NE PAS retirer les blocs `/* … */` par expression régulière. Mesuré :
+    // `accept="image/*"` — le joker MIME d'un `<input type="file">` — ouvre un
+    // faux bloc de commentaire, et le `*/` suivant se trouve 1 300 lignes plus
+    // loin. Le premier jet de ce test avalait ainsi la moitié d'app-06 et
+    // restait VERT sur la mutation qu'il était censé attraper. Seuls les
+    // commentaires de LIGNE sont retirés ; la prose du dépôt écrit le nom entre
+    // accents graves, jamais suivi d'une parenthèse, donc elle ne matche pas.
+    const src = (await r.text())
+      .split("\n").filter((l) => !l.trim().startsWith("//")).join("\n");
+    // L'appel, jamais la simple mention : `supaUpsertProfile(` suivi d'une
+    // parenthèse fermante ou d'un argument. La DÉFINITION est exclue.
+    const lignes = src.split("\n").filter((l) =>
+      /supaUpsertProfile\s*\(/.test(l) && !/function\s+supaUpsertProfile/.test(l));
+    lignes.forEach((l) => fautifs.push(`${f} — ${l.trim().slice(0, 110)}`));
+  }
+  expect(fautifs,
+    "ces appels ne publient plus rien ; ils doivent viser `supaSavePassionState` "
+    + "ou `supaSavePublicProfile` :\n" + fautifs.join("\n")).toEqual([]);
+});

@@ -34,13 +34,30 @@ const INTERDITS = [
   { motif: "Utiliser pour créer",   pourquoi: "vocabulaire d'identité" },
 ];
 
-// Retire commentaires de ligne, blocs /* */ et commentaires HTML.
+// Retire les commentaires de ligne et les commentaires HTML.
+//
+// ⚠️ AUCUN RETRAIT DES BLOCS `/* … */` PAR EXPRESSION RÉGULIÈRE. Ce fichier en
+// faisait un, et c'était un TROU : mesuré le 2026-08-31, il avalait 5 440 des
+// 41 293 lignes analysées — 13 %, dont 2 448 des 3 671 lignes d'app-06, soit
+// les deux tiers du fichier. Cause : `accept="image/*"`, le joker MIME d'un
+// `<input type="file">`, ouvre un faux bloc de commentaire, et le `*/` suivant
+// se trouve plus de mille lignes plus loin. Le garde-fou de vocabulaire ne
+// voyait donc PAS la majorité du code qu'il prétend surveiller, sans rien dire.
+// Trouvé en écrivant un autre verrou avec le même helper : il restait vert sur
+// la mutation qu'il devait attraper.
+//
+// Conséquence assumée : une formulation interdite écrite DANS un vrai bloc
+// `/* … */` multiligne serait signalée. C'est un faux positif bruyant et
+// trivial à lever — infiniment préférable à un angle mort silencieux. Les
+// blocs tenant sur UNE ligne (`/* … */`) restent retirés, sans risque.
 function sansCommentaires(src, html) {
-  let s = src.replace(/\/\*[\s\S]*?\*\//g, " ");
+  let s = src;
   if (html) s = s.replace(/<!--[\s\S]*?-->/g, " ");
   return s.split("\n").filter(l => {
     const t = l.trim();
-    return !(t.startsWith("//") || t.startsWith("*"));
+    if (t.startsWith("//") || t.startsWith("*")) return false;
+    if (t.startsWith("/*") && t.endsWith("*/")) return false;
+    return true;
   }).join("\n");
 }
 
