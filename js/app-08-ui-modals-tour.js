@@ -26,18 +26,10 @@ function openModal(html) {
   if (backdrop) backdrop.classList.add("active");
 }
 function closeModal() {
-  // Arrêter le refresh automatique du CDV Live si actif
-  if (cdvLiveRefreshInterval) {
-    clearInterval(cdvLiveRefreshInterval);
-    cdvLiveRefreshInterval = null;
-  }
-
-  // Retirer le spectateur du live si c'est applicable
-  const currentLiveId = document.querySelector(".modal-fullscreen")?.getAttribute("data-live-id");
-  if (currentLiveId) {
-    removeCdvLiveViewer(currentLiveId);
-  }
-
+  // ⚠️ Le nettoyage du CDV Live (arrêt du polling, retrait du spectateur) a été
+  // retiré avec la fonctionnalité (§6). `cdvLiveRefreshInterval` et
+  // `removeCdvLiveViewer` n'existent plus — les garder ici aurait levé un
+  // ReferenceError à CHAQUE fermeture de modale, c'est-à-dire partout.
   $("#modalBackdrop").classList.remove("active");
 }
 function closeModalOnBackdrop(e) {
@@ -61,12 +53,12 @@ const TOUR_STEPS = [
   {
     screen: "profiles",
     emoji: "👤",
-    title: "Plusieurs profils, plusieurs passions",
-    lede: "Un espace dédié pour chaque chose qui t'anime.",
+    title: "Un seul profil, plusieurs passions",
+    lede: "Range ce que tu publies, choisis ce que tu vois.",
     points: [
-      "Skate, lecture, photo, cuisine, chaque passion son profil",
-      "Tu changes d'univers en un tap",
-      "Pas besoin de tout mélanger sur un seul compte"
+      "Skate, lecture, photo, cuisine : tu publies dans la passion qui correspond",
+      "Ton fil réunit les passions que tu choisis et les personnes que tu suis",
+      "Un seul pseudo, un seul profil : les gens te suivent, toi"
     ]
   },
   {
@@ -95,7 +87,7 @@ const TOUR_STEPS = [
     screen: "studio",
     emoji: "🎙",
     title: "Crée tout ce que tu veux",
-    lede: "Texte, photo, vidéo, podcast, carnet de voyage, tout au même endroit.",
+    lede: "Texte, photo, vidéo, bobine, podcast, tout au même endroit.",
     points: [
       "Pas besoin d'outils externes",
       "Templates pour démarrer facilement",
@@ -113,17 +105,8 @@ const TOUR_STEPS = [
       "Des créateurs à découvrir, près de chez toi"
     ]
   },
-  {
-    screen: "cdv",
-    emoji: "📔",
-    title: "Raconte tes voyages",
-    lede: "Documente tes périples comme une histoire, pour t'en souvenir et inspirer les autres.",
-    points: [
-      "Étapes, photos, vidéos, audio, conseils",
-      "Carte interactive auto-générée",
-      "Inspire-toi des carnets des autres pour préparer le tien"
-    ]
-  },
+  // ⚠️ L'étape « Raconte tes voyages » du tour a été retirée avec le Carnet de
+  // voyage (§6) : elle promettait un écran qui n'existe plus.
 ];
 
 let tourIdx = 0;
@@ -1286,6 +1269,32 @@ async function mePublish() {
   var overlays = _meOverlaysData();
   var firstText = (meState.overlays.find(function(o) { return o.type === "text"; }) || {}).text || "";
   var media = meState.media, mediaType = meState.mediaType, bg = meState.bg, mode = meState.mode;
+
+  // ⚠️ LE REFUS DOIT PRÉCÉDER `meClose()`. Une première version plaçait ce garde
+  // plus bas, dans la branche bobine — donc APRÈS la fermeture de l'éditeur. Or
+  // `meClose()` révoque l'URL de prévisualisation (`_meRevokePreviewUrl`) et la
+  // seule ré-entrée, `meOpen()`, réinitialise `meState` à vide : la vidéo, les
+  // overlays, le texte et la couverture étaient DÉTRUITS par un refus censé les
+  // protéger. Le remède était pire que le mal. On refuse avant de fermer :
+  // l'éditeur reste intact et le geste reste rattrapable.
+  //
+  // ⚠️ Et on RÉSOUT avant de refuser. `d.passion || p.passion || défaut` ne
+  // consultait le repli que si les DEUX étaient vides : un compte dont la
+  // passion active est personnelle voyait sa bobine refusée alors qu'il possède
+  // par ailleurs une passion publiable. `passionDeRepartage` applique la même
+  // règle que les trois partages — la passion demandée si elle peut partir, la
+  // mienne sinon.
+  var _passionBobine = null;
+  if (mode !== "story") {
+    var _dBob = meState.details || {};
+    var _pBob = (typeof currentProfile === "function" && currentProfile()) || {};
+    _passionBobine = (typeof passionDeRepartage === "function")
+      ? passionDeRepartage(_dBob.passion || _pBob.passion)
+      : (_dBob.passion || _pBob.passion);
+    if (typeof publicationRefuseeFautePassion === "function"
+        && publicationRefuseeFautePassion(_passionBobine)) return;   // éditeur INTACT
+  }
+
   meClose();
   if (mode === "story") {
     var story = {
@@ -1317,7 +1326,11 @@ async function mePublish() {
     var post = {
       id: "reel_" + uid(), authorId: authorId, profileId: state.user.currentProfileId,
       authorName: p.name || state.user.name || "Profil", authorEmoji: p.emoji || "✨", authorColor: p.color || "#8b5cf6",
-      passion: d.passion || p.passion || "autre", mood: "creation",
+      // Résolue et VALIDÉE plus haut, avant `meClose()`. Le repli était la
+      // valeur FANTÔME « autre », absente des 19 identifiants du référentiel :
+      // elle faisait rejeter l'insert par la clé étrangère, donc la bobine ne
+      // quittait jamais l'appareil.
+      passion: _passionBobine, mood: "creation",
       type: (mediaType === "video") ? "video" : "photo", isReel: true,
       image: (mediaType === "photo") ? media : (d.cover || null),
       video: (mediaType === "video") ? media : null,
@@ -1352,6 +1365,10 @@ function _publishReelWithFeedback(post) {
       toast("✅ Bobine publiée !");
       return;
     }
+    // Échec de CLASSEMENT : réessayer est inutile, et le dire franchement vaut
+    // mieux que huit tentatives silencieuses espacées de 45 s.
+    var _msgP = (typeof messageEchecPassion === "function") ? messageEchecPassion() : null;
+    if (_msgP) { post._pendingSync = false; try { saveState(); } catch (e) {} toast(_msgP); return; }
     post._pendingSync = true;
     toast("⚠️ Vidéo pas encore envoyée — nouvel essai automatique. Garde l'app ouverte.");
     _scheduleReelRetry();
@@ -1758,6 +1775,18 @@ function _notifTexteHtml(n) {
   return deConfiance ? String(n.text || "") : _neutraliserBalisesNotif(n.text);
 }
 
+// §2 : sous le texte d'une notification, les passions de la personne qui l'a
+// déclenchée — quand on sait qui c'est. `identitePassionsHTML` rend "" pour un
+// émetteur inconnu ou sans passion publiée, et on ne peint alors rien.
+function _notifIdentiteHtml(n) {
+  try {
+    var id = n && (n.fromId || n.authorId);
+    if (!id || id === "me") return "";
+    var u = (typeof userById === "function") ? userById(id) : null;
+    return u ? identitePassionsHTML(u, "ident-passions-sm") : "";
+  } catch (e) { return ""; }
+}
+
 function _notifListHtml(notifs) {
   notifs = notifs || [];
   if (!notifs.length) return `
@@ -1771,6 +1800,7 @@ function _notifListHtml(notifs) {
       <div class="notif-icon">${escapeHtml(n.emoji || "✨")}</div>
       <div class="notif-body">
         <div class="notif-text">${_notifTexteHtml(n)}</div>
+        ${_notifIdentiteHtml(n)}
         <div class="notif-meta">${fmtTime(n.createdAt)}</div>
       </div>
       ${n.unread ? '<div class="notif-dot"></div>' : ""}
@@ -1945,9 +1975,12 @@ function openNotifTarget(n) {
     case "live_video":
       if (ref && typeof joinVideoLive === "function") joinVideoLive(ref);
       break;
-    // Nouvelle étape d'un carnet en direct qu'on suit → ouvre le live.
+    // ⚠️ « Nouvelle étape d'un carnet en direct » n'ouvre plus rien : le viewer
+    // a été retiré (§6). Les notifications déjà reçues restent affichées — les
+    // effacer serait détruire l'historique de quelqu'un — mais les toucher
+    // ramène simplement au fil, via la redirection de `goTo("cdv")`.
     case "cdv_live_step":
-      if (ref && typeof openCdvLiveViewer === "function") { if (typeof goTo === "function") goTo("cdv"); openCdvLiveViewer(ref); }
+      if (typeof goTo === "function") goTo("feed");
       break;
     default:
       // Notif locale / type inconnu : pas de cible précise, on n'ouvre rien.
@@ -2148,7 +2181,17 @@ async function boot() {
                 passion: ps.id,
                 emoji: ps.emoji || (pd && pd.emoji) || "✨",
                 color: (pd && pd.color) || "#8b5cf6",
-                bio: "",
+                // Bio et photos voyagent aussi dans le jsonb depuis le 2026-07-20 :
+                // ne pas les relire, c'était rendre une passion nue à un compte qui
+                // l'avait renseignée.
+                bio: ps.bio || "",
+                photoUrl: ps.photoUrl || null,
+                coverUrl: ps.coverUrl || null,
+                // ⚠️ Restituer le rangement. Sans ce report, une passion archivée
+                // revenait VIVANTE sur un appareil neuf — l'archivage ne survivait
+                // pas à un changement de téléphone (symétrique du défaut corrigé
+                // dans `supaUpsertProfile`, qui, lui, la faisait disparaître).
+                archived: !!ps.archived,
                 createdAt: Date.now() - idx,
               };
             });
@@ -2164,7 +2207,10 @@ async function boot() {
               createdAt: Date.now(),
             }];
           }
-          state.user.currentProfileId = state.user.profiles[0].id;
+          // La passion active ne doit JAMAIS être archivée (invariant du lot UI-8) :
+          // `profiles[0]` peut l'être maintenant que le rangement est restitué.
+          state.user.currentProfileId = (state.user.profiles.find(function (p) { return !p.archived; })
+            || state.user.profiles[0]).id;
           if (srvProf) {
             state.user.general = state.user.general || {};
             if (srvProf.username) state.user.general.username = srvProf.username;
@@ -2372,6 +2418,11 @@ function _initRealSupa() {
     supa = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
     window.supa = supa;
     window._supaReal = true;
+    // Référentiel des passions (ADR-010) : chargé UNE fois, en arrière-plan.
+    // Volontairement NI attendu NI await : le démarrage ne doit pas dépendre de
+    // cette requête, et tant qu'elle n'a pas répondu `estPassionCanonique`
+    // utilise le repli local. Un échec laisse donc les 19 passions utilisables.
+    try { if (typeof chargerReferentielPassions === "function") chargerReferentielPassions(); } catch (e) {}
     return true;
   } catch(e) { console.warn("Supabase init failed:", e); return false; }
 }
@@ -2389,33 +2440,57 @@ let MY_UID = getMyUserId();
 // existe RÉELLEMENT dans le référentiel `passions` — sinon la clé étrangère
 // rejette l'upsert entier.
 //
-// ⚠️ Le discriminant est la LISTE BLANCHE `PASSIONS`, pas le drapeau `custom`
-// ni le préfixe `custom_`. Le drapeau ne vit que dans `state.user.customPassions`
-// et disparaît sur un appareil neuf (la reconstruction du boot rebâtit les
-// profils depuis le jsonb `profiles.passions` sans jamais le restaurer) : s'y
-// fier laisserait passer l'identifiant invalide précisément dans le cas qu'on
-// cherche à réparer. Le préfixe, lui, est une liste NOIRE : il ne couvre ni
-// « autre », ni « test », ni la chaîne vide. La liste blanche rejette les quatre.
-function estPassionCanonique(id) {
-  if (!id || typeof id !== "string") return false;
-  try {
-    if (typeof PASSIONS === "undefined" || !Array.isArray(PASSIONS)) return false;
-    for (var i = 0; i < PASSIONS.length; i++) if (PASSIONS[i] && PASSIONS[i].id === id) return true;
-  } catch (e) {}
-  return false;
-}
+// ⚠️ Le discriminant est la LISTE BLANCHE, pas le drapeau `custom` ni le préfixe
+// `custom_`. Le drapeau ne vit que dans `state.user.customPassions` et disparaît
+// sur un appareil neuf (la reconstruction du boot rebâtit les profils depuis le
+// jsonb `profiles.passions` sans jamais le restaurer) : s'y fier laisserait
+// passer l'identifiant invalide précisément dans le cas qu'on cherche à réparer.
+// Le préfixe, lui, est une liste NOIRE : il ne couvre ni « autre », ni « test »,
+// ni la chaîne vide. La liste blanche rejette les quatre.
+//
+// ⚠️ LA DÉFINITION VIT DANS app-02, PAS ICI. Le hotfix #226 en portait une copie
+// locale, bornée à `PASSIONS`. La fusion du 2026-08-31 en a fait DEUX
+// déclarations top-level du même nom — et comme app-08 charge APRÈS app-02, la
+// copie du hotfix gagnait par hoisting : elle aurait silencieusement dégradé la
+// version d'ADR-010, qui interroge le référentiel SERVEUR en union avec le socle
+// local. `npm run audit:globals` l'a attrapée. La copie est donc retirée ; le
+// nom résout vers app-02, seule autorité.
 
 // La passion principale publiée : la première VIVANTE et canonique, sinon celle
 // de la passion active si elle l'est, sinon `null`. On ne substitue jamais une
 // passion arbitraire — un compte n'est pas rangé dans une catégorie qu'il n'a
 // pas choisie.
+//
+// ⚠️ CHOISIR n'est pas NORMALISER — régression mesurée au run 2342 de la CI.
+// La fusion du 2026-08-31 avait remplacé cet appel par l'expression en ligne
+// `optionalCanonicalPassion(première vivante)`, avec le commentaire « même effet,
+// une seule règle ». C'était faux : normaliser la PREMIÈRE passion rend `null`
+// dès qu'elle n'est pas canonique, alors que PARCOURIR la liste trouve la
+// suivante qui l'est. Un compte portant « tricot perso » puis « yoga » publiait
+// donc `passion_id: null` — il perdait son classement public alors qu'il
+// possède une passion parfaitement valide. Les deux écritures sont légitimes,
+// mais elles ne répondent pas à la même question : `optionalCanonicalPassion`
+// répond « cette valeur-là est-elle écrivable ? », celle-ci « laquelle de mes
+// passions représente ce compte ? ». La canonicité reste déléguée à app-02, donc
+// le référentiel SERVEUR est bien pris en compte : une seule règle, appliquée au
+// bon endroit.
+//
+// ⚠️ Elle préfère une passion VIVANTE, mais accepte une archivée en dernier
+// recours : le champ sert la rétro-compatibilité (feed, embeds, anciens clients)
+// et un compte dont toutes les passions sont rangées reste mieux classé par une
+// catégorie qu'il a choisie que par `null`. L'affichage, lui, retire les
+// archivées (`passionsPubliques`, app-02) : ranger reste visible côté lecture.
 function _passionIdPubliable(passions, prof) {
   try {
     var liste = Array.isArray(passions) ? passions : [];
-    for (var i = 0; i < liste.length; i++) {
-      if (liste[i] && estPassionCanonique(liste[i].id)) return liste[i].id;
+    var i, repli = null;
+    for (i = 0; i < liste.length; i++) {
+      if (!liste[i] || !estPassionCanonique(liste[i].id)) continue;
+      if (!liste[i].archived) return liste[i].id;
+      if (repli === null) repli = liste[i].id;
     }
     if (prof && estPassionCanonique(prof.passion)) return prof.passion;
+    return repli;
   } catch (e) {}
   return null;
 }
@@ -2603,15 +2678,18 @@ function _chargeProfilComplete() {
     // Les photos ne partent que si ce sont des URLs Storage (jamais de base64,
     // le jsonb servirait alors des mégaoctets à chaque lecture de profil).
     const _httpOnly = (v) => (typeof v === "string" && /^https?:\/\//.test(v)) ? v : null;
-    // ⚠️ Lot UI-8 : une passion ARCHIVÉE ne part pas dans le profil public.
-    // Ranger une passion et la voir rester chez les visiteurs, c'est un
-    // archivage qui n'archive rien. Rien n'est perdu pour autant : le drapeau
-    // vit dans le blob `user_state`, et la restaurer la republie telle quelle.
-    const _v8Vivantes = (state.user.profiles || []).filter(pr => {
-      try { return !(typeof passionsUnifieesActives === "function" && passionsUnifieesActives() && pr.archived); }
-      catch (e) { return true; }
-    });
-    const _passions = _v8Vivantes.map(pr => {
+    // ⚠️ Lot UI-8 : une passion ARCHIVÉE ne doit pas s'afficher chez les visiteurs
+    // — ranger une passion et la voir rester chez les autres, c'est un archivage
+    // qui n'archive rien. Mais elle est désormais PUBLIÉE quand même, marquée
+    // `archived: true`, et c'est l'AFFICHAGE qui la retire (`passionsPubliques`,
+    // app-02). Corrigé le 2026-08-30 : l'exclusion à la source rendait la passion
+    // rangée IRRÉCUPÉRABLE. Cette colonne jsonb a en effet deux rôles — (a) la
+    // liste montrée aux visiteurs et (b) la sauvegarde de MES passions, relue par
+    // la reconstruction du boot (app-08 ~2140) quand un appareil neuf n'a ni état
+    // local ni `user_state`. Ne publier que les vivantes vidait (b) pour servir
+    // (a) : on se reconnectait sur un nouveau téléphone et la passion archivée
+    // n'existait plus nulle part. « Archiver ne supprime rien » ne tenait pas.
+    const _passions = (state.user.profiles || []).map(pr => {
       const pas = (typeof passionById === "function") ? passionById(pr.passion) : null;
       return {
         id: pr.passion,
@@ -2621,33 +2699,40 @@ function _chargeProfilComplete() {
         color: pr.color || "#8b5cf6",
         photoUrl: _httpOnly(pr.photoUrl || pr.photo),
         coverUrl: _httpOnly(pr.coverUrl || pr.coverPhoto),
+        // Marqueur de rangement : lu par `passionsPubliques()` à l'affichage, et
+        // par la reconstruction du boot pour restituer l'état exact du compte.
+        archived: !!pr.archived,
       };
     }).filter(p => p.id);
 
+    // ⚠️ IDENTITÉ PUBLIQUE STABLE (2026-08-30). L'emoji et la couleur publiés ici
+    // sont ceux du COMPTE (`general`), jamais ceux de la passion ACTIVE. C'est la
+    // même correction que le « PSEUDO CENTRALISÉ » ci-dessus, qui n'avait été
+    // appliquée qu'au nom : `prof.emoji`/`prof.color` survivaient deux lignes plus
+    // bas. Le défaut n'était pas cosmétique — `supaLoadPosts` reconstruit l'avatar
+    // de CHAQUE publication depuis `profiles.emoji` (app-08 ~2993), pas depuis un
+    // emoji figé à la publication. Basculer de passion réécrivait donc l'avatar de
+    // TOUT l'historique, rétroactivement et chez tous les autres comptes : 40 posts
+    // publiés en 🏍️ Moto s'affichaient en 🧘 après un passage sur Yoga. La passion
+    // reste visible par publication via `posts.passion_id` ; elle ne signe plus
+    // l'identité. Repli sur la passion active seulement si le compte n'a rien
+    // (ancien état jamais passé par « Modifier le profil »).
     const profileData = {
       id: MY_UID,
       username: _uname,
-      // ⚠️ COMPORTEMENT DE `main` CONSERVÉ, délibérément. Une version de ce
-      // hotfix faisait passer `general.emoji`/`general.color` devant ceux de la
-      // passion. C'était une fausse stabilisation : sur `main`, `saveMainProfile`
-      // ALIMENTE encore `general.emoji` depuis la passion ACTIVE — la source
-      // n'est donc pas stable, et la rendre prioritaire n'aurait fait que changer
-      // laquelle des deux valeurs dérivées gagne, en modifiant au passage
-      // l'identité publique de comptes existants. Hors du périmètre d'un hotfix
-      // consacré à la CRÉATION de la ligne.
-      // Effet de `prof = currentProfile() || {}` : un profil résoluble garde
-      // exactement son emoji et sa couleur d'avant ; sans profil résoluble, les
-      // replis neutres s'appliquent. Assainir la source appartient à ADR-010.
+      // ⚠️ AUCUNE PRIORITÉ NOUVELLE donnée à `general.emoji`/`general.color` —
+      // exigence de Benjamin, tenue par le hotfix #226. La faire primer était une
+      // fausse stabilisation, et modifiait l'identité publique de comptes existants.
+      // ⚠️ En pratique ce champ n'est plus écrit après la création : seul
+      // `supaSavePublicProfile` publie l'emoji, et `saveMainProfile` ne le lui
+      // passe pas. `supaSavePassionState` ne prend que `passions`/`passion_id`.
       emoji: prof.emoji || "✨",
       color: prof.color || "#8b5cf6",
-      // ⚠️ `profiles.passion_id` porte une clé étrangère vers `passions(id)`, et
-      // la table `passions` n'a qu'une policy SELECT : aucun client ne peut y
-      // insérer une ligne. Un identifiant absent du référentiel — une passion
-      // personnalisée `custom_…`, la sentinelle « autre », « test », ou une
-      // chaîne vide — fait donc rejeter TOUT l'upsert en 23503, pas seulement
-      // ce champ. La colonne étant NULLABLE et une FK acceptant NULL, on
-      // normalise plutôt que de perdre le profil : la passion est un attribut
-      // AUXILIAIRE, l'identité publique ne doit pas dépendre d'elle.
+      // La passion « principale » (rétro-compat : feed, embeds, anciens clients)
+      // doit être VIVANTE — `_passions` contient aussi les archivées.
+      // Politique FACULTATIVE (ADR-010) : le profil public a une raison d'exister
+      // indépendante de son classement. Aucune passion canonique résoluble →
+      // `null`, plutôt que de faire rejeter TOUT l'upsert par la clé étrangère.
       passion_id: _passionIdPubliable(_passions, prof),
       passions: _passions,
       bio: g.bio || "",
@@ -2879,6 +2964,25 @@ async function supaPublishPostWithRetry(post, maxRetries = 2) {
     try { if (_pubCid && window.tel) { tel.step(_pubCid, "saved", ok ? "ok" : "error"); tel.flowEnd(_pubCid, ok ? "ok" : "error"); _pubCid = null; } } catch (e) {}
     return ok;
   }
+  // ── Politique `posts` : la passion est OBLIGATOIRE (ADR-010) ─────────────
+  // Le garde est ICI, au point d'écriture central, parce que QUATRE producteurs
+  // y aboutissent — Studio (`publishPost`), bobine (`mePublish`), partage
+  // d'événement et repartages — et qu'un garde par producteur en aurait manqué
+  // un. Il s'exécute AVANT toute requête : ni upload de média, ni insert.
+  //
+  // ⚠️ On BLOQUE, on ne substitue pas. Une valeur non canonique fait rejeter
+  // l'insert par `posts_passion_fk` (23503) : l'utilisateur voyait alors
+  // « connexion lente » pour une erreur de DONNÉES et réessayait indéfiniment
+  // (docs/PASSION_PERSONNALISEE_FK_2026-08-30.md §3). La substitution
+  // appartient aux producteurs, qui seuls savent quel geste vient d'être fait.
+  window._passioEchecPublication = null;
+  const _clsPassion = requiredCanonicalPassion(post && post.passion);
+  if (!_clsPassion.ok) {
+    window._passioEchecPublication = (_clsPassion.motif === "null") ? "passion_absente" : "passion_inconnue";
+    console.warn("publication refusée — passion « " + (post && post.passion) + " » : " + _clsPassion.motif);
+    return _pubDone(false);
+  }
+
   // S'assurer que le profil existe en DB avant de publier
   // (le JOIN profiles!author_id retourne null sinon → pas de nom d'auteur)
   try { await supaEnsureProfileExists(); } catch(e) {}
@@ -2939,28 +3043,16 @@ async function supaPublishPostWithRetry(post, maxRetries = 2) {
         try { saveState(); } catch (e) {}
       }
 
-      // Carnet de voyage : uploader la cover + les médias d'étapes sur Storage
-      // (jamais de base64 en DB) et construire le blob jsonb `vlog`.
-      let vlogData = null;
-      if (post.type === "vlog") {
-        // ⚠️ Ne PAS retomber sur `null` en silence. Le champ `vlog` était alors omis
-        // du payload et le post s'insérait quand même : le carnet arrivait en base
-        // dépouillé de ses étapes, de sa couverture et de ses métadonnées, avec un
-        // succès officiel à la clé. Une exception ici (ReferenceError, upload qui
-        // remonte) doit faire ÉCHOUER la publication — le brouillon reste, on retente.
-        try {
-          vlogData = await _buildVlogPayload(post);
-        } catch(e) {
-          console.warn("carnet : construction du contenu impossible —", e && e.message);
-          return _pubDone(false);
-        }
-      }
+      // ⚠️ La construction du blob jsonb `vlog` a été retirée avec le Carnet de
+      // voyage (§6) : plus aucun chemin ne produit une publication de ce type.
+      // La COLONNE `vlog` reste en base et les carnets déjà publiés la gardent —
+      // ce retrait ne touche pas une seule ligne existante.
 
-      // STEP 2: Créer le post (timeout plus long pour un carnet — plus de médias)
+      // STEP 2: Créer le post
       const postData = {
         id: post.id,
         author_id: MY_UID,
-        passion_id: post.passion || null,
+        passion_id: _clsPassion.valeur,
         mood: post.mood || "all",
         content: (post.text && !post.text.startsWith("data:")) ? post.text : (post.text?.startsWith("data:") ? "" : ""),
         // ✅ NE JAMAIS stocker du base64 en DB — seulement des URLs Supabase Storage
@@ -2968,7 +3060,6 @@ async function supaPublishPostWithRetry(post, maxRetries = 2) {
         created_at: new Date(post.createdAt).toISOString(),
         is_reel: !!post.isReel, // bobine → Bobines (exclu du feed)
         ...(post.overlays && post.overlays.length ? { overlays: post.overlays } : {}),
-        ...(vlogData ? { vlog: vlogData } : {}),
         // 🔄 Ajouter les champs de repost si applicable
         ...(post.sharedReel && { shared_from_post_id: post.sharedReel }),
         ...(post.sharedReelData && { shared_data: JSON.stringify(post.sharedReelData) }),
@@ -2982,17 +3073,8 @@ async function supaPublishPostWithRetry(post, maxRetries = 2) {
       const insertPromise = supa.from("posts").insert([postData]).select();
       const { data, error } = await Promise.race([
         insertPromise,
-        new Promise((_, reject) => setTimeout(() => reject(new Error("Insert timeout")), post.type === "vlog" ? 15000 : 12000))
+        new Promise((_, reject) => setTimeout(() => reject(new Error("Insert timeout")), 12000))
       ]);
-
-      // Colonne `vlog` absente (migration non appliquée) → réessayer SANS vlog
-      // pour ne pas perdre le post (dégradation propre : carnet local-only).
-      if (error && vlogData && /vlog/.test(error.message || "")) {
-        delete postData.vlog;
-        const retry = await supa.from("posts").insert([postData]).select();
-        if (retry.error) throw retry.error;
-        return _pubDone(true);
-      }
       // Colonne `event_id` absente (migration IRL v2 non appliquée) → réessayer
       // sans le rattachement à l'événement plutôt que de perdre le post.
       if (error && postData.event_id && /event_id/.test(error.message || "")) {
@@ -3009,6 +3091,14 @@ async function supaPublishPostWithRetry(post, maxRetries = 2) {
       return _pubDone(true);
 
     } catch (e) {
+      // 23503 = clé étrangère. Erreur de DONNÉES, donc définitive : la réessayer
+      // ne fait que retarder le même refus, et — pour une bobine — relance une
+      // boucle de 8 essais espacés de 45 s qui ne pouvait pas aboutir.
+      if (e && (String(e.code) === "23503" || /foreign key/i.test(e.message || ""))) {
+        window._passioEchecPublication = "passion_inconnue";
+        console.warn("publication refusée par la clé étrangère :", e.message || e);
+        return _pubDone(false);
+      }
       if (attempt === maxRetries) return _pubDone(false);
 
       // Attendre avant retry
@@ -3019,124 +3109,10 @@ async function supaPublishPostWithRetry(post, maxRetries = 2) {
   return _pubDone(false);
 }
 
-// ── Co-auteurs d'un CARNET (table post_collaborators) ──
-// Même principe que les co-voyageurs d'un live, appliqué au récit : la policy
-// UPDATE de `posts` passe par can_edit_post(id) (SECURITY DEFINER) et un
-// trigger gèle author_id, donc un co-auteur écrit sans pouvoir s'approprier
-// le carnet. Cf. migration_carnet_collaborators.sql.
-async function supaAddCarnetCollaborator(postId, userId) {
-  try {
-    if (!postId || !userId || !MY_UID) return false;
-    const { error } = await supa.from("post_collaborators")
-      .insert({ post_id: postId, user_id: userId, added_by: MY_UID });
-    if (error && error.code !== "23505") { console.warn("carnet collab:", error.message); return false; }
-    return true;
-  } catch (e) { console.warn("carnet collab:", e); return false; }
-}
 
-// ⚠️ RÉVOCATION DE DROITS : le résultat doit être lu. Cette ligne participe
-// directement à `can_edit_post` — la croire supprimée alors qu'elle existe encore
-// laisse un collaborateur écarté de l'écran continuer à modifier le carnet.
-async function supaRemoveCarnetCollaborator(postId, userId) {
-  try {
-    const res = await supa.from("post_collaborators").delete()
-      .eq("post_id", postId).eq("user_id", userId).select("user_id");
-    return _writeVerdict(res, { label: "retrait de co-auteur du carnet" }).ok;
-  } catch (e) { console.warn("retrait de co-auteur du carnet :", e && e.message); return false; }
-}
 
-// Charge les co-auteurs des carnets visibles → { postId: [userId, …] }.
-// ⚠️ Renvoie NULL (et pas {}) en cas d'échec ou hors-ligne : l'appelant doit
-// pouvoir distinguer « le serveur dit : aucun co-auteur » de « je n'ai pas pu
-// demander ». Sans ça, une coupure réseau effaçait les co-auteurs connus
-// localement et faisait disparaître les crédits du carnet.
-async function supaLoadCarnetCollaborators(postIds) {
-  try {
-    if (!postIds || !postIds.length || !window._supaReal) return null;
-    const { data, error } = await supa.from("post_collaborators").select("*").in("post_id", postIds);
-    if (error || !data) return null;
-    const m = {};
-    postIds.forEach((id) => { m[id] = []; });   // réponse explicite : liste vide
-    data.forEach((r) => { (m[r.post_id] = m[r.post_id] || []).push(r.user_id); });
-    return m;
-  } catch (e) { return null; }
-}
 
-// Met à jour un carnet DÉJÀ publié (modification par son auteur). Réutilise
-// _buildVlogPayload : les nouveaux médias base64 partent sur Storage, ceux déjà
-// en http(s) sont conservés tels quels. RLS : la policy UPDATE de `posts` limite
-// déjà à l'auteur, on double avec .eq("author_id", MY_UID).
-async function supaUpdateVlogPost(post) {
-  try {
-    if (!post || !post.id || typeof MY_UID === "undefined" || !MY_UID || !window._supaReal) return false;
-    const vlogData = await _buildVlogPayload(post);
-    const patch = { content: post.text || "", vlog: vlogData };
-    // ⚠️ PAS de .eq("author_id", MY_UID) ici : un CO-AUTEUR doit pouvoir
-    // enregistrer. C'est la policy UPDATE (can_edit_post) qui autorise ou non,
-    // et le trigger posts_freeze_author qui protège la propriété.
-    // ⚠️ `.select()` + comptage : la policy can_edit_post peut filtrer l'UPDATE et
-    // renvoyer { data: [], error: null }. Un co-auteur dont les droits viennent
-    // d'être révoqués, l'éditeur resté ouvert, recevait alors « enregistré » alors
-    // que le carnet serveur gardait son ancienne version.
-    const res = await supa.from("posts").update(patch).eq("id", post.id).select("id");
-    const error = res.error;
-    if (!error) return _writeVerdict(res, { expectRows: true, label: "enregistrement du carnet" }).ok;
-    if (error) {
-      // Colonne `vlog` absente (migration non appliquée) → au moins le texte.
-      if (/vlog/.test(error.message || "")) {
-        const r2 = await supa.from("posts").update({ content: post.text || "" }).eq("id", post.id).select("id");
-        return _writeVerdict(r2, { expectRows: true, label: "enregistrement du carnet (texte seul)" }).ok;
-      }
-      console.warn("supaUpdateVlogPost:", error.message);
-      return false;
-    }
-    return true;
-  } catch (e) { console.warn("supaUpdateVlogPost:", e); return false; }
-}
 
-// Construit le blob jsonb `vlog` d'un carnet : champs texte + cover et médias
-// d'étapes UPLOADÉS sur Storage (jamais de base64 en DB, même hygiène que les
-// vocaux / étapes CDV). Un média qui échoue à l'upload est sauté (le carnet
-// reste léger ; l'auteur garde sa copie locale base64 dans state.userPosts).
-async function _buildVlogPayload(post) {
-  async function up(b64, key, kind) {
-    if (!b64 || typeof b64 !== "string") return null;
-    if (b64.indexOf("data:") !== 0) return b64; // déjà une URL
-    try {
-      var folder = kind === "video" ? "videos" : kind === "audio" ? "audios" : "photos";
-      var url = await supaUploadMedia(post.id + "_" + key, folder, b64, kind);
-      return (url && url.indexOf("data:") !== 0) ? url : null;
-    } catch (e) { return null; }
-  }
-  var coverUrl = await up(post.cover, "cover", "image");
-  if (coverUrl) { post.cover = coverUrl; try { saveState(); } catch(e) {} }
-  var steps = [];
-  var srcSteps = Array.isArray(post.steps) ? post.steps : [];
-  for (var i = 0; i < srcSteps.length; i++) {
-    var s = srcSteps[i] || {};
-    var photo = await up(s.photo, "s" + i + "p", "image");
-    var video = await up(s.video, "s" + i + "v", "video");
-    var audio = await up(s.audio, "s" + i + "a", "audio");
-    if (photo) s.photo = photo; if (video) s.video = video; if (audio) s.audio = audio;
-    // Coordonnées réelles de l'étape (GPS ou géocodage) → carte fiable pour tous
-    // les lecteurs, y compris hors du dictionnaire de villes françaises.
-    if (typeof s.lat !== "number" && s.place && typeof cdvGeocodePlace === "function") {
-      try { var g = await cdvGeocodePlace(s.place); if (g) { s.lat = g.lat; s.lng = g.lng; } } catch (e) {}
-    }
-    steps.push({ place: s.place || "", text: s.text || "", tip: s.tip || "", budget: s.budget || "",
-      photo: photo, video: video, audio: audio,
-      lat: (typeof s.lat === "number") ? s.lat : null, lng: (typeof s.lng === "number") ? s.lng : null });
-  }
-  try { saveState(); } catch(e) {}
-  return {
-    destination: post.destination || "", dateStart: post.dateStart || null, dateEnd: post.dateEnd || null,
-    budget: post.budget || "", transport: post.transport || "", lodging: post.lodging || "",
-    season: post.season || "", tip: post.tip || "", cover: coverUrl, steps: steps,
-    // Visibilité du carnet (public / followers / private) : stockée DANS le blob
-    // jsonb `vlog` (pas de nouvelle colonne). Filtrée côté client par canSeeCarnet().
-    visibility: post.visibility || "public",
-  };
-}
 
 // Redimensionne une image base64 AVANT upload : max 1600 px (grand côté),
 // ré-encodée JPEG 0.85 (PNG conservé pour la transparence, GIF non touché pour
@@ -3361,10 +3337,22 @@ async function supaLoadPosts(offset = 0, authorId = null) {
         authorEmoji: r.profiles?.emoji || "✨",  // ✅ Utiliser l'emoji depuis profiles
         authorColor: r.profiles?.color || "#8b5cf6",  // ✅ Utiliser la couleur depuis profiles
         authorAvatar: r.profiles?.avatar_url || null,  // 📷 Photo de profil (URL Storage) si définie
-        passion: r.passion_id || "autre", mood: r.mood || "all",
+        // ⚠️ Jamais « autre » : cette valeur fantôme n'est dans aucun des 19
+        // identifiants du référentiel. Elle ne changeait rien à l'affichage
+        // (`passionById` retombe sur son défaut dans les deux cas) mais elle
+        // repartait en ÉCRITURE dès qu'un post relu était repartagé.
+        passion: r.passion_id || null, mood: r.mood || "all",
         // ✅ Détecter le type basé sur l'extension du fichier dans media_url
         type: (() => {
-          if (r.vlog) return "vlog"; // carnet de voyage (colonne jsonb dédiée)
+          // ⚠️ ON GARDE LE TYPAGE « vlog », alors même que la fonctionnalité est
+          // retirée (§6) — et c'est une garantie de CONFIDENTIALITÉ, pas une
+          // survivance. La visibilité d'un carnet (« public / abonnés / privé »)
+          // vit dans ce blob jsonb, hors de portée de la RLS : la ligne `posts`
+          // part à quiconque peut lire l'auteur. C'est ce type qui permet à
+          // `allFeedPosts` de les écarter TOUS, sans exception. Retirer cette
+          // ligne ferait retomber un carnet « Privé » sur son type de média et
+          // l'afficherait, en clair, dans le fil de tout le monde.
+          if (r.vlog) return "vlog";
           if (!r.media_url) return "text";
           const url = r.media_url.toLowerCase();
           if (url.includes(".mp4") || url.includes("videos/")) return "video";
@@ -3408,15 +3396,10 @@ async function supaLoadPosts(offset = 0, authorId = null) {
         // traitée comme non reliée — sans erreur, et sans porte vers l'IRL.
         ...(r.event_id ? { eventId: r.event_id } : {}),
         overlays: r.overlays || null,
-        // 📔 Carnet de voyage : réhydrate les champs à plat attendus par le viewer
-        // (openVlogViewer lit post.destination/steps/cover/… directement).
-        ...(r.vlog ? (() => {
-          var v = (typeof r.vlog === "string") ? (function(){ try { return JSON.parse(r.vlog); } catch(e){ return {}; } })() : (r.vlog || {});
-          return { destination: v.destination || "", dateStart: v.dateStart || null, dateEnd: v.dateEnd || null,
-            budget: v.budget || "", transport: v.transport || "", lodging: v.lodging || "", season: v.season || "",
-            tip: v.tip || "", cover: v.cover || null, steps: Array.isArray(v.steps) ? v.steps : [],
-            visibility: v.visibility || "public" };
-        })() : {}),
+        // ⚠️ La réhydratation des champs de carnet a été retirée (§6) : aucun
+        // viewer ne les lit plus. La colonne `vlog` reste demandée dans le
+        // SELECT — c'est elle qui permet, plus bas, de reconnaître un carnet
+        // ancien pour l'écarter de l'affichage.
         // 🔄 Repost support: parse shared_from_post_id and shared_data if applicable
         ...(r.shared_from_post_id && { sharedReel: r.shared_from_post_id }),
         ...(r.shared_data && { sharedReelData: (() => {
@@ -3571,7 +3554,10 @@ async function _resolveProfilesByIds(ids) {
   const uniq = [...new Set((ids || []).filter(Boolean))];
   if (!uniq.length) return out;
   try {
-    const { data } = await supa.from("profiles").select("id,username,emoji,color,avatar_url,passion_id,bio").in("id", uniq);
+    // `passions` (jsonb) est demandé pour l'identité partagée (§2) : le pseudo
+    // s'accompagne partout des passions du compte, et ce résolveur est le point
+    // de passage commun des commentaires, stories et événements.
+    const { data } = await supa.from("profiles").select("id,username,emoji,color,avatar_url,passion_id,passions,bio").in("id", uniq);
     (data || []).forEach(p => { out[p.id] = p; try { cacheRemoteProfile(p); } catch(e) {} });
   } catch(e) {}
   return out;
@@ -3630,7 +3616,9 @@ async function supaPublishStory(story) {
     }
     const res = await supa.from("stories").insert({
       id: story.id || uid(), author_id: MY_UID,
-      passion_id: story.passion || null,
+      // Politique FACULTATIVE (ADR-010) : une story éphémère vaut d'être
+      // publiée même sans classement — le refuser pour ça la ferait disparaître.
+      passion_id: optionalCanonicalPassion(story.passion),
       content: story.text || story.content || "",
       emoji: story.emoji || "✨",
       media_url: mediaUrl,
@@ -3725,7 +3713,21 @@ function _stripUnknownEventCol(row, error) {
 
 // Renvoie true si la ligne est bien en base (l'appelant peut alors promettre à
 // l'utilisateur que son événement est publié — cf. bobines fantômes 2026-07-19).
+// ── Politique `events` : la passion est OBLIGATOIRE (ADR-010) ─────────────
+// Cohérent avec l'interface, qui l'exige déjà (`submitEvent` : « Sélectionne une
+// passion »). Ce garde ne fait que fermer le cas qu'elle ne voyait pas : une
+// passion CHOISIE mais absente du référentiel. Sans lui, l'insert partait, était
+// refusé par la clé étrangère, et l'événement restait local — donc invisible de
+// tous les participants qu'il cherchait à réunir.
+function _passionEvenementRefusee(event) {
+  var c = requiredCanonicalPassion(event && event.passion);
+  if (c.ok) return false;
+  console.warn("événement refusé — passion « " + (event && event.passion) + " » : " + c.motif);
+  return true;
+}
+
 async function supaPublishEvent(event) {
+  if (_passionEvenementRefusee(event)) return false;
   try {
     await supaEnsureProfileExists();
     const row = Object.assign(_eventRow(event), {
@@ -3752,6 +3754,7 @@ async function supaPublishEvent(event) {
 // un changement que la base n'avait pas enregistré. C'est la RLS qui autorise
 // (auteur ou co-organisateur) ; ici on COMPTE les lignes réellement modifiées.
 async function supaUpdateEvent(event) {
+  if (_passionEvenementRefusee(event)) return false;
   try {
     const row = Object.assign(_eventRow(event), { updated_at: new Date().toISOString() });
     for (let attempt = 0; attempt < 4; attempt++) {
@@ -3830,7 +3833,7 @@ async function supaLoadEvents() {
       organizerId: r.organizer_id || r.author_id,
       organizerName: (profs[r.organizer_id || r.author_id] || {}).username || "Passionné",
       title: r.title || "Événement",
-      passion: r.passion_id || "autre",
+      passion: r.passion_id || null,   // jamais la valeur fantôme « autre »
       lat: r.lat, lng: r.lng,
       city: r.city || "",
       emoji: r.emoji || "📍",
@@ -3863,282 +3866,16 @@ async function supaLoadEvents() {
   } catch(e) { return []; }
 }
 
-// ======== CDV LIVES (voyages en direct, sync cross-compte) ========
-// Tables : cdv_lives / cdv_live_steps / cdv_live_comments / cdv_live_reactions /
-// cdv_live_followers (migration_cdv_lives.sql, appliquée en prod le 2026-06-24).
 
-async function supaPublishCdvLive(live) {
-  try {
-    await supaEnsureProfileExists();
-    const res = await supa.from("cdv_lives").insert({
-      id: live.id, author_id: MY_UID,
-      destination: live.destination || "", description: live.description || "",
-      duration: live.duration || "", visibility: live.visibility || "public",
-      status: live.status || "live",
-    });
-    // Sans contrat de retour, un refus laissait le voyage vivre en local pendant
-    // que les étapes suivantes se faisaient rejeter par la clé étrangère : au
-    // rechargement, ou sur un autre appareil, tout avait disparu.
-    return _writeVerdict(res, { label: "publication de live CDV", dupOk: true }).ok;
-  } catch(e) { console.warn("publication de live CDV :", e && e.message); return false; }
-}
 
-// Modifier / supprimer un live (2026-07-22). La RLS de `cdv_lives` est
-// « propriété de l'auteur » : l'UPDATE/DELETE d'un autre compte touche 0 ligne
-// en silence — c'est la base qui tranche, on ne re-filtre pas côté client.
-async function supaUpdateCdvLive(liveId, fields) {
-  try {
-    const payload = Object.assign({}, fields || {}, { updated_at: new Date().toISOString() });
-    const { error } = await supa.from("cdv_lives").update(payload).eq("id", liveId);
-    if (error) console.warn("CDV live update:", error.message);
-  } catch (e) { console.warn("CDV live update:", e); }
-}
 
-async function supaDeleteCdvLive(liveId) {
-  try {
-    // Étapes / commentaires / réactions / suivis partent avec la ligne parente :
-    // les 4 FK vers `cdv_lives` sont en ON DELETE CASCADE (vérifié en prod le
-    // 2026-07-22). Ne PAS tenter de les supprimer d'abord : leurs policies DELETE
-    // sont « propriété de l'auteur de la ligne » → celles des autres comptes
-    // résisteraient en silence.
-    const { error } = await supa.from("cdv_lives").delete().eq("id", liveId);
-    if (error) console.warn("CDV live delete:", error.message);
-  } catch (e) { console.warn("CDV live delete:", e); }
-}
 
-async function supaUpdateCdvLiveStatus(liveId, status) {
-  try { await supa.from("cdv_lives").update({ status: status, updated_at: new Date().toISOString() }).eq("id", liveId); }
-  catch(e) { console.warn("CDV live status:", e); }
-}
 
-// Upload la vidéo d'une étape CDV sur Storage (bucket content, dossier cdv_steps).
-// Renvoie l'URL, ou null (base64 sauté → l'expéditeur garde sa copie locale).
-async function _uploadCdvStepVideo(key, video) {
-  try {
-    if (typeof video !== "string" || !video) return null;
-    if (video.indexOf("data:") !== 0) return video; // déjà une URL
-    if (typeof supaUploadMedia !== "function") return null;
-    var url = await supaUploadMedia(key + "_v", "cdv_steps", video, "video");
-    return (url && url.indexOf("data:") !== 0) ? url : null;
-  } catch (e) { return null; }
-}
-async function supaAddCdvLiveStep(liveId, step) {
-  try {
-    const stepId = step.id || ("ls_" + uid());
-    // Uploader les photos base64 sur Storage (bucket "content") et ne stocker que
-    // des URLs dans la DB — JAMAIS de base64 (un seul média de 5 Mo a fait gonfler
-    // une table à 24 Mo). Si l'upload échoue, on saute la photo (la DB reste légère,
-    // l'expéditeur garde sa copie locale base64).
-    const photoUrls = [];
-    const photos = Array.isArray(step.photos) ? step.photos : [];
-    for (let i = 0; i < photos.length; i++) {
-      const p = photos[i];
-      if (typeof p !== "string" || !p) continue;
-      if (p.indexOf("data:") === 0) {
-        if (typeof supaUploadMedia === "function") {
-          const url = await supaUploadMedia(stepId + "_" + i, "cdv_steps", p, "photo");
-          if (url && url.indexOf("data:") !== 0) photoUrls.push(url);
-        }
-      } else {
-        photoUrls.push(p); // déjà une URL
-      }
-    }
-    // Vidéo d'étape → Storage (jamais de base64 en DB), même hygiène que les photos.
-    var videoUrl = await _uploadCdvStepVideo(stepId, step.video);
-    var row = {
-      id: stepId, live_id: liveId, author_id: MY_UID,
-      city: step.city || "", emoji: step.emoji || "📍", content: step.content || "",
-      photos: photoUrls, rating: step.rating || 0, budget: step.budget || "",
-      lat: (typeof step.lat === "number") ? step.lat : null,
-      lng: (typeof step.lng === "number") ? step.lng : null,
-    };
-    if (videoUrl) row.video = videoUrl;
-    var { error } = await supa.from("cdv_live_steps").insert(row);
-    // Filet si la colonne `video` n'existe pas encore en prod : ré-insérer sans elle.
-    if (error && /video/i.test(error.message || "") && row.video) {
-      delete row.video;
-      ({ error } = await supa.from("cdv_live_steps").insert(row));
-    }
-    // Contrat de retour : sans lui, une étape rejetée (souvent parce que la ligne
-    // parente n'existe pas) restait affichée localement et disparaissait au
-    // rechargement. On ne touche pas non plus `updated_at` du parent si l'étape
-    // n'existe pas — ça ferait mentir la date de dernière activité du voyage.
-    if (error) { console.warn("étape de live CDV :", error.message); return false; }
-    await supa.from("cdv_lives").update({ updated_at: new Date().toISOString() }).eq("id", liveId);
-    return true;
-  } catch(e) { console.warn("étape de live CDV :", e && e.message); return false; }
-}
 
-// Modifier une étape existante (auteur uniquement — la RLS de cdv_live_steps
-// exige author_id = auth.uid()). Réutilise le même pipeline d'upload que l'insert :
-// les photos base64 partent sur Storage, seules des URLs vont en DB.
-async function supaUpdateCdvLiveStep(liveId, step) {
-  try {
-    if (!step || !step.id || !MY_UID) return;
-    const photoUrls = [];
-    const photos = Array.isArray(step.photos) ? step.photos : [];
-    for (let i = 0; i < photos.length; i++) {
-      const p = photos[i];
-      if (typeof p !== "string" || !p) continue;
-      if (p.indexOf("data:") === 0) {
-        if (typeof supaUploadMedia === "function") {
-          const url = await supaUploadMedia(step.id + "_e" + Date.now() + "_" + i, "cdv_steps", p, "photo");
-          if (url && url.indexOf("data:") !== 0) photoUrls.push(url);
-        }
-      } else photoUrls.push(p);
-    }
-    var videoUrl = await _uploadCdvStepVideo(step.id + "_e" + Date.now(), step.video);
-    var patch = {
-      city: step.city || "", emoji: step.emoji || "📍", content: step.content || "",
-      photos: photoUrls, rating: step.rating || 0, budget: step.budget || "",
-      lat: (typeof step.lat === "number") ? step.lat : null,
-      lng: (typeof step.lng === "number") ? step.lng : null,
-    };
-    if (videoUrl) patch.video = videoUrl;
-    var { error } = await supa.from("cdv_live_steps").update(patch).eq("id", step.id).eq("author_id", MY_UID);
-    if (error && /video/i.test(error.message || "") && patch.video) {
-      delete patch.video;
-      ({ error } = await supa.from("cdv_live_steps").update(patch).eq("id", step.id).eq("author_id", MY_UID));
-    }
-    if (error) console.warn("CDV step update:", error.message);
-    await supa.from("cdv_lives").update({ updated_at: new Date().toISOString() }).eq("id", liveId);
-  } catch (e) { console.warn("CDV step update:", e); }
-}
 
-// Complète les coordonnées d'une étape géocodée après coup (tâche de fond).
-async function supaUpdateCdvLiveStepCoords(stepId, lat, lng) {
-  try {
-    if (!stepId || !MY_UID || typeof lat !== "number") return;
-    await supa.from("cdv_live_steps").update({ lat: lat, lng: lng })
-      .eq("id", stepId).eq("author_id", MY_UID);
-  } catch (e) {}
-}
 
-async function supaDeleteCdvLiveStep(liveId, stepId) {
-  try {
-    if (!stepId || !MY_UID) return;
-    const { error } = await supa.from("cdv_live_steps").delete().eq("id", stepId).eq("author_id", MY_UID);
-    if (error) console.warn("CDV step delete:", error.message);
-    await supa.from("cdv_lives").update({ updated_at: new Date().toISOString() }).eq("id", liveId);
-  } catch (e) { console.warn("CDV step delete:", e); }
-}
 
-// ⚠️ RENVOIE SON IDENTIFIANT depuis le 2026-08-30, et ce n'est pas cosmétique.
-// L'appelant crée un commentaire optimiste avec un id local `lc_local_…`, tandis
-// que cette fonction en génère un tout autre. Sans le renvoyer, l'objet local
-// gardait un id qui n'existe nulle part en base : la suppression partait sur
-// `delete().eq("id", "lc_local_…")`, ne touchait AUCUNE ligne, et le SDK ne lève
-// pas sur ce cas — le commentaire disparaissait à l'écran puis revenait au
-// rechargement. Le chemin des activités (`addEventComment`, app-07) faisait déjà
-// la chose juste ; on s'aligne dessus.
-async function supaAddCdvLiveComment(liveId, text) {
-  try {
-    const id = "lc_" + uid();
-    const { error } = await supa.from("cdv_live_comments").insert({
-      id: id, live_id: liveId, author_id: MY_UID,
-      author_name: (state.user && state.user.name) || "Moi", text: text,
-    });
-    if (error) { console.warn("CDV comment:", error.message); return null; }
-    return id;
-  } catch(e) { console.warn("CDV comment:", e); return null; }
-}
 
-async function supaReactCdvLive(liveId, emoji) {
-  try { await supa.from("cdv_live_reactions").insert({ id: "lr_" + uid(), live_id: liveId, user_id: MY_UID, emoji: emoji }); }
-  catch(e) { console.warn("CDV reaction:", e); }
-}
-// Retire une réaction emoji précise de MOI sur un live (une seule réaction/personne).
-// Le ❤️ (like) passe par supaSetCdvLiveLike et n'est jamais retiré ici.
-async function supaRemoveCdvLiveReaction(liveId, emoji) {
-  if (!liveId || !emoji || typeof MY_UID === "undefined" || !MY_UID || !window._supaReal) return;
-  try { await supa.from("cdv_live_reactions").delete().eq("live_id", liveId).eq("user_id", MY_UID).eq("emoji", emoji); }
-  catch(e) {}
-}
-
-// ── Interactions PAR ÉTAPE / PAR JOUR (table step_interactions, cross-compte) ──
-// thread_id = « cdvstep:<liveId>:<stepId> » ou « carnetstep:<postId>:<index> ».
-// kind = 'comment' (content = texte) | 'reaction' (content = emoji).
-async function supaAddStepComment(threadId, commentId, text, authorName, authorEmoji) {
-  if (!threadId || !text || typeof MY_UID === "undefined" || !MY_UID || !window._supaReal) return false;
-  try {
-    const { error } = await supa.from("step_interactions").insert({
-      id: commentId || ("sc_" + uid()), thread_id: threadId, user_id: MY_UID,
-      kind: "comment", content: text, author_name: authorName || null, author_emoji: authorEmoji || null,
-    });
-    if (error) { console.warn("step comment:", error.message); return false; }
-    return true;
-  } catch(e) { console.warn("step comment:", e); return false; }
-}
-// UNE réaction par personne : on efface d'abord MES réactions sur ce thread.
-async function supaSetStepReaction(threadId, emoji, authorName, authorEmoji) {
-  if (!threadId || typeof MY_UID === "undefined" || !MY_UID || !window._supaReal) return false;
-  try {
-    // ⚠️ L'erreur de ce DELETE n'était pas lue : s'il échouait et que l'INSERT
-    // réussissait, DEUX réactions de la même personne persistaient — invariant
-    // « une réaction par personne » rompu, et la corruption restait invisible car
-    // l'affichage déduplique en gardant la plus récente.
-    const del = await supa.from("step_interactions").delete()
-      .eq("thread_id", threadId).eq("user_id", MY_UID).eq("kind", "reaction").select("id");
-    if (!_writeVerdict(del, { label: "réaction d'étape (retrait de l'ancienne)" }).ok) return false;
-    if (!emoji) return true; // toggle off = suppression seule
-    const { error } = await supa.from("step_interactions").insert({
-      id: "sr_" + uid(), thread_id: threadId, user_id: MY_UID,
-      kind: "reaction", content: emoji, author_name: authorName || null, author_emoji: authorEmoji || null,
-    });
-    if (error) { console.warn("step reaction:", error.message); return false; }
-    return true;
-  } catch(e) { console.warn("step reaction:", e); return false; }
-}
-// ❤️ LIKE d'une étape (kind='like'). La colonne kind est libre (pas de contrainte
-// CHECK) → aucune migration. Un like par personne (toggle : delete si présent).
-// ⚠️ `want` est l'INTENTION de l'utilisateur (true = aimer, false = retirer), pas
-// une déduction. L'ancienne version relisait la table puis décidait : dès que le
-// local et la base divergeaient (action faite sur un autre appareil, rollback
-// incomplet, état périmé), elle faisait l'INVERSE de ce que la personne demandait.
-// Même fiche que le like de post, corrigé le 2026-08-14.
-async function supaSetStepLike(threadId, want) {
-  if (!threadId || typeof MY_UID === "undefined" || !MY_UID || !window._supaReal) return false;
-  try {
-    if (!want) {
-      const del = await supa.from("step_interactions").delete()
-        .eq("thread_id", threadId).eq("user_id", MY_UID).eq("kind", "like").select("id");
-      return _writeVerdict(del, { label: "like d'étape (retrait)" }).ok;
-    }
-    const ins = await supa.from("step_interactions").insert({
-      id: "sl_" + uid(), thread_id: threadId, user_id: MY_UID, kind: "like", content: "❤️",
-    });
-    return _writeVerdict(ins, { label: "like d'étape", dupOk: true }).ok;
-  } catch(e) { console.warn("like d'étape :", e && e.message); return false; }
-}
-// Charge les interactions d'un lot de threads → { threadId: { comments:[], reactions:[], likes:[] } }
-// aux formats des stores locaux (state.user.stepComments / stepReactions / stepLikes).
-async function supaLoadStepInteractions(threadIds) {
-  var out = {};
-  if (!threadIds || !threadIds.length || !window._supaReal) return out;
-  var uniq = Array.from(new Set(threadIds.filter(Boolean)));
-  if (!uniq.length) return out;
-  try {
-    const { data, error } = await supa.from("step_interactions")
-      .select("id,thread_id,user_id,kind,content,author_name,author_emoji,created_at")
-      .in("thread_id", uniq).order("created_at", { ascending: true });
-    if (error) { console.warn("step interactions load:", error.message); return out; }
-    (data || []).forEach(function (r) {
-      var t = r.thread_id; if (!t) return;
-      out[t] = out[t] || { comments: [], reactions: [], likes: [] };
-      if (r.kind === "reaction") {
-        out[t].reactions.push({ authorId: r.user_id, authorName: r.author_name || "Voyageur",
-          text: r.content, createdAt: supaTs(r.created_at) });
-      } else if (r.kind === "like") {
-        out[t].likes.push({ authorId: r.user_id, authorName: r.author_name || "Voyageur",
-          createdAt: supaTs(r.created_at) });
-      } else {
-        out[t].comments.unshift({ id: r.id, authorId: r.user_id, authorName: r.author_name || "Voyageur",
-          authorEmoji: r.author_emoji || "✨", text: r.content, content: r.content, createdAt: supaTs(r.created_at) });
-      }
-    });
-    return out;
-  } catch(e) { console.warn("step interactions load:", e); return out; }
-}
 
 // ── Likes & réactions emoji des événements IRL (table event_reactions) ──
 // Un like = une réaction d'emoji '❤️' (toggle) ; tout autre emoji = réaction.
@@ -4223,38 +3960,6 @@ async function supaLoadEventCommentsBatch(eventIds) {
   } catch(e) { console.warn("event comments batch:", e); return {}; }
 }
 
-// ── Like ❤️ d'un live CDV en TOGGLE strict (1 par compte), via cdv_live_reactions ──
-// `want` = l'INTENTION (cf. supaSetStepLike) — jamais une relecture de la base.
-async function supaSetCdvLiveLike(liveId, want) {
-  if (!liveId || typeof MY_UID === "undefined" || !MY_UID) return false;
-  try {
-    if (!want) {
-      const del = await supa.from("cdv_live_reactions").delete()
-        .eq("live_id", liveId).eq("user_id", MY_UID).eq("emoji", "❤️").select("id");
-      return _writeVerdict(del, { label: "like de live CDV (retrait)" }).ok;
-    }
-    const ins = await supa.from("cdv_live_reactions").insert({ id: "lr_" + uid(), live_id: liveId, user_id: MY_UID, emoji: "❤️" });
-    return _writeVerdict(ins, { label: "like de live CDV", dupOk: true }).ok;
-  } catch(e) { console.warn("like de live CDV :", e && e.message); return false; }
-}
-// Likes ❤️ d'un lot de lives (comptés par UTILISATEUR distinct) → { liveId:{likes,liked} }.
-async function supaLoadCdvLiveLikes(liveIds) {
-  if (!liveIds || !liveIds.length) return {};
-  try {
-    const { data, error } = await supa.from("cdv_live_reactions")
-      .select("live_id,user_id,emoji").in("live_id", liveIds).eq("emoji", "❤️");
-    if (error) { console.warn("cdv live likes:", error.message); return {}; }
-    var out = {};
-    liveIds.forEach(function(id){ out[id] = { likes: 0, liked: false, _seen: {} }; });
-    (data || []).forEach(function(r){
-      var o = out[r.live_id] || (out[r.live_id] = { likes: 0, liked: false, _seen: {} });
-      if (!o._seen[r.user_id]) { o._seen[r.user_id] = 1; o.likes++; } // distinct users
-      if (r.user_id === MY_UID) o.liked = true;
-    });
-    liveIds.forEach(function(id){ if (out[id]) delete out[id]._seen; });
-    return out;
-  } catch(e) { console.warn("cdv live likes:", e); return {}; }
-}
 
 // ── Commentaires d'événements IRL (table event_comments, cross-compte) ──
 async function supaAddEventComment(eventId, text) {
@@ -4326,159 +4031,12 @@ async function supaLoadEventCommentCounts(eventIds) {
   } catch(e) { console.warn("event comment counts:", e); return {}; }
 }
 
-async function supaFollowCdvLive(liveId) {
-  try { await supa.from("cdv_live_followers").insert({ live_id: liveId, user_id: MY_UID }); }
-  catch(e) { console.warn("CDV follow:", e); }
-}
-async function supaUnfollowCdvLive(liveId) {
-  try { await supa.from("cdv_live_followers").delete().eq("live_id", liveId).eq("user_id", MY_UID); }
-  catch(e) { console.warn("CDV unfollow:", e); }
-}
 
-// ── Co-voyageurs d'un live (table cdv_live_collaborators) ──
-// Un collaborateur publie ses étapes SOUS SON PROPRE author_id : la policy
-// INSERT de cdv_live_steps (author_id = auth.uid()) reste satisfaite, rien à
-// assouplir côté RLS.
-async function supaAddCdvCollaborator(liveId, userId) {
-  try {
-    if (!liveId || !userId || !MY_UID) return false;
-    const { error } = await supa.from("cdv_live_collaborators")
-      .insert({ live_id: liveId, user_id: userId, added_by: MY_UID });
-    if (error && error.code !== "23505") { console.warn("CDV collab:", error.message); return false; }
-    return true;
-  } catch (e) { console.warn("CDV collab:", e); return false; }
-}
 
-// Même exigence que pour le carnet : une révocation crue à tort laisse le
-// collaborateur contribuer au voyage.
-async function supaRemoveCdvCollaborator(liveId, userId) {
-  try {
-    const res = await supa.from("cdv_live_collaborators").delete()
-      .eq("live_id", liveId).eq("user_id", userId).select("user_id");
-    return _writeVerdict(res, { label: "retrait de collaborateur du live CDV" }).ok;
-  } catch (e) { console.warn("retrait de collaborateur du live CDV :", e && e.message); return false; }
-}
 
-async function supaLoadCdvLives() {
-  try {
-    const { data: lives, error } = await supa.from("cdv_lives").select("*").order("created_at", { ascending: false }).limit(50);
-    if (error) { console.warn("supaLoadCdvLives:", error.message); return []; }
-    const rows = lives || [];
-    if (!rows.length) return [];
-    const ids = rows.map(r => r.id);
-    const [stepsRes, comRes, reacRes, folRes, colRes] = await Promise.all([
-      supa.from("cdv_live_steps").select("*").in("live_id", ids).order("created_at", { ascending: true }),
-      supa.from("cdv_live_comments").select("*").in("live_id", ids).order("created_at", { ascending: true }),
-      supa.from("cdv_live_reactions").select("*").in("live_id", ids),
-      supa.from("cdv_live_followers").select("*").in("live_id", ids),
-      // Table récente : si la migration n'est pas passée, on dégrade sans casser.
-      supa.from("cdv_live_collaborators").select("*").in("live_id", ids).then(r => r, () => ({ data: [] })),
-    ]);
-    const groupBy = (res, key) => {
-      const m = {}; (res.data || []).forEach(x => { (m[x[key]] = m[x[key]] || []).push(x); }); return m;
-    };
-    const stepsBy = groupBy(stepsRes, "live_id");
-    const comBy = groupBy(comRes, "live_id");
-    const reacBy = groupBy(reacRes, "live_id");
-    const folBy = groupBy(folRes, "live_id");
-    const colBy = groupBy(colRes || { data: [] }, "live_id");
-    return rows.map(r => {
-      const followers = (folBy[r.id] || []).map(f => f.user_id);
-      return {
-        id: r.id, authorId: r.author_id,
-        destination: r.destination || "", description: r.description || "",
-        duration: r.duration || "", visibility: r.visibility || "public",
-        status: r.status || "live",
-        steps: (stepsBy[r.id] || []).map(s => ({
-          id: s.id, authorId: s.author_id, city: s.city || "", emoji: s.emoji || "📍", content: s.content || "",
-          photos: Array.isArray(s.photos) ? s.photos : [], photo: (Array.isArray(s.photos) && s.photos[0]) || null,
-          video: s.video || null,
-          rating: s.rating || 0, budget: s.budget || "", createdAt: supaTs(s.created_at),
-          lat: (typeof s.lat === "number") ? s.lat : null, lng: (typeof s.lng === "number") ? s.lng : null,
-        })),
-        comments: (comBy[r.id] || []).map(c => ({ id: c.id, authorId: c.author_id, author: c.author_name || "Anonyme", text: c.text || "", at: supaTs(c.created_at) })),
-        reactions: (reacBy[r.id] || []).map(x => x.emoji),
-        // Garde l'auteur de chaque réaction → pastille « qui a réagi » sur les cartes live.
-        reactionsBy: (reacBy[r.id] || []).map(x => ({ emoji: x.emoji, userId: x.user_id })),
-        followers: followers, viewers: followers, currentViewers: followers.length,
-        collaborators: (colBy[r.id] || []).map(c => c.user_id),
-        createdAt: supaTs(r.created_at),
-        fromSupabase: true,
-      };
-    });
-  } catch(e) { console.warn("supaLoadCdvLives:", e); return []; }
-}
 
-// Charge un seul live (pour le rafraîchissement du viewer ouvert).
-async function supaLoadCdvLive(liveId) {
-  const all = await supaLoadCdvLives();
-  return all.find(l => l.id === liveId) || null;
-}
 
-// Fusionne les lives Supabase dans le cache local (passio_cdv_lives) + re-render.
-async function supaRefreshCdvLives() {
-  try {
-    if (typeof getCdvLives !== "function") return;
-    const supaLives = await supaLoadCdvLives();
-    if (!supaLives || !supaLives.length) return;
-    const supaIds = new Set(supaLives.map(l => l.id));
-    const localOnly = (getCdvLives() || []).filter(l => !supaIds.has(l.id) && !l.fromSupabase);
-    saveCdvLives([...supaLives, ...localOnly]);
-    try { _notifyNewFollowedLives(supaLives); } catch(_) {}
-    try {
-      const cdvScreen = document.getElementById("screen-cdv");
-      if (cdvScreen && cdvScreen.classList.contains("active") && typeof renderCdvScreen === "function") renderCdvScreen();
-    } catch(_) {}
-  } catch(e) { console.warn("supaRefreshCdvLives:", e); }
-}
 
-// Notifie (une fois) quand un compte SUIVI démarre un Live. Dédup persistante via
-// state.user.notifiedLiveIds ; les lives déjà anciens (>15 min) au moment du 1er
-// chargement sont marqués vus sans notifier, pour éviter un flot au boot.
-function _notifyNewFollowedLives(lives) {
-  try {
-    if (!state || !state.user) return;
-    const following = [].concat(state.following || [], (state.user && state.user.following) || []);
-    if (!following.length) return;
-    state.user.notifiedLiveIds = state.user.notifiedLiveIds || [];
-    const seen = new Set(state.user.notifiedLiveIds);
-    const now = Date.now();
-    let changed = false;
-    (lives || []).forEach(function(l) {
-      if (!l || l.status !== "live" || seen.has(l.id)) return;
-      if (typeof isMyLive === "function" && isMyLive(l)) return;
-      if (!following.includes(l.authorId)) return;
-      if (typeof isBlocked === "function" && isBlocked(l.authorId)) return;
-      seen.add(l.id); state.user.notifiedLiveIds.push(l.id); changed = true;
-      // Live déjà ancien au 1er passage : marqué vu, mais pas de notif tardive.
-      if (l.createdAt && (now - l.createdAt) > 15 * 60000) return;
-      const author = (typeof userById === "function" && userById(l.authorId)) || {};
-      const name = author.name || "Un passionné que tu suis";
-      try { if (typeof pushNotification === "function") pushNotification("🔴 <b>" + escapeHtml(name) + "</b> a démarré un Live" + (l.destination ? " : " + escapeHtml(l.destination) : ""), "🔴"); } catch (e) {}
-    });
-    if (state.user.notifiedLiveIds.length > 200) state.user.notifiedLiveIds = state.user.notifiedLiveIds.slice(-200);
-    if (changed) { try { saveState(); } catch (e) {} }
-  } catch (e) {}
-}
-
-// Handler realtime CDV Lives (debounced) : un changement sur n'importe quelle
-// table cdv_* → recharge la liste + le viewer ouvert. Rend les Lives instantanés
-// (le polling 5 s de startCdvLiveRefresh reste un filet de sécurité hors-ligne).
-let _cdvRtDebounce = null;
-function _onCdvRealtime() {
-  if (_cdvRtDebounce) clearTimeout(_cdvRtDebounce);
-  _cdvRtDebounce = setTimeout(async function() {
-    try { if (typeof supaRefreshCdvLives === "function") await supaRefreshCdvLives(); } catch(e) {}
-    try {
-      const modal = document.querySelector(".modal.modal-fullscreen[data-live-id]");
-      if (!modal) return;
-      const ci = document.getElementById("cdvLiveComment");
-      if (ci && document.activeElement === ci && ci.value) return; // ne pas écraser la saisie en cours
-      const lid = modal.getAttribute("data-live-id");
-      if (lid && typeof openCdvLiveViewer === "function") openCdvLiveViewer(lid);
-    } catch(e) {}
-  }, 400);
-}
 
 // ---- MESSAGERIE TEMPS RÉEL ----
 
@@ -4514,8 +4072,11 @@ async function supaSearchUsers(query) {
     const results = data.map(profile => {
       // Passions : colonne jsonb d'abord, fallback sur passion_id si vide
       let passions = [];
-      if (Array.isArray(profile.passions) && profile.passions.length > 0) {
-        passions = profile.passions; // [{id, emoji, label}]
+      // `passionsPubliques` retire les passions ARCHIVÉES : elles sont publiées
+      // (pour ne jamais être perdues) mais ne doivent pas s'afficher chez autrui.
+      const _pubs = (typeof passionsPubliques === "function") ? passionsPubliques(profile.passions) : (profile.passions || []);
+      if (_pubs.length > 0) {
+        passions = _pubs; // [{id, emoji, label}]
       } else if (profile.passion_id) {
         passions = [{ id: profile.passion_id, emoji: profile.emoji || "✨", label: "" }];
       }
@@ -4587,7 +4148,9 @@ async function supaCreateGroup(groupName, memberIds, passionId) {
     const convId = "grp_" + uid();
     const rConv = await supa.from("conversations").insert({
       id: convId, is_group: true,
-      group_name: groupName, passion_id: passionId || null,
+      // Politique FACULTATIVE (ADR-010) : une conversation existe pour ses
+      // membres, pas pour son classement.
+      group_name: groupName, passion_id: optionalCanonicalPassion(passionId),
       created_by: MY_UID,
     });
     if (rConv.error) { console.warn("Group error (conversations):", rConv.error.message); return null; }
@@ -5223,7 +4786,7 @@ function supaSubscribe() {
         const { data: prof } = await supa.from("profiles").select("username,emoji,color").eq("id", r.author_id).maybeSingle();
         const _mu = (r.media_url || "").toLowerCase();
         const _isVid = _mu.includes(".mp4") || _mu.includes("videos/");
-        const newPost = { id: r.id, authorId: r.author_id, authorName: prof?.username || "Passionne", authorEmoji: prof?.emoji || "✨", authorColor: prof?.color || "#8b5cf6", passion: r.passion_id || "autre", mood: r.mood || "all", type: _isVid ? "video" : "text", text: r.content || "", image: _isVid ? null : (r.media_url || null), video: _isVid ? r.media_url : null, isReel: !!r.is_reel, overlays: r.overlays || null, createdAt: supaTs(r.created_at), likes: 0, liked: false, comments: [], fromSupabase: true };
+        const newPost = { id: r.id, authorId: r.author_id, authorName: prof?.username || "Passionne", authorEmoji: prof?.emoji || "✨", authorColor: prof?.color || "#8b5cf6", passion: r.passion_id || null, mood: r.mood || "all", type: _isVid ? "video" : "text", text: r.content || "", image: _isVid ? null : (r.media_url || null), video: _isVid ? r.media_url : null, isReel: !!r.is_reel, overlays: r.overlays || null, createdAt: supaTs(r.created_at), likes: 0, liked: false, comments: [], fromSupabase: true };
         // ✅ Ajouter dans state.supabasePosts, pas state.seed.posts!
         if (feedAddRealtimePost(newPost)) { try { scheduleFeedRender(); } catch(e) {} }
       } catch(e) {}
@@ -5321,23 +4884,16 @@ function supaSubscribe() {
       } catch(e) {}
     });
 
-  // CDV Lives en temps réel : les 5 tables (étapes / commentaires / réactions /
-  // suivis). Handler debounced → refresh liste + viewer ouvert.
-  dbChan
-    .on("postgres_changes", { event: "*", schema: "public", table: "cdv_lives" }, _onCdvRealtime)
-    .on("postgres_changes", { event: "*", schema: "public", table: "cdv_live_steps" }, _onCdvRealtime)
-    .on("postgres_changes", { event: "*", schema: "public", table: "cdv_live_comments" }, _onCdvRealtime)
-    .on("postgres_changes", { event: "*", schema: "public", table: "cdv_live_reactions" }, _onCdvRealtime)
-    .on("postgres_changes", { event: "*", schema: "public", table: "cdv_live_followers" }, _onCdvRealtime);
-
-  // Interactions PAR ÉTAPE / PAR JOUR (commentaires + réactions), cross-compte.
-  dbChan
-    .on("postgres_changes", { event: "INSERT", schema: "public", table: "step_interactions" }, function(payload) {
-      try { if (typeof _onStepInteraction === "function") _onStepInteraction(payload); } catch(e) {}
-    })
-    .on("postgres_changes", { event: "DELETE", schema: "public", table: "step_interactions" }, function(payload) {
-      try { if (typeof _onStepInteraction === "function") _onStepInteraction(payload); } catch(e) {}
-    });
+  // ⚠️ LES ABONNEMENTS TEMPS RÉEL DU CARNET DE VOYAGE ONT ÉTÉ RETIRÉS (§6).
+  // Neuf abonnements y passaient : les cinq tables `cdv_live_*` et les deux
+  // événements de `step_interactions`. Ils n'ont plus AUCUNE surface à
+  // rafraîchir — l'écran, le viewer et leurs listes n'existent plus — mais ils
+  // continuaient de coûter un canal et du trafic à chaque session.
+  //
+  // ⚠️ AUCUNE table n'est supprimée ni vidée : `cdv_lives`, `cdv_live_steps`,
+  // `cdv_live_comments`, `cdv_live_reactions`, `cdv_live_followers` et
+  // `step_interactions` gardent leurs lignes et restent dans la publication
+  // realtime. On cesse seulement de les écouter.
 
   // Lives VIDÉO : apparition/fin d'un direct → rafraîchit les bulles 🔴.
   dbChan
@@ -5639,7 +5195,9 @@ async function supaCreateEventConversation(ev) {
     const r = await supa.from("conversations").insert({
       id: convId, is_group: true,
       group_name: "📍 " + String(ev.title || "Événement").slice(0, 40),
-      passion_id: ev.passion || null, created_by: MY_UID,
+      // Politique FACULTATIVE (ADR-010) : la discussion des participants ne
+      // doit pas être bloquée par le classement de son événement.
+      passion_id: optionalCanonicalPassion(ev.passion), created_by: MY_UID,
     });
     if (r.error && String(r.error.code) !== "23505") return null;
     await supa.from("conv_members").insert({ conv_id: convId, user_id: MY_UID });

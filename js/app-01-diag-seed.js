@@ -109,7 +109,12 @@ let state = null;
 const STATE_KEY = "passio_mvp_state_v1";
 // Filtre de passion actif dans le fil — variable globale directe, hors state/localStorage
 let _activeFeedPassions = new Set(); // vide = rien afficher — l'utilisateur doit sélectionner au moins une passion
-let _showFollowingFeed = false; // Affiche le contenu des gens qu'on suit
+// `_showFollowingFeed` a été SUPPRIMÉE le 2026-08-30 (ADR-010). C'était une
+// bascule « voir mes suivis » jamais persistée : elle repartait à `false` à
+// chaque ouverture, donc les publications des comptes suivis n'entraient pas
+// dans le fil par défaut et le bouton « Suivre » n'avait aucun effet durable.
+// Remplacée par `state.feedView` ("accueil" | "suivis"), persistée, et par une
+// union explicite dans `renderFeed`. Ne pas la réintroduire.
 
 // Default seed (fake users / posts / events), built once at first launch
 function buildSeed() {
@@ -155,113 +160,9 @@ function buildSeed() {
   ];
 
   const seedPosts = [
-    // ========= CARNETS DE VOYAGE SEED =========
-    // Carnet 2, Marrakech par Karim
-    { id: "p_vlog_marrakech", authorId: "u_karim", passion: "voyage", mood: "chill", type: "vlog",
-      destination: "Marrakech",
-      dateStart: new Date(Date.now() - 60 * 86400000).toISOString().slice(0, 10),
-      dateEnd: new Date(Date.now() - 56 * 86400000).toISOString().slice(0, 10),
-      cover: "https://picsum.photos/seed/marrakech-cover/1280/720",
-      tip: "Évite la place Jemaa el-Fna le 1er soir : trop intense quand on arrive fatigué. Garde-la pour le 2e soir.",
-      budget: "420 € (5j)", transport: "Avion + taxi", lodging: "Riad dans la médina", season: "octobre-mars",
-      steps: [
-        { place: "Médina · Riad", text: "Premier thé à la menthe sur la terrasse. Le riad est magique, ruelles labyrinthiques. On se perd, c'est l'idée.", tip: "Tabe l'adresse exacte du riad sur ton tel, la médina est un vrai labyrinthe.", photo: "https://picsum.photos/seed/marrakech-riad/720/480", video: null, audio: null },
-        { place: "Jardin Majorelle", text: "Bleu Majorelle qui contraste avec les cactus, calme absolu. Aller tôt le matin pour éviter les groupes.", tip: "Combiné avec le musée YSL voisin = matinée parfaite.", photo: "https://picsum.photos/seed/jardin-majorelle/720/480" },
-        { place: "Souks", text: "Épices, cuir, tapis, bijoux. Marchander, mais avec le sourire. Café à la sortie pour récupérer.", tip: "Ne pas accepter le 1er prix. Diviser par 3-4 et négocier.", photo: "https://picsum.photos/seed/souks-marrakech/720/480" },
-        { place: "Atlas (excursion)", text: "Excursion 1 jour dans la vallée de l'Ourika. Cascade, déjeuner berbère sur les rives.", tip: "Réserver via le riad, pas via les rabatteurs en ville.", photo: "https://picsum.photos/seed/atlas-mountains/720/480" },
-        { place: "Place Jemaa el-Fna", text: "Au coucher du soleil. Conteurs, charmeurs de serpents, brochettes. Spectacle vivant.", tip: "Mange aux stands numérotés (recommandés par les locaux), pas aux premiers stands.", photo: "https://picsum.photos/seed/jemaa-elfna/720/480" },
-      ],
-      createdAt: Date.now() - 12 * 3600000, likes: 245, liked: false,
-      comments: [
-        { id: "c_marr_1", authorId: "u_lea", text: "Le bleu Majorelle me hante depuis des années. Faut que j'y aille.", createdAt: Date.now() - 11 * 3600000, likes: 12, likedBy: ["u_theo"], emojis: ["❤️", "🔥"], replies: [] },
-        { id: "c_marr_2", authorId: "u_theo", text: "Tu peux partager le nom de ton riad en DM ?", createdAt: Date.now() - 10 * 3600000, likes: 3, likedBy: [], emojis: [], replies: [] },
-      ]
-    },
-
-    // Carnet 3, Berlin par Léa
-    { id: "p_vlog_berlin", authorId: "u_lea", passion: "voyage", mood: "creation", type: "vlog",
-      destination: "Berlin",
-      dateStart: new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10),
-      dateEnd: new Date(Date.now() - 86 * 86400000).toISOString().slice(0, 10),
-      cover: "https://picsum.photos/seed/berlin-cover/1280/720",
-      tip: "Achète une carte BVG 5 jours en arrivant : tram + bus + S-Bahn illimités. Game changer pour bouger entre les quartiers.",
-      budget: "550 € (5j)", transport: "Train de nuit depuis Paris", lodging: "AirBnB Kreuzberg", season: "mai-septembre",
-      steps: [
-        { place: "Mitte · Brandenburger Tor", text: "Le 1er jour, marcher dans le centre historique. Mémorial de la Shoah, beaucoup d'émotion.", tip: "Visite guidée gratuite à 10h départ Brandenburger Tor, un must.", photo: "https://picsum.photos/seed/brandenburg-gate/720/480" },
-        { place: "Kreuzberg · East Side Gallery", text: "Le mur de Berlin transformé en galerie street art. 1,3 km de fresques. Vélo loué pour faire toute la longueur.", tip: "Café local à proximité : Roamers (instagrammable mais bon).", photo: "https://picsum.photos/seed/east-side-gallery/720/480" },
-        { place: "Friedrichshain (musique)", text: "Soirée concert dans une cave alternative. Ambiance underground, scène techno-rock locale très vivante.", tip: "Berghain trop touristique : préférer Salon Zur Wilden Renate ou Sisyphos pour l'authentique.", photo: "https://picsum.photos/seed/friedrichshain-music/720/480" },
-        { place: "Prenzlauer Berg", text: "Brunch dominical, marché, ruelles cosy. Le Berlin tranquille. Mauerpark au coucher du soleil pour le karaoké géant.", tip: "Mauerpark karaoké : dimanche à 15h, gratuit, magique.", photo: "https://picsum.photos/seed/prenzlauer-berg/720/480" },
-      ],
-      createdAt: Date.now() - 24 * 3600000, likes: 312, liked: false,
-      comments: [
-        { id: "c_berlin_1", authorId: "u_yanis", text: "Mauerpark le dimanche, je suis 100 % d'accord, c'est mythique.", createdAt: Date.now() - 22 * 3600000, likes: 4, likedBy: [], emojis: [], replies: [] },
-      ]
-    },
-
-    // Carnet 4, Tokyo par Sofia
-    { id: "p_vlog_tokyo", authorId: "u_sofia", passion: "voyage", mood: "learn", type: "vlog",
-      destination: "Tokyo · Kyoto",
-      dateStart: new Date(Date.now() - 180 * 86400000).toISOString().slice(0, 10),
-      dateEnd: new Date(Date.now() - 168 * 86400000).toISOString().slice(0, 10),
-      cover: "https://picsum.photos/seed/tokyo-cover/1280/720",
-      tip: "Le JR Pass se vend uniquement avant le départ depuis l'étranger. Si tu y penses sur place, trop tard. Achat 7 jours = 230 € env.",
-      budget: "2 100 € (12j)", transport: "Avion + JR Pass + métro", lodging: "Mix hôtel capsule + ryokan", season: "mars-mai (sakura) ou octobre-novembre",
-      steps: [
-        { place: "Shibuya, Tokyo", text: "Arrivée jet-laggée au croisement le plus dense du monde. Premier ramen à 23h dans un bouge de 8 places. Indescriptible.", tip: "Téléchargez l'app Suica avant de partir, paiement transports + 7-Eleven sans cash.", photo: "https://picsum.photos/seed/shibuya-crossing/720/480" },
-        { place: "Asakusa, Tokyo", text: "Senso-ji au lever du soleil, totalement vide. Petit-déj dans une yokocho de la gare. Authentique.", tip: "Allez à 6h30, le temple est désert et la lumière sublime.", photo: "https://picsum.photos/seed/asakusa-temple/720/480" },
-        { place: "Akihabara · Otaku", text: "Plongée dans le quartier des manga, anime, jeux vidéo. Exhausting mais culte.", tip: "Pop Culture Café Shinkai pour le goûter manga-themed.", photo: "https://picsum.photos/seed/akihabara/720/480" },
-        { place: "Kyoto · Fushimi Inari", text: "Train Shinkansen vers Kyoto (2h30 émotion technologique). Mille torii rouges, balade 2h, vue panoramique en haut.", tip: "Y aller à 17h pour avoir la lumière dorée et moins de monde.", photo: "https://picsum.photos/seed/fushimi-inari/720/480" },
-        { place: "Arashiyama · forêt de bambous", text: "La forêt à 8h du matin, seule. Sons des bambous qui s'entrechoquent. Magique.", tip: "Combiner avec le pont Togetsukyo et le temple Tenryu-ji.", photo: "https://picsum.photos/seed/bamboo-forest/720/480" },
-        { place: "Gion · soirée traditionnelle", text: "Ruelles d'Edo, dîner kaiseki dans une auberge familiale. Croisé une vraie geisha.", tip: "Réserver le restaurant 1 mois avant le départ, sinon impossible.", photo: "https://picsum.photos/seed/gion-evening/720/480" },
-      ],
-      createdAt: Date.now() - 48 * 3600000, likes: 489, liked: false,
-      comments: [
-        { id: "c_tokyo_1", authorId: "u_karim", text: "Le JR Pass conseil = sauveur de portefeuille. Confirmé.", createdAt: Date.now() - 46 * 3600000, likes: 5, likedBy: [], emojis: [], replies: [] },
-        { id: "c_tokyo_2", authorId: "u_nina", text: "Tu m'as donné envie de réserver mon billet là maintenant.", createdAt: Date.now() - 44 * 3600000, likes: 3, likedBy: [], emojis: [], replies: [] },
-      ]
-    },
-
-    // Carnet 5, Bretagne par Théo
-    { id: "p_vlog_bretagne", authorId: "u_theo", passion: "voyage", mood: "chill", type: "vlog",
-      destination: "Bretagne · Tour côtier",
-      dateStart: new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10),
-      dateEnd: new Date(Date.now() - 23 * 86400000).toISOString().slice(0, 10),
-      cover: "https://picsum.photos/seed/bretagne-cover/1280/720",
-      tip: "La météo bretonne change toutes les 2h. Pars équipé pluie ET soleil, peu importe la prévision. C'est une règle.",
-      budget: "380 € (8j) en covoiturage", transport: "Voiture · vélo location", lodging: "Camping côte sauvage", season: "mai-septembre",
-      steps: [
-        { place: "Saint-Malo", text: "Remparts au coucher du soleil, marée à 13 m. La cité corsaire mérite 2 jours pour bien la sentir.", tip: "Marée basse pour aller à Grand Bé à pied. Vérifier les horaires.", photo: "https://picsum.photos/seed/saint-malo/720/480" },
-        { place: "Cap Fréhel", text: "Falaises rouges 70 m de haut, phare emblématique. Vu un fou de Bassan plonger.", tip: "Arrivée à 17h, les bus touristiques sont partis. Lumière dorée garantie.", photo: "https://picsum.photos/seed/cap-frehel/720/480" },
-        { place: "Côte de granit rose", text: "Ploumanac'h, sentier des douaniers. Pierres roses sculptées par la mer. Pure carte postale.", tip: "Marée basse = on peut marcher entre les rochers. Marée haute = panoramas.", photo: "https://picsum.photos/seed/granit-rose/720/480" },
-        { place: "Quiberon · Côte sauvage", text: "Vélo sur la presqu'île, 14 km. Galettes complètes au feu de bois le soir.", tip: "Crêperie La Korrigane à Saint-Pierre-Quiberon, demande à parler avec Yann.", photo: "https://picsum.photos/seed/quiberon-cote/720/480" },
-      ],
-      createdAt: Date.now() - 6 * 3600000, likes: 167, liked: false,
-      comments: [
-        { id: "c_bret_1", authorId: "u_emma", text: "La crêperie de Yann je connais ! Trop bien.", createdAt: Date.now() - 5 * 3600000, likes: 2, likedBy: [], emojis: [], replies: [] },
-      ]
-    },
-
-    // Carnet 1, Lisbonne (déjà existant) par Nina
-    { id: "p_vlog_nina", authorId: "u_nina", passion: "voyage", mood: "chill", type: "vlog",
-      destination: "Lisbonne · Sintra · Cascais",
-      dateStart: new Date(Date.now() - 14 * 86400000).toISOString().slice(0, 10),
-      dateEnd: new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10),
-      cover: "https://picsum.photos/seed/lisbon-cover/1280/720",
-      tip: "Achète le pass 24h tramway+train dès le 1er jour, ça change tout pour bouger entre Sintra et Cascais sans stresser.",
-      budget: "650 € (7j)", transport: "Avion + tram + train", lodging: "Auberge à Alfama", season: "avril-mai",
-      steps: [
-        { place: "Alfama, Lisbonne", text: "Arrivée tard, dîner au Mercado da Ribeira. Premier coup de cœur pour les ruelles pavées qui sentent le pastel de nata.", tip: "Loger à Alfama plutôt que Baixa, c'est plus authentique.", photo: "https://picsum.photos/seed/alfama-lisbon/720/480" },
-        { place: "Belém", text: "Tour Belém au lever du jour pour éviter la foule. Après-midi LX Factory : street art, librairies, déjeuner sur le rooftop.", tip: "Pasteis de Belém à 9h pétantes, pas de queue.", photo: "https://picsum.photos/seed/belem-tower/720/480" },
-        { place: "Sintra", text: "Train CP depuis Rossio (40 min). Le palais coloré de Pena est à voir une fois dans sa vie. Marcher jusqu'au Cap Roca pour finir la journée.", tip: "Première navette du matin, sinon 2h de queue.", photo: "https://picsum.photos/seed/sintra-pena/720/480" },
-        { place: "Cascais", text: "Plage et front de mer. Loueur de vélo bon marché. Dîner poisson grillé, on a vu le coucher de soleil sur la côte.", tip: "Boca do Inferno à pied depuis le centre.", photo: "https://picsum.photos/seed/cascais-beach/720/480" },
-        { place: "Bairro Alto", text: "Concert de fado dans une petite gargotte de 20 places. Pas de réservation, on s'est fait pousser à l'intérieur. Magique.", tip: "Tasca do Chico, rua do Diário de Notícias, minimum 25 €/personne.", photo: "https://picsum.photos/seed/bairro-alto-fado/720/480" },
-      ],
-      createdAt: Date.now() - 5 * 3600000, likes: 187, liked: false,
-      comments: [
-        { id: "c_vlog_1", authorId: "u_karim", text: "Tu m'as donné envie. Tu as quel appareil pour les photos ?", createdAt: Date.now() - 4 * 3600000, likes: 3, likedBy: [], emojis: [], replies: [] },
-        { id: "c_vlog_2", authorId: "u_lea", text: "Sintra, le rêve. Merci pour les bons plans 🌿", createdAt: Date.now() - 3 * 3600000, likes: 5, likedBy: [], emojis: [], replies: [] },
-      ]
-    },
+    // ⚠️ Les cinq carnets de démonstration ont été retirés avec la
+    // fonctionnalité (§6). Ils ne servaient qu'à peupler l'écran CDV et le
+    // carrousel du Fil, tous deux supprimés.
     { id: "p1",  authorId: "u_lea",   passion: "musique", mood: "creation", type: "text", cover: "studio",
       text: "Je viens de finir la démo d'un morceau que je porte depuis 3 ans. Pas parfait, mais honnête. 🎶\n\nMontrer le processus, pas la façade, c'est tout l'esprit PASSIO pour moi.",
       createdAt: hours(2), likes: 34, liked: false, comments: [
@@ -1714,7 +1615,7 @@ function buildSeed() {
 
   const seedNotifications = [
     { id: "n1", kind: "like",    fromId: "u_lea",   text: "<b>Léa Moreau</b> a aimé ton intention de rejoindre PASSIO", createdAt: hours(0.5), unread: true,  html: true, emoji: "💖" },
-    { id: "n2", kind: "follow",  fromId: "u_clara", text: "<b>Clara Jensen</b> suit maintenant ton profil voyage", createdAt: hours(1), unread: true,  html: true, emoji: "🤝" },
+    { id: "n2", kind: "follow",  fromId: "u_clara", text: "<b>Clara Jensen</b> suit maintenant tes publications voyage", createdAt: hours(1), unread: true,  html: true, emoji: "🤝" },
     { id: "n3", kind: "comment", fromId: "u_yanis", text: "<b>Yanis Perez</b> a réagi à un post : « On devrait échanger 🚀 »", createdAt: hours(2), unread: true,  html: true, emoji: "💬" },
     { id: "n4", kind: "event",   fromId: "u_theo",  text: "<b>Théo Roussel</b> t'invite au « Dîner entre passionnés de cuisine »", createdAt: hours(3), unread: false, html: true, emoji: "🍳" },
     { id: "n5", kind: "system",  fromId: "me",      text: "Ta première publication attend : montre ce que tu aimes 🎨", createdAt: hours(5), unread: false, html: true, emoji: "✨" },

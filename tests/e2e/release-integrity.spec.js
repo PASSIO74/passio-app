@@ -25,15 +25,20 @@ test.describe("RELEASE-INTEGRITY — contrat de release et transition d'identit�
     expect(sw, "le cache SW utilise le même buildId").toContain(`passio-v${embedded.buildId}`);
   });
 
-  test("le bundle différé conserve l'accès secondaire aux Carnets de voyage", async ({ page }) => {
+  // ⚠️ CE CAS A CHANGÉ D'OBJET, il n'a pas été supprimé. Il vérifiait que le
+  // bundle différé conservait l'accès secondaire aux Carnets de voyage ; la
+  // fonctionnalité est retirée (ADR-011 §5). Ce qu'il reste à prouver, et qui
+  // vaut autant : dans le bundle différé aussi, un ancien lien `#cdv` mène à un
+  // écran valide au lieu de laisser l'application vide.
+  test("le bundle différé redirige un ancien lien Carnets de voyage", async ({ page }) => {
     await bootOnboarded(page);
 
     await page.evaluate(() => openPassionExplorer("voyage"));
-    const voyageEntry = page.locator("[data-voyage-cdv-entry]");
-    await expect(voyageEntry).toBeVisible();
-    await expect(voyageEntry).toContainText("Carnets de voyage");
-    await voyageEntry.locator("[data-open-voyage-cdv]").click();
-    await expect(page.locator("#screen-cdv")).toHaveClass(/active/);
+    await expect(page.locator("[data-voyage-cdv-entry]")).toHaveCount(0);
+    await page.evaluate(() => { if (typeof closeModal === "function") closeModal(); goTo("cdv"); });
+    await page.waitForTimeout(300);
+    expect(await page.evaluate(() =>
+      (document.querySelector(".screen.active") || {}).id)).toBe("screen-feed");
   });
 
   // Le service worker de PASSIO fait skipWaiting() + clients.claim() : il prend

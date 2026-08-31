@@ -3,7 +3,7 @@
 // Ce que cette suite prouve, et rien d'autre :
 //   ① le kill switch restaure exactement la navigation historique ;
 //   ② l'URL normale expose cinq destinations, libellées et atteignables ;
-//   ③ Bobines et CDV quittent la barre principale mais restent routables ;
+//   ③ Bobines quitte la barre principale mais reste routable (CDV est retiré) ;
 //   ④ la V2 n'écrit AUCUN réglage durable et ne change pas le profil actif ;
 //   ⑤ en 390 × 844 aucun libellé n'est tronqué et aucune cible n'est trop petite.
 //
@@ -100,7 +100,7 @@ test("URL normale : cinq entrées libellées, chacune menant à sa route existan
   const nav = page.locator("#appNavV2");
   await expect(nav).toBeVisible();
   // La barre historique est masquée, pas supprimée : les mécaniques qui la
-  // cherchent (applyNavOrder, dépromotion CDV, synchro d'état actif) tiennent.
+  // cherchent (applyNavOrder, synchro d'état actif) tiennent.
   await expect(page.locator("#appNav")).toBeHidden();
   await expect(page.locator("#appNav")).toHaveCount(1);
 
@@ -267,8 +267,11 @@ test("barre des stories : plus de bulle de création Live, mais les vrais direct
   await expect(row.locator(".story-item").first()).toContainText("Ta story");
 });
 
-// ── ③ Bobines et CDV : hors barre principale, toujours routables ────────────
-test("aperçu : Bobines et CDV sortent de la barre mais restent atteignables", async ({ page }) => {
+// ── ③ Bobines hors barre principale, toujours routable ─────────────────────
+// ⚠️ CDV a quitté ce cas avec la fonctionnalité (ADR-011 §5). Ce qui le
+// remplace n'est pas rien : sa route est REDIRIGÉE, donc un ancien lien ne
+// laisse jamais l'application sans écran actif — c'est vérifié en fin de test.
+test("aperçu : Bobines sort de la barre mais reste atteignable", async ({ page }) => {
   await boot(page, { preview: true });
 
   // Aucune entrée de la barre V2 ne pointe vers ces deux destinations.
@@ -277,10 +280,6 @@ test("aperçu : Bobines et CDV sortent de la barre mais restent atteignables", a
   const keys = await page.$$eval("#appNavV2 .nav-v2-item", (els) =>
     els.map((e) => e.getAttribute("data-v2-key")));
   expect(keys).toEqual(["discover", "meet", "create", "messages", "profile"]);
-
-  // Les routes historiques, elles, fonctionnent exactement comme avant.
-  await page.evaluate(() => goTo("cdv"));
-  await screenIsActive(page, "cdv");
 
   await page.evaluate(() => openReels());
   await page.waitForFunction(() => {
@@ -295,11 +294,13 @@ test("aperçu : Bobines et CDV sortent de la barre mais restent atteignables", a
   await page.evaluate(() => goTo("studio"));
   await screenIsActive(page, "studio");
 
-  // Deep link historique : le hash CDV continue de router.
-  await page.evaluate(() => goTo("feed"));
-  await screenIsActive(page, "feed");
+  // Deep link historique : `#cdv` ne route plus vers un écran CDV — il n'y en a
+  // plus — mais il REDIRIGE vers le fil. Un lien mémorisé ne doit jamais laisser
+  // l'application sans écran actif.
+  await page.evaluate(() => goTo("profiles"));
+  await screenIsActive(page, "profiles");
   await page.evaluate(() => goTo("cdv"));
-  await screenIsActive(page, "cdv");
+  await screenIsActive(page, "feed");
 });
 
 // ── ④ L'aperçu ne persiste rien ─────────────────────────────────────────────

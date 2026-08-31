@@ -233,6 +233,17 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: npx playwright test tests/e2e/authz-critical.spec.js
 
+      # Mesure de la dette de classement des passions. LECTURE SEULE (requêtes
+      # HEAD de comptage), sortie strictement agrégée : aucun identifiant de
+      # compte, aucun contenu, aucune donnée personnelle n'atteint ce journal.
+      # `continue-on-error` est délibéré : c'est une mesure, pas une barrière —
+      # un rouge ici ne dirait rien sur le code du commit.
+      - name: Mesure `passion_id` (lecture seule, agrégats)
+        continue-on-error: true
+        env:
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node scripts/mesure-passions.js
+
       - name: Lancer les tests
         env:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}

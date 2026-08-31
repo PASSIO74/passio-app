@@ -1,5 +1,25 @@
 # PASSIO — Profil & Multi-profil V2
 
+> ## ⚠️ PARTIELLEMENT REMPLACÉ par ADR-010 (2026-08-30)
+>
+> **Ce qui reste en vigueur** : le principe de séparation du §1 — « changer un filtre Feed ne change
+> pas de profil passion ; changer de profil passion ne change pas automatiquement les intérêts
+> Feed ». ADR-010 le reprend mot pour mot et l'implémente.
+>
+> **Ce qui est remplacé** : le modèle d'identité. Ce document définit le « profil passion » comme
+> une *identité publique dans un contexte de passion*, avec ses *relations et contexte social
+> associés*, et vise une table serveur `passion_profiles` avec visibilité par passion. Cette cible
+> n'a jamais été construite, et [ADR-010](../.passio/adr/ADR-010-identite-publique-unique-passions-classification.md)
+> décide de ne pas la construire : un compte a **une seule** identité publique, et une passion est
+> une étiquette de classification et une préférence de lecture — sans abonnés, sans pseudonyme,
+> sans cloisonnement de confidentialité.
+>
+> Le §2 (« état réel vérifié du produit ») reste exact et utile : il avait correctement diagnostiqué
+> que « l'architecture actuelle est fondamentalement compte-first au niveau serveur ». C'est ce
+> constat qu'ADR-010 entérine au lieu de chercher à le corriger.
+>
+> Le reste du document est conservé tel quel, comme trace du cadrage d'origine.
+
 - **Date** : 2026-08-20
 - **Branche** : `product/passio-core-simplification-2026-08-20`
 - **Promesse** : **« partage tes Passio et rencontre les gens »**

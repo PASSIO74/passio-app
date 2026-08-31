@@ -112,8 +112,8 @@
       <div class="landing-pillar">
         <div class="landing-pillar-emoji">🌈</div>
         <div>
-          <div class="landing-pillar-title">Plusieurs toi, plusieurs passions</div>
-          <div class="landing-pillar-text">Un profil pour chaque univers : skate, lecture, cuisine, photo… Chacun avec son espace et sa communauté.</div>
+          <div class="landing-pillar-title">Un seul toi, plusieurs passions</div>
+          <div class="landing-pillar-text">Skate, lecture, cuisine, photo… Publie dans la passion qui correspond, et choisis celles que tu veux voir dans ton fil.</div>
         </div>
       </div>
       <div class="landing-pillar">
@@ -323,7 +323,7 @@
     <div class="onb-step" data-onb-step="name">
       <div style="font-size:44px;text-align:center;margin-top:30px;">👋</div>
       <div class="onb-title" style="font-size:22px;">Comment t'appelles-tu ?</div>
-      <p class="onb-text">C'est ton nom principal. Tu pourras créer plusieurs profils par passion ensuite.</p>
+      <p class="onb-text">C'est ton nom public, le même partout. Tu pourras ajouter d'autres passions ensuite.</p>
       <label class="field">
         <span>Ton prénom</span>
         <input type="text" class="input" id="userName" placeholder="Benjamin" maxlength="40" />
@@ -356,11 +356,11 @@
 
   <!-- ============ TOPBAR ============ -->
   <div class="app-topbar" role="banner">
-    <div class="topbar-left" onclick="goTo('profiles')" style="cursor:pointer;" title="Mes profils" role="button" tabindex="0" aria-label="Mes profils">
+    <div class="topbar-left" onclick="goTo('profiles')" style="cursor:pointer;" title="Mon profil" role="button" tabindex="0" aria-label="Mon profil">
       <div class="brand-logo"><img id="logoTopbar" alt="PASSIO" /></div>
       <div class="brand-text">
         <div class="brand-name">PASSIO</div>
-        <div class="brand-tagline" id="currentProfilePassion">— Multi-profils</div>
+        <div class="brand-tagline" id="currentProfilePassion"></div>
       </div>
       <span class="beta-chip">Beta</span>
     </div>
@@ -484,7 +484,23 @@
         <div style="width:16px;height:16px;border:2px solid var(--accent);border-top-color:transparent;border-radius:50%;animation:spin .7s linear infinite;"></div>
         Actualisation…
       </div>
-      <div class="profile-strip" id="profileStrip"></div>
+      <!-- Côté LECTURE (ADR-010). Ce rail ne décide QUE de ce que le fil affiche ;
+           il ne touche jamais à la passion dans laquelle on publie.
+           ⚠️ RETOUR EN ARRIÈRE ASSUMÉ, demandé par Benjamin après essai réel sur
+           la preview de la PR #227 : « je préfère que tu mettes Suivis avec les
+           passions à afficher comme avant ; ça rajoute encore une ligne en haut,
+           pas confortable ». Une rangée de vues « Accueil / Suivis » vivait ici,
+           au-dessus du rail, plus un libellé « Passions à afficher » : deux
+           lignes de hauteur gagnées sur un écran où le contenu doit primer.
+           « Suivis » redevient donc la PREMIÈRE TUILE de ce rail, comme avant.
+           ⚠️ Ce qui NE revient PAS en arrière : la persistance. L'ancienne
+           tuile pilotait `_showFollowingFeed`, une bascule non persistée, donc
+           éteinte à chaque ouverture — le bouton « Suivre » n'avait aucun effet
+           durable. La tuile pilote désormais `state.feedView`, sauvegardé. La
+           place change, le défaut reste corrigé. -->
+      <div id="feedPassionsBlock">
+        <div class="profile-strip" id="profileStrip"></div>
+      </div>
 
       <div class="mood-selector" id="moodSelector">
         <button class="mood-btn" data-mood="creation"><span class="mood-btn-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M16.5 5.5 L18.5 7.5 M15.4 6.6 L5.5 16.5 L4 20 L7.5 18.5 L17.4 8.6 A1.5 1.5 0 0 0 15.4 6.6 Z"/><path d="M5.5 16.5 L7.5 18.5"/></svg></span>Création</button>
@@ -550,11 +566,27 @@
         </div>
       </div>
 
-      <!-- PASSIONS SUIVIES -->
-      <!-- PROFILS PASSION -->
-      <div class="section-title" style="margin-top:14px;">Mes profils passion <span class="link" id="nouveauProfilLien" onclick="openCreateProfile()">+ Nouveau</span></div>
-      <p class="section-subtitle" id="profilesQuotaSub">Tes univers de contenu, rattachés à ce même profil.</p>
-      <div id="profileList"></div>
+      <!-- ── GESTION DES PASSIONS ────────────────────────────────────────────
+           ⚠️ Ce bloc n'est PLUS une section de la page. La refonte multi-passion
+           (§1) retire l'onglet et la section « À propos », où le lot UI-7 avait
+           déplacé cette liste : les passions se présentent désormais en haut du
+           profil, dans le MÊME rail de bulles que le Fil, et ce panneau ne sert
+           plus qu'à les GÉRER (photo, couverture, bio, archivage, ajout).
+           Il s'ouvre depuis les options du profil (`openPassionManager`), et
+           reste `hidden` sinon — rien n'est supprimé du DOM, `renderProfilesScreen`
+           continue d'écrire dans `#profileList` comme avant. -->
+      <div id="passionManager" hidden>
+        <div class="section-title" style="margin-top:14px;">Mes passions
+          <span class="link" id="nouveauProfilLien" onclick="openCreateProfile()">+ Ajouter</span>
+          <span class="link" id="fermerPassionManager" onclick="closePassionManager()" style="margin-left:10px;">Fermer</span>
+        </div>
+        <p class="section-subtitle" id="profilesModeleSub">Un seul profil, plusieurs passions. Publie dans la passion qui correspond ; ton fil réunit les passions que tu choisis et les personnes que tu suis.</p>
+        <!-- Porte le lien « Passions archivées (N) », posé par renderProfilesScreen.
+             Masqué au départ : vide, il laisserait une gouttière avant le premier
+             rendu. Le renderer gère ensuite son affichage. -->
+        <p class="section-subtitle" id="profilesQuotaSub" style="display:none;"></p>
+        <div id="profileList"></div>
+      </div>
 
       <!-- ONGLETS CONTENU -->
       <p class="profile-tabs-hint">Filtre ce que tu affiches ci-dessous — coche un ou plusieurs types (rien de coché = tout).</p>
@@ -570,9 +602,6 @@
         </button>
         <button class="profile-tab" data-tab="bobines" aria-pressed="false" onclick="switchProfileTab('bobines',this)" title="Bobines" aria-label="Bobines">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2.5"/><path d="M8 4v16"/><path d="M16 4v16"/><path d="M4 8h4"/><path d="M4 16h4"/><path d="M16 8h4"/><path d="M16 16h4"/></svg><span class="profile-tab-lbl">Bobines</span>
-        </button>
-        <button class="profile-tab" data-tab="carnets" aria-pressed="false" onclick="switchProfileTab('carnets',this)" title="Carnets" aria-label="Carnets">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4h11a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-11a1 1 0 0 1 -1 -1v-14a1 1 0 0 1 1 -1m3 0v18"/><path d="M13 9h2.5"/><path d="M13 13h2.5"/></svg><span class="profile-tab-lbl">Carnets</span>
         </button>
       </div>
       <div id="myPosts"></div>
@@ -597,7 +626,6 @@
         <div class="studio-type" data-type="video"><span class="studio-type-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10 L21 7 V17 L16 14 Z"/></svg></span>Vidéo</div>
         <div class="studio-type" data-type="bobine"><span class="studio-type-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="17" height="17" rx="4.5"/><path d="M3.5 8 H20.5"/><path d="M8 3.5 L6 8"/><path d="M13 3.5 L11 8"/><path d="M18 3.5 L16 8"/><path d="M10.5 12 L14.5 14.3 L10.5 16.6 Z" fill="currentColor" stroke="none"/></svg></span>Bobine</div>
         <div class="studio-type" data-type="audio"><span class="studio-type-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11 C5 15 8 18 12 18 C16 18 19 15 19 11"/><path d="M12 18 V22"/><path d="M9 22 H15"/></svg></span>Podcast</div>
-        <!-- Carnet & CDV Live se créent depuis leur propre catégorie (écran CDV : « Nouveau carnet » / « Démarrer un Live ») — onglets retirés du Studio le 2026-06-25. La création de carnet réutilise quand même le formulaire #studioVlog via activateStudioVlog(). -->
       </div>
 
       <!-- Text area always visible -->
@@ -644,14 +672,13 @@
         <input type="file" id="audioInput" accept="audio/*" style="display:none;" />
       </div>
 
-      <!-- ⚠️ Le carnet de voyage et le CDV Live NE se créent PLUS ici : leur
-           éditeur vit dans l'écran CDV (#cdvEditor), là où l'utilisateur consulte
-           déjà les voyages. Le Studio ne gère que texte / photo / vidéo / bobine /
-           podcast. Ne pas réintroduire de bloc vlog ou cdvlive dans cette section. -->
 
       <label class="field" id="fieldPassion">
         <span>Passion liée</span>
-        <select class="input" id="postPassion"></select>
+        <select class="input" id="postPassion" onchange="onStudioPassionChange()"></select>
+        <!-- Rempli par renderStudio, et SEULEMENT quand une passion a été écartée
+             du choix (passion personnelle, non publiable — sortie A du 2026-08-30). -->
+        <div id="studioPassionNote" style="display:none;font-size:11px;color:var(--muted);margin-top:6px;line-height:1.45;"></div>
       </label>
 
       <label class="field" id="fieldMood">
@@ -751,14 +778,7 @@
                 </div>
                 <span style="color:var(--muted);font-size:16px;">›</span>
               </button>
-              <button class="ai-shortcut-row" onclick="sendAIQuery('Carnets de voyage disponibles')">
-                <span class="ai-shortcut-row-icon">📔</span>
-                <div class="ai-shortcut-row-body">
-                  <div class="ai-shortcut-row-title">Carnets de voyage (CDV)</div>
-                  <div class="ai-shortcut-row-desc">Voir les carnets et lives en cours</div>
-                </div>
-                <span style="color:var(--muted);font-size:16px;">›</span>
-              </button>
+              <!-- RACCOURCI IA « Carnets de voyage » RETIRÉ (§6). -->
               <button class="ai-shortcut-row" onclick="sendAIQuery('Créateurs à suivre')">
                 <span class="ai-shortcut-row-icon">👤</span>
                 <div class="ai-shortcut-row-body">
@@ -1058,132 +1078,15 @@
       </div>
     </section>
 
-    <!-- ===== SCREEN: CDV (Carnets de Voyage) ===== -->
-    <section class="screen" id="screen-cdv">
-
-      <!-- ÉDITEUR DE CARNET — il vit ICI, pas dans le Studio : on crée son carnet
-           là où on consulte les voyages. Masqué par défaut, il remplace la liste
-           (openCarnetEditor / closeCarnetEditor, app-06). -->
-      <div id="cdvEditor" style="display:none;">
-        <div class="cdv-editor-head">
-          <button class="cdv-editor-back" onclick="closeCarnetEditor()" aria-label="Retour aux carnets">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5 L8 12 L15 19"/></svg>
-          </button>
-          <div class="cdv-editor-title" id="cdvEditorTitle">📔 Nouveau carnet</div>
-        </div>
-
-        <div id="studioVlog">
-          <div class="vlog-editor">
-            <p class="section-subtitle" style="margin-top:0;">Récit jour par jour, sur une carte.</p>
-
-            <!-- Templates rapides -->
-            <div class="vlog-templates">
-            </div>
-
-            <label class="field"><span>Destination 🌍</span>
-              <input type="text" class="input" id="vlogDestination" placeholder="Ex: Tokyo, Maroc, Tour de la Bretagne…" maxlength="60" /></label>
-
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-              <label class="field"><span>Du</span>
-                <input type="date" class="input" id="vlogDateStart" /></label>
-              <label class="field"><span>Au</span>
-                <input type="date" class="input" id="vlogDateEnd" /></label>
-            </div>
-
-            <!-- Qui peut voir ce carnet (item 2026-08-03) : public / abonnés / privé.
-                 État lu par publishPost/saveCarnetEdits via _vlogVisibility. -->
-            <label class="field"><span>Qui peut voir ce carnet 👁</span>
-              <div class="pill-row" id="vlogVisibilityRow">
-                <button type="button" class="pill active" data-vlogvis="public" onclick="_setVlogVisibility('public')">🌍 Public</button>
-                <button type="button" class="pill" data-vlogvis="followers" onclick="_setVlogVisibility('followers')">👥 Abonnés</button>
-                <button type="button" class="pill" data-vlogvis="private" onclick="_setVlogVisibility('private')">🔒 Privé</button>
-              </div>
-            </label>
-
-            <label class="field"><span>Photo de couverture</span>
-              <div id="vlogCoverPreview"></div>
-              <div class="upload-zone" id="vlogCoverZone">
-                <div class="upload-zone-icon">🖼</div>
-                <div class="upload-zone-title">Ajouter une cover</div>
-                <div class="upload-zone-text">Tap pour parcourir</div>
-              </div>
-              <input type="file" id="vlogCoverInput" accept="image/*" style="display:none;" />
-            </label>
-
-            <div class="section-title" style="margin-top:14px;font-size:13px;">Étapes du voyage <span class="link" onclick="addVlogStep()">+ Ajouter un jour</span></div>
-            <p class="section-subtitle">Chaque étape apparaît sur la carte.</p>
-            <div id="vlogStepsList"></div>
-
-            <div class="section-title" style="margin-top:14px;font-size:13px;">Bilan pratique (optionnel)</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-              <label class="field"><span>Budget total</span>
-                <input type="text" class="input" id="vlogBudget" placeholder="Ex : 1 200 €" maxlength="40" /></label>
-              <label class="field"><span>Transport</span>
-                <input type="text" class="input" id="vlogTransport" placeholder="Ex: train + vélo" maxlength="40" /></label>
-            </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-              <label class="field"><span>Logement</span>
-                <input type="text" class="input" id="vlogLodging" placeholder="Ex: AirBnB · auberges" maxlength="40" /></label>
-              <label class="field"><span>Saison conseillée</span>
-                <input type="text" class="input" id="vlogSeason" placeholder="Ex: avril-juin" maxlength="40" /></label>
-            </div>
-
-            <label class="field"><span>Conseil clé pour les futurs voyageurs</span>
-              <textarea class="textarea" id="vlogTip" placeholder="Le truc à savoir absolument avant de partir…" maxlength="280" style="min-height:60px;"></textarea></label>
-          </div>
-        </div>
-
-        <div style="display:flex;gap:8px;margin:14px 0 4px;">
-          <button class="btn ghost" onclick="closeCarnetEditor()">Annuler</button>
-          <button class="btn primary" style="flex:1;" id="cdvPublishBtn" onclick="publishPost()">✨ Publier mon carnet</button>
-        </div>
-      </div>
-
-      <div id="cdvBrowse">
-      <div class="section-title">Carnets de voyage</div>
-
-      <!-- Point d'entrée UNIQUE : un seul « voyage », le format (direct ou récit)
-           se choisit dans la feuille — avant, deux boutons concurrents obligeaient
-           à comprendre la différence Carnet / Live AVANT de commencer. -->
-      <!-- Content-first (2026-08-07) : l'ACTION principale (Nouveau voyage) prend
-           toute la largeur ; « Mes lieux » et « Passeport » — des destinations
-           bilan, pas des actions de création — passent dans le panneau contextuel
-           (js/contextual-nav.js → cdvToolsSections), avec leurs compteurs live.
-           Rien n'est supprimé : mêmes handlers openSavedPlaces / openCdvPassport. -->
-      <div class="cdv-entry-row cdv-entry-row-lean">
-        <button onclick="openNewTripSheet()" class="cdv-entry primary" id="cdvNewTripBtn">
-          <span class="cdv-entry-ico">✈️</span><span class="cdv-entry-lbl">Nouveau voyage</span>
-        </button>
-        <button type="button" class="ctx-trigger" id="cdvToolsBtn"
-          onclick="ContextualTools.open('cdv', this)" aria-haspopup="dialog"
-          aria-label="Outils : mes favoris, mes carnets, lives, mes lieux, passeport" title="Filtres, mes lieux & passeport">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
-            <path d="M4 7h11"/><path d="M19 7h1"/><circle cx="17" cy="7" r="2"/>
-            <path d="M4 17h9"/><path d="M17 17h3"/><circle cx="15" cy="17" r="2"/>
-          </svg><span>Outils</span>
-          <span id="cdvToolsBadge" class="ctx-trigger-badge"></span>
-        </button>
-      </div>
-
-      <!-- CDV Lives en cours -->
-      <div id="cdvLiveList"></div>
-
-      <!-- Filtres « Mes favoris / Mes carnets / Lives » déplacés dans le panneau
-           contextuel « Outils » (js/contextual-nav.js → cdvToolsSections, section
-           « Filtres ») le 2026-08-08 pour dégager l'écran (content-first). Mêmes
-           handlers/état : délégation [data-cdvfilter] (non scopée), Set cdvFilters. -->
-
-      <input type="text" class="input" id="cdvSearchInput" placeholder="Rechercher une destination, une ville…" style="margin-bottom:14px;" oninput="renderCdvScreen()" />
-
-      <div id="cdvList"></div>
-
-      <div id="cdvEmpty" class="empty" style="display:none;">
-        <div class="empty-icon">📔</div>
-        <div class="empty-title">Aucun carnet trouvé</div>
-        <div class="empty-text">Essaie une autre recherche.</div>
-      </div>
-      </div><!-- /#cdvBrowse -->
-    </section>
+    <!-- ===== ÉCRAN CDV (Carnets de voyage) — RETIRÉ =====
+         La fonctionnalité « Carnet de voyage » est retirée de l'application
+         (refonte multi-passion, §6). L'écran, son éditeur, ses filtres et ses
+         listes sont supprimés du balisage ; `goTo("cdv")` est REDIRIGÉ vers le
+         fil (app-02), sur le modèle de `goTo("wallet")` après ADR-009 — un
+         ancien lien profond `#cdv` ne doit jamais laisser l'application sans
+         écran actif. AUCUNE donnée n'est détruite : les carnets déjà écrits
+         restent dans `localStorage`, dans IndexedDB et en base.
+    -->
 
     <!-- ===== ÉCRAN WALLET — SUPPRIMÉ (ADR-009) =====
          Wallet, Score Passion, leaderboard, boutique Passia, Pass Passion et
@@ -1193,13 +1096,7 @@
 
   </main>
 
-  <!-- ============ CARNET DE VOYAGE, VIEWER PLEIN ÉCRAN ============ -->
-  <div id="vlogViewer" class="vlog-viewer" aria-hidden="true">
-    <button class="vlog-viewer-close" onclick="closeVlogViewer()" aria-label="Fermer">
-      <svg viewBox="0 0 24 24"><path d="M5 5 L19 19"/><path d="M19 5 L5 19"/></svg>
-    </button>
-    <div id="vlogViewerContent"></div>
-  </div>
+  <!-- ============ CARNET DE VOYAGE, VIEWER PLEIN ÉCRAN — RETIRÉ (§6) ====== -->
 
   <!-- ============ REELS / BOBINES VIEWER ============ -->
   <div id="reelsViewer" class="reels-viewer" aria-hidden="true">
@@ -1279,10 +1176,6 @@
     <div class="nav-item" data-screen="irl" role="button" tabindex="0" aria-label="Événements IRL">
       <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/><path d="M21 21v-2a4 4 0 0 0 -3 -3.85"/></svg></span>
       <span class="nav-label">IRL</span>
-    </div>
-    <div class="nav-item" data-screen="cdv" role="button" tabindex="0" aria-label="Carnets de voyage">
-      <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h11a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-11a1 1 0 0 1 -1 -1v-14a1 1 0 0 1 1 -1m3 0v18"/><path d="M13 8h2"/><path d="M13 12h2"/></svg></span>
-      <span class="nav-label">CDV</span>
     </div>
   </nav>
 
@@ -1420,7 +1313,7 @@
 <script src="js/app-09-boot-pwa.js"></script>
 <!-- BUILD:APP-END -->
 
-<!-- Panneau d'outils contextuel (IRL, CDV…) — hors bloc app : composant
+<!-- Panneau d'outils contextuel (IRL…) — hors bloc app : composant
      autonome (IIFE window.ContextualTools), inliné individuellement au build. -->
 <script src="js/contextual-nav.js"></script>
 

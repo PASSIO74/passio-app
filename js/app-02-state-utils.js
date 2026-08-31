@@ -61,7 +61,13 @@ function defaultState() {
     userEvents: [],          // events created by the user
     notifications: [],       // user-specific notifications (seed copied at init)
     currentMood: "all",
+    // ── SÉLECTIONS DU FIL (refonte multi-passion) ──────────────────────────
+    // Trois familles de critères, toutes ADDITIVES entre elles (OU inclusif) :
+    // « Suivis », les passions, les envies du moment. Voir `feedSourcesSelected`.
+    feedFollowingOn: true,    // « Suivis » est-il coché ? (remplace state.feedView)
+    feedView: "accueil",      // LEGACY, lu une fois pour migrer vers feedFollowingOn
     selectedFeedPassions: [], // passion IDs actifs dans le fil
+    feedIntents: [],          // envies du moment cochées (discover|learn|create|meet)
     feedMoodsTouched: false,  // l'utilisateur a-t-il déjà réglé le filtre mood lui-même ?
     feedInterestsMigrated: false, // le compte vit-il dans le modèle selectedFeedPassions ?
     hintsVus: {},             // aides contextuelles déjà montrées (spec §8)
@@ -155,6 +161,23 @@ function loadState() {
     if (!parsed.user.passionSignals || typeof parsed.user.passionSignals !== "object"
         || Array.isArray(parsed.user.passionSignals)) parsed.user.passionSignals = {};
     if (!Array.isArray(parsed.selectedFeedPassions)) parsed.selectedFeedPassions = [];
+    // Vue du Fil (ADR-010). Toute valeur inconnue — et tout état antérieur, qui
+    // n'a pas cette clé — retombe sur « accueil » : c'est la vue par défaut, et
+    // celle qui montre le plus de contenu. Elle remplace l'ancienne bascule
+    // `_showFollowingFeed`, qui n'était persistée nulle part et repartait donc à
+    // `false` à chaque ouverture : suivre quelqu'un n'avait aucun effet durable.
+    if (parsed.feedView !== "accueil" && parsed.feedView !== "suivis") parsed.feedView = "accueil";
+    // ⚠️ MIGRATION de la vue exclusive vers la sélection additive.
+    // Les deux anciennes vues incluaient les comptes suivis — « Accueil » comme
+    // union, « Suivis » comme seule source. Les deux se migrent donc en
+    // « Suivis coché », et c'est ce qui préserve l'acquis d'ADR-010 : suivre
+    // quelqu'un garde un effet observable et durable, sans bascule à réarmer.
+    // Ce qui change : les passions ne sont plus éteintes par « Suivis ».
+    if (typeof parsed.feedFollowingOn !== "boolean") parsed.feedFollowingOn = true;
+    if (!Array.isArray(parsed.feedIntents)) parsed.feedIntents = [];
+    parsed.feedIntents = parsed.feedIntents.filter(function (i) {
+      return FEED_INTENT_SOURCES.indexOf(i) > -1;
+    });
     if (typeof parsed.feedMoodsTouched !== "boolean") parsed.feedMoodsTouched = false;
     if (typeof parsed.feedInterestsMigrated !== "boolean") parsed.feedInterestsMigrated = false;
     if (!parsed.hintsVus || typeof parsed.hintsVus !== "object") parsed.hintsVus = {};
@@ -962,6 +985,287 @@ function passionById(id) {
   return allPassions().find(p => p.id === id) || { emoji: "✨", label: "Passion", color: "#8b5cf6" };
 }
 
+// Filtre d'AFFICHAGE de la colonne jsonb `profiles.passions` (la liste des
+// passions d'un compte, publiée par `supaUpsertProfile`).
+//
+// ⚠️ Cette colonne a DEUX rôles, et c'est ce qui a causé un défaut le 2026-08-30 :
+// (a) la liste des passions montrée aux visiteurs, et (b) la sauvegarde serveur de
+// MES propres passions, relue par la reconstruction du boot quand un appareil neuf
+// n'a ni état local ni `user_state`. Le lot UI-8 retirait les passions archivées à
+// la SOURCE pour servir (a) — ce qui vidait (b) et rendait une passion rangée
+// définitivement irrécupérable après un changement de téléphone.
+//
+// La règle est donc : on publie TOUT (marqué `archived`), et on filtre ICI, à
+// chaque endroit qui MONTRE les passions de quelqu'un. Une entrée sans marqueur
+// vient d'un client antérieur au correctif : elle est considérée vivante.
+// ══════════════════════════════════════════════════════════════════════════
+// CLASSIFICATION DES PASSIONS (ADR-010)
+// ──────────────────────────────────────────────────────────────────────────
+// Une seule question — « cet identifiant existe-t-il dans le référentiel ? » —
+// et des POLITIQUES distinctes par type d'objet. La clé étrangère est la même
+// sur les cinq tables ; l'invariant PRODUIT, lui, ne l'est pas.
+//
+// AUTORITÉ. La table Supabase `passions` fait foi. Elle est en lecture publique
+// (policy `passions_select_all`) et tient 19 lignes : on la charge UNE fois, en
+// arrière-plan, et on la garde en cache. `PASSIONS` (app-01) sert de REPLI —
+// jamais d'autorité — pour que le chargement puisse échouer sans bloquer les 19
+// passions existantes.
+//
+// ⚠️ NI le drapeau `custom: true`, NI le préfixe `custom_` ne servent de
+// discriminant. Le drapeau ne vit que dans `state.user.customPassions` et
+// disparaît sur un appareil neuf (la reconstruction du boot rebâtit les profils
+// depuis le jsonb `profiles.passions` sans le restaurer) : s'y fier échouerait
+// précisément dans le cas qu'on cherche à traiter. Le préfixe est une liste
+// NOIRE, qui ne couvre ni la sentinelle « autre », ni « test », ni la chaîne
+// vide. La liste blanche rejette les quatre d'un coup.
+let _referentielPassions = null;   // Set des ids réels, ou null tant qu'inconnu
+
+// Chargement en arrière-plan. N'est JAMAIS attendu par le démarrage : tant qu'il
+// n'a pas répondu, `estPassionCanonique` utilise le repli local.
+function chargerReferentielPassions() {
+  try {
+    if (_referentielPassions) return;                       // déjà en cache
+    if (typeof supa === "undefined" || !supa || !window._supaReal) return;
+    supa.from("passions").select("id").then(function (r) {
+      try {
+        if (r && !r.error && Array.isArray(r.data) && r.data.length) {
+          _referentielPassions = new Set(r.data.map(function (x) { return x && x.id; }).filter(Boolean));
+        }
+      } catch (e) {}
+    }).catch(function () {});                                // un échec laisse le repli en place
+  } catch (e) {}
+}
+
+// L'identifiant existe-t-il réellement dans le référentiel ?
+// ⚠️ LE RÉFÉRENTIEL SERVEUR AJOUTE, IL NE RETRANCHE PAS. Corrigé le 2026-08-31.
+//
+// La première version rendait `_referentielPassions.has(id)` DÈS que le cache
+// était rempli — le serveur pouvait donc RÉTRÉCIR la liste. Or `_referentielPassions`
+// est un cache à UN SEUL COUP (`if (_referentielPassions) return;` ci-dessus) :
+// une réponse serveur partielle — plafond `max-rows` de PostgREST, réponse
+// tronquée, panne à mi-parcours — s'installait pour toute la session et
+// interdisait DÉFINITIVEMENT de publier dans une passion parfaitement légitime.
+// Un incident serveur passager devenait un blocage client permanent.
+//
+// La liste locale est donc un PLANCHER, pas un repli : la migration du
+// 2026-08-15 a vérifié que ces identifiants existent réellement en production,
+// et la clé étrangère empêche d'en supprimer un qui soit référencé. Le serveur
+// ne peut qu'en AJOUTER — c'est le cas d'une liste locale en retard, que ce
+// mécanisme sert précisément à couvrir.
+//
+// Et si l'un des 19 était malgré tout supprimé côté serveur (aucune ligne ne le
+// référençant), l'union le laisserait passer : l'insert repartirait alors en
+// 23503, que `supaPublishPostWithRetry` traite déjà comme une erreur définitive
+// avec un message honnête. Un faux négatif bloque une publication vraie ; un
+// faux positif ne coûte qu'un aller-retour et un message juste. L'asymétrie
+// tranche.
+function estPassionCanonique(id) {
+  if (!id || typeof id !== "string") return false;
+  try {
+    if (_referentielPassions && _referentielPassions.has(id)) return true;
+    if (typeof PASSIONS === "undefined" || !Array.isArray(PASSIONS)) return false;
+    for (var i = 0; i < PASSIONS.length; i++) if (PASSIONS[i] && PASSIONS[i].id === id) return true;
+  } catch (e) {}
+  return false;
+}
+
+// Les trois états possibles, nommés une fois pour toutes.
+function classerPassion(id) {
+  if (id === null || id === undefined || id === "") return "null";
+  return estPassionCanonique(id) ? "canonique" : "non_canonique";
+}
+
+// ── POLITIQUE : la passion est OBLIGATOIRE (posts, events) ────────────────
+// `null` ET `non_canonique` sont refusés. Rend `{ ok, motif }` — l'appelant
+// décide du message, car il seul sait quel geste l'utilisateur vient de faire.
+function requiredCanonicalPassion(id) {
+  var c = classerPassion(id);
+  if (c === "canonique") return { ok: true, valeur: id };
+  return { ok: false, motif: c };   // "null" | "non_canonique"
+}
+
+// ── POLITIQUE : la passion est FACULTATIVE (profiles, stories, conversations) ──
+// `null` est accepté ; tout identifiant non nul DOIT être canonique, sinon il est
+// normalisé en `null`. On ne bloque jamais l'écriture pour ça : l'objet a une
+// raison d'exister indépendante de son classement.
+function optionalCanonicalPassion(id) {
+  return estPassionCanonique(id) ? id : null;
+}
+
+// ── CATALOGUE PUBLIABLE (sortie A du 2026-08-30) ──────────────────────────
+// `docs/PASSION_PERSONNALISEE_FK_2026-08-30.md` : une passion absente du
+// référentiel ne PEUT PAS être écrite dans `posts`/`events` — la clé étrangère
+// est infranchissable côté client, la table `passions` n'exposant qu'une policy
+// SELECT. On cesse donc de la PROPOSER là où elle ne peut pas aboutir.
+//
+// ⚠️ On ne supprime ni ne transforme AUCUNE passion personnalisée existante :
+// elle reste dans `state.user.customPassions`, reste un centre d'intérêt du fil
+// (le filtre de lecture est 100 % local, il fonctionne parfaitement) et reste
+// affichée partout où elle est déjà posée. Seule la porte d'ÉCRITURE se ferme.
+function passionsPubliables() {
+  var l = (typeof allPassions === "function") ? allPassions() : [];
+  return l.filter(function (p) { return p && estPassionCanonique(p.id); });
+}
+
+// La passion sous laquelle CE compte publie par défaut : l'active si elle est
+// publiable, sinon la première passion vivante qui l'est. Rend `null` quand le
+// compte n'en a AUCUNE — l'appelant renonce alors, il n'invente jamais.
+function passionParDefautPourPublier() {
+  try {
+    var cp = (typeof currentProfile === "function") ? currentProfile() : null;
+    if (cp && estPassionCanonique(cp.passion)) return cp.passion;
+    var vivantes = (typeof passionsVivantes === "function")
+      ? passionsVivantes()
+      : ((state && state.user && state.user.profiles) || []);
+    for (var i = 0; i < vivantes.length; i++) {
+      if (vivantes[i] && estPassionCanonique(vivantes[i].passion)) return vivantes[i].passion;
+    }
+  } catch (e) {}
+  return null;
+}
+
+// Classement d'une REPUBLICATION. Le partage est MA publication : il hérite du
+// classement de la source quand celui-ci peut partir, et retombe sur le mien
+// sinon (source locale rangée dans une passion personnelle, ou source sans
+// passion). Il ne recopie jamais un classement qui ferait refuser l'insert.
+function passionDeRepartage(source) {
+  return estPassionCanonique(source) ? source : passionParDefautPourPublier();
+}
+
+// Un échec de publication n'est pas toujours un échec de RÉSEAU. Quand la cause
+// est le classement, le dire — l'ancien message « connexion lente » invitait à
+// retenter une opération qui ne pouvait pas aboutir (cf. le document ci-dessus).
+// Rend `null` si le dernier échec n'était pas de cette nature.
+// ⚠️ GARDE COMMUNE AUX PRODUCTEURS DE PUBLICATION (2026-08-31).
+// À appeler AVANT toute mutation locale. Rend `true` quand la publication ne
+// peut PAS aboutir, après avoir dit pourquoi et quoi faire.
+//
+// LE DÉFAUT QU'ELLE FERME. Les quatre producteurs — bobine, partage de bobine,
+// partage de post, partage d'événement — créaient l'objet dans `state.userPosts`
+// puis appelaient `supaPublishPostWithRetry`. Le garde central refusait ensuite
+// la passion non canonique… mais le post était déjà là : visible chez son
+// auteur, jamais arrivé au serveur, perdu au changement d'appareil. C'est
+// exactement le motif de perte silencieuse que ce chantier ferme.
+//
+// L'invariant : si aucune passion canonique n'est disponible, AUCUNE publication
+// locale optimiste n'est créée. Le refus précède la mutation, pas seulement la
+// requête réseau.
+function publicationRefuseeFautePassion(passion) {
+  if (estPassionCanonique(passion)) return false;
+  var mienne = passionParDefautPourPublier();
+  toast(mienne
+    ? "Choisis une passion pour publier."
+    : "⚠️ Ajoute une passion du catalogue pour publier — tes passions personnelles rangent ton fil, mais on ne peut pas encore y publier.");
+  return true;
+}
+
+function messageEchecPassion() {
+  var c = window._passioEchecPublication;
+  if (c === "passion_absente") return "⚠️ Choisis une passion avant de publier.";
+  if (c === "passion_inconnue") return "⚠️ Cette passion n'existe que chez toi : elle range ton fil, mais on ne peut pas encore y publier. Choisis une passion du catalogue.";
+  return null;
+}
+
+function passionsPubliques(list) {
+  if (!Array.isArray(list)) return [];
+  return list.filter(function (p) { return p && p.id && !p.archived; });
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// L'IDENTITÉ AFFICHÉE — un pseudo, et les passions dessous
+// ──────────────────────────────────────────────────────────────────────────
+// Refonte multi-passion §2 : partout où quelqu'un apparaît, on montre SON
+// profil principal, et ses passions sous son pseudo :
+//
+//     Benjamin
+//     Moto · Podcast · Voyage
+//
+// Un seul rendu, ici, pour toutes les surfaces (cartes de publication,
+// commentaires et réponses, messages, notifications, activités, aperçus de
+// profil, résultats de recherche, réactions). Chaque surface avait sa propre
+// façon d'écrire un nom : c'est exactement ce qui avait fait diverger les deux
+// tables de libellés de mood et les deux écrans de profil.
+//
+// ⚠️ TROIS RÈGLES, chacune payée par un défaut réel de ce dépôt.
+//
+// ① `passionsPubliques()` et JAMAIS la liste brute. Le jsonb `profiles.passions`
+//    contient AUSSI les passions archivées, marquées `archived: true` — c'est
+//    délibéré, la colonne sert de sauvegarde relue au démarrage d'un appareil
+//    neuf. Les afficher telles quelles ferait réapparaître chez tout le monde
+//    ce qu'un utilisateur a rangé (porte dérobée ② du lot UI-8).
+// ② Ces libellés sont DU CONTENU D'AUTRUI : toute session authentifiée écrit
+//    librement sa propre ligne `profiles`. Ils passent par `escapeHtml`.
+// ③ Le rendu est BORNÉ (3 passions + « +N ») et tient sur une ligne tronquée :
+//    une identité qui déborde pousse l'action à côté d'elle hors de l'écran.
+var IDENT_PASSIONS_MAX = 3;
+
+// Les passions d'un compte, telles qu'un VISITEUR a le droit de les voir.
+// Trois sources, dans l'ordre de fiabilité : la liste publiée (jsonb), la
+// passion principale, et — pour moi seulement — mes passions vivantes locales.
+function passionsAffichables(u) {
+  if (!u) return [];
+  var brut = null;
+  try {
+    var estMoi = (u.id === "me")
+      || (typeof MY_UID !== "undefined" && MY_UID && u.id === MY_UID);
+    if (estMoi && typeof passionsVivantes === "function") {
+      brut = passionsVivantes().map(function (p) {
+        var meta = {};
+        try { meta = passionById(p.passion) || {}; } catch (e) {}
+        return { id: p.passion, emoji: p.emoji || meta.emoji, label: meta.label || p.passion };
+      });
+    }
+  } catch (e) {}
+  if (!brut) {
+    var liste = Array.isArray(u.passions) ? u.passions : null;
+    if (liste) brut = passionsPubliques(liste);
+    else if (u.passion) brut = [{ id: u.passion }];
+    else brut = [];
+  }
+  return brut.map(function (p) {
+    var meta = {};
+    try { meta = passionById(p.id) || {}; } catch (e) {}
+    // ⚠️ L'ORDRE compte : `passionById` ne rend jamais null et retombe sur
+    // `{ label: "Passion" }`. Un libellé publié par l'auteur (passion hors
+    // catalogue) serait sinon définitivement inatteignable.
+    var duCatalogue = (meta.label && meta.label !== "Passion") ? meta.label : "";
+    return {
+      id: p.id,
+      emoji: p.emoji || meta.emoji || "✨",
+      label: duCatalogue || p.label || "Passion",
+    };
+  }).filter(function (p) { return !!p.id; });
+}
+
+// « Moto · Podcast · Voyage », borné. Rend "" quand il n'y a rien à dire —
+// et l'appelant ne doit alors rien peindre du tout (une ligne vide sous un
+// pseudo se lit comme un chargement qui n'arrive jamais).
+function identitePassionsTexte(u, max) {
+  var liste = passionsAffichables(u);
+  if (!liste.length) return "";
+  var n = max || IDENT_PASSIONS_MAX;
+  var noms = liste.slice(0, n).map(function (p) { return _passionCourteIdent(p.label); });
+  if (liste.length > n) noms.push("+" + (liste.length - n));
+  return noms.join(" · ");
+}
+
+// « Yoga / Bien-être » → « Yoga ». Affichage seul ; la clé métier ne bouge pas.
+// (Jumelle de `_passionCourte`, app-06, qui n'est pas encore chargée ici.)
+function _passionCourteIdent(label) {
+  var s = String(label || "");
+  var i = s.search(/\s*[\/&·]\s*/);
+  return (i > 0 ? s.slice(0, i) : s).trim() || s;
+}
+
+// La ligne à poser SOUS le pseudo, ou "" s'il n'y a rien à montrer.
+// `cls` permet à une surface d'ajuster sa taille sans dupliquer le rendu.
+function identitePassionsHTML(u, cls) {
+  var t = identitePassionsTexte(u);
+  if (!t) return "";
+  return '<div class="ident-passions' + (cls ? " " + escapeHtml(cls) : "") + '" title="'
+    + escapeHtml(t) + '">' + escapeHtml(t) + '</div>';
+}
+
 function userById(id) {
   if (id === "me" || (typeof MY_UID !== "undefined" && MY_UID && id === MY_UID)) {
     const p = currentProfile ? currentProfile() : null;
@@ -1035,6 +1339,11 @@ function cacheRemoteProfile(p) {
     profileEmoji: p.emoji || "✨",
     photoUrl: p.avatar_url || null,
     passion: p.passion_id || undefined,
+    // ⚠️ Sans cette ligne, l'identité partagée (§2) n'aurait de passions à
+    // montrer que sur le profil visité — la seule surface qui les chargeait.
+    // Elles sont filtrées ici, à l'entrée : `passionsPubliques` retire les
+    // passions archivées, qui vivent dans ce jsonb comme sauvegarde.
+    passions: Array.isArray(p.passions) ? passionsPubliques(p.passions) : undefined,
     bio: p.bio || "",
   };
   const i = state.seed.users.findIndex(u => u.id === p.id);
@@ -1138,6 +1447,11 @@ function goTo(screen) {
   // ou un raccourci mémorisé doit mener à une destination valide plutôt qu'à un
   // écran blanc (aucun `#screen-wallet` ne peut plus recevoir la classe active).
   if (screen === "wallet" || screen === "shop") screen = "profiles";
+  // Refonte multi-passion §6 : l'écran « Carnets de voyage » n'existe plus. Même
+  // raison, même remède qu'ADR-009 — un ancien deep link `#cdv`, un raccourci
+  // mémorisé ou une notification de carnet ne doit jamais laisser l'application
+  // sans écran actif. On renvoie au fil, la destination neutre.
+  if (screen === "cdv") screen = "feed";
   // Fermer le panneau d'outils contextuel s'il était ouvert (on change d'écran).
   if (window.ContextualTools && ContextualTools.isOpen()) ContextualTools.close();
   // Ajouter à l'historique seulement si ce n'est pas un retour en arrière
@@ -1185,7 +1499,6 @@ function goTo(screen) {
   if (screen === "explore")  { renderExplorer(); setTimeout(renderAiHistory, 50); }
   if (screen === "irl")      renderIRL();
   if (screen === "messages") renderMessages();
-  if (screen === "cdv")      { renderCdvScreen(); if (typeof supaRefreshCdvLives === "function") supaRefreshCdvLives(); }
 
   // Analytics navigation (fire-and-forget, silencieux)
   try { if (typeof supaTrack === "function") supaTrack("screen_view", { screen: screen }); } catch(_) {}
@@ -1722,7 +2035,7 @@ function openDeleteAccountConfirm() {
     <div class="modal-title" style="color:#ef4444;">🗑 Supprimer mon compte</div>\
     <p style="font-size:13px;color:var(--muted);margin-bottom:10px;">Cette action est <strong>définitive</strong>. Seront supprimés :</p>\
     <ul style="font-size:13px;color:var(--muted);margin:0 0 12px 18px;line-height:1.7;">\
-      <li>ton profil et tes profils passion ;</li>\
+      <li>ton profil et tes passions ;</li>\
       <li>tous tes posts, photos, vidéos, carnets et stories ;</li>\
       <li>tes messages, conversations et notifications ;</li>\
       <li>tes likes, commentaires, abonnements et événements.</li>\
@@ -1802,7 +2115,7 @@ function openPrivacyPolicy() {
     <div class="modal-title">🛡 Politique de confidentialité</div>\
     <div style="font-size:12.5px;color:var(--muted);line-height:1.65;max-height:55vh;overflow-y:auto;padding-right:4px;">\
       <p style="margin:0 0 10px;"><strong style="color:var(--text);">Dernière mise à jour : juin 2026 — PASSIO (beta privée)</strong></p>\
-      <p style="margin:0 0 10px;"><strong style="color:var(--text);">1. Données collectées.</strong> Lors de l\'inscription : adresse e-mail et nom d\'utilisateur. Lors de l\'utilisation : profils passion, publications (textes, photos, vidéos, audio), carnets, messages, commentaires, likes, abonnements, participation aux événements, et préférences locales (thème, filtres).</p>\
+      <p style="margin:0 0 10px;"><strong style="color:var(--text);">1. Données collectées.</strong> Lors de l\'inscription : adresse e-mail et nom d\'utilisateur. Lors de l\'utilisation : passions, publications (textes, photos, vidéos, audio), carnets, messages, commentaires, likes, abonnements, participation aux événements, et préférences locales (thème, filtres).</p>\
       <p style="margin:0 0 10px;"><strong style="color:var(--text);">2. Où sont stockées tes données.</strong> Sur les serveurs de notre prestataire Supabase (hébergement UE/US, chiffrement en transit), et en partie sur ton appareil (localStorage) pour le fonctionnement hors-ligne. Les accès en base sont restreints par des règles de sécurité par propriétaire (RLS).</p>\
       <p style="margin:0 0 10px;"><strong style="color:var(--text);">3. Ce que nous ne faisons pas.</strong> Pas de revente de données, pas de publicité ciblée, pas de traqueurs tiers. C\'est l\'engagement fondateur de PASSIO.</p>\
       <p style="margin:0 0 10px;"><strong style="color:var(--text);">4. Durée de conservation.</strong> Tes données sont conservées tant que ton compte est actif. La suppression du compte efface tes contenus immédiatement et ton e-mail sous 30 jours.</p>\
@@ -2235,7 +2548,9 @@ function renderPassionGrid() {
       ${p.id === depart ? '<div class="passion-depart-badge" data-depart="1" style="position:absolute;top:4px;left:5px;font-size:11px;">★</div>' : ''}
     </div>
   `).join("");
-  const createTile = `
+  // ⛔ Tuile masquée tant que `passionsPersoSuspendues()` : voir la note de
+  // `openCreateCustomPassion`. Le garde du point de convergence reste en place.
+  const createTile = passionsPersoSuspendues() ? "" : `
     <div class="passion-tile passion-tile-create" onclick="openCreateCustomPassion()">
       <div class="passion-tile-emoji">＋</div>
       <div class="passion-tile-label">Créer la mienne</div>
@@ -2280,11 +2595,11 @@ function renderOnbStarter() {
   }).join("");
 
   hote.innerHTML =
-      '<div style="font-size:12px;font-weight:700;margin-bottom:5px;">Ton profil de départ</div>'
+      '<div style="font-size:12px;font-weight:700;margin-bottom:5px;">Ta passion de départ</div>'
     + '<div style="display:flex;flex-wrap:wrap;gap:6px;">' + puces + '</div>'
     + '<div style="font-size:11px;color:var(--muted);margin-top:6px;line-height:1.45;">'
-    +   'Tu pourras créer d\'autres profils passion ensuite. Les autres passions choisies '
-    +   'alimentent ton Fil sans créer de profil.'
+    +   'Tu pourras ajouter d\'autres passions ensuite. Les autres passions choisies '
+    +   'alimentent ton Fil sans que tu aies à les créer.'
     + '</div>';
   hote.style.display = "block";
 }
@@ -2300,18 +2615,34 @@ function setStarterPassion(id) {
   renderPassionGrid();
 }
 
-// ⛔ CRÉATION DE PASSIONS PERSONNALISÉES SUSPENDUE (hotfix du 2026-08-30).
+// ⛔ CRÉATION DE PASSIONS PERSONNALISÉES SUSPENDUE
+// (hotfix du 2026-08-30, MAINTENUE sur ADR-010 par arbitrage de Benjamin
+//  le 2026-08-31.)
 //
-// Une passion personnalisée reçoit un id `custom_<slug>_<rand>` qui ne vit que
-// dans l'état local. Or `posts`, `profiles`, `stories`, `events` et
-// `conversations` portent une clé étrangère vers `passions(id)`, table qui n'a
-// qu'une policy SELECT : aucun client ne peut y insérer la ligne correspondante.
-// Publier dans une telle passion échoue donc en 23503, et le message affiché
-// accuse le réseau pour une erreur définitive.
+// LE MOTIF TECHNIQUE. Une passion personnalisée reçoit un id `custom_<slug>_<rand>`
+// qui ne vit que dans l'état local. Or `posts`, `profiles`, `stories`, `events`
+// et `conversations` portent une clé étrangère vers `passions(id)`, table qui
+// n'a qu'une policy SELECT : aucun client ne peut y insérer la ligne. Publier
+// dans une telle passion échoue en 23503, définitivement.
 //
-// Tant que la question n'est pas tranchée (cf. docs/PASSION_PERSONNALISEE_FK),
-// on ferme la porte plutôt que d'offrir un cul-de-sac. RIEN n'est supprimé : les
-// passions déjà créées restent dans l'état, leurs publications restent en place.
+// ⚠️ LE MOTIF PRODUIT, qui décide seul de la question. La sortie A permettait de
+// la garder comme centre d'intérêt du fil, puisque le filtre de lecture est
+// 100 % local. Mais une passion non canonique ne peut alimenter AUCUN contenu
+// serveur : la conserver comme NOUVEAU centre d'intérêt créerait un filtre sans
+// contenu — une fonctionnalité qui ne peut rien montrer. ADR-010 ne rouvre donc
+// pas cette porte.
+//
+// CE QUI N'EST PAS TOUCHÉ : les passions déjà créées restent dans
+// `state.user.customPassions`, restent publiées dans le jsonb `profiles.passions`
+// (qui ne porte aucune clé étrangère), et leurs publications restent en place.
+// Aucune suppression, aucune transformation.
+//
+// LA SUITE : « Proposer une passion », avec validation avant ajout au référentiel
+// canonique. Hors périmètre d'ADR-010.
+//
+// ⚠️ Masquer les tuiles NE SUFFIT PAS : un appelant futur passerait à côté du
+// masquage. Garder sans masquer offrirait une porte qui refuse au tap. Les deux
+// sont nécessaires — c'est le point de convergence qui fait foi.
 function passionsPersoSuspendues() { return true; }
 
 function openCreateCustomPassion() {
@@ -2321,8 +2652,8 @@ function openCreateCustomPassion() {
       <div class="modal-title">🌟 Créer ta passion</div>\
       <div style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:16px;">\
         La création de passions personnalisées est <b>momentanément indisponible</b>.\
-        Elles ne pouvaient pas être publiées correctement, alors on préfère fermer\
-        la porte plutôt que de te laisser publier dans le vide.<br/><br/>\
+        Une passion à toi ne peut pas encore recevoir de contenu : tu te retrouverais\
+        avec un filtre qui ne montre rien.<br/><br/>\
         Tes passions déjà créées ne sont pas touchées : elles restent sur ton profil.\
         Choisis une passion du catalogue pour publier dès maintenant.\
       </div>\
@@ -2362,8 +2693,8 @@ function openCreateCustomPassion() {
 
   openModal(`
     <div class="modal-handle"></div>
-    <div class="modal-title">🌟 Proposer une nouvelle passion</div>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.5;">Les catégories sont validées par l'équipe PASSIO pour garantir la qualité et éviter les doublons. Ta demande sera examinée sous 48h.</div>
+    <div class="modal-title">🌟 Créer ta passion</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.5;">Ta passion est ajoutée tout de suite, rien que pour toi : elle sert à choisir ce que tu vois dans ton fil. Elle n'entre pas dans le catalogue commun, et on ne peut pas encore publier dedans.</div>
 
     ${pendingHTML}
 
@@ -2488,10 +2819,19 @@ function submitPassionRequest() {
   }
 
   closeModal();
-  toast("📩 Demande envoyée ! Tu seras notifié quand elle sera examinée.", "success");
+  // ⚠️ Ce message annonçait « Demande envoyée ! Tu seras notifié quand elle sera
+  // examinée », et la modale promettait une revue « par l'équipe PASSIO […] sous
+  // 48h ». Aucune revue n'a jamais existé : le code auto-approuvait après cinq
+  // secondes. Une promesse de modération humaine qu'aucun humain ne tient n'est
+  // pas un détail de formulation — on dit ce que le produit fait.
+  toast("✨ Passion ajoutée à tes passions", "success");
 
-  // Simuler une approbation après 5 secondes pour la démo
-  setTimeout(function() {
+  // Ajout IMMÉDIAT. C'était un `setTimeout(…, 5000)` commenté « Simuler une
+  // approbation après 5 secondes pour la démo » : la passion n'existait donc pas
+  // pendant 5 secondes, et le toast de succès mentait sur son propre effet.
+  // La passion est PERSONNELLE (`state.user.customPassions`, jamais publiée) :
+  // il n'y a rien à approuver, et personne pour le faire.
+  (function() {
     var reqs = JSON.parse(localStorage.getItem("passio_passion_requests") || "[]");
     var req = reqs.find(function(r) { return r.id === request.id; });
     if (req) {
@@ -2512,9 +2852,8 @@ function submitPassionRequest() {
       state.user.customPassions.push(newPassion);
       saveState();
       if (typeof renderExplorer === "function") renderExplorer();
-      toast("🎉 Ta passion « " + name + " » a été approuvée ! " + draft.emoji, "reward");
     }
-  }, 5000);
+  })();
 }
 
 function saveCustomPassion() {
@@ -2550,6 +2889,191 @@ function onbV2Actif() {
 //
 // Cette fonction est le seul endroit qui écrit les deux à la fois. Tout appelant
 // qui modifie les intérêts DOIT passer par ici, sinon la divergence revient.
+// ══════════════════════════════════════════════════════════════════════════
+// SÉLECTIONS DU FIL — « Suivis », passions et envies, en OU INCLUSIF
+// ──────────────────────────────────────────────────────────────────────────
+// ⚠️ CE QUI CHANGE PAR RAPPORT À ADR-010, et pourquoi. ADR-010 avait posé deux
+// VUES EXCLUSIVES : « Accueil » (union passions + suivis) et « Suivis » (rien
+// d'autre). Toucher une passion quittait « Suivis », et allumer « Suivis »
+// grisait les passions — la contradiction était rendue impossible plutôt
+// qu'affichée. La refonte multi-passion remplace cette exclusivité par une
+// SÉLECTION ADDITIVE : « Suivis » est un critère au même titre qu'une passion
+// ou qu'une envie, et il reste coché pendant qu'on en ajoute d'autres.
+//
+// Une publication entre dans le fil si elle satisfait AU MOINS UN critère coché :
+//     auteur suivi   OU   passion cochée   OU   envie cochée
+// Les résultats sont fondus dans UNE liste, dédupliquée par `p.id`, puis classés
+// par le moteur existant (`rankFeedPosts` / bonus d'intention). Aucune section
+// par source, par passion ni par envie.
+//
+// ⚠️ CE QUI NE REVIENT PAS EN ARRIÈRE — la persistance. L'ancienne bascule
+// `_showFollowingFeed` était une variable de portée script jamais écrite : elle
+// repartait à `false` à chaque ouverture, donc suivre quelqu'un n'avait aucun
+// effet durable. « Suivis » vit désormais dans `state.feedFollowingOn`,
+// sauvegardé, et les deux anciennes vues s'y migrent à `true` (loadState).
+//
+// ⚠️ Ces sélections sont un état de LECTURE. Elles ne touchent jamais à la
+// passion de publication (`currentProfileId`) — cf. ADR-010, décision 6.
+// ══════════════════════════════════════════════════════════════════════════
+// LA BULLE DE PASSION — UN SEUL COMPOSANT, DEUX SURFACES
+// ──────────────────────────────────────────────────────────────────────────
+// Le Fil (multi-sélection) et le Profil (choix unique) affichent désormais la
+// MÊME bulle : mêmes classes `.profile-tile*`, donc mêmes dimensions, mêmes
+// espacements, mêmes états visuels. C'est une exigence de la refonte
+// multi-passion (§1 et §7), et c'est aussi une leçon de ce dépôt : les deux
+// tables de libellés de mood, puis les deux écrans de profil, avaient divergé
+// parce que chacun portait sa copie du rendu.
+//
+// ⚠️ LE GESTIONNAIRE N'EST PAS UNE CHAÎNE LIBRE. `action` désigne l'un des
+// quatre gestes possibles, et chaque branche écrit son appel EN TOUTES LETTRES
+// ci-dessous. Laisser l'appelant fournir la chaîne d'`onclick` aurait fait
+// entrer une valeur non relue dans un attribut `on*` — exactement ce que
+// `audit:echappement` refuse, et il a raison : un gestionnaire doit se relire à
+// l'oeil, sans remonter la provenance de la chaîne. Seul `arg` circule, et il
+// passe par `escapeJsArg`.
+//
+// Champs : { emoji, label, photoUrl, fallbackUrl, count, selected, dimmed,
+//            action, arg, title, tileKey }
+function _passionTileOnclick(action, arg) {
+  var a = escapeJsArg(String(arg == null ? "" : arg));
+  if (action === "feedFollowing")  return "toggleFeedFollowing()";
+  if (action === "feedPassion")    return "toggleProfileFilter('" + a + "')";
+  if (action === "profilePassion") return arg == null ? "setProfilePassion(null)" : "setProfilePassion('" + a + "')";
+  if (action === "visitedPassion") return "setVisitedPassion('" + a + "')";
+  return "";
+}
+
+// ⚠️ `role="button"` OBLIGE À LA TOUCHE. Une bulle est un `<div>` : lui donner
+// le rôle de bouton sans l'activer au clavier, c'est PROMETTRE une commande
+// qu'un lecteur d'écran annonce et qu'Entrée ne déclenche pas — pire que de ne
+// rien annoncer. Un seul écouteur délégué, posé une fois, couvre les trois
+// surfaces (Fil, mon profil, profil visité) et survit à tous les re-rendus.
+function _armerClavierBulles() {
+  if (window._passionTilesKeyboard) return;
+  window._passionTilesKeyboard = true;
+  document.addEventListener("keydown", function (e) {
+    if (e.key !== "Enter" && e.key !== " " && e.key !== "Spacebar") return;
+    var t = e.target && e.target.closest && e.target.closest("[data-passion-tile]");
+    if (!t) return;
+    e.preventDefault();   // sinon l'espace fait défiler la page sous la bulle
+    t.click();
+  });
+}
+
+function passionTileHTML(o) {
+  o = o || {};
+  _armerClavierBulles();
+  var emoji = String(o.emoji || "✨");
+  var label = String(o.label || "Passion");
+  var selected = !!o.selected;
+  var dimmed = !!o.dimmed;
+  var avatarContent = o.photoUrl
+    ? '<img loading="lazy" decoding="async" class="profile-tile-photo" src="' + safeUrlAttr(o.photoUrl) + '" alt="' + escapeHtml(label) + '"'
+      + (o.fallbackUrl ? ' onerror="this.onerror=null;this.src=\'' + escapeJsArg(o.fallbackUrl) + '\'"' : '')
+      + '/><span class="profile-tile-emoji-badge">' + escapeHtml(emoji) + '</span>'
+      + '<span class="profile-tile-glyph" aria-hidden="true">' + escapeHtml(emoji) + '</span>'
+    : escapeHtml(emoji) + '<span class="profile-tile-glyph" aria-hidden="true">' + escapeHtml(emoji) + '</span>';
+  var badge = (o.count > 0)
+    ? '<span class="profile-tile-count" style="position:absolute;top:-5px;right:-5px;background:var(--accent);color:#fff;font-size:9px;font-weight:800;border-radius:8px;padding:1px 5px;min-width:16px;text-align:center;border:2px solid var(--bg);line-height:14px;">' + Number(o.count) + '</span>'
+    : '';
+  return '<div class="profile-tile ' + (selected ? "active" : "") + '"'
+    + ' onclick="' + _passionTileOnclick(o.action, o.arg) + '"'
+    + ' title="' + escapeHtml(o.title || label) + '"'
+    // Cle d'identification de la bulle, pour la resynchronisation et les tests.
+    // Le neutre « Toutes » porte la chaine vide, comme la selection qu'il pose.
+    + (o.tileKey === undefined ? "" : ' data-passion-tile="' + escapeHtml(String(o.tileKey)) + '"')
+    + ' role="button" tabindex="0" aria-pressed="' + (selected ? "true" : "false") + '"'
+    + ' style="opacity:' + (dimmed ? "0.3" : "1") + ';transform:' + (selected ? "scale(1.07)" : "scale(1)") + ';transition:all 0.2s;">'
+    + '<div class="profile-tile-avatar" style="position:relative;' + (o.photoUrl ? "overflow:hidden;" : "") + (o.avatarStyle || "") + '">'
+    + avatarContent + badge + '</div>'
+    + '<div class="profile-tile-label" style="font-weight:' + (selected ? "800" : "600") + ';color:' + (selected ? "var(--accent)" : "") + ';">'
+    + escapeHtml(label) + '</div>'
+    + '</div>';
+}
+
+// L'URL de la photo d'illustration d'une passion du catalogue (identifiant
+// Unsplash), et son repli. Le Fil et le Profil en avaient deux copies.
+function passionPhotoUrl(passionMeta) {
+  var id = passionMeta && passionMeta.photo;
+  return id ? "https://images.unsplash.com/" + id + "?w=200&h=200&fit=crop&crop=faces,entropy&auto=format&q=80" : null;
+}
+function passionPhotoFallback(passionId) {
+  return "https://picsum.photos/seed/" + encodeURIComponent(String(passionId || "passion")) + "/200/200";
+}
+
+function feedFollowingSelected() {
+  try { return state ? state.feedFollowingOn !== false : true; } catch (e) { return true; }
+}
+
+// Repeint le fil après un changement de sélection. Facteur commun des trois
+// familles de critères : sans lui, chacune redécouvrait l'invalidation du guard
+// no-op et le retour en tête de liste.
+function _feedSelectionChanged() {
+  // ⚠️ Invalider le guard no-op AVANT de repeindre. `renderFeed` sort tôt quand
+  // la signature est inchangée ET que la liste a des enfants — et le repli
+  // d'exploration écrit dans `_feedDomSig` une signature d'une AUTRE forme
+  // (« repli§… »), incomparable à la nôtre. Un changement de sélection est un
+  // geste explicite : il doit toujours repeindre.
+  try { window._feedDomSig = null; } catch (e) {}
+  try { if (typeof syncFeedViewUi === "function") syncFeedViewUi(); } catch (e) {}
+  try { if (typeof renderProfileStrip === "function") renderProfileStrip(); } catch (e) {}
+  try { renderFeed(); } catch (e) {}
+  try {
+    var appMain = document.getElementById("appMain");
+    if (appMain) setTimeout(function () { appMain.scrollTop = 0; }, 60);
+  } catch (e) {}
+}
+
+function setFeedFollowing(on) {
+  var v = !!on;
+  try {
+    if (state.feedFollowingOn === v) return v;
+    state.feedFollowingOn = v;
+    // `feedView` n'est plus lue par le rendu. On la fige sur « accueil » pour
+    // qu'un client ANTÉRIEUR relisant ce blob montre l'union (un sur-ensemble)
+    // plutôt que de rester bloqué sur l'ancienne vue « suivis » seule.
+    state.feedView = "accueil";
+    saveState();
+  } catch (e) {}
+  _feedSelectionChanged();
+  return v;
+}
+
+function toggleFeedFollowing() {
+  return setFeedFollowing(!feedFollowingSelected());
+}
+
+// Compat : `setFeedView` reste appelable (liens anciens, tests, code en vol).
+// Elle ne rend PLUS une vue exclusive — « suivis » coche simplement « Suivis ».
+function setFeedView(vue) {
+  setFeedFollowing(true);
+  return (vue === "suivis") ? "suivis" : "accueil";
+}
+
+// Aligne l'interface sur la vue courante. Appelée à chaque `renderFeed` (le fil
+// peut être repeint sans passer par `setFeedView` : boot, realtime, navigation).
+//
+// ⚠️ ELLE NE PILOTE PLUS DE COMMUTATEUR. La rangée « Accueil / Suivis » a été
+// retirée le 2026-08-31 sur demande de Benjamin, après essai réel : elle coûtait
+// une ligne de chrome en haut du Fil pour un choix que la tuile « Suivis » du
+// rail exprime déjà. C'est `renderProfileStrip` (app-06) qui rend l'état de la
+// vue, dans cette tuile.
+//
+// ⚠️ ELLE RESTE UTILE, et ce n'est pas une coquille vide : le bloc de passions
+// était MASQUÉ en vue « Suivis » par la version précédente. Un compte qui a
+// quitté l'application dans cet état porte encore `hidden` sur ce nœud au
+// rechargement — l'attribut est dans le DOM servi, pas dans l'état. Sans cette
+// remise à zéro, le rail resterait invisible pour toujours, tuile « Suivis »
+// comprise : plus aucune commande pour en sortir. C'est le même piège que le
+// filtre du Fil resté accroché à une passion archivée.
+function syncFeedViewUi() {
+  var bloc = document.getElementById("feedPassionsBlock");
+  // On n'écrit QUE si la valeur change : ce nœud est dans #screen-feed, observé
+  // par plusieurs lots UI, et une écriture inconditionnelle à chaque rendu
+  // réveillerait leurs MutationObserver pour rien.
+  if (bloc && bloc.hidden) bloc.hidden = false;
+}
+
 function setFeedPassions(ids, opts) {
   var liste = Array.isArray(ids) ? ids.filter(function (x) { return typeof x === "string" && x; }) : [];
   // Dédup en conservant l'ordre de sélection : le premier choisi est le primaire.
@@ -2810,13 +3334,15 @@ function allFeedPosts() {
   const deduplicated = allPosts.filter(p => {
     if (p.isReel) return false;
     if (idsBloques.has(p.id)) return false;
-    // ⚠️ VISIBILITÉ D'UN CARNET. Elle vit dans le blob jsonb `vlog` (pas de
-    // colonne), donc la RLS ne peut PAS la faire respecter : la ligne `posts`
-    // part à tous ceux qui peuvent lire l'auteur. Le filet est donc CLIENT — et
-    // il n'était appliqué que par `allCarnets()`. Résultat : un carnet marqué
-    // « Privé » n'apparaissait pas dans l'onglet Carnets… mais s'affichait dans
-    // le FIL de tout le monde, et s'y ouvrait entièrement.
-    if (typeof canSeeCarnet === "function" && !canSeeCarnet(p)) return false;
+    // ⚠️ LES CARNETS SONT RETIRÉS (§6), ET C'EST AUSSI UNE GARANTIE DE
+    // CONFIDENTIALITÉ. La visibilité d'un carnet vivait dans le blob jsonb
+    // `vlog` (pas de colonne), donc la RLS ne pouvait PAS la faire respecter :
+    // la ligne `posts` part à tous ceux qui peuvent lire l'auteur, et seul un
+    // filet CLIENT empêchait un carnet « Privé » de s'afficher dans le fil de
+    // tout le monde. En excluant les publications de type `vlog` d'office, ce
+    // filet devient inconditionnel — un carnet ancien, quelle que soit sa
+    // visibilité déclarée, n'entre plus nulle part.
+    if (p.type === "vlog") return false;
     if (seenIds.has(p.id)) return false;
     seenIds.add(p.id);
     return true;
@@ -2880,9 +3406,64 @@ function feedIntentsEnabled() {
   return true;
 }
 
+// Les envies RÉELLEMENT sélectionnables comme critère. « for_you » n'en fait pas
+// partie : c'est le NEUTRE, c'est-à-dire l'absence de critère d'envie — le
+// cocher revient à tout décocher.
+var FEED_INTENT_SOURCES = ["discover", "learn", "create", "meet"];
+
 function normalizeFeedIntent(intent) {
   return ["for_you", "discover", "learn", "create", "meet"].indexOf(intent) > -1
     ? intent : "for_you";
+}
+
+// ── MULTI-SÉLECTION DES ENVIES ────────────────────────────────────────────────
+// `activeFeedIntent` (une seule valeur) reste la source de vérité du CLASSEMENT
+// quand exactement une envie est cochée : c'est ce qui garde intact le
+// comportement mesuré du rail d'intentions. Dès qu'il y en a plusieurs, le bonus
+// retenu est le MEILLEUR des envies cochées (cf. `rankFeedPostsForIntents`).
+function feedIntentsSelected() {
+  var out = [];
+  try {
+    var brut = (state && Array.isArray(state.feedIntents)) ? state.feedIntents : [];
+    for (var i = 0; i < brut.length; i++) {
+      if (FEED_INTENT_SOURCES.indexOf(brut[i]) > -1 && out.indexOf(brut[i]) === -1) out.push(brut[i]);
+    }
+  } catch (e) {}
+  return out;
+}
+
+function setFeedIntents(liste) {
+  var propres = [];
+  (Array.isArray(liste) ? liste : []).forEach(function (i) {
+    if (FEED_INTENT_SOURCES.indexOf(i) > -1 && propres.indexOf(i) === -1) propres.push(i);
+  });
+  try { state.feedIntents = propres; saveState(); } catch (e) {}
+  // `activeFeedIntent` porte le classement : une seule envie cochée le pilote,
+  // zéro ou plusieurs le ramènent au neutre (le bonus multiple est calculé
+  // ailleurs, à partir de la liste).
+  activeFeedIntent = (propres.length === 1) ? propres[0] : "for_you";
+  return propres;
+}
+
+// Un post satisfait-il l'envie `intent` ? Utilisé comme CRITÈRE D'ENTRÉE dans le
+// fil (union), pas seulement comme bonus de classement.
+//
+// ⚠️ « Explorer » n'a aucun mood correspondant, et ne peut pas en avoir : c'est
+// une question posée au LECTEUR (« qu'est-ce qui vient d'ailleurs ? »), pas une
+// étiquette posée par l'auteur. Son prédicat reprend donc exactement les deux
+// signaux que `rankFeedPostsForIntent` utilise déjà pour le bonus « discover » :
+// auteur que je ne suis pas, ou passion que je n'ai pas cochée.
+function feedPostMatchesIntent(p, intent) {
+  if (!p) return false;
+  if (intent === "discover") {
+    try {
+      var suivis = (state.user && state.user.following) || [];
+      var horsSuivis = !!p.authorId && suivis.indexOf(p.authorId) === -1;
+      var horsPassions = !!p.passion && !_activeFeedPassions.has(p.passion);
+      return horsSuivis || horsPassions;
+    } catch (e) { return false; }
+  }
+  return legacyMoodToFeedIntent(p.mood) === intent;
 }
 
 // Fonction pure, volontairement conservatrice : les valeurs historiques sans
@@ -2965,11 +3546,18 @@ function syncFeedIntentUi() {
   var selector = document.getElementById("feedIntentSelector");
   if (legacy) legacy.hidden = enabled;
   if (selector) selector.hidden = !enabled;
-  if (!enabled) activeFeedIntent = "for_you";
+  if (!enabled) { activeFeedIntent = "for_you"; try { state.feedIntents = []; } catch (e) {} }
   activeFeedIntent = normalizeFeedIntent(activeFeedIntent);
   if (!selector) return;
+  // MULTI-SÉLECTION : chaque envie cochée est active. « Tous » (for_you) est le
+  // neutre — actif exactement quand aucune envie n'est cochée.
+  var choisies = feedIntentsSelected();
+  // Le classement suit la sélection persistée : sans cette ligne, `activeFeedIntent`
+  // repartirait à « for_you » à chaque rechargement alors qu'une envie est cochée.
+  activeFeedIntent = (choisies.length === 1) ? choisies[0] : "for_you";
   selector.querySelectorAll(".feed-intent-btn").forEach(function(btn) {
-    var active = btn.getAttribute("data-intent") === activeFeedIntent;
+    var cle = btn.getAttribute("data-intent");
+    var active = (cle === "for_you") ? (choisies.length === 0) : (choisies.indexOf(cle) > -1);
     btn.classList.toggle("active", active);
     btn.setAttribute("aria-pressed", active ? "true" : "false");
   });
@@ -2988,11 +3576,23 @@ function setupFeedIntentDelegation() {
   selector._delegationAttached = true;
 }
 
+// Bascule une envie. « Tous » remet le neutre (aucune envie cochée) ; toute
+// autre s'ajoute ou se retire sans toucher aux autres, ni aux passions, ni à
+// « Suivis » — c'est la règle du OU inclusif.
 function setFeedIntent(intent) {
   if (!feedIntentsEnabled()) return;
   var requested = normalizeFeedIntent(intent);
-  var reset = requested === "for_you" || requested === activeFeedIntent;
-  activeFeedIntent = reset ? "for_you" : requested;
+  var choisies = feedIntentsSelected();
+  var reset = (requested === "for_you");
+  if (reset) {
+    choisies = [];
+  } else if (choisies.indexOf(requested) > -1) {
+    choisies = choisies.filter(function (x) { return x !== requested; });
+    reset = choisies.length === 0;
+  } else {
+    choisies = choisies.concat([requested]);
+  }
+  setFeedIntents(choisies);
   feedIntentTrack(reset ? "feed_intent_reset" : "feed_intent_selected", activeFeedIntent);
   window._feedDomSig = null;
   renderFeed();
@@ -3087,62 +3687,9 @@ function setupMoodButtons() {
   });
 }
 
-// Afficher le carrousel de CDV Lives en haut du feed
-function renderFeedCdvLives() {
-  const container = document.getElementById("feedList");
-  if (!container) return;
-
-  // Récupérer les lives actifs pertinents pour l'utilisateur
-  const allLives = getCdvLives().filter(l => l.status === "live");
-  const myFollowing = state.following || [];
-  const relevantLives = allLives.filter(l =>
-    l.authorId === "me" ||
-    myFollowing.includes(l.authorId) ||
-    l.visibility === "public"
-  );
-
-  if (!relevantLives.length) return;
-
-  // Créer un élément de live dans le feed
-  const livesHTML = relevantLives.slice(0, 3).map(l => {
-    const seedAuthor = userById(l.authorId);
-    const authorName = l.authorId === "me" ? (state.user.name || "Toi") : (seedAuthor && seedAuthor.name) || "Passionné";
-    const viewerCount = (l.currentViewers || 0) + Math.floor(Math.random()*10);
-
-    return `<div class="cdv-feed-live-item" style="
-      background:linear-gradient(135deg,rgba(239,68,68,0.1),rgba(245,158,11,0.1));
-      border:1px solid rgba(239,68,68,0.25);
-      border-radius:12px;
-      padding:12px;
-      margin-bottom:12px;
-      cursor:pointer;
-      transition:all 0.2s;
-    " onclick="openCdvLiveViewer('${escapeJsArg(l.id)}')" onmouseover="this.style.background='linear-gradient(135deg,rgba(239,68,68,0.15),rgba(245,158,11,0.15))'" onmouseout="this.style.background='linear-gradient(135deg,rgba(239,68,68,0.1),rgba(245,158,11,0.1))'">
-      <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px;">
-        <span style="background:#ef4444;color:#fff;font-size:9px;font-weight:700;padding:3px 7px;border-radius:6px;animation:livePulse 1.5s ease infinite;">🔴 EN DIRECT</span>
-        <span style="font-weight:700;font-size:13px;color:var(--text);">📡 ${escapeHtml(l.destination)}</span>
-        <span style="font-size:11px;color:var(--muted);margin-left:auto;">👁 ${viewerCount}</span>
-      </div>
-      <div style="font-size:11px;color:var(--text-dim);margin-bottom:6px;">par ${escapeHtml(authorName)}</div>
-      ${l.steps.length ? `<div style="font-size:10px;color:var(--muted);">${l.steps.length} étape${l.steps.length>1?"s":""} · ${escapeHtml(l.duration || "")}</div>` : ""}
-    </div>`;
-  }).join("");
-
-  // Insérer le carrousel en haut du feed
-  const section = document.createElement("div");
-  section.id = "feedCdvLivesSection";
-  section.innerHTML = livesHTML;
-
-  // Insérer avant le premier post
-  const firstPost = container.querySelector(".post");
-  if (firstPost) {
-    container.insertBefore(section, firstPost);
-  } else if (container.children.length > 0) {
-    container.insertBefore(section, container.children[0]);
-  } else {
-    container.appendChild(section);
-  }
-}
+// ⚠️ `renderFeedCdvLives` — le carrousel « CDV Live en direct » posé en tête du
+// fil — a été RETIRÉ avec la fonctionnalité Carnet de voyage (§6). Il n'avait
+// déjà aucun appelant : la fonction était morte avant même ce retrait.
 
 // ======== PULL-TO-REFRESH ========
 // Détecte un swipe vers le bas depuis le haut du feed et recharge les posts Supabase.
@@ -3286,6 +3833,70 @@ function rankFeedPosts(posts) {
 // Réordonne le résultat de rankFeedPosts sans jamais ajouter, retirer ou
 // dupliquer un post. La soupape historique passio_feed_rank="0" coupe aussi les
 // bonus d'intention : un seul kill switch suffit pour retrouver la chronologie.
+// Bonus de classement d'UN post pour UNE envie. Extrait de `rankFeedPostsForIntent`
+// pour que la version multi-envies applique EXACTEMENT la même règle : deux
+// copies auraient divergé, comme les deux tables de libellés de mood avant elles.
+// `lot` sert au seul garde-fou de « Explorer » (au moins un signal fiable dans
+// le lot classé, sinon aucun bonus n'est distribué).
+function _feedIntentBonus(p, intent, lot) {
+  var myPassions = _myPassionSet();
+  var following = (state.user && state.user.following) || state.following || [];
+  var followingSet = new Set(following);
+  if (intent === "discover") {
+    // Découvrir n'est permis que si au moins un signal de nouveauté fiable existe.
+    // À défaut, le classement neutre est rendu exactement dans le même ordre,
+    // sans heuristique inventée à partir du texte libre.
+    var reliable = (lot || []).some(function (x) {
+      return !!((x.authorId && followingSet.size) || (x.passion && myPassions.size));
+    });
+    if (!reliable) return 0;
+    var bonus = 0;
+    if (p.authorId && followingSet.size && !followingSet.has(p.authorId)) bonus += 0.28;
+    if (p.passion && myPassions.size && !myPassions.has(p.passion)) bonus += 0.28;
+    return bonus;
+  }
+  if (legacyMoodToFeedIntent(p.mood) !== intent) return 0;
+  // « Rencontrer » ne remonte que des posts dont le parcours IRL existant est
+  // réellement actionnable ; il n'active ni proposition ni géolocalisation.
+  var sharedEventActionable = intent === "meet"
+    && p.sharedReelData && p.sharedReelData.kind === "event"
+    && p.sharedReelData.id && typeof openEventDetails === "function";
+  if (intent !== "meet" || sharedEventActionable
+      || (typeof feedIrlBridgeEligible === "function" && feedIrlBridgeEligible(p))) {
+    return 0.55;
+  }
+  return 0;
+}
+
+// Plusieurs envies cochées : le bonus retenu est le MEILLEUR des envies, jamais
+// leur somme — cumuler ferait passer un post « Apprendre + Rencontrer » devant
+// tout le reste pour une raison que l'écran n'explique pas. Zéro ou une envie
+// retombe EXACTEMENT sur `rankFeedPostsForIntent`, dont le comportement mesuré
+// ne bouge pas.
+function rankFeedPostsForIntents(posts, intents) {
+  var liste = (Array.isArray(intents) ? intents : []).filter(function (i) {
+    return FEED_INTENT_SOURCES.indexOf(i) > -1;
+  });
+  if (liste.length <= 1) return rankFeedPostsForIntent(posts, liste[0] || "for_you");
+  var ranked = rankFeedPosts(posts);
+  if (!feedIntentsEnabled()) return ranked;
+  try {
+    if (localStorage.getItem("passio_feed_rank") === "0") return ranked;
+  } catch (e) {}
+  return ranked.map(function (p, index) {
+    var meilleur = 0;
+    for (var i = 0; i < liste.length; i++) {
+      var b = _feedIntentBonus(p, liste[i], ranked);
+      if (b > meilleur) meilleur = b;
+    }
+    var baseScore = typeof p._feedScore === "number" ? p._feedScore : 0;
+    return { post: p, index: index, total: baseScore + meilleur };
+  }).sort(function (a, b) {
+    var d = b.total - a.total;
+    return d || a.index - b.index;
+  }).map(function (x) { return x.post; });
+}
+
 function rankFeedPostsForIntent(posts, intent) {
   var ranked = rankFeedPosts(posts);
   intent = normalizeFeedIntent(intent);
@@ -3294,36 +3905,12 @@ function rankFeedPostsForIntent(posts, intent) {
     if (localStorage.getItem("passio_feed_rank") === "0") return ranked;
   } catch (e) {}
 
-  var myPassions = _myPassionSet();
-  var following = (state.user && state.user.following) || state.following || [];
-  var followingSet = new Set(following);
-
-  // Découvrir n'est permis que si au moins un signal de nouveauté fiable existe.
-  // À défaut, le classement neutre « Tous » (id for_you) est rendu exactement dans le même
-  // ordre, sans heuristique inventée à partir du texte libre.
-  if (intent === "discover") {
-    var reliable = ranked.some(function(p) {
-      return !!((p.authorId && followingSet.size) || (p.passion && myPassions.size));
-    });
-    if (!reliable) return ranked;
-  }
-
+  // ⚠️ Le garde-fou de « Explorer » (au moins un signal de nouveauté fiable dans
+  // le lot, sinon aucun bonus) vit désormais dans `_feedIntentBonus`, partagé
+  // avec la version multi-envies : il rend 0 pour chaque post, donc l'ordre
+  // neutre est rendu à l'identique — même résultat qu'un retour anticipé.
   return ranked.map(function(p, index) {
-    var bonus = 0;
-    if (intent === "discover") {
-      if (p.authorId && followingSet.size && !followingSet.has(p.authorId)) bonus += 0.28;
-      if (p.passion && myPassions.size && !myPassions.has(p.passion)) bonus += 0.28;
-    } else if (legacyMoodToFeedIntent(p.mood) === intent) {
-      // « Rencontrer » ne remonte que des posts dont le parcours IRL existant est
-      // réellement actionnable ; il n'active ni proposition ni géolocalisation.
-      var sharedEventActionable = intent === "meet"
-        && p.sharedReelData && p.sharedReelData.kind === "event"
-        && p.sharedReelData.id && typeof openEventDetails === "function";
-      if (intent !== "meet" || sharedEventActionable
-          || (typeof feedIrlBridgeEligible === "function" && feedIrlBridgeEligible(p))) {
-        bonus = 0.55;
-      }
-    }
+    var bonus = _feedIntentBonus(p, intent, ranked);
     var baseScore = typeof p._feedScore === "number" ? p._feedScore : 0;
     return { post: p, index: index, total: baseScore + bonus };
   }).sort(function(a, b) {
@@ -4007,6 +4594,7 @@ function renderFeed() {
   }
 
   const mood = state.currentMood || "all";
+  syncFeedViewUi();
   setupFeedIntentDelegation();
   syncFeedIntentUi();
   const intentsEnabled = feedIntentsEnabled();
@@ -4017,27 +4605,64 @@ function renderFeed() {
   let posts = [];
   let availablePostsForMood = []; // Pour afficher les moods disponibles
 
-  // ── COMBINAISON : "Suivis" OU "Passions" (multi-sélection) ──
+  // ── SÉLECTION ADDITIVE DU FIL — « Suivis » OU passions OU envies ──
+  //
+  // Trois familles de critères, TOUTES cumulables, jamais croisées : une
+  // publication entre dès qu'elle satisfait AU MOINS UN critère coché. Cocher
+  // une passion n'éteint pas « Suivis », cocher une envie n'éteint ni l'un ni
+  // l'autre — c'est la règle du OU inclusif.
+  //
+  //   auteur suivi   OU   passion cochée   OU   envie cochée
+  //
+  // Ce que ça change concrètement : si je suis Alice sans partager aucune de ses
+  // passions, TOUTES ses publications restent admissibles tant que « Suivis »
+  // est coché ; et une publication Moto d'un inconnu entre si « Moto » est
+  // cochée, même si je ne suis personne.
+  const suivisOn = feedFollowingSelected();
+  const enviesChoisies = intentsEnabled ? feedIntentsSelected() : [];
+  const followingIds = (state.user && state.user.following) || [];
+  const suitQuelquun = followingIds.length > 0;
+
   let combinedPosts = [];
 
-  // ✅ RÈGLE : si aucune passion ET aucun suivis sélectionné → feed vide
-  // L'utilisateur doit choisir une passion pour voir du contenu
-  const nothingSelected = !_showFollowingFeed && _activeFeedPassions.size === 0;
+  // ⚠️ DEUX NOTIONS DISTINCTES, et les confondre change ce que l'écran vide
+  // PROPOSE. Elles ne coïncident que dans un cas : « Suivis » coché alors qu'on
+  // ne suit personne.
+  //
+  //   · `aucuneSource`    — rien de coché ne peut produire du contenu. C'est ce
+  //                         qui décide s'il faut seulement calculer l'union.
+  //   · `aucuneSelection` — l'utilisateur n'a coché AUCUN critère. C'est ce que
+  //                         `nothingSelected` a toujours voulu dire : l'écran
+  //                         qui invite à choisir, et son action « Explorer ».
+  //
+  // Les fondre faisait dire « Choisis tes passions » à quelqu'un qui a coché
+  // « Suivis » et ne suit personne — donc qui a bel et bien choisi. Son écran
+  // dit « Tu ne suis encore personne », et l'action que le lot UI-2 §5 y attache
+  // est « Publier », pas « Explorer ».
+  const aucuneSource = !(suivisOn && suitQuelquun)
+    && _activeFeedPassions.size === 0
+    && enviesChoisies.length === 0;
+  const nothingSelected = !suivisOn
+    && _activeFeedPassions.size === 0
+    && enviesChoisies.length === 0;
 
-  if (!nothingSelected) {
-    // Ajouter les posts des suivis si sélectionné
-    if (_showFollowingFeed) {
-      const followingIds = state.user?.following || [];
-      let followingPosts = allPosts.filter(function(p) { return followingIds.includes(p.authorId); });
-      combinedPosts = combinedPosts.concat(followingPosts);
-    }
-
-    // Ajouter les posts des passions sélectionnées
+  if (!aucuneSource) {
     if (_activeFeedPassions.size > 0) {
-      let postsByPassion = allPosts.filter(function(p) { return _activeFeedPassions.has(p.passion); });
-      combinedPosts = combinedPosts.concat(postsByPassion);
+      combinedPosts = combinedPosts.concat(allPosts.filter(function(p) { return _activeFeedPassions.has(p.passion); }));
+    }
+    if (suivisOn && suitQuelquun) {
+      combinedPosts = combinedPosts.concat(allPosts.filter(function(p) { return followingIds.includes(p.authorId); }));
+    }
+    if (enviesChoisies.length > 0) {
+      combinedPosts = combinedPosts.concat(allPosts.filter(function(p) {
+        return enviesChoisies.some(function (env) { return feedPostMatchesIntent(p, env); });
+      }));
     }
   }
+  // ⚠️ La déduplication qui suit (`seenIds`) n'est plus une précaution mais une
+  // NÉCESSITÉ : une publication d'un compte suivi, dans une passion cochée, et
+  // portant une envie cochée entre par les TROIS sources à chaque rendu. Elle
+  // ne doit apparaître qu'une fois — la clé est l'identifiant `p.id`.
 
   // Dédupliquer les posts
   const seenIds = new Set();
@@ -4116,6 +4741,10 @@ function renderFeed() {
     // dans le fil (mood "irl", qui n'a pas de bouton). On ne le déclenche PAS
     // quand l'utilisateur a lui-même restreint les moods et que du contenu
     // existe derrière : ce vide-là est son choix, pas une impasse.
+    // Repli d'exploration : « voici ce qui vit ailleurs ». Il ne se déclenche
+    // que sur une sélection de PASSIONS restée vide de contenu. Une sélection
+    // « Suivis » seule ne le déclenche pas : montrer du contenu d'inconnus
+    // contredirait exactement ce que ce critère promet.
     if (onbV2Actif() && _activeFeedPassions.size > 0
         && (availablePostsForMood.length === 0 || !state.feedMoodsTouched)
         && renderFeedExplorationFallback(list)) {
@@ -4129,20 +4758,26 @@ function renderFeed() {
       var emptyTitle = emptyEl.querySelector(".empty-title");
       var emptyText = emptyEl.querySelector(".empty-text");
 
-      if (nothingSelected) {
-        if (emptyTitle) emptyTitle.textContent = "Choisis une passion";
-        if (emptyText) emptyText.textContent = "Sélectionne une passion ci-dessus pour voir le contenu de ta communauté.";
+      var _seulSuivis = suivisOn && _activeFeedPassions.size === 0 && enviesChoisies.length === 0;
+      if (_seulSuivis && !suitQuelquun) {
+        // « Suivis » coché, aucun abonnement : le message dit quoi FAIRE, et où.
+        // Ne jamais y proposer du contenu d'inconnus (cf. repli ci-dessus).
+        if (emptyTitle) emptyTitle.textContent = "Tu ne suis encore personne";
+        if (emptyText) emptyText.textContent = "Ouvre le profil de quelqu'un et touche « Suivre » : ses publications apparaîtront ici. Tu peux aussi cocher une passion ci-dessus.";
+      } else if (_seulSuivis) {
+        if (emptyTitle) emptyTitle.textContent = "Rien de neuf chez tes abonnements";
+        if (emptyText) emptyText.textContent = "Les comptes que tu suis n'ont rien publié pour le moment. Coche une passion ci-dessus pour élargir ton fil.";
+      } else if (nothingSelected) {
+        // Aucun critère coché du tout : le seul vrai cul-de-sac. Il énonce les
+        // DEUX sorties, puisqu'il y en a deux.
+        if (emptyTitle) emptyTitle.textContent = "Choisis tes passions";
+        if (emptyText) emptyText.textContent = "Ton fil réunit les passions que tu choisis et les personnes que tu suis. Touche une passion ci-dessus pour commencer.";
       } else if (!intentsEnabled && selectedMoods.size === 0) {
         if (emptyTitle) emptyTitle.textContent = "Choisis un mood";
         if (emptyText) emptyText.textContent = "Sélectionne un mood pour filtrer le contenu.";
-      } else if (_showFollowingFeed && _activeFeedPassions.size > 0) {
-        if (emptyTitle) emptyTitle.textContent = "Aucun post pour cette combinaison";
-        if (emptyText) emptyText.textContent = intentsEnabled
-          ? "Essaie une autre sélection de passions ou de suivis."
-          : "Essaie un autre mood ou autre sélection.";
-      } else if (_showFollowingFeed) {
-        if (emptyTitle) emptyTitle.textContent = "Aucun post de tes suivis";
-        if (emptyText) emptyText.textContent = "Tu ne suis personne, ou ils n'ont rien publié.";
+      } else if (_activeFeedPassions.size === 0 && suitQuelquun) {
+        if (emptyTitle) emptyTitle.textContent = "Rien de neuf pour l'instant";
+        if (emptyText) emptyText.textContent = "Les personnes que tu suis n'ont rien publié. Ajoute une passion ci-dessus pour découvrir d'autres contenus.";
       } else if (_activeFeedPassions.size > 0) {
         if (emptyTitle) emptyTitle.textContent = "Aucun post pour cette sélection";
         if (emptyText) emptyText.textContent = intentsEnabled
@@ -4170,7 +4805,7 @@ function renderFeed() {
   // ✅ CLASSEMENT PAR PERTINENCE (fraîcheur + affinité passion/suivis + engagement).
   // Repli chronologique strict via localStorage.passio_feed_rank="0". Voir rankFeedPosts.
   const sortedPosts = intentsEnabled
-    ? rankFeedPostsForIntent(posts, activeFeedIntent)
+    ? rankFeedPostsForIntents(posts, enviesChoisies)
     : rankFeedPosts(posts);
 
   const renderLimit = window._feedRenderLimit || 20;
@@ -4186,7 +4821,7 @@ function renderFeed() {
   const _domSig = [
     mood, Array.from(selectedMoods).join(","), Array.from(_activeFeedPassions).join(","),
     intentsEnabled ? "intents1:" + activeFeedIntent : "intents0",
-    _showFollowingFeed ? 1 : 0, renderLimit, hasMore ? 1 : 0,
+    suivisOn ? "sv1" : "sv0", enviesChoisies.join("+"), followingIds.length, renderLimit, hasMore ? 1 : 0,
     Math.floor(Date.now() / 300000),
     // Le pont Fil → IRL change le HTML des cartes sans toucher aux posts : sans
     // lui dans la signature, basculer le drapeau ne repeindrait pas le fil.
@@ -4450,6 +5085,14 @@ function renderPostHTML(p) {
 
   const _cuAuthor = userById(p.authorId) || {};
   const author = {
+    // ⚠️ `id`, `passions` et `passion` DOIVENT être recopiés ici. Cet objet est
+    // reconstruit de zéro à partir de quatre champs d'affichage : sans eux,
+    // `identitePassionsHTML` ne sait pas de qui il parle et rend "" — la ligne
+    // d'identité (§2) disparaissait alors de TOUTES les cartes du fil, sans
+    // erreur ni test rouge ailleurs.
+    id: p.authorId,
+    passions: _cuAuthor.passions,
+    passion: _cuAuthor.passion || p.passion,
     name: authorName || _cuAuthor.name || "Profil",  // Fallback minimal au lieu de "Utilisateur"
     profileEmoji: p.authorEmoji || _cuAuthor.profileEmoji || "✨",
     avatar: p.authorColor || _cuAuthor.avatar || "#8b5cf6",
@@ -4460,32 +5103,11 @@ function renderPostHTML(p) {
   const likeClass = liked ? "liked" : "";
 
   let media = "";
-  // Carnet de voyage → aperçu compact full-width avec destination + dates en overlay
-  if (p.type === "vlog") {
-    const fmtRange = (a, b) => {
-      const o = { day: "numeric", month: "short" };
-      if (a && b) return new Date(a).toLocaleDateString("fr-FR", o) + " → " + new Date(b).toLocaleDateString("fr-FR", o);
-      if (a) return new Date(a).toLocaleDateString("fr-FR", o);
-      return "";
-    };
-    const dates = fmtRange(p.dateStart, p.dateEnd);
-    const nbDays = (p.steps || []).length;
-    const coverSrc = p.cover || "";
-    media = `<div class="post-vlog-card" onclick="openVlogViewer('${escapeJsArg(p.id)}')">
-      ${coverSrc ? `<img loading="lazy" decoding="async" class="post-vlog-cover" src="${safeUrlAttr(coverSrc)}" alt="${escapeHtml(p.destination || '')}" onerror="this.onerror=null;this.src='https://picsum.photos/seed/vlog-feed-${encodeURIComponent(p.id)}/1280/720';"/>` : `<div class="post-vlog-cover"></div>`}
-      <div class="post-vlog-overlay"></div>
-      <div class="post-vlog-meta">
-        <span class="post-vlog-tag">📔 CARNET DE VOYAGE</span>
-        <div class="post-vlog-dest">${escapeHtml(p.destination || "Voyage")}</div>
-        ${dates ? `<div class="post-vlog-dates">${escapeHtml(dates)}</div>` : ""}
-        <div class="post-vlog-stats">
-          <span>📍 ${nbDays} jour${nbDays > 1 ? "s" : ""}</span>
-          ${p.budget ? `<span>💰 ${escapeHtml(p.budget)}</span>` : ""}
-          ${p.transport ? `<span>🚆 ${escapeHtml(p.transport)}</span>` : ""}
-        </div>
-      </div>
-    </div>`;
-  }
+  // ⚠️ La carte « Carnet de voyage » du fil a été RETIRÉE (§6). Les
+  // publications de type `vlog` n'entrent plus dans aucun fil (`allFeedPosts`),
+  // donc cette branche n'avait plus de contenu à peindre — et son `onclick`
+  // appelait `openVlogViewer`, qui n'existe plus. La classe `.post-vlog-card`,
+  // elle, RESTE : la carte d'événement partagé s'en sert (juste dessous).
   // Événement IRL partagé dans le feed (shareEventInFeed, app-07) → carte
   // compacte cliquable vers la fiche. Porté par sharedReelData.kind==="event".
   if (p.sharedReelData && p.sharedReelData.kind === "event") {
@@ -4575,6 +5197,7 @@ function renderPostHTML(p) {
       <div class="avatar sm" style="background:${avatarBg(cu)};cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${escapeJsArg(c.authorId)}','${escapeJsArg(cSrc)}')">${avatarInner(cu)}</div>
       <div class="comment-body">
         <div class="comment-author" style="cursor:pointer;" onclick="event.stopPropagation();openUserProfile('${escapeJsArg(c.authorId)}','${escapeJsArg(cSrc)}')">${escapeHtml(cu.name)}</div>
+        ${identitePassionsHTML(cu, "ident-passions-sm")}
         <div class="comment-text">${escapeHtml(c.text)}</div>
         <div class="comment-meta">${fmtTime(c.createdAt)}</div>
         <div class="comment-actions">
@@ -4601,6 +5224,7 @@ function renderPostHTML(p) {
       <div class="avatar" style="background:${avatarBg(author)};cursor:pointer;" onclick="openUserProfile('${escapeJsArg(p.authorId)}','${escapeJsArg(p._source)}')">${avatarInner(author)}</div>
       <div class="post-author" style="cursor:pointer;" onclick="openUserProfile('${escapeJsArg(p.authorId)}','${escapeJsArg(p._source)}')">
         <div class="post-author-name">${escapeHtml(author.name || "Moi")}</div>
+        ${identitePassionsHTML(author)}
         <div class="post-author-meta">
           ${passion.emoji} ${passion.label} · ${fmtTime(p.createdAt)}
           ${p._source === "me" && p.syncStatus ? `
@@ -4653,9 +5277,12 @@ async function openPost(id) {
   // détail s'affichait après ~700 ms (le temps du réseau) = grosse impression de
   // lag. On rend TOUT DE SUITE avec les commentaires locaux puis on rafraîchit en
   // arrière-plan (_loadPostDetailComments, en bas de la fonction).
+  // ⚠️ MÊME PIÈGE QUE `renderPostHTML` : ces objets sont reconstruits à partir de
+  // champs d'affichage. Sans `id` ni `passions`, `identitePassionsHTML` ne sait
+  // pas de qui il parle et la ligne d'identité (§2) disparaît du post ouvert.
   const author = (post._source === "me" || (typeof MY_UID !== "undefined" && post.authorId === MY_UID))
-    ? { name: currentProfile()?.name || state.user.name, profileEmoji: currentProfile()?.emoji || "✨", avatar: currentProfile()?.color || "#8b5cf6", photoUrl: (state.user.general || {}).avatarPhoto || null }
-    : (function(){ const cu = userById(post.authorId) || {}; return post.authorName ? { name: post.authorName, profileEmoji: post.authorEmoji || "✨", avatar: post.authorColor || "#8b5cf6", photoUrl: cu.photoUrl || post.authorAvatar || null } : cu; })();
+    ? { id: (typeof MY_UID !== "undefined" && MY_UID) || "me", name: currentProfile()?.name || state.user.name, profileEmoji: currentProfile()?.emoji || "✨", avatar: currentProfile()?.color || "#8b5cf6", photoUrl: (state.user.general || {}).avatarPhoto || null }
+    : (function(){ const cu = userById(post.authorId) || {}; return post.authorName ? { id: post.authorId, passions: cu.passions, passion: cu.passion || post.passion, name: post.authorName, profileEmoji: post.authorEmoji || "✨", avatar: post.authorColor || "#8b5cf6", photoUrl: cu.photoUrl || post.authorAvatar || null } : cu; })();
   const passion = passionById(post.passion);
   const liked = state.user.likedPosts.includes(id);
 
@@ -4689,6 +5316,7 @@ async function openPost(id) {
         <div class="avatar" style="background:${avatarBg(author)};cursor:pointer;" onclick="openUserProfile('${escapeJsArg(post.authorId)}','${escapeJsArg(post._source || "seed")}')">${avatarInner(author)}</div>
         <div class="post-author" style="cursor:pointer;" onclick="openUserProfile('${escapeJsArg(post.authorId)}','${escapeJsArg(post._source || "seed")}')">
           <div class="post-author-name">${escapeHtml(author.name || "Utilisateur")}</div>
+          ${identitePassionsHTML(author)}
           <div class="post-author-meta">${passion.emoji} ${passion.label} · ${fmtTime(post.createdAt)}</div>
         </div>
         ${(state.userPosts || []).some(function(up){ return up.id === id; }) ? `<button class="post-menu-btn" onclick="event.stopPropagation();openPostOptions('${escapeJsArg(id)}')" aria-label="Options du post" title="Options">

@@ -86,8 +86,13 @@ async function seedFeed(page, opts = {}) {
     // rester résoluble, sinon le haut du fil se rend sur un profil absent.
     state.user.profiles = [{ id: "pp_0", name: "Audit QA", passion: "musique", emoji: "🎵", color: "#7c3aed" }];
     _activeFeedPassions = new Set(cfg.passions || ["musique"]);
-    _showFollowingFeed = !!cfg.following_feed;
+    // ⚠️ ADR-011 : « Suivis » n'est plus une VUE mais un CRITÈRE additif,
+    // persisté dans `state.feedFollowingOn`. `following_feed: true` demandait
+    // « montre-moi mes suivis » ; ici `state.user.following` reste vide, donc
+    // ce critère n'apporte aucune source — le périmètre observé est le même.
+    state.feedFollowingOn = !!cfg.following_feed;
     activeFeedIntent = "for_you";
+    state.feedIntents = [];
     window._feedDomSig = null;
     renderFeed();
   }, [opts.posts || POSTS, opts.reels || [], opts]);
@@ -329,6 +334,14 @@ test("aperçu : l'état vide se termine par une action", async ({ page }) => {
 });
 
 test("aperçu : sans contenu de mes suivis, l'action proposée est de publier", async ({ page }) => {
+  // ⚠️ CE CAS A RÉVÉLÉ UN DÉFAUT RÉEL de la refonte, il n'a pas été assoupli.
+  // « Suivis » coché alors qu'on ne suit personne, c'est un critère CHOISI dont
+  // le contenu est vide — pas une absence de choix. La première version
+  // d'ADR-011 confondait les deux (`nothingSelected` valait « aucune source »),
+  // et l'écran proposait « Explorer les passions » à quelqu'un qui avait
+  // justement choisi. `renderFeed` distingue désormais `aucuneSource` (faut-il
+  // calculer l'union ?) de `nothingSelected` (l'utilisateur a-t-il coché quoi
+  // que ce soit ?), et l'action redevient « Publier », comme le veut UI-2 §5.
   await boot(page, { preview: true });
   await seedFeed(page, { passions: [], following_feed: true });
 
@@ -347,9 +360,14 @@ test("kill switch : l'état vide historique est strictement inchangé", async ({
   const vide = page.locator("#feedEmpty");
   await expect(vide).toBeVisible();
   await expect(vide.locator("[data-v2-empty-cta]")).toHaveCount(0);
-  await expect(vide.locator(".empty-title")).toHaveText("Choisis une passion");
+  // ⚠️ ADR-010 puis ADR-011 ont réécrit cet état vide, et ce texte n'est sous
+  // AUCUN kill switch : il change donc aussi sur le chemin historique testé ici.
+  // Ce que ce test verrouille — l'absence du CTA d'UI-2 sous kill switch — est
+  // INCHANGÉ ; seul le libellé suit. « Ton Accueil » est devenu « Ton fil » :
+  // les deux VUES ayant disparu (ADR-011 §1), « Accueil » ne nomme plus rien.
+  await expect(vide.locator(".empty-title")).toHaveText("Choisis tes passions");
   await expect(vide.locator(".empty-text"))
-    .toHaveText("Sélectionne une passion ci-dessus pour voir le contenu de ta communauté.");
+    .toHaveText("Ton fil réunit les passions que tu choisis et les personnes que tu suis. Touche une passion ci-dessus pour commencer.");
 });
 
 // ── Cadrage mobile de référence ─────────────────────────────────────────────

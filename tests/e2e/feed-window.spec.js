@@ -52,7 +52,12 @@ async function seedFeed(page, { windowOn, n = 60, margin = 300 } = {}) {
       state.supabasePosts = [];
       state.user.following = [];
       _activeFeedPassions = new Set(["musique"]);
-      _showFollowingFeed = false;
+      // ⚠️ ADR-011 : la vue `state.feedView` a elle-même laissé place au critère
+      // persisté `state.feedFollowingOn`. Sans abonnement, il n'ajoute rien.
+      // « accueil » sans abonnement (following: []) donne exactement l'ancien
+      // périmètre observé ici — les posts de la passion, et rien d'autre.
+      state.feedFollowingOn = true;
+      state.feedIntents = [];
       selectedMoods = new Set(["all", "creation", "learn", "chill"]);
       state.feedMoodsTouched = true;
       window._feedDomSig = null;

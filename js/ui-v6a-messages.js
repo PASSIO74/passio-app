@@ -243,12 +243,14 @@
       var g = (typeof state !== "undefined" && state && state.user && state.user.general) || {};
       pseudo = g.username || (state && state.user && state.user.name) || "";
     } catch (e) {}
+    // ⚠️ REFONTE MULTI-PASSION (§2) : ce n'est plus la passion ACTIVE qui
+    // s'affiche ici, mais TOUTES mes passions. Le lot UI-8 montrait « Ben ·
+    // 🏍️ Moto », ce qui laissait croire qu'on écrivait « depuis » une passion —
+    // exactement l'idée que la refonte retire. Les interactions appartiennent
+    // au profil principal, et ses passions ne font que le décrire.
     try {
-      var pr = (typeof currentProfile === "function") ? currentProfile() : null;
-      if (pr && pr.passion && typeof passionById === "function") {
-        var meta = passionById(pr.passion) || {};
-        var lab = String(meta.label || "").split(/\s*[\/&·]\s*/)[0].trim();
-        if (lab) contexte = ((meta.emoji || pr.emoji || "") + " " + lab).trim();
+      if (typeof identitePassionsTexte === "function") {
+        contexte = identitePassionsTexte({ id: (typeof MY_UID !== "undefined" && MY_UID) || "me" });
       }
     } catch (e) {}
     if (!pseudo) { l.textContent = ""; l.hidden = true; return; }
@@ -278,9 +280,10 @@
     }
   }
 
-  // ── ② « Musique · Dernier message… » ─────────────────────────────────────
-  // Le nom de la Passio de l'interlocuteur, devant l'aperçu. Aucun appel
-  // réseau : la donnée est déjà dans l'état local.
+  // ── ② « Moto · Podcast · Dernier message… » ──────────────────────────────
+  // Les passions de l'interlocuteur, devant l'aperçu. Aucun appel réseau : la
+  // donnée est déjà dans l'état local. §2 : c'est la MÊME formule que partout
+  // ailleurs (`identitePassionsTexte`), pas la seule passion principale.
   function passionDe(convId) {
     try {
       if (typeof getConversations !== "function") return "";
@@ -289,9 +292,8 @@
       for (var i = 0; i < convs.length; i++) { if (convs[i].id === convId) { c = convs[i]; break; } }
       if (!c || c.isGroup || !c.userId) return "";
       var u = (typeof userById === "function") ? userById(c.userId) : null;
-      if (!u || !u.passion || typeof passionById !== "function") return "";
-      var meta = passionById(u.passion);
-      return (meta && meta.label) ? String(meta.label) : "";
+      if (!u || typeof identitePassionsTexte !== "function") return "";
+      return identitePassionsTexte(u) || "";
     } catch (e) { return ""; }
   }
 

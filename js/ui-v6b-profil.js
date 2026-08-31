@@ -248,11 +248,13 @@
           for (var k = 0; k < titre.childNodes.length; k++) {
             var n = titre.childNodes[k];
             if (n.nodeType === 3 && (n.nodeValue || "").trim()) {
-              n.nodeValue = "Mes profils passion ";
+              // Le markup d'origine dit « Mes passions » depuis ADR-010 : restituer
+              // « Mes profils passion » réintroduirait le vocabulaire retiré.
+              n.nodeValue = "Mes passions ";
               break;
             }
           }
-          lien.textContent = "+ Nouveau";
+          lien.textContent = "+ Ajouter";
           titre.removeAttribute("data-v6b-titre");
         }
       }

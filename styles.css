@@ -281,7 +281,6 @@
       color: var(--text-dim);
     }
 
-
     .topbar-bell {
       width: 34px;
       height: 34px;
@@ -804,287 +803,26 @@
     }
 
     /* ============ CARNET DE VOYAGE (VLOG) ============ */
-    /* Templates */
-    .vlog-templates {
-      padding: 12px;
-      border-radius: 12px;
-      background: linear-gradient(135deg, rgba(139, 92, 246, 0.07), rgba(124, 58, 237, 0.04));
-      border: 1px solid rgba(139, 92, 246, 0.20);
-      margin-bottom: 14px;
-    }
-    .vlog-templates-label {
-      font-size: 11px;
-      font-weight: 800;
-      letter-spacing: 0.06em;
-      color: var(--accent);
-      margin-bottom: 8px;
-    }
-    .vlog-templates-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 6px;
-    }
+    /* Templates *
     @media (max-width: 380px) {
-      .vlog-templates-grid { grid-template-columns: repeat(2, 1fr); }
-    }
-    .vlog-template-btn {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 8px 4px;
-      border-radius: 10px;
-      background: #fff;
-      border: 1px solid var(--border);
-      cursor: pointer;
-      transition: transform 140ms ease, border-color 180ms ease, background 180ms ease;
-      gap: 2px;
-    }
-    .vlog-template-btn:hover {
-      transform: translateY(-1px);
-      border-color: var(--border-strong);
-      background: #fff;
-    }
-    .vlog-template-btn.active {
-      background: var(--accent);
-      border-color: var(--accent);
-      transform: translateY(-1px);
-      box-shadow: 0 4px 12px rgba(124, 58, 237, 0.28);
-    }
-    .vlog-template-btn.active .vlog-template-name { color: #fff; }
-    .vlog-template-btn.active .vlog-template-desc { color: rgba(255,255,255,0.75); }
-    .vlog-template-emoji { font-size: 22px; line-height: 1; margin-bottom: 2px; }
-    .vlog-template-name { font-size: 11px; font-weight: 800; color: var(--text); }
-    .vlog-template-desc { font-size: 9.5px; color: var(--muted); }
-
-    /* Réorganisation des étapes */
-    .vlog-step-reorder {
-      display: flex;
-      gap: 2px;
-    }
-    .vlog-step-arrow {
-      background: transparent;
-      border: none;
-      width: 22px; height: 22px;
-      border-radius: 6px;
-      cursor: pointer;
-      color: var(--accent);
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      transition: background 160ms ease;
-    }
-    .vlog-step-arrow:hover { background: rgba(139, 92, 246, 0.12); }
-    .vlog-step-arrow:disabled { opacity: 0.25; cursor: not-allowed; }
-    .vlog-step-arrow svg { width: 14px; height: 14px; }
-
-    /* Stats du carnet en haut du viewer */
-    .vlog-stats-bar {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 8px;
-      margin: 16px 0 18px;
-    }
-    .vlog-stat {
-      padding: 12px 8px;
-      border-radius: 10px;
-      background: rgba(139, 92, 246, 0.06);
-      border: 1px solid rgba(139, 92, 246, 0.15);
-      text-align: center;
-    }
-    .vlog-stat-num { font-size: 18px; font-weight: 800; color: var(--accent); line-height: 1.1; }
-    .vlog-stat-label { font-size: 9.5px; color: var(--muted); margin-top: 3px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
-
-    /* Boutons d'action en bas du viewer */
-    .vlog-viewer-actions {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-      margin-top: 22px;
-      padding-top: 16px;
-      border-top: 1px solid var(--border);
-    }
-    .vlog-action-btn {
-      flex: 1 1 calc(50% - 4px);
-      min-width: 140px;
-      padding: 12px 14px;
-      border-radius: 12px;
-      border: 1px solid var(--border-strong);
-      background: var(--bg-card);
-      color: var(--text);
-      font-size: 13px;
-      font-weight: 700;
-      cursor: pointer;
-      transition: transform 140ms ease, border-color 180ms ease, background 180ms ease;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-    }
-    .vlog-action-btn:hover {
-      transform: translateY(-1px);
-      border-color: var(--accent);
-    }
-    .vlog-action-btn.primary {
-      background: var(--grad-hero);
-      color: #fff;
-      border-color: transparent;
-      box-shadow: 0 6px 18px rgba(124, 58, 237, 0.30);
-    }
-    .vlog-action-btn.saved {
-      background: rgba(245, 158, 11, 0.10);
-      border-color: #f59e0b;
-      color: #b45309;
     }
 
-    /* Mini carte du carnet */
-    .vlog-mini-map {
-      width: 100%;
-      height: 260px;
-      border-radius: 14px;
-      overflow: hidden;
-      border: 1px solid var(--border);
-      margin: 16px 0;
-    }
-    .vlog-map-empty {
-      padding: 30px 14px;
-      text-align: center;
-      font-size: 12px;
-      color: var(--muted);
-      border-radius: 14px;
-      background: rgba(139, 92, 246, 0.04);
-      border: 1px dashed rgba(139, 92, 246, 0.30);
-      margin: 16px 0;
-    }
+    /* Réorganisation des étapes *
 
-    /* ===== Carrousel Carnets de voyage dans le Fil ===== */
-    .vlog-carousel-wrap {
-      margin: 6px 0 14px;
-      padding: 0 12px;
-    }
-    .vlog-carousel-head {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 8px;
-      padding: 0 2px;
-    }
-    .vlog-carousel-title {
-      font-size: 14px;
-      font-weight: 800;
-      color: var(--text);
-      letter-spacing: 0.01em;
-    }
-    .vlog-carousel {
-      display: flex;
-      gap: 8px;
-      overflow-x: auto;
-      scroll-snap-type: x mandatory;
-      scrollbar-width: none;
-      padding: 4px 0 6px;
-    }
-    .vlog-carousel::-webkit-scrollbar { display: none; }
+    /* Stats du carnet en haut du viewer *
 
-    .vlog-card-mini {
-      flex-shrink: 0;
-      width: 160px;
-      height: 110px;
-      border-radius: 14px;
-      overflow: hidden;
-      position: relative;
-      cursor: pointer;
-      scroll-snap-align: start;
-      transition: transform 180ms ease, box-shadow 220ms ease;
-      box-shadow: 0 6px 16px rgba(15, 23, 42, 0.12);
-    }
-    .vlog-card-mini:hover { transform: translateY(-2px); box-shadow: 0 10px 22px rgba(124, 58, 237, 0.25); }
-    .vlog-card-mini-cover {
-      position: absolute; inset: 0;
-      width: 100%; height: 100%;
-      object-fit: cover;
-      display: block;
-    }
-    .vlog-card-mini-overlay {
-      position: absolute; inset: 0;
-      background: linear-gradient(180deg, transparent 30%, rgba(15, 12, 32, 0.85) 100%);
-    }
-    .vlog-card-mini-tag {
-      position: absolute;
-      top: 6px; left: 6px;
-      padding: 2px 7px;
-      font-size: 8.5px;
-      font-weight: 800;
-      letter-spacing: 0.08em;
-      color: #fff;
-      background: rgba(255, 255, 255, 0.20);
-      backdrop-filter: blur(10px);
-      border-radius: 999px;
-      border: 1px solid rgba(255, 255, 255, 0.25);
-    }
-    .vlog-card-mini-meta {
-      position: absolute;
-      bottom: 6px; left: 8px; right: 8px;
-      color: #fff;
-    }
-    .vlog-card-mini-dest {
-      font-size: 13px;
-      font-weight: 800;
-      line-height: 1.15;
-      max-height: 2.3em;
-      overflow: hidden;
-      text-shadow: 0 1px 4px rgba(0, 0, 0, 0.55);
-    }
-    .vlog-card-mini-stats {
-      font-size: 9.5px;
-      opacity: 0.92;
-      margin-top: 2px;
-      font-weight: 600;
-    }
+    /* Boutons d'action en bas du viewer *
 
-    /* Tuile "Créer un carnet" en première position */
-    .vlog-card-create {
-      flex-shrink: 0;
-      width: 160px;
-      height: 110px;
-      border-radius: 14px;
-      cursor: pointer;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 4px;
-      background: linear-gradient(135deg, rgba(139, 92, 246, 0.14), rgba(124, 58, 237, 0.08));
-      border: 2px dashed rgba(139, 92, 246, 0.45);
-      transition: transform 180ms ease, background 200ms ease, border-color 200ms ease;
-      scroll-snap-align: start;
-    }
-    .vlog-card-create:hover {
-      transform: translateY(-2px);
-      background: linear-gradient(135deg, rgba(139, 92, 246, 0.20), rgba(124, 58, 237, 0.14));
-      border-color: var(--accent);
-    }
-    .vlog-card-create-icon {
-      width: 38px; height: 38px;
-      border-radius: 12px;
-      background: var(--grad-hero);
-      color: #fff;
-      display: inline-flex; align-items: center; justify-content: center;
-      font-size: 22px;
-      font-weight: 800;
-      box-shadow: 0 4px 12px rgba(124, 58, 237, 0.30);
-    }
-    .vlog-card-create-label { font-size: 12px; font-weight: 800; color: var(--accent); }
-    .vlog-card-create-sub { font-size: 9.5px; color: var(--muted); margin-top: 1px; }
+    /* Mini carte du carnet *
+
+    /* ===== Carrousel Carnets de voyage dans le Fil ===== *
+
+    /* Tuile "Créer un carnet" en première position *
 
     /* ============ DOC VIEWER ============ */
 
     /* CDV, Fil d'actualité spécial carnets de voyage */
-    /* ===== CDV MODE CARDS ===== */
-    .cdv-mode-row {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-      margin-bottom: 16px;
-    }
+    /* ===== CDV MODE CARDS ===== *
     .cdv-mode-card {
       background: var(--bg-card);
       border: 1.5px solid var(--border);
@@ -1096,32 +834,7 @@
       position: relative;
     }
     .cdv-mode-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-soft); }
-    .cdv-mode-live { border-color: rgba(239,68,68,0.35); background: linear-gradient(135deg, rgba(239,68,68,0.04), rgba(239,68,68,0.08)); }
-    .cdv-mode-badge {
-      position: absolute;
-      top: 8px;
-      right: 8px;
-      background: #ef4444;
-      color: #fff;
-      font-size: 8px;
-      font-weight: 800;
-      padding: 3px 7px;
-      border-radius: 6px;
-      letter-spacing: 0.08em;
-      animation: livePulse 1.5s ease infinite;
-    }
     @keyframes livePulse { 0%, 100% { opacity:1; } 50% { opacity:0.6; } }
-    .cdv-mode-icon {
-      margin-bottom: 10px;
-      color: var(--accent);
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .cdv-mode-icon svg { width: 30px; height: 30px; display: block; }
-    .cdv-mode-live .cdv-mode-icon { color: #ef4444; }
-    .cdv-mode-title { font-size: 14px; font-weight: 800; color: var(--text); margin-bottom: 4px; }
-    .cdv-mode-desc { font-size: 11px; color: var(--muted); line-height: 1.4; }
 
     /* ===== CDV LIVE CARDS ===== */
     .cdv-live-card {
@@ -1145,32 +858,9 @@
     }
     @keyframes liveBar { 0% { background-position: 0 0; } 100% { background-position: 200% 0; } }
     /* ⋯ discret (modifier / supprimer un voyage). Reste au-dessus du dégradé
-       animé de la carte, et l'en-tête lui laisse la place à droite. */
-    .cdv-live-menu-btn {
-      position: absolute; top: 7px; right: 6px; z-index: 3;
-      width: 28px; height: 28px; border: none; background: none; cursor: pointer;
-      color: var(--muted); font-size: 17px; line-height: 1; border-radius: 50%;
-      display: flex; align-items: center; justify-content: center; padding: 0;
-    }
-    .cdv-live-menu-btn:hover { background: var(--bg-deep); color: var(--text); }
+       animé de la carte, et l'en-tête lui laisse la place à droite. *
     /* Même ⋯ dans le viewer plein écran, à gauche du × : c'est là qu'on est
-       quand on veut corriger le titre d'un voyage ouvert. */
-    .cdv-viewer-menu-btn {
-      position: absolute; top: 12px; right: 54px; z-index: 5;
-      width: 34px; height: 34px; border-radius: 999px;
-      background: var(--bg-soft); border: 1px solid var(--border);
-      color: var(--text-dim); font-size: 18px; line-height: 1; cursor: pointer;
-      display: flex; align-items: center; justify-content: center; padding: 0;
-    }
-    .cdv-viewer-menu-btn:hover { color: var(--text); }
-    .cdv-live-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; padding-right: 26px; }
-    .cdv-live-badge { background: #ef4444; color: #fff; font-size: 9px; font-weight: 800; padding: 3px 8px; border-radius: 6px; animation: livePulse 1.5s ease infinite; }
-    .cdv-pinned-live-title { font-weight: 800; font-size: 13px; color: var(--text); margin: 6px 0 8px; display: flex; align-items: center; gap: 6px; }
-    .cdv-live-pinned { box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.15); }
-    .cdv-live-dest { font-weight: 800; font-size: 15px; color: var(--text); }
-    .cdv-live-author { font-size: 11px; color: var(--muted); }
-    .cdv-live-steps { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
-    .cdv-live-steps::-webkit-scrollbar { display: none; }
+       quand on veut corriger le titre d'un voyage ouvert. *
     .cdv-live-step {
       flex-shrink: 0;
       width: 100px;
@@ -1180,12 +870,6 @@
       text-align: center;
       font-size: 11px;
     }
-    .cdv-live-step-emoji { font-size: 22px; margin-bottom: 4px; }
-    .cdv-live-step-city { font-weight: 700; color: var(--text); }
-    .cdv-live-step-time { font-size: 9px; color: var(--muted); margin-top: 2px; }
-    .cdv-live-map { width: 100%; height: 140px; border-radius: 12px; margin-top: 10px; overflow: hidden; border: 1px solid var(--border); }
-    .cdv-live-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; }
-    .cdv-live-count { font-size: 11px; color: var(--muted); }
     .cdv-live-follow-btn {
       background: #ef4444; color: #fff; border: none; border-radius: 10px;
       padding: 6px 14px; font-size: 12px; font-weight: 700; cursor: pointer;
@@ -1206,55 +890,6 @@
       box-shadow: 0 12px 28px rgba(139, 92, 246, 0.18);
       border-color: rgba(139, 92, 246, 0.35);
     }
-    .cdv-feed-header {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 12px 14px 10px;
-    }
-    .cdv-feed-author { flex: 1; min-width: 0; }
-    .cdv-feed-author-name {
-      font-size: 14px; font-weight: 700; color: var(--text);
-      display: flex; align-items: center; gap: 6px;
-    }
-    .cdv-feed-author-meta {
-      font-size: 11px; color: var(--muted); margin-top: 2px;
-    }
-    .cdv-feed-saved-badge {
-      padding: 2px 9px;
-      font-size: 10px;
-      font-weight: 800;
-      letter-spacing: 0.04em;
-      background: rgba(245, 158, 11, 0.18);
-      color: #b45309;
-      border-radius: 999px;
-      border: 1px solid rgba(245, 158, 11, 0.40);
-    }
-
-    .cdv-feed-cover-wrap {
-      position: relative;
-      width: 100%;
-      height: 200px;
-      overflow: hidden;
-      background: linear-gradient(135deg, #4c1d95, #7c3aed);
-    }
-    .cdv-feed-cover {
-      width: 100%; height: 100%;
-      object-fit: cover;
-      display: block;
-    }
-    .cdv-feed-cover-overlay {
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(180deg, transparent 50%, rgba(15, 12, 32, 0.78) 100%);
-      pointer-events: none;
-    }
-    .cdv-feed-cover-meta {
-      position: absolute;
-      bottom: 0; left: 0; right: 0;
-      padding: 12px 14px;
-      color: #fff;
-    }
     .cdv-feed-tag {
       display: inline-block;
       padding: 3px 9px;
@@ -1267,169 +902,12 @@
       backdrop-filter: blur(10px);
       margin-bottom: 6px;
     }
-    .cdv-feed-dest {
-      font-size: 22px; font-weight: 800; line-height: 1.1; margin-bottom: 4px;
-    }
-    .cdv-feed-dates { font-size: 12px; opacity: 0.92; }
 
-    .cdv-feed-body {
-      padding: 12px 14px 8px;
-    }
-    .cdv-feed-stats {
-      display: flex; gap: 14px; flex-wrap: wrap;
-      font-size: 12px; color: var(--text-dim);
-      font-weight: 600;
-    }
-    .cdv-feed-tip {
-      margin-top: 10px;
-      padding: 10px 12px;
-      background: linear-gradient(135deg, rgba(124, 58, 237, 0.10), rgba(124, 58, 237, 0.05));
-      border: 1px solid rgba(124, 58, 237, 0.18);
-      border-radius: 10px;
-      font-size: 12px; color: var(--text);
-      line-height: 1.5;
-    }
-    .cdv-feed-tip-label {
-      font-size: 9.5px; font-weight: 800; letter-spacing: 0.08em;
-      color: #b45309;
-      margin-bottom: 3px;
-    }
+    /* Compatibilité avec ancien style (transition douce) *
 
-    .cdv-feed-actions {
-      display: flex; align-items: center; gap: 14px;
-      padding: 10px 14px 12px;
-      border-top: 1px solid var(--border);
-      font-size: 13px; color: var(--text-dim);
-    }
-    .cdv-feed-action {
-      display: inline-flex; align-items: center; gap: 5px;
-      cursor: pointer;
-      transition: color 160ms ease;
-    }
-    .cdv-feed-action:hover { color: var(--accent); }
-    .cdv-feed-action.liked { color: var(--accent); }
-    .cdv-feed-cta {
-      margin-left: auto;
-      padding: 6px 14px;
-      border-radius: 999px;
-      background: var(--grad-hero);
-      color: #fff;
-      font-size: 12px;
-      font-weight: 700;
-      border: none;
-      cursor: pointer;
-      transition: transform 140ms ease;
-    }
-    .cdv-feed-cta:hover { transform: translateY(-1px); }
+    /* Editor, étape de voyage (jour) *
 
-    /* Compatibilité avec ancien style (transition douce) */
-    .carnet-explore-card { display: none; }
-
-    /* Editor, étape de voyage (jour) */
-    .vlog-step {
-      position: relative;
-      padding: 12px;
-      border-radius: 12px;
-      background: linear-gradient(180deg, rgba(139, 92, 246, 0.04), rgba(255, 255, 255, 1));
-      border: 1px solid rgba(139, 92, 246, 0.20);
-      margin-bottom: 10px;
-    }
-    .vlog-step-head {
-      display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
-    }
-    .vlog-step-num {
-      width: 26px; height: 26px;
-      border-radius: 50%;
-      background: var(--grad-hero);
-      color: #fff;
-      font-size: 12px;
-      font-weight: 800;
-      display: inline-flex;
-      align-items: center; justify-content: center;
-      flex-shrink: 0;
-    }
-    .vlog-step-title { flex: 1; font-size: 13px; font-weight: 800; color: var(--text); }
-    .vlog-step-remove {
-      background: transparent; border: none;
-      color: rgba(185, 28, 28, 0.55);
-      cursor: pointer;
-      width: 24px; height: 24px;
-      border-radius: 6px;
-      display: inline-flex; align-items: center; justify-content: center;
-      transition: background 160ms ease, color 160ms ease;
-    }
-    .vlog-step-remove:hover {
-      background: rgba(220, 38, 38, 0.12); color: #b91c1c;
-    }
-    .vlog-step-photo-zone {
-      display: flex; align-items: center; gap: 8px;
-      padding: 8px 10px;
-      border-radius: 10px;
-      background: rgba(139, 92, 246, 0.05);
-      border: 1px dashed rgba(139, 92, 246, 0.30);
-      cursor: pointer;
-      margin: 6px 0;
-      font-size: 11.5px;
-      color: var(--text-dim);
-    }
-
-    /* Rangée de boutons média (photo / vidéo / audio) par étape */
-    .vlog-step-media-row {
-      display: flex;
-      gap: 4px;
-      margin: 6px 0;
-      flex-wrap: wrap;
-    }
-    .vlog-step-media-btn {
-      flex: 1;
-      min-width: 75px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 4px;
-      padding: 7px 6px;
-      border-radius: 8px;
-      background: rgba(139, 92, 246, 0.06);
-      border: 1px dashed rgba(139, 92, 246, 0.30);
-      cursor: pointer;
-      font-size: 11px;
-      font-weight: 600;
-      color: var(--text-dim);
-      transition: all 160ms ease;
-    }
-    .vlog-step-media-btn:hover {
-      background: rgba(139, 92, 246, 0.12);
-      color: var(--accent);
-      border-color: var(--accent);
-    }
-    .vlog-step-media-btn.vlog-step-media-clear {
-      flex: 0 0 32px;
-      min-width: 32px;
-      color: rgba(185, 28, 28, 0.65);
-      border-color: rgba(220, 38, 38, 0.30);
-      background: rgba(220, 38, 38, 0.05);
-    }
-    .vlog-step-media-btn.vlog-step-media-clear:hover {
-      background: rgba(220, 38, 38, 0.15);
-      color: #b91c1c;
-      border-color: #b91c1c;
-    }
-    .vlog-step-photo-thumb {
-      width: 100%;
-      max-height: 140px;
-      object-fit: cover;
-      border-radius: 10px;
-      margin: 6px 0;
-      display: block;
-    }
-    .vlog-cover-preview {
-      width: 100%;
-      max-height: 180px;
-      object-fit: cover;
-      border-radius: 12px;
-      margin-bottom: 8px;
-      display: block;
-    }
+    /* Rangée de boutons média (photo / vidéo / audio) par étape *
 
     /* Aperçu d'un carnet dans le feed */
     .post-vlog-card {
@@ -1479,126 +957,8 @@
       font-size: 11px; opacity: 0.92;
     }
 
-    /* Modale plein-écran du carnet (lecture article) */
-    .vlog-viewer {
-      position: fixed;
-      top: 0; left: 0; right: 0; bottom: 0;
-      background: #ffffff;
-      z-index: 9999;
-      overflow-y: auto;
-      -webkit-overflow-scrolling: touch;
-      overscroll-behavior: contain;
-      display: none;
-    }
-    .vlog-viewer.open { display: block; }
-    /* Bloque le scroll de l'app sous-jacente quand le viewer est ouvert */
-    body.vlog-open #appMain,
-    body.vlog-open .app-shell { overflow: hidden !important; }
-    body.vlog-open { overflow: hidden; }
-    .vlog-viewer-close {
-      position: fixed;
-      top: 14px; right: 14px;
-      width: 38px; height: 38px;
-      border-radius: 50%;
-      background: rgba(0, 0, 0, 0.55);
-      border: 1px solid rgba(255, 255, 255, 0.20);
-      color: #fff;
-      cursor: pointer;
-      z-index: 9600;
-      display: inline-flex; align-items: center; justify-content: center;
-      backdrop-filter: blur(12px);
-    }
-    .vlog-viewer-close svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-    .vlog-viewer-cover {
-      width: 100%;
-      height: 280px;
-      object-fit: cover;
-      display: block;
-      background: linear-gradient(135deg, #4c1d95, #7c3aed);
-    }
-    .vlog-viewer-body {
-      padding: 24px 18px 80px;
-      max-width: 700px;
-      margin: 0 auto;
-    }
-    .vlog-viewer-title { font-size: 28px; font-weight: 800; color: var(--text); line-height: 1.2; margin-bottom: 6px; }
-    .vlog-viewer-dates { font-size: 13px; color: var(--muted); margin-bottom: 4px; }
-    .vlog-viewer-author { font-size: 13px; color: var(--text-dim); margin-bottom: 18px; }
-    .vlog-viewer-tip {
-      background: linear-gradient(135deg, rgba(124, 58, 237, 0.10), rgba(124, 58, 237, 0.05));
-      border: 1px solid rgba(124, 58, 237, 0.20);
-      border-radius: 14px;
-      padding: 14px 16px;
-      margin: 16px 0;
-      font-size: 13px;
-      color: var(--text);
-      line-height: 1.55;
-    }
-    .vlog-viewer-tip-label {
-      font-size: 10px;
-      font-weight: 800;
-      letter-spacing: 0.1em;
-      color: #b45309;
-      margin-bottom: 4px;
-    }
-    .vlog-viewer-step {
-      margin: 18px 0;
-      padding: 14px 16px;
-      border-radius: 14px;
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-    }
-    .vlog-viewer-step-day {
-      display: inline-block;
-      padding: 3px 10px;
-      font-size: 10px;
-      font-weight: 800;
-      letter-spacing: 0.08em;
-      background: var(--grad-hero);
-      color: #fff;
-      border-radius: 999px;
-      margin-bottom: 6px;
-    }
-    .vlog-viewer-step-place { font-size: 17px; font-weight: 800; color: var(--text); margin-bottom: 6px; }
-    .vlog-viewer-step-photo {
-      width: 100%;
-      max-height: 280px;
-      object-fit: cover;
-      border-radius: 10px;
-      margin: 8px 0;
-      display: block;
-    }
-    .vlog-viewer-step-text { font-size: 14px; color: var(--text); line-height: 1.55; }
-    .vlog-viewer-step-tip {
-      margin-top: 8px;
-      font-size: 12.5px;
-      color: var(--text-dim);
-      font-style: italic;
-      padding-left: 10px;
-      border-left: 3px solid var(--accent);
-    }
-    .vlog-viewer-practical {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 8px;
-      margin-top: 18px;
-    }
-    .vlog-viewer-practical-item {
-      padding: 10px 12px;
-      border-radius: 10px;
-      background: rgba(139, 92, 246, 0.06);
-      border: 1px solid rgba(139, 92, 246, 0.18);
-    }
-    .vlog-viewer-practical-label { font-size: 10px; font-weight: 800; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 2px; }
-    .vlog-viewer-practical-value { font-size: 13px; font-weight: 700; color: var(--text); }
-    .vlog-viewer-map {
-      width: 100%;
-      height: 260px;
-      border-radius: 14px;
-      overflow: hidden;
-      border: 1px solid var(--border);
-      margin: 18px 0;
-    }
+    /* Modale plein-écran du carnet (lecture article) *
+    /* Bloque le scroll de l'app sous-jacente quand le viewer est ouvert *
 
     /* Menu d'options « ⋯ » d'un post (visible uniquement sur les posts perso) */
     .post-menu-btn {
@@ -2098,7 +1458,6 @@
       align-items: center;
       gap: 6px;
     }
-
 
     .toast.info {
       background: var(--grad-hero-2);
@@ -4182,10 +3541,7 @@
       to   { opacity: 1; transform: translateY(0); }
     }
 
-    /* ===== Retour tactile ===== */
-    .btn:active,.pill:active,.topbar-chip:active,.topbar-bell:active,.vlog-template-btn:active,.studio-type:active,.explore-tab:active,.ai-shortcut-row:active,.pay-method:active,.nav-item:active {
-      transform: scale(0.95);
-    }
+    /* ===== Retour tactile ===== *
     .post:active,.card:active,.msg-card:active,.event-card:active,.cdv-mode-card:active,.profile-tile:active {
       transform: scale(0.985);
     }
@@ -4783,7 +4139,6 @@
     }
 
     /* Indicateur quand un défi est prêt à être réclamé */
-
 
     /* ===== Landing page ===== */
     .landing {
@@ -6771,17 +6126,9 @@
           par un fond translucide un peu plus opaque (rendu quasi identique,
           meilleur contraste du texte blanc).
        2) Accélération GPU + isolation de la zone scrollable principale.
-       ============================================================ */
-    .vlog-card-mini-tag,.cdv-feed-tag,.post-vlog-tag,.post-cover-caption,.passion-tile,.reel-tag-mood,.reel-action-icon,.reels-counter,.reels-hint {
-      backdrop-filter: none !important;
-      -webkit-backdrop-filter: none !important;
-    }
+       ============================================================ *
     /* Pills de catégorie (texte blanc sur cover) : sans le flou, un fond
-       sombre translucide garde la lisibilité (le flou assombrissait avant). */
-    .vlog-card-mini-tag, .cdv-feed-tag, .post-vlog-tag {
-      background: rgba(15, 15, 20, 0.46);
-      border-color: rgba(255, 255, 255, 0.18);
-    }
+       sombre translucide garde la lisibilité (le flou assombrissait avant). *
 
     /* ===== Réactions & commentaires inline des cartes d'événement IRL ===== */
     .ev-react-chip {
@@ -7271,72 +6618,15 @@
    CDV v2 (2026-07-21) — feuille « Nouveau voyage » + story de voyage
    ═══════════════════════════════════════════════════════════════════════════ */
 
-/* Choix du format de voyage (direct / récit) dans la feuille unique. */
-.cdv-trip-choice {
-  display: flex; align-items: flex-start; gap: 12px;
-  border: 1px solid var(--border); border-radius: 14px;
-  padding: 14px; margin-bottom: 10px; cursor: pointer;
-  background: var(--bg-card); transition: border-color .15s, transform .1s;
-}
-.cdv-trip-choice:active { transform: scale(.99); }
-.cdv-trip-choice:hover { border-color: var(--accent); }
-.cdv-trip-choice-emoji { font-size: 26px; line-height: 1; flex-shrink: 0; }
-.cdv-trip-choice-title { font-size: 14px; font-weight: 800; color: var(--text); margin-bottom: 3px; }
-.cdv-trip-choice-sub { font-size: 12px; color: var(--text-dim); line-height: 1.45; }
+/* Choix du format de voyage (direct / récit) dans la feuille unique. *
 
 /* Étape cliquable → ouvre la story plein écran. */
 .cdv-live-step { cursor: pointer; }
 
-/* ── Story de voyage : une étape = un écran vertical ── */
-.cdv-story-overlay {
-  position: fixed; inset: 0; z-index: 9000; display: none;
-  flex-direction: column; background: #000; overflow: hidden;
-  padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom);
-}
-.cdv-story-bars {
-  position: absolute; top: calc(8px + env(safe-area-inset-top)); left: 10px; right: 10px;
-  display: flex; gap: 4px; z-index: 3;
-}
-.cdv-story-bar { flex: 1; height: 3px; border-radius: 2px; background: rgba(255,255,255,.3); overflow: hidden; }
-.cdv-story-bar i { display: block; height: 100%; background: #fff; border-radius: 2px; }
-.cdv-story-bar i.cdv-story-bar-active { animation: cdvStoryFill 5s linear forwards; }
+/* ── Story de voyage : une étape = un écran vertical ── *
 @keyframes cdvStoryFill { from { width: 0%; } to { width: 100%; } }
 
-.cdv-story-head {
-  position: absolute; top: calc(20px + env(safe-area-inset-top)); left: 14px; right: 14px;
-  display: flex; align-items: center; gap: 10px; z-index: 3;
-  text-shadow: 0 1px 4px rgba(0,0,0,.6);
-}
-.cdv-story-title { flex: 1; font-size: 14px; font-weight: 800; color: #fff; min-width: 0;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cdv-story-count { font-size: 12px; color: rgba(255,255,255,.75); }
-.cdv-story-close { font-size: 28px; line-height: 1; color: #fff; cursor: pointer; padding: 0 6px; }
-
-.cdv-story-media { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-.cdv-story-media-empty {
-  display: flex; align-items: center; justify-content: center; font-size: 88px;
-  background: linear-gradient(160deg, #4c1d95, #7c3aed 60%, #db2777);
-}
-
-/* Zones de navigation : tiers gauche = précédent, reste = suivant (comme IG). */
-.cdv-story-nav { position: absolute; top: 0; bottom: 0; z-index: 2; }
-.cdv-story-prev { left: 0; width: 33%; }
-.cdv-story-next { left: 33%; right: 0; }
-
-.cdv-story-foot {
-  position: absolute; left: 0; right: 0; bottom: 0; z-index: 3;
-  padding: 40px 18px calc(24px + env(safe-area-inset-bottom));
-  background: linear-gradient(to top, rgba(0,0,0,.85), rgba(0,0,0,0));
-  pointer-events: none;
-}
-.cdv-story-place { font-size: 17px; font-weight: 800; color: #fff; margin-bottom: 6px; }
-.cdv-story-star { font-size: 12px; color: #fbbf24; margin-left: 8px; }
-.cdv-story-chip {
-  font-size: 11px; color: #fff; background: rgba(255,255,255,.2);
-  border-radius: 6px; padding: 2px 7px; margin-left: 6px;
-}
-.cdv-story-text { font-size: 13px; color: rgba(255,255,255,.92); line-height: 1.5; margin-bottom: 6px; }
-.cdv-story-time { font-size: 11px; color: rgba(255,255,255,.6); }
+/* Zones de navigation : tiers gauche = précédent, reste = suivant (comme IG). *
 
     /* Repli quand WebGL est indisponible : la carte MapLibre ne peut pas se
        peindre, mais la liste d'événements reste utilisable. */
@@ -7346,66 +6636,19 @@
       font-size: 12px; line-height: 1.6; color: var(--muted);
     }
 
-/* Éditeur de carnet, désormais dans l'écran CDV (et non plus dans le Studio). */
-.cdv-editor-head {
-  display: flex; align-items: center; gap: 10px; margin-bottom: 12px;
-}
-.cdv-editor-back {
-  display: flex; align-items: center; justify-content: center;
-  width: 36px; height: 36px; flex-shrink: 0;
-  border-radius: 50%; border: 1px solid var(--border);
-  background: var(--bg-card); color: var(--text); cursor: pointer;
-}
-.cdv-editor-back svg { width: 18px; height: 18px; }
-.cdv-editor-title { font-size: 16px; font-weight: 800; color: var(--text); }
+/* Éditeur de carnet, désormais dans l'écran CDV (et non plus dans le Studio). *
 
 /* ===========================================================================
    CDV — bandeau de statistiques de voyage & passeport (2026-07-21)
    Les chiffres d'un voyage (km, jours, étapes, villes, pays, photos) sont ce
    qu'on montre en premier chez Polarsteps/FindPenguins : la tuile doit être
    lisible d'un coup d'œil et tenir sur une ligne scrollable en mobile.
-   ========================================================================= */
-.cdv-stats {
-  display: flex; gap: 8px; margin-bottom: 12px;
-  overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
-}
-.cdv-stats::-webkit-scrollbar { display: none; }
-.cdv-stat {
-  flex: 1 0 auto; min-width: 72px; text-align: center;
-  padding: 10px 8px; border-radius: 12px;
-  background: var(--bg-deep); border: 1px solid var(--border);
-}
-.cdv-stat-ico { font-size: 15px; line-height: 1; margin-bottom: 4px; }
-.cdv-stat-val { font-size: 17px; font-weight: 800; color: var(--text); line-height: 1.1; }
-.cdv-stat-lbl { font-size: 10px; color: var(--muted); margin-top: 2px; }
-.cdv-stats.compact .cdv-stat { padding: 7px 6px; min-width: 60px; }
-.cdv-stats.compact .cdv-stat-val { font-size: 14px; }
+   ========================================================================= *
 
 /* Pays traversés : des pastilles drapeau + nom, sur une ligne qui passe à la
-   ligne (un grand voyageur peut en avoir beaucoup). */
-.cdv-stat-flags {
-  display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px;
-}
-.cdv-stat-flags span {
-  font-size: 11px; font-weight: 600; color: var(--text-dim);
-  background: var(--bg-deep); border: 1px solid var(--border);
-  border-radius: 999px; padding: 4px 10px;
-}
+   ligne (un grand voyageur peut en avoir beaucoup). *
 
-/* Passeport : la liste des voyages, chaque ligne ouvre le live ou le carnet. */
-.cdv-passport-trip {
-  display: flex; align-items: center; gap: 10px;
-  padding: 11px 12px; margin-bottom: 8px;
-  border-radius: 12px; border: 1px solid var(--border);
-  background: var(--bg-card); cursor: pointer;
-}
-.cdv-passport-trip:active { transform: scale(0.99); }
-.cdv-passport-trip-ico { font-size: 20px; flex-shrink: 0; }
-.cdv-passport-trip-title {
-  font-size: 13px; font-weight: 700; color: var(--text);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.cdv-passport-trip-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+/* Passeport : la liste des voyages, chaque ligne ouvre le live ou le carnet. *
 
 /* ===========================================================================
    MES LIEUX (liste d'envies) & PASSEPORT v2 — 2026-07-22
@@ -7417,166 +6660,24 @@
 /* --- Les 3 entrées de l'écran CDV (2026-07-22) ---------------------------
    Même gabarit pour les trois, largeur strictement égale, toute la largeur :
    avant, le CTA prenait tout l'espace et les deux autres, en pastilles, se
-   tronquaient dès qu'un chiffre s'ajoutait à leur libellé. */
-.cdv-entry-row {
-  display: grid; grid-template-columns: repeat(3, 1fr);
-  gap: 8px; margin-bottom: 12px;
-}
-.cdv-entry {
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 4px; min-width: 0; min-height: 62px; padding: 9px 6px;
-  border-radius: 14px; border: 1px solid var(--border); background: var(--bg-card);
-  color: var(--text); font-size: 11.5px; font-weight: 700; line-height: 1.2;
-  cursor: pointer; text-align: center;
-}
-.cdv-entry.primary {
-  border: none; background: var(--grad-hero); color: #fff;
-  box-shadow: 0 4px 12px rgba(124, 58, 237, 0.3);
-}
-.cdv-entry:active { transform: scale(0.97); }
-.cdv-entry-ico { font-size: 19px; line-height: 1; display: flex; align-items: center; justify-content: center; height: 22px; }
-.cdv-entry-lbl { display: block; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+   tronquaient dès qu'un chiffre s'ajoutait à leur libellé. *
 /* Le chiffre (lieux, km) vit sur SA ligne : collé au libellé il le faisait
-   déborder dès qu'il grandissait (« Passeport · 1 voyage » tronqué). */
-.cdv-entry-sub { display: block; width: 100%; font-size: 10px; font-weight: 700; opacity: 0.65; line-height: 1.2; }
-.cdv-entry-sub:empty { display: none; }
+   déborder dès qu'il grandissait (« Passeport · 1 voyage » tronqué). *
 /* Variante « lean » (2026-08-07) : action principale pleine largeur + déclencheur
-   Outils. Passe de la grille 3 colonnes à un flex horizontal. */
-.cdv-entry-row-lean { display: flex; align-items: stretch; gap: 8px; }
-.cdv-entry-row-lean .cdv-entry.primary {
-  flex: 1 1 auto; flex-direction: row; gap: 8px;
-  min-height: 46px; font-size: 14px;
-}
-.cdv-entry-row-lean .cdv-entry.primary .cdv-entry-ico { height: auto; font-size: 18px; }
-.cdv-entry-row-lean .cdv-entry.primary .cdv-entry-lbl { width: auto; }
-.cdv-entry-row-lean .ctx-trigger { flex: 0 0 auto; }
-
-.spl-filters { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
-.spl-filters:empty { display: none; }
+   Outils. Passe de la grille 3 colonnes à un flex horizontal. *
 
 /* Les 3 tuiles SONT des filtres cumulables (2026-07-22) : elles affichaient
-   des chiffres sans être cliquables, alors que c'est là qu'on veut trier. */
-.spl-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin-bottom: 10px; }
-.spl-tile {
-  display: flex; flex-direction: column; align-items: center; gap: 1px;
-  padding: 8px 4px; min-height: 62px; cursor: pointer; text-align: center;
-  border: 1px solid var(--border); border-radius: 13px; background: var(--bg-card);
-}
-.spl-tile.on { border-color: var(--accent); background: rgba(124, 58, 237, 0.09); }
-.spl-tile:active { transform: scale(0.97); }
-.spl-tile-ico { font-size: 15px; line-height: 1.1; }
-.spl-tile-val { font-size: 16px; font-weight: 800; color: var(--text); line-height: 1.15; }
-.spl-tile.on .spl-tile-val { color: var(--accent); }
-.spl-tile-lbl { font-size: 10px; color: var(--muted); }
+   des chiffres sans être cliquables, alors que c'est là qu'on veut trier. *
 
-.spl-map-legend { font-size: 10.5px; color: var(--muted); margin-bottom: 10px; text-align: center; }
-
-/* Repère commun carte ↔ liste. */
-.spl-card-num {
-  flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 11px; font-weight: 800; color: #fff; background: var(--accent);
-  margin-top: 1px;
-}
-.spl-card-num.none { background: var(--bg-deep); color: var(--muted); border: 1px dashed var(--border); }
-.spl-list { display: flex; flex-direction: column; gap: 8px; }
-
-.spl-card {
-  border: 1px solid var(--border); border-radius: 14px;
-  padding: 10px 12px; background: var(--bg-card);
-}
-.spl-card.done { opacity: 0.72; }
+/* Repère commun carte ↔ liste. *
 /* ⚠️ Le barré porte sur le SPAN du nom, pas sur la ligne entière : posé sur le
    parent, il se propage aux enfants (un descendant ne peut pas l'annuler) et
-   rayait aussi la pastille « ✅ visité ». */
-.spl-card.done .spl-card-name > span:first-child {
-  text-decoration: line-through; text-decoration-color: var(--muted);
-}
-.spl-card-head { display: flex; align-items: flex-start; gap: 9px; }
-.spl-card-ico { font-size: 18px; line-height: 1.2; flex-shrink: 0; }
-.spl-card-name {
-  display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap;
-  font-size: 13px; font-weight: 700; color: var(--text); line-height: 1.3;
-}
-.spl-done-tag { font-size: 10px; font-weight: 700; color: #16a34a; white-space: nowrap; }
-.spl-del {
-  flex-shrink: 0; cursor: pointer; background: none; border: none;
-  color: #ef4444; font-size: 13px; padding: 2px 2px; line-height: 1; min-height: 24px;
-}
-.spl-card-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
-.spl-card-note { font-size: 12px; color: var(--text-dim); margin-top: 7px; line-height: 1.45; }
-.spl-card-tip { font-size: 11px; color: var(--muted); margin-top: 4px; }
+   rayait aussi la pastille « ✅ visité ». *
 
 /* Les actions sont la RAISON D'ÊTRE de l'écran : elles restent visibles (pas
-   cachées derrière un ⋯) et défilent horizontalement en mobile. */
-.spl-actions {
-  display: flex; gap: 6px; margin-top: 9px;
-  overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
-}
-.spl-actions::-webkit-scrollbar { display: none; }
-.spl-act {
-  flex: 0 0 auto; white-space: nowrap; cursor: pointer;
-  font-size: 11px; font-weight: 700; color: var(--text-dim);
-  background: var(--bg-deep); border: 1px solid var(--border);
-  border-radius: 999px; padding: 6px 11px; min-height: 30px;
-}
-.spl-act:active { transform: scale(0.96); }
-.spl-act.on { border-color: #16a34a; color: #16a34a; }
+   cachées derrière un ⋯) et défilent horizontalement en mobile. *
 
-/* --- Passeport : carte de niveau ---------------------------------------- */
-.cdv-pp-hero {
-  border-radius: 16px; padding: 14px;
-  background: var(--grad-hero); color: #fff; margin-bottom: 12px;
-  box-shadow: 0 6px 18px rgba(124, 58, 237, 0.28);
-}
-.cdv-pp-hero-top { display: flex; align-items: center; gap: 11px; }
-.cdv-pp-hero-ico { font-size: 30px; line-height: 1; }
-.cdv-pp-hero-lvl { font-size: 17px; font-weight: 800; letter-spacing: -0.01em; }
-.cdv-pp-hero-km { font-size: 12px; opacity: 0.86; margin-top: 2px; }
-.cdv-pp-bar {
-  height: 7px; border-radius: 999px; margin-top: 12px;
-  background: rgba(255, 255, 255, 0.25); overflow: hidden;
-}
-.cdv-pp-bar i { display: block; height: 100%; border-radius: 999px; background: #fff; }
-.cdv-pp-next { font-size: 11px; opacity: 0.9; margin-top: 7px; font-weight: 600; }
-
-.cdv-pp-sec-title {
-  font-size: 13px; font-weight: 800; color: var(--text); margin: 16px 0 8px;
-}
-.cdv-pp-rec {
-  display: flex; align-items: center; justify-content: space-between; gap: 10px;
-  padding: 10px 12px; margin-bottom: 6px;
-  border: 1px solid var(--border); border-radius: 12px; background: var(--bg-card);
-}
-.cdv-pp-rec[onclick] { cursor: pointer; }
-.cdv-pp-rec-k { font-size: 12px; color: var(--muted); }
-.cdv-pp-rec-v {
-  font-size: 12px; font-weight: 700; color: var(--text);
-  text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.cdv-pp-year {
-  display: flex; align-items: baseline; gap: 10px;
-  padding: 8px 12px; margin-bottom: 6px;
-  border-left: 3px solid var(--accent); background: var(--bg-deep); border-radius: 0 10px 10px 0;
-}
-.cdv-pp-year b { font-size: 13px; font-weight: 800; color: var(--text); }
-.cdv-pp-year span { font-size: 11px; color: var(--muted); }
-
-.cdv-pp-badges { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
-.cdv-pp-badge {
-  border: 1px solid var(--border); border-radius: 12px; padding: 10px;
-  text-align: center; background: var(--bg-deep);
-}
-.cdv-pp-badge.on { border-color: var(--accent); background: rgba(124, 58, 237, 0.08); }
-.cdv-pp-badge-ico { font-size: 22px; line-height: 1; filter: grayscale(1); opacity: 0.5; }
-.cdv-pp-badge.on .cdv-pp-badge-ico { filter: none; opacity: 1; }
-.cdv-pp-badge-lbl { font-size: 11px; font-weight: 700; color: var(--text); margin-top: 5px; }
-.cdv-pp-badge-sub { font-size: 10px; color: var(--muted); margin-top: 2px; }
-.cdv-pp-badge-bar {
-  height: 4px; border-radius: 999px; background: var(--border);
-  margin-top: 6px; overflow: hidden;
-}
-.cdv-pp-badge-bar i { display: block; height: 100%; background: var(--accent); border-radius: 999px; }
+/* --- Passeport : carte de niveau ---------------------------------------- *
 
 /* ===========================================================================
    IRL — preuve sociale & invitations (2026-07-21)
@@ -7594,50 +6695,7 @@
 }
 .event-social-proof .avatar.sm { width: 22px; height: 22px; font-size: 10px; }
 
-/* ── Pont IRL↔CDV : bandeau « Sorties près d'ici » dans un carnet / live ── */
-.trip-nearby {
-  margin: 4px 0 16px;
-  padding: 12px;
-  border-radius: 14px;
-  background: linear-gradient(135deg, rgba(124,58,237,0.08), rgba(245,158,11,0.06));
-  border: 1px solid rgba(124,58,237,0.18);
-}
-.trip-nearby-head {
-  display: flex; align-items: center; justify-content: space-between;
-  font-weight: 800; font-size: 13px; color: var(--text); margin-bottom: 8px;
-}
-.trip-nearby-add {
-  font-size: 11.5px; font-weight: 700; color: var(--accent);
-  cursor: pointer; white-space: nowrap;
-}
-.trip-nearby-add:active { opacity: .6; }
-.trip-nearby-empty { font-size: 12px; color: var(--text-dim); line-height: 1.5; }
-.trip-nearby-empty b { color: var(--text); }
-.trip-nearby-ev {
-  display: flex; align-items: center; gap: 10px;
-  padding: 9px; margin-top: 6px;
-  background: var(--bg-card); border: 1px solid var(--border);
-  border-radius: 12px; cursor: pointer;
-  transition: transform .12s ease, border-color .12s ease;
-}
-.trip-nearby-ev:active { transform: scale(.985); border-color: var(--accent); }
-.trip-nearby-ev-emoji {
-  width: 38px; height: 38px; flex-shrink: 0; border-radius: 10px;
-  display: flex; align-items: center; justify-content: center; font-size: 20px;
-  background: var(--bg-deep);
-}
-.trip-nearby-ev-title {
-  font-weight: 700; font-size: 13px; color: var(--text);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.trip-nearby-ev-meta { font-size: 11px; color: var(--muted); margin-top: 1px; }
-.trip-nearby-ev .event-social-proof { margin-top: 5px; padding: 4px 7px; font-size: 10.5px; }
-.trip-nearby-ev .event-social-proof .avatar.sm { width: 18px; height: 18px; font-size: 9px; }
-.trip-nearby-ev-go { flex-shrink: 0; color: var(--muted); font-size: 20px; font-weight: 700; }
-.trip-nearby-more {
-  text-align: center; font-size: 12px; font-weight: 700; color: var(--accent);
-  cursor: pointer; padding: 9px 0 2px; margin-top: 4px;
-}
+/* ── Pont IRL↔CDV : bandeau « Sorties près d'ici » dans un carnet / live ── *
 
 /* Liste d'invitation : une ligne = un abonnement + son bouton. */
 .event-invite-row {
@@ -7718,49 +6776,7 @@
 
 /* ===========================================================================
    CDV — rétrospective animée de l'itinéraire (2026-07-21)
-   ========================================================================= */
-.cdv-replay {
-  position: fixed; inset: 0; z-index: 9999;
-  background: #0b0b12; display: flex; flex-direction: column;
-}
-.cdv-replay-bars {
-  position: absolute; top: 0; left: 0; right: 0; z-index: 3;
-  display: flex; gap: 4px; padding: 10px 12px;
-  padding-top: calc(10px + env(safe-area-inset-top, 0px));
-}
-.cdv-replay-bars i {
-  flex: 1; height: 3px; border-radius: 999px;
-  background: rgba(255, 255, 255, 0.28);
-}
-.cdv-replay-bars i.on { background: #fff; }
-.cdv-replay-bars i.done { background: rgba(255, 255, 255, 0.75); }
-.cdv-replay-close {
-  position: absolute; z-index: 4;
-  top: calc(24px + env(safe-area-inset-top, 0px)); right: 12px;
-  width: 36px; height: 36px; border-radius: 50%;
-  border: none; background: rgba(0, 0, 0, 0.45); color: #fff;
-  font-size: 22px; line-height: 1; cursor: pointer;
-}
-.cdv-replay-map { flex: 1; min-height: 0; }
-.cdv-replay-card {
-  background: rgba(12, 12, 20, 0.94); color: #fff;
-  padding: 14px 16px calc(16px + env(safe-area-inset-bottom, 0px));
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-}
-.cdv-replay-head { margin-bottom: 10px; }
-.cdv-replay-title { font-size: 15px; font-weight: 800; }
-.cdv-replay-sub { font-size: 11px; color: rgba(255, 255, 255, 0.6); margin-top: 2px; }
-.cdv-replay-step { display: flex; gap: 12px; align-items: center; min-height: 62px; }
-.cdv-replay-photo {
-  width: 62px; height: 62px; border-radius: 10px;
-  object-fit: cover; flex-shrink: 0;
-}
-.cdv-replay-place { font-size: 14px; font-weight: 700; }
-.cdv-replay-country { font-size: 11px; color: rgba(255, 255, 255, 0.65); margin-top: 2px; }
-.cdv-replay-text {
-  font-size: 12px; line-height: 1.5;
-  color: rgba(255, 255, 255, 0.78); margin-top: 4px;
-}
+   ========================================================================= *
 /* Étape en cours pendant la rétrospective : elle doit ressortir des précédentes. */
 .passio-marker.current {
   background: #f59e0b;
@@ -8754,7 +7770,6 @@ body.ctx-locked #appMain { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) {
   :root.passio-ui-v2 .v2-person { transition: none; }
 }
-
 
 /* ══════════════════════════════════════════════════════════════════════════
    PASSIO UI V3 — lot UI-3A (passerelle Feed → IRL), APERÇU UNIQUEMENT
@@ -10343,7 +9358,6 @@ body.ctx-locked #appMain { overflow: hidden; }
 }
 :root.passio-ui-7 #screen-feed .story-label { font-size: 9px; max-width: 48px; }
 
-
 /* ── §6 · Profil : trois onglets NOMMÉS ──────────────────────────────────── */
 :root.passio-ui-7 .v7-tabs {
   display: grid;
@@ -10489,83 +9503,21 @@ body.ctx-locked #appMain { overflow: hidden; }
    d'avant à l'octet près, sans qu'aucune règle existante ait été réécrite.
 
    §9 : fond clair, accent violet, couvertures conservées, cartes compactes.
-   La passion active doit se repérer en moins d'une seconde — c'est le seul
-   endroit de cet écran qui porte l'accent plein.
+
+   ⚠️ ADR-011 a retiré d'ici trois familles devenues inatteignables : la ligne
+   « Passion active » (`.v8-active-*`), que §1 supprime du profil, et la rangée
+   de pastilles de filtre (`.v8-filter-row`, `.v8-chip`), remplacée par le rail
+   de bulles du Fil — c'est `.v9-profile-strip` qui l'habille désormais. Ce qui
+   reste ici ne concerne plus que la GESTION des passions (`#passionManager`).
    ══════════════════════════════════════════════════════════════════════════ */
-
-/* ── La ligne « Passion active : 🏍️ Moto · Changer », sous la carte d'identité ── */
-.v8-active-line {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 10px;
-  padding: 8px 12px;
-  border-radius: 999px;
-  background: var(--bg-tint);
-  border: 1px solid var(--border);
-}
-.v8-active-txt { font-size: 13px; color: var(--muted); line-height: 1.3; }
-.v8-active-txt b { color: var(--text); font-weight: 800; }
-.v8-active-btn {
-  appearance: none;
-  border: 0;
-  border-radius: 999px;
-  background: var(--accent);
-  color: #fff;
-  font-family: inherit;
-  font-size: 12.5px;
-  font-weight: 800;
-  padding: 0 16px;
-  min-height: 34px;
-  cursor: pointer;
-}
-.v8-active-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-
-/* ── La rangée « Toutes · Moto · Podcast · Yoga » ──────────────────────────
-   Elle défile DANS son propre conteneur : le corps de la page ne défile
-   jamais horizontalement, quel que soit le nombre de passions. */
-.v8-filter-row {
-  display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
-  padding: 2px 2px 8px;
-  margin-bottom: 2px;
-}
-.v8-filter-row::-webkit-scrollbar { display: none; }
-.v8-chip {
-  appearance: none;
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  min-height: 36px;
-  padding: 0 14px;
-  border-radius: 999px;
-  border: 1.5px solid var(--border);
-  background: var(--bg-card);
-  color: var(--text-dim, var(--muted));
-  font-family: inherit;
-  font-size: 12.5px;
-  font-weight: 700;
-  white-space: nowrap;
-  cursor: pointer;
-  transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
-}
-.v8-chip.on {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-}
-.v8-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* ── La carte d'une passion ────────────────────────────────────────────────
    Plus compacte que la carte historique (trois passions doivent se parcourir
-   d'un coup d'oeil sur mobile), et son état passe à la ligne : « Utiliser pour
-   créer » est un libellé long, le comprimer sur la même ligne que le nom
-   couperait l'un ou l'autre à 320 px. */
+   d'un coup d'oeil sur mobile), et son état passe à la ligne : le libellé est
+   long, le comprimer sur la même ligne que le nom couperait l'un ou l'autre à
+   320 px. ⚠️ Depuis ADR-011 §3 cet état n'est plus qu'une INFORMATION
+   (« Passion du Studio ✓ ») : le choix de la passion d'écriture a rejoint le
+   Studio, la carte ne le commande plus. */
 .v8-passion-card {
   flex-wrap: wrap;
   align-items: center;
@@ -10643,7 +9595,6 @@ body.ctx-locked #appMain { overflow: hidden; }
 .v8-switch-row.on { border-color: var(--accent); background: var(--bg-tint); cursor: default; }
 .v8-switch-emoji { font-size: 20px; flex: 0 0 auto; }
 .v8-switch-name { flex: 1 1 auto; min-width: 0; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.v8-switch-on { flex: 0 0 auto; font-size: 12px; font-weight: 800; color: var(--accent); }
 .v8-switch-go {
   appearance: none;
   flex: 0 0 auto;
@@ -10670,7 +9621,7 @@ body.ctx-locked #appMain { overflow: hidden; }
 .v6a-moi-ctx { color: var(--muted); font-weight: 600; }
 
 @media (prefers-reduced-motion: reduce) {
-  .v8-chip, .v8-passion-card { transition: none; }
+  .v8-passion-card { transition: none; }
 }
 /* ── Pastille « messages non lus » sur la barre de navigation ──────────────
    Posée par renderMsgBadge (app-08). Elle répare un manque, pas un lot : depuis
@@ -10711,6 +9662,94 @@ body.ctx-locked #appMain { overflow: hidden; }
   box-shadow: 0 0 0 2px var(--bg-card);
   pointer-events: none;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   VUES DU FIL (ADR-010) — « Accueil » et « Suivis »
+   ──────────────────────────────────────────────────────────────────────────
+   Deux vues explicites en tête du Fil. Elles remplacent l'ancienne tuile
+   « Suivis » qui vivait DANS la rangée de passions : un filtre thématique et
+   une source de contenu ne partagent plus le même rail.
+
+   Le vocabulaire visuel est repris tel quel de `.feed-intent-btn` (soulignement
+   à l'accent, même transition, même cible de 44 px) pour que le Fil garde une
+   seule grammaire de commutation. Aucune règle existante n'est réécrite.
+   ══════════════════════════════════════════════════════════════════════════ */
+/* ⚠️ Les puces `.v10-vfilter` du profil visité ont été RETIRÉES par la refonte
+   multi-passion : ce filtre est rendu par `passionTileHTML`, le même composant
+   de bulles que le Fil et que mon profil. */
+#feedPassionsBlock[hidden] { display: none !important; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   REFONTE MULTI-PASSION §2 — l'identité affichée : un pseudo, ses passions
+   ──────────────────────────────────────────────────────────────────────────
+       Benjamin
+       Moto · Podcast · Voyage
+
+   Une seule règle pour toutes les surfaces (cartes de publication,
+   commentaires, messages, notifications, listes de personnes, recherche,
+   profils). `.ident-passions-sm` est la variante des surfaces denses.
+
+   ⚠️ TRONCATURE OBLIGATOIRE. La ligne est nourrie par le jsonb
+   `profiles.passions` d'un autre compte : le nombre de passions n'est pas
+   borné côté produit. Sans `text-overflow`, une identité longue pousse hors
+   de l'écran l'action posée à côté d'elle (« Message → », « Voir → »). Le
+   rendu borne déjà à 3 + « +N » ; ceci est la seconde ligne de défense.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.ident-passions {
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--muted);
+  font-weight: 600;
+  margin-top: 1px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ident-passions-sm { font-size: 10.5px; font-weight: 600; margin-top: 0; }
+
+.ident-passions[hidden] { display: none !important; }
+
+/* Sur mon profil et sur un profil visité, la ligne est centrée sous le pseudo,
+   comme la bio qui la suit. */
+.main-profile-body .ident-passions {
+  text-align: center;
+  margin: 2px auto 0;
+  max-width: 90%;
+}
+
+@media (max-width: 359px) {
+  .ident-passions { font-size: 11px; }
+  .ident-passions-sm { font-size: 10px; }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   REFONTE MULTI-PASSION — le rail de passions du PROFIL
+   ──────────────────────────────────────────────────────────────────────────
+   Le rail réutilise `.profile-strip` et `.profile-tile*`, c'est-à-dire le
+   composant du Fil : dimensions, espacements et états visuels viennent de là et
+   ne sont PAS redéfinis ici. Ce bloc ne pose que ce qui est propre au profil —
+   la marge au-dessus des onglets, et l'état « aucune passion ».
+
+   ⚠️ Le bloc UI-4A5 doit rester le DERNIER de cette feuille (ses sélecteurs
+   gagnent par la position) : celui-ci est donc posé JUSTE AVANT lui.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+#v9ProfilePassions.v9-profile-strip { margin: 12px 0 2px; }
+
+#v9ProfilePassions .v9-strip-empty {
+  padding: 12px 14px;
+  font-size: 12.5px;
+  color: var(--muted);
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  width: 100%;
+}
+
+/* Le panneau de gestion des passions, ouvert depuis les options du profil. */
+#passionManager[hidden] { display: none !important; }
 
 /* ═══════════════════════════════════════════════════════════════════════════
    PASSIO UI V4 — lot UI-4A5 : « Filtres » est une VUE, et les bulles de passion

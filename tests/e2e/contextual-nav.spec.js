@@ -52,7 +52,7 @@ test.describe("ContextualTools — ouverture / fermeture", () => {
     await boot(page, "irl");
     await page.locator("#irlToolsBtn").click();
     expect(await page.evaluate(() => ContextualTools.isOpen())).toBe(true);
-    await page.evaluate(() => goTo("cdv"));
+    await page.evaluate(() => goTo("profiles"));
     expect(await page.evaluate(() => ContextualTools.isOpen())).toBe(false);
   });
 });
@@ -81,19 +81,10 @@ test.describe("ContextualTools — aucune fonctionnalité perdue", () => {
     await expect(page.locator("#irlToolsBadge")).toHaveText("1");
   });
 
-  test("CDV : Mes lieux et Passeport restent accessibles via le panneau", async ({ page }) => {
-    await boot(page, "cdv");
-    await page.locator("#cdvToolsBtn").click();
-    const body = page.locator("#ctxToolsBody");
-    await expect(body).toContainText("Mes lieux");
-    await expect(body).toContainText("Passeport");
-    // Le passeport garde son icône SVG dessinée.
-    expect(await body.locator(".ctx-item-ico svg").count()).toBeGreaterThanOrEqual(1);
-
-    // Le lanceur ouvre la vraie modale passeport.
-    await body.locator('[onclick*="openCdvPassport"]').click();
-    await expect(page.locator(".modal-title")).toContainText("passeport");
-  });
+  // ⚠️ LE CAS « CDV : Mes lieux et Passeport » A ÉTÉ RETIRÉ avec la
+  // fonctionnalité Carnet de voyage (ADR-011 §5) : l'écran, le déclencheur
+  // `#cdvToolsBtn` et les deux outils qu'il ouvrait n'existent plus. Ce n'est
+  // pas un assouplissement — il n'y a plus de comportement à garder.
 });
 
 test.describe("ContextualTools — responsive", () => {

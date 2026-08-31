@@ -9,10 +9,12 @@ const { bootOnboarded } = require("./app-helper");
 // Passion > Voyage.
 // ADR-009 : `wallet` a été retiré du produit ; `goTo("wallet")` redirige
 // désormais vers `profiles` (vérifié par le test de deep link plus bas).
-const SCREENS = ["feed", "profiles", "studio", "explore", "irl", "messages", "cdv"];
+// ⚠️ « cdv » a quitté cette liste avec la fonctionnalité Carnet de voyage
+// (ADR-011 §5) : l'écran n'existe plus et sa route est redirigée vers le fil.
+const SCREENS = ["feed", "profiles", "studio", "explore", "irl", "messages"];
 const NAV_LABELS = ["Découvrir", "Rencontrer", "Créer", "Messages", "Profil"];
 
-test("tour des 7 écrans : zéro erreur JS, chaque écran devient actif", async ({ page }) => {
+test("tour des 6 écrans : zéro erreur JS, chaque écran devient actif", async ({ page }) => {
   const errors = { js: [], console: [], network: [] };
   await bootOnboarded(page, errors);
 
@@ -80,7 +82,7 @@ test("tour des 7 écrans : zéro erreur JS, chaque écran devient actif", async 
   }
 });
 
-test("bottom-nav : CDV dépromu et accès Voyage conservé", async ({ page }) => {
+test("bottom-nav : CDV retiré, et son ancien lien redirigé", async ({ page }) => {
   const errors = { js: [], console: [], network: [] };
   await bootOnboarded(page, errors);
 
@@ -89,11 +91,10 @@ test("bottom-nav : CDV dépromu et accès Voyage conservé", async ({ page }) =>
     await expect(page.locator("#appNavV2 .nav-v2-item", { hasText: label }), `nav « ${label} »`).toBeVisible();
   }
 
-  // Le nœud CDV est volontairement conservé pour rendre l'essai réversible,
-  // mais il ne doit plus apparaître comme onglet principal.
-  const cdvMain = page.locator('#appNav .nav-item[data-screen="cdv"]');
-  await expect(cdvMain).toBeHidden();
-  await expect(cdvMain).toHaveAttribute("data-secondary-feature", "voyage-cdv");
+  // ⚠️ ASSERTION RENFORCÉE, PAS RETIRÉE. L'entrée CDV était MASQUÉE et conservée
+  // pour rendre l'essai réversible ; la fonctionnalité étant retirée (ADR-011 §5),
+  // elle n'existe plus du tout dans le balisage.
+  await expect(page.locator('#appNav .nav-item[data-screen="cdv"]')).toHaveCount(0);
 
   // §4 du lot UI-7 : Messages a QUITTÉ la barre supérieure — il est déjà une
   // destination de la barre du bas, et deux portes pour un même écran
@@ -116,13 +117,15 @@ test("bottom-nav : CDV dépromu et accès Voyage conservé", async ({ page }) =>
     return el && el.classList.contains("active");
   }, null, { timeout: 5000 });
 
-  // Voyage expose désormais le CDV comme outil secondaire.
+  // ⚠️ L'entrée « Carnets de voyage » de la passion Voyage a disparu avec la
+  // fonctionnalité. Ce qui la remplace n'est pas rien : la route est REDIRIGÉE,
+  // donc un ancien lien ne laisse jamais l'application sans écran actif.
   await page.evaluate(() => openPassionExplorer("voyage"));
-  const voyageEntry = page.locator("[data-voyage-cdv-entry]");
-  await expect(voyageEntry).toBeVisible();
-  await expect(voyageEntry).toContainText("Carnets de voyage");
-  await voyageEntry.locator("[data-open-voyage-cdv]").click();
-  await expect(page.locator("#screen-cdv")).toHaveClass(/active/);
+  await expect(page.locator("[data-voyage-cdv-entry]")).toHaveCount(0);
+  await page.evaluate(() => { if (typeof closeModal === "function") closeModal(); goTo("cdv"); });
+  await page.waitForTimeout(300);
+  expect(await page.evaluate(() =>
+    (document.querySelector(".screen.active") || {}).id)).toBe("screen-feed");
 
   // Les clics réels ne portent plus que sur les destinations VISIBLES de la nav.
   const items = await page.$$eval("#appNavV2 .nav-item[data-screen]", els => els

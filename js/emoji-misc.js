@@ -595,7 +595,9 @@ function _postGifComment(threadId, gifUrl) {
   var p = (typeof currentProfile === "function") ? currentProfile() : null;
   var nm = (p && p.name) || (state.user && state.user.name) || "Moi";
   var kind = thread.kind;
-  var cid = (kind === "event" ? "ec_local_" : kind === "cdv" ? "lc_local_" : "c_") + (typeof uid === "function" ? uid() : Date.now());
+  // ⚠️ Le préfixe « lc_local_ » servait aux commentaires de live CDV : ce genre
+  // de fil n'existe plus (ADR-011 §5).
+  var cid = (kind === "event" ? "ec_local_" : "c_") + (typeof uid === "function" ? uid() : Date.now());
   thread.comments.unshift({
     id: cid, authorId: meId, authorName: nm, author: nm,
     authorEmoji: (p && p.emoji) || "✨",
@@ -604,7 +606,6 @@ function _postGifComment(threadId, gifUrl) {
   if (typeof thread.save === "function") thread.save();
   try {
     if (kind === "event" && typeof supaAddEventComment === "function") supaAddEventComment(threadId, gifUrl);
-    else if (kind === "cdv" && typeof supaAddCdvLiveComment === "function") supaAddCdvLiveComment(threadId, gifUrl);
     else if (typeof supaAddComment === "function" && typeof MY_UID !== "undefined" && MY_UID) supaAddComment(threadId, gifUrl, cid);
   } catch (e) {}
   // Notifie l'auteur du fil (cross-compte).

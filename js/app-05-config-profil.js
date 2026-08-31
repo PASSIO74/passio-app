@@ -5,8 +5,11 @@ const BORDER_RADIUS = [
   { id: "pill", name: "Pilule", val: "24px" },
 ];
 
-const DEFAULT_NAV_ORDER = ["feed","bobines","explore","studio","messages","irl","cdv"];
-const NAV_LABELS = { feed:"🏠 Fil", bobines:"🎬 Bobines", explore:"🔍 Explorer", studio:"➕ Créer", messages:"💬 Messages", irl:"🤝 IRL", cdv:"📔 CDV" };
+// ⚠️ « cdv » a quitté cet ordre avec le Carnet de voyage (§6). Un compte qui
+// avait personnalisé sa barre garde son réglage en base ; l'entrée n'ayant plus
+// ni écran ni libellé, elle est simplement ignorée au rendu.
+const DEFAULT_NAV_ORDER = ["feed","bobines","explore","studio","messages","irl"];
+const NAV_LABELS = { feed:"🏠 Fil", bobines:"🎬 Bobines", explore:"🔍 Explorer", studio:"➕ Créer", messages:"💬 Messages", irl:"🤝 IRL" };
 
 function getCurrentConfig() {
   try { return JSON.parse(localStorage.getItem("passio_config") || "{}"); } catch(e) { return {}; }
@@ -2928,7 +2931,7 @@ async function shareReelInFeed(postId) {
     timestamp: Date.now(),
     likes: 0,
     comments: [],
-    passion: reel.passion,
+    passion: passionDeRepartage(reel.passion),   // cf. `sharePostInFeed` (app-03)
     mood: reel.mood || "chill",
     sharedReel: postId,
     sharedReelData: {
@@ -2941,6 +2944,9 @@ async function shareReelInFeed(postId) {
     }
   };
 
+  // ⚠️ Refus AVANT la mutation locale — cf. `mePublish` (app-08).
+  if (typeof publicationRefuseeFautePassion === "function"
+      && publicationRefuseeFautePassion(newPost.passion)) { closeModal(); return; }
   if (!state.userPosts) state.userPosts = [];
   state.userPosts.push(newPost);
   saveState();

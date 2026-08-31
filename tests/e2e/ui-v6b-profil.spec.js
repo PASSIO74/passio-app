@@ -62,15 +62,16 @@ async function ouvrirProfil(page) {
   });
   await page.evaluate(() => renderProfilesScreen());
   await page.waitForTimeout(250);
-  // §6 du lot UI-7 : les identités vivent désormais dans l'onglet « À propos ».
-  // La fonctionnalité n'a pas bougé, sa PORTE si — on l'ouvre, plutôt que de
-  // retirer des assertions. Le `count()` garde ce test valide même sous kill
-  // switch du lot, où la barre d'onglets n'existe pas.
-  const ongletApropos = page.locator('[data-v7-tab="apropos"]');
-  if (await ongletApropos.count()) {
-    await ongletApropos.click();
-    await page.waitForTimeout(150);
-  }
+  // ⚠️ LA PORTE CHANGE, LES ASSERTIONS NON — pour la deuxième fois. Le lot UI-7
+  // avait déplacé les cartes de passion dans l'onglet « À propos » ; la refonte
+  // multi-passion (ADR-011 §2) retire cet onglet et range ces cartes dans le
+  // panneau `#passionManager`, ouvert à la demande. On ouvre ce panneau plutôt
+  // que de retirer des attentes. `openPassionManager` existe quel que soit
+  // l'état du drapeau UI-8, donc ce chemin vaut aussi sous kill switch.
+  await page.evaluate(() => {
+    if (typeof openPassionManager === "function") openPassionManager();
+  });
+  await page.waitForTimeout(250);
 }
 
 test.describe("UI-6B — Profil et multi-profils", () => {
@@ -216,7 +217,9 @@ test.describe("UI-6B — Profil et multi-profils", () => {
     await expect(page.locator("#v6bModifier")).toHaveCount(0);
     await expect(page.locator(".v6b-ident")).toHaveCount(0);
     await expect(page.locator("#screen-profiles .main-profile-stat").first()).toBeVisible();
-    await expect(page.locator("#nouveauProfilLien")).toHaveText("+ Nouveau");
+    // ADR-010 : le markup d'origine dit « + Ajouter » (le vocabulaire n'est
+    // sous aucun kill switch, il change donc aussi sur le chemin historique).
+    await expect(page.locator("#nouveauProfilLien")).toHaveText("+ Ajouter");
     // Le point d'édition historique reprend sa place.
     await expect(page.locator("#screen-profiles .profile-dots-btn.on-cover")).toBeVisible();
 
@@ -235,9 +238,11 @@ test.describe("UI-6B — Profil et multi-profils", () => {
     await expect(page.locator("#v6bModifier")).toHaveCount(0);
     await expect(page.locator(".v6b-ident")).toHaveCount(0);
     await expect(page.locator("#screen-profiles .profile-dots-btn.on-cover")).toBeVisible();
-    await expect(page.locator("#nouveauProfilLien")).toHaveText("+ Nouveau");
+    // ADR-010 : le markup d'origine dit « + Ajouter » (le vocabulaire n'est
+    // sous aucun kill switch, il change donc aussi sur le chemin historique).
+    await expect(page.locator("#nouveauProfilLien")).toHaveText("+ Ajouter");
     expect(await page.evaluate(() =>
-      document.getElementById("nouveauProfilLien").parentNode.textContent)).toContain("Mes profils passion");
+      document.getElementById("nouveauProfilLien").parentNode.textContent)).toContain("Mes passions");
     await expect(page.locator("#screen-profiles .main-profile-stat").first()).toBeVisible();
   });
 

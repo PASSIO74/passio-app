@@ -102,7 +102,11 @@ test("§5 — le profil de départ est énoncé, et modifiable d'un tap", async 
     depart: selectedPassions[0],
   }));
   expect(avant.visible).toBe("block");
-  expect(avant.texte).toContain("Ton profil de départ");
+  // ADR-010 : le mot « profil » ne désigne plus une passion. Ici le TEXTE est
+  // bien l'exigence (c'est un test de vocabulaire), on l'assert donc en toutes
+  // lettres — contrairement aux ancres d'ouverture de modale, passées en
+  // sélecteurs stables.
+  expect(avant.texte).toContain("Ta passion de départ");
   expect(avant.actif).toBe(ids[0]);
 
   // Le tap sur la puce désigne, il ne décoche pas.

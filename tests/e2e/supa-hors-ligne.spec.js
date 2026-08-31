@@ -25,6 +25,9 @@
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
 
+// « wallet » et « cdv » restent dans la liste À DESSEIN : ce sont deux routes
+// REDIRIGÉES (ADR-009 et ADR-011). Le tour des écrans doit donc les traverser
+// sans TypeError — c'est exactement ce que la redirection promet.
 const SCREENS = ["feed", "profiles", "studio", "explore", "irl", "wallet", "messages", "cdv"];
 
 test.describe("Stub Supabase — dégradation hors ligne", () => {

@@ -254,7 +254,26 @@
     if (typeof state === "undefined" || !state.seed || typeof renderFeed !== "function") return false;
     var arr = state.seed.posts || (state.seed.posts = []);
     var deja = arr.some(function (p) { return p && p.id === DEMO_POST_ID; });
-    if (!deja) arr.unshift(demoPost());
+    var post = deja ? null : demoPost();
+    if (!deja) arr.unshift(post);
+    // ⚠️ Depuis ADR-011 §4, le Fil n'admet une publication que si un critère
+    // COCHÉ la fait entrer : une passion sélectionnée, un compte suivi, ou une
+    // envie. La carte de démonstration n'est ni suivie (`__passio_preview`) ni
+    // portée par une envie (`mood: "all"`) — sa seule porte est sa passion.
+    // `demoPassion()` prend la première passion cochée, mais retombe sur le
+    // catalogue quand AUCUNE ne l'est encore : le fil rejetait alors la carte,
+    // et l'aperçu s'ouvrait vide sans le moindre message. On coche donc sa
+    // passion pour la durée SYNCHRONE du rendu, exactement comme on ajoute et
+    // retire la publication elle-même — rien n'est persisté (aucun `saveState`,
+    // et l'aperçu ne décide de rien pour l'utilisateur).
+    var passionAjoutee = "";
+    try {
+      if (post && typeof _activeFeedPassions !== "undefined" && _activeFeedPassions
+          && !_activeFeedPassions.has(post.passion)) {
+        _activeFeedPassions.add(post.passion);
+        passionAjoutee = post.passion;
+      }
+    } catch (e) { fail("demo_passion_sel", e); }
     demoRendering = true;
     try {
       renderFeed();
@@ -271,6 +290,9 @@
         var i = arr.findIndex(function (p) { return p && p.id === DEMO_POST_ID; });
         if (i >= 0) arr.splice(i, 1);
       }
+      // Symétrique de l'ajout ci-dessus : on ne retire QUE ce qu'on a coché.
+      try { if (passionAjoutee) _activeFeedPassions.delete(passionAjoutee); }
+      catch (e) { fail("demo_passion_desel", e); }
     }
     return !!feedList() && !!feedList().querySelector('article.post[data-postid="' + DEMO_POST_ID + '"]');
   }

@@ -72,31 +72,11 @@ test.describe("Pastille de réactions — identifiant hostile", () => {
     expect(await secouer(page), "aucune exécution").toBe(0);
   });
 
-  test("un live dont l'identifiant est une charge ne l'exécute pas non plus", async ({ page }) => {
-    await bootAvecSonde(page);
-
-    // ⚠️ Le DÉCOR est indispensable : `_liveReactItems` cherche le live dans
-    // `getCdvLives()` et rend une liste VIDE s'il ne le trouve pas — la pastille
-    // n'est alors pas construite du tout, et le test passerait sans rien prouver.
-    // Trouvé par mutation : sans ce live, le test restait vert même en retirant
-    // l'échappement.
-    const rendu = await page.evaluate((id) => {
-      localStorage.setItem("passio_cdv_lives", JSON.stringify([{
-        id, title: "Live piégé", authorId: "u_attaquant", status: "live",
-        reactionsBy: [{ emoji: "🔥", userId: "u_attaquant", at: Date.now() }],
-        steps: [], createdAt: Date.now(),
-      }]));
-      const html = _liveReactChipHtml(id);
-      const hote = document.createElement("div");
-      hote.innerHTML = html;
-      document.body.appendChild(hote);
-      return html.length > 0;
-    }, ID_HOSTILE);
-
-    expect(rendu, "la pastille du live doit exister").toBe(true);
-    await expect(page.locator(".cmt-react-chip")).toHaveCount(1);
-    expect(await secouer(page)).toBe(0);
-  });
+  // ⚠️ LE CAS « un live dont l'identifiant est une charge » A ÉTÉ RETIRÉ avec
+  // le Carnet de voyage (ADR-011 §5) : `getCdvLives` n'existe plus, donc la
+  // pastille de réaction d'un live ne peut plus être construite. Le cas jumeau
+  // — la pastille d'un COMMENTAIRE, juste au-dessus — garde la même garantie
+  // sur le même code d'échappement (`_reactionItemsChipHtml`).
 
   test("un identifiant normal reste cliquable — l'échappement ne casse pas le handler", async ({ page }) => {
     // Un correctif qui « sécuriserait » en cassant l'ouverture de la liste des

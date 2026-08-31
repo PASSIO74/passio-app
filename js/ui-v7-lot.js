@@ -10,13 +10,17 @@
 //      revenaient à la ligne ; Benjamin les veut en BULLES comme avant, juste
 //      plus petites. C'est donc purement une affaire de CSS — aucun moteur de
 //      rendu, de classement ni de défilement n'est touché, et
-//      `toggleProfileFilter` / `toggleFollowingFilter` restent les seuls
-//      points d'écriture.
+//      `toggleProfileFilter` reste le seul point d'écriture. (`toggleFollowingFilter`
+//      est mentionnée ici dans l'état d'origine du lot ; elle a été supprimée le
+//      2026-08-30 avec la bascule `_showFollowingFeed` — ADR-010.)
 //
-//   ⑥ LE PROFIL. Trois onglets NOMMÉS (Publications · Activités · À propos)
-//      remplacent les cinq onglets d'icônes, qui redeviennent de petits
-//      sous-filtres DANS « Publications ». Rien n'est retiré : les blocs
-//      historiques sont DÉPLACÉS dans des panneaux, jamais régénérés.
+//   ⑥ LE PROFIL. Des onglets NOMMÉS remplacent les onglets d'icônes, qui
+//      redeviennent de petits sous-filtres DANS « Publications ». Rien n'est
+//      retiré : les blocs historiques sont DÉPLACÉS dans des panneaux, jamais
+//      régénérés.
+//      ⚠️ ILS SONT DEUX, PLUS TROIS (ADR-011 §2) : « À propos » a été retiré
+//      par la refonte multi-passion, et ce qu'il contenait vit désormais dans
+//      le panneau `#passionManager`, ouvert à la demande.
 //
 //   ⑧ LA BOBINE. Après l'enregistrement, l'aperçu existant reçoit deux issues
 //      explicites — « Recommencer » et « Continuer » — et « Continuer » ouvre
@@ -139,10 +143,15 @@
   // ⑥ LE PROFIL — trois onglets nommés
   // ══════════════════════════════════════════════════════════════════════════
   var BARRE_ID = "v7ProfileTabs";
+  // ⚠️ DEUX onglets, plus trois. La refonte multi-passion (§1) retire « À propos » :
+  // les passions se présentent désormais en haut de l'écran, dans le rail de
+  // bulles (`renderProfilePassionRail`, app-06), et leur GESTION vit dans le
+  // panneau `#passionManager`, ouvert à la demande. Un troisième onglet aurait
+  // gardé une deuxième liste de passions sous les deux premières — la
+  // duplication que cette refonte supprime.
   var PANNEAUX = [
     { cle: "publications", libelle: "Publications" },
-    { cle: "activites", libelle: "Activités" },
-    { cle: "apropos", libelle: "À propos" },
+    { cle: "activites", libelle: "Activité" },
   ];
   var ongletActif = "publications";
 
@@ -232,19 +241,15 @@
       "🤝", "Trouver une activité", "Voir ce qui se passe près de chez toi",
       function () { if (typeof goTo === "function") goTo("irl"); }));
 
-    // ── À propos : les passions (identité active) et les accès secondaires ──
-    var titrePassions = el("nouveauProfilLien");
-    titrePassions = titrePassions ? titrePassions.parentNode : null;
-    if (titrePassions) deplacer(titrePassions, hotes.apropos);
-    var sub = el("profilesQuotaSub");
-    if (sub) deplacer(sub, hotes.apropos);
-    deplacer(listeProfils, hotes.apropos);
-    // §6 : accès SECONDAIRE aux Carnets / Passio : Voyage. Rien n'est supprimé
-    // — le sous-filtre « Carnets » de Publications reste, et l'écran CDV garde
-    // toutes ses routes (`goTo("cdv")`, lien profond `#cdv`).
-    hotes.apropos.appendChild(lienSecondaire(
-      "📔", "Carnets de voyage", "Tes carnets et Passio : Voyage",
-      function () { if (typeof goTo === "function") goTo("cdv"); }));
+    // ⚠️ PLUS DE PANNEAU « À propos ». Ce qu'il contenait — le titre « Mes
+    // passions », la phrase du modèle, le lien des passions archivées et la
+    // liste `#profileList` — vit maintenant dans `#passionManager`, un panneau
+    // masqué que les options du profil ouvrent à la demande (app-06). Ces nœuds
+    // ne sont donc PAS déplacés ici : ils restent dans leur conteneur, qui est
+    // `hidden` tant qu'on ne le demande pas.
+    //
+    // ⚠️ Le lien secondaire « Carnets de voyage » a été retiré avec la
+    // fonctionnalité elle-même (§6).
 
     ec.setAttribute("data-v7-profil", "1");
     return true;
@@ -503,8 +508,18 @@
     // répondent pas la même chose à « où puis-je publier ? », c'est la porte
     // dérobée assurée.
     var profils = (st.user.profiles || []).filter(function (p) {
-      try { return !(typeof passionsUnifieesActives === "function" && passionsUnifieesActives() && p.archived); }
-      catch (e) { return true; }
+      try {
+        if (typeof passionsUnifieesActives === "function" && passionsUnifieesActives() && p.archived) return false;
+        // ⚠️ FILTRE CANONIQUE — ajouté le 2026-08-31. Ce sélecteur était le SEUL
+        // point d'écriture du dépôt à ne pas l'appliquer : il proposait une
+        // passion personnelle, la PRÉSÉLECTIONNAIT même quand c'était le profil
+        // actif, et la publication était ensuite refusée. Le commentaire juste
+        // au-dessus annonçait précisément ce risque (« si les deux ne répondent
+        // pas la même chose à "où puis-je publier ?", c'est la porte dérobée
+        // assurée ») — il décrivait ce fichier.
+        if (typeof estPassionCanonique === "function" && !estPassionCanonique(p.passion)) return false;
+        return true;
+      } catch (e) { return true; }
     });
     var courant = st.user.currentProfileId;
     s.innerHTML = "";

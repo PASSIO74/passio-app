@@ -79,9 +79,12 @@ test.describe("UI-7 §1 — vocabulaire visible", () => {
     await expect(page.locator(".v6-identite")).toContainText("Changer de profil");
 
     // Profil : « Mes passions », « + Ajouter une passion ».
-    await page.evaluate(() => goTo("profiles"));
+    // ⚠️ ANCRE DÉPLACÉE, ASSERTION CONSERVÉE. La refonte multi-passion (ADR-011)
+    // retire l'onglet « À propos » ; le titre et son lien vivent maintenant dans
+    // le panneau `#passionManager`, qu'ouvre `openPassionManager`. Le lot UI-7
+    // les renomme toujours, et c'est ce que ce cas vérifie.
+    await page.evaluate(() => { goTo("profiles"); openPassionManager(); });
     await page.waitForTimeout(600);
-    await page.locator('[data-v7-tab="apropos"]').click();
     await expect(page.locator("#nouveauProfilLien")).toHaveText("+ Ajouter une passion");
     expect(await page.evaluate(() =>
       document.getElementById("nouveauProfilLien").parentNode.textContent))
@@ -278,14 +281,21 @@ test.describe("UI-7 §3 — le haut du Fil est compact", () => {
 
   test("couper le lot rend aux bulles leur taille d'origine", async ({ page }) => {
     await boot(page, null, 6);
+    // ⚠️ `offsetWidth`, PAS `getBoundingClientRect()`. `renderProfileStrip` pose
+    // un `transform: scale(1.07)` EN LIGNE sur une tuile sélectionnée, et
+    // `getBoundingClientRect` inclut les transformations : 46 × 1,07 = 49,22.
+    // Ce test mesure une taille CSS, pas un agrandissement visuel — et depuis
+    // qu'ADR-010 a retiré la tuile « Suivis » (devenue une VUE du fil), la
+    // première tuile du rail est une passion, potentiellement sélectionnée,
+    // là où c'était auparavant la tuile « Suivis », toujours à `scale(1)`.
     const compact = await page.evaluate(() =>
-      Math.round(document.querySelector("#profileStrip .profile-tile-avatar").getBoundingClientRect().width));
+      document.querySelector("#profileStrip .profile-tile-avatar").offsetWidth);
     await page.evaluate(() => { localStorage.setItem("passio_ui_7", "0"); PassioUIV7.apply(); });
     // ⚠️ `.profile-tile-avatar` porte `transition: all 0.25s` : mesurée dans la
     // foulée, la bulle est encore à mi-chemin. On laisse la transition finir.
     await page.waitForTimeout(500);
     const historique = await page.evaluate(() =>
-      Math.round(document.querySelector("#profileStrip .profile-tile-avatar").getBoundingClientRect().width));
+      document.querySelector("#profileStrip .profile-tile-avatar").offsetWidth);
     expect(historique).toBeGreaterThan(compact);
     expect(historique).toBe(46);
   });
@@ -376,15 +386,20 @@ test.describe("UI-7 §4 — Messages quitte le bandeau supérieur", () => {
 // ══════════════════════════════════════════════════════════════════════════
 // ⑥ LE PROFIL (§6)
 // ══════════════════════════════════════════════════════════════════════════
-test.describe("UI-7 §6 — trois onglets nommés au Profil", () => {
-  test("Publications · Activités · À propos, et rien n'est perdu", async ({ page }) => {
+test.describe("UI-7 §6 — les onglets nommés au Profil", () => {
+  // ⚠️ CE CAS A ÉTÉ RÉALIGNÉ, PAS AFFAIBLI. Le lot UI-7 posait TROIS onglets ;
+  // la refonte multi-passion (ADR-011 §2) n'en garde que deux et retire
+  // « À propos », dont le contenu est passé dans `#passionManager`. Toutes les
+  // assertions « rien n'est perdu » sont conservées — c'est leur destination qui
+  // change, pas leur exigence.
+  test("Publications · Activité, et rien n'est perdu", async ({ page }) => {
     const errors = { js: [], console: [], network: [] };
     await boot(page, errors, 2);
     await page.evaluate(() => goTo("profiles"));
     await page.waitForTimeout(700);
 
     expect(await page.locator("[data-v7-tab]").allTextContents())
-      .toEqual(["Publications", "Activités", "À propos"]);
+      .toEqual(["Publications", "Activité"]);
 
     // Chaque bloc historique est DANS un panneau, pas supprimé.
     const place = await page.evaluate(() => {
@@ -405,12 +420,15 @@ test.describe("UI-7 §6 — trois onglets nommés au Profil", () => {
     expect(place.myPosts).toBe("publications");
     expect(place.top).toBe("publications");
     expect(place.events).toBe("activites");
-    expect(place.profils).toBe("apropos");
-    expect(place.sousFiltres).toBe(5);   // les cinq types restent accessibles
+    // La liste des passions n'est plus dans un panneau d'onglet : elle vit dans
+    // `#passionManager`, replié, hors du flux de la page.
+    expect(place.profils).toBe("hors-panneau");
+    // ⚠️ Quatre types, plus cinq : « Carnets » est parti avec la fonctionnalité.
+    expect(place.sousFiltres).toBe(4);
     // Les libellés viennent du MARKUP (`.profile-tab-lbl`, PR #185) : ce lot
     // n'en repose aucun — deux libellés pour un onglet, c'était le doublon.
     expect(await page.locator(".v7-subfilters .profile-tab-lbl").allTextContents())
-      .toEqual(["Tout", "Photos", "Vidéos", "Bobines", "Carnets"]);
+      .toEqual(["Tout", "Photos", "Vidéos", "Bobines"]);
     // La ligne d'aide suit le groupe qu'elle explique.
     expect(await page.evaluate(() => {
       const h = document.querySelector(".profile-tabs-hint");
@@ -428,12 +446,14 @@ test.describe("UI-7 §6 — trois onglets nommés au Profil", () => {
       [...document.querySelectorAll("[data-v7-pan]")].filter((p) => !p.hidden)
         .map((p) => p.getAttribute("data-v7-pan")))).toEqual(["activites"]);
 
-    // « À propos » garde l'identité active et l'accès secondaire aux carnets.
-    await page.locator('[data-v7-tab="apropos"]').click();
-    await expect(page.locator("#profileList .v6b-ident").first()).toBeVisible();
-    await expect(page.locator(".v7-secondaire", { hasText: "Carnets de voyage" })).toBeVisible();
-    await page.locator(".v7-secondaire", { hasText: "Carnets de voyage" }).click();
-    await expect(page.locator("#screen-cdv")).toHaveClass(/active/);
+    // ⚠️ « À propos » et son lien « Carnets de voyage » ont disparu (ADR-011).
+    // Ce qui compte reste vérifié : la gestion des passions n'est pas devenue
+    // inatteignable — retirer un onglet ne doit jamais fermer une fonction.
+    await expect(page.locator('[data-v7-tab="apropos"]')).toHaveCount(0);
+    await expect(page.locator(".v7-secondaire", { hasText: "Carnets de voyage" })).toHaveCount(0);
+    await page.evaluate(() => openPassionManager());
+    await page.waitForTimeout(300);
+    await expect(page.locator("#profileList .profile-card").first()).toBeVisible();
 
     expect(errors.js, "exceptions JS").toEqual([]);
   });
@@ -595,18 +615,25 @@ test.describe("UI-7 — le kill switch rend l'interface d'avant", () => {
         panneaux: document.querySelectorAll("[data-v7-pan]").length,
         // Les nœuds historiques sont revenus DIRECTEMENT dans l'écran.
         myPosts: dans("myPosts"),
+        // ⚠️ `#profileList` fait exception depuis ADR-011 : sa maison dans le
+        // markup est `#passionManager` (§1 a retiré l'onglet « À propos »), et
+        // ce lot ne l'en sort plus. La coupure ne doit donc PAS le déménager —
+        // un kill switch ne restitue que ce qu'il a lui-même déplacé.
         profileList: dans("profileList"),
         // Les libellés du markup (#185) survivent à la coupure : ce lot ne les
-        // a jamais posés, il ne doit pas les emporter.
+        // a jamais posés, il ne doit pas les emporter. ⚠️ Ils sont QUATRE
+        // depuis ADR-011 : l'onglet « Carnets » est parti avec le Carnet de
+        // voyage (§6). C'est le markup qui a changé, pas le comportement du
+        // kill switch, que ce test mesure.
         labels: document.querySelectorAll(".profile-tab-lbl").length,
       };
     });
     expect(apres.racine).toBe(false);
     expect(apres.barre).toBe(false);
     expect(apres.panneaux).toBe(0);
-    expect(apres.labels).toBe(5);
+    expect(apres.labels).toBe(4);
     expect(apres.myPosts).toBe("screen-profiles");
-    expect(apres.profileList).toBe("screen-profiles");
+    expect(apres.profileList).toBe("passionManager");
 
     // Et l'écran continue de fonctionner : le rendu historique repasse.
     expect(await page.evaluate(() => { renderProfilesScreen(); return !!document.getElementById("myPosts"); })).toBe(true);

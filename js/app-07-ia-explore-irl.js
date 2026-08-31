@@ -117,8 +117,7 @@ function aiGetRelated(query) {
   if (ql.includes("photo")) return ["Ressources photographie", "Créateurs photo", "Events photo IRL"];
   if (ql.includes("musiqu") || ql.includes("guitare")) return ["Ressources musique", "Tendances musique 2026", "Events musique IRL"];
   if (ql.includes("cuisi")) return ["Débuter en cuisine", "Ressources cuisine", "Events cuisine IRL"];
-  if (ql.includes("irl") || ql.includes("event")) return ["Carnets de voyage CDV", "Créateurs à suivre", "Rencontrer des passionnés"];
-  if (ql.includes("voyage") || ql.includes("cdv")) return ["Événements IRL", "Conseils voyage", "Créateurs voyage"];
+  if (ql.includes("irl") || ql.includes("event")) return ["Créateurs à suivre", "Rencontrer des passionnés", "Sorties près de chez moi"];
   return ["Events IRL cette semaine", "Créateurs à suivre", "Rencontrer des passionnés"];
 }
 
@@ -158,7 +157,7 @@ function filterExplore() {
         profileEmoji: u.emoji || "✨",
         avatar: u.color || "#8b5cf6",
         photoUrl: u.photoUrl || u.avatar_url || null,
-        passions: u.passions || [],
+        passions: (typeof passionsPubliques === "function") ? passionsPubliques(u.passions) : (u.passions || []),
         bio: u.bio || ""
       };
     });
@@ -197,19 +196,10 @@ function filterExplore() {
     if (fu.length) {
       html += "<div style='padding:8px 14px 4px;font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;'>👤 Utilisateurs</div>";
       fu.forEach(function(u) {
-        // Badges passions : emoji + label pour chaque passion du compte
-        var passionBadges = "";
-        if (u.passions && Array.isArray(u.passions) && u.passions.length > 0) {
-          passionBadges = u.passions.map(function(p) {
-            var label = p.label || (typeof passionById === "function" && passionById(p.id) ? passionById(p.id).label : "");
-            return "<span style='display:inline-flex;align-items:center;gap:2px;background:rgba(124,58,237,0.08);border:1px solid rgba(124,58,237,0.15);border-radius:20px;padding:1px 5px;font-size:9px;font-weight:600;color:var(--accent);margin-right:2px;white-space:nowrap;line-height:1.4;'>"
-              + escapeHtml(p.emoji || "✨") + (label ? " " + escapeHtml(label) : "") + "</span>";
-          }).join("");
-        } else if (u.passion) {
-          var pw = passionById(u.passion) || { emoji: "✨", label: "" };
-          passionBadges = "<span style='display:inline-flex;align-items:center;gap:2px;background:rgba(124,58,237,0.08);border:1px solid rgba(124,58,237,0.15);border-radius:20px;padding:1px 5px;font-size:9px;font-weight:600;color:var(--accent);margin-right:2px;line-height:1.4;'>"
-            + pw.emoji + (pw.label ? " " + escapeHtml(pw.label) : "") + "</span>";
-        }
+        // §2 : la MÊME ligne d'identité que partout ailleurs. Deux écrans de
+        // recherche portaient chacun leur variante de pastilles ; ils
+        // n'affichaient donc pas la même chose de la même personne.
+        var passionBadges = identitePassionsHTML(u, "ident-passions-sm");
 
         var _photo = _userPhoto(u);
         var _avContent = _photo
@@ -222,7 +212,7 @@ function filterExplore() {
           "<div style='width:44px;height:44px;border-radius:50%;background:" + _avBgColor + ";display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden;border:2px solid rgba(124,58,237,0.15);'>" + _avContent + "</div>" +
           "<div style='flex:1;min-width:0;overflow:hidden;'>" +
             "<div style='font-weight:700;font-size:13px;color:var(--text);margin-bottom:3px;'>" + escapeHtml(u.name||"") + "</div>" +
-            "<div style='display:flex;flex-wrap:wrap;gap:2px;'>" + passionBadges + "</div>" +
+            passionBadges +
             (u.bio ? "<div style='font-size:11px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'>" + escapeHtml(u.bio) + "</div>" : "") +
           "</div>" +
           "<div style='font-size:11px;font-weight:700;color:var(--accent);flex-shrink:0;margin-left:6px;'>Voir →</div>" +
@@ -296,6 +286,8 @@ function quickCreateProfile(pid) {
   };
   state.user.profiles.push(np);
   state.user.currentProfileId = np.id;
+  // Même règle que `confirmCreateProfile` : une passion neuve entre dans le Fil.
+  if (typeof ajouterPassionAuFil === "function") ajouterPassionAuFil(pid);
   saveState();
   // Re-synchronise le profil public (pseudo unique + liste de passions à jour).
   // Passions seules : ni pseudo, ni bio, ni avatar, ni confidentialité.
@@ -3394,10 +3386,8 @@ function openEventDetails(id) {
         💬 Discussion des participants${myRsvp(ev.id) || mine ? "" : " · réservée aux inscrits"}
       </button>`}
 
-    <!-- Pont IRL → CDV : raconter ce moment sous forme de voyage en direct. -->
-    <button class="btn ghost block" style="font-size:12px;margin-bottom:8px;" onclick="startTripFromEvent('${escapeJsArg(ev.id)}')">
-      🧳 Raconter ce moment en carnet de voyage
-    </button>
+    <!-- Le bouton « Raconter ce moment en carnet de voyage » a été retiré avec
+         la fonctionnalité (§6) : il ouvrait l'éditeur de carnet. -->
 
     <!-- Check-in : récompense la présence RÉELLE, pas un clic. Deux chemins —
          la position GPS, ou le QR/code affiché à l'accueil par l'organisateur. -->
@@ -3996,7 +3986,7 @@ async function shareEventInFeed(id) {
     authorEmoji: (prof && prof.emoji) || g.emoji || "✨",
     authorColor: (prof && prof.color) || g.color || "#8b5cf6",
     text: `📍 A partagé un événement\n\n${ev.title}\n${passion.emoji} ${passion.label}${ev.city ? " · " + ev.city : ""} · ${dateStr}`,
-    passion: ev.passion || null,
+    passion: passionDeRepartage(ev.passion),   // cf. `sharePostInFeed` (app-03)
     mood: "irl",
     createdAt: Date.now(),
     timestamp: Date.now(),
@@ -4014,6 +4004,13 @@ async function shareEventInFeed(id) {
   };
 
   if (!state.userPosts) state.userPosts = [];
+  // ⚠️ Refus AVANT la mutation locale — cf. `mePublish` (app-08).
+  if (typeof publicationRefuseeFautePassion === "function"
+      && publicationRefuseeFautePassion(newPost.passion)) {
+    if (btn) { btn.disabled = false; btn.textContent = "Partager dans mon fil"; }
+    closeModal();
+    return;
+  }
   state.userPosts.push(newPost);
   saveState();
 
@@ -4749,7 +4746,22 @@ function openCreateEvent(editId) {
   // choix aux profils créés empêchait d'organiser un événement « photo » quand on
   // n'avait qu'un profil « musique ».
   const myPassionIds = (state.user.profiles || []).map(pr => pr.passion).filter(Boolean);
-  const sortedPassions = allPassions().slice().sort((a, b) =>
+  // ⚠️ SORTIE A : `events.passion_id` porte la même clé étrangère que `posts`.
+  // ⚠️ NE PAS RECLASSER EN SILENCE. Si l'activité éditée porte une passion
+  // absente du catalogue publiable, aucune `<option>` ne serait marquée
+  // `selected` — le navigateur retiendrait alors l'option 0, et
+  // `submitEvent` écrirait cette passion-là sans un mot. On réinjecte donc la
+  // passion d'origine dans la liste : elle reste visible, elle reste
+  // sélectionnée, et le garde de `submitEvent` peut faire son travail en
+  // affichant un message au lieu de reclasser dans le dos de l'organisateur.
+  const _passionEditee = editId ? (ed && ed.passion) : null;
+  const _pubs = passionsPubliables();
+  if (_passionEditee && !_pubs.some(function (x) { return x.id === _passionEditee; })) {
+    const _pOrig = (typeof passionById === "function") ? passionById(_passionEditee) : null;
+    _pubs.push({ id: _passionEditee, emoji: (_pOrig && _pOrig.emoji) || "✨",
+                 label: ((_pOrig && _pOrig.label) || _passionEditee) + " (non publiable)" });
+  }
+  const sortedPassions = _pubs.slice().sort((a, b) =>
     (myPassionIds.includes(a.id) ? 0 : 1) - (myPassionIds.includes(b.id) ? 0 : 1));
   const selPassion = ed ? ed.passion : "";
   const passionOptions = sortedPassions
@@ -5160,6 +5172,13 @@ async function submitEvent(editId) {
   if (!city) { toast("Indique une ville"); return; }
   if (!date) { toast("Choisis une date"); return; }
   if (!passion) { toast("Sélectionne une passion"); return; }
+  // Politique OBLIGATOIRE (ADR-010). Le `<select>` ne propose plus que des
+  // passions publiables, donc ce garde ne se déclenche que sur un état bâti
+  // autrement (brouillon ancien, édition d'un événement d'avant le correctif).
+  if (!estPassionCanonique(passion)) {
+    toast("⚠️ Cette passion n'existe que chez toi : choisis-en une du catalogue pour créer une activité.");
+    return;
+  }
 
   const ts = new Date(date + "T" + time).getTime();
   if (isNaN(ts)) { toast("Date invalide"); return; }
@@ -5408,92 +5427,15 @@ function _eventSocialProofHtml(ev) {
     + '</div>';
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// PONT IRL ↔ CDV — « Sorties près d'ici » (2026-08-03)
-// Bandeau CONTEXTUEL affiché dans un carnet / live de voyage : les événements IRL
-// réels autour du lieu du voyage (preuve sociale + 1 tap pour rejoindre), sinon un
-// état vide qui invite à organiser la première sortie. C'est LA connexion IRL↔CDV
-// la plus intuitive : la valeur apparaît toute seule, au bon endroit, sans bouton
-// à chercher. Ne crée rien en base — croise `allEvents()` avec les coordonnées du
-// voyage (les mêmes que la carte).
-// ═══════════════════════════════════════════════════════════════════════════
-const TRIP_NEARBY_MAX_KM = 60;
-// refLL = [lat, lng] (1re étape géolocalisée du voyage). Renvoie les événements à
-// venir (non annulés, non passés, auteur non bloqué) dans le rayon, triés par
-// distance, chacun annoté de `_tripDistKm`.
-function _tripNearbyEvents(refLL, maxKm) {
-  if (!refLL || typeof refLL[0] !== "number" || typeof allEvents !== "function") return [];
-  var now = Date.now();
-  var limit = maxKm || TRIP_NEARBY_MAX_KM;
-  var out = [];
-  allEvents().forEach(function (e) {
-    if (!e) return;
-    if (typeof _eventIsCancelled === "function" && _eventIsCancelled(e)) return;
-    var end = (typeof _eventEndAt === "function") ? _eventEndAt(e) : (e.date || 0);
-    if (end < now) return; // déjà terminé
-    if (typeof isBlocked === "function" && isBlocked(e.organizerId || e.authorId)) return;
-    var loc = (typeof eventLatLng === "function") ? eventLatLng(e) : (typeof e.lat === "number" ? [e.lat, e.lng] : null);
-    if (!loc) return;
-    var d = (typeof _kmBetween === "function") ? _kmBetween(refLL, loc) : 0;
-    if (d > limit) return;
-    e._tripDistKm = d;
-    out.push(e);
-  });
-  return out.sort(function (a, b) { return a._tripDistKm - b._tripDistKm; });
-}
-// Libellé de date compact (« Aujourd'hui », « Demain », « sam. 12 août »).
-function _tripEventWhenLabel(ev) {
-  if (typeof _eventIsLive === "function" && _eventIsLive(ev)) return "En cours";
-  var days = Math.ceil((ev.date - Date.now()) / 86400000);
-  if (days <= 0) return "Aujourd'hui";
-  if (days === 1) return "Demain";
-  try { return new Date(ev.date).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" }); }
-  catch (e) { return ""; }
-}
-// Le bandeau complet, prêt à insérer dans un viewer de carnet/live.
-// kind = "carnet" | "live" ; id = postId/liveId (pour « Organiser une sortie ici »).
-function _tripNearbyEventsBandHtml(kind, id, refLL) {
-  if (!refLL || typeof refLL[0] !== "number") return ""; // sans coordonnées, rien à croiser
-  var idArg = escapeJsArg(String(id));
-  var head = '<div class="trip-nearby-head"><span>🤝 Sorties près d\'ici</span>'
-    + '<span class="trip-nearby-add" onclick="event.stopPropagation();organizeEventFromTrip(\'' + escapeJsArg(kind) + '\',\'' + escapeJsArg(idArg) + '\')">+ Organiser</span></div>';
-  var evs = _tripNearbyEvents(refLL, TRIP_NEARBY_MAX_KM);
-  if (!evs.length) {
-    return '<div class="trip-nearby">' + head
-      + '<div class="trip-nearby-empty">Personne n\'a encore organisé de sortie ici. <b>Sois le premier</b> à réunir des passionnés sur place.</div>'
-      + '<button class="btn primary block" style="margin-top:10px;font-size:12px;" onclick="event.stopPropagation();organizeEventFromTrip(\'' + escapeJsArg(kind) + '\',\'' + escapeJsArg(idArg) + '\')">📅 Organiser la première sortie</button>'
-      + '</div>';
-  }
-  var rows = evs.slice(0, 3).map(function (e) {
-    var when = _tripEventWhenLabel(e);
-    var dist = (e._tripDistKm != null) ? (e._tripDistKm < 1 ? "< 1 km" : Math.round(e._tripDistKm) + " km") : "";
-    var pass = (typeof passionById === "function" && passionById(e.passion)) || { emoji: "✨" };
-    var n = (e.attendees || []).length;
-    var proof = (typeof _eventSocialProofHtml === "function") ? _eventSocialProofHtml(e) : "";
-    return '<div class="trip-nearby-ev" onclick="openNearbyEventFromTrip(\'' + escapeJsArg(String(e.id)) + '\')">'
-      + '<div class="trip-nearby-ev-emoji">' + escapeHtml(e.emoji || pass.emoji || "🤝") + '</div>'
-      + '<div style="flex:1;min-width:0;">'
-      +   '<div class="trip-nearby-ev-title">' + escapeHtml(e.title || "Sortie") + '</div>'
-      +   '<div class="trip-nearby-ev-meta">' + escapeHtml(when) + (dist ? ' · ' + dist : '') + (n ? ' · ' + n + ' inscrit' + (n > 1 ? "s" : "") : '') + '</div>'
-      +   proof
-      + '</div>'
-      + '<div class="trip-nearby-ev-go">›</div>'
-      + '</div>';
-  }).join("");
-  var more = evs.length > 3
-    ? '<div class="trip-nearby-more" onclick="event.stopPropagation();closeAnyTripViewer();goTo(\'irl\')">Voir les ' + evs.length + ' sorties autour →</div>'
-    : "";
-  return '<div class="trip-nearby">' + head + rows + more + '</div>';
-}
-// Ferme le viewer de voyage (carnet OU live) puis ouvre la fiche de l'événement.
-function closeAnyTripViewer() {
-  try { if (typeof closeVlogViewer === "function") closeVlogViewer(); } catch (e) {}
-  try { if (typeof closeModal === "function") closeModal(); } catch (e) {}
-}
-function openNearbyEventFromTrip(eventId) {
-  closeAnyTripViewer();
-  setTimeout(function () { if (typeof openEventDetails === "function") openEventDetails(eventId); }, 130);
-}
+// ⚠️ LE PONT « IRL ↔ CDV » A ÉTÉ RETIRÉ avec le Carnet de voyage (§6).
+// Il posait un bandeau « Sorties près d'ici » DANS le viewer d'un carnet ou
+// d'un live de voyage : sans viewer, il n'a plus de surface où s'afficher.
+// Sont parties avec lui : `_tripNearbyEvents`, `_tripEventWhenLabel`,
+// `_tripNearbyEventsBandHtml`, `closeAnyTripViewer` et `openNearbyEventFromTrip`.
+//
+// ⚠️ Le sens du pont, lui, n'est pas perdu : il existe DANS l'autre sens, et
+// il est vivant — la passerelle du Fil vers l'IRL (`js/ui-v3-passerelle.js`)
+// et l'écran « Rencontrer » restent les chemins vers une sortie réelle.
 
 /* ---------------------------------------------------------------------------
    INVITATIONS DIRECTES
@@ -5640,7 +5582,13 @@ function myEngagementStats() {
     if (e && joined.indexOf(e.id) > -1 && _eventIsOver(e) && e.city) cities[String(e.city).toLowerCase()] = 1;
   });
 
-  var passport = (typeof cdvPassportStats === "function") ? cdvPassportStats() : { trips: [], km: 0, countries: [] };
+  // ⚠️ Le passeport de voyage a été retiré avec le Carnet de voyage (§6). Les
+  // trois jalons qu'il nourrissait (voyages, kilomètres, pays) valent donc zéro
+  // — ils ne sont PAS supprimés de la structure : les badges correspondants
+  // restent visibles comme non acquis plutôt que de disparaître d'un profil qui
+  // les affichait hier. C'est un retrait de fonctionnalité, pas une remise à
+  // zéro de l'historique de quelqu'un.
+  var passport = { trips: [], km: 0, countries: [] };
 
   return {
     attended: attended,
