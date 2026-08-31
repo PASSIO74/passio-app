@@ -197,6 +197,29 @@ function generer() {
   p("create index if not exists idx_user_pspec_passion on public.user_passion_specialties (passion_id);");
   p("");
 
+  // ── 4 bis. Propositions de passion manquante ──────────────────────────────
+  p("-- ── 4 bis. « Je ne trouve pas ma passion » ────────────────────────────────");
+  p("-- \u26a0\ufe0f UNE DEMANDE N'EST JAMAIS UNE PASSION. Cette table est une FILE");
+  p("-- D'ATTENTE, pas une extension du référentiel : rien ici n'est référençable");
+  p("-- par `posts.passion_id`, et aucun chemin automatique ne promeut une ligne en");
+  p("-- passion canonique. L'ajout au catalogue passe par une modification de");
+  p("-- `js/passion-catalog.js` et une migration — c'est-à-dire par une revue.");
+  p("-- C'est exactement ce qu'ADR-010 a fermé en suspendant les passions");
+  p("-- personnalisées auto-approuvées, et ce lot ne le rouvre pas.");
+  p("create table if not exists public.passion_requests (");
+  p("  id         text primary key,");
+  p("  user_id    text not null,");
+  p("  label      text not null,");
+  p("  note       text,");
+  p("  status     text not null default 'pending',");
+  p("  created_at timestamptz not null default now(),");
+  p("  constraint passion_requests_status_check check (status in ('pending','accepted','rejected')),");
+  p("  constraint passion_requests_label_len check (char_length(label) between 2 and 60)");
+  p(");");
+  p("create index if not exists idx_passion_requests_user on public.passion_requests (user_id);");
+  p("create index if not exists idx_passion_requests_status on public.passion_requests (status, created_at desc);");
+  p("");
+
   // ── 5. specialty_id sur le contenu ────────────────────────────────────────
   p("-- ── 5. Classement facultatif du contenu ────────────────────────────────────");
   p("-- ⚠️ LA COHÉRENCE EST VÉRIFIÉE PAR LA BASE, PAS PAR LE CLIENT. La clé");
@@ -262,6 +285,17 @@ function generer() {
     });
     p("");
   });
+  p("-- LES DEMANDES : on dépose la sienne, on relit la sienne, on ne touche à");
+  p("-- rien d'autre. Pas d'`update` ni de `delete` : c'est le STATUT qui porte la");
+  p("-- décision, et il n'appartient pas au demandeur.");
+  p("alter table public.passion_requests enable row level security;");
+  p("drop policy if exists passion_requests_select_own on public.passion_requests;");
+  p("create policy passion_requests_select_own on public.passion_requests");
+  p("  for select using (user_id = (select auth.uid())::text);");
+  p("drop policy if exists passion_requests_insert_own on public.passion_requests;");
+  p("create policy passion_requests_insert_own on public.passion_requests");
+  p("  for insert with check (user_id = (select auth.uid())::text and status = 'pending');");
+  p("");
   p("-- ⚠️ LA LECTURE EST VOLONTAIREMENT LIMITÉE À SOI. Les sélections d'un TIERS");
   p("-- ne passent pas par ces tables : elles restent servies par la vitrine");
   p("-- `profiles.passions`, déjà soumise aux règles de visibilité du profil");
@@ -295,6 +329,7 @@ function generer() {
     p(`--     drop index if exists public.idx_${t}_specialty;`);
     p(`--     alter table public.${t} drop column if exists specialty_id;`);
   });
+  p("--     drop table if exists public.passion_requests;");
   p("--     drop table if exists public.user_passion_specialties;");
   p("--     drop table if exists public.user_passions;");
   p("--     drop table if exists public.passion_specialties;");

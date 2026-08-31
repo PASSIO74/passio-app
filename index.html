@@ -1464,6 +1464,19 @@
      meState.details puis appelle mePublish(), seul moteur de publication. -->
 <script src="js/ui-v7-lot.js"></script>
 
+<!-- LOT TAXO-1 — catalogue hiérarchique des passions et spécialités.
+     `passion-catalog.js` est la SOURCE du référentiel (10 univers · 42 passions
+     · 790 spécialités · 629 synonymes) ; `ui-v9-taxonomie.js` en fait des
+     écrans. L'ordre compte : le module lit `window.PASSIO_CATALOG`.
+     ÉTEINT PAR DÉFAUT — aperçu seulement :
+       ?passion_taxonomy_v1=1  ·  ?passio_preview=passion-taxonomy-v1
+     Coupures : ?passion_taxonomy_v1=0 · localStorage.passion_taxonomy_v1="0"
+                · window.PASSIO_TAXONOMY = false
+     Les deux fichiers sont HORS du bloc BUILD:APP (9 fichiers, invariant du
+     build) : ils sont inlinés tels quels par scripts/build.js. -->
+<script src="js/passion-catalog.js"></script>
+<script src="js/ui-v9-taxonomie.js"></script>
+
 
 <!-- ======== PWA INSTALL OVERLAY ======== -->
 <div id="pwa-overlay" style="display:none;">

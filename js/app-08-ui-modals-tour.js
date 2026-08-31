@@ -2954,6 +2954,24 @@ function diagLog(msg) {
 // ===== SYSTÈME DE PUBLICATION FIABLE MULTI-APPAREILS =====
 // TIMEOUT COURT: Supabase répond ou on considère que c'est un problème réseau
 
+// La spécialité d'une publication, VÉRIFIÉE contre le catalogue embarqué et
+// contre la passion qui part avec elle. La base pose la même règle par clé
+// étrangère composite `(specialty_id, passion_id)` — c'est elle qui fait
+// autorité ; celle-ci évite seulement un aller-retour et un message obscur.
+//
+// ⚠️ On ne fait JAMAIS confiance à un `specialty_id` porté par l'objet post :
+// il vient d'un `<select>`, donc du client. Rendre `undefined` (et non `null`)
+// laisse PostgREST ignorer la clé, ce qui garde l'insert valide sur une base
+// où la colonne n'existe pas encore.
+function _specialtyPourPost(post, passionId) {
+  try {
+    var sid = post && (post.specialty || post.specialty_id);
+    if (!sid) return undefined;
+    if (!window.PassioTaxo || !PassioTaxo.actif() || !PassioTaxo.valideSpecialite(sid, passionId)) return undefined;
+    return sid;
+  } catch (e) { return undefined; }
+}
+
 async function supaPublishPostWithRetry(post, maxRetries = 2) {
   try { window.tel && tel.action(post && post.is_reel ? "publish_reel" : "publish_post", { passion: post && post.passion, postId: post && post.id }); } catch (e) {}
   // Traçage bout-en-bout : chaîne « handler → publication enregistrée ». On confirme
@@ -3053,6 +3071,14 @@ async function supaPublishPostWithRetry(post, maxRetries = 2) {
         id: post.id,
         author_id: MY_UID,
         passion_id: _clsPassion.valeur,
+        // ── Lot TAXO-1 : classement fin, FACULTATIF ──────────────────────
+        // ⚠️ `undefined` et non `null` quand il n'y en a pas : PostgREST
+        // ignore une clé absente, alors qu'un `null` explicite écrirait la
+        // colonne — inoffensif ici, mais la colonne n'existe pas tant que la
+        // migration n'a pas tourné, et un `null` explicite ferait alors
+        // échouer l'insert ENTIER (PGRST204, colonne inconnue). Le lot ne
+        // doit jamais casser une publication hors de son périmètre.
+        specialty_id: _specialtyPourPost(post, _clsPassion.valeur),
         mood: post.mood || "all",
         content: (post.text && !post.text.startsWith("data:")) ? post.text : (post.text?.startsWith("data:") ? "" : ""),
         // ✅ NE JAMAIS stocker du base64 en DB — seulement des URLs Supabase Storage

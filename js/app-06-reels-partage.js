@@ -3144,6 +3144,16 @@ async function publishPost() {
     authorColor: authorColor,
   };
 
+  // ── Lot TAXO-1 : la spécialité, FACULTATIVE ───────────────────────────────
+  // ⚠️ Hors lot, `specialiteAPublier()` rend `null` et rien ne change : le
+  // champ n'est même pas posé sur l'objet. La passion, elle, reste obligatoire
+  // — c'est `requiredCanonicalPassion` (app-08) qui le garantit, au point
+  // d'écriture central, et ce lot n'y touche pas.
+  try {
+    var _spec = (window.PassioTaxo && PassioTaxo.specialiteAPublier) ? PassioTaxo.specialiteAPublier() : null;
+    if (_spec) post.specialty = _spec;
+  } catch (e) {}
+
   // ⚠️ Les champs de carnet (destination, étapes, budget, transport…) ont été
   // retirés du post publié avec la fonctionnalité (§6).
 

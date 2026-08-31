@@ -9773,6 +9773,175 @@ body.ctx-locked #appMain { overflow: hidden; }
 #passionManager[hidden] { display: none !important; }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   LOT TAXO-1 — catalogue hiérarchique des passions et spécialités
+   Tout est sous `:root.passio-taxo-v1` : couper le drapeau retire la classe
+   racine et rend la feuille historique à l'octet près.
+
+   ⚠️ Ce bloc est posé AVANT « PASSIO UI V4 — lot UI-4A5 », qui doit rester le
+   DERNIER de ce fichier (ses sélecteurs gagnent par la position). Les deux
+   familles sont disjointes (`.taxo-*` ici, `:root.passio-ui-4a5` là-bas) :
+   rien ne se recouvre, l'ordre n'honore qu'une contrainte déjà écrite.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Pastilles ─────────────────────────────────────────────────────────────
+   ⚠️ La cible tactile se mesure sur la BOÎTE du bouton : 44 px, comme partout
+   dans ce dépôt. Le rembourrage visuel est plus discret, mais la boîte ne
+   descend jamais sous 44 (mêmes patrons que la pastille d'UI-3A). */
+:root.passio-taxo-v1 .taxo-chips {
+  display: flex; flex-wrap: wrap; gap: 7px;
+}
+:root.passio-taxo-v1 .taxo-chips-grille {
+  gap: 8px;
+}
+:root.passio-taxo-v1 .taxo-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  min-height: 44px; padding: 6px 13px;
+  border: 1.5px solid var(--border); border-radius: 999px;
+  background: var(--bg-card); color: var(--text);
+  font-size: 13px; font-weight: 600; font-family: inherit;
+  cursor: pointer; text-align: left; line-height: 1.25;
+  transition: background .18s, border-color .18s, color .18s;
+}
+:root.passio-taxo-v1 .taxo-chip.on {
+  border-color: var(--accent); background: var(--accent); color: #fff; font-weight: 800;
+}
+:root.passio-taxo-v1 .taxo-chip-emoji { font-size: 15px; line-height: 1; }
+:root.passio-taxo-v1 .taxo-chip-sub {
+  font-size: 10px; font-weight: 600; opacity: .62;
+  max-width: 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+:root.passio-taxo-v1 .taxo-chip.on .taxo-chip-sub { opacity: .82; }
+
+:root.passio-taxo-v1 .taxo-search {
+  width: 100%; box-sizing: border-box;
+  padding: 11px 13px; border: 1.5px solid var(--border); border-radius: 12px;
+  background: var(--bg-card); color: var(--text);
+  /* ⚠️ 16 px et pas moins : en dessous, iOS zoome à la mise au point du champ
+     et l'écran ne revient jamais à son cadrage. */
+  font-size: 16px; font-family: inherit;
+}
+:root.passio-taxo-v1 .taxo-hint,
+:root.passio-taxo-v1 .taxo-vide {
+  font-size: 12px; color: var(--muted); line-height: 1.45; margin-top: 8px;
+}
+:root.passio-taxo-v1 .taxo-vide { padding: 18px 4px; text-align: center; }
+
+:root.passio-taxo-v1 .taxo-voir-tout {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  width: 100%; margin-top: 12px; min-height: 48px; padding: 11px;
+  border: 1.5px dashed var(--border); border-radius: 14px;
+  background: transparent; color: var(--accent);
+  font-size: 13px; font-weight: 800; font-family: inherit; cursor: pointer;
+}
+:root.passio-taxo-v1 .taxo-voir-tout span {
+  font-size: 11px; font-weight: 600; color: var(--muted);
+}
+
+/* ── Feuille « Toutes les passions » ─────────────────────────────────────── */
+:root.passio-taxo-v1 .taxo-sheet { display: flex; flex-direction: column; max-height: 76vh; }
+:root.passio-taxo-v1 .taxo-sheet-titre { font-size: 17px; font-weight: 800; margin-bottom: 10px; }
+:root.passio-taxo-v1 .taxo-sheet-corps {
+  flex: 1 1 auto; overflow-y: auto; margin: 12px 0; -webkit-overflow-scrolling: touch;
+}
+:root.passio-taxo-v1 .taxo-sheet-pied { display: flex; gap: 8px; }
+:root.passio-taxo-v1 .taxo-univers { margin-bottom: 16px; }
+:root.passio-taxo-v1 .taxo-univers-titre {
+  font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--muted); margin-bottom: 7px;
+}
+
+/* ── « Mes passions » ────────────────────────────────────────────────────── */
+:root.passio-taxo-v1 .taxo-manager { margin-top: 14px; }
+:root.passio-taxo-v1 .taxo-manager-corps { margin-top: 10px; }
+:root.passio-taxo-v1 .taxo-manager-pied { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+:root.passio-taxo-v1 .taxo-ligne {
+  position: relative; border: 1px solid var(--border); border-radius: 14px;
+  background: var(--bg-card); margin-bottom: 8px; overflow: hidden;
+}
+:root.passio-taxo-v1 .taxo-ligne.ouverte { border-color: var(--accent); }
+:root.passio-taxo-v1 .taxo-ligne-tete {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; min-height: 52px; padding: 10px 46px 10px 12px;
+  border: 0; background: transparent; color: var(--text);
+  font-family: inherit; text-align: left; cursor: pointer;
+}
+:root.passio-taxo-v1 .taxo-ligne-emoji { font-size: 20px; }
+:root.passio-taxo-v1 .taxo-ligne-corps { flex: 1 1 auto; min-width: 0; }
+:root.passio-taxo-v1 .taxo-ligne-titre { display: block; font-size: 14px; font-weight: 800; }
+:root.passio-taxo-v1 .taxo-ligne-meta { display: block; font-size: 11px; color: var(--muted); margin-top: 1px; }
+:root.passio-taxo-v1 .taxo-ligne-chevron { color: var(--muted); font-size: 13px; }
+:root.passio-taxo-v1 .taxo-ligne-retirer {
+  position: absolute; top: 4px; right: 4px;
+  width: 44px; height: 44px; border: 0; background: transparent;
+  color: var(--muted); font-size: 15px; cursor: pointer;
+}
+:root.passio-taxo-v1 .taxo-ligne-specs { padding: 0 12px 12px; }
+:root.passio-taxo-v1 .taxo-ligne-apercu {
+  display: flex; flex-wrap: wrap; gap: 5px; padding: 0 12px 11px;
+}
+:root.passio-taxo-v1 .taxo-mini {
+  font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 999px;
+  background: rgba(124, 58, 237, .12); color: var(--accent);
+}
+
+/* ── Studio ──────────────────────────────────────────────────────────────── */
+:root.passio-taxo-v1 .taxo-studio { margin-top: 10px; }
+:root.passio-taxo-v1 .taxo-studio-lbl {
+  display: block; font-size: 12px; font-weight: 700; margin-bottom: 5px;
+}
+:root.passio-taxo-v1 .taxo-studio-lbl em { font-style: normal; font-weight: 600; color: var(--muted); }
+:root.passio-taxo-v1 .taxo-studio-apercu {
+  font-size: 11px; color: var(--muted); margin-top: 5px;
+}
+
+/* ── Fil : « Affiner » ───────────────────────────────────────────────────── */
+:root.passio-taxo-v1 .taxo-affiner { padding: 0 12px 6px; }
+:root.passio-taxo-v1 .taxo-affiner-btn {
+  position: relative; min-height: 44px; padding: 0 14px;
+  border: 0; background: transparent; color: var(--accent);
+  font-size: 12px; font-weight: 800; font-family: inherit; cursor: pointer;
+}
+/* La pilule est PEINTE par un pseudo-élément : le bouton garde ses 44 px de
+   boîte tactile alors que la pastille visible n'en fait que 30. Même patron
+   que la pastille d'UI-3A — un simple débord ne satisferait pas la mesure. */
+:root.passio-taxo-v1 .taxo-affiner-btn::before {
+  content: ""; position: absolute; inset: 7px 0; z-index: -1;
+  border: 1.5px solid var(--border); border-radius: 999px; background: var(--bg-card);
+}
+:root.passio-taxo-v1 .taxo-affiner-btn.on::before { border-color: var(--accent); }
+:root.passio-taxo-v1 .taxo-affiner-corps {
+  margin-top: 6px; padding: 10px; border: 1px solid var(--border);
+  border-radius: 14px; background: var(--bg-card);
+}
+:root.passio-taxo-v1 .taxo-affiner-bloc { margin-bottom: 12px; }
+:root.passio-taxo-v1 .taxo-affiner-titre {
+  font-size: 12px; font-weight: 800; margin-bottom: 6px;
+}
+
+/* ── Proposer une passion ────────────────────────────────────────────────── */
+:root.passio-taxo-v1 .taxo-proposer-titre { font-size: 17px; font-weight: 800; margin-bottom: 6px; }
+:root.passio-taxo-v1 .taxo-proposer-texte {
+  font-size: 13px; color: var(--muted); line-height: 1.5; margin: 0 0 12px;
+}
+:root.passio-taxo-v1 #taxoProposeNote { margin-top: 8px; resize: vertical; }
+
+/* ── Pastille « Passion · Spécialité » sur la carte ──────────────────────── */
+:root.passio-taxo-v1 .post-taxo-tag {
+  display: inline-flex; align-items: center; margin-left: 6px;
+  padding: 3px 9px; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--bg-deep);
+  font-size: 10px; font-weight: 700; color: var(--muted);
+  max-width: 46vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* ── Cadrage mobile : 320 px reste tenable ───────────────────────────────── */
+@media (max-width: 360px) {
+  :root.passio-taxo-v1 .taxo-chip { font-size: 12px; padding: 6px 10px; }
+  :root.passio-taxo-v1 .taxo-chip-sub { max-width: 66px; }
+  :root.passio-taxo-v1 .taxo-manager-pied .btn { flex: 1 1 100%; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
    PASSIO UI V4 — lot UI-4A5 : « Filtres » est une VUE, et les bulles de passion
    vivent dedans.  ACTIF PAR DÉFAUT.
    (coupures : localStorage.passio_ui_4a5 = "0" · window.PASSIO_UI_4A5 = false)

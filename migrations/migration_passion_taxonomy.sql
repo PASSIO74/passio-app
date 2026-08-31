@@ -998,6 +998,27 @@ create index if not exists idx_user_pspec_user on public.user_passion_specialtie
 create index if not exists idx_user_pspec_specialty on public.user_passion_specialties (specialty_id);
 create index if not exists idx_user_pspec_passion on public.user_passion_specialties (passion_id);
 
+-- ── 4 bis. « Je ne trouve pas ma passion » ────────────────────────────────
+-- ⚠️ UNE DEMANDE N'EST JAMAIS UNE PASSION. Cette table est une FILE
+-- D'ATTENTE, pas une extension du référentiel : rien ici n'est référençable
+-- par `posts.passion_id`, et aucun chemin automatique ne promeut une ligne en
+-- passion canonique. L'ajout au catalogue passe par une modification de
+-- `js/passion-catalog.js` et une migration — c'est-à-dire par une revue.
+-- C'est exactement ce qu'ADR-010 a fermé en suspendant les passions
+-- personnalisées auto-approuvées, et ce lot ne le rouvre pas.
+create table if not exists public.passion_requests (
+  id         text primary key,
+  user_id    text not null,
+  label      text not null,
+  note       text,
+  status     text not null default 'pending',
+  created_at timestamptz not null default now(),
+  constraint passion_requests_status_check check (status in ('pending','accepted','rejected')),
+  constraint passion_requests_label_len check (char_length(label) between 2 and 60)
+);
+create index if not exists idx_passion_requests_user on public.passion_requests (user_id);
+create index if not exists idx_passion_requests_status on public.passion_requests (status, created_at desc);
+
 -- ── 5. Classement facultatif du contenu ────────────────────────────────────
 -- ⚠️ LA COHÉRENCE EST VÉRIFIÉE PAR LA BASE, PAS PAR LE CLIENT. La clé
 -- étrangère porte sur le COUPLE `(specialty_id, passion_id)` : une
@@ -1092,6 +1113,17 @@ create policy user_passion_specialties_update_own on public.user_passion_special
 drop policy if exists user_passion_specialties_delete_own on public.user_passion_specialties;
 create policy user_passion_specialties_delete_own on public.user_passion_specialties for delete using (user_id = (select auth.uid())::text);
 
+-- LES DEMANDES : on dépose la sienne, on relit la sienne, on ne touche à
+-- rien d'autre. Pas d'`update` ni de `delete` : c'est le STATUT qui porte la
+-- décision, et il n'appartient pas au demandeur.
+alter table public.passion_requests enable row level security;
+drop policy if exists passion_requests_select_own on public.passion_requests;
+create policy passion_requests_select_own on public.passion_requests
+  for select using (user_id = (select auth.uid())::text);
+drop policy if exists passion_requests_insert_own on public.passion_requests;
+create policy passion_requests_insert_own on public.passion_requests
+  for insert with check (user_id = (select auth.uid())::text and status = 'pending');
+
 -- ⚠️ LA LECTURE EST VOLONTAIREMENT LIMITÉE À SOI. Les sélections d'un TIERS
 -- ne passent pas par ces tables : elles restent servies par la vitrine
 -- `profiles.passions`, déjà soumise aux règles de visibilité du profil
@@ -1131,6 +1163,7 @@ commit;
 --     alter table public.events drop constraint if exists events_specialty_needs_passion;
 --     drop index if exists public.idx_events_specialty;
 --     alter table public.events drop column if exists specialty_id;
+--     drop table if exists public.passion_requests;
 --     drop table if exists public.user_passion_specialties;
 --     drop table if exists public.user_passions;
 --     drop table if exists public.passion_specialties;

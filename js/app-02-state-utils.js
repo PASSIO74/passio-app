@@ -3521,6 +3521,24 @@ function moodShortLabel(mood) {
 // retombent sur `mood: "all"`, donc TOUS en portaient une.
 // ⚠️ C'est bien le neutre qui ne doit porter aucun badge (cf. la note de
 // `PASSIO_MOOD_LABELS`) — l'intention était juste, seul le rendu la trahissait.
+// ── Lot TAXO-1 : « Passion · Spécialité » sur la carte ─────────────────────
+// ⚠️ La pastille, OU RIEN — jamais une capsule vide. C'est exactement le défaut
+// de `post-mood-tag` du 2026-08-29 (PR #198) : un `<span>` rendu sans condition,
+// classe portant `padding`, `border` et un fond opaque, donnait une capsule
+// creuse de 20 × 8 px sur TOUTES les publications venues de Supabase.
+//
+// Hors lot, ou sans spécialité, cette fonction rend la chaîne vide.
+function _taxoTagHTML(post) {
+  try {
+    if (!window.PassioTaxo || !PassioTaxo.actif()) return "";
+    var sid = post && (post.specialty || post.specialty_id);
+    var pid = post && (post.passion || post.passion_id);
+    if (!sid || !pid || !PassioTaxo.valideSpecialite(sid, pid)) return "";
+    var t = PassioTaxo.libelleContenu(pid, sid);
+    return t ? '<span class="post-taxo-tag">' + escapeHtml(t) + "</span>" : "";
+  } catch (e) { return ""; }
+}
+
 function _moodTagHTML(mood) {
   var t = moodTagLabel(mood);
   return t ? '<span class="post-mood-tag">' + t + '</span>' : "";
@@ -4648,7 +4666,23 @@ function renderFeed() {
 
   if (!aucuneSource) {
     if (_activeFeedPassions.size > 0) {
-      combinedPosts = combinedPosts.concat(allPosts.filter(function(p) { return _activeFeedPassions.has(p.passion); }));
+      // ── Lot TAXO-1 : l'affinage par spécialité ─────────────────────────────
+      // ⚠️ IL RESSERRE, IL N'AJOUTE PAS DE FAMILLE. Le prédicat s'applique
+      // UNIQUEMENT à la branche « passion » de l'union : une publication entrée
+      // par « Suivis » ou par une envie n'est jamais écartée par une spécialité
+      // cochée ailleurs. Sinon cocher une spécialité VIDERAIT le fil au lieu de
+      // l'affiner, et le moteur additif d'ADR-011 §1 serait renié.
+      //
+      // ⚠️ Et il laisse passer tout contenu SANS spécialité — c'est-à-dire la
+      // totalité de l'existant. Hors lot, `postPasseAffinage` rend `true` : la
+      // ligne se comporte alors exactement comme avant.
+      combinedPosts = combinedPosts.concat(allPosts.filter(function(p) {
+        if (!_activeFeedPassions.has(p.passion)) return false;
+        try {
+          if (window.PassioTaxo && PassioTaxo.postPasseAffinage) return PassioTaxo.postPasseAffinage(p);
+        } catch (e) {}
+        return true;
+      }));
     }
     if (suivisOn && suitQuelquun) {
       combinedPosts = combinedPosts.concat(allPosts.filter(function(p) { return followingIds.includes(p.authorId); }));
@@ -5238,6 +5272,7 @@ function renderPostHTML(p) {
         <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>
       </button>` : ""}
       ${_moodTagHTML(p.mood)}
+      ${_taxoTagHTML(p)}
     </div>
 
     <div class="post-body" onclick="${FEED_POST_OPEN_FN}('${escapeJsArg(p.id)}')" style="cursor:pointer;">
