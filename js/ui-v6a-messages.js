@@ -41,7 +41,6 @@
   var VERSION = 1;
   var CLASSE_RACINE = "passio-ui-6a";
   var HOTE_ID = "v6aHead";
-  var MOI_ID = "v6aMoi";
   var MENU_ID = "v6aMenu";
   var MARQUEUR = "data-v6a";
 
@@ -198,14 +197,9 @@
     rangee.appendChild(plus);
     hote.appendChild(rangee);
 
-    // ── Lot UI-8 : QUI écrit ? ──────────────────────────────────────────────
-    // Toujours le profil personnel. La passion active n'est qu'un CONTEXTE
-    // secondaire, affiché après un point médian et en gris : elle ne doit jamais
-    // laisser croire qu'un autre compte, ou quelqu'un d'autre, envoie le message.
-    var moi = document.createElement("div");
-    moi.className = "v6a-moi";
-    moi.id = MOI_ID;
-    hote.appendChild(moi);
+    // ⚠️ 2026-08-31 : plus de ligne « Audit QA · Musique » sous le titre.
+    // Retirée sur demande de Benjamin — on n'écrit jamais « depuis » un autre
+    // compte dans PASSIO, la rappeler en tête de l'inbox n'informait personne.
 
     // La recherche est DÉPLACÉE (piège ③) : son `oninput` inline doit survivre.
     var champ = el("convGlobalSearch");
@@ -224,61 +218,11 @@
     return true;
   }
 
-  // Lot UI-8 : « Ben sur portable · 🏍️ Moto ». Le pseudo GÉNÉRAL d'abord — c'est
-  // l'identité publique et la seule qui parte réellement dans un message.
-  function v8() {
-    try { if (window.PASSIO_UI_8 === false) return false; } catch (e) {}
-    try { if (localStorage.getItem("passio_ui_8") === "0") return false; } catch (e) {}
-    return true;
-  }
-
-  function majMoi() {
-    var l = el(MOI_ID);
-    if (!l) return;
-    // Coupure du lot UI-8 : la ligne disparaît, elle ne se fige pas.
-    if (!v8()) { l.textContent = ""; l.hidden = true; l.removeAttribute("data-v6a-sig"); return; }
-    var pseudo = "";
-    var contexte = "";
-    try {
-      var g = (typeof state !== "undefined" && state && state.user && state.user.general) || {};
-      pseudo = g.username || (state && state.user && state.user.name) || "";
-    } catch (e) {}
-    // ⚠️ REFONTE MULTI-PASSION (§2) : ce n'est plus la passion ACTIVE qui
-    // s'affiche ici, mais TOUTES mes passions. Le lot UI-8 montrait « Ben ·
-    // 🏍️ Moto », ce qui laissait croire qu'on écrivait « depuis » une passion —
-    // exactement l'idée que la refonte retire. Les interactions appartiennent
-    // au profil principal, et ses passions ne font que le décrire.
-    try {
-      if (typeof identitePassionsTexte === "function") {
-        contexte = identitePassionsTexte({ id: (typeof MY_UID !== "undefined" && MY_UID) || "me" });
-      }
-    } catch (e) {}
-    if (!pseudo) { l.textContent = ""; l.hidden = true; return; }
-
-    // ⚠️ SIGNATURE — sans elle, ce module tournait EN BOUCLE tant que l'écran
-    // Messages était ouvert. L'observateur surveille `#screen-messages` en
-    // `childList` + `subtree` ; `majMoi` vidait et reconstruisait ses deux
-    // `<span>` À CHAQUE passage, ce qui produisait une mutation, qui rappelait
-    // `planifier()`, qui rappelait `majMoi`… `decorerCartes` avait bien sa
-    // signature (`data-v6a-psn`), pas celle-ci : la boucle vivait là.
-    // On n'écrit donc qu'au changement réel du couple pseudo + contexte.
-    var signature = pseudo + "\u0000" + contexte;
-    if (l.getAttribute("data-v6a-sig") === signature && !l.hidden) return;
-    l.setAttribute("data-v6a-sig", signature);
-
-    l.hidden = false;
-    l.textContent = "";
-    var a = document.createElement("span");
-    a.className = "v6a-moi-nom";
-    a.textContent = pseudo;
-    l.appendChild(a);
-    if (contexte) {
-      var b = document.createElement("span");
-      b.className = "v6a-moi-ctx";
-      b.textContent = " · " + contexte;
-      l.appendChild(b);
-    }
-  }
+  // ⚠️ `v8()` et `majMoi()` ont été RETIRÉES le 2026-08-31 avec la ligne
+  // d'identité de la tête. Les garder aurait laissé une fonction qui ne peut
+  // plus rien écrire — le nœud qu'elle adressait n'est plus construit.
+  // Le lot UI-8 continue de gouverner les passions affichées sur les CARTES
+  // (`decorerCartes`), qui lisent `identitePassionsTexte` comme partout ailleurs.
 
   // ── ② « Moto · Podcast · Dernier message… » ──────────────────────────────
   // Les passions de l'interlocuteur, devant l'aperçu. Aucun appel réseau : la
@@ -343,7 +287,6 @@
     if (!ec) return;
     try {
       if (!el(HOTE_ID) && !construire()) return;
-      majMoi();
       decorerCartes();
     } catch (e) {
       enPanne = true;

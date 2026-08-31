@@ -105,19 +105,28 @@ test("① bis — enregistrer son profil n'aligne plus l'emoji du compte sur la 
   expect(apres).toBe("😎");
 });
 
-test("② « Publications populaires » obéit au filtre de passion", async ({ page }) => {
+// ⚠️ RETIRÉ le 2026-08-31 : le bloc « 🔥 Publications populaires » a été supprimé
+// du profil sur demande de Benjamin. Le test qui vérifiait qu'il obéissait au
+// filtre de passion n'a plus d'objet — mais la RÈGLE qu'il défendait, elle,
+// vaut toujours pour la liste qui reste : on la vérifie sur `_postDansFiltreProfil`,
+// le prédicat que ce bloc partageait avec `renderProfileContent`.
+test("② le filtre de passion du profil ne laisse passer que la passion choisie", async ({ page }) => {
   await boot(page);
   await troisPassions(page);
-  await page.evaluate(() => { goTo("profiles"); setPostPassionFilter("a_moto"); renderMainProfile(); });
-  const html = await page.evaluate(() => document.getElementById("profileTopPosts").innerHTML);
-  expect(html).toContain("Galibier");
-  // Le défaut : le bloc affichait le post Yoga alors que le filtre disait Moto,
-  // dans le même onglet, à quelques pixels de la liste filtrée.
-  expect(html).not.toContain("Salutation");
+  const verdicts = await page.evaluate(() => {
+    goTo("profiles");
+    setPostPassionFilter("a_moto");
+    const moto = (state.userPosts || []).filter((p) => _postDansFiltreProfil(p)).map((p) => p.passion);
+    setPostPassionFilter(null);
+    const tout = (state.userPosts || []).filter((p) => _postDansFiltreProfil(p)).map((p) => p.passion);
+    return { moto, tout };
+  });
+  expect(verdicts.moto.length).toBeGreaterThan(0);
+  expect([...new Set(verdicts.moto)]).toEqual(["moto"]);
+  expect(verdicts.tout.length).toBeGreaterThan(verdicts.moto.length);
 
-  const tout = await page.evaluate(() => { setPostPassionFilter(null); renderMainProfile(); return document.getElementById("profileTopPosts").innerHTML; });
-  expect(tout).toContain("Galibier");
-  expect(tout).toContain("Salutation");
+  // Et le bloc retiré ne doit pas réapparaître.
+  await expect(page.locator("#profileTopPosts")).toHaveCount(0);
 });
 
 test("③ renommer le pseudo renomme TOUTES les passions", async ({ page }) => {

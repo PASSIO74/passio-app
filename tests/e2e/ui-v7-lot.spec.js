@@ -416,30 +416,31 @@ test.describe("UI-7 §6 — les onglets nommés au Profil", () => {
       };
       return {
         myPosts: dans("myPosts"),
-        top: dans("profileTopPosts"),
         events: dans("profileEvents"),
         profils: dans("profileList"),
         sousFiltres: document.querySelectorAll(".v7-subfilters .profile-tab").length,
       };
     });
     expect(place.myPosts).toBe("publications");
-    expect(place.top).toBe("publications");
     expect(place.events).toBe("activites");
     // La liste des passions n'est plus dans un panneau d'onglet : elle vit dans
     // `#passionManager`, replié, hors du flux de la page.
     expect(place.profils).toBe("hors-panneau");
-    // ⚠️ Quatre types, plus cinq : « Carnets » est parti avec la fonctionnalité.
-    expect(place.sousFiltres).toBe(4);
+    // ⚠️ Toujours cinq types, mais plus les mêmes : « Carnets » est parti avec
+    // la fonctionnalité (ADR-011 §6), « Audio » a pris sa place le 2026-08-31.
+    expect(place.sousFiltres).toBe(5);
     // Les libellés viennent du MARKUP (`.profile-tab-lbl`, PR #185) : ce lot
     // n'en repose aucun — deux libellés pour un onglet, c'était le doublon.
     expect(await page.locator(".v7-subfilters .profile-tab-lbl").allTextContents())
-      .toEqual(["Tout", "Photos", "Vidéos", "Bobines"]);
-    // La ligne d'aide suit le groupe qu'elle explique.
-    expect(await page.evaluate(() => {
-      const h = document.querySelector(".profile-tabs-hint");
-      const p = h && h.closest("[data-v7-pan]");
-      return p ? p.getAttribute("data-v7-pan") : null;
-    })).toBe("publications");
+      .toEqual(["Tout", "Photos", "Vidéos", "Bobines", "Audio"]);
+    // ⚠️ La ligne d'aide (« Filtre ce que tu affiches ci-dessous… ») et le bloc
+    // « 🔥 Publications populaires » ont été RETIRÉS du profil le 2026-08-31.
+    // On les exige absents plutôt que de retirer l'assertion : leur retour
+    // passerait sinon inaperçu.
+    await expect(page.locator(".profile-tabs-hint")).toHaveCount(0);
+    await expect(page.locator("#profileTopPosts")).toHaveCount(0);
+    // Et plus de lien secondaire « Trouver une activité » au bas de l'onglet.
+    await expect(page.locator(".v7-secondaire")).toHaveCount(0);
 
     // Publications regroupe tout par défaut : le prédicat « posts » est vrai
     // pour n'importe quel contenu — ce n'est pas un filtre « texte seul ».

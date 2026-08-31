@@ -545,6 +545,11 @@ test.describe("UI-8 — un profil personnel, plusieurs passions", () => {
   });
 
   // ── ⑨ Les messages ────────────────────────────────────────────────────────
+  // ⚠️ RÉALIGNÉ le 2026-08-31 : la ligne d'identité de l'inbox (« Ben sur
+  // portable · 🏍️ Moto ») a été RETIRÉE sur demande de Benjamin. Ce que ce test
+  // protégeait vraiment — l'expéditeur réel d'un message est le pseudo GÉNÉRAL,
+  // jamais le nom de la passion active — n'a pas bougé et reste vérifié ici,
+  // sur le moteur (`_callMyName`) plutôt que sur un affichage disparu.
   test("un message garde le pseudo principal comme identité", async ({ page }) => {
     await boot(page);
     await poserTroisPassions(page);
@@ -556,13 +561,12 @@ test.describe("UI-8 — un profil personnel, plusieurs passions", () => {
     });
     await page.waitForTimeout(800);
 
-    const ligne = page.locator("#v6aMoi");
-    await expect(ligne).toBeVisible();
-    await expect(ligne.locator(".v6a-moi-nom")).toHaveText("Ben sur portable");
-    // La passion n'est qu'un CONTEXTE secondaire.
-    await expect(ligne.locator(".v6a-moi-ctx")).toContainText("Moto");
+    // La tête existe, et elle n'annonce plus aucune identité.
+    await expect(page.locator("#v6aHead")).toHaveCount(1);
+    await expect(page.locator("#v6aMoi")).toHaveCount(0);
+    expect(await page.locator("#v6aHead").innerText()).not.toContain("Ben sur portable");
 
-    // Et l'expéditeur réel reste le pseudo général, pas le nom de la passion.
+    // L'expéditeur réel reste le pseudo général, pas le nom de la passion.
     expect(await page.evaluate(() => _callMyName())).toBe("Ben sur portable");
   });
 
@@ -594,9 +598,13 @@ test.describe("UI-8 — un profil personnel, plusieurs passions", () => {
     // n'existe plus nulle part : un verrou qui ne ferme rien.
     await expect(page.locator("[data-v6-passio]")).not.toContainText("Publier dans");
 
+    // ⚠️ La ligne d'identité n'existe plus dans AUCUN des deux états depuis le
+    // 2026-08-31 : le kill switch UI-8 n'a donc plus rien à rendre ici. On
+    // vérifie qu'il ne la fait pas non plus RÉAPPARAÎTRE — une coupure qui
+    // ressusciterait une surface retirée serait le défaut symétrique.
     await page.evaluate(() => goTo("messages"));
     await page.waitForTimeout(700);
-    await expect(page.locator("#v6aMoi")).toBeHidden();
+    await expect(page.locator("#v6aMoi")).toHaveCount(0);
   });
 
   test("quota : archiver puis restaurer ne réclame jamais de paiement", async ({ page }) => {

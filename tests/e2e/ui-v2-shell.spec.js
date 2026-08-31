@@ -151,7 +151,9 @@ test("aperçu : « Créer » ouvre le sélecteur et non l'écran Studio", async 
   // l'objet du changement du 2026-08-29 (« ça évite deux manips »).
   const titles = await sheet.locator(".v2-sheet-item-title").allTextContents();
   expect(titles).toEqual([
-    "Publication", "Bobine", "Activité IRL", "Story", "Live vidéo", "Audio / podcast",
+    // ⚠️ « Activité » et non plus « Activité IRL » depuis le 2026-08-31 : le
+    // sigle a été retiré sur demande de Benjamin, le mot dit déjà tout.
+    "Publication", "Bobine", "Activité", "Story", "Live vidéo", "Audio / podcast",
   ]);
 
   // Le sous-menu a disparu : ni « Plus », ni « Retour », nulle part.

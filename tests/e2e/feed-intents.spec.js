@@ -360,7 +360,7 @@ test.describe("Fil — Envie du moment (UI-2 active par défaut)", () => {
     expect(await page.evaluate(() => localStorage.getItem("passio_irl_proposal_v1"))).not.toBe("1");
   });
 
-  test("Rencontrer, UI-3A active : « Vivre ça en vrai », sans proposition automatique", async ({ page }) => {
+  test("Rencontrer, UI-3A active : « Trouver une activité », sans proposition automatique", async ({ page }) => {
     await boot(page);
     await seedFeed(page, true, true);
     // Le module doit être LÀ. Un module absent est un défaut de livraison, pas
@@ -371,7 +371,7 @@ test.describe("Fil — Envie du moment (UI-2 active par défaut)", () => {
     const carte = page.locator('#feedList .post[data-postid="intent_meet"]');
 
     // Le vocabulaire validé est présent et réellement atteignable…
-    await expect(carte.getByText("Vivre ça en vrai", { exact: true }).first()).toBeVisible();
+    await expect(carte.getByText("Trouver une activité", { exact: true }).first()).toBeVisible();
 
     // …et le CTA historique reste dans le DOM, seulement masqué : aucun doublon
     // à l'écran, et les kill switches le restituent sans repeindre le fil.
