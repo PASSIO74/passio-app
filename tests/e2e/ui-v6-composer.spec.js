@@ -208,12 +208,12 @@ test.describe("UI-6 — composer de publication", () => {
     await page.waitForTimeout(300);
     await expect(page.locator("#topPassia")).toHaveCount(0);
     await expect(page.locator("#mainProfileStars")).toHaveCount(0);
-    // La rangée elle-même n'est plus masquée par ce lot : elle ne porte que la
-    // pastille de badges, qui suit sa propre règle (cachée sans badge acquis).
-    expect(await page.evaluate(() => {
-      const r = document.querySelector(".profile-chips-row");
-      return r ? getComputedStyle(r).display : null;
-    })).not.toBe("none");
+    // ⚠️ 2026-08-31 : la rangée `.profile-chips-row` a été RETIRÉE du profil avec
+    // sa dernière pastille (« 🏅 N »), sur demande de Benjamin — « l'app générale
+    // n'a plus du tout le système de points ». Il n'y a donc plus ni rangée à
+    // masquer, ni rangée à rendre : on exige son absence dans les DEUX états.
+    await expect(page.locator(".profile-chips-row")).toHaveCount(0);
+    await expect(page.locator("#mainProfileBadges")).toHaveCount(0);
 
     expect(errors.js, "exceptions JS avec le kill switch").toEqual([]);
   });

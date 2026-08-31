@@ -86,25 +86,49 @@
   // contient. Les trois premières entrées gardent leur position exacte : rien à
   // réapprendre pour qui connaissait déjà la feuille, les trois autres se
   // contentent de descendre à sa suite.
+  // ── Icônes de la feuille « Créer » ────────────────────────────────────────
+  // Demande de Benjamin du 2026-08-31 : « mets toutes les icônes en violet et
+  // supprime les petites images / emojis à côté, et supprime également les
+  // textes ». Les emojis (une image couleur par ligne, imposée par la police du
+  // système) laissent la place à des tracés SVG maison, qui héritent de
+  // `currentColor` — c'est cet héritage qui les rend violets au repos et blancs
+  // sur l'état pressé, sans jamais dupliquer le jeu d'icônes.
+  // Aucune donnée utilisateur n'entre ici : ce markup est constant.
+  var SVG_OPEN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+    + 'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">';
+  var ICONS = {
+    post: SVG_OPEN + '<path d="M4 20.5h16"/><path d="M14.6 4.6a2.1 2.1 0 0 1 3 3L8.2 17 4 18l1-4.2z"/></svg>',
+    bobine: SVG_OPEN + '<rect x="3.5" y="3.5" width="17" height="17" rx="4.5"/><path d="M3.5 8h17"/>'
+      + '<path d="M8 3.5 6 8"/><path d="M13 3.5 11 8"/><path d="M18 3.5 16 8"/>'
+      + '<path d="M10.6 12.1 14.6 14.3 10.6 16.5z"/></svg>',
+    irl: SVG_OPEN + '<circle cx="9.2" cy="8.4" r="3.2"/><path d="M3.2 19c0-3 2.7-4.7 6-4.7s6 1.7 6 4.7"/>'
+      + '<path d="M16.2 5.6a3.2 3.2 0 0 1 0 5.6"/><path d="M18.2 14.8c1.9.7 2.9 2.2 2.9 4.2"/></svg>',
+    story: SVG_OPEN + '<circle cx="12" cy="12" r="8.6" stroke-dasharray="3.4 2.6"/><circle cx="12" cy="12" r="3.4"/></svg>',
+    live: SVG_OPEN + '<circle cx="12" cy="12" r="2.8"/><path d="M7.9 7.9a5.8 5.8 0 0 0 0 8.2"/>'
+      + '<path d="M16.1 16.1a5.8 5.8 0 0 0 0-8.2"/><path d="M5 5a9.9 9.9 0 0 0 0 14"/>'
+      + '<path d="M19 19a9.9 9.9 0 0 0 0-14"/></svg>',
+    audio: SVG_OPEN + '<rect x="9" y="3" width="6" height="12" rx="3"/>'
+      + '<path d="M5 11c0 3.9 3.1 7 7 7s7-3.1 7-7"/><path d="M12 18v3.5"/><path d="M9 21.5h6"/></svg>',
+  };
+
+  // ⚠️ Plus de `hint` : la ligne d'explication a été retirée le 2026-08-31 (même
+  // demande). Le libellé porte seul, centré — d'où « Activité » et non plus
+  // « Activité IRL » : le sigle ne disait rien de plus que le mot.
   var CREATE_CHOICES = [
     {
-      key: "post", emoji: "✍️", title: "Publication",
-      hint: "Une idée, une photo ou une vidéo",
+      key: "post", icon: ICONS.post, title: "Publication",
       run: function () { goToScreen("studio"); },
     },
     {
-      key: "bobine", emoji: "🎬", title: "Bobine",
-      hint: "Vidéo courte autour d'une passion",
+      key: "bobine", icon: ICONS.bobine, title: "Bobine",
       run: function () { call("meOpen", "bobine"); },
     },
     {
-      key: "irl", emoji: "🤝", title: "Activité IRL",
-      hint: "Quelque chose à vivre ensemble",
+      key: "irl", icon: ICONS.irl, title: "Activité",
       run: function () { call("openCreateEvent"); },
     },
     {
-      key: "story", emoji: "📸", title: "Story",
-      hint: "Un moment qui disparaît en 24 h",
+      key: "story", icon: ICONS.story, title: "Story",
       run: function () { call("meOpen", "story"); },
     },
     {
@@ -112,13 +136,11 @@
       // l'application depuis le 2026-08-28 (la bulle « Live » de la barre des
       // stories, doublon, a été retirée le même jour). Elle ne peut donc pas
       // disparaître d'ici sans rendre le direct impossible à lancer.
-      key: "live", emoji: "🔴", title: "Live vidéo",
-      hint: "Passer en direct, tout de suite",
+      key: "live", icon: ICONS.live, title: "Live vidéo",
       run: function () { call("startVideoLive"); },
     },
     {
-      key: "audio", emoji: "🎙", title: "Audio / podcast",
-      hint: "Ouvre le Studio sur le format audio",
+      key: "audio", icon: ICONS.audio, title: "Audio / podcast",
       run: function () { openStudioOnType("audio"); },
     },
   ];
@@ -283,11 +305,8 @@
       // Libellés constants définis ici : aucune donnée utilisateur n'entre dans
       // ce markup, donc aucun besoin d'échappement — et surtout aucun risque.
       btn.innerHTML =
-        '<span class="v2-sheet-emoji" aria-hidden="true">' + c.emoji + "</span>"
-        + '<span class="v2-sheet-text">'
-        + '<span class="v2-sheet-item-title">' + c.title + "</span>"
-        + '<span class="v2-sheet-item-hint">' + c.hint + "</span>"
-        + "</span>";
+        '<span class="v2-sheet-icon" aria-hidden="true">' + c.icon + "</span>"
+        + '<span class="v2-sheet-item-title">' + c.title + "</span>";
       btn.addEventListener("click", function () {
         track("ui_v2_create", { choice: c.key });
         // Toute entrée ouvre désormais un éditeur : on referme AVANT de lancer,

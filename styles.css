@@ -1768,9 +1768,21 @@
     }
     .main-profile-cover {
       /* Format 3:2 (agrandi le 2026-07-20) : la photo de couverture s'affiche
-         entière telle que recadrée — même ratio que le recadreur (1080×720). */
+         entière telle que recadrée — même ratio que le recadreur (1080×720).
+         ⚠️ RABOTÉE le 2026-08-31, sur essai réel de Benjamin : « le grand carré
+         avec photo prend trop de place, réduis-le pour voir directement dessous
+         tout le reste ». À 390 × 844 la carte d'identité mesurait 395 px pour
+         714 px de zone visible, soit 55 % — le rail de passions et les onglets
+         ne commençaient qu'après un défilement. Le plafond est désormais une
+         FRACTION DE LA HAUTEUR, pas seulement des pixels : la carte tient sous
+         la moitié de l'écran (cover 202 px + corps 158 px = 360 px, 50 % de la
+         zone visible et 43 % de l'écran).
+         ⚠️ `--app-vh` et JAMAIS `100dvh` : c'est la variable mesurée en JS
+         (app-09) qui fait autorité sur le cadrage dans ce projet — `dvh` est mal
+         résolu par plusieurs navigateurs mobiles au moment où la barre d'URL
+         bouge. Le repli `100svh` ne sert qu'avant sa première mesure. */
       aspect-ratio: 3 / 2;
-      max-height: 360px;
+      max-height: min(360px, calc(var(--app-vh, 100svh) * 0.24));
       width: 100%;
       background: var(--grad-hero);
       background-size: cover;
@@ -1780,7 +1792,7 @@
     }
     /* Fallback vieux navigateurs sans aspect-ratio */
     @supports not (aspect-ratio: 3 / 2) {
-      .main-profile-cover { height: 250px; }
+      .main-profile-cover { height: min(250px, calc(var(--app-vh, 100svh) * 0.24)); }
     }
     .main-profile-body {
       padding: 0 16px 18px;
@@ -1974,6 +1986,13 @@
       color: var(--muted);
       line-height: 1.5;
       margin-bottom: 10px;
+      /* Elle ouvre l'éditeur : le curseur doit le dire. */
+      cursor: pointer;
+    }
+    .main-profile-bio:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+      border-radius: 8px;
     }
     .main-profile-rs {
       display: flex;
@@ -7552,6 +7571,71 @@ body.ctx-locked #appMain { overflow: hidden; }
 .v2-sheet-item-title { font-size: 15px; font-weight: 700; color: var(--text); }
 .v2-sheet-item-hint { font-size: 12px; line-height: 1.35; color: var(--muted); }
 
+/* ── Feuille « Créer » : des onglets, pas des lignes de menu ───────────────
+   Demande de Benjamin du 2026-08-31 : icônes en violet, plus d'emoji, plus de
+   texte d'explication, nom centré, et « l'onglet Publication du profil » comme
+   référence esthétique — c'est-à-dire `.v7-tab[aria-selected="true"]` :
+   violet plein, écriture blanche, coins arrondis.
+
+   ⚠️ TOUT EST ANCRÉ À `#v2CreateSheet`, jamais à `.v2-sheet-item` seul : la
+   passerelle UI-3 (`js/ui-v3-passerelle.js`) réutilise EXACTEMENT les mêmes
+   classes `.v2-sheet-*` pour sa propre feuille, avec emoji ET sous-titre. Une
+   règle non bornée lui retirerait son emoji et centrerait ses libellés, à
+   l'autre bout de l'application et sans que rien ne le signale. */
+#v2CreateSheet .v2-sheet-item {
+  /* 52 px : le sous-titre est parti, la ligne n'a plus besoin de 56 px, et la
+     cible tactile reste très au-dessus des 44 px de référence du projet. */
+  min-height: 52px;
+  gap: 10px;
+  padding: 10px 14px;
+  text-align: center;
+  border-radius: 14px;
+  /* « Carré violet + écriture blanche » : la même formule que l'onglet
+     Publication du profil, et que les cases du panneau Filtres de Rencontrer. */
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  transition: filter 150ms ease;
+}
+/* L'icône est VIOLETTE, comme demandé : elle est peinte sur une pastille
+   blanche posée sur le violet. Le tracé hérite de `currentColor`, donc un seul
+   jeu d'icônes suffit — rien n'est dupliqué pour obtenir la seconde couleur. */
+#v2CreateSheet .v2-sheet-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
+  background: #fff;
+  color: var(--accent);
+}
+#v2CreateSheet .v2-sheet-icon svg { width: 21px; height: 21px; display: block; }
+
+/* Le nom est centré DANS LA LIGNE, pas juste après l'icône : il prend toute la
+   largeur restante et se recentre par rapport à elle. La marge droite égale à
+   la largeur de l'icône + le `gap` compense l'icône de gauche, sinon le texte
+   serait centré sur l'espace résiduel et paraîtrait décalé à droite. */
+#v2CreateSheet .v2-sheet-item-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  /* Le nom est centré DANS LA LIGNE : la marge droite compense exactement la
+     pastille de gauche (34 px) et le `gap` (10 px), sinon le texte serait
+     centré sur l'espace résiduel et paraîtrait poussé vers la droite. */
+  margin-right: 44px;
+  text-align: center;
+  font-size: 15.5px;
+  font-weight: 700;
+  color: #fff;
+}
+#v2CreateSheet .v2-sheet-item:hover,
+#v2CreateSheet .v2-sheet-item:active { filter: brightness(1.08); }
+#v2CreateSheet .v2-sheet-item:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .v2-sheet-backdrop,
   .v2-sheet { transition: none; }
@@ -7874,7 +7958,18 @@ body.ctx-locked #appMain { overflow: hidden; }
   font-size: 11.5px;
   font-weight: 600;
   letter-spacing: 0.005em;
-  color: var(--text-dim);
+  /* ⚠️ VIOLET LÉGER depuis le 2026-08-31, sur demande de Benjamin (« mets
+     "Trouver une activité" en violet léger, plus joli — et l'onglet "Voir
+     l'activité" en violet léger aussi »). Les deux libellés partagent cette
+     classe : ils changent donc ensemble, ce qui est exactement ce qu'il a
+     demandé. C'est un ÉCART ASSUMÉ au §5 de la direction, qui réservait le
+     corail au passage au réel : le corail quitte cette pastille (libellé,
+     chevron, focus) au profit du violet de la charte. Le signal « passage au
+     réel » reste porté par la feuille qui s'ouvre.
+     Contraste : `--accent` (#6D32F4 sous UI-V2) donne 6,15:1 sur blanc — le
+     test mesure le texte contre le premier fond OPAQUE ancêtre, c'est-à-dire
+     la carte, jamais la pilule (un ::before n'est pas un ancêtre). */
+  color: var(--accent);
   cursor: pointer;
   transition: color 140ms ease;
 }
@@ -7886,8 +7981,9 @@ body.ctx-locked #appMain { overflow: hidden; }
   position: absolute;
   inset: 7px 0;
   z-index: -1;
-  background: var(--bg-deep);
-  border: 1px solid var(--border);
+  /* Le lavis violet du thème, et son filet assorti. */
+  background: var(--accent-wash);
+  border: 1px solid var(--accent-wash);
   border-radius: 999px;
   transition: background 140ms ease, border-color 140ms ease;
 }
@@ -7896,11 +7992,11 @@ body.ctx-locked #appMain { overflow: hidden; }
   margin-left: 5px;
   font-size: 14px;
   line-height: 1;
-  color: var(--v3-coral-texte);
+  color: var(--accent);
   transition: transform 140ms ease;
 }
-:root.passio-ui-3 .v3-tempt:hover { color: var(--v3-coral-texte); }
-:root.passio-ui-3 .v3-tempt:hover::before { border-color: var(--v3-coral-texte); }
+:root.passio-ui-3 .v3-tempt:hover { color: var(--accent); }
+:root.passio-ui-3 .v3-tempt:hover::before { border-color: var(--accent); }
 :root.passio-ui-3 .v3-tempt:hover::after { transform: translateX(2px); }
 :root.passio-ui-3 .v3-tempt {
   /* La cible dépasse légèrement la ligne compacte : ce contexte d'empilement
@@ -7909,7 +8005,7 @@ body.ctx-locked #appMain { overflow: hidden; }
   z-index: 1;
 }
 :root.passio-ui-3 .v3-tempt:focus-visible {
-  outline: 2px solid var(--v3-coral-texte);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
@@ -8284,12 +8380,8 @@ body.ctx-locked #appMain { overflow: hidden; }
   color: var(--text);
 }
 
-:root.passio-ui-4a0 .v4a0-sub {
-  margin: -4px 0 2px;
-  font-size: 13.5px;
-  line-height: 1.35;
-  color: var(--muted);
-}
+/* `.v4a0-sub` a été retirée le 2026-08-31 avec le sous-titre de « Rencontrer » :
+   une règle qui survit à la disparition de sa cible est un piège maison connu. */
 
 :root.passio-ui-4a0 .v4a0-searchbox {
   display: flex;
@@ -9277,15 +9369,24 @@ body.ctx-locked #appMain { overflow: hidden; }
    de la place vide à côté d'eux. Chaque onglet part donc de la largeur de son
    texte, et l'espace restant est réparti : personne n'est tronqué tant que la
    somme des libellés tient — ce qui est le cas à 320 px avec ces mots.
-   ⚠️ Depuis le retrait de « Tous » (2026-08-31) ils ne sont plus que quatre et
-   ne s'ÉTIRENT plus : `flex: 0 1 auto` + `justify-content: center` les groupe au
-   milieu du rail. Étirés, ils restaient collés aux bords et le rail paraissait
-   déséquilibré une fois la cinquième case partie. */
-:root.passio-ui-7 #feedIntentSelector { overflow-x: hidden; justify-content: center; }
+   ⚠️ RECTIFIÉ le 2026-08-31, sur essai réel de Benjamin : « les moods sont trop
+   rapprochés, espace-les pour prendre toute la largeur de l'écran ». Groupées au
+   milieu (`flex: 0 1 auto` + `justify-content: center`), les quatre envies
+   formaient un pavé de texte serré au centre d'un rail vide de part et d'autre.
+   Elles S'ÉTIRENT donc à nouveau — `flex: 1 1 auto`, chacune prenant sa part de
+   la largeur restante — et le soulignement, qui est la bordure basse de chaque
+   bouton, court désormais d'un bord à l'autre de l'écran.
+   ⚠️ `flex-basis: auto` et non `0` : à parts strictement égales, « Rencontrer »
+   se faisait couper pendant qu'« Idées » laissait du vide. Chacune part de la
+   largeur de son texte, et seul le SURPLUS est réparti. */
+:root.passio-ui-7 #feedIntentSelector {
+  overflow-x: hidden;
+  justify-content: space-between;
+}
 :root.passio-ui-7 #feedIntentSelector .feed-intent-btn {
-  flex: 0 1 auto;
+  flex: 1 1 auto;
   min-width: 0;
-  padding-inline: 4px;
+  padding-inline: 6px;
   font-size: 11px;
   letter-spacing: -0.02em;
   overflow: hidden;
@@ -9438,28 +9539,9 @@ body.ctx-locked #appMain { overflow: hidden; }
 :root.passio-ui-7 #myPosts .empty-text { font-size: 11.5px; }
 :root.passio-ui-7 #myPosts .empty .btn { margin-top: 8px; }
 
-/* Accès secondaires (Carnets / Passio : Voyage, Rencontrer) — jamais des
-   entrées principales : ils ferment une section, ils ne l'ouvrent pas. */
-:root.passio-ui-7 .v7-secondaire {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  min-height: 52px;
-  margin-top: 10px;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  background: var(--bg-card);
-  color: var(--text);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-:root.passio-ui-7 .v7-secondaire-emoji { font-size: 20px; }
-:root.passio-ui-7 .v7-secondaire-txt { display: flex; flex-direction: column; min-width: 0; }
-:root.passio-ui-7 .v7-secondaire-titre { font-size: 13px; font-weight: 700; }
-:root.passio-ui-7 .v7-secondaire-sous { font-size: 11px; color: var(--muted); }
+/* Les accès secondaires `.v7-secondaire` ont été retirés le 2026-08-31 avec le
+   dernier d'entre eux (« Trouver une activité »). Règles supprimées : une règle
+   qui survit à la disparition de sa cible est un piège maison connu. */
 
 /* ── §8 · Bobine : deux issues après l'aperçu, puis une feuille légère ───── */
 :root.passio-ui-7 #mediaEditor[data-v7-bobine] #mePublishBtn { display: none; }
@@ -9637,9 +9719,7 @@ body.ctx-locked #appMain { overflow: hidden; }
 /* ── Messages : QUI écrit ───────────────────────────────────────────────────
    Le pseudo général d'abord, la passion active seulement en contexte gris.
    Elle ne doit jamais se lire comme un autre expéditeur. */
-.v6a-moi { font-size: 12px; line-height: 1.3; margin: -2px 0 8px; }
-.v6a-moi-nom { color: var(--text); font-weight: 700; }
-.v6a-moi-ctx { color: var(--muted); font-weight: 600; }
+/* `.v6a-moi*` retirées le 2026-08-31 avec la ligne d'identité de l'inbox. */
 
 @media (prefers-reduced-motion: reduce) {
   .v8-passion-card { transition: none; }
@@ -9881,4 +9961,214 @@ body.ctx-locked #appMain { overflow: hidden; }
 
 @media (max-width: 359px) {
   :root.passio-ui-4a5 .v4a5-intents { grid-template-columns: minmax(0, 1fr); }
+}
+
+
+/* ── Une seule esthétique pour toutes les cases du panneau ─────────────────
+   Demande de Benjamin du 2026-08-31, après essai réel : « dans le filtre de
+   Rencontrer je veux que tous les onglets aient la même esthétique : carré
+   violet + écriture blanche, de la même taille, bien ordonnés — sauf Date,
+   Distance, Horaire, laisse comme ça. »
+
+   Avant : « Ce que je cherche » rendait quatre puces courtes (violettes une
+   fois cochées, blanches sinon) tandis qu'« Autour de moi » et « Mes
+   événements » rendaient des LIGNES pleine largeur, blanches, avec un emoji et
+   un chevron. Trois gabarits pour des contrôles qui font la même chose :
+   restreindre la liste. Ils partagent désormais une seule tuile.
+
+   ⚠️ TOUT EST ANCRÉ à `#v4a5Panneau` / `#v4a5Outils`. `.ctx-item` est le
+   composant COMMUN des outils contextuels (`ContextualTools.renderInto`), servi
+   aussi dans le dialogue des autres écrans : une règle non bornée les
+   repeindrait tous, loin d'ici et sans que rien ne le signale.
+
+   ⚠️ RIEN N'EST RETIRÉ DU DOM. L'emoji (`.ctx-item-ico`) et le chevron
+   (`.ctx-item-go`) sont MASQUÉS — Benjamin a demandé leur disparition dans ce
+   panneau seulement, et le kill switch `passio_ui_4a5="0"` doit les rendre.
+
+   ⚠️ Les volets Date / Distance / Horaire (`#v4a5Avance`) ne sont pas touchés,
+   comme demandé, et les bulles de passion non plus : elles sont le composant
+   partagé avec le Fil (ADR-011 §2), les redessiner ici ferait diverger deux
+   écrans qui doivent raconter le même modèle. */
+:root.passio-ui-4a5 #v4a5Outils .ctx-section-items {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+:root.passio-ui-4a5 .v4a5-intents .v4a0-chip,
+:root.passio-ui-4a5 #v4a5Outils .ctx-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: 100%;
+  /* La MÊME hauteur pour toutes les cases : c'est ce qui les « ordonne ». */
+  min-height: 56px;
+  padding: 8px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 14px;
+  background: var(--accent);
+  color: #fff;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 700;
+  box-shadow: none;
+  transition: opacity .16s ease;
+}
+:root.passio-ui-4a5 .v4a5-intents .v4a0-chip .v4a0-chip-label,
+:root.passio-ui-4a5 #v4a5Outils .ctx-item .ctx-item-label {
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+:root.passio-ui-4a5 #v4a5Outils .ctx-item .ctx-item-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  min-width: 0;
+}
+:root.passio-ui-4a5 #v4a5Outils .ctx-item .ctx-item-sub {
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+/* Les petits emojis et le chevron, retirés de la vue (jamais du DOM). */
+:root.passio-ui-4a5 #v4a5Outils .ctx-item .ctx-item-ico,
+:root.passio-ui-4a5 #v4a5Outils .ctx-item .ctx-item-go { display: none; }
+
+/* L'ÉTAT COCHÉ reste lisible sans quitter le violet : une case non cochée est
+   le même carré, simplement atténué, et la coche ✓ ne s'affiche que sur la
+   sélection (règle héritée d'UI-4A0, conservée telle quelle).
+   ⚠️ « Choisir une ville » n'est pas une bascule mais une ACTION : elle ne porte
+   pas `aria-pressed` et reste donc pleine — c'est voulu, elle n'a pas d'état. */
+:root.passio-ui-4a5 .v4a5-intents .v4a0-chip[aria-pressed="false"],
+:root.passio-ui-4a5 #v4a5Outils .ctx-item[aria-pressed="false"] { opacity: 0.55; }
+:root.passio-ui-4a5 .v4a5-intents .v4a0-chip[aria-pressed="true"],
+:root.passio-ui-4a5 #v4a5Outils .ctx-item[aria-pressed="true"] { opacity: 1; }
+:root.passio-ui-4a5 .v4a5-intents .v4a0-chip .v4a0-chip-mark { color: #fff; }
+:root.passio-ui-4a5 .v4a5-intents .v4a0-chip:focus-visible,
+:root.passio-ui-4a5 #v4a5Outils .ctx-item:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  :root.passio-ui-4a5 .v4a5-intents .v4a0-chip,
+  :root.passio-ui-4a5 #v4a5Outils .ctx-item { transition: none; }
+}
+@media (max-width: 359px) {
+  :root.passio-ui-4a5 #v4a5Outils .ctx-section-items { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ── Les bulles de passion suivent la même règle ───────────────────────────
+   Benjamin, 2026-08-31, en réponse à la question posée : « oui, mets tout ce
+   que je t'ai demandé. » Les tuiles de passion du panneau Filtres — les
+   seules cases qui gardaient encore leur gabarit d'origine — deviennent donc
+   elles aussi des carrés violets à écriture blanche, de la même taille, dans
+   la même grille que les intentions et les items d'outils.
+
+   ⚠️ BORNÉ À `#v4a5Passions`. `.msg-tile` / `.msg-filter-tiles` sont le
+   composant PARTAGÉ des filtres de la messagerie et du rail de passions : hors
+   de ce panneau il ne bouge pas d'un pixel, et le kill switch
+   `passio_ui_4a5="0"` rend ici le gabarit d'origine. C'est aussi ce qui
+   préserve l'invariant d'ADR-011 §2 — le Fil et le profil continuent de rendre
+   la MÊME bulle qu'avant, seul ce panneau-ci s'en écarte.
+
+   ⚠️ Le moteur n'est pas touché : `renderIrlPassionTiles` écrit toujours les
+   mêmes nœuds, avec les mêmes `data-irlpassion` et le même `aria-pressed`. Rien
+   n'est retiré du DOM — l'emoji est MASQUÉ, comme les emojis d'« Autour de moi »
+   et de « Mes événements ». */
+:root.passio-ui-4a5 #v4a5Passions .msg-filter-tiles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  /* La carte qui les entourait faisait un cadre dans le cadre : les autres
+     sections du panneau posent leurs tuiles à même le fond. */
+  padding: 0;
+  background: none;
+  border: 0;
+  box-shadow: none;
+}
+:root.passio-ui-4a5 #v4a5Passions .msg-tile {
+  min-width: 0;
+  width: 100%;
+  min-height: 56px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 14px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  box-shadow: none;
+  transition: opacity .16s ease;
+}
+/* L'emoji de la passion et le marqueur « ✦ » : masqués, jamais retirés. */
+:root.passio-ui-4a5 #v4a5Passions .msg-tile .msg-tile-icon { display: none; }
+:root.passio-ui-4a5 #v4a5Passions .msg-tile .msg-tile-label {
+  max-width: none;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+/* Le compteur reste une INFORMATION (nombre d'activités dans cette passion) :
+   il n'est pas masqué, il passe simplement en pastille blanche sur le violet —
+   le rose de la messagerie hurlait sur ce fond. */
+:root.passio-ui-4a5 #v4a5Passions .msg-tile .msg-tile-badge {
+  top: 6px;
+  right: 6px;
+  background: #fff;
+  color: var(--accent);
+  border-color: transparent;
+  box-shadow: none;
+}
+/* Même grammaire d'état que les autres cases : coché = plein, décoché =
+   atténué. « Autres » porte `aria-expanded` et non `aria-pressed` : c'est une
+   ACTION, elle reste pleine — comme « Choisir une ville ». */
+:root.passio-ui-4a5 #v4a5Passions .msg-tile[aria-pressed="false"] { opacity: 0.55; }
+:root.passio-ui-4a5 #v4a5Passions .msg-tile[aria-pressed="true"],
+:root.passio-ui-4a5 #v4a5Passions .msg-tile.active { opacity: 1; }
+:root.passio-ui-4a5 #v4a5Passions .msg-tile.active .msg-tile-icon { box-shadow: none; }
+:root.passio-ui-4a5 #v4a5Passions .msg-tile:hover { color: #fff; }
+:root.passio-ui-4a5 #v4a5Passions .msg-tile:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+
+/* Le panneau « Autres » — la liste dépliée par la tuile du même nom — parle la
+   même langue : des pastilles violettes à écriture blanche, la case à cocher
+   inversée pour rester lisible sur le violet. */
+:root.passio-ui-4a5 #v4a5Passions .irl-extra-chip {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+  opacity: 0.55;
+  min-height: 38px;
+}
+:root.passio-ui-4a5 #v4a5Passions .irl-extra-chip.on {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+  opacity: 1;
+}
+:root.passio-ui-4a5 #v4a5Passions .irl-extra-chip b,
+:root.passio-ui-4a5 #v4a5Passions .irl-extra-chip.on b { color: rgba(255, 255, 255, 0.8); }
+:root.passio-ui-4a5 #v4a5Passions .irl-extra-chip .irl-extra-box {
+  border-color: rgba(255, 255, 255, 0.75);
+  color: var(--accent);
+}
+:root.passio-ui-4a5 #v4a5Passions .irl-extra-chip.on .irl-extra-box {
+  background: #fff;
+  border-color: #fff;
+  color: var(--accent);
+}
+
+@media (max-width: 359px) {
+  :root.passio-ui-4a5 #v4a5Passions .msg-filter-tiles { grid-template-columns: minmax(0, 1fr); }
 }

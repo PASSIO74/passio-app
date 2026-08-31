@@ -2728,13 +2728,19 @@ async function openUserProfile(authorId, source) {
     photos:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"/><circle cx="8.5" cy="10" r="1.6"/><path d="M4 17l4.5 -4.5a2 2 0 0 1 2.8 0L16 17"/><path d="M14 14.5l1.6 -1.6a2 2 0 0 1 2.8 0L20 14.5"/></svg>',
     videos:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="13" height="14" rx="2.5"/><path d="M16 10.5l4.2 -2.6a.6 .6 0 0 1 .9 .5v7.2a.6 .6 0 0 1 -.9 .5l-4.2 -2.6z"/></svg>',
     bobines: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2.5"/><path d="M8 4v16"/><path d="M16 4v16"/><path d="M4 8h4"/><path d="M4 16h4"/><path d="M16 8h4"/><path d="M16 16h4"/></svg>',
-    carnets: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4h11a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-11a1 1 0 0 1 -1 -1v-14a1 1 0 0 1 1 -1m3 0v18"/><path d="M13 9h2.5"/><path d="M13 13h2.5"/></svg>'
+    // ⚠️ « carnets » a été REMPLACÉ par « audio » le 2026-08-31 : le Carnet de
+    // voyage a quitté l'application (ADR-011 §6) et son onglet ne pouvait plus
+    // rien montrer, tandis que le format audio/podcast, lui, se publie depuis
+    // toujours sans avoir jamais eu de sous-filtre. Mon profil et le profil
+    // visité tirent désormais du MÊME référentiel (`PROFILE_TAB_KEYS`, app-06).
+    audio:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11c0 3.9 3.1 7 7 7s7-3.1 7-7"/><path d="M12 18v3.5"/><path d="M9 21.5h6"/></svg>'
   };
-  var _VTAB_TITLES = { posts: "Posts", photos: "Photos", videos: "Vidéos", bobines: "Bobines", carnets: "Carnets" };
+  var _VTAB_TITLES = { posts: "Posts", photos: "Photos", videos: "Vidéos", bobines: "Bobines", audio: "Audio / podcast" };
+  // ⚠️ 2026-08-31 : plus de ligne d'aide au-dessus des sous-filtres (mon profil
+  // l'a perdue le même jour). Les icônes portent déjà leur libellé.
   var tabsHTML = canSeeContent
-    ? '<p class="profile-tabs-hint">Filtre ce que tu affiches ci-dessous — coche un ou plusieurs types (rien de coché = tout).</p>'
-      + '<div class="profile-tabs" id="visitedTabs" role="group" aria-label="Filtrer par type de contenu (multi-sélection)">'
-      + ["posts","photos","videos","bobines","carnets"].map(function(k) {
+    ? '<div class="profile-tabs" id="visitedTabs" role="group" aria-label="Filtrer par type de contenu (multi-sélection)">'
+      + ((typeof PROFILE_TAB_KEYS !== "undefined") ? PROFILE_TAB_KEYS : ["posts","photos","videos","bobines","audio"]).map(function(k) {
           return '<button class="profile-tab" data-vtab="' + escapeHtml(k) + '" aria-pressed="false" onclick="switchVisitedTab(\'' + escapeJsArg(k) + '\')" title="' + escapeHtml(_VTAB_TITLES[k]) + '" aria-label="' + escapeHtml(_VTAB_TITLES[k]) + '">' + _VTAB_SVGS[k] + '<span class="profile-tab-lbl">' + escapeHtml(_VTAB_TITLES[k]) + '</span></button>';
         }).join("")
       + '</div>'
@@ -2989,7 +2995,7 @@ function _renderVisitedContent() {
   var posts = v.posts || [];
   if (v.passionSel.size) posts = posts.filter(function(p) { return v.passionSel.has(p.passion); });
 
-  var KEYS = (typeof PROFILE_TAB_KEYS !== "undefined") ? PROFILE_TAB_KEYS : ["posts","photos","videos","bobines","carnets"];
+  var KEYS = (typeof PROFILE_TAB_KEYS !== "undefined") ? PROFILE_TAB_KEYS : ["posts","photos","videos","bobines","audio"];
   var keys = KEYS.filter(function(k) { return v.tabSel.has(k); });
   if (keys.length && typeof PROFILE_TAB_PRED !== "undefined") {
     posts = posts.filter(function(p) { return keys.some(function(k) { return PROFILE_TAB_PRED[k](p); }); });

@@ -370,16 +370,12 @@ function renderMainProfile() {
   // Le cœur produit est Passion → contenu → personne → conversation → IRL ;
   // aucun score global ne doit concurrencer cette promesse.
 
-  // Pastille badges : uniquement quand il y en a au moins un (une pastille « 0 »
-  // ne raconte rien et encombre la ligne d'identité).
-  var badgeChip = document.getElementById("mainProfileBadges");
-  if (badgeChip && typeof myBadgeCount === "function") {
-    var _nb = myBadgeCount();
-    badgeChip.style.display = _nb ? "inline-flex" : "none";
-    var _nbEl = document.getElementById("profileBadgeCount");
-    if (_nbEl) _nbEl.textContent = _nb;
-    badgeChip.title = "🏅 " + _nb + " badge" + (_nb > 1 ? "s" : "") + " — voir le détail";
-  }
+  // ⚠️ 2026-08-31 : la pastille « 🏅 N » a été RETIRÉE du profil avec sa rangée
+  // (index.html). Rien à écrire ici — et surtout aucun `getElementById` laissé
+  // derrière : un renderer qui adresse un nœud supprimé est exactement le piège
+  // du `renderTopbar` d'ADR-009, et `renderMainProfile` est rappelée à chaque
+  // publication. Les badges continuent de se débloquer et de s'annoncer par
+  // toast (`_announceNewBadges`) : c'est un jalon fêté, plus un compteur exposé.
 
   var postCount = state.userPosts.length;
   document.getElementById("mainStatPosts").textContent = postCount;
@@ -404,25 +400,10 @@ function renderMainProfile() {
   // fois la même chose à trois endroits différents.
   try { renderProfilePassionRail(); } catch (e) { _v8Echec("rail_passions", e); }
 
-  // Top posts
-  var topEl = document.getElementById("profileTopPosts");
-  if (topEl) {
-    // ⚠️ Le bloc « 🔥 Publications populaires » vit dans l'onglet « Publications »,
-    // SOUS la rangée de puces de passion — il doit donc obéir au même filtre que la
-    // liste qui le suit (`renderProfileContent`, ~653). Il ne le faisait pas :
-    // choisir « Moto » vidait la liste du bas en affichant « Rien en Moto — touche
-    // Toutes… » pendant que ce bloc-ci, quelques pixels plus haut et sous le même
-    // onglet, continuait d'afficher du Yoga et du Podcast. Un filtre qu'un bloc
-    // voisin contredit n'est pas un filtre : c'est ce qui rendait l'écran illisible.
-    var _mesPosts = state.userPosts || [];
-    try {
-      if (typeof _postDansFiltreProfil === "function") {
-        _mesPosts = _mesPosts.filter(function (x) { return _postDansFiltreProfil(x); });
-      }
-    } catch (e) {}
-    var top = _mesPosts.slice().sort(function(a,b){return(b.likes||0)-(a.likes||0);}).slice(0,3);
-    topEl.innerHTML = top.length ? top.map(function(p){return renderPostHTML(Object.assign({},p,{_source:"me"}));}).join("") : '<div style="font-size:12px;color:var(--muted);padding:10px;">Publie ton premier post !</div>';
-  }
+  // ⚠️ 2026-08-31 : la section « 🔥 Publications populaires » a été retirée du
+  // profil sur demande de Benjamin. Le calcul qui l'alimentait part avec elle —
+  // un bloc de tri gardé par `if (topEl)` serait resté silencieusement inerte,
+  // et c'est le genre de survivant que ce projet paie cher.
 }
 
 // ===== STATS PROFIL CLIQUABLES (posts / abonnés / abonnements) =====
@@ -523,7 +504,13 @@ async function openFollowersList() {
 // ⚠️ « carnets » a quitté cette liste avec la fonctionnalité Carnet de voyage
 // (§6). Son bouton est retiré du balisage, son prédicat aussi : un sous-filtre
 // qui ne peut plus rien montrer est un contrôle mort.
-var PROFILE_TAB_KEYS = ["posts", "photos", "videos", "bobines"];
+// ⚠️ « audio » PREND SA PLACE le 2026-08-31, sur demande de Benjamin (« supprime
+// le carnet dans les choix de contenu, ça ne fait plus partie de l'app, et mets
+// audio / podcast à la place — sur tous les profils, le mien compris »). Le
+// format existe depuis toujours côté publication (`studioType === "audio"` →
+// `post.type = "audio"`, cf. `publishPost`) et se rend déjà dans la carte
+// (app-02) : il n'avait simplement jamais eu de sous-filtre pour le retrouver.
+var PROFILE_TAB_KEYS = ["posts", "photos", "videos", "bobines", "audio"];
 
 // Prédicats par type. « posts » = tout (l'onglet historique, non filtrant) : le
 // cocher avec d'autres donne donc l'union complète, ce qui reste cohérent.
@@ -532,6 +519,8 @@ var PROFILE_TAB_PRED = {
   photos:  function(p) { return !p.isReel && (p.type === "photo" || p.image); },
   videos:  function(p) { return p.type === "video" && !p.isReel; },
   bobines: function(p) { return !!p.isReel; },
+  // Une bobine n'est jamais un podcast : `isReel` prime, comme pour photos/vidéos.
+  audio:   function(p) { return !p.isReel && (p.type === "audio" || !!p.audio); },
 };
 
 // Sélection courante (Set), restaurée depuis l'état, repli sur « posts ».

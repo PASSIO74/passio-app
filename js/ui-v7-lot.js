@@ -212,12 +212,11 @@
       ancre = hotes[p.cle];
     });
 
-    // ── Publications : sous-filtres, contenu, puis les plus populaires ──
-    // ⚠️ La ligne d'aide (`.profile-tabs-hint`) suit le groupe qu'elle explique :
-    // la laisser au-dessus de la barre d'onglets la ferait commenter un groupe
-    // qui n'est plus là.
-    var aide = ec.querySelector(".profile-tabs-hint");
-    if (aide) deplacer(aide, hotes.publications);
+    // ── Publications : les sous-filtres, puis le contenu ──
+    // ⚠️ 2026-08-31 : la ligne d'aide (`.profile-tabs-hint`) et le bloc
+    // « 🔥 Publications populaires » ont été retirés du profil. On ne les
+    // cherche donc plus : un `querySelector` qui ne trouve jamais rien est une
+    // règle qui survit à la disparition de sa cible.
     var sousFiltres = ec.querySelector(".profile-tabs");
     if (sousFiltres) {
       // Marqueur seulement : les libellés sont posés DANS LE MARKUP depuis la
@@ -227,19 +226,15 @@
       deplacer(sousFiltres, hotes.publications);
     }
     deplacer(mesPosts, hotes.publications);
-    var titrePop = titreContenant(ec, "Publications populaires");
-    if (titrePop) deplacer(titrePop, hotes.publications);
-    var pop = el("profileTopPosts");
-    if (pop) deplacer(pop, hotes.publications);
 
     // ── Activités : organisées et rejointes (le moteur est dans app-06) ──
     var titreAct = titreContenant(ec, "Mes activités");
     if (titreAct) deplacer(titreAct, hotes.activites);
     var evs = el("profileEvents");
     if (evs) deplacer(evs, hotes.activites);
-    hotes.activites.appendChild(lienSecondaire(
-      "🤝", "Trouver une activité", "Voir ce qui se passe près de chez toi",
-      function () { if (typeof goTo === "function") goTo("irl"); }));
+    // ⚠️ 2026-08-31 : plus de lien « Trouver une activité » au bas de l'onglet.
+    // Retiré sur demande de Benjamin — la barre du bas porte déjà « Rencontrer »,
+    // qui mène au même écran, et le doublon alourdissait la section.
 
     // ⚠️ PLUS DE PANNEAU « À propos ». Ce qu'il contenait — le titre « Mes
     // passions », la phrase du modèle, le lien des passions archivées et la
@@ -255,28 +250,11 @@
     return true;
   }
 
-  function lienSecondaire(emoji, titre, sous, run) {
-    var b = document.createElement("button");
-    b.type = "button";
-    b.className = "v7-secondaire";
-    b.innerHTML = "";                       // aucun contenu utilisateur ici
-    var e = document.createElement("span");
-    e.className = "v7-secondaire-emoji";
-    e.setAttribute("aria-hidden", "true");
-    e.textContent = emoji;
-    var t = document.createElement("span");
-    t.className = "v7-secondaire-txt";
-    var t1 = document.createElement("span");
-    t1.className = "v7-secondaire-titre";
-    t1.textContent = titre;
-    var t2 = document.createElement("span");
-    t2.className = "v7-secondaire-sous";
-    t2.textContent = sous;
-    t.appendChild(t1); t.appendChild(t2);
-    b.appendChild(e); b.appendChild(t);
-    b.addEventListener("click", run);
-    return b;
-  }
+  // ⚠️ `lienSecondaire()` a été RETIRÉE le 2026-08-31 avec son unique appelant,
+  // le lien « Trouver une activité » au bas de l'onglet Activité. La boucle de
+  // nettoyage sur `.v7-secondaire` reste dans `retirerProfil()` : elle coûte un
+  // `querySelectorAll` vide et rend proprement une session déjà décorée par la
+  // version précédente du module, encore chargée dans un onglet ouvert.
 
   function choisirOnglet(cle) {
     ongletActif = cle;

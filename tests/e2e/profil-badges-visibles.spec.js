@@ -1,31 +1,28 @@
 // ============================================================================
-// UN BADGE GAGNÉ EST VISIBLE (2026-08-29)
+// PLUS AUCUNE PASTILLE DE POINTS SUR LE PROFIL (2026-08-31)
 // ----------------------------------------------------------------------------
-// Le lot UI-6 (§11) posait `:root.passio-ui-6 .profile-chips-row { display:none }`
-// pour masquer les pastilles de score, de rang et de solde. L'ADR-009 (#195) a
-// ensuite retiré ce moteur EN ENTIER — il n'y avait donc plus rien à masquer,
-// mais la règle est restée.
+// HISTOIRE. Le lot UI-6 (§11) masquait `.profile-chips-row` pour cacher les
+// pastilles de score, de rang et de solde Passia. L'ADR-009 a retiré ce moteur
+// EN ENTIER, mais la règle CSS est restée — et la rangée ne portait plus qu'une
+// chose, la pastille de BADGES d'assiduité, devenue invisible en silence. Ce
+// fichier avait alors été écrit pour prouver qu'un badge gagné se voyait.
 //
-// Or la rangée ne porte plus qu'une chose : la pastille de BADGES d'assiduité,
-// jalons concrets (sorties, villes, pays) que l'ADR-009 garde expressément — le
-// commentaire d'`index.html` le dit noir sur blanc. UI-6 étant actif par défaut,
-// la règle rendait ces badges inatteignables.
+// AUJOURD'HUI. Benjamin a demandé le retrait de cette dernière pastille : « sur
+// le profil supprime la petite médaille avec le point, l'app générale n'a plus
+// du tout le système de points. » La rangée entière part avec elle, ainsi que
+// `openBadgesSheet()`, dont c'était l'unique appelant.
 //
-// Mesuré avant correctif, avec un badge RÉELLEMENT gagné (« Organisateur ») :
-//   badges gagnés            → 1
-//   pastille, display propre → "inline-flex"   (le moteur faisait son travail)
-//   RANGÉE, display calculé  → "none"          (UI-6 la masquait)
-//   hauteur visible          → 0
-//
-// Et `openBadgesSheet()` n'a AUCUN autre appelant : la fonctionnalité était
-// calculée à chaque rendu, et morte à l'écran.
+// Ce test change donc de sens, mais pas de fichier : il défend le RETRAIT, là où
+// il défendait la visibilité. Le moteur de badges, lui, continue de tourner
+// (`myBadgeCount`, `_announceNewBadges`) — un jalon reste fêté par un toast,
+// il n'est simplement plus exposé comme un compteur.
 // ============================================================================
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
 
 // « Organisateur » : créer un événement. `myEngagementStats` compte par
 // `organizerId`/`authorId`, jamais par `ownerId` — une sonde écrite avec
-// `ownerId` rendait 0 badge et aurait fait croire le défaut inexistant.
+// `ownerId` rendrait 0 badge et ferait passer ce test sans rien prouver.
 async function gagnerUnBadge(page) {
   await page.evaluate(() => {
     state.userEvents = [{
@@ -40,56 +37,47 @@ async function gagnerUnBadge(page) {
   await page.waitForTimeout(400);
 }
 
-const mesure = (page) => page.evaluate(() => {
-  const chip = document.getElementById("mainProfileBadges");
-  const row = chip ? chip.closest(".profile-chips-row") : null;
-  return {
-    badges: myBadgeCount(),
-    chipDisplay: chip ? getComputedStyle(chip).display : "?",
-    rangeeDisplay: row ? getComputedStyle(row).display : "?",
-    hauteur: chip ? Math.round(chip.getBoundingClientRect().height) : -1,
-  };
-});
-
-test.describe("la pastille de badges du profil", () => {
-  test("est visible quand un badge est gagné", async ({ page }) => {
+test.describe("plus de pastille de points sur le profil", () => {
+  test("même avec un badge gagné, aucune médaille ni rangée de pastilles", async ({ page }) => {
     await bootOnboarded(page);
     await gagnerUnBadge(page);
-    const m = await mesure(page);
 
     // Garde anti-creux : sans elle, ce test passerait aussi si le moteur de
-    // badges avait cessé d'en attribuer.
-    expect(m.badges).toBeGreaterThan(0);
-    expect(m.rangeeDisplay).not.toBe("none");
-    expect(m.chipDisplay).not.toBe("none");
-    expect(m.hauteur).toBeGreaterThan(0);
+    // badges était cassé — on prouverait alors une absence pour une mauvaise
+    // raison. Le badge EST gagné ; c'est son affichage qui a été retiré.
+    expect(await page.evaluate(() => myBadgeCount()),
+      "prémisse : un badge est bien acquis").toBeGreaterThan(0);
+
+    await expect(page.locator("#mainProfileBadges")).toHaveCount(0);
+    await expect(page.locator("#profileBadgeCount")).toHaveCount(0);
+    await expect(page.locator(".profile-chips-row")).toHaveCount(0);
+    // Le profil ne doit plus afficher de compteur en médaille.
+    expect(await page.locator("#mainProfileCard").innerText()).not.toContain("🏅");
   });
 
-  test("reste invisible pour un compte qui n'en a aucun", async ({ page }) => {
+  test("la visionneuse de badges n'a plus de porte d'entrée — ni fonction orpheline", async ({ page }) => {
     await bootOnboarded(page);
-    await page.evaluate(() => {
-      state.userEvents = [];
-      state.user.joinedEvents = [];
-      state.user.checkedInEvents = [];
-      saveState();
-      goTo("profiles");
-      renderMainProfile();
-    });
+    await page.evaluate(() => goTo("profiles"));
     await page.waitForTimeout(400);
-    const m = await mesure(page);
 
-    expect(m.badges).toBe(0);
-    // La pastille garde son propre `display:none` en ligne : un compte neuf ne
-    // voit pas une pastille « 0 », qui ne raconterait rien.
-    expect(m.hauteur).toBe(0);
+    // `openBadgesSheet` est retirée : une fonction sans appelant est du code
+    // mort, et ce projet en paie le prix cher.
+    expect(await page.evaluate(() => typeof window.openBadgesSheet)).toBe("undefined");
+    expect(await page.evaluate(() =>
+      [...document.querySelectorAll("[onclick]")]
+        .filter((n) => (n.getAttribute("onclick") || "").includes("openBadgesSheet")).length)).toBe(0);
   });
 
-  test("sous le kill switch UI-6, le comportement est le même", async ({ page }) => {
+  test("aucune exception de rendu après le retrait", async ({ page }) => {
+    const erreurs = [];
+    page.on("pageerror", (e) => erreurs.push(e.message));
     await bootOnboarded(page);
-    await page.evaluate(() => localStorage.setItem("passio_ui_6", "0"));
     await gagnerUnBadge(page);
-    const m = await mesure(page);
-    expect(m.badges).toBeGreaterThan(0);
-    expect(m.hauteur).toBeGreaterThan(0);
+    // `renderMainProfile` est rappelée à chaque publication : un
+    // `getElementById` laissé sur un nœud supprimé la ferait lever à chaque fois
+    // (le piège du `renderTopbar` d'ADR-009).
+    await page.evaluate(() => { renderMainProfile(); renderMainProfile(); });
+    await page.waitForTimeout(300);
+    expect(erreurs).toEqual([]);
   });
 });
