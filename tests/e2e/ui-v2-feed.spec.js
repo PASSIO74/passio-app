@@ -2,7 +2,7 @@
 //
 // Ce que cette suite prouve, et rien d'autre :
 //   ① le kill switch restaure le Feed historique et ses moods ;
-//   ② l'URL normale montre la barre du bas UI-1 ET les cinq intentions UI-2 ;
+//   ② l'URL normale montre la barre du bas UI-1 ET le rail d'intentions UI-2 ;
 //   ③ les bobines sont une RANGÉE insérée dans le fil (jamais une carte pleine
 //      largeur), sans lecture automatique, et le tap ouvre le viewer EXISTANT
 //      sur la bobine touchée — la première comme la suivante ;
@@ -125,7 +125,7 @@ test("kill switch : aucun module UI-2, aucune Bobine injectée, moods intacts", 
 });
 
 // ── ② Bottom-nav UI-1 et cinq intentions UI-2, ensemble ─────────────────────
-test("URL normale : barre du bas UI-1 et cinq intentions UI-2 simultanément", async ({ page }) => {
+test("URL normale : barre du bas UI-1 et les intentions UI-2 simultanément", async ({ page }) => {
   const errors = { js: [], console: [], network: [] };
   await boot(page, { errors });
   await seedFeed(page, { reels: REELS });
@@ -138,8 +138,11 @@ test("URL normale : barre du bas UI-1 et cinq intentions UI-2 simultanément", a
 
   await expect(page.locator("#feedIntentSelector")).toBeVisible();
   await expect(page.locator("#moodSelector")).toBeHidden();
+  // ⚠️ QUATRE depuis le retrait de « Tous » (2026-08-31). Ce que ce test
+  // garantit — la barre du bas UI-1 et le rail d'envies UI-2 coexistent sur
+  // l'URL normale — ne dépend pas du nombre de pastilles.
   expect(await page.locator(".feed-intent-btn").allTextContents())
-    .toEqual(["Tous", "Explorer", "Apprendre", "Idées", "Rencontrer"]);
+    .toEqual(["Explorer", "Apprendre", "Idées", "Rencontrer"]);
 
   expect(errors.js, "exceptions JS dans l'aperçu").toEqual([]);
   expect(errors.console.filter((m) => m.includes("[ui-v2]"))).toEqual([]);

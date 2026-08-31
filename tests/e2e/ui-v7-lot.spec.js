@@ -65,11 +65,16 @@ test.describe("UI-7 §1 — vocabulaire visible", () => {
     await boot(page, errors);
 
     // Fil : cinq intentions renommées, MÊMES `data-intent`.
+    // ⚠️ QUATRE depuis le 2026-08-31 : la pastille « Tous » a été retirée sur
+    // demande de Benjamin. Ce que ce test garantit ne change PAS — les libellés
+    // sont ceux d'UI-7 et les `data-intent` restent les identifiants d'origine,
+    // c'est tout son objet. Seul le neutre a quitté la barre ; il vit toujours
+    // dans le moteur, sans bouton.
     expect(await page.locator(".feed-intent-btn").allTextContents())
-      .toEqual(["Tous", "Explorer", "Apprendre", "Idées", "Rencontrer"]);
+      .toEqual(["Explorer", "Apprendre", "Idées", "Rencontrer"]);
     expect(await page.locator(".feed-intent-btn").evaluateAll(
       (b) => b.map((x) => x.getAttribute("data-intent"))))
-      .toEqual(["for_you", "discover", "learn", "create", "meet"]);
+      .toEqual(["discover", "learn", "create", "meet"]);
 
     // Studio : « Passion : … », « Options », « Changer de profil ».
     await page.evaluate(() => goTo("studio"));
