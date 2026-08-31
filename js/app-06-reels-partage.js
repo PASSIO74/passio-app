@@ -2256,7 +2256,7 @@ function openCreateProfile() {
       `).join("")}
     </div>
     ${pool.length === 0 ? '<div style="font-size:12px;color:var(--muted);text-align:center;margin:8px 0;">Tu as déjà toutes les passions du catalogue ✨</div>' : ''}
-    <div style="font-size:11px;color:var(--muted);text-align:center;margin:10px 0 2px;line-height:1.5;">Tu peux créer une passion à toi depuis l'Explorateur : elle choisira ce que tu vois dans ton fil.</div>
+
     <label class="field" style="margin-top:4px;">
       <span>Bio courte <span style="font-weight:400;color:var(--muted);">(optionnel)</span></span>
       <input type="text" class="input" id="newProfileBio" placeholder="Ex : Photographe amateur · Paris" maxlength="80" />
@@ -3165,7 +3165,12 @@ function renderExplorer() {
   // All passions + CTA « Créer une passion » à la fin
   const customs = (state.user.customPassions || []);
   const allList = [...PASSIONS, ...customs];
-  const createCta = `
+  // ⛔ Tuile masquée tant que `passionsPersoSuspendues()` — arbitrage du
+  // 2026-08-31 : une passion non canonique ne peut alimenter aucun contenu
+  // serveur, donc l'offrir comme centre d'intérêt créerait un filtre sans
+  // contenu. Les passions DÉJÀ créées restent affichées dans la grille
+  // ci-dessous (`customs`), avec leur badge « Perso » : rien n'est supprimé.
+  const createCta = (typeof passionsPersoSuspendues === "function" && passionsPersoSuspendues()) ? "" : `
     <div class="passion-tile passion-tile-create" onclick="openCreateCustomPassionFromExplorer()">
       <div class="passion-tile-emoji">＋</div>
       <div class="passion-tile-label">Créer une passion</div>

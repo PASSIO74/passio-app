@@ -108,6 +108,44 @@ fois en arrière-plan et mise en cache (`chargerReferentielPassions`). Le démar
 jamais, et un échec de chargement laisse les 19 passions de `PASSIONS` (app-01) opérantes — une
 panne réseau ne doit pas bloquer une publication légitime.
 
+#### `PASSIONS` est un SOCLE, pas un simple repli
+
+Conséquence à assumer, formulée par Benjamin le 2026-08-31 :
+
+> `PASSIONS` constitue le socle canonique **minimal embarqué** ; Supabase peut **ajouter** des
+> identifiants, mais ne peut pas **désactiver à lui seul** une passion encore embarquée dans le
+> client.
+
+La liste locale et le référentiel serveur sont donc en **union**, pas en remplacement. Un identifiant
+présent dans `PASSIONS` reste accepté même si le serveur cesse de le servir — c'est ce qui garantit
+qu'une panne de chargement, une réponse partielle ou un filtre RLS ne bloquent jamais les 19 passions
+existantes.
+
+Le prix de cette garantie : **supprimer ou désactiver une passion exigera une mise à jour du client**,
+ou l'ajout ultérieur d'un statut serveur explicite (une colonne `active`, que le client lirait et
+respecterait). Tant que ce statut n'existe pas, retirer une ligne de `passions` côté serveur ne
+retire rien côté client.
+
+#### Passions personnalisées : création SUSPENDUE
+
+Arbitrage de Benjamin, 2026-08-31. La sortie A permettait de conserver une passion personnalisée
+comme centre d'intérêt du fil, puisque le filtre de lecture est 100 % local. **Cette porte reste
+fermée**, pour une raison de produit et non de technique : une passion non canonique ne peut
+alimenter **aucun** contenu serveur, donc l'offrir comme nouveau centre d'intérêt créerait un
+**filtre sans contenu** — une fonctionnalité incapable de rien montrer.
+
+- aucune **nouvelle** passion personnalisée ne peut être créée (trois tuiles masquées **et** garde au
+  point de convergence `openCreateCustomPassion` — masquer sans garder laisserait passer un appelant
+  futur, garder sans masquer offrirait une porte qui refuse au tap) ;
+- les **anciennes** sont conservées, sans suppression ni transformation : elles restent dans
+  `state.user.customPassions`, restent publiées dans le jsonb `profiles.passions` (qui ne porte
+  aucune clé étrangère) et leurs publications restent en place ;
+- elles ne peuvent pas servir à publier ;
+- aucune interface ne propose de rouvrir leur création.
+
+La suite envisagée est « **Proposer une passion** », avec validation avant ajout au référentiel
+canonique. Hors périmètre de cet ADR.
+
 ⚠️ **Le discriminant n'est ni le drapeau `custom: true`, ni le préfixe `custom_`.** Le drapeau ne vit
 que dans `state.user.customPassions` et disparaît sur un appareil neuf ; le préfixe est une liste
 noire, qui ne couvre ni la valeur fantôme `"autre"`, ni `"test"`, ni la chaîne vide. Seule la liste

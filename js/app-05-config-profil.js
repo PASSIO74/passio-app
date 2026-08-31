@@ -2941,6 +2941,9 @@ async function shareReelInFeed(postId) {
     }
   };
 
+  // ⚠️ Refus AVANT la mutation locale — cf. `mePublish` (app-08).
+  if (typeof publicationRefuseeFautePassion === "function"
+      && publicationRefuseeFautePassion(newPost.passion)) { closeModal(); return; }
   if (!state.userPosts) state.userPosts = [];
   state.userPosts.push(newPost);
   saveState();

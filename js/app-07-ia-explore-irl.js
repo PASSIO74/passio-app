@@ -4015,6 +4015,13 @@ async function shareEventInFeed(id) {
   };
 
   if (!state.userPosts) state.userPosts = [];
+  // ⚠️ Refus AVANT la mutation locale — cf. `mePublish` (app-08).
+  if (typeof publicationRefuseeFautePassion === "function"
+      && publicationRefuseeFautePassion(newPost.passion)) {
+    if (btn) { btn.disabled = false; btn.textContent = "Partager dans mon fil"; }
+    closeModal();
+    return;
+  }
   state.userPosts.push(newPost);
   saveState();
 

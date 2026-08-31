@@ -105,6 +105,14 @@ async function sharePostInFeed(id) {
   };
 
   if (!state.userPosts) state.userPosts = [];
+  // ⚠️ Refus AVANT la mutation locale — cf. `mePublish` (app-08). Le bouton est
+  // rendu à son état initial : le geste a échoué, il doit rester possible.
+  if (typeof publicationRefuseeFautePassion === "function"
+      && publicationRefuseeFautePassion(newPost.passion)) {
+    if (btn) { btn.disabled = false; btn.textContent = "Partager dans mon fil"; }
+    closeModal();
+    return;
+  }
   state.userPosts.push(newPost);
   saveState();
 

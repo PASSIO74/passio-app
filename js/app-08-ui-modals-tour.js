@@ -1328,6 +1328,12 @@ async function mePublish() {
       createdAt: Date.now(), likes: 0, liked: false, comments: [],
     };
     if (d.eventId) post.eventId = d.eventId;
+    // ⚠️ REFUS AVANT TOUTE MUTATION LOCALE. Sans ce garde, la bobine entrait
+    // dans `state.userPosts`, s'affichait chez son auteur, et le garde central
+    // la refusait ensuite : jamais arrivée au serveur, perdue au changement
+    // d'appareil. Le refus doit précéder la mutation, pas seulement la requête.
+    if (typeof publicationRefuseeFautePassion === "function"
+        && publicationRefuseeFautePassion(post.passion)) return;
     state.userPosts = state.userPosts || [];
     state.userPosts.unshift(post);
     saveState();

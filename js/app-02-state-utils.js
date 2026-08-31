@@ -1120,6 +1120,29 @@ function passionDeRepartage(source) {
 // est le classement, le dire — l'ancien message « connexion lente » invitait à
 // retenter une opération qui ne pouvait pas aboutir (cf. le document ci-dessus).
 // Rend `null` si le dernier échec n'était pas de cette nature.
+// ⚠️ GARDE COMMUNE AUX PRODUCTEURS DE PUBLICATION (2026-08-31).
+// À appeler AVANT toute mutation locale. Rend `true` quand la publication ne
+// peut PAS aboutir, après avoir dit pourquoi et quoi faire.
+//
+// LE DÉFAUT QU'ELLE FERME. Les quatre producteurs — bobine, partage de bobine,
+// partage de post, partage d'événement — créaient l'objet dans `state.userPosts`
+// puis appelaient `supaPublishPostWithRetry`. Le garde central refusait ensuite
+// la passion non canonique… mais le post était déjà là : visible chez son
+// auteur, jamais arrivé au serveur, perdu au changement d'appareil. C'est
+// exactement le motif de perte silencieuse que ce chantier ferme.
+//
+// L'invariant : si aucune passion canonique n'est disponible, AUCUNE publication
+// locale optimiste n'est créée. Le refus précède la mutation, pas seulement la
+// requête réseau.
+function publicationRefuseeFautePassion(passion) {
+  if (estPassionCanonique(passion)) return false;
+  var mienne = passionParDefautPourPublier();
+  toast(mienne
+    ? "Choisis une passion pour publier."
+    : "⚠️ Ajoute une passion du catalogue pour publier — tes passions personnelles rangent ton fil, mais on ne peut pas encore y publier.");
+  return true;
+}
+
 function messageEchecPassion() {
   var c = window._passioEchecPublication;
   if (c === "passion_absente") return "⚠️ Choisis une passion avant de publier.";
@@ -2400,7 +2423,9 @@ function renderPassionGrid() {
       ${p.id === depart ? '<div class="passion-depart-badge" data-depart="1" style="position:absolute;top:4px;left:5px;font-size:11px;">★</div>' : ''}
     </div>
   `).join("");
-  const createTile = `
+  // ⛔ Tuile masquée tant que `passionsPersoSuspendues()` : voir la note de
+  // `openCreateCustomPassion`. Le garde du point de convergence reste en place.
+  const createTile = passionsPersoSuspendues() ? "" : `
     <div class="passion-tile passion-tile-create" onclick="openCreateCustomPassion()">
       <div class="passion-tile-emoji">＋</div>
       <div class="passion-tile-label">Créer la mienne</div>
@@ -2461,7 +2486,53 @@ function setStarterPassion(id) {
   renderPassionGrid();
 }
 
+// ⛔ CRÉATION DE PASSIONS PERSONNALISÉES SUSPENDUE
+// (hotfix du 2026-08-30, MAINTENUE sur ADR-010 par arbitrage de Benjamin
+//  le 2026-08-31.)
+//
+// LE MOTIF TECHNIQUE. Une passion personnalisée reçoit un id `custom_<slug>_<rand>`
+// qui ne vit que dans l'état local. Or `posts`, `profiles`, `stories`, `events`
+// et `conversations` portent une clé étrangère vers `passions(id)`, table qui
+// n'a qu'une policy SELECT : aucun client ne peut y insérer la ligne. Publier
+// dans une telle passion échoue en 23503, définitivement.
+//
+// ⚠️ LE MOTIF PRODUIT, qui décide seul de la question. La sortie A permettait de
+// la garder comme centre d'intérêt du fil, puisque le filtre de lecture est
+// 100 % local. Mais une passion non canonique ne peut alimenter AUCUN contenu
+// serveur : la conserver comme NOUVEAU centre d'intérêt créerait un filtre sans
+// contenu — une fonctionnalité qui ne peut rien montrer. ADR-010 ne rouvre donc
+// pas cette porte.
+//
+// CE QUI N'EST PAS TOUCHÉ : les passions déjà créées restent dans
+// `state.user.customPassions`, restent publiées dans le jsonb `profiles.passions`
+// (qui ne porte aucune clé étrangère), et leurs publications restent en place.
+// Aucune suppression, aucune transformation.
+//
+// LA SUITE : « Proposer une passion », avec validation avant ajout au référentiel
+// canonique. Hors périmètre d'ADR-010.
+//
+// ⚠️ Masquer les tuiles NE SUFFIT PAS : un appelant futur passerait à côté du
+// masquage. Garder sans masquer offrirait une porte qui refuse au tap. Les deux
+// sont nécessaires — c'est le point de convergence qui fait foi.
+function passionsPersoSuspendues() { return true; }
+
 function openCreateCustomPassion() {
+  if (passionsPersoSuspendues()) {
+    openModal('\
+      <div class="modal-handle"></div>\
+      <div class="modal-title">🌟 Créer ta passion</div>\
+      <div style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:16px;">\
+        La création de passions personnalisées est <b>momentanément indisponible</b>.\
+        Une passion à toi ne peut pas encore recevoir de contenu : tu te retrouverais\
+        avec un filtre qui ne montre rien.<br/><br/>\
+        Tes passions déjà créées ne sont pas touchées : elles restent sur ton profil.\
+        Choisis une passion du catalogue pour publier dès maintenant.\
+      </div>\
+      <button class="btn primary block" onclick="closeModal()">J\'ai compris</button>\
+    ');
+    return;
+  }
+
   const palette = [
     { emoji: "⭐", color: "#8b5cf6" },
     { emoji: "🎯", color: "#8b5cf6" },
