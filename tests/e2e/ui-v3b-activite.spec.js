@@ -135,6 +135,35 @@ const EVENTS = [evenement("ev_jam", "Jam acoustique")];
 
 // Preview de validation destinée à Benjamin : la carte et la fiche sont
 // interactives, mais aucune donnée de démonstration ne reste dans state.
+// ⚠️ RÉGRESSION MESURÉE (ADR-011 §4). Le Fil n'admet plus une publication que
+// si un critère COCHÉ la fait entrer. La carte de démonstration n'est ni suivie
+// ni portée par une envie : sa seule porte est sa passion — et `demoPassion()`
+// retombe sur le catalogue quand aucune passion n'est cochée. L'aperçu
+// s'ouvrait alors VIDE, sans erreur ni message, de façon intermittente selon
+// que le rail de passions avait déjà été peint ou non.
+test("aperçu UI-3B : la carte est là même quand AUCUNE passion n'est cochée", async ({ page }) => {
+  await boot(page, { killV4b: true, query: "?passio_preview=passio-ui-3b-demo" });
+
+  // On vide la sélection par le VRAI point d'écriture (il pose le marqueur de
+  // migration, donc `restoreFeedPassions` ne la remplira pas de nouveau), puis
+  // on repeint : la carte de démonstration quitte le DOM, et la mutation de
+  // `#feedList` réveille l'observateur d'UI-3 — exactement le chemin de prod.
+  await page.evaluate(() => {
+    setFeedPassions([]);
+    window._feedDomSig = null;
+    renderFeed();
+  });
+
+  await expect(page.locator('article.post[data-postid="__passio_ui3b_demo_post"]'))
+    .toBeVisible({ timeout: 15000 });
+
+  // Et l'aperçu ne décide rien pour l'utilisateur : la passion cochée le temps
+  // du rendu est RETIRÉE, comme la publication de démonstration elle-même.
+  expect(await page.evaluate(() => _activeFeedPassions.size)).toBe(0);
+  expect(await page.evaluate(() =>
+    (state.seed.posts || []).some((p) => p && p.id === "__passio_ui3b_demo_post"))).toBe(false);
+});
+
 test("aperçu UI-3B : une publication liée est visible sans donnée persistée", async ({ page }) => {
   // La démonstration d'UI-3B va jusqu'à SON action de fiche : on isole donc
   // UI-3B (voir l'avertissement en tête de fichier).
