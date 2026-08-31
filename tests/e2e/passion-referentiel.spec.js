@@ -86,7 +86,10 @@ test("① bis — un référentiel partiel n'interdit PAS de publier (le cas ré
     // On observe l'insert sans passer par le SDK du helper de cette suite.
     const vraiSupa = supa;
     supa.from = (t) => ({
-      insert: (p) => { window.__envoye.push({ t, p }); const r = Promise.resolve({ data: [{ id: "x" }], error: null }); r.select = () => Promise.resolve({ data: [{ id: "x" }], error: null }); return r; },
+      // ⚠️ `supaPublishPostWithRetry` appelle `insert([postData])` — un TABLEAU.
+      // Lire `p.passion_id` rendait `undefined`, et l'assertion échouait pour
+      // une raison qui n'avait rien à voir avec le référentiel.
+      insert: (p) => { (Array.isArray(p) ? p : [p]).forEach((row) => window.__envoye.push({ t, p: row })); const r = Promise.resolve({ data: [{ id: "x" }], error: null }); r.select = () => Promise.resolve({ data: [{ id: "x" }], error: null }); return r; },
       upsert: async () => ({ error: null }),
       select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }),
     });

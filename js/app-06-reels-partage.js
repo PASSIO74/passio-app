@@ -2880,8 +2880,12 @@ async function publishPost() {
   // On refuse donc ICI, avant toute création locale, et on dit quoi faire.
   if (!estPassionCanonique(passion)) {
     _publishInProgress = false;
-    var _pool = (typeof passionsPubliables === "function") ? passionsPubliables() : [];
-    toast(_pool.length
+    // ⚠️ Le discriminant est ce que le COMPTE possède, PAS le catalogue.
+    // `passionsPubliables()` rend les 19 passions du catalogue : elle n'est
+    // jamais vide, donc la brancher ici rendait l'impasse inatteignable et
+    // renvoyait le compte bloqué au message « choisis » — dans un select vide.
+    var _mienne = (typeof passionParDefautPourPublier === "function") ? passionParDefautPourPublier() : null;
+    toast(_mienne
       ? "Choisis une passion pour publier."
       : "⚠️ Ajoute une passion du catalogue pour publier — tes passions personnelles rangent ton fil, mais on ne peut pas encore y publier.");
     return;
