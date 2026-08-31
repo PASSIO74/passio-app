@@ -1390,14 +1390,15 @@ async function saveMainProfile() {
 // ⚠️ CINQ POINTS À CONNAÎTRE AVANT D'Y TOUCHER.
 //
 // ① `currentProfileId` reste la SEULE source de vérité de l'identité active,
-//    et `switchToProfile()` son seul point d'écriture. Rien n'est dupliqué :
-//    la ligne « Passion active », le sélecteur et le bouton « Utiliser pour
-//    créer » appellent tous les trois cette même fonction.
+//    et `switchToProfile()` son seul point d'écriture. Rien n'est dupliqué.
+//    ⚠️ ADR-011 §4 : ses trois appelants d'alors — la ligne « Passion active »,
+//    le sélecteur et le bouton « Utiliser pour créer » — ont TOUS été retirés
+//    du profil. Le Studio (`onStudioPassionChange`) est le seul point de choix.
 //
-// ② La multisélection de l'onglet « À propos » (`toggleProfileSelect`) est
-//    REMPLACÉE, pas supprimée : elle reste le comportement rendu par le kill
-//    switch. Le filtre de contenu déménage dans « Publications » et devient
-//    à choix UNIQUE (`state.user.profilePostFilterId`), plus un filtre jumeau
+// ② La multisélection des cartes (`toggleProfileSelect`) est REMPLACÉE, pas
+//    supprimée : elle reste le comportement rendu par le kill switch. Le filtre
+//    de contenu devient à choix UNIQUE (`state.user.profilePostFilterId`), plus
+//    un filtre jumeau
 //    pour « Activités » (`profileEventFilterId`). Aucun filtre = « Toutes ».
 //
 // ③ Migration défensive de l'ancien état : `profileFilterIds` n'est jamais

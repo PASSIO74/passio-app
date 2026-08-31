@@ -14,10 +14,13 @@
 //      est mentionnée ici dans l'état d'origine du lot ; elle a été supprimée le
 //      2026-08-30 avec la bascule `_showFollowingFeed` — ADR-010.)
 //
-//   ⑥ LE PROFIL. Trois onglets NOMMÉS (Publications · Activités · À propos)
-//      remplacent les cinq onglets d'icônes, qui redeviennent de petits
-//      sous-filtres DANS « Publications ». Rien n'est retiré : les blocs
-//      historiques sont DÉPLACÉS dans des panneaux, jamais régénérés.
+//   ⑥ LE PROFIL. Des onglets NOMMÉS remplacent les onglets d'icônes, qui
+//      redeviennent de petits sous-filtres DANS « Publications ». Rien n'est
+//      retiré : les blocs historiques sont DÉPLACÉS dans des panneaux, jamais
+//      régénérés.
+//      ⚠️ ILS SONT DEUX, PLUS TROIS (ADR-011 §2) : « À propos » a été retiré
+//      par la refonte multi-passion, et ce qu'il contenait vit désormais dans
+//      le panneau `#passionManager`, ouvert à la demande.
 //
 //   ⑧ LA BOBINE. Après l'enregistrement, l'aperçu existant reçoit deux issues
 //      explicites — « Recommencer » et « Continuer » — et « Continuer » ouvre
