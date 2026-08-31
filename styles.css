@@ -10060,3 +10060,115 @@ body.ctx-locked #appMain { overflow: hidden; }
 @media (max-width: 359px) {
   :root.passio-ui-4a5 #v4a5Outils .ctx-section-items { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* ── Les bulles de passion suivent la même règle ───────────────────────────
+   Benjamin, 2026-08-31, en réponse à la question posée : « oui, mets tout ce
+   que je t'ai demandé. » Les tuiles de passion du panneau Filtres — les
+   seules cases qui gardaient encore leur gabarit d'origine — deviennent donc
+   elles aussi des carrés violets à écriture blanche, de la même taille, dans
+   la même grille que les intentions et les items d'outils.
+
+   ⚠️ BORNÉ À `#v4a5Passions`. `.msg-tile` / `.msg-filter-tiles` sont le
+   composant PARTAGÉ des filtres de la messagerie et du rail de passions : hors
+   de ce panneau il ne bouge pas d'un pixel, et le kill switch
+   `passio_ui_4a5="0"` rend ici le gabarit d'origine. C'est aussi ce qui
+   préserve l'invariant d'ADR-011 §2 — le Fil et le profil continuent de rendre
+   la MÊME bulle qu'avant, seul ce panneau-ci s'en écarte.
+
+   ⚠️ Le moteur n'est pas touché : `renderIrlPassionTiles` écrit toujours les
+   mêmes nœuds, avec les mêmes `data-irlpassion` et le même `aria-pressed`. Rien
+   n'est retiré du DOM — l'emoji est MASQUÉ, comme les emojis d'« Autour de moi »
+   et de « Mes événements ». */
+:root.passio-ui-4a5 #v4a5Passions .msg-filter-tiles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  /* La carte qui les entourait faisait un cadre dans le cadre : les autres
+     sections du panneau posent leurs tuiles à même le fond. */
+  padding: 0;
+  background: none;
+  border: 0;
+  box-shadow: none;
+}
+:root.passio-ui-4a5 #v4a5Passions .msg-tile {
+  min-width: 0;
+  width: 100%;
+  min-height: 56px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 14px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  box-shadow: none;
+  transition: opacity .16s ease;
+}
+/* L'emoji de la passion et le marqueur « ✦ » : masqués, jamais retirés. */
+:root.passio-ui-4a5 #v4a5Passions .msg-tile .msg-tile-icon { display: none; }
+:root.passio-ui-4a5 #v4a5Passions .msg-tile .msg-tile-label {
+  max-width: none;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+/* Le compteur reste une INFORMATION (nombre d'activités dans cette passion) :
+   il n'est pas masqué, il passe simplement en pastille blanche sur le violet —
+   le rose de la messagerie hurlait sur ce fond. */
+:root.passio-ui-4a5 #v4a5Passions .msg-tile .msg-tile-badge {
+  top: 6px;
+  right: 6px;
+  background: #fff;
+  color: var(--accent);
+  border-color: transparent;
+  box-shadow: none;
+}
+/* Même grammaire d'état que les autres cases : coché = plein, décoché =
+   atténué. « Autres » porte `aria-expanded` et non `aria-pressed` : c'est une
+   ACTION, elle reste pleine — comme « Choisir une ville ». */
+:root.passio-ui-4a5 #v4a5Passions .msg-tile[aria-pressed="false"] { opacity: 0.55; }
+:root.passio-ui-4a5 #v4a5Passions .msg-tile[aria-pressed="true"],
+:root.passio-ui-4a5 #v4a5Passions .msg-tile.active { opacity: 1; }
+:root.passio-ui-4a5 #v4a5Passions .msg-tile.active .msg-tile-icon { box-shadow: none; }
+:root.passio-ui-4a5 #v4a5Passions .msg-tile:hover { color: #fff; }
+:root.passio-ui-4a5 #v4a5Passions .msg-tile:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+
+/* Le panneau « Autres » — la liste dépliée par la tuile du même nom — parle la
+   même langue : des pastilles violettes à écriture blanche, la case à cocher
+   inversée pour rester lisible sur le violet. */
+:root.passio-ui-4a5 #v4a5Passions .irl-extra-chip {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+  opacity: 0.55;
+  min-height: 38px;
+}
+:root.passio-ui-4a5 #v4a5Passions .irl-extra-chip.on {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+  opacity: 1;
+}
+:root.passio-ui-4a5 #v4a5Passions .irl-extra-chip b,
+:root.passio-ui-4a5 #v4a5Passions .irl-extra-chip.on b { color: rgba(255, 255, 255, 0.8); }
+:root.passio-ui-4a5 #v4a5Passions .irl-extra-chip .irl-extra-box {
+  border-color: rgba(255, 255, 255, 0.75);
+  color: var(--accent);
+}
+:root.passio-ui-4a5 #v4a5Passions .irl-extra-chip.on .irl-extra-box {
+  background: #fff;
+  border-color: #fff;
+  color: var(--accent);
+}
+
+@media (max-width: 359px) {
+  :root.passio-ui-4a5 #v4a5Passions .msg-filter-tiles { grid-template-columns: minmax(0, 1fr); }
+}
