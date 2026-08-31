@@ -47,7 +47,10 @@ test("① le libellé d'une passion personnalisée est celui publié par son aut
       return lbl ? lbl.textContent.trim() : "";
     }));
   // Sans ce garde, les deux assertions ci-dessous passeraient sur une liste VIDE.
-  expect(libelles.length).toBeGreaterThan(1);
+  // ⚠️ `> 0` et non `> 1` : le seuil comptait la bulle « Toutes », retirée le
+  // 2026-08-31 avec le passage en multisélection. Ce compte visé est celui des
+  // passions RÉELLES du compte visité, et il peut n'y en avoir qu'une.
+  expect(libelles.length).toBeGreaterThan(0);
   expect(libelles).toContain("Tricot");
   // Le défaut : « Passion », le repli générique de `passionById`.
   expect(libelles).not.toContain("Passion");
@@ -78,7 +81,10 @@ test("① bis — une passion du catalogue garde son libellé de catalogue", asy
       return lbl ? lbl.textContent.trim() : "";
     }));
   // Sans ce garde, les deux assertions ci-dessous passeraient sur une liste VIDE.
-  expect(libelles.length).toBeGreaterThan(1);
+  // ⚠️ `> 0` et non `> 1` : le seuil comptait la bulle « Toutes », retirée le
+  // 2026-08-31 avec le passage en multisélection. Ce compte visé est celui des
+  // passions RÉELLES du compte visité, et il peut n'y en avoir qu'une.
+  expect(libelles.length).toBeGreaterThan(0);
   expect(libelles.join(" ")).not.toContain("ZZZ_LIBELLE_DISTANT");
 });
 

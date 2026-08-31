@@ -416,8 +416,9 @@ function renderMainProfile() {
     // voisin contredit n'est pas un filtre : c'est ce qui rendait l'écran illisible.
     var _mesPosts = state.userPosts || [];
     try {
-      var _prTop = (typeof _passionDuFiltre === "function") ? _passionDuFiltre("profilePostFilterId") : null;
-      if (_prTop) _mesPosts = _mesPosts.filter(function (x) { return _postDeLaPassion(x, _prTop); });
+      if (typeof _postDansFiltreProfil === "function") {
+        _mesPosts = _mesPosts.filter(function (x) { return _postDansFiltreProfil(x); });
+      }
     } catch (e) {}
     var top = _mesPosts.slice().sort(function(a,b){return(b.likes||0)-(a.likes||0);}).slice(0,3);
     topEl.innerHTML = top.length ? top.map(function(p){return renderPostHTML(Object.assign({},p,{_source:"me"}));}).join("") : '<div style="font-size:12px;color:var(--muted);padding:10px;">Publie ton premier post !</div>';
@@ -601,8 +602,7 @@ function _myProfileEvents(limit) {
   // de passion : il ne doit jamais être restreint par le filtre d'affichage.
   if (limit !== 9999 && typeof passionsUnifieesActives === "function" && passionsUnifieesActives()) {
     try {
-      var _prF = _passionDuFiltre("profileEventFilterId");
-      if (_prF) out = out.filter(function (e) { return e && e.passion === _prF.passion; });
+      out = out.filter(function (e) { return _evtDansFiltreProfil(e); });
     } catch (x) {}
   }
   var maintenant = Date.now();
@@ -620,10 +620,10 @@ function _myProfileEvents(limit) {
 function _myProfileEventsHTML() {
   var evs = _myProfileEvents(passionsUnifieesActives() ? 8 : 4);
   if (!evs.length) {
-    var _f = null;
-    try { if (passionsUnifieesActives()) _f = _passionDuFiltre("profileEventFilterId"); } catch (x) {}
+    var _f = "";
+    try { if (passionsUnifieesActives()) _f = _libelleFiltreProfil(); } catch (x) {}
     var _msg = _f
-      ? "Aucune activité en " + _passionEtiquette(_f).label + " pour l'instant — choisis « Toutes » ou propose une sortie depuis « Rencontrer »."
+      ? "Aucune activité en " + _f + " pour l'instant — décoche cette passion ou propose une sortie depuis « Rencontrer »."
       : "Aucune activité pour le moment — rejoins ou propose une sortie depuis « Rencontrer ».";
     return '<div style="font-size:12px;color:var(--muted);padding:10px;">' + escapeHtml(_msg) + '</div>';
   }
@@ -690,10 +690,7 @@ function renderProfileContent() {
     // publications qui n'ont qu'une passion OU qu'un profileId restent
     // atteignables : l'appariement est le même que celui de la multisélection
     // historique (`_postDeLaPassion`).
-    var prFiltre = _passionDuFiltre("profilePostFilterId");
-    if (prFiltre) {
-      mine = mine.filter(function (p) { return _postDeLaPassion(p, prFiltre); });
-    }
+    mine = mine.filter(function (p) { return _postDansFiltreProfil(p); });
   } else {
     var sel = window.profilesFilterSelection || new Set();
 
@@ -730,8 +727,7 @@ function renderProfileContent() {
   var _filtreNom = "";
   try {
     if (passionsUnifieesActives()) {
-      var _pf = _passionDuFiltre("profilePostFilterId");
-      if (_pf) _filtreNom = _passionEtiquette(_pf).label;
+      _filtreNom = _libelleFiltreProfil();
     }
   } catch (e) { _v8Echec("etat_vide", e); }
 
@@ -1478,31 +1474,80 @@ function _passionEtiquette(pr) {
 }
 
 // ③ Migration défensive, une seule fois, sans jamais effacer l'ancien état.
+//
+// ⚠️ DEUX ÉTAGES, et il faut les DEUX. Le profil a connu trois modèles : une
+// multisélection (`profileFilterIds`), puis un choix unique (ADR-011 §1), puis
+// de nouveau une multisélection (`profilePassionIds`). Un compte peut donc
+// arriver ici avec l'un ou l'autre — celui qui a utilisé l'app entre les deux
+// versions porte `profilePostFilterId`, celui qui ne l'a pas ouverte depuis
+// porte encore `profileFilterIds`. Sauter l'un des deux étages perdrait
+// silencieusement le filtre de l'un des deux groupes.
 function _migrerFiltresPassion() {
-  if (!state.user || state.user._v8FiltresMigres) return;
-  state.user._v8FiltresMigres = true;
-  if (state.user.profilePostFilterId === undefined) {
-    var anciens = state.user.profileFilterIds || [];
-    var valides = new Set((state.user.profiles || []).map(function (p) { return p.id; }));
-    var retenus = anciens.filter(function (id) { return valides.has(id); });
-    state.user.profilePostFilterId = (retenus.length === 1) ? retenus[0] : null;
+  if (!state.user) return;
+  if (!state.user._v8FiltresMigres) {
+    state.user._v8FiltresMigres = true;
+    if (state.user.profilePostFilterId === undefined) {
+      var anciens = state.user.profileFilterIds || [];
+      var valides = new Set((state.user.profiles || []).map(function (p) { return p.id; }));
+      var retenus = anciens.filter(function (id) { return valides.has(id); });
+      state.user.profilePostFilterId = (retenus.length === 1) ? retenus[0] : null;
+    }
+    if (state.user.profileEventFilterId === undefined) state.user.profileEventFilterId = null;
   }
-  if (state.user.profileEventFilterId === undefined) state.user.profileEventFilterId = null;
+  // Retour à la multisélection : la valeur unique devient une liste d'un
+  // élément, une absence de valeur une liste vide (« toutes »).
+  if (!Array.isArray(state.user.profilePassionIds)) {
+    var seul = state.user.profilePostFilterId || null;
+    state.user.profilePassionIds = seul ? [seul] : [];
+  }
 }
 
-// Un filtre qui désigne une passion disparue ou archivée retombe sur « Toutes »
-// plutôt que de vider l'écran sans explication.
+// Les passions cochées, en OBJETS et déjà nettoyées : une passion disparue ou
+// archivée est ignorée plutôt que de vider l'écran sans explication. On NE
+// RÉÉCRIT PAS l'état ici — cette fonction est appelée pendant le rendu, et une
+// écriture non persistée y serait un mensonge de plus. C'est `archiverPassion`
+// et `deleteProfile` qui nettoient, une fois, au point d'ÉCRITURE.
+function profilePassionsSelectionnees() {
+  try {
+    _migrerFiltresPassion();
+    var ids = state.user.profilePassionIds || [];
+    if (!ids.length) return [];
+    var profils = state.user.profiles || [];
+    return ids.map(function (id) {
+      return profils.find(function (p) { return p.id === id; });
+    }).filter(function (p) { return p && !p.archived; });
+  } catch (e) { return []; }
+}
+
+// Le prédicat d'affichage. AUCUNE passion cochée = tout passe : c'est le neutre
+// qui remplace l'ancienne bulle « Toutes », retirée parce que la multisélection
+// le dit déjà — tout décocher et cocher « Toutes » sont le même geste.
+function _postDansFiltreProfil(post) {
+  var sel = profilePassionsSelectionnees();
+  if (!sel.length) return true;
+  return sel.some(function (pr) { return _postDeLaPassion(post, pr); });
+}
+
+function _evtDansFiltreProfil(ev) {
+  var sel = profilePassionsSelectionnees();
+  if (!sel.length) return true;
+  return sel.some(function (pr) { return ev && ev.passion === pr.passion; });
+}
+
+// « Moto », ou « Moto · Yoga ». Vide quand rien n'est coché — l'état vide doit
+// alors dire « tu n'as rien publié », pas « rien en … ».
+function _libelleFiltreProfil() {
+  var sel = profilePassionsSelectionnees();
+  if (!sel.length) return "";
+  return sel.map(function (pr) { return _passionEtiquette(pr).label; }).join(" · ");
+}
+
+// Compatibilité : plusieurs appels historiques attendent UNE passion. Ils ne
+// s'en servent que pour un libellé ou un tri, jamais pour filtrer — le filtrage
+// passe par les prédicats ci-dessus, qui voient toute la sélection.
 function _passionDuFiltre(cle) {
-  _migrerFiltresPassion();
-  var id = state.user[cle] || null;
-  if (!id) return null;
-  var pr = (state.user.profiles || []).find(function (p) { return p.id === id; });
-  // Une passion disparue ou archivée retombe sur « Toutes » plutôt que de vider
-  // l'écran sans explication. On NE RÉÉCRIT PAS l'état ici : cette fonction est
-  // appelée pendant le rendu, et une écriture non persistée y serait un
-  // mensonge de plus. C'est `archiverPassion` qui nettoie, une fois.
-  if (!pr || pr.archived) return null;
-  return pr;
+  var sel = profilePassionsSelectionnees();
+  return sel.length === 1 ? sel[0] : null;
 }
 
 // Appariement post ↔ passion. La PASSION est la source de vérité (figée à la
@@ -1557,25 +1602,41 @@ function setEventPassionFilter(profileId) { return setProfilePassion(profileId);
 // espacements, mêmes états. Deux différences assumées avec le Fil, et une seule
 // est visuelle :
 //
-//   · CHOIX UNIQUE ici, multi-sélection là-bas. Le profil répond à « je regarde
-//     quelle partie de cette personne ? » ; le Fil à « qu'est-ce que je veux
-//     voir ? ». Confondre les deux, c'était l'écran d'avant.
+//   · MULTI-SÉLECTION, comme le Fil. La version précédente imposait ici un choix
+//     unique et une bulle « Toutes » ; Benjamin a demandé l'inverse le
+//     2026-08-31, et il a raison : deux écrans qui montrent le même composant
+//     doivent répondre au même geste. « Toutes » disparaît avec ce changement —
+//     tout décocher DIT déjà « toutes », et garder les deux, c'était offrir deux
+//     commandes pour un seul état.
 //   · La sélection pilote les DEUX onglets à la fois (Publications ET Activité) :
-//     une seule passion active sous le sélecteur, tout ce qui est dessous suit.
+//     ce qui est coché sous le sélecteur, tout ce qui est dessous le suit.
 //
-// ⚠️ Elle s'écrit dans les DEUX clés historiques (`profilePostFilterId` et
-// `profileEventFilterId`), tenues égales. Les garder séparées aurait laissé
-// l'onglet Activité sur une passion pendant que Publications en montrait une
-// autre — l'incohérence que ce rail supprime.
+// ⚠️ La liste `profilePassionIds` est la SEULE source de vérité. Les deux clés
+// historiques (`profilePostFilterId`, `profileEventFilterId`) ne sont plus lues
+// pour filtrer — seulement migrées une fois — et sont tenues à jour pour qu'un
+// appareil resté sur l'ancienne version ne réaffiche pas un filtre fantôme.
 function _profilePassionSelected() {
-  try { return _passionDuFiltre("profilePostFilterId"); } catch (e) { return null; }
+  try { var sel = profilePassionsSelectionnees(); return sel.length === 1 ? sel[0] : null; }
+  catch (e) { return null; }
 }
 
+// Bascule une passion : elle s'ajoute ou se retire sans toucher aux autres.
+// `null` remet le neutre (rien de coché = tout), ce qui garde un chemin
+// programmatique vers l'état « toutes » maintenant que la bulle a disparu.
 function setProfilePassion(profileId) {
   _migrerFiltresPassion();
-  var id = profileId || null;
-  state.user.profilePostFilterId = id;
-  state.user.profileEventFilterId = id;
+  var ids = (state.user.profilePassionIds || []).slice();
+  if (!profileId) {
+    ids = [];
+  } else {
+    var i = ids.indexOf(profileId);
+    if (i > -1) ids.splice(i, 1); else ids.push(profileId);
+  }
+  state.user.profilePassionIds = ids;
+  // Miroir de compatibilité : une seule cochée se relit par un ancien client,
+  // plusieurs ou aucune valent « toutes » pour lui.
+  state.user.profilePostFilterId = (ids.length === 1) ? ids[0] : null;
+  state.user.profileEventFilterId = state.user.profilePostFilterId;
   saveState();
   renderProfilePassionRail();
   try { renderProfileContent(); } catch (e) { _v8Echec("rail_posts", e); }
@@ -1623,7 +1684,9 @@ function renderProfilePassionRail() {
   }
 
   var vivantes = passionsVivantes();
-  var selId = (_profilePassionSelected() || {}).id || null;
+  var selIds = {};
+  var nbSel = 0;
+  profilePassionsSelectionnees().forEach(function (pr) { selIds[pr.id] = 1; nbSel++; });
 
   // État propre « profil sans passion » : on ne laisse pas une rangée vide,
   // qui se lirait comme un chargement qui n'arrive jamais.
@@ -1639,30 +1702,23 @@ function renderProfilePassionRail() {
   }
 
   var posts = state.userPosts || [];
-  var sig = (selId || "-") + "|" + vivantes.map(function (p) { return p.id + ":" + p.passion; }).join(",")
+  var sig = (Object.keys(selIds).sort().join("+") || "-") + "|"
+    + vivantes.map(function (p) { return p.id + ":" + p.passion; }).join(",")
     + "|" + posts.length;
   if (rail.getAttribute("data-v9-sig") === sig) return rail;
   rail.setAttribute("data-v9-sig", sig);
-  rail.classList.toggle("has-filter", !!selId);
+  rail.classList.toggle("has-filter", nbSel > 0);
 
-  // Le neutre « Toutes » est une bulle comme les autres — pas un bouton d'un
-  // autre genre : il doit se toucher au même endroit, à la même taille.
-  var html = passionTileHTML({
-    emoji: "\u2728",
-    label: "Toutes",
-    count: posts.length,
-    selected: !selId,
-    dimmed: !!selId,
-    action: "profilePassion", arg: null,
-    title: "Toutes les passions",
-    tileKey: "",
-  });
-
-  html += vivantes.map(function (pr) {
+  // ⚠️ PLUS DE BULLE « TOUTES » (demande de Benjamin, 2026-08-31). En
+  // multisélection elle faisait double emploi : tout décocher et la cocher
+  // produisent le même état. En garder une aurait laissé deux commandes pour un
+  // seul résultat — et la question « laquelle est active ? » quand on coche une
+  // passion alors que « Toutes » l'est déjà.
+  var html = vivantes.map(function (pr) {
     var et = _passionEtiquette(pr);
     var meta = {};
     try { meta = passionById(pr.passion) || {}; } catch (e) {}
-    var on = (pr.id === selId);
+    var on = !!selIds[pr.id];
     return passionTileHTML({
       emoji: et.emoji,
       label: et.label,
@@ -1670,7 +1726,7 @@ function renderProfilePassionRail() {
       fallbackUrl: passionPhotoFallback(pr.passion),
       count: posts.filter(function (x) { return _postDeLaPassion(x, pr); }).length,
       selected: on,
-      dimmed: !on && !!selId,
+      dimmed: !on && nbSel > 0,
       action: "profilePassion", arg: String(pr.id),
       title: et.label,
       tileKey: pr.id,
@@ -1740,6 +1796,20 @@ function confirmArchivePassion(profileId) {
   );
 }
 
+// Retire une passion de TOUS les filtres du profil. Appelée aux points
+// d'ÉCRITURE (archivage, suppression) et jamais à l'affichage : une passion
+// cochée puis archivée laisserait sinon un filtre que plus aucune bulle ne peut
+// décocher — le rail ne rend que les passions vivantes.
+function _retirerPassionDesFiltres(profileId) {
+  try {
+    _migrerFiltresPassion();
+    state.user.profilePassionIds = (state.user.profilePassionIds || [])
+      .filter(function (id) { return id !== profileId; });
+    if (state.user.profilePostFilterId === profileId) state.user.profilePostFilterId = null;
+    if (state.user.profileEventFilterId === profileId) state.user.profileEventFilterId = null;
+  } catch (e) {}
+}
+
 function archiverPassion(profileId) {
   var pr = (state.user.profiles || []).find(function (p) { return p.id === profileId; });
   if (!pr) { closeModal(); return; }
@@ -1756,10 +1826,10 @@ function archiverPassion(profileId) {
 
   pr.archived = true;
   pr.archivedAt = Date.now();
-  // Un filtre qui pointait dessus retombe sur « Toutes » — sinon l'écran se
-  // vide sans que rien ne l'explique.
-  if (state.user.profilePostFilterId === profileId) state.user.profilePostFilterId = null;
-  if (state.user.profileEventFilterId === profileId) state.user.profileEventFilterId = null;
+  // Un filtre qui pointait dessus le lâche — sinon l'écran se vide sans que rien
+  // ne l'explique, et la seule commande capable de le décocher (sa bulle) vient
+  // justement de disparaître du rail.
+  _retirerPassionDesFiltres(profileId);
   // ⚠️ Et le FIL, surtout. Sa tuile quitte `renderProfileStrip` (qui ne rend
   // plus que les passions vivantes) mais la passion resterait dans
   // `_activeFeedPassions` : le filtre survivrait à sa propre commande. Si
@@ -2220,6 +2290,11 @@ function deleteProfile(profileId) {
     state.user.currentProfileId = (_vivantes[0] || state.user.profiles[0]).id;
   }
   // selectedFeedPassions ne contient pas d'IDs de profil, rien à nettoyer ici
+  // ⚠️ Les filtres du PROFIL, si : depuis le passage en multisélection, une
+  // passion supprimée qui y resterait serait un filtre que plus aucune bulle ne
+  // peut décocher (le rail ne rend que les passions existantes). Même raison
+  // qu'à l'archivage, et même point d'écriture.
+  _retirerPassionDesFiltres(profileId);
   saveState();
   // Re-synchronise le profil public pour retirer la passion supprimée de la
   // liste affichée aux autres.

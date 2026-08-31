@@ -335,21 +335,40 @@ test("⑪ le profil d'autrui : une identité, et des filtres de passion", async 
   expect(vu.html).not.toContain("profils passion");
   // Aucune carte d'identité : ce sont les MÊMES bulles que le Fil.
   expect(vu.cartesIdentite).toBe(0);
-  // « Toutes » en tête, active par défaut, puis une bulle par passion.
-  expect(vu.filtres[0].id).toBe("");
-  expect(vu.filtres[0].texte).toBe("Toutes");
-  expect(vu.filtres[0].actif).toBe(true);
-  expect(vu.filtres.map(f => f.id)).toEqual(["", "cuisine", "musique"]);
+  // ⚠️ PLUS DE BULLE « Toutes » (2026-08-31) : le profil visité suit la même
+  // règle que le mien et que le Fil — multisélection, et rien de coché DIT
+  // « toutes ». Une bulle par passion, aucune active au départ.
+  expect(vu.filtres.map(f => f.id)).toEqual(["cuisine", "musique"]);
+  expect(vu.filtres.filter(f => f.actif)).toEqual([]);
 
-  // Choix UNIQUE : sélectionner une passion désélectionne « Toutes ».
+  // MULTISÉLECTION : cocher une passion n'éteint pas les autres, et une seconde
+  // s'AJOUTE. C'est l'inversion demandée — le choix unique d'ADR-010 rendait ce
+  // rail incohérent avec celui du Fil, qui montre pourtant le même composant.
   await page.evaluate(() => setVisitedPassion("cuisine"));
   await page.waitForTimeout(300);
-  const apres = await page.evaluate(() => ({
+  let apres = await page.evaluate(() => ({
     actifs: Array.from(document.querySelectorAll("#visitedPassions [data-passion-tile].active")).map(b => b.getAttribute("data-passion-tile")),
     sel: Array.from(window._visited.passionSel),
   }));
   expect(apres.actifs).toEqual(["cuisine"]);
   expect(apres.sel).toEqual(["cuisine"]);
+
+  await page.evaluate(() => setVisitedPassion("musique"));
+  await page.waitForTimeout(300);
+  apres = await page.evaluate(() => ({
+    actifs: Array.from(document.querySelectorAll("#visitedPassions [data-passion-tile].active")).map(b => b.getAttribute("data-passion-tile")),
+    sel: Array.from(window._visited.passionSel),
+  }));
+  expect(apres.actifs.slice().sort()).toEqual(["cuisine", "musique"]);
+  expect(apres.sel.slice().sort()).toEqual(["cuisine", "musique"]);
+
+  // Et retoucher une passion cochée la retire SEULE : `toggleVisitedPassion`
+  // passait autrefois « » — donc « tout décocher » — ce qui en multisélection
+  // aurait effacé la sélection entière.
+  await page.evaluate(() => toggleVisitedPassion("cuisine"));
+  await page.waitForTimeout(300);
+  apres = await page.evaluate(() => Array.from(window._visited.passionSel));
+  expect(apres).toEqual(["musique"]);
 });
 
 test("⑫ résultat vide et erreur Supabase ne cassent pas le fil", async ({ page }) => {

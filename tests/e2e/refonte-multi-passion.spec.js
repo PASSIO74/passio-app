@@ -133,12 +133,20 @@ test("① le profil porte le rail de passions du Fil, au-dessus des onglets", as
   });
   expect(vu.rail, "le rail de passions doit exister sur le profil").toBe(true);
   expect(vu.memeComposant, "il réutilise le composant .profile-tile du Fil").toBe(true);
-  expect(vu.cles, "« Toutes » en tête, puis une bulle par passion")
-    .toEqual(["", "pp_moto", "pp_pod", "pp_voy"]);
+  // ⚠️ PLUS DE BULLE « Toutes » (demande de Benjamin, 2026-08-31). Le rail est
+  // passé en MULTISÉLECTION comme celui du Fil : ne rien cocher DIT « toutes »,
+  // donc la bulle offrait une seconde commande pour un état déjà atteignable.
+  expect(vu.cles, "une bulle par passion, et rien d'autre")
+    .toEqual(["pp_moto", "pp_pod", "pp_voy"]);
   expect(vu.avantLesOnglets, "le sélecteur se pose AU-DESSUS des onglets").toBe(true);
 });
 
 test("① bis bis — une bulle s'active au CLAVIER, comme le rôle qu'elle annonce", async ({ page }) => {
+  // ⚠️ Ce test a révélé un défaut RÉEL le 2026-08-31 : Chromium active déjà un
+  // `role="button"` au clavier, donc notre écouteur maison produisait un SECOND
+  // clic. Une affectation encaissait la répétition sans broncher ; la bascule
+  // de la multisélection, elle, s'annulait — la touche ne faisait plus rien.
+  // Le compteur ci-dessous est la garantie : UNE touche, UN basculement.
   // ⚠️ Une bulle est un `<div role="button" tabindex="0">`. Annoncer le rôle de
   // bouton sans réagir à Entrée ni à Espace, c'est promettre une commande qu'un
   // lecteur d'écran énonce et que le clavier ne déclenche pas — pire que de ne
@@ -148,20 +156,37 @@ test("① bis bis — une bulle s'active au CLAVIER, comme le rôle qu'elle anno
   await page.waitForTimeout(600);
 
   await page.evaluate(() => {
+    window.__setCalls = 0;
+    const orig = window.setProfilePassion;
+    window.setProfilePassion = function () { window.__setCalls++; return orig.apply(this, arguments); };
     document.querySelector('#v9ProfilePassions [data-passion-tile="pp_pod"]').focus();
   });
   await page.keyboard.press("Enter");
   await page.waitForTimeout(400);
-  expect(await page.evaluate(() => state.user.profilePostFilterId),
-    "Entrée pose le filtre, comme un tap").toBe("pp_pod");
+  expect(await page.evaluate(() => state.user.profilePassionIds),
+    "Entrée coche la passion, comme un tap").toEqual(["pp_pod"]);
+  expect(await page.evaluate(() => window.__setCalls),
+    "UNE touche = UN basculement (le clic du navigateur ne doit pas s'ajouter au nôtre)").toBe(1);
 
+  // ⚠️ La bulle « Toutes » a disparu : on re-teste donc Espace sur la MÊME
+  // bulle, qui doit la DÉCOCHER — c'est le seul chemin de retour au neutre.
   await page.evaluate(() => {
-    document.querySelector('#v9ProfilePassions [data-passion-tile=""]').focus();
+    document.querySelector('#v9ProfilePassions [data-passion-tile="pp_pod"]').focus();
   });
   await page.keyboard.press(" ");
   await page.waitForTimeout(400);
-  expect(await page.evaluate(() => state.user.profilePostFilterId),
-    "Espace aussi, et sans faire défiler la page").toBeFalsy();
+  expect(await page.evaluate(() => state.user.profilePassionIds),
+    "Espace aussi, et sans faire défiler la page").toEqual([]);
+  expect(await page.evaluate(() => window.__setCalls),
+    "deux touches = deux basculements, pas quatre").toBe(2);
+
+  // Et le dédoublonnage ne doit PAS avaler un vrai clic de souris : il est borné
+  // à la bulle qu'on vient d'activer au clavier.
+  await page.evaluate(() => { window.__setCalls = 0; });
+  await page.locator('#v9ProfilePassions [data-passion-tile="pp_moto"]').click();
+  await page.waitForTimeout(400);
+  expect(await page.evaluate(() => state.user.profilePassionIds)).toEqual(["pp_moto"]);
+  expect(await page.evaluate(() => window.__setCalls), "un tap reste un tap").toBe(1);
 });
 
 test("① bis — le profil n'a plus que deux onglets : Publications et Activité", async ({ page }) => {
@@ -175,6 +200,53 @@ test("① bis — le profil n'a plus que deux onglets : Publications et Activit�
   expect(onglets.map(o => o.libelle)).toEqual(["Publications", "Activité"]);
 });
 
+// ⚠️ DÉFAUT VISUEL RÉEL, corrigé le 2026-08-31. La barre d'onglets du profil
+// était une grille figée à TROIS colonnes, du temps où l'écran avait trois
+// onglets. ADR-011 n'en a laissé que deux : ils occupaient les deux tiers
+// gauches, avec une case vide à droite. Même famille côté Fil après le retrait
+// de « Tous ». Aucun test ne l'attrapait — un onglet mal centré ne lève rien.
+// On mesure donc la SYMÉTRIE, seule propriété qui distingue « centré » de
+// « aligné à gauche avec un trou ».
+test("① ter bis — les onglets du profil et les envies du Fil sont CENTRÉS", async ({ page }) => {
+  await poser(page);
+  await page.evaluate(() => goTo("profiles"));
+  await page.waitForTimeout(600);
+
+  const onglets = await page.evaluate(() => {
+    const bar = document.getElementById("v7ProfileTabs");
+    if (!bar) return null;
+    const r = bar.getBoundingClientRect();
+    const b = Array.from(bar.querySelectorAll(".v7-tab")).map((x) => x.getBoundingClientRect());
+    if (!b.length) return null;
+    return { n: b.length,
+             gauche: b[0].left - r.left,
+             droite: r.right - b[b.length - 1].right };
+  });
+  expect(onglets, "la barre d'onglets doit exister").not.toBeNull();
+  expect(onglets.n).toBe(2);
+  // Tolérance de 2 px : une bordure ou un demi-pixel de sous-pixel ne fait pas
+  // un décalage. Le défaut mesuré, lui, laissait un TIERS de la barre vide.
+  expect(Math.abs(onglets.gauche - onglets.droite),
+    `onglets décalés : ${Math.round(onglets.gauche)} px à gauche, ${Math.round(onglets.droite)} px à droite`)
+    .toBeLessThanOrEqual(2);
+
+  await page.evaluate(() => goTo("feed"));
+  await page.waitForTimeout(600);
+  const envies = await page.evaluate(() => {
+    const sel = document.getElementById("feedIntentSelector");
+    if (!sel || sel.hidden) return null;
+    const b = Array.from(sel.querySelectorAll(".feed-intent-btn")).map((x) => x.getBoundingClientRect());
+    if (!b.length) return null;
+    const r = sel.getBoundingClientRect();
+    return { n: b.length, gauche: b[0].left - r.left, droite: r.right - b[b.length - 1].right };
+  });
+  expect(envies, "le rail d'envies doit être visible").not.toBeNull();
+  expect(envies.n, "quatre envies depuis le retrait de « Tous »").toBe(4);
+  expect(Math.abs(envies.gauche - envies.droite),
+    `envies décalées : ${Math.round(envies.gauche)} px à gauche, ${Math.round(envies.droite)} px à droite`)
+    .toBeLessThanOrEqual(2);
+});
+
 test("① ter — choisir une passion filtre Publications ET Activité d'un seul geste", async ({ page }) => {
   await poser(page);
   await page.evaluate(() => goTo("profiles"));
@@ -184,7 +256,7 @@ test("① ter — choisir une passion filtre Publications ET Activité d'un seul
     posts: document.getElementById("myPosts").innerText,
     events: document.getElementById("profileEvents").innerText,
   }));
-  expect(avant.posts, "« Toutes » : les deux publications").toContain("MES_MOTO");
+  expect(avant.posts, "rien de coché = les deux publications").toContain("MES_MOTO");
   expect(avant.posts).toContain("MES_PODCAST");
   expect(avant.events).toContain("BALADE_MOTO");
   expect(avant.events).toContain("REC_PODCAST");
@@ -206,9 +278,33 @@ test("① ter — choisir une passion filtre Publications ET Activité d'un seul
   expect(apres.events, "Activité ne montre que Moto").toContain("BALADE_MOTO");
   expect(apres.events).not.toContain("REC_PODCAST");
   // ⚠️ Les deux clés historiques restent écrites, et ÉGALES : les laisser
-  // diverger, c'est l'incohérence que ce rail supprime.
+  // diverger, c'est l'incohérence que ce rail supprime. Elles ne sont plus la
+  // source de vérité (`profilePassionIds` l'est) mais restent un miroir pour un
+  // appareil resté sur l'ancienne version.
   expect(apres.postFilter).toBe("pp_moto");
   expect(apres.eventFilter).toBe("pp_moto");
+  expect(await page.evaluate(() => state.user.profilePassionIds)).toEqual(["pp_moto"]);
+
+  // MULTISÉLECTION : cocher « Podcast » AJOUTE, il ne remplace pas — et les deux
+  // onglets suivent ensemble.
+  await page.evaluate(() => {
+    document.querySelector('#v9ProfilePassions [data-passion-tile="pp_pod"]').click();
+  });
+  await page.waitForTimeout(500);
+  const deux = await page.evaluate(() => ({
+    posts: document.getElementById("myPosts").innerText,
+    events: document.getElementById("profileEvents").innerText,
+    ids: state.user.profilePassionIds,
+    // Le miroir de compatibilité vaut « toutes » dès qu'il y en a plusieurs :
+    // un ancien client ne saurait pas représenter deux passions.
+    postFilter: state.user.profilePostFilterId,
+  }));
+  expect(deux.ids.slice().sort()).toEqual(["pp_moto", "pp_pod"]);
+  expect(deux.posts).toContain("MES_MOTO");
+  expect(deux.posts).toContain("MES_PODCAST");
+  expect(deux.events).toContain("BALADE_MOTO");
+  expect(deux.events).toContain("REC_PODCAST");
+  expect(deux.postFilter).toBeFalsy();
 });
 
 test("① quater — un profil sans passion affiche un état propre, pas une rangée vide", async ({ page }) => {

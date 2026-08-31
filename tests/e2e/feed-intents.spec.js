@@ -177,18 +177,26 @@ test.describe("Fil — Envie du moment (UI-2 active par défaut)", () => {
     expect(legacyHandler).not.toContain("openFeedPost(");
   });
 
-  test("ON : cinq intentions accessibles, Tous actif et aucun hard filter", async ({ page }) => {
+  test("ON : quatre intentions accessibles, aucune cochée, aucun hard filter", async ({ page }) => {
     await boot(page, { preview: true });
     await seedFeed(page, true);
 
     await expect(page.locator("#moodSelector")).toBeHidden();
     await expect(page.locator("#feedIntentSelector")).toBeVisible();
-    await expect(page.locator(".feed-intent-btn")).toHaveCount(5);
-    await expect(page.locator('.feed-intent-btn[data-intent="for_you"]')).toHaveAttribute("aria-pressed", "true");
+    // ⚠️ QUATRE depuis le 2026-08-31 : la pastille « Tous » a été retirée sur
+    // demande de Benjamin. En multisélection elle faisait double emploi — ne
+    // rien cocher DIT « tous ». Le neutre `for_you` existe toujours DANS le
+    // moteur, il n'a simplement plus de bouton, ce que la ligne suivante vérifie.
+    await expect(page.locator(".feed-intent-btn")).toHaveCount(4);
+    await expect(page.locator('.feed-intent-btn[data-intent="for_you"]')).toHaveCount(0);
+    expect(await page.evaluate(() => activeFeedIntent)).toBe("for_you");
+    expect(await page.evaluate(() => feedIntentsSelected())).toEqual([]);
+    // Et AUCUNE n'est cochée au départ : le neutre ne doit pas élargir le fil.
+    expect(await page.locator(".feed-intent-btn[aria-pressed='true']").count()).toBe(0);
 
-    // Les cinq libellés exigés par la direction, dans l'ordre.
+    // Les quatre libellés, dans l'ordre.
     expect(await page.locator(".feed-intent-btn").allTextContents())
-      .toEqual(["Tous", "Explorer", "Apprendre", "Idées", "Rencontrer"]);
+      .toEqual(["Explorer", "Apprendre", "Idées", "Rencontrer"]);
 
     const ids = await renderedIds(page);
     expect(ids.slice().sort()).toEqual(POSTS.map((p) => p.id).sort());
@@ -247,23 +255,29 @@ test.describe("Fil — Envie du moment (UI-2 active par défaut)", () => {
       .toEqual(["create", "learn"]);
   });
 
-  test("retaper l'intention active revient immédiatement à Tous", async ({ page }) => {
+  test("retaper l'intention active revient immédiatement au neutre", async ({ page }) => {
     await boot(page, { preview: true });
     await seedFeed(page, true);
 
     await page.locator('.feed-intent-btn[data-intent="create"]').click();
     await expect(page.locator('.feed-intent-btn[data-intent="create"]')).toHaveAttribute("aria-pressed", "true");
     await page.locator('.feed-intent-btn[data-intent="create"]').click();
-    await expect(page.locator('.feed-intent-btn[data-intent="for_you"]')).toHaveAttribute("aria-pressed", "true");
+    // ⚠️ Le retour au neutre ne se LIT plus sur un bouton « Tous » : il se lit à
+    // ce qu'AUCUNE pastille n'est cochée. C'est la même garantie, sur la seule
+    // surface qui subsiste.
+    await expect(page.locator('.feed-intent-btn[data-intent="create"]')).toHaveAttribute("aria-pressed", "false");
+    expect(await page.locator(".feed-intent-btn[aria-pressed='true']").count()).toBe(0);
     expect(await page.evaluate(() => activeFeedIntent)).toBe("for_you");
     expect(await page.evaluate(() => feedIntentsSelected())).toEqual([]);
   });
 
-  test("le bouton Tous est aussi enregistré comme un retour, pas une sélection", async ({ page }) => {
+  test("le retour au neutre est enregistré comme un retour, pas une sélection", async ({ page }) => {
     await boot(page, { preview: true });
     await seedFeed(page, true);
     await page.locator('.feed-intent-btn[data-intent="learn"]').click();
-    await page.locator('.feed-intent-btn[data-intent="for_you"]').click();
+    // Le neutre se pose en DÉCOCHANT la dernière envie — le bouton « Tous » qui
+    // servait à ça n'existe plus, mais l'événement de télémétrie, lui, ne change pas.
+    await page.locator('.feed-intent-btn[data-intent="learn"]').click();
 
     const last = await page.evaluate(() => window.__intentTel.filter((e) =>
       e.name.indexOf("feed_intent_") === 0).pop());

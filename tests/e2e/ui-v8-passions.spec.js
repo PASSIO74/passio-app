@@ -16,10 +16,10 @@
 //      `toggleProfileSelect`, aucune carte n'est « sélectionnée », et
 //      « Réinitialiser » a disparu ;
 //   ③ le Studio est le seul point de choix de la passion d'écriture ;
-//   ④ « Publications » porte un filtre à choix UNIQUE, avec « Toutes » pour
+//   ④ « Publications » porte un filtre MULTISÉLECTION (choix unique + « Toutes »
 //      neutre, et il filtre pour de vrai ;
 //   ⑤ la migration défensive de l'ancien `profileFilterIds` : une seule valeur
-//      valide est reprise, zéro ou plusieurs retombent sur « Toutes » ;
+//      jusqu'au 2026-08-31), rien de coché valant « toutes » ;
 //   ⑥ « Activités » porte le même filtre, servi par les événements existants ;
 //   ⑦ le Studio annonce la passion de publication et prend l'active par défaut ;
 //   ⑧ l'ARCHIVAGE ne supprime AUCUN contenu, refuse la dernière passion, refuse
@@ -186,39 +186,49 @@ test.describe("UI-8 — un profil personnel, plusieurs passions", () => {
   });
 
   // ── ④ Le filtre « Publications » ──────────────────────────────────────────
-  test("« Publications » : filtre à choix unique, « Toutes » par défaut", async ({ page }) => {
+  test("« Publications » : filtre MULTI-SÉLECTION, rien de coché = tout", async ({ page }) => {
     await boot(page);
     await poserTroisPassions(page);
     await ouvrirProfil(page, "publications");
 
-    // ⚠️ SÉLECTEURS RÉÉCRITS, EXIGENCES INCHANGÉES. Les deux rangées de puces
-    // jumelles (`#v8PostFilter` / `#v8EventFilter`) sont remplacées par UN rail
-    // de bulles au-dessus des onglets (`#v9ProfilePassions`, ADR-011 §2), qui
-    // commande Publications ET Activité. Le choix reste UNIQUE, « Toutes » reste
-    // le neutre, et le filtre filtre toujours pour de vrai.
+    // ⚠️ DEUX INVERSIONS SUCCESSIVES, ET C'EST LA SECONDE QUI VAUT. Les deux
+    // rangées de puces jumelles (`#v8PostFilter` / `#v8EventFilter`) ont d'abord
+    // été remplacées par UN rail de bulles à choix UNIQUE avec une bulle
+    // « Toutes » (ADR-011 §2) ; sur demande de Benjamin (2026-08-31) ce rail
+    // passe en MULTISÉLECTION et « Toutes » disparaît — en multi, ne rien cocher
+    // dit déjà « toutes », et garder la bulle offrait deux commandes pour un
+    // seul état. Ce que le test garantit ne bouge pas : le rail commande
+    // Publications ET Activité, et il filtre pour de vrai.
     const rangee = page.locator("#v9ProfilePassions");
     await expect(rangee).toBeVisible();
-    await expect(rangee.locator(".profile-tile")).toHaveCount(4); // Toutes + 3
-    await expect(rangee.locator('[data-passion-tile=""]')).toHaveClass(/active/);
+    await expect(rangee.locator(".profile-tile")).toHaveCount(3); // 3 passions, plus de « Toutes »
+    await expect(rangee.locator('[data-passion-tile=""]')).toHaveCount(0);
+    // Neutre au départ : aucune cochée, tout est là.
+    await expect(rangee.locator(".profile-tile.active")).toHaveCount(0);
     await expect(page.locator("#myPosts .post")).toHaveCount(3);
 
     await rangee.locator('[data-passion-tile="v8_pod"]').click();
     await page.waitForTimeout(300);
     await expect(page.locator("#myPosts .post")).toHaveCount(1);
     await expect(page.locator("#myPosts")).toContainText("Episode 12");
-    // Choix UNIQUE : une seule pastille allumée.
     await expect(rangee.locator(".profile-tile.active")).toHaveCount(1);
 
-    // Un second choix REMPLACE le premier, il ne s'y ajoute pas.
+    // Un second choix S'AJOUTE au premier — c'est toute la différence.
     await rangee.locator('[data-passion-tile="v8_yoga"]').click();
     await page.waitForTimeout(300);
-    await expect(rangee.locator(".profile-tile.active")).toHaveCount(1);
+    await expect(rangee.locator(".profile-tile.active")).toHaveCount(2);
+    await expect(page.locator("#myPosts .post")).toHaveCount(2);
     await expect(page.locator("#myPosts")).toContainText("Salutation au soleil");
+    await expect(page.locator("#myPosts")).toContainText("Episode 12");
 
-    // Retour au neutre.
-    await rangee.locator('[data-passion-tile=""]').click();
+    // Retour au neutre en DÉCOCHANT : il n'y a plus d'autre chemin, et il doit
+    // ramener exactement l'état de départ.
+    await rangee.locator('[data-passion-tile="v8_pod"]').click();
+    await rangee.locator('[data-passion-tile="v8_yoga"]').click();
     await page.waitForTimeout(300);
+    await expect(rangee.locator(".profile-tile.active")).toHaveCount(0);
     await expect(page.locator("#myPosts .post")).toHaveCount(3);
+    expect(await page.evaluate(() => state.user.profilePassionIds)).toEqual([]);
     expect(await page.evaluate(() => state.user.profilePostFilterId)).toBeFalsy();
   });
 
