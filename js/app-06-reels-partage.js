@@ -1263,6 +1263,18 @@ async function saveMainProfile() {
   // exactement le défaut qu'on vient de corriger — l'avatar public du compte
   // changeait au gré de la passion choisie. On ne l'initialise que s'il est absent.
   if (!state.user.general.emoji) state.user.general.emoji = currentProfile()?.emoji || "✨";
+  // ⚠️ ET LA COULEUR, symétriquement. `general.color` n'était assigné NULLE PART
+  // — vérifié par `git grep "general\.color\s*="`, qui ne rendait rien sur aucune
+  // branche. `g.color` valait donc toujours `undefined`, et le
+  // `color: g.color || prof.color` de `supaUpsertProfile` retombait
+  // systématiquement sur la couleur de la passion ACTIVE : basculer de passion
+  // continuait de réécrire la couleur de tout l'historique, alors que l'emoji,
+  // lui, était corrigé. La moitié du défaut avait survécu à son correctif.
+  //
+  // Le test `multi-passion-integrite` ① ne l'a pas vu parce qu'il POSE
+  // `general.color` à la main dans son état de départ — un état qu'aucun chemin
+  // réel ne produit. Il testait la fonction, pas le parcours.
+  if (!state.user.general.color) state.user.general.color = currentProfile()?.color || "#8b5cf6";
   if (username) state.user.name = username;
   // ⚠️ Renommer TOUTES les passions, pas seulement l'active. `supaUpsertProfile` et
   // `_msgSenderMeta` prennent bien le pseudo général en priorité, mais `prof.name`
