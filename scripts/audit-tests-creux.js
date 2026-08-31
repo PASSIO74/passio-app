@@ -62,6 +62,13 @@ const ARTEFACTS = new Set([
   "version-skew.spec.js",
   "user-state-horodatage.spec.js",   // trigger trg_user_state_horodatage (SYNC-CLOCK-012)
   "suppression-compte.spec.js",      // Edge Function delete-account (compte + médias)
+  // Garde-fou de VOCABULAIRE (ADR-010) : il télécharge les SOURCES réellement
+  // servies au navigateur et y cherche des formulations interdites. Il ne pilote
+  // pas l'UI, et c'est délibéré — une formulation peut revenir dans une surface
+  // qu'aucun test de rendu n'ouvre (tour d'accueil, landing, état vide rare),
+  // ce qui est précisément ce qui s'était produit avant ce lot. Vérifier
+  // l'artefact servi est donc plus large que piloter un écran, pas plus étroit.
+  "adr-010-vocabulaire.spec.js",
 ]);
 
 // ── 2. Ce que chaque spec touche réellement ─────────────────────────────────
