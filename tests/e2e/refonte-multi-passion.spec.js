@@ -138,6 +138,32 @@ test("① le profil porte le rail de passions du Fil, au-dessus des onglets", as
   expect(vu.avantLesOnglets, "le sélecteur se pose AU-DESSUS des onglets").toBe(true);
 });
 
+test("① bis bis — une bulle s'active au CLAVIER, comme le rôle qu'elle annonce", async ({ page }) => {
+  // ⚠️ Une bulle est un `<div role="button" tabindex="0">`. Annoncer le rôle de
+  // bouton sans réagir à Entrée ni à Espace, c'est promettre une commande qu'un
+  // lecteur d'écran énonce et que le clavier ne déclenche pas — pire que de ne
+  // rien annoncer du tout.
+  await poser(page);
+  await page.evaluate(() => goTo("profiles"));
+  await page.waitForTimeout(600);
+
+  await page.evaluate(() => {
+    document.querySelector('#v9ProfilePassions [data-passion-tile="pp_pod"]').focus();
+  });
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(400);
+  expect(await page.evaluate(() => state.user.profilePostFilterId),
+    "Entrée pose le filtre, comme un tap").toBe("pp_pod");
+
+  await page.evaluate(() => {
+    document.querySelector('#v9ProfilePassions [data-passion-tile=""]').focus();
+  });
+  await page.keyboard.press(" ");
+  await page.waitForTimeout(400);
+  expect(await page.evaluate(() => state.user.profilePostFilterId),
+    "Espace aussi, et sans faire défiler la page").toBeFalsy();
+});
+
 test("① bis — le profil n'a plus que deux onglets : Publications et Activité", async ({ page }) => {
   await poser(page);
   await page.evaluate(() => goTo("profiles"));

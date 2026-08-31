@@ -2943,8 +2943,26 @@ function _passionTileOnclick(action, arg) {
   return "";
 }
 
+// ⚠️ `role="button"` OBLIGE À LA TOUCHE. Une bulle est un `<div>` : lui donner
+// le rôle de bouton sans l'activer au clavier, c'est PROMETTRE une commande
+// qu'un lecteur d'écran annonce et qu'Entrée ne déclenche pas — pire que de ne
+// rien annoncer. Un seul écouteur délégué, posé une fois, couvre les trois
+// surfaces (Fil, mon profil, profil visité) et survit à tous les re-rendus.
+function _armerClavierBulles() {
+  if (window._passionTilesKeyboard) return;
+  window._passionTilesKeyboard = true;
+  document.addEventListener("keydown", function (e) {
+    if (e.key !== "Enter" && e.key !== " " && e.key !== "Spacebar") return;
+    var t = e.target && e.target.closest && e.target.closest("[data-passion-tile]");
+    if (!t) return;
+    e.preventDefault();   // sinon l'espace fait défiler la page sous la bulle
+    t.click();
+  });
+}
+
 function passionTileHTML(o) {
   o = o || {};
+  _armerClavierBulles();
   var emoji = String(o.emoji || "✨");
   var label = String(o.label || "Passion");
   var selected = !!o.selected;
