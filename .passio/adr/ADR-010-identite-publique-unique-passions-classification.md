@@ -161,6 +161,50 @@ blanche du référentiel les rejette toutes.
 - Un besoin de séparation réelle (audiences distinctes, pseudonymes) exigerait un nouvel ADR **et**
   une refonte du graphe social — ce n'est pas une évolution incrémentale de ce modèle.
 
+### Deux pièges de FUSION, payés le 2026-08-31
+
+Le hotfix #226 (séparation des autorités d'écriture du profil) et cette refonte ont été menés
+sur deux branches, puis fusionnés. Sept conflits, tous des correctifs qui se recouvrent. Deux
+résolutions étaient fausses, et **aucune ne se voyait** — ni dans le diff, ni à l'exécution, ni
+dans les audits statiques. Seule la suite complète en CI les a levées (run 2342, 16 rouges).
+
+**① Un nom qui a changé de sens.** Quatre chemins continuaient d'appeler `supaUpsertProfile()`
+pour publier la carte d'une passion (photo, couverture, retrait de couverture, bio). Le nom
+existait toujours, l'appel compilait, aucun test unitaire ne bronchait — mais depuis le hotfix
+ce n'est plus qu'un **alias d'`ensure`**, qui n'écrit AUCUN champ d'une ligne existante. Les
+quatre étaient devenus des no-op silencieux : la carte vue par un visiteur ne bougeait plus.
+La leçon générale : **garder un ancien nom comme alias d'une sémantique réduite transforme
+chaque appelant non recâblé en écriture morte.** Un alias est commode pour les tests ; en
+production il vaut mieux supprimer le nom, pour que le compilateur — ici `audit:handlers` et la
+revue — désigne les appelants restants.
+
+**② « Même effet » n'est pas une preuve.** La résolution avait remplacé le choix de la passion
+principale par `optionalCanonicalPassion(première vivante)`, avec le commentaire « même effet,
+une seule règle ». Les deux expressions ne répondent pas à la même question : `optionalCanonical`
+répond « cette valeur-là est-elle écrivable ? », le parcours répond « laquelle de mes passions
+représente ce compte ? ». Un compte portant une passion personnelle **puis** une canonique
+publiait donc `passion_id: null` — il perdait son classement public en possédant pourtant une
+passion valide. La leçon : **une fusion qui unifie deux implémentations doit être justifiée par
+un test, jamais par un commentaire affirmant l'équivalence.**
+
+Conséquence de méthode, appliquée : les deux verrous ajoutés visent le **résultat** (« la liste
+des passions atteint la base », « la principale vaut yoga ») et non le nom de la fonction
+appelée. Un verrou qui exigerait « `supaUpsertProfile` n'est plus appelée » resterait vert le
+jour où un cinquième chemin oublierait de publier tout court.
+
+### Un test qui ne contrôle pas sa prémisse mesure autre chose
+
+Trois tests du référentiel passaient en local et échouaient en CI. La cause n'était pas le code :
+`index.html` charge le SDK Supabase depuis un CDN. Sans réseau sortant, `_initRealSupa()` renonce
+et le test installe son faux référentiel en premier. **Avec** réseau, le SDK se charge au boot,
+`chargerReferentielPassions()` lit la table `passions` de la **vraie base**, et comme ce cache est
+à un seul coup, le faux n'est plus jamais interrogé. Le test mesurait la production.
+
+Le défaut était dans le test, pas dans le code — un vrai client DOIT charger le vrai référentiel
+au démarrage. La suite coupe désormais la source du SDK **et vérifie sa prémisse** avant chaque
+cas. Règle à retenir : **tout test qui injecte un faux client doit prouver qu'aucun vrai client
+ne l'a précédé**, sinon il finit par passer, ou échouer, pour une raison qui ne le regarde pas.
+
 ## Alternatives écartées
 
 - **Segmenter les abonnements par passion** (colonne `passion_id` dans `follows`) : rejeté. Coût de

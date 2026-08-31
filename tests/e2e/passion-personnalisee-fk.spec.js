@@ -175,10 +175,19 @@ test("le profil PUBLIC part quand même : la passion invalide est normalisée en
     state.user.currentProfileId = "pp_tricot";
     saveState();
     window.__inserts = [];
+    // ⚠️ `supaEnsureProfileExists` met en cache l'UID une fois la ligne assurée :
+    // sans cette remise à zéro, l'appel ci-dessous ne part JAMAIS et le test
+    // constate une absence d'écriture qu'il prend pour un résultat. Le cache est
+    // exactement ce qui évite un conflit SQL à chaque interaction — c'est au
+    // test de dire qu'il repart d'un compte inconnu.
+    if (typeof _resetProfilAssure === "function") _resetProfilAssure();
     const ok = await supaUpsertProfile();
     const envoye = window.__inserts.filter(i => i.table === "profiles").map(i => i.rows[0].passion_id);
     return { ok: ok, envoye: envoye };
   });
+  // Prémisse : une écriture a bien été tentée. Sans elle, les deux assertions
+  // suivantes passeraient sur un tableau vide.
+  expect(verdict.envoye.length, "une ligne profiles doit avoir été écrite").toBe(1);
   // ⚠️ ATTENTE RETOURNÉE, et c'est le maillon le plus grave des cinq.
   // `profiles.profiles_passion_fk` référence la même table : la synchronisation de
   // l'identité PUBLIQUE échouait elle aussi, donc pseudo, avatar et bio
