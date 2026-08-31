@@ -510,7 +510,12 @@
       </div>
 
       <div class="mood-selector feed-intent-selector" id="feedIntentSelector" hidden role="group" aria-label="Envie du moment">
-        <button type="button" class="feed-intent-btn active" data-intent="for_you" aria-pressed="true">Tous</button>
+        <!-- ⚠️ PLUS DE BOUTON « Tous » (demande de Benjamin, 2026-08-31). Les
+             envies sont multisélectionnables depuis ADR-011 §4 : n'en cocher
+             aucune DIT déjà « tous », et garder la pastille laissait deux
+             commandes pour un seul état. `for_you` reste le neutre INTERNE —
+             `normalizeFeedIntent`, `activeFeedIntent` et `setFeedIntent(null)`
+             s'appuient dessus — il n'a simplement plus de bouton. -->
         <button type="button" class="feed-intent-btn" data-intent="discover" aria-pressed="false">Explorer</button>
         <button type="button" class="feed-intent-btn" data-intent="learn" aria-pressed="false">Apprendre</button>
         <button type="button" class="feed-intent-btn" data-intent="create" aria-pressed="false">Idées</button>

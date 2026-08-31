@@ -77,11 +77,18 @@ son kill switch, avec son comportement d'origine à l'octet près.
 - Les passions se présentent **en haut du profil**, dans le **même composant** que
   le Fil (`passionTileHTML`, app-02 — mêmes classes `.profile-tile*`, donc mêmes
   dimensions, espacements et états visuels), **au-dessus** des onglets.
-- **Choix UNIQUE** ici, contre multi-sélection sur le Fil : le profil répond à
-  « je regarde quelle partie de cette personne ? », le Fil à « qu'est-ce que je
-  veux voir ? ».
-- La sélection commande **les deux onglets à la fois**. Les deux clés historiques
-  (`profilePostFilterId`, `profileEventFilterId`) restent écrites, **tenues égales**.
+- ~~**Choix UNIQUE** ici, contre multi-sélection sur le Fil~~ — **AMENDÉ le
+  2026-08-31 (voir « Amendement » en fin de document) : MULTI-SÉLECTION ici
+  aussi.** L'argument d'origine (« le profil répond à *quelle partie de cette
+  personne ?*, le Fil à *qu'est-ce que je veux voir ?* ») ne tenait pas devant
+  l'écran : deux surfaces qui montrent le **même composant** doivent répondre au
+  **même geste**, sans quoi le composant ment sur ce qu'il fait.
+- La sélection commande **les deux onglets à la fois**. La source de vérité est
+  `state.user.profilePassionIds` (liste) ; les deux clés historiques
+  (`profilePostFilterId`, `profileEventFilterId`) ne sont plus lues pour filtrer
+  et ne servent que de **miroir de compatibilité** pour un appareil resté sur la
+  version précédente — une seule passion cochée s'y reflète, plusieurs ou aucune
+  y valent « toutes ».
 - **Deux onglets** : « Publications » et « Activité ». Les cinq icônes de type de
   contenu restent des sous-filtres de « Publications ».
 - **Retirés** : l'onglet et le panneau « À propos », la ligne « Passion active »
@@ -185,3 +192,54 @@ le fil de tout le monde.
   le OU inclusif ne borne rien par construction.
 - Une demande répétée et observée de retrouver les carnets de voyage, qui rouvrirait
   la question de leur place (fonctionnalité à part, ou simple type de publication).
+
+## Amendement du 2026-08-31 — multi-sélection partout, et plus de neutre explicite
+
+Demandé par Benjamin après essai réel : « sur le profil enlève *Toutes* et mets
+plutôt le mode multi-sélection de passion, ensuite recentre les 2 onglets ;
+pareil sur le fil enlève *Tous*, la multi-sélection fait le job, et recentre les
+onglets. »
+
+**Ce qui change.**
+
+- Le rail du profil — le mien **et** celui d'un tiers — passe en
+  **multi-sélection**. `setProfilePassion` et `setVisitedPassion` deviennent des
+  bascules : cocher une passion n'éteint plus les autres.
+- La bulle **« Toutes »** et la pastille **« Tous »** sont **retirées**. En
+  multi-sélection elles font double emploi : *ne rien cocher* dit déjà « tout ».
+  En garder une, c'était offrir deux commandes pour un seul état — et poser la
+  question insoluble « laquelle est active quand je coche une passion alors que
+  *Toutes* l'est déjà ? ».
+- Le neutre `for_you` **subsiste dans le moteur** (`normalizeFeedIntent`,
+  `activeFeedIntent`, `setFeedIntent(null)`, la télémétrie `feed_intent_reset`) :
+  il n'a simplement plus de bouton. Le retirer du code aurait cassé le classement,
+  qui s'appuie dessus quand aucune envie n'est cochée.
+- Les deux barres d'onglets sont **centrées**. Ce n'était pas une préférence
+  esthétique mais un **défaut** : la barre du profil était une grille figée à
+  *trois* colonnes, du temps où l'écran avait trois onglets — les deux restants
+  occupaient les deux tiers gauches. Les grilles comptent désormais les éléments
+  réellement présents (`grid-auto-flow: column`), pour qu'un ajout ou un retrait
+  futur ne redécale plus rien.
+
+**Un défaut réel révélé par ce changement, et la règle qu'il laisse.**
+
+`app-08` porte depuis toujours un **délégué générique** qui active tout
+`[role="button"]` non natif à Entrée et Espace. La refonte y avait ajouté un
+second écouteur dédié aux bulles : **deux activations pour une touche**. Tant que
+le geste était une *affectation*, la répétition était idempotente et strictement
+invisible ; devenue une *bascule*, elle s'annule — la touche ne faisait plus
+rien, sans erreur ni test rouge ailleurs. L'écouteur en double a été supprimé.
+
+> **Règle** : ne jamais ajouter d'activation clavier pour un `role="button"` dans
+> ce dépôt. Elle existe, une fois, dans `app-08` — qui documente déjà ce piège à
+> propos des `.nav-item`, qu'il exclut « pour ne pas activer deux fois ».
+
+**Migration.** `_migrerFiltresPassion` a désormais **deux étages**, et il faut les
+deux : un compte peut arriver avec `profileFilterIds` (multi, d'avant ADR-011) ou
+avec `profilePostFilterId` (unique, d'ADR-011). Sauter l'un perdrait en silence le
+filtre de l'un des deux groupes.
+
+**Nettoyage.** Une passion archivée ou supprimée est retirée de la sélection au
+**point d'écriture** (`_retirerPassionDesFiltres`) : le rail ne rend que les
+passions vivantes, donc un filtre qui pointe une passion disparue n'aurait plus
+aucune bulle pour le décocher — maintenant que « Toutes » n'existe plus.

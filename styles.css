@@ -1251,7 +1251,15 @@
        Un rail texte à cinq choix, dans le langage visuel existant du Feed.
        Le sélecteur historique reste intact et visible tant que le flag est OFF. */
     .feed-intent-selector {
-      grid-template-columns: repeat(5, minmax(0, 1fr));
+      /* Quatre envies depuis le retrait de « Tous » (2026-08-31), et CENTRÉES :
+         `repeat(5, …)` laissait une colonne vide à droite, donc un rail visuellement
+         décalé vers la gauche. On compte les colonnes réellement présentes plutôt
+         que d'en figer le nombre — retirer ou ajouter une envie ne redécalera plus
+         rien. */
+      grid-auto-flow: column;
+      grid-auto-columns: minmax(0, 1fr);
+      grid-template-columns: none;
+      justify-content: center;
       padding: 0 4px;
       margin-bottom: 10px;
     }
@@ -7581,7 +7589,10 @@ body.ctx-locked #appMain { overflow: hidden; }
 }
 :root.passio-ui-v2 #feedIntentSelector::-webkit-scrollbar { display: none; }
 :root.passio-ui-v2 #feedIntentSelector .feed-intent-btn {
-  flex: 1 0 auto;
+  /* Centrées comme sous UI-7. `1 0 auto` les empêche de rétrécir sous leur
+     texte ; le centrage n'opère que tant que les quatre tiennent, et au-delà la
+     bande défile — c'est le comportement voulu, pas une régression. */
+  flex: 0 0 auto;
   padding-inline: 9px;
   overflow: visible;
   text-overflow: clip;   /* on défile, on ne coupe pas */
@@ -9265,10 +9276,14 @@ body.ctx-locked #appMain { overflow: hidden; }
    « Apprendre » se faisaient couper alors que « Tous » et « Idées » laissaient
    de la place vide à côté d'eux. Chaque onglet part donc de la largeur de son
    texte, et l'espace restant est réparti : personne n'est tronqué tant que la
-   somme des libellés tient — ce qui est le cas à 320 px avec ces cinq mots. */
-:root.passio-ui-7 #feedIntentSelector { overflow-x: hidden; }
+   somme des libellés tient — ce qui est le cas à 320 px avec ces mots.
+   ⚠️ Depuis le retrait de « Tous » (2026-08-31) ils ne sont plus que quatre et
+   ne s'ÉTIRENT plus : `flex: 0 1 auto` + `justify-content: center` les groupe au
+   milieu du rail. Étirés, ils restaient collés aux bords et le rail paraissait
+   déséquilibré une fois la cinquième case partie. */
+:root.passio-ui-7 #feedIntentSelector { overflow-x: hidden; justify-content: center; }
 :root.passio-ui-7 #feedIntentSelector .feed-intent-btn {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
   padding-inline: 4px;
   font-size: 11px;
@@ -9359,9 +9374,15 @@ body.ctx-locked #appMain { overflow: hidden; }
 :root.passio-ui-7 #screen-feed .story-label { font-size: 9px; max-width: 48px; }
 
 /* ── §6 · Profil : trois onglets NOMMÉS ──────────────────────────────────── */
+/* ⚠️ La grille était figée à TROIS colonnes, du temps où le profil avait trois
+   onglets. ADR-011 n'en a laissé que deux : ils occupaient donc les deux tiers
+   gauches, avec une case vide à droite — le décalage que Benjamin a vu le
+   2026-08-31. On compte désormais les onglets réellement présents. */
 :root.passio-ui-7 .v7-tabs {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-template-columns: none;
   gap: 6px;
   padding: 3px;
   margin: 12px 0;

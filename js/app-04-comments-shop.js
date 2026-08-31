@@ -2640,10 +2640,6 @@ async function openUserProfile(authorId, source) {
   // contourner ce chemin.
   const passionsHTML = userPassions.length > 0
     ? '<div id="visitedPassions" class="profile-strip v9-profile-strip" role="group" aria-label="Filtrer ses publications par passion">'
-      + passionTileHTML({
-          emoji: "\u2728", label: "Toutes", selected: true, dimmed: false,
-          action: "visitedPassion", arg: "", title: "Toutes ses passions", tileKey: "",
-        })
       + userPassions.map(p => {
           const pas = passionById(p.id);
           // ⚠️ L'ORDRE compte. `passionById` ne rend JAMAIS null : sur un id
@@ -2838,12 +2834,15 @@ async function openUserProfile(authorId, source) {
 // icônes de type sont des filtres cumulables ; rien de coché = tout affiché.
 // L'état vit dans window._visited (posé par openUserProfile).
 
-// Choix UNIQUE (ADR-010) : une passion, ou « Toutes ». `passionSel` reste un Set
-// pour ne pas toucher au filtrage de `_renderVisitedContent` — il contient
-// désormais zéro ou un élément.
+// Bascule une passion du profil visité. MULTISÉLECTION, comme mon profil et le
+// Fil (demande de Benjamin, 2026-08-31) : cocher l'une n'éteint plus les autres,
+// et tout décocher DIT « toutes » — c'est ce qui a permis de retirer la bulle
+// « Toutes », qui faisait double emploi avec l'état vide.
 function setVisitedPassion(pid) {
   var v = window._visited; if (!v) return;
-  v.passionSel = new Set(pid ? [pid] : []);
+  if (!pid) { v.passionSel = new Set(); }
+  else if (v.passionSel.has(pid)) { v.passionSel.delete(pid); }
+  else { v.passionSel.add(pid); }
   _syncVisitedUI();
   // ⚠️ Une seule sélection commande les DEUX sections : sans le second appel,
   // « Activité » resterait sur la passion précédente pendant que
@@ -2867,7 +2866,10 @@ function switchVisitedSection(cle) {
 // L'activité PUBLIQUE d'un autre compte : les sorties qu'il organise. On ne
 // montre pas ses participations — `event_attendees` n'est pas chargé pour un
 // tiers, et l'inventer serait annoncer une présence qu'on n'a pas vérifiée.
-function _visitedEvents(authorId, passionId) {
+// ⚠️ `passions` est une LISTE d'identifiants de passion (multisélection).
+// Vide = aucune restriction. Elle acceptait auparavant une valeur unique ; la
+// garder aurait fait perdre en silence toutes les passions cochées sauf une.
+function _visitedEvents(authorId, passions) {
   var out = [];
   try {
     var tous = (typeof allEvents === "function") ? allEvents() : [];
@@ -2880,7 +2882,8 @@ function _visitedEvents(authorId, passionId) {
     if (typeof diagLog === "function") diagLog("profil_visite_activites " + (e && e.message));
     return [];
   }
-  if (passionId) out = out.filter(function (e) { return e.passion === passionId; });
+  var _p = Array.isArray(passions) ? passions : (passions ? [passions] : []);
+  if (_p.length) out = out.filter(function (e) { return e && _p.indexOf(e.passion) > -1; });
   var maintenant = Date.now();
   out.sort(function (a, b) {
     var fa = a.date >= maintenant, fb = b.date >= maintenant;
@@ -2899,12 +2902,13 @@ function _renderVisitedEvents() {
       + '<div class="empty-text">Abonne-toi pour voir son activité.</div></div>';
     return;
   }
-  var passionId = null;
-  v.passionSel.forEach(function (x) { passionId = x; });
-  var evs = _visitedEvents(v.authorId, passionId);
+  var choisies = Array.from(v.passionSel);
+  var evs = _visitedEvents(v.authorId, choisies);
   if (!evs.length) {
-    var msg = passionId
-      ? "Aucune activité dans cette passion pour l'instant."
+    var msg = choisies.length
+      ? (choisies.length > 1
+          ? "Aucune activité dans ces passions pour l'instant."
+          : "Aucune activité dans cette passion pour l'instant.")
       : "Cette personne n'organise aucune activité pour le moment.";
     box.innerHTML = '<div class="empty"><div class="empty-icon">🤝</div><div class="empty-title">Rien à afficher</div>'
       + '<div class="empty-text">' + escapeHtml(msg) + '</div></div>';
@@ -2933,10 +2937,12 @@ function _renderVisitedEvents() {
 }
 
 // Conservée : d'anciens liens ou un handler encore en vol pourraient l'appeler.
-// Elle bascule vers le neutre quand on retouche la passion déjà choisie.
+// ⚠️ Elle passait `""` — donc « tout décocher » — quand la passion était déjà
+// cochée. C'était juste en choix unique ; en multisélection cela effacerait
+// AUSSI les autres passions cochées. `setVisitedPassion` bascule déjà : on lui
+// délègue sans rien décider ici.
 function toggleVisitedPassion(pid) {
-  var v = window._visited; if (!v) return;
-  setVisitedPassion(v.passionSel.has(pid) ? "" : pid);
+  setVisitedPassion(pid);
 }
 
 function switchVisitedTab(tab) {
@@ -2953,8 +2959,9 @@ function _syncVisitedUI() {
   var _unFiltre = v.passionSel.size > 0;
   document.querySelectorAll("#visitedPassions [data-passion-tile]").forEach(function(c) {
     var id = c.getAttribute("data-passion-tile") || "";
-    // La bulle « Toutes » (clé vide) est active quand rien n'est sélectionné.
-    var on = id ? v.passionSel.has(id) : !_unFiltre;
+    // Plus de bulle « Toutes » : rien de coché DIT déjà « toutes ». Chaque bulle
+    // ne répond donc que d'elle-même.
+    var on = !!id && v.passionSel.has(id);
     c.classList.toggle("active", on);
     c.setAttribute("aria-pressed", on ? "true" : "false");
     // Mêmes états visuels que le Fil et que mon profil : l'opacité et l'échelle
@@ -2993,14 +3000,19 @@ function _renderVisitedContent() {
   // affirme « aucune publication » à quelqu'un qui en a, ailleurs.
   var _nomFiltre = "";
   try {
+    var _noms = [];
     v.passionSel.forEach(function (id) {
       var t = document.querySelector('#visitedPassions [data-passion-tile="' + CSS.escape(id) + '"] .profile-tile-label');
-      if (t) _nomFiltre = t.textContent || "";
+      if (t && t.textContent) _noms.push(t.textContent);
     });
+    _nomFiltre = _noms.join(" · ");
   } catch (e) {}
   function _vEmpty(msg) {
+    // ⚠️ « touche Toutes » ne veut plus rien dire : la bulle n'existe plus. Le
+    // geste de sortie est de DÉCOCHER — le dire faux enverrait chercher un
+    // bouton absent, ce qui est pire qu'un état vide muet.
     var sous = _nomFiltre
-      ? "Rien en " + _nomFiltre + " — touche « Toutes » pour voir le reste."
+      ? "Rien en " + _nomFiltre + " — décoche cette passion pour voir le reste."
       : "Rien à afficher pour cette sélection.";
     return '<div class="empty"><div class="empty-icon">📭</div><div class="empty-title">' + escapeHtml(msg) + '</div><div class="empty-text">' + escapeHtml(sous) + '</div></div>';
   }

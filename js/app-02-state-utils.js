@@ -2943,26 +2943,23 @@ function _passionTileOnclick(action, arg) {
   return "";
 }
 
-// ⚠️ `role="button"` OBLIGE À LA TOUCHE. Une bulle est un `<div>` : lui donner
-// le rôle de bouton sans l'activer au clavier, c'est PROMETTRE une commande
-// qu'un lecteur d'écran annonce et qu'Entrée ne déclenche pas — pire que de ne
-// rien annoncer. Un seul écouteur délégué, posé une fois, couvre les trois
-// surfaces (Fil, mon profil, profil visité) et survit à tous les re-rendus.
-function _armerClavierBulles() {
-  if (window._passionTilesKeyboard) return;
-  window._passionTilesKeyboard = true;
-  document.addEventListener("keydown", function (e) {
-    if (e.key !== "Enter" && e.key !== " " && e.key !== "Spacebar") return;
-    var t = e.target && e.target.closest && e.target.closest("[data-passion-tile]");
-    if (!t) return;
-    e.preventDefault();   // sinon l'espace fait défiler la page sous la bulle
-    t.click();
-  });
-}
+// ⚠️ PAS D'ACTIVATION CLAVIER ICI, ET C'EST DÉLIBÉRÉ (mesuré le 2026-08-31).
+// Une bulle est un `<div role="button" tabindex="0">`, donc Entrée et Espace
+// doivent l'activer — mais `app-08` porte DÉJÀ un délégué générique qui active
+// tout `[role="button"]` non natif, et il est le bon endroit pour ça. Ajouter
+// ici un second écouteur produisait DEUX activations pour une touche.
+//
+// Tant que le geste était une AFFECTATION (`filtre = 'pp_pod'`), la répétition
+// était idempotente et invisible ; devenue une BASCULE avec la multisélection,
+// elle s'annulait — la touche ne faisait plus rien du tout, sans la moindre
+// erreur. Le délégué d'app-08 documente exactement ce piège à propos des
+// `.nav-item`, qu'il exclut « pour ne pas activer deux fois ».
+//
+// Règle générale : ne jamais ajouter d'activation clavier pour un `role="button"`
+// dans ce dépôt — elle existe, une fois, dans `app-08`.
 
 function passionTileHTML(o) {
   o = o || {};
-  _armerClavierBulles();
   var emoji = String(o.emoji || "✨");
   var label = String(o.label || "Passion");
   var selected = !!o.selected;
@@ -3555,6 +3552,9 @@ function syncFeedIntentUi() {
   // Le classement suit la sélection persistée : sans cette ligne, `activeFeedIntent`
   // repartirait à « for_you » à chaque rechargement alors qu'une envie est cochée.
   activeFeedIntent = (choisies.length === 1) ? choisies[0] : "for_you";
+  // ⚠️ « Tous » n'a plus de bouton (2026-08-31) : rien de coché DIT « tous ».
+  // La branche `for_you` reste écrite pour un balisage ancien encore servi par
+  // un cache — sans elle, un tel bouton resterait allumé à jamais.
   selector.querySelectorAll(".feed-intent-btn").forEach(function(btn) {
     var cle = btn.getAttribute("data-intent");
     var active = (cle === "for_you") ? (choisies.length === 0) : (choisies.indexOf(cle) > -1);
