@@ -2362,13 +2362,25 @@ function renderStudio() {
   }).join("");
   // La ligne d'explication n'apparaît QUE si quelque chose a été écarté : sinon
   // elle inquiéterait pour rien l'immense majorité des comptes.
+  //
+  // ⚠️ Deux situations, deux messages. « Certaines passions sont écartées » est
+  // une information ; « AUCUNE passion publiable » est une impasse, et une
+  // impasse doit nommer la sortie. Les confondre laissait un compte 100 %
+  // passions personnelles devant un select vide, sans rien à faire.
   const _horsCat = _poolBrut.length - _pool.length;
   const _noteP = $("#studioPassionNote");
   if (_noteP) {
-    _noteP.textContent = _horsCat
-      ? "Tes passions personnelles rangent ton fil, mais on ne peut pas encore y publier."
-      : "";
-    _noteP.style.display = _horsCat ? "block" : "none";
+    if (!_pool.length && _horsCat) {
+      _noteP.innerHTML = "Tes passions n'existent que chez toi : elles rangent ton fil, mais on ne peut pas encore y publier. "
+        + '<a href="#" onclick="event.preventDefault();openCreateProfile();" style="color:var(--accent);font-weight:700;">Ajoute une passion du catalogue</a> pour publier.';
+      _noteP.style.display = "block";
+    } else if (_horsCat) {
+      _noteP.textContent = "Tes passions personnelles rangent ton fil, mais on ne peut pas encore y publier.";
+      _noteP.style.display = "block";
+    } else {
+      _noteP.textContent = "";
+      _noteP.style.display = "none";
+    }
   }
 
   // Drafts
@@ -2855,6 +2867,24 @@ async function publishPost() {
     const dest = ($("#vlogDestination") && $("#vlogDestination").value || "").trim();
     if (!dest) { _publishInProgress = false; toast("Destination obligatoire pour un carnet."); return; }
     if (!vlogState.steps || vlogState.steps.length === 0) { _publishInProgress = false; toast("Ajoute au moins un jour."); return; }
+  }
+
+  // ⚠️ IMPASSE FERMÉE LE 2026-08-31. La sortie A retire du `<select>` les
+  // passions non publiables. Un compte dont TOUTES les passions sont
+  // personnelles se retrouve donc devant un select VIDE, `value` vaut "", et
+  // l'ancien chemin créait quand même le post EN LOCAL (affichage optimiste)
+  // avant que le garde central ne le refuse. Résultat : un post visible chez
+  // son auteur, jamais parti, perdu au changement d'appareil — exactement la
+  // perte silencieuse que ce chantier ferme.
+  //
+  // On refuse donc ICI, avant toute création locale, et on dit quoi faire.
+  if (!estPassionCanonique(passion)) {
+    _publishInProgress = false;
+    var _pool = (typeof passionsPubliables === "function") ? passionsPubliables() : [];
+    toast(_pool.length
+      ? "Choisis une passion pour publier."
+      : "⚠️ Ajoute une passion du catalogue pour publier — tes passions personnelles rangent ton fil, mais on ne peut pas encore y publier.");
+    return;
   }
 
   toast("⏳ Publication en cours...", "loading");

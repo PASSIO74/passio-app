@@ -1021,14 +1021,32 @@ function chargerReferentielPassions() {
 }
 
 // L'identifiant existe-t-il réellement dans le référentiel ?
+// ⚠️ LE RÉFÉRENTIEL SERVEUR AJOUTE, IL NE RETRANCHE PAS. Corrigé le 2026-08-31.
+//
+// La première version rendait `_referentielPassions.has(id)` DÈS que le cache
+// était rempli — le serveur pouvait donc RÉTRÉCIR la liste. Or `_referentielPassions`
+// est un cache à UN SEUL COUP (`if (_referentielPassions) return;` ci-dessus) :
+// une réponse serveur partielle — plafond `max-rows` de PostgREST, réponse
+// tronquée, panne à mi-parcours — s'installait pour toute la session et
+// interdisait DÉFINITIVEMENT de publier dans une passion parfaitement légitime.
+// Un incident serveur passager devenait un blocage client permanent.
+//
+// La liste locale est donc un PLANCHER, pas un repli : la migration du
+// 2026-08-15 a vérifié que ces identifiants existent réellement en production,
+// et la clé étrangère empêche d'en supprimer un qui soit référencé. Le serveur
+// ne peut qu'en AJOUTER — c'est le cas d'une liste locale en retard, que ce
+// mécanisme sert précisément à couvrir.
+//
+// Et si l'un des 19 était malgré tout supprimé côté serveur (aucune ligne ne le
+// référençant), l'union le laisserait passer : l'insert repartirait alors en
+// 23503, que `supaPublishPostWithRetry` traite déjà comme une erreur définitive
+// avec un message honnête. Un faux négatif bloque une publication vraie ; un
+// faux positif ne coûte qu'un aller-retour et un message juste. L'asymétrie
+// tranche.
 function estPassionCanonique(id) {
   if (!id || typeof id !== "string") return false;
   try {
-    if (_referentielPassions) return _referentielPassions.has(id);
-    // Repli : la liste locale. Une passion présente en base mais absente d'ici
-    // ne serait de toute façon proposée par AUCUNE grille — elles sont toutes
-    // construites sur `allPassions()` — donc inatteignable par un chemin
-    // utilisateur. Le repli ne peut pas bloquer une publication réelle.
+    if (_referentielPassions && _referentielPassions.has(id)) return true;
     if (typeof PASSIONS === "undefined" || !Array.isArray(PASSIONS)) return false;
     for (var i = 0; i < PASSIONS.length; i++) if (PASSIONS[i] && PASSIONS[i].id === id) return true;
   } catch (e) {}

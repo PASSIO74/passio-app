@@ -352,3 +352,85 @@ test("repartage ⑬ un compte sans aucune passion publiable renonce, il n'invent
   expect(vu.defaut).toBe(null);
   expect(vu.repartage).toBe(null);
 });
+
+// ════════════════════════════════════════════════════════════════════════════
+// L'IMPASSE DU STUDIO — un compte dont AUCUNE passion n'est publiable.
+// Trouvée le 2026-08-31 en relisant le code : la sortie A retirait ces passions
+// du `<select>`, qui se retrouvait VIDE ; `publishPost` lisait `""`, créait le
+// post EN LOCAL, puis le garde central le refusait. Un post visible chez son
+// auteur, jamais parti, perdu au changement d'appareil — la perte silencieuse
+// même que ce chantier ferme.
+// ════════════════════════════════════════════════════════════════════════════
+
+async function posercompteSansPassionPubliable(page) {
+  return page.evaluate(() => {
+    state.user.customPassions = [{ id: "custom_tricot_ab12", emoji: "🧶", label: "Tricot", color: "#8b5cf6", custom: true }];
+    state.user.profiles = [{ id: "pp_perso", name: "Tricot", passion: "custom_tricot_ab12", emoji: "🧶", color: "#8b5cf6", createdAt: 1 }];
+    state.user.currentProfileId = "pp_perso";
+    goTo("studio");
+    renderStudio();
+  });
+}
+
+test("impasse ⑭ aucune passion publiable : AUCUN post local orphelin n'est créé", async ({ page }) => {
+  await boot(page, { referentiel: REFERENTIEL });
+  await posercompteSansPassionPubliable(page);
+
+  const vu = await page.evaluate(async () => {
+    const toasts = [];
+    const vrai = window.toast;
+    window.toast = (m) => { toasts.push(String(m)); };
+    document.getElementById("postText").value = "Mon écharpe avance bien";
+    const avant = (state.userPosts || []).length;
+    await publishPost();
+    window.toast = vrai;
+    return {
+      avant, apres: (state.userPosts || []).length,
+      posts: window.__ecrits.posts.length,
+      options: [...document.getElementById("postPassion").options].map((o) => o.value),
+      toasts,
+    };
+  });
+
+  expect(vu.options, "le select est bien vide — c'est la prémisse de l'impasse").toEqual([]);
+  // LE point : rien n'est créé localement. L'ancien chemin en créait un.
+  expect(vu.apres, "aucun post orphelin dans l'état local").toBe(vu.avant);
+  expect(vu.posts, "et rien n'est envoyé non plus").toBe(0);
+  // Et le message nomme la SORTIE, au lieu de demander de choisir dans un vide.
+  const m = vu.toasts.join(" | ");
+  expect(m).toContain("Ajoute une passion du catalogue");
+});
+
+test("impasse ⑮ le Studio nomme la sortie, et propose la porte", async ({ page }) => {
+  await boot(page, { referentiel: REFERENTIEL });
+  await posercompteSansPassionPubliable(page);
+
+  const vu = await page.evaluate(() => {
+    const n = document.getElementById("studioPassionNote");
+    return { visible: n.style.display !== "none", texte: n.textContent || "", lien: !!n.querySelector("a") };
+  });
+
+  expect(vu.visible).toBe(true);
+  expect(vu.texte).toContain("Ajoute une passion du catalogue");
+  expect(vu.lien, "une impasse doit offrir la porte, pas seulement la décrire").toBe(true);
+});
+
+test("impasse ⑯ une passion publiable existe : le message reste l'information, pas l'alerte", async ({ page }) => {
+  // La distinction compte : « certaines sont écartées » n'est pas une impasse.
+  await boot(page, { referentiel: REFERENTIEL });
+
+  const vu = await page.evaluate(() => {
+    state.user.customPassions = [{ id: "custom_tricot_ab12", emoji: "🧶", label: "Tricot", color: "#8b5cf6", custom: true }];
+    state.user.profiles = [
+      { id: "pp_0", name: "Moto", passion: "moto", emoji: "🏍️", color: "#7c3aed", createdAt: 1 },
+      { id: "pp_perso", name: "Tricot", passion: "custom_tricot_ab12", emoji: "🧶", color: "#8b5cf6", createdAt: 2 },
+    ];
+    goTo("studio");
+    renderStudio();
+    const n = document.getElementById("studioPassionNote");
+    return { texte: n.textContent || "", lien: !!n.querySelector("a") };
+  });
+
+  expect(vu.texte).not.toContain("Ajoute une passion du catalogue");
+  expect(vu.lien).toBe(false);
+});
