@@ -89,7 +89,12 @@ async function bootInteractions(page) {
   // undefined et le garde n'aurait jamais pu passer. On passe par le binding
   // global via typeof, comme le reste de la suite.
   await page.waitForFunction(
-    () => ["renderCdvScreen", "renderIRL", "renderFeed", "openVlogViewer", "addEmojiToPost"]
+    // ⚠️ ADR-011 §6 : `renderCdvScreen` et `openVlogViewer` sont partis avec le
+    // Carnet de voyage. Les laisser ici faisait échouer les 14 tests du fichier
+    // — pas sur ce qu'ils mesurent, mais sur ce garde, qui n'atteignait jamais
+    // sa condition et expirait à 20 s. Un garde de disponibilité ne doit nommer
+    // que les fonctions que les tests utilisent VRAIMENT.
+    () => ["renderIRL", "renderFeed", "addEmojiToPost"]
       .every((f) => typeof window[f] === "function")
       && typeof state !== "undefined" && !!state && !!state.onboarded,
     null, { timeout: 20000 }
@@ -642,31 +647,13 @@ test.describe("Interactions — événement IRL", () => {
   });
 });
 
-test.describe("Interactions — live CDV", () => {
-  test("la carte live épinglée porte la barre like / commentaire / emoji", async ({ page }) => {
-    await bootInteractions(page);
-    await page.evaluate(() => {
-      const live = {
-        id: "live_inter_1", authorId: "u_autre", destination: "Lisbonne",
-        visibility: "public", status: "live", steps: [], followers: [], comments: [],
-        reactions: [], reactionsBy: [], createdAt: Date.now() - 60000,
-      };
-      saveCdvLives([live]);
-      goTo("cdv"); renderCdvScreen();
-    });
-
-    const card = page.locator(".cdv-live-pinned");
-    await expect(card).toHaveCount(1);
-    // Avant : la carte de la vue par défaut n'avait AUCUNE action.
-    await expect(card.locator(".post-actions")).toHaveCount(1);
-    await expect(card.locator("[data-livelike]")).toHaveCount(1);
-    await expect(card.locator(".post-action[onclick*=reactCdvLivePicker]")).toHaveCount(1);
-
-    await card.locator("[data-livelike]").click();
-    await expect(card.locator("[data-livelike]")).toHaveText(/❤️\s*1/);
-    expect(await page.evaluate(() => state.user.likedLives.includes("live_inter_1"))).toBe(true);
-  });
-});
+// ⚠️ LE CAS « live CDV » A ÉTÉ RETIRÉ avec le Carnet de voyage (ADR-011 §6).
+// Ce qu'il garantissait — la carte de live épinglée porte bien une barre
+// like / commentaire / emoji, défaut ② de l'en-tête de ce fichier — n'a plus de
+// surface : `saveCdvLives`, `renderCdvScreen` et `.cdv-live-pinned` n'existent
+// plus. Les cinq autres surfaces d'engagement (fil, post détail, événement IRL,
+// commentaire, bobine) restent couvertes ci-dessus et ci-dessous ; c'est la
+// FONCTIONNALITÉ qui disparaît, pas la garantie.
 
 test.describe("Interactions — bobine", () => {
   test("le like d'une bobine est un VRAI like : compteur, persistance et parité avec le fil", async ({ page }) => {

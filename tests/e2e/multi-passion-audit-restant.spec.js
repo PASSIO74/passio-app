@@ -35,11 +35,22 @@ test("① le libellé d'une passion personnalisée est celui publié par son aut
   });
   await page.evaluate(() => openUserProfile("u_tricot"));
   await page.waitForTimeout(1200);
+  // ⚠️ ADR-011 : les pastilles `[data-vpid]` sont devenues les BULLES du Fil
+  // (`passionTileHTML`, §1 « exactement le composant du fil »). La clé est
+  // `data-passion-tile` et le libellé vit dans `.profile-tile-label` — lire le
+  // `textContent` de la bulle rendrait « 🧶🧶Tricot », l'emoji étant peint deux
+  // fois (avatar + glyphe décoratif `aria-hidden`). Ce que ce test garantit ne
+  // bouge pas : le libellé publié par l'auteur gagne sur le repli générique.
   const libelles = await page.evaluate(() =>
-    Array.from(document.querySelectorAll("#visitedPassions [data-vpid]")).map(b => b.textContent.trim()));
-  expect(libelles).toContain("🧶 Tricot");
-  // Le défaut : « 🧶 Passion », le repli générique de `passionById`.
-  expect(libelles.join(" ")).not.toContain("🧶 Passion");
+    Array.from(document.querySelectorAll("#visitedPassions [data-passion-tile]")).map((b) => {
+      const lbl = b.querySelector(".profile-tile-label");
+      return lbl ? lbl.textContent.trim() : "";
+    }));
+  // Sans ce garde, les deux assertions ci-dessous passeraient sur une liste VIDE.
+  expect(libelles.length).toBeGreaterThan(1);
+  expect(libelles).toContain("Tricot");
+  // Le défaut : « Passion », le repli générique de `passionById`.
+  expect(libelles).not.toContain("Passion");
 });
 
 test("① bis — une passion du catalogue garde son libellé de catalogue", async ({ page }) => {
@@ -55,8 +66,19 @@ test("① bis — une passion du catalogue garde son libellé de catalogue", asy
   });
   await page.evaluate(() => openUserProfile("u_cat"));
   await page.waitForTimeout(1200);
+  // ⚠️ ADR-011 : les pastilles `[data-vpid]` sont devenues les BULLES du Fil
+  // (`passionTileHTML`, §1 « exactement le composant du fil »). La clé est
+  // `data-passion-tile` et le libellé vit dans `.profile-tile-label` — lire le
+  // `textContent` de la bulle rendrait « 🧶🧶Tricot », l'emoji étant peint deux
+  // fois (avatar + glyphe décoratif `aria-hidden`). Ce que ce test garantit ne
+  // bouge pas : le libellé publié par l'auteur gagne sur le repli générique.
   const libelles = await page.evaluate(() =>
-    Array.from(document.querySelectorAll("#visitedPassions [data-vpid]")).map(b => b.textContent.trim()));
+    Array.from(document.querySelectorAll("#visitedPassions [data-passion-tile]")).map((b) => {
+      const lbl = b.querySelector(".profile-tile-label");
+      return lbl ? lbl.textContent.trim() : "";
+    }));
+  // Sans ce garde, les deux assertions ci-dessous passeraient sur une liste VIDE.
+  expect(libelles.length).toBeGreaterThan(1);
   expect(libelles.join(" ")).not.toContain("ZZZ_LIBELLE_DISTANT");
 });
 
