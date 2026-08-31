@@ -4625,16 +4625,28 @@ function renderFeed() {
 
   let combinedPosts = [];
 
-  // « Rien de coché » = aucun critère du tout. On garde le comportement
-  // historique : ce n'est pas « tout le fil », c'est l'écran qui invite à
-  // choisir. Cocher « Suivis » sans suivre personne ne produit pas de source
-  // non plus — d'où le `suitQuelquun` dans le calcul.
-  const aucunCritere = !(suivisOn && suitQuelquun)
+  // ⚠️ DEUX NOTIONS DISTINCTES, et les confondre change ce que l'écran vide
+  // PROPOSE. Elles ne coïncident que dans un cas : « Suivis » coché alors qu'on
+  // ne suit personne.
+  //
+  //   · `aucuneSource`    — rien de coché ne peut produire du contenu. C'est ce
+  //                         qui décide s'il faut seulement calculer l'union.
+  //   · `aucuneSelection` — l'utilisateur n'a coché AUCUN critère. C'est ce que
+  //                         `nothingSelected` a toujours voulu dire : l'écran
+  //                         qui invite à choisir, et son action « Explorer ».
+  //
+  // Les fondre faisait dire « Choisis tes passions » à quelqu'un qui a coché
+  // « Suivis » et ne suit personne — donc qui a bel et bien choisi. Son écran
+  // dit « Tu ne suis encore personne », et l'action que le lot UI-2 §5 y attache
+  // est « Publier », pas « Explorer ».
+  const aucuneSource = !(suivisOn && suitQuelquun)
     && _activeFeedPassions.size === 0
     && enviesChoisies.length === 0;
-  const nothingSelected = aucunCritere;
+  const nothingSelected = !suivisOn
+    && _activeFeedPassions.size === 0
+    && enviesChoisies.length === 0;
 
-  if (!aucunCritere) {
+  if (!aucuneSource) {
     if (_activeFeedPassions.size > 0) {
       combinedPosts = combinedPosts.concat(allPosts.filter(function(p) { return _activeFeedPassions.has(p.passion); }));
     }

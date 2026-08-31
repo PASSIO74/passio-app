@@ -334,6 +334,14 @@ test("aperçu : l'état vide se termine par une action", async ({ page }) => {
 });
 
 test("aperçu : sans contenu de mes suivis, l'action proposée est de publier", async ({ page }) => {
+  // ⚠️ CE CAS A RÉVÉLÉ UN DÉFAUT RÉEL de la refonte, il n'a pas été assoupli.
+  // « Suivis » coché alors qu'on ne suit personne, c'est un critère CHOISI dont
+  // le contenu est vide — pas une absence de choix. La première version
+  // d'ADR-011 confondait les deux (`nothingSelected` valait « aucune source »),
+  // et l'écran proposait « Explorer les passions » à quelqu'un qui avait
+  // justement choisi. `renderFeed` distingue désormais `aucuneSource` (faut-il
+  // calculer l'union ?) de `nothingSelected` (l'utilisateur a-t-il coché quoi
+  // que ce soit ?), et l'action redevient « Publier », comme le veut UI-2 §5.
   await boot(page, { preview: true });
   await seedFeed(page, { passions: [], following_feed: true });
 
@@ -352,14 +360,14 @@ test("kill switch : l'état vide historique est strictement inchangé", async ({
   const vide = page.locator("#feedEmpty");
   await expect(vide).toBeVisible();
   await expect(vide.locator("[data-v2-empty-cta]")).toHaveCount(0);
-  // ⚠️ ADR-010 a réécrit cet état vide, et ce texte n'est sous AUCUN kill switch :
-  // il change donc aussi sur le chemin historique testé ici. Ce que ce test
-  // verrouille — l'absence du CTA d'UI-2 sous kill switch — est INCHANGÉ ; seul
-  // le libellé attendu suit le nouveau modèle, qui nomme les DEUX sources du fil
-  // (les passions choisies ET les personnes suivies) au lieu de la seule passion.
+  // ⚠️ ADR-010 puis ADR-011 ont réécrit cet état vide, et ce texte n'est sous
+  // AUCUN kill switch : il change donc aussi sur le chemin historique testé ici.
+  // Ce que ce test verrouille — l'absence du CTA d'UI-2 sous kill switch — est
+  // INCHANGÉ ; seul le libellé suit. « Ton Accueil » est devenu « Ton fil » :
+  // les deux VUES ayant disparu (ADR-011 §1), « Accueil » ne nomme plus rien.
   await expect(vide.locator(".empty-title")).toHaveText("Choisis tes passions");
   await expect(vide.locator(".empty-text"))
-    .toHaveText("Ton Accueil réunit les passions que tu choisis et les personnes que tu suis. Touche une passion ci-dessus pour commencer.");
+    .toHaveText("Ton fil réunit les passions que tu choisis et les personnes que tu suis. Touche une passion ci-dessus pour commencer.");
 });
 
 // ── Cadrage mobile de référence ─────────────────────────────────────────────
