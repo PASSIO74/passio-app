@@ -506,7 +506,67 @@ test.describe("mobile", () => {
 });
 
 // ══════════════════════════════════════════════════════════════════════════
-// ㉑ À ㉖ — LA PORTE A DÉMÉNAGÉ, ET ELLE EST PLAFONNÉE (2026-09-01)
+// ㉖ — L'ONBOARDING : LA GRILLE DEVIENT UNE RECHERCHE
+//
+// ⚠️ CONTREPARTIE OBLIGATOIRE DU KILL SWITCH POSÉ DANS
+// `onboarding-passions-v2.spec.js`. Cette suite-là observe l'écran d'AVANT et
+// garde toutes ses assertions ; sans le test ci-dessous, ÉTEINDRE l'ancien
+// comportement l'aurait fait sans rien verrouiller à la place — et la copie
+// neuve pourrait disparaître sans qu'aucun test ne bronche.
+// ══════════════════════════════════════════════════════════════════════════
+const { GATE_TOKEN, GATE_KEY } = require("./gate-helper");
+
+test.describe("l'onboarding sous le lot", () => {
+  test("㉖ la grille de 19 tuiles est remplacée par une recherche, et la copie le dit", async ({ page }) => {
+    await page.addInitScript(([k, t]) => {
+      sessionStorage.setItem(k, t);
+      sessionStorage.setItem("passio_pwa_dismissed", "1");
+      window.PASSIO_ONBOARDING_V2 = true;
+    }, [GATE_KEY, GATE_TOKEN]);
+    await page.goto("/index.html");
+    await page.waitForFunction(() => typeof renderPassionGrid === "function", null, { timeout: 20000 });
+    await page.evaluate(() => {
+      window.supaSaveUserState = async () => {};
+      window.supaUpsertProfile = async () => {};
+      window.supaInit = () => {};
+      // Par la transition de l'application elle-même : dévoiler le calque à la
+      // main laisse la landing active PAR-DESSUS, et son bouton intercepte les
+      // clics (piège documenté dans `onboarding-passions-v2.spec.js`).
+      exitLandingAsAuth("signup");
+      onbStepIdx = onbSteps.indexOf("passions");
+      showOnbStep("passions");
+      selectedPassions.length = 0;
+      renderPassionGrid();
+    });
+
+    // La copie annonce la recherche — c'est la formulation exigée par le cahier
+    // des charges du 2026-09-01, mot pour mot.
+    const copie = await page.evaluate(() => ({
+      titre: document.querySelector("#onbPassionsTitle").textContent.trim(),
+      texte: document.querySelector("#onbPassionsText").textContent.trim(),
+    }));
+    expect(copie.titre).toBe("Qu'est-ce qui te passionne ?");
+    expect(copie.texte).toBe("Recherche et choisis directement ce que tu aimes.");
+
+    // Le champ de recherche du sélecteur est là, et le champ HISTORIQUE est
+    // masqué : deux champs de recherche à l'écran seraient un doublon muet.
+    await expect(page.locator(".psel-input")).toBeVisible();
+    const histo = await page.locator("#onbPassionSearch").evaluate((el) => el.style.display);
+    expect(histo, "le champ de recherche historique subsiste à côté du neuf").toBe("none");
+
+    // ⚠️ ON NE MONTE QU'UNE FOIS. `renderPassionGrid` est rappelée à CHAQUE
+    // sélection : re-monter le composant viderait le champ et refermerait le
+    // clavier à chaque passion cochée.
+    await page.locator(".psel-input").fill("enduro");
+    await page.waitForTimeout(450);
+    await page.evaluate(() => renderPassionGrid());
+    expect(await page.locator(".psel-input").inputValue(),
+      "le composant a été remonté : la frappe est perdue").toBe("enduro");
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+// ㉑ À ㉕ — LA PORTE A DÉMÉNAGÉ, ET ELLE EST PLAFONNÉE (2026-09-01)
 //
 // Deux demandes de Benjamin après essai réel de la preview : la bulle d'ajout
 // appartient au Profil, pas au Fil ; et au-delà de trois passions, ce sera
