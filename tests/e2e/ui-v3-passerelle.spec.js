@@ -12,8 +12,14 @@
 //   ⑥ la fermeture restitue la position exacte du Feed et l'identité active ;
 //   ⑦ l'ancien CTA « Organiser un IRL » n'apparaît jamais en doublon ;
 //   ⑧ mobile : 320 / 390 / 430 px sans débordement, cible tactile ≥ 44 px.
+//   ⑨ la feuille a le MÊME habillage que la feuille « Créer » du (+) :
+//      lavis violet, écriture violet foncé, icône à la place de l'emoji, et
+//      AUCUN texte explicatif (demande de Benjamin du 2026-09-01).
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
+// Même sonde que `cases-violet-leger.spec.js` : la feuille de ce lot partage
+// désormais la mise en forme de la feuille « Créer », donc les mêmes seuils.
+const { sonde, verifierLavis } = require("./lavis-helper");
 
 const PREVIEW = "?passio_preview=passio-ui-3";
 
@@ -494,6 +500,54 @@ test("le tap ouvre « Trouver une expérience » avec exactement trois actions",
   const ouverture = tel.find((e) => e.name === "ui_v3_tempt_open");
   expect(ouverture).toBeTruthy();
   expect(Object.keys(ouverture.meta).sort()).toEqual(["has_psn", "has_ref", "v"]);
+});
+
+// ── ⑨ Le même habillage que la feuille « Créer » du (+) ─────────────────────
+// Demande de Benjamin du 2026-09-01, après essai réel : « dans le fil quand je
+// clique sur un post → Trouver une expérience, je veux les mêmes onglets que
+// dans (+), même design fond violet clair écriture violet foncé ; supprime les
+// textes explicatifs et les emojis. »
+//
+// ⚠️ Ce test regarde ce qui est PEINT, jamais la feuille de style : les règles
+// des deux feuilles sont groupées dans styles.css, et c'est exactement le genre
+// de groupement qu'une retouche ultérieure peut défaire sans le vouloir. Il
+// mesure donc la couleur calculée, comme `cases-violet-leger.spec.js`.
+test("la feuille porte l'habillage du (+) : lavis violet, icône, aucun texte explicatif", async ({ page }) => {
+  const errors = { js: [], console: [], network: [] };
+  await boot(page, { errors });
+  await seedFeed(page, POSTS);
+
+  await taperLien(page, 'article.post[data-postid="v3_a"] [data-v3-tempt]');
+  const sheet = page.locator("#v3PassioSheet");
+  await expect(sheet).toBeVisible();
+
+  // ① Plus d'emoji, plus d'aide : les libellés portent seuls.
+  await expect(sheet.locator(".v2-sheet-emoji")).toHaveCount(0);
+  await expect(sheet.locator(".v2-sheet-item-hint")).toHaveCount(0);
+  // Et rien ne les a remplacés par du texte ailleurs dans la case : chaque
+  // entrée ne dit QUE son libellé.
+  expect((await sheet.locator("[data-v3-choice]").allInnerTexts()).map((t) => t.trim()))
+    .toEqual(["Voir les activités", "Découvrir des personnes", "Proposer une sortie"]);
+
+  // ② Une icône SVG par entrée, dans la pastille du (+) — pas un caractère.
+  await expect(sheet.locator("[data-v3-choice] .v2-sheet-icon svg")).toHaveCount(3);
+
+  // ③ Le lavis : fond clair, écriture violet foncé, contraste AA. Mesuré sur
+  //    la case ET sur son titre, comme pour la feuille « Créer ».
+  const item = sheet.locator('[data-v3-choice="activities"]');
+  verifierLavis(await item.evaluate(sonde), "case « Voir les activités »");
+  verifierLavis(
+    await item.locator(".v2-sheet-item-title").evaluate(sonde),
+    "titre « Voir les activités »",
+  );
+
+  // ④ Le libellé est CENTRÉ dans sa case, comme dans le (+) : c'est ce que le
+  //    conteneur `.v2-sheet-text` porte, et il ne doit pas être resté aligné à
+  //    gauche par la règle générique des feuilles basses.
+  expect(await item.locator(".v2-sheet-text").evaluate((el) => getComputedStyle(el).textAlign))
+    .toBe("center");
+
+  expect(errors.js, "exceptions JS").toEqual([]);
 });
 
 test("Escape ferme le panneau et rien n'a été créé", async ({ page }) => {

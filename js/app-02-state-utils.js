@@ -60,6 +60,12 @@ function defaultState() {
     userPosts: [],           // posts published by the user
     userEvents: [],          // events created by the user
     notifications: [],       // user-specific notifications (seed copied at init)
+    // Publications supprimées par l'utilisateur (ids). Persistée ET synchronisée
+    // (elle voyage dans le blob `user_state`) : sans elle, une page serveur, un
+    // événement temps réel ou un blob périmé faisaient RÉAPPARAÎTRE le contenu
+    // supprimé. Voir le bloc « SUPPRESSIONS DURABLES ». Bornée à
+    // POSTS_SUPPRIMES_MAX, fusionnée en UNION, jamais remplacée.
+    deletedPostIds: [],
     currentMood: "all",
     // ── SÉLECTIONS DU FIL (refonte multi-passion) ──────────────────────────
     // Trois familles de critères, toutes ADDITIVES entre elles (OU inclusif) :
@@ -188,6 +194,10 @@ function loadState() {
     // sur un état qui aurait perdu cette clé. Rencontré le 2026-08-23 sur un état
     // de test partiel ; un état réel la porte toujours, mais rien ne le garantit.
     if (!Array.isArray(parsed.userPosts)) parsed.userPosts = [];
+    // Suppressions déjà faites : même garde. Un état ancien n'a pas la clé, et
+    // `postsSupprimes()` la recrée — mais la poser ici évite qu'un chemin de
+    // lecture pure (rendu) ait à muter l'état pour exister.
+    if (!Array.isArray(parsed.deletedPostIds)) parsed.deletedPostIds = [];
     // Dédup inconditionnelle des profils-passion par passion (clé métier).
     // Nettoie tout état corrompu accumulé avant le fix, quel que soit le chemin
     // de sync (merge ou non). Un utilisateur ne peut avoir qu'un profil par passion.
@@ -702,9 +712,19 @@ function _applyUserState(data) {
   const keepSeed = state.seed, keepSupa = state.supabasePosts;
   window._hydratingState = true;
   try {
+    // Les suppressions ne se remplacent pas, elles s'UNISSENT : le blob peut
+    // avoir été écrit AVANT une suppression faite ici, et la recopie brute de
+    // ses clés ressusciterait le contenu au rafraîchissement suivant.
+    const suppressionsLocales = Array.isArray(state.deletedPostIds) ? state.deletedPostIds.slice() : [];
     Object.keys(data).forEach((k) => { if (k !== "seed" && k !== "supabasePosts") state[k] = data[k]; });
     state.seed = keepSeed;
     state.supabasePosts = keepSupa;
+    if (!Array.isArray(state.deletedPostIds)) state.deletedPostIds = [];
+    fusionnerPostsSupprimes(suppressionsLocales);
+    // Le blob peut porter des `userPosts` antérieurs à une suppression (la
+    // sienne ou celle d'un autre appareil) : on les évacue tout de suite,
+    // avant que quoi que ce soit ne les rende.
+    purgerPostsSupprimes();
     state.user = state.user || {};
     if (!Array.isArray(state.user.profiles)) state.user.profiles = [];
     // Dédup par passion dès l'application du blob serveur — nettoie l'état
@@ -1288,6 +1308,88 @@ function identitePassionsHTML(u, cls) {
   if (!t) return "";
   return '<div class="ident-passions' + (cls ? " " + escapeHtml(cls) : "") + '" title="'
     + escapeHtml(t) + '">' + escapeHtml(t) + '</div>';
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// L'IDENTITÉ CLIQUABLE — chaque passion d'un profil est une PORTE (2026-09-01)
+// ──────────────────────────────────────────────────────────────────────────
+// Demande de Benjamin, après essai réel : « je voudrais que les passions soient
+// cliquables et que ça renvoie vers la page de cette passion, pour que les
+// utilisateurs puissent aller découvrir les passions directement. »
+//
+// Sur un profil, les passions ne sont pas une étiquette : ce sont les seuls
+// endroits de l'écran qui nomment un univers de contenu que le visiteur ne
+// connaît pas encore. Elles ouvrent donc `openPassionExplorer(pid)`, la page qui
+// existe déjà pour ça (créateurs + publications de la passion), et qui était
+// jusqu'ici atteignable seulement depuis Explorer.
+//
+// ⚠️ PÉRIMÈTRE : LES DEUX EN-TÊTES DE PROFIL, ET RIEN D'AUTRE. Les surfaces
+// denses (`ident-passions-sm` : cartes de publication, commentaires et réponses,
+// listes d'abonnés, recherche, inbox) gardent `identitePassionsHTML`, en texte
+// inerte. Deux raisons, aucune décorative : ① ces lignes vivent DANS une rangée
+// qui a déjà son geste (ouvrir le profil de la personne, ouvrir la publication)
+// — un second bouton imbriqué y produirait deux destinations pour un tap ;
+// ② elles mesurent 10,5 px, très en dessous des 44 px de cible tactile.
+//
+// ⚠️ LE GESTIONNAIRE N'EST PAS UNE CHAÎNE LIBRE — même règle que
+// `_passionTileOnclick` : chaque branche écrit son appel EN TOUTES LETTRES, seul
+// l'argument circule, et il passe par `escapeJsArg`. Un `onclick` doit se relire
+// à l'œil sans remonter la provenance de la chaîne (`audit:echappement`).
+//
+// ⚠️ AUCUNE ACTIVATION CLAVIER ICI, et c'est délibéré : `app-08` porte le
+// délégué unique qui active tout `[role="button"]` non natif à Entrée/Espace.
+// En ajouter un second produirait DEUX activations pour une touche.
+function _identPassionOnclick(passionId, retourUserId) {
+  var pid = escapeJsArg(String(passionId == null ? "" : passionId));
+  // Ouverte depuis un profil VISITÉ, la page de passion REMPLACE la modale de ce
+  // profil (`openModal` n'empile pas) : sans ce second argument, découvrir une
+  // passion faisait perdre la personne par qui on l'avait découverte, sans
+  // aucun chemin de retour. Le retour est une donnée, pas une chaîne d'appel.
+  if (retourUserId) {
+    return "openPassionExplorer('" + pid + "','" + escapeJsArg(String(retourUserId)) + "')";
+  }
+  return "openPassionExplorer('" + pid + "')";
+}
+
+// Combien de pastilles avant le reliquat « +N ». Plus large que la ligne de
+// texte (3) : sur un en-tête de profil la rangée occupe sa propre ligne, sans
+// rien à sa droite, donc elle peut passer à la ligne sans pousser aucune action
+// hors de l'écran. Elle reste BORNÉE — la liste vient du jsonb
+// `profiles.passions` d'un autre compte, que rien ne limite côté produit. Le
+// « +N » n'est PAS une porte : un faux bouton est pire qu'une information.
+var IDENT_PASSIONS_MAX_PROFIL = 6;
+
+// Les pastilles seules, sans conteneur : `renderMainProfile` tient un nœud
+// persistant (`#mainProfileIdent`) et n'y écrit que le contenu.
+function identitePassionsChipsHTML(u, opts) {
+  opts = opts || {};
+  var liste = passionsAffichables(u);
+  if (!liste.length) return "";
+  var max = opts.max || IDENT_PASSIONS_MAX_PROFIL;
+  var visibles = liste.slice(0, max);
+  var reste = liste.length - visibles.length;
+  var html = visibles.map(function (p) {
+    var court = _passionCourteIdent(p.label);
+    return '<span class="ident-passion-lien" role="button" tabindex="0"'
+      + ' data-ident-passion="' + escapeHtml(String(p.id)) + '"'
+      + ' onclick="' + _identPassionOnclick(p.id, opts.retourUserId) + '"'
+      + ' title="Découvrir ' + escapeHtml(court) + '">'
+      + '<span class="ident-passion-emoji" aria-hidden="true">' + escapeHtml(p.emoji) + '</span>'
+      + '<span class="ident-passion-nom">' + escapeHtml(court) + '</span></span>';
+  }).join("");
+  if (reste > 0) html += '<span class="ident-passion-plus">+' + Number(reste) + '</span>';
+  return html;
+}
+
+// La rangée complète, conteneur compris — pour les surfaces qui composent une
+// chaîne HTML d'un bloc (le profil visité).
+function identitePassionsLiensHTML(u, opts) {
+  var chips = identitePassionsChipsHTML(u, opts);
+  if (!chips) return "";
+  var cls = (opts && opts.cls) ? " " + escapeHtml(opts.cls) : "";
+  return '<div class="ident-passions ident-passions-links' + cls + '"'
+    + ' role="group" aria-label="Ses passions — toucher pour les découvrir">'
+    + chips + '</div>';
 }
 
 function userById(id) {
@@ -3372,6 +3474,123 @@ function allPostCopies(id) {
   return out;
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// SUPPRESSIONS DURABLES — « pierres tombales » de publication (2026-09-01)
+// ──────────────────────────────────────────────────────────────────────────
+// Défaut réel, signalé après un essai de publication : les posts supprimés
+// RESSORTAIENT tous dans le fil au moment de la publication suivante. Trois
+// causes se cumulaient, et aucune ne pouvait être vue depuis l'écran :
+//
+//   ① `deletePost` ne retirait la publication que de `userPosts` et de
+//      `seed.posts`. Ni `supabasePosts` (la copie SERVEUR du même post) ni
+//      `window._feedExtraPosts` (le tampon anti-écrasement du rafraîchissement)
+//      n'étaient touchés — or `startFeedRefreshLoop` fait
+//      `state.supabasePosts = posts.concat(extra)` toutes les 60 s : une entrée
+//      d'`extra` que le serveur ne renvoie plus est RÉINJECTÉE indéfiniment.
+//   ② la suppression serveur partait en `.then(()=>{}).catch(()=>{})`, sans
+//      lire `{ error }` NI compter les lignes touchées, et sans vérifier
+//      `window._supaReal` : envoyée au stub noop (SDK pas encore chargé, réseau
+//      coupé) elle rendait `{ data: [], error: null }` — un faux succès. La
+//      ligne restait en base, et personne ne réessayait jamais.
+//   ③ `publishPost` recopiait ENSUITE toute la page serveur dans
+//      `state.seed.posts` : d'où la réapparition EN BLOC, exactement au moment
+//      de la publication.
+//
+// La parade est une liste de suppressions, persistée dans l'état et
+// synchronisée par le blob `user_state` (donc valable sur tous les appareils du
+// compte) : quelle que soit la voie par laquelle une publication supprimée
+// revient — page serveur, temps réel, blob de synchronisation périmé, file de
+// pagination —, elle est écartée. Une suppression ne s'annule jamais : la
+// fusion de deux listes est donc toujours une UNION, jamais un remplacement.
+//
+// ⚠️ Bornée à POSTS_SUPPRIMES_MAX : le blob `user_state` part EN ENTIER à
+// chaque synchronisation (même raison que `passionSignals`). Les plus anciennes
+// entrées sortent en premier — leur ligne a eu tout le temps d'être réellement
+// effacée en base, et la file de suppression (app-04) garantit le rattrapage.
+// ══════════════════════════════════════════════════════════════════════════
+var POSTS_SUPPRIMES_MAX = 500;
+
+// Liste vivante (créée à la volée sur un état ancien qui ne la porte pas).
+function postsSupprimes() {
+  if (typeof state === "undefined" || !state) return [];
+  if (!Array.isArray(state.deletedPostIds)) state.deletedPostIds = [];
+  return state.deletedPostIds;
+}
+
+function postSupprime(id) {
+  if (!id) return false;
+  return postsSupprimes().indexOf(id) > -1;
+}
+
+// Enregistre la suppression. Ré-inscrit en QUEUE un id déjà connu : la borne
+// évacue les plus anciens, et une suppression qu'on vient de rejouer est la
+// dernière chose qu'il faut oublier.
+function marquerPostSupprime(id) {
+  if (!id) return;
+  var liste = postsSupprimes();
+  var i = liste.indexOf(id);
+  if (i > -1) liste.splice(i, 1);
+  liste.push(id);
+  if (liste.length > POSTS_SUPPRIMES_MAX) liste.splice(0, liste.length - POSTS_SUPPRIMES_MAX);
+}
+
+// UNION avec une liste venue d'ailleurs (blob serveur d'un autre appareil).
+// ⚠️ Jamais un remplacement : `_applyUserState` recopie les clés du blob telles
+// quelles, donc un blob écrit AVANT une suppression locale l'effacerait — et le
+// post reviendrait au rafraîchissement suivant, ce que tout ce bloc existe pour
+// empêcher.
+function fusionnerPostsSupprimes(entrants) {
+  if (!Array.isArray(entrants) || !entrants.length) return;
+  var liste = postsSupprimes();
+  entrants.forEach(function (id) {
+    if (typeof id === "string" && id && liste.indexOf(id) === -1) liste.push(id);
+  });
+  if (liste.length > POSTS_SUPPRIMES_MAX) liste.splice(0, liste.length - POSTS_SUPPRIMES_MAX);
+}
+
+// Retire de TOUS les tableaux vivants les copies d'une publication supprimée.
+// Appelée à la suppression, après une hydratation serveur et au démarrage : un
+// seul oubli de tableau suffit à faire réapparaître le contenu (cause ①).
+function purgerPostsSupprimes() {
+  try {
+    if (typeof state === "undefined" || !state) return 0;
+    var liste = postsSupprimes();
+    if (!liste.length) return 0;
+    var morts = {};
+    liste.forEach(function (id) { morts[id] = true; });
+    var retires = 0;
+    var filtre = function (arr) {
+      if (!Array.isArray(arr)) return arr;
+      var out = arr.filter(function (p) { return !(p && morts[p.id]); });
+      retires += (arr.length - out.length);
+      return out;
+    };
+    state.userPosts = filtre(state.userPosts);
+    state.supabasePosts = filtre(state.supabasePosts);
+    if (state.seed) state.seed.posts = filtre(state.seed.posts);
+    window._feedExtraPosts = filtre(window._feedExtraPosts || []);
+    return retires;
+  } catch (e) { return 0; }
+}
+
+// « Cette publication est-elle la mienne ? » — donc : puis-je la supprimer ?
+//
+// ⚠️ Le test portait sur `p._source === "me"`, c'est-à-dire sur la PROVENANCE DE
+// LA COPIE AFFICHÉE, pas sur l'auteur. Or `allFeedPosts` dédoublonne dans
+// l'ordre seed → supabase → me : dès que la copie SERVEUR d'un post est
+// chargée, c'est elle qui s'affiche, avec `_source === "supabase"` — et le
+// bouton « ⋯ » de MA propre publication disparaissait de la carte. Rien ne le
+// signalait ; il ne restait que la fiche ouverte (qui, elle, teste bien
+// `userPosts`) pour supprimer. La question est l'AUTEUR, jamais la source.
+function _estMonPost(p) {
+  if (!p || !p.id) return false;
+  if ((state.userPosts || []).some(function (up) { return up && up.id === p.id; })) return true;
+  var moi = (typeof MY_UID !== "undefined" && MY_UID) ? MY_UID : null;
+  // Le contenu de démonstration n'appartient à personne : il n'a pas d'options.
+  if (p._source === "seed") return false;
+  return !!(moi && p.authorId && p.authorId === moi);
+}
+
 // ======== MODÉRATION ========
 // Vrai si l'utilisateur `id` est bloqué (son contenu doit être masqué et ses
 // interactions ignorées). Centralisé pour filtrer feed, commentaires, stories,
@@ -3415,6 +3634,12 @@ function allFeedPosts() {
   const deduplicated = allPosts.filter(p => {
     if (p.isReel) return false;
     if (idsBloques.has(p.id)) return false;
+    // ⚠️ FILET FINAL DE LA SUPPRESSION. Les tableaux sources sont déjà purgés à
+    // la suppression et après chaque hydratation, mais ce fil est la surface où
+    // un oubli se VOIT : un contenu supprimé qui revient d'un blob de
+    // synchronisation périmé ou d'une page serveur en vol s'arrête ici. Testé à
+    // l'ID, jamais à la source — les trois copies portent le même.
+    if (postSupprime(p.id)) return false;
     // ⚠️ LES CARNETS SONT RETIRÉS (§6), ET C'EST AUSSI UNE GARANTIE DE
     // CONFIDENTIALITÉ. La visibilité d'un carnet vivait dans le blob jsonb
     // `vlog` (pas de colonne), donc la RLS ne pouvait PAS la faire respecter :
@@ -5365,7 +5590,7 @@ function renderPostHTML(p) {
           ` : ""}
         </div>
       </div>
-      ${p._source === "me" ? `<button class="post-menu-btn" onclick="event.stopPropagation();openPostOptions('${escapeJsArg(p.id)}')" aria-label="Options du post" title="Options">
+      ${_estMonPost(p) ? `<button class="post-menu-btn" onclick="event.stopPropagation();openPostOptions('${escapeJsArg(p.id)}')" aria-label="Options du post" title="Options">
         <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>
       </button>` : ""}
       ${_firstRunDemoTag(p)}

@@ -16,7 +16,7 @@
 //
 // Aucune écriture Supabase : les fonctions de sync sont neutralisées après boot.
 const { test, expect } = require("@playwright/test");
-const { bootOnboarded } = require("./app-helper");
+const { bootOnboarded, sansPublicationsDistantes } = require("./app-helper");
 
 // Neutralise, POUR CETTE SUITE SEULEMENT, l'optimisation de peinture
 // `.post { content-visibility: auto; contain-intrinsic-size: auto 320px }`
@@ -55,6 +55,13 @@ async function bootInteractions(page) {
   // d'initialisation enregistré après lui ne s'appliquerait qu'au chargement
   // suivant.
   await poserLayoutDeterministe(page);
+  // ⚠️ ET C'EST POUR LA MÊME RAISON QUE CELLE-CI EST ICI, pas plus bas. Le stub
+  // `window.supaLoadPosts` du `page.evaluate` qui suit arrive APRÈS le `goto` :
+  // la requête du boot est déjà partie et, en CI, elle rapporte les vraies
+  // publications de production. Elles disputent alors sa place au post semé dans
+  // les 20 que `renderFeed` peint, et ce fichier échoue sur des PR qui ne le
+  // touchent pas. Détail mesuré dans `app-helper.js`.
+  await sansPublicationsDistantes(page);
   await bootOnboarded(page);
   await page.evaluate(() => {
     // ⚠️ supaSetPostLike est stubbé à part : il doit répondre { ok:true }, pas
@@ -260,10 +267,28 @@ async function showFeed(page) {
 async function seedServerPost(page, { writeResult = { ok: true, error: null }, manual = false } = {}) {
   return page.evaluate(([res, isManual]) => {
     const passion = allFeedPosts().filter((p) => p.type !== "vlog")[0].passion;
-    state.supabasePosts = state.supabasePosts || [];
+    // ⚠️ LE FIXTURE EST LE SEUL POST SERVEUR, et c'est le point de la ligne
+    // ci-dessous. Le stub de `supaLoadPosts` n'est posé qu'APRÈS `bootOnboarded`
+    // (qui attend 2,5 s) : la première requête du démarrage a donc déjà ramené
+    // le contenu RÉEL de la production, et il grossit de jour en jour.
+    //
+    // Ce que ça cassait, mesuré en CI le 2026-09-01 :
+    // `{"dansEtat":true,"nbPosts":35,"nbNoeuds":20}` — le post semé était bien
+    // dans l'état, mais le fil n'en peignait que 20. `renderFeed` peint en DEUX
+    // temps (les `FAST` = 20 premières cartes tout de suite, le reste dans un
+    // `requestIdleCallback` annulé par tout nouveau rendu) : au-delà de 20 posts,
+    // le fixture tombait dans le second lot et pouvait n'arriver jamais.
+    // `seedServerPostStable` échouait alors sur « le post semé n'a jamais atteint
+    // le fil », trois tests d'affilée, sur `main` comme sur les branches.
+    //
+    // Vider le tableau rend la suite indépendante du contenu de production, ce
+    // que le commentaire de `bootInteractions` réclamait déjà un cran plus haut
+    // (« un chargement différé qui se termine APRÈS seedServerPost remplaçait le
+    // tableau en bloc »). Aucune assertion n'y perd : ces tests observent le
+    // comportement du like sur UN post serveur, jamais le voisinage.
     // Idempotent : le seed peut être rejoué (cf. seedServerPostStable), et deux
     // exemplaires du même post fausseraient tous les compteurs.
-    state.supabasePosts = state.supabasePosts.filter((p) => p.id !== "p_srv_test");
+    state.supabasePosts = [];
     state.supabasePosts.unshift({
       id: "p_srv_test", authorId: "u_autre", authorName: "Autre", authorEmoji: "✨",
       passion, mood: "all", type: "text", text: "post serveur", createdAt: Date.now(),
@@ -307,6 +332,15 @@ async function seedServerPost(page, { writeResult = { ok: true, error: null }, m
  * Le remède attaque la cause : on attend que cette requête ait ATTERRI avant de
  * semer. Après elle, plus personne ne remplace le tableau. Le réessai reste en
  * second rideau pour les cas non couverts.
+ *
+ * ⚠️ LE DIAGNOSTIC A DEUX BRANCHES, et seule la première était documentée ici.
+ * `dansEtat: false` = la requête du boot a REMPLACÉ le tableau (le cas ci-dessus).
+ * `dansEtat: true` = le post est bien en mémoire et le RENDU ne le montre pas —
+ * il a perdu le classement face aux vraies publications, `renderFeed` ne peignant
+ * que les 20 premières. Mesuré le 2026-09-01 : à 34 publications de production
+ * engageantes, le post semé tombe 43e. C'est cette seconde branche que
+ * `sansPublicationsDistantes` ferme, en interdisant le chargement AVANT la
+ * navigation — le seul moment où il est encore interceptable.
  *
  * Rien de tout cela ne masque un défaut produit : injecter un post à la main
  * dans une structure que l'application possède et reconstruit est une

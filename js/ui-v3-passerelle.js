@@ -446,26 +446,58 @@
   var ctxPostId = "";
   var ctxPassion = "";
 
+  // ── Icônes de la feuille ─────────────────────────────────────────────
+  // Demande de Benjamin du 2026-09-01, après essai réel : « dans le fil quand je
+  // clique sur un post « Trouver une expérience », je veux les mêmes onglets que
+  // dans (+), même design fond violet clair écriture violet foncé, supprime les
+  // textes explicatifs et les emojis. » C'est mot pour mot ce qui avait été
+  // demandé le 2026-08-31 pour la feuille « Créer » d'UI-1 : les deux feuilles
+  // parlent donc désormais la même langue, et le CSS est PARTAGÉ (mêmes règles,
+  // groupées sur les deux identifiants — voir « Feuilles « Créer » et
+  // « Trouver une expérience » » dans styles.css).
+  //
+  // Les emojis (une image couleur par ligne, imposée par la police du système)
+  // laissent la place à des tracés SVG maison qui héritent de `currentColor` :
+  // c'est cet héritage qui les rend violets, sans dupliquer le jeu d'icônes.
+  // ⚠️ Ce markup est CONSTANT — aucune donnée utilisateur n'y entre, donc rien
+  // à échapper ; il est le seul `innerHTML` du module, et il doit le rester.
+  var SVG_OPEN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+    + 'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">';
+  var ICONS = {
+    // ① Un repère de carte : les sorties déjà posées quelque part.
+    activities: SVG_OPEN + '<path d="M12 21.2c3.8-4 5.8-7 5.8-9.6a5.8 5.8 0 0 0-11.6 0c0 2.6 2 5.6 5.8 9.6z"/>'
+      + '<circle cx="12" cy="11.2" r="2.3"/></svg>',
+    // ② Deux personnes : le même tracé que l'entrée « Activité » de la feuille
+    //    « Créer », parce qu'il désigne la même idée — des gens, pas un objet.
+    people: SVG_OPEN + '<circle cx="9.2" cy="8.4" r="3.2"/><path d="M3.2 19c0-3 2.7-4.7 6-4.7s6 1.7 6 4.7"/>'
+      + '<path d="M16.2 5.6a3.2 3.2 0 0 1 0 5.6"/><path d="M18.2 14.8c1.9.7 2.9 2.2 2.9 4.2"/></svg>',
+    // ③ Un calendrier avec un « + » : on propose une date, on ne la subit pas.
+    propose: SVG_OPEN + '<rect x="3.4" y="5" width="17.2" height="15.6" rx="3.6"/><path d="M3.4 10h17.2"/>'
+      + '<path d="M8 3.4v3.2"/><path d="M16 3.4v3.2"/><path d="M12 13.2v4.4"/><path d="M9.8 15.4h4.4"/></svg>',
+  };
+
+  // ⚠️ Plus d'emoji, plus de sous-titre : le libellé porte seul, centré dans sa
+  // case, comme dans la feuille « Créer ». Les trois libellés disent déjà ce
+  // qu'ils font — les aides qui vivaient ici (« Les sorties déjà proposées… »,
+  // « Qui partage cette Passio… », « Le formulaire IRL, prérempli… »)
+  // décrivaient le mécanisme, pas la promesse.
   var CHOIX = [
     {
       key: "activities",
-      emoji: "📍",
+      icon: ICONS.activities,
       titre: "Voir les activités",
-      aide: "Les sorties déjà proposées autour de cette Passio.",
       run: function (passion) { voirActivites(passion); },
     },
     {
       key: "people",
-      emoji: "🧑‍🤝‍🧑",
+      icon: ICONS.people,
       titre: "Découvrir des personnes",
-      aide: "Qui partage cette Passio — sans message envoyé automatiquement.",
       run: function (passion) { decouvrirPersonnes(passion); },
     },
     {
       key: "propose",
-      emoji: "✨",
+      icon: ICONS.propose,
       titre: "Proposer une sortie",
-      aide: "Le formulaire IRL, prérempli avec cette Passio.",
       run: function (passion, postId) { proposerSortie(passion, postId); },
     },
   ];
@@ -589,23 +621,25 @@
       btn.className = "v2-sheet-item v3-sheet-item";
       btn.setAttribute("data-v3-choice", c.key);
 
-      var em = document.createElement("span");
-      em.className = "v2-sheet-emoji";
-      em.setAttribute("aria-hidden", "true");
-      em.textContent = c.emoji;
+      // Même structure que la feuille « Créer » : une pastille blanche portant
+      // l'icône violette, puis le libellé centré dans le reste de la ligne.
+      // `.v2-sheet-text` est conservé alors qu'il n'enveloppe plus qu'un seul
+      // nœud : c'est LUI que le CSS centre (marge droite égale à la pastille),
+      // et c'est lui qui accueillerait un sous-titre le jour où l'un des trois
+      // libellés cesserait de se suffire.
+      var ic = document.createElement("span");
+      ic.className = "v2-sheet-icon";
+      ic.setAttribute("aria-hidden", "true");
+      ic.innerHTML = c.icon;   // markup constant (cf. ICONS) — rien à échapper
 
       var txt = document.createElement("span");
       txt.className = "v2-sheet-text";
       var t = document.createElement("span");
       t.className = "v2-sheet-item-title";
       t.textContent = c.titre;
-      var h = document.createElement("span");
-      h.className = "v2-sheet-item-hint";
-      h.textContent = c.aide;
       txt.appendChild(t);
-      txt.appendChild(h);
 
-      btn.appendChild(em);
+      btn.appendChild(ic);
       btn.appendChild(txt);
       btn.addEventListener("click", function () {
         var passion = ctxPassion;

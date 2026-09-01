@@ -2117,6 +2117,11 @@ async function boot() {
   if (lp) lp.src = LOGO_SRC;
 
   state = loadState();
+  // 🪦 Filet de démarrage : un état local écrit par une version antérieure au
+  // correctif du 2026-09-01 peut encore contenir, dans `userPosts`, des
+  // publications que l'utilisateur a supprimées et qui étaient revenues. On les
+  // évacue une bonne fois, avant le premier rendu.
+  try { purgerPostsSupprimes(); } catch (e) {}
   // Intérêts du Fil : restaurés pour TOUS les chemins de démarrage, pas seulement
   // pour une session Supabase retrouvée. Sans cet appel ici, un utilisateur hors
   // ligne ou dont la session n'est pas encore rétablie repartait sur un fil vide
@@ -3386,6 +3391,15 @@ async function supaLoadPosts(offset = 0, authorId = null) {
     const _following = (state.user && state.user.following) || [];
     data = (data || []).filter(r =>
       !r.profiles?.is_private || r.author_id === MY_UID || _following.includes(r.author_id));
+    // 🪦 Publications supprimées : elles ne doivent JAMAIS revenir par une page
+    // serveur. C'est le point d'étranglement de TOUTES les lectures de posts
+    // (fil, rafraîchissement 60 s, pull-to-refresh, retour d'arrière-plan,
+    // rechargement d'après publication, profil, bobines) — filtrer ici couvre
+    // les consommateurs d'un coup, y compris ceux qui n'existent pas encore.
+    // Le cas normal est une liste vide : coût nul.
+    if (typeof postSupprime === "function") {
+      data = data.filter(function (r) { return !postSupprime(r.id); });
+    }
     if (!data || !data.length) return [];
     // Charger tous les likes + counts commentaires d'un coup
     const postIds = data.map(r => r.id);
@@ -5391,6 +5405,11 @@ window._feedExtraPosts = [];
 // qui recopie le code qu'il vérifie ne garde rien.
 function feedAddRealtimePost(newPost) {
   if (!newPost || !newPost.id) return false;
+  // 🪦 Un post supprimé ici ne doit pas rentrer par le temps réel — et surtout
+  // pas dans `_feedExtraPosts`, qui est précisément fait pour SURVIVRE aux
+  // rafraîchissements : une entrée que le serveur ne renvoie plus y serait
+  // réinjectée à chaque cycle, indéfiniment.
+  if (typeof postSupprime === "function" && postSupprime(newPost.id)) return false;
   try {
     state.supabasePosts = state.supabasePosts || [];
     if (state.supabasePosts.find(function (p) { return p.id === newPost.id; })) return false;

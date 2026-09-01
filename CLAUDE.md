@@ -155,6 +155,7 @@ Ces règles transverses valent pour TOUTE modification. Le subagent `audit-passi
 - **onclick inline** : doit référencer une fonction globale EXISTANTE (`npm run audit:handlers`).
 - **Supabase** : jamais de requête dans `onAuthStateChange` (deadlock → `setTimeout(...,0)`) ; jamais le global `supabase` (SDK) au top-level d’un app-*.js (chargement paresseux → `supa`/`ensureSupabase()`) ; un UPDATE/DELETE qui touche 0 ligne = RLS manquante ; jamais de base64 en DB (→ Storage) ; embed `profiles(...)` = 400 sans FK réelle.
 - **Écritures qui échouent en silence** : le SDK ne LÈVE PAS sur un refus RLS → **toujours lire `{ error }`** (sinon l’action reste « réussie » à l’écran et disparaît au rechargement). Une écriture d’état (like, RSVP, follow…) envoie l’**INTENTION locale** ; ne jamais la re-déduire d’une lecture préalable (elle inverse l’action dès que local et base divergent — et le hook fetch prend alors cette LECTURE pour la confirmation d’écriture). Échec réel = annuler l’affichage optimiste.
+- **Suppression d'une publication** : passer par `deletePost` (app-04), qui pose une **pierre tombale** (`marquerPostSupprime`) puis `purgerPostsSupprimes()` — un post vit dans QUATRE tableaux (`userPosts`, `supabasePosts`, `seed.posts`, `window._feedExtraPosts`), en oublier un le fait revenir au prochain rafraîchissement. Un rechargement serveur s'écrit dans `supabasePosts`, JAMAIS dans `seed.posts`.
 - **Guards de rendu** : écrire dans `#feedList`/`#storiesRowFeed`/`#profileStrip` sans invalider `_feedDomSig`/`_lastHtml` fait sauter le prochain render.
 - **Build** : exactement 9 fichiers app-*.js entre les marqueurs BUILD:APP. Prod = app.js + styles.css externalisés (hash de contenu).
 - **openModal n’empile pas** : ouvrir une modale depuis une autre la REMPLACE (mémoriser d’où l’on vient) ; `openModal` injecte déjà un `×`.
@@ -330,6 +331,80 @@ rétablissement et geste DNS restant : `docs/SETUP_SMTP_AUTH.md`.
 Verrou : `tests/e2e/confirmation-email.spec.js` (7, éprouvés par mutation — remettre
 l'ordre d'origine ou retirer le renvoi fait rougir 6 des 7).
 
+## 🪦 SUPPRIMER UNE PUBLICATION — pierres tombales et file de suppression (2026-09-01)
+
+Défaut vécu, signalé après un essai réel depuis « ben sur portable test » :
+**« j'ai publié mon contenu, et tout l'ancien contenu que j'avais supprimé est
+ressorti dans le fil »**. Trois causes se cumulaient, aucune visible depuis
+l'écran, et chacune suffisait à elle seule à faire revenir du contenu.
+
+① **`deletePost` ne connaissait que DEUX des quatre tableaux.** Une publication
+   vit simultanément dans `state.userPosts` (copie locale), `state.supabasePosts`
+   (copie serveur revenue au chargement), `state.seed.posts` et
+   `window._feedExtraPosts` (le tampon anti-écrasement du rafraîchissement).
+   L'ancien code ne retirait que des deux premiers… en oubliant justement
+   `supabasePosts`. Pire : `startFeedRefreshLoop` fait
+   `state.supabasePosts = posts.concat(extra)` toutes les 60 s, où `extra` est
+   ce que le serveur NE renvoie PLUS — une entrée supprimée y était donc
+   **réinjectée indéfiniment**, y compris quand la suppression serveur avait
+   parfaitement réussi. `purgerPostsSupprimes()` (app-02) est désormais le seul
+   point qui les connaît tous les quatre : ne jamais refaire ce filtrage à la main.
+
+② **La suppression serveur était un « fire and forget ».**
+   `supa.from("posts").delete()…then(()=>{}).catch(()=>{})` : ni `{ error }` lu,
+   ni lignes comptées, **ni garde `window._supaReal`**. Envoyée au stub noop
+   (SDK encore en chargement paresseux, réseau coupé), elle rendait
+   `{ data: [], error: null }` — un **faux succès** parfait. La ligne restait en
+   base, personne ne réessayait, et elle revenait au premier rechargement.
+   ⚠️ **« 0 ligne touchée » ne se tranche pas seul** : la ligne a pu être déjà
+   supprimée (succès) ou refusée par la policy (échec). `_delObRun` (app-04) lève
+   le doute par une **relecture ciblée** — la seule preuve qui vaille. Échec →
+   file d'attente persistante (`passio_post_delete_outbox_v1`, patron `_cmtOb*`),
+   rejouée à `online`, au démarrage et toutes les 15 s, bornée en âge et en taille.
+
+③ **`publishPost` déversait la page serveur dans `state.seed.posts`.** C'est
+   l'amplificateur, et l'explication du « au moment où je publie » : après une
+   publication réussie, `const newPosts = await supaLoadPosts()` suivi de
+   `state.seed.posts = newPosts` recopiait la page serveur ENTIÈRE dans le
+   tableau du contenu de **démonstration** — celui-là même que `deletePost`
+   venait de filtrer. Tout ce que la base avait gardé remontait d'un bloc, et le
+   contenu de démonstration disparaissait jusqu'au rechargement suivant. Le
+   tableau des posts réseau est `supabasePosts` : c'est la convention de tous les
+   autres chemins (temps réel, pull-to-refresh, boucle de rafraîchissement), et
+   le seul que `_feedExtraPosts` sait protéger.
+
+**La parade structurelle : une pierre tombale.** `state.deletedPostIds` (bloc
+« SUPPRESSIONS DURABLES », app-02) est posée AVANT tout le reste par
+`marquerPostSupprime(id)`. Elle est persistée dans `localStorage` **et
+synchronisée par le blob `user_state`** — donc valable sur tous les appareils du
+compte. Quatre points de filtrage la consultent : `supaLoadPosts` (le point
+d'étranglement de TOUTES les lectures serveur — fil, rafraîchissement 60 s,
+pull-to-refresh, retour d'arrière-plan, profil, bobines), `feedAddRealtimePost`,
+`allFeedPosts` (filet final) et `buildReels`.
+⚠️ **Une suppression ne s'annule jamais : deux listes se fusionnent en UNION,
+jamais par remplacement.** `_applyUserState` recopie les clés du blob telles
+quelles — un blob écrit AVANT la suppression effaçait la liste et le post
+revenait au cycle suivant. D'où `fusionnerPostsSupprimes()` + un
+`purgerPostsSupprimes()` immédiat après chaque hydratation.
+⚠️ Bornée à `POSTS_SUPPRIMES_MAX` (500) : le blob `user_state` part EN ENTIER à
+chaque synchronisation, même raison que `passionSignals`.
+
+④ **Le bouton « ⋯ » de MA publication disparaissait, et c'est ce qui rendait le
+   défaut si dur à contourner.** La carte testait `p._source === "me"`,
+   c'est-à-dire la **provenance de la copie affichée**, pas l'auteur. Or
+   `allFeedPosts` dédoublonne dans l'ordre seed → supabase → me : dès que la
+   copie serveur d'un post est chargée, c'est elle qui s'affiche, avec
+   `_source === "supabase"` — et le menu d'options de ma propre publication
+   n'existait plus sur la carte. Seule la fiche ouverte (qui, elle, testait
+   `userPosts`) permettait encore de supprimer. `_estMonPost(p)` (app-02) pose la
+   bonne question : **l'auteur, jamais la source**. Corollaire, `confirmDeletePost`
+   et `deletePost` passent par `findPostAnywhere` — l'ancien `userPosts.find`
+   répondait « tu ne peux supprimer que tes propres posts » sur mon propre post.
+
+Verrou : `tests/e2e/suppression-durable.spec.js` (8 cas), éprouvé par mutation —
+rendre `state.seed.posts = newPosts` fait rougir le cas ③, retirer la purge de
+`supabasePosts` **et** le filet d'`allFeedPosts` en fait rougir cinq.
+
 ## 🗂️ Pièges connus — index (détail complet : docs/PIEGES_CONNUS.md)
 
 59 fiches détaillées par domaine. **Lis la fiche concernée AVANT de modifier ce domaine.** Pour un audit de diff, lance le subagent `audit-passio`.
@@ -344,6 +419,7 @@ l'ordre d'origine ou retirer le renvoi fait rougir 6 des 7).
 - **Commentaires / réactions** : 1 réaction/personne, GIF=commentaire, fluidité (patch en place), UX IG/FB.
 - **Cartes / géocodage** : MapLibre+OpenFreeMap, BAN+Photon (Nominatim retiré de la CSP).
 - **Supabase / realtime** : SDK paresseux, embeds sans FK, notifications cross-compte, tests multi-comptes par e-mail.
+- **Suppression de contenu** : pierres tombales `deletedPostIds`, file de suppression serveur, quatre tableaux à purger.
 - **Divers** : diagLog, monitoring client_errors, multi-profil centralisé, système d’étoiles, double-like.
 
 ## 🔍 Revue indépendante par un second modèle (2026-08-13)
@@ -1208,6 +1284,67 @@ personne.
   Convention appliquée : les assertions dont la cible a disparu ont été RETOURNÉES,
   jamais vidées — `ui-v6-composer.spec.js` et `ui-v7-lot.spec.js` exigent désormais
   l'ABSENCE de la ligne d'identité, pour qu'un retour silencieux reste visible.
+  ④ **ÉTENDU LE MÊME JOUR À LA FEUILLE « TROUVER UNE EXPÉRIENCE » DU FIL**, sur
+  demande de Benjamin après essai réel : « dans le fil quand je clique sur un post
+  → Trouver une expérience, je veux les mêmes onglets que dans (+), même design
+  fond violet clair écriture violet foncé ; supprime les textes explicatifs et les
+  emojis. » `js/ui-v3-passerelle.js` rend donc ses trois entrées comme la feuille
+  « Créer » : une icône SVG violette dans une pastille blanche à la place de
+  l'emoji (📍 🧑‍🤝‍🧑 ✨), le libellé seul et centré, aucune aide sous lui.
+  ⚠️ **Les règles CSS sont PARTAGÉES, pas recopiées** : le bloc du 2026-08-31
+  groupe désormais `#v2CreateSheet` et `#v3PassioSheet` (sept sélecteurs). Deux
+  copies auraient divergé au premier retouchage — c'est exactement ce que le
+  commentaire d'origine redoutait en sens inverse (il interdisait alors d'élargir
+  la règle, parce que la feuille d'UI-3 portait emoji ET sous-titre : la
+  contrainte tombe avec eux). **Ce qui n'a PAS changé : tout reste ancré à un
+  IDENTIFIANT de feuille, jamais à `.v2-sheet-item` seul**, qui reste le socle
+  générique de toute feuille basse à venir.
+  ⚠️ `.v2-sheet-emoji` est **retirée** de `styles.css` : la feuille d'UI-3 en
+  était l'unique consommatrice, et une règle qui survit à sa cible est un piège
+  déjà payé ici (défaut ⑤ de l'audit du 2026-08-29).
+  ⚠️ `#v3PassioSheet .v2-sheet-item-hint` est **conservée** alors qu'aucun nœud ne
+  la porte plus — délibérément : le jour où l'un des trois libellés cesserait de se
+  suffire, son aide naîtrait sinon dans le gris `--muted` du socle, éteint sur le
+  lavis. C'est la seule exception, et elle est écrite dans le fichier.
+  Verrou : `ui-v3-passerelle.spec.js`, cas ⑨ (absence d'emoji et d'aide, une icône
+  SVG par entrée, lavis mesuré sur la case ET son titre, libellé centré). La sonde
+  de lavis a déménagé dans `tests/e2e/lavis-helper.js` — trois suites la mesurent
+  désormais, et deux copies de ces seuils auraient divergé.
+
+  **⚠️ UN LIEN DE BOBINE MONTRAIT LA BOBINE DE QUELQU'UN D'AUTRE (2026-09-01).**
+  `buildReels(pinnedId)` n'épinglait la cible que si elle était SORTIE des 30
+  plus récentes. Quand elle est dans la liste sans en être la tête, `openReels`
+  ouvre le viewer sur la bobine n° 0 et `openReelById` la corrige par un
+  `scrollIntoView` dont l'effet n'arrive qu'au tour de rendu SUIVANT. Sonde :
+  cible en position 5 → `reelsState.current === 0` à l'ouverture, correction
+  ~2 s plus tard. Entre les deux, l'écran montre le contenu d'un tiers —
+  exactement ce que le booléen de `openReelById` existe pour empêcher.
+  ⚠️ **Épingler TOUJOURS supprime la fenêtre au lieu de la raccourcir** : la
+  cible EST l'indice 0, il n'y a plus rien à corriger. La liste ne s'allonge pas
+  (`[cible] + 29`) et ne porte pas de doublon (la cible est retirée de la suite).
+  ⚠️ **Ce défaut était INVISIBLE sans contenu plus récent que la démonstration** :
+  sans lui, la cible EST déjà l'indice 0. C'est ce qui l'a laissé passer, et ce
+  qui a fait rougir la CI le jour où la production a porté des bobines récentes.
+  Verrou : `reel-deeplink.spec.js`, « cible dans les 30 mais pas la plus
+  récente ». ⚠️ Il lit l'état **dès** l'ouverture du viewer, sans attente : une
+  attente le rendrait vert sur le code fautif, donc aveugle. Éprouvé par
+  mutation — remettre l'épinglage conditionnel le fait rougir en affichant
+  `reel_recent_4`.
+
+  **⚠️ LA SUITE N'EST PAS ISOLÉE DE LA PRODUCTION, ET ÇA SE VOIT EN CI.**
+  `tests/e2e/interactions.spec.js` stubbe `supaLoadPosts` APRÈS `bootOnboarded`
+  (qui attend 2,5 s) : la première requête du démarrage a déjà ramené le contenu
+  RÉEL, qui grossit de jour en jour. Diagnostic CI du 2026-09-01 :
+  `{"dansEtat":true,"nbPosts":35,"nbNoeuds":20}` — le fixture était dans l'état,
+  mais `renderFeed` peint en **deux temps** (les `FAST` = 20 premières cartes
+  tout de suite, le reste dans un `requestIdleCallback` qu'un nouveau rendu
+  ANNULE). Au-delà de 20 posts réels, le fixture pouvait n'arriver jamais, et
+  trois tests de like rougissaient sur `main` comme sur les branches, sans
+  qu'aucun code n'ait changé. `seedServerPost` vide donc `state.supabasePosts`
+  avant de semer : le fixture est le SEUL post serveur.
+  ⚠️ Famille générale : **un test qui laisse une requête de production remplir
+  son état ne mesure pas ce qu'il croit**. Le fichier documentait déjà ce piège
+  un cran plus haut ; il manquait ce cran-ci.
 
   **⚠️ La vue Carte s'affiche SOUS les onglets (2026-08-30), dans `js/ui-v4a3-vue.js`.**
   Demandé par Benjamin après essai réel : « quand je clique sur Carte je voudrais qu'elle
@@ -1399,6 +1536,95 @@ personne.
   d'un profil qui les affichait hier.
   Suites retirées : `cdv`, `cdv-deeplink`, `carnet-visibilite`,
   `commentaire-live-id`, `studio-apres-carnet`.
+
+  **EN-TÊTE DU PROFIL — la photo jusqu'au pseudo, et des passions qui sont des
+  PORTES (2026-09-01), ACTIF, SANS DRAPEAU.** Trois demandes de Benjamin après
+  essai réel : la photo de couverture « devrait aller jusqu'à juste au-dessus du
+  nom de profil », la photo de profil « plus grande », et « les passions
+  cliquables, ça renvoie vers la page de cette passion, pour que les utilisateurs
+  puissent aller découvrir les passions directement ». Implémentation :
+  `.main-profile-*` dans `styles.css`, `identitePassionsChipsHTML` /
+  `identitePassionsLiensHTML` / `_identPassionOnclick` (app-02),
+  `renderMainProfile` (app-06), l'en-tête du profil visité (app-04),
+  `openPassionExplorer(pid, retourUserId)` (app-07). Verrou :
+  `tests/e2e/profil-entete-passions.spec.js` (13, éprouvés par mutation — rendre
+  ses marges d'origine à `.main-profile-avatar-wrap` fait rougir 2 tests).
+
+  ⚠️ **CE QUI REND LA PLACE À LA PHOTO N'EST PAS LE PLAFOND, C'EST L'AVATAR.**
+  Le plafond de `.main-profile-cover` monte à peine (0,24 → 0,34 de `--app-vh`,
+  et l'`aspect-ratio: 3/2` le borne de toute façon à 237 px en 390 px de large).
+  Le gain vient de `.main-profile-avatar-wrap` : l'avatar ne déborde plus de
+  MOITIÉ dans le corps blanc (`margin-top: -45px` pour 90 px de haut), il tient
+  ENTIER sur la couverture (`-130px` pour 116 px + 14 de garde). Les 45 px qu'il
+  occupait dans le corps reviennent à la photo, et le pseudo se pose 4 px sous
+  son bord bas. **Ces trois nombres sont liés** : agrandir l'avatar sans corriger
+  `margin-top` le fait redéborder dans le corps ; le réduire sans corriger le fait
+  flotter au milieu de la photo. Mesuré à 390 × 844 : cover 237 px (contre 202),
+  carte 393 px (contre 360) pour 714 px visibles — la photo gagne 35 px de hauteur
+  PLUS les 45 px de débord que l'avatar lui rend, la carte n'en prend que 33.
+
+  ⚠️ **L'ASPECT-RATIO RESTE 3/2 — ne jamais l'élargir pour « gagner » de la
+  hauteur.** C'est le rapport du recadreur (1080×720) : un rapport plus haut
+  rognerait les côtés de toutes les couvertures déjà recadrées par leurs auteurs.
+  On n'agrandit pas une photo en coupant celles qui existent.
+
+  ⚠️ **CETTE DEMANDE N'ANNULE PAS CELLE DU 2026-08-31** (« le grand carré avec
+  photo prend trop de place, réduis-le »). L'une vise la CARTE ENTIÈRE, l'autre la
+  seule PHOTO — mais rien ne garantit tout seul que la carte ne regonfle pas.
+  D'où un test de contre-mesure explicite : la carte d'identité reste sous les
+  deux tiers de la zone visible. Toute demande d'agrandissement future doit
+  repasser par lui.
+
+  ⚠️ **PÉRIMÈTRE DES PASSIONS CLIQUABLES : LES DEUX EN-TÊTES DE PROFIL, ET RIEN
+  D'AUTRE.** Les surfaces denses (`ident-passions-sm` : cartes de publication,
+  commentaires et réponses, listes d'abonnés, recherche, inbox, notifications)
+  gardent `identitePassionsHTML`, en texte inerte. Deux raisons, aucune
+  décorative : ① ces lignes vivent DANS une rangée qui a déjà son geste (ouvrir le
+  profil, ouvrir la publication) — un bouton imbriqué y donnerait deux
+  destinations pour un tap ; ② elles mesurent 10,5 px, très loin des 44 px de
+  cible tactile. Un test verrouille ce périmètre côté carte de publication.
+
+  ⚠️ **`openModal` N'EMPILE PAS — d'où le second argument d'`openPassionExplorer`.**
+  Ouverte depuis la modale d'un profil visité, la page de la passion la REMPLACE :
+  sans chemin de retour, découvrir une passion faisait perdre la personne par qui
+  on l'avait découverte (la croix rend le fil, pas le profil). `retourUserId` est
+  une DONNÉE, pas une chaîne d'appel, et il peint un lien « ← Retour au profil ».
+  Les huit appels historiques (Explorer, tuiles de tendance, IA, passerelle UI-3)
+  ne le passent pas : ils viennent d'un écran, n'ont rien à restituer, et un lien
+  de retour y mentirait. Un test couvre chacun des deux cas.
+
+  ⚠️ **LA CIBLE TACTILE FAIT 44 px, LA PASTILLE VISIBLE 30 px** — même patron que
+  la pastille d'UI-3A et le crayon d'UI-6B : la boîte du bouton garde ses 44 px et
+  c'est un `::before` en `inset: 7px 0` (z-index négatif) qui PEINT la pilule, une
+  cible se mesurant sur la BOÎTE. Deux conséquences propres à une rangée qui passe
+  à la ligne : les marges négatives (`-7px 0`) rendent au corps les 14 px que la
+  boîte ajoute, et le **`row-gap` vaut exactement 14 px** (30 peints + 14 = 44) —
+  sans lui, deux rangées de boîtes se CHEVAUCHENT et un tap entre deux lignes
+  atteint la pastille du dessous. Un test vérifie qu'aucune paire ne se recouvre.
+
+  ⚠️ **LE FOND DE LA PASTILLE NE PEUT PAS ÊTRE `--bg-card`** : elle vit DANS
+  `.main-profile-card`, qui est déjà `--bg-card` (#fff), et `--border` est à 7 %
+  d'opacité — une pastille blanche sur carte blanche est invisible. D'où
+  `--accent-wash`, le jeton d'« état actif discret » du thème.
+
+  ⚠️ **LA RANGÉE EST FERRÉE À GAUCHE**, comme le pseudo et la bio.
+  `.main-profile-body .ident-passions` la centrait alors que tout le corps du
+  profil est à gauche — discret pour un libellé gris, franchement visible pour une
+  rangée de pastilles. La règle de ce lot a la MÊME spécificité (0,2,0) et gagne
+  par la position : ne pas la déplacer avant l'autre.
+
+  ⚠️ **`passionsAffichables()` ET JAMAIS LA LISTE BRUTE** — la porte dérobée ② du
+  lot UI-8 vaut a fortiori ici : le jsonb `profiles.passions` contient les passions
+  ARCHIVÉES, et une passion rangée deviendrait une porte PUBLIQUE. Le rendu reste
+  aussi BORNÉ (6 + « +N » non cliquable, `IDENT_PASSIONS_MAX_PROFIL`) : `flex-wrap`
+  n'autorise pas à peindre une liste non bornée venue d'un autre compte. Le « +N »
+  n'ouvre rien — un faux bouton est pire qu'une information.
+
+  ⚠️ **LE GESTIONNAIRE N'EST PAS UNE CHAÎNE LIBRE** (`_identPassionOnclick`, même
+  règle que `_passionTileOnclick`) : chaque branche écrit son appel EN TOUTES
+  LETTRES, seul l'argument circule et il passe par `escapeJsArg`. Et **aucune
+  activation clavier ici** : `app-08` porte le délégué unique des `[role="button"]`
+  non natifs — un second écouteur produirait deux activations pour une touche.
 
   **Lot UI-8 — « une personne, plusieurs passions » (2026-08-29), ACTIF PAR DÉFAUT.**
   Coupure unique : `localStorage.passio_ui_8="0"` ou `window.PASSIO_UI_8=false`. Le drapeau

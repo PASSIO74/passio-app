@@ -18,47 +18,10 @@
 // dessus » est verrouillée.
 const { test, expect } = require("@playwright/test");
 const { bootOnboarded } = require("./app-helper");
-
-// Mesure faite DANS la page : on lit les couleurs calculées, jamais la feuille
-// de style — c'est ce qui est réellement peint qui compte.
-// ⚠️ Cette fonction part s'exécuter dans le navigateur : elle ne doit RIEN
-// emprunter à la portée du fichier de test (Playwright n'en sérialise que la
-// source, jamais sa fermeture) — d'où les trois helpers définis à l'intérieur.
-function sonde(el) {
-  const canal = (c) => { c /= 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
-  const lum = (rgb) => 0.2126 * canal(rgb[0]) + 0.7152 * canal(rgb[1]) + 0.0722 * canal(rgb[2]);
-  const lire = (s) => (s.match(/[\d.]+/g) || []).slice(0, 3).map(Number);
-  // Le fond d'un nœud peut être transparent : on remonte jusqu'au premier
-  // ancêtre OPAQUE, exactement comme le ferait l'œil.
-  const fond = (n) => {
-    for (let c = n; c; c = c.parentElement) {
-      const b = getComputedStyle(c).backgroundColor;
-      const v = lire(b);
-      const a = (b.match(/[\d.]+/g) || [])[3];
-      if (v.length === 3 && (a === undefined || Number(a) === 1)) return v;
-    }
-    return [255, 255, 255];
-  };
-  const f = fond(el);
-  const t = lire(getComputedStyle(el).color);
-  const lf = lum(f), lt = lum(t);
-  return {
-    fond: f,
-    texte: t,
-    lumFond: lf,
-    contraste: (Math.max(lf, lt) + 0.05) / (Math.min(lf, lt) + 0.05),
-  };
-}
-
-// Un « lavis violet à écriture violet foncé » se reconnaît à trois choses, et
-// c'est tout ce que l'on exige.
-function verifierLavis(m, quoi) {
-  expect(m.lumFond, `${quoi} : le fond doit être CLAIR, pas un aplat violet`).toBeGreaterThan(0.6);
-  expect(m.texte[2], `${quoi} : l'écriture doit être violette (bleu dominant)`)
-    .toBeGreaterThan(m.texte[1] + 40);
-  expect(m.texte[0], `${quoi} : l'écriture doit être FONCÉE, pas blanche`).toBeLessThan(160);
-  expect(m.contraste, `${quoi} : contraste AA`).toBeGreaterThanOrEqual(4.5);
-}
+// La sonde de lavis vit dans `lavis-helper.js` depuis le 2026-09-01 : la feuille
+// « Trouver une expérience » du Fil mesure la MÊME formule (voir
+// `ui-v3-passerelle.spec.js`), et deux copies de ces seuils auraient divergé.
+const { sonde, verifierLavis } = require("./lavis-helper");
 
 async function boot(page, errors) {
   await bootOnboarded(page, errors || null, 1, {});

@@ -25,10 +25,158 @@ function openPostOptions(postId) {
   `);
 }
 
-// ===== SUPPRESSION DES POSTS =====
+// ═════════════════════════════════════════════════════════════════════════
+// SUPPRESSION DES POSTS
+// ─────────────────────────────────────────────────────────────────────────
+// ⚠️ CE CHEMIN A RESSUSCITÉ DU CONTENU EN PRODUCTION (signalé le 2026-09-01 :
+// « j'ai publié, et tout l'ancien contenu que j'avais supprimé est ressorti
+// dans le fil »). Trois défauts se cumulaient — le détail des causes est dans
+// le bloc « SUPPRESSIONS DURABLES » d'app-02. Les règles qui en découlent :
+//
+//   ① On supprime de TOUTES les copies vivantes, pas seulement de `userPosts` :
+//      une publication vit simultanément dans `userPosts`, `supabasePosts`,
+//      `seed.posts` et `window._feedExtraPosts`. `purgerPostsSupprimes()` est le
+//      seul point qui les connaît toutes — ne pas refaire le filtrage à la main.
+//   ② On pose une pierre tombale AVANT tout : c'est elle, et elle seule, qui
+//      tient quand le contenu revient d'une page serveur, du temps réel ou d'un
+//      blob de synchronisation périmé.
+//   ③ La suppression serveur n'est JAMAIS un « fire and forget ». Elle est
+//      vérifiée (erreur lue ET lignes comptées), et mise en file si elle échoue.
+//      Sans quoi le stub noop (SDK pas encore chargé, réseau coupé) rend un faux
+//      succès et la ligne reste en base pour tout le monde.
+// ═════════════════════════════════════════════════════════════════════════
+
+// Chemins Storage portés par une publication (best-effort : si la RLS Storage
+// refuse, le pire est un fichier orphelin — jamais un post qui survit).
+function _cheminsMediaPost(post) {
+  try {
+    const marker = "/storage/v1/object/public/content/";
+    return [post && post.image, post && post.video, post && post.audio, post && post.cover]
+      .filter(function (u) { return typeof u === "string" && u.indexOf(marker) !== -1; })
+      .map(function (u) { return decodeURIComponent(u.slice(u.indexOf(marker) + marker.length).split("?")[0]); });
+  } catch (e) { return []; }
+}
+
+// ── File d'attente des suppressions serveur ───────────────────────────────
+// Même patron que la file des commentaires (`_cmtOb*`) : préfixe DÉDIÉ, car
+// `_outbox*` (messages) et `_cmtOb*` (commentaires) existent déjà — trois files
+// distinctes partagent `window`, et une collision de nom y serait silencieuse.
+var _DEL_OUTBOX_KEY = "passio_post_delete_outbox_v1";
+var _DEL_OB_MAX_TRIES = 12;
+// Bornes d'hygiène. La file rend leurs essais à toutes ses entrées à chaque
+// démarrage (conditions réseau neuves) : sans borne, une suppression réellement
+// impossible — compte d'origine supprimé, ligne verrouillée — se retenterait
+// jusqu'à la fin des temps et la file grossirait sans jamais rendre la main.
+// La pierre tombale, elle, ne dépend pas de la file : le contenu reste caché
+// ICI quoi qu'il advienne ; ce rattrapage ne sert qu'aux AUTRES comptes.
+var _DEL_OB_MAX_ITEMS = 200;
+var _DEL_OB_MAX_AGE_MS = 30 * 24 * 3600 * 1000;
+var _delObTimer = null, _delObFlushing = false;
+function _delObLoad() { try { return JSON.parse(localStorage.getItem(_DEL_OUTBOX_KEY) || "[]"); } catch (e) { return []; } }
+function _delObSave(arr) { try { localStorage.setItem(_DEL_OUTBOX_KEY, JSON.stringify(arr)); } catch (e) {} }
+function _delObStartTimer() { if (!_delObTimer) _delObTimer = setInterval(function () { if (!document.hidden) _delObFlush(); }, 15000); }
+function _delObStopTimer() { if (_delObTimer) { clearInterval(_delObTimer); _delObTimer = null; } }
+
+// ⚠️ L'entrée porte le COMPTE. La clé de file est unique pour l'origine, et
+// deux comptes se succèdent sur le même appareil : sans ce champ, la
+// suppression de A était rejouée sous l'identité de B — refusée par la RLS
+// (author_id ≠ auth.uid()), donc retentée en boucle jusqu'à la borne, pour rien.
+// Même leçon que la file `user_state`, dont la clé est suffixée par compte.
+function _enqueuePostDelete(postId, paths) {
+  if (!postId) return;
+  var arr = _delObLoad().filter(function (o) { return o.postId !== postId; });
+  arr.push({ postId: postId, paths: paths || [], uid: (typeof MY_UID !== "undefined" ? MY_UID : null), tries: 0, ts: Date.now() });
+  _delObSave(arr);
+  _delObStartTimer();
+  _delObFlush();
+}
+
+// Exécute UNE suppression serveur. Rend true seulement si la ligne n'est
+// PLUS en base à la fin.
+//
+// ⚠️ « 0 ligne touchée » est ambigu et ne peut pas être tranché seul : la ligne
+// a pu être déjà supprimée (succès) ou refusée par la policy (échec). On lève
+// le doute par une relecture ciblée — c'est la seule preuve qui vaille, et elle
+// coûte une requête sur un chemin rare.
+async function _delObRun(op) {
+  try {
+    if (typeof supa === "undefined" || !supa || !window._supaReal) return false;
+    if (typeof MY_UID === "undefined" || !MY_UID) return false;
+    const res = await supa.from("posts").delete().eq("id", op.postId).eq("author_id", MY_UID).select("id");
+    const verdict = (typeof _writeVerdict === "function")
+      ? _writeVerdict(res, { label: "suppression de la publication " + op.postId })
+      : { ok: !(res && res.error), rows: (res && Array.isArray(res.data)) ? res.data.length : null };
+    if (!verdict.ok) return false;
+    if (verdict.rows === 0) {
+      const { data: reste, error: errLect } = await supa.from("posts").select("id").eq("id", op.postId).maybeSingle();
+      if (errLect) return false;          // on ne sait pas : on retentera
+      if (reste) {                        // la ligne est là et n'a pas bougé → refus RLS
+        try { diagLog("suppression refusée (RLS) pour " + op.postId); } catch (e) {}
+        return false;
+      }
+    }
+    // La ligne est partie : on peut nettoyer le média (jamais l'inverse — un
+    // média effacé sur une publication encore en base donnerait une carte vide).
+    try {
+      if (op.paths && op.paths.length) await supa.storage.from("content").remove(op.paths);
+    } catch (e) {}
+    return true;
+  } catch (e) { return false; }
+}
+
+async function _delObFlush() {
+  if (_delObFlushing) return;
+  var arr = _delObLoad();
+  if (!arr.length) { _delObStopTimer(); return; }
+  if (typeof navigator !== "undefined" && navigator.onLine === false) return;  // hors-ligne : attendre `online`
+  if (!window._supaReal) return;                                               // backend pas prêt : réessai plus tard
+  _delObFlushing = true;
+  try {
+    for (var i = 0; i < arr.length; i++) {
+      var op = arr[i];
+      if ((op.tries || 0) >= _DEL_OB_MAX_TRIES) continue;
+      if (op.uid && op.uid !== MY_UID) continue;   // suppression d'un AUTRE compte : pas la nôtre à rejouer
+      var ok = false;
+      try { ok = await _delObRun(op); } catch (e) { ok = false; }
+      if (ok) {
+        _delObSave(_delObLoad().filter(function (o) { return o.postId !== op.postId; }));
+      } else {
+        op.tries = (op.tries || 0) + 1;
+        _delObSave(_delObLoad().map(function (o) { return o.postId === op.postId ? op : o; }));
+      }
+    }
+  } finally { _delObFlushing = false; }
+  var pend = _delObLoad().filter(function (o) {
+    return (o.tries || 0) < _DEL_OB_MAX_TRIES && (!o.uid || o.uid === MY_UID);
+  });
+  if (pend.length) _delObStartTimer(); else _delObStopTimer();
+}
+
+if (!window._delObWired) {
+  window._delObWired = true;
+  try {
+    window.addEventListener("online", function () { _delObFlush(); });
+    setTimeout(function () {
+      // Une session neuve = des conditions réseau neuves : on rend leurs essais
+      // aux suppressions épuisées plutôt que de les abandonner en base. La
+      // pierre tombale les cache déjà ICI ; ce rattrapage sert aux AUTRES.
+      try {
+        var _seuil = Date.now() - _DEL_OB_MAX_AGE_MS;
+        var _f = _delObLoad().filter(function (o) { return o && o.postId && (o.ts || 0) > _seuil; });
+        if (_f.length > _DEL_OB_MAX_ITEMS) _f = _f.slice(_f.length - _DEL_OB_MAX_ITEMS);
+        _delObSave(_f.map(function (o) { o.tries = 0; return o; }));
+      } catch (e) {}
+      _delObFlush();
+    }, 4000);
+  } catch (e) {}
+}
+
 function confirmDeletePost(postId) {
-  const post = state.userPosts.find(p => p.id === postId);
-  if (!post) {
+  // ⚠️ `findPostAnywhere` et non `userPosts.find` : après un rechargement, c'est
+  // la copie SERVEUR de ma publication qui est en mémoire, et l'ancien test
+  // répondait « tu ne peux supprimer que tes propres posts » sur mon propre post.
+  const post = (typeof findPostAnywhere === "function") ? findPostAnywhere(postId) : null;
+  if (!post || !_estMonPost(post)) {
     toast("Tu ne peux supprimer que tes propres posts.");
     return;
   }
@@ -54,33 +202,28 @@ function confirmDeletePost(postId) {
 }
 
 function deletePost(postId) {
-  const idx = state.userPosts.findIndex(p => p.id === postId);
-  if (idx === -1) {
+  const post = (typeof findPostAnywhere === "function") ? findPostAnywhere(postId) : null;
+  if (!post || !_estMonPost(post)) {
     toast("Post introuvable.");
     closeModal();
     return;
   }
-  const post = state.userPosts[idx];
-  // Retire le post de la liste perso
-  state.userPosts.splice(idx, 1);
-  // Nettoie les références (likes notamment)
+  // Les chemins Storage se lisent AVANT la purge : après, l'objet a disparu des
+  // tableaux et on ne saurait plus quels fichiers effacer.
+  const chemins = _cheminsMediaPost(post);
+
+  // ① La pierre tombale d'abord : à partir d'ici, aucune voie de retour
+  // (page serveur, temps réel, blob périmé, file de pagination) ne peut plus
+  // ramener cette publication à l'écran, même si tout le reste échoue.
+  marquerPostSupprime(postId);
+  // ② Toutes les copies vivantes, en un seul point qui les connaît toutes.
+  purgerPostsSupprimes();
+  // ③ Les références qui pointaient dessus.
   state.user.likedPosts = (state.user.likedPosts || []).filter(x => x !== postId);
   saveState();
-  // Supprimer aussi dans Supabase
-  if (typeof supa !== "undefined" && supa && typeof MY_UID !== "undefined" && MY_UID) {
-    supa.from("posts").delete().eq("id", postId).eq("author_id", MY_UID).then(() => {}).catch(() => {});
-    // Nettoyer le média Storage associé → évite les fichiers orphelins (coût à l'échelle).
-    // Best-effort : si la RLS Storage refuse, on ignore (le pire = un orphelin, statu quo).
-    try {
-      const marker = "/storage/v1/object/public/content/";
-      const paths = [post && post.image, post && post.video, post && post.audio, post && post.cover]
-        .filter(function(u){ return typeof u === "string" && u.indexOf(marker) !== -1; })
-        .map(function(u){ return decodeURIComponent(u.slice(u.indexOf(marker) + marker.length).split("?")[0]); });
-      if (paths.length) supa.storage.from("content").remove(paths).then(function(){}).catch(function(){});
-    } catch(e) {}
-  }
-  // Retirer aussi de seed.posts si présent
-  state.seed.posts = (state.seed.posts || []).filter(p => p.id !== postId);
+  // ④ Le serveur, vérifié et réessayé — jamais un « fire and forget ».
+  _enqueuePostDelete(postId, chemins);
+
   closeModal();
   // Fermer la page de détail si elle affichait ce post (sinon il reste à l'écran)
   if (typeof closePost === "function") closePost();
@@ -2797,7 +2940,7 @@ async function openUserProfile(authorId, source) {
           <div class="main-profile-avatar" style="background:' + avatarBg(user) + ';background-size:cover;background-position:center;cursor:default;">' + avatarInner(user) + '</div>\
         </div>\
         <div class="main-profile-username">' + escapeHtml(user.name || "Passionné") + (user.isPrivate ? ' <span title="Compte privé" style="font-size:13px;">🔒</span>' : '') + '</div>\
-        ' + identitePassionsHTML({ id: authorId, passions: userPassions, passion: user.passion }) + '\
+        ' + identitePassionsLiensHTML({ id: authorId, passions: userPassions, passion: user.passion }, { retourUserId: authorId }) + '\
         ' + (user.bio ? '<div class="main-profile-bio">' + escapeHtml(user.bio) + '</div>' : '') + '\
         ' + (rsLinks.length ? '<div class="main-profile-rs">' + rsLinks.map(function(l) { return '<a class="main-profile-rs-link" href="' + safeUrlAttr(l.url || "") + '" target="_blank" rel="noopener">' + (RS_ICONS[l.platform] || "🔗") + ' ' + escapeHtml(l.platform || "lien") + '</a>'; }).join("") + '</div>' : '') + '\
         <div class="main-profile-stats">\
