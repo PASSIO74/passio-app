@@ -9896,22 +9896,33 @@ body.ctx-locked #appMain { overflow: hidden; }
 
 /* ── Fil : « Affiner » ───────────────────────────────────────────────────── */
 :root.passio-taxo-v1 .taxo-affiner { padding: 0 12px 6px; }
+/* ⚠️ `z-index: 0` SUR LE BOUTON, et ce n'est pas décoratif. La pilule est
+   peinte par un pseudo-élément en `z-index: -1` pour que la BOÎTE tactile
+   garde ses 44 px là où la pastille visible n'en fait que 30 (patron d'UI-3A).
+   Mais un `position: relative` seul ne crée AUCUN contexte d'empilement : le
+   pseudo-élément passait alors derrière le fond du premier ancêtre qui en
+   crée un, donc invisible — mesuré à l'écran, « Affiner » sortait en texte nu.
+   `z-index: 0` fait du bouton ce contexte : le pseudo-élément se peint
+   au-dessus de son fond et sous son texte. */
 :root.passio-taxo-v1 .taxo-affiner-btn {
-  position: relative; min-height: 44px; padding: 0 14px;
+  position: relative; z-index: 0; min-height: 44px; padding: 0 14px;
   border: 0; background: transparent; color: var(--accent);
   font-size: 12px; font-weight: 800; font-family: inherit; cursor: pointer;
 }
-/* La pilule est PEINTE par un pseudo-élément : le bouton garde ses 44 px de
-   boîte tactile alors que la pastille visible n'en fait que 30. Même patron
-   que la pastille d'UI-3A — un simple débord ne satisferait pas la mesure. */
 :root.passio-taxo-v1 .taxo-affiner-btn::before {
   content: ""; position: absolute; inset: 7px 0; z-index: -1;
   border: 1.5px solid var(--border); border-radius: 999px; background: var(--bg-card);
 }
-:root.passio-taxo-v1 .taxo-affiner-btn.on::before { border-color: var(--accent); }
+:root.passio-taxo-v1 .taxo-affiner-btn.on::before {
+  border-color: var(--accent); background: rgba(124, 58, 237, .1);
+}
+/* ⚠️ HAUTEUR BORNÉE, ET C'EST LE POINT. « Musique » porte 32 spécialités :
+   déplié sans plafond, le panneau poussait le fil ENTIER hors de l'écran —
+   on affinait un fil qu'on ne voyait plus. Il défile chez lui. */
 :root.passio-taxo-v1 .taxo-affiner-corps {
   margin-top: 6px; padding: 10px; border: 1px solid var(--border);
   border-radius: 14px; background: var(--bg-card);
+  max-height: 38vh; overflow-y: auto; -webkit-overflow-scrolling: touch;
 }
 :root.passio-taxo-v1 .taxo-affiner-bloc { margin-bottom: 12px; }
 :root.passio-taxo-v1 .taxo-affiner-titre {
