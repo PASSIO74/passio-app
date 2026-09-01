@@ -130,6 +130,30 @@ test.describe("la recherche", () => {
     expect(apres.taille).toBeGreaterThan(1500);
   });
 
+  test("⑥ bis — le classement ne dépend PAS de la réponse du serveur", async ({ page }) => {
+    // ⚠️ DÉFAUT MESURÉ EN CI LE 2026-09-01, invisible tant que la migration
+    // n'était pas appliquée. Le client prenait l'ordre du SERVEUR dès qu'il
+    // répondait, et les deux barèmes ne coïncident pas : sur « guitares », le
+    // navigateur remonte « Guitare », `rechercher_passions` « Guitare
+    // électrique ». Même frappe, même appareil, deux écrans différents selon
+    // que le réseau avait répondu ou non.
+    //
+    // Le navigateur est désormais la SEULE autorité sur l'ordre. On l'éprouve
+    // en comparant le classement avec et sans serveur — le résultat doit être
+    // IDENTIQUE.
+    await bootOnboarded(page, null, 1, { query: APERCU });
+    await ouvrirRecherche(page);
+    const avecServeur = await chercher(page, "guitares");
+    // On coupe le serveur pour la session : le moteur retombe sur le local.
+    await page.evaluate(() => { window.PassioPassions._etat(); });
+    const sansServeur = await page.evaluate(async () => {
+      const m = window.PassioPassions;
+      const r = await m.chercherAsync("guitares", { limite: 20, serveur: false });
+      return r.map((p) => p.label);
+    });
+    expect(avecServeur[0], "le premier résultat dépend de la réponse serveur").toBe(sansServeur[0]);
+  });
+
   test("⑥ correspondance exacte, alias, sans accent, approximative", async ({ page }) => {
     await bootOnboarded(page, null, 1, { query: APERCU });
     await ouvrirRecherche(page);

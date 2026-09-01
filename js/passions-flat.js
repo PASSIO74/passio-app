@@ -414,11 +414,69 @@
       if (!options.serveur || !serveurUtilisable()) return local;
       return chercherServeur(q, options.limite || 20).then(function (dist) {
         if (!dist || !dist.length) return local;
-        var exclu = Object.create(null);
-        if (options.exclure && options.exclure.forEach) options.exclure.forEach(function (id) { exclu[id] = 1; });
-        return dist.filter(function (p) { return !exclu[p.id]; }).slice(0, options.limite || 20);
+        return fusionner(q, local, dist, options);
       });
     });
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // FUSION LOCAL + SERVEUR — LE CLASSEMENT APPARTIENT AU NAVIGATEUR
+  // ──────────────────────────────────────────────────────────────────────────
+  // ⚠️ DÉFAUT MESURÉ EN CI LE 2026-09-01, ET IL A FALLU QUE LA MIGRATION SOIT
+  // APPLIQUÉE POUR LE VOIR. Le code prenait le classement du SERVEUR tel quel
+  // dès qu'il répondait. Or les deux barèmes ne coïncident pas : sur
+  // « guitares », le navigateur remonte « Guitare » (repli au singulier, pénalité
+  // +2 sur les autres) et `rechercher_passions` remonte « Guitare électrique ».
+  //
+  // Le vrai problème n'est pas de savoir lequel a raison — les deux résultats
+  // sont pertinents. C'est que l'ORDRE CHANGEAIT selon que la requête réseau
+  // avait répondu ou non : même frappe, même appareil, deux écrans différents.
+  // Un utilisateur sur réseau lent voyait un classement, le même sur Wi-Fi en
+  // voyait un autre.
+  //
+  // Le serveur sert donc à ce qu'il fait le mieux — RETROUVER dans tout le
+  // catalogue, y compris ce que l'index local par préfixe ne rattrape pas — et
+  // le navigateur reste la SEULE autorité sur l'ordre. Un seul barème, appliqué
+  // à un seul endroit : c'est aussi ce qui évite qu'ils redivergent au premier
+  // ajustement de l'un des deux.
+  //
+  // ⚠️ Une passion rendue par le serveur mais ABSENTE du référentiel local est
+  // conservée, à la fin : elle est réelle (la base fait foi), simplement plus
+  // récente que le JSON embarqué. La jeter ferait disparaître une passion
+  // publiable — l'inverse de ce que la recherche serveur apporte.
+  // ══════════════════════════════════════════════════════════════════════════
+  function fusionner(q, local, dist, options) {
+    options = options || {};
+    var limite = options.limite || 20;
+    var exclu = Object.create(null);
+    if (options.exclure && options.exclure.forEach) options.exclure.forEach(function (id) { exclu[id] = 1; });
+
+    var n = norme(q);
+    var motsQ = mots(q).map(singulier);
+    var nSing = motsQ.join(" ");
+
+    var vus = Object.create(null);
+    var classables = [];      // connues du référentiel local → notées ici
+    var inconnues = [];       // venues du serveur seul → gardées telles quelles
+
+    function ajouter(p) {
+      if (!p || !p.id || vus[p.id] || exclu[p.id]) return;
+      vus[p.id] = 1;
+      var connue = DONNEES && DONNEES.parId[p.id];
+      if (connue) classables.push({ p: connue, s: score(connue, n, nSing, motsQ) + (connue.is_broad ? 5 : 0) });
+      else inconnues.push(p);
+    }
+    local.forEach(ajouter);
+    dist.forEach(ajouter);
+
+    classables.sort(function (a, b) {
+      if (a.s !== b.s) return a.s - b.s;
+      if (a.p.popularity !== b.p.popularity) return b.p.popularity - a.p.popularity;
+      var ra = rangRecence(a.p.id), rb = rangRecence(b.p.id);
+      if (ra !== rb) return ra - rb;
+      return a.p.label.localeCompare(b.p.label, "fr");
+    });
+    return classables.map(function (x) { return x.p; }).concat(inconnues).slice(0, limite);
   }
 
   // ══════════════════════════════════════════════════════════════════════════
