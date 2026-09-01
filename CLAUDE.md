@@ -155,6 +155,7 @@ Ces règles transverses valent pour TOUTE modification. Le subagent `audit-passi
 - **onclick inline** : doit référencer une fonction globale EXISTANTE (`npm run audit:handlers`).
 - **Supabase** : jamais de requête dans `onAuthStateChange` (deadlock → `setTimeout(...,0)`) ; jamais le global `supabase` (SDK) au top-level d’un app-*.js (chargement paresseux → `supa`/`ensureSupabase()`) ; un UPDATE/DELETE qui touche 0 ligne = RLS manquante ; jamais de base64 en DB (→ Storage) ; embed `profiles(...)` = 400 sans FK réelle.
 - **Écritures qui échouent en silence** : le SDK ne LÈVE PAS sur un refus RLS → **toujours lire `{ error }`** (sinon l’action reste « réussie » à l’écran et disparaît au rechargement). Une écriture d’état (like, RSVP, follow…) envoie l’**INTENTION locale** ; ne jamais la re-déduire d’une lecture préalable (elle inverse l’action dès que local et base divergent — et le hook fetch prend alors cette LECTURE pour la confirmation d’écriture). Échec réel = annuler l’affichage optimiste.
+- **Suppression d'une publication** : passer par `deletePost` (app-04), qui pose une **pierre tombale** (`marquerPostSupprime`) puis `purgerPostsSupprimes()` — un post vit dans QUATRE tableaux (`userPosts`, `supabasePosts`, `seed.posts`, `window._feedExtraPosts`), en oublier un le fait revenir au prochain rafraîchissement. Un rechargement serveur s'écrit dans `supabasePosts`, JAMAIS dans `seed.posts`.
 - **Guards de rendu** : écrire dans `#feedList`/`#storiesRowFeed`/`#profileStrip` sans invalider `_feedDomSig`/`_lastHtml` fait sauter le prochain render.
 - **Build** : exactement 9 fichiers app-*.js entre les marqueurs BUILD:APP. Prod = app.js + styles.css externalisés (hash de contenu).
 - **openModal n’empile pas** : ouvrir une modale depuis une autre la REMPLACE (mémoriser d’où l’on vient) ; `openModal` injecte déjà un `×`.
@@ -330,6 +331,80 @@ rétablissement et geste DNS restant : `docs/SETUP_SMTP_AUTH.md`.
 Verrou : `tests/e2e/confirmation-email.spec.js` (7, éprouvés par mutation — remettre
 l'ordre d'origine ou retirer le renvoi fait rougir 6 des 7).
 
+## 🪦 SUPPRIMER UNE PUBLICATION — pierres tombales et file de suppression (2026-09-01)
+
+Défaut vécu, signalé après un essai réel depuis « ben sur portable test » :
+**« j'ai publié mon contenu, et tout l'ancien contenu que j'avais supprimé est
+ressorti dans le fil »**. Trois causes se cumulaient, aucune visible depuis
+l'écran, et chacune suffisait à elle seule à faire revenir du contenu.
+
+① **`deletePost` ne connaissait que DEUX des quatre tableaux.** Une publication
+   vit simultanément dans `state.userPosts` (copie locale), `state.supabasePosts`
+   (copie serveur revenue au chargement), `state.seed.posts` et
+   `window._feedExtraPosts` (le tampon anti-écrasement du rafraîchissement).
+   L'ancien code ne retirait que des deux premiers… en oubliant justement
+   `supabasePosts`. Pire : `startFeedRefreshLoop` fait
+   `state.supabasePosts = posts.concat(extra)` toutes les 60 s, où `extra` est
+   ce que le serveur NE renvoie PLUS — une entrée supprimée y était donc
+   **réinjectée indéfiniment**, y compris quand la suppression serveur avait
+   parfaitement réussi. `purgerPostsSupprimes()` (app-02) est désormais le seul
+   point qui les connaît tous les quatre : ne jamais refaire ce filtrage à la main.
+
+② **La suppression serveur était un « fire and forget ».**
+   `supa.from("posts").delete()…then(()=>{}).catch(()=>{})` : ni `{ error }` lu,
+   ni lignes comptées, **ni garde `window._supaReal`**. Envoyée au stub noop
+   (SDK encore en chargement paresseux, réseau coupé), elle rendait
+   `{ data: [], error: null }` — un **faux succès** parfait. La ligne restait en
+   base, personne ne réessayait, et elle revenait au premier rechargement.
+   ⚠️ **« 0 ligne touchée » ne se tranche pas seul** : la ligne a pu être déjà
+   supprimée (succès) ou refusée par la policy (échec). `_delObRun` (app-04) lève
+   le doute par une **relecture ciblée** — la seule preuve qui vaille. Échec →
+   file d'attente persistante (`passio_post_delete_outbox_v1`, patron `_cmtOb*`),
+   rejouée à `online`, au démarrage et toutes les 15 s, bornée en âge et en taille.
+
+③ **`publishPost` déversait la page serveur dans `state.seed.posts`.** C'est
+   l'amplificateur, et l'explication du « au moment où je publie » : après une
+   publication réussie, `const newPosts = await supaLoadPosts()` suivi de
+   `state.seed.posts = newPosts` recopiait la page serveur ENTIÈRE dans le
+   tableau du contenu de **démonstration** — celui-là même que `deletePost`
+   venait de filtrer. Tout ce que la base avait gardé remontait d'un bloc, et le
+   contenu de démonstration disparaissait jusqu'au rechargement suivant. Le
+   tableau des posts réseau est `supabasePosts` : c'est la convention de tous les
+   autres chemins (temps réel, pull-to-refresh, boucle de rafraîchissement), et
+   le seul que `_feedExtraPosts` sait protéger.
+
+**La parade structurelle : une pierre tombale.** `state.deletedPostIds` (bloc
+« SUPPRESSIONS DURABLES », app-02) est posée AVANT tout le reste par
+`marquerPostSupprime(id)`. Elle est persistée dans `localStorage` **et
+synchronisée par le blob `user_state`** — donc valable sur tous les appareils du
+compte. Quatre points de filtrage la consultent : `supaLoadPosts` (le point
+d'étranglement de TOUTES les lectures serveur — fil, rafraîchissement 60 s,
+pull-to-refresh, retour d'arrière-plan, profil, bobines), `feedAddRealtimePost`,
+`allFeedPosts` (filet final) et `buildReels`.
+⚠️ **Une suppression ne s'annule jamais : deux listes se fusionnent en UNION,
+jamais par remplacement.** `_applyUserState` recopie les clés du blob telles
+quelles — un blob écrit AVANT la suppression effaçait la liste et le post
+revenait au cycle suivant. D'où `fusionnerPostsSupprimes()` + un
+`purgerPostsSupprimes()` immédiat après chaque hydratation.
+⚠️ Bornée à `POSTS_SUPPRIMES_MAX` (500) : le blob `user_state` part EN ENTIER à
+chaque synchronisation, même raison que `passionSignals`.
+
+④ **Le bouton « ⋯ » de MA publication disparaissait, et c'est ce qui rendait le
+   défaut si dur à contourner.** La carte testait `p._source === "me"`,
+   c'est-à-dire la **provenance de la copie affichée**, pas l'auteur. Or
+   `allFeedPosts` dédoublonne dans l'ordre seed → supabase → me : dès que la
+   copie serveur d'un post est chargée, c'est elle qui s'affiche, avec
+   `_source === "supabase"` — et le menu d'options de ma propre publication
+   n'existait plus sur la carte. Seule la fiche ouverte (qui, elle, testait
+   `userPosts`) permettait encore de supprimer. `_estMonPost(p)` (app-02) pose la
+   bonne question : **l'auteur, jamais la source**. Corollaire, `confirmDeletePost`
+   et `deletePost` passent par `findPostAnywhere` — l'ancien `userPosts.find`
+   répondait « tu ne peux supprimer que tes propres posts » sur mon propre post.
+
+Verrou : `tests/e2e/suppression-durable.spec.js` (8 cas), éprouvé par mutation —
+rendre `state.seed.posts = newPosts` fait rougir le cas ③, retirer la purge de
+`supabasePosts` **et** le filet d'`allFeedPosts` en fait rougir cinq.
+
 ## 🗂️ Pièges connus — index (détail complet : docs/PIEGES_CONNUS.md)
 
 59 fiches détaillées par domaine. **Lis la fiche concernée AVANT de modifier ce domaine.** Pour un audit de diff, lance le subagent `audit-passio`.
@@ -344,6 +419,7 @@ l'ordre d'origine ou retirer le renvoi fait rougir 6 des 7).
 - **Commentaires / réactions** : 1 réaction/personne, GIF=commentaire, fluidité (patch en place), UX IG/FB.
 - **Cartes / géocodage** : MapLibre+OpenFreeMap, BAN+Photon (Nominatim retiré de la CSP).
 - **Supabase / realtime** : SDK paresseux, embeds sans FK, notifications cross-compte, tests multi-comptes par e-mail.
+- **Suppression de contenu** : pierres tombales `deletedPostIds`, file de suppression serveur, quatre tableaux à purger.
 - **Divers** : diagLog, monitoring client_errors, multi-profil centralisé, système d’étoiles, double-like.
 
 ## 🔍 Revue indépendante par un second modèle (2026-08-13)
