@@ -165,6 +165,12 @@ test.describe("Carte de bienvenue", () => {
   });
 
   test("tant qu'aucun compte n'existe, elle REVIENT à la visite suivante", async ({ page }) => {
+    // Ce cas enchaîne TROIS démarrages de l'application (visite, retour, second
+    // retour) et chacun coûte un boot complet : le budget par défaut de 45 s ne
+    // suffit pas. Ce n'est pas de la lenteur suspecte — c'est le prix d'un test
+    // qui mesure des VISITES et non un état, et c'est précisément ce qui lui
+    // donne sa valeur ici.
+    test.setTimeout(120000);
     // ⚠️ CE TEST INVERSE CE QUE LA PREMIÈRE VERSION AFFIRMAIT, et c'est délibéré.
     // La carte écrivait sa fermeture dans `localStorage` : elle ne revenait donc
     // JAMAIS. Benjamin l'a fermée pour réessayer et s'est retrouvé sans aucun
