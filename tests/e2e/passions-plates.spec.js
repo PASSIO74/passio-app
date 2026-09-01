@@ -22,9 +22,15 @@ const referentiel = require("../../scripts/referentiel-passions.js");
 
 const APERCU = "?passio_preview=flat-passions-v1";
 
-// Ouvre la feuille de recherche depuis la bulle « Ajouter » du Fil.
+// Ouvre la feuille de recherche depuis la bulle « + » du rail du PROFIL.
+// ⚠️ ELLE ÉTAIT DANS LE FIL JUSQU'AU 2026-09-01. Benjamin l'a fait déménager :
+// « la bulle de rajout de passion doit être sur le profil, pas dans le fil ».
+// Le helper passe donc par l'écran Profil — et les tests qui observent ENSUITE
+// le Fil doivent y revenir explicitement.
 async function ouvrirRecherche(page) {
-  await page.locator('#profileStrip [data-passion-tile="__ajouter__"]').click();
+  await page.evaluate(() => goTo("profiles"));
+  await page.waitForTimeout(500);
+  await page.locator('#v9ProfilePassions [data-passion-tile="__ajouter__"]').click();
   await expect(page.locator(".psel-input")).toBeVisible({ timeout: 10000 });
   // Le référentiel arrive par `fetch` : on attend qu'il soit là, sinon on
   // mesurerait le repli hors ligne en croyant mesurer le référentiel complet.
@@ -167,9 +173,15 @@ test.describe("la recherche", () => {
     await page.locator('.psel-item[data-psel-id="moto-enduro"]').click();
     await chercher(page, "astrophoto");
     await page.locator('.psel-item[data-psel-id="photo-astrophoto"]').click();
-    expect(await page.locator(".psel-puce").count()).toBeGreaterThanOrEqual(3); // + la passion d'origine
+    // ⚠️ DEUX PUCES, PAS TROIS. La porte est passée du Fil au Profil : elle
+    // ouvre sur une sélection VIDE (on ajoute à son compte) là où celle du Fil
+    // pré-cochait ce qu'on voyait déjà. Le compte en avait une : elle n'est
+    // plus une puce, mais elle compte dans le plafond.
+    expect(await page.locator(".psel-puce").count()).toBe(2);
     await page.locator('[data-psel="valider"]').click();
     await page.waitForTimeout(800);
+    // Ajouter au compte alimente aussi le Fil (`ajouterPassionAuFil`) : choisir
+    // de posséder une passion, c'est la voir.
     const actives = await page.evaluate(() => Array.from(_activeFeedPassions));
     expect(actives).toContain("moto-enduro");
     expect(actives).toContain("photo-astrophoto");
@@ -224,6 +236,8 @@ test.describe("la recherche", () => {
     await page.locator('.psel-item[data-psel-id="moto-enduro"]').click();
     await page.locator('[data-psel="valider"]').click();
     await page.waitForTimeout(900);
+    await page.evaluate(() => goTo("feed"));
+    await page.waitForTimeout(600);
 
     const bulle = page.locator('#profileStrip [data-passion-tile="moto-enduro"]');
     await expect(bulle).toHaveCount(1);
@@ -374,8 +388,14 @@ test.describe("le modèle et les garde-fous", () => {
     await bootOnboarded(page, null, 1, { query: APERCU });
     const etat = await page.evaluate(() => window.PassioPassions._etat());
     expect(etat.actif, "le kill switch local n'a pas priorité sur l'aperçu").toBe(false);
-    // Aucune trace du lot : ni bulle « Ajouter », ni bouton de Studio actif.
-    expect(await page.locator('#profileStrip [data-passion-tile="__ajouter__"]').count()).toBe(0);
+    // Aucune trace du lot : ni bulle « + » au Profil, ni bouton de Studio actif.
+    // ⚠️ ON LA CHERCHE OÙ ELLE VIT (rail du Profil). La chercher dans le Fil
+    // rendrait ce test vert quoi qu'il arrive depuis son déménagement — une
+    // règle qui survit à la disparition de sa cible, la famille de défauts la
+    // plus fréquente de ce dépôt.
+    await page.evaluate(() => goTo("profiles"));
+    await page.waitForTimeout(500);
+    expect(await page.locator('#v9ProfilePassions [data-passion-tile="__ajouter__"]').count()).toBe(0);
     await page.evaluate(() => goTo("studio"));
     await page.waitForTimeout(900);
     await expect(page.locator("#studioPassionBtn")).toBeHidden();
@@ -398,7 +418,9 @@ test.describe("le modèle et les garde-fous", () => {
     const etat = await page.evaluate(() => window.PassioPassions._etat());
     expect(etat.actif).toBe(false);
     expect(etat.pret, "le référentiel a été téléchargé hors aperçu").toBe(false);
-    expect(await page.locator('#profileStrip [data-passion-tile="__ajouter__"]').count()).toBe(0);
+    await page.evaluate(() => goTo("profiles"));
+    await page.waitForTimeout(500);
+    expect(await page.locator('#v9ProfilePassions [data-passion-tile="__ajouter__"]').count()).toBe(0);
   });
 
   test("⑱ le pliage du navigateur est celui du référentiel construit", async ({ page }) => {
@@ -456,4 +478,169 @@ test.describe("mobile", () => {
       expect(debord.liste, "la liste de résultats impose un glissement latéral").toBe(false);
     });
   }
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+// ㉑ À ㉖ — LA PORTE A DÉMÉNAGÉ, ET ELLE EST PLAFONNÉE (2026-09-01)
+//
+// Deux demandes de Benjamin après essai réel de la preview : la bulle d'ajout
+// appartient au Profil, pas au Fil ; et au-delà de trois passions, ce sera
+// payant — sans tarif affiché tant que l'offre n'est pas ouverte.
+// ══════════════════════════════════════════════════════════════════════════
+test.describe("la porte d'ajout et son plafond", () => {
+  // Amène le compte à N passions vivantes, en écrivant dans l'état comme le
+  // ferait l'application. On ne passe PAS par le sélecteur : ce helper sert à
+  // POSER la situation, pas à prouver le chemin.
+  async function poserNPassions(page, n) {
+    await page.evaluate((cible) => {
+      const dispo = ["musique", "photo", "sport", "cuisine", "voyage"];
+      state.user.profiles = dispo.slice(0, cible).map((pid, i) => ({
+        id: "p_test_" + i,
+        name: state.user.general.username,
+        passion: pid,
+        emoji: "✨",
+        bio: "",
+        color: "#8b5cf6",
+        createdAt: Date.now(),
+      }));
+      state.user.currentProfileId = state.user.profiles[0].id;
+      saveState();
+    }, n);
+  }
+
+  test("㉑ la bulle « + » est sur le Profil, et nulle part dans le Fil", async ({ page }) => {
+    await bootOnboarded(page, null, 1, { query: APERCU });
+    await page.waitForTimeout(800);
+    // Le Fil n'en porte plus : c'est une commande de lecture.
+    expect(await page.locator('#profileStrip [data-passion-tile="__ajouter__"]').count()).toBe(0);
+    await page.evaluate(() => goTo("profiles"));
+    await page.waitForTimeout(600);
+    const bulle = page.locator('#v9ProfilePassions [data-passion-tile="__ajouter__"]');
+    await expect(bulle).toHaveCount(1);
+    await expect(bulle).toBeVisible();
+    // Et elle ouvre bien la recherche.
+    await bulle.click();
+    await expect(page.locator(".psel-input")).toBeVisible({ timeout: 10000 });
+  });
+
+  test("㉒ à trois passions, la porte annonce que la suite sera payante", async ({ page }) => {
+    await bootOnboarded(page, null, 1, { query: APERCU });
+    await poserNPassions(page, 3);
+    await page.evaluate(() => goTo("profiles"));
+    await page.waitForTimeout(600);
+    await page.locator('#v9ProfilePassions [data-passion-tile="__ajouter__"]').click();
+    await page.waitForTimeout(500);
+
+    // Pas de feuille de recherche : on n'ouvre pas ce qui ne peut rien conclure.
+    expect(await page.locator(".psel-input").count()).toBe(0);
+    const modale = page.locator("#modalContent");
+    await expect(modale).toContainText("Trois passions offertes");
+    await expect(modale).toContainText("payante");
+    // ⚠️ AUCUN TARIF. Ordre explicite de Benjamin : « ne mets pas de valeur, tu
+    // mets juste que ça va être payant mais pas de tarif pour l'instant ».
+    const texte = (await modale.textContent()) || "";
+    expect(texte, "un montant est affiché alors que l'offre n'est pas ouverte")
+      .not.toMatch(/\d+\s*(?:[,.]\d+)?\s*(?:€|euros?|EUR)/i);
+    // ⚠️ AUCUN BOUTON « PAYER » : le paiement n'est pas ouvert, un bouton qui
+    // ne mène nulle part est un clic mort.
+    expect(texte).not.toMatch(/payer|s'abonner|souscrire/i);
+    // La seule action réelle est proposée : réorganiser ses trois passions.
+    await expect(page.locator('[data-tel="passion_paywall_gerer"]')).toBeVisible();
+  });
+
+  test("㉒ bis — le plafond tient au POINT D'ÉCRITURE, pas seulement à la porte", async ({ page }) => {
+    // ⚠️ Garder la porte ne suffit pas : tout appelant futur d'`ajouterPassionAuCompte`
+    // contournerait le plafond. C'est la leçon de `meOpen`, prise dans l'autre sens.
+    await bootOnboarded(page, null, 1, { query: APERCU });
+    await poserNPassions(page, 3);
+    const apres = await page.evaluate(() => {
+      const rendu = ajouterPassionAuCompte("moto-enduro", "");
+      return {
+        rendu: rendu,
+        vivantes: (state.user.profiles || []).filter((p) => !p.archived).length,
+      };
+    });
+    expect(apres.rendu, "l'écriture a été acceptée au-delà du plafond").toBe(null);
+    expect(apres.vivantes).toBe(3);
+    await expect(page.locator("#modalContent")).toContainText("Trois passions offertes");
+  });
+
+  test("㉓ archiver libère une place, et restaurer reste gratuit sous le plafond", async ({ page }) => {
+    // ⚠️ NE PAS ROUVRIR LA PORTE DÉROBÉE ④ DU LOT UI-8 : là-bas, le paywall
+    // barrait la restauration d'une passion DÉJÀ possédée. Ici, reprendre une
+    // archive est gratuit tant qu'on reste sous trois vivantes — sinon le
+    // compte au plafond n'aurait aucune sortie.
+    await bootOnboarded(page, null, 1, { query: APERCU });
+    await poserNPassions(page, 3);
+    const etat = await page.evaluate(() => {
+      const id = state.user.profiles[2].id;
+      archiverPassion(id);
+      const apresArchivage = (state.user.profiles || []).filter((p) => !p.archived).length;
+      const placeLibre = passionsRestantesOffertes();
+      restaurerPassion(id);
+      return {
+        apresArchivage,
+        placeLibre,
+        apresRestauration: (state.user.profiles || []).filter((p) => !p.archived).length,
+        archivee: !!(state.user.profiles || []).find((p) => p.id === id && p.archived),
+      };
+    });
+    expect(etat.apresArchivage).toBe(2);
+    expect(etat.placeLibre).toBe(1);
+    expect(etat.apresRestauration, "la restauration a été barrée sous le plafond").toBe(3);
+    expect(etat.archivee).toBe(false);
+  });
+
+  test("㉓ bis — restaurer une QUATRIÈME passion vivante est barré", async ({ page }) => {
+    await bootOnboarded(page, null, 1, { query: APERCU });
+    await poserNPassions(page, 3);
+    const etat = await page.evaluate(() => {
+      // Une quatrième, archivée d'emblée : le compte la possède déjà.
+      state.user.profiles.push({
+        id: "p_test_arch", name: state.user.general.username, passion: "voyage",
+        emoji: "✨", bio: "", color: "#8b5cf6", createdAt: Date.now(), archived: true,
+      });
+      saveState();
+      restaurerPassion("p_test_arch");
+      return {
+        vivantes: (state.user.profiles || []).filter((p) => !p.archived).length,
+        toujoursArchivee: !!(state.user.profiles || []).find((p) => p.id === "p_test_arch" && p.archived),
+      };
+    });
+    expect(etat.vivantes, "le plafond se contourne par la liste des archives").toBe(3);
+    expect(etat.toujoursArchivee).toBe(true);
+    await expect(page.locator("#modalContent")).toContainText("Trois passions offertes");
+  });
+
+  test("㉔ kill switch : drapeau coupé, aucun plafond", async ({ page }) => {
+    // Le plafond vit sous `flat_passions_v1`. Coupé, aucun compte existant ne
+    // se voit imposer une limite qu'il n'avait pas hier.
+    await page.addInitScript(() => { localStorage.setItem("flat_passions_v1", "0"); });
+    await bootOnboarded(page, null, 1, { query: APERCU });
+    await poserNPassions(page, 3);
+    const etat = await page.evaluate(() => ({
+      restantes: passionsRestantesOffertes(),
+      atteint: plafondPassionsAtteint(),
+      ajout: !!ajouterPassionAuCompte("voyage", ""),
+      vivantes: (state.user.profiles || []).filter((p) => !p.archived).length,
+    }));
+    expect(etat.restantes).toBe(Infinity);
+    expect(etat.atteint).toBe(false);
+    expect(etat.ajout, "le kill switch n'a pas rendu l'ajout illimité").toBe(true);
+    expect(etat.vivantes).toBe(4);
+  });
+
+  test("㉕ à deux passions, la recherche s'ouvre et ne laisse en prendre qu'une", async ({ page }) => {
+    await bootOnboarded(page, null, 1, { query: APERCU });
+    await poserNPassions(page, 2);
+    await ouvrirRecherche(page);
+    await chercher(page, "enduro");
+    await page.locator('.psel-item[data-psel-id="moto-enduro"]').click();
+    await page.waitForTimeout(200);
+    // La deuxième dépasse : la fenêtre prend la place du toast générique.
+    await chercher(page, "astrophoto");
+    await page.locator('.psel-item[data-psel-id="photo-astrophoto"]').click();
+    await page.waitForTimeout(500);
+    await expect(page.locator("#modalContent")).toContainText("Trois passions offertes");
+  });
 });

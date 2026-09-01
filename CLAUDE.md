@@ -401,7 +401,7 @@ Le script est en lecture seule sur le dépôt (il n'écrit que dans son dossier 
   CI vérifie qu'ils n'ont pas divergé (`npm run passions:verifier`).
   Implémentation : `js/passions-flat.js` (moteur), `js/passion-selector.js`
   (`PassionSearchSelector`, le composant unique des 7 surfaces),
-  `js/passions-flat-ui.js` (la colle). Tests : `tests/e2e/passions-plates.spec.js` (23)
+  `js/passions-flat-ui.js` (la colle). Tests : `tests/e2e/passions-plates.spec.js` (31)
   et `scripts/verifier-migration-passions.sh` (migration EXÉCUTÉE sur PostgreSQL).
   ⚠️ **Six pièges de ce lot.** ① **Le référentiel ne doit JAMAIS entrer dans le
   bundle** : `scripts/build.js` inline TOUT `<script src="js/…">`, donc un
@@ -426,6 +426,35 @@ Le script est en lecture seule sur le dépôt (il n'écrit que dans son dossier 
   personne. ⑥ **`[hidden]` est une règle du NAVIGATEUR** : un `display` posé sur
   une classe la bat en spécificité — la croix « effacer » s'affichait sur un champ
   vide, mesurée en 320 px.
+  ⚠️ **LA PORTE D'AJOUT EST SUR LE PROFIL, ET ELLE EST PLAFONNÉE (2026-09-01).**
+  Demandes de Benjamin après essai réel de la preview : « la bulle de rajout de
+  passion doit être sur le profil, pas dans le fil » puis « rajoute un mode
+  payant, 3 gratuits le reste payant, pour l'instant tu bloques et tu mets une
+  fenêtre qui annonce que ça sera payant », enfin « ne mets pas de valeur, tu
+  mets juste que ça va être payant mais pas de tarif pour l'instant ».
+  ① Le rail du Fil est une commande de **lecture** : plus aucune bulle « + ».
+  `ouvrirRecherchePassionsFil` et `PassioFlatUI.ouvrirPassionsDuFil` sont
+  **retirées** — sans appelant, et fausses sous le plafond (elles appelaient
+  `ajouterPassionAuCompte` par passion cochée, donc au plafond elles auraient
+  coché dans `_activeFeedPassions` des passions que le compte ne possède pas).
+  ② `PASSIONS_OFFERTES = 3` (app-06) + `openPassionPaywall()`. **AUCUN MONTANT
+  N'EST AFFICHÉ**, aucun bouton « Payer » (le paiement n'est pas ouvert : un
+  bouton qui ne mène nulle part est un clic mort). ⚠️ **Ce n'est pas un retour
+  de l'économie retirée par ADR-009** : l'ADR interdit une monnaie
+  INTERMÉDIAIRE et prévoit explicitement un paiement DIRECT en monnaie réelle —
+  c'est exactement ce cas. ⚠️ Le plafond vit sous `flat_passions_v1`, coupé par
+  défaut : aucun compte de production n'est limité aujourd'hui. ⚠️ **On compte
+  les passions VIVANTES**, écart assumé avec « archiver ne libère pas
+  d'emplacement » (UI-8) — sinon un compte au plafond n'aurait aucune sortie ;
+  le plafond se lit « trois **à la fois** ». ⚠️ **La porte dérobée ④ d'UI-8
+  n'est pas rouverte** : restaurer une archive reste GRATUIT sous trois
+  vivantes, et n'est barré que si ce serait la quatrième. ⚠️ Gardé aux **deux**
+  bouts — portes (`openCreateProfile`, `ouvrirAjoutPassions`, le `max` du
+  sélecteur) ET points d'écriture (`ajouterPassionAuCompte`,
+  `restaurerPassion`) : mesuré, neutraliser l'un laisse l'autre vert.
+  ⚠️ `ouvrirGestionPassionsDepuisPaywall` change d'écran AVANT d'ouvrir
+  `#passionManager`, qui vit dans `#screen-profiles` — déplié depuis le Fil il
+  serait invisible.
   ⚠️ **La migration n'est PAS appliquée en production.** Les 1 889 passions
   nouvelles sont sélectionnables et lisibles mais **pas publiables** : la clé
   étrangère de `posts.passion_id` les refuserait. `estPassionCanonique` reste la

@@ -58,15 +58,36 @@
   // ══════════════════════════════════════════════════════════════════════════
   // ① « MES PASSIONS » — ajouter par recherche, en multi
   // ══════════════════════════════════════════════════════════════════════════
+  // ⚠️ LE PLAFOND EST LU DANS APP-06, JAMAIS RECOPIÉ ICI. Deux copies d'une
+  // règle de facturation divergeraient au premier ajustement — et c'est
+  // précisément le genre d'écart qui se voit chez l'utilisateur avant de se
+  // voir dans le code (`sharePostInFeed` / `shareReelInFeed`, `createdAt`).
+  function placesRestantes() {
+    try {
+      return (typeof passionsRestantesOffertes === "function") ? passionsRestantesOffertes() : 0;
+    } catch (e) { journal("placesRestantes", e); return 0; }
+  }
+
+  function annoncerPlafond() {
+    try { if (typeof openPassionPaywall === "function") { openPassionPaywall(); return; } } catch (e) {}
+    dire("Trois passions offertes : les suivantes seront payantes.");
+  }
+
   function ouvrirAjoutPassions(options) {
     if (!actif()) return false;
     options = options || {};
     var deja = mesPassions();
+    var places = placesRestantes();
+    // Au plafond, on n'ouvre pas une recherche qui ne pourra rien conclure : on
+    // dit tout de suite pourquoi, et ce qui débloque.
+    if (places <= 0) { annoncerPlafond(); return true; }
     selecteur().ouvrir({
       mode: "multi",
       titre: options.titre || "Qu'est-ce qui te passionne ?",
       sousTitre: "Recherche et choisis directement ce que tu aimes.",
       selection: [],
+      max: places,
+      onMax: annoncerPlafond,
       valider: "Ajouter à mes passions",
       onValider: function (ids) {
         var ajoutees = 0;
@@ -88,43 +109,19 @@
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // ② LE FIL — choisir ce qu'on veut voir
-  // ⚠️ SÉLECTION DE LECTURE. On écrit `_activeFeedPassions` par `setFeedPassions`
-  // et rien d'autre : la passion d'écriture (`currentProfileId`) n'est pas
-  // touchée. C'est la décision 6 d'ADR-010, et le lot UI-8 l'a déjà payée une
-  // fois en confondant les deux.
+  // ② LE FIL — plus de porte d'ajout ici (2026-09-01)
+  // ⚠️ `ouvrirPassionsDuFil` A ÉTÉ RETIRÉE avec la bulle « + » du rail du Fil,
+  // sur demande de Benjamin : « la bulle de rajout de passion doit être sur le
+  // profil, pas dans le fil ». Le rail du Fil reste une commande de LECTURE —
+  // on y coche et décoche ce qu'on possède ; on acquiert au Profil.
   //
-  // ⚠️ UNE PASSION COCHÉE DANS LE FIL SANS ÊTRE DANS « MES PASSIONS » EST UN
-  // PIÈGE : `renderProfileStrip` ne dessine que les passions vivantes plus les
-  // « orphelines » déjà actives — donc elle aurait une bulle, mais un compte
-  // qui la décoche ne la retrouverait plus. On l'ajoute donc au compte en même
-  // temps : choisir de voir une passion, c'est l'avoir.
+  // Elle n'est pas seulement devenue inutile : elle serait devenue FAUSSE. Elle
+  // appelait `ajouterPassionAuCompte` pour chaque passion cochée, donc au
+  // plafond elle aurait coché des passions dans `_activeFeedPassions` que le
+  // compte ne possède pas — des bulles qu'un décochage aurait fait disparaître
+  // sans retour. Un plafond sur l'écriture oblige à fermer les portes qui
+  // écrivaient sans le dire.
   // ══════════════════════════════════════════════════════════════════════════
-  function ouvrirPassionsDuFil() {
-    if (!actif()) return false;
-    var courant = [];
-    try { courant = Array.from(_activeFeedPassions || []); } catch (e) {}
-    selecteur().ouvrir({
-      mode: "multi",
-      titre: "Ton fil",
-      sousTitre: "Choisis les passions que tu veux voir. Tu peux en ajouter autant que tu veux.",
-      selection: courant,
-      valider: "Voir mon fil",
-      onValider: function (ids) {
-        ids.forEach(function (id) {
-          try { if (typeof ajouterPassionAuCompte === "function") ajouterPassionAuCompte(id, ""); }
-          catch (e) { journal("fil_ajout", e); }
-        });
-        try { if (typeof setFeedPassions === "function") setFeedPassions(ids); } catch (e) { journal("setFeedPassions", e); }
-        // ⚠️ Invalider le guard no-op AVANT de repeindre : `renderFeed` sort tôt
-        // quand la signature du DOM est inchangée (piège documenté dans CLAUDE.md).
-        try { window._feedDomSig = null; } catch (e) {}
-        try { if (typeof renderProfileStrip === "function") renderProfileStrip(); } catch (e) {}
-        try { if (typeof renderFeed === "function") renderFeed(); } catch (e) {}
-      },
-    });
-    return true;
-  }
 
   // ══════════════════════════════════════════════════════════════════════════
   // ③ LE STUDIO — la passion de DESTINATION, choix unique
@@ -274,7 +271,6 @@
     actif: actif,
     mesPassions: mesPassions,
     ouvrirAjoutPassions: ouvrirAjoutPassions,
-    ouvrirPassionsDuFil: ouvrirPassionsDuFil,
     ouvrirChoixStudio: ouvrirChoixStudio,
     ouvrirFiltreIRL: ouvrirFiltreIRL,
     monterOnboarding: monterOnboarding,

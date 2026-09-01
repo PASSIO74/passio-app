@@ -83,6 +83,10 @@
       // un toast passait inaperçu et on restait devant une sélection affichée
       // sans rien pour conclure. Mesuré par Benjamin sur la preview.
       verifier: null,
+      // Appelée à la place du toast quand `max` est atteint : l'appelant décide
+      // ce que « plus de place » veut dire chez lui (au compte, c'est une offre
+      // payante à annoncer ; ailleurs, un simple plafond de confort).
+      onMax: null,
       onChoisir: null,
       onValider: null,
       onChangement: null,
@@ -316,6 +320,10 @@
     if (i >= 0) { this.selection.splice(i, 1); }
     else {
       if (this.cfg.max && this.selection.length >= this.cfg.max) {
+        if (typeof this.cfg.onMax === "function") {
+          try { this.cfg.onMax(this.cfg.max); } catch (e) {}
+          return;
+        }
         try { if (typeof toast === "function") toast("Maximum " + this.cfg.max + " passions pour commencer"); } catch (e) {}
         return;
       }

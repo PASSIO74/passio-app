@@ -248,13 +248,12 @@ Aucune activation positive n'est écrite dans `localStorage` : l'aperçu vient d
 l'URL, jamais d'un état posé sur l'appareil de qui teste. Drapeau à faux :
 l'application se comporte **exactement** comme avant.
 
-## 9. Les sept surfaces
+## 9. Les surfaces
 
 | surface | ce qui change | où |
 |---|---|---|
 | Première visite / onboarding | la grille de 19 tuiles devient une recherche **en ligne** | `renderPassionGrid` (app-02) |
-| Fil | une bulle « **+** Ajouter » en fin de rail | `renderProfileStrip` (app-06) |
-| Profil | la même bulle dans son rail | `renderProfilePassionRail` (app-06) |
+| Profil | une bulle « **+** » en fin de rail, à côté des passions qu'on possède | `renderProfilePassionRail` (app-06) |
 | Mes passions | la modale de catalogue devient le sélecteur | `openCreateProfile` (app-06) |
 | Studio | un bouton de recherche remplace le `<select>` | `renderStudio` (app-06) + `index.html` |
 | Rencontrer | une tuile « 🔍 Chercher » en tête des passions | `renderIrlPassionTiles` (app-07) |
@@ -265,6 +264,83 @@ documenté à plusieurs reprises qu'une décoration par observateur se fait effa
 au premier re-rendu (`renderProfileStrip` réécrit `#profileStrip` en entier,
 cache `_lastHtml` compris ; `renderIrlPassionTiles` réécrit `#irlPassionRow` et
 UI-4A5 **déplace** ce nœud).
+
+⚠️ **LE FIL N'A PLUS DE PORTE D'AJOUT (2026-09-01).** Une bulle « + Ajouter »
+avait d'abord été posée en fin de rail du Fil. Benjamin l'a fait déménager après
+essai réel : « la bulle de rajout de passion doit être sur le profil, pas dans
+le fil ». Le rail du Fil est une commande de **lecture** — on y coche et décoche
+ce qu'on possède ; on acquiert au Profil. `ouvrirRecherchePassionsFil` (app-06)
+et `PassioFlatUI.ouvrirPassionsDuFil` ont été **retirées** avec elle : elles
+n'avaient plus aucun appelant, et surtout elles seraient devenues fausses sous
+le plafond (§9 bis) — elles appelaient `ajouterPassionAuCompte` pour chaque
+passion cochée, donc au plafond elles auraient coché dans `_activeFeedPassions`
+des passions que le compte ne possède pas, des bulles qu'un décochage aurait
+fait disparaître sans retour.
+
+## 9 bis. Trois passions offertes, la suite sera payante
+
+Demande de Benjamin le 2026-09-01 : « rajoute un mode payant, pour l'instant
+3 profils gratuits le reste payant, pour l'instant tu bloques et tu mets une
+fenêtre qui annonce que ça sera payant » — puis, une minute plus tard : « ne
+mets pas de valeur, tu mets juste que ça va être payant mais pas de tarif pour
+l'instant ». **Aucun montant n'est affiché**, et un test l'exige (`㉒`).
+
+`PASSIONS_OFFERTES = 3` (app-06), avec `plafondPassionsActif()`,
+`nbPassionsVivantes()`, `passionsRestantesOffertes()`, `plafondPassionsAtteint()`
+et `openPassionPaywall()`.
+
+⚠️ **Ce n'est pas un retour de l'économie retirée par ADR-009.** L'ADR interdit
+une **monnaie intermédiaire** (Passia, points, étoiles, packs) et prévoit
+explicitement qu'« un paiement futur devra être un paiement DIRECT en monnaie
+réelle ». Un abonnement est exactement ce cas. Rien de ce que l'ADR a retiré
+n'est réintroduit : ni solde, ni pack, ni prix libellé en jeton.
+
+⚠️ **Le plafond vit sous `flat_passions_v1`, coupé par défaut.** Aucun compte de
+production ne se voit donc imposer une limite qu'il n'avait pas hier ; couper le
+drapeau rend les passions illimitées, à l'octet près (test `㉔`).
+
+⚠️ **On compte les passions VIVANTES, pas les entrées.** Écart **assumé** avec la
+règle héritée du lot UI-8 (« archiver ne libère pas d'emplacement payant ») :
+sans cet écart, un compte au plafond n'aurait **aucune sortie** — ni ajouter, ni
+échanger — et la fenêtre lui annoncerait une offre fermée sans rien lui
+proposer. Le plafond se lit « trois passions **à la fois** », ce que la fenêtre
+dit en toutes lettres.
+
+⚠️ **La porte dérobée ④ du lot UI-8 n'est PAS rouverte.** Là-bas, le paywall
+barrait la **restauration** d'une passion déjà possédée, en comptant les
+archivées : on réclamait de l'argent pour reprendre ce qu'on avait déjà. Ici,
+restaurer une archive est **gratuit** tant qu'on reste sous trois vivantes
+(test `㉓`), et barré seulement quand ce serait une quatrième vivante
+(test `㉓ bis`). Le verrou historique d'UI-8 (« archiver puis restaurer ne
+réclame jamais de paiement ») reste vert.
+
+⚠️ **Le plafond est gardé aux DEUX bouts, et c'est délibéré.** Aux **portes**
+(`openCreateProfile`, `PassioFlatUI.ouvrirAjoutPassions`, le `max` du sélecteur)
+pour ne pas laisser chercher, choisir et valider quelqu'un qui sera refusé ; et
+au **point d'écriture** (`ajouterPassionAuCompte`, `restaurerPassion`) pour que
+tout appelant futur le rencontre. C'est la leçon de `meOpen`, prise dans les
+deux sens : garder la fonction qui écrit ne suffit pas, garder la porte non
+plus. Mesuré : neutraliser le garde d'`ajouterPassionAuCompte` fait rougir
+`㉒ bis` **et laisse `㉕` vert** — les deux couches sont réellement
+indépendantes.
+
+⚠️ **Aucun bouton « Payer ».** Le paiement n'est pas ouvert : un bouton qui ne
+mène nulle part est un clic mort, et ce dépôt en a déjà payé le prix (l'aide
+« bobines », ancrée sur une cible inexistante). La fenêtre dit ce qui est vrai
+aujourd'hui — c'est à venir, rien n'est débité, le tarif sera annoncé au
+lancement — et n'offre que l'action qui existe réellement : réorganiser ses
+trois passions.
+
+⚠️ **`ouvrirGestionPassionsDepuisPaywall` est une fonction à part**, pas trois
+instructions dans l'`onclick`. Le panneau `#passionManager` vit **dans**
+`#screen-profiles` : ouvert depuis le Fil sans changer d'écran, il serait déplié
+mais invisible — le défaut exact des aides d'UI-7 posées sur une ancre sans
+`offsetParent`.
+
+⚠️ **`onMax` sur le sélecteur, à la place du toast.** L'appelant décide ce que
+« plus de place » veut dire chez lui : au compte, c'est une offre à annoncer ;
+ailleurs, un simple plafond de confort. Le sélecteur ne connaît pas la
+facturation, et ne doit pas.
 
 ## 10. Les pièges payés sur ce lot
 
