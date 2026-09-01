@@ -1,7 +1,20 @@
 // Tests E2E de l'Access Gate (verrouillage par code d'accès pré-lancement).
 // Vérifie : blocage total, rejet d'un mauvais code, déverrouillage, persistance session.
 const { test, expect } = require("@playwright/test");
-const { GATE_CODE, GATE_KEY, GATE_TOKEN } = require("./gate-helper");
+const { GATE_CODE, GATE_KEY, GATE_TOKEN, CLE_PREMIERE_VISITE } = require("./gate-helper");
+
+// ⚠️ Cette suite teste le GATE, pas ce qu'il y a derrière — mais deux de ses cas
+// vérifient qu'après le bon code on arrive bien sur la landing. Depuis le
+// 2026-09-01 le parcours « première visite » est ACTIF par défaut : un appareil
+// vierge entre alors directement dans le Fil, et ces deux cas mesuraient le
+// nouveau parcours en croyant mesurer l'ancien. On pose donc la coupure au boot
+// et on garde TOUTES les assertions — convention déjà appliquée aux mises en
+// ligne d'UI-3A et des lots UI-4. Les cas qui portent sur le gate lui-même ne
+// sont pas affectés : la coupure vit dans `localStorage`, le jeton du gate dans
+// `sessionStorage`, les deux ne se croisent pas.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript((cle) => localStorage.setItem(cle, "0"), CLE_PREMIERE_VISITE);
+});
 
 test("au premier lancement, l'écran de code bloque toute l'app", async ({ page }) => {
   await page.goto("/index.html");

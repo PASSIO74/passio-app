@@ -19,7 +19,7 @@
 //      mesure — une régression bien pire que l'absence de chiffre.
 // ═══════════════════════════════════════════════════════════════════════════
 const { test, expect } = require("@playwright/test");
-const { GATE_TOKEN, GATE_KEY } = require("./gate-helper");
+const { GATE_TOKEN, GATE_KEY, poserGateSansPremiereVisite } = require("./gate-helper");
 
 /**
  * Capture les lignes POSTées vers telemetry_events — et les ARRÊTE avant la base.
@@ -55,7 +55,7 @@ test.describe("Latence perçue", () => {
     const page = await ctx.newPage();
     const lignes = await interceptePayloads(page);
 
-    await page.addInitScript(([k, t]) => sessionStorage.setItem(k, t), [GATE_KEY, GATE_TOKEN]);
+    await poserGateSansPremiereVisite(page);
     await page.goto("/index.html?telemetry=1");
     await page.waitForSelector("#landing.active", { timeout: 30000 });
 
@@ -95,7 +95,7 @@ test.describe("Latence perçue", () => {
     const page = await ctx.newPage();
     const lignes = await interceptePayloads(page);
 
-    await page.addInitScript(([k, t]) => sessionStorage.setItem(k, t), [GATE_KEY, GATE_TOKEN]);
+    await poserGateSansPremiereVisite(page);
 
     // On neutralise `requestAnimationFrame` AVANT le chargement : il enregistre
     // les demandes et ne rappelle jamais. C'est l'état exact d'un onglet passé en

@@ -8,7 +8,7 @@
 const { execSync } = require("child_process");
 const path = require("path");
 const { test, expect } = require("@playwright/test");
-const { GATE_TOKEN, GATE_KEY, GATE_CODE } = require("./gate-helper");
+const { GATE_TOKEN, GATE_KEY, GATE_CODE, poserGateSansPremiereVisite } = require("./gate-helper");
 
 test.describe("build prod (dist) — app.js externalisé derrière le gate", () => {
   test.beforeAll(() => {
@@ -31,7 +31,7 @@ test.describe("build prod (dist) — app.js externalisé derrière le gate", () 
   });
 
   test("session déjà déverrouillée (jeton) : boot direct sans étape gate", async ({ page }) => {
-    await page.addInitScript(([k, t]) => sessionStorage.setItem(k, t), [GATE_KEY, GATE_TOKEN]);
+    await poserGateSansPremiereVisite(page);
     await page.goto("/dist/index.html");
     await page.waitForFunction(() => typeof boot === "function", null, { timeout: 20000 });
     await page.waitForSelector("#landing.active", { timeout: 20000 });

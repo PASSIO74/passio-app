@@ -17,7 +17,7 @@
 //      n'est envoyé.
 // ═══════════════════════════════════════════════════════════════════════════
 const { test, expect } = require("@playwright/test");
-const { GATE_TOKEN, GATE_KEY } = require("./gate-helper");
+const { GATE_TOKEN, GATE_KEY, poserGateSansPremiereVisite } = require("./gate-helper");
 
 // Intercepte les lots de télémétrie AVANT la base : il n'existe qu'une seule
 // base Supabase, et `?telemetry=1` y déposerait sinon des lignes de test.
@@ -36,7 +36,7 @@ async function interceptePayloads(page) {
 
 test.describe("PERF-IOS — instrumentation phase 1", () => {
   test.beforeEach(async ({ page }) => {
-    await page.addInitScript(([k, t]) => sessionStorage.setItem(k, t), [GATE_KEY, GATE_TOKEN]);
+    await poserGateSansPremiereVisite(page);
   });
 
   test("le module se charge, sans erreur JS et sans global parasite", async ({ page }) => {
