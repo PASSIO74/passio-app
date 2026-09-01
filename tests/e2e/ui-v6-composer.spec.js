@@ -3,7 +3,8 @@
 //
 // Ce que cette suite prouve, et rien d'autre :
 //   ① le composer ne demande plus de choisir un format avant de commencer :
-//      les cinq onglets sont masqués, et l'écran suit l'ordre du §9 ;
+//      les cinq onglets sont masqués, et l'écran suit l'ordre du §9 — sans la
+//      ligne « Publier en tant que … », retirée le 2026-09-01 ;
 //   ② une publication TEXTE part toujours ;
 //   ③ une publication PHOTO part avec sa photo — c'est LE contrôle du lot :
 //      `studioType` est la seule source de vérité de ce qui est publié, et un
@@ -62,7 +63,12 @@ test.describe("UI-6 — composer de publication", () => {
     const hote = page.locator("#v6Composer");
     await expect(hote).toBeVisible();
 
-    // L'ordre du §9 : identité, texte, média, Passion, Options, Publier.
+    // L'ordre du §9 : texte, média, Passion, Options, Publier.
+    // ⚠️ ASSERTION RETOURNÉE, JAMAIS VIDÉE (2026-09-01). La ligne d'identité
+    // « Publier en tant que … » ouvrait cette liste ; elle a été retirée sur
+    // demande de Benjamin — le multi-profil n'existe plus, l'expéditeur n'est
+    // plus un choix. Le cas suivant en exige désormais l'ABSENCE, pour qu'un
+    // retour silencieux reste visible.
     expect(await page.evaluate(() => {
       const h = document.getElementById("v6Composer");
       return Array.from(h.children).map((c) => {
@@ -77,7 +83,7 @@ test.describe("UI-6 — composer de publication", () => {
         return "?";
       });
     })).toEqual([
-      "identite", "texte", "media", "apercu", "apercu", "passio", "select", "affiner", "publier",
+      "texte", "media", "apercu", "apercu", "passio", "select", "affiner", "publier",
     ]);
 
     // Une seule zone média, deux portes.
@@ -88,6 +94,35 @@ test.describe("UI-6 — composer de publication", () => {
       document.querySelector(".v6-affiner").hasAttribute("open"))).toBe(false);
 
     expect(errors.js, "exceptions JS").toEqual([]);
+  });
+
+  test("« Publier en tant que … » a disparu, moteur d'expéditeur intact", async ({ page }) => {
+    await boot(page);
+    await ouvrirStudio(page);
+
+    // Ni la ligne, ni sa classe, ni sa phrase — et pas davantage sous le kill
+    // switch du lot UI-8, qui n'en gouvernait que le second libellé.
+    await expect(page.locator(".v6-identite")).toHaveCount(0);
+    await expect(page.locator(".v6-identite-txt")).toHaveCount(0);
+    expect(await page.evaluate(() =>
+      document.getElementById("screen-studio").textContent.includes("Publier en tant que"))).toBe(false);
+    expect(await page.evaluate(() =>
+      document.getElementById("screen-studio").textContent.includes("Changer de profil"))).toBe(false);
+
+    // Ce qui RESTE : le seul choix encore réel, la passion de destination.
+    await expect(page.locator("[data-v6-passio]")).toHaveCount(1);
+
+    // ⚠️ C'est une surface qui part, pas un moteur : `publishPost` envoie
+    // toujours le pseudo général. Un post publié ici doit continuer de le
+    // porter, sinon on aurait retiré bien plus qu'une ligne de texte.
+    await page.fill("#postText", "Un texte publié sans ligne d'identité.");
+    await page.locator("[data-v6-publier]").click();
+    await page.waitForFunction(() => (state.userPosts || []).length === 1, null, { timeout: 8000 });
+    const attendu = await page.evaluate(() =>
+      (state.user.general && state.user.general.username)
+      || (currentProfile() || {}).name || state.user.name);
+    expect(attendu, "le compte doit avoir un nom").toBeTruthy();
+    expect(await page.evaluate(() => state.userPosts[0].authorName)).toBe(attendu);
   });
 
   test("le libellé ne promet plus de points", async ({ page }) => {

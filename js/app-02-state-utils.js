@@ -1492,6 +1492,19 @@ function goTo(screen) {
   $("#appMain").scrollTop = 0;
   document.body.classList.toggle("screen-feed-active", screen === "feed");
 
+  // Première visite : le module pose ses indications contextuelles au bon moment
+  // (étape « Rencontrer » à la première ouverture de l'IRL) et arme
+  // `_passioIrlSkipGeoOnce` pour qu'aucune position ne soit demandée
+  // implicitement. Inerte quand le drapeau est coupé ou qu'un compte existe.
+  //
+  // ⚠️ APPELÉ AVANT le rendu, pas après. Le marqueur anti-géolocalisation est à
+  // usage unique et c'est `renderIRL` qui le CONSOMME : posé après la ligne
+  // ci-dessous, il arrivait trop tard pour le premier rendu — celui qui compte,
+  // puisque c'est là que la position aurait été demandée. Le lot UI-4A0 masquait
+  // ce défaut en armant le même marqueur dans son enveloppe de `renderIRL` ;
+  // couper ce lot l'aurait rouvert, sans le moindre symptôme visible.
+  try { if (window.PassioFirstRun) PassioFirstRun.surNavigation(screen); } catch(_) {}
+
   // Re-render dynamic screens on navigate
   if (screen === "feed")     { renderFeed(); try { feedWindowRestoreScroll(); } catch (e) {} }
   if (screen === "profiles") renderProfilesScreen();
@@ -2177,6 +2190,11 @@ function onbValidateName() {
   state.user.name = v;
   onbNext();
   renderPassionGrid();
+  // Première visite : un visiteur qui a déjà choisi ses passions ne doit pas se
+  // les voir redemander — ce serait exactement le « second onboarding » que le
+  // lot interdit. Le pré-remplissage passe par `selectedPassions`, la variable
+  // que cet écran lit déjà : aucun second moteur de sélection.
+  try { if (window.PassioFirstRun) PassioFirstRun.prefiller(); } catch (e) {}
 }
 
 // -------- AUTH STEP --------
@@ -3288,6 +3306,17 @@ function onbFinish() {
   } else {
     launchTourSafe();
   }
+
+  // ── PREMIÈRE VISITE : transfert du mode invité ───────────────────────────
+  // Migre les préférences locales (passions, spécialités, envies, état du tour)
+  // vers le compte qui vient d'exister, puis restaure l'écran et le contenu
+  // consultés et RAPPELLE l'action demandée.
+  //
+  // ⚠️ ELLE NE REJOUE AUCUNE ACTION. Publier, envoyer un message ou inscrire à
+  // une activité automatiquement après une création de compte serait un effet
+  // externe que personne n'a confirmé. Inerte si aucune préférence d'invité
+  // n'existe — donc sans effet sur le parcours historique.
+  try { if (window.PassioFirstRun) PassioFirstRun.apresAuthentification(); } catch (e) {}
 }
 
 // Recherche un post par id dans TOUTES les sources : seed (démo), posts perso
@@ -3544,6 +3573,22 @@ function moodShortLabel(mood) {
   return m ? m.label : "Tout";
 }
 
+// Étiquette « Exemple PASSIO » du contenu de démonstration, posée UNIQUEMENT
+// pour un visiteur sans compte pendant le parcours de première visite (drapeau
+// `first_run_experience_v1`). Rend "" partout ailleurs — donc le HTML d'une
+// carte est identique à l'octet près pour tout compte existant, et quand le
+// drapeau est coupé.
+//
+// ⚠️ Le discriminant est `p._source === "seed"`, posé par `allFeedPosts`, et
+// jamais la forme de l'identifiant : deviner finirait par étiqueter une vraie
+// publication comme un exemple.
+function _firstRunDemoTag(p) {
+  try {
+    if (!window.PassioFirstRun) return "";
+    return PassioFirstRun.etiquetteDemo(p) || "";
+  } catch (e) { return ""; }
+}
+
 // La pastille ELLE-MÊME, ou rien. Ne jamais rendre `<span class="post-mood-tag">`
 // avec un libellé vide : la classe porte `padding: 3px 9px`, `border: 1px` et un
 // fond opaque, donc un libellé vide dessine une CAPSULE CREUSE — mesurée à
@@ -3641,6 +3686,9 @@ function feedIntentTrackMeetToIrl() {
 }
 
 function openFeedPost(id) {
+  // Première visite : trace l'OUVERTURE d'un contenu par un visiteur — un
+  // compteur, jamais un identifiant ni un libellé. Inerte hors mode invité.
+  try { if (window.PassioFirstRun) PassioFirstRun.contenuOuvert("post"); } catch (e) {}
   feedIntentTrackContentClick();
   return openPost(id);
 }
@@ -4089,7 +4137,10 @@ function renderFeedExplorationFallback(list) {
 var HINTS = {
   feed_auteur: "Appuie sur l'auteur pour découvrir sa Passio",
   profil_visite: "Suis-le, ou envoie-lui un message",
-  second_profil: "Tu peux créer un profil pour une autre Passio",
+  // ⚠️ La CLÉ reste `second_profil` — `hintsVus`, les tests et les ancres en
+  // dépendent. Seul le LIBELLÉ suit ADR-011 : on n'ajoute plus un « profil »,
+  // on ajoute une PASSION à son profil unique (2026-09-01).
+  second_profil: "Tu peux ajouter une autre passion à ton profil",
   conversation_irl: "Quand vous êtes prêts, propose un moment IRL autour de votre passion",
 };
 
@@ -4112,6 +4163,13 @@ function fermerHint() {
 // vue, si une autre est à l'écran, ou si la cible n'est pas visible.
 function montrerHint(id, cible) {
   try {
+    // ⚠️ DEUX SYSTÈMES D'AIDE NE PEUVENT PAS COHABITER À L'ÉCRAN. Pendant le
+    // parcours de première visite, les indications contextuelles sont celles du
+    // lot (trois au maximum, ancrées, mémorisées) : laisser les aides
+    // historiques se déclencher en plus produisait une bulle POSÉE SUR la carte
+    // de bienvenue, dont elle recouvrait l'action principale (mesuré en capture
+    // 390 px). Elles reprennent dès que le parcours est terminé ou coupé.
+    if (window.PassioFirstRun && PassioFirstRun.estVisiteur()) return false;
     var texte = HINTS[id];
     if (!texte || hintDejaVu(id) || hintVisible()) return false;
     var el = (typeof cible === "string") ? document.querySelector(cible) : cible;
@@ -4690,6 +4748,24 @@ function renderFeed() {
       }));
     }
   }
+  // ── PREMIÈRE VISITE : FIL DE DÉCOUVERTE ─────────────────────────────────
+  //
+  // Un visiteur qui n'a encore RIEN choisi verrait sinon un cul-de-sac, et pas
+  // n'importe lequel : `feedFollowingOn` vaut `true` par défaut et il ne suit
+  // personne, donc `aucuneSource` est vrai, `combinedPosts` reste vide, et
+  // l'écran affiche « Tu ne suis encore personne » — c'est-à-dire l'exact
+  // contraire de la promesse du lot (« voir immédiatement du contenu »).
+  //
+  // On lui montre donc TOUT le contenu affichable, classé par le moteur
+  // habituel. ⚠️ Rien n'est coché ni persisté : aucune tuile ne s'allume,
+  // `_activeFeedPassions` et `state.selectedFeedPassions` restent vides — sans
+  // quoi la migration vers son futur compte transférerait des « choix » qu'il
+  // n'a jamais faits. Dès qu'il coche une passion, la sélection additive
+  // ci-dessus reprend la main sans transition.
+  var _frDecouverte = false;
+  try { _frDecouverte = !!(window.PassioFirstRun && PassioFirstRun.filDecouverte()); } catch (e) {}
+  if (_frDecouverte) combinedPosts = allPosts.slice();
+
   // ⚠️ La déduplication qui suit (`seenIds`) n'est plus une précaution mais une
   // NÉCESSITÉ : une publication d'un compte suivi, dans une passion cochée, et
   // portant une envie cochée entre par les TROIS sources à chaque rendu. Elle
@@ -5268,6 +5344,7 @@ function renderPostHTML(p) {
       ${p._source === "me" ? `<button class="post-menu-btn" onclick="event.stopPropagation();openPostOptions('${escapeJsArg(p.id)}')" aria-label="Options du post" title="Options">
         <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>
       </button>` : ""}
+      ${_firstRunDemoTag(p)}
       ${_moodTagHTML(p.mood)}
     </div>
 
