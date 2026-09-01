@@ -39,8 +39,18 @@ async function ouvrirRecherche(page) {
 
 async function chercher(page, texte) {
   await page.locator(".psel-input").fill(texte);
-  // L'anti-rebond est à 160 ms ; on attend que la liste ait été repeinte.
-  await page.waitForTimeout(450);
+  // ⚠️ ON ATTEND LA RÉPONSE, PAS UNE DURÉE. Un `waitForTimeout(450)` supposait
+  // que la recherche répond en moins de 450 ms — vrai avec le repli local,
+  // FAUX depuis que la migration est appliquée et que la recherche SERVEUR
+  // entre en jeu. La CI a alors lu la liste pendant qu'une réponse était encore
+  // en vol et vu les résultats de la frappe PRÉCÉDENTE : « GUITARE ELECTRIQUE »
+  // rendait « Cuisine coréenne ». Ce n'était pas un défaut de classement, mais
+  // une mesure prise trop tôt — le pire genre de rouge, celui qui envoie
+  // chercher au mauvais endroit.
+  //
+  // La liste porte désormais la frappe à laquelle elle correspond.
+  await page.locator('[data-psel-zone="liste"][data-psel-q="' + texte.replace(/"/g, '\\"') + '"]')
+    .waitFor({ state: "attached", timeout: 15000 });
   return page.locator(".psel-item-label").allTextContents();
 }
 
@@ -118,6 +128,30 @@ test.describe("la recherche", () => {
     const apres = await page.evaluate(() => window.PassioPassions._etat());
     expect(apres.pret).toBe(true);
     expect(apres.taille).toBeGreaterThan(1500);
+  });
+
+  test("⑥ bis — le classement ne dépend PAS de la réponse du serveur", async ({ page }) => {
+    // ⚠️ DÉFAUT MESURÉ EN CI LE 2026-09-01, invisible tant que la migration
+    // n'était pas appliquée. Le client prenait l'ordre du SERVEUR dès qu'il
+    // répondait, et les deux barèmes ne coïncident pas : sur « guitares », le
+    // navigateur remonte « Guitare », `rechercher_passions` « Guitare
+    // électrique ». Même frappe, même appareil, deux écrans différents selon
+    // que le réseau avait répondu ou non.
+    //
+    // Le navigateur est désormais la SEULE autorité sur l'ordre. On l'éprouve
+    // en comparant le classement avec et sans serveur — le résultat doit être
+    // IDENTIQUE.
+    await bootOnboarded(page, null, 1, { query: APERCU });
+    await ouvrirRecherche(page);
+    const avecServeur = await chercher(page, "guitares");
+    // On coupe le serveur pour la session : le moteur retombe sur le local.
+    await page.evaluate(() => { window.PassioPassions._etat(); });
+    const sansServeur = await page.evaluate(async () => {
+      const m = window.PassioPassions;
+      const r = await m.chercherAsync("guitares", { limite: 20, serveur: false });
+      return r.map((p) => p.label);
+    });
+    expect(avecServeur[0], "le premier résultat dépend de la réponse serveur").toBe(sansServeur[0]);
   });
 
   test("⑥ correspondance exacte, alias, sans accent, approximative", async ({ page }) => {
@@ -335,21 +369,39 @@ test.describe("le modèle et les garde-fous", () => {
   });
 
   test("⑮ publier sous une passion absente du serveur est REFUSÉ, et dit pourquoi", async ({ page }) => {
-    // ⚠️ Le référentiel LOCAL propose 1 908 passions ; le serveur n'en connaît
-    // que 19 tant que la migration n'est pas appliquée. La clé étrangère de
-    // `posts.passion_id` refuserait l'insert : on refuse AVANT, avec un message.
+    // ⚠️ CE TEST A CHANGÉ D'EXEMPLE LE 2026-09-01, PAS DE SUJET. Il s'appuyait
+    // sur « moto-enduro », absente du serveur tant que la migration n'était pas
+    // appliquée. Elle l'est désormais (vérifié en production : 1 908 passions
+    // actives, 0 publication orpheline), donc les 1 908 sont publiables et cet
+    // exemple ne prouve plus rien.
+    //
+    // Ce qui compte n'était pas l'accident de données mais le MÉCANISME : une
+    // passion que le serveur ne connaît pas doit être refusée AVANT l'insert,
+    // avec un motif visible. On l'exerce donc en neutralisant l'autorité
+    // (`estPassionCanonique`) plutôt qu'en comptant sur un trou du référentiel
+    // — un test qui dépend d'un état de la base se retourne le jour où la base
+    // change, et c'est exactement ce qui vient d'arriver.
     await bootOnboarded(page, null, 1, { query: APERCU });
-    const publiable = await page.evaluate(() => ({
+
+    // Le plancher local refuse toujours un identifiant inconnu, migration ou pas.
+    const plancher = await page.evaluate(() => ({
       historique: estPassionCanonique("musique"),
-      nouvelle: estPassionCanonique("moto-enduro"),
-      refusParLUI: PassioFlatUI.passionPubliable("moto-enduro"),
+      inventee: estPassionCanonique("zorglubisme-quantique-inexistant"),
     }));
-    expect(publiable.historique).toBe(true);
-    expect(publiable.nouvelle, "une passion non déployée est devenue publiable").toBe(false);
-    expect(publiable.refusParLUI).toBe(false);
+    expect(plancher.historique).toBe(true);
+    expect(plancher.inventee, "un identifiant inventé est devenu publiable").toBe(false);
 
     await page.evaluate(() => goTo("studio"));
     await page.waitForTimeout(500);
+    // ⚠️ IDENTIFIANT NU, jamais `window.estPassionCanonique` : c'est le binding
+    // global que `PassioFlatUI.passionPubliable` résout, et un stub posé à côté
+    // laisserait le test vert-aveugle (piège déjà payé sur `supa` et `MY_UID`).
+    await page.evaluate(() => {
+      const vrai = estPassionCanonique;
+      estPassionCanonique = (id) => (id === "moto-enduro" ? false : vrai(id));
+    });
+    expect(await page.evaluate(() => PassioFlatUI.passionPubliable("moto-enduro"))).toBe(false);
+
     await page.locator(".v6-passio .v6-lien").first().click();
     await page.waitForFunction(() => window.PassioPassions && window.PassioPassions.pret(), null, { timeout: 15000 });
     await chercher(page, "enduro");
@@ -413,14 +465,21 @@ test.describe("le modèle et les garde-fous", () => {
     expect(await page.locator(".psel-input").count()).toBe(0);
   });
 
-  test("⑰ bis — sans aperçu, le lot est totalement absent", async ({ page }) => {
+  test("⑰ bis — sans aperçu, le lot est ACTIF : c'est le défaut depuis le 2026-09-01", async ({ page }) => {
+    // ⚠️ ASSERTION RETOURNÉE, PAS SUPPRIMÉE. Ce test exigeait l'ABSENCE du lot
+    // sur une URL normale, ce qui était vrai tant que le drapeau était éteint.
+    // Il exige désormais sa PRÉSENCE — de sorte qu'une extinction accidentelle
+    // du lot reste visible. Vider le test l'aurait rendue invisible.
     await bootOnboarded(page, null, 1);          // URL normale, aucun paramètre
     const etat = await page.evaluate(() => window.PassioPassions._etat());
-    expect(etat.actif).toBe(false);
-    expect(etat.pret, "le référentiel a été téléchargé hors aperçu").toBe(false);
+    expect(etat.actif, "le lot n'est pas actif par défaut").toBe(true);
+    // ⚠️ MAIS LE RÉFÉRENTIEL N'EST TOUJOURS PAS CHARGÉ AU DÉMARRAGE. C'est
+    // l'invariant qui protège le temps de démarrage : 160 Ko ne partent qu'au
+    // premier usage RÉEL de la recherche, jamais au boot.
+    expect(etat.pret, "le référentiel est téléchargé au démarrage").toBe(false);
     await page.evaluate(() => goTo("profiles"));
     await page.waitForTimeout(500);
-    expect(await page.locator('#v9ProfilePassions [data-passion-tile="__ajouter__"]').count()).toBe(0);
+    expect(await page.locator('#v9ProfilePassions [data-passion-tile="__ajouter__"]').count()).toBe(1);
   });
 
   test("⑱ le pliage du navigateur est celui du référentiel construit", async ({ page }) => {
@@ -481,7 +540,67 @@ test.describe("mobile", () => {
 });
 
 // ══════════════════════════════════════════════════════════════════════════
-// ㉑ À ㉖ — LA PORTE A DÉMÉNAGÉ, ET ELLE EST PLAFONNÉE (2026-09-01)
+// ㉖ — L'ONBOARDING : LA GRILLE DEVIENT UNE RECHERCHE
+//
+// ⚠️ CONTREPARTIE OBLIGATOIRE DU KILL SWITCH POSÉ DANS
+// `onboarding-passions-v2.spec.js`. Cette suite-là observe l'écran d'AVANT et
+// garde toutes ses assertions ; sans le test ci-dessous, ÉTEINDRE l'ancien
+// comportement l'aurait fait sans rien verrouiller à la place — et la copie
+// neuve pourrait disparaître sans qu'aucun test ne bronche.
+// ══════════════════════════════════════════════════════════════════════════
+const { GATE_TOKEN, GATE_KEY } = require("./gate-helper");
+
+test.describe("l'onboarding sous le lot", () => {
+  test("㉖ la grille de 19 tuiles est remplacée par une recherche, et la copie le dit", async ({ page }) => {
+    await page.addInitScript(([k, t]) => {
+      sessionStorage.setItem(k, t);
+      sessionStorage.setItem("passio_pwa_dismissed", "1");
+      window.PASSIO_ONBOARDING_V2 = true;
+    }, [GATE_KEY, GATE_TOKEN]);
+    await page.goto("/index.html");
+    await page.waitForFunction(() => typeof renderPassionGrid === "function", null, { timeout: 20000 });
+    await page.evaluate(() => {
+      window.supaSaveUserState = async () => {};
+      window.supaUpsertProfile = async () => {};
+      window.supaInit = () => {};
+      // Par la transition de l'application elle-même : dévoiler le calque à la
+      // main laisse la landing active PAR-DESSUS, et son bouton intercepte les
+      // clics (piège documenté dans `onboarding-passions-v2.spec.js`).
+      exitLandingAsAuth("signup");
+      onbStepIdx = onbSteps.indexOf("passions");
+      showOnbStep("passions");
+      selectedPassions.length = 0;
+      renderPassionGrid();
+    });
+
+    // La copie annonce la recherche — c'est la formulation exigée par le cahier
+    // des charges du 2026-09-01, mot pour mot.
+    const copie = await page.evaluate(() => ({
+      titre: document.querySelector("#onbPassionsTitle").textContent.trim(),
+      texte: document.querySelector("#onbPassionsText").textContent.trim(),
+    }));
+    expect(copie.titre).toBe("Qu'est-ce qui te passionne ?");
+    expect(copie.texte).toBe("Recherche et choisis directement ce que tu aimes.");
+
+    // Le champ de recherche du sélecteur est là, et le champ HISTORIQUE est
+    // masqué : deux champs de recherche à l'écran seraient un doublon muet.
+    await expect(page.locator(".psel-input")).toBeVisible();
+    const histo = await page.locator("#onbPassionSearch").evaluate((el) => el.style.display);
+    expect(histo, "le champ de recherche historique subsiste à côté du neuf").toBe("none");
+
+    // ⚠️ ON NE MONTE QU'UNE FOIS. `renderPassionGrid` est rappelée à CHAQUE
+    // sélection : re-monter le composant viderait le champ et refermerait le
+    // clavier à chaque passion cochée.
+    await page.locator(".psel-input").fill("enduro");
+    await page.waitForTimeout(450);
+    await page.evaluate(() => renderPassionGrid());
+    expect(await page.locator(".psel-input").inputValue(),
+      "le composant a été remonté : la frappe est perdue").toBe("enduro");
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+// ㉑ À ㉕ — LA PORTE A DÉMÉNAGÉ, ET ELLE EST PLAFONNÉE (2026-09-01)
 //
 // Deux demandes de Benjamin après essai réel de la preview : la bulle d'ajout
 // appartient au Profil, pas au Fil ; et au-delà de trois passions, ce sera
@@ -544,6 +663,15 @@ test.describe("la porte d'ajout et son plafond", () => {
     // ⚠️ AUCUN BOUTON « PAYER » : le paiement n'est pas ouvert, un bouton qui
     // ne mène nulle part est un clic mort.
     expect(texte).not.toMatch(/payer|s'abonner|souscrire/i);
+    // ⚠️ REPRISE EXPLICITE DE LA GARANTIE D'ADR-009. Le test « créer un 4ᵉ
+    // profil est libre » (adr-009-retrait-economie) observe la surface d'avant
+    // le plafond et pose donc le kill switch. Ce qu'il protégeait vraiment,
+    // c'est l'ABSENCE DE MONNAIE INTERMÉDIAIRE — pas l'absence de tout paiement,
+    // que l'ADR autorise explicitement en monnaie réelle. Cette garantie-là est
+    // reprise ici, sur la surface neuve, sinon l'éteindre là-bas l'aurait
+    // simplement fait disparaître.
+    expect(texte, "l'économie retirée par ADR-009 réapparaît dans la fenêtre")
+      .not.toMatch(/💎|Passia|Pass Passion|points?\b|étoiles?|solde|rang/i);
     // La seule action réelle est proposée : réorganiser ses trois passions.
     await expect(page.locator('[data-tel="passion_paywall_gerer"]')).toBeVisible();
   });
@@ -610,6 +738,49 @@ test.describe("la porte d'ajout et son plafond", () => {
     expect(etat.vivantes, "le plafond se contourne par la liste des archives").toBe(3);
     expect(etat.toujoursArchivee).toBe(true);
     await expect(page.locator("#modalContent")).toContainText("Trois passions offertes");
+  });
+
+  test("㉓ ter — depuis la PORTE réelle, reprendre une passion archivée est gratuit", async ({ page }) => {
+    // ⚠️ CONTREPARTIE DU KILL SWITCH POSÉ SUR `ui-v8-passions.spec.js`.
+    // Cette suite-là portait le verrou « quota : archiver puis restaurer ne
+    // réclame jamais de paiement » — la porte dérobée ④ du lot UI-8, où l'on
+    // réclamait de l'argent pour reprendre une passion qu'on possédait déjà.
+    // Son test passe par `#newProfileGrid`, la grille que ce lot remplace : il
+    // est donc éteint chez lui. L'éteindre SANS reprendre la garantie ici,
+    // c'eût été désarmer un verrou de sécurité au motif que la surface a changé.
+    //
+    // On l'exerce ici par le geste RÉEL — la bulle « + » du Profil — et non en
+    // appelant `restaurerPassion` directement (ce que fait déjà ㉓) : ce que le
+    // verrou protège, c'est la PORTE.
+    await bootOnboarded(page, null, 1, { query: APERCU });
+    await poserNPassions(page, 3);
+    // On archive : 3 vivantes → 2. Une place se libère, la passion reste
+    // possédée, rangée dans les archives.
+    await page.evaluate(() => archiverPassion(state.user.profiles[2].id));
+    await page.waitForTimeout(300);
+
+    await page.evaluate(() => goTo("profiles"));
+    await page.waitForTimeout(600);
+    await page.locator('#v9ProfilePassions [data-passion-tile="__ajouter__"]').click();
+    // Aucune fenêtre payante : on est sous le plafond.
+    await expect(page.locator(".psel-input")).toBeVisible({ timeout: 10000 });
+    expect(await page.locator("#modalContent").textContent() || "").not.toContain("Trois passions offertes");
+
+    await page.waitForFunction(() => window.PassioPassions && window.PassioPassions.pret(), null, { timeout: 15000 });
+    await chercher(page, "sport");
+    await page.locator('.psel-item[data-psel-id="sport"]').click();
+    await page.locator('[data-psel="valider"]').click();
+    await page.waitForTimeout(900);
+
+    const etat = await page.evaluate(() => {
+      const tous = (state.user.profiles || []).filter((p) => p.passion === "sport");
+      return { entrees: tous.length, vivantes: tous.filter((p) => !p.archived).length };
+    });
+    // ⚠️ UNE SEULE ENTRÉE : la passion est RESTAURÉE, pas recréée. Un doublon
+    // serait dédupliqué plus tard par la fusion défensive d'app-02, en silence,
+    // et l'utilisateur perdrait la photo et la bio de l'entrée d'origine.
+    expect(etat.entrees, "la passion a été recréée en doublon au lieu d'être restaurée").toBe(1);
+    expect(etat.vivantes).toBe(1);
   });
 
   test("㉔ kill switch : drapeau coupé, aucun plafond", async ({ page }) => {

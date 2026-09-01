@@ -133,6 +133,21 @@ test.describe("ADR-009 — retrait de l'économie interne", () => {
   // ── ③ le 4ᵉ profil (le défaut signalé) ──────────────────────────────────
   test("créer un 4ᵉ profil est libre : aucun paywall, aucun coût", async ({ page }) => {
     const errors = { js: [], console: [], network: [] };
+    // ⚠️ KILL SWITCH DU LOT `flat_passions_v1`, ET IL FAUT LIRE POURQUOI.
+    // Depuis le 2026-09-01, sur demande explicite de Benjamin, un plafond de
+    // trois passions s'applique : la quatrième ouvre une fenêtre annonçant que
+    // la suite sera payante. Ce test observe donc la surface d'AVANT le plafond
+    // et pose le kill switch, en gardant TOUTES ses assertions.
+    //
+    // ⚠️ CE N'EST PAS UN CONTOURNEMENT D'ADR-009. L'ADR interdit une monnaie
+    // INTERMÉDIAIRE (Passia, points, étoiles, packs) et prévoit explicitement
+    // qu'« un paiement futur devra être un paiement DIRECT en monnaie réelle ».
+    // Ce que ce test protège vraiment — l'absence de 💎, de Passia, de « Payer »
+    // — est REPRIS sur la surface neuve par le test ㉒ de
+    // `passions-plates.spec.js`, qui exige la même absence dans la fenêtre du
+    // plafond. Éteindre ici sans reprendre là-bas aurait fait disparaître la
+    // garantie au lieu de la déplacer.
+    await page.addInitScript(() => localStorage.setItem("flat_passions_v1", "0"));
     await bootOnboarded(page, errors, 3);   // déjà 3 profils = l'ancienne limite
 
     const avant = await page.evaluate(() => state.user.profiles.length);

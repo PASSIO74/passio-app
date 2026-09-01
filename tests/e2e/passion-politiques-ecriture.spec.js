@@ -24,6 +24,12 @@ const PERSO = { id: "custom_tricot_ab12", emoji: "🧶", label: "Tricot", color:
 // répond succès. Les vraies fonctions d'écriture sont restaurées : on exerce le
 // code de production, pas une reformulation.
 async function boot(page, opts = {}) {
+  // ⚠️ CONVENTION DE TEST — la même qu'aux mises en ligne d'UI-3A, UI-4 et UI-8.
+  // Le lot `flat_passions_v1` (actif par défaut depuis le 2026-09-01) recouvre
+  // la surface qu'observe cette suite : `openCreateProfile` mène désormais au
+  // sélecteur de recherche, et `#newProfileGrid` n'existe plus. Elle pose donc
+  // le kill switch du lot et GARDE TOUTES SES ASSERTIONS.
+  await page.addInitScript(() => localStorage.setItem("flat_passions_v1", "0"));
   await bootOnboarded(page, null, 1, {});
   await page.evaluate((o) => {
     window.__ecrits = { posts: [], profiles: [], stories: [], events: [], conversations: [], conv_members: [] };

@@ -48,11 +48,32 @@ on:
 # et aucune PR ne peut les évincer. Les PR gardent le groupe commun, qui borne le
 # cumul de runs simultanés — la raison d'être initiale.
 #
-# COÛT ASSUMÉ, et il est réel : sur une vague de PR, un run de PR en attente peut
-# être évincé par une AUTRE PR. Il faut alors repousser pour le relancer. C'est le
-# prix du plafond ; il ne s'applique jamais au déploiement.
+# ⚠️ TROISIÈME CORRECTION (2026-09-01) — LE PLAFOND ÉTAIT AU MAUVAIS ÉTAGE.
+# Les deux groupes ci-dessus se sérialisent CHACUN DE LEUR CÔTÉ : rien n'empêchait
+# un run de `main` et un run de PR de s'exécuter EN MÊME TEMPS. Mesuré ce jour-là :
+# le run de la PR #235 (13h41 → 15h15) et celui de `main` après la fusion de la
+# PR #233 (14h50 → 15h21) se sont chevauchés 25 minutes. Les deux suites créent de
+# vrais comptes sur la MÊME prod Supabase, et `global-teardown` purge TOUS les
+# comptes `%@passio-e2e.test` : chacune a effacé les comptes de l'autre. Six tests
+# rouges des deux côtés, `main` resté rouge, déploiement production SAUTÉ — et le
+# symptôme ne désignait rien : un test de lien profond attendait la bobine de
+# démonstration et recevait une bobine générée par un compte de test étranger.
+#
+# La ressource réellement partagée n'est pas « le workflow », c'est LA BASE DE
+# PRODUCTION — et un seul job la touche. Le verrou descend donc au niveau du job
+# `test` (groupe `passio-e2e-prod`, plus bas), où il couvre les deux déclencheurs
+# d'un coup. C'est aussi lui qui borne désormais le quota d'inscriptions horaire,
+# puisque c'est ce job, et lui seul, qui inscrit des comptes.
+#
+# Conséquence voulue : le groupe des PR peut redevenir PROPRE À CHAQUE PR. Il était
+# commun pour borner le cumul de runs simultanés — ce que le verrou de job fait
+# mieux, et sans son coût, qui était réel (une PR en attente évincée par une AUTRE
+# PR, qu'il fallait repousser à la main pour relancer ; c'est arrivé deux fois le
+# 2026-09-01). Les pushes sur `main` gardent leur groupe dédié : c'est lui qui
+# empêche une PR d'évincer un déploiement, le défaut réparé le 2026-08-30, et il
+# n'est pas touché.
 concurrency:
-  group: ${{ github.event_name == 'push' && 'passio-deploy-main' || 'passio-ci-pr' }}
+  group: ${{ github.event_name == 'push' && 'passio-deploy-main' || format('passio-ci-pr-{0}', github.event.pull_request.number) }}
   cancel-in-progress: false
 
 permissions:
@@ -120,6 +141,23 @@ jobs:
   test:
     name: Tests smoke (Playwright)
     runs-on: ubuntu-latest
+    # ⚠️ LE VERROU DE LA PROD SUPABASE, ET IL EST GLOBAL AU DÉPÔT (2026-09-01).
+    # Ce job — et lui seul — crée de vrais comptes sur la prod, et son
+    # `global-teardown` purge TOUS les comptes `%@passio-e2e.test`. Deux
+    # exécutions simultanées s'effacent donc mutuellement leurs comptes, quelle
+    # que soit la branche : c'est ce qui a laissé `main` rouge et le déploiement
+    # sauté le 2026-09-01 (voir la note du bloc `concurrency` en tête de fichier).
+    #
+    # Le groupe est CONSTANT — ni la branche, ni le déclencheur n'y entrent : c'est
+    # exactement ce qui fait qu'un run de PR et un run de `main` ne peuvent plus se
+    # chevaucher. C'est aussi ce qui borne le quota d'inscriptions horaire du projet
+    # Supabase, la raison d'être du plafond posé le 2026-08-30.
+    #
+    # `cancel-in-progress: false` : une suite en cours a déjà créé des comptes que
+    # son teardown doit nettoyer. L'interrompre les laisserait derrière elle.
+    concurrency:
+      group: passio-e2e-prod
+      cancel-in-progress: false
     # Les suites qui ecrivent en base (authz-critical, blocage-acces,
     # user-state-horodatage) creent des comptes jetables. Depuis l'activation de
     # « Confirm email » (SMTP Brevo, 2026-08-30), signUp ne rend plus de session :

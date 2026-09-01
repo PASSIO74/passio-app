@@ -17,16 +17,16 @@
 // finirait donc sur le chemin critique du démarrage, pour une donnée dont la
 // grande majorité des sessions n'a jamais besoin.
 //
-// ── ACTIVATION — ÉTEINT PAR DÉFAUT ────────────────────────────────────────
-//     ?passio_preview=flat-passions-v1   → aperçu (alias : ?flat_passions_v1=1)
-//     window.PASSIO_FLAT_PASSIONS = true → forçage en mémoire
-//   Coupures, prioritaires sur tout :
+// ── ACTIVATION — ACTIF PAR DÉFAUT depuis le 2026-09-01 ────────────────────
+//   Le drapeau ne sait plus qu'ENLEVER. Coupures, prioritaires sur tout :
 //     localStorage.flat_passions_v1 = "0"
 //     window.PASSIO_FLAT_PASSIONS = false
+//   Les anciens liens `?passio_preview=flat-passions-v1` restent tolérés, mais
+//   ne décident plus rien.
 //
-// Aucune activation positive n'est écrite dans `localStorage` : l'aperçu vient
-// de l'URL, jamais d'un état posé sur l'appareil de qui teste. Drapeau à faux
-// = l'application se comporte exactement comme avant, à l'octet près.
+// Aucune activation positive n'est écrite dans `localStorage`. Coupé, le lot
+// rend l'application d'avant à l'octet près — c'est ce qui rend le retour
+// arrière gratuit, sans redéploiement.
 //
 // ── QUATRE PIÈGES DE CE DÉPÔT, ÉVITÉS ICI EXPRESSÉMENT ────────────────────
 // ① `state` vaut **null**, pas `undefined`, jusqu'à `state = loadState()`.
@@ -53,7 +53,6 @@
 (function () {
   "use strict";
 
-  var PREVIEW_NAME = "flat-passions-v1";
   var STORAGE_KEY = "flat_passions_v1";
   var URL_DATA = "data/passions-v1.json";
   var CLE_RECENTES = "passio_passions_recentes";
@@ -68,13 +67,22 @@
   // ══════════════════════════════════════════════════════════════════════════
   // DRAPEAU
   // ══════════════════════════════════════════════════════════════════════════
-  function apercuDemande() {
-    try {
-      var q = new URLSearchParams(window.location.search);
-      return q.get("passio_preview") === PREVIEW_NAME || q.get(STORAGE_KEY) === "1";
-    } catch (e) { journal("query", e); return false; }
-  }
-
+  // ⚠️ ACTIF PAR DÉFAUT DEPUIS LE 2026-09-01, ET LE DRAPEAU NE SAIT PLUS
+  // QU'ENLEVER. Même patron que les lots UI-3A et UI-4 : aucune valeur positive
+  // n'active, rien n'est écrit dans `localStorage`, et les anciens liens
+  // `?passio_preview=flat-passions-v1` restent tolérés sans plus rien décider.
+  //
+  // ⚠️ CE BASCULEMENT SUPPOSE LA MIGRATION APPLIQUÉE, et elle l'est : vérifié en
+  // production le 2026-09-01 — 1 908 passions actives, 3 830 relations, les 19
+  // identifiants historiques conservés, ZÉRO publication orpheline. L'ordre
+  // n'était pas négociable : allumer avant la migration aurait ouvert une
+  // recherche promettant 1 889 passions que la clé étrangère de
+  // `posts.passion_id` aurait refusées à la publication.
+  //
+  // ⚠️ LA COUPURE RESTE ENTIÈRE, et c'est elle qui rend le retour arrière
+  // gratuit : `localStorage.flat_passions_v1 = "0"` ou
+  // `window.PASSIO_FLAT_PASSIONS = false` rendent le catalogue historique à
+  // l'octet près, sans redéploiement.
   function coupeLocalement() {
     try { return localStorage.getItem(STORAGE_KEY) === "0"; } catch (e) { return false; }
   }
@@ -82,8 +90,7 @@
   function actif() {
     try { if (window.PASSIO_FLAT_PASSIONS === false) return false; } catch (e) {}
     if (coupeLocalement()) return false;
-    try { if (window.PASSIO_FLAT_PASSIONS === true) return true; } catch (e) {}
-    return apercuDemande();
+    return true;
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -407,11 +414,69 @@
       if (!options.serveur || !serveurUtilisable()) return local;
       return chercherServeur(q, options.limite || 20).then(function (dist) {
         if (!dist || !dist.length) return local;
-        var exclu = Object.create(null);
-        if (options.exclure && options.exclure.forEach) options.exclure.forEach(function (id) { exclu[id] = 1; });
-        return dist.filter(function (p) { return !exclu[p.id]; }).slice(0, options.limite || 20);
+        return fusionner(q, local, dist, options);
       });
     });
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // FUSION LOCAL + SERVEUR — LE CLASSEMENT APPARTIENT AU NAVIGATEUR
+  // ──────────────────────────────────────────────────────────────────────────
+  // ⚠️ DÉFAUT MESURÉ EN CI LE 2026-09-01, ET IL A FALLU QUE LA MIGRATION SOIT
+  // APPLIQUÉE POUR LE VOIR. Le code prenait le classement du SERVEUR tel quel
+  // dès qu'il répondait. Or les deux barèmes ne coïncident pas : sur
+  // « guitares », le navigateur remonte « Guitare » (repli au singulier, pénalité
+  // +2 sur les autres) et `rechercher_passions` remonte « Guitare électrique ».
+  //
+  // Le vrai problème n'est pas de savoir lequel a raison — les deux résultats
+  // sont pertinents. C'est que l'ORDRE CHANGEAIT selon que la requête réseau
+  // avait répondu ou non : même frappe, même appareil, deux écrans différents.
+  // Un utilisateur sur réseau lent voyait un classement, le même sur Wi-Fi en
+  // voyait un autre.
+  //
+  // Le serveur sert donc à ce qu'il fait le mieux — RETROUVER dans tout le
+  // catalogue, y compris ce que l'index local par préfixe ne rattrape pas — et
+  // le navigateur reste la SEULE autorité sur l'ordre. Un seul barème, appliqué
+  // à un seul endroit : c'est aussi ce qui évite qu'ils redivergent au premier
+  // ajustement de l'un des deux.
+  //
+  // ⚠️ Une passion rendue par le serveur mais ABSENTE du référentiel local est
+  // conservée, à la fin : elle est réelle (la base fait foi), simplement plus
+  // récente que le JSON embarqué. La jeter ferait disparaître une passion
+  // publiable — l'inverse de ce que la recherche serveur apporte.
+  // ══════════════════════════════════════════════════════════════════════════
+  function fusionner(q, local, dist, options) {
+    options = options || {};
+    var limite = options.limite || 20;
+    var exclu = Object.create(null);
+    if (options.exclure && options.exclure.forEach) options.exclure.forEach(function (id) { exclu[id] = 1; });
+
+    var n = norme(q);
+    var motsQ = mots(q).map(singulier);
+    var nSing = motsQ.join(" ");
+
+    var vus = Object.create(null);
+    var classables = [];      // connues du référentiel local → notées ici
+    var inconnues = [];       // venues du serveur seul → gardées telles quelles
+
+    function ajouter(p) {
+      if (!p || !p.id || vus[p.id] || exclu[p.id]) return;
+      vus[p.id] = 1;
+      var connue = DONNEES && DONNEES.parId[p.id];
+      if (connue) classables.push({ p: connue, s: score(connue, n, nSing, motsQ) + (connue.is_broad ? 5 : 0) });
+      else inconnues.push(p);
+    }
+    local.forEach(ajouter);
+    dist.forEach(ajouter);
+
+    classables.sort(function (a, b) {
+      if (a.s !== b.s) return a.s - b.s;
+      if (a.p.popularity !== b.p.popularity) return b.p.popularity - a.p.popularity;
+      var ra = rangRecence(a.p.id), rb = rangRecence(b.p.id);
+      if (ra !== rb) return ra - rb;
+      return a.p.label.localeCompare(b.p.label, "fr");
+    });
+    return classables.map(function (x) { return x.p; }).concat(inconnues).slice(0, limite);
   }
 
   // ══════════════════════════════════════════════════════════════════════════

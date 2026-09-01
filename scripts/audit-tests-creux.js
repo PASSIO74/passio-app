@@ -69,6 +69,18 @@ const ARTEFACTS = new Set([
   // ce qui est précisément ce qui s'était produit avant ce lot. Vérifier
   // l'artefact servi est donc plus large que piloter un écran, pas plus étroit.
   "adr-010-vocabulaire.spec.js",
+  // Parité entre les DEUX chemins de purge des comptes de test : le SQL, source
+  // de vérité exécutée par la CLI Supabase liée, et son portage REST, seul
+  // utilisable en CI. Le spec compare les deux FICHIERS — tables couvertes,
+  // aucune table inventée, et surtout ORDRE identique, que les clés étrangères
+  // imposent. Il ne pilote pas l'UI et c'est le but : la dérive qu'il attrape
+  // vit dans deux scripts Node, jamais dans le navigateur.
+  //
+  // ⚠️ Ce n'est pas un test creux au sens de ce script : il n'invente rien, il
+  // relit la production. Ce qu'il garde est précisément ce qui a manqué le
+  // 2026-09-01 — une purge devenue partielle en silence, qui a laissé les
+  // comptes de test s'accumuler en production jusqu'à mettre `main` au rouge.
+  "purge-rest-parite.spec.js",
 ]);
 
 // ── 2. Ce que chaque spec touche réellement ─────────────────────────────────

@@ -464,10 +464,16 @@ Le script est en lecture seule sur le dépôt (il n'écrit que dans son dossier 
 
 ⚠️ **`.claude/` est désormais versionné SÉLECTIVEMENT** (skills + subagents = savoir projet, ils doivent survivre à un changement de machine). `.claude/settings.local.json` reste exclu : il a longtemps contenu des JWT et une clé `sb_secret_…` en clair dans ses commandes autorisées (9 entrées, purgées le 2026-08-15 par `npm run permissions:compact`, qui refuse désormais de conserver toute règle porteuse de secret). Il reste hors versionnement : c'est un fichier de poste, pas du savoir projet.
 
-  **Lot flat_passions_v1 — LE RÉFÉRENTIEL DES PASSIONS EST PLAT (2026-09-01), ÉTEINT PAR DÉFAUT.**
-  `docs/PASSIONS_REFERENTIEL_PLAT_2026-09-01.md`. Aperçu :
-  `?passio_preview=flat-passions-v1` ; coupures `localStorage.flat_passions_v1="0"`
-  et `window.PASSIO_FLAT_PASSIONS=false`, prioritaires sur tout. Il REMPLACE le
+  **Lot flat_passions_v1 — LE RÉFÉRENTIEL DES PASSIONS EST PLAT (2026-09-01), ACTIF PAR DÉFAUT.**
+  `docs/PASSIONS_REFERENTIEL_PLAT_2026-09-01.md`. Le drapeau ne sait plus
+  qu'ENLEVER (patron UI-3A / UI-4) : coupures `localStorage.flat_passions_v1="0"`
+  et `window.PASSIO_FLAT_PASSIONS=false`, prioritaires sur tout ; les anciens
+  liens `?passio_preview=flat-passions-v1` restent tolérés sans plus rien
+  décider, et `apercuDemande()`/`PREVIEW_NAME` ont été RETIRÉS plutôt que
+  laissés sans lecteur.
+  ⚠️ **L'ORDRE N'ÉTAIT PAS NÉGOCIABLE : migration D'ABORD, drapeau ENSUITE.**
+  Allumer avant aurait ouvert une recherche promettant 1 889 passions que la clé
+  étrangère de `posts.passion_id` aurait refusées à la publication. Il REMPLACE le
   catalogue hiérarchique Univers → Passion → Sous-passion (PR #231, fermée),
   dont il reprend et APLATIT les données.
   **Tout est directement une PASSION** : « Enduro » est au même rang que « Moto »,
@@ -531,11 +537,21 @@ Le script est en lecture seule sur le dépôt (il n'écrit que dans son dossier 
   ⚠️ `ouvrirGestionPassionsDepuisPaywall` change d'écran AVANT d'ouvrir
   `#passionManager`, qui vit dans `#screen-profiles` — déplié depuis le Fil il
   serait invisible.
-  ⚠️ **La migration n'est PAS appliquée en production.** Les 1 889 passions
-  nouvelles sont sélectionnables et lisibles mais **pas publiables** : la clé
-  étrangère de `posts.passion_id` les refuserait. `estPassionCanonique` reste la
-  seule autorité, et le Studio REFUSE avant l'insert avec un message qui dit quoi
-  faire — plutôt qu'un post visible chez son auteur, jamais arrivé au serveur.
+  ⚠️ **LA MIGRATION EST APPLIQUÉE EN PRODUCTION depuis le 2026-09-01**, vérifiée
+  par Benjamin depuis la CLI Supabase liée : **1 908 passions actives · 3 830
+  relations · 19 identifiants historiques · 0 publication orpheline**. Les 1 908
+  sont donc publiables. Mode d'emploi et retour arrière :
+  `docs/APPLIQUER_MIGRATION_PASSIONS.md`.
+  ⚠️ `estPassionCanonique` reste la SEULE autorité de publication, et le Studio
+  refuse toujours AVANT l'insert un identifiant qu'elle ne reconnaît pas —
+  plutôt qu'un post visible chez son auteur, jamais arrivé au serveur. Ce
+  mécanisme n'a pas disparu avec la migration : c'est lui qui protège des
+  identifiants inventés et des référentiels serveur tronqués.
+  ⚠️ **Corollaire de test payé le jour même** : le test ⑮ s'appuyait sur
+  « moto-enduro », absente du serveur avant la migration. Il exerce désormais le
+  MÉCANISME en neutralisant `estPassionCanonique`, au lieu de compter sur un trou
+  du référentiel — **un test qui dépend d'un état de la base se retourne le jour
+  où la base change.**
 
 ## 🚪 PREMIÈRE VISITE — « l'application est elle-même le pitch » (drapeau `first_run_experience_v1`, COUPÉ par défaut)
 
