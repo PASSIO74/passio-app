@@ -1090,8 +1090,53 @@
       titre: "Publie ce que tu veux",
       texte: "Un texte, une photo, une vidéo — la passion se choisit juste en dessous.",
       cible: function () { return document.getElementById("screen-studio"); }
+    },
+
+    // ── Aides AU GESTE ─────────────────────────────────────────────────────
+    // Demandées par Benjamin après essai : « une petite bulle d'explication pour
+    // toutes les fonctionnalités — les moods, les bulles de profil en haut… ».
+    //
+    // ⚠️ ELLES NE SONT PAS DES ÉTAPES DE TOUR, et c'est ce qui les rend
+    // acceptables. Le lot remplace justement un tour long par des indications
+    // contextuelles ; en empiler une par commande à l'ouverture reviendrait à
+    // reconstruire le tutoriel qu'on vient de retirer, en pire — six bulles
+    // d'affilée sur le premier écran. Chacune se déclenche donc au PREMIER
+    // GESTE sur la commande dont elle parle : on explique ce qu'on vient de
+    // toucher, au moment où la question se pose, une seule fois, jamais avant.
+    // La garde `bulleVisible()` interdit qu'il y en ait deux à l'écran.
+    passions: {
+      titre: "Tes passions filtrent le Fil",
+      texte: "Touche-en plusieurs : elles s'ADDITIONNENT, elles ne se remplacent pas.",
+      cible: function () { return document.getElementById("profileStrip"); }
+    },
+    envies: {
+      titre: "Ton envie du moment",
+      texte: "Explorer, Apprendre, Idées, Rencontrer — ça s'ajoute à tes passions, ça ne les remplace pas.",
+      cible: function () { return document.getElementById("feedIntentSelector") || document.getElementById("moodSelector"); }
+    },
+    stories: {
+      titre: "Ce qui se passe maintenant",
+      texte: "Des moments courts, publiés dans la journée. Ils disparaissent au bout de 24 h.",
+      cible: function () { return document.getElementById("storiesRowFeed"); }
+    },
+    bobines: {
+      titre: "Des vidéos courtes, par passion",
+      texte: "Fais défiler vers le haut. Chaque bobine peut mener à une vraie activité.",
+      cible: function () { return document.querySelector(".app-nav-v2 [data-v2-key=\"reels\"]") || document.querySelector(".app-nav .nav-bobines"); }
     }
   };
+
+  // Quelle aide au geste correspond à l'élément touché ? La correspondance se
+  // fait par ZONE (un conteneur stable), jamais par le nœud exact : les rangées
+  // de passions, d'envies et de stories sont repeintes en entier à chaque rendu.
+  var ZONES_GESTE = [
+    ["#profileStrip", "passions"],
+    ["#feedIntentSelector", "envies"],
+    ["#moodSelector", "envies"],
+    ["#storiesRowFeed", "stories"],
+    ['.app-nav-v2 [data-v2-key="reels"]', "bobines"],
+    [".app-nav .nav-bobines", "bobines"]
+  ];
   // ⚠️ SEULES CES TROIS ÉTAPES forment le premier tour. Ajouter une entrée à
   // `ETAPES` n'y change rien — il faudrait l'ajouter ici aussi, et le lot
   // l'interdit (« trois indications principales maximum »).
@@ -1185,6 +1230,48 @@
     return true;
   }
 
+  // ⚠️ ÉCOUTEUR DE CLIC SEULEMENT, JAMAIS DE CLAVIER. app-08 porte déjà un
+  // délégué qui active tout `[role="button"]` non natif à Entrée/Espace en
+  // appelant `el.click()` : la frappe nous parvient donc par ce clic-là, une
+  // seule fois. Ajouter ici un second écouteur clavier produirait DEUX
+  // déclenchements pour une touche — le piège documenté dans app-02.
+  //
+  // Ni `preventDefault`, ni `stopPropagation` : l'aide s'affiche APRÈS le geste,
+  // elle ne le remplace pas. Le petit délai laisse le rendu se terminer, sinon
+  // la bulle s'ancre sur une rangée que le repeint va déplacer.
+  //
+  // ⚠️ EN PHASE DE CAPTURE, ET C'EST OBLIGATOIRE. Une tuile de passion porte un
+  // `onclick` inline qui appelle `toggleProfileFilter` → `renderFeed` →
+  // `renderProfileStrip`, laquelle RÉÉCRIT `#profileStrip` en entier. En phase
+  // bubbling, cet `onclick` a donc déjà tourné quand l'événement atteint
+  // `document` : la tuile cliquée est DÉTACHÉE du document, et
+  // `ev.target.closest("#profileStrip")` remonte dans un arbre orphelin sans
+  // jamais trouver la zone. L'aide ne se posait jamais — mesuré, aucun symptôme
+  // visible. Même famille que le piège d'UI-4A4, où une chip déplacée était
+  // « arrachée par son propre clic ». En capture, on lit la cible AVANT que
+  // quiconque n'ait pu la remplacer.
+  var _gesteArme = false;
+
+  function armerAidesAuGeste() {
+    if (_gesteArme) return;
+    _gesteArme = true;
+    document.addEventListener("click", function (ev) {
+      try {
+        if (!estVisiteur() || tourAbandonne() || bulleVisible()) return;
+        var t = ev.target;
+        if (!t || !t.closest) return;
+        for (var i = 0; i < ZONES_GESTE.length; i++) {
+          if (t.closest(ZONES_GESTE[i][0])) {
+            var id = ZONES_GESTE[i][1];
+            if (etapeVue(id)) return;
+            setTimeout(function () { try { montrerEtape(id); } catch (e) { journal("aide " + id, e); } }, 450);
+            return;
+          }
+        }
+      } catch (e) { journal("aide au geste", e); }
+    }, true);
+  }
+
   // Déclencheur des étapes du Fil (1 et 3). L'étape « Rencontrer » a le sien,
   // posé à la première ouverture de l'écran IRL (cf. `surNavigation`).
   var _tourPlanifie = null;
@@ -1211,6 +1298,9 @@
   // zéro et repart de la première. Utilisable même quand le tour a été abandonné.
   function relancerTour() {
     var p = prefs();
+    // Remet TOUT à zéro — les trois étapes du premier tour comme les aides au
+    // geste. « Revoir les repères » doit rendre l'écran tel qu'un nouveau venu
+    // le découvre, sinon l'entrée ment sur ce qu'elle fait.
     p.tour = {};
     sauverPrefs();
     try { closeModal(); } catch (e) {}
@@ -1357,6 +1447,8 @@
 
     // ⚠️ Lecture seule, et JAMAIS `supaInit()` (qui écrit).
     chargerContenuPublic();
+
+    armerAidesAuGeste();
 
     tel("first_run_started", { deep: lienProfond() ? 1 : 0, known: p.passions.length ? 1 : 0 });
 

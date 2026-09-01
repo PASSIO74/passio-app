@@ -410,6 +410,78 @@ test.describe("Tour contextuel", () => {
   });
 });
 
+test.describe("Aides au geste", () => {
+  // Demandé par Benjamin après essai : « une petite bulle d'explication pour
+  // toutes les fonctionnalités — les moods, les bulles de profil en haut… ».
+  // ⚠️ Elles ne s'empilent PAS à l'ouverture : chacune attend le premier geste
+  // sur la commande dont elle parle. Empiler six bulles sur le premier écran
+  // reconstruirait le tutoriel que ce lot remplace.
+  const zones = [
+    ["#profileStrip .profile-tile", "passions", "Tes passions filtrent le Fil"],
+    ["#feedIntentSelector .feed-intent-btn", "envies", "Ton envie du moment"],
+  ];
+
+  for (const [selecteur, etape, titre] of zones) {
+    test(`toucher ${etape} explique ${etape}, une seule fois`, async ({ page }) => {
+      await bootVisiteur(page, { sansBienvenue: true });
+
+      // Rien AVANT le geste : c'est tout l'intérêt.
+      expect(await page.locator(`.fr-tip[data-fr-tip="${etape}"]`).count()).toBe(0);
+
+      const cible = page.locator(selecteur).first();
+      await expect(cible).toBeVisible({ timeout: 15000 });
+      await page.evaluate(() => PassioFirstRun.fermerBulle());
+      await cible.click();
+      await page.waitForTimeout(1200);
+      const bulle = page.locator(`.fr-tip[data-fr-tip="${etape}"]`);
+      await expect(bulle).toHaveCount(1);
+      await expect(bulle).toContainText(titre);
+
+      // Une seule fois : refermée, un second geste ne la ramène pas.
+      await page.locator(".fr-tip-ok").click();
+      await expect(page.locator(".fr-tip")).toHaveCount(0);
+      await cible.click();
+      await page.waitForTimeout(1200);
+      expect(await page.locator(`.fr-tip[data-fr-tip="${etape}"]`).count()).toBe(0);
+    });
+  }
+
+  test("le geste n'est jamais empêché : la commande touchée agit quand même", async ({ page }) => {
+    // ⚠️ L'aide s'affiche APRÈS le geste, elle ne le remplace pas. Sans cette
+    // garantie, la première tape sur une passion serait avalée par l'explication
+    // — l'utilisateur toucherait deux fois pour un effet.
+    await bootVisiteur(page, { sansBienvenue: true });
+    // ⚠️ AVANT TOUT CHOIX, LE RAIL NE CONTIENT QUE « Suivis ». `renderProfileStrip`
+    // rend les passions DU COMPTE (`state.user.profiles`), et un visiteur n'en a
+    // aucune : les tuiles n'apparaissent qu'une fois ses passions choisies.
+    // Chercher ici une tuile de passion, c'est chercher ce qui n'existe pas
+    // encore — mesuré, pas déduit. On mesure donc ce que le test veut vraiment
+    // dire : le geste n'est pas AVALÉ par l'aide, quel que soit le bouton.
+    const tuile = page.locator("#profileStrip .profile-tile").first();
+    await expect(tuile).toBeVisible({ timeout: 15000 });
+    const avant = await page.evaluate(() => ({
+      passions: Array.from(_activeFeedPassions).join(","),
+      suivis: state.feedFollowingOn !== false,
+    }));
+    await tuile.click();
+    await page.waitForTimeout(1200);
+    const apres = await page.evaluate(() => ({
+      passions: Array.from(_activeFeedPassions).join(","),
+      suivis: state.feedFollowingOn !== false,
+    }));
+    expect(apres.passions !== avant.passions || apres.suivis !== avant.suivis).toBe(true);
+  });
+
+  test("jamais deux bulles à l'écran en même temps", async ({ page }) => {
+    await bootVisiteur(page, { sansBienvenue: true });
+    await page.locator("#profileStrip .profile-tile").first().click();
+    await page.waitForTimeout(900);
+    await page.locator("#feedIntentSelector .feed-intent-btn").first().click();
+    await page.waitForTimeout(1400);
+    expect(await page.locator(".fr-tip").count()).toBeLessThanOrEqual(1);
+  });
+});
+
 // ─────────────────────────────────────────────────────────────────────────
 // 5. GATES D'AUTHENTIFICATION
 // ─────────────────────────────────────────────────────────────────────────
