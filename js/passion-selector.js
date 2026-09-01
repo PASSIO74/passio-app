@@ -148,7 +148,14 @@
     this.zoneListe.innerHTML = '<p class="psel-vide">Chargement des passions…</p>';
     var m = moteur();
     if (!m) { this.zoneListe.innerHTML = '<p class="psel-vide">Recherche indisponible.</p>'; return; }
-    m.charger().then(function () { self.chercher(); }).catch(function (e) {
+    // ⚠️ REPEINDRE LES PUCES APRÈS LE CHARGEMENT, pas seulement à la sélection.
+    // Mesuré à l'écran : une passion déjà choisie s'affichait « ✨ musique » —
+    // son identifiant brut et l'emoji générique — parce que `parId()` rend
+    // `null` tant que le référentiel n'est pas là, et que rien ne repassait
+    // ensuite. Le même défaut de famille que `passionById` qui retombe sur
+    // « ✨ Passion » (lot TAXO-1), à ceci près qu'ici la valeur fausse n'est
+    // que peinte, jamais persistée.
+    m.charger().then(function () { self.rendreChoisies(); self.chercher(); }).catch(function (e) {
       journal("charger", e);
       self.zoneListe.innerHTML = '<p class="psel-vide">Recherche indisponible pour le moment.</p>';
     });
@@ -385,8 +392,20 @@
       onChoisir: function (id) {
         // En mode unique, choisir CONCLUT : garder la feuille ouverte après un
         // choix unique laisse croire qu'on peut en prendre un second.
-        if (config.fermerAuChoix !== false) { try { if (typeof closeModal === "function") closeModal(); } catch (e) {} }
-        if (typeof suiteChoisir === "function") suiteChoisir(id);
+        //
+        // ⚠️ C'EST L'APPELANT QUI DÉCIDE DE FERMER, et l'ordre compte. La
+        // première version fermait AVANT d'appeler `onChoisir` : un choix
+        // REFUSÉ — au Studio, une passion que le serveur ne connaît pas encore —
+        // refermait quand même la feuille, laissant un toast d'explication et
+        // aucun moyen d'en choisir une autre sans tout rouvrir. Un `onChoisir`
+        // qui rend `false` garde donc la main.
+        var refuse = false;
+        if (typeof suiteChoisir === "function") {
+          try { refuse = (suiteChoisir(id) === false); } catch (e) { journal("onChoisir", e); }
+        }
+        if (!refuse && config.fermerAuChoix !== false) {
+          try { if (typeof closeModal === "function") closeModal(); } catch (e) {}
+        }
       },
     }));
     // Pas de mise au point automatique sur mobile : elle fait monter le clavier

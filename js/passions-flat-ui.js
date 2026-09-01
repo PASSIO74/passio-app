@@ -160,7 +160,9 @@
           var p = moteur().parId(id);
           dire("« " + ((p && p.label) || id) + " » n'est pas encore ouverte à la publication. "
              + "Elle range ton fil ; choisis-en une autre pour publier.");
-          return;
+          // `false` = NE PAS FERMER la feuille : refuser puis refermer laisserait
+          // devant un toast, sans le moyen d'en choisir une autre.
+          return false;
         }
         try {
           // Le `<select>` ne contient que les passions du compte : on ajoute
@@ -175,8 +177,13 @@
           sel.value = id;
           if (typeof ajouterPassionAuCompte === "function") ajouterPassionAuCompte(id, "");
           if (typeof onStudioPassionChange === "function") onStudioPassionChange();
-          if (typeof majBoutonStudio === "function") majBoutonStudio();
           rafraichirBoutonStudio();
+          // ⚠️ Le composer UI-6 affiche « Publier dans : X » dans un résumé
+          // SÉPARÉ du `<select>`. Sans ce rappel, le choix serait écrit dans la
+          // source de vérité mais l'écran continuerait d'annoncer l'ancienne
+          // passion — le défaut exact d'`identiteCourante()` au lot UI-8, où le
+          // Studio annonçait un expéditeur qui n'était pas celui du post.
+          if (window.PassioUIV6 && typeof PassioUIV6.sync === "function") PassioUIV6.sync();
         } catch (e) { journal("studio", e); }
       },
     });
