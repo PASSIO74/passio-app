@@ -486,6 +486,42 @@ aucune inscription à une activité. `apresAuthentification()` restaure l'écran
 et le contenu, puis RAPPELLE l'action par un toast — le dernier geste appartient à la
 personne.
 
+**Deux corrections demandées par Benjamin après essai réel sur la preview (2026-09-01).**
+
+⑩ **FERMER LA CARTE DE BIENVENUE N'EST PLUS DÉFINITIF.** Elle écrivait sa fermeture
+   dans `localStorage` : elle ne revenait donc JAMAIS. Or c'est elle qui porte le
+   bouton « Personnaliser mon expérience », et la seule autre porte vers le panneau
+   est une entrée du menu Paramètres que personne ne va chercher. La fermer rendait
+   le panneau INATTEIGNABLE — c'est pourquoi Benjamin ne l'a jamais vu. La consigne
+   disait « ne pas réapparaître sans raison » ; « sans raison » avait été lu comme
+   « jamais », alors que la raison est forte : **tant qu'aucun compte n'existe, rien
+   n'est acquis**. La fermeture vit désormais dans `sessionStorage`
+   (`passio_first_run_bienvenue_fermee`) et ne vaut que pour la session ; la carte
+   revient à chaque visite, et disparaît définitivement dès qu'un compte existe.
+   Son message suit l'état : passions déjà choisies → « Tes passions sont sur cet
+   appareil / Crée ton compte pour les garder », bouton « Modifier mes passions ».
+
+⑪ **LES AIDES AU GESTE NE SONT PAS DES ÉTAPES DE TOUR.** Quatre bulles se sont
+   ajoutées (bulles de passion, envies, stories, bobines) parce que le tour à trois
+   étapes laissait les commandes du Fil sans explication. Elles ne s'affichent PAS à
+   l'ouverture : chacune attend le premier geste sur la commande dont elle parle.
+   Empiler une bulle par commande reconstruirait le tutoriel que ce lot remplace.
+   ⚠️ **L'écouteur est en phase de CAPTURE, et c'est obligatoire.** Une tuile de
+   passion porte un `onclick` inline qui appelle `toggleProfileFilter` →
+   `renderFeed` → `renderProfileStrip`, laquelle réécrit `#profileStrip` en entier :
+   en bubbling, la tuile est DÉTACHÉE quand l'événement atteint `document`, et
+   `closest("#profileStrip")` remonte dans un arbre orphelin sans jamais trouver la
+   zone. L'aide ne se posait jamais, sans le moindre symptôme — même famille que le
+   piège d'UI-4A4, « une chip arrachée par son propre clic ». ⚠️ Aucun écouteur
+   CLAVIER n'est ajouté : app-08 en porte déjà un pour tout `[role="button"]` non
+   natif, qui appelle `el.click()`.
+
+⚠️ **AVANT TOUT CHOIX, LE RAIL DU HAUT NE CONTIENT QUE « Suivis ».**
+   `renderProfileStrip` rend les passions DU COMPTE (`state.user.profiles`), et un
+   visiteur n'en a aucune : les tuiles n'apparaissent qu'une fois ses passions
+   choisies. Un test qui y chercherait une tuile de passion chercherait ce qui
+   n'existe pas encore.
+
 ## 📚 Références projet
 - **`docs/PASSIO_UI_V2_DIRECTION_2026-08-25.md` — direction UX canonique (2026-08-25).** Elle
   consolide et **remplace l'ancien ordre qui plaçait la refonte visuelle après la performance** :
