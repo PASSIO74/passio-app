@@ -78,6 +78,11 @@
       max: 0,                        // 0 = pas de plafond
       permettreDemande: true,
       valider: "",                   // libellé du bouton de validation, "" = aucun
+      // Rend `null` si l'identifiant est choisissable, sinon le MOTIF du refus.
+      // ⚠️ Le motif s'affiche DANS LE PIED, pas seulement en toast : au Studio,
+      // un toast passait inaperçu et on restait devant une sélection affichée
+      // sans rien pour conclure. Mesuré par Benjamin sur la preview.
+      verifier: null,
       onChoisir: null,
       onValider: null,
       onChangement: null,
@@ -253,12 +258,26 @@
     }
     if (this.cfg.valider) {
       var n = this.selection.length;
-      var bloque = (this.cfg.mode === "multi" && n === 0);
+      var refus = this.motifRefus();
+      if (refus) html += '<p class="psel-refus" role="status">' + ech(refus) + "</p>";
+      var bloque = n === 0 || !!refus;
       html += '<button type="button" class="btn primary block psel-valider" data-psel="valider"'
         + (bloque ? " disabled" : "") + ">"
-        + ech(this.cfg.valider) + (n ? " (" + n + ")" : "") + "</button>";
+        + ech(this.cfg.valider) + (this.cfg.mode === "multi" && n ? " (" + n + ")" : "") + "</button>";
     }
     this.zonePied.innerHTML = html;
+  };
+
+  // Rend le motif de refus de la sélection courante, ou "" si tout va bien.
+  Selecteur.prototype.motifRefus = function () {
+    if (typeof this.cfg.verifier !== "function") return "";
+    for (var i = 0; i < this.selection.length; i++) {
+      try {
+        var m = this.cfg.verifier(this.selection[i]);
+        if (m) return m;
+      } catch (e) { journal("verifier", e); }
+    }
+    return "";
   };
 
   Selecteur.prototype.rendreChoisies = function () {
@@ -283,8 +302,14 @@
       this.selection = [id];
       if (m) m.noterUtilisation(id);
       this.rendreChoisies();
-      if (typeof this.cfg.onChoisir === "function") this.cfg.onChoisir(id);
+      this.rendrePied();
       this.notifier();
+      // ⚠️ DEUX GESTES QUAND UN BOUTON EXISTE : le tap sélectionne, le bouton
+      // conclut. Conclure au tap privait l'écran de toute confirmation — et
+      // quand le choix était REFUSÉ, la feuille restait ouverte sur une
+      // sélection affichée, sans rien à toucher pour avancer ni comprendre.
+      // Sans bouton déclaré, le tap conclut comme avant.
+      if (!this.cfg.valider && typeof this.cfg.onChoisir === "function") this.cfg.onChoisir(id);
       return;
     }
     var i = this.selection.indexOf(id);
@@ -317,6 +342,10 @@
   };
 
   Selecteur.prototype.valider = function () {
+    // Le bouton est déjà désactivé dans ce cas ; le garde est ici parce que la
+    // touche Entrée et un appel programmatique ne passent pas par le bouton.
+    if (this.motifRefus()) return;
+    if (!this.selection.length) return;
     try { if (typeof this.cfg.onValider === "function") this.cfg.onValider(this.selection.slice()); }
     catch (e) { journal("onValider", e); }
   };

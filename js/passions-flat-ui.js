@@ -149,21 +149,26 @@
       sousTitre: "Tu peux choisir directement « Enduro » — sans passer par « Moto ».",
       permettreDemande: false,   // on ne dépose pas une demande depuis le Studio :
                                  // elle ne serait pas publiable, donc inutile ici.
-      onChoisir: function (id) {
-        // ⚠️ LE REFUS EST EXPLICITE ET IL DIT POURQUOI. Une passion absente du
-        // référentiel SERVEUR ne peut pas être écrite (clé étrangère) : laisser
-        // publier produirait un post visible chez son auteur, jamais arrivé,
-        // perdu au changement d'appareil. C'est le défaut que
-        // `publicationRefuseeFautePassion` ferme déjà en aval ; ici on ne le
-        // laisse même pas commencer.
-        if (!passionPubliable(id)) {
-          var p = moteur().parId(id);
-          dire("« " + ((p && p.label) || id) + " » n'est pas encore ouverte à la publication. "
-             + "Elle range ton fil ; choisis-en une autre pour publier.");
-          // `false` = NE PAS FERMER la feuille : refuser puis refermer laisserait
-          // devant un toast, sans le moyen d'en choisir une autre.
-          return false;
-        }
+      // ⚠️ UN BOUTON DE VALIDATION, ET C'EST NÉCESSAIRE. Sans lui, le tap sur un
+      // résultat concluait tout seul — sauf quand la passion était refusée : on
+      // restait alors devant une sélection affichée, un toast déjà disparu, et
+      // rien à toucher. Mesuré par Benjamin sur la preview : « j'arrive à
+      // choisir la passion mais je n'arrive pas à la valider ».
+      valider: "Publier dans cette passion",
+      // Le motif du refus s'affiche DANS LE PIED, avant même de valider, et
+      // désactive le bouton. Une passion absente du référentiel SERVEUR ne peut
+      // pas être écrite (clé étrangère de `posts.passion_id`) : laisser publier
+      // produirait un post visible chez son auteur, jamais arrivé, perdu au
+      // changement d'appareil.
+      verifier: function (id) {
+        if (passionPubliable(id)) return null;
+        var p = moteur().parId(id);
+        return "« " + ((p && p.label) || id) + " » n'est pas encore ouverte à la publication : "
+          + "elle range ton fil, mais on ne peut pas encore y publier. Choisis-en une autre.";
+      },
+      onValider: function (ids) {
+        var id = ids && ids[0];
+        if (!id) return;
         try {
           // Le `<select>` ne contient que les passions du compte : on ajoute
           // l'option si elle manque, sinon `sel.value = id` ne prend pas.

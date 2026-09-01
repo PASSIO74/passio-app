@@ -10022,6 +10022,18 @@ body.ctx-locked #appMain { overflow: hidden; }
   overflow: hidden; text-overflow: ellipsis;
 }
 .psel-valider[disabled] { opacity: .45; cursor: not-allowed; }
+/* ── Le motif d'un choix refusé, dans le pied du sélecteur ────────────────
+   ⚠️ Il est AFFICHÉ, pas seulement annoncé en toast : au Studio, un toast
+   disparaissait avant d'être lu et laissait devant une sélection affichée
+   sans rien pour conclure ni comprendre. Mesuré sur la preview du 2026-09-01. */
+.psel-refus {
+  font-size: 12.5px; line-height: 1.5; margin: 0 0 8px;
+  color: var(--text);
+  background: color-mix(in srgb, #b45309 12%, transparent);
+  border: 1px solid color-mix(in srgb, #b45309 45%, transparent);
+  border-radius: 10px; padding: 9px 11px;
+}
+
 
 /* ── Feuille basse ────────────────────────────────────────────────────── */
 .psel-feuille .psel-liste { max-height: 38vh; }

@@ -2415,7 +2415,12 @@ function renderProfileStrip() {
     const isSelected = _activeFeedPassions.has(p.passion);
     const isDimmed = !isSelected && (hasPassionFilter || enSuivis);
     return passionTileHTML({
-      emoji: p.emoji,
+      // ⚠️ Le référentiel D'ABORD, l'entrée persistée ensuite. Une passion
+      // ajoutée avant le correctif de `passionById` porte un « ✨ » ÉCRIT dans
+      // `state.user.profiles` : sans cette préférence, la bulle garderait
+      // l'emoji générique même après réparation. `_passionEtiquette` (rail du
+      // Profil) applique déjà cet ordre — le Fil en était le seul survivant.
+      emoji: passion.emoji || p.emoji,
       label: passion.label,
       photoUrl: passionPhotoUrl(passion),
       fallbackUrl: passionPhotoFallback(p.passion),

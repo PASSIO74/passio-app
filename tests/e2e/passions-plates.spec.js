@@ -189,13 +189,53 @@ test.describe("la recherche", () => {
     await expect(page.locator("[data-v6-passio]")).toBeVisible();
     await page.locator(".v6-passio .v6-lien").first().click();
     await page.waitForFunction(() => window.PassioPassions && window.PassioPassions.pret(), null, { timeout: 15000 });
-    await chercher(page, "musique");
-    await page.locator('.psel-item[data-psel-id="musique"]').click();
+    // ⚠️ PAS « musique » : c'est la passion du compte de test, donc la valeur
+    // DÉJÀ dans `#postPassion`. On ne pourrait pas distinguer « le sélecteur a
+    // écrit » de « c'était déjà là ». « photo » est publiable et différente.
+    await chercher(page, "photo");
+    await page.locator('.psel-item[data-psel-id="photo"]').click();
+    await page.waitForTimeout(300);
+    // ⚠️ LE TAP SÉLECTIONNE, LE BOUTON CONCLUT. Conclure au tap privait l'écran
+    // de toute confirmation, et laissait un choix REFUSÉ sans rien à toucher.
+    // Signalé par Benjamin sur la preview : « je n'arrive pas à la valider,
+    // il manque l'onglet valider ».
+    const valider = page.locator('[data-psel="valider"]');
+    await expect(valider).toBeVisible();
+    await expect(valider).toBeEnabled();
+    expect(await page.locator("#postPassion").inputValue()).not.toBe("photo");
+    await valider.click();
     await page.waitForTimeout(500);
-    expect(await page.locator("#postPassion").inputValue()).toBe("musique");
+    expect(await page.locator("#postPassion").inputValue()).toBe("photo");
     // Choix unique : la feuille se REFERME — garder la main après un choix
     // unique laisserait croire qu'on peut en prendre un second.
     await expect(page.locator(".psel-input")).toBeHidden();
+  });
+
+  test("⑩ bis — la bulle du Fil porte le NOM de la passion, jamais « Passion »", async ({ page }) => {
+    // ⚠️ DÉFAUT MESURÉ PAR BENJAMIN SUR LA PREVIEW, et déjà trouvé par le lot
+    // TAXO-1 avant d'être laissé revenir ici : `allPassions()` ne connaît que
+    // les 19 du socle embarqué, donc `passionById` retombait sur le générique
+    // « ✨ Passion » pour tout identifiant venu de la recherche. Pire que
+    // l'affichage : `ajouterPassionAuCompte` RECOPIE emoji et couleur dans
+    // l'entrée créée — la valeur générique était PERSISTÉE.
+    await bootOnboarded(page, null, 1, { query: APERCU });
+    await ouvrirRecherche(page);
+    await chercher(page, "enduro");
+    await page.locator('.psel-item[data-psel-id="moto-enduro"]').click();
+    await page.locator('[data-psel="valider"]').click();
+    await page.waitForTimeout(900);
+
+    const bulle = page.locator('#profileStrip [data-passion-tile="moto-enduro"]');
+    await expect(bulle).toHaveCount(1);
+    await expect(bulle).toContainText("Enduro");
+    const texte = (await bulle.textContent()) || "";
+    expect(texte, "la bulle affiche le générique au lieu du nom choisi").not.toContain("Passion");
+    expect(texte, "la bulle porte l'emoji générique").not.toContain("✨");
+
+    // Et le nom résolu ne dépend pas de ce qui a été PERSISTÉ : l'entrée créée
+    // doit elle-même porter le bon libellé, pas le générique.
+    const enBase = await page.evaluate(() => passionById("moto-enduro"));
+    expect(enBase.label).toBe("Enduro");
   });
 
   test("⑪ la sélection survit à un rechargement", async ({ page }) => {
@@ -306,6 +346,14 @@ test.describe("le modèle et les garde-fous", () => {
     // ⚠️ Et la feuille RESTE OUVERTE : refuser puis refermer laisserait devant
     // un toast d'explication, sans le moyen d'en choisir une autre.
     await expect(page.locator(".psel-input")).toBeVisible();
+    // ⚠️ LE MOTIF EST AFFICHÉ, pas seulement annoncé en toast — un toast
+    // disparaît avant d'être lu, et on reste devant une sélection affichée sans
+    // comprendre pourquoi rien n'avance.
+    await expect(page.locator(".psel-refus")).toBeVisible();
+    await expect(page.locator(".psel-refus")).toContainText("Enduro");
+    // Et le bouton de validation est DÉSACTIVÉ : la porte est fermée, pas
+    // seulement gardée derrière un message.
+    await expect(page.locator('[data-psel="valider"]')).toBeDisabled();
   });
 
   test("⑯ le client ne peut pas écrire dans le référentiel", async ({ page }) => {
